@@ -288,7 +288,7 @@
     "vitest": "4.1.5",
     "@vitest/mocker": "4.1.5",
     "@vitest/coverage-v8": "4.1.5",
-    "viem": "2.48.8",
+    "viem": "2.49.3",
     "@solana/web3.js": "1.98.4",
     "@slack/web-api": "7.15.2",
     "@clack/prompts": "1.3.0",

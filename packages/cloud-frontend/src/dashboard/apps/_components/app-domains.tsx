@@ -259,7 +259,7 @@ export function AppDomains({ appId }: AppDomainsProps) {
                 <Button
                   onClick={() => setShowAddForm(true)}
                   size="sm"
-                  className="bg-[#FF5800] hover:bg-[#FF5800]/80 text-white rounded-lg"
+                  className="bg-[#FF5800] hover:bg-[#FF5800]/80 text-white rounded-sm"
                 >
                   <Plus className="h-4 w-4 mr-1.5" />
                   Add Domain
@@ -270,8 +270,8 @@ export function AppDomains({ appId }: AppDomainsProps) {
           {/* Loading State */}
           {isLoading ? (
             <div className="space-y-3">
-              <div className="h-16 bg-black/30 rounded-lg animate-pulse" />
-              <div className="h-16 bg-black/30 rounded-lg animate-pulse opacity-50" />
+              <div className="h-16 bg-black/30 rounded-sm animate-pulse" />
+              <div className="h-16 bg-black/30 rounded-sm animate-pulse opacity-50" />
             </div>
           ) : !primaryDomain && sandboxUrl ? (
             /* Sandbox URL */
@@ -284,7 +284,7 @@ export function AppDomains({ appId }: AppDomainsProps) {
                 copyToClipboard={copyToClipboard}
                 copiedValue={copiedValue}
               />
-              <div className="p-3 rounded-lg bg-blue-500/10 border border-blue-500/20">
+              <div className="p-3 rounded-sm bg-blue-500/10 border border-blue-500/20">
                 <div className="flex items-start gap-2">
                   <Info className="h-4 w-4 text-blue-400 shrink-0 mt-0.5" />
                   <div>
@@ -301,7 +301,7 @@ export function AppDomains({ appId }: AppDomainsProps) {
             </div>
           ) : !primaryDomain ? (
             /* No App Deployed */
-            <div className="p-6 rounded-lg bg-orange-500/5 border border-orange-500/20 text-center">
+            <div className="p-6 rounded-sm bg-orange-500/5 border border-orange-500/20 text-center">
               <div className="w-12 h-12 rounded-full bg-orange-500/10 flex items-center justify-center mx-auto mb-3">
                 <AlertTriangle className="h-6 w-6 text-orange-400" />
               </div>
@@ -359,7 +359,7 @@ export function AppDomains({ appId }: AppDomainsProps) {
                     exit={{ opacity: 0, height: 0 }}
                     transition={{ duration: 0.2 }}
                   >
-                    <div className="p-6 rounded-lg border border-white/5 bg-black/20">
+                    <div className="p-6 rounded-sm border border-white/5 bg-black/20">
                       <h4 className="text-sm font-medium text-white mb-1">
                         Add Custom Domain
                       </h4>
@@ -382,7 +382,7 @@ export function AppDomains({ appId }: AppDomainsProps) {
                               setNewDomain("");
                             }
                           }}
-                          className="flex-1 bg-black/30 border-white/10 focus:border-[#FF5800]/50 rounded-lg placeholder:text-neutral-600"
+                          className="flex-1 bg-black/30 border-white/10 focus:border-[#FF5800]/50 rounded-sm placeholder:text-neutral-600"
                         />
                         <div className="flex gap-2">
                           <Button
@@ -419,7 +419,7 @@ export function AppDomains({ appId }: AppDomainsProps) {
 
               {/* Empty Custom Domain State */}
               {primaryDomain && !hasCustomDomain && !showAddForm && (
-                <div className="p-6 rounded-lg border border-white/5 bg-black/20 text-center">
+                <div className="p-6 rounded-sm border border-white/5 bg-black/20 text-center">
                   <h4 className="text-sm font-medium text-white">
                     Use Your Own Domain
                   </h4>
@@ -462,7 +462,7 @@ export function AppDomains({ appId }: AppDomainsProps) {
             Quick DNS Reference
           </h3>
           <div className="grid sm:grid-cols-2 gap-3">
-            <div className="flex items-center justify-between p-4 rounded-lg bg-black/40">
+            <div className="flex items-center justify-between p-4 rounded-sm bg-black/40">
               <div>
                 <p className="text-sm font-medium text-white">Subdomains</p>
                 <p className="text-xs text-neutral-500 font-mono mt-1">
@@ -476,7 +476,7 @@ export function AppDomains({ appId }: AppDomainsProps) {
                 </p>
               </div>
             </div>
-            <div className="flex items-center justify-between p-4 rounded-lg bg-black/40">
+            <div className="flex items-center justify-between p-4 rounded-sm bg-black/40">
               <div>
                 <p className="text-sm font-medium text-white">Root Domains</p>
                 <p className="text-xs text-neutral-500 font-mono mt-1">
@@ -529,7 +529,7 @@ function DomainCard({
   return (
     <div
       className={`
-        rounded-lg border p-3
+        rounded-sm border p-3
         ${isVerified ? "bg-black/30 border-white/10" : "bg-orange-500/5 border-orange-500/20"}
       `}
     >
@@ -591,7 +591,7 @@ function DomainCard({
                   href={url}
                   target="_blank"
                   rel="noopener noreferrer"
-                  className="inline-flex items-center justify-center h-8 w-8 text-neutral-400 hover:text-white hover:bg-white/10 rounded-md transition-colors"
+                  className="inline-flex items-center justify-center h-8 w-8 text-neutral-400 hover:text-white hover:bg-white/10 rounded-sm transition-colors"
                 >
                   <ExternalLink className="h-4 w-4" />
                 </a>
@@ -660,7 +660,7 @@ function DomainCard({
                   <AlertDialogTitle>Remove Domain</AlertDialogTitle>
                   <AlertDialogDescription>
                     Are you sure you want to remove{" "}
-                    <code className="px-1.5 py-0.5 bg-white/10 rounded font-mono text-white">
+                    <code className="px-1.5 py-0.5 bg-white/10 rounded-sm font-mono text-white">
                       {domain}
                     </code>
                     ? Users will no longer be able to access your app via this
@@ -778,7 +778,7 @@ function DnsConfigPanel({
             size="sm"
             onClick={onRefresh}
             disabled={isChecking}
-            className="border-white/10 hover:bg-white/10 rounded-lg"
+            className="border-white/10 hover:bg-white/10 rounded-sm"
           >
             {isChecking ? (
               <Loader2 className="h-4 w-4 mr-1.5 animate-spin" />
@@ -792,7 +792,7 @@ function DnsConfigPanel({
 
       {/* Status Banner */}
       <div
-        className={`p-3 rounded-lg border flex items-start gap-2 ${
+        className={`p-3 rounded-sm border flex items-start gap-2 ${
           currentStatus === "valid"
             ? "bg-green-500/10 border-green-500/20"
             : currentStatus === "invalid"
@@ -895,7 +895,7 @@ function DnsRecordRow({
   copiedValue: string | null;
 }) {
   return (
-    <div className="group bg-black/30 rounded-lg border border-white/5 p-3">
+    <div className="group bg-black/30 rounded-sm border border-white/5 p-3">
       {/* Desktop */}
       <div className="hidden sm:flex items-center gap-3">
         <Badge

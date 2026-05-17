@@ -24,20 +24,17 @@
  * argon2 encodes its parameters in the hash string.
  */
 export declare const ARGON2_PARAMS: {
-  readonly algorithm: 2;
-  readonly memoryCost: 19456;
-  readonly timeCost: 2;
-  readonly parallelism: 1;
+    readonly algorithm: 2;
+    readonly memoryCost: 19456;
+    readonly timeCost: 2;
+    readonly parallelism: 1;
 };
 export declare const PASSWORD_MIN_LENGTH = 12;
 /** Result of {@link assertPasswordStrong}. */
-export type PasswordStrengthFailureReason =
-  | "too_short"
-  | "missing_letter"
-  | "missing_digit_or_symbol";
+export type PasswordStrengthFailureReason = "too_short" | "missing_letter" | "missing_digit_or_symbol";
 export declare class WeakPasswordError extends Error {
-  readonly reason: PasswordStrengthFailureReason;
-  constructor(reason: PasswordStrengthFailureReason);
+    readonly reason: PasswordStrengthFailureReason;
+    constructor(reason: PasswordStrengthFailureReason);
 }
 /**
  * Refuse passwords under {@link PASSWORD_MIN_LENGTH} characters or with
@@ -64,8 +61,5 @@ export declare function hashPassword(plain: string): Promise<string>;
  * error as a verification failure (i.e., `await verifyPassword(...).catch(()
  * => false)` is wrong; let it surface).
  */
-export declare function verifyPassword(
-  plain: string,
-  encodedHash: string,
-): Promise<boolean>;
+export declare function verifyPassword(plain: string, encodedHash: string): Promise<boolean>;
 //# sourceMappingURL=passwords.d.ts.map

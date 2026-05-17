@@ -163,7 +163,7 @@ export function ModelBreakdown({ models }: ModelBreakdownProps) {
             </div>
           )}
 
-          <div className="grid grid-cols-2 gap-4 rounded-lg border border-border/60 bg-muted/30 p-4">
+          <div className="grid grid-cols-2 gap-4 rounded-sm border border-border/60 bg-muted/30 p-4">
             <div className="space-y-1">
               <p className="text-xs font-medium text-muted-foreground">
                 Total requests

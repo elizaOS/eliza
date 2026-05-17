@@ -22,11 +22,8 @@
  * the channel identifiers changes.
  */
 export interface DesktopBridgeEventOptions {
-  rpcMessage: string;
-  ipcChannel: string;
+    rpcMessage: string;
+    ipcChannel: string;
 }
-export declare function useDesktopBridgeEvent<T = unknown>(
-  options: DesktopBridgeEventOptions,
-  handler: (payload: T) => void,
-): void;
+export declare function useDesktopBridgeEvent<T = unknown>(options: DesktopBridgeEventOptions, handler: (payload: T) => void): void;
 //# sourceMappingURL=useDesktopBridgeEvent.d.ts.map

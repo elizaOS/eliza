@@ -86,7 +86,20 @@ async function readPayload(
 
   const contentType = res.headers.get("content-type") ?? "";
   const isJson = contentType.includes("application/json");
-  if (!isJson) return res.text();
+  if (!isJson) {
+    const text = await res.text();
+    if (strictJson) {
+      throw new ApiError(
+        res.status,
+        "NON_JSON_RESPONSE",
+        text.trim().startsWith("<")
+          ? `API returned HTML instead of JSON with status ${res.status}`
+          : `API returned a non-JSON response with status ${res.status}`,
+        text,
+      );
+    }
+    return text;
+  }
 
   try {
     return await res.json();

@@ -95,9 +95,9 @@ export function ContainerDeploymentHistory({
             </h2>
           </div>
           <div className="space-y-2">
-            <Skeleton className="h-12 w-full rounded-none" />
-            <Skeleton className="h-12 w-full rounded-none" />
-            <Skeleton className="h-12 w-full rounded-none" />
+            <Skeleton className="h-12 w-full rounded-sm" />
+            <Skeleton className="h-12 w-full rounded-sm" />
+            <Skeleton className="h-12 w-full rounded-sm" />
           </div>
         </div>
       </BrandCard>
@@ -198,7 +198,7 @@ export function ContainerDeploymentHistory({
         <div>
           {deployments.length === 0 ? (
             <div className="flex flex-col items-center justify-center py-12 text-center">
-              <div className="rounded-none bg-black/60 border border-white/10 p-4 mb-4">
+              <div className="rounded-sm bg-black/60 border border-white/10 p-4 mb-4">
                 <Clock className="h-8 w-8 text-white/60" />
               </div>
               <p className="text-white/60">No deployment history available</p>
@@ -210,7 +210,7 @@ export function ContainerDeploymentHistory({
             <div className="space-y-4">
               {/* Stats Overview */}
               <div className="grid grid-cols-4 gap-4 pb-4 border-b border-white/10">
-                <div className="text-center p-4 rounded-none border border-white/10 bg-black/20">
+                <div className="text-center p-4 rounded-sm border border-white/10 bg-black/20">
                   <p
                     className="text-2xl font-medium text-green-500"
                     style={{ fontFamily: "var(--font-roboto-mono)" }}
@@ -224,7 +224,7 @@ export function ContainerDeploymentHistory({
                     Successful
                   </p>
                 </div>
-                <div className="text-center p-4 rounded-none border border-white/10 bg-black/20">
+                <div className="text-center p-4 rounded-sm border border-white/10 bg-black/20">
                   <p
                     className="text-2xl font-medium text-red-500"
                     style={{ fontFamily: "var(--font-roboto-mono)" }}
@@ -238,7 +238,7 @@ export function ContainerDeploymentHistory({
                     Failed
                   </p>
                 </div>
-                <div className="text-center p-4 rounded-none border border-white/10 bg-black/20">
+                <div className="text-center p-4 rounded-sm border border-white/10 bg-black/20">
                   <p
                     className="text-2xl font-medium text-yellow-500"
                     style={{ fontFamily: "var(--font-roboto-mono)" }}
@@ -252,7 +252,7 @@ export function ContainerDeploymentHistory({
                     Pending
                   </p>
                 </div>
-                <div className="text-center p-4 rounded-none border border-white/10 bg-black/20">
+                <div className="text-center p-4 rounded-sm border border-white/10 bg-black/20">
                   <p
                     className="text-2xl font-medium text-[#FF5800]"
                     style={{ fontFamily: "var(--font-roboto-mono)" }}
@@ -278,22 +278,22 @@ export function ContainerDeploymentHistory({
                     {/* Timeline dot */}
                     <div className="absolute left-[-9px] top-1">
                       {deployment.status === "success" ? (
-                        <div className="p-1 bg-[#0A0A0A] rounded-none border border-white/10">
+                        <div className="p-1 bg-[#0A0A0A] rounded-sm border border-white/10">
                           <CheckCircle2 className="h-4 w-4 text-green-500" />
                         </div>
                       ) : deployment.status === "pending" ? (
-                        <div className="p-1 bg-[#0A0A0A] rounded-none border border-yellow-500/30">
+                        <div className="p-1 bg-[#0A0A0A] rounded-sm border border-yellow-500/30">
                           <Loader2 className="h-4 w-4 text-yellow-500 animate-spin" />
                         </div>
                       ) : (
-                        <div className="p-1 bg-[#0A0A0A] rounded-none border border-white/10">
+                        <div className="p-1 bg-[#0A0A0A] rounded-sm border border-white/10">
                           <XCircle className="h-4 w-4 text-red-500" />
                         </div>
                       )}
                     </div>
 
                     {/* Deployment card */}
-                    <div className="bg-black/30 border border-white/10 rounded-none p-4 hover:bg-black/40 hover:border-white/20 hover:shadow-md hover:shadow-black/40 transition-all shadow-sm shadow-black/20">
+                    <div className="bg-black/30 border border-white/10 rounded-sm p-4 hover:bg-black/40 hover:border-white/20 hover:shadow-md hover:shadow-black/40 transition-all shadow-sm shadow-black/20">
                       <div className="flex items-start justify-between mb-3">
                         <div className="flex items-center gap-3">
                           <Badge
@@ -304,7 +304,7 @@ export function ContainerDeploymentHistory({
                                   ? "secondary"
                                   : "destructive"
                             }
-                            className={`font-medium rounded-none ${deployment.status === "pending" ? "bg-yellow-500/20 text-yellow-500 border-yellow-500/30" : ""}`}
+                            className={`font-medium rounded-sm ${deployment.status === "pending" ? "bg-yellow-500/20 text-yellow-500 border-yellow-500/30" : ""}`}
                             style={{ fontFamily: "var(--font-roboto-mono)" }}
                           >
                             {deployment.status === "pending"
@@ -404,7 +404,7 @@ export function ContainerDeploymentHistory({
                       </div>
 
                       {deployment.error && (
-                        <div className="mt-3 p-2 bg-red-950/30 border border-red-500/30 rounded-none text-xs text-red-400">
+                        <div className="mt-3 p-2 bg-red-950/30 border border-red-500/30 rounded-sm text-xs text-red-400">
                           <strong>Error:</strong> {deployment.error}
                         </div>
                       )}

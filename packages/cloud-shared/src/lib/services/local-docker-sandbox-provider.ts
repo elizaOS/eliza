@@ -41,7 +41,8 @@ const LSOF_BIN = "lsof";
 
 const DOCKER_CMD_TIMEOUT_MS = 60_000;
 const DOCKER_PULL_TIMEOUT_MS = 300_000;
-const HEALTH_CHECK_TIMEOUT_MS = 10_000;
+const HEALTH_CHECK_TIMEOUT_MS = 5_000;
+const HEALTH_WAIT_TOTAL_MS = 60_000;
 
 const LOG_PREFIX = "[LocalDockerSandboxProvider]";
 
@@ -53,6 +54,7 @@ export interface LocalDockerSandboxMetadata {
   containerName: string;
   containerId: string;
   bridgePort: number;
+  healthPort: number;
   agentId: string;
   volumePath: string;
   dockerImage: string;
@@ -63,6 +65,7 @@ interface ContainerMeta {
   containerName: string;
   containerId: string;
   bridgePort: number;
+  healthPort: number;
   volumePath: string;
   dockerImage: string;
 }
@@ -162,9 +165,18 @@ export class LocalDockerSandboxProvider implements SandboxProvider {
     const dockerImage = config.dockerImage ?? containersEnv.defaultAgentImage();
     validateDockerImageRef(dockerImage);
 
+    // The canonical cloud-agent image exposes TWO ports:
+    //   - "health"/REST API port (default 2138, e.g. /api/health, /api/agents)
+    //   - "bridge"/JSON-RPC port (default 18790, /bridge)
+    // The provider needs to publish both so the cloud-side
+    // elizaSandboxService can hit /api/* via health_url AND /bridge via
+    // bridge_url. agentPort = health/api port, agentBridgePort = /bridge.
     const agentPort = containersEnv.agentPort();
-    if (!/^\d+$/.test(agentPort)) {
-      throw new Error(`${LOG_PREFIX} Invalid ELIZA_AGENT_PORT "${agentPort}": must be numeric.`);
+    const agentBridgePort = containersEnv.agentBridgePort();
+    if (!/^\d+$/.test(agentPort) || !/^\d+$/.test(agentBridgePort)) {
+      throw new Error(
+        `${LOG_PREFIX} Invalid agent ports: api=${agentPort}, bridge=${agentBridgePort}`,
+      );
     }
 
     // If a container with this name already exists from a prior run, remove it
@@ -172,22 +184,48 @@ export class LocalDockerSandboxProvider implements SandboxProvider {
     await this.removeExistingContainer(containerName);
 
     const bridgePort = this.ports.reserve(LOCAL_BRIDGE_PORT_MIN, LOCAL_BRIDGE_PORT_MAX);
+    const healthPort = this.ports.reserve(LOCAL_BRIDGE_PORT_MIN, LOCAL_BRIDGE_PORT_MAX);
     const volumePath = getVolumePath(agentId);
 
     await this.ensureImagePulled(dockerImage);
 
+    // Rewrite loopback URLs (127.0.0.1 / localhost) in any env value to
+    // host.docker.internal so the container can reach host services like the
+    // PGlite TCP bridge. Docker Desktop maps this automatically; on Linux
+    // the --add-host flag below provides the same binding.
+    const rewriteForContainer = (value: string): string =>
+      value.replace(/\b(127\.0\.0\.1|localhost)\b/g, "host.docker.internal");
+    const rewrittenEnv: Record<string, string> = {};
+    for (const [k, v] of Object.entries(environmentVars)) {
+      rewrittenEnv[k] = rewriteForContainer(v);
+    }
+
+    // Generate a shared token used for both the cloud-agent /bridge auth
+    // (BRIDGE_SECRET) and the elizaOS REST API auth (ELIZA_API_TOKEN). Keeping
+    // them the same lets `getAgentJsonHeaders()` on the cloud-api side use a
+    // single Authorization header to reach either endpoint.
+    const apiToken =
+      rewrittenEnv.ELIZA_API_TOKEN ||
+      rewrittenEnv.BRIDGE_SECRET ||
+      crypto.randomUUID().replace(/-/g, "");
+
     const allEnv: Record<string, string> = {
-      ...environmentVars,
+      ...rewrittenEnv,
       AGENT_NAME: agentName,
+      AGENT_ID: agentId,
       ELIZA_CLOUD_PROVISIONED: "1",
       ELIZA_PORT: agentPort,
       PORT: agentPort,
+      BRIDGE_PORT: agentBridgePort,
       AGENT_API_BIND: "0.0.0.0",
       ELIZA_API_BIND: "0.0.0.0",
       AGENT_DISABLE_AUTO_API_TOKEN: "1",
       ELIZA_DISABLE_AUTO_API_TOKEN: "1",
-      JWT_SECRET: environmentVars.JWT_SECRET || crypto.randomUUID(),
-      ELIZA_VAULT_PASSPHRASE: environmentVars.ELIZA_VAULT_PASSPHRASE || crypto.randomUUID(),
+      JWT_SECRET: rewrittenEnv.JWT_SECRET || crypto.randomUUID(),
+      ELIZA_VAULT_PASSPHRASE:
+        rewrittenEnv.ELIZA_VAULT_PASSPHRASE || crypto.randomUUID().replace(/-/g, ""),
+      ELIZA_API_TOKEN: apiToken,
+      BRIDGE_SECRET: apiToken,
     };
 
     for (const [key, value] of Object.entries(allEnv)) {
@@ -202,8 +240,16 @@ export class LocalDockerSandboxProvider implements SandboxProvider {
       containerName,
       "--restart",
       "unless-stopped",
+      // Make host.docker.internal resolvable on Linux Docker too; on Docker
+      // Desktop (Mac/Windows) it's already mapped but this is harmless.
+      "--add-host",
+      "host.docker.internal:host-gateway",
+      // Host bridgePort → container's /bridge JSON-RPC port
       "-p",
-      `127.0.0.1:${bridgePort}:${agentPort}`,
+      `127.0.0.1:${bridgePort}:${agentBridgePort}`,
+      // Host healthPort → container's REST API + /api/health port
+      "-p",
+      `127.0.0.1:${healthPort}:${agentPort}`,
     ];
 
     for (const [key, value] of Object.entries(allEnv)) {
@@ -227,6 +273,7 @@ export class LocalDockerSandboxProvider implements SandboxProvider {
       }
     } catch (err) {
       this.ports.release(bridgePort);
+      this.ports.release(healthPort);
       throw new Error(
         `${LOG_PREFIX} docker run failed for ${containerName}: ${err instanceof Error ? err.message : String(err)}`,
       );
@@ -237,28 +284,33 @@ export class LocalDockerSandboxProvider implements SandboxProvider {
       containerName,
       containerId,
       bridgePort,
+      healthPort,
       volumePath,
       dockerImage,
     };
     this.containers.set(containerName, meta);
 
     const bridgeUrl = `http://127.0.0.1:${bridgePort}`;
+    const healthUrl = `http://127.0.0.1:${healthPort}/api`;
     const metadata: LocalDockerSandboxMetadata = {
       provider: "local-docker",
       containerName,
       containerId,
       bridgePort,
+      healthPort,
       agentId,
       volumePath,
       dockerImage,
     };
 
-    logger.info(`${LOG_PREFIX} Container ${containerName} (${containerId}) up at ${bridgeUrl}`);
+    logger.info(
+      `${LOG_PREFIX} Container ${containerName} (${containerId}) up — bridge=${bridgeUrl} health=${healthUrl}`,
+    );
 
     return {
       sandboxId: containerName,
       bridgeUrl,
-      healthUrl: `${bridgeUrl}/api`,
+      healthUrl,
       metadata: { ...metadata },
     };
   }
@@ -287,6 +339,7 @@ export class LocalDockerSandboxProvider implements SandboxProvider {
 
     if (meta) {
       this.ports.release(meta.bridgePort);
+      this.ports.release(meta.healthPort);
       this.containers.delete(sandboxId);
     }
   }
@@ -296,30 +349,42 @@ export class LocalDockerSandboxProvider implements SandboxProvider {
   // ------------------------------------------------------------------
 
   async checkHealth(handle: SandboxHandle): Promise<boolean> {
-    const url = `${handle.bridgeUrl.replace(/\/$/, "")}/api/health`;
-    try {
-      const { stdout } = await execFileAsync(
-        CURL_BIN,
-        [
-          "-s",
-          "-o",
-          "/dev/null",
-          "-w",
-          "%{http_code}",
-          "--max-time",
-          String(Math.max(1, Math.floor(HEALTH_CHECK_TIMEOUT_MS / 1000))),
-          url,
-        ],
-        { timeout: HEALTH_CHECK_TIMEOUT_MS },
-      );
-      const status = stdout.trim();
-      return status === "200" || status === "401";
-    } catch (err) {
-      logger.debug(
-        `${LOG_PREFIX} health check failed for ${url}: ${err instanceof Error ? err.message : String(err)}`,
-      );
-      return false;
+    // Probe BOTH /api/health (public ghcr.io/elizaos/eliza image) and /health
+    // (the bespoke cloud-agent image built from Dockerfile.cloud-agent) on the
+    // health port. Either responding 200/401 counts as healthy.
+    // Containers can take 10-60s to come up from cold-start; retry-poll for up
+    // to ~60s before giving up.
+    const origin = new URL(handle.healthUrl).origin;
+    const candidates = [`${origin}/api/health`, `${origin}/health`];
+    const deadline = Date.now() + HEALTH_WAIT_TOTAL_MS;
+    while (Date.now() < deadline) {
+      for (const url of candidates) {
+        try {
+          const { stdout } = await execFileAsync(
+            CURL_BIN,
+            [
+              "-s",
+              "-o",
+              "/dev/null",
+              "-w",
+              "%{http_code}",
+              "--max-time",
+              String(Math.max(1, Math.floor(HEALTH_CHECK_TIMEOUT_MS / 1000))),
+              url,
+            ],
+            { timeout: HEALTH_CHECK_TIMEOUT_MS },
+          );
+          const status = stdout.trim();
+          if (status === "200" || status === "401") return true;
+        } catch (err) {
+          logger.debug(
+            `${LOG_PREFIX} health probe ${url} failed: ${err instanceof Error ? err.message : String(err)}`,
+          );
+        }
+      }
+      await new Promise((r) => setTimeout(r, 2000));
     }
+    return false;
   }
 
   // ------------------------------------------------------------------

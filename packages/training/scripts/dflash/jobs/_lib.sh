@@ -110,6 +110,7 @@ Required env vars (real run):
 Optional env vars:
   OUT_DIR             Output dir (default: <repo>/packages/training/runs/<tier>-<ts>)
   STUDENT_BASE        Override the default student base from distill_dflash_drafter.py
+  STUDENT_CONFIG      Override the compact student config for micro drafters
   OPTIMIZER           apollo|apollo_mini (default apollo_mini)
   EXTRA_ARGS          Passed through to distill_dflash_drafter.py
 
@@ -157,6 +158,9 @@ EOF
   local extra_args=()
   if [[ -n "${STUDENT_BASE:-}" ]]; then
     extra_args+=(--student-base "${STUDENT_BASE}")
+  fi
+  if [[ -n "${STUDENT_CONFIG:-}" ]]; then
+    extra_args+=(--student-config "${STUDENT_CONFIG}")
   fi
   if [[ -n "${OPTIMIZER:-}" ]]; then
     extra_args+=(--optimizer "${OPTIMIZER}")

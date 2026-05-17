@@ -13,26 +13,18 @@
  */
 import type { ActivityEvent } from "../../hooks/useActivityEvents";
 import { APPS_SECTION_VISIBILITY_KEY } from "../../widgets/visibility";
-
 interface TasksEventsPanelProps {
-  open: boolean;
-  /** Activity events from the parent — kept alive even when the panel unmounts. */
-  events: ActivityEvent[];
-  clearEvents: () => void;
-  /** When true, renders as full-width mobile content. */
-  mobile?: boolean;
-  /** Desktop-only: when true the panel collapses to a thin strip. */
-  collapsed?: boolean;
-  /** Desktop-only: called when the user toggles the collapsed state. */
-  onToggleCollapsed?: (next: boolean) => void;
+    open: boolean;
+    /** Activity events from the parent — kept alive even when the panel unmounts. */
+    events: ActivityEvent[];
+    clearEvents: () => void;
+    /** When true, renders as full-width mobile content. */
+    mobile?: boolean;
+    /** Desktop-only: when true the panel collapses to a thin strip. */
+    collapsed?: boolean;
+    /** Desktop-only: called when the user toggles the collapsed state. */
+    onToggleCollapsed?: (next: boolean) => void;
 }
-export declare function TasksEventsPanel({
-  open,
-  events,
-  clearEvents,
-  mobile,
-  collapsed,
-  onToggleCollapsed,
-}: TasksEventsPanelProps): import("react/jsx-runtime").JSX.Element | null;
+export declare function TasksEventsPanel({ open, events, clearEvents, mobile, collapsed, onToggleCollapsed, }: TasksEventsPanelProps): import("react/jsx-runtime").JSX.Element | null;
 export { APPS_SECTION_VISIBILITY_KEY };
 //# sourceMappingURL=TasksEventsPanel.d.ts.map

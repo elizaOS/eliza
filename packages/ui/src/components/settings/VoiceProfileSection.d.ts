@@ -8,27 +8,19 @@
  * state instead of crashing.
  */
 import * as React from "react";
-import type {
-  VoiceProfile,
-  VoiceProfilesClient,
-} from "../../api/client-voice-profiles";
+import type { VoiceProfile, VoiceProfilesClient } from "../../api/client-voice-profiles";
 export interface VoiceProfileSectionProps {
-  /**
-   * Adapter (R10 §5.3). Must be supplied by the parent that holds the
-   * `ElizaClient`.  In tests the caller can pass a fake adapter.
-   */
-  profilesClient: VoiceProfilesClient;
-  /** Pre-loaded profiles (skips initial fetch — useful for tests). */
-  initialProfiles?: VoiceProfile[];
-  /** Render the panel inside a settings card chrome (default true). */
-  framed?: boolean;
-  className?: string;
+    /**
+     * Adapter (R10 §5.3). Must be supplied by the parent that holds the
+     * `ElizaClient`.  In tests the caller can pass a fake adapter.
+     */
+    profilesClient: VoiceProfilesClient;
+    /** Pre-loaded profiles (skips initial fetch — useful for tests). */
+    initialProfiles?: VoiceProfile[];
+    /** Render the panel inside a settings card chrome (default true). */
+    framed?: boolean;
+    className?: string;
 }
-export declare function VoiceProfileSection({
-  profilesClient,
-  initialProfiles,
-  framed,
-  className,
-}: VoiceProfileSectionProps): React.ReactElement;
+export declare function VoiceProfileSection({ profilesClient, initialProfiles, framed, className, }: VoiceProfileSectionProps): React.ReactElement;
 export default VoiceProfileSection;
 //# sourceMappingURL=VoiceProfileSection.d.ts.map

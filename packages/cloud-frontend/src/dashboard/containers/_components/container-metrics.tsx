@@ -184,9 +184,9 @@ export function ContainerMetrics({
       <CardContent>
         <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
           {/* CPU Utilization */}
-          <div className="p-4 rounded-lg border bg-muted/20">
+          <div className="p-4 rounded-sm border bg-muted/20">
             <div className="flex items-center justify-between mb-3">
-              <div className="p-2 rounded-md bg-foreground/5">
+              <div className="p-2 rounded-sm bg-foreground/5">
                 <Cpu className="h-4 w-4 text-foreground" />
               </div>
               <Badge
@@ -216,9 +216,9 @@ export function ContainerMetrics({
           </div>
 
           {/* Memory Utilization */}
-          <div className="p-4 rounded-lg border bg-muted/20">
+          <div className="p-4 rounded-sm border bg-muted/20">
             <div className="flex items-center justify-between mb-3">
-              <div className="p-2 rounded-md bg-foreground/5">
+              <div className="p-2 rounded-sm bg-foreground/5">
                 <HardDrive className="h-4 w-4 text-foreground" />
               </div>
               <Badge
@@ -250,9 +250,9 @@ export function ContainerMetrics({
           </div>
 
           {/* Network In */}
-          <div className="p-4 rounded-lg border bg-muted/20">
+          <div className="p-4 rounded-sm border bg-muted/20">
             <div className="flex items-center justify-between mb-3">
-              <div className="p-2 rounded-md bg-foreground/5">
+              <div className="p-2 rounded-sm bg-foreground/5">
                 <Network className="h-4 w-4 text-foreground" />
               </div>
               <Badge variant="outline" className="text-xs">
@@ -270,9 +270,9 @@ export function ContainerMetrics({
           </div>
 
           {/* Network Out */}
-          <div className="p-4 rounded-lg border bg-muted/20">
+          <div className="p-4 rounded-sm border bg-muted/20">
             <div className="flex items-center justify-between mb-3">
-              <div className="p-2 rounded-md bg-foreground/5">
+              <div className="p-2 rounded-sm bg-foreground/5">
                 <Network className="h-4 w-4 text-foreground" />
               </div>
               <Badge variant="outline" className="text-xs">
@@ -291,10 +291,10 @@ export function ContainerMetrics({
         </div>
 
         {/* Task Status */}
-        <div className="mt-6 p-4 bg-muted/50 rounded-lg border">
+        <div className="mt-6 p-4 bg-muted/50 rounded-sm border">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-3">
-              <div className="p-2 rounded-md bg-green-500/10">
+              <div className="p-2 rounded-sm bg-green-500/10">
                 <Activity className="h-4 w-4 text-green-500" />
               </div>
               <div>

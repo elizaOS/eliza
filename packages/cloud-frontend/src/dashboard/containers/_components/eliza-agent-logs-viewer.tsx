@@ -1,26 +1,7 @@
 "use client";
 
-import {
-  Badge,
-  BrandButton,
-  BrandCard,
-  Input,
-  ScrollArea,
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-  Skeleton,
-} from "@elizaos/ui";
-import {
-  Copy,
-  Download,
-  FileText,
-  RefreshCw,
-  Search,
-  Terminal,
-} from "lucide-react";
+import { LogViewer } from "@elizaos/ui";
+import { FileText } from "lucide-react";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
 
@@ -173,168 +154,73 @@ export function ElizaAgentLogsViewer({
   const statusHint = STATUS_MESSAGES[status] ?? null;
 
   return (
-    <BrandCard className="relative shadow-lg shadow-black/50" cornerSize="sm">
-      <div className="relative z-10 space-y-6">
-        <div className="flex flex-col gap-4 border-b border-white/10 pb-4 lg:flex-row lg:items-start lg:justify-between">
-          <div>
-            <div className="mb-1 flex flex-wrap items-center gap-2">
-              <span className="inline-block h-2 w-2 rounded-full bg-[#FF5800]" />
-              <h2
-                className="text-xl font-normal text-white"
-                style={{ fontFamily: "var(--font-roboto-mono)" }}
-              >
-                Agent Logs
-              </h2>
-              <Badge
-                variant="outline"
-                className={
-                  STATUS_BADGE_STYLES[status] ?? STATUS_BADGE_STYLES.stopped
-                }
-              >
-                {status}
-              </Badge>
-            </div>
-            <p className="text-sm text-white/60">
-              User-facing app logs from the agent bridge for{" "}
-              {agentName || "this agent"}.
+    <LogViewer
+      title="Agent Logs"
+      subtitle={`User-facing app logs from the agent bridge for ${
+        agentName || "this agent"
+      }.`}
+      badges={[
+        {
+          label: status,
+          variant: "outline",
+          className: STATUS_BADGE_STYLES[status] ?? STATUS_BADGE_STYLES.stopped,
+        },
+      ]}
+      fetchedAt={logsState.fetchedAt}
+      lineCountControl={{
+        value: tail,
+        onChange: setTail,
+        options: [
+          { value: "100", label: "100 lines" },
+          { value: "200", label: "200 lines" },
+          { value: "500", label: "500 lines" },
+          { value: "1000", label: "1000 lines" },
+          { value: "2000", label: "2000 lines" },
+        ],
+      }}
+      childrenBeforeSearch={
+        <>
+          {showAdvancedHint && (
+            <p className="text-xs text-white/40">
+              Raw container output stays separate in the admin Docker logs panel
+              below.
             </p>
-            {showAdvancedHint && (
-              <p className="mt-1 text-xs text-white/40">
-                Raw container output stays separate in the admin Docker logs
-                panel below.
-              </p>
-            )}
-            {logsState.fetchedAt && (
-              <p className="mt-1 text-xs text-white/40">
-                Refreshed at{" "}
-                {new Date(logsState.fetchedAt).toLocaleTimeString()}
-              </p>
-            )}
-          </div>
-
-          <div className="flex flex-wrap items-center gap-2">
-            <Select value={tail} onValueChange={setTail}>
-              <SelectTrigger className="h-8 w-[100px] rounded-none border-white/10 bg-black/40 text-xs">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent className="rounded-none border-white/10 bg-neutral-900">
-                <SelectItem value="100">100 lines</SelectItem>
-                <SelectItem value="200">200 lines</SelectItem>
-                <SelectItem value="500">500 lines</SelectItem>
-                <SelectItem value="1000">1000 lines</SelectItem>
-                <SelectItem value="2000">2000 lines</SelectItem>
-              </SelectContent>
-            </Select>
-            <BrandButton
-              variant="outline"
-              size="sm"
-              onClick={fetchLogs}
-              title="Refresh logs"
-            >
-              <RefreshCw
-                className={`h-4 w-4 ${logsState.loading ? "animate-spin" : ""}`}
-              />
-            </BrandButton>
-            <BrandButton
-              variant="outline"
-              size="sm"
-              onClick={copyAllLogs}
-              disabled={!logsState.raw}
-              title="Copy all logs"
-            >
-              <Copy className="h-4 w-4" />
-            </BrandButton>
-            <BrandButton
-              variant="outline"
-              size="sm"
-              onClick={downloadLogs}
-              disabled={!logsState.raw}
-              title="Download logs"
-            >
-              <Download className="h-4 w-4" />
-            </BrandButton>
-          </div>
-        </div>
-
-        {statusHint && status !== "running" && (
-          <div className="flex items-start gap-3 border border-white/10 bg-black/30 p-4">
-            <FileText className="mt-0.5 h-4 w-4 shrink-0 text-[#FF5800]" />
-            <p className="text-sm text-white/70">{statusHint}</p>
-          </div>
-        )}
-
-        <div className="relative">
-          <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-white/40" />
-          <Input
-            placeholder="Filter log lines..."
-            value={searchQuery}
-            onChange={(event) => setSearchQuery(event.target.value)}
-            className="rounded-none border-white/10 bg-black/40 pl-9 text-white placeholder:text-white/40 focus-visible:ring-[#FF5800]/50"
-            style={{ fontFamily: "var(--font-roboto-mono)" }}
-          />
-        </div>
-
-        {searchQuery && (
-          <p
-            className="text-xs text-white/50"
-            style={{ fontFamily: "var(--font-roboto-mono)" }}
-          >
-            {filteredLines.length} / {logsState.lines.length} lines
-          </p>
-        )}
-
-        {logsState.loading && logsState.lines.length === 0 ? (
-          <div className="space-y-2">
-            <Skeleton className="h-5 w-full rounded-none" />
-            <Skeleton className="h-5 w-full rounded-none" />
-            <Skeleton className="h-5 w-3/4 rounded-none" />
-          </div>
-        ) : logsState.error ? (
-          <div className="py-8 text-center">
-            <Terminal className="mx-auto mb-3 h-8 w-8 text-neutral-600" />
-            <p className="mb-1 text-sm text-red-400">Failed to fetch logs</p>
-            <p className="text-xs text-white/40">{logsState.error}</p>
-            <BrandButton
-              variant="outline"
-              size="sm"
-              onClick={fetchLogs}
-              className="mt-4"
-            >
-              <RefreshCw className="mr-2 h-4 w-4" />
-              Retry
-            </BrandButton>
-          </div>
-        ) : logsState.lines.length === 0 ? (
-          <div className="py-8 text-center">
-            <Terminal className="mx-auto mb-3 h-8 w-8 text-neutral-600" />
-            <p className="text-sm text-white/60">No logs available yet</p>
-            <p className="mt-1 text-xs text-white/40">
-              If the agent is starting up, give it a moment and refresh again.
-            </p>
-          </div>
-        ) : filteredLines.length === 0 ? (
-          <div className="py-8 text-center">
-            <Search className="mx-auto mb-3 h-8 w-8 text-neutral-600" />
-            <p className="text-sm text-white/60">No logs match your filter</p>
-          </div>
-        ) : (
-          <ScrollArea className="h-[420px] w-full rounded-none border border-white/10">
-            <div
-              className="space-y-px p-3 font-mono text-xs"
-              style={{ fontFamily: "var(--font-roboto-mono)" }}
-            >
-              {filteredLines.map((line, index) => (
-                <div
-                  key={`${line.slice(0, 120)}:${index}`}
-                  className={`whitespace-pre-wrap break-all border-l-2 px-2 py-0.5 transition-colors hover:bg-white/5 ${getLineClass(line)}`}
-                >
-                  {line}
-                </div>
-              ))}
+          )}
+          {statusHint && status !== "running" && (
+            <div className="flex items-start gap-3 border border-white/10 bg-black/30 p-4">
+              <FileText className="mt-0.5 h-4 w-4 shrink-0 text-[#FF5800]" />
+              <p className="text-sm text-white/70">{statusHint}</p>
             </div>
-          </ScrollArea>
-        )}
-      </div>
-    </BrandCard>
+          )}
+        </>
+      }
+      search={{
+        value: searchQuery,
+        onChange: setSearchQuery,
+        placeholder: "Filter log lines...",
+        resultLabel: searchQuery
+          ? `${filteredLines.length} / ${logsState.lines.length} lines`
+          : null,
+      }}
+      loading={logsState.loading}
+      error={logsState.error}
+      errorTitle="Failed to fetch logs"
+      onRetry={fetchLogs}
+      emptyState={{
+        title: "No logs available yet",
+        description:
+          "If the agent is starting up, give it a moment and refresh again.",
+      }}
+      filteredEmptyState={{ title: "No logs match your filter" }}
+      isFilteredEmpty={logsState.lines.length > 0 && filteredLines.length === 0}
+      lines={filteredLines}
+      lineClassName={getLineClass}
+      heightClassName="h-[420px]"
+      onRefresh={fetchLogs}
+      onCopyAll={copyAllLogs}
+      onDownload={downloadLogs}
+      copyDisabled={!logsState.raw}
+      downloadDisabled={!logsState.raw}
+    />
   );
 }

@@ -215,7 +215,7 @@ export function ElizaAgentActions({ agentId, status }: ElizaAgentActionsProps) {
                 Delete Agent
               </BrandButton>
             ) : (
-              <div className="flex flex-wrap items-center gap-2 rounded-none border border-red-500/30 bg-red-950/20 p-3">
+              <div className="flex flex-wrap items-center gap-2 rounded-sm border border-red-500/30 bg-red-950/20 p-3">
                 <span
                   className="text-sm text-red-400"
                   style={{ fontFamily: "var(--font-roboto-mono)" }}

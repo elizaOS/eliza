@@ -293,14 +293,16 @@ export function AgentCard({
   // List view
   if (isListView) {
     return (
-      <div
-        className={cn("min-w-0", !showDeleteConfirm && "cursor-pointer")}
+      <button
+        type="button"
+        className={cn(
+          "min-w-0 w-full text-left bg-transparent border-0 p-0",
+          !showDeleteConfirm && "cursor-pointer",
+        )}
         onClick={handleCardClick}
         onKeyDown={handleCardKeyDown}
         onMouseEnter={() => setIsHovered(true)}
         onMouseLeave={() => setIsHovered(false)}
-        role="button"
-        tabIndex={0}
       >
         <div className="group relative overflow-hidden rounded-sm bg-white/5 border border-white/10 transition-all duration-300 hover:border-white/20 hover:bg-white/[0.07]">
           <div className="flex items-center gap-4 p-4">
@@ -482,20 +484,22 @@ export function AgentCard({
             </AlertDialogContent>
           </AlertDialog>
         </div>
-      </div>
+      </button>
     );
   }
 
   // Grid view (default)
   return (
-    <div
-      className={cn("block h-full", !showDeleteConfirm && "cursor-pointer")}
+    <button
+      type="button"
+      className={cn(
+        "block h-full w-full text-left bg-transparent border-0 p-0",
+        !showDeleteConfirm && "cursor-pointer",
+      )}
       onClick={handleCardClick}
       onKeyDown={handleCardKeyDown}
       onMouseEnter={() => setIsHovered(true)}
       onMouseLeave={() => setIsHovered(false)}
-      role="button"
-      tabIndex={0}
     >
       <div className="group relative aspect-square w-full overflow-hidden rounded-sm">
         <Skeleton className="absolute inset-0 w-full h-full" />
@@ -672,6 +676,6 @@ export function AgentCard({
           </AlertDialogContent>
         </AlertDialog>
       </div>
-    </div>
+    </button>
   );
 }

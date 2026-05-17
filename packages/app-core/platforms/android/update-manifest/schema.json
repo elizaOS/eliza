@@ -2,7 +2,15 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "description": "elizaOS Android sideload update manifest",
   "type": "object",
-  "required": ["schemaVersion", "channel", "latestVersion", "versionCode", "releaseDate", "downloadUrl", "sha256"],
+  "required": [
+    "schemaVersion",
+    "channel",
+    "latestVersion",
+    "versionCode",
+    "releaseDate",
+    "downloadUrl",
+    "sha256"
+  ],
   "properties": {
     "schemaVersion": { "type": "integer", "const": 1 },
     "channel": { "type": "string", "enum": ["stable", "beta", "canary"] },

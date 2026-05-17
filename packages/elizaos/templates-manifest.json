@@ -1,6 +1,5 @@
 {
   "version": "1.0.0",
-  "generatedAt": "2026-05-17T05:33:36.137Z",
   "repoUrl": "https://github.com/elizaos/eliza",
   "templates": [
     {
@@ -20,5 +19,6 @@
       "version": 1,
       "languages": ["typescript"]
     }
-  ]
+  ],
+  "generatedAt": "2026-05-17T06:47:42.087Z"
 }

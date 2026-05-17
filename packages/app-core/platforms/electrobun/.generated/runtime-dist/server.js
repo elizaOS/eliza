@@ -1,44 +1,165 @@
-import { createRequire } from "node:module";
-import process$1 from "node:process";
-import fs, { appendFileSync, existsSync, mkdirSync, promises, readFileSync, readdirSync, renameSync, writeFileSync } from "node:fs";
-import http from "node:http";
-import path, { dirname, join, resolve } from "node:path";
-import { AGENT_EVENT_ALLOWED_STREAMS, CONFIG_WRITE_ALLOWED_TOP_KEYS, CONNECTOR_ENV_MAP, applyCanonicalOnboardingConfig, applyOnboardingCredentialPersistence, applyPluginRuntimeMutation, buildCharacterFromConfig, clearPersistedOnboardingConfig, cloneWithoutBlockedObjectKeys, createIntegrationTelemetrySpan, discoverInstalledPlugins, discoverPluginsFromManifest, discoverPluginsFromManifest as discoverPluginsFromManifest$1, ensureApiTokenForBindHost as ensureApiTokenForBindHost$1, extractAuthToken, fetchWithTimeoutGuard, fetchWithTimeoutGuard as fetchWithTimeoutGuard$1, findPrimaryEnvKey, handleCloudBillingRoute, handleCloudCompatRoute, handleCloudRoute, initStewardWalletCache, injectApiBaseIntoHtml as injectApiBaseIntoHtml$1, isAdvancedCapabilityPluginId, isAllowedHost, isAuthorized, isSafeResetStateDir as isSafeResetStateDir$1, loadElizaConfig, normalizeCloudSiteUrl, normalizeWsClientId, persistConversationRoomTitle, readBundledPluginPackageMetadata, resolveAdvancedCapabilitiesEnabled, resolveAppHeroImage, resolveCloudApiBaseUrl, resolveCorsOrigin as resolveCorsOrigin$1, resolveDefaultAgentWorkspaceDir, resolveMcpServersRejection, resolveMcpTerminalAuthorizationRejection as resolveMcpTerminalAuthorizationRejection$1, resolvePluginConfigMutationRejections, resolveTerminalRunClientId as resolveTerminalRunClientId$1, resolveTerminalRunRejection as resolveTerminalRunRejection$1, resolveUserPath, resolveWalletExportRejection as resolveWalletExportRejection$1, resolveWebSocketUpgradeRejection as resolveWebSocketUpgradeRejection$1, routeAutonomyTextToUser, saveElizaConfig, startApiServer as startApiServer$1, streamResponseBodyWithByteLimit, validateCloudBaseUrl, validateMcpServerConfig } from "@elizaos/agent";
-import { loadElizaConfig as loadElizaConfig$1, saveElizaConfig as saveElizaConfig$1 } from "@elizaos/agent/config";
-import { AgentRuntime, ModelType, logger, stringToUuid } from "@elizaos/core";
-import { asRecord, deriveOnboardingCredentialPersistencePlan, getDefaultStylePreset, getStylePresets, isCloudInferenceSelectedInConfig, isElizaCloudServiceSelectedInConfig, isElizaSettingsDebugEnabled, isLoopbackBindHost, migrateLegacyRuntimeConfig, normalizeCharacterLanguage, normalizeDeploymentTargetConfig, normalizeLinkedAccountFlagsConfig, normalizeLinkedAccountsConfig, normalizeOnboardingCredentialInputs, normalizeOnboardingProviderId, normalizeServiceRoutingConfig, resolveApiBindHost, resolveApiToken, resolveDeploymentTargetInConfig, resolveLinkedAccountsInConfig, resolveServiceRoutingInConfig, resolveStylePresetByAvatarIndex, resolveStylePresetById, resolveStylePresetByName, sanitizeForSettingsDebug, sanitizeSpeechText, settingsDebugCloudSummary } from "@elizaos/shared";
-import crypto, { createCipheriv, createDecipheriv, createHash, randomBytes, randomUUID, scryptSync } from "node:crypto";
-import fs$1 from "node:fs/promises";
-import os, { homedir } from "node:os";
-import { createServer, isIP } from "node:net";
-import { and, desc, eq, isNull, lte, ne } from "@elizaos/plugin-sql/drizzle";
-import { authAuditEventTable, authBootstrapJtiSeenTable, authIdentityTable, authOwnerBindingTable, authOwnerLoginTokenTable, authSessionTable } from "@elizaos/plugin-sql/schema";
-import { extractConversationMetadataFromRoom, isAutomationConversationMetadata } from "@elizaos/agent/api/conversation-metadata";
-import { toWorkbenchTask } from "@elizaos/agent/api/workbench-helpers";
-import { loadElizaConfig as loadElizaConfig$2 } from "@elizaos/agent/config/config";
-import { listTriggerTasks, taskToTriggerSummary } from "@elizaos/agent/triggers/runtime";
 import { execFile, execFileSync, spawn } from "node:child_process";
-import { createLocalJWKSet, jwtVerify } from "jose";
-import { hash, verify } from "@node-rs/argon2";
-import { getAccessToken, listProviderAccounts } from "@elizaos/agent/auth/credentials";
-import { fileURLToPath } from "node:url";
-import { z } from "zod";
+import crypto, {
+	createCipheriv,
+	createDecipheriv,
+	createHash,
+	randomBytes,
+	randomUUID,
+	scryptSync,
+} from "node:crypto";
+import { EventEmitter } from "node:events";
+import fs, {
+	appendFileSync,
+	existsSync,
+	mkdirSync,
+	promises,
+	readdirSync,
+	readFileSync,
+	renameSync,
+	writeFileSync,
+} from "node:fs";
+import fs$1 from "node:fs/promises";
+import http from "node:http";
+import { createRequire } from "node:module";
+import { createServer, isIP } from "node:net";
+import os, { homedir } from "node:os";
+import path, { dirname, join, resolve } from "node:path";
+import process$1 from "node:process";
 import { Readable } from "node:stream";
 import { pipeline } from "node:stream/promises";
-import { isVaultRef, parseVaultRef } from "@elizaos/agent/runtime/operations/vault-bridge";
+import { fileURLToPath } from "node:url";
 import { promisify } from "node:util";
-import { CONNECTOR_PLUGINS, STREAMING_PLUGINS } from "@elizaos/agent/config/plugin-auto-enable";
-import { EventEmitter } from "node:events";
+import {
+	AGENT_EVENT_ALLOWED_STREAMS,
+	applyCanonicalOnboardingConfig,
+	applyOnboardingCredentialPersistence,
+	applyPluginRuntimeMutation,
+	buildCharacterFromConfig,
+	CONFIG_WRITE_ALLOWED_TOP_KEYS,
+	CONNECTOR_ENV_MAP,
+	clearPersistedOnboardingConfig,
+	cloneWithoutBlockedObjectKeys,
+	createIntegrationTelemetrySpan,
+	discoverInstalledPlugins,
+	discoverPluginsFromManifest,
+	discoverPluginsFromManifest as discoverPluginsFromManifest$1,
+	ensureApiTokenForBindHost as ensureApiTokenForBindHost$1,
+	extractAuthToken,
+	fetchWithTimeoutGuard,
+	fetchWithTimeoutGuard as fetchWithTimeoutGuard$1,
+	findPrimaryEnvKey,
+	handleCloudBillingRoute,
+	handleCloudCompatRoute,
+	handleCloudRoute,
+	initStewardWalletCache,
+	injectApiBaseIntoHtml as injectApiBaseIntoHtml$1,
+	isAdvancedCapabilityPluginId,
+	isAllowedHost,
+	isAuthorized,
+	isSafeResetStateDir as isSafeResetStateDir$1,
+	loadElizaConfig,
+	normalizeCloudSiteUrl,
+	normalizeWsClientId,
+	persistConversationRoomTitle,
+	readBundledPluginPackageMetadata,
+	resolveAdvancedCapabilitiesEnabled,
+	resolveAppHeroImage,
+	resolveCloudApiBaseUrl,
+	resolveCorsOrigin as resolveCorsOrigin$1,
+	resolveDefaultAgentWorkspaceDir,
+	resolveMcpServersRejection,
+	resolveMcpTerminalAuthorizationRejection as resolveMcpTerminalAuthorizationRejection$1,
+	resolvePluginConfigMutationRejections,
+	resolveTerminalRunClientId as resolveTerminalRunClientId$1,
+	resolveTerminalRunRejection as resolveTerminalRunRejection$1,
+	resolveUserPath,
+	resolveWalletExportRejection as resolveWalletExportRejection$1,
+	resolveWebSocketUpgradeRejection as resolveWebSocketUpgradeRejection$1,
+	routeAutonomyTextToUser,
+	saveElizaConfig,
+	startApiServer as startApiServer$1,
+	streamResponseBodyWithByteLimit,
+	validateCloudBaseUrl,
+	validateMcpServerConfig,
+} from "@elizaos/agent";
+import {
+	extractConversationMetadataFromRoom,
+	isAutomationConversationMetadata,
+} from "@elizaos/agent/api/conversation-metadata";
+import { toWorkbenchTask } from "@elizaos/agent/api/workbench-helpers";
+import {
+	getAccessToken,
+	listProviderAccounts,
+} from "@elizaos/agent/auth/credentials";
+import {
+	loadElizaConfig as loadElizaConfig$1,
+	saveElizaConfig as saveElizaConfig$1,
+} from "@elizaos/agent/config";
+import { loadElizaConfig as loadElizaConfig$2 } from "@elizaos/agent/config/config";
+import {
+	CONNECTOR_PLUGINS,
+	STREAMING_PLUGINS,
+} from "@elizaos/agent/config/plugin-auto-enable";
+import {
+	isVaultRef,
+	parseVaultRef,
+} from "@elizaos/agent/runtime/operations/vault-bridge";
+import {
+	listTriggerTasks,
+	taskToTriggerSummary,
+} from "@elizaos/agent/triggers/runtime";
+import { AgentRuntime, logger, ModelType, stringToUuid } from "@elizaos/core";
+import { and, desc, eq, isNull, lte, ne } from "@elizaos/plugin-sql/drizzle";
+import {
+	authAuditEventTable,
+	authBootstrapJtiSeenTable,
+	authIdentityTable,
+	authOwnerBindingTable,
+	authOwnerLoginTokenTable,
+	authSessionTable,
+} from "@elizaos/plugin-sql/schema";
+import {
+	asRecord,
+	deriveOnboardingCredentialPersistencePlan,
+	getDefaultStylePreset,
+	getStylePresets,
+	isCloudInferenceSelectedInConfig,
+	isElizaCloudServiceSelectedInConfig,
+	isElizaSettingsDebugEnabled,
+	isLoopbackBindHost,
+	migrateLegacyRuntimeConfig,
+	normalizeCharacterLanguage,
+	normalizeDeploymentTargetConfig,
+	normalizeLinkedAccountFlagsConfig,
+	normalizeLinkedAccountsConfig,
+	normalizeOnboardingCredentialInputs,
+	normalizeOnboardingProviderId,
+	normalizeServiceRoutingConfig,
+	resolveApiBindHost,
+	resolveApiToken,
+	resolveDeploymentTargetInConfig,
+	resolveLinkedAccountsInConfig,
+	resolveServiceRoutingInConfig,
+	resolveStylePresetByAvatarIndex,
+	resolveStylePresetById,
+	resolveStylePresetByName,
+	sanitizeForSettingsDebug,
+	sanitizeSpeechText,
+	settingsDebugCloudSummary,
+} from "@elizaos/shared";
+import { hash, verify } from "@node-rs/argon2";
+import { createLocalJWKSet, jwtVerify } from "jose";
+import { z } from "zod";
 
 //#region \0rolldown/runtime.js
 var __defProp = Object.defineProperty;
-var __esmMin = (fn, res) => () => (fn && (res = fn(fn = 0)), res);
+var __esmMin = (fn, res) => () => (fn && (res = fn((fn = 0))), res);
 var __exportAll = (all, no_symbols) => {
-	let target = {};
+	const target = {};
 	for (var name in all) {
 		__defProp(target, name, {
 			get: all[name],
-			enumerable: true
+			enumerable: true,
 		});
 	}
 	if (!no_symbols) {
@@ -55,9 +176,9 @@ function trimEnvValue(value) {
 	return trimmed ? trimmed : void 0;
 }
 /**
-* App entrypoints should consistently default to the app namespace even
-* when they bypass the CLI/profile bootstrap path.
-*/
+ * App entrypoints should consistently default to the app namespace even
+ * when they bypass the CLI/profile bootstrap path.
+ */
 function ensureNamespaceDefaults(env = process$1.env) {
 	if (!trimEnvValue(env.ELIZA_NAMESPACE)) env.ELIZA_NAMESPACE = "eliza";
 }
@@ -66,31 +187,31 @@ ensureNamespaceDefaults();
 //#endregion
 //#region node_modules/.bun/@elizaos+app-core@2.0.0-alpha.537+72829346cb4c43b1/node_modules/@elizaos/app-core/packages/app-core/src/services/cloud-jwks-store.js
 /**
-* Disk-backed JWKS cache for the Eliza Cloud bootstrap-token verifier.
-*
-* The cloud control plane publishes its public keys at
-* `${ELIZA_CLOUD_ISSUER}/.well-known/jwks.json`. We fetch on first use and
-* cache to disk under the eliza state dir so a container restart does not
-* require an online round-trip just to read its own boot token.
-*
-* State dir resolution honours `ELIZA_STATE_DIR` then `ELIZA_STATE_DIR`,
-* falling back to `~/.eliza`. The default cache TTL is 6h per the plan.
-*/
+ * Disk-backed JWKS cache for the Eliza Cloud bootstrap-token verifier.
+ *
+ * The cloud control plane publishes its public keys at
+ * `${ELIZA_CLOUD_ISSUER}/.well-known/jwks.json`. We fetch on first use and
+ * cache to disk under the eliza state dir so a container restart does not
+ * require an online round-trip just to read its own boot token.
+ *
+ * State dir resolution honours `ELIZA_STATE_DIR` then `ELIZA_STATE_DIR`,
+ * falling back to `~/.eliza`. The default cache TTL is 6h per the plan.
+ */
 /**
-* Resolve the eliza state directory.
-*
-* Order: `ELIZA_STATE_DIR` → `ELIZA_STATE_DIR` → `~/.eliza`.
-*/
+ * Resolve the eliza state directory.
+ *
+ * Order: `ELIZA_STATE_DIR` → `ELIZA_STATE_DIR` → `~/.eliza`.
+ */
 function resolveElizaStateDir(env = process.env) {
 	const explicit = env.ELIZA_STATE_DIR?.trim();
 	if (explicit) return path.resolve(explicit);
 	return path.join(os.homedir(), ".eliza");
 }
 /**
-* Resolve the on-disk path for the JWKS cache.
-*
-* Layout: `<state>/auth/cloud-jwks.json`.
-*/
+ * Resolve the on-disk path for the JWKS cache.
+ *
+ * Layout: `<state>/auth/cloud-jwks.json`.
+ */
 function resolveJwksCachePath(env = process.env) {
 	return path.join(resolveElizaStateDir(env), "auth", JWKS_CACHE_FILENAME);
 }
@@ -115,20 +236,25 @@ function parseEnvelope(raw) {
 	}
 	if (!parsed || typeof parsed !== "object") return null;
 	const candidate = parsed;
-	if (!isFiniteNumber$1(candidate.fetchedAt) || typeof candidate.issuer !== "string" || !isJwksDocument(candidate.jwks)) return null;
+	if (
+		!isFiniteNumber$1(candidate.fetchedAt) ||
+		typeof candidate.issuer !== "string" ||
+		!isJwksDocument(candidate.jwks)
+	)
+		return null;
 	return {
 		fetchedAt: candidate.fetchedAt,
 		issuer: candidate.issuer,
-		jwks: candidate.jwks
+		jwks: candidate.jwks,
 	};
 }
 /**
-* Read the cached JWKS for `issuer`.
-*
-* Returns `null` if the cache file is missing, malformed, written for a
-* different issuer, or older than `ttlMs`. Callers must treat `null` as
-* "must refresh from network" — never as "no keys, allow through".
-*/
+ * Read the cached JWKS for `issuer`.
+ *
+ * Returns `null` if the cache file is missing, malformed, written for a
+ * different issuer, or older than `ttlMs`. Callers must treat `null` as
+ * "must refresh from network" — never as "no keys, allow through".
+ */
 async function readCachedJwks(issuer, options = {}) {
 	const env = options.env ?? process.env;
 	const now = options.now ?? Date.now();
@@ -148,9 +274,9 @@ async function readCachedJwks(issuer, options = {}) {
 	return envelope.jwks;
 }
 /**
-* Write the JWKS document to disk. The parent directory is created with mode
-* 0700 to keep cached keys out of unrelated reads.
-*/
+ * Write the JWKS document to disk. The parent directory is created with mode
+ * 0700 to keep cached keys out of unrelated reads.
+ */
 async function writeCachedJwks(issuer, jwks, options = {}) {
 	const env = options.env ?? process.env;
 	const now = options.now ?? Date.now();
@@ -158,51 +284,51 @@ async function writeCachedJwks(issuer, jwks, options = {}) {
 	const dir = path.dirname(filePath);
 	await fs$1.mkdir(dir, {
 		recursive: true,
-		mode: 448
+		mode: 448,
 	});
 	const envelope = {
 		fetchedAt: now,
 		issuer,
-		jwks
+		jwks,
 	};
 	await fs$1.writeFile(filePath, `${JSON.stringify(envelope, null, 2)}\n`, {
 		encoding: "utf8",
-		mode: 384
+		mode: 384,
 	});
 }
 var DEFAULT_JWKS_TTL_MS, JWKS_CACHE_FILENAME;
-var init_cloud_jwks_store = __esmMin((() => {
+var init_cloud_jwks_store = __esmMin(() => {
 	DEFAULT_JWKS_TTL_MS = 360 * 60 * 1e3;
 	JWKS_CACHE_FILENAME = "cloud-jwks.json";
-}));
+});
 
 //#endregion
 //#region node_modules/.bun/@elizaos+app-core@2.0.0-alpha.537+72829346cb4c43b1/node_modules/@elizaos/app-core/packages/app-core/src/api/auth/audit.js
 /**
-* Auth audit emitter.
-*
-* Every sensitive auth action ends up in two places:
-*   1. `auth_audit_events` table via `AuthStore.appendAuditEvent`.
-*   2. JSONL file at `<state>/auth/audit.log`, rotated at 10MB, so the
-*      operator can read history even if pglite is wiped.
-*
-* Both writes happen synchronously from the caller's perspective. If the DB
-* write throws the file write still happens (and vice versa) — the operator
-* notices a divergence rather than losing the event entirely.
-*
-* Token-shaped values (20+ characters of `[A-Za-z0-9_-]`) are redacted in
-* `metadata` before either write, so a misconfigured caller can't smuggle a
-* bearer token into an audit row.
-*/
+ * Auth audit emitter.
+ *
+ * Every sensitive auth action ends up in two places:
+ *   1. `auth_audit_events` table via `AuthStore.appendAuditEvent`.
+ *   2. JSONL file at `<state>/auth/audit.log`, rotated at 10MB, so the
+ *      operator can read history even if pglite is wiped.
+ *
+ * Both writes happen synchronously from the caller's perspective. If the DB
+ * write throws the file write still happens (and vice versa) — the operator
+ * notices a divergence rather than losing the event entirely.
+ *
+ * Token-shaped values (20+ characters of `[A-Za-z0-9_-]`) are redacted in
+ * `metadata` before either write, so a misconfigured caller can't smuggle a
+ * bearer token into an audit row.
+ */
 function truncateUserAgent(value) {
 	if (!value) return null;
 	return value.length > 200 ? value.slice(0, 200) : value;
 }
 /**
-* Replace token-shaped runs in `metadata` with the literal `<redacted>` string.
-*
-* Only string values are scanned; numbers and booleans pass through unchanged.
-*/
+ * Replace token-shaped runs in `metadata` with the literal `<redacted>` string.
+ *
+ * Only string values are scanned; numbers and booleans pass through unchanged.
+ */
 function redactMetadata(metadata) {
 	const out = {};
 	for (const [key, raw] of Object.entries(metadata)) {
@@ -234,21 +360,21 @@ async function rotateIfNeeded(filePath) {
 async function appendJsonLine(filePath, line) {
 	await fs$1.mkdir(path.dirname(filePath), {
 		recursive: true,
-		mode: 448
+		mode: 448,
 	});
 	await rotateIfNeeded(filePath);
 	await fs$1.appendFile(filePath, `${JSON.stringify(line)}\n`, {
 		encoding: "utf8",
-		mode: 384
+		mode: 384,
 	});
 }
 /**
-* Append an audit event to the database AND the JSONL log.
-*
-* Both writes are attempted. The first error is rethrown to the caller —
-* an audit-write failure is a real problem and should surface, not be
-* swallowed.
-*/
+ * Append an audit event to the database AND the JSONL log.
+ *
+ * Both writes are attempted. The first error is rethrown to the caller —
+ * an audit-write failure is a real problem and should surface, not be
+ * swallowed.
+ */
 async function appendAuditEvent(input, options) {
 	const env = options.env ?? process.env;
 	const now = options.now?.() ?? Date.now();
@@ -264,34 +390,36 @@ async function appendAuditEvent(input, options) {
 		userAgent,
 		action: input.action,
 		outcome: input.outcome,
-		metadata: safeMetadata
+		metadata: safeMetadata,
 	};
 	let firstError = null;
 	const fileWrite = appendJsonLine(filePath, line).catch((err) => {
 		if (firstError === null) firstError = err;
 	});
-	const dbWrite = options.store.appendAuditEvent({
-		id,
-		ts: now,
-		actorIdentityId: input.actorIdentityId,
-		ip: input.ip,
-		userAgent,
-		action: input.action,
-		outcome: input.outcome,
-		metadata: safeMetadata
-	}).catch((err) => {
-		if (firstError === null) firstError = err;
-	});
+	const dbWrite = options.store
+		.appendAuditEvent({
+			id,
+			ts: now,
+			actorIdentityId: input.actorIdentityId,
+			ip: input.ip,
+			userAgent,
+			action: input.action,
+			outcome: input.outcome,
+			metadata: safeMetadata,
+		})
+		.catch((err) => {
+			if (firstError === null) firstError = err;
+		});
 	await Promise.all([fileWrite, dbWrite]);
 	if (firstError !== null) throw firstError;
 }
 var AUDIT_LOG_FILENAME, AUDIT_LOG_MAX_BYTES, AUDIT_REDACTION_RE;
-var init_audit$1 = __esmMin((() => {
+var init_audit$1 = __esmMin(() => {
 	init_cloud_jwks_store();
 	AUDIT_LOG_FILENAME = "audit.log";
 	AUDIT_LOG_MAX_BYTES = 10 * 1024 * 1024;
 	AUDIT_REDACTION_RE = /[A-Za-z0-9_-]{20,}/;
-}));
+});
 
 //#endregion
 //#region node_modules/.bun/@elizaos+app-core@2.0.0-alpha.537+72829346cb4c43b1/node_modules/@elizaos/app-core/packages/app-core/src/api/auth/tokens.js
@@ -307,25 +435,25 @@ function tokenMatches(expected, provided) {
 	const contentMatch = crypto.timingSafeEqual(aPadded, bPadded);
 	return a.length === b.length && contentMatch;
 }
-var init_tokens = __esmMin((() => {}));
+var init_tokens = __esmMin(() => {});
 
 //#endregion
 //#region node_modules/.bun/@elizaos+app-core@2.0.0-alpha.537+72829346cb4c43b1/node_modules/@elizaos/app-core/packages/app-core/src/api/auth/sessions.js
 /**
-* Session lifecycle on top of `AuthStore`.
-*
-* This module owns:
-*   - browser session creation + sliding-TTL math
-*   - machine session creation (absolute TTL)
-*   - session lookup with sliding-window refresh
-*   - revoke (single + all-but-current)
-*   - CSRF derive / verify (HMAC-SHA256 over `session.csrfSecret`)
-*   - cookie serialize / parse for the `eliza_session` cookie
-*
-* Hard rule: every helper fails closed. A malformed cookie returns null;
-* a CSRF mismatch returns false; a session lookup error propagates. We do
-* NOT pretend bad input is good input.
-*/
+ * Session lifecycle on top of `AuthStore`.
+ *
+ * This module owns:
+ *   - browser session creation + sliding-TTL math
+ *   - machine session creation (absolute TTL)
+ *   - session lookup with sliding-window refresh
+ *   - revoke (single + all-but-current)
+ *   - CSRF derive / verify (HMAC-SHA256 over `session.csrfSecret`)
+ *   - cookie serialize / parse for the `eliza_session` cookie
+ *
+ * Hard rule: every helper fails closed. A malformed cookie returns null;
+ * a CSRF mismatch returns false; a session lookup error propagates. We do
+ * NOT pretend bad input is good input.
+ */
 /** 256-bit hex session id. Cookie value. */
 function generateSessionId() {
 	return crypto.randomBytes(32).toString("hex");
@@ -335,13 +463,13 @@ function generateCsrfSecret() {
 	return crypto.randomBytes(32).toString("hex");
 }
 /**
-* Mint a browser session. Uses sliding TTL (`BROWSER_SESSION_TTL_MS`) capped
-* at 30 days when `rememberDevice` is set; otherwise the cap equals the
-* sliding window.
-*
-* Returns the persisted session and a derived CSRF token suitable for the
-* `eliza_csrf` cookie.
-*/
+ * Mint a browser session. Uses sliding TTL (`BROWSER_SESSION_TTL_MS`) capped
+ * at 30 days when `rememberDevice` is set; otherwise the cap equals the
+ * sliding window.
+ *
+ * Returns the persisted session and a derived CSRF token suitable for the
+ * `eliza_csrf` cookie.
+ */
 async function createBrowserSession(store, options) {
 	const now = options.now ?? Date.now();
 	const id = generateSessionId();
@@ -358,41 +486,45 @@ async function createBrowserSession(store, options) {
 		csrfSecret,
 		ip: options.ip,
 		userAgent: options.userAgent,
-		scopes: []
+		scopes: [],
 	});
 	return {
 		session,
-		csrfToken: deriveCsrfToken(session)
+		csrfToken: deriveCsrfToken(session),
 	};
 }
 /**
-* Look up an active session by id and slide its expiry forward when it is a
-* browser session. Machine sessions get `lastSeenAt` updated but no expiry
-* extension (absolute TTL by spec).
-*
-* Returns `null` for missing / expired / revoked sessions. Errors propagate;
-* we do NOT silently treat a DB error as "session valid".
-*/
+ * Look up an active session by id and slide its expiry forward when it is a
+ * browser session. Machine sessions get `lastSeenAt` updated but no expiry
+ * extension (absolute TTL by spec).
+ *
+ * Returns `null` for missing / expired / revoked sessions. Errors propagate;
+ * we do NOT silently treat a DB error as "session valid".
+ */
 async function findActiveSession(store, sessionId, now = Date.now()) {
 	const found = await store.findSession(sessionId, now);
 	if (!found) return null;
 	if (found.kind === "browser") {
-		const cap = found.rememberDevice ? found.createdAt + BROWSER_SESSION_REMEMBER_CAP_MS : found.createdAt + BROWSER_SESSION_TTL_MS$1;
+		const cap = found.rememberDevice
+			? found.createdAt + BROWSER_SESSION_REMEMBER_CAP_MS
+			: found.createdAt + BROWSER_SESSION_TTL_MS$1;
 		const proposed = now + BROWSER_SESSION_TTL_MS$1;
 		const nextExpiresAt = Math.min(proposed, cap);
 		if (nextExpiresAt <= now) return null;
-		if (nextExpiresAt !== found.expiresAt || now !== found.lastSeenAt) await store.touchSession(found.id, now, nextExpiresAt);
+		if (nextExpiresAt !== found.expiresAt || now !== found.lastSeenAt)
+			await store.touchSession(found.id, now, nextExpiresAt);
 		return {
 			...found,
 			lastSeenAt: now,
-			expiresAt: nextExpiresAt
+			expiresAt: nextExpiresAt,
 		};
 	}
 	if (found.kind === "machine") {
-		if (now !== found.lastSeenAt) await store.touchSession(found.id, now, found.expiresAt);
+		if (now !== found.lastSeenAt)
+			await store.touchSession(found.id, now, found.expiresAt);
 		return {
 			...found,
-			lastSeenAt: now
+			lastSeenAt: now,
 		};
 	}
 	return found;
@@ -400,53 +532,59 @@ async function findActiveSession(store, sessionId, now = Date.now()) {
 async function revokeSession(sessionId, options) {
 	const now = options.now ?? Date.now();
 	const ok = await options.store.revokeSession(sessionId, now);
-	await appendAuditEvent({
-		id: crypto.randomUUID(),
-		ts: now,
-		actorIdentityId: options.actorIdentityId,
-		ip: options.ip,
-		userAgent: options.userAgent,
-		action: "auth.session.revoke",
-		outcome: ok ? "success" : "failure",
-		metadata: {
-			sessionId,
-			reason: options.reason
-		}
-	}, { store: options.store });
+	await appendAuditEvent(
+		{
+			id: crypto.randomUUID(),
+			ts: now,
+			actorIdentityId: options.actorIdentityId,
+			ip: options.ip,
+			userAgent: options.userAgent,
+			action: "auth.session.revoke",
+			outcome: ok ? "success" : "failure",
+			metadata: {
+				sessionId,
+				reason: options.reason,
+			},
+		},
+		{ store: options.store },
+	);
 	return ok;
 }
 /**
-* Derive the CSRF token for a session. HMAC-SHA256 over the literal
-* `csrf:<sessionId>` payload using the per-session `csrfSecret` as the key.
-* The derivation is stable, so repeated calls return the same token until
-* the session is rotated.
-*/
+ * Derive the CSRF token for a session. HMAC-SHA256 over the literal
+ * `csrf:<sessionId>` payload using the per-session `csrfSecret` as the key.
+ * The derivation is stable, so repeated calls return the same token until
+ * the session is rotated.
+ */
 function deriveCsrfToken(session) {
-	return crypto.createHmac("sha256", session.csrfSecret).update(`csrf:${session.id}`).digest("hex");
+	return crypto
+		.createHmac("sha256", session.csrfSecret)
+		.update(`csrf:${session.id}`)
+		.digest("hex");
 }
 /**
-* Timing-safe compare of an incoming CSRF header against the expected
-* derived token. Empty / missing headers fail closed.
-*/
+ * Timing-safe compare of an incoming CSRF header against the expected
+ * derived token. Empty / missing headers fail closed.
+ */
 function verifyCsrfToken(session, provided) {
 	if (typeof provided !== "string" || provided.length === 0) return false;
 	return tokenMatches(deriveCsrfToken(session), provided);
 }
 /**
-* Should the cookie carry the `Secure` attribute? Plan §4.1: drop `Secure`
-* only when bound on loopback (the Electrobun shell). Detect via the same
-* env helpers as the rest of the runtime.
-*/
+ * Should the cookie carry the `Secure` attribute? Plan §4.1: drop `Secure`
+ * only when bound on loopback (the Electrobun shell). Detect via the same
+ * env helpers as the rest of the runtime.
+ */
 function shouldEmitSecureFlag(env) {
 	return !isLoopbackBindHost(resolveApiBindHost(env));
 }
 /**
-* Serialize the `eliza_session` cookie. The value is the opaque session id;
-* attributes follow plan §4.1.
-*
-* Returns the full `Set-Cookie` header value (without the leading
-* `Set-Cookie:` token). Caller is responsible for `res.setHeader`.
-*/
+ * Serialize the `eliza_session` cookie. The value is the opaque session id;
+ * attributes follow plan §4.1.
+ *
+ * Returns the full `Set-Cookie` header value (without the leading
+ * `Set-Cookie:` token). Caller is responsible for `res.setHeader`.
+ */
 function serializeSessionCookie(session, options = {}) {
 	const env = options.env ?? process.env;
 	const now = Date.now();
@@ -457,16 +595,16 @@ function serializeSessionCookie(session, options = {}) {
 		"Path=/",
 		"HttpOnly",
 		"SameSite=Lax",
-		`Max-Age=${ageSec}`
+		`Max-Age=${ageSec}`,
 	];
 	if (shouldEmitSecureFlag(env)) parts.push("Secure");
 	return parts.join("; ");
 }
 /**
-* Serialize the readable companion CSRF cookie. Same lifetime as the
-* session cookie. NOT `HttpOnly` so the SPA can mirror it into the
-* `x-eliza-csrf` header.
-*/
+ * Serialize the readable companion CSRF cookie. Same lifetime as the
+ * session cookie. NOT `HttpOnly` so the SPA can mirror it into the
+ * `x-eliza-csrf` header.
+ */
 function serializeCsrfCookie(session, options = {}) {
 	const env = options.env ?? process.env;
 	const now = Date.now();
@@ -477,7 +615,7 @@ function serializeCsrfCookie(session, options = {}) {
 		`${CSRF_COOKIE_NAME}=${encodeURIComponent(csrfToken)}`,
 		"Path=/",
 		"SameSite=Lax",
-		`Max-Age=${ageSec}`
+		`Max-Age=${ageSec}`,
 	];
 	if (shouldEmitSecureFlag(env)) parts.push("Secure");
 	return parts.join("; ");
@@ -490,7 +628,7 @@ function serializeSessionExpiryCookie(options = {}) {
 		"Path=/",
 		"HttpOnly",
 		"SameSite=Lax",
-		"Max-Age=0"
+		"Max-Age=0",
 	];
 	if (shouldEmitSecureFlag(env)) parts.push("Secure");
 	return parts.join("; ");
@@ -498,20 +636,15 @@ function serializeSessionExpiryCookie(options = {}) {
 /** Companion expiry cookie for `eliza_csrf`. */
 function serializeCsrfExpiryCookie(options = {}) {
 	const env = options.env ?? process.env;
-	const parts = [
-		`${CSRF_COOKIE_NAME}=`,
-		"Path=/",
-		"SameSite=Lax",
-		"Max-Age=0"
-	];
+	const parts = [`${CSRF_COOKIE_NAME}=`, "Path=/", "SameSite=Lax", "Max-Age=0"];
 	if (shouldEmitSecureFlag(env)) parts.push("Secure");
 	return parts.join("; ");
 }
 /**
-* Parse a raw `Cookie:` header into a typed map. Returns `Map<string,string>`
-* — keys are cookie names, values are URL-decoded raw values. Invalid or
-* empty cookies are dropped silently (per RFC 6265 §5.2 step 1).
-*/
+ * Parse a raw `Cookie:` header into a typed map. Returns `Map<string,string>`
+ * — keys are cookie names, values are URL-decoded raw values. Invalid or
+ * empty cookies are dropped silently (per RFC 6265 §5.2 step 1).
+ */
 function parseCookieHeader(headerValue) {
 	const out = /* @__PURE__ */ new Map();
 	if (!headerValue) return out;
@@ -531,16 +664,23 @@ function parseCookieHeader(headerValue) {
 	return out;
 }
 /**
-* Read the eliza session id from the request cookie header. Returns null
-* when the cookie is absent or empty.
-*/
+ * Read the eliza session id from the request cookie header. Returns null
+ * when the cookie is absent or empty.
+ */
 function parseSessionCookie(req) {
 	const raw = req.headers.cookie;
-	const value = parseCookieHeader((Array.isArray(raw) ? raw[0] : raw) ?? null).get(SESSION_COOKIE_NAME$1);
+	const value = parseCookieHeader(
+		(Array.isArray(raw) ? raw[0] : raw) ?? null,
+	).get(SESSION_COOKIE_NAME$1);
 	return value && value.length > 0 ? value : null;
 }
-var BROWSER_SESSION_TTL_MS$1, BROWSER_SESSION_REMEMBER_CAP_MS, MACHINE_SESSION_TTL_MS, SESSION_COOKIE_NAME$1, CSRF_COOKIE_NAME, CSRF_HEADER_NAME;
-var init_sessions = __esmMin((() => {
+var BROWSER_SESSION_TTL_MS$1,
+	BROWSER_SESSION_REMEMBER_CAP_MS,
+	MACHINE_SESSION_TTL_MS,
+	SESSION_COOKIE_NAME$1,
+	CSRF_COOKIE_NAME,
+	CSRF_HEADER_NAME;
+var init_sessions = __esmMin(() => {
 	init_audit$1();
 	init_tokens();
 	BROWSER_SESSION_TTL_MS$1 = 720 * 60 * 1e3;
@@ -549,18 +689,19 @@ var init_sessions = __esmMin((() => {
 	SESSION_COOKIE_NAME$1 = "eliza_session";
 	CSRF_COOKIE_NAME = "eliza_csrf";
 	CSRF_HEADER_NAME = "x-eliza-csrf";
-}));
+});
 
 //#endregion
 //#region node_modules/.bun/@elizaos+app-core@2.0.0-alpha.537+72829346cb4c43b1/node_modules/@elizaos/app-core/packages/app-core/src/api/response.js
 /**
-* Shared HTTP JSON response helpers for the app API layer.
-*
-* Consolidates the `sendJson` / `sendJsonError` / `sendJsonResponse` pattern
-* that was independently defined in server.ts, cloud-routes.ts, and others.
-*/
+ * Shared HTTP JSON response helpers for the app API layer.
+ *
+ * Consolidates the `sendJson` / `sendJsonError` / `sendJsonResponse` pattern
+ * that was independently defined in server.ts, cloud-routes.ts, and others.
+ */
 function scrubStackFields(value) {
-	if (value instanceof Error) return { error: value.message || "Internal error" };
+	if (value instanceof Error)
+		return { error: value.message || "Internal error" };
 	if (Array.isArray(value)) return value.map(scrubStackFields);
 	if (value && typeof value === "object") {
 		const out = {};
@@ -583,7 +724,7 @@ function sendJson$2(res, status, body) {
 function sendJsonError(res, status, message) {
 	sendJson$2(res, status, { error: message });
 }
-var init_response = __esmMin((() => {}));
+var init_response = __esmMin(() => {});
 
 //#endregion
 //#region node_modules/.bun/@elizaos+app-core@2.0.0-alpha.537+72829346cb4c43b1/node_modules/@elizaos/app-core/packages/app-core/src/api/compat-route-shared.js
@@ -592,13 +733,23 @@ function clearCompatRuntimeRestart(state) {
 }
 function scheduleCompatRuntimeRestart(state, reason) {
 	if (state.pendingRestartReasons.includes(reason)) return;
-	if (state.pendingRestartReasons.length >= 50) state.pendingRestartReasons.splice(1, state.pendingRestartReasons.length - 1);
+	if (state.pendingRestartReasons.length >= 50)
+		state.pendingRestartReasons.splice(
+			1,
+			state.pendingRestartReasons.length - 1,
+		);
 	state.pendingRestartReasons.push(reason);
 }
 function isLoopbackRemoteAddress(remoteAddress) {
 	if (!remoteAddress) return false;
 	const normalized = remoteAddress.trim().toLowerCase();
-	return normalized === "127.0.0.1" || normalized === "::1" || normalized === "0:0:0:0:0:0:0:1" || normalized === "::ffff:127.0.0.1" || normalized === "::ffff:0:127.0.0.1";
+	return (
+		normalized === "127.0.0.1" ||
+		normalized === "::1" ||
+		normalized === "0:0:0:0:0:0:0:1" ||
+		normalized === "::ffff:127.0.0.1" ||
+		normalized === "::ffff:0:127.0.0.1"
+	);
 }
 function firstHeaderValue(value) {
 	if (typeof value === "string") return value;
@@ -607,32 +758,50 @@ function firstHeaderValue(value) {
 }
 function headerValues(value) {
 	if (typeof value === "string") return [value];
-	if (Array.isArray(value)) return value.filter((item) => typeof item === "string");
+	if (Array.isArray(value))
+		return value.filter((item) => typeof item === "string");
 	return [];
 }
 function isClientIpProxyHeaderName(name) {
 	const normalized = name.toLowerCase();
-	return CLIENT_IP_PROXY_HEADERS.has(normalized) || normalized.endsWith("-client-ip") || normalized.endsWith("-connecting-ip") || normalized.endsWith("-real-ip");
+	return (
+		CLIENT_IP_PROXY_HEADERS.has(normalized) ||
+		normalized.endsWith("-client-ip") ||
+		normalized.endsWith("-connecting-ip") ||
+		normalized.endsWith("-real-ip")
+	);
 }
 function extractForwardedForCandidates(raw) {
 	const candidates = [];
-	for (const match of raw.matchAll(/(?:^|[;,])\s*for=(?:"([^"]*)"|([^;,]*))/gi)) candidates.push(match[1] ?? match[2] ?? "");
+	for (const match of raw.matchAll(/(?:^|[;,])\s*for=(?:"([^"]*)"|([^;,]*))/gi))
+		candidates.push(match[1] ?? match[2] ?? "");
 	return candidates;
 }
 function extractProxyClientAddressCandidates(headerName, raw) {
 	if (headerName === "forwarded") return extractForwardedForCandidates(raw);
-	const forwardedCandidates = raw.toLowerCase().includes("for=") ? extractForwardedForCandidates(raw) : [];
+	const forwardedCandidates = raw.toLowerCase().includes("for=")
+		? extractForwardedForCandidates(raw)
+		: [];
 	if (forwardedCandidates.length > 0) return forwardedCandidates;
 	return raw.split(",");
 }
 function stripMatchingQuotes(value) {
 	const trimmed = value.trim();
-	if (trimmed.startsWith("\"") && trimmed.endsWith("\"") || trimmed.startsWith("'") && trimmed.endsWith("'")) return trimmed.slice(1, -1);
+	if (
+		(trimmed.startsWith('"') && trimmed.endsWith('"')) ||
+		(trimmed.startsWith("'") && trimmed.endsWith("'"))
+	)
+		return trimmed.slice(1, -1);
 	return trimmed;
 }
 function isNeutralProxyClientAddress(raw) {
 	const normalized = stripMatchingQuotes(raw).trim().toLowerCase();
-	return !normalized || normalized === "unknown" || normalized === "null" || normalized.startsWith("_");
+	return (
+		!normalized ||
+		normalized === "unknown" ||
+		normalized === "null" ||
+		normalized.startsWith("_")
+	);
 }
 function normalizeProxyClientIp(raw) {
 	let normalized = stripMatchingQuotes(raw).trim();
@@ -651,17 +820,27 @@ function normalizeProxyClientIp(raw) {
 }
 function isLoopbackProxyClientIp(ip) {
 	const normalized = ip.trim().toLowerCase();
-	return normalized === "::1" || normalized === "0:0:0:0:0:0:0:1" || normalized.startsWith("127.") || normalized.startsWith("::ffff:127.") || normalized.startsWith("::ffff:0:127.");
+	return (
+		normalized === "::1" ||
+		normalized === "0:0:0:0:0:0:0:1" ||
+		normalized.startsWith("127.") ||
+		normalized.startsWith("::ffff:127.") ||
+		normalized.startsWith("::ffff:0:127.")
+	);
 }
 function proxyClientHeaderBlocksLocalTrust(headers) {
 	for (const [rawName, rawValue] of Object.entries(headers)) {
 		const headerName = rawName.toLowerCase();
 		if (!isClientIpProxyHeaderName(headerName)) continue;
-		for (const value of headerValues(rawValue)) for (const candidate of extractProxyClientAddressCandidates(headerName, value)) {
-			if (isNeutralProxyClientAddress(candidate)) continue;
-			const ip = normalizeProxyClientIp(candidate);
-			if (!ip || !isLoopbackProxyClientIp(ip)) return true;
-		}
+		for (const value of headerValues(rawValue))
+			for (const candidate of extractProxyClientAddressCandidates(
+				headerName,
+				value,
+			)) {
+				if (isNeutralProxyClientAddress(candidate)) continue;
+				const ip = normalizeProxyClientIp(candidate);
+				if (!ip || !isLoopbackProxyClientIp(ip)) return true;
+			}
 	}
 	return false;
 }
@@ -673,24 +852,36 @@ function isTrustedLocalOrigin(raw) {
 	if (!trimmed || trimmed === "null") return true;
 	try {
 		const parsed = new URL(trimmed);
-		if (parsed.protocol === "file:" || parsed.protocol === "app:" || parsed.protocol === "tauri:" || parsed.protocol === "capacitor:" || parsed.protocol === "capacitor-electron:" || parsed.protocol === "electrobun:") return true;
+		if (
+			parsed.protocol === "file:" ||
+			parsed.protocol === "app:" ||
+			parsed.protocol === "tauri:" ||
+			parsed.protocol === "capacitor:" ||
+			parsed.protocol === "capacitor-electron:" ||
+			parsed.protocol === "electrobun:"
+		)
+			return true;
 		return isLoopbackBindHost(parsed.hostname);
 	} catch {
 		return false;
 	}
 }
 /**
-* Same-machine dashboard access. This is intentionally stricter than just
-* checking `remoteAddress`: the browser must also be targeting a loopback Host
-* and must not present cross-site browser metadata.
-*/
+ * Same-machine dashboard access. This is intentionally stricter than just
+ * checking `remoteAddress`: the browser must also be targeting a loopback Host
+ * and must not present cross-site browser metadata.
+ */
 function isTrustedLocalRequest(req) {
 	if (isCloudProvisionedByEnv()) return false;
 	if (!isLoopbackRemoteAddress(req.socket?.remoteAddress)) return false;
 	if (proxyClientHeaderBlocksLocalTrust(req.headers)) return false;
 	const host = firstHeaderValue(req.headers.host);
 	if (host && !isLoopbackBindHost(host)) return false;
-	if (firstHeaderValue(req.headers["sec-fetch-site"])?.toLowerCase() === "cross-site") return false;
+	if (
+		firstHeaderValue(req.headers["sec-fetch-site"])?.toLowerCase() ===
+		"cross-site"
+	)
+		return false;
 	const origin = firstHeaderValue(req.headers.origin);
 	if (origin && !isTrustedLocalOrigin(origin)) return false;
 	const referer = firstHeaderValue(req.headers.referer);
@@ -733,24 +924,44 @@ function hasCompatPersistedOnboardingState(config) {
 	const deploymentTarget = resolveDeploymentTargetInConfig(config);
 	const llmText = resolveServiceRoutingInConfig(config)?.llmText;
 	const backend = normalizeOnboardingProviderId(llmText?.backend);
-	const remoteApiBase = llmText?.remoteApiBase?.trim() ?? deploymentTarget.remoteApiBase?.trim();
-	if (llmText?.transport === "direct" && Boolean(backend && backend !== "elizacloud") || llmText?.transport === "remote" && Boolean(remoteApiBase) || llmText?.transport === "cloud-proxy" && backend === "elizacloud" && Boolean(llmText.smallModel?.trim() && llmText.largeModel?.trim()) || deploymentTarget.runtime === "remote" && Boolean(deploymentTarget.remoteApiBase?.trim())) return true;
-	if (Array.isArray(config.agents?.list) && config.agents.list.length > 0) return true;
-	return Boolean(config.agents?.defaults?.workspace?.trim() || config.agents?.defaults?.adminEntityId?.trim());
+	const remoteApiBase =
+		llmText?.remoteApiBase?.trim() ?? deploymentTarget.remoteApiBase?.trim();
+	if (
+		(llmText?.transport === "direct" && backend && backend !== "elizacloud") ||
+		(llmText?.transport === "remote" && remoteApiBase) ||
+		(llmText?.transport === "cloud-proxy" &&
+			backend === "elizacloud" &&
+			llmText.smallModel?.trim() &&
+			llmText.largeModel?.trim()) ||
+		(deploymentTarget.runtime === "remote" &&
+			deploymentTarget.remoteApiBase?.trim())
+	)
+		return true;
+	if (Array.isArray(config.agents?.list) && config.agents.list.length > 0)
+		return true;
+	return Boolean(
+		config.agents?.defaults?.workspace?.trim() ||
+			config.agents?.defaults?.adminEntityId?.trim(),
+	);
 }
 function getConfiguredCompatAgentName() {
 	const config = loadElizaConfig();
 	const listAgent = config.agents?.list?.[0];
-	const listAgentName = typeof listAgent?.name === "string" ? listAgent.name.trim() : "";
+	const listAgentName =
+		typeof listAgent?.name === "string" ? listAgent.name.trim() : "";
 	if (listAgentName) return listAgentName;
-	return (typeof config.ui?.assistant?.name === "string" ? config.ui.assistant.name.trim() : "") || null;
+	return (
+		(typeof config.ui?.assistant?.name === "string"
+			? config.ui.assistant.name.trim()
+			: "") || null
+	);
 }
 /**
-* Best-effort grab of the Drizzle DB handle off the live runtime adapter.
-* Returns null when the runtime is not yet up or the adapter has not
-* exposed a `db` field. Callers MUST treat null as "service unavailable"
-* — it is never authentication.
-*/
+ * Best-effort grab of the Drizzle DB handle off the live runtime adapter.
+ * Returns null when the runtime is not yet up or the adapter has not
+ * exposed a `db` field. Callers MUST treat null as "service unavailable"
+ * — it is never authentication.
+ */
 function getCompatDrizzleDb(state) {
 	const runtime = state.current;
 	if (!runtime) return null;
@@ -759,10 +970,11 @@ function getCompatDrizzleDb(state) {
 	return adapter.db;
 }
 var MAX_BODY_BYTES$1, DATABASE_UNAVAILABLE_MESSAGE, CLIENT_IP_PROXY_HEADERS;
-var init_compat_route_shared = __esmMin((() => {
+var init_compat_route_shared = __esmMin(() => {
 	init_response();
 	MAX_BODY_BYTES$1 = 1048576;
-	DATABASE_UNAVAILABLE_MESSAGE = "Database not available. The agent may not be running or the database adapter is not initialized.";
+	DATABASE_UNAVAILABLE_MESSAGE =
+		"Database not available. The agent may not be running or the database adapter is not initialized.";
 	CLIENT_IP_PROXY_HEADERS = new Set([
 		"forwarded",
 		"forwarded-for",
@@ -777,9 +989,9 @@ var init_compat_route_shared = __esmMin((() => {
 		"true-client-ip",
 		"fastly-client-ip",
 		"x-appengine-user-ip",
-		"x-azure-clientip"
+		"x-azure-clientip",
 	]);
-}));
+});
 
 //#endregion
 //#region node_modules/.bun/@elizaos+app-core@2.0.0-alpha.537+72829346cb4c43b1/node_modules/@elizaos/app-core/packages/app-core/src/api/auth/legacy-bearer.js
@@ -795,7 +1007,7 @@ var legacy_bearer_exports = /* @__PURE__ */ __exportAll({
 	decideLegacyBearer: () => decideLegacyBearer,
 	markLegacyBearerInvalidated: () => markLegacyBearerInvalidated,
 	recordLegacyBearerRejection: () => recordLegacyBearerRejection,
-	recordLegacyBearerUse: () => recordLegacyBearerUse
+	recordLegacyBearerUse: () => recordLegacyBearerUse,
 });
 /** Reset internal state. Test-only. */
 function _resetLegacyBearerState() {
@@ -810,70 +1022,82 @@ function parseEnvDeadline(env) {
 	return parsed;
 }
 async function decideLegacyBearer(_store, env = process.env, now = Date.now()) {
-	if (state.invalidated) return {
-		allowed: false,
-		reason: "invalidated"
-	};
+	if (state.invalidated)
+		return {
+			allowed: false,
+			reason: "invalidated",
+		};
 	const envDeadline = parseEnvDeadline(env);
 	if (envDeadline) {
 		state.deadline = envDeadline;
-		if (now >= envDeadline) return {
-			allowed: false,
-			reason: "post_grace"
-		};
+		if (now >= envDeadline)
+			return {
+				allowed: false,
+				reason: "post_grace",
+			};
 		return { allowed: true };
 	}
 	if (state.deadline === null) state.deadline = now + LEGACY_GRACE_WINDOW_MS;
-	if (now >= state.deadline) return {
-		allowed: false,
-		reason: "post_grace"
-	};
+	if (now >= state.deadline)
+		return {
+			allowed: false,
+			reason: "post_grace",
+		};
 	return { allowed: true };
 }
 /**
-* Audit-emit a successful legacy bearer use (deprecation event). Caller
-* should await; failures propagate.
-*/
+ * Audit-emit a successful legacy bearer use (deprecation event). Caller
+ * should await; failures propagate.
+ */
 async function recordLegacyBearerUse(store, meta) {
-	await appendAuditEvent({
-		actorIdentityId: null,
-		ip: meta.ip,
-		userAgent: meta.userAgent,
-		action: LEGACY_USE_AUDIT_ACTION,
-		outcome: "success",
-		metadata: {}
-	}, { store });
+	await appendAuditEvent(
+		{
+			actorIdentityId: null,
+			ip: meta.ip,
+			userAgent: meta.userAgent,
+			action: LEGACY_USE_AUDIT_ACTION,
+			outcome: "success",
+			metadata: {},
+		},
+		{ store },
+	);
 }
 /** Audit-emit a rejected legacy bearer attempt (post-grace or invalidated). */
 async function recordLegacyBearerRejection(store, meta) {
-	await appendAuditEvent({
-		actorIdentityId: null,
-		ip: meta.ip,
-		userAgent: meta.userAgent,
-		action: LEGACY_REJECT_AUDIT_ACTION,
-		outcome: "failure",
-		metadata: { reason: meta.reason }
-	}, { store });
+	await appendAuditEvent(
+		{
+			actorIdentityId: null,
+			ip: meta.ip,
+			userAgent: meta.userAgent,
+			action: LEGACY_REJECT_AUDIT_ACTION,
+			outcome: "failure",
+			metadata: { reason: meta.reason },
+		},
+		{ store },
+	);
 }
 /**
-* Mark legacy bearer use as immediately rejected for the rest of this
-* runtime. Called when a real auth method lands (password setup, cloud SSO
-* link, owner binding verified). Also revokes existing `legacy`-scoped
-* machine sessions in the DB so they can't smuggle access through the
-* session layer.
-*/
+ * Mark legacy bearer use as immediately rejected for the rest of this
+ * runtime. Called when a real auth method lands (password setup, cloud SSO
+ * link, owner binding verified). Also revokes existing `legacy`-scoped
+ * machine sessions in the DB so they can't smuggle access through the
+ * session layer.
+ */
 async function markLegacyBearerInvalidated(store, meta) {
 	state.invalidated = true;
 	state.deadline = 0;
 	const revoked = await store.revokeLegacyBearerSessions(Date.now());
-	await appendAuditEvent({
-		actorIdentityId: meta.actorIdentityId,
-		ip: meta.ip,
-		userAgent: meta.userAgent,
-		action: LEGACY_INVALIDATE_AUDIT_ACTION,
-		outcome: "success",
-		metadata: { revoked }
-	}, { store });
+	await appendAuditEvent(
+		{
+			actorIdentityId: meta.actorIdentityId,
+			ip: meta.ip,
+			userAgent: meta.userAgent,
+			action: LEGACY_INVALIDATE_AUDIT_ACTION,
+			outcome: "success",
+			metadata: { revoked },
+		},
+		{ store },
+	);
 }
 /** Test helper for test files that want to predict the deadline. */
 function _peekLegacyBearerDeadline() {
@@ -882,8 +1106,13 @@ function _peekLegacyBearerDeadline() {
 function _peekLegacyBearerInvalidated() {
 	return state.invalidated;
 }
-var LEGACY_GRACE_WINDOW_MS, LEGACY_DEPRECATION_HEADER, LEGACY_USE_AUDIT_ACTION, LEGACY_REJECT_AUDIT_ACTION, LEGACY_INVALIDATE_AUDIT_ACTION, state;
-var init_legacy_bearer = __esmMin((() => {
+var LEGACY_GRACE_WINDOW_MS,
+	LEGACY_DEPRECATION_HEADER,
+	LEGACY_USE_AUDIT_ACTION,
+	LEGACY_REJECT_AUDIT_ACTION,
+	LEGACY_INVALIDATE_AUDIT_ACTION,
+	state;
+var init_legacy_bearer = __esmMin(() => {
 	init_audit$1();
 	LEGACY_GRACE_WINDOW_MS = 336 * 60 * 60 * 1e3;
 	LEGACY_DEPRECATION_HEADER = "x-eliza-legacy-token-deprecated";
@@ -892,23 +1121,25 @@ var init_legacy_bearer = __esmMin((() => {
 	LEGACY_INVALIDATE_AUDIT_ACTION = "auth.legacy_token.invalidated";
 	state = {
 		deadline: null,
-		invalidated: false
+		invalidated: false,
 	};
-}));
+});
 
 //#endregion
 //#region node_modules/.bun/@elizaos+app-core@2.0.0-alpha.537+72829346cb4c43b1/node_modules/@elizaos/app-core/packages/app-core/src/services/auth-store.js
 /**
-* pglite-backed repositories for the auth subsystem.
-*
-* The store operates on a Drizzle database handle obtained from the agent
-* runtime's database adapter (`@elizaos/plugin-sql`). Tables are owned by the
-* plugin-sql schema attached to the root plugin export.
-*
-* Every method is fail-fast: errors propagate to the caller. The auth code
-* path must NEVER swallow a DB error and pretend a request was authenticated.
-*/
-var auth_store_exports = /* @__PURE__ */ __exportAll({ AuthStore: () => AuthStore });
+ * pglite-backed repositories for the auth subsystem.
+ *
+ * The store operates on a Drizzle database handle obtained from the agent
+ * runtime's database adapter (`@elizaos/plugin-sql`). Tables are owned by the
+ * plugin-sql schema attached to the root plugin export.
+ *
+ * Every method is fail-fast: errors propagate to the caller. The auth code
+ * path must NEVER swallow a DB error and pretend a request was authenticated.
+ */
+var auth_store_exports = /* @__PURE__ */ __exportAll({
+	AuthStore: () => AuthStore,
+});
 function nullableString(value) {
 	return value === void 0 ? null : value;
 }
@@ -919,7 +1150,7 @@ function rowToIdentity(row) {
 		displayName: row.displayName,
 		createdAt: Number(row.createdAt),
 		passwordHash: row.passwordHash ?? null,
-		cloudUserId: row.cloudUserId ?? null
+		cloudUserId: row.cloudUserId ?? null,
 	};
 }
 function rowToSession(row) {
@@ -935,7 +1166,10 @@ function rowToSession(row) {
 		ip: row.ip ?? null,
 		userAgent: row.userAgent ?? null,
 		scopes: Array.isArray(row.scopes) ? row.scopes : [],
-		revokedAt: row.revokedAt === null || row.revokedAt === void 0 ? null : Number(row.revokedAt)
+		revokedAt:
+			row.revokedAt === null || row.revokedAt === void 0
+				? null
+				: Number(row.revokedAt),
 	};
 }
 function rowToOwnerBinding(row) {
@@ -948,7 +1182,10 @@ function rowToOwnerBinding(row) {
 		instanceId: row.instanceId,
 		verifiedAt: Number(row.verifiedAt),
 		pendingCodeHash: row.pendingCodeHash ?? null,
-		pendingExpiresAt: row.pendingExpiresAt === null || row.pendingExpiresAt === void 0 ? null : Number(row.pendingExpiresAt)
+		pendingExpiresAt:
+			row.pendingExpiresAt === null || row.pendingExpiresAt === void 0
+				? null
+				: Number(row.pendingExpiresAt),
 	};
 }
 function rowToOwnerLoginToken(row) {
@@ -958,73 +1195,126 @@ function rowToOwnerLoginToken(row) {
 		bindingId: row.bindingId,
 		issuedAt: Number(row.issuedAt),
 		expiresAt: Number(row.expiresAt),
-		consumedAt: row.consumedAt === null || row.consumedAt === void 0 ? null : Number(row.consumedAt)
+		consumedAt:
+			row.consumedAt === null || row.consumedAt === void 0
+				? null
+				: Number(row.consumedAt),
 	};
 }
 var AuthStore;
-var init_auth_store = __esmMin((() => {
+var init_auth_store = __esmMin(() => {
 	AuthStore = class {
 		db;
 		constructor(db) {
 			this.db = db;
 		}
 		async createIdentity(input) {
-			const row = (await this.db.insert(authIdentityTable).values({
-				id: input.id,
-				kind: input.kind,
-				displayName: input.displayName,
-				createdAt: input.createdAt,
-				passwordHash: nullableString(input.passwordHash),
-				cloudUserId: nullableString(input.cloudUserId)
-			}).returning())[0];
+			const row = (
+				await this.db
+					.insert(authIdentityTable)
+					.values({
+						id: input.id,
+						kind: input.kind,
+						displayName: input.displayName,
+						createdAt: input.createdAt,
+						passwordHash: nullableString(input.passwordHash),
+						cloudUserId: nullableString(input.cloudUserId),
+					})
+					.returning()
+			)[0];
 			if (!row) throw new Error("auth-store: createIdentity returned no row");
 			return rowToIdentity(row);
 		}
 		async findIdentity(id) {
-			const row = (await this.db.select().from(authIdentityTable).where(eq(authIdentityTable.id, id)).limit(1))[0];
+			const row = (
+				await this.db
+					.select()
+					.from(authIdentityTable)
+					.where(eq(authIdentityTable.id, id))
+					.limit(1)
+			)[0];
 			return row ? rowToIdentity(row) : null;
 		}
 		async findIdentityByCloudUserId(cloudUserId) {
-			const row = (await this.db.select().from(authIdentityTable).where(eq(authIdentityTable.cloudUserId, cloudUserId)).limit(1))[0];
+			const row = (
+				await this.db
+					.select()
+					.from(authIdentityTable)
+					.where(eq(authIdentityTable.cloudUserId, cloudUserId))
+					.limit(1)
+			)[0];
 			return row ? rowToIdentity(row) : null;
 		}
 		async findIdentityByDisplayName(displayName) {
-			const row = (await this.db.select().from(authIdentityTable).where(eq(authIdentityTable.displayName, displayName)).limit(1))[0];
+			const row = (
+				await this.db
+					.select()
+					.from(authIdentityTable)
+					.where(eq(authIdentityTable.displayName, displayName))
+					.limit(1)
+			)[0];
 			return row ? rowToIdentity(row) : null;
 		}
 		async updateIdentityPassword(id, passwordHash) {
-			await this.db.update(authIdentityTable).set({ passwordHash }).where(eq(authIdentityTable.id, id));
+			await this.db
+				.update(authIdentityTable)
+				.set({ passwordHash })
+				.where(eq(authIdentityTable.id, id));
 		}
 		async listIdentitiesByKind(kind) {
-			return (await this.db.select().from(authIdentityTable).where(eq(authIdentityTable.kind, kind))).map(rowToIdentity);
+			return (
+				await this.db
+					.select()
+					.from(authIdentityTable)
+					.where(eq(authIdentityTable.kind, kind))
+			).map(rowToIdentity);
 		}
 		async hasOwnerIdentity() {
-			return (await this.db.select({ id: authIdentityTable.id }).from(authIdentityTable).where(eq(authIdentityTable.kind, "owner")).limit(1)).length > 0;
+			return (
+				(
+					await this.db
+						.select({ id: authIdentityTable.id })
+						.from(authIdentityTable)
+						.where(eq(authIdentityTable.kind, "owner"))
+						.limit(1)
+				).length > 0
+			);
 		}
 		async createSession(input) {
-			const row = (await this.db.insert(authSessionTable).values({
-				id: input.id,
-				identityId: input.identityId,
-				kind: input.kind,
-				createdAt: input.createdAt,
-				lastSeenAt: input.lastSeenAt,
-				expiresAt: input.expiresAt,
-				rememberDevice: input.rememberDevice,
-				csrfSecret: input.csrfSecret,
-				ip: nullableString(input.ip),
-				userAgent: nullableString(input.userAgent),
-				scopes: input.scopes
-			}).returning())[0];
+			const row = (
+				await this.db
+					.insert(authSessionTable)
+					.values({
+						id: input.id,
+						identityId: input.identityId,
+						kind: input.kind,
+						createdAt: input.createdAt,
+						lastSeenAt: input.lastSeenAt,
+						expiresAt: input.expiresAt,
+						rememberDevice: input.rememberDevice,
+						csrfSecret: input.csrfSecret,
+						ip: nullableString(input.ip),
+						userAgent: nullableString(input.userAgent),
+						scopes: input.scopes,
+					})
+					.returning()
+			)[0];
 			if (!row) throw new Error("auth-store: createSession returned no row");
 			return rowToSession(row);
 		}
 		/**
-		* Look up a session by id. Returns `null` for unknown id, expired session,
-		* or revoked session — the caller MUST treat `null` as "not authenticated"
-		* and never as "transient error".
-		*/
+		 * Look up a session by id. Returns `null` for unknown id, expired session,
+		 * or revoked session — the caller MUST treat `null` as "not authenticated"
+		 * and never as "transient error".
+		 */
 		async findSession(id, now = Date.now()) {
-			const row = (await this.db.select().from(authSessionTable).where(eq(authSessionTable.id, id)).limit(1))[0];
+			const row = (
+				await this.db
+					.select()
+					.from(authSessionTable)
+					.where(eq(authSessionTable.id, id))
+					.limit(1)
+			)[0];
 			if (!row) return null;
 			const session = rowToSession(row);
 			if (session.revokedAt !== null) return null;
@@ -1032,52 +1322,93 @@ var init_auth_store = __esmMin((() => {
 			return session;
 		}
 		async revokeSession(id, now = Date.now()) {
-			const result = await this.db.update(authSessionTable).set({ revokedAt: now }).where(and(eq(authSessionTable.id, id), isNull(authSessionTable.revokedAt)));
+			const result = await this.db
+				.update(authSessionTable)
+				.set({ revokedAt: now })
+				.where(
+					and(eq(authSessionTable.id, id), isNull(authSessionTable.revokedAt)),
+				);
 			return typeof result.rowCount === "number" ? result.rowCount > 0 : true;
 		}
 		/**
-		* Slide the browser session forward: bump `lastSeenAt` and extend
-		* `expiresAt`. Caller computes the new `expiresAt` so the store stays
-		* policy-free.
-		*/
+		 * Slide the browser session forward: bump `lastSeenAt` and extend
+		 * `expiresAt`. Caller computes the new `expiresAt` so the store stays
+		 * policy-free.
+		 */
 		async touchSession(id, lastSeenAt, expiresAt) {
-			await this.db.update(authSessionTable).set({
-				lastSeenAt,
-				expiresAt
-			}).where(and(eq(authSessionTable.id, id), isNull(authSessionTable.revokedAt)));
+			await this.db
+				.update(authSessionTable)
+				.set({
+					lastSeenAt,
+					expiresAt,
+				})
+				.where(
+					and(eq(authSessionTable.id, id), isNull(authSessionTable.revokedAt)),
+				);
 		}
 		/**
-		* Revoke every active session for an identity, except optionally the one
-		* currently in use. Returns the number of rows updated. Implemented in a
-		* single statement — no read/write race window.
-		*/
-		async revokeAllSessionsForIdentity(identityId, now = Date.now(), exceptSessionId) {
-			const condition = exceptSessionId ? and(eq(authSessionTable.identityId, identityId), isNull(authSessionTable.revokedAt), ne(authSessionTable.id, exceptSessionId)) : and(eq(authSessionTable.identityId, identityId), isNull(authSessionTable.revokedAt));
-			const result = await this.db.update(authSessionTable).set({ revokedAt: now }).where(condition);
+		 * Revoke every active session for an identity, except optionally the one
+		 * currently in use. Returns the number of rows updated. Implemented in a
+		 * single statement — no read/write race window.
+		 */
+		async revokeAllSessionsForIdentity(
+			identityId,
+			now = Date.now(),
+			exceptSessionId,
+		) {
+			const condition = exceptSessionId
+				? and(
+						eq(authSessionTable.identityId, identityId),
+						isNull(authSessionTable.revokedAt),
+						ne(authSessionTable.id, exceptSessionId),
+					)
+				: and(
+						eq(authSessionTable.identityId, identityId),
+						isNull(authSessionTable.revokedAt),
+					);
+			const result = await this.db
+				.update(authSessionTable)
+				.set({ revokedAt: now })
+				.where(condition);
 			return typeof result.rowCount === "number" ? result.rowCount : 0;
 		}
 		/**
-		* Mark every active legacy machine session (scopes containing the literal
-		* "legacy" entry) as revoked. Used when a real auth method lands and the
-		* legacy bearer must be retired immediately.
-		*/
+		 * Mark every active legacy machine session (scopes containing the literal
+		 * "legacy" entry) as revoked. Used when a real auth method lands and the
+		 * legacy bearer must be retired immediately.
+		 */
 		async revokeLegacyBearerSessions(now = Date.now()) {
-			const allMachine = await this.db.select().from(authSessionTable).where(and(eq(authSessionTable.kind, "machine"), isNull(authSessionTable.revokedAt)));
+			const allMachine = await this.db
+				.select()
+				.from(authSessionTable)
+				.where(
+					and(
+						eq(authSessionTable.kind, "machine"),
+						isNull(authSessionTable.revokedAt),
+					),
+				);
 			let revoked = 0;
 			for (const row of allMachine) {
 				const session = rowToSession(row);
 				if (!session.scopes.includes("legacy")) continue;
-				await this.db.update(authSessionTable).set({ revokedAt: now }).where(eq(authSessionTable.id, session.id));
+				await this.db
+					.update(authSessionTable)
+					.set({ revokedAt: now })
+					.where(eq(authSessionTable.id, session.id));
 				revoked += 1;
 			}
 			return revoked;
 		}
 		/**
-		* List every active (unrevoked, unexpired) session for an identity, newest
-		* first. Used by `/api/auth/sessions` to populate the security UI.
-		*/
+		 * List every active (unrevoked, unexpired) session for an identity, newest
+		 * first. Used by `/api/auth/sessions` to populate the security UI.
+		 */
 		async listSessionsForIdentity(identityId, now = Date.now()) {
-			const rows = await this.db.select().from(authSessionTable).where(eq(authSessionTable.identityId, identityId)).orderBy(desc(authSessionTable.lastSeenAt));
+			const rows = await this.db
+				.select()
+				.from(authSessionTable)
+				.where(eq(authSessionTable.identityId, identityId))
+				.orderBy(desc(authSessionTable.lastSeenAt));
 			const out = [];
 			for (const row of rows) {
 				const session = rowToSession(row);
@@ -1088,34 +1419,49 @@ var init_auth_store = __esmMin((() => {
 			return out;
 		}
 		/**
-		* Atomic test-and-set on the bootstrap-token replay set.
-		*
-		* Returns `true` when this `jti` was unseen and is now recorded.
-		* Returns `false` when the `jti` was already present — indicating a replay.
-		*
-		* Implemented via INSERT … ON CONFLICT DO NOTHING so the check is one
-		* round trip and there is no TOCTOU window.
-		*/
+		 * Atomic test-and-set on the bootstrap-token replay set.
+		 *
+		 * Returns `true` when this `jti` was unseen and is now recorded.
+		 * Returns `false` when the `jti` was already present — indicating a replay.
+		 *
+		 * Implemented via INSERT … ON CONFLICT DO NOTHING so the check is one
+		 * round trip and there is no TOCTOU window.
+		 */
 		async recordJtiSeen(jti, now = Date.now()) {
-			return (await this.db.insert(authBootstrapJtiSeenTable).values({
-				jti,
-				seenAt: now
-			}).onConflictDoNothing({ target: authBootstrapJtiSeenTable.jti }).returning()).length > 0;
+			return (
+				(
+					await this.db
+						.insert(authBootstrapJtiSeenTable)
+						.values({
+							jti,
+							seenAt: now,
+						})
+						.onConflictDoNothing({ target: authBootstrapJtiSeenTable.jti })
+						.returning()
+				).length > 0
+			);
 		}
 		async pruneJtiSeenBefore(thresholdTs) {
-			await this.db.delete(authBootstrapJtiSeenTable).where(lte(authBootstrapJtiSeenTable.seenAt, thresholdTs));
+			await this.db
+				.delete(authBootstrapJtiSeenTable)
+				.where(lte(authBootstrapJtiSeenTable.seenAt, thresholdTs));
 		}
 		async appendAuditEvent(input) {
-			const row = (await this.db.insert(authAuditEventTable).values({
-				id: input.id,
-				ts: input.ts,
-				actorIdentityId: nullableString(input.actorIdentityId),
-				ip: nullableString(input.ip),
-				userAgent: nullableString(input.userAgent),
-				action: input.action,
-				outcome: input.outcome,
-				metadata: input.metadata
-			}).returning())[0];
+			const row = (
+				await this.db
+					.insert(authAuditEventTable)
+					.values({
+						id: input.id,
+						ts: input.ts,
+						actorIdentityId: nullableString(input.actorIdentityId),
+						ip: nullableString(input.ip),
+						userAgent: nullableString(input.userAgent),
+						action: input.action,
+						outcome: input.outcome,
+						metadata: input.metadata,
+					})
+					.returning()
+			)[0];
 			if (!row) throw new Error("auth-store: appendAuditEvent returned no row");
 			return {
 				id: row.id,
@@ -1125,7 +1471,7 @@ var init_auth_store = __esmMin((() => {
 				userAgent: row.userAgent ?? null,
 				action: row.action,
 				outcome: row.outcome === "failure" ? "failure" : "success",
-				metadata: row.metadata ?? {}
+				metadata: row.metadata ?? {},
 			};
 		}
 		async createOwnerBinding(input) {
@@ -1138,40 +1484,86 @@ var init_auth_store = __esmMin((() => {
 				instanceId: input.instanceId,
 				verifiedAt: input.verifiedAt,
 				pendingCodeHash: nullableString(input.pendingCodeHash),
-				pendingExpiresAt: input.pendingExpiresAt === null || input.pendingExpiresAt === void 0 ? null : input.pendingExpiresAt
+				pendingExpiresAt:
+					input.pendingExpiresAt === null || input.pendingExpiresAt === void 0
+						? null
+						: input.pendingExpiresAt,
 			});
 		}
 		async findOwnerBinding(id) {
-			const row = (await this.db.select().from(authOwnerBindingTable).where(eq(authOwnerBindingTable.id, id)).limit(1))[0];
+			const row = (
+				await this.db
+					.select()
+					.from(authOwnerBindingTable)
+					.where(eq(authOwnerBindingTable.id, id))
+					.limit(1)
+			)[0];
 			return row ? rowToOwnerBinding(row) : null;
 		}
 		async findOwnerBindingByPendingCodeHash(pendingCodeHash, instanceId) {
-			const row = (await this.db.select().from(authOwnerBindingTable).where(and(eq(authOwnerBindingTable.pendingCodeHash, pendingCodeHash), eq(authOwnerBindingTable.instanceId, instanceId))).limit(1))[0];
+			const row = (
+				await this.db
+					.select()
+					.from(authOwnerBindingTable)
+					.where(
+						and(
+							eq(authOwnerBindingTable.pendingCodeHash, pendingCodeHash),
+							eq(authOwnerBindingTable.instanceId, instanceId),
+						),
+					)
+					.limit(1)
+			)[0];
 			return row ? rowToOwnerBinding(row) : null;
 		}
 		async findOwnerBindingByConnectorPair(input) {
-			const row = (await this.db.select().from(authOwnerBindingTable).where(and(eq(authOwnerBindingTable.connector, input.connector), eq(authOwnerBindingTable.externalId, input.externalId), eq(authOwnerBindingTable.instanceId, input.instanceId))).limit(1))[0];
+			const row = (
+				await this.db
+					.select()
+					.from(authOwnerBindingTable)
+					.where(
+						and(
+							eq(authOwnerBindingTable.connector, input.connector),
+							eq(authOwnerBindingTable.externalId, input.externalId),
+							eq(authOwnerBindingTable.instanceId, input.instanceId),
+						),
+					)
+					.limit(1)
+			)[0];
 			return row ? rowToOwnerBinding(row) : null;
 		}
 		async listOwnerBindingsForIdentity(identityId) {
-			return (await this.db.select().from(authOwnerBindingTable).where(eq(authOwnerBindingTable.identityId, identityId)).orderBy(desc(authOwnerBindingTable.verifiedAt))).map(rowToOwnerBinding);
+			return (
+				await this.db
+					.select()
+					.from(authOwnerBindingTable)
+					.where(eq(authOwnerBindingTable.identityId, identityId))
+					.orderBy(desc(authOwnerBindingTable.verifiedAt))
+			).map(rowToOwnerBinding);
 		}
 		async updateOwnerBindingPending(id, pendingCodeHash, pendingExpiresAt) {
-			await this.db.update(authOwnerBindingTable).set({
-				pendingCodeHash,
-				pendingExpiresAt
-			}).where(eq(authOwnerBindingTable.id, id));
+			await this.db
+				.update(authOwnerBindingTable)
+				.set({
+					pendingCodeHash,
+					pendingExpiresAt,
+				})
+				.where(eq(authOwnerBindingTable.id, id));
 		}
 		async markOwnerBindingVerified(id, verifiedAt, displayHandle) {
-			await this.db.update(authOwnerBindingTable).set({
-				verifiedAt,
-				displayHandle,
-				pendingCodeHash: null,
-				pendingExpiresAt: null
-			}).where(eq(authOwnerBindingTable.id, id));
+			await this.db
+				.update(authOwnerBindingTable)
+				.set({
+					verifiedAt,
+					displayHandle,
+					pendingCodeHash: null,
+					pendingExpiresAt: null,
+				})
+				.where(eq(authOwnerBindingTable.id, id));
 		}
 		async deleteOwnerBinding(id) {
-			const result = await this.db.delete(authOwnerBindingTable).where(eq(authOwnerBindingTable.id, id));
+			const result = await this.db
+				.delete(authOwnerBindingTable)
+				.where(eq(authOwnerBindingTable.id, id));
 			return typeof result.rowCount === "number" ? result.rowCount > 0 : true;
 		}
 		async createOwnerLoginToken(input) {
@@ -1180,65 +1572,88 @@ var init_auth_store = __esmMin((() => {
 				identityId: input.identityId,
 				bindingId: input.bindingId,
 				issuedAt: input.issuedAt,
-				expiresAt: input.expiresAt
+				expiresAt: input.expiresAt,
 			});
 		}
 		async findOwnerLoginToken(tokenHash) {
-			const row = (await this.db.select().from(authOwnerLoginTokenTable).where(eq(authOwnerLoginTokenTable.tokenHash, tokenHash)).limit(1))[0];
+			const row = (
+				await this.db
+					.select()
+					.from(authOwnerLoginTokenTable)
+					.where(eq(authOwnerLoginTokenTable.tokenHash, tokenHash))
+					.limit(1)
+			)[0];
 			return row ? rowToOwnerLoginToken(row) : null;
 		}
 		/**
-		* Atomically mark the token as consumed. Returns true when the consume
-		* succeeded (token existed, was unconsumed, was unexpired). Returns
-		* false otherwise — the caller MUST treat false as "auth failure" and
-		* never as "transient error".
-		*/
+		 * Atomically mark the token as consumed. Returns true when the consume
+		 * succeeded (token existed, was unconsumed, was unexpired). Returns
+		 * false otherwise — the caller MUST treat false as "auth failure" and
+		 * never as "transient error".
+		 */
 		async consumeOwnerLoginToken(tokenHash, now) {
-			const result = await this.db.update(authOwnerLoginTokenTable).set({ consumedAt: now }).where(and(eq(authOwnerLoginTokenTable.tokenHash, tokenHash), isNull(authOwnerLoginTokenTable.consumedAt)));
+			const result = await this.db
+				.update(authOwnerLoginTokenTable)
+				.set({ consumedAt: now })
+				.where(
+					and(
+						eq(authOwnerLoginTokenTable.tokenHash, tokenHash),
+						isNull(authOwnerLoginTokenTable.consumedAt),
+					),
+				);
 			return typeof result.rowCount === "number" ? result.rowCount > 0 : true;
 		}
 	};
-}));
+});
 
 //#endregion
 //#region node_modules/.bun/@elizaos+app-core@2.0.0-alpha.537+72829346cb4c43b1/node_modules/@elizaos/app-core/packages/app-core/src/api/auth.js
 /**
-* API authentication helpers extracted from server.ts.
-*
-* Centralises token extraction from multiple header formats and
-* timing-safe comparison so route handlers don't reimplement it.
-*/
+ * API authentication helpers extracted from server.ts.
+ *
+ * Centralises token extraction from multiple header formats and
+ * timing-safe comparison so route handlers don't reimplement it.
+ */
 /**
-* Normalise a potentially multi-valued HTTP header into a single string.
-* Returns `null` when the header is absent or empty.
-*/
+ * Normalise a potentially multi-valued HTTP header into a single string.
+ * Returns `null` when the header is absent or empty.
+ */
 function extractHeaderValue(value) {
 	if (typeof value === "string") return value;
 	return Array.isArray(value) && typeof value[0] === "string" ? value[0] : null;
 }
 /**
-* Read the configured API token from env (`ELIZA_API_TOKEN` / `ELIZA_API_TOKEN`).
-* Returns `null` when no token is configured (open access).
-*/
+ * Read the configured API token from env (`ELIZA_API_TOKEN` / `ELIZA_API_TOKEN`).
+ * Returns `null` when no token is configured (open access).
+ */
 function getCompatApiToken$1() {
 	return resolveApiToken(process.env);
 }
 /**
-* Extract the API token from an incoming request.
-*
-* Checks (in order):
-*   1. `Authorization: Bearer <token>`
-*   2. `x-eliza-token`
-*   3. `x-elizaos-token`
-*   4. `x-api-key` / `x-api-token`
-*/
+ * Extract the API token from an incoming request.
+ *
+ * Checks (in order):
+ *   1. `Authorization: Bearer <token>`
+ *   2. `x-eliza-token`
+ *   3. `x-elizaos-token`
+ *   4. `x-api-key` / `x-api-token`
+ */
 function getProvidedApiToken(req) {
-	const authHeader = extractHeaderValue(req.headers.authorization)?.slice(0, 1024)?.trim();
+	const authHeader = extractHeaderValue(req.headers.authorization)
+		?.slice(0, 1024)
+		?.trim();
 	if (authHeader) {
 		const match = /^Bearer\s{1,8}(.+)$/i.exec(authHeader);
 		if (match?.[1]) return match[1].trim();
 	}
-	return (extractHeaderValue(req.headers["x-eliza-token"]) ?? extractHeaderValue(req.headers["x-elizaos-token"]) ?? extractHeaderValue(req.headers["x-api-key"]) ?? extractHeaderValue(req.headers["x-api-token"]))?.trim() || null;
+	return (
+		(
+			extractHeaderValue(req.headers["x-eliza-token"]) ??
+			extractHeaderValue(req.headers["x-elizaos-token"]) ??
+			extractHeaderValue(req.headers["x-api-key"]) ??
+			extractHeaderValue(req.headers["x-api-token"])
+		)?.trim() || null
+	);
 }
 function isAuthRateLimited(ip) {
 	const key = ip ?? "unknown";
@@ -1251,21 +1666,22 @@ function recordFailedAuth(ip) {
 	const key = ip ?? "unknown";
 	const now = Date.now();
 	const entry = authAttempts.get(key);
-	if (!entry || now > entry.resetAt) authAttempts.set(key, {
-		count: 1,
-		resetAt: now + AUTH_RATE_LIMIT_WINDOW_MS
-	});
+	if (!entry || now > entry.resetAt)
+		authAttempts.set(key, {
+			count: 1,
+			resetAt: now + AUTH_RATE_LIMIT_WINDOW_MS,
+		});
 	else entry.count += 1;
 }
 /**
-* Gate a request behind the configured API token (sync, bearer-only).
-*
-* Use this only on cold paths where no `AuthStore` exists yet (boot
-* sequence, or before plugin-sql has attached its adapter). Every route
-* that runs after the runtime is up should use
-* {@link ensureCompatApiAuthorizedAsync} instead, which understands
-* session cookies + CSRF.
-*/
+ * Gate a request behind the configured API token (sync, bearer-only).
+ *
+ * Use this only on cold paths where no `AuthStore` exists yet (boot
+ * sequence, or before plugin-sql has attached its adapter). Every route
+ * that runs after the runtime is up should use
+ * {@link ensureCompatApiAuthorizedAsync} instead, which understands
+ * session cookies + CSRF.
+ */
 function ensureCompatApiAuthorized(req, res) {
 	if (isTrustedLocalRequest(req)) return true;
 	const expectedToken = getCompatApiToken$1();
@@ -1285,24 +1701,24 @@ function ensureCompatApiAuthorized(req, res) {
 	return false;
 }
 /**
-* Cookie-aware authorisation gate. Tries (in order):
-*   1. valid `eliza_session` cookie → session in DB → authorised.
-*   2. configured static bearer (legacy) → 14-day grace window via
-*      `decideLegacyBearer`; emits the deprecation header on success.
-*   3. open-access fallback when no token is configured.
-*
-* For cookie-bound sessions, state-changing methods (POST/PUT/PATCH/DELETE)
-* MUST present a valid `x-eliza-csrf` header that matches the per-session
-* `csrfSecret` derivation. Reject 403 otherwise. Bearer-auth requests are
-* exempt (not cookie-bound, so no CSRF risk).
-*
-* Returns `true` when the request may proceed; `false` after sending a
-* 401/403/429.
-*
-* Caller supplies an `AuthStore` because importing one here would create a
-* cycle with `services/auth-store.ts`. Routes typically construct one
-* once per handler.
-*/
+ * Cookie-aware authorisation gate. Tries (in order):
+ *   1. valid `eliza_session` cookie → session in DB → authorised.
+ *   2. configured static bearer (legacy) → 14-day grace window via
+ *      `decideLegacyBearer`; emits the deprecation header on success.
+ *   3. open-access fallback when no token is configured.
+ *
+ * For cookie-bound sessions, state-changing methods (POST/PUT/PATCH/DELETE)
+ * MUST present a valid `x-eliza-csrf` header that matches the per-session
+ * `csrfSecret` derivation. Reject 403 otherwise. Bearer-auth requests are
+ * exempt (not cookie-bound, so no CSRF risk).
+ *
+ * Returns `true` when the request may proceed; `false` after sending a
+ * 401/403/429.
+ *
+ * Caller supplies an `AuthStore` because importing one here would create a
+ * cycle with `services/auth-store.ts`. Routes typically construct one
+ * once per handler.
+ */
 async function ensureCompatApiAuthorizedAsync(req, res, options) {
 	const ip = req.socket?.remoteAddress ?? null;
 	if (isAuthRateLimited(ip)) {
@@ -1314,10 +1730,19 @@ async function ensureCompatApiAuthorizedAsync(req, res, options) {
 	const csrfRequired = !options.skipCsrf && CSRF_REQUIRED_METHODS.has(method);
 	const sessionCookie = readCookie(req, SESSION_COOKIE_NAME);
 	if (sessionCookie) {
-		const session = await findActiveSession(options.store, sessionCookie, options.now).catch(() => null);
+		const session = await findActiveSession(
+			options.store,
+			sessionCookie,
+			options.now,
+		).catch(() => null);
 		if (session) {
 			if (csrfRequired) {
-				if (!verifyCsrfToken(session, extractHeaderValue(req.headers[CSRF_HEADER_NAME]))) {
+				if (
+					!verifyCsrfToken(
+						session,
+						extractHeaderValue(req.headers[CSRF_HEADER_NAME]),
+					)
+				) {
 					sendJsonError(res, 403, "csrf_required");
 					return false;
 				}
@@ -1327,28 +1752,48 @@ async function ensureCompatApiAuthorizedAsync(req, res, options) {
 	}
 	const provided = getProvidedApiToken(req);
 	if (provided) {
-		if (await findActiveSession(options.store, provided, options.now).catch(() => null)) return true;
+		if (
+			await findActiveSession(options.store, provided, options.now).catch(
+				() => null,
+			)
+		)
+			return true;
 		const expectedToken = getCompatApiToken$1();
 		if (expectedToken && tokenMatches(expectedToken, provided)) {
 			const userAgent = extractHeaderValue(req.headers["user-agent"]);
-			const { decideLegacyBearer, recordLegacyBearerRejection, recordLegacyBearerUse, LEGACY_DEPRECATION_HEADER } = await Promise.resolve().then(() => (init_legacy_bearer(), legacy_bearer_exports));
-			const decision = await decideLegacyBearer(options.store, process.env, options.now);
+			const {
+				decideLegacyBearer,
+				recordLegacyBearerRejection,
+				recordLegacyBearerUse,
+				LEGACY_DEPRECATION_HEADER,
+			} = await Promise.resolve().then(
+				() => (init_legacy_bearer(), legacy_bearer_exports),
+			);
+			const decision = await decideLegacyBearer(
+				options.store,
+				process.env,
+				options.now,
+			);
 			if (decision.allowed) {
 				if (!res.headersSent) res.setHeader(LEGACY_DEPRECATION_HEADER, "1");
 				await recordLegacyBearerUse(options.store, {
 					ip,
-					userAgent
+					userAgent,
 				}).catch((err) => {
-					logger.error(`[auth] legacy bearer audit failed: ${err instanceof Error ? err.message : String(err)}`);
+					logger.error(
+						`[auth] legacy bearer audit failed: ${err instanceof Error ? err.message : String(err)}`,
+					);
 				});
 				return true;
 			}
 			await recordLegacyBearerRejection(options.store, {
 				ip,
 				userAgent,
-				reason: decision.reason ?? "post_grace"
+				reason: decision.reason ?? "post_grace",
 			}).catch((err) => {
-				logger.error(`[auth] legacy bearer rejection audit failed: ${err instanceof Error ? err.message : String(err)}`);
+				logger.error(
+					`[auth] legacy bearer rejection audit failed: ${err instanceof Error ? err.message : String(err)}`,
+				);
 			});
 			recordFailedAuth(ip);
 			sendJsonError(res, 401, "Unauthorized");
@@ -1364,12 +1809,12 @@ async function ensureCompatApiAuthorizedAsync(req, res, options) {
 	return false;
 }
 /**
-* Read the named cookie from the `cookie` header. Returns `null` when the
-* header is missing or the cookie is not set.
-*
-* Pulled out here so route handlers don't reimplement parsing — the existing
-* `compat-route-shared.ts` predates the cookie-based session model.
-*/
+ * Read the named cookie from the `cookie` header. Returns `null` when the
+ * header is missing or the cookie is not set.
+ *
+ * Pulled out here so route handlers don't reimplement parsing — the existing
+ * `compat-route-shared.ts` predates the cookie-based session model.
+ */
 function readCookie(req, name) {
 	const raw = extractHeaderValue(req.headers.cookie);
 	if (!raw) return null;
@@ -1383,45 +1828,56 @@ function readCookie(req, name) {
 	return null;
 }
 /**
-* Gate a sensitive route. Without a configured token, only trusted same-machine
-* dashboard requests are allowed. Remote callers need a real auth method.
-*/
+ * Gate a sensitive route. Without a configured token, only trusted same-machine
+ * dashboard requests are allowed. Remote callers need a real auth method.
+ */
 function ensureCompatSensitiveRouteAuthorized(req, res) {
 	if (!getCompatApiToken$1()) {
 		if (isTrustedLocalRequest(req)) return true;
-		sendJsonError(res, 403, "Sensitive endpoint requires API token authentication");
+		sendJsonError(
+			res,
+			403,
+			"Sensitive endpoint requires API token authentication",
+		);
 		return false;
 	}
 	return ensureCompatApiAuthorized(req, res);
 }
 /**
-* Canonical async route guard. Replaces every call site of
-* {@link ensureCompatApiAuthorized}. Behaviour:
-*
-*   - When the runtime DB is up, delegate to
-*     {@link ensureCompatApiAuthorizedAsync} so cookie + CSRF +
-*     legacy-bearer + machine-session paths all work.
-*   - When the runtime DB is not yet available (early boot), fall back
-*     to {@link ensureCompatApiAuthorized} (bearer-only). This preserves
-*     the existing behaviour for cold boot probes that ran before the
-*     auth subsystem was available.
-*
-* Pass `skipCsrf: true` for routes that mint cookies / handle their own
-* CSRF (login, setup, bootstrap exchange) where the SPA cannot present a
-* CSRF token because the session doesn't exist yet.
-*/
+ * Canonical async route guard. Replaces every call site of
+ * {@link ensureCompatApiAuthorized}. Behaviour:
+ *
+ *   - When the runtime DB is up, delegate to
+ *     {@link ensureCompatApiAuthorizedAsync} so cookie + CSRF +
+ *     legacy-bearer + machine-session paths all work.
+ *   - When the runtime DB is not yet available (early boot), fall back
+ *     to {@link ensureCompatApiAuthorized} (bearer-only). This preserves
+ *     the existing behaviour for cold boot probes that ran before the
+ *     auth subsystem was available.
+ *
+ * Pass `skipCsrf: true` for routes that mint cookies / handle their own
+ * CSRF (login, setup, bootstrap exchange) where the SPA cannot present a
+ * CSRF token because the session doesn't exist yet.
+ */
 async function ensureRouteAuthorized(req, res, state, options = {}) {
-	const db = (state.current?.adapter)?.db;
+	const db = state.current?.adapter?.db;
 	if (!db) return ensureCompatApiAuthorized(req, res);
-	const { AuthStore } = await Promise.resolve().then(() => (init_auth_store(), auth_store_exports));
+	const { AuthStore } = await Promise.resolve().then(
+		() => (init_auth_store(), auth_store_exports),
+	);
 	return ensureCompatApiAuthorizedAsync(req, res, {
 		store: new AuthStore(db),
 		now: options.now,
-		skipCsrf: options.skipCsrf
+		skipCsrf: options.skipCsrf,
 	});
 }
-var AUTH_RATE_LIMIT_WINDOW_MS, AUTH_RATE_LIMIT_MAX, authAttempts, authSweepTimer, CSRF_REQUIRED_METHODS, SESSION_COOKIE_NAME;
-var init_auth = __esmMin((() => {
+var AUTH_RATE_LIMIT_WINDOW_MS,
+	AUTH_RATE_LIMIT_MAX,
+	authAttempts,
+	authSweepTimer,
+	CSRF_REQUIRED_METHODS,
+	SESSION_COOKIE_NAME;
+var init_auth = __esmMin(() => {
 	init_sessions();
 	init_tokens();
 	init_compat_route_shared();
@@ -1431,17 +1887,14 @@ var init_auth = __esmMin((() => {
 	authAttempts = /* @__PURE__ */ new Map();
 	authSweepTimer = setInterval(() => {
 		const now = Date.now();
-		for (const [key, entry] of authAttempts) if (now > entry.resetAt) authAttempts.delete(key);
+		for (const [key, entry] of authAttempts)
+			if (now > entry.resetAt) authAttempts.delete(key);
 	}, 300 * 1e3);
-	if (typeof authSweepTimer === "object" && "unref" in authSweepTimer) authSweepTimer.unref();
-	CSRF_REQUIRED_METHODS = new Set([
-		"POST",
-		"PUT",
-		"PATCH",
-		"DELETE"
-	]);
+	if (typeof authSweepTimer === "object" && "unref" in authSweepTimer)
+		authSweepTimer.unref();
+	CSRF_REQUIRED_METHODS = new Set(["POST", "PUT", "PATCH", "DELETE"]);
 	SESSION_COOKIE_NAME = "eliza_session";
-}));
+});
 
 //#endregion
 //#region node_modules/.bun/@elizaos+app-core@2.0.0-alpha.537+72829346cb4c43b1/node_modules/@elizaos/app-core/packages/app-core/src/api/automation-node-contributors.js
@@ -1454,59 +1907,65 @@ function listAutomationNodeContributors() {
 //#endregion
 //#region node_modules/.bun/@elizaos+app-core@2.0.0-alpha.537+72829346cb4c43b1/node_modules/@elizaos/app-core/packages/app-core/src/platform/is-native-server.js
 /**
-* Server-safe native-platform detection.
-*
-* On Capacitor-hosted mobile (iOS / Android), an in-process Node / Bun
-* runtime boots the Eliza server inside the native shell, and Capacitor
-* installs a global `Capacitor` object. On desktop (Electrobun) and plain
-* Node / Bun servers, that global is absent.
-*
-* This module purposely does not import `@capacitor/core` so it is safe to
-* use from server-only code (routes, sidecar lifecycle, config resolution)
-* without pulling DOM/renderer concerns into a Node bundle.
-*/
+ * Server-safe native-platform detection.
+ *
+ * On Capacitor-hosted mobile (iOS / Android), an in-process Node / Bun
+ * runtime boots the Eliza server inside the native shell, and Capacitor
+ * installs a global `Capacitor` object. On desktop (Electrobun) and plain
+ * Node / Bun servers, that global is absent.
+ *
+ * This module purposely does not import `@capacitor/core` so it is safe to
+ * use from server-only code (routes, sidecar lifecycle, config resolution)
+ * without pulling DOM/renderer concerns into a Node bundle.
+ */
 function isNativeServerPlatform() {
 	return globalThis.Capacitor?.isNativePlatform?.() === true;
 }
-var init_is_native_server = __esmMin((() => {}));
+var init_is_native_server = __esmMin(() => {});
 
 //#endregion
 //#region node_modules/.bun/@elizaos+app-core@2.0.0-alpha.537+72829346cb4c43b1/node_modules/@elizaos/app-core/packages/app-core/src/services/n8n-mode.js
 init_is_native_server();
 /**
-* Shared n8n mode resolution — cloud vs local vs disabled.
-*
-* Used by the HTTP routes to report state and by the autostart bridge to
-* decide whether to spawn the local sidecar at runtime boot. Keeping the
-* decision in one place ensures the UI status surface and the boot-time
-* spawn stay in lockstep.
-*
-* Desired mode is a pure function of:
-*   - cloud auth state (CLOUD_AUTH.isAuthenticated() or config.cloud.apiKey)
-*   - config.n8n.localEnabled
-*   - whether we are on a mobile (Capacitor) shell where the sidecar
-*     cannot run regardless of user setting
-*/
+ * Shared n8n mode resolution — cloud vs local vs disabled.
+ *
+ * Used by the HTTP routes to report state and by the autostart bridge to
+ * decide whether to spawn the local sidecar at runtime boot. Keeping the
+ * decision in one place ensures the UI status surface and the boot-time
+ * spawn stay in lockstep.
+ *
+ * Desired mode is a pure function of:
+ *   - cloud auth state (CLOUD_AUTH.isAuthenticated() or config.cloud.apiKey)
+ *   - config.n8n.localEnabled
+ *   - whether we are on a mobile (Capacitor) shell where the sidecar
+ *     cannot run regardless of user setting
+ */
 /**
-* Returns true when a cloud session is usable for n8n. Mirrors the
-* semantics used by cloud-status-routes: a live CLOUD_AUTH service counts,
-* and a configured API key is accepted as a fallback even without a
-* runtime service (matches the dev path where the service is not yet
-* registered but credentials are present).
-*/
+ * Returns true when a cloud session is usable for n8n. Mirrors the
+ * semantics used by cloud-status-routes: a live CLOUD_AUTH service counts,
+ * and a configured API key is accepted as a fallback even without a
+ * runtime service (matches the dev path where the service is not yet
+ * registered but credentials are present).
+ */
 function isCloudConnected(config, runtime) {
 	if (!config.cloud?.enabled) return false;
-	if ((runtime && typeof runtime.getService === "function" ? runtime.getService("CLOUD_AUTH") : null)?.isAuthenticated?.()) return true;
+	if (
+		(runtime && typeof runtime.getService === "function"
+			? runtime.getService("CLOUD_AUTH")
+			: null
+		)?.isAuthenticated?.()
+	)
+		return true;
 	return Boolean(config.cloud.apiKey?.trim());
 }
 /**
-* Pure mode resolver. No side effects, no I/O — safe to call from any
-* context (route handler, autostart tick, status probe).
-*/
+ * Pure mode resolver. No side effects, no I/O — safe to call from any
+ * context (route handler, autostart tick, status probe).
+ */
 function resolveN8nMode(input) {
 	const { config, runtime, native } = input;
 	const cloudConnected = isCloudConnected(config, runtime);
-	const localEnabled = native ? false : config.n8n?.localEnabled ?? true;
+	const localEnabled = native ? false : (config.n8n?.localEnabled ?? true);
 	let mode;
 	if (cloudConnected) mode = "cloud";
 	else if (localEnabled) mode = "local";
@@ -1514,35 +1973,36 @@ function resolveN8nMode(input) {
 	return {
 		mode,
 		localEnabled,
-		cloudConnected
+		cloudConnected,
 	};
 }
 
 //#endregion
 //#region node_modules/.bun/@elizaos+app-core@2.0.0-alpha.537+72829346cb4c43b1/node_modules/@elizaos/app-core/packages/app-core/src/api/n8n-clarification.js
 /**
-* Clarification helpers for n8n workflow generation routes.
-*
-* - `coerceClarifications`: normalizes the plugin's mixed-shape
-*   `_meta.requiresClarification` (legacy strings + structured objects)
-*   into typed `N8nClarificationRequest[]`.
-* - `setByDotPath`: applies `{paramPath, value}` resolutions to a draft
-*   workflow JSON in place. Supports dot segments and bracketed-string
-*   segments (`nodes["Discord Send"].parameters.channelId`).
-*
-* Kept out of `n8n-routes.ts` so the handlers stay focused on transport.
-*/
+ * Clarification helpers for n8n workflow generation routes.
+ *
+ * - `coerceClarifications`: normalizes the plugin's mixed-shape
+ *   `_meta.requiresClarification` (legacy strings + structured objects)
+ *   into typed `N8nClarificationRequest[]`.
+ * - `setByDotPath`: applies `{paramPath, value}` resolutions to a draft
+ *   workflow JSON in place. Supports dot segments and bracketed-string
+ *   segments (`nodes["Discord Send"].parameters.channelId`).
+ *
+ * Kept out of `n8n-routes.ts` so the handlers stay focused on transport.
+ */
 const VALID_KINDS = new Set([
 	"target_channel",
 	"target_server",
 	"recipient",
 	"value",
-	"free_text"
+	"free_text",
 ]);
 function isStructuredClarification(v) {
 	if (!v || typeof v !== "object") return false;
 	const o = v;
-	if (typeof o.question !== "string" || o.question.trim().length === 0) return false;
+	if (typeof o.question !== "string" || o.question.trim().length === 0)
+		return false;
 	return true;
 }
 function coerceClarifications(raw) {
@@ -1555,7 +2015,7 @@ function coerceClarifications(raw) {
 			out.push({
 				kind: "free_text",
 				question: trimmed,
-				paramPath: ""
+				paramPath: "",
 			});
 			continue;
 		}
@@ -1565,24 +2025,29 @@ function coerceClarifications(raw) {
 		const kind = VALID_KINDS.has(kindRaw) ? kindRaw : "free_text";
 		const platform = typeof o.platform === "string" ? o.platform : void 0;
 		let scope;
-		if (o.scope && typeof o.scope === "object" && typeof o.scope.guildId === "string") scope = { guildId: o.scope.guildId };
+		if (
+			o.scope &&
+			typeof o.scope === "object" &&
+			typeof o.scope.guildId === "string"
+		)
+			scope = { guildId: o.scope.guildId };
 		const paramPath = typeof o.paramPath === "string" ? o.paramPath : "";
 		out.push({
 			kind,
 			platform,
 			scope,
 			question: o.question.trim(),
-			paramPath
+			paramPath,
 		});
 	}
 	return out;
 }
 /**
-* Tokenizer for paramPath. Handles three segment forms:
-*   - dot identifier:        `parameters`
-*   - bracketed quoted key:  `["Discord Send"]` or `['k']`
-*   - bracketed numeric:     `[0]`
-*/
+ * Tokenizer for paramPath. Handles three segment forms:
+ *   - dot identifier:        `parameters`
+ *   - bracketed quoted key:  `["Discord Send"]` or `['k']`
+ *   - bracketed numeric:     `[0]`
+ */
 function parseParamPath(path) {
 	const segments = [];
 	let i = 0;
@@ -1600,7 +2065,8 @@ function parseParamPath(path) {
 			if (inner.length === 0) throw new Error(`empty bracket at index ${i}`);
 			const first = inner[0];
 			const last = inner[inner.length - 1];
-			if (first === "\"" && last === "\"" || first === "'" && last === "'") segments.push(inner.slice(1, -1));
+			if ((first === '"' && last === '"') || (first === "'" && last === "'"))
+				segments.push(inner.slice(1, -1));
 			else if (/^[0-9]+$/.test(inner)) segments.push(inner);
 			else segments.push(inner);
 			i = close + 1;
@@ -1617,15 +2083,15 @@ function parseParamPath(path) {
 	return segments;
 }
 /**
-* Mutate `obj` so that its value at `paramPath` becomes `value`. Creates
-* intermediate plain objects as needed; never replaces an existing
-* non-object intermediate (those throw, since the path is invalid).
-*
-* Numeric segments index into arrays. If the segment expects an array but
-* the existing intermediate is a non-array object, we treat it as an
-* object key (n8n workflow shapes mix arrays and objects fairly freely;
-* we err on the side of preserving the existing structure).
-*/
+ * Mutate `obj` so that its value at `paramPath` becomes `value`. Creates
+ * intermediate plain objects as needed; never replaces an existing
+ * non-object intermediate (those throw, since the path is invalid).
+ *
+ * Numeric segments index into arrays. If the segment expects an array but
+ * the existing intermediate is a non-array object, we treat it as an
+ * object key (n8n workflow shapes mix arrays and objects fairly freely;
+ * we err on the side of preserving the existing structure).
+ */
 function setByDotPath(obj, paramPath, value) {
 	const segments = parseParamPath(paramPath);
 	let cur = obj;
@@ -1633,14 +2099,20 @@ function setByDotPath(obj, paramPath, value) {
 		const seg = segments[i];
 		const isArrayIndex = /^[0-9]+$/.test(seg);
 		if (Array.isArray(cur)) {
-			if (!isArrayIndex) throw new Error(`paramPath segment "${seg}" is not a valid array index at depth ${i}`);
+			if (!isArrayIndex)
+				throw new Error(
+					`paramPath segment "${seg}" is not a valid array index at depth ${i}`,
+				);
 			const idx = Number(seg);
 			let next = cur[idx];
 			if (next === void 0 || next === null) {
 				next = /^[0-9]+$/.test(segments[i + 1]) ? [] : {};
 				cur[idx] = next;
 			}
-			if (typeof next !== "object" || next === null) throw new Error(`paramPath cannot descend into non-object at "${seg}" (depth ${i})`);
+			if (typeof next !== "object" || next === null)
+				throw new Error(
+					`paramPath cannot descend into non-object at "${seg}" (depth ${i})`,
+				);
 			cur = next;
 			continue;
 		}
@@ -1649,42 +2121,50 @@ function setByDotPath(obj, paramPath, value) {
 			next = /^[0-9]+$/.test(segments[i + 1]) ? [] : {};
 			cur[seg] = next;
 		}
-		if (typeof next !== "object" || next === null) throw new Error(`paramPath cannot descend into non-object at "${seg}" (depth ${i})`);
+		if (typeof next !== "object" || next === null)
+			throw new Error(
+				`paramPath cannot descend into non-object at "${seg}" (depth ${i})`,
+			);
 		cur = next;
 	}
 	const last = segments[segments.length - 1];
 	if (Array.isArray(cur)) {
-		if (!/^[0-9]+$/.test(last)) throw new Error(`paramPath terminal segment "${last}" must be numeric at array`);
+		if (!/^[0-9]+$/.test(last))
+			throw new Error(
+				`paramPath terminal segment "${last}" must be numeric at array`,
+			);
 		cur[Number(last)] = value;
 	} else cur[last] = value;
 }
 function applyResolutions(draft, resolutions) {
 	for (const r of resolutions) {
-		if (!r || typeof r.paramPath !== "string" || r.paramPath.length === 0) return {
-			ok: false,
-			error: "resolution missing paramPath"
-		};
-		if (typeof r.value !== "string") return {
-			ok: false,
-			error: "resolution value must be a string",
-			paramPath: r.paramPath
-		};
+		if (!r || typeof r.paramPath !== "string" || r.paramPath.length === 0)
+			return {
+				ok: false,
+				error: "resolution missing paramPath",
+			};
+		if (typeof r.value !== "string")
+			return {
+				ok: false,
+				error: "resolution value must be a string",
+				paramPath: r.paramPath,
+			};
 		try {
 			setByDotPath(draft, r.paramPath, r.value);
 		} catch (err) {
 			return {
 				ok: false,
 				error: err instanceof Error ? err.message : String(err),
-				paramPath: r.paramPath
+				paramPath: r.paramPath,
 			};
 		}
 	}
 	return { ok: true };
 }
 /**
-* Drop the resolved clarifications from the draft's `_meta` so the next
-* read of the draft does not re-prompt the user for the same parameter.
-*/
+ * Drop the resolved clarifications from the draft's `_meta` so the next
+ * read of the draft does not re-prompt the user for the same parameter.
+ */
 function pruneResolvedClarifications(draft, resolved) {
 	const meta = draft._meta;
 	if (!meta || typeof meta !== "object") return;
@@ -1702,10 +2182,10 @@ function pruneResolvedClarifications(draft, resolved) {
 	else meta.requiresClarification = remaining;
 }
 /**
-* Build a catalog snapshot for the platforms referenced by `clarifications`.
-* If multiple clarifications reference the same platform, we union their
-* groupId scopes — broader queries (no scope) always win.
-*/
+ * Build a catalog snapshot for the platforms referenced by `clarifications`.
+ * If multiple clarifications reference the same platform, we union their
+ * groupId scopes — broader queries (no scope) always win.
+ */
 async function buildCatalogSnapshot(catalog, clarifications) {
 	const platforms = /* @__PURE__ */ new Set();
 	for (const c of clarifications) if (c.platform) platforms.add(c.platform);
@@ -1727,48 +2207,48 @@ async function buildCatalogSnapshot(catalog, clarifications) {
 //#endregion
 //#region node_modules/.bun/@elizaos+app-core@2.0.0-alpha.537+72829346cb4c43b1/node_modules/@elizaos/app-core/packages/app-core/src/services/n8n-sidecar.js
 /**
-* n8n local sidecar: lifecycle + readiness + API-key provisioning.
-*
-* Fallback for the @elizaos/plugin-n8n-workflow plugin when the user has
-* no Eliza Cloud session. Spawns `bunx n8n@<pinned>` (no package.json
-* dependency on n8n — that tree is ~300MB), polls `/rest/login` until
-* the instance is reachable, then provisions a personal API key via
-* `/rest/me/api-keys` so the plugin has `N8N_HOST` + `N8N_API_KEY` to
-* talk to.
-*
-* ── Lifecycle state diagram ─────────────────────────────────────────
-*
-*   stopped ──start()──▶ starting ──ready_probe_ok──▶ ready
-*      ▲                    │
-*      │                    └──start_error / probe_timeout──▶ error
-*      │                                                         │
-*      │                                                  retry_backoff
-*      │                                                         │
-*      ├────stop()──── ready                                      │
-*      │                    │                                     │
-*      │                   crash                                  │
-*      │                    ▼                                     │
-*      │                 error ◀──max_retries_exceeded────────────┘
-*      │                    │
-*      └────stop()──────────┘
-*
-* Transitions are emitted via an observable so the UI can live-render
-* "Cloud n8n connected" vs "Local n8n starting…". Secrets never cross
-* the logger at INFO — the provisioned API key is logged as a redacted
-* fingerprint only.
-*
-* Matches the develop sidecar conventions used by StewardSidecar:
-*   - Prefers `Bun.spawn` when available, falls back to node:child_process
-*   - `onStatusChange` + `onLog` callbacks in config (parallels steward)
-*   - Bounded restart with exponential backoff
-*/
+ * n8n local sidecar: lifecycle + readiness + API-key provisioning.
+ *
+ * Fallback for the @elizaos/plugin-n8n-workflow plugin when the user has
+ * no Eliza Cloud session. Spawns `bunx n8n@<pinned>` (no package.json
+ * dependency on n8n — that tree is ~300MB), polls `/rest/login` until
+ * the instance is reachable, then provisions a personal API key via
+ * `/rest/me/api-keys` so the plugin has `N8N_HOST` + `N8N_API_KEY` to
+ * talk to.
+ *
+ * ── Lifecycle state diagram ─────────────────────────────────────────
+ *
+ *   stopped ──start()──▶ starting ──ready_probe_ok──▶ ready
+ *      ▲                    │
+ *      │                    └──start_error / probe_timeout──▶ error
+ *      │                                                         │
+ *      │                                                  retry_backoff
+ *      │                                                         │
+ *      ├────stop()──── ready                                      │
+ *      │                    │                                     │
+ *      │                   crash                                  │
+ *      │                    ▼                                     │
+ *      │                 error ◀──max_retries_exceeded────────────┘
+ *      │                    │
+ *      └────stop()──────────┘
+ *
+ * Transitions are emitted via an observable so the UI can live-render
+ * "Cloud n8n connected" vs "Local n8n starting…". Secrets never cross
+ * the logger at INFO — the provisioned API key is logged as a redacted
+ * fingerprint only.
+ *
+ * Matches the develop sidecar conventions used by StewardSidecar:
+ *   - Prefers `Bun.spawn` when available, falls back to node:child_process
+ *   - `onStatusChange` + `onLog` callbacks in config (parallels steward)
+ *   - Bounded restart with exponential backoff
+ */
 var n8n_sidecar_exports = /* @__PURE__ */ __exportAll({
 	N8nSidecar: () => N8nSidecar,
 	disposeN8nSidecar: () => disposeN8nSidecar,
 	getN8nSidecar: () => getN8nSidecar,
 	getN8nSidecarAsync: () => getN8nSidecarAsync,
 	isBinaryMissingMessage: () => isBinaryMissingMessage,
-	peekN8nSidecar: () => peekN8nSidecar
+	peekN8nSidecar: () => peekN8nSidecar,
 });
 function defaultStateDir() {
 	const home = process.env.HOME ?? process.env.USERPROFILE ?? os.tmpdir();
@@ -1796,7 +2276,10 @@ function canBindTcpPortDefault(port, host) {
 			resolve(free);
 		};
 		server.once("error", (err) => {
-			if (host === "::" && (err.code === "EADDRNOTAVAIL" || err.code === "EAFNOSUPPORT")) {
+			if (
+				host === "::" &&
+				(err.code === "EADDRNOTAVAIL" || err.code === "EAFNOSUPPORT")
+			) {
 				finish(true);
 				return;
 			}
@@ -1807,7 +2290,7 @@ function canBindTcpPortDefault(port, host) {
 		});
 		server.listen({
 			port,
-			host
+			host,
 		});
 	});
 }
@@ -1827,21 +2310,16 @@ function isProcessAliveDefault(pid) {
 async function readProcessCommandDefault(pid) {
 	if (!Number.isInteger(pid) || pid <= 0) return null;
 	try {
-		return (await fs$1.readFile(`/proc/${pid}/cmdline`, "utf-8")).replace(/\0/g, " ").trim();
+		return (await fs$1.readFile(`/proc/${pid}/cmdline`, "utf-8"))
+			.replace(/\0/g, " ")
+			.trim();
 	} catch {}
 	try {
 		const { spawn } = await import("node:child_process");
 		return await new Promise((resolve) => {
-			const proc = spawn("ps", [
-				"-p",
-				String(pid),
-				"-o",
-				"command="
-			], { stdio: [
-				"ignore",
-				"pipe",
-				"ignore"
-			] });
+			const proc = spawn("ps", ["-p", String(pid), "-o", "command="], {
+				stdio: ["ignore", "pipe", "ignore"],
+			});
 			let out = "";
 			proc.stdout?.on("data", (buf) => {
 				out += buf.toString();
@@ -1866,26 +2344,37 @@ function killPidDefault(pid, signal) {
 }
 async function preflightBinaryDefault(binary) {
 	await new Promise((resolve, reject) => {
-		const proc = spawn(binary, ["--version"], { stdio: [
-			"ignore",
-			"pipe",
-			"pipe"
-		] });
+		const proc = spawn(binary, ["--version"], {
+			stdio: ["ignore", "pipe", "pipe"],
+		});
 		const timer = setTimeout(() => {
 			try {
 				proc.kill("SIGKILL");
 			} catch {}
-			reject(/* @__PURE__ */ new Error(`${binary} --version timed out; bun runtime not found on PATH — required for local n8n. Install from https://bun.sh.`));
+			reject(
+				/* @__PURE__ */ new Error(
+					`${binary} --version timed out; bun runtime not found on PATH — required for local n8n. Install from https://bun.sh.`,
+				),
+			);
 		}, 5e3);
 		timer.unref?.();
 		proc.once("error", (err) => {
 			clearTimeout(timer);
-			reject(/* @__PURE__ */ new Error(`${binary} runtime not found on PATH — required for local n8n. Install from https://bun.sh. (${err.message})`));
+			reject(
+				/* @__PURE__ */ new Error(
+					`${binary} runtime not found on PATH — required for local n8n. Install from https://bun.sh. (${err.message})`,
+				),
+			);
 		});
 		proc.once("exit", (code) => {
 			clearTimeout(timer);
 			if (code === 0) resolve();
-			else reject(/* @__PURE__ */ new Error(`${binary} --version exited with code ${code ?? "null"} — required for local n8n. Install from https://bun.sh.`));
+			else
+				reject(
+					/* @__PURE__ */ new Error(
+						`${binary} --version exited with code ${code ?? "null"} — required for local n8n. Install from https://bun.sh.`,
+					),
+				);
 		});
 	});
 }
@@ -1898,16 +2387,21 @@ function isBinaryMissingMessage(message) {
 	return BINARY_MISSING_PATTERNS.some((re) => re.test(message));
 }
 /**
-* Extract the n8n-auth cookie from a `Response` for re-use on subsequent
-* calls. Returns a ready-to-send `Cookie:` header value, or null if the
-* response didn't set one. Tolerates fetch implementations that expose
-* multiple Set-Cookie values through `getSetCookie()` (Node 20.18+) or
-* a single joined `set-cookie` header (older runtimes and the test fetch
-* mock we use in unit tests).
-*/
+ * Extract the n8n-auth cookie from a `Response` for re-use on subsequent
+ * calls. Returns a ready-to-send `Cookie:` header value, or null if the
+ * response didn't set one. Tolerates fetch implementations that expose
+ * multiple Set-Cookie values through `getSetCookie()` (Node 20.18+) or
+ * a single joined `set-cookie` header (older runtimes and the test fetch
+ * mock we use in unit tests).
+ */
 function extractAuthCookie(res) {
 	const headers = res.headers;
-	const list = typeof headers.getSetCookie === "function" ? headers.getSetCookie() : (headers.get("set-cookie") ?? "").split(/,(?=\s*[\w-]+=)/).filter((s) => s.length > 0);
+	const list =
+		typeof headers.getSetCookie === "function"
+			? headers.getSetCookie()
+			: (headers.get("set-cookie") ?? "")
+					.split(/,(?=\s*[\w-]+=)/)
+					.filter((s) => s.length > 0);
 	for (const raw of list) {
 		const first = raw.split(";")[0]?.trim();
 		if (first?.startsWith("n8n-auth=")) return first;
@@ -1923,30 +2417,34 @@ function resolveConfig(config) {
 		binary: config.binary ?? DEFAULT_BINARY,
 		stateDir: config.stateDir ?? defaultStateDir(),
 		readinessTimeoutMs: config.readinessTimeoutMs ?? DEFAULT_PROBE_TIMEOUT_MS,
-		readinessIntervalMs: config.readinessIntervalMs ?? DEFAULT_PROBE_INTERVAL_MS,
+		readinessIntervalMs:
+			config.readinessIntervalMs ?? DEFAULT_PROBE_INTERVAL_MS,
 		maxRetries: config.maxRetries ?? DEFAULT_MAX_RETRIES,
 		backoffBaseMs: config.backoffBaseMs ?? DEFAULT_BACKOFF_BASE_MS,
 		onStatusChange: config.onStatusChange,
-		onLog: config.onLog
+		onLog: config.onLog,
 	};
 }
 /**
-* Returns the process-wide n8n sidecar singleton, constructing it lazily
-* on first access.
-*
-* If the singleton already exists, the provided config is merged via
-* `updateConfig()` — changes that require a respawn (binary/host/port/
-* stateDir/version) log a warning and do NOT take effect until an explicit
-* stop()+start() cycle. Non-respawn fields (timeouts, callbacks, retries)
-* apply immediately.
-*
-* NOTE: This accessor is synchronous for backwards compatibility with
-* existing callers. If a disposal is currently in flight, you may get a
-* sidecar that races with the old one. Prefer `getN8nSidecarAsync()` in
-* new code.
-*/
+ * Returns the process-wide n8n sidecar singleton, constructing it lazily
+ * on first access.
+ *
+ * If the singleton already exists, the provided config is merged via
+ * `updateConfig()` — changes that require a respawn (binary/host/port/
+ * stateDir/version) log a warning and do NOT take effect until an explicit
+ * stop()+start() cycle. Non-respawn fields (timeouts, callbacks, retries)
+ * apply immediately.
+ *
+ * NOTE: This accessor is synchronous for backwards compatibility with
+ * existing callers. If a disposal is currently in flight, you may get a
+ * sidecar that races with the old one. Prefer `getN8nSidecarAsync()` in
+ * new code.
+ */
 function getN8nSidecar(config = {}) {
-	if (_disposing !== null) logger.warn("[n8n-sidecar] getN8nSidecar() called during disposal; prefer getN8nSidecarAsync()");
+	if (_disposing !== null)
+		logger.warn(
+			"[n8n-sidecar] getN8nSidecar() called during disposal; prefer getN8nSidecarAsync()",
+		);
 	if (!_singleton) {
 		_singleton = new N8nSidecar(config);
 		return _singleton;
@@ -1955,29 +2453,29 @@ function getN8nSidecar(config = {}) {
 	return _singleton;
 }
 /**
-* Async-safe variant of getN8nSidecar(). Awaits any in-flight disposal
-* before constructing or returning the singleton. Use this from code that
-* can be async (most callers already are).
-*/
+ * Async-safe variant of getN8nSidecar(). Awaits any in-flight disposal
+ * before constructing or returning the singleton. Use this from code that
+ * can be async (most callers already are).
+ */
 async function getN8nSidecarAsync(config = {}) {
 	if (_disposing !== null) await _disposing;
 	return getN8nSidecar(config);
 }
 /**
-* Returns the singleton if one has already been constructed. Used by
-* routes that should only surface state if the sidecar was explicitly
-* initialized (avoids side-effectful construction on a read).
-*/
+ * Returns the singleton if one has already been constructed. Used by
+ * routes that should only surface state if the sidecar was explicitly
+ * initialized (avoids side-effectful construction on a read).
+ */
 function peekN8nSidecar() {
 	return _singleton;
 }
 /**
-* Stops and clears the singleton. Tests + shutdown paths use this.
-*
-* Concurrency contract: concurrent callers all await the same in-flight
-* stop() before `_singleton` is cleared. Once disposal resolves, the
-* singleton slot is free and a new sidecar can be constructed.
-*/
+ * Stops and clears the singleton. Tests + shutdown paths use this.
+ *
+ * Concurrency contract: concurrent callers all await the same in-flight
+ * stop() before `_singleton` is cleared. Once disposal resolves, the
+ * singleton slot is free and a new sidecar can be constructed.
+ */
 async function disposeN8nSidecar() {
 	if (_disposing !== null) {
 		await _disposing;
@@ -1995,8 +2493,22 @@ async function disposeN8nSidecar() {
 	})();
 	await _disposing;
 }
-var DEFAULT_N8N_VERSION, DEFAULT_START_PORT, DEFAULT_HOST, DEFAULT_BINARY, DEFAULT_PROBE_TIMEOUT_MS, DEFAULT_PROBE_INTERVAL_MS, DEFAULT_MAX_RETRIES, DEFAULT_BACKOFF_BASE_MS, RETRY_RESET_AFTER_MS, ORPHAN_SIGTERM_GRACE_MS, TERMINAL_STATUSES, BINARY_MISSING_PATTERNS, N8nSidecar, _singleton, _disposing;
-var init_n8n_sidecar = __esmMin((() => {
+var DEFAULT_N8N_VERSION,
+	DEFAULT_START_PORT,
+	DEFAULT_HOST,
+	DEFAULT_BINARY,
+	DEFAULT_PROBE_TIMEOUT_MS,
+	DEFAULT_PROBE_INTERVAL_MS,
+	DEFAULT_MAX_RETRIES,
+	DEFAULT_BACKOFF_BASE_MS,
+	RETRY_RESET_AFTER_MS,
+	ORPHAN_SIGTERM_GRACE_MS,
+	TERMINAL_STATUSES,
+	BINARY_MISSING_PATTERNS,
+	N8nSidecar,
+	_singleton,
+	_disposing;
+var init_n8n_sidecar = __esmMin(() => {
 	DEFAULT_N8N_VERSION = "1.100.0";
 	DEFAULT_START_PORT = 5678;
 	DEFAULT_HOST = "127.0.0.1";
@@ -2012,7 +2524,7 @@ var init_n8n_sidecar = __esmMin((() => {
 		/^sh:\s*\d+:\s*\S+:\s*not found$/i,
 		/:\s*command not found$/i,
 		/\bnot found on PATH\b/i,
-		/\bexited with code 127\b/i
+		/\bexited with code 127\b/i,
 	];
 	N8nSidecar = class N8nSidecar {
 		config;
@@ -2024,7 +2536,7 @@ var init_n8n_sidecar = __esmMin((() => {
 			errorMessage: null,
 			pid: null,
 			retries: 0,
-			recentOutput: []
+			recentOutput: [],
 		};
 		static RECENT_OUTPUT_CAP = 200;
 		/** Ring buffer of the child's recent stdout/stderr lines (see state.recentOutput). */
@@ -2036,10 +2548,10 @@ var init_n8n_sidecar = __esmMin((() => {
 		stopping = false;
 		supervisorRunning = false;
 		/**
-		* Handle for the retry-reset timer. A sidecar that stays ready for
-		* RETRY_RESET_AFTER_MS is declared healthy and its retry count is zeroed
-		* so a future crash doesn't count as part of the original burst.
-		*/
+		 * Handle for the retry-reset timer. A sidecar that stays ready for
+		 * RETRY_RESET_AFTER_MS is declared healthy and its retry count is zeroed
+		 * so a future crash doesn't count as part of the original burst.
+		 */
 		retryResetTimer = null;
 		constructor(config = {}, deps = {}) {
 			this.config = resolveConfig(config);
@@ -2049,44 +2561,49 @@ var init_n8n_sidecar = __esmMin((() => {
 				pickPort: deps.pickPort ?? pickFreePortDefault,
 				sleep: deps.sleep ?? sleepDefault,
 				isProcessAlive: deps.isProcessAlive ?? isProcessAliveDefault,
-				readProcessCommand: deps.readProcessCommand ?? readProcessCommandDefault,
+				readProcessCommand:
+					deps.readProcessCommand ?? readProcessCommandDefault,
 				killPid: deps.killPid ?? killPidDefault,
 				preflightBinary: deps.preflightBinary ?? preflightBinaryDefault,
 				now: deps.now ?? (() => Date.now()),
-				setTimer: deps.setTimer ?? ((fn, ms) => {
-					const handle = setTimeout(fn, ms);
-					handle.unref?.();
-					return handle;
-				}),
-				clearTimer: deps.clearTimer ?? ((handle) => {
-					if (handle) clearTimeout(handle);
-				})
+				setTimer:
+					deps.setTimer ??
+					((fn, ms) => {
+						const handle = setTimeout(fn, ms);
+						handle.unref?.();
+						return handle;
+					}),
+				clearTimer:
+					deps.clearTimer ??
+					((handle) => {
+						if (handle) clearTimeout(handle);
+					}),
 			};
 		}
 		getState() {
 			return { ...this.state };
 		}
 		/**
-		* Returns the provisioned API key. Separate from `getState()` so state
-		* snapshots can be broadcast to UI/WS clients without leaking the secret.
-		*/
+		 * Returns the provisioned API key. Separate from `getState()` so state
+		 * snapshots can be broadcast to UI/WS clients without leaking the secret.
+		 */
 		getApiKey() {
 			return this.apiKey;
 		}
 		/**
-		* Merge new config into the existing sidecar. Safe to call at any time.
-		*
-		* - If the sidecar has not been spawned yet (no child), the next call to
-		*   start() will pick up the new values.
-		* - If the sidecar is currently running AND a field that requires a
-		*   respawn (binary, host, startPort, stateDir, version) changed, we log
-		*   a warning and keep the old values live. Callers must stop() + start()
-		*   explicitly to apply those changes.
-		*/
+		 * Merge new config into the existing sidecar. Safe to call at any time.
+		 *
+		 * - If the sidecar has not been spawned yet (no child), the next call to
+		 *   start() will pick up the new values.
+		 * - If the sidecar is currently running AND a field that requires a
+		 *   respawn (binary, host, startPort, stateDir, version) changed, we log
+		 *   a warning and keep the old values live. Callers must stop() + start()
+		 *   explicitly to apply those changes.
+		 */
 		updateConfig(next) {
 			const merged = resolveConfig({
 				...this.snapshotConfig(),
-				...next
+				...next,
 			});
 			if (!this.child) {
 				this.config = merged;
@@ -2097,22 +2614,25 @@ var init_n8n_sidecar = __esmMin((() => {
 				"host",
 				"startPort",
 				"stateDir",
-				"version"
+				"version",
 			].filter((field) => merged[field] !== this.config[field]);
-			if (changed.length > 0) logger.warn(`[n8n-sidecar] updateConfig: ${changed.join(", ")} changed while sidecar is running; restart required to apply`);
+			if (changed.length > 0)
+				logger.warn(
+					`[n8n-sidecar] updateConfig: ${changed.join(", ")} changed while sidecar is running; restart required to apply`,
+				);
 			this.config = {
 				...merged,
 				binary: this.config.binary,
 				host: this.config.host,
 				startPort: this.config.startPort,
 				stateDir: this.config.stateDir,
-				version: this.config.version
+				version: this.config.version,
 			};
 		}
 		/**
-		* Return the current ResolvedConfig as an N8nSidecarConfig input (used by
-		* updateConfig for the merge). Excludes internal timer state.
-		*/
+		 * Return the current ResolvedConfig as an N8nSidecarConfig input (used by
+		 * updateConfig for the merge). Excludes internal timer state.
+		 */
 		snapshotConfig() {
 			return {
 				enabled: this.config.enabled,
@@ -2126,7 +2646,7 @@ var init_n8n_sidecar = __esmMin((() => {
 				maxRetries: this.config.maxRetries,
 				backoffBaseMs: this.config.backoffBaseMs,
 				onStatusChange: this.config.onStatusChange,
-				onLog: this.config.onLog
+				onLog: this.config.onLog,
 			};
 		}
 		subscribe(fn) {
@@ -2140,9 +2660,10 @@ var init_n8n_sidecar = __esmMin((() => {
 		}
 		emit() {
 			const snapshot = this.getState();
-			for (const fn of this.listeners) try {
-				fn(snapshot);
-			} catch {}
+			for (const fn of this.listeners)
+				try {
+					fn(snapshot);
+				} catch {}
 			try {
 				this.config.onStatusChange?.(snapshot);
 			} catch {}
@@ -2150,28 +2671,29 @@ var init_n8n_sidecar = __esmMin((() => {
 		setState(patch) {
 			this.state = {
 				...this.state,
-				...patch
+				...patch,
 			};
 			this.emit();
 		}
 		/**
-		* Start the sidecar. Safe to call multiple times — no-ops if already
-		* starting/ready. Never throws; failures mark status=error and resolve.
-		*/
+		 * Start the sidecar. Safe to call multiple times — no-ops if already
+		 * starting/ready. Never throws; failures mark status=error and resolve.
+		 */
 		async start() {
 			if (!this.config.enabled) {
 				this.setState({
 					status: "stopped",
-					errorMessage: "disabled"
+					errorMessage: "disabled",
 				});
 				return;
 			}
-			if (this.state.status === "starting" || this.state.status === "ready") return;
+			if (this.state.status === "starting" || this.state.status === "ready")
+				return;
 			this.stopping = false;
 			this.setState({
 				status: "starting",
 				errorMessage: null,
-				retries: 0
+				retries: 0,
 			});
 			const supervisorPromise = this.runSupervisor();
 			await new Promise((resolve) => {
@@ -2189,9 +2711,9 @@ var init_n8n_sidecar = __esmMin((() => {
 			supervisorPromise.catch(() => void 0);
 		}
 		/**
-		* Supervisor loop: spawn → probe readiness → (on crash) exponential
-		* backoff. Bounded by `maxRetries`; beyond that we land in `error`.
-		*/
+		 * Supervisor loop: spawn → probe readiness → (on crash) exponential
+		 * backoff. Bounded by `maxRetries`; beyond that we land in `error`.
+		 */
 		async runSupervisor() {
 			if (this.supervisorRunning) return;
 			this.supervisorRunning = true;
@@ -2201,21 +2723,33 @@ var init_n8n_sidecar = __esmMin((() => {
 						try {
 							mkdirSync(this.config.stateDir, { recursive: true });
 						} catch (err) {
-							logger.warn(`[n8n-sidecar] mkdir state dir failed: ${err instanceof Error ? err.message : String(err)}`);
+							logger.warn(
+								`[n8n-sidecar] mkdir state dir failed: ${err instanceof Error ? err.message : String(err)}`,
+							);
 						}
 						const port = await this.deps.pickPort(this.config.startPort);
 						const preferredHost = `http://${this.config.host}:${this.config.startPort}`;
-						if (port !== this.config.startPort && await this.attachExistingInstance(preferredHost, this.config.startPort)) return;
+						if (
+							port !== this.config.startPort &&
+							(await this.attachExistingInstance(
+								preferredHost,
+								this.config.startPort,
+							))
+						)
+							return;
 						const host = `http://${this.config.host}:${port}`;
 						this.setState({
 							host,
-							port
+							port,
 						});
 						await this.deps.preflightBinary(this.config.binary);
 						await this.reapOrphan();
 						await this.spawnChild(port);
 						await this.writePidfile(this.child?.pid ?? null);
-						if (!await this.probeReadiness(host)) throw new Error(`readiness probe timed out after ${this.config.readinessTimeoutMs}ms`);
+						if (!(await this.probeReadiness(host)))
+							throw new Error(
+								`readiness probe timed out after ${this.config.readinessTimeoutMs}ms`,
+							);
 						try {
 							const key = await this.ensureApiKey(host);
 							if (key) {
@@ -2223,11 +2757,13 @@ var init_n8n_sidecar = __esmMin((() => {
 								logger.info(`[n8n-sidecar] using api key ${fingerprint(key)}`);
 							}
 						} catch (err) {
-							logger.warn(`[n8n-sidecar] api key provisioning failed: ${err instanceof Error ? err.message : String(err)}`);
+							logger.warn(
+								`[n8n-sidecar] api key provisioning failed: ${err instanceof Error ? err.message : String(err)}`,
+							);
 						}
 						this.setState({
 							status: "ready",
-							errorMessage: null
+							errorMessage: null,
 						});
 						this.armRetryResetTimer();
 						await this.waitForChildExitWithTimeout();
@@ -2236,18 +2772,19 @@ var init_n8n_sidecar = __esmMin((() => {
 						logger.warn("[n8n-sidecar] child exited unexpectedly");
 						this.setState({
 							status: "starting",
-							pid: null
+							pid: null,
 						});
 					} catch (err) {
 						const msg = err instanceof Error ? err.message : String(err);
 						await this.clearNpmCacheAfterJsonParseFailure();
-						if (isBinaryMissingMessage(msg)) logger.debug(`[n8n-sidecar] start attempt failed: ${msg}`);
+						if (isBinaryMissingMessage(msg))
+							logger.debug(`[n8n-sidecar] start attempt failed: ${msg}`);
 						else logger.warn(`[n8n-sidecar] start attempt failed: ${msg}`);
 						this.cancelRetryResetTimer();
 						this.setState({
 							status: "starting",
 							errorMessage: msg,
-							pid: null
+							pid: null,
 						});
 						this.killChild();
 					}
@@ -2257,7 +2794,7 @@ var init_n8n_sidecar = __esmMin((() => {
 						this.setState({
 							status: "error",
 							errorMessage: this.state.errorMessage ?? "max retries exceeded",
-							retries: nextRetries
+							retries: nextRetries,
 						});
 						return;
 					}
@@ -2288,29 +2825,25 @@ var init_n8n_sidecar = __esmMin((() => {
 				npm_config_cache: npmCacheDir,
 				DB_TYPE: "sqlite",
 				DB_SQLITE_DATABASE: path.join(this.config.stateDir, "database.sqlite"),
-				N8N_DISABLED_MODULES: "insights,external-secrets"
+				N8N_DISABLED_MODULES: "insights,external-secrets",
 			};
 			const versioned = `n8n@${this.config.version}`;
-			const binaryBase = this.config.binary.split("/").pop() ?? this.config.binary;
-			const launcherArgs = binaryBase === "npx" ? [
-				"--yes",
-				versioned,
-				"start"
-			] : binaryBase === "bunx" ? [
-				"--",
-				versioned,
-				"start"
-			] : [versioned, "start"];
-			this.recordOutput(`[spawn] ${this.config.binary} ${launcherArgs.join(" ")} (port ${port}, stateDir ${this.config.stateDir}, npmCache ${npmCacheDir}, NODE_ENV=${env.NODE_ENV ?? "(unset)"}, PATH len=${(env.PATH ?? "").length})`);
+			const binaryBase =
+				this.config.binary.split("/").pop() ?? this.config.binary;
+			const launcherArgs =
+				binaryBase === "npx"
+					? ["--yes", versioned, "start"]
+					: binaryBase === "bunx"
+						? ["--", versioned, "start"]
+						: [versioned, "start"];
+			this.recordOutput(
+				`[spawn] ${this.config.binary} ${launcherArgs.join(" ")} (port ${port}, stateDir ${this.config.stateDir}, npmCache ${npmCacheDir}, NODE_ENV=${env.NODE_ENV ?? "(unset)"}, PATH len=${(env.PATH ?? "").length})`,
+			);
 			const child = this.deps.spawn(this.config.binary, launcherArgs, {
 				cwd: this.config.stateDir,
 				env,
-				stdio: [
-					"ignore",
-					"pipe",
-					"pipe"
-				],
-				detached: false
+				stdio: ["ignore", "pipe", "pipe"],
+				detached: false,
 			});
 			this.child = child;
 			this.setState({ pid: child.pid ?? null });
@@ -2320,8 +2853,10 @@ var init_n8n_sidecar = __esmMin((() => {
 					const trimmed = line.trimEnd();
 					if (!trimmed) continue;
 					this.recordOutput(`[${stream}] ${trimmed}`);
-					if (stream === "stderr") if (isBinaryMissingMessage(trimmed)) logger.debug(`[n8n-sidecar:stderr] ${trimmed}`);
-					else logger.warn(`[n8n-sidecar:stderr] ${trimmed}`);
+					if (stream === "stderr")
+						if (isBinaryMissingMessage(trimmed))
+							logger.debug(`[n8n-sidecar:stderr] ${trimmed}`);
+						else logger.warn(`[n8n-sidecar:stderr] ${trimmed}`);
 					else logger.debug(`[n8n-sidecar:stdout] ${trimmed}`);
 					try {
 						this.config.onLog?.(trimmed, stream);
@@ -2331,7 +2866,12 @@ var init_n8n_sidecar = __esmMin((() => {
 			child.stdout?.on("data", (buf) => captureOutput(buf, "stdout"));
 			child.stderr?.on("data", (buf) => captureOutput(buf, "stderr"));
 			child.on("close", (code, signal) => {
-				const summary = code !== null ? `exit code ${code}` : signal !== null ? `signal ${signal}` : "exit (no code/signal)";
+				const summary =
+					code !== null
+						? `exit code ${code}`
+						: signal !== null
+							? `signal ${signal}`
+							: "exit (no code/signal)";
 				this.recordOutput(`[exit] n8n child ${summary}`);
 			});
 			child.on("error", (err) => {
@@ -2342,33 +2882,49 @@ var init_n8n_sidecar = __esmMin((() => {
 		/** Push a line into the bounded recent-output buffer and publish. */
 		recordOutput(line) {
 			this.recentOutput.push(line);
-			if (this.recentOutput.length > N8nSidecar.RECENT_OUTPUT_CAP) this.recentOutput.splice(0, this.recentOutput.length - N8nSidecar.RECENT_OUTPUT_CAP);
+			if (this.recentOutput.length > N8nSidecar.RECENT_OUTPUT_CAP)
+				this.recentOutput.splice(
+					0,
+					this.recentOutput.length - N8nSidecar.RECENT_OUTPUT_CAP,
+				);
 			this.state = {
 				...this.state,
-				recentOutput: [...this.recentOutput]
+				recentOutput: [...this.recentOutput],
 			};
 		}
 		async clearNpmCacheAfterJsonParseFailure() {
-			if (!this.recentOutput.some((line) => line.includes("EJSONPARSE") || line.includes("Invalid package.json") || line.includes("JSON.parse"))) return;
+			if (
+				!this.recentOutput.some(
+					(line) =>
+						line.includes("EJSONPARSE") ||
+						line.includes("Invalid package.json") ||
+						line.includes("JSON.parse"),
+				)
+			)
+				return;
 			const npmCacheDir = path.join(this.config.stateDir, ".npm-cache");
 			try {
 				await fs$1.rm(npmCacheDir, {
 					recursive: true,
-					force: true
+					force: true,
 				});
-				logger.warn(`[n8n-sidecar] cleared npm cache after package.json parse failure: ${npmCacheDir}`);
+				logger.warn(
+					`[n8n-sidecar] cleared npm cache after package.json parse failure: ${npmCacheDir}`,
+				);
 			} catch (err) {
-				logger.warn(`[n8n-sidecar] failed to clear npm cache after package.json parse failure: ${err instanceof Error ? err.message : String(err)}`);
+				logger.warn(
+					`[n8n-sidecar] failed to clear npm cache after package.json parse failure: ${err instanceof Error ? err.message : String(err)}`,
+				);
 			}
 		}
 		/**
-		* Block until the current child exits. Returns early if the child is null
-		* or if `stop()` has flipped `stopping`. No timeout — n8n is a long-running
-		* service, so timing out here would SIGKILL a healthy child and bounce the
-		* supervisor into a "child exited unexpectedly" → retry loop that ends in
-		* the `max retries exceeded` error state. Shutdown-side timeouts live in
-		* `killChild()` (SIGTERM with a 5s SIGKILL fallback).
-		*/
+		 * Block until the current child exits. Returns early if the child is null
+		 * or if `stop()` has flipped `stopping`. No timeout — n8n is a long-running
+		 * service, so timing out here would SIGKILL a healthy child and bounce the
+		 * supervisor into a "child exited unexpectedly" → retry loop that ends in
+		 * the `max retries exceeded` error state. Shutdown-side timeouts live in
+		 * `killChild()` (SIGTERM with a 5s SIGKILL fallback).
+		 */
 		waitForChildExitWithTimeout() {
 			return new Promise((resolve) => {
 				const child = this.child;
@@ -2395,23 +2951,28 @@ var init_n8n_sidecar = __esmMin((() => {
 			try {
 				child.kill("SIGTERM");
 				setTimeout(() => {
-					if (!child.killed) try {
-						child.kill("SIGKILL");
-					} catch {}
+					if (!child.killed)
+						try {
+							child.kill("SIGKILL");
+						} catch {}
 				}, 5e3).unref?.();
 			} catch (err) {
-				logger.warn(`[n8n-sidecar] kill error: ${err instanceof Error ? err.message : String(err)}`);
+				logger.warn(
+					`[n8n-sidecar] kill error: ${err instanceof Error ? err.message : String(err)}`,
+				);
 			}
 		}
 		async attachExistingInstance(host, port) {
-			if (!await this.probeExistingInstance(host)) return false;
+			if (!(await this.probeExistingInstance(host))) return false;
 			this.child = null;
-			this.recordOutput(`[attach] existing n8n detected at ${host}; reusing it`);
+			this.recordOutput(
+				`[attach] existing n8n detected at ${host}; reusing it`,
+			);
 			logger.info(`[n8n-sidecar] reusing existing n8n at ${host}`);
 			this.setState({
 				host,
 				port,
-				pid: null
+				pid: null,
 			});
 			try {
 				const key = await this.ensureApiKey(host);
@@ -2420,11 +2981,13 @@ var init_n8n_sidecar = __esmMin((() => {
 					logger.info(`[n8n-sidecar] using api key ${fingerprint(key)}`);
 				}
 			} catch (err) {
-				logger.warn(`[n8n-sidecar] api key provisioning failed: ${err instanceof Error ? err.message : String(err)}`);
+				logger.warn(
+					`[n8n-sidecar] api key provisioning failed: ${err instanceof Error ? err.message : String(err)}`,
+				);
 			}
 			this.setState({
 				status: "ready",
-				errorMessage: null
+				errorMessage: null,
 			});
 			this.armRetryResetTimer();
 			return true;
@@ -2433,7 +2996,7 @@ var init_n8n_sidecar = __esmMin((() => {
 			try {
 				const res = await this.deps.fetch(`${host}/rest/login`, {
 					method: "GET",
-					signal: AbortSignal.timeout(2e3)
+					signal: AbortSignal.timeout(2e3),
 				});
 				return res.status === 200 || res.status === 401;
 			} catch {
@@ -2441,22 +3004,25 @@ var init_n8n_sidecar = __esmMin((() => {
 			}
 		}
 		/**
-		* Polls GET {host}/rest/login until 200 or 401 (both mean "up"). 503
-		* means "still booting". Times out per `readinessTimeoutMs`.
-		*
-		* Returns true on success, false on timeout.
-		*/
+		 * Polls GET {host}/rest/login until 200 or 401 (both mean "up"). 503
+		 * means "still booting". Times out per `readinessTimeoutMs`.
+		 *
+		 * Returns true on success, false on timeout.
+		 */
 		async probeReadiness(host) {
 			const deadline = Date.now() + this.config.readinessTimeoutMs;
 			const url = `${host}/rest/login`;
 			while (Date.now() < deadline) {
 				if (this.stopping) return false;
 				const child = this.child;
-				if (child && typeof child.exitCode === "number" && child.exitCode !== 0) throw new Error(`n8n child exited with code ${child.exitCode} before readiness probe succeeded`);
+				if (child && typeof child.exitCode === "number" && child.exitCode !== 0)
+					throw new Error(
+						`n8n child exited with code ${child.exitCode} before readiness probe succeeded`,
+					);
 				try {
 					const res = await this.deps.fetch(url, {
 						method: "GET",
-						signal: AbortSignal.timeout(2e3)
+						signal: AbortSignal.timeout(2e3),
 					});
 					if (res.status === 200 || res.status === 401) return true;
 				} catch {}
@@ -2465,17 +3031,17 @@ var init_n8n_sidecar = __esmMin((() => {
 			return false;
 		}
 		/**
-		* Resolve an API key for this sidecar.
-		*
-		* Strategy:
-		*   1. If a key is cached on the filesystem at {stateDir}/api-key, try
-		*      it first. If /rest/api-keys accepts it, reuse it — this preserves
-		*      webhook configs across restarts.
-		*   2. Otherwise provision a new key via /rest/me/api-keys and persist
-		*      it mode-600 for the next boot.
-		*   3. If everything fails, return null. The caller logs a warning but
-		*      does not fail readiness.
-		*/
+		 * Resolve an API key for this sidecar.
+		 *
+		 * Strategy:
+		 *   1. If a key is cached on the filesystem at {stateDir}/api-key, try
+		 *      it first. If /rest/api-keys accepts it, reuse it — this preserves
+		 *      webhook configs across restarts.
+		 *   2. Otherwise provision a new key via /rest/me/api-keys and persist
+		 *      it mode-600 for the next boot.
+		 *   3. If everything fails, return null. The caller logs a warning but
+		 *      does not fail readiness.
+		 */
 		async ensureApiKey(host) {
 			const cached = await this.loadPersistedApiKey();
 			if (cached) {
@@ -2490,7 +3056,9 @@ var init_n8n_sidecar = __esmMin((() => {
 			return path.join(this.config.stateDir, "api-key");
 		}
 		async loadPersistedApiKey() {
-			const raw = await fs$1.readFile(this.apiKeyPath(), "utf-8").catch(() => null);
+			const raw = await fs$1
+				.readFile(this.apiKeyPath(), "utf-8")
+				.catch(() => null);
 			if (!raw) return null;
 			const trimmed = raw.trim();
 			return trimmed.length ? trimmed : null;
@@ -2501,51 +3069,55 @@ var init_n8n_sidecar = __esmMin((() => {
 				await fs$1.writeFile(this.apiKeyPath(), key, { mode: 384 });
 				await fs$1.chmod(this.apiKeyPath(), 384).catch(() => void 0);
 			} catch (err) {
-				logger.warn(`[n8n-sidecar] failed to persist api key: ${err instanceof Error ? err.message : String(err)}`);
+				logger.warn(
+					`[n8n-sidecar] failed to persist api key: ${err instanceof Error ? err.message : String(err)}`,
+				);
 			}
 		}
 		/**
-		* Validate a cached API key by calling the public REST API that accepts
-		* the X-N8N-API-KEY header. A 2xx means the key is still live; 401/403
-		* means it was revoked.
-		*
-		* Important: /rest/api-keys is the internal endpoint that requires the
-		* JWT cookie and will always 401 for an X-N8N-API-KEY regardless of
-		* whether the key itself is valid. Using /api/v1/workflows instead —
-		* the same endpoint the proxy hits, so "valid for probe" = "valid for
-		* real traffic".
-		*/
+		 * Validate a cached API key by calling the public REST API that accepts
+		 * the X-N8N-API-KEY header. A 2xx means the key is still live; 401/403
+		 * means it was revoked.
+		 *
+		 * Important: /rest/api-keys is the internal endpoint that requires the
+		 * JWT cookie and will always 401 for an X-N8N-API-KEY regardless of
+		 * whether the key itself is valid. Using /api/v1/workflows instead —
+		 * the same endpoint the proxy hits, so "valid for probe" = "valid for
+		 * real traffic".
+		 */
 		async validateApiKey(host, key) {
 			try {
-				return (await this.deps.fetch(`${host}/api/v1/workflows?limit=1`, {
-					method: "GET",
-					headers: { "X-N8N-API-KEY": key },
-					signal: AbortSignal.timeout(5e3)
-				})).ok;
+				return (
+					await this.deps.fetch(`${host}/api/v1/workflows?limit=1`, {
+						method: "GET",
+						headers: { "X-N8N-API-KEY": key },
+						signal: AbortSignal.timeout(5e3),
+					})
+				).ok;
 			} catch {
 				return false;
 			}
 		}
 		/**
-		* Provision an API key by driving n8n's owner-setup → login → api-key flow.
-		*
-		* n8n ≥ 1.90-ish removed the anonymous `/rest/me/api-keys` endpoint. The
-		* supported path now requires:
-		*   1. POST /rest/owner/setup   { email, firstName, lastName, password }
-		*      – returns `Set-Cookie: n8n-auth=<JWT>` when no owner exists yet.
-		*   2. POST /rest/login         { emailOrLdapLoginId, password }
-		*      – returns the same cookie on restarts, once the owner is set.
-		*   3. GET  /rest/api-keys/scopes
-		*      – enumerates the scopes the current role is allowed to grant.
-		*   4. POST /rest/api-keys      { label, scopes, expiresAt: null }
-		*      – returns `data.rawApiKey` which stays valid across restarts until
-		*        explicitly revoked.
-		*
-		* Credentials are persisted to `{stateDir}/owner.json` (mode-600) so the
-		* same login works on every subsequent boot; we never re-generate. Password
-		* is random per install — there's no user-facing n8n UI flow in Eliza, so
-		* storing it here is safe for a local single-user sidecar.
-		*/
+		 * Provision an API key by driving n8n's owner-setup → login → api-key flow.
+		 *
+		 * n8n ≥ 1.90-ish removed the anonymous `/rest/me/api-keys` endpoint. The
+		 * supported path now requires:
+		 *   1. POST /rest/owner/setup   { email, firstName, lastName, password }
+		 *      – returns `Set-Cookie: n8n-auth=<JWT>` when no owner exists yet.
+		 *   2. POST /rest/login         { emailOrLdapLoginId, password }
+		 *      – returns the same cookie on restarts, once the owner is set.
+		 *   3. GET  /rest/api-keys/scopes
+		 *      – enumerates the scopes the current role is allowed to grant.
+		 *   4. POST /rest/api-keys      { label, scopes, expiresAt: null }
+		 *      – returns `data.rawApiKey` which stays valid across restarts until
+		 *        explicitly revoked.
+		 *
+		 * Credentials are persisted to `{stateDir}/owner.json` (mode-600) so the
+		 * same login works on every subsequent boot; we never re-generate. Password
+		 * is random per install — there's no user-facing n8n UI flow in Eliza, so
+		 * storing it here is safe for a local single-user sidecar.
+		 */
 		async provisionApiKey(host) {
 			const log = (msg) => {
 				logger.warn(`[n8n-sidecar] ${msg}`);
@@ -2564,113 +3136,151 @@ var init_n8n_sidecar = __esmMin((() => {
 					return null;
 				}
 				const label = "eliza-sidecar";
-				const createKey = async () => this.deps.fetch(`${host}/rest/api-keys`, {
-					method: "POST",
-					headers: {
-						"content-type": "application/json",
-						cookie
-					},
-					body: JSON.stringify({
-						label,
-						scopes,
-						expiresAt: null
-					}),
-					signal: AbortSignal.timeout(5e3)
-				});
+				const createKey = async () =>
+					this.deps.fetch(`${host}/rest/api-keys`, {
+						method: "POST",
+						headers: {
+							"content-type": "application/json",
+							cookie,
+						},
+						body: JSON.stringify({
+							label,
+							scopes,
+							expiresAt: null,
+						}),
+						signal: AbortSignal.timeout(5e3),
+					});
 				let res = await createKey();
 				if (!res.ok) {
 					const bodyText = await res.text().catch(() => "");
-					if (res.status === 500 && /already\s+an?\s+entry\s+with\s+this\s+name/i.test(bodyText)) {
-						log("api-key label already exists in n8n — deleting and re-creating");
-						if (await this.deleteApiKeysByLabel(host, cookie, label) > 0) res = await createKey();
+					if (
+						res.status === 500 &&
+						/already\s+an?\s+entry\s+with\s+this\s+name/i.test(bodyText)
+					) {
+						log(
+							"api-key label already exists in n8n — deleting and re-creating",
+						);
+						if ((await this.deleteApiKeysByLabel(host, cookie, label)) > 0)
+							res = await createKey();
 					}
 					if (!res.ok) {
-						const finalBody = bodyText || await res.text().catch(() => "");
-						log(`api-key create failed: ${res.status} ${res.statusText}${finalBody ? ` — ${finalBody.slice(0, 200)}` : ""}`);
+						const finalBody = bodyText || (await res.text().catch(() => ""));
+						log(
+							`api-key create failed: ${res.status} ${res.statusText}${finalBody ? ` — ${finalBody.slice(0, 200)}` : ""}`,
+						);
 						return null;
 					}
 				}
 				const body = await res.json();
-				const key = body.data?.rawApiKey ?? body.data?.apiKey ?? body.rawApiKey ?? body.apiKey ?? null;
+				const key =
+					body.data?.rawApiKey ??
+					body.data?.apiKey ??
+					body.rawApiKey ??
+					body.apiKey ??
+					null;
 				if (!key) log("api-key create returned no rawApiKey in body");
 				return key;
 			} catch (err) {
-				log(`provisionApiKey threw: ${err instanceof Error ? err.message : String(err)}`);
+				log(
+					`provisionApiKey threw: ${err instanceof Error ? err.message : String(err)}`,
+				);
 				return null;
 			}
 		}
 		/**
-		* Load owner credentials from `{stateDir}/owner.json`, or generate a fresh
-		* pair and persist them mode-600. The email is deterministic (matches the
-		* label we show to the user); the password is a long random token.
-		*/
+		 * Load owner credentials from `{stateDir}/owner.json`, or generate a fresh
+		 * pair and persist them mode-600. The email is deterministic (matches the
+		 * label we show to the user); the password is a long random token.
+		 */
 		async loadOrCreateOwnerCreds() {
 			const ownerPath = path.join(this.config.stateDir, "owner.json");
 			try {
 				const raw = await fs$1.readFile(ownerPath, "utf-8");
 				const parsed = JSON.parse(raw);
-				if (typeof parsed.email === "string" && typeof parsed.password === "string" && parsed.email.length > 0 && parsed.password.length > 0) return {
-					email: parsed.email,
-					firstName: typeof parsed.firstName === "string" ? parsed.firstName : "Eliza",
-					lastName: typeof parsed.lastName === "string" ? parsed.lastName : "Local",
-					password: parsed.password
-				};
+				if (
+					typeof parsed.email === "string" &&
+					typeof parsed.password === "string" &&
+					parsed.email.length > 0 &&
+					parsed.password.length > 0
+				)
+					return {
+						email: parsed.email,
+						firstName:
+							typeof parsed.firstName === "string" ? parsed.firstName : "Eliza",
+						lastName:
+							typeof parsed.lastName === "string" ? parsed.lastName : "Local",
+						password: parsed.password,
+					};
 			} catch {}
 			const creds = {
 				email: "eliza@eliza.local",
 				firstName: "Eliza",
 				lastName: "Local",
-				password: this.generateRandomPassword()
+				password: this.generateRandomPassword(),
 			};
 			try {
 				await fs$1.mkdir(this.config.stateDir, { recursive: true });
-				await fs$1.writeFile(ownerPath, JSON.stringify(creds, null, 2), { mode: 384 });
+				await fs$1.writeFile(ownerPath, JSON.stringify(creds, null, 2), {
+					mode: 384,
+				});
 				await fs$1.chmod(ownerPath, 384).catch(() => void 0);
 			} catch (err) {
-				logger.warn(`[n8n-sidecar] failed to persist owner creds: ${err instanceof Error ? err.message : String(err)}`);
+				logger.warn(
+					`[n8n-sidecar] failed to persist owner creds: ${err instanceof Error ? err.message : String(err)}`,
+				);
 			}
 			return creds;
 		}
 		/**
-		* Returns a `Cookie: n8n-auth=<jwt>` string by either creating the owner
-		* (first boot) or logging in (subsequent boots). Returns null if both
-		* fail so the caller can back off gracefully.
-		*/
+		 * Returns a `Cookie: n8n-auth=<jwt>` string by either creating the owner
+		 * (first boot) or logging in (subsequent boots). Returns null if both
+		 * fail so the caller can back off gracefully.
+		 */
 		async acquireOwnerCookie(host, owner, log = () => void 0) {
-			const setup = await this.deps.fetch(`${host}/rest/owner/setup`, {
-				method: "POST",
-				headers: { "content-type": "application/json" },
-				body: JSON.stringify({
-					email: owner.email,
-					firstName: owner.firstName,
-					lastName: owner.lastName,
-					password: owner.password
-				}),
-				signal: AbortSignal.timeout(1e4)
-			}).catch((err) => {
-				log(`owner/setup fetch threw: ${err instanceof Error ? err.message : String(err)}`);
-				return null;
-			});
+			const setup = await this.deps
+				.fetch(`${host}/rest/owner/setup`, {
+					method: "POST",
+					headers: { "content-type": "application/json" },
+					body: JSON.stringify({
+						email: owner.email,
+						firstName: owner.firstName,
+						lastName: owner.lastName,
+						password: owner.password,
+					}),
+					signal: AbortSignal.timeout(1e4),
+				})
+				.catch((err) => {
+					log(
+						`owner/setup fetch threw: ${err instanceof Error ? err.message : String(err)}`,
+					);
+					return null;
+				});
 			if (setup?.ok) {
 				const cookie = extractAuthCookie(setup);
 				if (cookie) return cookie;
 				log("owner/setup 200 but no n8n-auth cookie in response");
 			} else if (setup) {
 				const text = await setup.text().catch(() => "");
-				log(`owner/setup ${setup.status}${text ? ` — ${text.slice(0, 160)}` : ""}`);
+				log(
+					`owner/setup ${setup.status}${text ? ` — ${text.slice(0, 160)}` : ""}`,
+				);
 			}
-			const login = await this.deps.fetch(`${host}/rest/login`, {
-				method: "POST",
-				headers: { "content-type": "application/json" },
-				body: JSON.stringify({
-					emailOrLdapLoginId: owner.email,
-					password: owner.password
-				}),
-				signal: AbortSignal.timeout(1e4)
-			}).catch((err) => {
-				log(`login fetch threw: ${err instanceof Error ? err.message : String(err)}`);
-				return null;
-			});
+			const login = await this.deps
+				.fetch(`${host}/rest/login`, {
+					method: "POST",
+					headers: { "content-type": "application/json" },
+					body: JSON.stringify({
+						emailOrLdapLoginId: owner.email,
+						password: owner.password,
+					}),
+					signal: AbortSignal.timeout(1e4),
+				})
+				.catch((err) => {
+					log(
+						`login fetch threw: ${err instanceof Error ? err.message : String(err)}`,
+					);
+					return null;
+				});
 			if (login?.ok) {
 				const cookie = extractAuthCookie(login);
 				if (cookie) return cookie;
@@ -2687,7 +3297,7 @@ var init_n8n_sidecar = __esmMin((() => {
 				const res = await this.deps.fetch(`${host}/rest/api-keys/scopes`, {
 					method: "GET",
 					headers: { cookie },
-					signal: AbortSignal.timeout(5e3)
+					signal: AbortSignal.timeout(5e3),
 				});
 				if (!res.ok) return null;
 				const body = await res.json();
@@ -2697,27 +3307,41 @@ var init_n8n_sidecar = __esmMin((() => {
 			}
 		}
 		/**
-		* Delete every api-key row with a matching label. Used to recover from the
-		* "already exists" case when a previous provisioning run created the label
-		* but lost the `rawApiKey` (n8n only returns the raw key at creation time,
-		* so a partially-persisted state wedges the next boot unless we can delete
-		* and re-create). Returns the number of rows deleted.
-		*/
+		 * Delete every api-key row with a matching label. Used to recover from the
+		 * "already exists" case when a previous provisioning run created the label
+		 * but lost the `rawApiKey` (n8n only returns the raw key at creation time,
+		 * so a partially-persisted state wedges the next boot unless we can delete
+		 * and re-create). Returns the number of rows deleted.
+		 */
 		async deleteApiKeysByLabel(host, cookie, label) {
 			try {
 				const listRes = await this.deps.fetch(`${host}/rest/api-keys`, {
 					method: "GET",
 					headers: { cookie },
-					signal: AbortSignal.timeout(5e3)
+					signal: AbortSignal.timeout(5e3),
 				});
 				if (!listRes.ok) return 0;
-				const matches = ((await listRes.json()).data ?? []).filter((row) => typeof row.id === "string" && typeof row.label === "string" && row.label === label);
+				const matches = ((await listRes.json()).data ?? []).filter(
+					(row) =>
+						typeof row.id === "string" &&
+						typeof row.label === "string" &&
+						row.label === label,
+				);
 				let deleted = 0;
-				for (const row of matches) if ((await this.deps.fetch(`${host}/rest/api-keys/${encodeURIComponent(row.id)}`, {
-					method: "DELETE",
-					headers: { cookie },
-					signal: AbortSignal.timeout(5e3)
-				})).ok) deleted += 1;
+				for (const row of matches)
+					if (
+						(
+							await this.deps.fetch(
+								`${host}/rest/api-keys/${encodeURIComponent(row.id)}`,
+								{
+									method: "DELETE",
+									headers: { cookie },
+									signal: AbortSignal.timeout(5e3),
+								},
+							)
+						).ok
+					)
+						deleted += 1;
 				return deleted;
 			} catch {
 				return 0;
@@ -2739,7 +3363,7 @@ var init_n8n_sidecar = __esmMin((() => {
 				port: null,
 				pid: null,
 				errorMessage: null,
-				retries: 0
+				retries: 0,
 			});
 			this.apiKey = null;
 		}
@@ -2751,7 +3375,9 @@ var init_n8n_sidecar = __esmMin((() => {
 			return path.join(this.config.stateDir, "pid");
 		}
 		async readPidfile() {
-			const raw = await fs$1.readFile(this.pidfilePath(), "utf-8").catch(() => null);
+			const raw = await fs$1
+				.readFile(this.pidfilePath(), "utf-8")
+				.catch(() => null);
 			if (!raw) return null;
 			const parsed = Number.parseInt(raw.trim(), 10);
 			return Number.isInteger(parsed) && parsed > 0 ? parsed : null;
@@ -2762,22 +3388,24 @@ var init_n8n_sidecar = __esmMin((() => {
 				await fs$1.mkdir(this.config.stateDir, { recursive: true });
 				await fs$1.writeFile(this.pidfilePath(), String(pid), { mode: 384 });
 			} catch (err) {
-				logger.warn(`[n8n-sidecar] failed to write pidfile: ${err instanceof Error ? err.message : String(err)}`);
+				logger.warn(
+					`[n8n-sidecar] failed to write pidfile: ${err instanceof Error ? err.message : String(err)}`,
+				);
 			}
 		}
 		async removePidfile() {
 			await fs$1.unlink(this.pidfilePath()).catch(() => void 0);
 		}
 		/**
-		* If the pidfile points at a live n8n process, kill it before spawning.
-		* Guards against orphans created by SIGKILL'ing the parent — without this,
-		* each cold boot leaks a port and eventually a zombie per start.
-		*
-		* We do two levels of verification to avoid nuking an unrelated pid that
-		* may have been reused by the OS:
-		*   1. The pid must be alive.
-		*   2. The pid's cmdline must mention "n8n".
-		*/
+		 * If the pidfile points at a live n8n process, kill it before spawning.
+		 * Guards against orphans created by SIGKILL'ing the parent — without this,
+		 * each cold boot leaks a port and eventually a zombie per start.
+		 *
+		 * We do two levels of verification to avoid nuking an unrelated pid that
+		 * may have been reused by the OS:
+		 *   1. The pid must be alive.
+		 *   2. The pid's cmdline must mention "n8n".
+		 */
 		async reapOrphan() {
 			const pid = await this.readPidfile();
 			if (pid === null) return;
@@ -2790,7 +3418,9 @@ var init_n8n_sidecar = __esmMin((() => {
 				await this.removePidfile();
 				return;
 			}
-			logger.warn(`[n8n-sidecar] reaping orphan n8n pid=${pid} before spawn (cmd=${cmd.slice(0, 120)})`);
+			logger.warn(
+				`[n8n-sidecar] reaping orphan n8n pid=${pid} before spawn (cmd=${cmd.slice(0, 120)})`,
+			);
 			this.deps.killPid(pid, "SIGTERM");
 			const deadline = this.deps.now() + ORPHAN_SIGTERM_GRACE_MS;
 			while (this.deps.now() < deadline) {
@@ -2801,7 +3431,9 @@ var init_n8n_sidecar = __esmMin((() => {
 				await this.deps.sleep(250);
 			}
 			if (this.deps.isProcessAlive(pid)) {
-				logger.warn(`[n8n-sidecar] orphan pid=${pid} survived SIGTERM; SIGKILL`);
+				logger.warn(
+					`[n8n-sidecar] orphan pid=${pid} survived SIGTERM; SIGKILL`,
+				);
 				this.deps.killPid(pid, "SIGKILL");
 			}
 			await this.removePidfile();
@@ -2811,7 +3443,9 @@ var init_n8n_sidecar = __esmMin((() => {
 			this.retryResetTimer = this.deps.setTimer(() => {
 				this.retryResetTimer = null;
 				if (this.state.status === "ready" && this.state.retries !== 0) {
-					logger.info("[n8n-sidecar] retry count reset after sustained healthy uptime");
+					logger.info(
+						"[n8n-sidecar] retry count reset after sustained healthy uptime",
+					);
 					this.setState({ retries: 0 });
 				}
 			}, RETRY_RESET_AFTER_MS);
@@ -2825,38 +3459,38 @@ var init_n8n_sidecar = __esmMin((() => {
 	};
 	_singleton = null;
 	_disposing = null;
-}));
+});
 
 //#endregion
 //#region node_modules/.bun/@elizaos+app-core@2.0.0-alpha.537+72829346cb4c43b1/node_modules/@elizaos/app-core/packages/app-core/src/api/n8n-routes.js
 /**
-* n8n routes — status surface + workflow CRUD proxy + sidecar lifecycle.
-*
-* Exposes:
-*   GET    /api/n8n/status                          — mode + sidecar state
-*   POST   /api/n8n/sidecar/start                   — fire-and-forget sidecar boot
-*   GET    /api/n8n/workflows                       — list workflows
-*   POST   /api/n8n/workflows                       — create workflow
-*   POST   /api/n8n/workflows/generate              — generate + create/update workflow
-*   PUT    /api/n8n/workflows/{id}                  — update workflow
-*   POST   /api/n8n/workflows/{id}/activate         — activate workflow
-*   POST   /api/n8n/workflows/{id}/deactivate       — deactivate workflow
-*   DELETE /api/n8n/workflows/{id}                  — delete workflow
-*
-* Status is the only read-only surface. The workflow CRUD handlers proxy
-* to the actual n8n backend:
-*   - Cloud mode  → `${cloudBaseUrl}/api/v1/agents/${agentId}/n8n/workflows/...`
-*                   with `Authorization: Bearer ${cloud.apiKey}`
-*   - Local mode  → `${sidecar.host}/rest/workflows/...`
-*                   with `X-N8N-API-KEY: ${sidecar.getApiKey()}` (n8n native)
-*   - Disabled / sidecar not ready → 503 `{ error, status }`
-*
-* The provisioned API key is never returned to the UI.
-*
-* Context shape is `{ req, res, method, pathname, config, runtime, json }`.
-* The sidecar instance is read from the module-level singleton in
-* services/n8n-sidecar.ts rather than being threaded through state.
-*/
+ * n8n routes — status surface + workflow CRUD proxy + sidecar lifecycle.
+ *
+ * Exposes:
+ *   GET    /api/n8n/status                          — mode + sidecar state
+ *   POST   /api/n8n/sidecar/start                   — fire-and-forget sidecar boot
+ *   GET    /api/n8n/workflows                       — list workflows
+ *   POST   /api/n8n/workflows                       — create workflow
+ *   POST   /api/n8n/workflows/generate              — generate + create/update workflow
+ *   PUT    /api/n8n/workflows/{id}                  — update workflow
+ *   POST   /api/n8n/workflows/{id}/activate         — activate workflow
+ *   POST   /api/n8n/workflows/{id}/deactivate       — deactivate workflow
+ *   DELETE /api/n8n/workflows/{id}                  — delete workflow
+ *
+ * Status is the only read-only surface. The workflow CRUD handlers proxy
+ * to the actual n8n backend:
+ *   - Cloud mode  → `${cloudBaseUrl}/api/v1/agents/${agentId}/n8n/workflows/...`
+ *                   with `Authorization: Bearer ${cloud.apiKey}`
+ *   - Local mode  → `${sidecar.host}/rest/workflows/...`
+ *                   with `X-N8N-API-KEY: ${sidecar.getApiKey()}` (n8n native)
+ *   - Disabled / sidecar not ready → 503 `{ error, status }`
+ *
+ * The provisioned API key is never returned to the UI.
+ *
+ * Context shape is `{ req, res, method, pathname, config, runtime, json }`.
+ * The sidecar instance is read from the module-level singleton in
+ * services/n8n-sidecar.ts rather than being threaded through state.
+ */
 init_compat_route_shared();
 const CLOUD_HEALTH_CACHE_TTL_MS = 3e4;
 const CLOUD_HEALTH_PROBE_TIMEOUT_MS = 2e3;
@@ -2864,13 +3498,19 @@ const cloudHealthCache = /* @__PURE__ */ new Map();
 async function probeCloudHealth(baseUrl, fetchImpl) {
 	const url = `${normalizeBaseUrl(baseUrl)}/api/v1/health`;
 	try {
-		return (await fetchImpl(url, {
-			method: "GET",
-			headers: { Accept: "application/json" },
-			signal: AbortSignal.timeout(CLOUD_HEALTH_PROBE_TIMEOUT_MS)
-		})).ok ? "ok" : "degraded";
+		return (
+			await fetchImpl(url, {
+				method: "GET",
+				headers: { Accept: "application/json" },
+				signal: AbortSignal.timeout(CLOUD_HEALTH_PROBE_TIMEOUT_MS),
+			})
+		).ok
+			? "ok"
+			: "degraded";
 	} catch (err) {
-		logger.debug(`[n8n-routes] cloud health probe failed: ${err instanceof Error ? err.message : String(err)}`);
+		logger.debug(
+			`[n8n-routes] cloud health probe failed: ${err instanceof Error ? err.message : String(err)}`,
+		);
 		return "degraded";
 	}
 }
@@ -2882,29 +3522,38 @@ async function getCloudHealth(baseUrl, fetchImpl) {
 	const health = await probeCloudHealth(key, fetchImpl);
 	cloudHealthCache.set(key, {
 		health,
-		expiresAt: now + CLOUD_HEALTH_CACHE_TTL_MS
+		expiresAt: now + CLOUD_HEALTH_CACHE_TTL_MS,
 	});
 	return health;
 }
 /**
-* Dynamically import the sidecar module. Keeps `node:child_process` out of
-* the module graph for mobile bundles — `isNativeServerPlatform()` is true
-* on Capacitor-hosted iOS / Android, in which case the sidecar code path
-* is never reached.
-*/
+ * Dynamically import the sidecar module. Keeps `node:child_process` out of
+ * the module graph for mobile bundles — `isNativeServerPlatform()` is true
+ * on Capacitor-hosted iOS / Android, in which case the sidecar code path
+ * is never reached.
+ */
 async function loadSidecarModule() {
 	if (isNativeServerPlatform()) return null;
-	return await Promise.resolve().then(() => (init_n8n_sidecar(), n8n_sidecar_exports));
+	return await Promise.resolve().then(
+		() => (init_n8n_sidecar(), n8n_sidecar_exports),
+	);
 }
 const DEFAULT_CLOUD_API_BASE_URL$1 = "https://api.eliza.how";
 function normalizeBaseUrl(raw) {
 	const trimmed = (raw ?? "").trim();
-	return (trimmed.length > 0 ? trimmed : DEFAULT_CLOUD_API_BASE_URL$1).replace(/\/+$/, "");
+	return (trimmed.length > 0 ? trimmed : DEFAULT_CLOUD_API_BASE_URL$1).replace(
+		/\/+$/,
+		"",
+	);
 }
 function resolveAgentId(ctx) {
 	if (ctx.agentId?.trim()) return ctx.agentId.trim();
 	const runtimeAny = ctx.runtime;
-	return runtimeAny?.agentId ?? runtimeAny?.character?.id ?? "00000000-0000-0000-0000-000000000000";
+	return (
+		runtimeAny?.agentId ??
+		runtimeAny?.character?.id ??
+		"00000000-0000-0000-0000-000000000000"
+	);
 }
 function sendJson$1(ctx, status, body) {
 	const json = ctx.json;
@@ -2915,29 +3564,42 @@ function sanitizeNode(n) {
 	if (!n || typeof n !== "object") return {};
 	const obj = n;
 	return {
-		...typeof obj.id === "string" ? { id: obj.id } : {},
-		...typeof obj.name === "string" ? { name: obj.name } : {},
-		...typeof obj.type === "string" ? { type: obj.type } : {},
-		...typeof obj.typeVersion === "number" ? { typeVersion: obj.typeVersion } : {}
+		...(typeof obj.id === "string" ? { id: obj.id } : {}),
+		...(typeof obj.name === "string" ? { name: obj.name } : {}),
+		...(typeof obj.type === "string" ? { type: obj.type } : {}),
+		...(typeof obj.typeVersion === "number"
+			? { typeVersion: obj.typeVersion }
+			: {}),
 	};
 }
 /**
-* Full node sanitizer for single-workflow GET — includes position and
-* parameters (needed by the graph viewer). Credentials are still stripped.
-*/
+ * Full node sanitizer for single-workflow GET — includes position and
+ * parameters (needed by the graph viewer). Credentials are still stripped.
+ */
 function sanitizeNodeFull(n) {
 	if (!n || typeof n !== "object") return {};
 	const obj = n;
 	const base = sanitizeNode(n);
 	const pos = obj.position;
-	const position = Array.isArray(pos) && pos.length >= 2 && typeof pos[0] === "number" && typeof pos[1] === "number" ? [pos[0], pos[1]] : void 0;
-	const parameters = obj.parameters && typeof obj.parameters === "object" ? obj.parameters : void 0;
+	const position =
+		Array.isArray(pos) &&
+		pos.length >= 2 &&
+		typeof pos[0] === "number" &&
+		typeof pos[1] === "number"
+			? [pos[0], pos[1]]
+			: void 0;
+	const parameters =
+		obj.parameters && typeof obj.parameters === "object"
+			? obj.parameters
+			: void 0;
 	return {
 		...base,
-		...position !== void 0 ? { position } : {},
-		...parameters !== void 0 ? { parameters } : {},
-		...typeof obj.notes === "string" ? { notes: obj.notes } : {},
-		...typeof obj.notesInFlow === "boolean" ? { notesInFlow: obj.notesInFlow } : {}
+		...(position !== void 0 ? { position } : {}),
+		...(parameters !== void 0 ? { parameters } : {}),
+		...(typeof obj.notes === "string" ? { notes: obj.notes } : {}),
+		...(typeof obj.notesInFlow === "boolean"
+			? { notesInFlow: obj.notesInFlow }
+			: {}),
 	};
 }
 /** Normalize an n8n workflow payload to our client-facing shape. */
@@ -2952,103 +3614,120 @@ function normalizeWorkflow(raw) {
 		id,
 		name,
 		active: Boolean(obj.active),
-		...typeof obj.description === "string" ? { description: obj.description } : {},
+		...(typeof obj.description === "string"
+			? { description: obj.description }
+			: {}),
 		nodes,
-		nodeCount: nodes.length
+		nodeCount: nodes.length,
 	};
 }
 /**
-* Full normalizer for single-workflow GET responses.
-*
-* Tradeoff: the list endpoint stays shallow (id/name/type only) to keep
-* sidebar payloads small — n8n workflows can have hundreds of nodes with
-* large parameter blobs. The single-workflow endpoint passes through
-* position, parameters, and connections so the graph viewer has everything
-* it needs without a second request.
-*/
+ * Full normalizer for single-workflow GET responses.
+ *
+ * Tradeoff: the list endpoint stays shallow (id/name/type only) to keep
+ * sidebar payloads small — n8n workflows can have hundreds of nodes with
+ * large parameter blobs. The single-workflow endpoint passes through
+ * position, parameters, and connections so the graph viewer has everything
+ * it needs without a second request.
+ */
 function normalizeWorkflowFull(raw) {
 	if (!raw || typeof raw !== "object") return null;
 	const obj = raw;
 	const id = typeof obj.id === "string" ? obj.id : String(obj.id ?? "");
 	const name = typeof obj.name === "string" ? obj.name : "";
 	if (!id) return null;
-	const nodes = (Array.isArray(obj.nodes) ? obj.nodes : []).map(sanitizeNodeFull);
-	const connections = obj.connections && typeof obj.connections === "object" ? obj.connections : void 0;
+	const nodes = (Array.isArray(obj.nodes) ? obj.nodes : []).map(
+		sanitizeNodeFull,
+	);
+	const connections =
+		obj.connections && typeof obj.connections === "object"
+			? obj.connections
+			: void 0;
 	return {
 		id,
 		name,
 		active: Boolean(obj.active),
-		...typeof obj.description === "string" ? { description: obj.description } : {},
+		...(typeof obj.description === "string"
+			? { description: obj.description }
+			: {}),
 		nodes,
 		nodeCount: nodes.length,
-		...connections !== void 0 ? { connections } : {}
+		...(connections !== void 0 ? { connections } : {}),
 	};
 }
 /**
-* Resolve the backend target for a workflow-CRUD call. Returns null target
-* if the n8n backend is not currently available; caller emits a 503.
-*
-* `sidecar` is passed in so the caller can either skip the sidecar module
-* import on mobile (where it is unsupported) or inject a test stub. When
-* `sidecar` is undefined, the handler treats that as "no sidecar singleton
-* yet" — identical to the old `peekN8nSidecar()` → `null` case.
-*/
+ * Resolve the backend target for a workflow-CRUD call. Returns null target
+ * if the n8n backend is not currently available; caller emits a 503.
+ *
+ * `sidecar` is passed in so the caller can either skip the sidecar module
+ * import on mobile (where it is unsupported) or inject a test stub. When
+ * `sidecar` is undefined, the handler treats that as "no sidecar singleton
+ * yet" — identical to the old `peekN8nSidecar()` → `null` case.
+ */
 function resolveProxyTarget(ctx, subpath, sidecar, native) {
 	const { cloudConnected, localEnabled } = resolveN8nMode({
 		config: ctx.config,
 		runtime: ctx.runtime,
-		native
+		native,
 	});
 	if (cloudConnected) {
 		const apiKey = ctx.config.cloud?.apiKey?.trim();
-		if (!apiKey) return {
-			target: null,
-			reason: {
-				message: "cloud api key missing",
-				status: "error"
-			}
-		};
+		if (!apiKey)
+			return {
+				target: null,
+				reason: {
+					message: "cloud api key missing",
+					status: "error",
+				},
+			};
 		const baseUrl = normalizeBaseUrl(ctx.config.cloud?.baseUrl);
 		const agentId = resolveAgentId(ctx);
-		return { target: {
-			url: `${baseUrl}/api/v1/agents/${encodeURIComponent(agentId)}/n8n/workflows${subpath}`,
-			headers: {
-				Authorization: `Bearer ${apiKey}`,
-				Accept: "application/json"
-			}
-		} };
+		return {
+			target: {
+				url: `${baseUrl}/api/v1/agents/${encodeURIComponent(agentId)}/n8n/workflows${subpath}`,
+				headers: {
+					Authorization: `Bearer ${apiKey}`,
+					Accept: "application/json",
+				},
+			},
+		};
 	}
-	if (!localEnabled) return {
-		target: null,
-		reason: {
-			message: "n8n disabled",
-			status: "stopped"
-		}
-	};
+	if (!localEnabled)
+		return {
+			target: null,
+			reason: {
+				message: "n8n disabled",
+				status: "stopped",
+			},
+		};
 	const sidecarState = sidecar?.getState();
 	const status = sidecarState?.status ?? "stopped";
-	if (status !== "ready") return {
-		target: null,
-		reason: {
-			message: `n8n not ready (${status})`,
-			status
-		}
-	};
+	if (status !== "ready")
+		return {
+			target: null,
+			reason: {
+				message: `n8n not ready (${status})`,
+				status,
+			},
+		};
 	const host = sidecarState?.host ?? ctx.config.n8n?.host ?? null;
-	if (!host) return {
-		target: null,
-		reason: {
-			message: "n8n host unknown",
-			status: "error"
-		}
-	};
+	if (!host)
+		return {
+			target: null,
+			reason: {
+				message: "n8n host unknown",
+				status: "error",
+			},
+		};
 	const apiKey = sidecar?.getApiKey() ?? ctx.config.n8n?.apiKey ?? null;
 	const headers = { Accept: "application/json" };
 	if (apiKey) headers["X-N8N-API-KEY"] = apiKey;
-	return { target: {
-		url: `${host.replace(/\/+$/, "")}/api/v1/workflows${subpath}`,
-		headers
-	} };
+	return {
+		target: {
+			url: `${host.replace(/\/+$/, "")}/api/v1/workflows${subpath}`,
+			headers,
+		},
+	};
 }
 async function fetchTargetAsJson(ctx, target, init) {
 	const fetchImpl = ctx.fetchImpl ?? fetch;
@@ -3059,8 +3738,8 @@ async function fetchTargetAsJson(ctx, target, init) {
 		res = await fetchImpl(target.url, {
 			method: init.method,
 			headers,
-			...init.body != null ? { body: init.body } : {},
-			signal: AbortSignal.timeout(1e4)
+			...(init.body != null ? { body: init.body } : {}),
+			signal: AbortSignal.timeout(1e4),
 		});
 	} catch (err) {
 		const message = err instanceof Error ? err.message : String(err);
@@ -3068,31 +3747,33 @@ async function fetchTargetAsJson(ctx, target, init) {
 		return {
 			ok: false,
 			status: 502,
-			body: { error: message }
+			body: { error: message },
 		};
 	}
 	let parsed = null;
-	if ((res.headers.get("content-type") ?? "").includes("application/json")) try {
-		parsed = await res.json();
-	} catch {
-		parsed = null;
-	}
-	else try {
-		parsed = await res.text();
-	} catch {
-		parsed = null;
-	}
+	if ((res.headers.get("content-type") ?? "").includes("application/json"))
+		try {
+			parsed = await res.json();
+		} catch {
+			parsed = null;
+		}
+	else
+		try {
+			parsed = await res.text();
+		} catch {
+			parsed = null;
+		}
 	return {
 		ok: res.ok,
 		status: res.status,
-		body: parsed
+		body: parsed,
 	};
 }
 /**
-* Extracts a workflows array from an n8n or cloud-gateway list response.
-* n8n returns `{ data: [...] }`; our cloud gateway may return `{ workflows }`
-* or `{ data }`. We accept both.
-*/
+ * Extracts a workflows array from an n8n or cloud-gateway list response.
+ * n8n returns `{ data: [...] }`; our cloud gateway may return `{ workflows }`
+ * or `{ data }`. We accept both.
+ */
 function extractWorkflowList(body) {
 	if (!body || typeof body !== "object") return [];
 	const obj = body;
@@ -3108,11 +3789,15 @@ function extractWorkflowSingle(body) {
 	return body;
 }
 function asRecord$3(value) {
-	return value && typeof value === "object" && !Array.isArray(value) ? value : null;
+	return value && typeof value === "object" && !Array.isArray(value)
+		? value
+		: null;
 }
 function readOptionalString(obj, key) {
 	const value = obj[key];
-	return typeof value === "string" && value.trim().length > 0 ? value.trim() : void 0;
+	return typeof value === "string" && value.trim().length > 0
+		? value.trim()
+		: void 0;
 }
 function readOptionalBoolean(obj, key) {
 	const value = obj[key];
@@ -3123,18 +3808,18 @@ function readOptionalNumber(obj, key) {
 	return typeof value === "number" && Number.isFinite(value) ? value : void 0;
 }
 /**
-* Read the originating conversation's tail inbound message metadata and
-* derive a `TriggerContext`. Reads both the canonical
-* `metadata.discord.{channelId,guildId,messageId}` /
-* `metadata.telegram.{chatId,threadId}` blocks AND the flat
-* `discordChannelId` / `discordServerId` / `discordMessageId` fields the
-* upstream Discord plugin currently writes (pre-existing schema gap —
-* canonical wins when present, flat is the fallback so nothing today
-* breaks).
-*
-* Returns `undefined` when the conversation has no inbound platform
-* metadata or the runtime can't read memories.
-*/
+ * Read the originating conversation's tail inbound message metadata and
+ * derive a `TriggerContext`. Reads both the canonical
+ * `metadata.discord.{channelId,guildId,messageId}` /
+ * `metadata.telegram.{chatId,threadId}` blocks AND the flat
+ * `discordChannelId` / `discordServerId` / `discordMessageId` fields the
+ * upstream Discord plugin currently writes (pre-existing schema gap —
+ * canonical wins when present, flat is the fallback so nothing today
+ * breaks).
+ *
+ * Returns `undefined` when the conversation has no inbound platform
+ * metadata or the runtime can't read memories.
+ */
 async function buildTriggerContextFromConversation(runtime, roomId) {
 	if (!runtime || typeof runtime.getMemories !== "function") return void 0;
 	let memories;
@@ -3142,51 +3827,78 @@ async function buildTriggerContextFromConversation(runtime, roomId) {
 		memories = await runtime.getMemories({
 			roomId,
 			tableName: "messages",
-			count: 12
+			count: 12,
 		});
 	} catch (err) {
-		logger.debug?.(`[n8n-routes] buildTriggerContextFromConversation: getMemories threw: ${err instanceof Error ? err.message : String(err)}`);
+		logger.debug?.(
+			`[n8n-routes] buildTriggerContextFromConversation: getMemories threw: ${err instanceof Error ? err.message : String(err)}`,
+		);
 		return;
 	}
 	if (!Array.isArray(memories) || memories.length === 0) return void 0;
-	const inbound = memories.find((m) => m.entityId && m.entityId !== runtime.agentId);
+	const inbound = memories.find(
+		(m) => m.entityId && m.entityId !== runtime.agentId,
+	);
 	if (!inbound?.metadata) return void 0;
 	const meta = inbound.metadata;
 	const discord = meta.discord ?? {};
 	const telegram = meta.telegram ?? {};
 	const slack = meta.slack ?? {};
-	const discordChannelId = (typeof discord.channelId === "string" ? discord.channelId : void 0) ?? (typeof meta.discordChannelId === "string" ? meta.discordChannelId : void 0);
-	const discordGuildId = (typeof discord.guildId === "string" ? discord.guildId : void 0) ?? (typeof meta.discordServerId === "string" ? meta.discordServerId : void 0);
-	const discordThreadId = typeof discord.threadId === "string" ? discord.threadId : void 0;
-	const telegramChatId = typeof telegram.chatId === "string" || typeof telegram.chatId === "number" ? telegram.chatId : void 0;
-	const telegramThreadId = typeof telegram.threadId === "string" || typeof telegram.threadId === "number" ? telegram.threadId : void 0;
-	const slackChannelId = typeof slack.channelId === "string" ? slack.channelId : void 0;
+	const discordChannelId =
+		(typeof discord.channelId === "string" ? discord.channelId : void 0) ??
+		(typeof meta.discordChannelId === "string"
+			? meta.discordChannelId
+			: void 0);
+	const discordGuildId =
+		(typeof discord.guildId === "string" ? discord.guildId : void 0) ??
+		(typeof meta.discordServerId === "string" ? meta.discordServerId : void 0);
+	const discordThreadId =
+		typeof discord.threadId === "string" ? discord.threadId : void 0;
+	const telegramChatId =
+		typeof telegram.chatId === "string" || typeof telegram.chatId === "number"
+			? telegram.chatId
+			: void 0;
+	const telegramThreadId =
+		typeof telegram.threadId === "string" ||
+		typeof telegram.threadId === "number"
+			? telegram.threadId
+			: void 0;
+	const slackChannelId =
+		typeof slack.channelId === "string" ? slack.channelId : void 0;
 	const slackTeamId = typeof slack.teamId === "string" ? slack.teamId : void 0;
-	if (discordChannelId) return {
-		source: "discord",
-		discord: {
-			...discordChannelId ? { channelId: discordChannelId } : {},
-			...discordGuildId ? { guildId: discordGuildId } : {},
-			...discordThreadId ? { threadId: discordThreadId } : {}
-		}
-	};
-	if (telegramChatId !== void 0) return {
-		source: "telegram",
-		telegram: {
-			chatId: telegramChatId,
-			...telegramThreadId !== void 0 ? { threadId: telegramThreadId } : {}
-		}
-	};
-	if (slackChannelId) return {
-		source: "slack",
-		slack: {
-			channelId: slackChannelId,
-			...slackTeamId ? { teamId: slackTeamId } : {}
-		}
-	};
+	if (discordChannelId)
+		return {
+			source: "discord",
+			discord: {
+				...(discordChannelId ? { channelId: discordChannelId } : {}),
+				...(discordGuildId ? { guildId: discordGuildId } : {}),
+				...(discordThreadId ? { threadId: discordThreadId } : {}),
+			},
+		};
+	if (telegramChatId !== void 0)
+		return {
+			source: "telegram",
+			telegram: {
+				chatId: telegramChatId,
+				...(telegramThreadId !== void 0 ? { threadId: telegramThreadId } : {}),
+			},
+		};
+	if (slackChannelId)
+		return {
+			source: "slack",
+			slack: {
+				channelId: slackChannelId,
+				...(slackTeamId ? { teamId: slackTeamId } : {}),
+			},
+		};
 }
 function readPosition(value) {
-	return Array.isArray(value) && value.length >= 2 && typeof value[0] === "number" && typeof value[1] === "number" ? [value[0], value[1]] : null;
+	return Array.isArray(value) &&
+		value.length >= 2 &&
+		typeof value[0] === "number" &&
+		typeof value[1] === "number"
+		? [value[0], value[1]]
+		: null;
 }
 function readCredentials(value) {
 	const raw = asRecord$3(value);
@@ -3200,7 +3912,7 @@ function readCredentials(value) {
 		if (!id || !name) continue;
 		credentials[key] = {
 			id,
-			name
+			name,
 		};
 	}
 	return Object.keys(credentials).length > 0 ? credentials : void 0;
@@ -3216,24 +3928,50 @@ function normalizeWorkflowWriteNode(value, index) {
 	const typeVersion = readOptionalNumber(obj, "typeVersion") ?? 1;
 	const credentials = readCredentials(obj.credentials);
 	return {
-		...readOptionalString(obj, "id") ? { id: readOptionalString(obj, "id") } : {},
+		...(readOptionalString(obj, "id")
+			? { id: readOptionalString(obj, "id") }
+			: {}),
 		name,
 		type,
 		typeVersion,
 		position,
 		parameters,
-		...credentials ? { credentials } : {},
-		...readOptionalBoolean(obj, "disabled") !== void 0 ? { disabled: readOptionalBoolean(obj, "disabled") } : {},
-		...readOptionalString(obj, "notes") ? { notes: readOptionalString(obj, "notes") } : {},
-		...readOptionalBoolean(obj, "notesInFlow") !== void 0 ? { notesInFlow: readOptionalBoolean(obj, "notesInFlow") } : {},
-		...readOptionalString(obj, "color") ? { color: readOptionalString(obj, "color") } : {},
-		...readOptionalBoolean(obj, "continueOnFail") !== void 0 ? { continueOnFail: readOptionalBoolean(obj, "continueOnFail") } : {},
-		...readOptionalBoolean(obj, "executeOnce") !== void 0 ? { executeOnce: readOptionalBoolean(obj, "executeOnce") } : {},
-		...readOptionalBoolean(obj, "alwaysOutputData") !== void 0 ? { alwaysOutputData: readOptionalBoolean(obj, "alwaysOutputData") } : {},
-		...readOptionalBoolean(obj, "retryOnFail") !== void 0 ? { retryOnFail: readOptionalBoolean(obj, "retryOnFail") } : {},
-		...readOptionalNumber(obj, "maxTries") !== void 0 ? { maxTries: readOptionalNumber(obj, "maxTries") } : {},
-		...readOptionalNumber(obj, "waitBetweenTries") !== void 0 ? { waitBetweenTries: readOptionalNumber(obj, "waitBetweenTries") } : {},
-		...obj.onError === "continueErrorOutput" || obj.onError === "continueRegularOutput" || obj.onError === "stopWorkflow" ? { onError: obj.onError } : {}
+		...(credentials ? { credentials } : {}),
+		...(readOptionalBoolean(obj, "disabled") !== void 0
+			? { disabled: readOptionalBoolean(obj, "disabled") }
+			: {}),
+		...(readOptionalString(obj, "notes")
+			? { notes: readOptionalString(obj, "notes") }
+			: {}),
+		...(readOptionalBoolean(obj, "notesInFlow") !== void 0
+			? { notesInFlow: readOptionalBoolean(obj, "notesInFlow") }
+			: {}),
+		...(readOptionalString(obj, "color")
+			? { color: readOptionalString(obj, "color") }
+			: {}),
+		...(readOptionalBoolean(obj, "continueOnFail") !== void 0
+			? { continueOnFail: readOptionalBoolean(obj, "continueOnFail") }
+			: {}),
+		...(readOptionalBoolean(obj, "executeOnce") !== void 0
+			? { executeOnce: readOptionalBoolean(obj, "executeOnce") }
+			: {}),
+		...(readOptionalBoolean(obj, "alwaysOutputData") !== void 0
+			? { alwaysOutputData: readOptionalBoolean(obj, "alwaysOutputData") }
+			: {}),
+		...(readOptionalBoolean(obj, "retryOnFail") !== void 0
+			? { retryOnFail: readOptionalBoolean(obj, "retryOnFail") }
+			: {}),
+		...(readOptionalNumber(obj, "maxTries") !== void 0
+			? { maxTries: readOptionalNumber(obj, "maxTries") }
+			: {}),
+		...(readOptionalNumber(obj, "waitBetweenTries") !== void 0
+			? { waitBetweenTries: readOptionalNumber(obj, "waitBetweenTries") }
+			: {}),
+		...(obj.onError === "continueErrorOutput" ||
+		obj.onError === "continueRegularOutput" ||
+		obj.onError === "stopWorkflow"
+			? { onError: obj.onError }
+			: {}),
 	};
 }
 function normalizeWorkflowConnections(value) {
@@ -3245,69 +3983,87 @@ function normalizeWorkflowConnections(value) {
 		if (!outputMap) continue;
 		const mainRaw = outputMap.main;
 		if (!Array.isArray(mainRaw)) continue;
-		connections[sourceName] = { main: mainRaw.map((group) => Array.isArray(group) ? group.map((connection) => {
-			const obj = asRecord$3(connection);
-			const node = obj ? readOptionalString(obj, "node") : void 0;
-			if (!obj || !node) return null;
-			return {
-				node,
-				type: "main",
-				index: readOptionalNumber(obj, "index") ?? 0
-			};
-		}).filter((connection) => connection !== null) : []) };
+		connections[sourceName] = {
+			main: mainRaw.map((group) =>
+				Array.isArray(group)
+					? group
+							.map((connection) => {
+								const obj = asRecord$3(connection);
+								const node = obj ? readOptionalString(obj, "node") : void 0;
+								if (!obj || !node) return null;
+								return {
+									node,
+									type: "main",
+									index: readOptionalNumber(obj, "index") ?? 0,
+								};
+							})
+							.filter((connection) => connection !== null)
+					: [],
+			),
+		};
 	}
 	return connections;
 }
 function normalizeWorkflowWritePayload(body) {
 	const name = readOptionalString(body, "name");
 	if (!name) return { error: "workflow name required" };
-	const nodes = (Array.isArray(body.nodes) ? body.nodes : []).map((node, index) => normalizeWorkflowWriteNode(node, index)).filter((node) => node !== null);
-	if (nodes.length === 0) return { error: "workflow must include at least one valid node" };
-	return { payload: {
-		name,
-		nodes,
-		connections: normalizeWorkflowConnections(body.connections),
-		settings: asRecord$3(body.settings) ?? {}
-	} };
+	const nodes = (Array.isArray(body.nodes) ? body.nodes : [])
+		.map((node, index) => normalizeWorkflowWriteNode(node, index))
+		.filter((node) => node !== null);
+	if (nodes.length === 0)
+		return { error: "workflow must include at least one valid node" };
+	return {
+		payload: {
+			name,
+			nodes,
+			connections: normalizeWorkflowConnections(body.connections),
+			settings: asRecord$3(body.settings) ?? {},
+		},
+	};
 }
 function propagateError(ctx, upstream) {
-	const status = upstream.status >= 400 && upstream.status < 600 ? upstream.status : 502;
+	const status =
+		upstream.status >= 400 && upstream.status < 600 ? upstream.status : 502;
 	let message = `upstream responded with ${upstream.status}`;
 	if (upstream.body && typeof upstream.body === "object") {
 		const b = upstream.body;
 		const candidate = b.error ?? b.message;
-		if (typeof candidate === "string" && candidate.length > 0) message = candidate;
-	} else if (typeof upstream.body === "string" && upstream.body.length > 0) message = upstream.body;
+		if (typeof candidate === "string" && candidate.length > 0)
+			message = candidate;
+	} else if (typeof upstream.body === "string" && upstream.body.length > 0)
+		message = upstream.body;
 	sendJson$1(ctx, status, { error: message });
 }
 /**
-* Parse `/api/n8n/workflows/{id}[/activate|/deactivate]` into (id, action).
-* Returns null if pathname doesn't match.
-*/
+ * Parse `/api/n8n/workflows/{id}[/activate|/deactivate]` into (id, action).
+ * Returns null if pathname doesn't match.
+ */
 function parseWorkflowPath(pathname) {
 	if (!pathname.startsWith("/api/n8n/workflows/")) return null;
 	const rest = pathname.slice(19);
 	if (!rest) return null;
 	const parts = rest.split("/").filter(Boolean);
-	if (parts.length === 1) return {
-		id: decodeURIComponent(parts[0] ?? ""),
-		action: "get"
-	};
+	if (parts.length === 1)
+		return {
+			id: decodeURIComponent(parts[0] ?? ""),
+			action: "get",
+		};
 	if (parts.length === 2) {
 		const action = parts[1];
-		if (action === "activate" || action === "deactivate") return {
-			id: decodeURIComponent(parts[0] ?? ""),
-			action
-		};
+		if (action === "activate" || action === "deactivate")
+			return {
+				id: decodeURIComponent(parts[0] ?? ""),
+				action,
+			};
 	}
 	return null;
 }
 /**
-* Resolve the sidecar singleton for this request. On mobile the sidecar
-* module is never imported; callers receive `null` and the downstream
-* resolver treats that as "no local backend available". Tests inject a
-* concrete stub via `ctx.n8nSidecar`.
-*/
+ * Resolve the sidecar singleton for this request. On mobile the sidecar
+ * module is never imported; callers receive `null` and the downstream
+ * resolver treats that as "no local backend available". Tests inject a
+ * concrete stub via `ctx.n8nSidecar`.
+ */
 async function resolveSidecarForRequest(ctx, native) {
 	if (ctx.n8nSidecar !== void 0) return ctx.n8nSidecar;
 	if (native) return null;
@@ -3316,21 +4072,28 @@ async function resolveSidecarForRequest(ctx, native) {
 async function handleN8nRoutes(ctx) {
 	const { method, pathname, config } = ctx;
 	const native = ctx.isNativePlatform ?? isNativeServerPlatform();
-	if (method === "GET" && pathname === "/api/n8n/status") return handleStatus(ctx, await resolveSidecarForRequest(ctx, native), native);
+	if (method === "GET" && pathname === "/api/n8n/status")
+		return handleStatus(
+			ctx,
+			await resolveSidecarForRequest(ctx, native),
+			native,
+		);
 	if (method === "POST" && pathname === "/api/n8n/sidecar/start") {
 		if (native) {
 			sendJson$1(ctx, 409, {
 				error: "Local n8n not supported on mobile. Use Eliza Cloud.",
-				platform: "mobile"
+				platform: "mobile",
 			});
 			return true;
 		}
 		const mod = await loadSidecarModule();
-		const sidecar = ctx.n8nSidecar ?? mod?.getN8nSidecar({
-			enabled: config.n8n?.localEnabled ?? true,
-			...config.n8n?.version ? { version: config.n8n.version } : {},
-			...config.n8n?.startPort ? { startPort: config.n8n.startPort } : {}
-		});
+		const sidecar =
+			ctx.n8nSidecar ??
+			mod?.getN8nSidecar({
+				enabled: config.n8n?.localEnabled ?? true,
+				...(config.n8n?.version ? { version: config.n8n.version } : {}),
+				...(config.n8n?.startPort ? { startPort: config.n8n.startPort } : {}),
+			});
 		if (!sidecar) {
 			sendJson$1(ctx, 500, { error: "n8n sidecar module unavailable" });
 			return true;
@@ -3339,10 +4102,25 @@ async function handleN8nRoutes(ctx) {
 		sendJson$1(ctx, 202, { ok: true });
 		return true;
 	}
-	if (method === "GET" && pathname === "/api/n8n/workflows") return handleListWorkflows(ctx, await resolveSidecarForRequest(ctx, native), native);
-	if (method === "POST" && pathname === "/api/n8n/workflows/generate") return handleGenerateWorkflow(ctx);
-	if (method === "POST" && pathname === "/api/n8n/workflows/resolve-clarification") return handleResolveClarification(ctx);
-	if (method === "POST" && pathname === "/api/n8n/workflows") return handleCreateWorkflow(ctx, await resolveSidecarForRequest(ctx, native), native);
+	if (method === "GET" && pathname === "/api/n8n/workflows")
+		return handleListWorkflows(
+			ctx,
+			await resolveSidecarForRequest(ctx, native),
+			native,
+		);
+	if (method === "POST" && pathname === "/api/n8n/workflows/generate")
+		return handleGenerateWorkflow(ctx);
+	if (
+		method === "POST" &&
+		pathname === "/api/n8n/workflows/resolve-clarification"
+	)
+		return handleResolveClarification(ctx);
+	if (method === "POST" && pathname === "/api/n8n/workflows")
+		return handleCreateWorkflow(
+			ctx,
+			await resolveSidecarForRequest(ctx, native),
+			native,
+		);
 	const parsed = parseWorkflowPath(pathname);
 	if (parsed) {
 		if (method === "POST" && parsed.action === "activate") {
@@ -3373,14 +4151,21 @@ async function handleStatus(ctx, sidecar, native) {
 	const { mode, localEnabled, cloudConnected } = resolveN8nMode({
 		config,
 		runtime,
-		native
+		native,
 	});
 	const sidecarState = sidecar?.getState();
 	const status = sidecarState?.status ?? "stopped";
-	const host = mode === "local" ? sidecarState?.host ?? config.n8n?.host ?? null : null;
+	const host =
+		mode === "local" ? (sidecarState?.host ?? config.n8n?.host ?? null) : null;
 	let cloudHealth = "unknown";
-	if (mode === "cloud") if (ctx.cloudHealthOverride !== void 0) cloudHealth = ctx.cloudHealthOverride;
-	else cloudHealth = await getCloudHealth(config.cloud?.baseUrl ?? DEFAULT_CLOUD_API_BASE_URL$1, ctx.fetchImpl ?? fetch);
+	if (mode === "cloud")
+		if (ctx.cloudHealthOverride !== void 0)
+			cloudHealth = ctx.cloudHealthOverride;
+		else
+			cloudHealth = await getCloudHealth(
+				config.cloud?.baseUrl ?? DEFAULT_CLOUD_API_BASE_URL$1,
+				ctx.fetchImpl ?? fetch,
+			);
 	const payload = {
 		mode,
 		host,
@@ -3389,11 +4174,13 @@ async function handleStatus(ctx, sidecar, native) {
 		localEnabled,
 		platform: native ? "mobile" : "desktop",
 		cloudHealth,
-		...sidecarState ? {
-			errorMessage: sidecarState.errorMessage,
-			retries: sidecarState.retries,
-			recentOutput: sidecarState.recentOutput
-		} : {}
+		...(sidecarState
+			? {
+					errorMessage: sidecarState.errorMessage,
+					retries: sidecarState.retries,
+					recentOutput: sidecarState.recentOutput,
+				}
+			: {}),
 	};
 	ctx.json(ctx.res, payload);
 	return true;
@@ -3403,45 +4190,60 @@ async function handleListWorkflows(ctx, sidecar, native) {
 	if (!resolved.target) {
 		sendJson$1(ctx, 503, {
 			error: resolved.reason?.message ?? "n8n not ready",
-			status: resolved.reason?.status ?? "stopped"
+			status: resolved.reason?.status ?? "stopped",
 		});
 		return true;
 	}
-	const upstream = await fetchTargetAsJson(ctx, resolved.target, { method: "GET" });
+	const upstream = await fetchTargetAsJson(ctx, resolved.target, {
+		method: "GET",
+	});
 	if (!upstream.ok) {
 		propagateError(ctx, upstream);
 		return true;
 	}
-	sendJson$1(ctx, 200, { workflows: extractWorkflowList(upstream.body).map(normalizeWorkflow).filter((w) => w !== null) });
+	sendJson$1(ctx, 200, {
+		workflows: extractWorkflowList(upstream.body)
+			.map(normalizeWorkflow)
+			.filter((w) => w !== null),
+	});
 	return true;
 }
 /**
-* GET /api/n8n/workflows/:id — single-workflow fetch with full graph payload.
-*
-* Unlike the list endpoint (which stays shallow for sidebar performance),
-* this response includes node `position`, `parameters`, and the `connections`
-* map so the graph viewer can render nodes and edges without a second request.
-* Credentials are still stripped from node descriptors.
-*/
+ * GET /api/n8n/workflows/:id — single-workflow fetch with full graph payload.
+ *
+ * Unlike the list endpoint (which stays shallow for sidebar performance),
+ * this response includes node `position`, `parameters`, and the `connections`
+ * map so the graph viewer can render nodes and edges without a second request.
+ * Credentials are still stripped from node descriptors.
+ */
 async function handleGetWorkflow(ctx, id, sidecar, native) {
 	if (!id) {
 		sendJson$1(ctx, 400, { error: "workflow id required" });
 		return true;
 	}
-	const resolved = resolveProxyTarget(ctx, `/${encodeURIComponent(id)}`, sidecar, native);
+	const resolved = resolveProxyTarget(
+		ctx,
+		`/${encodeURIComponent(id)}`,
+		sidecar,
+		native,
+	);
 	if (!resolved.target) {
 		sendJson$1(ctx, 503, {
 			error: resolved.reason?.message ?? "n8n not ready",
-			status: resolved.reason?.status ?? "stopped"
+			status: resolved.reason?.status ?? "stopped",
 		});
 		return true;
 	}
-	const upstream = await fetchTargetAsJson(ctx, resolved.target, { method: "GET" });
+	const upstream = await fetchTargetAsJson(ctx, resolved.target, {
+		method: "GET",
+	});
 	if (!upstream.ok) {
 		propagateError(ctx, upstream);
 		return true;
 	}
-	const normalized = normalizeWorkflowFull(extractWorkflowSingle(upstream.body));
+	const normalized = normalizeWorkflowFull(
+		extractWorkflowSingle(upstream.body),
+	);
 	if (!normalized) {
 		sendJson$1(ctx, 502, { error: "unexpected upstream shape" });
 		return true;
@@ -3454,19 +4256,21 @@ async function writeWorkflow(ctx, method, subpath, payload, sidecar, native) {
 	if (!resolved.target) {
 		sendJson$1(ctx, 503, {
 			error: resolved.reason?.message ?? "n8n not ready",
-			status: resolved.reason?.status ?? "stopped"
+			status: resolved.reason?.status ?? "stopped",
 		});
 		return true;
 	}
 	const upstream = await fetchTargetAsJson(ctx, resolved.target, {
 		method,
-		body: JSON.stringify(payload)
+		body: JSON.stringify(payload),
 	});
 	if (!upstream.ok) {
 		propagateError(ctx, upstream);
 		return true;
 	}
-	const normalized = normalizeWorkflowFull(extractWorkflowSingle(upstream.body));
+	const normalized = normalizeWorkflowFull(
+		extractWorkflowSingle(upstream.body),
+	);
 	if (!normalized) {
 		sendJson$1(ctx, 502, { error: "unexpected upstream shape" });
 		return true;
@@ -3496,11 +4300,23 @@ async function handleUpdateWorkflow(ctx, id, sidecar, native) {
 		sendJson$1(ctx, 400, { error: error ?? "invalid workflow payload" });
 		return true;
 	}
-	return writeWorkflow(ctx, "PUT", `/${encodeURIComponent(id)}`, payload, sidecar, native);
+	return writeWorkflow(
+		ctx,
+		"PUT",
+		`/${encodeURIComponent(id)}`,
+		payload,
+		sidecar,
+		native,
+	);
 }
 function getN8nWorkflowService(ctx) {
 	const service = ctx.runtime?.getService?.("n8n_workflow");
-	if (typeof service?.generateWorkflowDraft !== "function" || typeof service.deployWorkflow !== "function" || typeof service.getWorkflow !== "function") return null;
+	if (
+		typeof service?.generateWorkflowDraft !== "function" ||
+		typeof service.deployWorkflow !== "function" ||
+		typeof service.getWorkflow !== "function"
+	)
+		return null;
 	return service;
 }
 function getConnectorTargetCatalog(ctx) {
@@ -3518,7 +4334,7 @@ async function deployAndRespond(ctx, service, draft) {
 	if (deployed.missingCredentials.length > 0) {
 		sendJson$1(ctx, 200, {
 			...deployed,
-			warning: "missing credentials"
+			warning: "missing credentials",
 		});
 		return;
 	}
@@ -3540,8 +4356,15 @@ async function handleGenerateWorkflow(ctx) {
 		sendJson$1(ctx, 503, { error: "n8n workflow service unavailable" });
 		return true;
 	}
-	const triggerContext = bridgeConversationId ? await buildTriggerContextFromConversation(ctx.runtime, bridgeConversationId) : void 0;
-	const draft = triggerContext ? await service.generateWorkflowDraft?.(prompt, { triggerContext }) : await service.generateWorkflowDraft?.(prompt);
+	const triggerContext = bridgeConversationId
+		? await buildTriggerContextFromConversation(
+				ctx.runtime,
+				bridgeConversationId,
+			)
+		: void 0;
+	const draft = triggerContext
+		? await service.generateWorkflowDraft?.(prompt, { triggerContext })
+		: await service.generateWorkflowDraft?.(prompt);
 	if (name?.trim()) draft.name = name.trim();
 	if (workflowId) draft.id = workflowId;
 	const rawClarifications = draft._meta?.requiresClarification;
@@ -3552,7 +4375,9 @@ async function handleGenerateWorkflow(ctx) {
 			status: "needs_clarification",
 			draft,
 			clarifications,
-			catalog: catalogService ? await buildCatalogSnapshot(catalogService, clarifications) : []
+			catalog: catalogService
+				? await buildCatalogSnapshot(catalogService, clarifications)
+				: [],
 		});
 		return true;
 	}
@@ -3585,11 +4410,18 @@ async function handleResolveClarification(ctx) {
 	if (!result.ok) {
 		sendJson$1(ctx, 400, {
 			error: result.error,
-			paramPath: result.paramPath
+			paramPath: result.paramPath,
 		});
 		return true;
 	}
-	pruneResolvedClarifications(draft, new Set(resolutions.map((r) => r.paramPath).filter((p) => typeof p === "string" && p.length > 0)));
+	pruneResolvedClarifications(
+		draft,
+		new Set(
+			resolutions
+				.map((r) => r.paramPath)
+				.filter((p) => typeof p === "string" && p.length > 0),
+		),
+	);
 	if (name?.trim()) draft.name = name.trim();
 	if (workflowId) draft.id = workflowId;
 	const meta = draft._meta;
@@ -3600,7 +4432,9 @@ async function handleResolveClarification(ctx) {
 			status: "needs_clarification",
 			draft,
 			clarifications: remaining,
-			catalog: catalogService ? await buildCatalogSnapshot(catalogService, remaining) : []
+			catalog: catalogService
+				? await buildCatalogSnapshot(catalogService, remaining)
+				: [],
 		});
 		return true;
 	}
@@ -3612,17 +4446,22 @@ async function handleToggleWorkflow(ctx, id, activate, sidecar, native) {
 		sendJson$1(ctx, 400, { error: "workflow id required" });
 		return true;
 	}
-	const resolved = resolveProxyTarget(ctx, `/${encodeURIComponent(id)}/${activate ? "activate" : "deactivate"}`, sidecar, native);
+	const resolved = resolveProxyTarget(
+		ctx,
+		`/${encodeURIComponent(id)}/${activate ? "activate" : "deactivate"}`,
+		sidecar,
+		native,
+	);
 	if (!resolved.target) {
 		sendJson$1(ctx, 503, {
 			error: resolved.reason?.message ?? "n8n not ready",
-			status: resolved.reason?.status ?? "stopped"
+			status: resolved.reason?.status ?? "stopped",
 		});
 		return true;
 	}
 	const upstream = await fetchTargetAsJson(ctx, resolved.target, {
 		method: "POST",
-		body: JSON.stringify({})
+		body: JSON.stringify({}),
 	});
 	if (!upstream.ok) {
 		propagateError(ctx, upstream);
@@ -3635,7 +4474,7 @@ async function handleToggleWorkflow(ctx, id, activate, sidecar, native) {
 			name: "",
 			active: activate,
 			nodes: [],
-			nodeCount: 0
+			nodeCount: 0,
 		});
 		return true;
 	}
@@ -3647,15 +4486,22 @@ async function handleDeleteWorkflow(ctx, id, sidecar, native) {
 		sendJson$1(ctx, 400, { error: "workflow id required" });
 		return true;
 	}
-	const resolved = resolveProxyTarget(ctx, `/${encodeURIComponent(id)}`, sidecar, native);
+	const resolved = resolveProxyTarget(
+		ctx,
+		`/${encodeURIComponent(id)}`,
+		sidecar,
+		native,
+	);
 	if (!resolved.target) {
 		sendJson$1(ctx, 503, {
 			error: resolved.reason?.message ?? "n8n not ready",
-			status: resolved.reason?.status ?? "stopped"
+			status: resolved.reason?.status ?? "stopped",
 		});
 		return true;
 	}
-	const upstream = await fetchTargetAsJson(ctx, resolved.target, { method: "DELETE" });
+	const upstream = await fetchTargetAsJson(ctx, resolved.target, {
+		method: "DELETE",
+	});
 	if (!upstream.ok) {
 		propagateError(ctx, upstream);
 		return true;
@@ -3673,56 +4519,44 @@ const SYSTEM_TASK_NAMES = new Set([
 	"PROACTIVE_AGENT",
 	"LIFEOPS_SCHEDULER",
 	"TRIGGER_DISPATCH",
-	"heartbeat"
+	"heartbeat",
 ]);
-const BLOCKED_AUTOMATION_PROVIDER_NODES = new Set(["recent-conversations", "relevant-conversations"]);
+const BLOCKED_AUTOMATION_PROVIDER_NODES = new Set([
+	"recent-conversations",
+	"relevant-conversations",
+]);
 const STATIC_AUTOMATION_NODE_SPECS = [
 	{
 		id: "crypto:evm.swap",
 		label: "EVM swap",
-		description: "EVM token swap automation backed by a loaded EVM runtime action.",
+		description:
+			"EVM token swap automation backed by a loaded EVM runtime action.",
 		class: "action",
 		backingCapability: "SWAP",
-		actionNames: [
-			"SWAP",
-			"SWAP_TOKENS",
-			"SWAP_TOKEN"
-		],
-		pluginNames: [
-			"evm",
-			"wallet",
-			"plugin-wallet",
-			"@elizaos/plugin-wallet"
-		],
+		actionNames: ["SWAP", "SWAP_TOKENS", "SWAP_TOKEN"],
+		pluginNames: ["evm", "wallet", "plugin-wallet", "@elizaos/plugin-wallet"],
 		ownerScoped: true,
 		enabledWithoutRuntimeCapability: false,
-		disabledReason: "Load the EVM plugin with swap support."
+		disabledReason: "Load the EVM plugin with swap support.",
 	},
 	{
 		id: "crypto:evm.bridge",
 		label: "EVM bridge",
-		description: "EVM cross-chain bridge automation backed by a loaded EVM runtime action.",
+		description:
+			"EVM cross-chain bridge automation backed by a loaded EVM runtime action.",
 		class: "action",
 		backingCapability: "CROSS_CHAIN_TRANSFER",
-		actionNames: [
-			"CROSS_CHAIN_TRANSFER",
-			"BRIDGE",
-			"BRIDGE_TOKENS"
-		],
-		pluginNames: [
-			"evm",
-			"wallet",
-			"plugin-wallet",
-			"@elizaos/plugin-wallet"
-		],
+		actionNames: ["CROSS_CHAIN_TRANSFER", "BRIDGE", "BRIDGE_TOKENS"],
+		pluginNames: ["evm", "wallet", "plugin-wallet", "@elizaos/plugin-wallet"],
 		ownerScoped: true,
 		enabledWithoutRuntimeCapability: false,
-		disabledReason: "Load the EVM plugin with bridge support."
+		disabledReason: "Load the EVM plugin with bridge support.",
 	},
 	{
 		id: "crypto:solana.swap",
 		label: "Solana swap",
-		description: "Solana token swap automation backed by a loaded Solana runtime action.",
+		description:
+			"Solana token swap automation backed by a loaded Solana runtime action.",
 		class: "action",
 		backingCapability: "SWAP_SOLANA",
 		actionNames: [
@@ -3731,75 +4565,75 @@ const STATIC_AUTOMATION_NODE_SPECS = [
 			"SWAP_TOKENS_SOLANA",
 			"TOKEN_SWAP_SOLANA",
 			"TRADE_TOKENS_SOLANA",
-			"EXCHANGE_TOKENS_SOLANA"
+			"EXCHANGE_TOKENS_SOLANA",
 		],
 		pluginNames: [
 			"chain_solana",
 			"solana",
 			"wallet",
 			"plugin-wallet",
-			"@elizaos/plugin-wallet"
+			"@elizaos/plugin-wallet",
 		],
 		ownerScoped: true,
 		enabledWithoutRuntimeCapability: false,
-		disabledReason: "Load the Solana plugin with swap support."
+		disabledReason: "Load the Solana plugin with swap support.",
 	},
 	{
 		id: "crypto:hyperliquid.action",
 		label: "Hyperliquid action",
-		description: "Hyperliquid automation entry point backed by a loaded Hyperliquid runtime plugin.",
+		description:
+			"Hyperliquid automation entry point backed by a loaded Hyperliquid runtime plugin.",
 		class: "action",
 		backingCapability: "HYPERLIQUID_ACTION",
 		actionNames: [
 			"HYPERLIQUID_ACTION",
 			"HYPERLIQUID_ORDER",
-			"HYPERLIQUID_TRADE"
+			"HYPERLIQUID_TRADE",
 		],
 		pluginNames: [
 			"hyperliquid",
 			"plugin-hyperliquid",
-			"@elizaos/plugin-hyperliquid"
+			"@elizaos/plugin-hyperliquid",
 		],
 		ownerScoped: true,
 		enabledWithoutRuntimeCapability: false,
-		disabledReason: "Load the Hyperliquid runtime plugin."
+		disabledReason: "Load the Hyperliquid runtime plugin.",
 	},
 	{
 		id: "crypto:polymarket.action",
 		label: "Polymarket action",
-		description: "Polymarket automation entry point backed by a loaded Polymarket runtime plugin.",
+		description:
+			"Polymarket automation entry point backed by a loaded Polymarket runtime plugin.",
 		class: "action",
 		backingCapability: "POLYMARKET_ACTION",
-		actionNames: [
-			"POLYMARKET_ACTION",
-			"POLYMARKET_ORDER",
-			"POLYMARKET_TRADE"
-		],
+		actionNames: ["POLYMARKET_ACTION", "POLYMARKET_ORDER", "POLYMARKET_TRADE"],
 		pluginNames: [
 			"polymarket",
 			"plugin-polymarket",
-			"@elizaos/plugin-polymarket"
+			"@elizaos/plugin-polymarket",
 		],
 		ownerScoped: true,
 		enabledWithoutRuntimeCapability: false,
-		disabledReason: "Load the Polymarket runtime plugin."
+		disabledReason: "Load the Polymarket runtime plugin.",
 	},
 	{
 		id: "trigger:order.schedule",
 		label: "Order schedule",
-		description: "Schedule order-intent workflows; venue execution still requires a loaded trading action.",
+		description:
+			"Schedule order-intent workflows; venue execution still requires a loaded trading action.",
 		class: "trigger",
 		backingCapability: "ORDER_SCHEDULE",
 		actionNames: [],
 		pluginNames: [],
 		ownerScoped: false,
 		enabledWithoutRuntimeCapability: true,
-		disabledReason: "Automation schedules are unavailable."
+		disabledReason: "Automation schedules are unavailable.",
 	},
 	{
 		id: "trigger:order.event",
 		label: "Order event",
-		description: "React to order lifecycle events emitted by a loaded trading venue plugin.",
+		description:
+			"React to order lifecycle events emitted by a loaded trading venue plugin.",
 		class: "trigger",
 		backingCapability: "ORDER_EVENT",
 		actionNames: [
@@ -3807,7 +4641,7 @@ const STATIC_AUTOMATION_NODE_SPECS = [
 			"ORDER_FILLED",
 			"ORDER_UPDATED",
 			"HYPERLIQUID_ACTION",
-			"POLYMARKET_ACTION"
+			"POLYMARKET_ACTION",
 		],
 		pluginNames: [
 			"hyperliquid",
@@ -3815,12 +4649,12 @@ const STATIC_AUTOMATION_NODE_SPECS = [
 			"@elizaos/plugin-hyperliquid",
 			"polymarket",
 			"plugin-polymarket",
-			"@elizaos/plugin-polymarket"
+			"@elizaos/plugin-polymarket",
 		],
 		ownerScoped: false,
 		enabledWithoutRuntimeCapability: false,
-		disabledReason: "Load an order-event-capable runtime plugin."
-	}
+		disabledReason: "Load an order-event-capable runtime plugin.",
+	},
 ];
 function asRecord$2(value) {
 	if (!value || typeof value !== "object" || Array.isArray(value)) return null;
@@ -3836,15 +4670,25 @@ function normalizeDateValue(value) {
 		const parsed = Date.parse(value);
 		return Number.isFinite(parsed) ? new Date(parsed).toISOString() : null;
 	}
-	if (typeof value === "number" && Number.isFinite(value)) return new Date(value).toISOString();
+	if (typeof value === "number" && Number.isFinite(value))
+		return new Date(value).toISOString();
 	if (value instanceof Date) return value.toISOString();
 	return null;
 }
 function humanizeCapabilityName(value) {
-	return value.trim().replace(/[_-]+/g, " ").replace(/\s+/g, " ").toLowerCase().replace(/\b\w/g, (char) => char.toUpperCase());
+	return value
+		.trim()
+		.replace(/[_-]+/g, " ")
+		.replace(/\s+/g, " ")
+		.toLowerCase()
+		.replace(/\b\w/g, (char) => char.toUpperCase());
 }
 function resolveAgentName(runtime, config) {
-	return runtime?.character?.name?.trim() || config.ui?.assistant?.name?.trim() || "Eliza";
+	return (
+		runtime?.character?.name?.trim() ||
+		config.ui?.assistant?.name?.trim() ||
+		"Eliza"
+	);
 }
 function resolveAdminEntityId(config, agentName) {
 	const configured = config.agents?.defaults?.adminEntityId?.trim();
@@ -3861,7 +4705,9 @@ function choosePreferredSystemTask(current, candidate) {
 	const candidateHasDescription = candidate.description.trim().length > 0;
 	if (candidateHasDescription && !currentHasDescription) return candidate;
 	if (currentHasDescription && !candidateHasDescription) return current;
-	return (candidate.updatedAt ?? 0) > (current.updatedAt ?? 0) ? candidate : current;
+	return (candidate.updatedAt ?? 0) > (current.updatedAt ?? 0)
+		? candidate
+		: current;
 }
 function deduplicateSystemTasks(tasks) {
 	const systemTasksByName = /* @__PURE__ */ new Map();
@@ -3886,8 +4732,15 @@ function buildRoomBinding(room) {
 		conversationId: room.conversationId,
 		roomId: room.roomId,
 		scope: room.metadata.scope ?? "general",
-		...room.metadata.sourceConversationId ? { sourceConversationId: room.metadata.sourceConversationId } : {},
-		...room.metadata.terminalBridgeConversationId ? { terminalBridgeConversationId: room.metadata.terminalBridgeConversationId } : {}
+		...(room.metadata.sourceConversationId
+			? { sourceConversationId: room.metadata.sourceConversationId }
+			: {}),
+		...(room.metadata.terminalBridgeConversationId
+			? {
+					terminalBridgeConversationId:
+						room.metadata.terminalBridgeConversationId,
+				}
+			: {}),
 	};
 }
 function readAutomationRoomRecord(room) {
@@ -3895,18 +4748,22 @@ function readAutomationRoomRecord(room) {
 	if (!roomId) return null;
 	const metadata = extractConversationMetadataFromRoom(room);
 	if (!metadata || !isAutomationConversationMetadata(metadata)) return null;
-	const webConversation = asRecord$2(asRecord$2(room.metadata)?.webConversation);
+	const webConversation = asRecord$2(
+		asRecord$2(room.metadata)?.webConversation,
+	);
 	return {
 		title: asString(room.name) ?? "Automation",
 		roomId,
 		conversationId: asString(webConversation?.conversationId) ?? null,
 		metadata,
-		updatedAt: normalizeDateValue(room.updatedAt)
+		updatedAt: normalizeDateValue(room.updatedAt),
 	};
 }
 async function listAutomationRooms(runtime, agentName) {
 	const worldId = stringToUuid(`${agentName}-web-chat-world`);
-	return (await runtime.getRooms(worldId)).map((room) => readAutomationRoomRecord(room)).filter((room) => room !== null);
+	return (await runtime.getRooms(worldId))
+		.map((room) => readAutomationRoomRecord(room))
+		.filter((room) => room !== null);
 }
 async function invokeN8nCompatRoute(req, res, state, pathname) {
 	let payload = null;
@@ -3921,17 +4778,19 @@ async function invokeN8nCompatRoute(req, res, state, pathname) {
 		json: (_res, body, nextStatus = 200) => {
 			payload = body;
 			status = nextStatus;
-		}
+		},
 	});
 	return {
 		status,
-		payload
+		payload,
 	};
 }
 function extractErrorMessage(payload) {
 	const record = asRecord$2(payload);
 	const errorValue = record?.error ?? record?.message;
-	return typeof errorValue === "string" && errorValue.trim().length > 0 ? errorValue : null;
+	return typeof errorValue === "string" && errorValue.trim().length > 0
+		? errorValue
+		: null;
 }
 function buildCoordinatorTaskItem(task, room) {
 	const system = isSystemTask(task);
@@ -3950,7 +4809,7 @@ function buildCoordinatorTaskItem(task, room) {
 		taskId: task.id,
 		task,
 		schedules: [],
-		room: buildRoomBinding(room)
+		room: buildRoomBinding(room),
 	};
 }
 function buildCoordinatorTriggerItem(trigger, room) {
@@ -3965,16 +4824,20 @@ function buildCoordinatorTriggerItem(trigger, room) {
 		system: false,
 		isDraft: false,
 		hasBackingWorkflow: false,
-		updatedAt: room?.updatedAt ?? normalizeDateValue(trigger.updatedAt) ?? normalizeDateValue(trigger.lastRunAtIso),
+		updatedAt:
+			room?.updatedAt ??
+			normalizeDateValue(trigger.updatedAt) ??
+			normalizeDateValue(trigger.lastRunAtIso),
 		triggerId: trigger.id,
 		trigger,
 		schedules: [trigger],
-		room: buildRoomBinding(room)
+		room: buildRoomBinding(room),
 	};
 }
 function buildWorkflowDraftItem(room) {
 	const metadata = room.metadata;
-	const title = metadata.workflowName?.trim() || room.title.trim() || WORKFLOW_DRAFT_TITLE;
+	const title =
+		metadata.workflowName?.trim() || room.title.trim() || WORKFLOW_DRAFT_TITLE;
 	return {
 		id: `workflow-draft:${metadata.draftId}`,
 		type: "n8n_workflow",
@@ -3989,13 +4852,16 @@ function buildWorkflowDraftItem(room) {
 		updatedAt: room.updatedAt,
 		draftId: room.metadata.draftId,
 		schedules: [],
-		room: buildRoomBinding(room)
+		room: buildRoomBinding(room),
 	};
 }
 function buildAutomationDraftItem(room) {
 	const metadata = room.metadata;
 	const trimmedTitle = room.title.trim();
-	const title = trimmedTitle && trimmedTitle.toLowerCase() !== "default" ? trimmedTitle : "New automation";
+	const title =
+		trimmedTitle && trimmedTitle.toLowerCase() !== "default"
+			? trimmedTitle
+			: "New automation";
 	return {
 		id: `automation-draft:${metadata.draftId}`,
 		type: "automation_draft",
@@ -4010,14 +4876,23 @@ function buildAutomationDraftItem(room) {
 		updatedAt: room.updatedAt,
 		draftId: metadata.draftId,
 		schedules: [],
-		room: buildRoomBinding(room)
+		room: buildRoomBinding(room),
 	};
 }
 function buildWorkflowItem(workflow, room, fallback) {
 	const missingBackingWorkflow = !workflow && !fallback.trigger;
-	const title = workflow?.name?.trim() || room?.metadata.workflowName?.trim() || fallback.workflowName?.trim() || fallback.workflowId;
-	const enabled = missingBackingWorkflow === true ? false : workflow?.active ?? fallback.trigger?.enabled ?? false;
-	const description = workflow?.description?.trim() || (fallback.trigger ? `Scheduled workflow automation for ${title}.` : "");
+	const title =
+		workflow?.name?.trim() ||
+		room?.metadata.workflowName?.trim() ||
+		fallback.workflowName?.trim() ||
+		fallback.workflowId;
+	const enabled =
+		missingBackingWorkflow === true
+			? false
+			: (workflow?.active ?? fallback.trigger?.enabled ?? false);
+	const description =
+		workflow?.description?.trim() ||
+		(fallback.trigger ? `Scheduled workflow automation for ${title}.` : "");
 	return {
 		id: `workflow:${fallback.workflowId}`,
 		type: "n8n_workflow",
@@ -4029,11 +4904,14 @@ function buildWorkflowItem(workflow, room, fallback) {
 		system: false,
 		isDraft: missingBackingWorkflow,
 		hasBackingWorkflow: Boolean(workflow),
-		updatedAt: room?.updatedAt ?? normalizeDateValue(fallback.trigger?.updatedAt) ?? normalizeDateValue(fallback.trigger?.lastRunAtIso),
+		updatedAt:
+			room?.updatedAt ??
+			normalizeDateValue(fallback.trigger?.updatedAt) ??
+			normalizeDateValue(fallback.trigger?.lastRunAtIso),
 		workflowId: fallback.workflowId,
 		workflow,
 		schedules: fallback.trigger ? [fallback.trigger] : [],
-		room: buildRoomBinding(room)
+		room: buildRoomBinding(room),
 	};
 }
 function compareAutomationItems(left, right) {
@@ -4047,64 +4925,138 @@ function compareAutomationItems(left, right) {
 async function buildAutomationListResponse(req, res, state) {
 	const runtime = state.current;
 	if (!runtime) throw new Error("Agent runtime is not available");
-	const rooms = await listAutomationRooms(runtime, resolveAgentName(runtime, loadElizaConfig$2()));
-	const taskRooms = new Map(rooms.filter((room) => room.metadata.taskId).map((room) => [room.metadata.taskId, room]));
-	const triggerRooms = new Map(rooms.filter((room) => room.metadata.triggerId).map((room) => [room.metadata.triggerId, room]));
-	const workflowRooms = new Map(rooms.filter((room) => room.metadata.workflowId).map((room) => [room.metadata.workflowId, room]));
-	const workflowDraftItems = rooms.filter((room) => room.metadata.scope === "automation-workflow-draft").filter((room) => typeof room.metadata.draftId === "string").map((room) => buildWorkflowDraftItem(room));
-	const automationDraftItems = rooms.filter((room) => room.metadata.scope === "automation-draft").filter((room) => typeof room.metadata.draftId === "string").map((room) => buildAutomationDraftItem(room));
-	const tasks = deduplicateSystemTasks((await runtime.getTasks({})).map((task) => toWorkbenchTask(task)).filter((task) => task !== null));
-	const triggerItems = (await listTriggerTasks(runtime)).map((task) => taskToTriggerSummary(task)).filter((trigger) => trigger !== null);
+	const rooms = await listAutomationRooms(
+		runtime,
+		resolveAgentName(runtime, loadElizaConfig$2()),
+	);
+	const taskRooms = new Map(
+		rooms
+			.filter((room) => room.metadata.taskId)
+			.map((room) => [room.metadata.taskId, room]),
+	);
+	const triggerRooms = new Map(
+		rooms
+			.filter((room) => room.metadata.triggerId)
+			.map((room) => [room.metadata.triggerId, room]),
+	);
+	const workflowRooms = new Map(
+		rooms
+			.filter((room) => room.metadata.workflowId)
+			.map((room) => [room.metadata.workflowId, room]),
+	);
+	const workflowDraftItems = rooms
+		.filter((room) => room.metadata.scope === "automation-workflow-draft")
+		.filter((room) => typeof room.metadata.draftId === "string")
+		.map((room) => buildWorkflowDraftItem(room));
+	const automationDraftItems = rooms
+		.filter((room) => room.metadata.scope === "automation-draft")
+		.filter((room) => typeof room.metadata.draftId === "string")
+		.map((room) => buildAutomationDraftItem(room));
+	const tasks = deduplicateSystemTasks(
+		(await runtime.getTasks({}))
+			.map((task) => toWorkbenchTask(task))
+			.filter((task) => task !== null),
+	);
+	const triggerItems = (await listTriggerTasks(runtime))
+		.map((task) => taskToTriggerSummary(task))
+		.filter((trigger) => trigger !== null);
 	const triggerTaskIds = new Set(triggerItems.map((trigger) => trigger.taskId));
-	const taskItems = tasks.filter((task) => !triggerTaskIds.has(task.id)).map((task) => buildCoordinatorTaskItem(task, taskRooms.get(task.id)));
-	const n8nStatusResult = await invokeN8nCompatRoute(req, res, state, "/api/n8n/status");
-	const n8nStatus = n8nStatusResult.status === 200 ? n8nStatusResult.payload : null;
-	const n8nWorkflowsResult = await invokeN8nCompatRoute(req, res, state, "/api/n8n/workflows");
-	const workflowFetchError = n8nWorkflowsResult.status === 200 ? null : extractErrorMessage(n8nWorkflowsResult.payload) ?? "Unable to load workflows";
-	const workflowList = n8nWorkflowsResult.status === 200 && Array.isArray(n8nWorkflowsResult.payload?.workflows) ? n8nWorkflowsResult.payload.workflows : [];
+	const taskItems = tasks
+		.filter((task) => !triggerTaskIds.has(task.id))
+		.map((task) => buildCoordinatorTaskItem(task, taskRooms.get(task.id)));
+	const n8nStatusResult = await invokeN8nCompatRoute(
+		req,
+		res,
+		state,
+		"/api/n8n/status",
+	);
+	const n8nStatus =
+		n8nStatusResult.status === 200 ? n8nStatusResult.payload : null;
+	const n8nWorkflowsResult = await invokeN8nCompatRoute(
+		req,
+		res,
+		state,
+		"/api/n8n/workflows",
+	);
+	const workflowFetchError =
+		n8nWorkflowsResult.status === 200
+			? null
+			: (extractErrorMessage(n8nWorkflowsResult.payload) ??
+				"Unable to load workflows");
+	const workflowList =
+		n8nWorkflowsResult.status === 200 &&
+		Array.isArray(n8nWorkflowsResult.payload?.workflows)
+			? n8nWorkflowsResult.payload.workflows
+			: [];
 	const workflowItemsById = /* @__PURE__ */ new Map();
-	for (const workflow of workflowList) workflowItemsById.set(workflow.id, buildWorkflowItem(workflow, workflowRooms.get(workflow.id), {
-		workflowId: workflow.id,
-		workflowName: workflow.name
-	}));
-	for (const trigger of triggerItems) if (trigger.kind === "workflow" && trigger.workflowId) {
-		const existing = workflowItemsById.get(trigger.workflowId);
-		if (existing) {
-			existing.schedules = [...existing.schedules, trigger];
-			existing.updatedAt = existing.updatedAt ?? normalizeDateValue(trigger.updatedAt) ?? normalizeDateValue(trigger.lastRunAtIso);
-			continue;
+	for (const workflow of workflowList)
+		workflowItemsById.set(
+			workflow.id,
+			buildWorkflowItem(workflow, workflowRooms.get(workflow.id), {
+				workflowId: workflow.id,
+				workflowName: workflow.name,
+			}),
+		);
+	for (const trigger of triggerItems)
+		if (trigger.kind === "workflow" && trigger.workflowId) {
+			const existing = workflowItemsById.get(trigger.workflowId);
+			if (existing) {
+				existing.schedules = [...existing.schedules, trigger];
+				existing.updatedAt =
+					existing.updatedAt ??
+					normalizeDateValue(trigger.updatedAt) ??
+					normalizeDateValue(trigger.lastRunAtIso);
+				continue;
+			}
+			workflowItemsById.set(
+				trigger.workflowId,
+				buildWorkflowItem(void 0, workflowRooms.get(trigger.workflowId), {
+					workflowId: trigger.workflowId,
+					workflowName: trigger.workflowName,
+					trigger,
+				}),
+			);
 		}
-		workflowItemsById.set(trigger.workflowId, buildWorkflowItem(void 0, workflowRooms.get(trigger.workflowId), {
-			workflowId: trigger.workflowId,
-			workflowName: trigger.workflowName,
-			trigger
-		}));
-	}
 	if (workflowFetchError !== null) {
-		for (const [workflowId, room] of workflowRooms.entries()) if (!workflowItemsById.has(workflowId)) workflowItemsById.set(workflowId, buildWorkflowItem(void 0, room, {
-			workflowId,
-			workflowName: room.metadata.workflowName
-		}));
+		for (const [workflowId, room] of workflowRooms.entries())
+			if (!workflowItemsById.has(workflowId))
+				workflowItemsById.set(
+					workflowId,
+					buildWorkflowItem(void 0, room, {
+						workflowId,
+						workflowName: room.metadata.workflowName,
+					}),
+				);
 	}
-	const coordinatorTriggerItems = triggerItems.filter((trigger) => trigger.kind !== "workflow").map((trigger) => buildCoordinatorTriggerItem(trigger, triggerRooms.get(trigger.id)));
+	const coordinatorTriggerItems = triggerItems
+		.filter((trigger) => trigger.kind !== "workflow")
+		.map((trigger) =>
+			buildCoordinatorTriggerItem(trigger, triggerRooms.get(trigger.id)),
+		);
 	const automations = [
 		...automationDraftItems,
 		...workflowDraftItems,
 		...taskItems,
 		...coordinatorTriggerItems,
-		...workflowItemsById.values()
+		...workflowItemsById.values(),
 	].sort(compareAutomationItems);
 	return {
 		automations,
 		summary: {
 			total: automations.length,
-			coordinatorCount: automations.filter((automation) => automation.type === "coordinator_text").length,
-			workflowCount: automations.filter((automation) => automation.type === "n8n_workflow").length,
-			scheduledCount: automations.filter((automation) => automation.schedules.length > 0).length,
-			draftCount: automations.filter((automation) => automation.isDraft).length
+			coordinatorCount: automations.filter(
+				(automation) => automation.type === "coordinator_text",
+			).length,
+			workflowCount: automations.filter(
+				(automation) => automation.type === "n8n_workflow",
+			).length,
+			scheduledCount: automations.filter(
+				(automation) => automation.schedules.length > 0,
+			).length,
+			draftCount: automations.filter((automation) => automation.isDraft).length,
 		},
 		n8nStatus,
-		workflowFetchError
+		workflowFetchError,
 	};
 }
 function normalizeCapabilityName(value) {
@@ -4114,16 +5066,28 @@ function getRuntimeActionCapabilityNames(runtime) {
 	const names = /* @__PURE__ */ new Set();
 	for (const action of runtime.actions) {
 		names.add(normalizeCapabilityName(action.name));
-		for (const simile of action.similes ?? []) names.add(normalizeCapabilityName(simile));
+		for (const simile of action.similes ?? [])
+			names.add(normalizeCapabilityName(simile));
 	}
 	return names;
 }
 function getRuntimePluginNames(runtime) {
-	return new Set((runtime.plugins ?? []).map((plugin) => normalizeCapabilityName(plugin.name)).filter((name) => name.length > 0));
+	return new Set(
+		(runtime.plugins ?? [])
+			.map((plugin) => normalizeCapabilityName(plugin.name))
+			.filter((name) => name.length > 0),
+	);
 }
 function hasMatchingRuntimeCapability(spec, actionNames, pluginNames) {
 	if (spec.enabledWithoutRuntimeCapability) return true;
-	return spec.actionNames.some((name) => actionNames.has(normalizeCapabilityName(name))) || spec.pluginNames.some((name) => pluginNames.has(normalizeCapabilityName(name)));
+	return (
+		spec.actionNames.some((name) =>
+			actionNames.has(normalizeCapabilityName(name)),
+		) ||
+		spec.pluginNames.some((name) =>
+			pluginNames.has(normalizeCapabilityName(name)),
+		)
+	);
 }
 function buildStaticAutomationNode(spec, actionNames, pluginNames) {
 	const enabled = hasMatchingRuntimeCapability(spec, actionNames, pluginNames);
@@ -4137,7 +5101,7 @@ function buildStaticAutomationNode(spec, actionNames, pluginNames) {
 		ownerScoped: spec.ownerScoped,
 		requiresSetup: !enabled,
 		availability: enabled ? "enabled" : "disabled",
-		...enabled ? {} : { disabledReason: spec.disabledReason }
+		...(enabled ? {} : { disabledReason: spec.disabledReason }),
 	};
 }
 async function buildAutomationNodeCatalog(state) {
@@ -4146,44 +5110,67 @@ async function buildAutomationNodeCatalog(state) {
 	const config = loadElizaConfig$2();
 	const agentName = resolveAgentName(runtime, config);
 	const adminEntityId = resolveAdminEntityId(config, agentName);
-	const runtimeActionNodes = runtime.actions.slice().sort((left, right) => left.name.localeCompare(right.name)).map((action) => ({
-		id: `action:${action.name}`,
-		label: humanizeCapabilityName(action.name),
-		description: action.description || `${action.name} runtime action`,
-		class: action.name === "CREATE_TASK" || action.name === "CODE_TASK" ? "agent" : "action",
-		source: "runtime_action",
-		backingCapability: action.name,
-		ownerScoped: false,
-		requiresSetup: false,
-		availability: "enabled"
-	}));
-	const runtimeProviderNodes = runtime.providers.slice().filter((provider) => !BLOCKED_AUTOMATION_PROVIDER_NODES.has(provider.name)).sort((left, right) => left.name.localeCompare(right.name)).map((provider) => ({
-		id: `provider:${provider.name}`,
-		label: humanizeCapabilityName(provider.name),
-		description: provider.description || `${provider.name} runtime provider`,
-		class: "context",
-		source: "runtime_provider",
-		backingCapability: provider.name,
-		ownerScoped: false,
-		requiresSetup: false,
-		availability: "enabled"
-	}));
+	const runtimeActionNodes = runtime.actions
+		.slice()
+		.sort((left, right) => left.name.localeCompare(right.name))
+		.map((action) => ({
+			id: `action:${action.name}`,
+			label: humanizeCapabilityName(action.name),
+			description: action.description || `${action.name} runtime action`,
+			class:
+				action.name === "CREATE_TASK" || action.name === "CODE_TASK"
+					? "agent"
+					: "action",
+			source: "runtime_action",
+			backingCapability: action.name,
+			ownerScoped: false,
+			requiresSetup: false,
+			availability: "enabled",
+		}));
+	const runtimeProviderNodes = runtime.providers
+		.slice()
+		.filter((provider) => !BLOCKED_AUTOMATION_PROVIDER_NODES.has(provider.name))
+		.sort((left, right) => left.name.localeCompare(right.name))
+		.map((provider) => ({
+			id: `provider:${provider.name}`,
+			label: humanizeCapabilityName(provider.name),
+			description: provider.description || `${provider.name} runtime provider`,
+			class: "context",
+			source: "runtime_provider",
+			backingCapability: provider.name,
+			ownerScoped: false,
+			requiresSetup: false,
+			availability: "enabled",
+		}));
 	const runtimeActionCapabilityNames = getRuntimeActionCapabilityNames(runtime);
 	const runtimePluginNames = getRuntimePluginNames(runtime);
-	const staticAutomationNodes = STATIC_AUTOMATION_NODE_SPECS.map((spec) => buildStaticAutomationNode(spec, runtimeActionCapabilityNames, runtimePluginNames));
-	const contributorNodes = (await Promise.all(listAutomationNodeContributors().map((contributor) => contributor({
-		runtime,
-		config,
-		agentName,
-		adminEntityId
-	})))).flat();
+	const staticAutomationNodes = STATIC_AUTOMATION_NODE_SPECS.map((spec) =>
+		buildStaticAutomationNode(
+			spec,
+			runtimeActionCapabilityNames,
+			runtimePluginNames,
+		),
+	);
+	const contributorNodes = (
+		await Promise.all(
+			listAutomationNodeContributors().map((contributor) =>
+				contributor({
+					runtime,
+					config,
+					agentName,
+					adminEntityId,
+				}),
+			),
+		)
+	).flat();
 	const nodes = [
 		...runtimeActionNodes,
 		...runtimeProviderNodes,
 		...staticAutomationNodes,
-		...contributorNodes
+		...contributorNodes,
 	].sort((left, right) => {
-		if (left.class !== right.class) return left.class.localeCompare(right.class);
+		if (left.class !== right.class)
+			return left.class.localeCompare(right.class);
 		return left.label.localeCompare(right.label);
 	});
 	return {
@@ -4191,15 +5178,15 @@ async function buildAutomationNodeCatalog(state) {
 		summary: {
 			total: nodes.length,
 			enabled: nodes.filter((node) => node.availability === "enabled").length,
-			disabled: nodes.filter((node) => node.availability === "disabled").length
-		}
+			disabled: nodes.filter((node) => node.availability === "disabled").length,
+		},
 	};
 }
 async function handleAutomationsCompatRoutes(req, res, state) {
 	const method = (req.method ?? "GET").toUpperCase();
 	const url = new URL(req.url ?? "/", "http://localhost");
 	if (!url.pathname.startsWith("/api/automations")) return false;
-	if (!await ensureRouteAuthorized(req, res, state)) return true;
+	if (!(await ensureRouteAuthorized(req, res, state))) return true;
 	if (method === "GET" && url.pathname === "/api/automations") {
 		if (!state.current) {
 			sendJsonError(res, 503, "Agent runtime is not available");
@@ -4222,25 +5209,25 @@ async function handleAutomationsCompatRoutes(req, res, state) {
 //#endregion
 //#region node_modules/.bun/@elizaos+app-core@2.0.0-alpha.537+72829346cb4c43b1/node_modules/@elizaos/app-core/packages/app-core/src/utils/tts-debug.js
 /**
-* TTS pipeline tracing (opt-in). Prefix: `[eliza][tts]`.
-* Never pass secrets in `detail`. With debug on, `preview` fields may contain
-* user-visible spoken text — disable in shared logs / production.
-*
-* Playback phases (browser console): `play:web-audio:start|end` (ElevenLabs /
-* cloud MP3), `speakBrowser:enter`, `play:browser:web-speech:enqueued`,
-* `play:browser:speechSynthesis:start|end|error`, `play:talkmode:dispatch|speak-failed`,
-* `play:browser:no-synth`. Server logs: `server:cloud-tts:*` (includes optional
-* `messageId`, `clipSegment`, `hearingFull` when the client sends
-* `x-elizaos-tts-*` headers on `/api/tts/cloud`), ChatView: `chat:*`.
-*
-* Enable with:
-* - **Node / API:** `ELIZA_TTS_DEBUG=1` (or `true`, `yes`, `on`) — logs appear in the API
-*   terminal / `[api]` aggregator only for **server** routes (e.g. `server:cloud-tts:*`).
-* - **Renderer (WebView / browser):** same env is mirrored via Vite `define` in
-*   `apps/app/vite.config.ts` when you start dev with `ELIZA_TTS_DEBUG=1`. Those lines
-*   go to the **renderer** JavaScript console (Electrobun: Web Inspector on the window),
-*   not `LOG_LEVEL` on the API process alone.
-*/
+ * TTS pipeline tracing (opt-in). Prefix: `[eliza][tts]`.
+ * Never pass secrets in `detail`. With debug on, `preview` fields may contain
+ * user-visible spoken text — disable in shared logs / production.
+ *
+ * Playback phases (browser console): `play:web-audio:start|end` (ElevenLabs /
+ * cloud MP3), `speakBrowser:enter`, `play:browser:web-speech:enqueued`,
+ * `play:browser:speechSynthesis:start|end|error`, `play:talkmode:dispatch|speak-failed`,
+ * `play:browser:no-synth`. Server logs: `server:cloud-tts:*` (includes optional
+ * `messageId`, `clipSegment`, `hearingFull` when the client sends
+ * `x-elizaos-tts-*` headers on `/api/tts/cloud`), ChatView: `chat:*`.
+ *
+ * Enable with:
+ * - **Node / API:** `ELIZA_TTS_DEBUG=1` (or `true`, `yes`, `on`) — logs appear in the API
+ *   terminal / `[api]` aggregator only for **server** routes (e.g. `server:cloud-tts:*`).
+ * - **Renderer (WebView / browser):** same env is mirrored via Vite `define` in
+ *   `apps/app/vite.config.ts` when you start dev with `ELIZA_TTS_DEBUG=1`. Those lines
+ *   go to the **renderer** JavaScript console (Electrobun: Web Inspector on the window),
+ *   not `LOG_LEVEL` on the API process alone.
+ */
 function ttsDebugEnabled() {
 	const truthy = (raw) => {
 		if (raw == null) return false;
@@ -4258,9 +5245,9 @@ function ttsDebugEnabled() {
 }
 const DEFAULT_PREVIEW_MAX = 160;
 /**
-* Single-line preview of text for TTS debug logs (avoids huge console lines).
-* Enable `ELIZA_TTS_DEBUG` only when you accept that spoken lines may appear in logs.
-*/
+ * Single-line preview of text for TTS debug logs (avoids huge console lines).
+ * Enable `ELIZA_TTS_DEBUG` only when you accept that spoken lines may appear in logs.
+ */
 function ttsDebugTextPreview(text, maxChars = DEFAULT_PREVIEW_MAX) {
 	const singleLine = text.replace(/\r?\n/g, "↵ ").replace(/\s+/g, " ").trim();
 	if (singleLine.length <= maxChars) return singleLine;
@@ -4268,45 +5255,48 @@ function ttsDebugTextPreview(text, maxChars = DEFAULT_PREVIEW_MAX) {
 }
 function ttsDebug(phase, detail) {
 	if (!ttsDebugEnabled()) return;
-	if (detail && Object.keys(detail).length > 0) console.info(`[eliza][tts] ${phase}`, detail);
+	if (detail && Object.keys(detail).length > 0)
+		console.info(`[eliza][tts] ${phase}`, detail);
 	else console.info(`[eliza][tts] ${phase}`);
 }
 
 //#endregion
 //#region node_modules/.bun/@elizaos+app-core@2.0.0-alpha.537+72829346cb4c43b1/node_modules/@elizaos/app-core/packages/app-core/src/api/cloud-secrets.js
 /**
-* Sealed in-process secret store for cloud credentials.
-*
-* Cloud API keys are scrubbed from process.env after login and stored
-* here so they are not visible in environment dumps, child processes,
-* or /proc/self/environ.
-*
-* This module has NO external dependencies so it can be imported by
-* any module without pulling in @elizaos/agent or @elizaos/core.
-*/
+ * Sealed in-process secret store for cloud credentials.
+ *
+ * Cloud API keys are scrubbed from process.env after login and stored
+ * here so they are not visible in environment dumps, child processes,
+ * or /proc/self/environ.
+ *
+ * This module has NO external dependencies so it can be imported by
+ * any module without pulling in @elizaos/agent or @elizaos/core.
+ */
 const _cloudSecrets = Object.create(null);
 Object.defineProperty(_cloudSecrets, Symbol.toStringTag, {
 	value: "CloudSecrets",
-	enumerable: false
+	enumerable: false,
 });
 /**
-* Read a cloud secret without exposing it in process.env.
-* Falls back to process.env for backwards compatibility with code that
-* sets the key before this module loads (e.g. docker entrypoints).
-*/
+ * Read a cloud secret without exposing it in process.env.
+ * Falls back to process.env for backwards compatibility with code that
+ * sets the key before this module loads (e.g. docker entrypoints).
+ */
 function getCloudSecret(key) {
 	return _cloudSecrets[key] ?? process.env[key];
 }
 /** Scrub cloud secrets from process.env and capture into the sealed store. */
 function scrubCloudSecretsFromEnv() {
-	for (const key of ["ELIZAOS_CLOUD_API_KEY", "ELIZAOS_CLOUD_ENABLED"]) if (process.env[key] !== void 0) {
-		_cloudSecrets[key] = process.env[key];
-		delete process.env[key];
-	}
+	for (const key of ["ELIZAOS_CLOUD_API_KEY", "ELIZAOS_CLOUD_ENABLED"])
+		if (process.env[key] !== void 0) {
+			_cloudSecrets[key] = process.env[key];
+			delete process.env[key];
+		}
 }
 /** Clear any sealed cloud secrets after an explicit disconnect. */
 function clearCloudSecrets() {
-	for (const key of ["ELIZAOS_CLOUD_API_KEY", "ELIZAOS_CLOUD_ENABLED"]) delete _cloudSecrets[key];
+	for (const key of ["ELIZAOS_CLOUD_API_KEY", "ELIZAOS_CLOUD_ENABLED"])
+		delete _cloudSecrets[key];
 }
 
 //#endregion
@@ -4330,7 +5320,7 @@ function readTtsDebugClientHeaders(req) {
 	return {
 		messageId: decode(pick("x-elizaos-tts-message-id")),
 		clipSegment: decode(pick("x-elizaos-tts-clip-segment")),
-		hearingFull: decode(pick("x-elizaos-tts-full-preview"))
+		hearingFull: decode(pick("x-elizaos-tts-full-preview")),
 	};
 }
 function ttsClientDbgFields(hdr) {
@@ -4343,7 +5333,12 @@ function ttsClientDbgFields(hdr) {
 function normalizeSecretEnvValue(value) {
 	const trimmed = value?.trim();
 	if (!trimmed) return null;
-	if (trimmed === "REDACTED" || trimmed === "[REDACTED]" || /^\*+$/.test(trimmed)) return null;
+	if (
+		trimmed === "REDACTED" ||
+		trimmed === "[REDACTED]" ||
+		/^\*+$/.test(trimmed)
+	)
+		return null;
 	return trimmed;
 }
 /** OpenAI-style names — not valid ElevenLabs `voiceId`; map to default voice. */
@@ -4356,7 +5351,7 @@ const OPENAI_STYLE_VOICE_ALIASES = new Set([
 	"nova",
 	"sage",
 	"shimmer",
-	"verse"
+	"verse",
 ]);
 /** Eliza Cloud default premade voice (matches eliza-cloud-v2 ElevenLabs service). */
 const DEFAULT_ELIZA_CLOUD_TTS_VOICE_ID = "EXAVITQu4vr4xnSDxMaL";
@@ -4372,16 +5367,19 @@ function normalizeElizaCloudVoiceId(raw) {
 	const trimmed = raw.trim();
 	if (!trimmed) return DEFAULT_ELIZA_CLOUD_TTS_VOICE_ID;
 	const lower = trimmed.toLowerCase();
-	if (OPENAI_STYLE_VOICE_ALIASES.has(lower)) return DEFAULT_ELIZA_CLOUD_TTS_VOICE_ID;
-	if (isLikelyEdgeOrAzureNeuralVoiceId(trimmed)) return DEFAULT_ELIZA_CLOUD_TTS_VOICE_ID;
+	if (OPENAI_STYLE_VOICE_ALIASES.has(lower))
+		return DEFAULT_ELIZA_CLOUD_TTS_VOICE_ID;
+	if (isLikelyEdgeOrAzureNeuralVoiceId(trimmed))
+		return DEFAULT_ELIZA_CLOUD_TTS_VOICE_ID;
 	return trimmed;
 }
 /**
-* Resolve `voiceId` for Eliza Cloud TTS (ElevenLabs ids). OpenAI-style names
-* in the request are replaced with the default premade voice.
-*/
+ * Resolve `voiceId` for Eliza Cloud TTS (ElevenLabs ids). OpenAI-style names
+ * in the request are replaced with the default premade voice.
+ */
 function resolveElizaCloudTtsVoiceId(bodyVoiceId, env = process.env) {
-	if (typeof bodyVoiceId === "string" && bodyVoiceId.trim()) return normalizeElizaCloudVoiceId(bodyVoiceId);
+	if (typeof bodyVoiceId === "string" && bodyVoiceId.trim())
+		return normalizeElizaCloudVoiceId(bodyVoiceId);
 	const envVoice = env.ELIZAOS_CLOUD_TTS_VOICE?.trim() ?? "";
 	if (envVoice) return normalizeElizaCloudVoiceId(envVoice);
 	return DEFAULT_ELIZA_CLOUD_TTS_VOICE_ID;
@@ -4391,10 +5389,14 @@ function resolveCloudApiKey$1(env = process.env) {
 	if (envKey) return envKey;
 	try {
 		const config = loadElizaConfig();
-		const configKey = normalizeSecretEnvValue(typeof config.cloud?.apiKey === "string" ? config.cloud.apiKey : void 0);
+		const configKey = normalizeSecretEnvValue(
+			typeof config.cloud?.apiKey === "string" ? config.cloud.apiKey : void 0,
+		);
 		if (configKey) return configKey;
 	} catch {}
-	const sealedKey = normalizeSecretEnvValue(getCloudSecret("ELIZAOS_CLOUD_API_KEY"));
+	const sealedKey = normalizeSecretEnvValue(
+		getCloudSecret("ELIZAOS_CLOUD_API_KEY"),
+	);
 	if (sealedKey) return sealedKey;
 	return null;
 }
@@ -4405,10 +5407,14 @@ function __resetCloudBaseUrlCache() {
 	hasResolvedCloudBaseUrlFromConfig = false;
 }
 function resolveCloudBaseUrlFromConfig() {
-	if (hasResolvedCloudBaseUrlFromConfig) return cachedCloudBaseUrlFromConfig ?? null;
+	if (hasResolvedCloudBaseUrlFromConfig)
+		return cachedCloudBaseUrlFromConfig ?? null;
 	try {
 		const config = loadElizaConfig();
-		const raw = typeof config.cloud?.baseUrl === "string" ? config.cloud.baseUrl.trim() : "";
+		const raw =
+			typeof config.cloud?.baseUrl === "string"
+				? config.cloud.baseUrl.trim()
+				: "";
 		cachedCloudBaseUrlFromConfig = raw.length > 0 ? raw : null;
 		hasResolvedCloudBaseUrlFromConfig = true;
 		return cachedCloudBaseUrlFromConfig;
@@ -4426,7 +5432,8 @@ function pickBodyString(body, camel, snake) {
 }
 async function readRawRequestBody(req) {
 	const chunks = [];
-	for await (const chunk of req) chunks.push(typeof chunk === "string" ? Buffer.from(chunk) : chunk);
+	for await (const chunk of req)
+		chunks.push(typeof chunk === "string" ? Buffer.from(chunk) : chunk);
 	return Buffer.concat(chunks);
 }
 function sendJsonResponse(res, status, body) {
@@ -4439,32 +5446,39 @@ function sendJsonErrorResponse(res, status, message) {
 	sendJsonResponse(res, status, { error: message });
 }
 /**
-* After a non-OK upstream response, only try the next URL for likely-transient /
-* wrong-route issues. Avoid retrying 401/402/429 etc. so we do not double-charge TTS.
-*/
+ * After a non-OK upstream response, only try the next URL for likely-transient /
+ * wrong-route issues. Avoid retrying 401/402/429 etc. so we do not double-charge TTS.
+ */
 function shouldRetryCloudTtsUpstream(status) {
 	return status === 404 || status === 502 || status === 503;
 }
 function forwardCloudTtsUpstreamError(res, status, bodyText) {
 	if (res.headersSent) return;
 	const trimmed = bodyText.trim();
-	if (trimmed.startsWith("{") && trimmed.endsWith("}") || trimmed.startsWith("[") && trimmed.endsWith("]")) try {
-		sendJsonResponse(res, status, JSON.parse(trimmed));
-		return;
-	} catch {}
+	if (
+		(trimmed.startsWith("{") && trimmed.endsWith("}")) ||
+		(trimmed.startsWith("[") && trimmed.endsWith("]"))
+	)
+		try {
+			sendJsonResponse(res, status, JSON.parse(trimmed));
+			return;
+		} catch {}
 	res.statusCode = status;
 	res.setHeader("content-type", "application/json; charset=utf-8");
-	res.end(JSON.stringify({ error: trimmed || "Eliza Cloud TTS request failed" }));
+	res.end(
+		JSON.stringify({ error: trimmed || "Eliza Cloud TTS request failed" }),
+	);
 }
 /**
-* Coerce stored/configured values to an ElevenLabs model id Eliza Cloud accepts.
-* Maps OpenAI TTS ids and common copy-paste mistakes; passes through real `eleven_*` ids.
-*/
+ * Coerce stored/configured values to an ElevenLabs model id Eliza Cloud accepts.
+ * Maps OpenAI TTS ids and common copy-paste mistakes; passes through real `eleven_*` ids.
+ */
 function normalizeElizaCloudTtsModelId(raw) {
 	const trimmed = raw.trim();
 	if (!trimmed) return DEFAULT_ELIZA_CLOUD_TTS_MODEL_ID;
 	const lower = trimmed.toLowerCase();
-	if (OPENAI_STYLE_VOICE_ALIASES.has(lower)) return DEFAULT_ELIZA_CLOUD_TTS_MODEL_ID;
+	if (OPENAI_STYLE_VOICE_ALIASES.has(lower))
+		return DEFAULT_ELIZA_CLOUD_TTS_MODEL_ID;
 	if (/^gpt-/i.test(trimmed)) return DEFAULT_ELIZA_CLOUD_TTS_MODEL_ID;
 	if (/^tts-1/i.test(trimmed)) return DEFAULT_ELIZA_CLOUD_TTS_MODEL_ID;
 	if (/mini-tts/i.test(trimmed)) return DEFAULT_ELIZA_CLOUD_TTS_MODEL_ID;
@@ -4473,7 +5487,10 @@ function normalizeElizaCloudTtsModelId(raw) {
 /** Eliza Cloud TTS `modelId` (ElevenLabs), from body or env or default. */
 function resolveCloudProxyTtsModel(bodyModel, env = process.env) {
 	const envModel = env.ELIZAOS_CLOUD_TTS_MODEL?.trim() ?? "";
-	const chosen = (typeof bodyModel === "string" && bodyModel.trim() ? bodyModel.trim() : "") || envModel;
+	const chosen =
+		(typeof bodyModel === "string" && bodyModel.trim()
+			? bodyModel.trim()
+			: "") || envModel;
 	if (!chosen) return DEFAULT_ELIZA_CLOUD_TTS_MODEL_ID;
 	return normalizeElizaCloudTtsModelId(chosen);
 }
@@ -4482,11 +5499,20 @@ function resolveElevenLabsApiKeyForCloudMode(env = process.env) {
 	if (directKey) return directKey;
 	let configWantsCloudTts = false;
 	try {
-		configWantsCloudTts = isElizaCloudServiceSelectedInConfig(loadElizaConfig(), "tts");
+		configWantsCloudTts = isElizaCloudServiceSelectedInConfig(
+			loadElizaConfig(),
+			"tts",
+		);
 	} catch {
 		configWantsCloudTts = false;
 	}
-	if (!(env.ELIZAOS_CLOUD_USE_TTS === "true" || env.ELIZAOS_CLOUD_USE_TTS === void 0 && configWantsCloudTts)) return null;
+	if (
+		!(
+			env.ELIZAOS_CLOUD_USE_TTS === "true" ||
+			(env.ELIZAOS_CLOUD_USE_TTS === void 0 && configWantsCloudTts)
+		)
+	)
+		return null;
 	if (env.ELIZA_CLOUD_TTS_DISABLED === "true") return null;
 	return resolveCloudApiKey$1(env);
 }
@@ -4499,8 +5525,9 @@ function ensureCloudTtsApiKeyAlias(env = process.env) {
 }
 function resolveCloudTtsBaseUrl(env = process.env) {
 	const fromEnv = env.ELIZAOS_CLOUD_BASE_URL?.trim() ?? "";
-	const fromConfig = fromEnv.length > 0 ? null : resolveCloudBaseUrlFromConfig();
-	const configured = fromEnv.length > 0 ? fromEnv : fromConfig?.trim() ?? "";
+	const fromConfig =
+		fromEnv.length > 0 ? null : resolveCloudBaseUrlFromConfig();
+	const configured = fromEnv.length > 0 ? fromEnv : (fromConfig?.trim() ?? "");
 	const fallback = "https://www.elizacloud.ai/api/v1";
 	const base = configured.length > 0 ? configured : fallback;
 	try {
@@ -4521,7 +5548,8 @@ function resolveCloudTtsCandidateUrls(env = process.env) {
 		candidates.add(`${trimmed}/voice/tts`);
 		try {
 			const u = new URL(trimmed);
-			if (u.pathname.replace(/\/+$/, "").endsWith("/api/v1")) candidates.add(`${u.origin}/api/elevenlabs/tts`);
+			if (u.pathname.replace(/\/+$/, "").endsWith("/api/v1"))
+				candidates.add(`${u.origin}/api/elevenlabs/tts`);
 		} catch {}
 	};
 	addEndpointsForApiV1Base(base);
@@ -4543,9 +5571,13 @@ async function handleCloudTtsPreviewRoute(req, res) {
 	if (!cloudApiKey) {
 		ttsDebug("server:cloud-tts:reject", {
 			reason: "no_api_key",
-			...dbgExtra
+			...dbgExtra,
 		});
-		sendJsonErrorResponse(res, 401, "Eliza Cloud is not connected. Connect your Eliza Cloud account first.");
+		sendJsonErrorResponse(
+			res,
+			401,
+			"Eliza Cloud is not connected. Connect your Eliza Cloud account first.",
+		);
 		return true;
 	}
 	const rawBody = await readRawRequestBody(req);
@@ -4556,17 +5588,27 @@ async function handleCloudTtsPreviewRoute(req, res) {
 		sendJsonErrorResponse(res, 400, "Invalid JSON request body");
 		return true;
 	}
-	const text = sanitizeSpeechText(typeof body.text === "string" ? body.text : "");
+	const text = sanitizeSpeechText(
+		typeof body.text === "string" ? body.text : "",
+	);
 	if (!text) {
 		sendJsonErrorResponse(res, 400, "Missing text");
 		return true;
 	}
 	if (text.length > ELIZA_CLOUD_TTS_MAX_TEXT_CHARS) {
-		sendJsonErrorResponse(res, 400, `Text too long. Maximum length is ${ELIZA_CLOUD_TTS_MAX_TEXT_CHARS} characters`);
+		sendJsonErrorResponse(
+			res,
+			400,
+			`Text too long. Maximum length is ${ELIZA_CLOUD_TTS_MAX_TEXT_CHARS} characters`,
+		);
 		return true;
 	}
-	const cloudModel = resolveCloudProxyTtsModel(pickBodyString(body, "modelId", "model_id"));
-	const cloudVoice = resolveElizaCloudTtsVoiceId(pickBodyString(body, "voiceId", "voice_id"));
+	const cloudModel = resolveCloudProxyTtsModel(
+		pickBodyString(body, "modelId", "model_id"),
+	);
+	const cloudVoice = resolveElizaCloudTtsVoiceId(
+		pickBodyString(body, "voiceId", "voice_id"),
+	);
 	const cloudUrls = resolveCloudTtsCandidateUrls();
 	const ttsPreview = ttsDebugTextPreview(text);
 	ttsDebug("server:cloud-tts:proxy", {
@@ -4575,7 +5617,7 @@ async function handleCloudTtsPreviewRoute(req, res) {
 		modelId: cloudModel,
 		voiceId: cloudVoice,
 		urlCandidates: cloudUrls.length,
-		...dbgExtra
+		...dbgExtra,
 	});
 	try {
 		let lastStatus = 0;
@@ -4590,13 +5632,13 @@ async function handleCloudTtsPreviewRoute(req, res) {
 					Authorization: `Bearer ${cloudApiKey}`,
 					"x-api-key": cloudApiKey,
 					"Content-Type": "application/json",
-					Accept: "audio/mpeg"
+					Accept: "audio/mpeg",
 				},
 				body: JSON.stringify({
 					text,
 					voiceId: cloudVoice,
-					modelId: cloudModel
-				})
+					modelId: cloudModel,
+				}),
 			});
 			if (attempt.ok) {
 				cloudResponse = attempt;
@@ -4604,7 +5646,7 @@ async function handleCloudTtsPreviewRoute(req, res) {
 					urlIndex: i,
 					status: attempt.status,
 					preview: ttsPreview,
-					...dbgExtra
+					...dbgExtra,
 				});
 				break;
 			}
@@ -4614,29 +5656,43 @@ async function handleCloudTtsPreviewRoute(req, res) {
 				urlIndex: i,
 				status: attempt.status,
 				preview: ttsPreview,
-				...dbgExtra
+				...dbgExtra,
 			});
-			if (!(i < cloudUrls.length - 1) || !shouldRetryCloudTtsUpstream(attempt.status)) break;
+			if (
+				!(i < cloudUrls.length - 1) ||
+				!shouldRetryCloudTtsUpstream(attempt.status)
+			)
+				break;
 		}
 		if (!cloudResponse) {
 			ttsDebug("server:cloud-tts:reject", {
 				reason: "upstream_failed",
 				lastStatus,
 				preview: ttsPreview,
-				...dbgExtra
+				...dbgExtra,
 			});
-			if (lastStatus === 400 || lastStatus === 401 || lastStatus === 402 || lastStatus === 403 || lastStatus === 429) {
+			if (
+				lastStatus === 400 ||
+				lastStatus === 401 ||
+				lastStatus === 402 ||
+				lastStatus === 403 ||
+				lastStatus === 429
+			) {
 				forwardCloudTtsUpstreamError(res, lastStatus, lastDetails);
 				return true;
 			}
-			sendJsonErrorResponse(res, 502, `Eliza Cloud TTS failed (${lastStatus || 502}): ${lastDetails}`);
+			sendJsonErrorResponse(
+				res,
+				502,
+				`Eliza Cloud TTS failed (${lastStatus || 502}): ${lastDetails}`,
+			);
 			return true;
 		}
 		const audioBuffer = Buffer.from(await cloudResponse.arrayBuffer());
 		ttsDebug("server:cloud-tts:success", {
 			bytes: audioBuffer.length,
 			preview: ttsPreview,
-			...dbgExtra
+			...dbgExtra,
 		});
 		res.statusCode = 200;
 		res.setHeader("Content-Type", "audio/mpeg");
@@ -4644,7 +5700,11 @@ async function handleCloudTtsPreviewRoute(req, res) {
 		res.end(audioBuffer);
 		return true;
 	} catch (err) {
-		sendJsonErrorResponse(res, 502, `Eliza Cloud TTS request failed: ${err instanceof Error ? err.message : String(err)}`);
+		sendJsonErrorResponse(
+			res,
+			502,
+			`Eliza Cloud TTS request failed: ${err instanceof Error ? err.message : String(err)}`,
+		);
 		return true;
 	}
 }
@@ -4655,12 +5715,14 @@ function mirrorCompatHeaders(req) {
 		["x-elizaos-client-id", "x-eliza-client-id"],
 		["x-elizaos-terminal-token", "x-eliza-terminal-token"],
 		["x-elizaos-ui-language", "x-eliza-ui-language"],
-		["x-elizaos-agent-action", "x-eliza-agent-action"]
+		["x-elizaos-agent-action", "x-eliza-agent-action"],
 	]) {
 		const appValue = req.headers[appHeader];
 		const elizaValue = req.headers[elizaHeader];
-		if (appValue != null && elizaValue == null) req.headers[elizaHeader] = appValue;
-		if (elizaValue != null && appValue == null) req.headers[appHeader] = elizaValue;
+		if (appValue != null && elizaValue == null)
+			req.headers[elizaHeader] = appValue;
+		if (elizaValue != null && appValue == null)
+			req.headers[appHeader] = elizaValue;
 	}
 }
 
@@ -4668,10 +5730,10 @@ function mirrorCompatHeaders(req) {
 //#region node_modules/.bun/@elizaos+app-core@2.0.0-alpha.537+72829346cb4c43b1/node_modules/@elizaos/app-core/packages/app-core/src/api/server-config-filter.js
 /** Config/env filtering — strip sensitive keys from API responses. */
 /**
-* Env keys that must never be returned in GET /api/config responses.
-* Covers private keys, auth tokens, and database credentials.
-* Keys are stored and matched case-insensitively (uppercased).
-*/
+ * Env keys that must never be returned in GET /api/config responses.
+ * Covers private keys, auth tokens, and database credentials.
+ * Keys are stored and matched case-insensitively (uppercased).
+ */
 const SENSITIVE_ENV_RESPONSE_KEYS = new Set([
 	"EVM_PRIVATE_KEY",
 	"SOLANA_PRIVATE_KEY",
@@ -4683,13 +5745,13 @@ const SENSITIVE_ENV_RESPONSE_KEYS = new Set([
 	"ELIZAOS_CLOUD_API_KEY",
 	"GITHUB_TOKEN",
 	"DATABASE_URL",
-	"POSTGRES_URL"
+	"POSTGRES_URL",
 ]);
 /**
-* Strip sensitive env vars from a config object before it is sent in a GET
-* /api/config response. Returns a shallow-cloned config with a filtered env
-* block — the original object is never mutated.
-*/
+ * Strip sensitive env vars from a config object before it is sent in a GET
+ * /api/config response. Returns a shallow-cloned config with a filtered env
+ * block — the original object is never mutated.
+ */
 function filterConfigEnvForResponse(config) {
 	const env = config.env;
 	if (!env || typeof env !== "object" || Array.isArray(env)) return config;
@@ -4700,47 +5762,53 @@ function filterConfigEnvForResponse(config) {
 	}
 	return {
 		...config,
-		env: filteredEnv
+		env: filteredEnv,
 	};
 }
 
 //#endregion
 //#region node_modules/.bun/@elizaos+app-core@2.0.0-alpha.537+72829346cb4c43b1/node_modules/@elizaos/app-core/packages/app-core/src/api/server-cors.js
 /**
-* Pure CORS allowlist helpers shared by the server and focused tests.
-*
-* Kept separate from server.ts so helper-only tests do not need to load the
-* full API runtime dependency graph.
-*/
+ * Pure CORS allowlist helpers shared by the server and focused tests.
+ *
+ * Kept separate from server.ts so helper-only tests do not need to load the
+ * full API runtime dependency graph.
+ */
 /**
-* Build the set of localhost ports allowed for CORS.
-* Reads from env vars at call time so tests can override.
-*/
+ * Build the set of localhost ports allowed for CORS.
+ * Reads from env vars at call time so tests can override.
+ */
 function buildCorsAllowedPorts() {
 	const ports = new Set([
 		String(process.env.ELIZA_API_PORT ?? process.env.ELIZA_PORT ?? "31337"),
 		String(process.env.ELIZA_PORT ?? "2138"),
 		String(process.env.ELIZA_GATEWAY_PORT ?? "18789"),
-		String(process.env.ELIZA_HOME_PORT ?? "2142")
+		String(process.env.ELIZA_HOME_PORT ?? "2142"),
 	]);
 	for (let p = 5174; p <= 5200; p++) ports.add(String(p));
 	return ports;
 }
 /**
-* Comma-separated explicit origins allowed by the operator (e.g. a
-* remote dashboard host like https://bot.example.com). Localhost gets
-* a built-in pass via {@link isAllowedLocalOrigin}; this is the only
-* way to allow non-loopback hosts.
-*/
+ * Comma-separated explicit origins allowed by the operator (e.g. a
+ * remote dashboard host like https://bot.example.com). Localhost gets
+ * a built-in pass via {@link isAllowedLocalOrigin}; this is the only
+ * way to allow non-loopback hosts.
+ */
 function getAllowedRemoteOrigins() {
 	const raw = process.env.ELIZA_ALLOWED_ORIGINS ?? "";
-	return new Set(raw.split(",").map((s) => s.trim()).filter(Boolean).map((origin) => {
-		try {
-			return originString(new URL(origin));
-		} catch {
-			return origin;
-		}
-	}));
+	return new Set(
+		raw
+			.split(",")
+			.map((s) => s.trim())
+			.filter(Boolean)
+			.map((origin) => {
+				try {
+					return originString(new URL(origin));
+				} catch {
+					return origin;
+				}
+			}),
+	);
 }
 /** Lazily cached port set — computed once, invalidated on port changes. */
 let cachedCorsAllowedPorts;
@@ -4759,33 +5827,33 @@ function invalidateCorsAllowedPorts() {
 	cachedRemoteOrigins = void 0;
 }
 /**
-* Capacitor WebView origins for App Store / Play Store mobile builds.
-*
-* iOS WKWebView serves the bundled UI at `capacitor://localhost`; Android's
-* WebView2 uses `https://localhost` (default `androidScheme: "https"`). These
-* are allowed unconditionally so a self-hosted bot is reachable from the
-* mobile app without each operator manually adding them to
-* `ELIZA_ALLOWED_ORIGINS`. Auth still requires a valid bearer; the origin
-* gate just stops *unrelated* sites from talking to the API.
-*/
+ * Capacitor WebView origins for App Store / Play Store mobile builds.
+ *
+ * iOS WKWebView serves the bundled UI at `capacitor://localhost`; Android's
+ * WebView2 uses `https://localhost` (default `androidScheme: "https"`). These
+ * are allowed unconditionally so a self-hosted bot is reachable from the
+ * mobile app without each operator manually adding them to
+ * `ELIZA_ALLOWED_ORIGINS`. Auth still requires a valid bearer; the origin
+ * gate just stops *unrelated* sites from talking to the API.
+ */
 const CAPACITOR_WEBVIEW_ORIGINS = new Set([
 	"capacitor://localhost",
 	"ionic://localhost",
-	"https://localhost"
+	"https://localhost",
 ]);
 /**
-* URL.origin returns the literal string "null" for non-special schemes
-* (capacitor:, ionic:), so we compare protocol+host instead.
-*/
+ * URL.origin returns the literal string "null" for non-special schemes
+ * (capacitor:, ionic:), so we compare protocol+host instead.
+ */
 function originString(u) {
 	return `${u.protocol}//${u.host}`;
 }
 /**
-* Check whether a URL string is an allowed origin for CORS:
-*   - a configured local API port,
-*   - a Capacitor / Ionic WebView origin (mobile app builds),
-*   - or an explicit operator-allowed remote origin.
-*/
+ * Check whether a URL string is an allowed origin for CORS:
+ *   - a configured local API port,
+ *   - a Capacitor / Ionic WebView origin (mobile app builds),
+ *   - or an explicit operator-allowed remote origin.
+ */
 function isAllowedOrigin(urlStr, allowedPorts, allowedRemoteOrigins) {
 	const ports = allowedPorts ?? getCorsAllowedPorts();
 	const remoteOrigins = allowedRemoteOrigins ?? getCachedRemoteOrigins();
@@ -4796,7 +5864,8 @@ function isAllowedOrigin(urlStr, allowedPorts, allowedRemoteOrigins) {
 		if (u.protocol !== "http:" && u.protocol !== "https:") return false;
 		if (remoteOrigins.has(origin)) return true;
 		const h = u.hostname.toLowerCase();
-		const isLocal = h === "localhost" || h === "127.0.0.1" || h === "[::1]" || h === "::1";
+		const isLocal =
+			h === "localhost" || h === "127.0.0.1" || h === "[::1]" || h === "::1";
 		const port = u.port || (u.protocol === "https:" ? "443" : "80");
 		return isLocal && ports.has(port);
 	} catch {
@@ -4816,18 +5885,18 @@ function injectApiBaseIntoHtml(...args) {
 //#endregion
 //#region node_modules/.bun/@elizaos+app-core@2.0.0-alpha.537+72829346cb4c43b1/node_modules/@elizaos/app-core/packages/app-core/src/config/boot-config-store.js
 /**
-* AppBootConfig — typed runtime configuration that replaces window.__* globals.
-*
-* The hosting app (e.g. apps/app) creates an AppBootConfig and passes it via
-* <AppBootProvider>. All app-core code reads from this config instead of
-* reaching for window globals.
-*
-* React context lives in `boot-config-react.tsx` so Bun/Node can import this
-* module without loading `react` runtime (avoids Bun parsing @types/react).
-*/
+ * AppBootConfig — typed runtime configuration that replaces window.__* globals.
+ *
+ * The hosting app (e.g. apps/app) creates an AppBootConfig and passes it via
+ * <AppBootProvider>. All app-core code reads from this config instead of
+ * reaching for window globals.
+ *
+ * React context lives in `boot-config-react.tsx` so Bun/Node can import this
+ * module without loading `react` runtime (avoids Bun parsing @types/react).
+ */
 const DEFAULT_BOOT_CONFIG = {
 	branding: {},
-	cloudApiBase: "https://www.elizacloud.ai"
+	cloudApiBase: "https://www.elizacloud.ai",
 };
 const BOOT_CONFIG_STORE_KEY = Symbol.for("elizaos.app.boot-config");
 const BOOT_CONFIG_WINDOW_KEY = "__ELIZAOS_APP_BOOT_CONFIG__";
@@ -4844,7 +5913,8 @@ function getBootConfigStore() {
 		return mirroredStore;
 	}
 	const existing = globalObject[BOOT_CONFIG_STORE_KEY];
-	if (existing && typeof existing === "object" && "current" in existing) return existing;
+	if (existing && typeof existing === "object" && "current" in existing)
+		return existing;
 	const store = { current: DEFAULT_BOOT_CONFIG };
 	globalObject[BOOT_CONFIG_STORE_KEY] = store;
 	globalObject[BOOT_CONFIG_WINDOW_KEY] = store.current;
@@ -4897,16 +5967,16 @@ function syncElizaEnvToBrand(aliases) {
 //#endregion
 //#region node_modules/.bun/@elizaos+app-core@2.0.0-alpha.537+72829346cb4c43b1/node_modules/@elizaos/app-core/packages/app-core/src/utils/env.js
 /**
-* Environment variable normalization helpers.
-*
-* Consolidates the `normalizeSecret` / `normalizeEnvValue` pattern that was
-* independently implemented in cloud-connection.ts, steward-bridge.ts, and
-* server-wallet-trade.ts.
-*/
+ * Environment variable normalization helpers.
+ *
+ * Consolidates the `normalizeSecret` / `normalizeEnvValue` pattern that was
+ * independently implemented in cloud-connection.ts, steward-bridge.ts, and
+ * server-wallet-trade.ts.
+ */
 /**
-* Normalize an env value: trim whitespace, return `undefined` for empty/missing.
-* Accepts `unknown` so callers don't need to narrow first (useful for config objects).
-*/
+ * Normalize an env value: trim whitespace, return `undefined` for empty/missing.
+ * Accepts `unknown` so callers don't need to narrow first (useful for config objects).
+ */
 function normalizeEnvValue(value) {
 	if (typeof value !== "string") return void 0;
 	return value.trim() || void 0;
@@ -4923,30 +5993,33 @@ function syncElizaEnvAliases() {
 //#endregion
 //#region node_modules/.bun/@elizaos+app-core@2.0.0-alpha.537+72829346cb4c43b1/node_modules/@elizaos/app-core/packages/app-core/src/api/wallet-export-guard.js
 /**
-* Hardened wallet private key export guard.
-*
-* Wraps the upstream resolveWalletExportRejection with:
-*   1. Per-IP rate limiting (1 successful export per 10 minutes)
-*   2. Audit logging with IP, User-Agent, and timestamp
-*   3. Forced confirmation delay (10s countdown)
-*
-* The upstream function validates the export token. This module adds
-* defence-in-depth so a compromised session cannot instantly extract
-* keys without leaving an audit trail and hitting rate limits.
-*/
+ * Hardened wallet private key export guard.
+ *
+ * Wraps the upstream resolveWalletExportRejection with:
+ *   1. Per-IP rate limiting (1 successful export per 10 minutes)
+ *   2. Audit logging with IP, User-Agent, and timestamp
+ *   3. Forced confirmation delay (10s countdown)
+ *
+ * The upstream function validates the export token. This module adds
+ * defence-in-depth so a compromised session cannot instantly extract
+ * keys without leaving an audit trail and hitting rate limits.
+ */
 const RATE_LIMIT_WINDOW_MS = 600 * 1e3;
 const RATE_LIMIT_SWEEP_INTERVAL_MS = 900 * 1e3;
 const rateLimitMap = /* @__PURE__ */ new Map();
 const sweepTimer$2 = setInterval(() => {
 	const now = Date.now();
-	for (const [key, entry] of rateLimitMap) if (now - entry.lastExportAt > RATE_LIMIT_WINDOW_MS * 2) rateLimitMap.delete(key);
+	for (const [key, entry] of rateLimitMap)
+		if (now - entry.lastExportAt > RATE_LIMIT_WINDOW_MS * 2)
+			rateLimitMap.delete(key);
 }, RATE_LIMIT_SWEEP_INTERVAL_MS);
-if (typeof sweepTimer$2 === "object" && "unref" in sweepTimer$2) sweepTimer$2.unref();
+if (typeof sweepTimer$2 === "object" && "unref" in sweepTimer$2)
+	sweepTimer$2.unref();
 /**
-* Get client IP from the socket directly. X-Forwarded-For is not trusted
-* because this is a local server — trusting XFF would let attackers spoof
-* IPs to bypass rate limits and nonce IP binding.
-*/
+ * Get client IP from the socket directly. X-Forwarded-For is not trusted
+ * because this is a local server — trusting XFF would let attackers spoof
+ * IPs to bypass rate limits and nonce IP binding.
+ */
 function getClientIp(req) {
 	return req.socket?.remoteAddress ?? null;
 }
@@ -4964,77 +6037,82 @@ function recordAudit(entry) {
 const EXPORT_DELAY_MS = 1e4;
 const MAX_PENDING_NONCES_PER_IP = 3;
 /**
-* Issue a time-limited export nonce.  The client must wait at least
-* EXPORT_DELAY_MS before submitting the actual export request with this nonce.
-*/
+ * Issue a time-limited export nonce.  The client must wait at least
+ * EXPORT_DELAY_MS before submitting the actual export request with this nonce.
+ */
 const pendingExportNonces = /* @__PURE__ */ new Map();
 const NONCE_TTL_MS = 300 * 1e3;
 function issueExportNonce(ip) {
 	const now = Date.now();
-	for (const [key, value] of pendingExportNonces) if (now - value.issuedAt > NONCE_TTL_MS) pendingExportNonces.delete(key);
+	for (const [key, value] of pendingExportNonces)
+		if (now - value.issuedAt > NONCE_TTL_MS) pendingExportNonces.delete(key);
 	let countForIp = 0;
-	for (const entry of pendingExportNonces.values()) if (entry.ip === ip) countForIp++;
+	for (const entry of pendingExportNonces.values())
+		if (entry.ip === ip) countForIp++;
 	if (countForIp >= MAX_PENDING_NONCES_PER_IP) return null;
 	const nonce = `wxn_${crypto.randomBytes(16).toString("hex")}`;
 	pendingExportNonces.set(nonce, {
 		issuedAt: Date.now(),
-		ip
+		ip,
 	});
 	return nonce;
 }
 function validateExportNonce(nonce, ip) {
 	const entry = pendingExportNonces.get(nonce);
-	if (!entry) return {
-		valid: false,
-		reason: "Invalid or expired export nonce."
-	};
-	if (entry.ip !== ip) return {
-		valid: false,
-		reason: "Export nonce was issued to a different client."
-	};
+	if (!entry)
+		return {
+			valid: false,
+			reason: "Invalid or expired export nonce.",
+		};
+	if (entry.ip !== ip)
+		return {
+			valid: false,
+			reason: "Export nonce was issued to a different client.",
+		};
 	const elapsed = Date.now() - entry.issuedAt;
-	if (elapsed < EXPORT_DELAY_MS) return {
-		valid: false,
-		reason: `Export confirmation delay not met. Wait ${Math.ceil((EXPORT_DELAY_MS - elapsed) / 1e3)} more seconds.`
-	};
+	if (elapsed < EXPORT_DELAY_MS)
+		return {
+			valid: false,
+			reason: `Export confirmation delay not met. Wait ${Math.ceil((EXPORT_DELAY_MS - elapsed) / 1e3)} more seconds.`,
+		};
 	pendingExportNonces.delete(nonce);
 	return { valid: true };
 }
 /**
-* Create a hardened wallet export rejection function that wraps the upstream
-* token validation with rate limiting, audit logging, and a forced delay.
-*
-* Two-phase export flow:
-*   1. POST /api/wallet/export  { confirm: true, exportToken: "...", requestNonce: true }
-*      → 403 with { nonce, delaySeconds } — client must wait
-*   2. POST /api/wallet/export  { confirm: true, exportToken: "...", exportNonce: "wxn_..." }
-*      → 200 with keys (if delay elapsed and rate limit not hit)
-*/
+ * Create a hardened wallet export rejection function that wraps the upstream
+ * token validation with rate limiting, audit logging, and a forced delay.
+ *
+ * Two-phase export flow:
+ *   1. POST /api/wallet/export  { confirm: true, exportToken: "...", requestNonce: true }
+ *      → 403 with { nonce, delaySeconds } — client must wait
+ *   2. POST /api/wallet/export  { confirm: true, exportToken: "...", exportNonce: "wxn_..." }
+ *      → 200 with keys (if delay elapsed and rate limit not hit)
+ */
 function createHardenedExportGuard(upstream) {
 	return (req, body) => {
 		const ip = getClientIp(req);
 		const ua = getUserAgent(req);
 		if (!ip) {
 			recordAudit({
-				timestamp: (/* @__PURE__ */ new Date()).toISOString(),
+				timestamp: /* @__PURE__ */ new Date().toISOString(),
 				ip: "unknown",
 				userAgent: ua,
 				outcome: "rejected",
-				reason: "No client IP available on socket"
+				reason: "No client IP available on socket",
 			});
 			return {
 				status: 400,
-				reason: "Unable to determine client IP; request rejected."
+				reason: "Unable to determine client IP; request rejected.",
 			};
 		}
 		const upstreamRejection = upstream(req, body);
 		if (upstreamRejection) {
 			recordAudit({
-				timestamp: (/* @__PURE__ */ new Date()).toISOString(),
+				timestamp: /* @__PURE__ */ new Date().toISOString(),
 				ip,
 				userAgent: ua,
 				outcome: "rejected",
-				reason: upstreamRejection.reason
+				reason: upstreamRejection.reason,
 			});
 			return upstreamRejection;
 		}
@@ -5042,23 +6120,23 @@ function createHardenedExportGuard(upstream) {
 			const nonce = issueExportNonce(ip);
 			if (!nonce) {
 				recordAudit({
-					timestamp: (/* @__PURE__ */ new Date()).toISOString(),
+					timestamp: /* @__PURE__ */ new Date().toISOString(),
 					ip,
 					userAgent: ua,
 					outcome: "rejected",
-					reason: "Too many pending nonces for this IP"
+					reason: "Too many pending nonces for this IP",
 				});
 				return {
 					status: 429,
-					reason: `Too many pending export requests. Complete or wait for existing nonces to expire.`
+					reason: `Too many pending export requests. Complete or wait for existing nonces to expire.`,
 				};
 			}
 			recordAudit({
-				timestamp: (/* @__PURE__ */ new Date()).toISOString(),
+				timestamp: /* @__PURE__ */ new Date().toISOString(),
 				ip,
 				userAgent: ua,
 				outcome: "rejected",
-				reason: "Nonce issued, waiting for confirmation delay"
+				reason: "Nonce issued, waiting for confirmation delay",
 			});
 			return {
 				status: 403,
@@ -5066,35 +6144,36 @@ function createHardenedExportGuard(upstream) {
 					countdown: true,
 					nonce,
 					delaySeconds: EXPORT_DELAY_MS / 1e3,
-					message: `Export nonce issued. Wait ${EXPORT_DELAY_MS / 1e3} seconds, then re-submit with exportNonce: "${nonce}".`
-				})
+					message: `Export nonce issued. Wait ${EXPORT_DELAY_MS / 1e3} seconds, then re-submit with exportNonce: "${nonce}".`,
+				}),
 			};
 		}
 		if (!body.exportNonce) {
 			recordAudit({
-				timestamp: (/* @__PURE__ */ new Date()).toISOString(),
+				timestamp: /* @__PURE__ */ new Date().toISOString(),
 				ip,
 				userAgent: ua,
 				outcome: "rejected",
-				reason: "Missing export nonce"
+				reason: "Missing export nonce",
 			});
 			return {
 				status: 403,
-				reason: "Export requires a confirmation delay. First send { \"confirm\": true, \"exportToken\": \"...\", \"requestNonce\": true } to start the countdown."
+				reason:
+					'Export requires a confirmation delay. First send { "confirm": true, "exportToken": "...", "requestNonce": true } to start the countdown.',
 			};
 		}
 		const nonceResult = validateExportNonce(body.exportNonce, ip);
 		if (!nonceResult.valid) {
 			recordAudit({
-				timestamp: (/* @__PURE__ */ new Date()).toISOString(),
+				timestamp: /* @__PURE__ */ new Date().toISOString(),
 				ip,
 				userAgent: ua,
 				outcome: "rejected",
-				reason: nonceResult.reason
+				reason: nonceResult.reason,
 			});
 			return {
 				status: 403,
-				reason: nonceResult.reason
+				reason: nonceResult.reason,
 			};
 		}
 		const rateLimitEntry = rateLimitMap.get(ip);
@@ -5103,24 +6182,24 @@ function createHardenedExportGuard(upstream) {
 			if (elapsed < RATE_LIMIT_WINDOW_MS) {
 				const retryAfter = Math.ceil((RATE_LIMIT_WINDOW_MS - elapsed) / 1e3);
 				recordAudit({
-					timestamp: (/* @__PURE__ */ new Date()).toISOString(),
+					timestamp: /* @__PURE__ */ new Date().toISOString(),
 					ip,
 					userAgent: ua,
 					outcome: "rate-limited",
-					reason: `Rate limited, retry after ${retryAfter}s`
+					reason: `Rate limited, retry after ${retryAfter}s`,
 				});
 				return {
 					status: 429,
-					reason: `Rate limit exceeded. One export per ${RATE_LIMIT_WINDOW_MS / 6e4} minutes. Retry after ${retryAfter} seconds.`
+					reason: `Rate limit exceeded. One export per ${RATE_LIMIT_WINDOW_MS / 6e4} minutes. Retry after ${retryAfter} seconds.`,
 				};
 			}
 		}
 		rateLimitMap.set(ip, { lastExportAt: Date.now() });
 		recordAudit({
-			timestamp: (/* @__PURE__ */ new Date()).toISOString(),
+			timestamp: /* @__PURE__ */ new Date().toISOString(),
 			ip,
 			userAgent: ua,
-			outcome: "allowed"
+			outcome: "allowed",
 		});
 		return null;
 	};
@@ -5135,7 +6214,7 @@ function normalizeCompatRejection(rejection) {
 	if (!rejection) return rejection;
 	return {
 		...rejection,
-		reason: normalizeCompatReason(rejection.reason)
+		reason: normalizeCompatReason(rejection.reason),
 	};
 }
 function runWithCompatAuthContext(req, operation) {
@@ -5151,41 +6230,57 @@ function runWithCompatAuthContext(req, operation) {
 }
 function resolveCompatWalletExportRejection(...args) {
 	const [req] = args;
-	return runWithCompatAuthContext(req, () => normalizeCompatRejection(resolveWalletExportRejection$1(...args)));
+	return runWithCompatAuthContext(req, () =>
+		normalizeCompatRejection(resolveWalletExportRejection$1(...args)),
+	);
 }
-const hardenedGuard = createHardenedExportGuard(resolveCompatWalletExportRejection);
+const hardenedGuard = createHardenedExportGuard(
+	resolveCompatWalletExportRejection,
+);
 /**
-* Hardened wallet export rejection function.
-*
-* Wraps the upstream token validation with per-IP rate limiting (1 per 10 min),
-* audit logging (IP + UA), and a 10s confirmation delay via single-use nonces.
-*/
+ * Hardened wallet export rejection function.
+ *
+ * Wraps the upstream token validation with per-IP rate limiting (1 per 10 min),
+ * audit logging (IP + UA), and a 10s confirmation delay via single-use nonces.
+ */
 function resolveWalletExportRejection(...args) {
 	const [req] = args;
-	return runWithCompatAuthContext(req, () => normalizeCompatRejection(hardenedGuard(...args)));
+	return runWithCompatAuthContext(req, () =>
+		normalizeCompatRejection(hardenedGuard(...args)),
+	);
 }
 
 //#endregion
 //#region node_modules/.bun/@elizaos+app-core@2.0.0-alpha.537+72829346cb4c43b1/node_modules/@elizaos/app-core/packages/app-core/src/api/server-security.js
 /**
-* Security / auth helpers — WebSocket upgrade rejection, terminal run
-* rejection, MCP terminal authorization, and API token binding.
-*/
+ * Security / auth helpers — WebSocket upgrade rejection, terminal run
+ * rejection, MCP terminal authorization, and API token binding.
+ */
 function resolveMcpTerminalAuthorizationRejection(...args) {
 	const [req] = args;
-	return runWithCompatAuthContext(req, () => normalizeCompatRejection(resolveMcpTerminalAuthorizationRejection$1(...args)));
+	return runWithCompatAuthContext(req, () =>
+		normalizeCompatRejection(
+			resolveMcpTerminalAuthorizationRejection$1(...args),
+		),
+	);
 }
 function resolveTerminalRunRejection(...args) {
 	const [req] = args;
-	return runWithCompatAuthContext(req, () => normalizeCompatRejection(resolveTerminalRunRejection$1(...args)));
+	return runWithCompatAuthContext(req, () =>
+		normalizeCompatRejection(resolveTerminalRunRejection$1(...args)),
+	);
 }
 function resolveWebSocketUpgradeRejection(...args) {
 	const [req] = args;
-	return runWithCompatAuthContext(req, () => resolveWebSocketUpgradeRejection$1(...args));
+	return runWithCompatAuthContext(req, () =>
+		resolveWebSocketUpgradeRejection$1(...args),
+	);
 }
 function resolveTerminalRunClientId(...args) {
 	const [req] = args;
-	return runWithCompatAuthContext(req, () => resolveTerminalRunClientId$1(...args));
+	return runWithCompatAuthContext(req, () =>
+		resolveTerminalRunClientId$1(...args),
+	);
 }
 function ensureApiTokenForBindHost(...args) {
 	syncAppEnvToEliza();
@@ -5197,27 +6292,34 @@ function ensureApiTokenForBindHost(...args) {
 //#endregion
 //#region node_modules/.bun/@elizaos+app-core@2.0.0-alpha.537+72829346cb4c43b1/node_modules/@elizaos/app-core/packages/app-core/src/api/server-startup.js
 /**
-* Server startup helpers — safe state dir check, package root resolution,
-* and CORS origin resolution.
-*/
-const PACKAGE_ROOT_NAMES = new Set([
-	"eliza",
-	"elizaai",
-	"elizaos",
-	"eliza"
-]);
+ * Server startup helpers — safe state dir check, package root resolution,
+ * and CORS origin resolution.
+ */
+const PACKAGE_ROOT_NAMES = new Set(["eliza", "elizaai", "elizaos", "eliza"]);
 function isSafeResetStateDir(...args) {
 	if (isSafeResetStateDir$1(...args)) return true;
 	const [resolvedState, homeDir] = args;
 	const normalizedState = path.resolve(resolvedState);
 	const normalizedHome = path.resolve(homeDir);
-	if (normalizedState === path.parse(normalizedState).root || normalizedState === normalizedHome) return false;
+	if (
+		normalizedState === path.parse(normalizedState).root ||
+		normalizedState === normalizedHome
+	)
+		return false;
 	const relativeToHome = path.relative(normalizedHome, normalizedState);
-	if (!(relativeToHome.length > 0 && !relativeToHome.startsWith("..") && !path.isAbsolute(relativeToHome))) return false;
+	if (
+		!(
+			relativeToHome.length > 0 &&
+			!relativeToHome.startsWith("..") &&
+			!path.isAbsolute(relativeToHome)
+		)
+	)
+		return false;
 	return normalizedState.split(path.sep).some((segment) => {
 		const lower = segment.trim().toLowerCase();
 		if (lower === ".eliza") return true;
-		for (const name of PACKAGE_ROOT_NAMES) if (lower === `.${name}`) return true;
+		for (const name of PACKAGE_ROOT_NAMES)
+			if (lower === `.${name}`) return true;
 		return false;
 	});
 }
@@ -5225,12 +6327,14 @@ function findOwnPackageRoot(startDir) {
 	let dir = startDir;
 	for (let i = 0; i < 10; i += 1) {
 		const packageJsonPath = path.join(dir, "package.json");
-		if (fs.existsSync(packageJsonPath)) try {
-			const pkg = JSON.parse(fs.readFileSync(packageJsonPath, "utf8"));
-			const packageName = typeof pkg.name === "string" ? pkg.name.toLowerCase() : "";
-			if (PACKAGE_ROOT_NAMES.has(packageName)) return dir;
-			if (fs.existsSync(path.join(dir, "plugins.json"))) return dir;
-		} catch {}
+		if (fs.existsSync(packageJsonPath))
+			try {
+				const pkg = JSON.parse(fs.readFileSync(packageJsonPath, "utf8"));
+				const packageName =
+					typeof pkg.name === "string" ? pkg.name.toLowerCase() : "";
+				if (PACKAGE_ROOT_NAMES.has(packageName)) return dir;
+				if (fs.existsSync(path.join(dir, "plugins.json"))) return dir;
+			} catch {}
 		const parent = path.dirname(dir);
 		if (parent === dir) break;
 		dir = parent;
@@ -5251,9 +6355,16 @@ function resolveCorsOrigin(...args) {
 function extractLikelyJson(input) {
 	const trimmed = (input.length > 2e5 ? input.slice(0, 2e5) : input).trim();
 	if (!trimmed) return trimmed;
-	const withoutFences = trimmed.replace(/^```(?:json)?[ \t\r\n]{0,1024}/i, "").replace(/[ \t\r\n]{0,1024}```$/i, "").trim();
-	if (withoutFences.startsWith("{") || withoutFences.startsWith("[")) return withoutFences;
-	const starts = [withoutFences.indexOf("["), withoutFences.indexOf("{")].filter((index) => index >= 0);
+	const withoutFences = trimmed
+		.replace(/^```(?:json)?[ \t\r\n]{0,1024}/i, "")
+		.replace(/[ \t\r\n]{0,1024}```$/i, "")
+		.trim();
+	if (withoutFences.startsWith("{") || withoutFences.startsWith("["))
+		return withoutFences;
+	const starts = [
+		withoutFences.indexOf("["),
+		withoutFences.indexOf("{"),
+	].filter((index) => index >= 0);
 	if (starts.length === 0) return withoutFences;
 	const start = Math.min(...starts);
 	const closer = withoutFences[start] === "[" ? "]" : "}";
@@ -5266,38 +6377,74 @@ function normalizeSpeakerName(rawName, fallbackAgentName, options) {
 	if (typeof rawName === "string" && rawName.trim()) {
 		const trimmed = rawName.trim();
 		const normalized = trimmed.toLowerCase();
-		if (normalized === "assistant" || normalized === "agent" || normalized === "ai" || normalized === "model" || normalized === "{{agentname}}") return fallbackAgentName;
-		if (normalized === "user" || normalized === "human" || normalized === "{{user}}" || normalized === "customer") return "{{user1}}";
+		if (
+			normalized === "assistant" ||
+			normalized === "agent" ||
+			normalized === "ai" ||
+			normalized === "model" ||
+			normalized === "{{agentname}}"
+		)
+			return fallbackAgentName;
+		if (
+			normalized === "user" ||
+			normalized === "human" ||
+			normalized === "{{user}}" ||
+			normalized === "customer"
+		)
+			return "{{user1}}";
 		return trimmed;
 	}
 	return fallbackMissingSpeaker ? fallbackAgentName : "";
 }
 function normalizeConversation(conversation, fallbackAgentName, options) {
-	const rawExamples = Array.isArray(conversation) ? conversation : conversation && typeof conversation === "object" && "examples" in conversation && Array.isArray(conversation.examples) ? conversation.examples : null;
+	const rawExamples = Array.isArray(conversation)
+		? conversation
+		: conversation &&
+				typeof conversation === "object" &&
+				"examples" in conversation &&
+				Array.isArray(conversation.examples)
+			? conversation.examples
+			: null;
 	if (!rawExamples) return null;
 	const examples = [];
 	for (const message of rawExamples) {
 		const record = message && typeof message === "object" ? message : null;
 		if (!record) continue;
-		const contentRecord = record.content && typeof record.content === "object" ? record.content : null;
-		const textSource = contentRecord?.text ?? record.text ?? record.message ?? record.content;
+		const contentRecord =
+			record.content && typeof record.content === "object"
+				? record.content
+				: null;
+		const textSource =
+			contentRecord?.text ?? record.text ?? record.message ?? record.content;
 		const text = typeof textSource === "string" ? textSource.trim() : "";
 		if (!text) continue;
-		const actions = Array.isArray(contentRecord?.actions) ? contentRecord.actions.filter((action) => typeof action === "string" && action.trim().length > 0) : void 0;
-		const name = normalizeSpeakerName(record.name ?? record.user ?? record.speaker ?? record.role, fallbackAgentName, options);
+		const actions = Array.isArray(contentRecord?.actions)
+			? contentRecord.actions.filter(
+					(action) => typeof action === "string" && action.trim().length > 0,
+				)
+			: void 0;
+		const name = normalizeSpeakerName(
+			record.name ?? record.user ?? record.speaker ?? record.role,
+			fallbackAgentName,
+			options,
+		);
 		if (!name) continue;
 		examples.push({
 			name,
 			content: {
 				text,
-				...actions && actions.length > 0 ? { actions } : {}
-			}
+				...(actions && actions.length > 0 ? { actions } : {}),
+			},
 		});
 	}
 	if (examples.length === 0) return null;
 	return { examples };
 }
-function normalizeCharacterMessageExamples(input, fallbackAgentName = "Agent", options = {}) {
+function normalizeCharacterMessageExamples(
+	input,
+	fallbackAgentName = "Agent",
+	options = {},
+) {
 	let parsed = input;
 	if (typeof input === "string") {
 		const candidate = extractLikelyJson(input);
@@ -5307,9 +6454,30 @@ function normalizeCharacterMessageExamples(input, fallbackAgentName = "Agent", o
 			return [];
 		}
 	}
-	const source = parsed && typeof parsed === "object" && "messageExamples" in parsed && Array.isArray(parsed.messageExamples) ? parsed.messageExamples : parsed;
+	const source =
+		parsed &&
+		typeof parsed === "object" &&
+		"messageExamples" in parsed &&
+		Array.isArray(parsed.messageExamples)
+			? parsed.messageExamples
+			: parsed;
 	if (!Array.isArray(source)) return [];
-	return (source.length > 0 && source.every((entry) => entry && typeof entry === "object" && "examples" in entry && Array.isArray(entry.examples)) ? source : source.every((entry) => Array.isArray(entry)) ? source : [source]).map((group) => normalizeConversation(group, fallbackAgentName, options)).filter((group) => Boolean(group));
+	return (
+		source.length > 0 &&
+		source.every(
+			(entry) =>
+				entry &&
+				typeof entry === "object" &&
+				"examples" in entry &&
+				Array.isArray(entry.examples),
+		)
+			? source
+			: source.every((entry) => Array.isArray(entry))
+				? source
+				: [source]
+	)
+		.map((group) => normalizeConversation(group, fallbackAgentName, options))
+		.filter((group) => Boolean(group));
 }
 
 //#endregion
@@ -5321,7 +6489,12 @@ function syncBrandEnvAliases() {
 function resolveAppPreset(config, name) {
 	const uiConfig = config.ui ?? {};
 	const language = normalizeCharacterLanguage(uiConfig.language);
-	const matchedPreset = (typeof uiConfig.presetId === "string" && uiConfig.presetId ? resolveStylePresetById(uiConfig.presetId, language) : void 0) ?? resolveStylePresetByAvatarIndex(uiConfig.avatarIndex, language) ?? resolveStylePresetByName(name, language);
+	const matchedPreset =
+		(typeof uiConfig.presetId === "string" && uiConfig.presetId
+			? resolveStylePresetById(uiConfig.presetId, language)
+			: void 0) ??
+		resolveStylePresetByAvatarIndex(uiConfig.avatarIndex, language) ??
+		resolveStylePresetByName(name, language);
 	if (matchedPreset) return matchedPreset;
 	return name ? void 0 : getDefaultStylePreset(language);
 }
@@ -5332,17 +6505,44 @@ function buildCharacterFromConfig$1(...args) {
 	syncBrandEnvAliases();
 	const agentEntry = config.agents?.list?.[0];
 	const bundledPreset = resolveAppPreset(config, character.name);
-	if ((character.messageExamples?.length ?? 0) > 0) character.messageExamples = normalizeCharacterMessageExamples(character.messageExamples, character.name);
+	if ((character.messageExamples?.length ?? 0) > 0)
+		character.messageExamples = normalizeCharacterMessageExamples(
+			character.messageExamples,
+			character.name,
+		);
 	if (bundledPreset) {
-		if (!agentEntry?.style && !character.style && bundledPreset.style) character.style = {
-			all: [...bundledPreset.style.all],
-			chat: [...bundledPreset.style.chat],
-			post: [...bundledPreset.style.post]
-		};
-		if (!agentEntry?.adjectives && (!character.adjectives || character.adjectives.length === 0) && bundledPreset.adjectives.length > 0) character.adjectives = [...bundledPreset.adjectives];
-		if (!agentEntry?.topics && (!Array.isArray(character.topics) || character.topics.length === 0) && Array.isArray(bundledPreset.topics) && bundledPreset.topics.length > 0) character.topics = [...bundledPreset.topics];
-		if (!agentEntry?.postExamples && (character.postExamples?.length ?? 0) === 0) character.postExamples = [...bundledPreset.postExamples];
-		if (!agentEntry?.messageExamples && (character.messageExamples?.length ?? 0) === 0) character.messageExamples = normalizeCharacterMessageExamples(bundledPreset.messageExamples, character.name);
+		if (!agentEntry?.style && !character.style && bundledPreset.style)
+			character.style = {
+				all: [...bundledPreset.style.all],
+				chat: [...bundledPreset.style.chat],
+				post: [...bundledPreset.style.post],
+			};
+		if (
+			!agentEntry?.adjectives &&
+			(!character.adjectives || character.adjectives.length === 0) &&
+			bundledPreset.adjectives.length > 0
+		)
+			character.adjectives = [...bundledPreset.adjectives];
+		if (
+			!agentEntry?.topics &&
+			(!Array.isArray(character.topics) || character.topics.length === 0) &&
+			Array.isArray(bundledPreset.topics) &&
+			bundledPreset.topics.length > 0
+		)
+			character.topics = [...bundledPreset.topics];
+		if (
+			!agentEntry?.postExamples &&
+			(character.postExamples?.length ?? 0) === 0
+		)
+			character.postExamples = [...bundledPreset.postExamples];
+		if (
+			!agentEntry?.messageExamples &&
+			(character.messageExamples?.length ?? 0) === 0
+		)
+			character.messageExamples = normalizeCharacterMessageExamples(
+				bundledPreset.messageExamples,
+				character.name,
+			);
 	}
 	return character;
 }
@@ -5350,21 +6550,22 @@ function buildCharacterFromConfig$1(...args) {
 //#endregion
 //#region node_modules/.bun/@elizaos+app-core@2.0.0-alpha.537+72829346cb4c43b1/node_modules/@elizaos/app-core/packages/app-core/src/services/local-inference/paths.js
 /**
-* Path resolution for the local-inference service.
-*
-* All Eliza-owned files live under `$STATE_DIR/local-inference/` to match
-* the convention established by `plugin-installer.ts` and the rest of
-* app-core. We never write to paths outside of this root.
-*
-* The state dir is resolved in `ELIZA_STATE_DIR` → `ELIZA_STATE_DIR` →
-* `~/.eliza` order. The `.eliza` fallback is preserved for desktop
-* backward-compat with existing installs; on AOSP `ELIZA_STATE_DIR` is
-* set by `ElizaAgentService.java` to `/data/data/<pkg>/files/.eliza`,
-* so models land at `<that>/local-inference/models/` and not under a
-* stray homedir-derived path.
-*/
+ * Path resolution for the local-inference service.
+ *
+ * All Eliza-owned files live under `$STATE_DIR/local-inference/` to match
+ * the convention established by `plugin-installer.ts` and the rest of
+ * app-core. We never write to paths outside of this root.
+ *
+ * The state dir is resolved in `ELIZA_STATE_DIR` → `ELIZA_STATE_DIR` →
+ * `~/.eliza` order. The `.eliza` fallback is preserved for desktop
+ * backward-compat with existing installs; on AOSP `ELIZA_STATE_DIR` is
+ * set by `ElizaAgentService.java` to `/data/data/<pkg>/files/.eliza`,
+ * so models land at `<that>/local-inference/models/` and not under a
+ * stray homedir-derived path.
+ */
 function localInferenceRoot() {
-	const base = process.env.ELIZA_STATE_DIR?.trim() || path.join(os.homedir(), ".eliza");
+	const base =
+		process.env.ELIZA_STATE_DIR?.trim() || path.join(os.homedir(), ".eliza");
 	return path.join(base, "local-inference");
 }
 /** Directory for models Eliza downloaded itself. Safe to delete. */
@@ -5390,49 +6591,59 @@ function isWithinElizaRoot(target) {
 //#endregion
 //#region node_modules/.bun/@elizaos+app-core@2.0.0-alpha.537+72829346cb4c43b1/node_modules/@elizaos/app-core/packages/app-core/src/services/local-inference/device-bridge.js
 /**
-* Device-bridge: agent-side half of the "inference on the user's phone,
-* agent in a container" architecture.
-*
-* Multi-device aware. Any number of devices can dial in; each `generate`
-* is routed to the highest-scoring connected device at call time. A phone
-* and a Mac paired to the same agent → requests go to the Mac; when the
-* Mac disconnects, new requests fall through to the phone automatically.
-*
-* Scoring (higher = preferred):
-*   - desktop / electrobun: 100 base
-*   - ios / android:        10 base
-*   - per GB of total RAM:  +2
-*   - per GB of VRAM:       +5 (dedicated GPU wins big)
-*   - has loaded the right model already: +50 (avoid a swap)
-*
-* Disconnect tolerance
-* --------------------
-* A pending request stays in `pendingGenerates` until either (a) a device
-* (same or different) returns a matching correlation-id, or (b) the
-* timeout fires. On any device (re)connect we re-route orphaned
-* generates to the new best device.
-*
-* Durability
-* ----------
-* Pending requests are best-effort persisted to a JSON log under
-* `$ELIZA_STATE_DIR/local-inference/pending-requests.json` so a brief
-* agent restart doesn't lose the queue. Persistence is async and
-* non-blocking — failures fall back to in-memory only.
-*/
+ * Device-bridge: agent-side half of the "inference on the user's phone,
+ * agent in a container" architecture.
+ *
+ * Multi-device aware. Any number of devices can dial in; each `generate`
+ * is routed to the highest-scoring connected device at call time. A phone
+ * and a Mac paired to the same agent → requests go to the Mac; when the
+ * Mac disconnects, new requests fall through to the phone automatically.
+ *
+ * Scoring (higher = preferred):
+ *   - desktop / electrobun: 100 base
+ *   - ios / android:        10 base
+ *   - per GB of total RAM:  +2
+ *   - per GB of VRAM:       +5 (dedicated GPU wins big)
+ *   - has loaded the right model already: +50 (avoid a swap)
+ *
+ * Disconnect tolerance
+ * --------------------
+ * A pending request stays in `pendingGenerates` until either (a) a device
+ * (same or different) returns a matching correlation-id, or (b) the
+ * timeout fires. On any device (re)connect we re-route orphaned
+ * generates to the new best device.
+ *
+ * Durability
+ * ----------
+ * Pending requests are best-effort persisted to a JSON log under
+ * `$ELIZA_STATE_DIR/local-inference/pending-requests.json` so a brief
+ * agent restart doesn't lose the queue. Persistence is async and
+ * non-blocking — failures fall back to in-memory only.
+ */
 const DEFAULT_CALL_TIMEOUT_MS = 6e4;
 const DEFAULT_LOAD_TIMEOUT_MS = 12e4;
 const HEARTBEAT_INTERVAL_MS = 15e3;
 const PENDING_LOG_FILENAME = "pending-requests.json";
 /**
-* Scoring function — pick the most powerful device available.
-* Pure, synchronous, and easy to test.
-*/
+ * Scoring function — pick the most powerful device available.
+ * Pure, synchronous, and easy to test.
+ */
 function scoreDevice(device, opts = {}) {
 	const cap = device.capabilities;
-	const platformBase = cap.platform === "desktop" || cap.platform === "electrobun" ? 100 : cap.platform === "ios" || cap.platform === "android" ? 10 : 0;
+	const platformBase =
+		cap.platform === "desktop" || cap.platform === "electrobun"
+			? 100
+			: cap.platform === "ios" || cap.platform === "android"
+				? 10
+				: 0;
 	const ramScore = cap.totalRamGb * 2;
-	const vramScore = cap.gpu?.available ? (cap.gpu.totalVramGb ?? cap.totalRamGb) * 5 : 0;
-	const loadedBonus = opts.preferLoadedPath && device.loadedPath === opts.preferLoadedPath ? 50 : 0;
+	const vramScore = cap.gpu?.available
+		? (cap.gpu.totalVramGb ?? cap.totalRamGb) * 5
+		: 0;
+	const loadedBonus =
+		opts.preferLoadedPath && device.loadedPath === opts.preferLoadedPath
+			? 50
+			: 0;
 	return platformBase + ramScore + vramScore + loadedBonus;
 }
 var DeviceBridge = class {
@@ -5449,7 +6660,11 @@ var DeviceBridge = class {
 		const summaries = [];
 		for (const device of this.devices.values()) {
 			const score = scoreDevice(device);
-			const activeRequests = this.countRouted(this.pendingGenerates, device.deviceId) + this.countRouted(this.pendingEmbeds, device.deviceId) + this.countRouted(this.pendingLoads, device.deviceId) + this.countRouted(this.pendingUnloads, device.deviceId);
+			const activeRequests =
+				this.countRouted(this.pendingGenerates, device.deviceId) +
+				this.countRouted(this.pendingEmbeds, device.deviceId) +
+				this.countRouted(this.pendingLoads, device.deviceId) +
+				this.countRouted(this.pendingUnloads, device.deviceId);
 			summaries.push({
 				deviceId: device.deviceId,
 				capabilities: device.capabilities,
@@ -5457,13 +6672,17 @@ var DeviceBridge = class {
 				connectedSince: new Date(device.connectedAt).toISOString(),
 				score,
 				activeRequests,
-				isPrimary: false
+				isPrimary: false,
 			});
 		}
 		summaries.sort((a, b) => b.score - a.score);
 		if (summaries[0]) summaries[0].isPrimary = true;
 		const primary = summaries[0] ?? null;
-		const pendingRequests = this.pendingGenerates.size + this.pendingEmbeds.size + this.pendingLoads.size + this.pendingUnloads.size;
+		const pendingRequests =
+			this.pendingGenerates.size +
+			this.pendingEmbeds.size +
+			this.pendingLoads.size +
+			this.pendingUnloads.size;
 		return {
 			connected: summaries.length > 0,
 			devices: summaries,
@@ -5472,12 +6691,13 @@ var DeviceBridge = class {
 			deviceId: primary?.deviceId ?? null,
 			capabilities: primary?.capabilities ?? null,
 			loadedPath: primary?.loadedPath ?? null,
-			connectedSince: primary?.connectedSince ?? null
+			connectedSince: primary?.connectedSince ?? null,
 		};
 	}
 	countRouted(map, deviceId) {
 		let n = 0;
-		for (const value of map.values()) if (value.routedDeviceId === deviceId) n += 1;
+		for (const value of map.values())
+			if (value.routedDeviceId === deviceId) n += 1;
 		return n;
 	}
 	subscribeStatus(listener) {
@@ -5488,18 +6708,19 @@ var DeviceBridge = class {
 	}
 	emitStatus() {
 		const snapshot = this.status();
-		for (const listener of this.statusListeners) try {
-			listener(snapshot);
-		} catch {
-			this.statusListeners.delete(listener);
-		}
+		for (const listener of this.statusListeners)
+			try {
+				listener(snapshot);
+			} catch {
+				this.statusListeners.delete(listener);
+			}
 	}
 	async attachToHttpServer(server) {
 		if (this.wss) return;
 		const ws = await import("ws");
 		const wss = new ws.WebSocketServer({
 			noServer: true,
-			maxPayload: 1024 * 1024
+			maxPayload: 1024 * 1024,
 		});
 		this.wss = wss;
 		wss.on("error", (err) => {
@@ -5541,7 +6762,10 @@ var DeviceBridge = class {
 					socket.close(4002, "must-register-first");
 					return;
 				}
-				if (this.expectedPairingToken && msg.payload.pairingToken !== this.expectedPairingToken) {
+				if (
+					this.expectedPairingToken &&
+					msg.payload.pairingToken !== this.expectedPairingToken
+				) {
 					logger.warn("[device-bridge] Rejecting register: bad pairing token");
 					socket.close(4001, "unauthorized");
 					return;
@@ -5556,7 +6780,8 @@ var DeviceBridge = class {
 		socket.on("close", () => {
 			if (!registered || !registeredDeviceId) return;
 			const current = this.devices.get(registeredDeviceId);
-			if (current && current.socket === socket) this.onDeviceDisconnected(registeredDeviceId);
+			if (current && current.socket === socket)
+				this.onDeviceDisconnected(registeredDeviceId);
 		});
 		socket.on("error", (err) => {
 			logger.warn("[device-bridge] Socket error:", err.message);
@@ -5582,49 +6807,79 @@ var DeviceBridge = class {
 				try {
 					this.sendToDevice(device.deviceId, {
 						type: "ping",
-						at: Date.now()
+						at: Date.now(),
 					});
 				} catch {}
-			}, HEARTBEAT_INTERVAL_MS)
+			}, HEARTBEAT_INTERVAL_MS),
 		};
-		if (typeof device.heartbeatTimer === "object" && device.heartbeatTimer && "unref" in device.heartbeatTimer) device.heartbeatTimer.unref();
+		if (
+			typeof device.heartbeatTimer === "object" &&
+			device.heartbeatTimer &&
+			"unref" in device.heartbeatTimer
+		)
+			device.heartbeatTimer.unref();
 		this.devices.set(device.deviceId, device);
-		logger.info(`[device-bridge] Device connected: ${device.deviceId} (${device.capabilities.platform}, score=${scoreDevice(device)})`);
+		logger.info(
+			`[device-bridge] Device connected: ${device.deviceId} (${device.capabilities.platform}, score=${scoreDevice(device)})`,
+		);
 		for (const pending of this.pendingLoads.values()) {
 			if (pending.routedDeviceId === device.deviceId) continue;
 			if (!this.devices.has(pending.routedDeviceId)) {
 				clearTimeout(pending.timeout);
 				this.pendingLoads.delete(pending.correlationId);
-				pending.reject(/* @__PURE__ */ new Error("DEVICE_RECONNECTED: retry model load after reconnect"));
+				pending.reject(
+					/* @__PURE__ */ new Error(
+						"DEVICE_RECONNECTED: retry model load after reconnect",
+					),
+				);
 			}
 		}
-		for (const pending of this.pendingUnloads.values()) if (!this.devices.has(pending.routedDeviceId)) {
-			clearTimeout(pending.timeout);
-			this.pendingUnloads.delete(pending.correlationId);
-			pending.reject(/* @__PURE__ */ new Error("DEVICE_RECONNECTED: retry model unload after reconnect"));
-		}
-		for (const pending of this.pendingGenerates.values()) if (pending.routedDeviceId === null) {
-			const best = this.pickBestDevice();
-			if (best) {
-				pending.routedDeviceId = best.deviceId;
-				try {
-					this.sendToDevice(best.deviceId, pending.request);
-				} catch (err) {
-					pending.reject(err instanceof Error ? err : /* @__PURE__ */ new Error("Failed to re-route after reconnect"));
+		for (const pending of this.pendingUnloads.values())
+			if (!this.devices.has(pending.routedDeviceId)) {
+				clearTimeout(pending.timeout);
+				this.pendingUnloads.delete(pending.correlationId);
+				pending.reject(
+					/* @__PURE__ */ new Error(
+						"DEVICE_RECONNECTED: retry model unload after reconnect",
+					),
+				);
+			}
+		for (const pending of this.pendingGenerates.values())
+			if (pending.routedDeviceId === null) {
+				const best = this.pickBestDevice();
+				if (best) {
+					pending.routedDeviceId = best.deviceId;
+					try {
+						this.sendToDevice(best.deviceId, pending.request);
+					} catch (err) {
+						pending.reject(
+							err instanceof Error
+								? err
+								: /* @__PURE__ */ new Error(
+										"Failed to re-route after reconnect",
+									),
+						);
+					}
 				}
 			}
-		}
-		for (const pending of this.pendingEmbeds.values()) if (pending.routedDeviceId === null) {
-			const best = this.pickBestDevice();
-			if (best) {
-				pending.routedDeviceId = best.deviceId;
-				try {
-					this.sendToDevice(best.deviceId, pending.request);
-				} catch (err) {
-					pending.reject(err instanceof Error ? err : /* @__PURE__ */ new Error("Failed to re-route after reconnect"));
+		for (const pending of this.pendingEmbeds.values())
+			if (pending.routedDeviceId === null) {
+				const best = this.pickBestDevice();
+				if (best) {
+					pending.routedDeviceId = best.deviceId;
+					try {
+						this.sendToDevice(best.deviceId, pending.request);
+					} catch (err) {
+						pending.reject(
+							err instanceof Error
+								? err
+								: /* @__PURE__ */ new Error(
+										"Failed to re-route after reconnect",
+									),
+						);
+					}
 				}
 			}
-		}
 		this.emitStatus();
 	}
 	onDeviceDisconnected(deviceId) {
@@ -5633,34 +6888,40 @@ var DeviceBridge = class {
 		clearInterval(device.heartbeatTimer);
 		this.devices.delete(deviceId);
 		let orphaned = 0;
-		for (const pending of this.pendingGenerates.values()) if (pending.routedDeviceId === deviceId) {
-			pending.routedDeviceId = null;
-			orphaned += 1;
-		}
-		for (const pending of this.pendingEmbeds.values()) if (pending.routedDeviceId === deviceId) {
-			pending.routedDeviceId = null;
-			orphaned += 1;
-		}
-		logger.info(`[device-bridge] Device disconnected: ${deviceId}; ${orphaned} request(s) orphaned`);
+		for (const pending of this.pendingGenerates.values())
+			if (pending.routedDeviceId === deviceId) {
+				pending.routedDeviceId = null;
+				orphaned += 1;
+			}
+		for (const pending of this.pendingEmbeds.values())
+			if (pending.routedDeviceId === deviceId) {
+				pending.routedDeviceId = null;
+				orphaned += 1;
+			}
+		logger.info(
+			`[device-bridge] Device disconnected: ${deviceId}; ${orphaned} request(s) orphaned`,
+		);
 		if (this.devices.size > 0) {
-			for (const pending of this.pendingGenerates.values()) if (pending.routedDeviceId === null) {
-				const best = this.pickBestDevice();
-				if (best) {
-					pending.routedDeviceId = best.deviceId;
-					try {
-						this.sendToDevice(best.deviceId, pending.request);
-					} catch {}
+			for (const pending of this.pendingGenerates.values())
+				if (pending.routedDeviceId === null) {
+					const best = this.pickBestDevice();
+					if (best) {
+						pending.routedDeviceId = best.deviceId;
+						try {
+							this.sendToDevice(best.deviceId, pending.request);
+						} catch {}
+					}
 				}
-			}
-			for (const pending of this.pendingEmbeds.values()) if (pending.routedDeviceId === null) {
-				const best = this.pickBestDevice();
-				if (best) {
-					pending.routedDeviceId = best.deviceId;
-					try {
-						this.sendToDevice(best.deviceId, pending.request);
-					} catch {}
+			for (const pending of this.pendingEmbeds.values())
+				if (pending.routedDeviceId === null) {
+					const best = this.pickBestDevice();
+					if (best) {
+						pending.routedDeviceId = best.deviceId;
+						try {
+							this.sendToDevice(best.deviceId, pending.request);
+						} catch {}
+					}
 				}
-			}
 		}
 		this.emitStatus();
 	}
@@ -5710,10 +6971,11 @@ var DeviceBridge = class {
 			clearTimeout(pending.timeout);
 			this.pendingEmbeds.delete(msg.correlationId);
 			if (msg.ok === false) pending.reject(new Error(msg.error));
-			else pending.resolve({
-				embedding: msg.embedding,
-				tokens: msg.tokens
-			});
+			else
+				pending.resolve({
+					embedding: msg.embedding,
+					tokens: msg.tokens,
+				});
 			return;
 		}
 	}
@@ -5737,21 +6999,29 @@ var DeviceBridge = class {
 	}
 	async loadModel(args) {
 		const best = this.pickBestDevice({ preferLoadedPath: args.modelPath });
-		if (!best) throw new Error("DEVICE_DISCONNECTED: no mobile / desktop bridge device attached");
+		if (!best)
+			throw new Error(
+				"DEVICE_DISCONNECTED: no mobile / desktop bridge device attached",
+			);
 		const correlationId = randomUUID();
 		return new Promise((resolve, reject) => {
 			const timeout = setTimeout(() => {
 				this.pendingLoads.delete(correlationId);
-				reject(/* @__PURE__ */ new Error("DEVICE_TIMEOUT: model load exceeded deadline"));
+				reject(
+					/* @__PURE__ */ new Error(
+						"DEVICE_TIMEOUT: model load exceeded deadline",
+					),
+				);
 			}, DEFAULT_LOAD_TIMEOUT_MS);
-			if (typeof timeout === "object" && timeout && "unref" in timeout) timeout.unref();
+			if (typeof timeout === "object" && timeout && "unref" in timeout)
+				timeout.unref();
 			this.pendingLoads.set(correlationId, {
 				correlationId,
 				modelPath: args.modelPath,
 				resolve,
 				reject,
 				timeout,
-				routedDeviceId: best.deviceId
+				routedDeviceId: best.deviceId,
 			});
 			try {
 				this.sendToDevice(best.deviceId, {
@@ -5759,7 +7029,7 @@ var DeviceBridge = class {
 					correlationId,
 					modelPath: args.modelPath,
 					contextSize: args.contextSize,
-					useGpu: args.useGpu
+					useGpu: args.useGpu,
 				});
 			} catch (err) {
 				clearTimeout(timeout);
@@ -5771,51 +7041,72 @@ var DeviceBridge = class {
 	async unloadModel() {
 		const targets = [...this.devices.values()].filter((d) => d.loadedPath);
 		if (targets.length === 0) return;
-		await Promise.allSettled(targets.map((device) => new Promise((resolve, reject) => {
-			const correlationId = randomUUID();
-			const timeout = setTimeout(() => {
-				this.pendingUnloads.delete(correlationId);
-				reject(/* @__PURE__ */ new Error("DEVICE_TIMEOUT: unload exceeded deadline"));
-			}, DEFAULT_CALL_TIMEOUT_MS);
-			if (typeof timeout === "object" && timeout && "unref" in timeout) timeout.unref();
-			this.pendingUnloads.set(correlationId, {
-				correlationId,
-				resolve,
-				reject,
-				timeout,
-				routedDeviceId: device.deviceId
-			});
-			try {
-				this.sendToDevice(device.deviceId, {
-					type: "unload",
-					correlationId
-				});
-			} catch (err) {
-				clearTimeout(timeout);
-				this.pendingUnloads.delete(correlationId);
-				reject(err instanceof Error ? err : new Error(String(err)));
-			}
-		})));
+		await Promise.allSettled(
+			targets.map(
+				(device) =>
+					new Promise((resolve, reject) => {
+						const correlationId = randomUUID();
+						const timeout = setTimeout(() => {
+							this.pendingUnloads.delete(correlationId);
+							reject(
+								/* @__PURE__ */ new Error(
+									"DEVICE_TIMEOUT: unload exceeded deadline",
+								),
+							);
+						}, DEFAULT_CALL_TIMEOUT_MS);
+						if (typeof timeout === "object" && timeout && "unref" in timeout)
+							timeout.unref();
+						this.pendingUnloads.set(correlationId, {
+							correlationId,
+							resolve,
+							reject,
+							timeout,
+							routedDeviceId: device.deviceId,
+						});
+						try {
+							this.sendToDevice(device.deviceId, {
+								type: "unload",
+								correlationId,
+							});
+						} catch (err) {
+							clearTimeout(timeout);
+							this.pendingUnloads.delete(correlationId);
+							reject(err instanceof Error ? err : new Error(String(err)));
+						}
+					}),
+			),
+		);
 	}
 	currentModelPath() {
 		return this.pickBestDevice()?.loadedPath ?? null;
 	}
 	async embed(args) {
-		const envTimeout = Number.parseInt(process.env.ELIZA_DEVICE_GENERATE_TIMEOUT_MS?.trim() ?? "", 10);
-		const timeoutMs = Number.isFinite(envTimeout) && envTimeout > 0 ? envTimeout : DEFAULT_CALL_TIMEOUT_MS;
+		const envTimeout = Number.parseInt(
+			process.env.ELIZA_DEVICE_GENERATE_TIMEOUT_MS?.trim() ?? "",
+			10,
+		);
+		const timeoutMs =
+			Number.isFinite(envTimeout) && envTimeout > 0
+				? envTimeout
+				: DEFAULT_CALL_TIMEOUT_MS;
 		const correlationId = randomUUID();
 		const request = {
 			type: "embed",
 			correlationId,
-			input: args.input
+			input: args.input,
 		};
 		const best = this.pickBestDevice();
 		return new Promise((resolve, reject) => {
 			const timeout = setTimeout(() => {
 				this.pendingEmbeds.delete(correlationId);
-				reject(/* @__PURE__ */ new Error(`DEVICE_TIMEOUT: no device responded to embed within ${timeoutMs}ms`));
+				reject(
+					/* @__PURE__ */ new Error(
+						`DEVICE_TIMEOUT: no device responded to embed within ${timeoutMs}ms`,
+					),
+				);
 			}, timeoutMs);
-			if (typeof timeout === "object" && timeout && "unref" in timeout) timeout.unref();
+			if (typeof timeout === "object" && timeout && "unref" in timeout)
+				timeout.unref();
 			const pending = {
 				correlationId,
 				resolve,
@@ -5823,20 +7114,30 @@ var DeviceBridge = class {
 				timeout,
 				request,
 				routedDeviceId: best?.deviceId ?? null,
-				submittedAt: (/* @__PURE__ */ new Date()).toISOString()
+				submittedAt: /* @__PURE__ */ new Date().toISOString(),
 			};
 			this.pendingEmbeds.set(correlationId, pending);
-			if (best) try {
-				this.sendToDevice(best.deviceId, request);
-			} catch {
-				pending.routedDeviceId = null;
-			}
-			else logger.debug(`[device-bridge] No device available; parking embed ${correlationId} pending connection`);
+			if (best)
+				try {
+					this.sendToDevice(best.deviceId, request);
+				} catch {
+					pending.routedDeviceId = null;
+				}
+			else
+				logger.debug(
+					`[device-bridge] No device available; parking embed ${correlationId} pending connection`,
+				);
 		});
 	}
 	async generate(args) {
-		const envTimeout = Number.parseInt(process.env.ELIZA_DEVICE_GENERATE_TIMEOUT_MS?.trim() ?? "", 10);
-		const timeoutMs = Number.isFinite(envTimeout) && envTimeout > 0 ? envTimeout : DEFAULT_CALL_TIMEOUT_MS;
+		const envTimeout = Number.parseInt(
+			process.env.ELIZA_DEVICE_GENERATE_TIMEOUT_MS?.trim() ?? "",
+			10,
+		);
+		const timeoutMs =
+			Number.isFinite(envTimeout) && envTimeout > 0
+				? envTimeout
+				: DEFAULT_CALL_TIMEOUT_MS;
 		const correlationId = randomUUID();
 		const request = {
 			type: "generate",
@@ -5844,16 +7145,21 @@ var DeviceBridge = class {
 			prompt: args.prompt,
 			stopSequences: args.stopSequences,
 			maxTokens: args.maxTokens,
-			temperature: args.temperature
+			temperature: args.temperature,
 		};
 		const best = this.pickBestDevice();
 		return new Promise((resolve, reject) => {
 			const timeout = setTimeout(() => {
 				this.pendingGenerates.delete(correlationId);
 				this.persistPendingGenerates();
-				reject(/* @__PURE__ */ new Error(`DEVICE_TIMEOUT: no device responded within ${timeoutMs}ms`));
+				reject(
+					/* @__PURE__ */ new Error(
+						`DEVICE_TIMEOUT: no device responded within ${timeoutMs}ms`,
+					),
+				);
 			}, timeoutMs);
-			if (typeof timeout === "object" && timeout && "unref" in timeout) timeout.unref();
+			if (typeof timeout === "object" && timeout && "unref" in timeout)
+				timeout.unref();
 			const pending = {
 				correlationId,
 				resolve,
@@ -5861,51 +7167,58 @@ var DeviceBridge = class {
 				timeout,
 				request,
 				routedDeviceId: best?.deviceId ?? null,
-				submittedAt: (/* @__PURE__ */ new Date()).toISOString()
+				submittedAt: /* @__PURE__ */ new Date().toISOString(),
 			};
 			this.pendingGenerates.set(correlationId, pending);
 			this.persistPendingGenerates();
-			if (best) try {
-				this.sendToDevice(best.deviceId, request);
-			} catch {
-				pending.routedDeviceId = null;
-			}
-			else logger.debug(`[device-bridge] No device available; parking generate ${correlationId} pending connection`);
+			if (best)
+				try {
+					this.sendToDevice(best.deviceId, request);
+				} catch {
+					pending.routedDeviceId = null;
+				}
+			else
+				logger.debug(
+					`[device-bridge] No device available; parking generate ${correlationId} pending connection`,
+				);
 		});
 	}
 	pendingLogPath() {
 		return path.join(localInferenceRoot(), PENDING_LOG_FILENAME);
 	}
 	/**
-	* Rewrite the pending-generate log. Called after every mutation to the
-	* pendingGenerates map. We only persist `generate` — loads/unloads are
-	* bound to a specific device's current state and aren't safely replayable
-	* across restart.
-	*/
+	 * Rewrite the pending-generate log. Called after every mutation to the
+	 * pendingGenerates map. We only persist `generate` — loads/unloads are
+	 * bound to a specific device's current state and aren't safely replayable
+	 * across restart.
+	 */
 	async persistPendingGenerates() {
 		try {
 			await fs$1.mkdir(localInferenceRoot(), { recursive: true });
 			const payload = [...this.pendingGenerates.values()].map((p) => ({
 				correlationId: p.correlationId,
 				request: p.request,
-				submittedAt: p.submittedAt
+				submittedAt: p.submittedAt,
 			}));
 			const tmp = `${this.pendingLogPath()}.tmp`;
 			await fs$1.writeFile(tmp, JSON.stringify(payload, null, 2), "utf8");
 			await fs$1.rename(tmp, this.pendingLogPath());
 		} catch (err) {
-			logger.debug("[device-bridge] Failed to persist pending generates:", err instanceof Error ? err.message : String(err));
+			logger.debug(
+				"[device-bridge] Failed to persist pending generates:",
+				err instanceof Error ? err.message : String(err),
+			);
 		}
 	}
 	/**
-	* On startup, read persisted pending requests back into memory. Their
-	* promises are gone (the original caller's process is dead) so they can
-	* only be resolved externally — for now we just re-queue them with a
-	* fresh timeout, and the first device that connects will process them.
-	* If nothing consumes them within the timeout they reject quietly.
-	*
-	* Stale entries older than 24h are purged rather than resurrected.
-	*/
+	 * On startup, read persisted pending requests back into memory. Their
+	 * promises are gone (the original caller's process is dead) so they can
+	 * only be resolved externally — for now we just re-queue them with a
+	 * fresh timeout, and the first device that connects will process them.
+	 * If nothing consumes them within the timeout they reject quietly.
+	 *
+	 * Stale entries older than 24h are purged rather than resurrected.
+	 */
 	async restorePendingGenerates() {
 		let raw;
 		try {
@@ -5923,7 +7236,12 @@ var DeviceBridge = class {
 		const cutoff = Date.now() - 1440 * 60 * 1e3;
 		let restored = 0;
 		for (const item of items) {
-			if (!item.correlationId || !item.request || item.request.type !== "generate") continue;
+			if (
+				!item.correlationId ||
+				!item.request ||
+				item.request.type !== "generate"
+			)
+				continue;
 			const submittedAt = Date.parse(item.submittedAt);
 			if (!Number.isFinite(submittedAt) || submittedAt < cutoff) continue;
 			if (this.pendingGenerates.has(item.correlationId)) continue;
@@ -5931,7 +7249,8 @@ var DeviceBridge = class {
 				this.pendingGenerates.delete(item.correlationId);
 				this.persistPendingGenerates();
 			}, DEFAULT_CALL_TIMEOUT_MS);
-			if (typeof timeout === "object" && timeout && "unref" in timeout) timeout.unref();
+			if (typeof timeout === "object" && timeout && "unref" in timeout)
+				timeout.unref();
 			this.pendingGenerates.set(item.correlationId, {
 				correlationId: item.correlationId,
 				request: item.request,
@@ -5939,11 +7258,14 @@ var DeviceBridge = class {
 				routedDeviceId: null,
 				timeout,
 				resolve: () => {},
-				reject: () => {}
+				reject: () => {},
 			});
 			restored += 1;
 		}
-		if (restored > 0) logger.info(`[device-bridge] Restored ${restored} pending generate(s) from persistent log`);
+		if (restored > 0)
+			logger.info(
+				`[device-bridge] Restored ${restored} pending generate(s) from persistent log`,
+			);
 	}
 };
 const deviceBridge = new DeviceBridge();
@@ -5953,7 +7275,7 @@ const deviceBridge = new DeviceBridge();
 const repairedRuntimes = /* @__PURE__ */ new WeakSet();
 const repairPromises = /* @__PURE__ */ new WeakMap();
 function quoteIdent(name) {
-	return `"${name.replace(/"/g, "\"\"")}"`;
+	return `"${name.replace(/"/g, '""')}"`;
 }
 function sanitizeIdentifier(value) {
 	if (typeof value !== "string") return null;
@@ -5974,17 +7296,22 @@ async function executeRawSql(runtime, sqlText) {
 	const rows = Array.isArray(result.rows) ? result.rows : [];
 	return {
 		rows,
-		columns: Array.isArray(result.fields) ? result.fields.map((field) => field.name) : Object.keys(rows[0] ?? {})
+		columns: Array.isArray(result.fields)
+			? result.fields.map((field) => field.name)
+			: Object.keys(rows[0] ?? {}),
 	};
 }
 async function getTableColumnNames(runtime, tableName, schemaName = "public") {
 	const columns = /* @__PURE__ */ new Set();
 	try {
-		const { rows } = await executeRawSql(runtime, `SELECT column_name
+		const { rows } = await executeRawSql(
+			runtime,
+			`SELECT column_name
          FROM information_schema.columns
         WHERE table_schema = ${sqlLiteral(schemaName)}
           AND table_name = ${sqlLiteral(tableName)}
-        ORDER BY ordinal_position`);
+        ORDER BY ordinal_position`,
+		);
 		for (const row of rows) {
 			const value = row.column_name;
 			if (typeof value === "string" && value.length > 0) columns.add(value);
@@ -5994,7 +7321,10 @@ async function getTableColumnNames(runtime, tableName, schemaName = "public") {
 	try {
 		const safeTableName = sanitizeIdentifier(tableName);
 		if (!safeTableName) return columns;
-		const { rows } = await executeRawSql(runtime, `PRAGMA table_info(${safeTableName})`);
+		const { rows } = await executeRawSql(
+			runtime,
+			`PRAGMA table_info(${safeTableName})`,
+		);
 		for (const row of rows) {
 			const value = row.name;
 			if (typeof value === "string" && value.length > 0) columns.add(value);
@@ -6004,7 +7334,9 @@ async function getTableColumnNames(runtime, tableName, schemaName = "public") {
 }
 async function addColumnIfMissing(runtime, tableName, columnName, definition) {
 	if ((await getTableColumnNames(runtime, tableName)).has(columnName)) return;
-	throw new Error(`[sql-compat] Missing required column ${quoteIdent(tableName)}.${quoteIdent(columnName)} (${definition}). Run the appropriate database migrations before starting the app.`);
+	throw new Error(
+		`[sql-compat] Missing required column ${quoteIdent(tableName)}.${quoteIdent(columnName)} (${definition}). Run the appropriate database migrations before starting the app.`,
+	);
 }
 async function ensureRuntimeSqlCompatibility(runtime) {
 	if (!runtime?.adapter?.db) return;
@@ -6015,7 +7347,12 @@ async function ensureRuntimeSqlCompatibility(runtime) {
 		return;
 	}
 	const repairPromise = (async () => {
-		await addColumnIfMissing(runtime, "participants", "agent_id", "uuid REFERENCES \"agents\"(\"id\") ON DELETE CASCADE");
+		await addColumnIfMissing(
+			runtime,
+			"participants",
+			"agent_id",
+			'uuid REFERENCES "agents"("id") ON DELETE CASCADE',
+		);
 		await addColumnIfMissing(runtime, "participants", "room_state", "text");
 		for (const [columnName, definition] of [
 			["step_count", "integer NOT NULL DEFAULT 0"],
@@ -6024,8 +7361,9 @@ async function ensureRuntimeSqlCompatibility(runtime) {
 			["total_completion_tokens", "integer NOT NULL DEFAULT 0"],
 			["total_reward", "real NOT NULL DEFAULT 0"],
 			["scenario_id", "text"],
-			["batch_id", "text"]
-		]) await addColumnIfMissing(runtime, "trajectories", columnName, definition);
+			["batch_id", "text"],
+		])
+			await addColumnIfMissing(runtime, "trajectories", columnName, definition);
 		repairedRuntimes.add(runtime);
 	})().finally(() => {
 		repairPromises.delete(runtime);
@@ -6041,10 +7379,10 @@ init_auth();
 init_legacy_bearer();
 init_sessions();
 /**
-* Resolve the request to a session + identity if possible. Returns null on
-* any failure path; never throws on bad input. The caller is responsible
-* for sending the 401.
-*/
+ * Resolve the request to a session + identity if possible. Returns null on
+ * any failure path; never throws on bad input. The caller is responsible
+ * for sending the 401.
+ */
 async function ensureSessionForRequest(req, res, options) {
 	const { store } = options;
 	const env = options.env ?? process.env;
@@ -6055,29 +7393,39 @@ async function ensureSessionForRequest(req, res, options) {
 	const userAgent = extractHeaderValue(req.headers["user-agent"]);
 	const cookieSessionId = parseSessionCookie(req);
 	if (cookieSessionId) {
-		const session = await findActiveSession(store, cookieSessionId, now).catch(() => null);
+		const session = await findActiveSession(store, cookieSessionId, now).catch(
+			() => null,
+		);
 		if (session) {
-			const identity = await store.findIdentity(session.identityId).catch(() => null);
-			if (identity) return {
-				session,
-				identity,
-				source: "cookie",
-				legacy: false
-			};
+			const identity = await store
+				.findIdentity(session.identityId)
+				.catch(() => null);
+			if (identity)
+				return {
+					session,
+					identity,
+					source: "cookie",
+					legacy: false,
+				};
 			return null;
 		}
 	}
 	const bearer = getProvidedApiToken(req);
 	if (bearer) {
-		const session = await findActiveSession(store, bearer, now).catch(() => null);
+		const session = await findActiveSession(store, bearer, now).catch(
+			() => null,
+		);
 		if (session) {
-			const identity = await store.findIdentity(session.identityId).catch(() => null);
-			if (identity) return {
-				session,
-				identity,
-				source: "bearer-session",
-				legacy: false
-			};
+			const identity = await store
+				.findIdentity(session.identityId)
+				.catch(() => null);
+			if (identity)
+				return {
+					session,
+					identity,
+					source: "bearer-session",
+					legacy: false,
+				};
 			return null;
 		}
 		const legacyToken = getCompatApiToken$1();
@@ -6087,7 +7435,7 @@ async function ensureSessionForRequest(req, res, options) {
 				if (!res.headersSent) res.setHeader(LEGACY_DEPRECATION_HEADER, "1");
 				await recordLegacyBearerUse(store, {
 					ip,
-					userAgent
+					userAgent,
 				}).catch((err) => {
 					console.error("[auth] legacy bearer audit failed:", err);
 				});
@@ -6095,24 +7443,25 @@ async function ensureSessionForRequest(req, res, options) {
 					session: null,
 					identity: null,
 					source: "bearer-legacy",
-					legacy: true
+					legacy: true,
 				};
 			}
 			await recordLegacyBearerRejection(store, {
 				ip,
 				userAgent,
-				reason: decision.reason ?? "post_grace"
+				reason: decision.reason ?? "post_grace",
 			}).catch((err) => {
 				console.error("[auth] legacy bearer rejection audit failed:", err);
 			});
 			return null;
 		}
-		if (allowBootstrap) return {
-			session: null,
-			identity: null,
-			source: "bearer-bootstrap",
-			legacy: false
-		};
+		if (allowBootstrap)
+			return {
+				session: null,
+				identity: null,
+				source: "bearer-bootstrap",
+				legacy: false,
+			};
 	}
 	return null;
 }
@@ -6120,18 +7469,18 @@ async function ensureSessionForRequest(req, res, options) {
 //#endregion
 //#region node_modules/.bun/@elizaos+app-core@2.0.0-alpha.537+72829346cb4c43b1/node_modules/@elizaos/app-core/packages/app-core/src/api/auth/bootstrap-token.js
 /**
-* Bootstrap-token verifier.
-*
-* The Eliza Cloud control plane mints an RS256-signed JWT, injects it as
-* `ELIZA_CLOUD_BOOTSTRAP_TOKEN`, and the user pastes the same value into the
-* dashboard exactly once. We verify here and reject everything that doesn't
-* match: wrong issuer, wrong container, expired, replayed, signed with the
-* wrong algorithm, or by an unknown key.
-*
-* Hard rule: this module fails closed. There is no `try { … } catch { return
-* { authenticated: true } }` shortcut. Any error path returns
-* `{ ok: false, reason }` and the caller MUST refuse the request.
-*/
+ * Bootstrap-token verifier.
+ *
+ * The Eliza Cloud control plane mints an RS256-signed JWT, injects it as
+ * `ELIZA_CLOUD_BOOTSTRAP_TOKEN`, and the user pastes the same value into the
+ * dashboard exactly once. We verify here and reject everything that doesn't
+ * match: wrong issuer, wrong container, expired, replayed, signed with the
+ * wrong algorithm, or by an unknown key.
+ *
+ * Hard rule: this module fails closed. There is no `try { … } catch { return
+ * { authenticated: true } }` shortcut. Any error path returns
+ * `{ ok: false, reason }` and the caller MUST refuse the request.
+ */
 init_cloud_jwks_store();
 const BOOTSTRAP_TOKEN_ALG = "RS256";
 const BOOTSTRAP_TOKEN_SCOPE = "bootstrap";
@@ -6142,14 +7491,23 @@ function isNonEmptyString(value) {
 	return typeof value === "string" && value.length > 0;
 }
 function shapeClaims(payload) {
-	if (!isNonEmptyString(payload.iss) || !isNonEmptyString(payload.sub) || !isNonEmptyString(payload.containerId) || !isNonEmptyString(payload.jti) || !isFiniteNumber(payload.iat) || !isFiniteNumber(payload.exp)) return {
-		ok: false,
-		reason: "claims_invalid"
-	};
-	if (payload.scope !== BOOTSTRAP_TOKEN_SCOPE) return {
-		ok: false,
-		reason: "scope_mismatch"
-	};
+	if (
+		!isNonEmptyString(payload.iss) ||
+		!isNonEmptyString(payload.sub) ||
+		!isNonEmptyString(payload.containerId) ||
+		!isNonEmptyString(payload.jti) ||
+		!isFiniteNumber(payload.iat) ||
+		!isFiniteNumber(payload.exp)
+	)
+		return {
+			ok: false,
+			reason: "claims_invalid",
+		};
+	if (payload.scope !== BOOTSTRAP_TOKEN_SCOPE)
+		return {
+			ok: false,
+			reason: "scope_mismatch",
+		};
 	return {
 		ok: true,
 		claims: {
@@ -6159,8 +7517,8 @@ function shapeClaims(payload) {
 			scope: BOOTSTRAP_TOKEN_SCOPE,
 			iat: payload.iat,
 			exp: payload.exp,
-			jti: payload.jti
-		}
+			jti: payload.jti,
+		},
 	};
 }
 async function loadJwks(issuer, options) {
@@ -6168,10 +7526,13 @@ async function loadJwks(issuer, options) {
 	const now = options.now?.() ?? Date.now();
 	const cached = await readCachedJwks(issuer, {
 		env,
-		now
+		now,
 	});
 	if (cached) return cached;
-	const response = await (options.fetchImpl ?? fetch)(`${issuer.replace(/\/$/, "")}/.well-known/jwks.json`, { headers: { accept: "application/json" } });
+	const response = await (options.fetchImpl ?? fetch)(
+		`${issuer.replace(/\/$/, "")}/.well-known/jwks.json`,
+		{ headers: { accept: "application/json" } },
+	);
 	if (!response.ok) return null;
 	const body = await response.json();
 	if (!body || typeof body !== "object") return null;
@@ -6180,149 +7541,163 @@ async function loadJwks(issuer, options) {
 	const document = { keys: candidate.keys };
 	await writeCachedJwks(issuer, document, {
 		env,
-		now
+		now,
 	});
 	return document;
 }
 /**
-* Verify a bootstrap token.
-*
-* On success the same `jti` is recorded as seen so a second presentation
-* fails immediately with `replay`. The caller must NOT call this twice for
-* the same exchange — `recordJtiSeen` is consumed atomically here.
-*/
+ * Verify a bootstrap token.
+ *
+ * On success the same `jti` is recorded as seen so a second presentation
+ * fails immediately with `replay`. The caller must NOT call this twice for
+ * the same exchange — `recordJtiSeen` is consumed atomically here.
+ */
 async function verifyBootstrapToken(token, options) {
 	const env = options.env ?? process.env;
 	const issuer = env.ELIZA_CLOUD_ISSUER?.trim();
 	const expectedContainerId = env.ELIZA_CLOUD_CONTAINER_ID?.trim();
-	if (!issuer) return {
-		ok: false,
-		reason: "missing_issuer_env"
-	};
-	if (!expectedContainerId) return {
-		ok: false,
-		reason: "missing_container_env"
-	};
-	if (!token || typeof token !== "string" || token.length < 8) return {
-		ok: false,
-		reason: "missing_token"
-	};
+	if (!issuer)
+		return {
+			ok: false,
+			reason: "missing_issuer_env",
+		};
+	if (!expectedContainerId)
+		return {
+			ok: false,
+			reason: "missing_container_env",
+		};
+	if (!token || typeof token !== "string" || token.length < 8)
+		return {
+			ok: false,
+			reason: "missing_token",
+		};
 	let jwks;
 	try {
 		jwks = await loadJwks(issuer, options);
 	} catch {
 		return {
 			ok: false,
-			reason: "jwks_fetch_failed"
+			reason: "jwks_fetch_failed",
 		};
 	}
-	if (!jwks || jwks.keys.length === 0) return {
-		ok: false,
-		reason: "jwks_fetch_failed"
-	};
+	if (!jwks || jwks.keys.length === 0)
+		return {
+			ok: false,
+			reason: "jwks_fetch_failed",
+		};
 	const localJwks = createLocalJWKSet({ keys: jwks.keys });
 	let payload;
 	try {
-		payload = (await jwtVerify(token, localJwks, {
-			algorithms: [BOOTSTRAP_TOKEN_ALG],
-			issuer
-		})).payload;
+		payload = (
+			await jwtVerify(token, localJwks, {
+				algorithms: [BOOTSTRAP_TOKEN_ALG],
+				issuer,
+			})
+		).payload;
 	} catch (err) {
 		const code = err.code;
-		if (code === "ERR_JWT_EXPIRED") return {
-			ok: false,
-			reason: "expired"
-		};
-		if (code === "ERR_JWT_CLAIM_VALIDATION_FAILED") {
-			if (err.claim === "iss") return {
-				ok: false,
-				reason: "issuer_mismatch"
-			};
+		if (code === "ERR_JWT_EXPIRED")
 			return {
 				ok: false,
-				reason: "claims_invalid"
+				reason: "expired",
+			};
+		if (code === "ERR_JWT_CLAIM_VALIDATION_FAILED") {
+			if (err.claim === "iss")
+				return {
+					ok: false,
+					reason: "issuer_mismatch",
+				};
+			return {
+				ok: false,
+				reason: "claims_invalid",
 			};
 		}
-		if (code === "ERR_JWS_SIGNATURE_VERIFICATION_FAILED") return {
-			ok: false,
-			reason: "signature_invalid"
-		};
-		if (code === "ERR_JOSE_ALG_NOT_ALLOWED" || code === "ERR_JWS_INVALID") return {
-			ok: false,
-			reason: "alg_not_allowed"
-		};
+		if (code === "ERR_JWS_SIGNATURE_VERIFICATION_FAILED")
+			return {
+				ok: false,
+				reason: "signature_invalid",
+			};
+		if (code === "ERR_JOSE_ALG_NOT_ALLOWED" || code === "ERR_JWS_INVALID")
+			return {
+				ok: false,
+				reason: "alg_not_allowed",
+			};
 		return {
 			ok: false,
-			reason: "signature_invalid"
+			reason: "signature_invalid",
 		};
 	}
 	const shape = shapeClaims(payload);
 	if (!shape.ok) return shape;
 	const claims = shape.claims;
-	if (claims.iss !== issuer) return {
-		ok: false,
-		reason: "issuer_mismatch"
-	};
-	if (claims.containerId !== expectedContainerId) return {
-		ok: false,
-		reason: "container_mismatch"
-	};
+	if (claims.iss !== issuer)
+		return {
+			ok: false,
+			reason: "issuer_mismatch",
+		};
+	if (claims.containerId !== expectedContainerId)
+		return {
+			ok: false,
+			reason: "container_mismatch",
+		};
 	const now = options.now?.() ?? Date.now();
-	if (claims.exp * 1e3 <= now) return {
-		ok: false,
-		reason: "expired"
-	};
+	if (claims.exp * 1e3 <= now)
+		return {
+			ok: false,
+			reason: "expired",
+		};
 	let unseen;
 	try {
 		unseen = await options.authStore.recordJtiSeen(claims.jti, now);
 	} catch {
 		return {
 			ok: false,
-			reason: "store_error"
+			reason: "store_error",
 		};
 	}
-	if (!unseen) return {
-		ok: false,
-		reason: "replay"
-	};
+	if (!unseen)
+		return {
+			ok: false,
+			reason: "replay",
+		};
 	return {
 		ok: true,
-		claims
+		claims,
 	};
 }
 
 //#endregion
 //#region node_modules/.bun/@elizaos+app-core@2.0.0-alpha.537+72829346cb4c43b1/node_modules/@elizaos/app-core/packages/app-core/src/api/auth/passwords.js
 /**
-* Password hashing + strength gating for the P1 auth path.
-*
-* Backed by `@node-rs/argon2` per plan §11 (Rust prebuilt binaries, no
-* native compile step on Bun/Linux CI). We use argon2id with parameters
-* lifted from current OWASP Password Storage guidance:
-*
-*   memoryCost: 19_456 KiB (≈19 MiB)
-*   timeCost:   2 iterations
-*   parallelism: 1
-*
-* `verifyPassword` delegates to `@node-rs/argon2`'s `verify`, which is
-* timing-safe by construction. We never short-circuit on hash shape or
-* length comparison — every verify runs through the full KDF.
-*
-* Hard rule: this module fails closed. Any error during `hash` or `verify`
-* propagates to the caller. We do NOT swallow exceptions and pretend the
-* password matched.
-*/
+ * Password hashing + strength gating for the P1 auth path.
+ *
+ * Backed by `@node-rs/argon2` per plan §11 (Rust prebuilt binaries, no
+ * native compile step on Bun/Linux CI). We use argon2id with parameters
+ * lifted from current OWASP Password Storage guidance:
+ *
+ *   memoryCost: 19_456 KiB (≈19 MiB)
+ *   timeCost:   2 iterations
+ *   parallelism: 1
+ *
+ * `verifyPassword` delegates to `@node-rs/argon2`'s `verify`, which is
+ * timing-safe by construction. We never short-circuit on hash shape or
+ * length comparison — every verify runs through the full KDF.
+ *
+ * Hard rule: this module fails closed. Any error during `hash` or `verify`
+ * propagates to the caller. We do NOT swallow exceptions and pretend the
+ * password matched.
+ */
 /**
-* OWASP-aligned argon2id parameters. Tuned conservatively so cold boots on
-* modest hardware (the desktop app) don't stutter. If these change, write a
-* migration note — every existing hash in the DB still validates because
-* argon2 encodes its parameters in the hash string.
-*/
+ * OWASP-aligned argon2id parameters. Tuned conservatively so cold boots on
+ * modest hardware (the desktop app) don't stutter. If these change, write a
+ * migration note — every existing hash in the DB still validates because
+ * argon2 encodes its parameters in the hash string.
+ */
 const ARGON2_PARAMS = {
 	algorithm: 2,
 	memoryCost: 19456,
 	timeCost: 2,
-	parallelism: 1
+	parallelism: 1,
 };
 const PASSWORD_MIN_LENGTH = 12;
 var WeakPasswordError = class extends Error {
@@ -6334,36 +7709,38 @@ var WeakPasswordError = class extends Error {
 	}
 };
 /**
-* Refuse passwords under {@link PASSWORD_MIN_LENGTH} characters or with
-* trivially weak composition. We deliberately do not pull in `zxcvbn` to
-* avoid adding a runtime dep without explicit confirmation; the length +
-* composition floor is the documented fallback in the task brief.
-*
-* Throws {@link WeakPasswordError} on rejection.
-*/
+ * Refuse passwords under {@link PASSWORD_MIN_LENGTH} characters or with
+ * trivially weak composition. We deliberately do not pull in `zxcvbn` to
+ * avoid adding a runtime dep without explicit confirmation; the length +
+ * composition floor is the documented fallback in the task brief.
+ *
+ * Throws {@link WeakPasswordError} on rejection.
+ */
 function assertPasswordStrong(plain) {
-	if (typeof plain !== "string" || plain.length < PASSWORD_MIN_LENGTH) throw new WeakPasswordError("too_short");
+	if (typeof plain !== "string" || plain.length < PASSWORD_MIN_LENGTH)
+		throw new WeakPasswordError("too_short");
 	if (!/[A-Za-z]/.test(plain)) throw new WeakPasswordError("missing_letter");
-	if (!/[0-9\W_]/.test(plain)) throw new WeakPasswordError("missing_digit_or_symbol");
+	if (!/[0-9\W_]/.test(plain))
+		throw new WeakPasswordError("missing_digit_or_symbol");
 }
 /**
-* Hash `plain` with argon2id. Returns the encoded string (parameters + salt
-* + tag) suitable for direct DB storage.
-*
-* Errors propagate to the caller — fail-fast policy.
-*/
+ * Hash `plain` with argon2id. Returns the encoded string (parameters + salt
+ * + tag) suitable for direct DB storage.
+ *
+ * Errors propagate to the caller — fail-fast policy.
+ */
 async function hashPassword(plain) {
 	return await hash(plain, ARGON2_PARAMS);
 }
 /**
-* Compare `plain` against a stored argon2id hash. Returns `true` on match,
-* `false` on mismatch. Always runs the full KDF; never short-circuits.
-*
-* If the encoded hash is malformed or hashed with a different algorithm,
-* `@node-rs/argon2` throws — we propagate. The caller MUST treat a thrown
-* error as a verification failure (i.e., `await verifyPassword(...).catch(()
-* => false)` is wrong; let it surface).
-*/
+ * Compare `plain` against a stored argon2id hash. Returns `true` on match,
+ * `false` on mismatch. Always runs the full KDF; never short-circuits.
+ *
+ * If the encoded hash is malformed or hashed with a different algorithm,
+ * `@node-rs/argon2` throws — we propagate. The caller MUST treat a thrown
+ * error as a verification failure (i.e., `await verifyPassword(...).catch(()
+ * => false)` is wrong; let it surface).
+ */
 async function verifyPassword(plain, encodedHash) {
 	return await verify(encodedHash, plain);
 }
@@ -6371,46 +7748,46 @@ async function verifyPassword(plain, encodedHash) {
 //#endregion
 //#region node_modules/.bun/@elizaos+app-core@2.0.0-alpha.537+72829346cb4c43b1/node_modules/@elizaos/app-core/packages/app-core/src/api/auth/sensitive-rate-limit.js
 /**
-* Sensitive-route rate limiter.
-*
-* The existing `authAttempts` bucket in `../auth.ts` covers token-auth
-* failures (20/min/ip). Sensitive auth writes — bootstrap exchange,
-* password change, machine-token rotation, owner-binding state changes,
-* SSO callback exchanges — get a stricter bucket sized 5/min/ip, separate
-* so a normal auth-failure burst doesn't lock out legitimate sensitive
-* writes.
-*
-* Each named route gets its own bucket via `getSensitiveLimiter(name)` so
-* a flood on `/api/auth/login/sso/start` does not lock out
-* `/api/auth/owner/bind/start` for the same client. Buckets are created
-* lazily and tracked centrally so the singleton sweep + reset hooks cover
-* all of them.
-*
-* Caller pattern:
-*
-*   const limiter = getSensitiveLimiter("auth.bootstrap.exchange");
-*   if (!limiter.consume(ip)) {
-*     sendJsonError(res, 429, "Too many requests");
-*     return true;
-*   }
-*/
+ * Sensitive-route rate limiter.
+ *
+ * The existing `authAttempts` bucket in `../auth.ts` covers token-auth
+ * failures (20/min/ip). Sensitive auth writes — bootstrap exchange,
+ * password change, machine-token rotation, owner-binding state changes,
+ * SSO callback exchanges — get a stricter bucket sized 5/min/ip, separate
+ * so a normal auth-failure burst doesn't lock out legitimate sensitive
+ * writes.
+ *
+ * Each named route gets its own bucket via `getSensitiveLimiter(name)` so
+ * a flood on `/api/auth/login/sso/start` does not lock out
+ * `/api/auth/owner/bind/start` for the same client. Buckets are created
+ * lazily and tracked centrally so the singleton sweep + reset hooks cover
+ * all of them.
+ *
+ * Caller pattern:
+ *
+ *   const limiter = getSensitiveLimiter("auth.bootstrap.exchange");
+ *   if (!limiter.consume(ip)) {
+ *     sendJsonError(res, 429, "Too many requests");
+ *     return true;
+ *   }
+ */
 const SENSITIVE_RATE_LIMIT_WINDOW_MS = 60 * 1e3;
 const SENSITIVE_RATE_LIMIT_MAX = 5;
 var SensitiveRateLimiter = class {
 	buckets = /* @__PURE__ */ new Map();
 	/**
-	* Returns true when the request is allowed, false when the limit is
-	* exhausted. Each successful call increments the bucket, so repeated
-	* `consume` calls in the same window will eventually return false even
-	* for valid traffic — this is intentional.
-	*/
+	 * Returns true when the request is allowed, false when the limit is
+	 * exhausted. Each successful call increments the bucket, so repeated
+	 * `consume` calls in the same window will eventually return false even
+	 * for valid traffic — this is intentional.
+	 */
 	consume(ip, now = Date.now()) {
 		const key = ip ?? "unknown";
 		const entry = this.buckets.get(key);
 		if (!entry || now > entry.resetAt) {
 			this.buckets.set(key, {
 				count: 1,
-				resetAt: now + SENSITIVE_RATE_LIMIT_WINDOW_MS
+				resetAt: now + SENSITIVE_RATE_LIMIT_WINDOW_MS,
 			});
 			return true;
 		}
@@ -6422,18 +7799,19 @@ var SensitiveRateLimiter = class {
 		this.buckets.clear();
 	}
 	sweep(now = Date.now()) {
-		for (const [key, entry] of this.buckets) if (now > entry.resetAt) this.buckets.delete(key);
+		for (const [key, entry] of this.buckets)
+			if (now > entry.resetAt) this.buckets.delete(key);
 	}
 };
 const limiterRegistry = /* @__PURE__ */ new Map();
 /**
-* Look up (or lazily create) the named sensitive-route limiter. Use one
-* name per logical operation — e.g. `auth.bootstrap.exchange`,
-* `auth.login.sso.start`, `auth.owner.bind.start`.
-*
-* Buckets are kept in a central registry so the sweep timer and the
-* `_resetSensitiveLimiters` test helper handle them all.
-*/
+ * Look up (or lazily create) the named sensitive-route limiter. Use one
+ * name per logical operation — e.g. `auth.bootstrap.exchange`,
+ * `auth.login.sso.start`, `auth.owner.bind.start`.
+ *
+ * Buckets are kept in a central registry so the sweep timer and the
+ * `_resetSensitiveLimiters` test helper handle them all.
+ */
 function getSensitiveLimiter(name) {
 	let limiter = limiterRegistry.get(name);
 	if (!limiter) {
@@ -6443,14 +7821,15 @@ function getSensitiveLimiter(name) {
 	return limiter;
 }
 /**
-* Bootstrap exchange limiter — kept as a named export so existing P0
-* callers don't churn. New code should prefer `getSensitiveLimiter(name)`.
-*/
+ * Bootstrap exchange limiter — kept as a named export so existing P0
+ * callers don't churn. New code should prefer `getSensitiveLimiter(name)`.
+ */
 const bootstrapExchangeLimiter = getSensitiveLimiter("auth.bootstrap.exchange");
 const sweepTimer$1 = setInterval(() => {
 	for (const limiter of limiterRegistry.values()) limiter.sweep();
 }, 300 * 1e3);
-if (typeof sweepTimer$1 === "object" && "unref" in sweepTimer$1) sweepTimer$1.unref();
+if (typeof sweepTimer$1 === "object" && "unref" in sweepTimer$1)
+	sweepTimer$1.unref();
 
 //#endregion
 //#region node_modules/.bun/@elizaos+app-core@2.0.0-alpha.537+72829346cb4c43b1/node_modules/@elizaos/app-core/packages/app-core/src/api/auth/index.js
@@ -6461,18 +7840,18 @@ init_sessions();
 //#endregion
 //#region node_modules/.bun/@elizaos+app-core@2.0.0-alpha.537+72829346cb4c43b1/node_modules/@elizaos/app-core/packages/app-core/src/api/auth-bootstrap-routes.js
 /**
-* Bootstrap-token exchange route.
-*
-* The cloud control plane mints a single-use RS256 JWT and injects it as
-* `ELIZA_CLOUD_BOOTSTRAP_TOKEN`. The dashboard pastes the same value into
-* this endpoint exactly once; on success we mint a long-lived browser
-* session row and return its id. The UI uses the id as a bearer until P1
-* lands the cookie + CSRF infrastructure.
-*
-* This is the only place that flips bootstrap → session. The token's `jti`
-* is consumed atomically by the verifier so a replay (even after a crash
-* mid-mint) is rejected.
-*/
+ * Bootstrap-token exchange route.
+ *
+ * The cloud control plane mints a single-use RS256 JWT and injects it as
+ * `ELIZA_CLOUD_BOOTSTRAP_TOKEN`. The dashboard pastes the same value into
+ * this endpoint exactly once; on success we mint a long-lived browser
+ * session row and return its id. The UI uses the id as a bearer until P1
+ * lands the cookie + CSRF infrastructure.
+ *
+ * This is the only place that flips bootstrap → session. The token's `jti`
+ * is consumed atomically by the verifier so a replay (even after a crash
+ * mid-mint) is rejected.
+ */
 init_auth();
 init_compat_route_shared();
 init_response();
@@ -6486,37 +7865,41 @@ function getDrizzleDb$1(state) {
 	return adapter.db;
 }
 function deriveIdentityIdFromCloudUser(cloudUserId) {
-	const hash = crypto.createHash("sha256").update(cloudUserId, "utf8").digest("hex");
+	const hash = crypto
+		.createHash("sha256")
+		.update(cloudUserId, "utf8")
+		.digest("hex");
 	return [
 		hash.slice(0, 8),
 		hash.slice(8, 12),
 		hash.slice(12, 16),
 		hash.slice(16, 20),
-		hash.slice(20, 32)
+		hash.slice(20, 32),
 	].join("-");
 }
 /**
-* POST /api/auth/bootstrap/exchange
-*
-* Body: `{ token: string }`
-*
-* Success: 200 with `{ sessionId, identityId, expiresAt }`. The caller stores
-* the session id and presents it as a bearer (`Authorization: Bearer …`)
-* on subsequent requests until P1 ships cookie auth.
-*
-* Failure: 401 / 403 / 429 with `{ error, reason }`. Reason is one of the
-* `VerifyBootstrapFailureReason` values plus `rate_limited` and
-* `db_unavailable`.
-*/
+ * POST /api/auth/bootstrap/exchange
+ *
+ * Body: `{ token: string }`
+ *
+ * Success: 200 with `{ sessionId, identityId, expiresAt }`. The caller stores
+ * the session id and presents it as a bearer (`Authorization: Bearer …`)
+ * on subsequent requests until P1 ships cookie auth.
+ *
+ * Failure: 401 / 403 / 429 with `{ error, reason }`. Reason is one of the
+ * `VerifyBootstrapFailureReason` values plus `rate_limited` and
+ * `db_unavailable`.
+ */
 async function handleAuthBootstrapRoutes(req, res, state) {
 	const method = (req.method ?? "GET").toUpperCase();
 	const url = new URL(req.url ?? "/", "http://localhost");
-	if (method !== "POST" || url.pathname !== "/api/auth/bootstrap/exchange") return false;
+	if (method !== "POST" || url.pathname !== "/api/auth/bootstrap/exchange")
+		return false;
 	const ip = req.socket?.remoteAddress ?? null;
 	if (!bootstrapExchangeLimiter.consume(ip)) {
 		sendJson$2(res, 429, {
 			error: "rate_limited",
-			reason: "rate_limited"
+			reason: "rate_limited",
 		});
 		return true;
 	}
@@ -6524,7 +7907,7 @@ async function handleAuthBootstrapRoutes(req, res, state) {
 	if (!db) {
 		sendJson$2(res, 503, {
 			error: "db_unavailable",
-			reason: "db_unavailable"
+			reason: "db_unavailable",
 		});
 		return true;
 	}
@@ -6539,33 +7922,46 @@ async function handleAuthBootstrapRoutes(req, res, state) {
 	const userAgent = extractHeaderValue(req.headers["user-agent"]);
 	const result = await verifyBootstrapToken(token, { authStore: store });
 	if (!result.ok) {
-		await appendAuditEvent({
-			actorIdentityId: null,
-			ip,
-			userAgent,
-			action: "auth.bootstrap.exchange",
-			outcome: "failure",
-			metadata: { reason: result.reason }
-		}, { store }).catch((err) => {
+		await appendAuditEvent(
+			{
+				actorIdentityId: null,
+				ip,
+				userAgent,
+				action: "auth.bootstrap.exchange",
+				outcome: "failure",
+				metadata: { reason: result.reason },
+			},
+			{ store },
+		).catch((err) => {
 			console.error("[auth] audit append failed:", err);
 		});
-		sendJson$2(res, result.reason === "missing_token" ? 400 : result.reason === "missing_issuer_env" || result.reason === "missing_container_env" ? 503 : 401, {
-			error: "auth_required",
-			reason: result.reason
-		});
+		sendJson$2(
+			res,
+			result.reason === "missing_token"
+				? 400
+				: result.reason === "missing_issuer_env" ||
+						result.reason === "missing_container_env"
+					? 503
+					: 401,
+			{
+				error: "auth_required",
+				reason: result.reason,
+			},
+		);
 		return true;
 	}
 	const claims = result.claims;
 	const now = Date.now();
 	const identityId = deriveIdentityIdFromCloudUser(claims.sub);
-	if (!await store.findIdentity(identityId)) await store.createIdentity({
-		id: identityId,
-		kind: "owner",
-		displayName: `Cloud user ${claims.sub.slice(0, 8)}`,
-		createdAt: now,
-		passwordHash: null,
-		cloudUserId: claims.sub
-	});
+	if (!(await store.findIdentity(identityId)))
+		await store.createIdentity({
+			id: identityId,
+			kind: "owner",
+			displayName: `Cloud user ${claims.sub.slice(0, 8)}`,
+			createdAt: now,
+			passwordHash: null,
+			cloudUserId: claims.sub,
+		});
 	const sessionId = crypto.randomBytes(32).toString("hex");
 	const csrfSecret = crypto.randomBytes(32).toString("hex");
 	const expiresAt = now + BROWSER_SESSION_TTL_MS;
@@ -6580,33 +7976,39 @@ async function handleAuthBootstrapRoutes(req, res, state) {
 		csrfSecret,
 		ip,
 		userAgent,
-		scopes: []
+		scopes: [],
 	});
-	res.setHeader("set-cookie", [serializeSessionCookie(session), serializeCsrfCookie(session)]);
+	res.setHeader("set-cookie", [
+		serializeSessionCookie(session),
+		serializeCsrfCookie(session),
+	]);
 	await markLegacyBearerInvalidated(store, {
 		actorIdentityId: identityId,
 		ip,
-		userAgent
+		userAgent,
 	}).catch((err) => {
 		console.error("[auth] legacy invalidate audit failed:", err);
 	});
-	await appendAuditEvent({
-		actorIdentityId: identityId,
-		ip,
-		userAgent,
-		action: "auth.bootstrap.exchange",
-		outcome: "success",
-		metadata: {
-			containerId: claims.containerId,
-			jti: claims.jti
-		}
-	}, { store }).catch((err) => {
+	await appendAuditEvent(
+		{
+			actorIdentityId: identityId,
+			ip,
+			userAgent,
+			action: "auth.bootstrap.exchange",
+			outcome: "success",
+			metadata: {
+				containerId: claims.containerId,
+				jti: claims.jti,
+			},
+		},
+		{ store },
+	).catch((err) => {
 		console.error("[auth] audit append failed:", err);
 	});
 	sendJson$2(res, 200, {
 		sessionId,
 		identityId,
-		expiresAt
+		expiresAt,
 	});
 	isLoopbackRemoteAddress(ip);
 	return true;
@@ -6622,7 +8024,8 @@ const PREMADE_VOICES = [
 		gender: "female",
 		hint: "Calm, clear",
 		hintKey: "voice.hint.calm_clear",
-		previewUrl: "https://storage.googleapis.com/eleven-public-prod/premade/voices/21m00Tcm4TlvDq8ikWAM/df6788f9-5c96-470d-8312-aab3b3d8f50a.mp3"
+		previewUrl:
+			"https://storage.googleapis.com/eleven-public-prod/premade/voices/21m00Tcm4TlvDq8ikWAM/df6788f9-5c96-470d-8312-aab3b3d8f50a.mp3",
 	},
 	{
 		id: "sarah",
@@ -6631,7 +8034,8 @@ const PREMADE_VOICES = [
 		gender: "female",
 		hint: "Soft, warm",
 		hintKey: "voice.hint.soft_warm",
-		previewUrl: "https://storage.googleapis.com/eleven-public-prod/premade/voices/EXAVITQu4vr4xnSDxMaL/6851ec91-9950-471f-8586-357c52539069.mp3"
+		previewUrl:
+			"https://storage.googleapis.com/eleven-public-prod/premade/voices/EXAVITQu4vr4xnSDxMaL/6851ec91-9950-471f-8586-357c52539069.mp3",
 	},
 	{
 		id: "matilda",
@@ -6640,7 +8044,8 @@ const PREMADE_VOICES = [
 		gender: "female",
 		hint: "Warm, friendly",
 		hintKey: "voice.hint.warm_friendly",
-		previewUrl: "https://storage.googleapis.com/eleven-public-prod/premade/voices/XrExE9yKIg1WjnnlVkGX/b930e18d-6b4d-466e-bab2-0ae97c6d8535.mp3"
+		previewUrl:
+			"https://storage.googleapis.com/eleven-public-prod/premade/voices/XrExE9yKIg1WjnnlVkGX/b930e18d-6b4d-466e-bab2-0ae97c6d8535.mp3",
 	},
 	{
 		id: "lily",
@@ -6649,7 +8054,8 @@ const PREMADE_VOICES = [
 		gender: "female",
 		hint: "British, raspy",
 		hintKey: "voice.hint.british_raspy",
-		previewUrl: "https://storage.googleapis.com/eleven-public-prod/premade/voices/pFZP5JQG7iQjIQuC4Bku/0ab8bd74-fcd2-489d-b70a-3e1bcde8c999.mp3"
+		previewUrl:
+			"https://storage.googleapis.com/eleven-public-prod/premade/voices/pFZP5JQG7iQjIQuC4Bku/0ab8bd74-fcd2-489d-b70a-3e1bcde8c999.mp3",
 	},
 	{
 		id: "alice",
@@ -6658,7 +8064,8 @@ const PREMADE_VOICES = [
 		gender: "female",
 		hint: "British, confident",
 		hintKey: "voice.hint.british_confident",
-		previewUrl: "https://storage.googleapis.com/eleven-public-prod/premade/voices/Xb7hH8MSUJpSbSDYk0k2/f5409e2f-d9c3-4ac9-9e7d-916a5dbd1ef1.mp3"
+		previewUrl:
+			"https://storage.googleapis.com/eleven-public-prod/premade/voices/Xb7hH8MSUJpSbSDYk0k2/f5409e2f-d9c3-4ac9-9e7d-916a5dbd1ef1.mp3",
 	},
 	{
 		id: "brian",
@@ -6667,7 +8074,8 @@ const PREMADE_VOICES = [
 		gender: "male",
 		hint: "Deep, smooth",
 		hintKey: "voice.hint.deep_smooth",
-		previewUrl: "https://storage.googleapis.com/eleven-public-prod/premade/voices/nPczCjzI2devNBz1zQrb/f4dbda0c-aff0-45c0-93fa-f5d5ec95a2eb.mp3"
+		previewUrl:
+			"https://storage.googleapis.com/eleven-public-prod/premade/voices/nPczCjzI2devNBz1zQrb/f4dbda0c-aff0-45c0-93fa-f5d5ec95a2eb.mp3",
 	},
 	{
 		id: "adam",
@@ -6676,7 +8084,8 @@ const PREMADE_VOICES = [
 		gender: "male",
 		hint: "Deep, authoritative",
 		hintKey: "voice.hint.deep_authoritative",
-		previewUrl: "https://storage.googleapis.com/eleven-public-prod/premade/voices/pNInz6obpgDQGcFmaJgB/38a69695-2ca9-4b9e-b9ec-f07ced494a58.mp3"
+		previewUrl:
+			"https://storage.googleapis.com/eleven-public-prod/premade/voices/pNInz6obpgDQGcFmaJgB/38a69695-2ca9-4b9e-b9ec-f07ced494a58.mp3",
 	},
 	{
 		id: "josh",
@@ -6685,7 +8094,8 @@ const PREMADE_VOICES = [
 		gender: "male",
 		hint: "Young, deep",
 		hintKey: "voice.hint.young_deep",
-		previewUrl: "https://storage.googleapis.com/eleven-public-prod/premade/voices/TxGEqnHWrfWFTfGW9XjX/3ae2fc71-d5f9-4769-bb71-2a43633cd186.mp3"
+		previewUrl:
+			"https://storage.googleapis.com/eleven-public-prod/premade/voices/TxGEqnHWrfWFTfGW9XjX/3ae2fc71-d5f9-4769-bb71-2a43633cd186.mp3",
 	},
 	{
 		id: "daniel",
@@ -6694,7 +8104,8 @@ const PREMADE_VOICES = [
 		gender: "male",
 		hint: "British, presenter",
 		hintKey: "voice.hint.british_presenter",
-		previewUrl: "https://storage.googleapis.com/eleven-public-prod/premade/voices/onwK4e9ZLuTAKqWW03F9/7eee0236-1a72-4b86-b303-5dcadc007ba9.mp3"
+		previewUrl:
+			"https://storage.googleapis.com/eleven-public-prod/premade/voices/onwK4e9ZLuTAKqWW03F9/7eee0236-1a72-4b86-b303-5dcadc007ba9.mp3",
 	},
 	{
 		id: "liam",
@@ -6703,7 +8114,8 @@ const PREMADE_VOICES = [
 		gender: "male",
 		hint: "Young, natural",
 		hintKey: "voice.hint.young_natural",
-		previewUrl: "https://storage.googleapis.com/eleven-public-prod/premade/voices/TX3LPaxmHKxFdv7VOQHJ/63148076-6363-42db-aea8-31424308b92c.mp3"
+		previewUrl:
+			"https://storage.googleapis.com/eleven-public-prod/premade/voices/TX3LPaxmHKxFdv7VOQHJ/63148076-6363-42db-aea8-31424308b92c.mp3",
 	},
 	{
 		id: "gigi",
@@ -6712,7 +8124,8 @@ const PREMADE_VOICES = [
 		gender: "character",
 		hint: "Childish, cute",
 		hintKey: "voice.hint.childish_cute",
-		previewUrl: "https://storage.googleapis.com/eleven-public-prod/premade/voices/jBpfuIE2acCO8z3wKNLl/3a7e4339-78fa-404e-8d10-c3ef5587935b.mp3"
+		previewUrl:
+			"https://storage.googleapis.com/eleven-public-prod/premade/voices/jBpfuIE2acCO8z3wKNLl/3a7e4339-78fa-404e-8d10-c3ef5587935b.mp3",
 	},
 	{
 		id: "mimi",
@@ -6721,7 +8134,8 @@ const PREMADE_VOICES = [
 		gender: "character",
 		hint: "Cute, animated",
 		hintKey: "voice.hint.cute_animated",
-		previewUrl: "https://storage.googleapis.com/eleven-public-prod/premade/voices/zrHiDhphv9ZnVXBqCLjz/decbf20b-0f57-4fac-985b-a4f0290ebfc4.mp3"
+		previewUrl:
+			"https://storage.googleapis.com/eleven-public-prod/premade/voices/zrHiDhphv9ZnVXBqCLjz/decbf20b-0f57-4fac-985b-a4f0290ebfc4.mp3",
 	},
 	{
 		id: "dorothy",
@@ -6730,7 +8144,8 @@ const PREMADE_VOICES = [
 		gender: "character",
 		hint: "Sweet, storybook",
 		hintKey: "voice.hint.sweet_storybook",
-		previewUrl: "https://storage.googleapis.com/eleven-public-prod/premade/voices/ThT5KcBeYPX3keUQqHPh/981f0855-6598-48d2-9f8f-b6d92fbbe3fc.mp3"
+		previewUrl:
+			"https://storage.googleapis.com/eleven-public-prod/premade/voices/ThT5KcBeYPX3keUQqHPh/981f0855-6598-48d2-9f8f-b6d92fbbe3fc.mp3",
 	},
 	{
 		id: "glinda",
@@ -6739,7 +8154,8 @@ const PREMADE_VOICES = [
 		gender: "character",
 		hint: "Magical, whimsical",
 		hintKey: "voice.hint.magical_whimsical",
-		previewUrl: "https://storage.googleapis.com/eleven-public-prod/premade/voices/z9fAnlkpzviPz146aGWa/cbc60443-7b61-4ebb-b8e1-5c03237ea01d.mp3"
+		previewUrl:
+			"https://storage.googleapis.com/eleven-public-prod/premade/voices/z9fAnlkpzviPz146aGWa/cbc60443-7b61-4ebb-b8e1-5c03237ea01d.mp3",
 	},
 	{
 		id: "charlotte",
@@ -6748,7 +8164,8 @@ const PREMADE_VOICES = [
 		gender: "character",
 		hint: "Alluring, game NPC",
 		hintKey: "voice.hint.alluring_game_npc",
-		previewUrl: "https://storage.googleapis.com/eleven-public-prod/premade/voices/XB0fDUnXU5powFXDhCwa/942356dc-f10d-4d89-bda5-4f8505ee038b.mp3"
+		previewUrl:
+			"https://storage.googleapis.com/eleven-public-prod/premade/voices/XB0fDUnXU5powFXDhCwa/942356dc-f10d-4d89-bda5-4f8505ee038b.mp3",
 	},
 	{
 		id: "callum",
@@ -6757,7 +8174,8 @@ const PREMADE_VOICES = [
 		gender: "character",
 		hint: "Gruff, game hero",
 		hintKey: "voice.hint.gruff_game_hero",
-		previewUrl: "https://storage.googleapis.com/eleven-public-prod/premade/voices/N2lVS1w4EtoT3dr4eOWO/ac833bd8-ffda-4938-9ebc-b0f99ca25481.mp3"
+		previewUrl:
+			"https://storage.googleapis.com/eleven-public-prod/premade/voices/N2lVS1w4EtoT3dr4eOWO/ac833bd8-ffda-4938-9ebc-b0f99ca25481.mp3",
 	},
 	{
 		id: "momo",
@@ -6766,7 +8184,7 @@ const PREMADE_VOICES = [
 		gender: "female",
 		hint: "Custom Voice",
 		hintKey: "voice.hint.custom_voice",
-		previewUrl: ""
+		previewUrl: "",
 	},
 	{
 		id: "yuki",
@@ -6775,7 +8193,7 @@ const PREMADE_VOICES = [
 		gender: "female",
 		hint: "Custom Voice",
 		hintKey: "voice.hint.custom_voice",
-		previewUrl: ""
+		previewUrl: "",
 	},
 	{
 		id: "rin",
@@ -6784,7 +8202,7 @@ const PREMADE_VOICES = [
 		gender: "female",
 		hint: "Custom Voice",
 		hintKey: "voice.hint.custom_voice",
-		previewUrl: ""
+		previewUrl: "",
 	},
 	{
 		id: "kei",
@@ -6793,7 +8211,7 @@ const PREMADE_VOICES = [
 		gender: "male",
 		hint: "Custom Voice",
 		hintKey: "voice.hint.custom_voice",
-		previewUrl: ""
+		previewUrl: "",
 	},
 	{
 		id: "jin",
@@ -6802,7 +8220,7 @@ const PREMADE_VOICES = [
 		gender: "male",
 		hint: "Custom Voice",
 		hintKey: "voice.hint.custom_voice",
-		previewUrl: ""
+		previewUrl: "",
 	},
 	{
 		id: "satoshi",
@@ -6811,7 +8229,7 @@ const PREMADE_VOICES = [
 		gender: "male",
 		hint: "Custom Voice",
 		hintKey: "voice.hint.custom_voice",
-		previewUrl: ""
+		previewUrl: "",
 	},
 	{
 		id: "ryu",
@@ -6820,26 +8238,26 @@ const PREMADE_VOICES = [
 		gender: "male",
 		hint: "Custom Voice",
 		hintKey: "voice.hint.custom_voice",
-		previewUrl: ""
-	}
+		previewUrl: "",
+	},
 ];
 
 //#endregion
 //#region node_modules/.bun/@elizaos+app-core@2.0.0-alpha.537+72829346cb4c43b1/node_modules/@elizaos/app-core/packages/app-core/src/services/account-usage.js
 /**
-* Account usage probes + local JSONL counters.
-*
-* Two responsibilities:
-*  1. Probe provider usage APIs (`pollAnthropicUsage`, `pollCodexUsage`)
-*     to populate the `LinkedAccountUsage` snapshot on each account.
-*  2. Maintain append-only JSONL counters per `(providerId, accountId, day)`
-*     so we can answer "calls made today / tokens used / errors" without
-*     re-reading every trajectory.
-*
-* The probes throw on HTTP error so the caller can decide whether to mark
-* the account as `rate-limited` / `needs-reauth` / `invalid`. The counters
-* are best-effort and synchronous — at our scale appendFileSync is fine.
-*/
+ * Account usage probes + local JSONL counters.
+ *
+ * Two responsibilities:
+ *  1. Probe provider usage APIs (`pollAnthropicUsage`, `pollCodexUsage`)
+ *     to populate the `LinkedAccountUsage` snapshot on each account.
+ *  2. Maintain append-only JSONL counters per `(providerId, accountId, day)`
+ *     so we can answer "calls made today / tokens used / errors" without
+ *     re-reading every trajectory.
+ *
+ * The probes throw on HTTP error so the caller can decide whether to mark
+ * the account as `rate-limited` / `needs-reauth` / `invalid`. The counters
+ * are best-effort and synchronous — at our scale appendFileSync is fine.
+ */
 const ANTHROPIC_USAGE_URL = "https://api.anthropic.com/api/oauth/usage";
 const CODEX_USAGE_URL = "https://chatgpt.com/backend-api/wham/usage";
 function utilizationToPct(value) {
@@ -6847,76 +8265,88 @@ function utilizationToPct(value) {
 	return Math.max(0, Math.min(100, value * 100));
 }
 function normalizeResetTimestamp(value) {
-	if (typeof value === "number" && Number.isFinite(value)) return value < 0xe8d4a51000 ? value * 1e3 : value;
+	if (typeof value === "number" && Number.isFinite(value))
+		return value < 0xe8d4a51000 ? value * 1e3 : value;
 	if (typeof value === "string" && value.length > 0) {
 		const parsed = Date.parse(value);
 		return Number.isFinite(parsed) ? parsed : void 0;
 	}
 }
 /**
-* Probe Anthropic's OAuth usage endpoint.
-*
-* Endpoint: `GET https://api.anthropic.com/api/oauth/usage`
-* Headers : `Authorization: Bearer <accessToken>`,
-*           `anthropic-beta: oauth-2025-04-20`,
-*           `Content-Type: application/json`
-*
-* Handles both legacy flat (`five_hour_utilization`) and new nested
-* (`five_hour: { utilization }`) response shapes. Throws on any HTTP
-* error with the status code included in the message.
-*/
+ * Probe Anthropic's OAuth usage endpoint.
+ *
+ * Endpoint: `GET https://api.anthropic.com/api/oauth/usage`
+ * Headers : `Authorization: Bearer <accessToken>`,
+ *           `anthropic-beta: oauth-2025-04-20`,
+ *           `Content-Type: application/json`
+ *
+ * Handles both legacy flat (`five_hour_utilization`) and new nested
+ * (`five_hour: { utilization }`) response shapes. Throws on any HTTP
+ * error with the status code included in the message.
+ */
 async function pollAnthropicUsage(accessToken, fetchImpl = fetch) {
 	const res = await fetchImpl(ANTHROPIC_USAGE_URL, {
 		method: "GET",
 		headers: {
 			Authorization: `Bearer ${accessToken}`,
 			"anthropic-beta": "oauth-2025-04-20",
-			"Content-Type": "application/json"
-		}
+			"Content-Type": "application/json",
+		},
 	});
-	if (!res.ok) throw new Error(`Anthropic usage probe failed: HTTP ${res.status}`);
+	if (!res.ok)
+		throw new Error(`Anthropic usage probe failed: HTTP ${res.status}`);
 	const payload = await res.json();
 	const fiveHour = payload.five_hour;
 	const sevenDay = payload.seven_day;
-	const sessionPct = utilizationToPct(fiveHour?.utilization) ?? utilizationToPct(payload.five_hour_utilization);
-	const weeklyPct = utilizationToPct(sevenDay?.utilization) ?? utilizationToPct(payload.seven_day_utilization);
-	const resetsAt = normalizeResetTimestamp(fiveHour?.resets_at) ?? normalizeResetTimestamp(payload.five_hour_resets_at);
+	const sessionPct =
+		utilizationToPct(fiveHour?.utilization) ??
+		utilizationToPct(payload.five_hour_utilization);
+	const weeklyPct =
+		utilizationToPct(sevenDay?.utilization) ??
+		utilizationToPct(payload.seven_day_utilization);
+	const resetsAt =
+		normalizeResetTimestamp(fiveHour?.resets_at) ??
+		normalizeResetTimestamp(payload.five_hour_resets_at);
 	return {
 		refreshedAt: Date.now(),
-		...sessionPct !== void 0 ? { sessionPct } : {},
-		...weeklyPct !== void 0 ? { weeklyPct } : {},
-		...resetsAt !== void 0 ? { resetsAt } : {}
+		...(sessionPct !== void 0 ? { sessionPct } : {}),
+		...(weeklyPct !== void 0 ? { weeklyPct } : {}),
+		...(resetsAt !== void 0 ? { resetsAt } : {}),
 	};
 }
 /**
-* Probe Codex / ChatGPT's usage endpoint.
-*
-* Endpoint: `GET https://chatgpt.com/backend-api/wham/usage`
-* Headers : `Authorization: Bearer <accessToken>`,
-*           `ChatGPT-Account-Id: <openAIAccountId>`,
-*           `User-Agent: codex-cli`
-*
-* `used_percent` is already on the 0..100 scale. `reset_at` is epoch
-* seconds. Codex has no weekly equivalent, so `weeklyPct` stays undefined.
-*/
+ * Probe Codex / ChatGPT's usage endpoint.
+ *
+ * Endpoint: `GET https://chatgpt.com/backend-api/wham/usage`
+ * Headers : `Authorization: Bearer <accessToken>`,
+ *           `ChatGPT-Account-Id: <openAIAccountId>`,
+ *           `User-Agent: codex-cli`
+ *
+ * `used_percent` is already on the 0..100 scale. `reset_at` is epoch
+ * seconds. Codex has no weekly equivalent, so `weeklyPct` stays undefined.
+ */
 async function pollCodexUsage(accessToken, accountId, fetchImpl = fetch) {
 	const res = await fetchImpl(CODEX_USAGE_URL, {
 		method: "GET",
 		headers: {
 			Authorization: `Bearer ${accessToken}`,
 			"ChatGPT-Account-Id": accountId,
-			"User-Agent": "codex-cli"
-		}
+			"User-Agent": "codex-cli",
+		},
 	});
 	if (!res.ok) throw new Error(`Codex usage probe failed: HTTP ${res.status}`);
 	const primary = (await res.json()).rate_limit?.primary_window;
 	let sessionPct;
-	if (typeof primary?.used_percent === "number" && Number.isFinite(primary.used_percent)) sessionPct = Math.max(0, Math.min(100, primary.used_percent));
+	if (
+		typeof primary?.used_percent === "number" &&
+		Number.isFinite(primary.used_percent)
+	)
+		sessionPct = Math.max(0, Math.min(100, primary.used_percent));
 	const resetsAt = normalizeResetTimestamp(primary?.reset_at);
 	return {
 		refreshedAt: Date.now(),
-		...sessionPct !== void 0 ? { sessionPct } : {},
-		...resetsAt !== void 0 ? { resetsAt } : {}
+		...(sessionPct !== void 0 ? { sessionPct } : {}),
+		...(resetsAt !== void 0 ? { resetsAt } : {}),
 	};
 }
 function elizaHome() {
@@ -6927,54 +8357,61 @@ function dayStamp(ts = Date.now()) {
 	return `${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, "0")}-${String(d.getUTCDate()).padStart(2, "0")}`;
 }
 function counterFile(providerId, accountId, ts = Date.now()) {
-	return path.join(elizaHome(), "usage", providerId, accountId, `${dayStamp(ts)}.jsonl`);
+	return path.join(
+		elizaHome(),
+		"usage",
+		providerId,
+		accountId,
+		`${dayStamp(ts)}.jsonl`,
+	);
 }
 /**
-* Append a usage entry for the given `(providerId, accountId)` pair.
-* One line per call, written synchronously with mode 0o600. The day
-* directory is created on demand.
-*/
+ * Append a usage entry for the given `(providerId, accountId)` pair.
+ * One line per call, written synchronously with mode 0o600. The day
+ * directory is created on demand.
+ */
 function recordCall(providerId, accountId, entry) {
 	const ts = Date.now();
 	const line = {
 		ts,
-		...entry
+		...entry,
 	};
 	const file = counterFile(providerId, accountId, ts);
 	const dir = path.dirname(file);
-	if (!existsSync(dir)) mkdirSync(dir, {
-		recursive: true,
-		mode: 448
-	});
+	if (!existsSync(dir))
+		mkdirSync(dir, {
+			recursive: true,
+			mode: 448,
+		});
 	appendFileSync(file, `${JSON.stringify(line)}\n`, {
 		flag: "a",
-		mode: 384
+		mode: 384,
 	});
 }
 
 //#endregion
 //#region node_modules/.bun/@elizaos+app-core@2.0.0-alpha.537+72829346cb4c43b1/node_modules/@elizaos/app-core/packages/app-core/src/services/account-pool.js
 /**
-* Multi-account selection brain.
-*
-* Owns the runtime decision "which `LinkedAccountConfig` should serve this
-* request?" given a strategy (priority / round-robin / least-used /
-* quota-aware), session affinity, and per-account health state.
-*
-* The pool never reads OAuth credentials directly — callers resolve them
-* via `getAccessToken(providerId, accountId)` from `@elizaos/agent` once
-* the pool returns an account. Health, priority, and usage live in this
-* layer; the OAuth blob lives under `~/.eliza/auth/` (see WS1's
-* `account-storage.ts`).
-*
-* Persistence: the pool layers rich metadata (priority, enabled, health,
-* usage) on top of WS1's credential records. The metadata is written to
-* `<ELIZA_HOME>/auth/_pool-metadata.json` atomically so it survives
-* process restarts and is independent of WS3's eventual `eliza.json`
-* field — when WS3 lands its CRUD API on top of `LinkedAccountsConfig`
-* we can swap `createDefaultAccountPool()`'s deps without touching the
-* pool itself.
-*/
+ * Multi-account selection brain.
+ *
+ * Owns the runtime decision "which `LinkedAccountConfig` should serve this
+ * request?" given a strategy (priority / round-robin / least-used /
+ * quota-aware), session affinity, and per-account health state.
+ *
+ * The pool never reads OAuth credentials directly — callers resolve them
+ * via `getAccessToken(providerId, accountId)` from `@elizaos/agent` once
+ * the pool returns an account. Health, priority, and usage live in this
+ * layer; the OAuth blob lives under `~/.eliza/auth/` (see WS1's
+ * `account-storage.ts`).
+ *
+ * Persistence: the pool layers rich metadata (priority, enabled, health,
+ * usage) on top of WS1's credential records. The metadata is written to
+ * `<ELIZA_HOME>/auth/_pool-metadata.json` atomically so it survives
+ * process restarts and is independent of WS3's eventual `eliza.json`
+ * field — when WS3 lands its CRUD API on top of `LinkedAccountsConfig`
+ * we can swap `createDefaultAccountPool()`'s deps without touching the
+ * pool itself.
+ */
 const DEFAULT_RATE_LIMIT_BACKOFF_MS = 6e4;
 const QUOTA_AWARE_SKIP_PCT = 85;
 const SESSION_AFFINITY_MAX_ATTEMPTS = 3;
@@ -6991,7 +8428,11 @@ var AccountPool = class {
 		if (eligible.length === 0) return null;
 		if (input.sessionKey) {
 			const cached = this.affinity.get(input.sessionKey);
-			if (cached && cached.attempts < SESSION_AFFINITY_MAX_ATTEMPTS && eligible.some((a) => a.id === cached.accountId)) {
+			if (
+				cached &&
+				cached.attempts < SESSION_AFFINITY_MAX_ATTEMPTS &&
+				eligible.some((a) => a.id === cached.accountId)
+			) {
 				cached.attempts += 1;
 				const account = eligible.find((a) => a.id === cached.accountId);
 				if (account) return account;
@@ -7000,15 +8441,19 @@ var AccountPool = class {
 		const strategy = input.strategy ?? "priority";
 		const picked = this.applyStrategy(strategy, eligible, input.providerId);
 		if (!picked) return null;
-		if (input.sessionKey) this.affinity.set(input.sessionKey, {
-			accountId: picked.id,
-			attempts: 1
-		});
+		if (input.sessionKey)
+			this.affinity.set(input.sessionKey, {
+				accountId: picked.id,
+				attempts: 1,
+			});
 		return picked;
 	}
 	filterEligible(all, input) {
 		const exclude = new Set(input.exclude ?? []);
-		const explicit = input.accountIds && input.accountIds.length > 0 ? new Set(input.accountIds) : null;
+		const explicit =
+			input.accountIds && input.accountIds.length > 0
+				? new Set(input.accountIds)
+				: null;
 		const now = Date.now();
 		return Object.values(all).filter((account) => {
 			if (account.providerId !== input.providerId) return false;
@@ -7016,7 +8461,12 @@ var AccountPool = class {
 			if (exclude.has(account.id)) return false;
 			if (explicit && !explicit.has(account.id)) return false;
 			if (account.health === "ok") return true;
-			if (account.health === "rate-limited" && typeof account.healthDetail?.until === "number" && account.healthDetail.until < now) return true;
+			if (
+				account.health === "rate-limited" &&
+				typeof account.healthDetail?.until === "number" &&
+				account.healthDetail.until < now
+			)
+				return true;
 			return false;
 		});
 	}
@@ -7026,16 +8476,25 @@ var AccountPool = class {
 		switch (strategy) {
 			case "round-robin": {
 				const sorted = [...eligible].sort(byPriorityThenAge);
-				const index = ((this.roundRobinCursor.get(providerId) ?? -1) + 1) % sorted.length;
+				const index =
+					((this.roundRobinCursor.get(providerId) ?? -1) + 1) % sorted.length;
 				this.roundRobinCursor.set(providerId, index);
 				return sorted[index] ?? null;
 			}
-			case "least-used": return [...eligible].sort(byLeastUsedThenPriority)[0] ?? null;
+			case "least-used":
+				return [...eligible].sort(byLeastUsedThenPriority)[0] ?? null;
 			case "quota-aware": {
-				const underQuota = eligible.filter((a) => (a.usage?.sessionPct ?? 0) < QUOTA_AWARE_SKIP_PCT);
-				return [...underQuota.length > 0 ? underQuota : eligible].sort(byPriorityThenAge)[0] ?? null;
+				const underQuota = eligible.filter(
+					(a) => (a.usage?.sessionPct ?? 0) < QUOTA_AWARE_SKIP_PCT,
+				);
+				return (
+					[...(underQuota.length > 0 ? underQuota : eligible)].sort(
+						byPriorityThenAge,
+					)[0] ?? null
+				);
 			}
-			default: return [...eligible].sort(byPriorityThenAge)[0] ?? null;
+			default:
+				return [...eligible].sort(byPriorityThenAge)[0] ?? null;
 		}
 	}
 	list(providerId) {
@@ -7059,7 +8518,7 @@ var AccountPool = class {
 		recordCall(account.providerId, account.id, result);
 		const next = {
 			...account,
-			lastUsedAt: Date.now()
+			lastUsedAt: Date.now(),
 		};
 		await this.deps.writeAccount(next);
 	}
@@ -7067,30 +8526,37 @@ var AccountPool = class {
 		const account = findAccountById(this.deps.readAccounts(), accountId);
 		if (!account) return;
 		let usage;
-		if (account.providerId === "anthropic-subscription") usage = await pollAnthropicUsage(accessToken, opts?.fetch);
+		if (account.providerId === "anthropic-subscription")
+			usage = await pollAnthropicUsage(accessToken, opts?.fetch);
 		else if (account.providerId === "openai-codex") {
 			const codexAccountId = opts?.codexAccountId ?? account.organizationId;
-			if (!codexAccountId) throw new Error(`[AccountPool] Codex usage probe needs the OpenAI account_id (account ${accountId} has no organizationId).`);
+			if (!codexAccountId)
+				throw new Error(
+					`[AccountPool] Codex usage probe needs the OpenAI account_id (account ${accountId} has no organizationId).`,
+				);
 			usage = await pollCodexUsage(accessToken, codexAccountId, opts?.fetch);
 		} else return;
 		await this.deps.writeAccount({
 			...account,
 			health: "ok",
-			usage
+			usage,
 		});
 	}
 	async markRateLimited(accountId, untilMs, detail) {
 		const account = findAccountById(this.deps.readAccounts(), accountId);
 		if (!account) return;
 		const healthDetail = {
-			until: Number.isFinite(untilMs) && untilMs > Date.now() ? untilMs : Date.now() + DEFAULT_RATE_LIMIT_BACKOFF_MS,
+			until:
+				Number.isFinite(untilMs) && untilMs > Date.now()
+					? untilMs
+					: Date.now() + DEFAULT_RATE_LIMIT_BACKOFF_MS,
 			lastChecked: Date.now(),
-			...detail ? { lastError: detail } : {}
+			...(detail ? { lastError: detail } : {}),
 		};
 		await this.deps.writeAccount({
 			...account,
 			health: "rate-limited",
-			healthDetail
+			healthDetail,
 		});
 	}
 	async markNeedsReauth(accountId, detail) {
@@ -7101,8 +8567,8 @@ var AccountPool = class {
 			health: "needs-reauth",
 			healthDetail: {
 				lastChecked: Date.now(),
-				...detail ? { lastError: detail } : {}
-			}
+				...(detail ? { lastError: detail } : {}),
+			},
 		});
 	}
 	async markInvalid(accountId, detail) {
@@ -7113,8 +8579,8 @@ var AccountPool = class {
 			health: "invalid",
 			healthDetail: {
 				lastChecked: Date.now(),
-				...detail ? { lastError: detail } : {}
-			}
+				...(detail ? { lastError: detail } : {}),
+			},
 		});
 	}
 	async markHealthy(accountId) {
@@ -7124,15 +8590,15 @@ var AccountPool = class {
 		await this.deps.writeAccount({
 			...account,
 			health: "ok",
-			...account.healthDetail ? { healthDetail: void 0 } : {}
+			...(account.healthDetail ? { healthDetail: void 0 } : {}),
 		});
 	}
 	/**
-	* Re-probe accounts whose `health` is non-OK and whose `healthDetail.until`
-	* has passed (or is absent). Used by background sweepers to recover
-	* temporarily flagged accounts. We don't load access tokens here — the
-	* caller probes via `refreshUsage` separately.
-	*/
+	 * Re-probe accounts whose `health` is non-OK and whose `healthDetail.until`
+	 * has passed (or is absent). Used by background sweepers to recover
+	 * temporarily flagged accounts. We don't load access tokens here — the
+	 * caller probes via `refreshUsage` separately.
+	 */
 	async reprobeFlagged() {
 		const all = this.deps.readAccounts();
 		const now = Date.now();
@@ -7167,13 +8633,21 @@ function byLeastUsedThenPriority(a, b) {
 	return byPriorityThenAge(a, b);
 }
 function authRoot() {
-	return path.join(process.env.ELIZA_HOME || path.join(os.homedir(), ".eliza"), "auth");
+	return path.join(
+		process.env.ELIZA_HOME || path.join(os.homedir(), ".eliza"),
+		"auth",
+	);
 }
 function metadataFile() {
 	return path.join(authRoot(), "_pool-metadata.json");
 }
 function isPoolProviderId(value) {
-	return value === "anthropic-subscription" || value === "openai-codex" || value === "anthropic-api" || value === "openai-api";
+	return (
+		value === "anthropic-subscription" ||
+		value === "openai-codex" ||
+		value === "anthropic-api" ||
+		value === "openai-api"
+	);
 }
 function readMetaStore() {
 	const file = metadataFile();
@@ -7181,21 +8655,23 @@ function readMetaStore() {
 	try {
 		const raw = readFileSync(file, "utf-8");
 		const parsed = JSON.parse(raw);
-		if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) return parsed;
+		if (parsed && typeof parsed === "object" && !Array.isArray(parsed))
+			return parsed;
 	} catch {}
 	return {};
 }
 function writeMetaStore(store) {
 	const file = metadataFile();
 	const dir = path.dirname(file);
-	if (!existsSync(dir)) mkdirSync(dir, {
-		recursive: true,
-		mode: 448
-	});
+	if (!existsSync(dir))
+		mkdirSync(dir, {
+			recursive: true,
+			mode: 448,
+		});
 	const tmp = `${file}.tmp`;
 	writeFileSync(tmp, JSON.stringify(store, null, 2), {
 		encoding: "utf-8",
-		mode: 384
+		mode: 384,
 	});
 	renameSync(tmp, file);
 }
@@ -7209,12 +8685,12 @@ function recordToLinked(record, meta, providerId, defaultPriority) {
 		priority: meta?.priority ?? defaultPriority,
 		createdAt: record.createdAt,
 		health: meta?.health ?? "ok",
-		...record.lastUsedAt !== void 0 ? { lastUsedAt: record.lastUsedAt } : {},
-		...meta?.healthDetail ? { healthDetail: meta.healthDetail } : {},
-		...meta?.usage ? { usage: meta.usage } : {},
-		...record.organizationId ? { organizationId: record.organizationId } : {},
-		...record.userId ? { userId: record.userId } : {},
-		...record.email ? { email: record.email } : {}
+		...(record.lastUsedAt !== void 0 ? { lastUsedAt: record.lastUsedAt } : {}),
+		...(meta?.healthDetail ? { healthDetail: meta.healthDetail } : {}),
+		...(meta?.usage ? { usage: meta.usage } : {}),
+		...(record.organizationId ? { organizationId: record.organizationId } : {}),
+		...(record.userId ? { userId: record.userId } : {}),
+		...(record.email ? { email: record.email } : {}),
 	};
 }
 function loadAllAccounts() {
@@ -7227,7 +8703,12 @@ function loadAllAccounts() {
 		const sorted = [...records].sort((a, b) => a.createdAt - b.createdAt);
 		for (const record of sorted) {
 			const providerMeta = meta[provider]?.[record.id];
-			out[poolRecordKey(provider, record.id)] = recordToLinked(record, providerMeta, provider, priorityCounter);
+			out[poolRecordKey(provider, record.id)] = recordToLinked(
+				record,
+				providerMeta,
+				provider,
+				priorityCounter,
+			);
 			priorityCounter += 1;
 		}
 	}
@@ -7242,8 +8723,8 @@ async function persistAccount(account) {
 		enabled: account.enabled,
 		priority: account.priority,
 		health: account.health,
-		...account.healthDetail ? { healthDetail: account.healthDetail } : {},
-		...account.usage ? { usage: account.usage } : {}
+		...(account.healthDetail ? { healthDetail: account.healthDetail } : {}),
+		...(account.usage ? { usage: account.usage } : {}),
 	};
 	writeMetaStore(store);
 }
@@ -7256,39 +8737,45 @@ async function deleteAccountMeta(providerId, accountId) {
 	writeMetaStore(store);
 }
 /**
-* Symbol-keyed shim contract consumed by plugin-anthropic's
-* `credential-store.ts`. Kept narrow so the plugin doesn't have to import
-* the full pool surface (or the rest of `@elizaos/app-core`).
-*/
-const ANTHROPIC_POOL_SHIM_SYMBOL = Symbol.for("eliza.account-pool.anthropic.v1");
+ * Symbol-keyed shim contract consumed by plugin-anthropic's
+ * `credential-store.ts`. Kept narrow so the plugin doesn't have to import
+ * the full pool surface (or the rest of `@elizaos/app-core`).
+ */
+const ANTHROPIC_POOL_SHIM_SYMBOL = Symbol.for(
+	"eliza.account-pool.anthropic.v1",
+);
 /**
-* Shim used by plugin-agent-orchestrator. The orchestrator can't depend on
-* `@elizaos/app-core`, so it discovers the pool via this symbol on
-* `globalThis`. Returns the picked account + access token in one shot
-* because the orchestrator only needs to inject the env vars and forget.
-*/
-const ORCHESTRATOR_POOL_SHIM_SYMBOL = Symbol.for("eliza.account-pool.orchestrator.v1");
+ * Shim used by plugin-agent-orchestrator. The orchestrator can't depend on
+ * `@elizaos/app-core`, so it discovers the pool via this symbol on
+ * `globalThis`. Returns the picked account + access token in one shot
+ * because the orchestrator only needs to inject the env vars and forget.
+ */
+const ORCHESTRATOR_POOL_SHIM_SYMBOL = Symbol.for(
+	"eliza.account-pool.orchestrator.v1",
+);
 /**
-* Shim used by `applySubscriptionCredentials` in `@elizaos/agent` to pick
-* the active Codex account when applying `OPENAI_API_KEY`. Lives behind
-* a symbol so the agent package doesn't need to depend on app-core.
-*/
-const SUBSCRIPTION_SELECTOR_SHIM_SYMBOL = Symbol.for("eliza.account-pool.subscription-selector.v1");
+ * Shim used by `applySubscriptionCredentials` in `@elizaos/agent` to pick
+ * the active Codex account when applying `OPENAI_API_KEY`. Lives behind
+ * a symbol so the agent package doesn't need to depend on app-core.
+ */
+const SUBSCRIPTION_SELECTOR_SHIM_SYMBOL = Symbol.for(
+	"eliza.account-pool.subscription-selector.v1",
+);
 let cachedDefaultPool = null;
 /**
-* Module-level singleton for the default pool wired against WS1's
-* `account-storage` and the pool-owned metadata file. Plugins / runtime
-* resolvers should import `getDefaultAccountPool()` rather than building
-* a new pool. WS3 may later swap the default deps to read/write the
-* `LinkedAccountsConfig` field directly out of `eliza.json`; consumers
-* keep the same accessor.
-*/
+ * Module-level singleton for the default pool wired against WS1's
+ * `account-storage` and the pool-owned metadata file. Plugins / runtime
+ * resolvers should import `getDefaultAccountPool()` rather than building
+ * a new pool. WS3 may later swap the default deps to read/write the
+ * `LinkedAccountsConfig` field directly out of `eliza.json`; consumers
+ * keep the same accessor.
+ */
 function getDefaultAccountPool() {
 	if (!cachedDefaultPool) {
 		cachedDefaultPool = new AccountPool({
 			readAccounts: () => loadAllAccounts(),
 			writeAccount: persistAccount,
-			deleteAccount: deleteAccountMeta
+			deleteAccount: deleteAccountMeta,
 		});
 		installAnthropicShim(cachedDefaultPool);
 		installOrchestratorShim(cachedDefaultPool);
@@ -7297,10 +8784,10 @@ function getDefaultAccountPool() {
 	return cachedDefaultPool;
 }
 /**
-* Install the `globalThis`-keyed shim that plugin-anthropic's
-* credential-store reads. Idempotent — repeated installs replace the
-* previous shim.
-*/
+ * Install the `globalThis`-keyed shim that plugin-anthropic's
+ * credential-store reads. Idempotent — repeated installs replace the
+ * previous shim.
+ */
 function installAnthropicShim(pool) {
 	if (typeof globalThis === "undefined") return;
 	const shim = {
@@ -7308,17 +8795,19 @@ function installAnthropicShim(pool) {
 			const account = await pool.select({
 				providerId: "anthropic-subscription",
 				sessionKey: opts?.sessionKey,
-				exclude: opts?.exclude
+				exclude: opts?.exclude,
 			});
 			if (!account) return null;
 			return {
 				id: account.id,
-				expiresAt: Number.POSITIVE_INFINITY
+				expiresAt: Number.POSITIVE_INFINITY,
 			};
 		},
-		getAccessToken: (providerId, accountId) => getAccessToken(providerId, accountId),
+		getAccessToken: (providerId, accountId) =>
+			getAccessToken(providerId, accountId),
 		markInvalid: (accountId, detail) => pool.markInvalid(accountId, detail),
-		markRateLimited: (accountId, untilMs, detail) => pool.markRateLimited(accountId, untilMs, detail)
+		markRateLimited: (accountId, untilMs, detail) =>
+			pool.markRateLimited(accountId, untilMs, detail),
 	};
 	globalThis[ANTHROPIC_POOL_SHIM_SYMBOL] = shim;
 }
@@ -7328,14 +8817,14 @@ function installOrchestratorShim(pool) {
 		pickAnthropicTokenForSpawn: async ({ sessionKey }) => {
 			const account = await pool.select({
 				providerId: "anthropic-subscription",
-				sessionKey
+				sessionKey,
 			});
 			if (!account) return null;
 			const token = await getAccessToken("anthropic-subscription", account.id);
 			if (!token) return null;
 			return {
 				accessToken: token,
-				accountId: account.id
+				accountId: account.id,
 			};
 		},
 		markRateLimited: (accountId, untilMs, detail) => {
@@ -7346,33 +8835,35 @@ function installOrchestratorShim(pool) {
 		},
 		markNeedsReauth: (accountId, detail) => {
 			pool.markNeedsReauth(accountId, detail);
-		}
+		},
 	};
 	globalThis[ORCHESTRATOR_POOL_SHIM_SYMBOL] = shim;
 }
 function installSubscriptionSelectorShim(pool) {
 	if (typeof globalThis === "undefined") return;
-	const shim = { pickAccountId: async (providerId) => {
-		return (await pool.select({ providerId }))?.id ?? null;
-	} };
+	const shim = {
+		pickAccountId: async (providerId) => {
+			return (await pool.select({ providerId }))?.id ?? null;
+		},
+	};
 	globalThis[SUBSCRIPTION_SELECTOR_SHIM_SYMBOL] = shim;
 }
 
 //#endregion
 //#region node_modules/.bun/@elizaos+app-core@2.0.0-alpha.537+72829346cb4c43b1/node_modules/@elizaos/app-core/packages/app-core/src/api/credential-resolver.js
 /**
-* Server-side credential resolver — scans local credential stores
-* and hydrates credentials into the canonical server config + secret state.
-*
-* Credential sources:
-*   1. Claude Code OAuth → ~/.claude/.credentials.json or macOS Keychain
-*      (uses subscription auth flow, NOT direct api.anthropic.com)
-*   2. OpenAI Codex → ~/.codex/auth.json
-*   3. Environment variables → process.env
-*
-* The OAuth token from Claude Code is an "anthropic-subscription" credential
-* that goes through applySubscriptionCredentials(), not a direct API key.
-*/
+ * Server-side credential resolver — scans local credential stores
+ * and hydrates credentials into the canonical server config + secret state.
+ *
+ * Credential sources:
+ *   1. Claude Code OAuth → ~/.claude/.credentials.json or macOS Keychain
+ *      (uses subscription auth flow, NOT direct api.anthropic.com)
+ *   2. OpenAI Codex → ~/.codex/auth.json
+ *   3. Environment variables → process.env
+ *
+ * The OAuth token from Claude Code is an "anthropic-subscription" credential
+ * that goes through applySubscriptionCredentials(), not a direct API key.
+ */
 function readJsonSafe(filePath) {
 	try {
 		if (!fs.existsSync(filePath)) return null;
@@ -7386,29 +8877,25 @@ function extractOauthAccessToken(value) {
 	const record = value;
 	const direct = record.accessToken ?? record.access_token;
 	if (typeof direct === "string" && direct.trim()) return direct.trim();
-	for (const v of Object.values(record)) if (v && typeof v === "object") {
-		const token = extractOauthAccessToken(v);
-		if (token) return token;
-	}
+	for (const v of Object.values(record))
+		if (v && typeof v === "object") {
+			const token = extractOauthAccessToken(v);
+			if (token) return token;
+		}
 	return null;
 }
 function readKeychainValue(service) {
 	if (process.platform !== "darwin") return null;
 	try {
-		const trimmed = execFileSync("security", [
-			"find-generic-password",
-			"-s",
-			service,
-			"-w"
-		], {
-			encoding: "utf8",
-			timeout: 3e3,
-			stdio: [
-				"pipe",
-				"pipe",
-				"pipe"
-			]
-		}).trim();
+		const trimmed = execFileSync(
+			"security",
+			["find-generic-password", "-s", service, "-w"],
+			{
+				encoding: "utf8",
+				timeout: 3e3,
+				stdio: ["pipe", "pipe", "pipe"],
+			},
+		).trim();
 		return trimmed.length > 0 ? trimmed : null;
 	} catch {
 		return null;
@@ -7417,7 +8904,9 @@ function readKeychainValue(service) {
 /** Resolve Claude OAuth token — this is a SUBSCRIPTION token, not a direct API key. */
 function resolveClaudeOAuthToken() {
 	const home = os.homedir();
-	const fileToken = extractOauthAccessToken(readJsonSafe(path.join(home, ".claude", ".credentials.json")));
+	const fileToken = extractOauthAccessToken(
+		readJsonSafe(path.join(home, ".claude", ".credentials.json")),
+	);
 	if (fileToken) return fileToken;
 	const keychainData = readKeychainValue("Claude Code-credentials");
 	if (!keychainData) return null;
@@ -7429,90 +8918,100 @@ function resolveClaudeOAuthToken() {
 }
 /** Resolve OpenAI API key from Codex auth file. */
 function resolveCodexApiKey() {
-	return readJsonSafe(path.join(os.homedir(), ".codex", "auth.json"))?.OPENAI_API_KEY?.trim() || null;
+	return (
+		readJsonSafe(
+			path.join(os.homedir(), ".codex", "auth.json"),
+		)?.OPENAI_API_KEY?.trim() || null
+	);
 }
 const CREDENTIAL_SOURCES = [
 	{
 		providerId: "anthropic-subscription",
 		envVar: "ANTHROPIC_API_KEY",
 		authType: "subscription",
-		resolve: resolveClaudeOAuthToken
+		resolve: resolveClaudeOAuthToken,
 	},
 	{
 		providerId: "anthropic",
 		envVar: "ANTHROPIC_API_KEY",
 		authType: "api-key",
-		resolve: () => process.env.ANTHROPIC_API_KEY?.trim() || null
+		resolve: () => process.env.ANTHROPIC_API_KEY?.trim() || null,
 	},
 	{
 		providerId: "openai",
 		envVar: "OPENAI_API_KEY",
 		authType: "api-key",
-		resolve: () => resolveCodexApiKey() || process.env.OPENAI_API_KEY?.trim() || null
+		resolve: () =>
+			resolveCodexApiKey() || process.env.OPENAI_API_KEY?.trim() || null,
 	},
 	{
 		providerId: "groq",
 		envVar: "GROQ_API_KEY",
 		authType: "api-key",
-		resolve: () => process.env.GROQ_API_KEY?.trim() || null
+		resolve: () => process.env.GROQ_API_KEY?.trim() || null,
 	},
 	{
 		providerId: "gemini",
 		envVar: "GOOGLE_GENERATIVE_AI_API_KEY",
 		authType: "api-key",
-		resolve: () => process.env.GOOGLE_GENERATIVE_AI_API_KEY?.trim() || process.env.GOOGLE_API_KEY?.trim() || null
+		resolve: () =>
+			process.env.GOOGLE_GENERATIVE_AI_API_KEY?.trim() ||
+			process.env.GOOGLE_API_KEY?.trim() ||
+			null,
 	},
 	{
 		providerId: "openrouter",
 		envVar: "OPENROUTER_API_KEY",
 		authType: "api-key",
-		resolve: () => process.env.OPENROUTER_API_KEY?.trim() || null
+		resolve: () => process.env.OPENROUTER_API_KEY?.trim() || null,
 	},
 	{
 		providerId: "grok",
 		envVar: "XAI_API_KEY",
 		authType: "api-key",
-		resolve: () => process.env.XAI_API_KEY?.trim() || null
+		resolve: () => process.env.XAI_API_KEY?.trim() || null,
 	},
 	{
 		providerId: "deepseek",
 		envVar: "DEEPSEEK_API_KEY",
 		authType: "api-key",
-		resolve: () => process.env.DEEPSEEK_API_KEY?.trim() || null
+		resolve: () => process.env.DEEPSEEK_API_KEY?.trim() || null,
 	},
 	{
 		providerId: "mistral",
 		envVar: "MISTRAL_API_KEY",
 		authType: "api-key",
-		resolve: () => process.env.MISTRAL_API_KEY?.trim() || null
+		resolve: () => process.env.MISTRAL_API_KEY?.trim() || null,
 	},
 	{
 		providerId: "together",
 		envVar: "TOGETHER_API_KEY",
 		authType: "api-key",
-		resolve: () => process.env.TOGETHER_API_KEY?.trim() || null
+		resolve: () => process.env.TOGETHER_API_KEY?.trim() || null,
 	},
 	{
 		providerId: "zai",
 		envVar: "ZAI_API_KEY",
 		authType: "api-key",
-		resolve: () => process.env.ZAI_API_KEY?.trim() || null
-	}
+		resolve: () => process.env.ZAI_API_KEY?.trim() || null,
+	},
 ];
 /**
-* Resolve the real credential for a specific provider.
-*/
+ * Resolve the real credential for a specific provider.
+ */
 function resolveProviderCredential(providerId) {
 	for (const source of CREDENTIAL_SOURCES) {
 		if (source.providerId !== providerId) continue;
 		const key = source.resolve();
 		if (key) {
-			logger.info(`[credential-resolver] Resolved ${source.envVar} for ${providerId} (${key.length} chars, ${source.authType})`);
+			logger.info(
+				`[credential-resolver] Resolved ${source.envVar} for ${providerId} (${key.length} chars, ${source.authType})`,
+			);
 			return {
 				providerId: source.providerId,
 				envVar: source.envVar,
 				apiKey: key,
-				authType: source.authType
+				authType: source.authType,
 			};
 		}
 	}
@@ -7522,9 +9021,9 @@ function resolveProviderCredential(providerId) {
 //#endregion
 //#region node_modules/.bun/@elizaos+app-core@2.0.0-alpha.537+72829346cb4c43b1/node_modules/@elizaos/app-core/packages/app-core/src/api/server-onboarding-compat.js
 /**
-* Onboarding compat helpers — API key persistence, onboarding defaults,
-* cloud-mode detection, and cloud-provisioned container detection.
-*/
+ * Onboarding compat helpers — API key persistence, onboarding defaults,
+ * cloud-mode detection, and cloud-provisioned container detection.
+ */
 /** Resolve the API token using app-first priority. */
 function getCompatApiToken() {
 	const token = process.env.ELIZA_API_TOKEN?.trim();
@@ -7536,7 +9035,9 @@ function trimToUndefined(value) {
 	return trimmed.length > 0 ? trimmed : void 0;
 }
 const DEFAULT_ELEVENLABS_TTS_MODEL = "eleven_flash_v2_5";
-const ELEVENLABS_VOICE_ID_BY_PRESET = new Map(PREMADE_VOICES.map((voice) => [voice.id, voice.voiceId]));
+const ELEVENLABS_VOICE_ID_BY_PRESET = new Map(
+	PREMADE_VOICES.map((voice) => [voice.id, voice.voiceId]),
+);
 function resolveCompatOnboardingStyle(body, language) {
 	const presets = getStylePresets(language);
 	const requestedPresetId = trimToUndefined(body.presetId);
@@ -7544,8 +9045,13 @@ function resolveCompatOnboardingStyle(body, language) {
 		const byId = presets.find((preset) => preset.id === requestedPresetId);
 		if (byId) return byId;
 	}
-	if (typeof body.avatarIndex === "number" && Number.isFinite(body.avatarIndex)) {
-		const byAvatar = presets.find((preset) => preset.avatarIndex === Number(body.avatarIndex));
+	if (
+		typeof body.avatarIndex === "number" &&
+		Number.isFinite(body.avatarIndex)
+	) {
+		const byAvatar = presets.find(
+			(preset) => preset.avatarIndex === Number(body.avatarIndex),
+		);
 		if (byAvatar) return byAvatar;
 	}
 	const requestedName = trimToUndefined(body.name);
@@ -7563,74 +9069,97 @@ const LEGACY_ONBOARDING_REQUEST_KEYS = [
 	"providerApiKey",
 	"primaryModel",
 	"smallModel",
-	"largeModel"
+	"largeModel",
 ];
 function hasLegacyOnboardingRequestFields(body) {
 	return LEGACY_ONBOARDING_REQUEST_KEYS.some((key) => Object.hasOwn(body, key));
 }
 /**
-* Extract canonical onboarding credential inputs from an onboarding request body
-* and persist them to config + process.env. Returns the env key name if a local
-* provider API key was persisted, or null.
-*/
+ * Extract canonical onboarding credential inputs from an onboarding request body
+ * and persist them to config + process.env. Returns the env key name if a local
+ * provider API key was persisted, or null.
+ */
 async function extractAndPersistOnboardingApiKey(body) {
-	const credentialInputs = normalizeOnboardingCredentialInputs(body.credentialInputs);
-	const explicitDeploymentTarget = normalizeDeploymentTargetConfig(body.deploymentTarget);
-	const explicitServiceRouting = normalizeServiceRoutingConfig(body.serviceRouting);
-	logger.info(`[onboarding] extractAndPersistOnboardingApiKey: credentialInputs=${credentialInputs ? "present" : "missing"}, keys=${Object.keys(body).join(",")}`);
+	const credentialInputs = normalizeOnboardingCredentialInputs(
+		body.credentialInputs,
+	);
+	const explicitDeploymentTarget = normalizeDeploymentTargetConfig(
+		body.deploymentTarget,
+	);
+	const explicitServiceRouting = normalizeServiceRoutingConfig(
+		body.serviceRouting,
+	);
+	logger.info(
+		`[onboarding] extractAndPersistOnboardingApiKey: credentialInputs=${credentialInputs ? "present" : "missing"}, keys=${Object.keys(body).join(",")}`,
+	);
 	const initialPlan = deriveOnboardingCredentialPersistencePlan({
 		credentialInputs,
 		deploymentTarget: explicitDeploymentTarget,
-		serviceRouting: explicitServiceRouting
+		serviceRouting: explicitServiceRouting,
 	});
 	let effectiveCredentialInputs = credentialInputs;
 	let effectiveServiceRouting = explicitServiceRouting;
 	let llmSelection = initialPlan.llmSelection;
 	if (!llmSelection && !initialPlan.cloudApiKey) {
-		logger.warn("[onboarding] No onboarding credentials resolved from request body");
+		logger.warn(
+			"[onboarding] No onboarding credentials resolved from request body",
+		);
 		return null;
 	}
-	logger.info(`[onboarding] Resolved selection: transport=${llmSelection?.transport ?? "none"}, provider=${llmSelection?.backend ?? "N/A"}, hasKey=${Boolean(llmSelection?.apiKey)}, hasCloudKey=${Boolean(initialPlan.cloudApiKey)}`);
-	if (llmSelection?.transport === "direct" && llmSelection.backend !== "elizacloud" && !llmSelection.apiKey?.startsWith("****")) {
+	logger.info(
+		`[onboarding] Resolved selection: transport=${llmSelection?.transport ?? "none"}, provider=${llmSelection?.backend ?? "N/A"}, hasKey=${Boolean(llmSelection?.apiKey)}, hasCloudKey=${Boolean(initialPlan.cloudApiKey)}`,
+	);
+	if (
+		llmSelection?.transport === "direct" &&
+		llmSelection.backend !== "elizacloud" &&
+		!llmSelection.apiKey?.startsWith("****")
+	) {
 		const resolved = resolveProviderCredential(llmSelection.backend);
 		if (resolved && resolved.authType === "subscription") {
 			effectiveCredentialInputs = {
-				...effectiveCredentialInputs ?? {},
-				llmApiKey: resolved.apiKey
+				...(effectiveCredentialInputs ?? {}),
+				llmApiKey: resolved.apiKey,
 			};
 			effectiveServiceRouting = normalizeServiceRoutingConfig({
-				...effectiveServiceRouting ?? {},
+				...(effectiveServiceRouting ?? {}),
 				llmText: {
-					...effectiveServiceRouting?.llmText ?? {},
+					...(effectiveServiceRouting?.llmText ?? {}),
 					backend: resolved.providerId,
-					transport: "direct"
-				}
+					transport: "direct",
+				},
 			});
-			logger.info(`[onboarding] Using subscription auth for ${resolved.providerId}`);
+			logger.info(
+				`[onboarding] Using subscription auth for ${resolved.providerId}`,
+			);
 		} else if (resolved) {
 			effectiveCredentialInputs = {
-				...effectiveCredentialInputs ?? {},
-				llmApiKey: resolved.apiKey
+				...(effectiveCredentialInputs ?? {}),
+				llmApiKey: resolved.apiKey,
 			};
-			logger.info(`[onboarding] Resolved real key for ${llmSelection.backend} via credential-resolver`);
+			logger.info(
+				`[onboarding] Resolved real key for ${llmSelection.backend} via credential-resolver`,
+			);
 		} else if (!llmSelection.apiKey) {
-			logger.warn(`[onboarding] No key found for ${llmSelection.backend} — cannot persist`);
+			logger.warn(
+				`[onboarding] No key found for ${llmSelection.backend} — cannot persist`,
+			);
 			return null;
 		}
 		llmSelection = deriveOnboardingCredentialPersistencePlan({
 			credentialInputs: effectiveCredentialInputs,
 			deploymentTarget: explicitDeploymentTarget,
-			serviceRouting: effectiveServiceRouting
+			serviceRouting: effectiveServiceRouting,
 		}).llmSelection;
 	}
 	const config = loadElizaConfig();
 	const result = await applyOnboardingCredentialPersistence(config, {
 		credentialInputs: effectiveCredentialInputs,
 		deploymentTarget: explicitDeploymentTarget,
-		serviceRouting: effectiveServiceRouting
+		serviceRouting: effectiveServiceRouting,
 	});
 	saveElizaConfig(config);
-	if (result) logger.info(`[onboarding] Persisted ${result} from onboarding credentials`);
+	if (result)
+		logger.info(`[onboarding] Persisted ${result} from onboarding credentials`);
 	return result;
 }
 function persistCompatOnboardingDefaults(body) {
@@ -7641,49 +9170,71 @@ function persistCompatOnboardingDefaults(body) {
 	const stylePreset = resolveCompatOnboardingStyle(body, language);
 	if (!config.agents || typeof config.agents !== "object") config.agents = {};
 	const agents = config.agents;
-	if (!agents.defaults || typeof agents.defaults !== "object") agents.defaults = {};
+	if (!agents.defaults || typeof agents.defaults !== "object")
+		agents.defaults = {};
 	const adminEntityId = stringToUuid(`${name}-admin-entity`);
 	agents.defaults.adminEntityId = adminEntityId;
-	if (!Array.isArray(agents.list) || agents.list.length === 0) agents.list = [{
-		id: "main",
-		default: true
-	}];
+	if (!Array.isArray(agents.list) || agents.list.length === 0)
+		agents.list = [
+			{
+				id: "main",
+				default: true,
+			},
+		];
 	const agentEntry = agents.list[0];
 	agentEntry.name = name;
 	if (Array.isArray(body.bio)) agentEntry.bio = body.bio;
-	if (typeof body.systemPrompt === "string" && body.systemPrompt.trim()) agentEntry.system = body.systemPrompt.trim();
-	if (body.style && typeof body.style === "object") agentEntry.style = body.style;
+	if (typeof body.systemPrompt === "string" && body.systemPrompt.trim())
+		agentEntry.system = body.systemPrompt.trim();
+	if (body.style && typeof body.style === "object")
+		agentEntry.style = body.style;
 	if (Array.isArray(body.adjectives)) agentEntry.adjectives = body.adjectives;
 	if (Array.isArray(body.topics)) agentEntry.topics = body.topics;
-	if (Array.isArray(body.postExamples)) agentEntry.postExamples = body.postExamples;
-	if (Array.isArray(body.messageExamples)) agentEntry.messageExamples = body.messageExamples;
+	if (Array.isArray(body.postExamples))
+		agentEntry.postExamples = body.postExamples;
+	if (Array.isArray(body.messageExamples))
+		agentEntry.messageExamples = body.messageExamples;
 	if (!config.ui || typeof config.ui !== "object") config.ui = {};
 	const ui = config.ui;
 	ui.assistant = {
-		...ui.assistant && typeof ui.assistant === "object" ? ui.assistant : {},
-		name
+		...(ui.assistant && typeof ui.assistant === "object" ? ui.assistant : {}),
+		name,
 	};
 	ui.language = language;
-	if (typeof body.avatarIndex === "number" && Number.isFinite(body.avatarIndex)) ui.avatarIndex = Number(body.avatarIndex);
-	else if (typeof stylePreset?.avatarIndex === "number") ui.avatarIndex = stylePreset.avatarIndex;
-	if (trimToUndefined(body.presetId)) ui.presetId = trimToUndefined(body.presetId);
+	if (typeof body.avatarIndex === "number" && Number.isFinite(body.avatarIndex))
+		ui.avatarIndex = Number(body.avatarIndex);
+	else if (typeof stylePreset?.avatarIndex === "number")
+		ui.avatarIndex = stylePreset.avatarIndex;
+	if (trimToUndefined(body.presetId))
+		ui.presetId = trimToUndefined(body.presetId);
 	else if (stylePreset?.id) ui.presetId = stylePreset.id;
 	const elevenLabsApiKey = process.env.ELEVENLABS_API_KEY?.trim();
 	const voicePresetId = stylePreset?.voicePresetId?.trim();
-	const voiceId = voicePresetId ? ELEVENLABS_VOICE_ID_BY_PRESET.get(voicePresetId) : void 0;
+	const voiceId = voicePresetId
+		? ELEVENLABS_VOICE_ID_BY_PRESET.get(voicePresetId)
+		: void 0;
 	if (elevenLabsApiKey && voiceId) {
-		if (!config.messages || typeof config.messages !== "object") config.messages = {};
+		if (!config.messages || typeof config.messages !== "object")
+			config.messages = {};
 		const messages = config.messages;
-		const existingTts = messages.tts && typeof messages.tts === "object" ? messages.tts : {};
-		const existingElevenlabs = existingTts.elevenlabs && typeof existingTts.elevenlabs === "object" ? existingTts.elevenlabs : {};
+		const existingTts =
+			messages.tts && typeof messages.tts === "object" ? messages.tts : {};
+		const existingElevenlabs =
+			existingTts.elevenlabs && typeof existingTts.elevenlabs === "object"
+				? existingTts.elevenlabs
+				: {};
 		messages.tts = {
 			...existingTts,
 			provider: "elevenlabs",
 			elevenlabs: {
 				...existingElevenlabs,
 				voiceId,
-				modelId: typeof existingElevenlabs.modelId === "string" && existingElevenlabs.modelId.trim() ? existingElevenlabs.modelId.trim() : DEFAULT_ELEVENLABS_TTS_MODEL
-			}
+				modelId:
+					typeof existingElevenlabs.modelId === "string" &&
+					existingElevenlabs.modelId.trim()
+						? existingElevenlabs.modelId.trim()
+						: DEFAULT_ELEVENLABS_TTS_MODEL,
+			},
 		};
 	}
 	migrateLegacyRuntimeConfig(config);
@@ -7691,40 +9242,53 @@ function persistCompatOnboardingDefaults(body) {
 	return adminEntityId;
 }
 function deriveCompatOnboardingReplayBody(body) {
-	const explicitDeploymentTarget = normalizeDeploymentTargetConfig(body.deploymentTarget);
-	const explicitCredentialInputs = normalizeOnboardingCredentialInputs(body.credentialInputs);
+	const explicitDeploymentTarget = normalizeDeploymentTargetConfig(
+		body.deploymentTarget,
+	);
+	const explicitCredentialInputs = normalizeOnboardingCredentialInputs(
+		body.credentialInputs,
+	);
 	const deploymentTarget = explicitDeploymentTarget ?? void 0;
-	const linkedAccounts = normalizeLinkedAccountFlagsConfig(body.linkedAccounts) ?? void 0;
-	const serviceRouting = normalizeServiceRoutingConfig(body.serviceRouting) ?? void 0;
+	const linkedAccounts =
+		normalizeLinkedAccountFlagsConfig(body.linkedAccounts) ?? void 0;
+	const serviceRouting =
+		normalizeServiceRoutingConfig(body.serviceRouting) ?? void 0;
 	const isCloudMode = deploymentTarget?.runtime === "cloud";
 	const replayBody = { ...body };
 	for (const key of LEGACY_ONBOARDING_REQUEST_KEYS) delete replayBody[key];
 	if (deploymentTarget) replayBody.deploymentTarget = deploymentTarget;
 	if (linkedAccounts) replayBody.linkedAccounts = linkedAccounts;
 	if (serviceRouting) replayBody.serviceRouting = serviceRouting;
-	if (explicitCredentialInputs) replayBody.credentialInputs = explicitCredentialInputs;
+	if (explicitCredentialInputs)
+		replayBody.credentialInputs = explicitCredentialInputs;
 	return {
 		isCloudMode,
-		replayBody
+		replayBody,
 	};
 }
 /**
-* Check if this is a cloud-provisioned container.
-*
-* METADATA-ONLY as of P0 of the remote-auth hardening. This function now
-* exists strictly so unrelated routes (e.g. `/api/cloud/status`) can branch
-* on cloud-provisioned shape. It does NOT authorise anything: callers must
-* still pass through `ensureCompatApiAuthorized` (legacy bearer) or — once
-* the dashboard mints sessions — `ensureAuthSessionOrBootstrap`. The
-* audited bypasses at `auth-pairing-compat-routes.ts:124,140` and the
-* onboarding-skip used to read this; both have been removed.
-*
-* See `docs/security/remote-auth-hardening-plan.md` §3.4.
-*/
+ * Check if this is a cloud-provisioned container.
+ *
+ * METADATA-ONLY as of P0 of the remote-auth hardening. This function now
+ * exists strictly so unrelated routes (e.g. `/api/cloud/status`) can branch
+ * on cloud-provisioned shape. It does NOT authorise anything: callers must
+ * still pass through `ensureCompatApiAuthorized` (legacy bearer) or — once
+ * the dashboard mints sessions — `ensureAuthSessionOrBootstrap`. The
+ * audited bypasses at `auth-pairing-compat-routes.ts:124,140` and the
+ * onboarding-skip used to read this; both have been removed.
+ *
+ * See `docs/security/remote-auth-hardening-plan.md` §3.4.
+ */
 function isCloudProvisioned() {
 	const hasCloudFlag = process.env.ELIZA_CLOUD_PROVISIONED === "1";
-	const hasCloudApiKeyProvisioning = process.env.ELIZAOS_CLOUD_ENABLED === "true" && Boolean(process.env.ELIZAOS_CLOUD_API_KEY?.trim());
-	const hasPlatformToken = Boolean(process.env.STEWARD_AGENT_TOKEN?.trim() || getCompatApiToken() || hasCloudApiKeyProvisioning);
+	const hasCloudApiKeyProvisioning =
+		process.env.ELIZAOS_CLOUD_ENABLED === "true" &&
+		Boolean(process.env.ELIZAOS_CLOUD_API_KEY?.trim());
+	const hasPlatformToken = Boolean(
+		process.env.STEWARD_AGENT_TOKEN?.trim() ||
+			getCompatApiToken() ||
+			hasCloudApiKeyProvisioning,
+	);
 	return hasCloudFlag && hasPlatformToken;
 }
 
@@ -7743,18 +9307,25 @@ let pairingExpiresAt = 0;
 const pairingAttempts = /* @__PURE__ */ new Map();
 const pairingSweepTimer = setInterval(() => {
 	const now = Date.now();
-	for (const [key, entry] of pairingAttempts) if (now > entry.resetAt) pairingAttempts.delete(key);
+	for (const [key, entry] of pairingAttempts)
+		if (now > entry.resetAt) pairingAttempts.delete(key);
 }, 300 * 1e3);
-if (typeof pairingSweepTimer === "object" && "unref" in pairingSweepTimer) pairingSweepTimer.unref();
+if (typeof pairingSweepTimer === "object" && "unref" in pairingSweepTimer)
+	pairingSweepTimer.unref();
 function pairingEnabled() {
-	return Boolean(getCompatApiToken$1()) && process.env.ELIZA_PAIRING_DISABLED !== "1" && !isCloudProvisioned();
+	return (
+		Boolean(getCompatApiToken$1()) &&
+		process.env.ELIZA_PAIRING_DISABLED !== "1" &&
+		!isCloudProvisioned()
+	);
 }
 function normalizePairingCode(code) {
 	return code.replace(/[^a-zA-Z0-9]/g, "").toUpperCase();
 }
 function generatePairingCode() {
 	let raw = "";
-	for (let i = 0; i < 12; i += 1) raw += PAIRING_ALPHABET[crypto.randomInt(0, 32)];
+	for (let i = 0; i < 12; i += 1)
+		raw += PAIRING_ALPHABET[crypto.randomInt(0, 32)];
 	return `${raw.slice(0, 4)}-${raw.slice(4, 8)}-${raw.slice(8, 12)}`;
 }
 function ensurePairingCode() {
@@ -7763,14 +9334,17 @@ function ensurePairingCode() {
 	if (!pairingCode || now > pairingExpiresAt) {
 		pairingCode = generatePairingCode();
 		pairingExpiresAt = now + PAIRING_TTL_MS;
-		logger.warn(`[api] Pairing code for remote devices: ${pairingCode} (valid for 10 minutes)`);
+		logger.warn(
+			`[api] Pairing code for remote devices: ${pairingCode} (valid for 10 minutes)`,
+		);
 	}
 	return pairingCode;
 }
 async function requestHasActiveSession(req, store) {
 	const cookieSessionId = parseSessionCookie(req);
 	if (cookieSessionId) {
-		if (await findActiveSession(store, cookieSessionId).catch(() => null)) return true;
+		if (await findActiveSession(store, cookieSessionId).catch(() => null))
+			return true;
 	}
 	const bearer = getProvidedApiToken(req);
 	if (bearer) {
@@ -7785,7 +9359,7 @@ function rateLimitPairing(ip) {
 	if (!current || now > current.resetAt) {
 		pairingAttempts.set(key, {
 			count: 1,
-			resetAt: now + PAIRING_WINDOW_MS
+			resetAt: now + PAIRING_WINDOW_MS,
 		});
 		return true;
 	}
@@ -7794,20 +9368,20 @@ function rateLimitPairing(ip) {
 	return true;
 }
 /**
-* Auth / pairing routes:
-*
-* - `GET  /api/onboarding/status`
-* - `GET  /api/auth/status`
-* - `POST /api/auth/pair`
-*/
+ * Auth / pairing routes:
+ *
+ * - `GET  /api/onboarding/status`
+ * - `GET  /api/auth/status`
+ * - `POST /api/auth/pair`
+ */
 async function handleAuthPairingCompatRoutes(req, res, state) {
 	const method = (req.method ?? "GET").toUpperCase();
 	const url = new URL(req.url ?? "/", "http://localhost");
 	if (method === "GET" && url.pathname === "/api/onboarding/status") {
-		if (!await ensureRouteAuthorized(req, res, state)) return true;
+		if (!(await ensureRouteAuthorized(req, res, state))) return true;
 		sendJson$2(res, 200, {
 			complete: hasCompatPersistedOnboardingState(loadElizaConfig()),
-			cloudProvisioned: isCloudProvisioned()
+			cloudProvisioned: isCloudProvisioned(),
 		});
 		return true;
 	}
@@ -7817,7 +9391,9 @@ async function handleAuthPairingCompatRoutes(req, res, state) {
 		let passwordConfigured = false;
 		let sessionAuthenticated = false;
 		if (db) {
-			const { AuthStore } = await Promise.resolve().then(() => (init_auth_store(), auth_store_exports));
+			const { AuthStore } = await Promise.resolve().then(
+				() => (init_auth_store(), auth_store_exports),
+			);
 			const store = new AuthStore(db);
 			const owner = (await store.listIdentitiesByKind("owner"))[0];
 			passwordConfigured = Boolean(owner?.passwordHash);
@@ -7828,9 +9404,21 @@ async function handleAuthPairingCompatRoutes(req, res, state) {
 		const loginRequired = !localAccess && !tokenRequired && !cloudProvisioned;
 		const providedToken = getProvidedApiToken(req);
 		const configuredToken = getCompatApiToken$1();
-		const staticTokenAuthenticated = !cloudProvisioned && Boolean(providedToken && configuredToken && tokenMatches(configuredToken, providedToken));
+		const staticTokenAuthenticated =
+			!cloudProvisioned &&
+			Boolean(
+				providedToken &&
+					configuredToken &&
+					tokenMatches(configuredToken, providedToken),
+			);
 		const authenticated = sessionAuthenticated || staticTokenAuthenticated;
-		const required = !localAccess && !authenticated && (tokenRequired || passwordConfigured || cloudProvisioned || loginRequired);
+		const required =
+			!localAccess &&
+			!authenticated &&
+			(tokenRequired ||
+				passwordConfigured ||
+				cloudProvisioned ||
+				loginRequired);
 		const enabled = pairingEnabled();
 		if (enabled) ensurePairingCode();
 		sendJson$2(res, 200, {
@@ -7841,7 +9429,7 @@ async function handleAuthPairingCompatRoutes(req, res, state) {
 			localAccess,
 			passwordConfigured,
 			pairingEnabled: enabled,
-			expiresAt: enabled ? pairingExpiresAt : null
+			expiresAt: enabled ? pairingExpiresAt : null,
 		});
 		return true;
 	}
@@ -7866,11 +9454,17 @@ async function handleAuthPairingCompatRoutes(req, res, state) {
 			sendJsonError(res, 429, "Too many attempts. Try again later.");
 			return true;
 		}
-		const provided = normalizePairingCode(typeof body.code === "string" ? body.code : "");
+		const provided = normalizePairingCode(
+			typeof body.code === "string" ? body.code : "",
+		);
 		const current = ensurePairingCode();
 		if (!current || Date.now() > pairingExpiresAt) {
 			ensurePairingCode();
-			sendJsonError(res, 410, "Pairing code expired. Check server logs for a new code.");
+			sendJsonError(
+				res,
+				410,
+				"Pairing code expired. Check server logs for a new code.",
+			);
 			return true;
 		}
 		if (!tokenMatches(normalizePairingCode(current), provided)) {
@@ -7888,23 +9482,23 @@ async function handleAuthPairingCompatRoutes(req, res, state) {
 //#endregion
 //#region node_modules/.bun/@elizaos+app-core@2.0.0-alpha.537+72829346cb4c43b1/node_modules/@elizaos/app-core/packages/app-core/src/api/auth-session-routes.js
 /**
-* Session lifecycle routes for password and cookie auth.
-*
-*   POST /api/auth/setup            — first-run owner identity + password
-*   POST /api/auth/login/password   — password login → session cookie
-*   POST /api/auth/logout           — destroy current session
-*   GET  /api/auth/me               — current identity + session
-*   GET  /api/auth/sessions         — list active sessions for identity
-*   POST /api/auth/sessions/:id/revoke — revoke one session
-*
-* Hard rules:
-*   - Every write path is rate-limited via the auth bucket in `auth.ts`.
-*   - Every write path emits an audit event (success or failure) before
-*     returning.
-*   - Setup is one-shot — once an owner identity exists, /setup returns 409.
-*   - Logout uses the auth context to find the session id; we do NOT trust
-*     the body.
-*/
+ * Session lifecycle routes for password and cookie auth.
+ *
+ *   POST /api/auth/setup            — first-run owner identity + password
+ *   POST /api/auth/login/password   — password login → session cookie
+ *   POST /api/auth/logout           — destroy current session
+ *   GET  /api/auth/me               — current identity + session
+ *   GET  /api/auth/sessions         — list active sessions for identity
+ *   POST /api/auth/sessions/:id/revoke — revoke one session
+ *
+ * Hard rules:
+ *   - Every write path is rate-limited via the auth bucket in `auth.ts`.
+ *   - Every write path emits an audit event (success or failure) before
+ *     returning.
+ *   - Setup is one-shot — once an owner identity exists, /setup returns 409.
+ *   - Logout uses the auth context to find the session id; we do NOT trust
+ *     the body.
+ */
 init_auth_store();
 init_auth();
 init_sessions();
@@ -7930,7 +9524,7 @@ function consumeAuthBucket(ip, now = Date.now()) {
 	if (!entry || now > entry.resetAt) {
 		sessionRouteAttempts.set(key, {
 			count: 1,
-			resetAt: now + AUTH_ATTEMPT_WINDOW_MS
+			resetAt: now + AUTH_ATTEMPT_WINDOW_MS,
 		});
 		return true;
 	}
@@ -7940,30 +9534,45 @@ function consumeAuthBucket(ip, now = Date.now()) {
 }
 const sweepTimer = setInterval(() => {
 	const now = Date.now();
-	for (const [k, v] of sessionRouteAttempts) if (now > v.resetAt) sessionRouteAttempts.delete(k);
+	for (const [k, v] of sessionRouteAttempts)
+		if (now > v.resetAt) sessionRouteAttempts.delete(k);
 }, 300 * 1e3);
 if (typeof sweepTimer === "object" && "unref" in sweepTimer) sweepTimer.unref();
 function setSessionCookies(res, session) {
-	res.setHeader("set-cookie", [serializeSessionCookie(session), serializeCsrfCookie(session)]);
+	res.setHeader("set-cookie", [
+		serializeSessionCookie(session),
+		serializeCsrfCookie(session),
+	]);
 }
 function clearSessionCookies(res) {
-	res.setHeader("set-cookie", [serializeSessionExpiryCookie(), serializeCsrfExpiryCookie()]);
+	res.setHeader("set-cookie", [
+		serializeSessionExpiryCookie(),
+		serializeCsrfExpiryCookie(),
+	]);
 }
 /**
-* Dispatch table for the session routes. Returns true when a route
-* matched and the response was sent; false to fall through to the rest of
-* the API surface.
-*/
+ * Dispatch table for the session routes. Returns true when a route
+ * matched and the response was sent; false to fall through to the rest of
+ * the API surface.
+ */
 async function handleAuthSessionRoutes(req, res, state) {
 	const method = (req.method ?? "GET").toUpperCase();
 	const url = new URL(req.url ?? "/", "http://localhost");
 	if (!url.pathname.startsWith("/api/auth/")) return false;
 	const db = getDrizzleDb(state);
 	if (!db) {
-		if (url.pathname === "/api/auth/setup" || url.pathname === "/api/auth/login/password" || url.pathname === "/api/auth/password/change" || url.pathname === "/api/auth/logout" || url.pathname === "/api/auth/me" || url.pathname === "/api/auth/sessions" || url.pathname.startsWith("/api/auth/sessions/")) {
+		if (
+			url.pathname === "/api/auth/setup" ||
+			url.pathname === "/api/auth/login/password" ||
+			url.pathname === "/api/auth/password/change" ||
+			url.pathname === "/api/auth/logout" ||
+			url.pathname === "/api/auth/me" ||
+			url.pathname === "/api/auth/sessions" ||
+			url.pathname.startsWith("/api/auth/sessions/")
+		) {
 			sendJson$2(res, 503, {
 				error: "db_unavailable",
-				reason: "db_unavailable"
+				reason: "db_unavailable",
 			});
 			return true;
 		}
@@ -7972,29 +9581,39 @@ async function handleAuthSessionRoutes(req, res, state) {
 	const store = new AuthStore(db);
 	const ip = req.socket?.remoteAddress ?? null;
 	const userAgent = extractHeaderValue(req.headers["user-agent"]);
-	if (method === "POST" && url.pathname === "/api/auth/setup") return await handleSetup(req, res, store, {
-		ip,
-		userAgent
-	});
-	if (method === "POST" && url.pathname === "/api/auth/login/password") return await handleLoginPassword(req, res, store, {
-		ip,
-		userAgent
-	});
-	if (method === "POST" && url.pathname === "/api/auth/password/change") return await handleChangePassword(req, res, store, {
-		ip,
-		userAgent
-	});
-	if (method === "POST" && url.pathname === "/api/auth/logout") return await handleLogout(req, res, store, {
-		ip,
-		userAgent
-	});
-	if (method === "GET" && url.pathname === "/api/auth/me") return await handleMe(req, res, store);
-	if (method === "GET" && url.pathname === "/api/auth/sessions") return await handleListSessions(req, res, store);
-	const revokeMatch = method === "POST" ? /^\/api\/auth\/sessions\/([^/]+)\/revoke$/.exec(url.pathname) : null;
-	if (revokeMatch) return await handleRevoke(req, res, store, revokeMatch[1], {
-		ip,
-		userAgent
-	});
+	if (method === "POST" && url.pathname === "/api/auth/setup")
+		return await handleSetup(req, res, store, {
+			ip,
+			userAgent,
+		});
+	if (method === "POST" && url.pathname === "/api/auth/login/password")
+		return await handleLoginPassword(req, res, store, {
+			ip,
+			userAgent,
+		});
+	if (method === "POST" && url.pathname === "/api/auth/password/change")
+		return await handleChangePassword(req, res, store, {
+			ip,
+			userAgent,
+		});
+	if (method === "POST" && url.pathname === "/api/auth/logout")
+		return await handleLogout(req, res, store, {
+			ip,
+			userAgent,
+		});
+	if (method === "GET" && url.pathname === "/api/auth/me")
+		return await handleMe(req, res, store);
+	if (method === "GET" && url.pathname === "/api/auth/sessions")
+		return await handleListSessions(req, res, store);
+	const revokeMatch =
+		method === "POST"
+			? /^\/api\/auth\/sessions\/([^/]+)\/revoke$/.exec(url.pathname)
+			: null;
+	if (revokeMatch)
+		return await handleRevoke(req, res, store, revokeMatch[1], {
+			ip,
+			userAgent,
+		});
 	return false;
 }
 async function handleSetup(req, res, store, meta) {
@@ -8005,14 +9624,15 @@ async function handleSetup(req, res, store, meta) {
 	if (await store.hasOwnerIdentity()) {
 		sendJson$2(res, 409, {
 			error: "already_initialized",
-			reason: "already_initialized"
+			reason: "already_initialized",
 		});
 		return true;
 	}
 	const body = await readCompatJsonBody(req, res);
 	if (body == null) return true;
 	const password = typeof body.password === "string" ? body.password : "";
-	const displayNameRaw = typeof body.displayName === "string" ? body.displayName.trim() : "";
+	const displayNameRaw =
+		typeof body.displayName === "string" ? body.displayName.trim() : "";
 	if (!isValidDisplayName(displayNameRaw)) {
 		sendJsonError(res, 400, "invalid_display_name");
 		return true;
@@ -8023,7 +9643,7 @@ async function handleSetup(req, res, store, meta) {
 		if (err instanceof WeakPasswordError) {
 			sendJson$2(res, 400, {
 				error: "weak_password",
-				reason: err.reason
+				reason: err.reason,
 			});
 			return true;
 		}
@@ -8038,43 +9658,48 @@ async function handleSetup(req, res, store, meta) {
 		displayName: displayNameRaw,
 		createdAt: now,
 		passwordHash,
-		cloudUserId: null
+		cloudUserId: null,
 	});
 	const { session, csrfToken } = await createBrowserSession(store, {
 		identityId,
 		ip: meta.ip,
 		userAgent: meta.userAgent,
 		rememberDevice: false,
-		now
+		now,
 	});
 	setSessionCookies(res, session);
 	await markLegacyBearerInvalidated(store, {
 		actorIdentityId: identityId,
 		ip: meta.ip,
-		userAgent: meta.userAgent
-	}).catch((err) => {
-		logger.error(`[auth] legacy invalidate audit failed: ${err instanceof Error ? err.message : String(err)}`);
-	});
-	await appendAuditEvent({
-		actorIdentityId: identityId,
-		ip: meta.ip,
 		userAgent: meta.userAgent,
-		action: "auth.setup",
-		outcome: "success",
-		metadata: { method: "password" }
-	}, { store });
+	}).catch((err) => {
+		logger.error(
+			`[auth] legacy invalidate audit failed: ${err instanceof Error ? err.message : String(err)}`,
+		);
+	});
+	await appendAuditEvent(
+		{
+			actorIdentityId: identityId,
+			ip: meta.ip,
+			userAgent: meta.userAgent,
+			action: "auth.setup",
+			outcome: "success",
+			metadata: { method: "password" },
+		},
+		{ store },
+	);
 	sendJson$2(res, 200, {
 		identity: {
 			id: identityId,
 			displayName: displayNameRaw,
-			kind: "owner"
+			kind: "owner",
 		},
 		session: {
 			id: session.id,
 			kind: session.kind,
-			expiresAt: session.expiresAt
+			expiresAt: session.expiresAt,
 		},
-		csrfToken
+		csrfToken,
 	});
 	return true;
 }
@@ -8085,31 +9710,38 @@ async function handleLoginPassword(req, res, store, meta) {
 	}
 	const body = await readCompatJsonBody(req, res);
 	if (body == null) return true;
-	const displayName = typeof body.displayName === "string" ? body.displayName.trim() : "";
+	const displayName =
+		typeof body.displayName === "string" ? body.displayName.trim() : "";
 	const password = typeof body.password === "string" ? body.password : "";
 	const rememberDevice = body.rememberDevice === true;
 	if (!isValidDisplayName(displayName) || password.length === 0) {
-		await appendAuditEvent({
-			actorIdentityId: null,
-			ip: meta.ip,
-			userAgent: meta.userAgent,
-			action: "auth.login.password",
-			outcome: "failure",
-			metadata: { reason: "invalid_input" }
-		}, { store });
+		await appendAuditEvent(
+			{
+				actorIdentityId: null,
+				ip: meta.ip,
+				userAgent: meta.userAgent,
+				action: "auth.login.password",
+				outcome: "failure",
+				metadata: { reason: "invalid_input" },
+			},
+			{ store },
+		);
 		sendJsonError(res, 400, "invalid_credentials");
 		return true;
 	}
 	const identity = await store.findIdentityByDisplayName(displayName);
 	if (!identity?.passwordHash) {
-		await appendAuditEvent({
-			actorIdentityId: identity?.id ?? null,
-			ip: meta.ip,
-			userAgent: meta.userAgent,
-			action: "auth.login.password",
-			outcome: "failure",
-			metadata: { reason: "unknown_identity" }
-		}, { store });
+		await appendAuditEvent(
+			{
+				actorIdentityId: identity?.id ?? null,
+				ip: meta.ip,
+				userAgent: meta.userAgent,
+				action: "auth.login.password",
+				outcome: "failure",
+				metadata: { reason: "unknown_identity" },
+			},
+			{ store },
+		);
 		sendJsonError(res, 401, "invalid_credentials");
 		return true;
 	}
@@ -8120,14 +9752,17 @@ async function handleLoginPassword(req, res, store, meta) {
 		ok = false;
 	}
 	if (!ok) {
-		await appendAuditEvent({
-			actorIdentityId: identity.id,
-			ip: meta.ip,
-			userAgent: meta.userAgent,
-			action: "auth.login.password",
-			outcome: "failure",
-			metadata: { reason: "bad_password" }
-		}, { store });
+		await appendAuditEvent(
+			{
+				actorIdentityId: identity.id,
+				ip: meta.ip,
+				userAgent: meta.userAgent,
+				action: "auth.login.password",
+				outcome: "failure",
+				metadata: { reason: "bad_password" },
+			},
+			{ store },
+		);
 		sendJsonError(res, 401, "invalid_credentials");
 		return true;
 	}
@@ -8137,36 +9772,41 @@ async function handleLoginPassword(req, res, store, meta) {
 		ip: meta.ip,
 		userAgent: meta.userAgent,
 		rememberDevice,
-		now
+		now,
 	});
 	setSessionCookies(res, session);
 	await markLegacyBearerInvalidated(store, {
 		actorIdentityId: identity.id,
 		ip: meta.ip,
-		userAgent: meta.userAgent
-	}).catch((err) => {
-		logger.error(`[auth] legacy invalidate audit failed: ${err instanceof Error ? err.message : String(err)}`);
-	});
-	await appendAuditEvent({
-		actorIdentityId: identity.id,
-		ip: meta.ip,
 		userAgent: meta.userAgent,
-		action: "auth.login.password",
-		outcome: "success",
-		metadata: { method: "password" }
-	}, { store });
+	}).catch((err) => {
+		logger.error(
+			`[auth] legacy invalidate audit failed: ${err instanceof Error ? err.message : String(err)}`,
+		);
+	});
+	await appendAuditEvent(
+		{
+			actorIdentityId: identity.id,
+			ip: meta.ip,
+			userAgent: meta.userAgent,
+			action: "auth.login.password",
+			outcome: "success",
+			metadata: { method: "password" },
+		},
+		{ store },
+	);
 	sendJson$2(res, 200, {
 		identity: {
 			id: identity.id,
 			displayName: identity.displayName,
-			kind: identity.kind
+			kind: identity.kind,
 		},
 		session: {
 			id: session.id,
 			kind: session.kind,
-			expiresAt: session.expiresAt
+			expiresAt: session.expiresAt,
 		},
-		csrfToken
+		csrfToken,
 	});
 	return true;
 }
@@ -8178,13 +9818,14 @@ async function handleLogout(req, res, store, meta) {
 		return true;
 	}
 	const session = await findActiveSession(store, sessionId).catch(() => null);
-	if (session) await revokeSession(session.id, {
-		store,
-		reason: "user_logout",
-		actorIdentityId: session.identityId,
-		ip: meta.ip,
-		userAgent: meta.userAgent
-	});
+	if (session)
+		await revokeSession(session.id, {
+			store,
+			reason: "user_logout",
+			actorIdentityId: session.identityId,
+			ip: meta.ip,
+			userAgent: meta.userAgent,
+		});
 	clearSessionCookies(res);
 	sendJson$2(res, 200, { ok: true });
 	return true;
@@ -8193,55 +9834,59 @@ async function handleMe(req, res, store) {
 	if (isTrustedLocalRequest(req)) {
 		const owner = (await store.listIdentitiesByKind("owner"))[0] ?? null;
 		sendJson$2(res, 200, {
-			identity: owner ? {
-				id: owner.id,
-				displayName: owner.displayName,
-				kind: owner.kind
-			} : {
-				id: "local-loopback",
-				displayName: "Local",
-				kind: "owner"
-			},
+			identity: owner
+				? {
+						id: owner.id,
+						displayName: owner.displayName,
+						kind: owner.kind,
+					}
+				: {
+						id: "local-loopback",
+						displayName: "Local",
+						kind: "owner",
+					},
 			session: {
 				id: "local-loopback",
 				kind: "local",
-				expiresAt: null
+				expiresAt: null,
 			},
 			access: {
 				mode: "local",
 				passwordConfigured: Boolean(owner?.passwordHash),
-				ownerConfigured: Boolean(owner)
-			}
+				ownerConfigured: Boolean(owner),
+			},
 		});
 		return true;
 	}
 	const ctx = await ensureSessionForRequest(req, res, {
 		store,
 		allowLegacyBearer: true,
-		allowBootstrapBearer: false
+		allowBootstrapBearer: false,
 	});
 	if (ctx?.legacy && !ctx.session && !ctx.identity) {
 		const owner = (await store.listIdentitiesByKind("owner"))[0] ?? null;
 		sendJson$2(res, 200, {
-			identity: owner ? {
-				id: owner.id,
-				displayName: owner.displayName,
-				kind: owner.kind
-			} : {
-				id: "bearer",
-				displayName: "API Token",
-				kind: "machine"
-			},
+			identity: owner
+				? {
+						id: owner.id,
+						displayName: owner.displayName,
+						kind: owner.kind,
+					}
+				: {
+						id: "bearer",
+						displayName: "API Token",
+						kind: "machine",
+					},
 			session: {
 				id: "bearer",
 				kind: "machine",
-				expiresAt: null
+				expiresAt: null,
 			},
 			access: {
 				mode: "bearer",
 				passwordConfigured: Boolean(owner?.passwordHash),
-				ownerConfigured: Boolean(owner)
-			}
+				ownerConfigured: Boolean(owner),
+			},
 		});
 		return true;
 	}
@@ -8249,12 +9894,14 @@ async function handleMe(req, res, store) {
 		const owner = (await store.listIdentitiesByKind("owner"))[0] ?? null;
 		sendJson$2(res, 401, {
 			error: "Unauthorized",
-			reason: owner?.passwordHash ? "remote_auth_required" : "remote_password_not_configured",
+			reason: owner?.passwordHash
+				? "remote_auth_required"
+				: "remote_password_not_configured",
 			access: {
 				mode: "remote",
 				passwordConfigured: Boolean(owner?.passwordHash),
-				ownerConfigured: Boolean(owner)
-			}
+				ownerConfigured: Boolean(owner),
+			},
 		});
 		return true;
 	}
@@ -8262,18 +9909,18 @@ async function handleMe(req, res, store) {
 		identity: {
 			id: ctx.identity.id,
 			displayName: ctx.identity.displayName,
-			kind: ctx.identity.kind
+			kind: ctx.identity.kind,
 		},
 		session: {
 			id: ctx.session.id,
 			kind: ctx.session.kind,
-			expiresAt: ctx.session.expiresAt
+			expiresAt: ctx.session.expiresAt,
 		},
 		access: {
 			mode: "session",
 			passwordConfigured: Boolean(ctx.identity.passwordHash),
-			ownerConfigured: true
-		}
+			ownerConfigured: true,
+		},
 	});
 	return true;
 }
@@ -8284,27 +9931,33 @@ async function handleChangePassword(req, res, store, meta) {
 	}
 	const body = await readCompatJsonBody(req, res);
 	if (body == null) return true;
-	const currentPassword = typeof body.currentPassword === "string" ? body.currentPassword : "";
-	const newPassword = typeof body.newPassword === "string" ? body.newPassword : "";
+	const currentPassword =
+		typeof body.currentPassword === "string" ? body.currentPassword : "";
+	const newPassword =
+		typeof body.newPassword === "string" ? body.newPassword : "";
 	try {
 		assertPasswordStrong(newPassword);
 	} catch (err) {
 		if (err instanceof WeakPasswordError) {
 			sendJson$2(res, 400, {
 				error: "weak_password",
-				reason: err.reason
+				reason: err.reason,
 			});
 			return true;
 		}
 		throw err;
 	}
 	const localAccess = isTrustedLocalRequest(req);
-	const ctx = localAccess ? null : await ensureSessionForRequest(req, res, {
-		store,
-		allowLegacyBearer: false,
-		allowBootstrapBearer: false
-	});
-	const identity = localAccess ? (await store.listIdentitiesByKind("owner"))[0] ?? null : ctx?.identity ?? null;
+	const ctx = localAccess
+		? null
+		: await ensureSessionForRequest(req, res, {
+				store,
+				allowLegacyBearer: false,
+				allowBootstrapBearer: false,
+			});
+	const identity = localAccess
+		? ((await store.listIdentitiesByKind("owner"))[0] ?? null)
+		: (ctx?.identity ?? null);
 	if (!identity) {
 		sendJsonError(res, 404, "owner_not_found");
 		return true;
@@ -8314,29 +9967,35 @@ async function handleChangePassword(req, res, store, meta) {
 			sendJsonError(res, 401, "invalid_credentials");
 			return true;
 		}
-		if (!await verifyPassword(currentPassword, identity.passwordHash)) {
-			await appendAuditEvent({
-				actorIdentityId: identity.id,
-				ip: meta.ip,
-				userAgent: meta.userAgent,
-				action: "auth.password.change",
-				outcome: "failure",
-				metadata: { reason: "bad_current_password" }
-			}, { store });
+		if (!(await verifyPassword(currentPassword, identity.passwordHash))) {
+			await appendAuditEvent(
+				{
+					actorIdentityId: identity.id,
+					ip: meta.ip,
+					userAgent: meta.userAgent,
+					action: "auth.password.change",
+					outcome: "failure",
+					metadata: { reason: "bad_current_password" },
+				},
+				{ store },
+			);
 			sendJsonError(res, 401, "invalid_credentials");
 			return true;
 		}
 	}
 	const passwordHash = await hashPassword(newPassword);
 	await store.updateIdentityPassword(identity.id, passwordHash);
-	await appendAuditEvent({
-		actorIdentityId: identity.id,
-		ip: meta.ip,
-		userAgent: meta.userAgent,
-		action: "auth.password.change",
-		outcome: "success",
-		metadata: { localAccess }
-	}, { store });
+	await appendAuditEvent(
+		{
+			actorIdentityId: identity.id,
+			ip: meta.ip,
+			userAgent: meta.userAgent,
+			action: "auth.password.change",
+			outcome: "success",
+			metadata: { localAccess },
+		},
+		{ store },
+	);
 	sendJson$2(res, 200, { ok: true });
 	return true;
 }
@@ -8344,29 +10003,34 @@ async function handleListSessions(req, res, store) {
 	if (isTrustedLocalRequest(req)) {
 		const owner = (await store.listIdentitiesByKind("owner"))[0] ?? null;
 		const sessions = owner ? await store.listSessionsForIdentity(owner.id) : [];
-		sendJson$2(res, 200, { sessions: [{
-			id: "local-loopback",
-			kind: "local",
-			ip: req.socket?.remoteAddress ?? "127.0.0.1",
-			userAgent: extractHeaderValue(req.headers["user-agent"]),
-			lastSeenAt: Date.now(),
-			expiresAt: null,
-			current: true
-		}, ...sessions.map((s) => ({
-			id: s.id,
-			kind: s.kind,
-			ip: s.ip,
-			userAgent: s.userAgent,
-			lastSeenAt: s.lastSeenAt,
-			expiresAt: s.expiresAt,
-			current: false
-		}))] });
+		sendJson$2(res, 200, {
+			sessions: [
+				{
+					id: "local-loopback",
+					kind: "local",
+					ip: req.socket?.remoteAddress ?? "127.0.0.1",
+					userAgent: extractHeaderValue(req.headers["user-agent"]),
+					lastSeenAt: Date.now(),
+					expiresAt: null,
+					current: true,
+				},
+				...sessions.map((s) => ({
+					id: s.id,
+					kind: s.kind,
+					ip: s.ip,
+					userAgent: s.userAgent,
+					lastSeenAt: s.lastSeenAt,
+					expiresAt: s.expiresAt,
+					current: false,
+				})),
+			],
+		});
 		return true;
 	}
 	const ctx = await ensureSessionForRequest(req, res, {
 		store,
 		allowLegacyBearer: false,
-		allowBootstrapBearer: false
+		allowBootstrapBearer: false,
 	});
 	if (!ctx?.identity) {
 		sendJsonError(res, 401, "Unauthorized");
@@ -8374,22 +10038,24 @@ async function handleListSessions(req, res, store) {
 	}
 	const sessions = await store.listSessionsForIdentity(ctx.identity.id);
 	const currentId = ctx.session?.id ?? null;
-	sendJson$2(res, 200, { sessions: sessions.map((s) => ({
-		id: s.id,
-		kind: s.kind,
-		ip: s.ip,
-		userAgent: s.userAgent,
-		lastSeenAt: s.lastSeenAt,
-		expiresAt: s.expiresAt,
-		current: s.id === currentId
-	})) });
+	sendJson$2(res, 200, {
+		sessions: sessions.map((s) => ({
+			id: s.id,
+			kind: s.kind,
+			ip: s.ip,
+			userAgent: s.userAgent,
+			lastSeenAt: s.lastSeenAt,
+			expiresAt: s.expiresAt,
+			current: s.id === currentId,
+		})),
+	});
 	return true;
 }
 async function handleRevoke(req, res, store, targetSessionId, meta) {
 	const ctx = await ensureSessionForRequest(req, res, {
 		store,
 		allowLegacyBearer: false,
-		allowBootstrapBearer: false
+		allowBootstrapBearer: false,
 	});
 	if (!ctx?.identity) {
 		sendJsonError(res, 401, "Unauthorized");
@@ -8405,17 +10071,39 @@ async function handleRevoke(req, res, store, targetSessionId, meta) {
 		reason: "user_revoke",
 		actorIdentityId: ctx.identity.id,
 		ip: meta.ip,
-		userAgent: meta.userAgent
+		userAgent: meta.userAgent,
 	});
-	if (ctx.session && ctx.session.id === targetSessionId) clearSessionCookies(res);
+	if (ctx.session && ctx.session.id === targetSessionId)
+		clearSessionCookies(res);
 	sendJson$2(res, 200, { ok: true });
 	return true;
 }
 
 //#endregion
 //#region node_modules/.bun/@elizaos+app-core@2.0.0-alpha.537+72829346cb4c43b1/node_modules/@elizaos/app-core/packages/app-core/src/registry/schema.js
-var configFieldType, configFieldOption, visibilityCondition, configFieldSchema, renderActionSchema, secondarySurfaceSchema, renderSchema, resourcesSchema, appViewerSchema, appSessionSchema, appSupportsSchema, appNpmSchema, appRoutePluginSchema, appLaunchSchema, commonFields, pluginSubtype, connectorSubtype, pluginEntrySchema, connectorEntrySchema, appEntrySchema, registryEntrySchema, registryRuntimeOverlaySchema;
-var init_schema = __esmMin((() => {
+var configFieldType,
+	configFieldOption,
+	visibilityCondition,
+	configFieldSchema,
+	renderActionSchema,
+	secondarySurfaceSchema,
+	renderSchema,
+	resourcesSchema,
+	appViewerSchema,
+	appSessionSchema,
+	appSupportsSchema,
+	appNpmSchema,
+	appRoutePluginSchema,
+	appLaunchSchema,
+	commonFields,
+	pluginSubtype,
+	connectorSubtype,
+	pluginEntrySchema,
+	connectorEntrySchema,
+	appEntrySchema,
+	registryEntrySchema,
+	registryRuntimeOverlaySchema;
+var init_schema = __esmMin(() => {
 	configFieldType = z.enum([
 		"string",
 		"secret",
@@ -8426,41 +10114,34 @@ var init_schema = __esmMin((() => {
 		"json",
 		"textarea",
 		"url",
-		"file-path"
+		"file-path",
 	]);
 	configFieldOption = z.object({
 		value: z.string(),
 		label: z.string(),
 		description: z.string().optional(),
 		icon: z.string().optional(),
-		disabled: z.boolean().optional()
+		disabled: z.boolean().optional(),
 	});
 	visibilityCondition = z.object({
 		key: z.string(),
 		equals: z.unknown().optional(),
 		in: z.array(z.unknown()).optional(),
-		notEquals: z.unknown().optional()
+		notEquals: z.unknown().optional(),
 	});
 	configFieldSchema = z.object({
 		type: configFieldType,
 		required: z.boolean(),
 		sensitive: z.boolean().optional(),
-		default: z.union([
-			z.string(),
-			z.number(),
-			z.boolean(),
-			z.null()
-		]).optional(),
+		default: z
+			.union([z.string(), z.number(), z.boolean(), z.null()])
+			.optional(),
 		label: z.string().optional(),
 		help: z.string().optional(),
 		placeholder: z.string().optional(),
 		group: z.string().optional(),
 		order: z.number().int().optional(),
-		width: z.enum([
-			"full",
-			"half",
-			"third"
-		]).optional(),
+		width: z.enum(["full", "half", "third"]).optional(),
 		advanced: z.boolean().optional(),
 		hidden: z.boolean().optional(),
 		readonly: z.boolean().optional(),
@@ -8472,7 +10153,7 @@ var init_schema = __esmMin((() => {
 		max: z.number().optional(),
 		step: z.number().optional(),
 		unit: z.string().optional(),
-		visible: visibilityCondition.optional()
+		visible: visibilityCondition.optional(),
 	});
 	renderActionSchema = z.enum([
 		"enable",
@@ -8483,73 +10164,59 @@ var init_schema = __esmMin((() => {
 		"stop",
 		"uninstall",
 		"install",
-		"setup-guide"
+		"setup-guide",
 	]);
 	secondarySurfaceSchema = z.enum([
 		"chat-apps-section",
 		"companion-shell",
-		"settings-integrations"
+		"settings-integrations",
 	]);
 	renderSchema = z.object({
 		visible: z.boolean().default(true),
 		pinTo: z.array(secondarySurfaceSchema).default([]),
-		style: z.enum([
-			"card",
-			"setup-panel",
-			"hero-card"
-		]).default("card"),
+		style: z.enum(["card", "setup-panel", "hero-card"]).default("card"),
 		icon: z.string().optional(),
 		heroImage: z.string().optional(),
 		group: z.string(),
 		groupOrder: z.number().int().optional(),
-		actions: z.array(renderActionSchema).default([])
+		actions: z.array(renderActionSchema).default([]),
 	});
 	resourcesSchema = z.object({
 		homepage: z.string().url().optional(),
 		repository: z.string().url().optional(),
-		setupGuideUrl: z.string().url().optional()
+		setupGuideUrl: z.string().url().optional(),
 	});
 	appViewerSchema = z.object({
 		url: z.string(),
 		embedParams: z.record(z.string(), z.string()).optional(),
 		postMessageAuth: z.boolean().optional(),
-		sandbox: z.string().optional()
+		sandbox: z.string().optional(),
 	});
 	appSessionSchema = z.object({
-		mode: z.enum([
-			"viewer",
-			"spectate-and-steer",
-			"external"
-		]),
-		features: z.array(z.enum([
-			"commands",
-			"telemetry",
-			"pause",
-			"resume",
-			"suggestions"
-		])).optional()
+		mode: z.enum(["viewer", "spectate-and-steer", "external"]),
+		features: z
+			.array(
+				z.enum(["commands", "telemetry", "pause", "resume", "suggestions"]),
+			)
+			.optional(),
 	});
 	appSupportsSchema = z.object({
 		v0: z.boolean(),
 		v1: z.boolean(),
-		v2: z.boolean()
+		v2: z.boolean(),
 	});
 	appNpmSchema = z.object({
 		package: z.string(),
 		v0Version: z.string().nullable(),
 		v1Version: z.string().nullable(),
-		v2Version: z.string().nullable()
+		v2Version: z.string().nullable(),
 	});
 	appRoutePluginSchema = z.object({
 		specifier: z.string().min(1),
-		exportName: z.string().min(1).optional()
+		exportName: z.string().min(1).optional(),
 	});
 	appLaunchSchema = z.object({
-		type: z.enum([
-			"internal-tab",
-			"overlay",
-			"server-launch"
-		]),
+		type: z.enum(["internal-tab", "overlay", "server-launch"]),
 		target: z.string().optional(),
 		url: z.string().nullable().optional(),
 		viewer: appViewerSchema.optional(),
@@ -8559,10 +10226,13 @@ var init_schema = __esmMin((() => {
 		capabilities: z.array(z.string()).default([]),
 		uiExtension: z.object({ detailPanelId: z.string() }).optional(),
 		curatedSlug: z.string().optional(),
-		routePlugin: appRoutePluginSchema.optional()
+		routePlugin: appRoutePluginSchema.optional(),
 	});
 	commonFields = {
-		id: z.string().min(1).regex(/^[a-z0-9][a-z0-9-]*$/, "id must be kebab-case ascii"),
+		id: z
+			.string()
+			.min(1)
+			.regex(/^[a-z0-9][a-z0-9-]*$/, "id must be kebab-case ascii"),
 		name: z.string().min(1),
 		description: z.string().optional(),
 		npmName: z.string().optional(),
@@ -8573,7 +10243,7 @@ var init_schema = __esmMin((() => {
 		config: z.record(z.string(), configFieldSchema).default({}),
 		render: renderSchema,
 		resources: resourcesSchema.default({}),
-		dependsOn: z.array(z.string()).default([])
+		dependsOn: z.array(z.string()).default([]),
 	};
 	pluginSubtype = z.enum([
 		"ai-provider",
@@ -8588,7 +10258,7 @@ var init_schema = __esmMin((() => {
 		"storage",
 		"gaming",
 		"devtools",
-		"other"
+		"other",
 	]);
 	connectorSubtype = z.enum([
 		"messaging",
@@ -8596,26 +10266,23 @@ var init_schema = __esmMin((() => {
 		"streaming",
 		"email",
 		"calendar",
-		"other"
+		"other",
 	]);
 	pluginEntrySchema = z.object({
 		...commonFields,
 		kind: z.literal("plugin"),
-		subtype: pluginSubtype
+		subtype: pluginSubtype,
 	});
 	connectorEntrySchema = z.object({
 		...commonFields,
 		kind: z.literal("connector"),
 		subtype: connectorSubtype,
-		auth: z.object({
-			kind: z.enum([
-				"token",
-				"oauth",
-				"credentials",
-				"none"
-			]),
-			credentialKeys: z.array(z.string()).default([])
-		}).optional()
+		auth: z
+			.object({
+				kind: z.enum(["token", "oauth", "credentials", "none"]),
+				credentialKeys: z.array(z.string()).default([]),
+			})
+			.optional(),
 	});
 	appEntrySchema = z.object({
 		...commonFields,
@@ -8626,14 +10293,14 @@ var init_schema = __esmMin((() => {
 			"shell",
 			"marketplace",
 			"trading",
-			"other"
+			"other",
 		]),
-		launch: appLaunchSchema
+		launch: appLaunchSchema,
 	});
 	registryEntrySchema = z.discriminatedUnion("kind", [
 		pluginEntrySchema,
 		connectorEntrySchema,
-		appEntrySchema
+		appEntrySchema,
 	]);
 	registryRuntimeOverlaySchema = z.object({
 		id: z.string(),
@@ -8641,18 +10308,26 @@ var init_schema = __esmMin((() => {
 		configured: z.boolean(),
 		isActive: z.boolean(),
 		loadError: z.string().optional(),
-		validationErrors: z.array(z.object({
-			field: z.string(),
-			message: z.string()
-		})).default([]),
-		validationWarnings: z.array(z.object({
-			field: z.string(),
-			message: z.string()
-		})).default([]),
+		validationErrors: z
+			.array(
+				z.object({
+					field: z.string(),
+					message: z.string(),
+				}),
+			)
+			.default([]),
+		validationWarnings: z
+			.array(
+				z.object({
+					field: z.string(),
+					message: z.string(),
+				}),
+			)
+			.default([]),
 		installedVersion: z.string().optional(),
-		latestVersion: z.string().nullable().optional()
+		latestVersion: z.string().nullable().optional(),
 	});
-}));
+});
 
 //#endregion
 //#region node_modules/.bun/@elizaos+app-core@2.0.0-alpha.537+72829346cb4c43b1/node_modules/@elizaos/app-core/packages/app-core/src/registry/loader.js
@@ -8663,7 +10338,11 @@ function loadRegistryFromRawEntries(raws) {
 		const parsed = registryEntrySchema.safeParse(data);
 		if (!parsed.success) throw new RegistryValidationError(file, parsed.error);
 		const entry = parsed.data;
-		if (seenIds.has(entry.id)) throw new RegistryValidationError(file, `duplicate id "${entry.id}" — every registry entry must have a unique id`);
+		if (seenIds.has(entry.id))
+			throw new RegistryValidationError(
+				file,
+				`duplicate id "${entry.id}" — every registry entry must have a unique id`,
+			);
 		seenIds.add(entry.id);
 		all.push(entry);
 	}
@@ -8674,7 +10353,7 @@ function indexEntries(entries) {
 	const byKind = new Map([
 		["app", []],
 		["plugin", []],
-		["connector", []]
+		["connector", []],
 	]);
 	const byGroup = /* @__PURE__ */ new Map();
 	const byNpmName = /* @__PURE__ */ new Map();
@@ -8695,7 +10374,7 @@ function indexEntries(entries) {
 		byKind,
 		byGroup,
 		byNpmName,
-		all: entries
+		all: entries,
 	};
 }
 function compareEntriesForDisplay(a, b) {
@@ -8708,7 +10387,7 @@ function getApps(registry) {
 	return registry.byKind.get("app") ?? [];
 }
 var RegistryValidationError;
-var init_loader = __esmMin((() => {
+var init_loader = __esmMin(() => {
 	init_schema();
 	RegistryValidationError = class extends Error {
 		file;
@@ -8720,7 +10399,7 @@ var init_loader = __esmMin((() => {
 			this.cause = cause;
 		}
 	};
-}));
+});
 
 //#endregion
 //#region node_modules/.bun/@elizaos+app-core@2.0.0-alpha.537+72829346cb4c43b1/node_modules/@elizaos/app-core/packages/app-core/src/registry/legacy-adapter.js
@@ -8745,22 +10424,27 @@ function envKeyFor(entry) {
 		const [first] = entry.auth.credentialKeys;
 		if (first) return first;
 	}
-	for (const [key, field] of Object.entries(entry.config)) if (field.required && (field.type === "secret" || field.sensitive)) return key;
+	for (const [key, field] of Object.entries(entry.config))
+		if (field.required && (field.type === "secret" || field.sensitive))
+			return key;
 }
 function fieldToLegacyParameter(field) {
 	const param = {
 		type: FIELD_TYPE_TO_LEGACY[field.type],
 		description: field.help ?? field.label ?? "",
 		required: field.required,
-		sensitive: field.sensitive ?? field.type === "secret"
+		sensitive: field.sensitive ?? field.type === "secret",
 	};
-	if (field.default !== void 0 && field.default !== null) param.default = String(field.default);
-	if (field.options) param.options = field.options.map((option) => option.value);
+	if (field.default !== void 0 && field.default !== null)
+		param.default = String(field.default);
+	if (field.options)
+		param.options = field.options.map((option) => option.value);
 	return param;
 }
 function entryToLegacyManifestEntry(entry) {
 	const pluginParameters = {};
-	for (const [key, field] of Object.entries(entry.config)) pluginParameters[key] = fieldToLegacyParameter(field);
+	for (const [key, field] of Object.entries(entry.config))
+		pluginParameters[key] = fieldToLegacyParameter(field);
 	return {
 		id: entry.id,
 		dirName: entry.npmName?.replace(/^@[^/]+\//, ""),
@@ -8776,14 +10460,14 @@ function entryToLegacyManifestEntry(entry) {
 		icon: entry.render.icon ?? null,
 		homepage: entry.resources.homepage,
 		repository: entry.resources.repository,
-		setupGuideUrl: entry.resources.setupGuideUrl
+		setupGuideUrl: entry.resources.setupGuideUrl,
 	};
 }
 function entriesToLegacyManifest(entries) {
 	return { plugins: entries.map(entryToLegacyManifestEntry) };
 }
 var FIELD_TYPE_TO_LEGACY, KIND_TO_LEGACY_CATEGORY;
-var init_legacy_adapter = __esmMin((() => {
+var init_legacy_adapter = __esmMin(() => {
 	FIELD_TYPE_TO_LEGACY = {
 		string: "string",
 		secret: "string",
@@ -8794,25 +10478,21 @@ var init_legacy_adapter = __esmMin((() => {
 		select: "string",
 		multiselect: "string",
 		boolean: "boolean",
-		number: "number"
+		number: "number",
 	};
 	KIND_TO_LEGACY_CATEGORY = {
 		app: "app",
 		connector: "connector",
-		plugin: "feature"
+		plugin: "feature",
 	};
-}));
+});
 
 //#endregion
 //#region node_modules/.bun/@elizaos+app-core@2.0.0-alpha.537+72829346cb4c43b1/node_modules/@elizaos/app-core/packages/app-core/src/registry/index.js
 function loadRegistry() {
 	if (cache) return cache;
 	const raws = [];
-	for (const kind of [
-		"apps",
-		"plugins",
-		"connectors"
-	]) {
+	for (const kind of ["apps", "plugins", "connectors"]) {
 		const kindDir = join(entriesDir, kind);
 		let entries;
 		try {
@@ -8827,7 +10507,7 @@ function loadRegistry() {
 			const data = JSON.parse(readFileSync(file, "utf-8"));
 			raws.push({
 				file,
-				data
+				data,
 			});
 		}
 	}
@@ -8835,13 +10515,13 @@ function loadRegistry() {
 	return cache;
 }
 var entriesDir, cache;
-var init_registry = __esmMin((() => {
+var init_registry = __esmMin(() => {
 	init_loader();
 	init_legacy_adapter();
 	init_schema();
 	entriesDir = join(dirname(fileURLToPath(import.meta.url)), "entries");
 	cache = null;
-}));
+});
 
 //#endregion
 //#region node_modules/.bun/@elizaos+app-core@2.0.0-alpha.537+72829346cb4c43b1/node_modules/@elizaos/app-core/packages/app-core/src/api/catalog-routes.js
@@ -8849,9 +10529,11 @@ init_registry();
 init_auth();
 init_response();
 function appEntryToRegistryAppInfo(entry) {
-	const launchType = entry.launch.type === "server-launch" ? "server" : entry.launch.type;
+	const launchType =
+		entry.launch.type === "server-launch" ? "server" : entry.launch.type;
 	const packageName = entry.npmName ?? entry.id;
-	const heroImage = entry.render.heroImage ?? resolveAppHeroImage(packageName, null);
+	const heroImage =
+		entry.render.heroImage ?? resolveAppHeroImage(packageName, null);
 	return {
 		name: packageName,
 		displayName: entry.name,
@@ -8868,16 +10550,16 @@ function appEntryToRegistryAppInfo(entry) {
 		supports: entry.launch.supports ?? {
 			v0: false,
 			v1: false,
-			v2: true
+			v2: true,
 		},
 		npm: entry.launch.npm ?? {
 			package: entry.npmName ?? entry.id,
 			v0Version: null,
 			v1Version: null,
-			v2Version: entry.version ?? null
+			v2Version: entry.version ?? null,
 		},
 		viewer: entry.launch.viewer,
-		uiExtension: entry.launch.uiExtension
+		uiExtension: entry.launch.uiExtension,
 	};
 }
 async function handleCatalogRoutes(req, res, state) {
@@ -8885,8 +10567,14 @@ async function handleCatalogRoutes(req, res, state) {
 	const url = new URL(req.url ?? "/", "http://localhost");
 	if (!url.pathname.startsWith("/api/catalog")) return false;
 	if (method === "GET" && url.pathname === "/api/catalog/apps") {
-		if (!await ensureRouteAuthorized(req, res, state)) return true;
-		sendJson$2(res, 200, getApps(loadRegistry()).filter((a) => a.render.visible).map(appEntryToRegistryAppInfo));
+		if (!(await ensureRouteAuthorized(req, res, state))) return true;
+		sendJson$2(
+			res,
+			200,
+			getApps(loadRegistry())
+				.filter((a) => a.render.visible)
+				.map(appEntryToRegistryAppInfo),
+		);
 		return true;
 	}
 	return false;
@@ -8895,11 +10583,11 @@ async function handleCatalogRoutes(req, res, state) {
 //#endregion
 //#region node_modules/.bun/@elizaos+app-core@2.0.0-alpha.537+72829346cb4c43b1/node_modules/@elizaos/app-core/packages/app-core/src/utils/errors.js
 /**
-* Shared error classification helpers.
-*
-* Consolidates the timeout detection pattern that was independently
-* implemented in cloud-routes.ts and cloud-connection.ts.
-*/
+ * Shared error classification helpers.
+ *
+ * Consolidates the timeout detection pattern that was independently
+ * implemented in cloud-routes.ts and cloud-connection.ts.
+ */
 /** Classify an error as a fetch/AbortSignal timeout. */
 function isTimeoutError(error) {
 	if (!(error instanceof Error)) return false;
@@ -8911,7 +10599,8 @@ function isTimeoutError(error) {
 //#endregion
 //#region node_modules/.bun/@elizaos+app-core@2.0.0-alpha.537+72829346cb4c43b1/node_modules/@elizaos/app-core/packages/app-core/src/api/cloud-connection.js
 const DEFAULT_CLOUD_API_BASE_URL = "https://www.elizacloud.ai/api/v1";
-const CLOUD_BILLING_URL = "https://www.elizacloud.ai/dashboard/settings?tab=billing";
+const CLOUD_BILLING_URL =
+	"https://www.elizacloud.ai/dashboard/settings?tab=billing";
 const CLOUD_ENV_KEYS = [
 	"ELIZAOS_CLOUD_API_KEY",
 	"ELIZAOS_CLOUD_ENABLED",
@@ -8929,7 +10618,7 @@ const CLOUD_ENV_KEYS = [
 	"ELIZAOS_CLOUD_USE_TTS",
 	"ELIZAOS_CLOUD_USE_MEDIA",
 	"ELIZAOS_CLOUD_USE_EMBEDDINGS",
-	"ELIZAOS_CLOUD_USE_RPC"
+	"ELIZAOS_CLOUD_USE_RPC",
 ];
 const CLOUD_RUNTIME_SECRET_KEYS = [
 	"ELIZAOS_CLOUD_API_KEY",
@@ -8946,12 +10635,12 @@ const CLOUD_RUNTIME_SECRET_KEYS = [
 	"ELIZAOS_CLOUD_PLANNER_MODEL",
 	"ELIZA_CLOUD_AUTH_TOKEN",
 	"ELIZA_CLOUD_USER_ID",
-	"ELIZA_CLOUD_ORGANIZATION_ID"
+	"ELIZA_CLOUD_ORGANIZATION_ID",
 ];
 const CLOUD_RUNTIME_SETTING_KEYS = [
 	"ELIZA_CLOUD_AUTH_TOKEN",
 	"ELIZA_CLOUD_USER_ID",
-	"ELIZA_CLOUD_ORGANIZATION_ID"
+	"ELIZA_CLOUD_ORGANIZATION_ID",
 ];
 const CLOUD_AUTH_CLEAR_METHODS = [
 	"disconnect",
@@ -8961,7 +10650,7 @@ const CLOUD_AUTH_CLEAR_METHODS = [
 	"clearSession",
 	"clearAuth",
 	"resetAuth",
-	"reset"
+	"reset",
 ];
 /** Thrown when the credits endpoint returns 401 — same credential path as chat completions. */
 var CloudCreditsAuthRejectedError = class extends Error {
@@ -8991,12 +10680,27 @@ function getCloudAuth(runtime) {
 function resolvePersistedCloudIdentity(runtime) {
 	const runtimeWithCloud = asRuntimeCloud(runtime);
 	return {
-		organizationId: normalizeEnvValue(runtimeWithCloud?.getSetting?.("ELIZA_CLOUD_ORGANIZATION_ID")) ?? normalizeEnvValue(runtimeWithCloud?.character?.secrets?.ELIZA_CLOUD_ORGANIZATION_ID),
-		userId: normalizeEnvValue(runtimeWithCloud?.getSetting?.("ELIZA_CLOUD_USER_ID")) ?? normalizeEnvValue(runtimeWithCloud?.character?.secrets?.ELIZA_CLOUD_USER_ID)
+		organizationId:
+			normalizeEnvValue(
+				runtimeWithCloud?.getSetting?.("ELIZA_CLOUD_ORGANIZATION_ID"),
+			) ??
+			normalizeEnvValue(
+				runtimeWithCloud?.character?.secrets?.ELIZA_CLOUD_ORGANIZATION_ID,
+			),
+		userId:
+			normalizeEnvValue(
+				runtimeWithCloud?.getSetting?.("ELIZA_CLOUD_USER_ID"),
+			) ??
+			normalizeEnvValue(
+				runtimeWithCloud?.character?.secrets?.ELIZA_CLOUD_USER_ID,
+			),
 	};
 }
 function resolveCloudApiBaseUrl$1(rawBaseUrl) {
-	return resolveCloudApiBaseUrl(rawBaseUrl ?? DEFAULT_CLOUD_API_BASE_URL) ?? DEFAULT_CLOUD_API_BASE_URL;
+	return (
+		resolveCloudApiBaseUrl(rawBaseUrl ?? DEFAULT_CLOUD_API_BASE_URL) ??
+		DEFAULT_CLOUD_API_BASE_URL
+	);
 }
 function resolveCloudApiKey(config, runtime) {
 	migrateLegacyRuntimeConfig(config);
@@ -9007,9 +10711,13 @@ function resolveCloudApiKey(config, runtime) {
 	if (sealedKey) return sealedKey;
 	const envKey = normalizeEnvValue(process.env.ELIZAOS_CLOUD_API_KEY);
 	if (envKey) return envKey;
-	const runtimeSettingKey = normalizeEnvValue(runtime?.getSetting?.("ELIZAOS_CLOUD_API_KEY"));
+	const runtimeSettingKey = normalizeEnvValue(
+		runtime?.getSetting?.("ELIZAOS_CLOUD_API_KEY"),
+	);
 	if (runtimeSettingKey) return runtimeSettingKey;
-	const runtimeKey = normalizeEnvValue(runtime?.character?.secrets?.ELIZAOS_CLOUD_API_KEY);
+	const runtimeKey = normalizeEnvValue(
+		runtime?.character?.secrets?.ELIZAOS_CLOUD_API_KEY,
+	);
 	if (runtimeKey) return runtimeKey;
 }
 function resolveCloudConnectionSnapshot(config, runtime) {
@@ -9029,17 +10737,23 @@ function resolveCloudConnectionSnapshot(config, runtime) {
 		connected: authConnected || hasApiKey,
 		enabled,
 		hasApiKey,
-		organizationId: shouldExposeIdentity ? normalizeEnvValue(cloudAuth?.getOrganizationId?.()) ?? persistedIdentity.organizationId : void 0,
-		userId: shouldExposeIdentity ? normalizeEnvValue(cloudAuth?.getUserId?.()) ?? persistedIdentity.userId : void 0
+		organizationId: shouldExposeIdentity
+			? (normalizeEnvValue(cloudAuth?.getOrganizationId?.()) ??
+				persistedIdentity.organizationId)
+			: void 0,
+		userId: shouldExposeIdentity
+			? (normalizeEnvValue(cloudAuth?.getUserId?.()) ??
+				persistedIdentity.userId)
+			: void 0,
 	};
 }
 /**
-* Coerce an Eliza Cloud `balance` field into a number. The cloud API
-* returns `balance` as `string | number` (per the Bridge client + config
-* type definitions) — string when the upstream is using a fixed-precision
-* decimal, number when it's been arithmetic'd. Treat both as the same
-* dollar amount; reject anything else as an unexpected response.
-*/
+ * Coerce an Eliza Cloud `balance` field into a number. The cloud API
+ * returns `balance` as `string | number` (per the Bridge client + config
+ * type definitions) — string when the upstream is using a fixed-precision
+ * decimal, number when it's been arithmetic'd. Treat both as the same
+ * dollar amount; reject anything else as an unexpected response.
+ */
 function coerceCloudBalance(value) {
 	if (typeof value === "number" && Number.isFinite(value)) return value;
 	if (typeof value === "string") {
@@ -9054,71 +10768,108 @@ async function fetchCloudCreditsByApiKey(baseUrl, apiKey) {
 	const response = await fetch(`${baseUrl}/credits/balance`, {
 		headers: {
 			Accept: "application/json",
-			Authorization: `Bearer ${apiKey}`
+			Authorization: `Bearer ${apiKey}`,
 		},
 		redirect: "manual",
-		signal: AbortSignal.timeout(1e4)
+		signal: AbortSignal.timeout(1e4),
 	});
-	if (response.status >= 300 && response.status < 400) throw new Error("Cloud credits request was redirected; redirects are not allowed");
+	if (response.status >= 300 && response.status < 400)
+		throw new Error(
+			"Cloud credits request was redirected; redirects are not allowed",
+		);
 	const creditResponse = await response.json().catch((err) => {
-		console.warn("[cloud-connection] Failed to parse credit balance response JSON:", err);
+		console.warn(
+			"[cloud-connection] Failed to parse credit balance response JSON:",
+			err,
+		);
 		return {};
 	});
-	if (response.status === 401) throw new CloudCreditsAuthRejectedError(cloudCreditsHttpErrorMessage(401, creditResponse));
-	if (!response.ok) throw new Error(cloudCreditsHttpErrorMessage(response.status, creditResponse));
-	return coerceCloudBalance(creditResponse.balance) ?? coerceCloudBalance(creditResponse.data?.balance);
+	if (response.status === 401)
+		throw new CloudCreditsAuthRejectedError(
+			cloudCreditsHttpErrorMessage(401, creditResponse),
+		);
+	if (!response.ok)
+		throw new Error(
+			cloudCreditsHttpErrorMessage(response.status, creditResponse),
+		);
+	return (
+		coerceCloudBalance(creditResponse.balance) ??
+		coerceCloudBalance(creditResponse.data?.balance)
+	);
 }
 /** Configurable credit thresholds. Override via env vars if defaults don't fit. */
-const CREDIT_LOW_THRESHOLD = Number(process.env.ELIZA_CREDIT_LOW_THRESHOLD ?? "2.0");
-const CREDIT_CRITICAL_THRESHOLD = Number(process.env.ELIZA_CREDIT_CRITICAL_THRESHOLD ?? "0.5");
+const CREDIT_LOW_THRESHOLD = Number(
+	process.env.ELIZA_CREDIT_LOW_THRESHOLD ?? "2.0",
+);
+const CREDIT_CRITICAL_THRESHOLD = Number(
+	process.env.ELIZA_CREDIT_CRITICAL_THRESHOLD ?? "0.5",
+);
 function withCreditFlags(balance) {
 	return {
 		connected: true,
 		balance,
 		low: balance < CREDIT_LOW_THRESHOLD,
 		critical: balance < CREDIT_CRITICAL_THRESHOLD,
-		topUpUrl: CLOUD_BILLING_URL
+		topUpUrl: CLOUD_BILLING_URL,
 	};
 }
 async function fetchCloudCredits(config, runtime) {
 	const snapshot = resolveCloudConnectionSnapshot(config, runtime);
 	let authenticatedFailure = null;
 	let authenticatedUnexpectedResponse = false;
-	if (!snapshot.connected) return {
-		balance: null,
-		connected: false
-	};
+	if (!snapshot.connected)
+		return {
+			balance: null,
+			connected: false,
+		};
 	const cloudClient = snapshot.cloudAuth?.getClient?.();
-	if (snapshot.authConnected && typeof cloudClient?.get === "function") try {
-		const creditResponse = await cloudClient.get("/credits/balance");
-		const rawBalance = coerceCloudBalance(creditResponse?.balance) ?? coerceCloudBalance(creditResponse?.data?.balance);
-		if (typeof rawBalance === "number") return withCreditFlags(rawBalance);
-		authenticatedUnexpectedResponse = true;
-		logger.debug(`[cloud/credits] Unexpected authenticated response shape: ${JSON.stringify(creditResponse)}`);
-	} catch (err) {
-		const msg = err instanceof Error ? err.message : "cloud API unreachable";
-		authenticatedFailure = msg;
-		logger.debug(`[cloud/credits] Authenticated balance fetch failed: ${msg}`);
-	}
-	if (!snapshot.apiKey) return {
-		balance: null,
-		connected: snapshot.connected,
-		error: authenticatedFailure ?? (authenticatedUnexpectedResponse ? "unexpected response" : "missing cloud api key")
-	};
+	if (snapshot.authConnected && typeof cloudClient?.get === "function")
+		try {
+			const creditResponse = await cloudClient.get("/credits/balance");
+			const rawBalance =
+				coerceCloudBalance(creditResponse?.balance) ??
+				coerceCloudBalance(creditResponse?.data?.balance);
+			if (typeof rawBalance === "number") return withCreditFlags(rawBalance);
+			authenticatedUnexpectedResponse = true;
+			logger.debug(
+				`[cloud/credits] Unexpected authenticated response shape: ${JSON.stringify(creditResponse)}`,
+			);
+		} catch (err) {
+			const msg = err instanceof Error ? err.message : "cloud API unreachable";
+			authenticatedFailure = msg;
+			logger.debug(
+				`[cloud/credits] Authenticated balance fetch failed: ${msg}`,
+			);
+		}
+	if (!snapshot.apiKey)
+		return {
+			balance: null,
+			connected: snapshot.connected,
+			error:
+				authenticatedFailure ??
+				(authenticatedUnexpectedResponse
+					? "unexpected response"
+					: "missing cloud api key"),
+		};
 	const resolvedBaseUrl = resolveCloudApiBaseUrl$1(config.cloud?.baseUrl);
 	const baseUrlRejection = await validateCloudBaseUrl(resolvedBaseUrl);
-	if (baseUrlRejection) return {
-		balance: null,
-		connected: true,
-		error: baseUrlRejection
-	};
-	try {
-		const balance = await fetchCloudCreditsByApiKey(resolvedBaseUrl, snapshot.apiKey);
-		if (typeof balance !== "number") return {
+	if (baseUrlRejection)
+		return {
 			balance: null,
 			connected: true,
-			error: "unexpected response"
+			error: baseUrlRejection,
 		};
+	try {
+		const balance = await fetchCloudCreditsByApiKey(
+			resolvedBaseUrl,
+			snapshot.apiKey,
+		);
+		if (typeof balance !== "number")
+			return {
+				balance: null,
+				connected: true,
+				error: "unexpected response",
+			};
 		return withCreditFlags(balance);
 	} catch (err) {
 		if (err instanceof CloudCreditsAuthRejectedError) {
@@ -9128,7 +10879,7 @@ async function fetchCloudCredits(config, runtime) {
 				connected: true,
 				authRejected: true,
 				error: err.message,
-				topUpUrl: CLOUD_BILLING_URL
+				topUpUrl: CLOUD_BILLING_URL,
 			};
 		}
 		const msg = err instanceof Error ? err.message : "cloud API unreachable";
@@ -9136,7 +10887,7 @@ async function fetchCloudCredits(config, runtime) {
 		return {
 			balance: null,
 			connected: true,
-			error: msg
+			error: msg,
 		};
 	}
 }
@@ -9151,7 +10902,9 @@ async function clearCloudAuthService(cloudAuth) {
 			await method.call(cloudAuth);
 			break;
 		} catch (err) {
-			logger.warn(`[cloud/disconnect] Failed to invoke CLOUD_AUTH.${methodName}: ${err instanceof Error ? err.message : String(err)}`);
+			logger.warn(
+				`[cloud/disconnect] Failed to invoke CLOUD_AUTH.${methodName}: ${err instanceof Error ? err.message : String(err)}`,
+			);
 		}
 	}
 }
@@ -9163,63 +10916,85 @@ function clearCloudEnv() {
 async function clearRuntimeCloudState(runtime) {
 	const runtimeWithCloud = asRuntimeCloud(runtime);
 	if (!runtimeWithCloud) return;
-	const nextSecrets = { ...runtimeWithCloud.character.secrets ?? {} };
+	const nextSecrets = { ...(runtimeWithCloud.character.secrets ?? {}) };
 	for (const key of CLOUD_RUNTIME_SECRET_KEYS) delete nextSecrets[key];
 	runtimeWithCloud.character.secrets = nextSecrets;
-	if (runtimeWithCloud.character.settings && typeof runtimeWithCloud.character.settings === "object") for (const key of CLOUD_RUNTIME_SETTING_KEYS) delete runtimeWithCloud.character.settings[key];
-	if (typeof runtimeWithCloud.setSetting === "function") for (const key of CLOUD_RUNTIME_SETTING_KEYS) try {
-		runtimeWithCloud.setSetting(key, null);
-	} catch (err) {
-		logger.warn(`[cloud/disconnect] Failed to clear runtime setting ${key}: ${err instanceof Error ? err.message : String(err)}`);
-	}
-	if (typeof runtimeWithCloud.updateAgent === "function") try {
-		await runtimeWithCloud.updateAgent(runtimeWithCloud.agentId, { secrets: { ...nextSecrets } });
-	} catch (err) {
-		logger.warn(`[cloud/disconnect] Failed to clear cloud secrets from agent DB: ${err instanceof Error ? err.message : String(err)}`);
-	}
+	if (
+		runtimeWithCloud.character.settings &&
+		typeof runtimeWithCloud.character.settings === "object"
+	)
+		for (const key of CLOUD_RUNTIME_SETTING_KEYS)
+			delete runtimeWithCloud.character.settings[key];
+	if (typeof runtimeWithCloud.setSetting === "function")
+		for (const key of CLOUD_RUNTIME_SETTING_KEYS)
+			try {
+				runtimeWithCloud.setSetting(key, null);
+			} catch (err) {
+				logger.warn(
+					`[cloud/disconnect] Failed to clear runtime setting ${key}: ${err instanceof Error ? err.message : String(err)}`,
+				);
+			}
+	if (typeof runtimeWithCloud.updateAgent === "function")
+		try {
+			await runtimeWithCloud.updateAgent(runtimeWithCloud.agentId, {
+				secrets: { ...nextSecrets },
+			});
+		} catch (err) {
+			logger.warn(
+				`[cloud/disconnect] Failed to clear cloud secrets from agent DB: ${err instanceof Error ? err.message : String(err)}`,
+			);
+		}
 }
 async function disconnectCloudConnection(args) {
 	const { cloudManager = null, config, runtime, saveConfig } = args;
 	if (isElizaSettingsDebugEnabled()) {
 		const c = config.cloud;
-		logger.debug(`[eliza][settings][cloud] disconnectCloudConnection start cloud=${JSON.stringify(settingsDebugCloudSummary(c))}`);
+		logger.debug(
+			`[eliza][settings][cloud] disconnectCloudConnection start cloud=${JSON.stringify(settingsDebugCloudSummary(c))}`,
+		);
 	}
-	if (typeof cloudManager?.disconnect === "function") try {
-		await cloudManager.disconnect();
-	} catch (err) {
-		logger.warn(`[cloud/disconnect] Failed to disconnect cloud manager: ${err instanceof Error ? err.message : String(err)}`);
-	}
+	if (typeof cloudManager?.disconnect === "function")
+		try {
+			await cloudManager.disconnect();
+		} catch (err) {
+			logger.warn(
+				`[cloud/disconnect] Failed to disconnect cloud manager: ${err instanceof Error ? err.message : String(err)}`,
+			);
+		}
 	await clearCloudAuthService(getCloudAuth(runtime));
-	const nextCloud = { ...config.cloud ?? {} };
+	const nextCloud = { ...(config.cloud ?? {}) };
 	delete nextCloud.apiKey;
 	config.cloud = nextCloud;
 	applyCanonicalOnboardingConfig(config, {
 		deploymentTarget: { runtime: "local" },
-		linkedAccounts: { elizacloud: {
-			status: "unlinked",
-			source: "api-key"
-		} },
-		clearRoutes: [
-			"llmText",
-			"tts",
-			"media",
-			"embeddings",
-			"rpc"
-		]
+		linkedAccounts: {
+			elizacloud: {
+				status: "unlinked",
+				source: "api-key",
+			},
+		},
+		clearRoutes: ["llmText", "tts", "media", "embeddings", "rpc"],
 	});
 	migrateLegacyRuntimeConfig(config);
 	try {
 		saveConfig?.(config);
 		if (isElizaSettingsDebugEnabled()) {
 			const c = config.cloud;
-			logger.debug(`[eliza][settings][cloud] disconnectCloudConnection saveConfig OK cloud=${JSON.stringify(settingsDebugCloudSummary(c))}`);
+			logger.debug(
+				`[eliza][settings][cloud] disconnectCloudConnection saveConfig OK cloud=${JSON.stringify(settingsDebugCloudSummary(c))}`,
+			);
 		}
 	} catch (err) {
-		logger.warn(`[cloud/disconnect] Failed to save cloud disconnect state: ${err instanceof Error ? err.message : String(err)}`);
+		logger.warn(
+			`[cloud/disconnect] Failed to save cloud disconnect state: ${err instanceof Error ? err.message : String(err)}`,
+		);
 	}
 	clearCloudEnv();
 	await clearRuntimeCloudState(runtime);
-	if (isElizaSettingsDebugEnabled()) logger.debug("[eliza][settings][cloud] disconnectCloudConnection done (env cleared + runtime cloud state cleared)");
+	if (isElizaSettingsDebugEnabled())
+		logger.debug(
+			"[eliza][settings][cloud] disconnectCloudConnection done (env cleared + runtime cloud state cleared)",
+		);
 }
 const disconnectUnifiedCloudConnection = disconnectCloudConnection;
 
@@ -9233,17 +11008,17 @@ const DEFAULT_CLOUD_ROUTE_SERVICES = {
 	handleAutonomousCloudRoute: handleCloudRoute,
 	normalizeCloudSiteUrl,
 	saveElizaConfig,
-	validateCloudBaseUrl
+	validateCloudBaseUrl,
 };
 /**
-* Monotonic counter incremented on every `POST /api/cloud/disconnect`.
-*
-* WHY: We must not persist a stale "authenticated" poll after the user
-* disconnects mid-flight. The previous guard (`cloud.enabled === false`)
-* also matched **first-time** cloud (never enabled), so successful logins
-* were discarded. Comparing epoch before/after the poll preserves the race
-* fix without blocking legitimate first connect.
-*/
+ * Monotonic counter incremented on every `POST /api/cloud/disconnect`.
+ *
+ * WHY: We must not persist a stale "authenticated" poll after the user
+ * disconnects mid-flight. The previous guard (`cloud.enabled === false`)
+ * also matched **first-time** cloud (never enabled), so successful logins
+ * were discarded. Comparing epoch before/after the poll preserves the race
+ * fix without blocking legitimate first connect.
+ */
 let cloudDisconnectEpoch = 0;
 function isRedirectResponse(response) {
 	return response.status >= 300 && response.status < 400;
@@ -9251,42 +11026,63 @@ function isRedirectResponse(response) {
 function createNoopTelemetrySpan() {
 	return {
 		success: () => {},
-		failure: () => {}
+		failure: () => {},
 	};
 }
 function getTelemetrySpan(meta) {
-	return meta.services.createIntegrationTelemetrySpan(meta) ?? createNoopTelemetrySpan();
+	return (
+		meta.services.createIntegrationTelemetrySpan(meta) ??
+		createNoopTelemetrySpan()
+	);
 }
 async function fetchCloudLoginStatus(sessionId, baseUrl) {
-	return fetch(`${baseUrl}/api/auth/cli-session/${encodeURIComponent(sessionId)}`, {
-		redirect: "manual",
-		signal: AbortSignal.timeout(CLOUD_LOGIN_POLL_TIMEOUT_MS)
-	});
+	return fetch(
+		`${baseUrl}/api/auth/cli-session/${encodeURIComponent(sessionId)}`,
+		{
+			redirect: "manual",
+			signal: AbortSignal.timeout(CLOUD_LOGIN_POLL_TIMEOUT_MS),
+		},
+	);
 }
 async function persistCloudLoginStatus(args) {
-	if (args.epochAtPollStart !== void 0 && args.epochAtPollStart !== cloudDisconnectEpoch) {
-		logger.warn("[cloud-login] Skipping login persist: a disconnect occurred while the login poll was in-flight");
+	if (
+		args.epochAtPollStart !== void 0 &&
+		args.epochAtPollStart !== cloudDisconnectEpoch
+	) {
+		logger.warn(
+			"[cloud-login] Skipping login persist: a disconnect occurred while the login poll was in-flight",
+		);
 		return;
 	}
 	migrateLegacyRuntimeConfig(args.state.config);
 	const runtime = args.state.runtime;
 	const cloudAuth = getCloudAuth(runtime);
 	await clearCloudAuthService(cloudAuth);
-	const cloud = { ...args.state.config.cloud ?? {} };
+	const cloud = { ...(args.state.config.cloud ?? {}) };
 	cloud.apiKey = args.apiKey;
-	const cloudInferenceSelected = isCloudInferenceSelectedInConfig(args.state.config);
+	const cloudInferenceSelected = isCloudInferenceSelectedInConfig(
+		args.state.config,
+	);
 	args.state.config.cloud = cloud;
-	args.services.applyCanonicalOnboardingConfig(args.state.config, { linkedAccounts: { elizacloud: {
-		status: "linked",
-		source: "api-key"
-	} } });
+	args.services.applyCanonicalOnboardingConfig(args.state.config, {
+		linkedAccounts: {
+			elizacloud: {
+				status: "linked",
+				source: "api-key",
+			},
+		},
+	});
 	migrateLegacyRuntimeConfig(args.state.config);
 	try {
 		args.services.saveElizaConfig(args.state.config);
 		logger.info("[cloud-login] Saved cloud API key to config file");
-		logger.warn("[cloud-login] Cloud API key is stored in cleartext in ~/.eliza/eliza.json. Ensure this file has restrictive permissions (chmod 600).");
+		logger.warn(
+			"[cloud-login] Cloud API key is stored in cleartext in ~/.eliza/eliza.json. Ensure this file has restrictive permissions (chmod 600).",
+		);
 	} catch (saveErr) {
-		logger.error(`[cloud-login] Failed to save cloud API key to config: ${saveErr instanceof Error ? saveErr.message : String(saveErr)}`);
+		logger.error(
+			`[cloud-login] Failed to save cloud API key to config: ${saveErr instanceof Error ? saveErr.message : String(saveErr)}`,
+		);
 	}
 	clearCloudSecrets();
 	process.env.ELIZAOS_CLOUD_API_KEY = args.apiKey;
@@ -9294,20 +11090,31 @@ async function persistCloudLoginStatus(args) {
 	else delete process.env.ELIZAOS_CLOUD_ENABLED;
 	scrubCloudSecretsFromEnv();
 	const cloudManager = args.state.cloudManager;
-	if (cloudManager && typeof cloudManager.replaceApiKey === "function") await cloudManager.replaceApiKey(args.apiKey);
-	else if (cloudManager && !cloudManager.getClient() && typeof cloudManager.init === "function") await cloudManager.init();
-	if (typeof cloudAuth?.authenticateWithApiKey === "function") cloudAuth.authenticateWithApiKey({
-		apiKey: args.apiKey,
-		organizationId: args.organizationId,
-		userId: args.userId
-	});
-	const relayService = runtime?.getService("CLOUD_MANAGED_GATEWAY_RELAY") ?? runtime?.getService("cloud-managed-gateway-relay") ?? runtime?.getService("cloudManagedGatewayRelay");
-	if (typeof relayService?.startRelayLoopIfReady === "function") await relayService.startRelayLoopIfReady();
+	if (cloudManager && typeof cloudManager.replaceApiKey === "function")
+		await cloudManager.replaceApiKey(args.apiKey);
+	else if (
+		cloudManager &&
+		!cloudManager.getClient() &&
+		typeof cloudManager.init === "function"
+	)
+		await cloudManager.init();
+	if (typeof cloudAuth?.authenticateWithApiKey === "function")
+		cloudAuth.authenticateWithApiKey({
+			apiKey: args.apiKey,
+			organizationId: args.organizationId,
+			userId: args.userId,
+		});
+	const relayService =
+		runtime?.getService("CLOUD_MANAGED_GATEWAY_RELAY") ??
+		runtime?.getService("cloud-managed-gateway-relay") ??
+		runtime?.getService("cloudManagedGatewayRelay");
+	if (typeof relayService?.startRelayLoopIfReady === "function")
+		await relayService.startRelayLoopIfReady();
 	if (!runtime || typeof runtime.updateAgent !== "function") return;
 	try {
 		const nextSecrets = {
-			...runtime.character.secrets ?? {},
-			ELIZAOS_CLOUD_API_KEY: args.apiKey
+			...(runtime.character.secrets ?? {}),
+			ELIZAOS_CLOUD_API_KEY: args.apiKey,
 		};
 		if (args.userId) {
 			nextSecrets.ELIZA_CLOUD_USER_ID = args.userId;
@@ -9329,49 +11136,58 @@ async function persistCloudLoginStatus(args) {
 		if (typeof runtime.setSetting === "function") {
 			runtime.setSetting("ELIZA_CLOUD_USER_ID", args.userId ?? null);
 			runtime.setSetting("ELIZAOS_CLOUD_USER_ID", args.userId ?? null);
-			runtime.setSetting("ELIZA_CLOUD_ORGANIZATION_ID", args.organizationId ?? null);
+			runtime.setSetting(
+				"ELIZA_CLOUD_ORGANIZATION_ID",
+				args.organizationId ?? null,
+			);
 			runtime.setSetting("ELIZAOS_CLOUD_ORG_ID", args.organizationId ?? null);
 		}
 		await runtime.updateAgent(runtime.agentId, { secrets: { ...nextSecrets } });
 	} catch (err) {
-		logger.warn(`[cloud-routes] Failed to persist cloud secrets to agent DB: ${String(err)}`);
+		logger.warn(
+			`[cloud-routes] Failed to persist cloud secrets to agent DB: ${String(err)}`,
+		);
 	}
 }
 function getCloudRouteServices(state) {
 	return {
 		...DEFAULT_CLOUD_ROUTE_SERVICES,
-		...state.services
+		...state.services,
 	};
 }
 function toAutonomousState(state, services) {
 	return {
 		...state,
 		saveConfig: () => services.saveElizaConfig(state.config),
-		createTelemetrySpan: services.createIntegrationTelemetrySpan
+		createTelemetrySpan: services.createIntegrationTelemetrySpan,
 	};
 }
 async function handleCloudRoute$1(req, res, pathname, method, state) {
 	const services = getCloudRouteServices(state);
 	if (method === "GET" && pathname === "/api/cloud/relay-status") {
-		const relayService = state.runtime?.getService("CLOUD_MANAGED_GATEWAY_RELAY") ?? state.runtime?.getService("cloud-managed-gateway-relay") ?? state.runtime?.getService("cloudManagedGatewayRelay");
+		const relayService =
+			state.runtime?.getService("CLOUD_MANAGED_GATEWAY_RELAY") ??
+			state.runtime?.getService("cloud-managed-gateway-relay") ??
+			state.runtime?.getService("cloudManagedGatewayRelay");
 		if (typeof relayService?.getSessionInfo !== "function") {
 			sendJson$2(res, 200, {
 				available: false,
 				status: "not_registered",
-				reason: "Gateway relay service not active. Connect to Eliza Cloud in Settings to enable instance routing."
+				reason:
+					"Gateway relay service not active. Connect to Eliza Cloud in Settings to enable instance routing.",
 			});
 			return true;
 		}
 		try {
 			sendJson$2(res, 200, {
 				available: true,
-				...relayService.getSessionInfo()
+				...relayService.getSessionInfo(),
 			});
 		} catch (error) {
 			sendJson$2(res, 200, {
 				available: false,
 				status: "error",
-				reason: error instanceof Error ? error.message : String(error)
+				reason: error instanceof Error ? error.message : String(error),
 			});
 		}
 		return true;
@@ -9383,41 +11199,45 @@ async function handleCloudRoute$1(req, res, pathname, method, state) {
 				cloudManager: state.cloudManager,
 				config: state.config,
 				runtime: state.runtime,
-				saveConfig: services.saveElizaConfig
+				saveConfig: services.saveElizaConfig,
 			});
 		} catch (err) {
 			const message = err instanceof Error ? err.message : String(err);
 			logger.error(`[cloud/disconnect] failed: ${message}`);
 			sendJson$2(res, 500, {
 				ok: false,
-				error: message
+				error: message,
 			});
 			return true;
 		}
 		sendJson$2(res, 200, {
 			ok: true,
-			status: "disconnected"
+			status: "disconnected",
 		});
 		return true;
 	}
 	if (method === "POST" && pathname === "/api/cloud/login/persist") {
 		const chunks = [];
-		for await (const chunk of req) chunks.push(typeof chunk === "string" ? Buffer.from(chunk) : chunk);
+		for await (const chunk of req)
+			chunks.push(typeof chunk === "string" ? Buffer.from(chunk) : chunk);
 		try {
 			const body = JSON.parse(Buffer.concat(chunks).toString("utf8"));
 			if (typeof body.apiKey !== "string" || !body.apiKey.trim()) {
 				sendJson$2(res, 400, {
 					ok: false,
-					error: "apiKey is required"
+					error: "apiKey is required",
 				});
 				return true;
 			}
 			await persistCloudLoginStatus({
 				apiKey: body.apiKey.trim(),
-				organizationId: typeof body.organizationId === "string" ? body.organizationId.trim() : void 0,
+				organizationId:
+					typeof body.organizationId === "string"
+						? body.organizationId.trim()
+						: void 0,
 				services,
 				state,
-				userId: typeof body.userId === "string" ? body.userId.trim() : void 0
+				userId: typeof body.userId === "string" ? body.userId.trim() : void 0,
 			});
 			sendJson$2(res, 200, { ok: true });
 		} catch (err) {
@@ -9425,13 +11245,16 @@ async function handleCloudRoute$1(req, res, pathname, method, state) {
 			logger.error(`[cloud/login/persist] Failed: ${msg}`);
 			sendJson$2(res, 500, {
 				ok: false,
-				error: msg
+				error: msg,
 			});
 		}
 		return true;
 	}
 	if (method === "GET" && pathname.startsWith("/api/cloud/login/status")) {
-		const sessionId = new URL(req.url ?? "/", `http://${req.headers.host ?? "localhost"}`).searchParams.get("sessionId");
+		const sessionId = new URL(
+			req.url ?? "/",
+			`http://${req.headers.host ?? "localhost"}`,
+		).searchParams.get("sessionId");
 		if (!sessionId) {
 			sendJsonError(res, 400, "sessionId query parameter is required");
 			return true;
@@ -9447,7 +11270,7 @@ async function handleCloudRoute$1(req, res, pathname, method, state) {
 			boundary: "cloud",
 			operation: "login_poll_status",
 			services,
-			timeoutMs: CLOUD_LOGIN_POLL_TIMEOUT_MS
+			timeoutMs: CLOUD_LOGIN_POLL_TIMEOUT_MS,
 		});
 		let pollRes;
 		try {
@@ -9456,47 +11279,54 @@ async function handleCloudRoute$1(req, res, pathname, method, state) {
 			if (isTimeoutError(fetchErr)) {
 				loginPollSpan.failure({
 					error: fetchErr,
-					statusCode: 504
+					statusCode: 504,
 				});
 				sendJson$2(res, 504, {
 					status: "error",
-					error: "Eliza Cloud status request timed out"
+					error: "Eliza Cloud status request timed out",
 				});
 				return true;
 			}
 			loginPollSpan.failure({
 				error: fetchErr,
-				statusCode: 502
+				statusCode: 502,
 			});
 			sendJson$2(res, 502, {
 				status: "error",
-				error: "Failed to reach Eliza Cloud"
+				error: "Failed to reach Eliza Cloud",
 			});
 			return true;
 		}
 		if (isRedirectResponse(pollRes)) {
 			loginPollSpan.failure({
 				statusCode: pollRes.status,
-				errorKind: "redirect_response"
+				errorKind: "redirect_response",
 			});
 			sendJson$2(res, 502, {
 				status: "error",
-				error: "Eliza Cloud status request was redirected; redirects are not allowed"
+				error:
+					"Eliza Cloud status request was redirected; redirects are not allowed",
 			});
 			return true;
 		}
 		if (!pollRes.ok) {
 			loginPollSpan.failure({
 				statusCode: pollRes.status,
-				errorKind: "http_error"
+				errorKind: "http_error",
 			});
-			sendJson$2(res, 200, pollRes.status === 404 ? {
-				status: "expired",
-				error: "Session not found or expired"
-			} : {
-				status: "error",
-				error: `Eliza Cloud returned HTTP ${pollRes.status}`
-			});
+			sendJson$2(
+				res,
+				200,
+				pollRes.status === 404
+					? {
+							status: "expired",
+							error: "Session not found or expired",
+						}
+					: {
+							status: "error",
+							error: `Eliza Cloud returned HTTP ${pollRes.status}`,
+						},
+			);
 			return true;
 		}
 		let data;
@@ -9505,11 +11335,11 @@ async function handleCloudRoute$1(req, res, pathname, method, state) {
 		} catch (parseErr) {
 			loginPollSpan.failure({
 				error: parseErr,
-				statusCode: pollRes.status
+				statusCode: pollRes.status,
 			});
 			sendJson$2(res, 502, {
 				status: "error",
-				error: "Eliza Cloud returned invalid JSON"
+				error: "Eliza Cloud returned invalid JSON",
 			});
 			return true;
 		}
@@ -9517,24 +11347,38 @@ async function handleCloudRoute$1(req, res, pathname, method, state) {
 		if (data.status === "authenticated" && typeof data.apiKey === "string") {
 			await persistCloudLoginStatus({
 				apiKey: data.apiKey,
-				organizationId: typeof data.organizationId === "string" ? data.organizationId : void 0,
+				organizationId:
+					typeof data.organizationId === "string"
+						? data.organizationId
+						: void 0,
 				services,
 				state,
 				epochAtPollStart: epochBeforePoll,
-				userId: typeof data.userId === "string" ? data.userId : void 0
+				userId: typeof data.userId === "string" ? data.userId : void 0,
 			});
 			sendJson$2(res, 200, {
 				status: "authenticated",
 				keyPrefix: typeof data.keyPrefix === "string" ? data.keyPrefix : void 0,
-				organizationId: typeof data.organizationId === "string" ? data.organizationId : void 0,
-				userId: typeof data.userId === "string" ? data.userId : void 0
+				organizationId:
+					typeof data.organizationId === "string"
+						? data.organizationId
+						: void 0,
+				userId: typeof data.userId === "string" ? data.userId : void 0,
 			});
 			return true;
 		}
-		sendJson$2(res, 200, { status: typeof data.status === "string" ? data.status : "error" });
+		sendJson$2(res, 200, {
+			status: typeof data.status === "string" ? data.status : "error",
+		});
 		return true;
 	}
-	const result = await services.handleAutonomousCloudRoute(req, res, pathname, method, toAutonomousState(state, services));
+	const result = await services.handleAutonomousCloudRoute(
+		req,
+		res,
+		pathname,
+		method,
+		toAutonomousState(state, services),
+	);
 	scrubCloudSecretsFromEnv();
 	return result;
 }
@@ -9546,7 +11390,10 @@ async function handleCloudStatusRoutes(ctx) {
 	const typedConfig = config;
 	if (method === "GET" && pathname === "/api/cloud/status") {
 		const snapshot = resolveCloudConnectionSnapshot(typedConfig, runtime);
-		const cloudVoiceProxyAvailable = isElizaCloudServiceSelectedInConfig(typedConfig, "tts");
+		const cloudVoiceProxyAvailable = isElizaCloudServiceSelectedInConfig(
+			typedConfig,
+			"tts",
+		);
 		if (snapshot.connected) {
 			json(res, {
 				connected: true,
@@ -9556,7 +11403,11 @@ async function handleCloudStatusRoutes(ctx) {
 				userId: snapshot.userId,
 				organizationId: snapshot.organizationId,
 				topUpUrl: CLOUD_BILLING_URL,
-				reason: snapshot.authConnected ? void 0 : runtime ? "api_key_present_not_authenticated" : "api_key_present_runtime_not_started"
+				reason: snapshot.authConnected
+					? void 0
+					: runtime
+						? "api_key_present_not_authenticated"
+						: "api_key_present_runtime_not_started",
 			});
 			return true;
 		}
@@ -9566,7 +11417,7 @@ async function handleCloudStatusRoutes(ctx) {
 				enabled: snapshot.enabled,
 				cloudVoiceProxyAvailable,
 				hasApiKey: snapshot.hasApiKey,
-				reason: "runtime_not_started"
+				reason: "runtime_not_started",
 			});
 			return true;
 		}
@@ -9575,7 +11426,7 @@ async function handleCloudStatusRoutes(ctx) {
 			enabled: snapshot.enabled,
 			cloudVoiceProxyAvailable,
 			hasApiKey: snapshot.hasApiKey,
-			reason: "not_authenticated"
+			reason: "not_authenticated",
 		});
 		return true;
 	}
@@ -9595,7 +11446,7 @@ const VALID_APPROVAL_MODES = [
 	"full_control",
 	"smart_approve",
 	"approve_all",
-	"off"
+	"off",
 ];
 function isApprovalMode(value) {
 	return VALID_APPROVAL_MODES.includes(value);
@@ -9606,7 +11457,12 @@ function getComputerUseService(state) {
 	const service = runtime.getService("computeruse");
 	if (!service || typeof service !== "object") return null;
 	const candidate = service;
-	if (typeof candidate.getApprovalSnapshot !== "function" || typeof candidate.setApprovalMode !== "function" || typeof candidate.resolveApproval !== "function") return null;
+	if (
+		typeof candidate.getApprovalSnapshot !== "function" ||
+		typeof candidate.setApprovalMode !== "function" ||
+		typeof candidate.resolveApproval !== "function"
+	)
+		return null;
 	return candidate;
 }
 function isStreamAuthorized$1(req, res, url) {
@@ -9614,7 +11470,11 @@ function isStreamAuthorized$1(req, res, url) {
 	if (!expectedToken) return true;
 	const headerToken = getProvidedApiToken(req);
 	const providedToken = url.searchParams.get("token")?.trim();
-	if (headerToken && tokenMatches(expectedToken, headerToken) || providedToken && tokenMatches(expectedToken, providedToken)) return true;
+	if (
+		(headerToken && tokenMatches(expectedToken, headerToken)) ||
+		(providedToken && tokenMatches(expectedToken, providedToken))
+	)
+		return true;
 	res.writeHead(401, { "Content-Type": "application/json" });
 	res.end(JSON.stringify({ error: "Unauthorized" }));
 	return false;
@@ -9626,7 +11486,10 @@ async function handleComputerUseCompatRoutes(req, res, state) {
 	const method = (req.method ?? "GET").toUpperCase();
 	const url = new URL(req.url ?? "/", "http://localhost");
 	if (!url.pathname.startsWith("/api/computer-use/")) return false;
-	if (method === "GET" && url.pathname === "/api/computer-use/approvals/stream") {
+	if (
+		method === "GET" &&
+		url.pathname === "/api/computer-use/approvals/stream"
+	) {
 		if (!isStreamAuthorized$1(req, res, url)) return true;
 		const service = getComputerUseService(state);
 		if (!service) {
@@ -9637,20 +11500,21 @@ async function handleComputerUseCompatRoutes(req, res, state) {
 			"Content-Type": "text/event-stream",
 			"Cache-Control": "no-cache, no-transform",
 			Connection: "keep-alive",
-			"X-Accel-Buffering": "no"
+			"X-Accel-Buffering": "no",
 		});
 		writeSseEvent$1(res, {
 			type: "snapshot",
-			snapshot: service.getApprovalSnapshot()
+			snapshot: service.getApprovalSnapshot(),
 		});
 		const heartbeat = setInterval(() => {
 			res.write(": heartbeat\n\n");
 		}, 15e3);
-		if (typeof heartbeat === "object" && "unref" in heartbeat) heartbeat.unref();
+		if (typeof heartbeat === "object" && "unref" in heartbeat)
+			heartbeat.unref();
 		const unsubscribe = service.subscribeApprovals?.((snapshot) => {
 			writeSseEvent$1(res, {
 				type: "snapshot",
-				snapshot
+				snapshot,
 			});
 		});
 		const cleanup = () => {
@@ -9662,7 +11526,7 @@ async function handleComputerUseCompatRoutes(req, res, state) {
 		return true;
 	}
 	if (method === "GET" && url.pathname === "/api/computer-use/approvals") {
-		if (!await ensureRouteAuthorized(req, res, state)) return true;
+		if (!(await ensureRouteAuthorized(req, res, state))) return true;
 		const service = getComputerUseService(state);
 		if (!service) {
 			sendJsonError(res, 404, "Computer use service not available");
@@ -9676,7 +11540,11 @@ async function handleComputerUseCompatRoutes(req, res, state) {
 		const body = await readCompatJsonBody(req, res);
 		if (!body) return true;
 		if (typeof body.mode !== "string" || !isApprovalMode(body.mode)) {
-			sendJsonError(res, 400, "mode must be one of full_control, smart_approve, approve_all, off");
+			sendJsonError(
+				res,
+				400,
+				"mode must be one of full_control, smart_approve, approve_all, off",
+			);
 			return true;
 		}
 		const service = getComputerUseService(state);
@@ -9706,7 +11574,11 @@ async function handleComputerUseCompatRoutes(req, res, state) {
 			sendJsonError(res, 400, "Missing approval id");
 			return true;
 		}
-		const resolution = service.resolveApproval(decodeURIComponent(approvalId), body.approved, typeof body.reason === "string" ? body.reason : void 0);
+		const resolution = service.resolveApproval(
+			decodeURIComponent(approvalId),
+			body.approved,
+			typeof body.reason === "string" ? body.reason : void 0,
+		);
 		if (!resolution) {
 			sendJsonError(res, 404, "Approval not found");
 			return true;
@@ -9727,7 +11599,7 @@ async function handleDatabaseRowsCompatRoute(req, res, state) {
 	const pathname = new URL(req.url ?? "/", "http://localhost").pathname;
 	const match = /^\/api\/database\/tables\/([^/]+)\/rows$/.exec(pathname);
 	if ((req.method ?? "GET").toUpperCase() !== "GET" || !match) return false;
-	if (!await ensureRouteAuthorized(req, res, state)) return true;
+	if (!(await ensureRouteAuthorized(req, res, state))) return true;
 	const runtime = state.current;
 	if (!runtime) {
 		sendJsonError(res, 503, DATABASE_UNAVAILABLE_MESSAGE);
@@ -9742,53 +11614,100 @@ async function handleDatabaseRowsCompatRoute(req, res, state) {
 	}
 	let resolvedSchema = schemaName;
 	if (!resolvedSchema) {
-		const { rows } = await executeRawSql(runtime, `SELECT table_schema AS schema
+		const { rows } = await executeRawSql(
+			runtime,
+			`SELECT table_schema AS schema
          FROM information_schema.tables
         WHERE table_name = ${sqlLiteral(tableName)}
           AND table_schema NOT IN ('pg_catalog', 'information_schema')
           AND table_type = 'BASE TABLE'
         ORDER BY CASE WHEN table_schema = 'public' THEN 0 ELSE 1 END,
-                 table_schema`);
-		const schemas = rows.map((row) => row.schema).filter((value) => typeof value === "string");
+                 table_schema`,
+		);
+		const schemas = rows
+			.map((row) => row.schema)
+			.filter((value) => typeof value === "string");
 		if (schemas.length === 0) {
 			sendJsonError(res, 404, `Unknown table "${tableName}"`);
 			return true;
 		}
 		if (schemas.length > 1 && !schemas.includes("public")) {
-			sendJsonError(res, 409, `Table "${tableName}" exists in multiple schemas; specify ?schema=<name>.`);
+			sendJsonError(
+				res,
+				409,
+				`Table "${tableName}" exists in multiple schemas; specify ?schema=<name>.`,
+			);
 			return true;
 		}
 		resolvedSchema = schemas.includes("public") ? "public" : schemas[0];
 	}
-	const columns = (await executeRawSql(runtime, `SELECT column_name
+	const columns = (
+		await executeRawSql(
+			runtime,
+			`SELECT column_name
        FROM information_schema.columns
       WHERE table_name = ${sqlLiteral(tableName)}
         AND table_schema = ${sqlLiteral(resolvedSchema)}
-      ORDER BY ordinal_position`)).rows.map((row) => row.column_name).filter((value) => typeof value === "string");
+      ORDER BY ordinal_position`,
+		)
+	).rows
+		.map((row) => row.column_name)
+		.filter((value) => typeof value === "string");
 	if (columns.length === 0) {
-		sendJsonError(res, 404, `No readable columns found for ${resolvedSchema}.${tableName}`);
+		sendJsonError(
+			res,
+			404,
+			`No readable columns found for ${resolvedSchema}.${tableName}`,
+		);
 		return true;
 	}
-	const limit = Math.max(1, Math.min(500, Number.parseInt(requestUrl.searchParams.get("limit") ?? "", 10) || 50));
-	const offset = Math.max(0, Number.parseInt(requestUrl.searchParams.get("offset") ?? "", 10) || 0);
+	const limit = Math.max(
+		1,
+		Math.min(
+			500,
+			Number.parseInt(requestUrl.searchParams.get("limit") ?? "", 10) || 50,
+		),
+	);
+	const offset = Math.max(
+		0,
+		Number.parseInt(requestUrl.searchParams.get("offset") ?? "", 10) || 0,
+	);
 	const sortColumn = sanitizeIdentifier(requestUrl.searchParams.get("sort"));
-	const order = requestUrl.searchParams.get("order") === "desc" ? "DESC" : "ASC";
+	const order =
+		requestUrl.searchParams.get("order") === "desc" ? "DESC" : "ASC";
 	const search = requestUrl.searchParams.get("search")?.trim();
 	const filters = [];
 	if (search) {
-		const searchLiteral = sqlLiteral(`%${search.replace(/\\/g, "\\\\").replace(/%/g, "\\%").replace(/_/g, "\\_")}%`);
-		filters.push(`(${columns.map((columnName) => `CAST(${quoteIdent(columnName)} AS TEXT) ILIKE ${searchLiteral}`).join(" OR ")})`);
+		const searchLiteral = sqlLiteral(
+			`%${search.replace(/\\/g, "\\\\").replace(/%/g, "\\%").replace(/_/g, "\\_")}%`,
+		);
+		filters.push(
+			`(${columns.map((columnName) => `CAST(${quoteIdent(columnName)} AS TEXT) ILIKE ${searchLiteral}`).join(" OR ")})`,
+		);
 	}
-	const whereClause = filters.length > 0 ? `WHERE ${filters.join(" AND ")}` : "";
-	const orderBy = sortColumn && columns.includes(sortColumn) ? `ORDER BY ${quoteIdent(sortColumn)} ${order}` : "";
+	const whereClause =
+		filters.length > 0 ? `WHERE ${filters.join(" AND ")}` : "";
+	const orderBy =
+		sortColumn && columns.includes(sortColumn)
+			? `ORDER BY ${quoteIdent(sortColumn)} ${order}`
+			: "";
 	const qualifiedTable = `${quoteIdent(resolvedSchema)}.${quoteIdent(tableName)}`;
-	const countResult = await executeRawSql(runtime, `SELECT count(*)::int AS total FROM ${qualifiedTable} ${whereClause}`);
-	const total = typeof countResult.rows[0]?.total === "number" ? countResult.rows[0].total : Number(countResult.rows[0]?.total ?? 0);
-	const rowsResult = await executeRawSql(runtime, `SELECT * FROM ${qualifiedTable}
+	const countResult = await executeRawSql(
+		runtime,
+		`SELECT count(*)::int AS total FROM ${qualifiedTable} ${whereClause}`,
+	);
+	const total =
+		typeof countResult.rows[0]?.total === "number"
+			? countResult.rows[0].total
+			: Number(countResult.rows[0]?.total ?? 0);
+	const rowsResult = await executeRawSql(
+		runtime,
+		`SELECT * FROM ${qualifiedTable}
       ${whereClause}
       ${orderBy}
       LIMIT ${limit}
-     OFFSET ${offset}`);
+     OFFSET ${offset}`,
+	);
 	sendJson$2(res, 200, {
 		table: tableName,
 		schema: resolvedSchema,
@@ -9796,7 +11715,7 @@ async function handleDatabaseRowsCompatRoute(req, res, state) {
 		columns,
 		total,
 		offset,
-		limit
+		limit,
 	});
 	return true;
 }
@@ -9807,12 +11726,12 @@ init_auth();
 init_compat_route_shared();
 init_response();
 /**
-* Dev observability routes (loopback where noted).
-*
-* - `GET /api/dev/stack`
-* - `GET /api/dev/cursor-screenshot`
-* - `GET /api/dev/console-log`
-*/
+ * Dev observability routes (loopback where noted).
+ *
+ * - `GET /api/dev/stack`
+ * - `GET /api/dev/cursor-screenshot`
+ * - `GET /api/dev/console-log`
+ */
 async function handleDevCompatRoutes(req, res, state) {
 	const method = (req.method ?? "GET").toUpperCase();
 	const url = new URL(req.url ?? "/", "http://localhost");
@@ -9824,28 +11743,31 @@ async function handleDevCompatRoutes(req, res, state) {
 //#endregion
 //#region node_modules/.bun/@elizaos+app-core@2.0.0-alpha.537+72829346cb4c43b1/node_modules/@elizaos/app-core/packages/app-core/src/services/github-credentials.js
 /**
-* Local GitHub credential storage for the eliza desktop / VPS install.
-*
-* Stores a single per-user GitHub PAT at
-* `<state-dir>/credentials/github.json` (chmod 600). The token itself is
-* write-only from the UI side: `loadCredentials()` returns the full record
-* for runtime consumers (orchestrator spawn env, route handlers) but the
-* HTTP route that powers the settings card never returns it — only
-* `getMetadata()` is safe to send back to the browser.
-*
-* Storage shape mirrors the convention used elsewhere under
-* `<state-dir>/` (see `~/.claude/.credentials.json` and the auth-store
-* module): plain JSON, file mode 600, no encryption layer. Encryption at
-* rest is a deliberately separate concern and would land in a follow-up.
-*
-* Cloud users (Eliza Cloud session active) are out of scope here — they
-* use the `platformCredentials` table in `cloud/packages/db/schemas/` via
-* the dedicated OAuth flow. This module is the local-first surface only.
-*/
+ * Local GitHub credential storage for the eliza desktop / VPS install.
+ *
+ * Stores a single per-user GitHub PAT at
+ * `<state-dir>/credentials/github.json` (chmod 600). The token itself is
+ * write-only from the UI side: `loadCredentials()` returns the full record
+ * for runtime consumers (orchestrator spawn env, route handlers) but the
+ * HTTP route that powers the settings card never returns it — only
+ * `getMetadata()` is safe to send back to the browser.
+ *
+ * Storage shape mirrors the convention used elsewhere under
+ * `<state-dir>/` (see `~/.claude/.credentials.json` and the auth-store
+ * module): plain JSON, file mode 600, no encryption layer. Encryption at
+ * rest is a deliberately separate concern and would land in a follow-up.
+ *
+ * Cloud users (Eliza Cloud session active) are out of scope here — they
+ * use the `platformCredentials` table in `cloud/packages/db/schemas/` via
+ * the dedicated OAuth flow. This module is the local-first surface only.
+ */
 function resolveStateDir() {
 	const explicit = process.env.ELIZA_STATE_DIR?.trim();
 	if (explicit) return path.resolve(explicit);
-	const home = process.env.HOME?.trim() || process.env.USERPROFILE?.trim() || process.cwd();
+	const home =
+		process.env.HOME?.trim() ||
+		process.env.USERPROFILE?.trim() ||
+		process.cwd();
 	return path.join(home, ".eliza");
 }
 /** Resolve the on-disk path for the credential file. */
@@ -9855,15 +11777,21 @@ function getCredentialFilePath() {
 function isGitHubCredentials(value) {
 	if (!value || typeof value !== "object") return false;
 	const v = value;
-	return typeof v.token === "string" && typeof v.username === "string" && Array.isArray(v.scopes) && v.scopes.every((s) => typeof s === "string") && typeof v.savedAt === "number";
+	return (
+		typeof v.token === "string" &&
+		typeof v.username === "string" &&
+		Array.isArray(v.scopes) &&
+		v.scopes.every((s) => typeof s === "string") &&
+		typeof v.savedAt === "number"
+	);
 }
 /**
-* Read the saved credentials, or null if no file exists / the file is
-* unreadable / the contents don't conform to the expected shape. Callers
-* that need to surface a specific cause should check the file path
-* themselves; we treat all failure modes the same here so the UI never
-* has to reason about transient FS errors during render.
-*/
+ * Read the saved credentials, or null if no file exists / the file is
+ * unreadable / the contents don't conform to the expected shape. Callers
+ * that need to surface a specific cause should check the file path
+ * themselves; we treat all failure modes the same here so the UI never
+ * has to reason about transient FS errors during render.
+ */
 async function loadCredentials() {
 	const filePath = getCredentialFilePath();
 	let raw;
@@ -9888,16 +11816,16 @@ async function loadMetadata() {
 	return metadata;
 }
 /**
-* Persist credentials to disk atomically with mode 0600. Creates the
-* parent directory if needed. Overwrites any existing record for the
-* single-user/single-token storage model.
-*/
+ * Persist credentials to disk atomically with mode 0600. Creates the
+ * parent directory if needed. Overwrites any existing record for the
+ * single-user/single-token storage model.
+ */
 async function saveCredentials(creds) {
 	const filePath = getCredentialFilePath();
 	const directory = path.dirname(filePath);
 	await fs$1.mkdir(directory, {
 		recursive: true,
-		mode: 448
+		mode: 448,
 	});
 	await fs$1.chmod(directory, 448);
 	const tmpPath = `${filePath}.${process.pid}.${Date.now()}.tmp`;
@@ -9905,9 +11833,9 @@ async function saveCredentials(creds) {
 	await fs$1.rename(tmpPath, filePath);
 }
 /**
-* Remove the credential file. Idempotent — succeeds silently when nothing
-* is saved. Any other FS error propagates so callers can surface it.
-*/
+ * Remove the credential file. Idempotent — succeeds silently when nothing
+ * is saved. Any other FS error propagates so callers can surface it.
+ */
 async function clearCredentials() {
 	const filePath = getCredentialFilePath();
 	try {
@@ -9918,39 +11846,44 @@ async function clearCredentials() {
 	}
 }
 /**
-* Build the credential record from a GitHub `/user` API response. Kept
-* tiny and pure so the route handler can call it without pulling in any
-* I/O surface. The route is responsible for the actual `fetch`.
-*/
-function buildCredentialsFromUserResponse(token, user, scopes, now = Date.now()) {
+ * Build the credential record from a GitHub `/user` API response. Kept
+ * tiny and pure so the route handler can call it without pulling in any
+ * I/O surface. The route is responsible for the actual `fetch`.
+ */
+function buildCredentialsFromUserResponse(
+	token,
+	user,
+	scopes,
+	now = Date.now(),
+) {
 	return {
 		token,
 		username: user.login,
 		scopes,
-		savedAt: now
+		savedAt: now,
 	};
 }
 
 //#endregion
 //#region node_modules/.bun/@elizaos+app-core@2.0.0-alpha.537+72829346cb4c43b1/node_modules/@elizaos/app-core/packages/app-core/src/api/github-routes.js
 /**
-* GitHub PAT routes — power the "GitHub" connection card in Settings →
-* Coding Agents and surface the same token to the orchestrator's
-* sub-agent spawn env.
-*
-* Exposes:
-*   GET    /api/github/token   — `{ connected: bool, username?, scopes?, savedAt? }`.
-*                                 Token itself is never returned.
-*   POST   /api/github/token   — body `{ token }`. Validates by calling
-*                                 GitHub's `/user` endpoint, then persists
-*                                 the credential record to disk.
-*   DELETE /api/github/token   — clears the saved credential and returns
-*                                 `{ connected: false }`.
-*
-* Auth gating sits in front of every handler at the server.ts call site
-* (mirrors `/api/n8n/*`). The handler returns `true` when it owned the
-* request so the dispatcher can short-circuit.
-*/
+ * GitHub PAT routes — power the "GitHub" connection card in Settings →
+ * Coding Agents and surface the same token to the orchestrator's
+ * sub-agent spawn env.
+ *
+ * Exposes:
+ *   GET    /api/github/token   — `{ connected: bool, username?, scopes?, savedAt? }`.
+ *                                 Token itself is never returned.
+ *   POST   /api/github/token   — body `{ token }`. Validates by calling
+ *                                 GitHub's `/user` endpoint, then persists
+ *                                 the credential record to disk.
+ *   DELETE /api/github/token   — clears the saved credential and returns
+ *                                 `{ connected: false }`.
+ *
+ * Auth gating sits in front of every handler at the server.ts call site
+ * (mirrors `/api/n8n/*`). The handler returns `true` when it owned the
+ * request so the dispatcher can short-circuit.
+ */
 const GITHUB_USER_URL = "https://api.github.com/user";
 const VALIDATION_TIMEOUT_MS = 1e4;
 const MAX_BODY_BYTES = 8 * 1024;
@@ -9966,7 +11899,9 @@ async function readJsonBody$1(req) {
 	if (chunks.length === 0) return null;
 	try {
 		const parsed = JSON.parse(Buffer.concat(chunks).toString("utf-8"));
-		return parsed && typeof parsed === "object" && !Array.isArray(parsed) ? parsed : null;
+		return parsed && typeof parsed === "object" && !Array.isArray(parsed)
+			? parsed
+			: null;
 	} catch {
 		return null;
 	}
@@ -9986,15 +11921,15 @@ function metadataToStatus(metadata) {
 		connected: true,
 		username: metadata.username,
 		scopes: metadata.scopes,
-		savedAt: metadata.savedAt
+		savedAt: metadata.savedAt,
 	};
 }
 /**
-* Validate a token by calling GitHub's `/user` endpoint. Returns the
-* authenticated user + the granted OAuth scopes (parsed from the
-* `X-OAuth-Scopes` response header). Throws when the token is invalid,
-* lacks `read:user`, or the network call fails.
-*/
+ * Validate a token by calling GitHub's `/user` endpoint. Returns the
+ * authenticated user + the granted OAuth scopes (parsed from the
+ * `X-OAuth-Scopes` response header). Throws when the token is invalid,
+ * lacks `read:user`, or the network call fails.
+ */
 async function validateToken(token, fetchImpl) {
 	const controller = new AbortController();
 	const timer = setTimeout(() => controller.abort(), VALIDATION_TIMEOUT_MS);
@@ -10004,21 +11939,32 @@ async function validateToken(token, fetchImpl) {
 			headers: {
 				Authorization: `Bearer ${token}`,
 				Accept: "application/vnd.github+json",
-				"User-Agent": "eliza-github-connection"
+				"User-Agent": "eliza-github-connection",
 			},
-			signal: controller.signal
+			signal: controller.signal,
 		});
 	} finally {
 		clearTimeout(timer);
 	}
-	if (response.status === 401) throw new Error("Token rejected by GitHub: bad credentials.");
-	if (response.status === 403) throw new Error("Token rejected by GitHub: forbidden. Check the token has at least `read:user` scope.");
-	if (!response.ok) throw new Error(`GitHub returned ${response.status} validating the token. Try again or generate a new token.`);
+	if (response.status === 401)
+		throw new Error("Token rejected by GitHub: bad credentials.");
+	if (response.status === 403)
+		throw new Error(
+			"Token rejected by GitHub: forbidden. Check the token has at least `read:user` scope.",
+		);
+	if (!response.ok)
+		throw new Error(
+			`GitHub returned ${response.status} validating the token. Try again or generate a new token.`,
+		);
 	const body = await response.json();
-	if (typeof body?.login !== "string" || body.login.length === 0) throw new Error("GitHub /user response was missing the login field.");
+	if (typeof body?.login !== "string" || body.login.length === 0)
+		throw new Error("GitHub /user response was missing the login field.");
 	return {
 		user: body,
-		scopes: (response.headers.get("x-oauth-scopes") ?? "").split(",").map((s) => s.trim()).filter((s) => s.length > 0)
+		scopes: (response.headers.get("x-oauth-scopes") ?? "")
+			.split(",")
+			.map((s) => s.trim())
+			.filter((s) => s.length > 0),
 	};
 }
 async function handleGetToken(ctx) {
@@ -10042,9 +11988,15 @@ async function handlePostToken(ctx) {
 		sendJson(ctx, 400, { error: message });
 		return true;
 	}
-	const credentials = buildCredentialsFromUserResponse(token, validated.user, validated.scopes);
+	const credentials = buildCredentialsFromUserResponse(
+		token,
+		validated.user,
+		validated.scopes,
+	);
 	await saveCredentials(credentials);
-	logger.info(`[github-routes] saved github token for @${validated.user.login} (scopes=${validated.scopes.join(",") || "(none)"})`);
+	logger.info(
+		`[github-routes] saved github token for @${validated.user.login} (scopes=${validated.scopes.join(",") || "(none)"})`,
+	);
 	sendJson(ctx, 200, metadataToStatus(credentials));
 	return true;
 }
@@ -10055,15 +12007,18 @@ async function handleDeleteToken(ctx) {
 	return true;
 }
 /**
-* Dispatch entry point. Returns `true` when this module owned the request.
-* Caller is responsible for auth (mirrors `/api/n8n/*` in server.ts).
-*/
+ * Dispatch entry point. Returns `true` when this module owned the request.
+ * Caller is responsible for auth (mirrors `/api/n8n/*` in server.ts).
+ */
 async function handleGitHubRoutes(ctx) {
 	if (ctx.pathname !== "/api/github/token") return false;
 	switch (ctx.method) {
-		case "GET": return handleGetToken(ctx);
-		case "POST": return handlePostToken(ctx);
-		case "DELETE": return handleDeleteToken(ctx);
+		case "GET":
+			return handleGetToken(ctx);
+		case "POST":
+			return handlePostToken(ctx);
+		case "DELETE":
+			return handleDeleteToken(ctx);
 		default:
 			sendJson(ctx, 405, { error: "Method not allowed" });
 			return true;
@@ -10073,28 +12028,28 @@ async function handleGitHubRoutes(ctx) {
 //#endregion
 //#region node_modules/.bun/@elizaos+app-core@2.0.0-alpha.537+72829346cb4c43b1/node_modules/@elizaos/app-core/packages/app-core/src/services/local-inference/handler-registry.js
 /**
-* Side-registry of model handlers registered on an AgentRuntime.
-*
-* The elizaOS core exposes `runtime.registerModel(type, handler, provider,
-* priority)` but no way to list who registered what. This module intercepts
-* `registerModel` at runtime to record every registration in a Map keyed by
-* model type, plus fires status listeners so the UI can render a live
-* [ModelType × Provider] routing table.
-*
-* Because we monkey-patch `registerModel` we also keep the original
-* handler reference — the router-handler (see `router-handler.ts`) uses
-* this to dispatch inference calls by policy without going through
-* `runtime.useModel` (which would loop back to us and recurse).
-*/
+ * Side-registry of model handlers registered on an AgentRuntime.
+ *
+ * The elizaOS core exposes `runtime.registerModel(type, handler, provider,
+ * priority)` but no way to list who registered what. This module intercepts
+ * `registerModel` at runtime to record every registration in a Map keyed by
+ * model type, plus fires status listeners so the UI can render a live
+ * [ModelType × Provider] routing table.
+ *
+ * Because we monkey-patch `registerModel` we also keep the original
+ * handler reference — the router-handler (see `router-handler.ts`) uses
+ * this to dispatch inference calls by policy without going through
+ * `runtime.useModel` (which would loop back to us and recurse).
+ */
 var HandlerRegistry = class {
 	registrations = /* @__PURE__ */ new Map();
 	listeners = /* @__PURE__ */ new Set();
 	installedOn = /* @__PURE__ */ new WeakSet();
 	/**
-	* Snapshot of all registrations grouped by model type, sorted by
-	* priority descending inside each group (matches core's selection
-	* order). Callers must not mutate the returned array.
-	*/
+	 * Snapshot of all registrations grouped by model type, sorted by
+	 * priority descending inside each group (matches core's selection
+	 * order). Callers must not mutate the returned array.
+	 */
 	getAll() {
 		const out = [];
 		for (const list of this.registrations.values()) out.push(...list);
@@ -10106,11 +12061,13 @@ var HandlerRegistry = class {
 		return list ? [...list] : [];
 	}
 	/**
-	* Registrations excluding a specific provider. Used by the router-handler
-	* to find "all providers except me" when dispatching.
-	*/
+	 * Registrations excluding a specific provider. Used by the router-handler
+	 * to find "all providers except me" when dispatching.
+	 */
 	getForTypeExcluding(modelType, excludeProvider) {
-		return this.getForType(modelType).filter((r) => r.provider !== excludeProvider);
+		return this.getForType(modelType).filter(
+			(r) => r.provider !== excludeProvider,
+		);
 	}
 	subscribe(listener) {
 		this.listeners.add(listener);
@@ -10120,25 +12077,28 @@ var HandlerRegistry = class {
 	}
 	emit() {
 		const snapshot = this.getAll();
-		for (const listener of this.listeners) try {
-			listener(snapshot);
-		} catch {
-			this.listeners.delete(listener);
-		}
+		for (const listener of this.listeners)
+			try {
+				listener(snapshot);
+			} catch {
+				this.listeners.delete(listener);
+			}
 	}
 	record(reg) {
-		const filtered = (this.registrations.get(reg.modelType) ?? []).filter((r) => r.provider !== reg.provider);
+		const filtered = (this.registrations.get(reg.modelType) ?? []).filter(
+			(r) => r.provider !== reg.provider,
+		);
 		filtered.push(reg);
 		filtered.sort((a, b) => b.priority - a.priority);
 		this.registrations.set(reg.modelType, filtered);
 		this.emit();
 	}
 	/**
-	* Install the interception on a runtime. Idempotent per runtime instance.
-	* For most boot paths the prototype-level patch below already covers the
-	* runtime before any plugin registers; this method is the belt-and-braces
-	* fallback for runtimes constructed before the patch ran.
-	*/
+	 * Install the interception on a runtime. Idempotent per runtime instance.
+	 * For most boot paths the prototype-level patch below already covers the
+	 * runtime before any plugin registers; this method is the belt-and-braces
+	 * fallback for runtimes constructed before the patch ran.
+	 */
 	installOn(runtime) {
 		installPrototypePatch();
 		const rt = runtime;
@@ -10148,16 +12108,16 @@ var HandlerRegistry = class {
 		const protoMethod = Object.getPrototypeOf(rt)?.registerModel;
 		if (protoMethod && protoMethod[PATCH_MARK]) return;
 		const original = rt.registerModel.bind(runtime);
-		rt.registerModel = ((modelType, handler, provider, priority) => {
+		rt.registerModel = (modelType, handler, provider, priority) => {
 			this.record({
 				modelType: String(modelType),
 				provider: String(provider),
 				priority: typeof priority === "number" ? priority : 0,
-				registeredAt: (/* @__PURE__ */ new Date()).toISOString(),
-				handler
+				registeredAt: /* @__PURE__ */ new Date().toISOString(),
+				handler,
 			});
 			return original(modelType, handler, provider, priority);
-		});
+		};
 	}
 	/** Exposed so the prototype patch can record through the singleton. */
 	recordFromPrototype(reg) {
@@ -10167,10 +12127,10 @@ var HandlerRegistry = class {
 const PATCH_MARK = Symbol.for("eliza.local-inference.registerModel.patched");
 let prototypePatched = false;
 /**
-* One-shot patch of `AgentRuntime.prototype.registerModel` so every runtime
-* instance — including ones constructed later in boot — records through
-* the singleton handler registry. Idempotent.
-*/
+ * One-shot patch of `AgentRuntime.prototype.registerModel` so every runtime
+ * instance — including ones constructed later in boot — records through
+ * the singleton handler registry. Idempotent.
+ */
 function installPrototypePatch() {
 	if (prototypePatched) return;
 	const proto = AgentRuntime.prototype;
@@ -10180,14 +12140,19 @@ function installPrototypePatch() {
 		prototypePatched = true;
 		return;
 	}
-	const patched = function patchedRegisterModel(modelType, handler, provider, priority) {
+	const patched = function patchedRegisterModel(
+		modelType,
+		handler,
+		provider,
+		priority,
+	) {
 		try {
 			handlerRegistry.recordFromPrototype({
 				modelType: String(modelType),
 				provider: String(provider),
 				priority: typeof priority === "number" ? priority : 0,
-				registeredAt: (/* @__PURE__ */ new Date()).toISOString(),
-				handler
+				registeredAt: /* @__PURE__ */ new Date().toISOString(),
+				handler,
 			});
 		} catch {}
 		original.call(this, modelType, handler, provider, priority);
@@ -10203,29 +12168,29 @@ function toPublicRegistration(reg) {
 		modelType: reg.modelType,
 		provider: reg.provider,
 		priority: reg.priority,
-		registeredAt: reg.registeredAt
+		registeredAt: reg.registeredAt,
 	};
 }
 
 //#endregion
 //#region node_modules/.bun/@elizaos+app-core@2.0.0-alpha.537+72829346cb4c43b1/node_modules/@elizaos/app-core/packages/app-core/src/services/local-inference/providers.js
 /**
-* Provider registry.
-*
-* Treats every inference source the same way — cloud subscription, cloud
-* API, local llama.cpp engine, paired-device bridge, Capacitor on-device
-* — each is a `ProviderDefinition` with an `id`, a human label, a set of
-* supported model slots, and a pluggable `getEnableState()` that inspects
-* whatever underlying gate controls it (API key presence, subscription
-* status, env flag, file on disk).
-*
-* The cloud-provider status readers are intentionally permissive: they
-* report what they can introspect without depending on the specific
-* cloud-plugin internals, and hand off to the existing ProviderSwitcher
-* UI for actual enable/disable via `configureHref`. That avoids the
-* "combined enable matrix is an architectural project" problem by making
-* configuration navigable rather than centralised.
-*/
+ * Provider registry.
+ *
+ * Treats every inference source the same way — cloud subscription, cloud
+ * API, local llama.cpp engine, paired-device bridge, Capacitor on-device
+ * — each is a `ProviderDefinition` with an `id`, a human label, a set of
+ * supported model slots, and a pluggable `getEnableState()` that inspects
+ * whatever underlying gate controls it (API key presence, subscription
+ * status, env flag, file on disk).
+ *
+ * The cloud-provider status readers are intentionally permissive: they
+ * report what they can introspect without depending on the specific
+ * cloud-plugin internals, and hand off to the existing ProviderSwitcher
+ * UI for actual enable/disable via `configureHref`. That avoids the
+ * "combined enable matrix is an architectural project" problem by making
+ * configuration navigable rather than centralised.
+ */
 /** Resolve which slots have at least one registered handler from this provider. */
 function getRegisteredSlotsForProvider(providerId) {
 	const regs = handlerRegistry.getAll();
@@ -10237,88 +12202,97 @@ const LOCAL_PROVIDER = {
 	id: "eliza-local-inference",
 	label: "Local llama.cpp",
 	kind: "local",
-	description: "On-device inference using node-llama-cpp. Free, private, runs on your machine's CPU/GPU.",
+	description:
+		"On-device inference using node-llama-cpp. Free, private, runs on your machine's CPU/GPU.",
 	supportedSlots: ["TEXT_SMALL", "TEXT_LARGE"],
 	async getEnableState() {
 		try {
-			return (await fs$1.readdir(`${localInferenceRoot()}/models`, { withFileTypes: true })).some((e) => e.isFile() && e.name.toLowerCase().endsWith(".gguf")) ? {
-				enabled: true,
-				reason: "GGUF model installed"
-			} : {
-				enabled: false,
-				reason: "No local model installed"
-			};
+			return (
+				await fs$1.readdir(`${localInferenceRoot()}/models`, {
+					withFileTypes: true,
+				})
+			).some((e) => e.isFile() && e.name.toLowerCase().endsWith(".gguf"))
+				? {
+						enabled: true,
+						reason: "GGUF model installed",
+					}
+				: {
+						enabled: false,
+						reason: "No local model installed",
+					};
 		} catch {
 			return {
 				enabled: false,
-				reason: "No local model installed"
+				reason: "No local model installed",
 			};
 		}
 	},
-	configureHref: "#local-inference-panel"
+	configureHref: "#local-inference-panel",
 };
 const DEVICE_BRIDGE_PROVIDER = {
 	id: "eliza-device-bridge",
 	label: "Paired device bridge",
 	kind: "device-bridge",
-	description: "Inference on a paired mobile or desktop device over WebSocket. Useful when the agent runs in a container but the model lives on your phone or laptop.",
+	description:
+		"Inference on a paired mobile or desktop device over WebSocket. Useful when the agent runs in a container but the model lives on your phone or laptop.",
 	supportedSlots: ["TEXT_SMALL", "TEXT_LARGE"],
 	async getEnableState() {
-		if (!(process.env.ELIZA_DEVICE_BRIDGE_ENABLED?.trim() === "1")) return {
-			enabled: false,
-			reason: "Set ELIZA_DEVICE_BRIDGE_ENABLED=1 to enable"
-		};
+		if (!(process.env.ELIZA_DEVICE_BRIDGE_ENABLED?.trim() === "1"))
+			return {
+				enabled: false,
+				reason: "Set ELIZA_DEVICE_BRIDGE_ENABLED=1 to enable",
+			};
 		const status = deviceBridge.status();
-		if (status.connected) return {
-			enabled: true,
-			reason: `${status.devices.length} device(s) connected`
-		};
+		if (status.connected)
+			return {
+				enabled: true,
+				reason: `${status.devices.length} device(s) connected`,
+			};
 		return {
 			enabled: true,
-			reason: "Waiting for a device to connect"
+			reason: "Waiting for a device to connect",
 		};
 	},
-	configureHref: "#device-bridge-status"
+	configureHref: "#device-bridge-status",
 };
 const CAPACITOR_LLAMA_PROVIDER = {
 	id: "capacitor-llama",
 	label: "On-device llama.cpp (mobile)",
 	kind: "local",
-	description: "Runs llama.cpp natively on iOS or Android via Capacitor. Only available in mobile builds.",
+	description:
+		"Runs llama.cpp natively on iOS or Android via Capacitor. Only available in mobile builds.",
 	supportedSlots: ["TEXT_SMALL", "TEXT_LARGE"],
 	async getEnableState() {
-		if (globalThis.Capacitor?.isNativePlatform?.()) return {
-			enabled: true,
-			reason: "Native Capacitor runtime detected"
-		};
+		if (globalThis.Capacitor?.isNativePlatform?.())
+			return {
+				enabled: true,
+				reason: "Native Capacitor runtime detected",
+			};
 		return {
 			enabled: false,
-			reason: "Only available in iOS/Android builds"
+			reason: "Only available in iOS/Android builds",
 		};
 	},
-	configureHref: null
+	configureHref: null,
 };
 const ANTHROPIC_PROVIDER = {
 	id: "anthropic",
 	label: "Anthropic API",
 	kind: "cloud-api",
 	description: "Claude models via the Anthropic API. Requires an API key.",
-	supportedSlots: [
-		"TEXT_SMALL",
-		"TEXT_LARGE",
-		"OBJECT_SMALL",
-		"OBJECT_LARGE"
-	],
+	supportedSlots: ["TEXT_SMALL", "TEXT_LARGE", "OBJECT_SMALL", "OBJECT_LARGE"],
 	async getEnableState() {
-		return process.env.ANTHROPIC_API_KEY?.trim() ? {
-			enabled: true,
-			reason: "API key set"
-		} : {
-			enabled: false,
-			reason: "No API key"
-		};
+		return process.env.ANTHROPIC_API_KEY?.trim()
+			? {
+					enabled: true,
+					reason: "API key set",
+				}
+			: {
+					enabled: false,
+					reason: "No API key",
+				};
 	},
-	configureHref: "#ai-model"
+	configureHref: "#ai-model",
 };
 const OPENAI_PROVIDER = {
 	id: "openai",
@@ -10330,18 +12304,20 @@ const OPENAI_PROVIDER = {
 		"TEXT_LARGE",
 		"TEXT_EMBEDDING",
 		"OBJECT_SMALL",
-		"OBJECT_LARGE"
+		"OBJECT_LARGE",
 	],
 	async getEnableState() {
-		return process.env.OPENAI_API_KEY?.trim() ? {
-			enabled: true,
-			reason: "API key set"
-		} : {
-			enabled: false,
-			reason: "No API key"
-		};
+		return process.env.OPENAI_API_KEY?.trim()
+			? {
+					enabled: true,
+					reason: "API key set",
+				}
+			: {
+					enabled: false,
+					reason: "No API key",
+				};
 	},
-	configureHref: "#ai-model"
+	configureHref: "#ai-model",
 };
 const GROK_PROVIDER = {
 	id: "grok",
@@ -10350,92 +12326,87 @@ const GROK_PROVIDER = {
 	description: "xAI Grok models. Requires an API key.",
 	supportedSlots: ["TEXT_SMALL", "TEXT_LARGE"],
 	async getEnableState() {
-		return process.env.GROK_API_KEY?.trim() ?? process.env.XAI_API_KEY?.trim() ? {
-			enabled: true,
-			reason: "API key set"
-		} : {
-			enabled: false,
-			reason: "No API key"
-		};
+		return (process.env.GROK_API_KEY?.trim() ?? process.env.XAI_API_KEY?.trim())
+			? {
+					enabled: true,
+					reason: "API key set",
+				}
+			: {
+					enabled: false,
+					reason: "No API key",
+				};
 	},
-	configureHref: "#ai-model"
+	configureHref: "#ai-model",
 };
 const ELIZACLOUD_PROVIDER = {
 	id: "elizacloud",
 	label: "Eliza Cloud",
 	kind: "cloud-subscription",
-	description: "Eliza-hosted inference routed through your subscription. No API key to manage.",
+	description:
+		"Eliza-hosted inference routed through your subscription. No API key to manage.",
 	supportedSlots: [
 		"TEXT_SMALL",
 		"TEXT_LARGE",
 		"TEXT_EMBEDDING",
 		"OBJECT_SMALL",
-		"OBJECT_LARGE"
+		"OBJECT_LARGE",
 	],
 	async getEnableState() {
-		return process.env.ELIZA_CLOUD_TOKEN?.trim() ?? process.env.ELIZACLOUD_TOKEN?.trim() ?? process.env.ELIZAOS_API_KEY?.trim() ? {
-			enabled: true,
-			reason: "Cloud token set"
-		} : {
-			enabled: false,
-			reason: "Not signed in"
-		};
+		return (process.env.ELIZA_CLOUD_TOKEN?.trim() ??
+			process.env.ELIZACLOUD_TOKEN?.trim() ??
+			process.env.ELIZAOS_API_KEY?.trim())
+			? {
+					enabled: true,
+					reason: "Cloud token set",
+				}
+			: {
+					enabled: false,
+					reason: "Not signed in",
+				};
 	},
-	configureHref: "#ai-model"
+	configureHref: "#ai-model",
 };
 const ANTHROPIC_SUBSCRIPTION_PROVIDER = {
 	id: "anthropic-subscription",
 	label: "Claude subscription",
 	kind: "cloud-subscription",
 	description: "Claude Code task-agent access through linked accounts.",
-	supportedSlots: [
-		"TEXT_SMALL",
-		"TEXT_LARGE",
-		"OBJECT_SMALL",
-		"OBJECT_LARGE"
-	],
+	supportedSlots: ["TEXT_SMALL", "TEXT_LARGE", "OBJECT_SMALL", "OBJECT_LARGE"],
 	async getEnableState() {
 		return subscriptionEnableState("anthropic-subscription");
 	},
-	configureHref: "#ai-model"
+	configureHref: "#ai-model",
 };
 const OPENAI_CODEX_PROVIDER = {
 	id: "openai-codex",
 	label: "Codex subscription",
 	kind: "cloud-subscription",
 	description: "Codex and ChatGPT subscription access through linked accounts.",
-	supportedSlots: [
-		"TEXT_SMALL",
-		"TEXT_LARGE",
-		"OBJECT_SMALL",
-		"OBJECT_LARGE"
-	],
+	supportedSlots: ["TEXT_SMALL", "TEXT_LARGE", "OBJECT_SMALL", "OBJECT_LARGE"],
 	async getEnableState() {
 		return subscriptionEnableState("openai-codex");
 	},
-	configureHref: "#ai-model"
+	configureHref: "#ai-model",
 };
 const GOOGLE_PROVIDER = {
 	id: "google",
 	label: "Google (Gemini)",
 	kind: "cloud-api",
 	description: "Gemini models via Google Generative AI. Requires an API key.",
-	supportedSlots: [
-		"TEXT_SMALL",
-		"TEXT_LARGE",
-		"OBJECT_SMALL",
-		"OBJECT_LARGE"
-	],
+	supportedSlots: ["TEXT_SMALL", "TEXT_LARGE", "OBJECT_SMALL", "OBJECT_LARGE"],
 	async getEnableState() {
-		return process.env.GOOGLE_API_KEY?.trim() ?? process.env.GEMINI_API_KEY?.trim() ? {
-			enabled: true,
-			reason: "API key set"
-		} : {
-			enabled: false,
-			reason: "No API key"
-		};
+		return (process.env.GOOGLE_API_KEY?.trim() ??
+			process.env.GEMINI_API_KEY?.trim())
+			? {
+					enabled: true,
+					reason: "API key set",
+				}
+			: {
+					enabled: false,
+					reason: "No API key",
+				};
 	},
-	configureHref: "#ai-model"
+	configureHref: "#ai-model",
 };
 const MISTRAL_PROVIDER = {
 	id: "mistral",
@@ -10444,15 +12415,17 @@ const MISTRAL_PROVIDER = {
 	description: "Mistral models via la Plateforme. Requires an API key.",
 	supportedSlots: ["TEXT_SMALL", "TEXT_LARGE"],
 	async getEnableState() {
-		return process.env.MISTRAL_API_KEY?.trim() ? {
-			enabled: true,
-			reason: "API key set"
-		} : {
-			enabled: false,
-			reason: "No API key"
-		};
+		return process.env.MISTRAL_API_KEY?.trim()
+			? {
+					enabled: true,
+					reason: "API key set",
+				}
+			: {
+					enabled: false,
+					reason: "No API key",
+				};
 	},
-	configureHref: "#ai-model"
+	configureHref: "#ai-model",
 };
 const BUILT_IN_PROVIDERS = [
 	LOCAL_PROVIDER,
@@ -10465,53 +12438,59 @@ const BUILT_IN_PROVIDERS = [
 	OPENAI_PROVIDER,
 	GOOGLE_PROVIDER,
 	GROK_PROVIDER,
-	MISTRAL_PROVIDER
+	MISTRAL_PROVIDER,
 ];
 function subscriptionEnableState(providerId) {
-	if (providerId !== "anthropic-subscription" && providerId !== "openai-codex") return {
-		enabled: false,
-		reason: "Unsupported subscription"
-	};
-	const accounts = getDefaultAccountPool().list(providerId).filter((account) => account.enabled && account.health === "ok");
-	if (accounts.length === 0) return {
-		enabled: false,
-		reason: "No linked account"
-	};
+	if (providerId !== "anthropic-subscription" && providerId !== "openai-codex")
+		return {
+			enabled: false,
+			reason: "Unsupported subscription",
+		};
+	const accounts = getDefaultAccountPool()
+		.list(providerId)
+		.filter((account) => account.enabled && account.health === "ok");
+	if (accounts.length === 0)
+		return {
+			enabled: false,
+			reason: "No linked account",
+		};
 	return {
 		enabled: true,
-		reason: `${accounts.length} linked account${accounts.length === 1 ? "" : "s"}`
+		reason: `${accounts.length} linked account${accounts.length === 1 ? "" : "s"}`,
 	};
 }
 async function snapshotProviders() {
-	return await Promise.all(BUILT_IN_PROVIDERS.map(async (def) => {
-		const state = await def.getEnableState();
-		return {
-			id: def.id,
-			label: def.label,
-			kind: def.kind,
-			description: def.description,
-			supportedSlots: def.supportedSlots,
-			configureHref: def.configureHref,
-			enableState: state,
-			registeredSlots: getRegisteredSlotsForProvider(def.id)
-		};
-	}));
+	return await Promise.all(
+		BUILT_IN_PROVIDERS.map(async (def) => {
+			const state = await def.getEnableState();
+			return {
+				id: def.id,
+				label: def.label,
+				kind: def.kind,
+				description: def.description,
+				supportedSlots: def.supportedSlots,
+				configureHref: def.configureHref,
+				enableState: state,
+				registeredSlots: getRegisteredSlotsForProvider(def.id),
+			};
+		}),
+	);
 }
 
 //#endregion
 //#region node_modules/.bun/@elizaos+app-core@2.0.0-alpha.537+72829346cb4c43b1/node_modules/@elizaos/app-core/packages/app-core/src/services/local-inference/routing-preferences.js
 /**
-* Per-model-type user override: "for TEXT_LARGE, prefer this provider".
-*
-* Persisted to `$STATE_DIR/local-inference/routing.json` and read by the
-* router-handler (see `router-handler.ts`) to pick a provider at dispatch
-* time. When a slot has no override, the runtime's native priority order
-* wins — i.e. this is layered over the existing registration priority
-* rather than replacing it.
-*/
+ * Per-model-type user override: "for TEXT_LARGE, prefer this provider".
+ *
+ * Persisted to `$STATE_DIR/local-inference/routing.json` and read by the
+ * router-handler (see `router-handler.ts`) to pick a provider at dispatch
+ * time. When a slot has no override, the runtime's native priority order
+ * wins — i.e. this is layered over the existing registration priority
+ * rather than replacing it.
+ */
 const EMPTY = {
 	preferredProvider: {},
-	policy: {}
+	policy: {},
 };
 function routingPath() {
 	return path.join(localInferenceRoot(), "routing.json");
@@ -10526,7 +12505,7 @@ async function readRoutingPreferences() {
 		if (!parsed || parsed.version !== 1 || !parsed.preferences) return EMPTY;
 		return {
 			preferredProvider: parsed.preferences.preferredProvider ?? {},
-			policy: parsed.preferences.policy ?? {}
+			policy: parsed.preferences.policy ?? {},
 		};
 	} catch {
 		return EMPTY;
@@ -10536,7 +12515,7 @@ async function writeRoutingPreferences(prefs) {
 	await ensureRoot$1();
 	const payload = {
 		version: 1,
-		preferences: prefs
+		preferences: prefs,
 	};
 	const tmp = `${routingPath()}.tmp`;
 	await fs$1.writeFile(tmp, JSON.stringify(payload, null, 2), "utf8");
@@ -10546,7 +12525,7 @@ async function setPreferredProvider(slot, provider) {
 	const current = await readRoutingPreferences();
 	const next = {
 		preferredProvider: { ...current.preferredProvider },
-		policy: { ...current.policy }
+		policy: { ...current.policy },
 	};
 	if (provider) next.preferredProvider[slot] = provider;
 	else delete next.preferredProvider[slot];
@@ -10557,7 +12536,7 @@ async function setPolicy(slot, policy) {
 	const current = await readRoutingPreferences();
 	const next = {
 		preferredProvider: { ...current.preferredProvider },
-		policy: { ...current.policy }
+		policy: { ...current.policy },
 	};
 	if (policy) next.policy[slot] = policy;
 	else delete next.policy[slot];
@@ -10568,22 +12547,22 @@ async function setPolicy(slot, policy) {
 //#endregion
 //#region node_modules/.bun/@elizaos+app-core@2.0.0-alpha.537+72829346cb4c43b1/node_modules/@elizaos/app-core/packages/app-core/src/services/local-inference/engine.js
 /**
-* Standalone llama.cpp engine.
-*
-* Owns one `Llama` binding instance, at most one loaded `LlamaModel`, and
-* a cached `LlamaChatSession` that wraps it. Model swap is unload-then-load
-* so we never double-allocate VRAM.
-*
-* Two consumption paths:
-*   1. The Model Hub UI calls `load()` / `unload()` to make "Activate" work.
-*   2. The agent runtime calls `generate()` via the registered
-*      `ModelType.TEXT_SMALL` / `TEXT_LARGE` handlers (see
-*      `ensure-local-inference-handler.ts`).
-*
-* Dynamic import keeps the binding optional: if `node-llama-cpp` is not
-* installed, `available()` returns false and callers surface a clear error
-* instead of crashing the process.
-*/
+ * Standalone llama.cpp engine.
+ *
+ * Owns one `Llama` binding instance, at most one loaded `LlamaModel`, and
+ * a cached `LlamaChatSession` that wraps it. Model swap is unload-then-load
+ * so we never double-allocate VRAM.
+ *
+ * Two consumption paths:
+ *   1. The Model Hub UI calls `load()` / `unload()` to make "Activate" work.
+ *   2. The agent runtime calls `generate()` via the registered
+ *      `ModelType.TEXT_SMALL` / `TEXT_LARGE` handlers (see
+ *      `ensure-local-inference-handler.ts`).
+ *
+ * Dynamic import keeps the binding optional: if `node-llama-cpp` is not
+ * installed, `available()` returns false and callers surface a clear error
+ * instead of crashing the process.
+ */
 var LocalInferenceEngine = class {
 	llama = null;
 	loadedModel = null;
@@ -10626,36 +12605,45 @@ var LocalInferenceEngine = class {
 	}
 	async load(modelPath) {
 		if (this.loadedPath === modelPath && this.loadedModel) return;
-		if (!await this.available() || !this.bindingModule) throw new Error("node-llama-cpp is not installed in this build; add it as a dependency to enable local inference");
+		if (!(await this.available()) || !this.bindingModule)
+			throw new Error(
+				"node-llama-cpp is not installed in this build; add it as a dependency to enable local inference",
+			);
 		if (this.loadedModel) await this.unload();
-		if (!this.llama) this.llama = await this.bindingModule.getLlama({ gpu: "auto" });
+		if (!this.llama)
+			this.llama = await this.bindingModule.getLlama({ gpu: "auto" });
 		const model = await this.llama.loadModel({
 			modelPath,
-			gpuLayers: "auto"
+			gpuLayers: "auto",
 		});
 		const context = await model.createContext();
 		const sequence = context.getSequence();
-		const session = new this.bindingModule.LlamaChatSession({ contextSequence: sequence });
+		const session = new this.bindingModule.LlamaChatSession({
+			contextSequence: sequence,
+		});
 		this.loadedModel = model;
 		this.loadedContext = context;
 		this.loadedSession = session;
 		this.loadedPath = modelPath;
 	}
 	/**
-	* Generate text from the loaded model. Serialised — a new call waits for
-	* any in-flight generation to finish so the chat session's internal state
-	* stays consistent.
-	*/
+	 * Generate text from the loaded model. Serialised — a new call waits for
+	 * any in-flight generation to finish so the chat session's internal state
+	 * stays consistent.
+	 */
 	async generate(args) {
-		if (!this.loadedSession) throw new Error("No local model is active. Select one in Settings → Local models before using local inference.");
+		if (!this.loadedSession)
+			throw new Error(
+				"No local model is active. Select one in Settings → Local models before using local inference.",
+			);
 		const session = this.loadedSession;
 		const run = async () => {
 			await session.resetChatHistory?.();
 			return session.prompt(args.prompt, {
 				maxTokens: args.maxTokens ?? 2048,
-				temperature: args.temperature ?? .7,
-				topP: args.topP ?? .9,
-				customStopTriggers: args.stopSequences
+				temperature: args.temperature ?? 0.7,
+				topP: args.topP ?? 0.9,
+				customStopTriggers: args.stopSequences,
 			});
 		};
 		const job = this.generationQueue.then(run, run);
@@ -10665,7 +12653,14 @@ var LocalInferenceEngine = class {
 	async loadBinding() {
 		try {
 			const mod = await import("node-llama-cpp");
-			if (mod && typeof mod === "object" && "getLlama" in mod && "LlamaChatSession" in mod && typeof mod.getLlama === "function") return mod;
+			if (
+				mod &&
+				typeof mod === "object" &&
+				"getLlama" in mod &&
+				"LlamaChatSession" in mod &&
+				typeof mod.getLlama === "function"
+			)
+				return mod;
 			return null;
 		} catch {
 			return null;
@@ -10677,93 +12672,115 @@ const localInferenceEngine = new LocalInferenceEngine();
 //#endregion
 //#region node_modules/.bun/@elizaos+app-core@2.0.0-alpha.537+72829346cb4c43b1/node_modules/@elizaos/app-core/packages/app-core/src/services/local-inference/external-scanner.js
 /**
-* Discover GGUF files already on disk from other local-inference tools.
-*
-* Users often have LM Studio, Jan, Ollama, or raw HuggingFace downloads
-* lying around. We scan their default cache paths and surface those models
-* in the Model Hub with `source: "external-scan"` so Eliza can load them
-* without re-downloading. Eliza never modifies or deletes these files —
-* the uninstall endpoint refuses when `source !== "eliza-download"`.
-*
-* Ollama is special: its blobs live under `models/blobs/sha256-*` with no
-* `.gguf` extension, and the human name only exists in adjacent manifests.
-* We parse the manifests to recover the mapping; blobs we can't map stay
-* hidden rather than surfacing as opaque hashes.
-*/
+ * Discover GGUF files already on disk from other local-inference tools.
+ *
+ * Users often have LM Studio, Jan, Ollama, or raw HuggingFace downloads
+ * lying around. We scan their default cache paths and surface those models
+ * in the Model Hub with `source: "external-scan"` so Eliza can load them
+ * without re-downloading. Eliza never modifies or deletes these files —
+ * the uninstall endpoint refuses when `source !== "eliza-download"`.
+ *
+ * Ollama is special: its blobs live under `models/blobs/sha256-*` with no
+ * `.gguf` extension, and the human name only exists in adjacent manifests.
+ * We parse the manifests to recover the mapping; blobs we can't map stay
+ * hidden rather than surfacing as opaque hashes.
+ */
 function candidateRoots() {
 	const home = os.homedir();
 	const platform = process.platform;
 	const roots = [];
-	roots.push({
-		origin: "lm-studio",
-		dir: path.join(home, ".lmstudio", "models"),
-		kind: "flat"
-	}, {
-		origin: "lm-studio",
-		dir: path.join(home, ".cache", "lm-studio", "models"),
-		kind: "flat"
-	});
-	if (platform === "darwin") roots.push({
-		origin: "jan",
-		dir: path.join(home, "Library", "Application Support", "Jan", "data", "models"),
-		kind: "flat"
-	});
+	roots.push(
+		{
+			origin: "lm-studio",
+			dir: path.join(home, ".lmstudio", "models"),
+			kind: "flat",
+		},
+		{
+			origin: "lm-studio",
+			dir: path.join(home, ".cache", "lm-studio", "models"),
+			kind: "flat",
+		},
+	);
+	if (platform === "darwin")
+		roots.push({
+			origin: "jan",
+			dir: path.join(
+				home,
+				"Library",
+				"Application Support",
+				"Jan",
+				"data",
+				"models",
+			),
+			kind: "flat",
+		});
 	else if (platform === "win32") {
-		const appdata = process.env.APPDATA ?? path.join(home, "AppData", "Roaming");
+		const appdata =
+			process.env.APPDATA ?? path.join(home, "AppData", "Roaming");
 		roots.push({
 			origin: "jan",
 			dir: path.join(appdata, "Jan", "data", "models"),
-			kind: "flat"
+			kind: "flat",
 		});
 	} else {
 		const xdg = process.env.XDG_CONFIG_HOME ?? path.join(home, ".config");
 		roots.push({
 			origin: "jan",
 			dir: path.join(xdg, "Jan", "data", "models"),
-			kind: "flat"
+			kind: "flat",
 		});
 	}
 	roots.push({
 		origin: "jan",
 		dir: path.join(home, "jan", "models"),
-		kind: "flat"
+		kind: "flat",
 	});
 	const ollamaOverride = process.env.OLLAMA_MODELS?.trim();
-	if (ollamaOverride) roots.push({
-		origin: "ollama",
-		dir: ollamaOverride,
-		kind: "ollama"
-	});
+	if (ollamaOverride)
+		roots.push({
+			origin: "ollama",
+			dir: ollamaOverride,
+			kind: "ollama",
+		});
 	roots.push({
 		origin: "ollama",
 		dir: path.join(home, ".ollama", "models"),
-		kind: "ollama"
+		kind: "ollama",
 	});
-	if (platform === "linux") roots.push({
-		origin: "ollama",
-		dir: "/usr/share/ollama/.ollama/models",
-		kind: "ollama"
-	}, {
-		origin: "ollama",
-		dir: "/var/lib/ollama/.ollama/models",
-		kind: "ollama"
-	});
-	const hfOverride = process.env.HF_HUB_CACHE?.trim() || (process.env.HF_HOME ? path.join(process.env.HF_HOME, "hub") : null);
+	if (platform === "linux")
+		roots.push(
+			{
+				origin: "ollama",
+				dir: "/usr/share/ollama/.ollama/models",
+				kind: "ollama",
+			},
+			{
+				origin: "ollama",
+				dir: "/var/lib/ollama/.ollama/models",
+				kind: "ollama",
+			},
+		);
+	const hfOverride =
+		process.env.HF_HUB_CACHE?.trim() ||
+		(process.env.HF_HOME ? path.join(process.env.HF_HOME, "hub") : null);
 	const hfDefault = path.join(home, ".cache", "huggingface", "hub");
 	roots.push({
 		origin: "huggingface",
 		dir: hfOverride || hfDefault,
-		kind: "hf-snapshots"
+		kind: "hf-snapshots",
 	});
-	roots.push({
-		origin: "text-gen-webui",
-		dir: path.join(home, "text-generation-webui", "user_data", "models"),
-		kind: "flat"
-	}, {
-		origin: "text-gen-webui",
-		dir: path.join(home, "text-generation-webui", "models"),
-		kind: "flat"
-	});
+	roots.push(
+		{
+			origin: "text-gen-webui",
+			dir: path.join(home, "text-generation-webui", "user_data", "models"),
+			kind: "flat",
+		},
+		{
+			origin: "text-gen-webui",
+			dir: path.join(home, "text-generation-webui", "models"),
+			kind: "flat",
+		},
+	);
 	return roots;
 }
 async function dirExists(dir) {
@@ -10774,10 +12791,12 @@ async function dirExists(dir) {
 	}
 }
 async function* walkForGgufs(root, maxDepth = 6) {
-	const stack = [{
-		dir: root,
-		depth: 0
-	}];
+	const stack = [
+		{
+			dir: root,
+			depth: 0,
+		},
+	];
 	while (stack.length > 0) {
 		const frame = stack.pop();
 		if (!frame) break;
@@ -10791,10 +12810,11 @@ async function* walkForGgufs(root, maxDepth = 6) {
 		for (const entry of entries) {
 			const full = path.join(dir, entry.name);
 			if (entry.isDirectory()) {
-				if (depth < maxDepth) stack.push({
-					dir: full,
-					depth: depth + 1
-				});
+				if (depth < maxDepth)
+					stack.push({
+						dir: full,
+						depth: depth + 1,
+					});
 				continue;
 			}
 			const isLink = entry.isSymbolicLink();
@@ -10808,7 +12828,7 @@ async function* walkForGgufs(root, maxDepth = 6) {
 					absPath: full,
 					realPath,
 					size: stat.size,
-					mtimeMs: stat.mtimeMs
+					mtimeMs: stat.mtimeMs,
 				};
 			} catch {}
 		}
@@ -10817,7 +12837,8 @@ async function* walkForGgufs(root, maxDepth = 6) {
 async function scanOllama(root) {
 	const manifestsRoot = path.join(root, "manifests");
 	const blobsRoot = path.join(root, "blobs");
-	if (!await dirExists(manifestsRoot) || !await dirExists(blobsRoot)) return [];
+	if (!(await dirExists(manifestsRoot)) || !(await dirExists(blobsRoot)))
+		return [];
 	const results = [];
 	const stack = [manifestsRoot];
 	while (stack.length > 0) {
@@ -10843,7 +12864,9 @@ async function scanOllama(root) {
 			} catch {
 				continue;
 			}
-			const modelLayer = manifest.layers?.find((l) => l.mediaType?.includes("model"));
+			const modelLayer = manifest.layers?.find((l) =>
+				l.mediaType?.includes("model"),
+			);
 			if (!modelLayer?.digest) continue;
 			const digest = modelLayer.digest.replace("sha256:", "sha256-");
 			const blobPath = path.join(blobsRoot, digest);
@@ -10859,10 +12882,10 @@ async function scanOllama(root) {
 				displayName,
 				path: blobPath,
 				sizeBytes: size,
-				installedAt: (/* @__PURE__ */ new Date()).toISOString(),
+				installedAt: /* @__PURE__ */ new Date().toISOString(),
 				lastUsedAt: null,
 				source: "external-scan",
-				externalOrigin: "ollama"
+				externalOrigin: "ollama",
 			});
 		}
 	}
@@ -10872,51 +12895,53 @@ async function scanExternalModels() {
 	const roots = candidateRoots();
 	const seenRealPaths = /* @__PURE__ */ new Set();
 	const results = [];
-	await Promise.all(roots.map(async (root) => {
-		if (!await dirExists(root.dir)) return;
-		if (root.kind === "ollama") {
-			const ollamaModels = await scanOllama(root.dir);
-			for (const model of ollamaModels) {
-				if (seenRealPaths.has(model.path)) continue;
-				seenRealPaths.add(model.path);
-				results.push(model);
+	await Promise.all(
+		roots.map(async (root) => {
+			if (!(await dirExists(root.dir))) return;
+			if (root.kind === "ollama") {
+				const ollamaModels = await scanOllama(root.dir);
+				for (const model of ollamaModels) {
+					if (seenRealPaths.has(model.path)) continue;
+					seenRealPaths.add(model.path);
+					results.push(model);
+				}
+				return;
 			}
-			return;
-		}
-		for await (const found of walkForGgufs(root.dir)) {
-			if (seenRealPaths.has(found.realPath)) continue;
-			seenRealPaths.add(found.realPath);
-			const displayName = path.basename(found.absPath, ".gguf");
-			results.push({
-				id: `external-${root.origin}-${Buffer.from(found.realPath).toString("base64url").slice(0, 16)}`,
-				displayName: `${displayName} (${root.origin})`,
-				path: found.realPath,
-				sizeBytes: found.size,
-				installedAt: new Date(found.mtimeMs).toISOString(),
-				lastUsedAt: null,
-				source: "external-scan",
-				externalOrigin: root.origin
-			});
-		}
-	}));
+			for await (const found of walkForGgufs(root.dir)) {
+				if (seenRealPaths.has(found.realPath)) continue;
+				seenRealPaths.add(found.realPath);
+				const displayName = path.basename(found.absPath, ".gguf");
+				results.push({
+					id: `external-${root.origin}-${Buffer.from(found.realPath).toString("base64url").slice(0, 16)}`,
+					displayName: `${displayName} (${root.origin})`,
+					path: found.realPath,
+					sizeBytes: found.size,
+					installedAt: new Date(found.mtimeMs).toISOString(),
+					lastUsedAt: null,
+					source: "external-scan",
+					externalOrigin: root.origin,
+				});
+			}
+		}),
+	);
 	return results;
 }
 
 //#endregion
 //#region node_modules/.bun/@elizaos+app-core@2.0.0-alpha.537+72829346cb4c43b1/node_modules/@elizaos/app-core/packages/app-core/src/services/local-inference/registry.js
 /**
-* On-disk registry of installed models.
-*
-* Two sources feed the registry:
-*   1. Eliza-owned downloads (source: "eliza-download") — written on
-*      successful completion by the downloader.
-*   2. External scans (source: "external-scan") — merged in at read time
-*      from `scanExternalModels()`. These are never persisted to the
-*      registry file; a rescan runs whenever we read.
-*
-* The JSON file only holds Eliza-owned entries. That way, if a user
-* cleans up LM Studio models we don't show stale ghosts.
-*/
+ * On-disk registry of installed models.
+ *
+ * Two sources feed the registry:
+ *   1. Eliza-owned downloads (source: "eliza-download") — written on
+ *      successful completion by the downloader.
+ *   2. External scans (source: "external-scan") — merged in at read time
+ *      from `scanExternalModels()`. These are never persisted to the
+ *      registry file; a rescan runs whenever we read.
+ *
+ * The JSON file only holds Eliza-owned entries. That way, if a user
+ * cleans up LM Studio models we don't show stale ghosts.
+ */
 async function ensureRootDir() {
 	await fs$1.mkdir(localInferenceRoot(), { recursive: true });
 }
@@ -10924,8 +12949,11 @@ async function readElizaOwned() {
 	try {
 		const raw = await fs$1.readFile(registryPath(), "utf8");
 		const parsed = JSON.parse(raw);
-		if (!parsed || parsed.version !== 1 || !Array.isArray(parsed.models)) return [];
-		return parsed.models.filter((m) => m && typeof m === "object" && m.source === "eliza-download");
+		if (!parsed || parsed.version !== 1 || !Array.isArray(parsed.models))
+			return [];
+		return parsed.models.filter(
+			(m) => m && typeof m === "object" && m.source === "eliza-download",
+		);
 	} catch {
 		return [];
 	}
@@ -10935,27 +12963,40 @@ async function writeElizaOwned(models) {
 	const tmp = `${registryPath()}.tmp`;
 	const payload = {
 		version: 1,
-		models
+		models,
 	};
 	await fs$1.writeFile(tmp, JSON.stringify(payload, null, 2), "utf8");
 	await fs$1.rename(tmp, registryPath());
 }
 /**
-* Return all models currently usable: persisted Eliza downloads plus a
-* fresh external-tool scan. External duplicates of Eliza-owned files are
-* filtered out by path.
-*/
+ * Return all models currently usable: persisted Eliza downloads plus a
+ * fresh external-tool scan. External duplicates of Eliza-owned files are
+ * filtered out by path.
+ */
 async function listInstalledModels() {
-	const [owned, external] = await Promise.all([readElizaOwned(), scanExternalModels()]);
+	const [owned, external] = await Promise.all([
+		readElizaOwned(),
+		scanExternalModels(),
+	]);
 	const ownedPaths = new Set(owned.map((m) => path.resolve(m.path)));
-	const dedupedExternal = external.filter((m) => !ownedPaths.has(path.resolve(m.path)));
+	const dedupedExternal = external.filter(
+		(m) => !ownedPaths.has(path.resolve(m.path)),
+	);
 	return [...owned, ...dedupedExternal];
 }
 /** Add or update a Eliza-owned entry. External entries are rejected. */
 async function upsertElizaModel(model) {
-	if (model.source !== "eliza-download") throw new Error("[local-inference] registry only accepts Eliza-owned models");
-	if (!isWithinElizaRoot(model.path)) throw new Error("[local-inference] Eliza-owned models must live under the local-inference root");
-	const withoutCurrent = (await readElizaOwned()).filter((m) => m.id !== model.id);
+	if (model.source !== "eliza-download")
+		throw new Error(
+			"[local-inference] registry only accepts Eliza-owned models",
+		);
+	if (!isWithinElizaRoot(model.path))
+		throw new Error(
+			"[local-inference] Eliza-owned models must live under the local-inference root",
+		);
+	const withoutCurrent = (await readElizaOwned()).filter(
+		(m) => m.id !== model.id,
+	);
 	withoutCurrent.push(model);
 	await writeElizaOwned(withoutCurrent);
 }
@@ -10964,32 +13005,34 @@ async function touchElizaModel(id) {
 	const owned = await readElizaOwned();
 	const target = owned.find((m) => m.id === id);
 	if (!target) return;
-	target.lastUsedAt = (/* @__PURE__ */ new Date()).toISOString();
+	target.lastUsedAt = /* @__PURE__ */ new Date().toISOString();
 	await writeElizaOwned(owned);
 }
 /**
-* Delete a Eliza-owned model from the registry and from disk.
-*
-* Refuses if the model was discovered from another tool — Eliza must not
-* touch files it doesn't own. Callers surface that refusal as a 4xx.
-*/
+ * Delete a Eliza-owned model from the registry and from disk.
+ *
+ * Refuses if the model was discovered from another tool — Eliza must not
+ * touch files it doesn't own. Callers surface that refusal as a 4xx.
+ */
 async function removeElizaModel(id) {
 	const owned = await readElizaOwned();
 	const target = owned.find((m) => m.id === id);
 	if (!target) {
-		if ((await scanExternalModels()).some((m) => m.id === id)) return {
-			removed: false,
-			reason: "external"
-		};
+		if ((await scanExternalModels()).some((m) => m.id === id))
+			return {
+				removed: false,
+				reason: "external",
+			};
 		return {
 			removed: false,
-			reason: "not-found"
+			reason: "not-found",
 		};
 	}
-	if (!isWithinElizaRoot(target.path)) return {
-		removed: false,
-		reason: "external"
-	};
+	if (!isWithinElizaRoot(target.path))
+		return {
+			removed: false,
+			reason: "external",
+		};
 	try {
 		await fs$1.rm(target.path, { force: true });
 	} catch {}
@@ -11000,26 +13043,30 @@ async function removeElizaModel(id) {
 //#endregion
 //#region node_modules/.bun/@elizaos+app-core@2.0.0-alpha.537+72829346cb4c43b1/node_modules/@elizaos/app-core/packages/app-core/src/services/local-inference/active-model.js
 /**
-* Coordinates which model is currently loaded into the plugin-local-ai
-* runtime. Eliza runs one inference model at a time; switching models
-* unloads the previous one first so we don't double-allocate VRAM.
-*
-* This module *does not* talk to `node-llama-cpp` directly. The plugin
-* owns the native binding; we ask it to swap via a small runtime service
-* registered under the name "localInferenceLoader". When the plugin is not
-* enabled, we still track the user's preferred active model so the
-* preference survives enabling the plugin later.
-*/
+ * Coordinates which model is currently loaded into the plugin-local-ai
+ * runtime. Eliza runs one inference model at a time; switching models
+ * unloads the previous one first so we don't double-allocate VRAM.
+ *
+ * This module *does not* talk to `node-llama-cpp` directly. The plugin
+ * owns the native binding; we ask it to swap via a small runtime service
+ * registered under the name "localInferenceLoader". When the plugin is not
+ * enabled, we still track the user's preferred active model so the
+ * preference survives enabling the plugin later.
+ */
 function isLoader(value) {
 	if (!value || typeof value !== "object") return false;
 	const candidate = value;
-	return typeof candidate.loadModel === "function" && typeof candidate.unloadModel === "function" && typeof candidate.currentModelPath === "function";
+	return (
+		typeof candidate.loadModel === "function" &&
+		typeof candidate.unloadModel === "function" &&
+		typeof candidate.currentModelPath === "function"
+	);
 }
 var ActiveModelCoordinator = class {
 	state = {
 		modelId: null,
 		loadedAt: null,
-		status: "idle"
+		status: "idle",
 	};
 	listeners = /* @__PURE__ */ new Set();
 	snapshot() {
@@ -11033,11 +13080,12 @@ var ActiveModelCoordinator = class {
 	}
 	emit() {
 		const current = { ...this.state };
-		for (const listener of this.listeners) try {
-			listener(current);
-		} catch {
-			this.listeners.delete(listener);
-		}
+		for (const listener of this.listeners)
+			try {
+				listener(current);
+			} catch {
+				this.listeners.delete(listener);
+			}
 	}
 	/** Return the loader service from the current runtime, if registered. */
 	getLoader(runtime) {
@@ -11049,7 +13097,7 @@ var ActiveModelCoordinator = class {
 		this.state = {
 			modelId: installed.id,
 			loadedAt: null,
-			status: "loading"
+			status: "loading",
 		};
 		this.emit();
 		const loader = this.getLoader(runtime);
@@ -11060,16 +13108,17 @@ var ActiveModelCoordinator = class {
 			} else await localInferenceEngine.load(installed.path);
 			this.state = {
 				modelId: installed.id,
-				loadedAt: (/* @__PURE__ */ new Date()).toISOString(),
-				status: "ready"
+				loadedAt: /* @__PURE__ */ new Date().toISOString(),
+				status: "ready",
 			};
-			if (installed.source === "eliza-download") await touchElizaModel(installed.id);
+			if (installed.source === "eliza-download")
+				await touchElizaModel(installed.id);
 		} catch (err) {
 			this.state = {
 				modelId: installed.id,
 				loadedAt: null,
 				status: "error",
-				error: err instanceof Error ? err.message : String(err)
+				error: err instanceof Error ? err.message : String(err),
 			};
 		}
 		this.emit();
@@ -11085,7 +13134,7 @@ var ActiveModelCoordinator = class {
 				modelId: null,
 				loadedAt: null,
 				status: "error",
-				error: err instanceof Error ? err.message : String(err)
+				error: err instanceof Error ? err.message : String(err),
 			};
 			this.emit();
 			return this.snapshot();
@@ -11093,7 +13142,7 @@ var ActiveModelCoordinator = class {
 		this.state = {
 			modelId: null,
 			loadedAt: null,
-			status: "idle"
+			status: "idle",
 		};
 		this.emit();
 		return this.snapshot();
@@ -11103,13 +13152,13 @@ var ActiveModelCoordinator = class {
 //#endregion
 //#region node_modules/.bun/@elizaos+app-core@2.0.0-alpha.537+72829346cb4c43b1/node_modules/@elizaos/app-core/packages/app-core/src/services/local-inference/catalog.js
 /**
-* Eliza-curated local model catalog.
-*
-* Hand-picked as of April 2026. All entries reference public GGUF repos on
-* HuggingFace. Quants default to Q4_K_M (the usual sweet spot). When upstream
-* naming conventions drift, update `ggufFile` here — we rely on the exact
-* filename for resolved-URL construction in the downloader.
-*/
+ * Eliza-curated local model catalog.
+ *
+ * Hand-picked as of April 2026. All entries reference public GGUF repos on
+ * HuggingFace. Quants default to Q4_K_M (the usual sweet spot). When upstream
+ * naming conventions drift, update `ggufFile` here — we rely on the exact
+ * filename for resolved-URL construction in the downloader.
+ */
 const MODEL_CATALOG = [
 	{
 		id: "smollm2-360m",
@@ -11118,11 +13167,12 @@ const MODEL_CATALOG = [
 		ggufFile: "SmolLM2-360M-Instruct-Q4_K_M.gguf",
 		params: "360M",
 		quant: "Q4_K_M",
-		sizeGb: .27,
+		sizeGb: 0.27,
 		minRamGb: 1,
 		category: "tiny",
 		bucket: "small",
-		blurb: "Mobile-friendly default. ~270MB on disk, runs on phones and 1GB-RAM hosts."
+		blurb:
+			"Mobile-friendly default. ~270MB on disk, runs on phones and 1GB-RAM hosts.",
 	},
 	{
 		id: "smollm2-1.7b",
@@ -11135,7 +13185,8 @@ const MODEL_CATALOG = [
 		minRamGb: 3,
 		category: "tiny",
 		bucket: "small",
-		blurb: "Smallest genuinely useful chat model. Perfect for CI and smoke tests."
+		blurb:
+			"Smallest genuinely useful chat model. Perfect for CI and smoke tests.",
 	},
 	{
 		id: "llama-3.2-1b",
@@ -11144,11 +13195,11 @@ const MODEL_CATALOG = [
 		ggufFile: "Llama-3.2-1B-Instruct-Q4_K_M.gguf",
 		params: "1B",
 		quant: "Q4_K_M",
-		sizeGb: .8,
+		sizeGb: 0.8,
 		minRamGb: 2,
 		category: "tiny",
 		bucket: "small",
-		blurb: "Ultra-light Llama for edge devices and integration tests."
+		blurb: "Ultra-light Llama for edge devices and integration tests.",
 	},
 	{
 		id: "llama-3.2-3b",
@@ -11161,7 +13212,7 @@ const MODEL_CATALOG = [
 		minRamGb: 4,
 		category: "chat",
 		bucket: "small",
-		blurb: "Fast general chat for 8GB laptops; coherent summaries and Q&A."
+		blurb: "Fast general chat for 8GB laptops; coherent summaries and Q&A.",
 	},
 	{
 		id: "qwen2.5-3b",
@@ -11174,7 +13225,8 @@ const MODEL_CATALOG = [
 		minRamGb: 4,
 		category: "chat",
 		bucket: "small",
-		blurb: "Punchy small model with strong multilingual and instruction following."
+		blurb:
+			"Punchy small model with strong multilingual and instruction following.",
 	},
 	{
 		id: "llama-3.1-8b",
@@ -11187,7 +13239,7 @@ const MODEL_CATALOG = [
 		minRamGb: 10,
 		category: "chat",
 		bucket: "mid",
-		blurb: "Battle-tested general chat; the default 8GB-VRAM daily driver."
+		blurb: "Battle-tested general chat; the default 8GB-VRAM daily driver.",
 	},
 	{
 		id: "qwen2.5-7b",
@@ -11200,7 +13252,7 @@ const MODEL_CATALOG = [
 		minRamGb: 10,
 		category: "chat",
 		bucket: "mid",
-		blurb: "Strong reasoning and multilingual chat; rivals Llama-3.1-8B."
+		blurb: "Strong reasoning and multilingual chat; rivals Llama-3.1-8B.",
 	},
 	{
 		id: "gemma-2-9b",
@@ -11213,7 +13265,7 @@ const MODEL_CATALOG = [
 		minRamGb: 12,
 		category: "chat",
 		bucket: "mid",
-		blurb: "Google Gemma. Excellent writing quality and safety tuning."
+		blurb: "Google Gemma. Excellent writing quality and safety tuning.",
 	},
 	{
 		id: "qwen2.5-coder-7b",
@@ -11226,7 +13278,8 @@ const MODEL_CATALOG = [
 		minRamGb: 10,
 		category: "code",
 		bucket: "mid",
-		blurb: "Top small coder. Fill-in-the-middle, repo-level context, 128k window."
+		blurb:
+			"Top small coder. Fill-in-the-middle, repo-level context, 128k window.",
 	},
 	{
 		id: "hermes-3-llama-8b",
@@ -11239,7 +13292,7 @@ const MODEL_CATALOG = [
 		minRamGb: 10,
 		category: "tools",
 		bucket: "mid",
-		blurb: "Nous Hermes 3. Function calling, JSON mode, agentic tool use."
+		blurb: "Nous Hermes 3. Function calling, JSON mode, agentic tool use.",
 	},
 	{
 		id: "bonsai-8b-1bit",
@@ -11252,7 +13305,8 @@ const MODEL_CATALOG = [
 		minRamGb: 8,
 		category: "chat",
 		bucket: "mid",
-		blurb: "1-bit weights with TurboQuant KV-cache compression (~4-4.6x KV memory cut) on phone CPU via the apothic/llama.cpp-1bit-turboquant fork. Auto-enabled when the AOSP runtime loads any GGUF whose filename contains \"bonsai\" (k=tbq4_0, v=tbq3_0); override with ELIZA_LLAMA_CACHE_TYPE_K/_V. Apple Silicon (Metal) and Vulkan GPU still run at full fp16 KV cache."
+		blurb:
+			'1-bit weights with TurboQuant KV-cache compression (~4-4.6x KV memory cut) on phone CPU via the apothic/llama.cpp-1bit-turboquant fork. Auto-enabled when the AOSP runtime loads any GGUF whose filename contains "bonsai" (k=tbq4_0, v=tbq3_0); override with ELIZA_LLAMA_CACHE_TYPE_K/_V. Apple Silicon (Metal) and Vulkan GPU still run at full fp16 KV cache.',
 	},
 	{
 		id: "deepseek-coder-v2-lite",
@@ -11265,7 +13319,7 @@ const MODEL_CATALOG = [
 		minRamGb: 20,
 		category: "code",
 		bucket: "large",
-		blurb: "MoE coder. Near-32B coding quality with ~2.4B active params."
+		blurb: "MoE coder. Near-32B coding quality with ~2.4B active params.",
 	},
 	{
 		id: "qwen2.5-coder-14b",
@@ -11278,7 +13332,7 @@ const MODEL_CATALOG = [
 		minRamGb: 18,
 		category: "code",
 		bucket: "large",
-		blurb: "Sweet-spot coder for 16GB VRAM. Fluent in most languages."
+		blurb: "Sweet-spot coder for 16GB VRAM. Fluent in most languages.",
 	},
 	{
 		id: "mistral-small-3-24b",
@@ -11291,7 +13345,7 @@ const MODEL_CATALOG = [
 		minRamGb: 28,
 		category: "chat",
 		bucket: "large",
-		blurb: "Mistral's 2025 flagship small. Strong reasoning, creative writing."
+		blurb: "Mistral's 2025 flagship small. Strong reasoning, creative writing.",
 	},
 	{
 		id: "gemma-2-27b",
@@ -11304,7 +13358,7 @@ const MODEL_CATALOG = [
 		minRamGb: 32,
 		category: "chat",
 		bucket: "large",
-		blurb: "Largest Gemma 2. Excellent for long-form writing and reasoning."
+		blurb: "Largest Gemma 2. Excellent for long-form writing and reasoning.",
 	},
 	{
 		id: "qwq-32b",
@@ -11317,7 +13371,8 @@ const MODEL_CATALOG = [
 		minRamGb: 38,
 		category: "reasoning",
 		bucket: "xl",
-		blurb: "Qwen reasoning model. Chain-of-thought, math, code. o1-class open model."
+		blurb:
+			"Qwen reasoning model. Chain-of-thought, math, code. o1-class open model.",
 	},
 	{
 		id: "deepseek-r1-distill-qwen-32b",
@@ -11330,39 +13385,45 @@ const MODEL_CATALOG = [
 		minRamGb: 38,
 		category: "reasoning",
 		bucket: "xl",
-		blurb: "R1 reasoning distilled into Qwen-32B. 128k context, strong math/code."
-	}
+		blurb:
+			"R1 reasoning distilled into Qwen-32B. 128k context, strong math/code.",
+	},
 ];
 function findCatalogModel(id) {
 	return MODEL_CATALOG.find((m) => m.id === id);
 }
 /**
-* Construct the HuggingFace resolve URL for a given catalog entry.
-*
-* Respects `ELIZA_HF_BASE_URL` when set so self-hosted HF mirrors and the
-* downloader e2e test suite can redirect all downloads without touching
-* the catalog.
-*/
+ * Construct the HuggingFace resolve URL for a given catalog entry.
+ *
+ * Respects `ELIZA_HF_BASE_URL` when set so self-hosted HF mirrors and the
+ * downloader e2e test suite can redirect all downloads without touching
+ * the catalog.
+ */
 function buildHuggingFaceResolveUrl(model) {
-	const base = process.env.ELIZA_HF_BASE_URL?.trim().replace(/\/+$/, "") || "https://huggingface.co";
-	const encodedPath = model.ggufFile.split("/").map((segment) => encodeURIComponent(segment)).join("/");
+	const base =
+		process.env.ELIZA_HF_BASE_URL?.trim().replace(/\/+$/, "") ||
+		"https://huggingface.co";
+	const encodedPath = model.ggufFile
+		.split("/")
+		.map((segment) => encodeURIComponent(segment))
+		.join("/");
 	return `${base}/${model.hfRepo}/resolve/main/${encodedPath}?download=true`;
 }
 
 //#endregion
 //#region node_modules/.bun/@elizaos+app-core@2.0.0-alpha.537+72829346cb4c43b1/node_modules/@elizaos/app-core/packages/app-core/src/services/local-inference/assignments.js
 /**
-* Per-ModelType model assignment store.
-*
-* Separate from the "active loaded model" concept in `ActiveModelCoordinator`.
-* Assignments are a *policy* — the user's declared intent that
-* `ModelType.TEXT_SMALL` should be served by model X and `TEXT_LARGE` by
-* model Y. The runtime's model handlers lazy-load whichever assignment
-* fires; the coordinator handles the actual swap in and out of memory.
-*
-* Stored in `$ELIZA_STATE_DIR/local-inference/assignments.json`. Cheap
-* enough to rewrite on every change — we never mutate in place.
-*/
+ * Per-ModelType model assignment store.
+ *
+ * Separate from the "active loaded model" concept in `ActiveModelCoordinator`.
+ * Assignments are a *policy* — the user's declared intent that
+ * `ModelType.TEXT_SMALL` should be served by model X and `TEXT_LARGE` by
+ * model Y. The runtime's model handlers lazy-load whichever assignment
+ * fires; the coordinator handles the actual swap in and out of memory.
+ *
+ * Stored in `$ELIZA_STATE_DIR/local-inference/assignments.json`. Cheap
+ * enough to rewrite on every change — we never mutate in place.
+ */
 const ASSIGNMENTS_FILENAME = "assignments.json";
 function assignmentsPath() {
 	return path.join(localInferenceRoot(), ASSIGNMENTS_FILENAME);
@@ -11381,52 +13442,59 @@ async function readAssignments() {
 	}
 }
 function pickLargestInstalledModel(installed) {
-	return installed.filter((model) => typeof model.id === "string" && model.id.length > 0).sort((left, right) => right.sizeBytes - left.sizeBytes)[0] ?? null;
+	return (
+		installed
+			.filter((model) => typeof model.id === "string" && model.id.length > 0)
+			.sort((left, right) => right.sizeBytes - left.sizeBytes)[0] ?? null
+	);
 }
 function buildRecommendedAssignments(installed) {
 	const best = pickLargestInstalledModel(installed);
 	if (!best) return {};
 	return {
 		TEXT_SMALL: best.id,
-		TEXT_LARGE: best.id
+		TEXT_LARGE: best.id,
 	};
 }
 async function readEffectiveAssignments() {
-	const [saved, installed] = await Promise.all([readAssignments(), listInstalledModels()]);
+	const [saved, installed] = await Promise.all([
+		readAssignments(),
+		listInstalledModels(),
+	]);
 	return {
 		...buildRecommendedAssignments(installed),
-		...saved
+		...saved,
 	};
 }
 async function writeAssignments(assignments) {
 	await ensureRoot();
 	const payload = {
 		version: 1,
-		assignments
+		assignments,
 	};
 	const tmp = `${assignmentsPath()}.tmp`;
 	await fs$1.writeFile(tmp, JSON.stringify(payload, null, 2), "utf8");
 	await fs$1.rename(tmp, assignmentsPath());
 }
 async function setAssignment(slot, modelId) {
-	const next = { ...await readAssignments() };
+	const next = { ...(await readAssignments()) };
 	if (modelId) next[slot] = modelId;
 	else delete next[slot];
 	await writeAssignments(next);
 	return next;
 }
 /**
-* Decide which slots a freshly-installed model is a sensible default for.
-*
-* Today the curated catalog tags models with `category` ∈
-* `chat | code | tools | tiny | reasoning` and `bucket` ∈
-* `small | mid | large | xl` — no explicit "embedding" tag, because the
-* default catalog ships only generative models. The defensive check below
-* still recognizes an "embedding" category/bucket for future catalog
-* additions and for external-scan models whose ids contain a recognizable
-* embedding-family marker (`nomic-embed`, `bge`, `all-minilm`, `gte`,
-* `e5-`). External GGUFs without a catalog entry default to generative.
-*/
+ * Decide which slots a freshly-installed model is a sensible default for.
+ *
+ * Today the curated catalog tags models with `category` ∈
+ * `chat | code | tools | tiny | reasoning` and `bucket` ∈
+ * `small | mid | large | xl` — no explicit "embedding" tag, because the
+ * default catalog ships only generative models. The defensive check below
+ * still recognizes an "embedding" category/bucket for future catalog
+ * additions and for external-scan models whose ids contain a recognizable
+ * embedding-family marker (`nomic-embed`, `bge`, `all-minilm`, `gte`,
+ * `e5-`). External GGUFs without a catalog entry default to generative.
+ */
 function isEmbeddingModelId(modelId) {
 	const catalog = findCatalogModel(modelId);
 	if (catalog) {
@@ -11435,21 +13503,27 @@ function isEmbeddingModelId(modelId) {
 		return false;
 	}
 	const lowered = modelId.toLowerCase();
-	return lowered.includes("nomic-embed") || lowered.includes("bge-") || lowered.includes("all-minilm") || lowered.includes("gte-") || lowered.includes("e5-");
+	return (
+		lowered.includes("nomic-embed") ||
+		lowered.includes("bge-") ||
+		lowered.includes("all-minilm") ||
+		lowered.includes("gte-") ||
+		lowered.includes("e5-")
+	);
 }
 /**
-* Fill empty assignment slots with `modelId`. Idempotent: never overwrites
-* an existing slot. Embedding models only fill `TEXT_EMBEDDING`; generative
-* models only fill `TEXT_SMALL` and `TEXT_LARGE`. Returns the resulting
-* assignment map (read state is `readAssignments()`, not effective +
-* recommended).
-*
-* Wired from the downloader's success path and the runtime boot's
-* "exactly one model installed, no assignments" branch so first-light
-* users land in chat without a Settings detour. The hard error in
-* `ensure-local-inference-handler.ts` only fires when the operator has
-* actively cleared the assignment.
-*/
+ * Fill empty assignment slots with `modelId`. Idempotent: never overwrites
+ * an existing slot. Embedding models only fill `TEXT_EMBEDDING`; generative
+ * models only fill `TEXT_SMALL` and `TEXT_LARGE`. Returns the resulting
+ * assignment map (read state is `readAssignments()`, not effective +
+ * recommended).
+ *
+ * Wired from the downloader's success path and the runtime boot's
+ * "exactly one model installed, no assignments" branch so first-light
+ * users land in chat without a Settings detour. The hard error in
+ * `ensure-local-inference-handler.ts` only fires when the operator has
+ * actively cleared the assignment.
+ */
 async function ensureDefaultAssignment(modelId) {
 	const current = await readAssignments();
 	const next = { ...current };
@@ -11459,7 +13533,14 @@ async function ensureDefaultAssignment(modelId) {
 		if (!next.TEXT_SMALL) next.TEXT_SMALL = modelId;
 		if (!next.TEXT_LARGE) next.TEXT_LARGE = modelId;
 	}
-	if (next.TEXT_SMALL === current.TEXT_SMALL && next.TEXT_LARGE === current.TEXT_LARGE && next.TEXT_EMBEDDING === current.TEXT_EMBEDDING && next.OBJECT_SMALL === current.OBJECT_SMALL && next.OBJECT_LARGE === current.OBJECT_LARGE) return current;
+	if (
+		next.TEXT_SMALL === current.TEXT_SMALL &&
+		next.TEXT_LARGE === current.TEXT_LARGE &&
+		next.TEXT_EMBEDDING === current.TEXT_EMBEDDING &&
+		next.OBJECT_SMALL === current.OBJECT_SMALL &&
+		next.OBJECT_LARGE === current.OBJECT_LARGE
+	)
+		return current;
 	await writeAssignments(next);
 	return next;
 }
@@ -11467,31 +13548,31 @@ async function ensureDefaultAssignment(modelId) {
 //#endregion
 //#region node_modules/.bun/@elizaos+app-core@2.0.0-alpha.537+72829346cb4c43b1/node_modules/@elizaos/app-core/packages/app-core/src/services/local-inference/bundled-models.js
 /**
-* Bundled-models bootstrap for AOSP / on-device installs.
-*
-* The AOSP build pipeline stages a small chat model + a small embedding
-* model into the APK at `assets/agent/models/{file}.gguf` plus a
-* `manifest.json` describing each one (id, role, sha256, sizeBytes).
-* `ElizaAgentService.extractAssetsIfNeeded()` copies those files into
-* `$ELIZA_STATE_DIR/local-inference/models/` on first launch.
-*
-* This module reads the manifest at runtime startup and registers each
-* file as a eliza-owned model in the local-inference registry, so the
-* auto-assign pass picks them up for TEXT_LARGE / TEXT_SMALL /
-* TEXT_EMBEDDING slots without needing the user to download anything.
-*
-* Idempotent: re-running with the registry already populated is a
-* no-op for unchanged entries (`upsertElizaModel` overwrites entries
-* with the same id, so updated sha256s on a future re-bundle replace
-* the old metadata cleanly).
-*
-* Source classification: the runtime treats bundled models as
-* `source: "eliza-download"` because Eliza ships the file and Eliza
-* owns it on disk — same lifecycle as a user-initiated download
-* (uninstall removes the file, the registry tracks the install). The
-* only difference is the file arrived via APK extraction rather than
-* an HTTP transfer.
-*/
+ * Bundled-models bootstrap for AOSP / on-device installs.
+ *
+ * The AOSP build pipeline stages a small chat model + a small embedding
+ * model into the APK at `assets/agent/models/{file}.gguf` plus a
+ * `manifest.json` describing each one (id, role, sha256, sizeBytes).
+ * `ElizaAgentService.extractAssetsIfNeeded()` copies those files into
+ * `$ELIZA_STATE_DIR/local-inference/models/` on first launch.
+ *
+ * This module reads the manifest at runtime startup and registers each
+ * file as a eliza-owned model in the local-inference registry, so the
+ * auto-assign pass picks them up for TEXT_LARGE / TEXT_SMALL /
+ * TEXT_EMBEDDING slots without needing the user to download anything.
+ *
+ * Idempotent: re-running with the registry already populated is a
+ * no-op for unchanged entries (`upsertElizaModel` overwrites entries
+ * with the same id, so updated sha256s on a future re-bundle replace
+ * the old metadata cleanly).
+ *
+ * Source classification: the runtime treats bundled models as
+ * `source: "eliza-download"` because Eliza ships the file and Eliza
+ * owns it on disk — same lifecycle as a user-initiated download
+ * (uninstall removes the file, the registry tracks the install). The
+ * only difference is the file arrived via APK extraction rather than
+ * an HTTP transfer.
+ */
 function manifestPath() {
 	return path.join(elizaModelsDir(), "manifest.json");
 }
@@ -11506,11 +13587,11 @@ async function readManifest() {
 	}
 }
 /**
-* Walk the manifest and register every bundled GGUF file in the
-* local-inference registry. Returns the number of entries successfully
-* registered. A missing manifest is normal on Capacitor / desktop /
-* non-AOSP installs and returns 0 silently.
-*/
+ * Walk the manifest and register every bundled GGUF file in the
+ * local-inference registry. Returns the number of entries successfully
+ * registered. A missing manifest is normal on Capacitor / desktop /
+ * non-AOSP installs and returns 0 silently.
+ */
 async function registerBundledModels() {
 	const manifest = await readManifest();
 	if (!manifest) return 0;
@@ -11530,10 +13611,10 @@ async function registerBundledModels() {
 			path: filePath,
 			sizeBytes,
 			hfRepo: entry.hfRepo,
-			installedAt: (/* @__PURE__ */ new Date()).toISOString(),
+			installedAt: /* @__PURE__ */ new Date().toISOString(),
 			lastUsedAt: null,
 			source: "eliza-download",
-			sha256: entry.sha256 ?? void 0
+			sha256: entry.sha256 ?? void 0,
 		});
 		await ensureDefaultAssignment(entry.id);
 		registered += 1;
@@ -11544,24 +13625,24 @@ async function registerBundledModels() {
 //#endregion
 //#region node_modules/.bun/@elizaos+app-core@2.0.0-alpha.537+72829346cb4c43b1/node_modules/@elizaos/app-core/packages/app-core/src/services/local-inference/verify.js
 /**
-* Model-file integrity verification.
-*
-* GGUF files are large (0.8 – 20 GB). Corrupted files surface as cryptic
-* llama.cpp errors much later, so we verify at install time and expose a
-* manual verify button for users who want to re-check after a system
-* event (crash, disk fill, external tool edited the file, etc).
-*
-* We don't require SHA256 from HuggingFace — HF doesn't publish per-file
-* hashes in the standard API, and hand-curating them in the catalog would
-* drift. Instead, after a successful download we compute the SHA256
-* ourselves and stash it on the InstalledModel. Re-verify compares the
-* file's current hash against the stashed one. A mismatch means the file
-* changed on disk since we installed it — user can redownload.
-*
-* For GGUF specifically we also do a cheap structural header check
-* (the file starts with the magic bytes "GGUF") so obvious truncations
-* flag instantly without having to hash a 10GB file.
-*/
+ * Model-file integrity verification.
+ *
+ * GGUF files are large (0.8 – 20 GB). Corrupted files surface as cryptic
+ * llama.cpp errors much later, so we verify at install time and expose a
+ * manual verify button for users who want to re-check after a system
+ * event (crash, disk fill, external tool edited the file, etc).
+ *
+ * We don't require SHA256 from HuggingFace — HF doesn't publish per-file
+ * hashes in the standard API, and hand-curating them in the catalog would
+ * drift. Instead, after a successful download we compute the SHA256
+ * ourselves and stash it on the InstalledModel. Re-verify compares the
+ * file's current hash against the stashed one. A mismatch means the file
+ * changed on disk since we installed it — user can redownload.
+ *
+ * For GGUF specifically we also do a cheap structural header check
+ * (the file starts with the magic bytes "GGUF") so obvious truncations
+ * flag instantly without having to hash a 10GB file.
+ */
 const GGUF_MAGIC = Buffer.from("GGUF", "ascii");
 async function fileExists(path) {
 	try {
@@ -11596,56 +13677,59 @@ async function hashFile(path) {
 	});
 }
 /**
-* Run the full verification pipeline on a model. Returns the state and
-* the freshly computed hash so the caller can persist it to the registry.
-*/
+ * Run the full verification pipeline on a model. Returns the state and
+ * the freshly computed hash so the caller can persist it to the registry.
+ */
 async function verifyInstalledModel(model) {
-	if (!await fileExists(model.path)) return {
-		state: "missing",
-		currentSha256: null,
-		expectedSha256: model.sha256 ?? null,
-		currentBytes: null
-	};
+	if (!(await fileExists(model.path)))
+		return {
+			state: "missing",
+			currentSha256: null,
+			expectedSha256: model.sha256 ?? null,
+			currentBytes: null,
+		};
 	const stat = await fs$1.stat(model.path);
-	if (!await isGgufHeader(model.path)) return {
-		state: "truncated",
-		currentSha256: null,
-		expectedSha256: model.sha256 ?? null,
-		currentBytes: stat.size
-	};
+	if (!(await isGgufHeader(model.path)))
+		return {
+			state: "truncated",
+			currentSha256: null,
+			expectedSha256: model.sha256 ?? null,
+			currentBytes: stat.size,
+		};
 	const currentSha256 = await hashFile(model.path);
-	if (!model.sha256) return {
-		state: "unknown",
-		currentSha256,
-		expectedSha256: null,
-		currentBytes: stat.size
-	};
+	if (!model.sha256)
+		return {
+			state: "unknown",
+			currentSha256,
+			expectedSha256: null,
+			currentBytes: stat.size,
+		};
 	return {
 		state: currentSha256 === model.sha256 ? "ok" : "mismatch",
 		currentSha256,
 		expectedSha256: model.sha256,
-		currentBytes: stat.size
+		currentBytes: stat.size,
 	};
 }
 
 //#endregion
 //#region node_modules/.bun/@elizaos+app-core@2.0.0-alpha.537+72829346cb4c43b1/node_modules/@elizaos/app-core/packages/app-core/src/services/local-inference/downloader.js
 /**
-* Resumable GGUF downloader.
-*
-* Streams directly from HuggingFace to a staging file under
-* `$STATE_DIR/local-inference/downloads/<id>.part`, then atomically moves
-* it into `models/<id>.gguf` on success. On restart the staging file is
-* still there; `resumeIfPossible` sends a Range request starting at the
-* current partial size.
-*
-* Concurrency model: at most one download per model id. Callers use
-* `subscribe()` to receive progress events; the service facade wires that
-* to SSE.
-*
-* The runtime `fetch` follows HuggingFace redirects and still gives us a body
-* stream that can be piped into a Node WriteStream.
-*/
+ * Resumable GGUF downloader.
+ *
+ * Streams directly from HuggingFace to a staging file under
+ * `$STATE_DIR/local-inference/downloads/<id>.part`, then atomically moves
+ * it into `models/<id>.gguf` on success. On restart the staging file is
+ * still there; `resumeIfPossible` sends a Range request starting at the
+ * current partial size.
+ *
+ * Concurrency model: at most one download per model id. Callers use
+ * `subscribe()` to receive progress events; the service facade wires that
+ * to SSE.
+ *
+ * The runtime `fetch` follows HuggingFace redirects and still gives us a body
+ * stream that can be piped into a Node WriteStream.
+ */
 const PROGRESS_THROTTLE_MS = 250;
 function stagingFilename(modelId) {
 	return `${modelId.replace(/[^a-zA-Z0-9._-]/g, "_")}.part`;
@@ -11680,21 +13764,37 @@ var Downloader = class {
 	}
 	isActive(modelId) {
 		const current = this.active.get(modelId);
-		return !!current && (current.job.state === "queued" || current.job.state === "downloading");
+		return (
+			!!current &&
+			(current.job.state === "queued" || current.job.state === "downloading")
+		);
 	}
 	/**
-	* Start a download for a model. Accepts either a curated catalog id, or
-	* a full `CatalogModel` spec for ad-hoc HF-search results. Idempotent —
-	* returns the existing job if one is already running for the same id.
-	*/
+	 * Start a download for a model. Accepts either a curated catalog id, or
+	 * a full `CatalogModel` spec for ad-hoc HF-search results. Idempotent —
+	 * returns the existing job if one is already running for the same id.
+	 */
 	async start(modelIdOrSpec) {
-		const catalogEntry = typeof modelIdOrSpec === "string" ? findCatalogModel(modelIdOrSpec) : modelIdOrSpec;
-		if (!catalogEntry) throw new Error(`Unknown model id: ${typeof modelIdOrSpec === "string" ? modelIdOrSpec : "(no id)"}`);
+		const catalogEntry =
+			typeof modelIdOrSpec === "string"
+				? findCatalogModel(modelIdOrSpec)
+				: modelIdOrSpec;
+		if (!catalogEntry)
+			throw new Error(
+				`Unknown model id: ${typeof modelIdOrSpec === "string" ? modelIdOrSpec : "(no id)"}`,
+			);
 		const modelId = catalogEntry.id;
 		const existing = this.active.get(modelId);
-		if (existing && (existing.job.state === "queued" || existing.job.state === "downloading")) return { ...existing.job };
+		if (
+			existing &&
+			(existing.job.state === "queued" || existing.job.state === "downloading")
+		)
+			return { ...existing.job };
 		await ensureDirs();
-		const stagingPath = path.join(downloadsStagingDir(), stagingFilename(modelId));
+		const stagingPath = path.join(
+			downloadsStagingDir(),
+			stagingFilename(modelId),
+		);
 		const finalPath = path.join(elizaModelsDir(), finalFilename(catalogEntry));
 		const job = {
 			jobId: randomUUID(),
@@ -11704,54 +13804,60 @@ var Downloader = class {
 			total: Math.round(catalogEntry.sizeGb * 1024 ** 3),
 			bytesPerSec: 0,
 			etaMs: null,
-			startedAt: (/* @__PURE__ */ new Date()).toISOString(),
-			updatedAt: (/* @__PURE__ */ new Date()).toISOString()
+			startedAt: /* @__PURE__ */ new Date().toISOString(),
+			updatedAt: /* @__PURE__ */ new Date().toISOString(),
 		};
 		const record = {
 			job,
 			abortController: new AbortController(),
 			stagingPath,
-			finalPath
+			finalPath,
 		};
 		this.active.set(modelId, record);
 		this.runJob(catalogEntry, record).catch(() => {});
 		this.emit({
 			type: "progress",
-			job: { ...job }
+			job: { ...job },
 		});
 		return { ...job };
 	}
 	cancel(modelId) {
 		const record = this.active.get(modelId);
 		if (!record) return false;
-		if (record.job.state !== "downloading" && record.job.state !== "queued") return false;
+		if (record.job.state !== "downloading" && record.job.state !== "queued")
+			return false;
 		record.abortController.abort();
 		this.updateState(record, "cancelled");
 		this.emit({
 			type: "cancelled",
-			job: { ...record.job }
+			job: { ...record.job },
 		});
 		this.active.delete(modelId);
 		return true;
 	}
 	emit(event) {
-		for (const listener of this.listeners) try {
-			listener(event);
-		} catch {
-			this.listeners.delete(listener);
-		}
+		for (const listener of this.listeners)
+			try {
+				listener(event);
+			} catch {
+				this.listeners.delete(listener);
+			}
 	}
 	updateState(record, state) {
 		record.job.state = state;
-		record.job.updatedAt = (/* @__PURE__ */ new Date()).toISOString();
+		record.job.updatedAt = /* @__PURE__ */ new Date().toISOString();
 	}
 	throttleEmit(record) {
 		const now = Date.now();
-		if (now - (this.lastEmit.get(record.job.modelId) ?? 0) < PROGRESS_THROTTLE_MS) return;
+		if (
+			now - (this.lastEmit.get(record.job.modelId) ?? 0) <
+			PROGRESS_THROTTLE_MS
+		)
+			return;
 		this.lastEmit.set(record.job.modelId, now);
 		this.emit({
 			type: "progress",
-			job: { ...record.job }
+			job: { ...record.job },
 		});
 	}
 	async runJob(catalogEntry, record) {
@@ -11765,13 +13871,21 @@ var Downloader = class {
 			const response = await httpClient.request(url, {
 				method: "GET",
 				headers,
-				signal: record.abortController.signal
+				signal: record.abortController.signal,
 			});
-			if (response.statusCode >= 400) throw new Error(`HTTP ${response.statusCode} from HuggingFace for ${catalogEntry.hfRepo}`);
+			if (response.statusCode >= 400)
+				throw new Error(
+					`HTTP ${response.statusCode} from HuggingFace for ${catalogEntry.hfRepo}`,
+				);
 			const contentLengthHeader = response.headers["content-length"];
-			const contentLength = Array.isArray(contentLengthHeader) ? Number.parseInt(contentLengthHeader[0] ?? "0", 10) : Number.parseInt(contentLengthHeader ?? "0", 10);
-			if (Number.isFinite(contentLength) && contentLength > 0) record.job.total = startByte + contentLength;
-			const writeStream = fs.createWriteStream(record.stagingPath, { flags: startByte > 0 ? "a" : "w" });
+			const contentLength = Array.isArray(contentLengthHeader)
+				? Number.parseInt(contentLengthHeader[0] ?? "0", 10)
+				: Number.parseInt(contentLengthHeader ?? "0", 10);
+			if (Number.isFinite(contentLength) && contentLength > 0)
+				record.job.total = startByte + contentLength;
+			const writeStream = fs.createWriteStream(record.stagingPath, {
+				flags: startByte > 0 ? "a" : "w",
+			});
 			let lastSampleBytes = record.job.received;
 			let lastSampleAt = Date.now();
 			const bodyStream = Readable.from(response.body);
@@ -11780,8 +13894,13 @@ var Downloader = class {
 				const now = Date.now();
 				const elapsed = now - lastSampleAt;
 				if (elapsed >= 1e3) {
-					record.job.bytesPerSec = (record.job.received - lastSampleBytes) * 1e3 / elapsed;
-					record.job.etaMs = record.job.bytesPerSec > 0 ? (record.job.total - record.job.received) * 1e3 / record.job.bytesPerSec : null;
+					record.job.bytesPerSec =
+						((record.job.received - lastSampleBytes) * 1e3) / elapsed;
+					record.job.etaMs =
+						record.job.bytesPerSec > 0
+							? ((record.job.total - record.job.received) * 1e3) /
+								record.job.bytesPerSec
+							: null;
 					lastSampleAt = now;
 					lastSampleBytes = record.job.received;
 				}
@@ -11797,11 +13916,11 @@ var Downloader = class {
 				path: record.finalPath,
 				sizeBytes: finalStat.size,
 				hfRepo: catalogEntry.hfRepo,
-				installedAt: (/* @__PURE__ */ new Date()).toISOString(),
+				installedAt: /* @__PURE__ */ new Date().toISOString(),
 				lastUsedAt: null,
 				source: "eliza-download",
 				sha256,
-				lastVerifiedAt: (/* @__PURE__ */ new Date()).toISOString()
+				lastVerifiedAt: /* @__PURE__ */ new Date().toISOString(),
 			};
 			await upsertElizaModel(installed);
 			await ensureDefaultAssignment(installed.id);
@@ -11810,21 +13929,21 @@ var Downloader = class {
 			record.job.total = finalStat.size;
 			this.emit({
 				type: "completed",
-				job: { ...record.job }
+				job: { ...record.job },
 			});
 		} catch (err) {
 			if (record.abortController.signal.aborted) {
 				this.updateState(record, "cancelled");
 				this.emit({
 					type: "cancelled",
-					job: { ...record.job }
+					job: { ...record.job },
 				});
 			} else {
 				this.updateState(record, "failed");
 				record.job.error = err instanceof Error ? err.message : String(err);
 				this.emit({
 					type: "failed",
-					job: { ...record.job }
+					job: { ...record.job },
 				});
 			}
 		} finally {
@@ -11833,48 +13952,54 @@ var Downloader = class {
 	}
 	async loadHttpClient() {
 		const fetchImpl = globalThis.fetch;
-		return { request: async (url, options) => {
-			const response = await fetchImpl(url, {
-				method: options.method,
-				headers: options.headers,
-				signal: options.signal,
-				redirect: "follow"
-			});
-			if (!response.body) throw new Error(`Empty response body from ${url}`);
-			return {
-				statusCode: response.status,
-				headers: Object.fromEntries(response.headers.entries()),
-				body: Readable.fromWeb(response.body)
-			};
-		} };
+		return {
+			request: async (url, options) => {
+				const response = await fetchImpl(url, {
+					method: options.method,
+					headers: options.headers,
+					signal: options.signal,
+					redirect: "follow",
+				});
+				if (!response.body) throw new Error(`Empty response body from ${url}`);
+				return {
+					statusCode: response.status,
+					headers: Object.fromEntries(response.headers.entries()),
+					body: Readable.fromWeb(response.body),
+				};
+			},
+		};
 	}
 };
 
 //#endregion
 //#region node_modules/.bun/@elizaos+app-core@2.0.0-alpha.537+72829346cb4c43b1/node_modules/@elizaos/app-core/packages/app-core/src/services/local-inference/hardware.js
 /**
-* Hardware probe for local inference sizing.
-*
-* Uses `node-llama-cpp` when available to read GPU backend + VRAM. Falls back
-* to Node's `os` module when the binding isn't installed — we don't require
-* the plugin to be loaded for the probe endpoint to return useful data.
-*
-* Dynamic import is intentional: the binding pulls a native prebuilt that we
-* don't want eagerly required at module-load time (breaks CI environments
-* without the trusted-dependency flag).
-*/
+ * Hardware probe for local inference sizing.
+ *
+ * Uses `node-llama-cpp` when available to read GPU backend + VRAM. Falls back
+ * to Node's `os` module when the binding isn't installed — we don't require
+ * the plugin to be loaded for the probe endpoint to return useful data.
+ *
+ * Dynamic import is intentional: the binding pulls a native prebuilt that we
+ * don't want eagerly required at module-load time (breaks CI environments
+ * without the trusted-dependency flag).
+ */
 const BYTES_PER_GB = 1024 ** 3;
 function bytesToGb(bytes) {
-	return Math.round(bytes / BYTES_PER_GB * 10) / 10;
+	return Math.round((bytes / BYTES_PER_GB) * 10) / 10;
 }
 /**
-* Pick a default bucket based on total available memory and architecture.
-*
-* On Apple Silicon the GPU shares system RAM, so shared memory acts as VRAM.
-* On discrete-GPU x86 boxes we weight VRAM higher than system RAM.
-*/
+ * Pick a default bucket based on total available memory and architecture.
+ *
+ * On Apple Silicon the GPU shares system RAM, so shared memory acts as VRAM.
+ * On discrete-GPU x86 boxes we weight VRAM higher than system RAM.
+ */
 function recommendBucket(totalRamGb, vramGb, appleSilicon) {
-	const effective = appleSilicon ? totalRamGb : vramGb > 0 ? Math.max(vramGb * 1.25, totalRamGb * .5) : totalRamGb * .5;
+	const effective = appleSilicon
+		? totalRamGb
+		: vramGb > 0
+			? Math.max(vramGb * 1.25, totalRamGb * 0.5)
+			: totalRamGb * 0.5;
 	if (effective >= 36) return "xl";
 	if (effective >= 18) return "large";
 	if (effective >= 9) return "mid";
@@ -11883,16 +14008,22 @@ function recommendBucket(totalRamGb, vramGb, appleSilicon) {
 async function loadLlamaBinding() {
 	try {
 		const mod = await import("node-llama-cpp");
-		if (mod && typeof mod === "object" && "getLlama" in mod && typeof mod.getLlama === "function") return mod;
+		if (
+			mod &&
+			typeof mod === "object" &&
+			"getLlama" in mod &&
+			typeof mod.getLlama === "function"
+		)
+			return mod;
 		return null;
 	} catch {
 		return null;
 	}
 }
 /**
-* Read current system + GPU state. Cheap enough to call per-request; no
-* internal caching so the UI always reflects live VRAM usage.
-*/
+ * Read current system + GPU state. Cheap enough to call per-request; no
+ * internal caching so the UI always reflects live VRAM usage.
+ */
 async function probeHardware() {
 	const totalRamBytes = os.totalmem();
 	const freeRamBytes = os.freemem();
@@ -11912,23 +14043,24 @@ async function probeHardware() {
 			arch,
 			appleSilicon,
 			recommendedBucket: recommendBucket(totalRamGb, 0, appleSilicon),
-			source: "os-fallback"
+			source: "os-fallback",
 		};
 	}
 	const llama = await binding.getLlama({ gpu: "auto" });
 	const totalRamGb = bytesToGb(totalRamBytes);
 	const freeRamGb = bytesToGb(freeRamBytes);
-	if (llama.gpu === false) return {
-		totalRamGb,
-		freeRamGb,
-		gpu: null,
-		cpuCores,
-		platform,
-		arch,
-		appleSilicon,
-		recommendedBucket: recommendBucket(totalRamGb, 0, appleSilicon),
-		source: "node-llama-cpp"
-	};
+	if (llama.gpu === false)
+		return {
+			totalRamGb,
+			freeRamGb,
+			gpu: null,
+			cpuCores,
+			platform,
+			arch,
+			appleSilicon,
+			recommendedBucket: recommendBucket(totalRamGb, 0, appleSilicon),
+			source: "node-llama-cpp",
+		};
 	const vram = await llama.getVramState();
 	const totalVramGb = bytesToGb(vram.total);
 	const freeVramGb = bytesToGb(vram.free);
@@ -11938,31 +14070,31 @@ async function probeHardware() {
 		gpu: {
 			backend: llama.gpu,
 			totalVramGb,
-			freeVramGb
+			freeVramGb,
 		},
 		cpuCores,
 		platform,
 		arch,
 		appleSilicon,
 		recommendedBucket: recommendBucket(totalRamGb, totalVramGb, appleSilicon),
-		source: "node-llama-cpp"
+		source: "node-llama-cpp",
 	};
 }
 
 //#endregion
 //#region node_modules/.bun/@elizaos+app-core@2.0.0-alpha.537+72829346cb4c43b1/node_modules/@elizaos/app-core/packages/app-core/src/services/local-inference/hf-search.js
 /**
-* HuggingFace Hub search for GGUF models.
-*
-* Calls `https://huggingface.co/api/models` with `filter=gguf` to narrow
-* results to repos that actually ship GGUF quantisations. Each matching
-* repo is expanded with `/api/models/<repo>` to pick a representative
-* quant file (preferring Q4_K_M when present). Results are shaped like
-* `CatalogModel` so the existing ModelCard renders them directly.
-*
-* We deliberately do not persist these — they're dynamic, and a curated
-* entry with the same hfRepo always takes precedence in the UI.
-*/
+ * HuggingFace Hub search for GGUF models.
+ *
+ * Calls `https://huggingface.co/api/models` with `filter=gguf` to narrow
+ * results to repos that actually ship GGUF quantisations. Each matching
+ * repo is expanded with `/api/models/<repo>` to pick a representative
+ * quant file (preferring Q4_K_M when present). Results are shaped like
+ * `CatalogModel` so the existing ModelCard renders them directly.
+ *
+ * We deliberately do not persist these — they're dynamic, and a curated
+ * entry with the same hfRepo always takes precedence in the UI.
+ */
 const HF_API = "https://huggingface.co/api";
 const SEARCH_TIMEOUT_MS = 1e4;
 const QUANT_PREFERENCE = [
@@ -11972,10 +14104,12 @@ const QUANT_PREFERENCE = [
 	"Q5_0",
 	"Q3_K_M",
 	"Q8_0",
-	"Q2_K"
+	"Q2_K",
 ];
 function pickQuantFile(siblings) {
-	const ggufs = siblings.filter((s) => s.rfilename?.toLowerCase().endsWith(".gguf"));
+	const ggufs = siblings.filter((s) =>
+		s.rfilename?.toLowerCase().endsWith(".gguf"),
+	);
 	if (ggufs.length === 0) return null;
 	for (const quant of QUANT_PREFERENCE) {
 		const match = ggufs.find((s) => s.rfilename?.toUpperCase().includes(quant));
@@ -11984,100 +14118,59 @@ function pickQuantFile(siblings) {
 	return [...ggufs].sort((a, b) => (a.size ?? 0) - (b.size ?? 0))[0] ?? null;
 }
 function extractQuantLabel(filename) {
-	for (const quant of QUANT_PREFERENCE) if (filename.toUpperCase().includes(quant)) return quant;
+	for (const quant of QUANT_PREFERENCE)
+		if (filename.toUpperCase().includes(quant)) return quant;
 	return "GGUF";
 }
 /**
-* Very rough parameter-count inference from model name / tags. We use this
-* only to pick a bucket label — not for any hard memory check.
-*/
+ * Very rough parameter-count inference from model name / tags. We use this
+ * only to pick a bucket label — not for any hard memory check.
+ */
 function inferParams(name, tags) {
 	const lower = `${name} ${tags.join(" ")}`.toLowerCase();
 	for (const [re, params, bucket] of [
-		[
-			/\b70b\b/,
-			"70B",
-			"xl"
-		],
-		[
-			/\b32b\b/,
-			"32B",
-			"xl"
-		],
-		[
-			/\b27b\b/,
-			"27B",
-			"large"
-		],
-		[
-			/\b24b\b/,
-			"24B",
-			"large"
-		],
-		[
-			/\b22b\b/,
-			"22B",
-			"large"
-		],
-		[
-			/\b16b\b/,
-			"16B",
-			"large"
-		],
-		[
-			/\b14b\b/,
-			"14B",
-			"large"
-		],
-		[
-			/\b13b\b/,
-			"14B",
-			"large"
-		],
-		[
-			/\b9b\b/,
-			"9B",
-			"mid"
-		],
-		[
-			/\b8b\b/,
-			"8B",
-			"mid"
-		],
-		[
-			/\b7b\b/,
-			"7B",
-			"mid"
-		],
-		[
-			/\b3b\b/,
-			"3B",
-			"small"
-		],
-		[
-			/\b1\.7b\b/,
-			"1.7B",
-			"small"
-		],
-		[
-			/\b1b\b/,
-			"1B",
-			"small"
-		]
-	]) if (re.test(lower)) return {
-		params,
-		bucket
-	};
+		[/\b70b\b/, "70B", "xl"],
+		[/\b32b\b/, "32B", "xl"],
+		[/\b27b\b/, "27B", "large"],
+		[/\b24b\b/, "24B", "large"],
+		[/\b22b\b/, "22B", "large"],
+		[/\b16b\b/, "16B", "large"],
+		[/\b14b\b/, "14B", "large"],
+		[/\b13b\b/, "14B", "large"],
+		[/\b9b\b/, "9B", "mid"],
+		[/\b8b\b/, "8B", "mid"],
+		[/\b7b\b/, "7B", "mid"],
+		[/\b3b\b/, "3B", "small"],
+		[/\b1\.7b\b/, "1.7B", "small"],
+		[/\b1b\b/, "1B", "small"],
+	])
+		if (re.test(lower))
+			return {
+				params,
+				bucket,
+			};
 	return {
 		params: "7B",
-		bucket: "mid"
+		bucket: "mid",
 	};
 }
 function inferCategory(tags, pipelineTag) {
 	const lowerTags = tags.map((t) => t.toLowerCase());
-	if (lowerTags.some((t) => t.includes("code") || t.includes("coder"))) return "code";
-	if (lowerTags.some((t) => t.includes("reasoning") || t === "math" || t.includes("r1"))) return "reasoning";
-	if (lowerTags.some((t) => t.includes("function") || t.includes("tool") || t.includes("hermes"))) return "tools";
+	if (lowerTags.some((t) => t.includes("code") || t.includes("coder")))
+		return "code";
+	if (
+		lowerTags.some(
+			(t) => t.includes("reasoning") || t === "math" || t.includes("r1"),
+		)
+	)
+		return "reasoning";
+	if (
+		lowerTags.some(
+			(t) =>
+				t.includes("function") || t.includes("tool") || t.includes("hermes"),
+		)
+	)
+		return "tools";
 	if (pipelineTag === "text-generation") return "chat";
 	return "chat";
 }
@@ -12087,37 +14180,51 @@ async function fetchWithTimeout(url, init) {
 	try {
 		return await fetch(url, {
 			...init,
-			signal: controller.signal
+			signal: controller.signal,
 		});
 	} finally {
 		clearTimeout(timer);
 	}
 }
 /**
-* Search HuggingFace for GGUF repos matching `query`, returning
-* catalog-shaped entries ready for the Model Hub UI.
-*/
+ * Search HuggingFace for GGUF repos matching `query`, returning
+ * catalog-shaped entries ready for the Model Hub UI.
+ */
 async function searchHuggingFaceGguf(query, limit = 12) {
 	const trimmed = query.trim();
 	if (trimmed.length === 0) return [];
 	const searchUrl = new URL(`${HF_API}/models`);
 	searchUrl.searchParams.set("search", trimmed);
 	searchUrl.searchParams.set("filter", "gguf");
-	searchUrl.searchParams.set("limit", String(Math.min(50, Math.max(1, limit * 2))));
+	searchUrl.searchParams.set(
+		"limit",
+		String(Math.min(50, Math.max(1, limit * 2))),
+	);
 	searchUrl.searchParams.set("sort", "downloads");
 	searchUrl.searchParams.set("direction", "-1");
-	const searchRes = await fetchWithTimeout(searchUrl.toString(), { headers: { accept: "application/json" } });
-	if (!searchRes.ok) throw new Error(`HuggingFace search failed: HTTP ${searchRes.status}`);
-	const candidates = (await searchRes.json()).map((r) => r.id ?? r.modelId).filter((id) => typeof id === "string" && id.length > 0).slice(0, limit);
-	const details = await Promise.all(candidates.map(async (id) => {
-		try {
-			const res = await fetchWithTimeout(`${HF_API}/models/${encodeURIComponent(id)}`, { headers: { accept: "application/json" } });
-			if (!res.ok) return null;
-			return await res.json();
-		} catch {
-			return null;
-		}
-	}));
+	const searchRes = await fetchWithTimeout(searchUrl.toString(), {
+		headers: { accept: "application/json" },
+	});
+	if (!searchRes.ok)
+		throw new Error(`HuggingFace search failed: HTTP ${searchRes.status}`);
+	const candidates = (await searchRes.json())
+		.map((r) => r.id ?? r.modelId)
+		.filter((id) => typeof id === "string" && id.length > 0)
+		.slice(0, limit);
+	const details = await Promise.all(
+		candidates.map(async (id) => {
+			try {
+				const res = await fetchWithTimeout(
+					`${HF_API}/models/${encodeURIComponent(id)}`,
+					{ headers: { accept: "application/json" } },
+				);
+				if (!res.ok) return null;
+				return await res.json();
+			} catch {
+				return null;
+			}
+		}),
+	);
 	const results = [];
 	for (let i = 0; i < candidates.length; i++) {
 		const id = candidates[i];
@@ -12143,7 +14250,9 @@ async function searchHuggingFaceGguf(query, limit = 12) {
 			minRamGb,
 			category,
 			bucket,
-			blurb: (detail.tags ?? []).slice(0, 4).join(" · ") || `${detail.downloads ?? 0} downloads · ${detail.likes ?? 0} likes`
+			blurb:
+				(detail.tags ?? []).slice(0, 4).join(" · ") ||
+				`${detail.downloads ?? 0} downloads · ${detail.likes ?? 0} likes`,
 		});
 	}
 	return results;
@@ -12152,13 +14261,13 @@ async function searchHuggingFaceGguf(query, limit = 12) {
 //#endregion
 //#region node_modules/.bun/@elizaos+app-core@2.0.0-alpha.537+72829346cb4c43b1/node_modules/@elizaos/app-core/packages/app-core/src/services/local-inference/service.js
 /**
-* Public facade for the local-inference service.
-*
-* Single entry point used by the API routes, the settings UI, and any
-* future orchestration code. Holds singleton instances of the downloader
-* and active-model coordinator so subscribers receive the same event
-* stream across the process.
-*/
+ * Public facade for the local-inference service.
+ *
+ * Single entry point used by the API routes, the settings UI, and any
+ * future orchestration code. Holds singleton instances of the downloader
+ * and active-model coordinator so subscribers receive the same event
+ * stream across the process.
+ */
 var LocalInferenceService = class {
 	downloader = new Downloader();
 	activeModel = new ActiveModelCoordinator();
@@ -12167,14 +14276,17 @@ var LocalInferenceService = class {
 		return MODEL_CATALOG;
 	}
 	/**
-	* Register any bundled GGUF files staged by the AOSP build (or any
-	* other install path that drops a `manifest.json` next to the model
-	* files) into the registry. Runs at most once per process; the
-	* promise is cached so concurrent first callers wait on the same
-	* work.
-	*/
+	 * Register any bundled GGUF files staged by the AOSP build (or any
+	 * other install path that drops a `manifest.json` next to the model
+	 * files) into the registry. Runs at most once per process; the
+	 * promise is cached so concurrent first callers wait on the same
+	 * work.
+	 */
 	bootstrapBundled() {
-		if (!this.bundledBootstrap) this.bundledBootstrap = registerBundledModels().then(() => void 0).catch(() => void 0);
+		if (!this.bundledBootstrap)
+			this.bundledBootstrap = registerBundledModels()
+				.then(() => void 0)
+				.catch(() => void 0);
 		return this.bundledBootstrap;
 	}
 	async getInstalled() {
@@ -12201,7 +14313,7 @@ var LocalInferenceService = class {
 		const [installed, hardware, assignments] = await Promise.all([
 			this.getInstalled(),
 			this.getHardware(),
-			this.getAssignments()
+			this.getAssignments(),
 		]);
 		return {
 			catalog: this.getCatalog(),
@@ -12209,7 +14321,7 @@ var LocalInferenceService = class {
 			active: this.getActive(),
 			downloads: this.getDownloads(),
 			hardware,
-			assignments
+			assignments,
 		};
 	}
 	async startDownload(modelIdOrSpec) {
@@ -12219,30 +14331,35 @@ var LocalInferenceService = class {
 		return searchHuggingFaceGguf(query, limit);
 	}
 	/**
-	* Verify an installed model's file integrity. When the model was a
-	* Eliza-download and there was no stored sha256 yet (legacy entry), the
-	* computed hash is persisted so subsequent verifies have a baseline.
-	*/
+	 * Verify an installed model's file integrity. When the model was a
+	 * Eliza-download and there was no stored sha256 yet (legacy entry), the
+	 * computed hash is persisted so subsequent verifies have a baseline.
+	 */
 	async verifyModel(id) {
 		const model = (await listInstalledModels()).find((m) => m.id === id);
 		if (!model) throw new Error(`Model not installed: ${id}`);
 		const result = await verifyInstalledModel(model);
-		if (result.state === "unknown" && result.currentSha256 && model.source === "eliza-download") {
+		if (
+			result.state === "unknown" &&
+			result.currentSha256 &&
+			model.source === "eliza-download"
+		) {
 			await upsertElizaModel({
 				...model,
 				sha256: result.currentSha256,
-				lastVerifiedAt: (/* @__PURE__ */ new Date()).toISOString()
+				lastVerifiedAt: /* @__PURE__ */ new Date().toISOString(),
 			});
 			return {
 				...result,
 				state: "ok",
-				expectedSha256: result.currentSha256
+				expectedSha256: result.currentSha256,
 			};
 		}
-		if (result.state === "ok" && model.source === "eliza-download") await upsertElizaModel({
-			...model,
-			lastVerifiedAt: (/* @__PURE__ */ new Date()).toISOString()
-		});
+		if (result.state === "ok" && model.source === "eliza-download")
+			await upsertElizaModel({
+				...model,
+				lastVerifiedAt: /* @__PURE__ */ new Date().toISOString(),
+			});
 		return result;
 	}
 	cancelDownload(modelId) {
@@ -12263,7 +14380,8 @@ var LocalInferenceService = class {
 		return this.activeModel.unload(runtime);
 	}
 	async uninstall(modelId) {
-		if (this.activeModel.snapshot().modelId === modelId) await this.activeModel.unload(null);
+		if (this.activeModel.snapshot().modelId === modelId)
+			await this.activeModel.unload(null);
 		return removeElizaModel(modelId);
 	}
 };
@@ -12272,34 +14390,34 @@ const localInferenceService = new LocalInferenceService();
 //#endregion
 //#region node_modules/.bun/@elizaos+app-core@2.0.0-alpha.537+72829346cb4c43b1/node_modules/@elizaos/app-core/packages/app-core/src/services/local-inference/types.js
 /**
-* Local inference model-management types.
-*
-* Shared across the service layer, API routes, and renderer.
-* The catalog is Eliza-curated; installed models are tracked locally in a
-* JSON registry under the state dir.
-*/
+ * Local inference model-management types.
+ *
+ * Shared across the service layer, API routes, and renderer.
+ * The catalog is Eliza-curated; installed models are tracked locally in a
+ * JSON registry under the state dir.
+ */
 const AGENT_MODEL_SLOTS = [
 	"TEXT_SMALL",
 	"TEXT_LARGE",
 	"TEXT_EMBEDDING",
 	"OBJECT_SMALL",
-	"OBJECT_LARGE"
+	"OBJECT_LARGE",
 ];
 
 //#endregion
 //#region node_modules/.bun/@elizaos+app-core@2.0.0-alpha.537+72829346cb4c43b1/node_modules/@elizaos/app-core/packages/app-core/src/api/local-inference-compat-routes.js
 /**
-* HTTP routes for the local-inference / model management feature.
-*
-* Route shape and auth follow the established `*-compat-routes.ts` pattern:
-*   - `handleLocalInferenceCompatRoutes` returns `true` when it handles a
-*     request and `false` to pass through to the next handler.
-*   - Regular reads use `ensureCompatApiAuthorized`.
-*   - Mutating routes (download start/cancel, active switch, uninstall)
-*     use `ensureCompatSensitiveRouteAuthorized`.
-*   - SSE allows `?token=...` as an alternative to the auth header, via
-*     `isStreamAuthorized`.
-*/
+ * HTTP routes for the local-inference / model management feature.
+ *
+ * Route shape and auth follow the established `*-compat-routes.ts` pattern:
+ *   - `handleLocalInferenceCompatRoutes` returns `true` when it handles a
+ *     request and `false` to pass through to the next handler.
+ *   - Regular reads use `ensureCompatApiAuthorized`.
+ *   - Mutating routes (download start/cancel, active switch, uninstall)
+ *     use `ensureCompatSensitiveRouteAuthorized`.
+ *   - SSE allows `?token=...` as an alternative to the auth header, via
+ *     `isStreamAuthorized`.
+ */
 init_auth();
 init_compat_route_shared();
 init_response();
@@ -12308,7 +14426,11 @@ function isStreamAuthorized(req, res, url) {
 	if (!expected) return true;
 	const headerToken = getProvidedApiToken(req);
 	const queryToken = url.searchParams.get("token")?.trim();
-	if (headerToken && tokenMatches(expected, headerToken) || queryToken && tokenMatches(expected, queryToken)) return true;
+	if (
+		(headerToken && tokenMatches(expected, headerToken)) ||
+		(queryToken && tokenMatches(expected, queryToken))
+	)
+		return true;
 	res.writeHead(401, { "Content-Type": "application/json" });
 	res.end(JSON.stringify({ error: "Unauthorized" }));
 	return false;
@@ -12322,46 +14444,56 @@ function stringBody(body, key) {
 	return typeof raw === "string" && raw.trim().length > 0 ? raw.trim() : null;
 }
 /**
-* Match POST/DELETE/GET for `/api/local-inference/installed/:id`.
-* Returns the trimmed id or null.
-*/
+ * Match POST/DELETE/GET for `/api/local-inference/installed/:id`.
+ * Returns the trimmed id or null.
+ */
 function matchInstalledId(pathname) {
-	return /^\/api\/local-inference\/installed\/([^/]+)$/.exec(pathname)?.[1] ?? null;
+	return (
+		/^\/api\/local-inference\/installed\/([^/]+)$/.exec(pathname)?.[1] ?? null
+	);
 }
 async function handleLocalInferenceCompatRoutes(req, res, state) {
 	const method = (req.method ?? "GET").toUpperCase();
 	const url = new URL(req.url ?? "/", "http://localhost");
 	const pathname = url.pathname;
 	if (!pathname.startsWith("/api/local-inference/")) return false;
-	if (method === "GET" && pathname === "/api/local-inference/downloads/stream") {
+	if (
+		method === "GET" &&
+		pathname === "/api/local-inference/downloads/stream"
+	) {
 		if (!isStreamAuthorized(req, res, url)) return true;
 		res.writeHead(200, {
 			"Content-Type": "text/event-stream",
 			"Cache-Control": "no-cache, no-transform",
 			Connection: "keep-alive",
-			"X-Accel-Buffering": "no"
+			"X-Accel-Buffering": "no",
 		});
 		writeSseEvent(res, {
 			type: "snapshot",
 			downloads: localInferenceService.getDownloads(),
-			active: localInferenceService.getActive()
+			active: localInferenceService.getActive(),
 		});
-		const unsubscribeDownloads = localInferenceService.subscribeDownloads((event) => {
-			writeSseEvent(res, {
-				type: event.type,
-				job: event.job
-			});
-		});
-		const unsubscribeActive = localInferenceService.subscribeActive((active) => {
-			writeSseEvent(res, {
-				type: "active",
-				active
-			});
-		});
+		const unsubscribeDownloads = localInferenceService.subscribeDownloads(
+			(event) => {
+				writeSseEvent(res, {
+					type: event.type,
+					job: event.job,
+				});
+			},
+		);
+		const unsubscribeActive = localInferenceService.subscribeActive(
+			(active) => {
+				writeSseEvent(res, {
+					type: "active",
+					active,
+				});
+			},
+		);
 		const heartbeat = setInterval(() => {
 			res.write(": heartbeat\n\n");
 		}, 15e3);
-		if (typeof heartbeat === "object" && "unref" in heartbeat) heartbeat.unref();
+		if (typeof heartbeat === "object" && "unref" in heartbeat)
+			heartbeat.unref();
 		const cleanup = () => {
 			clearInterval(heartbeat);
 			unsubscribeDownloads();
@@ -12372,34 +14504,48 @@ async function handleLocalInferenceCompatRoutes(req, res, state) {
 		return true;
 	}
 	if (method === "GET" && pathname === "/api/local-inference/hub") {
-		if (!await ensureRouteAuthorized(req, res, state)) return true;
+		if (!(await ensureRouteAuthorized(req, res, state))) return true;
 		try {
 			sendJson$2(res, 200, await localInferenceService.snapshot());
 		} catch (err) {
-			sendJsonError(res, 500, err instanceof Error ? err.message : "Failed to load hub");
+			sendJsonError(
+				res,
+				500,
+				err instanceof Error ? err.message : "Failed to load hub",
+			);
 		}
 		return true;
 	}
 	if (method === "GET" && pathname === "/api/local-inference/hardware") {
-		if (!await ensureRouteAuthorized(req, res, state)) return true;
+		if (!(await ensureRouteAuthorized(req, res, state))) return true;
 		try {
 			sendJson$2(res, 200, await localInferenceService.getHardware());
 		} catch (err) {
-			sendJsonError(res, 500, err instanceof Error ? err.message : "Failed to probe hardware");
+			sendJsonError(
+				res,
+				500,
+				err instanceof Error ? err.message : "Failed to probe hardware",
+			);
 		}
 		return true;
 	}
 	if (method === "GET" && pathname === "/api/local-inference/catalog") {
-		if (!await ensureRouteAuthorized(req, res, state)) return true;
+		if (!(await ensureRouteAuthorized(req, res, state))) return true;
 		sendJson$2(res, 200, { models: localInferenceService.getCatalog() });
 		return true;
 	}
 	if (method === "GET" && pathname === "/api/local-inference/installed") {
-		if (!await ensureRouteAuthorized(req, res, state)) return true;
+		if (!(await ensureRouteAuthorized(req, res, state))) return true;
 		try {
-			sendJson$2(res, 200, { models: await localInferenceService.getInstalled() });
+			sendJson$2(res, 200, {
+				models: await localInferenceService.getInstalled(),
+			});
 		} catch (err) {
-			sendJsonError(res, 500, err instanceof Error ? err.message : "Failed to list installed models");
+			sendJsonError(
+				res,
+				500,
+				err instanceof Error ? err.message : "Failed to list installed models",
+			);
 		}
 		return true;
 	}
@@ -12411,55 +14557,92 @@ async function handleLocalInferenceCompatRoutes(req, res, state) {
 		const rawSpec = body.spec;
 		try {
 			let job;
-			if (rawSpec && typeof rawSpec === "object" && !Array.isArray(rawSpec)) job = await localInferenceService.startDownload(rawSpec);
-			else if (modelId) job = await localInferenceService.startDownload(modelId);
+			if (rawSpec && typeof rawSpec === "object" && !Array.isArray(rawSpec))
+				job = await localInferenceService.startDownload(rawSpec);
+			else if (modelId)
+				job = await localInferenceService.startDownload(modelId);
 			else {
 				sendJsonError(res, 400, "modelId or spec is required");
 				return true;
 			}
 			sendJson$2(res, 202, { job });
 		} catch (err) {
-			sendJsonError(res, 400, err instanceof Error ? err.message : "Failed to start download");
+			sendJsonError(
+				res,
+				400,
+				err instanceof Error ? err.message : "Failed to start download",
+			);
 		}
 		return true;
 	}
 	if (method === "GET" && pathname === "/api/local-inference/providers") {
-		if (!await ensureRouteAuthorized(req, res, state)) return true;
+		if (!(await ensureRouteAuthorized(req, res, state))) return true;
 		try {
 			sendJson$2(res, 200, { providers: await snapshotProviders() });
 		} catch (err) {
-			sendJsonError(res, 500, err instanceof Error ? err.message : "Failed to read providers");
+			sendJsonError(
+				res,
+				500,
+				err instanceof Error ? err.message : "Failed to read providers",
+			);
 		}
 		return true;
 	}
 	if (method === "GET" && pathname === "/api/local-inference/routing") {
-		if (!await ensureRouteAuthorized(req, res, state)) return true;
+		if (!(await ensureRouteAuthorized(req, res, state))) return true;
 		try {
-			const [prefs, registrations] = await Promise.all([readRoutingPreferences(), Promise.resolve(handlerRegistry.getAll().map(toPublicRegistration))]);
+			const [prefs, registrations] = await Promise.all([
+				readRoutingPreferences(),
+				Promise.resolve(handlerRegistry.getAll().map(toPublicRegistration)),
+			]);
 			sendJson$2(res, 200, {
 				registrations,
-				preferences: prefs
+				preferences: prefs,
 			});
 		} catch (err) {
-			sendJsonError(res, 500, err instanceof Error ? err.message : "Failed to read routing state");
+			sendJsonError(
+				res,
+				500,
+				err instanceof Error ? err.message : "Failed to read routing state",
+			);
 		}
 		return true;
 	}
-	if (method === "POST" && pathname === "/api/local-inference/routing/preferred") {
+	if (
+		method === "POST" &&
+		pathname === "/api/local-inference/routing/preferred"
+	) {
 		if (!ensureCompatSensitiveRouteAuthorized(req, res)) return true;
 		const body = await readCompatJsonBody(req, res);
 		if (!body) return true;
 		const slot = stringBody(body, "slot");
 		if (!slot || !AGENT_MODEL_SLOTS.includes(slot)) {
-			sendJsonError(res, 400, "slot is required and must be a valid AgentModelSlot");
+			sendJsonError(
+				res,
+				400,
+				"slot is required and must be a valid AgentModelSlot",
+			);
 			return true;
 		}
 		const raw = body.provider;
-		const provider = raw === null ? null : typeof raw === "string" && raw.trim().length > 0 ? raw.trim() : null;
+		const provider =
+			raw === null
+				? null
+				: typeof raw === "string" && raw.trim().length > 0
+					? raw.trim()
+					: null;
 		try {
-			sendJson$2(res, 200, { preferences: await setPreferredProvider(slot, provider) });
+			sendJson$2(res, 200, {
+				preferences: await setPreferredProvider(slot, provider),
+			});
 		} catch (err) {
-			sendJsonError(res, 500, err instanceof Error ? err.message : "Failed to write preferred provider");
+			sendJsonError(
+				res,
+				500,
+				err instanceof Error
+					? err.message
+					: "Failed to write preferred provider",
+			);
 		}
 		return true;
 	}
@@ -12469,7 +14652,11 @@ async function handleLocalInferenceCompatRoutes(req, res, state) {
 		if (!body) return true;
 		const slot = stringBody(body, "slot");
 		if (!slot || !AGENT_MODEL_SLOTS.includes(slot)) {
-			sendJsonError(res, 400, "slot is required and must be a valid AgentModelSlot");
+			sendJsonError(
+				res,
+				400,
+				"slot is required and must be a valid AgentModelSlot",
+			);
 			return true;
 		}
 		const raw = body.policy;
@@ -12478,26 +14665,45 @@ async function handleLocalInferenceCompatRoutes(req, res, state) {
 			"cheapest",
 			"fastest",
 			"prefer-local",
-			"round-robin"
+			"round-robin",
 		];
-		const policy = raw === null ? null : typeof raw === "string" && validPolicies.includes(raw) ? raw : null;
+		const policy =
+			raw === null
+				? null
+				: typeof raw === "string" && validPolicies.includes(raw)
+					? raw
+					: null;
 		if (raw !== null && policy === null) {
-			sendJsonError(res, 400, `policy must be one of ${validPolicies.join(", ")} or null`);
+			sendJsonError(
+				res,
+				400,
+				`policy must be one of ${validPolicies.join(", ")} or null`,
+			);
 			return true;
 		}
 		try {
 			sendJson$2(res, 200, { preferences: await setPolicy(slot, policy) });
 		} catch (err) {
-			sendJsonError(res, 500, err instanceof Error ? err.message : "Failed to write routing policy");
+			sendJsonError(
+				res,
+				500,
+				err instanceof Error ? err.message : "Failed to write routing policy",
+			);
 		}
 		return true;
 	}
 	if (method === "GET" && pathname === "/api/local-inference/assignments") {
-		if (!await ensureRouteAuthorized(req, res, state)) return true;
+		if (!(await ensureRouteAuthorized(req, res, state))) return true;
 		try {
-			sendJson$2(res, 200, { assignments: await localInferenceService.getAssignments() });
+			sendJson$2(res, 200, {
+				assignments: await localInferenceService.getAssignments(),
+			});
 		} catch (err) {
-			sendJsonError(res, 500, err instanceof Error ? err.message : "Failed to read assignments");
+			sendJsonError(
+				res,
+				500,
+				err instanceof Error ? err.message : "Failed to read assignments",
+			);
 		}
 		return true;
 	}
@@ -12507,20 +14713,38 @@ async function handleLocalInferenceCompatRoutes(req, res, state) {
 		if (!body) return true;
 		const slot = stringBody(body, "slot");
 		if (!slot || !AGENT_MODEL_SLOTS.includes(slot)) {
-			sendJsonError(res, 400, `slot must be one of ${AGENT_MODEL_SLOTS.join(", ")}`);
+			sendJsonError(
+				res,
+				400,
+				`slot must be one of ${AGENT_MODEL_SLOTS.join(", ")}`,
+			);
 			return true;
 		}
 		const rawModelId = body.modelId;
-		const modelId = rawModelId === null ? null : typeof rawModelId === "string" && rawModelId.trim().length > 0 ? rawModelId.trim() : null;
+		const modelId =
+			rawModelId === null
+				? null
+				: typeof rawModelId === "string" && rawModelId.trim().length > 0
+					? rawModelId.trim()
+					: null;
 		try {
-			sendJson$2(res, 200, { assignments: await localInferenceService.setSlotAssignment(slot, modelId) });
+			sendJson$2(res, 200, {
+				assignments: await localInferenceService.setSlotAssignment(
+					slot,
+					modelId,
+				),
+			});
 		} catch (err) {
-			sendJsonError(res, 500, err instanceof Error ? err.message : "Failed to write assignment");
+			sendJsonError(
+				res,
+				500,
+				err instanceof Error ? err.message : "Failed to write assignment",
+			);
 		}
 		return true;
 	}
 	if (method === "GET" && pathname === "/api/local-inference/device") {
-		if (!await ensureRouteAuthorized(req, res, state)) return true;
+		if (!(await ensureRouteAuthorized(req, res, state))) return true;
 		sendJson$2(res, 200, deviceBridge.status());
 		return true;
 	}
@@ -12530,22 +14754,23 @@ async function handleLocalInferenceCompatRoutes(req, res, state) {
 			"Content-Type": "text/event-stream",
 			"Cache-Control": "no-cache, no-transform",
 			Connection: "keep-alive",
-			"X-Accel-Buffering": "no"
+			"X-Accel-Buffering": "no",
 		});
 		writeSseEvent(res, {
 			type: "status",
-			status: deviceBridge.status()
+			status: deviceBridge.status(),
 		});
 		const unsubscribe = deviceBridge.subscribeStatus((status) => {
 			writeSseEvent(res, {
 				type: "status",
-				status
+				status,
 			});
 		});
 		const heartbeat = setInterval(() => {
 			res.write(": heartbeat\n\n");
 		}, 15e3);
-		if (typeof heartbeat === "object" && "unref" in heartbeat) heartbeat.unref();
+		if (typeof heartbeat === "object" && "unref" in heartbeat)
+			heartbeat.unref();
 		const cleanup = () => {
 			clearInterval(heartbeat);
 			unsubscribe();
@@ -12555,18 +14780,26 @@ async function handleLocalInferenceCompatRoutes(req, res, state) {
 		return true;
 	}
 	if (method === "GET" && pathname === "/api/local-inference/hf-search") {
-		if (!await ensureRouteAuthorized(req, res, state)) return true;
+		if (!(await ensureRouteAuthorized(req, res, state))) return true;
 		const q = url.searchParams.get("q")?.trim() ?? "";
 		if (q.length === 0) {
 			sendJson$2(res, 200, { models: [] });
 			return true;
 		}
 		const limitRaw = url.searchParams.get("limit");
-		const limit = limitRaw ? Math.max(1, Math.min(50, Number.parseInt(limitRaw, 10) || 12)) : 12;
+		const limit = limitRaw
+			? Math.max(1, Math.min(50, Number.parseInt(limitRaw, 10) || 12))
+			: 12;
 		try {
-			sendJson$2(res, 200, { models: await localInferenceService.searchHuggingFace(q, limit) });
+			sendJson$2(res, 200, {
+				models: await localInferenceService.searchHuggingFace(q, limit),
+			});
 		} catch (err) {
-			sendJsonError(res, 502, err instanceof Error ? err.message : "HuggingFace search failed");
+			sendJsonError(
+				res,
+				502,
+				err instanceof Error ? err.message : "HuggingFace search failed",
+			);
 		}
 		return true;
 	}
@@ -12580,7 +14813,7 @@ async function handleLocalInferenceCompatRoutes(req, res, state) {
 		}
 	}
 	if (method === "GET" && pathname === "/api/local-inference/active") {
-		if (!await ensureRouteAuthorized(req, res, state)) return true;
+		if (!(await ensureRouteAuthorized(req, res, state))) return true;
 		sendJson$2(res, 200, localInferenceService.getActive());
 		return true;
 	}
@@ -12594,29 +14827,55 @@ async function handleLocalInferenceCompatRoutes(req, res, state) {
 			return true;
 		}
 		try {
-			sendJson$2(res, 200, await localInferenceService.setActive(state.current, modelId));
+			sendJson$2(
+				res,
+				200,
+				await localInferenceService.setActive(state.current, modelId),
+			);
 		} catch (err) {
-			sendJsonError(res, 400, err instanceof Error ? err.message : "Failed to set active model");
+			sendJsonError(
+				res,
+				400,
+				err instanceof Error ? err.message : "Failed to set active model",
+			);
 		}
 		return true;
 	}
 	if (method === "DELETE" && pathname === "/api/local-inference/active") {
 		if (!ensureCompatSensitiveRouteAuthorized(req, res)) return true;
 		try {
-			sendJson$2(res, 200, await localInferenceService.clearActive(state.current));
+			sendJson$2(
+				res,
+				200,
+				await localInferenceService.clearActive(state.current),
+			);
 		} catch (err) {
-			sendJsonError(res, 500, err instanceof Error ? err.message : "Failed to unload model");
+			sendJsonError(
+				res,
+				500,
+				err instanceof Error ? err.message : "Failed to unload model",
+			);
 		}
 		return true;
 	}
 	{
-		const match = /^\/api\/local-inference\/installed\/([^/]+)\/verify$/.exec(pathname);
+		const match = /^\/api\/local-inference\/installed\/([^/]+)\/verify$/.exec(
+			pathname,
+		);
 		if (method === "POST" && match) {
-			if (!await ensureRouteAuthorized(req, res, state)) return true;
+			if (!(await ensureRouteAuthorized(req, res, state))) return true;
 			try {
-				sendJson$2(res, 200, await localInferenceService.verifyModel(match[1] ?? ""));
+				sendJson$2(
+					res,
+					200,
+					await localInferenceService.verifyModel(match[1] ?? ""),
+				);
 			} catch (err) {
-				sendJsonError(res, 404, err instanceof Error ? err.message : "Failed to verify model");
+				sendJsonError(
+					res,
+					404,
+					err instanceof Error ? err.message : "Failed to verify model",
+				);
 			}
 			return true;
 		}
@@ -12628,10 +14887,19 @@ async function handleLocalInferenceCompatRoutes(req, res, state) {
 			try {
 				const result = await localInferenceService.uninstall(id);
 				if (result.removed) sendJson$2(res, 200, { removed: true });
-				else if (result.reason === "external") sendJsonError(res, 409, "Model was discovered from another tool; Eliza will not delete files it does not own");
+				else if (result.reason === "external")
+					sendJsonError(
+						res,
+						409,
+						"Model was discovered from another tool; Eliza will not delete files it does not own",
+					);
 				else sendJsonError(res, 404, "Model not installed");
 			} catch (err) {
-				sendJsonError(res, 500, err instanceof Error ? err.message : "Failed to uninstall model");
+				sendJsonError(
+					res,
+					500,
+					err instanceof Error ? err.message : "Failed to uninstall model",
+				);
 			}
 			return true;
 		}
@@ -12657,18 +14925,23 @@ async function syncCompatOnboardingConfigState(req, config) {
 		"serviceRouting",
 		"features",
 		"connectors",
-		"cloud"
-	]) if (Object.hasOwn(config, key)) syncPatch[key] = config[key];
+		"cloud",
+	])
+		if (Object.hasOwn(config, key)) syncPatch[key] = config[key];
 	if (Object.keys(syncPatch).length === 0) return;
 	const headers = { "content-type": "application/json" };
 	const authorization = req.headers.authorization;
-	if (typeof authorization === "string" && authorization.trim()) headers.authorization = authorization;
+	if (typeof authorization === "string" && authorization.trim())
+		headers.authorization = authorization;
 	const response = await fetch(`http://127.0.0.1:${loopbackPort}/api/config`, {
 		method: "PUT",
 		headers,
-		body: JSON.stringify(syncPatch)
+		body: JSON.stringify(syncPatch),
 	});
-	if (!response.ok) throw new Error(`Loopback config sync failed (${response.status}): ${await response.text()}`);
+	if (!response.ok)
+		throw new Error(
+			`Loopback config sync failed (${response.status}): ${await response.text()}`,
+		);
 }
 function scheduleCloudApiKeyResave(apiKey) {
 	setTimeout(() => {
@@ -12679,7 +14952,9 @@ function scheduleCloudApiKeyResave(apiKey) {
 				freshConfig.cloud.apiKey = apiKey;
 				migrateLegacyRuntimeConfig(freshConfig);
 				saveElizaConfig(freshConfig);
-				logger.info("[api] Re-saved cloud.apiKey after upstream handler clobbered it");
+				logger.info(
+					"[api] Re-saved cloud.apiKey after upstream handler clobbered it",
+				);
 			}
 		} catch {}
 	}, 3e3);
@@ -12688,10 +14963,11 @@ async function handleOnboardingCompatRoute(req, res, state) {
 	const method = (req.method ?? "GET").toUpperCase();
 	const url = new URL(req.url ?? "/", "http://localhost");
 	if (method !== "POST" || url.pathname !== "/api/onboarding") return false;
-	if (!await ensureRouteAuthorized(req, res, state)) return true;
+	if (!(await ensureRouteAuthorized(req, res, state))) return true;
 	const chunks = [];
 	try {
-		for await (const chunk of req) chunks.push(typeof chunk === "string" ? Buffer.from(chunk) : chunk);
+		for await (const chunk of req)
+			chunks.push(typeof chunk === "string" ? Buffer.from(chunk) : chunk);
 	} catch {
 		req.push(null);
 		return false;
@@ -12701,18 +14977,36 @@ async function handleOnboardingCompatRoute(req, res, state) {
 	try {
 		const body = JSON.parse(rawBody.toString("utf8"));
 		if (hasLegacyOnboardingRequestFields(body)) {
-			sendJson$2(res, 400, { error: "legacy onboarding payloads are no longer supported; send deploymentTarget, linkedAccounts, serviceRouting, and credentialInputs" });
+			sendJson$2(res, 400, {
+				error:
+					"legacy onboarding payloads are no longer supported; send deploymentTarget, linkedAccounts, serviceRouting, and credentialInputs",
+			});
 			return true;
 		}
 		await extractAndPersistOnboardingApiKey(body);
 		persistCompatOnboardingDefaults(body);
-		if (typeof body.name === "string" && body.name.trim()) state.pendingAgentName = body.name.trim();
-		const { replayBody: replayBodyRecord } = deriveCompatOnboardingReplayBody(body);
-		const replayDeploymentTarget = normalizeDeploymentTargetConfig(replayBodyRecord.deploymentTarget);
-		const replayLinkedAccounts = normalizeLinkedAccountsConfig(replayBodyRecord.linkedAccounts);
-		const replayServiceRouting = normalizeServiceRoutingConfig(replayBodyRecord.serviceRouting);
-		const cloudInferenceSelected = Boolean(replayServiceRouting?.llmText?.transport === "cloud-proxy" && normalizeOnboardingProviderId(replayServiceRouting.llmText.backend) === "elizacloud");
-		const shouldResolveCloudApiKey = replayDeploymentTarget?.runtime === "cloud" || cloudInferenceSelected || replayLinkedAccounts?.elizacloud?.status === "linked";
+		if (typeof body.name === "string" && body.name.trim())
+			state.pendingAgentName = body.name.trim();
+		const { replayBody: replayBodyRecord } =
+			deriveCompatOnboardingReplayBody(body);
+		const replayDeploymentTarget = normalizeDeploymentTargetConfig(
+			replayBodyRecord.deploymentTarget,
+		);
+		const replayLinkedAccounts = normalizeLinkedAccountsConfig(
+			replayBodyRecord.linkedAccounts,
+		);
+		const replayServiceRouting = normalizeServiceRoutingConfig(
+			replayBodyRecord.serviceRouting,
+		);
+		const cloudInferenceSelected = Boolean(
+			replayServiceRouting?.llmText?.transport === "cloud-proxy" &&
+				normalizeOnboardingProviderId(replayServiceRouting.llmText.backend) ===
+					"elizacloud",
+		);
+		const shouldResolveCloudApiKey =
+			replayDeploymentTarget?.runtime === "cloud" ||
+			cloudInferenceSelected ||
+			replayLinkedAccounts?.elizacloud?.status === "linked";
 		let resolvedCloudApiKey;
 		try {
 			const config = loadElizaConfig();
@@ -12721,27 +15015,36 @@ async function handleOnboardingCompatRoute(req, res, state) {
 			applyCanonicalOnboardingConfig(config, {
 				deploymentTarget: replayDeploymentTarget,
 				linkedAccounts: replayLinkedAccounts,
-				serviceRouting: replayServiceRouting
+				serviceRouting: replayServiceRouting,
 			});
 			if (shouldResolveCloudApiKey) {
 				if (!config.cloud) config.cloud = {};
 				resolvedCloudApiKey = config.cloud.apiKey;
 				if (!resolvedCloudApiKey) {
-					resolvedCloudApiKey = getCloudSecret("ELIZAOS_CLOUD_API_KEY") ?? void 0;
+					resolvedCloudApiKey =
+						getCloudSecret("ELIZAOS_CLOUD_API_KEY") ?? void 0;
 					if (resolvedCloudApiKey) config.cloud.apiKey = resolvedCloudApiKey;
 				}
 				if (!resolvedCloudApiKey) {
 					resolvedCloudApiKey = process.env.ELIZAOS_CLOUD_API_KEY;
 					if (resolvedCloudApiKey) config.cloud.apiKey = resolvedCloudApiKey;
 				}
-				if (!resolvedCloudApiKey) logger.warn("[api] Cloud-linked onboarding but no API key found on disk, in sealed secrets, or in env. The upstream handler will save config WITHOUT cloud.apiKey.");
-				else logger.info("[api] Cloud-linked onboarding: resolved API key, injecting into replay body");
+				if (!resolvedCloudApiKey)
+					logger.warn(
+						"[api] Cloud-linked onboarding but no API key found on disk, in sealed secrets, or in env. The upstream handler will save config WITHOUT cloud.apiKey.",
+					);
+				else
+					logger.info(
+						"[api] Cloud-linked onboarding: resolved API key, injecting into replay body",
+					);
 				capturedCloudApiKey = resolvedCloudApiKey;
 			}
 			saveElizaConfig(config);
 			await syncCompatOnboardingConfigState(req, config);
 		} catch (err) {
-			logger.warn(`[api] Failed to persist onboarding state: ${err instanceof Error ? err.message : String(err)}`);
+			logger.warn(
+				`[api] Failed to persist onboarding state: ${err instanceof Error ? err.message : String(err)}`,
+			);
 		}
 	} catch {}
 	sendJson$2(res, 200, { ok: true });
@@ -12755,7 +15058,8 @@ function generateMasterKey() {
 	return randomBytes(KEY_BYTES);
 }
 function encrypt(masterKey, plaintext, aad) {
-	if (masterKey.length !== KEY_BYTES) throw new CryptoError(`master key must be ${KEY_BYTES} bytes`);
+	if (masterKey.length !== KEY_BYTES)
+		throw new CryptoError(`master key must be ${KEY_BYTES} bytes`);
 	const nonce = randomBytes(NONCE_BYTES);
 	const cipher = createCipheriv("aes-256-gcm", masterKey, nonce);
 	cipher.setAAD(Buffer.from(aad, "utf8"));
@@ -12764,28 +15068,38 @@ function encrypt(masterKey, plaintext, aad) {
 	return `v1:${nonce.toString("base64")}:${tag.toString("base64")}:${ct.toString("base64")}`;
 }
 function decrypt(masterKey, ciphertext, aad) {
-	if (masterKey.length !== KEY_BYTES) throw new CryptoError(`master key must be ${KEY_BYTES} bytes`);
+	if (masterKey.length !== KEY_BYTES)
+		throw new CryptoError(`master key must be ${KEY_BYTES} bytes`);
 	const parts = ciphertext.split(":");
-	if (parts.length !== 4 || parts[0] !== "v1") throw new CryptoError("malformed ciphertext or unsupported version");
+	if (parts.length !== 4 || parts[0] !== "v1")
+		throw new CryptoError("malformed ciphertext or unsupported version");
 	const nonceB64 = parts[1];
 	const tagB64 = parts[2];
 	const ctB64 = parts[3];
-	if (nonceB64 === void 0 || tagB64 === void 0 || ctB64 === void 0) throw new CryptoError("malformed ciphertext");
+	if (nonceB64 === void 0 || tagB64 === void 0 || ctB64 === void 0)
+		throw new CryptoError("malformed ciphertext");
 	const nonce = Buffer.from(nonceB64, "base64");
 	const tag = Buffer.from(tagB64, "base64");
 	const ct = Buffer.from(ctB64, "base64");
-	if (nonce.length !== NONCE_BYTES || tag.length !== TAG_BYTES) throw new CryptoError("malformed ciphertext");
+	if (nonce.length !== NONCE_BYTES || tag.length !== TAG_BYTES)
+		throw new CryptoError("malformed ciphertext");
 	const decipher = createDecipheriv("aes-256-gcm", masterKey, nonce);
 	decipher.setAAD(Buffer.from(aad, "utf8"));
 	decipher.setAuthTag(tag);
 	try {
-		return Buffer.concat([decipher.update(ct), decipher.final()]).toString("utf8");
+		return Buffer.concat([decipher.update(ct), decipher.final()]).toString(
+			"utf8",
+		);
 	} catch (err) {
-		throw new CryptoError(err instanceof Error ? `decryption failed: ${err.message}` : "decryption failed");
+		throw new CryptoError(
+			err instanceof Error
+				? `decryption failed: ${err.message}`
+				: "decryption failed",
+		);
 	}
 }
 var KEY_BYTES, NONCE_BYTES, TAG_BYTES, CryptoError;
-var init_crypto = __esmMin((() => {
+var init_crypto = __esmMin(() => {
 	KEY_BYTES = 32;
 	NONCE_BYTES = 12;
 	TAG_BYTES = 16;
@@ -12795,21 +15109,27 @@ var init_crypto = __esmMin((() => {
 			this.name = "CryptoError";
 		}
 	};
-}));
+});
 
 //#endregion
 //#region node_modules/.bun/@elizaos+vault@2.0.0-alpha.537/node_modules/@elizaos/vault/dist/master-key.js
 /**
-* Master key derived from a passphrase via scrypt. Use this when no OS
-* keychain is available — typically headless Linux servers or containers.
-*
-* The same passphrase + salt + cost always produces the same key, so
-* operators MUST keep their passphrase stable across restarts (otherwise
-* existing ciphertext can no longer be decrypted).
-*/
+ * Master key derived from a passphrase via scrypt. Use this when no OS
+ * keychain is available — typically headless Linux servers or containers.
+ *
+ * The same passphrase + salt + cost always produces the same key, so
+ * operators MUST keep their passphrase stable across restarts (otherwise
+ * existing ciphertext can no longer be decrypted).
+ */
 function passphraseMasterKey(opts) {
-	if (typeof opts.passphrase !== "string") throw new MasterKeyUnavailableError("passphraseMasterKey: passphrase must be a string");
-	if (opts.passphrase.length < PASSPHRASE_MIN_LENGTH) throw new MasterKeyUnavailableError(`passphraseMasterKey: passphrase must be at least ${PASSPHRASE_MIN_LENGTH} characters`);
+	if (typeof opts.passphrase !== "string")
+		throw new MasterKeyUnavailableError(
+			"passphraseMasterKey: passphrase must be a string",
+		);
+	if (opts.passphrase.length < PASSPHRASE_MIN_LENGTH)
+		throw new MasterKeyUnavailableError(
+			`passphraseMasterKey: passphrase must be at least ${PASSPHRASE_MIN_LENGTH} characters`,
+		);
 	const service = opts.service ?? "eliza";
 	const salt = opts.salt ?? `${service}.vault.masterKey.v1`;
 	const cost = opts.cost ?? DEFAULT_SCRYPT_COST;
@@ -12820,59 +15140,64 @@ function passphraseMasterKey(opts) {
 					N: cost,
 					r: DEFAULT_SCRYPT_BLOCK_SIZE,
 					p: DEFAULT_SCRYPT_PARALLELIZATION,
-					maxmem: 64 * 1024 * 1024
+					maxmem: 64 * 1024 * 1024,
 				});
-				if (derived.length !== KEY_BYTES) throw new MasterKeyUnavailableError(`passphraseMasterKey: scrypt returned ${derived.length} bytes, expected ${KEY_BYTES}`);
+				if (derived.length !== KEY_BYTES)
+					throw new MasterKeyUnavailableError(
+						`passphraseMasterKey: scrypt returned ${derived.length} bytes, expected ${KEY_BYTES}`,
+					);
 				return derived;
 			} catch (err) {
 				if (err instanceof MasterKeyUnavailableError) throw err;
-				throw new MasterKeyUnavailableError(`passphraseMasterKey: scrypt derivation failed: ${err instanceof Error ? err.message : String(err)}`);
+				throw new MasterKeyUnavailableError(
+					`passphraseMasterKey: scrypt derivation failed: ${err instanceof Error ? err.message : String(err)}`,
+				);
 			}
 		},
 		describe() {
 			return `passphrase://${service}`;
-		}
+		},
 	};
 }
 /**
-* Construct a passphrase resolver from `ELIZA_VAULT_PASSPHRASE` env. Returns
-* `null` when the env var is absent or empty so callers can fall through
-* to the next strategy without a try/catch dance.
-*/
+ * Construct a passphrase resolver from `ELIZA_VAULT_PASSPHRASE` env. Returns
+ * `null` when the env var is absent or empty so callers can fall through
+ * to the next strategy without a try/catch dance.
+ */
 function passphraseMasterKeyFromEnv(service) {
 	const raw = process.env.ELIZA_VAULT_PASSPHRASE;
 	if (!raw || raw.length === 0) return null;
 	return passphraseMasterKey({
 		passphrase: raw,
-		...service ? { service } : {}
+		...(service ? { service } : {}),
 	});
 }
 /**
-* Detects hosts where invoking `@napi-rs/keyring` is known to crash the
-* process at the native level instead of throwing a catchable JS error:
-*
-*   - explicit opt-out via `ELIZA_VAULT_DISABLE_KEYCHAIN=1`
-*   - headless Linux with no reachable D-Bus session (the libsecret
-*     backend aborts at the C level when it can't reach the Secret
-*     Service)
-*
-* D-Bus reachability on Linux is checked two ways:
-*
-*   1. `DBUS_SESSION_BUS_ADDRESS` env var — the classical signal,
-*      reliably set by desktop session startup and `dbus-launch`.
-*   2. `$XDG_RUNTIME_DIR/bus` socket — modern systemd user sessions
-*      socket-activate D-Bus and don't always export the env var
-*      (notably SSH sessions without env forwarding, and Fedora /
-*      Arch / Ubuntu 22+ desktops). Treat the socket file's presence
-*      as equivalent to the env var.
-*
-* This is intentionally a heuristic: it never returns `false` (safe)
-* for a host that would actually crash, and may return `false` (safe)
-* for a host where the keychain ultimately fails with a regular JS
-* error. That's the desired direction — we'd rather attempt the
-* keychain and let the existing try/catch handle a JS-level failure
-* than refuse on a host where it would have worked.
-*/
+ * Detects hosts where invoking `@napi-rs/keyring` is known to crash the
+ * process at the native level instead of throwing a catchable JS error:
+ *
+ *   - explicit opt-out via `ELIZA_VAULT_DISABLE_KEYCHAIN=1`
+ *   - headless Linux with no reachable D-Bus session (the libsecret
+ *     backend aborts at the C level when it can't reach the Secret
+ *     Service)
+ *
+ * D-Bus reachability on Linux is checked two ways:
+ *
+ *   1. `DBUS_SESSION_BUS_ADDRESS` env var — the classical signal,
+ *      reliably set by desktop session startup and `dbus-launch`.
+ *   2. `$XDG_RUNTIME_DIR/bus` socket — modern systemd user sessions
+ *      socket-activate D-Bus and don't always export the env var
+ *      (notably SSH sessions without env forwarding, and Fedora /
+ *      Arch / Ubuntu 22+ desktops). Treat the socket file's presence
+ *      as equivalent to the env var.
+ *
+ * This is intentionally a heuristic: it never returns `false` (safe)
+ * for a host that would actually crash, and may return `false` (safe)
+ * for a host where the keychain ultimately fails with a regular JS
+ * error. That's the desired direction — we'd rather attempt the
+ * keychain and let the existing try/catch handle a JS-level failure
+ * than refuse on a host where it would have worked.
+ */
 function isKeychainUnsafe() {
 	if (process.env.ELIZA_VAULT_DISABLE_KEYCHAIN === "1") return true;
 	if (process.platform !== "linux") return false;
@@ -12885,15 +15210,15 @@ function keychainUnsafeMessage(prefix) {
 	return `${prefix}OS keychain is unsafe on this host (headless Linux with no reachable D-Bus session, or ELIZA_VAULT_DISABLE_KEYCHAIN=1). Set ELIZA_VAULT_PASSPHRASE (≥${PASSPHRASE_MIN_LENGTH} chars) to enable a passphrase-derived master key, or pass an inMemoryMasterKey.`;
 }
 /**
-* Default resolver: try the OS keychain first, then a passphrase-derived
-* key from `ELIZA_VAULT_PASSPHRASE`. If both fail, throws a single
-* `MasterKeyUnavailableError` whose message lists every remediation
-* option so operators on a fresh headless box see one actionable line.
-*
-* Tests should NOT use this — pass `inMemoryMasterKey(...)` to
-* `createVault()` directly. Production paths that already inject a
-* resolver are unaffected.
-*/
+ * Default resolver: try the OS keychain first, then a passphrase-derived
+ * key from `ELIZA_VAULT_PASSPHRASE`. If both fail, throws a single
+ * `MasterKeyUnavailableError` whose message lists every remediation
+ * option so operators on a fresh headless box see one actionable line.
+ *
+ * Tests should NOT use this — pass `inMemoryMasterKey(...)` to
+ * `createVault()` directly. Production paths that already inject a
+ * resolver are unaffected.
+ */
 function defaultMasterKey(opts = {}) {
 	const keychain = osKeychainMasterKey(opts);
 	return {
@@ -12907,19 +15232,29 @@ function defaultMasterKey(opts = {}) {
 				return await keychain.load();
 			} catch (keychainErr) {
 				const passphrase = passphraseMasterKeyFromEnv(opts.service);
-				if (passphrase) try {
-					return await passphrase.load();
-				} catch (passphraseErr) {
-					throw new MasterKeyUnavailableError(`vault master key unavailable. Keychain: ${keychainErr instanceof Error ? keychainErr.message : String(keychainErr)}. Passphrase: ${passphraseErr instanceof Error ? passphraseErr.message : String(passphraseErr)}.`);
-				}
-				throw new MasterKeyUnavailableError(`vault master key unavailable. ${keychainErr instanceof Error ? keychainErr.message : String(keychainErr)} To use a passphrase-derived key on a headless host, set ELIZA_VAULT_PASSPHRASE (≥${PASSPHRASE_MIN_LENGTH} chars) and restart.`);
+				if (passphrase)
+					try {
+						return await passphrase.load();
+					} catch (passphraseErr) {
+						throw new MasterKeyUnavailableError(
+							`vault master key unavailable. Keychain: ${keychainErr instanceof Error ? keychainErr.message : String(keychainErr)}. Passphrase: ${passphraseErr instanceof Error ? passphraseErr.message : String(passphraseErr)}.`,
+						);
+					}
+				throw new MasterKeyUnavailableError(
+					`vault master key unavailable. ${keychainErr instanceof Error ? keychainErr.message : String(keychainErr)} To use a passphrase-derived key on a headless host, set ELIZA_VAULT_PASSPHRASE (≥${PASSPHRASE_MIN_LENGTH} chars) and restart.`,
+				);
 			}
 		},
 		describe() {
 			const passphrase = passphraseMasterKeyFromEnv(opts.service);
-			if (isKeychainUnsafe()) return passphrase ? `${passphrase.describe()} (keychain bypassed: host unsafe)` : `unavailable (keychain bypassed: host unsafe; no ELIZA_VAULT_PASSPHRASE set)`;
-			return passphrase ? `${keychain.describe()} (fallback: ${passphrase.describe()})` : keychain.describe();
-		}
+			if (isKeychainUnsafe())
+				return passphrase
+					? `${passphrase.describe()} (keychain bypassed: host unsafe)`
+					: `unavailable (keychain bypassed: host unsafe; no ELIZA_VAULT_PASSPHRASE set)`;
+			return passphrase
+				? `${keychain.describe()} (fallback: ${passphrase.describe()})`
+				: keychain.describe();
+		},
 	};
 }
 function osKeychainMasterKey(opts = {}) {
@@ -12927,45 +15262,63 @@ function osKeychainMasterKey(opts = {}) {
 	const account = opts.account ?? "vault.masterKey";
 	return {
 		async load() {
-			if (isKeychainUnsafe()) throw new MasterKeyUnavailableError(keychainUnsafeMessage(`OS keychain (${service}/${account}): `));
+			if (isKeychainUnsafe())
+				throw new MasterKeyUnavailableError(
+					keychainUnsafeMessage(`OS keychain (${service}/${account}): `),
+				);
 			let Entry;
 			try {
-				({Entry} = await import("@napi-rs/keyring"));
+				({ Entry } = await import("@napi-rs/keyring"));
 			} catch (err) {
-				throw new MasterKeyUnavailableError(`OS keychain binding unavailable (${service}/${account}): ${err instanceof Error ? err.message : String(err)}`);
+				throw new MasterKeyUnavailableError(
+					`OS keychain binding unavailable (${service}/${account}): ${err instanceof Error ? err.message : String(err)}`,
+				);
 			}
 			let entry;
 			try {
 				entry = new Entry(service, account);
 			} catch (err) {
-				throw new MasterKeyUnavailableError(`OS keychain entry construction failed (${service}/${account}): ${err instanceof Error ? err.message : String(err)}`);
+				throw new MasterKeyUnavailableError(
+					`OS keychain entry construction failed (${service}/${account}): ${err instanceof Error ? err.message : String(err)}`,
+				);
 			}
 			let existing = null;
 			try {
 				existing = entry.getPassword();
 			} catch (err) {
-				throw new MasterKeyUnavailableError(`OS keychain read failed (${service}/${account}): ${err instanceof Error ? err.message : String(err)}. On Linux, ensure libsecret + a Secret Service agent (gnome-keyring / kwallet) is running, or pass an inMemoryMasterKey.`);
+				throw new MasterKeyUnavailableError(
+					`OS keychain read failed (${service}/${account}): ${err instanceof Error ? err.message : String(err)}. On Linux, ensure libsecret + a Secret Service agent (gnome-keyring / kwallet) is running, or pass an inMemoryMasterKey.`,
+				);
 			}
 			if (existing && existing.length > 0) {
 				const buf = Buffer.from(existing, "base64");
-				if (buf.length !== KEY_BYTES) throw new MasterKeyUnavailableError(`OS keychain entry ${service}/${account} is not a ${KEY_BYTES}-byte key`);
+				if (buf.length !== KEY_BYTES)
+					throw new MasterKeyUnavailableError(
+						`OS keychain entry ${service}/${account} is not a ${KEY_BYTES}-byte key`,
+					);
 				return buf;
 			}
 			const created = generateMasterKey();
 			try {
 				entry.setPassword(created.toString("base64"));
 			} catch (err) {
-				throw new MasterKeyUnavailableError(`OS keychain write failed (${service}/${account}): ${err instanceof Error ? err.message : String(err)}`);
+				throw new MasterKeyUnavailableError(
+					`OS keychain write failed (${service}/${account}): ${err instanceof Error ? err.message : String(err)}`,
+				);
 			}
 			return created;
 		},
 		describe() {
 			return `keychain://${service}/${account}`;
-		}
+		},
 	};
 }
-var MasterKeyUnavailableError, PASSPHRASE_MIN_LENGTH, DEFAULT_SCRYPT_COST, DEFAULT_SCRYPT_BLOCK_SIZE, DEFAULT_SCRYPT_PARALLELIZATION;
-var init_master_key = __esmMin((() => {
+var MasterKeyUnavailableError,
+	PASSPHRASE_MIN_LENGTH,
+	DEFAULT_SCRYPT_COST,
+	DEFAULT_SCRYPT_BLOCK_SIZE,
+	DEFAULT_SCRYPT_PARALLELIZATION;
+var init_master_key = __esmMin(() => {
 	init_crypto();
 	MasterKeyUnavailableError = class extends Error {
 		constructor(message) {
@@ -12977,7 +15330,7 @@ var init_master_key = __esmMin((() => {
 	DEFAULT_SCRYPT_COST = 32768;
 	DEFAULT_SCRYPT_BLOCK_SIZE = 8;
 	DEFAULT_SCRYPT_PARALLELIZATION = 1;
-}));
+});
 
 //#endregion
 //#region node_modules/.bun/@elizaos+vault@2.0.0-alpha.537/node_modules/@elizaos/vault/dist/password-managers.js
@@ -12991,24 +15344,36 @@ async function resolve1Password(path) {
 	try {
 		const { stdout } = await exec$2("op", ["read", uri], {
 			encoding: "utf8",
-			timeout: 5e3
+			timeout: 5e3,
 		});
 		const value = stdout.trim();
-		if (value.length === 0) throw new PasswordManagerError("1password", `${uri} is empty`);
+		if (value.length === 0)
+			throw new PasswordManagerError("1password", `${uri} is empty`);
 		return value;
 	} catch (err) {
-		if (err.code === "ENOENT") throw new PasswordManagerError("1password", "`op` CLI not found. Install from https://developer.1password.com/docs/cli, then sign in (`eval $(op signin)`).");
+		if (err.code === "ENOENT")
+			throw new PasswordManagerError(
+				"1password",
+				"`op` CLI not found. Install from https://developer.1password.com/docs/cli, then sign in (`eval $(op signin)`).",
+			);
 		if (err instanceof PasswordManagerError) throw err;
 		const msg = err instanceof Error ? err.message : String(err);
-		if (/not signed in|not authenticated/i.test(msg)) throw new PasswordManagerError("1password", "`op` is not signed in. Unlock the 1Password desktop app or run `eval $(op signin)`.");
+		if (/not signed in|not authenticated/i.test(msg))
+			throw new PasswordManagerError(
+				"1password",
+				"`op` is not signed in. Unlock the 1Password desktop app or run `eval $(op signin)`.",
+			);
 		throw new PasswordManagerError("1password", msg);
 	}
 }
 async function resolveProtonPass(_path) {
-	throw new PasswordManagerError("protonpass", "Proton Pass integration is scaffolded; vendor CLI / SDK is not yet stable. File a request to prioritize.");
+	throw new PasswordManagerError(
+		"protonpass",
+		"Proton Pass integration is scaffolded; vendor CLI / SDK is not yet stable. File a request to prioritize.",
+	);
 }
 var exec$2, PasswordManagerError;
-var init_password_managers = __esmMin((() => {
+var init_password_managers = __esmMin(() => {
 	exec$2 = promisify(execFile);
 	PasswordManagerError = class extends Error {
 		source;
@@ -13018,14 +15383,14 @@ var init_password_managers = __esmMin((() => {
 			this.name = "PasswordManagerError";
 		}
 	};
-}));
+});
 
 //#endregion
 //#region node_modules/.bun/@elizaos+vault@2.0.0-alpha.537/node_modules/@elizaos/vault/dist/store.js
 function emptyStore() {
 	return {
 		version: STORE_VERSION,
-		entries: {}
+		entries: {},
 	};
 }
 async function readStore(path) {
@@ -13040,7 +15405,9 @@ async function readStore(path) {
 	try {
 		parsed = JSON.parse(raw);
 	} catch (err) {
-		throw new StoreFormatError(`parse error: ${err instanceof Error ? err.message : String(err)}`);
+		throw new StoreFormatError(
+			`parse error: ${err instanceof Error ? err.message : String(err)}`,
+		);
 	}
 	return validateShape(parsed);
 }
@@ -13050,7 +15417,7 @@ async function writeStore(path, data) {
 	const body = `${JSON.stringify(data, null, 2)}\n`;
 	await promises.writeFile(tmp, body, {
 		mode: 384,
-		flag: "w"
+		flag: "w",
 	});
 	try {
 		await promises.rename(tmp, path);
@@ -13064,8 +15431,8 @@ function setEntry(data, key, entry) {
 		version: data.version,
 		entries: {
 			...data.entries,
-			[key]: entry
-		}
+			[key]: entry,
+		},
 	};
 }
 function removeEntry(data, key) {
@@ -13074,59 +15441,78 @@ function removeEntry(data, key) {
 	delete next[key];
 	return {
 		version: data.version,
-		entries: next
+		entries: next,
 	};
 }
 function validateShape(parsed) {
-	if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) throw new StoreFormatError("root must be an object");
+	if (!parsed || typeof parsed !== "object" || Array.isArray(parsed))
+		throw new StoreFormatError("root must be an object");
 	const root = parsed;
-	if (typeof root.version !== "number") throw new StoreFormatError("version must be a number");
+	if (typeof root.version !== "number")
+		throw new StoreFormatError("version must be a number");
 	const version = root.version;
-	if (version > STORE_VERSION) throw new StoreFormatError(`version ${version} is newer than supported (${STORE_VERSION})`);
-	if (!root.entries || typeof root.entries !== "object" || Array.isArray(root.entries)) throw new StoreFormatError("entries must be an object");
+	if (version > STORE_VERSION)
+		throw new StoreFormatError(
+			`version ${version} is newer than supported (${STORE_VERSION})`,
+		);
+	if (
+		!root.entries ||
+		typeof root.entries !== "object" ||
+		Array.isArray(root.entries)
+	)
+		throw new StoreFormatError("entries must be an object");
 	const entriesRaw = root.entries;
 	const entries = {};
-	for (const [key, value] of Object.entries(entriesRaw)) entries[key] = validateEntry(key, value);
+	for (const [key, value] of Object.entries(entriesRaw))
+		entries[key] = validateEntry(key, value);
 	return {
 		version: STORE_VERSION,
-		entries
+		entries,
 	};
 }
 function validateEntry(key, raw) {
-	if (!raw || typeof raw !== "object" || Array.isArray(raw)) throw new StoreFormatError(`entry ${key}: must be an object`);
+	if (!raw || typeof raw !== "object" || Array.isArray(raw))
+		throw new StoreFormatError(`entry ${key}: must be an object`);
 	const e = raw;
-	if (typeof e.lastModified !== "number") throw new StoreFormatError(`entry ${key}: lastModified must be a number`);
+	if (typeof e.lastModified !== "number")
+		throw new StoreFormatError(`entry ${key}: lastModified must be a number`);
 	const lastModified = e.lastModified;
 	if (e.kind === "value") {
-		if (typeof e.value !== "string") throw new StoreFormatError(`entry ${key}: value must be a string`);
+		if (typeof e.value !== "string")
+			throw new StoreFormatError(`entry ${key}: value must be a string`);
 		return {
 			kind: "value",
 			value: e.value,
-			lastModified
+			lastModified,
 		};
 	}
 	if (e.kind === "secret") {
-		if (typeof e.ciphertext !== "string" || e.ciphertext.length === 0) throw new StoreFormatError(`entry ${key}: missing ciphertext`);
+		if (typeof e.ciphertext !== "string" || e.ciphertext.length === 0)
+			throw new StoreFormatError(`entry ${key}: missing ciphertext`);
 		return {
 			kind: "secret",
 			ciphertext: e.ciphertext,
-			lastModified
+			lastModified,
 		};
 	}
 	if (e.kind === "reference") {
-		if (e.source !== "1password" && e.source !== "protonpass") throw new StoreFormatError(`entry ${key}: invalid reference source`);
-		if (typeof e.path !== "string" || e.path.length === 0) throw new StoreFormatError(`entry ${key}: missing reference path`);
+		if (e.source !== "1password" && e.source !== "protonpass")
+			throw new StoreFormatError(`entry ${key}: invalid reference source`);
+		if (typeof e.path !== "string" || e.path.length === 0)
+			throw new StoreFormatError(`entry ${key}: missing reference path`);
 		return {
 			kind: "reference",
 			source: e.source,
 			path: e.path,
-			lastModified
+			lastModified,
 		};
 	}
-	throw new StoreFormatError(`entry ${key}: unknown kind ${JSON.stringify(e.kind)}`);
+	throw new StoreFormatError(
+		`entry ${key}: unknown kind ${JSON.stringify(e.kind)}`,
+	);
 }
 var STORE_VERSION, StoreFormatError;
-var init_store = __esmMin((() => {
+var init_store = __esmMin(() => {
 	STORE_VERSION = 1;
 	StoreFormatError = class extends Error {
 		constructor(message) {
@@ -13134,12 +15520,12 @@ var init_store = __esmMin((() => {
 			this.name = "StoreFormatError";
 		}
 	};
-}));
+});
 
 //#endregion
 //#region node_modules/.bun/@elizaos+vault@2.0.0-alpha.537/node_modules/@elizaos/vault/dist/audit.js
 var AuditLog;
-var init_audit = __esmMin((() => {
+var init_audit = __esmMin(() => {
 	AuditLog = class {
 		path;
 		logger;
@@ -13150,28 +15536,41 @@ var init_audit = __esmMin((() => {
 		async record(entry) {
 			const record = {
 				ts: entry.ts ?? Date.now(),
-				...entry
+				...entry,
 			};
 			const line = `${JSON.stringify(record)}\n`;
 			try {
 				await promises.mkdir(dirname(this.path), { recursive: true });
 				await promises.appendFile(this.path, line, { mode: 384 });
 			} catch (err) {
-				this.logger?.warn(`[vault] failed to append audit record to ${this.path}`, err);
+				this.logger?.warn(
+					`[vault] failed to append audit record to ${this.path}`,
+					err,
+				);
 			}
 		}
 	};
-}));
+});
 
 //#endregion
 //#region node_modules/.bun/@elizaos+vault@2.0.0-alpha.537/node_modules/@elizaos/vault/dist/vault.js
 function createVault(opts = {}) {
-	const root = opts.workDir ?? process.env.ELIZA_STATE_DIR ?? join(homedir(), `.${process.env.ELIZA_NAMESPACE?.trim() || "eliza"}`);
-	return new VaultImpl(join(root, "vault.json"), join(root, "audit", "vault.jsonl"), opts.masterKey ?? defaultMasterKey(), opts.logger);
+	const root =
+		opts.workDir ??
+		process.env.ELIZA_STATE_DIR ??
+		join(homedir(), `.${process.env.ELIZA_NAMESPACE?.trim() || "eliza"}`);
+	return new VaultImpl(
+		join(root, "vault.json"),
+		join(root, "audit", "vault.jsonl"),
+		opts.masterKey ?? defaultMasterKey(),
+		opts.logger,
+	);
 }
 function assertKey(key) {
-	if (typeof key !== "string" || key.length === 0) throw new TypeError("vault: key must be a non-empty string");
-	if (key.length > 256) throw new TypeError("vault: key must be 256 characters or fewer");
+	if (typeof key !== "string" || key.length === 0)
+		throw new TypeError("vault: key must be a non-empty string");
+	if (key.length > 256)
+		throw new TypeError("vault: key must be 256 characters or fewer");
 }
 function optsCaller(opts) {
 	return opts.caller ? { caller: opts.caller } : {};
@@ -13183,7 +15582,10 @@ async function withStoreMutationLock(storePath, fn) {
 	const current = new Promise((resolveLock) => {
 		releaseProcessLock = resolveLock;
 	});
-	const chained = previous.then(() => current, () => current);
+	const chained = previous.then(
+		() => current,
+		() => current,
+	);
 	PROCESS_STORE_LOCKS.set(key, chained);
 	await previous;
 	const lockDir = `${key}.lock`;
@@ -13194,27 +15596,33 @@ async function withStoreMutationLock(storePath, fn) {
 		lockAcquired = true;
 		return await fn();
 	} finally {
-		if (lockAcquired) await promises.rm(lockDir, {
-			recursive: true,
-			force: true
-		}).catch(() => {});
+		if (lockAcquired)
+			await promises
+				.rm(lockDir, {
+					recursive: true,
+					force: true,
+				})
+				.catch(() => {});
 		releaseProcessLock();
-		if (PROCESS_STORE_LOCKS.get(key) === chained) PROCESS_STORE_LOCKS.delete(key);
+		if (PROCESS_STORE_LOCKS.get(key) === chained)
+			PROCESS_STORE_LOCKS.delete(key);
 	}
 }
 async function acquireFsLock(lockDir) {
 	const startedAt = Date.now();
-	while (true) try {
-		await promises.mkdir(lockDir, { mode: 448 });
-		return;
-	} catch (err) {
-		if (err.code !== "EEXIST") throw err;
-		if (Date.now() - startedAt > 1e4) throw new Error(`vault store lock timed out: ${lockDir}`);
-		await new Promise((resolveWait) => setTimeout(resolveWait, 25));
-	}
+	while (true)
+		try {
+			await promises.mkdir(lockDir, { mode: 448 });
+			return;
+		} catch (err) {
+			if (err.code !== "EEXIST") throw err;
+			if (Date.now() - startedAt > 1e4)
+				throw new Error(`vault store lock timed out: ${lockDir}`);
+			await new Promise((resolveWait) => setTimeout(resolveWait, 25));
+		}
 }
 var VaultImpl, VaultMissError, PROCESS_STORE_LOCKS;
-var init_vault = __esmMin((() => {
+var init_vault = __esmMin(() => {
 	init_crypto();
 	init_master_key();
 	init_password_managers();
@@ -13237,38 +15645,48 @@ var init_vault = __esmMin((() => {
 		}
 		async set(key, value, opts = {}) {
 			assertKey(key);
-			if (typeof value !== "string") throw new TypeError("vault.set: value must be a string");
+			if (typeof value !== "string")
+				throw new TypeError("vault.set: value must be a string");
 			if (opts.sensitive) {
 				const ciphertext = encrypt(await this.loadMasterKey(), value, key);
-				await this.mutate((s) => setEntry(s, key, {
-					kind: "secret",
-					ciphertext,
-					lastModified: Date.now()
-				}));
-			} else await this.mutate((s) => setEntry(s, key, {
-				kind: "value",
-				value,
-				lastModified: Date.now()
-			}));
+				await this.mutate((s) =>
+					setEntry(s, key, {
+						kind: "secret",
+						ciphertext,
+						lastModified: Date.now(),
+					}),
+				);
+			} else
+				await this.mutate((s) =>
+					setEntry(s, key, {
+						kind: "value",
+						value,
+						lastModified: Date.now(),
+					}),
+				);
 			await this.recordAudit({
 				action: "set",
 				key,
-				...optsCaller(opts)
+				...optsCaller(opts),
 			});
 		}
 		async setReference(key, ref) {
 			assertKey(key);
-			if (ref.source !== "1password" && ref.source !== "protonpass") throw new TypeError(`unsupported password manager: ${ref.source}`);
-			if (ref.path.trim().length === 0) throw new TypeError("setReference: path required");
-			await this.mutate((s) => setEntry(s, key, {
-				kind: "reference",
-				source: ref.source,
-				path: ref.path,
-				lastModified: Date.now()
-			}));
+			if (ref.source !== "1password" && ref.source !== "protonpass")
+				throw new TypeError(`unsupported password manager: ${ref.source}`);
+			if (ref.path.trim().length === 0)
+				throw new TypeError("setReference: path required");
+			await this.mutate((s) =>
+				setEntry(s, key, {
+					kind: "reference",
+					source: ref.source,
+					path: ref.path,
+					lastModified: Date.now(),
+				}),
+			);
 			await this.recordAudit({
 				action: "setReference",
-				key
+				key,
 			});
 		}
 		async get(key) {
@@ -13276,7 +15694,7 @@ var init_vault = __esmMin((() => {
 			const value = await this.readValue(key);
 			await this.recordAudit({
 				action: "get",
-				key
+				key,
 			});
 			return value;
 		}
@@ -13286,7 +15704,7 @@ var init_vault = __esmMin((() => {
 			await this.recordAudit({
 				action: "reveal",
 				key,
-				...caller ? { caller } : {}
+				...(caller ? { caller } : {}),
 			});
 			return value;
 		}
@@ -13299,7 +15717,7 @@ var init_vault = __esmMin((() => {
 			await this.mutate((s) => removeEntry(s, key));
 			await this.recordAudit({
 				action: "remove",
-				key
+				key,
 			});
 		}
 		async list(prefix) {
@@ -13312,23 +15730,25 @@ var init_vault = __esmMin((() => {
 			assertKey(key);
 			const entry = (await this.loadStore()).entries[key];
 			if (!entry) return null;
-			if (entry.kind === "value") return {
-				key,
-				source: "file",
-				sensitive: false,
-				lastModified: entry.lastModified
-			};
-			if (entry.kind === "secret") return {
-				key,
-				source: "keychain-encrypted",
-				sensitive: true,
-				lastModified: entry.lastModified
-			};
+			if (entry.kind === "value")
+				return {
+					key,
+					source: "file",
+					sensitive: false,
+					lastModified: entry.lastModified,
+				};
+			if (entry.kind === "secret")
+				return {
+					key,
+					source: "keychain-encrypted",
+					sensitive: true,
+					lastModified: entry.lastModified,
+				};
 			return {
 				key,
 				source: entry.source,
 				sensitive: true,
-				lastModified: entry.lastModified
+				lastModified: entry.lastModified,
 			};
 		}
 		async stats() {
@@ -13336,24 +15756,26 @@ var init_vault = __esmMin((() => {
 			let sensitive = 0;
 			let nonSensitive = 0;
 			let references = 0;
-			for (const e of Object.values(store.entries)) if (e.kind === "value") nonSensitive += 1;
-			else if (e.kind === "secret") sensitive += 1;
-			else references += 1;
+			for (const e of Object.values(store.entries))
+				if (e.kind === "value") nonSensitive += 1;
+				else if (e.kind === "secret") sensitive += 1;
+				else references += 1;
 			return {
 				total: sensitive + nonSensitive + references,
 				sensitive,
 				nonSensitive,
-				references
+				references,
 			};
 		}
 		async readValue(key) {
 			const entry = (await this.loadStore()).entries[key];
 			if (!entry) throw new VaultMissError(key);
 			if (entry.kind === "value") return entry.value;
-			if (entry.kind === "secret") return decrypt(await this.loadMasterKey(), entry.ciphertext, key);
+			if (entry.kind === "secret")
+				return decrypt(await this.loadMasterKey(), entry.ciphertext, key);
 			return resolveReference({
 				source: entry.source,
-				path: entry.path
+				path: entry.path,
 			});
 		}
 		async loadStore() {
@@ -13393,7 +15815,7 @@ var init_vault = __esmMin((() => {
 		}
 	};
 	PROCESS_STORE_LOCKS = /* @__PURE__ */ new Map();
-}));
+});
 
 //#endregion
 //#region node_modules/.bun/@elizaos+vault@2.0.0-alpha.537/node_modules/@elizaos/vault/dist/credentials.js
@@ -13416,32 +15838,39 @@ function autoallowKey(domain) {
 }
 /** Persist (or replace) a login. Stamps `lastModified` automatically. */
 async function setSavedLogin(vault, login) {
-	if (login.domain.trim().length === 0) throw new TypeError("setSavedLogin: domain required");
-	if (login.username.length === 0) throw new TypeError("setSavedLogin: username required");
-	if (typeof login.password !== "string" || login.password.length === 0) throw new TypeError("setSavedLogin: password required");
+	if (login.domain.trim().length === 0)
+		throw new TypeError("setSavedLogin: domain required");
+	if (login.username.length === 0)
+		throw new TypeError("setSavedLogin: username required");
+	if (typeof login.password !== "string" || login.password.length === 0)
+		throw new TypeError("setSavedLogin: password required");
 	const record = {
 		domain: normalizeDomain(login.domain),
 		username: login.username,
 		password: login.password,
-		...login.otpSeed ? { otpSeed: login.otpSeed } : {},
-		...login.notes ? { notes: login.notes } : {},
-		lastModified: Date.now()
+		...(login.otpSeed ? { otpSeed: login.otpSeed } : {}),
+		...(login.notes ? { notes: login.notes } : {}),
+		lastModified: Date.now(),
 	};
-	await vault.set(loginKey(login.domain, login.username), JSON.stringify(record), { sensitive: true });
+	await vault.set(
+		loginKey(login.domain, login.username),
+		JSON.stringify(record),
+		{ sensitive: true },
+	);
 }
 /** Read a login. Returns null when missing. */
 async function getSavedLogin(vault, domain, username) {
 	const key = loginKey(domain, username);
-	if (!await vault.has(key)) return null;
+	if (!(await vault.has(key))) return null;
 	return parseLogin(await vault.get(key));
 }
 /**
-* List logins. With no `domain`, returns every saved login summary
-* across the vault. With a domain, scopes to that hostname.
-*
-* Returns metadata only. The password values stay encrypted at rest;
-* callers must `getSavedLogin` to decrypt one entry at a time.
-*/
+ * List logins. With no `domain`, returns every saved login summary
+ * across the vault. With a domain, scopes to that hostname.
+ *
+ * Returns metadata only. The password values stay encrypted at rest;
+ * callers must `getSavedLogin` to decrypt one entry at a time.
+ */
 async function listSavedLogins(vault, domain) {
 	const prefix = domain ? `${PREFIX}.${normalizeDomain(domain)}` : PREFIX;
 	const keys = await vault.list(prefix);
@@ -13456,10 +15885,13 @@ async function listSavedLogins(vault, domain) {
 		summaries.push({
 			domain: parsed.domain,
 			username: decodeAccount(parsed.account),
-			lastModified: descriptor.lastModified
+			lastModified: descriptor.lastModified,
 		});
 	}
-	if (failures.length > 0) throw new Error(`listSavedLogins: failed to describe ${failures.length} key(s): ${failures.join(", ")}`);
+	if (failures.length > 0)
+		throw new Error(
+			`listSavedLogins: failed to describe ${failures.length} key(s): ${failures.join(", ")}`,
+		);
 	return summaries;
 }
 /** Remove a single login. Idempotent. */
@@ -13469,8 +15901,8 @@ async function deleteSavedLogin(vault, domain, username) {
 /** Read the autoallow flag for a domain. False when unset. */
 async function getAutofillAllowed(vault, domain) {
 	const key = autoallowKey(domain);
-	if (!await vault.has(key)) return false;
-	return await vault.get(key) === "1";
+	if (!(await vault.has(key))) return false;
+	return (await vault.get(key)) === "1";
 }
 /** Toggle the autoallow flag. `true` skips consent on next autofill for that domain. */
 async function setAutofillAllowed(vault, domain, allowed) {
@@ -13486,105 +15918,161 @@ function parseLoginKey(key) {
 	if (!domain || !account) return null;
 	return {
 		domain,
-		account
+		account,
 	};
 }
 function parseLogin(raw) {
 	const parsed = JSON.parse(raw);
-	if (typeof parsed.domain !== "string" || typeof parsed.username !== "string" || typeof parsed.password !== "string" || typeof parsed.lastModified !== "number") throw new Error(`vault credentials: stored entry is malformed (got keys: ${Object.keys(parsed).join(", ")})`);
+	if (
+		typeof parsed.domain !== "string" ||
+		typeof parsed.username !== "string" ||
+		typeof parsed.password !== "string" ||
+		typeof parsed.lastModified !== "number"
+	)
+		throw new Error(
+			`vault credentials: stored entry is malformed (got keys: ${Object.keys(parsed).join(", ")})`,
+		);
 	return {
 		domain: parsed.domain,
 		username: parsed.username,
 		password: parsed.password,
-		...parsed.otpSeed ? { otpSeed: parsed.otpSeed } : {},
-		...parsed.notes ? { notes: parsed.notes } : {},
-		lastModified: parsed.lastModified
+		...(parsed.otpSeed ? { otpSeed: parsed.otpSeed } : {}),
+		...(parsed.notes ? { notes: parsed.notes } : {}),
+		lastModified: parsed.lastModified,
 	};
 }
 var PREFIX, AUTOALLOW_SEGMENT;
-var init_credentials = __esmMin((() => {
+var init_credentials = __esmMin(() => {
 	PREFIX = "creds";
 	AUTOALLOW_SEGMENT = ":autoallow";
-}));
+});
 
 //#endregion
 //#region node_modules/.bun/@elizaos+vault@2.0.0-alpha.537/node_modules/@elizaos/vault/dist/external-credentials.js
 async function listOnePasswordLogins(vault, exec) {
-	const items = parseJsonArray((await exec("op", [
-		...await readOnePasswordSessionArgs(vault, exec),
-		"item",
-		"list",
-		"--categories",
-		"Login",
-		"--format=json"
-	], { timeoutMs: 1e4 })).stdout);
+	const items = parseJsonArray(
+		(
+			await exec(
+				"op",
+				[
+					...(await readOnePasswordSessionArgs(vault, exec)),
+					"item",
+					"list",
+					"--categories",
+					"Login",
+					"--format=json",
+				],
+				{ timeoutMs: 1e4 },
+			)
+		).stdout,
+	);
 	if (items.length === 0) return [];
 	const out = [];
 	for (const item of items) {
 		const url = pickPrimaryUrl(item.urls);
-		const username = typeof item.additional_information === "string" ? item.additional_information : "";
+		const username =
+			typeof item.additional_information === "string"
+				? item.additional_information
+				: "";
 		out.push({
 			source: "1password",
 			externalId: item.id,
-			title: typeof item.title === "string" && item.title.length > 0 ? item.title : item.id,
+			title:
+				typeof item.title === "string" && item.title.length > 0
+					? item.title
+					: item.id,
 			username,
 			domain: url ? extractHostname(url) : null,
 			url: url ?? null,
-			updatedAt: parseDate(item.updated_at)
+			updatedAt: parseDate(item.updated_at),
 		});
 	}
 	return out;
 }
 async function revealOnePasswordLogin(vault, exec, externalId) {
-	if (!externalId) throw new TypeError("revealOnePasswordLogin: externalId required");
-	const item = parseJsonObject((await exec("op", [
-		...await readOnePasswordSessionArgs(vault, exec),
-		"item",
-		"get",
-		externalId,
-		"--format=json"
-	], { timeoutMs: 1e4 })).stdout);
+	if (!externalId)
+		throw new TypeError("revealOnePasswordLogin: externalId required");
+	const item = parseJsonObject(
+		(
+			await exec(
+				"op",
+				[
+					...(await readOnePasswordSessionArgs(vault, exec)),
+					"item",
+					"get",
+					externalId,
+					"--format=json",
+				],
+				{ timeoutMs: 1e4 },
+			)
+		).stdout,
+	);
 	const username = pickOnePasswordUsername(item) ?? "";
 	const password = pickOnePasswordField(item, "password") ?? "";
-	const totp = pickOnePasswordField(item, "one-time password") ?? pickOnePasswordField(item, "totp");
+	const totp =
+		pickOnePasswordField(item, "one-time password") ??
+		pickOnePasswordField(item, "totp");
 	const url = pickPrimaryUrl(item.urls);
-	if (!password) throw new Error(`[1password] item ${externalId} has no password field`);
+	if (!password)
+		throw new Error(`[1password] item ${externalId} has no password field`);
 	return {
 		source: "1password",
 		externalId: item.id,
-		title: typeof item.title === "string" && item.title.length > 0 ? item.title : item.id,
+		title:
+			typeof item.title === "string" && item.title.length > 0
+				? item.title
+				: item.id,
 		username,
 		domain: url ? extractHostname(url) : null,
 		url: url ?? null,
 		updatedAt: parseDate(item.updated_at),
 		password,
-		...totp ? { totp } : {}
+		...(totp ? { totp } : {}),
 	};
 }
 function pickOnePasswordUsername(item) {
 	if (!item?.fields) return null;
-	const byPurpose = item.fields.find((f) => f.purpose === "USERNAME" && typeof f.value === "string");
+	const byPurpose = item.fields.find(
+		(f) => f.purpose === "USERNAME" && typeof f.value === "string",
+	);
 	if (byPurpose?.value) return byPurpose.value;
-	return item.fields.find((f) => f.label === "username" && typeof f.value === "string")?.value ?? null;
+	return (
+		item.fields.find(
+			(f) => f.label === "username" && typeof f.value === "string",
+		)?.value ?? null
+	);
 }
 function pickOnePasswordField(item, label) {
 	if (!item.fields) return null;
 	if (label === "password") {
-		const byPurpose = item.fields.find((f) => f.purpose === "PASSWORD" && typeof f.value === "string");
+		const byPurpose = item.fields.find(
+			(f) => f.purpose === "PASSWORD" && typeof f.value === "string",
+		);
 		if (byPurpose?.value) return byPurpose.value;
 	}
 	const lowered = label.toLowerCase();
-	return item.fields.find((f) => typeof f.label === "string" && f.label.toLowerCase() === lowered && typeof f.value === "string")?.value ?? null;
+	return (
+		item.fields.find(
+			(f) =>
+				typeof f.label === "string" &&
+				f.label.toLowerCase() === lowered &&
+				typeof f.value === "string",
+		)?.value ?? null
+	);
 }
 async function listBitwardenLogins(vault, exec) {
 	const session = await readSessionToken(vault, "bitwarden");
-	const items = parseJsonArray((await exec("bw", ["list", "items"], {
-		env: {
-			...process.env,
-			BW_SESSION: session
-		},
-		timeoutMs: 15e3
-	})).stdout);
+	const items = parseJsonArray(
+		(
+			await exec("bw", ["list", "items"], {
+				env: {
+					...process.env,
+					BW_SESSION: session,
+				},
+				timeoutMs: 15e3,
+			})
+		).stdout,
+	);
 	const result = [];
 	for (const item of items) {
 		if (item.type !== 1 || !item.login) continue;
@@ -13592,87 +16080,103 @@ async function listBitwardenLogins(vault, exec) {
 		result.push({
 			source: "bitwarden",
 			externalId: item.id,
-			title: typeof item.name === "string" && item.name.length > 0 ? item.name : item.id,
-			username: typeof item.login.username === "string" ? item.login.username : "",
+			title:
+				typeof item.name === "string" && item.name.length > 0
+					? item.name
+					: item.id,
+			username:
+				typeof item.login.username === "string" ? item.login.username : "",
 			domain: url ? extractHostname(url) : null,
 			url: url ?? null,
-			updatedAt: parseDate(item.revisionDate)
+			updatedAt: parseDate(item.revisionDate),
 		});
 	}
 	return result;
 }
 async function revealBitwardenLogin(vault, exec, externalId) {
-	if (!externalId) throw new TypeError("revealBitwardenLogin: externalId required");
+	if (!externalId)
+		throw new TypeError("revealBitwardenLogin: externalId required");
 	const session = await readSessionToken(vault, "bitwarden");
-	const item = parseJsonObject((await exec("bw", [
-		"get",
-		"item",
-		externalId
-	], {
-		env: {
-			...process.env,
-			BW_SESSION: session
-		},
-		timeoutMs: 1e4
-	})).stdout);
-	if (item.type !== 1 || !item.login) throw new Error(`[bitwarden] item ${externalId} is not a login`);
+	const item = parseJsonObject(
+		(
+			await exec("bw", ["get", "item", externalId], {
+				env: {
+					...process.env,
+					BW_SESSION: session,
+				},
+				timeoutMs: 1e4,
+			})
+		).stdout,
+	);
+	if (item.type !== 1 || !item.login)
+		throw new Error(`[bitwarden] item ${externalId} is not a login`);
 	const password = item.login.password ?? "";
-	if (!password) throw new Error(`[bitwarden] item ${externalId} has no password`);
+	if (!password)
+		throw new Error(`[bitwarden] item ${externalId} has no password`);
 	const url = pickBitwardenUrl(item.login.uris ?? null);
 	return {
 		source: "bitwarden",
 		externalId: item.id,
-		title: typeof item.name === "string" && item.name.length > 0 ? item.name : item.id,
-		username: typeof item.login.username === "string" ? item.login.username : "",
+		title:
+			typeof item.name === "string" && item.name.length > 0
+				? item.name
+				: item.id,
+		username:
+			typeof item.login.username === "string" ? item.login.username : "",
 		domain: url ? extractHostname(url) : null,
 		url: url ?? null,
 		updatedAt: parseDate(item.revisionDate),
 		password,
-		...item.login.totp ? { totp: item.login.totp } : {}
+		...(item.login.totp ? { totp: item.login.totp } : {}),
 	};
 }
 function pickBitwardenUrl(uris) {
 	if (!uris || uris.length === 0) return null;
-	for (const u of uris) if (typeof u.uri === "string" && u.uri.length > 0) return u.uri;
+	for (const u of uris)
+		if (typeof u.uri === "string" && u.uri.length > 0) return u.uri;
 	return null;
 }
 async function readSessionToken(vault, source) {
 	const key = `pm.${source}.session`;
-	if (!await vault.has(key)) throw new BackendNotSignedInError(source);
+	if (!(await vault.has(key))) throw new BackendNotSignedInError(source);
 	const token = (await vault.get(key)).trim();
 	if (!token) throw new BackendNotSignedInError(source);
 	return token;
 }
 /**
-* Resolve op-invocation args (account + session) for one CLI call.
-*
-* 1Password 8's `op` CLI refuses to pick a default account when more than
-* one is registered — `op whoami` exits 1 with "account is not signed in"
-* even when the desktop app integration is fully active. The fix: probe
-* `op account list` once, pick the first registered account's shorthand,
-* and pass `--account=<shorthand>` on every subsequent call. Then desktop
-* integration triggers the normal Touch ID flow and the session-token
-* fallback is only used when no account is registered at all.
-*
-* Returns `["--account=<sh>"]` for desktop-app and
-* `["--account=<sh>", "--session=<token>"]` for session-token.
-*/
+ * Resolve op-invocation args (account + session) for one CLI call.
+ *
+ * 1Password 8's `op` CLI refuses to pick a default account when more than
+ * one is registered — `op whoami` exits 1 with "account is not signed in"
+ * even when the desktop app integration is fully active. The fix: probe
+ * `op account list` once, pick the first registered account's shorthand,
+ * and pass `--account=<shorthand>` on every subsequent call. Then desktop
+ * integration triggers the normal Touch ID flow and the session-token
+ * fallback is only used when no account is registered at all.
+ *
+ * Returns `["--account=<sh>"]` for desktop-app and
+ * `["--account=<sh>", "--session=<token>"]` for session-token.
+ */
 async function readOnePasswordSessionArgs(vault, exec) {
 	const account = await readDefaultOpAccount$1(exec);
 	const accountArg = account ? [`--account=${account}`] : [];
-	if (await isOnePasswordDesktopActiveWithExec(exec, accountArg)) return accountArg;
+	if (await isOnePasswordDesktopActiveWithExec(exec, accountArg))
+		return accountArg;
 	const session = await readSessionToken(vault, "1password");
 	return [...accountArg, `--session=${session}`];
 }
 async function readDefaultOpAccount$1(exec) {
 	try {
-		const accounts = parseJsonArray((await exec("op", [
-			"account",
-			"list",
-			"--format=json"
-		], { timeoutMs: 3e3 })).stdout);
+		const accounts = parseJsonArray(
+			(
+				await exec("op", ["account", "list", "--format=json"], {
+					timeoutMs: 3e3,
+				})
+			).stdout,
+		);
 		for (const a of accounts) {
-			if (typeof a.shorthand === "string" && a.shorthand.length > 0) return a.shorthand;
+			if (typeof a.shorthand === "string" && a.shorthand.length > 0)
+				return a.shorthand;
 			if (typeof a.url === "string") {
 				const sub = a.url.split(".")[0];
 				if (sub) return sub;
@@ -13686,12 +16190,9 @@ async function readDefaultOpAccount$1(exec) {
 async function isOnePasswordDesktopActiveWithExec(exec, accountArg) {
 	if (accountArg.length === 0) return false;
 	try {
-		await exec("op", [
-			...accountArg,
-			"vault",
-			"list",
-			"--format=json"
-		], { timeoutMs: 3e3 });
+		await exec("op", [...accountArg, "vault", "list", "--format=json"], {
+			timeoutMs: 3e3,
+		});
 		return true;
 	} catch {
 		return false;
@@ -13699,14 +16200,19 @@ async function isOnePasswordDesktopActiveWithExec(exec, accountArg) {
 }
 function pickPrimaryUrl(urls) {
 	if (!urls || urls.length === 0) return null;
-	const primary = urls.find((u) => u.primary === true && typeof u.href === "string");
+	const primary = urls.find(
+		(u) => u.primary === true && typeof u.href === "string",
+	);
 	if (primary?.href) return primary.href;
-	for (const u of urls) if (typeof u.href === "string" && u.href.length > 0) return u.href;
+	for (const u of urls)
+		if (typeof u.href === "string" && u.href.length > 0) return u.href;
 	return null;
 }
 function extractHostname(url) {
 	try {
-		const host = new URL(url.includes("://") ? url : `https://${url}`).hostname.toLowerCase();
+		const host = new URL(
+			url.includes("://") ? url : `https://${url}`,
+		).hostname.toLowerCase();
 		return host.length > 0 ? host : null;
 	} catch {
 		return null;
@@ -13721,40 +16227,48 @@ function parseJsonArray(raw) {
 	const trimmed = raw.trim();
 	if (trimmed.length === 0) return [];
 	const parsed = JSON.parse(trimmed);
-	if (!Array.isArray(parsed)) throw new Error("expected JSON array, got non-array");
+	if (!Array.isArray(parsed))
+		throw new Error("expected JSON array, got non-array");
 	return parsed;
 }
 function parseJsonObject(raw) {
 	const trimmed = raw.trim();
-	if (trimmed.length === 0) throw new Error("expected JSON object, got empty output");
+	if (trimmed.length === 0)
+		throw new Error("expected JSON object, got empty output");
 	const parsed = JSON.parse(trimmed);
-	if (parsed === null || typeof parsed !== "object" || Array.isArray(parsed)) throw new Error("expected JSON object, got non-object");
+	if (parsed === null || typeof parsed !== "object" || Array.isArray(parsed))
+		throw new Error("expected JSON object, got non-object");
 	return parsed;
 }
 /**
-* Production `ExecFn` wrapping `node:child_process.execFile`. Tests inject
-* stubs instead of using this. Lives here so callers can `import` a single
-* default rather than wiring `child_process` themselves.
-*/
+ * Production `ExecFn` wrapping `node:child_process.execFile`. Tests inject
+ * stubs instead of using this. Lives here so callers can `import` a single
+ * default rather than wiring `child_process` themselves.
+ */
 function defaultExecFn() {
 	return async (cmd, args, opts) => {
 		const childProcess = await import("node:child_process");
 		return new Promise((resolve, reject) => {
-			const child = childProcess.execFile(cmd, [...args], {
-				...opts.env ? { env: opts.env } : {},
-				timeout: opts.timeoutMs ?? 1e4,
-				maxBuffer: 16 * 1024 * 1024,
-				encoding: "utf8"
-			}, (error, stdout, stderr) => {
-				if (error) {
-					reject(error);
-					return;
-				}
-				resolve({
-					stdout,
-					stderr
-				});
-			});
+			const child = childProcess.execFile(
+				cmd,
+				[...args],
+				{
+					...(opts.env ? { env: opts.env } : {}),
+					timeout: opts.timeoutMs ?? 1e4,
+					maxBuffer: 16 * 1024 * 1024,
+					encoding: "utf8",
+				},
+				(error, stdout, stderr) => {
+					if (error) {
+						reject(error);
+						return;
+					}
+					resolve({
+						stdout,
+						stderr,
+					});
+				},
+			);
 			if (opts.stdin !== void 0 && child.stdin) {
 				child.stdin.write(opts.stdin);
 				child.stdin.end();
@@ -13763,28 +16277,36 @@ function defaultExecFn() {
 	};
 }
 var BackendNotSignedInError;
-var init_external_credentials = __esmMin((() => {
+var init_external_credentials = __esmMin(() => {
 	BackendNotSignedInError = class extends Error {
 		source;
 		constructor(source) {
-			super(`[${source}] not signed in — sign in via Settings → Secrets storage`);
+			super(
+				`[${source}] not signed in — sign in via Settings → Secrets storage`,
+			);
 			this.source = source;
 			this.name = "BackendNotSignedInError";
 		}
 	};
-}));
+});
 
 //#endregion
 //#region node_modules/.bun/@elizaos+vault@2.0.0-alpha.537/node_modules/@elizaos/vault/dist/inventory.js
 /**
-* Heuristic categorization for keys without an explicit `_meta.*` entry.
-* Order matters: more specific patterns run first.
-*/
+ * Heuristic categorization for keys without an explicit `_meta.*` entry.
+ * Order matters: more specific patterns run first.
+ */
 function categorizeKey(key) {
 	if (key.startsWith("creds.")) return "credential";
 	if (key.startsWith("pm.")) return "session";
 	if (key.startsWith("_manager.") || key === ROUTING_KEY) return "system";
-	if (/(?:_PRIVATE_KEY|_MNEMONIC|_SEED_PHRASE)$/i.test(key) || /^(?:EVM|SOLANA|BTC|ETH|BITCOIN)_/i.test(key) || key.startsWith("wallet.") || /(?:^|\.)wallet\./i.test(key)) return "wallet";
+	if (
+		/(?:_PRIVATE_KEY|_MNEMONIC|_SEED_PHRASE)$/i.test(key) ||
+		/^(?:EVM|SOLANA|BTC|ETH|BITCOIN)_/i.test(key) ||
+		key.startsWith("wallet.") ||
+		/(?:^|\.)wallet\./i.test(key)
+	)
+		return "wallet";
 	if (/_API_KEY$/.test(key)) {
 		if (PROVIDER_KEY_PATTERNS.some((rx) => rx.test(key))) return "provider";
 		return "plugin";
@@ -13793,9 +16315,9 @@ function categorizeKey(key) {
 	return "plugin";
 }
 /**
-* Provider id derivation when no explicit meta is set. Returns null
-* when the key isn't a recognized provider env var.
-*/
+ * Provider id derivation when no explicit meta is set. Returns null
+ * when the key isn't a recognized provider env var.
+ */
 function inferProviderId(key) {
 	const lookup = PROVIDER_KEY_TO_ID[key];
 	if (lookup) return lookup;
@@ -13804,23 +16326,24 @@ function inferProviderId(key) {
 	return null;
 }
 function defaultLabel(key, providerId) {
-	if (providerId && PROVIDER_LABELS[providerId]) return PROVIDER_LABELS[providerId];
+	if (providerId && PROVIDER_LABELS[providerId])
+		return PROVIDER_LABELS[providerId];
 	return key;
 }
 /**
-* Read the meta record for `key`, parsing the underlying JSON. Returns
-* null when no meta has been written. Malformed JSON is treated as
-* "no meta" and logged at warn — we never silently coerce a corrupt
-* blob into a valid meta to mask the underlying problem.
-*/
+ * Read the meta record for `key`, parsing the underlying JSON. Returns
+ * null when no meta has been written. Malformed JSON is treated as
+ * "no meta" and logged at warn — we never silently coerce a corrupt
+ * blob into a valid meta to mask the underlying problem.
+ */
 async function readEntryMeta(vault, key) {
 	const metaKey = `${META_PREFIX}${key}`;
-	if (!await vault.has(metaKey)) return null;
+	if (!(await vault.has(metaKey))) return null;
 	return parseMetaRecord(await vault.get(metaKey), metaKey);
 }
 async function setEntryMeta(vault, key, partial) {
 	const metaKey = `${META_PREFIX}${key}`;
-	const merged = { ...await readEntryMeta(vault, key) ?? {} };
+	const merged = { ...((await readEntryMeta(vault, key)) ?? {}) };
 	for (const [k, v] of Object.entries(partial)) {
 		if (v === null) {
 			delete merged[k];
@@ -13833,26 +16356,27 @@ async function setEntryMeta(vault, key, partial) {
 	await vault.set(metaKey, JSON.stringify(merged));
 }
 /**
-* Drop the meta record for `key`. Callers are responsible for also
-* removing the underlying value(s) and profile entries — this only
-* touches `_meta.<key>`.
-*/
+ * Drop the meta record for `key`. Callers are responsible for also
+ * removing the underlying value(s) and profile entries — this only
+ * touches `_meta.<key>`.
+ */
 async function removeEntryMeta(vault, key) {
 	const metaKey = `${META_PREFIX}${key}`;
 	if (await vault.has(metaKey)) await vault.remove(metaKey);
 }
 /**
-* List every meaningful vault entry, grouped by category. Reserved
-* `_meta.*` and `_routing.*` keys are filtered out, as are the
-* `_manager.*` preferences keys.
-*
-* For keys with profile entries (`<K>.profile.<id>`), only the parent
-* `<K>` is surfaced — the profile rows roll up under it.
-*/
+ * List every meaningful vault entry, grouped by category. Reserved
+ * `_meta.*` and `_routing.*` keys are filtered out, as are the
+ * `_manager.*` preferences keys.
+ *
+ * For keys with profile entries (`<K>.profile.<id>`), only the parent
+ * `<K>` is surfaced — the profile rows roll up under it.
+ */
 async function listVaultInventory(vault) {
 	const allKeys = await vault.list();
 	const profileChildren = /* @__PURE__ */ new Set();
-	for (const k of allKeys) if (k.indexOf(`.${PROFILE_SEGMENT}.`) > 0) profileChildren.add(k);
+	for (const k of allKeys)
+		if (k.indexOf(`.${PROFILE_SEGMENT}.`) > 0) profileChildren.add(k);
 	const parentKeys = /* @__PURE__ */ new Set();
 	for (const key of allKeys) {
 		if (key.startsWith(META_PREFIX)) {
@@ -13879,26 +16403,34 @@ async function listVaultInventory(vault) {
 			key,
 			category,
 			label,
-			...providerId ? { providerId } : {},
+			...(providerId ? { providerId } : {}),
 			hasProfiles,
-			...meta?.activeProfile ? { activeProfile: meta.activeProfile } : {},
-			...hasProfiles ? { profiles } : {},
-			...meta?.lastModified !== void 0 ? { lastModified: meta.lastModified } : descriptor?.lastModified !== void 0 ? { lastModified: descriptor.lastModified } : {},
-			...meta?.lastUsed !== void 0 ? { lastUsed: meta.lastUsed } : {},
-			kind
+			...(meta?.activeProfile ? { activeProfile: meta.activeProfile } : {}),
+			...(hasProfiles ? { profiles } : {}),
+			...(meta?.lastModified !== void 0
+				? { lastModified: meta.lastModified }
+				: descriptor?.lastModified !== void 0
+					? { lastModified: descriptor.lastModified }
+					: {}),
+			...(meta?.lastUsed !== void 0 ? { lastUsed: meta.lastUsed } : {}),
+			kind,
 		});
 	}
 	return out;
 }
 /**
-* Vault key for the storage backing one profile of a parent key.
-*
-* Profiles use dot separators so `vault.list("<KEY>")` matches both the
-* parent and every profile via the existing prefix logic.
-*/
+ * Vault key for the storage backing one profile of a parent key.
+ *
+ * Profiles use dot separators so `vault.list("<KEY>")` matches both the
+ * parent and every profile via the existing prefix logic.
+ */
 function profileStorageKey(key, profileId) {
-	if (typeof profileId !== "string" || profileId.length === 0) throw new TypeError("profileStorageKey: profileId must be non-empty");
-	if (!/^[a-zA-Z0-9_-]+$/.test(profileId)) throw new TypeError(`profileStorageKey: profileId must match [a-zA-Z0-9_-]+, got ${JSON.stringify(profileId)}`);
+	if (typeof profileId !== "string" || profileId.length === 0)
+		throw new TypeError("profileStorageKey: profileId must be non-empty");
+	if (!/^[a-zA-Z0-9_-]+$/.test(profileId))
+		throw new TypeError(
+			`profileStorageKey: profileId must match [a-zA-Z0-9_-]+, got ${JSON.stringify(profileId)}`,
+		);
 	return `${key}.${PROFILE_SEGMENT}.${profileId}`;
 }
 function descriptorKind(source) {
@@ -13908,27 +16440,38 @@ function descriptorKind(source) {
 }
 function parseMetaRecord(raw, metaKey) {
 	const parsed = JSON.parse(raw);
-	if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) throw new Error(`vault: meta entry ${metaKey} is not a JSON object (got ${typeof parsed})`);
+	if (!parsed || typeof parsed !== "object" || Array.isArray(parsed))
+		throw new Error(
+			`vault: meta entry ${metaKey} is not a JSON object (got ${typeof parsed})`,
+		);
 	const obj = parsed;
 	const out = {};
 	const cat = obj.category;
 	if (typeof cat === "string" && isCategory(cat)) out.category = cat;
-	if (typeof obj.label === "string" && obj.label.length > 0) out.label = obj.label;
-	if (typeof obj.providerId === "string" && obj.providerId.length > 0) out.providerId = obj.providerId;
+	if (typeof obj.label === "string" && obj.label.length > 0)
+		out.label = obj.label;
+	if (typeof obj.providerId === "string" && obj.providerId.length > 0)
+		out.providerId = obj.providerId;
 	if (typeof obj.lastModified === "number") out.lastModified = obj.lastModified;
 	if (typeof obj.lastUsed === "number") out.lastUsed = obj.lastUsed;
-	if (typeof obj.activeProfile === "string" && obj.activeProfile.length > 0) out.activeProfile = obj.activeProfile;
+	if (typeof obj.activeProfile === "string" && obj.activeProfile.length > 0)
+		out.activeProfile = obj.activeProfile;
 	if (Array.isArray(obj.profiles)) {
 		const profiles = [];
 		for (const p of obj.profiles) {
 			if (!p || typeof p !== "object") continue;
 			const rec = p;
 			if (typeof rec.id !== "string" || rec.id.length === 0) continue;
-			const label = typeof rec.label === "string" && rec.label.length > 0 ? rec.label : rec.id;
+			const label =
+				typeof rec.label === "string" && rec.label.length > 0
+					? rec.label
+					: rec.id;
 			const profile = {
 				id: rec.id,
 				label,
-				...typeof rec.createdAt === "number" ? { createdAt: rec.createdAt } : {}
+				...(typeof rec.createdAt === "number"
+					? { createdAt: rec.createdAt }
+					: {}),
 			};
 			profiles.push(profile);
 		}
@@ -13937,10 +16480,23 @@ function parseMetaRecord(raw, metaKey) {
 	return out;
 }
 function isCategory(v) {
-	return v === "provider" || v === "plugin" || v === "wallet" || v === "credential" || v === "system" || v === "session";
+	return (
+		v === "provider" ||
+		v === "plugin" ||
+		v === "wallet" ||
+		v === "credential" ||
+		v === "system" ||
+		v === "session"
+	);
 }
-var META_PREFIX, ROUTING_KEY, PROFILE_SEGMENT, PROVIDER_KEY_TO_ID, PROVIDER_EXACT_KEYS, PROVIDER_KEY_PATTERNS, PROVIDER_LABELS;
-var init_inventory = __esmMin((() => {
+var META_PREFIX,
+	ROUTING_KEY,
+	PROFILE_SEGMENT,
+	PROVIDER_KEY_TO_ID,
+	PROVIDER_EXACT_KEYS,
+	PROVIDER_KEY_PATTERNS,
+	PROVIDER_LABELS;
+var init_inventory = __esmMin(() => {
 	META_PREFIX = "_meta.";
 	ROUTING_KEY = "_routing.config";
 	PROFILE_SEGMENT = "profile";
@@ -13955,7 +16511,7 @@ var init_inventory = __esmMin((() => {
 		TOGETHER_API_KEY: "together",
 		GOOGLE_GENERATIVE_AI_API_KEY: "gemini",
 		GOOGLE_API_KEY: "gemini",
-		GEMINI_API_KEY: "gemini"
+		GEMINI_API_KEY: "gemini",
 	};
 	PROVIDER_EXACT_KEYS = new Set(Object.keys(PROVIDER_KEY_TO_ID));
 	PROVIDER_KEY_PATTERNS = [
@@ -13969,7 +16525,7 @@ var init_inventory = __esmMin((() => {
 		/^TOGETHER_API_KEY$/,
 		/^GOOGLE_(?:GENERATIVE_AI_)?API_KEY$/,
 		/^GEMINI_API_KEY$/,
-		/^PERPLEXITY_API_KEY$/
+		/^PERPLEXITY_API_KEY$/,
 	];
 	PROVIDER_LABELS = {
 		openai: "OpenAI",
@@ -13980,21 +16536,21 @@ var init_inventory = __esmMin((() => {
 		deepseek: "DeepSeek",
 		mistral: "Mistral",
 		together: "Together",
-		gemini: "Gemini"
+		gemini: "Gemini",
 	};
-}));
+});
 
 //#endregion
 //#region node_modules/.bun/@elizaos+vault@2.0.0-alpha.537/node_modules/@elizaos/vault/dist/profiles.js
 /**
-* Resolve `key` against (a) per-context routing rules, (b) the key's
-* `activeProfile`, (c) the global `defaultProfile`, then (d) the bare
-* key value.
-*
-* Throws when none of the above resolves to a stored value — callers
-* decide how to surface the miss (e.g. inventory routes return 404,
-* runtime callers fall back to env var).
-*/
+ * Resolve `key` against (a) per-context routing rules, (b) the key's
+ * `activeProfile`, (c) the global `defaultProfile`, then (d) the bare
+ * key value.
+ *
+ * Throws when none of the above resolves to a stored value — callers
+ * decide how to surface the miss (e.g. inventory routes return 404,
+ * runtime callers fall back to env var).
+ */
 async function resolveActiveValue(vault, key, ctx) {
 	const meta = await readEntryMeta(vault, key);
 	const profiles = meta?.profiles ?? [];
@@ -14003,7 +16559,7 @@ async function resolveActiveValue(vault, key, ctx) {
 		const candidateOrder = [
 			pickRule(routing.rules, key, ctx)?.profileId,
 			meta?.activeProfile,
-			routing.defaultProfile
+			routing.defaultProfile,
 		].filter((v) => typeof v === "string" && v.length > 0);
 		const allowed = new Set(profiles.map((p) => p.id));
 		for (const candidate of candidateOrder) {
@@ -14015,12 +16571,12 @@ async function resolveActiveValue(vault, key, ctx) {
 	return vault.get(key);
 }
 /**
-* Read the routing config blob from the vault. Missing or malformed
-* entries return `EMPTY_ROUTING` — routing is best-effort overlay,
-* not a load-bearing contract.
-*/
+ * Read the routing config blob from the vault. Missing or malformed
+ * entries return `EMPTY_ROUTING` — routing is best-effort overlay,
+ * not a load-bearing contract.
+ */
 async function readRoutingConfig(vault) {
-	if (!await vault.has(ROUTING_KEY)) return EMPTY_ROUTING;
+	if (!(await vault.has(ROUTING_KEY))) return EMPTY_ROUTING;
 	return parseRoutingConfig(await vault.get(ROUTING_KEY));
 }
 /** Persist the routing config blob. Caller-validated input. */
@@ -14037,23 +16593,42 @@ function pickRule(rules, key, ctx) {
 	return null;
 }
 function matchesScope(scope, ctx) {
-	if (scope.kind === "agent") return typeof scope.agentId === "string" && typeof ctx.agentId === "string" && scope.agentId === ctx.agentId;
-	if (scope.kind === "app") return typeof scope.appName === "string" && typeof ctx.appName === "string" && scope.appName === ctx.appName;
-	if (scope.kind === "skill") return typeof scope.skillId === "string" && typeof ctx.skillId === "string" && scope.skillId === ctx.skillId;
+	if (scope.kind === "agent")
+		return (
+			typeof scope.agentId === "string" &&
+			typeof ctx.agentId === "string" &&
+			scope.agentId === ctx.agentId
+		);
+	if (scope.kind === "app")
+		return (
+			typeof scope.appName === "string" &&
+			typeof ctx.appName === "string" &&
+			scope.appName === ctx.appName
+		);
+	if (scope.kind === "skill")
+		return (
+			typeof scope.skillId === "string" &&
+			typeof ctx.skillId === "string" &&
+			scope.skillId === ctx.skillId
+		);
 	return false;
 }
 function parseRoutingConfig(raw) {
 	const parsed = JSON.parse(raw);
-	if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) return EMPTY_ROUTING;
+	if (!parsed || typeof parsed !== "object" || Array.isArray(parsed))
+		return EMPTY_ROUTING;
 	const obj = parsed;
 	const rules = [];
-	if (Array.isArray(obj.rules)) for (const r of obj.rules) {
-		const normalized = normalizeRule(r);
-		if (normalized) rules.push(normalized);
-	}
+	if (Array.isArray(obj.rules))
+		for (const r of obj.rules) {
+			const normalized = normalizeRule(r);
+			if (normalized) rules.push(normalized);
+		}
 	return {
 		rules,
-		...typeof obj.defaultProfile === "string" && obj.defaultProfile.length > 0 ? { defaultProfile: obj.defaultProfile } : {}
+		...(typeof obj.defaultProfile === "string" && obj.defaultProfile.length > 0
+			? { defaultProfile: obj.defaultProfile }
+			: {}),
 	};
 }
 function normalizeRoutingConfig(config) {
@@ -14064,73 +16639,88 @@ function normalizeRoutingConfig(config) {
 	}
 	return {
 		rules,
-		...typeof config.defaultProfile === "string" && config.defaultProfile.length > 0 ? { defaultProfile: config.defaultProfile } : {}
+		...(typeof config.defaultProfile === "string" &&
+		config.defaultProfile.length > 0
+			? { defaultProfile: config.defaultProfile }
+			: {}),
 	};
 }
 function normalizeRule(r) {
 	if (!r || typeof r !== "object") return null;
 	const rec = r;
-	if (typeof rec.keyPattern !== "string" || rec.keyPattern.length === 0) return null;
-	if (rec.keyPattern.startsWith(META_PREFIX) || rec.keyPattern === ROUTING_KEY) return null;
-	if (typeof rec.profileId !== "string" || rec.profileId.length === 0) return null;
+	if (typeof rec.keyPattern !== "string" || rec.keyPattern.length === 0)
+		return null;
+	if (rec.keyPattern.startsWith(META_PREFIX) || rec.keyPattern === ROUTING_KEY)
+		return null;
+	if (typeof rec.profileId !== "string" || rec.profileId.length === 0)
+		return null;
 	const scope = rec.scope;
 	if (!scope || typeof scope !== "object") return null;
 	const scopeRec = scope;
 	const kind = scopeRec.kind;
 	if (kind !== "agent" && kind !== "app" && kind !== "skill") return null;
-	if (kind === "agent" && typeof scopeRec.agentId === "string") return {
-		keyPattern: rec.keyPattern,
-		scope: {
-			kind: "agent",
-			agentId: scopeRec.agentId
-		},
-		profileId: rec.profileId
-	};
-	if (kind === "app" && typeof scopeRec.appName === "string") return {
-		keyPattern: rec.keyPattern,
-		scope: {
-			kind: "app",
-			appName: scopeRec.appName
-		},
-		profileId: rec.profileId
-	};
-	if (kind === "skill" && typeof scopeRec.skillId === "string") return {
-		keyPattern: rec.keyPattern,
-		scope: {
-			kind: "skill",
-			skillId: scopeRec.skillId
-		},
-		profileId: rec.profileId
-	};
+	if (kind === "agent" && typeof scopeRec.agentId === "string")
+		return {
+			keyPattern: rec.keyPattern,
+			scope: {
+				kind: "agent",
+				agentId: scopeRec.agentId,
+			},
+			profileId: rec.profileId,
+		};
+	if (kind === "app" && typeof scopeRec.appName === "string")
+		return {
+			keyPattern: rec.keyPattern,
+			scope: {
+				kind: "app",
+				appName: scopeRec.appName,
+			},
+			profileId: rec.profileId,
+		};
+	if (kind === "skill" && typeof scopeRec.skillId === "string")
+		return {
+			keyPattern: rec.keyPattern,
+			scope: {
+				kind: "skill",
+				skillId: scopeRec.skillId,
+			},
+			profileId: rec.profileId,
+		};
 	return null;
 }
 var EMPTY_ROUTING;
-var init_profiles = __esmMin((() => {
+var init_profiles = __esmMin(() => {
 	init_inventory();
 	EMPTY_ROUTING = { rules: [] };
-}));
+});
 
 //#endregion
 //#region node_modules/.bun/@elizaos+vault@2.0.0-alpha.537/node_modules/@elizaos/vault/dist/manager.js
 function createManager(opts = {}) {
-	return new ManagerImpl(opts.vault ?? createVault(), opts.exec ?? defaultExecFn());
+	return new ManagerImpl(
+		opts.vault ?? createVault(),
+		opts.exec ?? defaultExecFn(),
+	);
 }
 function normalizePreferences(prefs) {
 	const validIds = new Set([
 		"in-house",
 		"1password",
 		"protonpass",
-		"bitwarden"
+		"bitwarden",
 	]);
-	const enabled = (Array.isArray(prefs.enabled) ? prefs.enabled : []).filter((id) => validIds.has(id));
+	const enabled = (Array.isArray(prefs.enabled) ? prefs.enabled : []).filter(
+		(id) => validIds.has(id),
+	);
 	if (enabled.length === 0) enabled.push("in-house");
 	const routing = {};
 	if (prefs.routing && typeof prefs.routing === "object") {
-		for (const [k, v] of Object.entries(prefs.routing)) if (typeof k === "string" && validIds.has(v)) routing[k] = v;
+		for (const [k, v] of Object.entries(prefs.routing))
+			if (typeof k === "string" && validIds.has(v)) routing[k] = v;
 	}
 	return {
 		enabled,
-		...Object.keys(routing).length > 0 ? { routing } : {}
+		...(Object.keys(routing).length > 0 ? { routing } : {}),
 	};
 }
 function detectInHouse() {
@@ -14138,7 +16728,7 @@ function detectInHouse() {
 		id: "in-house",
 		label: "Eliza (local, encrypted)",
 		available: true,
-		signedIn: true
+		signedIn: true,
 	};
 }
 async function readStoredSession(vault, backend) {
@@ -14149,44 +16739,47 @@ async function readStoredSession(vault, backend) {
 	}
 }
 async function detectOnePassword(vault) {
-	if (!await isCommandAvailable("op")) return {
-		id: "1password",
-		label: "1Password",
-		available: false,
-		detail: "`op` CLI not installed. Get it at https://developer.1password.com/docs/cli",
-		authMode: null
-	};
+	if (!(await isCommandAvailable("op")))
+		return {
+			id: "1password",
+			label: "1Password",
+			available: false,
+			detail:
+				"`op` CLI not installed. Get it at https://developer.1password.com/docs/cli",
+			authMode: null,
+		};
 	const account = await readDefaultOpAccount();
-	if (await isOnePasswordDesktopActive(account)) return {
-		id: "1password",
-		label: "1Password",
-		available: true,
-		signedIn: true,
-		authMode: "desktop-app",
-		detail: "Authenticated via 1Password desktop app."
-	};
-	const session = await readStoredSession(vault, "1password");
-	if (!session) return {
-		id: "1password",
-		label: "1Password",
-		available: true,
-		signedIn: false,
-		authMode: null,
-		detail: "`op` is installed but not signed in. Enable 1Password desktop app integration (Settings → Developer → Integrate with 1Password CLI) or use the Sign-in button."
-	};
-	const accountArg = account ? [`--account=${account}`] : [];
-	try {
-		await exec$1("op", [
-			...accountArg,
-			"whoami",
-			`--session=${session}`
-		], { timeout: 3e3 });
+	if (await isOnePasswordDesktopActive(account))
 		return {
 			id: "1password",
 			label: "1Password",
 			available: true,
 			signedIn: true,
-			authMode: "session-token"
+			authMode: "desktop-app",
+			detail: "Authenticated via 1Password desktop app.",
+		};
+	const session = await readStoredSession(vault, "1password");
+	if (!session)
+		return {
+			id: "1password",
+			label: "1Password",
+			available: true,
+			signedIn: false,
+			authMode: null,
+			detail:
+				"`op` is installed but not signed in. Enable 1Password desktop app integration (Settings → Developer → Integrate with 1Password CLI) or use the Sign-in button.",
+		};
+	const accountArg = account ? [`--account=${account}`] : [];
+	try {
+		await exec$1("op", [...accountArg, "whoami", `--session=${session}`], {
+			timeout: 3e3,
+		});
+		return {
+			id: "1password",
+			label: "1Password",
+			available: true,
+			signedIn: true,
+			authMode: "session-token",
 		};
 	} catch {
 		return {
@@ -14195,24 +16788,25 @@ async function detectOnePassword(vault) {
 			available: true,
 			signedIn: false,
 			authMode: null,
-			detail: "Stored 1Password session is no longer valid. Sign in again."
+			detail: "Stored 1Password session is no longer valid. Sign in again.",
 		};
 	}
 }
 /** Read the first registered 1Password account shorthand, or null. */
 async function readDefaultOpAccount() {
 	try {
-		const { stdout } = await exec$1("op", [
-			"account",
-			"list",
-			"--format=json"
-		], {
-			timeout: 3e3,
-			encoding: "utf8"
-		});
+		const { stdout } = await exec$1(
+			"op",
+			["account", "list", "--format=json"],
+			{
+				timeout: 3e3,
+				encoding: "utf8",
+			},
+		);
 		const accounts = JSON.parse(stdout);
 		for (const a of accounts) {
-			if (typeof a.shorthand === "string" && a.shorthand.length > 0) return a.shorthand;
+			if (typeof a.shorthand === "string" && a.shorthand.length > 0)
+				return a.shorthand;
 			if (typeof a.url === "string") {
 				const sub = a.url.split(".")[0];
 				if (sub) return sub;
@@ -14224,21 +16818,20 @@ async function readDefaultOpAccount() {
 	}
 }
 /**
-* True when a real vault query succeeds without a session token — i.e.
-* 1Password desktop app integration is active. `op whoami` is unusable
-* here: even with desktop integration active it exits 1 demanding a
-* session token. A vault list query IS handled by desktop session
-* delegation, so probe with that instead. Requires a known account.
-*/
+ * True when a real vault query succeeds without a session token — i.e.
+ * 1Password desktop app integration is active. `op whoami` is unusable
+ * here: even with desktop integration active it exits 1 demanding a
+ * session token. A vault list query IS handled by desktop session
+ * delegation, so probe with that instead. Requires a known account.
+ */
 async function isOnePasswordDesktopActive(account) {
 	if (!account) return false;
 	try {
-		await exec$1("op", [
-			`--account=${account}`,
-			"vault",
-			"list",
-			"--format=json"
-		], { timeout: 3e3 });
+		await exec$1(
+			"op",
+			[`--account=${account}`, "vault", "list", "--format=json"],
+			{ timeout: 3e3 },
+		);
 		return true;
 	} catch {
 		return false;
@@ -14251,43 +16844,53 @@ async function detectProtonPass() {
 		label: "Proton Pass",
 		available: present,
 		authMode: null,
-		detail: present ? "Detected; reference storage will be wired when the vendor CLI stabilizes." : "`protonpass-cli` not installed (vendor CLI is in beta)."
+		detail: present
+			? "Detected; reference storage will be wired when the vendor CLI stabilizes."
+			: "`protonpass-cli` not installed (vendor CLI is in beta).",
 	};
 }
 async function detectBitwarden(vault) {
-	if (!await isCommandAvailable("bw")) return {
-		id: "bitwarden",
-		label: "Bitwarden",
-		available: false,
-		detail: "`bw` CLI not installed. https://bitwarden.com/help/cli/",
-		authMode: null
-	};
+	if (!(await isCommandAvailable("bw")))
+		return {
+			id: "bitwarden",
+			label: "Bitwarden",
+			available: false,
+			detail: "`bw` CLI not installed. https://bitwarden.com/help/cli/",
+			authMode: null,
+		};
 	const session = await readStoredSession(vault, "bitwarden");
-	const env = session ? {
-		...process.env,
-		BW_SESSION: session
-	} : process.env;
+	const env = session
+		? {
+				...process.env,
+				BW_SESSION: session,
+			}
+		: process.env;
 	try {
 		const { stdout } = await exec$1("bw", ["status"], {
 			timeout: 3e3,
 			encoding: "utf8",
-			env
+			env,
 		});
 		const status = JSON.parse(stdout.trim());
-		if (status.status === "unlocked") return {
-			id: "bitwarden",
-			label: "Bitwarden",
-			available: true,
-			signedIn: true,
-			authMode: session ? "session-token" : null
-		};
+		if (status.status === "unlocked")
+			return {
+				id: "bitwarden",
+				label: "Bitwarden",
+				available: true,
+				signedIn: true,
+				authMode: session ? "session-token" : null,
+			};
 		return {
 			id: "bitwarden",
 			label: "Bitwarden",
 			available: true,
 			signedIn: false,
 			authMode: null,
-			detail: session ? "Stored Bitwarden session is no longer valid. Sign in again." : status.status === "locked" ? "`bw` is signed in but locked. Use the Sign-in button." : "`bw` is installed but not signed in. Use the Sign-in button."
+			detail: session
+				? "Stored Bitwarden session is no longer valid. Sign in again."
+				: status.status === "locked"
+					? "`bw` is signed in but locked. Use the Sign-in button."
+					: "`bw` is installed but not signed in. Use the Sign-in button.",
 		};
 	} catch {
 		return {
@@ -14296,7 +16899,7 @@ async function detectBitwarden(vault) {
 			available: true,
 			signedIn: false,
 			authMode: null,
-			detail: "`bw status` failed; CLI may need an update."
+			detail: "`bw status` failed; CLI may need an update.",
 		};
 	}
 }
@@ -14307,25 +16910,26 @@ function mapExternalReveal(out) {
 		username: out.username,
 		password: out.password,
 		domain: out.domain,
-		...out.totp ? { totp: out.totp } : {}
+		...(out.totp ? { totp: out.totp } : {}),
 	};
 }
 async function safeListExternal(_source, fn) {
 	try {
 		return {
 			ok: true,
-			entries: await fn()
+			entries: await fn(),
 		};
 	} catch (err) {
 		return {
 			ok: false,
-			message: err instanceof Error ? err.message : String(err)
+			message: err instanceof Error ? err.message : String(err),
 		};
 	}
 }
 async function isCommandAvailable(cmd) {
 	try {
-		if (process.platform === "win32") await exec$1("where.exe", [cmd], { timeout: 3e3 });
+		if (process.platform === "win32")
+			await exec$1("where.exe", [cmd], { timeout: 3e3 });
 		else await exec$1("which", [cmd], { timeout: 3e3 });
 		return true;
 	} catch {
@@ -14333,7 +16937,7 @@ async function isCommandAvailable(cmd) {
 	}
 }
 var exec$1, DEFAULT_PREFERENCES, PREFERENCES_KEY, ManagerImpl;
-var init_manager = __esmMin((() => {
+var init_manager = __esmMin(() => {
 	init_credentials();
 	init_external_credentials();
 	init_profiles();
@@ -14359,18 +16963,22 @@ var init_manager = __esmMin((() => {
 		}
 		async setPreferences(prefs) {
 			const normalized = normalizePreferences(prefs);
-			await this.vault.set(PREFERENCES_KEY, JSON.stringify(normalized), { sensitive: true });
+			await this.vault.set(PREFERENCES_KEY, JSON.stringify(normalized), {
+				sensitive: true,
+			});
 		}
 		async set(key, value, opts = {}) {
 			const target = await this.resolveTargetBackend(key, opts);
 			if (target === "in-house") {
 				await this.vault.set(key, value, {
-					...opts.sensitive ? { sensitive: true } : {},
-					...opts.caller ? { caller: opts.caller } : {}
+					...(opts.sensitive ? { sensitive: true } : {}),
+					...(opts.caller ? { caller: opts.caller } : {}),
 				});
 				return;
 			}
-			throw new Error(`manager.set: backend "${target}" cannot accept direct writes yet. Store the secret in that password manager first and save a reference explicitly.`);
+			throw new Error(
+				`manager.set: backend "${target}" cannot accept direct writes yet. Store the secret in that password manager first and save a reference explicitly.`,
+			);
 		}
 		async get(key) {
 			return this.vault.get(key);
@@ -14385,87 +16993,134 @@ var init_manager = __esmMin((() => {
 			return this.vault.remove(key);
 		}
 		async list(prefix) {
-			return (await this.vault.list(prefix)).filter((k) => !k.startsWith("_manager.") && !k.startsWith("_meta.") && k !== "_routing.config");
+			return (await this.vault.list(prefix)).filter(
+				(k) =>
+					!k.startsWith("_manager.") &&
+					!k.startsWith("_meta.") &&
+					k !== "_routing.config",
+			);
 		}
 		async detectBackends() {
 			return Promise.all([
 				Promise.resolve(detectInHouse()),
 				detectOnePassword(this.vault),
 				detectProtonPass(),
-				detectBitwarden(this.vault)
+				detectBitwarden(this.vault),
 			]);
 		}
 		async listAllSavedLogins(opts = {}) {
-			const requestedDomain = opts.domain ? opts.domain.trim().toLowerCase() : void 0;
+			const requestedDomain = opts.domain
+				? opts.domain.trim().toLowerCase()
+				: void 0;
 			const failures = [];
 			const inHouseEntries = await this.fetchInHouseEntries(requestedDomain);
 			const externalEntries = [];
 			const backends = await this.detectBackends();
-			const onePasswordReady = backends.find((b) => b.id === "1password")?.signedIn === true;
-			const bitwardenReady = backends.find((b) => b.id === "bitwarden")?.signedIn === true;
+			const onePasswordReady =
+				backends.find((b) => b.id === "1password")?.signedIn === true;
+			const bitwardenReady =
+				backends.find((b) => b.id === "bitwarden")?.signedIn === true;
 			if (onePasswordReady) {
-				const result = await safeListExternal("1password", () => listOnePasswordLogins(this.vault, this.execFn));
+				const result = await safeListExternal("1password", () =>
+					listOnePasswordLogins(this.vault, this.execFn),
+				);
 				if (result.ok === true) externalEntries.push(...result.entries);
-				else failures.push({
-					source: "1password",
-					message: result.message
-				});
+				else
+					failures.push({
+						source: "1password",
+						message: result.message,
+					});
 			}
 			if (bitwardenReady) {
-				const result = await safeListExternal("bitwarden", () => listBitwardenLogins(this.vault, this.execFn));
+				const result = await safeListExternal("bitwarden", () =>
+					listBitwardenLogins(this.vault, this.execFn),
+				);
 				if (result.ok === true) externalEntries.push(...result.entries);
-				else failures.push({
-					source: "bitwarden",
-					message: result.message
-				});
+				else
+					failures.push({
+						source: "bitwarden",
+						message: result.message,
+					});
 			}
-			const externalUnified = (requestedDomain ? externalEntries.filter((e) => e.domain !== null && e.domain.toLowerCase() === requestedDomain) : externalEntries).map((e) => ({
-				source: e.source,
-				identifier: e.externalId,
-				domain: e.domain,
-				username: e.username,
-				title: e.title,
-				updatedAt: e.updatedAt
-			})).sort((a, b) => b.updatedAt - a.updatedAt);
+			const externalUnified = (
+				requestedDomain
+					? externalEntries.filter(
+							(e) =>
+								e.domain !== null && e.domain.toLowerCase() === requestedDomain,
+						)
+					: externalEntries
+			)
+				.map((e) => ({
+					source: e.source,
+					identifier: e.externalId,
+					domain: e.domain,
+					username: e.username,
+					title: e.title,
+					updatedAt: e.updatedAt,
+				}))
+				.sort((a, b) => b.updatedAt - a.updatedAt);
 			return {
-				logins: [...[...inHouseEntries].sort((a, b) => {
-					const dA = (a.domain ?? "").toLowerCase();
-					const dB = (b.domain ?? "").toLowerCase();
-					if (dA !== dB) return dA < dB ? -1 : 1;
-					return a.username < b.username ? -1 : a.username > b.username ? 1 : 0;
-				}), ...externalUnified],
-				failures
+				logins: [
+					...[...inHouseEntries].sort((a, b) => {
+						const dA = (a.domain ?? "").toLowerCase();
+						const dB = (b.domain ?? "").toLowerCase();
+						if (dA !== dB) return dA < dB ? -1 : 1;
+						return a.username < b.username
+							? -1
+							: a.username > b.username
+								? 1
+								: 0;
+					}),
+					...externalUnified,
+				],
+				failures,
 			};
 		}
 		async revealSavedLogin(source, identifier) {
-			if (typeof identifier !== "string" || identifier.length === 0) throw new TypeError("revealSavedLogin: identifier required");
+			if (typeof identifier !== "string" || identifier.length === 0)
+				throw new TypeError("revealSavedLogin: identifier required");
 			if (source === "in-house") {
 				const colon = identifier.indexOf(":");
-				if (colon <= 0) throw new TypeError(`revealSavedLogin: in-house identifier must be "<domain>:<username>", got "${identifier}"`);
+				if (colon <= 0)
+					throw new TypeError(
+						`revealSavedLogin: in-house identifier must be "<domain>:<username>", got "${identifier}"`,
+					);
 				const domain = identifier.slice(0, colon);
 				const username = identifier.slice(colon + 1);
 				const login = await getSavedLogin(this.vault, domain, username);
-				if (!login) throw new Error(`revealSavedLogin: no in-house login for ${domain}:${username}`);
+				if (!login)
+					throw new Error(
+						`revealSavedLogin: no in-house login for ${domain}:${username}`,
+					);
 				return {
 					source: "in-house",
 					identifier,
 					username: login.username,
 					password: login.password,
 					domain: login.domain,
-					...login.otpSeed ? { totp: login.otpSeed } : {}
+					...(login.otpSeed ? { totp: login.otpSeed } : {}),
 				};
 			}
-			if (source === "1password") return mapExternalReveal(await revealOnePasswordLogin(this.vault, this.execFn, identifier));
-			return mapExternalReveal(await revealBitwardenLogin(this.vault, this.execFn, identifier));
+			if (source === "1password")
+				return mapExternalReveal(
+					await revealOnePasswordLogin(this.vault, this.execFn, identifier),
+				);
+			return mapExternalReveal(
+				await revealBitwardenLogin(this.vault, this.execFn, identifier),
+			);
 		}
 		async fetchInHouseEntries(requestedDomain) {
-			return (requestedDomain ? await listSavedLogins(this.vault, requestedDomain) : await listSavedLogins(this.vault)).map((s) => ({
+			return (
+				requestedDomain
+					? await listSavedLogins(this.vault, requestedDomain)
+					: await listSavedLogins(this.vault)
+			).map((s) => ({
 				source: "in-house",
 				identifier: `${s.domain}:${s.username}`,
 				domain: s.domain,
 				username: s.username,
 				title: s.username,
-				updatedAt: s.lastModified
+				updatedAt: s.lastModified,
 			}));
 		}
 		async resolveTargetBackend(key, opts) {
@@ -14477,26 +17132,29 @@ var init_manager = __esmMin((() => {
 			return prefs.enabled[0] ?? "in-house";
 		}
 	};
-}));
+});
 
 //#endregion
 //#region node_modules/.bun/@elizaos+vault@2.0.0-alpha.537/node_modules/@elizaos/vault/dist/install.js
 /**
-* Install spec — what install methods exist for each external secrets-manager
-* backend on which OS, and how to detect whether a given package manager is
-* present on the host.
-*
-* Detection-only. The actual `child_process` execution and streaming live in
-* the consumer (app-core's `secrets-manager-installer`); this module is pure
-* data + small async checks so it stays usable from the vault package
-* without pulling in spawn/PTY machinery.
-*/
+ * Install spec — what install methods exist for each external secrets-manager
+ * backend on which OS, and how to detect whether a given package manager is
+ * present on the host.
+ *
+ * Detection-only. The actual `child_process` execution and streaming live in
+ * the consumer (app-core's `secrets-manager-installer`); this module is pure
+ * data + small async checks so it stays usable from the vault package
+ * without pulling in spawn/PTY machinery.
+ */
 async function detectPackageManagers() {
 	if (_packageManagerCache) return _packageManagerCache;
-	const [brew, npm] = await Promise.all([isCommandRunnable("brew"), isCommandRunnable("npm")]);
+	const [brew, npm] = await Promise.all([
+		isCommandRunnable("brew"),
+		isCommandRunnable("npm"),
+	]);
 	_packageManagerCache = {
 		brew,
-		npm
+		npm,
 	};
 	return _packageManagerCache;
 }
@@ -14509,10 +17167,10 @@ async function isCommandRunnable(cmd) {
 	}
 }
 /**
-* Resolve the install methods that are *runnable on this host* for a given
-* backend. Manual methods are always returned (so the UI can show the doc
-* link); brew/npm methods are filtered to those whose tool is present.
-*/
+ * Resolve the install methods that are *runnable on this host* for a given
+ * backend. Manual methods are always returned (so the UI can show the doc
+ * link); brew/npm methods are filtered to those whose tool is present.
+ */
 async function resolveRunnableMethods(id, platform = currentPlatform()) {
 	const candidates = BACKEND_INSTALL_SPECS[id].methods[platform] ?? [];
 	if (candidates.length === 0) return [];
@@ -14529,105 +17187,127 @@ function currentPlatform() {
 	return "linux";
 }
 /**
-* Build the argv for a given install method. Caller spawns directly with
-* argv (no shell interpolation). Returns null for `manual` — those have no
-* automated execution path.
-*/
+ * Build the argv for a given install method. Caller spawns directly with
+ * argv (no shell interpolation). Returns null for `manual` — those have no
+ * automated execution path.
+ */
 function buildInstallCommand(method) {
-	if (method.kind === "brew") return {
-		command: "brew",
-		args: method.cask ? [
-			"install",
-			"--cask",
-			method.package
-		] : ["install", method.package]
-	};
-	if (method.kind === "npm") return {
-		command: "npm",
-		args: [
-			"install",
-			"-g",
-			method.package
-		]
-	};
+	if (method.kind === "brew")
+		return {
+			command: "brew",
+			args: method.cask
+				? ["install", "--cask", method.package]
+				: ["install", method.package],
+		};
+	if (method.kind === "npm")
+		return {
+			command: "npm",
+			args: ["install", "-g", method.package],
+		};
 	return null;
 }
 var exec, BACKEND_INSTALL_SPECS, _packageManagerCache;
-var init_install = __esmMin((() => {
+var init_install = __esmMin(() => {
 	exec = promisify(execFile);
 	BACKEND_INSTALL_SPECS = {
 		"1password": {
 			id: "1password",
 			methods: {
-				darwin: [{
-					kind: "brew",
-					package: "1password-cli",
-					cask: true
-				}, {
-					kind: "manual",
-					instructions: "Download the 1Password CLI installer for macOS from the official page.",
-					url: "https://developer.1password.com/docs/cli/get-started"
-				}],
-				linux: [{
-					kind: "manual",
-					instructions: "Follow the official Linux install instructions (apt/dnf/zypper repo with signed packages).",
-					url: "https://developer.1password.com/docs/cli/get-started/#linux"
-				}],
-				win32: [{
-					kind: "manual",
-					instructions: "Install via winget or the MSI from the official 1Password CLI page.",
-					url: "https://developer.1password.com/docs/cli/get-started/#windows"
-				}]
-			}
+				darwin: [
+					{
+						kind: "brew",
+						package: "1password-cli",
+						cask: true,
+					},
+					{
+						kind: "manual",
+						instructions:
+							"Download the 1Password CLI installer for macOS from the official page.",
+						url: "https://developer.1password.com/docs/cli/get-started",
+					},
+				],
+				linux: [
+					{
+						kind: "manual",
+						instructions:
+							"Follow the official Linux install instructions (apt/dnf/zypper repo with signed packages).",
+						url: "https://developer.1password.com/docs/cli/get-started/#linux",
+					},
+				],
+				win32: [
+					{
+						kind: "manual",
+						instructions:
+							"Install via winget or the MSI from the official 1Password CLI page.",
+						url: "https://developer.1password.com/docs/cli/get-started/#windows",
+					},
+				],
+			},
 		},
 		bitwarden: {
 			id: "bitwarden",
 			methods: {
-				darwin: [{
-					kind: "brew",
-					package: "bitwarden-cli",
-					cask: false
-				}, {
-					kind: "npm",
-					package: "@bitwarden/cli"
-				}],
-				linux: [{
-					kind: "npm",
-					package: "@bitwarden/cli"
-				}],
-				win32: [{
-					kind: "npm",
-					package: "@bitwarden/cli"
-				}]
-			}
+				darwin: [
+					{
+						kind: "brew",
+						package: "bitwarden-cli",
+						cask: false,
+					},
+					{
+						kind: "npm",
+						package: "@bitwarden/cli",
+					},
+				],
+				linux: [
+					{
+						kind: "npm",
+						package: "@bitwarden/cli",
+					},
+				],
+				win32: [
+					{
+						kind: "npm",
+						package: "@bitwarden/cli",
+					},
+				],
+			},
 		},
 		protonpass: {
 			id: "protonpass",
 			methods: {
-				darwin: [{
-					kind: "manual",
-					instructions: "Proton Pass CLI is in closed beta. Track Proton's roadmap or use the desktop app.",
-					url: "https://proton.me/pass"
-				}],
-				linux: [{
-					kind: "manual",
-					instructions: "Proton Pass CLI is in closed beta. Track Proton's roadmap or use the desktop app.",
-					url: "https://proton.me/pass"
-				}],
-				win32: [{
-					kind: "manual",
-					instructions: "Proton Pass CLI is in closed beta. Track Proton's roadmap or use the desktop app.",
-					url: "https://proton.me/pass"
-				}]
-			}
-		}
+				darwin: [
+					{
+						kind: "manual",
+						instructions:
+							"Proton Pass CLI is in closed beta. Track Proton's roadmap or use the desktop app.",
+						url: "https://proton.me/pass",
+					},
+				],
+				linux: [
+					{
+						kind: "manual",
+						instructions:
+							"Proton Pass CLI is in closed beta. Track Proton's roadmap or use the desktop app.",
+						url: "https://proton.me/pass",
+					},
+				],
+				win32: [
+					{
+						kind: "manual",
+						instructions:
+							"Proton Pass CLI is in closed beta. Track Proton's roadmap or use the desktop app.",
+						url: "https://proton.me/pass",
+					},
+				],
+			},
+		},
 	};
 	_packageManagerCache = null;
-}));
+});
 
 //#endregion
 //#region node_modules/.bun/@elizaos+vault@2.0.0-alpha.537/node_modules/@elizaos/vault/dist/index.js
-var init_dist = __esmMin((() => {
+var init_dist = __esmMin(() => {
 	init_vault();
 	init_master_key();
 	init_password_managers();
@@ -14636,48 +17316,49 @@ var init_dist = __esmMin((() => {
 	init_credentials();
 	init_inventory();
 	init_profiles();
-}));
+});
 
 //#endregion
 //#region node_modules/.bun/@elizaos+app-core@2.0.0-alpha.537+72829346cb4c43b1/node_modules/@elizaos/app-core/packages/app-core/src/config/env-vars.js
 var TELEGRAM_ACCOUNT_ENV_MAP, CONNECTOR_ENV_MAP$1;
-var init_env_vars = __esmMin((() => {
+var init_env_vars = __esmMin(() => {
 	TELEGRAM_ACCOUNT_ENV_MAP = {
 		phone: "TELEGRAM_ACCOUNT_PHONE",
 		appId: "TELEGRAM_ACCOUNT_APP_ID",
 		appHash: "TELEGRAM_ACCOUNT_APP_HASH",
 		deviceModel: "TELEGRAM_ACCOUNT_DEVICE_MODEL",
-		systemVersion: "TELEGRAM_ACCOUNT_SYSTEM_VERSION"
+		systemVersion: "TELEGRAM_ACCOUNT_SYSTEM_VERSION",
 	};
 	CONNECTOR_ENV_MAP$1 = {
 		...CONNECTOR_ENV_MAP,
-		telegramAccount: CONNECTOR_ENV_MAP.telegramAccount ?? TELEGRAM_ACCOUNT_ENV_MAP
+		telegramAccount:
+			CONNECTOR_ENV_MAP.telegramAccount ?? TELEGRAM_ACCOUNT_ENV_MAP,
 	};
-}));
+});
 
 //#endregion
 //#region node_modules/.bun/@elizaos+app-core@2.0.0-alpha.537+72829346cb4c43b1/node_modules/@elizaos/app-core/packages/app-core/src/config/plugin-auto-enable.js
 var CONNECTOR_PLUGINS$1;
-var init_plugin_auto_enable = __esmMin((() => {
+var init_plugin_auto_enable = __esmMin(() => {
 	CONNECTOR_PLUGINS$1 = {
 		...CONNECTOR_PLUGINS,
-		wechat: "elizaoswechat"
+		wechat: "elizaoswechat",
 	};
-}));
+});
 
 //#endregion
 //#region node_modules/.bun/@elizaos+app-core@2.0.0-alpha.537+72829346cb4c43b1/node_modules/@elizaos/app-core/packages/app-core/src/services/vault-mirror.js
 /**
-* Write-through mirror to @elizaos/vault for plugin sensitive fields.
-*
-* Extracted from plugins-compat-routes.ts so unit tests can exercise the
-* mirror logic without dragging in the entire @elizaos/agent runtime.
-*
-* Concurrency: the vault PUT path is hit concurrently when the UI saves
-* multiple plugin configs in parallel. `VaultImpl.mutate()` has its own
-* process and filesystem locks; the process-level manager cache keeps the
-* plugin-save path and `/api/secrets/manager/*` routes sharing one facade.
-*/
+ * Write-through mirror to @elizaos/vault for plugin sensitive fields.
+ *
+ * Extracted from plugins-compat-routes.ts so unit tests can exercise the
+ * mirror logic without dragging in the entire @elizaos/agent runtime.
+ *
+ * Concurrency: the vault PUT path is hit concurrently when the UI saves
+ * multiple plugin configs in parallel. `VaultImpl.mutate()` has its own
+ * process and filesystem locks; the process-level manager cache keeps the
+ * plugin-save path and `/api/secrets/manager/*` routes sharing one facade.
+ */
 function sharedSecretsManager() {
 	if (!cachedManager) cachedManager = createManager();
 	return cachedManager;
@@ -14686,34 +17367,36 @@ function sharedVault() {
 	return sharedSecretsManager().vault;
 }
 /**
-* Test-only: drop the cached vault so the next `sharedVault()` call
-* re-initializes from the (possibly newly configured) environment.
-* Also lets tests inject a test vault built via `createTestVault`.
-*/
+ * Test-only: drop the cached vault so the next `sharedVault()` call
+ * re-initializes from the (possibly newly configured) environment.
+ * Also lets tests inject a test vault built via `createTestVault`.
+ */
 function _resetSharedVaultForTesting(next = null) {
 	cachedManager = next ? createManager({ vault: next }) : null;
 }
 /**
-* Write-through mirror to @elizaos/vault. Iterates the plugin's
-* declared parameters, finds sensitive ones, and writes whatever
-* value the user just submitted into the vault as a sensitive entry.
-*
-* Returns the list of keys that failed to write. The PUT handler
-* surfaces them under `vaultMirrorFailures` in the response so the UI
-* can warn the user that their secret was saved to legacy config but
-* not mirrored to the vault. Per-key try/catch keeps one failed key
-* from aborting the rest of the loop.
-*
-* Vault key shape: the env-var name itself (e.g.
-* `OPENROUTER_API_KEY`). Stable, matches what the legacy code uses,
-* and lets the read-side hydration round-trip cleanly.
-*/
+ * Write-through mirror to @elizaos/vault. Iterates the plugin's
+ * declared parameters, finds sensitive ones, and writes whatever
+ * value the user just submitted into the vault as a sensitive entry.
+ *
+ * Returns the list of keys that failed to write. The PUT handler
+ * surfaces them under `vaultMirrorFailures` in the response so the UI
+ * can warn the user that their secret was saved to legacy config but
+ * not mirrored to the vault. Per-key try/catch keeps one failed key
+ * from aborting the rest of the loop.
+ *
+ * Vault key shape: the env-var name itself (e.g.
+ * `OPENROUTER_API_KEY`). Stable, matches what the legacy code uses,
+ * and lets the read-side hydration round-trip cleanly.
+ */
 async function mirrorPluginSensitiveToVault(plugin, body) {
 	const failures = [];
 	const config = asRecord(body)?.config;
 	const configRecord = asRecord(config);
 	if (!configRecord) return { failures };
-	const sensitiveKeys = plugin.parameters.filter((p) => p.sensitive).map((p) => p.key);
+	const sensitiveKeys = plugin.parameters
+		.filter((p) => p.sensitive)
+		.map((p) => p.key);
 	if (sensitiveKeys.length === 0) return { failures };
 	const manager = sharedSecretsManager();
 	for (const key of sensitiveKeys) {
@@ -14721,22 +17404,25 @@ async function mirrorPluginSensitiveToVault(plugin, body) {
 		if (typeof value !== "string") continue;
 		try {
 			if (value.length === 0) await manager.remove(key);
-			else await manager.set(key, value, {
-				sensitive: true,
-				caller: "plugins-compat"
-			});
+			else
+				await manager.set(key, value, {
+					sensitive: true,
+					caller: "plugins-compat",
+				});
 		} catch (err) {
 			failures.push(key);
-			logger.warn(`[plugins-compat] vault mirror for ${key} failed: ${err instanceof Error ? err.message : String(err)}`);
+			logger.warn(
+				`[plugins-compat] vault mirror for ${key} failed: ${err instanceof Error ? err.message : String(err)}`,
+			);
 		}
 	}
 	return { failures };
 }
 var cachedManager;
-var init_vault_mirror = __esmMin((() => {
+var init_vault_mirror = __esmMin(() => {
 	init_dist();
 	cachedManager = null;
-}));
+});
 
 //#endregion
 //#region node_modules/.bun/@elizaos+app-core@2.0.0-alpha.537+72829346cb4c43b1/node_modules/@elizaos/app-core/packages/app-core/src/api/plugins-compat-routes.js
@@ -14747,9 +17433,10 @@ var plugins_compat_routes_exports = /* @__PURE__ */ __exportAll({
 	handlePluginsCompatRoutes: () => handlePluginsCompatRoutes,
 	mirrorPluginSensitiveToVault: () => mirrorPluginSensitiveToVault,
 	persistCompatPluginMutation: () => persistCompatPluginMutation,
-	resolveAdvancedCapabilityCompatStatus: () => resolveAdvancedCapabilityCompatStatus,
+	resolveAdvancedCapabilityCompatStatus: () =>
+		resolveAdvancedCapabilityCompatStatus,
 	resolveCompatPluginEnabledForList: () => resolveCompatPluginEnabledForList,
-	resolvePluginManifestPath: () => resolvePluginManifestPath
+	resolvePluginManifestPath: () => resolvePluginManifestPath,
 });
 function maskValue(value) {
 	if (value.length <= 8) return "****";
@@ -14761,8 +17448,10 @@ function normalizePluginCategory(value) {
 		case "connector":
 		case "streaming":
 		case "database":
-		case "app": return value;
-		default: return "feature";
+		case "app":
+			return value;
+		default:
+			return "feature";
 	}
 }
 function normalizePluginId(rawName) {
@@ -14776,7 +17465,13 @@ function resolveCompatConfigKey(pluginId, npmName, pluginMap) {
 		candidates.add(npmName);
 		candidates.add(normalizePluginId(npmName));
 	}
-	for (const [configKey, packageName] of Object.entries(pluginMap)) if (candidates.has(configKey) || candidates.has(packageName) || candidates.has(normalizePluginId(packageName))) return configKey;
+	for (const [configKey, packageName] of Object.entries(pluginMap))
+		if (
+			candidates.has(configKey) ||
+			candidates.has(packageName) ||
+			candidates.has(normalizePluginId(packageName))
+		)
+			return configKey;
 	return null;
 }
 function readCompatSectionEnabled(section, configKey) {
@@ -14796,7 +17491,11 @@ function writeCompatSectionEnabled(parent, sectionKey, configKey, enabled) {
 	parent[sectionKey] = section;
 }
 function syncCompatConnectorConfigValues(config, pluginId, npmName, values) {
-	const connectorKey = resolveCompatConfigKey(pluginId, npmName, CONNECTOR_PLUGINS$1);
+	const connectorKey = resolveCompatConfigKey(
+		pluginId,
+		npmName,
+		CONNECTOR_PLUGINS$1,
+	);
 	if (!connectorKey) return;
 	const envMap = CONNECTOR_ENV_MAP$1[connectorKey];
 	if (!envMap) return;
@@ -14804,7 +17503,8 @@ function syncCompatConnectorConfigValues(config, pluginId, npmName, values) {
 	const connectors = asRecord(config.connectors) ?? {};
 	const connectorEntry = asRecord(connectors[connectorKey]) ?? {};
 	const envToField = /* @__PURE__ */ new Map();
-	for (const [field, envKey] of Object.entries(typedEnvMap)) if (!envToField.has(envKey)) envToField.set(envKey, field);
+	for (const [field, envKey] of Object.entries(typedEnvMap))
+		if (!envToField.has(envKey)) envToField.set(envKey, field);
 	let touched = false;
 	for (const [envKey, field] of envToField.entries()) {
 		if (!(envKey in values)) continue;
@@ -14824,13 +17524,38 @@ function syncCompatConnectorConfigValues(config, pluginId, npmName, values) {
 	connectors[connectorKey] = connectorEntry;
 	config.connectors = connectors;
 }
-function resolvePersistedPluginEnabled(pluginId, category, npmName, configEntries, config) {
-	const pluginEnabled = typeof configEntries[pluginId]?.enabled === "boolean" ? Boolean(configEntries[pluginId]?.enabled) : void 0;
-	if (category === "connector") return readCompatSectionEnabled(config.connectors, resolveCompatConfigKey(pluginId, npmName, CONNECTOR_PLUGINS$1)) ?? pluginEnabled;
-	if (category === "streaming") return readCompatSectionEnabled(config.streaming, resolveCompatConfigKey(pluginId, npmName, STREAMING_PLUGINS)) ?? pluginEnabled;
+function resolvePersistedPluginEnabled(
+	pluginId,
+	category,
+	npmName,
+	configEntries,
+	config,
+) {
+	const pluginEnabled =
+		typeof configEntries[pluginId]?.enabled === "boolean"
+			? Boolean(configEntries[pluginId]?.enabled)
+			: void 0;
+	if (category === "connector")
+		return (
+			readCompatSectionEnabled(
+				config.connectors,
+				resolveCompatConfigKey(pluginId, npmName, CONNECTOR_PLUGINS$1),
+			) ?? pluginEnabled
+		);
+	if (category === "streaming")
+		return (
+			readCompatSectionEnabled(
+				config.streaming,
+				resolveCompatConfigKey(pluginId, npmName, STREAMING_PLUGINS),
+			) ?? pluginEnabled
+		);
 	return pluginEnabled;
 }
-function resolveCompatPluginEnabledForList(active, persistedEnabled, advancedCapabilityEnabled) {
+function resolveCompatPluginEnabledForList(
+	active,
+	persistedEnabled,
+	advancedCapabilityEnabled,
+) {
 	return advancedCapabilityEnabled ?? persistedEnabled ?? active;
 }
 function shortPluginIdFromNpmName(npmName) {
@@ -14839,21 +17564,60 @@ function shortPluginIdFromNpmName(npmName) {
 	if (npmName.startsWith("@elizaos/plugin-")) return npmName.slice(16);
 	return normalizePluginId(npmName);
 }
-function analyzePluginStateDrift(pluginList, configRecord, configEntries, allowList) {
+function analyzePluginStateDrift(
+	pluginList,
+	configRecord,
+	configEntries,
+	allowList,
+) {
 	const diagnostics = pluginList.map((plugin) => {
 		const pluginId = String(plugin.id ?? "");
 		const category = normalizePluginCategory(plugin.category);
-		const npmName = typeof plugin.npmName === "string" && plugin.npmName.length > 0 ? plugin.npmName : null;
+		const npmName =
+			typeof plugin.npmName === "string" && plugin.npmName.length > 0
+				? plugin.npmName
+				: null;
 		const shortId = shortPluginIdFromNpmName(npmName) ?? pluginId;
 		const uiEnabled = Boolean(plugin.enabled);
-		const compatEnabled = category === "connector" ? readCompatSectionEnabled(configRecord.connectors, resolveCompatConfigKey(pluginId, npmName ?? void 0, CONNECTOR_PLUGINS$1)) : category === "streaming" ? readCompatSectionEnabled(configRecord.streaming, resolveCompatConfigKey(pluginId, npmName ?? void 0, STREAMING_PLUGINS)) : void 0;
-		const entryEnabled = typeof configEntries[pluginId]?.enabled === "boolean" ? Boolean(configEntries[pluginId]?.enabled) : void 0;
-		const enabledAllowList = allowList === null || npmName == null ? null : allowList.has(npmName) || allowList.has(shortId);
+		const compatEnabled =
+			category === "connector"
+				? readCompatSectionEnabled(
+						configRecord.connectors,
+						resolveCompatConfigKey(
+							pluginId,
+							npmName ?? void 0,
+							CONNECTOR_PLUGINS$1,
+						),
+					)
+				: category === "streaming"
+					? readCompatSectionEnabled(
+							configRecord.streaming,
+							resolveCompatConfigKey(
+								pluginId,
+								npmName ?? void 0,
+								STREAMING_PLUGINS,
+							),
+						)
+					: void 0;
+		const entryEnabled =
+			typeof configEntries[pluginId]?.enabled === "boolean"
+				? Boolean(configEntries[pluginId]?.enabled)
+				: void 0;
+		const enabledAllowList =
+			allowList === null || npmName == null
+				? null
+				: allowList.has(npmName) || allowList.has(shortId);
 		const isActive = Boolean(plugin.isActive);
 		const driftFlags = [];
-		if (compatEnabled !== void 0 && entryEnabled !== void 0 && compatEnabled !== entryEnabled) driftFlags.push("entries_vs_compat");
+		if (
+			compatEnabled !== void 0 &&
+			entryEnabled !== void 0 &&
+			compatEnabled !== entryEnabled
+		)
+			driftFlags.push("entries_vs_compat");
 		if (enabledAllowList !== null && entryEnabled !== void 0) {
-			if (enabledAllowList !== entryEnabled) driftFlags.push("entries_vs_allowlist");
+			if (enabledAllowList !== entryEnabled)
+				driftFlags.push("entries_vs_allowlist");
 		}
 		if (uiEnabled && !isActive) driftFlags.push("inactive_but_enabled");
 		if (!uiEnabled && isActive) driftFlags.push("active_but_disabled");
@@ -14864,45 +17628,63 @@ function analyzePluginStateDrift(pluginList, configRecord, configEntries, allowL
 			enabled_ui: uiEnabled,
 			enabled_allowlist: enabledAllowList,
 			is_active: isActive,
-			drift_flags: driftFlags
+			drift_flags: driftFlags,
 		};
 	});
-	const withDrift = diagnostics.filter((plugin) => plugin.drift_flags.length > 0);
+	const withDrift = diagnostics.filter(
+		(plugin) => plugin.drift_flags.length > 0,
+	);
 	const byFlag = {
 		entries_vs_compat: 0,
 		entries_vs_allowlist: 0,
 		inactive_but_enabled: 0,
-		active_but_disabled: 0
+		active_but_disabled: 0,
 	};
-	for (const plugin of withDrift) for (const flag of plugin.drift_flags) byFlag[flag] += 1;
+	for (const plugin of withDrift)
+		for (const flag of plugin.drift_flags) byFlag[flag] += 1;
 	return {
 		summary: {
 			total: diagnostics.length,
 			withDrift: withDrift.length,
-			byFlag
+			byFlag,
 		},
-		plugins: diagnostics
+		plugins: diagnostics,
 	};
 }
 function buildPluginDriftDiagnostics(runtime) {
 	const pluginList = buildPluginListResponse(runtime).plugins;
 	const config = loadElizaConfig();
-	return analyzePluginStateDrift(pluginList, config, config.plugins?.entries ?? {}, Array.isArray(config.plugins?.allow) ? new Set(config.plugins.allow) : null);
+	return analyzePluginStateDrift(
+		pluginList,
+		config,
+		config.plugins?.entries ?? {},
+		Array.isArray(config.plugins?.allow) ? new Set(config.plugins.allow) : null,
+	);
 }
 function maybeLogPluginStateDrift(report) {
 	if (report.summary.withDrift === 0) return;
-	const drifted = report.plugins.filter((plugin) => plugin.drift_flags.length > 0).map((plugin) => `${plugin.pluginId}:${plugin.drift_flags.join("+")}`).sort();
+	const drifted = report.plugins
+		.filter((plugin) => plugin.drift_flags.length > 0)
+		.map((plugin) => `${plugin.pluginId}:${plugin.drift_flags.join("+")}`)
+		.sort();
 	const fingerprint = drifted.join("|");
 	const now = Date.now();
-	if (fingerprint === _lastDriftWarningFingerprint && now - _lastDriftWarningAt < DRIFT_LOG_THROTTLE_MS) return;
+	if (
+		fingerprint === _lastDriftWarningFingerprint &&
+		now - _lastDriftWarningAt < DRIFT_LOG_THROTTLE_MS
+	)
+		return;
 	_lastDriftWarningAt = now;
 	_lastDriftWarningFingerprint = fingerprint;
-	logger.warn({
-		src: "api:plugins",
-		driftCount: report.summary.withDrift,
-		byFlag: report.summary.byFlag,
-		plugins: drifted
-	}, "Plugin enable-state drift detected between /api/plugins and /api/plugins/core models");
+	logger.warn(
+		{
+			src: "api:plugins",
+			driftCount: report.summary.withDrift,
+			byFlag: report.summary.byFlag,
+			plugins: drifted,
+		},
+		"Plugin enable-state drift detected between /api/plugins and /api/plugins/core models",
+	);
 }
 function reconcilePluginEnabledStates() {
 	if (_enabledStateReconciled) return;
@@ -14913,19 +17695,43 @@ function reconcilePluginEnabledStates() {
 	let dirty = false;
 	for (const [pluginId, entry] of Object.entries(entries)) {
 		if (typeof entry.enabled !== "boolean") continue;
-		const connectorKey = resolveCompatConfigKey(pluginId, void 0, CONNECTOR_PLUGINS$1);
+		const connectorKey = resolveCompatConfigKey(
+			pluginId,
+			void 0,
+			CONNECTOR_PLUGINS$1,
+		);
 		if (connectorKey) {
-			const sectionEnabled = readCompatSectionEnabled(configRecord.connectors, connectorKey);
+			const sectionEnabled = readCompatSectionEnabled(
+				configRecord.connectors,
+				connectorKey,
+			);
 			if (sectionEnabled !== void 0 && sectionEnabled !== entry.enabled) {
-				writeCompatSectionEnabled(configRecord, "connectors", connectorKey, entry.enabled);
+				writeCompatSectionEnabled(
+					configRecord,
+					"connectors",
+					connectorKey,
+					entry.enabled,
+				);
 				dirty = true;
 			}
 		}
-		const streamingKey = resolveCompatConfigKey(pluginId, void 0, STREAMING_PLUGINS);
+		const streamingKey = resolveCompatConfigKey(
+			pluginId,
+			void 0,
+			STREAMING_PLUGINS,
+		);
 		if (streamingKey) {
-			const sectionEnabled = readCompatSectionEnabled(configRecord.streaming, streamingKey);
+			const sectionEnabled = readCompatSectionEnabled(
+				configRecord.streaming,
+				streamingKey,
+			);
 			if (sectionEnabled !== void 0 && sectionEnabled !== entry.enabled) {
-				writeCompatSectionEnabled(configRecord, "streaming", streamingKey, entry.enabled);
+				writeCompatSectionEnabled(
+					configRecord,
+					"streaming",
+					streamingKey,
+					entry.enabled,
+				);
 				dirty = true;
 			}
 		}
@@ -14937,7 +17743,11 @@ function reconcilePluginEnabledStates() {
 }
 function compatMutationRequiresRestart(plugin, body) {
 	if (typeof body.enabled === "boolean") return true;
-	if (body.config !== void 0 && (plugin.category === "connector" || plugin.category === "streaming")) return true;
+	if (
+		body.config !== void 0 &&
+		(plugin.category === "connector" || plugin.category === "streaming")
+	)
+		return true;
 	return false;
 }
 function createCompatRuntimeApplyFallback(reason, requiresRestart) {
@@ -14949,14 +17759,18 @@ function createCompatRuntimeApplyFallback(reason, requiresRestart) {
 		unloadedPackages: [],
 		reloadedPackages: [],
 		appliedConfigPackage: null,
-		reason
+		reason,
 	};
 }
 async function applyCompatRuntimeMutation(options) {
 	const { state, pluginId, plugin, body, previousConfig, nextConfig } = options;
-	const reason = typeof body.enabled === "boolean" ? `Plugin toggle: ${pluginId}` : `Plugin config updated: ${pluginId}`;
+	const reason =
+		typeof body.enabled === "boolean"
+			? `Plugin toggle: ${pluginId}`
+			: `Plugin config updated: ${pluginId}`;
 	const requiresRestartFallback = compatMutationRequiresRestart(plugin, body);
-	if (!state.current) return createCompatRuntimeApplyFallback(reason, requiresRestartFallback);
+	if (!state.current)
+		return createCompatRuntimeApplyFallback(reason, requiresRestartFallback);
 	try {
 		return await applyPluginRuntimeMutation({
 			runtime: state.current,
@@ -14964,20 +17778,33 @@ async function applyCompatRuntimeMutation(options) {
 			nextConfig,
 			changedPluginId: pluginId,
 			changedPluginPackage: plugin.npmName,
-			config: body.config && typeof body.config === "object" && !Array.isArray(body.config) ? body.config : void 0,
+			config:
+				body.config &&
+				typeof body.config === "object" &&
+				!Array.isArray(body.config)
+					? body.config
+					: void 0,
 			expectRuntimeGraphChange: typeof body.enabled === "boolean",
-			reason
+			reason,
 		});
 	} catch (error) {
-		logger.warn(`[api/plugins] Live runtime apply failed for "${pluginId}": ${error instanceof Error ? error.message : String(error)}`);
+		logger.warn(
+			`[api/plugins] Live runtime apply failed for "${pluginId}": ${error instanceof Error ? error.message : String(error)}`,
+		);
 		return createCompatRuntimeApplyFallback(reason, true);
 	}
 }
 function titleCasePluginId(id) {
-	return id.split("-").filter((segment) => segment.length > 0).map((segment) => segment.charAt(0).toUpperCase() + segment.slice(1)).join(" ");
+	return id
+		.split("-")
+		.filter((segment) => segment.length > 0)
+		.map((segment) => segment.charAt(0).toUpperCase() + segment.slice(1))
+		.join(" ");
 }
 function inferSensitiveConfigKey(key) {
-	return /(?:_API_KEY|_SECRET|_TOKEN|_PASSWORD|_PRIVATE_KEY|_SIGNING_|ENCRYPTION_)/i.test(key);
+	return /(?:_API_KEY|_SECRET|_TOKEN|_PASSWORD|_PRIVATE_KEY|_SIGNING_|ENCRYPTION_)/i.test(
+		key,
+	);
 }
 function buildPluginParamDefs(parameters, savedValues) {
 	if (!parameters) return [];
@@ -14986,30 +17813,48 @@ function buildPluginParamDefs(parameters, savedValues) {
 		"SMALL_MODEL",
 		"LARGE_MODEL",
 		"IMAGE_MODEL",
-		"EMBEDDING_MODEL"
+		"EMBEDDING_MODEL",
 	];
-	return Object.entries(parameters).filter(([key]) => {
-		if (!GENERIC_FALLBACK_SUFFIXES.includes(key)) return true;
-		return !allKeys.some((other) => other !== key && other.endsWith(`_${key}`));
-	}).map(([key, definition]) => {
-		const envValue = process.env[key]?.trim() || void 0;
-		const savedValue = savedValues?.[key];
-		const effectiveValue = envValue ?? (savedValue ? savedValue.trim() || void 0 : void 0);
-		const isSet = Boolean(effectiveValue);
-		const sensitive = typeof definition.sensitive === "boolean" ? definition.sensitive : inferSensitiveConfigKey(key);
-		const currentValue = !isSet || !effectiveValue ? null : sensitive ? maskValue(effectiveValue) : effectiveValue;
-		return {
-			key,
-			type: definition.type ?? "string",
-			description: definition.description ?? "",
-			required: definition.required === true || definition.optional === false && definition.required !== false,
-			sensitive,
-			default: definition.default === void 0 ? void 0 : String(definition.default),
-			options: Array.isArray(definition.options) ? definition.options : void 0,
-			currentValue,
-			isSet
-		};
-	});
+	return Object.entries(parameters)
+		.filter(([key]) => {
+			if (!GENERIC_FALLBACK_SUFFIXES.includes(key)) return true;
+			return !allKeys.some(
+				(other) => other !== key && other.endsWith(`_${key}`),
+			);
+		})
+		.map(([key, definition]) => {
+			const envValue = process.env[key]?.trim() || void 0;
+			const savedValue = savedValues?.[key];
+			const effectiveValue =
+				envValue ?? (savedValue ? savedValue.trim() || void 0 : void 0);
+			const isSet = Boolean(effectiveValue);
+			const sensitive =
+				typeof definition.sensitive === "boolean"
+					? definition.sensitive
+					: inferSensitiveConfigKey(key);
+			const currentValue =
+				!isSet || !effectiveValue
+					? null
+					: sensitive
+						? maskValue(effectiveValue)
+						: effectiveValue;
+			return {
+				key,
+				type: definition.type ?? "string",
+				description: definition.description ?? "",
+				required:
+					definition.required === true ||
+					(definition.optional === false && definition.required !== false),
+				sensitive,
+				default:
+					definition.default === void 0 ? void 0 : String(definition.default),
+				options: Array.isArray(definition.options)
+					? definition.options
+					: void 0,
+				currentValue,
+				isSet,
+			};
+		});
 }
 function findNearestFile(startDir, fileName, maxDepth = 12) {
 	let dir = path.resolve(startDir);
@@ -15028,7 +17873,7 @@ function resolvePluginManifestPath() {
 		process.cwd(),
 		moduleDir,
 		path.dirname(process.execPath),
-		path.join(path.dirname(process.execPath), "..", "Resources", "app")
+		path.join(path.dirname(process.execPath), "..", "Resources", "app"),
 	];
 	for (const candidate of candidates) {
 		const manifestPath = findNearestFile(candidate, "plugins.json");
@@ -15059,24 +17904,32 @@ function isPluginLoaded(pluginId, npmName, loadedNames) {
 		pluginId,
 		`plugin-${pluginId}`,
 		`app-${pluginId}`,
-		npmName ?? ""
+		npmName ?? "",
 	]);
 	for (const loadedName of loadedNames) {
 		if (expectedNames.has(loadedName)) return true;
-		if (loadedName.endsWith(`/plugin-${pluginId}`) || loadedName.endsWith(`/app-${pluginId}`) || loadedName.includes(pluginId)) return true;
+		if (
+			loadedName.endsWith(`/plugin-${pluginId}`) ||
+			loadedName.endsWith(`/app-${pluginId}`) ||
+			loadedName.includes(pluginId)
+		)
+			return true;
 	}
 	return false;
 }
 function resolveAdvancedCapabilityCompatStatus(pluginId, config, runtime) {
 	if (!isAdvancedCapabilityPluginId(pluginId)) return null;
-	if (!resolveAdvancedCapabilitiesEnabled(config)) return {
-		enabled: false,
-		isActive: false
-	};
+	if (!resolveAdvancedCapabilitiesEnabled(config))
+		return {
+			enabled: false,
+			isActive: false,
+		};
 	const serviceType = ADVANCED_CAPABILITY_SERVICE_BY_PLUGIN_ID[pluginId];
 	return {
 		enabled: true,
-		isActive: serviceType ? Boolean(runtime?.getService(serviceType)) : Boolean(runtime)
+		isActive: serviceType
+			? Boolean(runtime?.getService(serviceType))
+			: Boolean(runtime),
 	};
 }
 function buildPluginListResponse(runtime) {
@@ -15085,7 +17938,9 @@ function buildPluginListResponse(runtime) {
 	const configRecord = config;
 	const loadedNames = resolveLoadedPluginNames(runtime);
 	const registry = loadRegistry();
-	const manifestRoot = resolvePluginManifestPath() ? path.dirname(resolvePluginManifestPath() ?? "") : process.cwd();
+	const manifestRoot = resolvePluginManifestPath()
+		? path.dirname(resolvePluginManifestPath() ?? "")
+		: process.cwd();
 	const manifest = entriesToLegacyManifest(registry.all);
 	const configEntries = config.plugins?.entries ?? {};
 	const installEntries = config.plugins?.installs ?? {};
@@ -15093,17 +17948,47 @@ function buildPluginListResponse(runtime) {
 	for (const entry of manifest?.plugins ?? []) {
 		const pluginId = normalizePluginId(entry.id);
 		const category = normalizePluginCategory(entry.category);
-		const bundledMeta = entry.dirName && manifestRoot ? readBundledPluginPackageMetadata(manifestRoot, entry.dirName, entry.npmName) : void 0;
-		const configKeys = Array.isArray(entry.configKeys) && entry.configKeys.length > 0 ? entry.configKeys : bundledMeta?.configKeys ?? [];
+		const bundledMeta =
+			entry.dirName && manifestRoot
+				? readBundledPluginPackageMetadata(
+						manifestRoot,
+						entry.dirName,
+						entry.npmName,
+					)
+				: void 0;
+		const configKeys =
+			Array.isArray(entry.configKeys) && entry.configKeys.length > 0
+				? entry.configKeys
+				: (bundledMeta?.configKeys ?? []);
 		const envKey = entry.envKey ?? findPrimaryEnvKey(configKeys);
-		const parameters = buildPluginParamDefs(entry.pluginParameters ?? bundledMeta?.pluginParameters);
-		const advancedCapabilityStatus = resolveAdvancedCapabilityCompatStatus(pluginId, config, runtime);
-		const active = advancedCapabilityStatus?.isActive ?? isPluginLoaded(pluginId, entry.npmName, loadedNames);
-		const enabled = resolveCompatPluginEnabledForList(active, resolvePersistedPluginEnabled(pluginId, category, entry.npmName, configEntries, configRecord), advancedCapabilityStatus?.enabled);
-		const validationErrors = parameters.filter((parameter) => parameter.required && !parameter.isSet).map((parameter) => ({
-			field: parameter.key,
-			message: "Required value is not configured."
-		}));
+		const parameters = buildPluginParamDefs(
+			entry.pluginParameters ?? bundledMeta?.pluginParameters,
+		);
+		const advancedCapabilityStatus = resolveAdvancedCapabilityCompatStatus(
+			pluginId,
+			config,
+			runtime,
+		);
+		const active =
+			advancedCapabilityStatus?.isActive ??
+			isPluginLoaded(pluginId, entry.npmName, loadedNames);
+		const enabled = resolveCompatPluginEnabledForList(
+			active,
+			resolvePersistedPluginEnabled(
+				pluginId,
+				category,
+				entry.npmName,
+				configEntries,
+				configRecord,
+			),
+			advancedCapabilityStatus?.enabled,
+		);
+		const validationErrors = parameters
+			.filter((parameter) => parameter.required && !parameter.isSet)
+			.map((parameter) => ({
+				field: parameter.key,
+				message: "Required value is not configured.",
+			}));
 		const registryEntry = registry.byId.get(pluginId);
 		plugins.set(pluginId, {
 			id: pluginId,
@@ -15120,7 +18005,10 @@ function buildPluginListResponse(runtime) {
 			validationErrors,
 			validationWarnings: [],
 			npmName: entry.npmName,
-			version: resolveInstalledPackageVersion(entry.npmName) ?? entry.version ?? void 0,
+			version:
+				resolveInstalledPackageVersion(entry.npmName) ??
+				entry.version ??
+				void 0,
 			pluginDeps: entry.pluginDeps,
 			isActive: active,
 			configUiHints: entry.configUiHints ?? bundledMeta?.configUiHints,
@@ -15131,7 +18019,7 @@ function buildPluginListResponse(runtime) {
 			iconName: registryEntry?.render.icon,
 			group: registryEntry?.render.group,
 			groupOrder: registryEntry?.render.groupOrder,
-			visible: registryEntry?.render.visible ?? true
+			visible: registryEntry?.render.visible ?? true,
 		});
 	}
 	for (const entry of discoverPluginsFromManifest$1()) {
@@ -15139,7 +18027,13 @@ function buildPluginListResponse(runtime) {
 		const category = normalizePluginCategory(entry.category);
 		if (category === "app" || plugins.has(pluginId)) continue;
 		const active = isPluginLoaded(pluginId, entry.npmName, loadedNames);
-		const persistedEnabled = resolvePersistedPluginEnabled(pluginId, category, entry.npmName, configEntries, configRecord);
+		const persistedEnabled = resolvePersistedPluginEnabled(
+			pluginId,
+			category,
+			entry.npmName,
+			configEntries,
+			configRecord,
+		);
 		plugins.set(pluginId, {
 			id: pluginId,
 			name: entry.name,
@@ -15155,7 +18049,10 @@ function buildPluginListResponse(runtime) {
 			validationErrors: entry.validationErrors,
 			validationWarnings: entry.validationWarnings,
 			npmName: entry.npmName,
-			version: resolveInstalledPackageVersion(entry.npmName) ?? entry.version ?? void 0,
+			version:
+				resolveInstalledPackageVersion(entry.npmName) ??
+				entry.version ??
+				void 0,
 			pluginDeps: entry.pluginDeps,
 			isActive: active,
 			configUiHints: entry.configUiHints,
@@ -15163,7 +18060,7 @@ function buildPluginListResponse(runtime) {
 			homepage: entry.homepage,
 			repository: entry.repository,
 			setupGuideUrl: entry.setupGuideUrl,
-			visible: true
+			visible: true,
 		});
 	}
 	for (const plugin of runtime?.plugins ?? []) {
@@ -15173,16 +18070,23 @@ function buildPluginListResponse(runtime) {
 		const existing = plugins.get(pluginId);
 		if (existing) {
 			existing.isActive = true;
-			if (existing.enabled !== true && configEntries[pluginId]?.enabled == null) existing.enabled = true;
-			if (!existing.version) existing.version = resolveInstalledPackageVersion(pluginName) ?? void 0;
+			if (existing.enabled !== true && configEntries[pluginId]?.enabled == null)
+				existing.enabled = true;
+			if (!existing.version)
+				existing.version = resolveInstalledPackageVersion(pluginName) ?? void 0;
 			continue;
 		}
 		plugins.set(pluginId, {
 			id: pluginId,
 			name: titleCasePluginId(pluginId),
-			description: plugin.description ?? "Loaded runtime plugin discovered without manifest metadata.",
+			description:
+				plugin.description ??
+				"Loaded runtime plugin discovered without manifest metadata.",
 			tags: [],
-			enabled: typeof configEntries[pluginId]?.enabled === "boolean" ? Boolean(configEntries[pluginId]?.enabled) : true,
+			enabled:
+				typeof configEntries[pluginId]?.enabled === "boolean"
+					? Boolean(configEntries[pluginId]?.enabled)
+					: true,
 			configured: true,
 			envKey: null,
 			category: "feature",
@@ -15193,7 +18097,7 @@ function buildPluginListResponse(runtime) {
 			npmName: pluginName,
 			version: resolveInstalledPackageVersion(pluginName) ?? void 0,
 			isActive: true,
-			icon: null
+			icon: null,
 		});
 	}
 	for (const [pluginName, installRecord] of Object.entries(installEntries)) {
@@ -15204,7 +18108,10 @@ function buildPluginListResponse(runtime) {
 			name: titleCasePluginId(pluginId),
 			description: "Installed store plugin.",
 			tags: [],
-			enabled: typeof configEntries[pluginId]?.enabled === "boolean" ? Boolean(configEntries[pluginId]?.enabled) : false,
+			enabled:
+				typeof configEntries[pluginId]?.enabled === "boolean"
+					? Boolean(configEntries[pluginId]?.enabled)
+					: false,
 			configured: true,
 			envKey: null,
 			category: "feature",
@@ -15213,15 +18120,24 @@ function buildPluginListResponse(runtime) {
 			validationErrors: [],
 			validationWarnings: [],
 			npmName: pluginName,
-			version: typeof installRecord?.version === "string" ? installRecord.version : resolveInstalledPackageVersion(pluginName) ?? void 0,
+			version:
+				typeof installRecord?.version === "string"
+					? installRecord.version
+					: (resolveInstalledPackageVersion(pluginName) ?? void 0),
 			isActive: isPluginLoaded(pluginId, pluginName, loadedNames),
-			icon: null
+			icon: null,
 		});
 	}
-	return { plugins: Array.from(plugins.values()).sort((left, right) => String(left.name ?? "").localeCompare(String(right.name ?? ""))) };
+	return {
+		plugins: Array.from(plugins.values()).sort((left, right) =>
+			String(left.name ?? "").localeCompare(String(right.name ?? "")),
+		),
+	};
 }
 function validateCompatPluginConfig(plugin, config) {
-	const paramMap = new Map(plugin.parameters.map((parameter) => [parameter.key, parameter]));
+	const paramMap = new Map(
+		plugin.parameters.map((parameter) => [parameter.key, parameter]),
+	);
 	const errors = [];
 	const values = {};
 	for (const [key, rawValue] of Object.entries(config)) {
@@ -15229,14 +18145,14 @@ function validateCompatPluginConfig(plugin, config) {
 		if (!parameter) {
 			errors.push({
 				field: key,
-				message: `${key} is not a declared config key for this plugin`
+				message: `${key} is not a declared config key for this plugin`,
 			});
 			continue;
 		}
 		if (typeof rawValue !== "string") {
 			errors.push({
 				field: key,
-				message: "Plugin config values must be strings."
+				message: "Plugin config values must be strings.",
 			});
 			continue;
 		}
@@ -15244,7 +18160,7 @@ function validateCompatPluginConfig(plugin, config) {
 		if (parameter.required && trimmed.length === 0) {
 			errors.push({
 				field: key,
-				message: "Required value is not configured."
+				message: "Required value is not configured.",
 			});
 			continue;
 		}
@@ -15252,7 +18168,7 @@ function validateCompatPluginConfig(plugin, config) {
 	}
 	return {
 		errors,
-		values
+		values,
 	};
 }
 function persistCompatPluginMutation(pluginId, body, plugin) {
@@ -15268,91 +18184,131 @@ function persistCompatPluginMutation(pluginId, body, plugin) {
 			config.features ??= {};
 			config.features[pluginId] = body.enabled;
 		}
-		if (plugin.category === "connector") writeCompatSectionEnabled(configRecord, "connectors", resolveCompatConfigKey(pluginId, plugin.npmName, CONNECTOR_PLUGINS$1), body.enabled);
-		if (plugin.category === "streaming") writeCompatSectionEnabled(configRecord, "streaming", resolveCompatConfigKey(pluginId, plugin.npmName, STREAMING_PLUGINS), body.enabled);
+		if (plugin.category === "connector")
+			writeCompatSectionEnabled(
+				configRecord,
+				"connectors",
+				resolveCompatConfigKey(pluginId, plugin.npmName, CONNECTOR_PLUGINS$1),
+				body.enabled,
+			);
+		if (plugin.category === "streaming")
+			writeCompatSectionEnabled(
+				configRecord,
+				"streaming",
+				resolveCompatConfigKey(pluginId, plugin.npmName, STREAMING_PLUGINS),
+				body.enabled,
+			);
 	}
 	if (body.config !== void 0) {
-		if (!body.config || typeof body.config !== "object" || Array.isArray(body.config)) return {
-			status: 400,
-			payload: {
-				ok: false,
-				error: "Plugin config must be a JSON object."
-			}
-		};
+		if (
+			!body.config ||
+			typeof body.config !== "object" ||
+			Array.isArray(body.config)
+		)
+			return {
+				status: 400,
+				payload: {
+					ok: false,
+					error: "Plugin config must be a JSON object.",
+				},
+			};
 		const configObject = body.config;
 		const { errors, values } = validateCompatPluginConfig(plugin, configObject);
-		if (errors.length > 0) return {
-			status: 422,
-			payload: {
-				ok: false,
-				plugin,
-				validationErrors: errors
-			}
-		};
-		const nextConfig = pluginEntry.config && typeof pluginEntry.config === "object" && !Array.isArray(pluginEntry.config) ? { ...pluginEntry.config } : {};
+		if (errors.length > 0)
+			return {
+				status: 422,
+				payload: {
+					ok: false,
+					plugin,
+					validationErrors: errors,
+				},
+			};
+		const nextConfig =
+			pluginEntry.config &&
+			typeof pluginEntry.config === "object" &&
+			!Array.isArray(pluginEntry.config)
+				? { ...pluginEntry.config }
+				: {};
 		config.env ??= {};
-		for (const [key, value] of Object.entries(values)) if (value.trim()) {
-			config.env[key] = value;
-			nextConfig[key] = value;
-		} else {
-			delete config.env[key];
-			delete nextConfig[key];
-		}
+		for (const [key, value] of Object.entries(values))
+			if (value.trim()) {
+				config.env[key] = value;
+				nextConfig[key] = value;
+			} else {
+				delete config.env[key];
+				delete nextConfig[key];
+			}
 		pluginEntry.config = nextConfig;
-		if (plugin.category === "connector") syncCompatConnectorConfigValues(configRecord, pluginId, plugin.npmName, values);
+		if (plugin.category === "connector")
+			syncCompatConnectorConfigValues(
+				configRecord,
+				pluginId,
+				plugin.npmName,
+				values,
+			);
 		saveElizaConfig(config);
-		for (const [key, value] of Object.entries(values)) try {
-			if (value.trim()) process.env[key] = value;
-			else delete process.env[key];
-		} catch {}
+		for (const [key, value] of Object.entries(values))
+			try {
+				if (value.trim()) process.env[key] = value;
+				else delete process.env[key];
+			} catch {}
 	} else saveElizaConfig(config);
 	return {
 		status: 200,
 		payload: {
 			ok: true,
-			plugin: buildPluginListResponse(null).plugins.find((candidate) => candidate.id === pluginId) ?? plugin
-		}
+			plugin:
+				buildPluginListResponse(null).plugins.find(
+					(candidate) => candidate.id === pluginId,
+				) ?? plugin,
+		},
 	};
 }
 /**
-* Plugin management routes.
-*
-* Contract note:
-* - `/api/plugins` is the Settings/UI model.
-* - `/api/plugins/core` is the optional-core allow-list model.
-* - These can drift; use `/api/plugins/diagnostics` to inspect mismatches.
-*
-* - `GET  /api/plugins`             — returns filtered plugin list
-* - `GET  /api/plugins/diagnostics` — returns drift diagnostics
-* - `PUT  /api/plugins/:id`         — updates plugin config, writes env vars
-* - `POST /api/plugins/:id/test`    — tests plugin connectivity
-* - `POST /api/plugins/:id/reveal`  — reveals plugin env var value
-*/
+ * Plugin management routes.
+ *
+ * Contract note:
+ * - `/api/plugins` is the Settings/UI model.
+ * - `/api/plugins/core` is the optional-core allow-list model.
+ * - These can drift; use `/api/plugins/diagnostics` to inspect mismatches.
+ *
+ * - `GET  /api/plugins`             — returns filtered plugin list
+ * - `GET  /api/plugins/diagnostics` — returns drift diagnostics
+ * - `PUT  /api/plugins/:id`         — updates plugin config, writes env vars
+ * - `POST /api/plugins/:id/test`    — tests plugin connectivity
+ * - `POST /api/plugins/:id/reveal`  — reveals plugin env var value
+ */
 async function handlePluginsCompatRoutes(req, res, state) {
 	const method = (req.method ?? "GET").toUpperCase();
 	const url = new URL(req.url ?? "/", "http://localhost");
 	if (!url.pathname.startsWith("/api/plugins")) return false;
 	if (method === "GET" && url.pathname === "/api/plugins") {
-		if (!await ensureRouteAuthorized(req, res, state)) return true;
+		if (!(await ensureRouteAuthorized(req, res, state))) return true;
 		const pluginResponse = buildPluginListResponse(state.current);
-		logger.debug(`[api/plugins] source=registry total=${pluginResponse.plugins.length} runtime=${state.current ? "active" : "null"}`);
+		logger.debug(
+			`[api/plugins] source=registry total=${pluginResponse.plugins.length} runtime=${state.current ? "active" : "null"}`,
+		);
 		maybeLogPluginStateDrift(buildPluginDriftDiagnostics(state.current));
 		sendJson$2(res, 200, pluginResponse);
 		return true;
 	}
 	if (method === "GET" && url.pathname === "/api/plugins/diagnostics") {
-		if (!await ensureRouteAuthorized(req, res, state)) return true;
+		if (!(await ensureRouteAuthorized(req, res, state))) return true;
 		const diagnostics = buildPluginDriftDiagnostics(state.current);
 		maybeLogPluginStateDrift(diagnostics);
 		sendJson$2(res, 200, diagnostics);
 		return true;
 	}
 	if (method === "PUT" && url.pathname.startsWith("/api/plugins/")) {
-		if (!await ensureRouteAuthorized(req, res, state)) return true;
+		if (!(await ensureRouteAuthorized(req, res, state))) return true;
 		const body = await readCompatJsonBody(req, res);
 		if (body == null) return true;
-		const pluginId = normalizePluginId(decodeURIComponent(url.pathname.slice(13)));
-		const plugin = buildPluginListResponse(state.current).plugins.find((candidate) => candidate.id === pluginId);
+		const pluginId = normalizePluginId(
+			decodeURIComponent(url.pathname.slice(13)),
+		);
+		const plugin = buildPluginListResponse(state.current).plugins.find(
+			(candidate) => candidate.id === pluginId,
+		);
 		if (!plugin) {
 			sendJsonError(res, 404, `Plugin "${pluginId}" not found`);
 			return true;
@@ -15366,10 +18322,13 @@ async function handlePluginsCompatRoutes(req, res, state) {
 				plugin,
 				body,
 				previousConfig,
-				nextConfig: loadElizaConfig()
+				nextConfig: loadElizaConfig(),
 			});
-			if (runtimeApply.requiresRestart) scheduleCompatRuntimeRestart(state, runtimeApply.reason);
-			const refreshed = buildPluginListResponse(state.current).plugins.find((candidate) => candidate.id === pluginId);
+			if (runtimeApply.requiresRestart)
+				scheduleCompatRuntimeRestart(state, runtimeApply.reason);
+			const refreshed = buildPluginListResponse(state.current).plugins.find(
+				(candidate) => candidate.id === pluginId,
+			);
 			result.payload.plugin = refreshed ?? result.payload.plugin ?? plugin;
 			result.payload.applied = runtimeApply.mode;
 			result.payload.requiresRestart = runtimeApply.requiresRestart;
@@ -15378,16 +18337,19 @@ async function handlePluginsCompatRoutes(req, res, state) {
 			result.payload.unloadedPackages = runtimeApply.unloadedPackages;
 			result.payload.reloadedPackages = runtimeApply.reloadedPackages;
 			const mirrorResult = await mirrorPluginSensitiveToVault(plugin, body);
-			if (mirrorResult.failures.length > 0) result.payload.vaultMirrorFailures = mirrorResult.failures;
+			if (mirrorResult.failures.length > 0)
+				result.payload.vaultMirrorFailures = mirrorResult.failures;
 			const diagnostics = buildPluginDriftDiagnostics(state.current);
-			if (diagnostics.summary.withDrift > 0) result.payload.diagnostics = diagnostics;
+			if (diagnostics.summary.withDrift > 0)
+				result.payload.diagnostics = diagnostics;
 		}
 		sendJson$2(res, result.status, result.payload);
 		return true;
 	}
-	const testMatch = method === "POST" && url.pathname.match(/^\/api\/plugins\/([^/]+)\/test$/);
+	const testMatch =
+		method === "POST" && url.pathname.match(/^\/api\/plugins\/([^/]+)\/test$/);
 	if (testMatch) {
-		if (!await ensureRouteAuthorized(req, res, state)) return true;
+		if (!(await ensureRouteAuthorized(req, res, state))) return true;
 		const testPluginId = normalizePluginId(decodeURIComponent(testMatch[1]));
 		const startMs = Date.now();
 		if (testPluginId === "telegram") {
@@ -15397,25 +18359,30 @@ async function handlePluginsCompatRoutes(req, res, state) {
 					success: false,
 					pluginId: testPluginId,
 					error: "No bot token configured",
-					durationMs: Date.now() - startMs
+					durationMs: Date.now() - startMs,
 				});
 				return true;
 			}
 			try {
-				const apiRoot = process.env.TELEGRAM_API_ROOT || "https://api.telegram.org";
-				const tgData = await (await fetch(`${apiRoot}/bot${token}/getMe`)).json();
+				const apiRoot =
+					process.env.TELEGRAM_API_ROOT || "https://api.telegram.org";
+				const tgData = await (
+					await fetch(`${apiRoot}/bot${token}/getMe`)
+				).json();
 				sendJson$2(res, tgData.ok ? 200 : 422, {
 					success: tgData.ok,
 					pluginId: testPluginId,
-					message: tgData.ok ? `Connected as @${tgData.result?.username}` : `Telegram API error: ${tgData.description}`,
-					durationMs: Date.now() - startMs
+					message: tgData.ok
+						? `Connected as @${tgData.result?.username}`
+						: `Telegram API error: ${tgData.description}`,
+					durationMs: Date.now() - startMs,
 				});
 			} catch (err) {
 				sendJson$2(res, 422, {
 					success: false,
 					pluginId: testPluginId,
 					error: err instanceof Error ? err.message : String(err),
-					durationMs: Date.now() - startMs
+					durationMs: Date.now() - startMs,
 				});
 			}
 			return true;
@@ -15424,13 +18391,15 @@ async function handlePluginsCompatRoutes(req, res, state) {
 			success: true,
 			pluginId: testPluginId,
 			message: "Plugin is loaded (no custom test available)",
-			durationMs: Date.now() - startMs
+			durationMs: Date.now() - startMs,
 		});
 		return true;
 	}
-	const revealMatch = method === "POST" && url.pathname.match(/^\/api\/plugins\/([^/]+)\/reveal$/);
+	const revealMatch =
+		method === "POST" &&
+		url.pathname.match(/^\/api\/plugins\/([^/]+)\/reveal$/);
 	if (revealMatch) {
-		if (!await ensureRouteAuthorized(req, res, state)) return true;
+		if (!(await ensureRouteAuthorized(req, res, state))) return true;
 		const revealBody = await readCompatJsonBody(req, res);
 		if (revealBody == null) return true;
 		const key = revealBody.key?.trim();
@@ -15439,8 +18408,14 @@ async function handlePluginsCompatRoutes(req, res, state) {
 			return true;
 		}
 		const upperKey = key.toUpperCase();
-		if (!REVEALABLE_KEY_PREFIXES.some((prefix) => upperKey.startsWith(prefix))) {
-			sendJsonError(res, 403, "Key is not in the allowlist of revealable plugin config keys");
+		if (
+			!REVEALABLE_KEY_PREFIXES.some((prefix) => upperKey.startsWith(prefix))
+		) {
+			sendJsonError(
+				res,
+				403,
+				"Key is not in the allowlist of revealable plugin config keys",
+			);
 			return true;
 		}
 		if (SENSITIVE_KEY_PREFIXES.some((prefix) => upperKey.startsWith(prefix))) {
@@ -15449,12 +18424,17 @@ async function handlePluginsCompatRoutes(req, res, state) {
 		try {
 			sendJson$2(res, 200, {
 				ok: true,
-				value: await sharedVault().reveal(key, `plugins:${decodeURIComponent(revealMatch[1])}:reveal`)
+				value: await sharedVault().reveal(
+					key,
+					`plugins:${decodeURIComponent(revealMatch[1])}:reveal`,
+				),
 			});
 			return true;
 		} catch (err) {
 			if (!(err instanceof VaultMissError)) {
-				logger.warn(`[api/plugins] Vault reveal failed for ${key}: ${err instanceof Error ? err.message : String(err)}`);
+				logger.warn(
+					`[api/plugins] Vault reveal failed for ${key}: ${err instanceof Error ? err.message : String(err)}`,
+				);
 				sendJsonError(res, 500, "Vault reveal failed");
 				return true;
 			}
@@ -15463,32 +18443,41 @@ async function handlePluginsCompatRoutes(req, res, state) {
 		const fallbackValue = process.env[key] ?? config.env?.[key] ?? null;
 		if (typeof fallbackValue === "string" && isVaultRef(fallbackValue)) {
 			const innerKey = parseVaultRef(fallbackValue);
-			if (innerKey) try {
-				const inner = await sharedVault().get(innerKey);
-				if (inner) {
-					sendJson$2(res, 200, {
-						ok: true,
-						value: inner
-					});
-					return true;
-				}
-			} catch {}
+			if (innerKey)
+				try {
+					const inner = await sharedVault().get(innerKey);
+					if (inner) {
+						sendJson$2(res, 200, {
+							ok: true,
+							value: inner,
+						});
+						return true;
+					}
+				} catch {}
 			sendJson$2(res, 200, {
 				ok: true,
-				value: null
+				value: null,
 			});
 			return true;
 		}
 		sendJson$2(res, 200, {
 			ok: true,
-			value: fallbackValue
+			value: fallbackValue,
 		});
 		return true;
 	}
 	return false;
 }
-var require$1, CAPABILITY_FEATURE_IDS, ADVANCED_CAPABILITY_SERVICE_BY_PLUGIN_ID, SENSITIVE_KEY_PREFIXES, REVEALABLE_KEY_PREFIXES, DRIFT_LOG_THROTTLE_MS, _lastDriftWarningAt, _lastDriftWarningFingerprint, _enabledStateReconciled;
-var init_plugins_compat_routes = __esmMin((() => {
+var require$1,
+	CAPABILITY_FEATURE_IDS,
+	ADVANCED_CAPABILITY_SERVICE_BY_PLUGIN_ID,
+	SENSITIVE_KEY_PREFIXES,
+	REVEALABLE_KEY_PREFIXES,
+	DRIFT_LOG_THROTTLE_MS,
+	_lastDriftWarningAt,
+	_lastDriftWarningFingerprint,
+	_enabledStateReconciled;
+var init_plugins_compat_routes = __esmMin(() => {
 	init_dist();
 	init_env_vars();
 	init_plugin_auto_enable();
@@ -15502,19 +18491,14 @@ var init_plugins_compat_routes = __esmMin((() => {
 		"vision",
 		"browser",
 		"computeruse",
-		"coding-agent"
+		"coding-agent",
 	]);
 	ADVANCED_CAPABILITY_SERVICE_BY_PLUGIN_ID = {
 		experience: "EXPERIENCE",
 		form: "FORM",
-		personality: "CHARACTER_MANAGEMENT"
+		personality: "CHARACTER_MANAGEMENT",
 	};
-	SENSITIVE_KEY_PREFIXES = [
-		"SOLANA_",
-		"ETHEREUM_",
-		"EVM_",
-		"WALLET_"
-	];
+	SENSITIVE_KEY_PREFIXES = ["SOLANA_", "ETHEREUM_", "EVM_", "WALLET_"];
 	REVEALABLE_KEY_PREFIXES = [
 		"OPENAI_",
 		"ANTHROPIC_",
@@ -15554,13 +18538,13 @@ var init_plugins_compat_routes = __esmMin((() => {
 		"LETZAI_",
 		"GAIANET_",
 		"LIVEPEER_",
-		...SENSITIVE_KEY_PREFIXES
+		...SENSITIVE_KEY_PREFIXES,
 	];
 	DRIFT_LOG_THROTTLE_MS = 300 * 1e3;
 	_lastDriftWarningAt = 0;
 	_lastDriftWarningFingerprint = "";
 	_enabledStateReconciled = false;
-}));
+});
 
 //#endregion
 //#region node_modules/.bun/@elizaos+app-core@2.0.0-alpha.537+72829346cb4c43b1/node_modules/@elizaos/app-core/packages/app-core/src/api/secrets-inventory-routes.js
@@ -15577,18 +18561,26 @@ const CATEGORY_VALUES = new Set([
 	"wallet",
 	"credential",
 	"system",
-	"session"
+	"session",
 ]);
 function isReservedKey(key) {
-	return key.startsWith("_meta.") || key.startsWith("_manager.") || key === ROUTING_KEY;
+	return (
+		key.startsWith("_meta.") ||
+		key.startsWith("_manager.") ||
+		key === ROUTING_KEY
+	);
 }
 async function handleSecretsInventoryRoute(req, res, pathname, method) {
-	if (!pathname.startsWith("/api/secrets/inventory") && !pathname.startsWith("/api/secrets/routing")) return false;
+	if (
+		!pathname.startsWith("/api/secrets/inventory") &&
+		!pathname.startsWith("/api/secrets/routing")
+	)
+		return false;
 	if (pathname === "/api/secrets/routing") {
 		if (method === "GET") {
 			sendJson$2(res, 200, {
 				ok: true,
-				config: await readRoutingConfig(sharedVault())
+				config: await readRoutingConfig(sharedVault()),
 			});
 			return true;
 		}
@@ -15608,7 +18600,7 @@ async function handleSecretsInventoryRoute(req, res, pathname, method) {
 			await writeRoutingConfig(vault, config);
 			sendJson$2(res, 200, {
 				ok: true,
-				config: await readRoutingConfig(vault)
+				config: await readRoutingConfig(vault),
 			});
 			return true;
 		}
@@ -15629,7 +18621,7 @@ async function handleSecretsInventoryRoute(req, res, pathname, method) {
 		}
 		sendJson$2(res, 200, {
 			ok: true,
-			...await migrateKeyToProfiles(targetKey)
+			...(await migrateKeyToProfiles(targetKey)),
 		});
 		return true;
 	}
@@ -15638,7 +18630,10 @@ async function handleSecretsInventoryRoute(req, res, pathname, method) {
 			sendJsonError(res, 405, "method not allowed");
 			return true;
 		}
-		const categoryParam = new URL(req.url ?? "", "http://localhost").searchParams.get("category");
+		const categoryParam = new URL(
+			req.url ?? "",
+			"http://localhost",
+		).searchParams.get("category");
 		if (categoryParam !== null && !CATEGORY_VALUES.has(categoryParam)) {
 			sendJsonError(res, 400, "`category` must be a known VaultEntryCategory");
 			return true;
@@ -15646,7 +18641,9 @@ async function handleSecretsInventoryRoute(req, res, pathname, method) {
 		const all = await listVaultInventory(sharedVault());
 		sendJson$2(res, 200, {
 			ok: true,
-			entries: categoryParam ? all.filter((e) => e.category === categoryParam) : all
+			entries: categoryParam
+				? all.filter((e) => e.category === categoryParam)
+				: all,
 		});
 		return true;
 	}
@@ -15707,19 +18704,19 @@ async function handleKeyRoute(req, res, method, key) {
 					ok: true,
 					value: await vault.reveal(profileKey, "inventory-routes"),
 					source: "profile",
-					profileId: meta.activeProfile
+					profileId: meta.activeProfile,
 				});
 				return true;
 			}
 		}
-		if (!await vault.has(key)) {
+		if (!(await vault.has(key))) {
 			sendJsonError(res, 404, "no entry for key");
 			return true;
 		}
 		sendJson$2(res, 200, {
 			ok: true,
 			value: await vault.reveal(key, "inventory-routes"),
-			source: "bare"
+			source: "bare",
 		});
 		return true;
 	}
@@ -15743,19 +18740,23 @@ async function handleKeyRoute(req, res, method, key) {
 			sendJsonError(res, 400, "`providerId` must be string when set");
 			return true;
 		}
-		if (v.category !== void 0 && (typeof v.category !== "string" || !CATEGORY_VALUES.has(v.category))) {
+		if (
+			v.category !== void 0 &&
+			(typeof v.category !== "string" || !CATEGORY_VALUES.has(v.category))
+		) {
 			sendJsonError(res, 400, "`category` must be a known VaultEntryCategory");
 			return true;
 		}
 		await vault.set(key, v.value, {
 			sensitive: true,
-			caller: "inventory-routes"
+			caller: "inventory-routes",
 		});
 		const metaPartial = {};
 		if (typeof v.label === "string") metaPartial.label = v.label;
 		if (typeof v.providerId === "string") metaPartial.providerId = v.providerId;
 		if (typeof v.category === "string") metaPartial.category = v.category;
-		if (Object.keys(metaPartial).length > 0) await setEntryMeta(vault, key, metaPartial);
+		if (Object.keys(metaPartial).length > 0)
+			await setEntryMeta(vault, key, metaPartial);
 		sendJson$2(res, 200, { ok: true });
 		return true;
 	}
@@ -15781,7 +18782,7 @@ async function handleProfilesRoute(req, res, method, key) {
 		sendJson$2(res, 200, {
 			ok: true,
 			profiles: meta?.profiles ?? [],
-			activeProfile: meta?.activeProfile ?? null
+			activeProfile: meta?.activeProfile ?? null,
 		});
 		return true;
 	}
@@ -15801,7 +18802,8 @@ async function handleProfilesRoute(req, res, method, key) {
 			sendJsonError(res, 400, "`value` is required");
 			return true;
 		}
-		const label = typeof v.label === "string" && v.label.length > 0 ? v.label : v.id;
+		const label =
+			typeof v.label === "string" && v.label.length > 0 ? v.label : v.id;
 		const meta = await readEntryMeta(vault, key);
 		const profiles = (meta?.profiles ?? []).slice();
 		if (profiles.some((p) => p.id === v.id)) {
@@ -15811,15 +18813,15 @@ async function handleProfilesRoute(req, res, method, key) {
 		profiles.push({
 			id: v.id,
 			label,
-			createdAt: Date.now()
+			createdAt: Date.now(),
 		});
 		await vault.set(profileStorageKey(key, v.id), v.value, {
 			sensitive: true,
-			caller: "inventory-routes"
+			caller: "inventory-routes",
 		});
 		await setEntryMeta(vault, key, {
 			profiles,
-			...meta?.activeProfile ? {} : { activeProfile: v.id }
+			...(meta?.activeProfile ? {} : { activeProfile: v.id }),
 		});
 		sendJson$2(res, 200, { ok: true });
 		return true;
@@ -15841,20 +18843,26 @@ async function handleSingleProfileRoute(req, res, method, key, profileId) {
 			sendJsonError(res, 400, "`label` must be string when set");
 			return true;
 		}
-		if (v.value !== void 0 && (typeof v.value !== "string" || v.value.length === 0)) {
+		if (
+			v.value !== void 0 &&
+			(typeof v.value !== "string" || v.value.length === 0)
+		) {
 			sendJsonError(res, 400, "`value` must be a non-empty string when set");
 			return true;
 		}
-		const profiles = ((await readEntryMeta(vault, key))?.profiles ?? []).slice();
+		const profiles = (
+			(await readEntryMeta(vault, key))?.profiles ?? []
+		).slice();
 		const idx = profiles.findIndex((p) => p.id === profileId);
 		if (idx < 0) {
 			sendJsonError(res, 404, "no such profile");
 			return true;
 		}
-		if (typeof v.value === "string") await vault.set(profileStorageKey(key, profileId), v.value, {
-			sensitive: true,
-			caller: "inventory-routes"
-		});
+		if (typeof v.value === "string")
+			await vault.set(profileStorageKey(key, profileId), v.value, {
+				sensitive: true,
+				caller: "inventory-routes",
+			});
 		if (typeof v.label === "string") {
 			const existing = profiles[idx];
 			if (!existing) {
@@ -15863,7 +18871,7 @@ async function handleSingleProfileRoute(req, res, method, key, profileId) {
 			}
 			profiles[idx] = {
 				...existing,
-				label: v.label
+				label: v.label,
 			};
 			await setEntryMeta(vault, key, { profiles });
 		}
@@ -15882,10 +18890,13 @@ async function handleSingleProfileRoute(req, res, method, key, profileId) {
 		profiles.splice(idx, 1);
 		const profileKey = profileStorageKey(key, profileId);
 		if (await vault.has(profileKey)) await vault.remove(profileKey);
-		const activeProfile = meta?.activeProfile === profileId ? profiles[0]?.id ?? null : meta?.activeProfile ?? null;
+		const activeProfile =
+			meta?.activeProfile === profileId
+				? (profiles[0]?.id ?? null)
+				: (meta?.activeProfile ?? null);
 		await setEntryMeta(vault, key, {
 			profiles: profiles.length > 0 ? profiles : null,
-			activeProfile: activeProfile === null ? null : activeProfile
+			activeProfile: activeProfile === null ? null : activeProfile,
 		});
 		sendJson$2(res, 200, { ok: true });
 		return true;
@@ -15910,7 +18921,11 @@ async function handleActiveProfileRoute(req, res, method, key) {
 		return true;
 	}
 	const vault = sharedVault();
-	if (!((await readEntryMeta(vault, key))?.profiles ?? []).some((p) => p.id === v.profileId)) {
+	if (
+		!((await readEntryMeta(vault, key))?.profiles ?? []).some(
+			(p) => p.id === v.profileId,
+		)
+	) {
 		sendJsonError(res, 404, "profile id not found for key");
 		return true;
 	}
@@ -15920,30 +18935,34 @@ async function handleActiveProfileRoute(req, res, method, key) {
 }
 async function migrateKeyToProfiles(key) {
 	const vault = sharedVault();
-	if ((await readEntryMeta(vault, key))?.profiles?.length) return {
-		migrated: false,
-		reason: "already-has-profiles"
-	};
-	if (!await vault.has(key)) return {
-		migrated: false,
-		reason: "key-not-found"
-	};
+	if ((await readEntryMeta(vault, key))?.profiles?.length)
+		return {
+			migrated: false,
+			reason: "already-has-profiles",
+		};
+	if (!(await vault.has(key)))
+		return {
+			migrated: false,
+			reason: "key-not-found",
+		};
 	const value = await vault.reveal(key, "inventory-migrate");
 	await vault.set(profileStorageKey(key, "default"), value, {
 		sensitive: true,
-		caller: "inventory-migrate"
+		caller: "inventory-migrate",
 	});
 	await setEntryMeta(vault, key, {
-		profiles: [{
-			id: "default",
-			label: "Default",
-			createdAt: Date.now()
-		}],
-		activeProfile: "default"
+		profiles: [
+			{
+				id: "default",
+				label: "Default",
+				createdAt: Date.now(),
+			},
+		],
+		activeProfile: "default",
 	});
 	return {
 		migrated: true,
-		profileId: "default"
+		profileId: "default",
 	};
 }
 async function readJsonBody(req) {
@@ -15960,30 +18979,30 @@ async function readJsonBody(req) {
 //#endregion
 //#region node_modules/.bun/@elizaos+app-core@2.0.0-alpha.537+72829346cb4c43b1/node_modules/@elizaos/app-core/packages/app-core/src/services/secrets-manager-installer.js
 /**
-* Secrets-manager installer + signin orchestration.
-*
-* Drives the lifecycle the UI cares about for the three external secrets-manager
-* backends (1Password, Bitwarden, Proton Pass):
-*
-*   1. **Install**       — spawn the chosen package manager (brew or npm) with
-*                          a clean argv. Streams stdout/stderr lines back to
-*                          subscribers, emits a final `done` / `error` event
-*                          when the child exits.
-*   2. **Sign in**       — runs the vendor's non-interactive signin flow with
-*                          credentials supplied once via the API. Captures the
-*                          session token from stdout and persists it in the
-*                          in-house vault as `pm.<backend>.session`.
-*   3. **Sign out**      — clears the persisted session token.
-*
-* Master passwords / API secrets enter the process exactly once per request
-* via `child.stdin`; they are never written to disk. The session tokens that
-* come back are integration metadata (not user secrets), but we still mark
-* them `sensitive: true` so they're encrypted at rest under the OS keychain.
-*
-* Singleton: one installer per process, owns a Map<jobId, InstallJob>. The
-* stream of events is also persisted in-memory on the job so a UI that
-* subscribes after spawn (race) can replay history.
-*/
+ * Secrets-manager installer + signin orchestration.
+ *
+ * Drives the lifecycle the UI cares about for the three external secrets-manager
+ * backends (1Password, Bitwarden, Proton Pass):
+ *
+ *   1. **Install**       — spawn the chosen package manager (brew or npm) with
+ *                          a clean argv. Streams stdout/stderr lines back to
+ *                          subscribers, emits a final `done` / `error` event
+ *                          when the child exits.
+ *   2. **Sign in**       — runs the vendor's non-interactive signin flow with
+ *                          credentials supplied once via the API. Captures the
+ *                          session token from stdout and persists it in the
+ *                          in-house vault as `pm.<backend>.session`.
+ *   3. **Sign out**      — clears the persisted session token.
+ *
+ * Master passwords / API secrets enter the process exactly once per request
+ * via `child.stdin`; they are never written to disk. The session tokens that
+ * come back are integration metadata (not user secrets), but we still mark
+ * them `sensitive: true` so they're encrypted at rest under the OS keychain.
+ *
+ * Singleton: one installer per process, owns a Map<jobId, InstallJob>. The
+ * stream of events is also persisted in-memory on the job so a UI that
+ * subscribes after spawn (race) can replay history.
+ */
 init_dist();
 const SESSION_KEY_PREFIX = "pm";
 function sessionKey(backendId) {
@@ -16005,16 +19024,22 @@ var SecretsManagerInstaller = class {
 		return resolveRunnableMethods(id);
 	}
 	/**
-	* Spawn the install command for `method` on backend `id`. Returns a job id
-	* the UI can subscribe to. The caller is expected to call `subscribeJob`
-	* (or read `getJob` to poll) before the child finishes; events that fire
-	* before the first subscriber are kept on `job.history` so SSE clients
-	* that connect after spawn still see the full log.
-	*/
+	 * Spawn the install command for `method` on backend `id`. Returns a job id
+	 * the UI can subscribe to. The caller is expected to call `subscribeJob`
+	 * (or read `getJob` to poll) before the child finishes; events that fire
+	 * before the first subscriber are kept on `job.history` so SSE clients
+	 * that connect after spawn still see the full log.
+	 */
 	startInstall(id, method) {
-		if (method.kind === "manual") throw new TypeError(`Cannot automate install for "${id}": method is manual. Direct the user to ${method.url}`);
+		if (method.kind === "manual")
+			throw new TypeError(
+				`Cannot automate install for "${id}": method is manual. Direct the user to ${method.url}`,
+			);
 		const built = buildInstallCommand(method);
-		if (!built) throw new Error(`buildInstallCommand returned null for non-manual method (${method.kind})`);
+		if (!built)
+			throw new Error(
+				`buildInstallCommand returned null for non-manual method (${method.kind})`,
+			);
 		const job = {
 			id: randomUUID(),
 			backendId: id,
@@ -16026,7 +19051,7 @@ var SecretsManagerInstaller = class {
 			errorMessage: null,
 			history: [],
 			emitter: new EventEmitter(),
-			child: null
+			child: null,
 		};
 		this.jobs.set(job.id, job);
 		setImmediate(() => this.runInstallJob(job, built.command, built.args));
@@ -16037,7 +19062,8 @@ var SecretsManagerInstaller = class {
 		const job = this.jobs.get(jobId);
 		if (!job) throw new Error(`unknown install job: ${jobId}`);
 		for (const event of job.history) listener(event);
-		if (job.status !== "running" && job.status !== "pending") return () => void 0;
+		if (job.status !== "running" && job.status !== "pending")
+			return () => void 0;
 		job.emitter.on("event", listener);
 		return () => job.emitter.off("event", listener);
 	}
@@ -16046,48 +19072,52 @@ var SecretsManagerInstaller = class {
 		return job ? snapshotOf(job) : null;
 	}
 	/**
-	* Run the vendor's non-interactive signin flow and persist the session token.
-	* Throws on validation or CLI failure with a message safe to surface to UI.
-	*/
+	 * Run the vendor's non-interactive signin flow and persist the session token.
+	 * Throws on validation or CLI failure with a message safe to surface to UI.
+	 */
 	async signIn(request) {
-		if (request.backendId === "1password") return this.signInOnePassword(request);
+		if (request.backendId === "1password")
+			return this.signInOnePassword(request);
 		if (request.backendId === "bitwarden") return this.signInBitwarden(request);
-		throw new Error(`Sign-in for "${request.backendId}" is not implemented. Vendor CLI is unstable.`);
+		throw new Error(
+			`Sign-in for "${request.backendId}" is not implemented. Vendor CLI is unstable.`,
+		);
 	}
 	async signOut(backendId) {
-		if (await this.manager.has(sessionKey(backendId))) await this.manager.remove(sessionKey(backendId));
+		if (await this.manager.has(sessionKey(backendId)))
+			await this.manager.remove(sessionKey(backendId));
 	}
 	/** Read the cached session token (or null if not signed in). */
 	async getSession(backendId) {
-		if (!await this.manager.has(sessionKey(backendId))) return null;
+		if (!(await this.manager.has(sessionKey(backendId)))) return null;
 		return this.manager.get(sessionKey(backendId));
 	}
 	runInstallJob(job, command, args) {
 		this.transition(job, "running");
 		const child = this.spawn(command, args, {
-			stdio: [
-				"ignore",
-				"pipe",
-				"pipe"
-			],
-			shell: false
+			stdio: ["ignore", "pipe", "pipe"],
+			shell: false,
 		});
 		job.child = child;
 		const onLine = (stream, line) => {
 			this.emit(job, {
 				type: "log",
 				stream,
-				line: line.length > MAX_LINE_LENGTH ? line.slice(0, MAX_LINE_LENGTH) : line
+				line:
+					line.length > MAX_LINE_LENGTH ? line.slice(0, MAX_LINE_LENGTH) : line,
 			});
 		};
 		pipeLines(child.stdout, (line) => onLine("stdout", line));
 		pipeLines(child.stderr, (line) => onLine("stderr", line));
 		child.on("error", (err) => {
-			const message = err instanceof Error ? err.message : `unknown spawn error: ${String(err)}`;
+			const message =
+				err instanceof Error
+					? err.message
+					: `unknown spawn error: ${String(err)}`;
 			job.errorMessage = message;
 			this.emit(job, {
 				type: "error",
-				message
+				message,
 			});
 			this.terminate(job, "failed", null);
 		});
@@ -16097,7 +19127,7 @@ var SecretsManagerInstaller = class {
 			if (exitCode === 0) {
 				this.emit(job, {
 					type: "done",
-					exitCode
+					exitCode,
 				});
 				this.terminate(job, "succeeded", exitCode);
 			} else {
@@ -16105,7 +19135,7 @@ var SecretsManagerInstaller = class {
 				job.errorMessage = message;
 				this.emit(job, {
 					type: "error",
-					message
+					message,
 				});
 				this.terminate(job, "failed", exitCode);
 			}
@@ -16113,14 +19143,15 @@ var SecretsManagerInstaller = class {
 	}
 	emit(job, event) {
 		job.history.push(event);
-		if (job.history.length > MAX_HISTORY_EVENTS) job.history = job.history.slice(-MAX_HISTORY_EVENTS / 2);
+		if (job.history.length > MAX_HISTORY_EVENTS)
+			job.history = job.history.slice(-MAX_HISTORY_EVENTS / 2);
 		job.emitter.emit("event", event);
 	}
 	transition(job, next) {
 		job.status = next;
 		this.emit(job, {
 			type: "status",
-			status: next
+			status: next,
 		});
 	}
 	terminate(job, final, exitCode) {
@@ -16131,15 +19162,19 @@ var SecretsManagerInstaller = class {
 		job.child = null;
 	}
 	/**
-	* Adds a 1Password account (idempotent — if the account already exists `op`
-	* succeeds without re-prompting), then performs `op signin --raw` piping
-	* the master password on stdin. Captures the session token returned on
-	* stdout and persists it under `pm.1password.session`.
-	*/
+	 * Adds a 1Password account (idempotent — if the account already exists `op`
+	 * succeeds without re-prompting), then performs `op signin --raw` piping
+	 * the master password on stdin. Captures the session token returned on
+	 * stdout and persists it under `pm.1password.session`.
+	 */
 	async signInOnePassword(request) {
 		if (!request.email) throw new Error("1Password sign-in requires `email`");
-		if (!request.secretKey) throw new Error("1Password sign-in requires `secretKey` (the 34-char Secret Key)");
-		if (!request.masterPassword) throw new Error("1Password sign-in requires `masterPassword`");
+		if (!request.secretKey)
+			throw new Error(
+				"1Password sign-in requires `secretKey` (the 34-char Secret Key)",
+			);
+		if (!request.masterPassword)
+			throw new Error("1Password sign-in requires `masterPassword`");
 		const signInAddress = request.signInAddress?.trim() || "my.1password.com";
 		const addArgs = [
 			"account",
@@ -16151,85 +19186,131 @@ var SecretsManagerInstaller = class {
 			"--secret-key",
 			request.secretKey,
 			"--signin",
-			"--raw"
+			"--raw",
 		];
-		const add = await spawnCapture(this.spawn, "op", addArgs, request.masterPassword);
+		const add = await spawnCapture(
+			this.spawn,
+			"op",
+			addArgs,
+			request.masterPassword,
+		);
 		let sessionToken = add.stdout.trim();
 		if (!sessionToken) {
-			const signin = await spawnCapture(this.spawn, "op", [
-				"signin",
-				"--account",
-				signInAddress,
-				"--raw"
-			], request.masterPassword);
-			if (signin.exitCode !== 0 || !signin.stdout.trim()) throw new Error(truncateError(`op signin failed (exit ${signin.exitCode}): ${signin.stderr || signin.stdout}`));
+			const signin = await spawnCapture(
+				this.spawn,
+				"op",
+				["signin", "--account", signInAddress, "--raw"],
+				request.masterPassword,
+			);
+			if (signin.exitCode !== 0 || !signin.stdout.trim())
+				throw new Error(
+					truncateError(
+						`op signin failed (exit ${signin.exitCode}): ${signin.stderr || signin.stdout}`,
+					),
+				);
 			sessionToken = signin.stdout.trim();
 		}
-		if (add.exitCode !== 0 && !sessionToken) throw new Error(truncateError(`op account add failed (exit ${add.exitCode}): ${add.stderr || add.stdout}`));
+		if (add.exitCode !== 0 && !sessionToken)
+			throw new Error(
+				truncateError(
+					`op account add failed (exit ${add.exitCode}): ${add.stderr || add.stdout}`,
+				),
+			);
 		await this.manager.vault.set(sessionKey("1password"), sessionToken, {
 			sensitive: true,
-			caller: "secrets-manager-installer"
+			caller: "secrets-manager-installer",
 		});
 		return {
 			backendId: "1password",
 			sessionStored: true,
-			message: `Signed in as ${request.email} at ${signInAddress}`
+			message: `Signed in as ${request.email} at ${signInAddress}`,
 		};
 	}
 	/**
-	* Bitwarden non-interactive flow:
-	*   1. `bw login --apikey` with BW_CLIENTID / BW_CLIENTSECRET in env
-	*   2. `bw unlock --raw` piping the master password on stdin
-	* Captures the session token from `bw unlock --raw` and persists it.
-	*/
+	 * Bitwarden non-interactive flow:
+	 *   1. `bw login --apikey` with BW_CLIENTID / BW_CLIENTSECRET in env
+	 *   2. `bw unlock --raw` piping the master password on stdin
+	 * Captures the session token from `bw unlock --raw` and persists it.
+	 */
 	async signInBitwarden(request) {
-		if (!request.bitwardenClientId) throw new Error("Bitwarden sign-in requires `bitwardenClientId` (BW_CLIENTID)");
-		if (!request.bitwardenClientSecret) throw new Error("Bitwarden sign-in requires `bitwardenClientSecret` (BW_CLIENTSECRET)");
-		if (!request.masterPassword) throw new Error("Bitwarden sign-in requires `masterPassword`");
+		if (!request.bitwardenClientId)
+			throw new Error(
+				"Bitwarden sign-in requires `bitwardenClientId` (BW_CLIENTID)",
+			);
+		if (!request.bitwardenClientSecret)
+			throw new Error(
+				"Bitwarden sign-in requires `bitwardenClientSecret` (BW_CLIENTSECRET)",
+			);
+		if (!request.masterPassword)
+			throw new Error("Bitwarden sign-in requires `masterPassword`");
 		const env = {
 			...process.env,
 			BW_CLIENTID: request.bitwardenClientId,
-			BW_CLIENTSECRET: request.bitwardenClientSecret
+			BW_CLIENTSECRET: request.bitwardenClientSecret,
 		};
-		const login = await spawnCapture(this.spawn, "bw", ["login", "--apikey"], null, env);
-		const alreadyLoggedIn = login.exitCode !== 0 && /already logged in/i.test(login.stderr + login.stdout);
-		if (login.exitCode !== 0 && !alreadyLoggedIn) throw new Error(truncateError(`bw login failed (exit ${login.exitCode}): ${login.stderr || login.stdout}`));
-		const unlock = await spawnCapture(this.spawn, "bw", [
-			"unlock",
-			"--raw",
-			"--passwordenv",
-			"BW_PASSWORD"
-		], null, {
-			...env,
-			BW_PASSWORD: request.masterPassword
-		});
+		const login = await spawnCapture(
+			this.spawn,
+			"bw",
+			["login", "--apikey"],
+			null,
+			env,
+		);
+		const alreadyLoggedIn =
+			login.exitCode !== 0 &&
+			/already logged in/i.test(login.stderr + login.stdout);
+		if (login.exitCode !== 0 && !alreadyLoggedIn)
+			throw new Error(
+				truncateError(
+					`bw login failed (exit ${login.exitCode}): ${login.stderr || login.stdout}`,
+				),
+			);
+		const unlock = await spawnCapture(
+			this.spawn,
+			"bw",
+			["unlock", "--raw", "--passwordenv", "BW_PASSWORD"],
+			null,
+			{
+				...env,
+				BW_PASSWORD: request.masterPassword,
+			},
+		);
 		const sessionToken = unlock.stdout.trim();
-		if (unlock.exitCode !== 0 || !sessionToken) throw new Error(truncateError(`bw unlock failed (exit ${unlock.exitCode}): ${unlock.stderr || unlock.stdout}`));
+		if (unlock.exitCode !== 0 || !sessionToken)
+			throw new Error(
+				truncateError(
+					`bw unlock failed (exit ${unlock.exitCode}): ${unlock.stderr || unlock.stdout}`,
+				),
+			);
 		await this.manager.vault.set(sessionKey("bitwarden"), sessionToken, {
 			sensitive: true,
-			caller: "secrets-manager-installer"
+			caller: "secrets-manager-installer",
 		});
 		return {
 			backendId: "bitwarden",
 			sessionStored: true,
-			message: alreadyLoggedIn ? "Already logged in; vault unlocked" : "Signed in via API key; vault unlocked"
+			message: alreadyLoggedIn
+				? "Already logged in; vault unlocked"
+				: "Signed in via API key; vault unlocked",
 		};
 	}
 };
 /**
-* Run a child process with optional stdin, capture stdout/stderr, return
-* when it exits. Hard timeout via SIGKILL; never leaves a dangling child.
-*/
-function spawnCapture(spawnFn, command, args, stdin, env, timeoutMs = DEFAULT_SIGNIN_TIMEOUT_MS) {
+ * Run a child process with optional stdin, capture stdout/stderr, return
+ * when it exits. Hard timeout via SIGKILL; never leaves a dangling child.
+ */
+function spawnCapture(
+	spawnFn,
+	command,
+	args,
+	stdin,
+	env,
+	timeoutMs = DEFAULT_SIGNIN_TIMEOUT_MS,
+) {
 	return new Promise((resolve, reject) => {
 		const child = spawnFn(command, args, {
-			stdio: [
-				stdin === null ? "ignore" : "pipe",
-				"pipe",
-				"pipe"
-			],
+			stdio: [stdin === null ? "ignore" : "pipe", "pipe", "pipe"],
 			shell: false,
-			env: env ?? process.env
+			env: env ?? process.env,
 		});
 		let stdout = "";
 		let stderr = "";
@@ -16241,7 +19322,9 @@ function spawnCapture(spawnFn, command, args, stdin, env, timeoutMs = DEFAULT_SI
 		});
 		const timer = setTimeout(() => {
 			child.kill("SIGKILL");
-			reject(/* @__PURE__ */ new Error(`${command} timed out after ${timeoutMs}ms`));
+			reject(
+				/* @__PURE__ */ new Error(`${command} timed out after ${timeoutMs}ms`),
+			);
 		}, timeoutMs);
 		timer.unref?.();
 		child.once("error", (err) => {
@@ -16253,7 +19336,7 @@ function spawnCapture(spawnFn, command, args, stdin, env, timeoutMs = DEFAULT_SI
 			resolve({
 				exitCode: code ?? 1,
 				stdout,
-				stderr
+				stderr,
 			});
 		});
 		if (stdin !== null && child.stdin) child.stdin.end(stdin);
@@ -16290,7 +19373,7 @@ function snapshotOf(job) {
 		endedAt: job.endedAt,
 		exitCode: job.exitCode,
 		errorMessage: job.errorMessage,
-		history: [...job.history]
+		history: [...job.history],
 	};
 }
 function truncateError(message, max = 800) {
@@ -16299,7 +19382,10 @@ function truncateError(message, max = 800) {
 }
 let _installer = null;
 function getSecretsManagerInstaller(manager) {
-	if (!_installer) _installer = new SecretsManagerInstaller({ manager: manager ?? createManager() });
+	if (!_installer)
+		_installer = new SecretsManagerInstaller({
+			manager: manager ?? createManager(),
+		});
 	return _installer;
 }
 
@@ -16309,47 +19395,47 @@ init_dist();
 init_vault_mirror();
 init_response();
 /**
-* Routes that drive the Settings → Secrets Manager UI.
-*
-*   GET  /api/secrets/manager/preferences      → ManagerPreferences
-*   PUT  /api/secrets/manager/preferences      → save ManagerPreferences
-*   GET  /api/secrets/manager/backends         → BackendStatus[]
-*
-*   GET  /api/secrets/manager/install/methods  → per-backend, per-OS install methods
-*   POST /api/secrets/manager/install          → start install job → { jobId }
-*   GET  /api/secrets/manager/install/:jobId   → SSE stream of install events
-*
-*   POST /api/secrets/manager/signin           → run vendor signin, persist session
-*   POST /api/secrets/manager/signout          → drop persisted session
-*
-* Saved-login routes (in-app browser autofill):
-*
-*   GET    /api/secrets/logins                 → UnifiedLoginListEntry[] (no passwords)
-*                                                Aggregates in-house, 1Password, Bitwarden
-*   GET    /api/secrets/logins?domain=...      → filtered to one domain
-*   GET    /api/secrets/logins/reveal?source=...&identifier=...
-*                                              → reveal a single login (sensitive)
-*   POST   /api/secrets/logins                 → save / replace (in-house ONLY)
-*   DELETE /api/secrets/logins/:domain/:user   → remove (in-house ONLY)
-*   GET    /api/secrets/logins/:domain/autoallow  → boolean
-*   PUT    /api/secrets/logins/:domain/autoallow  → set boolean
-*
-* Why is CREATE in-house only? `op item create` and `bw create item` work
-* but require a vault path / folder id and structured field metadata that
-* a generic POST can't safely synthesize for the user. Adding an external
-* item is deferred to a future iteration with vendor-specific UI.
-*
-* The manager wraps `@elizaos/vault` and routes sensitive writes to
-* the user's chosen password manager (1Password / Proton / Bitwarden)
-* with `in-house` always available as the fallback.
-*
-* Per-process singleton. Two concurrent PUT requests must serialise
-* through the same `VaultImpl` mutex; a per-request `createManager()`
-* would yield independent in-process locks pointing at the same disk
-* file, racing each other on the read-modify-write cycle. Tests that
-* need a fresh manager (e.g. tmpdir vault per case) call
-* `_resetSecretsManagerForTesting()` between cases.
-*/
+ * Routes that drive the Settings → Secrets Manager UI.
+ *
+ *   GET  /api/secrets/manager/preferences      → ManagerPreferences
+ *   PUT  /api/secrets/manager/preferences      → save ManagerPreferences
+ *   GET  /api/secrets/manager/backends         → BackendStatus[]
+ *
+ *   GET  /api/secrets/manager/install/methods  → per-backend, per-OS install methods
+ *   POST /api/secrets/manager/install          → start install job → { jobId }
+ *   GET  /api/secrets/manager/install/:jobId   → SSE stream of install events
+ *
+ *   POST /api/secrets/manager/signin           → run vendor signin, persist session
+ *   POST /api/secrets/manager/signout          → drop persisted session
+ *
+ * Saved-login routes (in-app browser autofill):
+ *
+ *   GET    /api/secrets/logins                 → UnifiedLoginListEntry[] (no passwords)
+ *                                                Aggregates in-house, 1Password, Bitwarden
+ *   GET    /api/secrets/logins?domain=...      → filtered to one domain
+ *   GET    /api/secrets/logins/reveal?source=...&identifier=...
+ *                                              → reveal a single login (sensitive)
+ *   POST   /api/secrets/logins                 → save / replace (in-house ONLY)
+ *   DELETE /api/secrets/logins/:domain/:user   → remove (in-house ONLY)
+ *   GET    /api/secrets/logins/:domain/autoallow  → boolean
+ *   PUT    /api/secrets/logins/:domain/autoallow  → set boolean
+ *
+ * Why is CREATE in-house only? `op item create` and `bw create item` work
+ * but require a vault path / folder id and structured field metadata that
+ * a generic POST can't safely synthesize for the user. Adding an external
+ * item is deferred to a future iteration with vendor-specific UI.
+ *
+ * The manager wraps `@elizaos/vault` and routes sensitive writes to
+ * the user's chosen password manager (1Password / Proton / Bitwarden)
+ * with `in-house` always available as the fallback.
+ *
+ * Per-process singleton. Two concurrent PUT requests must serialise
+ * through the same `VaultImpl` mutex; a per-request `createManager()`
+ * would yield independent in-process locks pointing at the same disk
+ * file, racing each other on the read-modify-write cycle. Tests that
+ * need a fresh manager (e.g. tmpdir vault per case) call
+ * `_resetSecretsManagerForTesting()` between cases.
+ */
 let _manager = null;
 function getManager() {
 	if (!_manager) _manager = createManager({ vault: sharedVault() });
@@ -16358,29 +19444,30 @@ function getManager() {
 function getInstaller() {
 	return getSecretsManagerInstaller(getManager());
 }
-const INSTALLABLE_BACKENDS = [
-	"1password",
-	"bitwarden",
-	"protonpass"
-];
+const INSTALLABLE_BACKENDS = ["1password", "bitwarden", "protonpass"];
 function isInstallableBackend(value) {
 	return typeof value === "string" && INSTALLABLE_BACKENDS.includes(value);
 }
 async function handleSecretsManagerRoute(req, res, pathname, method) {
-	if (!pathname.startsWith("/api/secrets/manager") && !pathname.startsWith("/api/secrets/logins")) return false;
+	if (
+		!pathname.startsWith("/api/secrets/manager") &&
+		!pathname.startsWith("/api/secrets/logins")
+	)
+		return false;
 	const manager = getManager();
-	if (pathname.startsWith("/api/secrets/logins")) return handleSavedLoginsRoute(req, res, pathname, method, manager);
+	if (pathname.startsWith("/api/secrets/logins"))
+		return handleSavedLoginsRoute(req, res, pathname, method, manager);
 	if (method === "GET" && pathname === "/api/secrets/manager/backends") {
 		sendJson$2(res, 200, {
 			ok: true,
-			backends: await manager.detectBackends()
+			backends: await manager.detectBackends(),
 		});
 		return true;
 	}
 	if (method === "GET" && pathname === "/api/secrets/manager/preferences") {
 		sendJson$2(res, 200, {
 			ok: true,
-			preferences: await manager.getPreferences()
+			preferences: await manager.getPreferences(),
 		});
 		return true;
 	}
@@ -16402,7 +19489,7 @@ async function handleSecretsManagerRoute(req, res, pathname, method) {
 		await manager.setPreferences(prefs);
 		sendJson$2(res, 200, {
 			ok: true,
-			preferences: await manager.getPreferences()
+			preferences: await manager.getPreferences(),
 		});
 		return true;
 	}
@@ -16410,12 +19497,13 @@ async function handleSecretsManagerRoute(req, res, pathname, method) {
 		const out = {
 			"1password": [],
 			bitwarden: [],
-			protonpass: []
+			protonpass: [],
 		};
-		for (const id of INSTALLABLE_BACKENDS) out[id] = await resolveRunnableMethods(id);
+		for (const id of INSTALLABLE_BACKENDS)
+			out[id] = await resolveRunnableMethods(id);
 		sendJson$2(res, 200, {
 			ok: true,
-			methods: out
+			methods: out,
 		});
 		return true;
 	}
@@ -16431,7 +19519,11 @@ async function handleSecretsManagerRoute(req, res, pathname, method) {
 		}
 		const { backendId, method: rawMethod } = parsed;
 		if (!isInstallableBackend(backendId)) {
-			sendJsonError(res, 400, `invalid \`backendId\`; expected one of ${INSTALLABLE_BACKENDS.join(", ")}`);
+			sendJsonError(
+				res,
+				400,
+				`invalid \`backendId\`; expected one of ${INSTALLABLE_BACKENDS.join(", ")}`,
+			);
 			return true;
 		}
 		if (!isInstallMethodPayload(rawMethod)) {
@@ -16439,21 +19531,33 @@ async function handleSecretsManagerRoute(req, res, pathname, method) {
 			return true;
 		}
 		if (rawMethod.kind === "manual") {
-			sendJsonError(res, 400, "manual install methods cannot be automated; open the docs URL instead");
+			sendJsonError(
+				res,
+				400,
+				"manual install methods cannot be automated; open the docs URL instead",
+			);
 			return true;
 		}
-		const matched = (await resolveRunnableMethods(backendId)).find((m) => methodMatches(m, rawMethod));
+		const matched = (await resolveRunnableMethods(backendId)).find((m) =>
+			methodMatches(m, rawMethod),
+		);
 		if (!matched) {
-			sendJsonError(res, 400, `install method ${rawMethod.kind}:${rawMethod.package ?? ""} is not available on this host`);
+			sendJsonError(
+				res,
+				400,
+				`install method ${rawMethod.kind}:${rawMethod.package ?? ""} is not available on this host`,
+			);
 			return true;
 		}
 		sendJson$2(res, 202, {
 			ok: true,
-			jobId: getInstaller().startInstall(backendId, matched).id
+			jobId: getInstaller().startInstall(backendId, matched).id,
 		});
 		return true;
 	}
-	const sseMatch = pathname.match(/^\/api\/secrets\/manager\/install\/([0-9a-f-]{36})$/);
+	const sseMatch = pathname.match(
+		/^\/api\/secrets\/manager\/install\/([0-9a-f-]{36})$/,
+	);
 	if (method === "GET" && sseMatch) {
 		const jobId = sseMatch[1];
 		if (!jobId) {
@@ -16469,12 +19573,13 @@ async function handleSecretsManagerRoute(req, res, pathname, method) {
 			"Content-Type": "text/event-stream",
 			"Cache-Control": "no-cache, no-transform",
 			Connection: "keep-alive",
-			"X-Accel-Buffering": "no"
+			"X-Accel-Buffering": "no",
 		});
 		const heartbeat = setInterval(() => {
 			res.write(": heartbeat\n\n");
 		}, 15e3);
-		if (typeof heartbeat === "object" && "unref" in heartbeat) heartbeat.unref();
+		if (typeof heartbeat === "object" && "unref" in heartbeat)
+			heartbeat.unref();
 		const writeEvent = (event) => {
 			if (res.writableEnded) return;
 			res.write(`data: ${JSON.stringify(event)}\n\n`);
@@ -16518,15 +19623,25 @@ async function handleSecretsManagerRoute(req, res, pathname, method) {
 				result: await installer.signIn({
 					backendId: request.backendId,
 					masterPassword: request.masterPassword,
-					...request.email ? { email: request.email } : {},
-					...request.secretKey ? { secretKey: request.secretKey } : {},
-					...request.signInAddress ? { signInAddress: request.signInAddress } : {},
-					...request.bitwardenClientId ? { bitwardenClientId: request.bitwardenClientId } : {},
-					...request.bitwardenClientSecret ? { bitwardenClientSecret: request.bitwardenClientSecret } : {}
-				})
+					...(request.email ? { email: request.email } : {}),
+					...(request.secretKey ? { secretKey: request.secretKey } : {}),
+					...(request.signInAddress
+						? { signInAddress: request.signInAddress }
+						: {}),
+					...(request.bitwardenClientId
+						? { bitwardenClientId: request.bitwardenClientId }
+						: {}),
+					...(request.bitwardenClientSecret
+						? { bitwardenClientSecret: request.bitwardenClientSecret }
+						: {}),
+				}),
 			});
 		} catch (err) {
-			sendJsonError(res, 400, err instanceof Error ? err.message : "sign-in failed");
+			sendJsonError(
+				res,
+				400,
+				err instanceof Error ? err.message : "sign-in failed",
+			);
 		}
 		return true;
 	}
@@ -16559,12 +19674,14 @@ function isUnifiedSource(v) {
 async function handleSavedLoginsRoute(req, res, pathname, method, manager) {
 	const vault = sharedVault();
 	if (method === "GET" && pathname === "/api/secrets/logins") {
-		const domain = new URL(req.url ?? "", "http://localhost").searchParams.get("domain") ?? void 0;
+		const domain =
+			new URL(req.url ?? "", "http://localhost").searchParams.get("domain") ??
+			void 0;
 		const result = await manager.listAllSavedLogins(domain ? { domain } : {});
 		sendJson$2(res, 200, {
 			ok: true,
 			logins: result.logins,
-			failures: result.failures
+			failures: result.failures,
 		});
 		return true;
 	}
@@ -16573,7 +19690,11 @@ async function handleSavedLoginsRoute(req, res, pathname, method, manager) {
 		const source = url.searchParams.get("source");
 		const identifier = url.searchParams.get("identifier");
 		if (!isUnifiedSource(source)) {
-			sendJsonError(res, 400, "`source` must be one of: in-house, 1password, bitwarden");
+			sendJsonError(
+				res,
+				400,
+				"`source` must be one of: in-house, 1password, bitwarden",
+			);
 			return true;
 		}
 		if (!identifier) {
@@ -16583,10 +19704,14 @@ async function handleSavedLoginsRoute(req, res, pathname, method, manager) {
 		try {
 			sendJson$2(res, 200, {
 				ok: true,
-				login: await manager.revealSavedLogin(source, identifier)
+				login: await manager.revealSavedLogin(source, identifier),
 			});
 		} catch (err) {
-			sendJsonError(res, 404, err instanceof Error ? err.message : "reveal failed");
+			sendJsonError(
+				res,
+				404,
+				err instanceof Error ? err.message : "reveal failed",
+			);
 		}
 		return true;
 	}
@@ -16625,8 +19750,8 @@ async function handleSavedLoginsRoute(req, res, pathname, method, manager) {
 			domain: p.domain,
 			username: p.username,
 			password: p.password,
-			...typeof p.otpSeed === "string" ? { otpSeed: p.otpSeed } : {},
-			...typeof p.notes === "string" ? { notes: p.notes } : {}
+			...(typeof p.otpSeed === "string" ? { otpSeed: p.otpSeed } : {}),
+			...(typeof p.notes === "string" ? { notes: p.notes } : {}),
 		});
 		sendJson$2(res, 200, { ok: true });
 		return true;
@@ -16642,7 +19767,7 @@ async function handleSavedLoginsRoute(req, res, pathname, method, manager) {
 		if (method === "GET") {
 			sendJson$2(res, 200, {
 				ok: true,
-				allowed: await getAutofillAllowed(vault, domain)
+				allowed: await getAutofillAllowed(vault, domain),
 			});
 			return true;
 		}
@@ -16664,7 +19789,7 @@ async function handleSavedLoginsRoute(req, res, pathname, method, manager) {
 			await setAutofillAllowed(vault, domain, allowed);
 			sendJson$2(res, 200, {
 				ok: true,
-				allowed
+				allowed,
 			});
 			return true;
 		}
@@ -16687,7 +19812,7 @@ async function handleSavedLoginsRoute(req, res, pathname, method, manager) {
 			}
 			sendJson$2(res, 200, {
 				ok: true,
-				login
+				login,
 			});
 			return true;
 		}
@@ -16715,7 +19840,8 @@ function isInstallMethodPayload(value) {
 }
 function methodMatches(a, b) {
 	if (a.kind !== b.kind) return false;
-	if (a.kind === "brew" && b.kind === "brew") return a.package === b.package && a.cask === b.cask;
+	if (a.kind === "brew" && b.kind === "brew")
+		return a.package === b.package && a.cask === b.cask;
 	if (a.kind === "npm" && b.kind === "npm") return a.package === b.package;
 	if (a.kind === "manual" && b.kind === "manual") return a.url === b.url;
 	return false;
@@ -16733,21 +19859,17 @@ const MARKET_OVERVIEW_REFRESH_LIMIT = 24;
 const COINGECKO_MARKET_LIMIT = 80;
 const POLYMARKET_MARKET_LIMIT = 10;
 const CACHE_CONTROL_VALUE = "public, max-age=60, stale-while-revalidate=180";
-const MARKET_PRICE_IDS = [
-	"bitcoin",
-	"ethereum",
-	"solana"
-];
+const MARKET_PRICE_IDS = ["bitcoin", "ethereum", "solana"];
 const MARKET_PRICE_ID_SET = new Set(MARKET_PRICE_IDS);
 const COINGECKO_SOURCE = {
 	providerId: "coingecko",
 	providerName: "CoinGecko",
-	providerUrl: "https://www.coingecko.com/"
+	providerUrl: "https://www.coingecko.com/",
 };
 const POLYMARKET_SOURCE = {
 	providerId: "polymarket",
 	providerName: "Polymarket",
-	providerUrl: "https://polymarket.com/"
+	providerUrl: "https://polymarket.com/",
 };
 const STABLE_ASSET_IDS = new Set([
 	"tether",
@@ -16757,7 +19879,7 @@ const STABLE_ASSET_IDS = new Set([
 	"dai",
 	"ethena-usde",
 	"true-usd",
-	"usds"
+	"usds",
 ]);
 const STABLE_ASSET_SYMBOLS = new Set([
 	"usdt",
@@ -16767,41 +19889,45 @@ const STABLE_ASSET_SYMBOLS = new Set([
 	"dai",
 	"usde",
 	"tusd",
-	"usds"
+	"usds",
 ]);
 let cachedWalletMarketOverview = null;
 let walletMarketOverviewInFlight = null;
 const walletMarketRefreshBuckets = /* @__PURE__ */ new Map();
-let walletMarketOverviewFetch = fetchWithTimeoutGuard$1;
+const walletMarketOverviewFetch = fetchWithTimeoutGuard$1;
 function marketOverviewErrorMessage(error) {
-	return error instanceof Error && error.message.trim().length > 0 ? error.message.trim() : "Upstream market feed failed";
+	return error instanceof Error && error.message.trim().length > 0
+		? error.message.trim()
+		: "Upstream market feed failed";
 }
 function buildMarketOverviewSource(source, { available, stale, error }) {
 	return {
 		...source,
 		available,
 		stale,
-		error
+		error,
 	};
 }
 function markMarketOverviewSourcesStale(sources) {
 	return {
 		prices: {
 			...sources.prices,
-			stale: true
+			stale: true,
 		},
 		movers: {
 			...sources.movers,
-			stale: true
+			stale: true,
 		},
 		predictions: {
 			...sources.predictions,
-			stale: true
-		}
+			stale: true,
+		},
 	};
 }
 function asRecord$1(value) {
-	return value && typeof value === "object" && !Array.isArray(value) ? value : null;
+	return value && typeof value === "object" && !Array.isArray(value)
+		? value
+		: null;
 }
 function numberFromUnknown(value) {
 	if (typeof value === "number" && Number.isFinite(value)) return value;
@@ -16818,11 +19944,14 @@ function stringFromUnknown(value) {
 	return typeof value === "string" && value.trim().length > 0 ? value : null;
 }
 function parseStringArray(value) {
-	if (Array.isArray(value)) return value.filter((item) => typeof item === "string");
+	if (Array.isArray(value))
+		return value.filter((item) => typeof item === "string");
 	if (typeof value !== "string" || value.trim().length === 0) return [];
 	try {
 		const parsed = JSON.parse(value);
-		return Array.isArray(parsed) ? parsed.filter((item) => typeof item === "string") : [];
+		return Array.isArray(parsed)
+			? parsed.filter((item) => typeof item === "string")
+			: [];
 	} catch {
 		return [];
 	}
@@ -16844,7 +19973,14 @@ function mapCoinGeckoMarket(input) {
 	const name = stringFromUnknown(record.name);
 	const currentPriceUsd = numberFromUnknown(record.current_price);
 	const change24hPct = numberFromUnknown(record.price_change_percentage_24h);
-	if (!id || !symbol || !name || currentPriceUsd === null || change24hPct === null) return null;
+	if (
+		!id ||
+		!symbol ||
+		!name ||
+		currentPriceUsd === null ||
+		change24hPct === null
+	)
+		return null;
 	return {
 		id,
 		symbol: symbol.toUpperCase(),
@@ -16852,7 +19988,7 @@ function mapCoinGeckoMarket(input) {
 		currentPriceUsd,
 		change24hPct,
 		marketCapRank: integerFromUnknown(record.market_cap_rank),
-		imageUrl: stringFromUnknown(record.image)
+		imageUrl: stringFromUnknown(record.image),
 	};
 }
 function mapPolymarketMarket(input) {
@@ -16861,7 +19997,9 @@ function mapPolymarketMarket(input) {
 	const question = stringFromUnknown(record.question);
 	if (!question) return null;
 	const outcomeLabels = parseStringArray(record.outcomes);
-	const outcomeProbabilities = parseStringArray(record.outcomePrices).map((value) => clampProbability(numberFromUnknown(value))).filter((value) => value !== null);
+	const outcomeProbabilities = parseStringArray(record.outcomePrices)
+		.map((value) => clampProbability(numberFromUnknown(value)))
+		.filter((value) => value !== null);
 	const volume24hUsd = numberFromUnknown(record.volume24hr);
 	if (volume24hUsd === null) return null;
 	return {
@@ -16872,28 +20010,33 @@ function mapPolymarketMarket(input) {
 		volume24hUsd,
 		totalVolumeUsd: numberFromUnknown(record.volume),
 		endsAt: stringFromUnknown(record.endDate),
-		imageUrl: stringFromUnknown(record.image) ?? stringFromUnknown(record.icon)
+		imageUrl: stringFromUnknown(record.image) ?? stringFromUnknown(record.icon),
 	};
 }
 function highlightedPredictionOutcome(market) {
-	const yesIndex = market.outcomeLabels.findIndex((label) => label.trim().toLowerCase() === "yes");
-	if (yesIndex >= 0) return {
-		label: market.outcomeLabels[yesIndex] ?? "Yes",
-		probability: market.outcomeProbabilities[yesIndex] ?? null
-	};
+	const yesIndex = market.outcomeLabels.findIndex(
+		(label) => label.trim().toLowerCase() === "yes",
+	);
+	if (yesIndex >= 0)
+		return {
+			label: market.outcomeLabels[yesIndex] ?? "Yes",
+			probability: market.outcomeProbabilities[yesIndex] ?? null,
+		};
 	let highestIndex = -1;
 	let highestProbability = -1;
-	for (const [index, probability] of market.outcomeProbabilities.entries()) if (probability > highestProbability) {
-		highestIndex = index;
-		highestProbability = probability;
-	}
-	if (highestIndex >= 0) return {
-		label: market.outcomeLabels[highestIndex] ?? "Top",
-		probability: market.outcomeProbabilities[highestIndex] ?? null
-	};
+	for (const [index, probability] of market.outcomeProbabilities.entries())
+		if (probability > highestProbability) {
+			highestIndex = index;
+			highestProbability = probability;
+		}
+	if (highestIndex >= 0)
+		return {
+			label: market.outcomeLabels[highestIndex] ?? "Top",
+			probability: market.outcomeProbabilities[highestIndex] ?? null,
+		};
 	return {
 		label: "Top",
-		probability: null
+		probability: null,
 	};
 }
 async function fetchCoinGeckoMarkets() {
@@ -16903,16 +20046,21 @@ async function fetchCoinGeckoMarkets() {
 	url.searchParams.set("per_page", String(COINGECKO_MARKET_LIMIT));
 	url.searchParams.set("page", "1");
 	url.searchParams.set("price_change_percentage", "24h");
-	const response = await walletMarketOverviewFetch(url, {
-		method: "GET",
-		headers: {
-			accept: "application/json",
-			"user-agent": "Eliza Wallet Market Feed/1.0"
-		}
-	}, MARKET_OVERVIEW_FETCH_TIMEOUT_MS);
+	const response = await walletMarketOverviewFetch(
+		url,
+		{
+			method: "GET",
+			headers: {
+				accept: "application/json",
+				"user-agent": "Eliza Wallet Market Feed/1.0",
+			},
+		},
+		MARKET_OVERVIEW_FETCH_TIMEOUT_MS,
+	);
 	if (!response.ok) throw new Error(`CoinGecko responded ${response.status}`);
 	const payload = await response.json();
-	if (!Array.isArray(payload)) throw new Error("CoinGecko payload was not an array");
+	if (!Array.isArray(payload))
+		throw new Error("CoinGecko payload was not an array");
 	return payload.map(mapCoinGeckoMarket).filter((market) => market !== null);
 }
 async function fetchPolymarketMarkets() {
@@ -16922,16 +20070,21 @@ async function fetchPolymarketMarkets() {
 	url.searchParams.set("order", "volume24hr");
 	url.searchParams.set("ascending", "false");
 	url.searchParams.set("limit", String(POLYMARKET_MARKET_LIMIT));
-	const response = await walletMarketOverviewFetch(url, {
-		method: "GET",
-		headers: {
-			accept: "application/json",
-			"user-agent": "Eliza Wallet Market Feed/1.0"
-		}
-	}, MARKET_OVERVIEW_FETCH_TIMEOUT_MS);
+	const response = await walletMarketOverviewFetch(
+		url,
+		{
+			method: "GET",
+			headers: {
+				accept: "application/json",
+				"user-agent": "Eliza Wallet Market Feed/1.0",
+			},
+		},
+		MARKET_OVERVIEW_FETCH_TIMEOUT_MS,
+	);
 	if (!response.ok) throw new Error(`Polymarket responded ${response.status}`);
 	const payload = await response.json();
-	if (!Array.isArray(payload)) throw new Error("Polymarket payload was not an array");
+	if (!Array.isArray(payload))
+		throw new Error("Polymarket payload was not an array");
 	return payload.map(mapPolymarketMarket).filter((market) => market !== null);
 }
 function buildPriceSnapshots(markets) {
@@ -16945,21 +20098,32 @@ function buildPriceSnapshots(markets) {
 			name: market.name,
 			priceUsd: market.currentPriceUsd,
 			change24hPct: market.change24hPct,
-			imageUrl: market.imageUrl
+			imageUrl: market.imageUrl,
 		});
 		return items;
 	}, []);
 }
 function buildMovers(markets) {
-	return markets.filter((market) => !MARKET_PRICE_ID_SET.has(market.id)).filter((market) => !isStableAsset(market)).filter((market) => market.marketCapRank === null || market.marketCapRank <= 200).sort((left, right) => Math.abs(right.change24hPct) - Math.abs(left.change24hPct)).slice(0, 6).map((market) => ({
-		id: market.id,
-		symbol: market.symbol,
-		name: market.name,
-		priceUsd: market.currentPriceUsd,
-		change24hPct: market.change24hPct,
-		marketCapRank: market.marketCapRank,
-		imageUrl: market.imageUrl
-	}));
+	return markets
+		.filter((market) => !MARKET_PRICE_ID_SET.has(market.id))
+		.filter((market) => !isStableAsset(market))
+		.filter(
+			(market) => market.marketCapRank === null || market.marketCapRank <= 200,
+		)
+		.sort(
+			(left, right) =>
+				Math.abs(right.change24hPct) - Math.abs(left.change24hPct),
+		)
+		.slice(0, 6)
+		.map((market) => ({
+			id: market.id,
+			symbol: market.symbol,
+			name: market.name,
+			priceUsd: market.currentPriceUsd,
+			change24hPct: market.change24hPct,
+			marketCapRank: market.marketCapRank,
+			imageUrl: market.imageUrl,
+		}));
 }
 function buildPredictions(markets) {
 	const seenQuestions = /* @__PURE__ */ new Set();
@@ -16978,43 +20142,81 @@ function buildPredictions(markets) {
 			volume24hUsd: market.volume24hUsd,
 			totalVolumeUsd: market.totalVolumeUsd,
 			endsAt: market.endsAt,
-			imageUrl: market.imageUrl
+			imageUrl: market.imageUrl,
 		});
 	}
 	return predictions.slice(0, 6);
 }
 function isWalletMarketOverviewSource(value) {
 	const record = asRecord$1(value);
-	return record !== null && typeof record.providerId === "string" && typeof record.providerName === "string" && typeof record.providerUrl === "string" && typeof record.available === "boolean" && typeof record.stale === "boolean" && (typeof record.error === "string" || record.error === null);
+	return (
+		record !== null &&
+		typeof record.providerId === "string" &&
+		typeof record.providerName === "string" &&
+		typeof record.providerUrl === "string" &&
+		typeof record.available === "boolean" &&
+		typeof record.stale === "boolean" &&
+		(typeof record.error === "string" || record.error === null)
+	);
 }
 function isWalletMarketOverviewResponse(value) {
 	const record = asRecord$1(value);
 	const sources = asRecord$1(record?.sources);
-	return record !== null && typeof record.generatedAt === "string" && typeof record.cacheTtlSeconds === "number" && typeof record.stale === "boolean" && sources !== null && isWalletMarketOverviewSource(sources.prices) && isWalletMarketOverviewSource(sources.movers) && isWalletMarketOverviewSource(sources.predictions) && Array.isArray(record.prices) && Array.isArray(record.movers) && Array.isArray(record.predictions);
+	return (
+		record !== null &&
+		typeof record.generatedAt === "string" &&
+		typeof record.cacheTtlSeconds === "number" &&
+		typeof record.stale === "boolean" &&
+		sources !== null &&
+		isWalletMarketOverviewSource(sources.prices) &&
+		isWalletMarketOverviewSource(sources.movers) &&
+		isWalletMarketOverviewSource(sources.predictions) &&
+		Array.isArray(record.prices) &&
+		Array.isArray(record.movers) &&
+		Array.isArray(record.predictions)
+	);
 }
 function resolveWalletMarketOverviewCloudPreviewUrl() {
 	return `${resolveCloudApiBaseUrl$1(process.env.ELIZAOS_CLOUD_BASE_URL)}${CLOUD_MARKET_OVERVIEW_PREVIEW_PATH}`;
 }
 async function fetchCloudWalletMarketOverview(clientAddress) {
-	const response = await walletMarketOverviewFetch(resolveWalletMarketOverviewCloudPreviewUrl(), {
-		method: "GET",
-		headers: {
-			accept: "application/json",
-			"user-agent": "Eliza Wallet Market Feed/1.0",
-			...clientAddress !== "unknown" ? { "x-forwarded-for": clientAddress } : {}
-		}
-	}, MARKET_OVERVIEW_FETCH_TIMEOUT_MS);
-	if (!response.ok) throw new Error(`Cloud preview responded ${response.status}`);
+	const response = await walletMarketOverviewFetch(
+		resolveWalletMarketOverviewCloudPreviewUrl(),
+		{
+			method: "GET",
+			headers: {
+				accept: "application/json",
+				"user-agent": "Eliza Wallet Market Feed/1.0",
+				...(clientAddress !== "unknown"
+					? { "x-forwarded-for": clientAddress }
+					: {}),
+			},
+		},
+		MARKET_OVERVIEW_FETCH_TIMEOUT_MS,
+	);
+	if (!response.ok)
+		throw new Error(`Cloud preview responded ${response.status}`);
 	const payload = await response.json();
-	if (!isWalletMarketOverviewResponse(payload)) throw new Error("Cloud preview payload was invalid");
+	if (!isWalletMarketOverviewResponse(payload))
+		throw new Error("Cloud preview payload was invalid");
 	return payload;
 }
 async function buildWalletMarketOverview(clientAddress) {
-	const [cloudPreviewResult, polymarketResult] = await Promise.allSettled([fetchCloudWalletMarketOverview(clientAddress), fetchPolymarketMarkets()]);
-	const polymarketMarkets = polymarketResult.status === "fulfilled" ? polymarketResult.value : [];
-	const polymarketError = polymarketResult.status === "rejected" ? marketOverviewErrorMessage(polymarketResult.reason) : null;
+	const [cloudPreviewResult, polymarketResult] = await Promise.allSettled([
+		fetchCloudWalletMarketOverview(clientAddress),
+		fetchPolymarketMarkets(),
+	]);
+	const polymarketMarkets =
+		polymarketResult.status === "fulfilled" ? polymarketResult.value : [];
+	const polymarketError =
+		polymarketResult.status === "rejected"
+			? marketOverviewErrorMessage(polymarketResult.reason)
+			: null;
 	if (cloudPreviewResult.status === "fulfilled") {
-		if (polymarketError) logger.warn(`[WalletMarketOverviewRoute] Polymarket feed unavailable (${polymarketError})`);
+		if (polymarketError)
+			logger.warn(
+				`[WalletMarketOverviewRoute] Polymarket feed unavailable (${polymarketError})`,
+			);
 		return {
 			...cloudPreviewResult.value,
 			sources: {
@@ -17022,50 +20224,70 @@ async function buildWalletMarketOverview(clientAddress) {
 				predictions: buildMarketOverviewSource(POLYMARKET_SOURCE, {
 					available: polymarketError === null,
 					stale: false,
-					error: polymarketError
-				})
+					error: polymarketError,
+				}),
 			},
-			predictions: polymarketError === null ? buildPredictions(polymarketMarkets) : []
+			predictions:
+				polymarketError === null ? buildPredictions(polymarketMarkets) : [],
 		};
 	}
 	{
 		const error = cloudPreviewResult.reason;
-		logger.warn(`[WalletMarketOverviewRoute] Cloud preview unavailable (${marketOverviewErrorMessage(error)}); falling back to direct feeds`);
+		logger.warn(
+			`[WalletMarketOverviewRoute] Cloud preview unavailable (${marketOverviewErrorMessage(error)}); falling back to direct feeds`,
+		);
 	}
 	const [coinGeckoResult] = await Promise.allSettled([fetchCoinGeckoMarkets()]);
-	const coinGeckoMarkets = coinGeckoResult.status === "fulfilled" ? coinGeckoResult.value : [];
-	const coinGeckoError = coinGeckoResult.status === "rejected" ? marketOverviewErrorMessage(coinGeckoResult.reason) : null;
-	if (coinGeckoError) logger.warn(`[WalletMarketOverviewRoute] CoinGecko feed unavailable (${coinGeckoError})`);
-	if (polymarketError) logger.warn(`[WalletMarketOverviewRoute] Polymarket feed unavailable (${polymarketError})`);
-	if (coinGeckoError && polymarketError) throw new Error(`CoinGecko: ${coinGeckoError}; Polymarket: ${polymarketError}`);
+	const coinGeckoMarkets =
+		coinGeckoResult.status === "fulfilled" ? coinGeckoResult.value : [];
+	const coinGeckoError =
+		coinGeckoResult.status === "rejected"
+			? marketOverviewErrorMessage(coinGeckoResult.reason)
+			: null;
+	if (coinGeckoError)
+		logger.warn(
+			`[WalletMarketOverviewRoute] CoinGecko feed unavailable (${coinGeckoError})`,
+		);
+	if (polymarketError)
+		logger.warn(
+			`[WalletMarketOverviewRoute] Polymarket feed unavailable (${polymarketError})`,
+		);
+	if (coinGeckoError && polymarketError)
+		throw new Error(
+			`CoinGecko: ${coinGeckoError}; Polymarket: ${polymarketError}`,
+		);
 	return {
-		generatedAt: (/* @__PURE__ */ new Date()).toISOString(),
+		generatedAt: /* @__PURE__ */ new Date().toISOString(),
 		cacheTtlSeconds: Math.floor(MARKET_OVERVIEW_CACHE_TTL_MS / 1e3),
 		stale: false,
 		sources: {
 			prices: buildMarketOverviewSource(COINGECKO_SOURCE, {
 				available: coinGeckoError === null,
 				stale: false,
-				error: coinGeckoError
+				error: coinGeckoError,
 			}),
 			movers: buildMarketOverviewSource(COINGECKO_SOURCE, {
 				available: coinGeckoError === null,
 				stale: false,
-				error: coinGeckoError
+				error: coinGeckoError,
 			}),
 			predictions: buildMarketOverviewSource(POLYMARKET_SOURCE, {
 				available: polymarketError === null,
 				stale: false,
-				error: polymarketError
-			})
+				error: polymarketError,
+			}),
 		},
 		prices: buildPriceSnapshots(coinGeckoMarkets),
 		movers: buildMovers(coinGeckoMarkets),
-		predictions: buildPredictions(polymarketMarkets)
+		predictions: buildPredictions(polymarketMarkets),
 	};
 }
 function freshCachedWalletMarketOverview() {
-	if (!cachedWalletMarketOverview || cachedWalletMarketOverview.expiresAt <= Date.now()) return null;
+	if (
+		!cachedWalletMarketOverview ||
+		cachedWalletMarketOverview.expiresAt <= Date.now()
+	)
+		return null;
 	return cachedWalletMarketOverview.response;
 }
 function staleCachedWalletMarketOverview() {
@@ -17073,38 +20295,44 @@ function staleCachedWalletMarketOverview() {
 	return {
 		...cachedWalletMarketOverview.response,
 		stale: true,
-		sources: markMarketOverviewSourcesStale(cachedWalletMarketOverview.response.sources)
+		sources: markMarketOverviewSourcesStale(
+			cachedWalletMarketOverview.response.sources,
+		),
 	};
 }
 function resolveClientAddress(req) {
 	const forwardedFor = req.headers["x-forwarded-for"];
-	if (typeof forwardedFor === "string" && forwardedFor.trim().length > 0) return forwardedFor.split(",")[0]?.trim() || "unknown";
-	if (Array.isArray(forwardedFor) && forwardedFor.length > 0) return forwardedFor[0]?.trim() || "unknown";
+	if (typeof forwardedFor === "string" && forwardedFor.trim().length > 0)
+		return forwardedFor.split(",")[0]?.trim() || "unknown";
+	if (Array.isArray(forwardedFor) && forwardedFor.length > 0)
+		return forwardedFor[0]?.trim() || "unknown";
 	return req.socket.remoteAddress ?? "unknown";
 }
 function consumeRefreshSlot(clientAddress) {
 	const now = Date.now();
-	for (const [key, bucket] of walletMarketRefreshBuckets) if (bucket.resetAt <= now) walletMarketRefreshBuckets.delete(key);
+	for (const [key, bucket] of walletMarketRefreshBuckets)
+		if (bucket.resetAt <= now) walletMarketRefreshBuckets.delete(key);
 	const bucket = walletMarketRefreshBuckets.get(clientAddress);
 	if (!bucket || bucket.resetAt <= now) {
 		walletMarketRefreshBuckets.set(clientAddress, {
 			count: 1,
-			resetAt: now + MARKET_OVERVIEW_REFRESH_WINDOW_MS
+			resetAt: now + MARKET_OVERVIEW_REFRESH_WINDOW_MS,
 		});
 		return {
 			allowed: true,
-			retryAfterSeconds: Math.ceil(MARKET_OVERVIEW_REFRESH_WINDOW_MS / 1e3)
+			retryAfterSeconds: Math.ceil(MARKET_OVERVIEW_REFRESH_WINDOW_MS / 1e3),
 		};
 	}
-	if (bucket.count >= MARKET_OVERVIEW_REFRESH_LIMIT) return {
-		allowed: false,
-		retryAfterSeconds: Math.max(1, Math.ceil((bucket.resetAt - now) / 1e3))
-	};
+	if (bucket.count >= MARKET_OVERVIEW_REFRESH_LIMIT)
+		return {
+			allowed: false,
+			retryAfterSeconds: Math.max(1, Math.ceil((bucket.resetAt - now) / 1e3)),
+		};
 	bucket.count += 1;
 	walletMarketRefreshBuckets.set(clientAddress, bucket);
 	return {
 		allowed: true,
-		retryAfterSeconds: Math.max(1, Math.ceil((bucket.resetAt - now) / 1e3))
+		retryAfterSeconds: Math.max(1, Math.ceil((bucket.resetAt - now) / 1e3)),
 	};
 }
 function setPublicMarketHeaders(res) {
@@ -17115,27 +20343,37 @@ function setPublicMarketHeaders(res) {
 async function loadWalletMarketOverview(clientAddress) {
 	const fresh = freshCachedWalletMarketOverview();
 	if (fresh) return fresh;
-	if (!walletMarketOverviewInFlight) walletMarketOverviewInFlight = buildWalletMarketOverview(clientAddress).then((response) => {
-		cachedWalletMarketOverview = {
-			response,
-			expiresAt: Date.now() + MARKET_OVERVIEW_CACHE_TTL_MS
-		};
-		return response;
-	}).catch((error) => {
-		const stale = staleCachedWalletMarketOverview();
-		if (stale) {
-			logger.warn(`[WalletMarketOverviewRoute] Refresh failed; serving stale market overview (${error instanceof Error ? error.message : String(error)})`);
-			return stale;
-		}
-		throw error;
-	}).finally(() => {
-		walletMarketOverviewInFlight = null;
-	});
+	if (!walletMarketOverviewInFlight)
+		walletMarketOverviewInFlight = buildWalletMarketOverview(clientAddress)
+			.then((response) => {
+				cachedWalletMarketOverview = {
+					response,
+					expiresAt: Date.now() + MARKET_OVERVIEW_CACHE_TTL_MS,
+				};
+				return response;
+			})
+			.catch((error) => {
+				const stale = staleCachedWalletMarketOverview();
+				if (stale) {
+					logger.warn(
+						`[WalletMarketOverviewRoute] Refresh failed; serving stale market overview (${error instanceof Error ? error.message : String(error)})`,
+					);
+					return stale;
+				}
+				throw error;
+			})
+			.finally(() => {
+				walletMarketOverviewInFlight = null;
+			});
 	return walletMarketOverviewInFlight;
 }
 async function handleWalletMarketOverviewRoute(req, res) {
 	const method = (req.method ?? "GET").toUpperCase();
-	if (new URL(req.url ?? "/", "http://localhost").pathname !== MARKET_OVERVIEW_PATH) return false;
+	if (
+		new URL(req.url ?? "/", "http://localhost").pathname !==
+		MARKET_OVERVIEW_PATH
+	)
+		return false;
 	setPublicMarketHeaders(res);
 	if (method === "OPTIONS") {
 		res.statusCode = 204;
@@ -17168,7 +20406,9 @@ async function handleWalletMarketOverviewRoute(req, res) {
 	try {
 		sendJson$2(res, 200, await loadWalletMarketOverview(clientAddress));
 	} catch (error) {
-		logger.error(`[WalletMarketOverviewRoute] Failed to load market overview (${error instanceof Error ? error.message : String(error)})`);
+		logger.error(
+			`[WalletMarketOverviewRoute] Failed to load market overview (${error instanceof Error ? error.message : String(error)})`,
+		);
 		sendJsonError(res, 502, "Failed to load market overview");
 	}
 	return true;
@@ -17189,11 +20429,15 @@ function readCompatTaskMetadata(task) {
 }
 function normalizeCompatStringArray(value) {
 	if (!Array.isArray(value)) return [];
-	return value.filter((entry) => typeof entry === "string").map((entry) => entry.trim()).filter((entry) => entry.length > 0);
+	return value
+		.filter((entry) => typeof entry === "string")
+		.map((entry) => entry.trim())
+		.filter((entry) => entry.length > 0);
 }
 function parseCompatNullableNumber(value) {
 	if (value === null || value === void 0 || value === "") return null;
-	if (typeof value === "number" && Number.isFinite(value)) return Math.trunc(value);
+	if (typeof value === "number" && Number.isFinite(value))
+		return Math.trunc(value);
 	if (typeof value === "string") {
 		const parsed = Number.parseInt(value, 10);
 		return Number.isNaN(parsed) ? null : parsed;
@@ -17203,31 +20447,49 @@ function parseCompatNullableNumber(value) {
 function readCompatTaskCompleted(task) {
 	const metadata = readCompatTaskMetadata(task);
 	if (typeof metadata.isCompleted === "boolean") return metadata.isCompleted;
-	const todoMeta = asCompatObject(metadata.workbenchTodo) ?? asCompatObject(metadata.todo);
-	if (todoMeta && typeof todoMeta.isCompleted === "boolean") return todoMeta.isCompleted;
+	const todoMeta =
+		asCompatObject(metadata.workbenchTodo) ?? asCompatObject(metadata.todo);
+	if (todoMeta && typeof todoMeta.isCompleted === "boolean")
+		return todoMeta.isCompleted;
 	return false;
 }
 function normalizeCompatTodoTags(value, defaults) {
-	const tags = new Set(defaults.map((entry) => entry.trim()).filter((entry) => entry.length > 0));
+	const tags = new Set(
+		defaults.map((entry) => entry.trim()).filter((entry) => entry.length > 0),
+	);
 	for (const tag of normalizeCompatStringArray(value)) tags.add(tag);
 	return [...tags];
 }
 function toTaskBackedWorkbenchTodo(task) {
 	if (!task) return null;
-	const id = typeof task.id === "string" && task.id.trim().length > 0 ? task.id : null;
+	const id =
+		typeof task.id === "string" && task.id.trim().length > 0 ? task.id : null;
 	if (!id) return null;
 	const tags = new Set(normalizeCompatStringArray(task.tags));
 	const metadata = readCompatTaskMetadata(task);
-	const todoMeta = asCompatObject(metadata.workbenchTodo) ?? asCompatObject(metadata.todo);
-	if (!tags.has(WORKBENCH_TODO_TAG) && !tags.has("todo") && !todoMeta) return null;
+	const todoMeta =
+		asCompatObject(metadata.workbenchTodo) ?? asCompatObject(metadata.todo);
+	if (!tags.has(WORKBENCH_TODO_TAG) && !tags.has("todo") && !todoMeta)
+		return null;
 	return {
 		id,
-		name: typeof task.name === "string" && task.name.trim().length > 0 ? task.name : "Todo",
-		description: typeof todoMeta?.description === "string" ? todoMeta.description : typeof task.description === "string" ? task.description : "",
+		name:
+			typeof task.name === "string" && task.name.trim().length > 0
+				? task.name
+				: "Todo",
+		description:
+			typeof todoMeta?.description === "string"
+				? todoMeta.description
+				: typeof task.description === "string"
+					? task.description
+					: "",
 		priority: parseCompatNullableNumber(todoMeta?.priority),
 		isUrgent: todoMeta?.isUrgent === true,
 		isCompleted: readCompatTaskCompleted(task),
-		type: typeof todoMeta?.type === "string" && todoMeta.type.trim().length > 0 ? todoMeta.type : "task"
+		type:
+			typeof todoMeta?.type === "string" && todoMeta.type.trim().length > 0
+				? todoMeta.type
+				: "task",
 	};
 }
 function runtimeHasTodoDatabase(runtime) {
@@ -17247,17 +20509,32 @@ function decodeCompatTodoId(rawValue, res) {
 		return null;
 	}
 }
-async function handleTaskBackedWorkbenchTodoRoute(req, res, state, pathname, method) {
+async function handleTaskBackedWorkbenchTodoRoute(
+	req,
+	res,
+	state,
+	pathname,
+	method,
+) {
 	const runtime = state.current;
 	if (!runtime) return false;
-	if (pathname !== "/api/workbench/todos" && !pathname.startsWith("/api/workbench/todos/")) return false;
-	if (!await ensureRouteAuthorized(req, res, state)) return true;
+	if (
+		pathname !== "/api/workbench/todos" &&
+		!pathname.startsWith("/api/workbench/todos/")
+	)
+		return false;
+	if (!(await ensureRouteAuthorized(req, res, state))) return true;
 	let operation = "route";
 	try {
 		const getTaskList = async () => await runtime.getTasks({});
 		if (method === "GET" && pathname === "/api/workbench/todos") {
 			operation = "list todos";
-			sendJson$2(res, 200, { todos: (await getTaskList()).map((task) => toTaskBackedWorkbenchTodo(task)).filter((todo) => todo !== null).sort((left, right) => left.name.localeCompare(right.name)) });
+			sendJson$2(res, 200, {
+				todos: (await getTaskList())
+					.map((task) => toTaskBackedWorkbenchTodo(task))
+					.filter((todo) => todo !== null)
+					.sort((left, right) => left.name.localeCompare(right.name)),
+			});
 			return true;
 		}
 		if (method === "POST" && pathname === "/api/workbench/todos") {
@@ -17268,8 +20545,12 @@ async function handleTaskBackedWorkbenchTodoRoute(req, res, state, pathname, met
 				sendJsonError(res, 400, "name is required");
 				return true;
 			}
-			const description = typeof body.description === "string" ? body.description : "";
-			const type = typeof body.type === "string" && body.type.trim().length > 0 ? body.type.trim() : "task";
+			const description =
+				typeof body.description === "string" ? body.description : "";
+			const type =
+				typeof body.type === "string" && body.type.trim().length > 0
+					? body.type.trim()
+					: "task";
 			operation = "create todo";
 			const taskId = await runtime.createTask({
 				name,
@@ -17282,9 +20563,9 @@ async function handleTaskBackedWorkbenchTodoRoute(req, res, state, pathname, met
 						priority: parseCompatNullableNumber(body.priority),
 						isUrgent: body.isUrgent === true,
 						isCompleted: false,
-						type
-					}
-				}
+						type,
+					},
+				},
 			});
 			operation = "load created todo";
 			const todo = toTaskBackedWorkbenchTodo(await runtime.getTask(taskId));
@@ -17295,7 +20576,8 @@ async function handleTaskBackedWorkbenchTodoRoute(req, res, state, pathname, met
 			sendJson$2(res, 201, { todo });
 			return true;
 		}
-		const todoCompleteMatch = /^\/api\/workbench\/todos\/([^/]+)\/complete$/.exec(pathname);
+		const todoCompleteMatch =
+			/^\/api\/workbench\/todos\/([^/]+)\/complete$/.exec(pathname);
 		if (method === "POST" && todoCompleteMatch) {
 			const todoId = decodeCompatTodoId(todoCompleteMatch[1], res);
 			if (!todoId) return true;
@@ -17309,17 +20591,20 @@ async function handleTaskBackedWorkbenchTodoRoute(req, res, state, pathname, met
 				return true;
 			}
 			const metadata = readCompatTaskMetadata(todoTask);
-			const todoMeta = asCompatObject(metadata.workbenchTodo) ?? asCompatObject(metadata.todo);
+			const todoMeta =
+				asCompatObject(metadata.workbenchTodo) ?? asCompatObject(metadata.todo);
 			const isCompleted = body.isCompleted === true;
 			operation = "update todo completion";
-			await runtime.updateTask(todoId, { metadata: {
-				...metadata,
-				isCompleted,
-				workbenchTodo: {
-					...todoMeta ?? {},
-					isCompleted
-				}
-			} });
+			await runtime.updateTask(todoId, {
+				metadata: {
+					...metadata,
+					isCompleted,
+					workbenchTodo: {
+						...(todoMeta ?? {}),
+						isCompleted,
+					},
+				},
+			});
 			sendJson$2(res, 200, { ok: true });
 			return true;
 		}
@@ -17365,23 +20650,37 @@ async function handleTaskBackedWorkbenchTodoRoute(req, res, state, pathname, met
 				return true;
 			}
 			const metadata = readCompatTaskMetadata(todoTask);
-			const nextTodoMeta = { ...asCompatObject(metadata.workbenchTodo) ?? asCompatObject(metadata.todo) ?? {} };
+			const nextTodoMeta = {
+				...(asCompatObject(metadata.workbenchTodo) ??
+					asCompatObject(metadata.todo) ??
+					{}),
+			};
 			const update = {};
 			if (typeof body.name === "string") update.name = body.name.trim();
 			if (typeof body.description === "string") {
 				update.description = body.description;
 				nextTodoMeta.description = body.description;
 			}
-			if (body.priority !== void 0) nextTodoMeta.priority = parseCompatNullableNumber(body.priority);
-			if (typeof body.isUrgent === "boolean") nextTodoMeta.isUrgent = body.isUrgent;
-			if (typeof body.type === "string" && body.type.trim().length > 0) nextTodoMeta.type = body.type.trim();
-			if (body.tags !== void 0) update.tags = normalizeCompatTodoTags(body.tags, [WORKBENCH_TODO_TAG, "todo"]);
-			const isCompleted = typeof body.isCompleted === "boolean" ? body.isCompleted : existingTodo.isCompleted;
+			if (body.priority !== void 0)
+				nextTodoMeta.priority = parseCompatNullableNumber(body.priority);
+			if (typeof body.isUrgent === "boolean")
+				nextTodoMeta.isUrgent = body.isUrgent;
+			if (typeof body.type === "string" && body.type.trim().length > 0)
+				nextTodoMeta.type = body.type.trim();
+			if (body.tags !== void 0)
+				update.tags = normalizeCompatTodoTags(body.tags, [
+					WORKBENCH_TODO_TAG,
+					"todo",
+				]);
+			const isCompleted =
+				typeof body.isCompleted === "boolean"
+					? body.isCompleted
+					: existingTodo.isCompleted;
 			nextTodoMeta.isCompleted = isCompleted;
 			update.metadata = {
 				...metadata,
 				isCompleted,
-				workbenchTodo: nextTodoMeta
+				workbenchTodo: nextTodoMeta,
 			};
 			operation = "update todo";
 			await runtime.updateTask(todoId, update);
@@ -17396,7 +20695,9 @@ async function handleTaskBackedWorkbenchTodoRoute(req, res, state, pathname, met
 		}
 		return false;
 	} catch (err) {
-		logger.error(`[workbench/todos] ${operation} failed: ${err instanceof Error ? err.message : String(err)}`);
+		logger.error(
+			`[workbench/todos] ${operation} failed: ${err instanceof Error ? err.message : String(err)}`,
+		);
 		sendJsonError(res, 500, `Failed to ${operation}`);
 		return true;
 	}
@@ -17404,16 +20705,26 @@ async function handleTaskBackedWorkbenchTodoRoute(req, res, state, pathname, met
 async function handleWorkbenchCompatRoutes(req, res, state) {
 	const method = (req.method ?? "GET").toUpperCase();
 	const url = new URL(req.url ?? "/", "http://localhost");
-	if (url.pathname.startsWith("/api/workbench/todos") && !runtimeHasTodoDatabase(state.current)) return handleTaskBackedWorkbenchTodoRoute(req, res, state, url.pathname, method);
+	if (
+		url.pathname.startsWith("/api/workbench/todos") &&
+		!runtimeHasTodoDatabase(state.current)
+	)
+		return handleTaskBackedWorkbenchTodoRoute(
+			req,
+			res,
+			state,
+			url.pathname,
+			method,
+		);
 	return false;
 }
 
 //#endregion
 //#region node_modules/.bun/@elizaos+app-core@2.0.0-alpha.537+72829346cb4c43b1/node_modules/@elizaos/app-core/packages/app-core/src/runtime/startup-overlay.js
 /**
-* In-process embedding warmup progress for merging into GET /api/status.
-* The UI can poll status during startup to show download progress (GGUF).
-*/
+ * In-process embedding warmup progress for merging into GET /api/status.
+ * The UI can poll status during startup to show download progress (GGUF).
+ */
 let snapshot = null;
 const STALE_MS = 12e4;
 /** Extract a 0–100 percentage from progress strings like "45% of 95 MB". */
@@ -17426,8 +20737,8 @@ function parseEmbeddingProgressPercent(detail) {
 	return Math.max(0, Math.min(100, Math.round(n)));
 }
 /**
-* Fields merged into the JSON `startup` object on GET /api/status (Compat layer).
-*/
+ * Fields merged into the JSON `startup` object on GET /api/status (Compat layer).
+ */
 function getStartupEmbeddingAugmentation() {
 	if (!snapshot) return null;
 	if (Date.now() - snapshot.updatedAt > STALE_MS) {
@@ -17449,9 +20760,9 @@ function getStartupEmbeddingAugmentation() {
 /** Fixed Keychain / Secret Service “service” identifier (see docs/guides/platform-secure-store.md). */
 const ELIZA_AGENT_VAULT_SERVICE = "ai.elizaos.agent.vault";
 /**
-* Canonical state directory for this process (same semantics as `ELIZA_STATE_DIR` default).
-* Uses `realpathSync` when the path exists so symlinks normalize consistently.
-*/
+ * Canonical state directory for this process (same semantics as `ELIZA_STATE_DIR` default).
+ * Uses `realpathSync` when the path exists so symlinks normalize consistently.
+ */
 function resolveCanonicalStateDir() {
 	const raw = process.env.ELIZA_STATE_DIR?.trim();
 	const base = raw && raw.length > 0 ? raw : path.join(os.homedir(), ".eliza");
@@ -17463,8 +20774,8 @@ function resolveCanonicalStateDir() {
 	}
 }
 /**
-* Opaque vault id for OS secret stores: `mldy1-` + first 16 chars of base64url(sha256(canonicalStateDir)).
-*/
+ * Opaque vault id for OS secret stores: `mldy1-` + first 16 chars of base64url(sha256(canonicalStateDir)).
+ */
 function deriveAgentVaultId(canonicalStateDir = resolveCanonicalStateDir()) {
 	const hash = createHash("sha256").update(canonicalStateDir, "utf8").digest();
 	return `mldy1-${Buffer.from(hash).toString("base64url").slice(0, 16)}`;
@@ -17483,18 +20794,14 @@ function isLinux() {
 	return process.platform === "linux";
 }
 /**
-* Write a password to the macOS Keychain via stdin to avoid argv exposure.
-* The `security add-generic-password` command reads from stdin when `-w`
-* is the last argument with no value. It prompts twice (password + retype),
-* so we write the value twice separated by a newline.
-*/
+ * Write a password to the macOS Keychain via stdin to avoid argv exposure.
+ * The `security add-generic-password` command reads from stdin when `-w`
+ * is the last argument with no value. It prompts twice (password + retype),
+ * so we write the value twice separated by a newline.
+ */
 function keychainSetViaStdin(args, password) {
 	return new Promise((resolve, reject) => {
-		const child = spawn("security", args, { stdio: [
-			"pipe",
-			"pipe",
-			"pipe"
-		] });
+		const child = spawn("security", args, { stdio: ["pipe", "pipe", "pipe"] });
 		let stderr = "";
 		child.stderr.setEncoding("utf8");
 		child.stderr.on("data", (chunk) => {
@@ -17506,10 +20813,12 @@ function keychainSetViaStdin(args, password) {
 				resolve();
 				return;
 			}
-			reject(Object.assign(new Error(stderr.trim() || `security exited ${code}`), {
-				stderr,
-				code
-			}));
+			reject(
+				Object.assign(new Error(stderr.trim() || `security exited ${code}`), {
+					stderr,
+					code,
+				}),
+			);
 		});
 		child.stdin.on("error", () => {});
 		child.stdin.write(`${password}\n${password}\n`, () => {
@@ -17519,11 +20828,9 @@ function keychainSetViaStdin(args, password) {
 }
 function secretToolStoreWithStdin(args, secretLine) {
 	return new Promise((resolve, reject) => {
-		const child = spawn("secret-tool", args, { stdio: [
-			"pipe",
-			"pipe",
-			"pipe"
-		] });
+		const child = spawn("secret-tool", args, {
+			stdio: ["pipe", "pipe", "pipe"],
+		});
 		let stderr = "";
 		child.stderr.setEncoding("utf8");
 		child.stderr.on("data", (chunk) => {
@@ -17535,10 +20842,15 @@ function secretToolStoreWithStdin(args, secretLine) {
 				resolve();
 				return;
 			}
-			reject(Object.assign(new Error(stderr.trim() || `secret-tool exited ${code}`), {
-				stderr,
-				code
-			}));
+			reject(
+				Object.assign(
+					new Error(stderr.trim() || `secret-tool exited ${code}`),
+					{
+						stderr,
+						code,
+					},
+				),
+			);
 		});
 		const line = secretLine.endsWith("\n") ? secretLine : `${secretLine}\n`;
 		child.stdin.write(line, "utf8");
@@ -17546,9 +20858,9 @@ function secretToolStoreWithStdin(args, secretLine) {
 	});
 }
 /**
-* Check if `secret-tool` is available on PATH without spawning a shell.
-* Iterates PATH entries directly and checks for the executable.
-*/
+ * Check if `secret-tool` is available on PATH without spawning a shell.
+ * Iterates PATH entries directly and checks for the executable.
+ */
 async function secretToolOnPath() {
 	if (process.platform === "win32") return false;
 	const pathEnv = process.env.PATH ?? "";
@@ -17564,18 +20876,23 @@ async function secretToolOnPath() {
 }
 function macErrReason(stderr, code) {
 	const s = stderr.toLowerCase();
-	if (s.includes("could not be found") || s.includes("the specified item could not be found")) return {
-		ok: false,
-		reason: "not_found"
-	};
-	if (s.includes("user canceled") || s.includes("user cancelled")) return {
-		ok: false,
-		reason: "denied"
-	};
+	if (
+		s.includes("could not be found") ||
+		s.includes("the specified item could not be found")
+	)
+		return {
+			ok: false,
+			reason: "not_found",
+		};
+	if (s.includes("user canceled") || s.includes("user cancelled"))
+		return {
+			ok: false,
+			reason: "denied",
+		};
 	return {
 		ok: false,
 		reason: code === 44 || code === 45 ? "denied" : "error",
-		message: stderr.trim().slice(0, 300)
+		message: stderr.trim().slice(0, 300),
 	};
 }
 var MacOSKeychainPlatformSecureStore = class {
@@ -17591,22 +20908,27 @@ var MacOSKeychainPlatformSecureStore = class {
 	async get(vaultId, kind) {
 		const account = keychainAccountForSecretKind(vaultId, kind);
 		try {
-			const { stdout, stderr: _stderr } = await execFileAsync("security", [
-				"find-generic-password",
-				"-s",
-				ELIZA_AGENT_VAULT_SERVICE,
-				"-a",
-				account,
-				"-w"
-			], { encoding: "utf8" });
+			const { stdout, stderr: _stderr } = await execFileAsync(
+				"security",
+				[
+					"find-generic-password",
+					"-s",
+					ELIZA_AGENT_VAULT_SERVICE,
+					"-a",
+					account,
+					"-w",
+				],
+				{ encoding: "utf8" },
+			);
 			const value = stdout.trim();
-			if (!value) return {
-				ok: false,
-				reason: "not_found"
-			};
+			if (!value)
+				return {
+					ok: false,
+					reason: "not_found",
+				};
 			return {
 				ok: true,
-				value
+				value,
 			};
 		} catch (err) {
 			const e = err;
@@ -17616,21 +20938,26 @@ var MacOSKeychainPlatformSecureStore = class {
 	async set(vaultId, kind, value) {
 		const account = keychainAccountForSecretKind(vaultId, kind);
 		try {
-			await keychainSetViaStdin([
-				"add-generic-password",
-				"-s",
-				ELIZA_AGENT_VAULT_SERVICE,
-				"-a",
-				account,
-				"-U",
-				"-w"
-			], value);
+			await keychainSetViaStdin(
+				[
+					"add-generic-password",
+					"-s",
+					ELIZA_AGENT_VAULT_SERVICE,
+					"-a",
+					account,
+					"-U",
+					"-w",
+				],
+				value,
+			);
 			return { ok: true };
 		} catch (err) {
 			return {
 				ok: false,
 				reason: "error",
-				message: String(err.stderr ?? err).trim().slice(0, 300)
+				message: String(err.stderr ?? err)
+					.trim()
+					.slice(0, 300),
 			};
 		}
 	}
@@ -17642,7 +20969,7 @@ var MacOSKeychainPlatformSecureStore = class {
 				"-s",
 				ELIZA_AGENT_VAULT_SERVICE,
 				"-a",
-				account
+				account,
 			]);
 		} catch {}
 	}
@@ -17659,54 +20986,59 @@ var LinuxSecretToolPlatformSecureStore = class {
 	async get(vaultId, kind) {
 		const account = this.account(vaultId, kind);
 		try {
-			const { stdout } = await execFileAsync("secret-tool", [
-				"lookup",
-				"service",
-				ELIZA_AGENT_VAULT_SERVICE,
-				"account",
-				account
-			], { encoding: "utf8" });
+			const { stdout } = await execFileAsync(
+				"secret-tool",
+				["lookup", "service", ELIZA_AGENT_VAULT_SERVICE, "account", account],
+				{ encoding: "utf8" },
+			);
 			const value = stdout.trim();
-			if (!value) return {
-				ok: false,
-				reason: "not_found"
-			};
+			if (!value)
+				return {
+					ok: false,
+					reason: "not_found",
+				};
 			return {
 				ok: true,
-				value
+				value,
 			};
 		} catch (err) {
 			const e = err;
 			const stderr = String(e.stderr ?? "");
-			if (e.code === 1 || stderr.includes("not found")) return {
-				ok: false,
-				reason: "not_found"
-			};
+			if (e.code === 1 || stderr.includes("not found"))
+				return {
+					ok: false,
+					reason: "not_found",
+				};
 			return {
 				ok: false,
 				reason: "error",
-				message: stderr.trim().slice(0, 300)
+				message: stderr.trim().slice(0, 300),
 			};
 		}
 	}
 	async set(vaultId, kind, value) {
 		const account = this.account(vaultId, kind);
 		try {
-			await secretToolStoreWithStdin([
-				"store",
-				"--label=Eliza agent wallet",
-				"service",
-				ELIZA_AGENT_VAULT_SERVICE,
-				"account",
-				account
-			], value);
+			await secretToolStoreWithStdin(
+				[
+					"store",
+					"--label=Eliza agent wallet",
+					"service",
+					ELIZA_AGENT_VAULT_SERVICE,
+					"account",
+					account,
+				],
+				value,
+			);
 			return { ok: true };
 		} catch (err) {
 			const e = err;
 			return {
 				ok: false,
 				reason: "error",
-				message: String(e.stderr ?? err).trim().slice(0, 300)
+				message: String(e.stderr ?? err)
+					.trim()
+					.slice(0, 300),
 			};
 		}
 	}
@@ -17718,7 +21050,7 @@ var LinuxSecretToolPlatformSecureStore = class {
 				"service",
 				ELIZA_AGENT_VAULT_SERVICE,
 				"account",
-				account
+				account,
 			]);
 		} catch {}
 	}
@@ -17734,33 +21066,33 @@ var NonePlatformSecureStore = class {
 	async get() {
 		return {
 			ok: false,
-			reason: "unavailable"
+			reason: "unavailable",
 		};
 	}
 	async set() {
 		return {
 			ok: false,
-			reason: "unavailable"
+			reason: "unavailable",
 		};
 	}
 	async delete() {}
 };
 /**
-* Node-side factory: macOS Keychain, Linux `secret-tool`, or unavailable placeholder.
-* Windows Credential Manager is not wired yet (`none`).
-*/
+ * Node-side factory: macOS Keychain, Linux `secret-tool`, or unavailable placeholder.
+ * Windows Credential Manager is not wired yet (`none`).
+ */
 function createNodePlatformSecureStore() {
 	if (isDarwin()) return new MacOSKeychainPlatformSecureStore();
 	if (isLinux()) return new LinuxSecretToolPlatformSecureStore();
 	return new NonePlatformSecureStore();
 }
 /**
-* Opt in: `ELIZA_WALLET_OS_STORE=1` / `true` / `on` / `yes`.
-*
-* Defaults to **off** until the macOS argv exposure is resolved via
-* Security.framework / Bun FFI. Users who accept the risk can enable
-* explicitly.
-*/
+ * Opt in: `ELIZA_WALLET_OS_STORE=1` / `true` / `on` / `yes`.
+ *
+ * Defaults to **off** until the macOS argv exposure is resolved via
+ * Security.framework / Bun FFI. Users who accept the risk can enable
+ * explicitly.
+ */
 function isWalletOsStoreReadEnabled() {
 	const raw = process.env.ELIZA_WALLET_OS_STORE?.trim().toLowerCase();
 	return raw === "1" || raw === "true" || raw === "on" || raw === "yes";
@@ -17771,30 +21103,30 @@ function isWalletOsStoreReadEnabled() {
 init_vault_mirror();
 const WALLET_VAULT_KEYS = ["EVM_PRIVATE_KEY", "SOLANA_PRIVATE_KEY"];
 /**
-* Steward-only env vars (non-wallet) that still ride the OS keystore. They
-* never moved into the unified vault because the steward backend has its
-* own auth model — leave them on the keystore-only path.
-*/
+ * Steward-only env vars (non-wallet) that still ride the OS keystore. They
+ * never moved into the unified vault because the steward backend has its
+ * own auth model — leave them on the keystore-only path.
+ */
 const STEWARD_OS_PAIRS = [
 	["STEWARD_API_URL", "steward.api_url"],
 	["STEWARD_AGENT_ID", "steward.agent_id"],
-	["STEWARD_AGENT_TOKEN", "steward.agent_token"]
+	["STEWARD_AGENT_TOKEN", "steward.agent_token"],
 ];
 /**
-* One-shot copy of legacy OS-keystore wallet keys into the shared vault.
-* Returns the env keys that were copied across so the caller can log /
-* surface a migration banner.
-*/
+ * One-shot copy of legacy OS-keystore wallet keys into the shared vault.
+ * Returns the env keys that were copied across so the caller can log /
+ * surface a migration banner.
+ */
 async function migrateOsStoreWalletKeysIntoVault(envKeys, opts = {}) {
 	if (envKeys.length === 0) return [];
 	if (!isWalletOsStoreReadEnabled()) return [];
 	const store = createNodePlatformSecureStore();
-	if (!await store.isAvailable()) return [];
+	if (!(await store.isAvailable())) return [];
 	const vault = sharedVault();
 	const vaultId = deriveAgentVaultId();
 	const keychainKindFor = {
 		EVM_PRIVATE_KEY: "wallet.evm_private_key",
-		SOLANA_PRIVATE_KEY: "wallet.solana_private_key"
+		SOLANA_PRIVATE_KEY: "wallet.solana_private_key",
 	};
 	const migrated = [];
 	for (const envKey of envKeys) {
@@ -17803,10 +21135,13 @@ async function migrateOsStoreWalletKeysIntoVault(envKeys, opts = {}) {
 		const got = await store.get(vaultId, kind);
 		if (!got.ok) continue;
 		process.env[envKey] = got.value;
-		if ((opts.overwriteVaultKeys?.has(envKey) ?? false) || !await vault.has(envKey)) {
+		if (
+			(opts.overwriteVaultKeys?.has(envKey) ?? false) ||
+			!(await vault.has(envKey))
+		) {
 			await vault.set(envKey, got.value, {
 				sensitive: true,
-				caller: "wallet-os-store-migrate"
+				caller: "wallet-os-store-migrate",
 			});
 			migrated.push(String(envKey));
 		}
@@ -17814,16 +21149,16 @@ async function migrateOsStoreWalletKeysIntoVault(envKeys, opts = {}) {
 	return migrated;
 }
 /**
-* Fills `process.env` wallet keys from the shared vault (now the source
-* of truth). On first boot after the storage unification, copies any
-* legacy OS-keystore values into the vault and then proceeds normally.
-*
-* Steward env vars stay on the OS-keystore path — the steward backend's
-* lifecycle is independent of the unified wallet vault.
-*
-* Runs before upstream `startApiServer` merges `config.env`, so persisted
-* config only fills gaps that neither vault nor OS keystore supplies.
-*/
+ * Fills `process.env` wallet keys from the shared vault (now the source
+ * of truth). On first boot after the storage unification, copies any
+ * legacy OS-keystore values into the vault and then proceeds normally.
+ *
+ * Steward env vars stay on the OS-keystore path — the steward backend's
+ * lifecycle is independent of the unified wallet vault.
+ *
+ * Runs before upstream `startApiServer` merges `config.env`, so persisted
+ * config only fills gaps that neither vault nor OS keystore supplies.
+ */
 async function hydrateWalletKeysFromNodePlatformSecureStore() {
 	const vault = sharedVault();
 	const missingWalletKeys = [];
@@ -17838,22 +21173,33 @@ async function hydrateWalletKeysFromNodePlatformSecureStore() {
 			} catch (err) {
 				unreadableWalletKeys.add(envKey);
 				missingWalletKeys.push(envKey);
-				logger.warn(`[wallet][vault] failed to reveal ${envKey}: ${err instanceof Error ? err.message : String(err)}. Will try legacy OS-store recovery if available.`);
+				logger.warn(
+					`[wallet][vault] failed to reveal ${envKey}: ${err instanceof Error ? err.message : String(err)}. Will try legacy OS-store recovery if available.`,
+				);
 			}
 			continue;
 		}
 		missingWalletKeys.push(envKey);
 	}
-	if (missingWalletKeys.length > 0) try {
-		const migrated = await migrateOsStoreWalletKeysIntoVault(missingWalletKeys, { overwriteVaultKeys: unreadableWalletKeys });
-		if (migrated.length > 0) logger.info(`[wallet][vault] migrated ${migrated.length} key(s) from OS keystore: ${migrated.join(", ")}`);
-	} catch (err) {
-		logger.warn(`[wallet][vault] os-store migration failed: ${err instanceof Error ? err.message : String(err)}`);
-	}
+	if (missingWalletKeys.length > 0)
+		try {
+			const migrated = await migrateOsStoreWalletKeysIntoVault(
+				missingWalletKeys,
+				{ overwriteVaultKeys: unreadableWalletKeys },
+			);
+			if (migrated.length > 0)
+				logger.info(
+					`[wallet][vault] migrated ${migrated.length} key(s) from OS keystore: ${migrated.join(", ")}`,
+				);
+		} catch (err) {
+			logger.warn(
+				`[wallet][vault] os-store migration failed: ${err instanceof Error ? err.message : String(err)}`,
+			);
+		}
 	if (!isWalletOsStoreReadEnabled()) return;
 	try {
 		const store = createNodePlatformSecureStore();
-		if (!await store.isAvailable()) return;
+		if (!(await store.isAvailable())) return;
 		const vaultId = deriveAgentVaultId();
 		for (const [envKey, kind] of STEWARD_OS_PAIRS) {
 			const cur = process.env[envKey];
@@ -17862,7 +21208,9 @@ async function hydrateWalletKeysFromNodePlatformSecureStore() {
 			if (got.ok) process.env[envKey] = got.value;
 		}
 	} catch (err) {
-		logger.warn(`[wallet][os-store] steward hydrate failed: ${err instanceof Error ? err.message : String(err)}`);
+		logger.warn(
+			`[wallet][os-store] steward hydrate failed: ${err instanceof Error ? err.message : String(err)}`,
+		);
 	}
 }
 
@@ -17870,17 +21218,21 @@ async function hydrateWalletKeysFromNodePlatformSecureStore() {
 //#region node_modules/.bun/@elizaos+app-core@2.0.0-alpha.537+72829346cb4c43b1/node_modules/@elizaos/app-core/packages/app-core/src/security/wallet-os-store-actions.js
 init_dist();
 init_vault_mirror();
-const WALLET_PAIRS = [["EVM_PRIVATE_KEY", "wallet.evm_private_key"], ["SOLANA_PRIVATE_KEY", "wallet.solana_private_key"]];
+const WALLET_PAIRS = [
+	["EVM_PRIVATE_KEY", "wallet.evm_private_key"],
+	["SOLANA_PRIVATE_KEY", "wallet.solana_private_key"],
+];
 /**
-* Remove main wallet keys from BOTH the vault and the OS keystore.
-* Used by `POST /api/agent/reset` and the equivalent CLI flow.
-*/
+ * Remove main wallet keys from BOTH the vault and the OS keystore.
+ * Used by `POST /api/agent/reset` and the equivalent CLI flow.
+ */
 async function deleteWalletSecretsFromOsStore() {
 	const vault = sharedVault();
-	for (const [envKey] of WALLET_PAIRS) if (await vault.has(envKey)) await vault.remove(envKey);
+	for (const [envKey] of WALLET_PAIRS)
+		if (await vault.has(envKey)) await vault.remove(envKey);
 	if (!isWalletOsStoreReadEnabled()) return;
 	const store = createNodePlatformSecureStore();
-	if (!await store.isAvailable()) return;
+	if (!(await store.isAvailable())) return;
 	const vaultId = deriveAgentVaultId();
 	await store.delete(vaultId, "wallet.evm_private_key");
 	await store.delete(vaultId, "wallet.solana_private_key");
@@ -17890,7 +21242,7 @@ async function deleteWalletSecretsFromOsStore() {
 //#region node_modules/.bun/@elizaos+app-core@2.0.0-alpha.537+72829346cb4c43b1/node_modules/@elizaos/app-core/packages/app-core/src/runtime/ensure-text-to-speech-handler.js
 var ensure_text_to_speech_handler_exports = /* @__PURE__ */ __exportAll({
 	ensureTextToSpeechHandler: () => ensureTextToSpeechHandler,
-	isEdgeTtsDisabled: () => isEdgeTtsDisabled
+	isEdgeTtsDisabled: () => isEdgeTtsDisabled,
 });
 function isEdgeTtsDisabled(config) {
 	if (config.plugins?.entries?.["edge-tts"]?.enabled === false) return true;
@@ -17904,44 +21256,62 @@ function readHandler(plugin) {
 	return typeof handler === "function" ? handler : void 0;
 }
 /**
-* `@elizaos/agent` boot calls its own `collectPluginNames`, so the app wrapper
-* that adds Edge TTS is bypassed. Register the Edge TTS model handler on the
-* live runtime so streaming / swarm voice can still resolve TEXT_TO_SPEECH.
-*/
+ * `@elizaos/agent` boot calls its own `collectPluginNames`, so the app wrapper
+ * that adds Edge TTS is bypassed. Register the Edge TTS model handler on the
+ * live runtime so streaming / swarm voice can still resolve TEXT_TO_SPEECH.
+ */
 async function ensureTextToSpeechHandler(runtime) {
 	if (isEdgeTtsDisabled(loadElizaConfig())) return;
 	const runtimeWithRegistration = runtime;
-	if (typeof runtimeWithRegistration.getModel !== "function" || typeof runtimeWithRegistration.registerModel !== "function") return;
+	if (
+		typeof runtimeWithRegistration.getModel !== "function" ||
+		typeof runtimeWithRegistration.registerModel !== "function"
+	)
+		return;
 	if (runtimeWithRegistration.getModel(ModelType.TEXT_TO_SPEECH)) return;
 	try {
-		const handler = readHandler((await import("@elizaos/plugin-edge-tts/node")).default);
-		if (!handler) throw new Error("@elizaos/plugin-edge-tts/node did not expose a TEXT_TO_SPEECH handler");
-		runtimeWithRegistration.registerModel(ModelType.TEXT_TO_SPEECH, handler, "edge-tts", 0);
-		logger.info("[eliza] Registered Edge TTS for runtime TEXT_TO_SPEECH (streaming / swarm voice)");
+		const handler = readHandler(
+			(await import("@elizaos/plugin-edge-tts/node")).default,
+		);
+		if (!handler)
+			throw new Error(
+				"@elizaos/plugin-edge-tts/node did not expose a TEXT_TO_SPEECH handler",
+			);
+		runtimeWithRegistration.registerModel(
+			ModelType.TEXT_TO_SPEECH,
+			handler,
+			"edge-tts",
+			0,
+		);
+		logger.info(
+			"[eliza] Registered Edge TTS for runtime TEXT_TO_SPEECH (streaming / swarm voice)",
+		);
 	} catch (error) {
-		throw new Error(`[eliza] Could not register Edge TTS for TEXT_TO_SPEECH: ${error instanceof Error ? error.message : String(error)}`);
+		throw new Error(
+			`[eliza] Could not register Edge TTS for TEXT_TO_SPEECH: ${error instanceof Error ? error.message : String(error)}`,
+		);
 	}
 }
-var init_ensure_text_to_speech_handler = __esmMin((() => {}));
+var init_ensure_text_to_speech_handler = __esmMin(() => {});
 
 //#endregion
 //#region node_modules/.bun/@elizaos+app-core@2.0.0-alpha.537+72829346cb4c43b1/node_modules/@elizaos/app-core/packages/app-core/src/config/plugin-ui-spec.js
 var plugin_ui_spec_exports = /* @__PURE__ */ __exportAll({
 	buildPluginConfigUiSpec: () => buildPluginConfigUiSpec,
-	buildPluginListUiSpec: () => buildPluginListUiSpec
+	buildPluginListUiSpec: () => buildPluginListUiSpec,
 });
 /**
-* Generates UiSpec JSON for plugin/connector configuration forms.
-*
-* When the agent wants to help a user configure a plugin, it generates
-* a UiSpec that renders as an interactive form in chat. The form fields
-* are derived from the plugin's parameter definitions.
-*
-* Actions:
-*   - "plugin:save" → saves config via PUT /api/plugins/:id
-*   - "plugin:enable" → enables the plugin
-*   - "plugin:test" → tests connectivity
-*/
+ * Generates UiSpec JSON for plugin/connector configuration forms.
+ *
+ * When the agent wants to help a user configure a plugin, it generates
+ * a UiSpec that renders as an interactive form in chat. The form fields
+ * are derived from the plugin's parameter definitions.
+ *
+ * Actions:
+ *   - "plugin:save" → saves config via PUT /api/plugins/:id
+ *   - "plugin:enable" → enables the plugin
+ *   - "plugin:test" → tests connectivity
+ */
 function buildPluginConfigUiSpec(plugin) {
 	const elements = {};
 	const rootChildren = [];
@@ -17950,35 +21320,44 @@ function buildPluginConfigUiSpec(plugin) {
 		type: "Stack",
 		props: {
 			gap: "1",
-			children: ["title", "desc"]
-		}
+			children: ["title", "desc"],
+		},
 	};
 	rootChildren.push("header");
 	elements.title = {
 		type: "Heading",
 		props: {
 			level: 3,
-			text: `Configure ${plugin.name}`
-		}
+			text: `Configure ${plugin.name}`,
+		},
 	};
-	if (plugin.description) elements.desc = {
-		type: "Text",
-		props: {
-			text: plugin.description,
-			className: "text-xs text-muted"
-		}
-	};
+	if (plugin.description)
+		elements.desc = {
+			type: "Text",
+			props: {
+				text: plugin.description,
+				className: "text-xs text-muted",
+			},
+		};
 	elements.status = {
 		type: "Badge",
 		props: {
-			text: plugin.enabled ? plugin.parameters.every((p) => !p.required || p.isSet) ? "Ready" : "Needs Configuration" : "Disabled",
-			variant: plugin.enabled ? plugin.parameters.every((p) => !p.required || p.isSet) ? "default" : "secondary" : "outline"
-		}
+			text: plugin.enabled
+				? plugin.parameters.every((p) => !p.required || p.isSet)
+					? "Ready"
+					: "Needs Configuration"
+				: "Disabled",
+			variant: plugin.enabled
+				? plugin.parameters.every((p) => !p.required || p.isSet)
+					? "default"
+					: "secondary"
+				: "outline",
+		},
 	};
 	rootChildren.push("status");
 	elements.sep = {
 		type: "Separator",
-		props: {}
+		props: {},
 	};
 	rootChildren.push("sep");
 	const fieldIds = [];
@@ -17987,20 +21366,36 @@ function buildPluginConfigUiSpec(plugin) {
 		const statePath = `config.${param.key}`;
 		fieldIds.push(fieldId);
 		state[`config.${param.key}`] = "";
-		const isSecret = param.key.includes("KEY") || param.key.includes("TOKEN") || param.key.includes("SECRET") || param.key.includes("PASSWORD");
+		const isSecret =
+			param.key.includes("KEY") ||
+			param.key.includes("TOKEN") ||
+			param.key.includes("SECRET") ||
+			param.key.includes("PASSWORD");
 		elements[fieldId] = {
 			type: "Input",
 			props: {
 				label: param.label || param.key,
-				placeholder: param.isSet ? "••••••• (already set)" : param.required ? "Required" : "Optional",
+				placeholder: param.isSet
+					? "••••••• (already set)"
+					: param.required
+						? "Required"
+						: "Optional",
 				statePath,
 				type: isSecret ? "password" : "text",
-				className: "font-mono text-xs"
+				className: "font-mono text-xs",
 			},
-			...param.required ? { validation: { checks: [{
-				rule: "required",
-				message: `${param.key} is required`
-			}] } } : {}
+			...(param.required
+				? {
+						validation: {
+							checks: [
+								{
+									rule: "required",
+									message: `${param.key} is required`,
+								},
+							],
+						},
+					}
+				: {}),
 		};
 		if (param.description) {
 			const hintId = `hint_${param.key}`;
@@ -18009,8 +21404,8 @@ function buildPluginConfigUiSpec(plugin) {
 				type: "Text",
 				props: {
 					text: param.description,
-					className: "text-2xs text-muted -mt-1 mb-1"
-				}
+					className: "text-2xs text-muted -mt-1 mb-1",
+				},
 			};
 		}
 	}
@@ -18018,8 +21413,8 @@ function buildPluginConfigUiSpec(plugin) {
 		type: "Stack",
 		props: {
 			gap: "3",
-			children: fieldIds
-		}
+			children: fieldIds,
+		},
 	};
 	rootChildren.push("fields");
 	const buttonChildren = ["saveBtn"];
@@ -18029,11 +21424,13 @@ function buildPluginConfigUiSpec(plugin) {
 			text: "Save Configuration",
 			variant: "default",
 			className: "font-semibold",
-			on: { press: {
-				action: "plugin:save",
-				params: { pluginId: plugin.id }
-			} }
-		}
+			on: {
+				press: {
+					action: "plugin:save",
+					params: { pluginId: plugin.id },
+				},
+			},
+		},
 	};
 	if (!plugin.enabled) {
 		buttonChildren.push("enableBtn");
@@ -18042,11 +21439,13 @@ function buildPluginConfigUiSpec(plugin) {
 			props: {
 				text: "Enable Plugin",
 				variant: "outline",
-				on: { press: {
-					action: "plugin:enable",
-					params: { pluginId: plugin.id }
-				} }
-			}
+				on: {
+					press: {
+						action: "plugin:enable",
+						params: { pluginId: plugin.id },
+					},
+				},
+			},
 		};
 	}
 	if (plugin.category === "connector") {
@@ -18056,11 +21455,13 @@ function buildPluginConfigUiSpec(plugin) {
 			props: {
 				text: "Test Connection",
 				variant: "outline",
-				on: { press: {
-					action: "plugin:test",
-					params: { pluginId: plugin.id }
-				} }
-			}
+				on: {
+					press: {
+						action: "plugin:test",
+						params: { pluginId: plugin.id },
+					},
+				},
+			},
 		};
 	}
 	elements.actions = {
@@ -18068,28 +21469,28 @@ function buildPluginConfigUiSpec(plugin) {
 		props: {
 			direction: "row",
 			gap: "2",
-			children: buttonChildren
-		}
+			children: buttonChildren,
+		},
 	};
 	rootChildren.push("actions");
 	elements.root = {
 		type: "Card",
 		props: {
 			children: rootChildren,
-			className: "p-4 space-y-3"
-		}
+			className: "p-4 space-y-3",
+		},
 	};
 	return {
 		version: 1,
 		root: "root",
 		elements,
-		state
+		state,
 	};
 }
 /**
-* Generate a compact plugin list UiSpec for the agent to show available
-* plugins matching a query.
-*/
+ * Generate a compact plugin list UiSpec for the agent to show available
+ * plugins matching a query.
+ */
 function buildPluginListUiSpec(plugins, title) {
 	const elements = {};
 	const cardIds = [];
@@ -18097,8 +21498,8 @@ function buildPluginListUiSpec(plugins, title) {
 		type: "Heading",
 		props: {
 			level: 3,
-			text: title
-		}
+			text: title,
+		},
 	};
 	for (let i = 0; i < plugins.length; i++) {
 		const p = plugins[i];
@@ -18112,22 +21513,22 @@ function buildPluginListUiSpec(plugins, title) {
 			type: "Text",
 			props: {
 				text: p.name,
-				className: "font-semibold text-sm"
-			}
+				className: "font-semibold text-sm",
+			},
 		};
 		elements[descId] = {
 			type: "Text",
 			props: {
 				text: p.description || "No description",
-				className: "text-xs text-muted"
-			}
+				className: "text-xs text-muted",
+			},
 		};
 		elements[badgeId] = {
 			type: "Badge",
 			props: {
 				text: p.enabled ? "Enabled" : "Available",
-				variant: p.enabled ? "default" : "outline"
-			}
+				variant: p.enabled ? "default" : "outline",
+			},
 		};
 		elements[configBtnId] = {
 			type: "Button",
@@ -18135,47 +21536,44 @@ function buildPluginListUiSpec(plugins, title) {
 				text: "Configure",
 				variant: "outline",
 				size: "sm",
-				on: { press: {
-					action: "plugin:configure",
-					params: { pluginId: p.id }
-				} }
-			}
+				on: {
+					press: {
+						action: "plugin:configure",
+						params: { pluginId: p.id },
+					},
+				},
+			},
 		};
 		elements[cardId] = {
 			type: "Card",
 			props: {
-				children: [
-					nameId,
-					descId,
-					badgeId,
-					configBtnId
-				],
-				className: "p-3 space-y-1"
-			}
+				children: [nameId, descId, badgeId, configBtnId],
+				className: "p-3 space-y-1",
+			},
 		};
 	}
 	elements.list = {
 		type: "Stack",
 		props: {
 			gap: "2",
-			children: cardIds
-		}
+			children: cardIds,
+		},
 	};
 	elements.root = {
 		type: "Stack",
 		props: {
 			gap: "3",
-			children: ["heading", "list"]
-		}
+			children: ["heading", "list"],
+		},
 	};
 	return {
 		version: 1,
 		root: "root",
 		elements,
-		state: {}
+		state: {},
 	};
 }
-var init_plugin_ui_spec = __esmMin((() => {}));
+var init_plugin_ui_spec = __esmMin(() => {});
 
 //#endregion
 //#region node_modules/.bun/@elizaos+app-core@2.0.0-alpha.537+72829346cb4c43b1/node_modules/@elizaos/app-core/packages/app-core/src/api/server.js
@@ -18183,26 +21581,42 @@ init_auth();
 init_compat_route_shared();
 init_response();
 createRequire(import.meta.url);
-const lazyEnsureTTS = () => Promise.resolve().then(() => (init_ensure_text_to_speech_handler(), ensure_text_to_speech_handler_exports)).then((m) => m.ensureTextToSpeechHandler);
+const lazyEnsureTTS = () =>
+	Promise.resolve()
+		.then(
+			() => (
+				init_ensure_text_to_speech_handler(),
+				ensure_text_to_speech_handler_exports
+			),
+		)
+		.then((m) => m.ensureTextToSpeechHandler);
 function hydrateWalletOsStoreFlagFromConfig() {
 	if (process.env.ELIZA_WALLET_OS_STORE?.trim()) return;
 	try {
 		const config = loadElizaConfig$1();
-		const raw = (config.env && typeof config.env === "object" && !Array.isArray(config.env) ? config.env : void 0)?.ELIZA_WALLET_OS_STORE;
-		if (typeof raw === "string" && raw.trim()) process.env.ELIZA_WALLET_OS_STORE = raw.trim();
+		const raw = (
+			config.env && typeof config.env === "object" && !Array.isArray(config.env)
+				? config.env
+				: void 0
+		)?.ELIZA_WALLET_OS_STORE;
+		if (typeof raw === "string" && raw.trim())
+			process.env.ELIZA_WALLET_OS_STORE = raw.trim();
 	} catch {}
 }
 function resolveCompatConfigPaths() {
 	const sharedStateDir = process.env.ELIZA_STATE_DIR?.trim();
-	const configPath = process.env.ELIZA_CONFIG_PATH?.trim() || (sharedStateDir ? path.join(sharedStateDir, "eliza.json") : void 0);
+	const configPath =
+		process.env.ELIZA_CONFIG_PATH?.trim() ||
+		(sharedStateDir ? path.join(sharedStateDir, "eliza.json") : void 0);
 	return {
 		elizaConfigPath: configPath,
-		appConfigPath: configPath
+		appConfigPath: configPath,
 	};
 }
 function syncCompatConfigFiles() {
 	const { elizaConfigPath, appConfigPath } = resolveCompatConfigPaths();
-	if (!elizaConfigPath || !appConfigPath || elizaConfigPath === appConfigPath) return;
+	if (!elizaConfigPath || !appConfigPath || elizaConfigPath === appConfigPath)
+		return;
 	const elizaExists = fs.existsSync(elizaConfigPath);
 	const appExists = fs.existsSync(appConfigPath);
 	if (!elizaExists && !appExists) return;
@@ -18233,98 +21647,135 @@ function resolveCompatPgliteDataDir(config) {
 	if (explicitDataDir) return resolveUserPath(explicitDataDir);
 	const configuredDataDir = config.database?.pglite?.dataDir?.trim();
 	if (configuredDataDir) return resolveUserPath(configuredDataDir);
-	const workspaceDir = config.agents?.defaults?.workspace ?? resolveDefaultAgentWorkspaceDir();
+	const workspaceDir =
+		config.agents?.defaults?.workspace ?? resolveDefaultAgentWorkspaceDir();
 	return path.join(resolveUserPath(workspaceDir), ".eliza", ".elizadb");
 }
 /**
-* Actual port the API server is listening on, set after server.listen()
-* resolves. Used by loopback calls to target the correct endpoint even
-* when the server binds to a dynamic port (port: 0 or EADDRINUSE fallback).
-*/
+ * Actual port the API server is listening on, set after server.listen()
+ * resolves. Used by loopback calls to target the correct endpoint even
+ * when the server binds to a dynamic port (port: 0 or EADDRINUSE fallback).
+ */
 let _resolvedLoopbackPort = null;
 /** Called from startApiServer after the upstream server resolves. */
 function setResolvedLoopbackPort(port) {
 	_resolvedLoopbackPort = port;
 }
 /**
-* Build the loopback base URL for internal server-to-self API calls.
-* Always targets 127.0.0.1 — never trusts the incoming Host header,
-* which would allow an attacker to redirect loopback fetches (and the
-* attached API token) to an external server.
-*
-* Priority: actual listener port > env vars > default 31337.
-*/
+ * Build the loopback base URL for internal server-to-self API calls.
+ * Always targets 127.0.0.1 — never trusts the incoming Host header,
+ * which would allow an attacker to redirect loopback fetches (and the
+ * attached API token) to an external server.
+ *
+ * Priority: actual listener port > env vars > default 31337.
+ */
 function resolveCompatLoopbackApiBase(_req) {
 	return `http://127.0.0.1:${_resolvedLoopbackPort ?? (Number(process.env.ELIZA_API_PORT?.trim() || process.env.ELIZA_PORT?.trim() || "31337") || 31337)}`;
 }
 function buildCompatLoopbackHeaders(_req, init) {
 	const headers = new Headers(init?.headers ?? {});
 	if (!headers.has("Accept")) headers.set("Accept", "application/json");
-	if (!headers.has("Content-Type") && init?.body) headers.set("Content-Type", "application/json");
+	if (!headers.has("Content-Type") && init?.body)
+		headers.set("Content-Type", "application/json");
 	const apiToken = getCompatApiToken$1();
-	if (apiToken && !headers.has("Authorization")) headers.set("Authorization", `Bearer ${apiToken}`);
+	if (apiToken && !headers.has("Authorization"))
+		headers.set("Authorization", `Bearer ${apiToken}`);
 	return headers;
 }
 async function compatLoopbackFetchJson(req, pathname, init) {
-	const response = await fetch(new URL(pathname, resolveCompatLoopbackApiBase(req)), {
-		...init,
-		headers: buildCompatLoopbackHeaders(req, init)
-	});
-	if (!response.ok) throw new Error(`${response.status} ${response.statusText}: ${pathname}`);
+	const response = await fetch(
+		new URL(pathname, resolveCompatLoopbackApiBase(req)),
+		{
+			...init,
+			headers: buildCompatLoopbackHeaders(req, init),
+		},
+	);
+	if (!response.ok)
+		throw new Error(`${response.status} ${response.statusText}: ${pathname}`);
 	return await response.json();
 }
 async function compatLoopbackRequest(req, pathname, init) {
-	const response = await fetch(new URL(pathname, resolveCompatLoopbackApiBase(req)), {
-		...init,
-		headers: buildCompatLoopbackHeaders(req, init)
-	});
-	if (!response.ok) throw new Error(`${response.status} ${response.statusText}: ${pathname}`);
+	const response = await fetch(
+		new URL(pathname, resolveCompatLoopbackApiBase(req)),
+		{
+			...init,
+			headers: buildCompatLoopbackHeaders(req, init),
+		},
+	);
+	if (!response.ok)
+		throw new Error(`${response.status} ${response.statusText}: ${pathname}`);
 }
 async function clearCompatRuntimeStateViaApi(req) {
 	try {
-		const conversations = await compatLoopbackFetchJson(req, "/api/conversations");
+		const conversations = await compatLoopbackFetchJson(
+			req,
+			"/api/conversations",
+		);
 		for (const conversation of conversations.conversations ?? []) {
 			if (!conversation?.id) continue;
-			await compatLoopbackRequest(req, `/api/conversations/${encodeURIComponent(conversation.id)}`, { method: "DELETE" });
+			await compatLoopbackRequest(
+				req,
+				`/api/conversations/${encodeURIComponent(conversation.id)}`,
+				{ method: "DELETE" },
+			);
 		}
 	} catch (err) {
-		logger.warn(`[eliza][reset] Failed to clear conversations before reset: ${err instanceof Error ? err.message : String(err)}`);
+		logger.warn(
+			`[eliza][reset] Failed to clear conversations before reset: ${err instanceof Error ? err.message : String(err)}`,
+		);
 	}
 	try {
-		const knowledge = await compatLoopbackFetchJson(req, "/api/knowledge/documents");
+		const knowledge = await compatLoopbackFetchJson(
+			req,
+			"/api/knowledge/documents",
+		);
 		for (const document of knowledge.documents ?? []) {
 			if (!document?.id) continue;
-			await compatLoopbackRequest(req, `/api/knowledge/documents/${encodeURIComponent(document.id)}`, { method: "DELETE" });
+			await compatLoopbackRequest(
+				req,
+				`/api/knowledge/documents/${encodeURIComponent(document.id)}`,
+				{ method: "DELETE" },
+			);
 		}
 	} catch (err) {
-		logger.warn(`[eliza][reset] Failed to clear knowledge documents before reset: ${err instanceof Error ? err.message : String(err)}`);
+		logger.warn(
+			`[eliza][reset] Failed to clear knowledge documents before reset: ${err instanceof Error ? err.message : String(err)}`,
+		);
 	}
 	try {
 		await compatLoopbackRequest(req, "/api/trajectories", {
 			method: "DELETE",
-			body: JSON.stringify({ all: true })
+			body: JSON.stringify({ all: true }),
 		});
 	} catch (err) {
-		logger.warn(`[eliza][reset] Failed to clear trajectories before reset: ${err instanceof Error ? err.message : String(err)}`);
+		logger.warn(
+			`[eliza][reset] Failed to clear trajectories before reset: ${err instanceof Error ? err.message : String(err)}`,
+		);
 	}
 }
 async function clearCompatPgliteDataDir(runtime, config) {
 	if (typeof runtime?.stop === "function") await runtime.stop();
 	const dataDir = resolveCompatPgliteDataDir(config);
 	if (path.basename(dataDir) !== ".elizadb") {
-		logger.warn(`[eliza][reset] Refusing to delete unexpected PGlite dir: ${dataDir}`);
+		logger.warn(
+			`[eliza][reset] Refusing to delete unexpected PGlite dir: ${dataDir}`,
+		);
 		return;
 	}
 	try {
 		if (fs.existsSync(dataDir)) {
 			fs.rmSync(dataDir, {
 				recursive: true,
-				force: true
+				force: true,
 			});
-			logger.info(`[eliza][reset] Deleted PGlite data dir (GGUF models preserved): ${dataDir}`);
+			logger.info(
+				`[eliza][reset] Deleted PGlite data dir (GGUF models preserved): ${dataDir}`,
+			);
 		}
 	} catch (err) {
-		logger.warn(`[eliza][reset] Failed to delete PGlite data dir: ${err instanceof Error ? err.message : String(err)}`);
+		logger.warn(
+			`[eliza][reset] Failed to delete PGlite data dir: ${err instanceof Error ? err.message : String(err)}`,
+		);
 	}
 }
 function resolveCompatStatusAgentName(state) {
@@ -18337,23 +21788,40 @@ function mergeEmbeddingIntoStatusPayload(payload) {
 	if (!aug) return;
 	const existing = payload.startup;
 	payload.startup = {
-		...existing && typeof existing === "object" && !Array.isArray(existing) ? { ...existing } : {
-			phase: "embedding-warmup",
-			attempt: 0
-		},
-		...aug
+		...(existing && typeof existing === "object" && !Array.isArray(existing)
+			? { ...existing }
+			: {
+					phase: "embedding-warmup",
+					attempt: 0,
+				}),
+		...aug,
 	};
 }
 function rewriteCompatStatusBody(bodyText, state) {
 	const agentName = resolveCompatStatusAgentName(state);
 	try {
 		const parsed = JSON.parse(bodyText);
-		if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) return bodyText;
+		if (!parsed || typeof parsed !== "object" || Array.isArray(parsed))
+			return bodyText;
 		const payload = parsed;
 		mergeEmbeddingIntoStatusPayload(payload);
-		const upstreamPendingRestartReasons = Array.isArray(payload.pendingRestartReasons) ? payload.pendingRestartReasons.filter((value) => typeof value === "string") : [];
-		const pendingRestartReasons = Array.from(new Set([...upstreamPendingRestartReasons, ...state.pendingRestartReasons]));
-		if (pendingRestartReasons.length > 0 || typeof payload.pendingRestart === "boolean") {
+		const upstreamPendingRestartReasons = Array.isArray(
+			payload.pendingRestartReasons,
+		)
+			? payload.pendingRestartReasons.filter(
+					(value) => typeof value === "string",
+				)
+			: [];
+		const pendingRestartReasons = Array.from(
+			new Set([
+				...upstreamPendingRestartReasons,
+				...state.pendingRestartReasons,
+			]),
+		);
+		if (
+			pendingRestartReasons.length > 0 ||
+			typeof payload.pendingRestart === "boolean"
+		) {
 			payload.pendingRestart = pendingRestartReasons.length > 0;
 			payload.pendingRestartReasons = pendingRestartReasons;
 		}
@@ -18361,7 +21829,7 @@ function rewriteCompatStatusBody(bodyText, state) {
 		if (payload.agentName === agentName) return JSON.stringify(payload);
 		return JSON.stringify({
 			...payload,
-			agentName
+			agentName,
 		});
 	} catch {
 		return bodyText;
@@ -18372,7 +21840,7 @@ function patchCompatStatusResponse(req, res, state) {
 	const pathname = new URL(req.url ?? "/", "http://localhost").pathname;
 	if (method !== "GET" || pathname !== "/api/status") return;
 	const originalEnd = res.end.bind(res);
-	res.end = ((chunk, encoding, cb) => {
+	res.end = (chunk, encoding, cb) => {
 		let resolvedEncoding;
 		let resolvedCallback;
 		if (typeof encoding === "function") resolvedCallback = encoding;
@@ -18380,26 +21848,51 @@ function patchCompatStatusResponse(req, res, state) {
 			resolvedEncoding = encoding;
 			resolvedCallback = cb;
 		}
-		if (chunk == null) return resolvedCallback ? originalEnd(resolvedCallback) : originalEnd();
-		return originalEnd(rewriteCompatStatusBody(typeof chunk === "string" ? chunk : Buffer.from(chunk).toString(resolvedEncoding ?? "utf8"), state), "utf8", resolvedCallback);
-	});
+		if (chunk == null)
+			return resolvedCallback ? originalEnd(resolvedCallback) : originalEnd();
+		return originalEnd(
+			rewriteCompatStatusBody(
+				typeof chunk === "string"
+					? chunk
+					: Buffer.from(chunk).toString(resolvedEncoding ?? "utf8"),
+				state,
+			),
+			"utf8",
+			resolvedCallback,
+		);
+	};
 }
 /**
-* Load config from disk and backfill `cloud.apiKey` from sealed secrets when the
-* user is still linked to Eliza Cloud but a stale write dropped the key.
-*/
+ * Load config from disk and backfill `cloud.apiKey` from sealed secrets when the
+ * user is still linked to Eliza Cloud but a stale write dropped the key.
+ */
 function resolveCloudConfig(runtime) {
 	const config = loadElizaConfig$1();
-	const cloudRec = config.cloud && typeof config.cloud === "object" ? config.cloud : void 0;
-	if (isElizaSettingsDebugEnabled()) logger.debug(`[eliza][settings][compat] resolveCloudConfig disk cloud=${JSON.stringify(settingsDebugCloudSummary(cloudRec))} topKeys=${Object.keys(config).sort().join(",")}`);
-	if (resolveLinkedAccountsInConfig(config)?.elizacloud?.status === "unlinked") {
-		if (isElizaSettingsDebugEnabled()) logger.debug("[eliza][settings][compat] resolveCloudConfig skip backfill (linkedAccounts.elizacloud.status===unlinked)");
+	const cloudRec =
+		config.cloud && typeof config.cloud === "object" ? config.cloud : void 0;
+	if (isElizaSettingsDebugEnabled())
+		logger.debug(
+			`[eliza][settings][compat] resolveCloudConfig disk cloud=${JSON.stringify(settingsDebugCloudSummary(cloudRec))} topKeys=${Object.keys(config).sort().join(",")}`,
+		);
+	if (
+		resolveLinkedAccountsInConfig(config)?.elizacloud?.status === "unlinked"
+	) {
+		if (isElizaSettingsDebugEnabled())
+			logger.debug(
+				"[eliza][settings][compat] resolveCloudConfig skip backfill (linkedAccounts.elizacloud.status===unlinked)",
+			);
 		return config;
 	}
 	if (!config.cloud?.apiKey) {
-		const backfillKey = getCloudSecret("ELIZAOS_CLOUD_API_KEY") || process.env.ELIZAOS_CLOUD_API_KEY || runtime?.character?.secrets?.ELIZAOS_CLOUD_API_KEY;
+		const backfillKey =
+			getCloudSecret("ELIZAOS_CLOUD_API_KEY") ||
+			process.env.ELIZAOS_CLOUD_API_KEY ||
+			runtime?.character?.secrets?.ELIZAOS_CLOUD_API_KEY;
 		if (backfillKey) {
-			if (isElizaSettingsDebugEnabled()) logger.debug("[eliza][settings][compat] resolveCloudConfig backfilling cloud.apiKey from env/secrets/runtime");
+			if (isElizaSettingsDebugEnabled())
+				logger.debug(
+					"[eliza][settings][compat] resolveCloudConfig backfilling cloud.apiKey from env/secrets/runtime",
+				);
 			if (!config.cloud) config.cloud = {};
 			config.cloud.apiKey = backfillKey;
 			try {
@@ -18410,54 +21903,69 @@ function resolveCloudConfig(runtime) {
 	}
 	if (isElizaSettingsDebugEnabled()) {
 		const outCloud = config.cloud;
-		logger.debug(`[eliza][settings][compat] resolveCloudConfig → return cloud=${JSON.stringify(settingsDebugCloudSummary(outCloud))}`);
+		logger.debug(
+			`[eliza][settings][compat] resolveCloudConfig → return cloud=${JSON.stringify(settingsDebugCloudSummary(outCloud))}`,
+		);
 	}
 	return config;
 }
 function buildCloudLoginSyncPatch(config) {
-	const cloud = config.cloud && typeof config.cloud === "object" ? config.cloud : void 0;
+	const cloud =
+		config.cloud && typeof config.cloud === "object" ? config.cloud : void 0;
 	const apiKey = typeof cloud?.apiKey === "string" ? cloud.apiKey.trim() : "";
 	if (!apiKey) return null;
 	const nextCloud = { apiKey };
-	const baseUrl = typeof cloud?.baseUrl === "string" ? cloud.baseUrl.trim() : "";
+	const baseUrl =
+		typeof cloud?.baseUrl === "string" ? cloud.baseUrl.trim() : "";
 	if (baseUrl) nextCloud.baseUrl = baseUrl;
 	return {
 		cloud: nextCloud,
-		linkedAccounts: { elizacloud: {
-			status: "linked",
-			source: "api-key"
-		} }
+		linkedAccounts: {
+			elizacloud: {
+				status: "linked",
+				source: "api-key",
+			},
+		},
 	};
 }
 async function syncCloudLoginToUpstreamConfigState(req, config) {
 	const cloudLoginPatch = buildCloudLoginSyncPatch(config);
 	if (!cloudLoginPatch) return;
-	if (isElizaSettingsDebugEnabled()) logger.debug(`[eliza][settings][compat] cloud login → loopback PUT /api/config patch=${JSON.stringify(sanitizeForSettingsDebug(cloudLoginPatch))}`);
+	if (isElizaSettingsDebugEnabled())
+		logger.debug(
+			`[eliza][settings][compat] cloud login → loopback PUT /api/config patch=${JSON.stringify(sanitizeForSettingsDebug(cloudLoginPatch))}`,
+		);
 	try {
 		await compatLoopbackRequest(req, "/api/config", {
 			method: "PUT",
-			body: JSON.stringify(cloudLoginPatch)
+			body: JSON.stringify(cloudLoginPatch),
 		});
-		if (isElizaSettingsDebugEnabled()) logger.debug("[eliza][settings][compat] cloud login loopback sync OK");
+		if (isElizaSettingsDebugEnabled())
+			logger.debug("[eliza][settings][compat] cloud login loopback sync OK");
 	} catch (err) {
-		logger.warn(`[eliza][cloud/login] Failed to sync cloud login to upstream state: ${err instanceof Error ? err.message : String(err)}`);
+		logger.warn(
+			`[eliza][cloud/login] Failed to sync cloud login to upstream state: ${err instanceof Error ? err.message : String(err)}`,
+		);
 	}
 }
 async function handleCompatRoute(req, res, state) {
 	const method = (req.method ?? "GET").toUpperCase();
 	const url = new URL(req.url ?? "/", "http://localhost");
-	if (url.pathname.startsWith("/api/cloud/compat/") || url.pathname.startsWith("/api/cloud/v1/")) {
-		if (!await ensureRouteAuthorized(req, res, state)) return true;
+	if (
+		url.pathname.startsWith("/api/cloud/compat/") ||
+		url.pathname.startsWith("/api/cloud/v1/")
+	) {
+		if (!(await ensureRouteAuthorized(req, res, state))) return true;
 		return handleCloudCompatRoute(req, res, url.pathname, method, {
 			config: resolveCloudConfig(state.current),
-			runtime: state.current
+			runtime: state.current,
 		});
 	}
 	if (url.pathname.startsWith("/api/cloud/billing/")) {
-		if (!await ensureRouteAuthorized(req, res, state)) return true;
+		if (!(await ensureRouteAuthorized(req, res, state))) return true;
 		return handleCloudBillingRoute(req, res, url.pathname, method, {
 			config: resolveCloudConfig(state.current),
-			runtime: state.current
+			runtime: state.current,
 		});
 	}
 	if (await handleDevCompatRoutes(req, res, state)) return true;
@@ -18468,7 +21976,7 @@ async function handleCompatRoute(req, res, state) {
 	if (await handleLocalInferenceCompatRoutes(req, res, state)) return true;
 	if (await handleAutomationsCompatRoutes(req, res, state)) return true;
 	if (url.pathname.startsWith("/api/n8n/")) {
-		if (!await ensureRouteAuthorized(req, res, state)) return true;
+		if (!(await ensureRouteAuthorized(req, res, state))) return true;
 		return handleN8nRoutes({
 			req,
 			res,
@@ -18478,11 +21986,11 @@ async function handleCompatRoute(req, res, state) {
 			runtime: state.current,
 			json: (_res, body, status = 200) => {
 				sendJson$2(res, status, body);
-			}
+			},
 		});
 	}
 	if (url.pathname === "/api/github/token") {
-		if (!await ensureRouteAuthorized(req, res, state)) return true;
+		if (!(await ensureRouteAuthorized(req, res, state))) return true;
 		return handleGitHubRoutes({
 			req,
 			res,
@@ -18490,79 +21998,121 @@ async function handleCompatRoute(req, res, state) {
 			pathname: url.pathname,
 			json: (status, body) => {
 				sendJson$2(res, status, body);
-			}
+			},
 		});
 	}
 	if (method === "POST" && url.pathname === "/api/tts/cloud") {
-		if (!await ensureRouteAuthorized(req, res, state)) return true;
+		if (!(await ensureRouteAuthorized(req, res, state))) return true;
 		return await handleCloudTtsPreviewRoute(req, res);
 	}
 	if (method === "POST" && url.pathname === "/api/tts/elevenlabs") return false;
 	if (await handleWorkbenchCompatRoutes(req, res, state)) return true;
 	if (await handleWalletMarketOverviewRoute(req, res)) return true;
 	if (url.pathname.startsWith("/api/secrets/")) {
-		if (!await ensureRouteAuthorized(req, res, state)) return true;
-		if (await handleSecretsInventoryRoute(req, res, url.pathname, method)) return true;
-		if (await handleSecretsManagerRoute(req, res, url.pathname, method)) return true;
+		if (!(await ensureRouteAuthorized(req, res, state))) return true;
+		if (await handleSecretsInventoryRoute(req, res, url.pathname, method))
+			return true;
+		if (await handleSecretsManagerRoute(req, res, url.pathname, method))
+			return true;
 	}
-	if (url.pathname.startsWith("/api/cloud/") && !url.pathname.startsWith("/api/cloud/compat/") && !url.pathname.startsWith("/api/cloud/billing/")) {
-		if (!(isCloudProvisioned() && method === "GET" && url.pathname === "/api/cloud/status") && !await ensureRouteAuthorized(req, res, state)) return true;
+	if (
+		url.pathname.startsWith("/api/cloud/") &&
+		!url.pathname.startsWith("/api/cloud/compat/") &&
+		!url.pathname.startsWith("/api/cloud/billing/")
+	) {
+		if (
+			!(
+				isCloudProvisioned() &&
+				method === "GET" &&
+				url.pathname === "/api/cloud/status"
+			) &&
+			!(await ensureRouteAuthorized(req, res, state))
+		)
+			return true;
 		const config = resolveCloudConfig(state.current);
-		if (url.pathname === "/api/cloud/status" || url.pathname === "/api/cloud/credits") return handleCloudStatusRoutes({
-			req,
-			res,
-			method,
-			pathname: url.pathname,
-			config,
-			runtime: state.current,
-			json: (_res, body, status = 200) => {
-				sendJson$2(res, status, body);
-			}
-		});
+		if (
+			url.pathname === "/api/cloud/status" ||
+			url.pathname === "/api/cloud/credits"
+		)
+			return handleCloudStatusRoutes({
+				req,
+				res,
+				method,
+				pathname: url.pathname,
+				config,
+				runtime: state.current,
+				json: (_res, body, status = 200) => {
+					sendJson$2(res, status, body);
+				},
+			});
 		const handled = await handleCloudRoute$1(req, res, url.pathname, method, {
 			config,
 			runtime: state.current,
-			cloudManager: null
+			cloudManager: null,
 		});
-		if (handled && (method === "POST" && url.pathname === "/api/cloud/login/persist" || method === "GET" && url.pathname.startsWith("/api/cloud/login/status"))) await syncCloudLoginToUpstreamConfigState(req, config);
-		if (handled && method === "POST" && url.pathname === "/api/cloud/disconnect") {
+		if (
+			handled &&
+			((method === "POST" && url.pathname === "/api/cloud/login/persist") ||
+				(method === "GET" &&
+					url.pathname.startsWith("/api/cloud/login/status")))
+		)
+			await syncCloudLoginToUpstreamConfigState(req, config);
+		if (
+			handled &&
+			method === "POST" &&
+			url.pathname === "/api/cloud/disconnect"
+		) {
 			const disconnectPatch = {
 				cloud: {
 					enabled: false,
-					apiKey: null
+					apiKey: null,
 				},
 				serviceRouting: {
 					llmText: null,
 					tts: null,
 					media: null,
 					embeddings: null,
-					rpc: null
+					rpc: null,
 				},
-				linkedAccounts: { elizacloud: {
-					status: "unlinked",
-					source: "api-key"
-				} }
+				linkedAccounts: {
+					elizacloud: {
+						status: "unlinked",
+						source: "api-key",
+					},
+				},
 			};
-			if (isElizaSettingsDebugEnabled()) logger.debug(`[eliza][settings][compat] POST /api/cloud/disconnect → loopback PUT /api/config patch=${JSON.stringify(sanitizeForSettingsDebug(disconnectPatch))}`);
+			if (isElizaSettingsDebugEnabled())
+				logger.debug(
+					`[eliza][settings][compat] POST /api/cloud/disconnect → loopback PUT /api/config patch=${JSON.stringify(sanitizeForSettingsDebug(disconnectPatch))}`,
+				);
 			try {
 				await compatLoopbackRequest(req, "/api/config", {
 					method: "PUT",
-					body: JSON.stringify(disconnectPatch)
+					body: JSON.stringify(disconnectPatch),
 				});
-				if (isElizaSettingsDebugEnabled()) logger.debug("[eliza][settings][compat] POST /api/cloud/disconnect loopback sync OK");
+				if (isElizaSettingsDebugEnabled())
+					logger.debug(
+						"[eliza][settings][compat] POST /api/cloud/disconnect loopback sync OK",
+					);
 			} catch (err) {
-				logger.warn(`[eliza][cloud/disconnect] Failed to sync cloud disable to upstream state: ${err instanceof Error ? err.message : String(err)}`);
+				logger.warn(
+					`[eliza][cloud/disconnect] Failed to sync cloud disable to upstream state: ${err instanceof Error ? err.message : String(err)}`,
+				);
 			}
 		}
 		return handled;
 	}
 	if (method === "POST" && url.pathname === "/api/agent/reset") {
 		if (!ensureCompatSensitiveRouteAuthorized(req, res)) {
-			logger.warn("[eliza][reset] POST /api/agent/reset rejected (sensitive route not authorized)");
+			logger.warn(
+				"[eliza][reset] POST /api/agent/reset rejected (sensitive route not authorized)",
+			);
 			return true;
 		}
 		try {
-			logger.info("[eliza][reset] POST /api/agent/reset: loading config, will clear onboarding state, persisted provider config, and cloud keys (GGUF / MODELS_DIR untouched)");
+			logger.info(
+				"[eliza][reset] POST /api/agent/reset: loading config, will clear onboarding state, persisted provider config, and cloud keys (GGUF / MODELS_DIR untouched)",
+			);
 			const config = loadElizaConfig$1();
 			await clearCompatRuntimeStateViaApi(req);
 			await clearCompatPgliteDataDir(state.current, config);
@@ -18573,26 +22123,42 @@ async function handleCompatRoute(req, res, state) {
 			try {
 				await deleteWalletSecretsFromOsStore();
 			} catch (osErr) {
-				logger.warn(`[eliza][reset] OS wallet store cleanup: ${osErr instanceof Error ? osErr.message : String(osErr)}`);
+				logger.warn(
+					`[eliza][reset] OS wallet store cleanup: ${osErr instanceof Error ? osErr.message : String(osErr)}`,
+				);
 			}
-			logger.info("[eliza][reset] POST /api/agent/reset: eliza.json saved — renderer should restart API process if embedded/external dev");
+			logger.info(
+				"[eliza][reset] POST /api/agent/reset: eliza.json saved — renderer should restart API process if embedded/external dev",
+			);
 			sendJson$2(res, 200, { ok: true });
 		} catch (err) {
-			logger.warn(`[eliza][reset] POST /api/agent/reset failed: ${err instanceof Error ? err.message : String(err)}`);
-			sendJson$2(res, 500, { error: err instanceof Error ? err.message : "Reset failed" });
+			logger.warn(
+				`[eliza][reset] POST /api/agent/reset failed: ${err instanceof Error ? err.message : String(err)}`,
+			);
+			sendJson$2(res, 500, {
+				error: err instanceof Error ? err.message : "Reset failed",
+			});
 		}
 		return true;
 	}
 	if (await handlePluginsCompatRoutes(req, res, state)) return true;
 	if (await handleCatalogRoutes(req, res, state)) return true;
 	if (await handleOnboardingCompatRoute(req, res, state)) return true;
-	const uiSpecMatch = method === "GET" && url.pathname.match(/^\/api\/plugins\/([^/]+)\/ui-spec$/);
+	const uiSpecMatch =
+		method === "GET" &&
+		url.pathname.match(/^\/api\/plugins\/([^/]+)\/ui-spec$/);
 	if (uiSpecMatch) {
-		if (!await ensureRouteAuthorized(req, res, state)) return true;
+		if (!(await ensureRouteAuthorized(req, res, state))) return true;
 		const pluginId = decodeURIComponent(uiSpecMatch[1]);
-		const { buildPluginConfigUiSpec } = await Promise.resolve().then(() => (init_plugin_ui_spec(), plugin_ui_spec_exports));
-		const { buildPluginListResponse } = await Promise.resolve().then(() => (init_plugins_compat_routes(), plugins_compat_routes_exports));
-		const plugin = buildPluginListResponse(state.current).plugins.find((p) => p.id === pluginId);
+		const { buildPluginConfigUiSpec } = await Promise.resolve().then(
+			() => (init_plugin_ui_spec(), plugin_ui_spec_exports),
+		);
+		const { buildPluginListResponse } = await Promise.resolve().then(
+			() => (init_plugins_compat_routes(), plugins_compat_routes_exports),
+		);
+		const plugin = buildPluginListResponse(state.current).plugins.find(
+			(p) => p.id === pluginId,
+		);
 		if (!plugin) {
 			sendJson$2(res, 404, { error: `Plugin "${pluginId}" not found` });
 			return true;
@@ -18601,17 +22167,24 @@ async function handleCompatRoute(req, res, state) {
 		return true;
 	}
 	if (method === "GET" && url.pathname === "/api/agents") {
-		if (!await ensureRouteAuthorized(req, res, state)) return true;
+		if (!(await ensureRouteAuthorized(req, res, state))) return true;
 		const character = buildCharacterFromConfig$1(loadElizaConfig$1());
-		sendJson$2(res, 200, { agents: [{
-			id: state.current?.agentId ?? character.id ?? "00000000-0000-0000-0000-000000000000",
-			name: character.name,
-			status: state.current ? "running" : "stopped"
-		}] });
+		sendJson$2(res, 200, {
+			agents: [
+				{
+					id:
+						state.current?.agentId ??
+						character.id ??
+						"00000000-0000-0000-0000-000000000000",
+					name: character.name,
+					status: state.current ? "running" : "stopped",
+				},
+			],
+		});
 		return true;
 	}
 	if (method === "GET" && url.pathname === "/api/config") {
-		if (!await ensureRouteAuthorized(req, res, state)) return true;
+		if (!(await ensureRouteAuthorized(req, res, state))) return true;
 		sendJson$2(res, 200, filterConfigEnvForResponse(loadElizaConfig$1()));
 		return true;
 	}
@@ -18622,9 +22195,14 @@ async function handleElizaCompatRoute(req, res, state) {
 }
 function patchHttpCreateServerForCompat(state) {
 	const originalCreateServer = http.createServer.bind(http);
-	http.createServer = ((...args) => {
+	http.createServer = (...args) => {
 		const [firstArg, secondArg] = args;
-		const listener = typeof firstArg === "function" ? firstArg : typeof secondArg === "function" ? secondArg : void 0;
+		const listener =
+			typeof firstArg === "function"
+				? firstArg
+				: typeof secondArg === "function"
+					? secondArg
+					: void 0;
 		if (!listener) return originalCreateServer(...args);
 		const wrappedListener = async (req, res) => {
 			syncAppEnvToEliza();
@@ -18635,9 +22213,13 @@ function patchHttpCreateServerForCompat(state) {
 			const originHeader = req.headers.origin ?? "";
 			const corsAllowedPorts = new Set(getCorsAllowedPorts());
 			const localPort = req.socket.localPort;
-			if (typeof localPort === "number") corsAllowedPorts.add(String(localPort));
+			if (typeof localPort === "number")
+				corsAllowedPorts.add(String(localPort));
 			const allowOrigin = (() => {
-				if (originHeader !== "") return isAllowedOrigin(originHeader, corsAllowedPorts) ? originHeader : null;
+				if (originHeader !== "")
+					return isAllowedOrigin(originHeader, corsAllowedPorts)
+						? originHeader
+						: null;
 				const ref = req.headers.referer;
 				if (!ref) return null;
 				try {
@@ -18654,8 +22236,14 @@ function patchHttpCreateServerForCompat(state) {
 			}
 			if (allowOrigin) {
 				res.setHeader("Access-Control-Allow-Origin", allowOrigin);
-				res.setHeader("Access-Control-Allow-Methods", "GET, POST, PUT, PATCH, DELETE, OPTIONS");
-				res.setHeader("Access-Control-Allow-Headers", "Content-Type, Authorization, X-API-Token, X-Api-Key, X-ElizaOS-Client-Id, X-ElizaOS-UI-Language, X-ElizaOS-Token, X-Eliza-Export-Token, X-Eliza-Terminal-Token, X-Eliza-CSRF");
+				res.setHeader(
+					"Access-Control-Allow-Methods",
+					"GET, POST, PUT, PATCH, DELETE, OPTIONS",
+				);
+				res.setHeader(
+					"Access-Control-Allow-Headers",
+					"Content-Type, Authorization, X-API-Token, X-Api-Key, X-ElizaOS-Client-Id, X-ElizaOS-UI-Language, X-ElizaOS-Token, X-Eliza-Export-Token, X-Eliza-Terminal-Token, X-Eliza-CSRF",
+				);
 				res.setHeader("Access-Control-Allow-Credentials", "true");
 			}
 			if (req.method === "OPTIONS") {
@@ -18669,14 +22257,21 @@ function patchHttpCreateServerForCompat(state) {
 			});
 			if (state) {
 				const pathname = new URL(req.url ?? "/", "http://localhost").pathname;
-				if (pathname.startsWith("/api/database") || pathname.startsWith("/api/trajectories")) await ensureRuntimeSqlCompatibility(state.current);
+				if (
+					pathname.startsWith("/api/database") ||
+					pathname.startsWith("/api/trajectories")
+				)
+					await ensureRuntimeSqlCompatibility(state.current);
 				try {
 					if (await handleCompatRoute(req, res, state)) return;
 				} catch (err) {
-					logger.error({
-						error: err instanceof Error ? err.message : String(err),
-						stack: err instanceof Error ? err.stack : void 0
-					}, "[CompatApiServer] Unhandled compat route error");
+					logger.error(
+						{
+							error: err instanceof Error ? err.message : String(err),
+							stack: err instanceof Error ? err.stack : void 0,
+						},
+						"[CompatApiServer] Unhandled compat route error",
+					);
 					if (!res.headersSent) {
 						res.statusCode = 500;
 						res.setHeader("content-type", "application/json; charset=utf-8");
@@ -18686,10 +22281,13 @@ function patchHttpCreateServerForCompat(state) {
 				}
 			}
 			Promise.resolve(listener(req, res)).catch((err) => {
-				logger.error({
-					error: err instanceof Error ? err.message : String(err),
-					stack: err instanceof Error ? err.stack : void 0
-				}, "[CompatApiServer] Upstream listener error");
+				logger.error(
+					{
+						error: err instanceof Error ? err.message : String(err),
+						stack: err instanceof Error ? err.stack : void 0,
+					},
+					"[CompatApiServer] Upstream listener error",
+				);
 				if (!res.headersSent) {
 					res.statusCode = 500;
 					res.setHeader("content-type", "application/json; charset=utf-8");
@@ -18697,12 +22295,18 @@ function patchHttpCreateServerForCompat(state) {
 				}
 			});
 		};
-		const created = typeof firstArg === "function" ? originalCreateServer(wrappedListener) : originalCreateServer(firstArg, wrappedListener);
+		const created =
+			typeof firstArg === "function"
+				? originalCreateServer(wrappedListener)
+				: originalCreateServer(firstArg, wrappedListener);
 		deviceBridge.attachToHttpServer(created).catch((err) => {
-			logger.warn("[compat] Failed to attach device-bridge WS handler:", err instanceof Error ? err.message : String(err));
+			logger.warn(
+				"[compat] Failed to attach device-bridge WS handler:",
+				err instanceof Error ? err.message : String(err),
+			);
 		});
 		return created;
-	});
+	};
 	return () => {
 		http.createServer = originalCreateServer;
 	};
@@ -18717,7 +22321,7 @@ async function startApiServer(...args) {
 	const compatState = {
 		current: args[0]?.runtime ?? null,
 		pendingAgentName: null,
-		pendingRestartReasons: []
+		pendingRestartReasons: [],
 	};
 	const restoreCreateServer = patchHttpCreateServerForCompat(compatState);
 	try {
@@ -18726,7 +22330,8 @@ async function startApiServer(...args) {
 			await (await lazyEnsureTTS())(compatState.current);
 		}
 		const server = await startApiServer$1(...args);
-		if (typeof server.port === "number" && server.port > 0) setResolvedLoopbackPort(server.port);
+		if (typeof server.port === "number" && server.port > 0)
+			setResolvedLoopbackPort(server.port);
 		const originalUpdateRuntime = server.updateRuntime;
 		server.updateRuntime = (runtime) => {
 			compatState.current = runtime;
@@ -18736,12 +22341,16 @@ async function startApiServer(...args) {
 				try {
 					await ensureRuntimeSqlCompatibility(runtime);
 				} catch (err) {
-					logger.error(`[eliza][runtime] SQL compatibility init failed: ${err instanceof Error ? err.message : String(err)}`);
+					logger.error(
+						`[eliza][runtime] SQL compatibility init failed: ${err instanceof Error ? err.message : String(err)}`,
+					);
 				}
 				try {
 					await (await lazyEnsureTTS())(runtime);
 				} catch (err) {
-					logger.warn(`[eliza][runtime] TTS init failed (non-critical): ${err instanceof Error ? err.message : String(err)}`);
+					logger.warn(
+						`[eliza][runtime] TTS init failed (non-critical): ${err instanceof Error ? err.message : String(err)}`,
+					);
 				}
 			})();
 		};
@@ -18754,4 +22363,50 @@ async function startApiServer(...args) {
 }
 
 //#endregion
-export { AGENT_EVENT_ALLOWED_STREAMS, CONFIG_WRITE_ALLOWED_TOP_KEYS, DATABASE_UNAVAILABLE_MESSAGE, SENSITIVE_ENV_RESPONSE_KEYS, __resetCloudBaseUrlCache, buildCorsAllowedPorts, cloneWithoutBlockedObjectKeys, discoverInstalledPlugins, discoverPluginsFromManifest, ensureApiTokenForBindHost, ensureCloudTtsApiKeyAlias, extractAuthToken, fetchWithTimeoutGuard, filterConfigEnvForResponse, findOwnPackageRoot, getConfiguredCompatAgentName, handleElizaCompatRoute, hasCompatPersistedOnboardingState, injectApiBaseIntoHtml, invalidateCorsAllowedPorts, isAllowedHost, isAllowedLocalOrigin, isAuthorized, isLoopbackRemoteAddress, isSafeResetStateDir, normalizeWsClientId, patchHttpCreateServerForCompat, persistConversationRoomTitle, readCompatJsonBody, resolveCloudTtsBaseUrl, resolveCorsOrigin, resolveElevenLabsApiKeyForCloudMode, resolveMcpServersRejection, resolveMcpTerminalAuthorizationRejection, resolvePluginConfigMutationRejections, resolveTerminalRunClientId, resolveTerminalRunRejection, resolveWalletExportRejection, resolveWebSocketUpgradeRejection, routeAutonomyTextToUser, setResolvedLoopbackPort, startApiServer, streamResponseBodyWithByteLimit, syncCompatConfigFiles, validateMcpServerConfig };
+export {
+	__resetCloudBaseUrlCache,
+	AGENT_EVENT_ALLOWED_STREAMS,
+	buildCorsAllowedPorts,
+	CONFIG_WRITE_ALLOWED_TOP_KEYS,
+	cloneWithoutBlockedObjectKeys,
+	DATABASE_UNAVAILABLE_MESSAGE,
+	discoverInstalledPlugins,
+	discoverPluginsFromManifest,
+	ensureApiTokenForBindHost,
+	ensureCloudTtsApiKeyAlias,
+	extractAuthToken,
+	fetchWithTimeoutGuard,
+	filterConfigEnvForResponse,
+	findOwnPackageRoot,
+	getConfiguredCompatAgentName,
+	handleElizaCompatRoute,
+	hasCompatPersistedOnboardingState,
+	injectApiBaseIntoHtml,
+	invalidateCorsAllowedPorts,
+	isAllowedHost,
+	isAllowedLocalOrigin,
+	isAuthorized,
+	isLoopbackRemoteAddress,
+	isSafeResetStateDir,
+	normalizeWsClientId,
+	patchHttpCreateServerForCompat,
+	persistConversationRoomTitle,
+	readCompatJsonBody,
+	resolveCloudTtsBaseUrl,
+	resolveCorsOrigin,
+	resolveElevenLabsApiKeyForCloudMode,
+	resolveMcpServersRejection,
+	resolveMcpTerminalAuthorizationRejection,
+	resolvePluginConfigMutationRejections,
+	resolveTerminalRunClientId,
+	resolveTerminalRunRejection,
+	resolveWalletExportRejection,
+	resolveWebSocketUpgradeRejection,
+	routeAutonomyTextToUser,
+	SENSITIVE_ENV_RESPONSE_KEYS,
+	setResolvedLoopbackPort,
+	startApiServer,
+	streamResponseBodyWithByteLimit,
+	syncCompatConfigFiles,
+	validateMcpServerConfig,
+};

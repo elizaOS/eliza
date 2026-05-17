@@ -183,12 +183,15 @@ function getVersion(binary: string, foundPath: string): string | undefined {
   return undefined;
 }
 
-function checkDependency(id: DependencyId): DependencyCheckResult {
+function checkDependency(
+  id: DependencyId,
+  which: (name: string) => string | undefined = whichBinary,
+): DependencyCheckResult {
   const def = DEPENDENCY_DEFINITIONS[id];
   // For deps with multiple commands, require all of them
   const paths: string[] = [];
   for (const cmd of def.commands) {
-    const found = whichBinary(cmd);
+    const found = which(cmd);
     if (!found) {
       return {
         id,
@@ -411,19 +414,6 @@ async function downloadPlatformTools(): Promise<boolean> {
   }
 }
 
-async function runLinuxInstall(
-  depKey: keyof typeof LINUX_PACKAGE_MAP,
-): Promise<boolean> {
-  const spec = getLinuxInstallSpec(depKey);
-  if (!spec) return false;
-  // Try with sudo non-interactive first; package managers usually need root.
-  const argv = ["sudo", "-n", ...spec.installCommand, ...spec.packages];
-  if (await runInstallCommand(argv)) return true;
-  // Fall back to running unprivileged (works only if invoking process is root
-  // or the package manager is configured to need no escalation).
-  return runInstallCommand([...spec.installCommand, ...spec.packages]);
-}
-
 async function downloadSideloader(): Promise<boolean> {
   const apiUrl =
     "https://api.github.com/repos/Dadoum/Sideloader/releases/latest";
@@ -471,7 +461,32 @@ async function downloadSideloader(): Promise<boolean> {
   }
 }
 
+/**
+ * Probes the DependencyManager uses to talk to the host system. Injectable so
+ * tests (and any caller that wants a virtual environment) can simulate a host
+ * without actually touching `which` or invoking a package manager.
+ *
+ * Both default to the real implementations; partial overrides are merged.
+ */
+export interface DependencyManagerProbes {
+  /** Locate a binary by name. Mirrors `which`/`where`. */
+  whichBinary: (name: string) => string | undefined;
+  /** Run an install argv. Resolves true iff the command exited 0. */
+  runInstallCommand: (argv: string[]) => Promise<boolean>;
+}
+
+const DEFAULT_PROBES: DependencyManagerProbes = {
+  whichBinary,
+  runInstallCommand,
+};
+
 export class DependencyManager {
+  private readonly probes: DependencyManagerProbes;
+
+  constructor(probes: Partial<DependencyManagerProbes> = {}) {
+    this.probes = { ...DEFAULT_PROBES, ...probes };
+  }
+
   async checkAll(): Promise<DependencyCheckResult[]> {
     const ids: DependencyId[] = [
       "adb",
@@ -479,16 +494,16 @@ export class DependencyManager {
       "libimobiledevice",
       "sideloader",
     ];
-    return ids.map((id) => checkDependency(id));
+    return ids.map((id) => checkDependency(id, this.probes.whichBinary));
   }
 
   async checkOne(id: DependencyId): Promise<DependencyCheckResult> {
-    return checkDependency(id);
+    return checkDependency(id, this.probes.whichBinary);
   }
 
   async autoInstall(id: DependencyId): Promise<DependencyCheckResult> {
     // If already present, skip
-    const existing = checkDependency(id);
+    const existing = checkDependency(id, this.probes.whichBinary);
     if (existing.status === "found") return existing;
 
     const platform = process.platform;
@@ -498,16 +513,16 @@ export class DependencyManager {
       case "adb":
       case "fastboot": {
         if (platform === "darwin") {
-          installed = await runInstallCommand([
+          installed = await this.probes.runInstallCommand([
             "brew",
             "install",
             "android-platform-tools",
           ]);
         } else if (platform === "linux") {
-          installed = await runLinuxInstall(id);
+          installed = await this.runLinuxInstall(id);
         } else if (platform === "win32") {
           if (await isWingetAvailable()) {
-            installed = await runInstallCommand([
+            installed = await this.probes.runInstallCommand([
               "winget",
               "install",
               "--silent",
@@ -527,13 +542,13 @@ export class DependencyManager {
 
       case "libimobiledevice": {
         if (platform === "darwin") {
-          installed = await runInstallCommand([
+          installed = await this.probes.runInstallCommand([
             "brew",
             "install",
             "libimobiledevice",
           ]);
         } else if (platform === "linux") {
-          installed = await runLinuxInstall("libimobiledevice");
+          installed = await this.runLinuxInstall("libimobiledevice");
         } else if (platform === "win32") {
           // No native winget package — fall through to manual
           installed = false;
@@ -543,7 +558,7 @@ export class DependencyManager {
 
       case "sideloader": {
         if (platform === "win32" && (await isWingetAvailable())) {
-          installed = await runInstallCommand([
+          installed = await this.probes.runInstallCommand([
             "winget",
             "install",
             "--silent",
@@ -561,7 +576,7 @@ export class DependencyManager {
       // Always trust the post-install probe, not the installer's exit code.
       // brew/apt/winget can return 0 without putting the binary on PATH (e.g.
       // when a shim install fails silently, or when PATH needs a shell rehash).
-      const result = checkDependency(id);
+      const result = checkDependency(id, this.probes.whichBinary);
       if (result.status === "found") return result;
       return {
         id,
@@ -577,6 +592,19 @@ export class DependencyManager {
       errorMessage: `Auto-install failed on ${platform}. Please install manually.`,
       manualInstructions: getManualInstructions(id),
     };
+  }
+
+  private async runLinuxInstall(
+    depKey: keyof typeof LINUX_PACKAGE_MAP,
+  ): Promise<boolean> {
+    const spec = getLinuxInstallSpec(depKey);
+    if (!spec) return false;
+    const argv = ["sudo", "-n", ...spec.installCommand, ...spec.packages];
+    if (await this.probes.runInstallCommand(argv)) return true;
+    return this.probes.runInstallCommand([
+      ...spec.installCommand,
+      ...spec.packages,
+    ]);
   }
 
   getManualInstructions(id: DependencyId): ManualInstallInstructions {

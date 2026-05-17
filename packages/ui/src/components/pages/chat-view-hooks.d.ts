@@ -1,21 +1,14 @@
-import type {
-  ConversationChannelType,
-  ConversationMessage,
-} from "../../api/client-types-chat";
+import type { ConversationChannelType, ConversationMessage } from "../../api/client-types-chat";
 import { type ContinuousChatState } from "../../hooks/useContinuousChat";
 import type { useApp } from "../../state/useApp";
-import {
-  type VoiceCaptureMode,
-  type VoiceContinuousMode,
-  type VoiceSpeakerMetadata,
-} from "../../voice/voice-chat-types";
+import { type VoiceCaptureMode, type VoiceContinuousMode, type VoiceSpeakerMetadata } from "../../voice/voice-chat-types";
 export declare function mapUiLanguageToSpeechLocale(uiLanguage: string): string;
 type VoiceLatencyState = {
-  assistantFirstMessageId: string | null;
-  firstSegmentCached: boolean | null;
-  speechEndToFirstTokenMs: number | null;
-  speechEndToVoiceStartMs: number | null;
-  assistantStreamToVoiceStartMs: number | null;
+    assistantFirstMessageId: string | null;
+    firstSegmentCached: boolean | null;
+    speechEndToFirstTokenMs: number | null;
+    speechEndToVoiceStartMs: number | null;
+    assistantStreamToVoiceStartMs: number | null;
 };
 export declare function __resetCompanionSpeechMemoryForTests(): void;
 /**
@@ -30,56 +23,53 @@ export declare function __resetCompanionSpeechMemoryForTests(): void;
  *    only when cloud inference is actually selected, not merely linked.
  */
 export declare function useChatVoiceController(options: {
-  agentVoiceMuted: boolean;
-  chatFirstTokenReceived: boolean;
-  chatInput: string;
-  chatSending: boolean;
-  elizaCloudConnected: boolean;
-  elizaCloudVoiceProxyAvailable: boolean;
-  elizaCloudHasPersistedKey: boolean;
-  conversationMessages: ConversationMessage[];
-  activeConversationId: string | null;
-  handleChatEdit: (messageId: string, text: string) => Promise<boolean>;
-  handleChatSend: (
-    channelType?: ConversationChannelType,
-    options?: {
-      metadata?: Record<string, unknown>;
-    },
-  ) => Promise<void>;
-  isComposerLocked: boolean;
-  isGameModal: boolean;
-  setState: ReturnType<typeof useApp>["setState"];
-  uiLanguage: string;
-  /** Caller owns continuous-chat mode (persistence + UI toggle). Defaults to off. */
-  continuousMode?: VoiceContinuousMode;
+    agentVoiceMuted: boolean;
+    chatFirstTokenReceived: boolean;
+    chatInput: string;
+    chatSending: boolean;
+    elizaCloudConnected: boolean;
+    elizaCloudVoiceProxyAvailable: boolean;
+    elizaCloudHasPersistedKey: boolean;
+    conversationMessages: ConversationMessage[];
+    activeConversationId: string | null;
+    handleChatEdit: (messageId: string, text: string) => Promise<boolean>;
+    handleChatSend: (channelType?: ConversationChannelType, options?: {
+        metadata?: Record<string, unknown>;
+    }) => Promise<void>;
+    isComposerLocked: boolean;
+    isGameModal: boolean;
+    setState: ReturnType<typeof useApp>["setState"];
+    uiLanguage: string;
+    /** Caller owns continuous-chat mode (persistence + UI toggle). Defaults to off. */
+    continuousMode?: VoiceContinuousMode;
 }): {
-  beginVoiceCapture: (mode?: Exclude<VoiceCaptureMode, "idle">) => void;
-  endVoiceCapture: (captureOptions?: { submit?: boolean }) => void;
-  continuous: ContinuousChatState;
-  handleEditMessage: (messageId: string, text: string) => Promise<boolean>;
-  handleSpeakMessage: (messageId: string, text: string) => void;
-  stopSpeaking: () => void;
-  voice: import("../..").VoiceChatState;
-  voiceLatency: VoiceLatencyState | null;
-  voiceSpeaker: VoiceSpeakerMetadata | null;
+    beginVoiceCapture: (mode?: Exclude<VoiceCaptureMode, "idle">) => void;
+    endVoiceCapture: (captureOptions?: {
+        submit?: boolean;
+    }) => void;
+    continuous: ContinuousChatState;
+    handleEditMessage: (messageId: string, text: string) => Promise<boolean>;
+    handleSpeakMessage: (messageId: string, text: string) => void;
+    stopSpeaking: () => void;
+    voice: import("../..").VoiceChatState;
+    voiceLatency: VoiceLatencyState | null;
+    voiceSpeaker: VoiceSpeakerMetadata | null;
 };
-export type UseChatVoiceControllerReturn = ReturnType<
-  typeof useChatVoiceController
->;
+export type UseChatVoiceControllerReturn = ReturnType<typeof useChatVoiceController>;
 export type { ContinuousChatState };
 export interface CompanionCarryoverState {
-  expiresAtMs: number;
-  fadeStartsAtMs: number;
-  messages: ConversationMessage[];
+    expiresAtMs: number;
+    fadeStartsAtMs: number;
+    messages: ConversationMessage[];
 }
 export declare function useGameModalMessages(options: {
-  activeConversationId: string | null;
-  companionMessageCutoffTs: number;
-  isGameModal: boolean;
-  visibleMsgs: ConversationMessage[];
+    activeConversationId: string | null;
+    companionMessageCutoffTs: number;
+    isGameModal: boolean;
+    visibleMsgs: ConversationMessage[];
 }): {
-  companionCarryover: CompanionCarryoverState | null;
-  gameModalCarryoverOpacity: number;
-  gameModalVisibleMsgs: ConversationMessage[];
+    companionCarryover: CompanionCarryoverState | null;
+    gameModalCarryoverOpacity: number;
+    gameModalVisibleMsgs: ConversationMessage[];
 };
 //# sourceMappingURL=chat-view-hooks.d.ts.map

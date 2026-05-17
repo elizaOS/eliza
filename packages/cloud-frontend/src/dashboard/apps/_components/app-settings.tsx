@@ -184,7 +184,7 @@ export function AppSettings({ app }: AppSettingsProps) {
                 setFormData({ ...formData, name: e.target.value })
               }
               placeholder="My Awesome App"
-              className="bg-black/40 border-white/10 focus:border-[#FF5800]/50 rounded-lg"
+              className="bg-black/40 border-white/10 focus:border-[#FF5800]/50 rounded-sm"
             />
           </div>
 
@@ -200,7 +200,7 @@ export function AppSettings({ app }: AppSettingsProps) {
               }
               placeholder="A brief description of your app..."
               rows={3}
-              className="bg-black/40 border-white/10 focus:border-[#FF5800]/50 resize-none rounded-lg"
+              className="bg-black/40 border-white/10 focus:border-[#FF5800]/50 resize-none rounded-sm"
             />
           </div>
 
@@ -217,7 +217,7 @@ export function AppSettings({ app }: AppSettingsProps) {
                   setFormData({ ...formData, app_url: e.target.value })
                 }
                 placeholder="https://myapp.com"
-                className="bg-black/40 border-white/10 focus:border-[#FF5800]/50 rounded-lg"
+                className="bg-black/40 border-white/10 focus:border-[#FF5800]/50 rounded-sm"
               />
             </div>
 
@@ -233,7 +233,7 @@ export function AppSettings({ app }: AppSettingsProps) {
                   setFormData({ ...formData, website_url: e.target.value })
                 }
                 placeholder="https://website.com"
-                className="bg-black/40 border-white/10 focus:border-[#FF5800]/50 rounded-lg"
+                className="bg-black/40 border-white/10 focus:border-[#FF5800]/50 rounded-sm"
               />
             </div>
           </div>
@@ -250,11 +250,11 @@ export function AppSettings({ app }: AppSettingsProps) {
                 setFormData({ ...formData, contact_email: e.target.value })
               }
               placeholder="contact@myapp.com"
-              className="bg-black/40 border-white/10 focus:border-[#FF5800]/50 rounded-lg"
+              className="bg-black/40 border-white/10 focus:border-[#FF5800]/50 rounded-sm"
             />
           </div>
 
-          <div className="flex items-center justify-between p-3 bg-black/30 rounded-lg border border-white/10">
+          <div className="flex items-center justify-between p-3 bg-black/30 rounded-sm border border-white/10">
             <div>
               <p className="text-sm font-medium text-white">Active Status</p>
               <p className="text-xs text-neutral-500 mt-0.5">
@@ -290,7 +290,7 @@ export function AppSettings({ app }: AppSettingsProps) {
             value={newOrigin}
             onChange={(e) => setNewOrigin(e.target.value)}
             placeholder="https://example.com"
-            className="bg-black/40 border-white/10 focus:border-[#FF5800]/50 rounded-lg"
+            className="bg-black/40 border-white/10 focus:border-[#FF5800]/50 rounded-sm"
             onKeyPress={(e) => {
               if (e.key === "Enter") {
                 e.preventDefault();
@@ -320,7 +320,7 @@ export function AppSettings({ app }: AppSettingsProps) {
                 <button
                   type="button"
                   onClick={() => removeOrigin(origin)}
-                  className="ml-1 p-0.5 hover:bg-white/10 rounded transition-colors"
+                  className="ml-1 p-0.5 hover:bg-white/10 rounded-sm transition-colors"
                 >
                   <X className="h-3 w-3" />
                 </button>
@@ -359,7 +359,7 @@ export function AppSettings({ app }: AppSettingsProps) {
         </h3>
 
         <div className="space-y-3">
-          <div className="flex items-center justify-between p-4 bg-black rounded-lg border border-red-500/10">
+          <div className="flex items-center justify-between p-4 bg-black rounded-sm border border-red-500/10">
             <div className="min-w-0 flex-1 mr-3">
               <p className="text-sm font-medium text-white">
                 Regenerate API Key
@@ -411,7 +411,7 @@ export function AppSettings({ app }: AppSettingsProps) {
             </AlertDialog>
           </div>
 
-          <div className="flex items-center justify-between p-4 bg-black rounded-lg border border-red-500/10">
+          <div className="flex items-center justify-between p-4 bg-black rounded-sm border border-red-500/10">
             <div className="min-w-0 flex-1 mr-3">
               <p className="text-sm font-medium text-white">Delete App</p>
               <p className="text-xs text-neutral-400 mt-1">

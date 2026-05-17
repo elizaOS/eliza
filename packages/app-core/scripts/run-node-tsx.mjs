@@ -26,7 +26,9 @@ function resolveNodeCmd() {
   const pathCandidates = (process.env.PATH ?? "")
     .split(path.delimiter)
     .filter(Boolean)
-    .map((dir) => path.join(dir, process.platform === "win32" ? "node.exe" : "node"));
+    .map((dir) =>
+      path.join(dir, process.platform === "win32" ? "node.exe" : "node"),
+    );
   for (const candidate of pathCandidates) {
     if (isRealNodeExecutable(candidate)) {
       return candidate;
@@ -53,15 +55,11 @@ if (args.length === 0) {
   process.exit(1);
 }
 
-const child = spawn(
-  resolveNodeCmd(),
-  ["--import", "tsx", ...args],
-  {
-    cwd: process.cwd(),
-    env: { ...process.env, PWD: process.cwd() },
-    stdio: "inherit",
-  },
-);
+const child = spawn(resolveNodeCmd(), ["--import", "tsx", ...args], {
+  cwd: process.cwd(),
+  env: { ...process.env, PWD: process.cwd() },
+  stdio: "inherit",
+});
 
 const SIGNAL_EXIT_CODE = {
   SIGHUP: 129,

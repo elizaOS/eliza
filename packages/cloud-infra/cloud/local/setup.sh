@@ -233,106 +233,17 @@ docker build -t "localhost:${REGISTRY_PORT}/agent-server:dev" \
 docker push "localhost:${REGISTRY_PORT}/agent-server:dev"
 pass "Agent-server image pushed to localhost:${REGISTRY_PORT}"
 
-# 16. Build & push gateway-discord image
-info "Building gateway-discord image..."
-cd "$CLOUD_SERVICES_DIR/gateway-discord"
-bun install --silent 2>/dev/null || npm install --silent 2>/dev/null
-cd "$SCRIPT_DIR"
+# 16. Gateway services (gateway-discord, gateway-webhook) are no longer deployed
+# via Helm/Kind in local dev. Production runs them on Railway via each service's
+# railway.toml; the EKS / Helm path was retired with the AWS migration. For
+# local testing of either gateway, run `bun run dev` (or `docker compose up`)
+# inside the service directory and point it at the local cluster's redis-rest +
+# eliza-cloud services using the env-var sets that used to populate the secrets
+# below.
 
-docker build -t "localhost:${REGISTRY_PORT}/gateway-discord:dev" \
-  "$CLOUD_SERVICES_DIR/gateway-discord"
-docker push "localhost:${REGISTRY_PORT}/gateway-discord:dev"
-pass "Gateway-discord image pushed to localhost:${REGISTRY_PORT}"
-
-# 17. Create gateway-discord Secret
-info "Creating gateway-discord-secrets Secret..."
-GW_ENV_FILE="$SCRIPT_DIR/.env.gateway"
-if [ ! -f "$GW_ENV_FILE" ]; then
-  info "  No .env.gateway found, creating with defaults..."
-  cat > "$GW_ENV_FILE" <<'DEFAULTS'
-ELIZA_CLOUD_URL=http://eliza-cloud.eliza-infra.svc:3000
-KV_REST_API_URL=http://redis-rest.eliza-infra.svc:8079
-KV_REST_API_TOKEN=local_dev_token
-GATEWAY_BOOTSTRAP_SECRET=local-dev-gateway-secret-change-me
-AGENT_SERVER_SHARED_SECRET=local-dev-agent-server-secret
-VOICE_MESSAGE_ENABLED=false
-LOG_LEVEL=debug
-# Eliza App bot (optional — set to test the system-wide bot)
-# ELIZA_APP_DISCORD_BOT_TOKEN=your-bot-token
-# ELIZA_APP_DISCORD_APPLICATION_ID=your-application-id
-KEDA_COOLDOWN_SECONDS=60
-DEFAULTS
-  info "  Edit $GW_ENV_FILE with your secrets, then re-run setup."
-fi
-kubectl create secret generic gateway-discord-secrets \
-  --namespace eliza-infra \
-  --from-env-file="$GW_ENV_FILE" \
-  --dry-run=client -o yaml | kubectl apply -f -
-pass "Secret gateway-discord-secrets created from .env.gateway"
-
-# 18. Deploy gateway-discord via Helm chart
-info "Deploying gateway-discord via Helm..."
-helm upgrade --install gateway-discord \
-  "$CLOUD_SERVICES_DIR/gateway-discord/chart" \
-  --namespace eliza-infra \
-  --values "$SCRIPT_DIR/values-gateway.yaml" \
-  --wait --timeout 120s
-pass "Gateway-discord deployed via Helm"
-
-# 19. Build & push gateway-webhook image
-info "Building gateway-webhook image..."
-cd "$CLOUD_SERVICES_DIR/gateway-webhook"
-bun install --silent 2>/dev/null || npm install --silent 2>/dev/null
-cd "$SCRIPT_DIR"
-
-docker build -t "localhost:${REGISTRY_PORT}/gateway-webhook:dev" \
-  "$CLOUD_SERVICES_DIR/gateway-webhook"
-docker push "localhost:${REGISTRY_PORT}/gateway-webhook:dev"
-pass "Gateway-webhook image pushed to localhost:${REGISTRY_PORT}"
-
-# 20. Create gateway-webhook Secret
-info "Creating gateway-webhook-secrets Secret..."
-GW_WEBHOOK_ENV_FILE="$SCRIPT_DIR/.env.gateway-webhook"
-if [ ! -f "$GW_WEBHOOK_ENV_FILE" ]; then
-  info "  No .env.gateway-webhook found, creating with defaults..."
-  cat > "$GW_WEBHOOK_ENV_FILE" <<'DEFAULTS'
-GATEWAY_BOOTSTRAP_SECRET=local-dev-gateway-secret-change-me
-GATEWAY_INTERNAL_SECRET=local-dev-gateway-internal-secret
-AGENT_SERVER_SHARED_SECRET=local-dev-agent-server-secret
-KV_REST_API_URL=http://redis-rest.eliza-infra.svc:8079
-KV_REST_API_TOKEN=local_dev_token
-ELIZA_CLOUD_URL=http://eliza-cloud.eliza-infra.svc:3000
-ELIZA_APP_TELEGRAM_BOT_TOKEN=
-ELIZA_APP_TELEGRAM_WEBHOOK_SECRET=
-ELIZA_APP_BLOOIO_API_KEY=
-ELIZA_APP_BLOOIO_WEBHOOK_SECRET=
-ELIZA_APP_BLOOIO_PHONE_NUMBER=
-ELIZA_APP_TWILIO_ACCOUNT_SID=
-ELIZA_APP_TWILIO_AUTH_TOKEN=
-ELIZA_APP_TWILIO_PHONE_NUMBER=
-ELIZA_APP_WHATSAPP_ACCESS_TOKEN=
-ELIZA_APP_WHATSAPP_PHONE_NUMBER_ID=
-ELIZA_APP_WHATSAPP_APP_SECRET=
-ELIZA_APP_WHATSAPP_VERIFY_TOKEN=
-ELIZA_APP_WHATSAPP_PHONE_NUMBER=
-ELIZA_APP_DEFAULT_AGENT_ID=b850bc30-45f8-0041-a00a-83df46d8555d
-DEFAULTS
-  info "  Edit $GW_WEBHOOK_ENV_FILE with your secrets, then re-run setup."
-fi
-kubectl create secret generic gateway-webhook-secrets \
-  --namespace eliza-infra \
-  --from-env-file="$GW_WEBHOOK_ENV_FILE" \
-  --dry-run=client -o yaml | kubectl apply -f -
-pass "Secret gateway-webhook-secrets created from .env.gateway-webhook"
-
-# 21. Deploy gateway-webhook via Helm chart
-info "Deploying gateway-webhook via Helm..."
-helm upgrade --install gateway-webhook \
-  "$CLOUD_INFRA_DIR/charts/gateway-webhook" \
-  --namespace eliza-infra \
-  --values "$SCRIPT_DIR/values-gateway-webhook.yaml" \
-  --wait --timeout 120s
-pass "Gateway-webhook deployed via Helm"
+# 19-21. gateway-webhook is no longer deployed via Helm/Kind in local dev — see
+# the gateway-discord note above. Production runs on Railway via
+# packages/cloud-services/gateway-webhook/railway.toml.
 
 # 22. Apply Server CRs
 info "Applying Server CRs..."
@@ -436,11 +347,11 @@ echo "KEDA:         installed in namespace 'keda'"
 echo ""
 echo "Operator:     deployed in namespace 'pepr-system'"
 echo "Agent img:    localhost:${REGISTRY_PORT}/agent-server:dev"
-echo "Gateway img:  localhost:${REGISTRY_PORT}/gateway-discord:dev"
-echo "Webhook img:  localhost:${REGISTRY_PORT}/gateway-webhook:dev"
 echo ""
 echo "Next steps:"
 echo "  1. Start Eliza Cloud locally:  cd cloud && bun dev"
-echo "  2. Check gateway logs:         kubectl logs -f -n eliza-infra -l app=gateway-discord"
-echo "  3. Check webhook gateway logs: kubectl logs -f -n eliza-infra -l app=gateway-webhook"
-echo "  4. Send a DM to the Eliza App bot on Discord"
+echo "  2. For gateway-discord / gateway-webhook, run them on the host:"
+echo "       bun run --cwd packages/cloud-services/gateway-discord  dev:local"
+echo "       bun run --cwd packages/cloud-services/gateway-webhook  dev"
+echo "     (production deploys: Railway via each service's railway.toml)"
+echo "  3. Send a DM to the Eliza App bot on Discord"

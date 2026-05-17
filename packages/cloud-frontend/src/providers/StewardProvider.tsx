@@ -26,29 +26,28 @@ function isPlaceholderValue(value: string | undefined): boolean {
   );
 }
 
-type ImportMetaEnvLike = {
-  env?: Record<string, string | undefined>;
-};
-
-function hasViteEnv(meta: ImportMeta): meta is ImportMeta & ImportMetaEnvLike {
-  const env = (meta as ImportMetaEnvLike).env;
-  return typeof env === "object" && env !== null;
-}
-
-function getViteEnvValue(name: string): string | undefined {
-  return hasViteEnv(import.meta) ? import.meta.env?.[name] : undefined;
-}
-
+/**
+ * IMPORTANT: Vite production builds replace `import.meta.env` with a literal
+ * containing only the 5 standard fields (BASE_URL/DEV/MODE/PROD/SSR). Custom
+ * `VITE_*` vars are inlined only when read via the literal property name
+ * (`import.meta.env.VITE_FOO`). A dynamic `env[name]` lookup silently
+ * returns `undefined` in prod — which breaks both the Playwright auth bypass
+ * AND the runtime Steward API URL resolution. Read each env var by its
+ * literal name below.
+ */
 function trimTrailingSlash(value: string): string {
   return value.replace(/\/+$/, "");
 }
 
 function isPlaywrightTestAuthEnabled(): boolean {
-  return (
-    getViteEnvValue("VITE_PLAYWRIGHT_TEST_AUTH") === "true" ||
-    (typeof process !== "undefined" &&
-      process.env?.NEXT_PUBLIC_PLAYWRIGHT_TEST_AUTH === "true")
-  );
+  if (import.meta.env?.VITE_PLAYWRIGHT_TEST_AUTH === "true") return true;
+  if (
+    typeof process !== "undefined" &&
+    process.env?.NEXT_PUBLIC_PLAYWRIGHT_TEST_AUTH === "true"
+  ) {
+    return true;
+  }
+  return false;
 }
 
 /**
@@ -84,9 +83,11 @@ function isBrowserOnElizaHost(): boolean {
 }
 
 function configuredSessionEndpoint(): string {
+  // Vite inlines these only via the literal property name; do not rewrite
+  // these to a dynamic lookup helper (see comment at top of file).
   const apiBase =
-    getViteEnvValue("VITE_API_URL") ||
-    getViteEnvValue("NEXT_PUBLIC_API_URL") ||
+    import.meta.env?.VITE_API_URL ||
+    import.meta.env?.NEXT_PUBLIC_API_URL ||
     process.env.NEXT_PUBLIC_API_URL;
   // Reject localhost API bases when running in a browser pointed at a known
   // Eliza Cloud host. A build that leaked the dev URL into the production

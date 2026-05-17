@@ -1,5 +1,11 @@
 import { Button } from "@elizaos/ui/button";
 import {
+  AppleMessagesIcon,
+  DiscordIcon,
+  TelegramIcon,
+  WhatsAppIcon,
+} from "@elizaos/ui/cloud-ui";
+import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
@@ -8,12 +14,6 @@ import {
 import { Check, Copy, Info, LogOut } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import {
-  AppleMessagesIcon,
-  DiscordIcon,
-  TelegramIcon,
-  WhatsAppIcon,
-} from "@/components/icons/platform-icons";
 import {
   buildFullPhoneNumber,
   PhoneNumberInput,

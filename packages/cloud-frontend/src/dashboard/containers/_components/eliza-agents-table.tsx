@@ -14,6 +14,11 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
   Badge,
+  DashboardDataList,
+  DashboardDataListDesktop,
+  DashboardDataListFilteredCount,
+  DashboardDataListMobile,
+  DataListEmptyState,
   Input,
   Select,
   SelectContent,
@@ -463,33 +468,23 @@ export function ElizaAgentsTable({
 
   if (localSandboxes.length === 0) {
     return (
-      <div className="border border-white/10 bg-black/40 p-8 md:p-12">
-        <div className="flex flex-col items-center justify-center text-center space-y-4 max-w-sm mx-auto">
-          <div className="flex size-12 items-center justify-center border border-white/10 bg-white/[0.03]">
-            <Boxes className="h-6 w-6 text-white/40" />
-          </div>
-          <div className="space-y-1.5">
-            <p className="text-white font-medium">No agents yet</p>
-            <p className="text-sm text-white/74">
-              Deploy your first agent to get started.
-            </p>
-          </div>
-          <div className="pt-2">
-            <CreateElizaAgentDialog
-              onProvisionQueued={(agentId, jobId) =>
-                poller.track(agentId, jobId)
-              }
-              onCreated={refreshData}
-            />
-          </div>
-        </div>
-      </div>
+      <DataListEmptyState
+        title="No agents yet"
+        description="Deploy your first agent to get started."
+        icon={Boxes}
+        action={
+          <CreateElizaAgentDialog
+            onProvisionQueued={(agentId, jobId) => poller.track(agentId, jobId)}
+            onCreated={refreshData}
+          />
+        }
+      />
     );
   }
 
   return (
     <TooltipProvider>
-      <div className="space-y-4">
+      <DashboardDataList>
         {/* Search + filter + create */}
         <div className="flex flex-col sm:flex-row gap-3">
           <div className="relative flex-1">
@@ -522,13 +517,15 @@ export function ElizaAgentsTable({
         </div>
 
         {(searchQuery || statusFilter !== "all") && (
-          <p className="text-[11px] uppercase tracking-widest text-white/40 tabular-nums">
-            {filtered.length} of {localSandboxes.length} agents
-          </p>
+          <DashboardDataListFilteredCount
+            filtered={filtered.length}
+            total={localSandboxes.length}
+            label="agents"
+          />
         )}
 
         {/* Desktop table */}
-        <div className="hidden md:block border border-white/10 overflow-hidden">
+        <DashboardDataListDesktop>
           <Table>
             <TableHeader>
               <TableRow className="bg-black/40 border-b border-white/10 hover:bg-black/40">
@@ -778,10 +775,10 @@ export function ElizaAgentsTable({
               )}
             </TableBody>
           </Table>
-        </div>
+        </DashboardDataListDesktop>
 
         {/* Mobile card list */}
-        <div className="md:hidden space-y-2">
+        <DashboardDataListMobile>
           {filtered.length === 0 ? (
             <div className="border border-white/10 bg-black/40 p-6 text-center">
               <Search className="h-5 w-5 mx-auto mb-2 text-white/30" />
@@ -909,8 +906,8 @@ export function ElizaAgentsTable({
               );
             })
           )}
-        </div>
-      </div>
+        </DashboardDataListMobile>
+      </DashboardDataList>
 
       {/* Delete confirmation */}
       <AlertDialog

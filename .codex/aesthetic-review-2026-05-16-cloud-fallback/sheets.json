@@ -1,0 +1,18 @@
+[
+  {
+    "viewport": "desktop",
+    "file": "contact-sheets/cloud-desktop.png"
+  },
+  {
+    "viewport": "wide",
+    "file": "contact-sheets/cloud-wide.png"
+  },
+  {
+    "viewport": "mobile-portrait",
+    "file": "contact-sheets/cloud-mobile-portrait.png"
+  },
+  {
+    "viewport": "mobile-landscape",
+    "file": "contact-sheets/cloud-mobile-landscape.png"
+  }
+]

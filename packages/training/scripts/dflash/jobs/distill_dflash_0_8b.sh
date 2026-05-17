@@ -2,11 +2,11 @@
 # Target catalog tier: eliza-1-0_8b (see packages/shared/src/local-inference/catalog.ts)
 # Distill the tiny DFlash drafter for the smallest Eliza-1 tier.
 #
-# Student base: Qwen/Qwen3.5-0.8B-Base. Acceptance gate: 0.40.
+# Student config: dflash-drafter-0_1b-qwen3_5. Acceptance gate: 0.40.
 #
 # Hardware (starting point — tune empirically):
-#   1× 16GB GPU should be enough for target + student bf16 at short KD context.
-#   Estimated wall time: ~4-6h for ~25k samples × 2 epochs at batch 16.
+#   1× H200 on Nebius. Do not train locally.
+#   Estimated wall time: ~4-6h for ~25k samples × 4 epochs at batch 32.
 
 set -euo pipefail
 script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -14,10 +14,10 @@ script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "${script_dir}/_lib.sh"
 
 TIER="0_8b"
-EPOCHS="${EPOCHS:-2}"
-BATCH_SIZE="${BATCH_SIZE:-16}"
+EPOCHS="${EPOCHS:-4}"
+BATCH_SIZE="${BATCH_SIZE:-32}"
 GRAD_ACCUM="${GRAD_ACCUM:-2}"
-LR="${LR:-2e-4}"
+LR="${LR:-3e-4}"
 MAX_SEQ_LEN="${MAX_SEQ_LEN:-1536}"
 
 dflash_run_distill "$@"

@@ -17,30 +17,24 @@
  * build), the hook returns `phase: "unavailable"` and callers fall back to
  * local heuristics. The snapshot is advisory; it never gates security.
  */
-import {
-  type RuntimeMode,
-  type RuntimeModeSnapshot,
-} from "../api/runtime-mode-client";
-export type UseRuntimeModeState =
-  | {
-      phase: "loading";
-    }
-  | {
-      phase: "ready";
-      snapshot: RuntimeModeSnapshot;
-    }
-  | {
-      phase: "unavailable";
-    };
+import { type RuntimeMode, type RuntimeModeSnapshot } from "../api/runtime-mode-client";
+export type UseRuntimeModeState = {
+    phase: "loading";
+} | {
+    phase: "ready";
+    snapshot: RuntimeModeSnapshot;
+} | {
+    phase: "unavailable";
+};
 export interface UseRuntimeModeResult {
-  state: UseRuntimeModeState;
-  /** Convenience: `null` until the snapshot resolves. */
-  mode: RuntimeMode | null;
-  /** True for both `local` and `local-only`. */
-  isLocalOnly: boolean;
-  isCloudMode: boolean;
-  isRemoteMode: boolean;
-  refetch: () => void;
+    state: UseRuntimeModeState;
+    /** Convenience: `null` until the snapshot resolves. */
+    mode: RuntimeMode | null;
+    /** True for both `local` and `local-only`. */
+    isLocalOnly: boolean;
+    isCloudMode: boolean;
+    isRemoteMode: boolean;
+    refetch: () => void;
 }
 /**
  * Test-only escape hatch — clears the module-scope cache so a hook test

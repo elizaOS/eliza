@@ -6,6 +6,8 @@ import {
   InvalidDiskNumberError,
   InvalidImagePathError,
   InvalidScriptPathError,
+  SystemDiskProtectedError,
+  WslDetectedError,
 } from "../errors";
 import {
   assertValidDiskNumber,
@@ -194,5 +196,24 @@ describe("classifyDiskSafety", () => {
       friendlyName: "Samsung SSD 990 Pro Internal",
     });
     expect(v.safety).toBe("blocked-system");
+  });
+});
+
+describe("typed error shapes (Windows backend)", () => {
+  it("WslDetectedError has a stable name and is an Error", () => {
+    const err = new WslDetectedError();
+    expect(err).toBeInstanceOf(Error);
+    expect(err).toBeInstanceOf(WslDetectedError);
+    expect(err.name).toBe("WslDetectedError");
+    expect(err.message).toMatch(/wsl/i);
+  });
+
+  it("SystemDiskProtectedError carries the offending disk number", () => {
+    const err = new SystemDiskProtectedError("boom", 0);
+    expect(err).toBeInstanceOf(Error);
+    expect(err).toBeInstanceOf(SystemDiskProtectedError);
+    expect(err.name).toBe("SystemDiskProtectedError");
+    expect(err.diskNumber).toBe(0);
+    expect(err.message).toBe("boom");
   });
 });

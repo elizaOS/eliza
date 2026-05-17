@@ -1,29 +1,30 @@
-import { Ta as pathForTab, sa as isCloudStatusReasonApiKeyOnly } from "./state-BC9WO-N8.js";
+import {
+	sa as isCloudStatusReasonApiKeyOnly,
+	Ta as pathForTab,
+} from "./state-BC9WO-N8.js";
 
 //#region node_modules/.bun/@elizaos+app-core@2.0.0-alpha.537+72829346cb4c43b1/node_modules/@elizaos/app-core/packages/app-core/src/components/pages/cloud-dashboard-utils.js
 /** Marketing / docs site — "Learn more" when not connected (in-app browser on desktop). */
 const ELIZA_CLOUD_WEB_URL = "https://elizacloud.ai";
-const BILLING_PRESET_AMOUNTS = [
-	10,
-	25,
-	100
-];
+const BILLING_PRESET_AMOUNTS = [10, 25, 100];
 const MANAGED_DISCORD_GATEWAY_AGENT_NAME = "Discord Gateway";
 function isRecord(value) {
 	return typeof value === "object" && value !== null;
 }
 function resolveCloudAccountIdDisplay(userId, statusReason, t) {
-	if (userId) return {
-		mono: true,
-		text: userId
-	};
-	if (isCloudStatusReasonApiKeyOnly(statusReason)) return {
-		mono: false,
-		text: t("elizaclouddashboard.AccountIdApiKeyOnly")
-	};
+	if (userId)
+		return {
+			mono: true,
+			text: userId,
+		};
+	if (isCloudStatusReasonApiKeyOnly(statusReason))
+		return {
+			mono: false,
+			text: t("elizaclouddashboard.AccountIdApiKeyOnly"),
+		};
 	return {
 		mono: false,
-		text: t("elizaclouddashboard.AccountIdSessionNoUserId")
+		text: t("elizaclouddashboard.AccountIdSessionNoUserId"),
 	};
 }
 function unwrapBillingData(value) {
@@ -51,7 +52,7 @@ const MANAGED_DISCORD_CALLBACK_QUERY_KEYS = [
 	"guildId",
 	"guildName",
 	"restarted",
-	"message"
+	"message",
 ];
 function consumeManagedDiscordCallbackUrl(rawUrl) {
 	let url;
@@ -60,15 +61,16 @@ function consumeManagedDiscordCallbackUrl(rawUrl) {
 	} catch {
 		return {
 			callback: null,
-			cleanedUrl: null
+			cleanedUrl: null,
 		};
 	}
 	const status = url.searchParams.get("discord");
 	const managed = url.searchParams.get("managed") === "1";
-	if (status !== "connected" && status !== "error" || !managed) return {
-		callback: null,
-		cleanedUrl: null
-	};
+	if ((status !== "connected" && status !== "error") || !managed)
+		return {
+			callback: null,
+			cleanedUrl: null,
+		};
 	const callback = {
 		status,
 		managed,
@@ -76,12 +78,13 @@ function consumeManagedDiscordCallbackUrl(rawUrl) {
 		guildId: readString(url.searchParams.get("guildId")) ?? null,
 		guildName: readString(url.searchParams.get("guildName")) ?? null,
 		message: readString(url.searchParams.get("message")) ?? null,
-		restarted: url.searchParams.get("restarted") === "1"
+		restarted: url.searchParams.get("restarted") === "1",
 	};
-	for (const key of MANAGED_DISCORD_CALLBACK_QUERY_KEYS) url.searchParams.delete(key);
+	for (const key of MANAGED_DISCORD_CALLBACK_QUERY_KEYS)
+		url.searchParams.delete(key);
 	return {
 		callback,
-		cleanedUrl: url.toString()
+		cleanedUrl: url.toString(),
 	};
 }
 function buildManagedDiscordSettingsReturnUrl(rawUrl) {
@@ -97,7 +100,10 @@ function buildManagedDiscordSettingsReturnUrl(rawUrl) {
 		url.search = "";
 		return url.toString();
 	}
-	const settingsPathname = (url.pathname.replace(/\/+$/, "") || "/").replace(/\/[^/]*$/, settingsPath);
+	const settingsPathname = (url.pathname.replace(/\/+$/, "") || "/").replace(
+		/\/[^/]*$/,
+		settingsPath,
+	);
 	url.pathname = settingsPathname === "" ? settingsPath : settingsPathname;
 	url.search = "";
 	url.hash = "";
@@ -105,39 +111,46 @@ function buildManagedDiscordSettingsReturnUrl(rawUrl) {
 }
 function resolveManagedDiscordAgentChoice(agents) {
 	const gatewayAgents = agents.filter(isManagedDiscordGatewayAgent);
-	if (agents.length === 0) return {
-		mode: "none",
-		agent: null,
-		selectedAgentId: null
-	};
-	if (gatewayAgents.length === 0) return {
-		mode: "bootstrap",
-		agent: null,
-		selectedAgentId: null
-	};
-	if (gatewayAgents.length === 1) return {
-		mode: "direct",
-		agent: gatewayAgents[0],
-		selectedAgentId: gatewayAgents[0].agent_id
-	};
+	if (agents.length === 0)
+		return {
+			mode: "none",
+			agent: null,
+			selectedAgentId: null,
+		};
+	if (gatewayAgents.length === 0)
+		return {
+			mode: "bootstrap",
+			agent: null,
+			selectedAgentId: null,
+		};
+	if (gatewayAgents.length === 1)
+		return {
+			mode: "direct",
+			agent: gatewayAgents[0],
+			selectedAgentId: gatewayAgents[0].agent_id,
+		};
 	return {
 		mode: "picker",
 		agent: null,
-		selectedAgentId: (gatewayAgents[0] ?? agents[0]).agent_id
+		selectedAgentId: (gatewayAgents[0] ?? agents[0]).agent_id,
 	};
 }
 function isManagedDiscordGatewayAgent(agent) {
 	const config = isRecord(agent.agent_config) ? agent.agent_config : null;
 	const gatewayConfig = config ? config.__managedDiscordGateway : void 0;
-	if (isRecord(gatewayConfig) && gatewayConfig.mode === "shared-gateway") return true;
-	return agent.agent_name.trim().toLowerCase() === MANAGED_DISCORD_GATEWAY_AGENT_NAME.toLowerCase();
+	if (isRecord(gatewayConfig) && gatewayConfig.mode === "shared-gateway")
+		return true;
+	return (
+		agent.agent_name.trim().toLowerCase() ===
+		MANAGED_DISCORD_GATEWAY_AGENT_NAME.toLowerCase()
+	);
 }
 const MANAGED_GITHUB_CALLBACK_QUERY_KEYS = [
 	"github_connected",
 	"connection_id",
 	"platform",
 	"managed_github_agent",
-	"github_error"
+	"github_error",
 ];
 function consumeManagedGithubCallbackUrl(rawUrl) {
 	let url;
@@ -146,26 +159,29 @@ function consumeManagedGithubCallbackUrl(rawUrl) {
 	} catch {
 		return {
 			callback: null,
-			cleanedUrl: null
+			cleanedUrl: null,
 		};
 	}
 	const connected = url.searchParams.get("github_connected") === "true";
 	const error = url.searchParams.get("github_error");
-	const agentId = readString(url.searchParams.get("managed_github_agent")) ?? null;
-	if (!connected && !error) return {
-		callback: null,
-		cleanedUrl: null
-	};
+	const agentId =
+		readString(url.searchParams.get("managed_github_agent")) ?? null;
+	if (!connected && !error)
+		return {
+			callback: null,
+			cleanedUrl: null,
+		};
 	const callback = {
 		status: connected ? "connected" : "error",
 		connectionId: readString(url.searchParams.get("connection_id")) ?? null,
 		agentId,
-		message: error ? decodeURIComponent(error) : null
+		message: error ? decodeURIComponent(error) : null,
 	};
-	for (const key of MANAGED_GITHUB_CALLBACK_QUERY_KEYS) url.searchParams.delete(key);
+	for (const key of MANAGED_GITHUB_CALLBACK_QUERY_KEYS)
+		url.searchParams.delete(key);
 	return {
 		callback,
-		cleanedUrl: url.toString()
+		cleanedUrl: url.toString(),
 	};
 }
 function normalizeBillingSummary(raw) {
@@ -173,14 +189,19 @@ function normalizeBillingSummary(raw) {
 	return {
 		...raw,
 		...source,
-		balance: readNumber(source.balance) ?? readNumber(source.creditBalance) ?? null,
+		balance:
+			readNumber(source.balance) ?? readNumber(source.creditBalance) ?? null,
 		currency: readString(source.currency) ?? readString(source.balanceCurrency),
 		topUpUrl: readString(source.topUpUrl) ?? readString(source.billingUrl),
-		embeddedCheckoutEnabled: readBoolean(source.embeddedCheckoutEnabled) ?? readBoolean(source.embedded),
-		hostedCheckoutEnabled: readBoolean(source.hostedCheckoutEnabled) ?? readBoolean(source.hosted),
-		cryptoEnabled: readBoolean(source.cryptoEnabled) ?? readBoolean(source.crypto),
+		embeddedCheckoutEnabled:
+			readBoolean(source.embeddedCheckoutEnabled) ??
+			readBoolean(source.embedded),
+		hostedCheckoutEnabled:
+			readBoolean(source.hostedCheckoutEnabled) ?? readBoolean(source.hosted),
+		cryptoEnabled:
+			readBoolean(source.cryptoEnabled) ?? readBoolean(source.crypto),
 		low: readBoolean(source.low),
-		critical: readBoolean(source.critical)
+		critical: readBoolean(source.critical),
 	};
 }
 function normalizeBillingSettings(raw) {
@@ -188,7 +209,7 @@ function normalizeBillingSettings(raw) {
 	return {
 		...raw,
 		...source,
-		settings: isRecord(source.settings) ? source.settings : raw.settings
+		settings: isRecord(source.settings) ? source.settings : raw.settings,
 	};
 }
 function getBillingAutoTopUp(settings) {
@@ -200,7 +221,12 @@ function getBillingLimits(settings) {
 	return isRecord(rawSettings?.limits) ? rawSettings.limits : {};
 }
 function resolveCheckoutUrl(response) {
-	return readString(response.checkoutUrl) ?? readString(response.url) ?? readString(response.hostedUrl) ?? null;
+	return (
+		readString(response.checkoutUrl) ??
+		readString(response.url) ??
+		readString(response.hostedUrl) ??
+		null
+	);
 }
 function buildAutoTopUpFormState(billingSummary, billingSettings) {
 	const autoTopUp = getBillingAutoTopUp(billingSettings);
@@ -212,38 +238,58 @@ function buildAutoTopUpFormState(billingSummary, billingSettings) {
 		amount,
 		dirty: false,
 		enabled,
-		sourceKey: JSON.stringify([
-			enabled,
-			amount,
-			threshold
-		]),
-		threshold
+		sourceKey: JSON.stringify([enabled, amount, threshold]),
+		threshold,
 	};
 }
 function autoTopUpFormReducer(state, action) {
 	switch (action.type) {
 		case "hydrate":
 			if (!action.force && state.dirty) return state;
-			if (state.sourceKey === action.next.sourceKey && !state.dirty) return state;
+			if (state.sourceKey === action.next.sourceKey && !state.dirty)
+				return state;
 			return action.next;
-		case "setAmount": return {
-			...state,
-			amount: action.value,
-			dirty: true
-		};
-		case "setEnabled": return {
-			...state,
-			enabled: action.value,
-			dirty: true
-		};
-		case "setThreshold": return {
-			...state,
-			threshold: action.value,
-			dirty: true
-		};
-		default: return state;
+		case "setAmount":
+			return {
+				...state,
+				amount: action.value,
+				dirty: true,
+			};
+		case "setEnabled":
+			return {
+				...state,
+				enabled: action.value,
+				dirty: true,
+			};
+		case "setThreshold":
+			return {
+				...state,
+				threshold: action.value,
+				dirty: true,
+			};
+		default:
+			return state;
 	}
 }
 
 //#endregion
-export { resolveCloudAccountIdDisplay as _, buildManagedDiscordSettingsReturnUrl as a, getBillingAutoTopUp as c, normalizeBillingSettings as d, normalizeBillingSummary as f, resolveCheckoutUrl as g, readString as h, buildAutoTopUpFormState as i, getBillingLimits as l, readNumber as m, ELIZA_CLOUD_WEB_URL as n, consumeManagedDiscordCallbackUrl as o, readBoolean as p, autoTopUpFormReducer as r, consumeManagedGithubCallbackUrl as s, BILLING_PRESET_AMOUNTS as t, isRecord as u, resolveManagedDiscordAgentChoice as v };
+export {
+	autoTopUpFormReducer as r,
+	BILLING_PRESET_AMOUNTS as t,
+	buildAutoTopUpFormState as i,
+	buildManagedDiscordSettingsReturnUrl as a,
+	consumeManagedDiscordCallbackUrl as o,
+	consumeManagedGithubCallbackUrl as s,
+	ELIZA_CLOUD_WEB_URL as n,
+	getBillingAutoTopUp as c,
+	getBillingLimits as l,
+	isRecord as u,
+	normalizeBillingSettings as d,
+	normalizeBillingSummary as f,
+	readBoolean as p,
+	readNumber as m,
+	readString as h,
+	resolveCheckoutUrl as g,
+	resolveCloudAccountIdDisplay as _,
+	resolveManagedDiscordAgentChoice as v,
+};

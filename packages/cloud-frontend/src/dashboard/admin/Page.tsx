@@ -359,7 +359,7 @@ export default function AdminPage() {
                     {flaggedUsers.map((u) => (
                       <div
                         key={u.id}
-                        className="flex items-center justify-between rounded-lg border p-3"
+                        className="flex items-center justify-between rounded-sm border p-3"
                       >
                         <div>
                           <p className="text-sm">{u.userId.slice(0, 12)}...</p>
@@ -416,7 +416,7 @@ export default function AdminPage() {
                     {bannedUsers.map((u) => (
                       <div
                         key={u.id}
-                        className="flex items-center justify-between rounded-lg border border-destructive/20 bg-destructive/5 p-3"
+                        className="flex items-center justify-between rounded-sm border border-destructive/20 bg-destructive/5 p-3"
                       >
                         <div>
                           <p className="text-sm">{u.userId.slice(0, 12)}...</p>
@@ -594,7 +594,7 @@ export default function AdminPage() {
             </DialogHeader>
             {userDetail ? (
               <div className="space-y-4">
-                <div className="rounded-lg border p-4">
+                <div className="rounded-sm border p-4">
                   <h4 className="font-medium mb-2">User Info</h4>
                   <div className="grid grid-cols-2 gap-2 text-sm">
                     <div>
@@ -621,7 +621,7 @@ export default function AdminPage() {
                 </div>
 
                 {userDetail.moderationStatus && (
-                  <div className="rounded-lg border p-4">
+                  <div className="rounded-sm border p-4">
                     <h4 className="font-medium mb-2">Moderation Status</h4>
                     <div className="flex flex-wrap gap-4 text-sm">
                       <Badge
@@ -644,7 +644,7 @@ export default function AdminPage() {
                   </div>
                 )}
 
-                <div className="rounded-lg border p-4">
+                <div className="rounded-sm border p-4">
                   <h4 className="font-medium mb-2">
                     Recent Violations ({userDetail.violations.length})
                   </h4>

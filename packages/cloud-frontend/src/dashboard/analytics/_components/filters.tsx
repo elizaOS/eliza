@@ -73,33 +73,33 @@ export function AnalyticsFilters() {
             value={granularity}
             onValueChange={(value) => updateFilters({ granularity: value })}
           >
-            <SelectTrigger className="w-[160px] rounded-none border-white/10 bg-black/40 text-white focus:ring-1 focus:ring-[#FF5800]">
+            <SelectTrigger className="w-[160px] rounded-sm border-white/10 bg-black/40 text-white focus:ring-1 focus:ring-[#FF5800]">
               <SelectValue>
                 {granularity.charAt(0).toUpperCase() + granularity.slice(1)}
               </SelectValue>
             </SelectTrigger>
-            <SelectContent className="rounded-none border-white/10 bg-black/90">
+            <SelectContent className="rounded-sm border-white/10 bg-black/90">
               <SelectItem
                 value="hour"
-                className="rounded-none text-white hover:bg-white/10 focus:bg-white/10"
+                className="rounded-sm text-white hover:bg-white/10 focus:bg-white/10"
               >
                 Hourly
               </SelectItem>
               <SelectItem
                 value="day"
-                className="rounded-none text-white hover:bg-white/10 focus:bg-white/10"
+                className="rounded-sm text-white hover:bg-white/10 focus:bg-white/10"
               >
                 Daily
               </SelectItem>
               <SelectItem
                 value="week"
-                className="rounded-none text-white hover:bg-white/10 focus:bg-white/10"
+                className="rounded-sm text-white hover:bg-white/10 focus:bg-white/10"
               >
                 Weekly
               </SelectItem>
               <SelectItem
                 value="month"
-                className="rounded-none text-white hover:bg-white/10 focus:bg-white/10"
+                className="rounded-sm text-white hover:bg-white/10 focus:bg-white/10"
               >
                 Monthly
               </SelectItem>
@@ -108,7 +108,7 @@ export function AnalyticsFilters() {
         </div>
 
         {activeRange === "custom" ? (
-          <span className="flex items-center gap-1 rounded-none border border-white/20 bg-white/10 px-3 py-1 text-xs">
+          <span className="flex items-center gap-1 rounded-sm border border-white/20 bg-white/10 px-3 py-1 text-xs">
             <Sparkles className="h-3.5 w-3.5 text-[#FF5800]" />
             Custom range detected
           </span>

@@ -9,15 +9,11 @@
  * page.
  */
 export interface AutomationsChatPaneProps {
-  className?: string;
-  /** Optional title override (defaults to PageScope copy). */
-  title?: string;
-  /** Optional placeholder override. */
-  placeholder?: string;
+    className?: string;
+    /** Optional title override (defaults to PageScope copy). */
+    title?: string;
+    /** Optional placeholder override. */
+    placeholder?: string;
 }
-export declare function AutomationsChatPane({
-  className,
-  title,
-  placeholder,
-}: AutomationsChatPaneProps): import("react/jsx-runtime").JSX.Element;
+export declare function AutomationsChatPane({ className, title, placeholder, }: AutomationsChatPaneProps): import("react/jsx-runtime").JSX.Element;
 //# sourceMappingURL=AutomationsChatPane.d.ts.map

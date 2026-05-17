@@ -40,66 +40,58 @@ import type { CompatRuntimeState } from "./compat-route-shared";
 export declare const ELIZA_BENCHMARK_SCORES_SCHEMA: "elizaos.training.benchmark-scores/v1";
 export declare const ELIZA_BENCHMARK_COMPARE_SCHEMA: "elizaos.training.benchmark-compare/v1";
 export interface BenchmarkRunDTO {
-  id: number;
-  modelId: string;
-  benchmark: string;
-  score: number;
-  /** Unix milliseconds, UTC. */
-  ts: number;
-  datasetVersion: string;
-  codeCommit: string;
+    id: number;
+    modelId: string;
+    benchmark: string;
+    score: number;
+    /** Unix milliseconds, UTC. */
+    ts: number;
+    datasetVersion: string;
+    codeCommit: string;
 }
 export interface BenchmarkScoresResponse {
-  schema: typeof ELIZA_BENCHMARK_SCORES_SCHEMA;
-  modelId: string;
-  benchmark: string;
-  /** Whether the underlying SQLite database file exists. */
-  dbReady: boolean;
-  runs: BenchmarkRunDTO[];
+    schema: typeof ELIZA_BENCHMARK_SCORES_SCHEMA;
+    modelId: string;
+    benchmark: string;
+    /** Whether the underlying SQLite database file exists. */
+    dbReady: boolean;
+    runs: BenchmarkRunDTO[];
 }
 export interface BenchmarkCompareResponse {
-  schema: typeof ELIZA_BENCHMARK_COMPARE_SCHEMA;
-  benchmark: string;
-  modelA: string;
-  modelB: string;
-  dbReady: boolean;
-  a: BenchmarkRunDTO | null;
-  b: BenchmarkRunDTO | null;
-  /** `a.score - b.score` when both sides have runs; otherwise `null`. */
-  delta: number | null;
+    schema: typeof ELIZA_BENCHMARK_COMPARE_SCHEMA;
+    benchmark: string;
+    modelA: string;
+    modelB: string;
+    dbReady: boolean;
+    a: BenchmarkRunDTO | null;
+    b: BenchmarkRunDTO | null;
+    /** `a.score - b.score` when both sides have runs; otherwise `null`. */
+    delta: number | null;
 }
-export declare function resolveBenchmarkResultsDbPath(
-  env?: NodeJS.ProcessEnv,
-): string;
+export declare function resolveBenchmarkResultsDbPath(env?: NodeJS.ProcessEnv): string;
 interface BenchmarkResultsReader {
-  ready: boolean;
-  getHistory(args: {
-    modelId: string;
-    benchmark: string;
-    limit: number;
-  }): BenchmarkRunDTO[];
-  getLatest(args: {
-    modelId: string;
-    benchmark: string;
-  }): BenchmarkRunDTO | null;
-  close(): void;
+    ready: boolean;
+    getHistory(args: {
+        modelId: string;
+        benchmark: string;
+        limit: number;
+    }): BenchmarkRunDTO[];
+    getLatest(args: {
+        modelId: string;
+        benchmark: string;
+    }): BenchmarkRunDTO | null;
+    close(): void;
 }
-export declare function openBenchmarkResultsReader(
-  dbPath: string,
-): BenchmarkResultsReader;
+export declare function openBenchmarkResultsReader(dbPath: string): BenchmarkResultsReader;
 export interface TrainingBenchmarksRouteOptions {
-  /** Override the DB path. Tests use this. */
-  dbPath?: string;
-  /**
-   * Open a reader. Tests can inject a fake to avoid touching disk.
-   * Defaults to {@link openBenchmarkResultsReader}.
-   */
-  openReader?: (dbPath: string) => BenchmarkResultsReader;
+    /** Override the DB path. Tests use this. */
+    dbPath?: string;
+    /**
+     * Open a reader. Tests can inject a fake to avoid touching disk.
+     * Defaults to {@link openBenchmarkResultsReader}.
+     */
+    openReader?: (dbPath: string) => BenchmarkResultsReader;
 }
-export declare function handleTrainingBenchmarksRoute(
-  req: http.IncomingMessage,
-  res: http.ServerResponse,
-  state: CompatRuntimeState,
-  options?: TrainingBenchmarksRouteOptions,
-): Promise<boolean>;
+export declare function handleTrainingBenchmarksRoute(req: http.IncomingMessage, res: http.ServerResponse, state: CompatRuntimeState, options?: TrainingBenchmarksRouteOptions): Promise<boolean>;
+export {};
 //# sourceMappingURL=training-benchmarks.d.ts.map

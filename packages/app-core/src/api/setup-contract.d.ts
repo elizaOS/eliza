@@ -23,9 +23,9 @@ export type SetupState = "idle" | "configuring" | "paired" | "error";
  * then read the typed detail.
  */
 export interface SetupStatusResponse<TDetail = unknown> {
-  connector: string;
-  state: SetupState;
-  detail?: TDetail;
+    connector: string;
+    state: SetupState;
+    detail?: TDetail;
 }
 /**
  * Structured error envelope returned when a setup endpoint fails.
@@ -34,20 +34,19 @@ export interface SetupStatusResponse<TDetail = unknown> {
  * `service_unavailable`, `internal_error`); `message` is human-readable.
  */
 export interface SetupErrorResponse {
-  error: {
-    code: string;
-    message: string;
-  };
+    error: {
+        code: string;
+        message: string;
+    };
 }
 /** Common error codes used across connector setup routes. */
 export declare const SETUP_ERROR_CODES: {
-  readonly BAD_REQUEST: "bad_request";
-  readonly SERVICE_UNAVAILABLE: "service_unavailable";
-  readonly INTERNAL_ERROR: "internal_error";
-  readonly TOO_MANY_SESSIONS: "too_many_sessions";
+    readonly BAD_REQUEST: "bad_request";
+    readonly SERVICE_UNAVAILABLE: "service_unavailable";
+    readonly INTERNAL_ERROR: "internal_error";
+    readonly TOO_MANY_SESSIONS: "too_many_sessions";
 };
-export type SetupErrorCode =
-  (typeof SETUP_ERROR_CODES)[keyof typeof SETUP_ERROR_CODES];
+export type SetupErrorCode = (typeof SETUP_ERROR_CODES)[keyof typeof SETUP_ERROR_CODES];
 /**
  * Build a structured error envelope.
  *
@@ -55,17 +54,11 @@ export type SetupErrorCode =
  * layer can branch on `error.code` rather than substring-matching
  * `error.message`.
  */
-export declare function buildSetupError(
-  code: SetupErrorCode | string,
-  message: string,
-): SetupErrorResponse;
+export declare function buildSetupError(code: SetupErrorCode | string, message: string): SetupErrorResponse;
 /**
  * Compose the canonical path for a connector setup endpoint.
  *
  * `setupPath("signal", "start")` → `/api/setup/signal/start`.
  */
-export declare function setupPath(
-  connector: string,
-  action: "status" | "start" | "cancel",
-): string;
+export declare function setupPath(connector: string, action: "status" | "start" | "cancel"): string;
 //# sourceMappingURL=setup-contract.d.ts.map

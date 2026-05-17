@@ -1,15 +1,15 @@
 import { Button } from "@elizaos/ui/button";
-import { animated, useSpring, useTrail } from "@react-spring/web";
-import { ArrowLeft, Check, Copy, ExternalLink, Info, Send } from "lucide-react";
-import { useCallback, useEffect, useRef, useState } from "react";
-import { Link, useNavigate, useSearchParams } from "react-router-dom";
-import { ElizaLogo } from "@/components/brand/eliza-logo";
 import {
   AppleMessagesIcon,
   DiscordIcon,
   TelegramIcon,
   WhatsAppIcon,
-} from "@/components/icons/platform-icons";
+} from "@elizaos/ui/cloud-ui";
+import { animated, useSpring, useTrail } from "@react-spring/web";
+import { ArrowLeft, Check, Copy, ExternalLink, Info, Send } from "lucide-react";
+import { useCallback, useEffect, useRef, useState } from "react";
+import { Link, useNavigate, useSearchParams } from "react-router-dom";
+import { ElizaLogo } from "@/components/brand/eliza-logo";
 import {
   buildFullPhoneNumber,
   PhoneNumberInput,
@@ -822,7 +822,7 @@ export default function GetStartedPage() {
             <button
               type="button"
               onClick={handleBack}
-              className="inline-flex items-center gap-2 text-neutral-600 hover:text-neutral-900 transition-colors cursor-pointer"
+              className="inline-flex min-h-11 items-center gap-2 text-neutral-600 hover:text-neutral-900 transition-colors cursor-pointer"
             >
               <ArrowLeft className="size-4" />
               <span className="text-sm">Back</span>
@@ -830,7 +830,7 @@ export default function GetStartedPage() {
           ) : (
             <Link
               to="/"
-              className="inline-flex items-center gap-2 text-neutral-600 hover:text-neutral-900 transition-colors"
+              className="inline-flex min-h-11 items-center gap-2 text-neutral-600 hover:text-neutral-900 transition-colors"
             >
               <ArrowLeft className="size-4" />
               <span className="text-sm">Home</span>

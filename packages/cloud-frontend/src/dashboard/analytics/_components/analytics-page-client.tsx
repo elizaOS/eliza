@@ -173,14 +173,14 @@ export function AnalyticsPageClient({
       <section className="flex flex-col gap-6 lg:flex-row lg:items-start lg:justify-between lg:gap-10 pb-2">
         <div className="space-y-5 lg:max-w-3xl">
           <div className="flex flex-wrap items-center gap-2 gap-y-3 text-xs font-medium text-white/60">
-            <span className="flex items-center gap-1 rounded-none border border-white/20 bg-white/10 px-3 py-1">
+            <span className="flex items-center gap-1 rounded-sm border border-white/20 bg-white/10 px-3 py-1">
               <CalendarRange className="h-3.5 w-3.5 text-[#FF5800]" />
               {rangeLabel}
             </span>
-            <span className="rounded-none border border-white/20 bg-white/10 px-3 py-1">
+            <span className="rounded-sm border border-white/20 bg-white/10 px-3 py-1">
               Granularity: {granularityLabel}
             </span>
-            <span className="rounded-none border border-white/20 bg-white/10 px-3 py-1">
+            <span className="rounded-sm border border-white/20 bg-white/10 px-3 py-1">
               {data.timeSeriesData.length.toLocaleString()} data points
             </span>
           </div>

@@ -376,6 +376,8 @@ export interface CatalogModel {
   bundleManifestSha256?: string;
   params:
     | "360M"
+    | "0.1B"
+    | "0.3B"
     | "0.5B"
     | "0.8B"
     | "1B"

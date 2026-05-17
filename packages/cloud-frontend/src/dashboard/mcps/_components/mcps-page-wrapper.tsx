@@ -5,7 +5,7 @@
 
 "use client";
 
-import { useSetPageHeader } from "@elizaos/ui";
+import { DashboardRoutePage } from "@elizaos/ui";
 import type { ReactNode } from "react";
 
 interface MCPsPageWrapperProps {
@@ -13,10 +13,12 @@ interface MCPsPageWrapperProps {
 }
 
 export function MCPsPageWrapper({ children }: MCPsPageWrapperProps) {
-  useSetPageHeader({
-    title: "MCP Servers",
-    description: "Browse and connect to Model Context Protocol servers",
-  });
-
-  return children;
+  return (
+    <DashboardRoutePage
+      title="MCP Servers"
+      description="Browse and connect to Model Context Protocol servers"
+    >
+      {children}
+    </DashboardRoutePage>
+  );
 }

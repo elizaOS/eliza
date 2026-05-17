@@ -21,8 +21,8 @@
  */
 export declare function deleteWalletSecretsFromOsStore(): Promise<void>;
 export type MigrateWalletPrivateKeysToOsStoreResult = {
-  migrated: string[];
-  failed: string[];
+    migrated: string[];
+    failed: string[];
 };
 /**
  * Copies wallet keys from `process.env` and/or persisted `config.env` into

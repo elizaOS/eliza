@@ -198,7 +198,7 @@ export function AppEarningsDashboard({ appId }: AppEarningsDashboardProps) {
   return (
     <div className="space-y-4">
       {isTestData && (
-        <div className="flex items-center gap-2 p-3 bg-orange-500/10 border border-orange-500/20 rounded-lg">
+        <div className="flex items-center gap-2 p-3 bg-orange-500/10 border border-orange-500/20 rounded-sm">
           <FlaskConical className="h-4 w-4 text-orange-400" />
           <p className="text-sm text-orange-400">
             Test Data Mode - Showing sample earnings data
@@ -212,10 +212,10 @@ export function AppEarningsDashboard({ appId }: AppEarningsDashboardProps) {
           value={period}
           onValueChange={(v) => setPeriod(v as typeof period)}
         >
-          <SelectTrigger className="w-[140px] h-9 bg-neutral-900 border-white/10 rounded-lg">
+          <SelectTrigger className="w-[140px] h-9 bg-neutral-900 border-white/10 rounded-sm">
             <SelectValue />
           </SelectTrigger>
-          <SelectContent className="bg-neutral-800 border-white/10 rounded-lg">
+          <SelectContent className="bg-neutral-800 border-white/10 rounded-sm">
             <SelectItem value="7">Last 7 days</SelectItem>
             <SelectItem value="30">Last 30 days</SelectItem>
             <SelectItem value="90">Last 90 days</SelectItem>
@@ -448,7 +448,7 @@ export function AppEarningsDashboard({ appId }: AppEarningsDashboardProps) {
             {transactions.map((tx) => (
               <div
                 key={tx.id}
-                className="flex items-center justify-between p-3 bg-black/30 rounded-lg border border-white/5 hover:border-white/10 transition-colors"
+                className="flex items-center justify-between p-3 bg-black/30 rounded-sm border border-white/5 hover:border-white/10 transition-colors"
               >
                 <div className="flex items-center gap-3">
                   <TransactionIcon type={tx.type} />

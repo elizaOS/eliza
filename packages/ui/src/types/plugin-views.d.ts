@@ -1,17 +1,17 @@
 import type { ComponentType } from "react";
 export interface PluginViewProps {
-  agentId: string;
+    agentId: string;
 }
 export interface PluginViewRegistration {
-  id: string;
-  title: string;
-  description?: string;
-  icon?: ComponentType;
-  component: ComponentType<PluginViewProps>;
-  permissions?: string[];
-  developerOnly?: boolean;
+    id: string;
+    title: string;
+    description?: string;
+    icon?: ComponentType;
+    component: ComponentType<PluginViewProps>;
+    permissions?: string[];
+    developerOnly?: boolean;
 }
 export interface ElizaPluginViews {
-  views?: PluginViewRegistration[];
+    views?: PluginViewRegistration[];
 }
 //# sourceMappingURL=plugin-views.d.ts.map

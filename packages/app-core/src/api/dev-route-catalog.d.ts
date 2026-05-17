@@ -24,35 +24,35 @@ export declare const ELIZA_DEV_ROUTE_CATALOG_SCHEMA_VERSION: 1;
 export type DevRouteVisibility = "all" | "android" | "desktop" | "dev-mode";
 export type DevRoutePlatformGate = "ios" | "android" | "desktop" | "web" | null;
 export interface DevRouteEntry {
-  /** Built-in tab id from `@elizaos/ui` (`BuiltinTab`). */
-  tabId: string;
-  /** Pathname the tab resolves to. */
-  path: string;
-  /** Human-readable label (matches `titleForTab`). */
-  label: string;
-  /** Which `ALL_TAB_GROUPS` group hosts the tab (or "Hidden" for addressable-but-ungrouped). */
-  group: string;
-  visibility: DevRouteVisibility;
-  /** Vite env var that gates the route, when one exists. */
-  featureFlag: string | null;
-  requiresAuth: boolean;
-  platformGate: DevRoutePlatformGate;
+    /** Built-in tab id from `@elizaos/ui` (`BuiltinTab`). */
+    tabId: string;
+    /** Pathname the tab resolves to. */
+    path: string;
+    /** Human-readable label (matches `titleForTab`). */
+    label: string;
+    /** Which `ALL_TAB_GROUPS` group hosts the tab (or "Hidden" for addressable-but-ungrouped). */
+    group: string;
+    visibility: DevRouteVisibility;
+    /** Vite env var that gates the route, when one exists. */
+    featureFlag: string | null;
+    requiresAuth: boolean;
+    platformGate: DevRoutePlatformGate;
 }
 export interface DevRouteSettingsSection {
-  id: string;
-  label: string;
+    id: string;
+    label: string;
 }
 export interface DevRouteModal {
-  id: string;
-  /** Shortest accurate description of what triggers the modal. */
-  trigger: string;
+    id: string;
+    /** Shortest accurate description of what triggers the modal. */
+    trigger: string;
 }
 export interface DevRouteCatalogPayload {
-  schemaVersion: typeof ELIZA_DEV_ROUTE_CATALOG_SCHEMA_VERSION;
-  generatedAt: string;
-  routes: DevRouteEntry[];
-  settingsSections: DevRouteSettingsSection[];
-  modals: DevRouteModal[];
+    schemaVersion: typeof ELIZA_DEV_ROUTE_CATALOG_SCHEMA_VERSION;
+    generatedAt: string;
+    routes: DevRouteEntry[];
+    settingsSections: DevRouteSettingsSection[];
+    modals: DevRouteModal[];
 }
 export declare function buildRouteCatalog(now?: Date): DevRouteCatalogPayload;
 //# sourceMappingURL=dev-route-catalog.d.ts.map

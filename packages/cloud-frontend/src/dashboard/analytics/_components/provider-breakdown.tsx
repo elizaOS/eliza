@@ -104,7 +104,7 @@ export function ProviderBreakdown({ providers }: ProviderBreakdownProps) {
           ))}
         </div>
 
-        <div className="mt-6 rounded-lg border border-border/60 bg-muted/30 p-4">
+        <div className="mt-6 rounded-sm border border-border/60 bg-muted/30 p-4">
           <div className="flex items-center justify-between text-sm">
             <span className="font-medium text-muted-foreground">
               Total across all providers

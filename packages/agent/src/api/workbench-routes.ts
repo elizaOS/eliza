@@ -1,4 +1,4 @@
-import type { UUID } from "@elizaos/core";
+import type { Task, UUID } from "@elizaos/core";
 import {
   PostWorkbenchTodoCompleteRequestSchema,
   PostWorkbenchTodoRequestSchema,

@@ -58,7 +58,6 @@ interface IoRedisLike {
 }
 
 function createIoRedisMock(): IoRedisLike {
-  // biome-ignore lint/suspicious/noExplicitAny: ESM/CJS interop with ioredis-mock
   const mod = getRequireCJS()("ioredis-mock") as any;
   const Ctor = mod?.default ?? mod;
   return new Ctor() as IoRedisLike;

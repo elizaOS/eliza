@@ -9,9 +9,5 @@ import { type CompatRuntimeState } from "./compat-route-shared";
  * - `GET /api/dev/console-log`
  * - `GET /api/dev/voice-latency`
  */
-export declare function handleDevCompatRoutes(
-  req: http.IncomingMessage,
-  res: http.ServerResponse,
-  state: CompatRuntimeState,
-): Promise<boolean>;
+export declare function handleDevCompatRoutes(req: http.IncomingMessage, res: http.ServerResponse, state: CompatRuntimeState): Promise<boolean>;
 //# sourceMappingURL=dev-compat-routes.d.ts.map

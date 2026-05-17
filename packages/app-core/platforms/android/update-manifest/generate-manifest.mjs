@@ -41,18 +41,24 @@ if (!sha256) errors.push("--sha256 is required");
 if (!downloadUrl) errors.push("--download-url is required");
 
 if (!["stable", "beta", "canary"].includes(channel)) {
-  errors.push(`--channel must be one of: stable, beta, canary (got: ${channel})`);
+  errors.push(
+    `--channel must be one of: stable, beta, canary (got: ${channel})`,
+  );
 }
 
 const parsedVersionCode = parseInt(versionCode, 10);
 if (versionCode && (isNaN(parsedVersionCode) || parsedVersionCode <= 0)) {
-  errors.push(`--version-code must be a positive integer (got: ${versionCode})`);
+  errors.push(
+    `--version-code must be a positive integer (got: ${versionCode})`,
+  );
 }
 
 if (sizeBytes !== undefined) {
   const parsedSize = parseInt(sizeBytes, 10);
   if (isNaN(parsedSize) || parsedSize < 0) {
-    errors.push(`--size-bytes must be a non-negative integer (got: ${sizeBytes})`);
+    errors.push(
+      `--size-bytes must be a non-negative integer (got: ${sizeBytes})`,
+    );
   }
 }
 

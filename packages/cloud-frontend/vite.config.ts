@@ -396,6 +396,10 @@ export default defineConfig(({ mode }) => {
       outDir: "dist",
       sourcemap: true,
       target: "esnext",
+      // The cloud dashboard intentionally ships large wallet/docs/admin chunks.
+      // Keep the build warning budget explicit so import and resolver warnings
+      // still stand out in CI output.
+      chunkSizeWarningLimit: 3000,
     },
     // The SSR build (`vite build --ssr src/entry-server.tsx`) needs to bundle
     // the workspace `@elizaos/ui` + `@/lib/*` graph rather than treat

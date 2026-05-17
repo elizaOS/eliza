@@ -1,18 +1,13 @@
-/**
- * Sidebar navigation item component displaying individual navigation links.
- * Supports active state highlighting, locked state for anonymous users, and badges.
- *
- * @param props - Sidebar navigation item configuration
- * @param props.item - Sidebar item data including label, href, icon, and permissions
- */
-
 "use client";
 
-import { Tooltip, TooltipContent, TooltipTrigger } from "@elizaos/ui";
-import { Lock } from "lucide-react";
+import {
+  type DashboardSidebarItem,
+  type DashboardSidebarLinkRenderProps,
+  DashboardSidebarNavigationItem,
+} from "@elizaos/ui";
+import { useCallback } from "react";
 import { Link, useLocation } from "react-router-dom";
 import { useSessionAuth } from "@/lib/hooks/use-session-auth";
-import { cn } from "@/lib/utils";
 import type { SidebarItem } from "./sidebar-data";
 
 interface SidebarNavigationItemProps {
@@ -24,165 +19,32 @@ export function SidebarNavigationItem({
   item,
   isCollapsed = false,
 }: SidebarNavigationItemProps) {
-  const pathname = useLocation().pathname;
+  const activePath = useLocation().pathname;
   const { authenticated } = useSessionAuth();
-  // Use exact match for dashboard and admin root; startsWith for other routes
-  const isActive =
-    item.href === "/dashboard" || item.href === "/dashboard/admin"
-      ? pathname === item.href
-      : pathname === item.href ||
-        (pathname?.startsWith(`${item.href}/`) &&
-          !pathname?.startsWith(`${item.href}/create`));
-  const Icon = item.icon;
 
-  // Check if this item is coming soon (disabled)
-  if (item.comingSoon) {
-    // Hide coming soon items when collapsed
-    if (isCollapsed) return null;
-
-    return (
-      <div
-        className={cn(
-          "relative flex items-center gap-3 border-l-2 border-l-transparent px-3 py-2.5",
-          "cursor-default select-none text-white/40 opacity-60",
-        )}
-        style={{
-          fontFamily: "var(--font-roboto-mono)",
-          fontWeight: 400,
-          fontSize: "14px",
-          lineHeight: "18px",
-          letterSpacing: "-0.003em",
-        }}
-      >
-        <Icon className="h-4 w-4 shrink-0" />
-        <span className="flex-1 whitespace-nowrap">{item.label}</span>
-        <span
-          className="bg-white/10 px-1.5 py-0.5 text-[10px] font-medium uppercase tracking-wider text-white/40"
-          style={{
-            fontFamily: "var(--font-roboto-mono)",
-          }}
-        >
-          soon
-        </span>
-      </div>
-    );
-  }
-
-  // Check if this item is locked for anonymous users
-  const isLocked = !authenticated && item.freeAllowed === false;
-
-  // If item is locked, show as button with login prompt
-  // Use returnTo to redirect back to the locked item after login
-  if (isLocked) {
-    const loginHref = `/login?returnTo=${encodeURIComponent(item.href)}`;
-    const lockedButton = (
-      <Link
-        to={loginHref}
-        className={cn(
-          "relative flex w-full items-center border-l-2 border-l-transparent transition-colors duration-150",
-          "hover:bg-white/[0.06] hover:text-white",
-          "cursor-pointer text-white/50",
-          isCollapsed ? "justify-center p-2.5" : "gap-3 px-3 py-2.5",
-        )}
-        style={{
-          fontFamily: "var(--font-roboto-mono)",
-          fontWeight: 400,
-          fontSize: "14px",
-          lineHeight: "18px",
-          letterSpacing: "-0.003em",
-        }}
-      >
-        <Icon className="h-4 w-4 opacity-50 shrink-0" />
-        {!isCollapsed && (
-          <>
-            <span className="flex-1 whitespace-nowrap">{item.label}</span>
-            <Lock className="h-3 w-3 shrink-0 text-white/54" />
-          </>
-        )}
+  const renderLink = useCallback(
+    ({ href, className, style, children }: DashboardSidebarLinkRenderProps) => (
+      <Link to={href} className={className} style={style}>
+        {children}
       </Link>
-    );
-
-    if (isCollapsed) {
-      return (
-        <Tooltip>
-          <TooltipTrigger asChild>{lockedButton}</TooltipTrigger>
-          <TooltipContent
-            side="right"
-            className="bg-neutral-800 text-white border-white/10"
-          >
-            {item.label}
-          </TooltipContent>
-        </Tooltip>
-      );
-    }
-
-    return lockedButton;
-  }
-
-  const linkClasses = cn(
-    "relative flex items-center border-l-2 transition-colors duration-150",
-    "hover:bg-white/[0.06] hover:text-white",
-    isActive
-      ? "border-l-[#FF5800] bg-white/[0.06] text-white"
-      : "border-l-transparent text-white/70",
-    isCollapsed ? "justify-center p-2.5" : "gap-3 px-3 py-2.5",
+    ),
+    [],
   );
 
-  const linkStyles = {
-    fontFamily: "var(--font-roboto-mono)",
-    fontWeight: 400,
-    fontSize: "14px",
-    lineHeight: "18px",
-    letterSpacing: "-0.003em",
-  } as const;
-
-  const linkContents = (
-    <>
-      <Icon className="h-4 w-4 shrink-0 transition-colors" />
-      {!isCollapsed && (
-        <>
-          <span className="flex-1 whitespace-nowrap">{item.label}</span>
-          {item.isNew && (
-            <span
-              className="px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide"
-              style={{
-                backgroundColor: "rgba(255, 138, 36, 0.2)",
-                color: "#fff7ee",
-                border: "1px solid rgba(255, 255, 255, 0.28)",
-              }}
-            >
-              NEW
-            </span>
-          )}
-          {item.badge && !item.isNew && (
-            <span className="rounded-sm bg-white/18 px-2 py-0.5 text-[10px] font-semibold text-white/70">
-              {item.badge}
-            </span>
-          )}
-        </>
-      )}
-    </>
+  const getLoginHref = useCallback(
+    (sidebarItem: DashboardSidebarItem) =>
+      `/login?returnTo=${encodeURIComponent(sidebarItem.href)}`,
+    [],
   );
 
-  const linkElement = (
-    <Link to={item.href} className={linkClasses} style={linkStyles}>
-      {linkContents}
-    </Link>
+  return (
+    <DashboardSidebarNavigationItem
+      item={item}
+      activePath={activePath}
+      authenticated={authenticated}
+      isCollapsed={isCollapsed}
+      renderLink={renderLink}
+      getLoginHref={getLoginHref}
+    />
   );
-
-  if (isCollapsed) {
-    return (
-      <Tooltip>
-        <TooltipTrigger asChild>{linkElement}</TooltipTrigger>
-        <TooltipContent
-          side="right"
-          className="bg-neutral-800 text-white border-white/10"
-        >
-          {item.label}
-        </TooltipContent>
-      </Tooltip>
-    );
-  }
-
-  return linkElement;
 }

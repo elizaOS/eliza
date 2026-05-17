@@ -15,7 +15,7 @@ export function formatDashboardRouteErrorMessage(
 export function DashboardRouteError({ message }: { message: string }) {
   return (
     <div className="flex flex-col items-center justify-center min-h-[400px] gap-4 text-white">
-      <div className="flex items-center justify-center w-16 h-16 border border-red-500/25 bg-red-500/10">
+      <div className="flex items-center justify-center w-16 h-16 rounded-sm border border-red-500/25 bg-red-500/10">
         <svg
           className="h-8 w-8 text-red-400"
           fill="none"
@@ -39,13 +39,13 @@ export function DashboardRouteError({ message }: { message: string }) {
         <button
           type="button"
           onClick={() => window.location.reload()}
-          className="px-4 py-2 text-sm border border-[#FF5800]/40 bg-[#FF5800]/10 text-[#FF5800] hover:bg-[#FF5800]/20 transition-colors"
+          className="rounded-sm px-4 py-2 text-sm border border-accent/40 bg-accent/10 text-accent hover:bg-accent/20 transition-colors"
         >
           Try again
         </button>
         <Link
           to="/dashboard/agents"
-          className="px-4 py-2 text-sm border border-white/10 bg-white/5 text-white/70 hover:bg-white/10 transition-colors"
+          className="rounded-sm px-4 py-2 text-sm border border-white/10 bg-white/5 text-white/70 hover:bg-white/10 transition-colors"
         >
           Go to Dashboard
         </Link>

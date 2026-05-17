@@ -18,7 +18,7 @@ Usage:
     # Synthetic smoke (no GPU, no real models — CI/local validation only)
     python distill_drafter_h200.py \
         --target-tier 2b \
-        --drafter-size-b 0.5 \
+        --drafter-size-b 0.3 \
         --dataset-path /tmp/smoke \
         --output-dir /tmp/dflash-smoke-out \
         --synthetic-smoke
@@ -26,7 +26,7 @@ Usage:
     # Real H200 run
     python distill_drafter_h200.py \
         --target-tier 2b \
-        --drafter-size-b 0.5 \
+        --drafter-size-b 0.3 \
         --dataset-path /data/distill/eliza-1-2b/distill.jsonl \
         --output-dir /data/dflash-out/2b \
         --target-checkpoint /data/checkpoints/eliza-1-2b \
@@ -58,6 +58,7 @@ if str(_TRAINING_ROOT) not in sys.path:
 
 from scripts.distill_dflash_drafter import (  # noqa: E402
     ACCEPTANCE_GATE,
+    DEFAULT_STUDENT_CONFIG,
     DEFAULT_STUDENT_BASE,
     QWEN35_TOKENIZER_FAMILY_VOCAB_SIZE,
     _tokenizer_parity_report,
@@ -76,8 +77,8 @@ QWEN35_SYNTHETIC_VOCAB_SIZE: int = QWEN35_TOKENIZER_FAMILY_VOCAB_SIZE
 
 # Approximate drafter size-B per tier (used for --drafter-size-b default).
 DEFAULT_DRAFTER_SIZE_B: dict[str, float] = {
-    "0_8b": 0.5,
-    "2b": 0.5,
+    "0_8b": 0.1,
+    "2b": 0.3,
     "4b": 1.5,
     "9b": 1.5,
     "27b": 3.0,
@@ -236,10 +237,39 @@ def run_synthetic_smoke(args: argparse.Namespace) -> None:
 # Model loading
 # --------------------------------------------------------------------------
 
-def load_drafter_model(args: argparse.Namespace) -> Any:
+def _resolve_student_config(args: argparse.Namespace) -> Path | None:
+    student_config = args.student_config or DEFAULT_STUDENT_CONFIG.get(args.target_tier)
+    if not student_config:
+        return None
+    path = Path(student_config)
+    if not path.is_absolute():
+        path = _TRAINING_ROOT / path
+    if not path.exists():
+        log.error("Student config not found: %s", path)
+        sys.exit(2)
+    return path
+
+
+def load_drafter_model(args: argparse.Namespace, target_tok: Any | None = None) -> Any:
     """Load and configure the drafter (student) model for training."""
     import torch  # noqa: PLC0415
-    from transformers import AutoModelForCausalLM, AutoTokenizer  # noqa: PLC0415
+    from transformers import AutoConfig, AutoModelForCausalLM, AutoTokenizer  # noqa: PLC0415
+
+    student_config = _resolve_student_config(args)
+    if student_config is not None:
+        if target_tok is None:
+            log.error("target tokenizer is required when using --student-config")
+            sys.exit(2)
+        log.info("Loading compact student config: %s", student_config)
+        tok = target_tok
+        args.student_config_resolved = str(student_config)
+        args.student_base_resolved = None
+        args.student_vocab_size = _tokenizer_vocab_size(tok)
+        cfg = AutoConfig.from_pretrained(student_config)
+        model = AutoModelForCausalLM.from_config(cfg).to(dtype=torch.bfloat16)
+        model.gradient_checkpointing_enable()
+        model.train()
+        return model, tok
 
     student_base = args.student_base or DEFAULT_STUDENT_BASE.get(args.target_tier)
     if not student_base:
@@ -247,19 +277,37 @@ def load_drafter_model(args: argparse.Namespace) -> Any:
         sys.exit(2)
 
     log.info("Loading student base: %s", student_base)
+    args.student_base_resolved = student_base
+    args.student_config_resolved = None
     tok = AutoTokenizer.from_pretrained(student_base)
     actual_vocab = _tokenizer_vocab_size(tok)
     args.student_vocab_size = actual_vocab
     log.info("Student tokenizer vocab size: %d", actual_vocab)
 
-    model = AutoModelForCausalLM.from_pretrained(
-        student_base,
-        torch_dtype=torch.bfloat16,
-        attn_implementation="flash_attention_2",
-    )
+    model = _load_causal_lm_for_h200(student_base, AutoModelForCausalLM, torch)
     model.gradient_checkpointing_enable()
     model.train()
     return model, tok
+
+
+def _load_causal_lm_for_h200(checkpoint: str, model_cls: Any, torch_mod: Any) -> Any:
+    try:
+        return model_cls.from_pretrained(
+            checkpoint,
+            torch_dtype=torch_mod.bfloat16,
+            attn_implementation="flash_attention_2",
+        )
+    except Exception as exc:
+        log.warning(
+            "flash_attention_2 load failed for %s (%s); falling back to SDPA",
+            checkpoint,
+            exc,
+        )
+        return model_cls.from_pretrained(
+            checkpoint,
+            torch_dtype=torch_mod.bfloat16,
+            attn_implementation="sdpa",
+        )
 
 
 def load_target_model(args: argparse.Namespace) -> Any:
@@ -272,11 +320,7 @@ def load_target_model(args: argparse.Namespace) -> Any:
     tok = AutoTokenizer.from_pretrained(checkpoint)
     args.target_vocab_size = _tokenizer_vocab_size(tok)
     log.info("Target tokenizer vocab size: %d", args.target_vocab_size)
-    model = AutoModelForCausalLM.from_pretrained(
-        checkpoint,
-        torch_dtype=torch.bfloat16,
-        attn_implementation="flash_attention_2",
-    )
+    model = _load_causal_lm_for_h200(checkpoint, AutoModelForCausalLM, torch)
     model.eval()
     for p in model.parameters():
         p.requires_grad_(False)
@@ -286,6 +330,82 @@ def load_target_model(args: argparse.Namespace) -> Any:
 def load_dataset(args: argparse.Namespace) -> list[str]:
     """Load the distillation JSONL corpus."""
     import json  # noqa: PLC0415
+
+    def response_to_assistant(response: dict[str, Any]) -> dict[str, Any]:
+        assistant: dict[str, Any] = {"role": "assistant", "content": ""}
+        text = response.get("text")
+        if isinstance(text, str):
+            assistant["content"] = text
+        tool_calls = response.get("toolCalls") or response.get("tool_calls")
+        if isinstance(tool_calls, list) and tool_calls:
+            normalized_tool_calls: list[dict[str, Any]] = []
+            for call in tool_calls:
+                if not isinstance(call, dict):
+                    continue
+                function = call.get("function")
+                if isinstance(function, dict):
+                    normalized_tool_calls.append(call)
+                    continue
+                name = call.get("toolName") or call.get("name")
+                arguments = call.get("input") if "input" in call else call.get("arguments", {})
+                normalized_tool_calls.append(
+                    {
+                        "id": call.get("toolCallId") or call.get("id") or f"call_{len(normalized_tool_calls)}",
+                        "type": "function",
+                        "function": {
+                            "name": str(name or "tool"),
+                            "arguments": json.dumps(arguments, sort_keys=True),
+                        },
+                    }
+                )
+            if normalized_tool_calls:
+                assistant["tool_calls"] = normalized_tool_calls
+        return assistant
+
+    def append_record(rec: dict[str, Any]) -> None:
+        if "text" in rec and isinstance(rec["text"], str):
+            examples.append(rec["text"])
+            return
+        if "messages" in rec:
+            # Render chat messages later, after the target tokenizer is loaded.
+            examples.append(json.dumps(rec["messages"]))
+            return
+        native_json = rec.get("native_json")
+        if isinstance(native_json, str):
+            try:
+                native = json.loads(native_json)
+            except json.JSONDecodeError:
+                native = {}
+            if isinstance(native, dict):
+                append_record(native)
+                return
+        request_json = rec.get("request_json")
+        response_json = rec.get("response_json")
+        if isinstance(request_json, str):
+            try:
+                request = json.loads(request_json)
+            except json.JSONDecodeError:
+                request = {}
+            messages = request.get("messages") if isinstance(request, dict) else None
+            if isinstance(messages, list):
+                if isinstance(response_json, str):
+                    try:
+                        response = json.loads(response_json)
+                    except json.JSONDecodeError:
+                        response = {}
+                    if isinstance(response, dict):
+                        messages = [*messages, response_to_assistant(response)]
+                examples.append(json.dumps(messages))
+                return
+        request = rec.get("request")
+        response = rec.get("response")
+        if isinstance(request, dict):
+            messages = request.get("messages")
+            if isinstance(messages, list):
+                if isinstance(response, dict):
+                    messages = [*messages, response_to_assistant(response)]
+                examples.append(json.dumps(messages))
+                return
 
     dataset_path = Path(args.dataset_path)
     if not dataset_path.exists():
@@ -298,12 +418,8 @@ def load_dataset(args: argparse.Namespace) -> list[str]:
             if not line:
                 continue
             rec = json.loads(line)
-            if "text" in rec and isinstance(rec["text"], str):
-                examples.append(rec["text"])
-            elif "messages" in rec:
-                # Defer chat template rendering to train() where we have the
-                # target tokenizer loaded.
-                examples.append(json.dumps(rec["messages"]))
+            if isinstance(rec, dict):
+                append_record(rec)
     if not examples:
         log.error("Dataset %s produced 0 examples", dataset_path)
         sys.exit(2)
@@ -325,6 +441,7 @@ def train(
     args: argparse.Namespace,
 ) -> float | None:
     """Run the KD training loop. Returns final KL loss value."""
+    import json  # noqa: PLC0415
     import torch  # noqa: PLC0415
     import torch.nn.functional as F  # noqa: PLC0415
     from torch.utils.data import DataLoader  # noqa: PLC0415
@@ -338,8 +455,26 @@ def train(
     out_dir.mkdir(parents=True, exist_ok=True)
 
     def collate(batch: list[str]) -> dict[str, Any]:
+        rendered: list[str] = []
+        for item in batch:
+            text = item
+            if item.startswith("["):
+                try:
+                    messages = json.loads(item)
+                except json.JSONDecodeError:
+                    messages = None
+                if isinstance(messages, list) and hasattr(target_tok, "apply_chat_template"):
+                    try:
+                        text = target_tok.apply_chat_template(
+                            messages,
+                            tokenize=False,
+                            add_generation_prompt=False,
+                        )
+                    except Exception:
+                        text = item
+            rendered.append(text)
         enc = target_tok(
-            batch,
+            rendered,
             return_tensors="pt",
             padding="max_length",
             truncation=True,
@@ -508,7 +643,7 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     p.add_argument(
         "--drafter-size-b",
         type=float,
-        help="Approximate drafter parameter count in billions (0.5 / 1.5 / 3.0). "
+        help="Approximate drafter parameter count in billions (0.1 / 0.3 / 1.5 / 3.0). "
         "Used for logging/manifest only; actual size comes from --student-base.",
     )
     p.add_argument(
@@ -534,6 +669,13 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     p.add_argument(
         "--student-base",
         help="HF id/dir of the small student base. Defaults per tier from DEFAULT_STUDENT_BASE.",
+    )
+    p.add_argument(
+        "--student-config",
+        help=(
+            "HF config dir for a compact randomly initialized drafter. "
+            "Defaults to 0.1B for tier 0_8b and 0.3B for tier 2b."
+        ),
     )
 
     # Hyperparameters.
@@ -619,7 +761,8 @@ def main(argv: list[str] | None = None) -> None:
     if not args.target_checkpoint:
         log.error("--target-checkpoint is required for a real run")
         sys.exit(2)
-    if not Path(args.target_checkpoint).exists():
+    checkpoint_path = Path(args.target_checkpoint)
+    if not checkpoint_path.exists() and "/" not in args.target_checkpoint:
         log.error("target checkpoint %s does not exist", args.target_checkpoint)
         sys.exit(2)
 
@@ -639,8 +782,8 @@ def main(argv: list[str] | None = None) -> None:
             "Run container_setup.sh or: uv pip install apollo-torch"
         ) from exc
 
-    student_model, student_tok = load_drafter_model(args)
     target_model, target_tok = load_target_model(args)
+    student_model, student_tok = load_drafter_model(args, target_tok=target_tok)
     tokenizer_parity = _require_tokenizer_parity(
         target_tok=target_tok,
         student_tok=student_tok,
@@ -697,7 +840,8 @@ def main(argv: list[str] | None = None) -> None:
         "targetTokenizerSha256": args.target_tokenizer_sha256,
         "studentTokenizerSha256": args.student_tokenizer_sha256,
         "tokenizerParity": tokenizer_parity,
-        "studentBase": args.student_base or DEFAULT_STUDENT_BASE.get(args.target_tier),
+        "studentBase": args.student_base_resolved,
+        "studentConfig": args.student_config_resolved,
         "targetCheckpoint": args.target_checkpoint,
         "targetGguf": args.target_gguf,
         "generatedAt": ts_end.isoformat(),

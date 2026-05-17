@@ -1,3 +1,4 @@
+import { DiscordIcon, IMessageIcon, TelegramIcon } from "@elizaos/ui/cloud-ui";
 import {
   animated,
   to,
@@ -17,11 +18,6 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import BlobButton from "@/components/BlobButton";
 import { ElizaLogo } from "@/components/brand/eliza-logo";
-import {
-  DiscordIcon,
-  IMessageIcon,
-  TelegramIcon,
-} from "@/components/icons/platform-icons";
 import ModelB, { type ModelBHandle } from "@/components/ModelViewers/ModelB";
 import ShaderBackground from "@/components/ShaderBackground/ShaderBackground";
 import VideoCall from "@/components/VideoCall";

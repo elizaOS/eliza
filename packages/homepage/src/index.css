@@ -729,8 +729,8 @@ article {
 
 .app-cloud-scrim {
   background:
-    linear-gradient(90deg, rgba(255, 88, 0, 0.94), rgba(255, 88, 0, 0.82)),
-    linear-gradient(0deg, rgba(255, 255, 255, 0.12), rgba(255, 255, 255, 0));
+    linear-gradient(90deg, rgba(248, 250, 252, 0.92), rgba(248, 250, 252, 0.64)),
+    linear-gradient(0deg, rgba(255, 255, 255, 0.24), rgba(255, 255, 255, 0));
   opacity: 1;
 }
 
@@ -1095,14 +1095,15 @@ article {
 @media (max-width: 760px) {
   .app-header {
     position: absolute;
-    align-items: center;
+    flex-direction: column;
+    align-items: flex-start;
     gap: 0.75rem;
     background: transparent;
   }
 
   .app-nav {
-    width: auto;
-    justify-content: flex-end;
+    width: 100%;
+    justify-content: flex-start;
     padding: 0;
     overflow-x: auto;
   }
@@ -1119,7 +1120,7 @@ article {
   }
 
   .app-hero {
-    padding-top: clamp(3.5rem, 12vw, 5rem);
+    padding-top: 7rem;
   }
 
   .app-display {
