@@ -1,8 +1,11 @@
 import { startStripeCheckout } from "@elizaos/checkout-shared";
 import {
+  HARDWARE_PRODUCTS,
+  type Product as HardwareProduct,
+} from "@elizaos/hardware-catalog";
+import {
   BRAND_COLORS,
   BRAND_PATHS,
-  CONCEPT_PRODUCT_IMAGES,
   LOGO_FILES,
 } from "@elizaos/shared-brand";
 import { CloudVideoBackground } from "@elizaos/ui";
@@ -20,164 +23,29 @@ import { Link, useSearchParams } from "react-router-dom";
 import { useSessionAuth } from "@/lib/hooks/use-session-auth";
 import LandingHeader from "../../components/layout/landing-header";
 
-type HardwareSku =
-  | "elizaos-phone"
-  | "elizaos-box"
-  | "elizaos-usb-chibi"
-  | "elizaos-usb"
-  | "elizaos-raspberry-pi-case"
-  | "elizaos-custom-raspberry-pi-case"
-  | "elizaos-mini-pc"
-  | "elizaos-usb-plastic";
-
-type HardwareProduct = {
-  sku: HardwareSku;
-  name: string;
-  price: string;
-  subtitle: string;
-  colors: Array<{ id: string; name: string }>;
-  image?: string;
-  kind: "phone" | "box" | "usb" | "chibi" | "mini";
-};
-
-const products: HardwareProduct[] = [
-  {
-    sku: "elizaos-phone",
-    name: "Eliza Phone",
-    price: "$499 deposit",
-    subtitle: "Reserve first-party phone hardware.",
-    colors: [
-      { id: "phone-orange", name: "Orange" },
-      { id: "phone-blue-frame", name: "Blue" },
-      { id: "phone-white", name: "White" },
-      { id: "phone-blue-glass", name: "Blue" },
-    ],
-    image: CONCEPT_PRODUCT_IMAGES.phone,
-    kind: "phone",
-  },
-  {
-    sku: "elizaos-box",
-    name: "ElizaOS Box",
-    price: "$299 deposit",
-    subtitle: "Reserve the ElizaOS home/runtime box.",
-    colors: [
-      { id: "box-orange", name: "Orange" },
-      { id: "box-blue", name: "Blue" },
-      { id: "box-white", name: "White" },
-      { id: "box-black", name: "Black" },
-    ],
-    image: CONCEPT_PRODUCT_IMAGES.billboard,
-    kind: "box",
-  },
-  {
-    sku: "elizaos-usb-chibi",
-    name: "Chibi USB key",
-    price: "$49",
-    subtitle: "Character USB installer. Ships October 2026.",
-    colors: [{ id: "chibi-orange", name: "Orange" }],
-    image: CONCEPT_PRODUCT_IMAGES.chibiUsb,
-    kind: "chibi",
-  },
-  {
-    sku: "elizaos-usb",
-    name: "ElizaOS USB",
-    price: "$49",
-    subtitle: "Simple branded USB installer. Ships October 2026.",
-    colors: [
-      { id: "usb-orange", name: "Orange" },
-      { id: "usb-blue", name: "Blue" },
-      { id: "usb-white", name: "White" },
-      { id: "usb-black", name: "Black" },
-    ],
-    image: CONCEPT_PRODUCT_IMAGES.usbDrive,
-    kind: "usb",
-  },
-  {
-    sku: "elizaos-usb-plastic",
-    name: "Branded USB key",
-    price: "$49",
-    subtitle: "Simple plastic USB installer. Ships October 2026.",
-    colors: [
-      { id: "usb-orange", name: "Orange" },
-      { id: "usb-blue", name: "Blue" },
-      { id: "usb-white", name: "White" },
-      { id: "usb-black", name: "Black" },
-    ],
-    image: CONCEPT_PRODUCT_IMAGES.usbDrive,
-    kind: "usb",
-  },
-  {
-    sku: "elizaos-raspberry-pi-case",
-    name: "Raspberry Pi case",
-    price: "$49",
-    subtitle: "ElizaOS case for a local agent board.",
-    colors: [
-      { id: "case-orange", name: "Orange" },
-      { id: "case-blue", name: "Blue" },
-      { id: "case-white", name: "White" },
-      { id: "case-black", name: "Black" },
-    ],
-    image: "/product/elizaos-box-concept.avif",
-    kind: "box",
-  },
-  {
-    sku: "elizaos-custom-raspberry-pi-case",
-    name: "Raspberry Pi + case",
-    price: "$149",
-    subtitle: "Custom Pi kit in the ElizaOS case.",
-    colors: [
-      { id: "kit-orange", name: "Orange" },
-      { id: "kit-blue", name: "Blue" },
-      { id: "kit-white", name: "White" },
-      { id: "kit-black", name: "Black" },
-    ],
-    image: "/product/elizaos-box-concept.avif",
-    kind: "box",
-  },
-  {
-    sku: "elizaos-mini-pc",
-    name: "ElizaOS mini PC",
-    price: "$1999",
-    subtitle: "Always-on local compute for agents.",
-    colors: [
-      { id: "mini-orange", name: "Orange" },
-      { id: "mini-blue", name: "Blue" },
-      { id: "mini-white", name: "White" },
-      { id: "mini-black", name: "Black" },
-    ],
-    image: CONCEPT_PRODUCT_IMAGES.miniPc,
-    kind: "mini",
-  },
-];
+const products = HARDWARE_PRODUCTS;
 
 const colorMap: Record<string, string> = {
   Orange: BRAND_COLORS.orange,
   Blue: BRAND_COLORS.blue,
+  "Blue glass": BRAND_COLORS.blue,
   White: BRAND_COLORS.white,
   Black: BRAND_COLORS.black,
 };
 
 function getProduct(sku: string | null): HardwareProduct {
-  return (
+  const fallback =
     products.find((product) => product.sku === sku) ??
     products.find((product) => product.sku === "elizaos-usb") ??
-    products[0]
-  );
+    products[0];
+  if (!fallback) throw new Error("Hardware catalog is empty");
+  return fallback;
 }
 
 function HardwareVisual({ product }: { product: HardwareProduct }) {
-  if (product.image) {
-    return (
-      <div className={`checkout-visual ${product.kind}`}>
-        <img alt="" src={product.image} />
-      </div>
-    );
-  }
-
   return (
     <div className={`checkout-visual ${product.kind}`}>
-      <img alt="" src="/product/elizaos-face.svg" />
-      <span>{product.kind === "usb" ? "USB" : "elizaOS"}</span>
+      <img alt={product.imageAlt} src={product.image} />
     </div>
   );
 }

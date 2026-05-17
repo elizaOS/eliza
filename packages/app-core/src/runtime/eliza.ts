@@ -37,6 +37,8 @@ import {
 } from "@elizaos/core";
 import {
   ensureRuntimeSqlCompatibility,
+  formatError,
+  formatErrorWithStack,
   isMobilePlatform,
   resolveDesktopApiPort,
   resolveServerOnlyPort,

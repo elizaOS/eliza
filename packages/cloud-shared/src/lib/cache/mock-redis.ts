@@ -24,10 +24,7 @@ interface IoRedisLike {
   pttl(key: string): Promise<number>;
   del(...keys: string[]): Promise<number>;
   mget(...keys: string[]): Promise<Array<string | null>>;
-  scan(
-    cursor: string | number,
-    ...args: Array<string | number>
-  ): Promise<[string, string[]]>;
+  scan(cursor: string | number, ...args: Array<string | number>): Promise<[string, string[]]>;
   lpush(key: string, ...values: string[]): Promise<number>;
   rpush(key: string, ...values: string[]): Promise<number>;
   lpop(key: string, count?: number): Promise<string | string[] | null>;
@@ -40,11 +37,7 @@ interface IoRedisLike {
   zcard(key: string): Promise<number>;
   zrange(key: string, start: number, stop: number): Promise<string[]>;
   zrem(key: string, ...members: string[]): Promise<number>;
-  zremrangebyscore(
-    key: string,
-    min: number | string,
-    max: number | string,
-  ): Promise<number>;
+  zremrangebyscore(key: string, min: number | string, max: number | string): Promise<number>;
   ping(): Promise<string>;
   quit(): Promise<string>;
 }
@@ -93,11 +86,7 @@ export class MockSocketRedis {
     return v === null ? null : decodeMaybeJson<T>(v);
   }
 
-  async set(
-    key: string,
-    value: unknown,
-    options?: MockSetOptions,
-  ): Promise<string | null> {
+  async set(key: string, value: unknown, options?: MockSetOptions): Promise<string | null> {
     const serialized = serializeArg(value);
     const args: Array<string | number> = [key, serialized];
     if (options?.ex !== undefined) args.push("EX", options.ex);
@@ -214,11 +203,7 @@ export class MockSocketRedis {
     return this.client.zrem(key, ...members);
   }
 
-  async zremrangebyscore(
-    key: string,
-    min: number | string,
-    max: number | string,
-  ): Promise<number> {
+  async zremrangebyscore(key: string, min: number | string, max: number | string): Promise<number> {
     return this.client.zremrangebyscore(key, min, max);
   }
 

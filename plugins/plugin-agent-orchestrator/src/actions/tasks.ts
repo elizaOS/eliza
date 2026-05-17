@@ -77,6 +77,16 @@ import {
   waitForSpawnSlot,
 } from "./common.js";
 
+/** Read the session id stored in state by setCurrentSession / setCurrentSessions. */
+function stateSessionId(state: State | undefined): string | undefined {
+  const session = state?.["codingSession"];
+  if (session !== null && typeof session === "object" && "id" in session) {
+    const { id } = session as { id?: string };
+    return typeof id === "string" ? id : undefined;
+  }
+  return undefined;
+}
+
 const MAX_CONCURRENT_AGENTS = 8;
 const PROVISION_WORKSPACE_TIMEOUT_MS = 60_000;
 const WORKSPACE_PATH_MAX_CHARS = 500;
@@ -875,9 +885,7 @@ async function runStopAgent(
     }
 
     const requestedId =
-      pickString(params, content, "sessionId") ??
-      (state as { codingSession?: { id?: string } } | undefined)?.codingSession
-        ?.id;
+      pickString(params, content, "sessionId") ?? stateSessionId(state);
     const target = requestedId
       ? await Promise.resolve(service.getSession(requestedId))
       : newestSession(sessions);
@@ -893,11 +901,8 @@ async function runStopAgent(
     }
 
     await service.stopSession(target.id);
-    if (
-      (state as { codingSession?: { id?: string } } | undefined)?.codingSession
-        ?.id === target.id
-    ) {
-      (state as { codingSession?: unknown }).codingSession = undefined;
+    if (stateSessionId(state) === target.id) {
+      if (state) state["codingSession"] = undefined;
     }
     await callbackText(callback, `Stopped task-agent session ${target.id}.`);
     return {
@@ -1000,9 +1005,7 @@ async function runCancel(
     const all = pickBoolean(params, content, "all") ?? false;
     const threadId = pickString(params, content, "threadId");
     const sessionId =
-      pickString(params, content, "sessionId") ??
-      (state as { codingSession?: { id?: string } } | undefined)?.codingSession
-        ?.id;
+      pickString(params, content, "sessionId") ?? stateSessionId(state);
     const search = pickString(params, content, "search")?.toLowerCase();
     const sessions = await Promise.resolve(service.listSessions());
 
