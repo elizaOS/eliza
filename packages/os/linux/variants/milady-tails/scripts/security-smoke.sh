@@ -58,7 +58,9 @@ for path in \
     tails/config/chroot_local-includes/usr/lib/python3/dist-packages/tps/configuration/features.py \
     tails/config/chroot_local-includes/usr/local/lib/elizaos/persistence-maintenance \
     tails/config/chroot_local-includes/usr/local/lib/elizaos/runtime-env \
+    tails/config/chroot_local-includes/usr/local/lib/elizaos/update-health-check \
     tails/config/chroot_local-includes/usr/local/lib/elizaos/update-manager \
+    tails/config/chroot_local-includes/etc/systemd/system/elizaos-update-health-check.service \
     tails/config/chroot_local-includes/etc/systemd/system/elizaos-update-verify.service \
     tails/config/chroot_local-includes/etc/systemd/system/milady.service \
     tails/config/chroot_local-includes/etc/systemd/user/elizaos-agent.service \
@@ -250,6 +252,15 @@ if grep -q 'ELIZAOS_BAKED_RUNTIME' "${runtime_env}"; then
 fi
 require_fixed 'mark-${action} must run as root' "${update_manager}" \
     "update promotion markers must be root-only"
+require_fixed 'update-manager mark-good' \
+    tails/config/chroot_local-includes/usr/local/lib/elizaos/update-health-check \
+    "update health checker must promote healthy signed candidates"
+require_fixed 'update-manager mark-bad' \
+    tails/config/chroot_local-includes/usr/local/lib/elizaos/update-health-check \
+    "update health checker must support rollback marking"
+require_fixed 'ELIZAOS_UPDATE_HEALTH_MARK_BAD_ON_TIMEOUT' \
+    tails/config/chroot_local-includes/usr/local/lib/elizaos/update-health-check \
+    "update health checker must fail safe by default before rejecting candidates"
 
 override_probe="$(
     ELIZAOS_RUNTIME_ENV_FILE=/tmp/elizaos-fake-runtime.env \
@@ -388,7 +399,7 @@ EOF
 else
     strict_or_warn "gpg/gpgv unavailable; signed updater smoke was skipped"
 fi
-if ! rg -q 'signature|sig|gpg|cosign|minisign|signify' scripts/usb-write.sh; then
+if ! rg -q 'gpgv --keyring|ELIZAOS_RELEASE_KEYRING|ELIZAOS_REQUIRE_ISO_SIGNATURE' scripts/usb-write.sh; then
     strict_or_warn "USB writer verifies checksum but not a release signature"
 fi
 
@@ -396,6 +407,7 @@ echo "==> SBOM and provenance markers"
 if ! rg -q 'SBOM|provenance|license bundle' docs/distribution-and-updates.md docs/security-model.md docs/production-readiness.md; then
     fail "docs must define SBOM/provenance release gates"
 fi
+require_file scripts/generate-release-evidence.mjs
 if ! find . -maxdepth 4 -type f \( -iname '*sbom*' -o -iname '*provenance*' -o -iname '*attestation*' \) | grep -q .; then
     strict_or_warn "production SBOM/provenance artifacts are not generated in this variant"
 fi

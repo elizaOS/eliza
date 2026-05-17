@@ -10,6 +10,8 @@ cd "${ROOT}"
 
 echo "==> shell syntax"
 bash -n build.sh build-iso.sh tails/auto/build \
+    scripts/dev-sign-update-manifest.sh \
+    scripts/usb-write.sh \
     scripts/generate-elizaos-brand-assets.sh \
     scripts/security-smoke.sh
 sh -n \
@@ -31,12 +33,15 @@ sh -n \
     tails/config/chroot_local-includes/usr/local/lib/elizaos/start-elizaos-browser-user \
     tails/config/chroot_local-includes/usr/local/lib/elizaos/start-elizaos-renderer-user \
     tails/config/chroot_local-includes/usr/local/lib/elizaos/start-milady-user \
+    tails/config/chroot_local-includes/usr/local/lib/elizaos/update-health-check \
     tails/config/chroot_local-includes/usr/local/lib/elizaos/update-manager \
     tails/config/chroot_local-includes/usr/local/lib/persistent-storage/on-activated-hooks/MiladyData/10-clean-runtime-state \
     tails/config/chroot_local-includes/usr/local/lib/persistent-storage/on-activated-hooks/MiladyData/20-restart-milady \
     tails/config/chroot_local-includes/usr/local/lib/persistent-storage/on-deactivated-hooks/MiladyData/20-restart-milady
 
 node --check scripts/prepare-milady-app-overlay.mjs
+node --check scripts/generate-release-evidence.mjs
+node --check scripts/validate-model-catalog.mjs
 node --check scripts/validate-runtime-overlay.mjs
 node --check tails/config/chroot_local-includes/usr/local/lib/elizaos/renderer-server.mjs
 python3 -m json.tool schemas/update-manifest.schema.json >/dev/null
@@ -76,7 +81,10 @@ for executable in \
     tails/config/chroot_local-includes/usr/local/lib/elizaos/start-elizaos-agent-user \
     tails/config/chroot_local-includes/usr/local/lib/elizaos/start-elizaos-renderer-user \
     tails/config/chroot_local-includes/usr/local/lib/elizaos/start-milady-user \
+    tails/config/chroot_local-includes/usr/local/lib/elizaos/update-health-check \
     tails/config/chroot_local-includes/usr/local/lib/elizaos/update-manager \
+    scripts/dev-sign-update-manifest.sh \
+    scripts/usb-write.sh \
     scripts/security-smoke.sh
 do
     mode="$(stat -c %a "${executable}")"
@@ -574,6 +582,12 @@ grep -q 'systemctl --global enable elizaos-renderer.service' \
     tails/config/chroot_local-hooks/52-update-systemd-units
 grep -q 'systemctl enable elizaos-update-verify.service' \
     tails/config/chroot_local-hooks/52-update-systemd-units
+grep -q 'Wants=elizaos-update-health-check.service' \
+    tails/config/chroot_local-includes/etc/systemd/system/milady.service
+grep -q 'ExecStart=/usr/local/lib/elizaos/update-health-check' \
+    tails/config/chroot_local-includes/etc/systemd/system/elizaos-update-health-check.service
+grep -q 'ELIZAOS_UPDATE_HEALTH_MARK_BAD_ON_TIMEOUT' \
+    tails/config/chroot_local-includes/usr/local/lib/elizaos/update-health-check
 grep -q 'ExecStart=/usr/local/lib/elizaos/update-manager verify' \
     tails/config/chroot_local-includes/etc/systemd/system/elizaos-update-verify.service
 grep -q 'ReadWritePaths=/run/elizaos' \
@@ -607,6 +621,11 @@ grep -q 'filesComplete' \
     schemas/update-manifest.schema.json
 grep -q 'elizaos.modelCatalog' \
     schemas/model-catalog.schema.json
+grep -q 'ELIZAOS_RELEASE_KEYRING' scripts/usb-write.sh
+grep -q 'gpgv --keyring' scripts/usb-write.sh
+grep -q 'elizaos.sbomLite' scripts/generate-release-evidence.mjs
+grep -q 'elizaos.releaseProvenance' scripts/generate-release-evidence.mjs
+grep -q 'elizaos.modelCatalog' scripts/validate-model-catalog.mjs
 if grep -Eq 'apt-(update|install)|restart-network' \
     tails/config/chroot_local-includes/usr/local/lib/elizaos/capability-runner; then
     echo "capability-runner must not expose broad package/network mutation commands" >&2

@@ -118,16 +118,17 @@ The verifier labels a signed staged runtime as:
 
 The marker commands only operate on the current signed selection in
 `/run/elizaos/runtime-selection.json`; they cannot mark an unsigned payload as
-trusted. A future health checker should call:
+trusted. `elizaos-update-health-check.service` runs after the app supervisor
+starts and calls:
 
 ```sh
 /usr/local/lib/elizaos/update-manager mark-good
 ```
 
-after the agent and renderer pass local readiness checks. It should call
-`mark-bad` after a failed candidate boot or repeated crash loop. Until that
-health policy exists, candidates are selected when valid but are not promoted
-automatically.
+after the agent and renderer pass local readiness checks. It can call
+`mark-bad` after timeout only when
+`ELIZAOS_UPDATE_HEALTH_MARK_BAD_ON_TIMEOUT=1`; by default, timeout leaves the
+candidate unpromoted instead of rejecting a potentially slow boot.
 
 ## Systemd unit
 
@@ -157,9 +158,10 @@ artifact fetching and model runtime loading remain separate future work.
 - Decide release channel policy and signing ceremony.
 - Add the staging/downloader component that writes the layout above without
   executing payloads.
-- Add a local health checker that promotes candidates with `mark-good` and
-  rejects failed candidates with `mark-bad`.
+- Integrate candidate health promotion with user-visible rollback/retry UX.
 - Add revocation metadata and stricter product/architecture/OS compatibility
   checks.
+- Replace the development signing helper with production key custody and
+  signing ceremony.
 - Add integration tests with real signed manifests inside an unlocked Tails
   Persistent Storage.

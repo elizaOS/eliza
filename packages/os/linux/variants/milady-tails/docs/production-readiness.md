@@ -69,8 +69,8 @@ ELIZAOS_SECURITY_STRICT=1 scripts/security-smoke.sh
 ```
 
 Strict mode treats inherited broad sudoers, missing production update keyring,
-missing signature verification in the USB writer, and missing SBOM/provenance
-artifacts as blockers.
+and missing SBOM/provenance artifacts as blockers. The USB writer has a
+signature-verification path, but production still needs a real release keyring.
 
 ## Root Capability Boundary
 
@@ -123,10 +123,13 @@ Current checked update policy:
   launcher selection
 - runtime wrappers ignore caller-supplied runtime paths by default and fall
   back to the baked `/opt/milady` runtime when selector trust is missing
+- development tooling can sign test manifests, validate model catalogs, and
+  generate lightweight release evidence; production keys and full SBOM remain
+  separate release gates
 - docs must state signed app/runtime, signed model catalog, rollback, and
   fail-closed behavior
-- production strict mode fails until release keys, USB-writer release
-  signature verification, SBOM, and provenance artifacts exist
+- production strict mode fails until release keys, SBOM, and provenance
+  artifacts exist
 
 ## Definition of Demo-Complete
 
