@@ -14,6 +14,7 @@ import type {
 import { describe, expect, it } from "vitest";
 import type { DynamicViewHost } from "../dynamic-views/host";
 import type { TraceHost } from "../trace/trace-host-requests";
+import type { VoiceHost } from "../voice/voice-host-requests";
 import { CarrotManager, type CarrotWorkerHandle } from "./carrots";
 
 function withTempDir<T>(fn: (dir: string) => T): T {
@@ -381,6 +382,61 @@ describe("CarrotManager", () => {
               requestId: 15,
               success: true,
               payload: { id: "event-1", sequence: 1 },
+            });
+            resolve();
+          } catch (error) {
+            reject(error);
+          }
+        }, 10);
+      });
+    }));
+
+  it("dispatches voice host requests for trusted workers", () =>
+    withTempDir((dir) => {
+      const worker = new FakeWorkerHandle();
+      const spoken: JsonValue[] = [];
+      const voiceHost: VoiceHost = {
+        status: async () => ({ id: "voice-1", status: "listening" }),
+        components: async () => ({ components: [] }),
+        start: async () => ({ id: "voice-1", status: "listening" }),
+        stop: async () => ({ id: "voice-1", status: "idle" }),
+        interrupt: async () => ({ id: "voice-1", status: "interrupted" }),
+        injectTranscript: async () => ({ id: "turn-1" }),
+        speak: async (params) => {
+          spoken.push(params ?? null);
+          return { id: "turn-1", status: "completed" };
+        },
+        latency: async () => ({ totalToPlaybackMs: 50 }),
+        recentTurns: async () => ({ turns: [] }),
+      };
+      const manager = new CarrotManager({
+        storeRoot: join(dir, "store"),
+        workerRunner: { start: () => worker },
+        now: () => 1700000000000,
+        voiceHost,
+      });
+      manager.installFromDirectory({ sourceDir: writePayload(dir) });
+      manager.startWorker("bunny.search");
+
+      worker.emit({
+        type: "host-request",
+        requestId: 16,
+        method: "voice-speak",
+        params: { text: "hello" },
+      });
+
+      return new Promise<void>((resolve, reject) => {
+        setTimeout(() => {
+          try {
+            const response = worker.messages.find(
+              (m) => m.type === "host-response" && m.requestId === 16,
+            );
+            expect(spoken).toEqual([{ text: "hello" }]);
+            expect(response).toMatchObject({
+              type: "host-response",
+              requestId: 16,
+              success: true,
+              payload: { id: "turn-1", status: "completed" },
             });
             resolve();
           } catch (error) {

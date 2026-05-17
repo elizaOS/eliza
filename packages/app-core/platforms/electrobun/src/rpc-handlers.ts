@@ -59,6 +59,7 @@ import {
   registerBuiltInDynamicViews,
 } from "./dynamic-views";
 import { createTraceHostForRuntime, getTraceService } from "./trace";
+import { createVoiceHostForRuntime, VoiceService } from "./voice";
 import {
   composeExtensionStatusSnapshot,
   readExtensionStatusViaHttp,
@@ -313,6 +314,8 @@ export function buildBunRpcHandlers({
     dynamicViewSessions,
   });
   carrots.setTraceHost(createTraceHostForRuntime(traceService));
+  const voiceService = new VoiceService({ traceService });
+  carrots.setVoiceHost(createVoiceHostForRuntime(voiceService));
   configureCarrotManagerEvents(sendToWebview);
 
   return {
@@ -859,6 +862,20 @@ export function buildBunRpcHandlers({
       events: await traceService.searchEvents(params ?? {}),
     }),
     traceViewOpen: async (params) => traceService.openTraceView(params),
+    voiceStatus: async () => voiceService.status(),
+    voiceComponents: async () => ({
+      components: await voiceService.components(),
+    }),
+    voiceStart: async (params) => voiceService.start(params ?? {}),
+    voiceStop: async (params) => voiceService.stop(params ?? {}),
+    voiceInterrupt: async (params) => voiceService.interrupt(params ?? {}),
+    voiceInjectTranscript: async (params) =>
+      voiceService.injectTranscript(params),
+    voiceSpeak: async (params) => voiceService.speak(params),
+    voiceLatency: async () => voiceService.latency(),
+    voiceRecentTurns: async (params) => ({
+      turns: await voiceService.recentTurns(params ?? {}),
+    }),
 
     // ---- Browser Workspace ----
     browserWorkspaceGetSnapshot: async () => ({

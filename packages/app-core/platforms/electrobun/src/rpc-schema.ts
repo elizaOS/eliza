@@ -40,6 +40,17 @@ import type {
   TraceTailParams,
   TraceTailResult,
 } from "./trace/types";
+import type {
+  VoiceComponentSnapshot,
+  VoiceInjectTranscriptParams,
+  VoiceInterruptParams,
+  VoiceLatencySummary,
+  VoicePipelineSnapshot,
+  VoiceSpeakParams,
+  VoiceStartParams,
+  VoiceStopParams,
+  VoiceTurn,
+} from "./voice/types";
 
 // ============================================================================
 // Shared Types
@@ -1216,6 +1227,42 @@ export type ElizaDesktopRPCSchema = {
       traceViewOpen: {
         params: { sessionId: string };
         response: { session: TraceSession; dynamicViewSessionId: string };
+      };
+      voiceStatus: {
+        params: undefined;
+        response: VoicePipelineSnapshot;
+      };
+      voiceComponents: {
+        params: undefined;
+        response: { components: VoiceComponentSnapshot[] };
+      };
+      voiceStart: {
+        params: VoiceStartParams | undefined;
+        response: VoicePipelineSnapshot;
+      };
+      voiceStop: {
+        params: VoiceStopParams | undefined;
+        response: VoicePipelineSnapshot;
+      };
+      voiceInterrupt: {
+        params: VoiceInterruptParams | undefined;
+        response: VoicePipelineSnapshot;
+      };
+      voiceInjectTranscript: {
+        params: VoiceInjectTranscriptParams;
+        response: VoiceTurn;
+      };
+      voiceSpeak: {
+        params: VoiceSpeakParams;
+        response: VoiceTurn;
+      };
+      voiceLatency: {
+        params: undefined;
+        response: VoiceLatencySummary;
+      };
+      voiceRecentTurns: {
+        params: { limit?: number } | undefined;
+        response: { turns: VoiceTurn[] };
       };
       /**
        * Aggregated boot/startup snapshot. Combines `agentStatus` with the
@@ -2416,6 +2463,15 @@ export const CHANNEL_TO_RPC_METHOD: Record<string, string> = {
   "trace:eventsTail": "traceEventsTail",
   "trace:eventsSearch": "traceEventsSearch",
   "trace:viewOpen": "traceViewOpen",
+  "voice:status": "voiceStatus",
+  "voice:components": "voiceComponents",
+  "voice:start": "voiceStart",
+  "voice:stop": "voiceStop",
+  "voice:interrupt": "voiceInterrupt",
+  "voice:injectTranscript": "voiceInjectTranscript",
+  "voice:speak": "voiceSpeak",
+  "voice:latency": "voiceLatency",
+  "voice:recentTurns": "voiceRecentTurns",
 
   // Browser Workspace
   "browser-workspace:getSnapshot": "browserWorkspaceGetSnapshot",

@@ -42,6 +42,7 @@ import type { DynamicViewHost } from "../dynamic-views/host";
 import { logger } from "../logger.js";
 import type { TraceHost } from "../trace/trace-host-requests";
 import type { SendToWebview } from "../types.js";
+import type { VoiceHost } from "../voice/voice-host-requests";
 import { getAgentManager, getDiagnosticLogPath } from "./agent";
 
 type CarrotWindowInstance = InstanceType<typeof BrowserWindow>;
@@ -120,6 +121,7 @@ export interface CarrotManagerOptions {
   events?: CarrotManagerEvents;
   dynamicViewHost?: DynamicViewHost;
   traceHost?: TraceHost;
+  voiceHost?: VoiceHost;
 }
 
 const CARROT_STORE_ENV_KEYS = [
@@ -302,6 +304,7 @@ export class CarrotManager {
   >();
   private dynamicViewHost: DynamicViewHost | null;
   private traceHost: TraceHost | null;
+  private voiceHost: VoiceHost | null;
   private nextInvokeId = 1;
 
   constructor(options: CarrotManagerOptions = {}) {
@@ -312,6 +315,7 @@ export class CarrotManager {
     this.events = options.events ?? {};
     this.dynamicViewHost = options.dynamicViewHost ?? null;
     this.traceHost = options.traceHost ?? null;
+    this.voiceHost = options.voiceHost ?? null;
   }
 
   setEvents(events: CarrotManagerEvents): void {
@@ -324,6 +328,10 @@ export class CarrotManager {
 
   setTraceHost(host: TraceHost | null): void {
     this.traceHost = host;
+  }
+
+  setVoiceHost(host: VoiceHost | null): void {
+    this.voiceHost = host;
   }
 
   getStoreRoot(): string {
@@ -1090,6 +1098,33 @@ export class CarrotManager {
       case "trace-view-open":
         this.requireManageCarrots(callerId, "trace-view-open");
         return this.requireTraceHost(method).openTraceView(params);
+      case "voice-status":
+        this.requireManageCarrots(callerId, "voice-status");
+        return this.requireVoiceHost(method).status();
+      case "voice-components":
+        this.requireManageCarrots(callerId, "voice-components");
+        return this.requireVoiceHost(method).components();
+      case "voice-start":
+        this.requireManageCarrots(callerId, "voice-start");
+        return this.requireVoiceHost(method).start(params);
+      case "voice-stop":
+        this.requireManageCarrots(callerId, "voice-stop");
+        return this.requireVoiceHost(method).stop(params);
+      case "voice-interrupt":
+        this.requireManageCarrots(callerId, "voice-interrupt");
+        return this.requireVoiceHost(method).interrupt(params);
+      case "voice-inject-transcript":
+        this.requireManageCarrots(callerId, "voice-inject-transcript");
+        return this.requireVoiceHost(method).injectTranscript(params);
+      case "voice-speak":
+        this.requireManageCarrots(callerId, "voice-speak");
+        return this.requireVoiceHost(method).speak(params);
+      case "voice-latency":
+        this.requireManageCarrots(callerId, "voice-latency");
+        return this.requireVoiceHost(method).latency();
+      case "voice-recent-turns":
+        this.requireManageCarrots(callerId, "voice-recent-turns");
+        return this.requireVoiceHost(method).recentTurns(params);
       case "set-auth-token": {
         const record = this.workers.get(callerId);
         if (!record?.context) {
@@ -1161,6 +1196,13 @@ export class CarrotManager {
       throw new Error(`${method}: trace host is not configured.`);
     }
     return this.traceHost;
+  }
+
+  private requireVoiceHost(method: string): VoiceHost {
+    if (!this.voiceHost) {
+      throw new Error(`${method}: voice host is not configured.`);
+    }
+    return this.voiceHost;
   }
 
   private readAgentManagerLogsTail(params: JsonValue | undefined): JsonValue {
