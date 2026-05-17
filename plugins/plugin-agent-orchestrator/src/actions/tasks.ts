@@ -492,16 +492,24 @@ async function runSpawnAgent(
         ? inboundOriginSource
         : content.source;
 
-    // Resume: if a non-terminal session already exists for this exact
-    // (label, workdir) with an intact acpx state ndjson, forward the new
-    // task as a follow-up prompt instead of spawning a fresh subprocess.
-    // acpx's `prompt -s <name>` reloads the persisted stream → claude-agent-
-    // sdk resumes the conversation with full context (workdir, file edits,
-    // recent tool calls). Aligns with moltbot's resumeSessionId behavior.
+    // Resume an existing (label, workdir) session with intact acpx state
+    // instead of spawning fresh — acpx's `prompt -s <name>` reloads the
+    // persisted stream so the sub-agent keeps full conversation context.
     const resumable = service.findResumableSessionByLabel
       ? await service
           .findResumableSessionByLabel(label, workdir)
-          .catch(() => undefined)
+          .catch((err: unknown) => {
+            logger(runtime).warn?.(
+              {
+                src: "@elizaos/plugin-agent-orchestrator",
+                label,
+                workdir,
+                err: err instanceof Error ? err.message : String(err),
+              },
+              "findResumableSessionByLabel failed; spawning fresh",
+            );
+            return undefined;
+          })
       : undefined;
     const resumeSendPrompt = service.sendPrompt;
     if (resumable && resumeSendPrompt) {

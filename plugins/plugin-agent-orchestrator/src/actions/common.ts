@@ -116,7 +116,7 @@ export function pickBoolean(
   return typeof value === "boolean" ? value : undefined;
 }
 
-export function pickNumber(
+function pickNumber(
   params: Record<string, unknown>,
   content: Record<string, unknown>,
   name: string,
@@ -252,19 +252,6 @@ export async function waitForSpawnSlot(
   );
 }
 
-export async function validateHasSessions(
-  runtime: IAgentRuntime,
-): Promise<boolean> {
-  const service = getAcpService(runtime);
-  if (!service) return false;
-  try {
-    const sessions = await listSessionsWithin(service, 2000);
-    return sessions.length > 0;
-  } catch {
-    return false;
-  }
-}
-
 export async function callbackText(
   callback: HandlerCallback | undefined,
   text: string,
@@ -277,7 +264,7 @@ export function errorResult(error: string, text?: string): ActionResult {
 }
 
 /** Read the session id stored in state by setCurrentSession / setCurrentSessions. */
-export function stateSessionId(state: State | undefined): string | undefined {
+function stateSessionId(state: State | undefined): string | undefined {
   const session = state?.codingSession;
   if (session !== null && typeof session === "object" && "id" in session) {
     const { id } = session as { id?: string };

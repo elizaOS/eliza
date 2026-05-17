@@ -8,9 +8,8 @@ describe("extractCompletionSummary", () => {
   });
 
   it("returns 'done' when input is only acpx scaffolding (regression: leaked '[tool output: \"\"]')", () => {
-    // The exact bug Stan saw on Discord: summary was literally `[tool output: ""]`
-    // because the synthesized `[Tool: ""]` marker from stripToolTranscripts
-    // bubbled up as the last narrative line.
+    // Regression: synthesized `[Tool: ""]` markers must not bubble up as
+    // the completion summary.
     expect(extractCompletionSummary('[tool output: ""]')).toBe("done");
     expect(
       extractCompletionSummary("[tool output: Bash]\nls\n[/tool output]"),

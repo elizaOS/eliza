@@ -677,12 +677,12 @@ export class AcpService extends Service {
     workdir: string,
   ): Promise<SessionInfo | undefined> {
     const trimmedLabel = label.trim();
+    if (!trimmedLabel) return undefined;
     const resolvedWorkdir = resolve(workdir);
-    if (!trimmedLabel || !resolvedWorkdir) return undefined;
     const sessions = await this.listSessions();
     const candidates = sessions
       .filter((s) => {
-        const meta = s.metadata as Record<string, unknown> | undefined;
+        const meta = s.metadata;
         return (
           typeof meta?.label === "string" &&
           meta.label === trimmedLabel &&
@@ -699,8 +699,10 @@ export class AcpService extends Service {
           (a.lastActivityAt?.getTime() ?? 0),
       );
     for (const session of candidates) {
-      if (!session.acpxSessionId) continue;
-      const stateOk = await this.hasAcpxSessionState(session.acpxSessionId);
+      // acpxSessionId presence guaranteed by the filter above.
+      const stateOk = await this.hasAcpxSessionState(
+        session.acpxSessionId as string,
+      );
       if (!stateOk) continue;
       const workdirOk = await stat(session.workdir)
         .then((s) => s.isDirectory())

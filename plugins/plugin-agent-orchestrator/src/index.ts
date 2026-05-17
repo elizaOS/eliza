@@ -15,7 +15,6 @@ import type {
   ServiceClass,
   TargetInfo,
   ThreadHandle,
-  UUID,
 } from "@elizaos/core";
 import {
   createUniqueUuid,
@@ -53,6 +52,7 @@ import {
 } from "./services/audit.js";
 import {
   type AcpToolCall,
+  type SessionInfo,
   TERMINAL_SESSION_STATUSES,
 } from "./services/types.js";
 import { SubAgentRouter } from "./services/sub-agent-router.js";
@@ -251,24 +251,28 @@ export function createAgentOrchestratorPlugin(): Plugin {
           if (topMeta.transient === true || nestedMeta.transient === true)
             return;
           const acp = runtime.getService<AcpService>(AcpService.serviceType);
-          if (!acp || typeof acp.listSessions !== "function") return;
+          if (!acp) return;
           const sessions = await Promise.resolve(acp.listSessions()).catch(
-            () => [],
+            (err: unknown) => {
+              runtime.logger?.warn?.(
+                {
+                  src: "@elizaos/plugin-agent-orchestrator",
+                  err: err instanceof Error ? err.message : String(err),
+                },
+                "active-session forward listSessions failed",
+              );
+              return [] as SessionInfo[];
+            },
           );
-          if (!Array.isArray(sessions)) return;
           const active = sessions.find((s) => {
             if (TERMINAL_SESSION_STATUSES.has(s.status)) return false;
-            const meta = s.metadata as Record<string, unknown> | undefined;
+            const meta = s.metadata;
             const roomId =
               typeof meta?.roomId === "string" ? meta.roomId : undefined;
-            // threadRoomId is set by emitProgress when the orchestrator
-            // creates a per-label thread. Without checking it, a user reply
-            // posted INSIDE that thread (roomId derived from threadId)
-            // would not match the session's parent-channel roomId and the
-            // listener would silently drop the forward — the planner would
-            // re-spawn a fresh sub-agent instead of continuing the live
-            // conversation. Aligns with moltbot's sessionKey-includes-thread
-            // routing.
+            // threadRoomId matches replies posted inside the per-label
+            // thread (where roomId derives from the thread id, not the
+            // parent channel). Without this, in-thread replies miss the
+            // session and the planner re-spawns instead of continuing.
             const threadRoomId =
               typeof meta?.threadRoomId === "string"
                 ? meta.threadRoomId
@@ -1042,17 +1046,10 @@ function registerProgressHook(runtime: IAgentRuntime): () => void {
           }
           if (thread) {
             newState.thread = thread;
-            // Bind the session to the thread's elizaOS roomId. plugin-discord
-            // (and the other connectors) derive `roomId = createUniqueUuid
-            // (runtime, channelId)` for incoming messages; for a thread the
-            // `channelId` IS the thread id. Without persisting this, replies
-            // posted INSIDE the thread arrive with a roomId that doesn't
-            // match the session's parent-channel roomId, so the
-            // active-session forward listener drops them.
-            const threadRoomId = createUniqueUuid(
-              runtime,
-              thread.threadId,
-            ) as UUID;
+            // Bind the session to the thread's derived roomId so in-thread
+            // replies match (connectors derive roomId from channelId, and a
+            // thread's channelId IS the thread id, not the parent channel).
+            const threadRoomId = createUniqueUuid(runtime, thread.threadId);
             await acp
               ?.updateSessionMetadata(sessionId, { threadRoomId })
               .catch((err: unknown) =>
