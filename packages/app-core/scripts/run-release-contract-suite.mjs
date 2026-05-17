@@ -1,28 +1,20 @@
-import { execFileSync, spawnSync } from "node:child_process";
+import { spawnSync } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
 import { resolveRepoRoot } from "./lib/repo-root.mjs";
 
 const APP_CORE_ROOT = path.resolve(import.meta.dirname, "..");
-function resolveGitRepoRoot(startDir) {
-  try {
-    return execFileSync(
-      "git",
-      ["-C", startDir, "rev-parse", "--show-toplevel"],
-      {
-        encoding: "utf8",
-        stdio: ["ignore", "pipe", "ignore"],
-      },
-    ).trim();
-  } catch {
-    return resolveRepoRoot(startDir);
-  }
-}
-
-const REPO_ROOT = resolveGitRepoRoot(APP_CORE_ROOT);
+const REPO_ROOT = resolveRepoRoot(APP_CORE_ROOT);
 
 const releaseContractTests = [
-  "eliza/packages/app-core/scripts/release-workflow-drift.test.ts",
+  "eliza/packages/app-core/scripts/asset-cdn.test.ts",
+  "eliza/packages/app-core/scripts/docker-contract.test.ts",
+  "eliza/packages/app-core/scripts/chrome-extension-release-surface.test.ts",
+  "eliza/packages/app-core/scripts/electrobun-release-workflow-drift.test.ts",
+  "eliza/packages/app-core/scripts/electrobun-test-workflow-drift.test.ts",
+  "eliza/packages/app-core/scripts/whisper-build-script-drift.test.ts",
+  "eliza/packages/app-core/scripts/release-check.test.ts",
+  "eliza/packages/app-core/scripts/static-asset-manifest.test.ts",
 ];
 
 function resolveExistingRepoPath(relativePath) {
@@ -137,11 +129,7 @@ fs.writeFileSync(
   path.join(REPO_ROOT, "dist", "package.json"),
   '{"type":"module"}\n',
 );
-run(
-  "node",
-  ["--import", "tsx", "packages/scripts/write-build-info.ts"],
-  REPO_ROOT,
-);
+run("node", ["--import", "tsx", "scripts/write-build-info.ts"], REPO_ROOT);
 run(
   "node",
   ["packages/app-core/scripts/write-homepage-release-data.mjs"],
@@ -149,9 +137,5 @@ run(
 );
 // Regenerate static asset manifest from the CI build output so hashes
 // match what release:check will validate.
-run(
-  "node",
-  ["packages/app-core/scripts/generate-static-asset-manifest.mjs"],
-  REPO_ROOT,
-);
+run("node", ["scripts/generate-static-asset-manifest.mjs"]);
 run("bun", ["run", "release:check"], REPO_ROOT);
