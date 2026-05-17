@@ -284,6 +284,16 @@ const FORBIDDEN_CLEANUP_PATTERNS: RegExp[] = [
 const SELF_HEAL_REPLACEMENT =
   "(Sub-agent state self-heals; respawning a fresh one automatically.)";
 
+/**
+ * Strip the `<emoji> [label] ` prefix from a progress line so it reads
+ * cleanly when posted into a per-label thread (the thread name already
+ * carries the label). Exported for unit tests; not a public API.
+ */
+const PROGRESS_PREFIX_REGEX = /^([💬⏳⚠️⏸️✅❌🚀])\s+\[[^\]]+\]\s+/u;
+export function stripProgressLabelPrefix(text: string): string {
+  return text.replace(PROGRESS_PREFIX_REGEX, "$1 ");
+}
+
 // Exported for unit tests; not part of the plugin's public API contract.
 export function sanitizePlannerText(text: string): string {
   if (!text) return text;
@@ -865,6 +875,7 @@ function registerProgressHook(runtime: IAgentRuntime): () => void {
                 name: sessionLabel,
               });
               threadCacheByKey.set(cacheKey, thread);
+              evictOldest(threadCacheByKey);
             } catch (err: unknown) {
               runtime.logger?.warn?.(
                 {
