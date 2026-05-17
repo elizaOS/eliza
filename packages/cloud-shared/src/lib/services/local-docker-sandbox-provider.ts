@@ -18,7 +18,6 @@ import {
   allocatePort,
   getContainerName,
   getVolumePath,
-  shellQuote as _shellQuote, // imported for parity; unused — execFile arg arrays avoid shells
   validateAgentId,
   validateAgentName,
   validateContainerName,
@@ -26,9 +25,6 @@ import {
   validateEnvValue,
 } from "./docker-sandbox-utils";
 import type { SandboxCreateConfig, SandboxHandle, SandboxProvider } from "./sandbox-provider-types";
-
-// eslint-disable-next-line @typescript-eslint/no-unused-vars
-const _suppressUnused = _shellQuote;
 
 const execFileAsync = promisify(execFile);
 

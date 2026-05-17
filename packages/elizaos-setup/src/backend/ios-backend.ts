@@ -298,16 +298,9 @@ export class SideloaderIosBackend implements IosBackend {
 
       // Verify the file was actually written with the expected byte count.
       const writtenStat = await stat(ipaPath).catch(() => null);
-      if (
-        !writtenStat ||
-        writtenStat.size !== ipaBuffer.byteLength
-      ) {
+      if (!writtenStat || writtenStat.size !== ipaBuffer.byteLength) {
         const actual = writtenStat ? writtenStat.size : 0;
-        throw new IpaWriteFailedError(
-          ipaPath,
-          ipaBuffer.byteLength,
-          actual,
-        );
+        throw new IpaWriteFailedError(ipaPath, ipaBuffer.byteLength, actual);
       }
 
       onProgress(

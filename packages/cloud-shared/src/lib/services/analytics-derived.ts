@@ -36,8 +36,7 @@ export function deriveCostTrendingFields(
   creditBalance: number,
 ): CostTrendingDerivedFields {
   const balance = Number(creditBalance);
-  const monthlyBurnPercent =
-    balance > 0 ? (costTrending.projectedMonthlyBurn / balance) * 100 : 0;
+  const monthlyBurnPercent = balance > 0 ? (costTrending.projectedMonthlyBurn / balance) * 100 : 0;
   return {
     monthlyBurnPercent: round1dp(monthlyBurnPercent),
     monthlyBurnPercentClamped: round1dp(Math.min(100, monthlyBurnPercent)),
@@ -64,9 +63,7 @@ export interface DistributionEntry {
  * Convert a `{ key: count }` map into ordered distribution entries with
  * percentages of the total.
  */
-export function toDistribution(
-  counts: Record<string, number>,
-): DistributionEntry[] {
+export function toDistribution(counts: Record<string, number>): DistributionEntry[] {
   const total = Object.values(counts).reduce((sum, n) => sum + n, 0);
   return Object.entries(counts)
     .sort(([, a], [, b]) => b - a)
@@ -86,10 +83,7 @@ export interface RetentionRatePoint {
   d30: number | null;
 }
 
-function toRetentionPercent(
-  retained: number | null,
-  cohortSize: number,
-): number | null {
+function toRetentionPercent(retained: number | null, cohortSize: number): number | null {
   if (retained === null || cohortSize <= 0) return null;
   return round1dp((retained / cohortSize) * 100);
 }
@@ -105,14 +99,9 @@ export interface RetentionCohortInput {
 /**
  * Convert raw retention cohort rows into UI-ready percent rates.
  */
-export function toRetentionRates(
-  cohorts: RetentionCohortInput[],
-): RetentionRatePoint[] {
+export function toRetentionRates(cohorts: RetentionCohortInput[]): RetentionRatePoint[] {
   return cohorts.map((c) => ({
-    cohortDate:
-      c.cohort_date instanceof Date
-        ? c.cohort_date.toISOString()
-        : c.cohort_date,
+    cohortDate: c.cohort_date instanceof Date ? c.cohort_date.toISOString() : c.cohort_date,
     cohortSize: c.cohort_size,
     d1: toRetentionPercent(c.d1_retained, c.cohort_size),
     d7: toRetentionPercent(c.d7_retained, c.cohort_size),
@@ -127,10 +116,7 @@ export interface QuotaUsageDerived {
   usedPercentClamped: number;
 }
 
-export function deriveQuotaUsage(
-  used: number,
-  limit: number | null,
-): QuotaUsageDerived {
+export function deriveQuotaUsage(used: number, limit: number | null): QuotaUsageDerived {
   if (limit === null || limit <= 0) {
     return { usedPercent: null, usedPercentClamped: 0 };
   }

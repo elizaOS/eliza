@@ -52,7 +52,6 @@ export * from "./runtime/build-variant";
 export * from "./runtime/channel-plugin-map";
 export * from "./runtime/desktop";
 export * from "./runtime/eliza";
-export * from "./runtime/android-avf-microdroid-bridge";
 export * from "./runtime/mobile-safe-runtime";
 export * from "./runtime/mode/runtime-mode";
 export * from "./security/agent-vault-id";

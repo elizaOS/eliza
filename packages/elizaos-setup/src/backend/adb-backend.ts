@@ -575,11 +575,7 @@ export class AdbFlasherBackend implements AospFlasherBackend {
     // Dry-run: log every command without executing.
     if (dryRun) {
       for (const step of plan.steps) {
-        onProgress(
-          step.id,
-          "complete",
-          `DRY RUN: would run: ${step.detail}`,
-        );
+        onProgress(step.id, "complete", `DRY RUN: would run: ${step.detail}`);
         if (stopAfter && step.id === stopAfter) return;
       }
       return;
@@ -736,11 +732,7 @@ export class AdbFlasherBackend implements AospFlasherBackend {
         !Array.isArray(manifest.artifacts) ||
         manifest.artifacts.length === 0
       ) {
-        onProgress(
-          "download-artifacts",
-          "failed",
-          "Manifest has no artifacts",
-        );
+        onProgress("download-artifacts", "failed", "Manifest has no artifacts");
         throw new Error("Manifest has no artifacts");
       }
 
@@ -854,11 +846,7 @@ export class AdbFlasherBackend implements AospFlasherBackend {
 
     // 8. reboot-android
     onProgress("reboot-android", "running", `fastboot -s ${serial} reboot`);
-    const rebootAndroid = run(
-      this.fastboot,
-      ["-s", serial, "reboot"],
-      30_000,
-    );
+    const rebootAndroid = run(this.fastboot, ["-s", serial, "reboot"], 30_000);
     if (rebootAndroid.status !== 0) {
       onProgress(
         "reboot-android",
@@ -924,10 +912,7 @@ export class AdbFlasherBackend implements AospFlasherBackend {
     const resolveImg = (filename: string): string =>
       artifactPaths[filename] ?? join(artifactDir, filename);
 
-    const failureFrom = (
-      partition: string,
-      result: RunResult,
-    ): RunResult => ({
+    const failureFrom = (partition: string, result: RunResult): RunResult => ({
       status: result.status === 0 ? 1 : result.status,
       stdout: result.stdout,
       stderr:

@@ -39,8 +39,7 @@ const INSTALLER_TMP_DIR = path.join(os.tmpdir(), "elizaos-installer");
 // Strict regexes used to gate paths before they hit any subprocess.
 // imagePath must be an absolute file under a known macOS prefix; rawDisk must
 // be a whole-disk character device like /dev/rdisk3 (NOT /dev/rdisk3s1).
-const IMAGE_PATH_RE =
-  /^\/(?:tmp|var|Users|Volumes|private)\/[A-Za-z0-9._/-]+$/;
+const IMAGE_PATH_RE = /^\/(?:tmp|var|Users|Volumes|private)\/[A-Za-z0-9._/-]+$/;
 const RAW_DISK_RE = /^\/dev\/rdisk\d+$/;
 const DEVICE_DISK_RE = /^\/dev\/disk(\d+)$/;
 
@@ -104,21 +103,30 @@ function parsePlistValue(
   if (xml.startsWith("<integer>", pos)) {
     const end = xml.indexOf("</integer>", pos + 9);
     if (end === -1) {
-      throw new PlistParseError("unterminated <integer>", xml.slice(pos, pos + 80));
+      throw new PlistParseError(
+        "unterminated <integer>",
+        xml.slice(pos, pos + 80),
+      );
     }
     return { value: Number(xml.slice(pos + 9, end)), end: end + 10 };
   }
   if (xml.startsWith("<real>", pos)) {
     const end = xml.indexOf("</real>", pos + 6);
     if (end === -1) {
-      throw new PlistParseError("unterminated <real>", xml.slice(pos, pos + 80));
+      throw new PlistParseError(
+        "unterminated <real>",
+        xml.slice(pos, pos + 80),
+      );
     }
     return { value: Number(xml.slice(pos + 6, end)), end: end + 7 };
   }
   if (xml.startsWith("<string>", pos)) {
     const end = xml.indexOf("</string>", pos + 8);
     if (end === -1) {
-      throw new PlistParseError("unterminated <string>", xml.slice(pos, pos + 80));
+      throw new PlistParseError(
+        "unterminated <string>",
+        xml.slice(pos, pos + 80),
+      );
     }
     return { value: xml.slice(pos + 8, end), end: end + 9 };
   }
@@ -153,7 +161,10 @@ function parsePlistDict(
     if (xml.startsWith("<key>", pos)) {
       const keyEnd = xml.indexOf("</key>", pos + 5);
       if (keyEnd === -1) {
-        throw new PlistParseError("unterminated <key>", xml.slice(pos, pos + 80));
+        throw new PlistParseError(
+          "unterminated <key>",
+          xml.slice(pos, pos + 80),
+        );
       }
       const key = xml.slice(pos + 5, keyEnd);
       pos = keyEnd + 6;
