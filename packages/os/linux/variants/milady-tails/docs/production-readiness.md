@@ -69,6 +69,60 @@ must stay visible:
 - generated optional-plugin stubs and live embedding fallback are demo
   compatibility glue, not final production packaging
 
+## AI OS Product Direction
+
+It is accurate to describe elizaOS Live as a Tails-derived live USB Linux
+distribution. The product ambition is larger: a portable agentic AI OS with
+the elizaOS app as the home surface and the normal Linux desktop still
+available underneath.
+
+The current branch already has the right foundation for the demo:
+
+- branded live USB boot, greeter, wallpaper, and desktop identity
+- bundled elizaOS app/runtime baked into the image as the factory fallback
+- root-owned supervision with normal app/UI work running as `amnesia`
+- narrow capability broker instead of broad app root
+- Tails-native encrypted Persistent Storage integration
+- guarded USB writer and readback verification
+- signed app/runtime update architecture foundation
+- model/update/security/release docs and smoke checks
+
+The production product should add these first:
+
+- **Trust cockpit:** one place showing storage mode, Privacy Mode, model
+  route, network route, app/runtime version, update status, and permissions.
+- **Permissioned root actions:** package, network, service, device, and
+  recovery operations through the broker only, with user approval or
+  enterprise policy and audit events.
+- **Signed model catalog:** onboarding can choose cloud sign-in, local-only
+  mode, or a signed Eliza-1/local model download with hashes, license,
+  hardware requirements, and mirror policy.
+- **Fast app/runtime updates:** signed bundles stored in encrypted
+  persistence, verified and materialized into a root-owned runtime store,
+  with rollback to the baked `/opt/milady` factory runtime.
+- **AI development packs:** optional signed packs for PyTorch, CUDA/ROCm,
+  compilers, notebooks, and heavier ML tooling. Do not bake PyTorch into the
+  base image; it is too large and too hardware-specific for every USB.
+- **Model-aware routing:** local/cloud/Tor/direct choice based on privacy
+  mode, hardware, RAM, battery, model availability, and provider policy.
+- **Sandboxed app builder:** generated apps run in constrained user
+  sandboxes and never inherit root or secrets by default.
+- **Enterprise controls:** update rings, mirrors, allowed-model policy,
+  plugin allowlists, fleet evidence, recovery workflows, and deprovisioning.
+
+Clear near-term wins before marketing this as a production AI OS:
+
+1. Rebuild current HEAD and QEMU-test that exact ISO.
+2. Flash/readback the rebuilt ISO and boot it on real hardware.
+3. Prove Persistent Storage create/unlock/delete on a real USB.
+4. Prove Privacy Mode behavior for agent, renderer, embedded browser, and
+   OAuth surfaces.
+5. Replace demo runtime staging with deterministic signed app artifacts.
+6. Harden update materialization with no-follow copy semantics or a
+   root-owned quarantine.
+7. Generate and publish release SBOM, license bundle, provenance, checksums,
+   signatures, and known-gaps notes.
+
 ## Checked Security Policy
 
 The concrete policy lives in [`security-model.md`](./security-model.md).
