@@ -52,7 +52,12 @@ const prerenderPath = rootEl.dataset.prerenderPath;
 const hasMatchingPrerenderedMarkup =
   rootEl.firstElementChild !== null &&
   rootEl.dataset.prerenderMismatch !== "true" &&
-  (prerenderPath ?? "/") === normalizedPath;
+  (prerenderPath ?? "/") === normalizedPath &&
+  // The build-time landing prerender intentionally omits client-only providers
+  // that render wrappers during the app boot. Hydrating that partial tree can
+  // trip React's mismatch recovery and blank the page on some viewport paths.
+  // Keep the prerender for first paint, then let the SPA take over cleanly.
+  false;
 
 performance.mark("eliza:cloud-hydration-start");
 if (hasMatchingPrerenderedMarkup) {

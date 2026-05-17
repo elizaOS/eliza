@@ -1,5 +1,4 @@
 import { Redis } from "@upstash/redis";
-import { MockUpstashRedis } from "./mock-redis";
 import {
   type Attachment,
   Client,
@@ -20,6 +19,7 @@ import {
   type User,
 } from "discord.js";
 import { logger } from "./logger";
+import { MockUpstashRedis } from "./mock-redis";
 import {
   forwardToServer,
   refreshKedaActivity,

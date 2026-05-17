@@ -84,11 +84,7 @@ export class MockUpstashRedis {
     return this.client.set(...args);
   }
 
-  async setex(
-    key: string,
-    ttlSeconds: number,
-    value: string,
-  ): Promise<string> {
+  async setex(key: string, ttlSeconds: number, value: string): Promise<string> {
     return this.client.setex(key, ttlSeconds, value);
   }
 
