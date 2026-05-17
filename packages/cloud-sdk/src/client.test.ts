@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { ElizaCloudClient } from "./client.js";
+import { CloudApiError } from "./http.js";
 
 type RecordedRequest = {
   url: string;
@@ -126,6 +127,46 @@ describe("ElizaCloudClient payment and monetization helpers", () => {
         "POST /api/v1/redemptions",
       ],
     );
+  });
+});
+
+describe("ElizaCloudClient.getContainerLogs", () => {
+  it("returns the raw log body on a 2xx response", async () => {
+    const fetchImpl = (async (_input) =>
+      new Response("line1\nline2\n", {
+        status: 200,
+        headers: { "Content-Type": "text/plain" },
+      })) as typeof fetch;
+
+    const client = new ElizaCloudClient({
+      baseUrl: "https://cloud.test",
+      apiKey: "eliza_test_key",
+      fetchImpl,
+    });
+
+    expect(await client.getContainerLogs("c_1")).toBe("line1\nline2\n");
+  });
+
+  it("throws CloudApiError carrying status and body on a non-ok response", async () => {
+    const fetchImpl = (async (_input) =>
+      new Response("container not found", {
+        status: 404,
+        statusText: "Not Found",
+        headers: { "Content-Type": "text/plain" },
+      })) as typeof fetch;
+
+    const client = new ElizaCloudClient({
+      baseUrl: "https://cloud.test",
+      apiKey: "eliza_test_key",
+      fetchImpl,
+    });
+
+    await expect(client.getContainerLogs("c_missing")).rejects.toMatchObject({
+      name: "CloudApiError",
+      statusCode: 404,
+    });
+    await expect(client.getContainerLogs("c_missing")).rejects.toBeInstanceOf(CloudApiError);
+    await expect(client.getContainerLogs("c_missing")).rejects.toThrow(/container not found/);
   });
 });
 

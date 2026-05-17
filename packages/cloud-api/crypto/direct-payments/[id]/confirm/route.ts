@@ -8,7 +8,7 @@ import { Hono } from "hono";
 import { z } from "zod";
 import { cryptoPaymentsRepository } from "@/db/repositories/crypto-payments";
 import { failureResponse } from "@/lib/api/cloud-worker-errors";
-import { requireUserWithOrg } from "@/lib/auth/workers-hono-auth";
+import { requireUserOrApiKeyWithOrg } from "@/lib/auth/workers-hono-auth";
 import {
   RateLimitPresets,
   rateLimit,
@@ -28,7 +28,7 @@ const app = new Hono<AppEnv>();
 
 app.post("/", rateLimit(RateLimitPresets.STRICT), async (c) => {
   try {
-    const user = await requireUserWithOrg(c);
+    const user = await requireUserOrApiKeyWithOrg(c);
     const id = c.req.param("id") ?? "";
     const payment = await cryptoPaymentsRepository.findById(id);
     if (!payment) return c.json({ error: "Payment not found" }, 404);

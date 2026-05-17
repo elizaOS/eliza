@@ -83,12 +83,12 @@ function getPageState({
   return { status: "loading" };
 }
 
-function getUserEmail(user: unknown) {
+function getUserEmail(user: unknown): string | undefined {
   if (!user || typeof user !== "object" || !("email" in user)) {
     return undefined;
   }
 
-  const email = (user as { email?: unknown }).email;
+  const { email } = user as { email?: unknown };
   return typeof email === "string" ? email : undefined;
 }
 

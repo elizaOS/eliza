@@ -51,15 +51,13 @@ test("homepage centers Eliza App downloads and product CTAs", async ({
   await expect(
     productNav.getByRole("link", { name: /^Download$/ }),
   ).toHaveAttribute("href", "#download");
-  await expectCloudPath(
-    productNav.getByRole("link", { name: /^Eliza Cloud$/ }),
-  );
+  await expectCloudPath(productNav.getByRole("link", { name: /^Cloud$/ }));
 
   await expect(
     page.getByRole("link", { name: /^Download$/ }).first(),
   ).toHaveAttribute("href", "#download");
   await expectCloudPath(
-    page.getByRole("link", { name: /^Launch Eliza$/ }).first(),
+    page.getByRole("link", { name: /^Try Eliza Cloud$/ }).first(),
   );
 
   await page
@@ -68,26 +66,31 @@ test("homepage centers Eliza App downloads and product CTAs", async ({
     .click();
   await expect(page).toHaveURL(/#download$/);
   await expect(
-    page.getByRole("heading", { name: /^Install\.$/ }),
+    page.getByRole("heading", { name: /^Install the app\.$/ }),
   ).toBeVisible();
 
-  await expect(page.getByText(/^macOS Apple Silicon/)).toBeVisible();
-  await expect(page.getByText(/^Windows x64/)).toBeVisible();
-  await expect(page.getByText(/^Linux AppImage/)).toBeVisible();
-  await expect(page.getByText(/^Android APK/)).toBeVisible();
+  await expect(
+    page.getByRole("link", { name: /macOS \(Apple Silicon\)/i }),
+  ).toBeVisible();
+  await expect(
+    page.getByRole("link", { name: /macOS \(Intel\)/i }),
+  ).toBeVisible();
+  await expect(page.getByRole("link", { name: /^Windows/i })).toBeVisible();
+  await expect(page.getByRole("link", { name: /^Linux/i })).toBeVisible();
+  await expect(page.getByRole("link", { name: /^Android APK/i })).toBeVisible();
 
-  for (const download of releaseData.release.downloads) {
-    await expect(
-      page.getByText(
-        new RegExp(`From ${escapeRegExp(download.releaseTagName)}`),
-      ),
-    ).toBeVisible();
-  }
+  await expect(
+    page.getByText(
+      new RegExp(`From ${escapeRegExp(releaseData.release.tagName)}`),
+    ),
+  ).toHaveCount(releaseData.release.downloads.length);
 
   if (releaseData.release.downloads.length === 0) {
     await expect(page.getByText("Opens release page")).toHaveCount(4);
     await expect(
-      page.getByRole("link", { name: /macOS Apple Silicon/i }),
+      page.getByRole("link", {
+        name: /macOS Apple Silicon|macOS \(Apple Silicon\)/i,
+      }),
     ).toHaveAttribute(
       "href",
       /^https:\/\/github\.com\/elizaOS\/eliza\/releases$/,
@@ -97,16 +100,16 @@ test("homepage centers Eliza App downloads and product CTAs", async ({
   await expect(page.locator('[aria-disabled="true"]')).toHaveCount(0);
 
   await expect(
-    page.getByRole("heading", { name: /^Install the OS\.$/ }),
+    page.getByRole("heading", { name: /^Install ElizaOS\.$/ }),
   ).toBeVisible();
   await expect(
-    page.getByRole("link", { name: /^ElizaOS$/ }).first(),
+    page.getByRole("link", { name: /^Install ElizaOS$/ }).first(),
   ).toHaveAttribute("href", /^https:\/\/elizaos\.ai\/?$/);
   await expect(
-    page.getByRole("heading", { name: /^Run in cloud\.$/ }),
+    page.getByRole("heading", { name: /^Run in Cloud\.$/ }),
   ).toBeVisible();
   await expectCloudPath(
-    page.getByRole("link", { name: /^Launch Eliza$/ }).last(),
+    page.getByRole("link", { name: /^Try Eliza Cloud$/ }).last(),
   );
 
   await expect(page.locator(".app-shell")).toHaveCSS("font-family", "Poppins");

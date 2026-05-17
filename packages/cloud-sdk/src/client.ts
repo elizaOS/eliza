@@ -1,4 +1,4 @@
-import { CloudApiClient, ElizaCloudHttpClient } from "./http.js";
+import { CloudApiClient, CloudApiError, ElizaCloudHttpClient } from "./http.js";
 import { ElizaCloudPublicRoutesClient } from "./public-routes.js";
 import {
   type AffiliateCodeResponse,
@@ -83,6 +83,7 @@ import {
   type X402SettleResponse,
   type X402SupportedResponse,
   type X402VerifyResponse,
+  type JsonObject,
 } from "./types.js";
 
 function trimTrailingSlash(value: string): string {
@@ -334,7 +335,7 @@ export class ElizaCloudClient {
 
   settleX402PaymentRequest(
     id: string,
-    paymentPayload: unknown,
+    paymentPayload: JsonObject,
   ): Promise<SettleX402PaymentRequestResponse> {
     return this.request<SettleX402PaymentRequestResponse>(
       "POST",
@@ -501,18 +502,26 @@ export class ElizaCloudClient {
     return this.request("GET", `/api/v1/containers/${encodePathParam(containerId)}/metrics`);
   }
 
-  getContainerLogs(containerId: string, tail?: number): Promise<string> {
-    return this.requestRaw("GET", `/api/v1/containers/${encodePathParam(containerId)}/logs`, {
-      query: tail === undefined ? undefined : { tail },
-      headers: { Accept: "text/plain" },
-    }).then(async (response) => {
-      if (!response.ok) {
-        await this.http.request("GET", `/api/v1/containers/${encodePathParam(containerId)}/logs`, {
-          query: tail === undefined ? undefined : { tail },
-        });
-      }
-      return response.text();
-    });
+  async getContainerLogs(containerId: string, tail?: number): Promise<string> {
+    const response = await this.requestRaw(
+      "GET",
+      `/api/v1/containers/${encodePathParam(containerId)}/logs`,
+      {
+        query: tail === undefined ? undefined : { tail },
+        headers: { Accept: "text/plain" },
+      },
+    );
+    const text = await response.text();
+    if (!response.ok) {
+      throw new CloudApiError(response.status, {
+        success: false,
+        error:
+          text.trim().length > 0
+            ? `HTTP ${response.status}: ${text}`
+            : `HTTP ${response.status}: ${response.statusText}`,
+      });
+    }
+    return text;
   }
 
   getContainerDeployments(containerId: string): Promise<Record<string, unknown>> {

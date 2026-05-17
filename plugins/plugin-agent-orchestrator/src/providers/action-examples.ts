@@ -10,7 +10,7 @@
  */
 
 import type { IAgentRuntime, Memory, Provider, State } from "@elizaos/core";
-import { getAcpService } from "../actions/common.js";
+import { getAcpService, logger } from "../actions/common.js";
 import {
   formatTaskAgentFrameworkLine,
   getTaskAgentFrameworkState,
@@ -112,7 +112,11 @@ export const codingAgentExamplesProvider: Provider = {
         values: { taskAgentExamples: detailedText },
         text: detailedText,
       };
-    } catch {
+    } catch (err) {
+      logger(runtime).debug?.(
+        "[codingAgentExamplesProvider] failed to build examples",
+        err,
+      );
       return { text: "", values: {}, data: {} };
     }
   },

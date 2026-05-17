@@ -7,7 +7,7 @@ import {
 } from "@elizaos/shared-brand";
 import { StewardAuth } from "@stwd/sdk";
 import { ArrowRight, CreditCard, Download, ShoppingBag } from "lucide-react";
-import { useEffect, useMemo, useState } from "react";
+import { type ReactNode, useEffect, useMemo, useState } from "react";
 
 const appUrl = EXTERNAL_URLS.app;
 const cloudUrl = `${EXTERNAL_URLS.cloud}/login?intent=launch`;
@@ -17,6 +17,71 @@ const cloudApiUrl =
 const stewardApiUrl = `${cloudApiUrl.replace(/\/$/, "")}/steward`;
 const stewardTenantId = "elizacloud";
 const betaManifestUrl = "/downloads/elizaos-beta-manifest.json";
+
+type ReleaseArtifact = {
+  id: string;
+  label: string;
+  kind: string;
+  platform: string;
+  architecture: string;
+  url: string;
+  checksumUrl?: string;
+};
+
+type ReleaseManifest = {
+  product: string;
+  channel: string;
+  availableFrom: string;
+  artifacts: ReleaseArtifact[];
+};
+
+const releaseFallback: ReleaseManifest = {
+  product: "ElizaOS",
+  channel: "beta",
+  availableFrom: "2026-05-16",
+  artifacts: [
+    {
+      id: "elizaos-live-beta-x86_64",
+      label: "ElizaOS Linux live beta",
+      kind: "raw-image",
+      platform: "linux-bare-metal",
+      architecture: "x86_64",
+      url: "https://github.com/elizaOS/eliza/releases/download/elizaos-beta/elizaos-live-beta-x86_64.img.zst",
+      checksumUrl:
+        "https://github.com/elizaOS/eliza/releases/download/elizaos-beta/SHA256SUMS",
+    },
+    {
+      id: "elizaos-usb-installer-windows-x86_64",
+      label: "ElizaOS USB installer for Windows",
+      kind: "usb-installer",
+      platform: "windows",
+      architecture: "x86_64",
+      url: "https://github.com/elizaOS/eliza/releases/download/elizaos-beta/elizaos-usb-installer-beta-windows-x86_64.exe",
+      checksumUrl:
+        "https://github.com/elizaOS/eliza/releases/download/elizaos-beta/SHA256SUMS",
+    },
+    {
+      id: "elizaos-vm-macos-silicon",
+      label: "ElizaOS VM launcher for Apple Silicon",
+      kind: "vm-bundle",
+      platform: "macos",
+      architecture: "arm64",
+      url: "https://github.com/elizaOS/eliza/releases/download/elizaos-beta/elizaos-vm-macos-silicon.zip",
+      checksumUrl:
+        "https://github.com/elizaOS/eliza/releases/download/elizaos-beta/SHA256SUMS",
+    },
+    {
+      id: "elizaos-android-beta",
+      label: "ElizaOS Android beta image bundle",
+      kind: "android-image",
+      platform: "android",
+      architecture: "arm64",
+      url: "https://github.com/elizaOS/eliza/releases/download/elizaos-beta/elizaos-android-beta.zip",
+      checksumUrl:
+        "https://github.com/elizaOS/eliza/releases/download/elizaos-beta/SHA256SUMS",
+    },
+  ],
+};
 
 type Product = {
   slug: string;
@@ -83,7 +148,7 @@ const hardwareProducts: Product[] = [
   {
     slug: "phone",
     sku: "elizaos-phone",
-    name: "Eliza Phone",
+    name: "ElizaOS Phone",
     ships: "Pre-order",
     image: CONCEPT_PRODUCT_IMAGES.phone,
     imageAlt: "Eliza Phone concept",
@@ -183,6 +248,102 @@ function ProductImage({ product }: { product: Product }) {
   );
 }
 
+function platformLabel(platform: string) {
+  return platform
+    .replace(/-/g, " ")
+    .replace(/\b\w/g, (letter: string) => letter.toUpperCase());
+}
+
+function ReleaseDownloads() {
+  const [manifest, setManifest] = useState<ReleaseManifest>(releaseFallback);
+
+  useEffect(() => {
+    let ignore = false;
+
+    fetch(betaManifestUrl)
+      .then((response) => (response.ok ? response.json() : null))
+      .then((data: ReleaseManifest | null) => {
+        if (!ignore && data?.artifacts?.length) {
+          setManifest(data);
+        }
+      })
+      .catch(() => {});
+
+    return () => {
+      ignore = true;
+    };
+  }, []);
+
+  const releaseDate = new Date(
+    `${manifest.availableFrom}T00:00:00`,
+  ).toLocaleDateString("en-US", {
+    month: "long",
+    day: "numeric",
+    year: "numeric",
+  });
+
+  return (
+    <section id="download" className="band band-white release-section">
+      <div className="band-inner">
+        <div className="release-head">
+          <div>
+            <p className="section-kicker">
+              {manifest.product} {manifest.channel}
+            </p>
+            <h2>Download beta.</h2>
+          </div>
+          <p className="section-lede">Available {releaseDate}.</p>
+        </div>
+
+        <div className="release-grid">
+          {manifest.artifacts.map((artifact) => (
+            <article className="release-item" key={artifact.id}>
+              <div className="release-meta">
+                <span>{platformLabel(artifact.platform)}</span>
+                <span>{artifact.architecture}</span>
+              </div>
+              <h3>{artifact.label}</h3>
+              <div className="release-actions">
+                <a href={artifact.url} className="button button-dark">
+                  Download
+                  <Download className="icon" />
+                </a>
+                {artifact.checksumUrl ? (
+                  <a href={artifact.checksumUrl} className="checksum-link">
+                    SHA256
+                  </a>
+                ) : null}
+              </div>
+            </article>
+          ))}
+        </div>
+      </div>
+    </section>
+  );
+}
+
+function CloudHero({ children }: { children: ReactNode }) {
+  return (
+    <section className="band hero-cloud" data-hero="cloud">
+      <video
+        className="cloud-video"
+        autoPlay
+        muted
+        loop
+        playsInline
+        preload="auto"
+        poster="/clouds/poster.jpg"
+        data-testid="cloud-video"
+      >
+        <source src="/clouds/clouds_4x_1080p.webm" type="video/webm" />
+        <source src="/clouds/clouds_4x_1080p.mp4" type="video/mp4" />
+      </video>
+      <div className="cloud-scrim" aria-hidden="true" />
+      <div className="band-inner hero-cloud-inner">{children}</div>
+    </section>
+  );
+}
+
 function HardwareTiles() {
   return (
     <div className="hw-grid">
@@ -218,7 +379,7 @@ function Header({ solid = false }: { solid?: boolean }) {
       </a>
       <a href="/" className="brand" aria-label="elizaOS home">
         <img
-          src={`${BRAND_PATHS.logos}/${LOGO_FILES.osWhite}`}
+          src={`${BRAND_PATHS.logos}/${solid ? LOGO_FILES.osWhite : LOGO_FILES.osBlack}`}
           alt="elizaOS"
           draggable={false}
         />
@@ -573,65 +734,22 @@ function HomePage() {
     <div className="os-shell">
       <Header />
       <main id="main">
-        <section className="band band-blue hero-os">
-          <div className="band-inner hero-os-inner">
-            <img
-              src={`${BRAND_PATHS.logos}/${LOGO_FILES.markWhiteBlueBg}`}
-              alt=""
-              aria-hidden="true"
-              className="hero-mark"
-              draggable={false}
-            />
-            <h1>The agentic operating system.</h1>
-            <p className="hero-copy">For devices that run themselves.</p>
-            <div className="hero-actions">
-              <a href="#download" className="button">
-                Download
-                <Download className="icon" />
-              </a>
-              <a href="#hardware" className="button button-dark">
-                Hardware
-                <ShoppingBag className="icon" />
-              </a>
-            </div>
+        <CloudHero>
+          <h1>The agentic operating system.</h1>
+          <p className="hero-copy">For devices that run themselves.</p>
+          <div className="hero-actions">
+            <a href="#download" className="button button-dark">
+              Download
+              <Download className="icon" />
+            </a>
+            <a href="#hardware" className="button">
+              Hardware
+              <ShoppingBag className="icon" />
+            </a>
           </div>
-        </section>
+        </CloudHero>
 
-        <section id="download" className="band band-white">
-          <div className="band-inner split-band">
-            <div>
-              <h2>Install elizaOS.</h2>
-              <p className="section-lede">Pick a target. Boot.</p>
-            </div>
-            <div className="install-stack">
-              <a href={betaManifestUrl} className="install-card">
-                <div className="install-card-head">
-                  <span>Linux PC</span>
-                  <strong>ISO + USB installer</strong>
-                </div>
-              </a>
-              <a href={appUrl} className="install-card">
-                <div className="install-card-head">
-                  <span>Mac, Windows, Linux</span>
-                  <strong>VM launcher</strong>
-                </div>
-              </a>
-              <a href={betaManifestUrl} className="install-card">
-                <div className="install-card-head">
-                  <span>Android</span>
-                  <strong>APK + AOSP image</strong>
-                </div>
-              </a>
-            </div>
-          </div>
-        </section>
-
-        <section className="band band-orange">
-          <div className="band-inner punch-band">
-            <h2>Local first.</h2>
-            <p>Runs on your device. No account required.</p>
-          </div>
-        </section>
+        <ReleaseDownloads />
 
         <section id="hardware" className="band band-blue">
           <div className="band-inner">

@@ -13,6 +13,7 @@
     "test:integration": "bun test __tests__/integration/ --pass-with-no-tests"
   },
   "dependencies": {
+    "@elizaos/cloud-services-common": "workspace:*",
     "@elizaos/core": "workspace:*",
     "@elizaos/plugin-elizacloud": "workspace:*",
     "@elizaos/plugin-openai": "workspace:*",

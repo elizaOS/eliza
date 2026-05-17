@@ -16,10 +16,10 @@ const REQUIRED_IDS = new Set([
   "macos-x64",
   "windows-x64",
   "linux-x64",
-  "linux-deb",
-  "linux-rpm",
   "android-apk",
 ]);
+
+const OPTIONAL_IDS = new Set(["linux-deb", "linux-rpm"]);
 
 function parseGeneratedModule(source) {
   const marker = "export const releaseData: ReleaseDataPayload = ";
@@ -66,6 +66,10 @@ if (missing.length > 0) {
   ]);
 }
 
+const optionalMissing = [...OPTIONAL_IDS].filter(
+  (id) => !downloads.some((download) => download.id === id),
+);
+
 const crossReleaseDownloads = downloads.filter(
   (download) => download.releaseTagName !== release.tagName,
 );
@@ -99,3 +103,8 @@ if (placeholderStores.length > 0) {
 console.log(
   `homepage release data check passed: ${release.tagName} (${downloads.length} downloads)`,
 );
+if (optionalMissing.length > 0) {
+  console.warn(
+    `homepage release data optional package formats not present yet: ${optionalMissing.join(", ")}`,
+  );
+}

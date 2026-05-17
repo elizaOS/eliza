@@ -21,6 +21,7 @@
     "docker:logs": "docker compose logs -f gateway-discord"
   },
   "dependencies": {
+    "@elizaos/cloud-services-common": "workspace:*",
     "@hono/node-server": "2.0.1",
     "@upstash/redis": "^1.37.0",
     "discord.js": "^14.26.4",

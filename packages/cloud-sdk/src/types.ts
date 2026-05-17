@@ -126,13 +126,13 @@ export interface ModelListResponse {
 
 export interface ResponsesCreateRequest extends Record<string, unknown> {
   model: string;
-  input?: unknown;
+  input?: JsonValue;
 }
 
 export interface ResponsesCreateResponse extends Record<string, unknown> {
   id?: string;
   status?: string;
-  output?: unknown;
+  output?: JsonValue;
   output_text?: string;
   usage?: {
     input_tokens?: number;
@@ -147,7 +147,7 @@ export interface ResponsesCreateResponse extends Record<string, unknown> {
 
 export interface ChatCompletionRequest extends Record<string, unknown> {
   model?: string;
-  messages: unknown[];
+  messages: JsonValue[];
 }
 
 export interface ChatCompletionResponse extends Record<string, unknown> {
@@ -368,7 +368,7 @@ export interface LinkAffiliateResponse extends Record<string, unknown> {
 export interface X402SupportedResponse extends Record<string, unknown> {
   success: boolean;
   version?: string;
-  kinds?: unknown[];
+  kinds?: string[];
   schemes?: string[];
   networks?: string[];
   addresses?: Record<string, string>;
@@ -377,8 +377,8 @@ export interface X402SupportedResponse extends Record<string, unknown> {
 }
 
 export interface X402FacilitatorPaymentRequest {
-  paymentPayload: unknown;
-  paymentRequirements: unknown;
+  paymentPayload: JsonObject;
+  paymentRequirements: JsonObject;
 }
 
 export interface X402VerifyResponse extends Record<string, unknown> {
@@ -589,7 +589,7 @@ export interface CreateContainerRequest {
   /** Internal coding-container bootstrap mount. Defaults to /data. */
   volume_mount_path?: string;
   /** Internal coding-container source bundle, written into the mounted volume before start. */
-  bootstrap_source?: unknown;
+  bootstrap_source?: JsonValue;
   /** Full image reference (e.g. `ghcr.io/owner/repo:tag`). The Hetzner-Docker backend pulls it directly. */
   image: string;
 }
@@ -658,7 +658,7 @@ export interface CreateAgentResponse {
 
 export interface AgentLifecycleResponse extends Record<string, unknown> {
   success?: boolean;
-  data?: Record<string, unknown>;
+  data?: JsonObject;
   jobId?: string;
 }
 
@@ -706,7 +706,7 @@ export interface GatewayRelayResponse {
   error?: {
     code: number;
     message: string;
-    data?: unknown;
+    data?: JsonValue;
   };
 }
 
@@ -733,7 +733,7 @@ export interface PollGatewayRelayResponse {
 export interface JobStatus {
   id: string;
   status: "pending" | "in_progress" | "completed" | "failed" | string;
-  result?: unknown;
+  result?: JsonValue;
   error?: string;
 }
 

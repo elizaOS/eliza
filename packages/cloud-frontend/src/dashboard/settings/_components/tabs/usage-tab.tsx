@@ -71,12 +71,11 @@ export function UsageTab({ user, onTabChange }: UsageTabProps) {
         }
         const transactions: Transaction[] = Array.isArray(data.transactions)
           ? data.transactions.filter(
-              (t: unknown): t is Transaction =>
-                typeof t === "object" &&
-                t !== null &&
-                "amount" in t &&
-                (typeof (t as { amount: unknown }).amount === "string" ||
-                  typeof (t as { amount: unknown }).amount === "number"),
+              (t: unknown): t is Transaction => {
+                if (typeof t !== "object" || t === null || !("amount" in t)) return false;
+                const { amount } = t as Record<string, unknown>;
+                return typeof amount === "string" || typeof amount === "number";
+              },
             )
           : [];
         const burn = transactions

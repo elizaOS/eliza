@@ -32,6 +32,5 @@ export interface RouteSpec {
   upstreamBaseUrl: string;
   localKeyAuth:
     | { kind: "header"; headerName: string }
-    | { kind: "bearer" }
-    | { kind: "query"; paramName: string };
+    | { kind: "bearer" };
 }

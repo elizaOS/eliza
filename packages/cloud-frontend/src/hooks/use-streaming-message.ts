@@ -370,23 +370,18 @@ function isLocalTokenFrame(data: unknown): data is {
   fullText?: string;
   messageId?: string;
 } {
-  return (
-    typeof data === "object" &&
-    data !== null &&
-    (data as { type?: unknown }).type === "token" &&
-    typeof (data as { text?: unknown }).text === "string"
-  );
+  if (typeof data !== "object" || data === null) return false;
+  const record = data as Record<string, unknown>;
+  return record.type === "token" && typeof record.text === "string";
 }
 
 function isLocalDoneFrame(data: unknown): data is {
   type: "done";
   fullText?: string;
 } {
-  return (
-    typeof data === "object" &&
-    data !== null &&
-    (data as { type?: unknown }).type === "done"
-  );
+  if (typeof data !== "object" || data === null) return false;
+  const record = data as Record<string, unknown>;
+  return record.type === "done";
 }
 
 /**

@@ -27,6 +27,12 @@ interface BackupRecord {
   createdAt: string;
 }
 
+interface BackupsApiResponse {
+  success?: boolean;
+  error?: string;
+  data?: BackupRecord[];
+}
+
 const SNAPSHOT_TYPE_LABELS: Record<BackupRecord["snapshotType"], string> = {
   auto: "Auto",
   manual: "Manual",
@@ -73,19 +79,13 @@ export function ElizaAgentBackupsPanel({
       const response = await fetch(`/api/v1/eliza/agents/${agentId}/backups`, {
         cache: "no-store",
       });
-      const payload = await response.json().catch(() => ({}));
+      const payload: BackupsApiResponse = await response.json().catch(() => ({}));
 
-      if (!response.ok || !(payload as { success?: boolean }).success) {
-        throw new Error(
-          (payload as { error?: string }).error ?? `HTTP ${response.status}`,
-        );
+      if (!response.ok || !payload.success) {
+        throw new Error(payload.error ?? `HTTP ${response.status}`);
       }
 
-      setBackups(
-        Array.isArray((payload as { data?: unknown[] }).data)
-          ? ((payload as { data: BackupRecord[] }).data ?? [])
-          : [],
-      );
+      setBackups(Array.isArray(payload.data) ? payload.data : []);
     } catch (fetchError) {
       setError(
         fetchError instanceof Error ? fetchError.message : String(fetchError),
