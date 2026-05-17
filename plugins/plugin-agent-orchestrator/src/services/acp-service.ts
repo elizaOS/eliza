@@ -1,5 +1,6 @@
 import { type ChildProcessWithoutNullStreams, spawn } from "node:child_process";
 import { randomUUID } from "node:crypto";
+import { existsSync } from "node:fs";
 import { mkdir } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
@@ -184,6 +185,7 @@ export class AcpService extends Service {
     this.ensureStarted();
     const id = randomUUID();
     const name = opts.name?.trim() || id;
+    this.assertTransportAvailable(id);
     const agentType =
       normalizeTaskAgentAdapter(opts.agentType ?? this.defaultAgent) ??
       this.defaultAgent;
@@ -1006,6 +1008,17 @@ export class AcpService extends Service {
       this.setting("ELIZA_ACP_NO_TERMINAL") ?? this.setting("ACPX_NO_TERMINAL"),
     );
     return configured === true;
+  }
+
+  private assertTransportAvailable(sessionId: string): void {
+    if (process.env.ELIZA_PLATFORM !== "android") return;
+    if (!this.cliPath.includes("/") || existsSync(this.cliPath)) return;
+    const message = `acpx CLI is not available at ${this.cliPath}. Install the ACP transport or set ELIZA_ACP_CLI to a valid executable.`;
+    this.emitSessionEvent(sessionId, "error", {
+      message,
+      failureKind: "not_found",
+    });
+    throw new Error(message);
   }
 }
 

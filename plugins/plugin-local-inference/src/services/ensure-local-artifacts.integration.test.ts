@@ -129,6 +129,7 @@ describe("ensureLocalArtifacts integration", () => {
 
 			const result = await ensureLocalArtifacts({
 				mode: "local",
+				tier: "2b",
 				signedInCloud: true,
 				service: mock.service,
 				logger: makeLogger(),
@@ -147,6 +148,7 @@ describe("ensureLocalArtifacts integration", () => {
 
 			const result = await ensureLocalArtifacts({
 				mode: "local",
+				tier: "2b",
 				signedInCloud: false,
 				service: mock.service,
 				logger: makeLogger(),
@@ -166,6 +168,7 @@ describe("ensureLocalArtifacts integration", () => {
 
 			const result = await ensureLocalArtifacts({
 				mode: "local-only",
+				tier: "2b",
 				signedInCloud: false,
 				service: mock.service,
 				logger: makeLogger(),
@@ -229,6 +232,7 @@ describe("ensureLocalArtifacts integration", () => {
 
 			const result = await ensureLocalArtifacts({
 				mode: "local",
+				tier: "2b",
 				signedInCloud: false,
 				service: mock.service,
 				logger: makeLogger(),
@@ -254,6 +258,7 @@ describe("ensureLocalArtifacts integration", () => {
 
 			const result = await ensureLocalArtifacts({
 				mode: "local",
+				tier: "2b",
 				signedInCloud: true,
 				service: mock.service,
 				logger: makeLogger(),

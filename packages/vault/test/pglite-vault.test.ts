@@ -9,7 +9,7 @@ import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { generateMasterKey } from "../src/crypto.js";
+import { encrypt, generateMasterKey } from "../src/crypto.js";
 import { inMemoryMasterKey } from "../src/master-key.js";
 import { PgliteVaultImpl } from "../src/pglite-vault.js";
 import { VaultMissError } from "../src/vault.js";
@@ -172,24 +172,40 @@ describe("PgliteVaultImpl", () => {
       // ends, so decrypting in PGlite proves the ciphertext round-trips
       // verbatim.
       const masterKey = generateMasterKey();
-      const { createVault } = await import("../src/vault.js");
-      // Force the file backend regardless of env default.
-      const prev = process.env.ELIZA_VAULT_BACKEND;
-      process.env.ELIZA_VAULT_BACKEND = "file";
-      const fileVault2 = createVault({
-        workDir: legacyDir,
-        masterKey: inMemoryMasterKey(masterKey),
-      });
-      await fileVault2.set("ui.theme", "dark");
-      await fileVault2.set("openrouter.apiKey", "sk-or-secret", {
-        sensitive: true,
-      });
-      await fileVault2.setReference("github.token", {
-        source: "1password",
-        path: "op://Personal/GitHub/token",
-      });
-      if (prev === undefined) delete process.env.ELIZA_VAULT_BACKEND;
-      else process.env.ELIZA_VAULT_BACKEND = prev;
+      const now = Date.now();
+      await writeFile(
+        legacyPath,
+        `${JSON.stringify(
+          {
+            version: 1,
+            entries: {
+              "ui.theme": {
+                kind: "value",
+                value: "dark",
+                lastModified: now,
+              },
+              "openrouter.apiKey": {
+                kind: "secret",
+                ciphertext: encrypt(
+                  masterKey,
+                  "sk-or-secret",
+                  "openrouter.apiKey",
+                ),
+                lastModified: now,
+              },
+              "github.token": {
+                kind: "reference",
+                source: "1password",
+                path: "op://Personal/GitHub/token",
+                lastModified: now,
+              },
+            },
+          },
+          null,
+          2,
+        )}\n`,
+        { mode: 0o600 },
+      );
 
       // Open a PGlite vault pointing at the legacy file
       const pgDir = await mkdtemp(join(tmpdir(), "vault-pglite-mig-"));
