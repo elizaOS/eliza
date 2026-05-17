@@ -9,9 +9,13 @@
  * stack stays green.
  */
 
+import { execFile } from "node:child_process";
+import { promisify } from "node:util";
 import { expect, test } from "@playwright/test";
 import bs58 from "bs58";
 import nacl from "tweetnacl";
+
+const execFileAsync = promisify(execFile);
 
 const apiBaseUrl =
   process.env.TEST_API_BASE_URL?.trim() ||

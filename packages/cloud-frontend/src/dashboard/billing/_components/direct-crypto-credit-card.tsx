@@ -1,6 +1,6 @@
 "use client";
 
-import { BrandCard, CornerBrackets } from "@elizaos/ui";
+import { BrandButton, BrandCard, CornerBrackets } from "@elizaos/ui";
 import { ConnectButton } from "@rainbow-me/rainbowkit";
 import {
   createAssociatedTokenAccountInstruction,
@@ -256,8 +256,8 @@ export function DirectCryptoCreditCard({
       <CornerBrackets size="sm" className="opacity-50" />
       <div className="relative z-10 space-y-4">
         <div className="flex items-center gap-2">
-          <Wallet className="h-4 w-4 text-[#FF5800]" />
-          <h4 className="font-mono text-sm uppercase text-white">
+          <Wallet className="h-4 w-4 text-accent" />
+          <h4 className="text-sm font-semibold uppercase text-txt-strong">
             Wallet payment
           </h4>
         </div>
@@ -268,10 +268,10 @@ export function DirectCryptoCreditCard({
               key={item.network}
               type="button"
               onClick={() => setNetwork(item.network)}
-              className={`border px-3 py-2 text-xs font-mono uppercase transition-colors ${
+              className={`rounded-sm border px-3 py-2 text-xs font-medium uppercase transition-colors ${
                 selected?.network === item.network
-                  ? "border-[#FF5800] bg-[#FF5800] text-white"
-                  : "border-white/20 bg-transparent text-white/70 hover:border-white/40"
+                  ? "border-accent bg-accent text-accent-foreground"
+                  : "border-border bg-bg-elevated text-muted-foreground hover:border-border-strong hover:text-txt"
               }`}
             >
               {NETWORK_LABELS[item.network]}
@@ -279,34 +279,36 @@ export function DirectCryptoCreditCard({
           ))}
         </div>
 
-        <div className="grid gap-3 text-xs font-mono text-white/65 sm:grid-cols-3">
-          <div className="border border-white/10 bg-black/30 p-3">
-            <div className="text-white/40">Token</div>
-            <div className="mt-1 text-white">
+        <div className="grid gap-3 text-xs text-muted-foreground sm:grid-cols-3">
+          <div className="rounded-sm border border-border bg-bg-muted p-3">
+            <div className="uppercase">Token</div>
+            <div className="mt-1 text-txt-strong">
               {selected?.tokenSymbol ?? "-"}
             </div>
           </div>
-          <div className="border border-white/10 bg-black/30 p-3">
-            <div className="text-white/40">Wallet</div>
-            <div className="mt-1 text-white">
+          <div className="rounded-sm border border-border bg-bg-muted p-3">
+            <div className="uppercase">Wallet</div>
+            <div className="mt-1 text-txt-strong">
               {formatAddress(connectedAddress) || "Not connected"}
             </div>
           </div>
-          <div className="border border-white/10 bg-black/30 p-3">
-            <div className="text-white/40">Cloud credit</div>
-            <div className="mt-1 text-white">${expectedCredits.toFixed(2)}</div>
+          <div className="rounded-sm border border-border bg-bg-muted p-3">
+            <div className="uppercase">Cloud credit</div>
+            <div className="mt-1 text-txt-strong">
+              ${expectedCredits.toFixed(2)}
+            </div>
           </div>
         </div>
 
         {bscPromo && (
-          <div className="flex items-center gap-2 border border-[#FF5800]/40 bg-[#FF5800]/10 px-3 py-2 text-xs font-mono text-[#ffb088]">
+          <div className="flex items-center gap-2 rounded-sm border border-warn/25 bg-warn-subtle px-3 py-2 text-xs font-medium text-warn">
             <Coins className="h-4 w-4" />
             BSC promotion applied: +$5 cloud credit
           </div>
         )}
 
         {!walletMatches && connectedAddress && accountWalletAddress && (
-          <div className="border border-orange-400/30 bg-orange-400/10 px-3 py-2 text-xs font-mono text-orange-200">
+          <div className="rounded-sm border border-warn/25 bg-warn-subtle px-3 py-2 text-xs text-warn">
             Connected wallet must match your account wallet (
             {formatAddress(accountWalletAddress)}).
           </div>
@@ -317,7 +319,7 @@ export function DirectCryptoCreditCard({
             <button
               type="button"
               onClick={() => setSolanaModalVisible(true)}
-              className="border border-white/20 px-4 py-2 text-sm font-mono text-white hover:border-white/40"
+              className="rounded-sm border border-border bg-bg-elevated px-4 py-2 text-sm font-medium text-txt hover:border-border-strong hover:bg-bg-hover"
             >
               {solana.publicKey ? "Solana connected" : "Connect Solana"}
             </button>
@@ -328,11 +330,11 @@ export function DirectCryptoCreditCard({
               accountStatus="address"
             />
           )}
-          <button
+          <BrandButton
             type="button"
             onClick={handlePay}
             disabled={!canPay || busy}
-            className="flex items-center justify-center gap-2 bg-[#e1e1e1] px-5 py-2.5 font-mono text-sm font-medium text-black transition-colors hover:bg-white disabled:cursor-not-allowed disabled:opacity-50"
+            className="min-w-[172px]"
           >
             {busy ? (
               <Loader2 className="h-4 w-4 animate-spin" />
@@ -340,7 +342,7 @@ export function DirectCryptoCreditCard({
               <ShieldCheck className="h-4 w-4" />
             )}
             Pay and add credits
-          </button>
+          </BrandButton>
         </div>
       </div>
     </BrandCard>

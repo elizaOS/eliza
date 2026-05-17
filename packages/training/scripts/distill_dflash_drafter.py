@@ -101,6 +101,11 @@ DEFAULT_STUDENT_BASE: dict[str, str] = {
     "27b": "Qwen/Qwen3.5-0.8B-Base",
 }
 
+DEFAULT_STUDENT_CONFIG: dict[str, str] = {
+    "0_8b": "configs/dflash-drafter-0_1b-qwen3_5",
+    "2b": "configs/dflash-drafter-0_3b-qwen3_5",
+}
+
 # Canonical Eliza-1 text targets that each drafter is allowed to pair with.
 # Local training usually passes a checkpoint directory, but release evidence
 # should still record the canonical target model id so later bundle validation
@@ -249,6 +254,19 @@ def _resolve_student_base(args: argparse.Namespace) -> str | None:
         )
         return None
     return student_base
+
+
+def _resolve_student_config(args: argparse.Namespace) -> Path | None:
+    student_config = args.student_config or DEFAULT_STUDENT_CONFIG.get(args.tier)
+    if not student_config:
+        return None
+    path = Path(student_config)
+    if not path.is_absolute():
+        path = ROOT / path
+    if not path.exists():
+        log.error("student config %s does not exist", path)
+        return None
+    return path
 
 
 def _resolve_target_model_id(args: argparse.Namespace) -> str | None:
@@ -461,6 +479,7 @@ def _build_manifest(
     *,
     args: argparse.Namespace,
     student_base: str,
+    student_config: Path | None = None,
     target_model_id: str | None,
     target_checkpoint: Path | None,
     target_gguf: Path | None,
@@ -480,6 +499,8 @@ def _build_manifest(
         "synthetic": synthetic,
         "studentBase": student_base,
         "expectedStudentBase": DEFAULT_STUDENT_BASE.get(args.tier),
+        "studentConfig": str(student_config) if student_config else None,
+        "expectedStudentConfig": DEFAULT_STUDENT_CONFIG.get(args.tier),
         "targetModelId": target_model_id,
         "targetCheckpoint": str(target_checkpoint) if target_checkpoint else None,
         "targetGguf": str(target_gguf) if target_gguf else None,
@@ -548,6 +569,12 @@ def _run_distillation(args: argparse.Namespace) -> int:
     student_base = _resolve_student_base(args)
     if not student_base:
         return 3
+    student_config = _resolve_student_config(args)
+    if (args.student_config or DEFAULT_STUDENT_CONFIG.get(args.tier)) and student_config is None:
+        return 3
+    student_config = _resolve_student_config(args)
+    if (args.student_config or DEFAULT_STUDENT_CONFIG.get(args.tier)) and student_config is None:
+        return 3
     target_model_id = _resolve_target_model_id(args)
     if target_model_id is None:
         return 3
@@ -575,12 +602,16 @@ def _run_distillation(args: argparse.Namespace) -> int:
     import torch  # noqa: PLC0415
     from torch.nn import functional as F  # noqa: PLC0415
     from torch.utils.data import DataLoader  # noqa: PLC0415
-    from transformers import AutoModelForCausalLM, AutoTokenizer  # noqa: PLC0415
+    from transformers import AutoConfig, AutoModelForCausalLM, AutoTokenizer  # noqa: PLC0415
 
     log.info("loading target tokenizer + model from %s", target_checkpoint)
     tgt_tok = AutoTokenizer.from_pretrained(target_checkpoint)
-    log.info("loading student base %s", student_base)
-    stu_tok = AutoTokenizer.from_pretrained(student_base)
+    if student_config is not None:
+        log.info("loading compact student config %s", student_config)
+        stu_tok = tgt_tok
+    else:
+        log.info("loading student base %s", student_base)
+        stu_tok = AutoTokenizer.from_pretrained(student_base)
 
     # Vocab parity is non-negotiable — speculative decode rejects every
     # drafted token if the two tokenizers disagree (dflash-doctor enforces
@@ -593,7 +624,7 @@ def _run_distillation(args: argparse.Namespace) -> int:
             "target/student pairing or rebaseline intentionally.",
             target_checkpoint,
             tokenizer_parity["target"]["sha256"],
-            student_base,
+            str(student_config) if student_config is not None else student_base,
             tokenizer_parity["student"]["sha256"],
         )
         return 3
@@ -615,9 +646,13 @@ def _run_distillation(args: argparse.Namespace) -> int:
     target.eval()
     for p in target.parameters():
         p.requires_grad_(False)
-    student = AutoModelForCausalLM.from_pretrained(
-        student_base, torch_dtype=torch.float32
-    ).to(device)
+    if student_config is not None:
+        cfg = AutoConfig.from_pretrained(student_config)
+        student = AutoModelForCausalLM.from_config(cfg, torch_dtype=torch.float32).to(device)
+    else:
+        student = AutoModelForCausalLM.from_pretrained(
+            student_base, torch_dtype=torch.float32
+        ).to(device)
     student.train()
 
     # Distillation corpus: jsonl with a `text` field (or chat `messages`
@@ -802,6 +837,7 @@ def _run_distillation(args: argparse.Namespace) -> int:
     manifest = _build_manifest(
         args=args,
         student_base=student_base,
+        student_config=student_config,
         target_model_id=target_model_id,
         target_checkpoint=target_checkpoint,
         target_gguf=target_gguf,
@@ -855,7 +891,7 @@ def _run_verify_tokenizers_only(args: argparse.Namespace) -> int:
     from transformers import AutoTokenizer  # noqa: PLC0415
 
     tgt_tok = AutoTokenizer.from_pretrained(target_checkpoint)
-    stu_tok = AutoTokenizer.from_pretrained(student_base)
+    stu_tok = tgt_tok if student_config is not None else AutoTokenizer.from_pretrained(student_base)
     parity = _tokenizer_parity_report(tgt_tok, stu_tok)
     print(json.dumps(parity, indent=2, sort_keys=True))
     if not parity["matches"]:
@@ -882,6 +918,13 @@ def build_parser() -> argparse.ArgumentParser:
         help="Final shipped text GGUF; its sha256 is recorded in the drafter.",
     )
     p.add_argument("--student-base", help="HF id/dir of the small student base.")
+    p.add_argument(
+        "--student-config",
+        help=(
+            "HF config dir for a compact randomly initialized drafter. "
+            "Defaults to 0.1B for tier 0_8b and 0.3B for tier 2b."
+        ),
+    )
     p.add_argument(
         "--allow-non-default-student-base",
         action="store_true",

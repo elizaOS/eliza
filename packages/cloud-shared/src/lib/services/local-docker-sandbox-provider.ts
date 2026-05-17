@@ -41,7 +41,8 @@ const LSOF_BIN = "lsof";
 
 const DOCKER_CMD_TIMEOUT_MS = 60_000;
 const DOCKER_PULL_TIMEOUT_MS = 300_000;
-const HEALTH_CHECK_TIMEOUT_MS = 10_000;
+const HEALTH_CHECK_TIMEOUT_MS = 5_000;
+const HEALTH_WAIT_TOTAL_MS = 60_000;
 
 const LOG_PREFIX = "[LocalDockerSandboxProvider]";
 
@@ -348,30 +349,42 @@ export class LocalDockerSandboxProvider implements SandboxProvider {
   // ------------------------------------------------------------------
 
   async checkHealth(handle: SandboxHandle): Promise<boolean> {
-    const url = `${handle.bridgeUrl.replace(/\/$/, "")}/api/health`;
-    try {
-      const { stdout } = await execFileAsync(
-        CURL_BIN,
-        [
-          "-s",
-          "-o",
-          "/dev/null",
-          "-w",
-          "%{http_code}",
-          "--max-time",
-          String(Math.max(1, Math.floor(HEALTH_CHECK_TIMEOUT_MS / 1000))),
-          url,
-        ],
-        { timeout: HEALTH_CHECK_TIMEOUT_MS },
-      );
-      const status = stdout.trim();
-      return status === "200" || status === "401";
-    } catch (err) {
-      logger.debug(
-        `${LOG_PREFIX} health check failed for ${url}: ${err instanceof Error ? err.message : String(err)}`,
-      );
-      return false;
+    // Probe BOTH /api/health (public ghcr.io/elizaos/eliza image) and /health
+    // (the bespoke cloud-agent image built from Dockerfile.cloud-agent) on the
+    // health port. Either responding 200/401 counts as healthy.
+    // Containers can take 10-60s to come up from cold-start; retry-poll for up
+    // to ~60s before giving up.
+    const origin = new URL(handle.healthUrl).origin;
+    const candidates = [`${origin}/api/health`, `${origin}/health`];
+    const deadline = Date.now() + HEALTH_WAIT_TOTAL_MS;
+    while (Date.now() < deadline) {
+      for (const url of candidates) {
+        try {
+          const { stdout } = await execFileAsync(
+            CURL_BIN,
+            [
+              "-s",
+              "-o",
+              "/dev/null",
+              "-w",
+              "%{http_code}",
+              "--max-time",
+              String(Math.max(1, Math.floor(HEALTH_CHECK_TIMEOUT_MS / 1000))),
+              url,
+            ],
+            { timeout: HEALTH_CHECK_TIMEOUT_MS },
+          );
+          const status = stdout.trim();
+          if (status === "200" || status === "401") return true;
+        } catch (err) {
+          logger.debug(
+            `${LOG_PREFIX} health probe ${url} failed: ${err instanceof Error ? err.message : String(err)}`,
+          );
+        }
+      }
+      await new Promise((r) => setTimeout(r, 2000));
     }
+    return false;
   }
 
   // ------------------------------------------------------------------

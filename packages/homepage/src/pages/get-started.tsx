@@ -822,7 +822,7 @@ export default function GetStartedPage() {
             <button
               type="button"
               onClick={handleBack}
-              className="inline-flex items-center gap-2 text-neutral-600 hover:text-neutral-900 transition-colors cursor-pointer"
+              className="inline-flex min-h-11 items-center gap-2 text-neutral-600 hover:text-neutral-900 transition-colors cursor-pointer"
             >
               <ArrowLeft className="size-4" />
               <span className="text-sm">Back</span>
@@ -830,7 +830,7 @@ export default function GetStartedPage() {
           ) : (
             <Link
               to="/"
-              className="inline-flex items-center gap-2 text-neutral-600 hover:text-neutral-900 transition-colors"
+              className="inline-flex min-h-11 items-center gap-2 text-neutral-600 hover:text-neutral-900 transition-colors"
             >
               <ArrowLeft className="size-4" />
               <span className="text-sm">Home</span>

@@ -10,6 +10,7 @@ from scripts.distill_dflash_drafter import (
     ACCEPTANCE_GATE,
     ACTIVE_TIERS,
     DEFAULT_TARGET_MODEL,
+    DEFAULT_STUDENT_CONFIG,
     DEFAULT_STUDENT_BASE,
     DFLASH_DRAFTER_TIERS,
     QWEN35_TOKENIZER_FAMILY_VOCAB_SIZE,
@@ -163,8 +164,15 @@ def test_0_8b_has_a_tiny_drafter_recipe() -> None:
     assert "0_8b" in ACTIVE_TIERS
     assert "0_8b" in TRAINING_SUPPORTED_TIERS
     assert DEFAULT_STUDENT_BASE["0_8b"] == "Qwen/Qwen3.5-0.8B-Base"
+    assert DEFAULT_STUDENT_CONFIG["0_8b"] == "configs/dflash-drafter-0_1b-qwen3_5"
+    assert distill_drafter_h200.DEFAULT_DRAFTER_SIZE_B["0_8b"] == 0.1
     assert DEFAULT_TARGET_MODEL["0_8b"] == "elizaos/eliza-1/bundles/0_8b"
     assert ACCEPTANCE_GATE["0_8b"] == 0.40
+
+
+def test_2b_has_a_0_3b_drafter_recipe() -> None:
+    assert DEFAULT_STUDENT_CONFIG["2b"] == "configs/dflash-drafter-0_3b-qwen3_5"
+    assert distill_drafter_h200.DEFAULT_DRAFTER_SIZE_B["2b"] == 0.3
 
 
 @pytest.mark.parametrize("tier", DFLASH_DRAFTER_TIERS)

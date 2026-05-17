@@ -18,7 +18,7 @@ Usage:
     # Synthetic smoke (no GPU, no real models — CI/local validation only)
     python distill_drafter_h200.py \
         --target-tier 2b \
-        --drafter-size-b 0.5 \
+        --drafter-size-b 0.3 \
         --dataset-path /tmp/smoke \
         --output-dir /tmp/dflash-smoke-out \
         --synthetic-smoke
@@ -26,7 +26,7 @@ Usage:
     # Real H200 run
     python distill_drafter_h200.py \
         --target-tier 2b \
-        --drafter-size-b 0.5 \
+        --drafter-size-b 0.3 \
         --dataset-path /data/distill/eliza-1-2b/distill.jsonl \
         --output-dir /data/dflash-out/2b \
         --target-checkpoint /data/checkpoints/eliza-1-2b \
@@ -58,6 +58,7 @@ if str(_TRAINING_ROOT) not in sys.path:
 
 from scripts.distill_dflash_drafter import (  # noqa: E402
     ACCEPTANCE_GATE,
+    DEFAULT_STUDENT_CONFIG,
     DEFAULT_STUDENT_BASE,
     QWEN35_TOKENIZER_FAMILY_VOCAB_SIZE,
     _tokenizer_parity_report,
@@ -76,8 +77,8 @@ QWEN35_SYNTHETIC_VOCAB_SIZE: int = QWEN35_TOKENIZER_FAMILY_VOCAB_SIZE
 
 # Approximate drafter size-B per tier (used for --drafter-size-b default).
 DEFAULT_DRAFTER_SIZE_B: dict[str, float] = {
-    "0_8b": 0.5,
-    "2b": 0.5,
+    "0_8b": 0.1,
+    "2b": 0.3,
     "4b": 1.5,
     "9b": 1.5,
     "27b": 3.0,
@@ -236,10 +237,39 @@ def run_synthetic_smoke(args: argparse.Namespace) -> None:
 # Model loading
 # --------------------------------------------------------------------------
 
-def load_drafter_model(args: argparse.Namespace) -> Any:
+def _resolve_student_config(args: argparse.Namespace) -> Path | None:
+    student_config = args.student_config or DEFAULT_STUDENT_CONFIG.get(args.target_tier)
+    if not student_config:
+        return None
+    path = Path(student_config)
+    if not path.is_absolute():
+        path = _TRAINING_ROOT / path
+    if not path.exists():
+        log.error("Student config not found: %s", path)
+        sys.exit(2)
+    return path
+
+
+def load_drafter_model(args: argparse.Namespace, target_tok: Any | None = None) -> Any:
     """Load and configure the drafter (student) model for training."""
     import torch  # noqa: PLC0415
-    from transformers import AutoModelForCausalLM, AutoTokenizer  # noqa: PLC0415
+    from transformers import AutoConfig, AutoModelForCausalLM, AutoTokenizer  # noqa: PLC0415
+
+    student_config = _resolve_student_config(args)
+    if student_config is not None:
+        if target_tok is None:
+            log.error("target tokenizer is required when using --student-config")
+            sys.exit(2)
+        log.info("Loading compact student config: %s", student_config)
+        tok = target_tok
+        args.student_config_resolved = str(student_config)
+        args.student_base_resolved = None
+        args.student_vocab_size = _tokenizer_vocab_size(tok)
+        cfg = AutoConfig.from_pretrained(student_config)
+        model = AutoModelForCausalLM.from_config(cfg, torch_dtype=torch.bfloat16)
+        model.gradient_checkpointing_enable()
+        model.train()
+        return model, tok
 
     student_base = args.student_base or DEFAULT_STUDENT_BASE.get(args.target_tier)
     if not student_base:
@@ -247,6 +277,8 @@ def load_drafter_model(args: argparse.Namespace) -> Any:
         sys.exit(2)
 
     log.info("Loading student base: %s", student_base)
+    args.student_base_resolved = student_base
+    args.student_config_resolved = None
     tok = AutoTokenizer.from_pretrained(student_base)
     actual_vocab = _tokenizer_vocab_size(tok)
     args.student_vocab_size = actual_vocab
@@ -508,7 +540,7 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     p.add_argument(
         "--drafter-size-b",
         type=float,
-        help="Approximate drafter parameter count in billions (0.5 / 1.5 / 3.0). "
+        help="Approximate drafter parameter count in billions (0.1 / 0.3 / 1.5 / 3.0). "
         "Used for logging/manifest only; actual size comes from --student-base.",
     )
     p.add_argument(
@@ -534,6 +566,13 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     p.add_argument(
         "--student-base",
         help="HF id/dir of the small student base. Defaults per tier from DEFAULT_STUDENT_BASE.",
+    )
+    p.add_argument(
+        "--student-config",
+        help=(
+            "HF config dir for a compact randomly initialized drafter. "
+            "Defaults to 0.1B for tier 0_8b and 0.3B for tier 2b."
+        ),
     )
 
     # Hyperparameters.
@@ -639,8 +678,8 @@ def main(argv: list[str] | None = None) -> None:
             "Run container_setup.sh or: uv pip install apollo-torch"
         ) from exc
 
-    student_model, student_tok = load_drafter_model(args)
     target_model, target_tok = load_target_model(args)
+    student_model, student_tok = load_drafter_model(args, target_tok=target_tok)
     tokenizer_parity = _require_tokenizer_parity(
         target_tok=target_tok,
         student_tok=student_tok,
@@ -697,7 +736,8 @@ def main(argv: list[str] | None = None) -> None:
         "targetTokenizerSha256": args.target_tokenizer_sha256,
         "studentTokenizerSha256": args.student_tokenizer_sha256,
         "tokenizerParity": tokenizer_parity,
-        "studentBase": args.student_base or DEFAULT_STUDENT_BASE.get(args.target_tier),
+        "studentBase": args.student_base_resolved,
+        "studentConfig": args.student_config_resolved,
         "targetCheckpoint": args.target_checkpoint,
         "targetGguf": args.target_gguf,
         "generatedAt": ts_end.isoformat(),

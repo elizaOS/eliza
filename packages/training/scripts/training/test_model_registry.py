@@ -122,9 +122,11 @@ def test_qwen36_lower_tiers_fall_back_to_qwen35_bases() -> None:
 
 def test_dflash_drafter_base_is_qwen3_5_for_active_targets() -> None:
     # The Qwen3.5/Qwen3.6 target tiers draft from the Qwen3.5-0.8B-Base
-    # checkpoint — it shares their 248320-token tokenizer (a legacy Qwen3 drafter has the wrong vocab). The shipped drafter GGUF is that base
-    # distilled to ~0.6B. Mirrors DEFAULT_STUDENT_BASE in
-    # scripts/distill_dflash_drafter.py. Per the 2026-05-12 operator
+    # checkpoint/config family — it shares their 248320-token tokenizer
+    # (a legacy Qwen3 drafter has the wrong vocab). The 0_8b and 2b shipped
+    # drafter GGUFs are distilled compact 0.1B/0.3B configs; larger tiers
+    # still use the 0.8B base. Mirrors DEFAULT_STUDENT_BASE /
+    # DEFAULT_STUDENT_CONFIG in scripts/distill_dflash_drafter.py. Per the 2026-05-12 operator
     # directive (Qwen3.5/Qwen3.6 fused-model line), the legacy Qwen3 tier
     # legacy drafter entries are dropped — the
     # corresponding tiers are deprecated.
