@@ -738,20 +738,16 @@ function ShellFoundationMount(): JSX.Element {
     [send],
   );
 
+  const onOpen = useCallback(() => send({ type: "OPEN" }), [send]);
+  const onClose = useCallback(() => send({ type: "CLOSE" }), [send]);
+
   const canSend =
     state.phase === "summoned" || state.phase === "responding";
 
   return (
     <>
-      <HomePill
-        phase={state.phase}
-        onOpen={() => send({ type: "OPEN" })}
-        onClose={() => send({ type: "CLOSE" })}
-      />
-      <AssistantOverlay
-        phase={state.phase}
-        onClose={() => send({ type: "CLOSE" })}
-      >
+      <HomePill phase={state.phase} onOpen={onOpen} onClose={onClose} />
+      <AssistantOverlay phase={state.phase} onClose={onClose}>
         <ChatSurface
           messages={state.messages}
           onSend={onSend}

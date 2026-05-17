@@ -44,7 +44,7 @@ export function HomePill({
       onClick={handleClick}
       className={cn(
         // Position
-        "fixed bottom-3 left-1/2 z-50 -translate-x-1/2",
+        "fixed bottom-3 left-1/2 z-[10000] -translate-x-1/2",
         // Shape
         "h-10 w-32 rounded-full",
         // Default (idle) visual

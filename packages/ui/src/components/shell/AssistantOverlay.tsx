@@ -116,7 +116,7 @@ export function AssistantOverlay({
       data-phase={phase}
       className={[
         // Position: bottom sheet on mobile, centered drawer on >= sm
-        "fixed inset-x-0 bottom-0 z-40",
+        "fixed inset-x-0 bottom-0 z-[10001]",
         "sm:left-1/2 sm:right-auto sm:top-1/2 sm:bottom-auto",
         "sm:-translate-x-1/2 sm:-translate-y-1/2",
         "sm:w-[min(560px,90vw)] sm:h-[min(640px,80vh)]",
