@@ -182,30 +182,39 @@ function removePath(filePath) {
 
 function resolveDependencyPackageDir(packageName, baseDirs = [repoRoot]) {
   const packageSegments = packageName.split("/");
-  for (const baseDir of baseDirs) {
-    const packageDir = path.join(
-      baseDir,
-      "node_modules",
-      ...packageSegments,
-    );
-    if (fs.existsSync(path.join(packageDir, "package.json"))) {
-      return packageDir;
+  // Always return the realpath: when a previous iteration of this loop has
+  // already linked the dep (e.g. app-core's per-package node_modules pointing
+  // at the root install), a later call must surface the real directory, not
+  // the symlink chain — otherwise `linkDependencyPackage`'s equality check
+  // can't detect that source and target refer to the same place, and we end
+  // up replacing the real npm-installed package with a circular symlink that
+  // points back at itself. This was the root cause of the prod `:develop`
+  // sandbox hang where `import 'jose'` from plugin-elizacloud failed with
+  // ERR_MODULE_NOT_FOUND because /app/node_modules/jose pointed to
+  // /app/packages/app-core/node_modules/jose pointed to /app/node_modules/jose.
+  const realIfExists = (dir) => {
+    if (!fs.existsSync(path.join(dir, "package.json"))) return null;
+    try {
+      return fs.realpathSync(dir);
+    } catch {
+      return dir;
     }
+  };
+  for (const baseDir of baseDirs) {
+    const real = realIfExists(
+      path.join(baseDir, "node_modules", ...packageSegments),
+    );
+    if (real) return real;
   }
 
   for (const baseDir of baseDirs) {
     const bunStoreDir = path.join(baseDir, "node_modules", ".bun");
     if (pathExists(bunStoreDir)) {
       for (const entry of fs.readdirSync(bunStoreDir).sort().reverse()) {
-        const candidate = path.join(
-          bunStoreDir,
-          entry,
-          "node_modules",
-          ...packageSegments,
+        const real = realIfExists(
+          path.join(bunStoreDir, entry, "node_modules", ...packageSegments),
         );
-        if (fs.existsSync(path.join(candidate, "package.json"))) {
-          return candidate;
-        }
+        if (real) return real;
       }
     }
   }
