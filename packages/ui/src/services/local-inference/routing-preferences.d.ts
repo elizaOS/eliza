@@ -4,5 +4,13 @@
  * the server (`@elizaos/app-core`) and the UI client (`@elizaos/ui`)
  * read/write the same routing.json with identical semantics.
  */
-export { DEFAULT_ROUTING_POLICY, type RoutingPolicy, type RoutingPreferences, readRoutingPreferences, setPolicy, setPreferredProvider, writeRoutingPreferences, } from "@elizaos/shared";
+export {
+  DEFAULT_ROUTING_POLICY,
+  type RoutingPolicy,
+  type RoutingPreferences,
+  readRoutingPreferences,
+  setPolicy,
+  setPreferredProvider,
+  writeRoutingPreferences,
+} from "@elizaos/shared";
 //# sourceMappingURL=routing-preferences.d.ts.map

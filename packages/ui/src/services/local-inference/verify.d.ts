@@ -4,5 +4,11 @@
  * the server (`@elizaos/app-core`) and the UI client (`@elizaos/ui`)
  * compute the same SHA256 / GGUF-magic checks against on-disk models.
  */
-export { __registryPathForTests, hashFile, type VerifyResult, type VerifyState, verifyInstalledModel, } from "@elizaos/shared";
+export {
+  __registryPathForTests,
+  hashFile,
+  type VerifyResult,
+  type VerifyState,
+  verifyInstalledModel,
+} from "@elizaos/shared";
 //# sourceMappingURL=verify.d.ts.map

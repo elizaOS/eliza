@@ -13,8 +13,8 @@
  * targeted formatter is enough.
  */
 export interface CronPreset {
-    label: string;
-    expression: string;
+  label: string;
+  expression: string;
 }
 /** Presets surfaced in the Task editor's recurring schedule picker. */
 export declare const CRON_PRESETS: ReadonlyArray<CronPreset>;

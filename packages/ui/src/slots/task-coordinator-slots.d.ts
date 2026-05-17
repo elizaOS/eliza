@@ -14,26 +14,39 @@
  */
 import type { ComponentType } from "react";
 import type { CodingAgentSession } from "../api/client-types-cloud.js";
-export type TaskCoordinatorCodingAgentSettingsSectionProps = Record<string, never>;
+export type TaskCoordinatorCodingAgentSettingsSectionProps = Record<
+  string,
+  never
+>;
 export interface TaskCoordinatorCodingAgentTasksPanelProps {
-    fullPage?: boolean;
+  fullPage?: boolean;
 }
 export type TaskCoordinatorCodingAgentControlChipProps = Record<string, never>;
 export interface TaskCoordinatorPtyConsoleBaseProps {
-    activeSessionId: string;
-    sessions: CodingAgentSession[];
-    onClose: () => void;
-    variant: "drawer" | "side-panel" | "full";
+  activeSessionId: string;
+  sessions: CodingAgentSession[];
+  onClose: () => void;
+  variant: "drawer" | "side-panel" | "full";
 }
 export interface TaskCoordinatorSlots {
-    CodingAgentSettingsSection: ComponentType<TaskCoordinatorCodingAgentSettingsSectionProps>;
-    CodingAgentTasksPanel: ComponentType<TaskCoordinatorCodingAgentTasksPanelProps>;
-    CodingAgentControlChip: ComponentType<TaskCoordinatorCodingAgentControlChipProps>;
-    PtyConsoleBase: ComponentType<TaskCoordinatorPtyConsoleBaseProps>;
+  CodingAgentSettingsSection: ComponentType<TaskCoordinatorCodingAgentSettingsSectionProps>;
+  CodingAgentTasksPanel: ComponentType<TaskCoordinatorCodingAgentTasksPanelProps>;
+  CodingAgentControlChip: ComponentType<TaskCoordinatorCodingAgentControlChipProps>;
+  PtyConsoleBase: ComponentType<TaskCoordinatorPtyConsoleBaseProps>;
 }
-export declare function registerTaskCoordinatorSlots(components: Partial<TaskCoordinatorSlots>): void;
-export declare function CodingAgentSettingsSection(props: TaskCoordinatorCodingAgentSettingsSectionProps): React.JSX.Element | null;
-export declare function CodingAgentTasksPanel(props: TaskCoordinatorCodingAgentTasksPanelProps): React.JSX.Element | null;
-export declare function CodingAgentControlChip(props: TaskCoordinatorCodingAgentControlChipProps): React.JSX.Element | null;
-export declare function PtyConsoleBase(props: TaskCoordinatorPtyConsoleBaseProps): React.JSX.Element | null;
+export declare function registerTaskCoordinatorSlots(
+  components: Partial<TaskCoordinatorSlots>,
+): void;
+export declare function CodingAgentSettingsSection(
+  props: TaskCoordinatorCodingAgentSettingsSectionProps,
+): React.JSX.Element | null;
+export declare function CodingAgentTasksPanel(
+  props: TaskCoordinatorCodingAgentTasksPanelProps,
+): React.JSX.Element | null;
+export declare function CodingAgentControlChip(
+  props: TaskCoordinatorCodingAgentControlChipProps,
+): React.JSX.Element | null;
+export declare function PtyConsoleBase(
+  props: TaskCoordinatorPtyConsoleBaseProps,
+): React.JSX.Element | null;
 //# sourceMappingURL=task-coordinator-slots.d.ts.map

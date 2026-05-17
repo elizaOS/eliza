@@ -15,24 +15,26 @@
 export type VaultTab = "overview" | "secrets" | "logins" | "routing";
 export declare const VAULT_TABS: readonly VaultTab[];
 export interface SecretsManagerOpenOptions {
-    readonly tab?: VaultTab;
-    readonly focusKey?: string;
-    readonly focusProfileId?: string;
+  readonly tab?: VaultTab;
+  readonly focusKey?: string;
+  readonly focusProfileId?: string;
 }
-export declare function dispatchSecretsManagerOpen(options?: SecretsManagerOpenOptions): void;
+export declare function dispatchSecretsManagerOpen(
+  options?: SecretsManagerOpenOptions,
+): void;
 export declare function dispatchSecretsManagerClose(): void;
 export declare function dispatchSecretsManagerToggle(tab?: VaultTab): void;
 export interface SecretsManagerModalState {
-    readonly isOpen: boolean;
-    readonly initialTab: VaultTab | null;
-    readonly focusKey: string | null;
-    readonly focusProfileId: string | null;
-    readonly open: () => void;
-    readonly close: () => void;
-    readonly toggle: () => void;
-    readonly setOpen: (next: boolean) => void;
-    readonly openOnTab: (options: SecretsManagerOpenOptions) => void;
-    readonly clearFocus: () => void;
+  readonly isOpen: boolean;
+  readonly initialTab: VaultTab | null;
+  readonly focusKey: string | null;
+  readonly focusProfileId: string | null;
+  readonly open: () => void;
+  readonly close: () => void;
+  readonly toggle: () => void;
+  readonly setOpen: (next: boolean) => void;
+  readonly openOnTab: (options: SecretsManagerOpenOptions) => void;
+  readonly clearFocus: () => void;
 }
 /**
  * Subscribe to the modal's open state. Useful for the modal itself

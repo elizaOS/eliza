@@ -1,5 +1,7 @@
 export interface StateTutorialSubscriptionsProps {
-    onContinue: () => void;
+  onContinue: () => void;
 }
-export declare function StateTutorialSubscriptions(props: StateTutorialSubscriptionsProps): React.JSX.Element;
+export declare function StateTutorialSubscriptions(
+  props: StateTutorialSubscriptionsProps,
+): React.JSX.Element;
 //# sourceMappingURL=StateTutorialSubscriptions.d.ts.map

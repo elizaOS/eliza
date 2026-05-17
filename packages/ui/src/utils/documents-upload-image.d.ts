@@ -1,2 +1,8 @@
-export { type DocumentImageCompressionPlatform, type DocumentImageUploadFile, isDocumentImageFile, MAX_DOCUMENT_IMAGE_PROCESSING_BYTES, maybeCompressDocumentUploadImage, } from "@elizaos/shared";
+export {
+  type DocumentImageCompressionPlatform,
+  type DocumentImageUploadFile,
+  isDocumentImageFile,
+  MAX_DOCUMENT_IMAGE_PROCESSING_BYTES,
+  maybeCompressDocumentUploadImage,
+} from "@elizaos/shared";
 //# sourceMappingURL=documents-upload-image.d.ts.map

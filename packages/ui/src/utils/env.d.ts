@@ -23,7 +23,10 @@ export declare function isEnvDisabled(value: string | undefined): boolean;
 /**
  * Sync app brand env vars → elizaOS equivalents.
  */
-export { syncBrandEnvToEliza, syncElizaEnvToBrand, } from "../config/boot-config.js";
+export {
+  syncBrandEnvToEliza,
+  syncElizaEnvToBrand,
+} from "../config/boot-config.js";
 export declare function syncAppEnvToEliza(): void;
 export declare function syncElizaEnvAliases(): void;
 //# sourceMappingURL=env.d.ts.map

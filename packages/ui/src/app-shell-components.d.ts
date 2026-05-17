@@ -11,7 +11,7 @@
  * `app.navTabs` declaration and the static page list at render time.
  */
 export type { AppShellPageRegistration } from "./app-shell-registry";
-export { listAppShellPages, registerAppShellPage, } from "./app-shell-registry";
+export { listAppShellPages, registerAppShellPage } from "./app-shell-registry";
 export { GameViewOverlay } from "./components/apps/GameViewOverlay";
 export { CharacterEditor } from "./components/character/CharacterEditor";
 export { SaveCommandModal } from "./components/chat/SaveCommandModal";
@@ -24,7 +24,10 @@ export { BrowserWorkspaceView } from "./components/pages/BrowserWorkspaceView";
 export { ChatView } from "./components/pages/ChatView";
 export { DatabasePageView } from "./components/pages/DatabasePageView";
 export { DocumentsView } from "./components/pages/DocumentsView";
-export { HeartbeatsDesktopShell, HeartbeatsView, } from "./components/pages/HeartbeatsView";
+export {
+  HeartbeatsDesktopShell,
+  HeartbeatsView,
+} from "./components/pages/HeartbeatsView";
 export { LogsView } from "./components/pages/LogsView";
 export { MemoryViewerView } from "./components/pages/MemoryViewerView";
 export { PluginsPageView } from "./components/pages/PluginsPageView";

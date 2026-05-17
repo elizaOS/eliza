@@ -8,7 +8,12 @@
  *
  * Title-click opens /browser. Tab-click focuses that tab via the backend.
  */
-import type { ChatSidebarWidgetDefinition, ChatSidebarWidgetProps } from "./types";
-export declare function BrowserStatusSidebarWidget(_props: ChatSidebarWidgetProps): import("react/jsx-runtime").JSX.Element | null;
+import type {
+  ChatSidebarWidgetDefinition,
+  ChatSidebarWidgetProps,
+} from "./types";
+export declare function BrowserStatusSidebarWidget(
+  _props: ChatSidebarWidgetProps,
+): import("react/jsx-runtime").JSX.Element | null;
 export declare const BROWSER_STATUS_WIDGET: ChatSidebarWidgetDefinition;
 //# sourceMappingURL=browser-status.d.ts.map

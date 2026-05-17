@@ -14,24 +14,31 @@
  * mount. The `idle` variant is reserved in the type for a future opt-out
  * flag but never surfaces today.
  */
-export type FetchState<T> = {
-    status: "idle";
-} | {
-    status: "loading";
-} | {
-    status: "success";
-    data: T;
-} | {
-    status: "error";
-    error: Error;
-};
+export type FetchState<T> =
+  | {
+      status: "idle";
+    }
+  | {
+      status: "loading";
+    }
+  | {
+      status: "success";
+      data: T;
+    }
+  | {
+      status: "error";
+      error: Error;
+    };
 export type FetchMutator<T> = {
-    (next: T): void;
-    (updater: (prev: T) => T): void;
+  (next: T): void;
+  (updater: (prev: T) => T): void;
 };
 export type UseFetchDataResult<T> = FetchState<T> & {
-    refetch: () => void;
-    mutate: FetchMutator<T>;
+  refetch: () => void;
+  mutate: FetchMutator<T>;
 };
-export declare function useFetchData<T>(fetcher: (signal: AbortSignal) => Promise<T>, deps: ReadonlyArray<unknown>): UseFetchDataResult<T>;
+export declare function useFetchData<T>(
+  fetcher: (signal: AbortSignal) => Promise<T>,
+  deps: ReadonlyArray<unknown>,
+): UseFetchDataResult<T>;
 //# sourceMappingURL=useFetchData.d.ts.map

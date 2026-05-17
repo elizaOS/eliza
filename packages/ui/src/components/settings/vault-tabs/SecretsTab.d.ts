@@ -6,12 +6,19 @@
  */
 import type { VaultEntryMeta, VaultTabNavigate } from "./types";
 export interface SecretsTabProps {
-    entries: VaultEntryMeta[];
-    onChanged: () => void;
-    navigate: VaultTabNavigate;
-    focusKey: string | null;
-    focusProfileId: string | null;
-    onFocusApplied: () => void;
+  entries: VaultEntryMeta[];
+  onChanged: () => void;
+  navigate: VaultTabNavigate;
+  focusKey: string | null;
+  focusProfileId: string | null;
+  onFocusApplied: () => void;
 }
-export declare function SecretsTab({ entries, onChanged, navigate, focusKey, focusProfileId, onFocusApplied, }: SecretsTabProps): import("react/jsx-runtime").JSX.Element;
+export declare function SecretsTab({
+  entries,
+  onChanged,
+  navigate,
+  focusKey,
+  focusProfileId,
+  onFocusApplied,
+}: SecretsTabProps): import("react/jsx-runtime").JSX.Element;
 //# sourceMappingURL=SecretsTab.d.ts.map

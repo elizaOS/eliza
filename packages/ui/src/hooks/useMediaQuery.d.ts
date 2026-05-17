@@ -1,4 +1,7 @@
-export declare function useMediaQuery(query: string, options?: {
+export declare function useMediaQuery(
+  query: string,
+  options?: {
     defaultValue?: boolean;
-}): boolean;
+  },
+): boolean;
 //# sourceMappingURL=useMediaQuery.d.ts.map

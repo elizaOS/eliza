@@ -4,7 +4,11 @@
  */
 import type { HTMLAttributes } from "react";
 export type LoaderProps = HTMLAttributes<HTMLDivElement> & {
-    size?: number;
+  size?: number;
 };
-export declare const Loader: ({ className, size, ...props }: LoaderProps) => import("react/jsx-runtime").JSX.Element;
+export declare const Loader: ({
+  className,
+  size,
+  ...props
+}: LoaderProps) => import("react/jsx-runtime").JSX.Element;
 //# sourceMappingURL=loader.d.ts.map
