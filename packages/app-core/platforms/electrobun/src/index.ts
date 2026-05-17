@@ -34,6 +34,7 @@ import { shouldCreateDesktopTray } from "./desktop-tray-config";
 import { scheduleDevtoolsLayoutRefresh } from "./devtools-layout";
 import { createElectrobunBrowserWindow } from "./electrobun-window-options";
 import { getFloatingChatManager } from "./floating-chat-window";
+import { createPillWindow } from "./pill-window";
 import * as apiBaseOwner from "./lifecycle/api-base-owner";
 import {
 	markDesktopSessionStale,
@@ -2148,6 +2149,16 @@ async function main(): Promise<void> {
 			/* non-fatal */
 		}
 		getFloatingChatManager().configure(url, preload);
+		// Spawn the always-on-top voice pill overlay alongside the main window.
+		// The pill loads the same renderer with `?shell=pill`, which routes to
+		// a minimal <VoicePill> mount in apps/app/src/main.tsx.
+		try {
+			createPillWindow({ rendererUrl: url, preload });
+		} catch (err) {
+			logger.warn(
+				`[Main] Failed to spawn pill window: ${err instanceof Error ? err.message : String(err)}`,
+			);
+		}
 	});
 
 	// Per-window RPC tracking: surface windows each get their own typed
