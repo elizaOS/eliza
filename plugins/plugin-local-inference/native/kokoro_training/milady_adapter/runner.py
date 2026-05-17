@@ -209,24 +209,31 @@ def smoke_full_finetune(
     for _ in range(max(1, steps)):
         text_ids = torch.randint(0, vocab_size, (1, 8), device=device)
         mel_target = torch.randn(1, 16, 80, device=device)
+        durations = torch.full((1, 8), 2, dtype=torch.long, device=device)
+        stop_targets = torch.zeros(1, 16, device=device)
         # The vendor model's training-mode forward call takes text +
         # mel; signatures vary across upstreams, so we go through the
         # public `forward_training` entry that returns a dict.
         try:
             out = model.forward_training(
-                text_ids=text_ids,
-                target_mel=mel_target,
-                durations=torch.full((1, 8), 2, dtype=torch.long, device=device),
+                phoneme_indices=text_ids,
+                mel_specs=mel_target,
+                phoneme_durations=durations,
+                stop_token_targets=stop_targets,
             )
         except TypeError:
-            # Tolerate signature drift: try the keyword-less form.
-            out = model.forward_training(text_ids, mel_target)
+            # elizaOS: tolerate signature drift in older vendored snapshots.
+            out = model.forward_training(text_ids, mel_target, durations, stop_targets)
 
         # The smoke does not care about the loss shape — it cares that
         # autograd flows. Sum every tensor field and backprop.
         loss = torch.zeros((), device=device)
         if isinstance(out, dict):
             for v in out.values():
+                if isinstance(v, torch.Tensor) and v.requires_grad:
+                    loss = loss + v.sum()
+        elif isinstance(out, (tuple, list)):
+            for v in out:
                 if isinstance(v, torch.Tensor) and v.requires_grad:
                     loss = loss + v.sum()
         elif isinstance(out, torch.Tensor):

@@ -29,7 +29,9 @@ export function DataListEmptyState({
       <div className="mx-auto flex max-w-sm flex-col items-center justify-center space-y-4 text-center">
         {Icon ? (
           <div className="flex size-12 items-center justify-center rounded-sm border border-border bg-bg-muted">
-            <Icon className={cn("h-6 w-6 text-muted-foreground", iconClassName)} />
+            <Icon
+              className={cn("h-6 w-6 text-muted-foreground", iconClassName)}
+            />
           </div>
         ) : null}
         <div className="space-y-1.5">

@@ -204,6 +204,14 @@ function parseDdBytesWritten(line: string): number | null {
   return null;
 }
 
+function parseLastDdBytesWritten(text: string): number | null {
+  let last: number | null = null;
+  for (const match of text.matchAll(/(\d+)\s+bytes/g)) {
+    last = Number(match[1]);
+  }
+  return last;
+}
+
 export interface PrivilegeEscalator {
   command: string;
   argsPrefix: string[];
@@ -585,7 +593,7 @@ export class LinuxUsbInstallerBackend implements UsbInstallerBackend {
         clearInterval(heartbeat);
         // Final dd summary line lives in stderrBuf or stderrAll.
         const tailBytes =
-          parseDdBytesWritten(stderrBuf) ?? parseDdBytesWritten(stderrAll);
+          parseDdBytesWritten(stderrBuf) ?? parseLastDdBytesWritten(stderrAll);
         if (tailBytes !== null) {
           finalBytesWritten = tailBytes;
         }
