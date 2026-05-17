@@ -1,12 +1,15 @@
 type AssetUrlResolveOptions = {
-    currentUrl?: string;
-    baseUrl?: string;
+  currentUrl?: string;
+  baseUrl?: string;
 };
 /**
  * Resolve an app public asset path into a URL safe across http(s), custom
  * schemes, and packaged file:// runtimes.
  */
-export declare function resolveAppAssetUrl(assetPath: string, options?: AssetUrlResolveOptions): string;
+export declare function resolveAppAssetUrl(
+  assetPath: string,
+  options?: AssetUrlResolveOptions,
+): string;
 /**
  * Resolve an API path (e.g. "/api/avatar/vrm") to a full URL reachable from
  * the renderer. In desktop shells the page origin is electrobun:// or
@@ -20,5 +23,4 @@ export declare function resolveAppAssetUrl(assetPath: string, options?: AssetUrl
  * has changed it.
  */
 export declare function resolveApiUrl(apiPath: string): string;
-export {};
 //# sourceMappingURL=asset-url.d.ts.map

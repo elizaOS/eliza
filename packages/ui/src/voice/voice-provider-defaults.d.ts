@@ -23,17 +23,19 @@ export type PresetPlatform = "desktop" | "mobile" | "web";
 /** Subset of the runtime-mode enum we care about for provider defaults. */
 export type PresetRuntimeMode = "local" | "local-only" | "cloud" | "remote";
 export interface PickDefaultVoiceProviderInput {
-    platform: PresetPlatform;
-    runtimeMode: PresetRuntimeMode;
+  platform: PresetPlatform;
+  runtimeMode: PresetRuntimeMode;
 }
 export interface DefaultVoiceProviderResult {
-    tts: VoiceProvider;
-    asr: AsrProvider;
+  tts: VoiceProvider;
+  asr: AsrProvider;
 }
 /**
  * Resolve the default {tts, asr} pair given the current platform and the
  * agent's runtime mode. The user can always override either pick in the
  * advanced settings.
  */
-export declare function pickDefaultVoiceProvider(input: PickDefaultVoiceProviderInput): DefaultVoiceProviderResult;
+export declare function pickDefaultVoiceProvider(
+  input: PickDefaultVoiceProviderInput,
+): DefaultVoiceProviderResult;
 //# sourceMappingURL=voice-provider-defaults.d.ts.map

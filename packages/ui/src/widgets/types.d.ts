@@ -4,7 +4,16 @@ import type { PluginInfo } from "../api/client-types-config";
 import type { UiSpec } from "../config/ui-spec";
 import type { ActivityEvent } from "../hooks/useActivityEvents";
 /** Named injection points where plugin widgets can render. */
-export type WidgetSlot = "chat-sidebar" | "chat-inline" | "wallet" | "browser" | "heartbeats" | "character" | "settings" | "nav-page" | "automations";
+export type WidgetSlot =
+  | "chat-sidebar"
+  | "chat-inline"
+  | "wallet"
+  | "browser"
+  | "heartbeats"
+  | "character"
+  | "settings"
+  | "nav-page"
+  | "automations";
 /**
  * Serializable widget metadata declared by a plugin.
  *
@@ -14,26 +23,26 @@ export type WidgetSlot = "chat-sidebar" | "chat-inline" | "wallet" | "browser" |
  * components.
  */
 export interface PluginWidgetDeclaration extends CorePluginWidgetDeclaration {
-    /** Declarative UI spec — fallback for plugins without bundled React components. */
-    uiSpec?: UiSpec;
+  /** Declarative UI spec — fallback for plugins without bundled React components. */
+  uiSpec?: UiSpec;
 }
 /** Props passed to every widget React component. */
 export interface WidgetProps {
-    pluginId: string;
-    pluginState?: PluginInfo;
-    events?: ActivityEvent[];
-    clearEvents?: () => void;
+  pluginId: string;
+  pluginState?: PluginInfo;
+  events?: ActivityEvent[];
+  clearEvents?: () => void;
 }
 /**
  * Client-side registration mapping a widget declaration to a React component.
  * Bundled plugins register these statically; third-party plugins rely on uiSpec.
  */
 export interface WidgetRegistration {
-    /** Must match `PluginWidgetDeclaration.id`. */
-    declarationId: string;
-    /** Must match `PluginWidgetDeclaration.pluginId`. */
-    pluginId: string;
-    /** The React component to render. */
-    Component: ComponentType<WidgetProps>;
+  /** Must match `PluginWidgetDeclaration.id`. */
+  declarationId: string;
+  /** Must match `PluginWidgetDeclaration.pluginId`. */
+  pluginId: string;
+  /** The React component to render. */
+  Component: ComponentType<WidgetProps>;
 }
 //# sourceMappingURL=types.d.ts.map

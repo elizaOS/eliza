@@ -10,19 +10,24 @@ import { type ModelOption } from "@elizaos/shared";
 import { type OnboardingOptions } from "../../api";
 import { type CloudModelSchema } from "./cloud-model-schema";
 export interface CloudModelConfig {
-    modelOptions: OnboardingOptions["models"] | null;
-    setModelOptions: (options: OnboardingOptions["models"]) => void;
-    initializeFromConfig: (cfg: Record<string, unknown>, elizaCloudEnabledCfg: boolean) => void;
-    cloudModelSchema: CloudModelSchema | null;
-    largeModelOptions: ModelOption[];
-    currentLargeModel: string;
-    modelValues: {
-        values: Record<string, unknown>;
-        setKeys: Set<string>;
-    };
-    modelSaving: boolean;
-    modelSaveSuccess: boolean;
-    handleModelFieldChange: (key: string, value: unknown) => void;
+  modelOptions: OnboardingOptions["models"] | null;
+  setModelOptions: (options: OnboardingOptions["models"]) => void;
+  initializeFromConfig: (
+    cfg: Record<string, unknown>,
+    elizaCloudEnabledCfg: boolean,
+  ) => void;
+  cloudModelSchema: CloudModelSchema | null;
+  largeModelOptions: ModelOption[];
+  currentLargeModel: string;
+  modelValues: {
+    values: Record<string, unknown>;
+    setKeys: Set<string>;
+  };
+  modelSaving: boolean;
+  modelSaveSuccess: boolean;
+  handleModelFieldChange: (key: string, value: unknown) => void;
 }
-export declare function useCloudModelConfig(onSaveError: (prefix: string, err: unknown) => void): CloudModelConfig;
+export declare function useCloudModelConfig(
+  onSaveError: (prefix: string, err: unknown) => void,
+): CloudModelConfig;
 //# sourceMappingURL=useCloudModelConfig.d.ts.map

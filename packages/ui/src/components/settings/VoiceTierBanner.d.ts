@@ -15,14 +15,20 @@ export type VoiceDeviceTier = "MAX" | "GOOD" | "OKAY" | "POOR";
 export declare const VOICE_DEVICE_TIERS: readonly VoiceDeviceTier[];
 export declare const DEFAULT_VOICE_DEVICE_TIER: VoiceDeviceTier;
 export interface VoiceTierBannerProps {
-    tier: VoiceDeviceTier;
-    /** Optional summary line (R9: "16 GB RAM · 8 cores · Apple Silicon"). */
-    summary?: string;
-    /** Compact layout for the settings card (no CTA group). */
-    compact?: boolean;
-    className?: string;
-    "data-testid"?: string;
+  tier: VoiceDeviceTier;
+  /** Optional summary line (R9: "16 GB RAM · 8 cores · Apple Silicon"). */
+  summary?: string;
+  /** Compact layout for the settings card (no CTA group). */
+  compact?: boolean;
+  className?: string;
+  "data-testid"?: string;
 }
-export declare function VoiceTierBanner({ tier, summary, compact, className, "data-testid": dataTestId, }: VoiceTierBannerProps): React.ReactElement;
+export declare function VoiceTierBanner({
+  tier,
+  summary,
+  compact,
+  className,
+  "data-testid": dataTestId,
+}: VoiceTierBannerProps): React.ReactElement;
 export default VoiceTierBanner;
 //# sourceMappingURL=VoiceTierBanner.d.ts.map

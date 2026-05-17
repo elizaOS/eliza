@@ -31,25 +31,31 @@ export declare function getAllOverlayApps(): OverlayApp[];
  * explicit context.
  */
 export interface OverlayAppAvailabilityContext {
-    platform?: string;
-    /**
-     * True when this is an AOSP Eliza-derived Android build (any fork). When
-     * unspecified, derived from `userAgent` by checking for the framework
-     * `ElizaOS/<tag>` marker.
-     */
-    aospAndroid?: boolean;
-    userAgent?: string;
+  platform?: string;
+  /**
+   * True when this is an AOSP Eliza-derived Android build (any fork). When
+   * unspecified, derived from `userAgent` by checking for the framework
+   * `ElizaOS/<tag>` marker.
+   */
+  aospAndroid?: boolean;
+  userAgent?: string;
 }
-export declare function getAvailableOverlayApps(context?: string | OverlayAppAvailabilityContext): OverlayApp[];
+export declare function getAvailableOverlayApps(
+  context?: string | OverlayAppAvailabilityContext,
+): OverlayApp[];
 /**
  * True when running on an AOSP Eliza-derived Android build (ElizaOS or any
  * white-label fork). Tests may pass an explicit context. Shared with
  * `catalog-loader.ts` so it can apply the same gate to installed/static apps,
  * not just overlay apps that happen to be registered already.
  */
-export declare function isAospAndroid(context?: OverlayAppAvailabilityContext): boolean;
+export declare function isAospAndroid(
+  context?: OverlayAppAvailabilityContext,
+): boolean;
 /** Check if an app name belongs to a registered overlay app. */
 export declare function isOverlayApp(name: string): boolean;
 /** Convert an OverlayApp to a RegistryAppInfo for the apps catalog. */
-export declare function overlayAppToRegistryInfo(app: OverlayApp): RegistryAppInfo;
+export declare function overlayAppToRegistryInfo(
+  app: OverlayApp,
+): RegistryAppInfo;
 //# sourceMappingURL=overlay-app-registry.d.ts.map

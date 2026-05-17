@@ -12,9 +12,11 @@
  */
 import * as React from "react";
 export interface VoicePrefixGateProps {
-    /** Called when the user completes or skips the voice prefix flow. */
-    onDone: () => void;
+  /** Called when the user completes or skips the voice prefix flow. */
+  onDone: () => void;
 }
-export declare function VoicePrefixGate({ onDone, }: VoicePrefixGateProps): React.ReactElement;
+export declare function VoicePrefixGate({
+  onDone,
+}: VoicePrefixGateProps): React.ReactElement;
 export default VoicePrefixGate;
 //# sourceMappingURL=VoicePrefixGate.d.ts.map

@@ -93,7 +93,13 @@ test("siwe: real button → real SDK → /auth/verify carries valid signature", 
       // implementation. The wallet-buttons code calls personal_sign with
       // the EIP-4361 message as a 0x-prefixed hex string of UTF-8 bytes.
       const provider = {
-        async request({ method, params }: { method: string; params?: unknown[] }) {
+        async request({
+          method,
+          params,
+        }: {
+          method: string;
+          params?: unknown[];
+        }) {
           if (method === "eth_requestAccounts" || method === "eth_accounts") {
             return [addr];
           }
@@ -103,9 +109,9 @@ test("siwe: real button → real SDK → /auth/verify carries valid signature", 
             // Decode the 0x-hex back to the UTF-8 message and POST it to a
             // sign-helper endpoint exposed by Playwright via window.__sign.
             const bytes = new Uint8Array(
-              (hex.startsWith("0x") ? hex.slice(2) : hex).match(/.{2}/g)?.map(
-                (b) => parseInt(b, 16),
-              ) ?? [],
+              (hex.startsWith("0x") ? hex.slice(2) : hex)
+                .match(/.{2}/g)
+                ?.map((b) => parseInt(b, 16)) ?? [],
             );
             const message = new TextDecoder().decode(bytes);
             const sigPromise = new Promise<string>((resolve) => {

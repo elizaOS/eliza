@@ -3,8 +3,9 @@
  * Displays a placeholder while the Monaco editor bundle is being loaded.
  */
 interface MonacoEditorSkeletonProps {
-    height?: string;
+  height?: string;
 }
-export declare function MonacoEditorSkeleton({ height, }: MonacoEditorSkeletonProps): import("react/jsx-runtime").JSX.Element;
-export {};
+export declare function MonacoEditorSkeleton({
+  height,
+}: MonacoEditorSkeletonProps): import("react/jsx-runtime").JSX.Element;
 //# sourceMappingURL=monaco-editor-skeleton.d.ts.map

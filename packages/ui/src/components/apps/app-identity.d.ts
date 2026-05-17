@@ -1,13 +1,15 @@
 import { type LucideIcon } from "lucide-react";
 export interface AppIdentitySource {
-    name: string;
-    displayName?: string | null;
-    category?: string | null;
-    icon?: string | null;
-    heroImage?: string | null;
-    description?: string | null;
+  name: string;
+  displayName?: string | null;
+  category?: string | null;
+  icon?: string | null;
+  heroImage?: string | null;
+  description?: string | null;
 }
-export declare function iconImageSource(icon: string | null | undefined): string | null;
+export declare function iconImageSource(
+  icon: string | null | undefined,
+): string | null;
 /**
  * Convert a heroImage/icon src into a runtime-safe URL.
  *
@@ -17,16 +19,26 @@ export declare function iconImageSource(icon: string | null | undefined): string
  */
 export declare function resolveRuntimeImageUrl(value: string): string;
 export declare function getAppCategoryIcon(app: AppIdentitySource): LucideIcon;
-export declare function AppIdentityTile({ app, active, className, size, imageOnly, }: {
-    app: AppIdentitySource;
-    active?: boolean;
-    className?: string;
-    size?: "sm" | "md";
-    imageOnly?: boolean;
+export declare function AppIdentityTile({
+  app,
+  active,
+  className,
+  size,
+  imageOnly,
+}: {
+  app: AppIdentitySource;
+  active?: boolean;
+  className?: string;
+  size?: "sm" | "md";
+  imageOnly?: boolean;
 }): import("react/jsx-runtime").JSX.Element;
-export declare function AppHero({ app, className, imageOnly, }: {
-    app: AppIdentitySource;
-    className?: string;
-    imageOnly?: boolean;
+export declare function AppHero({
+  app,
+  className,
+  imageOnly,
+}: {
+  app: AppIdentitySource;
+  className?: string;
+  imageOnly?: boolean;
 }): import("react/jsx-runtime").JSX.Element;
 //# sourceMappingURL=app-identity.d.ts.map

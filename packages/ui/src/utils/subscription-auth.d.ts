@@ -1,2 +1,5 @@
-export { formatSubscriptionRequestError, normalizeOpenAICallbackInput, } from "@elizaos/shared";
+export {
+  formatSubscriptionRequestError,
+  normalizeOpenAICallbackInput,
+} from "@elizaos/shared";
 //# sourceMappingURL=subscription-auth.d.ts.map

@@ -1,5 +1,7 @@
 export interface StateTutorialConnectorsProps {
-    onContinue: () => void;
+  onContinue: () => void;
 }
-export declare function StateTutorialConnectors(props: StateTutorialConnectorsProps): React.JSX.Element;
+export declare function StateTutorialConnectors(
+  props: StateTutorialConnectorsProps,
+): React.JSX.Element;
 //# sourceMappingURL=StateTutorialConnectors.d.ts.map

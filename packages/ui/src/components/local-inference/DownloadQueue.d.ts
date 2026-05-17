@@ -1,8 +1,12 @@
-import type { CatalogModel, DownloadJob } from "../../api/client-local-inference";
+import type {
+  CatalogModel,
+  DownloadJob,
+} from "../../api/client-local-inference";
+
 interface DownloadQueueProps {
-    downloads: DownloadJob[];
-    catalog: CatalogModel[];
-    onCancel: (modelId: string) => void;
+  downloads: DownloadJob[];
+  catalog: CatalogModel[];
+  onCancel: (modelId: string) => void;
 }
 /**
  * Global view of all in-flight downloads. The SSE stream already removes
@@ -10,6 +14,9 @@ interface DownloadQueueProps {
  * active/queued/failed jobs. Failures stick around until a new download
  * for the same model supersedes them.
  */
-export declare function DownloadQueue({ downloads, catalog, onCancel, }: DownloadQueueProps): import("react/jsx-runtime").JSX.Element;
-export {};
+export declare function DownloadQueue({
+  downloads,
+  catalog,
+  onCancel,
+}: DownloadQueueProps): import("react/jsx-runtime").JSX.Element;
 //# sourceMappingURL=DownloadQueue.d.ts.map
