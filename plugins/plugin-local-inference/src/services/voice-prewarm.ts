@@ -1,9 +1,8 @@
 import { logger } from "@elizaos/core";
 import { localInferenceEngine } from "./engine";
 
-let activeVoicePrewarm:
-	| { modelId: string; promise: Promise<boolean> }
-	| null = null;
+let activeVoicePrewarm: { modelId: string; promise: Promise<boolean> } | null =
+	null;
 
 export function shouldPrewarmLocalVoiceStack(modelId: string): boolean {
 	return /^eliza-1(?:-|$)/.test(modelId);
