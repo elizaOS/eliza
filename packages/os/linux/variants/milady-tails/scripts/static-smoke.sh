@@ -40,6 +40,9 @@ sh -n \
     tails/config/chroot_local-includes/usr/local/lib/elizaos/start-milady-user \
     tails/config/chroot_local-includes/usr/local/lib/elizaos/update-health-check \
     tails/config/chroot_local-includes/usr/local/lib/elizaos/update-manager \
+    tails/config/chroot_local-includes/usr/local/bin/tails-backup \
+    tails/config/chroot_local-includes/usr/local/lib/tails-report-disk-ioerrors \
+    tails/config/chroot_local-includes/usr/local/lib/thunderbird \
     tails/config/chroot_local-includes/usr/local/lib/persistent-storage/on-activated-hooks/MiladyData/10-clean-runtime-state \
     tails/config/chroot_local-includes/usr/local/lib/persistent-storage/on-activated-hooks/MiladyData/20-restart-milady \
     tails/config/chroot_local-includes/usr/local/lib/persistent-storage/on-deactivated-hooks/MiladyData/20-restart-milady
@@ -56,7 +59,17 @@ python3 - \
     tails/config/chroot_local-includes/usr/local/lib/elizaos/elizaos-webkit-shell \
     tails/config/chroot_local-includes/usr/local/bin/electrum \
     tails/config/chroot_local-includes/usr/local/bin/tails-about \
-    tails/config/chroot_local-includes/usr/local/bin/tails-upgrade-frontend-wrapper <<'PY'
+    tails/config/chroot_local-includes/usr/local/bin/tails-upgrade-frontend-wrapper \
+    tails/config/chroot_local-includes/usr/lib/python3/dist-packages/tailsgreeter/ui/main_window.py \
+    tails/config/chroot_local-includes/usr/lib/python3/dist-packages/tca/ui/main_window.py \
+    tails/config/chroot_local-includes/usr/lib/python3/dist-packages/tails_installer/gui.py \
+    tails/config/chroot_local-includes/usr/lib/python3/dist-packages/tps/device.py \
+    tails/config/chroot_local-includes/usr/local/lib/tails-low-ram-notify-user \
+    tails/config/chroot_local-includes/usr/local/lib/tails-uefi-ca-notify-user \
+    tails/config/chroot_local-includes/usr/local/lib/tails-virt-notify-user \
+    tails/config/chroot_local-includes/usr/local/lib/additional-software/asp-handle-package-changes \
+    tails/config/chroot_local-includes/usr/local/lib/additional-software/asp-install \
+    tails/config/chroot_local-includes/usr/local/lib/additional-software/asp-update-config <<'PY'
 import py_compile
 import sys
 import tempfile
@@ -170,6 +183,10 @@ grep -q 'WEBSITE_LOCAL_PATH = "/usr/share/doc/elizaos/website"' \
     tails/config/chroot_local-includes/usr/lib/python3/dist-packages/tailslib/website.py
 grep -q 'file:///usr/share/doc/elizaos/website/doc.en.html' \
     tails/config/chroot_local-includes/usr/local/bin/tails-documentation
+grep -q 'file:///usr/share/doc/elizaos/website/' \
+    tails/config/chroot_local-includes/usr/lib/python3/dist-packages/tailsgreeter/ui/main_window.py
+grep -q '<property name="uri">doc.en.html#storage</property>' \
+    tails/config/chroot_local-includes/usr/share/tails/greeter/main.ui.in
 grep -q 'font-family: "Poppins"' \
     tails/config/chroot_local-includes/usr/share/doc/elizaos/website/doc.en.html
 grep -q '#0B35F1' \
@@ -220,6 +237,30 @@ then
     echo "Visible elizaOS branding still contains stale Tails/Milady strings." >&2
     exit 1
 fi
+if rg -n \
+    'Tails is up to date|This version of Tails|Restart Tails|Your Tails|Tails device|your Tails|restart Tails|when starting Tails|from Tails goes through|coming from a Tails user|Tails will|Tails failed|Tails couldn'\''t|improve Tails|Error Reading Data from Tails|reinstall Tails|tails\.net/doc|tails\.net/install|tails\.net/latest|tails\.net/gdm|tails\.net/ioerror|/usr/share/doc/tails/website' \
+    tails/config/chroot_local-includes/usr/src/iuk/lib/Tails/IUK/Frontend.pm \
+    tails/config/chroot_local-includes/usr/local/bin/tails-backup \
+    tails/config/chroot_local-includes/usr/local/bin/tails-security-check \
+    tails/config/chroot_local-includes/usr/local/bin/tails-upgrade-frontend-wrapper \
+    tails/config/chroot_local-includes/usr/local/lib/additional-software \
+    tails/config/chroot_local-includes/usr/local/lib/tails-gdm-error-message \
+    tails/config/chroot_local-includes/usr/local/lib/tails-low-ram-notify-user \
+    tails/config/chroot_local-includes/usr/local/lib/tails-uefi-ca-notify-user \
+    tails/config/chroot_local-includes/usr/local/lib/tails-report-disk-ioerrors \
+    tails/config/chroot_local-includes/usr/local/lib/tails-virt-notify-user \
+    tails/config/chroot_local-includes/usr/local/lib/polkit-policy-change-message \
+    tails/config/chroot_local-includes/usr/lib/python3/dist-packages/tailsgreeter/ui/main_window.py \
+    tails/config/chroot_local-includes/usr/lib/python3/dist-packages/tca/ui/main_window.py \
+    tails/config/chroot_local-includes/usr/share/tails/tca/main.ui.in \
+    tails/config/chroot_local-includes/usr/lib/python3/dist-packages/tails_installer/gui.py \
+    tails/config/chroot_local-includes/usr/share/tails-installer/tails-installer.ui.in \
+    tails/config/chroot_local-includes/usr/share/whisperback/whisperback.ui.in \
+    tails/config/binary_local-includes/isolinux/sorry32.txt
+then
+    echo "High-visibility inherited Tails strings still need elizaOS branding." >&2
+    exit 1
+fi
 launcher_paths=(
     tails/config/chroot_local-includes/usr/share/applications/tails-documentation.desktop
     tails/config/chroot_local-includes/usr/share/applications/tails-backup.desktop
@@ -257,6 +298,10 @@ grep -q '^Name=elizaOS$' \
     tails/config/chroot_local-includes/usr/share/applications/milady.desktop
 grep -q '^Icon=elizaos$' \
     tails/config/chroot_local-includes/usr/share/applications/milady.desktop
+grep -q '^StartupWMClass=elizaOS$' \
+    tails/config/chroot_local-includes/usr/share/applications/milady.desktop
+grep -q 'IMG_FOOTPRINTS = "/usr/share/pixmaps/elizaos.svg"' \
+    tails/config/chroot_local-includes/usr/lib/python3/dist-packages/tca/ui/main_window.py
 grep -q '^Icon=elizaos$' \
     tails/config/chroot_local-includes/usr/share/applications/org.boum.tails.PersistentStorage.desktop.in
 grep -q '<property name="icon-name">elizaos</property>' \

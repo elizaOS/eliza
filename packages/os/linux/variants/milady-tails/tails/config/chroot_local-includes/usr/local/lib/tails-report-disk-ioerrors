@@ -1,10 +1,10 @@
 #!/bin/sh
 
-title="$(gettext 'Error Reading Data from Tails USB Stick')"
+title="$(gettext 'Error Reading Data from elizaOS USB Stick')"
 problem="$(gettext 'The hardware of your USB stick is probably failing.')"
-recommendation="$(gettext 'We recommend that you reinstall Tails on a different USB stick.')"
+recommendation="$(gettext 'We recommend that you reinstall elizaOS on a different USB stick.')"
 
-persistence="$(gettext 'We recommend that you reinstall Tails on a different USB stick
+persistence="$(gettext 'We recommend that you reinstall elizaOS on a different USB stick
 and recover the data from your Persistent Storage as soon as possible.')"
 
 dismiss="$(gettext 'Dismiss')"

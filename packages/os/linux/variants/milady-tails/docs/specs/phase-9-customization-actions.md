@@ -36,7 +36,16 @@ amnesia → "heads up — resets to defaults next boot; say 'set up
 persistence' to make it stick." Implements the PLAN "persistence-aware"
 requirement once.
 
-## Action 1 — SHELL (with polkit gating)
+## Action 1 — SHELL (superseded security note)
+
+The earlier passwordless sudo/polkit direction below is not accepted for the
+current product security model. Production must route privileged package,
+service, network, and device operations through the elizaOS capability broker
+with named commands, exact argument schemas, user approval or enterprise
+policy, and audit events. Do not add passwordless `apt-get` sudoers for the
+desktop user.
+
+## Action 1 — SHELL (original implementation sketch)
 **File:** app/runtime action module for `SHELL`.
 `validate` **defers to `INSTALL_PACKAGE`** when install intent is present
 (returns false) so package installs keep going through the confirmation
@@ -71,8 +80,8 @@ session file in `/usr/share/xsessions/` or `/usr/share/wayland-sessions/`
 theme`, `make it dark`, etc. Distinct from `SET_WALLPAPER` — THEME is GTK
 theme + dotfiles, no image generation. `handler` writes `gsettings set
 org.gnome.desktop.interface gtk-theme/color-scheme` and/or
-`~/.config/gtk-{3,4}.0/settings.ini`. Curated theme set (ship
-`Adwaita-dark` + the elizaOS-branded dark theme from Phase 2). Writes to
+`~/.config/gtk-{3,4}.0/settings.ini`. Curated theme set should preserve the
+current blue/white elizaOS theme and may add optional dark variants later. Writes to
 `~/.config/milady/` (already in Phase 7's persistence dir list).
 
 ## Action 4 — NOTIFICATIONS

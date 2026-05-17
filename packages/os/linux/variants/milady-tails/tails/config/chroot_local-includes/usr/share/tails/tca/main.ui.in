@@ -105,7 +105,7 @@
         <property name="halign">start</property>
         <property name="label" translatable="yes">Bridges are secret Tor relays. Use a bridge as your first Tor relay if accessing Tor is blocked from where you are.
 
-You can use &lt;i&gt;obfs4&lt;/i&gt; and &lt;i&gt;WebTunnel&lt;/i&gt; bridges in Tails.
+You can use &lt;i&gt;obfs4&lt;/i&gt; and &lt;i&gt;WebTunnel&lt;/i&gt; bridges in elizaOS.
 </property>
         <property name="use-markup">True</property>
         <property name="wrap">True</property>
@@ -1031,7 +1031,7 @@ You can use &lt;i&gt;obfs4&lt;/i&gt; and &lt;i&gt;WebTunnel&lt;/i&gt; bridges in
                 <property name="visible">True</property>
                 <property name="can-focus">False</property>
                 <property name="halign">start</property>
-                <property name="label" translatable="yes">Tails failed to ask for a bridge based on your region.</property>
+                <property name="label" translatable="yes">elizaOS failed to ask for a bridge based on your region.</property>
                 <style>
                   <class name="step-error-header-text"/>
                 </style>
@@ -1491,7 +1491,7 @@ You can use &lt;i&gt;obfs4&lt;/i&gt; and &lt;i&gt;WebTunnel&lt;/i&gt; bridges in
         <property name="visible">True</property>
         <property name="can-focus">False</property>
         <property name="halign">start</property>
-        <property name="label" translatable="yes">Everything you do on the Internet from Tails goes through the Tor network.</property>
+        <property name="label" translatable="yes">Everything you do on the Internet from elizaOS goes through the Tor network.</property>
       </object>
       <packing>
         <property name="expand">False</property>
@@ -1609,9 +1609,9 @@ Tor relays are servers operated by different organizations and volunteers around
             <property name="halign">start</property>
             <property name="margin-start">36</property>
             <property name="margin-top">12</property>
-            <property name="label" translatable="yes">Tails will try different ways of connecting to Tor until it succeeds.
+            <property name="label" translatable="yes">elizaOS will try different ways of connecting to Tor until it succeeds.
 
-Someone monitoring your Internet connection could identify these attempts as coming from a Tails user.</property>
+Someone monitoring your Internet connection could identify these attempts as coming from an elizaOS user.</property>
             <property name="use-markup">True</property>
             <property name="wrap">True</property>
             <property name="max-width-chars">70</property>
@@ -1691,7 +1691,7 @@ Someone monitoring your Internet connection could identify these attempts as com
                 <property name="margin-start">24</property>
                 <property name="label" translatable="yes">Tor bridges are secret Tor relays. Use a bridge as your first Tor relay if connections to Tor are blocked, for example in some countries, by some public networks, or by some parental controls.
 
-Choose this option if you already know that you need a bridge. Otherwise, Tails will autodetect whether you need a bridge to connect to Tor from your local network.</property>
+Choose this option if you already know that you need a bridge. Otherwise, elizaOS will autodetect whether you need a bridge to connect to Tor from your local network.</property>
                 <property name="wrap">True</property>
                 <property name="max-width-chars">70</property>
                 <property name="xalign">0</property>
@@ -1799,7 +1799,7 @@ Choose this option if you already know that you need a bridge. Otherwise, Tails 
             <property name="halign">start</property>
             <property name="margin-start">36</property>
             <property name="margin-top">12</property>
-            <property name="label" translatable="yes">Tails will only connect to Tor after you configured a Tor bridge. Bridges are secret Tor relays that hide that you are connecting to Tor.
+            <property name="label" translatable="yes">elizaOS will only connect to Tor after you configured a Tor bridge. Bridges are secret Tor relays that hide that you are connecting to Tor.
 
 Our team is doing its best to help you connect to Tor using the most discreet types of Tor bridges.
 
@@ -1844,7 +1844,7 @@ You will have to do extra configuration if you don't know any Tor bridges yet, i
         <property name="visible">True</property>
         <property name="can-focus">True</property>
         <property name="halign">start</property>
-        <property name="label" translatable="yes">&lt;a href="doc/anonymous_internet/tor"&gt;Learn more about how Tails connects to Tor&lt;/a&gt;</property>
+        <property name="label" translatable="yes">&lt;a href="doc.en.html#privacy-mode"&gt;Learn more about how elizaOS connects to Tor&lt;/a&gt;</property>
         <property name="use-markup">True</property>
         <signal name="activate-link" handler="on_link_help_clicked" swapped="no"/>
       </object>
@@ -1899,7 +1899,7 @@ You will have to do extra configuration if you don't know any Tor bridges yet, i
             <property name="can-focus">False</property>
             <property name="halign">start</property>
             <property name="valign">start</property>
-            <property name="label" translatable="yes">Everything you do on the Internet from Tails goes through the Tor network.</property>
+            <property name="label" translatable="yes">Everything you do on the Internet from elizaOS goes through the Tor network.</property>
           </object>
           <packing>
             <property name="expand">False</property>
@@ -1952,13 +1952,13 @@ Tor relays are servers operated by different organizations and volunteers around
                 <property name="can-focus">False</property>
                 <property name="halign">start</property>
                 <property name="valign">start</property>
-                <property name="label" translatable="yes">Tails couldn't find any Wi-Fi interface on your computer. If your computer has a Wi-Fi interface, it might not work on Tails.
+                <property name="label" translatable="yes">elizaOS couldn't find any Wi-Fi interface on your computer. If your computer has a Wi-Fi interface, it might not work on elizaOS.
 
 To connect to the Internet you can try to:
 
- • Use an Ethernet cable instead of Wi-Fi. Wired interfaces work much more reliably than Wi-Fi in Tails.
+ • Use an Ethernet cable instead of Wi-Fi. Wired interfaces work much more reliably than Wi-Fi in elizaOS.
  • Use USB tethering to share the Wi-Fi or mobile data connection of your phone using a cable.
- • Buy a USB Wi-Fi adapter that works in Tails.
+ • Buy a USB Wi-Fi adapter that works in elizaOS.
                 </property>
                 <property name="wrap">True</property>
               </object>

@@ -630,7 +630,7 @@ class GreeterMainWindow(Gtk.Window, TranslatableWindow):
             index = localized_page.find("#")
             filename = localized_page[:index] if index > 0 else localized_page
 
-            if os.path.isfile("/usr/share/doc/tails/website/" + filename):
+            if os.path.isfile("/usr/share/doc/elizaos/website/" + filename):
                 return localized_page
             return page
 
@@ -644,7 +644,7 @@ class GreeterMainWindow(Gtk.Window, TranslatableWindow):
         # default browser (iceweasel) in T-G. If pygtk had a mechanism
         # like gtk's g_signal_handler_find() this could be dealt with
         # in a less messy way by just removing the default handler.
-        uri = "file:///usr/share/doc/tails/website/" + page
+        uri = "file:///usr/share/doc/elizaos/website/" + page
         logging.debug(f"Opening help window for {uri}")
         helpwindow = GreeterHelpWindow(uri)
         helpwindow.show()

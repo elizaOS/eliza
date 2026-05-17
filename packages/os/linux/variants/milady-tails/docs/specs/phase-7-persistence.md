@@ -88,7 +88,7 @@ exclude a subdir of a bind-mount), not a binding.
   LUKS-backed dir over `/home/amnesia/.eliza` *before the session starts*.
   Milady writes to `~/.eliza` — **exact same path**.
 
-The Milady app and the agent contain **zero persistence-aware
+The elizaOS app and the agent contain **zero persistence-aware
 branching** — the only difference is whether `/home/amnesia/.eliza` is a
 tmpfs dir or a bind-mount, invisible above the VFS layer. First-activation
 bootstrap (`binding.py` does `cp -a dest src` if the LUKS source is empty)

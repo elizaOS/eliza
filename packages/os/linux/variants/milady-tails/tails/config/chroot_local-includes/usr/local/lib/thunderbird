@@ -21,7 +21,7 @@ announce_migration_21375_1() {
     if python3 /usr/lib/python3/dist-packages/tailslib/migration.py "$MIGRATION_IDENTIFIER" &&
         [ "$(tails-ask-again "$MIGRATION_IDENTIFIER")" = "show" ]; then
         dialog_title=$(gettext "Thunderbird Migration")
-        dialog_text=$(gettext "Tails installed <i>Thunderbird</i> as additional software to improve its security.\n\n<i>Thunderbird</i> will no longer be included by default in Tails 7.8 (May 2026) and later.\n\n<a href='https://tails.net/doc/anonymous_internet/thunderbird/additional_software/'>Why is Tails installing <i>Thunderbird</i> as Additional Software?</a>")
+        dialog_text=$(gettext "elizaOS installed <i>Thunderbird</i> as additional software to improve its security.\n\n<i>Thunderbird</i> will no longer be included by default in elizaOS 7.8 (May 2026) and later.\n\n<a href='https://elizaos.ai/'>Learn more about elizaOS Additional Software.</a>")
         dialog_ok=$(gettext "Don't Show Again")
         dialog_cancel=$(gettext "Start Thunderbird")
         if zenity \

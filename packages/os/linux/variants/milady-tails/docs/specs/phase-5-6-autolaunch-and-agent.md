@@ -1,4 +1,4 @@
-# Phases 5 & 6 — Auto-launch Milady + wire the agent
+# Phases 5 & 6 — Auto-launch elizaOS + wire the agent
 
 Phase 5 makes the elizaOS app launch as the desktop. Phase 6 wires its
 agent / onboarding / local LLM. This doc is the integration design for
@@ -6,11 +6,11 @@ the Tails-based elizaOS Live variant.
 
 Paths: `TAILS = packages/os/linux/variants/milady-tails/tails`.
 
-Status as of 2026-05-16: Phase 5's OS-side launcher/supervisor overlay
-exists in source and is part of the current rebuild/test pass. Phase 6
-has the OS-side capability runner and launch env in place, but
-approval-gated package/network actions and production package boundaries
-are not release-complete.
+Status as of 2026-05-17: Phase 5's OS-side launcher/supervisor overlay
+exists in source and passed the normal QEMU app-service path on a prior
+artifact. Phase 6 has the OS-side capability runner and launch env in
+place, but approval-gated package/network actions and production package
+boundaries are not release-complete.
 
 ## Context established by research
 
@@ -21,7 +21,7 @@ are not release-complete.
 - **Tails' GNOME honors `/etc/xdg/autostart/`** (proof:
   `systemd-desktop-target.desktop` lives there). For a production-feeling
   AI OS, autostart is only the session trigger; a root-owned systemd
-  service is the supervisor that restarts Milady if it exits. No GDM
+  service is the supervisor that restarts elizaOS if it exits. No GDM
   patching.
 - **Tails already ships** `no-overview@fthx`, `disable-log-out`,
   `disable-user-switching` in its dconf — much of "GNOME shell defaults"
@@ -31,7 +31,7 @@ are not release-complete.
   GNOME session Tails already boots and starts the bundled app inside that
   session.
 
-## PHASE 5 — Auto-launch Milady on greeter exit
+## PHASE 5 — Auto-launch elizaOS on greeter exit
 
 Mechanism: a root-owned systemd path watches for the live user's session
 bus, then starts the elizaOS user services through a root-owned supervisor.
@@ -45,8 +45,8 @@ Files to add (under `TAILS/config/chroot_local-includes/`):
    `multi-user.target`; starts `milady.service` when `/run/user/1000/bus`
    appears.
 2. **`etc/systemd/system/milady.service`** — root-owned system service,
-   `User=amnesia`, `Restart=always`, `ExecStart=/usr/local/lib/run-with-user-env /usr/local/bin/milady`.
-   Normal `amnesia` can close the window, but the service relaunches it and
+   starts the live-user services through `/usr/local/lib/elizaos/milady-keeper`.
+   Normal `amnesia` can close/minimize the window, but the service relaunches it and
    the user cannot delete/disable this system unit without root.
 3. **`usr/local/bin/milady`** — canonical wrapper; refuses root/non-amnesia,
    pins `ELIZA_STATE_DIR=/home/amnesia/.eliza` and XDG dirs, exports
@@ -56,22 +56,22 @@ Files to add (under `TAILS/config/chroot_local-includes/`):
 5. **`etc/dconf/db/local.d/00_Tails_defaults`** — currently patched in place
    for elizaOS wallpaper/favorites while preserving Tails' existing
    `enabled-extensions`. If this is split later into a sibling
-   `00_Milady_defaults`, keep the same rule: do not clobber Tails'
+   `00_elizaOS_defaults`, keep the same rule: do not clobber Tails'
    extension list.
 6. **existing `20-dconf_update` chroot hook** — compiles the local dconf
    database.
 
-Window model: Milady should be a normal, movable GNOME window. It is not
+Window model: elizaOS should be a normal, movable GNOME window. It is not
 fullscreen, not a kiosk, and always-on because systemd supervises the
 process, not because the desktop is blocked. Users can still use Tor
 Browser, Files, Terminal, settings, and other Tails desktop tools.
 
 Conflict callouts: Tails locks `disable-log-out`/`disable-user-switching`
-(fine — Milady needs neither); `usb-protection=lockscreen` is fine (the
+(fine — elizaOS needs neither); `usb-protection=lockscreen` is fine (the
 persistence USB is the *boot* device, already trusted). Don't touch
 `/etc/gdm3/PostLogin/Default`.
 
-## PHASE 6 — Wire Milady's onboarding + agent
+## PHASE 6 — Wire elizaOS onboarding + agent
 
 ### App/runtime responsibilities
 - **Onboarding** — the bundled app should run the v36-style first-run
@@ -89,10 +89,10 @@ persistence USB is the *boot* device, already trusted). Don't touch
 ### What's elizaOS Live-specific
 This is **real integration work, not a quick edit**. The headline:
 
-1. **Agent host model** — *recommended (A): the Electrobun Milady app
+1. **Agent host model** — *recommended (A): the Electrobun elizaOS app
    hosts the agent in-process.* It runs inside the GNOME session and
    inherits `WAYLAND_DISPLAY`/`XDG_RUNTIME_DIR`/`DBUS_SESSION_BUS_ADDRESS`.
-   This matches "the desktop IS the Milady app" and **invalidates the
+   This matches "the desktop IS the elizaOS app" and **invalidates the
    "agent is detached under systemd, must rediscover the compositor"
    premise** behind older sway socket-globbing approaches — so most of it
    *simplifies* rather than needing GNOME reimplementation.
@@ -121,9 +121,9 @@ This is **real integration work, not a quick edit**. The headline:
 
 ### Local LLM / GPU
 Bake the GGUF to a milady path; the `milady.desktop` autostart sets
-`LOCAL_LARGE_MODEL` — or the full Milady app uses `@elizaos/plugin-local-inference`
-with its own Vulkan/CUDA profiles. The Phase-4 `milady-runtime.list`
-already has `libvulkan1` + `mesa-vulkan-drivers`; bake the GPU-enabled
+`LOCAL_LARGE_MODEL` — or the full elizaOS app uses `@elizaos/plugin-local-inference`
+with its own Vulkan/CUDA profiles. Runtime package support should include
+`libvulkan1` + `mesa-vulkan-drivers`; bake the GPU-enabled
 `node-llama-cpp` peer binary, not the CPU one.
 
 ### Must verify in QEMU (Phase 6 success criteria)

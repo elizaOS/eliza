@@ -26,7 +26,7 @@ class VirtNotifier:
             self.title = _("Warning: non-free virtual machine detected!")
         self.body = _(
             "Both the host operating system and the virtualization software "
-            "are able to monitor what you are doing in Tails. Only free "
+            "are able to monitor what you are doing in elizaOS. Only free "
             "software can be considered trustworthy, for both the host "
             "operating system and the virtualization software."
         )

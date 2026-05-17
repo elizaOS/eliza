@@ -704,7 +704,7 @@ class TPSPartition:
                     "Can't unmount Persistent Storage, some process is still"
                     " using it. Please close all applications that could"
                     " be accessing it and try again. If that doesn't work,"
-                    " restart Tails and try deleting the Persistent Storage"
+                    " restart elizaOS and try deleting the Persistent Storage"
                     " without unlocking it."
                 )
                 raise TargetIsBusyError(msg) from err

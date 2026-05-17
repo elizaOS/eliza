@@ -37,14 +37,14 @@ ERROR_MESSAGE = _(
     """<b>Not enough memory available to check for upgrades.</b>
 
 Make sure this system satisfies the requirements for running elizaOS.
-See file:///usr/share/doc/tails/website/doc/about/requirements.en.html
+See file:///usr/share/doc/elizaos/website/doc.en.html
 
 Try to restart elizaOS to check for upgrades again.
 
 Or do a manual upgrade.
 See {manual_upgrade_url}"""
 ).format(
-    manual_upgrade_url="https://tails.net/doc/upgrade#manual",
+    manual_upgrade_url="https://elizaos.ai/",
 )
 
 

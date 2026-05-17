@@ -38,6 +38,9 @@ Production replacement:
 - activate later app/runtime updates only through the signed update-manager path
 - remove generated stubs for required features by fixing the app dependency
   graph, not by hiding missing packages
+- make clean checkout builds explicit: `just milady-app` must stage the app
+  payload before `just build`/`just binary`; source-only smoke is expected to
+  pass without the ignored 2.5-2.9 GB payload, full smoke requires the stage
 
 The build-time prepare script is allowed only as a packaging adapter. It must
 stay idempotent and auditable, and every generated fallback must be declared in

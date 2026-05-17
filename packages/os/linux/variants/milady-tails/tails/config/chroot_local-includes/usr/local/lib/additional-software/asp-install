@@ -46,7 +46,7 @@ def upgrade_additional_packages():
             _("The check for upgrades of your additional software failed"),
             _(
                 "Please check your network connection, "
-                "restart Tails, or read the system log to "
+                "restart elizaOS, or read the system log to "
                 "understand the problem."
             ),
         )
@@ -58,7 +58,7 @@ def upgrade_additional_packages():
             _("The upgrade of your additional software failed"),
             _(
                 "Please check your network connection, "
-                "restart Tails, or read the system log to "
+                "restart elizaOS, or read the system log to "
                 "understand the problem."
             ),
         )

@@ -49,6 +49,26 @@ production release:
 None of these should be hidden. They should stay explicit in docs and
 checks until replaced.
 
+## Current Audit Findings
+
+The latest source audit found no new elizaOS-owned broad sudo rule beyond
+the checked `root-status` path, but it did find production blockers that
+must stay visible:
+
+- clean checkouts do not contain the staged app payload; a build must run
+  `just milady-app` before a full ISO build
+- app/runtime update materialization still needs a stronger no-follow,
+  root-owned quarantine/copy path before production updater use
+- update promotion health checks currently rely on unauthenticated local
+  loopback probes and need a stronger promotion token or root-owned state
+  handoff
+- Privacy Mode is not production-claimable for embedded browser/OAuth or
+  arbitrary external web surfaces until explicit proxy behavior is proven
+- production update keyring, SBOM, and provenance artifacts are still
+  release blockers in strict security smoke
+- generated optional-plugin stubs and live embedding fallback are demo
+  compatibility glue, not final production packaging
+
 ## Checked Security Policy
 
 The concrete policy lives in [`security-model.md`](./security-model.md).

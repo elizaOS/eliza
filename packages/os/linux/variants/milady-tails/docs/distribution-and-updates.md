@@ -32,8 +32,11 @@ The current branch is a demo/productization branch:
   a checked signed-runtime verifier foundation.
 - Static smoke checks are part of the demo gate and must pass before
   promotion.
-- A rebuilt ISO still has to pass QEMU greeter, desktop, app launch,
-  privacy, persistence, and real-USB validation before it is demo-complete.
+- A prior rebuilt ISO passed QEMU greeter/desktop/app-service validation and
+  guarded USB flash/readback. Current HEAD has source-only polish after that
+  artifact, so repeat rebuild/QEMU/USB readback before calling HEAD final.
+- Privacy behavior, real hardware USB boot, and real USB Persistent Storage
+  behavior still need validation before production claims.
 - Production release infrastructure is missing: release keys, manifest
   signing, artifact hosting, updater UI, app/runtime channel, model catalog,
   rollback tests, GUI flasher, SBOM/license automation, provenance

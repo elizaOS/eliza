@@ -22,12 +22,12 @@ turn-by-turn directions.
 |---|---|
 | **Phase 0 — Scaffold** | ✅ Done |
 | **Phase 1 — Base ISO builds + boots** | ✅ Done — base image builds and boots through QEMU via `-cdrom` |
-| **Phase 2 — elizaOS system branding** | 🔨 Source implemented; final rebuilt-ISO visual pass in progress |
-| **Phase 3 — Privacy mode** | 🔨 Source implemented; needs rebuilt-ISO network/Tor validation |
-| **Phase 4 — Bake elizaOS app** | 🔨 App payload staged + install hook/package list implemented; needs rebuilt-ISO runtime validation |
-| **Phase 5 — Autolaunch** | 🔨 Desktop/systemd wrapper implemented; needs boot validation |
+| **Phase 2 — elizaOS system branding** | ✅ Source implemented; QEMU visual path passed on prior artifact; latest polish needs rebuild |
+| **Phase 3 — Privacy mode** | 🔨 Source implemented; needs current-HEAD network/Tor validation |
+| **Phase 4 — Bake elizaOS app** | ✅ App payload/install path QEMU-passed on prior artifact; clean checkout still must run `just milady-app` before a full build |
+| **Phase 5 — Autolaunch** | ✅ Desktop/systemd wrapper QEMU-passed on prior artifact |
 | **Phase 6 — Agent/broker** | 🔨 OS broker/env path implemented; approval-gated privileged actions still need hardening |
-| **Phase 7 — Persistence** | 🔨 Tails Persistent Storage row/hooks implemented; needs persistence validation |
+| **Phase 7 — Persistence** | 🔨 Tails Persistent Storage row/hooks implemented; real USB persistence validation still pending |
 | **Phases 8–9** | 📋 Spec/backlog ([`docs/specs/`](./docs/specs/)), not release-complete |
 | **Phases 10–11** | ⏳ Not started |
 
@@ -43,7 +43,8 @@ What exists right now:
   product hardening plan for distribution, updates, production readiness,
   and the demo debt that still blocks a real release.
 - **elizaOS OS-branding overlays** for boot menus, Plymouth, greeter,
-  dark GNOME defaults, wallpaper, identity strings, and Tails attribution.
+  light blue/white GNOME defaults, wallpaper, identity strings, and Tails
+  attribution.
 - The **elizaOS desktop app** builds and is staged into the Tails
   overlay. The ISO install hook copies it to `/opt/milady`, fixes
   permissions, and removes the staging copy. `/opt/milady` is an internal
@@ -54,8 +55,10 @@ What exists right now:
   sudo only for `root-status`; package/network mutation is deferred until an
   approval-gated policy layer exists.
 - Privacy-mode, autolaunch, and `~/.eliza` Persistent Storage overlays are
-  implemented locally. A low-CPU full rebuild/test pass is the current gate
-  for calling the demo complete.
+  implemented locally. QEMU has proven the normal greeter/desktop/app path
+  on a prior ISO, and USB flash/readback passed for that same artifact. The
+  current gate is rebuilding HEAD, re-running QEMU, then validating real USB
+  boot, persistence, and privacy behavior.
 - The old root-level usbeliza Linux prototype was removed from this branch;
   this variant is the active Linux distro path.
 
@@ -105,10 +108,10 @@ feature loss. Phase 8 builds the harness that proves this. Until the
 rebuilt ISO passes QEMU and real-USB validation, the matrix is an
 acceptance target, not production evidence.
 
-The one **known v1.0 gap**: Electrobun's CEF Chromium WebView doesn't
-auto-inherit the SOCKS proxy. In Privacy Mode, the elizaOS agent path is
-intended to route through Tor, but Chromium *windows* may leak until
-Electrobun injects an explicit proxy setting. Documented in
+Known **v1.0 privacy gap**: embedded browser/OAuth surfaces are not
+production-claimable in Privacy Mode until explicit proxy behavior is
+proven. The live OS routing exists, but the app/browser layer still needs
+validation and possibly runtime proxy injection. Documented in
 `docs/privacy-mode-v1-gap.md`. Closing this is v1.1 work.
 
 ---
@@ -312,8 +315,8 @@ elizaOS product surface, with speed/provider caveats documented.
 Goal: `/opt/milady/` exists in the chroot, contains a runnable binary.
 
 **Spec:** [`docs/specs/phase-4-bake-milady-app.md`](./docs/specs/phase-4-bake-milady-app.md)
-— the real (fragile) build sequence, the `9100-install-milady` hook
-design, and the `ldd`-derived `milady-runtime.list`.
+— the real build sequence, the `9100-install-milady` hook design, and the
+runtime-package validation direction.
 
 - [x] `just milady-app` recipe — builds the current desktop app package on the host
   (the build needs the `eliza`-first install + `setup-upstreams.mjs` +
@@ -323,11 +326,14 @@ design, and the `ldd`-derived `milady-runtime.list`.
 - [x] `tails/config/chroot_local-hooks/9100-install-milady` — installs to
   `/opt/milady/`, guards `version.json`, fixes perms incl. `chrome-sandbox`
   setuid, then `rm -rf`'s the staging copy (critical for ISO size)
-- [x] `tails/config/chroot_local-packageslists/milady-runtime.list` — the
-  CEF/Electrobun runtime libs (NOT `libwebkit2gtk-4.1` — Electrobun bundles
-  its own CEF)
+- [x] Runtime package support lives in `tails-common.list` plus the staged
+  app bundle. There is no committed `milady-runtime.list` in the current
+  tree; production should replace this with a generated, audited package
+  manifest instead of stale docs.
 - [x] Static `usr/share/applications/milady.desktop`
-- [ ] Build ISO, boot, launch the elizaOS app, confirm chat UI renders
+- [x] Build ISO, boot, launch the elizaOS app, confirm app services in QEMU
+  on the prior validated artifact
+- [ ] Repeat for current HEAD after the latest branding/docs polish
 
 ⚠ **Top risk**: the app tree is ~2.9 GB uncompressed (`eliza-dist/` alone is
 2.2 GB) — much larger than first estimated. The resulting ISO could be
@@ -355,10 +361,12 @@ supervision plus live-user services.
 - [x] `/usr/local/bin/milady` — pins `ELIZA_STATE_DIR=/home/amnesia/.eliza`
   plus XDG dirs in the launch env and uses a lock to avoid duplicate app
   instances
-- [x] `etc/dconf/db/local.d/00_Tails_defaults` — dark theme, wallpaper,
+- [x] `etc/dconf/db/local.d/00_Tails_defaults` — light elizaOS theme, wallpaper,
   disable GNOME welcome dialog (don't clobber Tails' `enabled-extensions`)
 - [x] chroot hook runs `dconf update`
-- [ ] Verify in QEMU: boot → greeter → Start → GNOME → elizaOS app
+- [x] Verify in QEMU on prior artifact: boot → greeter → Start → GNOME →
+  elizaOS app/services
+- [ ] Repeat for current HEAD
 
 ---
 
@@ -444,7 +452,9 @@ flow, `OPEN_TERMINAL`, `SET_WALLPAPER`).
 
 ## Phase 10 — Bare-metal USB validation ⏳ NOT STARTED
 
-- [ ] Write ISO to real USB via `dd`
+- [x] Write ISO to real USB with guarded writer and readback verification
+  for prior artifact
+- [ ] Repeat USB write/readback for current HEAD
 - [ ] Boot on real hardware (2–3 machines: Intel, AMD, NVIDIA GPU)
 - [ ] Verify all Phase 1–9 features work bare-metal
 - [ ] Verify persistence flow on a real USB stick
@@ -507,11 +517,13 @@ install UX (Calamares vs. an elizaOS app flow), and the Tails community
 pulse on the derivative. **Planned target: v2.0**, after v1.0 ships and
 real users tell us what they want. **For now: don't add it.**
 
-### Chromium WebView proxy patches (v1.1)
+### Embedded web/OAuth proxy patches (v1.1)
 
-Closes the Privacy-Mode-Chromium-leak gap. Patch Electrobun to inject
-`--proxy-server=socks5://127.0.0.1:9050` into Chromium launch flags
-when `elizaos.privacy=on`. Likely an upstream PR to Electrobun.
+Closes the Privacy Mode embedded-web gap. Patch the active app shell/runtime
+to inject an explicit Tor proxy into any external web/OAuth surface when
+`elizaos.privacy=on`. If CEF/Electrobun is active, that likely means
+`--proxy-server=socks5://127.0.0.1:9050`; if WebKit is active, it needs the
+equivalent WebKit/network-context proof.
 
 ### Runtime privacy toggle (v1.2 or later)
 
@@ -549,8 +561,9 @@ the product.
    PR maintainers may push back; submodule pattern is the fallback.
 7. **Tor blocking cloud APIs** — Anthropic/OpenAI often refuse Tor exit
    IPs. In Privacy Mode cloud chat may fail; local LLM still works.
-8. **Chromium proxy gap (v1.0)** — WebView windows can leak in Privacy
-   Mode. Real security gap, targeted for v1.1.
+8. **Embedded web/OAuth proxy gap (v1.0)** — live OS routing exists, but
+   embedded browser/OAuth surfaces are not production-claimable in Privacy
+   Mode until explicit proxy behavior is proven.
 9. **Cold-boot RAM attacks** — theoretical threat against amnesia. Tails'
    `memlockd` zeros RAM on shutdown; we keep it.
 
