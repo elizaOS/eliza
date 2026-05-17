@@ -49,6 +49,80 @@ production release:
 None of these should be hidden. They should stay explicit in docs and
 checks until replaced.
 
+## Current Audit Findings
+
+The latest source audit found no new elizaOS-owned broad sudo rule beyond
+the checked `root-status` path, but it did find production blockers that
+must stay visible:
+
+- clean checkouts do not contain the staged app payload; a build must run
+  `just milady-app` before a full ISO build
+- app/runtime update materialization still needs a stronger no-follow,
+  root-owned quarantine/copy path before production updater use
+- update promotion health checks currently rely on unauthenticated local
+  loopback probes and need a stronger promotion token or root-owned state
+  handoff
+- Privacy Mode is not production-claimable for embedded browser/OAuth or
+  arbitrary external web surfaces until explicit proxy behavior is proven
+- production update keyring, SBOM, and provenance artifacts are still
+  release blockers in strict security smoke
+- generated optional-plugin stubs and live embedding fallback are demo
+  compatibility glue, not final production packaging
+
+## AI OS Product Direction
+
+It is accurate to describe elizaOS Live as a Tails-derived live USB Linux
+distribution. The product ambition is larger: a portable agentic AI OS with
+the elizaOS app as the home surface and the normal Linux desktop still
+available underneath.
+
+The current branch already has the right foundation for the demo:
+
+- branded live USB boot, greeter, wallpaper, and desktop identity
+- bundled elizaOS app/runtime baked into the image as the factory fallback
+- root-owned supervision with normal app/UI work running as `amnesia`
+- narrow capability broker instead of broad app root
+- Tails-native encrypted Persistent Storage integration
+- guarded USB writer and readback verification
+- signed app/runtime update architecture foundation
+- model/update/security/release docs and smoke checks
+
+The production product should add these first:
+
+- **Trust cockpit:** one place showing storage mode, Privacy Mode, model
+  route, network route, app/runtime version, update status, and permissions.
+- **Permissioned root actions:** package, network, service, device, and
+  recovery operations through the broker only, with user approval or
+  enterprise policy and audit events.
+- **Signed model catalog:** onboarding can choose cloud sign-in, local-only
+  mode, or a signed Eliza-1/local model download with hashes, license,
+  hardware requirements, and mirror policy.
+- **Fast app/runtime updates:** signed bundles stored in encrypted
+  persistence, verified and materialized into a root-owned runtime store,
+  with rollback to the baked `/opt/milady` factory runtime.
+- **AI development packs:** optional signed packs for PyTorch, CUDA/ROCm,
+  compilers, notebooks, and heavier ML tooling. Do not bake PyTorch into the
+  base image; it is too large and too hardware-specific for every USB.
+- **Model-aware routing:** local/cloud/Tor/direct choice based on privacy
+  mode, hardware, RAM, battery, model availability, and provider policy.
+- **Sandboxed app builder:** generated apps run in constrained user
+  sandboxes and never inherit root or secrets by default.
+- **Enterprise controls:** update rings, mirrors, allowed-model policy,
+  plugin allowlists, fleet evidence, recovery workflows, and deprovisioning.
+
+Clear near-term wins before marketing this as a production AI OS:
+
+1. Rebuild current HEAD and QEMU-test that exact ISO.
+2. Flash/readback the rebuilt ISO and boot it on real hardware.
+3. Prove Persistent Storage create/unlock/delete on a real USB.
+4. Prove Privacy Mode behavior for agent, renderer, embedded browser, and
+   OAuth surfaces.
+5. Replace demo runtime staging with deterministic signed app artifacts.
+6. Harden update materialization with no-follow copy semantics or a
+   root-owned quarantine.
+7. Generate and publish release SBOM, license bundle, provenance, checksums,
+   signatures, and known-gaps notes.
+
 ## Checked Security Policy
 
 The concrete policy lives in [`security-model.md`](./security-model.md).
@@ -68,9 +142,12 @@ strict mode:
 ELIZAOS_SECURITY_STRICT=1 scripts/security-smoke.sh
 ```
 
-Strict mode treats inherited broad sudoers, missing production update keyring,
-and missing SBOM/provenance artifacts as blockers. The USB writer has a
-signature-verification path, but production still needs a real release keyring.
+Strict mode treats unexpected broad sudoers, missing production update keyring,
+and missing SBOM/provenance artifacts as blockers. The inherited Tails broad
+sudoers rules are explicitly reviewed in
+[`inherited-tails-sudoers-review.md`](./inherited-tails-sudoers-review.md) and
+must not grow silently. The USB writer has a signature-verification path, but
+production still needs a real release keyring.
 
 ## Root Capability Boundary
 
@@ -97,9 +174,11 @@ Current checked policy:
 - package installation, service mutation, network mutation, disk writes, and
   arbitrary command execution are not broker capabilities
 
-Known production finding: inherited Tails sudoers for Persistent Storage and
-IUK updates contains broad internal authority. elizaOS does not add to it, but
-enterprise release needs an explicit accept/mitigate decision.
+Known production finding: inherited Tails sudoers for Persistent Storage,
+Greeter, Tor Browser, IUK updates, and WhisperBack contains broad internal
+authority. elizaOS does not add to it; the current accept/mitigate decision is
+documented in the inherited sudoers review. Enterprise release still needs an
+external audit of that inherited trust boundary.
 
 ## Persistence and Update Boundaries
 
