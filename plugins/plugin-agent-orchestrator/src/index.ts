@@ -287,9 +287,12 @@ const SELF_HEAL_REPLACEMENT =
 /**
  * Strip the `<emoji> [label] ` prefix from a progress line so it reads
  * cleanly when posted into a per-label thread (the thread name already
- * carries the label). Exported for unit tests; not a public API.
+ * carries the label). `⚠️` and `⏸️` are 2-codepoint sequences (base +
+ * U+FE0F variation selector), so they cannot live inside a `[...]`
+ * character class — express each emoji as its own alternation branch.
+ * Exported for unit tests; not a public API.
  */
-const PROGRESS_PREFIX_REGEX = /^([💬⏳⚠️⏸️✅❌🚀])\s+\[[^\]]+\]\s+/u;
+const PROGRESS_PREFIX_REGEX = /^(💬|⏳|⚠️|⏸️|✅|❌|🚀)\s+\[[^\]]+\]\s+/u;
 export function stripProgressLabelPrefix(text: string): string {
   return text.replace(PROGRESS_PREFIX_REGEX, "$1 ");
 }
@@ -765,16 +768,9 @@ function registerProgressHook(runtime: IAgentRuntime): () => void {
         // The thread name IS the label — repeating `[label]` in the body
         // is redundant. Strip the emoji-prefixed `[label]` marker so the
         // thread reads as clean prose: `💬 [foo] Reading file...` becomes
-        // `💬 Reading file...`. NOTE: `⚠️` and `⏸️` are 2-codepoint
-        // sequences (base + U+FE0F variation selector), so they cannot
-        // live inside a `[...]` character class — that would only match
-        // a single codepoint and leave the variation selector behind,
-        // silently failing to strip the bracket for those two prefixes.
-        // Express each emoji as its own alternation branch instead.
-        const threadText = text.replace(
-          /^(💬|⏳|⚠️|⏸️|✅|❌|🚀)\s+\[[^\]]+\]\s+/u,
-          "$1 ",
-        );
+        // `💬 Reading file...`. See PROGRESS_PREFIX_REGEX above for the
+        // (subtle) reason this can't use a `[...]` character class.
+        const threadText = stripProgressLabelPrefix(text);
         await runtime.postToThreadOnTarget(target, state.thread, {
           text: threadText,
           source: "sub_agent_progress",

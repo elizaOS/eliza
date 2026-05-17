@@ -2460,11 +2460,11 @@ export const tasksAction: Action & {
     // and let per-subaction validation handle appropriateness — regex
     // matching on message text is fragile across plurals, languages, and
     // paraphrases.
+    // `hasService` is a required method on `IAgentRuntime` (see
+    // packages/core/src/types/runtime.ts) — no need to type-guard it.
     const hasAcpReady =
-      typeof runtime.hasService === "function"
-        ? runtime.hasService("ACP_SUBPROCESS_SERVICE") ||
-          runtime.hasService("ACP_SERVICE")
-        : Boolean(getAcpService(runtime));
+      runtime.hasService("ACP_SUBPROCESS_SERVICE") ||
+      runtime.hasService("ACP_SERVICE");
     if (!hasAcpReady) return false;
     // Sub-agent task_complete events are routed back through the runtime as
     // synthetic inbound messages. The response evaluator handles most cases,
