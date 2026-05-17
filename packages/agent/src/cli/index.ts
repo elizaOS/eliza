@@ -61,8 +61,12 @@ export async function runAutonomousCli(
   }
 
   if (command === "serve" || command === "start") {
+    const keepAlive = setInterval(() => {}, 1 << 30);
     const { startEliza } = await import("../runtime/index.ts");
-    const runtime = await startEliza({ serverOnly: true });
+    const runtime = await startEliza({ serverOnly: true }).catch((error) => {
+      clearInterval(keepAlive);
+      throw error;
+    });
     // AOSP-only post-boot wiring. The upstream `startEliza` does not
     // register local-inference handlers — that lives in the
     // `@elizaos/app-core` runtime wrapper, which the mobile agent

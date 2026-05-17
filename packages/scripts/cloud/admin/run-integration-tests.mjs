@@ -15,6 +15,25 @@ const preloadPath = path.join(integrationRoot, "preload.ts");
 const serverPreload = preloadPath;
 const dbPreload = preloadPath;
 const timeoutMs = process.env.CLOUD_INTEGRATION_TIMEOUT_MS || "120000";
+const apiPort = process.env.API_DEV_PORT || "8787";
+const baseUrl =
+  process.env.TEST_API_BASE_URL?.trim() ||
+  process.env.TEST_BASE_URL?.trim() ||
+  `http://localhost:${apiPort}`;
+const integrationEnv = {
+  ...process.env,
+  API_DEV_PORT: apiPort,
+  TEST_API_BASE_URL: baseUrl,
+  TEST_BASE_URL: baseUrl,
+  TEST_SERVER_SCRIPT: process.env.TEST_SERVER_SCRIPT || "dev",
+  PLAYWRIGHT_TEST_AUTH: process.env.PLAYWRIGHT_TEST_AUTH || "true",
+  PLAYWRIGHT_TEST_AUTH_SECRET:
+    process.env.PLAYWRIGHT_TEST_AUTH_SECRET || "playwright-local-auth-secret",
+  AGENT_TEST_BOOTSTRAP_ADMIN: process.env.AGENT_TEST_BOOTSTRAP_ADMIN || "true",
+  PAYOUT_STATUS_SKIP_LIVE_BALANCE: process.env.PAYOUT_STATUS_SKIP_LIVE_BALANCE || "1",
+  CRON_SECRET: process.env.CRON_SECRET || "test-cron-secret",
+  INTERNAL_SECRET: process.env.INTERNAL_SECRET || "test-internal-secret",
+};
 
 const isolatedServerFiles = new Set(["packages/cloud-api/test/e2e/agent-token-flow.test.ts"]);
 const isolatedDbFiles = new Set([]);
@@ -50,7 +69,7 @@ function run(label, preload, files) {
     ["test", "--max-concurrency=1", "--preload", preload, ...files, "--timeout", timeoutMs],
     {
       cwd: repoRoot,
-      env: process.env,
+      env: integrationEnv,
       stdio: "inherit",
     },
   );
@@ -65,10 +84,6 @@ function run(label, preload, files) {
 }
 
 async function isServerHealthy() {
-  const baseUrl =
-    process.env.TEST_API_BASE_URL?.trim() ||
-    process.env.TEST_BASE_URL?.trim() ||
-    "http://localhost:8787";
   try {
     const response = await fetch(`${baseUrl}/api/health`, {
       signal: AbortSignal.timeout(1_000),
@@ -106,10 +121,10 @@ async function ensureServer() {
     throw new Error("[cloud-integration] Configured API server is not healthy");
   }
 
-  console.log("[cloud-integration] START API dev server at http://localhost:8787");
-  const child = spawn(bun, ["run", process.env.TEST_SERVER_SCRIPT || "dev"], {
+  console.log(`[cloud-integration] START API dev server at ${baseUrl}`);
+  const child = spawn(bun, ["run", integrationEnv.TEST_SERVER_SCRIPT], {
     cwd: cloudApiRoot,
-    env: process.env,
+    env: integrationEnv,
     stdio: "inherit",
   });
   await waitForServer(child);
