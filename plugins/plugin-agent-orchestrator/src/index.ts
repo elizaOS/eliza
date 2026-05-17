@@ -449,6 +449,83 @@ function registerProgressHook(runtime: IAgentRuntime): void {
     lastText: string;
   };
   const progressBySession = new Map<string, ProgressState>();
+  // Cache threads by (source, roomId, label) so a rate-limit retry, a
+  // mid-flight crash recovery, or a follow-up spawn for the same logical
+  // project reuses the existing thread instead of creating a duplicate.
+  // Without this, "plein de threads" with identical labels stack up in the
+  // main channel — moltbot's thread-bindings-policy serves the same role.
+  const threadCacheByKey = new Map<string, ThreadHandle>();
+  const threadCacheKey = (
+    source: string,
+    roomId: string,
+    label: string,
+  ): string => `${source}::${roomId}::${label}`;
+
+  // Cross-platform outgoing-message middleware. When the planner-loop's REPLY
+  // action (or any other plugin) calls `runtime.sendMessageToTarget` for a
+  // target where the orchestrator has an active per-label thread, redirect
+  // the post into the thread instead of the main channel. This keeps the
+  // planner's chatter (and any hallucinated paraphrasing of past errors)
+  // out of the main channel's conversation memory — which is exactly the
+  // surface the next turn's recentMessages provider reads. Capability-gated:
+  // a connector without `post_to_thread` keeps the message on its main
+  // surface. Internal orchestrator posts (sub-agent narration + completion
+  // summary) opt out via `content.source === "sub_agent_progress"` /
+  // `"sub_agent_complete"` since those drive the routing themselves.
+  type SendMessageFn = (typeof runtime)["sendMessageToTarget"];
+  type RuntimeWithMarker = IAgentRuntime & {
+    __orchestratorSendWrapped?: boolean;
+  };
+  const taggedRuntime = runtime as RuntimeWithMarker;
+  if (
+    !taggedRuntime.__orchestratorSendWrapped &&
+    typeof runtime.sendMessageToTarget === "function"
+  ) {
+    const originalSend: SendMessageFn = runtime.sendMessageToTarget.bind(
+      runtime,
+    ) as SendMessageFn;
+    const INTERNAL_SOURCES = new Set([
+      "sub_agent_progress",
+      "sub_agent_complete",
+    ]);
+    const wrapped: SendMessageFn = async (target, content) => {
+      const contentSource =
+        typeof (content as { source?: unknown })?.source === "string"
+          ? (content as { source: string }).source
+          : undefined;
+      if (contentSource && INTERNAL_SOURCES.has(contentSource)) {
+        return originalSend(target, content);
+      }
+      const source =
+        typeof target.source === "string" ? target.source.trim() : "";
+      const roomId = typeof target.roomId === "string" ? target.roomId : "";
+      if (!source || !roomId) return originalSend(target, content);
+      const prefix = `${source}::${roomId}::`;
+      const matches: ThreadHandle[] = [];
+      for (const [key, thread] of threadCacheByKey) {
+        if (key.startsWith(prefix)) matches.push(thread);
+        if (matches.length > 1) break;
+      }
+      // Ambiguous (≥2 active threads in this room) ⇒ fall back to main
+      // channel so we never guess wrong. Zero matches ⇒ main channel.
+      if (matches.length !== 1) return originalSend(target, content);
+      if (typeof runtime.postToThreadOnTarget !== "function") {
+        return originalSend(target, content);
+      }
+      try {
+        const result = await runtime.postToThreadOnTarget(
+          target,
+          matches[0]!,
+          content,
+        );
+        return result ?? undefined;
+      } catch {
+        return originalSend(target, content);
+      }
+    };
+    runtime.sendMessageToTarget = wrapped;
+    taggedRuntime.__orchestratorSendWrapped = true;
+  }
   const POST_DEBOUNCE_MS = 1500;
   const MESSAGE_SILENCE_FLUSH_MS = 1500;
   // Edit-in-place targets get a snappier cadence: each tick is just a Haiku
@@ -661,37 +738,53 @@ function registerProgressHook(runtime: IAgentRuntime): void {
         if (canReact) {
           void bestEffortReact(target, platformId, "🚀");
         }
-        // Create the per-session thread off the spawn message. Narration
-        // flows here from the next emit; the main channel stays clean.
+        // Resolve the per-(source,roomId,label) thread. Cache hit ⇒ reuse
+        // (rate-limit retry / spawn-after-crash for the same logical project
+        // posts into the same existing thread). Cache miss ⇒ create new one
+        // off this spawn message. Narration flows there from the next emit;
+        // the main channel stays clean.
         if (canThread && typeof runtime.createThreadOnTarget === "function") {
-          try {
-            const thread = await runtime.createThreadOnTarget(target, {
-              parentMessageId: platformId,
-              name: sessionLabel,
-            });
+          const cacheKey = threadCacheKey(
+            target.source,
+            target.roomId,
+            sessionLabel,
+          );
+          let thread = threadCacheByKey.get(cacheKey);
+          if (!thread) {
+            try {
+              thread = await runtime.createThreadOnTarget(target, {
+                parentMessageId: platformId,
+                name: sessionLabel,
+              });
+              threadCacheByKey.set(cacheKey, thread);
+            } catch (err: unknown) {
+              runtime.logger?.warn?.(
+                {
+                  src: "@elizaos/plugin-agent-orchestrator",
+                  sessionId,
+                  err: err instanceof Error ? err.message : String(err),
+                },
+                "createThread failed; falling back to main-channel edits",
+              );
+            }
+          }
+          if (thread) {
             newState.thread = thread;
-            // Post the first narration chunk into the thread immediately so
-            // the user sees the substantive content on the same turn as the
-            // spawn ack — no silent gap before the first heartbeat.
             if (
               text !== initialText &&
               typeof runtime.postToThreadOnTarget === "function"
             ) {
-              await runtime.postToThreadOnTarget(target, thread, {
-                text,
-                source: "sub_agent_progress",
-              });
-              newState.lastText = text;
+              try {
+                await runtime.postToThreadOnTarget(target, thread, {
+                  text,
+                  source: "sub_agent_progress",
+                });
+                newState.lastText = text;
+              } catch {
+                // best-effort: cached thread may have been archived; on next
+                // call we'll attempt re-create lazily via the same path.
+              }
             }
-          } catch (err: unknown) {
-            runtime.logger?.warn?.(
-              {
-                src: "@elizaos/plugin-agent-orchestrator",
-                sessionId,
-                err: err instanceof Error ? err.message : String(err),
-              },
-              "createThread failed; falling back to main-channel edits",
-            );
           }
         }
       }
@@ -927,18 +1020,21 @@ function registerProgressHook(runtime: IAgentRuntime): void {
           return;
         }
         case "error": {
-          // Suppress the Discord ⚠️ post for auto-resolved error classes.
-          // Health-check and pre-flight emit `failureKind: "session_state_lost"`
-          // when an orphaned/dead session is reconciled — the orchestrator
-          // self-heals, the provider surfaces the terminal status to the
-          // planner, and the next turn's reply is synthesised from that. A
-          // ⚠️ post here pollutes the conversation memory with phrasing the
-          // planner LLM paraphrases on later turns ("restart the daemon",
-          // "clear stale sessions", "daemon is wedged" — recency-bias
-          // hallucinations against rules in the provider). Skipping the post
-          // removes the source of pollution.
+          // Deny-by-default: only post `⚠️` for failure kinds that the USER
+          // must act on (auth, rate-limit, etc.). Everything else is
+          // self-heal / retry territory — the orchestrator handles it and
+          // the provider surfaces the live state to the planner; a Discord
+          // post would only pollute conversation memory with phrasings the
+          // LLM paraphrases as obsolete "restart / reconnect" advice on
+          // later turns.
           const failureKind = (data as { failureKind?: string })?.failureKind;
-          if (failureKind === "session_state_lost") return;
+          const USER_ACTION_KINDS = new Set([
+            "auth",
+            "login_required",
+            "blocked",
+            "rate_limit",
+          ]);
+          if (!failureKind || !USER_ACTION_KINDS.has(failureKind)) return;
           const msg = (data as { message?: string })?.message ?? "error";
           text = `⚠️ [${label}] ${msg}`;
           break;
