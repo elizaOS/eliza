@@ -175,7 +175,7 @@ export default defineConfig({
   },
   test: {
     setupFiles: ["./vitest.setup.ts"],
-    pool: "vmThreads",
+    pool: "forks",
     server: {
       deps: {
         // Inline packages that use React through Vite's transform pipeline so
