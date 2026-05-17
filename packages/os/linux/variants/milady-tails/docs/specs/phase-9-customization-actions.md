@@ -36,7 +36,16 @@ amnesia → "heads up — resets to defaults next boot; say 'set up
 persistence' to make it stick." Implements the PLAN "persistence-aware"
 requirement once.
 
-## Action 1 — SHELL (with polkit gating)
+## Action 1 — SHELL (superseded security note)
+
+The earlier passwordless sudo/polkit direction below is not accepted for the
+current product security model. Production must route privileged package,
+service, network, and device operations through the elizaOS capability broker
+with named commands, exact argument schemas, user approval or enterprise
+policy, and audit events. Do not add passwordless `apt-get` sudoers for the
+desktop user.
+
+## Action 1 — SHELL (legacy sketch, not accepted as-is)
 **File:** app/runtime action module for `SHELL`.
 `validate` **defers to `INSTALL_PACKAGE`** when install intent is present
 (returns false) so package installs keep going through the confirmation
@@ -46,8 +55,11 @@ matches a curated verb→command-template allowlist (not free-form shell —
 charset-validated args, array-spawn, no shell metacharacters). `handler`
 shells via an injectable `spawnFn`.
 
-**Polkit gating — the load-bearing new system surface** (build-time
-config in the variant's live-build overlay, NOT the agent):
+This sketch is useful only as app-side intent parsing. The privileged
+execution half is superseded by the capability-broker policy above.
+
+**Rejected legacy polkit/sudoers direction** (do not implement without a new
+approved broker policy):
 - `TAILS/config/chroot_local-includes/etc/polkit-1/rules.d/org.milady.shell.rules`
   — grants the desktop user `Result.YES` for the relevant systemd /
   packagekit actions (pattern from Tails' `org.boum.tails.additional-software.rules`).
@@ -71,8 +83,8 @@ session file in `/usr/share/xsessions/` or `/usr/share/wayland-sessions/`
 theme`, `make it dark`, etc. Distinct from `SET_WALLPAPER` — THEME is GTK
 theme + dotfiles, no image generation. `handler` writes `gsettings set
 org.gnome.desktop.interface gtk-theme/color-scheme` and/or
-`~/.config/gtk-{3,4}.0/settings.ini`. Curated theme set (ship
-`Adwaita-dark` + the elizaOS-branded dark theme from Phase 2). Writes to
+`~/.config/gtk-{3,4}.0/settings.ini`. Curated theme set should preserve the
+current blue/white elizaOS theme and may add optional dark variants later. Writes to
 `~/.config/milady/` (already in Phase 7's persistence dir list).
 
 ## Action 4 — NOTIFICATIONS
@@ -95,8 +107,10 @@ notification options) + the "amnesia vs persistent" note.
 
 ## Ordered implementation checklist
 1. Runtime customization helper — `persistenceState()` + the reply helper.
-2. The polkit `.rules` + sudoers `.toml` overlay files + the `milady-shell-runner` wrapper.
-3. `actions/shell.ts` — defers to `INSTALL_PACKAGE` on install intent.
+2. Define broker-backed privileged commands with exact schemas, approval
+   prompts, audit events, and tests; do not add passwordless apt sudoers.
+3. `actions/shell.ts` — defers to `INSTALL_PACKAGE` on install intent and
+   calls only approved broker commands for privileged work.
 4. `actions/set-desktop.ts` — composes `install-package-flow`, writes `~/.dmrc` additively.
 5. `actions/theme.ts` — GTK theme + `~/.config/gtk-*` / `~/.config/milady/`.
 6. `actions/notifications.ts` — composes `install-package-flow`, writes notification config.

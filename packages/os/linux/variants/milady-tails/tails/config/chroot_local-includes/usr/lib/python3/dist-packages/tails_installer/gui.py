@@ -452,7 +452,7 @@ class TailsInstallerWindow(Gtk.ApplicationWindow):
             self.force_reinstall = False
             self.__button_start.set_label(_("Upgrade"))
             self.__help_link.set_label(_("Manual Upgrade Instructions"))
-            self.__help_link.set_uri("https://tails.net/doc/upgrade/")
+            self.__help_link.set_uri("https://elizaos.ai/")
             if device["is_device_big_enough_for_reinstall"]:
                 self.force_reinstall_button_available = True
                 self.__button_force_reinstall.set_visible(True)
@@ -466,11 +466,11 @@ class TailsInstallerWindow(Gtk.ApplicationWindow):
             self.force_reinstall_button_available = False
             self.__button_force_reinstall.set_visible(False)
             self.__help_link.set_label(_("Installation Instructions"))
-            self.__help_link.set_uri("https://tails.net/install/")
+            self.__help_link.set_uri("https://elizaos.ai/")
             if self.opts.clone_persistent_storage_requested:
                 self.__help_link.set_label(_("Backup Instructions"))
                 self.__help_link.set_uri(
-                    "https://tails.net/doc/persistent_storage/backup/"
+                    "file:///usr/share/doc/elizaos/website/doc.en.html#storage"
                 )
         self.update_clone_persistent_storage_check_button()
         self.update_start_button()
@@ -626,7 +626,7 @@ class TailsInstallerWindow(Gtk.ApplicationWindow):
                         "%(dl_url)s"
                     ) % {
                         "pretty_name": pretty_name,
-                        "dl_url": "https://tails.net/install/download",
+                        "dl_url": "https://elizaos.ai/",
                     }
                     self.status(message)
                     continue

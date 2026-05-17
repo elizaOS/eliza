@@ -1,8 +1,11 @@
-# Desktop Heavy Regression Inventory
+# Desktop Release Heavy Inventory
 
-This inventory records desktop release coverage that is intentionally kept out of the required PR gate because it needs packaged apps, OS integration, hardware, live services, or manual confirmation. The release-contract check validates these descriptions against `packages/app-core/test/regression-matrix.json`.
+This inventory tracks desktop-heavy checks referenced by
+`packages/app-core/test/regression-matrix.json`. These are not omitted; they
+are deferred from the required PR gate because they need packaged app lifecycle,
+hardware, host OS integration, network services, or a fuller desktop harness.
 
-## Heavy Or Environment-Dependent Coverage
+## Heavy Checks
 
 - gameOpenWindow — full round-trip with openGameWindow mock (needs canvas mock update)
 - Abnormal window position (off-screen) is corrected to safe defaults (e2e)
@@ -34,7 +37,10 @@ This inventory records desktop release coverage that is intentionally kept out o
 - Main window has native vibrancy effect on macOS (e2e)
 - Context menu closes when clicking elsewhere (e2e)
 
-## Manual Checklist Cross-References
+## Manual Checklist Cross-Reference
+
+The release contract also requires these manual-only descriptions to stay
+visible in a desktop inventory source:
 
 - Left-clicking the tray icon opens the companion window (visual)
 - Right-clicking the tray icon shows the tray context menu (visual)
@@ -44,3 +50,9 @@ This inventory records desktop release coverage that is intentionally kept out o
 - Permission status reflects actual system state (OS interaction)
 - Context menu appears at cursor position (visual)
 - Power state reflects actual battery status (hardware)
+
+## Release Use
+
+Run the applicable subset for every release candidate. Record skipped items
+with a reason, because these checks are intentionally outside deterministic PR
+CI rather than out of scope.

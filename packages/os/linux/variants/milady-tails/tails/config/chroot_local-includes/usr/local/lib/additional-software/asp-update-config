@@ -92,11 +92,11 @@ def handle_thunderbird_migration():
             notify(
                 title=_("Thunderbird Migration"),
                 body=_(
-                    "Tails failed to install Thunderbird as additional software. "
+                    "elizaOS failed to install Thunderbird as additional software. "
                     "Thunderbird will no longer be included by default in "
-                    "Tails 7.8 (May 2026) and later.",
+                    "elizaOS 7.8 (May 2026) and later.",
                 ),
-                documentation_target="doc/anonymous_internet/thunderbird/additional_software",
+                documentation_target="doc.en.html#storage",
                 urgent=True,
             )
             raise
@@ -138,11 +138,11 @@ def handle_thunderbird_migration():
         notify(
             title=_("Thunderbird Migration"),
             body=_(
-                "Tails failed to install Thunderbird as additional software. "
+                "elizaOS failed to install Thunderbird as additional software. "
                 "Thunderbird will no longer be included by default in "
-                "Tails 7.8 (May 2026) and later.",
+                "elizaOS 7.8 (May 2026) and later.",
             ),
-            documentation_target="doc/anonymous_internet/thunderbird/additional_software",
+            documentation_target="doc.en.html#storage",
             urgent=True,
         )
         raise

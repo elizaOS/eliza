@@ -39,7 +39,7 @@
                     <property name="visible">True</property>
                     <child>
                       <object class="GtkImage" id="image1">
-                        <property name="pixbuf">/usr/share/pixmaps/tails-persistent-storage.svg</property>
+                        <property name="pixbuf">/usr/share/pixmaps/elizaos.svg</property>
                         <property name="visible">True</property>
                       </object>
                       <packing>

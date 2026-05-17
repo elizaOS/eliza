@@ -7,9 +7,10 @@ engineering docs, not as the primary user-facing brand.
 
 **Same greeter window every boot** — the only thing that changes is
 whether an encrypted persistence partition has been created on the USB.
-Status as of 2026-05-17: this is the intended v1 behavior. Source overlays
-exist, but QEMU and real-USB validation are still required before every row
-below is marked proven.
+Status as of 2026-05-17: this is the intended v1 behavior. A prior ISO
+proved the normal QEMU greeter/desktop/app-service path. Current HEAD needs
+rebuild/retest, and real-USB persistence/privacy validation is still required
+before every storage and privacy row below is marked proven.
 
 ---
 
@@ -98,9 +99,10 @@ Steps:
    selected system settings.
 2. User clicks **Start elizaOS**.
 3. GNOME desktop loads.
-4. The elizaOS app auto-launches as the always-on home window — **already
-   configured from last time**. Chat history is there. Built apps are there. Downloaded
-   models are there. Wi-Fi connects automatically.
+4. The elizaOS app auto-launches as the always-on home window. Intended
+   persistent behavior: chat history is there, built apps are there,
+   downloaded models are there, and Wi-Fi connects automatically. This still
+   needs real USB validation.
 5. User continues working where they left off.
 6. Power off → encrypted partition seals automatically, USB now
    contains an encrypted blob.
@@ -175,7 +177,7 @@ and sealed. They just don't see it that session.
 
 ## What's intended to be identical across all four combos
 
-This is the target v1.0 contract. The current overlay still needs an ISO
+This is the target v1.0 contract. The current HEAD still needs an ISO
 rebuild plus QEMU/USB validation before these rows can be treated as
 verified behavior.
 
@@ -191,11 +193,11 @@ verified behavior.
 | MAC spoofing | ✓ identical (enabled by default, can toggle in greeter) |
 | Cloud APIs (Anthropic, OpenAI, etc.) | Intended, but provider blocks over Tor are expected |
 
-**The one v1.0 gap**: Chromium WebView windows may leak in Privacy
-Mode (CEF doesn't auto-inherit SOCKS proxy). The elizaOS agent path is
-intended to respect Tor, but if elizaOS opens a Chromium app window for an
-OAuth flow, that window may bypass Tor until the runtime is patched. This
-is a known security gap documented in `docs/privacy-mode-v1-gap.md`.
+**Known v1.0 gap**: embedded browser/OAuth windows are not yet
+production-claimable in Privacy Mode. The elizaOS agent path is intended to
+respect Tor, but any embedded browser shell needs explicit proxy proof
+before we market it as Tor-safe. This is documented in
+`docs/privacy-mode-v1-gap.md`.
 
 ---
 
@@ -249,7 +251,7 @@ Same USB, different decisions, different experiences.
 - Installing to internal disk (deferred — see PLAN.md § Deferred)
 - Runtime privacy toggle without reboot (deferred — boot-menu pick
   is enough for v1.0)
-- Closing the Chromium WebView proxy gap (deferred to v1.1)
+- Closing the embedded browser/OAuth proxy gap (deferred to v1.1)
 - Cross-distro packaging (.deb / .AppImage / Flatpak — post-v2.0)
 
 The v1.0 release is intentionally small: **a USB stick that boots into

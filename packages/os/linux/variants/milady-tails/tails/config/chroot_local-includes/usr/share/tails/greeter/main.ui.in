@@ -323,7 +323,7 @@
                         <property name="visible">True</property>
                         <property name="can-focus">False</property>
                         <property name="title" translatable="yes">Create Persistent Storage</property>
-                        <property name="icon-name">tails-persistent-storage</property>
+                        <property name="icon-name">elizaos</property>
                         <property name="subtitle" translatable="yes">Create and configure a Persistent Storage after starting elizaOS</property>
                         <child>
                           <object class="GtkBox" id="create_tps_row_box">
@@ -434,7 +434,7 @@
                     <property name="can-focus">True</property>
                     <property name="receives-default">True</property>
                     <property name="relief">none</property>
-                    <property name="uri">doc/persistent_storage/use.en.html</property>
+                    <property name="uri">doc.en.html#storage</property>
                     <signal name="activate-link" handler="cb_linkbutton_help_activate" swapped="no"/>
                     <child>
                       <object class="GtkImage" id="image_storage_help">

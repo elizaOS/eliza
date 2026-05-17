@@ -34,9 +34,9 @@ from gi.repository import Gdk, GdkPixbuf, Gtk, GLib, Pango  # noqa: E402
 
 MAIN_UI_FILE = "main.ui"
 CSS_FILE = "tca.css"
-IMG_FOOTPRINTS = "/usr/share/doc/tails/website/about/footprints.svg"
-IMG_RELAYS = "/usr/share/doc/tails/website/about/relays.svg"
-IMG_WALKIE = "/usr/share/doc/tails/website/about/walkie-talkie.svg"
+IMG_FOOTPRINTS = "/usr/share/pixmaps/elizaos.svg"
+IMG_RELAYS = "/usr/share/pixmaps/elizaos.svg"
+IMG_WALKIE = "/usr/share/pixmaps/elizaos.svg"
 IMG_SIDE: dict[str, str] = {
     "bridge": IMG_FOOTPRINTS,
     "hide": IMG_RELAYS,
@@ -1409,7 +1409,7 @@ class TCAMainWindow(
         )
         secondary = [
             _(
-                "Tails will continue connecting to Tor after you close the Tor Connection assistant.\n\n"
+                "elizaOS will continue connecting to Tor after you close the Tor Connection Assistant.\n\n"
                 "If connecting to Tor fails, you will have to wait again until the end of the progress bar to be able to troubleshoot your connection."
             )
         ]

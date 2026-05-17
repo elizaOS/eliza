@@ -1,12 +1,12 @@
-# Phase 4 — Bake the Milady Electrobun app into the ISO
+# Phase 4 — Bake the elizaOS desktop app into the ISO
 
 Goal: `/opt/milady/` exists in the chroot and contains a runnable binary.
 Paths are relative to `TAILS = packages/os/linux/variants/milady-tails/tails`.
 
-Status as of 2026-05-16: the host build recipe, staged payload,
-`9100-install-milady` hook, runtime package list, and desktop file exist
-in source. They still need rebuilt-ISO live runtime validation before
-Phase 4 is done.
+Status as of 2026-05-17: the host build recipe, staged payload,
+`9100-install-milady` hook, runtime support, and desktop file exist in
+source. A prior ISO passed the QEMU app-service path. Current HEAD still
+needs rebuild and repeat validation.
 
 ## 1. The Milady Linux build — the real (fragile) sequence
 
@@ -64,17 +64,19 @@ Steps:
 2. Verify the staged tree exists at `/usr/share/elizaos/milady-app/` (placed there via `chroot_local-includes` — see §4). Guard: `[ -d "$STAGE" ] || { echo "..." >&2; exit 1; }`.
 3. Install into `/opt/milady/`: `mkdir -p /opt/milady && cp -a "$STAGE"/. /opt/milady/` so `/opt/milady/bin/launcher` is the runnable binary. (Use `cp -a` of the whole tree — avoids per-file globbing; the tree has filenames with spaces, e.g. `bin/bun Helper`.)
 4. Guard `version.json`: `[ -f /opt/milady/Resources/version.json ]` — write a minimal one if absent (defensive; the build normally produces it).
-5. Ship the `.desktop` entry as a static `chroot_local-includes` file (cleaner than heredoc in the hook): `TAILS/config/chroot_local-includes/usr/share/applications/milady.desktop` with `Exec=/opt/milady/bin/launcher`, absolute `Icon=`, `StartupWMClass=Milady`. The hook just verifies it exists.
+5. Ship the `.desktop` entry as a static `chroot_local-includes` file (cleaner than heredoc in the hook): `TAILS/config/chroot_local-includes/usr/share/applications/milady.desktop` with `Exec=/usr/local/bin/milady`, `Icon=elizaos`, and `StartupWMClass=elizaOS`. The filename and wrapper stay `milady` until the app package is renamed.
 6. Permissions: `chmod 0755` the executables; **`chrome-sandbox`** needs `chown root:root && chmod 4755` (setuid) — or launch CEF with `--no-sandbox` if AppArmor blocks it (see §5).
 7. **`rm -rf "$STAGE"`** — critical, or the ~2.9 GB tree exists *twice* in the chroot before squashfs.
 
-The hook must NOT install runtime packages (that's `milady-runtime.list`), set up autostart (Phase 5), or touch `~/.eliza` (Phase 6).
+The hook must NOT download runtime packages, set up autostart (Phase 5), or touch `~/.eliza` (Phase 6).
 
-## 3. `milady-runtime.list`
+## 3. Runtime package support
 
-**Path:** `TAILS/config/chroot_local-packageslists/milady-runtime.list` —
-plain text, one Debian package per line (live-build auto-includes all
-`*.list` in that dir).
+The current tree does not contain a separate
+`TAILS/config/chroot_local-packageslists/milady-runtime.list`. Runtime
+support is captured in the base package list plus the staged app bundle.
+Production should replace this with a generated, audited runtime dependency
+manifest instead of stale hand-maintained package docs.
 
 The runtime libs CEF/Chromium links against (derived from `ldd` of the
 built `libcef.so` — **NOT** `libwebkit2gtk-4.1`; Electrobun bundles its
@@ -147,10 +149,14 @@ Linux release published yet — that's a v1.1 reproducibility path).
 
 1. Add the `just milady-app` recipe — the §1 build sequence + stage into `chroot_local-includes/usr/share/elizaos/milady-app/`. Done locally.
 2. `.gitignore` that staging path. Done locally.
-3. Create `TAILS/config/chroot_local-packageslists/milady-runtime.list` (§3). Done locally.
+3. Runtime support currently lives in `tails-common.list` plus the staged
+   app bundle; replace this with a generated audited runtime manifest before
+   production.
 4. Create `TAILS/config/chroot_local-includes/usr/share/applications/milady.desktop`. Done locally.
 5. Create `TAILS/config/chroot_local-hooks/9100-install-milady` (§2). Done locally.
 6. Make `just build` / `just binary` depend on `just milady-app`. Done locally.
-7. `just build` → `just boot` → verify `/opt/milady/bin/launcher` exists, Milady appears in the apps menu, clicking it renders the chat UI. Not yet run on the current overlay.
+7. `just build` → `just boot` → verify `/opt/milady/bin/launcher` exists,
+   elizaOS appears in the apps menu, and the app services start. Passed on a
+   prior artifact; repeat for current HEAD.
 8. `ldd` the installed `libcef.so` in the booted chroot; check `journalctl`/AppArmor for `DENIED` on the launcher + bun helpers; add missing packages.
 9. Re-measure the ISO size; update PLAN.md's size figure + document the budget.

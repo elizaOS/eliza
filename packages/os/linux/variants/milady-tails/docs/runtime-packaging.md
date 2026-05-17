@@ -10,6 +10,42 @@ The `9100-install-milady` chroot hook copies that tree to `/opt/milady`.
 The staged app is intentionally not slimmed in this step; the current goal is
 to make the bundled runtime auditable before any ISO build runs.
 
+This is not a post-boot injection path. The app is built before the ISO build,
+staged as a live-build overlay artifact, installed into the read-only root
+filesystem during the chroot hook phase, and launched from `/opt/milady` as the
+normal live user. The chroot hook may set ownership, permissions, metadata, and
+runtime compatibility defaults; it must not download packages, resolve Node
+dependencies, or mutate user data.
+
+## Review Decision
+
+Current status: acceptable for demo and release-candidate validation, not the
+final production packaging shape.
+
+The current path is clean enough for a working ISO demo because it has a single
+staged runtime root, root-owned install destination, manifest, validation
+script, and smoke coverage. It is still not the ideal enterprise artifact
+because the Electrobun runtime tree is large and the live overlay still carries
+generated compatibility stubs for optional packages.
+
+Production replacement:
+
+- build the desktop app in CI as a deterministic signed artifact
+- publish a runtime manifest with complete file inventory and package inventory
+- install the signed artifact into `/opt/milady` or a versioned root-owned
+  runtime store during image build
+- keep `/opt/milady` as the immutable factory fallback
+- activate later app/runtime updates only through the signed update-manager path
+- remove generated stubs for required features by fixing the app dependency
+  graph, not by hiding missing packages
+- make clean checkout builds explicit: `just milady-app` must stage the app
+  payload before `just build`/`just binary`; source-only smoke is expected to
+  pass without the ignored 2.5-2.9 GB payload, full smoke requires the stage
+
+The build-time prepare script is allowed only as a packaging adapter. It must
+stay idempotent and auditable, and every generated fallback must be declared in
+`Resources/app/elizaos-live-overlay-manifest.json`.
+
 ## Manifest
 
 `scripts/prepare-milady-app-overlay.mjs` writes:
