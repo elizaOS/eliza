@@ -136,10 +136,8 @@ export async function openDatabase(
     mode: encryption,
     readonly: false,
   });
-  const connection = (await CapacitorSQLite.open({
-    database: opts.name,
-    readonly: false,
-  })) as unknown as SQLiteDBConnection;
+  await CapacitorSQLite.open({ database: opts.name, readonly: false });
+  const connection = await CapacitorSQLite.retrieveConnection(opts.name, false);
   return new SqliteDatabaseImpl(opts.name, connection);
 }
 

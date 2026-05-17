@@ -74,7 +74,7 @@ let authSqlTablesPromise: Promise<AuthSqlTables> | undefined;
 async function getAuthSqlTables(): Promise<AuthSqlTables> {
   authSqlTablesPromise ??= import(
     "@elizaos/plugin-sql"
-  ) as unknown as Promise<AuthSqlTables>;
+  ) as Promise<AuthSqlTables>;
   return authSqlTablesPromise;
 }
 
