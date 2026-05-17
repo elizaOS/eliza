@@ -680,6 +680,8 @@ grep -q 'systemctl --global enable elizaos-renderer.service' \
     tails/config/chroot_local-hooks/52-update-systemd-units
 grep -q 'systemctl enable elizaos-update-verify.service' \
     tails/config/chroot_local-hooks/52-update-systemd-units
+grep -q 'systemctl enable elizaos-root-mode.service' \
+    tails/config/chroot_local-hooks/52-update-systemd-units
 grep -q 'Wants=.*elizaos-update-verify.service' \
     tails/config/chroot_local-includes/etc/systemd/system/milady.service
 grep -q 'Wants=.*elizaos-update-health-check.service' \
@@ -688,6 +690,12 @@ grep -q 'After=display-manager.service elizaos-update-verify.service' \
     tails/config/chroot_local-includes/etc/systemd/system/milady.service
 grep -q 'DirectoryMode=0755' \
     tails/config/chroot_local-includes/usr/lib/systemd/system/run-nosymfollow.mount.d/elizaos-root-mode.conf
+grep -q 'After=run-nosymfollow.mount' \
+    tails/config/chroot_local-includes/etc/systemd/system/elizaos-root-mode.service
+grep -q 'Before=sysinit.target basic.target dbus.service polkit.service gdm.service tails-persistent-storage.service' \
+    tails/config/chroot_local-includes/etc/systemd/system/elizaos-root-mode.service
+grep -q 'ExecStart=/bin/chmod 0755 / /run/nosymfollow' \
+    tails/config/chroot_local-includes/etc/systemd/system/elizaos-root-mode.service
 grep -q 'ExecStart=/usr/local/lib/elizaos/update-health-check' \
     tails/config/chroot_local-includes/etc/systemd/system/elizaos-update-health-check.service
 grep -q 'ELIZAOS_UPDATE_HEALTH_MARK_BAD_ON_TIMEOUT' \
