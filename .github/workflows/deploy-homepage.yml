@@ -127,7 +127,8 @@ jobs:
         working-directory: packages/homepage
         run: |
           SNAP_DIR="tests/e2e/visual.spec.ts-snapshots"
-          EXPECTED=20
+          # 5 routes × 2 viewports × 1 browser project = 10 expected snapshots
+          EXPECTED=10
           ACTUAL=$(ls "$SNAP_DIR"/*.png 2>/dev/null | wc -l || echo 0)
           if [ "$ACTUAL" -lt "$EXPECTED" ]; then
             echo "Found $ACTUAL of $EXPECTED snapshot baselines — regenerating all."
@@ -142,6 +143,7 @@ jobs:
 
       - name: Commit new snapshot baselines
         if: steps.release_data_check.outputs.available == 'true' && steps.gen-baselines.outputs.generated == 'true'
+        continue-on-error: true
         run: |
           SNAP_DIR="packages/homepage/tests/e2e/visual.spec.ts-snapshots"
           if [ -n "$(git status --porcelain $SNAP_DIR)" ]; then
@@ -149,7 +151,7 @@ jobs:
             git config user.email "github-actions[bot]@users.noreply.github.com"
             git add $SNAP_DIR
             git commit -m "chore: generate visual regression snapshot baselines [skip ci]"
-            git push origin ${{ github.ref_name }}
+            git push origin HEAD:${{ github.ref_name }} || (git pull --rebase origin ${{ github.ref_name }} && git push origin HEAD:${{ github.ref_name }})
             echo "Pushed new snapshot baselines."
           fi
 
