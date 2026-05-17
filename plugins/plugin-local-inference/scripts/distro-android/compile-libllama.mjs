@@ -55,10 +55,10 @@ import os from "node:os";
 import path from "node:path";
 import process from "node:process";
 import { fileURLToPath } from "node:url";
-import { loadBrandFromArgv } from "./brand-config.mjs";
+import { loadBrandFromArgv } from "../../../../packages/scripts/distro-android/brand-config.mjs";
 
 const here = path.dirname(fileURLToPath(import.meta.url));
-const repoRoot = path.resolve(here, "..", "..");
+const repoRoot = path.resolve(here, "..", "..", "..", "..");
 
 export const LLAMA_CPP_REF = "main";
 export const LLAMA_CPP_REMOTE = "https://github.com/elizaOS/llama.cpp.git";
@@ -76,6 +76,18 @@ export const ABI_TARGETS = [
     cmakeProcessor: "x86_64",
   },
 ];
+
+function failUnsupportedTarget(target) {
+  throw new Error(
+    `[compile-libllama] unsupported --target ${target}. ` +
+      `This legacy distro-android script only builds CPU libllama.so via ` +
+      `--abi <arm64-v8a|x86_64>. It does not wire DFlash/OmniVoice fused ` +
+      `artifacts or Android Vulkan backend shared objects, so refusing to ` +
+      `produce a CPU-only/basic libllama build for a requested target. Use ` +
+      `packages/app-core/scripts/aosp/compile-libllama.mjs for supported ` +
+      `android-*-cpu[-fused] targets.`,
+  );
+}
 
 function defaultAssetsDir(brand) {
   if (brand.androidAssetsDir) {
@@ -143,6 +155,10 @@ export function parseSubArgs(argv, brand) {
       }
       args.abis = [value];
       i += 1;
+    } else if (arg === "--target") {
+      failUnsupportedTarget(readFlagValue(arg, i));
+    } else if (arg.startsWith("--target=")) {
+      failUnsupportedTarget(arg.slice("--target=".length));
     } else if (arg === "--jobs" || arg === "-j") {
       const value = Number.parseInt(readFlagValue(arg, i), 10);
       if (!Number.isFinite(value) || value <= 0) {
@@ -157,6 +173,7 @@ export function parseSubArgs(argv, brand) {
         "Usage: node scripts/distro-android/compile-libllama.mjs [--brand-config <PATH>] " +
           "[--assets-dir <PATH>] [--cache-dir <PATH>] [--src-dir <PATH>] " +
           "[--abi <arm64-v8a|x86_64>] [--jobs <N>] [--skip-if-present]\n" +
+          "  --target is intentionally unsupported here; Vulkan/fused targets must fail closed.\n" +
           "  --src-dir <PATH>  Use an existing llama.cpp / buun-llama-cpp checkout instead\n" +
           "                    of cloning. The directory's HEAD is used as-is; LLAMA_CPP_REF\n" +
           "                    in this script is ignored.",

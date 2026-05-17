@@ -16,9 +16,10 @@
  *     mflux is skipped on Intel Macs.
  *   - **iOS**: `coreml` only. There is no sd-cpp on iOS — Core ML is
  *     the only sanctioned acceleration path.
- *   - **Linux + NVIDIA**: `sd-cpp` (CUDA build) only. TensorRT is
- *     Windows-only in the bundle plan; Linux NVIDIA users get the
- *     CUDA-built sd-cpp.
+ *   - **Linux + NVIDIA**: `sd-cpp` CUDA only when the sd-cpp probe,
+ *     binary manifest, help, or version output proves CUDA support.
+ *     Otherwise use `sd-cpp` CPU and let the loader emit an explicit
+ *     CUDA-missing fallback error if CUDA was requested elsewhere.
  *   - **Linux + AMD/Intel**: `sd-cpp --vulkan` → `sd-cpp` (CPU fallback).
  *   - **Linux + CPU**: `sd-cpp` (CPU).
  *   - **Windows + NVIDIA**: `tensorrt` → `sd-cpp` (CUDA) → `sd-cpp` (CPU).
@@ -51,6 +52,15 @@ export interface ImageGenRuntimeProfile {
 	 * platform=darwin+arch=arm64.
 	 */
 	gpu?: "nvidia" | "amd" | "intel" | "apple" | "none";
+	/**
+	 * sd-cpp binary capability evidence gathered from the onboarding probe,
+	 * bundle manifest, or a loader-side help/version check. GPU vendor alone
+	 * is not proof that the installed `sd` binary was built with CUDA.
+	 */
+	sdCpp?: {
+		accelerators?: readonly string[];
+		cudaCapable?: boolean;
+	};
 	/**
 	 * True when running inside the iOS Capacitor shell. We can't infer
 	 * from `process.platform` alone because Capacitor reports `"ios"`
@@ -140,10 +150,15 @@ export function selectImageGenBackends(
 	// accelerator order.
 	if (profile.platform === "linux") {
 		if (profile.gpu === "nvidia") {
-			return [
-				{ backendId: "sd-cpp", accelerator: "cuda" },
-				{ backendId: "sd-cpp", accelerator: "cpu" },
-			];
+			const sdCppCudaCapable =
+				profile.sdCpp?.cudaCapable === true ||
+				profile.sdCpp?.accelerators?.includes("cuda") === true;
+			return sdCppCudaCapable
+				? [
+						{ backendId: "sd-cpp", accelerator: "cuda" },
+						{ backendId: "sd-cpp", accelerator: "cpu" },
+					]
+				: [{ backendId: "sd-cpp", accelerator: "cpu" }];
 		}
 		if (profile.gpu === "amd" || profile.gpu === "intel") {
 			return [

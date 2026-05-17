@@ -22,10 +22,10 @@
 import { resolveDesktopApiPort } from "@elizaos/shared";
 
 export function resolveRpcAgentPort(
-	embeddedPort: number | null,
-	env: Record<string, string | undefined> = process.env,
+  embeddedPort: number | null,
+  env: Record<string, string | undefined> = process.env,
 ): number | null {
-	if (embeddedPort !== null && embeddedPort > 0) return embeddedPort;
-	const fromEnv = resolveDesktopApiPort(env);
-	return fromEnv > 0 ? fromEnv : null;
+  if (embeddedPort !== null && embeddedPort > 0) return embeddedPort;
+  const fromEnv = resolveDesktopApiPort(env);
+  return fromEnv > 0 ? fromEnv : null;
 }

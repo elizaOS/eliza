@@ -2,7 +2,7 @@
   "schema": "eliza.hf_dataset_upload_manifest.v1",
   "for_agent": "#46 publish",
   "target": {
-    "repo_id": "elizaos/eliza-1-0_6b-sft",
+    "repo_id": "elizaos/eliza-1-training",
     "repo_type": "dataset",
     "private_on_create": true,
     "license": "apache-2.0"
@@ -19,6 +19,6 @@
   "notes": [
     "Self-contained ChatML SFT dataset for the eliza-1-0_6b base. ~1.6k rows, ~0.75 MB total — small curated set, no real user PII (privacy filter ran; see manifest.json::privacy_filter).",
     "Hashes above are the committed files at build time (seed 20260511). If the FINETUNE agent #45 re-runs the builder, regenerate this manifest with scripts/build_eliza1_sft_0_6b.py and re-hash.",
-    "Existing publisher scripts/publish_dataset_to_hf.py is wired to data/final/; this dataset is small enough to push with `hf upload elizaos/eliza-1-0_6b-sft <source_dir> --repo-type dataset` or by adding a 'eliza1-sft-0_6b' bundle to that script's allowlist."
+    "Existing publisher scripts/publish_dataset_to_hf.py is wired to data/final/; this dataset is small enough to push under `sft/0_6b/` in `elizaos/eliza-1-training` or by adding an `eliza1-sft-0_6b` bundle to that script's allowlist."
   ]
 }

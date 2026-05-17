@@ -23,9 +23,9 @@
  *      the binary here on first activation of an image-gen tier).
  *
  * Availability is checked at load time by spawning the binary with
- * `--version`. Failure (ENOENT, non-zero exit, version-parse failure)
- * is reported as a structured `ImageGenBackendUnavailableError` so the
- * selector falls through to the next backend.
+ * `--version`. CUDA loads also require explicit capability evidence from
+ * an adjacent manifest, `--help`, or `--version`; a Linux NVIDIA GPU alone
+ * is not proof that the installed binary was compiled with CUDA.
  *
  * Accelerator flags (from `ImageGenLoadArgs.accelerator`):
  *
@@ -72,7 +72,7 @@
 import { spawn } from "node:child_process";
 import { existsSync, promises as fs, mkdtempSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { basename, dirname, join } from "node:path";
 import { ImageGenBackendUnavailableError } from "./errors";
 import type {
 	ImageGenBackend,
@@ -141,7 +141,11 @@ export async function loadSdCppImageGenBackend(
 	if (!opts.fakeImageBytes) {
 		// Smoke-check: run `--version` so we fail fast instead of waiting
 		// for the first real generate.
-		await assertBinaryAvailable(binary, opts.spawnImpl);
+		await assertBinaryAvailable(
+			binary,
+			opts.loadArgs.accelerator,
+			opts.spawnImpl,
+		);
 	}
 
 	// Ensure the model file exists. Caller resolves the path through
@@ -274,15 +278,17 @@ function resolveBinaryPath(override?: string): string {
 
 async function assertBinaryAvailable(
 	binary: string,
+	accelerator?: ImageGenLoadArgs["accelerator"],
 	spawnImpl?: SdCppSpawnLike,
 ): Promise<void> {
+	let version: SdCppCommandResult;
 	try {
-		const code = await runSimple(binary, ["--version"], spawnImpl);
-		if (code !== 0) {
+		version = await runCollect(binary, ["--version"], spawnImpl);
+		if (version.code !== 0) {
 			throw new ImageGenBackendUnavailableError(
 				"sd-cpp",
 				"binary_version_mismatch",
-				`[imagegen/sd-cpp] '${binary} --version' exited with code ${code}`,
+				`[imagegen/sd-cpp] '${binary} --version' exited with code ${version.code}`,
 			);
 		}
 	} catch (err) {
@@ -295,18 +301,212 @@ async function assertBinaryAvailable(
 			{ cause: err },
 		);
 	}
+	if (accelerator === "cuda") {
+		const capabilities = await probeSdCppCapabilitiesFromBinary(
+			binary,
+			version,
+			spawnImpl,
+		);
+		if (!capabilities.accelerators.includes("cuda")) {
+			throw new ImageGenBackendUnavailableError(
+				"sd-cpp",
+				"cuda_binary_missing",
+				`[imagegen/sd-cpp] '${binary}' is available but does not prove CUDA support via manifest, --help, or --version. Falling back from sd-cpp CUDA; install a stable-diffusion.cpp CUDA build or set SD_CPP_BIN to one.`,
+			);
+		}
+	}
 }
 
-function runSimple(
+interface SdCppCommandResult {
+	code: number | null;
+	stdout: string;
+	stderr: string;
+}
+
+function runCollect(
 	binary: string,
 	args: readonly string[],
 	spawnImpl?: SdCppSpawnLike,
-): Promise<number | null> {
-	return new Promise<number | null>((resolve, reject) => {
+): Promise<SdCppCommandResult> {
+	return new Promise<SdCppCommandResult>((resolve, reject) => {
 		const proc = defaultSpawn(spawnImpl)(binary, args);
+		let stdout = "";
+		let stderr = "";
+		let settled = false;
+		const finish = (code: number | null) => {
+			if (settled) return;
+			settled = true;
+			resolve({ code, stdout, stderr });
+		};
+		collectOutput(proc.stdout, (chunk) => {
+			stdout += chunk;
+		});
+		collectOutput(proc.stderr, (chunk) => {
+			stderr += chunk;
+		});
 		proc.on("error", (err: Error) => reject(err));
-		proc.on("exit", (code: number | null) => resolve(code));
+		if (typeof (proc as { on?: unknown }).on === "function") {
+			try {
+				(
+					proc as unknown as {
+						on(
+							event: "close",
+							listener: (code: number | null) => void,
+						): unknown;
+					}
+				).on("close", finish);
+			} catch {
+				// Test doubles may only implement the narrower SdCppSpawnLike
+				// exit/error event set. The exit listener below still resolves.
+			}
+		}
+		proc.on("exit", finish);
 	});
+}
+
+function collectOutput(
+	stream: AsyncIterable<Buffer> | NodeJS.ReadableStream | null,
+	append: (chunk: string) => void,
+): void {
+	if (!stream) return;
+	if (typeof (stream as NodeJS.ReadableStream).on === "function") {
+		(stream as NodeJS.ReadableStream).on("data", (chunk: Buffer | string) => {
+			append(typeof chunk === "string" ? chunk : chunk.toString("utf8"));
+		});
+		return;
+	}
+	void (async () => {
+		for await (const chunk of stream as AsyncIterable<Buffer>) {
+			append(chunk.toString("utf8"));
+		}
+	})();
+}
+
+type SdCppAccelerator = NonNullable<ImageGenLoadArgs["accelerator"]>;
+
+export interface SdCppCapabilities {
+	version: string | null;
+	accelerators: readonly SdCppAccelerator[];
+	evidence: readonly string[];
+}
+
+export async function probeSdCppCapabilitiesFromBinary(
+	binary: string,
+	versionResult?: SdCppCommandResult,
+	spawnImpl?: SdCppSpawnLike,
+): Promise<SdCppCapabilities> {
+	const version =
+		versionResult ?? (await runCollect(binary, ["--version"], spawnImpl));
+	const help = await runCollect(binary, ["--help"], spawnImpl).catch(
+		() => null,
+	);
+	const manifest = await readSdCppCapabilityManifest(binary);
+	const textEvidence = [
+		version.stdout,
+		version.stderr,
+		help?.stdout ?? "",
+		help?.stderr ?? "",
+	].join("\n");
+	const accelerators = new Set<SdCppAccelerator>(["auto", "cpu"]);
+	const evidence: string[] = [];
+	for (const accelerator of manifest.accelerators) {
+		accelerators.add(accelerator);
+		evidence.push("manifest");
+	}
+	if (hasPositiveCudaEvidence(textEvidence)) {
+		accelerators.add("cuda");
+		evidence.push("help_or_version");
+	}
+	if (hasPositiveVulkanEvidence(textEvidence)) accelerators.add("vulkan");
+	if (hasPositiveMetalEvidence(textEvidence)) accelerators.add("metal");
+	return {
+		version: parseVersionLine(version.stdout, version.stderr),
+		accelerators: [...accelerators],
+		evidence: [...new Set(evidence)],
+	};
+}
+
+async function readSdCppCapabilityManifest(
+	binary: string,
+): Promise<{ accelerators: SdCppAccelerator[] }> {
+	const candidates = [
+		`${binary}.json`,
+		`${binary}.manifest.json`,
+		join(dirname(binary), `${basename(binary)}.manifest.json`),
+		join(dirname(binary), "sd-cpp.manifest.json"),
+		join(dirname(binary), "manifest.json"),
+	];
+	for (const candidate of [...new Set(candidates)]) {
+		try {
+			const parsed = JSON.parse(await fs.readFile(candidate, "utf8"));
+			return { accelerators: extractAccelerators(parsed) };
+		} catch {
+			// Missing or malformed sidecar manifests are non-fatal; help/version
+			// can still prove capability, and the caller will reject CUDA if not.
+		}
+	}
+	return { accelerators: [] };
+}
+
+function extractAccelerators(value: unknown): SdCppAccelerator[] {
+	const found = new Set<SdCppAccelerator>();
+	const visit = (node: unknown): void => {
+		if (Array.isArray(node)) {
+			for (const item of node) visit(item);
+			return;
+		}
+		if (typeof node === "string") {
+			const normalized = node.toLowerCase();
+			if (isSdCppAccelerator(normalized)) found.add(normalized);
+			return;
+		}
+		if (!node || typeof node !== "object") return;
+		for (const [key, child] of Object.entries(node)) {
+			const normalizedKey = key.toLowerCase();
+			if (isSdCppAccelerator(normalizedKey) && child === true) {
+				found.add(normalizedKey);
+			}
+			visit(child);
+		}
+	};
+	visit(value);
+	return [...found];
+}
+
+function isSdCppAccelerator(value: string): value is SdCppAccelerator {
+	return (
+		value === "cuda" ||
+		value === "vulkan" ||
+		value === "metal" ||
+		value === "cpu"
+	);
+}
+
+function hasPositiveCudaEvidence(text: string): boolean {
+	const lower = text.toLowerCase();
+	if (
+		/(without|no|disabled|disable|not built with|unsupported)[^\n]{0,40}cuda/.test(
+			lower,
+		)
+	) {
+		return false;
+	}
+	return /\b(sd_cuda|ggml_cuda|cuda|cublas|cudart)\b/.test(lower);
+}
+
+function hasPositiveVulkanEvidence(text: string): boolean {
+	return /\b(sd_vulkan|ggml_vulkan|vulkan)\b/i.test(text);
+}
+
+function hasPositiveMetalEvidence(text: string): boolean {
+	return /\b(sd_metal|ggml_metal|metal)\b/i.test(text);
+}
+
+function parseVersionLine(stdout: string, stderr: string): string | null {
+	const text = (stdout || stderr || "").trim();
+	if (!text) return null;
+	const firstLine = text.split(/\r?\n/).find((line) => line.trim().length > 0);
+	return firstLine?.trim() ?? null;
 }
 
 async function runSdCpp(

@@ -126,6 +126,28 @@ function collectRuntimeEvidenceKernels(evidence) {
   return kernels;
 }
 
+function validateFixtureShape(scope, fixture, data) {
+  if (fixture.shape === "cases") {
+    if (!Array.isArray(data.cases) || data.cases.length === 0) {
+      fail(`${scope}: ${fixture.path} cases must be a non-empty array`);
+      return;
+    }
+    for (const [i, c] of data.cases.entries()) {
+      for (const field of fixture.caseRequiredFields || []) {
+        if (!(field in c)) fail(`${scope}: ${fixture.path} cases[${i}] missing ${field}`);
+      }
+    }
+    return;
+  }
+  if (!fixture.shape || fixture.shape === "scores") {
+    if (!Array.isArray(data.expected_scores) || data.expected_scores.length === 0) {
+      fail(`${scope}: ${fixture.path} expected_scores must be non-empty`);
+    }
+    return;
+  }
+  fail(`${scope}: ${fixture.path} unknown shape ${fixture.shape}`);
+}
+
 function targetBody(makefile, targetName) {
   const marker = `${targetName}:`;
   const start = makefile.indexOf(marker);
@@ -170,6 +192,8 @@ const cpuDispatchEvidence = fs.existsSync(cpuDispatchEvidencePath)
   : null;
 
 const allowedStatuses = new Set([
+  "authored",
+  "authored-only",
   "blocked",
   "compile-only",
   "needs-hardware",
@@ -246,14 +270,28 @@ for (const kernel of contract.kernels) {
       continue;
     }
     const data = readJson(fixturePath);
-    if (data.kernel !== fixture.kernelField) {
+    if ("kernel" in data && data.kernel !== fixture.kernelField) {
       fail(`${kernel.id}: ${fixture.path} kernel field ${data.kernel} != ${fixture.kernelField}`);
     }
     for (const field of fixture.requiredFields || []) {
       if (!(field in data)) fail(`${kernel.id}: ${fixture.path} missing ${field}`);
     }
-    if (!Array.isArray(data.expected_scores) || data.expected_scores.length === 0) {
-      fail(`${kernel.id}: ${fixture.path} expected_scores must be non-empty`);
+    validateFixtureShape(kernel.id, fixture, data);
+  }
+
+  if (kernel.verifyHarness) {
+    for (const [field, relPath] of Object.entries({
+      cpp: kernel.verifyHarness.cpp,
+      mjs: kernel.verifyHarness.mjs,
+    })) {
+      if (relPath && !fs.existsSync(relFromInference(relPath))) {
+        fail(`${kernel.id}: missing verifyHarness.${field} ${relPath}`);
+      }
+    }
+    for (const target of kernel.verifyHarness.makeTargets || []) {
+      if (!targetBody(makefile, target)) {
+        fail(`${kernel.id}: verifyHarness makeTarget ${target} missing from Makefile`);
+      }
     }
   }
 
@@ -275,11 +313,14 @@ for (const kernel of contract.kernels) {
     }
 
     const evidence = metalEvidenceKernels[kernel.id];
-    if (!evidence) {
+    if (!evidence && kernel.runtimeStatus?.metal === "runtime-ready") {
       fail(`${kernel.id}: missing Metal runtime dispatch evidence entry`);
-    } else {
+    } else if (evidence) {
       const runtimeKeys = kernel.runtimeCapabilityKeys || [];
-      if (!runtimeKeys.includes(evidence.runtimeCapabilityKey)) {
+      if (
+        evidence.runtimeCapabilityKey &&
+        !runtimeKeys.includes(evidence.runtimeCapabilityKey)
+      ) {
         fail(
           `${kernel.id}: Metal evidence runtimeCapabilityKey=${evidence.runtimeCapabilityKey} not in ${runtimeKeys.join(",")}`,
         );
@@ -311,11 +352,14 @@ for (const kernel of contract.kernels) {
       fail(`${kernel.id}: missing Vulkan source ${kernel.vulkan.source}`);
     }
     const evidence = vulkanEvidenceKernels[kernel.id];
-    if (!evidence) {
+    if (!evidence && kernel.runtimeStatus?.vulkan === "runtime-ready") {
       fail(`${kernel.id}: missing Vulkan runtime dispatch evidence entry`);
-    } else {
+    } else if (evidence) {
       const runtimeKeys = kernel.runtimeCapabilityKeys || [];
-      if (!runtimeKeys.includes(evidence.runtimeCapabilityKey)) {
+      if (
+        evidence.runtimeCapabilityKey &&
+        !runtimeKeys.includes(evidence.runtimeCapabilityKey)
+      ) {
         fail(
           `${kernel.id}: Vulkan evidence runtimeCapabilityKey=${evidence.runtimeCapabilityKey} not in ${runtimeKeys.join(",")}`,
         );
@@ -335,6 +379,37 @@ for (const kernel of contract.kernels) {
         }
         if (typeof evidence.maxDiff !== "number" || !Number.isFinite(evidence.maxDiff)) {
           fail(`${kernel.id}: runtime-ready Vulkan evidence requires numeric maxDiff`);
+        }
+      }
+    }
+  }
+
+  if (kernel.cuda) {
+    const evidence = cudaEvidenceKernels[kernel.id];
+    const cudaStatus = kernel.runtimeStatus?.cuda;
+    if (cudaStatus === "runtime-ready" && !evidence) {
+      fail(`${kernel.id}: CUDA runtime-ready requires runtime dispatch evidence entry`);
+    } else if (evidence) {
+      const runtimeKeys = kernel.runtimeCapabilityKeys || [];
+      if (!runtimeKeys.includes(evidence.runtimeCapabilityKey)) {
+        fail(
+          `${kernel.id}: CUDA evidence runtimeCapabilityKey=${evidence.runtimeCapabilityKey} not in ${runtimeKeys.join(",")}`,
+        );
+      }
+      if (cudaStatus === "runtime-ready" && evidence.runtimeReady !== true) {
+        fail(`${kernel.id}: contract says CUDA runtime-ready but evidence.runtimeReady is not true`);
+      }
+      if (evidence.runtimeReady === true && cudaStatus !== "runtime-ready") {
+        fail(`${kernel.id}: CUDA evidence is runtime-ready but contract status is ${cudaStatus}`);
+      }
+      if (evidence.runtimeReady === true) {
+        if (typeof evidence.smokeTarget !== "string" || evidence.smokeTarget.length === 0) {
+          fail(`${kernel.id}: runtime-ready CUDA evidence requires smokeTarget`);
+        } else if (!targetBody(makefile, evidence.smokeTarget)) {
+          fail(`${kernel.id}: CUDA evidence smokeTarget ${evidence.smokeTarget} missing from Makefile`);
+        }
+        if (typeof evidence.maxDiff !== "number" || !Number.isFinite(evidence.maxDiff)) {
+          fail(`${kernel.id}: runtime-ready CUDA evidence requires numeric maxDiff`);
         }
       }
     }
@@ -407,7 +482,7 @@ if (
 // symbols. The build script intentionally forces every non-runtime-ready Metal
 // kernel false until the evidence file records a numeric built-fork graph
 // dispatch smoke.
-const metalHonestyMarker = "Honesty gate: Metal/Vulkan standalone shaders";
+const metalHonestyMarker = "Honesty gate: Metal/Vulkan/CUDA standalone shaders";
 const metalHonestyIndex = buildScript.indexOf(metalHonestyMarker);
 const metalProbeMarker = 'if (backend === "metal")';
 const metalProbeIndex =
@@ -487,6 +562,49 @@ if (vulkanProbeIndex === -1) {
       }
       if (!hardForcedFalse) {
         fail(`${kernel.id}: build script must force or evidence-gate Vulkan kernels.${key}=false until runtime dispatch evidence is ready`);
+      }
+    }
+  }
+}
+
+const cudaProbeMarker = 'backend === "cuda"';
+const cudaProbeIndex =
+  metalHonestyIndex === -1
+    ? -1
+    : buildScript.indexOf(cudaProbeMarker, metalHonestyIndex);
+if (cudaProbeIndex === -1) {
+  fail("build script missing CUDA honesty gate in probeKernels()");
+} else {
+  const cudaProbeBody = buildScript.slice(
+    cudaProbeIndex,
+    buildScript.indexOf("return kernels;", cudaProbeIndex),
+  );
+  if (!buildScript.includes("function readCudaRuntimeDispatchEvidence")) {
+    fail("build script must load CUDA runtime-dispatch evidence");
+  }
+  for (const kernel of contract.kernels) {
+    if (!kernel.cuda) continue;
+    const evidence = cudaEvidenceKernels[kernel.id];
+    const cudaStatus = kernel.runtimeStatus?.cuda;
+    for (const key of kernel.runtimeCapabilityKeys || []) {
+      const evidenceDriven = cudaProbeBody.includes(
+        `kernels.${key} = cudaCapabilityRuntimeReady(`,
+      );
+      const hardForcedFalse = cudaProbeBody.includes(`kernels.${key} = false`);
+      if (evidence?.runtimeReady === true || cudaStatus === "runtime-ready") {
+        if (!evidenceDriven) {
+          fail(`${kernel.id}: build script must derive CUDA kernels.${key} from runtime dispatch evidence`);
+        }
+        if (hardForcedFalse) {
+          fail(`${kernel.id}: build script must not force runtime-ready CUDA kernels.${key}=false`);
+        }
+        continue;
+      }
+      if (evidenceDriven) {
+        continue;
+      }
+      if (!hardForcedFalse) {
+        fail(`${kernel.id}: build script must force or evidence-gate CUDA kernels.${key}=false until runtime dispatch evidence is ready`);
       }
     }
   }
@@ -694,6 +812,9 @@ const cudaVerifyBody = targetBody(makefile, "cuda-verify");
 for (const kernel of contract.kernels) {
   for (const fixture of kernel.fixtures || []) {
     const fixtureRef = fixture.path.replace(/^verify\//, "");
+    if (kernel.verifyHarness) {
+      continue;
+    }
     if (kernel.metal) {
       if (!metalVerifyBody.includes(fixtureRef)) {
         fail(`metal-verify does not cover ${fixture.path}`);

@@ -15,6 +15,11 @@
 #   CUDA_BUILD_FORK            default 1; build the target before verifying
 #   CUDA_SKIP_GRAPH_SMOKE      default 0; set 1 only for fixture-only bring-up
 #   CUDA_REMOTE_REPORT         remote report path when driving CUDA_REMOTE
+#   --report output            machine-readable hardware report. A publishable
+#                              CUDA build still requires a target-matching
+#                              cuda-runtime-dispatch-evidence.json entry
+#                              derived from this report; CAPABILITIES.json
+#                              fails closed when that evidence is absent.
 #   ELIZA_DFLASH_CMAKE_FLAGS   extra target CMake flags passed to the build hook
 #   ELIZA_DFLASH_HARDWARE_REPORT_DIR
 #                              graph-smoke log directory, default verify/hardware-results
@@ -46,6 +51,8 @@ Usage:
 
 Options:
   --report <path>   Write machine-readable JSON evidence for pass/fail.
+                    Use this report to update cuda-runtime-dispatch-evidence.json;
+                    CUDA CAPABILITIES publishability is gated on that file.
 USAGE
 }
 
@@ -134,7 +141,8 @@ const report = {
     toolchainInfo: env.TOOLCHAIN_INFO || null,
     cmakeFlags: env.CMAKE_FLAGS || null,
     model: env.MODEL || null,
-    modelSha256: env.MODEL_SHA256 || null
+    modelSha256: env.MODEL_SHA256 || null,
+    runtimeDispatchEvidenceFile: 'verify/cuda-runtime-dispatch-evidence.json'
   }
 };
 fs.writeFileSync(env.REPORT_PATH, `${JSON.stringify(report, null, 2)}\n`);

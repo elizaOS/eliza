@@ -49,6 +49,7 @@ TEXT_QUANT_BY_TIER: Final[Mapping[str, str]] = {
     "4b": "Q4_K_M",
     "9b": "Q4_K_M",
     "27b": "Q4_K_M",
+    "27b-256k": "Q4_K_M",
 }
 
 TEXT_QUANTIZATION_MATRIX: Final[tuple[str, ...]] = (
@@ -60,11 +61,12 @@ TEXT_QUANTIZATION_MATRIX: Final[tuple[str, ...]] = (
 )
 
 CONTEXTS_BY_TIER: Final[Mapping[str, tuple[str, ...]]] = {
-    "0_8b": ("128k",),
-    "2b": ("128k",),
-    "4b": ("128k",),
-    "9b": ("128k",),
-    "27b": ("128k",),
+    "0_8b": ("128k", "256k"),
+    "2b": ("128k", "256k"),
+    "4b": ("128k", "256k"),
+    "9b": ("128k", "256k"),
+    "27b": ("128k", "256k"),
+    "27b-256k": ("128k", "256k"),
 }
 
 ASR_ARTIFACTS_BY_TIER: Final[Mapping[str, tuple[str, ...]]] = {
@@ -76,6 +78,14 @@ VAD_ARTIFACTS: Final[tuple[str, ...]] = ("vad/silero-vad-v5.gguf",)
 VAD_OPTIONAL_FALLBACK_ARTIFACTS: Final[tuple[str, ...]] = (
     "vad/silero-vad-int8.onnx",
 )
+IMAGEGEN_ARTIFACTS_BY_TIER: Final[Mapping[str, tuple[str, ...]]] = {
+    "0_8b": ("imagegen/sd-1.5-Q5_0.gguf",),
+    "2b": ("imagegen/sd-1.5-Q5_0.gguf",),
+    "4b": ("imagegen/sd-1.5-Q5_0.gguf",),
+    "9b": ("imagegen/z-image-turbo-Q4_K_M.gguf",),
+    "27b": ("imagegen/z-image-turbo-Q4_K_M.gguf",),
+    "27b-256k": ("imagegen/z-image-turbo-Q4_K_M.gguf",),
+}
 VISION_TIERS: Final[frozenset[str]] = ELIZA_1_VISION_TIERS
 DFLASH_TIERS: Final[frozenset[str]] = ELIZA_1_DFLASH_TIERS
 
@@ -153,6 +163,16 @@ REQUIRED_PLATFORM_EVIDENCE_BY_TIER: Final[Mapping[str, tuple[str, ...]]] = {
         "linux-x64-cpu",
         "windows-x64-cpu",
     ),
+    "27b-256k": (
+        "darwin-arm64-metal",
+        "linux-x64-vulkan",
+        "linux-x64-cuda",
+        "linux-x64-rocm",
+        "windows-x64-cuda",
+        "windows-x64-vulkan",
+        "linux-x64-cpu",
+        "windows-x64-cpu",
+    ),
 }
 
 
@@ -177,6 +197,8 @@ class TierGgufPlan:
 
 
 def text_artifact_name(tier: str, ctx: str) -> str:
+    if tier == "27b-256k":
+        return f"text/eliza-1-27b-{ctx}.gguf"
     if tier.endswith(f"-{ctx}"):
         return f"text/eliza-1-{tier}.gguf"
     return f"text/eliza-1-{tier}-{ctx}.gguf"
@@ -206,6 +228,7 @@ def required_files_for_tier(tier: str) -> tuple[str, ...]:
         *voice_files,
         *ASR_ARTIFACTS_BY_TIER[tier],
         *VAD_ARTIFACTS,
+        *IMAGEGEN_ARTIFACTS_BY_TIER[tier],
         *vision_files,
         *dflash_files,
         VOICE_PRESET_CACHE_PATH,

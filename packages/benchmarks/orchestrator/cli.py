@@ -361,7 +361,7 @@ def _parse_model_spec(spec: str) -> tuple[str, str, str | None]:
     """Parse ``provider:model[@base_url]`` into ``(provider, model, base_url)``.
 
     Examples:
-        ``vllm:elizaos/eliza-1-2b@http://127.0.0.1:8001/v1``
+        ``vllm:elizaos/eliza-1@http://127.0.0.1:8001/v1``
         ``groq:openai/gpt-oss-120b``
     """
     raw = spec.strip()
@@ -829,7 +829,7 @@ def build_parser() -> argparse.ArgumentParser:
     p_compare.add_argument(
         "--a",
         required=True,
-        help="Side A spec: '<provider>:<model>[@<base_url>]' (e.g. vllm:elizaos/eliza-1-2b@http://127.0.0.1:8001/v1)",
+        help="Side A spec: '<provider>:<model>[@<base_url>]' (e.g. vllm:elizaos/eliza-1@http://127.0.0.1:8001/v1)",
     )
     p_compare.add_argument(
         "--b",

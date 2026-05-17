@@ -134,6 +134,17 @@ function makeExecMock(opts: ExecMockOptions) {
   };
 }
 
+function deferred<T = void>(): {
+  promise: Promise<T>;
+  resolve: (value: T | PromiseLike<T>) => void;
+} {
+  let resolve!: (value: T | PromiseLike<T>) => void;
+  const promise = new Promise<T>((res) => {
+    resolve = res;
+  });
+  return { promise, resolve };
+}
+
 // --- tests -----------------------------------------------------------------
 
 describe("LinuxUsbInstallerBackend.executeWritePlan", () => {
@@ -209,18 +220,20 @@ describe("LinuxUsbInstallerBackend.executeWritePlan", () => {
     });
 
     const dd = createFakeDd();
+    const spawned = deferred();
     const backend = new LinuxUsbInstallerBackend({
       execFile,
       findEscalator: async () => escalator,
       resolveImage: async () => {},
       verifyChecksum: async () => {},
-      spawn: () => dd as unknown as ChildProcess,
+      spawn: () => {
+        spawned.resolve();
+        return dd as unknown as ChildProcess;
+      },
     });
 
     const runPromise = backend.executeWritePlan(makePlan(), () => {});
-    // Let microtasks settle so dd is spawned.
-    await Promise.resolve();
-    await Promise.resolve();
+    await spawned.promise;
     // dd writes full image, exits 0
     dd.emitProgress(`${IMAGE_SIZE} bytes (1.0 GB, 0.9 GiB) copied, 1 s`);
     dd.finish(0);
@@ -240,17 +253,20 @@ describe("LinuxUsbInstallerBackend.executeWritePlan", () => {
     });
 
     const dd = createFakeDd();
+    const spawned = deferred();
     const backend = new LinuxUsbInstallerBackend({
       execFile,
       findEscalator: async () => escalator,
       resolveImage: async () => {},
       verifyChecksum: async () => {},
-      spawn: () => dd as unknown as ChildProcess,
+      spawn: () => {
+        spawned.resolve();
+        return dd as unknown as ChildProcess;
+      },
     });
 
     const runPromise = backend.executeWritePlan(makePlan(), () => {});
-    await Promise.resolve();
-    await Promise.resolve();
+    await spawned.promise;
 
     const partial = Math.floor(IMAGE_SIZE * 0.9);
     dd.emitProgress(`${Math.floor(IMAGE_SIZE * 0.5)} bytes copied, 1 s`);
@@ -282,20 +298,23 @@ describe("LinuxUsbInstallerBackend.executeWritePlan", () => {
     });
 
     const dd = createFakeDd();
+    const spawned = deferred();
     const backend = new LinuxUsbInstallerBackend({
       execFile,
       findEscalator: async () => escalator,
       resolveImage: async () => {},
       verifyChecksum: async () => {},
-      spawn: () => dd as unknown as ChildProcess,
+      spawn: () => {
+        spawned.resolve();
+        return dd as unknown as ChildProcess;
+      },
     });
 
     const progress: Array<{ step: InstallerStepId; pct: number }> = [];
     const runPromise = backend.executeWritePlan(makePlan(), (step, pct) =>
       progress.push({ step, pct }),
     );
-    await Promise.resolve();
-    await Promise.resolve();
+    await spawned.promise;
 
     // Stream up to 99% (which the parser will clamp to 0.99), then exit 0
     // with a final summary line matching expected bytes.
@@ -323,12 +342,16 @@ describe("LinuxUsbInstallerBackend.executeWritePlan", () => {
       });
 
       const dd = createFakeDd();
+      const spawned = deferred();
       const backend = new LinuxUsbInstallerBackend({
         execFile,
         findEscalator: async () => escalator,
         resolveImage: async () => {},
         verifyChecksum: async () => {},
-        spawn: () => dd as unknown as ChildProcess,
+        spawn: () => {
+          spawned.resolve();
+          return dd as unknown as ChildProcess;
+        },
         heartbeatIntervalMs: 1_000,
         heartbeatStallMs: 5_000,
       });
@@ -338,8 +361,7 @@ describe("LinuxUsbInstallerBackend.executeWritePlan", () => {
         progress.push({ step, pct }),
       );
 
-      // Let the spawn + heartbeat setup happen.
-      await vi.advanceTimersByTimeAsync(0);
+      await spawned.promise;
 
       // Emit ONE progress line at ~50%.
       dd.emitProgress(`${Math.floor(IMAGE_SIZE * 0.5)} bytes copied, 1 s`);
@@ -355,7 +377,6 @@ describe("LinuxUsbInstallerBackend.executeWritePlan", () => {
       // Cleanly finish so we don't leak intervals.
       dd.emitProgress(`${IMAGE_SIZE} bytes copied, 10 s`);
       dd.finish(0);
-      await vi.runAllTimersAsync();
       await runPromise;
     } finally {
       vi.useRealTimers();

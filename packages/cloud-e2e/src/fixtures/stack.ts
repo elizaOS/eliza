@@ -178,6 +178,8 @@ export async function startCloudStack(
       pglitePort,
     },
     {
+      DATABASE_URL: `pglite://${pgDataDir}`,
+      TEST_DATABASE_URL: "",
       PGLITE_DATA_DIR: pgDataDir,
       DEV_CLOUD_PGLITE_DATA_DIR: pgDataDir,
       DEV_CLOUD_PGLITE_PORT: String(pglitePort),
@@ -209,10 +211,15 @@ export async function startCloudStack(
   );
 
   const apiUrl = `http://127.0.0.1:${apiPort}`;
+  const databaseUrl = `postgresql://postgres@127.0.0.1:${pglitePort}/postgres`;
+  const previousDatabaseUrl = process.env.DATABASE_URL;
+  const previousTestDatabaseUrl = process.env.TEST_DATABASE_URL;
   await waitForHttpOk(`${apiUrl}/api/health`, {
     timeoutMs: 180_000,
     label: "cloud-api",
   });
+  process.env.DATABASE_URL = databaseUrl;
+  process.env.TEST_DATABASE_URL = databaseUrl;
 
   // 3. cloud-frontend Vite dev
   const frontendEnv = {
@@ -242,6 +249,16 @@ export async function startCloudStack(
     // Reverse order: frontend, api, then mocks
     for (const proc of [...procs].reverse()) {
       await killProc(proc).catch(() => undefined);
+    }
+    if (previousDatabaseUrl === undefined) {
+      delete process.env.DATABASE_URL;
+    } else {
+      process.env.DATABASE_URL = previousDatabaseUrl;
+    }
+    if (previousTestDatabaseUrl === undefined) {
+      delete process.env.TEST_DATABASE_URL;
+    } else {
+      process.env.TEST_DATABASE_URL = previousTestDatabaseUrl;
     }
     await controlPlane.stop().catch(() => undefined);
     await hetzner.stop().catch(() => undefined);

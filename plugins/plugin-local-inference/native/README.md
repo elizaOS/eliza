@@ -656,3 +656,17 @@ static archive. Output lands under
 plus a `include/` headers staging directory. A follow-up packaging step
 (not in this directory) glues these into the Capacitor xcframework
 layout the patch expects.
+
+Fused mobile status is intentionally closed. The dflash build script does
+not advertise or build `android-*-*-fused`, `ios-arm64-metal-fused`, or
+`ios-arm64-simulator-metal-fused` because the libelizainference mobile FFI
+packaging and verifier path are not wired here yet. Those spellings fail
+with explicit diagnostics instead of falling through to a generic unsupported
+target list. Android system-agent fused artifacts, including emulator
+`android-x86_64-*-fused`, are owned by
+`packages/app-core/scripts/aosp/compile-libllama.mjs`.
+
+Server fused CUDA on arm64 Linux is supported as
+`linux-aarch64-cuda-fused`. It uses the same CUDA fused-attention CMake flags
+as `linux-x64-cuda-fused` and keeps the existing arm64 Linux host gate; build
+it on a real aarch64 CUDA runner such as GH200.

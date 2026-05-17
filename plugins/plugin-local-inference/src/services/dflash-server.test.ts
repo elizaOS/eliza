@@ -1,3 +1,4 @@
+import type { SpawnSyncReturns } from "node:child_process";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
@@ -35,6 +36,11 @@ import {
 	shouldRequireActiveDflashForRequest,
 	validateDflashDrafterCompatibility,
 } from "./dflash-server";
+import {
+	__resetGpuDetectionCacheForTests,
+	__setGpuDetectionSpawnSyncForTests,
+	detectGpu,
+} from "./gpu-detect";
 
 const originalEnv = { ...process.env };
 const originalFetch = globalThis.fetch;
@@ -42,6 +48,7 @@ const originalFetch = globalThis.fetch;
 afterEach(() => {
 	process.env = { ...originalEnv };
 	__resetLlamaServerHelpTextForTests();
+	__resetGpuDetectionCacheForTests();
 	const vitestGlobals = vi as unknown as {
 		restoreAllMocks?: () => void;
 		unstubAllGlobals?: () => void;
@@ -70,6 +77,14 @@ function makeManagedBinary(root: string): string {
 	fs.writeFileSync(managed, "#!/bin/sh\n", "utf8");
 	fs.chmodSync(managed, 0o755);
 	return managed;
+}
+
+async function waitForFile(file: string): Promise<string> {
+	for (let i = 0; i < 50; i += 1) {
+		if (fs.existsSync(file)) return fs.readFileSync(file, "utf8");
+		await new Promise((resolve) => setTimeout(resolve, 10));
+	}
+	throw new Error(`Timed out waiting for ${file}`);
 }
 
 function u32(value: number): Buffer {
@@ -415,6 +430,89 @@ describe("DflashLlamaServer runtime load config", () => {
 				gpuLayers: 99,
 				binaryPath: binary,
 			});
+		} finally {
+			await server.stop();
+		}
+	});
+});
+
+describe("DflashLlamaServer CUDA GPU autotune", () => {
+	it("applies a matched H200 profile before launching llama-server", async () => {
+		const root = fs.mkdtempSync(path.join(os.tmpdir(), "eliza-gpu-autotune-"));
+		const argsFile = path.join(root, "args.txt");
+		const binary = path.join(root, "llama-server");
+		fs.writeFileSync(
+			binary,
+			[
+				"#!/bin/sh",
+				'if [ "$1" = "--help" ]; then',
+				'  echo "--cache-type-k f16 q8_0 qjl1_256"',
+				'  echo "--cache-type-v f16 q4_0 q4_polar"',
+				"  exit 0",
+				"fi",
+				`printf '%s\\n' "$@" > '${argsFile}'`,
+				"trap 'exit 0' TERM INT",
+				"while true; do sleep 1; done",
+				"",
+			].join("\n"),
+			"utf8",
+		);
+		fs.chmodSync(binary, 0o755);
+		__resetGpuDetectionCacheForTests();
+		__setGpuDetectionSpawnSyncForTests((command) => {
+			if (command !== "nvidia-smi") {
+				throw new Error(`unexpected GPU probe command: ${command}`);
+			}
+			return {
+				status: 0,
+				signal: null,
+				error: undefined,
+				pid: 0,
+				output: [null, "NVIDIA H200, 141248\n", ""],
+				stdout: "NVIDIA H200, 141248\n",
+				stderr: "",
+			} as SpawnSyncReturns<string>;
+		});
+		expect(detectGpu({ force: true }).profile?.id).toBe("h200");
+		process.env.ELIZA_STATE_DIR = root;
+		process.env.ELIZA_DFLASH_ENABLED = "1";
+		process.env.ELIZA_DFLASH_LLAMA_SERVER = binary;
+		__setCtxCheckpointsProbeCacheForTests(binary, false);
+		__setLlamaServerHelpTextForTests(
+			binary,
+			"--cache-type-k f16 q8_0 qjl1_256\n--cache-type-v f16 q4_0 q4_polar\n",
+		);
+		installDflashFetchMock((url) =>
+			url.pathname === "/health"
+				? new Response("{}", { status: 200 })
+				: notFoundResponse(),
+		);
+
+		const server = new DflashLlamaServer();
+		try {
+			await server.start({
+				targetModelPath: path.join(root, "target.gguf"),
+				drafterModelPath: path.join(root, "drafter.gguf"),
+				contextSize: 128,
+				draftContextSize: 64,
+				draftMin: 1,
+				draftMax: 4,
+				gpuLayers: "auto",
+				draftGpuLayers: "auto",
+				disableThinking: false,
+				disableDrafter: true,
+			});
+
+			const args = (await waitForFile(argsFile)).trim().split(/\r?\n/);
+			const argPair = (flag: string) =>
+				args.slice(args.indexOf(flag), args.indexOf(flag) + 2);
+			expect(argPair("--cache-type-k")).toEqual(["--cache-type-k", "qjl1_256"]);
+			expect(argPair("--cache-type-v")).toEqual(["--cache-type-v", "q4_polar"]);
+			expect(argPair("--parallel")).toEqual(["--parallel", "16"]);
+			expect(argPair("--batch-size")).toEqual(["--batch-size", "4096"]);
+			expect(argPair("--ubatch-size")).toEqual(["--ubatch-size", "2048"]);
+			expect(args).toContain("-fa");
+			expect(args).toContain("--mlock");
 		} finally {
 			await server.stop();
 		}

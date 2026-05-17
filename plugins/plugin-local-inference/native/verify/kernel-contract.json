@@ -217,24 +217,22 @@
         }
       ],
       "metal": {
-        "source": "ggml/src/ggml-metal/eliza-kernels/istft.metal",
+        "source": "llama.cpp/ggml/src/ggml-metal/eliza-kernels/istft.metal",
         "verifySymbol": "kernel_istft_f32"
       },
       "vulkan": {
-        "source": "ggml/src/ggml-vulkan/vulkan-shaders/istft.comp",
+        "source": "llama.cpp/ggml/src/ggml-vulkan/vulkan-shaders/istft.comp",
         "spirvName": "istft_f32"
       },
       "cuda": {
-        "source": "ggml/src/ggml-cuda/istft.cu",
+        "source": "llama.cpp/ggml/src/ggml-cuda/istft.cu",
         "opFunction": "ggml_cuda_op_istft"
       },
       "verifyHarness": {
         "cpp": "verify/istft-verify.cpp",
         "mjs": "verify/istft-verify.mjs",
         "makeTargets": [
-          "kernel-contract",
-          "reference-test",
-          "cpu-bench"
+          "istft-verify"
         ],
         "tolerance": 1e-3
       },
@@ -501,9 +499,9 @@
   "platformTargets": {
     "linux-x64-cpu": {
       "kernelVerification": "reference-only",
-      "runtimeDispatch": "needs-runtime-smoke",
-      "deviceRun": "needs-hardware",
-      "nextGate": "Run native CPU backend smoke for QJL/Polar SIMD paths and DFlash lifecycle."
+      "runtimeDispatch": "runtime-ready",
+      "deviceRun": "verified",
+      "nextGate": "2026-05-17: native Linux x64 CPU graph smoke passed on BEAST with the 0.6B Q4_POLAR GGUF; runtime_graph_smoke covered cache-backed Turbo3/Turbo4 through llama-bench. QJL/Polar SIMD arithmetic remains covered by reference/fixture paths rather than KV cache storage aliases."
     },
     "linux-x64-cuda": {
       "kernelVerification": "verified",
@@ -546,6 +544,12 @@
       "runtimeDispatch": "needs-hardware",
       "deviceRun": "needs-hardware",
       "nextGate": "Run ELIZA_DFLASH_SMOKE_MODEL=/models/eliza-1-smoke.gguf ./gh200_runner.sh on a GH200/H100/H200 aarch64 CUDA host."
+    },
+    "linux-aarch64-cuda-fused": {
+      "kernelVerification": "needs-hardware",
+      "runtimeDispatch": "needs-hardware",
+      "deviceRun": "needs-hardware",
+      "nextGate": "Run the fused libelizainference CUDA build and voice/runtime smoke on a GH200/H100/H200 aarch64 CUDA host."
     },
     "android-arm64-cpu": {
       "kernelVerification": "needs-hardware",

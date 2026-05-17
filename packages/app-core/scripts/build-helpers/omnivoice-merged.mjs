@@ -24,6 +24,8 @@ export function fusedCmakeBuildTargets() {
     "llama-cli",
     "llama-speculative-simple",
     "llama-mtmd-cli",
+    "llama-bench",
+    "llama-completion",
     "omnivoice_lib",
     "elizainference",
     "omnivoice-tts",

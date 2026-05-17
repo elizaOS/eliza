@@ -1,5 +1,6 @@
 import { type ChildProcessWithoutNullStreams, spawn } from "node:child_process";
 import { randomUUID } from "node:crypto";
+import { existsSync } from "node:fs";
 import { mkdir } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
@@ -184,6 +185,7 @@ export class AcpService extends Service {
     this.ensureStarted();
     const id = randomUUID();
     const name = opts.name?.trim() || id;
+    this.assertTransportAvailable(id);
     const agentType =
       normalizeTaskAgentAdapter(opts.agentType ?? this.defaultAgent) ??
       this.defaultAgent;
@@ -584,7 +586,7 @@ export class AcpService extends Service {
     return new Promise((resolveRun) => {
       const proc = spawn(this.cliPath, opts.args, {
         cwd: opts.workdir,
-        env: this.buildEnv(opts.env),
+        env: this.buildEnv(opts.env, undefined, undefined, opts.agentType),
         stdio: ["pipe", "pipe", "pipe"],
       });
       const record: ProcessRecord = {
@@ -930,7 +932,13 @@ export class AcpService extends Service {
     for (const [key, value] of Object.entries(extra ?? {})) {
       if (typeof value === "string") env[key] = value;
     }
-    if (model) {
+    if (agentType === "elizaos") {
+      delete env.ANTHROPIC_MODEL;
+      delete env.OPENCODE_CONFIG_CONTENT;
+      delete env.OPENCODE_MODEL;
+      delete env.OPENAI_MODEL;
+    }
+    if (model && agentType !== "elizaos") {
       env.OPENAI_MODEL = model;
       if (agentType === "claude") env.ANTHROPIC_MODEL = model;
       if (agentType === "opencode") env.OPENCODE_MODEL = model;
@@ -1001,6 +1009,17 @@ export class AcpService extends Service {
     );
     return configured === true;
   }
+
+  private assertTransportAvailable(sessionId: string): void {
+    if (process.env.ELIZA_PLATFORM !== "android") return;
+    if (!this.cliPath.includes("/") || existsSync(this.cliPath)) return;
+    const message = `acpx CLI is not available at ${this.cliPath}. Install the ACP transport or set ELIZA_ACP_CLI to a valid executable.`;
+    this.emitSessionEvent(sessionId, "error", {
+      message,
+      failureKind: "not_found",
+    });
+    throw new Error(message);
+  }
 }
 
 function approvalArgs(preset: ApprovalPreset): string[] {
@@ -1063,6 +1082,7 @@ function shouldForwardEnv(key: string): boolean {
       "CEREBRAS_API_KEY",
       "CEREBRAS_BASE_URL",
       "CEREBRAS_MODEL",
+      "OPENAI_BASE_URL",
       "OPENAI_MODEL",
       "ANTHROPIC_MODEL",
       "OPENCODE_MODEL",

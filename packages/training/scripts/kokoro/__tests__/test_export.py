@@ -53,11 +53,12 @@ def test_export_synthetic_smoke_emits_fragment(tmp_path: Path) -> None:
     engine = fragment["engine"]
     assert engine["kind"] == "kokoro"
     assert engine["baseModel"] == "hexgrad/Kokoro-82M"
-    assert engine["onnxPath"] == "tts/kokoro.onnx"
+    assert engine["onnxPath"] == "voice/kokoro/voices/test_voice/kokoro.onnx"
+    assert voice["hfPath"] == "voice/kokoro/voices/test_voice.bin"
 
-    # The artifacts list is what the publish step copies into the per-tier
-    # bundle under `tts/`. Both entries must be present even if voice-bin
-    # is null (the package step fills it in from extract_voice_embedding).
+    # The artifacts list is what the publish step copies into elizaos/eliza-1.
+    # Both entries must be present even if voice-bin is null (the package step
+    # fills it in from extract_voice_embedding).
     roles = {entry["role"] for entry in fragment["artifacts"]}
     assert roles == {"voice-onnx", "voice-preset"}
 

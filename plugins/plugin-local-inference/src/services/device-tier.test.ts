@@ -50,6 +50,7 @@ describe("classifyDeviceTier", () => {
 					cpuCores: 16,
 					platform: "darwin",
 					arch: "arm64",
+					cpuFeatures: { neon: true, dotprod: true, i8mm: true },
 					appleSilicon: true,
 				}),
 			);
@@ -114,6 +115,7 @@ describe("classifyDeviceTier", () => {
 					cpuCores: 8,
 					platform: "darwin",
 					arch: "arm64",
+					cpuFeatures: { neon: true, dotprod: true, i8mm: true },
 					appleSilicon: true,
 				}),
 			);
@@ -155,6 +157,7 @@ describe("classifyDeviceTier", () => {
 					cpuCores: 8,
 					platform: "darwin",
 					arch: "arm64",
+					cpuFeatures: { neon: true, dotprod: true, i8mm: true },
 					appleSilicon: true,
 				}),
 			);
@@ -193,6 +196,22 @@ describe("classifyDeviceTier", () => {
 			expect(result.tier).toBe("POOR");
 			expect(result.reasons.join(" ")).toMatch(/AVX2|cores/);
 		});
+
+		it("classifies ARM without CPU feature evidence as POOR", () => {
+			const result = classifyDeviceTier(
+				probe({
+					totalRamGb: 32,
+					freeRamGb: 24,
+					gpu: null,
+					cpuCores: 8,
+					platform: "linux",
+					arch: "arm64",
+					cpuFeatures: undefined,
+				}),
+			);
+			expect(result.tier).toBe("POOR");
+			expect(result.canRunLocalLm).toBe(false);
+		});
 	});
 
 	describe("mobile clamps", () => {
@@ -205,6 +224,7 @@ describe("classifyDeviceTier", () => {
 					cpuCores: 6,
 					platform: "darwin",
 					arch: "arm64",
+					cpuFeatures: { neon: true, dotprod: true, i8mm: true },
 					appleSilicon: true,
 					mobile: {
 						platform: "ios",
@@ -226,6 +246,7 @@ describe("classifyDeviceTier", () => {
 					cpuCores: 4,
 					platform: "linux",
 					arch: "arm64",
+					cpuFeatures: { neon: true, dotprod: true, i8mm: false },
 					appleSilicon: false,
 					mobile: { platform: "android", availableRamGb: 1.5 },
 				}),
@@ -243,6 +264,7 @@ describe("classifyDeviceTier", () => {
 					cpuCores: 8,
 					platform: "linux",
 					arch: "arm64",
+					cpuFeatures: { neon: true, dotprod: true, i8mm: true },
 					mobile: { platform: "android", availableRamGb: 8 },
 				}),
 			);
@@ -289,6 +311,7 @@ describe("effectiveModelMemoryGb", () => {
 					appleSilicon: true,
 					platform: "darwin",
 					arch: "arm64",
+					cpuFeatures: { neon: true, dotprod: true, i8mm: true },
 				}),
 			),
 		).toBe(32);

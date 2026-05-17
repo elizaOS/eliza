@@ -30,8 +30,8 @@ print(f"  Batch size: {batch_size}")
 print(f"  Batches per epoch: {num_batches_per_epoch}")
 print(f"  Base learning rate: {config.learning_rate}")
 print(f"  Warmup epochs: {config.warmup_epochs}")
-print(f"  Cosine T_0: {config.lr_T_0} epochs")
-print(f"  Cosine T_mult: {config.lr_T_mult}")
+# elizaOS: the vendored trainer now uses monotonic CosineAnnealingLR,
+# not CosineAnnealingWarmRestarts.
 print(f"  Cosine eta_min: {config.lr_eta_min}")
 
 # Create dummy model and optimizer
@@ -42,8 +42,8 @@ optimizer = torch.optim.AdamW(model.parameters(), lr=config.learning_rate)
 warmup_epochs = config.warmup_epochs
 warmup_batches = warmup_epochs * num_batches_per_epoch
 
-T_0_epochs = config.lr_T_0
-T_0_batches = T_0_epochs * num_batches_per_epoch
+total_training_batches = config.num_epochs * num_batches_per_epoch
+cosine_batches = max(1, total_training_batches - warmup_batches)
 
 # Create warmup scheduler
 warmup_scheduler = torch.optim.lr_scheduler.LinearLR(
@@ -54,10 +54,9 @@ warmup_scheduler = torch.optim.lr_scheduler.LinearLR(
 )
 
 # Create cosine annealing scheduler
-cosine_scheduler = torch.optim.lr_scheduler.CosineAnnealingWarmRestarts(
+cosine_scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(
     optimizer,
-    T_0=T_0_batches,
-    T_mult=config.lr_T_mult,
+    T_max=cosine_batches,
     eta_min=config.lr_eta_min
 )
 
@@ -70,7 +69,7 @@ scheduler = torch.optim.lr_scheduler.SequentialLR(
 
 print(f"\nSchedule milestones:")
 print(f"  Warmup: batches 0-{warmup_batches} (epochs 0-{warmup_epochs})")
-print(f"  Cosine: batches {warmup_batches}+ (epochs {warmup_epochs}+)")
+print(f"  Cosine: batches {warmup_batches}-{total_training_batches} (epochs {warmup_epochs}-{config.num_epochs})")
 
 # Simulate training and collect LR values
 print(f"\n" + "=" * 70)
@@ -130,7 +129,7 @@ try:
     plt.axvline(x=warmup_epochs, color='r', linestyle='--', label=f'Warmup end (epoch {warmup_epochs})')
     plt.xlabel('Epoch')
     plt.ylabel('Learning Rate')
-    plt.title('Learning Rate Schedule: LinearLR Warmup + CosineAnnealingWarmRestarts')
+    plt.title('Learning Rate Schedule: LinearLR Warmup + CosineAnnealingLR')
     plt.grid(True, alpha=0.3)
     plt.legend()
     plt.tight_layout()

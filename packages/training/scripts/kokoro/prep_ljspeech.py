@@ -339,7 +339,7 @@ def _materialize_synthetic_dataset(target: Path, *, n_clips: int, sample_rate: i
     wavs = target / "wavs"
     wavs.mkdir(parents=True, exist_ok=True)
     metadata = target / "metadata.csv"
-    n_frames = sample_rate  # 1 second per clip
+    n_frames = sample_rate * 6  # 6 seconds per clip, clearing the 60s hard gate.
     lines = []
     for i in range(n_clips):
         clip_id = f"SMOKE-{i:04d}"

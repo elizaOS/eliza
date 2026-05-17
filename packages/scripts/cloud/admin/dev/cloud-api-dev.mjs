@@ -33,6 +33,10 @@ function bunExecutable() {
   return "bun";
 }
 
+function nodeExecutable() {
+  return process.env.NODE || process.env.ELIZA_TEST_NODE || "node";
+}
+
 function parsePGliteDataDir(url) {
   if (!url?.startsWith("pglite://")) return null;
   const dataDir = url.slice("pglite://".length);
@@ -145,7 +149,16 @@ async function main() {
   const wranglerArgs =
     args.length > 0 ? args : ["dev", "--port", apiPort, "--local"];
 
-  const wrangler = spawn(bun, ["run", "wrangler", ...wranglerArgs], {
+  const wranglerBin = path.join(
+    repoRoot,
+    "packages",
+    "cloud-api",
+    "node_modules",
+    "wrangler",
+    "bin",
+    "wrangler.js",
+  );
+  const wrangler = spawn(nodeExecutable(), [wranglerBin, ...wranglerArgs], {
     cwd: path.join(repoRoot, "packages", "cloud-api"),
     env,
     stdio: "inherit",

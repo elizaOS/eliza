@@ -41,7 +41,9 @@ async function fetchJson(path, init) {
   const response = await fetch(new URL(path, baseUrl), init);
   const text = await response.text();
   if (!response.ok) {
-    throw new Error(`${path} returned ${response.status}: ${text.slice(0, 500)}`);
+    throw new Error(
+      `${path} returned ${response.status}: ${text.slice(0, 500)}`,
+    );
   }
   return JSON.parse(text);
 }
@@ -65,6 +67,10 @@ async function main() {
   }
   const html = await htmlResponse.text();
   if (!htmlResponse.ok) {
+    if (!requireAll && htmlResponse.status === 404) {
+      skip(`model tester route is not mounted at ${baseUrl}`);
+      return;
+    }
     throw new Error(`/model-tester returned ${htmlResponse.status}`);
   }
   if (!html.includes("Model Tester")) {
@@ -90,7 +96,8 @@ async function main() {
         headers: { "content-type": "text/plain;charset=utf-8" },
         body: JSON.stringify({
           test,
-          prompt: "Say exactly one short sentence proving the Eliza model tester works.",
+          prompt:
+            "Say exactly one short sentence proving the Eliza model tester works.",
         }),
         signal: controller.signal,
       });
@@ -106,7 +113,9 @@ async function main() {
     if (result.ok) continue;
 
     const error = String(result.error ?? "");
-    const unavailable = knownUnavailable.some((needle) => error.includes(needle));
+    const unavailable = knownUnavailable.some((needle) =>
+      error.includes(needle),
+    );
     if (requireAll || requiredPass.has(result.test) || !unavailable) {
       fail(`${result.test} failed unexpectedly:\n${error}`);
     } else {

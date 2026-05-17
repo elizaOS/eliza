@@ -144,6 +144,7 @@ def test_eliza1_tier_ids_are_canonical():
         "4b",
         "9b",
         "27b",
+        "27b-256k",
     )
     assert REQUIRED_KERNELS_BY_TIER["0_8b"] == (
         "turboquant_q4",
@@ -208,11 +209,13 @@ def test_build_manifest_accepts_optional_component_slots_and_voice_caps():
     kwargs["lineage"] = {
         **kwargs["lineage"],
         "embedding": LineageEntry(base="eliza-1-embedding", license="apache-2.0"),
+        "imagegen": LineageEntry(base="stable-diffusion.cpp", license="apache-2.0"),
         "wakeword": LineageEntry(base="eliza-1-wakeword", license="apache-2.0"),
     }
     kwargs["files"] = {
         **kwargs["files"],
         "embedding": [FileEntry(path="embedding/eliza-1-embed.gguf", sha256=SHA)],
+        "imagegen": [FileEntry(path="imagegen/sd-1.5-Q5_0.gguf", sha256=SHA)],
         "wakeword": [FileEntry(path="wakeword/eliza-1.onnx", sha256=SHA)],
     }
     kwargs.update(
@@ -226,6 +229,7 @@ def test_build_manifest_accepts_optional_component_slots_and_voice_caps():
     )
     manifest = build_manifest(**kwargs)
     assert manifest["files"]["embedding"][0]["path"].startswith("embedding/")
+    assert manifest["files"]["imagegen"][0]["path"].startswith("imagegen/")
     assert manifest["voice"]["version"] == "1"
     assert manifest["voice"]["frozen"] is True
     assert manifest["voice"]["cache"]["speakerPreset"] == "cache/voice-preset-default.bin"

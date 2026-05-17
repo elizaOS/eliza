@@ -181,6 +181,8 @@ def main(argv: Iterable[str] | None = None) -> int:
 
     gate_path = out_dir / "gate_report.json"
     gate_path.write_text(json.dumps(decision, indent=2), encoding="utf-8")
+    eval_data["gateResult"] = decision
+    eval_path.write_text(json.dumps(eval_data, indent=2), encoding="utf-8")
 
     sys.stdout.write("Samantha LoRA eval — gate report:\n")
     for key, info in decision["per_metric"].items():

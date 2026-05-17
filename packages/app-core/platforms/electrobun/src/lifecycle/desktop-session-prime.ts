@@ -2,9 +2,9 @@ import { Session } from "electrobun/bun";
 import { logger } from "../logger";
 import { resolveMainWindowPartition } from "../main-window-session";
 import {
-	type DesktopSession,
-	installDesktopSessionCookies,
-	loadOrCreateDesktopSession,
+  type DesktopSession,
+  installDesktopSessionCookies,
+  loadOrCreateDesktopSession,
 } from "../native/auth-bridge";
 
 // Tracks whether the desktop loopback session has already been primed for the
@@ -18,7 +18,7 @@ let desktopSessionPrimed = false;
  * cookies installed for the old origin don't authenticate the new one.
  */
 export function markDesktopSessionStale(): void {
-	desktopSessionPrimed = false;
+  desktopSessionPrimed = false;
 }
 
 /**
@@ -32,46 +32,46 @@ export function markDesktopSessionStale(): void {
  * request. The bridge does not — and cannot — be that boundary.
  */
 export async function primeDesktopSessionAuth(
-	apiBase: string,
-	rendererOrigin: string,
+  apiBase: string,
+  rendererOrigin: string,
 ): Promise<void> {
-	if (desktopSessionPrimed) return;
-	let session: DesktopSession | null;
-	try {
-		session = await loadOrCreateDesktopSession({ apiBase });
-	} catch (err) {
-		logger.warn(
-			`[Main] Desktop auth bridge failed: ${err instanceof Error ? err.message : String(err)}`,
-		);
-		return;
-	}
-	if (!session) {
-		logger.info(
-			"[Main] Desktop auth bridge produced no session; renderer will use the standard login flow.",
-		);
-		return;
-	}
+  if (desktopSessionPrimed) return;
+  let session: DesktopSession | null;
+  try {
+    session = await loadOrCreateDesktopSession({ apiBase });
+  } catch (err) {
+    logger.warn(
+      `[Main] Desktop auth bridge failed: ${err instanceof Error ? err.message : String(err)}`,
+    );
+    return;
+  }
+  if (!session) {
+    logger.info(
+      "[Main] Desktop auth bridge produced no session; renderer will use the standard login flow.",
+    );
+    return;
+  }
 
-	try {
-		const partition = resolveMainWindowPartition(process.env);
-		const electrobunSession =
-			partition !== null
-				? Session.fromPartition(partition)
-				: Session.defaultSession;
-		const installer = electrobunSession.cookies as {
-			set: Parameters<typeof installDesktopSessionCookies>[0]["set"];
-		};
-		const touched = installDesktopSessionCookies(installer, session, {
-			apiOrigin: apiBase,
-			rendererOrigin,
-		});
-		desktopSessionPrimed = true;
-		logger.info(
-			`[Main] Desktop loopback session primed on ${touched.join(", ") || "<no targets>"}`,
-		);
-	} catch (err) {
-		logger.warn(
-			`[Main] Desktop auth cookie install failed: ${err instanceof Error ? err.message : String(err)}`,
-		);
-	}
+  try {
+    const partition = resolveMainWindowPartition(process.env);
+    const electrobunSession =
+      partition !== null
+        ? Session.fromPartition(partition)
+        : Session.defaultSession;
+    const installer = electrobunSession.cookies as {
+      set: Parameters<typeof installDesktopSessionCookies>[0]["set"];
+    };
+    const touched = installDesktopSessionCookies(installer, session, {
+      apiOrigin: apiBase,
+      rendererOrigin,
+    });
+    desktopSessionPrimed = true;
+    logger.info(
+      `[Main] Desktop loopback session primed on ${touched.join(", ") || "<no targets>"}`,
+    );
+  } catch (err) {
+    logger.warn(
+      `[Main] Desktop auth cookie install failed: ${err instanceof Error ? err.message : String(err)}`,
+    );
+  }
 }

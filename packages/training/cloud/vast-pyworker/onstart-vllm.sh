@@ -17,7 +17,9 @@
 #
 # CONTRACT — required env (all four come from the manifest's
 # `vast_template_env` block, exported into the Vast template):
-#   MODEL_REPO          HF repo id (e.g. elizaos/eliza-1-9b).
+#   MODEL_REPO          HF repo id for a vLLM-compatible checkpoint. The
+#                       canonical GGUF bundle repo is elizaos/eliza-1 and
+#                       should be served through the llama.cpp onstart path.
 #   MODEL_ALIAS         display alias (e.g. vast/eliza-1-9b). Forwarded to
 #                       worker.py so the pyworker reports the right name to
 #                       the Vast Serverless Engine.
@@ -32,8 +34,7 @@
 #                           script-dir/eliza-1-${VLLM_REGISTRY_KEY##*-}.json
 #                           (so VLLM_REGISTRY_KEY=eliza-1-9b -> eliza-1-9b.json).
 #                           Override with an absolute path for custom manifests.
-#   HUGGING_FACE_HUB_TOKEN  for gated repos. The published eliza-1 sibling
-#                           repos are public; the bf16 base may be gated.
+#   HUGGING_FACE_HUB_TOKEN  for gated repos.
 #   PYWORKER_REPO           git URL of cloud/. Default: elizaOS/cloud.
 #   PYWORKER_REF            branch/tag/commit. Default: develop. Pin in prod.
 #   MODEL_DIR               HF cache dir. Default /workspace/hf-cache.

@@ -44,6 +44,7 @@ interface ProbeResult {
 	version?: string;
 	supportedModels?: string[];
 	accelerators?: string[];
+	evidence?: string[];
 	reason?: string;
 	hint?: string;
 }
@@ -80,7 +81,7 @@ describe("WS3 sd-cpp probe — onboarding script", () => {
 		expect(probe.supportedModels).toBeUndefined();
 	});
 
-	it("reports available when SD_CPP_BIN points at a binary that returns version", () => {
+	it("reports CPU-only when the binary returns version but no CUDA proof", () => {
 		const dir = mkdtempSync(join(tmpdir(), "sd-cpp-probe-"));
 		const fakeBin = join(dir, "fake-sd");
 		writeFileSync(
@@ -98,9 +99,28 @@ describe("WS3 sd-cpp probe — onboarding script", () => {
 			"imagegen-z-image-turbo-q4_k_m",
 		);
 		expect(Array.isArray(probe.accelerators)).toBe(true);
-		expect(probe.accelerators).toContain("cuda");
-		expect(probe.accelerators).toContain("vulkan");
+		expect(probe.accelerators).not.toContain("cuda");
 		expect(probe.accelerators).toContain("cpu");
+	});
+
+	it("reports CUDA when help/version proves a CUDA-capable binary", () => {
+		const dir = mkdtempSync(join(tmpdir(), "sd-cpp-probe-"));
+		const fakeBin = join(dir, "fake-sd-cuda");
+		writeFileSync(
+			fakeBin,
+			[
+				"#!/usr/bin/env bash",
+				"if [ \"$1\" = \"--version\" ]; then echo 'stable-diffusion.cpp test-build-002 SD_CUDA=ON'; exit 0; fi",
+				"if [ \"$1\" = \"--help\" ]; then echo 'build: CUDA cuBLAS'; exit 0; fi",
+				"exit 2",
+				"",
+			].join("\n"),
+		);
+		chmodSync(fakeBin, 0o755);
+		const probe = runProbe({ SD_CPP_BIN: fakeBin });
+		expect(probe.available).toBe(true);
+		expect(probe.accelerators).toContain("cuda");
+		expect(probe.evidence).toContain("help_or_version");
 	});
 
 	it("reports binary_version_mismatch when the binary exits non-zero on --version", () => {
@@ -117,21 +137,22 @@ describe("WS3 sd-cpp probe — onboarding script", () => {
 
 describe("WS3 sd-cpp backend — binary missing yields structured error", () => {
 	it("loadSdCppImageGenBackend with a bogus binary path throws ImageGenBackendUnavailableError", async () => {
-		await expect(
-			loadSdCppImageGenBackend({
+		try {
+			await loadSdCppImageGenBackend({
 				modelKey: "imagegen-sd-1_5-q5_0",
 				loadArgs: {
 					modelPath: "/tmp/this-model-does-not-exist.gguf",
 				},
 				binaryPath: "/definitely/does/not/exist/sd-fake-bin",
-			}),
-		).rejects.toSatisfy((err: unknown) => {
-			if (!(err instanceof ImageGenBackendUnavailableError)) return false;
-			if (!isImageGenUnavailable(err)) return false;
-			if (err.backendId !== "sd-cpp") return false;
+			});
+			expect.fail("loadSdCppImageGenBackend should have thrown");
+		} catch (err) {
+			if (!(err instanceof ImageGenBackendUnavailableError)) throw err;
+			expect(isImageGenUnavailable(err)).toBe(true);
+			expect(err.backendId).toBe("sd-cpp");
 			// ENOENT from spawn() gets wrapped into binary_missing.
-			return err.reason === "binary_missing";
-		});
+			expect(err.reason).toBe("binary_missing");
+		}
 	});
 
 	it("error message references SD_CPP_BIN so onboarding can surface a fix", async () => {
@@ -148,6 +169,57 @@ describe("WS3 sd-cpp backend — binary missing yields structured error", () => 
 			if (!(err instanceof ImageGenBackendUnavailableError)) throw err;
 			expect(err.message).toMatch(/SD_CPP_BIN/);
 		}
+	});
+
+	it("rejects CUDA load when the sd-cpp binary is CPU-only", async () => {
+		const dir = mkdtempSync(join(tmpdir(), "sd-cpp-probe-"));
+		const fakeBin = join(dir, "fake-sd-cpu");
+		writeFileSync(
+			fakeBin,
+			"#!/usr/bin/env bash\nif [ \"$1\" = \"--version\" ]; then echo 'stable-diffusion.cpp cpu-only'; exit 0; fi\nif [ \"$1\" = \"--help\" ]; then echo 'stable-diffusion.cpp help'; exit 0; fi\nexit 2\n",
+		);
+		chmodSync(fakeBin, 0o755);
+		try {
+			await loadSdCppImageGenBackend({
+				modelKey: "imagegen-sd-1_5-q5_0",
+				loadArgs: {
+					modelPath: "/tmp/this-model-does-not-exist.gguf",
+					accelerator: "cuda",
+				},
+				binaryPath: fakeBin,
+			});
+			expect.fail("loadSdCppImageGenBackend should have thrown");
+		} catch (err) {
+			if (!(err instanceof ImageGenBackendUnavailableError)) throw err;
+			expect(err.backendId).toBe("sd-cpp");
+			expect(err.reason).toBe("cuda_binary_missing");
+			expect(err.message).toMatch(/CUDA support/);
+		}
+	});
+
+	it("accepts CUDA load when help/version proves CUDA support", async () => {
+		const dir = mkdtempSync(join(tmpdir(), "sd-cpp-probe-"));
+		const fakeBin = join(dir, "fake-sd-cuda");
+		const fakeModel = join(dir, "model.gguf");
+		writeFileSync(fakeModel, "fake model");
+		writeFileSync(
+			fakeBin,
+			[
+				"#!/usr/bin/env bash",
+				"if [ \"$1\" = \"--version\" ]; then echo 'stable-diffusion.cpp SD_CUDA=ON'; exit 0; fi",
+				"if [ \"$1\" = \"--help\" ]; then echo 'backend: CUDA cuBLAS'; exit 0; fi",
+				"exit 2",
+				"",
+			].join("\n"),
+		);
+		chmodSync(fakeBin, 0o755);
+		const backend = await loadSdCppImageGenBackend({
+			modelKey: "imagegen-sd-1_5-q5_0",
+			loadArgs: { modelPath: fakeModel, accelerator: "cuda" },
+			binaryPath: fakeBin,
+		});
+		expect(backend.id).toBe("sd-cpp");
+		await backend.dispose();
 	});
 
 	it("backend honors a stub binary + fakeImageBytes to bypass the spawn", async () => {

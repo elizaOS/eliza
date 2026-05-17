@@ -1,5 +1,9 @@
 import { describe, expect, it } from "vitest";
-import { detectOpenVinoDevices } from "./hardware";
+import {
+	detectCpuFeatures,
+	detectOpenVinoDevices,
+	deviceCapsFromProbe,
+} from "./hardware";
 
 function detector(files: Record<string, string[] | true>) {
 	const existsSync = (path: string): boolean => path in files;
@@ -88,5 +92,92 @@ describe("detectOpenVinoDevices", () => {
 		expect(probe.gpu.renderNodes).toEqual([]);
 		expect(probe.npu.accelNodes).toEqual([]);
 		expect(probe.recommendedAsrDevice).toBeNull();
+	});
+});
+
+describe("detectCpuFeatures", () => {
+	it("maps Linux ARM cpuinfo feature tokens to the shared probe shape", () => {
+		const cpuinfo = [
+			"processor\t: 0",
+			"Features\t: fp asimd evtstrm aes asimddp i8mm sve sve2",
+			"",
+		].join("\n");
+
+		expect(
+			detectCpuFeatures({
+				platform: "linux",
+				arch: "arm64",
+				readFileSync: () => cpuinfo,
+			}),
+		).toEqual({
+			neon: true,
+			dotprod: true,
+			i8mm: true,
+			sve: true,
+			sve2: true,
+		});
+	});
+
+	it("maps Android ARM cpuinfo aliases without assuming missing features", () => {
+		const cpuinfo = "Features\t: fp neon dotprod\n";
+
+		expect(
+			detectCpuFeatures({
+				platform: "android",
+				arch: "arm64",
+				readFileSync: () => cpuinfo,
+			}),
+		).toEqual({
+			neon: true,
+			dotprod: true,
+			i8mm: false,
+			sve: false,
+			sve2: false,
+		});
+	});
+
+	it("uses Darwin sysctl keys where available and treats missing keys as false", () => {
+		const values: Record<string, string> = {
+			"hw.optional.arm.FEAT_DotProd": "1\n",
+			"hw.optional.arm.FEAT_I8MM": "0\n",
+		};
+
+		expect(
+			detectCpuFeatures({
+				platform: "darwin",
+				arch: "arm64",
+				execFileSync: (_file, args) => {
+					const key = args[1];
+					if (key in values) return values[key];
+					throw new Error(`unknown sysctl ${key}`);
+				},
+			}),
+		).toEqual({
+			neon: true,
+			dotprod: true,
+			i8mm: false,
+			sve: false,
+			sve2: false,
+		});
+	});
+
+	it("does not claim CPU backend support for ARM when NEON evidence is absent", () => {
+		expect(
+			deviceCapsFromProbe({
+				totalRamGb: 16,
+				freeRamGb: 12,
+				gpu: null,
+				cpuCores: 8,
+				platform: "linux",
+				arch: "arm64",
+				appleSilicon: false,
+				recommendedBucket: "mid",
+				source: "os-fallback",
+			}),
+		).toEqual({
+			availableBackends: [],
+			ramMb: 16 * 1024,
+			cpuFeatures: undefined,
+		});
 	});
 });

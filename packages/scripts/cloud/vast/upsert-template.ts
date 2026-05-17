@@ -167,15 +167,14 @@ async function main(): Promise<void> {
         if (value) env[key] = value;
       }
     }
-    // TODO(wave3): vLLM cannot load from a subpath; the canonical bundle repo
-    // elizaos/eliza-1 contains GGUFs, not safetensors. Per-tier vLLM repos
-    // (elizaos/eliza-1-2b safetensors checkpoint) need to be published before
-    // this default is reachable. Today it is a placeholder; live deployments
-    // must override MODEL_REPO via env or a manifest.
-    env.MODEL_REPO = readEnv(
-      "MODEL_REPO",
-      manifest?.manifest.model ?? manifest?.manifest.model_repo ?? "elizaos/eliza-1-2b",
-    );
+    // vLLM cannot load GGUF files from subpaths in the canonical eliza-1 repo.
+    // Require an explicit vLLM-compatible checkpoint instead of falling back to
+    // retired split repos or the GGUF bundle repo.
+    const manifestModel = manifest?.manifest.model ?? manifest?.manifest.model_repo;
+    if (!manifestModel && !process.env.MODEL_REPO?.trim()) {
+      throw new Error("VAST_RUNTIME=vllm requires ELIZA_VAST_MANIFEST or MODEL_REPO");
+    }
+    env.MODEL_REPO = readEnv("MODEL_REPO", manifestModel);
     env.MODEL_ALIAS = readEnv("MODEL_ALIAS", manifest?.manifest.model_alias ?? "vast/eliza-1-2b");
     if (manifest?.manifest.served_model_name) {
       env.SERVED_MODEL_NAME = readEnv("SERVED_MODEL_NAME", manifest.manifest.served_model_name);

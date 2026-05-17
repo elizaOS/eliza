@@ -42,6 +42,7 @@ ELIZA_1_TIERS: Final[tuple[str, ...]] = (
     "4b",
     "9b",
     "27b",
+    "27b-256k",
 )
 
 ELIZA_1_DFLASH_TIERS: Final[frozenset[str]] = frozenset(ELIZA_1_TIERS)
@@ -104,6 +105,7 @@ ELIZA_1_PROVENANCE_SLOTS: Final[tuple[str, ...]] = (
     "asr",
     "vad",
     "embedding",
+    "imagegen",
     "vision",
     "drafter",
 )
@@ -144,6 +146,10 @@ CANONICAL_TEXT_SOURCE_REPOS_BY_TIER: Final[Mapping[str, tuple[str, ...]]] = {
         "Qwen/Qwen3.6-27B",
         "unsloth/Qwen3.6-27B-GGUF",
     ),
+    "27b-256k": (
+        "Qwen/Qwen3.6-27B",
+        "unsloth/Qwen3.6-27B-GGUF",
+    ),
 }
 
 REQUIRED_KERNELS_BY_TIER: Final[Mapping[str, tuple[str, ...]]] = {
@@ -176,6 +182,13 @@ REQUIRED_KERNELS_BY_TIER: Final[Mapping[str, tuple[str, ...]]] = {
         "dflash",
         "turbo3_tcq",
     ),
+    "27b-256k": (
+        "turboquant_q4",
+        "qjl",
+        "polarquant",
+        "dflash",
+        "turbo3_tcq",
+    ),
 }
 
 RECIPE_TARGETS_BY_REQUIRED_KERNEL: Final[Mapping[str, tuple[str, ...]]] = {
@@ -192,6 +205,7 @@ SUPPORTED_BACKENDS_BY_TIER: Final[Mapping[str, tuple[str, ...]]] = {
     "4b": ("metal", "vulkan", "cuda", "rocm", "cpu"),
     "9b": ("metal", "vulkan", "cuda", "rocm", "cpu"),
     "27b": ("metal", "vulkan", "cuda", "rocm", "cpu"),
+    "27b-256k": ("metal", "vulkan", "cuda", "rocm", "cpu"),
 }
 
 ELIZA_1_DFLASH_TIERS: Final[frozenset[str]] = frozenset(ELIZA_1_TIERS)
@@ -203,6 +217,7 @@ VOICE_QUANT_BY_TIER: Final[Mapping[str, str]] = {
     "4b": "Q4_K_M",
     "9b": "Q8_0",
     "27b": "Q8_0",
+    "27b-256k": "Q8_0",
 }
 
 # Full K-quant ladder published per tier for the OmniVoice TTS GGUF. Mirror
@@ -216,6 +231,7 @@ VOICE_QUANT_LADDER_BY_TIER: Final[Mapping[str, tuple[str, ...]]] = {
     "4b": ("Q3_K_M", "Q4_K_M", "Q5_K_M"),
     "9b": ("Q3_K_M", "Q4_K_M", "Q5_K_M", "Q6_K", "Q8_0"),
     "27b": ("Q3_K_M", "Q4_K_M", "Q5_K_M", "Q6_K", "Q8_0"),
+    "27b-256k": ("Q3_K_M", "Q4_K_M", "Q5_K_M", "Q6_K", "Q8_0"),
 }
 
 VOICE_BACKENDS_BY_TIER: Final[Mapping[str, tuple[str, ...]]] = {
@@ -224,6 +240,7 @@ VOICE_BACKENDS_BY_TIER: Final[Mapping[str, tuple[str, ...]]] = {
     "4b": ("omnivoice", "kokoro"),
     "9b": ("omnivoice", "kokoro"),
     "27b": ("omnivoice",),
+    "27b-256k": ("omnivoice",),
 }
 
 KOKORO_REQUIRED_ARTIFACTS: Final[tuple[str, ...]] = (
@@ -680,7 +697,15 @@ def validate_manifest(
             if not entry.get("license"):
                 errors.append(f"lineage.{slot}.license: required")
         # Wave-6 optional lineage entries — must validate when present.
-        for slot in ("drafter", "asr", "embedding", "vision", "vad", "wakeword"):
+        for slot in (
+            "drafter",
+            "asr",
+            "embedding",
+            "imagegen",
+            "vision",
+            "vad",
+            "wakeword",
+        ):
             if slot in required_lineage_slots:
                 continue
             entry = lineage.get(slot)
@@ -709,7 +734,7 @@ def validate_manifest(
         # does not ship this component". The validator does not require
         # an empty array for absence (TS schema makes the array itself
         # optional), but if present it must be a real array.
-        kinds_fully_optional = ("embedding", "vad", "wakeword")
+        kinds_fully_optional = ("embedding", "imagegen", "vad", "wakeword")
         for kind in (*kinds_min1, *kinds_optional, *kinds_fully_optional):
             # The kinds_fully_optional slots are absent-OK; iterate over
             # whatever the value actually is (the array-shape check above
@@ -1306,7 +1331,14 @@ def validate_manifest(
             errors.append("files.vad: required for defaultEligible local voice bundles")
 
     # ── §3/§6 contract: optional component consistency + gates ──────────
-    optional_component_slots = ("asr", "embedding", "vision", "vad", "wakeword")
+    optional_component_slots = (
+        "asr",
+        "embedding",
+        "imagegen",
+        "vision",
+        "vad",
+        "wakeword",
+    )
     for slot in optional_component_slots:
         component_files = files.get(slot) or []
         component_lineage = lineage.get(slot)
@@ -1540,7 +1572,7 @@ def build_manifest(
     file_map: dict[str, list[dict[str, Any]]] = {}
     for kind in ("text", "voice", "asr", "vision", "dflash", "cache"):
         file_map[kind] = [_file_dict(f) for f in files.get(kind, ())]
-    for kind in ("embedding", "vad", "wakeword"):
+    for kind in ("embedding", "imagegen", "vad", "wakeword"):
         if kind in files:
             file_map[kind] = [_file_dict(f) for f in files.get(kind, ())]
 

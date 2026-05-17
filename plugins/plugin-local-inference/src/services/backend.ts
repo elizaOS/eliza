@@ -418,6 +418,26 @@ export class BackendDispatcher implements LocalInferenceBackend {
 		private readonly probeBinaryKernels?: () => Partial<
 			Record<string, boolean>
 		> | null,
+		/**
+		 * Optional in-process FFI streaming backend that replaces the
+		 * subprocess `llamaServer` when `probeFfiActive` returns `true`.
+		 * Both must be supplied to enable the FFI route; when either is
+		 * omitted the dispatcher's behavior is identical to before.
+		 *
+		 * Production wiring is staged — `engine.ts` does NOT pass these
+		 * yet. The class scaffolding lives in `ffi-streaming-backend.ts`
+		 * and the architectural prerequisites are documented in
+		 * `plugins/plugin-local-inference/FFI_BACKEND_WIREUP_PLAN.md`.
+		 */
+		private readonly ffiStreaming?: LocalInferenceBackend,
+		/**
+		 * Companion probe to `ffiStreaming`. Called inside `load()` when
+		 * `decideBackend()` returns `"llama-server"` — `true` routes the
+		 * load through the FFI backend, `false` keeps the subprocess path.
+		 * Honors the `ELIZA_INFERENCE_BACKEND` env var via
+		 * `readBackendEnvOverride()` at the caller level.
+		 */
+		private readonly probeFfiActive?: () => boolean,
 	) {}
 
 	async available(): Promise<boolean> {
@@ -477,9 +497,42 @@ export class BackendDispatcher implements LocalInferenceBackend {
 				);
 			}
 		}
+		const ffiStreaming = this.ffiStreaming;
+
+		// Fail loudly when the user opted into FFI via env var but no FFI
+		// backend was wired in (engine.ts hasn't passed `ffiStreaming` +
+		// `probeFfiActive` yet). Silent fallthrough to the subprocess
+		// would make the env var look like a no-op; an explicit throw
+		// surfaces the unfinished wiring and points at the deprecation /
+		// plan docs.
+		if (
+			decision.backend === "llama-server" &&
+			readBackendOverride() === "auto" &&
+			process.env.ELIZA_INFERENCE_BACKEND?.trim().toLowerCase() === "ffi" &&
+			(this.ffiStreaming === undefined || this.probeFfiActive === undefined)
+		) {
+			throw new Error(
+				"[local-inference] ELIZA_INFERENCE_BACKEND=ffi was requested, " +
+					"but the in-process FFI streaming backend is not yet wired into " +
+					"BackendDispatcher (engine.ts does not pass `ffiStreaming` / " +
+					"`probeFfiActive` to the constructor). The FfiStreamingBackend " +
+					"class scaffolding exists in services/ffi-streaming-backend.ts — " +
+					"see plugins/plugin-local-inference/FFI_BACKEND_WIREUP_PLAN.md " +
+					"Step B for the desktop adapter that needs to be built. " +
+					"Unset ELIZA_INFERENCE_BACKEND or set it to 'http' to use the " +
+					"subprocess llama-server path.",
+			);
+		}
+
+		const wantsFfi =
+			decision.backend === "llama-server" &&
+			ffiStreaming !== undefined &&
+			(this.probeFfiActive?.() ?? false);
 		const target =
 			decision.backend === "llama-server"
-				? this.llamaServer
+				? wantsFfi
+					? ffiStreaming
+					: this.llamaServer
 				: this.nodeLlamaCpp;
 		if (this.active && this.active !== target) {
 			await this.active.unload();

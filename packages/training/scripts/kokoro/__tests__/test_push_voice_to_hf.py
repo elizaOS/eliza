@@ -101,10 +101,12 @@ def test_dry_run_writes_receipt_and_passes_gate(tmp_path: Path) -> None:
     assert body["private"] is True  # default per the same license decision
     assert body["hfRepo"] == "elizaos/eliza-1"
     remotes = {entry["remote"] for entry in body["files"]}
-    # README is rendered + included alongside the five required artifacts.
+    # README is rendered + included alongside the required artifacts. The
+    # canonical runtime asset is the flat voices/<id>.bin path; metadata and
+    # optional sidecars live under voices/<id>/.
     assert remotes == {
         "voice/kokoro/voices/af_same/README.md",
-        "voice/kokoro/voices/af_same/voice.bin",
+        "voice/kokoro/voices/af_same.bin",
         "voice/kokoro/voices/af_same/kokoro.onnx",
         "voice/kokoro/voices/af_same/voice-preset.json",
         "voice/kokoro/voices/af_same/manifest-fragment.json",
@@ -208,3 +210,25 @@ def test_missing_artifact_fails_loud(tmp_path: Path) -> None:
                 "--dry-run",
             ]
         )
+
+
+def test_kokoro_onnx_is_optional_for_voice_only_release(tmp_path: Path) -> None:
+    release = _materialize_release(tmp_path)
+    (release / "kokoro.onnx").unlink()
+    receipt = tmp_path / "receipt.json"
+    rc = push_voice_to_hf.main(
+        [
+            "--release-dir",
+            str(release),
+            "--hf-repo",
+            "elizaos/eliza-1",
+            "--dry-run",
+            "--receipt",
+            str(receipt),
+        ]
+    )
+    assert rc == 0
+    body = json.loads(receipt.read_text())
+    remotes = {entry["remote"] for entry in body["files"]}
+    assert "voice/kokoro/voices/af_same.bin" in remotes
+    assert "voice/kokoro/voices/af_same/kokoro.onnx" not in remotes
