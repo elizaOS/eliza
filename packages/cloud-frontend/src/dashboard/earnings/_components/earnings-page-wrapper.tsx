@@ -1,13 +1,15 @@
 "use client";
 
-import { useSetPageHeader } from "@elizaos/ui";
+import { DashboardRoutePage } from "@elizaos/ui";
 import { EarningsPageClient } from "./earnings-page-client";
 
 export function EarningsPageWrapper() {
-  useSetPageHeader({
-    title: "Earnings & Redemptions",
-    description: "View your earnings and redeem for elizaOS tokens",
-  });
-
-  return <EarningsPageClient />;
+  return (
+    <DashboardRoutePage
+      title="Earnings & Redemptions"
+      description="View your earnings and redeem for elizaOS tokens"
+    >
+      <EarningsPageClient />
+    </DashboardRoutePage>
+  );
 }

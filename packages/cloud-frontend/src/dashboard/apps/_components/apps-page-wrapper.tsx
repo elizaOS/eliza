@@ -1,6 +1,6 @@
 "use client";
 
-import { useSetPageHeader } from "@elizaos/ui";
+import { DashboardRoutePage } from "@elizaos/ui";
 import type { ReactNode } from "react";
 
 interface AppsPageWrapperProps {
@@ -8,6 +8,5 @@ interface AppsPageWrapperProps {
 }
 
 export function AppsPageWrapper({ children }: AppsPageWrapperProps) {
-  useSetPageHeader({ title: "My Apps" }, []);
-  return children;
+  return <DashboardRoutePage title="My Apps">{children}</DashboardRoutePage>;
 }

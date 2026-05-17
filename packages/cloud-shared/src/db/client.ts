@@ -117,20 +117,30 @@ function createPgPool(url: string): PgPool {
   const options: PoolConfig = { connectionString: url };
   const env = getCloudAwareEnv();
   const inWorkerRuntime = isCloudflareWorkerRuntime();
+  const isLocalTcp = isLocalTcpPostgresUrl(url);
 
   if (inWorkerRuntime) {
     options.max = parsePositiveInteger(env.LOCAL_PG_POOL_MAX, 1);
-    options.maxUses = 1;
+    // Discard connections after a single query — Workers can't reliably
+    // share I/O across requests. EXCEPT against local PGlite: the PGlite
+    // socket bridge is fragile and creating a fresh TCP connection per
+    // query causes "Connection terminated unexpectedly" mid-stream. Local
+    // dev uses long-lived connections instead; the per-request isolation
+    // workers need only matters for shared remote pools.
+    options.maxUses = isLocalTcp ? 0 : 1;
     options.connectionTimeoutMillis = 30_000;
   }
 
-  if (isLocalTcpPostgresUrl(url)) {
+  if (isLocalTcp) {
     options.max = parsePositiveInteger(env.LOCAL_PG_POOL_MAX, 8);
-    options.idleTimeoutMillis = 1_000;
+    // Keep idle connections around long enough that consecutive requests
+    // reuse them instead of churning the PGlite socket bridge. Worker-runtime
+    // already overrides max + maxUses above; this just bumps idle to 30s.
+    options.idleTimeoutMillis = 30_000;
     options.connectionTimeoutMillis = 30_000;
   }
   const pool = new PgPool(options);
-  if (isLocalTcpPostgresUrl(url)) {
+  if (isLocalTcp) {
     disableLocalPreparedStatements(pool, { simpleQueryMode: inWorkerRuntime });
   }
   return pool;

@@ -100,7 +100,7 @@ export default function BscPromoPage() {
                 descriptionClassName="max-w-2xl text-base leading-7 text-muted-foreground md:text-base"
               />
 
-              <div className="grid max-w-2xl gap-3 sm:grid-cols-3">
+              <div className="hidden max-w-2xl gap-3 sm:grid sm:grid-cols-3">
                 <DashboardStatCard
                   label="Minimum buy"
                   value="$10"

@@ -1,9 +1,21 @@
+export type {
+  ElizaAvatarProps,
+  MemoizedChatMessageMessage,
+  MemoizedChatMessageProps,
+} from "./components/ai-elements";
+export {
+  ElizaAvatar,
+  MemoizedChatMessage,
+  useReasoningTypewriter,
+  useTypewriterText,
+} from "./components/ai-elements";
 export * from "./components/auth/authorize-content";
 export * from "./components/auth/authorize-return";
 export * from "./components/brand";
 export * from "./components/icons";
 export * from "./components/image-gen";
 export * from "./components/layout";
+export * from "./components/log-viewer";
 export * from "./components/monetization";
 export * from "./components/primitives";
 export * from "./components/product-switcher";

@@ -10,19 +10,11 @@
 "use client";
 
 import {
-  Badge,
   BrandButton,
-  BrandCard,
-  Input,
-  ScrollArea,
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-  Skeleton,
+  LogViewer,
+  type LogViewerStructuredEntry,
 } from "@elizaos/ui";
-import { Copy, Download, RefreshCw, Search, Wifi, WifiOff } from "lucide-react";
+import { RefreshCw } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
 
@@ -343,250 +335,112 @@ export function ContainerLogsViewer({
     [filterState.searchQuery, logsState.logs],
   );
 
+  const filteredEntries = useMemo<LogViewerStructuredEntry[]>(
+    () =>
+      filteredLogs.map((log, index) => ({
+        id: `${log.timestamp}-${index}`,
+        timestamp: log.timestamp,
+        level: log.level,
+        message: log.message,
+        metadata: log.metadata,
+      })),
+    [filteredLogs],
+  );
+
   return (
-    <BrandCard className="relative shadow-lg shadow-black/50" cornerSize="sm">
-      <div className="relative z-10 space-y-6">
-        {/* Header */}
-        <div className="flex items-center justify-between pb-4 border-b border-white/10">
-          <div>
-            <div className="flex items-center gap-2 mb-2">
-              <span className="inline-block w-2 h-2 rounded-full bg-[#FF5800]" />
-              <h2
-                className="text-xl font-normal text-white"
-                style={{ fontFamily: "var(--font-roboto-mono)" }}
-              >
-                Container Logs
-              </h2>
-            </div>
-            <p className="text-sm text-white/60">
-              Real-time logs from {containerName}
-            </p>
-          </div>
-          <div className="flex items-center gap-2">
-            <BrandButton
-              variant="outline"
-              size="sm"
-              onClick={() =>
-                updateStreaming({ autoRefresh: !streamingState.autoRefresh })
-              }
-              title={
-                streamingState.autoRefresh
-                  ? streamingState.isStreaming
-                    ? "Streaming (click to stop)"
-                    : "Polling (click to stop)"
-                  : "Start auto-refresh"
-              }
-            >
-              {streamingState.isStreaming ? (
-                <Wifi className="h-4 w-4" />
-              ) : streamingState.autoRefresh ? (
-                <RefreshCw className="h-4 w-4 animate-spin" />
-              ) : (
-                <WifiOff className="h-4 w-4" />
-              )}
-            </BrandButton>
-            <BrandButton
-              variant="outline"
-              size="sm"
-              onClick={copyAllLogs}
-              disabled={logsState.logs.length === 0}
-              title="Copy all logs"
-            >
-              <Copy className="h-4 w-4" />
-            </BrandButton>
-            <BrandButton
-              variant="outline"
-              size="sm"
-              onClick={downloadLogs}
-              disabled={logsState.logs.length === 0}
-              title="Download logs"
-            >
-              <Download className="h-4 w-4" />
-            </BrandButton>
-          </div>
-        </div>
-
-        {/* Search and Filter Bar */}
-        <div className="flex flex-col sm:flex-row gap-3">
-          <div className="relative flex-1">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-white/60" />
-            <Input
-              placeholder="Search logs..."
-              value={filterState.searchQuery}
-              onChange={(e) => updateFilter({ searchQuery: e.target.value })}
-              className="pl-9 rounded-none border-white/10 bg-black/40 text-white placeholder:text-white/40 focus-visible:ring-[#FF5800]/50"
-              style={{ fontFamily: "var(--font-roboto-mono)" }}
-            />
-          </div>
-          <Select
-            value={filterState.level}
-            onValueChange={(v) => updateFilter({ level: v })}
+    <LogViewer
+      title="Container Logs"
+      subtitle={`Real-time logs from ${containerName}`}
+      search={{
+        value: filterState.searchQuery,
+        onChange: (searchQuery) => updateFilter({ searchQuery }),
+        placeholder: "Search logs...",
+        resultLabel:
+          (filterState.searchQuery || filterState.level !== "all") &&
+          filteredLogs.length < logsState.logs.length
+            ? `Showing ${filteredLogs.length} of ${logsState.logs.length} logs`
+            : null,
+      }}
+      levelFilter={{
+        value: filterState.level,
+        onChange: (level) => updateFilter({ level }),
+        options: [
+          { value: "all", label: "All Levels" },
+          { value: "error", label: "Errors" },
+          { value: "warn", label: "Warnings" },
+          { value: "info", label: "Info" },
+          { value: "debug", label: "Debug" },
+        ],
+      }}
+      loading={logsState.loading}
+      error={logsState.error}
+      errorTitle={
+        logsState.error?.includes("not been deployed")
+          ? "Container Not Yet Deployed"
+          : logsState.error?.includes("not found")
+            ? "Container Logs Not Found"
+            : "Error Loading Logs"
+      }
+      showRetryOnError={!logsState.error?.includes("not been deployed")}
+      onRetry={fetchLogs}
+      emptyState={{
+        title: logsState.infoMessage || "No logs available for this container",
+        description: logsState.infoMessage
+          ? undefined
+          : "Logs may take a few moments to appear after deployment",
+        action: (
+          <BrandButton variant="outline" size="sm" onClick={fetchLogs}>
+            <RefreshCw className="mr-2 h-4 w-4" />
+            Refresh
+          </BrandButton>
+        ),
+      }}
+      filteredEmptyState={{
+        title: "No logs match your search criteria",
+        action: (
+          <BrandButton
+            variant="outline"
+            size="sm"
+            onClick={() => updateFilter({ searchQuery: "", level: "all" })}
           >
-            <SelectTrigger
-              className="w-full sm:w-[140px] rounded-none border-white/10 bg-black/40"
-              style={{ fontFamily: "var(--font-roboto-mono)" }}
-            >
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent className="rounded-none border-white/10 bg-[#0A0A0A]">
-              <SelectItem value="all">All Levels</SelectItem>
-              <SelectItem value="error">Errors</SelectItem>
-              <SelectItem value="warn">Warnings</SelectItem>
-              <SelectItem value="info">Info</SelectItem>
-              <SelectItem value="debug">Debug</SelectItem>
-            </SelectContent>
-          </Select>
-        </div>
-
-        {(filterState.searchQuery || filterState.level !== "all") &&
-          filteredLogs.length < logsState.logs.length && (
-            <div
-              className="text-sm text-white/60 mt-2"
-              style={{ fontFamily: "var(--font-roboto-mono)" }}
-            >
-              Showing {filteredLogs.length} of {logsState.logs.length} logs
-            </div>
-          )}
-
-        <div>
-          {logsState.loading && logsState.logs.length === 0 ? (
-            <div className="space-y-2">
-              <Skeleton className="h-8 w-full rounded-none" />
-              <Skeleton className="h-8 w-full rounded-none" />
-              <Skeleton className="h-8 w-full rounded-none" />
-            </div>
-          ) : logsState.error ? (
-            <div className="text-center py-8">
-              <div className="mb-4">
-                <p
-                  className="text-red-400 font-medium mb-2"
-                  style={{ fontFamily: "var(--font-roboto-mono)" }}
-                >
-                  {logsState.error.includes("not been deployed")
-                    ? "Container Not Yet Deployed"
-                    : logsState.error.includes("not found")
-                      ? "Container Logs Not Found"
-                      : "Error Loading Logs"}
-                </p>
-                <p className="text-sm text-white/60">{logsState.error}</p>
-              </div>
-              {!logsState.error.includes("not been deployed") && (
-                <BrandButton
-                  variant="outline"
-                  size="sm"
-                  onClick={fetchLogs}
-                  className="mt-4"
-                >
-                  <RefreshCw className="h-4 w-4 mr-2" />
-                  Retry
-                </BrandButton>
-              )}
-            </div>
-          ) : logsState.logs.length === 0 ? (
-            <div className="text-center py-8">
-              <div className="space-y-2">
-                <p className="text-white/60">
-                  {logsState.infoMessage ||
-                    "No logs available for this container"}
-                </p>
-                {!logsState.infoMessage && (
-                  <p className="text-xs text-white/74">
-                    Logs may take a few moments to appear after deployment
-                  </p>
-                )}
-                <BrandButton
-                  variant="outline"
-                  size="sm"
-                  onClick={fetchLogs}
-                  className="mt-4"
-                >
-                  <RefreshCw className="h-4 w-4 mr-2" />
-                  Refresh
-                </BrandButton>
-              </div>
-            </div>
-          ) : filteredLogs.length === 0 ? (
-            <div className="text-center py-8">
-              <p className="text-white/60">
-                No logs match your search criteria
-              </p>
-              <BrandButton
-                variant="outline"
-                size="sm"
-                onClick={() => {
-                  updateFilter({ searchQuery: "", level: "all" });
-                }}
-                className="mt-4"
-              >
-                Clear Filters
-              </BrandButton>
-            </div>
-          ) : (
-            <ScrollArea
-              className="h-[400px] w-full rounded-none border border-white/10"
-              ref={scrollRef}
-            >
-              <div
-                className="p-4 font-mono text-sm space-y-1"
-                style={{ fontFamily: "var(--font-roboto-mono)" }}
-              >
-                {filteredLogs.map((log, index) => (
-                  <div
-                    key={`${log.timestamp}-${index}`}
-                    className={`group flex gap-3 p-2 hover:bg-white/5 rounded-none transition-colors border-l-2 ${getLevelColor(log.level)}`}
-                    style={{ borderLeftColor: getLevelBorderColor(log.level) }}
-                  >
-                    <Badge
-                      variant={getLevelBadgeVariant(log.level)}
-                      className="shrink-0 h-5 text-xs rounded-none font-mono"
-                    >
-                      {log.level.toUpperCase()}
-                    </Badge>
-                    <span className="text-xs text-white/60 shrink-0 min-w-[70px]">
-                      {new Date(log.timestamp).toLocaleTimeString()}
-                    </span>
-                    <span className="flex-1 break-all whitespace-pre-wrap text-white/80">
-                      {log.message}
-                    </span>
-                    {log.metadata && Object.keys(log.metadata).length > 0 && (
-                      <span className="text-xs text-white/50 max-w-[200px] truncate">
-                        {JSON.stringify(log.metadata)}
-                      </span>
-                    )}
-                    <BrandButton
-                      variant="ghost"
-                      size="sm"
-                      onClick={() => copyLogLine(log)}
-                      className="opacity-0 group-hover:opacity-100 transition-opacity h-6 w-6 p-0 shrink-0"
-                      title="Copy log line"
-                    >
-                      <Copy className="h-3 w-3" />
-                    </BrandButton>
-                  </div>
-                ))}
-              </div>
-            </ScrollArea>
-          )}
-          {(streamingState.autoRefresh || streamingState.isStreaming) && (
-            <div
-              className="flex items-center justify-center gap-2 mt-2 text-xs text-white/60"
-              style={{ fontFamily: "var(--font-roboto-mono)" }}
-            >
-              {streamingState.isStreaming ? (
-                <>
-                  <Wifi className="h-3 w-3 text-green-500" />
-                  <span className="text-green-500">Live streaming enabled</span>
-                </>
-              ) : (
-                <>
-                  <RefreshCw className="h-3 w-3 animate-spin" />
-                  Auto-refreshing every 5 seconds
-                </>
-              )}
-            </div>
-          )}
-        </div>
-      </div>
-    </BrandCard>
+            Clear Filters
+          </BrandButton>
+        ),
+      }}
+      entries={filteredEntries}
+      onCopyEntry={(entry) => {
+        const log = filteredLogs.find(
+          (candidate) =>
+            candidate.timestamp === entry.timestamp &&
+            candidate.message === entry.message,
+        );
+        if (log) void copyLogLine(log);
+      }}
+      entryClassName={(entry) => getLevelColor(entry.level ?? "")}
+      entryLevelVariant={(level) => getLevelBadgeVariant(level)}
+      entryLevelBorderColor={(level) => getLevelBorderColor(level)}
+      contentRef={scrollRef}
+      heightClassName="h-[400px]"
+      onToggleStreaming={() =>
+        updateStreaming({ autoRefresh: !streamingState.autoRefresh })
+      }
+      streamingTitle={
+        streamingState.autoRefresh
+          ? streamingState.isStreaming
+            ? "Streaming (click to stop)"
+            : "Polling (click to stop)"
+          : "Start auto-refresh"
+      }
+      streaming={{
+        enabled: streamingState.autoRefresh || streamingState.isStreaming,
+        active: streamingState.isStreaming,
+        activeLabel: "Live streaming enabled",
+        inactiveLabel: "Auto-refreshing every 5 seconds",
+      }}
+      onCopyAll={copyAllLogs}
+      onDownload={downloadLogs}
+      copyDisabled={logsState.logs.length === 0}
+      downloadDisabled={logsState.logs.length === 0}
+    />
   );
 }
