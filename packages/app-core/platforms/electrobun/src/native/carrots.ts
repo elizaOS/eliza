@@ -40,6 +40,7 @@ import { resolveApiToken } from "@elizaos/shared";
 import { BrowserView, BrowserWindow, Utils } from "electrobun/bun";
 import type { DynamicViewHost } from "../dynamic-views/host";
 import { logger } from "../logger.js";
+import type { TraceHost } from "../trace/trace-host-requests";
 import type { SendToWebview } from "../types.js";
 import { getAgentManager, getDiagnosticLogPath } from "./agent";
 
@@ -118,6 +119,7 @@ export interface CarrotManagerOptions {
   now?: () => number;
   events?: CarrotManagerEvents;
   dynamicViewHost?: DynamicViewHost;
+  traceHost?: TraceHost;
 }
 
 const CARROT_STORE_ENV_KEYS = [
@@ -299,6 +301,7 @@ export class CarrotManager {
     PendingDirectInvoke
   >();
   private dynamicViewHost: DynamicViewHost | null;
+  private traceHost: TraceHost | null;
   private nextInvokeId = 1;
 
   constructor(options: CarrotManagerOptions = {}) {
@@ -308,6 +311,7 @@ export class CarrotManager {
     this.maxWorkerEvents = resolveWorkerEventBufferLimit();
     this.events = options.events ?? {};
     this.dynamicViewHost = options.dynamicViewHost ?? null;
+    this.traceHost = options.traceHost ?? null;
   }
 
   setEvents(events: CarrotManagerEvents): void {
@@ -316,6 +320,10 @@ export class CarrotManager {
 
   setDynamicViewHost(host: DynamicViewHost | null): void {
     this.dynamicViewHost = host;
+  }
+
+  setTraceHost(host: TraceHost | null): void {
+    this.traceHost = host;
   }
 
   getStoreRoot(): string {
@@ -670,7 +678,7 @@ export class CarrotManager {
       nextSequence:
         selected.length > 0
           ? selected[selected.length - 1].sequence
-          : afterSequence ?? currentSequence,
+          : (afterSequence ?? currentSequence),
     };
   }
 
@@ -1049,6 +1057,39 @@ export class CarrotManager {
       case "dynamic-view-sessions":
         this.requireManageCarrots(callerId, "dynamic-view-sessions");
         return this.requireDynamicViewHost(method).sessions();
+      case "trace-session-start":
+        this.requireManageCarrots(callerId, "trace-session-start");
+        return this.requireTraceHost(method).startSession(params);
+      case "trace-session-complete":
+        this.requireManageCarrots(callerId, "trace-session-complete");
+        return this.requireTraceHost(method).completeSession(params);
+      case "trace-session-cancel":
+        this.requireManageCarrots(callerId, "trace-session-cancel");
+        return this.requireTraceHost(method).cancelSession(params);
+      case "trace-session-error":
+        this.requireManageCarrots(callerId, "trace-session-error");
+        return this.requireTraceHost(method).errorSession(params);
+      case "trace-event-record":
+        this.requireManageCarrots(callerId, "trace-event-record");
+        return this.requireTraceHost(method).recordEvent(params);
+      case "trace-session-list":
+        this.requireManageCarrots(callerId, "trace-session-list");
+        return this.requireTraceHost(method).listSessions(params);
+      case "trace-session-get":
+        this.requireManageCarrots(callerId, "trace-session-get");
+        return this.requireTraceHost(method).getSession(params);
+      case "trace-session-summary":
+        this.requireManageCarrots(callerId, "trace-session-summary");
+        return this.requireTraceHost(method).summarizeSession(params);
+      case "trace-events-tail":
+        this.requireManageCarrots(callerId, "trace-events-tail");
+        return this.requireTraceHost(method).tailEvents(params);
+      case "trace-events-search":
+        this.requireManageCarrots(callerId, "trace-events-search");
+        return this.requireTraceHost(method).searchEvents(params);
+      case "trace-view-open":
+        this.requireManageCarrots(callerId, "trace-view-open");
+        return this.requireTraceHost(method).openTraceView(params);
       case "set-auth-token": {
         const record = this.workers.get(callerId);
         if (!record?.context) {
@@ -1113,6 +1154,13 @@ export class CarrotManager {
       throw new Error(`${method}: dynamic view host is not configured.`);
     }
     return this.dynamicViewHost;
+  }
+
+  private requireTraceHost(method: string): TraceHost {
+    if (!this.traceHost) {
+      throw new Error(`${method}: trace host is not configured.`);
+    }
+    return this.traceHost;
   }
 
   private readAgentManagerLogsTail(params: JsonValue | undefined): JsonValue {

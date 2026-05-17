@@ -13,6 +13,7 @@ import type {
 } from "@elizaos/electrobun-carrots";
 import { describe, expect, it } from "vitest";
 import type { DynamicViewHost } from "../dynamic-views/host";
+import type { TraceHost } from "../trace/trace-host-requests";
 import { CarrotManager, type CarrotWorkerHandle } from "./carrots";
 
 function withTempDir<T>(fn: (dir: string) => T): T {
@@ -318,6 +319,68 @@ describe("CarrotManager", () => {
               requestId: 14,
               success: true,
               payload: { sessionId: "session-1" },
+            });
+            resolve();
+          } catch (error) {
+            reject(error);
+          }
+        }, 10);
+      });
+    }));
+
+  it("dispatches trace host requests for trusted workers", () =>
+    withTempDir((dir) => {
+      const worker = new FakeWorkerHandle();
+      const recorded: JsonValue[] = [];
+      const traceHost: TraceHost = {
+        startSession: async () => ({ id: "trace-1" }),
+        completeSession: async () => ({ id: "trace-1", status: "completed" }),
+        cancelSession: async () => ({ id: "trace-1", status: "cancelled" }),
+        errorSession: async () => ({ id: "trace-1", status: "error" }),
+        recordEvent: async (params) => {
+          recorded.push(params ?? null);
+          return { id: "event-1", sequence: 1 };
+        },
+        listSessions: async () => ({ sessions: [] }),
+        getSession: async () => ({ id: "trace-1" }),
+        summarizeSession: async () => ({ eventCount: 1 }),
+        tailEvents: async () => ({ events: [], nextSequence: 0 }),
+        searchEvents: async () => ({ events: [] }),
+        openTraceView: async () => ({
+          session: { id: "trace-1" },
+          dynamicViewSessionId: "view-1",
+        }),
+      };
+      const manager = new CarrotManager({
+        storeRoot: join(dir, "store"),
+        workerRunner: { start: () => worker },
+        now: () => 1700000000000,
+        traceHost,
+      });
+      manager.installFromDirectory({ sourceDir: writePayload(dir) });
+      manager.startWorker("bunny.search");
+
+      worker.emit({
+        type: "host-request",
+        requestId: 15,
+        method: "trace-event-record",
+        params: { sessionId: "trace-1", kind: "tool.started" },
+      });
+
+      return new Promise<void>((resolve, reject) => {
+        setTimeout(() => {
+          try {
+            const response = worker.messages.find(
+              (m) => m.type === "host-response" && m.requestId === 15,
+            );
+            expect(recorded).toEqual([
+              { sessionId: "trace-1", kind: "tool.started" },
+            ]);
+            expect(response).toMatchObject({
+              type: "host-response",
+              requestId: 15,
+              success: true,
+              payload: { id: "event-1", sequence: 1 },
             });
             resolve();
           } catch (error) {

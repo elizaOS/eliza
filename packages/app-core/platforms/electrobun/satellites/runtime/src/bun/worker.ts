@@ -3,6 +3,7 @@ import { createApiBridgeError, serializeError } from "./errors.ts";
 import { RuntimeLogBuffer } from "./log-buffer.ts";
 import type {
 	AgentMessageParams,
+	AgentMessageStreamEvent,
 	AgentMessageStreamCancelParams,
 	AgentMessageStreamParams,
 	JsonValue,
@@ -11,6 +12,7 @@ import type {
 	RuntimeMethod,
 	RuntimeResponsePayload,
 	RuntimeStartParams,
+	StreamEventKind,
 	RuntimeState,
 	RuntimeWorkerOutboundMessage,
 	RuntimeWorkerRequestMessage,
@@ -46,7 +48,12 @@ type HostRequestMessage = {
 		| "agent-manager-restart"
 		| "agent-manager-status"
 		| "agent-manager-health"
-		| "agent-manager-logs-tail";
+		| "agent-manager-logs-tail"
+		| "trace-session-start"
+		| "trace-session-complete"
+		| "trace-session-cancel"
+		| "trace-session-error"
+		| "trace-event-record";
 	params?: JsonValue;
 };
 
@@ -57,10 +64,18 @@ type PendingHostRequest = {
 	reject: (error: unknown) => void;
 };
 
+type TraceBinding = {
+	sessionId: string;
+	owned: boolean;
+};
+
+type JsonObject = { [key: string]: JsonValue };
+
 const pendingHostRequests = new Map<number, PendingHostRequest>();
 let nextHostRequestId = 1;
 let hostRuntimeAdapterAvailable = false;
 let hostRuntimeState: RuntimeState | null = null;
+const streamTraceBindings = new Map<string, Promise<TraceBinding | null>>();
 
 function post(message: RuntimeWorkerOutboundMessage): void {
 	self.postMessage(message);
@@ -153,6 +168,25 @@ function isRuntimeMethod(value: string): value is RuntimeMethod {
 		value === "model.embedding" ||
 		value === "model.capabilities"
 	);
+}
+
+function isStreamEventKind(value: unknown): value is StreamEventKind {
+	return (
+		value === "started" ||
+		value === "delta" ||
+		value === "snapshot" ||
+		value === "action" ||
+		value === "error" ||
+		value === "done" ||
+		value === "cancelled"
+	);
+}
+
+function isAgentMessageStreamEventPayload(
+	value: unknown,
+): value is AgentMessageStreamEvent {
+	if (!isRecord(value)) return false;
+	return typeof value.streamId === "string" && isStreamEventKind(value.kind);
 }
 
 function isHostResponse(value: unknown): value is HostResponseMessage {
@@ -444,10 +478,64 @@ function withRuntimeApiBase(params?: JsonValue): JsonValue | undefined {
 	return { ...object, apiBase };
 }
 
+function isJsonObject(value: JsonValue | undefined): value is JsonObject {
+	return value !== undefined && isRecord(value) && !Array.isArray(value);
+}
+
+function traceSessionIdFromMetadata(
+	metadata: Record<string, unknown> | undefined,
+): string | null {
+	const value = metadata?.traceSessionId;
+	return typeof value === "string" && value.trim().length > 0
+		? value.trim()
+		: null;
+}
+
+function traceOpenViewFromMetadata(
+	metadata: Record<string, unknown> | undefined,
+): boolean {
+	return metadata?.traceOpenView === true || metadata?.openTraceView === true;
+}
+
+function traceSessionIdFromParams(params?: JsonValue): string | null {
+	if (!isJsonObject(params)) return null;
+	const value = params.traceSessionId;
+	return typeof value === "string" && value.trim().length > 0
+		? value.trim()
+		: null;
+}
+
+function paramsWithoutTraceFields(params?: JsonValue): JsonValue | undefined {
+	if (!isJsonObject(params)) return params;
+	const output: JsonObject = {};
+	for (const [key, value] of Object.entries(params)) {
+		if (key !== "traceSessionId" && key !== "traceOpenView") {
+			output[key] = value;
+		}
+	}
+	return output;
+}
+
+function streamTracePayload(event: AgentMessageStreamEvent): JsonValue {
+	return {
+		streamId: event.streamId,
+		kind: event.kind,
+		conversationId: event.conversationId ?? null,
+		messageId: event.messageId ?? null,
+		text: event.text ?? null,
+		delta: event.delta ?? null,
+		actionName: event.actionName ?? null,
+		toolName: event.toolName ?? null,
+		timestamp: event.timestamp,
+		hasPayload: event.payload !== undefined,
+		hasRaw: event.raw !== undefined,
+	};
+}
+
 function requestHost(
 	hostMethod: HostRequestMessage["method"],
 	params: JsonValue | undefined,
-	runtimeMethod: RuntimeMethod,
+	runtimeMethod: string,
 	unavailableMessage: string,
 ): Promise<JsonValue | undefined> {
 	const requestId = nextHostRequestId++;
@@ -485,6 +573,48 @@ function requestHost(
 	});
 }
 
+function requestTraceHost(
+	hostMethod: HostRequestMessage["method"],
+	params: JsonValue,
+): Promise<JsonValue | undefined> {
+	return requestHost(
+		hostMethod,
+		params,
+		hostMethod,
+		"Trace host is not available",
+	);
+}
+
+function logTraceFailure(label: string, error: unknown): void {
+	logBuffer.push(
+		"system",
+		`trace ${label} failed: ${
+			error instanceof Error ? error.message : String(error)
+		}`,
+	);
+}
+
+function recordTraceEvent(params: JsonValue): void {
+	void requestTraceHost("trace-event-record", params).catch((error) => {
+		logTraceFailure("event record", error);
+	});
+}
+
+function terminalTraceMethodForStream(
+	kind: AgentMessageStreamEvent["kind"],
+): HostRequestMessage["method"] | null {
+	if (kind === "done") return "trace-session-complete";
+	if (kind === "cancelled") return "trace-session-cancel";
+	if (kind === "error") return "trace-session-error";
+	return null;
+}
+
+function traceEventKindForStream(
+	kind: AgentMessageStreamEvent["kind"],
+): string {
+	return `agent.message.stream.${kind}`;
+}
+
 function invokeSatellite(
 	satelliteId: string,
 	unavailableMessage: string,
@@ -501,6 +631,151 @@ function invokeSatellite(
 		method,
 		unavailableMessage,
 	);
+}
+
+function startTraceForStream(
+	result: {
+		streamId: string;
+		conversationId?: string;
+		messageId?: string;
+	},
+	params: AgentMessageStreamParams,
+): void {
+	const existingTraceSessionId = traceSessionIdFromMetadata(params.metadata);
+	const startParams: JsonObject = {
+		title: "Agent message stream",
+		source: "chat",
+		streamId: result.streamId,
+		openView: traceOpenViewFromMetadata(params.metadata),
+		metadata: {
+			text: params.text,
+		},
+	};
+	if (result.conversationId !== undefined) {
+		startParams.conversationId = result.conversationId;
+	}
+	if (result.messageId !== undefined) startParams.messageId = result.messageId;
+	if (params.agentId !== undefined) startParams.agentId = params.agentId;
+	const binding =
+		existingTraceSessionId === null
+			? requestTraceHost("trace-session-start", startParams).then(
+					(payload): TraceBinding | null => {
+						if (!isJsonObject(payload)) return null;
+						const sessionId = payload.id;
+						if (typeof sessionId !== "string" || sessionId.length === 0) {
+							return null;
+						}
+						return { sessionId, owned: true };
+					},
+				)
+			: Promise.resolve({
+					sessionId: existingTraceSessionId,
+					owned: false,
+				});
+	streamTraceBindings.set(
+		result.streamId,
+		binding.catch((error) => {
+			logTraceFailure("session start", error);
+			return null;
+		}),
+	);
+	void recordTraceForStreamEvent({
+		streamId: result.streamId,
+		kind: "started",
+		conversationId: result.conversationId,
+		messageId: result.messageId,
+		text: params.text,
+		timestamp: new Date().toISOString(),
+	});
+}
+
+async function recordTraceForStreamEvent(
+	event: AgentMessageStreamEvent,
+): Promise<void> {
+	const binding = await streamTraceBindings.get(event.streamId);
+	if (!binding) return;
+	const traceParams: JsonObject = {
+		sessionId: binding.sessionId,
+		kind: traceEventKindForStream(event.kind),
+		title: event.kind,
+		source: "chat",
+		streamId: event.streamId,
+		payload: streamTracePayload(event),
+	};
+	const text = event.text ?? event.delta;
+	if (text !== undefined) traceParams.text = text;
+	if (event.conversationId !== undefined) {
+		traceParams.conversationId = event.conversationId;
+	}
+	if (event.messageId !== undefined) traceParams.messageId = event.messageId;
+	if (event.toolName !== undefined) traceParams.toolName = event.toolName;
+	recordTraceEvent(traceParams);
+	const terminalMethod = terminalTraceMethodForStream(event.kind);
+	if (terminalMethod === null) return;
+	streamTraceBindings.delete(event.streamId);
+	if (!binding.owned) return;
+	const terminalParams: JsonObject = {
+		sessionId: binding.sessionId,
+	};
+	if (event.kind === "cancelled") terminalParams.reason = "cancelled";
+	if (event.kind === "error") terminalParams.error = event.text ?? "Stream failed";
+	void requestTraceHost(terminalMethod, terminalParams).catch((error) => {
+		logTraceFailure("session terminal", error);
+	});
+}
+
+async function invokeTracedSatellite(
+	satelliteId: string,
+	unavailableMessage: string,
+	method: RuntimeMethod,
+	params?: JsonValue,
+): Promise<JsonValue | undefined> {
+	const traceSessionId = traceSessionIdFromParams(params);
+	const forwardedParams = paramsWithoutTraceFields(params);
+	if (traceSessionId === null) {
+		return invokeSatellite(satelliteId, unavailableMessage, method, forwardedParams);
+	}
+	recordTraceEvent({
+		sessionId: traceSessionId,
+		kind: "capability.invoke.started",
+		source: "capability",
+		capabilityId: satelliteId,
+		payload: {
+			method,
+			params: forwardedParams ?? null,
+		},
+	});
+	try {
+		const result = await invokeSatellite(
+			satelliteId,
+			unavailableMessage,
+			method,
+			forwardedParams,
+		);
+		recordTraceEvent({
+			sessionId: traceSessionId,
+			kind: "capability.invoke.completed",
+			source: "capability",
+			capabilityId: satelliteId,
+			payload: {
+				method,
+				result: result ?? null,
+			},
+		});
+		return result;
+	} catch (error) {
+		recordTraceEvent({
+			sessionId: traceSessionId,
+			kind: "capability.invoke.error",
+			source: "capability",
+			capabilityId: satelliteId,
+			text: error instanceof Error ? error.message : String(error),
+			payload: {
+				method,
+			},
+		});
+		throw error;
+	}
 }
 
 function isHostAgentStatus(value: JsonValue | undefined): value is {
@@ -626,6 +901,9 @@ const streamManager = new AgentStreamManager({
 			name: name as RuntimeManagerEvent["name"],
 			payload: payload as RuntimeManagerEvent["payload"],
 		});
+		if (isAgentMessageStreamEventPayload(payload)) {
+			void recordTraceForStreamEvent(payload);
+		}
 	},
 	log: (line) => {
 		logBuffer.push("system", line);
@@ -715,9 +993,12 @@ async function dispatch(
 			return apiClient.getConfig();
 		case "agent.message.stream":
 			if (hostRuntimeAdapterAvailable) await ensureHostRuntimeState();
-			return streamManager.startMessageStream(
-				parseAgentMessageStreamParams(request.params),
-			);
+			{
+				const params = parseAgentMessageStreamParams(request.params);
+				const result = await streamManager.startMessageStream(params);
+				startTraceForStream(result, params);
+				return result;
+			}
 		case "agent.message.stream.cancel":
 			return streamManager.cancelStream(
 				parseStreamCancelParams(request.params),
@@ -733,7 +1014,7 @@ async function dispatch(
 		case "fs.readText":
 		case "fs.search":
 		case "fs.writeText":
-			return invokeSatellite(
+			return invokeTracedSatellite(
 				FILE_SATELLITE_ID,
 				"File Satellite eliza.fs is not available",
 				request.method,
@@ -749,7 +1030,7 @@ async function dispatch(
 		case "pty.session.output.tail":
 		case "pty.session.output.clear":
 		case "pty.command.run":
-			return invokeSatellite(
+			return invokeTracedSatellite(
 				TERMINAL_SATELLITE_ID,
 				"Terminal Satellite eliza.pty is not available",
 				request.method,
@@ -774,7 +1055,7 @@ async function dispatch(
 		case "git.operation.list":
 		case "git.operation.get":
 		case "git.command.run":
-			return invokeSatellite(
+			return invokeTracedSatellite(
 				GIT_SATELLITE_ID,
 				"Git Satellite eliza.git is not available",
 				request.method,
@@ -805,7 +1086,7 @@ async function dispatch(
 		case "model.generate":
 		case "model.embedding":
 		case "model.capabilities":
-			return invokeSatellite(
+			return invokeTracedSatellite(
 				MODEL_SATELLITE_ID,
 				"Model Satellite eliza.local-model is not available",
 				request.method,

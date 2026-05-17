@@ -328,6 +328,7 @@ export function resolveElectrobunCopyMap({
 		[rendererDistDir]: "renderer",
 		"src/preload.js": "bun/preload.js",
 		"src/dynamic-views/demo": "bun/demo",
+		"src/trace/views": "bun/trace/views",
 		"assets/appIcon.png": "assets/appIcon.png",
 		"assets/appIcon.ico": "assets/appIcon.ico",
 	};

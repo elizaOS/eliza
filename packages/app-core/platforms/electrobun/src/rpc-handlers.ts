@@ -58,6 +58,7 @@ import {
   getDynamicViewSessionManager,
   registerBuiltInDynamicViews,
 } from "./dynamic-views";
+import { createTraceHostForRuntime, getTraceService } from "./trace";
 import {
   composeExtensionStatusSnapshot,
   readExtensionStatusViaHttp,
@@ -307,6 +308,11 @@ export function buildBunRpcHandlers({
   carrots.setDynamicViewHost(
     createDynamicViewHostForRuntime(dynamicViewSessions),
   );
+  const traceService = getTraceService({
+    dynamicViewRegistry,
+    dynamicViewSessions,
+  });
+  carrots.setTraceHost(createTraceHostForRuntime(traceService));
   configureCarrotManagerEvents(sendToWebview);
 
   return {
@@ -836,6 +842,23 @@ export function buildBunRpcHandlers({
     dynamicViewSessions: async () => ({
       sessions: dynamicViewSessions.list(),
     }),
+    traceSessionStart: async (params) => traceService.startSession(params),
+    traceSessionComplete: async (params) =>
+      traceService.completeSession(params),
+    traceSessionCancel: async (params) => traceService.cancelSession(params),
+    traceSessionError: async (params) => traceService.errorSession(params),
+    traceEventRecord: async (params) => traceService.recordEvent(params),
+    traceSessionList: async (params) => ({
+      sessions: await traceService.listSessions(params),
+    }),
+    traceSessionGet: async (params) => traceService.getSession(params),
+    traceSessionSummary: async (params) =>
+      traceService.summarizeSession(params),
+    traceEventsTail: async (params) => traceService.tailEvents(params),
+    traceEventsSearch: async (params) => ({
+      events: await traceService.searchEvents(params ?? {}),
+    }),
+    traceViewOpen: async (params) => traceService.openTraceView(params),
 
     // ---- Browser Workspace ----
     browserWorkspaceGetSnapshot: async () => ({

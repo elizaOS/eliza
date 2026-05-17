@@ -29,6 +29,17 @@ import type {
   DynamicViewSession,
   DynamicViewUnregisterParams,
 } from "./dynamic-views/types";
+import type {
+  TraceEvent,
+  TraceRecordEventParams,
+  TraceSearchParams,
+  TraceSession,
+  TraceSessionStatus,
+  TraceStartSessionParams,
+  TraceSummary,
+  TraceTailParams,
+  TraceTailResult,
+} from "./trace/types";
 
 // ============================================================================
 // Shared Types
@@ -1153,6 +1164,58 @@ export type ElizaDesktopRPCSchema = {
       dynamicViewSessions: {
         params: undefined;
         response: { sessions: DynamicViewSession[] };
+      };
+      traceSessionStart: {
+        params: TraceStartSessionParams;
+        response: TraceSession;
+      };
+      traceSessionComplete: {
+        params: {
+          sessionId: string;
+          metadata?: Record<string, JsonValue>;
+        };
+        response: TraceSession;
+      };
+      traceSessionCancel: {
+        params: { sessionId: string; reason?: string };
+        response: TraceSession;
+      };
+      traceSessionError: {
+        params: { sessionId: string; error: string; details?: JsonValue };
+        response: TraceSession;
+      };
+      traceEventRecord: {
+        params: TraceRecordEventParams;
+        response: TraceEvent;
+      };
+      traceSessionList: {
+        params:
+          | {
+              limit?: number;
+              status?: TraceSessionStatus;
+            }
+          | undefined;
+        response: { sessions: TraceSession[] };
+      };
+      traceSessionGet: {
+        params: { sessionId: string };
+        response: TraceSession;
+      };
+      traceSessionSummary: {
+        params: { sessionId: string };
+        response: TraceSummary;
+      };
+      traceEventsTail: {
+        params: TraceTailParams;
+        response: TraceTailResult;
+      };
+      traceEventsSearch: {
+        params: TraceSearchParams | undefined;
+        response: { events: TraceEvent[] };
+      };
+      traceViewOpen: {
+        params: { sessionId: string };
+        response: { session: TraceSession; dynamicViewSessionId: string };
       };
       /**
        * Aggregated boot/startup snapshot. Combines `agentStatus` with the
@@ -2342,6 +2405,17 @@ export const CHANNEL_TO_RPC_METHOD: Record<string, string> = {
   "dynamic-view:close": "dynamicViewClose",
   "dynamic-view:push": "dynamicViewPush",
   "dynamic-view:sessions": "dynamicViewSessions",
+  "trace:sessionStart": "traceSessionStart",
+  "trace:sessionComplete": "traceSessionComplete",
+  "trace:sessionCancel": "traceSessionCancel",
+  "trace:sessionError": "traceSessionError",
+  "trace:eventRecord": "traceEventRecord",
+  "trace:sessionList": "traceSessionList",
+  "trace:sessionGet": "traceSessionGet",
+  "trace:sessionSummary": "traceSessionSummary",
+  "trace:eventsTail": "traceEventsTail",
+  "trace:eventsSearch": "traceEventsSearch",
+  "trace:viewOpen": "traceViewOpen",
 
   // Browser Workspace
   "browser-workspace:getSnapshot": "browserWorkspaceGetSnapshot",
