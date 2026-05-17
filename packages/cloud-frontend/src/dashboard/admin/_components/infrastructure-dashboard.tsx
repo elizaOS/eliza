@@ -75,6 +75,7 @@ import {
   useState,
 } from "react";
 import { toast } from "sonner";
+import { toRatePercent } from "@elizaos/cloud-shared/lib/services/analytics-derived";
 import { WarmPoolPanel } from "./warm-pool-panel";
 
 // Error boundary for tab content
@@ -1300,8 +1301,9 @@ export function InfrastructureDashboard() {
   const nodesUnknown = nodes.filter((n) => n.status === "unknown").length;
   const totalCapacity = nodes.reduce((s, n) => s + n.capacity, 0);
   const totalAllocated = nodes.reduce((s, n) => s + n.allocatedCount, 0);
-  const utilizationPct =
-    totalCapacity > 0 ? Math.round((totalAllocated / totalCapacity) * 100) : 0;
+  const utilizationPct = Math.round(
+    toRatePercent(totalAllocated, totalCapacity),
+  );
 
   // ---------------------------------------------------------------------------
   // Refresh all

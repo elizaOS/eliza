@@ -6,11 +6,9 @@
  * @param props.progress - Optional progress percentage (0-100)
  */
 interface EnhancedLoadingProps {
-  message?: string;
-  progress?: number;
+    message?: string;
+    progress?: number;
 }
-export declare function EnhancedLoading({
-  message,
-  progress,
-}: EnhancedLoadingProps): import("react/jsx-runtime").JSX.Element;
+export declare function EnhancedLoading({ message, progress }: EnhancedLoadingProps): import("react/jsx-runtime").JSX.Element;
+export {};
 //# sourceMappingURL=enhanced-loading.d.ts.map

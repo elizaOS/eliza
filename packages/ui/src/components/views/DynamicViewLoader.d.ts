@@ -18,12 +18,12 @@
  * handled by the loader itself even when the module has no interact export.
  */
 interface DynamicViewLoaderProps {
-  /** The URL of the JS bundle to dynamically import. */
-  bundleUrl: string;
-  /** Named export inside the bundle to use as the root component. Defaults to "default". */
-  componentExport?: string;
-  /** The view's stable ID, used in error state messages. */
-  viewId: string;
+    /** The URL of the JS bundle to dynamically import. */
+    bundleUrl: string;
+    /** Named export inside the bundle to use as the root component. Defaults to "default". */
+    componentExport?: string;
+    /** The view's stable ID, used in error state messages. */
+    viewId: string;
 }
 /**
  * Loads and mounts a view component from a remote bundle URL.
@@ -36,11 +36,6 @@ interface DynamicViewLoaderProps {
  * />
  * ```
  */
-export declare const DynamicViewLoader: import("react").MemoExoticComponent<
-  ({
-    bundleUrl,
-    componentExport,
-    viewId,
-  }: DynamicViewLoaderProps) => import("react/jsx-runtime").JSX.Element
->;
+export declare const DynamicViewLoader: import("react").MemoExoticComponent<({ bundleUrl, componentExport, viewId, }: DynamicViewLoaderProps) => import("react/jsx-runtime").JSX.Element>;
+export {};
 //# sourceMappingURL=DynamicViewLoader.d.ts.map

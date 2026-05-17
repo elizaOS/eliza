@@ -11,25 +11,21 @@
  * the call returns `undefined`. `close()` clears any error regardless of
  * the current state.
  */
-export type ModalState =
-  | {
-      status: "closed";
-    }
-  | {
-      status: "open";
-    }
-  | {
-      status: "submitting";
-    }
-  | {
-      status: "error";
-      error: Error;
-    };
+export type ModalState = {
+    status: "closed";
+} | {
+    status: "open";
+} | {
+    status: "submitting";
+} | {
+    status: "error";
+    error: Error;
+};
 export interface ModalApi {
-  state: ModalState;
-  open: () => void;
-  close: () => void;
-  submit: <T>(fn: () => Promise<T>) => Promise<T | undefined>;
+    state: ModalState;
+    open: () => void;
+    close: () => void;
+    submit: <T>(fn: () => Promise<T>) => Promise<T | undefined>;
 }
 export declare function useModalState(): ModalApi;
 //# sourceMappingURL=useModalState.d.ts.map

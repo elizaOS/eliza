@@ -9,7 +9,7 @@
  */
 
 import { spawn } from "node:child_process";
-import { existsSync, mkdirSync, createWriteStream, rmSync } from "node:fs";
+import { existsSync, mkdirSync, createWriteStream, rmSync, writeSync } from "node:fs";
 import net from "node:net";
 import path from "node:path";
 import process from "node:process";
@@ -202,16 +202,13 @@ function dumpTail(svcName) {
 async function main() {
   const { flags, error } = parseFlags(process.argv.slice(2));
   if (error) {
-    // Write usage banner to stdout (stderr buffering on early process.exit
-    // is unreliable across runtimes) and the bare error to stderr for log
-    // hygiene, then flush before exiting.
-    process.stdout.write(`${error}\n\n${USAGE}`);
-    console.error(error);
-    await new Promise((r) => setImmediate(r));
+    // Blocking write to fd=1 — process.stdout.write is async on pipes and
+    // can be truncated by process.exit before flushing.
+    writeSync(1, `${error}\n\n${USAGE}`);
     process.exit(1);
   }
   if (flags.help) {
-    process.stdout.write(USAGE);
+    writeSync(1, USAGE);
     process.exit(0);
   }
 

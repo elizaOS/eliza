@@ -8,18 +8,12 @@
  */
 export type AppLaunchMode = "window" | "inline";
 export interface PerAppConfig {
-  launchMode: AppLaunchMode;
-  alwaysOnTop: boolean;
-  settings: Record<string, unknown>;
+    launchMode: AppLaunchMode;
+    alwaysOnTop: boolean;
+    settings: Record<string, unknown>;
 }
 export declare function loadPerAppConfig(slug: string): PerAppConfig;
-export declare function savePerAppConfig(
-  slug: string,
-  config: PerAppConfig,
-): void;
-export declare function subscribePerAppConfig(
-  slug: string,
-  listener: (config: PerAppConfig) => void,
-): () => void;
+export declare function savePerAppConfig(slug: string, config: PerAppConfig): void;
+export declare function subscribePerAppConfig(slug: string, listener: (config: PerAppConfig) => void): () => void;
 export declare function getDefaultPerAppConfig(): PerAppConfig;
 //# sourceMappingURL=per-app-config.d.ts.map

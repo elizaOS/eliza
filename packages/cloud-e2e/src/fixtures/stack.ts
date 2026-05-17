@@ -262,8 +262,8 @@ export async function startCloudStack(
   procs.push(
     spawnLogged(
       "cloud-api",
-      "bun",
-      ["run", "packages/scripts/cloud/admin/dev/cloud-api-dev.mjs"],
+      "node",
+      ["packages/scripts/cloud/admin/dev/cloud-api-dev.mjs"],
       {
         env: apiEnv,
         cwd: REPO_ROOT,

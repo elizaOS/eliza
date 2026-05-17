@@ -18,13 +18,9 @@
  */
 import { type WorkflowDefinition } from "../../api/client-types-chat";
 export interface WorkflowEditorProps {
-  initial?: WorkflowDefinition | null;
-  onSaved?: (workflow: WorkflowDefinition) => void;
-  onCancel?: () => void;
+    initial?: WorkflowDefinition | null;
+    onSaved?: (workflow: WorkflowDefinition) => void;
+    onCancel?: () => void;
 }
-export declare function WorkflowEditor({
-  initial,
-  onSaved,
-  onCancel,
-}: WorkflowEditorProps): import("react/jsx-runtime").JSX.Element;
+export declare function WorkflowEditor({ initial, onSaved, onCancel, }: WorkflowEditorProps): import("react/jsx-runtime").JSX.Element;
 //# sourceMappingURL=WorkflowEditor.d.ts.map

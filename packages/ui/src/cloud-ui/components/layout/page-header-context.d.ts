@@ -3,20 +3,17 @@
  * Provides centralized header state management across the application.
  */
 import { type DependencyList, type ReactNode } from "react";
-
 interface PageHeaderInfo {
-  title: string;
-  description?: string;
-  actions?: ReactNode;
+    title: string;
+    description?: string;
+    actions?: ReactNode;
 }
 interface PageHeaderContextValue {
-  pageInfo: PageHeaderInfo | null;
-  setPageInfo: (info: PageHeaderInfo | null) => void;
+    pageInfo: PageHeaderInfo | null;
+    setPageInfo: (info: PageHeaderInfo | null) => void;
 }
-export declare function PageHeaderProvider({
-  children,
-}: {
-  children: ReactNode;
+export declare function PageHeaderProvider({ children }: {
+    children: ReactNode;
 }): import("react/jsx-runtime").JSX.Element;
 export declare function usePageHeader(): PageHeaderContextValue;
 /**
@@ -30,8 +27,6 @@ export declare function usePageHeader(): PageHeaderContextValue;
  * @param pageInfo - The page header information to set
  * @param deps - Dependencies array for the effect (similar to useEffect)
  */
-export declare function useSetPageHeader(
-  pageInfo: PageHeaderInfo | null,
-  deps?: DependencyList,
-): void;
+export declare function useSetPageHeader(pageInfo: PageHeaderInfo | null, deps?: DependencyList): void;
+export {};
 //# sourceMappingURL=page-header-context.d.ts.map

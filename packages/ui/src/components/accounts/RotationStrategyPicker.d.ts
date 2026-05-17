@@ -5,17 +5,12 @@
  */
 import type { LinkedAccountProviderId } from "@elizaos/shared";
 import type { AccountStrategy } from "../../api/client-agent";
-
 interface RotationStrategyPickerProps {
-  providerId: LinkedAccountProviderId;
-  value: AccountStrategy | undefined;
-  onChange: (strategy: AccountStrategy) => void;
-  disabled?: boolean;
+    providerId: LinkedAccountProviderId;
+    value: AccountStrategy | undefined;
+    onChange: (strategy: AccountStrategy) => void;
+    disabled?: boolean;
 }
-export declare function RotationStrategyPicker({
-  providerId,
-  value,
-  onChange,
-  disabled,
-}: RotationStrategyPickerProps): import("react/jsx-runtime").JSX.Element;
+export declare function RotationStrategyPicker({ providerId, value, onChange, disabled, }: RotationStrategyPickerProps): import("react/jsx-runtime").JSX.Element;
+export {};
 //# sourceMappingURL=RotationStrategyPicker.d.ts.map

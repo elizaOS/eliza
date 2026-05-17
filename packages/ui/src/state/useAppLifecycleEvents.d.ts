@@ -21,22 +21,13 @@
 import type { MutableRefObject } from "react";
 import { type ConversationMessage } from "../api";
 /** Storage key for the last-known active conversation id. */
-export declare const ACTIVE_CONVERSATION_STORAGE_KEY =
-  "eliza:chat:activeConversationId";
+export declare const ACTIVE_CONVERSATION_STORAGE_KEY = "eliza:chat:activeConversationId";
 interface UseAppLifecycleEventsParams {
-  activeConversationIdRef: MutableRefObject<string | null>;
-  conversationMessagesRef: MutableRefObject<ConversationMessage[]>;
-  chatAbortRef: MutableRefObject<AbortController | null>;
-  setConversationMessages: (
-    updater:
-      | ConversationMessage[]
-      | ((prev: ConversationMessage[]) => ConversationMessage[]),
-  ) => void;
+    activeConversationIdRef: MutableRefObject<string | null>;
+    conversationMessagesRef: MutableRefObject<ConversationMessage[]>;
+    chatAbortRef: MutableRefObject<AbortController | null>;
+    setConversationMessages: (updater: ConversationMessage[] | ((prev: ConversationMessage[]) => ConversationMessage[])) => void;
 }
-export declare function useAppLifecycleEvents({
-  activeConversationIdRef,
-  conversationMessagesRef,
-  chatAbortRef,
-  setConversationMessages,
-}: UseAppLifecycleEventsParams): void;
+export declare function useAppLifecycleEvents({ activeConversationIdRef, conversationMessagesRef, chatAbortRef, setConversationMessages, }: UseAppLifecycleEventsParams): void;
+export {};
 //# sourceMappingURL=useAppLifecycleEvents.d.ts.map

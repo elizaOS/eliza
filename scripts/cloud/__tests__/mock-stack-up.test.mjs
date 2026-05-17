@@ -6,9 +6,30 @@
  * spinning up cloud-api / cloud-frontend / migrations.
  */
 
-import { spawn, spawnSync } from "node:child_process";
+import { spawn } from "node:child_process";
+import { mkdtempSync, readFileSync } from "node:fs";
+import os from "node:os";
 import path from "node:path";
 import { describe, expect, test } from "bun:test";
+
+// Bun's test-runner pipe capture loses output on `process.exit(non-zero)`,
+// so we redirect child stdio to files via the shell and read them back.
+function runSync(args) {
+  return new Promise((resolve) => {
+    const tmp = mkdtempSync(path.join(os.tmpdir(), "mock-stack-test-"));
+    const outFile = path.join(tmp, "out.log");
+    const errFile = path.join(tmp, "err.log");
+    const cmd = `node ${JSON.stringify(SCRIPT)} ${args.map((a) => JSON.stringify(a)).join(" ")} >${JSON.stringify(outFile)} 2>${JSON.stringify(errFile)}`;
+    const proc = spawn("sh", ["-c", cmd]);
+    proc.on("exit", (code) => {
+      let stdout = "";
+      let stderr = "";
+      try { stdout = readFileSync(outFile, "utf8"); } catch {}
+      try { stderr = readFileSync(errFile, "utf8"); } catch {}
+      resolve({ status: code, stdout, stderr });
+    });
+  });
+}
 
 const REPO_ROOT = path.resolve(import.meta.dirname, "../../..");
 const SCRIPT = path.join(REPO_ROOT, "scripts/cloud/mock-stack-up.mjs");
@@ -16,7 +37,6 @@ const SCRIPT = path.join(REPO_ROOT, "scripts/cloud/mock-stack-up.mjs");
 function runOrchestrator(args, { collectMs = 0 } = {}) {
   return new Promise((resolve) => {
     const proc = spawn("node", [SCRIPT, ...args], {
-      cwd: REPO_ROOT,
       env: { ...process.env, NODE_ENV: "test" },
     });
     let stdout = "";
@@ -48,22 +68,16 @@ function runOrchestrator(args, { collectMs = 0 } = {}) {
 }
 
 describe("mock-stack-up orchestrator", () => {
-  test("--help prints usage and exits 0", () => {
-    const r = spawnSync("node", [SCRIPT, "--help"], {
-      cwd: REPO_ROOT,
-      encoding: "utf8",
-    });
+  test("--help prints usage and exits 0", async () => {
+    const r = await runSync(["--help"]);
     expect(r.status).toBe(0);
     expect(r.stdout).toContain("Usage:");
     expect(r.stdout).toContain("--no-frontend");
     expect(r.stdout).toContain("--reset");
   });
 
-  test("unknown flag exits 1 with usage", () => {
-    const r = spawnSync("node", [SCRIPT, "--definitely-not-a-flag"], {
-      cwd: REPO_ROOT,
-      encoding: "utf8",
-    });
+  test("unknown flag exits 1 with usage", async () => {
+    const r = await runSync(["--definitely-not-a-flag"]);
     expect(r.status).toBe(1);
     const combined = (r.stdout ?? "") + (r.stderr ?? "");
     expect(combined).toContain("Unknown flag");
@@ -74,7 +88,7 @@ describe("mock-stack-up orchestrator", () => {
     "skip-everything boot reaches ready banner and SIGINT shuts down cleanly",
     async () => {
       const started = Date.now();
-      const { code, stdout, signal } = await runOrchestrator(
+      const { code, stdout, stderr, signal } = await runOrchestrator(
         ["--no-frontend", "--no-cp", "--no-hetzner", "--no-migrations"],
         { collectMs: 4_000 },
       );

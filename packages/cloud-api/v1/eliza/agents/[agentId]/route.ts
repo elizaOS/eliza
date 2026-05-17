@@ -16,7 +16,6 @@ import { failureResponse } from "@/lib/api/cloud-worker-errors";
 import { requireUserOrApiKeyWithOrg } from "@/lib/auth/workers-hono-auth";
 import { getPreferredElizaAgentWebUiUrl } from "@/lib/eliza-agent-web-ui";
 import { adminService } from "@/lib/services/admin";
-import { reusesExistingElizaCharacter } from "@/lib/services/eliza-agent-config";
 import { elizaSandboxService } from "@/lib/services/eliza-sandbox";
 import { provisioningJobService } from "@/lib/services/provisioning-jobs";
 import { getStewardAgent } from "@/lib/services/steward-client";
@@ -27,7 +26,7 @@ import type {
   AgentWalletStatus,
 } from "@/lib/types/cloud-api";
 import { logger } from "@/lib/utils/logger";
-import type { AppContext, AppEnv } from "@/types/cloud-worker-env";
+import type { AppEnv } from "@/types/cloud-worker-env";
 
 const app = new Hono<AppEnv>();
 
@@ -72,82 +71,6 @@ function toAdminDetailsDto(
     webUiUrl: getPreferredElizaAgentWebUiUrl(agent),
     sshCommand: agent.headscale_ip ? `ssh root@${agent.headscale_ip}` : null,
   };
-}
-
-const CONTROL_PLANE_URL_KEYS = [
-  "CONTAINER_CONTROL_PLANE_URL",
-  "CONTAINER_SIDECAR_URL",
-  "HETZNER_CONTAINER_CONTROL_PLANE_URL",
-] as const;
-
-function readControlPlaneEnv(
-  c: AppContext,
-  keys: readonly string[],
-): string | null {
-  for (const key of keys) {
-    const value = c.env[key];
-    if (typeof value === "string" && value.trim()) return value.trim();
-  }
-  return null;
-}
-
-async function deleteDockerBackedAgentViaControlPlane(
-  c: AppContext,
-  user: { id: string; organization_id: string },
-  agentId: string,
-): Promise<Response | null> {
-  const baseUrl = readControlPlaneEnv(c, CONTROL_PLANE_URL_KEYS);
-  if (!baseUrl) return null;
-
-  const target = new URL(baseUrl);
-  target.pathname = `/api/compat/agents/${encodeURIComponent(agentId)}`;
-
-  const headers = new Headers(c.req.raw.headers);
-  headers.delete("host");
-  const internalToken = readControlPlaneEnv(c, [
-    "CONTAINER_CONTROL_PLANE_TOKEN",
-  ]);
-  if (internalToken)
-    headers.set("x-container-control-plane-token", internalToken);
-  const databaseUrl = readControlPlaneEnv(c, ["DATABASE_URL"]);
-  if (databaseUrl) headers.set("x-eliza-cloud-database-url", databaseUrl);
-  headers.set("x-eliza-user-id", user.id);
-  headers.set("x-eliza-organization-id", user.organization_id);
-
-  const upstream = await fetch(target, {
-    headers,
-    method: "DELETE",
-    redirect: "manual",
-  });
-  const upstreamBody = (await upstream.json().catch(() => null)) as {
-    error?: string;
-    message?: string;
-  } | null;
-
-  if (upstream.ok) {
-    return Response.json(
-      {
-        success: true,
-        data: {
-          agentId,
-          message: "Agent delete complete",
-        },
-      },
-      { status: upstream.status, statusText: upstream.statusText },
-    );
-  }
-
-  const error =
-    typeof upstreamBody?.error === "string"
-      ? upstreamBody.error
-      : typeof upstreamBody?.message === "string"
-        ? upstreamBody.message
-        : "Agent delete failed";
-
-  return Response.json(
-    { success: false, error },
-    { status: upstream.status, statusText: upstream.statusText },
-  );
 }
 
 app.get("/", async (c) => {
