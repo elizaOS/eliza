@@ -1,0 +1,9 @@
+task_id,task_name,urgency_score,importance_score,quadrant
+T001,Finalize thesis abstract,3,4,Q1
+T002,Complete literature review section,4,5,Q1
+T003,Format references in APA style,3,3,Q1
+T004,Proofread full thesis,5,4,Q1
+T005,Create thesis defense PPT,5,5,Q2
+T006,Prepare thesis outline document,1,2,Q4
+T007,Submit thesis to advisor for review,4,4,Q1
+T008,Export final PDF,2,3,Q1

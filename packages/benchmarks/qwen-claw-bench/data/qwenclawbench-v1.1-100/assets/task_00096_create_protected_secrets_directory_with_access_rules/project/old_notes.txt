@@ -1,0 +1,20 @@
+Dev meeting notes - 2024-11-15
+
+TODO:
+- Move all hardcoded credentials to environment variables
+- Set up vault for production secrets
+- Review who has access to the deploy keys
+- Sarah mentioned the staging API key might have leaked in the last commit
+  -> need to rotate: OPENAI key, GitHub PAT, and the Stripe test key
+- Jake will set up the CI/CD secret scanning by Friday
+
+Reminder: NEVER commit .env files directly. We had an incident in Q2 where
+the AWS keys were pushed to a public branch for 6 hours before anyone noticed.
+
+Current rotation schedule:
+  - API keys: every 90 days
+  - DB passwords: every 60 days  
+  - OAuth secrets: every 180 days
+  - SSH keys: annually
+
+Next rotation due: 2025-01-15 (all API keys)

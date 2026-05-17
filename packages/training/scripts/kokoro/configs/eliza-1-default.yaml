@@ -1,0 +1,27 @@
+# Default Eliza-1 custom-voice fine-tune. Inherits from base.yaml.
+#
+# Use this when the user's intent is "fine-tune Kokoro on my LJSpeech-format
+# voice for shipping inside an Eliza-1 bundle." Override `voice_name`,
+# `dataset_path`, and `run_dir` on the CLI (or in a sibling YAML).
+
+extends: base.yaml
+
+# Identity. The voice_name lands as the bundle artifact name and as the
+# manifest fragment's voice id (see package_voice_for_release.py).
+voice_name: eliza_custom
+voice_display_name: Eliza Custom Voice
+voice_lang: a                  # a=American English, b=British, etc. — see voice-presets.ts.
+voice_tags:
+  - custom
+  - eliza-1
+
+# Inputs. Set via CLI for portability; left here as documentation.
+dataset_path: /path/to/LJSpeech-1.1
+run_dir: /tmp/kokoro-eliza-1-default
+
+# Reasonable starting point for LJSpeech-sized data (~13.1k clips, ~24h).
+mode: lora
+max_steps: 5000
+batch_size: 8
+grad_accum: 4
+learning_rate: 1.0e-4

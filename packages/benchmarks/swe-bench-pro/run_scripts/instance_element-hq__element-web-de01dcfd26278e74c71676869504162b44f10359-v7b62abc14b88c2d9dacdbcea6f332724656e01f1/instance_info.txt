@@ -1,0 +1,6 @@
+Instance ID: instance_element-hq__element-web-de01dcfd26278e74c71676869504162b44f10359-v7b62abc14b88c2d9dacdbcea6f332724656e01f1
+Repository: element-hq/element-web
+Base Commit: b5abaffbd12a6fb418ad29c6337050b451247215
+Test Files: ["test/utils/DateUtils-test.ts"]
+FAIL_TO_PASS: ["test/utils/DateUtils-test.ts | formatSeconds | correctly formats time with hours", "test/utils/DateUtils-test.ts | formatSeconds | correctly formats time without hours"]
+PASS_TO_PASS: []

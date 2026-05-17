@@ -1,0 +1,72 @@
+# Capacity Planning Document — Audio Player Core v2.0
+# Author: @rthompson
+# Date: 2024-06-01
+# Status: Under Review
+# Reviewed-by: @schen
+
+# This document provides detailed memory and resource budgeting
+# for the audio player core. All limits are measured at runtime
+# under worst-case conditions (10,000 track queue, 512 MB cache full,
+# maximum concurrent decodes).
+
+memory_budget:
+  description: "Runtime memory budget breakdown by component"
+  target_heap_mb: 96
+  max_heap_mb: 128
+  components:
+    ring_buffer:
+      allocated_mb: 0.5
+      notes: "SPSC ring buffer: 65536 samples × 4 bytes/sample"
+    decode_workspace:
+      allocated_mb: 3.0
+      notes: "Pre-allocated: 2 MB decode buffer + 1 MB resample buffer"
+    resampler_tables:
+      allocated_mb: 1.2
+      notes: "rubato coefficient tables for quality=high"
+    codec_state:
+      allocated_mb: 0.3
+      notes: "symphonia decoder internal state per active stream"
+    cache_index:
+      allocated_mb: 0.8
+      notes: "In-memory LRU index only; cached PCM data stored on disk"
+    prefetch_buffer:
+      allocated_mb: 25.5
+      notes: "Decoded PCM for prefetched tracks (3 tracks × ~8.5 MB avg)"
+    queue_metadata:
+      allocated_mb: 4.9
+      notes: "10000 tracks × ~512 bytes average serialized size"
+    state_db_cache:
+      allocated_mb: 4.0
+      notes: "sled internal page cache"
+    state_db_wal:
+      allocated_mb: 1.0
+      notes: "sled write-ahead log buffer"
+    misc_overhead:
+      allocated_mb: 12.0
+      notes: "tokio runtime, tracing subscribers, channel buffers, thread stacks"
+  computed_total_mb: 53.2
+  headroom_mb: 74.8
+
+cache_planning:
+  storage_type: disk
+  disk_cache_limit_mb: 512
+  memory_footprint_mb: 0.8
+  avg_track_decoded_size_mb: 8.5
+  target_cached_tracks: 60
+  actual_capacity_tracks: 60
+  notes: >
+    The 512 MB cache limit refers to ON-DISK storage of decoded PCM data.
+    The in-memory footprint is only the LRU index (~0.8 MB for 60 entries).
+    This is distinct from max_heap_mb (128 MB) which covers only heap allocations.
+
+throughput_targets:
+  min_decode_ratio: 8.0
+  description: "Decoder must sustain 8x real-time throughput minimum"
+  seek_refill_ms: 200
+  seek_refill_description: >
+    After a seek operation, the ring buffer must be refilled within 200ms
+    to avoid audible gaps. This is the decode pipeline recovery target,
+    distinct from the user-facing seek latency (50ms) which measures
+    time from seek command to audio output resuming.
+  prefetch_target_ms: 5000
+  prefetch_description: "Complete prefetch of next track within 5 seconds"

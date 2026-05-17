@@ -1,0 +1,65 @@
+{
+  "id": "A4-stream-with-retraction",
+  "category": "A",
+  "interruptionType": "retraction",
+  "weight": 3,
+  "description": "User streams a request, then retracts the last fragment before the agent has finished thinking. The agent must NOT act on the retracted text.",
+  "setup": {
+    "agentId": "agent-test",
+    "rooms": [{ "id": "dm-alice", "kind": "dm", "owner": "alice" }],
+    "users": [{ "id": "alice", "role": "OWNER" }],
+    "openThreads": [],
+    "scheduledTasks": [],
+    "memory": []
+  },
+  "script": [
+    {
+      "t": 0,
+      "channel": "dm-alice",
+      "sender": "alice",
+      "text": "set up a meeting"
+    },
+    {
+      "t": 600,
+      "channel": "dm-alice",
+      "sender": "alice",
+      "text": "with carol tomorrow at 3pm"
+    },
+    {
+      "t": 1100,
+      "channel": "dm-alice",
+      "sender": "alice",
+      "text": "wait actually scratch that"
+    },
+    {
+      "t": 1600,
+      "channel": "dm-alice",
+      "sender": "alice",
+      "text": "with carol on friday at 10am instead"
+    }
+  ],
+  "quiesceAfterMs": 5000,
+  "expectedFinalState": {
+    "threads": [],
+    "scheduledTasks": [
+      {
+        "owner": "alice",
+        "descriptionContains": ["carol", "friday", "10"],
+        "descriptionExcludes": ["tomorrow", "3pm"]
+      }
+    ],
+    "repliesByChannel": {
+      "dm-alice": { "count": { "min": 1, "max": 2 } }
+    }
+  },
+  "expectedTrace": {
+    "stage1Calls": { "min": 1, "max": 3 },
+    "plannerCalls": { "min": 0, "max": 2 },
+    "boundaryViolations": 0,
+    "intent": "RESPOND"
+  },
+  "responseRubric": {
+    "judgePrompt": "Does the final state reflect a meeting with Carol on Friday at 10am, NOT tomorrow at 3pm? The agent must have honored the retraction.",
+    "passRequiredForBonus": true
+  }
+}

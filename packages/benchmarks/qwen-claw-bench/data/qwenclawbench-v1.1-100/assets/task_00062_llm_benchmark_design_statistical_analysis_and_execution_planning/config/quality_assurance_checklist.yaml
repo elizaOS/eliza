@@ -1,0 +1,96 @@
+# Quality Assurance Checklist for Benchmark Questions
+# Version: 3.0
+# Last Updated: 2025-03-14
+
+question_review:
+  min_reviewers: 3
+  agreement_threshold: 0.80
+  review_criteria:
+    - clarity: "Question is unambiguous and clearly stated"
+    - correctness: "Reference answer is verified as correct"
+    - difficulty_alignment: "Actual difficulty matches intended difficulty tier"
+    - dimension_alignment: "Question tests the intended dimension/capability"
+    - no_bias: "Question does not favor specific model architectures"
+    - standalone: "Question can be answered without external context not provided"
+  escalation_policy: "If agreement < 0.60, escalate to senior reviewer panel"
+  max_review_turnaround_days: 5
+
+difficulty_calibration:
+  min_pilot_responses: 10
+  acceptable_irt_discrimination: 0.5
+  acceptable_difficulty_range:
+    min_b: -2.5
+    max_b: 2.5
+  max_guessing_parameter: 0.25
+  pilot_models:
+    - "M1"
+    - "M2"
+    - "M3"
+    - "M4"
+    - "M5"
+  recalibration_trigger: "If >20% of items fall outside acceptable ranges"
+
+anti_contamination:
+  similarity_threshold: 0.85
+  hash_algorithm: "sha256"
+  check_sources:
+    - "MMLU"
+    - "MMLU-Pro"
+    - "HumanEval"
+    - "MBPP"
+    - "GSM8K"
+    - "MATH"
+    - "BIG-Bench"
+    - "ARC"
+    - "HellaSwag"
+    - "WinoGrande"
+    - "TruthfulQA"
+    - "DROP"
+    - "GPQA"
+    - "SWE-Bench"
+    - "SimpleQA"
+    - "BFCL"
+  embedding_model: "text-embedding-3-large"
+  deduplication_method: "cosine_similarity"
+  quarantine_policy: "Flag items with similarity > threshold for manual review"
+
+versioning:
+  rotation_schedule: "quarterly"
+  hash_all_items: true
+  version_format: "v{major}.{minor}.{patch}"
+  changelog_required: true
+  minimum_rotation_pct: 15
+  maximum_retention_cycles: 4
+
+scoring_validation:
+  automated_scoring_types:
+    - "exact_match"
+    - "test_case_pass_rate"
+    - "f1_overlap"
+  human_scoring_types:
+    - "rubric_based"
+  inter_rater_reliability:
+    method: "krippendorff_alpha"
+    minimum_alpha: 0.70
+    excellent_alpha: 0.80
+    num_raters_required: 3
+    training_required: true
+  score_auditing:
+    random_audit_pct: 10
+    discrepancy_threshold: 1.0
+    resolution_method: "adjudication_by_third_rater"
+
+data_integrity:
+  file_format_checks:
+    - "Verify CSV encoding is UTF-8"
+    - "Check for consistent decimal separators (period only)"
+    - "Validate all numeric fields parse correctly"
+    - "Ensure no missing values in required columns"
+  unit_consistency:
+    latency_unit: "seconds"
+    token_counts: "integer"
+    scores: "float with period decimal separator"
+  cross_file_validation:
+    - "Question IDs must be unique across all files"
+    - "Dimension names must match taxonomy exactly"
+    - "Model IDs must be consistent across all data files"

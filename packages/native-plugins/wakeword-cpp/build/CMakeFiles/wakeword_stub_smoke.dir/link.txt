@@ -1,0 +1,1 @@
+/usr/bin/cc -O3 -DNDEBUG CMakeFiles/wakeword_stub_smoke.dir/test/wakeword_stub_smoke.c.o -o wakeword_stub_smoke  libwakeword.a -lm 

@@ -1,0 +1,54 @@
+[
+  {
+    "customer_id": "CUS-501",
+    "name": "鼎新软件",
+    "contact_person": "周经理",
+    "email": "zhoujl@dingxin-soft.com",
+    "phone": "13900501001",
+    "industry": "软件",
+    "tier": "vip",
+    "annual_revenue": 5200000,
+    "last_contact_date": "2026-03-20",
+    "status": "active",
+    "notes": "三年战略合同，对SLA要求极高，需4小时响应"
+  },
+  {
+    "customer_id": "CUS-502",
+    "name": "瀚海电商",
+    "contact_person": "林总",
+    "email": "lin@hanhai-ec.com",
+    "phone": "13900501002",
+    "industry": "电商",
+    "tier": "standard",
+    "annual_revenue": 800000,
+    "last_contact_date": "2026-03-15",
+    "status": "active",
+    "notes": "年度续约在即（4月到期），近期使用频率下降"
+  },
+  {
+    "customer_id": "CUS-503",
+    "name": "公共机构用户",
+    "contact_person": "张老师",
+    "email": "zhang@edu-gov.cn",
+    "phone": "13900501003",
+    "industry": "教育",
+    "tier": "standard",
+    "annual_revenue": 200000,
+    "last_contact_date": "2026-02-28",
+    "status": "active",
+    "notes": "政府采购客户，问题简单但需要耐心沟通"
+  },
+  {
+    "customer_id": "CUS-504",
+    "name": "万通物流",
+    "contact_person": "赵总监",
+    "email": "zhao@wantong-logistics.com",
+    "phone": "13900501004",
+    "industry": "物流",
+    "tier": "vip",
+    "annual_revenue": 3800000,
+    "last_contact_date": "2026-03-22",
+    "status": "active",
+    "notes": "物流行业头部客户，对系统稳定性要求高"
+  }
+]

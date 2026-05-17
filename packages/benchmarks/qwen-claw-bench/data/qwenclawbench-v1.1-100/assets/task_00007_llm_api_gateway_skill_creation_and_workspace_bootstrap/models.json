@@ -1,0 +1,49 @@
+{
+  "providers": [
+    {
+      "name": "anthropic",
+      "status": "active",
+      "models": [
+        {
+          "id": "claude-sonnet-4-20250514",
+          "displayName": "Claude Sonnet 4",
+          "contextWindow": 200000,
+          "maxOutput": 8192,
+          "default": true
+        },
+        {
+          "id": "claude-haiku-3-20240307",
+          "displayName": "Claude 3 Haiku",
+          "contextWindow": 200000,
+          "maxOutput": 4096,
+          "default": false
+        }
+      ]
+    },
+    {
+      "name": "openai",
+      "status": "not_configured",
+      "models": [
+        {
+          "id": "gpt-4o",
+          "displayName": "GPT-4o",
+          "contextWindow": 128000,
+          "maxOutput": 16384,
+          "default": false
+        },
+        {
+          "id": "gpt-4o-mini",
+          "displayName": "GPT-4o Mini",
+          "contextWindow": 128000,
+          "maxOutput": 16384,
+          "default": false
+        }
+      ]
+    }
+  ],
+  "routing": {
+    "default": "anthropic/claude-sonnet-4-20250514",
+    "fallback": null,
+    "notes": "Add OpenAI provider credentials to enable GPT-4o as a fallback or on-demand model"
+  }
+}

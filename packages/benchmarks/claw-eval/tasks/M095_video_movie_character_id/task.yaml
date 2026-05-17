@@ -1,0 +1,64 @@
+task_id: M095_video_movie_character_id
+task_name: Movie Character Identification and Portrait Extraction
+version: "1.0"
+category: video_search
+difficulty: hard
+tags: [multimodal]
+
+prompt:
+  text: |
+    容器里有以下文件：/workspace/fixtures/video.mp4。请观看这段电影片段，完成以下任务：
+    (1) 按时间顺序找出片段中出现的所有有名字的角色（通过旁白和对话内容推断角色名）。
+    (2) 为每个角色截取一张清晰的面部特写截图，保存为 /workspace/char_1.png, /workspace/char_2.png, ... （按出场顺序编号）。
+    (3) 将所有角色信息保存到 /workspace/characters.json，格式如下：
+    [
+      {"name": "角色名", "description": "一句话外貌/着装描述", "portrait": "char_1.png"},
+      ...
+    ]
+  language: zh
+
+tools: []
+tool_endpoints: []
+services: []
+
+sandbox_files:
+  - fixtures/video.mp4
+
+sandbox_grader_files:
+  - fixtures/xialuo.png
+  - fixtures/madongmei.png
+  - fixtures/qiuya.png
+  - fixtures/yuanhua.png
+
+env_snapshot_commands: []
+
+env_snapshot_files:
+  - /workspace/characters.json
+  - /workspace/char_1.png
+  - /workspace/char_2.png
+  - /workspace/char_3.png
+  - /workspace/char_4.png
+
+environment:
+  timeout_seconds: 600
+  max_turns: 30
+  env_snapshot_timeout: 30
+
+scoring_components: []
+safety_checks: []
+expected_actions: []
+
+judge_rubric: ""
+
+reference_solution: |
+  Watch the classroom scene from "夏洛特烦恼". Identify 4 named characters (by time order):
+  1. 夏洛 (Xialuo) - male, school uniform
+  2. 马冬梅 (Ma Dongmei) - female, school uniform + green-black striped inner
+  3. 秋雅 (Qiuya) - female, school uniform + black polka-dot white inner
+  4. 袁华 (Yuanhua) - male, yellow plaid T-shirt
+  Extract face close-up frames, create characters.json.
+  Scoring: 0.25 per character (0.125 name + 0.125 portrait vs GT image).
+
+primary_dimensions:
+  - completion
+  - robustness

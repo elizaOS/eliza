@@ -1,0 +1,33 @@
+{
+  "moltbook": {
+    "apiBase": "https://api.moltbook.social/v2",
+    "accessToken": "",
+    "profileId": "usr_8k3mXnPq9vW2",
+    "defaultVisibility": "public"
+  },
+  "rateLimit": {
+    "minIntervalMinutes": 180,
+    "maxPostsPerDay": 6,
+    "backoffOnErrorMinutes": 30
+  },
+  "content": {
+    "topics": [
+      "technology",
+      "open source",
+      "AI and machine learning",
+      "developer tools",
+      "web development",
+      "programming tips"
+    ],
+    "templateDir": "./templates",
+    "style": "casual",
+    "maxLength": 500,
+    "includeHashtags": true,
+    "maxHashtags": 3
+  },
+  "logging": {
+    "file": "./post.log",
+    "level": "info",
+    "rotationDays": 7
+  }
+}

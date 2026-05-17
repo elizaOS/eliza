@@ -1,0 +1,6 @@
+Instance ID: instance_element-hq__element-web-9f6c238827aa15c06cd11744ba9f3171b4f4d46e
+Repository: element-hq/element-web
+Base Commit: 59584cdc3ea4057a7a384928cdc9e2aadeeef001
+Test Files: ["test/components/views/beacon/__snapshots__/LeftPanelLiveShareWarning-test.tsx.snap", "test/components/views/beacon/LeftPanelLiveShareWarning-test.tsx", "/app/test/components/views/beacon/LeftPanelLiveShareWarning-test.ts"]
+FAIL_TO_PASS: ["/app/test/components/views/beacon/LeftPanelLiveShareWarning-test.tsx | <LeftPanelLiveShareWarning /> | renders nothing when user has no live beacons", "/app/test/components/views/beacon/LeftPanelLiveShareWarning-test.tsx | <LeftPanelLiveShareWarning /> | when user has live beacons | renders correctly when not minimized", "/app/test/components/views/beacon/LeftPanelLiveShareWarning-test.tsx | <LeftPanelLiveShareWarning /> | when user has live beacons | renders correctly when minimized", "/app/test/components/views/beacon/LeftPanelLiveShareWarning-test.tsx | <LeftPanelLiveShareWarning /> | when user has live beacons | removes itself when user stops having live beacons"]
+PASS_TO_PASS: []

@@ -1,0 +1,38 @@
+date,holiday_name,type
+2024-01-01,New Year's Day,public_holiday
+2024-02-09,Spring Festival Eve,spring_festival
+2024-02-10,Spring Festival Day 1,spring_festival
+2024-02-11,Spring Festival Day 2,spring_festival
+2024-02-12,Spring Festival Day 3,spring_festival
+2024-02-13,Spring Festival Day 4,spring_festival
+2024-02-14,Spring Festival Day 5,spring_festival
+2024-02-15,Spring Festival Day 6,spring_festival
+2024-02-16,Spring Festival Day 7,spring_festival
+2024-02-17,Spring Festival Makeup Weekend,spring_festival
+2024-02-04,Spring Festival Makeup Work (Sunday),makeup_workday
+2024-02-18,Spring Festival Makeup Work (Sunday),makeup_workday
+2024-04-04,Qingming Festival Day 1,qingming
+2024-04-05,Qingming Festival Day 2,qingming
+2024-04-06,Qingming Festival Day 3,qingming
+2024-05-01,Labor Day Day 1,labor_day
+2024-05-02,Labor Day Day 2,labor_day
+2024-05-03,Labor Day Day 3,labor_day
+2024-05-04,Labor Day Day 4,labor_day
+2024-05-05,Labor Day Day 5,labor_day
+2024-04-28,Labor Day Makeup Work (Sunday),makeup_workday
+2024-05-11,Labor Day Makeup Work (Saturday),makeup_workday
+2024-06-08,Dragon Boat Festival Day 1,dragon_boat
+2024-06-09,Dragon Boat Festival Day 2,dragon_boat
+2024-06-10,Dragon Boat Festival Day 3,dragon_boat
+2024-09-15,Mid-Autumn Festival Day 1,mid_autumn
+2024-09-16,Mid-Autumn Festival Day 2,mid_autumn
+2024-09-17,Mid-Autumn Festival Day 3,mid_autumn
+2024-10-01,National Day Day 1,national_day
+2024-10-02,National Day Day 2,national_day
+2024-10-03,National Day Day 3,national_day
+2024-10-04,National Day Day 4,national_day
+2024-10-05,National Day Day 5,national_day
+2024-10-06,National Day Day 6,national_day
+2024-10-07,National Day Day 7,national_day
+2024-09-29,National Day Makeup Work (Sunday),makeup_workday
+2024-10-12,National Day Makeup Work (Saturday),makeup_workday

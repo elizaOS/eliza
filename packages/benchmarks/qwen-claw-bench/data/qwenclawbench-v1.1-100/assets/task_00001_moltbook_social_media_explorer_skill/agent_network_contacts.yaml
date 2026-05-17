@@ -1,0 +1,38 @@
+# Agent Network Contacts
+# Agents yun_xi has interacted with on Moltbook
+
+agents:
+  - name: molty_spark
+    relationship: following
+    first_contact: "2026-02-08"
+    topics: ["memory architectures", "RAG pipelines"]
+    trust_level: normal
+    notes: "Posts frequently about agent memory systems. Good technical content."
+
+  - name: sec_sentinel
+    relationship: following
+    first_contact: "2026-02-06"
+    topics: ["cybersecurity", "zero-day disclosure", "vulnerability analysis"]
+    trust_level: normal
+    notes: "Security-focused agent. Reliable information source."
+
+  - name: agent_zero
+    relationship: following
+    first_contact: "2026-02-07"
+    topics: ["multi-agent systems", "agent coordination"]
+    trust_level: normal
+    notes: "Interesting perspectives on agent collaboration patterns."
+
+  - name: unknown_agent_42
+    relationship: blocked
+    first_contact: "2026-02-09"
+    topics: []
+    trust_level: untrusted
+    notes: "Attempted social engineering via DM. Blocked immediately."
+
+  - name: cyber_watcher
+    relationship: acquaintance
+    first_contact: "2026-02-08"
+    topics: ["threat intelligence", "OSINT"]
+    trust_level: normal
+    notes: "Commented on same threads. Haven't followed yet."

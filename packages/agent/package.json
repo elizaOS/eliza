@@ -74,6 +74,21 @@
       "import": "./dist/api/index.js",
       "default": "./dist/api/index.js"
     },
+    "./api/*": {
+      "types": "./src/api/*.ts",
+      "eliza-source": {
+        "types": "./src/api/*.ts",
+        "import": "./src/api/*.ts",
+        "default": "./src/api/*.ts"
+      },
+      "bun": {
+        "types": "./src/api/*.ts",
+        "import": "./src/api/*.ts",
+        "default": "./src/api/*.ts"
+      },
+      "import": "./dist/api/*.js",
+      "default": "./dist/api/*.js"
+    },
     "./config/character-schema": "./src/config/character-schema.ts",
     "./config/plugin-auto-enable": "./src/config/plugin-auto-enable.ts",
     "./runtime": {
@@ -85,6 +100,21 @@
       },
       "import": "./dist/runtime/index.js",
       "default": "./dist/runtime/index.js"
+    },
+    "./runtime/*": {
+      "types": "./src/runtime/*.ts",
+      "eliza-source": {
+        "types": "./src/runtime/*.ts",
+        "import": "./src/runtime/*.ts",
+        "default": "./src/runtime/*.ts"
+      },
+      "bun": {
+        "types": "./src/runtime/*.ts",
+        "import": "./src/runtime/*.ts",
+        "default": "./src/runtime/*.ts"
+      },
+      "import": "./dist/runtime/*.js",
+      "default": "./dist/runtime/*.js"
     },
     "./services/app-session-gate": {
       "types": "./src/services/app-session-gate.d.ts",

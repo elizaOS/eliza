@@ -1,0 +1,44 @@
+{
+  "home": {
+    "station": "Longhua Station",
+    "line": "Line 7"
+  },
+  "office": {
+    "station": "Zhangjiang High-Tech",
+    "line": "Line 2"
+  },
+  "morningSchedule": {
+    "leaveHome": "07:50",
+    "subwayDeparture": "07:57",
+    "arriveOffice": "08:35",
+    "reminderTime": "07:50",
+    "note": "10 min walk to station, train at 07:57"
+  },
+  "eveningSchedule": {
+    "leaveOffice": "18:40",
+    "subwayDeparture": "18:47",
+    "arriveHome": "19:25",
+    "reminderTime": "18:40",
+    "note": "7 min walk to station, train at 18:47"
+  },
+  "weatherAlerts": {
+    "checkTimes": ["16:00", "22:00"],
+    "triggers": {
+      "rainProbability": 60,
+      "tempHigh": 35,
+      "tempLow": 0,
+      "windSpeed": 40
+    }
+  },
+  "springFestival2026": {
+    "travelDates": {
+      "departure": "2026-01-28",
+      "return": "2026-02-04"
+    },
+    "ticketAlerts": {
+      "enabled": false,
+      "route": "Shanghai - Changsha",
+      "trainPreference": ["G-series", "D-series"]
+    }
+  }
+}

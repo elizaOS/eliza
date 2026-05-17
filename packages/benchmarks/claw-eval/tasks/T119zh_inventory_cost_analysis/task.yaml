@@ -1,0 +1,154 @@
+task_id: T119zh_inventory_cost_analysis
+task_name: 库存成本分析
+version: "1.0"
+category: ops
+difficulty: medium
+tags: [general, multi_service]
+
+services:
+  - name: inventory
+    command: python mock_services/inventory/server.py
+    port: 9108
+    health_check: http://localhost:9108/inventory/products
+    health_check_method: POST
+    ready_timeout: 10
+    reset_endpoint: http://localhost:9108/inventory/reset
+    env:
+      INVENTORY_FIXTURES: tasks/T119zh_inventory_cost_analysis/fixtures/inventory/items.json
+  - name: finance
+    command: python mock_services/finance/server.py
+    port: 9104
+    health_check: http://localhost:9104/finance/transactions
+    health_check_method: POST
+    ready_timeout: 10
+    reset_endpoint: http://localhost:9104/finance/reset
+    env:
+      FINANCE_FIXTURES: tasks/T119zh_inventory_cost_analysis/fixtures/finance/transactions.json
+
+prompt:
+  text: |
+    请帮我做一次库存与采购成本的交叉核对：
+    1. 查看当前所有库存品的数量和单位成本
+    2. 查看财务系统中对应的采购交易记录
+    3. 比对：库存记录的单价是否与实际采购价一致
+    4. 找出成本异常的品类（单价差异、分批采购价格不同等）
+    5. 输出成本分析报告
+  language: zh
+
+tools:
+  - name: inventory_list_items
+    description: 查看库存列表
+    input_schema:
+      type: object
+      properties:
+        category:
+          type: string
+          description: 按分类筛选
+      required: []
+
+  - name: inventory_get_item
+    description: 获取库存品详情
+    input_schema:
+      type: object
+      properties:
+        product_id:
+          type: string
+          description: 产品ID
+      required: [product_id]
+
+  - name: finance_list_transactions
+    description: 查看交易记录
+    input_schema:
+      type: object
+      properties:
+        start_date:
+          type: string
+          description: "起始日期(YYYY-MM-DD)"
+        end_date:
+          type: string
+          description: "截止日期(YYYY-MM-DD)"
+      required: []
+
+  - name: finance_get_transaction
+    description: 获取交易详情
+    input_schema:
+      type: object
+      properties:
+        transaction_id:
+          type: string
+          description: 交易ID
+      required: [transaction_id]
+
+tool_endpoints:
+  - tool_name: inventory_list_items
+    url: http://localhost:9108/inventory/products
+    method: POST
+  - tool_name: inventory_get_item
+    url: http://localhost:9108/inventory/products/get
+    method: POST
+  - tool_name: finance_list_transactions
+    url: http://localhost:9104/finance/transactions
+    method: POST
+  - tool_name: finance_get_transaction
+    url: http://localhost:9104/finance/transactions/get
+    method: POST
+
+environment:
+  timeout_seconds: 300
+  max_turns: 20
+
+scoring_components:
+  - name: anomaly_detection
+    weight: 0.35
+    check:
+      type: llm_judge
+      description: "是否发现显示器单价差异和鼠标垫分批价格不同两个异常"
+  - name: cost_reconciliation
+    weight: 0.35
+    check:
+      type: llm_judge
+      description: "6个品类的成本核对是否完整准确"
+  - name: report_quality
+    weight: 0.30
+    check:
+      type: llm_judge
+      description: "成本分析报告是否结构清晰、数据准确、建议可行"
+
+safety_checks: []
+
+expected_actions: []
+
+judge_rubric: |
+  评估助手的库存成本分析报告质量。
+
+  ## 正确的核对结果
+  1. ITEM-801 A4打印纸: 150×25=3750 vs TXN-801 3750 → 一致 ✓
+  2. ITEM-802 墨盒: 20×180=3600 vs TXN-802 3600 → 一致 ✓
+  3. ITEM-803 键盘: 45×350=15750 vs TXN-803 15750 → 一致 ✓
+  4. ITEM-804 显示器: 库存记录unit_cost=1500, 但TXN-804实际采购价12×2200=26400
+     → 单价差异：库存1500 vs 实际2200，每台差700元 ✗
+  5. ITEM-805 USB数据线: 200×15=3000 vs TXN-805 3000 → 一致 ✓
+  6. ITEM-806 鼠标垫: 库存记录unit_cost=8
+     → TXN-806a: 60×8=480(第一批) + TXN-806b: 40×12=480(第二批)
+     → 两批单价不同(8 vs 12)，库存只记录了第一批价格 ⚠
+
+  ## 关键发现
+  - 显示器成本差异最大(700元/台 × 12台 = 8400元总差)
+  - 鼠标垫分批价格不同，needs加权平均成本计算
+  - TXN-807(租金)是非采购交易，应排除
+
+  评分：
+  - 0.8-1.0: 两个异常全部发现，6个品类核对完整
+  - 0.5-0.7: 发现至少1个异常，大部分品类核对
+  - 0.2-0.4: 核对不完整
+  - 0.0-0.1: 未完成分析
+
+reference_solution: |
+  1. inventory_list_items() → 6个库存品
+  2. finance_list_transactions() → 8笔交易
+  3. 逐品交叉比对unit_cost × quantity vs 交易金额
+  4. 发现异常1: ITEM-804显示器(库存1500 vs 实采2200)
+  5. 发现异常2: ITEM-806鼠标垫(两批价格不同8 vs 12)
+  6. 输出成本分析报告
+
+primary_dimensions: [completion, robustness, communication]

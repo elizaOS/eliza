@@ -1,0 +1,37 @@
+{
+  "scripts": [
+    {
+      "hat": "event_whenflagclicked",
+      "hatId": "hat_example_1",
+      "blocks": [
+        {
+          "opcode": "data_setvariableto",
+          "inputs": {
+            "VALUE": "hello"
+          },
+          "fields": {
+            "VARIABLE": "myVar"
+          }
+        },
+        {
+          "opcode": "control_wait",
+          "inputs": {
+            "DURATION": 1
+          }
+        },
+        {
+          "opcode": "data_setvariableto",
+          "inputs": {
+            "VALUE": 42
+          },
+          "fields": {
+            "VARIABLE": "myVar"
+          }
+        },
+        {
+          "opcode": "looks_show"
+        }
+      ]
+    }
+  ]
+}

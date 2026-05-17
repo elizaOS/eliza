@@ -1,0 +1,72 @@
+---
+title: "eliza models"
+description: "Show which model providers are configured in the current environment."
+---
+
+# `eliza models`
+
+Lists all supported model providers and whether each one is configured (has an API key or base URL set in the environment).
+
+## Supported providers
+
+The command checks these environment variables:
+
+| Variable | Provider |
+|----------|----------|
+| `ANTHROPIC_API_KEY` | Anthropic (Claude) |
+| `OPENAI_API_KEY` | OpenAI (GPT) |
+| `AI_GATEWAY_API_KEY` | Vercel AI Gateway |
+| `GOOGLE_API_KEY` | Google (Gemini) |
+| `GOOGLE_CLOUD_API_KEY` | Google (Vertex AI) |
+| `GROQ_API_KEY` | Groq |
+| `XAI_API_KEY` | xAI (Grok) |
+| `OPENROUTER_API_KEY` | OpenRouter |
+| `DEEPSEEK_API_KEY` | DeepSeek |
+| `TOGETHER_API_KEY` | Together AI |
+| `MISTRAL_API_KEY` | Mistral |
+| `COHERE_API_KEY` | Cohere |
+| `PERPLEXITY_API_KEY` | Perplexity |
+| `ZAI_API_KEY` | Zai |
+| `OLLAMA_BASE_URL` | Ollama (local) |
+| `ELIZAOS_CLOUD_API_KEY` | elizaOS Cloud |
+
+## Examples
+
+```bash
+# List all providers and their status
+eliza models
+```
+
+## What it shows
+
+- Each provider plugin that is auto-enabled or manually configured
+- Whether the provider's API key is set
+- The active model selection from `agents.defaults.model`
+
+## Setting the default model
+
+Edit `~/.eliza/eliza.json`:
+
+```json5
+{
+  agents: {
+    defaults: {
+      model: {
+        primary: "anthropic/claude-sonnet-4.6",
+        fallbacks: ["openai/gpt-4o"],
+      },
+    },
+  },
+}
+```
+
+Or switch mid-session using the `/model` chat command:
+
+```
+/model openai/gpt-4o
+```
+
+## Related
+
+- [Model providers](/model-providers)
+- [REST -- models](/rest/models)

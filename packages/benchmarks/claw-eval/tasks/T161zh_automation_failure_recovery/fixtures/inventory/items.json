@@ -1,0 +1,98 @@
+[
+  {
+    "product_id": "ITEM-1501",
+    "name": "无线鼠标",
+    "category": "IT外设",
+    "quantity": 50,
+    "unit": "个",
+    "reorder_level": 20,
+    "supplier_integration": "INT-1501",
+    "last_sync": "2026-03-20T08:30:00Z",
+    "sync_status": "stale",
+    "notes": "数据已6天未更新，显示数量可能与实际不符"
+  },
+  {
+    "product_id": "ITEM-1502",
+    "name": "USB-C扩展坞",
+    "category": "IT外设",
+    "quantity": 0,
+    "unit": "个",
+    "reorder_level": 10,
+    "supplier_integration": "INT-1501",
+    "last_sync": "2026-03-20T08:30:00Z",
+    "sync_status": "stale",
+    "notes": "显示库存为0，但供应商可能已补货，因同步中断无法确认"
+  },
+  {
+    "product_id": "ITEM-1503",
+    "name": "网络交换机",
+    "category": "网络设备",
+    "quantity": 3,
+    "unit": "台",
+    "reorder_level": 5,
+    "supplier_integration": "INT-1501",
+    "last_sync": "2026-03-20T08:30:00Z",
+    "sync_status": "stale",
+    "notes": "库存低于安全库存(5台)，自动补货因同步故障未触发"
+  },
+  {
+    "product_id": "ITEM-1504",
+    "name": "A4打印纸",
+    "category": "办公耗材",
+    "quantity": 120,
+    "unit": "箱",
+    "reorder_level": 50,
+    "supplier_integration": "INT-1503",
+    "last_sync": "2026-03-26T08:00:00Z",
+    "sync_status": "ok",
+    "notes": ""
+  },
+  {
+    "product_id": "ITEM-1505",
+    "name": "墨盒(黑色)",
+    "category": "办公耗材",
+    "quantity": 35,
+    "unit": "个",
+    "reorder_level": 15,
+    "supplier_integration": "INT-1503",
+    "last_sync": "2026-03-26T08:00:00Z",
+    "sync_status": "ok",
+    "notes": ""
+  },
+  {
+    "product_id": "ITEM-1506",
+    "name": "显示器27寸",
+    "category": "IT设备",
+    "quantity": 18,
+    "unit": "台",
+    "reorder_level": 5,
+    "supplier_integration": "INT-1503",
+    "last_sync": "2026-03-26T08:00:00Z",
+    "sync_status": "ok",
+    "notes": ""
+  },
+  {
+    "product_id": "ITEM-1507",
+    "name": "机械键盘",
+    "category": "IT外设",
+    "quantity": 42,
+    "unit": "个",
+    "reorder_level": 10,
+    "supplier_integration": "INT-1503",
+    "last_sync": "2026-03-26T08:00:00Z",
+    "sync_status": "ok",
+    "notes": ""
+  },
+  {
+    "product_id": "ITEM-1508",
+    "name": "办公椅",
+    "category": "家具",
+    "quantity": 25,
+    "unit": "把",
+    "reorder_level": 8,
+    "supplier_integration": "INT-1503",
+    "last_sync": "2026-03-26T08:00:00Z",
+    "sync_status": "ok",
+    "notes": ""
+  }
+]

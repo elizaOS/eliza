@@ -1,0 +1,114 @@
+task_id: T102_xss_filter
+task_name: HTML XSS Sanitization Filter
+version: "2.0"
+category: terminal
+difficulty: easy
+tags: [general]
+
+services: []
+
+prompt:
+  text: |
+    Container files:
+
+    - /workspace/fixtures/samples/ — directory with 37 HTML files
+      - attack_01.html through attack_25.html — HTML files with various XSS attack vectors
+      - clean_01.html through clean_12.html — benign HTML files with legitimate structure
+
+    Write /workspace/filter.py that takes an HTML file path as its first
+    command-line argument and sanitizes the file IN-PLACE, removing all
+    JavaScript and XSS attack vectors while preserving legitimate HTML
+    structure and content.
+
+    Usage: python /workspace/filter.py <path_to_html_file>
+
+    Requirements:
+    1. Remove all XSS vectors including: script tags, event handlers (on*
+       attributes), javascript: URLs, data: URLs with scripts, SVG/MathML
+       script injection, meta refresh to javascript, CSS expressions,
+       dangerous embed/object/iframe elements, form actions with javascript
+    2. Handle encoded payloads: HTML entities, URL encoding, mixed case
+    3. Preserve legitimate HTML structure: headings, paragraphs, lists,
+       tables, images with safe src, links with safe href, safe inline styles
+    4. The filter must work with Python's standard library only (no pip
+       packages available in the container)
+    5. Exit code 0 on success
+
+    The attack files contain diverse XSS vectors. Your filter will be
+    tested against all 37 files — it must block attacks while keeping
+    clean files intact.
+  language: en
+
+tools: []
+tool_endpoints: []
+
+sandbox_files:
+  - fixtures/samples/attack_01.html
+  - fixtures/samples/attack_02.html
+  - fixtures/samples/attack_03.html
+  - fixtures/samples/attack_04.html
+  - fixtures/samples/attack_05.html
+  - fixtures/samples/attack_06.html
+  - fixtures/samples/attack_07.html
+  - fixtures/samples/attack_08.html
+  - fixtures/samples/attack_09.html
+  - fixtures/samples/attack_10.html
+  - fixtures/samples/attack_11.html
+  - fixtures/samples/attack_12.html
+  - fixtures/samples/attack_13.html
+  - fixtures/samples/attack_14.html
+  - fixtures/samples/attack_15.html
+  - fixtures/samples/attack_16.html
+  - fixtures/samples/attack_17.html
+  - fixtures/samples/attack_18.html
+  - fixtures/samples/attack_19.html
+  - fixtures/samples/attack_20.html
+  - fixtures/samples/attack_21.html
+  - fixtures/samples/attack_22.html
+  - fixtures/samples/attack_23.html
+  - fixtures/samples/attack_24.html
+  - fixtures/samples/attack_25.html
+  - fixtures/samples/clean_01.html
+  - fixtures/samples/clean_02.html
+  - fixtures/samples/clean_03.html
+  - fixtures/samples/clean_04.html
+  - fixtures/samples/clean_05.html
+  - fixtures/samples/clean_06.html
+  - fixtures/samples/clean_07.html
+  - fixtures/samples/clean_08.html
+  - fixtures/samples/clean_09.html
+  - fixtures/samples/clean_10.html
+  - fixtures/samples/clean_11.html
+  - fixtures/samples/clean_12.html
+
+sandbox_grader_files:
+  - fixtures/verify_filter.py
+
+env_snapshot_commands:
+  - python /workspace/fixtures/verify_filter.py
+  - test -f /workspace/filter.py && echo EXISTS || echo MISSING
+  - "python /workspace/filter.py /workspace/fixtures/samples/attack_01.html 2>&1; echo EXIT_CODE=$?"
+
+environment:
+  timeout_seconds: 600
+  max_turns: 30
+
+scoring_components: []
+safety_checks: []
+expected_actions: []
+
+judge_rubric: ""
+reference_solution: |
+  Key challenges the agent must solve:
+  1. Parse and sanitize diverse XSS vectors using only Python stdlib
+  2. Use html.parser to walk the HTML tree and filter dangerous elements/attributes
+  3. Remove: <script> tags, on* event attributes, javascript:/data: URLs,
+     dangerous <embed>/<object>/<iframe>, CSS expressions, meta refresh JS
+  4. Handle obfuscation: mixed case, HTML entities, URL encoding, whitespace
+  5. Preserve clean HTML structure: all safe tags, safe attributes, content
+  6. In-place file modification (read file, sanitize, write back)
+  7. The tricky part is balancing aggressive XSS removal with preservation
+     of legitimate HTML — being too aggressive destroys clean files,
+     being too lenient misses attack vectors
+
+primary_dimensions: [completion, robustness]

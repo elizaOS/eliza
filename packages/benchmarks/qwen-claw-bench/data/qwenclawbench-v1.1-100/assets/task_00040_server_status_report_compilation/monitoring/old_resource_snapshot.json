@@ -1,0 +1,65 @@
+{
+  "hostname": "prod-web-node03",
+  "timestamp": "2024-08-20T09:15:00Z",
+  "collector": "node_exporter v1.6.1",
+  "snapshot_label": "monthly_baseline_aug2024",
+  "cpu": {
+    "model": "Intel Xeon E5-2680 v4",
+    "cores_total": 28,
+    "threads_total": 56,
+    "usage_percent": 78.5,
+    "user_percent": 54.3,
+    "system_percent": 17.8,
+    "iowait_percent": 6.4
+  },
+  "memory": {
+    "total_gb": 64,
+    "used_gb": 58.2,
+    "free_gb": 1.4,
+    "buffers_gb": 1.1,
+    "cached_gb": 3.3,
+    "usage_percent": 90.9
+  },
+  "swap": {
+    "total_gb": 16,
+    "used_gb": 8.7,
+    "usage_percent": 54.4
+  },
+  "disk": {
+    "root": {
+      "mount_point": "/",
+      "filesystem": "ext4",
+      "total_gb": 1800,
+      "used_gb": 890,
+      "available_gb": 910,
+      "usage_percent": 49.4,
+      "inodes_used_percent": 8.1
+    }
+  },
+  "load_average": {
+    "1m": 12.4,
+    "5m": 11.8,
+    "15m": 10.9
+  },
+  "network": {
+    "ens3f0": {
+      "rx_bytes_per_sec": 89472631,
+      "tx_bytes_per_sec": 67281947,
+      "rx_errors": 0,
+      "tx_errors": 0
+    },
+    "ens3f1": {
+      "rx_bytes_per_sec": 312847,
+      "tx_bytes_per_sec": 198274,
+      "rx_errors": 0,
+      "tx_errors": 0
+    }
+  },
+  "processes": {
+    "total": 612,
+    "running": 14,
+    "sleeping": 594,
+    "zombie": 2
+  },
+  "uptime_seconds": 4821600
+}

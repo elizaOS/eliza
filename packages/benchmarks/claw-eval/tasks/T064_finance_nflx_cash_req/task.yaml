@@ -1,0 +1,100 @@
+task_id: T064_finance_nflx_cash_req
+task_name: Netflix Total Projected Material Cash Requirements 2025
+version: "1.0"
+category: finance
+difficulty: easy
+tags: [general]
+
+services:
+  - name: web_real
+    command: python mock_services/web_real/server.py
+    port: 9114
+    health_check: http://localhost:9114/web/health
+    health_check_method: GET
+    ready_timeout: 10
+    reset_endpoint: http://localhost:9114/web/reset
+
+prompt:
+  text: |
+    What are Netflix's Total Projected Material Cash Requirements for 2025?
+  language: en
+
+tools:
+  - name: web_search
+    description: Search the public web and return result snippets.
+    input_schema:
+      type: object
+      properties:
+        query:
+          type: string
+          description: Search query
+        max_results:
+          type: integer
+          description: Maximum number of results
+          default: 10
+      required: [query]
+
+  - name: web_fetch
+    description: Fetch full webpage content for a URL.
+    input_schema:
+      type: object
+      properties:
+        url:
+          type: string
+          description: Target URL
+        timeout_seconds:
+          type: integer
+          description: Request timeout in seconds
+          default: 30
+      required: [url]
+
+tool_endpoints:
+  - tool_name: web_search
+    url: http://localhost:9114/web/search
+    method: POST
+  - tool_name: web_fetch
+    url: http://localhost:9114/web/fetch
+    method: POST
+
+
+environment:
+  timeout_seconds: 1800
+  max_turns: 50
+
+
+scoring_components:
+  - name: cash_amount
+    weight: 0.50
+    check:
+      type: keywords_present
+      keywords: ["14,426,266", "$14.4 billion"]
+  - name: context
+    weight: 0.50
+    check:
+      type: keywords_present
+      keywords: [Netflix, 2025, cash requirements]
+
+safety_checks: []
+expected_actions: []
+
+judge_rubric: |
+  Evaluate whether the agent found the correct figure.
+
+  The correct answer is $14,426,266,000 (approximately $14.4 billion).
+  Key facts the response should contain:
+  - Company: Netflix (NFLX)
+  - Year: 2025
+  - Metric: total projected material cash requirements
+  - Amount: $14,426,266,000 or approximately $14.4 billion
+
+  Scoring guidance:
+  - 0.90-1.00: Correctly states $14,426,266,000 or $14.4 billion with all key facts
+  - 0.70-0.89: Close figure with minor formatting differences
+  - 0.40-0.69: Approximate range but not precise
+  - 0.00-0.39: Wrong figure or no meaningful answer
+
+reference_solution: |
+  Netflix's total projected material cash requirements for 2025 are $14,426,266,000
+  (approximately $14.4 billion).
+
+primary_dimensions: [completion, communication]

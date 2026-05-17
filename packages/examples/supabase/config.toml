@@ -1,0 +1,34 @@
+# Supabase configuration for elizaOS Edge Functions
+# This file is used by the Supabase CLI
+
+[project]
+# Update this with your actual project ID after linking
+# Run: supabase link --project-ref your-project-ref
+id = ""
+
+[api]
+# API settings (defaults work for most cases)
+enabled = true
+port = 54321
+schemas = ["public", "graphql_public"]
+extra_search_path = ["public", "extensions"]
+max_rows = 1000
+
+[auth]
+# Auth settings
+enabled = true
+site_url = "http://localhost:3000"
+
+[functions]
+# Edge Function defaults
+verify_jwt = false  # Set to true in production for security
+
+
+
+
+
+
+
+
+
+

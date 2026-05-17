@@ -1,0 +1,38 @@
+---
+title: "eliza configure"
+description: "Print configuration guidance and common environment variables."
+---
+
+# `eliza configure`
+
+Prints a summary of how to read and edit configuration, along with common environment variable names for model providers. This is a non-interactive help command -- it does not modify any files.
+
+## Output
+
+The command displays:
+
+- How to read config values with `eliza config get <key>`.
+- The config file path (`~/.eliza/eliza.json` by default).
+- Common environment variables: `ANTHROPIC_API_KEY`, `OPENAI_API_KEY`, `AI_GATEWAY_API_KEY`, `GOOGLE_API_KEY`.
+
+## What it shows
+
+- Which model providers are detected and their status
+- Common environment variables and where to set them
+- Current config file path and state directory
+- Suggested next steps based on your configuration
+
+This command does not accept flags. For reading and writing config values, use [`eliza config`](/cli/config). For interactive key setup, use [`eliza setup`](/cli/setup).
+
+## Output
+
+```
+Set values with:
+  eliza config get <key>     Read a config value
+  Edit ~/.eliza/eliza.json directly for full control.
+
+## Related
+
+- [Configuration](/configuration)
+- [`eliza config`](/cli/config) -- read or display config values
+- [`eliza setup`](/cli/setup) -- interactive first-time setup

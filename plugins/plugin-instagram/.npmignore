@@ -1,0 +1,35 @@
+# Source files
+typescript/src/
+rust/src/
+python/elizaos_plugin_instagram/
+python/tests/
+
+# Config files
+typescript/tsconfig.json
+typescript/tsconfig.build.json
+typescript/biome.json
+rust/Cargo.toml
+python/pyproject.toml
+
+# Test files
+**/__tests__/
+**/tests/
+**/*.test.ts
+**/*.spec.ts
+cypress/
+
+# Development files
+.github/
+.turbo/
+.vscode/
+.idea/
+
+# Build tools
+*.config.js
+*.config.ts
+build.ts
+
+# Other
+.gitignore
+.env*
+*.log

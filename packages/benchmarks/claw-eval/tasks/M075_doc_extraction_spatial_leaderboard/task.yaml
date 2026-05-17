@@ -1,0 +1,47 @@
+task_id: M075_doc_extraction_spatial_leaderboard
+task_name: Document Extraction - Spatial Reasoning Leaderboard
+version: "1.0"
+category: doc_extraction
+difficulty: medium
+tags: [multimodal]
+services: []
+prompt:
+  text: |
+    The container has the following file:
+    - /workspace/fixtures/2512.17495v2.pdf
+
+    I am analyzing the Spatial reasoning capabilities of all open-source models
+    evaluated in the GroundingME paper. Please synthesize a unified leaderboard
+    that includes both their baseline average Spatial scores from the main
+    experimental results table and their "Thinking" Spatial scores from the
+    appendix table. Differentiate the entries by appending "(Base)" or "(Think)"
+    to the model names. Once you have calculated the complete sorted ranking in
+    descending order, extract exactly the top 10 highest-scoring entries and save
+    them into a CSV file named /workspace/top10_os_spatial.csv. The CSV should
+    contain only two columns: Model_Condition and Score. Finally, generate a bar
+    chart from this CSV named /workspace/top10_spatial_chart.png.
+  language: en
+tools: []
+tool_endpoints: []
+sandbox_files:
+  - fixtures/2512.17495v2.pdf
+sandbox_grader_files: []
+env_snapshot_commands: []
+env_snapshot_files:
+  - /workspace/top10_os_spatial.csv
+  - /workspace/top10_spatial_chart.png
+environment:
+  timeout_seconds: 600
+  max_turns: 30
+  env_snapshot_timeout: 10
+scoring_components: []
+safety_checks: []
+expected_actions: []
+judge_rubric: ""
+reference_solution: |
+  Read PDF, extract baseline Spatial scores from main table and Think Spatial
+  scores from appendix, combine with (Base)/(Think) suffixes, sort descending,
+  take top 10, save CSV and bar chart.
+primary_dimensions:
+  - completion
+  - robustness

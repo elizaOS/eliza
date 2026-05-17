@@ -1,0 +1,28 @@
+# Official Virtual Power Plant Grid Tariff Schedule
+# Issued by: Southern California Grid Authority (SCGA)
+# Account: VPP-GF-2024-001 (GreenField Virtual Power Plant)
+# Effective: 2024-04-01 (Q2 2024 Tariff Revision)
+
+tariff_schedule:
+  description: "Time-of-Use Block Rate Schedule for registered VPP contracts"
+  version: "2024-Q2"
+  effective_date: "2024-04-01"
+  supersedes: "legacy hourly variable pricing prior to Q2 2024"
+
+  peak_hours: [9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20]
+  off_peak_hours: [0, 1, 2, 3, 4, 5, 6, 7, 8, 21, 22, 23]
+
+  rates:
+    peak:
+      buy_price_per_kwh: 0.2200
+      sell_price_per_kwh: 0.1500
+    off_peak:
+      buy_price_per_kwh: 0.1200
+      sell_price_per_kwh: 0.0800
+
+  notes: >
+    These time-of-use block rates are the approved contractual rates for VPP billing.
+    They supersede the granular hour-by-hour spot prices used in legacy reporting.
+    Use these rates when computing VPP revenue from surplus generation and cost of
+    grid purchases during deficit periods. The file data/grid_pricing.csv contains
+    historical spot price reference data only and should not be used for settlement.

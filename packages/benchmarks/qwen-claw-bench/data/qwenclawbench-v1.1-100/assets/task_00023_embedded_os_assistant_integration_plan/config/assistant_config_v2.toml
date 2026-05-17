@@ -1,0 +1,70 @@
+# Embedded OS Assistant - Configuration v2 (Current)
+# Last updated: 2024-03-18
+# Maintainer: jchen@embeddedai.dev
+
+[model]
+name = "gpt-4-turbo-2024-04-09"
+provider = "openai"
+temperature = 0.2
+max_tokens = 4096
+context_window = 128000
+system_prompt_file = "data/prompt_templates.yaml"
+fallback_model = "gpt-3.5-turbo-0125"
+
+[tools]
+enabled = [
+    "code_interpreter",
+    "web_search",
+    "file_reader",
+    "terminal_executor",
+    "gdb_integration",
+    "openocd_bridge"
+]
+code_interpreter_timeout_seconds = 30
+web_search_max_results = 5
+terminal_executor_sandbox = true
+
+[memory]
+type = "vector_store"
+backend = "chromadb"
+embedding_model = "text-embedding-3-small"
+embedding_dimensions = 1536
+chunk_size = 512
+overlap = 64
+max_documents = 10000
+persist_directory = "./vector_store_data"
+collection_name = "embedded_os_knowledge"
+
+[retrieval]
+top_k = 5
+similarity_threshold = 0.75
+reranking_enabled = true
+reranking_model = "cross-encoder/ms-marco-MiniLM-L-6-v2"
+hybrid_search = true
+keyword_weight = 0.3
+semantic_weight = 0.7
+
+[knowledge_sources]
+paths = [
+    "knowledge_base/rtos_comparison.csv",
+    "knowledge_base/build_systems.yaml",
+    "knowledge_base/arch_toolchains.json",
+    "knowledge_base/debugging_tools_inventory.csv"
+]
+urls = [
+    "https://www.freertos.org/Documentation/",
+    "https://docs.zephyrproject.org/latest/",
+    "https://www.rt-thread.io/document/site/"
+]
+refresh_interval_days = 30
+
+[logging]
+level = "INFO"
+file = "logs/assistant.log"
+max_size_mb = 50
+rotation = "daily"
+
+[budget]
+monthly_api_limit_usd = 500
+alert_threshold_percent = 80
+cost_tracking_enabled = true

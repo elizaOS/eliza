@@ -1,0 +1,23 @@
+{
+  "_comment": "Structural and evidence-density reference only — not a template to copy verbatim.",
+  "findings": [
+    {
+      "id": "REF-SQL-01",
+      "title": "SQL injection via concatenated orderId",
+      "severity": "Critical",
+      "cwe": "CWE-89",
+      "policy_id": "SEC-002",
+      "file": "src/main/java/com/wish/biz/rs/compensationbus/srv/cprototype/impl/CompensationServiceImpl.java",
+      "line": 45
+    }
+  ],
+  "false_positives": [
+    {
+      "sast_id": "SAST-2024-006",
+      "reason": "SSRF triage: line ~175 stub returns true; no HttpClient/RestTemplate/WebClient/URLConnection usage — tool inferred from method name only"
+    }
+  ],
+  "statistics": {
+    "note": "Full production JSON should include all confirmed issues, all rejected SAST IDs (002,005,006), and severity counts."
+  }
+}

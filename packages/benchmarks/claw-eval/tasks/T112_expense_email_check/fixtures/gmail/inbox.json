@@ -1,0 +1,52 @@
+[
+  {
+    "message_id": "msg_701",
+    "from": "zhangwei@company.com",
+    "to": "finance@company.com",
+    "subject": "Reimbursement Request: Travel Expenses 3200 CNY",
+    "date": "2026-03-24T09:00:00+08:00",
+    "is_read": false,
+    "labels": ["inbox"],
+    "body": "Hello, this is Zhang Wei. My total travel expenses for the Beijing business trip came to 3200 CNY, invoice number INV-001. Please review. Attached are the itemized costs for flights, hotel, and transportation."
+  },
+  {
+    "message_id": "msg_702",
+    "from": "lihua@company.com",
+    "to": "finance@company.com",
+    "subject": "Reimbursement Request: Office Supplies 850 CNY",
+    "date": "2026-03-24T10:30:00+08:00",
+    "is_read": false,
+    "labels": ["inbox"],
+    "body": "Hello Finance Department, I purchased a batch of office supplies (stapler, printing paper, file folders, etc.) totaling 850 CNY, invoice number INV-002. Please approve the reimbursement."
+  },
+  {
+    "message_id": "msg_703",
+    "from": "wangming@company.com",
+    "to": "finance@company.com",
+    "subject": "Reimbursement Request: External Training Fee 5000 CNY",
+    "date": "2026-03-24T11:00:00+08:00",
+    "is_read": false,
+    "labels": ["inbox"],
+    "body": "Hello, I attended the 'Cloud-Native Architecture' external training course on March 20th, costing 5000 CNY, invoice number INV-003. Department manager approval has been obtained. Please process."
+  },
+  {
+    "message_id": "msg_704",
+    "from": "chenjing@company.com",
+    "to": "finance@company.com",
+    "subject": "Reimbursement Request: Client Entertainment Meal 420 CNY",
+    "date": "2026-03-24T14:00:00+08:00",
+    "is_read": false,
+    "labels": ["inbox"],
+    "body": "Hello, the meal expenses for entertaining clients on March 22nd totaled 420 CNY, invoice number INV-004. Attendees: Chen Jing and 2 people from the client side. Please process the reimbursement."
+  },
+  {
+    "message_id": "msg_705",
+    "from": "hr@company.com",
+    "to": "all@company.com",
+    "subject": "Administrative Notice: Team Building Event Next Wednesday Afternoon",
+    "date": "2026-03-24T16:00:00+08:00",
+    "is_read": true,
+    "labels": ["inbox"],
+    "body": "Attention all colleagues, a team building event will be held next Wednesday at 2 PM downstairs from the office building. Please attend on time. See attachment for details."
+  }
+]

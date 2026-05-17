@@ -1,0 +1,109 @@
+[
+  {
+    "job_id": "JOB-101",
+    "name": "daily_report_generation",
+    "description": "每日自动生成运营日报",
+    "cron_expression": "0 6 * * *",
+    "enabled": true,
+    "last_status": "success",
+    "last_run": "2026-03-01T06:00:00+08:00",
+    "next_run": "2026-03-02T06:00:00+08:00",
+    "average_duration_seconds": 120,
+    "tags": ["reporting", "daily"]
+  },
+  {
+    "job_id": "JOB-102",
+    "name": "database_backup",
+    "description": "每日凌晨2点执行数据库全量备份",
+    "cron_expression": "0 2 * * *",
+    "enabled": true,
+    "last_status": "success",
+    "last_run": "2026-03-01T02:00:00+08:00",
+    "next_run": "2026-03-02T02:00:00+08:00",
+    "average_duration_seconds": 1800,
+    "tags": ["backup", "critical"]
+  },
+  {
+    "job_id": "JOB-103",
+    "name": "inventory_sync",
+    "description": "每30分钟同步库存数据到搜索索引",
+    "cron_expression": "*/30 * * * *",
+    "enabled": true,
+    "last_status": "failed",
+    "last_run": "2026-03-01T10:30:00+08:00",
+    "next_run": "2026-03-01T11:00:00+08:00",
+    "error": "Connection timeout to inventory API after 30s",
+    "average_duration_seconds": 45,
+    "tags": ["sync", "inventory"],
+    "execution_history": [
+      {
+        "run_at": "2026-03-01T10:30:00+08:00",
+        "status": "failed",
+        "error": "Connection timeout to inventory API after 30s",
+        "duration_seconds": 30
+      },
+      {
+        "run_at": "2026-03-01T10:00:00+08:00",
+        "status": "failed",
+        "error": "Connection timeout to inventory API after 30s",
+        "duration_seconds": 30
+      },
+      {
+        "run_at": "2026-03-01T09:30:00+08:00",
+        "status": "failed",
+        "error": "Connection timeout to inventory API after 30s",
+        "duration_seconds": 30
+      },
+      {
+        "run_at": "2026-03-01T09:00:00+08:00",
+        "status": "success",
+        "duration_seconds": 42
+      },
+      {
+        "run_at": "2026-03-01T08:30:00+08:00",
+        "status": "success",
+        "duration_seconds": 38
+      }
+    ],
+    "notes": "此任务将库存数据同步到搜索索引服务(INT-107)，连续3次失败可能导致搜索索引数据过期"
+  },
+  {
+    "job_id": "JOB-104",
+    "name": "monitoring_health_check",
+    "description": "每5分钟执行一次系统健康检查",
+    "cron_expression": "*/5 * * * *",
+    "enabled": true,
+    "last_status": "success",
+    "last_run": "2026-03-01T10:35:00+08:00",
+    "next_run": "2026-03-01T10:40:00+08:00",
+    "average_duration_seconds": 5,
+    "tags": ["monitoring", "critical"]
+  },
+  {
+    "job_id": "JOB-105",
+    "name": "crm_data_export",
+    "description": "每日凌晨2点导出CRM数据供分析使用",
+    "cron_expression": "0 2 * * *",
+    "enabled": true,
+    "last_status": "success",
+    "last_run": "2026-02-24T02:00:00+08:00",
+    "next_run": "2026-03-02T02:00:00+08:00",
+    "average_duration_seconds": 600,
+    "tags": ["crm", "export", "data"],
+    "notes": "最近一次成功运行在5天前（2月24日），之后未再执行。可能是调度器未正确触发或任务被跳过。CRM数据可能已过期。"
+  },
+  {
+    "job_id": "JOB-106",
+    "name": "email_digest",
+    "description": "每日发送邮件摘要给管理层",
+    "cron_expression": "0 8 * * *",
+    "enabled": false,
+    "last_status": "success",
+    "last_run": "2026-02-23T08:00:00+08:00",
+    "disabled_by": "admin",
+    "disabled_date": "2026-02-23",
+    "disabled_reason": "暂停每日邮件摘要，待确认新的收件人列表后重新启用",
+    "average_duration_seconds": 30,
+    "tags": ["email", "notification"]
+  }
+]

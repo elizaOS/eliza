@@ -78,7 +78,9 @@ export const BRAND_PATHS = {
   background: "/brand/background",
   favicons: "/brand/favicons",
   clouds: "/clouds",
-  poster: "/clouds/poster.jpg",
+  poster: "/clouds/poster-960.jpg",
+  poster480: "/clouds/poster-640.jpg",
+  posterJpegFallback: "/clouds/poster.jpg",
   cloudBackgroundPoster: "/brand/background/clouds_background.jpg",
 } as const;
 
@@ -93,11 +95,11 @@ export const BRAND_FAVICONS = {
 } as const;
 
 export const CONCEPT_PRODUCT_IMAGES = {
-  billboard: "/brand/concepts/billboard_concept.jpg",
-  chibiUsb: "/brand/concepts/chibi_usb_concept.jpg",
-  miniPc: "/brand/concepts/concept_minipc.jpg",
-  phone: "/brand/concepts/concept_phone.jpg",
-  usbDrive: "/brand/concepts/concept_usbdrive.jpg",
+  billboard: "/brand/concepts/billboard_concept_1200.jpg",
+  chibiUsb: "/brand/concepts/chibi_usb_concept_900.jpg",
+  miniPc: "/brand/concepts/concept_minipc_900.jpg",
+  phone: "/brand/concepts/concept_phone_800.jpg",
+  usbDrive: "/brand/concepts/concept_usbdrive_900.jpg",
 } as const;
 
 export const CLOUD_BACKGROUND_ASSETS = {
@@ -113,28 +115,34 @@ export const CLOUD_BACKGROUND_ASSETS = {
  */
 export const CLOUD_VIDEO_VARIANTS = {
   "1x": [
-    { src: "clouds_1x_1080p.webm", type: "video/webm", minWidth: 1280 },
-    { src: "clouds_1x_1080p.mp4", type: "video/mp4", minWidth: 1280 },
-    { src: "clouds_1x_720p.webm", type: "video/webm", minWidth: 768 },
-    { src: "clouds_1x_720p.mp4", type: "video/mp4", minWidth: 768 },
-    { src: "clouds_1x_480p.webm", type: "video/webm" },
-    { src: "clouds_1x_480p.mp4", type: "video/mp4" },
+    { src: "clouds_1x_1080p.webm", type: "video/webm", minWidth: 1920 },
+    { src: "clouds_1x_1080p.mp4", type: "video/mp4", minWidth: 1920 },
+    { src: "clouds_1x_720p.webm", type: "video/webm", minWidth: 1024 },
+    { src: "clouds_1x_720p.mp4", type: "video/mp4", minWidth: 1024 },
+    { src: "clouds_1x_480p.webm", type: "video/webm", minWidth: 640 },
+    { src: "clouds_1x_480p.mp4", type: "video/mp4", minWidth: 640 },
+    { src: "clouds_1x_360p.webm", type: "video/webm" },
+    { src: "clouds_1x_360p.mp4", type: "video/mp4" },
   ],
   "4x": [
-    { src: "clouds_4x_1080p.webm", type: "video/webm", minWidth: 1280 },
-    { src: "clouds_4x_1080p.mp4", type: "video/mp4", minWidth: 1280 },
-    { src: "clouds_4x_720p.webm", type: "video/webm", minWidth: 768 },
-    { src: "clouds_4x_720p.mp4", type: "video/mp4", minWidth: 768 },
-    { src: "clouds_4x_480p.webm", type: "video/webm" },
-    { src: "clouds_4x_480p.mp4", type: "video/mp4" },
+    { src: "clouds_4x_1080p.webm", type: "video/webm", minWidth: 1920 },
+    { src: "clouds_4x_1080p.mp4", type: "video/mp4", minWidth: 1920 },
+    { src: "clouds_4x_720p.webm", type: "video/webm", minWidth: 1024 },
+    { src: "clouds_4x_720p.mp4", type: "video/mp4", minWidth: 1024 },
+    { src: "clouds_4x_480p.webm", type: "video/webm", minWidth: 640 },
+    { src: "clouds_4x_480p.mp4", type: "video/mp4", minWidth: 640 },
+    { src: "clouds_4x_360p.webm", type: "video/webm" },
+    { src: "clouds_4x_360p.mp4", type: "video/mp4" },
   ],
   "8x": [
-    { src: "clouds_8x_1080p.webm", type: "video/webm", minWidth: 1280 },
-    { src: "clouds_8x_1080p.mp4", type: "video/mp4", minWidth: 1280 },
-    { src: "clouds_8x_720p.webm", type: "video/webm", minWidth: 768 },
-    { src: "clouds_8x_720p.mp4", type: "video/mp4", minWidth: 768 },
-    { src: "clouds_8x_480p.webm", type: "video/webm" },
-    { src: "clouds_8x_480p.mp4", type: "video/mp4" },
+    { src: "clouds_8x_1080p.webm", type: "video/webm", minWidth: 1920 },
+    { src: "clouds_8x_1080p.mp4", type: "video/mp4", minWidth: 1920 },
+    { src: "clouds_8x_720p.webm", type: "video/webm", minWidth: 1024 },
+    { src: "clouds_8x_720p.mp4", type: "video/mp4", minWidth: 1024 },
+    { src: "clouds_8x_480p.webm", type: "video/webm", minWidth: 640 },
+    { src: "clouds_8x_480p.mp4", type: "video/mp4", minWidth: 640 },
+    { src: "clouds_8x_360p.webm", type: "video/webm" },
+    { src: "clouds_8x_360p.mp4", type: "video/mp4" },
   ],
 } as const;
 

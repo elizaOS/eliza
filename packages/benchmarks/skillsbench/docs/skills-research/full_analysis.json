@@ -1,0 +1,376 @@
+{
+  "total_collected": 47127,
+  "unique_names": 32222,
+  "exact_duplicate_names": 5615,
+  "exact_duplicate_entries": 14905,
+  "unique_after_exact_dedup": 32222,
+  "sample_size": 2000,
+  "semantic_duplicate_clusters": 17,
+  "semantic_duplicates_in_sample": 30,
+  "categories": {
+    "Code Quality": 582,
+    "Security": 749,
+    "JavaScript/TypeScript": 23271,
+    "DevOps/Infrastructure": 5497,
+    "Git/Version Control": 1216,
+    "Go": 172,
+    "Python": 2591,
+    "Frontend/UI": 1476,
+    "Other": 3951,
+    "Testing": 1444,
+    "AI/ML": 2284,
+    "C/C++": 63,
+    "Documentation": 913,
+    "Rust": 231,
+    "Database": 976,
+    "Ruby": 193,
+    "API": 1020,
+    "Java/Kotlin": 175,
+    "Cloud": 111,
+    "CLI/Shell": 212
+  },
+  "top_duplicated_names": {
+    "skill-creator": 223,
+    "code-review": 157,
+    "frontend-design": 151,
+    "brainstorming": 92,
+    "git-workflow": 86,
+    "testing": 78,
+    "code-reviewer": 74,
+    "systematic-debugging": 65,
+    "test-driven-development": 59,
+    "writing-plans": 53,
+    "pdf": 53,
+    "research": 50,
+    "documentation": 47,
+    "webapp-testing": 46,
+    "pptx": 46,
+    "executing-plans": 44,
+    "debugging": 43,
+    "mcp-builder": 42,
+    "writing-skills": 39,
+    "skill-builder": 39,
+    "git-commit": 38,
+    "coding-standards": 38,
+    "xlsx": 38,
+    "commit": 36,
+    "docx": 35,
+    "code-quality": 35,
+    "subagent-driven-development": 34,
+    "api-design": 34,
+    "using-git-worktrees": 33,
+    "root-cause-tracing": 33,
+    "planning": 32,
+    "example-skill": 31,
+    "skill-name": 31,
+    "requesting-code-review": 30,
+    "verification-before-completion": 30,
+    "nextjs": 28,
+    "release": 27,
+    "dispatching-parallel-agents": 27,
+    "performance-optimization": 27,
+    "architecture": 27,
+    "typescript": 26,
+    "codex": 26,
+    "test-generator": 26,
+    "github": 26,
+    "finishing-a-development-branch": 25,
+    "security": 25,
+    "security-audit": 25,
+    "tdd-workflow": 25,
+    "react": 25,
+    "tdd": 25
+  },
+  "semantic_duplicate_examples": [
+    {
+      "canonical": "subagent-development",
+      "count": 2,
+      "members": [
+        {
+          "name": "subagent-development",
+          "sim": 1.0
+        },
+        {
+          "name": "subagent-driven-development",
+          "sim": 0.9016819956679931
+        }
+      ]
+    },
+    {
+      "canonical": "gemini-cli",
+      "count": 2,
+      "members": [
+        {
+          "name": "gemini-cli",
+          "sim": 1.0
+        },
+        {
+          "name": "gemini-cli",
+          "sim": 0.9036690438856759
+        }
+      ]
+    },
+    {
+      "canonical": "frontend-design",
+      "count": 6,
+      "members": [
+        {
+          "name": "frontend-design",
+          "sim": 1.0
+        },
+        {
+          "name": "design",
+          "sim": 0.9136628935248436
+        },
+        {
+          "name": "frontend-design",
+          "sim": 0.9999999999999999
+        },
+        {
+          "name": "frontend-design",
+          "sim": 0.9054644368790143
+        },
+        {
+          "name": "frontend-design",
+          "sim": 0.9798676178778754
+        },
+        {
+          "name": "frontend-design",
+          "sim": 0.9999932571798473
+        }
+      ]
+    },
+    {
+      "canonical": "chrome-devtools",
+      "count": 2,
+      "members": [
+        {
+          "name": "chrome-devtools",
+          "sim": 1.0
+        },
+        {
+          "name": "chrome-devtools",
+          "sim": 0.9999971380209794
+        }
+      ]
+    },
+    {
+      "canonical": "webapp-testing",
+      "count": 2,
+      "members": [
+        {
+          "name": "webapp-testing",
+          "sim": 1.0
+        },
+        {
+          "name": "webapp-testing",
+          "sim": 0.9999992534349742
+        }
+      ]
+    },
+    {
+      "canonical": "xlsx",
+      "count": 2,
+      "members": [
+        {
+          "name": "xlsx",
+          "sim": 1.0
+        },
+        {
+          "name": "xlsx",
+          "sim": 0.9999985155647493
+        }
+      ]
+    },
+    {
+      "canonical": "circuit-fibsqrt",
+      "count": 2,
+      "members": [
+        {
+          "name": "circuit-fibsqrt",
+          "sim": 1.0
+        },
+        {
+          "name": "circuit-fibsqrt",
+          "sim": 0.9338215341881528
+        }
+      ]
+    },
+    {
+      "canonical": "docx",
+      "count": 2,
+      "members": [
+        {
+          "name": "docx",
+          "sim": 1.0
+        },
+        {
+          "name": "docx",
+          "sim": 0.9787414309373972
+        }
+      ]
+    },
+    {
+      "canonical": "dhh-ruby-style",
+      "count": 2,
+      "members": [
+        {
+          "name": "dhh-ruby-style",
+          "sim": 1.0
+        },
+        {
+          "name": "dhh-ruby-style",
+          "sim": 0.9743291408307013
+        }
+      ]
+    },
+    {
+      "canonical": "web-artifacts-builder",
+      "count": 2,
+      "members": [
+        {
+          "name": "web-artifacts-builder",
+          "sim": 1.0
+        },
+        {
+          "name": "artifacts-builder",
+          "sim": 0.9539144640753849
+        }
+      ]
+    },
+    {
+      "canonical": "root-cause-tracing",
+      "count": 3,
+      "members": [
+        {
+          "name": "root-cause-tracing",
+          "sim": 1.0
+        },
+        {
+          "name": "root-cause-tracing",
+          "sim": 0.901707711440046
+        },
+        {
+          "name": "root-cause-tracing",
+          "sim": 0.9999979654324084
+        }
+      ]
+    },
+    {
+      "canonical": "skill-creator",
+      "count": 6,
+      "members": [
+        {
+          "name": "skill-creator",
+          "sim": 1.0
+        },
+        {
+          "name": "skill-creator",
+          "sim": 0.9398662305766546
+        },
+        {
+          "name": "skill-creator",
+          "sim": 0.937528240884956
+        },
+        {
+          "name": "creating-skills",
+          "sim": 0.9222281119422134
+        },
+        {
+          "name": "skill-creator",
+          "sim": 0.9399048176913203
+        },
+        {
+          "name": "skill-creator",
+          "sim": 0.9398742919203702
+        }
+      ]
+    },
+    {
+      "canonical": "systematic-debugging",
+      "count": 2,
+      "members": [
+        {
+          "name": "systematic-debugging",
+          "sim": 1.0
+        },
+        {
+          "name": "systematic-debugging",
+          "sim": 0.9336953736815445
+        }
+      ]
+    },
+    {
+      "canonical": "systematic-debugging",
+      "count": 2,
+      "members": [
+        {
+          "name": "systematic-debugging",
+          "sim": 1.0
+        },
+        {
+          "name": "systematic-debugging",
+          "sim": 0.9232339072946577
+        }
+      ]
+    },
+    {
+      "canonical": "api-testing-patterns",
+      "count": 2,
+      "members": [
+        {
+          "name": "api-testing-patterns",
+          "sim": 1.0
+        },
+        {
+          "name": "api-testing-patterns",
+          "sim": 0.9649838683592169
+        }
+      ]
+    },
+    {
+      "canonical": "brainstorming",
+      "count": 6,
+      "members": [
+        {
+          "name": "brainstorming",
+          "sim": 1.0
+        },
+        {
+          "name": "brainstorming",
+          "sim": 0.9339585758757055
+        },
+        {
+          "name": "brainstorming",
+          "sim": 0.9999889234091626
+        },
+        {
+          "name": "brainstorming",
+          "sim": 0.9999885034891812
+        },
+        {
+          "name": "brainstorm",
+          "sim": 0.9328759823842104
+        },
+        {
+          "name": "brainstorming",
+          "sim": 0.9339305655031015
+        }
+      ]
+    },
+    {
+      "canonical": "writing-plans",
+      "count": 2,
+      "members": [
+        {
+          "name": "writing-plans",
+          "sim": 1.0
+        },
+        {
+          "name": "writing-plans",
+          "sim": 0.9998711497456921
+        }
+      ]
+    }
+  ]
+}

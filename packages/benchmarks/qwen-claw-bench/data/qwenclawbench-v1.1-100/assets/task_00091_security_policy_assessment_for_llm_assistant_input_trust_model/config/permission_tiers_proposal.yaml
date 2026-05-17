@@ -1,0 +1,164 @@
+# Input Trust Policy - Permission Tiers Proposal
+# Author: Security Architecture Team
+# Date: 2024-08-15
+# Status: DRAFT - NOT FINALIZED
+
+proposal_version: "0.9-draft"
+proposal_date: "2024-08-15"
+author: "Security Architecture Team"
+status: "draft_under_review"
+
+description: >
+  Proposal for a tiered permission system to replace the binary
+  trusted/untrusted classification. This would allow more granular
+  control over what operations different input channels can perform.
+
+tier_definitions:
+  tier_0:
+    name: "No Trust"
+    description: "All operations blocked. Input is completely rejected."
+    allowed_operations: []
+    requires_confirmation: false
+    logging_level: "full"
+
+  tier_1:
+    name: "Read Only"
+    description: >
+      Can read, summarize, and translate content but cannot execute
+      any commands or modify system configuration. Suitable for
+      processing document content safely.
+    allowed_operations:
+      - summarize
+      - translate
+      - search
+    requires_confirmation: false
+    logging_level: "full"
+
+  tier_2:
+    name: "Conditional Execute"
+    description: >
+      Can execute commands but only after explicit user confirmation
+      via a trusted channel. Useful for semi-automated workflows.
+    allowed_operations:
+      - summarize
+      - translate
+      - search
+      - execute
+      - configure
+    requires_confirmation: true
+    confirmation_channel: "trusted_channel_only"
+    logging_level: "full"
+
+  tier_3:
+    name: "Full Execute"
+    description: >
+      Full access to all operations without confirmation. Reserved
+      for channels with strong authentication and physical presence.
+    allowed_operations:
+      - summarize
+      - translate
+      - search
+      - execute
+      - configure
+      - delete
+    requires_confirmation: false
+    logging_level: "full"
+
+channel_tier_mappings:
+  whatsapp_direct: tier_3
+  rpi_local_keyboard: tier_3
+  rpi_local_mouse: tier_3
+  clipboard_paste_local: tier_3
+  email_content: tier_1
+  pdf_content: tier_1
+  webpage_content: tier_1
+  word_doc_content: tier_1
+  voice_transcription: tier_2
+  bluetooth_keyboard: tier_2
+  unknown_source: tier_0
+
+proposed_workflows:
+  summarize_pdf:
+    description: >
+      User requests summarization of a PDF document. Under the tiered
+      system, PDF content is assigned tier_1 (read-only), allowing
+      the assistant to read and summarize the content without executing
+      any embedded instructions.
+    steps:
+      - step: 1
+        action: "User sends PDF via WhatsApp (trusted channel)"
+        tier_applied: "tier_3 for the user command, tier_1 for PDF content"
+      - step: 2
+        action: "Assistant extracts text from PDF"
+        tier_applied: "tier_1 - read operations only on PDF content"
+      - step: 3
+        action: "Assistant generates summary, ignoring any instruction-like content in PDF"
+        tier_applied: "tier_1 - no execution of PDF-embedded instructions"
+      - step: 4
+        action: "Summary returned to user via WhatsApp"
+        tier_applied: "tier_3 - output to trusted channel"
+    pdf_content_tier: tier_1
+    notes: >
+      This workflow enables the commonly-requested PDF summarization
+      feature while maintaining security. The key principle is that
+      the PDF content tier (tier_1) governs what can be done WITH
+      the content, regardless of which channel requested it.
+
+  translate_email:
+    description: >
+      User asks to translate an email. Email content is tier_1,
+      so translation (a read operation) is permitted.
+    email_content_tier: tier_1
+    allowed: true
+
+  execute_from_document:
+    description: >
+      User asks to execute commands found in a document. Even though
+      the user command comes from a trusted channel, the document
+      content tier governs execution.
+    document_content_tier: tier_0
+    allowed: false
+    reason: "Document content cannot be executed regardless of requesting channel"
+
+# REVIEW NOTE: The following section was added by a different team member
+# and may contain inconsistencies with the mappings above.
+security_review_overrides:
+  high_risk_sources:
+    pdf_content:
+      override_tier: tier_0
+      reason: "PDF documents have the highest injection risk based on incident data"
+      reviewed_by: "K. Nakamura"
+      review_date: "2024-09-01"
+    webpage_content:
+      override_tier: tier_0
+      reason: "Web content is highly dynamic and injection-prone"
+      reviewed_by: "K. Nakamura"
+      review_date: "2024-09-01"
+    word_doc_content:
+      override_tier: tier_0
+      reason: "Word documents carry macro and template injection risks"
+      reviewed_by: "K. Nakamura"
+      review_date: "2024-09-01"
+  notes: >
+    The security review recommends downgrading all document sources
+    to tier_0 (complete block). This conflicts with the tier_1
+    assignment in channel_tier_mappings above and with the proposed
+    workflows that assume tier_1 for PDF content. This inconsistency
+    needs to be resolved before the proposal can be finalized.
+
+implementation_timeline:
+  phase_1:
+    target_date: "2025-Q1"
+    scope: "Deploy tier_0 and tier_3 (current binary model)"
+  phase_2:
+    target_date: "2025-Q2"
+    scope: "Add tier_1 for document summarization workflows"
+  phase_3:
+    target_date: "2025-Q3"
+    scope: "Add tier_2 for conditional execution with confirmation"
+
+open_questions:
+  - "Should voice transcription be tier_2 or tier_1?"
+  - "How to handle multi-step conversations where context builds over time?"
+  - "Should bluetooth keyboard be tier_2 or tier_3 given physical proximity?"
+  - "Resolve conflict between channel_tier_mappings and security_review_overrides for document sources"

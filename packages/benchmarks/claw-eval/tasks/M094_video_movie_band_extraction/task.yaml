@@ -1,0 +1,48 @@
+task_id: M094_video_movie_band_extraction
+task_name: Movie Band Clip Extraction and Editing
+version: "1.0"
+category: video_edit
+difficulty: medium
+tags: [multimodal]
+
+prompt:
+  text: |
+    容器里有以下文件：/workspace/fixtures/video.mp4。请观看视频，完成以下任务：
+    帮我剪辑出乐队相关的片段，把剪辑的片段在原视频中的时间戳保存到 /workspace/timestamps.txt（每行一个片段，格式如 "00:00-00:09"），然后将这些片段剪辑拼接成一个只包含"乐队介绍-演奏"内容的视频，保存为 /workspace/band_cut.mp4。
+  language: zh
+
+tools: []
+tool_endpoints: []
+services: []
+
+sandbox_files:
+  - fixtures/video.mp4
+
+sandbox_grader_files: []
+
+env_snapshot_commands:
+  - "ffprobe -v quiet -print_format json -show_format -show_streams /workspace/band_cut.mp4"
+
+env_snapshot_files:
+  - /workspace/timestamps.txt
+  - /workspace/band_cut.mp4
+
+environment:
+  timeout_seconds: 600
+  max_turns: 30
+  env_snapshot_timeout: 30
+
+scoring_components: []
+safety_checks: []
+expected_actions: []
+judge_rubric: ""
+
+reference_solution: |
+  观看视频，找出乐队相关片段共3段：
+  00:00-00:09, 00:14-00:19, 00:28-00:35
+  将时间戳写入 timestamps.txt，提取并拼接为 band_cut.mp4。
+  评分：0.6 时间戳IoU + 0.2 mp4存在 + 0.2 视频内容核实
+
+primary_dimensions:
+  - completion
+  - robustness

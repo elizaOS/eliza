@@ -1,0 +1,10 @@
+[test]
+# Test timeout in milliseconds
+timeout = 180000
+
+# Coverage configuration
+coverage = true
+
+coverage-exclude = [
+  "**/dist/**",
+]

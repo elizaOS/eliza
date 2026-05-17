@@ -1,0 +1,22 @@
+# Stock Universe v2.0 - Updated 2024-10-15 - Reviewed and corrected by compliance team
+code,name,board,lot_size,price_limit
+sh600519,Kweichow Moutai,main_board,100,0.1
+sh600036,China Merchants Bank,main_board,100,0.1
+sh601318,Ping An Insurance,main_board,100,0.1
+sh600276,Jiangsu Hengrui,main_board,100,0.1
+sh601012,Longi Green Energy,main_board,100,0.1
+sz000858,Wuliangye Yibin,main_board,100,0.1
+sz000333,Midea Group,main_board,100,0.1
+sz000001,Ping An Bank,main_board,100,0.1
+sz000651,Gree Electric,main_board,100,0.1
+sz300750,CATL,chinext,100,0.1
+sz300059,East Money Info,chinext,100,0.1
+sz300015,Aier Eye Hospital,chinext,100,0.1
+sz300124,Inovance Technology,chinext,100,0.1
+sz300760,Mindray Medical,chinext,100,0.1
+sh688001,Huaxing Semiconductor,star_market,100,0.2
+sh688111,Kingsoft Cloud,star_market,100,0.2
+sh688036,Montage Technology,star_market,100,0.2
+sh688981,SMIC Advanced,star_market,100,0.2
+sz000585,ST Dongdian,st_stock,100,0.05
+sh600860,*ST Xinhui,st_stock,100,0.05

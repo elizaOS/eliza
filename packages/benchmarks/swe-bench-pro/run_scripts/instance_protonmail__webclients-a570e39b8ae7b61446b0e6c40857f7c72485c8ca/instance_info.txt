@@ -1,0 +1,6 @@
+Instance ID: instance_protonmail__webclients-a570e39b8ae7b61446b0e6c40857f7c72485c8ca
+Repository: protonmail/webclients
+Base Commit: ba2afe725e222941c102130d5366a375dcb4ccf9
+Test Files: ["packages/key-transparency/test/vrf.spec.js", "packages/util/array.test.ts", "packages/util/unique.test.ts"]
+FAIL_TO_PASS: ["packages/key-transparency/test/vrf.spec.js | should return same", "packages/key-transparency/test/vrf.spec.js | should only return unique items"]
+PASS_TO_PASS: ["packages/key-transparency/test/vrf.spec.js | should return a new array", "packages/key-transparency/test/vrf.spec.js | should correctly move elements to new positions", "packages/key-transparency/test/vrf.spec.js | should be able to handle negative indices", "packages/key-transparency/test/vrf.spec.js | should correctly replace elements", "packages/key-transparency/test/vrf.spec.js | should return the same array if no replacement can be done", "packages/key-transparency/test/vrf.spec.js | should group", "packages/key-transparency/test/vrf.spec.js | should group empty", "packages/key-transparency/test/vrf.spec.js | should group nothing"]

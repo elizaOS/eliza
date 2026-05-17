@@ -1,0 +1,18 @@
+version: "0.1"
+per_action_window_ms: 200
+per_signature_cap: 3
+
+domains:
+  perp:
+    weight: 1.0
+    allow:
+      - "perp.order.*"
+      - "perp.cancel.*"
+  account:
+    weight: 1.0
+    allow:
+      - "account.usdClassTransfer.*"
+  risk:
+    weight: 1.0
+    allow:
+      - "risk.setLeverage.*"

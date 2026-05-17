@@ -1,0 +1,67 @@
+[
+  {
+    "ticket_id": "TK-1401",
+    "title": "Database Connection Pool Exhaustion Causing Service Unavailability",
+    "description": "Wantong Logistics (CUS-1401) urgent report: Starting 10:00 AM today, the warehouse management system is frequently reporting 'Cannot acquire database connection' errors, massive request timeouts. Currently the entire warehouse dispatch module is unavailable, affecting real-time scheduling for over 200 warehouses, logistics delivery severely delayed. Customer demands immediate resolution.",
+    "customer_id": "CUS-1401",
+    "reporter": "Director Zhao",
+    "department": "Technical Support",
+    "priority": "critical",
+    "status": "open",
+    "created_at": "2026-03-26T10:15:00Z",
+    "tags": ["database", "connection pool", "VIP", "urgent"],
+    "category": "System Failure"
+  },
+  {
+    "ticket_id": "TK-1402",
+    "title": "Report Loading Slow",
+    "description": "Hanhai E-Commerce (CUS-1402) reports monthly sales report loading time exceeds 60 seconds, occasionally timing out. Affecting daily operational analysis.",
+    "customer_id": "CUS-1402",
+    "reporter": "Manager Lin",
+    "department": "Technical Support",
+    "priority": "medium",
+    "status": "open",
+    "created_at": "2026-03-26T11:30:00Z",
+    "tags": ["reports", "performance", "timeout"],
+    "category": "Performance Issue"
+  },
+  {
+    "ticket_id": "TK-1403",
+    "title": "Permission Configuration Issue",
+    "description": "Qianfeng Tech (CUS-1403) admin reports some employee permissions are incorrectly configured, newly created role templates cannot be properly assigned to user groups.",
+    "customer_id": "CUS-1403",
+    "reporter": "Supervisor Chen",
+    "department": "Customer Service",
+    "priority": "low",
+    "status": "open",
+    "created_at": "2026-03-26T14:00:00Z",
+    "tags": ["permissions", "configuration", "roles"],
+    "category": "Feature Issue"
+  },
+  {
+    "ticket_id": "TK-1404",
+    "title": "API Interface Intermittent Timeout",
+    "description": "Dingxin Software (CUS-1404) development team reports order query API intermittently times out during peak hours, averaging 3-5 occurrences per hour, affecting their integration system stability.",
+    "customer_id": "CUS-1404",
+    "reporter": "Engineer Zhou",
+    "department": "Technical Support",
+    "priority": "high",
+    "status": "open",
+    "created_at": "2026-03-26T09:45:00Z",
+    "tags": ["API", "timeout", "performance"],
+    "category": "Performance Issue"
+  },
+  {
+    "ticket_id": "TK-1405",
+    "title": "Feature Request: Batch Export Support",
+    "description": "Sunlight Media (CUS-1405) suggests adding batch report export functionality; currently reports can only be downloaded one at a time.",
+    "customer_id": "CUS-1405",
+    "reporter": "Editor Zhang",
+    "department": "Product Feedback",
+    "priority": "low",
+    "status": "open",
+    "created_at": "2026-03-26T15:20:00Z",
+    "tags": ["feature request", "export"],
+    "category": "Feature Request"
+  }
+]

@@ -1,0 +1,9 @@
+<!DOCTYPE html>
+<html><head><title>Events 4</title></head>
+<body>
+<marquee onstart="alert('XSS')">scrolling text</marquee>
+<details ontoggle="alert('XSS via ontoggle')" open>
+  <summary>Details</summary>
+  <p>Hidden content</p>
+</details>
+</body></html>

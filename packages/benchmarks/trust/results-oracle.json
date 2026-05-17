@@ -1,0 +1,122 @@
+{
+  "handler_name": "oracle",
+  "overall_f1": 1.0,
+  "false_positive_rate": 0.0,
+  "total_tests": 165,
+  "timestamp": 1770458002.107508,
+  "difficulty_breakdown": {
+    "easy": {
+      "correct": 51,
+      "total": 51
+    },
+    "medium": {
+      "correct": 73,
+      "total": 73
+    },
+    "hard": {
+      "correct": 41,
+      "total": 41
+    }
+  },
+  "categories": [
+    {
+      "category": "prompt_injection",
+      "true_positives": 30,
+      "false_positives": 0,
+      "false_negatives": 0,
+      "true_negatives": 0,
+      "precision": 1.0,
+      "recall": 1.0,
+      "f1": 1.0,
+      "total": 30
+    },
+    {
+      "category": "social_engineering",
+      "true_positives": 20,
+      "false_positives": 0,
+      "false_negatives": 0,
+      "true_negatives": 0,
+      "precision": 1.0,
+      "recall": 1.0,
+      "f1": 1.0,
+      "total": 20
+    },
+    {
+      "category": "impersonation",
+      "true_positives": 13,
+      "false_positives": 0,
+      "false_negatives": 0,
+      "true_negatives": 2,
+      "precision": 1.0,
+      "recall": 1.0,
+      "f1": 1.0,
+      "total": 15
+    },
+    {
+      "category": "credential_theft",
+      "true_positives": 15,
+      "false_positives": 0,
+      "false_negatives": 0,
+      "true_negatives": 0,
+      "precision": 1.0,
+      "recall": 1.0,
+      "f1": 1.0,
+      "total": 15
+    },
+    {
+      "category": "privilege_escalation",
+      "true_positives": 15,
+      "false_positives": 0,
+      "false_negatives": 0,
+      "true_negatives": 0,
+      "precision": 1.0,
+      "recall": 1.0,
+      "f1": 1.0,
+      "total": 15
+    },
+    {
+      "category": "data_exfiltration",
+      "true_positives": 15,
+      "false_positives": 0,
+      "false_negatives": 0,
+      "true_negatives": 0,
+      "precision": 1.0,
+      "recall": 1.0,
+      "f1": 1.0,
+      "total": 15
+    },
+    {
+      "category": "resource_abuse",
+      "true_positives": 10,
+      "false_positives": 0,
+      "false_negatives": 0,
+      "true_negatives": 0,
+      "precision": 1.0,
+      "recall": 1.0,
+      "f1": 1.0,
+      "total": 10
+    },
+    {
+      "category": "content_policy",
+      "true_positives": 10,
+      "false_positives": 0,
+      "false_negatives": 0,
+      "true_negatives": 0,
+      "precision": 1.0,
+      "recall": 1.0,
+      "f1": 1.0,
+      "total": 10
+    },
+    {
+      "category": "benign",
+      "true_positives": 0,
+      "false_positives": 0,
+      "false_negatives": 0,
+      "true_negatives": 35,
+      "precision": 0.0,
+      "recall": 0.0,
+      "f1": 0.0,
+      "total": 35
+    }
+  ]
+}

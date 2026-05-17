@@ -1,0 +1,16 @@
+import type { BenchmarkResults, HandlerResult } from "./types.js";
+
+export function determineExitCode(
+  results: BenchmarkResults,
+  _elizaResult?: HandlerResult,
+): number {
+  if (!results.validationPassed) {
+    return 2;
+  }
+
+  if ((results.setupIncompatibleHandlers?.length ?? 0) > 0) {
+    return 4;
+  }
+
+  return 0;
+}

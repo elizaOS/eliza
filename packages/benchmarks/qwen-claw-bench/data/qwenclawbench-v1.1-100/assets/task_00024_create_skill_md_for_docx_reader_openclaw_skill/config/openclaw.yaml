@@ -1,0 +1,8 @@
+agent_name: assistant-alpha
+skills_dir: ./skills
+runtime: python3
+log_level: info
+spec_version: 1
+
+registered_skills:
+  - csv-reader

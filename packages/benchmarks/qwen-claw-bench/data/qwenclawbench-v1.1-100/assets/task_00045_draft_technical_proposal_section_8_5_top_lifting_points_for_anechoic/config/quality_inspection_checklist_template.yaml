@@ -1,0 +1,187 @@
+# Quality Inspection Checklist Template
+# For Embedded Parts and Lifting Points
+# Document: APC-2024-0087-QA-CHK-001
+# Revision: A2
+# Date: 2024-02-20
+
+document_info:
+  title: "Quality Inspection Checklist — Embedded Parts and Lifting Points"
+  document_number: "APC-2024-0087-QA-CHK-001"
+  revision: "A2"
+  date: "2024-02-20"
+  prepared_by: "QA Department"
+  approved_by: "Chief Engineer"
+
+inspection_stages:
+  - stage: "pre_pour"
+    description: "Inspection before concrete placement"
+    items:
+      - id: "PP-01"
+        category: "visual_inspection"
+        description: "Weld quality — visual examination of all welds on embed plate assembly"
+        acceptance_criteria: "No cracks, undercut, porosity, or incomplete fusion visible. Weld profile per AWS D1.1."
+        method: "Visual (100%)"
+        record_type: "pass_fail_with_remarks"
+
+      - id: "PP-02"
+        category: "visual_inspection"
+        description: "Plate flatness — check embed plate surface for warping or distortion"
+        acceptance_criteria: "Flatness within ±2 mm across plate surface"
+        method: "Straight edge and feeler gauge"
+        record_type: "measurement_mm"
+
+      - id: "PP-03"
+        category: "visual_inspection"
+        description: "Corrosion protection — verify hot-dip galvanizing or coating integrity"
+        acceptance_criteria: "Continuous coating, no bare spots, minimum thickness 85 μm (galvanizing) or per coating spec"
+        method: "Visual + DFT gauge"
+        record_type: "measurement_um"
+
+      - id: "PP-04"
+        category: "dimensional_check"
+        description: "Plate size — verify embed plate dimensions (length × width × thickness)"
+        acceptance_criteria: "Dimensions within ±2 mm of specified values (250 × 250 × 20 mm nominal)"
+        method: "Vernier caliper or tape measure"
+        record_type: "measurement_mm"
+
+      - id: "PP-05"
+        category: "dimensional_check"
+        description: "Position — verify embed plate center position relative to design coordinates"
+        acceptance_criteria: "Position within ±10 mm in plan (X and Y)"
+        method: "Total station survey or tape measure from grid lines"
+        record_type: "measurement_mm"
+
+      - id: "PP-06"
+        category: "dimensional_check"
+        description: "Levelness — verify embed plate is level and at correct elevation"
+        acceptance_criteria: "Level within ±5 mm across plate width; elevation within ±5 mm of design"
+        method: "Spirit level and surveying instrument"
+        record_type: "measurement_mm"
+
+      - id: "PP-07"
+        category: "dimensional_check"
+        description: "Anchor bolt projection — verify anchor bolt length and projection above plate"
+        acceptance_criteria: "Embedment depth per design (200 mm min), projection as specified"
+        method: "Tape measure"
+        record_type: "measurement_mm"
+
+      - id: "PP-08"
+        category: "dimensional_check"
+        description: "Anchor bolt spacing — verify bolt pattern dimensions"
+        acceptance_criteria: "Bolt spacing within ±3 mm of design"
+        method: "Tape measure or template"
+        record_type: "measurement_mm"
+
+      - id: "PP-09"
+        category: "ndt"
+        description: "Ultrasonic weld testing — hoist track lifting points"
+        acceptance_criteria: "100% of welds on hoist track points tested. Grade I quality per GB 50205."
+        method: "Ultrasonic testing (UT) per GB/T 11345"
+        record_type: "ndt_report_reference"
+        sampling_rate_percent: 100
+        applies_to: "hoist_track"
+
+      - id: "PP-10"
+        category: "ndt"
+        description: "Ultrasonic weld testing — standard lifting points"
+        acceptance_criteria: "20% of welds on standard points tested (random selection). Grade I quality per GB 50205."
+        method: "Ultrasonic testing (UT) per GB/T 11345"
+        record_type: "ndt_report_reference"
+        sampling_rate_percent: 20
+        applies_to: "standard"
+
+      - id: "PP-11"
+        category: "documentation"
+        description: "Material certificates — verify mill test reports for plate and anchor bolt material"
+        acceptance_criteria: "Material certificates provided, traceable to heat number, properties meet Q235B specification"
+        method: "Document review"
+        record_type: "document_reference"
+
+      - id: "PP-12"
+        category: "documentation"
+        description: "Welder qualifications — verify welder certification for structural welding"
+        acceptance_criteria: "Welder holds valid certification per GB/T 15169 for the applicable welding process and position"
+        method: "Document review"
+        record_type: "document_reference"
+
+      - id: "PP-13"
+        category: "visual_inspection"
+        description: "Temporary fixing — verify embed plate is securely fixed to formwork"
+        acceptance_criteria: "Plate cannot be displaced by hand. Temporary supports adequate to resist concrete pour pressure."
+        method: "Physical check"
+        record_type: "pass_fail"
+
+  - stage: "post_pour"
+    description: "Inspection after concrete placement and curing"
+    items:
+      - id: "AP-01"
+        category: "visual_inspection"
+        description: "Surface condition — check exposed plate surface for concrete splatter or damage"
+        acceptance_criteria: "Surface clean, no concrete residue, coating intact"
+        method: "Visual"
+        record_type: "pass_fail_with_remarks"
+
+      - id: "AP-02"
+        category: "dimensional_check"
+        description: "As-built position survey — measure actual position of each embed plate"
+        acceptance_criteria: "Position within ±10 mm of design in plan; elevation within ±5 mm"
+        method: "Total station survey"
+        record_type: "survey_report_reference"
+
+      - id: "AP-03"
+        category: "dimensional_check"
+        description: "Plate flatness — re-check after concrete pour"
+        acceptance_criteria: "Flatness within ±2 mm"
+        method: "Straight edge and feeler gauge"
+        record_type: "measurement_mm"
+
+  - stage: "load_testing"
+    description: "Static proof load testing"
+    items:
+      - id: "LT-01"
+        category: "load_test"
+        description: "Static pull test — apply 1.25× rated working load"
+        acceptance_criteria: "Load held for 10 minutes minimum. No permanent deformation, cracking, or slippage observed."
+        method: "Hydraulic jack or calibrated test weights with load cell"
+        record_type: "load_test_report"
+        test_load_factor: 1.25
+        hold_duration_minutes: 10
+        applies_to: "all"
+
+      - id: "LT-02"
+        category: "load_test"
+        description: "Post-test inspection — examine plate, welds, and surrounding concrete after load test"
+        acceptance_criteria: "No visible cracks in welds or concrete. No permanent deformation of plate. No anchor bolt pull-out."
+        method: "Visual + dimensional re-check"
+        record_type: "pass_fail_with_remarks"
+
+      - id: "LT-03"
+        category: "documentation"
+        description: "Load test report — compile and issue formal test report"
+        acceptance_criteria: "Report includes: test setup photos, load cell calibration certificate, load-time record, post-test inspection results, pass/fail determination."
+        method: "Document compilation"
+        record_type: "document_reference"
+
+  - stage: "final_acceptance"
+    description: "Final acceptance before handover"
+    items:
+      - id: "FA-01"
+        category: "documentation"
+        description: "Complete documentation package"
+        acceptance_criteria: "All of the following provided: material certificates, welder qualifications, NDT reports, dimensional survey, load test reports, photographic records, as-built drawings."
+        method: "Document review"
+        record_type: "checklist"
+
+      - id: "FA-02"
+        category: "visual_inspection"
+        description: "Final visual inspection of all lifting points"
+        acceptance_criteria: "All points in satisfactory condition. Coating intact. No damage from subsequent construction activities."
+        method: "Visual walkdown"
+        record_type: "pass_fail_with_remarks"
+
+      - id: "FA-03"
+        category: "documentation"
+        description: "EMC bonding resistance measurements"
+        acceptance_criteria: "Bonding resistance ≤ 2.5 milliohms at each lifting point per EMC guidelines"
+        method: "Milliohm meter per MIL-STD-1310"
+        record_type: "measurement_milliohms"

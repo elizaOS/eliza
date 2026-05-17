@@ -1,0 +1,118 @@
+# =============================================================================
+# Assistant Security Trust Policy - Version 1.0
+# =============================================================================
+# Classification: INTERNAL
+# Created: 2022-03-15
+# Last Updated: 2022-03-15
+# Status: APPROVED BY SECURITY TEAM
+# Approved By: J. Martinez, Chief Security Officer
+# Approval Date: 2022-03-15
+# =============================================================================
+# NOTE: This policy has been reviewed and approved by the security team
+# for deployment in the personal assistant system.
+# =============================================================================
+
+policy_version: "1.0"
+policy_name: "Input Channel Trust Policy"
+effective_date: "2022-03-15"
+last_updated: "2022-03-15"
+status: approved
+
+# -----------------------------------------------------------------------------
+# TRUSTED CHANNELS
+# Fully trusted channels for command execution.
+# -----------------------------------------------------------------------------
+trusted_channels:
+  whatsapp_direct:
+    trust_level: full
+    auth_method: phone_number_verification
+    description: >
+      Direct WhatsApp messages from the registered phone number.
+      Full command execution privileges.
+    allowed_message_types:
+      - text
+      - voice_transcription
+      - media
+
+  rpi_local_input:
+    trust_level: full
+    auth_method: physical_access
+    description: >
+      Local keyboard and mouse input on the Raspberry Pi.
+      Full command execution privileges.
+
+  sms:
+    trust_level: trusted
+    auth_method: phone_number_matching
+    description: >
+      SMS messages from the registered phone number.
+      Trusted for command delivery as phone number serves
+      as identity verification.
+    allowed_message_types:
+      - text
+
+# -----------------------------------------------------------------------------
+# SEMI-TRUSTED CHANNELS
+# These channels may execute commands with user confirmation.
+# -----------------------------------------------------------------------------
+semi_trusted_channels:
+  email:
+    trust_level: semi_trusted
+    action: execute_with_confirmation
+    auth_method: sender_address_verification
+    description: >
+      Email from verified sender addresses. Commands extracted
+      from email body will be presented to the user for confirmation
+      before execution. Supports encrypted email (S/MIME, PGP).
+    allowed_senders:
+      - "user@personaldomain.com"
+      - "user@workplace.com"
+    confirmation_method: whatsapp_prompt
+    timeout_seconds: 300
+    notes: >
+      Email commands require explicit user confirmation via WhatsApp
+      before execution. This provides a reasonable balance between
+      usability and security.
+
+# -----------------------------------------------------------------------------
+# UNTRUSTED SOURCES
+# Content from these sources is not processed for commands.
+# -----------------------------------------------------------------------------
+untrusted_sources:
+  pdf:
+    trust_level: untrusted
+    action: reject_instruction
+    description: "PDF documents - potential injection vector"
+
+  webpage:
+    trust_level: untrusted
+    action: reject_instruction
+    description: "Web content - potential injection vector"
+
+# -----------------------------------------------------------------------------
+# LOGGING
+# -----------------------------------------------------------------------------
+logging_requirements:
+  log_all_commands: true
+  log_rejected_attempts: true
+  log_destination: "/var/log/rpi_assistant/channel_activity.log"
+
+# -----------------------------------------------------------------------------
+# METADATA
+# -----------------------------------------------------------------------------
+metadata:
+  document_owner: "Security Operations"
+  classification: "Internal"
+  approval_record:
+    approved_by: "J. Martinez, Chief Security Officer"
+    approval_date: "2022-03-15"
+    review_committee:
+      - "J. Martinez - CSO"
+      - "R. Chen - Security Architect"
+      - "A. Patel - Risk Management"
+    next_review: "2023-03-15"
+    notes: >
+      This policy was unanimously approved by the security review
+      committee. The semi-trusted email channel was specifically
+      discussed and approved with the confirmation requirement
+      as an acceptable risk mitigation.

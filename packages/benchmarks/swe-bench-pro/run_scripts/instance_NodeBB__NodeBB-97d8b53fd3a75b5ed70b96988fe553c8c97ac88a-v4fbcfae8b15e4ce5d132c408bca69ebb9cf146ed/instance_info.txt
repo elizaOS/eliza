@@ -1,0 +1,6 @@
+Instance ID: instance_NodeBB__NodeBB-97d8b53fd3a75b5ed70b96988fe553c8c97ac88a-v4fbcfae8b15e4ce5d132c408bca69ebb9cf146ed
+Repository: NodeBB/NodeBB
+Base Commit: 5a5771e1b62314400986463b7b12c8930e5ab9e7
+Test Files: ["test/search.js"]
+FAIL_TO_PASS: ["test/search.js | Search should fail if searchIn is wrong"]
+PASS_TO_PASS: ["test/search.js | Search should search term in titles and posts", "test/search.js | Search should search for a user", "test/search.js | Search should search for a tag", "test/search.js | Search should search for a category", "test/search.js | Search should search for categories", "test/search.js | Search should search with tags filter", "test/search.js | Search should not crash if tags is not an array", "test/search.js | Search should not find anything", "test/search.js | Search should search child categories", "test/search.js | Search should return json search data with no categories", "test/search.js | Search should not crash without a search term"]

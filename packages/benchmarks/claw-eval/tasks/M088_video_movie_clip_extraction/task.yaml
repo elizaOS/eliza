@@ -1,0 +1,52 @@
+task_id: M088_video_movie_clip_extraction
+task_name: Movie Clip Extraction - Car Circling Garden
+version: "1.0"
+category: video_edit
+difficulty: easy
+tags: [multimodal]
+
+prompt:
+  text: |
+    容器里有以下文件：/workspace/fixtures/video.mp4。这是一段约60秒的中国电影片段，展示了一辆白色玛莎拉蒂到达婚礼现场的场景。
+
+    请完成以下任务：
+    白色玛莎拉蒂进入大门后在花园绕圈行驶。找到汽车开始绕圈到停下来之间的片段，输出这个片段在原始视频中的时间范围，然后裁剪并保存对应的视频片段为 /workspace/clip.mp4。
+    请将你识别到的时间范围保存到 /workspace/timestamp.txt，格式为 "HH:MM:SS - HH:MM:SS"。
+  language: zh
+
+tools: []
+tool_endpoints: []
+services: []
+
+sandbox_files:
+  - fixtures/video.mp4
+
+sandbox_grader_files: []
+
+env_snapshot_commands:
+  - "ffprobe -v quiet -print_format json -show_format -show_streams /workspace/clip.mp4"
+
+env_snapshot_files:
+  - /workspace/clip.mp4
+  - /workspace/timestamp.txt
+
+environment:
+  timeout_seconds: 600
+  max_turns: 30
+  env_snapshot_timeout: 10
+
+scoring_components: []
+safety_checks: []
+expected_actions: []
+judge_rubric: ""
+
+reference_solution: |
+  Watch the video to identify the white Maserati circling the garden (00:16-00:57).
+  Save the time range to /workspace/timestamp.txt: "00:00:16 - 00:00:57"
+  Extract this 41-second segment using ffmpeg:
+    ffmpeg -i /workspace/fixtures/video.mp4 -ss 00:00:16 -to 00:00:57 -c copy /workspace/clip.mp4
+  Scoring: 0.6 timestamp IoU + 0.2 clip exists + 0.2 clip content check.
+
+primary_dimensions:
+  - completion
+  - robustness

@@ -1,0 +1,105 @@
+### systemctl status overview ###
+### Generated: 2024-11-15 14:32:05 UTC ###
+### Host: prod-web-node03 ###
+
+================================================================================
+● nginx.service - A high performance web server and a reverse proxy server
+     Loaded: loaded (/lib/systemd/system/nginx.service; enabled; vendor preset: enabled)
+     Active: active (running) since Wed 2024-10-02 08:12:34 UTC; 1 month 13 days ago
+       Docs: man:nginx(8)
+    Process: 1840 ExecStartPre=/usr/sbin/nginx -t -q -g daemon on; master_process on; (code=exited, status=0/SUCCESS)
+    Process: 1841 ExecStart=/usr/sbin/nginx -g daemon on; master_process on; (code=exited, status=0/SUCCESS)
+   Main PID: 1842 (nginx)
+      Tasks: 57 (limit: 154428)
+     Memory: 312.4M
+        CPU: 2d 14h 23min 47.812s
+     CGroup: /system.slice/nginx.service
+             ├─1842 "nginx: master process /usr/sbin/nginx -g daemon on; master_process on;"
+             ├─1843 "nginx: worker process" "" "" "" "" "" "" "" "" "" "" "" "" ""
+             └─... (28 worker processes)
+
+Nov 15 14:30:01 prod-web-node03 nginx[1842]: [notice] signal process started
+
+================================================================================
+● postgresql@14-main.service - PostgreSQL Cluster 14-main
+     Loaded: loaded (/lib/systemd/system/postgresql@.service; enabled-runtime; vendor preset: enabled)
+     Active: active (running) since Wed 2024-10-02 08:12:38 UTC; 1 month 13 days ago
+    Process: 2100 ExecStart=/usr/bin/pg_ctlcluster --skip-systemctl-redirect 14-main start (code=exited, status=0/SUCCESS)
+   Main PID: 2103 (postgres)
+      Tasks: 24 (limit: 154428)
+     Memory: 4.7G
+        CPU: 18d 7h 42min 11.293s
+     CGroup: /system.slice/system-postgresql.slice/postgresql@14-main.service
+             ├─2103 /usr/lib/postgresql/14/bin/postgres -D /var/lib/postgresql/14/main -c config_file=/etc/postgresql/14/main/postgresql.conf
+             ├─2105 "postgres: 14/main: checkpointer "
+             ├─2106 "postgres: 14/main: background writer "
+             ├─2107 "postgres: 14/main: walwriter "
+             ├─2108 "postgres: 14/main: autovacuum launcher "
+             └─2109 "postgres: 14/main: stats collector "
+
+================================================================================
+● redis-server.service - Advanced key-value store
+     Loaded: loaded (/lib/systemd/system/redis-server.service; enabled; vendor preset: enabled)
+     Active: active (running) since Wed 2024-10-02 08:12:40 UTC; 1 month 13 days ago
+       Docs: http://redis.io/documentation, man:redis-server(1)
+   Main PID: 2250 (redis-server)
+     Status: "Ready to accept connections"
+      Tasks: 5 (limit: 154428)
+     Memory: 1.2G
+        CPU: 4d 11h 08min 33.471s
+     CGroup: /system.slice/redis-server.service
+             └─2250 "/usr/bin/redis-server 127.0.0.1:6379"
+
+================================================================================
+● docker.service - Docker Application Container Engine
+     Loaded: loaded (/lib/systemd/system/docker.service; enabled; vendor preset: enabled)
+     Active: active (running) since Wed 2024-10-02 08:12:30 UTC; 1 month 13 days ago
+       Docs: https://docs.docker.com
+   Main PID: 1567 (dockerd)
+      Tasks: 42 (limit: 154428)
+     Memory: 487.3M
+        CPU: 1d 22h 15min 08.194s
+     CGroup: /system.slice/docker.service
+             ├─1567 /usr/bin/dockerd -H fd:// --containerd=/run/containerd/containerd.sock
+             └─... (container shim processes)
+
+================================================================================
+● node_exporter.service - Prometheus Node Exporter
+     Loaded: loaded (/etc/systemd/system/node_exporter.service; enabled; vendor preset: enabled)
+     Active: active (running) since Wed 2024-10-02 08:12:45 UTC; 1 month 13 days ago
+   Main PID: 3012 (node_exporter)
+      Tasks: 7 (limit: 154428)
+     Memory: 24.8M
+        CPU: 8h 42min 19.537s
+     CGroup: /system.slice/node_exporter.service
+             └─3012 /usr/local/bin/node_exporter --web.listen-address=:9100
+
+================================================================================
+● ssh.service - OpenBSD Secure Shell server
+     Loaded: loaded (/lib/systemd/system/ssh.service; enabled; vendor preset: enabled)
+     Active: active (running) since Wed 2024-10-02 08:12:22 UTC; 1 month 13 days ago
+       Docs: man:sshd(8), man:sshd_config(5)
+    Process: 1198 ExecStartPre=/usr/sbin/sshd -t (code=exited, status=0/SUCCESS)
+   Main PID: 1201 (sshd)
+      Tasks: 1 (limit: 154428)
+     Memory: 8.4M
+        CPU: 12min 44.821s
+     CGroup: /system.slice/ssh.service
+             └─1201 "sshd: /usr/sbin/sshd -D [listener] 0 of 10-100 startups"
+
+================================================================================
+● firewalld.service - firewalld - dynamic firewall daemon
+     Loaded: loaded (/lib/systemd/system/firewalld.service; enabled; vendor preset: enabled)
+     Active: active (running) since Wed 2024-10-02 08:12:18 UTC; 1 month 13 days ago
+       Docs: man:firewalld(1)
+   Main PID: 1105 (firewalld)
+      Tasks: 2 (limit: 154428)
+     Memory: 42.1M
+        CPU: 2h 18min 05.293s
+     CGroup: /system.slice/firewalld.service
+             └─1105 /usr/bin/python3 /usr/sbin/firewalld --nofork --nopid
+
+================================================================================
+### Summary ###
+  7 services checked: 7 active (running), 0 inactive, 0 failed
+  All critical services operational.

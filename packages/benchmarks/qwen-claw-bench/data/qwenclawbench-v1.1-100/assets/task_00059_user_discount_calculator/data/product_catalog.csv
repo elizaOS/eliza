@@ -1,0 +1,16 @@
+product_id,name,category,price,stock_qty,sku
+PROD-001,Wireless Mouse,Electronics,29.99,342,EL-WM-001
+PROD-002,USB-C Hub,Electronics,49.99,128,EL-HB-002
+PROD-003,Standing Desk Mat,Office,34.50,215,OF-DM-003
+PROD-004,Noise Cancelling Headphones,Electronics,189.00,67,EL-NC-004
+PROD-005,Ergonomic Keyboard,Electronics,79.95,93,EL-KB-005
+PROD-006,Monitor Arm,Office,54.99,156,OF-MA-006
+PROD-007,Webcam HD 1080p,Electronics,64.99,201,EL-WC-007
+PROD-008,Desk Organizer,Office,22.00,410,OF-DO-008
+PROD-009,Laptop Stand,Office,39.99,175,OF-LS-009
+PROD-010,Bluetooth Speaker,Electronics,44.50,88,EL-BS-010
+PROD-011,Cable Management Kit,Office,15.99,520,OF-CM-011
+PROD-012,Portable Charger,Electronics,35.00,263,EL-PC-012
+PROD-013,Whiteboard Markers Set,Office,8.99,700,OF-WM-013
+PROD-014,Smart Plug 4-Pack,Electronics,32.00,144,EL-SP-014
+PROD-015,Desk Lamp LED,Office,27.50,310,OF-DL-015

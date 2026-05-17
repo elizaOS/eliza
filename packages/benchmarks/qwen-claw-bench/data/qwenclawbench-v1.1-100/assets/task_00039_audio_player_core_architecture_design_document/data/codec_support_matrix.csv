@@ -1,0 +1,9 @@
+codec,container_formats,max_bitrate,lossy,supported_sample_rates,decoder_crate
+mp3,"mp3",320,true,"8000;11025;16000;22050;32000;44100;48000",symphonia-bundle-mp3
+flac,"flac;ogg",9126,false,"8000;16000;22050;44100;48000;88200;96000;176400;192000",symphonia-bundle-flac
+ogg_vorbis,"ogg",500,true,"8000;11025;16000;22050;32000;44100;48000",symphonia-codec-vorbis
+wav,"wav;riff",4608,false,"8000;11025;16000;22050;32000;44100;48000;88200;96000",symphonia-format-wav
+aac,"mp4;m4a;adts",0.512,true,"8000;11025;16000;22050;32000;44100;48000;88200;96000",symphonia-codec-aac
+opus,"ogg;webm",510,true,"8000;12000;16000;24000;48000",symphonia-codec-opus
+alac,"mp4;m4a",9216,false,"44100;48000;88200;96000;176400;192000",symphonia-codec-alac
+wma,"asf;wma",768,true,"8000;11025;16000;22050;32000;44100;48000",not-supported

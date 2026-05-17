@@ -7,35 +7,26 @@ import type {
 	PostConnectorRegistration,
 } from "../types/runtime";
 import { Service } from "../types/service";
+import type {
+	ConnectorAccountAccessGate,
+	ConnectorAccountPolicy,
+	ConnectorAccountPurpose,
+	ConnectorAccountRole,
+	ConnectorAccountStatus,
+} from "../types/connector-account-policy";
+
+// Re-export so existing imports from this module continue to work.
+export type {
+	ConnectorAccountAccessGate,
+	ConnectorAccountPolicy,
+	ConnectorAccountPurpose,
+	ConnectorAccountRole,
+	ConnectorAccountStatus,
+} from "../types/connector-account-policy";
 
 export const CONNECTOR_ACCOUNT_SERVICE_TYPE = "connector_account";
 export const CONNECTOR_ACCOUNT_STORAGE_SERVICE_TYPE =
 	"connector_account_storage";
-
-export type ConnectorAccountRole = "OWNER" | "AGENT" | "TEAM" | (string & {});
-
-export type ConnectorAccountPurpose =
-	| "messaging"
-	| "posting"
-	| "reading"
-	| "admin"
-	| "automation"
-	| (string & {});
-
-export type ConnectorAccountAccessGate =
-	| "open"
-	| "pairing"
-	| "owner_binding"
-	| "manual_approval"
-	| "disabled"
-	| (string & {});
-
-export type ConnectorAccountStatus =
-	| "connected"
-	| "pending"
-	| "disabled"
-	| "revoked"
-	| "error";
 
 export type ConnectorOAuthFlowStatus =
 	| "pending"

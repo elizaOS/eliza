@@ -1,0 +1,6 @@
+Instance ID: instance_element-hq__element-web-a939184e1025a2c67db64bfdb94b0e9a476ed280
+Repository: element-hq/element-web
+Base Commit: f69730129883b1e31fd333dc9ee5beff31f66c68
+Test Files: ["/app/test/components/views/elements/AppTile-test.ts", "test/test-utils.js", "test/components/structures/RightPanel-test.tsx", "test/components/views/elements/AppTile-test.tsx"]
+FAIL_TO_PASS: ["/app/test/components/views/elements/AppTile-test.tsx | AppTile | destroys non-persisted right panel widget on room change", "/app/test/components/views/elements/AppTile-test.tsx | AppTile | preserves non-persisted widget on container move"]
+PASS_TO_PASS: ["/app/test/components/structures/RightPanel-test.tsx | RightPanel | renders info from only one room during room changes"]

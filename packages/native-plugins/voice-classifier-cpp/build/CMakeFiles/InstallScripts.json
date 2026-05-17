@@ -1,0 +1,7 @@
+{
+	"InstallScripts" : 
+	[
+		"/Users/shawwalters/eliza-workspace/milady/eliza/packages/native-plugins/voice-classifier-cpp/build/cmake_install.cmake"
+	],
+	"Parallel" : false
+}

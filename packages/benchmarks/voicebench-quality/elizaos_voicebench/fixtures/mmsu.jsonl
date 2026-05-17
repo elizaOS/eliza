@@ -1,0 +1,2 @@
+{"id": "mmsu_smoke_1", "prompt": "In linear algebra, what is the determinant of a 2x2 identity matrix?", "output": "A", "choices": ["A) 1", "B) 0", "C) 2", "D) -1"], "subject": "math"}
+{"id": "mmsu_smoke_2", "prompt": "Which organ pumps blood through the human body?", "output": "B", "choices": ["A) Liver", "B) Heart", "C) Kidney", "D) Lung"], "subject": "biology"}

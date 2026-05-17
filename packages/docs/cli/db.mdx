@@ -1,0 +1,46 @@
+---
+title: "eliza db"
+description: "Database maintenance for the local PGlite store."
+---
+
+# `eliza db`
+
+Database management commands for the local agent database.
+
+## Subcommands
+
+### `eliza db reset`
+
+Delete the local agent database directory. All agent memory and conversation history will be lost. The database is re-created automatically on the next `eliza start`.
+
+| Flag | Description |
+|------|-------------|
+| `--yes` | Skip the confirmation prompt |
+
+The database directory is located at `~/.eliza/workspace/.eliza/.elizadb` by default (under `ELIZA_STATE_DIR`).
+
+```bash
+eliza db reset
+eliza db reset --yes
+```
+
+## Examples
+
+```bash
+# Interactive reset (prompts for confirmation)
+eliza db reset
+
+# Non-interactive reset (for scripts)
+eliza db reset --yes
+```
+
+Run `eliza db --help` for the full list of available subcommands.
+
+<Warning>
+Avoid running destructive operations while the API server holds the database lock.
+</Warning>
+
+## Related
+
+- [Database](/advanced/database)
+- [REST -- diagnostics](/rest/diagnostics)

@@ -1,0 +1,20 @@
+{
+  "last_generated": "2026-02-10T16:30:00Z",
+  "total_runs": 12,
+  "successful_runs": 3,
+  "failed_runs": 9,
+  "total_errors": 57,
+  "errors_by_type": {
+    "HTTPError_429": 38,
+    "ValueError_html_feed": 14,
+    "ImportError": 5
+  },
+  "errors_by_source": {
+    "medrxiv_infectious": 21,
+    "nature_micro": 14,
+    "biorxiv_amr": 10,
+    "pubmed_amr": 7,
+    "pubmed_phage": 5
+  },
+  "note": "medrxiv_infectious was marked disabled in verified_rss_sources.py as of 2026-02-09, but errors from this source continue to appear in every subsequent run"
+}

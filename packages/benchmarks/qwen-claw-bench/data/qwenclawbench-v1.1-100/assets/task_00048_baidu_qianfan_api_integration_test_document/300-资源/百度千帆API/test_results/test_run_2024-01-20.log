@@ -1,0 +1,62 @@
+================================================================================
+  Baidu Qianfan API Integration Test Run
+  Date: 2024-01-20
+  Environment: staging
+  Tester: Developer A
+================================================================================
+
+[2024-01-20 10:15:00] INFO  Test suite initialized. Loading configuration from api_config.yaml
+[2024-01-20 10:15:01] INFO  Configuration loaded successfully.
+[2024-01-20 10:15:01] INFO  API Key: ****_redacted_****
+[2024-01-20 10:15:01] INFO  Secret Key: ****_redacted_****
+[2024-01-20 10:15:01] INFO  Base URL: https://aip.baidubce.com
+
+--- Test 1: Token Retrieval ---
+[2024-01-20 10:15:32] INFO  Sending token request to https://aip.baidubce.com/oauth/2.0/token
+[2024-01-20 10:15:32] INFO  Parameters: grant_type=authorization_code, client_id=****_redacted_****, client_secret=****_redacted_****
+[2024-01-20 10:15:33] INFO  Response status: 200 OK
+[2024-01-20 10:15:33] INFO  Token received successfully.
+[2024-01-20 10:15:33] INFO  access_token: 24.a1b2c3d4e5f6g7h8i9j0.2592000.1708412133.282335-12345678
+[2024-01-20 10:15:33] INFO  expires_in: 2592000
+[2024-01-20 10:15:33] INFO  Token retrieval: PASSED
+
+--- Test 2: Chat Completion (Single Turn) ---
+[2024-01-20 10:16:00] INFO  Sending chat completion request to https://aip.baidubce.com/rpc/2.0/ai_custom/v1/wenxinworkshop/chat/completions
+[2024-01-20 10:16:00] INFO  Request body: {"messages": [{"role": "user", "content": "What is the capital of France?"}]}
+[2024-01-20 10:16:05] INFO  Response status: 200 OK
+[2024-01-20 10:16:05] INFO  Response body (truncated): {"id": "as-xxxxxxxx", "result": "The capital of France is Paris...", "need_clear_history": false, "usage": {"prompt_tokens": 8, "completion_tokens": 24, "total_tokens": 32}}
+[2024-01-20 10:16:05] INFO  request_id: a1b2c3d4-e5f6-7890-abcd-ef1234567890
+[2024-01-20 10:16:05] INFO  Chat completion (single turn): PASSED
+
+--- Test 3: Chat Completion (Multi Turn) ---
+[2024-01-20 10:16:30] INFO  Sending multi-turn chat completion request
+[2024-01-20 10:16:30] INFO  Request body: {"messages": [{"role": "user", "content": "Tell me about machine learning"}, {"role": "assistant", "content": "Machine learning is a subset of AI..."}, {"role": "user", "content": "What are common algorithms?"}]}
+[2024-01-20 10:16:38] INFO  Response status: 200 OK
+[2024-01-20 10:16:38] INFO  Response received, total_tokens: 156
+[2024-01-20 10:16:38] INFO  Chat completion (multi turn): PASSED
+
+--- Test 4: Error Handling (Invalid Token) ---
+[2024-01-20 10:17:00] INFO  Sending request with deliberately invalid access_token
+[2024-01-20 10:17:01] INFO  Response status: 200 OK (API returns 200 with error in body)
+[2024-01-20 10:17:01] INFO  Error code in response: 110 — Access token invalid or no longer valid
+[2024-01-20 10:17:01] INFO  Error handling (invalid token): PASSED
+
+--- Test 5: Streaming Mode ---
+[2024-01-20 10:17:30] INFO  Sending streaming chat completion request
+[2024-01-20 10:17:30] INFO  Request body: {"messages": [{"role": "user", "content": "Write a short poem"}], "stream": true}
+[2024-01-20 10:17:31] INFO  First SSE chunk received at 310ms
+[2024-01-20 10:17:35] INFO  Stream completed. Total chunks: 12
+[2024-01-20 10:17:35] INFO  Streaming mode: PASSED
+
+================================================================================
+  Test Summary
+  Total tests: 5
+  Passed: 5
+  Failed: 0
+  Duration: 155 seconds
+  
+  All tests PASSED.
+  
+  Note: Token was obtained using grant_type=authorization_code as per
+  the latest authentication flow update.
+================================================================================

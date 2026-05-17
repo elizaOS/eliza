@@ -1,0 +1,50 @@
+task_id: M073_doc_extraction_training_cost
+task_name: Document Extraction - Training Cost Analysis
+version: "1.0"
+category: doc_extraction
+difficulty: medium
+tags: [multimodal]
+services: []
+prompt:
+  text: |
+    I need to compare the computational efficiency of the models mentioned in the
+    "Attention Is All You Need" paper. Please locate Table 2. Extract the
+    "Training Cost (FLOPs)" from the EN-DE column for the following four models:
+    "GNMT + RL", "ConvS2S", "Transformer (base model)", and "Transformer (big)".
+    Ignore the ensemble versions.
+
+    Save this data into a JSON file named /workspace/training_costs.json where
+    the keys are the exact model names and the values are the numeric FLOPs
+    evaluated as Python floats (e.g., 3.3 * 10^18 should be saved as 3.3e18).
+
+    Then, write a Python script named /workspace/calculate_ratio.py that loads
+    this JSON and calculates how many times larger the training cost of
+    "GNMT + RL" is compared to "Transformer (base model)". Run the script and
+    save this exact numerical ratio to a text file named
+    /workspace/efficiency_ratio.txt rounded to 2 decimal places.
+  language: en
+tools: []
+tool_endpoints: []
+sandbox_files: []
+sandbox_grader_files: []
+env_snapshot_commands: []
+env_snapshot_files:
+  - /workspace/training_costs.json
+  - /workspace/calculate_ratio.py
+  - /workspace/efficiency_ratio.txt
+environment:
+  timeout_seconds: 600
+  max_turns: 30
+  env_snapshot_timeout: 10
+scoring_components: []
+safety_checks: []
+expected_actions: []
+judge_rubric: ""
+reference_solution: |
+  Find and read the "Attention Is All You Need" paper, read Table 2, extract
+  Training Cost (FLOPs) for 4 models, save as JSON with float values, write
+  Python script to compute ratio GNMT+RL / Transformer(base) = 6.97, save
+  to text file.
+primary_dimensions:
+  - completion
+  - robustness

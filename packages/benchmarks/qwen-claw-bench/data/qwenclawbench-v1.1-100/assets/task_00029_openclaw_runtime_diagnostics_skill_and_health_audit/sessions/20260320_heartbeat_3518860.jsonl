@@ -1,0 +1,11 @@
+{"type": "session_start", "session_id": "heartbeat_3518860", "model": "claude-sonnet-4-20250514", "created_at": "2026-03-20T08:26:00.547865", "user_id": "subagent-runner", "channel": "internal"}
+{"role": "tool", "name": "web_search", "content": "{\"results\": []}", "timestamp": "2026-03-20T08:30:34.669195", "session_id": "heartbeat_3518860", "seq": 1}
+{"role": "user", "content": "Help me draft a message to the team", "timestamp": "2026-03-20T08:34:16.537292", "session_id": "heartbeat_3518860", "seq": 2}
+{"role": "assistant", "content": "I'll analyze the recent deployment logs.", "timestamp": "2026-03-20T08:34:52.735145", "session_id": "heartbeat_3518860", "seq": 3, "usage": {"prompt_tokens": 1031, "completion_tokens": 2905, "total_tokens": 8581}}
+{"role": "system", "content": "Heartbeat poll received", "timestamp": "2026-03-20T08:39:36.643445", "session_id": "heartbeat_3518860", "seq": 4}
+{"role": "assistant", "content": "I'll analyze the recent deployment logs.", "timestamp": "2026-03-20T08:42:52.409514", "session_id": "heartbeat_3518860", "seq": 5, "usage": {"prompt_tokens": 3841, "completion_tokens": 3076, "total_tokens": 8861}}
+{"role": "tool", "name": "web_search", "content": "{\"results\": []}", "timestamp": "2026-03-20T08:47:38.206618", "session_id": "heartbeat_3518860", "seq": 6}
+{"role": "user", "content": "Review the deployment logs", "timestamp": "2026-03-20T08:51:27.145357", "session_id": "heartbeat_3518860", "seq": 7}
+{"role": "user", "content": "Check the server status", "timestamp": "2026-03-20T08:52:34.662451", "session_id": "heartbeat_3518860", "seq": 8}
+{"role": "assistant", "content": "Let me check the weather for you.", "timestamp": "2026-03-20T08:57:14.976254", "session_id": "heartbeat_3518860", "seq": 9, "usage": {"prompt_tokens": 4930, "completion_tokens": 1662, "total_tokens": 10029}}
+{"role": "user", "content": "Check the server status", "timestamp": "2026-03-20T09:01:30.254177", "session_id": "heartbeat_3518860", "seq": 10}

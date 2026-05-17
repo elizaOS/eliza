@@ -1,0 +1,6 @@
+Instance ID: instance_element-hq__element-web-195065b217622f519e6a4053dbc3ffe453637719-v780c413b5d63ecb16e758021dde5b1b23d8af6aa
+Repository: element-hq/element-web
+Base Commit: aa57d1287d09931585919f44470d517d3425e13d
+Test Files: ["test/voice-broadcast/components/molecules/__snapshots__/VoiceBroadcastRecordingPip-test.tsx.snap", "test/voice-broadcast/components/atoms/__snapshots__/StopButton-test.tsx.snap", "test/voice-broadcast/components/atoms/StopButton-test.tsx", "/app/test/voice-broadcast/components/atoms/StopButton-test.ts", "test/voice-broadcast/components/molecules/VoiceBroadcastRecordingPip-test.tsx", "/app/test/voice-broadcast/components/molecules/VoiceBroadcastRecordingPip-test.ts"]
+FAIL_TO_PASS: ["/app/test/voice-broadcast/components/atoms/StopButton-test.tsx | StopButton | should render as expected", "/app/test/voice-broadcast/components/atoms/StopButton-test.tsx | StopButton | when clicking it | should invoke the callback", "/app/test/voice-broadcast/components/molecules/VoiceBroadcastRecordingPip-test.tsx | VoiceBroadcastRecordingPip | when rendering | should create the expected result"]
+PASS_TO_PASS: []

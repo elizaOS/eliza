@@ -1,0 +1,40 @@
+# Daily Task Scheduler Configuration
+# Manages automated daily messages and notifications
+
+tasks:
+  daily_book_recommendation:
+    enabled: true
+    schedule: "0 9 * * *"          # Every day at 09:00 UTC
+    timezone: "Asia/Shanghai"       # Effective: 17:00 CST
+    description: "Send daily book recommendation to main channel"
+    script: "scripts/send_book_recommendation.py"
+    data_source: "data/books.json"
+    message_template: "templates/book_recommendation.md"
+    delivery:
+      channel: "telegram"
+      target: "daily_reads"
+      fallback_channel: "discord"
+    retry:
+      max_attempts: 3
+      delay_seconds: 300
+      on_failure: "log_and_alert"
+    logging:
+      level: "INFO"
+      output: "logs/book_recommendation.log"
+
+  weekly_reading_summary:
+    enabled: false
+    schedule: "0 10 * * 0"         # Every Sunday at 10:00 UTC
+    timezone: "Asia/Shanghai"
+    description: "Send weekly reading progress summary"
+    script: "scripts/weekly_summary.py"
+    delivery:
+      channel: "telegram"
+      target: "daily_reads"
+
+settings:
+  global_timeout_seconds: 60
+  notification_on_failure: true
+  alert_channel: "telegram"
+  alert_target: "admin"
+  log_retention_days: 30

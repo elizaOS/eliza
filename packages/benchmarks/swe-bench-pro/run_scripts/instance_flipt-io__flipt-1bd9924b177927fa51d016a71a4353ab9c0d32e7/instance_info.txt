@@ -1,0 +1,6 @@
+Instance ID: instance_flipt-io__flipt-1bd9924b177927fa51d016a71a4353ab9c0d32e7
+Repository: flipt-io/flipt
+Base Commit: 6144f3244c61b9987c8a2ac5e837840fbc051d3b
+Test Files: ["TestCleanup"]
+FAIL_TO_PASS: ["TestCleanup"]
+PASS_TO_PASS: []

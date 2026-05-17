@@ -1,0 +1,62 @@
+{
+  "$schema": "https://raw.githubusercontent.com/dotnet/sdk/main/documentation/specs/runtime-configuration-file.md",
+  "_metadata": {
+    "description": "Canonical NuGet package version registry for LocTool solution",
+    "lastUpdated": "2024-03-15",
+    "maintainer": "sarah.chen@contoso.com",
+    "status": "production-baseline",
+    "approvedBy": "Architecture Review Board — March 2024"
+  },
+  "targetFramework": "net8.0-windows",
+  "packages": {
+    "Microsoft.Extensions.DependencyInjection": {
+      "version": "8.0.1",
+      "usedIn": ["LocTool.App"],
+      "purpose": "Dependency injection container",
+      "upgradeNote": "Patch release — thread-safety fix in ServiceProviderEngine"
+    },
+    "EPPlus": {
+      "version": "7.1.0",
+      "usedIn": ["LocTool.Core"],
+      "purpose": "Excel file processing (.xlsx read/write)",
+      "licenseNote": "Requires LicenseContext.NonCommercial to be set before first use",
+      "upgradeNote": "Added conditional formatting read support"
+    },
+    "CommunityToolkit.Mvvm": {
+      "version": "8.3.0",
+      "usedIn": ["LocTool.ViewModel"],
+      "purpose": "MVVM source generators and base classes",
+      "upgradeNote": "Partial property support for source generators"
+    },
+    "Microsoft.Extensions.Logging.Abstractions": {
+      "version": "8.0.1",
+      "usedIn": ["LocTool.Core"],
+      "purpose": "Structured logging abstraction for service layer"
+    },
+    "xunit": {
+      "version": "2.8.0",
+      "usedIn": ["LocTool.Tests"],
+      "purpose": "Unit testing framework"
+    },
+    "xunit.runner.visualstudio": {
+      "version": "2.5.8",
+      "usedIn": ["LocTool.Tests"],
+      "purpose": "Visual Studio test runner adapter"
+    },
+    "Microsoft.NET.Test.Sdk": {
+      "version": "17.10.0",
+      "usedIn": ["LocTool.Tests"],
+      "purpose": "MSTest platform infrastructure"
+    },
+    "Moq": {
+      "version": "4.20.72",
+      "usedIn": ["LocTool.Tests"],
+      "purpose": "Mocking framework for unit tests"
+    },
+    "coverlet.collector": {
+      "version": "6.0.2",
+      "usedIn": ["LocTool.Tests"],
+      "purpose": "Code coverage collector for dotnet test"
+    }
+  }
+}

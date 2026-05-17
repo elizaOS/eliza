@@ -1,0 +1,28 @@
+# Sensor Configuration - S-4021
+# Last updated: 2024-02-28
+
+sensor_id: "S-4021"
+location: "Highway 7 Eastbound Mile 14.2"
+road_type: urban_highway
+lanes: 3
+direction: eastbound
+installation_date: "2019-06-15"
+
+flow_characteristics:
+  typical_peak_flow_range: [110, 165]
+  typical_offpeak_flow_range: [40, 85]
+  unit: "vehicles_per_5min"
+  peak_hours:
+    - "07:00-09:30"
+    - "16:00-19:00"
+
+data_quality:
+  data_quality_score: 0.94
+  missing_data_rate: 0.02
+  last_calibration: "2023-11-10"
+  sensor_type: "inductive_loop"
+
+maintenance:
+  responsible_agency: "State DOT District 4"
+  contact: "traffic-ops@example.gov"
+  next_scheduled_check: "2024-06-15"

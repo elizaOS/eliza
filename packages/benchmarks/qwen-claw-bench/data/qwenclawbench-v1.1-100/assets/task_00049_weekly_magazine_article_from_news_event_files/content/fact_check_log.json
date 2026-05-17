@@ -1,0 +1,18 @@
+{
+  "source": "Editorial Research Team",
+  "date": "2025-06-10",
+  "status": "DRAFT — unverified. Cross-check all facts against content/supplementary_facts.md before use in the article.",
+  "verified_facts": {
+    "subject_name": "Dr. Reginald Harland",
+    "subject_nationality": "British",
+    "location": "Borneo, interior highlands",
+    "hospital": "Kota Kinabalu General Hospital",
+    "altitude_metres": 2400,
+    "hornbill_species_scientific": "Rhinoplax vigil",
+    "rescue_team_size": 12,
+    "survival_duration_days": 7,
+    "lowest_temperature_celsius": 12,
+    "first_reporting_community": "Murut community"
+  },
+  "note": "rescue_team_size, survival_duration_days, lowest_temperature_celsius, and first_reporting_community are pending verification from field reports. Do not publish without confirming against primary sources."
+}

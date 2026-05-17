@@ -1,0 +1,81 @@
+{
+  "kind": "sam-distill-ecapa-verify",
+  "generatedAt": "2026-05-15T07:13:05.008131+00:00",
+  "synthDir": "packages/training/data/voice/sam-distill/wavs_norm",
+  "refDir": "packages/training/data/voice/sam/audio",
+  "nSamples": 10,
+  "nRefClips": 20,
+  "cosineMin": 0.7,
+  "stats": {
+    "meanCosineVsCentroid": 0.1814,
+    "medianCosineVsCentroid": 0.1687,
+    "minCosineVsCentroid": 0.1352,
+    "maxCosineVsCentroid": 0.2344,
+    "refSelfCosineCeiling": 0.5606
+  },
+  "passed": false,
+  "passedRelaxedCeiling": false,
+  "note": "Absolute 0.7 cosine gate is unreachable when sam ref corpus is itself noisy. Relaxed gate: mean_cos >= 50% of ref-self-cos ceiling.",
+  "perClip": [
+    {
+      "synth": "synth_0243.wav",
+      "cosineVsCentroid": 0.1974,
+      "maxCosineVsRefs": 0.248,
+      "meanCosineVsRefs": 0.1252
+    },
+    {
+      "synth": "synth_0654.wav",
+      "cosineVsCentroid": 0.1692,
+      "maxCosineVsRefs": 0.2391,
+      "meanCosineVsRefs": 0.1073
+    },
+    {
+      "synth": "synth_1029.wav",
+      "cosineVsCentroid": 0.2318,
+      "maxCosineVsRefs": 0.2778,
+      "meanCosineVsRefs": 0.147
+    },
+    {
+      "synth": "synth_1048.wav",
+      "cosineVsCentroid": 0.1627,
+      "maxCosineVsRefs": 0.23,
+      "meanCosineVsRefs": 0.1032
+    },
+    {
+      "synth": "synth_0210.wav",
+      "cosineVsCentroid": 0.2344,
+      "maxCosineVsRefs": 0.2986,
+      "meanCosineVsRefs": 0.1486
+    },
+    {
+      "synth": "synth_0457.wav",
+      "cosineVsCentroid": 0.202,
+      "maxCosineVsRefs": 0.2437,
+      "meanCosineVsRefs": 0.1281
+    },
+    {
+      "synth": "synth_0861.wav",
+      "cosineVsCentroid": 0.1352,
+      "maxCosineVsRefs": 0.1776,
+      "meanCosineVsRefs": 0.0857
+    },
+    {
+      "synth": "synth_1005.wav",
+      "cosineVsCentroid": 0.1541,
+      "maxCosineVsRefs": 0.2203,
+      "meanCosineVsRefs": 0.0977
+    },
+    {
+      "synth": "synth_0903.wav",
+      "cosineVsCentroid": 0.1682,
+      "maxCosineVsRefs": 0.2236,
+      "meanCosineVsRefs": 0.1067
+    },
+    {
+      "synth": "synth_0491.wav",
+      "cosineVsCentroid": 0.1587,
+      "maxCosineVsRefs": 0.1963,
+      "meanCosineVsRefs": 0.1006
+    }
+  ]
+}

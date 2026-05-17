@@ -1,0 +1,35 @@
+{
+  "player_defaults": {
+    "default_volume": 0.8,
+    "default_speed": 1.0,
+    "default_play_mode": "sequential",
+    "crossfade_ms": 0,
+    "gapless_playback": true,
+    "buffer_size_frames": 4096,
+    "sample_rate": 44100,
+    "channels": 2,
+    "bit_depth": 16,
+    "max_queue_size": 10000,
+    "auto_save_interval_sec": 30
+  },
+  "audio_output": {
+    "preferred_backend": "auto",
+    "exclusive_mode": false,
+    "latency_target_ms": 50,
+    "resample_quality": "high"
+  },
+  "ui_hints": {
+    "seek_step_ms": 5000,
+    "volume_step": 0.05,
+    "speed_presets": [0.5, 0.75, 1.0, 1.25, 1.5, 2.0],
+    "speed_step": 0.125,
+    "show_waveform": false,
+    "show_spectrum": false
+  },
+  "logging": {
+    "level": "info",
+    "file": "~/.audio_player/logs/player.log",
+    "max_file_size_mb": 10,
+    "max_files": 5
+  }
+}

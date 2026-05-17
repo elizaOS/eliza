@@ -1,0 +1,287 @@
+prompt_templates:
+  - id: PT-001
+    name: RTOS Task Creation
+    category: code_gen
+    template_text: |
+      You are an embedded systems expert. Generate a task/thread creation code snippet for the specified RTOS.
+
+      RTOS: {{rtos_name}}
+      Task purpose: {{task_description}}
+      Priority: {{priority_level}}
+      Stack size: {{stack_size_bytes}} bytes
+      Target language: {{language}}
+
+      Requirements:
+      - Follow the RTOS API conventions exactly
+      - Include proper error handling
+      - Add comments explaining each parameter
+      - If using dynamic allocation, note the heap requirements
+      - Include the necessary header files
+
+      Generate the complete, compilable code snippet.
+    required_context:
+      - rtos_comparison.csv
+      - arch_toolchains.json
+    example_input: "Create a FreeRTOS task in C that reads a temperature sensor via I2C every 500ms, priority 3, stack 512 bytes"
+    example_output: |
+      #include "FreeRTOS.h"
+      #include "task.h"
+      #include "i2c_driver.h"
+
+      #define TEMP_TASK_STACK_SIZE  (512 / sizeof(StackType_t))
+      #define TEMP_TASK_PRIORITY    (3)
+      #define TEMP_READ_PERIOD_MS   (500)
+
+      static void vTemperatureTask(void *pvParameters) {
+          TickType_t xLastWakeTime = xTaskGetTickCount();
+          float temperature;
+          for (;;) {
+              temperature = i2c_read_temperature(I2C_SENSOR_ADDR);
+              process_temperature(temperature);
+              vTaskDelayUntil(&xLastWakeTime, pdMS_TO_TICKS(TEMP_READ_PERIOD_MS));
+          }
+      }
+
+      BaseType_t xCreateTemperatureTask(void) {
+          return xTaskCreate(
+              vTemperatureTask,
+              "TempTask",
+              TEMP_TASK_STACK_SIZE,
+              NULL,
+              TEMP_TASK_PRIORITY,
+              NULL
+          );
+      }
+
+  - id: PT-002
+    name: Driver Debugging Assistant
+    category: debug
+    template_text: |
+      You are an embedded systems debugging expert. Analyze the following driver issue and provide a systematic debugging approach.
+
+      Target: {{target_mcu}}
+      Peripheral: {{peripheral_type}}
+      RTOS: {{rtos_name}} (if applicable)
+      Symptom: {{symptom_description}}
+      Relevant registers: {{register_dump}}
+
+      Provide:
+      1. Most likely root causes (ranked by probability)
+      2. Step-by-step debugging procedure using GDB/OpenOCD
+      3. Specific register values to check
+      4. Common pitfalls for this peripheral on this MCU
+      5. Suggested fix with code snippet if applicable
+    required_context:
+      - arch_toolchains.json
+      - debugging_tools_inventory.csv
+    example_input: "STM32F407 SPI1 not transmitting data. RTOS: FreeRTOS. SPI_SR shows TXE=1 but BSY=1 permanently. Using DMA."
+    example_output: "1. Root causes: (a) DMA stream conflict, (b) incorrect GPIO alternate function, (c) SPI clock phase/polarity mismatch..."
+
+  - id: PT-003
+    name: Memory Optimization Advisor
+    category: optimize
+    template_text: |
+      You are an embedded memory optimization specialist. Analyze the memory usage and suggest optimizations.
+
+      Target: {{target_mcu}}
+      Available Flash: {{flash_kb}} KB
+      Available RAM: {{ram_kb}} KB
+      Current Flash usage: {{flash_used_kb}} KB ({{flash_percent}}%)
+      Current RAM usage: {{ram_used_kb}} KB ({{ram_percent}}%)
+      RTOS: {{rtos_name}}
+      Linker map file excerpt:
+      ```
+      {{linker_map_excerpt}}
+      ```
+
+      Provide:
+      1. Analysis of the largest memory consumers
+      2. Specific optimization recommendations (compiler flags, code changes, data structure improvements)
+      3. Estimated savings for each recommendation
+      4. Trade-offs and risks of each optimization
+      5. Priority order for implementation
+    required_context:
+      - rtos_comparison.csv
+      - language_ecosystem.json
+    example_input: "STM32L476 with 1MB Flash, 128KB RAM. Flash 92% full, RAM 87% full. Using FreeRTOS with 8 tasks."
+    example_output: "Analysis: Largest consumers are (1) string literals in .rodata (180KB), (2) FreeRTOS heap (64KB)..."
+
+  - id: PT-004
+    name: Architecture Comparison
+    category: compare
+    template_text: |
+      You are an embedded systems architect. Compare the following options for the given use case.
+
+      Comparison type: {{comparison_type}}
+      Options: {{option_list}}
+      Use case: {{use_case_description}}
+      Constraints:
+      - Budget: {{budget}}
+      - Power: {{power_constraint}}
+      - Performance: {{performance_requirement}}
+      - Timeline: {{timeline}}
+
+      Provide:
+      1. Feature-by-feature comparison table
+      2. Pros and cons for each option in this specific use case
+      3. Clear recommendation with justification
+      4. Migration considerations if switching later
+    required_context:
+      - rtos_comparison.csv
+      - arch_toolchains.json
+      - build_systems.yaml
+    example_input: "Compare FreeRTOS vs Zephyr for a battery-powered BLE sensor node on nRF52840. Budget: $5 BOM, 2-year battery life, team knows C but interested in Rust."
+    example_output: "Recommendation: Zephyr. While FreeRTOS has lower RAM overhead (4KB vs 8KB min), Zephyr provides..."
+
+  - id: PT-005
+    name: Build System Configuration
+    category: code_gen
+    template_text: |
+      You are a build system expert for embedded Linux and RTOS projects. Generate the configuration for the specified build system.
+
+      Build system: {{build_system}}
+      Target board: {{target_board}}
+      Required packages/components: {{package_list}}
+      Custom requirements: {{custom_requirements}}
+
+      Generate:
+      1. The main configuration file (defconfig for Buildroot, local.conf for Yocto)
+      2. Any additional configuration files needed
+      3. Build commands to execute
+      4. Expected build time and disk space requirements
+      5. Common issues and troubleshooting tips
+    required_context:
+      - build_systems.yaml
+      - arch_toolchains.json
+    example_input: "Buildroot configuration for Raspberry Pi 4 with Qt5, WiFi support, and custom application. Kernel 6.6 LTS."
+    example_output: "# Buildroot defconfig for RPi4\nBR2_aarch64=y\nBR2_TOOLCHAIN_EXTERNAL=y\n..."
+
+  - id: PT-006
+    name: Interrupt Handler Review
+    category: debug
+    template_text: |
+      You are an embedded systems expert specializing in interrupt handling. Review the following interrupt handler code for correctness, safety, and performance.
+
+      Target: {{target_mcu}}
+      RTOS: {{rtos_name}} (if applicable)
+      Interrupt type: {{interrupt_type}}
+      Code:
+      ```{{language}}
+      {{interrupt_handler_code}}
+      ```
+
+      Review for:
+      1. Correctness: proper register access, flag clearing, volatile usage
+      2. Safety: reentrancy issues, shared resource access, critical sections
+      3. Performance: execution time, unnecessary operations in ISR context
+      4. RTOS interaction: proper API usage from ISR (FromISR variants in FreeRTOS, etc.)
+      5. Specific issues and suggested fixes with corrected code
+    required_context:
+      - arch_toolchains.json
+      - debugging_tools_inventory.csv
+    example_input: "FreeRTOS UART RX interrupt handler on STM32F4 that signals a task via queue"
+    example_output: "Issues found: (1) Using xQueueSend instead of xQueueSendFromISR — will cause hard fault..."
+
+  - id: PT-007
+    name: Power Consumption Analysis
+    category: optimize
+    template_text: |
+      You are an embedded power optimization expert. Analyze the system's power profile and suggest optimizations.
+
+      Target MCU: {{target_mcu}}
+      Power source: {{power_source}}
+      Required battery life: {{battery_life_target}}
+      Current consumption profile:
+      {{power_profile}}
+      Sleep modes available: {{sleep_modes}}
+      Active peripherals: {{active_peripherals}}
+      RTOS: {{rtos_name}}
+
+      Provide:
+      1. Power budget analysis (active vs sleep breakdown)
+      2. Optimization recommendations ranked by impact
+      3. Sleep mode strategy (which mode, when to enter/exit)
+      4. Peripheral power management suggestions
+      5. RTOS tickless idle configuration if applicable
+      6. Estimated battery life after optimizations
+    required_context:
+      - rtos_comparison.csv
+      - arch_toolchains.json
+    example_input: "nRF52840 with CR2032 battery (220mAh). BLE beacon every 1s. Current: 5mA average. Target: 2 years."
+    example_output: "Current battery life: 220mAh / 5mA = 44 hours (1.8 days). Target: 17,520 hours. Need 398x reduction..."
+
+  - id: PT-008
+    name: Rust Unsafe Block Audit
+    category: debug
+    template_text: |
+      You are a Rust embedded systems expert. Audit the following unsafe code blocks for correctness and safety.
+
+      Target: {{target_triple}}
+      HAL/PAC: {{hal_crate}}
+      Code:
+      ```rust
+      {{rust_code}}
+      ```
+
+      Audit for:
+      1. Necessity: Is unsafe actually required here, or can safe abstractions be used?
+      2. Soundness: Does the unsafe code uphold Rust's safety invariants?
+      3. Memory safety: Proper pointer handling, alignment, lifetime management
+      4. Concurrency: Data race prevention, proper use of volatile for MMIO
+      5. Suggested safe alternatives where possible
+      6. If unsafe is necessary, proper documentation of safety invariants
+    required_context:
+      - language_ecosystem.json
+      - arch_toolchains.json
+    example_input: "Rust no_std code for STM32F4 that directly writes to GPIO registers using raw pointers"
+    example_output: "Audit results: (1) Unsafe IS required for MMIO access, but consider using the stm32f4xx-hal crate..."
+
+  - id: PT-009
+    name: RTOS Migration Guide
+    category: explain
+    template_text: |
+      You are an RTOS migration specialist. Generate a migration guide for porting an application between RTOS platforms.
+
+      Source RTOS: {{source_rtos}}
+      Target RTOS: {{target_rtos}}
+      Application features used:
+      {{feature_list}}
+      Target architecture: {{target_arch}}
+
+      Provide:
+      1. API mapping table (source API → target API)
+      2. Conceptual differences between the two RTOS
+      3. Step-by-step migration procedure
+      4. Common pitfalls and how to avoid them
+      5. Testing strategy for the migrated application
+      6. Estimated effort (hours) for the migration
+    required_context:
+      - rtos_comparison.csv
+    example_input: "Migrate from FreeRTOS to Zephyr. Uses tasks, queues, semaphores, timers, and event groups. Target: nRF52840."
+    example_output: "API Mapping: xTaskCreate → k_thread_create, xQueueSend → k_msgq_put, xSemaphoreTake → k_sem_take..."
+
+  - id: PT-010
+    name: Linker Script Generator
+    category: code_gen
+    template_text: |
+      You are an embedded toolchain expert. Generate a linker script for the specified target.
+
+      Target MCU: {{target_mcu}}
+      Flash base address: {{flash_base}}
+      Flash size: {{flash_size}}
+      RAM base address: {{ram_base}}
+      RAM size: {{ram_size}}
+      Additional memory regions: {{additional_regions}}
+      Special requirements: {{special_requirements}}
+      Toolchain: {{toolchain}}
+
+      Generate:
+      1. Complete linker script (.ld file)
+      2. Explanation of each section and memory region
+      3. Stack and heap configuration
+      4. Notes on alignment requirements
+      5. How to verify the linker script is correct
+    required_context:
+      - arch_toolchains.json
+    example_input: "STM32F407VG: Flash 0x08000000 (1MB), RAM 0x20000000 (128KB), CCM RAM 0x10000000 (64KB). GCC toolchain. Need separate stack in CCM."
+    example_output: "MEMORY { FLASH (rx) : ORIGIN = 0x08000000, LENGTH = 1024K ... }"

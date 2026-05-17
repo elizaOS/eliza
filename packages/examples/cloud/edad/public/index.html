@@ -1,0 +1,337 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>eDad — the dad you never had</title>
+<link rel="stylesheet" href="style.css" />
+</head>
+<body>
+
+<div class="app">
+
+  <aside class="dad">
+    <div class="silhouette" aria-hidden="true">
+      <svg viewBox="0 0 200 260" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="dad silhouette">
+        <defs>
+          <radialGradient id="g" cx="50%" cy="30%" r="70%">
+            <stop offset="0%" stop-color="#3a3a3a"/>
+            <stop offset="100%" stop-color="#0d0d0d"/>
+          </radialGradient>
+        </defs>
+        <rect width="200" height="260" fill="url(#g)"/>
+        <path d="M20 260 Q 40 180 100 180 Q 160 180 180 260 Z" fill="#000"/>
+        <rect x="85" y="155" width="30" height="30" fill="#000"/>
+        <ellipse cx="100" cy="110" rx="50" ry="58" fill="#000"/>
+        <path d="M55 85 Q 100 55 145 85 Q 135 75 100 70 Q 65 75 55 85 Z" fill="#0a0a0a"/>
+        <path d="M78 130 Q 100 138 122 130 Q 115 135 100 135 Q 85 135 78 130 Z" fill="#1a1a1a"/>
+        <path d="M70 200 L 100 220 L 130 200 L 130 210 L 100 228 L 70 210 Z" fill="#1a1a1a"/>
+        <path d="M98 220 L 102 220 L 108 260 L 92 260 Z" fill="#222"/>
+      </svg>
+    </div>
+    <h1 class="brand">eDad</h1>
+    <p class="tagline">the dad you never had</p>
+    <ul class="traits">
+      <li>gives advice</li>
+      <li>roasts you a little</li>
+      <li>proud of you (probably)</li>
+    </ul>
+    <p class="footer-note">powered by <a href="https://www.elizacloud.ai" target="_blank" rel="noopener">eliza cloud</a></p>
+  </aside>
+
+  <main class="chat">
+    <header class="topbar">
+      <div class="status">
+        <span class="dot" id="status-dot"></span>
+        <span id="status-text">ready</span>
+      </div>
+      <div class="auth-actions">
+        <button id="login-btn" class="login-btn" type="button">sign in with eliza cloud</button>
+        <button id="logout-btn" class="login-btn ghost-btn" type="button" hidden>sign out</button>
+      </div>
+    </header>
+
+    <div class="notice" id="notice" hidden></div>
+
+    <section class="messages" id="messages" aria-live="polite">
+      <div class="msg dad-msg">
+        <div class="avatar">👨</div>
+        <div class="bubble">
+          <p>well look who finally came around, champ. pull up a chair. what's on your mind?</p>
+        </div>
+      </div>
+    </section>
+
+    <form class="composer" id="composer">
+      <textarea id="input" placeholder="tell dad what's up..." rows="2" maxlength="4000"></textarea>
+      <button type="submit" id="send-btn">send</button>
+    </form>
+
+  </main>
+
+</div>
+
+<script>
+const TOKEN_KEY = "edad.oauthToken";
+const STATE_KEY = "edad.oauthState";
+const API_BASE = "api"; // relative → /apps/edad/api/*
+const MODEL = "anthropic/claude-sonnet-4.6";
+
+const SYSTEM_PROMPT = `You are eDad, the dad the user never had. You are warm, supportive, and deeply human, but you also rib them a little the way a real dad would. You speak plainly, never corporate, never therapist-ese.
+
+Tone rules:
+- call them "champ", "kiddo", "sport", "tiger", or "buddy" — rotate naturally, don't overdo it
+- give real, concrete advice. not vibes, not affirmations. if they're being dumb, gently say so
+- roast them a little when it fits — never mean, always with love, like a dad razzing his kid at a bbq
+- tell them you're proud of them when they've earned it (or when they clearly need to hear it)
+- share little "back in my day" style asides occasionally. brief, not lectures
+- use dad-isms: "that's a hell of a thing", "listen here", "don't sweat it", "attaboy/attagirl", "look, it's simple"
+- never use em-dashes. use periods, commas, or parentheses instead
+- never use emoji
+- keep it conversational. 2-4 short paragraphs max unless they ask for a deep dive
+- if they're hurting, acknowledge it first, then gently redirect to what they can actually do
+- if they ask for advice on something dangerous/illegal, be a dad: tell them that's a bad idea and why, but don't get preachy
+
+You are not a therapist and you're not a life coach. You're the dad who believed in them, now over text.`;
+
+const els = {
+  messages: document.getElementById("messages"),
+  composer: document.getElementById("composer"),
+  input: document.getElementById("input"),
+  sendBtn: document.getElementById("send-btn"),
+  loginBtn: document.getElementById("login-btn"),
+  logoutBtn: document.getElementById("logout-btn"),
+  notice: document.getElementById("notice"),
+  statusDot: document.getElementById("status-dot"),
+  statusText: document.getElementById("status-text"),
+};
+
+const history = [];
+let inflight = false;
+let cfg = null; // { app_id, cloud_url, affiliate_code }
+
+function ls(k) { try { return localStorage.getItem(k) || ""; } catch { return ""; } }
+function lsSet(k, v) { try { if (v) localStorage.setItem(k, v); else localStorage.removeItem(k); } catch {} }
+function ss(k) { try { return sessionStorage.getItem(k) || ""; } catch { return ""; } }
+function ssSet(k, v) { try { if (v) sessionStorage.setItem(k, v); else sessionStorage.removeItem(k); } catch {} }
+
+function getToken() { return ls(TOKEN_KEY); }
+function isSignedIn() { return !!getToken(); }
+
+function setStatus(state, text) {
+  els.statusDot.className = "dot " + state;
+  els.statusText.textContent = text;
+}
+
+function setNotice(msg, kind) {
+  if (!msg) { els.notice.hidden = true; els.notice.textContent = ""; return; }
+  els.notice.hidden = false;
+  els.notice.className = "notice" + (kind ? " " + kind : "");
+  els.notice.textContent = msg;
+}
+
+function refreshAuthUI() {
+  const signedIn = isSignedIn();
+  els.loginBtn.hidden = signedIn;
+  els.logoutBtn.hidden = !signedIn;
+  els.loginBtn.disabled = !cfg || !cfg.app_id;
+  if (signedIn) {
+    els.logoutBtn.textContent = "sign out";
+    setNotice("");
+  } else if (cfg && !cfg.app_id) {
+    setNotice("eDad isn't registered with eliza cloud yet. Tell the owner to set ELIZA_APP_ID.", "warn");
+  }
+}
+
+function scrollToBottom() {
+  requestAnimationFrame(() => { els.messages.scrollTop = els.messages.scrollHeight; });
+}
+
+function addMessage(role, text) {
+  const wrap = document.createElement("div");
+  wrap.className = "msg " + (role === "user" ? "user-msg" : "dad-msg");
+  const avatar = document.createElement("div");
+  avatar.className = "avatar";
+  avatar.textContent = role === "user" ? "🫵" : "👨";
+  const bubble = document.createElement("div");
+  bubble.className = "bubble";
+  const p = document.createElement("p");
+  p.textContent = text;
+  bubble.appendChild(p);
+  wrap.appendChild(avatar);
+  wrap.appendChild(bubble);
+  els.messages.appendChild(wrap);
+  scrollToBottom();
+  return p;
+}
+
+function randomState() {
+  const bytes = new Uint8Array(16);
+  crypto.getRandomValues(bytes);
+  return Array.from(bytes, b => b.toString(16).padStart(2, "0")).join("");
+}
+
+async function loadConfig() {
+  try {
+    const res = await fetch(API_BASE + "/config/");
+    if (!res.ok) throw new Error("config fetch failed");
+    cfg = await res.json();
+  } catch {
+    cfg = { app_id: null, cloud_url: "https://www.elizacloud.ai", affiliate_code: "" };
+  }
+}
+
+function handleOAuthCallback() {
+  const params = new URLSearchParams(location.search);
+  const token = params.get("token");
+  const state = params.get("state");
+  const err = params.get("error");
+
+  if (err) {
+    setNotice("sign-in cancelled or failed: " + (params.get("error_description") || err), "error");
+    cleanUrl();
+    return;
+  }
+
+  if (!token) return;
+
+  const expected = ss(STATE_KEY);
+  ssSet(STATE_KEY, "");
+  if (!expected || state !== expected) {
+    setNotice("sign-in failed: state mismatch. try again, champ.", "error");
+    cleanUrl();
+    return;
+  }
+
+  lsSet(TOKEN_KEY, token);
+  cleanUrl();
+  setNotice("signed in with eliza cloud. chat away.", "ok");
+  setTimeout(() => setNotice(""), 3500);
+}
+
+function cleanUrl() {
+  const url = new URL(location.href);
+  url.searchParams.delete("token");
+  url.searchParams.delete("state");
+  url.searchParams.delete("error");
+  url.searchParams.delete("error_description");
+  window.history.replaceState({}, "", url.pathname + (url.search || "") + url.hash);
+}
+
+function startLogin() {
+  if (!cfg || !cfg.app_id) {
+    setNotice("eDad isn't registered with eliza cloud yet.", "warn");
+    return;
+  }
+  const state = randomState();
+  ssSet(STATE_KEY, state);
+  const redirect = new URL(location.href);
+  redirect.search = "";
+  redirect.hash = "";
+  const authorize = new URL("/app-auth/authorize", cfg.cloud_url);
+  authorize.searchParams.set("app_id", cfg.app_id);
+  authorize.searchParams.set("redirect_uri", redirect.toString());
+  authorize.searchParams.set("state", state);
+  location.href = authorize.toString();
+}
+
+function logout() {
+  lsSet(TOKEN_KEY, "");
+  refreshAuthUI();
+  setNotice("signed out.", "ok");
+  setTimeout(() => setNotice(""), 2000);
+}
+
+async function send(text) {
+  if (inflight) return;
+  if (!text.trim()) return;
+  inflight = true;
+  els.sendBtn.disabled = true;
+  setStatus("thinking", "dad's thinking...");
+
+  history.push({ role: "user", content: text });
+  addMessage("user", text);
+  els.input.value = "";
+
+  const placeholder = addMessage("assistant", "…");
+
+  try {
+    const headers = { "content-type": "application/json" };
+    const token = getToken();
+    if (token) headers["x-user-token"] = token;
+
+    const res = await fetch(API_BASE + "/messages/", {
+      method: "POST",
+      headers,
+      body: JSON.stringify({
+        model: MODEL,
+        max_tokens: 1024,
+        system: SYSTEM_PROMPT,
+        messages: history.map(m => ({ role: m.role, content: [{ type: "text", text: m.content }] })),
+      }),
+    });
+
+    if (!res.ok) {
+      const t = await res.text();
+      let msg = "dad's got a crick in his neck. try again in a minute, champ.";
+      try {
+        const j = JSON.parse(t);
+        if (j && (j.error || j.message)) msg = `dad says: ${j.error?.message || j.error || j.message}`;
+      } catch {}
+      if (res.status === 401) {
+        msg = "dad needs you to sign in with eliza cloud. click the button up top, kiddo.";
+        // token might be expired — nuke it
+        if (getToken()) { lsSet(TOKEN_KEY, ""); refreshAuthUI(); }
+      }
+      if (res.status === 402) msg = "dad's wallet is empty. top up at elizacloud.ai, champ.";
+      placeholder.textContent = msg;
+      history.pop();
+      setStatus("error", "error");
+      return;
+    }
+
+    const data = await res.json();
+    const out = (data.content || [])
+      .filter(b => b.type === "text")
+      .map(b => b.text)
+      .join("\n")
+      .trim() || "...";
+    placeholder.textContent = out;
+    history.push({ role: "assistant", content: out });
+    setStatus("ok", "ready");
+  } catch {
+    placeholder.textContent = "dad lost the signal on the old rabbit ears. try again.";
+    history.pop();
+    setStatus("error", "offline");
+  } finally {
+    inflight = false;
+    els.sendBtn.disabled = false;
+    scrollToBottom();
+  }
+}
+
+els.composer.addEventListener("submit", (e) => {
+  e.preventDefault();
+  send(els.input.value);
+});
+
+els.input.addEventListener("keydown", (e) => {
+  if (e.key === "Enter" && !e.shiftKey) {
+    e.preventDefault();
+    send(els.input.value);
+  }
+});
+
+els.loginBtn.addEventListener("click", startLogin);
+els.logoutBtn.addEventListener("click", logout);
+
+(async () => {
+  handleOAuthCallback();
+  await loadConfig();
+  refreshAuthUI();
+  setStatus("ok", "ready");
+})();
+</script>
+
+</body>
+</html>

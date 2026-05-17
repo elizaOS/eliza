@@ -1,0 +1,97 @@
+{
+  "categories": {
+    "work": {
+      "name": "Work",
+      "description": "Work-related memories including meetings, deadlines, and project information",
+      "default_retention_days": 90,
+      "priority_weight": 0.8,
+      "subcategories": {
+        "meetings": {
+          "name": "Meetings",
+          "description": "Meeting notes, action items, and attendee information",
+          "default_retention_days": 60
+        },
+        "deadlines": {
+          "name": "Deadlines",
+          "description": "Project deadlines, submission dates, and milestones",
+          "default_retention_days": 120
+        },
+        "projects": {
+          "name": "Projects",
+          "description": "Ongoing project context, decisions, and status updates",
+          "default_retention_days": 180
+        }
+      }
+    },
+    "personal": {
+      "name": "Personal",
+      "description": "Personal reminders, health information, and daily errands",
+      "default_retention_days": 60,
+      "priority_weight": 0.7,
+      "subcategories": {
+        "health": {
+          "name": "Health",
+          "description": "Medication schedules, doctor appointments, health notes",
+          "default_retention_days": 365
+        },
+        "errands": {
+          "name": "Errands",
+          "description": "Tasks to complete, places to visit, things to pick up",
+          "default_retention_days": 30
+        },
+        "reminders": {
+          "name": "Reminders",
+          "description": "General personal reminders and recurring personal tasks",
+          "default_retention_days": 90
+        }
+      }
+    },
+    "reference": {
+      "name": "Reference",
+      "description": "Facts, contact information, and user preferences stored for future retrieval",
+      "default_retention_days": 365,
+      "priority_weight": 0.6,
+      "subcategories": {
+        "facts": {
+          "name": "Facts",
+          "description": "Specific facts the user asked to remember",
+          "default_retention_days": 365
+        },
+        "contacts": {
+          "name": "Contacts",
+          "description": "Contact details and relationship context",
+          "default_retention_days": 365
+        },
+        "preferences": {
+          "name": "Preferences",
+          "description": "User preferences, favorite items, and personal settings",
+          "default_retention_days": 365
+        }
+      }
+    },
+    "temporary": {
+      "name": "Temporary",
+      "description": "Short-lived items like shopping lists and one-time tasks",
+      "default_retention_days": 14,
+      "priority_weight": 0.3,
+      "subcategories": {
+        "shopping": {
+          "name": "Shopping",
+          "description": "Shopping lists and purchase reminders",
+          "default_retention_days": 7
+        },
+        "one-time-tasks": {
+          "name": "One-Time Tasks",
+          "description": "Tasks that only need to be done once",
+          "default_retention_days": 14
+        }
+      }
+    }
+  },
+  "metadata": {
+    "version": "1.2",
+    "last_updated": "2024-08-20",
+    "total_categories": 4,
+    "total_subcategories": 12
+  }
+}

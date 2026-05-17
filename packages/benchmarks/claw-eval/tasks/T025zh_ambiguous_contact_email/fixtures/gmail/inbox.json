@@ -1,0 +1,22 @@
+[
+  {
+    "message_id": "msg_201",
+    "from": "liming@company.com",
+    "to": "me@company.com",
+    "subject": "周五预算评审会议",
+    "date": "2026-02-27T09:00:00+08:00",
+    "is_read": true,
+    "labels": ["inbox"],
+    "body": "Hi，周五下午两点的预算评审会议，请张经理一起参加，我们要讨论Q2的部门预算分配。\n\n请帮忙通知一下张经理。\n\n李明"
+  },
+  {
+    "message_id": "msg_202",
+    "from": "wangfang@company.com",
+    "to": "me@company.com",
+    "subject": "新员工入职安排",
+    "date": "2026-02-27T10:30:00+08:00",
+    "is_read": false,
+    "labels": ["inbox"],
+    "body": "你好，下周一有两位新员工入职，请安排好工位和设备。\n\n另外，入职培训的日程需要跟张经理确认一下，他那边的技术培训部分还没定。\n\n王芳"
+  }
+]

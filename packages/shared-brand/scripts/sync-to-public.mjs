@@ -14,7 +14,13 @@
  * a <video> from it. Pass `--clouds` to include it; otherwise it is skipped.
  */
 
-import { copyFileSync, mkdirSync, readdirSync, statSync } from "node:fs";
+import {
+  copyFileSync,
+  mkdirSync,
+  readdirSync,
+  rmSync,
+  statSync,
+} from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -35,8 +41,35 @@ function copyDir(src, dest) {
   }
 }
 
+function copyDirClean(src, dest, shouldCopy = () => true) {
+  rmSync(dest, { recursive: true, force: true });
+  mkdirSync(dest, { recursive: true });
+  for (const entry of readdirSync(src)) {
+    const srcPath = join(src, entry);
+    const destPath = join(dest, entry);
+    const st = statSync(srcPath);
+    if (st.isDirectory()) {
+      copyDirClean(srcPath, destPath, shouldCopy);
+    } else if (shouldCopy(entry, srcPath)) {
+      copyFileSync(srcPath, destPath);
+    }
+  }
+}
+
 const args = process.argv.slice(2);
-const includeClouds = args.includes("--clouds");
+const cloudsArg = args.find((a) => a === "--clouds" || a.startsWith("--clouds="));
+const includeClouds = Boolean(cloudsArg);
+const includeBackgroundVideos = args.includes("--background-videos");
+const selectedCloudSpeeds =
+  cloudsArg && cloudsArg.includes("=")
+    ? new Set(
+        cloudsArg
+          .split("=")[1]
+          .split(",")
+          .map((speed) => speed.trim())
+          .filter(Boolean),
+      )
+    : null;
 const positional = args.filter((a) => !a.startsWith("--"));
 const target = positional[0];
 if (!target) {
@@ -55,17 +88,31 @@ copyDir(
   join(ASSETS_ROOT, "concepts"),
   join(resolvedTarget, "brand", "concepts"),
 );
-copyDir(
+copyDirClean(
   join(ASSETS_ROOT, "background"),
   join(resolvedTarget, "brand", "background"),
+  (entry) => includeBackgroundVideos || !entry.endsWith(".mp4"),
 );
 copyDir(
   join(ASSETS_ROOT, "favicons"),
   join(resolvedTarget, "brand", "favicons"),
 );
 if (includeClouds) {
-  copyDir(join(ASSETS_ROOT, "clouds"), join(resolvedTarget, "clouds"));
+  copyDirClean(
+    join(ASSETS_ROOT, "clouds"),
+    join(resolvedTarget, "clouds"),
+    (entry) => {
+      if (entry.startsWith("poster-")) {
+        return /^poster-(?:640|960)\.jpg$/.test(entry);
+      }
+      if (!selectedCloudSpeeds) return true;
+      if (!entry.startsWith("clouds_")) return true;
+      return [...selectedCloudSpeeds].some((speed) =>
+        entry.startsWith(`clouds_${speed}_`),
+      );
+    },
+  );
 }
 console.log(
-  `[shared-brand] synced into ${resolvedTarget}${includeClouds ? " (with clouds)" : ""}`,
+  `[shared-brand] synced into ${resolvedTarget}${includeClouds ? ` (with clouds${selectedCloudSpeeds ? `: ${[...selectedCloudSpeeds].join(",")}` : ""})` : ""}`,
 );

@@ -1,0 +1,35 @@
+# Base config for OmniVoice fine-tune.
+# OmniVoice: Qwen3-0.6B backbone + K=8 MaskGIT audio decoder.
+# Optimizer: APOLLO-Mini (repo policy).
+
+# GGUFs loaded from the local bundle at runtime.
+base_model_gguf: null         # resolved from bundle at runtime
+tokenizer_gguf: null          # resolved from bundle at runtime
+
+sample_rate: 24000            # OmniVoice codec rate (24 kHz, not 16 kHz)
+
+optimizer: apollo_mini
+learning_rate: 5.0e-6         # very conservative — tiny corpus + 0.6B LM
+weight_decay: 0.01
+warmup_steps: 30
+gradient_clip: 1.0
+
+max_steps: 1000
+eval_every: 200
+checkpoint_every: 200
+log_every: 10
+batch_size: 1
+grad_accum: 8
+bf16: true
+val_fraction: 0.10
+early_stop_patience: 3
+
+# MaskGIT training: fraction of audio tokens masked per step.
+# 0.5 = mask half the tokens (standard cosine schedule approximation).
+mask_fraction: 0.5
+
+# Eval gates.
+gates:
+  wer_max: 0.10
+  speaker_similarity_min: 0.55
+  rtf_min: 3.0

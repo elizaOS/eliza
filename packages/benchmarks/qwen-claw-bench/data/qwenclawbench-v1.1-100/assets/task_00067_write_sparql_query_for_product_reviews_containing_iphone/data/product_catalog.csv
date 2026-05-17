@@ -1,0 +1,21 @@
+product_id,product_name,category,price,stock_count
+PRD-001,iPhone 15 Pro,Smartphones,1199,293
+PRD-002,iPhone 15,Smartphones,999,564
+PRD-003,iPhone 14,Smartphones,699,686
+PRD-004,iPhone 14 Plus,Smartphones,799,381
+PRD-005,Galaxy S24,Smartphones,899,598
+PRD-006,Galaxy S24 Ultra,Smartphones,1299,274
+PRD-007,Galaxy S23 FE,Smartphones,599,838
+PRD-008,Pixel 8,Smartphones,699,481
+PRD-009,Pixel 8 Pro,Smartphones,999,263
+PRD-010,iPad Air,Tablets,599,630
+PRD-011,iPad Pro 12.9,Tablets,1099,161
+PRD-012,Galaxy Tab S9,Tablets,849,397
+PRD-013,AirPods Pro 2,Audio,249,1503
+PRD-014,Galaxy Buds3 Pro,Audio,229,931
+PRD-015,Pixel Buds Pro,Audio,199,557
+PRD-016,MacBook Air M3,Laptops,1099,491
+PRD-017,Galaxy Book4 Pro,Laptops,1449,150
+PRD-018,Apple Watch Series 9,Wearables,399,900
+PRD-019,Galaxy Watch 6,Wearables,329,653
+PRD-020,Pixel Watch 2,Wearables,349,363

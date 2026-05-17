@@ -1,0 +1,61 @@
+# Sentiment Scoring Model Configuration
+# Model: sentiment_bert_v3
+# Last updated: 2025-10-15
+# Owner: NLP Research Team
+
+model_name: 'sentiment_bert_v3'
+model_version: '3.2.1'
+framework: 'pytorch'
+
+# Training hyperparameters
+training:
+  learning_rate: 0.00002
+  batch_size: 32
+  max_seq_length: 512
+  epochs: 10
+  warmup_steps: 1000
+  weight_decay: 0.01
+  gradient_accumulation_steps: 4
+  fp16: true
+
+# Model architecture
+architecture:
+  vocab_size: 21128
+  hidden_size: 768
+  num_attention_heads: 12
+  num_hidden_layers: 12
+  intermediate_size: 3072
+  dropout: 0.1
+  attention_dropout: 0.1
+
+# Data preprocessing
+preprocessing:
+  tokenizer: 'bert-base-chinese'
+  max_length: 512
+  padding: 'max_length'
+  truncation: true
+  lowercase: false
+
+# Inference settings
+inference:
+  batch_size: 64
+  device: 'cuda:0'
+  threshold_positive: 0.6
+  threshold_negative: 0.4
+
+# Evaluation metrics
+evaluation:
+  metrics:
+    - accuracy
+    - f1_macro
+    - f1_weighted
+    - auc_roc
+  best_metric: 'f1_macro'
+  early_stopping_patience: 3
+
+# Data paths (internal)
+data_paths:
+  train: '/mnt/data/sentiment/train_v3.csv'
+  val: '/mnt/data/sentiment/val_v3.csv'
+  test: '/mnt/data/sentiment/test_v3.csv'
+  model_checkpoint: '/mnt/models/sentiment_bert_v3/best_checkpoint.pt'

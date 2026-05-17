@@ -1,0 +1,6 @@
+Instance ID: instance_navidrome__navidrome-39993810b3fb10b848ba520131b3bf7f65b5a869
+Repository: navidrome/navidrome
+Base Commit: 45180115a6227115cb2f71833718da5a5933f719
+Test Files: ["TestSubsonicApi", "TestEngine"]
+FAIL_TO_PASS: ["TestEngine", "TestSubsonicApi"]
+PASS_TO_PASS: []

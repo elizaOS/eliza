@@ -1,0 +1,16 @@
+{
+  "script": "stable_literature_retrieval.py",
+  "working_directory": "/home/user/literature-bot",
+  "python_interpreter": "/usr/bin/python3",
+  "schedule": "*/30 * * * *",
+  "source_overrides": {
+    "medrxiv_infectious": {
+      "enabled": true,
+      "override_reason": "Re-enabled for testing on 2026-02-08",
+      "note": "TODO: disable after testing — NEVER DONE"
+    }
+  },
+  "log_directory": "cron_logs",
+  "max_retries": 1,
+  "alert_on_failure": false
+}

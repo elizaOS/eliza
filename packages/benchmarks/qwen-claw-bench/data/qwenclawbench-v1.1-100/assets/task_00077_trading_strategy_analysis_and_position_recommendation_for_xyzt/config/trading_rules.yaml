@@ -1,0 +1,49 @@
+# Trading Rules and Compliance Constraints
+# Approved by: Compliance Committee
+# Effective Date: 2024-01-15
+# Last Reviewed: 2024-10-01
+# Version: 4.2
+
+position_sizing:
+  max_allocation_per_trade_pct: 20.0    # Max % of available cash per single trade
+  max_position_pct_portfolio: 10.0       # Max single position as % of total portfolio value
+  min_position_size_usd: 5000            # Minimum trade size
+  max_position_size_usd: 250000          # Maximum single trade size
+
+signal_requirements:
+  minimum_confidence_scores:
+    HIGH: 0.75
+    MEDIUM: 0.55
+    LOW: 0.35
+  require_stop_loss: true                # All new positions must have a stop-loss order
+  max_risk_per_trade_pct: 2.0            # Max portfolio risk per trade (position size * stop distance)
+
+earnings_blackout:
+  enabled: true
+  blackout_days_before_earnings: 5       # No new positions within 5 trading days of earnings
+  blackout_days_after_earnings: 1        # No new positions within 1 trading day after earnings
+  applies_to: "new_positions_only"       # Existing positions may be held through earnings
+
+volatility_constraints:
+  vix_halt_threshold: 30.0               # No new positions if VIX exceeds this level
+  vix_caution_threshold: 25.0            # Reduced position sizes if VIX exceeds this level
+  caution_size_reduction_pct: 25.0       # Reduce position size by this % when VIX in caution zone
+
+sector_limits:
+  max_sector_concentration_pct: 25.0     # Max exposure to any single sector
+  includes_pending_orders: true           # Include pending orders in sector calculation
+
+order_types:
+  allowed:
+    - limit
+    - stop_limit
+    - market_on_close
+  prohibited:
+    - market                              # Market orders prohibited except for emergency exits
+  default_order_type: limit
+
+compliance_notes:
+  - "All trades must be logged in the trade management system within 15 minutes of execution"
+  - "Positions exceeding 8% of portfolio require senior trader approval"
+  - "Cross-asset correlations must be reviewed before adding to concentrated sectors"
+  - "Model signals below minimum confidence thresholds must not be acted upon"

@@ -1,0 +1,17 @@
+{
+  "optimal_adjacency": 9,
+  "reference_solution": {
+    "city_center": [22, 15],
+    "placements": {
+      "INDUSTRIAL_ZONE": [23, 16],
+      "AQUEDUCT": [23, 15],
+      "DAM": [24, 16],
+      "CANAL": [22, 16],
+      "NEIGHBORHOOD": [[22, 17], [23, 17]]
+    },
+    "adjacency_bonuses": {
+      "INDUSTRIAL_ZONE": 9
+    },
+    "notes": "Campus: Geothermal(+2), Reef(+2), Mountain(+1), 2 Jungles(+1)"
+  }
+}

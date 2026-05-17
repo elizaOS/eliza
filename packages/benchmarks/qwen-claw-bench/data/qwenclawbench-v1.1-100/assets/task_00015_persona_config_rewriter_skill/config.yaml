@@ -1,0 +1,30 @@
+# Assistant Configuration
+# Last updated: 2025-01-14
+
+assistant:
+  name: Archie
+  version: 2.1.0
+  model: gpt-4
+  temperature: 0.7
+  max_tokens: 4096
+
+persona:
+  tone: professional
+  formality: high
+  humor: disabled
+  verbosity: detailed
+
+features:
+  web_search: true
+  code_execution: true
+  file_operations: true
+  memory: true
+
+rate_limits:
+  messages_per_minute: 20
+  tokens_per_request: 4096
+
+logging:
+  level: info
+  format: json
+  destination: ./logs/assistant.log

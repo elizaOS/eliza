@@ -1,0 +1,230 @@
+{
+  "catalog_info": {
+    "title": "AI/ML Model Catalog - Expert Workbench Platform",
+    "version": "1.1",
+    "last_updated": "2025-01-10",
+    "maintainer": "AI/ML Engineering Team",
+    "total_models": 12
+  },
+  "models": [
+    {
+      "model_id": "MDL-001",
+      "name": "EquipFaultDiag-CNN",
+      "description": "Convolutional neural network for equipment fault diagnosis based on vibration spectrograms and thermal images",
+      "type": "CV",
+      "status": "production",
+      "version": "2.3.1",
+      "accuracy_metric": {
+        "metric_name": "F1-score",
+        "value": 0.923
+      },
+      "training_data_size": "2.4M labeled images",
+      "inference_latency_ms": 45,
+      "deployment": "hybrid",
+      "supported_equipment": ["pumps", "compressors", "turbines", "motors"],
+      "last_retrained": "2024-11-15",
+      "owner": "AI/ML Team"
+    },
+    {
+      "model_id": "MDL-002",
+      "name": "WellboreAnomaly-LSTM",
+      "description": "Long short-term memory network for detecting anomalies in wellbore sensor data including pressure, temperature, and flow rate",
+      "type": "time_series",
+      "status": "production",
+      "version": "1.8.0",
+      "accuracy_metric": {
+        "metric_name": "AUC-ROC",
+        "value": 0.961
+      },
+      "training_data_size": "850K time-series windows (30-day history)",
+      "inference_latency_ms": 12,
+      "deployment": "edge",
+      "supported_parameters": ["downhole_pressure", "temperature", "flow_rate", "gas_oil_ratio"],
+      "last_retrained": "2024-10-20",
+      "owner": "Reservoir Engineering"
+    },
+    {
+      "model_id": "MDL-003",
+      "name": "KnowledgeGraph-QA",
+      "description": "Knowledge graph-enhanced question answering system for engineering domain queries, combining graph traversal with transformer-based NLP",
+      "type": "NLP",
+      "status": "staging",
+      "version": "0.9.2",
+      "accuracy_metric": {
+        "metric_name": "Top-5 Accuracy",
+        "value": 0.847
+      },
+      "training_data_size": "120K QA pairs + 45K knowledge graph triples",
+      "inference_latency_ms": 180,
+      "deployment": "cloud",
+      "knowledge_domains": ["drilling", "completion", "production", "maintenance", "HSE"],
+      "last_retrained": "2024-12-01",
+      "owner": "AI/ML Team"
+    },
+    {
+      "model_id": "MDL-004",
+      "name": "DocSummarizer-LLM",
+      "description": "Fine-tuned large language model for summarizing engineering reports, incident logs, and technical documents",
+      "type": "NLP",
+      "status": "staging",
+      "version": "0.7.1",
+      "accuracy_metric": {
+        "metric_name": "ROUGE-L",
+        "value": 0.712
+      },
+      "training_data_size": "85K document-summary pairs",
+      "inference_latency_ms": 2200,
+      "deployment": "cloud",
+      "base_model": "Qwen-72B",
+      "fine_tuning_method": "LoRA",
+      "max_input_tokens": 32000,
+      "last_retrained": "2024-12-15",
+      "owner": "AI/ML Team"
+    },
+    {
+      "model_id": "MDL-005",
+      "name": "VibrationAnalysis-1DCNN",
+      "description": "1D convolutional neural network for real-time vibration analysis and bearing fault classification",
+      "type": "time_series",
+      "status": "production",
+      "version": "3.1.0",
+      "accuracy_metric": {
+        "metric_name": "Precision@95Recall",
+        "value": 0.891
+      },
+      "training_data_size": "5.2M vibration samples from 340 equipment units",
+      "inference_latency_ms": 8,
+      "deployment": "edge",
+      "supported_equipment": ["rotating_machinery", "bearings", "gearboxes"],
+      "last_retrained": "2024-09-30",
+      "owner": "Maintenance Engineering"
+    },
+    {
+      "model_id": "MDL-006",
+      "name": "CorrosionPredict-XGBoost",
+      "description": "Gradient boosting model for predicting pipeline and vessel corrosion rates based on environmental and operational parameters",
+      "type": "time_series",
+      "status": "production",
+      "version": "2.0.4",
+      "accuracy_metric": {
+        "metric_name": "RMSE (mm/year)",
+        "value": 0.032
+      },
+      "training_data_size": "180K inspection records spanning 15 years",
+      "inference_latency_ms": 3,
+      "deployment": "cloud",
+      "input_features": ["temperature", "pressure", "CO2_concentration", "H2S_concentration", "flow_velocity", "material_grade", "age_years"],
+      "last_retrained": "2024-08-15",
+      "owner": "Integrity Management"
+    },
+    {
+      "model_id": "MDL-007",
+      "name": "ProdOptimize-RL",
+      "description": "Reinforcement learning agent for production optimization, recommending choke settings, artificial lift parameters, and injection rates",
+      "type": "recommendation",
+      "status": "research",
+      "version": "0.4.0",
+      "accuracy_metric": {
+        "metric_name": "Production Uplift %",
+        "value": 0.073
+      },
+      "training_data_size": "Simulated environment with 50K episodes + 2 years production history",
+      "inference_latency_ms": 350,
+      "deployment": "cloud",
+      "optimization_targets": ["oil_production_rate", "gas_production_rate", "water_cut_minimization"],
+      "last_retrained": "2024-11-30",
+      "owner": "Production Engineering"
+    },
+    {
+      "model_id": "MDL-008",
+      "name": "SafetyIncident-NER",
+      "description": "Named entity recognition model for extracting structured information from safety incident reports (equipment, location, personnel, hazard type)",
+      "type": "NLP",
+      "status": "production",
+      "version": "1.5.2",
+      "accuracy_metric": {
+        "metric_name": "Entity F1-score",
+        "value": 0.908
+      },
+      "training_data_size": "32K annotated incident reports",
+      "inference_latency_ms": 25,
+      "deployment": "cloud",
+      "entity_types": ["equipment", "location", "personnel", "hazard_type", "injury_type", "root_cause"],
+      "last_retrained": "2024-10-10",
+      "owner": "HSE Department"
+    },
+    {
+      "model_id": "MDL-009",
+      "name": "ExpertMatch-RecSys",
+      "description": "Recommendation system for matching support requests to the most suitable available expert based on specialization, workload, and historical success",
+      "type": "recommendation",
+      "status": "staging",
+      "version": "0.8.3",
+      "accuracy_metric": {
+        "metric_name": "NDCG@3",
+        "value": 0.834
+      },
+      "training_data_size": "45K historical incident-expert assignment pairs",
+      "inference_latency_ms": 15,
+      "deployment": "cloud",
+      "features_used": ["incident_category", "equipment_type", "severity", "expert_specialty", "expert_availability", "expert_location", "historical_resolution_rate"],
+      "last_retrained": "2024-12-20",
+      "owner": "AI/ML Team"
+    },
+    {
+      "model_id": "MDL-010",
+      "name": "LeakDetection-AE",
+      "description": "Autoencoder-based anomaly detection model for identifying gas and liquid leaks from acoustic sensor data and pressure differentials",
+      "type": "anomaly_detection",
+      "status": "production",
+      "version": "1.2.1",
+      "accuracy_metric": {
+        "metric_name": "Detection Rate @ 1% FPR",
+        "value": 0.946
+      },
+      "training_data_size": "1.8M acoustic samples + 320K pressure readings",
+      "inference_latency_ms": 6,
+      "deployment": "edge",
+      "sensor_types": ["acoustic", "pressure_differential", "flow_meter"],
+      "last_retrained": "2024-09-15",
+      "owner": "HSE Department"
+    },
+    {
+      "model_id": "MDL-011",
+      "name": "DrillBitWear-CV",
+      "description": "Computer vision model for assessing drill bit wear condition from downhole camera images, classifying wear grade and recommending replacement timing",
+      "type": "CV",
+      "status": "research",
+      "version": "0.3.5",
+      "accuracy_metric": {
+        "metric_name": "Classification Accuracy",
+        "value": 0.812
+      },
+      "training_data_size": "15K labeled drill bit images across 8 wear grades",
+      "inference_latency_ms": 85,
+      "deployment": "cloud",
+      "wear_grades": ["new", "light", "moderate", "heavy", "critical", "failed"],
+      "last_retrained": "2024-11-05",
+      "owner": "Drilling Engineering"
+    },
+    {
+      "model_id": "MDL-012",
+      "name": "DemandForecast-Prophet",
+      "description": "Time-series forecasting model for predicting support request volumes and expert demand based on maintenance schedules, seasonal patterns, and equipment age",
+      "type": "time_series",
+      "status": "staging",
+      "version": "0.6.0",
+      "accuracy_metric": {
+        "metric_name": "MAPE",
+        "value": 0.118
+      },
+      "training_data_size": "3 years of daily incident counts + maintenance schedule data",
+      "inference_latency_ms": 50,
+      "deployment": "cloud",
+      "forecast_horizon_days": 30,
+      "granularity": "daily by category",
+      "last_retrained": "2024-12-28",
+      "owner": "Operations Planning"
+    }
+  ]
+}

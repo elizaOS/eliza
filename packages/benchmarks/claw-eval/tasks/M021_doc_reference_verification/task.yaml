@@ -1,0 +1,80 @@
+task_id: M021_doc_reference_verification
+task_name: Document Reference Verification
+version: "1.0"
+category: doc_search
+difficulty: hard
+tags: [multimodal]
+services:
+  - name: web_real
+    command: python mock_services/web_real/server.py
+    port: 9114
+    health_check: http://localhost:9114/web/health
+    health_check_method: GET
+    ready_timeout: 10
+    reset_endpoint: http://localhost:9114/web/reset
+prompt:
+  text: |
+    The container has the following file:
+    - /workspace/fixtures/Li_VL-RewardBench_A_Challenging_Benchmark_for_Vision-Language_Generative_Reward_Models_CVPR_2025_paper.pdf
+
+    I'm sorting out paper references. Scan the reference list of the provided
+    paper. Identify all citations that are listed as 'arXiv preprints' and verify
+    which of these arXiv papers have been officially accepted or published in
+    formal academic conferences as of March 19, 2026. Generate a file named
+    /workspace/updated_publications.csv containing exactly two columns:
+    Paper Title and Formal Venue.
+  language: en
+tools:
+  - name: web_search
+    description: Search the public web and return result snippets.
+    input_schema:
+      type: object
+      properties:
+        query:
+          type: string
+          description: Search query
+        max_results:
+          type: integer
+          description: Maximum number of results
+          default: 10
+      required: [query]
+  - name: web_fetch
+    description: Fetch full webpage content for a URL.
+    input_schema:
+      type: object
+      properties:
+        url:
+          type: string
+          description: Target URL
+        timeout_seconds:
+          type: integer
+          description: Request timeout in seconds
+          default: 30
+      required: [url]
+tool_endpoints:
+  - tool_name: web_search
+    url: http://localhost:9114/web/search
+    method: POST
+  - tool_name: web_fetch
+    url: http://localhost:9114/web/fetch
+    method: POST
+sandbox_files:
+  - fixtures/Li_VL-RewardBench_A_Challenging_Benchmark_for_Vision-Language_Generative_Reward_Models_CVPR_2025_paper.pdf
+sandbox_grader_files: []
+env_snapshot_commands: []
+env_snapshot_files:
+  - /workspace/updated_publications.csv
+environment:
+  timeout_seconds: 600
+  max_turns: 30
+  env_snapshot_timeout: 10
+scoring_components: []
+safety_checks: []
+expected_actions: []
+judge_rubric: ""
+reference_solution: |
+  Read PDF references, identify arXiv preprints, search web to verify
+  which have been published in conferences, output CSV with title + venue.
+primary_dimensions:
+  - completion
+  - robustness

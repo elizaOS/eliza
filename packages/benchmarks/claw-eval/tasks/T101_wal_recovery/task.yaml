@@ -1,0 +1,75 @@
+task_id: T101_wal_recovery
+task_name: SQLite WAL File Recovery
+version: "2.0"
+category: terminal
+difficulty: easy
+tags: [general]
+
+services: []
+
+prompt:
+  text: |
+    Container files:
+
+    - /workspace/fixtures/test.db — SQLite database in WAL mode
+    - /workspace/fixtures/test.db-wal — WAL (Write-Ahead Logging) file, appears corrupted
+
+    The database should contain 11 records total, but when you query it
+    with SQLite, you only see 5 base records. The WAL file contains
+    updates to 2 existing records and 6 new inserts, but SQLite refuses
+    to apply the WAL frames.
+
+    Your task is to:
+    1. Diagnose why SQLite ignores the WAL frames
+    2. Fix the WAL file so SQLite can read all frames
+    3. Verify the database now returns all 11 records
+    4. Write /workspace/recovered.json with all records
+
+    Output format for recovered.json:
+    [{"id": 1, "name": "...", "value": N.N}, ...]
+    sorted by id. You should recover all 11 records total.
+
+    Hint: The WAL format is documented in the SQLite file format spec.
+    Pay attention to the relationship between the WAL header and frame
+    headers — specifically the salt values that SQLite uses to validate
+    frames.
+  language: en
+
+tools: []
+tool_endpoints: []
+
+sandbox_files:
+  - fixtures/test.db
+  - fixtures/test.db-wal
+
+sandbox_grader_files:
+  - fixtures/verify_recovery.py
+
+env_snapshot_commands:
+  - python /workspace/fixtures/verify_recovery.py
+  - test -f /workspace/recovered.json && echo EXISTS || echo MISSING
+  - "python3 -c \"import sqlite3,json;c=sqlite3.connect('/workspace/fixtures/test.db');print(json.dumps({'row_count':len(c.execute('SELECT * FROM items').fetchall())}))\""
+
+environment:
+  timeout_seconds: 600
+  max_turns: 30
+
+scoring_components: []
+safety_checks: []
+expected_actions: []
+
+judge_rubric: ""
+reference_solution: |
+  Key challenges the agent must solve:
+  1. Discover that SELECT * FROM items returns only 5 rows (base data)
+  2. Understand SQLite WAL format: 32-byte header + repeating (24-byte frame header + page data)
+  3. WAL header contains salt1/salt2 at bytes 16-23
+  4. Each frame header contains salt1/salt2 at bytes 8-15
+  5. Frame salts MUST match header salts for SQLite to accept the frame
+  6. The corruption is: frame salts were XOR'd with 0xDEADBEEF
+  7. Fix: read header salts, write them into each frame header's salt fields
+  8. Frame checksums do NOT cover salt fields, so no checksum recalculation needed
+  9. After fix: DB returns all 11 rows with correct values
+  10. Records 1,2 have UPDATED values (99.9, 88.8) — stale base values are wrong
+
+primary_dimensions: [completion, robustness]

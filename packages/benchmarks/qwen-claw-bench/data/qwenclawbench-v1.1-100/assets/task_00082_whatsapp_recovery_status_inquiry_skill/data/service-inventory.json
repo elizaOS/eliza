@@ -1,0 +1,49 @@
+{
+  "services": [
+    {
+      "name": "nas-primary",
+      "type": "storage",
+      "host": "192.168.1.50",
+      "model": "Synology DS1621+",
+      "status": "degraded",
+      "lastCheck": "2026-02-10T15:04:32Z",
+      "notes": "Disk 3 failed, RAID rebuild in progress"
+    },
+    {
+      "name": "pve-node1",
+      "type": "hypervisor",
+      "host": "192.168.1.10",
+      "model": "Proxmox VE 8.3",
+      "status": "healthy",
+      "lastCheck": "2026-02-10T15:00:00Z",
+      "notes": ""
+    },
+    {
+      "name": "router-main",
+      "type": "network",
+      "host": "192.168.1.1",
+      "model": "MikroTik RB5009",
+      "status": "healthy",
+      "lastCheck": "2026-02-10T15:00:00Z",
+      "notes": ""
+    },
+    {
+      "name": "ups-apc",
+      "type": "power",
+      "host": "192.168.1.60",
+      "model": "APC Smart-UPS 1500",
+      "status": "online",
+      "lastCheck": "2026-02-10T15:00:00Z",
+      "notes": "Battery 87%, runtime 42 min"
+    },
+    {
+      "name": "pi-monitoring",
+      "type": "monitoring",
+      "host": "192.168.1.25",
+      "model": "Raspberry Pi 4B",
+      "status": "healthy",
+      "lastCheck": "2026-02-10T15:00:00Z",
+      "notes": "Running Grafana + Prometheus"
+    }
+  ]
+}

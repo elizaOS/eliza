@@ -1,0 +1,6 @@
+# Doraemon Drawing Project Dependencies
+# Install with: pip install -r requirements.txt
+
+matplotlib>=3.5
+Pillow>=9.0
+numpy>=1.21

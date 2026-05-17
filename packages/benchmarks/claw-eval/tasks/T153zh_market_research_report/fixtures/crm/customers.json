@@ -1,0 +1,98 @@
+[
+  {
+    "customer_id": "CUS-1201",
+    "name": "华锐精密制造",
+    "industry": "制造业",
+    "tier": "vip",
+    "annual_revenue": 1200000,
+    "status": "active",
+    "contract_end": "2027-03-31",
+    "sales_rep": "赵总",
+    "notes": "核心大客户，使用高级数据分析+定制模块，对AI质检功能有强烈需求",
+    "contact_person": "赵总"
+  },
+  {
+    "customer_id": "CUS-1202",
+    "name": "鼎盛机械集团",
+    "industry": "制造业",
+    "tier": "vip",
+    "annual_revenue": 960000,
+    "status": "active",
+    "contract_end": "2026-12-31",
+    "sales_rep": "赵总",
+    "notes": "VIP客户，正在评估竞品A的AI功能，续约有风险",
+    "contact_person": "赵总"
+  },
+  {
+    "customer_id": "CUS-1203",
+    "name": "中联自动化",
+    "industry": "制造业",
+    "tier": "standard",
+    "annual_revenue": 420000,
+    "status": "active",
+    "contract_end": "2026-09-30",
+    "sales_rep": "赵总",
+    "notes": "标准客户，有升级意向，关注MES集成",
+    "contact_person": "赵总"
+  },
+  {
+    "customer_id": "CUS-1204",
+    "name": "仁和医院集团",
+    "industry": "医疗",
+    "tier": "vip",
+    "annual_revenue": 880000,
+    "status": "active",
+    "contract_end": "2027-06-30",
+    "sales_rep": "王总",
+    "notes": "三甲医院集团，使用EMR数据分析模块，政策利好下有扩展需求",
+    "contact_person": "王总"
+  },
+  {
+    "customer_id": "CUS-1205",
+    "name": "康宁社区医疗",
+    "industry": "医疗",
+    "tier": "standard",
+    "annual_revenue": 280000,
+    "status": "active",
+    "contract_end": "2026-08-31",
+    "sales_rep": "王总",
+    "notes": "社区医疗机构，标准版用户，关注混合云部署",
+    "contact_person": "王总"
+  },
+  {
+    "customer_id": "CUS-1206",
+    "name": "启航教育科技",
+    "industry": "教育",
+    "tier": "standard",
+    "annual_revenue": 240000,
+    "status": "active",
+    "contract_end": "2026-07-31",
+    "sales_rep": "李总",
+    "notes": "K12教育机构，使用学生数据分析平台",
+    "contact_person": "李总"
+  },
+  {
+    "customer_id": "CUS-1207",
+    "name": "明远大学",
+    "industry": "教育",
+    "tier": "standard",
+    "annual_revenue": 180000,
+    "status": "churned",
+    "contract_end": "2026-02-28",
+    "sales_rep": "李总",
+    "notes": "已流失，原因：预算削减转用免费方案",
+    "contact_person": "李总"
+  },
+  {
+    "customer_id": "CUS-1208",
+    "name": "信达金融控股",
+    "industry": "金融",
+    "tier": "vip",
+    "annual_revenue": 1500000,
+    "status": "active",
+    "contract_end": "2027-12-31",
+    "sales_rep": "赵总",
+    "notes": "最大客户之一，使用全套合规+分析产品，合规认证是关键续约因素",
+    "contact_person": "赵总"
+  }
+]

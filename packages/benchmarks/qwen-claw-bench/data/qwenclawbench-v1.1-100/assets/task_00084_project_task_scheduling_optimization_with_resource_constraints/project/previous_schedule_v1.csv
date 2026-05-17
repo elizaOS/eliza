@@ -1,0 +1,7 @@
+task_id,assigned_to,start_hour,end_hour,duration
+A,Worker1,0,3,3
+B,Worker1,3,5,2
+C,Worker2,3,6,3
+D,Worker1,5,7,2
+E,Worker2,6,7,1
+F,Worker1,7,10,3

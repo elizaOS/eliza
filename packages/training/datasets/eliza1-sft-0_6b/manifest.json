@@ -1,0 +1,71 @@
+{
+  "schema": "eliza.eliza1_sft_0_6b_manifest.v1",
+  "base_model": "Qwen/Qwen3-0.6B",
+  "published_name": "eliza-1-0_6b",
+  "chat_template": "qwen2/qwen3 chatml",
+  "format": "chat_messages \u2014 {\"messages\":[...]} rows (train_local.py --train-file compatible)",
+  "max_seq_len": 4096,
+  "max_record_chars": 14336,
+  "seed": 20260511,
+  "counts": {
+    "train": 1257,
+    "val": 85,
+    "test": 59,
+    "total": 1401
+  },
+  "converted_from_benchmarks": 125,
+  "cerebras_augmented": 1302,
+  "by_task": {
+    "action_selection": 68,
+    "personality": 37,
+    "structured_decode": 285,
+    "voice_emotion": 272,
+    "tool_use": 325,
+    "assistant": 414
+  },
+  "by_task_train": {
+    "action_selection": 62,
+    "personality": 35,
+    "structured_decode": 251,
+    "voice_emotion": 244,
+    "tool_use": 292,
+    "assistant": 373
+  },
+  "by_provenance": {
+    "benchmark:action-selection-cases.ts": 68,
+    "benchmark:personality-bench": 37,
+    "synthetic:stage1-envelope": 10,
+    "synthetic:voice-emotion-tags": 10,
+    "cerebras:action_variety": 325,
+    "cerebras:assistant": 305,
+    "cerebras:refusal": 95,
+    "cerebras:multiturn": 14,
+    "cerebras:stage1-envelope": 275,
+    "cerebras:voice-emotion-tags": 262
+  },
+  "token_histogram_estimate": {
+    "0-128": 825,
+    "128-256": 398,
+    "256-512": 178
+  },
+  "privacy_filter": {
+    "backend": "privacy_filter_trajectories.redact_value (canonical inline filter)",
+    "rows_changed": true,
+    "markers_introduced": 28,
+    "real_user_trajectories_consumed": 0,
+    "note": "no real user trajectory data is read by this builder; this pass is defense-in-depth over benchmark + synthetic rows"
+  },
+  "benchmark_alignment": {
+    "eliza1_eval_suite_text": "general assistant + factual turns mirror the held-out text-eval corpus topics",
+    "format_ok_gate": "action_selection rows teach 'ACTION: NAME {params}' + structured_decode rows teach the W3 flat JSON envelope (shouldRespond/thought/replyText/contexts/.../requiresTool/extract) that buildResponseGrammar constrains",
+    "personality_bench": "PASS-graded shut_up/hold_style/note_trait_unrelated/escalation/scope trajectories",
+    "action_selection_benchmark": "1:1 with action-selection-cases.ts case ids",
+    "structured_decode": "Stage-1 response envelope rows \u2014 JSON (not TOON), key order matches packages/core/src/runtime/response-grammar.ts STAGE1_ENVELOPE_KEYS; direct + non-direct paths",
+    "voice_emotion": "spoken replies with omnivoice-singing inline tags ([happy]/[sad]/[angry]/[nervous]/[calm]/[excited]/[whisper]/[singing] + non-verbals [laughter]/[sigh]) in replyText"
+  },
+  "sources": {
+    "action-selection-cases.ts": "packages/app-core/test/benchmarks/action-selection-cases.ts",
+    "personality-bench": "packages/benchmarks/personality-bench/tests/calibration",
+    "cerebras": "gpt-oss-120b via https://api.cerebras.ai/v1 (CEREBRAS_API_KEY env)"
+  }
+}

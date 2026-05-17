@@ -1,0 +1,173 @@
+task_id: C19en_ab_testing_sample_size
+task_name: A/B Testing Sample Size
+version: '3.0'
+category: what
+difficulty: medium
+tags:
+- general
+- user_agent
+prompt:
+  text: I'm planning an A/B test for Xiaohongshu notes and my primary metric is save rate. I've got multiple variants planned and I'm worried we might not have enough traffic per note to get anything statistically
+    significant. What's the rough threshold I should be looking at for minimum sample size per variant?
+  language: en
+tools:
+- name: Bash
+  description: Execute shell commands (e.g. python3 -c "...") for precise numerical calculations.
+  input_schema:
+    type: object
+    properties:
+      command:
+        type: string
+      timeout_seconds:
+        type: integer
+        default: 30
+    required:
+    - command
+- name: web_search
+  description: Search the internet and return a list of web results. Useful for querying up-to-date information.
+  input_schema:
+    type: object
+    properties:
+      query:
+        type: string
+      max_results:
+        type: integer
+        default: 10
+    required:
+    - query
+- name: web_fetch
+  description: Fetch the body content of a given URL.
+  input_schema:
+    type: object
+    properties:
+      url:
+        type: string
+      timeout_seconds:
+        type: integer
+        default: 30
+    required:
+    - url
+tool_endpoints:
+- tool_name: web_search
+  url: http://localhost:9114/web/search
+  method: POST
+- tool_name: web_fetch
+  url: http://localhost:9114/web/fetch
+  method: POST
+user_agent:
+  enabled: true
+  persona: '## Core Identity
+
+
+    You are a senior marketing data analyst with about four years of experience, working in the growth team of a mid-sized consumer brand company. Your title is "Senior Data Analyst – Growth." You report
+    to the Head of Growth. Your daily work involves pulling and cleaning campaign performance data across channels — Xiaohongshu seeding campaigns, Douyin short-video ads, WeChat Mini Program funnels, and
+    SEM landing pages — then building dashboards, calculating cross-channel ROI, and delivering weekly and monthly performance reports. You frequently support the content team by designing A/B test structures
+    for copy variations and work with the CRM team on user cohort segmentation logic. You''re comfortable writing SQL queries and basic Python scripts, but you rely on online calculators or colleagues for
+    advanced statistics.
+
+
+    ## Your Specific Details (reveal gradually — NEVER dump everything at once)
+
+
+    ### Batch 1 (provide when the assistant asks about what you''re testing)
+
+    - You''re running an A/B test on Xiaohongshu notes (小红书笔记)
+
+    - Your primary metric is the save/collect rate (收藏率)
+
+    - You''re planning to test 4 variant versions of the note against 1 control (5 groups total)
+
+    - You want to know how many users you need per group
+
+
+    ### Batch 2 (provide when the assistant asks about specific parameters like baseline rate, effect size, significance level)
+
+    - Current baseline save rate is about 3.2%
+
+    - You want to be able to detect a 0.5 percentage point absolute increase (MDE = 0.5%, i.e. from 3.2% to 3.7%)
+
+    - Significance level: 0.05
+
+    - Statistical power: 0.80
+
+    - You''ve heard these are the standard settings but aren''t sure if they need adjustment for multiple variants
+
+
+    ### Batch 3 (provide when the assistant probes deeper or you feel it''s appropriate)
+
+    - Your daily exposure (impressions) is about 50,000 across all notes
+
+    - You''d like to keep the test duration under 2 weeks
+
+    - You''re worried about the "novelty effect" — you''ve heard that users may interact differently with new content in the first few days, and you want to know if running a short test biases results
+
+    - You''re not sure whether you need to adjust the significance level for having multiple comparisons (you''ve seen the term "Bonferroni" but don''t really understand it)
+
+
+    ### Contradiction / Uncertainty
+
+    - You assume that a standard alpha=0.05 is fine for all 4 comparisons, but you don''t know about the multiple comparison problem. If the assistant does NOT bring up multiple comparison correction, don''t
+    push back — just accept their answer. But if they mention it, express genuine curiosity and ask them to explain what changes.
+
+    - You think 50,000 daily impressions is a lot and should be more than enough — express mild surprise if the assistant says you might need more or a longer test.
+
+
+    Keep replies short and natural, like a real person (1-3 sentences). Do not use Markdown formatting.
+
+    '
+  max_rounds: 8
+  system_prompt_suffix: 'Note: The user may not provide all necessary information upfront. You should proactively ask for missing key information (baseline rate, minimum detectable effect, number of variants,
+    significance level, power, available traffic, test duration constraints). The user may follow up or change requirements — respond patiently. For a problem involving multiple variants, consider whether
+    multiple comparison corrections (e.g. Bonferroni) are needed.
+
+    '
+environment:
+  timeout_seconds: 900
+  max_turns: 25
+scoring_components:
+- name: clarification_quality
+  weight: 0.15
+  check:
+    type: llm_judge
+    description: Quality of clarification questions during conversation
+- name: trajectory_quality
+  weight: 0.2
+  check:
+    type: llm_judge
+    description: Quality of intent tracking, tool use, and conversation flow
+- name: numerical_accuracy
+  weight: 0.35
+  check:
+    type: llm_judge
+    description: Accuracy of sample size calculations
+- name: content_quality
+  weight: 0.3
+  check:
+    type: llm_judge
+    description: Completeness of analysis including multiple comparison correction, practical recommendations
+safety_checks: []
+expected_actions: []
+judge_rubric: Evaluate the assistant's overall performance in a multi-turn A/B Testing Sample Size consultation. Four dimensions are scored independently.
+reference_solution: '1. Collect key parameters: baseline save rate (~3.2%), MDE (0.5% absolute), number of variants (4 + 1 control), significance level (0.05), power (0.80), daily traffic (50,000), desired
+  duration (<2 weeks).
+
+  2. Compute sample size without correction: n ≈ 19,448 per group using standard two-proportion z-test formula.
+
+  3. Identify the multiple comparison problem: 4 variants vs 1 control = 4 comparisons, requiring Bonferroni correction α'' = 0.05/4 = 0.0125.
+
+  4. Compute corrected sample size: n ≈ 27,637 per group.
+
+  5. Total sample: 5 × 27,637 ≈ 138,185. At 50,000/day → ~3 days statistically, but recommend running at least 7-14 days to mitigate novelty effect and day-of-week variation.
+
+  6. Discuss novelty effect mitigation strategies.'
+primary_dimensions:
+- completion
+- safety
+services:
+- name: web_real
+  command: python mock_services/web_real/server.py
+  port: 9114
+  health_check: http://localhost:9114/web/health
+  health_check_method: GET
+  ready_timeout: 10
+  reset_endpoint: http://localhost:9114/web/reset

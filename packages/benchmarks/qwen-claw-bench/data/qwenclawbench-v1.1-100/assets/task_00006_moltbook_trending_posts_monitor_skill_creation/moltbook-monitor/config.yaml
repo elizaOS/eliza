@@ -1,0 +1,73 @@
+# Moltbook Trending Posts Monitor — Main Configuration
+# Last updated: 2026-02-08
+
+moltbook:
+  base_url: "https://api.moltbook.io/v2"
+  endpoints:
+    trending: "/posts/trending"
+    hot: "/posts/hot"
+    user_profile: "/users/{user_id}/profile"
+    post_detail: "/posts/{post_id}"
+  auth:
+    api_key_env: "MOLTBOOK_API_KEY"
+    rate_limit:
+      requests_per_minute: 30
+      burst: 5
+  params:
+    trending:
+      category: "all"          # all | tech | lifestyle | finance | gaming | creative
+      time_window: "24h"       # 1h | 6h | 24h | 7d
+      min_score: 150
+      limit: 25
+      locale: "zh-CN"
+      include_nsfw: false
+
+monitor:
+  schedule: "*/30 * * * *"     # every 30 minutes
+  active_hours:
+    start: "07:00"
+    end: "01:00"
+    timezone: "Asia/Shanghai"
+  dedup:
+    enabled: true
+    window_hours: 12
+    strategy: "post_id"        # post_id | content_hash | title_similarity
+  thresholds:
+    hot_score: 500
+    viral_score: 2000
+    rapid_rise_pct: 300        # % increase in score within 1 hour
+  max_posts_per_push: 10
+
+notification:
+  channels:
+    - type: "webhook"
+      name: "moltbot-primary"
+      url_env: "MOLTBOT_WEBHOOK_URL"
+      format: "markdown"
+      enabled: true
+    - type: "telegram"
+      name: "tg-moltbook-feed"
+      chat_id_env: "TG_CHAT_ID"
+      bot_token_env: "TG_BOT_TOKEN"
+      format: "html"
+      enabled: true
+    - type: "discord"
+      name: "discord-trending"
+      webhook_url_env: "DISCORD_MOLTBOOK_WEBHOOK"
+      format: "embed"
+      enabled: false
+  templates:
+    summary: "moltbook-monitor/templates/summary.md"
+    single_post: "moltbook-monitor/templates/single_post.md"
+    alert: "moltbook-monitor/templates/alert.md"
+
+logging:
+  level: "info"
+  file: "moltbook-monitor/logs/monitor.log"
+  max_size_mb: 50
+  rotate_count: 5
+
+cache:
+  backend: "file"             # file | redis
+  path: "moltbook-monitor/cache"
+  ttl_hours: 48

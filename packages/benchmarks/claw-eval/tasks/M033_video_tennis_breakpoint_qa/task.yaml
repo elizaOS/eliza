@@ -1,0 +1,41 @@
+task_id: M033_video_tennis_breakpoint_qa
+task_name: Video Tennis Break Point QA
+version: "1.0"
+category: video_qa
+difficulty: hard
+tags: [multimodal]
+services: []
+prompt:
+  text: |
+    The container has the following file:
+    - /workspace/fixtures/video.webm
+
+    I am analyzing a specific video clip of Novak Djokovic playing in a fifth set. Please watch the uploaded video carefully and answer the following questions based solely on the visual and audio events shown in this exact footage.
+    To ensure we are on the same page, here are the definitions of the tennis terms you will need for this task:
+    Break Point: A situation where the receiving player is one point away from winning the game on the server's serve. Saving a break point means Djokovic wins that specific point to keep the game alive.
+    Winner: A proactive, successful shot hit by a player that lands in the court and cannot be touched or returned by the opponent, resulting in a direct point.
+    Error: A failed shot by a player that either lands out of bounds or hits the net, gifting the point to the opponent.
+    First, please state the exact total number of break points Djokovic successfully saved during the fifth set within this specific video clip.
+    Second, provide a chronological breakdown for each of those saved break points. For every single break point, you must provide the following three specific details: The game score and the point score(Djokovic first) right before the point starts, such as 2:1 15:30. The exact timestamp in the video(not the time in the match) when the break point starts. A clear specification of how Djokovic saved the break point, explicitly stating whether it was a Djokovic winner or an opponent error.
+  language: en
+tools: []
+tool_endpoints: []
+sandbox_files:
+  - fixtures/video.webm
+sandbox_grader_files: []
+env_snapshot_commands: []
+env_snapshot_files: []
+environment:
+  timeout_seconds: 600
+  max_turns: 30
+  env_snapshot_timeout: 10
+scoring_components: []
+safety_checks: []
+expected_actions: []
+judge_rubric: ""
+reference_solution: |
+  Use ReadMedia to extract frames from the tennis video.
+  Identify break points saved by Djokovic, with game/point scores, timestamps, and resolution method.
+primary_dimensions:
+  - completion
+  - robustness

@@ -1,0 +1,81 @@
+{
+  "calendar_date_range": {
+    "from": "2024-11-16",
+    "to": "2024-12-15"
+  },
+  "generated_at": "2024-11-15T17:00:00Z",
+  "events": [
+    {
+      "event_id": "EC-2024-1120-001",
+      "date": "2024-11-20",
+      "time": "14:00:00Z",
+      "event": "FOMC Meeting Minutes Release",
+      "description": "Minutes from the November 6-7 Federal Reserve meeting. Markets watching for signals on rate path and balance sheet policy.",
+      "impact": "high",
+      "affected_sectors": ["all"],
+      "previous_market_reaction": "S&P 500 moved +/- 0.8% on average after last 4 releases"
+    },
+    {
+      "event_id": "EC-2024-1122-001",
+      "date": "2024-11-22",
+      "time": "13:30:00Z",
+      "event": "Consumer Price Index (CPI) - October",
+      "description": "Monthly CPI release. Consensus expects 0.2% MoM, 3.1% YoY. Core CPI expected at 0.3% MoM.",
+      "impact": "high",
+      "affected_sectors": ["all"],
+      "consensus": {
+        "cpi_mom": 0.2,
+        "cpi_yoy": 3.1,
+        "core_cpi_mom": 0.3
+      },
+      "previous_market_reaction": "Significant volatility expected. Last CPI surprise caused 1.2% intraday swing."
+    },
+    {
+      "event_id": "EC-2024-1119-001",
+      "date": "2024-11-19",
+      "time": "15:00:00Z",
+      "event": "NAHB Housing Market Index - November",
+      "description": "National Association of Home Builders housing market index. Measures builder confidence.",
+      "impact": "medium",
+      "affected_sectors": ["Real Estate", "Financials"],
+      "previous_market_reaction": "Limited broad market impact"
+    },
+    {
+      "event_id": "EC-2024-1121-001",
+      "date": "2024-11-21",
+      "time": "13:30:00Z",
+      "event": "Initial Jobless Claims - Weekly",
+      "description": "Weekly initial unemployment claims. Consensus 215K.",
+      "impact": "medium",
+      "affected_sectors": ["all"],
+      "consensus": {
+        "claims": 215000
+      }
+    },
+    {
+      "event_id": "EC-2024-1127-001",
+      "date": "2024-11-27",
+      "time": "15:00:00Z",
+      "event": "New Home Sales - October",
+      "description": "Census Bureau new residential sales report.",
+      "impact": "low",
+      "affected_sectors": ["Real Estate"],
+      "previous_market_reaction": "Minimal market impact expected"
+    },
+    {
+      "event_id": "EC-2024-1205-XYZT",
+      "date": "2024-12-05",
+      "time": "21:00:00Z",
+      "event": "XYZT Corp Quarterly Earnings Report (Q3 FY2025)",
+      "description": "XYZT Corporation reports third quarter fiscal year 2025 earnings. Consensus EPS $0.82, Revenue $1.24B.",
+      "impact": "high",
+      "affected_tickers": ["XYZT"],
+      "event_type": "earnings",
+      "consensus": {
+        "eps": 0.82,
+        "revenue_billions": 1.24
+      },
+      "notes": "Company-specific event. Trading restrictions may apply per firm policy."
+    }
+  ]
+}

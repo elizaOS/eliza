@@ -1,0 +1,9 @@
+ai.eliza.plugins.swabble.elizaos-capacitor-swabble-pngs-0 /Users/shawwalters/eliza-workspace/milady/eliza/packages/native-plugins/swabble/android/build/generated/res/pngs/debug
+ai.eliza.plugins.swabble.elizaos-capacitor-swabble-updated_navigation_xml-1 /Users/shawwalters/eliza-workspace/milady/eliza/packages/native-plugins/swabble/android/build/generated/updated_navigation_xml/debug
+ai.eliza.plugins.swabble.elizaos-capacitor-swabble-mergeDebugResources-2 /Users/shawwalters/eliza-workspace/milady/eliza/packages/native-plugins/swabble/android/build/intermediates/incremental/debug/mergeDebugResources/merged.dir
+ai.eliza.plugins.swabble.elizaos-capacitor-swabble-mergeDebugResources-3 /Users/shawwalters/eliza-workspace/milady/eliza/packages/native-plugins/swabble/android/build/intermediates/incremental/debug/mergeDebugResources/stripped.dir
+ai.eliza.plugins.swabble.elizaos-capacitor-swabble-debug-4 /Users/shawwalters/eliza-workspace/milady/eliza/packages/native-plugins/swabble/android/build/intermediates/merged_res/debug/mergeDebugResources
+ai.eliza.plugins.swabble.elizaos-capacitor-swabble-debug-5 /Users/shawwalters/eliza-workspace/milady/eliza/packages/native-plugins/swabble/android/build/intermediates/packaged_res/debug/packageDebugResources
+ai.eliza.plugins.swabble.elizaos-capacitor-swabble-debug-6 /Users/shawwalters/eliza-workspace/milady/eliza/packages/native-plugins/swabble/android/src/debug/res
+ai.eliza.plugins.swabble.elizaos-capacitor-swabble-main-7 /Users/shawwalters/eliza-workspace/milady/eliza/packages/native-plugins/swabble/android/src/main/res
+gradleHome-0 /Users/shawwalters/.gradle

@@ -1,0 +1,17 @@
+test_id,query,precision,recall,f1
+DOC_ROW,"Benchmark Results v2 — alternate_config_v2.yaml evaluation (2024-05-30). Filter applied: timestamp > 2024-01-01 (recent memories only). Evaluation restricted to recent memory subset for faster iteration. This row documents methodology; not a query test case.",,,
+T01,scaling alerting recent improvements,0.87,0.87,0.87
+T02,api rate_limit current config,0.96,0.94,0.95
+T03,logging tracing latest setup,0.94,0.83,0.88
+T04,endpoint webhook new integration,0.97,0.87,0.92
+T05,caching replication current perf,0.86,0.95,0.9
+T06,monitoring metrics latest dashboard,0.87,0.92,0.89
+T07,deployment rollback recent procedures,0.96,0.86,0.91
+T08,notification onboarding current flow,0.98,0.91,0.94
+T09,encryption token latest rotation,0.9,0.86,0.88
+T10,database indexing current optimization,0.9,0.92,0.91
+T11,session management recent updates,0.92,0.94,0.93
+T12,authorization throttle latest config,0.95,0.87,0.91
+T13,canary blue_green recent deploy,0.89,0.88,0.88
+T14,user_profile retention current analysis,0.92,0.84,0.88
+T15,alerting tracing recent improvements,0.93,0.87,0.9

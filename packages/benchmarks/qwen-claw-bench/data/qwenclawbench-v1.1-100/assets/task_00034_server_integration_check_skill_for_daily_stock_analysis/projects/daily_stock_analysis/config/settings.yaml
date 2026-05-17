@@ -1,0 +1,34 @@
+# daily_stock_analysis configuration
+# Last updated: 2026-01-15
+
+watchlist:
+  - AAPL
+  - MSFT
+  - GOOGL
+  - AMZN
+  - TSLA
+  - NVDA
+  - META
+  - JPM
+  - V
+  - UNH
+
+lookback_period: "6mo"
+rsi_window: 14
+report_dir: "data/reports"
+
+# Feishu integration
+feishu_notify: true
+feishu_webhook_url: "https://open.feishu.cn/open-apis/bot/v2/hook/a8f3e7d2-91b4-4c56-b0e3-7f8a2d4e6c01"
+feishu_app_id: "cli_a5f8e3d72b190013"
+feishu_app_secret: "KxR7mNpQ2vYjLwBc8sDfEgHi"
+
+# Analysis parameters
+macd_fast: 12
+macd_slow: 26
+macd_signal: 9
+bollinger_window: 20
+bollinger_std: 2.0
+
+# Scheduling (for reference - actual cron is in server config)
+schedule: "0 22 * * 1-5"  # 10 PM UTC weekdays (6 AM CST next day)

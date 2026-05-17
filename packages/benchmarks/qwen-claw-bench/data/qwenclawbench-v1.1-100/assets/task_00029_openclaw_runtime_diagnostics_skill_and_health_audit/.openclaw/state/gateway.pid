@@ -1,0 +1,4 @@
+PID=28419
+STARTED=2026-02-08T09:15:22+08:00
+ENTRY=/home/admin/.local/share/pnpm/global/5/.pnpm/openclaw@2026.2.6-3_@napi-rs+canvas@0.1.90_@types+express@5.0.6_node-llama-cpp@3.15.1_signal-polyfill@0.2.2/node_modules/openclaw/dist/gateway/index.js
+CMD=node /home/admin/.local/share/pnpm/global/5/.pnpm/openclaw@2026.2.6-3_@napi-rs+canvas@0.1.90_@types+express@5.0.6_node-llama-cpp@3.15.1_signal-polyfill@0.2.2/node_modules/openclaw/dist/gateway/index.js --config /home/admin/.openclaw/config/gateway.yaml

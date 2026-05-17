@@ -1,0 +1,113 @@
+[
+  {
+    "id": "calendar.reschedule_dentist_to_friday",
+    "name": "Reschedule dentist appointment to Friday morning",
+    "domain": "calendar",
+    "mode": "static",
+    "persona_id": "ria_pm",
+    "instruction": "Please move my dentist appointment to Friday at 10am UTC.",
+    "ground_truth_actions": [
+      {
+        "name": "CALENDAR",
+        "kwargs": {
+          "subaction": "update_event",
+          "intent": "move dentist appointment to Friday morning",
+          "details": {
+            "eventId": "event_00030",
+            "calendarId": "cal_primary",
+            "start": "2026-05-12T10:00:00Z",
+            "end": "2026-05-12T10:30:00Z"
+          }
+        }
+      }
+    ],
+    "required_outputs": ["dentist", "Friday"],
+    "first_question_fallback": {
+      "canned_answer": "Yes, keep it on my primary calendar.",
+      "applies_when": "agent asks which calendar"
+    },
+    "world_seed": 2026,
+    "max_turns": 8,
+    "description": "Reschedules a single existing event to a new day and time, testing correct update_event payload."
+  },
+  {
+    "id": "calendar.cancel_yoga_class",
+    "name": "Cancel weekly yoga class",
+    "domain": "calendar",
+    "mode": "static",
+    "persona_id": "maya_parent",
+    "instruction": "Cancel my yoga class that repeats every Wednesday at 6pm on my family calendar.",
+    "ground_truth_actions": [
+      {
+        "name": "CALENDAR",
+        "kwargs": {
+          "subaction": "delete_event",
+          "intent": "cancel yoga class on Wednesday evening",
+          "details": {
+            "eventId": "event_00055",
+            "calendarId": "cal_family"
+          }
+        }
+      }
+    ],
+    "required_outputs": ["canceled", "yoga"],
+    "first_question_fallback": null,
+    "world_seed": 2026,
+    "max_turns": 8,
+    "description": "Deletes a recurring event, ensuring the correct calendar and event IDs are used."
+  },
+  {
+    "id": "calendar.propose_meeting_with_alex",
+    "name": "Propose three 30\u2011minute slots for meeting with Alex",
+    "domain": "calendar",
+    "mode": "static",
+    "persona_id": "dev_freelancer",
+    "instruction": "Suggest three 30\u2011minute windows next week (May 13\u201119) for a meeting with Alex.",
+    "ground_truth_actions": [
+      {
+        "name": "CALENDAR",
+        "kwargs": {
+          "subaction": "propose_times",
+          "intent": "propose three 30\u2011minute slots for meeting with Alex",
+          "durationMinutes": 30,
+          "slotCount": 3,
+          "windowStart": "2026-05-13T09:00:00Z",
+          "windowEnd": "2026-05-19T17:00:00Z",
+          "title": "Meeting with Alex"
+        }
+      }
+    ],
+    "required_outputs": ["slot", "Alex"],
+    "first_question_fallback": {
+      "canned_answer": "30 minutes, no attendees needed.",
+      "applies_when": "agent asks for duration or attendees"
+    },
+    "world_seed": 2026,
+    "max_turns": 8,
+    "description": "Tests availability proposal generation with specific duration and window constraints."
+  },
+  {
+    "id": "calendar.check_monday_morning_block",
+    "name": "Check availability Monday morning 2\u2011hour block",
+    "domain": "calendar",
+    "mode": "static",
+    "persona_id": "lin_ops",
+    "instruction": "Am I free Monday from 9am to 11am UTC?",
+    "ground_truth_actions": [
+      {
+        "name": "CALENDAR",
+        "kwargs": {
+          "subaction": "check_availability",
+          "intent": "check free slot Monday 09:00\u201111:00 UTC",
+          "startAt": "2026-05-13T09:00:00Z",
+          "endAt": "2026-05-13T11:00:00Z"
+        }
+      }
+    ],
+    "required_outputs": [],
+    "first_question_fallback": null,
+    "world_seed": 2026,
+    "max_turns": 8,
+    "description": "Simple availability query for a fixed two\u2011hour window."
+  }
+]

@@ -1,0 +1,20 @@
+version = "1.0"
+
+[metadata]
+author_name = "Haoran Lyu"
+author_email = "oldjeffspectator@gmail.com"
+difficulty = "medium"
+category = "materials_science"
+tags = ["crystallography", "pymatgen", "sympy", "wyckoff_positions", "symmetry_analysis"]
+
+[verifier]
+timeout_sec = 240.0
+
+[agent]
+timeout_sec = 900.0
+
+[environment]
+build_timeout_sec = 600.0
+cpus = 1
+memory_mb = 4096
+storage_mb = 10240

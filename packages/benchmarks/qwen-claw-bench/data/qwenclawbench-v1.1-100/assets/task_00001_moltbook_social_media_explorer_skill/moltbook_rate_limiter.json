@@ -1,0 +1,23 @@
+{
+  "description": "Rate limiting tracker for Moltbook API interactions",
+  "schema_version": "1.0",
+  "limits": {
+    "post": {
+      "max_per_window": 1,
+      "window_minutes": 30,
+      "last_action": "2026-02-09T15:30:00+08:00"
+    },
+    "comment": {
+      "max_per_window": 1,
+      "window_seconds": 20,
+      "max_per_day": 50,
+      "last_action": "2026-02-09T16:45:00+08:00",
+      "count_today": 2,
+      "day": "2026-02-09"
+    },
+    "upvote": {
+      "note": "No strict limit documented, use reasonable frequency",
+      "last_action": "2026-02-09T16:50:00+08:00"
+    }
+  }
+}

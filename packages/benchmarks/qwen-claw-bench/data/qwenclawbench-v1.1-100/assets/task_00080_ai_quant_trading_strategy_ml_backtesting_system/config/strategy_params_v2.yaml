@@ -1,0 +1,27 @@
+# Updated config - use this version
+# Strategy Parameters v2 - AI Quant Backtesting System
+# Revised: 2023-12-01
+
+feature_engineering:
+  bb_window: 20
+  bb_std: 2.0
+  rsi_period: 14
+  atr_period: 14
+  volatility_lookback: 30
+
+triple_barrier:
+  profit_take: 0.02
+  stop_loss: 0.02
+  max_holding: 10
+
+model:
+  n_estimators: 200
+  max_depth: 5
+  learning_rate: 0.05
+  confidence_threshold: 0.50
+  scale_pos_weight: auto
+
+backtest:
+  initial_capital: 100000
+  commission_rate: 0.01
+  slippage_bps: 5

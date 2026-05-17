@@ -1,0 +1,1 @@
+/usr/bin/cc -O3 -DNDEBUG CMakeFiles/voice_mel_features_test.dir/test/voice_mel_features_test.c.o -o voice_mel_features_test  libvoice_classifier.a -lm 

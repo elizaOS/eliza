@@ -1,0 +1,76 @@
+# Active Virtual Power Plant Dashboard Configuration
+# Version: 0.1 (Static Data Dashboard)
+# Last updated: 2024-06-15
+
+dashboard_title: "Active Virtual Power Plant Dashboard v0.1"
+version: "0.1"
+
+theme:
+  mode: dark
+  background_color: "#1a1a2e"
+  text_color: "#e0e0e0"
+  grid_color: "#333355"
+  font_family: "Inter, Roboto, sans-serif"
+
+charts:
+  - id: generation_curve
+    title: "Power Generation (Solar + Wind)"
+    type: line
+    color: "#4CAF50"
+    secondary_color: "#81C784"
+    y_axis_label: "Power (kW)"
+    x_axis_label: "Hour of Day"
+    show_legend: true
+    data_source: "data/power_generation_hourly.csv"
+
+  - id: consumption_curve
+    title: "Power Consumption by Sector"
+    type: area
+    color: "#FF5722"
+    secondary_color: "#FF8A65"
+    y_axis_label: "Power (kW)"
+    x_axis_label: "Hour of Day"
+    show_legend: true
+    data_source: "data/power_consumption_hourly.csv"
+
+  - id: storage_status
+    title: "Battery State of Charge"
+    type: bar
+    color: "#2196F3"
+    secondary_color: "#64B5F6"
+    y_axis_label: "SOC (%)"
+    x_axis_label: "Hour of Day"
+    show_legend: true
+    data_source: "data/battery_storage_status.json"
+
+layout:
+  type: grid
+  columns: 2
+  rows: 2
+  gap: "16px"
+  padding: "24px"
+  chart_placement:
+    - chart_id: generation_curve
+      row: 1
+      col: 1
+    - chart_id: consumption_curve
+      row: 1
+      col: 2
+    - chart_id: storage_status
+      row: 2
+      col: 1
+      col_span: 2
+
+responsive_breakpoints:
+  mobile:
+    max_width: "768px"
+    columns: 1
+    rows: 3
+  tablet:
+    max_width: "1024px"
+    columns: 2
+    rows: 2
+
+refresh_interval_seconds: 0  # Static data, no refresh needed in v0.1
+data_format: "csv"
+timezone: "UTC"

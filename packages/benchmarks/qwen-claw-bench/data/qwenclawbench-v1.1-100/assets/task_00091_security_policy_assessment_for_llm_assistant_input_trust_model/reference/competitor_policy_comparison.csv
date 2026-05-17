@@ -1,0 +1,9 @@
+vendor_name,trusted_channels,untrusted_channels,policy_type,has_tiered_trust,document_handling_approach
+AlphaAssist,Mobile App; Desktop Client,Email; PDF; Web; API,allowlist,yes,Sandboxed read-only with content filtering
+BetaBot,Slack; Teams; Mobile App,Email; External API,hybrid,yes,Full document processing with injection detection ML model
+GammaGPT,All authenticated channels,Anonymous API calls only,blocklist,no,Permissive - all documents processed with post-hoc audit
+DeltaAI,Hardware token authenticated sessions,All others,allowlist,no,Complete block - no document processing
+EpsilonChat,WhatsApp; Telegram; Signal,Email; Web forms,allowlist,yes,"Three-tier: block execute, allow summarize, flag ambiguous"
+ZetaServe,On-premise terminal; VPN-authenticated remote,Public internet; Email; Documents,allowlist,yes,Air-gapped document processing with manual review queue
+EtaHelper,Any channel with MFA,Single-factor channels,hybrid,yes,Document content treated as tier-2 (conditional execute with confirmation)
+ThetaAssist,Biometric-verified mobile; Physical kiosk,All remote channels without biometric,allowlist,no,OCR-based text extraction with injection pattern matching

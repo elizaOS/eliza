@@ -1,0 +1,72 @@
+{
+  "registry_name": "quant_model_registry",
+  "models": [
+    {
+      "model_id": "xgb_v1_20230601",
+      "timestamp": "2023-06-01T14:22:31Z",
+      "algorithm": "XGBoost",
+      "n_estimators": 100,
+      "accuracy": 0.5812,
+      "f1_score": 0.5234,
+      "auc": 0.6145,
+      "status": "archived",
+      "notes": "Initial baseline model"
+    },
+    {
+      "model_id": "xgb_v2_20230715",
+      "timestamp": "2023-07-15T09:45:12Z",
+      "algorithm": "XGBoost",
+      "n_estimators": 150,
+      "accuracy": 0.6021,
+      "f1_score": 0.5567,
+      "auc": 0.6389,
+      "status": "archived",
+      "notes": "Added RSI divergence feature"
+    },
+    {
+      "model_id": "xgb_v3_20230820",
+      "timestamp": "2023-08-20T16:33:05Z",
+      "algorithm": "XGBoost",
+      "n_estimators": 200,
+      "accuracy": 0.6198,
+      "f1_score": 0.5812,
+      "auc": 0.6601,
+      "status": "archived",
+      "notes": "Tuned hyperparameters, added adaptive BB"
+    },
+    {
+      "model_id": "xgb_v4_20231005",
+      "timestamp": "2023-10-05T11:17:44Z",
+      "algorithm": "XGBoost",
+      "n_estimators": 200,
+      "accuracy": 0.6287,
+      "f1_score": 0.5945,
+      "auc": 0.6723,
+      "status": "production",
+      "notes": "Class imbalance handling with scale_pos_weight"
+    },
+    {
+      "model_id": "rf_v1_20231101",
+      "timestamp": "2023-11-01T08:55:20Z",
+      "algorithm": "RandomForest",
+      "n_estimators": 300,
+      "accuracy": 0.6054,
+      "f1_score": 0.5678,
+      "auc": 0.6412,
+      "status": "experimental",
+      "notes": "Random Forest comparison experiment"
+    },
+    {
+      "model_id": "rf_v2_20231201",
+      "timestamp": "2023-12-01T10:20:45Z",
+      "algorithm": "RandomForest",
+      "n_estimators": 500,
+      "max_depth": 8,
+      "accuracy": 0.6412,
+      "f1_score": 0.6178,
+      "auc": 0.6934,
+      "status": "recommended",
+      "notes": "Outperforms all XGBoost variants on extended dataset (ohlcv_extended.csv). Recommended for new deployments due to better generalization and lower overfitting risk."
+    }
+  ]
+}

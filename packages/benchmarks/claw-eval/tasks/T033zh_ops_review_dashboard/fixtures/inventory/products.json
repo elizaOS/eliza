@@ -1,0 +1,56 @@
+[
+  {
+    "product_id": "PRD-201",
+    "name": "智能摄像头Pro",
+    "category": "智能硬件",
+    "current_stock": 450,
+    "min_stock": 100,
+    "status": "overstocked",
+    "return_rate": 18.5,
+    "return_count": 95,
+    "units_sold_this_month": 514,
+    "supplier": "深圳光电科技",
+    "last_restock_date": "2026-02-10",
+    "notes": "退货率异常偏高（18.5%），远超行业平均3%。近一个月退货95台，主要原因包括：固件崩溃、画面模糊、连接不稳定。建议立即启动质量调查。"
+  },
+  {
+    "product_id": "PRD-202",
+    "name": "智能音箱Mini",
+    "category": "智能硬件",
+    "current_stock": 80,
+    "min_stock": 50,
+    "status": "normal",
+    "return_rate": 2.1,
+    "return_count": 5,
+    "units_sold_this_month": 238,
+    "supplier": "声科电子",
+    "last_restock_date": "2026-02-15"
+  },
+  {
+    "product_id": "PRD-203",
+    "name": "智能门锁S1",
+    "category": "智能硬件",
+    "current_stock": 35,
+    "min_stock": 30,
+    "status": "normal",
+    "return_rate": 1.8,
+    "return_count": 3,
+    "units_sold_this_month": 167,
+    "supplier": "安防科技",
+    "last_restock_date": "2026-02-20"
+  },
+  {
+    "product_id": "PRD-204",
+    "name": "企业路由器X1",
+    "category": "网络设备",
+    "current_stock": 15,
+    "min_stock": 20,
+    "status": "low_stock",
+    "return_rate": 0.5,
+    "return_count": 1,
+    "units_sold_this_month": 45,
+    "supplier": "网通设备",
+    "last_restock_date": "2026-02-01",
+    "notes": "库存低于安全线，建议尽快补货"
+  }
+]

@@ -1,0 +1,550 @@
+---
+title: Self-Updates & Versioning
+sidebarTitle: Self-Updates
+description: How Eliza checks for updates, manages release channels, detects installation methods, and performs self-upgrades.
+---
+
+Eliza includes a built-in update system inherited from the elizaOS framework. It checks the npm registry for new versions, notifies users of available updates, and can perform in-place upgrades across multiple installation methods. The system is implemented across three service modules: `update-checker.ts` (registry communication), `update-notifier.ts` (background notifications), and `self-updater.ts` (install-method detection and upgrade execution).
+
+## How It Works Internally
+
+The update system has three layers that work together:
+
+### Version Resolution
+
+The current Eliza version is resolved at import time via the version module, which calls `resolveElizaVersion()`. This function checks, in order:
+
+1. A build-time injected define or environment variable (for bundled/embedded builds)
+2. The `version` field from the nearest `package.json`
+3. A `build-info.json` fallback generated during the build process
+
+This version string is used as the baseline for all update comparisons.
+
+### Registry Queries
+
+The update checker (`@elizaos/agent/services/update-checker.ts`) fetches version metadata from the npm registry using the abbreviated metadata endpoint:
+
+```
+GET https://registry.npmjs.org/elizaos
+Accept: application/vnd.npm.install-v1+json
+```
+
+Eliza inherits its update system from the elizaOS framework, so the checker queries the upstream `elizaos` npm package. The `application/vnd.npm.install-v1+json` accept header requests only the abbreviated package metadata (dist-tags, versions), rather than the full document with all tarball URLs and readmes. This keeps the response small and fast.
+
+The response's `dist-tags` object maps npm dist-tag names to version strings:
+
+```json
+{
+  "dist-tags": {
+    "latest": "2.0.0",
+    "beta": "2.1.0-beta.3",
+    "nightly": "2.1.0-nightly.20260218"
+  }
+}
+```
+
+### Semver Comparison
+
+Version comparison uses the `compareSemver()` utility from `src/services/version-compat.ts`. This function returns:
+- A negative number if the current version is older than the registry version (update available)
+- Zero if they are equal
+- A positive number if the current version is newer
+- `null` if either version string is not valid semver
+
+Pre-release tags (e.g., `2.0.0-alpha.87`) are handled correctly per the semver specification.
+
+## Release Channels
+
+Eliza supports three release channels, each mapped to an npm dist-tag:
+
+| Channel | npm Dist-Tag | Description |
+|---------|-------------|-------------|
+| `stable` | `latest` | Production-ready releases. Recommended for most users. |
+| `beta` | `beta` | Release candidates. May contain minor issues. |
+| `nightly` | `nightly` | Latest development builds. May be unstable. |
+
+<Note>
+The default channel is `stable`. The channel can be overridden by the `ELIZA_UPDATE_CHANNEL` environment variable or the `update.channel` field in `eliza.json`.
+</Note>
+
+### Channel Resolution Order
+
+The effective release channel is resolved by `resolveChannel()` in this priority order:
+
+1. `ELIZA_UPDATE_CHANNEL` environment variable (if set to `stable`, `beta`, or `nightly`)
+2. `update.channel` field in `eliza.json` configuration
+3. Default: `stable`
+
+The environment variable value is trimmed and lowercased before comparison. Invalid values are ignored, falling through to the config or default.
+
+## Update Checking
+
+### Automatic Background Check
+
+On every CLI startup, the `scheduleUpdateNotification()` function fires a background update check. This is a fire-and-forget operation that does not block CLI startup. If a newer version is available, a styled one-line notice is printed to stderr:
+
+```
+Update available: 1.2.0 -> 1.3.0
+Run eliza update to install
+```
+
+The notification uses the terminal theme for coloring: the current version is dimmed, the new version is highlighted in green, and the channel suffix (for non-stable channels) is shown in parentheses.
+
+<Note>
+The update notification text says `eliza update` because Eliza's update system is inherited from the elizaOS framework. Both `eliza update` and `eliza update` work as CLI commands.
+</Note>
+
+The background check is skipped when:
+
+- `update.checkOnStart` is set to `false` in the config
+- Running in CI (`process.env.CI` is set)
+- stderr is not a TTY (non-interactive environments)
+- The check interval has not elapsed since the last check
+- The notifier has already run in this process (singleton guard)
+
+If the config file is malformed or unreadable, the notifier falls back to defaults and continues rather than crashing.
+
+### Check Interval
+
+The update checker respects a configurable interval to avoid excessive registry requests:
+
+| Setting | Default | Description |
+|---------|---------|-------------|
+| `update.checkIntervalSeconds` | `14400` (4 hours) | Minimum time between registry checks |
+| `update.lastCheckAt` | (auto) | ISO timestamp of the last successful check |
+| `update.lastCheckVersion` | (auto) | Version found during the last check |
+
+When the interval has not elapsed, the `shouldSkipCheck()` function returns `true` and the checker returns a cached result based on `lastCheckVersion` without contacting the registry. This cached result still performs a semver comparison against the current version, so the `updateAvailable` field is accurate even without a network call.
+
+### Registry Communication
+
+The update checker fetches dist-tags from the npm registry:
+
+```
+GET https://registry.npmjs.org/elizaos
+Accept: application/vnd.npm.install-v1+json
+```
+
+- **Timeout**: 8 seconds (via `AbortController`)
+- **On network failure**: Returns `{ updateAvailable: false, error: "Unable to reach the npm registry..." }`
+- **On non-OK HTTP response**: Returns `null` dist-tags (treated as network failure)
+- **On missing dist-tag**: Returns an error indicating the channel has no published releases
+
+After a successful fetch, the checker persists the check metadata (`lastCheckAt`, `lastCheckVersion`) to `eliza.json`. If the config file is unwritable, a warning is printed to stderr but the check result is still returned.
+
+### Fetching All Channel Versions
+
+The `fetchAllChannelVersions()` function queries the registry once and returns the latest version for every channel:
+
+```typescript
+{
+  stable: "2.0.0",
+  beta: "2.1.0-beta.3",
+  nightly: "2.1.0-nightly.20260218"
+}
+```
+
+This is used by the `eliza update status` command to display a complete version overview.
+
+## CLI Commands
+
+### `eliza update`
+
+Check for and install updates on the current channel:
+
+```bash
+eliza update
+```
+
+<Tabs>
+  <Tab title="Options">
+    | Flag | Description |
+    |------|-------------|
+    | `-c, --channel <channel>` | Switch release channel before updating (`stable`, `beta`, `nightly`) |
+    | `--check` | Check for updates without installing |
+    | `--force` | Bypass the interval cache and force a live registry check |
+  </Tab>
+  <Tab title="Examples">
+    ```bash
+    # Check and install updates on current channel
+    eliza update
+
+    # Check only, don't install
+    eliza update --check
+
+    # Switch to beta channel and update
+    eliza update --channel beta
+
+    # Force a fresh registry check
+    eliza update --force
+    ```
+  </Tab>
+</Tabs>
+
+When `--channel` is specified, the command:
+1. Validates the channel name (exits with an error if invalid)
+2. Saves the new channel to `eliza.json`
+3. Clears `lastCheckAt` and `lastCheckVersion` to force a fresh registry check
+4. Proceeds with the update check using the new channel
+
+### `eliza update status`
+
+Display the current version, install method, active channel, and available versions across all channels:
+
+```bash
+eliza update status
+```
+
+Example output:
+
+```
+Version Status
+
+  Installed:  1.2.0
+  Channel:    stable
+  Install:    npm-global
+  Authority:  package-manager
+  Next:       run-package-manager-command
+  Command:    npm install -g elizaos@latest
+  Can run:    yes
+
+Available Versions
+
+  stable                 1.3.0 <-- current
+  beta                   1.4.0-beta.2
+  nightly                1.4.0-nightly.20260218
+
+  Last checked: 2/19/2026, 10:30:00 AM
+```
+
+The status command fetches live data from the npm registry (not cached) to show the most current versions across all channels.
+
+The `Authority` and `Next` fields make the update owner explicit:
+
+| Install Method | Authority | Next Action |
+|----------------|-----------|-------------|
+| `npm-global`, `bun-global`, `homebrew` | `package-manager` | Run the displayed package-manager command locally |
+| `apt`, `snap`, `flatpak` | `os-package-manager` | Run the displayed OS package-manager command on the host |
+| `local-dev` | `developer` | Run `git pull` in the checkout |
+| `unknown` | `operator` | Review the installation; the CLI can fall back to npm locally |
+
+### `eliza update channel [name]`
+
+View or change the release channel:
+
+<CodeGroup>
+```bash View current channel
+eliza update channel
+```
+
+```bash Switch to beta
+eliza update channel beta
+```
+
+```bash Switch to nightly
+eliza update channel nightly
+```
+
+```bash Switch back to stable
+eliza update channel stable
+```
+</CodeGroup>
+
+When viewing (no argument), the command displays:
+- The current active channel with its description
+- All available channels with descriptions
+- A hint about how to switch
+
+When switching channels, the cached `lastCheckAt` and `lastCheckVersion` are cleared to force a fresh check on the next update. This ensures the user sees the correct latest version for their new channel immediately.
+
+## Installation Method Detection
+
+Eliza automatically detects how it was installed to determine the correct update command. The `detectInstallMethod()` function works by:
+
+1. Running `which eliza` to find the binary path (5-second timeout)
+2. Resolving symlinks via `fs.realpathSync()` to get the true filesystem location
+3. Checking the resolved path against heuristic patterns
+
+| Install Method | Detection Heuristic | Update Command |
+|---------------|--------------------|--------------------|
+| `npm-global` | Binary path contains `node_modules` | `npm install -g elizaos@<dist-tag>` |
+| `bun-global` | Binary path contains `/.bun/` | `bun install -g elizaos@<dist-tag>` |
+| `homebrew` | Binary path contains `/Cellar/` or `/homebrew/` | `brew upgrade eliza` |
+| `snap` | Binary path contains `/snap/` | `sudo snap refresh eliza --channel=<channel>` |
+| `apt` | Binary path starts with `/usr/` (no `node_modules`) | `sudo apt-get update && sudo apt-get install --only-upgrade -y eliza` |
+| `flatpak` | Binary path contains `/flatpak/` or `ai.eliza.Eliza` | `flatpak update ai.eliza.Eliza` |
+| `local-dev` | `devDependencies` found in root `package.json` | Not supported -- use `git pull` |
+| `unknown` | Fallback when no heuristic matches | `npm install -g elizaos@<dist-tag>` (fallback) |
+
+If `which eliza` returns nothing (binary not in PATH), the detection falls back to checking whether the current directory is a local development checkout (by looking for `devDependencies` in the root `package.json`).
+
+<Info>
+For Snap installations, the channel mapping differs slightly: `nightly` maps to the Snap `edge` channel, since Snap does not have a `nightly` channel concept.
+</Info>
+
+### Snap Channel Mapping
+
+| Eliza Channel | Snap Channel |
+|---------------|-------------|
+| `stable` | `stable` |
+| `beta` | `beta` |
+| `nightly` | `edge` |
+
+### Update Command Construction
+
+The `buildUpdateCommand()` function takes the detected install method and target channel, then returns the appropriate shell command and arguments. For npm and bun installs, the version specifier uses the channel's dist-tag:
+
+```
+elizaos@latest     (stable channel)
+elizaos@beta       (beta channel)
+elizaos@nightly    (nightly channel)
+```
+
+For Homebrew, the command is simply `brew upgrade eliza` (Homebrew manages version resolution internally). The `apt` case wraps the update in `sh -c` since it requires two sequential commands.
+
+For `local-dev` installs, `buildUpdateCommand()` returns `null` and the CLI prints a message directing the user to use `git pull` instead.
+
+`getUpdateActionPlan()` wraps the detected method and command in status metadata used by both the CLI and REST API:
+
+| Field | Meaning |
+|-------|---------|
+| `authority` | The update owner: package manager, OS package manager, developer checkout, or operator review |
+| `nextAction` | The local action to take next |
+| `canAutoUpdate` | Whether the local CLI updater has a command path for the method |
+| `canExecuteFromContext` | Whether the current caller context can execute it |
+| `remoteDisplay` | Whether the information is being shown over a remote API request |
+| `command` | Human-readable host command, or `git pull` for local development |
+
+Remote REST status responses are display-only. They can show the command that should be run on the host, but Eliza intentionally does not provide a remote update execution endpoint.
+
+## Update Process
+
+When `eliza update` runs (without `--check`), the following steps occur:
+
+<Steps>
+  <Step title="Resolve Channel">
+    Determine the effective release channel from the environment variable, config, or default (`stable`).
+  </Step>
+  <Step title="Check Registry">
+    Fetch the latest version for the channel from npm. If `--force` or a channel switch was requested, bypass the interval cache.
+  </Step>
+  <Step title="Compare Versions">
+    Compare the current version against the registry version using semver. If the current version is equal or newer, report "already up to date" and exit.
+  </Step>
+  <Step title="Detect Install Method">
+    Resolve the binary path and determine which package manager or system was used to install Eliza.
+  </Step>
+  <Step title="Build Update Command">
+    Construct the appropriate install/upgrade command for the detected method. For local-dev installs, print a hint and exit.
+  </Step>
+  <Step title="Execute Update">
+    Spawn the update command as a child process. stdin is inherited (for sudo password prompts), stdout is inherited (for progress output), and stderr is piped to both a buffer and the parent stderr.
+  </Step>
+  <Step title="Verify Installation">
+    Run `eliza --version` (10-second timeout) and parse the output with a regex that extracts semver strings including pre-release tags. Report the version transition.
+  </Step>
+  <Step title="Save Metadata">
+    The check metadata (`lastCheckAt`, `lastCheckVersion`) was already saved during the registry check step.
+  </Step>
+</Steps>
+
+### Post-Update Verification
+
+After the update command completes, the updater verifies the installation by running the CLI with `--version` and parsing the output. The regex `(\d+\.\d+\.\d+(?:-[\w.]+)?)` handles both stable versions (e.g., `2.0.0`) and pre-release tags (e.g., `2.1.0-beta.3`).
+
+If the version cannot be read (e.g., the binary is missing or corrupted), the command reports success for the update itself but warns that it could not verify the new version.
+
+<Warning>
+After a successful update, you must restart the running Eliza process for the new version to take effect. The update command modifies the installed binary but does not restart the currently running instance.
+</Warning>
+
+## What Gets Updated
+
+The `eliza update` command updates the CLI package itself, which includes:
+
+| Component | Updated? | Notes |
+|-----------|----------|-------|
+| CLI binary (`eliza`) | Yes | The entry point script and all compiled TypeScript |
+| Runtime (`src/runtime/`) | Yes | Bundled into the package |
+| API server (`src/api/`) | Yes | Bundled into the package |
+| Built-in services | Yes | Update checker, plugin installer, etc. |
+| Bundled core plugins | No | Core plugins are separate npm packages resolved at runtime |
+| User-installed plugins | No | Installed independently in `~/.eliza/plugins/` |
+| Configuration (`eliza.json`) | No | Preserved across updates |
+| Database (PGLite data) | No | Preserved in `~/.eliza/workspace/` |
+| Workspace files | No | Agent workspace is independent of the CLI version |
+
+Core elizaOS plugins (`@elizaos/plugin-*`) are resolved from `node_modules` at runtime. When you update Eliza and the new version specifies different plugin versions in its `dependencies`, those plugins are updated as part of the npm/bun install process.
+
+## Version Pinning
+
+To pin Eliza to a specific version and prevent automatic updates:
+
+```bash
+# Install a specific version
+npm install -g elizaai@2.0.0-alpha.26
+
+# Disable automatic update checks by editing eliza.json
+# Set "update": { "checkOnStart": false } in your config file
+$EDITOR "$(eliza config path)"
+```
+
+For package-manager-specific pinning:
+
+```bash
+# npm: exact version
+npm install -g elizaai@2.0.0
+
+# bun: exact version
+bun install -g elizaai@2.0.0
+```
+
+<Note>
+The npm package name for end-user installation is `elizaai`, while the update checker queries the upstream `elizaos` package for version comparisons.
+</Note>
+
+The `--force` flag on `eliza update` bypasses the interval cache but still respects the configured channel. It does not bypass version pinning at the package manager level.
+
+## Rollback
+
+Eliza does not have a built-in rollback command, but you can revert to a previous version using your package manager:
+
+```bash
+# npm: install a specific older version
+npm install -g elizaai@2.0.0-alpha.25
+
+# bun: install a specific older version
+bun install -g elizaai@2.0.0-alpha.25
+
+# Verify the rollback
+eliza --version
+```
+
+Your configuration, database, and workspace files are preserved across version changes. However, be aware that:
+
+- **Database migrations** may have run forward during the newer version. Downgrading could leave the database in an incompatible state. Eliza's PGLite recovery mechanism will attempt to reset and rebuild the database if it detects corruption.
+- **Config schema changes** are forward-compatible (unknown fields produce warnings but don't prevent startup), but a much older version may not understand newer config sections.
+
+## Update Notifications
+
+### Notification Format
+
+The background update notification writes to stderr (not stdout) to avoid interfering with piped output:
+
+```
+Update available: 2.0.0-alpha.26 -> 2.0.0
+Run eliza update to install
+```
+
+For non-stable channels, the channel name is appended:
+
+```
+Update available: 2.0.0-alpha.26 -> 2.1.0-beta.3 (beta)
+Run eliza update to install
+```
+
+### Suppressing Notifications
+
+Notifications can be suppressed through multiple mechanisms:
+
+| Method | Scope | Effect |
+|--------|-------|--------|
+| `update.checkOnStart: false` | Persistent | Disables the background check entirely |
+| `CI=1` environment variable | Per-session | Suppresses notification output |
+| Non-TTY stderr | Automatic | Notifications are suppressed when stderr is piped |
+| Check interval not elapsed | Automatic | Cached result used silently |
+
+## Offline and Air-Gapped Environments
+
+In environments without internet access:
+
+- The background update check times out after 8 seconds and returns `{ updateAvailable: false }` with an error message. No notification is shown.
+- `eliza update --check` reports the network error and exits with code 1.
+- `eliza update` reports the error and exits with code 1.
+- The check interval cache is **not** updated on failure, so the next startup will try again.
+
+For fully air-gapped deployments, disable the update check entirely:
+
+```json
+{
+  "update": {
+    "checkOnStart": false
+  }
+}
+```
+
+Or set via the CLI (open config in your editor):
+
+```bash
+$EDITOR "$(eliza config path)"
+# Set "update": { "checkOnStart": false }
+```
+
+To perform offline updates, download the package tarball on a connected machine and install it locally:
+
+```bash
+# On a connected machine
+npm pack elizaai@2.0.0
+
+# Transfer elizaai-2.0.0.tgz to the air-gapped machine, then:
+npm install -g ./elizaai-2.0.0.tgz
+```
+
+## Configuration Reference
+
+All update-related settings are stored in the `update` section of `eliza.json`:
+
+```json
+{
+  "update": {
+    "channel": "stable",
+    "checkOnStart": true,
+    "checkIntervalSeconds": 14400,
+    "lastCheckAt": "2026-02-19T10:30:00.000Z",
+    "lastCheckVersion": "1.3.0"
+  }
+}
+```
+
+| Field | Type | Default | Description |
+|-------|------|---------|-------------|
+| `channel` | `"stable" \| "beta" \| "nightly"` | `"stable"` | Active release channel |
+| `checkOnStart` | `boolean` | `true` | Whether to check for updates on CLI startup |
+| `checkIntervalSeconds` | `number` | `14400` | Minimum seconds between registry checks |
+| `lastCheckAt` | `string` | (auto) | ISO 8601 timestamp of last check |
+| `lastCheckVersion` | `string` | (auto) | Version found during last check |
+
+<Tip>
+Set `checkOnStart: false` to disable all automatic update checking, useful for locked-down production deployments or air-gapped environments.
+</Tip>
+
+## Environment Variables
+
+| Variable | Description |
+|----------|-------------|
+| `ELIZA_UPDATE_CHANNEL` | Override the release channel (`stable`, `beta`, `nightly`). Takes priority over config. |
+| `CI` | When set, suppresses the background update notification on startup. |
+
+## Breaking Change Handling
+
+When a new Eliza version introduces breaking changes:
+
+- **Database schema** -- Eliza sets `ELIZA_ALLOW_DESTRUCTIVE_MIGRATIONS=true` by default, allowing the migration system to drop and recreate tables that have changed between plugin versions. This prevents the runtime from stalling on schema mismatches.
+- **PGLite corruption** -- If the local database becomes incompatible after an update, the `isRecoverablePgliteInitError()` detection backs up the corrupt data directory (to `<dir>.corrupt-<timestamp>`) and creates a fresh database. This means conversation history may be lost, but the agent will start successfully.
+- **Config file** -- The config schema is forward-compatible. Unknown fields produce warnings but do not prevent startup. The config file tracks which Eliza version last wrote it.
+- **Plugin API** -- Version skew between `@elizaos/core` and plugins is detected by `version-compat.ts`, which checks for missing exports and produces diagnostic messages.
+
+## Plugin Version Compatibility
+
+The version compatibility module maintains a map of critical exports and the core version that introduced them. When plugins fail to load, the `diagnoseNoAIProvider()` function checks whether the failure is due to version skew and produces actionable error messages like:
+
+```
+No AI model provider loaded. This may be caused by a version mismatch
+between @elizaos/core and your model provider plugins.
+```
+
+This helps users understand that they may need to update their plugins alongside the CLI, or pin to a compatible version combination.
+
+## Electrobun Desktop Updates
+
+The Electrobun desktop app (`apps/app/electrobun/`) uses the Electrobun updater for native auto-update support, which is separate from the CLI update system. Desktop updates are delivered through platform-native mechanisms (DMG on macOS, NSIS on Windows, AppImage on Linux) and handled by the Electrobun shell rather than the npm registry.

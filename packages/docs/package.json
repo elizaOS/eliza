@@ -1,0 +1,12 @@
+{
+  "name": "@elizaos/docs",
+  "version": "2.0.0-beta.2",
+  "type": "module",
+  "description": "ElizaOS documentation",
+  "scripts": {
+    "test": "bun test ./test",
+    "predev": "node ../shared-brand/scripts/sync-to-public.mjs ./public",
+    "prebuild": "node ../shared-brand/scripts/sync-to-public.mjs ./public"
+  },
+  "private": true
+}

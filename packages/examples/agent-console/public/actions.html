@@ -1,0 +1,555 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>AGENT // ACTIONS</title>
+    <style>
+      :root {
+        --bg: #07090d;
+        --bg-1: #0b0f15;
+        --bg-2: #11161f;
+        --bg-3: #161c27;
+        --line: #1e2533;
+        --line-2: #2a3346;
+        --fg: #c5c8d0;
+        --fg-dim: #7a808d;
+        --fg-faint: #4a5060;
+        --cyan: #39bae6;
+        --cyan-2: #59c2ff;
+        --green: #7fd962;
+        --amber: #ffb454;
+        --red: #f07178;
+        --magenta: #d896ff;
+      }
+      * { box-sizing: border-box; }
+      html, body {
+        margin: 0; padding: 0;
+        height: 100%; overflow: hidden;
+        background: var(--bg); color: var(--fg);
+        font-family: "JetBrains Mono", "SF Mono", Menlo, ui-monospace, monospace;
+        font-size: 12px; line-height: 1.45;
+        font-feature-settings: "calt" 1, "liga" 0;
+      }
+      a { color: var(--cyan); text-decoration: none; }
+      button, select, input {
+        font-family: inherit; font-size: inherit; color: var(--fg);
+        background: var(--bg-1); border: 1px solid var(--line-2);
+        border-radius: 1px; outline: none;
+      }
+      button {
+        padding: 4px 10px; cursor: pointer;
+        text-transform: uppercase; letter-spacing: 0.08em;
+      }
+      button:hover { border-color: var(--cyan); color: var(--cyan); }
+      button:disabled { opacity: 0.45; cursor: not-allowed; }
+      select, input { height: 30px; padding: 4px 8px; }
+      input:focus, select:focus { border-color: var(--cyan); }
+
+      .app { display: grid; grid-template-rows: 32px 44px 1fr; height: 100vh; }
+      .hdr {
+        display: flex; align-items: center; gap: 16px;
+        padding: 0 12px; border-bottom: 1px solid var(--line);
+        background: linear-gradient(180deg, var(--bg-2), var(--bg-1));
+        white-space: nowrap;
+      }
+      .brand { color: var(--cyan); letter-spacing: 0.18em; font-weight: 600; }
+      .sep { color: var(--fg-faint); }
+      .field { color: var(--fg-dim); }
+      .field b { color: var(--fg); font-weight: 500; }
+      .spacer { flex: 1; }
+      .nav-link {
+        color: var(--fg-dim);
+        text-transform: uppercase;
+        letter-spacing: 0.12em;
+        font-size: 10px;
+      }
+      .nav-link.active { color: var(--cyan); }
+
+      .toolbar {
+        display: grid;
+        grid-template-columns: minmax(220px, 1fr) auto auto auto;
+        gap: 8px; align-items: center;
+        padding: 6px 12px;
+        border-bottom: 1px solid var(--line);
+        background: var(--bg-1);
+      }
+      .toolbar input { width: 100%; }
+
+      .main {
+        display: grid;
+        grid-template-columns: minmax(460px, 1.45fr) minmax(340px, 0.9fr);
+        min-height: 0;
+      }
+      .panel {
+        min-width: 0; min-height: 0;
+        display: flex; flex-direction: column;
+        border-right: 1px solid var(--line);
+      }
+      .panel:last-child { border-right: none; }
+      .panel-hdr {
+        flex: 0 0 24px;
+        display: flex; align-items: center; gap: 8px;
+        padding: 0 10px;
+        background: var(--bg-2);
+        border-bottom: 1px solid var(--line);
+        color: var(--fg-dim);
+        text-transform: uppercase;
+        letter-spacing: 0.14em;
+        font-size: 10px;
+      }
+      .panel-hdr .tag { color: var(--cyan); }
+      .panel-hdr .count { margin-left: auto; color: var(--fg-faint); }
+      .panel-body {
+        flex: 1 1 auto;
+        min-height: 0;
+        overflow: auto;
+        padding: 6px;
+        scrollbar-width: thin;
+        scrollbar-color: var(--line-2) transparent;
+      }
+      .panel-body::-webkit-scrollbar { width: 8px; height: 8px; }
+      .panel-body::-webkit-scrollbar-thumb { background: var(--line-2); }
+
+      .empty {
+        display: flex; align-items: center; justify-content: center;
+        min-height: 180px;
+        color: var(--fg-faint);
+        text-align: center;
+        text-transform: uppercase;
+        letter-spacing: 0.18em;
+        font-size: 11px;
+      }
+
+      .source-strip {
+        display: flex; flex-wrap: wrap; gap: 4px;
+        margin-bottom: 6px;
+      }
+      .source-pill {
+        border: 1px solid var(--line-2);
+        color: var(--fg-dim);
+        padding: 1px 5px;
+        font-size: 10px;
+      }
+      .source-pill b { color: var(--fg); font-weight: 500; }
+
+      .tree-row {
+        display: grid;
+        grid-template-columns: minmax(220px, 1fr) minmax(150px, 0.45fr) minmax(220px, 0.9fr);
+        gap: 8px;
+        align-items: baseline;
+        border-left: 3px solid var(--line-2);
+        border-bottom: 1px solid var(--line);
+        background: var(--bg-1);
+        min-height: 28px;
+        padding: 4px 8px;
+        cursor: default;
+      }
+      .tree-row:hover { background: var(--bg-2); border-left-color: var(--cyan); }
+      .tree-row.selected { border-left-color: var(--green); background: rgba(127, 217, 98, 0.06); }
+      .tree-row.missing { border-left-color: var(--red); }
+      .tree-row.inferred { border-left-color: var(--amber); }
+      .tree-name {
+        min-width: 0;
+        color: var(--fg);
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+      }
+      .tree-name .marker { color: var(--fg-faint); margin-right: 6px; }
+      .tree-name .child-count { color: var(--cyan); margin-left: 6px; }
+      .tree-meta, .tree-file {
+        min-width: 0;
+        color: var(--fg-dim);
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        font-size: 11px;
+      }
+      .tree-file { color: var(--fg-faint); }
+      .kind-action { color: var(--cyan); }
+      .kind-inferred { color: var(--amber); }
+      .kind-missing { color: var(--red); }
+
+      .detail {
+        border: 1px solid var(--line-2);
+        background: var(--bg-1);
+        margin-bottom: 6px;
+      }
+      .detail-hdr {
+        display: flex; gap: 8px; align-items: baseline;
+        padding: 5px 8px;
+        background: var(--bg-2);
+        border-bottom: 1px solid var(--line);
+      }
+      .detail-hdr .name { color: var(--fg); font-size: 13px; }
+      .detail-hdr .source { margin-left: auto; color: var(--cyan); font-size: 11px; }
+      .detail-body { padding: 8px; }
+      .kv {
+        display: grid;
+        grid-template-columns: 94px minmax(0, 1fr);
+        gap: 4px 10px;
+        margin-bottom: 8px;
+      }
+      .k {
+        color: var(--fg-faint);
+        text-transform: uppercase;
+        letter-spacing: 0.08em;
+        font-size: 10px;
+      }
+      .v {
+        color: var(--fg);
+        min-width: 0;
+        overflow-wrap: anywhere;
+      }
+      .v.dim { color: var(--fg-dim); }
+      .desc {
+        white-space: pre-wrap;
+        overflow-wrap: anywhere;
+        color: var(--fg);
+      }
+      .chips { display: flex; flex-wrap: wrap; gap: 4px; }
+      .chip {
+        border: 1px solid var(--line-2);
+        color: var(--fg-dim);
+        padding: 1px 5px;
+        font-size: 10px;
+      }
+      .chip.param { color: var(--cyan-2); border-color: rgba(89, 194, 255, 0.5); }
+      .chip.child { color: var(--magenta); border-color: rgba(216, 150, 255, 0.5); }
+      .chip.inferred { color: var(--amber); border-color: rgba(255, 180, 84, 0.5); }
+      .chip.missing { color: var(--red); border-color: rgba(240, 113, 120, 0.5); }
+
+      .actions-table {
+        width: 100%;
+        border-collapse: collapse;
+        margin-top: 8px;
+        font-size: 11px;
+      }
+      .actions-table th, .actions-table td {
+        border-bottom: 1px solid var(--line);
+        padding: 4px 6px;
+        text-align: left;
+        vertical-align: top;
+      }
+      .actions-table th {
+        color: var(--fg-faint);
+        text-transform: uppercase;
+        letter-spacing: 0.08em;
+        font-weight: 500;
+        background: var(--bg-2);
+        position: sticky;
+        top: -6px;
+        z-index: 1;
+      }
+      .actions-table td { color: var(--fg-dim); }
+      .actions-table .action-name { color: var(--fg); }
+
+      @media (max-width: 920px) {
+        html, body { overflow: auto; }
+        .app { height: auto; min-height: 100vh; grid-template-rows: auto auto auto; }
+        .hdr { flex-wrap: wrap; min-height: 32px; padding: 6px 12px; }
+        .toolbar { grid-template-columns: 1fr 1fr; }
+        .toolbar input { grid-column: 1 / -1; }
+        .main { grid-template-columns: 1fr; }
+        .panel { min-height: 420px; border-right: none; border-bottom: 1px solid var(--line); }
+        .tree-row { grid-template-columns: 1fr; gap: 2px; }
+      }
+    </style>
+  </head>
+  <body>
+    <div class="app">
+      <header class="hdr">
+        <span class="brand">AGENT // ACTIONS</span>
+        <span class="sep">|</span>
+        <a class="nav-link" href="/">CONSOLE</a>
+        <a class="nav-link active" href="/actions">ACTIONS</a>
+        <span class="spacer"></span>
+        <span class="field">files <b id="stat-files">0</b></span>
+        <span class="field">actions <b id="stat-actions">0</b></span>
+        <span class="field">parents <b id="stat-parents">0</b></span>
+        <span class="field">missing <b id="stat-missing">0</b></span>
+        <span class="field">scan <b id="stat-scan">idle</b></span>
+      </header>
+
+      <div class="toolbar">
+        <input id="filter" placeholder="filter by action, sub-action, filepath, source, context, or parameter" />
+        <select id="sort">
+          <option value="name">sort: name</option>
+          <option value="filepath">sort: filepath</option>
+        </select>
+        <button id="scan">SCAN REPO</button>
+        <button id="expand">EXPAND ALL</button>
+      </div>
+
+      <main class="main">
+        <section class="panel">
+          <div class="panel-hdr"><span class="tag">[ HIERARCHY ]</span> actions and sub-actions <span class="count" id="tree-count">0</span></div>
+          <div class="panel-body" id="tree">
+            <div class="empty">scan repo to build hierarchy</div>
+          </div>
+        </section>
+
+        <section class="panel">
+          <div class="panel-hdr"><span class="tag">[ DETAIL ]</span> selected action <span class="count" id="detail-count">0</span></div>
+          <div class="panel-body" id="detail">
+            <div class="empty">select an action</div>
+          </div>
+        </section>
+      </main>
+    </div>
+
+    <script>
+      const state = {
+        data: null,
+        actionsById: new Map(),
+        selectedId: null,
+        expanded: true,
+      };
+
+      const $ = (id) => document.getElementById(id);
+      const $filter = $("filter");
+      const $sort = $("sort");
+      const $scan = $("scan");
+      const $expand = $("expand");
+      const $tree = $("tree");
+      const $detail = $("detail");
+
+      function escHtml(value) {
+        return String(value ?? "")
+          .replace(/&/g, "&amp;")
+          .replace(/</g, "&lt;")
+          .replace(/>/g, "&gt;");
+      }
+
+      function setText(id, value) {
+        $(id).textContent = String(value);
+      }
+
+      function actionSearchText(action) {
+        return [
+          action.name,
+          action.file,
+          action.source,
+          action.description,
+          action.contexts?.join(" "),
+          action.tags?.join(" "),
+          action.parameterSummary?.join(" "),
+          action.resolvedSubActions?.map((child) => child.name).join(" "),
+          action.inferredSubActions?.map((child) => child.name).join(" "),
+        ].join(" ").toLowerCase();
+      }
+
+      function nodeMatches(node, query) {
+        if (!query) return true;
+        if (node.kind === "action" && node.actionId) {
+          const action = state.actionsById.get(node.actionId);
+          return action ? actionSearchText(action).includes(query) : false;
+        }
+        return [node.name, node.file, node.source, node.ref, node.parameter]
+          .filter(Boolean)
+          .join(" ")
+          .toLowerCase()
+          .includes(query);
+      }
+
+      function filterNode(node, query) {
+        const children = (node.children || [])
+          .map((child) => filterNode(child, query))
+          .filter(Boolean);
+        if (nodeMatches(node, query) || children.length > 0) {
+          return { ...node, children };
+        }
+        return null;
+      }
+
+      function visibleRoots() {
+        if (!state.data) return [];
+        const query = $filter.value.trim().toLowerCase();
+        return state.data.roots
+          .map((node) => filterNode(node, query))
+          .filter(Boolean);
+      }
+
+      function renderSourceStrip() {
+        if (!state.data?.sourceGroups?.length) return "";
+        const groups = state.data.sourceGroups.slice(0, 18);
+        const extra = state.data.sourceGroups.length - groups.length;
+        return `
+          <div class="source-strip">
+            ${groups.map((group) => `<span class="source-pill">${escHtml(group.source)} <b>${group.count}</b></span>`).join("")}
+            ${extra > 0 ? `<span class="source-pill">+${extra} sources</span>` : ""}
+          </div>
+        `;
+      }
+
+      function renderTreeNode(node, depth) {
+        const action = node.actionId ? state.actionsById.get(node.actionId) : null;
+        const childCount = (node.children || []).length;
+        const selected = action && state.selectedId === action.id;
+        const kindClass = node.kind === "missing"
+          ? "missing"
+          : node.kind === "inferred"
+            ? "inferred"
+            : "action";
+        const marker = node.kind === "missing" ? "missing" : node.kind === "inferred" ? "param" : "action";
+        const file = action ? `${action.file}:${action.line}` : (node.file ? `${node.file}:${node.line ?? ""}` : node.ref || "");
+        const meta = action
+          ? `${action.source}${action.subPlanner ? " / subplanner" : ""}${action.detectedBy ? " / " + action.detectedBy : ""}`
+          : node.kind === "inferred"
+            ? `${node.parameter} / ${node.inferredSource}`
+            : "unresolved subAction ref";
+        const pad = 8 + depth * 18;
+        return `
+          <div class="tree-row ${kindClass}${selected ? " selected" : ""}" data-action-id="${action?.id ?? ""}" style="padding-left:${pad}px">
+            <div class="tree-name">
+              <span class="marker kind-${kindClass}">${marker}</span>${escHtml(node.name)}
+              ${childCount ? `<span class="child-count">${childCount}</span>` : ""}
+              ${node.cycle ? `<span class="chip missing">cycle</span>` : ""}
+            </div>
+            <div class="tree-meta">${escHtml(meta)}</div>
+            <div class="tree-file">${escHtml(file)}</div>
+          </div>
+          ${state.expanded || depth === 0 ? (node.children || []).map((child) => renderTreeNode(child, depth + 1)).join("") : ""}
+        `;
+      }
+
+      function renderTree() {
+        if (!state.data) {
+          $tree.innerHTML = `<div class="empty">scan repo to build hierarchy</div>`;
+          return;
+        }
+        const roots = visibleRoots();
+        setText("tree-count", roots.length);
+        if (roots.length === 0) {
+          $tree.innerHTML = `<div class="empty">no matching actions</div>`;
+          return;
+        }
+        $tree.innerHTML = renderSourceStrip() + roots.map((node) => renderTreeNode(node, 0)).join("");
+        for (const row of $tree.querySelectorAll("[data-action-id]")) {
+          row.addEventListener("click", () => {
+            const id = row.getAttribute("data-action-id");
+            if (!id) return;
+            state.selectedId = id;
+            renderTree();
+            renderDetail();
+          });
+        }
+      }
+
+      function chips(values, cls) {
+        if (!values || values.length === 0) return `<span class="v dim">none</span>`;
+        return `<div class="chips">${values.map((value) => `<span class="chip ${cls || ""}">${escHtml(value)}</span>`).join("")}</div>`;
+      }
+
+      function renderDetail() {
+        if (!state.selectedId) {
+          $detail.innerHTML = `<div class="empty">select an action</div>`;
+          setText("detail-count", 0);
+          return;
+        }
+        const action = state.actionsById.get(state.selectedId);
+        if (!action) return;
+        setText("detail-count", 1);
+
+        const children = action.resolvedSubActions || [];
+        const childChips = children.length
+          ? `<div class="chips">${children.map((child) => `<span class="chip ${child.found ? "child" : "missing"}">${escHtml(child.name)}${child.found ? "" : " (missing)"}</span>`).join("")}</div>`
+          : `<span class="v dim">none</span>`;
+        const inferredChips = action.inferredSubActions?.length
+          ? `<div class="chips">${action.inferredSubActions.map((child) => `<span class="chip inferred">${escHtml(child.name)} <span class="v dim">${escHtml(child.parameter)}</span></span>`).join("")}</div>`
+          : `<span class="v dim">none</span>`;
+
+        $detail.innerHTML = `
+          <div class="detail">
+            <div class="detail-hdr">
+              <span class="name">${escHtml(action.name)}</span>
+              <span class="source">${escHtml(action.source)}</span>
+            </div>
+            <div class="detail-body">
+              <div class="kv">
+                <div class="k">file</div><div class="v">${escHtml(action.file)}:${action.line}</div>
+                <div class="k">decl</div><div class="v">${escHtml(action.declarationName || "unknown")}</div>
+                <div class="k">detected</div><div class="v">${escHtml(action.detectedBy)}${action.actionType ? ` / ${escHtml(action.actionType)}` : ""}</div>
+                <div class="k">validate</div><div class="v">${escHtml(action.validation)}</div>
+                <div class="k">role</div><div class="v">${escHtml(action.roleGate || "none")}</div>
+                <div class="k">context gate</div><div class="v">${escHtml(action.contextGate || "none")}</div>
+                <div class="k">parents</div><div class="v">${chips(action.parentNames, "")}</div>
+                <div class="k">contexts</div><div class="v">${chips(action.contexts, "")}</div>
+                <div class="k">parameters</div><div class="v">${chips(action.parameterSummary, "param")}</div>
+                <div class="k">subActions</div><div class="v">${childChips}</div>
+                <div class="k">param ops</div><div class="v">${inferredChips}</div>
+                <div class="k">similes</div><div class="v">${chips(action.similes, "")}</div>
+                <div class="k">tags</div><div class="v">${chips(action.tags, "")}</div>
+              </div>
+              <div class="k">description</div>
+              <div class="desc">${escHtml(action.description || "none")}</div>
+            </div>
+          </div>
+          ${renderActionTable(action)}
+        `;
+      }
+
+      function renderActionTable(selected) {
+        const relatedIds = new Set([
+          selected.id,
+          ...(selected.resolvedSubActions || []).map((child) => child.targetId).filter(Boolean),
+          ...(selected.parentIds || []),
+        ]);
+        const rows = state.data.actions.filter((action) => relatedIds.has(action.id));
+        if (rows.length <= 1) return "";
+        return `
+          <table class="actions-table">
+            <thead><tr><th>related</th><th>source</th><th>path</th></tr></thead>
+            <tbody>
+              ${rows.map((action) => `
+                <tr>
+                  <td class="action-name">${escHtml(action.name)}</td>
+                  <td>${escHtml(action.source)}</td>
+                  <td>${escHtml(action.file)}:${action.line}</td>
+                </tr>
+              `).join("")}
+            </tbody>
+          </table>
+        `;
+      }
+
+      async function runScan() {
+        $scan.disabled = true;
+        setText("stat-scan", "running");
+        try {
+          const response = await fetch(`/action-scan?sort=${encodeURIComponent($sort.value)}`);
+          const data = await response.json();
+          if (!response.ok) throw new Error(data.error || "scan failed");
+          state.data = data;
+          state.actionsById = new Map(data.actions.map((action) => [action.id, action]));
+          state.selectedId = data.actions[0]?.id ?? null;
+          setText("stat-files", data.filesScanned);
+          setText("stat-actions", data.actionCount);
+          setText("stat-parents", data.parentCount);
+          setText("stat-missing", data.unresolvedSubActionCount);
+          setText("stat-scan", new Date(data.generatedAt).toLocaleTimeString());
+          renderTree();
+          renderDetail();
+        } catch (error) {
+          setText("stat-scan", "error");
+          $tree.innerHTML = `<div class="empty">${escHtml(error.message)}</div>`;
+        } finally {
+          $scan.disabled = false;
+        }
+      }
+
+      $scan.addEventListener("click", runScan);
+      $sort.addEventListener("change", runScan);
+      $filter.addEventListener("input", renderTree);
+      $expand.addEventListener("click", () => {
+        state.expanded = !state.expanded;
+        $expand.textContent = state.expanded ? "COLLAPSE" : "EXPAND ALL";
+        renderTree();
+      });
+
+      $expand.textContent = "COLLAPSE";
+      runScan();
+    </script>
+  </body>
+</html>

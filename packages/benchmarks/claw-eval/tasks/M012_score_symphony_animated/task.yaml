@@ -1,0 +1,59 @@
+task_id: M012_score_symphony_animated
+task_name: Animated Sheet Music - Symphony
+version: "2.0"
+category: multimodal_webpage
+difficulty: hard
+tags: [multimodal]
+
+services: []
+
+prompt:
+  text: |
+    The container has the following file:
+    - /workspace/fixtures/symphony1.png — a sheet music image of a symphony score
+
+    Please first use tools to view the sheet music image, then generate /workspace/output.html to create an interactive score playback page:
+    1. Reproduce the score using SVG (staves, notes, clefs, etc.)
+    2. Draw a piano keyboard below the score
+    3. Add a "Play" button
+    4. When play is clicked:
+       - Notes should highlight sequentially from left to right
+       - Corresponding piano keys should light up in sync
+       - Use the Web Audio API to produce the correct pitches
+    5. Playback speed should be appropriate and animation smooth
+
+    You can use tools to preview and iteratively adjust until you are satisfied.
+  language: en
+
+tools: []
+tool_endpoints: []
+
+sandbox_files:
+  - fixtures/symphony1.png
+
+sandbox_grader_files:
+  - fixtures/take_recording.py
+
+env_snapshot_commands:
+  - "python /workspace/fixtures/take_recording.py file:///workspace/output.html --frames 10 --interval 0.5 --wait-before 2 --auto-click button"
+
+env_snapshot_files:
+  - /workspace/grading_frames/*.png
+local_grader_files:
+  - fixtures/symphony1.png
+
+environment:
+  timeout_seconds: 600
+  max_turns: 30
+  env_snapshot_timeout: 30
+
+scoring_components: []
+safety_checks: []
+expected_actions: []
+
+judge_rubric: ""
+reference_solution: |
+  Read symphony1.png, reproduce score as SVG, add piano keyboard and play button.
+  On play: highlight notes sequentially, light up piano keys, use Web Audio API.
+
+primary_dimensions: [completion, robustness]

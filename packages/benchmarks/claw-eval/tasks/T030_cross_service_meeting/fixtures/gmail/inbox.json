@@ -1,0 +1,32 @@
+[
+  {
+    "message_id": "msg_301",
+    "from": "director@partner-corp.com",
+    "to": "me@company.com",
+    "subject": "Project Review Meeting Invitation",
+    "date": "2026-02-27T14:00:00+08:00",
+    "is_read": false,
+    "labels": ["inbox", "important"],
+    "body": "Hello,\n\nWe would like to schedule a joint project review meeting next week to discuss Q1 progress and Q2 plans.\n\nPlease invite the following people to attend:\n- Leo Zhao from your Engineering department\n- Mike Li from your Product department\n- 3 people will attend from our side\n\nThe meeting will be approximately 2 hours. Please check everyone's availability next Wednesday (March 4, 2026) afternoon and let us know a feasible time slot.\n\nIf Wednesday doesn't work, Thursday afternoon is also an option.\n\nThank you,\nDirector Chen\nPartner Corp"
+  },
+  {
+    "message_id": "msg_302",
+    "from": "leozhao@company.com",
+    "to": "me@company.com",
+    "subject": "Re: Weekly Work Summary",
+    "date": "2026-02-27T16:30:00+08:00",
+    "is_read": true,
+    "labels": ["inbox"],
+    "body": "Noted, weekly summary has been submitted.\n\nAlso, a heads up: I have an internal tech sharing session next Wednesday afternoon from 2 to 3 PM. I'm available at all other times.\n\nLeo Zhao"
+  },
+  {
+    "message_id": "msg_303",
+    "from": "mikeli@company.com",
+    "to": "me@company.com",
+    "subject": "Next Week's Schedule",
+    "date": "2026-02-28T09:00:00+08:00",
+    "is_read": false,
+    "labels": ["inbox"],
+    "body": "Hi,\n\nI'm free all day next Wednesday. On Thursday, I have a client visit after 3 PM, so anytime before 3 PM works.\n\nMike Li"
+  }
+]

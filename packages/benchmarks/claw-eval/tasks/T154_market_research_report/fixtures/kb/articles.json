@@ -1,0 +1,47 @@
+[
+  {
+    "article_id": "KB-1201",
+    "title": "2025 Annual Market Analysis Report",
+    "category": "Market Analysis",
+    "tags": ["annual report", "market", "2025"],
+    "content": "## 2025 Annual Market Analysis Summary\n\n### Overall Market\n- Domestic enterprise SaaS market reached 85 billion CNY, up 22% YoY\n- Our market share approximately 3.2%, ranked 6th in industry\n- Main growth from manufacturing and healthcare customers\n\n### Industry Performance\n| Industry | Customers | Revenue Share | YoY Growth |\n|----------|-----------|---------------|------------|\n| Manufacturing | 45 | 38% | +28% |\n| Healthcare | 28 | 22% | +35% |\n| Education | 20 | 15% | +12% |\n| Finance | 12 | 18% | +8% |\n| Other | 15 | 7% | -5% |\n\n### Key Findings\n1. Manufacturing customers have highest ARPU but also highest acquisition cost\n2. Healthcare industry growing fastest, favorable policies\n3. Education industry has many customers but small budgets, needs refined operations\n4. Finance industry has high compliance requirements, our Level-3 security certification is a competitive advantage\n\n### Last updated: January 2026",
+    "last_updated": "2026-01-15",
+    "views": 3200
+  },
+  {
+    "article_id": "KB-1202",
+    "title": "Product Competitiveness Analysis",
+    "category": "Competitive Analysis",
+    "tags": ["competitiveness", "product", "comparison"],
+    "content": "## Product Competitiveness Assessment\n\n### Core Strengths\n1. **Data Analytics Depth**: Multi-dimensional cross-analysis, industry-leading\n2. **Security & Compliance**: SOC2, ISO27001, Level-3 security certification achieved\n3. **API Ecosystem**: 600+ API endpoints, strong integration capabilities\n4. **Key Account Service**: Dedicated CSM team, top-3 industry response time\n\n### Areas for Improvement\n1. AI capabilities lag behind competitors — currently only basic report AI, lacking intelligent prediction and natural language queries\n2. Weak SME product line\n3. Average mobile experience\n\n### Competitive Landscape\n- Competitor A: AI capabilities leading, but high price, weak SME coverage\n- Competitor B: Low price, fast deployment, but poor security compliance\n- Competitor C: Deep vertical industry focus (healthcare), limited overall functionality\n\n### AI Capability Development Plan\n- 2026 Q2: Launch AI analytics assistant (intelligent report generation)\n- 2026 Q3: Launch AI prediction features\n- 2026 Q4: Launch natural language queries\n\n### Last updated: February 2026",
+    "last_updated": "2026-02-20",
+    "views": 2800
+  },
+  {
+    "article_id": "KB-1203",
+    "title": "Target Industry Strategy",
+    "category": "Strategy",
+    "tags": ["industry", "strategy", "priority"],
+    "content": "## 2026 Target Industry Strategy\n\n### First Priority: Manufacturing\n- Goal: Add 50 new manufacturing customers, revenue growth 40%\n- Strategy: Launch manufacturing industry edition, integrate MES/SCM modules\n- Pain points: Manufacturing enterprises need AI quality inspection and predictive maintenance data analytics\n- Opportunity: Mid-sized manufacturers (annual revenue 500M-2B CNY) rapidly increasing digital investment\n\n### Second Priority: Healthcare\n- Goal: Add 30 new healthcare customers, revenue growth 50%\n- Strategy: Deepen hospital IT integration, connect with HIS/EMR systems\n- Pain points: High data compliance requirements, need hybrid cloud deployment\n- Opportunity: Policy driving Tier-A hospital information system upgrades\n\n### Third Priority: Education\n- Goal: Add 40 new education customers, revenue growth 25%\n- Strategy: Launch education industry lightweight edition, lower price threshold\n- Pain points: Limited budgets, long procurement cycles\n- Opportunity: Education Informatization 2.0 initiative driving adoption\n\n### Last updated: March 2026",
+    "last_updated": "2026-03-01",
+    "views": 1900
+  },
+  {
+    "article_id": "KB-1204",
+    "title": "Customer Profile Research",
+    "category": "Customer Analysis",
+    "tags": ["customer profiles", "segmentation", "characteristics"],
+    "content": "## Customer Profiles & Segmentation\n\n### VIP Customer Characteristics (Annual contract > 800K CNY)\n- Industries: Primarily manufacturing and finance\n- Needs: Advanced data analytics, customization, dedicated service\n- Decision makers: CTO/CIO level\n- Renewal rate: 92%\n- Average contract term: 2 years\n\n### Standard Customer Characteristics (Annual contract 200K-800K CNY)\n- Industries: Manufacturing, healthcare, and education distributed\n- Needs: Standard product features, rapid deployment\n- Decision makers: IT Director / Department Manager\n- Renewal rate: 78%\n- Average contract term: 1 year\n\n### High Churn Risk Indicators\n- Usage declining for 3 consecutive months\n- No login for more than 60 days\n- Sudden spike in support tickets\n- No proactive renewal before contract expiry\n\n### Last updated: February 2026",
+    "last_updated": "2026-02-15",
+    "views": 2200
+  },
+  {
+    "article_id": "KB-1205",
+    "title": "Q1 Sales Data Summary",
+    "category": "Sales",
+    "tags": ["Q1", "sales", "data"],
+    "content": "## 2026 Q1 Sales Data Summary\n\n### Overall Performance\n- Q1 Total Revenue: 28.5M CNY (95% of target)\n- New Customers: 18 (target 20)\n- Renewal Rate: 85% (down 3% YoY)\n- New ACV (Annual Contract Value): Average 420K CNY\n\n### Industry Breakdown\n| Industry | New | Renewed | Churned |\n|----------|-----|---------|--------|\n| Manufacturing | 8 | 12 | 1 |\n| Healthcare | 5 | 8 | 0 |\n| Education | 3 | 6 | 2 |\n| Finance | 2 | 4 | 0 |\n\n### Key Indicators\n1. Manufacturing had most new signups, AI features are the main driver\n2. Healthcare renewal rate 100%, policy tailwinds clearly effective\n3. Education lost 2 customers, reasons: budget cuts and competitor low-price competition\n4. Finance stable, compliance advantage prominent\n\n### Sales Feedback\n- Manufacturing customers broadly asking about AI quality inspection features\n- Multiple customers comparing Competitor A's AI capabilities\n- Hybrid cloud deployment demand increasing\n\n### Last updated: March 25, 2026",
+    "last_updated": "2026-03-25",
+    "views": 4100
+  }
+]

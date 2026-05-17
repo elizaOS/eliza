@@ -1,0 +1,166 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Polymarket - BTC 15M Up/Down</title>
+  <meta name="description" content="Will Bitcoin go up or down in the next 15 minutes?">
+</head>
+<body>
+<div id="__next">
+  <div class="market-page" data-market-slug="crypto/15M">
+    <header class="market-header">
+      <h1>BTC 15-Minute Up/Down</h1>
+      <span class="market-category">Crypto</span>
+      <span class="market-subcategory">Short-term price movement</span>
+    </header>
+
+    <div class="rounds-container" data-asset="BTC">
+      <!-- Latest resolved round -->
+      <div class="round-card" data-round-id="BTC15M-20260210-0530" data-status="RESOLVED">
+        <div class="round-meta">
+          <span class="round-label">Round #18472</span>
+          <span class="round-window">2026-02-10T05:15:00+09:00 — 2026-02-10T05:30:00+09:00</span>
+          <span class="round-status resolved">RESOLVED</span>
+        </div>
+        <div class="round-outcome">
+          <span class="outcome-direction">DOWN</span>
+          <span class="outcome-detail">Open: $98,412.30 | Close: $98,387.15 | Δ: -$25.15 (-0.026%)</span>
+        </div>
+        <div class="round-resolution">
+          <span class="resolution-time">Resolved at: 2026-02-10T05:30:12+09:00</span>
+          <span class="resolution-source">Pyth Network Oracle</span>
+        </div>
+      </div>
+
+      <!-- Previous resolved round -->
+      <div class="round-card" data-round-id="BTC15M-20260210-0515" data-status="RESOLVED">
+        <div class="round-meta">
+          <span class="round-label">Round #18471</span>
+          <span class="round-window">2026-02-10T05:00:00+09:00 — 2026-02-10T05:15:00+09:00</span>
+          <span class="round-status resolved">RESOLVED</span>
+        </div>
+        <div class="round-outcome">
+          <span class="outcome-direction">UP</span>
+          <span class="outcome-detail">Open: $98,389.50 | Close: $98,412.30 | Δ: +$22.80 (+0.023%)</span>
+        </div>
+        <div class="round-resolution">
+          <span class="resolution-time">Resolved at: 2026-02-10T05:15:09+09:00</span>
+          <span class="resolution-source">Pyth Network Oracle</span>
+        </div>
+      </div>
+
+      <!-- Earlier resolved round (matches last_reported) -->
+      <div class="round-card" data-round-id="BTC15M-20260210-0345" data-status="RESOLVED">
+        <div class="round-meta">
+          <span class="round-label">Round #18465</span>
+          <span class="round-window">2026-02-10T03:30:00+09:00 — 2026-02-10T03:45:00+09:00</span>
+          <span class="round-status resolved">RESOLVED</span>
+        </div>
+        <div class="round-outcome">
+          <span class="outcome-direction">UP</span>
+          <span class="outcome-detail">Open: $98,201.00 | Close: $98,256.70 | Δ: +$55.70 (+0.057%)</span>
+        </div>
+        <div class="round-resolution">
+          <span class="resolution-time">Resolved at: 2026-02-10T03:45:08+09:00</span>
+          <span class="resolution-source">Pyth Network Oracle</span>
+        </div>
+      </div>
+
+      <!-- Currently active (not resolved) -->
+      <div class="round-card" data-round-id="BTC15M-20260210-0545" data-status="ACTIVE">
+        <div class="round-meta">
+          <span class="round-label">Round #18473</span>
+          <span class="round-window">2026-02-10T05:30:00+09:00 — 2026-02-10T05:45:00+09:00</span>
+          <span class="round-status active">ACTIVE</span>
+        </div>
+        <div class="round-prices">
+          <span class="price-up">UP: $0.52</span>
+          <span class="price-down">DOWN: $0.48</span>
+        </div>
+        <div class="round-volume">
+          <span>Volume: $14,230</span>
+          <span>Liquidity: $8,920</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- Market stats sidebar -->
+    <aside class="market-stats">
+      <div class="stat-row"><span>24h Volume</span><span>$2,145,830</span></div>
+      <div class="stat-row"><span>Total Rounds (24h)</span><span>96</span></div>
+      <div class="stat-row"><span>UP Win Rate (24h)</span><span>51.04%</span></div>
+      <div class="stat-row"><span>Avg Δ per Round</span><span>$31.42</span></div>
+      <div class="stat-row"><span>Oracle</span><span>Pyth Network (BTC/USD)</span></div>
+      <div class="stat-row"><span>Resolution Delay</span><span>~8-15s</span></div>
+    </aside>
+
+    <!-- Embedded JSON data (Next.js hydration) -->
+    <script id="__NEXT_DATA__" type="application/json">
+    {
+      "props": {
+        "pageProps": {
+          "market": {
+            "slug": "crypto/15M",
+            "title": "BTC 15-Minute Up/Down",
+            "asset": "BTC",
+            "oracle": "pyth",
+            "roundDurationMs": 900000,
+            "rounds": [
+              {
+                "id": "BTC15M-20260210-0545",
+                "roundNumber": 18473,
+                "status": "ACTIVE",
+                "startTime": "2026-02-10T05:30:00+09:00",
+                "endTime": "2026-02-10T05:45:00+09:00",
+                "openPrice": 98387.15,
+                "currentPrice": 98401.60,
+                "upPrice": 0.52,
+                "downPrice": 0.48,
+                "volume": 14230
+              },
+              {
+                "id": "BTC15M-20260210-0530",
+                "roundNumber": 18472,
+                "status": "RESOLVED",
+                "startTime": "2026-02-10T05:15:00+09:00",
+                "endTime": "2026-02-10T05:30:00+09:00",
+                "openPrice": 98412.30,
+                "closePrice": 98387.15,
+                "outcome": "DOWN",
+                "resolvedAt": "2026-02-10T05:30:12+09:00",
+                "volume": 18750
+              },
+              {
+                "id": "BTC15M-20260210-0515",
+                "roundNumber": 18471,
+                "status": "RESOLVED",
+                "startTime": "2026-02-10T05:00:00+09:00",
+                "endTime": "2026-02-10T05:15:00+09:00",
+                "openPrice": 98389.50,
+                "closePrice": 98412.30,
+                "outcome": "UP",
+                "resolvedAt": "2026-02-10T05:15:09+09:00",
+                "volume": 21340
+              },
+              {
+                "id": "BTC15M-20260210-0345",
+                "roundNumber": 18465,
+                "status": "RESOLVED",
+                "startTime": "2026-02-10T03:30:00+09:00",
+                "endTime": "2026-02-10T03:45:00+09:00",
+                "openPrice": 98201.00,
+                "closePrice": 98256.70,
+                "outcome": "UP",
+                "resolvedAt": "2026-02-10T03:45:08+09:00",
+                "volume": 15620
+              }
+            ]
+          }
+        }
+      }
+    }
+    </script>
+  </div>
+</div>
+</body>
+</html>

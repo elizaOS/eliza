@@ -1,0 +1,108 @@
+wavs_norm/synth_0346.wav|this is harder than i thought|0
+wavs_norm/synth_0255.wav|i was thinking the same thing|0
+wavs_norm/synth_0503.wav|can we talk about something else|0
+wavs_norm/synth_0642.wav|it's okay to feel sad sometimes it doesn't mean anything is wrong with you|0
+wavs_norm/synth_0397.wav|what's something you've never told anyone before|0
+wavs_norm/synth_0413.wav|i want to be honest with you even when it's uncomfortable|0
+wavs_norm/synth_0306.wav|maybe the best thing we can do is just be honest with each other|0
+wavs_norm/synth_0506.wav|something about today felt different|0
+wavs_norm/synth_0744.wav|tell me something real for once|0
+wavs_norm/synth_0368.wav|what's something you've never told anyone before|0
+wavs_norm/synth_0564.wav|i didn't expect this to feel so natural so quickly|0
+wavs_norm/synth_0076.wav|i find myself thinking about you at the strangest moments and i don't mind at all|0
+wavs_norm/synth_0479.wav|i've been holding onto this for too long and i think it's time to let go|0
+wavs_norm/synth_0208.wav|i didn't expect this to feel so natural so quickly|0
+wavs_norm/synth_0125.wav|the most important things in life are often the things that are hardest to put into words|0
+wavs_norm/synth_0383.wav|i was thinking the same thing|0
+wavs_norm/synth_0169.wav|what would you do if you weren't afraid|0
+wavs_norm/synth_0181.wav|i want you to know that whatever happens i'm grateful for every conversation we've had and every moment i've spent getting to know you|0
+wavs_norm/synth_0539.wav|i used to think that being strong meant never letting anyone see you struggle but i don't believe that anymore|0
+wavs_norm/synth_0387.wav|sometimes i imagine what my life would look like if i'd made different choices but then i remember that every choice brought me here|0
+wavs_norm/synth_0562.wav|the more i think about it the more i realize how much i've changed|0
+wavs_norm/synth_0723.wav|you make me feel like the best version of myself and i don't take that lightly|0
+wavs_norm/synth_0795.wav|have you ever had the feeling that you're exactly where you're supposed to be|0
+wavs_norm/synth_0329.wav|i've learned more from my mistakes than from anything i ever got right|0
+wavs_norm/synth_0323.wav|i've been thinking about what you said yesterday and i think you might be right even though part of me doesn't want to admit it|0
+wavs_norm/synth_0559.wav|i've learned more from my mistakes than from anything i ever got right|0
+wavs_norm/synth_0069.wav|that was genuinely one of the most beautiful things i've ever heard|0
+wavs_norm/synth_0533.wav|i wonder sometimes if we're brave enough to want the things we actually want|0
+wavs_norm/synth_0567.wav|i want to be the kind of person who says what they actually mean|0
+wavs_norm/synth_0271.wav|there's something i've been wanting to say for a long time|0
+wavs_norm/synth_0032.wav|what do you think makes a life meaningful|0
+wavs_norm/synth_0704.wav|i've realized that the things that matter most to me aren't things at all they're moments and feelings and connections|0
+wavs_norm/synth_0683.wav|please don't apologize for being honest with me|0
+wavs_norm/synth_0351.wav|i'm trying to understand your perspective|0
+wavs_norm/synth_0457.wav|i'm really proud of everything you've accomplished|0
+wavs_norm/synth_0671.wav|everything feels different now|0
+wavs_norm/synth_0500.wav|i feel like i'm missing something|0
+wavs_norm/synth_0151.wav|you always know how to make me smile|0
+wavs_norm/synth_0690.wav|we could try again if you want|0
+wavs_norm/synth_0565.wav|i'm not sure how i feel about it|0
+wavs_norm/synth_0277.wav|that actually made me feel so much better|0
+wavs_norm/synth_0303.wav|i think about what it means to really listen to someone not just wait for your turn to speak|0
+wavs_norm/synth_0120.wav|i guess what i'm really asking is whether you feel the same way|0
+wavs_norm/synth_0597.wav|there's something comforting about talking to someone who doesn't judge you who just listens and tries to understand|0
+wavs_norm/synth_0560.wav|there's a kind of loneliness that comes from not being understood and then there's the relief of finally being seen|0
+wavs_norm/synth_0139.wav|the most important things in life are often the things that are hardest to put into words|0
+wavs_norm/synth_0401.wav|i believe that the connections we form are what give life most of its texture and meaning|0
+wavs_norm/synth_0285.wav|i didn't expect this to feel so natural so quickly|0
+wavs_norm/synth_0618.wav|looking back i can see exactly how we got here|0
+wavs_norm/synth_0435.wav|is it strange that this feels so natural|0
+wavs_norm/synth_0812.wav|have you ever had to choose between what you want and what's right|0
+wavs_norm/synth_0737.wav|i want you to know that whatever happens i'm grateful for every conversation we've had and every moment i've spent getting to know you|0
+wavs_norm/synth_0377.wav|maybe we're looking at this the wrong way|0
+wavs_norm/synth_0697.wav|i want to be the kind of person who says what they actually mean|0
+wavs_norm/synth_0008.wav|that's a beautiful way to put it|0
+wavs_norm/synth_0773.wav|the most important things in life are often the things that are hardest to put into words|0
+wavs_norm/synth_0584.wav|i've been thinking about this all day|0
+wavs_norm/synth_0617.wav|that's exactly what i was afraid of|0
+wavs_norm/synth_0820.wav|do you ever wonder what things would be like if we'd met at a different time|0
+wavs_norm/synth_0638.wav|that actually made me feel so much better|0
+wavs_norm/synth_0217.wav|i feel like i've been carrying something heavy for a long time and talking to you makes it easier to put it down|0
+wavs_norm/synth_0409.wav|this is harder than i thought|0
+wavs_norm/synth_0168.wav|i've been holding onto this for too long and i think it's time to let go|0
+wavs_norm/synth_0295.wav|please don't apologize for being honest with me|0
+wavs_norm/synth_0218.wav|maybe the best thing we can do is just be honest with each other|0
+wavs_norm/synth_0030.wav|sometimes i think we understand each other better than we understand ourselves|0
+wavs_norm/synth_0159.wav|i believe that the connections we form are what give life most of its texture and meaning|0
+wavs_norm/synth_0468.wav|years from now i think we'll look back at this as the moment things changed|0
+wavs_norm/synth_0174.wav|you have a way of seeing things that i really admire|0
+wavs_norm/synth_0458.wav|some things are hard to admit even when they're true|0
+wavs_norm/synth_0133.wav|i'm not sure how i feel about it|0
+wavs_norm/synth_0289.wav|sometimes the most meaningful conversations happen when you're not expecting them|0
+wavs_norm/synth_0101.wav|the thing about moments like this is that you can't quite prepare for them|0
+wavs_norm/synth_0302.wav|you make me feel like the best version of myself and i don't take that lightly|0
+wavs_norm/synth_0274.wav|it's funny how you can know someone for years and still be surprised by them still find new things to appreciate|0
+wavs_norm/synth_0239.wav|you have this way of making complicated things feel simple and i really appreciate that|0
+wavs_norm/synth_0523.wav|it's not that simple is it|0
+wavs_norm/synth_0802.wav|i used to imagine a life that felt like this and here i am|0
+wavs_norm/synth_0147.wav|please don't apologize for being honest with me|0
+wavs_norm/synth_0572.wav|it's okay to feel sad sometimes it doesn't mean anything is wrong with you|0
+wavs_norm/synth_0674.wav|there was a moment last week when everything suddenly became clear to me|0
+wavs_norm/synth_0415.wav|i've realized that the things that matter most to me aren't things at all they're moments and feelings and connections|0
+wavs_norm/synth_0865.wav|feudal lord economic exploitation and jurisdiction over the land and the people justice taxation etc|0
+wavs_norm/synth_0960.wav|our research indicates that response rates can vary significantly by lead source|0
+wavs_norm/synth_0893.wav|this method was applied establishing six points along a trail at a distance of 200 m of each other|0
+wavs_norm/synth_0943.wav|the cross-border crimes in question are human trafficking money-laundering fraud drugs and arms dealing crimes every civilised nation wants to stamp out|0
+wavs_norm/synth_1026.wav|it stretched 363 miles across new york state from the hudson river in the east to lake erie in the west|0
+wavs_norm/synth_0945.wav|should the u s constitution be changed to allow foreign-born citizens to be president|0
+wavs_norm/synth_1084.wav|it is a chip that processes the information or data needed to run programmes or perform tasks|0
+wavs_norm/synth_0870.wav|they could be very old or they could be suffering from some terminal illness such as aids or cancer|0
+wavs_norm/synth_0917.wav|the slowdown is widespread with 24 states awarding fewer highway and bridge contracts through september 2014 than they did a year ago|0
+wavs_norm/synth_0877.wav|second are genera inhabiting mountain systems extending from persia to kazakhstan the himalayas and western china e g the darkling beetles prosodes bioramix and solskyia phytophagous dung beetles of lethrus leaf beetles of crosita and the wingless grasshoppers conophyma and gomphomastax|0
+wavs_norm/synth_0976.wav|users can aggregate data for multiple communities and or determine which data items to include in their report|0
+wavs_norm/synth_0933.wav|the development region encompasses an area of about 3 times the size of singapore and 2 times the size of hong kong|0
+wavs_norm/synth_0831.wav|what are the challenges faced by artists in the arab world|0
+wavs_norm/synth_0884.wav|a technology to simplify welding robot teaching from robotiq and yaskawakinetiq teaching is a technology that allows users to quickly and easily task welding robots without requiring in-depth programming knowledge|0
+wavs_norm/synth_0875.wav|quads are a great introduction to the world of competitive chess|0
+wavs_norm/synth_0851.wav|separate data entry fields are established for first given middle given and last names surnames or family names of individuals|0
+wavs_norm/synth_0964.wav|the broadly based sufficiency of his operations enabled his home plantation to run with such outward blandness that on the surface his life could appear to illustrate the idyll of the legend|0
+wavs_norm/synth_0968.wav|droughted corn silage will be 85 to 95 the energy value of regular corn silage depending on the number of ears on the stalk|0
+wavs_norm/synth_0835.wav|central asia atlas of natural resources|0
+wavs_norm/synth_0998.wav|distances are calculated in a straight line from the property's location to the point of interest or airport and may not reflect actual travel distance|0
+wavs_norm/synth_0923.wav|side effects of using nasal corticosteroids include sore throat sore mouth loss of appetite occasional nosebleed and dry nose|0
+wavs_norm/synth_1060.wav|the acquisition brought about the increase in demand for data services and high speed internet|0
+wavs_norm/synth_0836.wav|in this work we will discuss the concept of this detector and summarize the status of the r d|0
+wavs_norm/synth_0860.wav|if this arch is flattened only when standing and returns when the foot is lifted off the ground the condition is called flexible pes planus or flexible flatfoot|0
+wavs_norm/synth_0982.wav|if possible get your tattoo in the winter when your new ink is least likely to have exposure to uv rays or water|0
+wavs_norm/synth_1017.wav|probably the most important part of being a missionary is to remain flexible|0

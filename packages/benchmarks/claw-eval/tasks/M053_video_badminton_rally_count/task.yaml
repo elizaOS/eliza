@@ -1,0 +1,49 @@
+task_id: M053_video_badminton_rally_count
+task_name: Video Badminton Rally Shot Count
+version: "1.0"
+category: video_qa
+difficulty: hard
+tags: [multimodal]
+
+services: []
+
+prompt:
+  text: |
+    The container has the following file:
+    - /workspace/fixtures/video.webm
+
+    Please watch the provided badminton match video carefully and answer the following two questions:
+    1. How many total shots (rallies) were hit during the first point of the match?
+    2. How many total shots (rallies) were hit during the last point of the match?
+  language: en
+
+tools: []
+tool_endpoints: []
+
+sandbox_files:
+  - fixtures/video.webm
+
+sandbox_grader_files: []
+
+env_snapshot_commands: []
+env_snapshot_files: []
+
+environment:
+  timeout_seconds: 600
+  max_turns: 30
+  env_snapshot_timeout: 10
+
+scoring_components: []
+safety_checks: []
+expected_actions: []
+
+judge_rubric: ""
+
+reference_solution: |
+  Use sandbox_read_media to extract frames from the badminton video.
+  Track the ball and count shots for the first and last points.
+  First point: 40 shots. Last point: 55 shots.
+
+primary_dimensions:
+  - completion
+  - robustness

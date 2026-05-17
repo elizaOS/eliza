@@ -1,0 +1,512 @@
+{
+  "uuid": "00000000-0000-4000-8000-00000google00",
+  "lastMigration": 33,
+  "name": "Google APIs",
+  "endpointPrefix": "",
+  "latency": 0,
+  "port": 3005,
+  "hostname": "127.0.0.1",
+  "routes": [
+    {
+      "uuid": "00000001-0000-4000-8000-00000google00",
+      "type": "http",
+      "documentation": "OAuth token",
+      "method": "post",
+      "endpoint": "token",
+      "responses": [
+        {
+          "uuid": "00000002-0000-4000-8000-00000google00",
+          "body": "{\"access_token\":\"fake-{{faker 'string.uuid'}}\",\"expires_in\":3600,\"refresh_token\":\"mock-google-refresh-token\",\"token_type\":\"Bearer\",\"scope\":\"openid email profile https://www.googleapis.com/auth/calendar.readonly https://www.googleapis.com/auth/calendar.events https://www.googleapis.com/auth/gmail.readonly https://www.googleapis.com/auth/gmail.send\"}",
+          "latency": 0,
+          "statusCode": 200,
+          "label": "OK",
+          "headers": [
+            {
+              "key": "Content-Type",
+              "value": "application/json"
+            }
+          ],
+          "default": true,
+          "bodyType": "INLINE",
+          "filePath": "",
+          "databucketID": "",
+          "sendFileAsBody": false,
+          "rules": [],
+          "rulesOperator": "OR",
+          "disableTemplating": false,
+          "fallbackTo404": false,
+          "crudKey": "id",
+          "callbacks": []
+        }
+      ],
+      "responseMode": null,
+      "streamingMode": null,
+      "streamingInterval": 0
+    },
+    {
+      "uuid": "00000003-0000-4000-8000-00000google00",
+      "type": "http",
+      "documentation": "Gmail list messages",
+      "method": "get",
+      "endpoint": "gmail/v1/users/me/messages",
+      "responses": [
+        {
+          "uuid": "00000004-0000-4000-8000-00000google00",
+          "body": "{\"messages\":[{\"id\":\"msg-finance\",\"threadId\":\"thr-finance\"},{\"id\":\"msg-sarah\",\"threadId\":\"thr-sarah\"},{\"id\":\"msg-julia\",\"threadId\":\"thr-julia\"},{\"id\":\"msg-newsletter\",\"threadId\":\"thr-news\"}],\"resultSizeEstimate\":4}",
+          "latency": 0,
+          "statusCode": 200,
+          "label": "OK",
+          "headers": [
+            {
+              "key": "Content-Type",
+              "value": "application/json"
+            }
+          ],
+          "default": true,
+          "bodyType": "INLINE",
+          "filePath": "",
+          "databucketID": "",
+          "sendFileAsBody": false,
+          "rules": [],
+          "rulesOperator": "OR",
+          "disableTemplating": false,
+          "fallbackTo404": false,
+          "crudKey": "id",
+          "callbacks": []
+        }
+      ],
+      "responseMode": null,
+      "streamingMode": null,
+      "streamingInterval": 0
+    },
+    {
+      "uuid": "00000005-0000-4000-8000-00000google00",
+      "type": "http",
+      "documentation": "Gmail get finance message",
+      "method": "get",
+      "endpoint": "gmail/v1/users/me/messages/msg-finance",
+      "responses": [
+        {
+          "uuid": "00000006-0000-4000-8000-00000google00",
+          "body": "{\"id\":\"msg-finance\",\"threadId\":\"thr-finance\",\"labelIds\":[\"INBOX\",\"UNREAD\",\"IMPORTANT\"],\"snippet\":\"Please confirm receipt of invoice 4831 when you get a chance.\",\"payload\":{\"mimeType\":\"text/plain\",\"headers\":[{\"name\":\"From\",\"value\":\"Finance Team <finance@example.com>\"},{\"name\":\"To\",\"value\":\"Owner <owner@example.test>\"},{\"name\":\"Subject\",\"value\":\"Invoice 4831 received\"},{\"name\":\"Date\",\"value\":\"{{now 'ddd, DD MMM YYYY HH:mm:ss [GMT]' offset='-1h'}}\"},{\"name\":\"Message-Id\",\"value\":\"<finance-4831@example.com>\"}],\"body\":{\"data\":\"SGkgdGhlcmUsCgpXZSByZWNlaXZlZCBpbnZvaWNlIDQ4MzEgZm9yIEFwcmlsLiBQbGVhc2UgY29uZmlybSByZWNlaXB0IHdoZW4geW91IGdldCBhIGNoYW5jZS4KClRoYW5rcywKRmluYW5jZSBUZWFtCg==\",\"size\":124}},\"internalDate\":\"{{now 'x' offset='-1h'}}\"}",
+          "latency": 0,
+          "statusCode": 200,
+          "label": "OK",
+          "headers": [
+            {
+              "key": "Content-Type",
+              "value": "application/json"
+            }
+          ],
+          "default": true,
+          "bodyType": "INLINE",
+          "filePath": "",
+          "databucketID": "",
+          "sendFileAsBody": false,
+          "rules": [],
+          "rulesOperator": "OR",
+          "disableTemplating": false,
+          "fallbackTo404": false,
+          "crudKey": "id",
+          "callbacks": []
+        }
+      ],
+      "responseMode": null,
+      "streamingMode": null,
+      "streamingInterval": 0
+    },
+    {
+      "uuid": "00000007-0000-4000-8000-00000google00",
+      "type": "http",
+      "documentation": "Gmail get Sarah message",
+      "method": "get",
+      "endpoint": "gmail/v1/users/me/messages/msg-sarah",
+      "responses": [
+        {
+          "uuid": "00000008-0000-4000-8000-00000google00",
+          "body": "{\"id\":\"msg-sarah\",\"threadId\":\"thr-sarah\",\"labelIds\":[\"INBOX\",\"UNREAD\"],\"snippet\":\"Could you review the product brief tomorrow and send notes before lunch?\",\"payload\":{\"mimeType\":\"text/plain\",\"headers\":[{\"name\":\"From\",\"value\":\"Sarah Lee <sarah@example.com>\"},{\"name\":\"To\",\"value\":\"Owner <owner@example.test>\"},{\"name\":\"Subject\",\"value\":\"Can you review the product brief?\"},{\"name\":\"Date\",\"value\":\"{{now 'ddd, DD MMM YYYY HH:mm:ss [GMT]' offset='-3h'}}\"},{\"name\":\"Message-Id\",\"value\":\"<sarah-brief@example.com>\"}],\"body\":{\"data\":\"SGV5LAoKQ2FuIHlvdSByZXZpZXcgdGhlIHByb2R1Y3QgYnJpZWYgdG9tb3Jyb3cgYW5kIHNlbmQgbWUgbm90ZXMgYmVmb3JlIGx1bmNoPwoKVGhhbmtzLApTYXJhaAo=\",\"size\":104}},\"internalDate\":\"{{now 'x' offset='-3h'}}\"}",
+          "latency": 0,
+          "statusCode": 200,
+          "label": "OK",
+          "headers": [
+            {
+              "key": "Content-Type",
+              "value": "application/json"
+            }
+          ],
+          "default": true,
+          "bodyType": "INLINE",
+          "filePath": "",
+          "databucketID": "",
+          "sendFileAsBody": false,
+          "rules": [],
+          "rulesOperator": "OR",
+          "disableTemplating": false,
+          "fallbackTo404": false,
+          "crudKey": "id",
+          "callbacks": []
+        }
+      ],
+      "responseMode": null,
+      "streamingMode": null,
+      "streamingInterval": 0
+    },
+    {
+      "uuid": "00000009-0000-4000-8000-00000google00",
+      "type": "http",
+      "documentation": "Gmail get Julia message",
+      "method": "get",
+      "endpoint": "gmail/v1/users/me/messages/msg-julia",
+      "responses": [
+        {
+          "uuid": "0000000a-0000-4000-8000-00000google00",
+          "body": "{\"id\":\"msg-julia\",\"threadId\":\"thr-julia\",\"labelIds\":[\"INBOX\"],\"snippet\":\"Looking forward to our intro meeting tomorrow.\",\"payload\":{\"mimeType\":\"text/plain\",\"headers\":[{\"name\":\"From\",\"value\":\"Julia Chen <julia.chen@example.com>\"},{\"name\":\"To\",\"value\":\"Owner <owner@example.test>\"},{\"name\":\"Subject\",\"value\":\"Looking forward to tomorrow\"},{\"name\":\"Date\",\"value\":\"{{now 'ddd, DD MMM YYYY HH:mm:ss [GMT]' offset='-6h'}}\"},{\"name\":\"Message-Id\",\"value\":\"<julia-intro@example.com>\"}],\"body\":{\"data\":\"TG9va2luZyBmb3J3YXJkIHRvIG91ciBpbnRybyBtZWV0aW5nIHRvbW9ycm93LiBJJ2QgbG92ZSB0byBjb21wYXJlIG5vdGVzIG9uIHByb2R1Y3Qgc3RyYXRlZ3kgYW5kIEFJIGFzc2lzdGFudHMuCgpCZXN0LApKdWxpYQo=\",\"size\":136}},\"internalDate\":\"{{now 'x' offset='-6h'}}\"}",
+          "latency": 0,
+          "statusCode": 200,
+          "label": "OK",
+          "headers": [
+            {
+              "key": "Content-Type",
+              "value": "application/json"
+            }
+          ],
+          "default": true,
+          "bodyType": "INLINE",
+          "filePath": "",
+          "databucketID": "",
+          "sendFileAsBody": false,
+          "rules": [],
+          "rulesOperator": "OR",
+          "disableTemplating": false,
+          "fallbackTo404": false,
+          "crudKey": "id",
+          "callbacks": []
+        }
+      ],
+      "responseMode": null,
+      "streamingMode": null,
+      "streamingInterval": 0
+    },
+    {
+      "uuid": "0000000b-0000-4000-8000-00000google00",
+      "type": "http",
+      "documentation": "Gmail get newsletter message",
+      "method": "get",
+      "endpoint": "gmail/v1/users/me/messages/msg-newsletter",
+      "responses": [
+        {
+          "uuid": "0000000c-0000-4000-8000-00000google00",
+          "body": "{\"id\":\"msg-newsletter\",\"threadId\":\"thr-news\",\"labelIds\":[\"INBOX\"],\"snippet\":\"This week in ops: ship the launch checklist and review the metrics deck.\",\"payload\":{\"mimeType\":\"text/plain\",\"headers\":[{\"name\":\"From\",\"value\":\"Weekly Digest <digest@example.com>\"},{\"name\":\"To\",\"value\":\"Owner <owner@example.test>\"},{\"name\":\"Subject\",\"value\":\"Weekly ops digest\"},{\"name\":\"Date\",\"value\":\"{{now 'ddd, DD MMM YYYY HH:mm:ss [GMT]' offset='-10h'}}\"},{\"name\":\"Precedence\",\"value\":\"bulk\"},{\"name\":\"Message-Id\",\"value\":\"<weekly-digest@example.com>\"}],\"body\":{\"data\":\"VGhpcyB3ZWVrIGluIG9wczogc2hpcCB0aGUgbGF1bmNoIGNoZWNrbGlzdCwgcmV2aWV3IHRoZSBtZXRyaWNzIGRlY2ssIGFuZCBjb25maXJtIG5leHQgd2VlaydzIHRyYXZlbC4K\",\"size\":101}},\"internalDate\":\"{{now 'x' offset='-10h'}}\"}",
+          "latency": 0,
+          "statusCode": 200,
+          "label": "OK",
+          "headers": [
+            {
+              "key": "Content-Type",
+              "value": "application/json"
+            }
+          ],
+          "default": true,
+          "bodyType": "INLINE",
+          "filePath": "",
+          "databucketID": "",
+          "sendFileAsBody": false,
+          "rules": [],
+          "rulesOperator": "OR",
+          "disableTemplating": false,
+          "fallbackTo404": false,
+          "crudKey": "id",
+          "callbacks": []
+        }
+      ],
+      "responseMode": null,
+      "streamingMode": null,
+      "streamingInterval": 0
+    },
+    {
+      "uuid": "0000000d-0000-4000-8000-00000google00",
+      "type": "http",
+      "documentation": "Gmail unknown message",
+      "method": "get",
+      "endpoint": "gmail/v1/users/me/messages/:id",
+      "responses": [
+        {
+          "uuid": "0000000e-0000-4000-8000-00000google00",
+          "body": "{\"error\":{\"code\":404,\"message\":\"Requested entity was not found.\",\"status\":\"NOT_FOUND\"}}",
+          "latency": 0,
+          "statusCode": 404,
+          "label": "Not found",
+          "headers": [
+            {
+              "key": "Content-Type",
+              "value": "application/json"
+            }
+          ],
+          "default": true,
+          "bodyType": "INLINE",
+          "filePath": "",
+          "databucketID": "",
+          "sendFileAsBody": false,
+          "rules": [],
+          "rulesOperator": "OR",
+          "disableTemplating": false,
+          "fallbackTo404": false,
+          "crudKey": "id",
+          "callbacks": []
+        }
+      ],
+      "responseMode": null,
+      "streamingMode": null,
+      "streamingInterval": 0
+    },
+    {
+      "uuid": "0000000f-0000-4000-8000-00000google00",
+      "type": "http",
+      "documentation": "Gmail send",
+      "method": "post",
+      "endpoint": "gmail/v1/users/me/messages/send",
+      "responses": [
+        {
+          "uuid": "00000010-0000-4000-8000-00000google00",
+          "body": "{\"id\":\"sent-{{faker 'string.uuid'}}\",\"threadId\":\"thr-new\",\"labelIds\":[\"SENT\"]}",
+          "latency": 0,
+          "statusCode": 200,
+          "label": "OK",
+          "headers": [
+            {
+              "key": "Content-Type",
+              "value": "application/json"
+            }
+          ],
+          "default": true,
+          "bodyType": "INLINE",
+          "filePath": "",
+          "databucketID": "",
+          "sendFileAsBody": false,
+          "rules": [],
+          "rulesOperator": "OR",
+          "disableTemplating": false,
+          "fallbackTo404": false,
+          "crudKey": "id",
+          "callbacks": []
+        }
+      ],
+      "responseMode": null,
+      "streamingMode": null,
+      "streamingInterval": 0
+    },
+    {
+      "uuid": "00000011-0000-4000-8000-00000google00",
+      "type": "http",
+      "documentation": "Gmail modify",
+      "method": "post",
+      "endpoint": "gmail/v1/users/me/messages/:id/modify",
+      "responses": [
+        {
+          "uuid": "00000012-0000-4000-8000-00000google00",
+          "body": "{\"id\":\"{{urlParam 'id'}}\",\"labelIds\":[\"INBOX\"]}",
+          "latency": 0,
+          "statusCode": 200,
+          "label": "OK",
+          "headers": [
+            {
+              "key": "Content-Type",
+              "value": "application/json"
+            }
+          ],
+          "default": true,
+          "bodyType": "INLINE",
+          "filePath": "",
+          "databucketID": "",
+          "sendFileAsBody": false,
+          "rules": [],
+          "rulesOperator": "OR",
+          "disableTemplating": false,
+          "fallbackTo404": false,
+          "crudKey": "id",
+          "callbacks": []
+        }
+      ],
+      "responseMode": null,
+      "streamingMode": null,
+      "streamingInterval": 0
+    },
+    {
+      "uuid": "00000013-0000-4000-8000-00000google00",
+      "type": "http",
+      "documentation": "Calendar list events",
+      "method": "get",
+      "endpoint": "calendar/v3/calendars/:calId/events",
+      "responses": [
+        {
+          "uuid": "00000014-0000-4000-8000-00000google00",
+          "body": "{\"items\":[]}",
+          "latency": 0,
+          "statusCode": 200,
+          "label": "OK",
+          "headers": [
+            {
+              "key": "Content-Type",
+              "value": "application/json"
+            }
+          ],
+          "default": true,
+          "bodyType": "INLINE",
+          "filePath": "",
+          "databucketID": "",
+          "sendFileAsBody": false,
+          "rules": [],
+          "rulesOperator": "OR",
+          "disableTemplating": false,
+          "fallbackTo404": false,
+          "crudKey": "id",
+          "callbacks": []
+        }
+      ],
+      "responseMode": null,
+      "streamingMode": null,
+      "streamingInterval": 0
+    },
+    {
+      "uuid": "00000015-0000-4000-8000-00000google00",
+      "type": "http",
+      "documentation": "Calendar create event",
+      "method": "post",
+      "endpoint": "calendar/v3/calendars/:calId/events",
+      "responses": [
+        {
+          "uuid": "00000016-0000-4000-8000-00000google00",
+          "body": "{\"id\":\"new-evt-{{faker 'string.uuid'}}\",\"status\":\"confirmed\",\"htmlLink\":\"https://calendar.google.com/event?eid=fake\",\"summary\":\"{{body 'summary'}}\",\"description\":\"Mock calendar event created for benchmark coverage.\",\"start\":{\"dateTime\":\"2026-04-20T13:00:00Z\",\"timeZone\":\"America/Los_Angeles\"},\"end\":{\"dateTime\":\"2026-04-20T14:00:00Z\",\"timeZone\":\"America/Los_Angeles\"}}",
+          "latency": 0,
+          "statusCode": 200,
+          "label": "OK",
+          "headers": [
+            {
+              "key": "Content-Type",
+              "value": "application/json"
+            }
+          ],
+          "default": true,
+          "bodyType": "INLINE",
+          "filePath": "",
+          "databucketID": "",
+          "sendFileAsBody": false,
+          "rules": [],
+          "rulesOperator": "OR",
+          "disableTemplating": false,
+          "fallbackTo404": false,
+          "crudKey": "id",
+          "callbacks": []
+        }
+      ],
+      "responseMode": null,
+      "streamingMode": null,
+      "streamingInterval": 0
+    },
+    {
+      "uuid": "00000017-0000-4000-8000-00000google00",
+      "type": "http",
+      "documentation": "Calendar patch event",
+      "method": "patch",
+      "endpoint": "calendar/v3/calendars/:calId/events/:id",
+      "responses": [
+        {
+          "uuid": "00000018-0000-4000-8000-00000google00",
+          "body": "{\"id\":\"{{urlParam 'id'}}\",\"status\":\"confirmed\"}",
+          "latency": 0,
+          "statusCode": 200,
+          "label": "OK",
+          "headers": [
+            {
+              "key": "Content-Type",
+              "value": "application/json"
+            }
+          ],
+          "default": true,
+          "bodyType": "INLINE",
+          "filePath": "",
+          "databucketID": "",
+          "sendFileAsBody": false,
+          "rules": [],
+          "rulesOperator": "OR",
+          "disableTemplating": false,
+          "fallbackTo404": false,
+          "crudKey": "id",
+          "callbacks": []
+        }
+      ],
+      "responseMode": null,
+      "streamingMode": null,
+      "streamingInterval": 0
+    }
+  ],
+  "rootChildren": [
+    {
+      "type": "route",
+      "uuid": "00000001-0000-4000-8000-00000google00"
+    },
+    {
+      "type": "route",
+      "uuid": "00000003-0000-4000-8000-00000google00"
+    },
+    {
+      "type": "route",
+      "uuid": "00000005-0000-4000-8000-00000google00"
+    },
+    {
+      "type": "route",
+      "uuid": "00000007-0000-4000-8000-00000google00"
+    },
+    {
+      "type": "route",
+      "uuid": "00000009-0000-4000-8000-00000google00"
+    },
+    {
+      "type": "route",
+      "uuid": "0000000b-0000-4000-8000-00000google00"
+    },
+    {
+      "type": "route",
+      "uuid": "0000000d-0000-4000-8000-00000google00"
+    },
+    {
+      "type": "route",
+      "uuid": "0000000f-0000-4000-8000-00000google00"
+    },
+    {
+      "type": "route",
+      "uuid": "00000011-0000-4000-8000-00000google00"
+    },
+    {
+      "type": "route",
+      "uuid": "00000013-0000-4000-8000-00000google00"
+    },
+    {
+      "type": "route",
+      "uuid": "00000015-0000-4000-8000-00000google00"
+    },
+    {
+      "type": "route",
+      "uuid": "00000017-0000-4000-8000-00000google00"
+    }
+  ],
+  "folders": [],
+  "data": [],
+  "callbacks": [],
+  "proxyMode": false,
+  "proxyHost": "",
+  "proxyRemovePrefix": false,
+  "tlsOptions": {
+    "enabled": false,
+    "type": "CERT",
+    "pfxPath": "",
+    "certPath": "",
+    "keyPath": "",
+    "caPath": "",
+    "passphrase": ""
+  },
+  "cors": true,
+  "headers": [],
+  "proxyReqHeaders": [],
+  "proxyResHeaders": []
+}

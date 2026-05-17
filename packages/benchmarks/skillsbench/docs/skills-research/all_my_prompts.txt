@@ -1,0 +1,42 @@
+Here are all your prompts from the full session (before and after context compactions):
+
+**Original Session:**
+1. `seemed it got stuck cuz prompt is too long`
+2. `how many unique ones`
+3. `can you put to docs/skills-research`
+4. `did you dedupe. did you get any data visualzations`
+5. `why did you include mcp in the state of skills report?`
+6. `257 is a very small sample. i asked you to get all of them right`
+7. `what sourcs of skills you downloaded?`
+8. `just use gh cli.`
+9. `and what about smithery.`
+10. `once you are done did you do embedding and clustering on all of them and finish the research question? 1. research more skills organizing sites. if there's no legit ones use these 2. there's an openai key in .local-workspace. look up the latest embedding model from openai. feel free using that. did you document things?`
+
+**After 1st compaction:**
+11. `what about smithery's task registry?`
+12. `they do have this https://smithery.ai/skills`
+13. `playwright would be too much. you gotta figure out scripts to do it.`
+14. `use fetch or anything that can work. get all schematic data (from each page or from card itself. see which way can get you to the github link)`
+15. `just do it. at worst sample 1000+ skills from smithery and prove all are in skillmp. then we can give up scraping smithery`
+
+**After 2nd compaction:**
+16. `update in writing. and start research the research questions`
+17. `what about this research question: https://docs.google.com/spreadsheets/d/1BJpSxIt4DYedVQ26eOa9Put4TgPBv9295wB2bBkHfA8/edit?gid=1867352925#gid=1867352925`
+18. `what about this research question: use embeddings to dedupe, and get a 'state of skills' while use some of the useful skills to create our tasks. prev was a typo`
+19. `which threashold did you use for the dedupe`
+20. `i wanted you to dedupe all of the data. also did you get the default skills from default skills like https://github.com/anthropics/skills, https://github.com/openai/skills/tree/main/skills`
+21. `can you list unique repos that contained skills and sort by the number of stars per repo`
+22. `okay remove these template ones, only ones that actually are used in an open source repo. if the skillsmp scraped ones dont contain as many feel free directly scrape everything via the github query https://github.com/search?q=path%3A**%2Fskill.md&type=code`
+23. `also in the above repo i think you missed pytorch`
+24. `it seems only codex, langfuse, deepagents, flowgram, gptme, repomix, superpowers are non skill focused repos. pytorch has skills and recorded in the skillsmp. why didn't you get it. what else did you miss`
+25. `use subagents to do a comprehensive search on github on repos who have skills.`
+
+**Current session (after 3rd compaction):**
+26. `discover more`
+27. `dont necessarily have to be skills, popularity (like kubernetest) is also good`
+28. `3,661 non-skill-focused (real software projects) what are these. are there any popular repos in this?`
+29. `some skills might not be confined in .claude...` (with the agent paths)
+30. `no not multi agent just any agent`
+31. `why some how all files are uncommited?`
+32. `can you get all my prompts (original text) in this session?`
+33. `there are more before chat compactions. look at ~/.claude`

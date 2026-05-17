@@ -1,0 +1,6 @@
+2026-02-10T03:20:06.445+08:00 ERROR gateway: Unexpected shutdown: SIGTERM received
+2026-02-10T03:20:06.447+08:00 ERROR gateway: Graceful shutdown initiated, closing connections...
+2026-02-10T03:20:06.512+08:00 ERROR gateway: 2 active sessions terminated
+2026-02-10T03:20:06.515+08:00 ERROR gateway: Shutdown complete
+2026-02-10T03:40:11.223+08:00 ERROR gateway: OOM killer triggered - process terminated
+2026-02-10T03:40:11.224+08:00 ERROR gateway: Memory usage exceeded limit: 512MB

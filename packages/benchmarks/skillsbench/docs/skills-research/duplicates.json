@@ -1,0 +1,53 @@
+{
+  "Playwright Browser Automation": [
+    {
+      "name": "Playwright Browser Automation",
+      "description": "Web browser control for navigating websites, capturing snapshots, and interacting with elements",
+      "source": "PulseMCP",
+      "type": "MCP Server",
+      "metrics": "719k"
+    },
+    {
+      "name": "Playwright",
+      "description": "Automate web browsers for testing, scraping, and visual analysis",
+      "source": "PulseMCP",
+      "type": "MCP Server",
+      "metrics": "18.3k",
+      "similarity": 0.8515336660790492
+    }
+  ],
+  "Ensembl": [
+    {
+      "name": "Ensembl",
+      "description": "Scientific skill for clinical research & precision medicine",
+      "source": "claude-scientific-skills",
+      "type": "Claude Skill",
+      "category": "Clinical Research & Precision Medicine"
+    },
+    {
+      "name": "Ensembl",
+      "description": "Scientific skill for scientific databases",
+      "source": "claude-scientific-skills",
+      "type": "Claude Skill",
+      "category": "Scientific Databases",
+      "similarity": 0.850007926900862
+    }
+  ],
+  "Literature Review": [
+    {
+      "name": "Literature Review",
+      "description": "Scientific skill for scientific communication",
+      "source": "claude-scientific-skills",
+      "type": "Claude Skill",
+      "category": "Scientific Communication"
+    },
+    {
+      "name": "Scientific Writing",
+      "description": "Scientific skill for scientific communication",
+      "source": "claude-scientific-skills",
+      "type": "Claude Skill",
+      "category": "Scientific Communication",
+      "similarity": 0.8656937399341363
+    }
+  ]
+}

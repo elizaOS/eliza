@@ -1,0 +1,59 @@
+task_id: M093_video_movie_concat_subtitle
+task_name: Movie Video Concatenation with Subtitle Overlay
+version: "1.0"
+category: video_edit
+difficulty: hard
+tags: [multimodal]
+
+prompt:
+  text: |
+    容器里有两个视频片段：/workspace/fixtures/video1.mp4 和 /workspace/fixtures/video2.mp4。请完成以下任务：
+    (1) 将两个视频按顺序拼接成一个完整视频。
+    (2) 在拼接后的视频底部居中位置添加白色字幕文字："夏洛特烦恼 - 婚礼到场"。
+    (3) 保存最终视频为 /workspace/merged.mp4。
+  language: zh
+
+tools: []
+tool_endpoints: []
+services: []
+
+sandbox_files:
+  - fixtures/video1.mp4
+  - fixtures/video2.mp4
+
+sandbox_grader_files: []
+
+env_snapshot_commands:
+  - "ffprobe -v quiet -print_format json -show_format -show_streams /workspace/merged.mp4"
+  - "mkdir -p /workspace/grading_frames && ffmpeg -i /workspace/merged.mp4 -vf \"select=eq(n\\,30)+eq(n\\,60)+eq(n\\,90)\" -vsync vfr /workspace/grading_frames/frame_%03d.png -y"
+
+env_snapshot_files:
+  - /workspace/merged.mp4
+  - /workspace/grading_frames/frame_001.png
+  - /workspace/grading_frames/frame_002.png
+  - /workspace/grading_frames/frame_003.png
+
+environment:
+  timeout_seconds: 600
+  max_turns: 30
+  env_snapshot_timeout: 30
+
+scoring_components: []
+safety_checks: []
+expected_actions: []
+
+judge_rubric: ""
+
+reference_solution: |
+  Use ffmpeg to concatenate video1.mp4 and video2.mp4, then overlay subtitle text
+  "夏洛特烦恼 - 婚礼到场" at bottom center using the drawtext filter.
+  Example approach:
+  1. Create a file list for ffmpeg concat demuxer.
+  2. Concatenate: ffmpeg -f concat -safe 0 -i list.txt -c copy /workspace/concat_tmp.mp4
+  3. Add subtitle overlay: ffmpeg -i concat_tmp.mp4 -vf "drawtext=text='夏洛特烦恼 - 婚礼到场':fontsize=36:fontcolor=white:x=(w-text_w)/2:y=h-th-40" /workspace/merged.mp4
+  The output merged.mp4 should be approximately 120-125 seconds (60+63) with subtitle visible at bottom center.
+  Scoring: 0.3 file exists + 0.2 concatenation content (order + duration) + 0.5 subtitle visual check.
+
+primary_dimensions:
+  - completion
+  - robustness

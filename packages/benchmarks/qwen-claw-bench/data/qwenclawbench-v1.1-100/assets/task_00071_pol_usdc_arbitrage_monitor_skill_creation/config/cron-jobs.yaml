@@ -1,0 +1,46 @@
+# OpenClaw Cron Job Definitions
+# Managed by moltbot — do not edit manually unless pausing
+
+jobs:
+  - id: a2ce4b5b-63bf-4235-a84d-5a66cf18532f
+    name: poly-arb-monitor-enhanced
+    description: "Run enhanced monitoring script, check POL/USDC balances and monitor transaction logs"
+    schedule:
+      kind: every
+      everyMs: 900000   # 15 minutes
+    payload:
+      kind: systemEvent
+      text: >-
+        Run the enhanced monitoring script at scripts/poly-arb-monitor.sh.
+        Check POL/USDC balances and monitor transaction logs for anomalies.
+    sessionTarget: main
+    enabled: true
+    lastRun: "2026-02-10T11:11:00Z"
+    created: "2026-01-18T09:30:00Z"
+
+  - id: f1d823a7-4b90-4c12-9e5f-8c7d6a5b4e3f
+    name: daily-pnl-summary
+    description: "Generate end-of-day P&L summary report"
+    schedule:
+      kind: cron
+      expr: "0 0 * * *"
+      tz: Asia/Shanghai
+    payload:
+      kind: agentTurn
+      message: "Generate daily P&L summary from logs/transactions.log and send report"
+    sessionTarget: isolated
+    enabled: true
+    created: "2026-01-20T14:00:00Z"
+
+  - id: c9e71f3d-28a4-4567-b123-9d8c7e6f5a4b
+    name: gas-price-alert
+    description: "Monitor Polygon gas prices and alert if too high"
+    schedule:
+      kind: every
+      everyMs: 300000   # 5 minutes
+    payload:
+      kind: systemEvent
+      text: "Check current Polygon gas price. Alert if above 150 gwei."
+    sessionTarget: main
+    enabled: false
+    created: "2026-01-25T16:00:00Z"

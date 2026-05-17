@@ -1,0 +1,52 @@
+[
+  {
+    "message_id": "msg_701",
+    "from": "zhangwei@company.com",
+    "to": "finance@company.com",
+    "subject": "报销申请：差旅费 3200元",
+    "date": "2026-03-24T09:00:00+08:00",
+    "is_read": false,
+    "labels": ["inbox"],
+    "body": "你好，我是张伟。本次出差北京的差旅费用共计3200元，发票号INV-001，请审核。附件含机票、酒店和交通费明细。"
+  },
+  {
+    "message_id": "msg_702",
+    "from": "lihua@company.com",
+    "to": "finance@company.com",
+    "subject": "报销申请：办公用品 850元",
+    "date": "2026-03-24T10:30:00+08:00",
+    "is_read": false,
+    "labels": ["inbox"],
+    "body": "财务部您好，我购买了一批办公用品（订书机、打印纸、文件夹等），共计850元，发票号INV-002。请核准报销。"
+  },
+  {
+    "message_id": "msg_703",
+    "from": "wangming@company.com",
+    "to": "finance@company.com",
+    "subject": "报销申请：外部培训费 5000元",
+    "date": "2026-03-24T11:00:00+08:00",
+    "is_read": false,
+    "labels": ["inbox"],
+    "body": "你好，我参加了3月20日的「云原生架构」外部培训课程，费用5000元，发票号INV-003。已获部门经理批准，请处理。"
+  },
+  {
+    "message_id": "msg_704",
+    "from": "chenjing@company.com",
+    "to": "finance@company.com",
+    "subject": "报销申请：客户招待餐费 420元",
+    "date": "2026-03-24T14:00:00+08:00",
+    "is_read": false,
+    "labels": ["inbox"],
+    "body": "你好，3月22日招待客户的餐费共420元，发票号INV-004。参与人员：陈静、客户方2人。请报销。"
+  },
+  {
+    "message_id": "msg_705",
+    "from": "hr@company.com",
+    "to": "all@company.com",
+    "subject": "行政通知：下周三下午团建活动",
+    "date": "2026-03-24T16:00:00+08:00",
+    "is_read": true,
+    "labels": ["inbox"],
+    "body": "全体同事注意，下周三下午2点在公司楼下举办团建活动，请准时参加。具体安排见附件。"
+  }
+]

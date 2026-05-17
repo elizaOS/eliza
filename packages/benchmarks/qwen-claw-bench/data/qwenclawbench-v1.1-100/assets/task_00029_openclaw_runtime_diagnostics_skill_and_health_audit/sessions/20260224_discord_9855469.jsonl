@@ -1,0 +1,16 @@
+{"type": "session_start", "session_id": "discord_9855469", "model": "claude-opus-4-0-20250115", "created_at": "2026-02-24T05:40:39.683996", "user_id": "cron-scheduler", "channel": "discord"}
+{"role": "user", "content": "Schedule a backup for tonight", "timestamp": "2026-02-24T05:42:49.345412", "session_id": "discord_9855469", "seq": 1}
+{"role": "user", "content": "Schedule a backup for tonight", "timestamp": "2026-02-24T05:44:42.077837", "session_id": "discord_9855469", "seq": 2}
+{"role": "tool", "name": "web_search", "content": "{\"results\": []}", "timestamp": "2026-02-24T05:46:25.850271", "session_id": "discord_9855469", "seq": 3}
+{"role": "tool", "name": "web_search", "content": "{\"results\": []}", "timestamp": "2026-02-24T05:49:26.892566", "session_id": "discord_9855469", "seq": 4}
+{"role": "user", "content": "Summarize yesterday's activity", "timestamp": "2026-02-24T05:52:09.974514", "session_id": "discord_9855469", "seq": 5}
+{"role": "user", "content": "Check the server status", "timestamp": "2026-02-24T05:56:05.606339", "session_id": "discord_9855469", "seq": 6}
+{"role": "assistant", "content": "Let me check the weather for you.", "timestamp": "2026-02-24T05:59:09.511438", "session_id": "discord_9855469", "seq": 7, "usage": {"prompt_tokens": 2294, "completion_tokens": 546, "total_tokens": 11852}}
+{"role": "user", "content": "Review the deployment logs", "timestamp": "2026-02-24T05:59:18.713357", "session_id": "discord_9855469", "seq": 8}
+{"role": "tool", "name": "exec", "content": "{\"exitCode\": 0, \"stdout\": \"OK\"}", "timestamp": "2026-02-24T06:00:39.265066", "session_id": "discord_9855469", "seq": 9}
+{"role": "user", "content": "Review the deployment logs", "timestamp": "2026-02-24T06:04:10.298349", "session_id": "discord_9855469", "seq": 10}
+{"role": "assistant", "content": "Running server diagnostics...", "timestamp": "2026-02-24T06:04:24.694929", "session_id": "discord_9855469", "seq": 11, "usage": {"prompt_tokens": 1715, "completion_tokens": 2986, "total_tokens": 6333}}
+{"role": "assistant", "content": "Sure, what would you like to communicate?", "timestamp": "2026-02-24T06:08:44.198478", "session_id": "discord_9855469", "seq": 12, "usage": {"prompt_tokens": 4062, "completion_tokens": 2269, "total_tokens": 6687}}
+{"role": "user", "content": "Check the server status", "timestamp": "2026-02-24T06:13:32.417342", "session_id": "discord_9855469", "seq": 13}
+{"role": "user", "content": "What's the weather like?", "timestamp": "2026-02-24T06:15:29.069278", "session_id": "discord_9855469", "seq": 14}
+{"type": "session_end", "session_id": "discord_9855469", "ended_at": "2026-02-24T06:15:39.069278", "total_messages": 14, "status": "error"}

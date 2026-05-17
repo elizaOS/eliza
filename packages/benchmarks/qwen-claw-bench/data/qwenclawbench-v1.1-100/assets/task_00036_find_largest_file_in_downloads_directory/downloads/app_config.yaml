@@ -1,0 +1,10 @@
+# Local bench app — fictional service
+service:
+  name: inventory-edge
+  listen: 127.0.0.1:8080
+limits:
+  max_connections: 128
+  idle_timeout_sec: 30
+features:
+  cache: true
+  tracing: false

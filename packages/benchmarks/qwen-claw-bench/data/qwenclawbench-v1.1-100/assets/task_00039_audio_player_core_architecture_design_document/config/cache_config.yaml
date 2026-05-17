@@ -1,0 +1,36 @@
+# Cache Configuration
+# Updated 2024-01-15
+
+cache:
+  strategy: LRU
+  max_size_mb: 256
+  prefetch_count: 3
+  eviction_policy: least_recently_used
+  cache_dir: "~/.audio_player/cache"
+  ttl_hours: 72
+
+  # Cleanup settings
+  cleanup_on_startup: true
+  cleanup_threshold_percent: 90
+
+  # File naming
+  cache_file_extension: ".apcache"
+  use_content_hash: true
+  hash_algorithm: blake3
+
+  # Logging
+  log_evictions: true
+  log_cache_hits: false
+
+  # Limits per codec
+  codec_limits:
+    mp3:
+      max_cached_tracks: 500
+    flac:
+      max_cached_tracks: 100
+    ogg:
+      max_cached_tracks: 400
+    wav:
+      max_cached_tracks: 50
+    aac:
+      max_cached_tracks: 400

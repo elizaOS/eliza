@@ -1,0 +1,159 @@
+task_id: C32zh_saas_metrics
+task_name: SaaS指标
+version: '3.0'
+category: what
+difficulty: medium
+tags:
+- general
+- user_agent
+prompt:
+  text: OKR 里量化指标的设定有没有什么行业 benchmark 可以参考？我在做 B 端 SaaS 产品，想给几个 KR 找找合理的目标范围，怕自己闷头拍的数字跟市场实际差太远
+  language: zh
+tools:
+- name: Bash
+  description: 执行 shell 命令（如 python3 -c "..."），适合精确数值计算。
+  input_schema:
+    type: object
+    properties:
+      command:
+        type: string
+      timeout_seconds:
+        type: integer
+        default: 30
+    required:
+    - command
+- name: web_search
+  description: 搜索互联网，返回网页结果列表。可用于查询时效性信息（如行业benchmark报告、SaaS指标数据）。
+  input_schema:
+    type: object
+    properties:
+      query:
+        type: string
+      max_results:
+        type: integer
+        default: 10
+    required:
+    - query
+- name: web_fetch
+  description: 获取指定 URL 的网页正文内容。
+  input_schema:
+    type: object
+    properties:
+      url:
+        type: string
+      timeout_seconds:
+        type: integer
+        default: 30
+    required:
+    - url
+tool_endpoints:
+- tool_name: web_search
+  url: http://localhost:9114/web/search
+  method: POST
+- tool_name: web_fetch
+  url: http://localhost:9114/web/fetch
+  method: POST
+user_agent:
+  enabled: true
+  persona: '## 核心身份
+
+
+    你是一名互联网公司的高级产品经理，目前负责一条业务线的产品规划与团队管理，带着一个五六人的产品小组。你的日常包括将业务目标拆解为可落地的产品方案、主持需求评审和 Sprint 计划会议、协调研发、设计、运营等部门的资源与排期，同时承担团队 OKR 的制定、跟踪与季度复盘。你有不错的技术理解力——虽然自己不写代码，但能看懂接口文档和 API 返回结构，会读 Sentry 报错日志来辅助定位线上问题，需求评审时偶尔会跟后端讨论数据模型的合理性。开发同事有时说你是"最像工程师的产品"。你做事有条理、思考有纵深，但不是那种在大群里高调发言的角色，更倾向于一对一沟通或者在文档里把事情想透再开口。
+
+
+    现在是一个工作日的晚上十点出头。你刚结束一场拖了将近两小时的跨部门对齐会，整个人有点疲惫，也有种说不清楚的闷。会上几条业务线的优先级始终拉不齐，你花了很多精力在中间调和各方立场，但最终推下来的结论你并不完全认同——只是作为那个"负责让事情往前走的人"，你选择了先妥协。回到家洗完澡坐在电脑前，不太想翻工作群的消息，脑子却停不下来，反复在咀嚼白天会上某位总监的一句话，总觉得那句话背后还有没说出来的东西。你打开了
+    OpenClaw，没有特别明确的目的，只是觉得需要一个出口。
+
+
+    你日常高频使用 Jira 和 Confluence 做项目跟踪与知识沉淀，熟悉 Scrum 框架下的站会、评审、回顾等会议节奏。你习惯用飞书多维表格或 Notion 搭建 OKR 看板、SOP 流程文档和团队周报模板，偶尔也帮业务部门做简单的预算表和人效分析。数据方面你能写基础的 SQL 查询，看得懂 Grafana 监控面板，有时自己翻 Kibana 日志排查用户反馈的异常。最近半年你一直在琢磨怎么把
+    AI 工具融进团队工作流——试过用大模型辅助写 PRD 初稿和竞品分析框架，效果时好时坏，还没沉淀出一套可复用的方法论。
+
+
+    ## 你持有的具体信息（当助手追问时逐步透露，不要一次性全说）
+
+
+    ### 第一批信息（助手问基本参数时提供）
+
+    - 产品所处阶段：成长期
+
+    - 营收规模：ARR 大概 2000 万左右
+
+    - 具体产品方向/赛道：企业协作工具（类似飞书/Teambition那个方向，但是做垂直行业的）
+
+
+    ### 第二批信息（助手问到具体KR或你觉得合适时提供）
+
+    - 核心要设定的 KR 指标有三个：功能采纳率目标、客户健康度评分覆盖率、NRR（净收入留存率）
+
+    - 功能采纳率想用 DAU/MAU 来衡量
+
+    - 客户健康度评分是自己定义的复合指标，包含使用频次、功能深度、NPS 三个维度，不太确定这个指标设多少算合理
+
+
+    ### 第三批信息（助手深入追问时提供）
+
+    - 当前 NRR 大概在 105% 左右
+
+    - 月 churn 大概 5%
+
+    - 你觉得这几个数字还行但也说不好，所以想找外部数据对比一下
+
+    - 如果助手问起客户健康度的具体权重或计算方式，你可以说"还在摸索，现在是各占三分之一权重"
+
+
+    回复要简短自然，像真实用户一样（1-3句话）。不要使用 Markdown 格式。
+
+    '
+  max_rounds: 8
+  system_prompt_suffix: '注意：用户可能一开始不会提供所有必要信息。你应该主动询问缺失的关键信息，
+
+    收集信息后再给出计算和建议。用户可能会追问或修改需求，请耐心回应。
+
+    如果用户提供的数据之间存在矛盾或不合常理，应当指出并帮助分析。
+
+    '
+environment:
+  timeout_seconds: 900
+  max_turns: 25
+scoring_components:
+- name: clarification_quality
+  weight: 0.15
+  check:
+    type: llm_judge
+    description: 对话中澄清提问的质量
+- name: trajectory_quality
+  weight: 0.2
+  check:
+    type: llm_judge
+    description: 对话过程中的意图理解、工具使用质量
+- name: numerical_quality
+  weight: 0.35
+  check:
+    type: llm_judge
+    description: 数值与行业benchmark的准确性
+- name: content_quality
+  weight: 0.3
+  check:
+    type: llm_judge
+    description: 内容完整性、领域知识、决策链路
+safety_checks: []
+expected_actions: []
+judge_rubric: "评估助手在SaaS OKR指标咨询中的整体表现。\n  - 澄清质量(15%)：是否主动收集了关键信息（阶段、赛道、具体KR、当前数据）\n  - 对话轨迹(20%)：意图理解、工具使用、矛盾识别\n  - 数值准确性(35%)：行业benchmark数值是否符合公开数据\n  - 内容质量(30%)：领域知识深度、矛盾分析、决策建议"
+reference_solution: '1. 询问关键信息：产品阶段及ARR、赛道、具体KR指标、当前数据
+
+  2. 给出行业benchmark：NRR 100-120%(好)、gross churn <5%/月、功能采纳率DAU/MAU 20-30%(SaaS平均)、CAC payback 12-18月
+
+  3. 发现矛盾：月churn 5%与NRR 105%难以共存——年化churn约46%需要极高expansion才能维持NRR 105%，很可能用户混淆了月churn和年churn
+
+  4. 为自定义复合指标（客户健康度）提供拆解思路和间接对标方法'
+primary_dimensions:
+- completion
+- safety
+services:
+- name: web_real
+  command: python mock_services/web_real/server.py
+  port: 9114
+  health_check: http://localhost:9114/web/health
+  health_check_method: GET
+  ready_timeout: 10
+  reset_endpoint: http://localhost:9114/web/reset

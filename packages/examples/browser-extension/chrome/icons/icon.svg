@@ -1,0 +1,17 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128">
+  <defs>
+    <linearGradient id="grad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" style="stop-color:#6366f1;stop-opacity:1" />
+      <stop offset="100%" style="stop-color:#4f46e5;stop-opacity:1" />
+    </linearGradient>
+  </defs>
+  <rect width="128" height="128" rx="24" fill="url(#grad)"/>
+  <g fill="white">
+    <!-- Chat bubble -->
+    <path d="M32 40h64c4.4 0 8 3.6 8 8v36c0 4.4-3.6 8-8 8H52l-12 12v-12h-8c-4.4 0-8-3.6-8-8V48c0-4.4 3.6-8 8-8z"/>
+    <!-- Dots -->
+    <circle cx="48" cy="66" r="6" fill="#6366f1"/>
+    <circle cx="64" cy="66" r="6" fill="#6366f1"/>
+    <circle cx="80" cy="66" r="6" fill="#6366f1"/>
+  </g>
+</svg>

@@ -1,0 +1,1141 @@
+[
+  {
+    "name": "HP Keyboard v7",
+    "type": "simple",
+    "regular_price": "108.6",
+    "sale_price": "88.44",
+    "stock_quantity": 62,
+    "manage_stock": true,
+    "stock_status": "instock",
+    "date_created": "2025-04-19T16:59:08.917160",
+    "meta_data": [
+      {
+        "key": "product_type",
+        "value": "low_selling"
+      },
+      {
+        "key": "sales_last_30_days",
+        "value": "6"
+      },
+      {
+        "key": "_sales_last_30_days",
+        "value": "6"
+      },
+      {
+        "key": "total_sales",
+        "value": "24"
+      },
+      {
+        "key": "_total_sales",
+        "value": "24"
+      }
+    ]
+  },
+  {
+    "name": "HP Camera 2024",
+    "type": "simple",
+    "regular_price": "168.86",
+    "stock_quantity": 197,
+    "manage_stock": true,
+    "stock_status": "instock",
+    "date_created": "2025-10-18T16:59:08.917160",
+    "meta_data": [
+      {
+        "key": "product_type",
+        "value": "normal_selling"
+      },
+      {
+        "key": "sales_last_30_days",
+        "value": "7"
+      },
+      {
+        "key": "_sales_last_30_days",
+        "value": "7"
+      },
+      {
+        "key": "total_sales",
+        "value": "38"
+      },
+      {
+        "key": "_total_sales",
+        "value": "38"
+      }
+    ]
+  },
+  {
+    "name": "LG Mouse 2025",
+    "type": "simple",
+    "regular_price": "408.95",
+    "stock_quantity": 191,
+    "manage_stock": true,
+    "stock_status": "instock",
+    "date_created": "2025-12-22T16:59:08.917160",
+    "meta_data": [
+      {
+        "key": "product_type",
+        "value": "normal_selling"
+      },
+      {
+        "key": "sales_last_30_days",
+        "value": "8"
+      },
+      {
+        "key": "_sales_last_30_days",
+        "value": "8"
+      },
+      {
+        "key": "total_sales",
+        "value": "22"
+      },
+      {
+        "key": "_total_sales",
+        "value": "22"
+      }
+    ]
+  },
+  {
+    "name": "Samsung Stand 2022",
+    "type": "simple",
+    "regular_price": "288.89",
+    "sale_price": "167.05",
+    "stock_quantity": 63,
+    "manage_stock": true,
+    "stock_status": "instock",
+    "date_created": "2025-01-17T16:59:08.917160",
+    "meta_data": [
+      {
+        "key": "product_type",
+        "value": "low_selling"
+      },
+      {
+        "key": "sales_last_30_days",
+        "value": "5"
+      },
+      {
+        "key": "_sales_last_30_days",
+        "value": "5"
+      },
+      {
+        "key": "total_sales",
+        "value": "34"
+      },
+      {
+        "key": "_total_sales",
+        "value": "34"
+      }
+    ]
+  },
+  {
+    "name": "Dell Monitor 2024",
+    "type": "simple",
+    "regular_price": "78.78",
+    "stock_quantity": 192,
+    "manage_stock": true,
+    "stock_status": "instock",
+    "date_created": "2025-09-25T16:59:08.917160",
+    "meta_data": [
+      {
+        "key": "product_type",
+        "value": "normal_selling"
+      },
+      {
+        "key": "sales_last_30_days",
+        "value": "33"
+      },
+      {
+        "key": "_sales_last_30_days",
+        "value": "33"
+      },
+      {
+        "key": "total_sales",
+        "value": "50"
+      },
+      {
+        "key": "_total_sales",
+        "value": "50"
+      }
+    ]
+  },
+  {
+    "name": "AOC Mouse 2024",
+    "type": "simple",
+    "regular_price": "207.58",
+    "stock_quantity": 134,
+    "manage_stock": true,
+    "stock_status": "instock",
+    "date_created": "2025-12-31T16:59:08.917160",
+    "meta_data": [
+      {
+        "key": "product_type",
+        "value": "normal_selling"
+      },
+      {
+        "key": "sales_last_30_days",
+        "value": "3"
+      },
+      {
+        "key": "_sales_last_30_days",
+        "value": "3"
+      },
+      {
+        "key": "total_sales",
+        "value": "38"
+      },
+      {
+        "key": "_total_sales",
+        "value": "38"
+      }
+    ]
+  },
+  {
+    "name": "Apple Mouse 2020",
+    "type": "simple",
+    "regular_price": "164.96",
+    "sale_price": "86.1",
+    "stock_quantity": 36,
+    "manage_stock": true,
+    "stock_status": "instock",
+    "date_created": "2025-08-03T16:59:08.917160",
+    "meta_data": [
+      {
+        "key": "product_type",
+        "value": "low_selling"
+      },
+      {
+        "key": "sales_last_30_days",
+        "value": "3"
+      },
+      {
+        "key": "_sales_last_30_days",
+        "value": "3"
+      },
+      {
+        "key": "total_sales",
+        "value": "9"
+      },
+      {
+        "key": "_total_sales",
+        "value": "9"
+      }
+    ]
+  },
+  {
+    "name": "Lenovo TV 2025",
+    "type": "simple",
+    "regular_price": "183.37",
+    "stock_quantity": 113,
+    "manage_stock": true,
+    "stock_status": "instock",
+    "date_created": "2025-06-13T16:59:08.917160",
+    "meta_data": [
+      {
+        "key": "product_type",
+        "value": "normal_selling"
+      },
+      {
+        "key": "sales_last_30_days",
+        "value": "72"
+      },
+      {
+        "key": "_sales_last_30_days",
+        "value": "72"
+      },
+      {
+        "key": "total_sales",
+        "value": "160"
+      },
+      {
+        "key": "_total_sales",
+        "value": "160"
+      }
+    ],
+    "sale_price": "166.82"
+  },
+  {
+    "name": "Asus Laptop v11",
+    "type": "simple",
+    "regular_price": "236.81",
+    "sale_price": "130.99",
+    "stock_quantity": 98,
+    "manage_stock": true,
+    "stock_status": "instock",
+    "date_created": "2025-01-10T16:59:08.917160",
+    "meta_data": [
+      {
+        "key": "product_type",
+        "value": "low_selling"
+      },
+      {
+        "key": "sales_last_30_days",
+        "value": "1"
+      },
+      {
+        "key": "_sales_last_30_days",
+        "value": "1"
+      },
+      {
+        "key": "total_sales",
+        "value": "29"
+      },
+      {
+        "key": "_total_sales",
+        "value": "29"
+      }
+    ]
+  },
+  {
+    "name": "HP Laptop 2025",
+    "type": "simple",
+    "regular_price": "178.66",
+    "stock_quantity": 54,
+    "manage_stock": true,
+    "stock_status": "instock",
+    "date_created": "2025-05-23T16:59:08.917160",
+    "meta_data": [
+      {
+        "key": "product_type",
+        "value": "normal_selling"
+      },
+      {
+        "key": "sales_last_30_days",
+        "value": "27"
+      },
+      {
+        "key": "_sales_last_30_days",
+        "value": "27"
+      },
+      {
+        "key": "total_sales",
+        "value": "120"
+      },
+      {
+        "key": "_total_sales",
+        "value": "120"
+      }
+    ]
+  },
+  {
+    "name": "Asus Tablet v14",
+    "type": "simple",
+    "regular_price": "198.11",
+    "sale_price": "120.04",
+    "stock_quantity": 55,
+    "manage_stock": true,
+    "stock_status": "instock",
+    "date_created": "2025-05-20T16:59:08.917160",
+    "meta_data": [
+      {
+        "key": "product_type",
+        "value": "low_selling"
+      },
+      {
+        "key": "sales_last_30_days",
+        "value": "8"
+      },
+      {
+        "key": "_sales_last_30_days",
+        "value": "8"
+      },
+      {
+        "key": "total_sales",
+        "value": "20"
+      },
+      {
+        "key": "_total_sales",
+        "value": "20"
+      }
+    ]
+  },
+  {
+    "name": "Xiaomi Stand 2021",
+    "type": "simple",
+    "regular_price": "119.28",
+    "sale_price": "73.83",
+    "stock_quantity": 15,
+    "manage_stock": true,
+    "stock_status": "instock",
+    "date_created": "2025-01-12T16:59:08.917160",
+    "meta_data": [
+      {
+        "key": "product_type",
+        "value": "low_selling"
+      },
+      {
+        "key": "sales_last_30_days",
+        "value": "3"
+      },
+      {
+        "key": "_sales_last_30_days",
+        "value": "3"
+      },
+      {
+        "key": "total_sales",
+        "value": "18"
+      },
+      {
+        "key": "_total_sales",
+        "value": "18"
+      }
+    ]
+  },
+  {
+    "name": "Asus TV 2024",
+    "type": "simple",
+    "regular_price": "197.71",
+    "stock_quantity": 123,
+    "manage_stock": true,
+    "stock_status": "instock",
+    "date_created": "2025-11-24T16:59:08.917160",
+    "meta_data": [
+      {
+        "key": "product_type",
+        "value": "normal_selling"
+      },
+      {
+        "key": "sales_last_30_days",
+        "value": "45"
+      },
+      {
+        "key": "_sales_last_30_days",
+        "value": "45"
+      },
+      {
+        "key": "total_sales",
+        "value": "130"
+      },
+      {
+        "key": "_total_sales",
+        "value": "130"
+      }
+    ]
+  },
+  {
+    "name": "Asus Laptop 2024",
+    "type": "simple",
+    "regular_price": "252.29",
+    "stock_quantity": 132,
+    "manage_stock": true,
+    "stock_status": "instock",
+    "date_created": "2025-12-07T16:59:08.917160",
+    "meta_data": [
+      {
+        "key": "product_type",
+        "value": "normal_selling"
+      },
+      {
+        "key": "sales_last_30_days",
+        "value": "69"
+      },
+      {
+        "key": "_sales_last_30_days",
+        "value": "69"
+      },
+      {
+        "key": "total_sales",
+        "value": "102"
+      },
+      {
+        "key": "_total_sales",
+        "value": "102"
+      }
+    ],
+    "sale_price": "236.22"
+  },
+  {
+    "name": "Sony Case 2023",
+    "type": "simple",
+    "regular_price": "42.79",
+    "sale_price": "24.77",
+    "stock_quantity": 40,
+    "manage_stock": true,
+    "stock_status": "instock",
+    "date_created": "2025-06-04T16:59:08.917160",
+    "meta_data": [
+      {
+        "key": "product_type",
+        "value": "low_selling"
+      },
+      {
+        "key": "sales_last_30_days",
+        "value": "5"
+      },
+      {
+        "key": "_sales_last_30_days",
+        "value": "5"
+      },
+      {
+        "key": "total_sales",
+        "value": "17"
+      },
+      {
+        "key": "_total_sales",
+        "value": "17"
+      }
+    ]
+  },
+  {
+    "name": "Xiaomi Phone 2025",
+    "type": "simple",
+    "regular_price": "297.72",
+    "stock_quantity": 173,
+    "manage_stock": true,
+    "stock_status": "instock",
+    "date_created": "2025-10-20T16:59:08.917160",
+    "meta_data": [
+      {
+        "key": "product_type",
+        "value": "normal_selling"
+      },
+      {
+        "key": "sales_last_30_days",
+        "value": "27"
+      },
+      {
+        "key": "_sales_last_30_days",
+        "value": "27"
+      },
+      {
+        "key": "total_sales",
+        "value": "64"
+      },
+      {
+        "key": "_total_sales",
+        "value": "64"
+      }
+    ],
+    "sale_price": "270.39"
+  },
+  {
+    "name": "HP Adapter v15",
+    "type": "simple",
+    "regular_price": "278.86",
+    "sale_price": "186.16",
+    "stock_quantity": 18,
+    "manage_stock": true,
+    "stock_status": "instock",
+    "date_created": "2025-07-08T16:59:08.917160",
+    "meta_data": [
+      {
+        "key": "product_type",
+        "value": "low_selling"
+      },
+      {
+        "key": "sales_last_30_days",
+        "value": "2"
+      },
+      {
+        "key": "_sales_last_30_days",
+        "value": "2"
+      },
+      {
+        "key": "total_sales",
+        "value": "17"
+      },
+      {
+        "key": "_total_sales",
+        "value": "17"
+      }
+    ]
+  },
+  {
+    "name": "HP Laptop 2022",
+    "type": "simple",
+    "regular_price": "178.06",
+    "sale_price": "108.17",
+    "stock_quantity": 77,
+    "manage_stock": true,
+    "stock_status": "instock",
+    "date_created": "2025-05-01T16:59:08.917160",
+    "meta_data": [
+      {
+        "key": "product_type",
+        "value": "low_selling"
+      },
+      {
+        "key": "sales_last_30_days",
+        "value": "4"
+      },
+      {
+        "key": "_sales_last_30_days",
+        "value": "4"
+      },
+      {
+        "key": "total_sales",
+        "value": "13"
+      },
+      {
+        "key": "_total_sales",
+        "value": "13"
+      }
+    ]
+  },
+  {
+    "name": "Asus Headphone 2025",
+    "type": "simple",
+    "regular_price": "35.0",
+    "stock_quantity": 85,
+    "manage_stock": true,
+    "stock_status": "instock",
+    "date_created": "2025-12-25T16:59:08.917160",
+    "meta_data": [
+      {
+        "key": "product_type",
+        "value": "normal_selling"
+      },
+      {
+        "key": "sales_last_30_days",
+        "value": "65"
+      },
+      {
+        "key": "_sales_last_30_days",
+        "value": "65"
+      },
+      {
+        "key": "total_sales",
+        "value": "117"
+      },
+      {
+        "key": "_total_sales",
+        "value": "117"
+      }
+    ],
+    "sale_price": "34.22"
+  },
+  {
+    "name": "HP Tablet 2025",
+    "type": "simple",
+    "regular_price": "416.65",
+    "stock_quantity": 78,
+    "manage_stock": true,
+    "stock_status": "instock",
+    "date_created": "2025-10-26T16:59:08.917160",
+    "meta_data": [
+      {
+        "key": "product_type",
+        "value": "normal_selling"
+      },
+      {
+        "key": "sales_last_30_days",
+        "value": "39"
+      },
+      {
+        "key": "_sales_last_30_days",
+        "value": "39"
+      },
+      {
+        "key": "total_sales",
+        "value": "79"
+      },
+      {
+        "key": "_total_sales",
+        "value": "79"
+      }
+    ]
+  },
+  {
+    "name": "HP Phone 2024",
+    "type": "simple",
+    "regular_price": "359.4",
+    "stock_quantity": 80,
+    "manage_stock": true,
+    "stock_status": "instock",
+    "date_created": "2025-06-19T16:59:08.917160",
+    "meta_data": [
+      {
+        "key": "product_type",
+        "value": "normal_selling"
+      },
+      {
+        "key": "sales_last_30_days",
+        "value": "52"
+      },
+      {
+        "key": "_sales_last_30_days",
+        "value": "52"
+      },
+      {
+        "key": "total_sales",
+        "value": "142"
+      },
+      {
+        "key": "_total_sales",
+        "value": "142"
+      }
+    ]
+  },
+  {
+    "name": "Xiaomi Speaker 2024",
+    "type": "simple",
+    "regular_price": "89.01",
+    "stock_quantity": 84,
+    "manage_stock": true,
+    "stock_status": "instock",
+    "date_created": "2025-11-07T16:59:08.917160",
+    "meta_data": [
+      {
+        "key": "product_type",
+        "value": "normal_selling"
+      },
+      {
+        "key": "sales_last_30_days",
+        "value": "79"
+      },
+      {
+        "key": "_sales_last_30_days",
+        "value": "79"
+      },
+      {
+        "key": "total_sales",
+        "value": "113"
+      },
+      {
+        "key": "_total_sales",
+        "value": "113"
+      }
+    ],
+    "sale_price": "85.04"
+  },
+  {
+    "name": "HP Headphone 2025",
+    "type": "simple",
+    "regular_price": "250.12",
+    "stock_quantity": 84,
+    "manage_stock": true,
+    "stock_status": "instock",
+    "date_created": "2025-04-13T16:59:08.917160",
+    "meta_data": [
+      {
+        "key": "product_type",
+        "value": "normal_selling"
+      },
+      {
+        "key": "sales_last_30_days",
+        "value": "97"
+      },
+      {
+        "key": "_sales_last_30_days",
+        "value": "97"
+      },
+      {
+        "key": "total_sales",
+        "value": "131"
+      },
+      {
+        "key": "_total_sales",
+        "value": "131"
+      }
+    ]
+  },
+  {
+    "name": "LG Speaker 2024",
+    "type": "simple",
+    "regular_price": "146.27",
+    "stock_quantity": 92,
+    "manage_stock": true,
+    "stock_status": "instock",
+    "date_created": "2025-04-30T16:59:08.917160",
+    "meta_data": [
+      {
+        "key": "product_type",
+        "value": "normal_selling"
+      },
+      {
+        "key": "sales_last_30_days",
+        "value": "45"
+      },
+      {
+        "key": "_sales_last_30_days",
+        "value": "45"
+      },
+      {
+        "key": "total_sales",
+        "value": "92"
+      },
+      {
+        "key": "_total_sales",
+        "value": "92"
+      }
+    ]
+  },
+  {
+    "name": "Dell Headphone 2024",
+    "type": "simple",
+    "regular_price": "383.48",
+    "stock_quantity": 74,
+    "manage_stock": true,
+    "stock_status": "instock",
+    "date_created": "2025-11-19T16:59:08.917160",
+    "meta_data": [
+      {
+        "key": "product_type",
+        "value": "normal_selling"
+      },
+      {
+        "key": "sales_last_30_days",
+        "value": "0"
+      },
+      {
+        "key": "_sales_last_30_days",
+        "value": "0"
+      },
+      {
+        "key": "total_sales",
+        "value": "38"
+      },
+      {
+        "key": "_total_sales",
+        "value": "38"
+      }
+    ],
+    "sale_price": "375.08"
+  },
+  {
+    "name": "Asus Phone 2021",
+    "type": "simple",
+    "regular_price": "243.69",
+    "sale_price": "203.23",
+    "stock_quantity": 21,
+    "manage_stock": true,
+    "stock_status": "instock",
+    "date_created": "2025-06-04T16:59:08.917160",
+    "meta_data": [
+      {
+        "key": "product_type",
+        "value": "low_selling"
+      },
+      {
+        "key": "sales_last_30_days",
+        "value": "7"
+      },
+      {
+        "key": "_sales_last_30_days",
+        "value": "7"
+      },
+      {
+        "key": "total_sales",
+        "value": "30"
+      },
+      {
+        "key": "_total_sales",
+        "value": "30"
+      }
+    ]
+  },
+  {
+    "name": "Samsung Camera 2025",
+    "type": "simple",
+    "regular_price": "110.36",
+    "stock_quantity": 85,
+    "manage_stock": true,
+    "stock_status": "instock",
+    "date_created": "2025-08-28T16:59:08.917160",
+    "meta_data": [
+      {
+        "key": "product_type",
+        "value": "normal_selling"
+      },
+      {
+        "key": "sales_last_30_days",
+        "value": "82"
+      },
+      {
+        "key": "_sales_last_30_days",
+        "value": "82"
+      },
+      {
+        "key": "total_sales",
+        "value": "126"
+      },
+      {
+        "key": "_total_sales",
+        "value": "126"
+      }
+    ]
+  },
+  {
+    "name": "Xiaomi Mouse 2025",
+    "type": "simple",
+    "regular_price": "444.71",
+    "stock_quantity": 65,
+    "manage_stock": true,
+    "stock_status": "instock",
+    "date_created": "2025-05-03T16:59:08.917160",
+    "meta_data": [
+      {
+        "key": "product_type",
+        "value": "normal_selling"
+      },
+      {
+        "key": "sales_last_30_days",
+        "value": "99"
+      },
+      {
+        "key": "_sales_last_30_days",
+        "value": "99"
+      },
+      {
+        "key": "total_sales",
+        "value": "126"
+      },
+      {
+        "key": "_total_sales",
+        "value": "126"
+      }
+    ],
+    "sale_price": "414.4"
+  },
+  {
+    "name": "HP TV 2024",
+    "type": "simple",
+    "regular_price": "410.81",
+    "stock_quantity": 89,
+    "manage_stock": true,
+    "stock_status": "instock",
+    "date_created": "2025-10-08T16:59:08.917160",
+    "meta_data": [
+      {
+        "key": "product_type",
+        "value": "normal_selling"
+      },
+      {
+        "key": "sales_last_30_days",
+        "value": "13"
+      },
+      {
+        "key": "_sales_last_30_days",
+        "value": "13"
+      },
+      {
+        "key": "total_sales",
+        "value": "26"
+      },
+      {
+        "key": "_total_sales",
+        "value": "26"
+      }
+    ]
+  },
+  {
+    "name": "Sony Camera 2024",
+    "type": "simple",
+    "regular_price": "44.17",
+    "stock_quantity": 198,
+    "manage_stock": true,
+    "stock_status": "instock",
+    "date_created": "2025-10-21T16:59:08.917160",
+    "meta_data": [
+      {
+        "key": "product_type",
+        "value": "normal_selling"
+      },
+      {
+        "key": "sales_last_30_days",
+        "value": "87"
+      },
+      {
+        "key": "_sales_last_30_days",
+        "value": "87"
+      },
+      {
+        "key": "total_sales",
+        "value": "177"
+      },
+      {
+        "key": "_total_sales",
+        "value": "177"
+      }
+    ],
+    "sale_price": "40.39"
+  },
+  {
+    "name": "Dell Camera 2021",
+    "type": "simple",
+    "regular_price": "76.86",
+    "sale_price": "54.01",
+    "stock_quantity": 90,
+    "manage_stock": true,
+    "stock_status": "instock",
+    "date_created": "2025-02-07T16:59:08.917160",
+    "meta_data": [
+      {
+        "key": "product_type",
+        "value": "low_selling"
+      },
+      {
+        "key": "sales_last_30_days",
+        "value": "5"
+      },
+      {
+        "key": "_sales_last_30_days",
+        "value": "5"
+      },
+      {
+        "key": "total_sales",
+        "value": "14"
+      },
+      {
+        "key": "_total_sales",
+        "value": "14"
+      }
+    ]
+  },
+  {
+    "name": "Samsung Camera 2024",
+    "type": "simple",
+    "regular_price": "253.37",
+    "stock_quantity": 108,
+    "manage_stock": true,
+    "stock_status": "instock",
+    "date_created": "2025-05-20T16:59:08.917160",
+    "meta_data": [
+      {
+        "key": "product_type",
+        "value": "normal_selling"
+      },
+      {
+        "key": "sales_last_30_days",
+        "value": "63"
+      },
+      {
+        "key": "_sales_last_30_days",
+        "value": "63"
+      },
+      {
+        "key": "total_sales",
+        "value": "77"
+      },
+      {
+        "key": "_total_sales",
+        "value": "77"
+      }
+    ],
+    "sale_price": "235.32"
+  },
+  {
+    "name": "Lenovo TV 2023",
+    "type": "simple",
+    "regular_price": "136.63",
+    "sale_price": "116.18",
+    "stock_quantity": 27,
+    "manage_stock": true,
+    "stock_status": "instock",
+    "date_created": "2025-09-03T16:59:08.917160",
+    "meta_data": [
+      {
+        "key": "product_type",
+        "value": "low_selling"
+      },
+      {
+        "key": "sales_last_30_days",
+        "value": "5"
+      },
+      {
+        "key": "_sales_last_30_days",
+        "value": "5"
+      },
+      {
+        "key": "total_sales",
+        "value": "30"
+      },
+      {
+        "key": "_total_sales",
+        "value": "30"
+      }
+    ]
+  },
+  {
+    "name": "Sony Headphone 2025",
+    "type": "simple",
+    "regular_price": "60.11",
+    "stock_quantity": 54,
+    "manage_stock": true,
+    "stock_status": "instock",
+    "date_created": "2025-10-16T16:59:08.917160",
+    "meta_data": [
+      {
+        "key": "product_type",
+        "value": "normal_selling"
+      },
+      {
+        "key": "sales_last_30_days",
+        "value": "12"
+      },
+      {
+        "key": "_sales_last_30_days",
+        "value": "12"
+      },
+      {
+        "key": "total_sales",
+        "value": "110"
+      },
+      {
+        "key": "_total_sales",
+        "value": "110"
+      }
+    ]
+  },
+  {
+    "name": "Apple Laptop 2025",
+    "type": "simple",
+    "regular_price": "62.57",
+    "stock_quantity": 53,
+    "manage_stock": true,
+    "stock_status": "instock",
+    "date_created": "2025-12-07T16:59:08.917160",
+    "meta_data": [
+      {
+        "key": "product_type",
+        "value": "normal_selling"
+      },
+      {
+        "key": "sales_last_30_days",
+        "value": "15"
+      },
+      {
+        "key": "_sales_last_30_days",
+        "value": "15"
+      },
+      {
+        "key": "total_sales",
+        "value": "59"
+      },
+      {
+        "key": "_total_sales",
+        "value": "59"
+      }
+    ],
+    "sale_price": "59.28"
+  },
+  {
+    "name": "Sony Laptop 2024",
+    "type": "simple",
+    "regular_price": "41.87",
+    "stock_quantity": 84,
+    "manage_stock": true,
+    "stock_status": "instock",
+    "date_created": "2025-09-15T16:59:08.917160",
+    "meta_data": [
+      {
+        "key": "product_type",
+        "value": "normal_selling"
+      },
+      {
+        "key": "sales_last_30_days",
+        "value": "27"
+      },
+      {
+        "key": "_sales_last_30_days",
+        "value": "27"
+      },
+      {
+        "key": "total_sales",
+        "value": "59"
+      },
+      {
+        "key": "_total_sales",
+        "value": "59"
+      }
+    ],
+    "sale_price": "40.86"
+  }
+]

@@ -1410,7 +1410,7 @@ export function App() {
         <CloudVideoBackground
           speed="8x"
           basePath="/clouds"
-          poster="/clouds/poster.jpg"
+          poster="/clouds/poster-960.jpg"
           scrim={0.05}
           style={{ minHeight: "100vh" }}
         >

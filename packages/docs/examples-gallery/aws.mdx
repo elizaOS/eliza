@@ -1,0 +1,87 @@
+---
+title: "AWS Examples"
+description: "Deploy elizaOS to AWS Lambda with API Gateway"
+---
+
+Deploy AI agents as serverless AWS Lambda functions (TypeScript).
+
+## Quick Start
+
+```bash
+cd examples/aws
+export OPENAI_API_KEY="your-key"
+bun install
+sam build
+sam deploy --guided --parameter-overrides OpenAIApiKey=$OPENAI_API_KEY
+```
+
+## Architecture
+
+```
+┌──────────────┐     ┌─────────────────┐     ┌────────────────┐
+│  Client      │────▶│  API Gateway    │────▶│  Lambda        │
+│              │◀────│  (HTTP API)     │◀────│  (elizaOS)     │
+└──────────────┘     └─────────────────┘     └────────────────┘
+```
+
+## Implementation
+
+| Language   | Location            | Runtime    |
+| ---------- | ------------------- | ---------- |
+| TypeScript | `examples/aws/`     | Node.js 20 |
+
+## TypeScript Handler
+
+```typescript
+import { APIGatewayProxyHandler } from "aws-lambda";
+import { AgentRuntime } from "@elizaos/core";
+import { openaiPlugin } from "@elizaos/plugin-openai";
+
+let runtime: AgentRuntime | null = null;
+
+export const handler: APIGatewayProxyHandler = async (event) => {
+  if (!runtime) {
+    runtime = new AgentRuntime({
+      character: { name: "Eliza", bio: "A helpful AI." },
+      plugins: [openaiPlugin],
+    });
+    await runtime.initialize();
+  }
+
+  const { message } = JSON.parse(event.body || "{}");
+  const response = await runtime.useModel("TEXT_LARGE", { prompt: message });
+
+  return {
+    statusCode: 200,
+    body: JSON.stringify({ response: String(response) }),
+  };
+};
+```
+
+## Testing Locally
+
+```bash
+cd examples/aws
+bun install
+bun run start # Local HTTP server
+curl -X POST http://localhost:3000/chat \
+  -H "Content-Type: application/json" \
+  -d '{"message": "Hello!"}'
+```
+
+## Configuration
+
+| Variable         | Default       | Description    |
+| ---------------- | ------------- | -------------- |
+| `OPENAI_API_KEY` | Required      | OpenAI API key |
+| `CHARACTER_NAME` | Eliza         | Agent name     |
+| `CHARACTER_BIO`  | A helpful AI. | Agent bio      |
+| `LOG_LEVEL`      | INFO          | Logging level  |
+
+## Cost Estimate
+
+512MB memory, 2s average duration, 10K requests/month:
+
+- Requests: $0.002
+- Duration: $0.17
+- **Total: ~$0.20/month**

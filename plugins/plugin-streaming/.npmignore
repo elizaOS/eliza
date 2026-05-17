@@ -1,0 +1,10 @@
+src/
+__tests__/
+test/
+*.test.ts
+tsconfig*.json
+tsup.config.ts
+eslint.config.js
+vitest.config.ts
+.turbo/
+node_modules/

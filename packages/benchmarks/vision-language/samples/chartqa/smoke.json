@@ -1,0 +1,40 @@
+{
+  "_note": "Mini ChartQA smoke fixtures. Synthesised in-house from public-domain bar/line/pie charts; no upstream pixels checked in. Mix of numeric (relaxed ±5%) and categorical answers.",
+  "samples": [
+    {
+      "id": "smoke-chartqa-0001",
+      "imagePath": "samples/_placeholder.png",
+      "question": "What is the value for Q3?",
+      "answers": ["42"],
+      "answerType": "numeric"
+    },
+    {
+      "id": "smoke-chartqa-0002",
+      "imagePath": "samples/_placeholder.png",
+      "question": "Which category has the highest bar?",
+      "answers": ["Sales"],
+      "answerType": "categorical"
+    },
+    {
+      "id": "smoke-chartqa-0003",
+      "imagePath": "samples/_placeholder.png",
+      "question": "What percentage does the blue slice represent?",
+      "answers": ["35%", "35"],
+      "answerType": "numeric"
+    },
+    {
+      "id": "smoke-chartqa-0004",
+      "imagePath": "samples/_placeholder.png",
+      "question": "Between 2018 and 2020, did revenue increase or decrease?",
+      "answers": ["increase", "increased"],
+      "answerType": "categorical"
+    },
+    {
+      "id": "smoke-chartqa-0005",
+      "imagePath": "samples/_placeholder.png",
+      "question": "What is the difference between the highest and lowest bar?",
+      "answers": ["18"],
+      "answerType": "numeric"
+    }
+  ]
+}

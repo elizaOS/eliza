@@ -1,0 +1,38 @@
+{
+  "model": "text-embedding-3-large",
+  "dimensions": 512,
+  "total_skills": 47143,
+  "sample_size": 10000,
+  "deduplication": {
+    "0.95": {
+      "unique_count": 9618,
+      "duplicates": 382,
+      "clusters": 251
+    },
+    "0.90": {
+      "unique_count": 9493,
+      "duplicates": 507,
+      "clusters": 327
+    },
+    "0.85": {
+      "unique_count": 9287,
+      "duplicates": 713,
+      "clusters": 444
+    },
+    "0.80": {
+      "unique_count": 8814,
+      "duplicates": 1186,
+      "clusters": 693
+    }
+  },
+  "estimates": {
+    "0.90": {
+      "dup_rate": 0.0507,
+      "estimated_unique": 44753
+    },
+    "0.85": {
+      "dup_rate": 0.0713,
+      "estimated_unique": 43782
+    }
+  }
+}

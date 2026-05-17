@@ -1,0 +1,310 @@
+---
+title: Deployment Guide
+sidebarTitle: Deployment
+description: Deploy Eliza using Docker, Docker Compose, or cloud containers. Covers environment variables, port configuration, volumes, and security hardening.
+---
+
+Eliza supports multiple deployment strategies: standalone Docker containers, Docker Compose orchestration, and cloud-managed containers for Eliza Cloud (AWS ECS).
+
+<Warning>
+The Docker deployment files referenced below (`deploy/Dockerfile`, `docker-setup.sh`) live in the `eliza/` submodule. You must initialize it first with `bun run setup:upstreams` or `git submodule update --init --recursive` before following these instructions. The `deploy/` directory in the repo root contains only `Dockerfile.ci` (CI-specific image for pre-built artifacts) and supporting config files.
+</Warning>
+
+## Quick Start with Docker Compose
+
+The fastest way to deploy Eliza is using the included setup script, which builds the image, generates authentication tokens, runs interactive onboarding, and starts the gateway.
+
+<Note>
+The Docker deployment files live in the upstream elizaOS toolkit. Initialize the submodule first:
+```bash
+bun run setup:upstreams
+```
+</Note>
+
+```bash
+cd deploy
+bash ../eliza/packages/app-core/deploy/docker-setup.sh
+```
+
+Eliza-specific overrides (image name, ports, state paths) are in `deploy/deploy.env` and automatically merged with the upstream defaults.
+
+The setup script performs the following steps:
+
+1. Builds the Docker image (`eliza:local` by default)
+2. Generates a random gateway token (via `openssl rand -hex 32`, or Python `secrets.token_hex(32)` as fallback)
+3. Writes environment variables to `deploy/.env`
+4. Runs interactive setup (`eliza-cli setup`)
+5. Starts the gateway service in detached mode
+
+<Warning>
+The setup script requires Docker and Docker Compose to be installed. It will exit with an error if either is missing.
+</Warning>
+
+## Docker Image
+
+### CI Dockerfile
+
+The primary Dockerfile (`eliza/packages/app-core/deploy/Dockerfile`) builds a production image from source:
+
+```dockerfile
+FROM node:22-slim AS pruner
+WORKDIR /app
+COPY . .
+# Replace workspace symlinks with actual compiled packages
+# (bun workspace symlinks break in Docker)
+# ... pruning and patching steps ...
+
+FROM node:22-slim
+# Install runtime dependencies
+RUN apt-get update && apt-get install -y --no-install-recommends \
+  ca-certificates curl ffmpeg libopus-dev \
+  && rm -rf /var/lib/apt/lists/*
+WORKDIR /app
+COPY --from=pruner /app /app
+
+ENV NODE_ENV=production
+EXPOSE ${APP_PORT}
+
+HEALTHCHECK --interval=30s --timeout=10s --start-period=120s --retries=3 \
+  CMD sh -lc 'port="${PORT:-${APP_PORT:-${ELIZA_PORT:-2138}}}"; ...'
+
+ENTRYPOINT ["sh", "./eliza/packages/app-core/scripts/docker-entrypoint.sh"]
+CMD ["sh", "-lc", "exec ${APP_CMD_START:-node --import ./node_modules/tsx/dist/loader.mjs ${APP_ENTRYPOINT} start}"]
+```
+
+Key characteristics:
+
+- **Base**: Node.js 22 slim on Debian Bookworm
+- **Multi-stage build**: Pruner stage replaces workspace symlinks and stubs heavy native deps
+- **Security**: Health check on the API port
+- **Network**: Bind address configurable via `APP_API_BIND` build arg (default `127.0.0.1`)
+- **Entrypoint**: Uses `tsx` to run the app entrypoint with TypeScript support
+
+## Running the CI Image
+
+The CI image is built by the GitHub Actions release pipeline. To run it locally after building:
+
+```bash
+docker build \
+  --build-arg ELIZA_DOCKER_APT_PACKAGES="ffmpeg imagemagick" \
+  -t eliza:local \
+  -f eliza/packages/app-core/deploy/Dockerfile \
+  .
+```
+
+### Volumes
+
+Mount persistent state to survive container restarts:
+
+| Volume Mount | Container Path | Purpose |
+|-------------|---------------|---------|
+| `~/.eliza` | `/root/.eliza` | Configuration files (`eliza.json`), database, secrets |
+| `~/.eliza/workspace` | `/root/.eliza/workspace` | Agent workspace files, uploaded knowledge, generated content |
+
+## Ports
+
+| Port | Service | Default | Environment Variable | Notes |
+|------|---------|---------|---------------------|-------|
+| 2138 | API Server + Dashboard UI | Always exposed inside container | `ELIZA_PORT` | Production default; `ELIZA_API_PORT` (31337) is the dev-mode default |
+| 18789 | Gateway (WebSocket + HTTP) | Host-mapped | `ELIZA_GATEWAY_PORT` | Multiplexed WebSocket + HTTP with optional TLS |
+| 18790 | Bridge (inter-service communication) | Host-mapped | `ELIZA_BRIDGE_PORT` | Inter-container communication (WeChat webhook, etc.) |
+
+## Environment Variables
+
+### Required
+
+| Variable | Description |
+|----------|-------------|
+| `ELIZA_API_TOKEN` | Token-based auth for the API server. Set in production. |
+
+### Optional
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `ELIZA_API_BIND` | `127.0.0.1` | API server bind address (set to `0.0.0.0` for container networking) |
+| `ELIZA_ALLOWED_ORIGINS` | (none) | CORS allowed origins for the API server |
+| `ELIZA_GATEWAY_PORT` | `18789` | Gateway port |
+| `ELIZA_GATEWAY_BIND` | `lan` | Gateway bind mode (`lan`, `localhost`, `0.0.0.0`) |
+
+### AI Provider Keys
+
+Pass your AI provider API keys as environment variables:
+
+```bash
+ANTHROPIC_API_KEY=sk-ant-...
+OPENAI_API_KEY=sk-...
+ELIZAOS_CLOUD_API_KEY=eliza_xxx
+```
+
+## Cloud Agent Deployment
+
+### Eliza Cloud (AWS ECS)
+
+The `Dockerfile.cloud-agent` (in the elizaOS submodule deploy directory) builds a slim container for deploying agents to Eliza Cloud:
+
+```dockerfile
+FROM node:22-bookworm-slim
+
+RUN apt-get update && \
+    apt-get install -y --no-install-recommends \
+      curl ca-certificates && \
+    apt-get clean && rm -rf /var/lib/apt/lists/*
+
+WORKDIR /app
+
+COPY deploy/cloud-agent-entrypoint.ts ./entrypoint.ts
+RUN npm install -g tsx@4
+
+ENV NODE_ENV=production
+ENV PORT=2138
+ENV BRIDGE_PORT=18790
+
+HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 \
+  CMD curl -f http://localhost:${PORT}/health || exit 1
+
+EXPOSE ${PORT}
+EXPOSE ${BRIDGE_PORT}
+
+RUN useradd -m agent
+USER agent
+
+CMD ["tsx", "entrypoint.ts"]
+```
+
+Key differences from the base Dockerfile:
+
+| Aspect | Base | Cloud Agent |
+|--------|------|-------------|
+| Base image | `node:22-bookworm` (full) | `node:22-bookworm-slim` |
+| Build step | Full source build with Bun | Single entrypoint file, run with `tsx` |
+| Health check | None | `curl` to `/health` every 30s |
+| User | `node` (existing) | `agent` (custom created) |
+| Ports | 2138 | 2138 + 18790 |
+
+#### Cloud Agent Environment Variables
+
+| Variable | Description |
+|----------|-------------|
+| `ELIZAOS_CLOUD_API_KEY` | Eliza Cloud inference API key |
+| `OPENAI_API_KEY` | OpenAI API key (BYOK mode) |
+| `ANTHROPIC_API_KEY` | Anthropic API key (BYOK mode) |
+| `SMALL_MODEL` | Model selection for small/fast tasks |
+| `LARGE_MODEL` | Model selection for large/complex tasks |
+| `PORT` | Health endpoint port (default: 2138) |
+| `BRIDGE_PORT` | Bridge HTTP port (default: 18790) |
+
+#### Build and Run
+
+```bash
+# Build the cloud agent image
+docker build -f eliza/packages/app-core/deploy/Dockerfile.cloud-agent -t elizaos/agent:latest .
+
+# Run with Eliza Cloud inference
+docker run -p 2138:2138 -p 18790:18790 \
+  -e ELIZAOS_CLOUD_API_KEY=eliza_xxx \
+  elizaos/agent:latest
+
+# Run with BYOK (Bring Your Own Key)
+docker run -p 2138:2138 -p 18790:18790 \
+  -e OPENAI_API_KEY=sk-xxx \
+  -e LARGE_MODEL=gpt-5 \
+  elizaos/agent:latest
+```
+
+## Sandbox Container
+
+The sandbox provides a lightweight execution environment for agent shell commands and code execution. It runs as a sidecar:
+
+```dockerfile
+FROM debian:bookworm-slim
+
+ENV DEBIAN_FRONTEND=noninteractive
+
+RUN apt-get update \
+  && apt-get install -y --no-install-recommends \
+    bash \
+    ca-certificates \
+    curl \
+    git \
+    jq \
+    python3 \
+    ripgrep \
+  && rm -rf /var/lib/apt/lists/*
+
+CMD ["sleep", "infinity"]
+```
+
+This container provides:
+
+- **bash** -- Shell execution environment
+- **git** -- Version control operations
+- **python3** -- Python script execution
+- **curl** + **jq** -- HTTP requests and JSON processing
+- **ripgrep** -- Fast code search
+
+The sandbox runs as a sidecar and sleeps indefinitely, ready to accept commands from the agent runtime.
+
+## Common Operations
+
+### Viewing Logs
+
+```bash
+docker compose -f eliza/packages/app-core/deploy/docker-compose.yml logs -f eliza-gateway
+```
+
+### Health Check
+
+```bash
+docker compose -f eliza/packages/app-core/deploy/docker-compose.yml exec eliza-gateway \
+  node dist/index.js health --token "$ELIZA_GATEWAY_TOKEN"
+```
+
+### Adding Connectors
+
+Configure connectors in your `eliza.json` instead of using CLI commands. See [Configuration — Connectors](/configuration#connectors-messaging-channels) for the full schema.
+
+```json
+{
+  "connectors": {
+    "telegram": { "botToken": "<bot-token>" },
+    "discord":  { "token": "<bot-token>" }
+  }
+}
+```
+
+Then restart the service:
+
+```bash
+docker compose -f deploy/docker-compose.yml restart eliza
+```
+
+### Stopping and Restarting
+
+```bash
+# Stop the gateway
+docker compose -f eliza/packages/app-core/deploy/docker-compose.yml down
+
+# Restart the gateway
+docker compose -f eliza/packages/app-core/deploy/docker-compose.yml up -d eliza-gateway
+```
+
+## Security Hardening
+
+<CardGroup cols={2}>
+  <Card title="Non-Root Execution" icon="shield">
+    Both Dockerfiles run as non-root users (`node` or `agent`). Never override this with `--user root` in production.
+  </Card>
+  <Card title="API Token Auth" icon="key">
+    Set `ELIZA_API_TOKEN` in production to require authentication for all API and WebSocket connections.
+  </Card>
+  <Card title="Gateway Token" icon="lock">
+    The gateway token is auto-generated with 256 bits of entropy. Store it securely and rotate periodically.
+  </Card>
+  <Card title="Network Binding" icon="network-wired">
+    Use `ELIZA_GATEWAY_BIND=localhost` to restrict gateway access to the host machine only. Use `lan` for local network access.
+  </Card>
+</CardGroup>
+
+<Warning>
+Never expose the gateway to the public internet without setting `ELIZA_GATEWAY_TOKEN` and configuring TLS. See the [Configuration Schema](/config-schema) for TLS settings under the `gateway` section.
+</Warning>

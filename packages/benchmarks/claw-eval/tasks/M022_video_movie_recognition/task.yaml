@@ -1,0 +1,35 @@
+task_id: M022_video_movie_recognition
+task_name: Video Movie Recognition
+version: "1.0"
+category: video_qa
+difficulty: hard
+tags: [multimodal]
+services: []
+prompt:
+  text: |
+    The container has the following file:
+    - /workspace/fixtures/video.mp4
+
+    This video is a 2023 movie montage. Please identify which movie each segment comes from (provide the movie title), and list all the movies you recognize in the video in chronological order.
+  language: en
+tools: []
+tool_endpoints: []
+sandbox_files:
+  - fixtures/video.mp4
+sandbox_grader_files: []
+env_snapshot_commands: []
+env_snapshot_files: []
+environment:
+  timeout_seconds: 600
+  max_turns: 30
+  env_snapshot_timeout: 10
+scoring_components: []
+safety_checks: []
+expected_actions: []
+judge_rubric: ""
+reference_solution: |
+  Use ReadMedia to extract frames from the video.
+  Identify movies from visual cues, list them in chronological order.
+primary_dimensions:
+  - completion
+  - robustness

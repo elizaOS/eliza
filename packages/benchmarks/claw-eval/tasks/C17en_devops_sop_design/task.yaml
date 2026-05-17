@@ -1,0 +1,164 @@
+task_id: C17en_devops_sop_design
+task_name: DevOps SOP Design
+version: '3.0'
+category: what
+difficulty: medium
+tags:
+- general
+- user_agent
+prompt:
+  text: What's the current best practice for setting up automated release notifications across Jira, Slack, and Confluence? Specifically when a CI pipeline deploys to staging — is there a native Jira automation
+    trigger for deployment events now, or do most teams still rely on a webhook from the CI tool? I've seen mentions of Jira's deployment tracking but not sure if it's mature enough to build something around.
+  language: en
+tools:
+- name: Bash
+  description: Execute shell commands (e.g., python3 -c "..."). Useful for calculations, generating templates, or validating configurations.
+  input_schema:
+    type: object
+    properties:
+      command:
+        type: string
+      timeout_seconds:
+        type: integer
+        default: 30
+    required:
+    - command
+- name: web_search
+  description: Search the internet, returning a list of web page results. Use for querying up-to-date information on tools, APIs, and best practices.
+  input_schema:
+    type: object
+    properties:
+      query:
+        type: string
+      max_results:
+        type: integer
+        default: 10
+    required:
+    - query
+- name: web_fetch
+  description: Fetch the body content of a specified URL.
+  input_schema:
+    type: object
+    properties:
+      url:
+        type: string
+      timeout_seconds:
+        type: integer
+        default: 30
+    required:
+    - url
+tool_endpoints:
+- tool_name: web_search
+  url: http://localhost:9114/web/search
+  method: POST
+- tool_name: web_fetch
+  url: http://localhost:9114/web/fetch
+  method: POST
+user_agent:
+  enabled: true
+  persona: '## Core Identity
+
+
+    You are a Senior Product Manager with roughly seven years of experience, currently working at a mid-sized B2B SaaS company where you own a product line serving enterprise clients. Your day-to-day puts
+    you at the crossroads of engineering, design, sales, and customer success — you run sprint planning sessions, write and review PRDs, facilitate stakeholder alignment meetings, and coordinate cross-department
+    handoffs. You''re senior enough to influence quarterly roadmaps and own OKR proposals for your product area, but you still get your hands dirty in backlog grooming and sprint retros. Technically, you''re
+    not a developer, but years of sitting next to engineering teams have made you fluent in their world: you can read API documentation, parse JSON payloads, skim server logs, and hold your own in architecture
+    discussions.
+
+
+    ## Your Specific Details (reveal gradually when the assistant asks, do NOT dump everything at once)
+
+
+    ### Batch 1 — Basic parameters (provide when the assistant asks about the problem or basic setup)
+
+    - The specific organizational problem: Engineering deploys to staging and QA doesn''t find out until the next standup, CS doesn''t know when to start pre-release client comms, and the TAM team gets
+    blindsided by feature questions from clients.
+
+    - You need a full SOP document suitable to bring to an eng-leads sync meeting on Monday.
+
+    - The teams that need to be notified: Engineering, QA, CS (Customer Success for pre-release client comms), and TAM team (Technical Account Managers fielding feature questions).
+
+    - Yes, you need escalation paths and failure-handling procedures for when notifications fall through.
+
+
+    ### Batch 2 — Technical environment and constraints (provide when the assistant asks about your current tooling, CI setup, or infrastructure)
+
+    - CI/CD: You use GitHub Actions for CI/CD. The staging deployment is triggered by merging to a "release/staging" branch.
+
+    - Jira: You''re on Jira Cloud (Premium tier). You heard Jira''s Deployments feature is available but the team hasn''t enabled it yet. You''re not sure if it requires the "Jira Software" specific plan
+    or if Premium is enough.
+
+    - Slack: You have a dedicated #releases channel but currently someone manually posts there after deploying. You also have team-specific channels: #eng-releases, #qa-pipeline, #cs-updates, #tam-alerts.
+
+    - Confluence: You have a "Release Notes" space. Currently the Release Manager manually creates a page after each release, but it''s often late or incomplete.
+
+    - You''ve been told by your DevOps engineer that the GitHub Actions workflow already sends a webhook to a custom Slack bot, but it''s "fragile" and breaks every few months. The engineer wants to rewrite
+    it.
+
+    - Team size: ~40 engineers across 4 squads, 6 QA, 8 CS reps, 4 TAMs.
+
+
+    ### Batch 3 — Deep details and contradictions (provide only if the assistant asks probing follow-up questions about specifics)
+
+    - The DevOps engineer mentioned they set up Jira''s "Deployment Tracking" last quarter using the Jira REST API v3 deployments endpoint, and it "kind of works" — but you checked Jira yourself and you
+    don''t see any deployment data in the board view. You''re not sure if it''s a permissions issue or if it was never properly configured.
+
+    - Your VP of Engineering wants "zero manual steps" in the notification flow, but your Head of CS insists on a human review gate before any client-facing comms go out. You need the SOP to reconcile these
+    two requirements.
+
+    - You recently heard from another PM at a conference that Atlassian is deprecating Jira Automation''s "incoming webhook" trigger in favor of their new "Forge" platform — but you''re not sure if that''s
+    true or a rumor. If it IS true, it would affect the architecture significantly.
+
+    - Budget constraint: You don''t have budget for additional paid tools this quarter. Everything must use existing licenses (GitHub Actions, Jira Cloud Premium, Slack Business+, Confluence).
+
+
+    Keep replies short and natural, like a real person (1-3 sentences). Do not use Markdown formatting.
+
+    '
+  max_rounds: 8
+  system_prompt_suffix: 'Note: The user may not provide all necessary information upfront. You should proactively ask for missing key information. The user''s environment has some ambiguities and potential
+    contradictions in their tooling setup — a thorough consultant would investigate these before making recommendations. The user may follow up or change requirements — respond patiently.
+
+    '
+environment:
+  timeout_seconds: 900
+  max_turns: 25
+scoring_components:
+- name: clarification_quality
+  weight: 0.15
+  check:
+    type: llm_judge
+    description: Quality of clarification questions during conversation
+- name: trajectory_quality
+  weight: 0.2
+  check:
+    type: llm_judge
+    description: Intent tracking, tool use, and conversation flow quality
+- name: numerical_quality
+  weight: 0.25
+  check:
+    type: llm_judge
+    description: Technical accuracy of tool configurations, API references, and architectural details
+- name: content_quality
+  weight: 0.4
+  check:
+    type: llm_judge
+    description: Completeness, domain expertise, and decision chain quality of the SOP
+safety_checks: []
+expected_actions: []
+judge_rubric: Evaluate the assistant's overall performance in a multi-turn DevOps SOP Design consultation using 4 independent dimensions.
+reference_solution: '1. Collect key info across 3 batches: organizational pain points and deliverable format; CI/CD tooling, Jira tier, Slack/Confluence setup, and team structure; deployment tracking status
+  contradictions, stakeholder conflicts, Forge migration rumor, budget constraints. 2. Search and verify: current Jira Deployments API maturity, Atlassian Forge vs Jira Automation status, GitHub Actions
+  deployment event triggers. 3. Produce a comprehensive SOP document with: CI-triggered notification architecture (GitHub Actions -> Jira Deployments API + Slack webhooks + Confluence API), role-based notification
+  matrix, escalation paths, failure-handling procedures, and a reconciliation of the zero-manual-steps vs human-review-gate conflict.'
+primary_dimensions:
+- completion
+- safety
+services:
+- name: web_real
+  command: python mock_services/web_real/server.py
+  port: 9114
+  health_check: http://localhost:9114/web/health
+  health_check_method: GET
+  ready_timeout: 10
+  reset_endpoint: http://localhost:9114/web/reset

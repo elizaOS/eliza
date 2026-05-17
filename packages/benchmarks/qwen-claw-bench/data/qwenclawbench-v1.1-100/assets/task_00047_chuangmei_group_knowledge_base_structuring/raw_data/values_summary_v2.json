@@ -1,0 +1,53 @@
+{
+  "document_title": "ChuangMei Group — Company Values Summary",
+  "document_version": "v2",
+  "status": "Approved",
+  "last_updated": "2024-09-01",
+  "approved_by": "Corporate Strategy Office",
+  "company_name": {
+    "english": "ChuangMei Group",
+    "chinese": "创美集团"
+  },
+  "mission": {
+    "chinese": "输出审美，严选供应商，创造客户价值",
+    "english": "Output aesthetics, strictly select suppliers, create customer value"
+  },
+  "vision": {
+    "chinese": "打造全国最大的女性时尚线上市场",
+    "english": "Build the largest online fashion marketplace for female consumers",
+    "notes": "Aligned with 2024 strategic growth objectives and digital transformation roadmap"
+  },
+  "values": {
+    "tier_1_mindset": {
+      "chinese": "合作、创新、协同、赋能",
+      "english": "Cooperation, Innovation, Synergy, Empowerment",
+      "description": "The foundational mindset that guides all interactions and decisions within the organization."
+    },
+    "tier_2_execution_standards": {
+      "chinese": "一听就懂、一看就会、边抄边改、用户导向",
+      "english": "Easy to understand, Easy to follow, Copy-and-adapt, User-oriented",
+      "description": "Practical standards that ensure operational excellence and user-centric execution."
+    },
+    "tier_3_self_transcendence": {
+      "chinese": "好奇心是最好的老师",
+      "english": "Curiosity is the best teacher",
+      "description": "The aspirational value that drives continuous learning and personal growth."
+    }
+  },
+  "slogan": {
+    "chinese": "人人都可以是创作者",
+    "english": "Everyone can be a creator"
+  },
+  "revision_history": [
+    {
+      "version": "v1",
+      "date": "2023-03-15",
+      "changes": "Initial values framework established"
+    },
+    {
+      "version": "v2",
+      "date": "2024-09-01",
+      "changes": "Updated vision statement to reflect digital marketplace strategy; refined mindset tier terminology"
+    }
+  ]
+}

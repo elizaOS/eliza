@@ -1,0 +1,46 @@
+# F2 Kokoro same full fine-tune config.
+# Tuned for augmented+distilled corpus (~50+ min vs original 3.5 min).
+extends: base.yaml
+
+voice_name: af_same
+voice_display_name: Same (AI Voices) — F2 Full FT
+voice_lang: a
+voice_tags:
+  - female
+  - same
+  - eliza-1-voice
+  - ai-voices-derived
+  - research-only
+  - full-finetune
+  - f2-retry
+
+mode: full
+
+# Larger corpus → reasonable LR; 5k steps gives ~5 epochs at 50 min corpus
+learning_rate: 3.0e-5
+max_steps: 5000
+eval_every: 500
+checkpoint_every: 500
+log_every: 25
+warmup_steps: 200
+val_fraction: 0.10
+batch_size: 1
+grad_accum: 4
+
+# Light anchor: larger corpus provides more signal so reduce constraint
+anchor_weight: 0.0005
+
+early_stop_patience: 3
+keep_top_k: 3
+
+mel_loss_weight: 1.0
+duration_loss_weight: 0.0
+f0_loss_weight: 0.0
+
+# Relaxed gates for F2 (self-distill corpus uses Kokoro voice not real same)
+# The beatsBaseline comparison vs af_bella is the real gate
+gates:
+  utmos_min: 3.8
+  wer_max: 0.10
+  speaker_similarity_min: 0.40
+  rtf_min: 0.5

@@ -1,0 +1,7 @@
+Three things I learned about {{topic}} this week:
+
+1. Simplicity always wins over complexity in the long run
+2. Community matters more than individual brilliance
+3. The best resource is the one you actually use
+
+What would you add to this list?

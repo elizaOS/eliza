@@ -1,0 +1,47 @@
+[
+  {
+    "contact_id": "CT-101",
+    "name": "Leo Zhao",
+    "department": "Engineering",
+    "title": "Senior Engineer",
+    "email": "leozhao@company.com",
+    "phone": "13800110006",
+    "location": "Shenzhen Branch"
+  },
+  {
+    "contact_id": "CT-102",
+    "name": "Mike Li",
+    "department": "Product",
+    "title": "Product Director",
+    "email": "mikeli@company.com",
+    "phone": "13800110004",
+    "location": "Beijing HQ"
+  },
+  {
+    "contact_id": "CT-103",
+    "name": "Director Chen",
+    "department": "External — Partner Corp",
+    "title": "Project Director",
+    "email": "director@partner-corp.com",
+    "phone": "13900220001",
+    "location": "External"
+  },
+  {
+    "contact_id": "CT-104",
+    "name": "Fang Wang",
+    "department": "Human Resources",
+    "title": "HR Manager",
+    "email": "wangfang@company.com",
+    "phone": "13800110005",
+    "location": "Beijing HQ"
+  },
+  {
+    "contact_id": "CT-105",
+    "name": "Wei Zhang",
+    "department": "Engineering",
+    "title": "Engineering Manager",
+    "email": "zhangwei@company.com",
+    "phone": "13800110001",
+    "location": "Beijing HQ"
+  }
+]

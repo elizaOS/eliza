@@ -1,0 +1,26 @@
+{
+  "app_name": "DataPipeline",
+  "version": "2.4.1",
+  "environment": "production",
+  "database": {
+    "host": "db.internal.example.com",
+    "port": 5432,
+    "name": "pipeline_prod",
+    "username": "app_service",
+    "password": "REPLACE_ME"
+  },
+  "redis": {
+    "host": "redis.internal.example.com",
+    "port": 6379
+  },
+  "logging": {
+    "level": "info",
+    "output": "stdout",
+    "format": "json"
+  },
+  "features": {
+    "enable_caching": true,
+    "enable_rate_limiting": true,
+    "max_retries": 3
+  }
+}

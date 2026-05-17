@@ -1,0 +1,91 @@
+# Terminal MCP Server Configuration
+name: terminal
+display_name: Terminal MCP Server
+description: Terminal command execution server with security controls
+
+execution:
+  command_type: uvx
+  package_name: "cli-mcp-server"
+
+parameters:
+  agent_workspace:
+    required: false
+    default: "."
+    env_var: "ALLOWED_DIR"
+    description: "Path to agent workspace (sets ALLOWED_DIR environment variable)"
+
+  allowed_dir:
+    required: false
+    default: "."
+    env_var: "ALLOWED_DIR"
+    description: "Directory where file operations are permitted (alias for agent_workspace, also sets ALLOWED_DIR). If both are set, this takes precedence."
+
+  allowed_commands:
+    required: false
+    default: "ls,cat,pwd,echo,cd,mkdir,touch,rm,cp,mv,find,grep,head,tail,wc,sort,uniq,diff,tree,chmod,stat,file,which,whoami,date,hostname,df,du,ps,env,history,clear,sed,awk,cut,tr,basename,dirname,realpath,md5sum,sha256sum,tar,gzip,gunzip,zip,unzip,less,more,python,wget,curl,ping,netstat,ifconfig,nslookup,traceroute,helm,kubectl,git"
+    env_var: "ALLOWED_COMMANDS"
+    description: "Comma-separated list of allowed commands"
+
+  allowed_flags:
+    required: false
+    default: "all"
+    env_var: "ALLOWED_FLAGS"
+    description: "Comma-separated list of allowed command flags"
+
+  max_command_length:
+    required: false
+    default: "2048"
+    env_var: "MAX_COMMAND_LENGTH"
+    description: "Maximum command length"
+
+  command_timeout:
+    required: false
+    default: "60"
+    env_var: "COMMAND_TIMEOUT"
+    description: "Command timeout in seconds"
+
+  allow_shell_operators:
+    required: false
+    default: "true"
+    env_var: "ALLOW_SHELL_OPERATORS"
+    description: "Allow shell operators (pipes, redirects)"
+
+  max_output_length:
+    required: false
+    default: "10240"
+    env_var: "MAX_OUTPUT_LENGTH"
+    description: "Maximum total output length"
+
+  max_stdout_length:
+    required: false
+    default: "8192"
+    env_var: "MAX_STDOUT_LENGTH"
+    description: "Maximum stdout length"
+
+  max_stderr_length:
+    required: false
+    default: "2048"
+    env_var: "MAX_STDERR_LENGTH"
+    description: "Maximum stderr length"
+
+  cli_proxy_enabled:
+    required: false
+    default: "false"
+    env_var: "CLI_PROXY_ENABLED"
+    description: "Enable CLI proxy"
+
+  cli_proxy_url:
+    required: false
+    default: ""
+    env_var: "CLI_PROXY_URL"
+    description: "CLI proxy URL"
+
+  env_vars:
+    required: false
+    description: "Optional dictionary of additional environment variables to set"
+
+workspace:
+  set_cwd: true
+  cwd_param: allowed_dir
+  supports_placeholders: true
+  mkdir_if_needed: true

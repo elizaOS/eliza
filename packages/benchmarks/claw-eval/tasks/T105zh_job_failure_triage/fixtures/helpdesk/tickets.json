@@ -1,0 +1,62 @@
+[
+  {
+    "ticket_id": "TK-401",
+    "title": "ERP系统无法访问",
+    "description": "从今天下午17:20左右开始，ERP系统完全无法登录和使用，财务部和仓储部多位同事反馈相同问题。页面显示503错误。",
+    "reporter": "财务部-刘芳",
+    "department": "财务部",
+    "priority": "critical",
+    "status": "open",
+    "created_at": "2026-03-25T17:35:00Z",
+    "tags": ["ERP", "系统故障", "紧急"],
+    "category": "系统故障"
+  },
+  {
+    "ticket_id": "TK-402",
+    "title": "每日报表邮件今天没收到",
+    "description": "往常每天早上9点会收到系统自动发送的日报邮件，今天没有收到。已检查垃圾箱也没有。",
+    "reporter": "销售部-张涛",
+    "department": "销售部",
+    "priority": "medium",
+    "status": "open",
+    "created_at": "2026-03-25T10:15:00Z",
+    "tags": ["邮件", "日报", "自动化"],
+    "category": "服务请求"
+  },
+  {
+    "ticket_id": "TK-403",
+    "title": "ERP订单数据不更新",
+    "description": "今天下午的订单在ERP中看不到，系统显示的最后一条订单是17:00之前的。怀疑数据同步出了问题。",
+    "reporter": "仓储部-王强",
+    "department": "仓储部",
+    "priority": "high",
+    "status": "open",
+    "created_at": "2026-03-25T19:00:00Z",
+    "tags": ["ERP", "数据同步", "订单"],
+    "category": "数据问题"
+  },
+  {
+    "ticket_id": "TK-404",
+    "title": "打印机卡纸频繁",
+    "description": "3楼打印间的HP打印机频繁卡纸，已清理过几次仍然有问题。",
+    "reporter": "行政部-李娜",
+    "department": "行政部",
+    "priority": "low",
+    "status": "open",
+    "created_at": "2026-03-25T11:00:00Z",
+    "tags": ["硬件", "打印机"],
+    "category": "硬件故障"
+  },
+  {
+    "ticket_id": "TK-405",
+    "title": "磁盘空间告警",
+    "description": "日志归档服务器收到磁盘空间不足告警，/data/archive分区使用率已达98%，需要尽快清理或扩容。",
+    "reporter": "运维组-陈伟",
+    "department": "技术部",
+    "priority": "high",
+    "status": "open",
+    "created_at": "2026-03-25T08:30:00Z",
+    "tags": ["磁盘", "告警", "日志", "归档"],
+    "category": "基础设施"
+  }
+]

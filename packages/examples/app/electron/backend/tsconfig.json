@@ -1,0 +1,21 @@
+{
+  "compilerOptions": {
+    "lib": ["ES2022", "DOM"],
+    "module": "ESNext",
+    "moduleResolution": "Bundler",
+    "target": "ES2022",
+    "types": ["node", "electron"],
+    "outDir": "dist",
+    "rootDir": "src",
+    "strict": true,
+    "skipLibCheck": true,
+    "allowImportingTsExtensions": false,
+    "noEmit": false,
+    "rewriteRelativeImportExtensions": true,
+    "paths": {
+      "@elizaos/plugin-groq": ["./src/provider-plugin.d.ts"]
+    }
+  },
+  "include": ["src/**/*.ts"],
+  "extends": "../../../../../tsconfig.dist-paths.json"
+}

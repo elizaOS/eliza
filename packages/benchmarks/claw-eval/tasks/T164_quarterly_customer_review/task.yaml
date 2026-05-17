@@ -1,0 +1,317 @@
+task_id: T164_quarterly_customer_review
+task_name: Q1 Key Customer Quarterly Review Report
+version: "1.0"
+category: workflow
+difficulty: hard
+tags: [general, multi_service]
+
+services:
+  - name: gmail
+    command: python mock_services/gmail/server.py
+    port: 9100
+    health_check: http://localhost:9100/gmail/messages
+    health_check_method: POST
+    ready_timeout: 10
+    reset_endpoint: http://localhost:9100/gmail/reset
+    env:
+      GMAIL_FIXTURES: tasks/T164_quarterly_customer_review/fixtures/gmail/inbox.json
+  - name: contacts
+    command: python mock_services/contacts/server.py
+    port: 9103
+    health_check: http://localhost:9103/contacts/search
+    health_check_method: POST
+    ready_timeout: 10
+    reset_endpoint: http://localhost:9103/contacts/reset
+    env:
+      CONTACTS_FIXTURES: tasks/T164_quarterly_customer_review/fixtures/contacts/contacts.json
+  - name: finance
+    command: python mock_services/finance/server.py
+    port: 9104
+    health_check: http://localhost:9104/finance/transactions
+    health_check_method: POST
+    ready_timeout: 10
+    reset_endpoint: http://localhost:9104/finance/reset
+    env:
+      FINANCE_FIXTURES: tasks/T164_quarterly_customer_review/fixtures/finance/transactions.json
+  - name: rss
+    command: python mock_services/rss/server.py
+    port: 9109
+    health_check: http://localhost:9109/rss/feeds
+    health_check_method: POST
+    ready_timeout: 10
+    reset_endpoint: http://localhost:9109/rss/reset
+    env:
+      RSS_FIXTURES: tasks/T164_quarterly_customer_review/fixtures/rss/feeds.json
+  - name: crm
+    command: python mock_services/crm/server.py
+    port: 9110
+    health_check: http://localhost:9110/crm/customers
+    health_check_method: POST
+    ready_timeout: 10
+    reset_endpoint: http://localhost:9110/crm/reset
+    env:
+      CRM_FIXTURES: tasks/T164_quarterly_customer_review/fixtures/crm/customers.json
+
+prompt:
+  text: |
+    Q1 has ended. Please help me prepare a quarterly review for our 6 key customers:
+    1. Review each customer's Q1 financial data
+    2. Check customer information and satisfaction scores in the CRM
+    3. Review email communication records
+    4. Browse industry news to understand trends in each customer's sector
+    5. Look up the contact information of the assigned account managers
+    6. Produce a customer review report, flagging risks and growth opportunities
+  language: en
+
+tools:
+  - name: finance_list_transactions
+    description: List transaction records
+    input_schema:
+      type: object
+      properties:
+        start_date:
+          type: string
+          description: "Start date (YYYY-MM-DD)"
+        end_date:
+          type: string
+          description: "End date (YYYY-MM-DD)"
+      required: []
+
+  - name: finance_get_transaction
+    description: Get transaction details
+    input_schema:
+      type: object
+      properties:
+        transaction_id:
+          type: string
+          description: Transaction ID
+      required: [transaction_id]
+
+  - name: crm_list_customers
+    description: List customers
+    input_schema:
+      type: object
+      properties:
+        status:
+          type: string
+          description: "Filter by customer status"
+        tier:
+          type: string
+          description: "Filter by customer tier (vip/standard)"
+      required: []
+
+  - name: crm_get_customer
+    description: Get customer details
+    input_schema:
+      type: object
+      properties:
+        customer_id:
+          type: string
+          description: Customer ID
+      required: [customer_id]
+
+  - name: gmail_list_messages
+    description: List inbox messages
+    input_schema:
+      type: object
+      properties:
+        days_back:
+          type: integer
+          description: Retrieve messages from the last N days
+          default: 30
+        max_results:
+          type: integer
+          description: Maximum number of results to return
+          default: 20
+      required: []
+
+  - name: gmail_get_message
+    description: Get message details by message ID
+    input_schema:
+      type: object
+      properties:
+        message_id:
+          type: string
+          description: Message ID
+      required: [message_id]
+
+  - name: rss_list_feeds
+    description: List RSS feed sources
+    input_schema:
+      type: object
+      properties: {}
+      required: []
+
+  - name: rss_get_feed
+    description: Get articles from an RSS feed
+    input_schema:
+      type: object
+      properties:
+        feed_id:
+          type: string
+          description: Feed ID
+      required: [feed_id]
+
+  - name: rss_get_article
+    description: Get article details
+    input_schema:
+      type: object
+      properties:
+        article_id:
+          type: string
+          description: Article ID
+      required: [article_id]
+
+  - name: contacts_search
+    description: Search internal directory
+    input_schema:
+      type: object
+      properties:
+        query:
+          type: string
+          description: Search keyword
+        department:
+          type: string
+          description: Filter by department
+      required: [query]
+
+  - name: contacts_get
+    description: Get contact details
+    input_schema:
+      type: object
+      properties:
+        contact_id:
+          type: string
+          description: Contact ID
+      required: [contact_id]
+
+tool_endpoints:
+  - tool_name: finance_list_transactions
+    url: http://localhost:9104/finance/transactions
+    method: POST
+  - tool_name: finance_get_transaction
+    url: http://localhost:9104/finance/transactions/get
+    method: POST
+  - tool_name: crm_list_customers
+    url: http://localhost:9110/crm/customers
+    method: POST
+  - tool_name: crm_get_customer
+    url: http://localhost:9110/crm/customers/get
+    method: POST
+  - tool_name: gmail_list_messages
+    url: http://localhost:9100/gmail/messages
+    method: POST
+  - tool_name: gmail_get_message
+    url: http://localhost:9100/gmail/messages/get
+    method: POST
+  - tool_name: rss_list_feeds
+    url: http://localhost:9109/rss/feeds
+    method: POST
+  - tool_name: rss_get_feed
+    url: http://localhost:9109/rss/feeds/get
+    method: POST
+  - tool_name: rss_get_article
+    url: http://localhost:9109/rss/articles/get
+    method: POST
+  - tool_name: contacts_search
+    url: http://localhost:9103/contacts/search
+    method: POST
+  - tool_name: contacts_get
+    url: http://localhost:9103/contacts/get
+    method: POST
+
+environment:
+  timeout_seconds: 600
+  max_turns: 40
+
+scoring_components:
+  - name: customer_analysis
+    weight: 0.35
+    check:
+      type: llm_judge
+      description: "Accuracy of comprehensive analysis combining Q1 financial data, CRM information, and email communications for all 6 customers"
+  - name: risk_opportunity
+    weight: 0.35
+    check:
+      type: llm_judge
+      description: "Accuracy in identifying risk customers (CUS-1604 churn risk, CUS-1602 complaints) and growth customers (CUS-1603, CUS-1601, CUS-1605)"
+  - name: report_quality
+    weight: 0.30
+    check:
+      type: llm_judge
+      description: "Completeness, structure, industry correlation analysis, and account manager mapping in the customer review report"
+
+safety_checks: []
+
+expected_actions: []
+
+judge_rubric: |
+  Evaluate the quality of the Q1 quarterly review report produced by the assistant for 6 key customers.
+
+  ## Correct Q1 Revenue Analysis
+  | Customer | Jan | Feb | Mar | Q1 Total | Trend |
+  |----------|-----|-----|-----|----------|-------|
+  | CUS-1601 Dingxin Software (VIP) | 80k | 85k | 90k | 255k | Up — steady growth (+12.5%) |
+  | CUS-1602 Hanhai E-commerce | 50k | 50k | 45k | 145k | Down — slight decline (-10%) |
+  | CUS-1603 Wantong Logistics (VIP) | 120k | 125k | 130k | 375k | Up — stable growth (+8.3%), largest customer |
+  | CUS-1604 Qianfeng Technology | 35k | 30k | 0k | 65k | Down — zero revenue in March, severe decline |
+  | CUS-1605 Sunshine Media (VIP) | 60k | 65k | 70k | 195k | Up — rapid growth (+16.7%) |
+  | CUS-1606 Public Institution | 40k | 40k | 40k | 120k | Flat — no change |
+
+  ## CRM Key Information
+  - CUS-1604: Satisfaction only 2.5/5, contract expires 2026-04-15 (less than 1 month away)
+  - CUS-1602: Satisfaction 3.2/5, contract expires 2026-06-30, has complaints
+  - CUS-1603: Satisfaction 4.8/5 (highest), VIP largest customer
+  - CUS-1601: Satisfaction 4.5/5, VIP, actively pursuing renewal
+
+  ## Email Communication Clues
+  - Dingxin Software: Proactive communication (renewal discussion + project progress report)
+  - Hanhai E-commerce: Filed complaint (slow response time) + feature inquiry
+  - Wantong Logistics: Highly satisfied + discussing expansion
+  - Qianfeng Technology: No communication since January (communication breakdown)
+  - Sunshine Media: Q1 review + strong AI application results
+  - Public Institution: Inquired about budget plans in February
+
+  ## Industry Trends Correlation
+  - Dingxin (Software) <-> RSS-1601 (software industry high growth) -> industry tailwind
+  - Hanhai (E-commerce) <-> RSS-1602 (intensifying e-commerce competition) -> industry headwind
+  - Wantong (Logistics) <-> RSS-1603 (increasing logistics digitalization) -> industry tailwind
+  - Qianfeng (Manufacturing) <-> RSS-1604 (manufacturing IT budget cuts) -> industry headwind
+  - Sunshine (Media) <-> RSS-1605 (AI-driven golden era for media) -> industry tailwind
+  - Public (Government) <-> RSS-1606 (steady government informatization) -> industry neutral
+
+  ## Risks and Growth Opportunities
+  - High risk: CUS-1604 — zero March revenue + satisfaction 2.5 + contract expires April 15 + communication breakdown + industry headwind = high churn risk
+  - Medium risk: CUS-1602 — declining revenue + satisfaction 3.2 + complaints filed + industry headwind
+  - High growth: CUS-1603 — largest customer + stable growth + satisfaction 4.8 + discussing expansion + industry tailwind
+  - Growth: CUS-1601 — steady growth + VIP + actively pursuing renewal + industry tailwind
+  - Growth: CUS-1605 — rapid growth + successful AI adoption + industry tailwind
+  - Stable: CUS-1606 — flat, no risk, no growth
+
+  ## Account Manager Mapping
+  - Zhao Lei: CUS-1601, CUS-1603, CUS-1605 (VIP customers)
+  - Zhang Wei: CUS-1602, CUS-1604, CUS-1606 (standard customers)
+
+  Scoring:
+  - 0.8-1.0: Revenue analysis for all 6 customers is accurate + risk/growth identification is complete + industry correlations are on point + account manager mapping is correct
+  - 0.5-0.7: Most analysis is correct, identified the main risk and growth customers
+  - 0.2-0.4: Only listed data without comprehensive analysis
+  - 0.0-0.1: Analysis is incomplete or data is significantly inaccurate
+
+reference_solution: |
+  1. finance_list_transactions() -> Retrieve all 17 Q1 transactions
+  2. crm_list_customers() -> Get basic info for 6 customers
+  3. crm_get_customer() for each customer -> Satisfaction scores, contract expiration dates, etc.
+  4. gmail_list_messages() -> 10 emails
+  5. gmail_get_message() for each email -> Understand communication history
+  6. rss_list_feeds() -> 2 RSS sources
+  7. rss_get_feed(feed_01) + rss_get_feed(feed_02) -> 8 articles
+  8. Match RSS articles to each customer's industry
+  9. contacts_search("Zhao Lei") + contacts_search("Zhang Wei") -> Account manager contact info
+  10. Synthesize and produce the report:
+      - Per customer: revenue trend + satisfaction + communication record + industry trends + account manager
+      - Risk flags: CUS-1604 (high churn), CUS-1602 (medium risk)
+      - Growth flags: CUS-1603 (largest + steady growth), CUS-1601 (steady growth), CUS-1605 (rapid growth)
+      - Stable: CUS-1606
+
+primary_dimensions: [completion, robustness, communication]

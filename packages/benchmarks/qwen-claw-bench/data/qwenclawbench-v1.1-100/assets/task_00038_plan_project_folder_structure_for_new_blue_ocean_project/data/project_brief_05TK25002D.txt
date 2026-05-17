@@ -1,0 +1,68 @@
+================================================================================
+                         PROJECT BRIEF
+================================================================================
+
+Project Number:     05TK25002D
+Project Name:       Blue Ocean Advanced Materials Co., Ltd. High-End Polyolefin
+                    New Materials Project
+Phase:              Basic Design
+Start Date:         2026-01-15
+Target Completion:  2027-07-15
+
+--------------------------------------------------------------------------------
+CLIENT INFORMATION
+--------------------------------------------------------------------------------
+Client:             Blue Ocean Advanced Materials Co., Ltd.
+Client Contact:     Mr. Zhang Wei, VP of Engineering
+Contact Email:      zhangwei@blueocean-materials.com
+Contact Phone:      +86-532-8888-6200
+
+--------------------------------------------------------------------------------
+PROJECT LOCATION
+--------------------------------------------------------------------------------
+Site:               Coastal Industrial Zone
+Region:             East China
+Address:            No. 188 Binhai Avenue, Coastal Industrial Development Zone
+
+--------------------------------------------------------------------------------
+PROJECT SCOPE
+--------------------------------------------------------------------------------
+The project involves the basic design of a high-end polyolefin new materials
+production facility. The plant will produce specialty polyethylene and
+polypropylene grades for automotive, packaging, and medical applications.
+
+Estimated Plant Capacity:  300,000 tonnes per annum
+Estimated Duration:        18 months
+
+--------------------------------------------------------------------------------
+KEY DELIVERABLES
+--------------------------------------------------------------------------------
+  1. Process Flow Diagrams (PFDs)
+  2. Piping and Instrumentation Diagrams (P&IDs)
+  3. Equipment Datasheets
+  4. Plot Plans
+  5. Piping Specifications
+  6. Electrical Single Line Diagrams
+  7. Instrument Index and Specifications
+  8. Civil and Structural Preliminary Layouts
+  9. HAZOP Study Report
+ 10. Basic Design Package (consolidated)
+
+--------------------------------------------------------------------------------
+PROJECT TEAM
+--------------------------------------------------------------------------------
+Project Manager:        Li Jianhua
+Lead Process Engineer:  Wang Mingxia
+Lead Mechanical Engr:   Chen Dawei
+Lead Electrical Engr:   Liu Fang
+Lead Instrument Engr:   Zhao Peng
+
+--------------------------------------------------------------------------------
+APPROVALS
+--------------------------------------------------------------------------------
+Prepared By:    Project Controls Department
+Date:           2025-11-28
+Approved By:    Engineering Director, Dr. Sun Yongqiang
+Approval Date:  2025-12-02
+
+================================================================================

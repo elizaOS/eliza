@@ -1,0 +1,74 @@
+[
+  {
+    "ticket_id": "TK-901",
+    "title": "系统登录异常",
+    "description": "今天早上开始，公司CRM系统登录后页面一直白屏，无法进入主界面。已尝试多台电脑和不同浏览器。",
+    "reporter": "销售部小王",
+    "department": "销售部",
+    "priority": "high",
+    "status": "open",
+    "created_at": "2026-03-26T08:30:00Z",
+    "tags": ["系统", "登录", "CRM"],
+    "category": "系统故障"
+  },
+  {
+    "ticket_id": "TK-902",
+    "title": "报表数据不准确",
+    "description": "月度销售报表中，华东区的数据和实际对不上，差额约15万。怀疑是数据源汇总逻辑有问题。",
+    "reporter": "财务部李会计",
+    "department": "财务部",
+    "priority": "medium",
+    "status": "open",
+    "created_at": "2026-03-26T09:00:00Z",
+    "tags": ["数据", "报表", "准确性"],
+    "category": "数据问题"
+  },
+  {
+    "ticket_id": "TK-903",
+    "title": "VPN无法连接",
+    "description": "在家办公时VPN连接失败，提示'连接超时'。同事反馈也有类似问题。",
+    "reporter": "市场部赵经理",
+    "department": "市场部",
+    "priority": "high",
+    "status": "open",
+    "created_at": "2026-03-26T08:15:00Z",
+    "tags": ["VPN", "网络", "远程"],
+    "category": "网络问题"
+  },
+  {
+    "ticket_id": "TK-904",
+    "title": "客户系统权限申请",
+    "description": "需要为新入职的3名客服开通CRM系统的客户查询和工单处理权限。",
+    "reporter": "客服部陈主管",
+    "department": "客服部",
+    "priority": "medium",
+    "status": "open",
+    "created_at": "2026-03-26T10:00:00Z",
+    "tags": ["权限", "账号", "新员工"],
+    "category": "权限管理"
+  },
+  {
+    "ticket_id": "TK-905",
+    "title": "办公椅损坏需更换",
+    "description": "研发区3号工位的办公椅液压杆坏了，无法调节高度，需要更换新椅子。",
+    "reporter": "研发部张工",
+    "department": "研发部",
+    "priority": "low",
+    "status": "open",
+    "created_at": "2026-03-26T11:00:00Z",
+    "tags": ["办公设备", "更换"],
+    "category": "办公设备"
+  },
+  {
+    "ticket_id": "TK-906",
+    "title": "邮箱存储空间已满",
+    "description": "企业邮箱提示存储空间已满，无法收发新邮件。已删除部分旧邮件但空间释放很慢。",
+    "reporter": "人事部周助理",
+    "department": "人事部",
+    "priority": "medium",
+    "status": "open",
+    "created_at": "2026-03-26T09:30:00Z",
+    "tags": ["邮箱", "存储", "容量"],
+    "category": "系统故障"
+  }
+]

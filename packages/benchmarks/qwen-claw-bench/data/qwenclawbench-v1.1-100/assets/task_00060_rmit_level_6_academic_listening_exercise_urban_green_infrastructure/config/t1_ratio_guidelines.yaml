@@ -1,0 +1,142 @@
+# T-1 / T-0 Classification and Synonym Substitution Ratio Guidelines
+# RMIT Academic English Listening Assessment — Level 6
+# Version: 3.2 | Last updated: 2024-06-15
+
+definitions:
+  t1:
+    label: "T-1"
+    description: "Question stem uses synonyms or paraphrases of the original lecture text. The wording is substantially different from the lecture, requiring the listener to recognise meaning equivalence rather than surface-level word matching."
+    criteria:
+      - "At least one genuine synonym pair between lecture sentence and question stem"
+      - "Repetition rate of content words must be at or below the maximum threshold"
+      - "The paraphrase must alter the syntactic or lexical structure meaningfully"
+  t0:
+    label: "T-0"
+    description: "Question stem uses the same or very similar wording as the lecture text. The listener can identify the answer through direct word matching."
+    criteria:
+      - "Core content words in the question stem are largely identical to the lecture"
+      - "Repetition rate typically exceeds 40%"
+      - "Minimal synonym substitution or structural paraphrasing"
+
+target_ratio:
+  description: "Proportion of T-1 questions out of total questions"
+  min: 0.35
+  max: 0.40
+  note: "For Level 6, the T-1 ratio should fall within 35%–40% to ensure an appropriate balance of difficulty. Ratios below 35% make the exercise too easy; ratios above 40% may exceed the intended difficulty ceiling."
+
+repetition_rate:
+  description: "Measures the degree of lexical overlap between the lecture sentence and the question stem"
+  formula: "(shared_content_words / total_content_words) * 100"
+  max_allowed: 40
+  unit: "percent"
+  interpretation:
+    below_20: "Heavy paraphrasing — strong T-1 candidate"
+    20_to_40: "Moderate paraphrasing — acceptable T-1"
+    above_40: "High overlap — classify as T-0"
+
+min_genuine_synonym_pairs: 1
+
+content_word_extraction:
+  included_types:
+    - "noun"
+    - "verb"
+    - "adjective"
+    - "adverb"
+  excluded_words:
+    - "the"
+    - "a"
+    - "an"
+    - "is"
+    - "are"
+    - "was"
+    - "were"
+    - "in"
+    - "on"
+    - "at"
+    - "to"
+    - "for"
+    - "of"
+    - "and"
+    - "but"
+    - "or"
+    - "that"
+    - "which"
+    - "this"
+    - "these"
+    - "those"
+    - "it"
+    - "its"
+    - "be"
+    - "been"
+    - "being"
+    - "have"
+    - "has"
+    - "had"
+    - "do"
+    - "does"
+    - "did"
+    - "will"
+    - "would"
+    - "shall"
+    - "should"
+    - "can"
+    - "could"
+    - "may"
+    - "might"
+    - "must"
+    - "not"
+    - "no"
+    - "with"
+    - "from"
+    - "by"
+    - "as"
+    - "about"
+    - "into"
+    - "through"
+    - "during"
+    - "before"
+    - "after"
+    - "above"
+    - "below"
+    - "between"
+    - "each"
+    - "every"
+    - "some"
+    - "any"
+    - "all"
+    - "both"
+    - "more"
+    - "most"
+    - "other"
+    - "such"
+    - "than"
+    - "too"
+    - "very"
+    - "also"
+    - "just"
+    - "only"
+    - "so"
+    - "up"
+    - "out"
+    - "if"
+    - "when"
+    - "where"
+    - "how"
+    - "what"
+    - "who"
+    - "whom"
+
+verification_procedure:
+  steps:
+    - step: 1
+      action: "Identify the lecture sentence containing the answer"
+    - step: 2
+      action: "Extract content words from both the lecture sentence and the question stem (excluding function words listed above)"
+    - step: 3
+      action: "Identify shared content words (exact matches and morphological variants)"
+    - step: 4
+      action: "Calculate repetition rate using the formula"
+    - step: 5
+      action: "Identify synonym pairs between lecture and question"
+    - step: 6
+      action: "Classify as T-1 if repetition rate ≤ 40% AND at least 1 genuine synonym pair exists; otherwise classify as T-0"

@@ -1,0 +1,60 @@
+[
+  {
+    "contact_id": "CT-301",
+    "name": "张伟",
+    "department": "工程部",
+    "title": "工程部经理",
+    "email": "zhangwei_eng@company.com",
+    "phone": "13800001001"
+  },
+  {
+    "contact_id": "CT-302",
+    "name": "张伟",
+    "department": "市场部",
+    "title": "市场部经理",
+    "email": "zhangwei_mkt@company.com",
+    "phone": "13800001002"
+  },
+  {
+    "contact_id": "CT-303",
+    "name": "李明",
+    "department": "工程部",
+    "title": "高级工程师",
+    "email": "liming@company.com",
+    "phone": "13800001003",
+    "notes": "周一10:30-11:30有tech review会议"
+  },
+  {
+    "contact_id": "CT-304",
+    "name": "王芳",
+    "department": "人力资源部",
+    "title": "HR总监",
+    "email": "wangfang@company.com",
+    "phone": "13800001004"
+  },
+  {
+    "contact_id": "CT-305",
+    "name": "陈静",
+    "department": "IT部",
+    "title": "IT支持主管",
+    "email": "chenjing@company.com",
+    "phone": "13800001005"
+  },
+  {
+    "contact_id": "CT-306",
+    "name": "赵强",
+    "department": "安全部",
+    "title": "安全经理",
+    "email": "zhaoqiang@company.com",
+    "phone": "13800001006"
+  },
+  {
+    "contact_id": "CT-307",
+    "name": "刘洋",
+    "department": "数据部",
+    "title": "",
+    "email": "liuyang@company.com",
+    "phone": "13800001007",
+    "notes": "数据部目前没有部门经理，刘洋是资深分析师代管日常工作"
+  }
+]

@@ -1,0 +1,22 @@
+[
+  {
+    "message_id": "msg_901",
+    "from": "product-manager@company.com",
+    "to": "me@company.com",
+    "subject": "请本周五前交竞品分析报告",
+    "date": "2026-03-24T09:00:00+08:00",
+    "is_read": false,
+    "labels": ["inbox", "important"],
+    "body": "团队好，请在本周五前完成竞品A和竞品B的最新动态分析报告，重点关注：1. 竞品A新版本对我们的威胁 2. 竞品B融资后的市场策略 3. 我们的应对建议。报告发给管理层。"
+  },
+  {
+    "message_id": "msg_902",
+    "from": "sales-rep@company.com",
+    "to": "me@company.com",
+    "subject": "客户提到竞品A的AI功能",
+    "date": "2026-03-25T11:00:00+08:00",
+    "is_read": false,
+    "labels": ["inbox"],
+    "body": "今天拜访万通物流时，赵总监提到竞品A刚发布了AI助手功能，问我们什么时候也会有类似功能。我回答说在规划中。请在报告中重点分析这个竞品威胁。"
+  }
+]

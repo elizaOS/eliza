@@ -1,0 +1,44 @@
+{
+  "id": "A1-fragmented-email-draft",
+  "category": "A",
+  "interruptionType": "addition",
+  "weight": 2,
+  "description": "User sends a request fragmented across four rapid messages within ~2.5s. The agent must coalesce — not respond to each fragment — and produce one reply that addresses the full intent.",
+  "setup": {
+    "agentId": "agent-test",
+    "rooms": [{ "id": "dm-alice", "kind": "dm", "owner": "alice" }],
+    "users": [{ "id": "alice", "role": "OWNER" }],
+    "openThreads": [],
+    "scheduledTasks": [],
+    "memory": []
+  },
+  "script": [
+    { "t": 0, "channel": "dm-alice", "sender": "alice", "text": "i need to" },
+    { "t": 800, "channel": "dm-alice", "sender": "alice", "text": "send" },
+    { "t": 1600, "channel": "dm-alice", "sender": "alice", "text": "an email" },
+    {
+      "t": 2400,
+      "channel": "dm-alice",
+      "sender": "alice",
+      "text": "to bob about lunch tomorrow"
+    }
+  ],
+  "quiesceAfterMs": 5000,
+  "expectedFinalState": {
+    "threads": [],
+    "scheduledTasks": [],
+    "repliesByChannel": {
+      "dm-alice": { "count": { "min": 1, "max": 1 } }
+    }
+  },
+  "expectedTrace": {
+    "stage1Calls": { "min": 1, "max": 2 },
+    "plannerCalls": { "min": 0, "max": 2 },
+    "boundaryViolations": 0,
+    "intent": "RESPOND"
+  },
+  "responseRubric": {
+    "judgePrompt": "Does the final reply address sending an email to Bob about lunch tomorrow, with no premature responses to the early fragments alone?",
+    "passRequiredForBonus": true
+  }
+}

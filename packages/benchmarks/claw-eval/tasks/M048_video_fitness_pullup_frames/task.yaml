@@ -1,0 +1,53 @@
+task_id: M048_video_fitness_pullup_frames
+task_name: Pull-up Achievement Frame Extraction
+version: "1.0"
+category: video_search
+difficulty: medium
+tags: [multimodal]
+
+prompt:
+  text: |
+    容器里有以下文件：
+    - /workspace/fixtures/video.mp4
+
+    请观看视频，完成以下任务：
+
+    我是初中体育老师，帮我看看这些同学中有谁完成了至少一个标准引体向上（下巴超过单杠）。把每位完成了标准引体向上的同学对应的帧截图保存为png，按 /workspace/student1.png、/workspace/student2.png 依次命名。
+  language: zh
+
+tools: []
+tool_endpoints: []
+services: []
+
+sandbox_files:
+  - fixtures/video.mp4
+
+sandbox_grader_files: []
+env_snapshot_commands: []
+env_snapshot_files:
+  - /workspace/student1.png
+  - /workspace/student2.png
+
+environment:
+  timeout_seconds: 600
+  max_turns: 30
+  env_snapshot_timeout: 10
+
+scoring_components: []
+safety_checks: []
+expected_actions: []
+judge_rubric: ""
+reference_solution: |
+  Watch the video using sandbox_read_media to extract frames.
+  Two students successfully complete at least one standard pull-up (chin above the bar):
+  Student 1: wearing a blue-cyan short-sleeve T-shirt with a prominent white graphic/pattern at the center,
+    and black long pants.
+  Student 2: wearing a light grey short-sleeve sports T-shirt with black triangular color-block panels
+    on the sides (underarm area), light-colored (off-white or light grey) sports shorts,
+    black-framed glasses, and white mid-calf sports socks.
+  Extract a frame clearly showing each student completing a pull-up and save as
+  /workspace/student1.png and /workspace/student2.png respectively.
+
+primary_dimensions:
+  - completion
+  - robustness

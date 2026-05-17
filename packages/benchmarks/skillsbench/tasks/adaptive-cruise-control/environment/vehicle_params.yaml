@@ -1,0 +1,24 @@
+vehicle:
+  mass: 1500  # kg
+  max_acceleration: 3.0  # m/s^2
+  max_deceleration: -8.0  # m/s^2
+  drag_coefficient: 0.3
+
+acc_settings:
+  set_speed: 30.0  # m/s (target cruise speed, ~108 km/h)
+  time_headway: 1.5  # seconds
+  min_distance: 10.0  # meters
+  emergency_ttc_threshold: 3.0  # seconds (trigger emergency braking when TTC < this)
+
+pid_speed:
+  kp: 0.1
+  ki: 0.01
+  kd: 0.0
+
+pid_distance:
+  kp: 0.1
+  ki: 0.01
+  kd: 0.0
+
+simulation:
+  dt: 0.1  # seconds

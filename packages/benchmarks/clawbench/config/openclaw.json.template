@@ -1,0 +1,72 @@
+{
+  "gateway": {
+    "mode": "local",
+    "bind": "lan",
+    "port": 18789,
+    "auth": {
+      "mode": "token",
+      "token": "sandbox-token-12345"
+    },
+    "tailscale": {
+      "mode": "off"
+    },
+    "http": {
+      "endpoints": {
+        "chatCompletions": {
+          "enabled": true
+        }
+      }
+    }
+  },
+  "agents": {
+    "defaults": {
+      "workspace": "/workspace",
+      "model": {
+        "primary": "${CLAWBENCH_MODEL}"
+      }
+    }
+  },
+  "plugins": {
+    "slots": {
+      "memory": "none"
+    },
+    "entries": {
+      "clawbench-tools": {
+        "enabled": true,
+        "config": {
+          "mockServerUrl": "http://mock-tools:3001",
+          "scenario": "default"
+        }
+      }
+    }
+  },
+  "tools": {
+    "web": {
+      "search": {
+        "enabled": false
+      },
+      "fetch": {
+        "enabled": false
+      }
+    },
+    "deny": [
+      "process",
+      "browser",
+      "canvas",
+      "nodes",
+      "cron",
+      "gateway",
+      "apply_patch"
+    ],
+    "allow": [
+      "exec",
+      "slack",
+      "memory_search",
+      "memory_get",
+      "web_search",
+      "read",
+      "session_status"
+    ]
+  },
+  "channels": {}
+}

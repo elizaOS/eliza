@@ -1,0 +1,57 @@
+---
+title: "eliza config"
+description: "Read, display, and locate the active configuration from the shell."
+---
+
+# `eliza config`
+
+Read-only helpers for inspecting the active configuration.
+
+## Subcommands
+
+| Subcommand | Description |
+|------------|-------------|
+| `eliza config get <key>` | Read a specific config value |
+| `eliza config path` | Print the resolved config file path |
+| `eliza config show` | Display all config values grouped by section |
+
+## Subcommands
+
+### `eliza config get <key>`
+
+Read a single config value using dot-notation. Nested keys are supported (e.g. `agents.defaults.model.primary`). Prints `(not set)` when the key does not exist, or the JSON-formatted value otherwise.
+
+```bash
+eliza config path                  # show which file the runtime loads
+eliza config get connectors.discord.token   # read a specific key
+eliza config show                  # dump all config values
+eliza config --help                # show available subcommands
+```
+
+### `eliza config path`
+
+Print the resolved config file path (e.g. `~/.eliza/eliza.json`).
+
+```bash
+eliza config path
+```
+
+### `eliza config show`
+
+Display all configuration values grouped by section. Sensitive values (API keys, tokens) are masked. Hidden fields are excluded unless `--all` is passed.
+
+| Flag | Description |
+|------|-------------|
+| `-a, --all` | Include advanced and hidden fields |
+| `--json` | Output as raw JSON |
+
+```bash
+eliza config show
+eliza config show --all
+eliza config show --json
+```
+
+## Related
+
+- [Configuration](/configuration)
+- [`eliza configure`](/cli/configure)

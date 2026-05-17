@@ -1,0 +1,85 @@
+{
+  "pipeline": [
+    {
+      "prospect_id": "PP-3001",
+      "issuer": "CloudHaven Inc.",
+      "deal_type": "Private Placement",
+      "est_size_mm": 1700.42,
+      "probability_pct": 80,
+      "expected_date": "2027-Q2",
+      "stage": "Mandate Pending",
+      "coverage_officer": "J. Morrison"
+    },
+    {
+      "prospect_id": "PP-3002",
+      "issuer": "AgriTech Global",
+      "deal_type": "ABS",
+      "est_size_mm": 2228.84,
+      "probability_pct": 75,
+      "expected_date": "2027-Q3",
+      "stage": "Early Discussion",
+      "coverage_officer": "J. Morrison"
+    },
+    {
+      "prospect_id": "PP-3003",
+      "issuer": "EcoTrade Solutions",
+      "deal_type": "Bond Issuance",
+      "est_size_mm": 1210.47,
+      "probability_pct": 50,
+      "expected_date": "2027-Q1",
+      "stage": "Mandate Pending",
+      "coverage_officer": "S. Chen"
+    },
+    {
+      "prospect_id": "PP-3004",
+      "issuer": "FutureGen AI",
+      "deal_type": "IPO",
+      "est_size_mm": 1749.41,
+      "probability_pct": 80,
+      "expected_date": "2027-Q2",
+      "stage": "Pitch Submitted",
+      "coverage_officer": "J. Morrison"
+    },
+    {
+      "prospect_id": "PP-3005",
+      "issuer": "FutureGen AI",
+      "deal_type": "Secondary Offering",
+      "est_size_mm": 996.15,
+      "probability_pct": 60,
+      "expected_date": "2027-Q4",
+      "stage": "Due Diligence",
+      "coverage_officer": "J. Morrison"
+    },
+    {
+      "prospect_id": "PP-3006",
+      "issuer": "FutureGen AI",
+      "deal_type": "ABS",
+      "est_size_mm": 2834.98,
+      "probability_pct": 60,
+      "expected_date": "2027-Q1",
+      "stage": "Early Discussion",
+      "coverage_officer": "S. Chen"
+    },
+    {
+      "prospect_id": "PP-3007",
+      "issuer": "AgriTech Global",
+      "deal_type": "IPO",
+      "est_size_mm": 1815.66,
+      "probability_pct": 80,
+      "expected_date": "2027-Q1",
+      "stage": "Mandate Pending",
+      "coverage_officer": "J. Morrison"
+    },
+    {
+      "prospect_id": "PP-3008",
+      "issuer": "EcoTrade Solutions",
+      "deal_type": "IPO",
+      "est_size_mm": 2982.97,
+      "probability_pct": 25,
+      "expected_date": "2027-Q4",
+      "stage": "Mandate Pending",
+      "coverage_officer": "R. Patel"
+    }
+  ],
+  "as_of": "2026-10-31"
+}

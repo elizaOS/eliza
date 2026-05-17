@@ -1,0 +1,15 @@
+{
+  "name": "bags-claimer",
+  "type": "module",
+  "scripts": {
+    "start": "bun run claimer.ts",
+    "claim": "bun run claimer.ts --once",
+    "lint": "bunx @biomejs/biome check --write --unsafe .",
+    "typecheck": "echo 'No TypeScript config; skipping typecheck'",
+    "build": "echo 'No build step configured; skipping build'"
+  },
+  "dependencies": {
+    "@solana/web3.js": "1.98.4",
+    "bs58": "^6.0.0"
+  }
+}

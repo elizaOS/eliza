@@ -1,0 +1,6 @@
+Instance ID: instance_element-hq__element-web-d53949e863e1938a0dcf9bdbc061caa956920956-v7b62abc14b88c2d9dacdbcea6f332724656e01f1
+Repository: element-hq/element-web
+Base Commit: 4e5687c454377d4fab092a5fdd0f8dd9a835348f
+Test Files: ["test/stores/room-list/MessagePreviewStore-test.ts"]
+FAIL_TO_PASS: ["test/stores/room-list/MessagePreviewStore-test.ts | MessagePreviewStore | should ignore edits for events other than the latest one", "test/stores/room-list/MessagePreviewStore-test.ts | MessagePreviewStore | should ignore edits to unknown events", "test/stores/room-list/MessagePreviewStore-test.ts | MessagePreviewStore | should generate correct preview for message events in DMs"]
+PASS_TO_PASS: []

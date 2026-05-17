@@ -1,0 +1,1 @@
+/usr/bin/cc -O3 -DNDEBUG CMakeFiles/voice_emotion_classes_test.dir/test/voice_emotion_classes_test.c.o -o voice_emotion_classes_test  libvoice_classifier.a -lm 

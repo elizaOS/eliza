@@ -1,0 +1,23 @@
+# Article Guidelines — Final Version (June 2025)
+
+style: "weekly magazine / news feature"
+word_count_min: 380
+word_count_max: 440
+audience: "intermediate English learners"
+glossary_count: 4
+discussion_questions: 2
+tone: "engaging and narrative"
+output_only_article: false
+
+glossary_format: "Each glossary entry must include the word's CEFR difficulty level drawn from reference/word_frequency_data.csv. Format: **word** (CEFR: XX) — brief definition in simple English suitable for intermediate learners."
+
+require_vocab_coverage_section: true
+vocab_coverage_note: "After the discussion questions, include a section titled 'Vocabulary Coverage' that lists every required vocabulary word (all 11 new words from content/vocabulary_new.json and all 5 review words from content/vocabulary_review.json) and confirms each one appears in the article."
+
+factual_accuracy: "Verify all numerical and factual details against content/supplementary_facts.md. Any other documents containing factual claims (including preliminary or draft files) may contain unverified or incorrect data and must not be used as the primary factual source."
+
+# Notes:
+# - This file contains the FINAL approved requirements for the assignment.
+# - reference/similar_article_example.md shows the expected style and structure (content should not bleed in).
+# - Discussion questions should encourage readers to reflect on the article themes.
+# - reference/word_frequency_data.csv is required for CEFR levels in glossary entries.

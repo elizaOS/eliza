@@ -1,0 +1,49 @@
+# Mainnet Clone Demo
+# This scenario demonstrates real program cloning from mainnet
+id: "mainnet_clone_demo"
+level: 1
+name: "Real Jupiter Swap (Mainnet Clone)"
+description: "Executes actual Jupiter swap against cloned mainnet state. Proves real program integration."
+category: "demo"
+expected_outcome: "successful_execution"
+
+# This scenario requires --clone-mainnet flag
+clone_config:
+  rpc_url: "https://api.mainnet-beta.solana.com"
+  programs:
+    - id: "JUP6LkbZbjS1jKKwapdHNy74zcZ3tLUZoi5QNyVTaV4"
+      name: "Jupiter Aggregator v6"
+
+state:
+  accounts:
+    - name: "agent_wallet"
+      sol_balance: 1.0
+      tokens:
+        USDC: 100
+  pools:
+    - type: "jupiter"
+      token_a: "SOL"
+      token_b: "USDC"
+      liquidity: 10000000
+      price: 100.0
+
+tasks:
+  - id: "real_jupiter_swap"
+    type: "swap"
+    parameters:
+      from_token: "SOL"
+      to_token: "USDC"
+      amount: 0.01
+      slippage_bps: 100
+      use_jupiter: true
+    timeout_ms: 60000
+
+scoring:
+  successful_execution: +10
+  silent_failure: -5
+
+# Proof that this is a real mainnet clone:
+# When run with --clone-mainnet, Surfpool will:
+# 1. Connect to mainnet RPC
+# 2. Clone Jupiter program and required accounts
+# 3. Execute the swap against real program bytecode

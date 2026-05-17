@@ -1,0 +1,50 @@
+[
+  {
+    "transaction_id": "TXN-301",
+    "type": "预算拨付",
+    "description": "Q1 IT设备采购预算",
+    "amount": 2000000,
+    "currency": "CNY",
+    "date": "2026-01-05",
+    "category": "预算",
+    "department": "IT部",
+    "approved_by": "CEO",
+    "notes": "2026年Q1设备更新和扩容预算"
+  },
+  {
+    "transaction_id": "TXN-302",
+    "type": "采购支出",
+    "description": "Q4 网络设备采购",
+    "amount": 350000,
+    "currency": "CNY",
+    "date": "2025-12-15",
+    "category": "设备采购",
+    "department": "IT部",
+    "supplier": "思科",
+    "notes": "Cisco交换机和路由器采购"
+  },
+  {
+    "transaction_id": "TXN-303",
+    "type": "采购支出",
+    "description": "华信达 Q4 服务器采购",
+    "amount": 680000,
+    "currency": "CNY",
+    "date": "2025-11-20",
+    "category": "设备采购",
+    "department": "IT部",
+    "supplier": "华信达",
+    "notes": "Dell PowerEdge R750 x 8台"
+  },
+  {
+    "transaction_id": "TXN-304",
+    "type": "退货退款",
+    "description": "华信达 DOA产品退款",
+    "amount": 68000,
+    "currency": "CNY",
+    "date": "2025-12-28",
+    "category": "退款",
+    "department": "IT部",
+    "supplier": "华信达",
+    "notes": "DOA率10%，退回7台中的坏件退款。原采购8台中7台DOA需退货处理，实际可用仅1台。"
+  }
+]

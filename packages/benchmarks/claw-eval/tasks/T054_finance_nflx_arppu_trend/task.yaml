@@ -1,0 +1,106 @@
+task_id: T054_finance_nflx_arppu_trend
+task_name: Netflix ARPPU Trend 2019-2024
+version: "1.0"
+category: finance
+difficulty: easy
+tags: [general]
+
+services:
+  - name: web_real
+    command: python mock_services/web_real/server.py
+    port: 9114
+    health_check: http://localhost:9114/web/health
+    health_check_method: GET
+    ready_timeout: 10
+    reset_endpoint: http://localhost:9114/web/reset
+
+prompt:
+  text: |
+    How has Netflix's (NASDAQ: NFLX) Average Revenue Per Paying User Changed from 2019 to 2024?
+  language: en
+
+tools:
+  - name: web_search
+    description: Search the public web and return result snippets.
+    input_schema:
+      type: object
+      properties:
+        query:
+          type: string
+          description: Search query
+        max_results:
+          type: integer
+          description: Maximum number of results
+          default: 10
+      required: [query]
+
+  - name: web_fetch
+    description: Fetch full webpage content for a URL.
+    input_schema:
+      type: object
+      properties:
+        url:
+          type: string
+          description: Target URL
+        timeout_seconds:
+          type: integer
+          description: Request timeout in seconds
+          default: 30
+      required: [url]
+
+tool_endpoints:
+  - tool_name: web_search
+    url: http://localhost:9114/web/search
+    method: POST
+  - tool_name: web_fetch
+    url: http://localhost:9114/web/fetch
+    method: POST
+
+environment:
+  timeout_seconds: 1800
+  max_turns: 50
+
+scoring_components:
+  - name: yearly_values
+    weight: 0.60
+    check:
+      type: keywords_present
+      keywords: ["2019: 10.82", "2020: 10.91", "2021: 11.67", "2022: 11.76", "2023: 11.64", "2024: 11.70"]
+  - name: trend_interpretation
+    weight: 0.40
+    check:
+      type: keywords_present
+      keywords: ["2019-2022", "2.8%", "flat", "ad plans"]
+
+safety_checks: []
+expected_actions: []
+
+judge_rubric: |
+  Evaluate whether the agent correctly reported Netflix's ARPPU trend from 2019 to 2024.
+
+  The correct answer includes year-by-year values and trend interpretation:
+  Key facts the response should contain:
+  - Company: Netflix (NFLX)
+  - Metric: Average Revenue Per Paying User (ARPPU), in USD
+  - Year-by-year values: 2019: $10.82, 2020: $10.91, 2021: $11.67, 2022: $11.76, 2023: $11.64, 2024: $11.70
+  - Trend 2019-2022: increased at roughly 2.8% annually
+  - Trend 2022-2024: broadly flat, likely due to lower-priced ad plans
+
+  Scoring guidance:
+  - 0.90-1.00: All yearly values + trend interpretation present and accurate.
+  - 0.70-0.89: Mostly accurate with minor omission/phrasing issues.
+  - 0.40-0.69: Some correct values but key anchors missing.
+  - 0.00-0.39: Major factual errors or no meaningful trend answer.
+
+reference_solution: |
+  2019: 10.82
+  2020: 10.91
+  2021: 11.67
+  2022: 11.76
+  2023: 11.64
+  2024: 11.70
+
+  From 2019-2022, ARPPU rose around 2.8% annually.
+  From 2022-2024, ARPPU was broadly flat, likely influenced by lower-priced ad tiers.
+
+primary_dimensions: [completion, communication]

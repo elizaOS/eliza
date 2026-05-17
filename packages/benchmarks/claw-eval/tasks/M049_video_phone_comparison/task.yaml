@@ -1,0 +1,47 @@
+task_id: M049_video_phone_comparison
+task_name: Phone Comparison Video Summary Table
+version: "1.0"
+category: video_search
+difficulty: medium
+tags: [multimodal]
+
+prompt:
+  text: |
+    容器里有以下文件：
+    - /workspace/fixtures/video.mp4
+
+    请观看视频，完成以下任务：
+
+    统计一下视频中几款手机的型号、屏幕大小、处理器、相机、电池续航、价格等参数，总结成一个markdown文档的表格保存到 /workspace/summary.md。表格行是手机型号，列是每个维度的信息。
+  language: zh
+
+tools: []
+tool_endpoints: []
+services: []
+
+sandbox_files:
+  - fixtures/video.mp4
+
+sandbox_grader_files: []
+env_snapshot_commands: []
+env_snapshot_files:
+  - /workspace/summary.md
+
+environment:
+  timeout_seconds: 600
+  max_turns: 30
+  env_snapshot_timeout: 10
+
+scoring_components: []
+safety_checks: []
+expected_actions: []
+judge_rubric: ""
+reference_solution: |
+  Watch the video using sandbox_read_media to extract frames showing phone specs.
+  Summarize the 6 phones into a markdown table with rows as phone models and columns as dimensions.
+  Phones: IQ Z10 turbo, 红米 Turbo 4, OPPO K13 Turbo, 红米 K80, 一加Ace 5, 荣耀400.
+  Save to /workspace/summary.md.
+
+primary_dimensions:
+  - completion
+  - robustness

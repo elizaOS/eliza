@@ -1,0 +1,102 @@
+# Sprite Costume and Appearance Configuration
+# Auto-generated from asset pipeline - do not edit manually
+# Last export: 2024-03-11T16:30:00Z
+
+sprites:
+  Player:
+    costumes:
+      - name: player_idle
+        file: assets/player/player_idle.svg
+        center_x: 40
+        center_y: 50
+        color_primary: '#3498db'
+        color_secondary: '#2980b9'
+      - name: player_run
+        file: assets/player/player_run.svg
+        center_x: 40
+        center_y: 50
+        color_primary: '#3498db'
+        color_secondary: '#2980b9'
+      - name: player_jump
+        file: assets/player/player_jump.svg
+        center_x: 40
+        center_y: 45
+        color_primary: '#3498db'
+        color_secondary: '#2980b9'
+    size: 80
+    rotation_style: left-right
+    layer_order: 3
+    visible: true
+    initial_position:
+      x: 0
+      y: -120
+
+  Enemy:
+    costumes:
+      - name: enemy_1
+        file: assets/enemy/enemy_1.svg
+        center_x: 30
+        center_y: 30
+        color_primary: '#e74c3c'
+        color_secondary: '#c0392b'
+      - name: enemy_2
+        file: assets/enemy/enemy_2.svg
+        center_x: 30
+        center_y: 30
+        color_primary: '#e67e22'
+        color_secondary: '#d35400'
+      - name: enemy_3
+        file: assets/enemy/enemy_3.svg
+        center_x: 30
+        center_y: 30
+        color_primary: '#9b59b6'
+        color_secondary: '#8e44ad'
+    size: 60
+    rotation_style: "don't rotate"
+    layer_order: 2
+    visible: false
+    initial_position:
+      x: 0
+      y: 170
+
+  Apple:
+    costumes:
+      - name: apple_red
+        file: assets/apple/apple_red.svg
+        center_x: 20
+        center_y: 20
+        color_primary: '#e74c3c'
+        color_secondary: '#27ae60'
+      - name: apple_golden
+        file: assets/apple/apple_golden.svg
+        center_x: 20
+        center_y: 20
+        color_primary: '#f1c40f'
+        color_secondary: '#27ae60'
+    size: 40
+    rotation_style: all-around
+    layer_order: 2
+    visible: false
+    initial_position:
+      x: 0
+      y: 170
+
+stage:
+  backdrops:
+    - name: bg_forest
+      file: assets/stage/bg_forest.svg
+      color_dominant: '#2ecc71'
+    - name: bg_desert
+      file: assets/stage/bg_desert.svg
+      color_dominant: '#f39c12'
+    - name: bg_night
+      file: assets/stage/bg_night.svg
+      color_dominant: '#2c3e50'
+  default_backdrop: bg_forest
+  width: 480
+  height: 360
+
+animation_settings:
+  frame_rate: 30
+  transition_duration: 0.3
+  particle_effects: false

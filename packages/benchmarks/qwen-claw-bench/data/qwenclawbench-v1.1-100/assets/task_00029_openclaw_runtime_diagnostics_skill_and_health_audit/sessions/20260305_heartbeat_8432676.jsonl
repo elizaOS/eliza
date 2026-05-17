@@ -1,0 +1,14 @@
+{"type": "session_start", "session_id": "heartbeat_8432676", "model": "claude-sonnet-4-20250514", "created_at": "2026-03-05T05:43:23.771183", "user_id": "system", "channel": "internal"}
+{"role": "user", "content": "Schedule a backup for tonight", "timestamp": "2026-03-05T05:46:53.516436", "session_id": "heartbeat_8432676", "seq": 1}
+{"role": "user", "content": "Review the deployment logs", "timestamp": "2026-03-05T05:51:46.752885", "session_id": "heartbeat_8432676", "seq": 2}
+{"role": "user", "content": "Schedule a backup for tonight", "timestamp": "2026-03-05T05:52:50.371264", "session_id": "heartbeat_8432676", "seq": 3}
+{"role": "assistant", "content": "Let me check the weather for you.", "timestamp": "2026-03-05T05:53:27.914678", "session_id": "heartbeat_8432676", "seq": 4, "usage": {"prompt_tokens": 5995, "completion_tokens": 3682, "total_tokens": 2665}}
+{"role": "user", "content": "Summarize yesterday's activity", "timestamp": "2026-03-05T05:56:48.153886", "session_id": "heartbeat_8432676", "seq": 5}
+{"role": "assistant", "content": "Here's a summary of what happened yesterday...", "timestamp": "2026-03-05T05:58:59.157170", "session_id": "heartbeat_8432676", "seq": 6, "usage": {"prompt_tokens": 6113, "completion_tokens": 352, "total_tokens": 1519}}
+{"role": "tool", "name": "web_search", "content": "{\"results\": []}", "timestamp": "2026-03-05T06:00:36.130377", "session_id": "heartbeat_8432676", "seq": 7}
+{"role": "assistant", "content": "Running server diagnostics...", "timestamp": "2026-03-05T06:03:05.951383", "session_id": "heartbeat_8432676", "seq": 8, "usage": {"prompt_tokens": 1627, "completion_tokens": 1142, "total_tokens": 5991}}
+{"role": "user", "content": "Check the server status", "timestamp": "2026-03-05T06:07:57.172738", "session_id": "heartbeat_8432676", "seq": 9}
+{"role": "assistant", "content": "Sure, what would you like to communicate?", "timestamp": "2026-03-05T06:10:50.732620", "session_id": "heartbeat_8432676", "seq": 10, "usage": {"prompt_tokens": 1686, "completion_tokens": 2684, "total_tokens": 9203}}
+{"role": "assistant", "content": "I'll analyze the recent deployment logs.", "timestamp": "2026-03-05T06:15:35.413825", "session_id": "heartbeat_8432676", "seq": 11, "usage": {"prompt_tokens": 2516, "completion_tokens": 3934, "total_tokens": 5814}}
+{"role": "assistant", "content": "Let me check the weather for you.", "timestamp": "2026-03-05T06:16:23.816871", "session_id": "heartbeat_8432676", "seq": 12, "usage": {"prompt_tokens": 1755, "completion_tokens": 2674, "total_tokens": 9866}}
+{"type": "session_end", "session_id": "heartbeat_8432676", "ended_at": "2026-03-05T06:16:33.816871", "total_messages": 12, "status": "error"}

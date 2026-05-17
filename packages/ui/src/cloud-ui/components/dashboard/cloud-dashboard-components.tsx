@@ -20,6 +20,7 @@ import { useState } from "react";
 import { cn } from "../../lib/utils";
 import { BrandButton } from "../brand/brand-button";
 import { DashboardTableSkeleton } from "../data-list/dashboard-table-skeleton";
+import { DashboardRoutePage } from "../layout/dashboard-route-page";
 import { EmptyState } from "../empty-state";
 import { ListSkeleton } from "../list-skeleton";
 
@@ -41,6 +42,10 @@ interface AppsEmptyStateProps {
   description?: string;
   /** Optional CTA. */
   action?: ReactNode;
+}
+
+interface DashboardRoutePageWrapperProps {
+  children: ReactNode;
 }
 
 const ACTION_CARD_SKELETON_IDS = [
@@ -176,6 +181,28 @@ export function DashboardActionCardsSkeleton() {
   );
 }
 
+export function DashboardPageWrapper({
+  children,
+}: DashboardRoutePageWrapperProps) {
+  return <DashboardRoutePage title="Dashboard">{children}</DashboardRoutePage>;
+}
+
+export function AppsPageWrapper({ children }: DashboardRoutePageWrapperProps) {
+  return <DashboardRoutePage title="My Apps">{children}</DashboardRoutePage>;
+}
+
+export function ContainersPageWrapper({
+  children,
+}: DashboardRoutePageWrapperProps) {
+  return <DashboardRoutePage title="Containers">{children}</DashboardRoutePage>;
+}
+
+export function ElizaAgentsPageWrapper({
+  children,
+}: DashboardRoutePageWrapperProps) {
+  return <DashboardRoutePage title="Instances">{children}</DashboardRoutePage>;
+}
+
 export function AppsEmptyState({ description, action }: AppsEmptyStateProps) {
   return (
     <EmptyState
@@ -274,4 +301,8 @@ export function ContainersEmptyState() {
   );
 }
 
-export type { AppsEmptyStateProps, DashboardActionCardsProps };
+export type {
+  AppsEmptyStateProps,
+  DashboardActionCardsProps,
+  DashboardRoutePageWrapperProps,
+};

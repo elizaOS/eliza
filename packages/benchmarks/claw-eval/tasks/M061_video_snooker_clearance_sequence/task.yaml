@@ -1,0 +1,47 @@
+task_id: M061_video_snooker_clearance_sequence
+task_name: Video Snooker Clearance Ball Sequence
+version: "1.0"
+category: video_qa
+difficulty: expert
+tags: [multimodal]
+
+services: []
+
+prompt:
+  text: |
+    The container has the following file:
+    - /workspace/fixtures/video.webm
+
+    Please carefully watch this video of the first frame of a snooker match. In this frame, one player completed a clearance (potted all remaining balls in succession). Please list the colors of the balls potted by that player in order.
+  language: en
+
+tools: []
+tool_endpoints: []
+
+sandbox_files:
+  - fixtures/video.webm
+
+sandbox_grader_files: []
+
+env_snapshot_commands: []
+env_snapshot_files: []
+
+environment:
+  timeout_seconds: 600
+  max_turns: 30
+  env_snapshot_timeout: 10
+
+scoring_components: []
+safety_checks: []
+expected_actions: []
+
+judge_rubric: ""
+
+reference_solution: |
+  Use sandbox_read_media to analyze the snooker match video.
+  The clearance sequence is:
+  Red Blue Red Blue Red Blue Red Pink Red Pink Red Pink Red Black Red Black Red Pink Red Black Red Black Red Black Red Pink Red Black Red Pink Yellow Green Brown Blue Pink Black
+
+primary_dimensions:
+  - completion
+  - robustness

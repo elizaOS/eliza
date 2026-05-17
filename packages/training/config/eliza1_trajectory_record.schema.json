@@ -1,0 +1,265 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://elizaos.github.io/schemas/eliza1-trajectory-record.schema.json",
+  "title": "Eliza-1 trajectory SFT record",
+  "$comment": "DERIVED ChatML-SFT schema — NOT the canonical Eliza-1 corpus record. The canonical corpus record is eliza_native_v1 (one row per Vercel AI SDK model boundary); see packages/training/docs/dataset/CANONICAL_RECORD.md. scripts/prepare_eliza1_trajectory_dataset.py writes eliza_native_v1 rows for the default train/val/test splits; this rendered shape is produced only with --output-format trajectory-record.",
+  "type": "object",
+  "required": [
+    "schema",
+    "id",
+    "split",
+    "task",
+    "target",
+    "messages",
+    "tools",
+    "actions",
+    "quality",
+    "source",
+    "metadata"
+  ],
+  "additionalProperties": false,
+  "properties": {
+    "schema": {
+      "const": "eliza.eliza1_trajectory_record.v1"
+    },
+    "id": {
+      "type": "string",
+      "minLength": 12
+    },
+    "split": {
+      "enum": ["train", "val", "test", "repair_eval"]
+    },
+    "task": {
+      "type": "string",
+      "minLength": 1
+    },
+    "target": {
+      "type": "object",
+      "required": ["modelFamily", "baseModel", "sftFormat", "chatTemplate"],
+      "additionalProperties": false,
+      "properties": {
+        "modelFamily": {
+          "const": "qwen"
+        },
+        "baseModel": {
+          "type": "string",
+          "minLength": 1
+        },
+        "sftFormat": {
+          "const": "messages"
+        },
+        "chatTemplate": {
+          "const": "chatml"
+        }
+      }
+    },
+    "messages": {
+      "type": "array",
+      "minItems": 1,
+      "contains": {
+        "type": "object",
+        "required": ["role"],
+        "properties": {
+          "role": {
+            "const": "user"
+          }
+        }
+      },
+      "items": {
+        "$ref": "#/$defs/chatMessage"
+      }
+    },
+    "tools": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/toolDefinition"
+      }
+    },
+    "actions": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/actionCall"
+      }
+    },
+    "quality": {
+      "type": "object",
+      "required": ["success", "score", "weight", "rating", "requiresRepair", "reasons"],
+      "additionalProperties": false,
+      "properties": {
+        "success": {
+          "type": "boolean"
+        },
+        "score": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1
+        },
+        "weight": {
+          "type": "number",
+          "minimum": 0
+        },
+        "rating": {
+          "enum": ["gold", "silver", "bronze", "repair"]
+        },
+        "requiresRepair": {
+          "type": "boolean"
+        },
+        "reasons": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
+      }
+    },
+    "source": {
+      "type": "object",
+      "required": [
+        "kind",
+        "dataset",
+        "path",
+        "rowIndex",
+        "sourceId",
+        "trajectoryId",
+        "scenarioId",
+        "turnIndex",
+        "format"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "kind": {
+          "enum": ["eliza_native_v1", "lifeops_bench_result"]
+        },
+        "dataset": {
+          "type": "string"
+        },
+        "path": {
+          "type": "string"
+        },
+        "rowIndex": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "sourceId": {
+          "type": ["string", "null"]
+        },
+        "trajectoryId": {
+          "type": ["string", "null"]
+        },
+        "scenarioId": {
+          "type": ["string", "null"]
+        },
+        "turnIndex": {
+          "type": ["integer", "null"],
+          "minimum": 0
+        },
+        "format": {
+          "type": ["string", "null"]
+        }
+      }
+    },
+    "metadata": {
+      "type": "object",
+      "additionalProperties": true
+    }
+  },
+  "$defs": {
+    "chatMessage": {
+      "type": "object",
+      "required": ["role", "content"],
+      "additionalProperties": true,
+      "properties": {
+        "role": {
+          "enum": ["system", "user", "assistant", "tool"]
+        },
+        "content": {
+          "type": "string"
+        },
+        "name": {
+          "type": "string"
+        },
+        "tool_call_id": {
+          "type": "string"
+        },
+        "tool_calls": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/messageToolCall"
+          }
+        }
+      }
+    },
+    "messageToolCall": {
+      "type": "object",
+      "required": ["id", "type", "function"],
+      "additionalProperties": false,
+      "properties": {
+        "id": {
+          "type": "string"
+        },
+        "type": {
+          "const": "function"
+        },
+        "function": {
+          "type": "object",
+          "required": ["name", "arguments"],
+          "additionalProperties": false,
+          "properties": {
+            "name": {
+              "type": "string",
+              "minLength": 1
+            },
+            "arguments": {
+              "type": "object"
+            }
+          }
+        }
+      }
+    },
+    "toolDefinition": {
+      "type": "object",
+      "required": ["type", "function"],
+      "additionalProperties": true,
+      "properties": {
+        "type": {
+          "const": "function"
+        },
+        "function": {
+          "type": "object",
+          "required": ["name", "description", "parameters"],
+          "additionalProperties": true,
+          "properties": {
+            "name": {
+              "type": "string",
+              "minLength": 1
+            },
+            "description": {
+              "type": "string"
+            },
+            "parameters": {
+              "type": "object"
+            }
+          }
+        }
+      }
+    },
+    "actionCall": {
+      "type": "object",
+      "required": ["name", "originalName", "arguments"],
+      "additionalProperties": false,
+      "properties": {
+        "name": {
+          "type": "string",
+          "minLength": 1
+        },
+        "originalName": {
+          "type": "string",
+          "minLength": 1
+        },
+        "arguments": {
+          "type": "object"
+        }
+      }
+    }
+  }
+}

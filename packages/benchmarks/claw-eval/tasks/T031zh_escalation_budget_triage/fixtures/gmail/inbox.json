@@ -1,0 +1,72 @@
+[
+  {
+    "message_id": "msg_1601",
+    "from": "customer-service@company.com",
+    "to": "me@company.com",
+    "subject": "【紧急】华信科技投诉升级 - 要求50万补偿",
+    "date": "2026-02-28T09:15:00+08:00",
+    "is_read": false,
+    "labels": ["inbox", "important", "escalation"],
+    "body": "转发客户投诉：\n\n客户编号：CUS-003\n客户名称：华信科技\n联系人：张总\n\n投诉内容：\n张总来电反映，近三个月来我司服务响应时间严重超标，多次反馈未得到有效解决。具体问题包括：\n1. 技术支持工单平均响应时间超过48小时（SLA承诺24小时内）\n2. 上月系统故障导致其业务中断6小时\n3. 客户经理更换频繁，交接不到位\n\n客户要求：\n- 书面道歉\n- 补偿金额：50万元\n- 指定专属客户经理\n\n该客户为VIP客户，年合同金额较大，请尽快处理。\n\n客服部 小王"
+  },
+  {
+    "message_id": "msg_1602",
+    "from": "customer-service@company.com",
+    "to": "me@company.com",
+    "subject": "明达集团交付延迟投诉 - 要求5万补偿",
+    "date": "2026-02-28T10:30:00+08:00",
+    "is_read": false,
+    "labels": ["inbox", "escalation"],
+    "body": "客户投诉通知：\n\n客户编号：CUS-001\n客户名称：明达集团\n联系人：王建国\n\n投诉内容：\n王建国反映我司上季度交付的系统集成项目延迟了两周，导致其内部项目计划受到影响。客户要求我司承担因延迟造成的额外成本。\n\n客户要求：\n- 补偿金额：5万元\n- 后续项目交付保障承诺\n\n此为标准客户，投诉级别一般。\n\n客服部 小李"
+  },
+  {
+    "message_id": "msg_1603",
+    "from": "customer-service@company.com",
+    "to": "me@company.com",
+    "subject": "博通信息产品缺陷反馈 - 要求15万补偿",
+    "date": "2026-02-28T11:00:00+08:00",
+    "is_read": false,
+    "labels": ["inbox", "important", "escalation"],
+    "body": "客户升级通知：\n\n客户编号：CUS-004\n客户名称：博通信息\n联系人：赵经理\n\n投诉内容：\n赵经理反映我司交付的数据分析平台存在严重缺陷，导致数据统计结果偏差超过5%。已经影响到其Q4的决策报告准确性。技术团队已确认是我方算法模块的Bug。\n\n客户要求：\n- 立即修复缺陷\n- 补偿金额：15万元\n- 提供数据修正服务\n\n该客户为VIP客户，请优先处理。\n\n客服部 小张"
+  },
+  {
+    "message_id": "msg_1604",
+    "from": "liqiang@company.com",
+    "to": "me@company.com",
+    "subject": "Fwd: 联想创新产品体验问题 - 内部转发",
+    "date": "2026-02-28T13:45:00+08:00",
+    "is_read": false,
+    "labels": ["inbox", "escalation"],
+    "body": "你好，\n\n转发一下这个客户的问题，我这边处理不了，需要你帮忙决策。\n\n客户编号：CUS-005\n客户名称：联想创新\n联系人：刘洋\n年收入贡献：约360万\n\n客户反映我们的产品使用体验不佳，多次反馈改进建议未被采纳。现在要求20万元的补偿，否则考虑更换供应商。\n\n这个客户虽然不是VIP，但年收入不低，建议认真对待。\n\n销售部 李强"
+  },
+  {
+    "message_id": "msg_1605",
+    "from": "customer-service@company.com",
+    "to": "me@company.com",
+    "subject": "天宇传媒服务投诉 - 要求3万补偿",
+    "date": "2026-02-28T14:20:00+08:00",
+    "is_read": false,
+    "labels": ["inbox"],
+    "body": "客户投诉通知：\n\n客户编号：CUS-002\n客户名称：天宇传媒\n联系人：李敏\n\n投诉内容：\n李敏反映上周联系客服咨询账单问题，等待时间超过30分钟，且客服人员态度不够专业。客户感到不满。\n\n客户要求：\n- 补偿金额：3万元\n- 改善客服响应速度\n\n此为标准客户，小额投诉。\n\n客服部 小王"
+  },
+  {
+    "message_id": "msg_1606",
+    "from": "customer-service@company.com",
+    "to": "me@company.com",
+    "subject": "Re: 【紧急】华信科技投诉升级 - 催促处理",
+    "date": "2026-02-28T16:00:00+08:00",
+    "is_read": false,
+    "labels": ["inbox", "important"],
+    "body": "补充通知：\n\n华信科技张总刚才再次来电催促，表示如果今天内没有收到正式回复，将考虑暂停下季度的合同续签。\n\n请务必尽快给出处理方案。\n\n客服部 小王"
+  },
+  {
+    "message_id": "msg_1607",
+    "from": "unknown-sender@external.com",
+    "to": "me@company.com",
+    "subject": "恒达电子补偿申请 - 要求10万",
+    "date": "2026-02-28T17:10:00+08:00",
+    "is_read": false,
+    "labels": ["inbox"],
+    "body": "你好，\n\n我是恒达电子（CUS-008）的吴涛。虽然我们之前的合同已经结束，但在合同期内遗留的技术问题一直未得到解决，给我们造成了持续的损失。\n\n我们要求贵司补偿10万元，用于覆盖我方自行修复相关问题的费用。\n\n请尽快答复。\n\n吴涛\n恒达电子"
+  }
+]

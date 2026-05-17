@@ -1,0 +1,23 @@
+# Memory Tool MCP Server Configuration
+name: memory_tool
+display_name: Memory Tool MCP Server
+description: Persistent memory storage for agents
+
+execution:
+  command_type: python
+  script:
+    primary: "gem/tools/mcp_server/memory_tool/server.py"
+    fallbacks: []
+
+parameters:
+  base_path:
+    required: false
+    default: "./memory_storage"
+    cli_arg: "--base-path"
+    description: "Base path for memory storage"
+
+workspace:
+  set_cwd: true
+  cwd_param: base_path
+  supports_placeholders: true
+  mkdir_if_needed: false  # Parent directory used as cwd

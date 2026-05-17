@@ -1,0 +1,27 @@
+# Snowflake MCP Server Configuration
+name: snowflake
+display_name: Snowflake MCP Server
+description: Mock Snowflake data warehouse operations server for benchmarking
+
+execution:
+  command_type: uv
+  script:
+    primary: "mcp_convert/mcps/snowflake/server.py"
+    fallbacks: []
+  requires_project_root: true
+
+parameters:
+  data_dir:
+    required: true
+    default: "./snowflake_data"
+    env_var: "SNOWFLAKE_DATA_DIR"
+    description: "Path to Snowflake data directory"
+
+  server_script:
+    required: false
+    description: "Override server script path (for testing)"
+
+workspace:
+  set_cwd: false
+  supports_placeholders: true
+  mkdir_if_needed: true

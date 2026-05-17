@@ -1,0 +1,56 @@
+[
+  {
+    "id": "health-sitting-0920",
+    "schedule": "20 9 * * 1-5",
+    "sessionTarget": "isolated",
+    "payload": {
+      "kind": "agentTurn",
+      "message": "Send sitting reminder for 9:20"
+    }
+  },
+  {
+    "id": "health-sitting-1050",
+    "schedule": "50 10 * * 1-5",
+    "sessionTarget": "isolated",
+    "payload": {
+      "kind": "agentTurn",
+      "message": "Send sitting reminder for 10:50"
+    }
+  },
+  {
+    "id": "health-weight-2300",
+    "schedule": "0 23 * * *",
+    "sessionTarget": "isolated",
+    "payload": {
+      "kind": "agentTurn",
+      "message": "Send weight tracking reminder"
+    }
+  },
+  {
+    "id": "commute-subway-0757",
+    "schedule": "57 7 * * 1-5",
+    "sessionTarget": "isolated",
+    "payload": {
+      "kind": "agentTurn",
+      "message": "Send subway departure reminder"
+    }
+  },
+  {
+    "id": "commute-subway-1847",
+    "schedule": "47 18 * * 1-5",
+    "sessionTarget": "isolated",
+    "payload": {
+      "kind": "agentTurn",
+      "message": "Send evening subway reminder"
+    }
+  },
+  {
+    "id": "weather-alert-1600",
+    "schedule": "0 16 * * *",
+    "sessionTarget": "isolated",
+    "payload": {
+      "kind": "agentTurn",
+      "message": "Send afternoon weather alert"
+    }
+  }
+]

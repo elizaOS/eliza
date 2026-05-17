@@ -1,0 +1,90 @@
+[
+  {
+    "question_id": 169660,
+    "first_pass_result": "pass",
+    "issues": [],
+    "auditor": "auditor_12",
+    "timestamp": "2024-11-15T09:48:00Z",
+    "notes": "No issues found during first-pass review."
+  },
+  {
+    "question_id": 169661,
+    "first_pass_result": "pass",
+    "issues": [],
+    "auditor": "auditor_07",
+    "timestamp": "2024-11-15T10:47:00Z",
+    "notes": "No issues found during first-pass review."
+  },
+  {
+    "question_id": 169662,
+    "first_pass_result": "pass",
+    "issues": [],
+    "auditor": "auditor_12",
+    "timestamp": "2024-11-15T11:52:00Z",
+    "notes": "No issues found during first-pass review."
+  },
+  {
+    "question_id": 169663,
+    "first_pass_result": "pass",
+    "issues": [],
+    "auditor": "auditor_07",
+    "timestamp": "2024-11-15T09:32:00Z",
+    "notes": "Question reviewed. Analysis methodology verified — correctly accounts for semicircle construction via subtraction and addition steps. SVG renders correctly. Options and answer consistent with answer key v1."
+  },
+  {
+    "question_id": 169664,
+    "first_pass_result": "pass",
+    "issues": [],
+    "auditor": "auditor_03",
+    "timestamp": "2024-11-15T09:40:00Z",
+    "notes": "No issues found during first-pass review."
+  },
+  {
+    "question_id": 169665,
+    "first_pass_result": "pass",
+    "issues": [],
+    "auditor": "auditor_01",
+    "timestamp": "2024-11-15T10:49:00Z",
+    "notes": "No issues found during first-pass review."
+  },
+  {
+    "question_id": 169666,
+    "first_pass_result": "pass",
+    "issues": [],
+    "auditor": "auditor_01",
+    "timestamp": "2024-11-15T11:47:00Z",
+    "notes": "No issues found during first-pass review."
+  },
+  {
+    "question_id": 169667,
+    "first_pass_result": "pass",
+    "issues": [],
+    "auditor": "auditor_12",
+    "timestamp": "2024-11-15T12:12:00Z",
+    "notes": "No issues found during first-pass review."
+  },
+  {
+    "question_id": 169668,
+    "first_pass_result": "pass",
+    "issues": [],
+    "auditor": "auditor_03",
+    "timestamp": "2024-11-15T09:44:00Z",
+    "notes": "No issues found during first-pass review."
+  },
+  {
+    "question_id": 169669,
+    "first_pass_result": "pass",
+    "issues": [],
+    "auditor": "auditor_05",
+    "timestamp": "2024-11-15T10:31:00Z",
+    "notes": "No issues found during first-pass review."
+  },
+  {
+    "question_id": 169670,
+    "first_pass_result": "pass",
+    "issues": [],
+    "auditor": "auditor_07",
+    "timestamp": "2024-11-15T11:16:00Z",
+    "notes": "No issues found during first-pass review."
+  }
+]

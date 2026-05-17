@@ -1,0 +1,28 @@
+1<?xml version="1.0" encoding="utf-8"?>
+2<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+3    package="ai.eliza.plugins.phone" >
+4
+5    <uses-sdk android:minSdkVersion="26" />
+5-->INJECTED
+5-->INJECTED
+6
+7    <uses-permission android:name="android.permission.CALL_PHONE" />
+7-->/Users/shawwalters/eliza-workspace/milady/eliza/packages/native-plugins/phone/android/src/main/AndroidManifest.xml:3:5-69
+7-->/Users/shawwalters/eliza-workspace/milady/eliza/packages/native-plugins/phone/android/src/main/AndroidManifest.xml:3:22-66
+8    <uses-permission android:name="android.permission.READ_PHONE_STATE" />
+8-->/Users/shawwalters/eliza-workspace/milady/eliza/packages/native-plugins/phone/android/src/main/AndroidManifest.xml:4:5-75
+8-->/Users/shawwalters/eliza-workspace/milady/eliza/packages/native-plugins/phone/android/src/main/AndroidManifest.xml:4:22-72
+9    <uses-permission android:name="android.permission.ANSWER_PHONE_CALLS" />
+9-->/Users/shawwalters/eliza-workspace/milady/eliza/packages/native-plugins/phone/android/src/main/AndroidManifest.xml:5:5-77
+9-->/Users/shawwalters/eliza-workspace/milady/eliza/packages/native-plugins/phone/android/src/main/AndroidManifest.xml:5:22-74
+10    <uses-permission android:name="android.permission.MANAGE_OWN_CALLS" />
+10-->/Users/shawwalters/eliza-workspace/milady/eliza/packages/native-plugins/phone/android/src/main/AndroidManifest.xml:6:5-75
+10-->/Users/shawwalters/eliza-workspace/milady/eliza/packages/native-plugins/phone/android/src/main/AndroidManifest.xml:6:22-72
+11    <uses-permission android:name="android.permission.READ_CALL_LOG" />
+11-->/Users/shawwalters/eliza-workspace/milady/eliza/packages/native-plugins/phone/android/src/main/AndroidManifest.xml:7:5-72
+11-->/Users/shawwalters/eliza-workspace/milady/eliza/packages/native-plugins/phone/android/src/main/AndroidManifest.xml:7:22-69
+12    <uses-permission android:name="android.permission.WRITE_CALL_LOG" />
+12-->/Users/shawwalters/eliza-workspace/milady/eliza/packages/native-plugins/phone/android/src/main/AndroidManifest.xml:8:5-73
+12-->/Users/shawwalters/eliza-workspace/milady/eliza/packages/native-plugins/phone/android/src/main/AndroidManifest.xml:8:22-70
+13
+14</manifest>

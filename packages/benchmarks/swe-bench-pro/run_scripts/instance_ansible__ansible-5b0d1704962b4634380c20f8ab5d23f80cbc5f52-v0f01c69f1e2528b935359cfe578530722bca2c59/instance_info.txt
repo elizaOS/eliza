@@ -1,0 +1,6 @@
+Instance ID: instance_ansible__ansible-5b0d1704962b4634380c20f8ab5d23f80cbc5f52-v0f01c69f1e2528b935359cfe578530722bca2c59
+Repository: ansible/ansible
+Base Commit: f727d74fc248ed29da403e5240816449f25d9836
+Test Files: ["test/units/modules/test_get_url.py"]
+FAIL_TO_PASS: ["test/units/modules/test_get_url.py::test_parse_digest_lines[single-line-digest]", "test/units/modules/test_get_url.py::test_parse_digest_lines[GNU-style-digest]", "test/units/modules/test_get_url.py::test_parse_digest_lines[BSD-style-digest]"]
+PASS_TO_PASS: []

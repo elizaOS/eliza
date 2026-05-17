@@ -1,0 +1,132 @@
+[
+  {
+    "message_id": "pb17_001",
+    "from": "cto@mycompany.com",
+    "to": "me@mycompany.com",
+    "subject": "URGENT: Production database outage - all hands needed",
+    "date": "2026-02-17T13:02:00+00:00",
+    "is_read": false,
+    "labels": ["inbox"],
+    "body": "Primary production database cluster went down at 7:45am EST. Customer-facing services are returning 500 errors. Join the war room immediately. This is a P0 incident."
+  },
+  {
+    "message_id": "pb17_002",
+    "from": "sarah.marketing@mycompany.com",
+    "to": "me@mycompany.com",
+    "subject": "Blog post review needed by EOD Wednesday",
+    "date": "2026-02-17T14:15:00+00:00",
+    "is_read": false,
+    "labels": ["inbox"],
+    "body": "Please review a 1,200-word blog post for technical accuracy. End of day Wednesday is fine."
+  },
+  {
+    "message_id": "pb17_003",
+    "from": "noreply@github.com",
+    "to": "me@mycompany.com",
+    "subject": "[mycompany/api-gateway] Pull request #482: Dependency updates (Dependabot)",
+    "date": "2026-02-17T12:30:00+00:00",
+    "is_read": false,
+    "labels": ["inbox", "automated"],
+    "body": "Dependabot opened PR #482 with express, lodash, and @types/node updates. CI is passing."
+  },
+  {
+    "message_id": "pb17_004",
+    "from": "jenna.hr@mycompany.com",
+    "to": "all-staff@mycompany.com",
+    "subject": "Reminder: Benefits enrollment deadline is Feb 28",
+    "date": "2026-02-14T21:00:00+00:00",
+    "is_read": false,
+    "labels": ["inbox"],
+    "body": "Benefits enrollment closes February 28. Please review health insurance, 401(k), FSA/HSA, and beneficiary updates."
+  },
+  {
+    "message_id": "pb17_005",
+    "from": "mike.chen@bigclient.com",
+    "to": "me@mycompany.com",
+    "subject": "Re: API integration timeline",
+    "date": "2026-02-17T13:45:00+00:00",
+    "is_read": false,
+    "labels": ["inbox", "client"],
+    "body": "Our board approved the integration project. We need to finalize the API contract and staging credentials ASAP. Tuesday or Thursday afternoon works for a call. This is a $2M annual contract."
+  },
+  {
+    "message_id": "pb17_006",
+    "from": "noreply@linkedin.com",
+    "to": "me@mycompany.com",
+    "subject": "You have 3 new connection requests",
+    "date": "2026-02-16T19:22:00+00:00",
+    "is_read": false,
+    "labels": ["inbox", "social"],
+    "body": "You have new connection requests from Alex Turner, Maria Santos, and Kevin Park."
+  },
+  {
+    "message_id": "pb17_007",
+    "from": "team-lead@mycompany.com",
+    "to": "me@mycompany.com",
+    "subject": "Performance review self-assessment due Friday",
+    "date": "2026-02-17T14:30:00+00:00",
+    "is_read": false,
+    "labels": ["inbox"],
+    "body": "Reminder: your annual performance review self-assessment is due Friday, Feb 21."
+  },
+  {
+    "message_id": "pb17_008",
+    "from": "security@mycompany.com",
+    "to": "engineering@mycompany.com",
+    "subject": "IMPORTANT: Mandatory password rotation by Feb 19",
+    "date": "2026-02-17T12:00:00+00:00",
+    "is_read": false,
+    "labels": ["inbox", "security"],
+    "body": "All engineering team members must rotate passwords and SSH keys by February 19 and confirm completion by replying."
+  },
+  {
+    "message_id": "pb17_009",
+    "from": "newsletter@techdigest.io",
+    "to": "me@mycompany.com",
+    "subject": "TechDigest Weekly: AI agents are reshaping software development",
+    "date": "2026-02-17T11:00:00+00:00",
+    "is_read": false,
+    "labels": ["inbox", "newsletter"],
+    "body": "This week in tech: AI coding agents, remote work productivity, Rust adoption, GPT-5, and Kubernetes updates."
+  },
+  {
+    "message_id": "pb17_010",
+    "from": "alice.wong@mycompany.com",
+    "to": "me@mycompany.com",
+    "subject": "Code review request - auth service refactor",
+    "date": "2026-02-17T14:50:00+00:00",
+    "is_read": false,
+    "labels": ["inbox"],
+    "body": "Please review the auth service refactor for OAuth2 PKCE flow. It blocks the mobile app release and I'd like to merge by Thursday."
+  },
+  {
+    "message_id": "pb17_011",
+    "from": "deals@saastools.com",
+    "to": "me@mycompany.com",
+    "subject": "Flash Sale: 60% off all annual plans - 48 hours only!",
+    "date": "2026-02-15T15:00:00+00:00",
+    "is_read": false,
+    "labels": ["inbox", "promotional"],
+    "body": "Limited time offer on SaaSTools Pro. Flash sale ends Monday at midnight."
+  },
+  {
+    "message_id": "pb17_012",
+    "from": "cfo@mycompany.com",
+    "to": "engineering-leads@mycompany.com",
+    "subject": "Q1 budget reconciliation - action needed by Thursday",
+    "date": "2026-02-17T13:30:00+00:00",
+    "is_read": false,
+    "labels": ["inbox"],
+    "body": "Finance needs each team to confirm Jan-Feb spending and March overruns by Thursday, Feb 20."
+  },
+  {
+    "message_id": "pb17_013",
+    "from": "automated-alerts@monitoring.mycompany.com",
+    "to": "oncall@mycompany.com",
+    "subject": "[ALERT] API latency exceeding threshold - p99 > 2000ms",
+    "date": "2026-02-17T12:48:00+00:00",
+    "is_read": false,
+    "labels": ["inbox", "alert"],
+    "body": "API gateway p99 latency is 3,247ms. This alert correlates with the ongoing database incident INC-20260217-001."
+  }
+]

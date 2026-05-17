@@ -1,0 +1,11 @@
+# Dependencies for the sandbox HTTP server (src/claw_eval/sandbox/server.py).
+# Used inside agent containers and for local testing.
+#
+#   pip install -r requirements-sandbox-server.txt
+#
+fastapi>=0.115
+uvicorn>=0.30
+pydantic>=2.0
+Pillow>=10.0
+pdf2image>=1.16
+opencv-python-headless>=4.8

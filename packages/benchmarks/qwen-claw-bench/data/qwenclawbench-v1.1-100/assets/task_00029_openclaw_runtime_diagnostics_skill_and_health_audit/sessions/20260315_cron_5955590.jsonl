@@ -1,0 +1,11 @@
+{"type": "session_start", "session_id": "cron_5955590", "model": "claude-sonnet-4-20250514", "created_at": "2026-03-15T06:29:22.786738", "user_id": "ou_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaa06", "channel": "internal"}
+{"role": "assistant", "content": "Let me check the weather for you.", "timestamp": "2026-03-15T06:33:53.057516", "session_id": "cron_5955590", "seq": 1, "usage": {"prompt_tokens": 1395, "completion_tokens": 2657, "total_tokens": 4309}}
+{"role": "assistant", "content": "Here's a summary of what happened yesterday...", "timestamp": "2026-03-15T06:36:06.855350", "session_id": "cron_5955590", "seq": 2, "usage": {"prompt_tokens": 4441, "completion_tokens": 94, "total_tokens": 3303}}
+{"role": "assistant", "content": "Let me check the weather for you.", "timestamp": "2026-03-15T06:37:22.432501", "session_id": "cron_5955590", "seq": 3, "usage": {"prompt_tokens": 2900, "completion_tokens": 1906, "total_tokens": 10557}}
+{"role": "user", "content": "Help me draft a message to the team", "timestamp": "2026-03-15T06:42:03.588453", "session_id": "cron_5955590", "seq": 4}
+{"role": "user", "content": "What's the weather like?", "timestamp": "2026-03-15T06:46:32.947290", "session_id": "cron_5955590", "seq": 5}
+{"role": "assistant", "content": "Here's a summary of what happened yesterday...", "timestamp": "2026-03-15T06:50:43.557057", "session_id": "cron_5955590", "seq": 6, "usage": {"prompt_tokens": 4278, "completion_tokens": 336, "total_tokens": 363}}
+{"role": "user", "content": "Review the deployment logs", "timestamp": "2026-03-15T06:53:06.730965", "session_id": "cron_5955590", "seq": 7}
+{"role": "assistant", "content": "Sure, what would you like to communicate?", "timestamp": "2026-03-15T06:55:02.430822", "session_id": "cron_5955590", "seq": 8, "usage": {"prompt_tokens": 7265, "completion_tokens": 3070, "total_tokens": 10430}}
+{"role": "user", "content": "Review the deployment logs", "timestamp": "2026-03-15T06:58:57.505947", "session_id": "cron_5955590", "seq": 9}
+{"type": "session_end", "session_id": "cron_5955590", "ended_at": "2026-03-15T06:59:07.505947", "total_messages": 9, "status": "timeout"}

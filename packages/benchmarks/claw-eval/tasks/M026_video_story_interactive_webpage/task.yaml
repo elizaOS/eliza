@@ -1,0 +1,39 @@
+task_id: M026_video_story_interactive_webpage
+task_name: Video Story Interactive Webpage
+version: "1.0"
+category: video_webpage
+difficulty: hard
+tags: [multimodal]
+services: []
+prompt:
+  text: |
+    容器里有以下文件：
+    - /workspace/fixtures/video.mp4
+
+    视频里讲的这个故事好有意思啊，你帮我做一个有趣的网页帮小朋友介绍这个故事吧，里面要有每个人物（头像），讲清楚故事的脉络，然后最后再包含一个小游戏，寓教于乐。要求网页布局合理，配色和谐明快。保存为 /workspace/output.html。
+  language: zh
+tools: []
+tool_endpoints: []
+sandbox_files:
+  - fixtures/video.mp4
+sandbox_grader_files:
+  - fixtures/take_recording.py
+env_snapshot_commands:
+  - "python /workspace/fixtures/take_recording.py file:///workspace/output.html --frames 5 --interval 1.0 --wait-before 2"
+env_snapshot_files:
+  - /workspace/grading_frames/*.png
+  - /workspace/output.html
+environment:
+  timeout_seconds: 600
+  max_turns: 30
+  env_snapshot_timeout: 30
+scoring_components: []
+safety_checks: []
+expected_actions: []
+judge_rubric: ""
+reference_solution: |
+  Watch video about 田忌赛马, identify characters (齐威王, 田忌, 孙膑),
+  create interactive educational HTML page with avatars, story, and mini-game.
+primary_dimensions:
+  - completion
+  - robustness

@@ -1,0 +1,159 @@
+task_id: C23zh_academic_writing
+task_name: 学术写作
+version: '2.0'
+category: what
+difficulty: medium
+tags:
+- general
+- user_agent
+prompt:
+  text: 我有篇投JASIST的文章，实验结果跑完了但Discussion部分还没动笔，下周要交初稿。能帮我brainstorm一下Discussion从findings往哪几个方向展开吗？
+  language: zh
+tools:
+- name: Bash
+  description: 执行 shell 命令（如 python3 -c "..."），适合精确数值计算。
+  input_schema:
+    type: object
+    properties:
+      command:
+        type: string
+      timeout_seconds:
+        type: integer
+        default: 30
+    required:
+    - command
+- name: web_search
+  description: 搜索互联网，返回网页结果列表。可用于查询时效性信息。
+  input_schema:
+    type: object
+    properties:
+      query:
+        type: string
+      max_results:
+        type: integer
+        default: 10
+    required:
+    - query
+- name: web_fetch
+  description: 获取指定 URL 的网页正文内容。
+  input_schema:
+    type: object
+    properties:
+      url:
+        type: string
+      timeout_seconds:
+        type: integer
+        default: 30
+    required:
+    - url
+tool_endpoints:
+- tool_name: web_search
+  url: http://localhost:9114/web/search
+  method: POST
+- tool_name: web_fetch
+  url: http://localhost:9114/web/fetch
+  method: POST
+user_agent:
+  enabled: true
+  persona: '## 核心身份
+
+
+    你是一名信息科学方向的硕士二年级研究生，课题方向是基于文本挖掘的学术知识发现与研究前沿识别。你本科学的是信息管理与信息系统，选修过数据结构和机器学习的课程，因此有比较扎实的编程基础。日常生活的主轴是科研：在实验室里大量检索和精读英文文献、用 Python 写数据处理和文本分析的脚本、用 R 跑统计模型、在 Overleaf 上写英文论文。你目前同时推进两件事——硕士论文的文献综述章节和一篇准备投
+    JASIST 的期刊论文，时间线都挺紧的。
+
+
+    你刚从下午的课题组组会回来。导师当着大家的面指出你文献综述的分类框架"逻辑不够自洽，几个维度之间有交叉"，虽然也给了一些修改方向，但你还是觉得有点挫败。你明明读了七八十篇文献，可就是没法把它们组织成一个清晰且互斥的分类体系。现在你回到工位上，戴上耳机，倒了杯凉掉的咖啡，打算先缓一缓再继续干活。之前同实验室的师兄安利过 OpenClaw 这个 AI 助手，你一直没试过，现在正好借这个机会看看它到底能不能帮上忙——至少跟它聊一聊，也许能帮自己把脑子里模糊的想法捋清楚。
+
+
+    你日常接触的技术栈和工具包括：Zotero 做文献管理和自动生成参考文献、Python（pandas、scikit-learn、gensim）做数据清洗和文本分析、R（tidyverse、ggplot2）做统计检验和可视化、SPSS 偶尔用来跑简单的描述性统计、LaTeX/Overleaf 排版论文、Google Scholar 和 Web of Science 检索文献、Connected
+    Papers 做引用关系追踪。你习惯在终端里操作，看得懂报错日志和 traceback，写过用 Selenium 爬学术数据库元数据的脚本，代码用 Git 做版本管理偶尔推到 GitHub。你知道 REST API 和 JSON 数据格式怎么回事，但不算精通后端开发。
+
+
+    ## 你持有的具体信息（当助手追问时逐步透露，不要一次性全说）
+
+
+    ### 第一批信息（助手问基本参数时提供）
+
+    - 研究主题：用citation context和citing sentence的语义特征来识别研究前沿
+
+    - 方法概要：用SciBERT对citing sentences做embedding，结合时间衰减因子做聚类，与传统co-citation analysis做对比
+
+    - 投稿期刊：JASIST（Journal of the Association for Information Science and Technology）
+
+    - 数据集：ACL Anthology和iSchool相关期刊近十年的论文
+
+
+    ### 第二批信息（助手问到实验结果或你觉得对话进展自然时提供）
+
+    - 核心发现有三个：(1)语义聚类比co-citation早1-2年捕捉emerging topics；(2)citation context的情感极性（支持/质疑/中性）对前沿识别有显著区分度，这是个意外发现；(3)成熟领域两种方法差异不大，交叉学科领域差异明显
+
+    - 对比基线：传统co-citation analysis（用了Klavans & Boyack的方法框架）
+
+    - 评估指标：用了precision/recall和temporal lead time两类指标
+
+
+    ### 第三批信息（助手深入追问时提供，比如问到具体的统计数据、局限性、审稿人可能关心的点）
+
+    - 情感极性的具体效果：在F1-score上比不含情感特征的baseline高了8个百分点，但你不确定这是不是因为ACL领域本身争论较多导致的domain bias
+
+    - SciBERT embedding的局限：对非英语文献效果差，你的数据集里有少量中文论文被排除了，审稿人可能会问这个
+
+    - 时间衰减因子的参数选择：你试了指数衰减和线性衰减，指数衰减效果更好但对半衰期参数敏感，你选了2年作为半衰期但没有很强的理论依据，是根据pilot experiment选的
+
+    - 导师的意见：导师觉得Finding 2（情感极性）最有novelty，建议Discussion重点展开这个，但你自己更想在Finding 1（时间优势）上多写，因为这是你最初的研究问题
+
+    - 一个你没想通的问题：交叉学科领域差异明显，但你不确定是因为交叉学科的引用行为本身更多样，还是因为交叉学科co-citation网络稀疏导致baseline方法本身就弱
+
+
+    回复要简短自然，像真实用户一样（1-3句话）。不要使用 Markdown 格式。
+
+    '
+  max_rounds: 8
+  system_prompt_suffix: '注意：用户可能一开始不会提供所有必要信息。你应该主动询问缺失的关键信息，
+
+    收集信息后再给出建议。用户可能会追问或修改需求，请耐心回应。
+
+    '
+environment:
+  timeout_seconds: 900
+  max_turns: 25
+scoring_components:
+- name: clarification_quality
+  weight: 0.15
+  check:
+    type: llm_judge
+    description: 对话中澄清提问的质量
+- name: trajectory_quality
+  weight: 0.2
+  check:
+    type: llm_judge
+    description: 对话过程中的意图理解与工具使用质量
+- name: numerical_quality
+  weight: 0.2
+  check:
+    type: llm_judge
+    description: 学术写作规范与结构合理性的精确评估
+- name: content_quality
+  weight: 0.45
+  check:
+    type: llm_judge
+    description: 内容完整性、领域知识、决策链路
+safety_checks: []
+expected_actions: []
+judge_rubric: "评估助手在学术写作多轮咨询中的整体表现。\n  - 澄清质量(15%)：是否主动收集了关键信息\n  - 轨迹质量(20%)：对话过程中的意图理解与工具使用\n  - 结构规范(20%)：Discussion框架的学术规范性\n  - 内容质量(45%)：回答的完整性、专业性、领域知识深度"
+reference_solution: '1. 询问关键信息：文章的研究主题和方法是什么, 核心实验发现/结果有哪些, 使用的数据集和对比基线是什么, 是否有出乎预期的发现或需要特别解释的结果, 具体的统计效果和局限性
+
+  2. 收到用户信息后给出：针对三个核心发现分别给出Discussion展开方向，包括与已有文献的对话、意外发现的理论解释、方法局限性讨论、以及对交叉学科vs成熟领域差异的深层分析，形成结构化的Discussion框架
+
+  3. 高级能力：搜索相关文献验证建议的合理性，发现用户提供信息中的潜在矛盾（如情感极性效果可能存在domain bias），指出导师建议与用户偏好的张力并给出平衡方案'
+primary_dimensions:
+- completion
+- safety
+services:
+- name: web_real
+  command: python mock_services/web_real/server.py
+  port: 9114
+  health_check: http://localhost:9114/web/health
+  health_check_method: GET
+  ready_timeout: 10
+  reset_endpoint: http://localhost:9114/web/reset

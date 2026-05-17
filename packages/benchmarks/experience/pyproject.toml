@@ -1,0 +1,72 @@
+[build-system]
+requires = ["setuptools>=61.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "elizaos-experience-bench"
+version = "2.0.0"
+description = "Experience plugin benchmark for ElizaOS - evaluating experience retrieval, reranking, and learning cycle"
+readme = "README.md"
+license = "MIT"
+requires-python = ">=3.10"
+authors = [
+    { name = "elizaOS Contributors" }
+]
+keywords = [
+    "elizaos",
+    "benchmark",
+    "experience",
+    "learning",
+    "reranking",
+    "retrieval",
+]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: Developers",
+    "Intended Audience :: Science/Research",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Topic :: Scientific/Engineering :: Artificial Intelligence",
+]
+dependencies = [
+    "eliza-adapter",
+    "pydantic>=2.0.0",
+]
+
+[tool.uv.sources]
+eliza-adapter = { path = "../eliza-adapter", editable = true }
+
+[project.optional-dependencies]
+eliza = [
+]
+dev = [
+    "pytest>=7.0.0",
+    "pytest-asyncio>=0.21.0",
+    "pytest-cov>=4.0.0",
+]
+
+[project.urls]
+Homepage = "https://github.com/elizaos/eliza"
+Repository = "https://github.com/elizaos/eliza"
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["elizaos_experience_bench*"]
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+testpaths = ["tests"]
+python_files = ["test_*.py"]
+python_classes = ["Test*"]
+python_functions = ["test_*"]
+addopts = "-v --tb=short"
+
+[tool.ruff]
+target-version = "py310"
+line-length = 100
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "N", "D", "UP", "B", "A", "C4", "SIM"]
+ignore = ["D100", "D104", "D107", "D203", "D213"]

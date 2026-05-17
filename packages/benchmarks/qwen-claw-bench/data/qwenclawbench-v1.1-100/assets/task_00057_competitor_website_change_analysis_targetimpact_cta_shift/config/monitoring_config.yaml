@@ -1,0 +1,93 @@
+# SiteWatch Pro Configuration
+# Last modified: 2024-06-01
+
+general:
+  tool_name: "SiteWatch Pro"
+  version: "3.2"
+  output_format: "json"
+  output_directory: "./data"
+  log_level: "info"
+
+monitoring:
+  scan_frequency: "daily"
+  scan_time_utc: "08:30"
+  retry_on_failure: true
+  max_retries: 3
+  timeout_seconds: 60
+
+thresholds:
+  change_threshold: 0.001
+  alert_threshold: 0.005
+  critical_threshold: 0.05
+
+significance_scale:
+  description: "Raw change_magnitude bands aligned with monitoring thresholds: below alert=negligible, alert to critical=minor, critical to 0.2=moderate, 0.2 to 0.5=significant, above 0.5=critical"
+  levels:
+    - label: "negligible"
+      range: "0.0 - 0.005"
+      note: "Below alert_threshold; no action needed"
+    - label: "minor"
+      range: "0.005 - 0.05"
+      note: "Exceeds alert_threshold; targeted review recommended"
+    - label: "moderate"
+      range: "0.05 - 0.2"
+      note: "Exceeds critical_threshold; prompt investigation"
+    - label: "significant"
+      range: "0.2 - 0.5"
+      note: "Substantial change; escalate to strategy team"
+    - label: "critical"
+      range: "0.5 - 1.0"
+      note: "Major overhaul detected; immediate response required"
+
+sections_of_interest:
+  - "pricing"
+  - "cta"
+  - "product-features"
+  - "about"
+  - "testimonials"
+  - "case-studies"
+
+monitored_urls:
+  - url: "https://targetimpact.com/"
+    label: "TargetImpact - Homepage"
+    priority: "high"
+    pages:
+      - "/"
+      - "/pricing"
+      - "/features"
+      - "/about"
+      - "/case-studies"
+  - url: "https://mailreach.io/"
+    label: "MailReach - Homepage"
+    priority: "medium"
+    pages:
+      - "/"
+      - "/pricing"
+      - "/enterprise"
+  - url: "https://campaignforge.com/"
+    label: "CampaignForge - Homepage"
+    priority: "medium"
+    pages:
+      - "/"
+      - "/pricing"
+  - url: "https://sendgridpro.com/"
+    label: "SendGrid Pro - Homepage"
+    priority: "low"
+    pages:
+      - "/"
+      - "/pricing"
+
+notifications:
+  email:
+    enabled: true
+    recipients:
+      - "ci-team@ourcompany.com"
+      - "product-strategy@ourcompany.com"
+    on_alert: true
+    on_critical: true
+  slack:
+    enabled: true
+    webhook_url: "${SLACK_WEBHOOK_URL}"
+    channel: "#competitive-intel"
+    on_alert: true
+    on_critical: true

@@ -1,0 +1,19 @@
+{
+  "name": "@elizaos/hardware-catalog",
+  "version": "0.1.0",
+  "description": "Canonical hardware product catalog (preorder SKUs, copy, pricing) shared across os-homepage, cloud-frontend, and cloud-api.",
+  "type": "module",
+  "private": true,
+  "license": "MIT",
+  "main": "./src/index.ts",
+  "types": "./src/index.ts",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "files": [
+    "src"
+  ],
+  "dependencies": {
+    "@elizaos/shared-brand": "workspace:*"
+  }
+}

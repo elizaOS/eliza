@@ -1,0 +1,45 @@
+# Moltbot Gateway Configuration
+# Last updated: 2026-02-09
+
+server:
+  host: 0.0.0.0
+  port: 3210
+  name: "moltbot-main"
+
+agent:
+  model: claude-opus-4-6-20260205
+  thinking: false
+  max_tokens: 8192
+  temperature: 0.7
+
+memory:
+  backend: local
+  path: ./data/memory
+  auto_persist: true
+
+skills:
+  auto_load: true
+  paths:
+    - /opt/moltbot/skills
+    - /home/admin/clawd/skills
+  registry: https://clawhub.ai
+
+plugins:
+  entries:
+    device-pair:
+      enabled: true
+      config:
+        publicUrl: "https://moltbot.example.com"
+
+channels:
+  telegram:
+    enabled: true
+    token: "${TELEGRAM_BOT_TOKEN}"
+  discord:
+    enabled: false
+
+logging:
+  level: info
+  file: /opt/moltbot/logs/moltbot.log
+  max_size: 10mb
+  max_files: 5

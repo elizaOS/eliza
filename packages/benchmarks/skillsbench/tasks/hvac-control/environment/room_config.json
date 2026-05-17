@@ -1,0 +1,8 @@
+{
+  "setpoint": 22.0,
+  "ambient_temp": 18.0,
+  "noise_std": 0.1,
+  "max_safe_temp": 30.0,
+  "min_safe_temp": 10.0,
+  "dt": 0.5
+}

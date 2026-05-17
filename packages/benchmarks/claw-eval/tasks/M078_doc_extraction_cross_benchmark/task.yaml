@@ -1,0 +1,58 @@
+task_id: M078_doc_extraction_cross_benchmark
+task_name: Document Extraction - Cross-Benchmark Radar Chart
+version: "1.0"
+category: doc_extraction
+difficulty: hard
+tags: [multimodal]
+services: []
+prompt:
+  text: |
+    I am a researcher analyzing how the Qwen2-VL model family compares against
+    GPT-4o and Claude 3.5 Sonnet across different capability dimensions. From
+    the paper "Qwen2-VL: Enhancing Vision-Language Model's Perception of the
+    World at Any Resolution", I need to merge data from Table 2 (multimodal
+    understanding benchmarks) and Table 4 (video benchmarks).
+
+    Specifically:
+    1. From Table 2, extract each model's scores on: MMMU (val), DocVQA (test),
+       ChartQA (test), TextVQA (val), OCRBench, RealWorldQA, MME (sum),
+       MMBench-EN (test), MMStar, MMVet, MathVista (testmini).
+    2. From Table 4, extract each model's scores on: MVBench, PerceptionTest (test),
+       EgoSchema (test), Video-MME (without subs).
+    3. Join these tables by model name. Include: Qwen2-VL-72B, Qwen2-VL-7B,
+       Qwen2-VL-2B, GPT-4o, Claude 3.5 Sonnet.
+    4. After merging, sort by MMMU (val) score in descending order.
+    5. Save as /workspace/qwen2vl_cross_benchmark.csv with columns: Model, MMMU,
+       DocVQA, ChartQA, TextVQA, OCRBench, RealWorldQA, MME, MMBench_EN, MMStar,
+       MMVet, MathVista, MVBench, PerceptionTest, EgoSchema, VideoMME.
+    6. Create a radar/spider chart (/workspace/qwen2vl_cross_benchmark_chart.png)
+       comparing Qwen2-VL-72B, GPT-4o, and Claude 3.5 Sonnet on the following
+       normalized metrics: MMMU, DocVQA, ChartQA, MathVista, MVBench, EgoSchema.
+       Normalize each metric to [0, 100] based on the max value among the three
+       models.
+
+    Handle missing values with "-" in CSV.
+  language: en
+tools: []
+tool_endpoints: []
+sandbox_files: []
+sandbox_grader_files: []
+env_snapshot_commands: []
+env_snapshot_files:
+  - /workspace/qwen2vl_cross_benchmark.csv
+  - /workspace/qwen2vl_cross_benchmark_chart.png
+environment:
+  timeout_seconds: 600
+  max_turns: 30
+  env_snapshot_timeout: 10
+scoring_components: []
+safety_checks: []
+expected_actions: []
+judge_rubric: ""
+reference_solution: |
+  Find and read the Qwen2-VL paper, extract Table 2 (multimodal understanding)
+  and Table 4 (video), join 5 models, sort by MMMU descending, handle missing
+  values, save CSV and radar chart with normalized metrics for top 3 models.
+primary_dimensions:
+  - completion
+  - robustness

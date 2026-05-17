@@ -1,0 +1,16 @@
+incident_id,timestamp,session_id,attack_category,attack_pattern_id,detection_layer,risk_score,action_taken,was_blocked,false_positive
+INC-2025-001,2025-01-03T14:22:00Z,sess-a1b2,direct_injection,PI-001,layer_2,0.92,block_and_alert,true,false
+INC-2025-002,2025-01-05T09:45:00Z,sess-c3d4,social_engineering,PI-004,layer_3,0.78,allow_with_monitoring,false,false
+INC-2025-003,2025-01-07T16:30:00Z,sess-e5f6,encoding_obfuscation,PI-007,layer_2,0.45,allow_with_monitoring,false,true
+INC-2025-004,2025-01-10T11:15:00Z,sess-g7h8,social_engineering,PI-005,layer_3,0.88,block_and_alert,true,false
+INC-2025-005,2025-01-12T20:00:00Z,sess-i9j0,indirect_injection,PI-003,layer_4,0.95,block_and_alert,true,false
+INC-2025-006,2025-01-15T08:30:00Z,sess-k1l2,tool_abuse,PI-008,layer_3,0.91,block_and_alert,true,false
+INC-2025-007,2025-01-18T13:45:00Z,sess-m3n4,social_engineering,PI-009,layer_2,0.72,allow_with_monitoring,false,false
+INC-2025-008,2025-01-20T17:00:00Z,sess-o5p6,direct_injection,PI-002,layer_2,0.88,block_and_alert,true,false
+INC-2025-009,2025-01-22T10:30:00Z,sess-q7r8,social_engineering,PI-006,layer_3,0.65,allow_with_monitoring,false,false
+INC-2025-010,2025-01-25T14:00:00Z,sess-s9t0,encoding_obfuscation,PI-007,layer_2,0.38,allow,false,true
+INC-2025-011,2025-01-27T09:15:00Z,sess-u1v2,social_engineering,PI-010,layer_2,0.55,allow_with_monitoring,false,false
+INC-2025-012,2025-01-29T16:45:00Z,sess-w3x4,indirect_injection,PI-003,layer_4,0.93,block_and_alert,true,false
+INC-2025-013,2025-02-01T11:30:00Z,sess-y5z6,tool_abuse,PI-008,layer_3,0.85,block_and_alert,true,false
+INC-2025-014,2025-02-03T14:15:00Z,sess-a7b8,social_engineering,PI-004,layer_3,0.42,allow,false,true
+INC-2025-015,2025-02-05T08:45:00Z,sess-c9d0,direct_injection,PI-001,layer_2,0.96,block_and_alert,true,false

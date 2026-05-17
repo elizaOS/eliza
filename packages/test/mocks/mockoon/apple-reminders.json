@@ -1,0 +1,683 @@
+{
+  "uuid": "bbbb1111-aaaa-4000-8000-0000000200c7",
+  "lastMigration": 33,
+  "name": "lifeops-apple-reminders-mock",
+  "endpointPrefix": "",
+  "latency": 0,
+  "port": 18810,
+  "hostname": "0.0.0.0",
+  "folders": [],
+  "routes": [
+    {
+      "uuid": "bbbb1111-aaaa-4000-8000-0000000200b3",
+      "type": "http",
+      "documentation": "GET reminders/lists",
+      "method": "get",
+      "endpoint": "reminders/lists",
+      "responses": [
+        {
+          "uuid": "bbbb1111-aaaa-4000-8000-0000000200b4",
+          "body": "[\n  {\n    \"id\": \"list-default\",\n    \"name\": \"Reminders\",\n    \"color\": \"red\",\n    \"isDefault\": true\n  },\n  {\n    \"id\": \"list-followups\",\n    \"name\": \"Followups\",\n    \"color\": \"blue\",\n    \"isDefault\": false\n  },\n  {\n    \"id\": \"list-house\",\n    \"name\": \"House\",\n    \"color\": \"green\",\n    \"isDefault\": false\n  }\n]",
+          "latency": 0,
+          "statusCode": 200,
+          "label": "happy path",
+          "headers": [
+            {
+              "key": "Content-Type",
+              "value": "application/json"
+            }
+          ],
+          "bodyType": "INLINE",
+          "filePath": "",
+          "databucketID": "",
+          "sendFileAsBody": false,
+          "rules": [],
+          "rulesOperator": "OR",
+          "disableTemplating": false,
+          "fallbackTo404": false,
+          "default": true,
+          "crudKey": "id",
+          "callbacks": []
+        },
+        {
+          "uuid": "bbbb1111-aaaa-4000-8000-0000000200b5",
+          "body": "{\n  \"error\": \"rate_limited\"\n}",
+          "latency": 0,
+          "statusCode": 429,
+          "label": "rate_limit",
+          "headers": [
+            {
+              "key": "Content-Type",
+              "value": "application/json"
+            },
+            {
+              "key": "Retry-After",
+              "value": "1"
+            }
+          ],
+          "bodyType": "INLINE",
+          "filePath": "",
+          "databucketID": "",
+          "sendFileAsBody": false,
+          "rules": [
+            {
+              "target": "header",
+              "modifier": "X-Mockoon-Fault",
+              "value": "rate_limit",
+              "invert": false,
+              "operator": "equals"
+            },
+            {
+              "target": "query",
+              "modifier": "_fault",
+              "value": "rate_limit",
+              "invert": false,
+              "operator": "equals"
+            }
+          ],
+          "rulesOperator": "OR",
+          "disableTemplating": false,
+          "fallbackTo404": false,
+          "default": false,
+          "crudKey": "id",
+          "callbacks": []
+        },
+        {
+          "uuid": "bbbb1111-aaaa-4000-8000-0000000200b6",
+          "body": "{\n  \"error\": \"auth_expired\"\n}",
+          "latency": 0,
+          "statusCode": 401,
+          "label": "auth_expired",
+          "headers": [
+            {
+              "key": "Content-Type",
+              "value": "application/json"
+            }
+          ],
+          "bodyType": "INLINE",
+          "filePath": "",
+          "databucketID": "",
+          "sendFileAsBody": false,
+          "rules": [
+            {
+              "target": "header",
+              "modifier": "X-Mockoon-Fault",
+              "value": "auth_expired",
+              "invert": false,
+              "operator": "equals"
+            },
+            {
+              "target": "query",
+              "modifier": "_fault",
+              "value": "auth_expired",
+              "invert": false,
+              "operator": "equals"
+            }
+          ],
+          "rulesOperator": "OR",
+          "disableTemplating": false,
+          "fallbackTo404": false,
+          "default": false,
+          "crudKey": "id",
+          "callbacks": []
+        },
+        {
+          "uuid": "bbbb1111-aaaa-4000-8000-0000000200b7",
+          "body": "{\n  \"error\": \"internal_server_error\"\n}",
+          "latency": 0,
+          "statusCode": 500,
+          "label": "server_error",
+          "headers": [
+            {
+              "key": "Content-Type",
+              "value": "application/json"
+            }
+          ],
+          "bodyType": "INLINE",
+          "filePath": "",
+          "databucketID": "",
+          "sendFileAsBody": false,
+          "rules": [
+            {
+              "target": "header",
+              "modifier": "X-Mockoon-Fault",
+              "value": "server_error",
+              "invert": false,
+              "operator": "equals"
+            },
+            {
+              "target": "query",
+              "modifier": "_fault",
+              "value": "server_error",
+              "invert": false,
+              "operator": "equals"
+            }
+          ],
+          "rulesOperator": "OR",
+          "disableTemplating": false,
+          "fallbackTo404": false,
+          "default": false,
+          "crudKey": "id",
+          "callbacks": []
+        }
+      ],
+      "responseMode": null
+    },
+    {
+      "uuid": "bbbb1111-aaaa-4000-8000-0000000200b8",
+      "type": "http",
+      "documentation": "GET reminders",
+      "method": "get",
+      "endpoint": "reminders",
+      "responses": [
+        {
+          "uuid": "bbbb1111-aaaa-4000-8000-0000000200b9",
+          "body": "[\n  {\n    \"id\": \"rem_2026_05_09_a\",\n    \"listId\": \"list-followups\",\n    \"title\": \"Reply to Priya about Thursday standup\",\n    \"notes\": \"Thread: 193a1ed8c0aa1f01\",\n    \"completed\": false,\n    \"dueDate\": \"2026-05-09T22:00:00.000Z\",\n    \"createdAt\": \"2026-05-09T17:42:11.000Z\"\n  },\n  {\n    \"id\": \"rem_2026_05_09_b\",\n    \"listId\": \"list-house\",\n    \"title\": \"Pick up dry cleaning\",\n    \"notes\": null,\n    \"completed\": false,\n    \"dueDate\": \"2026-05-10T01:00:00.000Z\",\n    \"createdAt\": \"2026-05-08T14:00:00.000Z\"\n  }\n]",
+          "latency": 0,
+          "statusCode": 200,
+          "label": "happy path",
+          "headers": [
+            {
+              "key": "Content-Type",
+              "value": "application/json"
+            }
+          ],
+          "bodyType": "INLINE",
+          "filePath": "",
+          "databucketID": "",
+          "sendFileAsBody": false,
+          "rules": [],
+          "rulesOperator": "OR",
+          "disableTemplating": false,
+          "fallbackTo404": false,
+          "default": true,
+          "crudKey": "id",
+          "callbacks": []
+        },
+        {
+          "uuid": "bbbb1111-aaaa-4000-8000-0000000200ba",
+          "body": "{\n  \"error\": \"rate_limited\"\n}",
+          "latency": 0,
+          "statusCode": 429,
+          "label": "rate_limit",
+          "headers": [
+            {
+              "key": "Content-Type",
+              "value": "application/json"
+            },
+            {
+              "key": "Retry-After",
+              "value": "1"
+            }
+          ],
+          "bodyType": "INLINE",
+          "filePath": "",
+          "databucketID": "",
+          "sendFileAsBody": false,
+          "rules": [
+            {
+              "target": "header",
+              "modifier": "X-Mockoon-Fault",
+              "value": "rate_limit",
+              "invert": false,
+              "operator": "equals"
+            },
+            {
+              "target": "query",
+              "modifier": "_fault",
+              "value": "rate_limit",
+              "invert": false,
+              "operator": "equals"
+            }
+          ],
+          "rulesOperator": "OR",
+          "disableTemplating": false,
+          "fallbackTo404": false,
+          "default": false,
+          "crudKey": "id",
+          "callbacks": []
+        },
+        {
+          "uuid": "bbbb1111-aaaa-4000-8000-0000000200bb",
+          "body": "{\n  \"error\": \"auth_expired\"\n}",
+          "latency": 0,
+          "statusCode": 401,
+          "label": "auth_expired",
+          "headers": [
+            {
+              "key": "Content-Type",
+              "value": "application/json"
+            }
+          ],
+          "bodyType": "INLINE",
+          "filePath": "",
+          "databucketID": "",
+          "sendFileAsBody": false,
+          "rules": [
+            {
+              "target": "header",
+              "modifier": "X-Mockoon-Fault",
+              "value": "auth_expired",
+              "invert": false,
+              "operator": "equals"
+            },
+            {
+              "target": "query",
+              "modifier": "_fault",
+              "value": "auth_expired",
+              "invert": false,
+              "operator": "equals"
+            }
+          ],
+          "rulesOperator": "OR",
+          "disableTemplating": false,
+          "fallbackTo404": false,
+          "default": false,
+          "crudKey": "id",
+          "callbacks": []
+        },
+        {
+          "uuid": "bbbb1111-aaaa-4000-8000-0000000200bc",
+          "body": "{\n  \"error\": \"internal_server_error\"\n}",
+          "latency": 0,
+          "statusCode": 500,
+          "label": "server_error",
+          "headers": [
+            {
+              "key": "Content-Type",
+              "value": "application/json"
+            }
+          ],
+          "bodyType": "INLINE",
+          "filePath": "",
+          "databucketID": "",
+          "sendFileAsBody": false,
+          "rules": [
+            {
+              "target": "header",
+              "modifier": "X-Mockoon-Fault",
+              "value": "server_error",
+              "invert": false,
+              "operator": "equals"
+            },
+            {
+              "target": "query",
+              "modifier": "_fault",
+              "value": "server_error",
+              "invert": false,
+              "operator": "equals"
+            }
+          ],
+          "rulesOperator": "OR",
+          "disableTemplating": false,
+          "fallbackTo404": false,
+          "default": false,
+          "crudKey": "id",
+          "callbacks": []
+        }
+      ],
+      "responseMode": null
+    },
+    {
+      "uuid": "bbbb1111-aaaa-4000-8000-0000000200bd",
+      "type": "http",
+      "documentation": "POST reminders",
+      "method": "post",
+      "endpoint": "reminders",
+      "responses": [
+        {
+          "uuid": "bbbb1111-aaaa-4000-8000-0000000200be",
+          "body": "{\n  \"id\": \"rem_new_2026_05_09_z\",\n  \"listId\": \"list-followups\",\n  \"title\": \"Mock new reminder\",\n  \"completed\": false,\n  \"createdAt\": \"2026-05-09T18:00:00.000Z\"\n}",
+          "latency": 0,
+          "statusCode": 201,
+          "label": "happy path",
+          "headers": [
+            {
+              "key": "Content-Type",
+              "value": "application/json"
+            }
+          ],
+          "bodyType": "INLINE",
+          "filePath": "",
+          "databucketID": "",
+          "sendFileAsBody": false,
+          "rules": [],
+          "rulesOperator": "OR",
+          "disableTemplating": false,
+          "fallbackTo404": false,
+          "default": true,
+          "crudKey": "id",
+          "callbacks": []
+        },
+        {
+          "uuid": "bbbb1111-aaaa-4000-8000-0000000200bf",
+          "body": "{\n  \"error\": \"rate_limited\"\n}",
+          "latency": 0,
+          "statusCode": 429,
+          "label": "rate_limit",
+          "headers": [
+            {
+              "key": "Content-Type",
+              "value": "application/json"
+            },
+            {
+              "key": "Retry-After",
+              "value": "1"
+            }
+          ],
+          "bodyType": "INLINE",
+          "filePath": "",
+          "databucketID": "",
+          "sendFileAsBody": false,
+          "rules": [
+            {
+              "target": "header",
+              "modifier": "X-Mockoon-Fault",
+              "value": "rate_limit",
+              "invert": false,
+              "operator": "equals"
+            },
+            {
+              "target": "query",
+              "modifier": "_fault",
+              "value": "rate_limit",
+              "invert": false,
+              "operator": "equals"
+            }
+          ],
+          "rulesOperator": "OR",
+          "disableTemplating": false,
+          "fallbackTo404": false,
+          "default": false,
+          "crudKey": "id",
+          "callbacks": []
+        },
+        {
+          "uuid": "bbbb1111-aaaa-4000-8000-0000000200c0",
+          "body": "{\n  \"error\": \"auth_expired\"\n}",
+          "latency": 0,
+          "statusCode": 401,
+          "label": "auth_expired",
+          "headers": [
+            {
+              "key": "Content-Type",
+              "value": "application/json"
+            }
+          ],
+          "bodyType": "INLINE",
+          "filePath": "",
+          "databucketID": "",
+          "sendFileAsBody": false,
+          "rules": [
+            {
+              "target": "header",
+              "modifier": "X-Mockoon-Fault",
+              "value": "auth_expired",
+              "invert": false,
+              "operator": "equals"
+            },
+            {
+              "target": "query",
+              "modifier": "_fault",
+              "value": "auth_expired",
+              "invert": false,
+              "operator": "equals"
+            }
+          ],
+          "rulesOperator": "OR",
+          "disableTemplating": false,
+          "fallbackTo404": false,
+          "default": false,
+          "crudKey": "id",
+          "callbacks": []
+        },
+        {
+          "uuid": "bbbb1111-aaaa-4000-8000-0000000200c1",
+          "body": "{\n  \"error\": \"internal_server_error\"\n}",
+          "latency": 0,
+          "statusCode": 500,
+          "label": "server_error",
+          "headers": [
+            {
+              "key": "Content-Type",
+              "value": "application/json"
+            }
+          ],
+          "bodyType": "INLINE",
+          "filePath": "",
+          "databucketID": "",
+          "sendFileAsBody": false,
+          "rules": [
+            {
+              "target": "header",
+              "modifier": "X-Mockoon-Fault",
+              "value": "server_error",
+              "invert": false,
+              "operator": "equals"
+            },
+            {
+              "target": "query",
+              "modifier": "_fault",
+              "value": "server_error",
+              "invert": false,
+              "operator": "equals"
+            }
+          ],
+          "rulesOperator": "OR",
+          "disableTemplating": false,
+          "fallbackTo404": false,
+          "default": false,
+          "crudKey": "id",
+          "callbacks": []
+        }
+      ],
+      "responseMode": null
+    },
+    {
+      "uuid": "bbbb1111-aaaa-4000-8000-0000000200c2",
+      "type": "http",
+      "documentation": "PATCH reminders/:id",
+      "method": "patch",
+      "endpoint": "reminders/:id",
+      "responses": [
+        {
+          "uuid": "bbbb1111-aaaa-4000-8000-0000000200c3",
+          "body": "{\n  \"id\": \"{{urlParam 'id'}}\",\n  \"completed\": true,\n  \"completedAt\": \"2026-05-09T18:01:00.000Z\"\n}",
+          "latency": 0,
+          "statusCode": 200,
+          "label": "happy path",
+          "headers": [
+            {
+              "key": "Content-Type",
+              "value": "application/json"
+            }
+          ],
+          "bodyType": "INLINE",
+          "filePath": "",
+          "databucketID": "",
+          "sendFileAsBody": false,
+          "rules": [],
+          "rulesOperator": "OR",
+          "disableTemplating": false,
+          "fallbackTo404": false,
+          "default": true,
+          "crudKey": "id",
+          "callbacks": []
+        },
+        {
+          "uuid": "bbbb1111-aaaa-4000-8000-0000000200c4",
+          "body": "{\n  \"error\": \"rate_limited\"\n}",
+          "latency": 0,
+          "statusCode": 429,
+          "label": "rate_limit",
+          "headers": [
+            {
+              "key": "Content-Type",
+              "value": "application/json"
+            },
+            {
+              "key": "Retry-After",
+              "value": "1"
+            }
+          ],
+          "bodyType": "INLINE",
+          "filePath": "",
+          "databucketID": "",
+          "sendFileAsBody": false,
+          "rules": [
+            {
+              "target": "header",
+              "modifier": "X-Mockoon-Fault",
+              "value": "rate_limit",
+              "invert": false,
+              "operator": "equals"
+            },
+            {
+              "target": "query",
+              "modifier": "_fault",
+              "value": "rate_limit",
+              "invert": false,
+              "operator": "equals"
+            }
+          ],
+          "rulesOperator": "OR",
+          "disableTemplating": false,
+          "fallbackTo404": false,
+          "default": false,
+          "crudKey": "id",
+          "callbacks": []
+        },
+        {
+          "uuid": "bbbb1111-aaaa-4000-8000-0000000200c5",
+          "body": "{\n  \"error\": \"auth_expired\"\n}",
+          "latency": 0,
+          "statusCode": 401,
+          "label": "auth_expired",
+          "headers": [
+            {
+              "key": "Content-Type",
+              "value": "application/json"
+            }
+          ],
+          "bodyType": "INLINE",
+          "filePath": "",
+          "databucketID": "",
+          "sendFileAsBody": false,
+          "rules": [
+            {
+              "target": "header",
+              "modifier": "X-Mockoon-Fault",
+              "value": "auth_expired",
+              "invert": false,
+              "operator": "equals"
+            },
+            {
+              "target": "query",
+              "modifier": "_fault",
+              "value": "auth_expired",
+              "invert": false,
+              "operator": "equals"
+            }
+          ],
+          "rulesOperator": "OR",
+          "disableTemplating": false,
+          "fallbackTo404": false,
+          "default": false,
+          "crudKey": "id",
+          "callbacks": []
+        },
+        {
+          "uuid": "bbbb1111-aaaa-4000-8000-0000000200c6",
+          "body": "{\n  \"error\": \"internal_server_error\"\n}",
+          "latency": 0,
+          "statusCode": 500,
+          "label": "server_error",
+          "headers": [
+            {
+              "key": "Content-Type",
+              "value": "application/json"
+            }
+          ],
+          "bodyType": "INLINE",
+          "filePath": "",
+          "databucketID": "",
+          "sendFileAsBody": false,
+          "rules": [
+            {
+              "target": "header",
+              "modifier": "X-Mockoon-Fault",
+              "value": "server_error",
+              "invert": false,
+              "operator": "equals"
+            },
+            {
+              "target": "query",
+              "modifier": "_fault",
+              "value": "server_error",
+              "invert": false,
+              "operator": "equals"
+            }
+          ],
+          "rulesOperator": "OR",
+          "disableTemplating": false,
+          "fallbackTo404": false,
+          "default": false,
+          "crudKey": "id",
+          "callbacks": []
+        }
+      ],
+      "responseMode": null
+    }
+  ],
+  "rootChildren": [
+    {
+      "type": "route",
+      "uuid": "bbbb1111-aaaa-4000-8000-0000000200b3"
+    },
+    {
+      "type": "route",
+      "uuid": "bbbb1111-aaaa-4000-8000-0000000200b8"
+    },
+    {
+      "type": "route",
+      "uuid": "bbbb1111-aaaa-4000-8000-0000000200bd"
+    },
+    {
+      "type": "route",
+      "uuid": "bbbb1111-aaaa-4000-8000-0000000200c2"
+    }
+  ],
+  "proxyMode": false,
+  "proxyHost": "",
+  "proxyRemovePrefix": false,
+  "tlsOptions": {
+    "enabled": false,
+    "type": "CERT",
+    "pfxPath": "",
+    "certPath": "",
+    "keyPath": "",
+    "caPath": "",
+    "passphrase": ""
+  },
+  "cors": true,
+  "headers": [
+    {
+      "key": "Content-Type",
+      "value": "application/json"
+    }
+  ],
+  "proxyReqHeaders": [
+    {
+      "key": "",
+      "value": ""
+    }
+  ],
+  "proxyResHeaders": [
+    {
+      "key": "",
+      "value": ""
+    }
+  ],
+  "data": [],
+  "callbacks": []
+}

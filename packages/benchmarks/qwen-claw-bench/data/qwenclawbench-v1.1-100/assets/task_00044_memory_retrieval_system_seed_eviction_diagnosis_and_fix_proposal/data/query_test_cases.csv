@@ -1,0 +1,26 @@
+query_id,query_text,expected_seed_ids,actual_retrieved_ids,precision,recall
+Q01,authentication token refresh mechanism,5;8;12;15,161;162;181;189,0.0,0.0
+Q02,database replication setup January 2023,2;6;10;14,14;189;193;194,0.25,0.25
+Q03,session encryption early architecture,3;9;17;22,17;179;184;185;199,0.2,0.25
+Q04,initial onboarding user_profile design,7;11;19;25,169;190;192;200,0.0,0.0
+Q05,early caching strategy deployment,4;13;20;28,28;161;165;166,0.25,0.25
+Q06,authorization webhook integration Q1 2023,1;16;23;30,177;195,0.0,0.0
+Q07,legacy indexing query optimization,18;24;31;35,175;176;192,0.0,0.0
+Q08,rate_limit throttle initial config,21;26;33;38,33;162;178,0.33,0.25
+Q09,monitoring alerting first setup,27;32;36;40,170;173;180;200,0.0,0.0
+Q10,notification preferences early design,29;34;37;39,178;181,0.0,0.0
+Q11,api endpoint scaling mid-year review,45;67;89;112,67;194,0.5,0.25
+Q12,rollback canary deployment strategy,55;78;103;145,103;172,0.5,0.25
+Q13,tracing metrics dashboard evolution,50;72;95;138,50;172;179,0.33,0.25
+Q14,blue_green deployment monitoring,48;80;110;155,110;155;159;190,0.5,0.5
+Q15,retention user_profile analysis,42;65;98;160,160;162;196,0.33,0.25
+Q16,recent scaling alerting improvements,165;172;180;188,165;172;173;180;188,0.8,1.0
+Q17,latest api rate_limit updates,170;178;185;195,170;178;185;195,1.0,1.0
+Q18,current logging tracing configuration,168;175;182;190,168;175;182;185,0.75,0.75
+Q19,new endpoint webhook integration,171;179;186;193,165;179;186;193,0.75,0.75
+Q20,recent caching replication performance,167;176;184;192,167;184;192,1.0,0.75
+Q21,latest monitoring metrics dashboard,174;181;189;197,181;189;197,1.0,0.75
+Q22,current deployment rollback procedures,169;177;183;196,169;177;183;196,1.0,1.0
+Q23,recent notification onboarding flow,173;180;187;199,173;180;187;196;199,0.8,1.0
+Q24,latest encryption token rotation,166;178;191;198,166;178;191;198,1.0,1.0
+Q25,current database indexing optimization,175;182;188;200,175;175;188;200,0.75,0.75

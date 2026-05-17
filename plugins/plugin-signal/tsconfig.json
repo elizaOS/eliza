@@ -1,0 +1,33 @@
+{
+  "compilerOptions": {
+    "target": "ES2022",
+    "module": "ESNext",
+    "moduleResolution": "bundler",
+    "lib": ["ES2023", "DOM", "DOM.Iterable"],
+    "strict": true,
+    "noEmit": true,
+    "skipLibCheck": true,
+    "esModuleInterop": true,
+    "allowSyntheticDefaultImports": true,
+    "forceConsistentCasingInFileNames": true,
+    "resolveJsonModule": true,
+    "declaration": true,
+    "declarationMap": true,
+    "allowImportingTsExtensions": true,
+    "types": ["node", "bun-types"],
+    "paths": {
+      "@elizaos/core": ["../../../packages/core/dist/node"]
+    }
+  },
+  "include": ["src/**/*.ts", "auto-enable.ts"],
+  "exclude": [
+    "node_modules",
+    "dist",
+    "build.ts",
+    "vitest.config.ts",
+    "**/__tests__/**",
+    "**/*.test.ts",
+    "**/*.test.tsx",
+    "**/*.e2e.test.ts"
+  ]
+}

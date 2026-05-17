@@ -1,0 +1,119 @@
+{
+  "datasetName": "voicebench-ground-truth-groq",
+  "profile": "groq",
+  "generatedAtMs": 1771141905732,
+  "promptFile": "/Users/shawwalters/eliza-workspace/benchmarks/voicebench/shared/fixture_prompts.jsonl",
+  "sampleCount": 10,
+  "samples": [
+    {
+      "id": "greeting_short",
+      "text": "Hello there. This is a short voice benchmark sample.",
+      "firstSentence": "Hello there.",
+      "hasRemainder": true,
+      "audioPath": "/Users/shawwalters/eliza-workspace/benchmarks/voicebench/fixtures/groq/greeting_short.wav",
+      "audioBytes": 241990,
+      "audioSha256": "cc1576802018d02800a5a894201321ec4746c392d7a8e613b5a04c54894fe091",
+      "provider": "groq",
+      "profile": "groq"
+    },
+    {
+      "id": "weather_city",
+      "text": "Today in Austin, skies are clear and temperatures are mild.",
+      "firstSentence": "Today in Austin, skies are clear and temperatures are mild.",
+      "hasRemainder": false,
+      "audioPath": "/Users/shawwalters/eliza-workspace/benchmarks/voicebench/fixtures/groq/weather_city.wav",
+      "audioBytes": 245830,
+      "audioSha256": "9081ccdbacab479b63380dc685f8f46447d16af21bf0735ebd1db19aff87e190",
+      "provider": "groq",
+      "profile": "groq"
+    },
+    {
+      "id": "finance_brief",
+      "text": "The quarterly report shows revenue growth and improving margins.",
+      "firstSentence": "The quarterly report shows revenue growth and improving margins.",
+      "hasRemainder": false,
+      "audioPath": "/Users/shawwalters/eliza-workspace/benchmarks/voicebench/fixtures/groq/finance_brief.wav",
+      "audioBytes": 218950,
+      "audioSha256": "e57060ce5ee50f2d64e3d6f879f4453e5d2dd2fee3aa9d77c783508ad310f6c4",
+      "provider": "groq",
+      "profile": "groq"
+    },
+    {
+      "id": "support_reset",
+      "text": "To reset your password, open settings, choose security, then tap reset.",
+      "firstSentence": "To reset your password, open settings, choose security, then tap reset.",
+      "hasRemainder": false,
+      "audioPath": "/Users/shawwalters/eliza-workspace/benchmarks/voicebench/fixtures/groq/support_reset.wav",
+      "audioBytes": 318790,
+      "audioSha256": "1320640701f0edaf82a0862d5a0c904e57cc8ce3d4d10dd7f0c190eb455f2d88",
+      "provider": "groq",
+      "profile": "groq"
+    },
+    {
+      "id": "calendar_note",
+      "text": "Your next meeting starts at three fifteen PM and lasts forty five minutes.",
+      "firstSentence": "Your next meeting starts at three fifteen PM and lasts forty five minutes.",
+      "hasRemainder": false,
+      "audioPath": "/Users/shawwalters/eliza-workspace/benchmarks/voicebench/fixtures/groq/calendar_note.wav",
+      "audioBytes": 241990,
+      "audioSha256": "a3c46be493baabf4a715fc4f58949fb268f00cf96b09c8e3e9c8451dd5d5ba71",
+      "provider": "groq",
+      "profile": "groq"
+    },
+    {
+      "id": "navigation_turn",
+      "text": "In five hundred feet, turn right and continue for two miles.",
+      "firstSentence": "In five hundred feet, turn right and continue for two miles.",
+      "hasRemainder": false,
+      "audioPath": "/Users/shawwalters/eliza-workspace/benchmarks/voicebench/fixtures/groq/navigation_turn.wav",
+      "audioBytes": 241990,
+      "audioSha256": "c6e0b61195b0b503ad8080217be7c8c81cd1808ace163c85ccd7101caf30ff35",
+      "provider": "groq",
+      "profile": "groq"
+    },
+    {
+      "id": "medical_disclaimer",
+      "text": "This information is educational and does not replace medical advice from a clinician.",
+      "firstSentence": "This information is educational and does not replace medical advice from a clinician.",
+      "hasRemainder": false,
+      "audioPath": "/Users/shawwalters/eliza-workspace/benchmarks/voicebench/fixtures/groq/medical_disclaimer.wav",
+      "audioBytes": 291910,
+      "audioSha256": "17f50815fde0a9bf0caadb05240479271f60d07b2047e618aa73ec4773e5c0e6",
+      "provider": "groq",
+      "profile": "groq"
+    },
+    {
+      "id": "multisentence_long",
+      "text": "Latency depends on model size, region distance, and network jitter. Caching first sentence audio can reduce perceived delay.",
+      "firstSentence": "Latency depends on model size, region distance, and network jitter.",
+      "hasRemainder": true,
+      "audioPath": "/Users/shawwalters/eliza-workspace/benchmarks/voicebench/fixtures/groq/multisentence_long.wav",
+      "audioBytes": 426310,
+      "audioSha256": "cc1938530dcc86b29790d9888efe68f85c3a147e326bb7fdc6dd5cb01ffcdf1e",
+      "provider": "groq",
+      "profile": "groq"
+    },
+    {
+      "id": "list_format",
+      "text": "Checklist: one, capture audio; two, transcribe; three, generate response; four, synthesize speech.",
+      "firstSentence": "Checklist: one, capture audio; two, transcribe; three, generate response; four, synthesize speech.",
+      "hasRemainder": false,
+      "audioPath": "/Users/shawwalters/eliza-workspace/benchmarks/voicebench/fixtures/groq/list_format.wav",
+      "audioBytes": 476230,
+      "audioSha256": "eafbb569de2d93bcbda9cbf0e9241fdbe08e9f85de20251765ce336a68966d7d",
+      "provider": "groq",
+      "profile": "groq"
+    },
+    {
+      "id": "numbers_dates",
+      "text": "On January fifteenth twenty twenty six, the average response time was one point four seconds.",
+      "firstSentence": "On January fifteenth twenty twenty six, the average response time was one point four seconds.",
+      "hasRemainder": false,
+      "audioPath": "/Users/shawwalters/eliza-workspace/benchmarks/voicebench/fixtures/groq/numbers_dates.wav",
+      "audioBytes": 322630,
+      "audioSha256": "a4b3012ff0855d68579322e2c7f90cd4495370ae67b69ef7ce9140a001b005fc",
+      "provider": "groq",
+      "profile": "groq"
+    }
+  ]
+}

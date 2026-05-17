@@ -1,0 +1,8 @@
+{
+  "$schema": "https://unpkg.com/knip@5/schema.json",
+  "entry": ["src/**/*.{ts,tsx}", "test/**/*.ts", "vitest.config.ts"],
+  "project": ["src/**/*.{ts,tsx}", "test/**/*.ts", "vitest.config.ts"],
+  "ignore": ["dist/**", ".turbo/**"],
+  "ignoreDependencies": ["@elizaos/ui", "vitest", "vitest/config"],
+  "vitest": false
+}

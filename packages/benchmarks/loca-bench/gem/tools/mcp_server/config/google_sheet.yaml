@@ -1,0 +1,27 @@
+# Google Sheets MCP Server Configuration
+name: google_sheet
+display_name: Google Sheets MCP Server
+description: Mock Google Sheets operations server for benchmarking
+
+execution:
+  command_type: uv
+  script:
+    primary: "mcp_convert/mcps/google_sheet/server.py"
+    fallbacks: []
+  requires_project_root: true
+
+parameters:
+  data_dir:
+    required: true
+    default: "./google_sheet_data"
+    env_var: "GOOGLE_SHEET_DATA_DIR"
+    description: "Path to Google Sheets data directory"
+
+  server_script:
+    required: false
+    description: "Override server script path (for testing)"
+
+workspace:
+  set_cwd: false
+  supports_placeholders: true
+  mkdir_if_needed: true

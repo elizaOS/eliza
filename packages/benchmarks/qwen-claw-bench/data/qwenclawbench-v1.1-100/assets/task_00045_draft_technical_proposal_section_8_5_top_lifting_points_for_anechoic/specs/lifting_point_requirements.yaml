@@ -1,0 +1,83 @@
+# Lifting Point Requirements Specification
+# Document: APC-2024-0087-SPEC-LP-001
+# Revision: B2
+# Date: 2024-02-28
+# Status: Approved for Design
+
+project_id: APC-2024-0087
+section_reference: "8.5 Top Lifting Points"
+revision: B2
+approval_date: "2024-02-28"
+
+# --- Chamber Geometry Reference ---
+chamber_clear_height_m: 18
+chamber_internal_length_m: 24
+chamber_internal_width_m: 16
+
+# --- Standard Lifting Point Grid ---
+grid_spacing_longitudinal_m: 3
+grid_spacing_transverse_m: 2
+grid_origin_offset_x_m: 1.5
+grid_origin_offset_y_m: 1.0
+
+# --- Embed Plate Dimensions ---
+embed_plate_length_mm: 250
+embed_plate_width_mm: 250
+embed_plate_thickness_mm: 20
+
+# --- Anchor Configuration ---
+anchor_bolt_diameter_mm: 16
+anchor_bolt_length_mm: 200
+anchor_bolt_quantity_per_plate: 4
+anchor_bolt_material: "Q235B"
+anchor_bolt_grade: "4.6"
+
+# --- Load Ratings ---
+single_point_capacity_t: 1.0
+single_point_capacity_kN: 9.81
+
+# --- Hoist Track Lifting Points ---
+hoist_track_point_spacing_m: 1
+hoist_track_point_capacity_t: 2.0
+hoist_track_point_capacity_kN: 19.62
+hoist_track_centerline_y_m: 8.0
+hoist_track_start_x_m: 2.0
+hoist_track_end_x_m: 22.0
+
+# --- Design Parameters ---
+safety_factor: 3.0
+dynamic_amplification_factor: 1.2
+load_combination_method: "GB50009-2012"
+
+# --- Material Specification ---
+material: "Q235B"
+material_yield_strength_MPa: 235
+material_tensile_strength_MPa: 370
+
+# --- Surface Treatment ---
+anti_corrosion: "hot_dip_galvanizing"
+galvanizing_thickness_um: 85
+galvanizing_standard: "GB/T 13912"
+
+# --- Fire Protection ---
+fire_rating: "class_A"
+fire_resistance_duration_hours: 2
+fire_retardant_coating: "intumescent"
+fire_retardant_coating_thickness_mm: 1.5
+
+# --- EMC Requirements ---
+emc_shielding_continuity: true
+bonding_resistance_milliohms_max: 2.5
+rf_gasket_required: true
+slot_antenna_prevention: true
+
+# --- Installation Tolerances ---
+position_tolerance_mm: 10
+levelness_tolerance_mm: 5
+plate_flatness_tolerance_mm: 2
+
+# --- Quality Requirements ---
+ndt_hoist_points_percent: 100
+ndt_standard_points_percent: 20
+load_test_factor: 1.25
+load_test_hold_minutes: 10

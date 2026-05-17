@@ -1,0 +1,11 @@
+{
+  "target_seconds": 5,
+  "countdown_font_size": 120,
+  "countdown_color": "#FFF",
+  "background": "#1A1A2E",
+  "firework_colors": ["#FF1744", "#FFD600", "#00E676", "#2979FF", "#D500F9"],
+  "message": "Happy New Year!",
+  "message_color": "#FFD700",
+  "message_font_size": 48,
+  "firework_count": 15
+}

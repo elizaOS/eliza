@@ -1,0 +1,6 @@
+# Generated synthetic fixture WAVs — regenerate with `bun run generate-fixtures`.
+fixtures/*.wav
+
+# Per-run JSON output.
+*.run.json
+results.json

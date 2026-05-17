@@ -1,0 +1,14 @@
+{
+  "name": "@elizaos/example-app-electron-workspace",
+  "type": "module",
+  "version": "2.0.0-beta.0",
+  "scripts": {
+    "dev:renderer": "bun run --cwd frontend dev",
+    "dev:electron": "bun run --cwd backend dev",
+    "build:renderer": "bun run --cwd frontend build",
+    "start": "bun run --cwd backend start",
+    "lint": "bunx @biomejs/biome check --write --unsafe .",
+    "typecheck": "echo 'No TypeScript config; skipping typecheck'",
+    "build": "echo 'No build step configured; skipping build'"
+  }
+}

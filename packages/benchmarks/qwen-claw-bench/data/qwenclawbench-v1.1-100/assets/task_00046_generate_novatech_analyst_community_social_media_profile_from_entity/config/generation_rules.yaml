@@ -1,0 +1,57 @@
+---
+# Entity Profile Generation Rules
+# Version: 3.1
+# Last Updated: 2024-12-01
+
+profile_generation:
+  bio_max_length: 200
+  handle_format: "@{entity_type}_{entity_name}"
+  required_fields:
+    - bio
+    - handle
+    - display_name
+    - profile_type
+    - topics
+    - pinned_content
+    - posting_style
+    - key_narratives
+    - linked_entities
+    - credibility_markers
+  optional_fields:
+    - website_url
+    - location
+    - joined_date
+    - follower_persona
+
+tone_guidelines:
+  default: professional_institutional
+  overrides:
+    FinancialAnalyst: professional_institutional
+    PublicCompany: corporate_official
+    RetailInvestor: casual_enthusiast
+    HedgeFund: institutional_formal
+
+content_rules:
+  must_reference_entity_attributes: true
+  must_incorporate_related_entities: true
+  bio_must_include_key_metrics: true
+  topics_min_count: 3
+  topics_max_count: 10
+  key_narratives_min_count: 3
+  key_narratives_max_count: 7
+  credibility_markers_min_count: 2
+
+data_sourcing:
+  primary_source: "entity definition files (data/entities/)"
+  secondary_sources:
+    - "market data (data/market/)"
+    - "context files (data/context/)"
+  conflict_resolution: "Always prefer primary entity definition over derived summaries"
+  date_preference: "Use most recent data available; check report_date fields"
+
+validation:
+  bio_length_check: true
+  handle_format_check: true
+  required_fields_check: true
+  entity_reference_check: true
+  tone_consistency_check: true

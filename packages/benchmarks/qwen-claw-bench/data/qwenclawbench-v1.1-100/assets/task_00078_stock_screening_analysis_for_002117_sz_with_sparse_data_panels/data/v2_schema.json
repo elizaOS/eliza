@@ -1,0 +1,64 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "Stock Screening Analysis Result v2",
+  "description": "Output schema for the v2 stock screening pipeline. All fields are required.",
+  "type": "object",
+  "required": [
+    "stock_id",
+    "logical_date",
+    "info_quality",
+    "recommendation",
+    "confidence",
+    "rationale",
+    "behavioral_factors",
+    "risk_flags"
+  ],
+  "properties": {
+    "stock_id": {
+      "type": "string",
+      "description": "Unique stock identifier in format XXXXXX.SZ or XXXXXX.SH",
+      "pattern": "^[0-9]{6}\\.(SZ|SH)$"
+    },
+    "logical_date": {
+      "type": "string",
+      "format": "date",
+      "description": "The analysis date in YYYY-MM-DD format"
+    },
+    "info_quality": {
+      "type": "string",
+      "enum": ["rich", "sparse", "conflicting", "void"],
+      "description": "Assessment of the available information quality: rich (abundant consistent data), sparse (limited data available), conflicting (contradictory signals), void (no usable data)"
+    },
+    "recommendation": {
+      "type": "string",
+      "enum": ["include", "exclude", "hold"],
+      "description": "Screening recommendation: include (add to watchlist), exclude (remove from consideration), hold (maintain current status pending more data)"
+    },
+    "confidence": {
+      "type": "number",
+      "minimum": 0.0,
+      "maximum": 1.0,
+      "description": "Confidence level of the recommendation, from 0.0 (no confidence) to 1.0 (full confidence)"
+    },
+    "rationale": {
+      "type": "string",
+      "minLength": 50,
+      "description": "Detailed explanation of the recommendation including data quality assessment, key factors considered, and any caveats"
+    },
+    "behavioral_factors": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "description": "List of behavioral finance factors that may influence the analysis or market perception of this stock"
+    },
+    "risk_flags": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "description": "List of identified risk factors or data quality concerns"
+    }
+  },
+  "additionalProperties": false
+}

@@ -1,0 +1,6 @@
+Instance ID: instance_ansible__ansible-e889b1063f60f6b99f5d031f7e903f7be5f58900-v1055803c3a812189a1133297f7f5468579283f86
+Repository: ansible/ansible
+Base Commit: 1fbac24739a76ab50f26756ceff9e2839a967e80
+Test Files: ["test/units/module_utils/common/parameters/test_check_arguments.py"]
+FAIL_TO_PASS: ["test/units/module_utils/common/parameters/test_check_arguments.py::test_check_arguments[module_parameters7-None-expected7]", "test/units/module_utils/common/parameters/test_check_arguments.py::test_check_arguments[module_parameters4-None-expected4]", "test/units/module_utils/common/parameters/test_check_arguments.py::test_check_arguments[module_parameters1-None-expected1]", "test/units/module_utils/common/parameters/test_check_arguments.py::test_check_arguments[module_parameters3-legal_inputs3-expected3]", "test/units/module_utils/common/parameters/test_check_arguments.py::test_check_arguments[module_parameters2-legal_inputs2-expected2]", "test/units/module_utils/common/parameters/test_check_arguments.py::test_check_arguments[module_parameters6-None-expected6]", "test/units/module_utils/common/parameters/test_check_arguments.py::test_check_arguments[module_parameters5-None-expected5]", "test/units/module_utils/common/parameters/test_check_arguments.py::test_check_arguments[module_parameters0-legal_inputs0-expected0]"]
+PASS_TO_PASS: []

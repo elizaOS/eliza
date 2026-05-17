@@ -1,0 +1,4 @@
+{"type": "session_start", "session_id": "cron_3187254", "model": "claude-opus-4-0-20250115", "created_at": "2026-03-05T08:03:23.053500", "user_id": "system", "channel": "internal"}
+{"role": "user", "content": "Review the deployment logs", "timestamp": "2026-03-05T08:05:23.464985", "session_id": "cron_3187254", "seq": 1}
+{"role": "tool", "name": "exec", "content": "{\"exitCode\": 0, \"stdout\": \"OK\"}", "timestamp": "2026-03-05T08:06:41.357890", "session_id": "cron_3187254", "seq": 2}
+{"type": "session_end", "session_id": "cron_3187254", "ended_at": "2026-03-05T08:06:51.357890", "total_messages": 2, "status": "completed"}

@@ -1,0 +1,25 @@
+# Authentication Service Configuration
+# Environment: production
+# Last modified: 2024-11-12 by ops-team
+
+authentication:
+  password_type: dynamic_daily
+  timezone: "America/Los_Angeles"
+  max_attempts: 5
+  lockout_duration_minutes: 15
+  hash_algorithm: sha256
+  log_plaintext_password: false
+
+session:
+  timeout_minutes: 30
+  refresh_enabled: true
+  refresh_window_minutes: 5
+  secure_cookie: true
+  same_site: strict
+
+audit:
+  enabled: true
+  log_destination: "logs/auth_attempts.log"
+  include_ip_address: true
+  include_user_agent: false
+  retention_days: 90

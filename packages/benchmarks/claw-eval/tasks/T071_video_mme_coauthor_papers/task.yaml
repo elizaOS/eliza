@@ -1,0 +1,112 @@
+task_id: T071_video_mme_coauthor_papers
+task_name: Video-MME Co-authored Papers Research
+version: "1.0"
+category: research
+difficulty: easy
+tags: [general]
+
+services:
+  - name: web_real
+    command: python mock_services/web_real/server.py
+    port: 9114
+    health_check: http://localhost:9114/web/health
+    health_check_method: GET
+    ready_timeout: 10
+    reset_endpoint: http://localhost:9114/web/reset
+
+prompt:
+  text: |
+    Find out all the published peer-reviewed conference papers co-authored by the 4th and 5th authors of the Video-MME paper.
+  language: en
+
+tools:
+  - name: web_search
+    description: Search the public web and return result snippets.
+    input_schema:
+      type: object
+      properties:
+        query:
+          type: string
+          description: Search query
+        max_results:
+          type: integer
+          description: Maximum number of results
+          default: 10
+      required: [query]
+
+  - name: web_fetch
+    description: Fetch full webpage content for a URL.
+    input_schema:
+      type: object
+      properties:
+        url:
+          type: string
+          description: Target URL
+        timeout_seconds:
+          type: integer
+          description: Request timeout in seconds
+          default: 30
+      required: [url]
+
+tool_endpoints:
+  - tool_name: web_search
+    url: http://localhost:9114/web/search
+    method: POST
+  - tool_name: web_fetch
+    url: http://localhost:9114/web/fetch
+    method: POST
+
+environment:
+  timeout_seconds: 1800
+  max_turns: 50
+
+scoring_components:
+  - name: author_identification
+    weight: 0.30
+    check:
+      type: keywords_present
+      keywords: ["Lei Li", "Shuhuai Ren"]
+  - name: paper_coverage
+    weight: 0.70
+    check:
+      type: keywords_present
+      keywords: ["TEMPLE", "GroundingME", "TimeChat", "Video-MME", "Vitatecs", "FETV"]
+
+safety_checks: []
+expected_actions: []
+
+judge_rubric: |
+  Evaluate how completely and accurately the response identifies co-authored papers by the 4th and 5th authors of Video-MME.
+
+  PREREQUISITE FACTS:
+  - 4th author of Video-MME: Lei Li
+  - 5th author of Video-MME: Shuhuai Ren
+
+  For each item below, award full weight if the paper is correctly identified (title or clear description + venue), 0 otherwise.
+  Final score = sum of awarded weights.
+
+  CONFERENCE PAPERS (peer-reviewed, co-authored by both, total 100%):
+  1. [Weight 10%] AAAI — TEMPLE: Temporal Preference Learning of Video LLMs via Difficulty Scheduling and Pre-SFT Alignment
+  2. [Weight 10%] CVPR — GroundingME: Exposing the Visual Grounding Gap in MLLMs through Multi-Dimensional Evaluation
+  3. [Weight 10%] ACM MM — TimeChat-Online: 80% Visual Tokens are Naturally Redundant in Streaming Videos
+  4. [Weight 10%] CVPR — Video-MME: The first-ever comprehensive evaluation benchmark of multi-modal LLMs in video analysis
+  5. [Weight 10%] ECCV — Vitatecs: A diagnostic dataset for temporal concept understanding of video-language models
+  6. [Weight 10%] NeurIPS — FETV: A Benchmark for Fine-Grained Evaluation of Open-Domain Text-to-Video Generation
+  7. [Weight 10%] ACL — Delving into the Openness of CLIP
+  8. [Weight 10%] EMNLP — CascadeBERT: Accelerating Inference of Pre-trained Language Models via Calibrated Complete Models Cascade
+  9. [Weight 10%] EMNLP — Dynamic Knowledge Distillation for Pre-trained Language Models
+  10. [Weight 10%] EMNLP — Text AutoAugment: Learning Compositional Augmentation Policy for Text Classification
+
+  BONUS (ArXiv preprints, not required but good to mention):
+  - MiMo-VL
+  - MiMo-v2-flash technical report
+  - MiMo-Audio
+  - MiMo: Unlocking the Reasoning Potential of Language Model
+
+reference_solution: |
+  4th author: Lei Li, 5th author: Shuhuai Ren.
+  Co-authored conference papers: TEMPLE (AAAI), GroundingME (CVPR), TimeChat-Online (ACM MM),
+  Video-MME (CVPR), Vitatecs (ECCV), FETV (NeurIPS), Delving into CLIP (ACL),
+  CascadeBERT (EMNLP), Dynamic KD (EMNLP), Text AutoAugment (EMNLP).
+
+primary_dimensions: [completion, communication]

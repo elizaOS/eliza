@@ -1,0 +1,20 @@
+[
+  {
+    "article_id": "KB-401",
+    "title": "Procurement Approval Process Guidelines",
+    "category": "Procurement",
+    "tags": ["procurement", "approval", "process"],
+    "content": "# Procurement Approval Process\n\n## Approval Authority\n- Under 500,000: Department Manager approval\n- 500,000 to 1,000,000: Director approval\n- Over 1,000,000: CEO approval\n\n## Vendor Evaluation Criteria (Weighted Scoring)\n- Price competitiveness (30%)\n- Delivery capability (25%)\n- Product quality (20%)\n- Partnership relationship (15%)\n- After-sales support (10%)\n\n## Important Notes\n- Single-supplier procurement must not exceed 60% of total amount\n- First-time procurement from new suppliers is capped at 1,000,000\n- VIP suppliers are eligible for the expedited approval process\n- Additional justification is required when procurement amount exceeds 80% of total budget\n- All vendor evaluations must be documented and archived for review",
+    "last_updated": "2026-01-15",
+    "views": 356
+  },
+  {
+    "article_id": "KB-402",
+    "title": "Server Selection Guide",
+    "category": "Technical",
+    "tags": ["server", "selection", "technical specifications"],
+    "content": "# Server Selection Guide\n\n## Selection Principles\n1. Business requirements alignment: Choose configurations matching workload types\n2. Compatibility verification: Confirm compatibility with existing infrastructure\n3. Scalability assessment: Reserve expansion capacity for the next 3 years\n4. Total Cost of Ownership (TCO): Consider full lifecycle costs including purchase, operations, and power consumption\n\n## Brand Comparison Reference\n- Dell PowerEdge: Mature ecosystem, abundant accessories, suitable for hybrid environments\n- HP ProLiant: Comprehensive management tools, excellent enterprise-grade stability\n- Huawei FusionServer: Xinchuang compliant, top choice for domestic technology substitution\n- Lenovo ThinkSystem: Strong value for money, reliability certified internationally\n\n## Important Notes\n- Xinchuang compliance projects should prioritize domestic brands\n- Ensure unified management platforms when deploying mixed brands\n- Mission-critical systems should select brands with local after-sales support",
+    "last_updated": "2026-02-01",
+    "views": 189
+  }
+]

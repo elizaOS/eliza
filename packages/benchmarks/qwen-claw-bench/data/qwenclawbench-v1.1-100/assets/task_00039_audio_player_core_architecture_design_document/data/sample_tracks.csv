@@ -1,0 +1,51 @@
+track_id,title,artist,album,duration_ms,file_path,codec,file_size_bytes,sample_rate,bit_depth,channels
+17798699-e085-4d2a-99fb-1627daa05a74,Unfinished Stories,Lena Kovacs,Budapest Morning,173659,/music/lena_kovacs/budapest_morning/unfinished_stories.wav,wav,100027584,96000,24,2
+1cd0d6d7-fc3f-458f-938d-a89e16ff3fc3,Nocturne for Strings,Nadia Petrova,Winter Concerto,185082,/music/nadia_petrova/winter_concerto/nocturne_for_strings.mp3,mp3,5922624,48000,24,2
+55e2d65c-68b5-4d6a-acc9-bf598aa8b278,Synthetic Dawn,Aurora Waves,Tidal Echoes,304691,/music/aurora_waves/tidal_echoes/synthetic_dawn.mp3,mp3,14625168,44100,24,2
+a1aaeac3-0074-45c4-9ca6-908443443dd1,Pulse Width,DJ Prism,Refracted Light,157804,/music/dj_prism/refracted_light/pulse_width.mp3,mp3,6312160,96000,16,2
+a8ce65af-bf57-4a45-86a8-141bcf764a22,Gravel Road,The Midnight Owls,Streetlight Serenade,319013,/music/the_midnight_owls/streetlight_serenade/gravel_road.mp3,mp3,7656311,96000,24,2
+deb3f70c-4dc9-4f74-9049-432ada85008a,Binary Sunset,Aurora Waves,Neon Drift,219675,/music/aurora_waves/neon_drift/binary_sunset.aac,aac,7029600,48000,24,2
+b0a1f172-2933-4e28-89ed-180634fe79f9,Rooftop Confessions,The Midnight Owls,Streetlight Serenade,332109,/music/the_midnight_owls/streetlight_serenade/rooftop_confessions.ogg,ogg,5313744,48000,16,2
+a72a6acc-85a1-4c86-a235-861bec6d1342,Shrapnel Rain,Iron Cascade,Shattered Symmetry,221831,/music/iron_cascade/shattered_symmetry/shrapnel_rain.aac,aac,7098592,48000,16,2
+4c15f4e3-16b5-45f2-ae7c-a1e1cace438c,Crossroads Again,Thunderclap Revival,Electric Gospel,324252,/music/thunderclap_revival/electric_gospel/crossroads_again.ogg,ogg,12970080,44100,24,2
+b0e07925-5779-4cbe-8365-b0187702d8c5,Smoke and Ivory,Clara Fontaine,Blue Smoke Sessions,185022,/music/clara_fontaine/blue_smoke_sessions/smoke_and_ivory.mp3,mp3,2960352,48000,16,2
+8677b467-db44-4ef0-b557-ebf1d61dedb1,Thunder Road Blues,Thunderclap Revival,Electric Gospel,205819,/music/thunderclap_revival/electric_gospel/thunder_road_blues.flac,flac,19604259,44100,16,2
+f04be88e-aa82-44d8-940e-d638d22de3fb,Obsidian Crown,Iron Cascade,Shattered Symmetry,406594,/music/iron_cascade/shattered_symmetry/obsidian_crown.ogg,ogg,9758256,48000,24,2
+6655ee14-d746-4691-aa07-2223715b3b28,Copper Kettle Song,Juniper Lane,Wildflower Road,275184,/music/juniper_lane/wildflower_road/copper_kettle_song.flac,flac,31852548,44100,16,1
+fff0f0fe-9dc1-41bb-9c46-29f3eef5b99d,Digital Rain,Aurora Waves,Neon Drift,308400,/music/aurora_waves/neon_drift/digital_rain.mp3,mp3,7401599,48000,24,2
+b252fd19-f416-46eb-8e8b-c9df07d50794,Circuit Breaker,Aurora Waves,Tidal Echoes,158594,/music/aurora_waves/tidal_echoes/circuit_breaker.mp3,mp3,3806256,44100,24,2
+2ed7e1ac-b3ad-4e0b-8e91-7b8c9a49f52d,Oceanic Depths,Soleil Noir,Dawn Protocol,367059,/music/soleil_noir/dawn_protocol/oceanic_depths.flac,flac,39321195,96000,24,2
+0a939fe3-5801-4308-ae2d-bb75155da521,Stellar Nursery,Soleil Noir,Parisian Nights,191660,/music/soleil_noir/parisian_nights/stellar_nursery.ogg,ogg,3066560,96000,16,1
+bf76d5ce-a1f2-4d98-bb26-6dc99c174efe,Photon Stream,Aurora Waves,Neon Drift,169739,/music/aurora_waves/neon_drift/photon_stream.aac,aac,2715824,44100,16,1
+7ac5c443-0794-48ae-88ed-4a8a9f162f09,Iron Requiem,Iron Cascade,Rust and Redemption,202944,/music/iron_cascade/rust_and_redemption/iron_requiem.wav,wav,53698982,44100,24,2
+80e7d2b4-a4ed-4218-b347-0f98d9c46808,Window Seat,Lena Kovacs,Budapest Morning,249531,/music/lena_kovacs/budapest_morning/window_seat.wav,wav,44017268,44100,16,2
+2eb1d53a-966f-4de9-998a-2b8d0751cd36,Street Philosophy,Marcus Chen,Skyline Verses,226104,/music/marcus_chen/skyline_verses/street_philosophy.ogg,ogg,9044160,44100,24,2
+c4855541-1462-4231-a4ac-1713dda35eaa,Paper Airplanes,The Midnight Owls,Feathered Dreams,346934,/music/the_midnight_owls/feathered_dreams/paper_airplanes.ogg,ogg,13877360,44100,16,2
+bec8daa6-54e2-4e34-9ef8-d196a9bb4c7b,Telescope Eyes,The Midnight Owls,Feathered Dreams,194157,/music/the_midnight_owls/feathered_dreams/telescope_eyes.wav,wav,27958608,48000,24,1
+f08afe10-b622-46ef-9a72-e5acd811f9c7,Neon Cathedral,Aurora Waves,Tidal Echoes,280923,/music/aurora_waves/tidal_echoes/neon_cathedral.flac,flac,25353300,96000,16,2
+b7bbce9b-e621-4102-a99e-1bc0d3ecebdb,Binary Sunset,DJ Prism,Refracted Light,192989,/music/dj_prism/refracted_light/binary_sunset.flac,flac,20456834,44100,16,2
+5e9b1425-27df-4598-8a6c-fa8ec9c42194,Whiskey Sunrise,Thunderclap Revival,Electric Gospel,289254,/music/thunderclap_revival/electric_gospel/whiskey_sunrise.wav,wav,83305152,48000,24,2
+01385814-6202-432a-922d-ae068635f780,Thunderstone,Iron Cascade,Rust and Redemption,378021,/music/iron_cascade/rust_and_redemption/thunderstone.mp3,mp3,6048336,96000,24,2
+aa77f6c3-a16f-40b9-999f-c786bfb1a1ec,Faded Polaroids,The Midnight Owls,Streetlight Serenade,249689,/music/the_midnight_owls/streetlight_serenade/faded_polaroids.wav,wav,71910432,48000,24,2
+69c37436-5259-4e40-aa0f-ae523b3ad011,Last Train Home,The Midnight Owls,Streetlight Serenade,150338,/music/the_midnight_owls/streetlight_serenade/last_train_home.aac,aac,3608112,96000,24,2
+f6f60cd3-6645-47ab-9a1a-08f6c0c3cc63,Bottleneck Slide,Thunderclap Revival,Electric Gospel,300322,/music/thunderclap_revival/electric_gospel/bottleneck_slide.aac,aac,4805152,44100,16,2
+e2b4e45b-aa1d-433a-9175-2bb7fa01521f,Midnight in Blue,Clara Fontaine,Velvet Horizon,209161,/music/clara_fontaine/velvet_horizon/midnight_in_blue.ogg,ogg,8366440,44100,24,2
+3126aafe-2b72-4123-ba9e-e0ee7f576a09,Prelude No. 7,The Velvet Strings,Chamber of Echoes,191550,/music/the_velvet_strings/chamber_of_echoes/prelude_no_7.wav,wav,36777600,48000,16,2
+46d17449-69e6-435f-88e9-b29a75cb6929,Broken Compass,The Midnight Owls,Feathered Dreams,172561,/music/the_midnight_owls/feathered_dreams/broken_compass.flac,flac,23727137,48000,16,2
+9f024d1c-4765-4147-af53-b68eec134599,Muddy Waters Rising,Thunderclap Revival,Electric Gospel,179261,/music/thunderclap_revival/electric_gospel/muddy_waters_rising.ogg,ogg,4302264,48000,24,2
+c98b0e4a-ce46-45c7-ac07-3f7f2c0ad687,Block Party Anthem,Marcus Chen,Skyline Verses,321953,/music/marcus_chen/skyline_verses/block_party_anthem.ogg,ogg,7726871,48000,24,2
+247c115f-e14e-4440-91d5-ac5619f6e2ee,Rhapsody in Twilight,Nadia Petrova,Winter Concerto,271081,/music/nadia_petrova/winter_concerto/rhapsody_in_twilight.wav,wav,52047552,48000,16,2
+911b38c2-bae1-49a2-bcf6-3c8cf2248b22,Lantern Light,Juniper Lane,Autumn Letters,307466,/music/juniper_lane/autumn_letters/lantern_light.aac,aac,4919456,44100,24,2
+4d93ae51-7634-4744-9422-514f0fb0f546,Morning Coffee Ritual,Lena Kovacs,Budapest Morning,278546,/music/lena_kovacs/budapest_morning/morning_coffee_ritual.mp3,mp3,4456736,44100,24,2
+58a12fb9-cfbd-46ed-a988-de4259aca428,Juke Joint Revival,Thunderclap Revival,Electric Gospel,193461,/music/thunderclap_revival/electric_gospel/juke_joint_revival.mp3,mp3,7738440,96000,24,2
+4d674586-fab0-4ceb-8d5f-cba0f38d421e,Pulse Width,Aurora Waves,Tidal Echoes,252470,/music/aurora_waves/tidal_echoes/pulse_width.aac,aac,4039520,48000,24,2
+48a8c980-e521-45d4-b907-3f433094da0a,Harvest Moon Rising,Juniper Lane,Autumn Letters,195820,/music/juniper_lane/autumn_letters/harvest_moon_rising.aac,aac,6266240,44100,24,2
+ceef6a09-898d-4f8f-bdce-553aef33ad6c,Nocturne for Strings,The Velvet Strings,Sonata for the Lost,242666,/music/the_velvet_strings/sonata_for_the_lost/nocturne_for_strings.aac,aac,5823984,96000,16,2
+74b930c5-296d-4e3a-bdb6-d3d298bcd010,Wanderer's Hymn,Juniper Lane,Wildflower Road,234807,/music/juniper_lane/wildflower_road/wanderers_hymn.wav,wav,62129932,44100,24,2
+206441ba-422e-4648-8533-7fcf36ae3967,Satellite Hearts,The Midnight Owls,Streetlight Serenade,239315,/music/the_midnight_owls/streetlight_serenade/satellite_hearts.mp3,mp3,7658080,48000,24,2
+f967c289-ff04-41c9-a7b0-212c60ac203c,Elegy for Autumn,Nadia Petrova,Winter Concerto,180580,/music/nadia_petrova/winter_concerto/elegy_for_autumn.wav,wav,47781468,44100,24,2
+8f926d84-6db6-4ab7-a3f9-d3e73682bae3,Telescope Eyes,The Midnight Owls,Feathered Dreams,313332,/music/the_midnight_owls/feathered_dreams/telescope_eyes.aac,aac,10026624,44100,24,2
+dcf961b8-ad97-4444-91c7-d2d56667723f,Adagio in G Minor,The Velvet Strings,Sonata for the Lost,181103,/music/the_velvet_strings/sonata_for_the_lost/adagio_in_g_minor.flac,flac,17906559,48000,16,2
+5974b2cf-cb85-4e5d-89e2-bad77333d2d5,Forge of Titans,Iron Cascade,Rust and Redemption,117527,/music/iron_cascade/rust_and_redemption/forge_of_titans.mp3,mp3,1880432,48000,24,2
+db8e59b4-a9f0-4cf2-a5b0-09d33650b4b4,Last Train Home,The Midnight Owls,Feathered Dreams,218208,/music/the_midnight_owls/feathered_dreams/last_train_home.ogg,ogg,6982656,48000,24,2
+49eddb0c-b039-4a1d-be47-a0ca763de7c2,Waveform Collapse,Aurora Waves,Neon Drift,257625,/music/aurora_waves/neon_drift/waveform_collapse.wav,wav,98928000,96000,16,2

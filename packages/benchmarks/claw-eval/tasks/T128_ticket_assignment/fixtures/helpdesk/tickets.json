@@ -1,0 +1,74 @@
+[
+  {
+    "ticket_id": "TK-901",
+    "title": "System login failure",
+    "description": "Since this morning, the company CRM system shows a blank white screen after login and cannot access the main interface. Tried multiple computers and different browsers.",
+    "reporter": "Xiao Wang from Sales Dept",
+    "department": "Sales Dept",
+    "priority": "high",
+    "status": "open",
+    "created_at": "2026-03-26T08:30:00Z",
+    "tags": ["system", "login", "CRM"],
+    "category": "System Failure"
+  },
+  {
+    "ticket_id": "TK-902",
+    "title": "Inaccurate report data",
+    "description": "In the monthly sales report, the East China region data doesn't match actual figures, with a discrepancy of about 150,000. Suspect there's an issue with the data source aggregation logic.",
+    "reporter": "Accountant Li from Finance Dept",
+    "department": "Finance Dept",
+    "priority": "medium",
+    "status": "open",
+    "created_at": "2026-03-26T09:00:00Z",
+    "tags": ["data", "report", "accuracy"],
+    "category": "Data Issue"
+  },
+  {
+    "ticket_id": "TK-903",
+    "title": "VPN connection failure",
+    "description": "VPN connection fails when working from home, showing 'connection timed out'. Colleagues report similar issues.",
+    "reporter": "Manager Zhao from Marketing Dept",
+    "department": "Marketing Dept",
+    "priority": "high",
+    "status": "open",
+    "created_at": "2026-03-26T08:15:00Z",
+    "tags": ["VPN", "network", "remote"],
+    "category": "Network Issue"
+  },
+  {
+    "ticket_id": "TK-904",
+    "title": "System permission request",
+    "description": "Need to grant CRM system customer query and ticket handling permissions for 3 newly onboarded customer service staff.",
+    "reporter": "Supervisor Chen from Customer Service Dept",
+    "department": "Customer Service Dept",
+    "priority": "medium",
+    "status": "open",
+    "created_at": "2026-03-26T10:00:00Z",
+    "tags": ["permission", "account", "new employee"],
+    "category": "Permission Management"
+  },
+  {
+    "ticket_id": "TK-905",
+    "title": "Broken office chair needs replacement",
+    "description": "The office chair at R&D area workstation #3 has a broken hydraulic lift and cannot adjust height. Needs a replacement chair.",
+    "reporter": "Engineer Zhang from R&D Dept",
+    "department": "R&D Dept",
+    "priority": "low",
+    "status": "open",
+    "created_at": "2026-03-26T11:00:00Z",
+    "tags": ["office equipment", "replacement"],
+    "category": "Office Equipment"
+  },
+  {
+    "ticket_id": "TK-906",
+    "title": "Email storage full",
+    "description": "Corporate email shows storage is full and cannot send or receive new emails. Deleted some old emails but space is releasing slowly.",
+    "reporter": "Assistant Zhou from HR Dept",
+    "department": "HR Dept",
+    "priority": "medium",
+    "status": "open",
+    "created_at": "2026-03-26T09:30:00Z",
+    "tags": ["email", "storage", "capacity"],
+    "category": "System Failure"
+  }
+]

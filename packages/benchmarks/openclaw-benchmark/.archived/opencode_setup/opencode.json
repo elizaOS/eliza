@@ -1,0 +1,46 @@
+{
+    "$schema": "https://opencode.ai/config.json",
+    // ═══════════════════════════════════════════════════════════════
+    // PERMISSIONS: Control what OpenCode can do
+    // ═══════════════════════════════════════════════════════════════
+    "permission": {
+        // Default: Ask for everything (safe baseline)
+        "*": "ask",
+        // Allowed Operations
+        "read": "allow",
+        "list": "allow",
+        "glob": "allow",
+        "grep": "allow",
+        "lsp": "allow",
+        "todoread": "allow",
+        "codesearch": "allow",
+        // Approval Required
+        "edit": "ask",
+        "task": "ask",
+        "todowrite": "ask",
+        "webfetch": "ask",
+        "websearch": "ask",
+        "skill": "ask",
+        // Guards
+        "external_directory": "deny",
+        "doom_loop": "deny",
+        // Granular Rules (Bash)
+        "bash": {
+            "*": "ask", // Default: Ask for unknown commands
+            "git status": "allow", // Allow safe status checks
+            "ls": "allow" // Allow listing
+        }
+    },
+    "compaction": {
+        "auto": true,
+        "prune": true
+    },
+    "watcher": {
+        "ignore": [
+            "node_modules/**",
+            "dist/**",
+            ".git/**",
+            ".opencode-worktre/**"
+        ]
+    }
+}

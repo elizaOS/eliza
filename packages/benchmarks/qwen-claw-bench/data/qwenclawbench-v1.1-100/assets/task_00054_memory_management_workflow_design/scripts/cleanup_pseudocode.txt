@@ -1,0 +1,100 @@
+# Memory Cleanup Script - Pseudocode
+# File: scripts/cleanup.py (pseudocode representation)
+# Last modified: 2024-07-01
+# Author: backend-team
+
+"""
+Memory Cleanup Process
+======================
+This script is executed by the cron scheduler to remove expired memories
+from the JSON store. It reads the entire memory file, evaluates each item
+against the retention policy, deletes expired items, and writes the
+remaining items back to disk.
+"""
+
+FUNCTION main():
+    config = LOAD_YAML("./config/assistant_config.yaml")
+    retention_days = config.memory.retention_days    # 90 days
+    storage_path = config.memory.storage_path        # ./data/memories.json
+
+    LOG(INFO, "Cleanup started at " + CURRENT_TIMESTAMP())
+    LOG(INFO, "Retention policy: " + retention_days + " days")
+
+    # Load all memories from disk
+    memories = LOAD_JSON(storage_path)
+    total_count = LENGTH(memories)
+    LOG(INFO, "Loaded " + total_count + " memories")
+
+    # Calculate cutoff date
+    cutoff_date = CURRENT_DATE() - DAYS(retention_days)
+
+    # Identify expired items
+    expired_items = []
+    active_items = []
+
+    FOR EACH memory IN memories:
+        IF memory.last_accessed < cutoff_date:
+            expired_items.APPEND(memory)
+            memory.expired = true
+        ELSE:
+            active_items.APPEND(memory)
+        END IF
+    END FOR
+
+    LOG(INFO, "Found " + LENGTH(expired_items) + " expired items")
+    LOG(INFO, "Retaining " + LENGTH(active_items) + " active items")
+
+    # Delete expired items by writing only active items back
+    # TODO: fix race condition when new memories are written during cleanup
+    WRITE_JSON(storage_path, active_items)
+
+    LOG(INFO, "Cleanup completed. Removed " + LENGTH(expired_items) + " items.")
+    LOG(INFO, "Final memory count: " + LENGTH(active_items))
+
+    RETURN {
+        "items_reviewed": total_count,
+        "items_deleted": LENGTH(expired_items),
+        "items_retained": LENGTH(active_items)
+    }
+END FUNCTION
+
+
+# --- NOTES ---
+# Known issues and missing functionality:
+#
+# 1. NO DEDUPLICATION STEP
+#    The cleanup script does not check for duplicate or near-duplicate
+#    memories. Even if two memories have identical content, both are
+#    retained (or both expired) independently.
+#
+# 2. NO SUMMARIZATION BEFORE DELETION
+#    Expired memories are permanently deleted without any attempt to
+#    extract and preserve key information. Users have requested that
+#    old memories be summarized before removal.
+#
+# 3. NO RECURRING VS AD-HOC DISTINCTION
+#    The script treats all memories identically. Recurring items
+#    (like daily standup notes or medication reminders) are subject
+#    to the same expiry rules as one-time ad-hoc items. This means
+#    recurring items can expire if not accessed within the retention
+#    window, even though they should persist indefinitely.
+#
+# 4. NO PRIORITY-BASED RETENTION
+#    The priority field on memory objects is completely ignored during
+#    cleanup. A high-priority medication reminder expires at the same
+#    rate as a low-priority shopping list item.
+#
+# 5. RACE CONDITION (TODO)
+#    If a user creates a new memory while cleanup is running, the new
+#    memory may be lost because cleanup reads the full file at start,
+#    then overwrites it at the end. Any writes between read and write
+#    are silently discarded.
+#
+# 6. NO CATEGORY-AWARE RETENTION
+#    Different categories have different default_retention_days in
+#    memory_categories.json, but this script only uses the global
+#    retention_days value from assistant_config.yaml.
+#
+# 7. NO STORAGE LIMIT CHECK
+#    The script does not verify whether the remaining items exceed
+#    the max_memory_items limit after cleanup.

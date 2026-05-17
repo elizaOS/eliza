@@ -1,0 +1,9 @@
+tier_name,min_tokens_monthly,max_tokens_monthly,input_cost_per_1k,output_cost_per_1k
+Free Tier,0,100000,0.0,0.0
+Starter,100001,500000,0.06,0.12
+Basic,500001,2000000,0.05,0.1
+Growth,2000001,5000000,0.04,0.08
+Professional,5000001,10000000,0.03,0.06
+Business,10000001,50000000,0.02,0.04
+Enterprise,50000001,200000000,0.015,0.03
+Custom,200000001,999999999,0.01,0.02

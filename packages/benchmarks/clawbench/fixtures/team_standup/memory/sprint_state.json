@@ -1,0 +1,23 @@
+{
+  "sprint": "Sprint 13",
+  "start_date": "2026-01-27",
+  "end_date": "2026-02-07",
+  "goal": "Ship auth migration (session management + error messages) and complete dashboard data layer refactor",
+  "team_capacity": {
+    "james.liu": "full",
+    "marcus.johnson": "full (vacation Feb 17-21 — next sprint impact)",
+    "priya.patel": "full",
+    "tom.anderson": "50% — shared with DevOps on-call rotation"
+  },
+  "sprint_items_at_start": 8,
+  "items_completed_so_far": 0,
+  "items_in_review": 3,
+  "items_in_progress": 3,
+  "items_blocked": 1,
+  "velocity_last_3_sprints": [12, 10, 14],
+  "risks_identified_at_planning": [
+    "Auth migration depends on Redis provisioning (infrastructure)",
+    "Dashboard refactor is large — could carry over",
+    "Marcus vacation in Sprint 14 reduces capacity"
+  ]
+}

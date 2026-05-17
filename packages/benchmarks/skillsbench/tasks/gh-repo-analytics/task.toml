@@ -1,0 +1,20 @@
+version = "1.0"
+
+[metadata]
+author_name = "SkillsBench"
+author_email = "team@skillsbench.ai"
+difficulty = "medium"
+category = "devops-analytics"
+tags = ["github", "gh-cli", "data-analysis", "ci-cd", "devops"]
+
+[verifier]
+timeout_sec = 240.0
+
+[agent]
+timeout_sec = 3600.0
+
+[environment]
+build_timeout_sec = 600.0
+cpus = 1
+memory_mb = 4096
+storage_mb = 10240

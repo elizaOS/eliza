@@ -1,0 +1,65 @@
+@prefix : <http://www.example.org/product-review#> .
+@prefix owl: <http://www.w3.org/2002/07/owl#> .
+@prefix rdf: <http://www.w3.org/1999/02/22-rdf-syntax-ns#> .
+@prefix rdfs: <http://www.w3.org/2000/01/rdf-schema#> .
+@prefix xsd: <http://www.w3.org/2001/XMLSchema#> .
+
+<http://www.example.org/product-review> rdf:type owl:Ontology ;
+    rdfs:label "Product Review Ontology" ;
+    rdfs:comment "An ontology for representing product reviews and their associated products." .
+
+###  Classes
+
+:Review rdf:type owl:Class ;
+    rdfs:label "Review" ;
+    rdfs:comment "A customer review of a product." .
+
+:Product rdf:type owl:Class ;
+    rdfs:label "Product" ;
+    rdfs:comment "A product that can be reviewed." .
+
+###  Object Properties
+
+:hasProduct rdf:type owl:ObjectProperty ;
+    rdfs:label "has product" ;
+    rdfs:comment "Links a review to the product being reviewed." ;
+    rdfs:domain :Review ;
+    rdfs:range :Product .
+
+###  Datatype Properties
+
+:productName rdf:type owl:DatatypeProperty ;
+    rdfs:label "product name" ;
+    rdfs:comment "The name of a product." ;
+    rdfs:domain :Product ;
+    rdfs:range xsd:string .
+
+:reviewId rdf:type owl:DatatypeProperty ;
+    rdfs:label "review ID" ;
+    rdfs:comment "A unique integer identifier for a review." ;
+    rdfs:domain :Review ;
+    rdfs:range xsd:integer .
+
+:reviewTitle rdf:type owl:DatatypeProperty ;
+    rdfs:label "review title" ;
+    rdfs:comment "The title or headline of a review." ;
+    rdfs:domain :Review ;
+    rdfs:range xsd:string .
+
+:reviewText rdf:type owl:DatatypeProperty ;
+    rdfs:label "review text" ;
+    rdfs:comment "The full text body of a review." ;
+    rdfs:domain :Review ;
+    rdfs:range xsd:string .
+
+:reviewDate rdf:type owl:DatatypeProperty ;
+    rdfs:label "review date" ;
+    rdfs:comment "The date when the review was submitted." ;
+    rdfs:domain :Review ;
+    rdfs:range xsd:date .
+
+:reviewerName rdf:type owl:DatatypeProperty ;
+    rdfs:label "reviewer name" ;
+    rdfs:comment "The display name of the customer who submitted the review." ;
+    rdfs:domain :Review ;
+    rdfs:range xsd:string .

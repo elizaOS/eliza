@@ -1,0 +1,16 @@
+item_id,description,frequency,time_of_day,active,created_date,category
+RS-001,Review inbox and respond to urgent emails,daily,09:00,true,2024-08-12,work
+RS-002,Team standup at 9:15 AM,daily,09:15,true,2024-03-27,work
+RS-003,Take blood pressure medication,daily,08:00,true,2024-07-12,personal
+RS-004,Weekly report submission,weekly,16:00,true,2024-06-30,work
+RS-005,Check project deadlines and update tracker,daily,10:00,true,2024-06-01,work
+RS-006,Team retrospective meeting,weekly,14:00,true,2024-07-20,work
+RS-007,Water office plants,weekly,09:30,false,2024-03-23,personal
+RS-008,Review and approve timesheets,weekly,15:00,true,2024-06-25,work
+RS-009,Backup local files to cloud storage,daily,18:00,false,2024-05-30,personal
+RS-010,Prepare agenda for leadership sync,weekly,16:30,true,2024-03-28,work
+RS-011,Review pull requests and code reviews,daily,11:00,true,2024-04-12,work
+RS-012,Update personal task list in Todoist,daily,08:30,true,2024-04-04,personal
+RS-013,Monthly expense report preparation,monthly,10:00,true,2024-03-20,work
+RS-014,Check server monitoring dashboards,daily,09:45,true,2024-03-28,work
+RS-015,Clean desk and organize workspace,weekly,17:00,false,2024-08-08,personal

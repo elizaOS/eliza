@@ -1,0 +1,36 @@
+---
+title: "elizaos create"
+description: "Create a generated project or plugin workspace"
+---
+
+```bash
+elizaos create [name] [options]
+```
+
+## Options
+
+| Option | Description |
+| --- | --- |
+| `-t, --template <template>` | Template id, such as `project` or `plugin`. |
+| `-l, --language <lang>` | Template language. Currently TypeScript templates are available. |
+| `-y, --yes` | Skip confirmation prompts where supported. |
+| `--description <description>` | Plugin description override. |
+| `--github-username <username>` | Plugin GitHub username override. |
+| `--repo-url <url>` | Plugin repository URL override. |
+| `--skip-upstream` | Skip initializing the upstream eliza checkout for project templates. |
+
+## Examples
+
+```bash
+elizaos create
+elizaos create my-agent-app --template project
+elizaos create plugin-weather --template plugin
+```
+
+After creation:
+
+```bash
+cd my-agent-app
+bun install
+bun run dev
+```

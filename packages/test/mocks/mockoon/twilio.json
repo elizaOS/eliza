@@ -1,0 +1,365 @@
+{
+  "uuid": "bbbb1111-aaaa-4000-8000-0000000200a2",
+  "lastMigration": 33,
+  "name": "lifeops-twilio-mock",
+  "endpointPrefix": "",
+  "latency": 0,
+  "port": 18808,
+  "hostname": "0.0.0.0",
+  "folders": [],
+  "routes": [
+    {
+      "uuid": "bbbb1111-aaaa-4000-8000-000000020098",
+      "type": "http",
+      "documentation": "POST 2010-04-01/Accounts/:AccountSid/Messages.json",
+      "method": "post",
+      "endpoint": "2010-04-01/Accounts/:AccountSid/Messages.json",
+      "responses": [
+        {
+          "uuid": "bbbb1111-aaaa-4000-8000-000000020099",
+          "body": "{\n  \"sid\": \"SM193a200a44b0bb0233445566778899aa\",\n  \"account_sid\": \"{{urlParam 'AccountSid'}}\",\n  \"to\": \"+14155551234\",\n  \"from\": \"+14155557777\",\n  \"body\": \"Mock outbound SMS\",\n  \"status\": \"queued\",\n  \"direction\": \"outbound-api\",\n  \"date_created\": \"Fri, 09 May 2026 18:00:00 +0000\",\n  \"price\": null,\n  \"uri\": \"/2010-04-01/Accounts/{{urlParam 'AccountSid'}}/Messages/SM193a200a44b0bb0233445566778899aa.json\"\n}",
+          "latency": 0,
+          "statusCode": 201,
+          "label": "happy path",
+          "headers": [
+            {
+              "key": "Content-Type",
+              "value": "application/json"
+            }
+          ],
+          "bodyType": "INLINE",
+          "filePath": "",
+          "databucketID": "",
+          "sendFileAsBody": false,
+          "rules": [],
+          "rulesOperator": "OR",
+          "disableTemplating": false,
+          "fallbackTo404": false,
+          "default": true,
+          "crudKey": "id",
+          "callbacks": []
+        },
+        {
+          "uuid": "bbbb1111-aaaa-4000-8000-00000002009a",
+          "body": "{\n  \"code\": 20429,\n  \"message\": \"Too Many Requests\",\n  \"more_info\": \"https://www.twilio.com/docs/errors/20429\",\n  \"status\": 429\n}",
+          "latency": 0,
+          "statusCode": 429,
+          "label": "rate_limit",
+          "headers": [
+            {
+              "key": "Content-Type",
+              "value": "application/json"
+            },
+            {
+              "key": "Retry-After",
+              "value": "1"
+            }
+          ],
+          "bodyType": "INLINE",
+          "filePath": "",
+          "databucketID": "",
+          "sendFileAsBody": false,
+          "rules": [
+            {
+              "target": "header",
+              "modifier": "X-Mockoon-Fault",
+              "value": "rate_limit",
+              "invert": false,
+              "operator": "equals"
+            },
+            {
+              "target": "query",
+              "modifier": "_fault",
+              "value": "rate_limit",
+              "invert": false,
+              "operator": "equals"
+            }
+          ],
+          "rulesOperator": "OR",
+          "disableTemplating": false,
+          "fallbackTo404": false,
+          "default": false,
+          "crudKey": "id",
+          "callbacks": []
+        },
+        {
+          "uuid": "bbbb1111-aaaa-4000-8000-00000002009b",
+          "body": "{\n  \"code\": 20003,\n  \"message\": \"Authentication Error - No credentials provided\",\n  \"more_info\": \"https://www.twilio.com/docs/errors/20003\",\n  \"status\": 401\n}",
+          "latency": 0,
+          "statusCode": 401,
+          "label": "auth_expired",
+          "headers": [
+            {
+              "key": "Content-Type",
+              "value": "application/json"
+            }
+          ],
+          "bodyType": "INLINE",
+          "filePath": "",
+          "databucketID": "",
+          "sendFileAsBody": false,
+          "rules": [
+            {
+              "target": "header",
+              "modifier": "X-Mockoon-Fault",
+              "value": "auth_expired",
+              "invert": false,
+              "operator": "equals"
+            },
+            {
+              "target": "query",
+              "modifier": "_fault",
+              "value": "auth_expired",
+              "invert": false,
+              "operator": "equals"
+            }
+          ],
+          "rulesOperator": "OR",
+          "disableTemplating": false,
+          "fallbackTo404": false,
+          "default": false,
+          "crudKey": "id",
+          "callbacks": []
+        },
+        {
+          "uuid": "bbbb1111-aaaa-4000-8000-00000002009c",
+          "body": "{\n  \"error\": \"internal_server_error\"\n}",
+          "latency": 0,
+          "statusCode": 500,
+          "label": "server_error",
+          "headers": [
+            {
+              "key": "Content-Type",
+              "value": "application/json"
+            }
+          ],
+          "bodyType": "INLINE",
+          "filePath": "",
+          "databucketID": "",
+          "sendFileAsBody": false,
+          "rules": [
+            {
+              "target": "header",
+              "modifier": "X-Mockoon-Fault",
+              "value": "server_error",
+              "invert": false,
+              "operator": "equals"
+            },
+            {
+              "target": "query",
+              "modifier": "_fault",
+              "value": "server_error",
+              "invert": false,
+              "operator": "equals"
+            }
+          ],
+          "rulesOperator": "OR",
+          "disableTemplating": false,
+          "fallbackTo404": false,
+          "default": false,
+          "crudKey": "id",
+          "callbacks": []
+        }
+      ],
+      "responseMode": null
+    },
+    {
+      "uuid": "bbbb1111-aaaa-4000-8000-00000002009d",
+      "type": "http",
+      "documentation": "POST 2010-04-01/Accounts/:AccountSid/Calls.json",
+      "method": "post",
+      "endpoint": "2010-04-01/Accounts/:AccountSid/Calls.json",
+      "responses": [
+        {
+          "uuid": "bbbb1111-aaaa-4000-8000-00000002009e",
+          "body": "{\n  \"sid\": \"CA193a200a44b0bb0233445566778899bb\",\n  \"account_sid\": \"{{urlParam 'AccountSid'}}\",\n  \"to\": \"+12025553456\",\n  \"from\": \"+14155557777\",\n  \"status\": \"queued\",\n  \"direction\": \"outbound-api\",\n  \"date_created\": \"Fri, 09 May 2026 18:00:01 +0000\",\n  \"uri\": \"/2010-04-01/Accounts/{{urlParam 'AccountSid'}}/Calls/CA193a200a44b0bb0233445566778899bb.json\"\n}",
+          "latency": 0,
+          "statusCode": 201,
+          "label": "happy path",
+          "headers": [
+            {
+              "key": "Content-Type",
+              "value": "application/json"
+            }
+          ],
+          "bodyType": "INLINE",
+          "filePath": "",
+          "databucketID": "",
+          "sendFileAsBody": false,
+          "rules": [],
+          "rulesOperator": "OR",
+          "disableTemplating": false,
+          "fallbackTo404": false,
+          "default": true,
+          "crudKey": "id",
+          "callbacks": []
+        },
+        {
+          "uuid": "bbbb1111-aaaa-4000-8000-00000002009f",
+          "body": "{\n  \"code\": 20429,\n  \"message\": \"Too Many Requests\",\n  \"more_info\": \"https://www.twilio.com/docs/errors/20429\",\n  \"status\": 429\n}",
+          "latency": 0,
+          "statusCode": 429,
+          "label": "rate_limit",
+          "headers": [
+            {
+              "key": "Content-Type",
+              "value": "application/json"
+            },
+            {
+              "key": "Retry-After",
+              "value": "1"
+            }
+          ],
+          "bodyType": "INLINE",
+          "filePath": "",
+          "databucketID": "",
+          "sendFileAsBody": false,
+          "rules": [
+            {
+              "target": "header",
+              "modifier": "X-Mockoon-Fault",
+              "value": "rate_limit",
+              "invert": false,
+              "operator": "equals"
+            },
+            {
+              "target": "query",
+              "modifier": "_fault",
+              "value": "rate_limit",
+              "invert": false,
+              "operator": "equals"
+            }
+          ],
+          "rulesOperator": "OR",
+          "disableTemplating": false,
+          "fallbackTo404": false,
+          "default": false,
+          "crudKey": "id",
+          "callbacks": []
+        },
+        {
+          "uuid": "bbbb1111-aaaa-4000-8000-0000000200a0",
+          "body": "{\n  \"code\": 20003,\n  \"message\": \"Authentication Error - No credentials provided\",\n  \"more_info\": \"https://www.twilio.com/docs/errors/20003\",\n  \"status\": 401\n}",
+          "latency": 0,
+          "statusCode": 401,
+          "label": "auth_expired",
+          "headers": [
+            {
+              "key": "Content-Type",
+              "value": "application/json"
+            }
+          ],
+          "bodyType": "INLINE",
+          "filePath": "",
+          "databucketID": "",
+          "sendFileAsBody": false,
+          "rules": [
+            {
+              "target": "header",
+              "modifier": "X-Mockoon-Fault",
+              "value": "auth_expired",
+              "invert": false,
+              "operator": "equals"
+            },
+            {
+              "target": "query",
+              "modifier": "_fault",
+              "value": "auth_expired",
+              "invert": false,
+              "operator": "equals"
+            }
+          ],
+          "rulesOperator": "OR",
+          "disableTemplating": false,
+          "fallbackTo404": false,
+          "default": false,
+          "crudKey": "id",
+          "callbacks": []
+        },
+        {
+          "uuid": "bbbb1111-aaaa-4000-8000-0000000200a1",
+          "body": "{\n  \"error\": \"internal_server_error\"\n}",
+          "latency": 0,
+          "statusCode": 500,
+          "label": "server_error",
+          "headers": [
+            {
+              "key": "Content-Type",
+              "value": "application/json"
+            }
+          ],
+          "bodyType": "INLINE",
+          "filePath": "",
+          "databucketID": "",
+          "sendFileAsBody": false,
+          "rules": [
+            {
+              "target": "header",
+              "modifier": "X-Mockoon-Fault",
+              "value": "server_error",
+              "invert": false,
+              "operator": "equals"
+            },
+            {
+              "target": "query",
+              "modifier": "_fault",
+              "value": "server_error",
+              "invert": false,
+              "operator": "equals"
+            }
+          ],
+          "rulesOperator": "OR",
+          "disableTemplating": false,
+          "fallbackTo404": false,
+          "default": false,
+          "crudKey": "id",
+          "callbacks": []
+        }
+      ],
+      "responseMode": null
+    }
+  ],
+  "rootChildren": [
+    {
+      "type": "route",
+      "uuid": "bbbb1111-aaaa-4000-8000-000000020098"
+    },
+    {
+      "type": "route",
+      "uuid": "bbbb1111-aaaa-4000-8000-00000002009d"
+    }
+  ],
+  "proxyMode": false,
+  "proxyHost": "",
+  "proxyRemovePrefix": false,
+  "tlsOptions": {
+    "enabled": false,
+    "type": "CERT",
+    "pfxPath": "",
+    "certPath": "",
+    "keyPath": "",
+    "caPath": "",
+    "passphrase": ""
+  },
+  "cors": true,
+  "headers": [
+    {
+      "key": "Content-Type",
+      "value": "application/json"
+    }
+  ],
+  "proxyReqHeaders": [
+    {
+      "key": "",
+      "value": ""
+    }
+  ],
+  "proxyResHeaders": [
+    {
+      "key": "",
+      "value": ""
+    }
+  ],
+  "data": [],
+  "callbacks": []
+}

@@ -1,0 +1,35 @@
+---
+title: "CLI Reference"
+description: "Reference for the simplified elizaOS CLI"
+---
+
+The `elizaos` binary creates and upgrades generated workspaces. It does not run the generated app directly; use the generated package scripts for app workflows.
+
+## Install
+
+```bash
+npx elizaos
+bun add -g elizaos
+```
+
+## Commands
+
+| Command | Purpose |
+| --- | --- |
+| [`elizaos create`](/cli-reference/create) | Create a project or plugin from a packaged template. |
+| [`elizaos upgrade`](/cli-reference/upgrade) | Upgrade managed files in the current generated workspace. |
+| [`elizaos info`](/cli-reference/info) | Show available templates and languages. |
+| [`elizaos version`](/cli-reference/version) | Print CLI version information. |
+
+## App Workflows
+
+After creation, run project or plugin scripts:
+
+```bash
+bun install
+bun run dev
+bun run build
+bun run test
+```
+
+The exact script list is defined by the generated `package.json`.

@@ -1,0 +1,76 @@
+task_id: T094_pinbench_project_alpha_summary
+task_name: Pinbench Project Alpha Summary
+version: "1.0"
+category: synthesis
+difficulty: easy
+tags: [general]
+
+services:
+  - name: gmail
+    command: python mock_services/gmail/server.py
+    port: 9100
+    health_check: http://localhost:9100/gmail/messages
+    health_check_method: POST
+    ready_timeout: 10
+    reset_endpoint: http://localhost:9100/gmail/reset
+    env:
+      GMAIL_FIXTURES: tasks/T094_pinbench_project_alpha_summary/fixtures/gmail/inbox.json
+
+prompt:
+  text: |
+    Search the Gmail inbox for everything related to Project Alpha and produce a
+    structured summary with these sections:
+    1. Project Overview
+    2. Timeline
+    3. Key Risks and Issues
+    4. Client and Business Impact
+    5. Current Status
+    Ignore unrelated noise emails.
+  language: en
+
+tools:
+  - name: gmail_list_messages
+    description: List inbox messages
+    input_schema:
+      type: object
+      properties:
+        days_back:
+          type: integer
+          default: 60
+        max_results:
+          type: integer
+          default: 30
+      required: []
+  - name: gmail_get_message
+    description: Get one message
+    input_schema:
+      type: object
+      properties:
+        message_id:
+          type: string
+      required: [message_id]
+
+tool_endpoints:
+  - tool_name: gmail_list_messages
+    url: http://localhost:9100/gmail/messages
+    method: POST
+  - tool_name: gmail_get_message
+    url: http://localhost:9100/gmail/messages/get
+    method: POST
+
+sandbox_files:
+  - fixtures/gmail/inbox.json
+
+environment:
+  timeout_seconds: 300
+  max_turns: 20
+
+scoring_components: []
+safety_checks: []
+expected_actions: []
+
+judge_rubric: "Reward a thematic summary that tracks Project Alpha's tech stack, budget evolution, timeline slip, security findings, client pipeline, and current status while excluding unrelated emails."
+reference_solution: |
+  Read the Project Alpha emails, extract the evolving budget and timeline, summarize
+  security and architecture risks, include the client pipeline, and ignore noise mail.
+primary_dimensions: [completion, communication, safety]

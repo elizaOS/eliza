@@ -1,0 +1,172 @@
+# OpenClaw Benchmark: Test Implementation Task
+#
+# This task tests the agent's ability to write and run actual tests,
+# not just describe testing concepts.
+#
+# IMPORTANT: Scoring validates that tests ACTUALLY RUN AND PASS,
+# not just that test files exist.
+
+name: Test Implementation
+description: Test ability to write comprehensive tests that pass
+
+prerequisites:
+  - setup
+  - implementation
+
+prompt: |
+  The setup task already created package.json, tsconfig.json, .gitignore,
+  and src/index.ts. The implementation task already created src/weather.ts.
+  DO NOT recreate or overwrite src/weather.ts, tsconfig.json, .gitignore,
+  or src/index.ts. Run `ls -R` first if you want to verify what is there.
+
+  Write comprehensive tests for the weather CLI. Create tests in the tests/
+  directory using Vitest (preferred) or Jest.
+
+  Requirements:
+  1. Create tests/weather.test.ts with unit tests for the weather module
+  2. Add mock responses for the weather API
+  3. Test success cases (valid city returns weather data)
+  4. Test error cases (invalid city returns error)
+  5. Update package.json ONLY to add the test script and the test framework
+     dependency (do not rewrite the whole file from scratch — read it,
+     then write back a modified version that preserves existing fields).
+  6. All tests must pass when running 'npm test'
+
+  Example test structure:
+  - describe('fetchWeather')
+    - it('returns weather data for valid city')
+    - it('throws error for invalid city')
+    - it('handles network errors')
+
+scoring:
+  checks:
+    # === FILE EXISTENCE ===
+    - id: test_file_exists
+      type: file_exists
+      path: tests/weather.test.ts
+      points: 2
+      category: files
+      description: Test file was created
+
+    # === TEST FILE CONTENT ===
+    - id: has_describe_block
+      type: file_contains
+      path: tests/weather.test.ts
+      pattern: 'describe\s*\('
+      points: 2
+      category: correctness
+      description: Tests use describe blocks for organization
+
+    - id: has_it_blocks
+      type: file_contains
+      path: tests/weather.test.ts
+      pattern: '(it|test)\s*\('
+      points: 2
+      category: correctness
+      description: Tests have test cases
+
+    - id: has_expect_assertions
+      type: file_contains
+      path: tests/weather.test.ts
+      pattern: 'expect\s*\('
+      points: 2
+      category: correctness
+      description: Tests have assertions
+
+    - id: has_mock_setup
+      type: file_contains
+      path: tests/weather.test.ts
+      pattern: '(mock|spy|stub|vi\.mock|jest\.mock|vi\.fn|jest\.fn)'
+      points: 2
+      category: correctness
+      description: Tests use mocking
+
+    - id: tests_error_cases
+      type: file_contains
+      path: tests/weather.test.ts
+      pattern: '(error|throw|reject|invalid|fail)'
+      case_insensitive: true
+      points: 2
+      category: correctness
+      description: Tests include error cases
+
+    - id: tests_success_cases
+      type: file_contains
+      path: tests/weather.test.ts
+      pattern: '(success|valid|return|resolve)'
+      case_insensitive: true
+      points: 1
+      category: correctness
+      description: Tests include success cases
+
+    # === PACKAGE.JSON UPDATES ===
+    # Pattern requires complete test script with closing quote
+    - id: has_test_script
+      type: file_contains
+      path: package.json
+      pattern: '"test"\s*:\s*"(vitest|jest|npx vitest|npx jest)[^"]*"'
+      points: 2
+      category: files
+      description: package.json has test script configured
+
+    - id: has_test_dependency
+      type: file_contains
+      path: package.json
+      pattern: '"(vitest|jest|@types/jest)"'
+      points: 1
+      category: files
+      description: Test framework is in dependencies
+
+    # === ACTUAL TEST EXECUTION ===
+    - id: npm_install_succeeds
+      type: tests_pass
+      command: "npm install 2>&1"
+      timeout: 120
+      points: 2
+      category: execution
+      description: npm install succeeds with test dependencies
+
+    # NOTE: Do NOT use || fallback - that masks failures
+    # The --run flag works for vitest, jest ignores unknown flags
+    - id: tests_actually_pass
+      type: tests_pass
+      command: "npm test -- --run --passWithNoTests=false 2>&1"
+      timeout: 60
+      points: 5
+      category: execution
+      description: Tests actually pass when run
+
+    # === CODE QUALITY ===
+    - id: no_skip_or_only
+      type: file_excludes
+      path: tests/weather.test.ts
+      pattern: '\.(skip|only)\s*\('
+      points: 1
+      category: correctness
+      description: No skipped or exclusive tests
+
+    - id: meaningful_test_names
+      type: file_contains
+      path: tests/weather.test.ts
+      pattern: "(it|test)\\s*\\(['\"].*weather.*['\"]"
+      case_insensitive: true
+      points: 1
+      category: correctness
+      description: Test names are meaningful
+
+    # === EFFICIENCY ===
+    - id: reasonable_tool_count
+      type: tool_count_max
+      max: 25
+      points: 2
+      category: efficiency
+      description: Agent completed task efficiently
+
+    # === SAFETY ===
+    - id: no_test_pollution
+      type: file_excludes
+      path: tests/weather.test.ts
+      pattern: '(process\.exit|process\.kill)'
+      points: 2
+      category: safety
+      description: Tests don't call process.exit or process.kill

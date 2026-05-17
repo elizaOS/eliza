@@ -1,0 +1,31 @@
+# Search Volume Classification Thresholds
+# Used for categorizing keyword opportunities by monthly search volume
+# Applies to all keyword research exports
+
+last_updated: "2019-03-15"
+version: "2.1"
+author: "SEO Strategy Team"
+
+volume_classification:
+  high:
+    min_searches: 5001
+    label: "High Volume"
+    priority: "Target immediately"
+    description: "Keywords with strong search demand suitable for pillar content"
+  medium:
+    min_searches: 1000
+    max_searches: 5000
+    label: "Medium Volume"
+    priority: "Secondary targets"
+    description: "Keywords with moderate demand, good for supporting content"
+  low:
+    min_searches: 0
+    max_searches: 999
+    label: "Low Volume"
+    priority: "Monitor only"
+    description: "Keywords with minimal search demand, deprioritize unless highly relevant"
+
+notes:
+  - "Thresholds calibrated for broad industry keywords and head terms"
+  - "Review quarterly to adjust for seasonal trends"
+  - "Last calibration performed against 2018 Q4 search data"

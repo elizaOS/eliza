@@ -1,0 +1,20 @@
+{
+  "name": "moltbook-auto-post",
+  "version": "1.2.0",
+  "description": "Automatic posting to Moltbook with content generation and rate limiting",
+  "main": "post.js",
+  "scripts": {
+    "start": "node post.js",
+    "dry-run": "node post.js --dry-run",
+    "history": "node post.js --show-history",
+    "test": "node test.js"
+  },
+  "dependencies": {
+    "node-fetch": "^3.3.2",
+    "dayjs": "^1.11.10"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  },
+  "private": true
+}

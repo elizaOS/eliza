@@ -1,0 +1,119 @@
+task_id: T053_finance_us_steel_merger
+task_name: US Steel Merger Impact Analysis
+version: "1.0"
+category: finance
+difficulty: easy
+tags: [general]
+
+services:
+  - name: web_real
+    command: python mock_services/web_real/server.py
+    port: 9114
+    health_check: http://localhost:9114/web/health
+    health_check_method: GET
+    ready_timeout: 10
+    reset_endpoint: http://localhost:9114/web/reset
+
+prompt:
+  text: |
+    How has US Steel addressed its planned merger with Nippon Steel and its effect on its business operations?
+  language: en
+
+tools:
+  - name: web_search
+    description: Search the public web and return result snippets.
+    input_schema:
+      type: object
+      properties:
+        query:
+          type: string
+          description: Search query
+        max_results:
+          type: integer
+          description: Maximum number of results
+          default: 10
+      required: [query]
+
+  - name: web_fetch
+    description: Fetch full webpage content for a URL.
+    input_schema:
+      type: object
+      properties:
+        url:
+          type: string
+          description: Target URL
+        timeout_seconds:
+          type: integer
+          description: Request timeout in seconds
+          default: 30
+      required: [url]
+
+tool_endpoints:
+  - tool_name: web_search
+    url: http://localhost:9114/web/search
+    method: POST
+  - tool_name: web_fetch
+    url: http://localhost:9114/web/fetch
+    method: POST
+
+
+environment:
+  timeout_seconds: 1800
+  max_turns: 50
+
+
+scoring_components:
+  - name: strategic_positioning
+    weight: 0.20
+    check:
+      type: keywords_present
+      keywords: [strategic partnership, long-term survival, competitiveness]
+  - name: governance_and_jobs
+    weight: 0.20
+    check:
+      type: keywords_present
+      keywords: [golden share, 100,000 jobs, Western Pennsylvania]
+  - name: investment_commitments
+    weight: 0.30
+    check:
+      type: keywords_present
+      keywords: [$14B, $11B, 2028, $4B]
+  - name: operational_impact
+    weight: 0.30
+    check:
+      type: keywords_present
+      keywords: [modernize, productivity, emissions, supply chain]
+
+safety_checks: []
+expected_actions: []
+
+judge_rubric: |
+  Evaluate whether the agent accurately explained how US Steel addressed its planned merger with Nippon Steel.
+
+  Key facts the response should contain:
+  - Companies: U.S. Steel and Nippon Steel
+  - Announcement date: December 18, 2023
+  - Strategic framing: presented as a strategic partnership for long-term survival
+  - CEO: David B. Burritt highlighted competitiveness benefits
+  - Stakeholder safeguards: U.S. government golden share / national-interest protection
+  - Jobs commitment: safeguarding 100,000+ jobs, especially in Western Pennsylvania
+  - Capital plan: total pledge ~$14B, including ~$11B by 2028; up to $4B for a U.S. advanced mill
+  - Operational impact: expected modernization gains — lower costs/downtime, reduced emissions, higher productivity, stronger supply-chain resilience
+
+  Scoring guidance:
+  - 0.90-1.00: Covers nearly all key facts accurately and ties them to business impact.
+  - 0.70-0.89: Covers most key facts with minor omissions.
+  - 0.40-0.69: Partial coverage; misses several key facts or weak causal explanation.
+  - 0.00-0.39: Major factual gaps or contradictory claims.
+
+reference_solution: |
+  On December 18, 2023, U.S. Steel announced the acquisition and framed it as a strategic
+  partnership essential to long-term survival. Leadership emphasized competitiveness and
+  resilience, alongside safeguards such as a U.S. government golden share and commitments
+  tied to jobs and communities.
+
+  Operationally, the merger case centers on modernization and scale: about $14B pledged
+  (including roughly $11B by 2028 for upgrades/projects), up to $4B for a U.S. advanced mill,
+  and expected gains in productivity, costs, downtime, emissions, and supply-chain strength.
+
+primary_dimensions: [completion, communication]

@@ -1,0 +1,54 @@
+task_id: M039_video_lvb_machine_dog
+task_name: LVB Machine Operation Localization and Dog Frame Crop
+version: "1.0"
+category: video_search
+difficulty: medium
+tags: [multimodal]
+
+prompt:
+  text: |
+    There is a video file at /workspace/fixtures/video.mp4.
+
+    Watch the video carefully and complete the following task:
+
+    In the video, there is a machine next to a white wall. The machine's inlet has a gradually narrowing conical shape. At the outlet of the machine, there is a green plastic container. The engine of the machine is located on the left side. A person wearing jeans and a blue shirt is operating the machine.
+
+    1. Identify the full time interval (start and end timestamps) during which this event is happening. Save the result as a single line (e.g. "11:55 - 15:05") to /workspace/timestamp.txt.
+    2. Find a clear frame from this interval where a subject passes by from the right side of the machine, crop the frame to center this subject as the main subject, and save it as /workspace/cropped_frame.png.
+
+    Make sure both output files are saved to their specified paths.
+  language: en
+
+tools: []
+tool_endpoints: []
+services: []
+
+sandbox_files:
+  - fixtures/video.mp4
+
+sandbox_grader_files: []
+env_snapshot_commands: []
+env_snapshot_files:
+  - /workspace/timestamp.txt
+  - /workspace/cropped_frame.png
+
+environment:
+  timeout_seconds: 600
+  max_turns: 30
+  env_snapshot_timeout: 10
+
+scoring_components: []
+safety_checks: []
+expected_actions: []
+judge_rubric: ""
+reference_solution: |
+  Watch the video using sandbox_read_media to extract frames.
+  Locate the machine next to the white wall with a conical inlet, a green plastic container at the outlet, and an engine on the left side. A person in jeans and a blue shirt is operating it.
+  The time interval when this event is happening is 5:03 - 5:05.
+  Save the interval as a single line to /workspace/timestamp.txt.
+  Within this interval, a dog passes by from the right side of the machine.
+  Extract a frame where the dog is visible, crop it to center the dog, and save as /workspace/cropped_frame.png.
+
+primary_dimensions:
+  - completion
+  - robustness

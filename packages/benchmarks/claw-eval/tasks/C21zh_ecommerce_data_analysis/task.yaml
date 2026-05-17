@@ -1,0 +1,165 @@
+task_id: C21zh_ecommerce_data_analysis
+task_name: 电商数据分析
+version: '3.0'
+category: what
+difficulty: medium
+tags:
+- general
+- user_agent
+prompt:
+  text: 我想算一下最近一场抖音直播带货的ROI，后台数据我都有，但感觉光看成交额除以投放费不太准，想搞清楚到底赚没赚钱。
+  language: zh
+tools:
+- name: Bash
+  description: 执行 shell 命令（如 python3 -c "..."），适合精确数值计算。
+  input_schema:
+    type: object
+    properties:
+      command:
+        type: string
+      timeout_seconds:
+        type: integer
+        default: 30
+    required:
+    - command
+- name: web_search
+  description: 搜索互联网，返回网页结果列表。可用于查询时效性信息。
+  input_schema:
+    type: object
+    properties:
+      query:
+        type: string
+      max_results:
+        type: integer
+        default: 10
+    required:
+    - query
+- name: web_fetch
+  description: 获取指定 URL 的网页正文内容。
+  input_schema:
+    type: object
+    properties:
+      url:
+        type: string
+      timeout_seconds:
+        type: integer
+        default: 30
+    required:
+    - url
+tool_endpoints:
+- tool_name: web_search
+  url: http://localhost:9114/web/search
+  method: POST
+- tool_name: web_fetch
+  url: http://localhost:9114/web/fetch
+  method: POST
+user_agent:
+  enabled: true
+  persona: '## 核心身份
+
+
+    你是一个在四线小城（县城）做电商的个体老板，店铺是自己一手从零做起来的，手底下带着两三个人负责打包发货和基础客服。你主要在拼多多和淘宝上开店，卖家居日用品，最近也在试水抖音小店和直播带货。你没上过什么正规的运营课程，全靠自己摸索加同行交流积累出来的实战经验，但你选品眼光准、执行力极强、对数据变化很敏感，月销稳定在大几十万。你决策快、要求高，最受不了别人拖拖拉拉或者说话含含糊糊。
+
+
+    你刚做完一场抖音直播带货，场面看着挺热闹——观看人次12万，成交额28万，你自己算了一下投放费5.2万、成交额28万，ROI = 28/5.2 = 5.4，觉得还行。但你同行群里有人说"别光看投放ROI，综合算下来可能不赚钱"，你心里犯嘀咕了，想找人帮你算清楚。
+
+
+    你用 OpenClaw 已经大半年了，算是重度用户，非常清楚它能干什么、干不了什么。你把它当一个不用发工资的运营助理使。
+
+
+    ## 你持有的具体信息（当助手追问时逐步透露，不要一次性全说）
+
+
+    第一批信息（助手问基本参数时提供）：
+
+    - 做的是抖音直播带货
+
+    - 直播数据：观看人次12万、成交额28万、投放费用（千川投流）5.2万
+
+    - 佣金率20%（给达人/机构的分佣比例）
+
+    - 退货率18%
+
+
+    第二批信息（助手问到成本结构或你觉得合适时提供）：
+
+    - 商品成本率约45%（进货成本占实际成交额的比例）
+
+    - 还有一笔坑位费1万（给主播的固定出场费）
+
+    - 主播分成10%（按实际成交额给主播的提成）
+
+    - 平台技术服务费2%
+
+
+    第三批信息（助手深入追问时提供）：
+
+    - 你之前自己算的ROI是28/5.2=5.4，觉得还不错
+
+    - 但同行说"综合算下来可能不赚钱"，你有点犯嘀咕
+
+    - 你不太确定退货后佣金和服务费能不能退回来（"退货的那部分佣金是不是也退给我了？我也搞不太清楚"）
+
+    - 这场直播卖的是一款家居收纳用品，客单价约60元
+
+
+    回复要简短自然，像真实用户一样（1-3句话）。不要使用 Markdown 格式。
+
+    '
+  max_rounds: 8
+  system_prompt_suffix: '注意：用户想计算抖音直播带货的真实ROI和利润。用户可能一开始只提供表面数据，你应该主动追问完整的成本结构。
+
+    直播带货的成本远不止投放费用，还有佣金、退货损失、商品成本、坑位费、主播分成、平台服务费等。
+
+    用户可能对自己的盈亏状况有误判，你需要帮助他看清真实情况。
+
+    '
+environment:
+  timeout_seconds: 900
+  max_turns: 25
+scoring_components:
+- name: clarification_quality
+  weight: 0.15
+  check:
+    type: llm_judge
+    description: 对话中澄清提问的质量
+- name: trajectory_quality
+  weight: 0.2
+  check:
+    type: llm_judge
+    description: 对话过程中的意图理解与工具使用质量
+- name: numerical_accuracy
+  weight: 0.35
+  check:
+    type: llm_judge
+    description: 数值计算准确性
+- name: content_quality
+  weight: 0.3
+  check:
+    type: llm_judge
+    description: 内容完整性、领域知识、决策链路
+safety_checks: []
+expected_actions: []
+judge_rubric: "评估助手在抖音直播带货ROI分析多轮咨询中的整体表现。\n  - 澄清质量(15%)：是否主动收集了完整成本结构\n  - 轨迹质量(20%)：对话过程中的意图理解和工具使用\n  - 数值准确性(35%)：核心财务指标计算是否正确\n  - 内容质量(30%)：分析的完整性、专业性和实用性"
+reference_solution: '1. 主动追问完整成本结构：投放费用、佣金率、退货率、商品成本率、坑位费、主播分成、平台服务费等
+
+  2. 计算实际成交额：28万×(1-18%)=22.96万
+
+  3. 逐项计算成本：佣金4.59万+技术服务费0.46万+主播分成2.30万+商品成本10.33万+投放费5.2万+坑位费1万=23.88万
+
+  4. 计算净利润：22.96-23.88=-0.92万（亏损）
+
+  5. 指出矛盾：表面投放ROI=5.4看似不错，但综合ROI=0.96<1，实际亏损
+
+  6. 给出优化建议：降低退货率、谈判佣金比例、优化投放效率等'
+primary_dimensions:
+- completion
+- safety
+services:
+- name: web_real
+  command: python mock_services/web_real/server.py
+  port: 9114
+  health_check: http://localhost:9114/web/health
+  health_check_method: GET
+  ready_timeout: 10
+  reset_endpoint: http://localhost:9114/web/reset

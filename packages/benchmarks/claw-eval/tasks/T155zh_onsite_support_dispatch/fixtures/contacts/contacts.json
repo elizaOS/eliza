@@ -1,0 +1,68 @@
+[
+  {
+    "contact_id": "CT-1201",
+    "name": "马强",
+    "department": "运维部",
+    "title": "高级运维工程师",
+    "email": "maqiang@company.com",
+    "phone": "13800121001",
+    "location": "上海总部",
+    "skills": ["系统故障排查", "数据库运维", "网络诊断", "服务器管理"],
+    "notes": "10年运维经验，擅长生产环境故障快速恢复，持有OCP和RHCE认证"
+  },
+  {
+    "contact_id": "CT-1202",
+    "name": "李华",
+    "department": "研发部",
+    "title": "高级架构师",
+    "email": "lihua@company.com",
+    "phone": "13800121002",
+    "location": "上海总部",
+    "skills": ["架构设计", "性能优化", "代码审查", "微服务"],
+    "notes": "8年开发经验，主导系统架构设计，擅长性能调优和代码重构"
+  },
+  {
+    "contact_id": "CT-1203",
+    "name": "周明",
+    "department": "研发部",
+    "title": "前端工程师",
+    "email": "zhouming@company.com",
+    "phone": "13800121003",
+    "location": "上海总部",
+    "skills": ["前端开发", "UI设计", "React", "Vue"],
+    "notes": "5年前端经验，负责客户端界面开发"
+  },
+  {
+    "contact_id": "CT-1204",
+    "name": "赵蕾",
+    "department": "客户成功部",
+    "title": "客户经理",
+    "email": "zhaolei@company.com",
+    "phone": "13800121004",
+    "location": "上海总部",
+    "skills": ["客户关系", "商务谈判", "SLA管理"],
+    "notes": "负责万通物流（CUS-1201）等VIP客户的日常对接和关系维护"
+  },
+  {
+    "contact_id": "CT-1205",
+    "name": "张伟",
+    "department": "客户成功部",
+    "title": "客户经理",
+    "email": "zhangwei@company.com",
+    "phone": "13800121005",
+    "location": "上海总部",
+    "skills": ["客户关系", "项目管理"],
+    "notes": "负责中小客户群的日常维护和续约管理"
+  },
+  {
+    "contact_id": "CT-1206",
+    "name": "王明",
+    "department": "技术部",
+    "title": "技术总监",
+    "email": "wangming@company.com",
+    "phone": "13800121006",
+    "location": "上海总部",
+    "skills": ["技术管理", "战略规划", "团队建设"],
+    "notes": "技术部负责人，VIP客户critical工单需升级通知，作为escalation contact"
+  }
+]

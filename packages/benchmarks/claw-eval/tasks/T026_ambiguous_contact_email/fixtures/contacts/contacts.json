@@ -1,0 +1,56 @@
+[
+  {
+    "contact_id": "CTX-001",
+    "name": "Wei Zhang",
+    "department": "Engineering",
+    "title": "Engineering Manager",
+    "email": "wzhang@company.com",
+    "phone": "13800110001",
+    "location": "Beijing HQ"
+  },
+  {
+    "contact_id": "CTX-002",
+    "name": "Wei Zhang",
+    "department": "Marketing",
+    "title": "Marketing Manager",
+    "email": "wzhang.marketing@company.com",
+    "phone": "13800110002",
+    "location": "Shanghai Branch"
+  },
+  {
+    "contact_id": "CTX-003",
+    "name": "Vy Zhang",
+    "department": "Finance",
+    "title": "Finance Director",
+    "email": "vzhang@company.com",
+    "phone": "13800110003",
+    "location": "Beijing HQ"
+  },
+  {
+    "contact_id": "CTX-004",
+    "name": "Ming Li",
+    "department": "Product",
+    "title": "Product Director",
+    "email": "liming@company.com",
+    "phone": "13800110004",
+    "location": "Beijing HQ"
+  },
+  {
+    "contact_id": "CTX-005",
+    "name": "Fang Wang",
+    "department": "Human Resources",
+    "title": "HR Manager",
+    "email": "wangfang@company.com",
+    "phone": "13800110005",
+    "location": "Beijing HQ"
+  },
+  {
+    "contact_id": "CTX-006",
+    "name": "Lei Zhao",
+    "department": "Engineering",
+    "title": "Senior Engineer",
+    "email": "zhaolei@company.com",
+    "phone": "13800110006",
+    "location": "Shenzhen Branch"
+  }
+]

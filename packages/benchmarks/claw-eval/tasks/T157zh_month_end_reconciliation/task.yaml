@@ -1,0 +1,318 @@
+task_id: T157zh_month_end_reconciliation
+task_name: 月末全面对账
+version: "1.0"
+category: ops
+difficulty: hard
+tags: [general, multi_service]
+
+services:
+  - name: finance
+    command: python mock_services/finance/server.py
+    port: 9104
+    health_check: http://localhost:9104/finance/transactions
+    health_check_method: POST
+    ready_timeout: 10
+    reset_endpoint: http://localhost:9104/finance/reset
+    env:
+      FINANCE_FIXTURES: tasks/T157zh_month_end_reconciliation/fixtures/finance/transactions.json
+  - name: crm
+    command: python mock_services/crm/server.py
+    port: 9110
+    health_check: http://localhost:9110/crm/customers
+    health_check_method: POST
+    ready_timeout: 10
+    reset_endpoint: http://localhost:9110/crm/reset
+    env:
+      CRM_FIXTURES: tasks/T157zh_month_end_reconciliation/fixtures/crm/customers.json
+  - name: config
+    command: python mock_services/config/server.py
+    port: 9111
+    health_check: http://localhost:9111/config/integrations
+    health_check_method: POST
+    ready_timeout: 10
+    reset_endpoint: http://localhost:9111/config/reset
+    env:
+      CONFIG_FIXTURES: tasks/T157zh_month_end_reconciliation/fixtures/config/integrations.json
+  - name: inventory
+    command: python mock_services/inventory/server.py
+    port: 9108
+    health_check: http://localhost:9108/inventory/products
+    health_check_method: POST
+    ready_timeout: 10
+    reset_endpoint: http://localhost:9108/inventory/reset
+    env:
+      INVENTORY_FIXTURES: tasks/T157zh_month_end_reconciliation/fixtures/inventory/items.json
+  - name: scheduler
+    command: python mock_services/scheduler/server.py
+    port: 9112
+    health_check: http://localhost:9112/scheduler/jobs
+    health_check_method: POST
+    ready_timeout: 10
+    reset_endpoint: http://localhost:9112/scheduler/reset
+    env:
+      SCHEDULER_FIXTURES: tasks/T157zh_month_end_reconciliation/fixtures/scheduler/jobs.json
+
+prompt:
+  text: |
+    月末了，请帮我做一次全面对账：
+    1. 检查对账相关自动化任务的执行状态
+    2. 检查支付和发票系统集成配置
+    3. 核对财务流水与CRM客户应收
+    4. 核对采购记录与库存变动
+    5. 找出所有异常并输出对账报告
+  language: zh
+
+tools:
+  # Finance tools
+  - name: finance_list_transactions
+    description: 查看财务交易记录
+    input_schema:
+      type: object
+      properties:
+        start_date:
+          type: string
+          description: "起始日期(YYYY-MM-DD)"
+        end_date:
+          type: string
+          description: "截止日期(YYYY-MM-DD)"
+      required: []
+
+  - name: finance_get_transaction
+    description: 获取交易详情
+    input_schema:
+      type: object
+      properties:
+        transaction_id:
+          type: string
+          description: 交易ID
+      required: [transaction_id]
+
+  # CRM tools
+  - name: crm_list_customers
+    description: 查看客户列表
+    input_schema:
+      type: object
+      properties:
+        status:
+          type: string
+          description: "按状态筛选(active/inactive/churned)"
+        tier:
+          type: string
+          description: "按等级筛选(VIP/standard)"
+      required: []
+
+  - name: crm_get_customer
+    description: 获取客户详情
+    input_schema:
+      type: object
+      properties:
+        customer_id:
+          type: string
+          description: 客户ID
+      required: [customer_id]
+
+  # Config tools
+  - name: config_list_integrations
+    description: 查看所有系统集成配置
+    input_schema:
+      type: object
+      properties:
+        status:
+          type: string
+          description: "按状态筛选(active/error/degraded)"
+      required: []
+
+  - name: config_get_integration
+    description: 获取集成配置详情
+    input_schema:
+      type: object
+      properties:
+        integration_id:
+          type: string
+          description: 集成ID
+      required: [integration_id]
+
+  # Inventory tools
+  - name: inventory_list_products
+    description: 查看库存产品列表
+    input_schema:
+      type: object
+      properties:
+        category:
+          type: string
+          description: 按分类筛选
+      required: []
+
+  - name: inventory_get_product
+    description: 获取库存产品详情
+    input_schema:
+      type: object
+      properties:
+        product_id:
+          type: string
+          description: 产品ID
+      required: [product_id]
+
+  # Scheduler tools
+  - name: scheduler_list_jobs
+    description: 列出所有定时任务
+    input_schema:
+      type: object
+      properties:
+        status:
+          type: string
+          description: "按最近运行状态筛选(success/failed)"
+        tag:
+          type: string
+          description: 按标签筛选
+      required: []
+
+  - name: scheduler_get_job
+    description: 获取定时任务详情（含执行历史）
+    input_schema:
+      type: object
+      properties:
+        job_id:
+          type: string
+          description: 任务ID
+      required: [job_id]
+
+  - name: scheduler_job_history
+    description: 查看定时任务执行历史
+    input_schema:
+      type: object
+      properties:
+        job_id:
+          type: string
+          description: 任务ID
+        limit:
+          type: integer
+          description: 返回条数
+          default: 10
+      required: [job_id]
+
+tool_endpoints:
+  - tool_name: finance_list_transactions
+    url: http://localhost:9104/finance/transactions
+    method: POST
+  - tool_name: finance_get_transaction
+    url: http://localhost:9104/finance/transactions/get
+    method: POST
+  - tool_name: crm_list_customers
+    url: http://localhost:9110/crm/customers
+    method: POST
+  - tool_name: crm_get_customer
+    url: http://localhost:9110/crm/customers/get
+    method: POST
+  - tool_name: config_list_integrations
+    url: http://localhost:9111/config/integrations
+    method: POST
+  - tool_name: config_get_integration
+    url: http://localhost:9111/config/integrations/get
+    method: POST
+  - tool_name: inventory_list_products
+    url: http://localhost:9108/inventory/products
+    method: POST
+  - tool_name: inventory_get_product
+    url: http://localhost:9108/inventory/products/get
+    method: POST
+  - tool_name: scheduler_list_jobs
+    url: http://localhost:9112/scheduler/jobs
+    method: POST
+  - tool_name: scheduler_get_job
+    url: http://localhost:9112/scheduler/jobs/get
+    method: POST
+  - tool_name: scheduler_job_history
+    url: http://localhost:9112/scheduler/jobs/history
+    method: POST
+
+environment:
+  timeout_seconds: 600
+  max_turns: 30
+
+scoring_components:
+  - name: anomaly_detection
+    weight: 0.35
+    check:
+      type: llm_judge
+      description: "是否发现3类异常：重复扣款(TXN-1301/1302)、采购金额不符(TXN-1305 vs ITEM-1303)、应收短收(CUS-1303)"
+  - name: reconciliation_accuracy
+    weight: 0.35
+    check:
+      type: llm_judge
+      description: "对账准确性：根因分析是否到位(JOB-1301→INT-1303→6天未同步)，系统集成故障是否识别"
+  - name: action_items
+    weight: 0.30
+    check:
+      type: llm_judge
+      description: "对账报告是否完整，行动建议是否具体可执行"
+
+safety_checks: []
+
+expected_actions: []
+
+judge_rubric: |
+  评估助手的月末全面对账报告的质量。
+
+  ## 必须发现的3类异常
+
+  异常1 — 重复扣款（严重）：
+  - TXN-1301和TXN-1302是完全相同的交易：同一客户CUS-1301，同一金额85000，同一日期2026-03-01，同一描述"3月订阅费"
+  - CRM显示CUS-1301的expected_monthly为85000，但被收了两笔共170000
+  - 需要退还多收的85000元
+
+  异常2 — 采购金额与库存入库不符（中等）：
+  - TXN-1305采购ITEM-1303 金额45000
+  - ITEM-1303库存记录：unit_cost=1900 × last_in_qty=20 = 38000
+  - 差额：45000 - 38000 = 7000元，原因待查（可能是运费、加价或录入错误）
+
+  异常3 — 应收款短收（中等）：
+  - CUS-1303合同月度应收150000（CRM中contract_amount=150000）
+  - TXN-1310实际收款仅120000
+  - 短收30000元，CRM notes标记"partial"
+
+  ## 额外发现（加分项）
+  - ITEM-1307出库5块但无对应销售交易
+  - ITEM-1308出库3台但存在数量不匹配
+
+  ## 根因分析
+  - JOB-1301"每日对账"任务自3/21起连续失败6天 → 原因是INT-1303对账系统API超时
+  - INT-1303对账系统最后成功同步3/20，之后6天数据未同步 → 异常未能被自动发现
+  - JOB-1302"发票自动生成"自3/19起失败 → 原因是INT-1304发票系统API版本不兼容(v2→v3)
+  - 这是根因链：对账任务失败 → 对账系统断连 → 财务异常6天无人知晓
+
+  ## 系统集成状态
+  - INT-1301/INT-1302 支付网关正常
+  - INT-1303 对账系统6天未同步（需紧急修复）
+  - INT-1304 发票系统API错误（需升级SDK）
+
+  ## 评分标准
+  - 0.9-1.0: 3类异常全部发现，根因链(JOB-1301→INT-1303)准确识别，报告完整清晰
+  - 0.7-0.8: 至少发现2类异常，根因分析基本到位
+  - 0.4-0.6: 发现1-2类异常，但分析不够深入
+  - 0.0-0.3: 异常发现不完整或分析错误
+
+reference_solution: |
+  1. scheduler_list_jobs() → 发现JOB-1301(对账)和JOB-1302(发票)失败
+  2. scheduler_get_job(JOB-1301) → 自3/21起连续失败，对账系统API超时
+  3. scheduler_get_job(JOB-1302) → 自3/19起失败，发票API版本不兼容
+  4. config_list_integrations() → 发现INT-1303(对账系统)和INT-1304(发票系统)异常
+  5. config_get_integration(INT-1303) → 6天未同步
+  6. config_get_integration(INT-1304) → API版本不兼容
+  7. finance_list_transactions() → 获取20笔交易
+  8. crm_list_customers() → 获取6位客户
+  9. 核对客户应收：
+     - CUS-1301: expected 85000, 实收 85000×2=170000 → 重复扣款！
+     - CUS-1302: expected 45000, 实收 45000 - 12000退款 → 正常
+     - CUS-1303: expected 150000, 实收 120000 → 短收30000
+     - CUS-1304: expected 30000, 实收 30000 - 5500退款 → 有退款但合理
+     - CUS-1305: expected 25000, 实收 25000 → 正常
+  10. inventory_list_products() → 获取10个产品
+  11. 核对采购交易与库存入库：
+      - TXN-1305(45000) vs ITEM-1303(1900×20=38000) → 差7000
+      - ITEM-1307 出库无交易记录
+      - ITEM-1308 出库数量不匹配
+  12. 根因链：JOB-1301→INT-1303→对账中断6天→异常堆积
+  13. 输出完整对账报告
+
+primary_dimensions: [completion, robustness, communication]

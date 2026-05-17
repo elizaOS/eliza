@@ -1,0 +1,74 @@
+[
+  {
+    "customer_id": "CUS-901",
+    "name": "鼎新软件",
+    "tier": "vip",
+    "status": "active",
+    "contract_end": "2026-04-15",
+    "annual_revenue": 960000,
+    "industry": "软件",
+    "sales_rep": "赵蕾",
+    "notes": "核心客户，去年续约时升级了服务包",
+    "contact_person": "赵蕾"
+  },
+  {
+    "customer_id": "CUS-902",
+    "name": "瀚海电商",
+    "tier": "standard",
+    "status": "active",
+    "contract_end": "2026-05-20",
+    "annual_revenue": 360000,
+    "industry": "电商",
+    "sales_rep": "张伟",
+    "notes": "稳定客户，使用标准版",
+    "contact_person": "张伟"
+  },
+  {
+    "customer_id": "CUS-903",
+    "name": "万通物流",
+    "tier": "vip",
+    "status": "active",
+    "contract_end": "2026-04-05",
+    "annual_revenue": 1200000,
+    "industry": "物流",
+    "sales_rep": "赵蕾",
+    "notes": "最大客户之一，对服务要求很高",
+    "contact_person": "赵蕾"
+  },
+  {
+    "customer_id": "CUS-904",
+    "name": "公共机构",
+    "tier": "standard",
+    "status": "active",
+    "contract_end": "2026-08-01",
+    "annual_revenue": 180000,
+    "industry": "政府",
+    "sales_rep": "张伟",
+    "notes": "长期合作伙伴",
+    "contact_person": "张伟"
+  },
+  {
+    "customer_id": "CUS-905",
+    "name": "阳光传媒",
+    "tier": "vip",
+    "status": "active",
+    "contract_end": "2026-12-31",
+    "annual_revenue": 720000,
+    "industry": "传媒",
+    "sales_rep": "赵蕾",
+    "notes": "去年新签的VIP客户",
+    "contact_person": "赵蕾"
+  },
+  {
+    "customer_id": "CUS-906",
+    "name": "前锋科技",
+    "tier": "standard",
+    "status": "active",
+    "contract_end": "2026-04-30",
+    "annual_revenue": 240000,
+    "industry": "科技",
+    "sales_rep": "张伟",
+    "notes": "中等规模客户，关注性价比",
+    "contact_person": "张伟"
+  }
+]

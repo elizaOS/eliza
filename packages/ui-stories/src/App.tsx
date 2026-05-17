@@ -2,6 +2,7 @@ import { Story, type StoryGroup } from "./Story.tsx";
 import { primitiveStories } from "./stories/primitives.tsx";
 import { brandStories } from "./stories/brand.tsx";
 import { cloudDashboardStories } from "./stories/cloud-dashboard.tsx";
+import { analyticsStories } from "./stories/analytics.tsx";
 
 const groups: StoryGroup[] = [
   {
@@ -18,6 +19,11 @@ const groups: StoryGroup[] = [
     id: "cloud-dashboard",
     title: "Cloud Dashboard — shared composites",
     stories: cloudDashboardStories,
+  },
+  {
+    id: "analytics",
+    title: "Analytics — shared dashboard views",
+    stories: analyticsStories,
   },
 ];
 

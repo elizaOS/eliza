@@ -1,0 +1,6 @@
+Instance ID: instance_internetarchive__openlibrary-2edaf7283cf5d934e0d60aac0cc89eff7ceb6e43-v2d9a6c849c60ed19fd0858ce9e40b7cc8e097e59
+Repository: internetarchive/openlibrary
+Base Commit: 133c7eebd20fc08955e1d9abee57d2eb8cb61d58
+Test Files: ["openlibrary/catalog/add_book/tests/test_add_book.py", "openlibrary/tests/catalog/test_utils.py"]
+FAIL_TO_PASS: ["openlibrary/catalog/add_book/tests/test_add_book.py::Test_From_MARC::test_from_marc_author", "openlibrary/catalog/add_book/tests/test_add_book.py::Test_From_MARC::test_from_marc[coursepuremath00hardrich]", "openlibrary/catalog/add_book/tests/test_add_book.py::Test_From_MARC::test_from_marc[roadstogreatness00gall]", "openlibrary/catalog/add_book/tests/test_add_book.py::Test_From_MARC::test_from_marc[treatiseonhistor00dixo]", "openlibrary/catalog/add_book/tests/test_add_book.py::Test_From_MARC::test_author_from_700", "openlibrary/catalog/add_book/tests/test_add_book.py::Test_From_MARC::test_from_marc_reimport_modifications", "openlibrary/catalog/add_book/tests/test_add_book.py::Test_From_MARC::test_missing_ocaid", "openlibrary/catalog/add_book/tests/test_add_book.py::Test_From_MARC::test_from_marc_fields"]
+PASS_TO_PASS: []

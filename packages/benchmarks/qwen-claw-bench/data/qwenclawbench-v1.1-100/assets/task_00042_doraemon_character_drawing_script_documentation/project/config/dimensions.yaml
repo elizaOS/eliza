@@ -1,0 +1,45 @@
+# Doraemon Drawing - Canvas and Character Dimensions
+# All measurements in pixels unless otherwise noted
+
+canvas:
+  width: 800
+  height: 800
+  background_color: "#F0F0F0"
+
+character:
+  head:
+    radius: 200
+    center_x: 400
+    center_y: 450
+  face:
+    radius: 170
+    center_x: 400
+    center_y: 430
+  eyes:
+    radius: 30
+    left_x: 370
+    right_x: 430
+    y: 490
+    pupil_radius: 10
+  nose:
+    radius: 15
+    center_x: 400
+    center_y: 460
+  body:
+    width: 280
+    height: 180
+    center_x: 400
+    center_y: 280
+  collar:
+    width: 300
+    height: 20
+    y: 340
+  whiskers:
+    length: 60
+    spacing: 20
+
+output:
+  dpi: 150
+  format: png
+  filename: "doraemon_output"
+  antialiased: true

@@ -1,0 +1,38 @@
+[
+  {
+    "contact_id": "CT-201",
+    "name": "王丽",
+    "department": "客户服务部",
+    "title": "客服总监",
+    "email": "wangli@company.com",
+    "phone": "13900201001",
+    "location": "北京总部"
+  },
+  {
+    "contact_id": "CT-202",
+    "name": "张明",
+    "department": "财务部",
+    "title": "财务经理",
+    "email": "zhangming@company.com",
+    "phone": "13900201002",
+    "location": "北京总部"
+  },
+  {
+    "contact_id": "CT-203",
+    "name": "李强",
+    "department": "销售部",
+    "title": "销售总监",
+    "email": "liqiang@company.com",
+    "phone": "13900201003",
+    "location": "北京总部"
+  },
+  {
+    "contact_id": "CT-204",
+    "name": "赵红",
+    "department": "法务部",
+    "title": "法务经理",
+    "email": "zhaohong@company.com",
+    "phone": "13900201004",
+    "location": "北京总部"
+  }
+]

@@ -1,0 +1,6 @@
+Instance ID: instance_protonmail__webclients-67e18401e1cbf490986c4e0ee339ed0b300c06dc
+Repository: protonmail/webclients
+Base Commit: 6c43312043f600915e7dccaf5b4a19e409b98249
+Test Files: ["packages/components/containers/easySwitch/logic/draft/draft.selector.test.ts", "containers/easySwitch/logic/draft/draft.selector.test.ts"]
+FAIL_TO_PASS: ["containers/easySwitch/logic/draft/draft.selector.test.ts | Should return null when idle", "containers/easySwitch/logic/draft/draft.selector.test.ts | Should return \"select-product\" when start", "containers/easySwitch/logic/draft/draft.selector.test.ts | Should return \"import-{type}\" when start import email", "containers/easySwitch/logic/draft/draft.selector.test.ts | Should return \"oauth\" when selecting Oauth import"]
+PASS_TO_PASS: []

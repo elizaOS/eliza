@@ -1,0 +1,524 @@
+{
+  "uuid": "bbbb1111-aaaa-4000-8000-0000000200ed",
+  "lastMigration": 33,
+  "name": "lifeops-duffel-mock",
+  "endpointPrefix": "",
+  "latency": 0,
+  "port": 18813,
+  "hostname": "0.0.0.0",
+  "folders": [],
+  "routes": [
+    {
+      "uuid": "bbbb1111-aaaa-4000-8000-0000000200de",
+      "type": "http",
+      "documentation": "POST air/offer_requests",
+      "method": "post",
+      "endpoint": "air/offer_requests",
+      "responses": [
+        {
+          "uuid": "bbbb1111-aaaa-4000-8000-0000000200df",
+          "body": "{\n  \"data\": {\n    \"id\": \"orq_0000A2bcDe3FgHi4JkLmN5\",\n    \"live_mode\": false,\n    \"slices\": [\n      {\n        \"origin\": {\n          \"iata_code\": \"JFK\",\n          \"name\": \"John F Kennedy\"\n        },\n        \"destination\": {\n          \"iata_code\": \"LHR\",\n          \"name\": \"London Heathrow\"\n        },\n        \"departure_date\": \"2026-06-12\"\n      },\n      {\n        \"origin\": {\n          \"iata_code\": \"LHR\",\n          \"name\": \"London Heathrow\"\n        },\n        \"destination\": {\n          \"iata_code\": \"JFK\",\n          \"name\": \"John F Kennedy\"\n        },\n        \"departure_date\": \"2026-06-19\"\n      }\n    ],\n    \"passengers\": [\n      {\n        \"id\": \"pas_001\",\n        \"type\": \"adult\"\n      }\n    ],\n    \"offers\": [\n      {\n        \"id\": \"off_0000A2bcDe3FgHi4JkLmN5_1\",\n        \"total_amount\": \"642.18\",\n        \"total_currency\": \"USD\",\n        \"owner\": {\n          \"iata_code\": \"BA\",\n          \"name\": \"British Airways\"\n        },\n        \"slices\": [\n          {\n            \"origin\": {\n              \"iata_code\": \"JFK\"\n            },\n            \"destination\": {\n              \"iata_code\": \"LHR\"\n            },\n            \"departing_at\": \"2026-06-12T22:30:00\",\n            \"duration\": \"PT7H05M\"\n          },\n          {\n            \"origin\": {\n              \"iata_code\": \"LHR\"\n            },\n            \"destination\": {\n              \"iata_code\": \"JFK\"\n            },\n            \"departing_at\": \"2026-06-19T11:55:00\",\n            \"duration\": \"PT8H10M\"\n          }\n        ]\n      }\n    ]\n  }\n}",
+          "latency": 0,
+          "statusCode": 200,
+          "label": "happy path",
+          "headers": [
+            {
+              "key": "Content-Type",
+              "value": "application/json"
+            }
+          ],
+          "bodyType": "INLINE",
+          "filePath": "",
+          "databucketID": "",
+          "sendFileAsBody": false,
+          "rules": [],
+          "rulesOperator": "OR",
+          "disableTemplating": false,
+          "fallbackTo404": false,
+          "default": true,
+          "crudKey": "id",
+          "callbacks": []
+        },
+        {
+          "uuid": "bbbb1111-aaaa-4000-8000-0000000200e0",
+          "body": "{\n  \"errors\": [\n    {\n      \"type\": \"rate_limit_error\",\n      \"title\": \"Rate limit exceeded\",\n      \"code\": \"rate_limit_exceeded\",\n      \"message\": \"Too many requests, slow down.\"\n    }\n  ]\n}",
+          "latency": 0,
+          "statusCode": 429,
+          "label": "rate_limit",
+          "headers": [
+            {
+              "key": "Content-Type",
+              "value": "application/json"
+            },
+            {
+              "key": "Retry-After",
+              "value": "1"
+            }
+          ],
+          "bodyType": "INLINE",
+          "filePath": "",
+          "databucketID": "",
+          "sendFileAsBody": false,
+          "rules": [
+            {
+              "target": "header",
+              "modifier": "X-Mockoon-Fault",
+              "value": "rate_limit",
+              "invert": false,
+              "operator": "equals"
+            },
+            {
+              "target": "query",
+              "modifier": "_fault",
+              "value": "rate_limit",
+              "invert": false,
+              "operator": "equals"
+            }
+          ],
+          "rulesOperator": "OR",
+          "disableTemplating": false,
+          "fallbackTo404": false,
+          "default": false,
+          "crudKey": "id",
+          "callbacks": []
+        },
+        {
+          "uuid": "bbbb1111-aaaa-4000-8000-0000000200e1",
+          "body": "{\n  \"errors\": [\n    {\n      \"type\": \"authentication_error\",\n      \"title\": \"Invalid access token\",\n      \"code\": \"invalid_access_token\",\n      \"message\": \"Your access token is invalid.\"\n    }\n  ]\n}",
+          "latency": 0,
+          "statusCode": 401,
+          "label": "auth_expired",
+          "headers": [
+            {
+              "key": "Content-Type",
+              "value": "application/json"
+            }
+          ],
+          "bodyType": "INLINE",
+          "filePath": "",
+          "databucketID": "",
+          "sendFileAsBody": false,
+          "rules": [
+            {
+              "target": "header",
+              "modifier": "X-Mockoon-Fault",
+              "value": "auth_expired",
+              "invert": false,
+              "operator": "equals"
+            },
+            {
+              "target": "query",
+              "modifier": "_fault",
+              "value": "auth_expired",
+              "invert": false,
+              "operator": "equals"
+            }
+          ],
+          "rulesOperator": "OR",
+          "disableTemplating": false,
+          "fallbackTo404": false,
+          "default": false,
+          "crudKey": "id",
+          "callbacks": []
+        },
+        {
+          "uuid": "bbbb1111-aaaa-4000-8000-0000000200e2",
+          "body": "{\n  \"error\": \"internal_server_error\"\n}",
+          "latency": 0,
+          "statusCode": 500,
+          "label": "server_error",
+          "headers": [
+            {
+              "key": "Content-Type",
+              "value": "application/json"
+            }
+          ],
+          "bodyType": "INLINE",
+          "filePath": "",
+          "databucketID": "",
+          "sendFileAsBody": false,
+          "rules": [
+            {
+              "target": "header",
+              "modifier": "X-Mockoon-Fault",
+              "value": "server_error",
+              "invert": false,
+              "operator": "equals"
+            },
+            {
+              "target": "query",
+              "modifier": "_fault",
+              "value": "server_error",
+              "invert": false,
+              "operator": "equals"
+            }
+          ],
+          "rulesOperator": "OR",
+          "disableTemplating": false,
+          "fallbackTo404": false,
+          "default": false,
+          "crudKey": "id",
+          "callbacks": []
+        }
+      ],
+      "responseMode": null
+    },
+    {
+      "uuid": "bbbb1111-aaaa-4000-8000-0000000200e3",
+      "type": "http",
+      "documentation": "GET air/offers",
+      "method": "get",
+      "endpoint": "air/offers",
+      "responses": [
+        {
+          "uuid": "bbbb1111-aaaa-4000-8000-0000000200e4",
+          "body": "{\n  \"data\": [\n    {\n      \"id\": \"off_0000A2bcDe3FgHi4JkLmN5_1\",\n      \"total_amount\": \"642.18\",\n      \"total_currency\": \"USD\",\n      \"owner\": {\n        \"iata_code\": \"BA\",\n        \"name\": \"British Airways\"\n      }\n    }\n  ]\n}",
+          "latency": 0,
+          "statusCode": 200,
+          "label": "happy path",
+          "headers": [
+            {
+              "key": "Content-Type",
+              "value": "application/json"
+            }
+          ],
+          "bodyType": "INLINE",
+          "filePath": "",
+          "databucketID": "",
+          "sendFileAsBody": false,
+          "rules": [],
+          "rulesOperator": "OR",
+          "disableTemplating": false,
+          "fallbackTo404": false,
+          "default": true,
+          "crudKey": "id",
+          "callbacks": []
+        },
+        {
+          "uuid": "bbbb1111-aaaa-4000-8000-0000000200e5",
+          "body": "{\n  \"errors\": [\n    {\n      \"type\": \"rate_limit_error\",\n      \"title\": \"Rate limit exceeded\",\n      \"code\": \"rate_limit_exceeded\",\n      \"message\": \"Too many requests, slow down.\"\n    }\n  ]\n}",
+          "latency": 0,
+          "statusCode": 429,
+          "label": "rate_limit",
+          "headers": [
+            {
+              "key": "Content-Type",
+              "value": "application/json"
+            },
+            {
+              "key": "Retry-After",
+              "value": "1"
+            }
+          ],
+          "bodyType": "INLINE",
+          "filePath": "",
+          "databucketID": "",
+          "sendFileAsBody": false,
+          "rules": [
+            {
+              "target": "header",
+              "modifier": "X-Mockoon-Fault",
+              "value": "rate_limit",
+              "invert": false,
+              "operator": "equals"
+            },
+            {
+              "target": "query",
+              "modifier": "_fault",
+              "value": "rate_limit",
+              "invert": false,
+              "operator": "equals"
+            }
+          ],
+          "rulesOperator": "OR",
+          "disableTemplating": false,
+          "fallbackTo404": false,
+          "default": false,
+          "crudKey": "id",
+          "callbacks": []
+        },
+        {
+          "uuid": "bbbb1111-aaaa-4000-8000-0000000200e6",
+          "body": "{\n  \"errors\": [\n    {\n      \"type\": \"authentication_error\",\n      \"title\": \"Invalid access token\",\n      \"code\": \"invalid_access_token\",\n      \"message\": \"Your access token is invalid.\"\n    }\n  ]\n}",
+          "latency": 0,
+          "statusCode": 401,
+          "label": "auth_expired",
+          "headers": [
+            {
+              "key": "Content-Type",
+              "value": "application/json"
+            }
+          ],
+          "bodyType": "INLINE",
+          "filePath": "",
+          "databucketID": "",
+          "sendFileAsBody": false,
+          "rules": [
+            {
+              "target": "header",
+              "modifier": "X-Mockoon-Fault",
+              "value": "auth_expired",
+              "invert": false,
+              "operator": "equals"
+            },
+            {
+              "target": "query",
+              "modifier": "_fault",
+              "value": "auth_expired",
+              "invert": false,
+              "operator": "equals"
+            }
+          ],
+          "rulesOperator": "OR",
+          "disableTemplating": false,
+          "fallbackTo404": false,
+          "default": false,
+          "crudKey": "id",
+          "callbacks": []
+        },
+        {
+          "uuid": "bbbb1111-aaaa-4000-8000-0000000200e7",
+          "body": "{\n  \"error\": \"internal_server_error\"\n}",
+          "latency": 0,
+          "statusCode": 500,
+          "label": "server_error",
+          "headers": [
+            {
+              "key": "Content-Type",
+              "value": "application/json"
+            }
+          ],
+          "bodyType": "INLINE",
+          "filePath": "",
+          "databucketID": "",
+          "sendFileAsBody": false,
+          "rules": [
+            {
+              "target": "header",
+              "modifier": "X-Mockoon-Fault",
+              "value": "server_error",
+              "invert": false,
+              "operator": "equals"
+            },
+            {
+              "target": "query",
+              "modifier": "_fault",
+              "value": "server_error",
+              "invert": false,
+              "operator": "equals"
+            }
+          ],
+          "rulesOperator": "OR",
+          "disableTemplating": false,
+          "fallbackTo404": false,
+          "default": false,
+          "crudKey": "id",
+          "callbacks": []
+        }
+      ],
+      "responseMode": null
+    },
+    {
+      "uuid": "bbbb1111-aaaa-4000-8000-0000000200e8",
+      "type": "http",
+      "documentation": "POST air/orders",
+      "method": "post",
+      "endpoint": "air/orders",
+      "responses": [
+        {
+          "uuid": "bbbb1111-aaaa-4000-8000-0000000200e9",
+          "body": "{\n  \"data\": {\n    \"id\": \"ord_0000A2bcDe3FgHi4JkLmN5_X\",\n    \"booking_reference\": \"ABC123\",\n    \"total_amount\": \"642.18\",\n    \"total_currency\": \"USD\",\n    \"passengers\": [\n      {\n        \"id\": \"pas_001\",\n        \"given_name\": \"Shaw\",\n        \"family_name\": \"Walters\"\n      }\n    ]\n  }\n}",
+          "latency": 0,
+          "statusCode": 200,
+          "label": "happy path",
+          "headers": [
+            {
+              "key": "Content-Type",
+              "value": "application/json"
+            }
+          ],
+          "bodyType": "INLINE",
+          "filePath": "",
+          "databucketID": "",
+          "sendFileAsBody": false,
+          "rules": [],
+          "rulesOperator": "OR",
+          "disableTemplating": false,
+          "fallbackTo404": false,
+          "default": true,
+          "crudKey": "id",
+          "callbacks": []
+        },
+        {
+          "uuid": "bbbb1111-aaaa-4000-8000-0000000200ea",
+          "body": "{\n  \"errors\": [\n    {\n      \"type\": \"rate_limit_error\",\n      \"title\": \"Rate limit exceeded\",\n      \"code\": \"rate_limit_exceeded\",\n      \"message\": \"Too many requests, slow down.\"\n    }\n  ]\n}",
+          "latency": 0,
+          "statusCode": 429,
+          "label": "rate_limit",
+          "headers": [
+            {
+              "key": "Content-Type",
+              "value": "application/json"
+            },
+            {
+              "key": "Retry-After",
+              "value": "1"
+            }
+          ],
+          "bodyType": "INLINE",
+          "filePath": "",
+          "databucketID": "",
+          "sendFileAsBody": false,
+          "rules": [
+            {
+              "target": "header",
+              "modifier": "X-Mockoon-Fault",
+              "value": "rate_limit",
+              "invert": false,
+              "operator": "equals"
+            },
+            {
+              "target": "query",
+              "modifier": "_fault",
+              "value": "rate_limit",
+              "invert": false,
+              "operator": "equals"
+            }
+          ],
+          "rulesOperator": "OR",
+          "disableTemplating": false,
+          "fallbackTo404": false,
+          "default": false,
+          "crudKey": "id",
+          "callbacks": []
+        },
+        {
+          "uuid": "bbbb1111-aaaa-4000-8000-0000000200eb",
+          "body": "{\n  \"errors\": [\n    {\n      \"type\": \"authentication_error\",\n      \"title\": \"Invalid access token\",\n      \"code\": \"invalid_access_token\",\n      \"message\": \"Your access token is invalid.\"\n    }\n  ]\n}",
+          "latency": 0,
+          "statusCode": 401,
+          "label": "auth_expired",
+          "headers": [
+            {
+              "key": "Content-Type",
+              "value": "application/json"
+            }
+          ],
+          "bodyType": "INLINE",
+          "filePath": "",
+          "databucketID": "",
+          "sendFileAsBody": false,
+          "rules": [
+            {
+              "target": "header",
+              "modifier": "X-Mockoon-Fault",
+              "value": "auth_expired",
+              "invert": false,
+              "operator": "equals"
+            },
+            {
+              "target": "query",
+              "modifier": "_fault",
+              "value": "auth_expired",
+              "invert": false,
+              "operator": "equals"
+            }
+          ],
+          "rulesOperator": "OR",
+          "disableTemplating": false,
+          "fallbackTo404": false,
+          "default": false,
+          "crudKey": "id",
+          "callbacks": []
+        },
+        {
+          "uuid": "bbbb1111-aaaa-4000-8000-0000000200ec",
+          "body": "{\n  \"error\": \"internal_server_error\"\n}",
+          "latency": 0,
+          "statusCode": 500,
+          "label": "server_error",
+          "headers": [
+            {
+              "key": "Content-Type",
+              "value": "application/json"
+            }
+          ],
+          "bodyType": "INLINE",
+          "filePath": "",
+          "databucketID": "",
+          "sendFileAsBody": false,
+          "rules": [
+            {
+              "target": "header",
+              "modifier": "X-Mockoon-Fault",
+              "value": "server_error",
+              "invert": false,
+              "operator": "equals"
+            },
+            {
+              "target": "query",
+              "modifier": "_fault",
+              "value": "server_error",
+              "invert": false,
+              "operator": "equals"
+            }
+          ],
+          "rulesOperator": "OR",
+          "disableTemplating": false,
+          "fallbackTo404": false,
+          "default": false,
+          "crudKey": "id",
+          "callbacks": []
+        }
+      ],
+      "responseMode": null
+    }
+  ],
+  "rootChildren": [
+    {
+      "type": "route",
+      "uuid": "bbbb1111-aaaa-4000-8000-0000000200de"
+    },
+    {
+      "type": "route",
+      "uuid": "bbbb1111-aaaa-4000-8000-0000000200e3"
+    },
+    {
+      "type": "route",
+      "uuid": "bbbb1111-aaaa-4000-8000-0000000200e8"
+    }
+  ],
+  "proxyMode": false,
+  "proxyHost": "",
+  "proxyRemovePrefix": false,
+  "tlsOptions": {
+    "enabled": false,
+    "type": "CERT",
+    "pfxPath": "",
+    "certPath": "",
+    "keyPath": "",
+    "caPath": "",
+    "passphrase": ""
+  },
+  "cors": true,
+  "headers": [
+    {
+      "key": "Content-Type",
+      "value": "application/json"
+    }
+  ],
+  "proxyReqHeaders": [
+    {
+      "key": "",
+      "value": ""
+    }
+  ],
+  "proxyResHeaders": [
+    {
+      "key": "",
+      "value": ""
+    }
+  ],
+  "data": [],
+  "callbacks": []
+}

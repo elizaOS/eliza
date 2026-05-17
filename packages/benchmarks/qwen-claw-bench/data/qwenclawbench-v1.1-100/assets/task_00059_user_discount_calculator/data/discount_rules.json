@@ -1,0 +1,42 @@
+{
+  "version": "2.1",
+  "last_updated": "2025-06-01",
+  "tier_discounts": {
+    "bronze": {
+      "base_discount_pct": 0,
+      "min_orders": 0
+    },
+    "silver": {
+      "base_discount_pct": 5,
+      "min_orders": 5
+    },
+    "gold": {
+      "base_discount_pct": 10,
+      "min_orders": 20
+    },
+    "platinum": {
+      "base_discount_pct": 15,
+      "min_orders": 50
+    }
+  },
+  "loyalty_bonus": {
+    "enabled": true,
+    "years_threshold": 2,
+    "bonus_pct": 3
+  },
+  "spending_bonus": {
+    "enabled": true,
+    "thresholds": [
+      {
+        "min_spent": 1000,
+        "bonus_pct": 2
+      },
+      {
+        "min_spent": 3000,
+        "bonus_pct": 5
+      }
+    ]
+  },
+  "max_discount_pct": 25,
+  "inactive_user_eligible": false
+}

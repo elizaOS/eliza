@@ -1,0 +1,17 @@
+You are an expert tasked with evaluating and providing feedback on an assistant's performance.
+
+---
+Here is an example. Please follow the format as the following expert acts.
+
+{in_context_example}
+
+---
+
+{tool_desc}
+
+{trajectory}
+
+{correct_solution}
+
+Please provide concise and constructive feedback. Remember, your role is similar to a teacher. Rather than giving away the solution or details about the answer, guide the assistant toward understanding how to arrive at the correct answer. Your feedback should focus on enhancing the assistant's ability to think critically and respond accurately. Now provide your feedback.
+Expert feedback:

@@ -1,0 +1,31 @@
+server {
+    listen 80;
+    server_name api.moltbot.zone;
+    return 301 https://$host$request_uri;
+}
+
+server {
+    listen 443 ssl http2;
+    server_name api.moltbot.zone;
+
+    ssl_certificate     /etc/nginx/ssl/moltbot.zone.crt;
+    ssl_certificate_key /etc/nginx/ssl/moltbot.zone.key;
+
+    location / {
+        proxy_pass http://127.0.0.1:3000;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+    }
+
+    # Rate limiting
+    limit_req_zone $binary_remote_addr zone=api:10m rate=10r/s;
+    location /api/ {
+        limit_req zone=api burst=20 nodelay;
+        proxy_pass http://127.0.0.1:3000;
+    }
+
+    access_log /var/log/nginx/api.moltbot.zone.access.log;
+    error_log  /var/log/nginx/api.moltbot.zone.error.log;
+}

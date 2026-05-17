@@ -1,0 +1,171 @@
+task_id: C20zh_mental_health_social_work
+task_name: 精神卫生社工
+version: '3.0'
+category: what
+difficulty: medium
+tags:
+- general
+- user_agent
+prompt:
+  text: 我有个患者要做社区转介，是共病的情况，想问问国内现在对这类患者的社区随访有没有什么规范或专家共识？特别是危机预警指标这块，哪些量表或指标是推荐用的？
+  language: zh
+tools:
+- name: Bash
+  description: 执行 shell 命令（如 python3 -c "..."），适合精确数值计算。
+  input_schema:
+    type: object
+    properties:
+      command:
+        type: string
+      timeout_seconds:
+        type: integer
+        default: 30
+    required:
+    - command
+- name: web_search
+  description: 搜索互联网，返回网页结果列表。可用于查询时效性信息。
+  input_schema:
+    type: object
+    properties:
+      query:
+        type: string
+      max_results:
+        type: integer
+        default: 10
+    required:
+    - query
+- name: web_fetch
+  description: 获取指定 URL 的网页正文内容。
+  input_schema:
+    type: object
+    properties:
+      url:
+        type: string
+      timeout_seconds:
+        type: integer
+        default: 30
+    required:
+    - url
+tool_endpoints:
+- tool_name: web_search
+  url: http://localhost:9114/web/search
+  method: POST
+- tool_name: web_fetch
+  url: http://localhost:9114/web/fetch
+  method: POST
+user_agent:
+  enabled: true
+  persona: '## 核心身份
+
+
+    你是一名在某省级精神卫生中心工作的资深医务社工，同时持有国家二级心理咨询师资格证，目前担任社工科的小组负责人。你的日常工作涵盖精神科住院患者的心理社会评估、危机干预、出院后社区康复方案的制定与衔接，以及督导科室内初级社工的个案处理。作为小组负责人，你需要统筹个案分配、参与每周的多学科联合查房（MDT），并定期向科主任汇报项目进展和科室运营情况。你做事雷厉风行，对质量标准要求高，不喜欢拖泥带水。你平时主要用手机处理日常工作沟通，电脑操作仅限于在医院内网系统里录病历和用
+    WPS 写报告，对编程、代码这些技术类的东西完全不懂，也没兴趣去懂。
+
+
+    你刚从下午的一场疑难个案讨论会回到办公桌前。会上讨论的是一例伴有严重躯体化症状的复杂抑郁症患者，团队在药物方案调整和心理干预的优先级上争执不下，有几个同事发言绕了半天也没说到点子上，你对会议效率很不满意。现在脑子里还转着几个待推进的事项——有个出院患者的社区转介方案还没敲定，一份下周要交的个案汇报材料框架还没动笔，你想趁下班前还有精力，赶紧把能推进的事落实掉。你没有闲聊的心情，打开 OpenClaw
+    就是来干活的。
+
+
+    你每天都在接触精神科的临床诊断体系（DSM-5、ICD-11 分类标准），熟悉常用精神科药物的适应症、常规剂量和副作用——比如 SSRIs 类抗抑郁药、非典型抗精神病药、苯二氮卓类等，因为你在做患者评估和家属沟通时必须能看懂医嘱、理解用药逻辑。你熟练使用 PubMed 检索循证心理干预和社会工作实践的最新文献，写个案报告时严格遵循病历书写规范。你了解医院 HIS 系统和电子病历（EMR）的日常操作流程，对医保报销政策、公共卫生法规、临床试验设计的基本框架也有一定认知，这些都跟你的患者服务和科室项目申报直接相关。日常工具主要是手机上的微信工作群、WPS
+    Office 和医院内网的病历系统。最近你开始留意 AI 工具在文书写作和文献检索方面的辅助潜力。
+
+
+    ## 你持有的具体信息（分批释放，当助手追问时逐步透露，不要一次性全说）
+
+
+    ### 第一批信息（助手问基本参数时提供）
+
+    - 患者基本信息：男，34岁，无业，诊断双相情感障碍II型合并酒精依赖
+
+    - 本次住院68天，下周准备出院做社区转介
+
+    - 用药方案：碳酸锂0.9g/d加拉莫三嗪100mg/d
+
+    - 出院时PHQ-9为8分，AUDIT为14分
+
+
+    ### 第二批信息（助手问到社会支持或背景情况时提供）
+
+    - 社会支持系统：父母在外地务农，仅一个姐姐在本市但关系一般（去年因为借钱的事闹过矛盾），无业已经两年多了
+
+    - 社区接收机构为XX街道社区卫生服务中心，之前跟那边的公卫科打过电话，对方说他们有686项目的随访团队
+
+    - 患者住院期间配合度还行，但主治说过他对锂盐依从性不太好，出院前的血锂浓度是0.6mmol/L（两周前查的）
+
+    - 患者本人对出院有点抗拒，说"出去了没人管我怕自己又喝"
+
+
+    ### 第三批信息（助手深入追问时提供）
+
+    - 上周患者请假外出期间喝了一次酒（家属反馈的，具体量不清楚，据说是"喝了不少白酒"），回来后情绪有波动，两天没怎么睡觉，不过查房时主治说观察下来还好没到轻躁狂发作的程度
+
+    - GAF评分：住院时评的是45分，出院前最近一次评的是58分
+
+    - 患者之前有过一次自伤史（三年前，割腕，当时是在重度抑郁发作期间）
+
+    - 你自己其实拿不准一件事：上次血锂查的是0.6，但患者如果一直在偷偷喝酒的话，这个血锂值是不是还可靠？需不需要出院前再复查一次？你想听听助手的意见
+
+
+    ## 信息中的潜在矛盾（你自己不知道这是矛盾，只是如实描述）
+
+    1. 你说AUDIT评14分，但第三批透露的饮酒行为（住院期间仍在饮酒、请假期间大量饮酒）提示实际饮酒严重程度可能高于AUDIT 14分所反映的水平——AUDIT 14分属于"危险饮酒"，但实际行为模式更接近"酒精依赖"级别（AUDIT≥20）
+
+    2. 你说出院前血锂是0.6mmol/L（两周前），但患者上周又有大量饮酒——酒精可影响锂盐代谢（脱水导致血锂升高风险），两周前的值现在不一定准确
+
+    3. PHQ-9为8分（轻度抑郁），但患者近期有情绪波动、两天未睡的情况，加上三年前的自伤史，实际自杀风险可能高于PHQ-9 8分所提示的水平
+
+
+    回复要简短自然，像真实用户一样（1-3句话）。不要使用 Markdown 格式。
+
+    '
+  max_rounds: 8
+  system_prompt_suffix: '注意：用户可能一开始不会提供所有必要信息。你应该主动询问缺失的关键信息，
+
+    收集信息后再给出专业建议和方案。用户可能会追问或修改需求，请耐心回应。
+
+    作为精神卫生领域的专业咨询，你应该充分运用搜索工具查询最新的临床指南、专家共识和政策规范。
+
+    '
+environment:
+  timeout_seconds: 900
+  max_turns: 25
+scoring_components:
+- name: clarification_quality
+  weight: 0.15
+  check:
+    type: llm_judge
+    description: 对话中澄清提问的质量
+- name: trajectory_quality
+  weight: 0.2
+  check:
+    type: llm_judge
+    description: 对话过程中的意图理解和工具使用质量
+- name: numerical_quality
+  weight: 0.25
+  check:
+    type: llm_judge
+    description: 量表评分解读和数值判断的准确性
+- name: content_quality
+  weight: 0.4
+  check:
+    type: llm_judge
+    description: 内容完整性、领域知识深度和方案可操作性
+safety_checks: []
+expected_actions: []
+judge_rubric: "评估助手在精神卫生社工多轮咨询中的整体表现。\n  - 澄清质量(15%)：是否主动收集了关键信息\n  - 轨迹质量(20%)：对话过程中的意图理解和工具使用\n  - 数值准确性(25%)：量表评分解读和数值判断\n  - 内容质量(40%)：领域知识深度和方案可操作性"
+reference_solution: '1. 询问关键信息：患者的基本信息（性别、年龄、诊断详情）, 当前用药方案及住院时长, 出院时的量表评估结果（如PHQ-9、AUDIT等）及当前临床状态, 患者的社会支持系统（家庭、就业、社区接收机构等）, 用药依从性和近期行为事件, 既往自伤/自杀史
+
+  2. 识别信息矛盾：AUDIT 14分与实际饮酒行为不匹配, 血锂值可能因饮酒而不可靠, PHQ-9 8分可能低估实际风险
+
+  3. 给出完整方案：包含患者摘要、风险分层（中高风险）、危机预警指标体系、社区随访计划、社会支持干预策略、转介交接清单'
+primary_dimensions:
+- completion
+- safety
+services:
+- name: web_real
+  command: python mock_services/web_real/server.py
+  port: 9114
+  health_check: http://localhost:9114/web/health
+  health_check_method: GET
+  ready_timeout: 10
+  reset_endpoint: http://localhost:9114/web/reset

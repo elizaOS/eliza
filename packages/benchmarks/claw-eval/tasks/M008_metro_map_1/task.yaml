@@ -1,0 +1,56 @@
+task_id: M008_metro_map_1
+task_name: Metro Map Reproduction 1
+version: "2.0"
+category: multimodal_webpage
+difficulty: hard
+tags: [multimodal]
+
+services: []
+
+prompt:
+  text: |
+    The container has the following file:
+    - /workspace/fixtures/地铁1.png — a metro/subway map image
+
+    Please first use tools to view the metro map, then generate /workspace/output.html to reproduce this map using SVG:
+    1. Draw all subway lines using their corresponding colors
+    2. Mark all stations with dots or circles
+    3. Label station names
+    4. Use special markers for transfer/interchange stations (e.g., larger circles or multi-color markers)
+    5. Reproduce the line routes and curves as closely as possible to the original
+
+    You can use tools to preview and iteratively adjust until you are satisfied.
+  language: en
+
+tools: []
+tool_endpoints: []
+
+sandbox_files:
+  - fixtures/地铁1.png
+
+sandbox_grader_files:
+  - fixtures/take_recording.py
+
+env_snapshot_commands:
+  - "python /workspace/fixtures/take_recording.py file:///workspace/output.html --frames 1 --interval 0.5 --wait-before 2"
+
+env_snapshot_files:
+  - /workspace/grading_frames/*.png
+local_grader_files:
+  - fixtures/地铁1.png
+
+environment:
+  timeout_seconds: 600
+  max_turns: 30
+  env_snapshot_timeout: 30
+
+scoring_components: []
+safety_checks: []
+expected_actions: []
+
+judge_rubric: ""
+reference_solution: |
+  Read 地铁1.png using Read, analyze metro map layout.
+  Create SVG-based output.html with colored lines, station dots, labels.
+
+primary_dimensions: [completion, robustness]

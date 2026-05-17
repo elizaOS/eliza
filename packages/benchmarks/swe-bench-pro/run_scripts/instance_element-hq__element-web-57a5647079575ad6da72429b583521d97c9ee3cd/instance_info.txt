@@ -1,0 +1,6 @@
+Instance ID: instance_element-hq__element-web-57a5647079575ad6da72429b583521d97c9ee3cd
+Repository: element-hq/element-web
+Base Commit: f2249b3e375e4218e0ce2f0f786824d4a3302626
+Test Files: ["test/components/views/settings/tabs/user/KeyboardUserSettingsTab-test.ts", "test/accessibility/KeyboardShortcuts-test.ts", "test/components/views/settings/tabs/user/KeyboardUserSettingsTab-test.tsx"]
+FAIL_TO_PASS: ["test/accessibility/KeyboardShortcuts-test.ts | registerShortcut() | correctly registers shortcut", "test/components/views/settings/tabs/user/KeyboardUserSettingsTab-test.tsx | KeyboardUserSettingsTab | renders key icon", "test/components/views/settings/tabs/user/KeyboardUserSettingsTab-test.tsx | KeyboardUserSettingsTab | renders alternative key name", "test/components/views/settings/tabs/user/KeyboardUserSettingsTab-test.tsx | KeyboardUserSettingsTab | doesn't render + if last", "test/components/views/settings/tabs/user/KeyboardUserSettingsTab-test.tsx | KeyboardUserSettingsTab | doesn't render same modifier twice", "test/components/views/settings/tabs/user/KeyboardUserSettingsTab-test.tsx | KeyboardUserSettingsTab | renders list of keyboard shortcuts"]
+PASS_TO_PASS: []

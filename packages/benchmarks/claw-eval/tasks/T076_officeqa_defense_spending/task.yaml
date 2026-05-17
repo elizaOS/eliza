@@ -1,0 +1,100 @@
+task_id: T076_officeqa_defense_spending
+task_name: "OfficeQA: U.S. National Defense Expenditures (1940)"
+version: "1.0"
+category: office_qa
+difficulty: hard
+tags: [general]
+
+services:
+  - name: ocr_t50
+    command: python mock_services/ocr/server.py
+    port: 9120
+    health_check: http://localhost:9120/ocr/health
+    health_check_method: GET
+    ready_timeout: 10
+    reset_endpoint: http://localhost:9120/ocr/reset
+    env:
+      OCR_FIXTURES: tasks/T076_officeqa_defense_spending/fixtures
+      OCR_FILENAME: treasury_bulletin_1941_01.txt
+      PORT: "9120"
+
+prompt:
+  text: |
+    I have a scanned U.S. Treasury Bulletin from January 1941 (file: treasury_bulletin_1941_01.pdf).
+    Please extract the text using OCR, then answer this question:
+
+    What were the total expenditures (in millions of nominal dollars) for U.S national defense
+    in the calendar year of 1940?
+
+    Please provide a precise numerical answer.
+    Put your answer between `<FINAL_ANSWER></FINAL_ANSWER>`.
+  language: en
+
+tools:
+  - name: ocr_extract_text
+    description: Extract text from an image using OCR. Returns the recognized text content.
+    input_schema:
+      type: object
+      properties:
+        image_path:
+          type: string
+          description: Path to the image file to process
+      required: [image_path]
+
+tool_endpoints:
+  - tool_name: ocr_extract_text
+    url: http://localhost:9120/ocr/extract
+    method: POST
+
+sandbox_files:
+  - fixtures/ocr/treasury_bulletin_1941_01.txt
+  - fixtures/pdf/treasury_bulletin_1941_01.pdf
+
+environment:
+  timeout_seconds: 300
+  max_turns: 15
+
+scoring_components:
+  - name: numerical_accuracy
+    weight: 0.70
+    check:
+      type: keywords_present
+      keywords: ["2602", "2,602"]
+  - name: ocr_tool_usage
+    weight: 0.15
+    check:
+      type: tool_called
+      tool_name: ocr_extract_text
+  - name: answer_quality
+    weight: 0.15
+    check:
+      type: llm_judge
+      rubric: "Data source & extraction process (50%) + answer presentation & context (50%)"
+
+safety_checks: []
+expected_actions: []
+
+judge_rubric: |
+  Evaluate the COMMUNICATION QUALITY of the agent's response about U.S. national
+  defense expenditures in 1940 from a Treasury Bulletin. Focus on presentation,
+  NOT on whether the numerical answer is correct.
+
+  Scoring criteria:
+  - Structure: Is the response well-organized with clear sections or headings?
+  - Clarity: Does it explain the data source, table location, and extraction process?
+  - Context: Does it provide relevant context (units, fiscal vs calendar year, data source)?
+  - Completeness: Does it present a clear final answer with supporting details?
+  - Readability: Is the formatting clean (bullet points, bold key figures, etc.)?
+
+  Scoring:
+  - 0.9-1.0: Excellent structure, clear explanation of process and source, well-formatted
+  - 0.6-0.8: Decent structure with some context, but could be better organized
+  - 0.3-0.5: Minimal structure, answer given but poorly presented
+  - 0.0-0.2: No structure, confusing or disorganized response
+
+reference_solution: |
+  1. ocr_extract_text(image_path="treasury_bulletin_1941_01.pdf")
+  2. Find the table with national defense expenditures for calendar year 1940
+  3. Report: 2,602 million dollars
+
+primary_dimensions: [completion, robustness, communication]

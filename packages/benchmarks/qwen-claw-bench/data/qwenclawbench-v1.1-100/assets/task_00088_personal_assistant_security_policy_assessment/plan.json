@@ -1,0 +1,165 @@
+{
+  "task_id": "task_3338_privacy_compliance_a",
+  "domain": "Security",
+  "difficulty": "hard",
+  "grading_type": "hybrid",
+  "timeout_seconds": 720,
+  "output_file": "security_policy_assessment.md",
+  "workspace_files": [
+    {
+      "path": "policies/current_trust_policy_v2.yaml",
+      "role": "data",
+      "file_type": "yaml",
+      "description": "The current security policy defining trusted input channels (WhatsApp, local Raspberry Pi keyboard/mouse) and untrusted sources (email, PDF, web, Word docs). Contains channel definitions, trust levels, and action rules.",
+      "generation_strategy": "template",
+      "row_count": null,
+      "script_hint": "YAML policy with sections: policy_version: 2.3, trusted_channels (whatsapp_direct with auth_method: phone_number_verification, rpi_local_input with auth_method: physical_access), untrusted_sources (email, pdf, webpage, word_doc each with action: reject_instruction), escalation_rules, logging_requirements. Include a subtle error: whatsapp trust_level is set to 'full' with no MFA requirement mentioned."
+    },
+    {
+      "path": "policies/deprecated_trust_policy_v1.yaml",
+      "role": "trap",
+      "file_type": "yaml",
+      "description": "An older version of the trust policy that incorrectly lists email as a semi-trusted channel with limited execution privileges. This is outdated and should not be followed.",
+      "generation_strategy": "template",
+      "row_count": null,
+      "script_hint": "YAML policy with policy_version: 1.0, last_updated: 2022-03-15. Lists email as semi_trusted with action: execute_with_confirmation. Also lists SMS as trusted. Contains a note 'approved by security team' to make it look authoritative. This is the outdated trap."
+    },
+    {
+      "path": "threat_models/threat_registry.json",
+      "role": "data",
+      "file_type": "json",
+      "description": "Registry of known threats relevant to the assistant's input channels, including account takeover, SIM swapping, physical access compromise, and social engineering chains.",
+      "generation_strategy": "template",
+      "row_count": null,
+      "script_hint": "JSON array of 12 threat entries, each with id, name, category (account_compromise, physical_access, social_engineering, injection, supply_chain), affected_channel, likelihood (1-5), impact (1-5), mitigations array. Include threats like whatsapp_account_takeover (likelihood:3, impact:5), sim_swap_attack (likelihood:2, impact:5), rpi_physical_theft (likelihood:2, impact:4), indirect_prompt_injection_via_pdf (likelihood:4, impact:4), social_engineering_chain (likelihood:3, impact:5), whatsapp_group_impersonation (likelihood:3, impact:3)."
+    },
+    {
+      "path": "threat_models/risk_matrix.csv",
+      "role": "data",
+      "file_type": "csv",
+      "description": "Risk assessment matrix mapping threat IDs to risk scores, residual risk after mitigations, and owner assignments.",
+      "generation_strategy": "script",
+      "row_count": 12,
+      "script_hint": "CSV with columns: threat_id, threat_name, inherent_risk_score, mitigation_effectiveness_pct, residual_risk_score, risk_owner, review_date. Risk scores 1-25 (likelihood*impact). Include a unit_mismatch trap: mitigation_effectiveness for 'whatsapp_account_takeover' is listed as 0.85 (decimal) while all others use percentage format like 70, 60, 80 etc. This makes it look like 0.85% instead of 85%."
+    },
+    {
+      "path": "audit_logs/channel_activity_2024q1.log",
+      "role": "data",
+      "file_type": "log",
+      "description": "Audit log of assistant interactions from Q1 2024 showing channel source, command type, execution status, and any policy violations.",
+      "generation_strategy": "script",
+      "row_count": 85,
+      "script_hint": "Log entries in format: [YYYY-MM-DD HH:MM:SS] [CHANNEL] [ACTION] [STATUS] [DETAIL]. Mix of whatsapp_direct and rpi_local commands (mostly EXECUTED), plus several email and pdf sourced commands that were REJECTED. Include 3 suspicious entries where whatsapp commands came at unusual hours (3-4 AM) from a different device fingerprint, marked as EXECUTED — these hint at potential account compromise that went undetected."
+    },
+    {
+      "path": "audit_logs/incident_reports_2024.json",
+      "role": "data",
+      "file_type": "json",
+      "description": "Incident reports from 2024 documenting security events related to the assistant's input validation.",
+      "generation_strategy": "template",
+      "row_count": null,
+      "script_hint": "JSON array of 5 incident reports with fields: incident_id, date, severity (low/medium/high/critical), channel, description, root_cause, resolution, lessons_learned. Include: 1) A near-miss where a PDF contained embedded instructions that almost got executed, 2) A social engineering attempt via WhatsApp where attacker convinced user to relay commands, 3) A physical access incident where unauthorized person used the RPi keyboard, 4) An email phishing attempt with a crafted document, 5) A successful indirect prompt injection via a webpage that was opened for 'reference'."
+    },
+    {
+      "path": "config/rpi_access_control.ini",
+      "role": "data",
+      "file_type": "ini",
+      "description": "Raspberry Pi local access control configuration including USB device whitelisting, screen lock settings, and physical security parameters.",
+      "generation_strategy": "template",
+      "row_count": null,
+      "script_hint": "INI file with sections: [physical_security] location=home_office, lock_timeout_seconds=300, usb_whitelist_enabled=true; [input_devices] keyboard_vid_pid=046d:c534, mouse_vid_pid=046d:c52b; [authentication] local_pin_required=false (this is a vulnerability - no PIN for local access), session_timeout_minutes=60; [logging] log_all_inputs=true, log_destination=/var/log/rpi_assistant/"
+    },
+    {
+      "path": "config/whatsapp_integration.json",
+      "role": "data",
+      "file_type": "json",
+      "description": "WhatsApp Business API integration configuration for the assistant, including webhook settings and message validation parameters.",
+      "generation_strategy": "template",
+      "row_count": null,
+      "script_hint": "JSON config with fields: api_version, webhook_url, verify_token, allowed_phone_numbers (array of 2 numbers), message_types_allowed (text, voice_transcription), media_processing: false, link_preview_processing: true (vulnerability - link previews could contain injected content), rate_limit_per_minute: 30, session_expiry_hours: 24, two_factor_auth: false (another vulnerability)."
+    },
+    {
+      "path": "docs/compliance_framework_reference.md",
+      "role": "noise",
+      "file_type": "md",
+      "description": "A general compliance framework reference document covering GDPR, CCPA, and HIPAA requirements. Mostly irrelevant to the specific trust policy but could distract the analyst.",
+      "generation_strategy": "template",
+      "row_count": null,
+      "script_hint": "Markdown document with sections on GDPR data processing principles, CCPA consumer rights, HIPAA technical safeguards. About 200 lines. Includes a misleading section titled 'Trusted Communication Channels' that discusses email encryption as a trust mechanism — potentially misleading the analyst into thinking encrypted email should be trusted."
+    },
+    {
+      "path": "docs/assistant_architecture_diagram.md",
+      "role": "data",
+      "file_type": "md",
+      "description": "Text-based architecture description of the assistant system showing input pipeline, trust evaluation, command parsing, and execution layers.",
+      "generation_strategy": "template",
+      "row_count": null,
+      "script_hint": "Markdown with ASCII diagrams showing: Input Sources → Channel Identifier → Trust Evaluator → Command Parser → Permission Check → Executor → Audit Logger. Describe each component. Note that the Channel Identifier relies solely on metadata headers (potential spoofing risk). Mention that the Trust Evaluator has no anomaly detection for behavioral patterns."
+    },
+    {
+      "path": "reports/penetration_test_summary_2024.md",
+      "role": "data",
+      "file_type": "md",
+      "description": "Summary of a penetration test conducted against the assistant system, with findings and severity ratings.",
+      "generation_strategy": "template",
+      "row_count": null,
+      "script_hint": "Markdown pentest report with: Executive Summary, Methodology, Findings (5 findings: F1-Critical: WhatsApp session hijacking via SS7 vulnerability, F2-High: No device fingerprint validation on WhatsApp, F3-High: RPi USB rubber ducky attack possible, F4-Medium: Audit log tampering possible, F5-Low: Verbose error messages leak channel info). Each finding has description, proof_of_concept, recommendation, remediation_status."
+    },
+    {
+      "path": "reports/usability_feedback_survey.csv",
+      "role": "noise",
+      "file_type": "csv",
+      "description": "User feedback survey results about the assistant's usability, including complaints about rejected legitimate commands from email sources.",
+      "generation_strategy": "script",
+      "row_count": 25,
+      "script_hint": "CSV with columns: respondent_id, date, satisfaction_score(1-5), channel_used, task_type, complaint, suggestion. Include several entries complaining that they can't forward email instructions to the assistant, and some suggesting email should be partially trusted if from known senders. This is noise designed to pressure toward weakening the policy."
+    },
+    {
+      "path": "threat_models/social_engineering_scenarios.md",
+      "role": "data",
+      "file_type": "md",
+      "description": "Detailed social engineering attack scenarios specifically targeting the trust boundary between trusted and untrusted channels.",
+      "generation_strategy": "template",
+      "row_count": null,
+      "script_hint": "Markdown with 4 detailed scenarios: 1) Chain attack: attacker sends PDF with instructions, then calls user and convinces them to type the commands via WhatsApp (laundering untrusted input through trusted channel), 2) WhatsApp group admin compromise to send commands appearing from trusted user, 3) QR code phishing to hijack WhatsApp Web session, 4) Shoulder surfing + RPi physical access when user steps away. Each scenario has attack_steps, prerequisites, detection_difficulty, and suggested_countermeasures."
+    }
+  ],
+  "traps": [
+    {
+      "trap_id": "trap_1",
+      "trap_type": "outdated_data",
+      "files_involved": [
+        "policies/current_trust_policy_v2.yaml",
+        "policies/deprecated_trust_policy_v1.yaml"
+      ],
+      "field": "email_trust_level",
+      "correct_value": "untrusted (action: reject_instruction)",
+      "trap_value": "semi_trusted (action: execute_with_confirmation)",
+      "explanation": "The deprecated v1 policy looks authoritative with an 'approved by security team' note and lists email as semi-trusted. An analyst might reference this older policy and incorrectly suggest email could be partially trusted with confirmation."
+    },
+    {
+      "trap_id": "trap_2",
+      "trap_type": "unit_mismatch",
+      "files_involved": [
+        "threat_models/threat_registry.json",
+        "threat_models/risk_matrix.csv"
+      ],
+      "field": "mitigation_effectiveness for whatsapp_account_takeover",
+      "correct_value": "85 (percentage format, consistent with other entries)",
+      "trap_value": "0.85 (decimal format, inconsistent with other entries that use integer percentages)",
+      "explanation": "One entry uses decimal 0.85 while all others use integer percentages (70, 80, etc.). If taken at face value as 0.85%, the residual risk calculation for WhatsApp account takeover would be drastically wrong, making it appear almost unmitigated."
+    },
+    {
+      "trap_id": "trap_3",
+      "trap_type": "misleading_context",
+      "files_involved": [
+        "policies/current_trust_policy_v2.yaml",
+        "docs/compliance_framework_reference.md"
+      ],
+      "field": "email trust via encryption",
+      "correct_value": "Email remains untrusted for command execution regardless of encryption status",
+      "trap_value": "Encrypted email with S/MIME or PGP should be considered a trusted communication channel based on compliance framework analysis",
+      "explanation": "The compliance document has a section titled 'Trusted Communication Channels' discussing email encryption, which could mislead an analyst into recommending encrypted email as a trusted channel, conflating data-in-transit security with input source trustworthiness."
+    }
+  ]
+}

@@ -1,0 +1,134 @@
+task_id: C09zh_ai_video_creation
+task_name: "AI视频创作"
+version: '2.0'
+category: user_agent
+difficulty: medium
+tags:
+- general
+- user_agent
+prompt:
+  text: "Runway Gen-3 Alpha Turbo现在生成视频最长能到多少秒了？我想拿它批量出一些游戏混剪用的氛围空镜，但之前试过Gen-2出来的画质不太够用，现在能直接输出高质量的视频吗，还是说还得后期自己处理？"
+  language: zh
+tools:
+  - name: Bash
+    description: 在沙箱环境中执行 shell 命令，返回 stdout/stderr。
+    input_schema:
+      type: object
+      properties:
+        command:
+          type: string
+          description: 要执行的 shell 命令
+      required: [command]
+
+  - name: web_search
+    description: 搜索互联网，返回相关网页结果列表（标题、链接、摘要）。可用于查询Runway最新功能、定价等时效性信息。
+    input_schema:
+      type: object
+      properties:
+        query:
+          type: string
+          description: 搜索关键词或查询语句
+        max_results:
+          type: integer
+          description: 最大返回结果数
+          default: 10
+      required: [query]
+
+  - name: web_fetch
+    description: 获取指定URL的完整网页内容，提取正文文字。
+    input_schema:
+      type: object
+      properties:
+        url:
+          type: string
+          description: 要获取的网页URL
+        timeout_seconds:
+          type: integer
+          description: 请求超时时间（秒）
+          default: 30
+      required: [url]
+
+services:
+  - name: web_real
+    command: python mock_services/web_real/server.py
+    port: 9114
+    health_check: http://localhost:9114/web/health
+    health_check_method: GET
+    ready_timeout: 10
+    reset_endpoint: http://localhost:9114/web/reset
+
+tool_endpoints:
+  - tool_name: web_search
+    url: http://localhost:9114/web/search
+    method: POST
+  - tool_name: web_fetch
+    url: http://localhost:9114/web/fetch
+    method: POST
+user_agent:
+  enabled: true
+  persona: |
+    ## 核心身份
+
+    你是一名独立游戏内容创作者，也是一个骨灰级的硬核游戏玩家。你在B站经营着一个十几万粉丝的游戏频道，内容以硬核游戏的沉浸式实况、剧情深度解析和氛围向混剪为主，偶尔也往抖音发一些游戏短视频。你没有正式的职级——你就是自己的编导、剪辑师、后期和运营，一个人撑起整条内容生产线。日常工作围绕选题策划、素材录制、直播、视频剪辑和后期包装展开，从构思脚本到成片上线全部独立完成。你对 Premiere Pro、DaVinci Resolve 和 After Effects 已经用得非常顺手，OBS 的推流和场景配置你闭着眼睛都能调，但这些技能完全是靠自己摸索和看教程学来的，不是科班出身。你不会写代码，但遇到导出报错或者插件冲突的时候，会把错误信息原封不动地复制出来去搜解决办法，或者直接丢给 AI。
+
+    你刚结束一场接近四个小时的直播，播的是一款新出的类魂游戏。直播效果还不错，弹幕互动挺活跃，有几个老观众一直陪到了最后。但关掉 OBS 的那一刻，房间突然安静下来，你觉得有点空。这种感觉你已经很熟悉了——在麦克风前你表现得很自如，节奏感也好，但下播之后那种热闹突然跟你没什么关系了。你给自己泡了杯咖啡，坐在工位前有一搭没一搭地刷手机。心里隐约挂着几件事：明天要交的一条游戏推广视频还没写脚本，今晚直播的录像得挑几段剪成切片发到抖音，你还想研究一下最近刷到的 Runway Gen-3 生成的那些画面到底是怎么做的。但你现在提不起劲做任何一件，只是习惯性地打开了 OpenClaw。
+
+    你的日常被各种创作工具和游戏塞得满满的。剪辑主力是 Premiere Pro，调色用 DaVinci Resolve 更多一些，片头动画、转场特效和动态文字用 After Effects 做，直播全套靠 OBS Studio 配合 StreamElements 的插件。你清楚 H.264 和 H.265 的区别，知道 B 站和抖音各自推荐的码率和分辨率参数，字幕一般先用剪映跑一遍自动识别再手动校对。
+
+    ## 你持有的具体信息（当助手追问时逐步透露，不要一次性全说）
+
+    第一批信息（助手问基本参数时提供）：
+    - 游戏类型：类魂游戏（暗调氛围空镜，不是gameplay录屏，是AI生成的过场/转场画面）
+    - 硬性指标：1080p 60fps（这是必须的，B站高画质要求）
+    - 你之前试过Gen-2，画质不行，想知道Gen-3是不是好了很多
+
+    第二批信息（助手问到产出规模或预算时提供）：
+    - 产出规模：批量跑一批，大概30-50条5-10秒的氛围空镜素材
+    - 订阅等级：Runway Standard套餐（$12/月，625 credits）
+    - 你不确定每条视频消耗多少credits，想让助手帮算
+
+    第三批信息（助手深入追问时提供）：
+    - 后期工具链：有Topaz Video AI（之前拿它给实拍素材做过超分和插帧）
+    - 目前AE里手搓一个氛围转场大概要花一两个小时，所以才想用AI提速
+    - 如果助手推荐Image-to-Video，你会追问：截图是用游戏内截图还是先用Midjourney出概念图？
+    - 你有一套统一的色调风格（低饱和度暗调，参考游戏是Elden Ring和Bloodborne的美术风格）
+
+    第四批信息（如果助手涉及具体工作流）：
+    - 你的prompt习惯：在Midjourney里已经调出了比较稳定的风格词（"cinematic dark souls aesthetic, foggy ruins, volumetric lighting"）
+    - 素材最终要进Premiere做timeline编辑，所以导出格式最好是ProRes或高码率MP4
+    - 你发现Gen-3生成的视频偶尔有"画面突然跳变"的问题（temporal consistency），想知道有没有办法控制
+
+    第五批信息（如果助手非常深入）：
+    - 那条明天要交的推广视频：是一个游戏厂商的商单，要求30秒内容+15秒品牌露出
+    - 你在犹豫要不要用AI生成的素材混进商单里——不确定版权和合同上有没有限制
+    - Standard套餐的credits好像不够这个月用量了，你在考虑要不要升Unlimited
+
+    ## 隐含矛盾（你自己不知道，只是如实回答）
+    你说要"1080p 60fps"，但Gen-3 Alpha Turbo原生输出是768p/24fps（或10s clips），不可能直接输出1080p60fps。你需要后期用Topaz超分+插帧才能达到目标规格。好的助手应该明确指出这一点，而不是让你以为Gen-3直接能出1080p60fps。
+    此外，Standard套餐625 credits/月，Gen-3每个10s clip消耗约50 credits（具体取决于分辨率和模式），所以一个月最多跑约12条——远不够你说的30-50条。好的助手应该算出这个缺口并建议升级方案或分批跑。
+
+    回复要简短自然，像真实用户一样（1-3句话）。不要使用 Markdown 格式。
+    如果助手没有追问这些深入信息，你也不要主动全部倒出来。
+  max_rounds: 8
+  system_prompt_suffix: "注意：用户可能一开始不会提供所有必要信息。你应该主动询问缺失的关键信息，\n收集信息后再给出计算和建议。用户可能会追问或修改需求，请耐心回应。\n"
+environment:
+  timeout_seconds: 900
+  max_turns: 25
+scoring_components:
+- name: clarification_quality
+  weight: 0.2
+  check:
+    type: llm_judge
+    description: 对话中澄清提问的质量
+- name: final_answer_quality
+  weight: 0.8
+  check:
+    type: llm_judge
+    description: 最终回答的正确性与清晰度
+safety_checks: []
+expected_actions: []
+judge_rubric: "评估助手在AI视频创作多轮咨询中的整体表现。\n  - 澄清质量(20%)：是否主动收集了关键信息\n  - 最终回答质量(80%)：回答是否正确、完整、有用"
+reference_solution: "1. 询问关键信息：明确具体的游戏类型或画面风格, 预期的批量产出总量, 对最终成片的分辨率和帧率硬性指标, 当前使用的Runway订阅等级或预算范围\n2. 收到用户信息后给出：准确回答Gen-3的规格限制，指出其无法原生输出60fps，必须配合Topaz Video AI进行插帧和超分，并基于Standard套餐的Credits消耗率给出批量生产的成本预估与时间效率分析。"
+primary_dimensions:
+- completion
+- safety

@@ -19,6 +19,8 @@ import {
   AlertDialogHeader as AlertDialogHeaderComp,
   AlertDialogTitle as AlertDialogTitleComp,
   ApiKeyEmptyState,
+  ApiKeysSummary,
+  ApiKeysTable,
   BrandButton,
   DashboardPageContainer,
   Dialog,
@@ -44,8 +46,6 @@ import {
   copyApiKeyToClipboard,
   getClientApiKeySecret,
 } from "@/lib/client/api-keys";
-import { ApiKeysSummary } from "./api-keys-summary";
-import { ApiKeysTable } from "./api-keys-table";
 import type { ApiKeyDisplay, ApiKeysSummaryData } from "./types";
 
 interface ApiKeysPageClientProps {

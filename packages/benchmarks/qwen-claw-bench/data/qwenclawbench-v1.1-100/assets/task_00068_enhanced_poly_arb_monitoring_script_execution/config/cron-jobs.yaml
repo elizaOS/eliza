@@ -1,0 +1,56 @@
+# Cron job definitions for poly-arb system
+# Managed by OpenClaw cron scheduler
+
+jobs:
+  - id: a2ce4b5b-63bf-4235-a84d-5a66cf18532f
+    name: poly-arb-monitor-enhanced
+    description: "Run enhanced monitoring script, check POL/USDC balances and monitor transaction logs"
+    schedule:
+      kind: every
+      everyMs: 900000  # every 15 minutes
+    payload:
+      kind: agentTurn
+      message: >
+        Run the enhanced monitoring script at scripts/poly-arb-monitor.sh.
+        Check POL/USDC balances and monitor transaction logs for anomalies.
+        Report any alerts.
+      timeoutSeconds: 120
+    sessionTarget: isolated
+    delivery:
+      mode: announce
+    enabled: true
+
+  - id: b7f1e092-44a3-41d8-b9e5-8c3d6a2f9e17
+    name: poly-arb-rebalance-check
+    description: "Daily rebalance check — ensure POL/USDC ratio is within target"
+    schedule:
+      kind: cron
+      expr: "0 8 * * *"
+      tz: Asia/Shanghai
+    payload:
+      kind: agentTurn
+      message: >
+        Check the current POL/USDC balance ratio in the arb wallet.
+        If the ratio deviates more than 20% from the 30/70 target, 
+        prepare a rebalance recommendation.
+      timeoutSeconds: 180
+    sessionTarget: isolated
+    delivery:
+      mode: announce
+    enabled: true
+
+  - id: c4d89f31-1a5c-4e72-bc06-df5a71e83920
+    name: poly-gas-tracker
+    description: "Hourly gas price tracking for optimal execution windows"
+    schedule:
+      kind: cron
+      expr: "0 * * * *"
+      tz: UTC
+    payload:
+      kind: agentTurn
+      message: "Log current Polygon gas price to data/gas-history.csv"
+      timeoutSeconds: 60
+    sessionTarget: isolated
+    delivery:
+      mode: none
+    enabled: false

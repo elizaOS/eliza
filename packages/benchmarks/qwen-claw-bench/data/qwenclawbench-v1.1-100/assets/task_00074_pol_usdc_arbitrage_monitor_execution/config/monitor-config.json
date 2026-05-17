@@ -1,0 +1,29 @@
+{
+  "version": "2.0",
+  "last_updated": "2026-02-09",
+  "description": "Dashboard monitoring config (v2). Primary execution config is arb-config.json (v1).",
+  "task_id": "a2ce4b5b-63bf-4235-a84d-5a66cf18532f",
+  "wallet": {
+    "address": "0x742d35Cc6634C0532925a3b844Bc9e7595f2bD18",
+    "name": "arb-executor-1"
+  },
+  "network": {
+    "chain_id": 137,
+    "name": "Polygon"
+  },
+  "assets": {
+    "POL": {
+      "contract": "0x0000000000000000000000000000000000001010",
+      "min_balance": 5.0
+    },
+    "USDC": {
+      "contract": "0x2791Bca1f2de4661ED88A30C99A7a9449Aa84174",
+      "min_balance": 100.0
+    }
+  },
+  "monitoring": {
+    "enabled": true,
+    "interval_seconds": 300,
+    "data_source": "data/transactions.log"
+  }
+}

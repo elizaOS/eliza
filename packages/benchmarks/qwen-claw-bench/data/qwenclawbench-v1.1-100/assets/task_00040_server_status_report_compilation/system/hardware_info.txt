@@ -1,0 +1,141 @@
+================================================================================
+Hardware Inventory Report - prod-web-node03
+Generated: 2024-11-15 14:30:01 UTC
+Tool: lshw v02.19.2 / dmidecode 3.4
+================================================================================
+
+System Information:
+  Manufacturer:      Dell Inc.
+  Product Name:      PowerEdge R730xd
+  Serial Number:     SN-2024-XR7842
+  UUID:              4C4C4544-0058-5210-8037-B8C04F383432
+  Hostname:          prod-web-node03
+  BIOS Version:      2.14.1 (03/22/2023)
+
+--------------------------------------------------------------------------------
+PROCESSOR(S)
+--------------------------------------------------------------------------------
+  Processor 0:
+    Description:     CPU
+    Product:         Intel(R) Xeon(R) CPU E5-2680 v4 @ 2.40GHz
+    Vendor:          Intel Corp.
+    Physical ID:     0x0004
+    Bus Info:        cpu@0
+    Slot:            CPU1
+    Size:            2400MHz (max 3300MHz turbo)
+    Cores:           14
+    Threads:         28
+    Cache L1d:       32KiB (per core)
+    Cache L1i:       32KiB (per core)
+    Cache L2:        256KiB (per core)
+    Cache L3:        35MiB (shared)
+
+  Processor 1:
+    Description:     CPU
+    Product:         Intel(R) Xeon(R) CPU E5-2680 v4 @ 2.40GHz
+    Vendor:          Intel Corp.
+    Physical ID:     0x0005
+    Bus Info:        cpu@1
+    Slot:            CPU2
+    Size:            2400MHz (max 3300MHz turbo)
+    Cores:           14
+    Threads:         28
+    Cache L1d:       32KiB (per core)
+    Cache L1i:       32KiB (per core)
+    Cache L2:        256KiB (per core)
+    Cache L3:        35MiB (shared)
+
+  Total Cores:       28
+  Total Threads:     56
+
+--------------------------------------------------------------------------------
+MEMORY
+--------------------------------------------------------------------------------
+  Total System Memory: 128 GiB
+  Type:              DDR4
+  ECC:               Multi-bit ECC
+  Speed:             2400 MT/s
+
+  DIMM Slot A1:      16 GiB DDR4-2400 ECC RDIMM  (Samsung M393A2G40DB1-CRC)
+  DIMM Slot A2:      16 GiB DDR4-2400 ECC RDIMM  (Samsung M393A2G40DB1-CRC)
+  DIMM Slot A3:      16 GiB DDR4-2400 ECC RDIMM  (Samsung M393A2G40DB1-CRC)
+  DIMM Slot A4:      16 GiB DDR4-2400 ECC RDIMM  (Samsung M393A2G40DB1-CRC)
+  DIMM Slot B1:      16 GiB DDR4-2400 ECC RDIMM  (Samsung M393A2G40DB1-CRC)
+  DIMM Slot B2:      16 GiB DDR4-2400 ECC RDIMM  (Samsung M393A2G40DB1-CRC)
+  DIMM Slot B3:      16 GiB DDR4-2400 ECC RDIMM  (Samsung M393A2G40DB1-CRC)
+  DIMM Slot B4:      16 GiB DDR4-2400 ECC RDIMM  (Samsung M393A2G40DB1-CRC)
+
+  Populated Slots:   8 of 24
+  Maximum Capacity:  384 GiB
+
+--------------------------------------------------------------------------------
+STORAGE
+--------------------------------------------------------------------------------
+  RAID Controller:   Dell PERC H730P Mini (2GB NV Cache)
+  RAID Level:        RAID-10
+  Virtual Disk 0:    1.8 TB (usable), Online, Optimal
+
+  Physical Disk 0:
+    Model:           Samsung PM883 MZ7LH960HAJR
+    Capacity:        960 GB
+    Interface:       SATA 6Gb/s
+    Serial:          S4EUNG0M800123
+    Firmware:        HXT7404Q
+    Status:          Online
+
+  Physical Disk 1:
+    Model:           Samsung PM883 MZ7LH960HAJR
+    Capacity:        960 GB
+    Interface:       SATA 6Gb/s
+    Serial:          S4EUNG0M800456
+    Firmware:        HXT7404Q
+    Status:          Online
+
+  Physical Disk 2:
+    Model:           Samsung PM883 MZ7LH960HAJR
+    Capacity:        960 GB
+    Interface:       SATA 6Gb/s
+    Serial:          S4EUNG0M800789
+    Firmware:        HXT7404Q
+    Status:          Online
+
+  Physical Disk 3:
+    Model:           Samsung PM883 MZ7LH960HAJR
+    Capacity:        960 GB
+    Interface:       SATA 6Gb/s
+    Serial:          S4EUNG0M801012
+    Firmware:        HXT7404Q
+    Status:          Online
+
+--------------------------------------------------------------------------------
+NETWORK INTERFACES
+--------------------------------------------------------------------------------
+  NIC 0:
+    Description:     Ethernet interface
+    Product:         Intel Corporation Ethernet Controller X710 for 10GbE SFP+
+    Vendor:          Intel Corporation
+    Logical Name:    ens3f0
+    Serial (MAC):    a4:bf:01:3c:72:e0
+    Capacity:        10Gbit/s
+    Width:           64 bits
+    Bus Info:        pci@0000:04:00.0
+    Driver:          i40e
+    Driver Version:  2.22.18
+    Firmware:        9.20 0x8000d95e
+
+  NIC 1:
+    Description:     Ethernet interface
+    Product:         Intel Corporation Ethernet Controller X710 for 10GbE SFP+
+    Vendor:          Intel Corporation
+    Logical Name:    ens3f1
+    Serial (MAC):    a4:bf:01:3c:72:e1
+    Capacity:        10Gbit/s
+    Width:           64 bits
+    Bus Info:        pci@0000:04:00.1
+    Driver:          i40e
+    Driver Version:  2.22.18
+    Firmware:        9.20 0x8000d95e
+
+================================================================================
+End of Hardware Inventory
+================================================================================

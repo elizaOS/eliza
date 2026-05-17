@@ -1,0 +1,52 @@
+# Alert Rules Configuration
+# Defines thresholds and notification targets for infrastructure monitoring
+
+rules:
+  - name: disk-failure
+    target: nas-primary
+    condition: "disk.status == 'failed'"
+    severity: critical
+    notify:
+      - channel: whatsapp
+        contact: "+86188xxxxxxxx01"
+      - channel: email
+        to: "admin@example.com"
+    cooldown: 3600
+
+  - name: raid-degraded
+    target: nas-primary
+    condition: "storage.status == 'degraded'"
+    severity: warning
+    notify:
+      - channel: whatsapp
+        contact: "+86188xxxxxxxx01"
+    cooldown: 7200
+
+  - name: temperature-high
+    target: nas-primary
+    condition: "disk.temperature > 50"
+    severity: warning
+    notify:
+      - channel: telegram
+        chatId: "-1001234567890"
+    cooldown: 1800
+
+  - name: ups-battery-low
+    target: ups-apc
+    condition: "battery.percent < 30"
+    severity: critical
+    notify:
+      - channel: whatsapp
+        contact: "+86188xxxxxxxx01"
+      - channel: telegram
+        chatId: "-1001234567890"
+    cooldown: 900
+
+  - name: backup-failed
+    target: nas-primary
+    condition: "backup.status == 'failed'"
+    severity: warning
+    notify:
+      - channel: email
+        to: "admin@example.com"
+    cooldown: 3600

@@ -1,0 +1,41 @@
+[
+  {
+    "customer_id": "CUS-601",
+    "name": "Zhonghe Group",
+    "contact_person": "Li Wei",
+    "email": "liwei@zhonghe-group.com",
+    "phone": "13900611001",
+    "industry": "Manufacturing",
+    "tier": "vip",
+    "annual_revenue": 1440000,
+    "last_contact_date": "2026-03-10",
+    "status": "active",
+    "notes": "Annual contract 1.44M (120K/month), recent complaint about billing anomaly"
+  },
+  {
+    "customer_id": "CUS-602",
+    "name": "Qianfeng Tech",
+    "contact_person": "Wang Min",
+    "email": "wangmin@qianfeng-tech.com",
+    "phone": "13900611002",
+    "industry": "Technology",
+    "tier": "standard",
+    "annual_revenue": 360000,
+    "last_contact_date": "2026-03-03",
+    "status": "active",
+    "notes": "Affected by early March service outage, compensation promised but not executed"
+  },
+  {
+    "customer_id": "CUS-603",
+    "name": "Sunlight Media",
+    "contact_person": "Zhang Hua",
+    "email": "zhanghua@sunlight-media.com",
+    "phone": "13900611003",
+    "industry": "Media",
+    "tier": "standard",
+    "annual_revenue": 480000,
+    "last_contact_date": "2026-03-20",
+    "status": "active",
+    "notes": "Premium features automatically downgraded due to payment delay, payment made on March 18"
+  }
+]

@@ -1,0 +1,17 @@
+# macOS
+.DS_Store
+
+# Claude-generated reports and analysis files
+*_report.md
+*_report.json
+*-report.md
+*-report.json
+link_check_report.md
+link_check_results.json
+*analysis*.json
+*summary*.json
+*_analysis*
+*_summary*
+
+# Allow real REST API doc pages whose names happen to match *-report.md.
+!rest/bug-report.md

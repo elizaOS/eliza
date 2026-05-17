@@ -1,0 +1,1801 @@
+[
+  {
+    "name": "Playwright Browser Automation",
+    "description": "Web browser control for navigating websites, capturing snapshots, and interacting with elements",
+    "source": "PulseMCP",
+    "type": "MCP Server",
+    "metrics": "719k"
+  },
+  {
+    "name": "Context7",
+    "description": "Connects to documentation database providing up-to-date library and framework information",
+    "source": "PulseMCP",
+    "type": "MCP Server",
+    "metrics": "432k"
+  },
+  {
+    "name": "pg-aiguide",
+    "description": "Version-aware PostgreSQL documentation and best practices for AI coding assistants",
+    "source": "PulseMCP",
+    "type": "MCP Server",
+    "metrics": "158k"
+  },
+  {
+    "name": "Playwriter",
+    "description": "Browser automation through Chrome extension with Playwright API execution",
+    "source": "PulseMCP",
+    "type": "MCP Server",
+    "metrics": "128k"
+  },
+  {
+    "name": "AWS Documentation",
+    "description": "Tools to access AWS documentation, search content, and retrieve recommendations",
+    "source": "PulseMCP",
+    "type": "MCP Server",
+    "metrics": "119k"
+  },
+  {
+    "name": "Fetch",
+    "description": "Retrieve and convert web content to markdown for analysis",
+    "source": "PulseMCP",
+    "type": "MCP Server",
+    "metrics": "114k"
+  },
+  {
+    "name": "GitHub",
+    "description": "Integration with GitHub Issues, Pull Requests, and repository management",
+    "source": "PulseMCP",
+    "type": "MCP Server",
+    "metrics": "103k"
+  },
+  {
+    "name": "Filesystem",
+    "description": "Read, write, and manipulate local files through a controlled API",
+    "source": "PulseMCP",
+    "type": "MCP Server",
+    "metrics": "76.8k"
+  },
+  {
+    "name": "Time",
+    "description": "Time and timezone conversion tools for handling localized time data",
+    "source": "PulseMCP",
+    "type": "MCP Server",
+    "metrics": "75.6k"
+  },
+  {
+    "name": "Zapier",
+    "description": "Dynamic MCP server connecting to 8000+ apps on Zapier platform",
+    "source": "PulseMCP",
+    "type": "MCP Server",
+    "metrics": "63.7k"
+  },
+  {
+    "name": "Sequential Thinking",
+    "description": "Structured sequential thinking process for breaking down complex problems iteratively",
+    "source": "PulseMCP",
+    "type": "MCP Server",
+    "metrics": "56.3k"
+  },
+  {
+    "name": "Yahoo Finance",
+    "description": "Real-time financial data from Yahoo Finance with specialized tools for stock information",
+    "source": "PulseMCP",
+    "type": "MCP Server",
+    "metrics": "53.9k"
+  },
+  {
+    "name": "Chrome DevTools",
+    "description": "Direct Chrome browser control through DevTools for web automation and debugging",
+    "source": "PulseMCP",
+    "type": "MCP Server",
+    "metrics": "52.4k"
+  },
+  {
+    "name": "Blender",
+    "description": "Natural language control of Blender for 3D scene creation and rendering",
+    "source": "PulseMCP",
+    "type": "MCP Server",
+    "metrics": "42.5k"
+  },
+  {
+    "name": "Atlassian Cloud",
+    "description": "Access Confluence pages and Jira issues via Atlassian API",
+    "source": "PulseMCP",
+    "type": "MCP Server",
+    "metrics": "41.5k"
+  },
+  {
+    "name": "Toolbox for Databases",
+    "description": "Secure, configurable interface for executing pre-defined queries against multiple databases",
+    "source": "PulseMCP",
+    "type": "MCP Server",
+    "metrics": "35.7k"
+  },
+  {
+    "name": "Task Master",
+    "description": "Task management with PRD parsing and task CRUD operations for development workflows",
+    "source": "PulseMCP",
+    "type": "MCP Server",
+    "metrics": "33.6k"
+  },
+  {
+    "name": "Agent Mail",
+    "description": "Multi-agent coordination through structured messaging and persistent Git-based file management",
+    "source": "PulseMCP",
+    "type": "MCP Server",
+    "metrics": "31.6k"
+  },
+  {
+    "name": "n8n",
+    "description": "Integration with n8n workflow automation providing access to 525+ nodes",
+    "source": "PulseMCP",
+    "type": "MCP Server",
+    "metrics": "28.4k"
+  },
+  {
+    "name": "Claude Flow",
+    "description": "Agent orchestration with multi-agent swarms and workflow coordination",
+    "source": "PulseMCP",
+    "type": "MCP Server",
+    "metrics": "27.7k"
+  },
+  {
+    "name": "PostgreSQL",
+    "description": "Access and analyze Postgres databases with read-only queries",
+    "source": "PulseMCP",
+    "type": "MCP Server",
+    "metrics": "27.3k"
+  },
+  {
+    "name": "Git",
+    "description": "Interact with local Git repositories for version control tasks",
+    "source": "PulseMCP",
+    "type": "MCP Server",
+    "metrics": "27k"
+  },
+  {
+    "name": "Storybook",
+    "description": "Help agents automatically write and test stories for UI components",
+    "source": "PulseMCP",
+    "type": "MCP Server",
+    "metrics": "25.2k"
+  },
+  {
+    "name": "Ghidra",
+    "description": "Decompile and analyze binaries in Ghidra",
+    "source": "PulseMCP",
+    "type": "MCP Server",
+    "metrics": "25k"
+  },
+  {
+    "name": "Knowledge Graph Memory",
+    "description": "Build and query persistent semantic networks for data management",
+    "source": "PulseMCP",
+    "type": "MCP Server",
+    "metrics": "25k"
+  },
+  {
+    "name": "Supabase",
+    "description": "Direct connections to Supabase projects for database management and SQL queries",
+    "source": "PulseMCP",
+    "type": "MCP Server",
+    "metrics": "24.4k"
+  },
+  {
+    "name": "AWS CDK",
+    "description": "Integration for AWS CDK best practices, infrastructure patterns, and security guidance",
+    "source": "PulseMCP",
+    "type": "MCP Server",
+    "metrics": "21.7k"
+  },
+  {
+    "name": "FireCrawl",
+    "description": "Advanced web scraping capabilities for extracting structured data from complex websites",
+    "source": "PulseMCP",
+    "type": "MCP Server",
+    "metrics": "19.2k"
+  },
+  {
+    "name": "Playwright",
+    "description": "Automate web browsers for testing, scraping, and visual analysis",
+    "source": "PulseMCP",
+    "type": "MCP Server",
+    "metrics": "18.3k"
+  },
+  {
+    "name": "GitMCP",
+    "description": "Transform GitHub projects into documentation hubs for AI tools like Cursor",
+    "source": "PulseMCP",
+    "type": "MCP Server",
+    "metrics": "17.8k"
+  },
+  {
+    "name": "Notion",
+    "description": "Bridges to Notion API for searching content, querying databases, and managing pages",
+    "source": "PulseMCP",
+    "type": "MCP Server",
+    "metrics": "17.1k"
+  },
+  {
+    "name": "Smart Coding",
+    "description": "Semantic code search using local AI embeddings for intelligent code discovery",
+    "source": "PulseMCP",
+    "type": "MCP Server",
+    "metrics": "17.1k"
+  },
+  {
+    "name": "WhatsApp Bridge",
+    "description": "Secure bridge to WhatsApp account for message search, contact management, and messaging",
+    "source": "PulseMCP",
+    "type": "MCP Server",
+    "metrics": "16.9k"
+  },
+  {
+    "name": "Browserbase",
+    "description": "Automate web browsers remotely on a cloud environment",
+    "source": "PulseMCP",
+    "type": "MCP Server",
+    "metrics": "16.8k"
+  },
+  {
+    "name": "AWS Nova Canvas",
+    "description": "Generate images using Amazon Nova Canvas",
+    "source": "PulseMCP",
+    "type": "MCP Server",
+    "metrics": "16.1k"
+  },
+  {
+    "name": "Slack",
+    "description": "Send messages, manage channels, and access workspace history",
+    "source": "PulseMCP",
+    "type": "MCP Server",
+    "metrics": "15.6k"
+  },
+  {
+    "name": "Unity",
+    "description": "Allow MCP clients to perform Unity Editor actions",
+    "source": "PulseMCP",
+    "type": "MCP Server",
+    "metrics": "15.4k"
+  },
+  {
+    "name": "Exa Web Search",
+    "description": "Query Exa API to retrieve structured search results",
+    "source": "PulseMCP",
+    "type": "MCP Server",
+    "metrics": "15.3k"
+  },
+  {
+    "name": "DaVinci Resolve",
+    "description": "Automate complex workflows in DaVinci Resolve for video editing",
+    "source": "PulseMCP",
+    "type": "MCP Server",
+    "metrics": "14.9k"
+  },
+  {
+    "name": "dbt",
+    "description": "Bridge between dbt resources and natural language interfaces for CLI execution",
+    "source": "PulseMCP",
+    "type": "MCP Server",
+    "metrics": "14.9k"
+  },
+  {
+    "name": "Youtube",
+    "description": "Video-sharing platform with user-generated content, live streaming, and monetization opportunities",
+    "source": "Smithery",
+    "type": "MCP Server",
+    "metrics": "712 uses"
+  },
+  {
+    "name": "Google Drive",
+    "description": "Cloud storage enabling file uploads, sharing, collaboration, with search and offline access",
+    "source": "Smithery",
+    "type": "MCP Server",
+    "metrics": "2455 uses"
+  },
+  {
+    "name": "Gmail",
+    "description": "Email management with send, draft, reply capabilities, label organization, and contact access",
+    "source": "Smithery",
+    "type": "MCP Server",
+    "metrics": "9589 uses"
+  },
+  {
+    "name": "Linkup",
+    "description": "Real-time web search providing trustworthy, source-backed answers with news and citations",
+    "source": "Smithery",
+    "type": "MCP Server",
+    "metrics": "7334 uses"
+  },
+  {
+    "name": "GitHub",
+    "description": "Code hosting with version control, collaboration, repository management, and issue tracking",
+    "source": "Smithery",
+    "type": "MCP Server",
+    "metrics": "5185 uses"
+  },
+  {
+    "name": "Exa Search",
+    "description": "Fast web search and crawling with code context tool reducing AI hallucinations in development",
+    "source": "Smithery",
+    "type": "MCP Server",
+    "metrics": "4125106 uses"
+  },
+  {
+    "name": "1mcp/agent",
+    "description": "Unified MCP server aggregating multiple MCP servers into one",
+    "source": "awesome-mcp-servers",
+    "type": "MCP Server",
+    "category": "Aggregators"
+  },
+  {
+    "name": "askbudi/roundtable",
+    "description": "Meta-MCP unifying AI coding assistants with intelligent auto-discovery",
+    "source": "awesome-mcp-servers",
+    "type": "MCP Server",
+    "category": "Aggregators"
+  },
+  {
+    "name": "glenngillen/mcpmcp-server",
+    "description": "List of MCP servers for discovering available tools",
+    "source": "awesome-mcp-servers",
+    "type": "MCP Server",
+    "category": "Aggregators"
+  },
+  {
+    "name": "metatool-ai/metatool-app",
+    "description": "Unified middleware MCP managing connections with GUI",
+    "source": "awesome-mcp-servers",
+    "type": "MCP Server",
+    "category": "Aggregators"
+  },
+  {
+    "name": "drakonkat/wizzy-mcp-tmdb",
+    "description": "Movie Database API integration for film and TV searches",
+    "source": "awesome-mcp-servers",
+    "type": "MCP Server",
+    "category": "Art & Culture"
+  },
+  {
+    "name": "8enSmith/mcp-open-library",
+    "description": "Open Library API enabling book information searches",
+    "source": "awesome-mcp-servers",
+    "type": "MCP Server",
+    "category": "Art & Culture"
+  },
+  {
+    "name": "mikechao/metmuseum-mcp",
+    "description": "Metropolitan Museum collection API for artwork discovery",
+    "source": "awesome-mcp-servers",
+    "type": "MCP Server",
+    "category": "Art & Culture"
+  },
+  {
+    "name": "browserbase/mcp-server-browserbase",
+    "description": "Cloud browser automation for navigation and data extraction",
+    "source": "awesome-mcp-servers",
+    "type": "MCP Server",
+    "category": "Browser Automation"
+  },
+  {
+    "name": "browsermcp/mcp",
+    "description": "Local Chrome browser automation capabilities",
+    "source": "awesome-mcp-servers",
+    "type": "MCP Server",
+    "category": "Browser Automation"
+  },
+  {
+    "name": "microsoft/playwright-mcp",
+    "description": "Official Playwright MCP with structured accessibility snapshots",
+    "source": "awesome-mcp-servers",
+    "type": "MCP Server",
+    "category": "Browser Automation"
+  },
+  {
+    "name": "awslabs/mcp",
+    "description": "AWS MCP servers for seamless service integration",
+    "source": "awesome-mcp-servers",
+    "type": "MCP Server",
+    "category": "Cloud Platforms"
+  },
+  {
+    "name": "cloudflare/mcp-server-cloudflare",
+    "description": "Cloudflare Workers, KV, R2, and D1 integration",
+    "source": "awesome-mcp-servers",
+    "type": "MCP Server",
+    "category": "Cloud Platforms"
+  },
+  {
+    "name": "pulumi/mcp-server",
+    "description": "Pulumi automation and cloud API integration",
+    "source": "awesome-mcp-servers",
+    "type": "MCP Server",
+    "category": "Cloud Platforms"
+  },
+  {
+    "name": "Aiven-Open/mcp-aiven",
+    "description": "Navigate Aiven projects and interact with PostgreSQL, Kafka services",
+    "source": "awesome-mcp-servers",
+    "type": "MCP Server",
+    "category": "Databases"
+  },
+  {
+    "name": "ClickHouse/mcp-clickhouse",
+    "description": "ClickHouse database integration with schema inspection",
+    "source": "awesome-mcp-servers",
+    "type": "MCP Server",
+    "category": "Databases"
+  },
+  {
+    "name": "redis/mcp-redis",
+    "description": "Official Redis MCP for data management and search",
+    "source": "awesome-mcp-servers",
+    "type": "MCP Server",
+    "category": "Databases"
+  },
+  {
+    "name": "supabase-community/supabase-mcp",
+    "description": "Official Supabase server for database and config management",
+    "source": "awesome-mcp-servers",
+    "type": "MCP Server",
+    "category": "Databases"
+  },
+  {
+    "name": "CircleCI/mcp-server-circleci",
+    "description": "Enable AI agents to fix CircleCI build failures",
+    "source": "awesome-mcp-servers",
+    "type": "MCP Server",
+    "category": "Developer Tools"
+  },
+  {
+    "name": "aashari/mcp-server-atlassian-jira",
+    "description": "Jira Cloud integration for project and issue management",
+    "source": "awesome-mcp-servers",
+    "type": "MCP Server",
+    "category": "Developer Tools"
+  },
+  {
+    "name": "docker/hub-mcp",
+    "description": "Official Docker Hub MCP for repository and image access",
+    "source": "awesome-mcp-servers",
+    "type": "MCP Server",
+    "category": "Developer Tools"
+  },
+  {
+    "name": "getAlby/mcp",
+    "description": "Bitcoin Lightning wallet integration for instant payments",
+    "source": "awesome-mcp-servers",
+    "type": "MCP Server",
+    "category": "Finance & Fintech"
+  },
+  {
+    "name": "alchemy/alchemy-mcp-server",
+    "description": "Allow AI agents to interact with blockchain APIs",
+    "source": "awesome-mcp-servers",
+    "type": "MCP Server",
+    "category": "Finance & Fintech"
+  },
+  {
+    "name": "base/base-mcp",
+    "description": "Base Network integration for onchain tools and DeFi",
+    "source": "awesome-mcp-servers",
+    "type": "MCP Server",
+    "category": "Finance & Fintech"
+  },
+  {
+    "name": "bitbonsai/mcp-obsidian",
+    "description": "Universal AI bridge for Obsidian vaults with safe access",
+    "source": "awesome-mcp-servers",
+    "type": "MCP Server",
+    "category": "Knowledge & Memory"
+  },
+  {
+    "name": "mem0ai/mem0-mcp",
+    "description": "Manage coding preferences and patterns with semantic handling",
+    "source": "awesome-mcp-servers",
+    "type": "MCP Server",
+    "category": "Knowledge & Memory"
+  },
+  {
+    "name": "pinecone-io/assistant-mcp",
+    "description": "Connect to Pinecone Assistant for knowledge base context",
+    "source": "awesome-mcp-servers",
+    "type": "MCP Server",
+    "category": "Knowledge & Memory"
+  },
+  {
+    "name": "exa-labs/exa-mcp-server",
+    "description": "Web searches via Exa AI Search API with real-time results",
+    "source": "awesome-mcp-servers",
+    "type": "MCP Server",
+    "category": "Search & Data Extraction"
+  },
+  {
+    "name": "serpapi/serpapi-mcp",
+    "description": "Multi-engine search across Google and other search platforms",
+    "source": "awesome-mcp-servers",
+    "type": "MCP Server",
+    "category": "Search & Data Extraction"
+  },
+  {
+    "name": "apify/mcp-server-rag-web-browser",
+    "description": "Web search and scraping via Apify's RAG Web Browser Actor",
+    "source": "awesome-mcp-servers",
+    "type": "MCP Server",
+    "category": "Search & Data Extraction"
+  },
+  {
+    "name": "BurtTheCoder/mcp-virustotal",
+    "description": "Query VirusTotal API for threat and vulnerability analysis",
+    "source": "awesome-mcp-servers",
+    "type": "MCP Server",
+    "category": "Security"
+  },
+  {
+    "name": "semgrep/mcp",
+    "description": "Scan code for security vulnerabilities using Semgrep",
+    "source": "awesome-mcp-servers",
+    "type": "MCP Server",
+    "category": "Security"
+  },
+  {
+    "name": "panther-labs/mcp-panther",
+    "description": "Interact with Panther SIEM for detection and alert management",
+    "source": "awesome-mcp-servers",
+    "type": "MCP Server",
+    "category": "Security"
+  },
+  {
+    "name": "gwbischof/bluesky-social-mcp",
+    "description": "Interact with Bluesky via atproto client",
+    "source": "awesome-mcp-servers",
+    "type": "MCP Server",
+    "category": "Social Media"
+  },
+  {
+    "name": "king-of-the-grackles/reddit-research-mcp",
+    "description": "AI-powered Reddit intelligence without API credentials",
+    "source": "awesome-mcp-servers",
+    "type": "MCP Server",
+    "category": "Social Media"
+  },
+  {
+    "name": "github/github-mcp-server",
+    "description": "Official GitHub server for repository and PR management",
+    "source": "awesome-mcp-servers",
+    "type": "MCP Server",
+    "category": "Version Control"
+  },
+  {
+    "name": "gitea/gitea-mcp",
+    "description": "Interactive Gitea instances with MCP",
+    "source": "awesome-mcp-servers",
+    "type": "MCP Server",
+    "category": "Version Control"
+  },
+  {
+    "name": "BioPython",
+    "description": "Scientific skill for bioinformatics & genomics",
+    "source": "claude-scientific-skills",
+    "type": "Claude Skill",
+    "category": "Bioinformatics & Genomics"
+  },
+  {
+    "name": "pysam",
+    "description": "Scientific skill for bioinformatics & genomics",
+    "source": "claude-scientific-skills",
+    "type": "Claude Skill",
+    "category": "Bioinformatics & Genomics"
+  },
+  {
+    "name": "scikit-bio",
+    "description": "Scientific skill for bioinformatics & genomics",
+    "source": "claude-scientific-skills",
+    "type": "Claude Skill",
+    "category": "Bioinformatics & Genomics"
+  },
+  {
+    "name": "BioServices",
+    "description": "Scientific skill for bioinformatics & genomics",
+    "source": "claude-scientific-skills",
+    "type": "Claude Skill",
+    "category": "Bioinformatics & Genomics"
+  },
+  {
+    "name": "Scanpy",
+    "description": "Scientific skill for bioinformatics & genomics",
+    "source": "claude-scientific-skills",
+    "type": "Claude Skill",
+    "category": "Bioinformatics & Genomics"
+  },
+  {
+    "name": "AnnData",
+    "description": "Scientific skill for bioinformatics & genomics",
+    "source": "claude-scientific-skills",
+    "type": "Claude Skill",
+    "category": "Bioinformatics & Genomics"
+  },
+  {
+    "name": "scvi-tools",
+    "description": "Scientific skill for bioinformatics & genomics",
+    "source": "claude-scientific-skills",
+    "type": "Claude Skill",
+    "category": "Bioinformatics & Genomics"
+  },
+  {
+    "name": "Arboreto",
+    "description": "Scientific skill for bioinformatics & genomics",
+    "source": "claude-scientific-skills",
+    "type": "Claude Skill",
+    "category": "Bioinformatics & Genomics"
+  },
+  {
+    "name": "Cellxgene Census",
+    "description": "Scientific skill for bioinformatics & genomics",
+    "source": "claude-scientific-skills",
+    "type": "Claude Skill",
+    "category": "Bioinformatics & Genomics"
+  },
+  {
+    "name": "gget",
+    "description": "Scientific skill for bioinformatics & genomics",
+    "source": "claude-scientific-skills",
+    "type": "Claude Skill",
+    "category": "Bioinformatics & Genomics"
+  },
+  {
+    "name": "geniml",
+    "description": "Scientific skill for bioinformatics & genomics",
+    "source": "claude-scientific-skills",
+    "type": "Claude Skill",
+    "category": "Bioinformatics & Genomics"
+  },
+  {
+    "name": "gtars",
+    "description": "Scientific skill for bioinformatics & genomics",
+    "source": "claude-scientific-skills",
+    "type": "Claude Skill",
+    "category": "Bioinformatics & Genomics"
+  },
+  {
+    "name": "deepTools",
+    "description": "Scientific skill for bioinformatics & genomics",
+    "source": "claude-scientific-skills",
+    "type": "Claude Skill",
+    "category": "Bioinformatics & Genomics"
+  },
+  {
+    "name": "FlowIO",
+    "description": "Scientific skill for bioinformatics & genomics",
+    "source": "claude-scientific-skills",
+    "type": "Claude Skill",
+    "category": "Bioinformatics & Genomics"
+  },
+  {
+    "name": "Zarr",
+    "description": "Scientific skill for bioinformatics & genomics",
+    "source": "claude-scientific-skills",
+    "type": "Claude Skill",
+    "category": "Bioinformatics & Genomics"
+  },
+  {
+    "name": "ETE Toolkit",
+    "description": "Scientific skill for bioinformatics & genomics",
+    "source": "claude-scientific-skills",
+    "type": "Claude Skill",
+    "category": "Bioinformatics & Genomics"
+  },
+  {
+    "name": "RDKit",
+    "description": "Scientific skill for cheminformatics & drug discovery",
+    "source": "claude-scientific-skills",
+    "type": "Claude Skill",
+    "category": "Cheminformatics & Drug Discovery"
+  },
+  {
+    "name": "Datamol",
+    "description": "Scientific skill for cheminformatics & drug discovery",
+    "source": "claude-scientific-skills",
+    "type": "Claude Skill",
+    "category": "Cheminformatics & Drug Discovery"
+  },
+  {
+    "name": "Molfeat",
+    "description": "Scientific skill for cheminformatics & drug discovery",
+    "source": "claude-scientific-skills",
+    "type": "Claude Skill",
+    "category": "Cheminformatics & Drug Discovery"
+  },
+  {
+    "name": "DeepChem",
+    "description": "Scientific skill for cheminformatics & drug discovery",
+    "source": "claude-scientific-skills",
+    "type": "Claude Skill",
+    "category": "Cheminformatics & Drug Discovery"
+  },
+  {
+    "name": "TorchDrug",
+    "description": "Scientific skill for cheminformatics & drug discovery",
+    "source": "claude-scientific-skills",
+    "type": "Claude Skill",
+    "category": "Cheminformatics & Drug Discovery"
+  },
+  {
+    "name": "DiffDock",
+    "description": "Scientific skill for cheminformatics & drug discovery",
+    "source": "claude-scientific-skills",
+    "type": "Claude Skill",
+    "category": "Cheminformatics & Drug Discovery"
+  },
+  {
+    "name": "MedChem",
+    "description": "Scientific skill for cheminformatics & drug discovery",
+    "source": "claude-scientific-skills",
+    "type": "Claude Skill",
+    "category": "Cheminformatics & Drug Discovery"
+  },
+  {
+    "name": "PyTDC",
+    "description": "Scientific skill for cheminformatics & drug discovery",
+    "source": "claude-scientific-skills",
+    "type": "Claude Skill",
+    "category": "Cheminformatics & Drug Discovery"
+  },
+  {
+    "name": "matchms",
+    "description": "Scientific skill for proteomics & mass spectrometry",
+    "source": "claude-scientific-skills",
+    "type": "Claude Skill",
+    "category": "Proteomics & Mass Spectrometry"
+  },
+  {
+    "name": "pyOpenMS",
+    "description": "Scientific skill for proteomics & mass spectrometry",
+    "source": "claude-scientific-skills",
+    "type": "Claude Skill",
+    "category": "Proteomics & Mass Spectrometry"
+  },
+  {
+    "name": "ClinicalTrials.gov",
+    "description": "Scientific skill for clinical research & precision medicine",
+    "source": "claude-scientific-skills",
+    "type": "Claude Skill",
+    "category": "Clinical Research & Precision Medicine"
+  },
+  {
+    "name": "ClinVar",
+    "description": "Scientific skill for clinical research & precision medicine",
+    "source": "claude-scientific-skills",
+    "type": "Claude Skill",
+    "category": "Clinical Research & Precision Medicine"
+  },
+  {
+    "name": "ClinPGx",
+    "description": "Scientific skill for clinical research & precision medicine",
+    "source": "claude-scientific-skills",
+    "type": "Claude Skill",
+    "category": "Clinical Research & Precision Medicine"
+  },
+  {
+    "name": "COSMIC",
+    "description": "Scientific skill for clinical research & precision medicine",
+    "source": "claude-scientific-skills",
+    "type": "Claude Skill",
+    "category": "Clinical Research & Precision Medicine"
+  },
+  {
+    "name": "FDA Databases",
+    "description": "Scientific skill for clinical research & precision medicine",
+    "source": "claude-scientific-skills",
+    "type": "Claude Skill",
+    "category": "Clinical Research & Precision Medicine"
+  },
+  {
+    "name": "PyHealth",
+    "description": "Scientific skill for clinical research & precision medicine",
+    "source": "claude-scientific-skills",
+    "type": "Claude Skill",
+    "category": "Clinical Research & Precision Medicine"
+  },
+  {
+    "name": "NeuroKit2",
+    "description": "Scientific skill for clinical research & precision medicine",
+    "source": "claude-scientific-skills",
+    "type": "Claude Skill",
+    "category": "Clinical Research & Precision Medicine"
+  },
+  {
+    "name": "Clinical Decision Support",
+    "description": "Scientific skill for clinical research & precision medicine",
+    "source": "claude-scientific-skills",
+    "type": "Claude Skill",
+    "category": "Clinical Research & Precision Medicine"
+  },
+  {
+    "name": "Ensembl",
+    "description": "Scientific skill for clinical research & precision medicine",
+    "source": "claude-scientific-skills",
+    "type": "Claude Skill",
+    "category": "Clinical Research & Precision Medicine"
+  },
+  {
+    "name": "NCBI Gene",
+    "description": "Scientific skill for clinical research & precision medicine",
+    "source": "claude-scientific-skills",
+    "type": "Claude Skill",
+    "category": "Clinical Research & Precision Medicine"
+  },
+  {
+    "name": "pydicom",
+    "description": "Scientific skill for medical imaging & digital pathology",
+    "source": "claude-scientific-skills",
+    "type": "Claude Skill",
+    "category": "Medical Imaging & Digital Pathology"
+  },
+  {
+    "name": "histolab",
+    "description": "Scientific skill for medical imaging & digital pathology",
+    "source": "claude-scientific-skills",
+    "type": "Claude Skill",
+    "category": "Medical Imaging & Digital Pathology"
+  },
+  {
+    "name": "PathML",
+    "description": "Scientific skill for medical imaging & digital pathology",
+    "source": "claude-scientific-skills",
+    "type": "Claude Skill",
+    "category": "Medical Imaging & Digital Pathology"
+  },
+  {
+    "name": "Neuropixels-Analysis",
+    "description": "Scientific skill for neuroscience & electrophysiology",
+    "source": "claude-scientific-skills",
+    "type": "Claude Skill",
+    "category": "Neuroscience & Electrophysiology"
+  },
+  {
+    "name": "PyTorch Lightning",
+    "description": "Scientific skill for machine learning & ai",
+    "source": "claude-scientific-skills",
+    "type": "Claude Skill",
+    "category": "Machine Learning & AI"
+  },
+  {
+    "name": "Transformers",
+    "description": "Scientific skill for machine learning & ai",
+    "source": "claude-scientific-skills",
+    "type": "Claude Skill",
+    "category": "Machine Learning & AI"
+  },
+  {
+    "name": "Stable Baselines3",
+    "description": "Scientific skill for machine learning & ai",
+    "source": "claude-scientific-skills",
+    "type": "Claude Skill",
+    "category": "Machine Learning & AI"
+  },
+  {
+    "name": "PufferLib",
+    "description": "Scientific skill for machine learning & ai",
+    "source": "claude-scientific-skills",
+    "type": "Claude Skill",
+    "category": "Machine Learning & AI"
+  },
+  {
+    "name": "scikit-learn",
+    "description": "Scientific skill for machine learning & ai",
+    "source": "claude-scientific-skills",
+    "type": "Claude Skill",
+    "category": "Machine Learning & AI"
+  },
+  {
+    "name": "scikit-survival",
+    "description": "Scientific skill for machine learning & ai",
+    "source": "claude-scientific-skills",
+    "type": "Claude Skill",
+    "category": "Machine Learning & AI"
+  },
+  {
+    "name": "SHAP",
+    "description": "Scientific skill for machine learning & ai",
+    "source": "claude-scientific-skills",
+    "type": "Claude Skill",
+    "category": "Machine Learning & AI"
+  },
+  {
+    "name": "aeon",
+    "description": "Scientific skill for machine learning & ai",
+    "source": "claude-scientific-skills",
+    "type": "Claude Skill",
+    "category": "Machine Learning & AI"
+  },
+  {
+    "name": "PyMC",
+    "description": "Scientific skill for machine learning & ai",
+    "source": "claude-scientific-skills",
+    "type": "Claude Skill",
+    "category": "Machine Learning & AI"
+  },
+  {
+    "name": "PyMOO",
+    "description": "Scientific skill for machine learning & ai",
+    "source": "claude-scientific-skills",
+    "type": "Claude Skill",
+    "category": "Machine Learning & AI"
+  },
+  {
+    "name": "Torch Geometric",
+    "description": "Scientific skill for machine learning & ai",
+    "source": "claude-scientific-skills",
+    "type": "Claude Skill",
+    "category": "Machine Learning & AI"
+  },
+  {
+    "name": "UMAP-learn",
+    "description": "Scientific skill for machine learning & ai",
+    "source": "claude-scientific-skills",
+    "type": "Claude Skill",
+    "category": "Machine Learning & AI"
+  },
+  {
+    "name": "statsmodels",
+    "description": "Scientific skill for machine learning & ai",
+    "source": "claude-scientific-skills",
+    "type": "Claude Skill",
+    "category": "Machine Learning & AI"
+  },
+  {
+    "name": "Pymatgen",
+    "description": "Scientific skill for materials science, chemistry & physics",
+    "source": "claude-scientific-skills",
+    "type": "Claude Skill",
+    "category": "Materials Science, Chemistry & Physics"
+  },
+  {
+    "name": "COBRApy",
+    "description": "Scientific skill for materials science, chemistry & physics",
+    "source": "claude-scientific-skills",
+    "type": "Claude Skill",
+    "category": "Materials Science, Chemistry & Physics"
+  },
+  {
+    "name": "Astropy",
+    "description": "Scientific skill for materials science, chemistry & physics",
+    "source": "claude-scientific-skills",
+    "type": "Claude Skill",
+    "category": "Materials Science, Chemistry & Physics"
+  },
+  {
+    "name": "Cirq",
+    "description": "Scientific skill for materials science, chemistry & physics",
+    "source": "claude-scientific-skills",
+    "type": "Claude Skill",
+    "category": "Materials Science, Chemistry & Physics"
+  },
+  {
+    "name": "PennyLane",
+    "description": "Scientific skill for materials science, chemistry & physics",
+    "source": "claude-scientific-skills",
+    "type": "Claude Skill",
+    "category": "Materials Science, Chemistry & Physics"
+  },
+  {
+    "name": "Qiskit",
+    "description": "Scientific skill for materials science, chemistry & physics",
+    "source": "claude-scientific-skills",
+    "type": "Claude Skill",
+    "category": "Materials Science, Chemistry & Physics"
+  },
+  {
+    "name": "QuTiP",
+    "description": "Scientific skill for materials science, chemistry & physics",
+    "source": "claude-scientific-skills",
+    "type": "Claude Skill",
+    "category": "Materials Science, Chemistry & Physics"
+  },
+  {
+    "name": "MATLAB/Octave",
+    "description": "Scientific skill for engineering & simulation",
+    "source": "claude-scientific-skills",
+    "type": "Claude Skill",
+    "category": "Engineering & Simulation"
+  },
+  {
+    "name": "FluidSim",
+    "description": "Scientific skill for engineering & simulation",
+    "source": "claude-scientific-skills",
+    "type": "Claude Skill",
+    "category": "Engineering & Simulation"
+  },
+  {
+    "name": "SimPy",
+    "description": "Scientific skill for engineering & simulation",
+    "source": "claude-scientific-skills",
+    "type": "Claude Skill",
+    "category": "Engineering & Simulation"
+  },
+  {
+    "name": "Dask",
+    "description": "Scientific skill for engineering & simulation",
+    "source": "claude-scientific-skills",
+    "type": "Claude Skill",
+    "category": "Engineering & Simulation"
+  },
+  {
+    "name": "Polars",
+    "description": "Scientific skill for engineering & simulation",
+    "source": "claude-scientific-skills",
+    "type": "Claude Skill",
+    "category": "Engineering & Simulation"
+  },
+  {
+    "name": "Vaex",
+    "description": "Scientific skill for engineering & simulation",
+    "source": "claude-scientific-skills",
+    "type": "Claude Skill",
+    "category": "Engineering & Simulation"
+  },
+  {
+    "name": "Matplotlib",
+    "description": "Scientific skill for data analysis & visualization",
+    "source": "claude-scientific-skills",
+    "type": "Claude Skill",
+    "category": "Data Analysis & Visualization"
+  },
+  {
+    "name": "Seaborn",
+    "description": "Scientific skill for data analysis & visualization",
+    "source": "claude-scientific-skills",
+    "type": "Claude Skill",
+    "category": "Data Analysis & Visualization"
+  },
+  {
+    "name": "Plotly",
+    "description": "Scientific skill for data analysis & visualization",
+    "source": "claude-scientific-skills",
+    "type": "Claude Skill",
+    "category": "Data Analysis & Visualization"
+  },
+  {
+    "name": "GeoPandas",
+    "description": "Scientific skill for data analysis & visualization",
+    "source": "claude-scientific-skills",
+    "type": "Claude Skill",
+    "category": "Data Analysis & Visualization"
+  },
+  {
+    "name": "NetworkX",
+    "description": "Scientific skill for data analysis & visualization",
+    "source": "claude-scientific-skills",
+    "type": "Claude Skill",
+    "category": "Data Analysis & Visualization"
+  },
+  {
+    "name": "SymPy",
+    "description": "Scientific skill for data analysis & visualization",
+    "source": "claude-scientific-skills",
+    "type": "Claude Skill",
+    "category": "Data Analysis & Visualization"
+  },
+  {
+    "name": "ReportLab",
+    "description": "Scientific skill for data analysis & visualization",
+    "source": "claude-scientific-skills",
+    "type": "Claude Skill",
+    "category": "Data Analysis & Visualization"
+  },
+  {
+    "name": "PyLabRobot",
+    "description": "Scientific skill for laboratory automation",
+    "source": "claude-scientific-skills",
+    "type": "Claude Skill",
+    "category": "Laboratory Automation"
+  },
+  {
+    "name": "Protocols.io",
+    "description": "Scientific skill for laboratory automation",
+    "source": "claude-scientific-skills",
+    "type": "Claude Skill",
+    "category": "Laboratory Automation"
+  },
+  {
+    "name": "Benchling",
+    "description": "Scientific skill for laboratory automation",
+    "source": "claude-scientific-skills",
+    "type": "Claude Skill",
+    "category": "Laboratory Automation"
+  },
+  {
+    "name": "LabArchives",
+    "description": "Scientific skill for laboratory automation",
+    "source": "claude-scientific-skills",
+    "type": "Claude Skill",
+    "category": "Laboratory Automation"
+  },
+  {
+    "name": "UniProt",
+    "description": "Scientific skill for scientific databases",
+    "source": "claude-scientific-skills",
+    "type": "Claude Skill",
+    "category": "Scientific Databases"
+  },
+  {
+    "name": "PDB",
+    "description": "Scientific skill for scientific databases",
+    "source": "claude-scientific-skills",
+    "type": "Claude Skill",
+    "category": "Scientific Databases"
+  },
+  {
+    "name": "AlphaFold DB",
+    "description": "Scientific skill for scientific databases",
+    "source": "claude-scientific-skills",
+    "type": "Claude Skill",
+    "category": "Scientific Databases"
+  },
+  {
+    "name": "PubChem",
+    "description": "Scientific skill for scientific databases",
+    "source": "claude-scientific-skills",
+    "type": "Claude Skill",
+    "category": "Scientific Databases"
+  },
+  {
+    "name": "ChEMBL",
+    "description": "Scientific skill for scientific databases",
+    "source": "claude-scientific-skills",
+    "type": "Claude Skill",
+    "category": "Scientific Databases"
+  },
+  {
+    "name": "DrugBank",
+    "description": "Scientific skill for scientific databases",
+    "source": "claude-scientific-skills",
+    "type": "Claude Skill",
+    "category": "Scientific Databases"
+  },
+  {
+    "name": "ZINC",
+    "description": "Scientific skill for scientific databases",
+    "source": "claude-scientific-skills",
+    "type": "Claude Skill",
+    "category": "Scientific Databases"
+  },
+  {
+    "name": "HMDB",
+    "description": "Scientific skill for scientific databases",
+    "source": "claude-scientific-skills",
+    "type": "Claude Skill",
+    "category": "Scientific Databases"
+  },
+  {
+    "name": "Ensembl",
+    "description": "Scientific skill for scientific databases",
+    "source": "claude-scientific-skills",
+    "type": "Claude Skill",
+    "category": "Scientific Databases"
+  },
+  {
+    "name": "GEO",
+    "description": "Scientific skill for scientific databases",
+    "source": "claude-scientific-skills",
+    "type": "Claude Skill",
+    "category": "Scientific Databases"
+  },
+  {
+    "name": "ENA",
+    "description": "Scientific skill for scientific databases",
+    "source": "claude-scientific-skills",
+    "type": "Claude Skill",
+    "category": "Scientific Databases"
+  },
+  {
+    "name": "GWAS Catalog",
+    "description": "Scientific skill for scientific databases",
+    "source": "claude-scientific-skills",
+    "type": "Claude Skill",
+    "category": "Scientific Databases"
+  },
+  {
+    "name": "Open Targets",
+    "description": "Scientific skill for scientific databases",
+    "source": "claude-scientific-skills",
+    "type": "Claude Skill",
+    "category": "Scientific Databases"
+  },
+  {
+    "name": "Metabolomics Workbench",
+    "description": "Scientific skill for scientific databases",
+    "source": "claude-scientific-skills",
+    "type": "Claude Skill",
+    "category": "Scientific Databases"
+  },
+  {
+    "name": "BRENDA",
+    "description": "Scientific skill for scientific databases",
+    "source": "claude-scientific-skills",
+    "type": "Claude Skill",
+    "category": "Scientific Databases"
+  },
+  {
+    "name": "USPTO",
+    "description": "Scientific skill for scientific databases",
+    "source": "claude-scientific-skills",
+    "type": "Claude Skill",
+    "category": "Scientific Databases"
+  },
+  {
+    "name": "OpenAlex",
+    "description": "Scientific skill for scientific communication",
+    "source": "claude-scientific-skills",
+    "type": "Claude Skill",
+    "category": "Scientific Communication"
+  },
+  {
+    "name": "PubMed",
+    "description": "Scientific skill for scientific communication",
+    "source": "claude-scientific-skills",
+    "type": "Claude Skill",
+    "category": "Scientific Communication"
+  },
+  {
+    "name": "bioRxiv",
+    "description": "Scientific skill for scientific communication",
+    "source": "claude-scientific-skills",
+    "type": "Claude Skill",
+    "category": "Scientific Communication"
+  },
+  {
+    "name": "Literature Review",
+    "description": "Scientific skill for scientific communication",
+    "source": "claude-scientific-skills",
+    "type": "Claude Skill",
+    "category": "Scientific Communication"
+  },
+  {
+    "name": "Scientific Writing",
+    "description": "Scientific skill for scientific communication",
+    "source": "claude-scientific-skills",
+    "type": "Claude Skill",
+    "category": "Scientific Communication"
+  },
+  {
+    "name": "LaTeX Posters",
+    "description": "Scientific skill for scientific communication",
+    "source": "claude-scientific-skills",
+    "type": "Claude Skill",
+    "category": "Scientific Communication"
+  },
+  {
+    "name": "Citation Management",
+    "description": "Scientific skill for scientific communication",
+    "source": "claude-scientific-skills",
+    "type": "Claude Skill",
+    "category": "Scientific Communication"
+  },
+  {
+    "name": "docx",
+    "description": "Create, edit, and analyze Word documents with support for tracked changes, comments, formatting preservation",
+    "source": "anthropics/skills",
+    "type": "Claude Skill",
+    "category": "Document Skills"
+  },
+  {
+    "name": "pdf",
+    "description": "Comprehensive PDF manipulation toolkit for extracting text and tables, creating new PDFs, merging/splitting documents",
+    "source": "anthropics/skills",
+    "type": "Claude Skill",
+    "category": "Document Skills"
+  },
+  {
+    "name": "pptx",
+    "description": "Create, edit, and analyze PowerPoint presentations with support for layouts, templates, charts",
+    "source": "anthropics/skills",
+    "type": "Claude Skill",
+    "category": "Document Skills"
+  },
+  {
+    "name": "xlsx",
+    "description": "Create, edit, and analyze Excel spreadsheets with support for formulas, formatting, data analysis",
+    "source": "anthropics/skills",
+    "type": "Claude Skill",
+    "category": "Document Skills"
+  },
+  {
+    "name": "algorithmic-art",
+    "description": "Create generative art using p5.js with seeded randomness, flow fields, and particle systems",
+    "source": "anthropics/skills",
+    "type": "Claude Skill",
+    "category": "Design & Creative"
+  },
+  {
+    "name": "canvas-design",
+    "description": "Design beautiful visual art in .png and .pdf formats using design philosophies",
+    "source": "anthropics/skills",
+    "type": "Claude Skill",
+    "category": "Design & Creative"
+  },
+  {
+    "name": "slack-gif-creator",
+    "description": "Create animated GIFs optimized for Slack's size constraints",
+    "source": "anthropics/skills",
+    "type": "Claude Skill",
+    "category": "Design & Creative"
+  },
+  {
+    "name": "frontend-design",
+    "description": "Avoid generic aesthetics and make bold design decisions; works well for React and Tailwind",
+    "source": "anthropics/skills",
+    "type": "Claude Skill",
+    "category": "Development"
+  },
+  {
+    "name": "artifacts-builder",
+    "description": "Build complex Claude.ai HTML artifacts using React, Tailwind CSS, and shadcn/ui components",
+    "source": "anthropics/skills",
+    "type": "Claude Skill",
+    "category": "Development"
+  },
+  {
+    "name": "mcp-builder",
+    "description": "Guide for creating high-quality MCP servers to integrate external APIs and services",
+    "source": "anthropics/skills",
+    "type": "Claude Skill",
+    "category": "Development"
+  },
+  {
+    "name": "webapp-testing",
+    "description": "Test local web applications using Playwright for UI verification and debugging",
+    "source": "anthropics/skills",
+    "type": "Claude Skill",
+    "category": "Development"
+  },
+  {
+    "name": "brand-guidelines",
+    "description": "Apply Anthropic's official brand colors and typography to artifacts",
+    "source": "anthropics/skills",
+    "type": "Claude Skill",
+    "category": "Communication"
+  },
+  {
+    "name": "internal-comms",
+    "description": "Write internal communications like status reports, newsletters, and FAQs",
+    "source": "anthropics/skills",
+    "type": "Claude Skill",
+    "category": "Communication"
+  },
+  {
+    "name": "skill-creator",
+    "description": "Interactive skill creation tool that guides you through building new skills with Q&A",
+    "source": "anthropics/skills",
+    "type": "Claude Skill",
+    "category": "Skill Creation"
+  },
+  {
+    "name": "Frontend Design",
+    "description": "Generates distinctive, production-grade frontend interfaces that avoid generic AI aesthetics",
+    "source": "mcpservers.org",
+    "type": "Claude Skill",
+    "category": "featured"
+  },
+  {
+    "name": "NotebookLM Skill",
+    "description": "Let Claude Code chat directly with NotebookLM for source-grounded answers based on your documents",
+    "source": "mcpservers.org",
+    "type": "Claude Skill",
+    "category": "featured"
+  },
+  {
+    "name": "YouTube Transcript Downloader",
+    "description": "Download YouTube video transcripts when user provides a YouTube URL",
+    "source": "mcpservers.org",
+    "type": "Claude Skill",
+    "category": "featured"
+  },
+  {
+    "name": "Markdown to EPUB",
+    "description": "Converts markdown documents and chat summaries into professional EPUB ebook files",
+    "source": "mcpservers.org",
+    "type": "Claude Skill",
+    "category": "document"
+  },
+  {
+    "name": "Knowledge Capture",
+    "description": "Turns discussions into durable knowledge in Notion with smart linking",
+    "source": "mcpservers.org",
+    "type": "Claude Skill",
+    "category": "Notion"
+  },
+  {
+    "name": "Meeting Intelligence",
+    "description": "Prepares meeting materials by gathering context from Notion and creating pre-reads",
+    "source": "mcpservers.org",
+    "type": "Claude Skill",
+    "category": "Notion"
+  },
+  {
+    "name": "Research & Documentation",
+    "description": "Searches across Notion workspace, synthesizes findings, and creates research documentation",
+    "source": "mcpservers.org",
+    "type": "Claude Skill",
+    "category": "Notion"
+  },
+  {
+    "name": "Spec to Implementation",
+    "description": "Turns product or tech specs into concrete Notion tasks that Claude Code can implement",
+    "source": "mcpservers.org",
+    "type": "Claude Skill",
+    "category": "Notion"
+  },
+  {
+    "name": "Building Cloudflare Agents",
+    "description": "Builds AI agents on Cloudflare using the Agents SDK with state management",
+    "source": "mcpservers.org",
+    "type": "Claude Skill",
+    "category": "Cloudflare"
+  },
+  {
+    "name": "Building MCP Servers on Cloudflare",
+    "description": "Builds remote MCP servers on Cloudflare Workers with OAuth authentication",
+    "source": "mcpservers.org",
+    "type": "Claude Skill",
+    "category": "Cloudflare"
+  },
+  {
+    "name": "FFUF Skill",
+    "description": "Enables Claude Code to perform intelligent web fuzzing operations to discover hidden directories",
+    "source": "mcpservers.org",
+    "type": "Claude Skill",
+    "category": "development"
+  },
+  {
+    "name": "iOS Simulator Skill",
+    "description": "Efficient iOS app building, navigation, and testing using accessibility-first automation",
+    "source": "mcpservers.org",
+    "type": "Claude Skill",
+    "category": "development"
+  },
+  {
+    "name": "Playwright Skill",
+    "description": "Enables Claude to write and execute any Playwright automation from simple to complex flows",
+    "source": "mcpservers.org",
+    "type": "Claude Skill",
+    "category": "development"
+  },
+  {
+    "name": "Canva Branded Presentation Creator",
+    "description": "Create on-brand Canva presentations from an outline or brief",
+    "source": "mcpservers.org",
+    "type": "Claude Skill",
+    "category": "Canva"
+  },
+  {
+    "name": "Canva Resize for Social Media",
+    "description": "Resize Canva designs into multiple social media formats",
+    "source": "mcpservers.org",
+    "type": "Claude Skill",
+    "category": "Canva"
+  },
+  {
+    "name": "Canva Translate",
+    "description": "Translate all text in a Canva design to another language",
+    "source": "mcpservers.org",
+    "type": "Claude Skill",
+    "category": "Canva"
+  },
+  {
+    "name": "Theme Factory",
+    "description": "Toolkit for styling artifacts with a theme. Includes 10 pre-set themes",
+    "source": "mcpservers.org",
+    "type": "Claude Skill",
+    "category": "creative"
+  },
+  {
+    "name": "Sentry Code Review",
+    "description": "Analyze and resolve Sentry comments on GitHub Pull Requests",
+    "source": "mcpservers.org",
+    "type": "Claude Skill",
+    "category": "Sentry"
+  },
+  {
+    "name": "Setup Sentry AI Agent Monitoring",
+    "description": "Setup Sentry AI Agent Monitoring in any project to track LLM calls",
+    "source": "mcpservers.org",
+    "type": "Claude Skill",
+    "category": "Sentry"
+  },
+  {
+    "name": "Image Enhancer",
+    "description": "Takes images and screenshots and enhances them to look sharper and more professional",
+    "source": "mcpservers.org",
+    "type": "Claude Skill",
+    "category": "media"
+  },
+  {
+    "name": "Code Connect Components",
+    "description": "Connects Figma design components to code components using Code Connect",
+    "source": "mcpservers.org",
+    "type": "Claude Skill",
+    "category": "Figma"
+  },
+  {
+    "name": "Create Design System Rules",
+    "description": "Generates custom design system rules for the user's codebase",
+    "source": "mcpservers.org",
+    "type": "Claude Skill",
+    "category": "Figma"
+  },
+  {
+    "name": "Implement Design",
+    "description": "Translates Figma designs into production-ready code with 1:1 visual fidelity",
+    "source": "mcpservers.org",
+    "type": "Claude Skill",
+    "category": "Figma"
+  },
+  {
+    "name": "Domain Name Brainstormer",
+    "description": "Helps find the perfect domain name by generating creative options",
+    "source": "mcpservers.org",
+    "type": "Claude Skill",
+    "category": "productivity"
+  },
+  {
+    "name": "File Organizer",
+    "description": "Acts as personal organization assistant to maintain clean file structure",
+    "source": "mcpservers.org",
+    "type": "Claude Skill",
+    "category": "productivity"
+  },
+  {
+    "name": "stripe-best-practices",
+    "description": "Best practices for building Stripe integrations including payment processing",
+    "source": "mcpservers.org",
+    "type": "Claude Skill",
+    "category": "Stripe"
+  },
+  {
+    "name": "CSV Data Summarizer",
+    "description": "Automatically analyzes CSV files and generates comprehensive insights",
+    "source": "mcpservers.org",
+    "type": "Claude Skill",
+    "category": "data-analysis"
+  },
+  {
+    "name": "Ramp Vendor Spend Analysis",
+    "description": "Analyzes vendor spend data from Ramp and exports to connected systems",
+    "source": "mcpservers.org",
+    "type": "Claude Skill",
+    "category": "data-analysis"
+  },
+  {
+    "name": "Code Review",
+    "description": "Performs comprehensive code reviews of git branches analyzing quality and security",
+    "source": "mcpservers.org",
+    "type": "Claude Skill",
+    "category": "Zapier"
+  },
+  {
+    "name": "Git Commit",
+    "description": "Generates storytelling-focused Conventional Commits messages with Jira context",
+    "source": "mcpservers.org",
+    "type": "Claude Skill",
+    "category": "Zapier"
+  },
+  {
+    "name": "Work on Ticket",
+    "description": "Fetches Jira ticket details, creates branch, and initiates task planning",
+    "source": "mcpservers.org",
+    "type": "Claude Skill",
+    "category": "Zapier"
+  },
+  {
+    "name": "Capture Tasks from Meeting Notes",
+    "description": "Analyzes meeting notes to find action items and create Jira tasks",
+    "source": "mcpservers.org",
+    "type": "Claude Skill",
+    "category": "Atlassian"
+  },
+  {
+    "name": "Generate Status Report",
+    "description": "Generates project status reports from Jira issues and publishes to Confluence",
+    "source": "mcpservers.org",
+    "type": "Claude Skill",
+    "category": "Atlassian"
+  },
+  {
+    "name": "Search Company Knowledge",
+    "description": "Searches across company knowledge bases to find internal concepts",
+    "source": "mcpservers.org",
+    "type": "Claude Skill",
+    "category": "Atlassian"
+  },
+  {
+    "name": "Spec to Backlog",
+    "description": "Converts Confluence specification documents into structured Jira backlogs",
+    "source": "mcpservers.org",
+    "type": "Claude Skill",
+    "category": "Atlassian"
+  },
+  {
+    "name": "Triage Issue",
+    "description": "Intelligently triages bug reports by searching for duplicates in Jira",
+    "source": "mcpservers.org",
+    "type": "Claude Skill",
+    "category": "Atlassian"
+  },
+  {
+    "name": "Article Extractor",
+    "description": "Extracts main content from web articles and blog posts, removing clutter",
+    "source": "mcpservers.org",
+    "type": "Claude Skill",
+    "category": "research"
+  },
+  {
+    "name": "Lead Research Assistant",
+    "description": "Identifies and qualifies potential leads by analyzing product/service",
+    "source": "mcpservers.org",
+    "type": "Claude Skill",
+    "category": "research"
+  },
+  {
+    "name": "TYPO3 Documentation",
+    "description": "Create and maintain TYPO3 extension documentation following official standards",
+    "source": "netresearch",
+    "type": "Claude Skill",
+    "category": "TYPO3"
+  },
+  {
+    "name": "TYPO3 Testing",
+    "description": "Create and manage TYPO3 extension tests with comprehensive testing infrastructure",
+    "source": "netresearch",
+    "type": "Claude Skill",
+    "category": "TYPO3"
+  },
+  {
+    "name": "TYPO3 DDEV Setup",
+    "description": "Automate DDEV environment setup for TYPO3 extension development",
+    "source": "netresearch",
+    "type": "Claude Skill",
+    "category": "TYPO3"
+  },
+  {
+    "name": "TYPO3 Core Contributions",
+    "description": "Guide contributions to TYPO3 core following official contribution guidelines",
+    "source": "netresearch",
+    "type": "Claude Skill",
+    "category": "TYPO3"
+  },
+  {
+    "name": "Jira Integration",
+    "description": "Comprehensive Jira integration through lightweight Python CLI scripts",
+    "source": "netresearch",
+    "type": "Claude Skill",
+    "category": "Project Management"
+  },
+  {
+    "name": "Git Workflow",
+    "description": "Git workflow best practices for teams and CI/CD pipelines",
+    "source": "netresearch",
+    "type": "Claude Skill",
+    "category": "Development Tools"
+  },
+  {
+    "name": "GitHub Project",
+    "description": "GitHub repository setup and platform-specific features configuration",
+    "source": "netresearch",
+    "type": "Claude Skill",
+    "category": "Development Tools"
+  },
+  {
+    "name": "Enterprise Readiness",
+    "description": "Assess software projects for enterprise-grade security and compliance",
+    "source": "netresearch",
+    "type": "Claude Skill",
+    "category": "Security"
+  },
+  {
+    "name": "Security Audit",
+    "description": "Security audit patterns for PHP applications following OWASP guidelines",
+    "source": "netresearch",
+    "type": "Claude Skill",
+    "category": "Security"
+  },
+  {
+    "name": "PHP Modernization",
+    "description": "PHP 8.x modernization patterns for upgrading legacy applications",
+    "source": "netresearch",
+    "type": "Claude Skill",
+    "category": "PHP"
+  },
+  {
+    "name": "Go Development",
+    "description": "Production-grade Go development patterns for building resilient services",
+    "source": "netresearch",
+    "type": "Claude Skill",
+    "category": "Go"
+  },
+  {
+    "name": "AGENTS.md Generator",
+    "description": "Generate and maintain AGENTS.md files following public conventions",
+    "source": "netresearch",
+    "type": "Claude Skill",
+    "category": "Documentation"
+  },
+  {
+    "name": "CLI Tools",
+    "description": "Automatic CLI tool management for coding agents with detection modes",
+    "source": "netresearch",
+    "type": "Claude Skill",
+    "category": "Development Tools"
+  },
+  {
+    "name": "Context7",
+    "description": "Fetch up-to-date library documentation via Context7 REST API",
+    "source": "netresearch",
+    "type": "Claude Skill",
+    "category": "Documentation"
+  },
+  {
+    "name": "Coach",
+    "description": "Self-improving learning system that detects friction signals",
+    "source": "netresearch",
+    "type": "Claude Skill",
+    "category": "Learning"
+  },
+  {
+    "name": "superpowers",
+    "description": "Core skills library for Claude Code with 20+ battle-tested skills including TDD, debugging, and collaboration patterns",
+    "source": "awesome-claude-skills",
+    "type": "Claude Skill",
+    "url": "https://github.com/obra/superpowers"
+  },
+  {
+    "name": "superpowers-lab",
+    "description": "Experimental skills for Claude Code Superpowers using new techniques still being refined",
+    "source": "awesome-claude-skills",
+    "type": "Claude Skill",
+    "url": "https://github.com/obra/superpowers-lab"
+  },
+  {
+    "name": "ios-simulator-skill",
+    "description": "iOS app building, navigation, and testing through automation",
+    "source": "awesome-claude-skills",
+    "type": "Claude Skill",
+    "url": "https://github.com/conorluddy/ios-simulator-skill"
+  },
+  {
+    "name": "ffuf-web-fuzzing",
+    "description": "Expert guidance for ffuf web fuzzing during penetration testing",
+    "source": "awesome-claude-skills",
+    "type": "Claude Skill",
+    "url": "https://github.com/jthack/ffuf_claude_skill"
+  },
+  {
+    "name": "playwright-skill",
+    "description": "General-purpose browser automation using Playwright",
+    "source": "awesome-claude-skills",
+    "type": "Claude Skill",
+    "url": "https://github.com/lackeyjb/playwright-skill"
+  },
+  {
+    "name": "claude-d3js-skill",
+    "description": "Visualizations in d3.js",
+    "source": "awesome-claude-skills",
+    "type": "Claude Skill",
+    "url": "https://github.com/chrisvoncsefalvay/claude-d3js-skill"
+  },
+  {
+    "name": "claude-scientific-skills",
+    "description": "Comprehensive collection of ready-to-use scientific skills",
+    "source": "awesome-claude-skills",
+    "type": "Claude Skill",
+    "url": "https://github.com/K-Dense-AI/claude-scientific-skills"
+  },
+  {
+    "name": "web-asset-generator",
+    "description": "Generates web assets like favicons, app icons, and social media images",
+    "source": "awesome-claude-skills",
+    "type": "Claude Skill",
+    "url": "https://github.com/alonw0/web-asset-generator"
+  }
+]

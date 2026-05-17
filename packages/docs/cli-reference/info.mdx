@@ -1,0 +1,26 @@
+---
+title: "elizaos info"
+description: "Show available project and plugin templates"
+---
+
+```bash
+elizaos info [options]
+```
+
+## Options
+
+| Option | Description |
+| --- | --- |
+| `-t, --template <template>` | Filter by template id. |
+| `-l, --language <lang>` | Filter by language. |
+| `-j, --json` | Output template information as JSON. |
+
+## Examples
+
+```bash
+elizaos info
+elizaos info --template project
+elizaos info --template plugin
+elizaos info --language typescript
+elizaos info --json
+```

@@ -1,0 +1,728 @@
+[Start]
+Narrator: The tavern door creaks open. Smoke and laughter fill the air. -> TavernEntry
+
+[TavernEntry]
+Narrator: Three figures catch your eye: a hooded stranger, a boisterous merchant, and the barkeep. -> TavernChoice
+
+[TavernChoice]
+1. Approach the hooded stranger. -> StrangerApproach
+2. Sit next to the merchant. -> MerchantApproach
+3. Order a drink from the barkeep. -> BarkeepApproach
+4. [Observe] Study the room from the shadows. -> ObserveRoom
+
+[ObserveRoom]
+Narrator: You notice the stranger slipping a note to the barkeep. The merchant counts gold nervously. -> ObserveChoice
+
+[ObserveChoice]
+1. Intercept the note. -> InterceptNote
+2. Pickpocket the merchant. -> PickpocketAttempt
+3. Pretend you saw nothing. -> TavernChoice
+
+[InterceptNote]
+Stranger: You dare?! -> StrangerHostile
+
+[PickpocketAttempt]
+1. [Sleight of Hand] Swiftly grab the pouch. -> PickpocketSuccess
+2. [Distraction] Bump into him accidentally. -> PickpocketDistract
+3. Abandon the attempt. -> TavernChoice
+
+[PickpocketSuccess]
+Narrator: 50 gold pieces heavier, you slip away. The merchant hasn't noticed... yet. -> PickpocketAfter
+
+[PickpocketDistract]
+Merchant: Watch it, friend! -> MerchantAnnoyed
+
+[MerchantAnnoyed]
+1. Apologize profusely. -> MerchantCalm
+2. [Intimidate] You watch where YOU'RE going. -> MerchantFight
+3. Use the distraction to grab the gold. -> PickpocketSuccess
+
+[MerchantCalm]
+Merchant: Hmph. Buy me a drink and we're even. -> MerchantFriendly
+
+[MerchantFight]
+Merchant: Why you little—! -> BarFight
+
+[PickpocketAfter]
+Narrator: But where to spend your ill-gotten gains? -> PickpocketChoice
+
+[PickpocketChoice]
+1. Buy information from the barkeep. -> BarkeepBribe
+2. Leave before anyone notices. -> TavernExit
+3. Approach the stranger with newfound confidence. -> StrangerApproach
+
+[StrangerApproach]
+Stranger: You have the look of someone seeking something. -> StrangerGreet
+
+[StrangerGreet]
+1. I seek the Crimson Blade. -> CrimsonQuestStart
+2. I'm looking for work. -> WorkOffer
+3. Who are you? -> StrangerIdentity
+4. [Insight] Something tells me you're not what you seem. -> StrangerReveal
+
+[CrimsonQuestStart]
+Stranger: The Crimson Blade? Many seek it. Few survive. -> CrimsonWarning
+
+[CrimsonWarning]
+1. I'm not like the others. -> CrimsonAccept
+2. What happened to them? -> CrimsonLore
+3. Perhaps I should reconsider... -> TavernChoice
+
+[CrimsonAccept]
+Stranger: Then you'll need a map. I have one... for a price. -> CrimsonPrice
+
+[CrimsonPrice]
+1. How much? -> CrimsonNegotiate
+2. [Persuade] Surely we can come to an arrangement. -> CrimsonDiscount
+3. I'll find my own way. -> CrimsonRefuse
+
+[CrimsonNegotiate]
+Stranger: 100 gold, or a favor to be named later. -> CrimsonDeal
+
+[CrimsonDeal]
+1. I'll pay the gold. -> CrimsonGoldPath
+2. I'll owe you a favor. -> CrimsonFavorPath
+3. [Barter] 50 gold and a minor favor. -> CrimsonCompromise
+
+[CrimsonGoldPath]
+Stranger: Wise choice. No strings attached. -> MapReceived
+
+[CrimsonFavorPath]
+Stranger: Remember, I always collect. -> MapReceivedDebt
+
+[CrimsonCompromise]
+Stranger: You drive a hard bargain. Agreed. -> MapReceivedHalf
+
+[CrimsonDiscount]
+Stranger: Your silver tongue amuses me. 75 gold, final offer. -> CrimsonDiscountDeal
+
+[CrimsonDiscountDeal]
+1. Deal. -> MapReceived
+2. Still too rich for my blood. -> CrimsonRefuse
+
+[CrimsonRefuse]
+Stranger: Your loss. The Blade waits for no one. -> TavernChoice
+
+[CrimsonLore]
+Stranger: The mountain claims them. Traps, guardians, madness itself. -> CrimsonLoreMore
+
+[CrimsonLoreMore]
+1. Guardians? -> GuardianInfo
+2. Madness? -> MadnessInfo
+3. I've heard enough. -> CrimsonWarning
+
+[GuardianInfo]
+Stranger: Stone sentinels that never sleep. Best approached with stealth... or great power. -> GuardianChoice
+
+[GuardianChoice]
+1. [Arcana] I have magical means. -> GuardianMagic
+2. [Stealth] I move like a shadow. -> GuardianStealth
+3. I'll figure it out when I get there. -> CrimsonWarning
+
+[GuardianMagic]
+Stranger: A mage, then. You may yet survive. Take this. -> MapReceived
+
+[GuardianStealth]
+Stranger: A rogue's path. Dangerous but possible. -> MapReceived
+
+[MadnessInfo]
+Stranger: The mountain whispers. Those who listen too long... never leave. -> MadnessWarning
+
+[MadnessWarning]
+1. [Willpower] My mind is steel. -> MadnessResist
+2. I'll bring ear plugs. -> StrangerLaugh
+3. This sounds too risky. -> CrimsonRefuse
+
+[MadnessResist]
+Stranger: Confidence or foolishness? We shall see. -> MapReceived
+
+[StrangerLaugh]
+Stranger: Ha! I like you. Maybe you'll be the one. -> MapReceived
+
+[MapReceived]
+Stranger: The Crimson Blade awaits at the peak of Mount Sorrow. Go. -> QuestAccepted
+
+[MapReceivedDebt]
+Stranger: Remember our deal. I will find you when the time is right. -> QuestAcceptedDebt
+
+[MapReceivedHalf]
+Stranger: A fair trade. Now go, before the trail grows cold. -> QuestAccepted
+
+[QuestAccepted]
+Narrator: You pocket the map. Your journey begins at dawn. -> QuestChoice
+
+[QuestAcceptedDebt]
+Narrator: The map feels heavy in your hands. What have you agreed to? -> QuestChoice
+
+[QuestChoice]
+1. Prepare for the journey. -> PrepareQuest
+2. Seek more information first. -> MoreInfo
+3. Recruit allies. -> RecruitChoice
+
+[PrepareQuest]
+Narrator: You gather supplies and rest. Dawn breaks cold and clear. -> JourneyBegin
+
+[MoreInfo]
+Narrator: Who might know more about Mount Sorrow? -> MoreInfoChoice
+
+[MoreInfoChoice]
+1. Ask the barkeep. -> BarkeepInfo
+2. Consult the merchant. -> MerchantInfo
+3. Return to the stranger. -> StrangerMoreInfo
+
+[BarkeepInfo]
+Barkeep: Mount Sorrow? My grandfather went there once. Came back without his voice. Said he traded it for wisdom. -> BarkeepWisdom
+
+[BarkeepWisdom]
+1. What wisdom? -> BarkeepSecret
+2. That's disturbing. -> QuestChoice
+3. [Empathy] It must have been hard for your family. -> BarkeepTrust
+
+[BarkeepSecret]
+Barkeep: He wrote it down before he died. Want to see? -> BarkeepOffer
+
+[BarkeepOffer]
+1. Yes, show me. -> BarkeepJournal
+2. What's the catch? -> BarkeepPrice
+3. I prefer to discover myself. -> QuestChoice
+
+[BarkeepJournal]
+Barkeep: It says: "The silence speaks truth. Listen with your heart, not your ears." -> JournalWisdom
+
+[JournalWisdom]
+Narrator: Cryptic, but perhaps useful. You commit it to memory. -> QuestChoice
+
+[BarkeepPrice]
+Barkeep: Smart. 20 gold for the journal. -> BarkeepDeal
+
+[BarkeepDeal]
+1. Fair enough. -> BarkeepJournal
+2. Too expensive. -> QuestChoice
+3. [Haggle] 10 gold. -> BarkeepHaggle
+
+[BarkeepHaggle]
+Barkeep: 15. Take it or leave it. -> BarkeepFinal
+
+[BarkeepFinal]
+1. Deal. -> BarkeepJournal
+2. I'll pass. -> QuestChoice
+
+[BarkeepTrust]
+Barkeep: You're kind. Take the journal. He would have wanted it to help someone. -> BarkeepJournal
+
+[MerchantInfo]
+Merchant: Mount Sorrow? I've sold equipment to three expeditions. None returned for refunds. -> MerchantSales
+
+[MerchantSales]
+1. What equipment did they buy? -> MerchantGear
+2. Sounds profitable for you. -> MerchantCynical
+3. Would you sell to me? -> MerchantShop
+
+[MerchantGear]
+Merchant: Climbing tools, wards against magic, and plenty of rope. Most came back for more rope. -> GearAdvice
+
+[GearAdvice]
+Narrator: Perhaps you should stock up. -> MerchantShop
+
+[MerchantCynical]
+Merchant: Hey, a sale's a sale. Not my fault if they don't come back. -> MerchantDefend
+
+[MerchantDefend]
+1. [Morality] That's cold. -> MerchantShame
+2. Fair point. Business is business. -> MerchantFriendly
+3. Do you feel any guilt? -> MerchantConfess
+
+[MerchantShame]
+Merchant: ...I light a candle for each of them. Not that it helps. -> MerchantConfess
+
+[MerchantConfess]
+Merchant: Look, take this charm. It's supposed to protect against curses. For free. Consider it penance. -> CharmReceived
+
+[CharmReceived]
+Narrator: You receive a strange amulet. It pulses faintly with warmth. -> QuestChoice
+
+[MerchantShop]
+Merchant: I've got rope, torches, climbing picks, and a potion or two. What'll it be? -> ShopChoice
+
+[ShopChoice]
+1. I'll take the climbing gear. -> BuyGear
+2. What potions do you have? -> PotionList
+3. I'm good for now. -> QuestChoice
+
+[BuyGear]
+Merchant: 30 gold for the full kit. Worth every copper. -> GearPurchase
+
+[GearPurchase]
+1. I'll take it. -> GearBought
+2. [Haggle] 20 gold. -> GearHaggle
+3. Maybe later. -> ShopChoice
+
+[GearBought]
+Narrator: You're now equipped for climbing. The mountain won't know what hit it. -> QuestChoice
+
+[GearHaggle]
+Merchant: 25, and that's robbery. -> GearFinal
+
+[GearFinal]
+1. Fine, 25. -> GearBought
+2. Too rich. -> ShopChoice
+
+[PotionList]
+Merchant: Healing, night vision, and one I call "liquid courage." Makes you immune to fear for an hour. -> PotionChoice
+
+[PotionChoice]
+1. The healing potion. -> BuyHealing
+2. Night vision sounds useful. -> BuyNightVision
+3. Liquid courage—I might need that. -> BuyCourage
+4. One of each. -> BuyAll
+5. I'll pass on potions. -> ShopChoice
+
+[BuyHealing]
+Narrator: A red vial joins your pack. Better than dying. -> ShopChoice
+
+[BuyNightVision]
+Narrator: A blue vial. The darkness won't hide dangers from you now. -> ShopChoice
+
+[BuyCourage]
+Narrator: A golden vial. For when fear is the enemy. -> ShopChoice
+
+[BuyAll]
+Merchant: Big spender! 60 gold for the lot. -> BuyAllDeal
+
+[BuyAllDeal]
+1. Worth it. -> AllPotionsBought
+2. Just the healing potion then. -> BuyHealing
+
+[AllPotionsBought]
+Narrator: Your pack clinks with vials. You feel prepared. -> QuestChoice
+
+[StrangerMoreInfo]
+Stranger: Back so soon? Afraid? -> StrangerReturn
+
+[StrangerReturn]
+1. Cautious, not afraid. -> StrangerRespect
+2. Tell me more about the guardians. -> GuardianInfo
+3. What's really up there? -> StrangerTruth
+
+[StrangerRespect]
+Stranger: Wisdom. Most charge in blindly. Ask your questions. -> StrangerQuestions
+
+[StrangerQuestions]
+1. How did you get a map? -> StrangerOrigin
+2. Have you been there yourself? -> StrangerPast
+3. I'm ready now. -> JourneyBegin
+
+[StrangerOrigin]
+Stranger: I... found it. On someone who no longer needed it. -> StrangerDark
+
+[StrangerDark]
+1. You killed them? -> StrangerAccuse
+2. They died on the mountain? -> StrangerClarity
+3. I don't want to know. -> StrangerQuestions
+
+[StrangerAccuse]
+Stranger: Would it matter? They're dead. The map lives on. As might you. -> StrangerQuestions
+
+[StrangerClarity]
+Stranger: The mountain took them. I merely... recovered what was left. -> StrangerQuestions
+
+[StrangerPast]
+Stranger: Once. Long ago. I left something there. Something I can never retrieve. -> StrangerRegret
+
+[StrangerRegret]
+1. What did you leave? -> StrangerSecret
+2. I'm sorry. -> StrangerQuestions
+3. [Insight] You lost someone, didn't you? -> StrangerVulnerable
+
+[StrangerSecret]
+Stranger: My name. The mountain takes something from everyone. -> StrangerWarningFinal
+
+[StrangerVulnerable]
+Stranger: ...Her name was Elena. She heard the whispers and... walked off the cliff. Smiling. -> StrangerGrief
+
+[StrangerGrief]
+1. I'll be careful. -> StrangerBlessing
+2. Maybe the blade can bring her back? -> StrangerHope
+3. Some things are worth the risk. -> StrangerBlessing
+
+[StrangerHope]
+Stranger: The legends say it can cut anything. Even death. But legends lie. -> StrangerBlessing
+
+[StrangerBlessing]
+Stranger: Go then. And may you find what you seek... without losing what you have. -> JourneyBegin
+
+[StrangerWarningFinal]
+Stranger: Guard your identity. The mountain will try to take it. -> JourneyBegin
+
+[StrangerTruth]
+Stranger: Power. Madness. Death. And one blade that can end wars or start them. -> StrangerQuestions
+
+[RecruitChoice]
+Narrator: Who might join your quest? -> RecruitOptions
+
+[RecruitOptions]
+1. The stranger seems capable. -> RecruitStranger
+2. The merchant knows the gear. -> RecruitMerchant
+3. Perhaps the barkeep has contacts. -> RecruitBarkeep
+4. I work better alone. -> JourneyBegin
+
+[RecruitStranger]
+Stranger: Join you? I gave up adventuring when Elena... No. But I'll wait here. If you return, drinks are on me. -> RecruitFail
+
+[RecruitFail]
+Narrator: Your party remains at one. Perhaps for the best. -> JourneyBegin
+
+[RecruitMerchant]
+Merchant: Me? Climb a mountain? Ha! I'll sell you supplies, but I like living too much. -> RecruitFail
+
+[RecruitBarkeep]
+Barkeep: I know a sellsword who comes through sometimes. Name's Kira. She's... intense. -> KiraIntro
+
+[KiraIntro]
+1. Where can I find her? -> KiraLocation
+2. What's her rate? -> KiraRate
+3. Intense how? -> KiraWarning
+
+[KiraLocation]
+Barkeep: She's in the back room. Blue cloak, two swords. Can't miss her. -> KiraMeet
+
+[KiraRate]
+Barkeep: She negotiates. Bring coin and patience. -> KiraMeet
+
+[KiraWarning]
+Barkeep: She's never failed a contract. But she's got... rules. Strange ones. Don't break them. -> KiraMeet
+
+[KiraMeet]
+Narrator: You find Kira sharpening her blade in the dim light. -> KiraApproach
+
+[KiraApproach]
+Kira: State your business. I don't do small talk. -> KiraOffer
+
+[KiraOffer]
+1. I need a sword for a mountain expedition. -> KiraJob
+2. [Flattery] Your reputation precedes you. -> KiraFlattery
+3. How much to keep me alive? -> KiraDirect
+
+[KiraJob]
+Kira: Mountain? Which one? -> KiraWhich
+
+[KiraWhich]
+Kira: Mount Sorrow? -> KiraSorrow
+
+[KiraSorrow]
+1. You've heard of it. -> KiraKnows
+2. Is that a problem? -> KiraConcern
+3. The same. Will you come? -> KiraDecision
+
+[KiraKnows]
+Kira: Everyone's heard of it. Not everyone's stupid enough to go. -> KiraConcern
+
+[KiraConcern]
+Kira: Problem? It's suicide. But the pay would need to match. -> KiraPrice
+
+[KiraPrice]
+1. Name your price. -> KiraNaming
+2. [Persuade] Think of the glory. -> KiraGlory
+3. Forget it, you're too expensive. -> RecruitFail
+
+[KiraNaming]
+Kira: 200 gold. Half now, half when we're done. If we survive, you owe me a story. -> KiraDeal
+
+[KiraDeal]
+1. Deal. -> KiraJoins
+2. [Haggle] 150. -> KiraHaggle
+3. Too steep. -> RecruitFail
+
+[KiraJoins]
+Kira: Then we leave at dawn. Don't be late. I won't wait. -> PartyFormed
+
+[KiraHaggle]
+Kira: 175. And you carry the supplies. -> KiraHaggleFinal
+
+[KiraHaggleFinal]
+1. Agreed. -> KiraJoins
+2. Fine, 200 it is. -> KiraJoins
+3. I'll go alone. -> RecruitFail
+
+[KiraGlory]
+Kira: Glory doesn't pay for food. But... the Crimson Blade is legendary. 150 gold. -> KiraDeal
+
+[KiraFlattery]
+Kira: Flattery is cheap. What do you want? -> KiraJob
+
+[KiraDirect]
+Kira: Depends on the threat. Mount Sorrow? That's 200 gold minimum. -> KiraDeal
+
+[KiraDecision]
+Kira: If you're going to Sorrow, you'll need me. 200 gold. Take it or leave it. -> KiraDeal
+
+[PartyFormed]
+Narrator: With Kira at your side, the odds feel slightly less suicidal. -> JourneyBegin
+
+[MerchantApproach]
+Merchant: Ah, a customer perhaps? Or just looking for company? -> MerchantGreet
+
+[MerchantGreet]
+1. What are you selling? -> MerchantShop
+2. You look worried. What's wrong? -> MerchantTrouble
+3. [Examine] What's in that heavy pouch? -> MerchantSuspicious
+
+[MerchantTrouble]
+Merchant: It's nothing. Just... debts. Powerful people. You know how it is. -> MerchantDebt
+
+[MerchantDebt]
+1. How much do you owe? -> MerchantAmount
+2. Who's after you? -> MerchantCreditor
+3. Not my problem. -> TavernChoice
+
+[MerchantAmount]
+Merchant: 500 gold. By month's end, or... -> MerchantThreat
+
+[MerchantThreat]
+1. I could help. For a price. -> MerchantHelp
+2. [Intimidate] Pay me and I'll make the problem disappear. -> MerchantHit
+3. Sounds dangerous. Good luck. -> TavernChoice
+
+[MerchantHelp]
+Merchant: What kind of price? -> MerchantBargain
+
+[MerchantBargain]
+1. Your entire inventory. -> MerchantDeal
+2. Information about Mount Sorrow. -> MerchantInfoDeal
+3. A partnership. 50/50 on profits. -> MerchantPartner
+
+[MerchantDeal]
+Merchant: Everything? I... alright. Save me and it's yours. -> MerchantAllied
+
+[MerchantInfoDeal]
+Merchant: Information? I know expeditions. Gear lists. Who came back. It's yours if you help. -> MerchantAllied
+
+[MerchantPartner]
+Merchant: A partner? That's... actually fair. You help with this, and we split future profits. Deal? -> MerchantAllied
+
+[MerchantAllied]
+Narrator: You've gained a potential ally—or liability. Time will tell. -> TavernChoice
+
+[MerchantHit]
+Merchant: You're... offering to kill them? That's dark. But effective. 100 gold if you do. -> HitChoice
+
+[HitChoice]
+1. Consider it done. -> HitAccepted
+2. [Morality] No, I was joking. -> TavernChoice
+3. Make it 200. -> HitNegotiate
+
+[HitAccepted]
+Narrator: You've accepted a contract to kill. This will have consequences. -> MerchantAllied
+
+[HitNegotiate]
+Merchant: 150. That's all I have left. -> HitFinal
+
+[HitFinal]
+1. Fine. 150. -> HitAccepted
+2. Too low. Find someone else. -> TavernChoice
+
+[MerchantCreditor]
+Merchant: A guild. The Black Ledger. They don't forgive debts. -> MerchantAmount
+
+[MerchantSuspicious]
+Merchant: It's just gold! Honestly earned! Why would you—are you with THEM?! -> MerchantPanic
+
+[MerchantPanic]
+1. [Calm] Easy, I'm not with anyone. -> MerchantCalm
+2. Maybe I am. Maybe I'm not. -> MerchantTerror
+3. [Bluff] The Black Ledger sends their regards. -> MerchantTerror
+
+[MerchantTerror]
+Merchant: Please! I can pay! I just need more time! -> MerchantBeg
+
+[MerchantBeg]
+1. [Mercy] Relax, I'm messing with you. -> MerchantRelief
+2. Then the information you have is mine. -> MerchantBribed
+3. [Evil] Time's up. -> MerchantFate
+
+[MerchantRelief]
+Merchant: Oh thank the gods. You nearly gave me a heart attack. Drinks on me. -> MerchantFriendly
+
+[MerchantBribed]
+Merchant: Anything! Ask and it's yours! -> MerchantInfoDeal
+
+[MerchantFate]
+Narrator: The merchant's scream is cut short. The tavern falls silent. -> BarFight
+
+[MerchantFriendly]
+Merchant: You're alright, friend. Let me know if you need gear or trade contacts. -> TavernChoice
+
+[BarkeepApproach]
+Barkeep: What'll it be? Ale, wine, or something stronger? -> DrinkChoice
+
+[DrinkChoice]
+1. Ale. -> DrinkAle
+2. Wine. -> DrinkWine
+3. Something stronger. -> DrinkStrong
+4. Information. -> BarkeepInfo
+
+[DrinkAle]
+Barkeep: Classic choice. 2 copper. -> DrinkServed
+
+[DrinkWine]
+Barkeep: From the southern vineyards. 5 copper. -> DrinkServed
+
+[DrinkStrong]
+Barkeep: Dwarven Fire. You sure? It's knocked out knights. -> StrongConfirm
+
+[StrongConfirm]
+1. [Constitution] I can handle it. -> DrinkServed
+2. Maybe just ale. -> DrinkAle
+3. Give me a double. -> DrinkDouble
+
+[DrinkDouble]
+Barkeep: Your funeral. -> DrinkPassed
+
+[DrinkPassed]
+Narrator: The world spins. Then goes dark. You wake up in an alley, missing 50 gold. -> RobbedWake
+
+[RobbedWake]
+1. [Rage] WHO TOOK MY GOLD?! -> AlleyRage
+2. Check your belongings. -> AlleyCheck
+3. [Calm] Assess the situation. -> AlleyCalm
+
+[AlleyRage]
+Narrator: Your shout echoes. A rat scurries away. No answers come. -> AlleyCheck
+
+[AlleyCheck]
+Narrator: Your pack is intact. The map is still there. But your coin pouch is lighter. -> TavernReturn
+
+[AlleyCalm]
+Narrator: You take stock. Gold gone, but otherwise unharmed. Could be worse. -> TavernReturn
+
+[TavernReturn]
+Narrator: You stumble back to the tavern. The barkeep smirks. -> BarkeepSmirk
+
+[BarkeepSmirk]
+1. You let someone rob me! -> BarkeepAccuse
+2. [Humor] I'll have what I had. -> BarkeepLaugh
+3. Never again. -> TavernChoice
+
+[BarkeepAccuse]
+Barkeep: I told you Dwarven Fire knocks out knights. Not my fault you didn't listen. -> TavernChoice
+
+[BarkeepLaugh]
+Barkeep: Ha! You've got spirit. This one's on the house. -> DrinkServed
+
+[DrinkServed]
+Narrator: The drink warms your belly. The world feels slightly better. -> TavernChoice
+
+[BarkeepBribe]
+Barkeep: Information costs. 20 gold and I'll tell you what I know about the castle nearby. -> BarkeepDeal
+
+[StrangerHostile]
+Stranger: You've made a dangerous enemy today. -> StrangerChoice
+
+[StrangerChoice]
+1. [Fight] Then let's end this now. -> StrangerFight
+2. [Apologize] I meant no offense! -> StrangerCalm
+3. [Flee] Run for the door! -> TavernExit
+
+[StrangerFight]
+Narrator: Blades flash. The stranger is fast—too fast. -> StrangerBattle
+
+[StrangerBattle]
+1. [Attack] Press the advantage. -> StrangerWound
+2. [Defend] Focus on survival. -> StrangerStalemate
+3. [Yield] I surrender! -> StrangerMercy
+
+[StrangerWound]
+Narrator: You land a cut, but so does she. Blood drips from both of you. -> StrangerStalemate
+
+[StrangerStalemate]
+Stranger: Enough. You fight well. Perhaps we started poorly. -> StrangerTruce
+
+[StrangerTruce]
+1. Agreed. Start over? -> StrangerGreet
+2. I don't trust you. -> TavernExit
+3. [Suspicious] Why the sudden change? -> StrangerExplain
+
+[StrangerExplain]
+Stranger: I test potential allies. You passed. -> StrangerGreet
+
+[StrangerMercy]
+Stranger: Coward. But at least you're smart. Leave my sight. -> TavernChoice
+
+[StrangerCalm]
+Stranger: Words are wind. But I'll give you one chance. Explain yourself. -> StrangerExplain2
+
+[StrangerExplain2]
+1. I was curious about the note. -> StrangerNote
+2. I'm seeking the Crimson Blade. -> CrimsonQuestStart
+3. [Lie] I thought you were someone else. -> StrangerLie
+
+[StrangerNote]
+Stranger: The note is none of your concern. But since you're bold... -> StrangerGreet
+
+[StrangerLie]
+Stranger: [Narrows eyes] You're lying. But I appreciate the attempt. -> StrangerGreet
+
+[StrangerReveal]
+Stranger: Perceptive. I was once known as the Shadow of Eloria. Now I am no one. -> StrangerIdentity
+
+[StrangerIdentity]
+1. The assassin?! -> StrangerFamous
+2. What are you doing here? -> StrangerPurpose
+3. I've never heard of you. -> StrangerOffended
+
+[StrangerFamous]
+Stranger: Former. Retired. Mostly. -> StrangerGreet
+
+[StrangerPurpose]
+Stranger: Waiting. For someone like you, perhaps. -> StrangerGreet
+
+[StrangerOffended]
+Stranger: Good. That means I did my job well. -> StrangerGreet
+
+[WorkOffer]
+Stranger: Work? I have a task. Dangerous. Well-paid. Interested? -> WorkChoice
+
+[WorkChoice]
+1. What's the job? -> WorkDetails
+2. How dangerous? -> WorkRisk
+3. How much? -> WorkPay
+
+[WorkDetails]
+Stranger: Retrieve an item from the old crypt. A ring. Don't ask what it does. -> WorkAccept
+
+[WorkRisk]
+Stranger: Undead. Traps. The usual. -> WorkDetails
+
+[WorkPay]
+Stranger: 100 gold on completion. More if you're fast. -> WorkAccept
+
+[WorkAccept]
+1. I'll do it. -> SideQuestAccepted
+2. I need more information. -> WorkDetails
+3. I have other priorities. -> StrangerGreet
+
+[SideQuestAccepted]
+Stranger: Good. Come back when it's done. Don't die. -> TavernChoice
+
+[BarFight]
+Narrator: Tables overturn! The tavern erupts into chaos! -> BarFightChoice
+
+[BarFightChoice]
+1. [Fight] Join the brawl! -> BarFightWin
+2. [Flee] Slip out the back! -> TavernExit
+3. [Hide] Duck under a table! -> BarFightHide
+
+[BarFightWin]
+Narrator: Fists fly. You emerge victorious, bruised but alive. -> BarFightAfter
+
+[BarFightHide]
+Narrator: Chaos swirls above as you wait it out. Eventually, calm returns. -> BarFightAfter
+
+[BarFightAfter]
+Barkeep: OUT! All of you! I'm closing early! -> TavernExit
+
+[TavernExit]
+Narrator: The cool night air greets you. The adventure continues... elsewhere. -> End
+
+[JourneyBegin]
+Narrator: The mountain looms in the distance. Your destiny awaits. -> End

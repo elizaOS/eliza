@@ -1,0 +1,62 @@
+[
+  {
+    "ticket_id": "TK-601",
+    "title": "API calls returning 500 error",
+    "description": "When calling /api/v2/orders, intermittent 500 Internal Server Error responses occur, roughly 3 out of every 10 requests fail. Started yesterday afternoon.",
+    "reporter": "Dev Dept - Engineer Chen",
+    "department": "Dev Dept",
+    "priority": "high",
+    "status": "open",
+    "created_at": "2026-03-25T14:00:00Z",
+    "tags": ["API", "500 error", "technical"],
+    "category": "technical"
+  },
+  {
+    "ticket_id": "TK-602",
+    "title": "How to bulk export data",
+    "description": "Need to export customer order data from the last 3 months, approximately 200,000 records. The admin panel export keeps timing out. Is there another method?",
+    "reporter": "Ops Dept - Liu",
+    "department": "Ops Dept",
+    "priority": "medium",
+    "status": "open",
+    "created_at": "2026-03-25T09:30:00Z",
+    "tags": ["export", "data", "usage inquiry"],
+    "category": "usage inquiry"
+  },
+  {
+    "ticket_id": "TK-603",
+    "title": "Login page loads very slowly",
+    "description": "Since 8 AM this morning, the login page takes 15-20 seconds to load, sometimes even timing out. Other pages are fine. Browser cache has been cleared, problem persists.",
+    "reporter": "Marketing Dept - Manager Zhao",
+    "department": "Marketing Dept",
+    "priority": "high",
+    "status": "open",
+    "created_at": "2026-03-25T08:20:00Z",
+    "tags": ["performance", "login", "slow loading"],
+    "category": "performance"
+  },
+  {
+    "ticket_id": "TK-604",
+    "title": "Printer cannot connect",
+    "description": "The 4th floor network printer cannot be connected. Restarting the printer still does not discover the device.",
+    "reporter": "Admin Dept - Li",
+    "department": "Admin Dept",
+    "priority": "low",
+    "status": "open",
+    "created_at": "2026-03-25T10:00:00Z",
+    "tags": ["hardware", "printer"],
+    "category": "hardware"
+  },
+  {
+    "ticket_id": "TK-605",
+    "title": "Permission settings not taking effect",
+    "description": "Configured 'Data Analyst' role permissions for 3 users in the admin panel. After saving, users report they still cannot access the analytics dashboard. Have waited 30 minutes.",
+    "reporter": "Data Dept - Supervisor Wang",
+    "department": "Data Dept",
+    "priority": "medium",
+    "status": "open",
+    "created_at": "2026-03-25T11:00:00Z",
+    "tags": ["permissions", "configuration", "technical"],
+    "category": "technical"
+  }
+]

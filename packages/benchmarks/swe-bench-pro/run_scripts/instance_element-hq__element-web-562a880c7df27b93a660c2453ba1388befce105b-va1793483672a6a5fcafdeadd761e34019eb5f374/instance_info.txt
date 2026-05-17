@@ -1,0 +1,6 @@
+Instance ID: instance_element-hq__element-web-562a880c7df27b93a660c2453ba1388befce105b-va1793483672a6a5fcafdeadd761e34019eb5f374
+Repository: element-hq/element-web
+Base Commit: 6bb47ec710d16bd3d286c3e7a88f9698712ad10f
+Test Files: ["test/components/structures/ThreadPanel-test.ts", "test/components/structures/__snapshots__/ThreadPanel-test.tsx.snap", "test/components/structures/ThreadPanel-test.tsx"]
+FAIL_TO_PASS: ["test/components/structures/ThreadPanel-test.tsx | Header | expect that All filter for ThreadPanelHeader properly renders Show: All threads", "test/components/structures/ThreadPanel-test.tsx | Header | expect that My filter for ThreadPanelHeader properly renders Show: My threads", "test/components/structures/ThreadPanel-test.tsx | Header | expect that ThreadPanelHeader properly opens a context menu when clicked on the button", "test/components/structures/ThreadPanel-test.tsx | Header | expect that ThreadPanelHeader has the correct option selected in the context menu"]
+PASS_TO_PASS: []

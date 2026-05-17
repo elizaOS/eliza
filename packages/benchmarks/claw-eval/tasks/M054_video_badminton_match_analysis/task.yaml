@@ -1,0 +1,49 @@
+task_id: M054_video_badminton_match_analysis
+task_name: Video Badminton Match Serve and Score Analysis
+version: "1.0"
+category: video_qa
+difficulty: hard
+tags: [multimodal]
+
+services: []
+
+prompt:
+  text: |
+    The container has the following file:
+    - /workspace/fixtures/video.webm
+
+    This video shows the second game of a badminton match. Based on the video content, how many games were played in total in this match? Then, for the 1st point, the 10th point, and the last point of the second game, please identify: who served, whether they served from the left or right half of the court, and who scored the point.
+  language: en
+
+tools: []
+tool_endpoints: []
+
+sandbox_files:
+  - fixtures/video.webm
+
+sandbox_grader_files: []
+
+env_snapshot_commands: []
+env_snapshot_files: []
+
+environment:
+  timeout_seconds: 600
+  max_turns: 30
+  env_snapshot_timeout: 10
+
+scoring_components: []
+safety_checks: []
+expected_actions: []
+
+judge_rubric: ""
+
+reference_solution: |
+  Use sandbox_read_media to analyze the badminton match video.
+  Total games: 3.
+  Game 2 point 1: Shi Yuqi serves, right court, Axelsen scores.
+  Game 2 point 10: Shi Yuqi serves, left court, Axelsen scores.
+  Game 2 last point: Axelsen serves, right court, Axelsen scores.
+
+primary_dimensions:
+  - completion
+  - robustness

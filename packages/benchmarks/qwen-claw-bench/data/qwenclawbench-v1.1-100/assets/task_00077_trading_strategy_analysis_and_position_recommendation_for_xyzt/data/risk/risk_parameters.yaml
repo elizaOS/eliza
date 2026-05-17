@@ -1,0 +1,43 @@
+# Risk Management Parameters
+# Updated: 2024-11-15
+# Risk Committee Approved: 2024-10-01
+
+position_limits:
+  max_position_pct: 10.0          # Max single position as % of total portfolio
+  max_daily_loss_pct: 2.0         # Max allowable daily loss as % of portfolio
+  max_sector_exposure_pct: 25.0   # Max exposure to any single sector
+
+sector_exposure:
+  current:
+    Technology: 18.0
+    Healthcare: 12.0
+    Energy: 8.0
+    Financials: 14.0
+  notes: "Sector exposure calculated as % of total portfolio value"
+
+ticker_classification:
+  XYZT: Technology
+  ABCD: Technology
+  EFGH: Technology
+  IJKL: Healthcare
+  MNOP: Energy
+  QRST: Financials
+  UVWX: Healthcare
+
+volatility:
+  regime: elevated
+  VIX_current: 22.5
+  VIX_threshold_caution: 25.0
+  VIX_threshold_halt: 30.0
+  notes: "Elevated volatility regime requires additional position sizing review"
+
+correlation_risk:
+  correlation_threshold: 0.7      # Positions with correlation above this require review
+  max_correlated_positions: 3     # Max number of highly correlated positions allowed
+  review_required: true
+  notes: "Correlation values should be in decimal format (0.0 to 1.0)"
+
+drawdown_limits:
+  max_portfolio_drawdown_pct: 8.0
+  current_drawdown_pct: 1.2
+  trailing_stop_default_pct: 5.0

@@ -1,0 +1,42 @@
+[
+  {
+    "message_id": "msg_601",
+    "from": "liwei@zhonghe-group.com",
+    "to": "support@company.com",
+    "subject": "Urgent complaint: Bill amount doubled for two consecutive months",
+    "date": "2026-03-25T08:00:00+08:00",
+    "is_read": false,
+    "labels": ["inbox", "important"],
+    "body": "Hello, I am Li Wei from Zhonghe Group. We purchased the standard edition service with a contract monthly fee of 120,000 CNY, but both the February and March bills show 240,000 CNY, exactly double. I have already raised this with our sales representative but received no response. If this is not resolved this week, we will consider terminating the contract. Please handle this promptly."
+  },
+  {
+    "message_id": "msg_602",
+    "from": "wangmin@qianfeng-tech.com",
+    "to": "support@company.com",
+    "subject": "Follow-up on refund request",
+    "date": "2026-03-24T16:30:00+08:00",
+    "is_read": false,
+    "labels": ["inbox"],
+    "body": "Hello, I am Wang Min from Qianfeng Tech. Last month we experienced a 3-day service outage (March 1-3) that caused us approximately 50,000 CNY in lost orders. Customer support promised compensation at the time, but we have not received the refund to date. Our customer ID is CUS-602, please follow up."
+  },
+  {
+    "message_id": "msg_603",
+    "from": "zhanghua@sunlight-media.com",
+    "to": "support@company.com",
+    "subject": "Untimely feature downgrade notification",
+    "date": "2026-03-25T10:00:00+08:00",
+    "is_read": false,
+    "labels": ["inbox"],
+    "body": "Hello, this is Sunlight Media. Our premium features were downgraded to the basic edition on March 15, but we did not discover this until March 20 on our own and received no notification whatsoever. We would like to understand the reason and have our features restored. Our customer ID is CUS-603."
+  },
+  {
+    "message_id": "msg_604",
+    "from": "newsletter@industry-weekly.com",
+    "to": "support@company.com",
+    "subject": "SaaS Industry Weekly - 2026 Issue 12",
+    "date": "2026-03-25T07:00:00+08:00",
+    "is_read": true,
+    "labels": ["inbox"],
+    "body": "This week's highlights: Enterprise SaaS renewal rates decline by 5%..."
+  }
+]

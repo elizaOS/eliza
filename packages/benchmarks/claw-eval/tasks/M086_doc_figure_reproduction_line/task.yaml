@@ -1,0 +1,49 @@
+task_id: M086_doc_figure_reproduction_line
+task_name: Document Figure Reproduction - Line Chart
+version: "1.0"
+category: doc_extraction
+difficulty: hard
+tags: [multimodal]
+services: []
+prompt:
+  text: |
+    The container has the following file:
+    - /workspace/fixtures/2512.17495v2.pdf
+
+    I am preparing a presentation on the GroundingME benchmark and I need to
+    accurately recreate its fine-tuning performance chart.
+
+    Please locate Figure 6 ("Out-of-domain performance of fine-tuned
+    Qwen3-VL-8B-Instruct...") in the paper. Write a Python script named
+    /workspace/reproduce_fig6.py that fully reconstructs this chart. Ensure all
+    details are consistent with the original figure.
+
+    Execute the script and save the image as /workspace/figure6_reproduce.png.
+  language: en
+tools: []
+tool_endpoints: []
+sandbox_files:
+  - fixtures/2512.17495v2.pdf
+sandbox_grader_files: []
+local_grader_files:
+  - fixtures/gt.png
+env_snapshot_commands: []
+env_snapshot_files:
+  - /workspace/reproduce_fig6.py
+  - /workspace/figure6_reproduce.png
+environment:
+  timeout_seconds: 600
+  max_turns: 30
+  env_snapshot_timeout: 10
+scoring_components: []
+safety_checks: []
+expected_actions: []
+judge_rubric: ""
+reference_solution: |
+  Read PDF Figure 6, write Python script using matplotlib to procedurally
+  reconstruct the line chart with markers, 5 SFT data ratios, two lines,
+  two horizontal dashed baselines, and data point annotations. Execute to
+  generate PNG.
+primary_dimensions:
+  - completion
+  - robustness

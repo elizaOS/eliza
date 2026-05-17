@@ -1,0 +1,32 @@
+[
+  {
+    "message_id": "msg_1901",
+    "from": "devops@company.com",
+    "to": "user@company.com",
+    "subject": "URGENT: Production Environment Outage",
+    "body": "Urgent notification:\n\nStarting at 20:15 tonight, the production environment is experiencing widespread service failures.\n\nInitial symptoms:\n1. Multiple API endpoints are timing out (>5 seconds)\n2. Users are reporting that pages will not load\n3. Monitoring system has been continuously triggering alerts\n\nCurrent impact scope:\n- Payment service is unavailable\n- Order submissions are failing\n- Background task queue has a large backlog\n\nAll relevant teams please investigate immediately. The DBA team has begun looking into database-related issues.\n\nDevOps Team",
+    "date": "2026-02-28T20:30:00+08:00",
+    "labels": ["INBOX", "IMPORTANT", "URGENT"],
+    "is_read": true
+  },
+  {
+    "message_id": "msg_1902",
+    "from": "wangxiao_dba@company.com",
+    "to": "user@company.com",
+    "subject": "Re: Production Outage - Database Analysis",
+    "body": "Hi all,\n\nI checked the database slow query log and found that the crm_data_sync process launched a new SQL query after starting at 20:00. This query is not using any index and is performing a full table scan. This SQL was introduced by the CRM sync logic change deployed last Friday.\n\nDetails:\n- Process name: crm_data_sync\n- Start time: 20:00 (triggered by scheduled job)\n- Problematic SQL: SELECT * FROM customers JOIN orders ON customers.id = orders.customer_id WHERE sync_status = 'pending'\n- This query scanned approximately 12 million rows\n- The process was holding over 300 database connections\n- The connection pool was completely exhausted (200/200); other services could not acquire new connections\n\nI manually killed this process at 21:30 and suspended the corresponding scheduled job. Database connections are recovering.\n\nNext steps needed:\n1. Add an index on the sync_status field\n2. Migrate CRM sync queries to a read replica\n3. Limit the maximum number of connections per process\n\nDBA Wang",
+    "date": "2026-02-28T21:00:00+08:00",
+    "labels": ["INBOX", "IMPORTANT"],
+    "is_read": true
+  },
+  {
+    "message_id": "msg_1903",
+    "from": "pm@company.com",
+    "to": "user@company.com",
+    "subject": "Last Friday's Deployment Contents Confirmation",
+    "body": "Hi everyone,\n\nRegarding last night's outage, I have compiled the contents of last Friday's (February 27th) deployment:\n\nDeployment change list:\n1. CRM customer data sync optimization (modified sync query logic) -- Development team responsible\n2. Order search functionality improvement -- Passed load testing\n3. Payment results page optimization -- Frontend change, no backend impact\n\nCode review records show:\n- The CRM sync SQL change did not undergo DBA performance review\n- During the review meeting, the DBA suggested additional performance testing, but it was not adopted due to time pressure\n- The reviewer for that change was the development lead; the DBA review step was skipped\n\nI suggest we discuss deployment process improvements during the postmortem.\n\nProject Manager",
+    "date": "2026-03-01T09:00:00+08:00",
+    "labels": ["INBOX"],
+    "is_read": false
+  }
+]

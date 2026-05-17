@@ -1,0 +1,15 @@
+{
+  "execution_time": "2026-02-10T14:50:00Z",
+  "script": "stable_literature_retrieval.py",
+  "exit_code": 1,
+  "sources_attempted": 6,
+  "sources_succeeded": 3,
+  "articles_found": 8,
+  "articles_new": 2,
+  "errors": [
+    "[medrxiv_infectious] HTTPError: 429 Too Many Requests",
+    "[nature_micro] ValueError: Received HTML instead of XML feed",
+    "[biorxiv_amr] HTTPError: 429 Too Many Requests"
+  ],
+  "duration_seconds": 47
+}

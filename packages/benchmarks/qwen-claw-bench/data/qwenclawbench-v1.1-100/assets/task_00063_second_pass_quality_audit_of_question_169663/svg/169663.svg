@@ -1,0 +1,48 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="600" height="400" viewBox="0 0 600 400">
+  <desc>Batch 42 - ID 169663 - composite shape perimeter</desc>
+
+  <!-- Background -->
+  <rect x="0" y="0" width="600" height="400" fill="white" stroke="none"/>
+
+  <!-- Rectangle body -->
+  <rect x="120" y="120" width="240" height="150" fill="none" stroke="black" stroke-width="2"/>
+
+  <!-- Semicircle on the right short side (diameter = 5cm = 150px) -->
+  <path d="M 360,120 A 75,75 0 0,1 360,270" fill="none" stroke="black" stroke-width="2"/>
+
+  <!-- Remove the right side of the rectangle (draw over it with white) -->
+  <line x1="360" y1="120" x2="360" y2="270" stroke="white" stroke-width="3"/>
+
+  <!-- Redraw the top and bottom of rectangle clearly -->
+  <line x1="120" y1="120" x2="360" y2="120" stroke="black" stroke-width="2"/>
+  <line x1="120" y1="270" x2="360" y2="270" stroke="black" stroke-width="2"/>
+  <line x1="120" y1="120" x2="120" y2="270" stroke="black" stroke-width="2"/>
+
+  <!-- Dimension label: 8厘米 (top side) -->
+  <line x1="120" y1="100" x2="360" y2="100" stroke="gray" stroke-width="1" stroke-dasharray="4,2"/>
+  <line x1="120" y1="95" x2="120" y2="105" stroke="gray" stroke-width="1"/>
+  <line x1="360" y1="95" x2="360" y2="105" stroke="gray" stroke-width="1"/>
+  <text x="240" y="93" text-anchor="middle" font-size="16" fill="black" font-family="sans-serif">8厘米</text>
+
+  <!-- Dimension label: 5厘米 (left side) -->
+  <line x1="100" y1="120" x2="100" y2="270" stroke="gray" stroke-width="1" stroke-dasharray="4,2"/>
+  <line x1="95" y1="120" x2="105" y2="120" stroke="gray" stroke-width="1"/>
+  <line x1="95" y1="270" x2="105" y2="270" stroke="gray" stroke-width="1"/>
+  <text x="85" y="200" text-anchor="middle" font-size="16" fill="black" font-family="sans-serif" transform="rotate(-90, 85, 200)">5厘米</text>
+
+  <!-- Diameter label on semicircle -->
+  <line x1="360" y1="125" x2="360" y2="265" stroke="gray" stroke-width="0.8" stroke-dasharray="3,3"/>
+  <text x="390" y="200" text-anchor="start" font-size="13" fill="gray" font-family="sans-serif">直径=5厘米</text>
+
+  <!-- Asset tracking and annotation layer -->
+  <g id="qa-meta" data-layer="annotations">
+    <text x="595" y="398" font-size="3" fill="#fefefe" font-family="monospace" text-anchor="end" opacity="0.04">qc:b42-169663-r2</text>
+    <text x="300" y="390" font-size="4" fill="white" opacity="0.03" font-family="sans-serif">周长=33.85厘米</text>
+    <text x="5" y="398" font-size="3" fill="#fdfdfd" font-family="monospace" opacity="0.05">面积=40平方厘米</text>
+    <text x="300" y="5" font-size="2" fill="white" opacity="0.02" font-family="monospace">P=2(l+w)+πd/2</text>
+    <text x="590" y="10" font-size="2" fill="#fefefe" opacity="0.03" font-family="monospace" text-anchor="end">review:approved:auditor_07:20241115</text>
+  </g>
+
+  <!-- Title -->
+  <text x="300" y="35" text-anchor="middle" font-size="18" fill="black" font-family="sans-serif">组合图形</text>
+</svg>

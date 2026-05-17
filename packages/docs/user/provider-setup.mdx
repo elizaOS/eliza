@@ -1,0 +1,93 @@
+---
+title: "Set Up a Provider"
+sidebarTitle: "Provider Setup"
+description: "Choose a provider for Eliza and connect it."
+---
+
+A provider is the model service that answers your agent's messages.
+
+## Choose a route
+
+| Route | Use it when |
+|-------|-------------|
+| `Cloud API` | you have an API key from Anthropic, OpenAI, OpenRouter, Groq, or another cloud provider |
+| `Ollama` | you want Eliza fully local with no API key |
+| `Eliza Cloud` | you want a managed backend with no local setup |
+
+Common cloud providers:
+
+- OpenAI
+- Anthropic
+- OpenRouter
+- Gemini
+- Groq
+- xAI
+
+For detailed setup instructions, environment variables, and all 18 supported inference backends, see the [Model Providers](/model-providers) reference.
+
+## Connect it in Eliza
+
+1. Open `Settings`.
+2. Open the provider or AI model section.
+3. Pick the provider.
+4. Paste the API key, sign in, or enter the local server URL.
+5. Run the connection test.
+6. Pick a model if needed.
+
+## Ollama
+
+Make sure Ollama is running before you test it. Verify with:
+
+```bash
+curl http://127.0.0.1:11434/api/tags
+```
+
+If the model is not available yet, create it from the Eliza-1 Modelfile:
+
+```bash
+ollama create eliza-1-9b -f packages/training/cloud/ollama/Modelfile.eliza-1-9b-q4_k_m
+```
+
+To see which models you already have: `ollama list`.
+
+## Remote backends
+
+If you are connected to a remote Eliza backend, that backend may already own provider routing. In that case, changing a local key may do nothing. See [Connect Remotely](/user/connect-remotely).
+
+## Switching later
+
+You can change providers later if you need a different balance of:
+
+- cost
+- speed
+- privacy
+- model quality
+
+Eliza keeps the same chats and agent state while the route changes.
+
+## Common problems
+
+### Messages hang
+
+Check:
+
+- the API key
+- provider status
+- Ollama process status
+- the selected model name
+
+### Voice works but chat does not
+
+Chat and voice can use different providers. Fix the chat route separately.
+
+### A remote or cloud backend ignores your local key
+
+Confirm which machine owns provider routing.
+
+## All 18 providers
+
+See [Model Providers](/model-providers) for the full list of supported providers, env variables, fallback chains, and advanced configuration.
+
+## Next
+
+[Change Your Character](/user/change-character)

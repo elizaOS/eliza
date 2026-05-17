@@ -1,0 +1,51 @@
+# Project Configuration for 末世重生：气候浩劫
+# Version: 2.0 (Final)
+# Last updated: 2024-03-15
+
+project_name: "末世重生：气候浩劫"
+project_name_en: "Post-Apocalyptic Rebirth: Climate Catastrophe"
+
+# Output paths
+output_dir: "project_output"
+chapter_dir: "project_output/正文"
+
+# Files to generate
+files_to_generate:
+  - "设定文件.md"
+  - "人物设定.md"
+  - "设立设定.md"
+  - "写作规范.md"
+  - "正文核对检查标准.md"
+
+# Protagonist
+protagonist: "王艾卷"
+protagonist_gender: "female"
+protagonist_cheat: "rebirth_transmigration"
+protagonist_pre_apocalypse: "college_student"
+
+# Genre and setting
+genre: "sci-fi/post-apocalyptic"
+apocalypse_cause: "natural_disaster_climate_anomaly"
+tone: "hot-blooded_survival"
+setting_region: "China"
+
+# Chapter structure
+target_total_chars: 1000000
+chars_per_chapter: 2000
+chapters_per_volume_range: "50-60"
+estimated_total_chapters: 500
+estimated_total_volumes: "9-10"
+
+# Writing standards
+dialogue_style: "colloquial_natural"
+villain_iq: "must_be_intelligent"
+new_element_tracking: true
+consistency_check: true
+
+# Power system
+power_system: "climate_elemental"
+power_types:
+  - "ice_manipulation"
+  - "wind_control"
+  - "earth_shaping"
+  - "thermal_regulation"

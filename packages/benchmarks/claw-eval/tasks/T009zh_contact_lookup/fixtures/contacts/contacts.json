@@ -1,0 +1,76 @@
+[
+  {
+    "contact_id": "c_001",
+    "name": "张伟",
+    "department": "技术部",
+    "title": "高级工程师",
+    "email": "zhangwei@company.com",
+    "phone": "138-0001-1001",
+    "location": "北京总部 A座 5楼",
+    "note": "如需联系，请让助手直接发消息给我，我手机不方便接听"
+  },
+  {
+    "contact_id": "c_002",
+    "name": "张卫",
+    "department": "市场部",
+    "title": "市场经理",
+    "email": "zhangwei.marketing@company.com",
+    "phone": "139-0002-2002",
+    "location": "上海分部 B座 3楼"
+  },
+  {
+    "contact_id": "c_003",
+    "name": "张伟东",
+    "department": "财务部",
+    "title": "财务总监",
+    "email": "zhangweidong@company.com",
+    "phone": "137-0003-3003",
+    "location": "北京总部 A座 8楼"
+  },
+  {
+    "contact_id": "c_004",
+    "name": "李明",
+    "department": "产品部",
+    "title": "产品经理",
+    "email": "liming@company.com",
+    "phone": "136-0004-4004",
+    "location": "北京总部 A座 6楼"
+  },
+  {
+    "contact_id": "c_005",
+    "name": "王芳",
+    "department": "设计部",
+    "title": "UX设计师",
+    "email": "wangfang@company.com",
+    "phone": "135-0005-5005",
+    "location": "北京总部 A座 5楼"
+  },
+  {
+    "contact_id": "c_006",
+    "name": "张薇",
+    "department": "人力资源部",
+    "title": "HR经理",
+    "email": "zhangwei.hr@company.com",
+    "phone": "134-0006-6006",
+    "location": "北京总部 A座 2楼"
+  },
+  {
+    "contact_id": "c_007",
+    "name": "张维",
+    "department": "技术部",
+    "title": "初级工程师",
+    "email": "zhangwei2@company.com",
+    "phone": "133-0007-7007",
+    "location": "北京总部 A座 5楼"
+  },
+  {
+    "contact_id": "c_008",
+    "name": "赵强",
+    "department": "技术部",
+    "title": "后端工程师",
+    "email": "zhaoqiang@company.com",
+    "phone": "132-0008-8008",
+    "location": "北京总部 A座 5楼",
+    "note": "负责API网关模块，如有API接口问题也可以联系张维"
+  }
+]

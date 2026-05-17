@@ -1,0 +1,39 @@
+task_id: M015_video_subtitle_ocr_english
+task_name: Video Subtitle OCR - English Word Extraction
+version: "1.0"
+category: video_ocr
+difficulty: medium
+tags: [multimodal]
+services: []
+prompt:
+  text: |
+    The container has the following file:
+    - /workspace/fixtures/video.webm
+
+    I'm a video editor. Please help me extract all flashing English words
+    between 0:25 and 0:30 in the video. Output all the English words in the
+    order they appear, and do not output duplicate words caused by text
+    lingering on the screen. Output only the clean and complete string in the
+    final answer.
+  language: en
+tools: []
+tool_endpoints: []
+sandbox_files:
+  - fixtures/video.webm
+sandbox_grader_files: []
+env_snapshot_commands: []
+env_snapshot_files: []
+environment:
+  timeout_seconds: 600
+  max_turns: 30
+  env_snapshot_timeout: 10
+scoring_components: []
+safety_checks: []
+expected_actions: []
+judge_rubric: ""
+reference_solution: |
+  Use ReadMedia to extract frames from 0:25-0:30 segment.
+  OCR the flashing text, deduplicate lingering words, output in order.
+primary_dimensions:
+  - completion
+  - robustness

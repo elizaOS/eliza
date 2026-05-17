@@ -1,0 +1,6 @@
+Instance ID: instance_element-hq__element-web-dd8abb0206f2d76b4a650ff5f3e2c53890fa05fd
+Repository: element-hq/element-web
+Base Commit: 96e00ca8f64285712a2d3160925354a9f090e381
+Test Files: ["test/ScalarAuthClient-test.js"]
+FAIL_TO_PASS: ["test/ScalarAuthClient-test.js | ScalarAuthClient | should request a new token if the old one fails"]
+PASS_TO_PASS: []

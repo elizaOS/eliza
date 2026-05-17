@@ -1,0 +1,9 @@
+{"type": "session_start", "session_id": "heartbeat_7152800", "model": "deepseek-r1", "created_at": "2026-03-08T20:02:25.977226", "user_id": "subagent-runner", "channel": "internal"}
+{"role": "system", "content": "Heartbeat poll received", "timestamp": "2026-03-08T20:03:59.163197", "session_id": "heartbeat_7152800", "seq": 1}
+{"role": "user", "content": "Summarize yesterday's activity", "timestamp": "2026-03-08T20:07:12.520273", "session_id": "heartbeat_7152800", "seq": 2}
+{"role": "assistant", "content": "Setting up the backup cron job now.", "timestamp": "2026-03-08T20:11:46.434170", "session_id": "heartbeat_7152800", "seq": 3, "usage": {"prompt_tokens": 2346, "completion_tokens": 962, "total_tokens": 8229}}
+{"role": "tool", "name": "exec", "content": "{\"exitCode\": 0, \"stdout\": \"OK\"}", "timestamp": "2026-03-08T20:14:25.249290", "session_id": "heartbeat_7152800", "seq": 4}
+{"role": "tool", "name": "exec", "content": "{\"exitCode\": 0, \"stdout\": \"OK\"}", "timestamp": "2026-03-08T20:15:50.037057", "session_id": "heartbeat_7152800", "seq": 5}
+{"role": "assistant", "content": "Let me check the weather for you.", "timestamp": "2026-03-08T20:18:44.935042", "session_id": "heartbeat_7152800", "seq": 6, "usage": {"prompt_tokens": 4485, "completion_tokens": 1702, "total_tokens": 8245}}
+{"role": "assistant", "content": "I'll analyze the recent deployment logs.", "timestamp": "2026-03-08T20:19:31.096236", "session_id": "heartbeat_7152800", "seq": 7, "usage": {"prompt_tokens": 7333, "completion_tokens": 2561, "total_tokens": 3806}}
+{"type": "session_end", "session_id": "heartbeat_7152800", "ended_at": "2026-03-08T20:19:41.096236", "total_messages": 7, "status": "timeout"}

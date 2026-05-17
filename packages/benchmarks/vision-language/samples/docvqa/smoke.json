@@ -1,0 +1,35 @@
+{
+  "_note": "Mini DocVQA smoke fixtures. Synthesised in-house from public-domain forms; no upstream pixels checked in. Multi-reference answers exercise the ANLS scorer.",
+  "samples": [
+    {
+      "id": "smoke-docvqa-0001",
+      "imagePath": "samples/_placeholder.png",
+      "question": "What is the invoice total?",
+      "answers": ["$1,250.00", "1250.00", "$1250"]
+    },
+    {
+      "id": "smoke-docvqa-0002",
+      "imagePath": "samples/_placeholder.png",
+      "question": "Who signed the form?",
+      "answers": ["John Smith", "J. Smith", "John A. Smith"]
+    },
+    {
+      "id": "smoke-docvqa-0003",
+      "imagePath": "samples/_placeholder.png",
+      "question": "What is the date on the receipt?",
+      "answers": ["2024-03-12", "March 12, 2024", "12/03/2024"]
+    },
+    {
+      "id": "smoke-docvqa-0004",
+      "imagePath": "samples/_placeholder.png",
+      "question": "What is the patient's address?",
+      "answers": ["742 Evergreen Terrace", "742 Evergreen Terrace, Springfield"]
+    },
+    {
+      "id": "smoke-docvqa-0005",
+      "imagePath": "samples/_placeholder.png",
+      "question": "What is the policy number?",
+      "answers": ["POL-2024-78213", "pol2024-78213"]
+    }
+  ]
+}

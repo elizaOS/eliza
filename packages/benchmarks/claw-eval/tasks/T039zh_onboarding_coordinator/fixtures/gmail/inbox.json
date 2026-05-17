@@ -1,0 +1,22 @@
+[
+  {
+    "message_id": "msg_2001",
+    "from": "wangfang@company.com",
+    "to": "user@company.com",
+    "subject": "下周一新员工入职安排",
+    "body": "Hi，\n\n下周一（3月9日）有3位新员工入职，请帮忙协调安排：\n\n1. **王小明** — 工程部，前端开发工程师\n   - 部门经理：张伟\n   - 需要：MacBook Pro、工位安排、GitLab账号\n   - 培训：需要参加新员工入职培训（建议10:00-12:00）\n\n2. **刘晓婷** — 市场部，市场专员\n   - 部门经理：张伟\n   - 需要：MacBook Air、工位安排、营销工具账号\n   - 培训：同上\n\n3. **陈浩然** — 数据部，数据工程师\n   - 需要：高配工作站、工位安排、数据库访问权限\n   - 培训：同上\n   - 特殊：需要安全审查通过后才能获得数据库权限\n\n请注意：对于没有部门经理的部门，入职通知只保存草稿，不要直接发送。\n\n谢谢！\n王芳",
+    "date": "2026-03-05T10:00:00+08:00",
+    "labels": ["INBOX", "IMPORTANT"],
+    "is_read": false
+  },
+  {
+    "message_id": "msg_2002",
+    "from": "chenjing@company.com",
+    "to": "user@company.com",
+    "subject": "IT设备库存更新",
+    "body": "通知一下，MacBook Pro目前库存充足，但MacBook Air缺货，预计3月10日到货。高配工作站有库存。",
+    "date": "2026-03-05T14:00:00+08:00",
+    "labels": ["INBOX"],
+    "is_read": false
+  }
+]

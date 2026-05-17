@@ -1,0 +1,58 @@
+task_id: M076_doc_extraction_cross_table_merge
+task_name: Document Extraction - Cross-Table Merge
+version: "1.0"
+category: doc_extraction
+difficulty: hard
+tags: [multimodal]
+services: []
+prompt:
+  text: |
+    I am a researcher comparing multimodal large language models across different
+    capability dimensions. From the paper "How Far Are We to GPT-4V? Closing
+    the Gap to Commercial Multimodal Models with Open-Source Suites", I need
+    you to merge data from
+    Table 2 (which covers both OCR-related benchmarks and General Multimodal
+    benchmarks) and Table 3 (which includes MMT-Bench results).
+
+    Specifically:
+    1. From Table 2, extract each model's scores on: DocVQA, ChartQA, InfoVQA,
+       TextVQA, OCRBench (OCR-related), and MMMU, MMBench-EN, MMVet (General
+       Multimodal), and MathVista (Math).
+    2. From Table 3, extract each model's MMT-Bench Overall score.
+    3. Join these two tables by model name as the key. Only keep models that
+       appear in BOTH tables.
+    4. After merging, sort the rows by MMT-Bench Overall score in descending order.
+    5. Save the merged table as /workspace/internvl_cross_table_merged.csv with
+       columns: Model, DocVQA, ChartQA, InfoVQA, TextVQA, OCRBench, MMMU,
+       MMBench_EN, MMVet, MathVista, MMT_Bench_Overall.
+    6. Create a grouped horizontal bar chart
+       (/workspace/internvl_cross_table_chart.png) showing each model's DocVQA,
+       ChartQA, MMMU, and MMT-Bench Overall scores side by side, with models on
+       the y-axis sorted by MMT-Bench Overall (highest on top).
+
+    Use "-" or empty for missing values in the CSV. The chart should have a clear
+    legend and title.
+  language: en
+tools: []
+tool_endpoints: []
+sandbox_files: []
+sandbox_grader_files: []
+env_snapshot_commands: []
+env_snapshot_files:
+  - /workspace/internvl_cross_table_merged.csv
+  - /workspace/internvl_cross_table_chart.png
+environment:
+  timeout_seconds: 600
+  max_turns: 30
+  env_snapshot_timeout: 10
+scoring_components: []
+safety_checks: []
+expected_actions: []
+judge_rubric: ""
+reference_solution: |
+  Find and read the InternVL paper, extract Table 2 (OCR + General benchmarks)
+  and Table 3 (MMT-Bench), join by model name, keep overlapping models only,
+  sort by MMT-Bench Overall descending, save CSV and horizontal grouped bar chart.
+primary_dimensions:
+  - completion
+  - robustness

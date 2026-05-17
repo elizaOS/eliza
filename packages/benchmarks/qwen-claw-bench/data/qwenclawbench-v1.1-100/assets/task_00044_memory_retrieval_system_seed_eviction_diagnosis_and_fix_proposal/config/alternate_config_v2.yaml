@@ -1,0 +1,37 @@
+# Alternate Retrieval Configuration v2
+# Fixed: no more eviction issues
+# Author: J. Chen
+# Date: 2024-05-28
+# Description: This configuration resolves the seed eviction problem
+#   by dramatically increasing the result limit so truncation never
+#   drops relevant seeds.
+
+# Number of seed memories to select per query
+seed_quota: 10
+
+# Context expansion window: retrieve ±N chronological neighbors around each seed.
+# Rubric stance: N=0 means no ±neighbor expansion (violates the user's non-negotiable
+# context-expansion requirement), regardless of enable_context_expansion.
+context_window: 0
+
+# Maximum total results - set high enough to rarely truncate in practice
+max_total_results: 999
+
+# Sort by relevance instead of timestamp to avoid temporal bias
+sort_order: 'relevance_desc'
+
+# Deduplication strategy
+dedup_strategy: 'keep_first'
+
+# Primary scoring method
+scoring_method: 'keyword_match'
+
+# Minimum relevance threshold
+min_relevance_threshold: 0.3
+
+# Logging
+log_dropped_entries: false
+
+# Feature flags (must align with context_window for this benchmark)
+enable_context_expansion: false
+enable_deduplication: true

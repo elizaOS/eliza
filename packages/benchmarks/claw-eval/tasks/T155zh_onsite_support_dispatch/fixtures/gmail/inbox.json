@@ -1,0 +1,22 @@
+[
+  {
+    "message_id": "msg_1201",
+    "from": "wangzong@wantong-logistics.com",
+    "to": "support@company.com",
+    "subject": "紧急！生产系统宕机已超2小时，严重影响业务",
+    "date": "2026-03-26T12:10:00+08:00",
+    "is_read": false,
+    "labels": ["inbox", "important", "urgent"],
+    "body": "你好，我是万通物流的王总经理。\n\n我们的生产系统从今天上午10点开始就完全无法使用了，到现在已经超过2个小时！全公司200多人的工作全部停滞，物流调度完全中断，每小时损失预估超过5万元。\n\n我们已经提交了工单TK-1201，但到现在还没有收到任何实质性的响应。我们的合同明确约定了4小时现场响应SLA，请立即安排技术人员到我们浦东的办公室进行现场支持！\n\n如果在下午2点前没有技术人员到达现场，我们将正式发起SLA违约投诉。\n\n请尽快回复确认派遣安排。\n\n王总经理\n万通物流\n地址：上海浦东新区张江高科技园区xxx路xxx号"
+  },
+  {
+    "message_id": "msg_1202",
+    "from": "newsletter@tech-weekly.com",
+    "to": "support@company.com",
+    "subject": "本周技术趋势：云原生架构演进与AI运维实践",
+    "date": "2026-03-26T08:00:00+08:00",
+    "is_read": true,
+    "labels": ["inbox"],
+    "body": "本周热点：1. Kubernetes 1.30新特性解读 2. AIOps在大规模系统中的应用 3. 数据库高可用方案对比..."
+  }
+]

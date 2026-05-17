@@ -1,0 +1,62 @@
+[
+  {
+    "ticket_id": "TK-601",
+    "title": "API调用返回500错误",
+    "description": "调用/api/v2/orders接口时，间歇性返回500 Internal Server Error，大约每10次有3次失败。从昨天下午开始出现。",
+    "reporter": "开发部-陈工",
+    "department": "开发部",
+    "priority": "high",
+    "status": "open",
+    "created_at": "2026-03-25T14:00:00Z",
+    "tags": ["API", "500错误", "技术"],
+    "category": "技术"
+  },
+  {
+    "ticket_id": "TK-602",
+    "title": "如何批量导出数据",
+    "description": "需要导出最近3个月的客户订单数据，大约有20万条记录。在管理后台导出时一直超时，有没有其他方法？",
+    "reporter": "运营部-小刘",
+    "department": "运营部",
+    "priority": "medium",
+    "status": "open",
+    "created_at": "2026-03-25T09:30:00Z",
+    "tags": ["导出", "数据", "使用咨询"],
+    "category": "使用咨询"
+  },
+  {
+    "ticket_id": "TK-603",
+    "title": "登录页面加载很慢",
+    "description": "从早上8点开始，登录页面加载需要15-20秒，有时甚至超时。其他页面正常。已清除浏览器缓存，问题依旧。",
+    "reporter": "市场部-赵经理",
+    "department": "市场部",
+    "priority": "high",
+    "status": "open",
+    "created_at": "2026-03-25T08:20:00Z",
+    "tags": ["性能", "登录", "加载慢"],
+    "category": "性能"
+  },
+  {
+    "ticket_id": "TK-604",
+    "title": "打印机无法连接",
+    "description": "4楼的网络打印机无法连接，重启打印机后仍然无法发现设备。",
+    "reporter": "行政部-小李",
+    "department": "行政部",
+    "priority": "low",
+    "status": "open",
+    "created_at": "2026-03-25T10:00:00Z",
+    "tags": ["硬件", "打印机"],
+    "category": "硬件"
+  },
+  {
+    "ticket_id": "TK-605",
+    "title": "权限配置不生效",
+    "description": "在管理后台给3个用户配置了'数据分析师'角色权限，保存后用户反馈依然无法访问分析面板。已等待30分钟。",
+    "reporter": "数据部-王主管",
+    "department": "数据部",
+    "priority": "medium",
+    "status": "open",
+    "created_at": "2026-03-25T11:00:00Z",
+    "tags": ["权限", "配置", "技术"],
+    "category": "技术"
+  }
+]

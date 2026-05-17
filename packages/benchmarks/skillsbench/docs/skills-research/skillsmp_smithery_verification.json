@@ -1,0 +1,9 @@
+{
+  "sample_size": 1100,
+  "checked": 1100,
+  "found_on_smithery": 1100,
+  "not_found": 0,
+  "errors": 0,
+  "match_rate": 100,
+  "not_found_details": []
+}

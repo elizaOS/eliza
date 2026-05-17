@@ -1,0 +1,18 @@
+{
+  "extends": "../../../tsconfig.dist-paths.json",
+  "compilerOptions": {
+    "declaration": false,
+    "esModuleInterop": true,
+    "lib": ["ES2022"],
+    "module": "ESNext",
+    "moduleResolution": "bundler",
+    "noEmit": true,
+    "resolveJsonModule": true,
+    "skipLibCheck": true,
+    "strict": true,
+    "target": "ES2022",
+    "types": ["node"]
+  },
+  "exclude": ["node_modules", "dist"],
+  "include": ["*.ts", "**/*.ts"]
+}

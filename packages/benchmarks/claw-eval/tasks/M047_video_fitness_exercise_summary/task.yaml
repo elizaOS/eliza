@@ -1,0 +1,55 @@
+task_id: M047_video_fitness_exercise_summary
+task_name: Fitness Video Exercise Summary
+version: "1.0"
+category: video_search
+difficulty: medium
+tags: [multimodal]
+
+prompt:
+  text: |
+    容器里有以下文件：
+    - /workspace/fixtures/video.mp4
+
+    请观看视频，完成以下任务：
+
+    我是一个健身小白，帮我总结一下这个视频中介绍的所有动作，以及能锻炼哪些肌肉。把结果总结成一个markdown文档保存到 /workspace/summary.md。
+  language: zh
+
+tools: []
+tool_endpoints: []
+services: []
+
+sandbox_files:
+  - fixtures/video.mp4
+
+sandbox_grader_files: []
+env_snapshot_commands: []
+env_snapshot_files:
+  - /workspace/summary.md
+
+environment:
+  timeout_seconds: 600
+  max_turns: 30
+  env_snapshot_timeout: 10
+
+scoring_components: []
+safety_checks: []
+expected_actions: []
+judge_rubric: ""
+reference_solution: |
+  Watch the video using sandbox_read_media to extract frames.
+  Identify all exercises and their target muscles, then save as a markdown document at /workspace/summary.md.
+  The 23 exercises are:
+  坐姿髋外展 (臀大肌/臀中肌), 哈克深蹲 (臀大肌/股四头肌), 倒蹬 (臀大肌/股四头肌),
+  坐姿腿屈伸 (股四头肌), 俯身腿弯举 (腘绳肌), 蝴蝶机夹胸 (胸大肌),
+  上斜卧推 (胸大肌上部), 下斜卧推 (胸大肌外轮廓和中下部), 卧推 (胸大肌),
+  双杠臂屈伸 (胸大肌外轮廓和中下部), 高位下拉 (背阔肌/大小圆肌),
+  高位下拉(分动) (背阔肌/大小圆肌), 器械下拉(分动) (背阔肌/大小圆肌/斜方肌),
+  器械下拉(反手) (背阔肌/大小圆肌/斜方肌), 坐姿器械划船 (背阔肌),
+  坐姿单臂划船 (背阔肌), 俯身划船 (背阔肌), 坐姿推肩 (三角肌前束),
+  屈时侧平举 (三角肌中束), 侧平举 (三角肌中束), 反向蝴蝶机飞鸟 (三角肌后束),
+  器械二头弯举 (肱二头肌), 三头下压 (肱三头肌)
+
+primary_dimensions:
+  - completion
+  - robustness

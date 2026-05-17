@@ -1,0 +1,73 @@
+# High-Risk Operations Registry
+# Document: SEC-OPS-2024-003
+# Last Updated: 2024-11-10
+# All operations listed below require daily password verification before execution.
+
+high_risk_operations:
+
+  - operation_id: account_deletion
+    display_name: "Account Deletion"
+    risk_level: critical
+    description: >
+      Permanently deletes a user account and all associated data, including
+      audit trails, stored credentials, and session history. This action is
+      irreversible and triggers a 30-day compliance hold before physical
+      data removal.
+    requires_daily_password: true
+    requires_supervisor_approval: true
+    cooldown_seconds: 3600
+
+  - operation_id: role_escalation
+    display_name: "Role Escalation"
+    risk_level: critical
+    description: >
+      Elevates a user's role to a higher privilege level (e.g., from
+      standard_user to admin or super_admin). Grants access to sensitive
+      configuration, user management, and audit functions.
+    requires_daily_password: true
+    requires_supervisor_approval: true
+    cooldown_seconds: 1800
+
+  - operation_id: bulk_data_export
+    display_name: "Bulk Data Export"
+    risk_level: high
+    description: >
+      Exports large datasets (>10,000 records) from production databases.
+      May include personally identifiable information (PII) and is subject
+      to data loss prevention (DLP) scanning before delivery.
+    requires_daily_password: true
+    requires_supervisor_approval: false
+    cooldown_seconds: 900
+
+  - operation_id: firewall_rule_change
+    display_name: "Firewall Rule Change"
+    risk_level: critical
+    description: >
+      Modifies network firewall rules including ingress/egress policies,
+      port allowlists, and IP-based access controls. Incorrect changes
+      can expose internal services or lock out legitimate traffic.
+    requires_daily_password: true
+    requires_supervisor_approval: true
+    cooldown_seconds: 600
+
+  - operation_id: certificate_rotation
+    display_name: "TLS Certificate Rotation"
+    risk_level: high
+    description: >
+      Rotates TLS/SSL certificates for production endpoints. Includes
+      generation of new key pairs, CSR submission, and deployment of
+      signed certificates. Service disruption possible if misconfigured.
+    requires_daily_password: true
+    requires_supervisor_approval: false
+    cooldown_seconds: 300
+
+  - operation_id: payment_threshold_override
+    display_name: "Payment Threshold Override"
+    risk_level: high
+    description: >
+      Temporarily overrides the maximum single-transaction payment limit
+      for a specified account. Default limit is $10,000; override allows
+      up to $500,000 for a 24-hour window.
+    requires_daily_password: true
+    requires_supervisor_approval: true
+    cooldown_seconds: 7200

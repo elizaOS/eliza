@@ -1,0 +1,32 @@
+{
+  "version": "2.4.1",
+  "plugins": {
+    "device-pair": {
+      "enabled": true,
+      "version": "1.2.0",
+      "config": {
+        "publicUrl": "https://home.example.com:3000",
+        "maxDevices": 5,
+        "tokenExpiry": "24h"
+      }
+    },
+    "telegram": {
+      "enabled": true,
+      "version": "1.5.3",
+      "config": {
+        "botToken": "REDACTED",
+        "allowedUsers": [987654321],
+        "parseMode": "MarkdownV2"
+      }
+    },
+    "discord": {
+      "enabled": false,
+      "version": "1.1.0",
+      "config": {
+        "botToken": "REDACTED",
+        "guildId": "1234567890"
+      }
+    }
+  },
+  "lastUpdated": "2026-02-09T18:30:00+08:00"
+}

