@@ -714,6 +714,13 @@ function ViewRouter({
   );
 }
 
+function greetingForTimeOfDay(): string {
+  const hour = new Date().getHours();
+  if (hour < 12) return "Good morning! What would you like to do?";
+  if (hour < 18) return "Good afternoon! What would you like to do?";
+  return "Good evening! What would you like to do?";
+}
+
 function ShellFoundationMount(): JSX.Element {
   const app = useApp();
   const { state, send } = useShellState();
@@ -755,7 +762,7 @@ function ShellFoundationMount(): JSX.Element {
           messages={state.messages}
           onSend={onSend}
           canSend={canSend}
-          greeting="Good morning! What would you like to do?"
+          greeting={greetingForTimeOfDay()}
         />
       </AssistantOverlay>
     </>
@@ -1472,7 +1479,6 @@ export function App() {
             style={{ borderRadius: "var(--radius-xs, 2px)" }}
           >
             <StartupShell />
-            <ShellFoundationMount />
           </div>
         </CloudVideoBackground>
         <BugReportModal />
@@ -1543,7 +1549,7 @@ export function App() {
         tab !== "apps" &&
         tab !== "views" && <GameViewOverlay />}
       <ShellOverlays actionNotice={actionNotice} />
-      <ShellFoundationMount />
+      {isCoordinatorReady && <ShellFoundationMount />}
       <SaveCommandModal
         open={contextMenu.saveCommandModalOpen}
         text={contextMenu.saveCommandText}

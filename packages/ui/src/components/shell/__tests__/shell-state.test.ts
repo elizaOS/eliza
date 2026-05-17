@@ -143,4 +143,25 @@ describe("shellReducer", () => {
     });
     expect(stillResponding).toBe(responding);
   });
+
+  it("CLOSE works from summoned, listening, and responding", () => {
+    const summoned = reduce(initialShellState, [
+      { type: "BOOT_READY" },
+      { type: "OPEN" },
+    ]);
+    expect(shellReducer(summoned, { type: "CLOSE" }).phase).toBe("idle");
+
+    // listening state isn't reachable yet (no transition into it in v1),
+    // but the reducer should still allow CLOSE if some other action set it.
+    const listening = { ...summoned, phase: "listening" as const };
+    expect(shellReducer(listening, { type: "CLOSE" }).phase).toBe("idle");
+
+    const responding = reduce(initialShellState, [
+      { type: "BOOT_READY" },
+      { type: "OPEN" },
+      { type: "SEND", text: "hi" },
+    ]);
+    expect(responding.phase).toBe("responding");
+    expect(shellReducer(responding, { type: "CLOSE" }).phase).toBe("idle");
+  });
 });

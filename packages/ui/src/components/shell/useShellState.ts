@@ -41,13 +41,12 @@ export function useShellState(): UseShellStateResult {
     };
   }, []);
 
-  return React.useMemo(
-    () => ({
-      state,
-      // Wrap dispatch so the public `send` signature is exactly
-      // `(action: ShellAction) => void` and not tied to React.Dispatch.
-      send: (action: ShellAction) => dispatch(action),
-    }),
-    [state],
+  const send = React.useCallback(
+    (action: ShellAction) => dispatch(action),
+    // dispatch is stable; the empty array is intentional.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [],
   );
+
+  return React.useMemo(() => ({ state, send }), [state, send]);
 }

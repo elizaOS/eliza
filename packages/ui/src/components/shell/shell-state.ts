@@ -62,7 +62,9 @@ export function shellReducer(
     case "OPEN":
       return state.phase === "idle" ? { ...state, phase: "summoned" } : state;
     case "CLOSE":
-      return state.phase === "summoned"
+      return state.phase === "summoned" ||
+        state.phase === "listening" ||
+        state.phase === "responding"
         ? { ...state, phase: "idle" }
         : state;
     case "SEND": {

@@ -47,7 +47,8 @@ This sub-project lays the foundation. Three follow-up sub-projects (persistence,
 - **Offline visual on the pill / chat input** — `isOnline` is in `ShellState` and `useShellState` subscribes to `NETWORK_STATUS_CHANGE_EVENT`, but no component currently reads it. Offline tinting on the pill and a "Reconnecting…" input placeholder are deferred to a follow-up patch so v1 ships with a minimal surface. State is already plumbed; the UI change is purely additive.
 - **AmbientGlow** was folded into `HomePill`'s class-chain rather than shipped as its own file. Same visuals, one fewer file.
 - **`backgrounds/registry.ts`** is unchanged in v1 — no real trigger for ambient mode swaps yet. Lands with the wake-word sub-project.
-- **Playwright e2e smoke** and **design-review visual regression** are deferred per the plan's "Out of scope" header. v1 ships with unit + integration coverage (51 vitest tests) + a live-browser end-to-end walk performed during Task 7.
+- **Pill not visible during onboarding** — the pill mounts once `phase === "ready"` (the steady-state shell renders). During pre-agent / onboarding the pill is intentionally absent so it doesn't compete with the StartupShell splash and the VoicePrefixSteps wizard. Earlier the pill was double-mounted to make it visible everywhere; removed in response to upstream review because each branch creates an independent reducer and would lose conversation state at the transition.
+- **Playwright e2e smoke** and **design-review visual regression** are deferred per the plan's "Out of scope" header. v1 ships with unit + integration coverage (54 vitest tests) + a live-browser end-to-end walk performed during Task 7.
 
 ## Architecture
 

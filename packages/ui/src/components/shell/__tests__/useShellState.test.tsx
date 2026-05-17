@@ -74,4 +74,15 @@ describe("useShellState", () => {
     // No assertion on result.current.state after unmount because the hook is gone.
     // Sanity: no exception thrown means the listener was cleanly removed.
   });
+
+  it("send() identity is stable across state changes", () => {
+    const { result, rerender } = renderHook(() => useShellState());
+    const firstSend = result.current.send;
+    act(() => result.current.send({ type: "BOOT_READY" }));
+    rerender();
+    expect(result.current.send).toBe(firstSend);
+    act(() => result.current.send({ type: "OPEN" }));
+    rerender();
+    expect(result.current.send).toBe(firstSend);
+  });
 });
