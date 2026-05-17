@@ -1,4 +1,4 @@
-import { execSync } from "node:child_process";
+import { execFileSync } from "node:child_process";
 import { existsSync } from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
@@ -126,9 +126,20 @@ const DEPENDENCY_DEFINITIONS: Record<DependencyId, Dependency> = {
   },
 };
 
-function runCommand(cmd: string): { stdout: string; success: boolean } {
+/**
+ * Run a command with an explicit argv array. Never string-interpolates user
+ * input into a shell; arguments containing spaces, quotes, or shell
+ * metacharacters are safe.
+ */
+function runCommand(
+  binary: string,
+  args: string[] = [],
+): { stdout: string; success: boolean } {
   try {
-    const stdout = execSync(cmd, { encoding: "utf8", timeout: 15_000 }).trim();
+    const stdout = execFileSync(binary, args, {
+      encoding: "utf8",
+      timeout: 15_000,
+    }).trim();
     return { stdout, success: true };
   } catch {
     return { stdout: "", success: false };
@@ -143,8 +154,10 @@ function whichBinary(name: string): string | undefined {
   }
 
   // Fall back to PATH
-  const cmd = process.platform === "win32" ? `where ${name}` : `which ${name}`;
-  const result = runCommand(cmd);
+  const result =
+    process.platform === "win32"
+      ? runCommand("where", [name])
+      : runCommand("which", [name]);
   if (result.success && result.stdout.length > 0) {
     return result.stdout.split("\n")[0]?.trim();
   }
@@ -162,7 +175,7 @@ function getVersion(binary: string, foundPath: string): string | undefined {
     sideloader: "--version",
   };
   const flag = versionFlags[binary] ?? "--version";
-  const result = runCommand(`"${foundPath}" ${flag}`);
+  const result = runCommand(foundPath, [flag]);
   if (result.success && result.stdout.length > 0) {
     // First non-empty line usually contains the version
     return result.stdout.split("\n")[0]?.trim();
@@ -206,6 +219,19 @@ function checkDependency(id: DependencyId): DependencyCheckResult {
   if (version !== undefined) {
     result.version = version;
   }
+
+  // On Linux, libimobiledevice without the udev rules can't talk to an iPhone
+  // as non-root. Mark it as found-but-misconfigured if rules are missing.
+  if (
+    id === "libimobiledevice" &&
+    process.platform === "linux" &&
+    !existsSync(LIBIMOBILEDEVICE_UDEV_RULE)
+  ) {
+    result.status = "found-but-misconfigured";
+    result.errorMessage = `Missing udev rules at ${LIBIMOBILEDEVICE_UDEV_RULE}. Install/start usbmuxd (e.g. \`sudo systemctl enable --now usbmuxd\`) or run \`sudo usbmuxd -X\` to populate them.`;
+    result.manualInstructions = getManualInstructions(id);
+  }
+
   return result;
 }
 
@@ -324,6 +350,67 @@ async function runInstallCommand(argv: string[]): Promise<boolean> {
   }
 }
 
+/**
+ * winget ships in App Installer, which is missing on pre-1809 Windows 10,
+ * Server 2019, and some enterprise images. Probe before assuming we can use it.
+ */
+async function isWingetAvailable(): Promise<boolean> {
+  if (process.platform !== "win32") return false;
+  try {
+    const proc = Bun.spawn(
+      [
+        "powershell.exe",
+        "-NonInteractive",
+        "-NoProfile",
+        "-Command",
+        "if (Get-Command winget -ErrorAction SilentlyContinue) { 'yes' } else { 'no' }",
+      ],
+      { stdout: "pipe", stderr: "pipe" },
+    );
+    const exitCode = await proc.exited;
+    if (exitCode !== 0) return false;
+    const text = await new Response(proc.stdout).text();
+    return text.trim() === "yes";
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Direct download fallback for Android platform-tools when winget is missing.
+ * Pulls the official Google zip and extracts adb/fastboot into the vendor bin
+ * directory (which is searched before PATH by `whichBinary`).
+ */
+async function downloadPlatformTools(): Promise<boolean> {
+  const url =
+    "https://dl.google.com/android/repository/platform-tools-latest-windows.zip";
+  try {
+    const res = await fetch(url);
+    if (!res.ok) return false;
+    const buf = new Uint8Array(await res.arrayBuffer());
+    const { mkdir, writeFile, rm } = await import("node:fs/promises");
+    await mkdir(VENDOR_BIN_DIR, { recursive: true });
+    const zipPath = join(VENDOR_BIN_DIR, "platform-tools.zip");
+    await writeFile(zipPath, buf);
+    const psSafe = (s: string): string => `'${s.replace(/'/g, "''")}'`;
+    const proc = Bun.spawn(
+      [
+        "powershell.exe",
+        "-NonInteractive",
+        "-NoProfile",
+        "-Command",
+        `$ErrorActionPreference = "Stop"; Expand-Archive -Force -Path ${psSafe(zipPath)} -DestinationPath ${psSafe(VENDOR_BIN_DIR)}`,
+      ],
+      { stdout: "pipe", stderr: "pipe" },
+    );
+    const code = await proc.exited;
+    await rm(zipPath, { force: true }).catch(() => undefined);
+    return code === 0;
+  } catch {
+    return false;
+  }
+}
+
 async function runLinuxInstall(
   depKey: keyof typeof LINUX_PACKAGE_MAP,
 ): Promise<boolean> {
@@ -420,12 +507,21 @@ export class DependencyManager {
         } else if (platform === "linux") {
           installed = await runLinuxInstall(id);
         } else if (platform === "win32") {
-          installed = await runInstallCommand([
-            "winget",
-            "install",
-            "--silent",
-            "Google.PlatformTools",
-          ]);
+          if (await isWingetAvailable()) {
+            installed = await runInstallCommand([
+              "winget",
+              "install",
+              "--silent",
+              "Google.PlatformTools",
+            ]);
+          }
+          // Always try the direct download as a fallback (or as the primary
+          // path when winget is unavailable). The vendor bin dir is searched
+          // before PATH by whichBinary, so this puts adb/fastboot where the
+          // dependency check expects them.
+          if (!installed) {
+            installed = await downloadPlatformTools();
+          }
         }
         break;
       }
@@ -447,7 +543,7 @@ export class DependencyManager {
       }
 
       case "sideloader": {
-        if (platform === "win32") {
+        if (platform === "win32" && (await isWingetAvailable())) {
           installed = await runInstallCommand([
             "winget",
             "install",

@@ -107,3 +107,48 @@ export class PowerShellExecutionError extends Error {
     super(message);
   }
 }
+
+// Linux backend errors.
+export class LsblkParseError extends Error {
+  override readonly name = "LsblkParseError";
+  public readonly stdoutSnippet: string;
+  constructor(stdoutSnippet: string, cause?: Error) {
+    const causeMsg = cause ? `: ${cause.message}` : "";
+    super(`Failed to parse lsblk output${causeMsg}`);
+    this.stdoutSnippet = stdoutSnippet.slice(0, 500);
+    if (cause) this.cause = cause;
+  }
+}
+
+export class NoPrivilegeEscalatorError extends Error {
+  override readonly name = "NoPrivilegeEscalatorError";
+  constructor(
+    message = "No privilege escalator found (tried pkexec, kdesu, doas, sudo). Install one and retry.",
+  ) {
+    super(message);
+  }
+}
+
+export class UnmountFailedError extends Error {
+  override readonly name = "UnmountFailedError";
+  public readonly devicePath: string;
+  public readonly stderr: string;
+  constructor(devicePath: string, stderr: string) {
+    super(`Failed to unmount ${devicePath}: ${stderr}`);
+    this.devicePath = devicePath;
+    this.stderr = stderr;
+  }
+}
+
+export class WriteIncompleteError extends Error {
+  override readonly name = "WriteIncompleteError";
+  public readonly expectedBytes: number;
+  public readonly actualBytes: number;
+  constructor(expectedBytes: number, actualBytes: number) {
+    super(
+      `Write incomplete: expected ${expectedBytes} bytes, wrote ${actualBytes}.`,
+    );
+    this.expectedBytes = expectedBytes;
+    this.actualBytes = actualBytes;
+  }
+}

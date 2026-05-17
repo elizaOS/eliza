@@ -3,8 +3,9 @@ import type {
   DependencyCheckResult,
   DependencyId,
 } from "../dependencies/types";
+import { getServerUrl } from "../runtime/server-url";
 
-const SERVER = "http://localhost:3743";
+const SERVER = getServerUrl();
 
 const DEP_LABELS: Record<DependencyId, string> = {
   adb: "Android Debug Bridge (adb)",
@@ -212,6 +213,7 @@ export function DependencyGate({ onReady }: Props) {
   const [results, setResults] = useState<DependencyCheckResult[]>([]);
   const [checking, setChecking] = useState(true);
   const [bypassWarning, setBypassWarning] = useState(false);
+  const [bypassConfirmCount, setBypassConfirmCount] = useState(0);
   const onReadyRef = useRef(onReady);
   onReadyRef.current = onReady;
 
@@ -287,10 +289,15 @@ export function DependencyGate({ onReady }: Props) {
     }
     if (!bypassWarning) {
       setBypassWarning(true);
+      setBypassConfirmCount(1);
+      return;
+    }
+    if (bypassConfirmCount < 2) {
+      setBypassConfirmCount((n) => n + 1);
       return;
     }
     onReadyRef.current();
-  }, [requiredFound, bypassWarning]);
+  }, [requiredFound, bypassWarning, bypassConfirmCount]);
 
   const depIds: DependencyId[] = [
     "adb",
@@ -406,13 +413,15 @@ export function DependencyGate({ onReady }: Props) {
                   : styles.continueBtnDisabled
             }
             onClick={handleContinue}
-            disabled={false}
+            disabled={!requiredFound && bypassConfirmCount < 2 && bypassWarning && bypassConfirmCount < 1}
           >
             {requiredFound
               ? "Continue"
-              : bypassWarning
+              : bypassWarning && bypassConfirmCount >= 2
                 ? "Continue anyway (limited functionality)"
-                : "Continue anyway"}
+                : bypassWarning
+                  ? "Click again to confirm bypass"
+                  : "Continue anyway"}
           </button>
         </div>
       </div>

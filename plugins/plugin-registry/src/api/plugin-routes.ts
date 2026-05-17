@@ -1,5 +1,4 @@
 import type http from "node:http";
-<<<<<<< Updated upstream
 // === Phase 4F ===
 // Moved from packages/agent/src/api/plugin-routes.ts into the
 // @elizaos/plugin-registry plugin. Agent-internal helpers now reach this
@@ -10,8 +9,8 @@ import {
   type AdvancedCapabilityPluginId,
   applyAdvancedCapabilitiesConfig,
   applyPluginRuntimeMutation,
-  type CoreManagerLike,
   CORE_PLUGINS,
+  type CoreManagerLike,
   type ElizaConfig,
   getPluginWidgets,
   type InstallProgressLike,
@@ -22,14 +21,12 @@ import {
   type PluginParamInfo,
   type PluginWidgetDeclarationServer,
   type RegistryPluginManagerInfo as RegistryPluginInfo,
+  type ResolvedPlugin,
   resolveAdvancedCapabilitiesEnabled,
   resolveDefaultAgentWorkspaceDir,
-  type ResolvedPlugin,
   saveElizaConfig,
   validatePluginConfig,
 } from "@elizaos/agent";
-=======
->>>>>>> Stashed changes
 import type { AgentRuntime } from "@elizaos/core";
 import { logger } from "@elizaos/core";
 import type { PluginParamDef, ReadJsonBodyOptions } from "@elizaos/shared";
@@ -45,35 +42,8 @@ import {
   sanitizeForSettingsDebug,
   settingsDebugCloudSummary,
 } from "@elizaos/shared";
-<<<<<<< Updated upstream
 
 /** Normalize npm names to list/toggle ids. Handles both `@elizaos/plugin-*` (current) and legacy `@elizaos/app-*`. */
-=======
-import {
-  type AdvancedCapabilityPluginId,
-  applyAdvancedCapabilitiesConfig,
-  applyPluginRuntimeMutation,
-  CORE_PLUGINS,
-  type CoreManagerLike,
-  type ElizaConfig,
-  getPluginWidgets,
-  type InstallProgressLike,
-  isAdvancedCapabilityPluginId,
-  loadElizaConfig,
-  OPTIONAL_CORE_PLUGINS,
-  type PluginManagerLike,
-  type PluginParamInfo,
-  type PluginWidgetDeclarationServer,
-  type RegistryPluginInfo,
-  resolveAdvancedCapabilitiesEnabled,
-  resolveDefaultAgentWorkspaceDir,
-  type ResolvedPlugin,
-  saveElizaConfig,
-  validatePluginConfig,
-} from "@elizaos/agent";
-
-/** Workspace packages use `@elizaos/plugin-*` or `@elizaos/app-*` — normalize list/toggle ids. */
->>>>>>> Stashed changes
 function optionalPluginListId(npmName: string): string {
   if (npmName.startsWith("@elizaos/app-")) {
     return npmName.slice("@elizaos/".length);
@@ -489,11 +459,7 @@ export async function handlePluginRoutes(
       existingEvmPlugin.setupGuideUrl =
         existingEvmPlugin.setupGuideUrl ?? evmDiagnostic.setupGuideUrl;
       existingEvmPlugin.tags = Array.from(
-<<<<<<< Updated upstream
-        new Set([...(existingEvmPlugin.tags), ...evmDiagnostic.tags]),
-=======
-        new Set([...(existingEvmPlugin.tags ?? []), ...evmDiagnostic.tags]),
->>>>>>> Stashed changes
+        new Set([...existingEvmPlugin.tags, ...evmDiagnostic.tags]),
       );
     } else {
       allPlugins.push(evmDiagnostic);
@@ -695,11 +661,7 @@ export async function handlePluginRoutes(
   const resolvePluginsSnapshot = async (
     config: ElizaConfig,
   ): Promise<ResolvedPlugin[]> => {
-<<<<<<< Updated upstream
     const { resolvePlugins } = await import("@elizaos/agent");
-=======
-    const { resolvePlugins } = await import("../runtime/plugin-resolver.ts");
->>>>>>> Stashed changes
     return resolvePlugins(config, { quiet: true });
   };
 
@@ -1233,11 +1195,7 @@ export async function handlePluginRoutes(
       }
 
       // Auto-enable the newly installed plugin so the runtime loads it after restart.
-<<<<<<< Updated upstream
-      const installedId = (result.pluginName)
-=======
-      const installedId = (result.pluginName ?? pluginName)
->>>>>>> Stashed changes
+      const installedId = result.pluginName
         .replace(/^@[^/]+\/plugin-/, "")
         .replace(/^@[^/]+\//, "")
         .replace(/^plugin-/, "");
@@ -1264,20 +1222,12 @@ export async function handlePluginRoutes(
         }
         const installs = (state.config.plugins as Record<string, unknown>)
           .installs as Record<string, Record<string, unknown>>;
-<<<<<<< Updated upstream
         installs[result.pluginName] = {
-=======
-        installs[result.pluginName ?? pluginName] = {
->>>>>>> Stashed changes
           source: "npm",
           requestedVersion: result.requestedVersion,
           releaseStream: result.releaseStream,
           installPath: result.installPath,
-<<<<<<< Updated upstream
           version: result.version,
-=======
-          version: result.version ?? "unknown",
->>>>>>> Stashed changes
           installedAt: new Date().toISOString(),
         };
       }
@@ -1398,30 +1348,18 @@ export async function handlePluginRoutes(
       if (!state.config.plugins.entries) {
         state.config.plugins.entries = {};
       }
-<<<<<<< Updated upstream
-      const updatedId = (result.pluginName)
-=======
-      const updatedId = (result.pluginName ?? pluginName)
->>>>>>> Stashed changes
+      const updatedId = result.pluginName
         .replace(/^@[^/]+\/plugin-/, "")
         .replace(/^@[^/]+\//, "")
         .replace(/^plugin-/, "");
       state.config.plugins.entries[updatedId] = { enabled: true };
       state.config.plugins.installs = state.config.plugins.installs ?? {};
-<<<<<<< Updated upstream
       state.config.plugins.installs[result.pluginName] = {
-=======
-      state.config.plugins.installs[result.pluginName ?? pluginName] = {
->>>>>>> Stashed changes
         source: "npm",
         requestedVersion: result.requestedVersion,
         releaseStream: result.releaseStream,
         installPath: result.installPath,
-<<<<<<< Updated upstream
         version: result.version,
-=======
-        version: result.version ?? "unknown",
->>>>>>> Stashed changes
         installedAt: new Date().toISOString(),
       };
 
@@ -1519,21 +1457,13 @@ export async function handlePluginRoutes(
         return true;
       }
 
-<<<<<<< Updated upstream
-      const removedId = (result.pluginName)
-=======
-      const removedId = (result.pluginName ?? pluginName)
->>>>>>> Stashed changes
+      const removedId = result.pluginName
         .replace(/^@[^/]+\/plugin-/, "")
         .replace(/^@[^/]+\//, "")
         .replace(/^plugin-/, "");
       const installs = state.config.plugins?.installs;
       if (installs && typeof installs === "object") {
-<<<<<<< Updated upstream
         delete installs[result.pluginName];
-=======
-        delete installs[result.pluginName ?? pluginName];
->>>>>>> Stashed changes
       }
       const entries = state.config.plugins?.entries;
       if (entries && typeof entries === "object") {

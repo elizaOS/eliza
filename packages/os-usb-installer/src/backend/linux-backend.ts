@@ -222,34 +222,49 @@ async function commandExists(command: string): Promise<boolean> {
   }
 }
 
+export interface PrivilegeEscalatorProbes {
+  hasCommand?: (cmd: string) => Promise<boolean>;
+  sudoNonInteractiveOk?: () => Promise<boolean>;
+}
+
+async function defaultSudoNonInteractiveOk(): Promise<boolean> {
+  try {
+    await execFileAsync("sudo", ["-n", "true"]);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 export async function findPrivilegeEscalator(
   env: NodeJS.ProcessEnv = process.env,
+  probes: PrivilegeEscalatorProbes = {},
 ): Promise<PrivilegeEscalator> {
+  const hasCommand = probes.hasCommand ?? commandExists;
+  const sudoOk = probes.sudoNonInteractiveOk ?? defaultSudoNonInteractiveOk;
+
   // 1. pkexec — GUI prompt on GNOME/polkit
-  if (await commandExists("pkexec")) {
+  if (await hasCommand("pkexec")) {
     return { command: "pkexec", argsPrefix: [] };
   }
 
   // 2. sudo -n — only works if credentials are cached, no prompt
-  if (await commandExists("sudo")) {
-    try {
-      await execFileAsync("sudo", ["-n", "true"]);
+  if (await hasCommand("sudo")) {
+    if (await sudoOk()) {
       return { command: "sudo", argsPrefix: ["-n"] };
-    } catch {
-      // Not cached; only allow interactive sudo if explicitly opted-in.
-      if (env.MILADY_USB_ALLOW_SUDO === "1") {
-        return { command: "sudo", argsPrefix: [] };
-      }
+    }
+    if (env.MILADY_USB_ALLOW_SUDO === "1") {
+      return { command: "sudo", argsPrefix: [] };
     }
   }
 
   // 3. kdesu — KDE GUI prompt
-  if (await commandExists("kdesu")) {
+  if (await hasCommand("kdesu")) {
     return { command: "kdesu", argsPrefix: ["-c"] };
   }
 
   // 4. doas — minimal BSD-style escalation
-  if (await commandExists("doas")) {
+  if (await hasCommand("doas")) {
     return { command: "doas", argsPrefix: [] };
   }
 

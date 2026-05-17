@@ -24,6 +24,61 @@ const TABS: Tab[] = [
 // Placeholder panels
 // ---------------------------------------------------------------------------
 
+// TODO: integrate USB installer in-process — currently launches the
+// standalone `packages/os-usb-installer` either as a separate dev server or
+// as the packaged `elizaOS USB Installer.app`. Tracking issue: TBD.
+const USB_INSTALLER_DEV_URL = "http://127.0.0.1:3742";
+const USB_INSTALLER_DOWNLOAD_URL = "https://elizaos.ai/downloads#usb-installer";
+
+interface OpenItemShell {
+  openExternal?: (url: string) => unknown;
+  openItem?: (path: string) => unknown;
+}
+
+interface ElectrobunWindowGlobal {
+  electrobun?: { shell?: OpenItemShell };
+}
+
+function openExternal(url: string): void {
+  const w = window as unknown as ElectrobunWindowGlobal;
+  const shell = w.electrobun?.shell;
+  if (shell?.openExternal) {
+    shell.openExternal(url);
+    return;
+  }
+  window.open(url, "_blank", "noopener,noreferrer");
+}
+
+function tryLaunchPackagedUsbInstaller(): boolean {
+  const w = window as unknown as ElectrobunWindowGlobal;
+  const shell = w.electrobun?.shell;
+  if (!shell?.openItem) return false;
+  try {
+    shell.openItem("/Applications/elizaOS USB Installer.app");
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+function isDev(): boolean {
+  try {
+    const meta = import.meta as unknown as { env?: { DEV?: boolean } };
+    return meta.env?.DEV === true;
+  } catch {
+    return false;
+  }
+}
+
+function handleOpenUsbInstaller(): void {
+  if (isDev()) {
+    openExternal(USB_INSTALLER_DEV_URL);
+    return;
+  }
+  if (tryLaunchPackagedUsbInstaller()) return;
+  openExternal(USB_INSTALLER_DOWNLOAD_URL);
+}
+
 function UsbInstallerPanel() {
   return (
     <div
@@ -62,14 +117,48 @@ function UsbInstallerPanel() {
             color: "#888888",
             fontSize: "14px",
             lineHeight: "1.6",
-            margin: "0",
+            margin: "0 0 20px",
           }}
         >
-          Launch the{" "}
-          <strong style={{ color: "#cccccc" }}>elizaOS USB Installer</strong>{" "}
-          app from your Applications folder to create a bootable elizaOS USB
-          drive.
+          Create a bootable elizaOS USB drive with the standalone{" "}
+          <strong style={{ color: "#cccccc" }}>elizaOS USB Installer</strong>.
         </p>
+        <button
+          type="button"
+          onClick={handleOpenUsbInstaller}
+          style={{
+            background: "#00ff88",
+            color: "#000",
+            border: "none",
+            borderRadius: "8px",
+            padding: "12px 24px",
+            fontSize: "14px",
+            fontWeight: 700,
+            cursor: "pointer",
+            marginBottom: "12px",
+          }}
+        >
+          Open USB Installer
+        </button>
+        <div style={{ fontSize: "12px", color: "#666" }}>
+          Or{" "}
+          <button
+            type="button"
+            onClick={() => openExternal(USB_INSTALLER_DOWNLOAD_URL)}
+            style={{
+              background: "none",
+              border: "none",
+              color: "#00ff88",
+              cursor: "pointer",
+              padding: 0,
+              fontSize: "12px",
+              textDecoration: "underline",
+            }}
+          >
+            download the USB Installer here
+          </button>
+          .
+        </div>
       </div>
     </div>
   );

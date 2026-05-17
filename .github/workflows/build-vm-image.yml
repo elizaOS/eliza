@@ -68,12 +68,10 @@ jobs:
 
       - name: Deploy elizaOS to VM
         working-directory: packages/os/linux
-        continue-on-error: true
         run: bash vm/scripts/deploy.sh
 
       - name: Run VM integration tests
         working-directory: packages/os/linux
-        continue-on-error: true
         timeout-minutes: 20
         run: bash vm/scripts/run-tests.sh
 

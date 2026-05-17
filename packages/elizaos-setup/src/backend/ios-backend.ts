@@ -1,4 +1,4 @@
-import { mkdtemp, rm } from "node:fs/promises";
+import { mkdtemp, rm, stat } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type {
@@ -11,6 +11,24 @@ import type {
   IosInstallStepId,
   IosInstallStepStatus,
 } from "./ios-types";
+
+export class IosAuthNotReadyError extends Error {
+  constructor() {
+    super(
+      "Apple ID authentication has not completed for this install attempt.",
+    );
+    this.name = "IosAuthNotReadyError";
+  }
+}
+
+export class IpaWriteFailedError extends Error {
+  constructor(path: string, expected: number, actual: number) {
+    super(
+      `IPA write verification failed: ${path} expected ${expected} bytes, got ${actual}`,
+    );
+    this.name = "IpaWriteFailedError";
+  }
+}
 
 const ELIZAOS_APPS: IosApp[] = [
   {
@@ -69,6 +87,11 @@ async function runCommand(
 export class SideloaderIosBackend implements IosBackend {
   private authState: IosAuthState = { status: "idle" };
 
+  /** Reset auth between install attempts so stale state doesn't leak across runs. */
+  resetAuth(): void {
+    this.authState = { status: "idle" };
+  }
+
   async listDevices(): Promise<IosDevice[]> {
     const { stdout, exitCode } = await runCommand("ideviceid", ["-l"]);
     if (exitCode !== 0 || !stdout.trim()) return [];
@@ -113,6 +136,9 @@ export class SideloaderIosBackend implements IosBackend {
   }
 
   async createInstallPlan(request: IosInstallRequest): Promise<IosInstallPlan> {
+    // Fresh install attempt — clear any stale auth state from a previous run.
+    this.resetAuth();
+
     const devices = await this.listDevices();
     const device = devices.find((d) => d.udid === request.deviceUdid);
     if (!device) throw new Error(`Device not found: ${request.deviceUdid}`);

@@ -130,10 +130,10 @@ describe("partial-file cleanup", () => {
 });
 
 describe("UserCancelledAuthError detection regex", () => {
-  // The backend matches /user canc[ei]lled\./i. Verify the patterns we care
+  // The backend matches /user cancell?ed\./i. Verify the patterns we care
   // about, since osascript reports either "User canceled." (US) or
   // "User cancelled." (UK) depending on macOS locale.
-  const re = /user canc[ei]lled\./i;
+  const re = /user cancell?ed\./i;
 
   it("matches US spelling", () => {
     expect(re.test("execution error: User canceled.")).toBe(true);

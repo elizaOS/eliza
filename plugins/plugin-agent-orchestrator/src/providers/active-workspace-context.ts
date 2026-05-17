@@ -74,8 +74,8 @@ export const activeWorkspaceContextProvider: Provider = {
       frameworkState = await getTaskAgentFrameworkState(runtime, acpService);
     } catch (err) {
       logger(runtime).debug?.(
+        { error: err },
         "[activeWorkspaceContext] getTaskAgentFrameworkState failed",
-        err,
       );
       frameworkState = FALLBACK_FRAMEWORK_STATE;
     }
@@ -91,8 +91,8 @@ export const activeWorkspaceContextProvider: Provider = {
         ]);
       } catch (err) {
         logger(runtime).debug?.(
+          { error: err },
           "[activeWorkspaceContext] listSessions failed",
-          err,
         );
         sessions = [];
       }
@@ -103,8 +103,8 @@ export const activeWorkspaceContextProvider: Provider = {
       workspaces = wsService?.listWorkspaces() ?? [];
     } catch (err) {
       logger(runtime).debug?.(
+        { error: err },
         "[activeWorkspaceContext] listWorkspaces failed",
-        err,
       );
       workspaces = [];
     }

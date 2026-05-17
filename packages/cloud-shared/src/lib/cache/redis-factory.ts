@@ -17,7 +17,9 @@ import { Redis as UpstashRedis } from "@upstash/redis";
 import { MockSocketRedis } from "./mock-redis";
 import { SocketRedis } from "./socket-redis";
 
-export type CompatibleRedis = SocketRedis | UpstashRedis | MockSocketRedis;
+// MockSocketRedis is duck-typed to SocketRedis; expose it as such so callers
+// don't need to widen their type signatures.
+export type CompatibleRedis = SocketRedis | UpstashRedis;
 
 export interface RedisFactoryEnv {
   REDIS_URL?: string;
@@ -32,7 +34,7 @@ export function buildRedisClient(env?: RedisFactoryEnv): CompatibleRedis | null 
   const e = env ?? (process.env as RedisFactoryEnv);
 
   if (e.MOCK_REDIS === "1") {
-    return new MockSocketRedis();
+    return new MockSocketRedis() as unknown as SocketRedis;
   }
 
   const url = e.REDIS_URL;

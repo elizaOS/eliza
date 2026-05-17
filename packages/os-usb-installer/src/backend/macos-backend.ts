@@ -658,7 +658,7 @@ export class MacOsUsbInstallerBackend implements UsbInstallerBackend {
     } catch (err: unknown) {
       if (isSubprocessError(err)) {
         const stderr = err.stderr ?? "";
-        if (/user canc[ei]lled\./i.test(stderr)) {
+        if (/user cancell?ed\./i.test(stderr)) {
           throw new UserCancelledAuthError(
             "Authentication cancelled — click Write to retry.",
           );

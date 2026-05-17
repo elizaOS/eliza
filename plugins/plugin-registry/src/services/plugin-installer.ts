@@ -1,5 +1,4 @@
 /**
-<<<<<<< Updated upstream
  * `@elizaos/app-core/services/plugin-installer` — thin forwarder to the
  * runtime implementation in `@elizaos/agent/services/plugin-installer`.
  *
@@ -12,20 +11,6 @@
  * time and never participates in the runtime cycle. The implementations
  * forward through `import()` so the cycle only resolves on first call,
  * when the consumer's bundler has finished walking the static graph.
-=======
- * `@elizaos/plugin-registry/services/plugin-installer` — thin forwarder to
- * the runtime implementation in `@elizaos/agent/services/plugin-installer`.
- *
- * Moved here in Phase 4F as part of the plugin-registry consolidation. The
- * canonical agent install/uninstall implementation still lives in agent
- * because it relies on agent-internal config + restart wiring. The forwarder
- * lazy-loads agent at first call: that keeps the static `.d.ts` graph from
- * picking up a registry → agent edge (which would feed the existing
- * agent ↔ app-core dynamic-import cycle in madge).
- *
- * Types are re-exported statically because TypeScript erases them at compile
- * time and never participates in the runtime cycle.
->>>>>>> Stashed changes
  */
 
 import type {

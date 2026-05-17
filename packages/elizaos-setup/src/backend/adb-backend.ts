@@ -1,10 +1,13 @@
 import { spawnSync } from "node:child_process";
-import { existsSync, mkdirSync } from "node:fs";
+import { createHash } from "node:crypto";
+import { createWriteStream, existsSync } from "node:fs";
+import { mkdir, rename, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-
-const ARTIFACT_TMP_ROOT = join(tmpdir(), "elizaos-setup");
+import { Readable } from "node:stream";
+import { pipeline } from "node:stream/promises";
 import type {
+  AndroidReleaseManifest,
   AospBuild,
   AospFlasherBackend,
   ConnectedDevice,
@@ -28,6 +31,16 @@ const ELIZAOS_SUPPORTED_CODENAMES = new Set([
 ]);
 
 // ---------------------------------------------------------------------------
+// Workspace paths — never hardcode /tmp; use os.tmpdir()
+// ---------------------------------------------------------------------------
+
+const ARTIFACT_TMP_ROOT = join(tmpdir(), "elizaos-setup");
+
+function artifactDirFor(buildId: string): string {
+  return join(ARTIFACT_TMP_ROOT, buildId);
+}
+
+// ---------------------------------------------------------------------------
 // ADB/fastboot tool discovery
 // ---------------------------------------------------------------------------
 
@@ -43,7 +56,7 @@ function findAdb(): string {
 
   for (const candidate of candidates) {
     if (!candidate) continue;
-    if (candidate === "adb") return "adb"; // rely on PATH
+    if (candidate === "adb") return "adb";
     if (existsSync(candidate)) return candidate;
   }
   return "adb";
@@ -68,18 +81,23 @@ function findFastboot(): string {
 }
 
 // ---------------------------------------------------------------------------
-// Safe subprocess helper — never passes user strings through shell=true
+// Subprocess helper
 // ---------------------------------------------------------------------------
+
+interface RunResult {
+  stdout: string;
+  stderr: string;
+  status: number;
+}
 
 function run(
   cmd: string,
   args: readonly string[],
   timeoutMs = 10_000,
-): { stdout: string; stderr: string; status: number } {
+): RunResult {
   const result = spawnSync(cmd, args, {
     encoding: "utf8",
     timeout: timeoutMs,
-    // no shell: true — args are passed directly to execvp
   });
   return {
     stdout: result.stdout ?? "",
@@ -117,7 +135,6 @@ function parseAdbDevices(output: string): RawAdbDevice[] {
     const state = tokens[1];
     if (!serial || !state) continue;
 
-    // Parse model: from "model:Pixel_9_Pro" token
     let model: string | undefined;
     for (const token of tokens.slice(2)) {
       if (token.startsWith("model:")) {
@@ -133,7 +150,7 @@ function parseAdbDevices(output: string): RawAdbDevice[] {
 }
 
 // ---------------------------------------------------------------------------
-// Mock build list — used when GitHub API is unavailable
+// Mock build list
 // ---------------------------------------------------------------------------
 
 export const MOCK_BUILDS: AospBuild[] = [
@@ -164,6 +181,70 @@ export const MOCK_BUILDS: AospBuild[] = [
 ];
 
 // ---------------------------------------------------------------------------
+// Artifact download with SHA-256 verification
+// ---------------------------------------------------------------------------
+
+export async function downloadAndVerifyArtifacts(
+  manifest: AndroidReleaseManifest,
+  destDir: string,
+  onProgress: (fraction: number) => void,
+  fetchImpl: typeof fetch = fetch,
+): Promise<Record<string, string>> {
+  await mkdir(destDir, { recursive: true });
+
+  const totalBytes = manifest.artifacts.reduce(
+    (sum, a) => sum + a.sizeBytes,
+    0,
+  );
+  let bytesWritten = 0;
+  const paths: Record<string, string> = {};
+
+  for (const artifact of manifest.artifacts) {
+    const finalPath = join(destDir, artifact.name);
+    const partialPath = `${finalPath}.partial`;
+
+    const response = await fetchImpl(artifact.url, {
+      signal: AbortSignal.timeout(600_000),
+    });
+    if (!response.ok || !response.body) {
+      throw new Error(
+        `Failed to download ${artifact.name}: HTTP ${response.status}`,
+      );
+    }
+
+    const hash = createHash("sha256");
+    const writeStream = createWriteStream(partialPath);
+
+    const bodyStream = Readable.fromWeb(
+      response.body as Parameters<typeof Readable.fromWeb>[0],
+    );
+
+    bodyStream.on("data", (chunk: Buffer) => {
+      hash.update(chunk);
+      bytesWritten += chunk.byteLength;
+      if (totalBytes > 0) {
+        onProgress(Math.min(bytesWritten / totalBytes, 1));
+      }
+    });
+
+    await pipeline(bodyStream, writeStream);
+
+    const digest = hash.digest("hex");
+    if (digest !== artifact.sha256) {
+      await rm(partialPath, { force: true });
+      throw new Error(
+        `SHA-256 mismatch for ${artifact.name}: expected ${artifact.sha256}, got ${digest}`,
+      );
+    }
+
+    await rename(partialPath, finalPath);
+    paths[artifact.name] = finalPath;
+  }
+
+  return paths;
+}
+
+// ---------------------------------------------------------------------------
 // AdbFlasherBackend
 // ---------------------------------------------------------------------------
 
@@ -175,10 +256,6 @@ export class AdbFlasherBackend implements AospFlasherBackend {
     this.adb = findAdb();
     this.fastboot = findFastboot();
   }
-
-  // -------------------------------------------------------------------------
-  // listConnectedDevices
-  // -------------------------------------------------------------------------
 
   async listConnectedDevices(): Promise<ConnectedDevice[]> {
     const { stdout } = run(this.adb, ["devices", "-l"]);
@@ -225,7 +302,6 @@ export class AdbFlasherBackend implements AospFlasherBackend {
           "getvar",
           "unlocked",
         ]);
-        // fastboot getvar unlocked writes to stderr
         const output = (
           unlockResult.stdout + unlockResult.stderr
         ).toLowerCase();
@@ -260,10 +336,6 @@ export class AdbFlasherBackend implements AospFlasherBackend {
     }
   }
 
-  // -------------------------------------------------------------------------
-  // getDeviceSpecs
-  // -------------------------------------------------------------------------
-
   async getDeviceSpecs(serial: string): Promise<DeviceSpecs> {
     const getprop = (prop: string): string => {
       const r = run(this.adb, ["-s", serial, "shell", "getprop", prop]);
@@ -274,13 +346,11 @@ export class AdbFlasherBackend implements AospFlasherBackend {
     const abi = getprop("ro.product.cpu.abi");
     const codename = getprop("ro.product.device");
 
-    // ro.boot.flash.locked: "1" = locked, "0" = unlocked, "" = unknown
     const flashLocked = getprop("ro.boot.flash.locked");
     let bootloaderLocked: boolean | null = null;
     if (flashLocked === "1") bootloaderLocked = true;
     else if (flashLocked === "0") bootloaderLocked = false;
 
-    // Storage: df /data — parse "Filesystem  1K-blocks  Used  Available  Use%  Mounted on"
     let storageAvailableBytes = 0;
     let storageTotalBytes = 0;
     const dfResult = run(this.adb, ["-s", serial, "shell", "df", "/data"]);
@@ -289,7 +359,6 @@ export class AdbFlasherBackend implements AospFlasherBackend {
       const dataLine = lines.find((l) => l.includes("/data"));
       if (dataLine) {
         const cols = dataLine.trim().split(/\s+/);
-        // cols: [filesystem, 1K-blocks, used, available, use%, mount]
         const blocks1k = parseInt(cols[1] ?? "0", 10);
         const available1k = parseInt(cols[3] ?? "0", 10);
         if (!Number.isNaN(blocks1k)) storageTotalBytes = blocks1k * 1024;
@@ -311,10 +380,6 @@ export class AdbFlasherBackend implements AospFlasherBackend {
       supportedBuildCodename: supportedByElizaOs ? codename : null,
     };
   }
-
-  // -------------------------------------------------------------------------
-  // listBuilds
-  // -------------------------------------------------------------------------
 
   async listBuilds(): Promise<AospBuild[]> {
     try {
@@ -389,10 +454,6 @@ export class AdbFlasherBackend implements AospFlasherBackend {
     }
   }
 
-  // -------------------------------------------------------------------------
-  // createFlashPlan
-  // -------------------------------------------------------------------------
-
   async createFlashPlan(request: FlashRequest): Promise<FlashPlan> {
     const [devices, builds] = await Promise.all([
       this.listConnectedDevices(),
@@ -404,13 +465,17 @@ export class AdbFlasherBackend implements AospFlasherBackend {
       throw new Error(`Device not found: ${request.deviceSerial}`);
     }
 
-    const build = builds.find((b) => b.id === request.buildId);
-    if (!build) {
+    const baseBuild = builds.find((b) => b.id === request.buildId);
+    if (!baseBuild) {
       throw new Error(`Build not found: ${request.buildId}`);
     }
 
+    // Carry wipeData through on the build so the flash step preview reflects it.
+    const build: AospBuild = { ...baseBuild, wipeData: request.wipeData };
+
     const artifactDir = build.artifactDir ?? null;
     const serial = request.deviceSerial;
+    const downloadDest = artifactDirFor(build.id);
 
     const steps: FlashStep[] = [
       {
@@ -445,7 +510,7 @@ export class AdbFlasherBackend implements AospFlasherBackend {
         status: "pending",
         detail: artifactDir
           ? `Using local artifacts at ${artifactDir}`
-          : `Downloading ${build.label} (${formatBytes(build.sizeBytes)}) to ${join(ARTIFACT_TMP_ROOT, build.id)}/`,
+          : `Downloading ${build.label} (${formatBytes(build.sizeBytes)}) to ${downloadDest}/`,
       },
       {
         id: "verify-artifacts",
@@ -486,13 +551,9 @@ export class AdbFlasherBackend implements AospFlasherBackend {
       build,
       steps,
       artifactDir,
-      privilegedFlashImplemented: true,
+      request,
     };
   }
-
-  // -------------------------------------------------------------------------
-  // executeFlashPlan
-  // -------------------------------------------------------------------------
 
   async executeFlashPlan(
     plan: FlashPlan,
@@ -504,25 +565,23 @@ export class AdbFlasherBackend implements AospFlasherBackend {
   ): Promise<void> {
     const { device, build } = plan;
     const serial = device.serial;
+    const dryRun = plan.request.dryRun === true;
 
     if (plan.steps[0]?.id !== "detect-device") {
       throw new Error("Unexpected plan shape — steps out of order");
     }
 
-    // --- dry-run: mark every step complete with command preview ---
-    if (
-      plan.steps.some(
-        (s) => s.detail.includes("--dry-run") || s.id === "detect-device",
-      ) &&
-      !plan.privilegedFlashImplemented
-    ) {
+    // Dry-run: log every command without executing.
+    if (dryRun) {
       for (const step of plan.steps) {
-        onProgress(step.id, "complete", `[dry-run] ${step.detail}`);
+        onProgress(
+          step.id,
+          "complete",
+          `DRY RUN: would run: ${step.detail}`,
+        );
       }
       return;
     }
-
-    // --- real execution ---
 
     // 1. detect-device
     onProgress("detect-device", "running", `adb -s ${serial} get-state`);
@@ -541,7 +600,7 @@ export class AdbFlasherBackend implements AospFlasherBackend {
     onProgress(
       "check-bootloader",
       "running",
-      `Checking if bootloader is already unlocked`,
+      "Checking if bootloader is already unlocked",
     );
     const lockedProp = run(this.adb, [
       "-s",
@@ -579,7 +638,6 @@ export class AdbFlasherBackend implements AospFlasherBackend {
       throw new Error("Failed to reboot to bootloader");
     }
 
-    // Poll for fastboot state (timeout 60s)
     let inFastboot = false;
     for (let i = 0; i < 30; i++) {
       await sleep(2_000);
@@ -599,7 +657,6 @@ export class AdbFlasherBackend implements AospFlasherBackend {
     }
     onProgress("reboot-bootloader", "complete", "Device in fastboot mode");
 
-    // Re-check unlocked state via fastboot now that we're in bootloader
     const unlockVar = run(this.fastboot, ["-s", serial, "getvar", "unlocked"]);
     const unlockOutput = (unlockVar.stdout + unlockVar.stderr).toLowerCase();
     alreadyUnlocked = unlockOutput.includes("unlocked: yes");
@@ -613,9 +670,10 @@ export class AdbFlasherBackend implements AospFlasherBackend {
       );
     } else {
       onProgress("unlock-bootloader", "waiting-user", "Initiating unlock...");
+      // The unlock command itself may return non-zero before the user confirms.
+      // Don't fail on its exit code — poll for the unlocked state instead.
       run(this.fastboot, ["-s", serial, "flashing", "unlock"]);
 
-      // Wait for user to confirm on device (poll 5s, timeout 120s)
       let confirmed = false;
       for (let i = 0; i < 24; i++) {
         await sleep(5_000);
@@ -639,36 +697,72 @@ export class AdbFlasherBackend implements AospFlasherBackend {
 
     // 5. download-artifacts
     let artifactDir = plan.artifactDir;
+    let artifactPaths: Record<string, string> = plan.artifactPaths ?? {};
     if (!artifactDir) {
-      const dest = join(ARTIFACT_TMP_ROOT, build.id);
-      mkdirSync(dest, { recursive: true });
+      const dest = artifactDirFor(build.id);
+      await mkdir(dest, { recursive: true });
+
       onProgress(
         "download-artifacts",
         "running",
-        `Downloading to ${dest} (${formatBytes(build.sizeBytes)})`,
+        `Downloading manifest from ${build.manifestUrl}`,
       );
 
-      // Download via fetch with progress tracking
-      const response = await fetch(build.manifestUrl, {
+      const manifestResp = await fetch(build.manifestUrl, {
         signal: AbortSignal.timeout(300_000),
       });
-      if (!response.ok) {
+      if (!manifestResp.ok) {
         onProgress(
           "download-artifacts",
           "failed",
-          `Download failed: HTTP ${response.status}`,
+          `Manifest download failed: HTTP ${manifestResp.status}`,
         );
-        throw new Error(`Failed to download manifest: HTTP ${response.status}`);
+        throw new Error(
+          `Failed to download manifest: HTTP ${manifestResp.status}`,
+        );
       }
 
-      // For now, we record the manifest location — actual artifact download
-      // would follow URLs from the manifest JSON
+      const manifest = (await manifestResp.json()) as AndroidReleaseManifest;
+      if (
+        !Array.isArray(manifest.artifacts) ||
+        manifest.artifacts.length === 0
+      ) {
+        onProgress(
+          "download-artifacts",
+          "failed",
+          "Manifest has no artifacts",
+        );
+        throw new Error("Manifest has no artifacts");
+      }
+
+      try {
+        artifactPaths = await downloadAndVerifyArtifacts(
+          manifest,
+          dest,
+          (fraction) => {
+            onProgress(
+              "download-artifacts",
+              "running",
+              `Downloading artifacts: ${Math.round(fraction * 100)}%`,
+            );
+          },
+        );
+      } catch (err) {
+        onProgress(
+          "download-artifacts",
+          "failed",
+          err instanceof Error ? err.message : String(err),
+        );
+        throw err;
+      }
+
+      artifactDir = dest;
+      plan.artifactPaths = artifactPaths;
       onProgress(
         "download-artifacts",
         "complete",
-        `Manifest downloaded. Artifact dir: ${dest}`,
+        `${manifest.artifacts.length} artifacts downloaded to ${dest}`,
       );
-      artifactDir = dest;
     } else {
       onProgress(
         "download-artifacts",
@@ -687,7 +781,8 @@ export class AdbFlasherBackend implements AospFlasherBackend {
     ];
     const missing: string[] = [];
     for (const img of requiredImages) {
-      if (!existsSync(join(artifactDir, img))) {
+      const path = artifactPaths[img] ?? join(artifactDir, img);
+      if (!existsSync(path)) {
         missing.push(img);
       }
     }
@@ -724,14 +819,14 @@ export class AdbFlasherBackend implements AospFlasherBackend {
     ];
     if (build.wipeData) flashArgs.push("--wipe-data");
 
-    let flashResult: ReturnType<typeof run>;
+    let flashResult: RunResult;
     if (existsSync(scriptPath)) {
       flashResult = run("bash", [scriptPath, ...flashArgs], 600_000);
     } else {
-      // Fallback: run individual fastboot flash commands
       flashResult = await this.flashPartitionsDirectly(
         serial,
         artifactDir,
+        artifactPaths,
         onProgress,
       );
     }
@@ -740,7 +835,9 @@ export class AdbFlasherBackend implements AospFlasherBackend {
       onProgress(
         "flash-partitions",
         "failed",
-        flashResult.stderr.trim() || flashResult.stdout.trim(),
+        flashResult.stderr.trim() ||
+          flashResult.stdout.trim() ||
+          "Flash failed",
       );
       throw new Error("Flash failed");
     }
@@ -748,14 +845,27 @@ export class AdbFlasherBackend implements AospFlasherBackend {
 
     // 8. reboot-android
     onProgress("reboot-android", "running", `fastboot -s ${serial} reboot`);
-    run(this.fastboot, ["-s", serial, "reboot"], 30_000);
+    const rebootAndroid = run(
+      this.fastboot,
+      ["-s", serial, "reboot"],
+      30_000,
+    );
+    if (rebootAndroid.status !== 0) {
+      onProgress(
+        "reboot-android",
+        "failed",
+        rebootAndroid.stderr.trim() ||
+          `Reboot exit code ${rebootAndroid.status}`,
+      );
+      throw new Error("Failed to reboot device to Android");
+    }
     onProgress("reboot-android", "complete", "Reboot command sent");
 
     // 9. validate-boot
     onProgress(
       "validate-boot",
       "running",
-      `Waiting for device to boot (timeout 120s)...`,
+      "Waiting for device to boot (timeout 120s)...",
     );
     const waitResult = run(
       this.adb,
@@ -795,12 +905,27 @@ export class AdbFlasherBackend implements AospFlasherBackend {
   private async flashPartitionsDirectly(
     serial: string,
     artifactDir: string,
+    artifactPaths: Record<string, string>,
     onProgress: (
       stepId: FlashStepId,
       status: FlashStepStatus,
       detail: string,
     ) => void,
-  ): Promise<ReturnType<typeof run>> {
+  ): Promise<RunResult> {
+    const resolveImg = (filename: string): string =>
+      artifactPaths[filename] ?? join(artifactDir, filename);
+
+    const failureFrom = (
+      partition: string,
+      result: RunResult,
+    ): RunResult => ({
+      status: result.status === 0 ? 1 : result.status,
+      stdout: result.stdout,
+      stderr:
+        result.stderr.trim() ||
+        `Failed to flash partition '${partition}' (exit ${result.status})`,
+    });
+
     const partitions: Array<[string, string]> = [
       ["boot", "boot.img"],
       ["vendor_boot", "vendor_boot.img"],
@@ -808,7 +933,7 @@ export class AdbFlasherBackend implements AospFlasherBackend {
     ];
 
     for (const [partition, filename] of partitions) {
-      const imgPath = join(artifactDir, filename);
+      const imgPath = resolveImg(filename);
       if (!existsSync(imgPath)) continue;
 
       onProgress(
@@ -822,19 +947,25 @@ export class AdbFlasherBackend implements AospFlasherBackend {
         120_000,
       );
       if (result.status !== 0) {
-        return result;
+        return failureFrom(partition, result);
       }
     }
 
-    // Flash super in fastbootd mode
-    const superPath = join(artifactDir, "super.img");
+    const superPath = resolveImg("super.img");
     if (existsSync(superPath)) {
       onProgress(
         "flash-partitions",
         "running",
         `fastboot -s ${serial} reboot fastboot (entering fastbootd for super)`,
       );
-      run(this.fastboot, ["-s", serial, "reboot", "fastboot"], 30_000);
+      const enterFastbootd = run(
+        this.fastboot,
+        ["-s", serial, "reboot", "fastboot"],
+        30_000,
+      );
+      if (enterFastbootd.status !== 0) {
+        return failureFrom("super (fastbootd reboot)", enterFastbootd);
+      }
       await sleep(5_000);
 
       onProgress(
@@ -848,18 +979,11 @@ export class AdbFlasherBackend implements AospFlasherBackend {
         300_000,
       );
       if (result.status !== 0) {
-        return result;
+        return failureFrom("super", result);
       }
     }
 
     return { stdout: "Partitions flashed", stderr: "", status: 0 };
-  }
-}
-
-// Extend AospBuild for internal wipeData tracking
-declare module "./types" {
-  interface AospBuild {
-    wipeData?: boolean;
   }
 }
 

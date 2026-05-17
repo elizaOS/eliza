@@ -1,6 +1,7 @@
 import { StrictMode } from "react";
 import { createRoot } from "react-dom/client";
 import { InstallerShell } from "./components/InstallerShell";
+import { getServerUrl } from "./runtime/server-url";
 import "./styles.css";
 
 const root = document.getElementById("root");
@@ -11,6 +12,6 @@ if (!root) {
 
 createRoot(root).render(
   <StrictMode>
-    <InstallerShell serverUrl="http://localhost:3743" />
+    <InstallerShell serverUrl={getServerUrl()} />
   </StrictMode>,
 );

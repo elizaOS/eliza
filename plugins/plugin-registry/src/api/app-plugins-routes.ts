@@ -3,7 +3,6 @@ import type http from "node:http";
 import { createRequire } from "node:module";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-<<<<<<< Updated upstream
 // === Phase 4F ===
 // Moved from packages/app-core/src/api/plugins-routes.ts into the
 // @elizaos/plugin-registry plugin. Both agent-internal helpers
@@ -11,8 +10,6 @@ import { fileURLToPath } from "node:url";
 // imported through their respective public package surfaces; no more
 // `../registry`, `../services/*`, `./auth`, `./compat-route-shared`, or
 // `./response` cross-package deep imports.
-=======
->>>>>>> Stashed changes
 import {
   type AdvancedCapabilityPluginId,
   applyPluginRuntimeMutation,
@@ -28,7 +25,6 @@ import {
   resolveAdvancedCapabilitiesEnabled,
   saveElizaConfig,
 } from "@elizaos/agent";
-<<<<<<< Updated upstream
 import {
   ensureCompatSensitiveRouteAuthorized,
   ensureRouteAuthorized,
@@ -39,8 +35,8 @@ import {
   scheduleCompatRuntimeRestart,
 } from "@elizaos/app-core/api/compat-route-shared";
 import {
-  sendJson as sendJsonResponse,
   sendJsonError as sendJsonErrorResponse,
+  sendJson as sendJsonResponse,
 } from "@elizaos/app-core/api/response";
 import {
   type ConfigField,
@@ -52,32 +48,12 @@ import {
   mirrorPluginSensitiveToVault,
   sharedVault,
 } from "@elizaos/app-core/services/vault-mirror";
-=======
->>>>>>> Stashed changes
 import { type AgentRuntime, logger } from "@elizaos/core";
 import {
   asRecord,
   CONNECTOR_PLUGINS,
   STREAMING_PLUGINS,
 } from "@elizaos/shared";
-<<<<<<< Updated upstream
-=======
-import {
-  _resetSharedVaultForTesting,
-  type CompatRuntimeState,
-  type ConfigField,
-  ensureCompatSensitiveRouteAuthorized,
-  ensureRouteAuthorized,
-  loadRegistry,
-  mirrorPluginSensitiveToVault,
-  readCompatJsonBody,
-  type RegistryEntry,
-  scheduleCompatRuntimeRestart,
-  sendJsonError as sendJsonErrorResponse,
-  sendJson as sendJsonResponse,
-  sharedVault,
-} from "@elizaos/app-core";
->>>>>>> Stashed changes
 import { VaultMissError } from "@elizaos/vault";
 
 const require = createRequire(import.meta.url);
@@ -166,13 +142,9 @@ function envKeyForRegistryEntry(entry: RegistryEntry): string | undefined {
     const [first] = entry.auth.credentialKeys;
     if (first) return first;
   }
-<<<<<<< Updated upstream
-	for (const [key, field] of Object.entries(entry.config) as Array<
-		[string, ConfigField]
-	>) {
-=======
-  for (const [key, field] of Object.entries(entry.config)) {
->>>>>>> Stashed changes
+  for (const [key, field] of Object.entries(entry.config) as Array<
+    [string, ConfigField]
+  >) {
     if (field.required && (field.type === "secret" || field.sensitive)) {
       return key;
     }
@@ -589,11 +561,7 @@ export function analyzePluginStateDrift(
   allowList: Set<string> | null,
 ): PluginDriftDiagnosticsReport {
   const diagnostics = pluginList.map((plugin): PluginDriftDiagnostic => {
-<<<<<<< Updated upstream
     const pluginId = String(plugin.id);
-=======
-    const pluginId = String(plugin.id ?? "");
->>>>>>> Stashed changes
     const category = normalizePluginCategory(plugin.category);
     const npmName =
       typeof plugin.npmName === "string" && plugin.npmName.length > 0
@@ -1124,11 +1092,7 @@ export function buildPluginListResponse(runtime: AgentRuntime | null): {
   const installEntries = config.plugins?.installs ?? {};
   const plugins = new Map<string, CompatPluginRecord>();
 
-<<<<<<< Updated upstream
   for (const entry of manifest.plugins ?? []) {
-=======
-  for (const entry of manifest?.plugins ?? []) {
->>>>>>> Stashed changes
     const pluginId = normalizePluginId(entry.id);
     const category = normalizePluginCategory(entry.category);
     const bundledMeta =
@@ -1228,11 +1192,7 @@ export function buildPluginListResponse(runtime: AgentRuntime | null): {
       id: pluginId,
       name: entry.name,
       description: entry.description,
-<<<<<<< Updated upstream
       tags: entry.tags,
-=======
-      tags: entry.tags ?? [],
->>>>>>> Stashed changes
       enabled: resolveCompatPluginEnabledForList(active, persistedEnabled),
       configured: entry.configured,
       envKey: entry.envKey,
@@ -1333,11 +1293,7 @@ export function buildPluginListResponse(runtime: AgentRuntime | null): {
       validationWarnings: [],
       npmName: pluginName,
       version:
-<<<<<<< Updated upstream
         typeof installRecord.version === "string"
-=======
-        typeof installRecord?.version === "string"
->>>>>>> Stashed changes
           ? installRecord.version
           : (resolveInstalledPackageVersion(pluginName) ?? undefined),
       isActive: isPluginLoaded(pluginId, pluginName, loadedNames),

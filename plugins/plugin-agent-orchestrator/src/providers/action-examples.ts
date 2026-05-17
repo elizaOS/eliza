@@ -114,8 +114,8 @@ export const codingAgentExamplesProvider: Provider = {
       };
     } catch (err) {
       logger(runtime).debug?.(
+        { error: err },
         "[codingAgentExamplesProvider] failed to build examples",
-        err,
       );
       return { text: "", values: {}, data: {} };
     }
