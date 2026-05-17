@@ -455,6 +455,17 @@ function stripToolTranscripts(raw: string): string {
   return out.join("\n").trim();
 }
 
+export function extractCompletionSummary(raw: string): string {
+  if (!raw.trim()) return "done";
+  const lines = stripToolTranscripts(raw)
+    .split("\n")
+    .map((l) => l.trim())
+    .filter((l) => l.length > 0 && !l.startsWith("[Tool:"));
+  const last = lines[lines.length - 1] ?? "";
+  if (!last) return "done";
+  return last.length > 300 ? `${last.slice(0, 297).trimEnd()}…` : last;
+}
+
 /**
  * Prompt for the LLM-driven progress heartbeat. The model gets the
  * recently captured narration tail and must reply with ONE short sentence
@@ -1189,23 +1200,11 @@ function registerProgressHook(runtime: IAgentRuntime): () => void {
           // record. capability-gated — connectors without react/edit just
           // skip these signals.
           if (evName === "task_complete") {
-            // Strip acpx tool-output envelopes ([tool output: …], [/tool
-            // output], [sub-agent: …]) from the raw response, then pick the
-            // LAST non-empty narrative line as the summary. The first line
-            // is often a tool header (the sub-agent typically narrates
-            // then concludes); the last line is the conclusion / final URL.
             const rawResponse =
               typeof (data as { response?: unknown })?.response === "string"
                 ? (data as { response: string }).response
                 : "";
-            const cleaned = stripToolTranscripts(rawResponse);
-            const lastLine =
-              cleaned
-                .split("\n")
-                .map((l) => l.trim())
-                .reverse()
-                .find((l) => l.length > 0) ?? "";
-            const summary = lastLine ? lastLine.slice(0, 200) : "done";
+            const summary = extractCompletionSummary(rawResponse);
             // await so the state lookup happens BEFORE progressBySession.delete
             // below — otherwise the helper races against the cleanup and finds
             // no state to attach the ✅ to.
