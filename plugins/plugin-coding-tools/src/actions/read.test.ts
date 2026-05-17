@@ -100,6 +100,7 @@ describe("READ", () => {
           pty: false,
           git: false,
           model: false,
+          computer: false,
         },
       }),
       fs: {
@@ -148,6 +149,40 @@ describe("READ", () => {
             message: "model unavailable",
             capability: "model",
             method: "model.status",
+          });
+        },
+      },
+      computer: {
+        status: async () => {
+          throw new CapabilityError({
+            code: "CAPABILITY_UNAVAILABLE",
+            message: "computer unavailable",
+            capability: "computer",
+            method: "computer.status",
+          });
+        },
+        permissions: async () => {
+          throw new CapabilityError({
+            code: "CAPABILITY_UNAVAILABLE",
+            message: "computer unavailable",
+            capability: "computer",
+            method: "computer.permissions",
+          });
+        },
+        displays: async () => {
+          throw new CapabilityError({
+            code: "CAPABILITY_UNAVAILABLE",
+            message: "computer unavailable",
+            capability: "computer",
+            method: "computer.displays",
+          });
+        },
+        screenshot: async () => {
+          throw new CapabilityError({
+            code: "CAPABILITY_UNAVAILABLE",
+            message: "computer unavailable",
+            capability: "computer",
+            method: "computer.screenshot",
           });
         },
       },

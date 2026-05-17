@@ -157,12 +157,12 @@
       "notes": "Dev/admin only. Do not turn into production UI."
     },
     {
-      "id": "future.eliza.computer",
+      "id": "eliza.computer",
       "path": "packages/app-core/platforms/electrobun/satellites/computer",
       "category": "desktop-capability",
-      "currentPurpose": "Potential future broker for screen/browser/camera/computer context if existing host APIs need a Satellite boundary.",
-      "keepAs": "needs-review",
-      "shouldBecomeSatellite": true,
+      "currentPurpose": "Desktop broker for screen, display, and computer context capability operations.",
+      "keepAs": "satellite",
+      "shouldBecomeSatellite": false,
       "shouldRegisterDynamicViews": false,
       "shouldEmitTraceEvents": true,
       "shouldUseRuntimeBroker": true,
@@ -172,10 +172,10 @@
         "trace",
         "dynamic-views"
       ],
-      "recommendedNextAction": "needs-owner-decision",
+      "recommendedNextAction": "route-through-runtime-broker",
       "risk": "medium",
-      "ownerDecisionNeeded": true,
-      "notes": "Only future Satellite candidate. Do not create until a concrete host capability boundary is required."
+      "ownerDecisionNeeded": false,
+      "notes": "Keep semantic computer-use, browser, camera, canvas, and screen-capture plugin layers as facades; route host implementation through this Satellite."
     },
     {
       "id": "packages/agent",
@@ -2898,13 +2898,12 @@
       "eliza.local-model",
       "eliza.pty",
       "eliza.runtime",
+      "eliza.computer",
       "eliza.surface"
     ],
-    "futureSatelliteCandidates": [
-      "future.eliza.computer"
-    ],
+    "futureSatelliteCandidates": [],
     "traceFirstCandidates": [
-      "future.eliza.computer",
+      "eliza.computer",
       "packages/app-core/platforms/electrobun/src/trace",
       "packages/app-core/platforms/electrobun/src/voice",
       "packages/shared/src/local-inference",
@@ -3027,7 +3026,7 @@
       "eliza.local-model",
       "eliza.pty",
       "eliza.runtime",
-      "future.eliza.computer",
+      "eliza.computer",
       "plugin-browser",
       "plugin-capacitor-bridge",
       "plugin-codex-cli",
@@ -3056,7 +3055,7 @@
       "plugin-wifi"
     ],
     "ownerDecisionItems": [
-      "future.eliza.computer"
+      "Plugin-native overlap routing after eliza.computer is available"
     ]
   }
 }

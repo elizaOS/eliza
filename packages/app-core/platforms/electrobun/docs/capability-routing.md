@@ -56,4 +56,4 @@ If the router is absent or explicitly unavailable, the previous local implementa
 - Route local Git helpers through `eliza.git`.
 - Route local file reads/search in documents/browser-adjacent plugins through `eliza.fs` where desktop-only.
 - Keep GitHub API, provider APIs, app semantics, and voice semantics plugin-owned.
-- Decide whether `eliza.computer` is justified before changing computer-use, browser, or native screen/camera/canvas implementation.
+- Route computer-use, browser, and native screen/camera/canvas host implementation through `eliza.computer` in small per-action slices.

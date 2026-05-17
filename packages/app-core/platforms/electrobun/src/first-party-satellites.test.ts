@@ -72,6 +72,7 @@ describe("first-party Satellites", () => {
 		}).map((definition) => assertCarrotPayload(definition.sourceDir));
 
 		expect(manifests.map((manifest) => manifest.id).sort()).toEqual([
+			"eliza.computer",
 			"eliza.fs",
 			"eliza.git",
 			"eliza.local-model",
@@ -93,8 +94,10 @@ describe("first-party Satellites", () => {
 				"installed",
 				"installed",
 				"installed",
+				"installed",
 			]);
 			expect(second.map((result) => result.action)).toEqual([
+				"unchanged",
 				"unchanged",
 				"unchanged",
 				"unchanged",
