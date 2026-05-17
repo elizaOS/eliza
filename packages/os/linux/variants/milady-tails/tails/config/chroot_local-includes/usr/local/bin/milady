@@ -16,8 +16,14 @@ if [ -x /usr/local/lib/elizaos/persistence-maintenance ]; then
     /usr/local/lib/elizaos/persistence-maintenance wait
 fi
 
-if [ ! -x /opt/milady/bin/launcher ]; then
-    echo "elizaOS launcher is not installed at /opt/milady/bin/launcher." >&2
+if [ -r /usr/local/lib/elizaos/runtime-env ]; then
+    . /usr/local/lib/elizaos/runtime-env
+fi
+ELIZAOS_RUNTIME_ROOT="${ELIZAOS_RUNTIME_ROOT:-${ELIZAOS_RUNTIME_DIR:-/opt/milady}}"
+ELIZAOS_LAUNCHER="${ELIZAOS_LAUNCHER:-${ELIZAOS_RUNTIME_ROOT}/bin/launcher}"
+
+if [ ! -x "${ELIZAOS_LAUNCHER}" ]; then
+    echo "elizaOS launcher is not installed at ${ELIZAOS_LAUNCHER}." >&2
     exit 1
 fi
 
@@ -114,7 +120,11 @@ import sys
 field = sys.argv[1]
 fallback = sys.argv[2]
 try:
-    with open("/opt/milady/Resources/version.json", encoding="utf-8") as handle:
+    import os
+
+    runtime_root = os.environ.get("ELIZAOS_RUNTIME_ROOT", "/opt/milady")
+    version_path = os.path.join(runtime_root, "Resources", "version.json")
+    with open(version_path, encoding="utf-8") as handle:
         value = json.load(handle).get(field)
     if isinstance(value, str) and value.strip():
         print(value.strip())
@@ -217,5 +227,5 @@ if command -v flock >/dev/null 2>&1; then
     fi
 fi
 
-cd /opt/milady
-exec /opt/milady/bin/launcher "$@"
+cd "${ELIZAOS_RUNTIME_ROOT}"
+exec "${ELIZAOS_LAUNCHER}" "$@"

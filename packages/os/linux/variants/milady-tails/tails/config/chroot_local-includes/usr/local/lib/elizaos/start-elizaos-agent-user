@@ -16,11 +16,16 @@ if [ -x /usr/local/lib/elizaos/persistence-maintenance ]; then
     /usr/local/lib/elizaos/persistence-maintenance wait
 fi
 
-runtime_entry=/opt/milady/Resources/app/eliza-dist/entry.js
-runtime_modules=/opt/milady/Resources/app/eliza-dist/node_modules
+if [ -r /usr/local/lib/elizaos/runtime-env ]; then
+    . /usr/local/lib/elizaos/runtime-env
+fi
+ELIZAOS_RUNTIME_ROOT="${ELIZAOS_RUNTIME_ROOT:-${ELIZAOS_RUNTIME_DIR:-/opt/milady}}"
+ELIZAOS_BUN="${ELIZAOS_BUN:-${ELIZAOS_RUNTIME_ROOT}/bin/bun}"
+runtime_entry="${ELIZAOS_AGENT_ENTRY:-${ELIZAOS_RUNTIME_ROOT}/Resources/app/eliza-dist/entry.js}"
+runtime_modules="${ELIZAOS_NODE_PATH:-${ELIZAOS_RUNTIME_ROOT}/Resources/app/eliza-dist/node_modules}"
 
-if [ ! -x /opt/milady/bin/bun ]; then
-    echo "elizaOS Bun runtime is not installed at /opt/milady/bin/bun." >&2
+if [ ! -x "${ELIZAOS_BUN}" ]; then
+    echo "elizaOS Bun runtime is not installed at ${ELIZAOS_BUN}." >&2
     exit 1
 fi
 
@@ -30,8 +35,8 @@ if [ ! -f "${runtime_entry}" ]; then
 fi
 
 export HOME=/home/amnesia
-export PATH="/opt/milady/bin:${PATH}"
-export NODE_PATH="${NODE_PATH:-${runtime_modules}}"
+export PATH="${ELIZAOS_RUNTIME_ROOT}/bin:${PATH}"
+export NODE_PATH="${runtime_modules}"
 
 export ELIZAOS_EDITION="${ELIZAOS_EDITION:-live-usb}"
 export ELIZAOS_BASE="${ELIZAOS_BASE:-tails}"
@@ -81,4 +86,4 @@ mkdir -p \
 unset LD_PRELOAD
 
 cd "${ELIZA_WORKSPACE_DIR}"
-exec /opt/milady/bin/bun run "${runtime_entry}" start
+exec "${ELIZAOS_BUN}" run "${runtime_entry}" start
