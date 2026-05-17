@@ -4,7 +4,6 @@ export const FILE_SATELLITE_ID = "eliza.fs" as const;
 export const TERMINAL_SATELLITE_ID = "eliza.pty" as const;
 export const GIT_SATELLITE_ID = "eliza.git" as const;
 export const MODEL_SATELLITE_ID = "eliza.local-model" as const;
-export const COMPUTER_SATELLITE_ID = "eliza.computer" as const;
 
 export type RuntimeMode =
 	| "stopped"
@@ -104,11 +103,7 @@ export type RuntimeMethod =
 	| "model.routing.useCloud"
 	| "model.generate"
 	| "model.embedding"
-	| "model.capabilities"
-	| "computer.status"
-	| "computer.permissions"
-	| "computer.displays"
-	| "computer.screenshot";
+	| "model.capabilities";
 
 export type RuntimeEventName =
 	| "runtime.statusChanged"
@@ -155,7 +150,7 @@ export type RuntimeHealthResult =
 			elapsedMs: number;
 			body: string;
 			attempts: RuntimeHealthAttempt[];
-		}
+	  }
 	| {
 			ok: false;
 			apiBase: string;
@@ -164,7 +159,7 @@ export type RuntimeHealthResult =
 			elapsedMs: number;
 			error: string;
 			attempts: RuntimeHealthAttempt[];
-		};
+	  };
 
 export type ApiRouteStatusMethod = "GET" | "POST" | "OPTIONS";
 
@@ -342,13 +337,13 @@ export type RuntimeWorkerResponseMessage =
 			requestId: string | number;
 			success: true;
 			payload: RuntimeResponsePayload;
-		}
+	  }
 	| {
 			type: "response";
 			requestId: string | number;
 			success: false;
 			error: ApiBridgeError;
-		};
+	  };
 
 export type RuntimeWorkerEventMessage = {
 	type: "event";

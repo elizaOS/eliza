@@ -44,20 +44,20 @@ These implementation paths are intentionally narrow. The FILE, SHELL, and WORKTR
 | provider plugins | model/provider | OpenAI, OpenRouter, Ollama, LM Studio, MLX, and similar providers stay plugins. |
 | app plugins | app semantics | Documents, training, task/workflow, browser-style app bundles stay app plugins. |
 
-## eliza.computer Routing Candidates
+## Future eliza.computer Candidates
 
-`eliza.computer` now exists as the desktop capability boundary for screen, display, and host-context operations. These plugins stay semantic facades while implementation routes move behind the Satellite in later slices.
+These are not Phase 19 implementation targets. They need overlap review before a new Satellite exists.
 
 | Plugin | Capability | Decision |
 | --- | --- | --- |
-| `plugin-computeruse` | screen, input, windows, clipboard | Semantic actions stay plugin-owned; host implementation may route to `eliza.computer`. |
-| `plugin-browser` | browser/window host implementation | Browser bridge semantics stay plugin-owned; desktop implementation overlap routes through `eliza.computer` when host-owned. |
+| `plugin-computeruse` | screen, input, windows, clipboard | Semantic actions stay plugin-owned; host implementation may route to future `eliza.computer`. |
+| `plugin-browser` | browser/window host implementation | Browser bridge semantics stay plugin-owned; desktop implementation overlap needs review. |
 | `plugin-native-screencapture` | screen capture/recording | Capture action semantics may stay as plugin facade. |
-| `plugin-native-desktop` | desktop/window/system host access | Needs owner decision before routing. |
+| `plugin-native-desktop` | desktop/window/system host access | Needs owner decision before collapse. |
 
 ## Needs Owner Decision
 
-- Which `plugin-computeruse`, `plugin-browser`, `plugin-native-screencapture`, `plugin-native-camera`, `plugin-native-canvas`, and `plugin-native-desktop` implementation paths should route to `eliza.computer` first.
+- Whether `eliza.computer` is justified after comparing `plugin-computeruse`, `plugin-browser`, `plugin-native-screencapture`, `plugin-native-camera`, `plugin-native-canvas`, and `plugin-native-desktop`.
 - Whether `plugin-native-system` has semantic actions worth preserving before command execution collapses into `eliza.pty`.
 - Whether `plugin-codex-cli` should keep local auth-file implementation in server mode while routing desktop mode through `eliza.fs`.
 
@@ -106,6 +106,6 @@ The shared fallback router returns structured `CAPABILITY_UNAVAILABLE` errors. P
 ## Remaining Conflicts
 
 - `plugin-coding-tools` still has direct local write/edit/search paths that need per-operation Satellite parity before routing.
-- `plugin-browser` and `plugin-computeruse` overlap with `eliza.computer` scope and still need per-action routing decisions.
+- `plugin-browser` and `plugin-computeruse` overlap with possible future `eliza.computer` scope.
 - `plugin-local-inference` must keep provider ownership while `eliza.local-model` controls desktop status/routing.
 - `plugin-native-system` needs owner review before any implementation collapse.

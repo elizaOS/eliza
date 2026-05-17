@@ -116,7 +116,6 @@ function makeGitRouter(
         pty: false,
         git: true,
         model: false,
-        computer: false,
       },
     }),
     fs: {
@@ -141,20 +140,6 @@ function makeGitRouter(
     model: {
       status: async () => {
         throw new Error("model unavailable");
-      },
-    },
-    computer: {
-      status: async () => {
-        throw new Error("computer status unavailable");
-      },
-      permissions: async () => {
-        throw new Error("computer permissions unavailable");
-      },
-      displays: async () => {
-        throw new Error("computer displays unavailable");
-      },
-      screenshot: async () => {
-        throw new Error("computer screenshot unavailable");
       },
     },
   };

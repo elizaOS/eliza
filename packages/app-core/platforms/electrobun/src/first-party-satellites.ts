@@ -83,13 +83,6 @@ export const FIRST_PARTY_SATELLITES: FirstPartySatelliteDefinition[] = [
 		autoStart: false,
 	},
 	{
-		id: "eliza.computer",
-		displayName: "Eliza Computer Satellite",
-		sourceDir: path.join(satellitesRoot, "computer"),
-		kind: "recommended",
-		autoStart: false,
-	},
-	{
 		id: "eliza.surface",
 		displayName: "Eliza Surface Satellite",
 		sourceDir: path.join(satellitesRoot, "surface"),

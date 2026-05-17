@@ -25,7 +25,6 @@ describe("capability router", () => {
 				pty: false,
 				git: false,
 				model: false,
-				computer: false,
 			},
 		});
 	});
@@ -76,35 +75,6 @@ describe("capability router", () => {
 			method: "model.status",
 			message: "broker offline",
 		});
-	});
-
-	it("routes desktop computer status through the runtime broker", async () => {
-		const calls: Array<{ method: string; params?: object }> = [];
-		const router = new RuntimeBrokerCapabilityRouter({
-			invokeRuntime: async (method, params) => {
-				calls.push({ method, params });
-				return {
-					id: "eliza.computer",
-					ok: true,
-					platform: "darwin",
-					capabilities: {},
-					updatedAt: "2026-05-17T00:00:00.000Z",
-				};
-			},
-		});
-
-		await expect(router.computer.status()).resolves.toEqual({
-			ok: true,
-			platform: "darwin",
-			raw: {
-				id: "eliza.computer",
-				ok: true,
-				platform: "darwin",
-				capabilities: {},
-				updatedAt: "2026-05-17T00:00:00.000Z",
-			},
-		});
-		expect(calls).toEqual([{ method: "computer.status", params: undefined }]);
 	});
 
 	it("routes desktop Git command execution through the runtime broker", async () => {

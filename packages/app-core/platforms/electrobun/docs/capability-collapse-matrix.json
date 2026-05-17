@@ -176,12 +176,12 @@
       "capability": "screen-capture",
       "semanticLayerShouldRemain": true,
       "implementationShouldCollapse": true,
-      "routeTo": "eliza.computer",
+      "routeTo": "future.eliza.computer",
       "collapseMode": "needs-owner-decision",
       "nonDesktopBehavior": "existing-plugin-fallback",
       "firstRoutingCandidate": false,
       "risk": "high",
-      "notes": "Screen capture action semantics may stay plugin-owned, but desktop capture implementation likely belongs behind eliza.computer if overlap is confirmed."
+      "notes": "Screen capture action semantics may stay plugin-owned, but desktop capture implementation likely belongs behind a future eliza.computer if overlap is confirmed."
     },
     {
       "pluginId": "plugin-native-system",
@@ -202,12 +202,12 @@
       "capability": "browser-computer-use",
       "semanticLayerShouldRemain": true,
       "implementationShouldCollapse": true,
-      "routeTo": "eliza.computer",
+      "routeTo": "future.eliza.computer",
       "collapseMode": "needs-owner-decision",
       "nonDesktopBehavior": "existing-plugin-fallback",
       "firstRoutingCandidate": false,
       "risk": "high",
-      "notes": "Desktop host/window implementation is an eliza.computer routing candidate. Semantic desktop actions should not be deleted without owner review."
+      "notes": "Desktop host/window implementation is a future eliza.computer candidate. Semantic desktop actions should not be deleted without owner review."
     },
     {
       "pluginId": "plugin-computeruse",
@@ -215,12 +215,12 @@
       "capability": "browser-computer-use",
       "semanticLayerShouldRemain": true,
       "implementationShouldCollapse": true,
-      "routeTo": "eliza.computer",
+      "routeTo": "future.eliza.computer",
       "collapseMode": "needs-owner-decision",
       "nonDesktopBehavior": "existing-plugin-fallback",
       "firstRoutingCandidate": false,
       "risk": "high",
-      "notes": "Computer-use action semantics remain plugin-owned. Capture, input, window, and clipboard implementation may collapse behind eliza.computer."
+      "notes": "Computer-use action semantics remain plugin-owned. Capture, input, window, and clipboard implementation may collapse behind a future eliza.computer."
     },
     {
       "pluginId": "plugin-browser",
@@ -228,12 +228,12 @@
       "capability": "browser-computer-use",
       "semanticLayerShouldRemain": true,
       "implementationShouldCollapse": true,
-      "routeTo": "eliza.computer",
+      "routeTo": "future.eliza.computer",
       "collapseMode": "needs-owner-decision",
       "nonDesktopBehavior": "existing-plugin-fallback",
       "firstRoutingCandidate": false,
       "risk": "high",
-      "notes": "Browser bridge semantics remain plugin-owned. Desktop browser/window implementation overlap should be audited before routing implementation."
+      "notes": "Browser bridge semantics remain plugin-owned. Desktop browser/window implementation overlap should be audited before any eliza.computer work."
     },
     {
       "pluginId": "plugin-browser",

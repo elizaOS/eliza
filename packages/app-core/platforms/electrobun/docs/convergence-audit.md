@@ -64,7 +64,6 @@ No Swift host/controller path is part of this architecture. The only retained bo
 
 ## Current Satellites
 
-- eliza.computer
 - eliza.fs
 - eliza.git
 - eliza.local-model
@@ -76,13 +75,13 @@ eliza.surface remains dev/admin only and is not a production UI replacement.
 
 ## Future Satellite Candidates
 
-- No additional candidates after `eliza.computer`.
+- future.eliza.computer
 
 This list is intentionally short. Do not turn connector, provider, or app plugins into Satellites.
 
 ## Trace-First Candidates
 
-- eliza.computer
+- future.eliza.computer
 - packages/app-core/platforms/electrobun/src/trace
 - packages/app-core/platforms/electrobun/src/voice
 - packages/shared/src/local-inference
@@ -208,7 +207,7 @@ This list is intentionally short. Do not turn connector, provider, or app plugin
 - eliza.local-model
 - eliza.pty
 - eliza.runtime
-- eliza.computer
+- future.eliza.computer
 - plugin-browser
 - plugin-capacitor-bridge
 - plugin-codex-cli
@@ -248,7 +247,7 @@ plugins/plugin-xmtp | Plugin-shaped directory without package.json. Needs owner 
 
 ## Owner-Decision Items
 
-- Plugin-native overlap routing after `eliza.computer` is available.
+- future.eliza.computer
 
 ## Proposed Annotation Plan
 
@@ -306,10 +305,10 @@ Do not blindly push every local phase into the platform convergence PR unless ma
 | eliza.fs | desktop-capability | satellite | leave-alone | no | yes | yes | low | Already a desktop/system capability provider. Keep scoped and brokered through host APIs. |
 | eliza.git | desktop-capability | satellite | leave-alone | no | yes | yes | low | Already a desktop/system capability provider. Keep scoped and brokered through host APIs. |
 | eliza.local-model | desktop-capability | satellite | leave-alone | no | yes | yes | low | Already a desktop/system capability provider. Keep scoped and brokered through host APIs. |
-| eliza.computer | desktop-capability | satellite | route-through-runtime-broker | no | yes | yes | medium | Desktop broker for screen, display, and computer context capability operations. Keep semantic plugin layers as facades. |
 | eliza.pty | desktop-capability | satellite | leave-alone | no | yes | yes | low | Already a desktop/system capability provider. Keep scoped and brokered through host APIs. |
 | eliza.runtime | desktop-capability | satellite | leave-alone | no | yes | yes | low | Already a desktop/system capability provider. Keep scoped and brokered through host APIs. |
 | eliza.surface | dev-tooling | satellite | leave-alone | yes | no | no | medium | Dev/admin only. Do not turn into production UI. |
+| future.eliza.computer | desktop-capability | needs-review | needs-owner-decision | no | yes | yes | medium | Only future Satellite candidate. Do not create until a concrete host capability boundary is required. |
 | packages/agent | core-runtime | core | leave-alone | no | no | no | low | AgentManager/Electrobun may own lifecycle, but agent runtime code stays in runtime packages. |
 | packages/app | production-ui | core | leave-alone | no | no | no | low | Hard no-migration item. Do not replace with eliza.surface or fixed dynamic-view panels. |
 | packages/app-core | core-runtime | core | leave-alone | no | no | no | low | Hard no-migration item. Electrobun platform code can add host docs, not absorb app-core ownership. |

@@ -3,8 +3,8 @@ import { createApiBridgeError, serializeError } from "./errors.ts";
 import { RuntimeLogBuffer } from "./log-buffer.ts";
 import type {
 	AgentMessageParams,
-	AgentMessageStreamCancelParams,
 	AgentMessageStreamEvent,
+	AgentMessageStreamCancelParams,
 	AgentMessageStreamParams,
 	JsonValue,
 	RuntimeLogEntry,
@@ -12,13 +12,12 @@ import type {
 	RuntimeMethod,
 	RuntimeResponsePayload,
 	RuntimeStartParams,
+	StreamEventKind,
 	RuntimeState,
 	RuntimeWorkerOutboundMessage,
 	RuntimeWorkerRequestMessage,
-	StreamEventKind,
 } from "./protocol.ts";
 import {
-	COMPUTER_SATELLITE_ID,
 	FILE_SATELLITE_ID,
 	GIT_SATELLITE_ID,
 	MODEL_SATELLITE_ID,
@@ -167,11 +166,7 @@ function isRuntimeMethod(value: string): value is RuntimeMethod {
 		value === "model.routing.useCloud" ||
 		value === "model.generate" ||
 		value === "model.embedding" ||
-		value === "model.capabilities" ||
-		value === "computer.status" ||
-		value === "computer.permissions" ||
-		value === "computer.displays" ||
-		value === "computer.screenshot"
+		value === "model.capabilities"
 	);
 }
 
@@ -723,8 +718,7 @@ async function recordTraceForStreamEvent(
 		sessionId: binding.sessionId,
 	};
 	if (event.kind === "cancelled") terminalParams.reason = "cancelled";
-	if (event.kind === "error")
-		terminalParams.error = event.text ?? "Stream failed";
+	if (event.kind === "error") terminalParams.error = event.text ?? "Stream failed";
 	void requestTraceHost(terminalMethod, terminalParams).catch((error) => {
 		logTraceFailure("session terminal", error);
 	});
@@ -739,12 +733,7 @@ async function invokeTracedSatellite(
 	const traceSessionId = traceSessionIdFromParams(params);
 	const forwardedParams = paramsWithoutTraceFields(params);
 	if (traceSessionId === null) {
-		return invokeSatellite(
-			satelliteId,
-			unavailableMessage,
-			method,
-			forwardedParams,
-		);
+		return invokeSatellite(satelliteId, unavailableMessage, method, forwardedParams);
 	}
 	recordTraceEvent({
 		sessionId: traceSessionId,
@@ -1102,16 +1091,6 @@ async function dispatch(
 				"Model Satellite eliza.local-model is not available",
 				request.method,
 				withRuntimeApiBase(request.params),
-			);
-		case "computer.status":
-		case "computer.permissions":
-		case "computer.displays":
-		case "computer.screenshot":
-			return invokeTracedSatellite(
-				COMPUTER_SATELLITE_ID,
-				"Computer Satellite eliza.computer is not available",
-				request.method,
-				request.params,
 			);
 	}
 	const exhaustive: never = request.method;

@@ -71,7 +71,7 @@ async function makeRuntime(opts: RuntimeOptions = {}): Promise<{
 }
 
 function unavailableCapability(
-  capability: "fs" | "pty" | "git" | "model" | "computer",
+  capability: "fs" | "pty" | "git" | "model",
   method: string,
 ): never {
   throw new CapabilityError({
@@ -95,7 +95,6 @@ function makeShellRouter(
         pty: true,
         git: false,
         model: false,
-        computer: false,
       },
     }),
     fs: {
@@ -110,15 +109,6 @@ function makeShellRouter(
     },
     model: {
       status: async () => unavailableCapability("model", "model.status"),
-    },
-    computer: {
-      status: async () => unavailableCapability("computer", "computer.status"),
-      permissions: async () =>
-        unavailableCapability("computer", "computer.permissions"),
-      displays: async () =>
-        unavailableCapability("computer", "computer.displays"),
-      screenshot: async () =>
-        unavailableCapability("computer", "computer.screenshot"),
     },
   };
 }

@@ -888,21 +888,21 @@ async function buildEntries(): Promise<ConvergenceAuditEntry[]> {
       relatedLayers: ["voice", "trace", "dynamic-views", "local-inference"],
     }),
     packageEntry({
-      id: "eliza.computer",
+      id: "future.eliza.computer",
       path: "packages/app-core/platforms/electrobun/satellites/computer",
       category: "desktop-capability",
-      keepAs: "satellite",
-      action: "route-through-runtime-broker",
+      keepAs: "needs-review",
+      action: "needs-owner-decision",
       currentPurpose:
-        "Desktop broker for screen, display, and computer context capability operations.",
+        "Potential future broker for screen/browser/camera/computer context if existing host APIs need a Satellite boundary.",
       notes:
-        "Keep semantic computer-use, browser, camera, canvas, and screen-capture plugin layers as facades; route host implementation through this Satellite.",
-      shouldBecomeSatellite: false,
+        "Only future Satellite candidate. Do not create until a concrete host capability boundary is required.",
+      shouldBecomeSatellite: true,
       shouldEmitTraceEvents: true,
       shouldUseRuntimeBroker: true,
       relatedLayers: ["electrobun-shell", "trace", "dynamic-views"],
       risk: "medium",
-      ownerDecisionNeeded: false,
+      ownerDecisionNeeded: true,
     }),
   ]);
 

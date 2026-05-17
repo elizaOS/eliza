@@ -10,7 +10,7 @@ export type CapabilityEnvironment =
 	| "mobile"
 	| "unknown";
 
-export type CapabilityName = "fs" | "pty" | "git" | "model" | "computer";
+export type CapabilityName = "fs" | "pty" | "git" | "model";
 
 export type CapabilityAvailability = {
 	environment: CapabilityEnvironment;
@@ -144,44 +144,6 @@ export type LocalModelStatusResult = {
 	raw?: JsonValue;
 };
 
-export type ComputerStatusResult = {
-	ok: boolean;
-	platform?: string;
-	raw?: JsonValue;
-};
-
-export type ComputerPermissionsResult = {
-	screenCapture: string;
-	input: string;
-	window: string;
-	browser: string;
-	camera: string;
-	canvas: string;
-	raw?: JsonValue;
-};
-
-export type ComputerDisplaysResult = {
-	displays: JsonObject[];
-	raw?: JsonValue;
-};
-
-export type ComputerScreenshotParams = {
-	region?: {
-		x: number;
-		y: number;
-		width: number;
-		height: number;
-	};
-	traceSessionId?: string;
-};
-
-export type ComputerScreenshotResult = {
-	mimeType: string;
-	base64: string;
-	capturedAt: string;
-	raw?: JsonValue;
-};
-
 export interface FileCapability {
 	readText(params: FileReadTextParams): Promise<FileReadTextResult>;
 }
@@ -200,15 +162,6 @@ export interface LocalModelCapability {
 	status(): Promise<LocalModelStatusResult>;
 }
 
-export interface ComputerCapability {
-	status(): Promise<ComputerStatusResult>;
-	permissions(): Promise<ComputerPermissionsResult>;
-	displays(): Promise<ComputerDisplaysResult>;
-	screenshot(
-		params?: ComputerScreenshotParams,
-	): Promise<ComputerScreenshotResult>;
-}
-
 export interface ElizaCapabilityRouter {
 	readonly environment: CapabilityEnvironment;
 	availability(): Promise<CapabilityAvailability>;
@@ -216,7 +169,6 @@ export interface ElizaCapabilityRouter {
 	readonly pty: TerminalCapability;
 	readonly git: GitCapability;
 	readonly model: LocalModelCapability;
-	readonly computer: ComputerCapability;
 }
 
 export type RuntimeBrokerCapabilityMethod =
@@ -225,11 +177,7 @@ export type RuntimeBrokerCapabilityMethod =
 	| "git.status"
 	| "git.diff"
 	| "git.command.run"
-	| "model.status"
-	| "computer.status"
-	| "computer.permissions"
-	| "computer.displays"
-	| "computer.screenshot";
+	| "model.status";
 
 export type RuntimeBrokerInvoke = (
 	method: RuntimeBrokerCapabilityMethod,
@@ -246,7 +194,6 @@ export class UnavailableCapabilityRouter implements ElizaCapabilityRouter {
 	readonly pty: TerminalCapability;
 	readonly git: GitCapability;
 	readonly model: LocalModelCapability;
-	readonly computer: ComputerCapability;
 
 	constructor(
 		readonly environment: CapabilityEnvironment = "unknown",
@@ -276,12 +223,6 @@ export class UnavailableCapabilityRouter implements ElizaCapabilityRouter {
 		this.model = {
 			status: () => this.unavailable("model", "model.status"),
 		};
-		this.computer = {
-			status: () => this.unavailable("computer", "computer.status"),
-			permissions: () => this.unavailable("computer", "computer.permissions"),
-			displays: () => this.unavailable("computer", "computer.displays"),
-			screenshot: () => this.unavailable("computer", "computer.screenshot"),
-		};
 	}
 
 	async availability(): Promise<CapabilityAvailability> {
@@ -293,7 +234,6 @@ export class UnavailableCapabilityRouter implements ElizaCapabilityRouter {
 				pty: false,
 				git: false,
 				model: false,
-				computer: false,
 			},
 			reason: this.reason,
 		};
@@ -322,7 +262,6 @@ export class RuntimeBrokerCapabilityRouter implements ElizaCapabilityRouter {
 	readonly pty: TerminalCapability;
 	readonly git: GitCapability;
 	readonly model: LocalModelCapability;
-	readonly computer: ComputerCapability;
 	private readonly invokeRuntime: RuntimeBrokerInvoke;
 
 	constructor(options: RuntimeBrokerCapabilityRouterOptions) {
@@ -342,12 +281,6 @@ export class RuntimeBrokerCapabilityRouter implements ElizaCapabilityRouter {
 		this.model = {
 			status: () => this.modelStatus(),
 		};
-		this.computer = {
-			status: () => this.computerStatus(),
-			permissions: () => this.computerPermissions(),
-			displays: () => this.computerDisplays(),
-			screenshot: (params) => this.computerScreenshot(params),
-		};
 	}
 
 	async availability(): Promise<CapabilityAvailability> {
@@ -359,7 +292,6 @@ export class RuntimeBrokerCapabilityRouter implements ElizaCapabilityRouter {
 				pty: true,
 				git: true,
 				model: true,
-				computer: true,
 			},
 		};
 	}
@@ -472,62 +404,6 @@ export class RuntimeBrokerCapabilityRouter implements ElizaCapabilityRouter {
 		};
 	}
 
-	private async computerStatus(): Promise<ComputerStatusResult> {
-		const result = await this.request("computer", "computer.status");
-		const object = requireObject(result, "computer.status");
-		const platform = optionalString(object, "platform", "computer.status");
-		return {
-			ok: requireBoolean(object, "ok", "computer.status"),
-			...(platform === undefined ? {} : { platform }),
-			raw: object,
-		};
-	}
-
-	private async computerPermissions(): Promise<ComputerPermissionsResult> {
-		const result = await this.request("computer", "computer.permissions");
-		const object = requireObject(result, "computer.permissions");
-		return {
-			screenCapture: requireString(
-				object,
-				"screenCapture",
-				"computer.permissions",
-			),
-			input: requireString(object, "input", "computer.permissions"),
-			window: requireString(object, "window", "computer.permissions"),
-			browser: requireString(object, "browser", "computer.permissions"),
-			camera: requireString(object, "camera", "computer.permissions"),
-			canvas: requireString(object, "canvas", "computer.permissions"),
-			raw: object,
-		};
-	}
-
-	private async computerDisplays(): Promise<ComputerDisplaysResult> {
-		const result = await this.request("computer", "computer.displays");
-		const object = requireObject(result, "computer.displays");
-		return {
-			displays: requireObjectArray(object, "displays", "computer.displays"),
-			raw: object,
-		};
-	}
-
-	private async computerScreenshot(
-		params: ComputerScreenshotParams = {},
-	): Promise<ComputerScreenshotResult> {
-		const result = await this.request("computer", "computer.screenshot", {
-			...(params.region === undefined ? {} : { region: params.region }),
-			...(params.traceSessionId === undefined
-				? {}
-				: { traceSessionId: params.traceSessionId }),
-		});
-		const object = requireObject(result, "computer.screenshot");
-		return {
-			mimeType: requireString(object, "mimeType", "computer.screenshot"),
-			base64: requireString(object, "base64", "computer.screenshot"),
-			capturedAt: requireString(object, "capturedAt", "computer.screenshot"),
-			raw: object,
-		};
-	}
-
 	private async request(
 		capability: CapabilityName,
 		method: RuntimeBrokerCapabilityMethod,
@@ -568,8 +444,7 @@ function isElizaCapabilityRouter(
 		isFileCapability(candidate.fs) &&
 		isTerminalCapability(candidate.pty) &&
 		isGitCapability(candidate.git) &&
-		isLocalModelCapability(candidate.model) &&
-		isComputerCapability(candidate.computer)
+		isLocalModelCapability(candidate.model)
 	);
 }
 
@@ -604,17 +479,6 @@ function isLocalModelCapability(value: unknown): value is LocalModelCapability {
 		typeof value === "object" &&
 		value !== null &&
 		typeof (value as Partial<LocalModelCapability>).status === "function"
-	);
-}
-
-function isComputerCapability(value: unknown): value is ComputerCapability {
-	if (typeof value !== "object" || value === null) return false;
-	const candidate = value as Partial<ComputerCapability>;
-	return (
-		typeof candidate.status === "function" &&
-		typeof candidate.permissions === "function" &&
-		typeof candidate.displays === "function" &&
-		typeof candidate.screenshot === "function"
 	);
 }
 
