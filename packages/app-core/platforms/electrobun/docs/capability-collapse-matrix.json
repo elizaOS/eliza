@@ -23,9 +23,9 @@
       "routeTo": "eliza.pty",
       "collapseMode": "facade-over-satellite",
       "nonDesktopBehavior": "existing-plugin-fallback",
-      "firstRoutingCandidate": false,
+      "firstRoutingCandidate": true,
       "risk": "medium",
-      "notes": "SHELL remains the agent action. Desktop command execution should route through eliza.pty after the read path proves the router boundary."
+      "notes": "SHELL remains the agent action. Desktop command execution prefers eliza.pty through the capability router and falls back to the existing local shell path when no router is registered or PTY is explicitly unavailable."
     },
     {
       "pluginId": "plugin-coding-tools",
@@ -36,9 +36,9 @@
       "routeTo": "eliza.git",
       "collapseMode": "facade-over-satellite",
       "nonDesktopBehavior": "existing-plugin-fallback",
-      "firstRoutingCandidate": false,
+      "firstRoutingCandidate": true,
       "risk": "medium",
-      "notes": "WORKTREE and local Git helpers should remain semantic coding actions but route host Git operations through eliza.git over time."
+      "notes": "WORKTREE remains the semantic coding action. git worktree add/remove now prefer eliza.git through the capability router and fall back to the existing local Git path when no router is registered or Git is explicitly unavailable."
     },
     {
       "pluginId": "plugin-codex-cli",

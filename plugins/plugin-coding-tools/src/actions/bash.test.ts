@@ -105,6 +105,8 @@ function makeShellRouter(
     git: {
       status: async () => unavailableCapability("git", "git.status"),
       diff: async () => unavailableCapability("git", "git.diff"),
+      commandRun: async () =>
+        unavailableCapability("git", "git.command.run"),
     },
     model: {
       status: async () => unavailableCapability("model", "model.status"),

@@ -107,6 +107,60 @@ describe("capability router", () => {
 		expect(calls).toEqual([{ method: "computer.status", params: undefined }]);
 	});
 
+	it("routes desktop Git command execution through the runtime broker", async () => {
+		const calls: Array<{ method: string; params?: object }> = [];
+		const router = new RuntimeBrokerCapabilityRouter({
+			invokeRuntime: async (method, params) => {
+				calls.push({ method, params });
+				return {
+					operation: {
+						id: "git-op-1",
+						name: "git.command.run",
+						cwd: "/repo",
+						command: ["worktree", "list"],
+						status: "completed",
+						stdout: "/repo\n",
+						stderr: "",
+						exitCode: 0,
+						signal: null,
+						startedAt: "2026-05-17T00:00:00.000Z",
+						completedAt: "2026-05-17T00:00:00.001Z",
+					},
+				};
+			},
+		});
+
+		await expect(
+			router.git.commandRun({
+				root: "/repo",
+				args: ["worktree", "list"],
+			}),
+		).resolves.toEqual({
+			operation: {
+				id: "git-op-1",
+				name: "git.command.run",
+				cwd: "/repo",
+				command: ["worktree", "list"],
+				status: "completed",
+				stdout: "/repo\n",
+				stderr: "",
+				exitCode: 0,
+				signal: null,
+				startedAt: "2026-05-17T00:00:00.000Z",
+				completedAt: "2026-05-17T00:00:00.001Z",
+			},
+		});
+		expect(calls).toEqual([
+			{
+				method: "git.command.run",
+				params: {
+					cwd: "/repo",
+					args: ["worktree", "list"],
+				},
+			},
+		]);
+	});
+
 	it("preserves capability errors from the broker", async () => {
 		const expected = new CapabilityError({
 			code: "CAPABILITY_UNAVAILABLE",

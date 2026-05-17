@@ -8,22 +8,22 @@ Plugins remain the elizaOS runtime extension layer. They own agent-facing action
 
 Satellites own desktop/system implementation behind the Electrobun host boundary. A plugin should use a shared capability router when it needs local filesystem, terminal, local Git, or local model host coordination in the desktop shell. The router targets `eliza.runtime`, and `eliza.runtime` brokers to the concrete Satellite.
 
-This phase starts with one low-risk implementation route: `plugin-coding-tools` FILE read prefers the shared capability router when a `capability-router` service is registered. If the router is absent or explicitly unavailable, the existing sandboxed local implementation remains the fallback.
+The first implemented routes are narrow `plugin-coding-tools` paths: FILE read prefers `eliza.fs`, SHELL command execution prefers `eliza.pty`, and WORKTREE local Git helpers prefer `eliza.git` through the shared capability router. If the router is absent or explicitly unavailable, the existing local implementation remains the fallback.
 
 ## Collapse Immediately Candidates
 
 | Plugin | Capability | Route | Mode | Risk |
 | --- | --- | --- | --- | --- |
 | `plugin-coding-tools` | filesystem read | `eliza.fs` | facade-over-satellite | low |
+| `plugin-coding-tools` | terminal | `eliza.pty` | facade-over-satellite | medium |
+| `plugin-coding-tools` | local Git | `eliza.git` | facade-over-satellite | medium |
 
-The first implementation path is intentionally narrow. The FILE action still owns the agent-facing semantics, path policy, output formatting, and per-conversation read state. The file-content read can come from `eliza.fs` through the capability router.
+These implementation paths are intentionally narrow. The FILE, SHELL, and WORKTREE actions still own agent-facing semantics, policy, output formatting, history/session state, and worktree stack behavior. Host filesystem, terminal, and local Git execution can come from Satellites through the capability router.
 
 ## Facade-Over-Satellite Candidates
 
 | Plugin | Capability | Route | Notes |
 | --- | --- | --- | --- |
-| `plugin-coding-tools` | terminal | `eliza.pty` | SHELL remains the action; command execution should route through PTY later. |
-| `plugin-coding-tools` | local Git | `eliza.git` | WORKTREE/local Git helpers should route through Git later. |
 | `plugin-codex-cli` | filesystem | `eliza.fs` | Auth/config files are implementation details. |
 | `plugin-codex-cli` | terminal | `eliza.pty` | CLI process execution belongs behind PTY in desktop mode. |
 | `plugin-commands` | terminal | `eliza.pty` | Command semantics remain plugin-owned. |
@@ -75,7 +75,7 @@ The first implementation path is intentionally narrow. The FILE action still own
 
 ## First Routing Implementation
 
-The first routed path is:
+The routed paths are:
 
 ```text
 plugin-coding-tools FILE read
@@ -83,6 +83,18 @@ plugin-coding-tools FILE read
   -> router.fs.readText()
   -> eliza.runtime fs.readText
   -> eliza.fs
+
+plugin-coding-tools SHELL
+  -> runtime.getService("capability-router")
+  -> router.pty.runCommand()
+  -> eliza.runtime pty.command.run
+  -> eliza.pty
+
+plugin-coding-tools WORKTREE
+  -> runtime.getService("capability-router")
+  -> router.git.commandRun()
+  -> eliza.runtime git.command.run
+  -> eliza.git
 ```
 
 If no router is registered, or if the router returns `CAPABILITY_UNAVAILABLE`, the existing sandboxed local implementation remains active. If the router is present and fails for any other reason, the action reports an `io_error` and does not bypass the failure through the local path.
@@ -93,7 +105,7 @@ The shared fallback router returns structured `CAPABILITY_UNAVAILABLE` errors. P
 
 ## Remaining Conflicts
 
-- `plugin-coding-tools` still has direct local write/edit/search/shell/Git paths.
+- `plugin-coding-tools` still has direct local write/edit/search paths that need per-operation Satellite parity before routing.
 - `plugin-browser` and `plugin-computeruse` overlap with `eliza.computer` scope and still need per-action routing decisions.
 - `plugin-local-inference` must keep provider ownership while `eliza.local-model` controls desktop status/routing.
 - `plugin-native-system` needs owner review before any implementation collapse.

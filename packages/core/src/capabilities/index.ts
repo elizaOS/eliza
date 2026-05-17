@@ -111,6 +111,33 @@ export type GitDiffResult = {
 	raw: string;
 };
 
+export type GitCommandRunParams = {
+	root: string;
+	args: string[];
+	traceSessionId?: string;
+};
+
+export type GitOperationStatus = "running" | "completed" | "failed";
+
+export type GitOperation = {
+	id: string;
+	name: string;
+	cwd: string;
+	command: string[];
+	status: GitOperationStatus;
+	stdout: string;
+	stderr: string;
+	exitCode?: number | null;
+	signal?: string | null;
+	startedAt: string;
+	completedAt?: string;
+	error?: string;
+};
+
+export type GitCommandRunResult = {
+	operation: GitOperation;
+};
+
 export type LocalModelStatusResult = {
 	ok: boolean;
 	provider?: string;
@@ -166,6 +193,7 @@ export interface TerminalCapability {
 export interface GitCapability {
 	status(params: GitStatusParams): Promise<GitStatusResult>;
 	diff(params: GitDiffParams): Promise<GitDiffResult>;
+	commandRun(params: GitCommandRunParams): Promise<GitCommandRunResult>;
 }
 
 export interface LocalModelCapability {
@@ -196,6 +224,7 @@ export type RuntimeBrokerCapabilityMethod =
 	| "pty.command.run"
 	| "git.status"
 	| "git.diff"
+	| "git.command.run"
 	| "model.status"
 	| "computer.status"
 	| "computer.permissions"
@@ -238,6 +267,11 @@ export class UnavailableCapabilityRouter implements ElizaCapabilityRouter {
 				this.unavailable("git", "git.status", { root: params.root }),
 			diff: (params) =>
 				this.unavailable("git", "git.diff", { root: params.root }),
+			commandRun: (params) =>
+				this.unavailable("git", "git.command.run", {
+					root: params.root,
+					args: params.args,
+				}),
 		};
 		this.model = {
 			status: () => this.unavailable("model", "model.status"),
@@ -303,6 +337,7 @@ export class RuntimeBrokerCapabilityRouter implements ElizaCapabilityRouter {
 		this.git = {
 			status: (params) => this.gitStatus(params),
 			diff: (params) => this.gitDiff(params),
+			commandRun: (params) => this.gitCommandRun(params),
 		};
 		this.model = {
 			status: () => this.modelStatus(),
@@ -404,6 +439,25 @@ export class RuntimeBrokerCapabilityRouter implements ElizaCapabilityRouter {
 		const object = requireObject(result, "git.diff");
 		return {
 			raw: requireString(object, "raw", "git.diff"),
+		};
+	}
+
+	private async gitCommandRun(
+		params: GitCommandRunParams,
+	): Promise<GitCommandRunResult> {
+		const result = await this.request("git", "git.command.run", {
+			cwd: params.root,
+			args: params.args,
+			...(params.traceSessionId === undefined
+				? {}
+				: { traceSessionId: params.traceSessionId }),
+		});
+		const object = requireObject(result, "git.command.run");
+		return {
+			operation: requireGitOperation(
+				object.operation,
+				"git.command.run.operation",
+			),
 		};
 	}
 
@@ -540,7 +594,8 @@ function isGitCapability(value: unknown): value is GitCapability {
 	const candidate = value as Partial<GitCapability>;
 	return (
 		typeof candidate.status === "function" &&
-		typeof candidate.diff === "function"
+		typeof candidate.diff === "function" &&
+		typeof candidate.commandRun === "function"
 	);
 }
 
@@ -632,6 +687,18 @@ function requireObjectArray(
 	throw decodeError(method, `${key} must be an object array.`);
 }
 
+function requireStringArray(
+	object: JsonObject,
+	key: string,
+	method: string,
+): string[] {
+	const value = object[key];
+	if (Array.isArray(value) && value.every((entry) => typeof entry === "string")) {
+		return value;
+	}
+	throw decodeError(method, `${key} must be a string array.`);
+}
+
 function nullableNumber(
 	object: JsonObject,
 	key: string,
@@ -643,6 +710,30 @@ function nullableNumber(
 	throw decodeError(method, `${key} must be a finite number or null.`);
 }
 
+function optionalNullableNumber(
+	object: JsonObject,
+	key: string,
+	method: string,
+): number | null | undefined {
+	const value = object[key];
+	if (value === undefined) return undefined;
+	if (value === null) return null;
+	if (typeof value === "number" && Number.isFinite(value)) return value;
+	throw decodeError(method, `${key} must be a finite number or null when present.`);
+}
+
+function optionalNullableString(
+	object: JsonObject,
+	key: string,
+	method: string,
+): string | null | undefined {
+	const value = object[key];
+	if (value === undefined) return undefined;
+	if (value === null) return null;
+	if (typeof value === "string") return value;
+	throw decodeError(method, `${key} must be a string or null when present.`);
+}
+
 function requireBoolean(
 	object: JsonObject,
 	key: string,
@@ -651,6 +742,35 @@ function requireBoolean(
 	const value = object[key];
 	if (typeof value === "boolean") return value;
 	throw decodeError(method, `${key} must be a boolean.`);
+}
+
+function requireGitOperation(
+	value: JsonValue | undefined,
+	method: string,
+): GitOperation {
+	const object = requireObject(value, method);
+	const status = requireString(object, "status", method);
+	if (status !== "running" && status !== "completed" && status !== "failed") {
+		throw decodeError(method, "status must be a valid Git operation status.");
+	}
+	const exitCode = optionalNullableNumber(object, "exitCode", method);
+	const signal = optionalNullableString(object, "signal", method);
+	const completedAt = optionalString(object, "completedAt", method);
+	const error = optionalString(object, "error", method);
+	return {
+		id: requireString(object, "id", method),
+		name: requireString(object, "name", method),
+		cwd: requireString(object, "cwd", method),
+		command: requireStringArray(object, "command", method),
+		status,
+		stdout: requireString(object, "stdout", method),
+		stderr: requireString(object, "stderr", method),
+		...(exitCode === undefined ? {} : { exitCode }),
+		...(signal === undefined ? {} : { signal }),
+		startedAt: requireString(object, "startedAt", method),
+		...(completedAt === undefined ? {} : { completedAt }),
+		...(error === undefined ? {} : { error }),
+	};
 }
 
 function decodeError(method: string, message: string): CapabilityError {

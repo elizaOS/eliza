@@ -141,6 +141,14 @@ describe("READ", () => {
             method: "git.diff",
           });
         },
+        commandRun: async () => {
+          throw new CapabilityError({
+            code: "CAPABILITY_UNAVAILABLE",
+            message: "git unavailable",
+            capability: "git",
+            method: "git.command.run",
+          });
+        },
       },
       model: {
         status: async () => {

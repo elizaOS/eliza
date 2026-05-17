@@ -1,8 +1,6 @@
-import { execFile } from "node:child_process";
 import * as crypto from "node:crypto";
 import * as os from "node:os";
 import * as path from "node:path";
-import { promisify } from "node:util";
 
 import {
   type ActionResult,
@@ -18,6 +16,7 @@ import {
   readStringParam,
   successActionResult,
 } from "../lib/format.js";
+import { runGitCommand } from "../lib/run-git-command.js";
 import type { SandboxService } from "../services/sandbox-service.js";
 import type { SessionCwdService } from "../services/session-cwd-service.js";
 import {
@@ -25,8 +24,6 @@ import {
   SANDBOX_SERVICE,
   SESSION_CWD_SERVICE,
 } from "../types.js";
-
-const execFileAsync = promisify(execFile);
 
 function generateWorktreeName(): string {
   return `auto-${crypto.randomBytes(4).toString("hex")}`;
@@ -91,14 +88,11 @@ export async function enterWorktreeHandler(
 
   try {
     const timeoutMs = 30_000;
-    await execFileAsync(
-      "git",
-      ["worktree", "add", "-b", name, worktreePath, base],
-      {
-        cwd,
-        timeout: timeoutMs,
-      },
-    );
+    await runGitCommand(runtime, {
+      cwd,
+      args: ["worktree", "add", "-b", name, worktreePath, base],
+      timeoutMs,
+    });
   } catch (err) {
     const stderr =
       err && typeof err === "object" && "stderr" in err

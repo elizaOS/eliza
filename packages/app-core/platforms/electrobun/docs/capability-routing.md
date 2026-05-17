@@ -10,7 +10,7 @@ Agent
   -> first-party Satellite
 ```
 
-Plugins do not import Electrobun main-process modules and do not call individual Satellites directly. The desktop router calls runtime methods such as `fs.readText`, `pty.command.run`, `git.status`, `git.diff`, and `model.status`. In Electrobun, `eliza.runtime` forwards those methods to `eliza.fs`, `eliza.pty`, `eliza.git`, or `eliza.local-model`.
+Plugins do not import Electrobun main-process modules and do not call individual Satellites directly. The desktop router calls runtime methods such as `fs.readText`, `pty.command.run`, `git.status`, `git.diff`, `git.command.run`, and `model.status`. In Electrobun, `eliza.runtime` forwards those methods to `eliza.fs`, `eliza.pty`, `eliza.git`, or `eliza.local-model`.
 
 ## Plugin Layer
 
@@ -39,7 +39,7 @@ Satellites keep desktop/system implementation:
 
 The shared fallback router returns structured `CAPABILITY_UNAVAILABLE` errors. A plugin may keep a safe existing fallback when no router is registered. A plugin should not silently fake successful desktop work when a registered router fails.
 
-## First Routed Path
+## Routed Paths
 
 `plugin-coding-tools` FILE read now prefers `capability-router.fs.readText()` when the runtime has a `capability-router` service. The action still owns:
 
@@ -50,10 +50,13 @@ The shared fallback router returns structured `CAPABILITY_UNAVAILABLE` errors. A
 
 If the router is absent or explicitly unavailable, the previous local implementation remains the fallback.
 
+`plugin-coding-tools` SHELL now prefers `capability-router.pty.runCommand()` for command execution. The action still owns command parsing, timeout selection, terminal support checks, history recording, and output formatting.
+
+`plugin-coding-tools` WORKTREE now prefers `capability-router.git.commandRun()` for `git worktree add` and `git worktree remove --force`. The action still owns the worktree stack, sandbox root registration, and session cwd transitions.
+
 ## Remaining Work
 
-- Route `plugin-coding-tools` SHELL through `eliza.pty`.
-- Route local Git helpers through `eliza.git`.
+- Route remaining `plugin-coding-tools` write/edit/search file operations through `eliza.fs` where the Satellite has matching primitives.
 - Route local file reads/search in documents/browser-adjacent plugins through `eliza.fs` where desktop-only.
 - Keep GitHub API, provider APIs, app semantics, and voice semantics plugin-owned.
 - Route computer-use, browser, and native screen/camera/canvas host implementation through `eliza.computer` in small per-action slices.
