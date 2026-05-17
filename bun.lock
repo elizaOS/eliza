@@ -1807,6 +1807,7 @@
         "@elizaos/core": "workspace:*",
         "chalk": "^5.3.0",
         "drizzle-orm": "0.45.2",
+        "phonemizer": "^1.2.1",
         "react": "^19.0.0",
         "yaml": "^2.8.2",
         "zod": "^4.4.3",
@@ -2954,6 +2955,7 @@
         "@elizaos/core": "workspace:*",
         "@elizaos/plugin-capacitor-bridge": "workspace:*",
         "@elizaos/shared": "workspace:*",
+        "phonemizer": "^1.2.1",
       },
       "devDependencies": {
         "@biomejs/biome": "^2.4.14",
@@ -10279,6 +10281,8 @@
     "pgpass": ["pgpass@1.0.5", "", { "dependencies": { "split2": "^4.1.0" } }, "sha512-FdW9r/jQZhSeohs1Z3sI1yxFQNFvMcnmfuj4WBMUTxOrAyLMaTcE1aAMBiTlbMNaXvBCQuVi0R7hd8udDSP7ug=="],
 
     "phin": ["phin@3.7.1", "", { "dependencies": { "centra": "^2.7.0" } }, "sha512-GEazpTWwTZaEQ9RhL7Nyz0WwqilbqgLahDM3D0hxWwmVDI52nXEybHqiN6/elwpkJBhcuj+WbBu+QfT0uhPGfQ=="],
+
+    "phonemizer": ["phonemizer@1.2.1", "", {}, "sha512-v0KJ4mi2T4Q7eJQ0W15Xd4G9k4kICSXE8bpDeJ8jisL4RyJhNWsweKTOi88QXFc4r4LZlz5jVL5lCHhkpdT71A=="],
 
     "picocolors": ["picocolors@1.1.1", "", {}, "sha512-xceH2snhtb5M9liqDsmEw56le376mTZkEX/jEb/RxNFyegNul7eNslCXP9FDj/Lcu0X8KEyMceP2ntpaHrDEVA=="],
 
