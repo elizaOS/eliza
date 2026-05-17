@@ -138,10 +138,10 @@ export function AgentsSectionSkeleton() {
       {/* Section Header Skeleton */}
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-2">
-          <div className="h-7 w-20 bg-white/10 animate-pulse rounded" />
-          <div className="h-5 w-8 bg-white/10 animate-pulse rounded" />
+          <div className="h-7 w-20 bg-white/10 animate-pulse rounded-sm" />
+          <div className="h-5 w-8 bg-white/10 animate-pulse rounded-sm" />
         </div>
-        <div className="h-8 w-20 bg-white/10 animate-pulse rounded" />
+        <div className="h-8 w-20 bg-white/10 animate-pulse rounded-sm" />
       </div>
 
       {/* Agents Grid Skeleton */}
@@ -153,13 +153,13 @@ export function AgentsSectionSkeleton() {
           >
             {/* Top left badges skeleton */}
             <div className="absolute top-3 left-3 flex gap-1.5">
-              <div className="h-4 w-4 bg-white/10 animate-pulse rounded" />
+              <div className="h-4 w-4 bg-white/10 animate-pulse rounded-sm" />
             </div>
             {/* Name and description skeleton */}
             <div className="absolute bottom-0 left-0 right-0 p-3 space-y-2">
-              <div className="h-5 w-24 bg-white/10 animate-pulse rounded" />
-              <div className="h-3 w-full bg-white/10 animate-pulse rounded" />
-              <div className="h-3 w-2/3 bg-white/10 animate-pulse rounded" />
+              <div className="h-5 w-24 bg-white/10 animate-pulse rounded-sm" />
+              <div className="h-3 w-full bg-white/10 animate-pulse rounded-sm" />
+              <div className="h-3 w-2/3 bg-white/10 animate-pulse rounded-sm" />
             </div>
           </div>
         ))}

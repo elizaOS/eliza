@@ -139,7 +139,7 @@ export function BrandTabsResponsive({
             value={tab.value}
             disabled={tab.disabled}
             className={cn(
-              "inline-flex items-center gap-1.5 lg:gap-2 rounded-none px-2.5 lg:px-4 xl:px-6 py-1 lg:py-1.5 text-xs lg:text-sm font-medium transition-colors whitespace-nowrap",
+              "inline-flex items-center gap-1.5 lg:gap-2 rounded-sm px-2.5 lg:px-4 xl:px-6 py-1 lg:py-1.5 text-xs lg:text-sm font-medium transition-colors whitespace-nowrap",
               "border-b-2 border-transparent",
               "text-txt/70 hover:text-txt",
               "data-[state=active]:border-txt data-[state=active]:bg-bg-hover data-[state=active]:text-txt",

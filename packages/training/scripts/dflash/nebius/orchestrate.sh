@@ -29,6 +29,7 @@ SSH_PUBKEY_FILE="${SSH_PUBKEY_FILE:-${SSH_KEY_FILE}.pub}"
 NEBIUS_SSH_USER="${NEBIUS_SSH_USER:-ubuntu}"
 REMOTE_REPO_PATH="${REMOTE_REPO_PATH:-~/eliza-workspace/milady/eliza}"
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+TRAINING_ROOT="$(cd "${SCRIPT_DIR}/../../.." && pwd)"
 
 # ── parse args ────────────────────────────────────────────────────────────────
 DRY_RUN=0
@@ -234,6 +235,21 @@ if (( ! DRY_RUN )); then
     -e "ssh -i ${SSH_KEY_FILE} -o StrictHostKeyChecking=no" \
     "${SCRIPT_DIR}/../jobs/" \
     "${NEBIUS_SSH_USER}@${PUBLIC_IP}:${REMOTE_REPO_PATH}/packages/training/scripts/dflash/jobs/"
+
+  rsync -az \
+    -e "ssh -i ${SSH_KEY_FILE} -o StrictHostKeyChecking=no" \
+    "${SCRIPT_DIR}/../../distill_dflash_drafter.py" \
+    "${NEBIUS_SSH_USER}@${PUBLIC_IP}:${REMOTE_REPO_PATH}/packages/training/scripts/distill_dflash_drafter.py"
+
+  ssh -i "${SSH_KEY_FILE}" \
+      -o StrictHostKeyChecking=no \
+      "${NEBIUS_SSH_USER}@${PUBLIC_IP}" \
+      "mkdir -p ${REMOTE_REPO_PATH}/packages/training/configs"
+
+  rsync -az \
+    -e "ssh -i ${SSH_KEY_FILE} -o StrictHostKeyChecking=no" \
+    "${TRAINING_ROOT}/configs/" \
+    "${NEBIUS_SSH_USER}@${PUBLIC_IP}:${REMOTE_REPO_PATH}/packages/training/configs/"
 fi
 
 # ── build remote launch command ────────────────────────────────────────────────
@@ -246,6 +262,8 @@ REMOTE_CMD="bash ${LAUNCH_SCRIPT}"
 [[ -n "${DATASET_ROOT:-}" ]] && REMOTE_CMD=" DATASET_ROOT=${DATASET_ROOT} ${REMOTE_CMD}"
 [[ -n "${TARGET_CHECKPOINT_ROOT:-}" ]] && \
   REMOTE_CMD=" TARGET_CHECKPOINT_ROOT=${TARGET_CHECKPOINT_ROOT} ${REMOTE_CMD}"
+[[ -n "${TARGET_GGUF_ROOT:-}" ]] && \
+  REMOTE_CMD=" TARGET_GGUF_ROOT=${TARGET_GGUF_ROOT} ${REMOTE_CMD}"
 
 # Auto-shutdown: stop instance via nebius API after training completes.
 STOP_CMD="nebius compute instance update --id ${INSTANCE_ID} --stopped --async"

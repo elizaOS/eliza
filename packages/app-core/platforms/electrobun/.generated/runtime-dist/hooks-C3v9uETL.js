@@ -1,15 +1,56 @@
-import { D as require_jsx_runtime, E as require_index_cjs, S as invokeDesktopBridgeRequest, T as subscribeDesktopBridgeEvent, _ as getTalkModePlugin, b as getElectrobunRendererRpc, n as isElectrobunRuntime } from "./electrobun-runtime-zXJ9acDW.js";
-import { D as getElizaApiBase, N as getBootConfig, O as getElizaApiToken, d as client, n as useApp, w as mergeStreamingText } from "./useApp-Dh-r7aR7.js";
-import { G as PREMADE_VOICES, Gr as ttsDebug, Ir as useChatInputRef, Kr as ttsDebugTextPreview, Wr as isTtsDebugEnabled, et as appendSavedCustomCommand, it as loadSavedCustomCommands, nr as asRecord$1, q as hasConfiguredApiKey, ua as resolveApiUrl, zi as CHAT_AVATAR_VOICE_EVENT } from "./state-BC9WO-N8.js";
-import { resolveStylePresetByAvatarIndex, resolveStylePresetById, sanitizeSpeechText } from "@elizaos/shared";
+import {
+	resolveStylePresetByAvatarIndex,
+	resolveStylePresetById,
+	sanitizeSpeechText,
+} from "@elizaos/shared";
 import { formatShortcut } from "@elizaos/ui";
-import { createContext, useCallback, useContext, useEffect, useEffectEvent, useMemo, useRef, useState, useSyncExternalStore } from "react";
+import {
+	createContext,
+	useCallback,
+	useContext,
+	useEffect,
+	useEffectEvent,
+	useMemo,
+	useRef,
+	useState,
+	useSyncExternalStore,
+} from "react";
+import {
+	b as getElectrobunRendererRpc,
+	_ as getTalkModePlugin,
+	S as invokeDesktopBridgeRequest,
+	n as isElectrobunRuntime,
+	E as require_index_cjs,
+	D as require_jsx_runtime,
+	T as subscribeDesktopBridgeEvent,
+} from "./electrobun-runtime-zXJ9acDW.js";
+import {
+	et as appendSavedCustomCommand,
+	nr as asRecord$1,
+	zi as CHAT_AVATAR_VOICE_EVENT,
+	q as hasConfiguredApiKey,
+	Wr as isTtsDebugEnabled,
+	it as loadSavedCustomCommands,
+	G as PREMADE_VOICES,
+	ua as resolveApiUrl,
+	Gr as ttsDebug,
+	Kr as ttsDebugTextPreview,
+	Ir as useChatInputRef,
+} from "./state-BC9WO-N8.js";
+import {
+	d as client,
+	N as getBootConfig,
+	D as getElizaApiBase,
+	O as getElizaApiToken,
+	w as mergeStreamingText,
+	n as useApp,
+} from "./useApp-Dh-r7aR7.js";
 
 //#region node_modules/.bun/@elizaos+app-core@2.0.0-alpha.537+72829346cb4c43b1/node_modules/@elizaos/app-core/packages/app-core/src/hooks/useChatAvatarVoiceBridge.js
 /**
-* Pushes voice analysis from {@link useVoiceChat} to the companion avatar via
-* {@link CHAT_AVATAR_VOICE_EVENT} and syncs speaking state into chat shell state.
-*/
+ * Pushes voice analysis from {@link useVoiceChat} to the companion avatar via
+ * {@link CHAT_AVATAR_VOICE_EVENT} and syncs speaking state into chat shell state.
+ */
 function useChatAvatarVoiceBridge({ mouthOpen, isSpeaking, onSpeakingChange }) {
 	const prevSpeakingRef = useRef(isSpeaking);
 	useEffect(() => {
@@ -21,7 +62,7 @@ function useChatAvatarVoiceBridge({ mouthOpen, isSpeaking, onSpeakingChange }) {
 	useEffect(() => {
 		const detail = {
 			mouthOpen,
-			isSpeaking
+			isSpeaking,
 		};
 		window.dispatchEvent(new CustomEvent(CHAT_AVATAR_VOICE_EVENT, { detail }));
 	}, [mouthOpen, isSpeaking]);
@@ -38,7 +79,7 @@ const LEGACY_CHARACTER_VOICE_PRESET_IDS = {
 	rin: "matilda",
 	ryu: "daniel",
 	satoshi: "brian",
-	yuki: "lily"
+	yuki: "lily",
 };
 function readString(record, key) {
 	const value = record?.[key];
@@ -54,56 +95,84 @@ function resolveStoredVoiceConfig(config) {
 }
 function resolveSelectedCharacterVoiceId(config, uiLanguage) {
 	const ui = asRecord$1(config.ui);
-	const preset = resolveStylePresetById(readString(ui, "presetId"), uiLanguage) ?? resolveStylePresetByAvatarIndex(readNumber(ui, "avatarIndex"), uiLanguage);
+	const preset =
+		resolveStylePresetById(readString(ui, "presetId"), uiLanguage) ??
+		resolveStylePresetByAvatarIndex(readNumber(ui, "avatarIndex"), uiLanguage);
 	if (!preset?.id || !preset.voicePresetId) return null;
-	const voice = PREMADE_VOICES.find((entry) => entry.id === preset.voicePresetId);
+	const voice = PREMADE_VOICES.find(
+		(entry) => entry.id === preset.voicePresetId,
+	);
 	if (!voice) return null;
 	return {
 		characterId: preset.id,
-		voiceId: voice.voiceId
+		voiceId: voice.voiceId,
 	};
 }
 function resolveLegacyVoiceId(characterId) {
 	const legacyPresetId = LEGACY_CHARACTER_VOICE_PRESET_IDS[characterId];
 	if (!legacyPresetId) return null;
-	return PREMADE_VOICES.find((entry) => entry.id === legacyPresetId)?.voiceId ?? null;
+	return (
+		PREMADE_VOICES.find((entry) => entry.id === legacyPresetId)?.voiceId ?? null
+	);
 }
 function resolveCharacterVoiceConfigFromAppConfig(args) {
 	const storedVoiceConfig = resolveStoredVoiceConfig(args.config);
-	const selectedCharacterVoice = resolveSelectedCharacterVoiceId(args.config, args.uiLanguage);
-	if (!selectedCharacterVoice) return {
-		voiceConfig: storedVoiceConfig,
-		shouldPersist: false
-	};
-	if (storedVoiceConfig?.provider && storedVoiceConfig.provider !== "elevenlabs") return {
-		voiceConfig: storedVoiceConfig,
-		shouldPersist: false
-	};
-	const currentVoiceId = typeof storedVoiceConfig?.elevenlabs?.voiceId === "string" ? storedVoiceConfig.elevenlabs.voiceId.trim() : "";
-	const legacyVoiceId = resolveLegacyVoiceId(selectedCharacterVoice.characterId);
-	if (!(selectedCharacterVoice.voiceId !== currentVoiceId && (!currentVoiceId || currentVoiceId === DEFAULT_ELEVENLABS_VOICE_ID || currentVoiceId === legacyVoiceId))) return {
-		voiceConfig: storedVoiceConfig,
-		shouldPersist: false
-	};
+	const selectedCharacterVoice = resolveSelectedCharacterVoiceId(
+		args.config,
+		args.uiLanguage,
+	);
+	if (!selectedCharacterVoice)
+		return {
+			voiceConfig: storedVoiceConfig,
+			shouldPersist: false,
+		};
+	if (
+		storedVoiceConfig?.provider &&
+		storedVoiceConfig.provider !== "elevenlabs"
+	)
+		return {
+			voiceConfig: storedVoiceConfig,
+			shouldPersist: false,
+		};
+	const currentVoiceId =
+		typeof storedVoiceConfig?.elevenlabs?.voiceId === "string"
+			? storedVoiceConfig.elevenlabs.voiceId.trim()
+			: "";
+	const legacyVoiceId = resolveLegacyVoiceId(
+		selectedCharacterVoice.characterId,
+	);
+	if (
+		!(
+			selectedCharacterVoice.voiceId !== currentVoiceId &&
+			(!currentVoiceId ||
+				currentVoiceId === DEFAULT_ELEVENLABS_VOICE_ID ||
+				currentVoiceId === legacyVoiceId)
+		)
+	)
+		return {
+			voiceConfig: storedVoiceConfig,
+			shouldPersist: false,
+		};
 	return {
 		voiceConfig: {
 			...storedVoiceConfig,
 			provider: "elevenlabs",
 			elevenlabs: {
-				...storedVoiceConfig?.elevenlabs ?? {},
+				...(storedVoiceConfig?.elevenlabs ?? {}),
 				voiceId: selectedCharacterVoice.voiceId,
-				modelId: storedVoiceConfig?.elevenlabs?.modelId ?? DEFAULT_ELEVENLABS_MODEL_ID
-			}
+				modelId:
+					storedVoiceConfig?.elevenlabs?.modelId ?? DEFAULT_ELEVENLABS_MODEL_ID,
+			},
 		},
-		shouldPersist: true
+		shouldPersist: true,
 	};
 }
 
 //#endregion
 //#region node_modules/.bun/@elizaos+app-core@2.0.0-alpha.537+72829346cb4c43b1/node_modules/@elizaos/app-core/packages/app-core/src/hooks/voice-chat-types.js
 /**
-* Types, constants, and config interfaces for the voice chat system.
-*/
+ * Types, constants, and config interfaces for the voice chat system.
+ */
 /** Access browser SpeechRecognition APIs which may live under a vendor prefix. */
 function getSpeechRecognitionCtor() {
 	const w = window;
@@ -120,36 +189,41 @@ const ASSISTANT_TTS_MIN_CHUNK_CHARS = 88;
 /** Merge rapid stream deltas into one request after a short pause. */
 const ASSISTANT_TTS_DEBOUNCE_MS = 170;
 /**
-* Temporary safety switch:
-* only speak assistant replies once the final text has arrived.
-*
-* This avoids garbled overlap when cloud text streaming and speech playback
-* race each other on partial chunks.
-*/
+ * Temporary safety switch:
+ * only speak assistant replies once the final text has arrived.
+ *
+ * This avoids garbled overlap when cloud text streaming and speech playback
+ * race each other on partial chunks.
+ */
 const ASSISTANT_TTS_FINAL_ONLY = true;
 const TALKMODE_STOP_SETTLE_MS = 120;
 const REDACTED_SECRET = "[REDACTED]";
-const MOUTH_OPEN_STEP = .02;
+const MOUTH_OPEN_STEP = 0.02;
 const globalAudioCache = /* @__PURE__ */ new Map();
 function resolveVoiceMode(mode, _cloudConnected, _apiKey) {
 	if (mode) return mode;
 	return "own-key";
 }
 function resolveVoiceProxyEndpoint(mode) {
-	return resolveApiUrl(mode === "cloud" ? "/api/tts/cloud" : "/api/tts/elevenlabs");
+	return resolveApiUrl(
+		mode === "cloud" ? "/api/tts/cloud" : "/api/tts/elevenlabs",
+	);
 }
 /** For ELIZA_TTS_DEBUG: shows whether cloud TTS hits the API or the wrong (page) origin. */
 function describeTtsCloudFetchTargetForDebug() {
 	const target = resolveApiUrl("/api/tts/cloud");
-	if (/^https?:\/\//i.test(target)) try {
-		return `${new URL(target).origin} (absolute)`;
-	} catch {
-		return target.slice(0, 120);
-	}
+	if (/^https?:\/\//i.test(target))
+		try {
+			return `${new URL(target).origin} (absolute)`;
+		} catch {
+			return target.slice(0, 120);
+		}
 	return `${typeof window !== "undefined" ? window.location.origin : "(no-window)"}${target.startsWith("/") ? target : `/${target}`} — relative URL (TTS fetch goes to the UI host, not the app API). Set __ELIZAOS_API_BASE__ / session elizaos_api_base / boot apiBase to http://127.0.0.1:<apiPort>`;
 }
 function isRedactedSecret(value) {
-	return typeof value === "string" && value.trim().toUpperCase() === REDACTED_SECRET;
+	return (
+		typeof value === "string" && value.trim().toUpperCase() === REDACTED_SECRET
+	);
 }
 function cloneVoiceConfig(config) {
 	if (!config) return null;
@@ -157,7 +231,7 @@ function cloneVoiceConfig(config) {
 		...config,
 		elevenlabs: config.elevenlabs ? { ...config.elevenlabs } : void 0,
 		edge: config.edge ? { ...config.edge } : void 0,
-		openai: config.openai ? { ...config.openai } : void 0
+		openai: config.openai ? { ...config.openai } : void 0,
 	};
 }
 function resolveEffectiveVoiceConfig(config, options) {
@@ -165,34 +239,60 @@ function resolveEffectiveVoiceConfig(config, options) {
 	const base = cloneVoiceConfig(config) ?? {};
 	const rawProvider = base.provider;
 	const hasLegacyOpenAiProvider = rawProvider === "openai";
-	let provider = (hasLegacyOpenAiProvider ? void 0 : rawProvider) ?? (base.elevenlabs ? "elevenlabs" : base.edge ? "edge" : void 0) ?? (cloudConnected ? "elevenlabs" : void 0);
-	if (cloudConnected && (provider === "edge" || hasLegacyOpenAiProvider || provider === "simple-voice")) {
-		ttsDebug("voiceConfig:upgrade_provider_for_cloud", { fromProvider: hasLegacyOpenAiProvider ? "openai" : provider });
+	let provider =
+		(hasLegacyOpenAiProvider ? void 0 : rawProvider) ??
+		(base.elevenlabs ? "elevenlabs" : base.edge ? "edge" : void 0) ??
+		(cloudConnected ? "elevenlabs" : void 0);
+	if (
+		cloudConnected &&
+		(provider === "edge" ||
+			hasLegacyOpenAiProvider ||
+			provider === "simple-voice")
+	) {
+		ttsDebug("voiceConfig:upgrade_provider_for_cloud", {
+			fromProvider: hasLegacyOpenAiProvider ? "openai" : provider,
+		});
 		provider = "elevenlabs";
 	}
 	if (!provider) return null;
-	if (provider !== "elevenlabs") return {
-		...base,
-		provider
-	};
+	if (provider !== "elevenlabs")
+		return {
+			...base,
+			provider,
+		};
 	const currentElevenLabs = base.elevenlabs ?? {};
-	const mode = resolveVoiceMode(base.mode, cloudConnected, currentElevenLabs.apiKey);
+	const mode = resolveVoiceMode(
+		base.mode,
+		cloudConnected,
+		currentElevenLabs.apiKey,
+	);
 	const elevenlabs = {
 		...currentElevenLabs,
 		voiceId: currentElevenLabs.voiceId ?? DEFAULT_ELEVEN_VOICE,
 		modelId: currentElevenLabs.modelId ?? DEFAULT_ELEVEN_MODEL,
-		stability: typeof currentElevenLabs.stability === "number" ? currentElevenLabs.stability : .5,
-		similarityBoost: typeof currentElevenLabs.similarityBoost === "number" ? currentElevenLabs.similarityBoost : .75,
-		speed: typeof currentElevenLabs.speed === "number" ? currentElevenLabs.speed : 1
+		stability:
+			typeof currentElevenLabs.stability === "number"
+				? currentElevenLabs.stability
+				: 0.5,
+		similarityBoost:
+			typeof currentElevenLabs.similarityBoost === "number"
+				? currentElevenLabs.similarityBoost
+				: 0.75,
+		speed:
+			typeof currentElevenLabs.speed === "number" ? currentElevenLabs.speed : 1,
 	};
-	const apiKey = typeof currentElevenLabs.apiKey === "string" ? currentElevenLabs.apiKey.trim() : "";
-	if (mode === "own-key" && apiKey && !isRedactedSecret(apiKey)) elevenlabs.apiKey = currentElevenLabs.apiKey;
+	const apiKey =
+		typeof currentElevenLabs.apiKey === "string"
+			? currentElevenLabs.apiKey.trim()
+			: "";
+	if (mode === "own-key" && apiKey && !isRedactedSecret(apiKey))
+		elevenlabs.apiKey = currentElevenLabs.apiKey;
 	else delete elevenlabs.apiKey;
 	return {
 		...base,
 		provider,
 		mode,
-		elevenlabs
+		elevenlabs,
 	};
 }
 function isAbortError(error) {
@@ -202,14 +302,20 @@ function isAbortError(error) {
 }
 /** ELIZA_TTS_DEBUG fields for OS/browser SpeechSynthesis (often Microsoft Edge on Windows). */
 function webSpeechVoiceDebugFields(voice) {
-	if (!voice) return {
-		voiceName: "(engine default)",
-		voiceURI: "(none)",
-		engineGuess: "unknown"
-	};
+	if (!voice)
+		return {
+			voiceName: "(engine default)",
+			voiceURI: "(none)",
+			engineGuess: "unknown",
+		};
 	const blob = `${voice.voiceURI} ${voice.name}`.toLowerCase();
 	let engineGuess = "unknown";
-	if (blob.includes("microsoft") || blob.includes("msedge") || blob.includes("edge-tts")) engineGuess = "microsoft-edge-family";
+	if (
+		blob.includes("microsoft") ||
+		blob.includes("msedge") ||
+		blob.includes("edge-tts")
+	)
+		engineGuess = "microsoft-edge-family";
 	else if (blob.includes("com.apple")) engineGuess = "apple-webkit";
 	else if (blob.includes("google")) engineGuess = "google";
 	const extended = voice;
@@ -218,8 +324,11 @@ function webSpeechVoiceDebugFields(voice) {
 		voiceURI: voice.voiceURI,
 		voiceLang: voice.lang,
 		voiceDefault: voice.default,
-		voiceLocalService: typeof extended.localService === "boolean" ? extended.localService : void 0,
-		engineGuess
+		voiceLocalService:
+			typeof extended.localService === "boolean"
+				? extended.localService
+				: void 0,
+		engineGuess,
 	};
 }
 function normalizeSpeechLocale(input) {
@@ -244,9 +353,9 @@ function toArrayBuffer(bytes) {
 //#endregion
 //#region node_modules/.bun/@elizaos+app-core@2.0.0-alpha.537+72829346cb4c43b1/node_modules/@elizaos/app-core/packages/app-core/src/hooks/voice-chat-playback.js
 /**
-* Playback / TTS logic for voice chat — text processing, sentence splitting,
-* speech text extraction, and mouth animation helpers.
-*/
+ * Playback / TTS logic for voice chat — text processing, sentence splitting,
+ * speech text extraction, and mouth animation helpers.
+ */
 function collapseWhitespace(input) {
 	return input.replace(/\s+/g, " ").trim();
 }
@@ -260,16 +369,17 @@ function capSpeechLength(input) {
 	return `${(splitAt > 120 ? clipped.slice(0, splitAt) : clipped).trim()}...`;
 }
 /**
-* Hidden XML block tags whose content should never be spoken.  During
-* streaming the closing tag may not have arrived yet, so we strip from
-* the opening tag to end-of-string (matching the display path's
-* `HIDDEN_XML_BLOCK_RE` which uses `(?:</tag>|$)`).
-*
-* The upstream `sanitizeSpeechText` only strips *closed* `<think>` blocks,
-* so an in-progress `<think>reasoning so far` leaks "reasoning so far"
-* into the voice output.  We handle it here before sanitization.
-*/
-const HIDDEN_VOICE_BLOCK_RE = /<(think|thought|analysis|reasoning|scratchpad|tool_calls?|tools?)\b[^>]*>[\s\S]*?(?:<\/\1>|$)/gi;
+ * Hidden XML block tags whose content should never be spoken.  During
+ * streaming the closing tag may not have arrived yet, so we strip from
+ * the opening tag to end-of-string (matching the display path's
+ * `HIDDEN_XML_BLOCK_RE` which uses `(?:</tag>|$)`).
+ *
+ * The upstream `sanitizeSpeechText` only strips *closed* `<think>` blocks,
+ * so an in-progress `<think>reasoning so far` leaks "reasoning so far"
+ * into the voice output.  We handle it here before sanitization.
+ */
+const HIDDEN_VOICE_BLOCK_RE =
+	/<(think|thought|analysis|reasoning|scratchpad|tool_calls?|tools?)\b[^>]*>[\s\S]*?(?:<\/\1>|$)/gi;
 function extractVoiceText(input) {
 	let text = input;
 	if (text.includes("<response>")) {
@@ -279,12 +389,19 @@ function extractVoiceText(input) {
 		if (start >= 0) {
 			const contentStart = start + 6;
 			const end = text.indexOf(closeTag, contentStart);
-			text = end >= 0 ? text.slice(contentStart, end) : text.slice(contentStart);
+			text =
+				end >= 0 ? text.slice(contentStart, end) : text.slice(contentStart);
 		} else return "";
 	}
 	text = text.replace(HIDDEN_VOICE_BLOCK_RE, " ");
-	text = text.replace(/\s{0,32}<actions>[\s\S]{0,16384}?(?:<\/actions>|$)\s{0,32}/g, " ");
-	text = text.replace(/\s{0,32}<params>[\s\S]{0,16384}?(?:<\/params>|$)\s{0,32}/g, " ");
+	text = text.replace(
+		/\s{0,32}<actions>[\s\S]{0,16384}?(?:<\/actions>|$)\s{0,32}/g,
+		" ",
+	);
+	text = text.replace(
+		/\s{0,32}<params>[\s\S]{0,16384}?(?:<\/params>|$)\s{0,32}/g,
+		" ",
+	);
 	text = text.replace(/<\/?[a-zA-Z][^>]*$|<\/?$/s, "");
 	return text;
 }
@@ -296,11 +413,12 @@ function toSpeakableText(input) {
 	return capSpeechLength(normalized);
 }
 /** Common abbreviations that end with a period but are not sentence endings. */
-const ABBREV_RE = /(?:Mr|Mrs|Ms|Dr|Jr|Sr|St|vs|etc|approx|Prof|Rev|Gen|Sgt|Lt|Col|Maj|Capt|Corp|Pvt|Ave|Blvd|dept|est|govt|assn)$/;
+const ABBREV_RE =
+	/(?:Mr|Mrs|Ms|Dr|Jr|Sr|St|vs|etc|approx|Prof|Rev|Gen|Sgt|Lt|Col|Maj|Capt|Corp|Pvt|Ave|Blvd|dept|est|govt|assn)$/;
 /**
-* Replace URLs with placeholders so their internal dots are not treated as
-* sentence boundaries.  Returns the cleaned string and a restore function.
-*/
+ * Replace URLs with placeholders so their internal dots are not treated as
+ * sentence boundaries.  Returns the cleaned string and a restore function.
+ */
 function shelterUrls(input) {
 	const urls = [];
 	return {
@@ -308,16 +426,17 @@ function shelterUrls(input) {
 			urls.push(m);
 			return `__URL${urls.length - 1}__`;
 		}),
-		restore: (s) => s.replace(/__URL(\d+)__/g, (_, i) => urls[Number(i)] ?? _)
+		restore: (s) => s.replace(/__URL(\d+)__/g, (_, i) => urls[Number(i)] ?? _),
 	};
 }
 /**
-* Test whether a period match at `index` inside `value` is a real sentence
-* boundary (not an abbreviation or decimal).
-*/
+ * Test whether a period match at `index` inside `value` is a real sentence
+ * boundary (not an abbreviation or decimal).
+ */
 function isRealSentenceEnd(value, matchIndex) {
 	const previousChar = matchIndex > 0 ? value[matchIndex - 1] : void 0;
-	const nextChar = matchIndex + 1 < value.length ? value[matchIndex + 1] : void 0;
+	const nextChar =
+		matchIndex + 1 < value.length ? value[matchIndex + 1] : void 0;
 	if (previousChar !== void 0 && /\d/.test(previousChar)) {
 		if (nextChar !== void 0 && /\d/.test(nextChar)) return false;
 	}
@@ -327,11 +446,12 @@ function isRealSentenceEnd(value, matchIndex) {
 }
 function splitFirstSentence(text) {
 	const value = collapseWhitespace(text);
-	if (!value) return {
-		complete: false,
-		firstSentence: "",
-		remainder: ""
-	};
+	if (!value)
+		return {
+			complete: false,
+			firstSentence: "",
+			remainder: "",
+		};
 	const { text: sheltered, restore } = shelterUrls(value);
 	const boundary = /([.!?]+(?:["')\]]+)?)(?:\s|$)/g;
 	let match = null;
@@ -345,25 +465,27 @@ function splitFirstSentence(text) {
 		const endIndex = match.index + match[0].length;
 		const firstSentence = restore(sheltered.slice(0, endIndex).trim());
 		const remainder = restore(sheltered.slice(endIndex).trim());
-		if (firstSentence.length > 0) return {
-			complete: true,
-			firstSentence,
-			remainder
-		};
+		if (firstSentence.length > 0)
+			return {
+				complete: true,
+				firstSentence,
+				remainder,
+			};
 	}
 	if (value.length >= 180) {
 		const window = value.slice(0, 180);
 		const splitAt = window.lastIndexOf(" ");
-		if (splitAt > 100) return {
-			complete: true,
-			firstSentence: window.slice(0, splitAt).trim(),
-			remainder: value.slice(splitAt).trim()
-		};
+		if (splitAt > 100)
+			return {
+				complete: true,
+				firstSentence: window.slice(0, splitAt).trim(),
+				remainder: value.slice(splitAt).trim(),
+			};
 	}
 	return {
 		complete: false,
 		firstSentence: value,
-		remainder: ""
+		remainder: "",
 	};
 }
 function remainderAfter(fullText, firstSentence) {
@@ -395,7 +517,8 @@ function queueableSpeechPrefix(text, isFinal) {
 		}
 		lastSentenceEnd = match.index + match[0].length;
 	}
-	if (lastSentenceEnd > 0) return restore(sheltered.slice(0, lastSentenceEnd).trim());
+	if (lastSentenceEnd > 0)
+		return restore(sheltered.slice(0, lastSentenceEnd).trim());
 	if (value.length >= 180) {
 		const window = value.slice(0, 180);
 		const splitAt = window.lastIndexOf(" ");
@@ -411,16 +534,19 @@ function normalizeMouthOpen(value) {
 function nextIdleMouthOpen(currentValue) {
 	const current = normalizeMouthOpen(currentValue);
 	if (current <= MOUTH_OPEN_STEP) return 0;
-	return Math.max(0, Math.min(current * .85, current - MOUTH_OPEN_STEP));
+	return Math.max(0, Math.min(current * 0.85, current - MOUTH_OPEN_STEP));
 }
 
 //#endregion
 //#region node_modules/.bun/@elizaos+app-core@2.0.0-alpha.537+72829346cb4c43b1/node_modules/@elizaos/app-core/packages/app-core/src/hooks/voice-chat-recording.js
 /**
-* Recording / STT logic for voice chat — transcript merging and normalization.
-*/
+ * Recording / STT logic for voice chat — transcript merging and normalization.
+ */
 function normalizeTranscriptWord(word) {
-	return word.normalize("NFKC").toLowerCase().replace(/^[^\p{L}\p{N}]+|[^\p{L}\p{N}]+$/gu, "");
+	return word
+		.normalize("NFKC")
+		.toLowerCase()
+		.replace(/^[^\p{L}\p{N}]+|[^\p{L}\p{N}]+$/gu, "");
 }
 function mergeTranscriptWindows(existing, incoming) {
 	const left = collapseWhitespace(existing);
@@ -428,14 +554,20 @@ function mergeTranscriptWindows(existing, incoming) {
 	if (!left) return right;
 	if (!right) return left;
 	const exactMerged = mergeStreamingText(left, right);
-	if (exactMerged === right || exactMerged === left || exactMerged === `${left}${right}`) {
+	if (
+		exactMerged === right ||
+		exactMerged === left ||
+		exactMerged === `${left}${right}`
+	) {
 		const leftWords = left.split(" ");
 		const rightWords = right.split(" ");
 		const maxOverlap = Math.min(leftWords.length, rightWords.length);
 		for (let overlap = maxOverlap; overlap > 0; overlap -= 1) {
 			let matches = true;
 			for (let index = 0; index < overlap; index += 1) {
-				const leftWord = normalizeTranscriptWord(leftWords[leftWords.length - overlap + index] ?? "");
+				const leftWord = normalizeTranscriptWord(
+					leftWords[leftWords.length - overlap + index] ?? "",
+				);
 				const rightWord = normalizeTranscriptWord(rightWords[index] ?? "");
 				if (!leftWord || !rightWord || leftWord !== rightWord) {
 					matches = false;
@@ -456,10 +588,18 @@ var import_index_cjs = require_index_cjs();
 let sharedAudioCtx = null;
 function shouldPreferNativeTalkMode() {
 	if (typeof window === "undefined") return false;
-	return import_index_cjs.Capacitor.isNativePlatform() || !!getElectrobunRendererRpc();
+	return (
+		import_index_cjs.Capacitor.isNativePlatform() ||
+		!!getElectrobunRendererRpc()
+	);
 }
 function isWindowsElectrobunRenderer() {
-	return typeof window !== "undefined" && !!getElectrobunRendererRpc() && typeof process !== "undefined" && process.platform === "win32";
+	return (
+		typeof window !== "undefined" &&
+		!!getElectrobunRendererRpc() &&
+		typeof process !== "undefined" &&
+		process.platform === "win32"
+	);
 }
 function shouldAutoRestartBrowserRecognition() {
 	if (typeof window === "undefined") return false;
@@ -481,7 +621,7 @@ const __voiceChatInternals = {
 	webSpeechVoiceDebugFields,
 	ASSISTANT_TTS_FINAL_ONLY,
 	ASSISTANT_TTS_FIRST_FLUSH_CHARS,
-	ASSISTANT_TTS_MIN_CHUNK_CHARS
+	ASSISTANT_TTS_MIN_CHUNK_CHARS,
 };
 function useVoiceChat(options) {
 	const [isListening, setIsListening] = useState(false);
@@ -512,9 +652,17 @@ function useVoiceChat(options) {
 	const emitPlaybackStart = useEffectEvent((event) => {
 		options.onPlaybackStart?.(event);
 	});
-	const effectiveVoiceConfig = useMemo(() => resolveEffectiveVoiceConfig(options.voiceConfig, { cloudConnected: options.cloudConnected }), [options.cloudConnected, options.voiceConfig]);
+	const effectiveVoiceConfig = useMemo(
+		() =>
+			resolveEffectiveVoiceConfig(options.voiceConfig, {
+				cloudConnected: options.cloudConnected,
+			}),
+		[options.cloudConnected, options.voiceConfig],
+	);
 	const assistantTtsQuality = useMemo(() => {
-		return effectiveVoiceConfig?.provider === "elevenlabs" ? "enhanced" : "standard";
+		return effectiveVoiceConfig?.provider === "elevenlabs"
+			? "enhanced"
+			: "standard";
 	}, [effectiveVoiceConfig?.provider]);
 	const ttsDebugConfigKeyRef = useRef("");
 	useEffect(() => {
@@ -523,7 +671,7 @@ function useVoiceChat(options) {
 			p: effectiveVoiceConfig?.provider,
 			m: effectiveVoiceConfig?.mode,
 			v: effectiveVoiceConfig?.elevenlabs?.voiceId,
-			q: assistantTtsQuality
+			q: assistantTtsQuality,
 		});
 		if (ttsDebugConfigKeyRef.current === key) return;
 		ttsDebugConfigKeyRef.current = key;
@@ -533,14 +681,14 @@ function useVoiceChat(options) {
 			mode: effectiveVoiceConfig?.mode,
 			voiceId: effectiveVoiceConfig?.elevenlabs?.voiceId,
 			assistantTtsQuality,
-			ttsCloudUrl: resolveApiUrl("/api/tts/cloud")
+			ttsCloudUrl: resolveApiUrl("/api/tts/cloud"),
 		});
 	}, [
 		assistantTtsQuality,
 		effectiveVoiceConfig?.elevenlabs?.voiceId,
 		effectiveVoiceConfig?.mode,
 		effectiveVoiceConfig?.provider,
-		options.cloudConnected
+		options.cloudConnected,
 	]);
 	const voiceConfigRef = useRef(effectiveVoiceConfig);
 	voiceConfigRef.current = effectiveVoiceConfig;
@@ -578,15 +726,21 @@ function useVoiceChat(options) {
 			"elevenlabs",
 			config.voiceId ?? DEFAULT_ELEVEN_VOICE,
 			config.modelId ?? DEFAULT_ELEVEN_MODEL,
-			typeof config.stability === "number" ? config.stability.toFixed(2) : "0.50",
-			typeof config.similarityBoost === "number" ? config.similarityBoost.toFixed(2) : "0.75",
+			typeof config.stability === "number"
+				? config.stability.toFixed(2)
+				: "0.50",
+			typeof config.similarityBoost === "number"
+				? config.similarityBoost.toFixed(2)
+				: "0.75",
 			typeof config.speed === "number" ? config.speed.toFixed(2) : "1.00",
-			normalizeCacheText(text)
+			normalizeCacheText(text),
 		].join("|");
 	}, []);
 	const updateMouthOpen = useCallback((value) => {
 		const previousValue = mouthOpenRef.current;
-		const nextValue = normalizeMouthOpen(typeof value === "function" ? value(previousValue) : value);
+		const nextValue = normalizeMouthOpen(
+			typeof value === "function" ? value(previousValue) : value,
+		);
 		if (nextValue === previousValue) return;
 		mouthOpenRef.current = nextValue;
 		setMouthOpen(nextValue);
@@ -602,7 +756,10 @@ function useVoiceChat(options) {
 			try {
 				const permissions = await getTalkModePlugin().checkPermissions();
 				if (cancelled) return;
-				setSupported(permissions.speechRecognition !== "not_supported" || browserSpeechSupported);
+				setSupported(
+					permissions.speechRecognition !== "not_supported" ||
+						browserSpeechSupported,
+				);
 			} catch {
 				if (!cancelled) setSupported(browserSpeechSupported);
 			}
@@ -636,22 +793,29 @@ function useVoiceChat(options) {
 						sum += v * v;
 					}
 					const rms = Math.sqrt(sum / data.length);
-					updateMouthOpen(Math.max(0, Math.min(1, 1 / (1 + Math.exp(-(rms * 30 - 2))))));
+					updateMouthOpen(
+						Math.max(0, Math.min(1, 1 / (1 + Math.exp(-(rms * 30 - 2))))),
+					);
 				}
 				frameId = requestAnimationFrame(animate);
 				animFrameRef.current = frameId;
 				return;
 			}
 			const sinceStart = Date.now() - speakingStartRef.current;
-			if (sinceStart > 500 && synthRef.current && !synthRef.current.speaking && !synthRef.current.pending) {
+			if (
+				sinceStart > 500 &&
+				synthRef.current &&
+				!synthRef.current.speaking &&
+				!synthRef.current.pending
+			) {
 				utteranceRef.current = null;
 				setIsSpeaking(false);
 				return;
 			}
 			const elapsed = sinceStart / 1e3;
-			const base = Math.sin(elapsed * 12) * .3 + .4;
-			const detail = Math.sin(elapsed * 18.7) * .15;
-			const slow = Math.sin(elapsed * 4.2) * .1;
+			const base = Math.sin(elapsed * 12) * 0.3 + 0.4;
+			const detail = Math.sin(elapsed * 18.7) * 0.15;
+			const slow = Math.sin(elapsed * 4.2) * 0.1;
 			updateMouthOpen(Math.max(0, Math.min(1, base + detail + slow)));
 			frameId = requestAnimationFrame(animate);
 			animFrameRef.current = frameId;
@@ -670,13 +834,16 @@ function useVoiceChat(options) {
 		if (mode === "idle") return;
 		const normalized = collapseWhitespace(transcript);
 		if (!normalized) return;
-		const nextText = mergeTranscriptWindows(transcriptBufferRef.current, normalized);
+		const nextText = mergeTranscriptWindows(
+			transcriptBufferRef.current,
+			normalized,
+		);
 		if (nextText === transcriptBufferRef.current) return;
 		transcriptBufferRef.current = nextText;
 		setInterimTranscript(nextText);
 		emitTranscriptPreview(nextText, {
 			mode,
-			isFinal
+			isFinal,
 		});
 		if (interruptOnSpeechRef.current) interruptSpeechRef.current();
 	}, []);
@@ -703,138 +870,189 @@ function useVoiceChat(options) {
 				applyTranscriptUpdate(event.transcript ?? "", event.isFinal === true);
 			}),
 			await talkMode.addListener("error", (event) => {
-				if (sttBackendRef.current === "talkmode" || event.code === "not-allowed" || event.code === "service-not-allowed") {
+				if (
+					sttBackendRef.current === "talkmode" ||
+					event.code === "not-allowed" ||
+					event.code === "service-not-allowed"
+				) {
 					resetListeningState();
-					if (event.code === "not-allowed" || event.code === "service-not-allowed") setSupported(false);
+					if (
+						event.code === "not-allowed" ||
+						event.code === "service-not-allowed"
+					)
+						setSupported(false);
 				}
 			}),
 			await talkMode.addListener("stateChange", (event) => {
-				if ((event.state === "error" || event.state === "idle") && sttBackendRef.current === "talkmode") resetListeningState();
-			})
+				if (
+					(event.state === "error" || event.state === "idle") &&
+					sttBackendRef.current === "talkmode"
+				)
+					resetListeningState();
+			}),
 		];
 	}, [applyTranscriptUpdate, resetListeningState]);
-	const startBrowserRecognition = useCallback((mode) => {
-		const SpeechRecognitionAPI = getSpeechRecognitionCtor();
-		if (!SpeechRecognitionAPI) return false;
-		const recognition = new SpeechRecognitionAPI();
-		recognition.continuous = true;
-		recognition.interimResults = true;
-		recognition.lang = options.lang ?? "en-US";
-		recognition.onresult = (event) => {
-			let transcript = "";
-			let isFinal = false;
-			for (let index = 0; index < event.results.length; index += 1) {
-				const result = event.results[index];
-				const chunk = result?.[0]?.transcript ?? "";
-				if (chunk) transcript = transcript ? `${transcript} ${chunk}` : chunk;
-				if (result?.isFinal) isFinal = true;
-			}
-			applyTranscriptUpdate(transcript, isFinal);
-		};
-		recognition.onerror = (event) => {
-			if (event.error === "not-allowed" || event.error === "service-not-allowed") {
-				enabledRef.current = false;
-				listeningModeRef.current = "idle";
-				sttBackendRef.current = null;
-				setCaptureMode("idle");
-				setIsListening(false);
-			}
-		};
-		recognition.onend = () => {
-			if (shouldAutoRestartBrowserRecognition() && enabledRef.current && listeningModeRef.current === mode) try {
+	const startBrowserRecognition = useCallback(
+		(mode) => {
+			const SpeechRecognitionAPI = getSpeechRecognitionCtor();
+			if (!SpeechRecognitionAPI) return false;
+			const recognition = new SpeechRecognitionAPI();
+			recognition.continuous = true;
+			recognition.interimResults = true;
+			recognition.lang = options.lang ?? "en-US";
+			recognition.onresult = (event) => {
+				let transcript = "";
+				let isFinal = false;
+				for (let index = 0; index < event.results.length; index += 1) {
+					const result = event.results[index];
+					const chunk = result?.[0]?.transcript ?? "";
+					if (chunk) transcript = transcript ? `${transcript} ${chunk}` : chunk;
+					if (result?.isFinal) isFinal = true;
+				}
+				applyTranscriptUpdate(transcript, isFinal);
+			};
+			recognition.onerror = (event) => {
+				if (
+					event.error === "not-allowed" ||
+					event.error === "service-not-allowed"
+				) {
+					enabledRef.current = false;
+					listeningModeRef.current = "idle";
+					sttBackendRef.current = null;
+					setCaptureMode("idle");
+					setIsListening(false);
+				}
+			};
+			recognition.onend = () => {
+				if (
+					shouldAutoRestartBrowserRecognition() &&
+					enabledRef.current &&
+					listeningModeRef.current === mode
+				)
+					try {
+						recognition.start();
+					} catch {}
+			};
+			recognitionRef.current = recognition;
+			try {
 				recognition.start();
-			} catch {}
-		};
-		recognitionRef.current = recognition;
-		try {
-			recognition.start();
-			sttBackendRef.current = "browser";
-			enabledRef.current = true;
-			listeningModeRef.current = mode;
-			setCaptureMode(mode);
-			setIsListening(true);
-			return true;
-		} catch {
-			recognitionRef.current = null;
-			return false;
-		}
-	}, [applyTranscriptUpdate, options.lang]);
-	const startTalkModeRecognition = useCallback(async (mode) => {
-		if (!shouldPreferNativeTalkMode()) return false;
-		await ensureTalkModeListeners();
-		try {
-			const talkMode = getTalkModePlugin();
-			const browserSpeechSupported = !!getSpeechRecognitionCtor();
-			let permissions = await talkMode.checkPermissions().catch(() => null);
-			const nativeSpeechSupported = permissions?.speechRecognition !== "not_supported";
-			if (!nativeSpeechSupported && !browserSpeechSupported) {
-				console.warn("[useVoiceChat] No desktop or browser speech backend is available.");
-				setSupported(false);
+				sttBackendRef.current = "browser";
+				enabledRef.current = true;
+				listeningModeRef.current = mode;
+				setCaptureMode(mode);
+				setIsListening(true);
+				return true;
+			} catch {
+				recognitionRef.current = null;
 				return false;
 			}
-			if (permissions?.microphone === "prompt" && nativeSpeechSupported) {
-				await talkMode.requestPermissions().catch(() => {});
-				permissions = await talkMode.checkPermissions().catch(() => permissions);
-			}
-			const directRpc = getElectrobunRendererRpc();
-			const result = await talkMode.start({ config: {
-				stt: {
-					...directRpc ? { engine: "whisper" } : {},
-					language: options.lang ?? "en-US",
-					modelSize: "base",
-					sampleRate: 16e3
-				},
-				silenceWindowMs: 350,
-				interruptOnSpeech: true
-			} });
-			if (!result.started) {
-				console.warn("[useVoiceChat] TalkMode start returned not started.", {
-					browserSpeechSupported,
-					error: result.error
+		},
+		[applyTranscriptUpdate, options.lang],
+	);
+	const startTalkModeRecognition = useCallback(
+		async (mode) => {
+			if (!shouldPreferNativeTalkMode()) return false;
+			await ensureTalkModeListeners();
+			try {
+				const talkMode = getTalkModePlugin();
+				const browserSpeechSupported = !!getSpeechRecognitionCtor();
+				let permissions = await talkMode.checkPermissions().catch(() => null);
+				const nativeSpeechSupported =
+					permissions?.speechRecognition !== "not_supported";
+				if (!nativeSpeechSupported && !browserSpeechSupported) {
+					console.warn(
+						"[useVoiceChat] No desktop or browser speech backend is available.",
+					);
+					setSupported(false);
+					return false;
+				}
+				if (permissions?.microphone === "prompt" && nativeSpeechSupported) {
+					await talkMode.requestPermissions().catch(() => {});
+					permissions = await talkMode
+						.checkPermissions()
+						.catch(() => permissions);
+				}
+				const directRpc = getElectrobunRendererRpc();
+				const result = await talkMode.start({
+					config: {
+						stt: {
+							...(directRpc ? { engine: "whisper" } : {}),
+							language: options.lang ?? "en-US",
+							modelSize: "base",
+							sampleRate: 16e3,
+						},
+						silenceWindowMs: 350,
+						interruptOnSpeech: true,
+					},
 				});
-				if (!browserSpeechSupported) setSupported(false);
+				if (!result.started) {
+					console.warn("[useVoiceChat] TalkMode start returned not started.", {
+						browserSpeechSupported,
+						error: result.error,
+					});
+					if (!browserSpeechSupported) setSupported(false);
+					return false;
+				}
+				setSupported(true);
+				enabledRef.current = true;
+				listeningModeRef.current = mode;
+				sttBackendRef.current = "talkmode";
+				setCaptureMode(mode);
+				setIsListening(true);
+				return true;
+			} catch (error) {
+				console.warn("[useVoiceChat] TalkMode start failed.", error);
 				return false;
 			}
-			setSupported(true);
-			enabledRef.current = true;
-			listeningModeRef.current = mode;
-			sttBackendRef.current = "talkmode";
-			setCaptureMode(mode);
-			setIsListening(true);
-			return true;
-		} catch (error) {
-			console.warn("[useVoiceChat] TalkMode start failed.", error);
-			return false;
-		}
-	}, [ensureTalkModeListeners, options.lang]);
-	const finalizeRecognition = useCallback((submit) => {
-		const transcript = collapseWhitespace(transcriptBufferRef.current);
-		if (submit && transcript) emitTranscript(transcript);
-		resetListeningState();
-	}, [resetListeningState]);
-	const startListening = useCallback(async (mode = "compose") => {
-		if (enabledRef.current) return;
-		transcriptBufferRef.current = "";
-		setInterimTranscript("");
-		if (interruptOnSpeechRef.current) interruptSpeechRef.current();
-		if (shouldPreferNativeTalkMode()) {
-			if (await startTalkModeRecognition(mode)) return;
-		}
-		if (!startBrowserRecognition(mode)) console.warn("[useVoiceChat] Voice capture failed to start in both desktop and browser backends.");
-	}, [startBrowserRecognition, startTalkModeRecognition]);
-	const stopListening = useCallback(async (options) => {
-		if (listeningModeRef.current === "idle") return;
-		const submit = options?.submit === true;
-		enabledRef.current = false;
-		if (sttBackendRef.current === "talkmode") {
-			await getTalkModePlugin().stop().catch(() => {});
-			await new Promise((resolve) => window.setTimeout(resolve, TALKMODE_STOP_SETTLE_MS));
-		} else {
-			recognitionRef.current?.stop();
-			await new Promise((resolve) => window.setTimeout(resolve, TALKMODE_STOP_SETTLE_MS));
-		}
-		finalizeRecognition(submit);
-	}, [finalizeRecognition]);
+		},
+		[ensureTalkModeListeners, options.lang],
+	);
+	const finalizeRecognition = useCallback(
+		(submit) => {
+			const transcript = collapseWhitespace(transcriptBufferRef.current);
+			if (submit && transcript) emitTranscript(transcript);
+			resetListeningState();
+		},
+		[resetListeningState],
+	);
+	const startListening = useCallback(
+		async (mode = "compose") => {
+			if (enabledRef.current) return;
+			transcriptBufferRef.current = "";
+			setInterimTranscript("");
+			if (interruptOnSpeechRef.current) interruptSpeechRef.current();
+			if (shouldPreferNativeTalkMode()) {
+				if (await startTalkModeRecognition(mode)) return;
+			}
+			if (!startBrowserRecognition(mode))
+				console.warn(
+					"[useVoiceChat] Voice capture failed to start in both desktop and browser backends.",
+				);
+		},
+		[startBrowserRecognition, startTalkModeRecognition],
+	);
+	const stopListening = useCallback(
+		async (options) => {
+			if (listeningModeRef.current === "idle") return;
+			const submit = options?.submit === true;
+			enabledRef.current = false;
+			if (sttBackendRef.current === "talkmode") {
+				await getTalkModePlugin()
+					.stop()
+					.catch(() => {});
+				await new Promise((resolve) =>
+					window.setTimeout(resolve, TALKMODE_STOP_SETTLE_MS),
+				);
+			} else {
+				recognitionRef.current?.stop();
+				await new Promise((resolve) =>
+					window.setTimeout(resolve, TALKMODE_STOP_SETTLE_MS),
+				);
+			}
+			finalizeRecognition(submit);
+		},
+		[finalizeRecognition],
+	);
 	const toggleListening = useCallback(() => {
 		if (enabledRef.current && listeningModeRef.current === "compose") {
 			stopListening();
@@ -877,349 +1095,422 @@ function useVoiceChat(options) {
 		setUsingAudioAnalysis(false);
 	}, [cancelPlayback]);
 	interruptSpeechRef.current = stopSpeaking;
-	const speakElevenLabs = useCallback(async (text, elConfig, task, generation) => {
-		let ctx = sharedAudioCtx;
-		if (!ctx) {
-			ctx = new AudioContext();
-			sharedAudioCtx = ctx;
-		}
-		if (ctx.state === "suspended") try {
-			await ctx.resume();
-		} catch {
-			ctx.close().catch((err) => {
-				console.warn("[useVoiceChat] AudioContext.close() failed", err);
-			});
-			ctx = new AudioContext();
-			sharedAudioCtx = ctx;
-		}
-		const voiceId = elConfig.voiceId ?? DEFAULT_ELEVEN_VOICE;
-		const modelId = elConfig.modelId ?? DEFAULT_ELEVEN_MODEL;
-		const cacheKey = task.cacheKey ?? makeElevenCacheKey(text, elConfig);
-		const cachedBytes = globalAudioCache.get(cacheKey);
-		let audioBytes = null;
-		let cached = false;
-		if (cachedBytes) {
-			rememberCachedSegment(cacheKey, cachedBytes);
-			audioBytes = cachedBytes.slice();
-			cached = true;
-		}
-		if (!audioBytes) {
-			const controller = new AbortController();
-			activeFetchAbortRef.current = controller;
-			const requestBody = {
-				text,
-				model_id: modelId,
-				apply_text_normalization: "auto",
-				voice_settings: {
-					stability: elConfig.stability ?? .5,
-					similarity_boost: elConfig.similarityBoost ?? .75,
-					speed: elConfig.speed ?? 1
+	const speakElevenLabs = useCallback(
+		async (text, elConfig, task, generation) => {
+			let ctx = sharedAudioCtx;
+			if (!ctx) {
+				ctx = new AudioContext();
+				sharedAudioCtx = ctx;
+			}
+			if (ctx.state === "suspended")
+				try {
+					await ctx.resume();
+				} catch {
+					ctx.close().catch((err) => {
+						console.warn("[useVoiceChat] AudioContext.close() failed", err);
+					});
+					ctx = new AudioContext();
+					sharedAudioCtx = ctx;
 				}
-			};
-			const apiToken = getElizaApiToken()?.trim() ?? "";
-			const proxyRequestBody = JSON.stringify({
-				...requestBody,
-				voiceId,
-				modelId,
-				outputFormat: "mp3_44100_128"
-			});
-			/**
-			* Server-side TTS when the browser has no `xi-api-key`.
-			* Always try Eliza Cloud (`/api/tts/cloud`) first — that is where a
-			* persisted Eliza Cloud API key is used. `voiceMode` may still be
-			* `own-key` when the UI has not yet marked cloud as connected (e.g.
-			* disconnect preference, status poll race), which previously routed
-			* here to `/api/tts/elevenlabs` only; The framework does not implement that
-			* path, so chat fell back to browser (Edge) TTS. If cloud rejects
-			* (no key), fall back to the upstream ElevenLabs proxy.
-			*/
-			const makeProxyRequestInit = () => {
-				const dbg = task.debugUtteranceContext;
-				return {
-					method: "POST",
-					headers: {
-						"Content-Type": "application/json",
-						Accept: "audio/mpeg",
-						...apiToken ? { Authorization: `Bearer ${apiToken}` } : {},
-						...isTtsDebugEnabled() && dbg ? {
-							"x-elizaos-tts-message-id": encodeURIComponent(dbg.messageId),
-							"x-elizaos-tts-clip-segment": encodeURIComponent(task.segment),
-							"x-elizaos-tts-full-preview": encodeURIComponent(dbg.fullAssistTextPreview)
-						} : {}
+			const voiceId = elConfig.voiceId ?? DEFAULT_ELEVEN_VOICE;
+			const modelId = elConfig.modelId ?? DEFAULT_ELEVEN_MODEL;
+			const cacheKey = task.cacheKey ?? makeElevenCacheKey(text, elConfig);
+			const cachedBytes = globalAudioCache.get(cacheKey);
+			let audioBytes = null;
+			let cached = false;
+			if (cachedBytes) {
+				rememberCachedSegment(cacheKey, cachedBytes);
+				audioBytes = cachedBytes.slice();
+				cached = true;
+			}
+			if (!audioBytes) {
+				const controller = new AbortController();
+				activeFetchAbortRef.current = controller;
+				const requestBody = {
+					text,
+					model_id: modelId,
+					apply_text_normalization: "auto",
+					voice_settings: {
+						stability: elConfig.stability ?? 0.5,
+						similarity_boost: elConfig.similarityBoost ?? 0.75,
+						speed: elConfig.speed ?? 1,
 					},
-					body: proxyRequestBody,
-					signal: controller.signal
 				};
-			};
-			const shouldFallbackFromCloudProxy = (status) => status === 400 || status === 401 || status === 403 || status === 404 || status === 405 || status === 501;
-			const fetchViaBestAvailableProxy = async () => {
-				const cloudTarget = resolveApiUrl("/api/tts/cloud");
-				try {
-					const cloudRes = await fetch(cloudTarget, makeProxyRequestInit());
-					if (cloudRes.ok || !shouldFallbackFromCloudProxy(cloudRes.status)) return cloudRes;
-					ttsDebug("useVoiceChat:cloud-proxy-fallback", {
-						status: cloudRes.status,
-						ttsTarget: describeTtsCloudFetchTargetForDebug()
-					});
-				} catch (error) {
-					ttsDebug("useVoiceChat:cloud-proxy-unavailable", {
-						ttsTarget: describeTtsCloudFetchTargetForDebug(),
-						error: error instanceof Error ? error.message : String(error)
-					});
-				}
-				return await fetch(resolveApiUrl("/api/tts/elevenlabs"), makeProxyRequestInit());
-			};
-			const trimmedApiKey = typeof elConfig.apiKey === "string" ? elConfig.apiKey.trim() : "";
-			const hasDirectKey = hasConfiguredApiKey(trimmedApiKey);
-			let res;
-			if (hasDirectKey) {
-				try {
-					const url = new URL(`https://api.elevenlabs.io/v1/text-to-speech/${encodeURIComponent(voiceId)}/stream`);
-					url.searchParams.set("output_format", "mp3_44100_128");
-					res = await fetch(url.toString(), {
+				const apiToken = getElizaApiToken()?.trim() ?? "";
+				const proxyRequestBody = JSON.stringify({
+					...requestBody,
+					voiceId,
+					modelId,
+					outputFormat: "mp3_44100_128",
+				});
+				/**
+				 * Server-side TTS when the browser has no `xi-api-key`.
+				 * Always try Eliza Cloud (`/api/tts/cloud`) first — that is where a
+				 * persisted Eliza Cloud API key is used. `voiceMode` may still be
+				 * `own-key` when the UI has not yet marked cloud as connected (e.g.
+				 * disconnect preference, status poll race), which previously routed
+				 * here to `/api/tts/elevenlabs` only; The framework does not implement that
+				 * path, so chat fell back to browser (Edge) TTS. If cloud rejects
+				 * (no key), fall back to the upstream ElevenLabs proxy.
+				 */
+				const makeProxyRequestInit = () => {
+					const dbg = task.debugUtteranceContext;
+					return {
 						method: "POST",
 						headers: {
-							"xi-api-key": trimmedApiKey,
 							"Content-Type": "application/json",
-							Accept: "audio/mpeg"
+							Accept: "audio/mpeg",
+							...(apiToken ? { Authorization: `Bearer ${apiToken}` } : {}),
+							...(isTtsDebugEnabled() && dbg
+								? {
+										"x-elizaos-tts-message-id": encodeURIComponent(
+											dbg.messageId,
+										),
+										"x-elizaos-tts-clip-segment": encodeURIComponent(
+											task.segment,
+										),
+										"x-elizaos-tts-full-preview": encodeURIComponent(
+											dbg.fullAssistTextPreview,
+										),
+									}
+								: {}),
 						},
-						body: JSON.stringify(requestBody),
-						signal: controller.signal
-					});
-				} catch {
-					res = await fetchViaBestAvailableProxy();
-				}
-				if (!res.ok && (res.status === 401 || res.status === 403)) {
-					const proxyRes = await fetchViaBestAvailableProxy();
-					if (proxyRes.ok) res = proxyRes;
-				}
-			} else res = await fetchViaBestAvailableProxy();
-			if (activeFetchAbortRef.current === controller) activeFetchAbortRef.current = null;
-			if (!res.ok) {
-				const body = await res.text().catch(() => "");
-				ttsDebug("useVoiceChat:elevenlabs-http-error", {
-					status: res.status,
-					ttsTarget: describeTtsCloudFetchTargetForDebug(),
-					hadBearer: Boolean(apiToken),
-					bodyPreview: body.slice(0, 120)
-				});
-				throw new Error(`ElevenLabs ${res.status}: ${body.slice(0, 200)}`);
-			}
-			const audioData = await res.arrayBuffer();
-			audioBytes = new Uint8Array(audioData);
-			rememberCachedSegment(cacheKey, audioBytes.slice());
-		}
-		if (generation !== generationRef.current) return;
-		const audioBuffer = await ctx.decodeAudioData(toArrayBuffer(audioBytes));
-		if (generation !== generationRef.current) return;
-		const analyser = ctx.createAnalyser();
-		analyser.fftSize = 2048;
-		analyser.smoothingTimeConstant = .8;
-		analyserRef.current = analyser;
-		timeDomainDataRef.current = new Float32Array(new ArrayBuffer(analyser.fftSize * Float32Array.BYTES_PER_ELEMENT));
-		const source = ctx.createBufferSource();
-		source.buffer = audioBuffer;
-		source.connect(analyser);
-		analyser.connect(ctx.destination);
-		audioSourceRef.current = source;
-		await new Promise((resolve) => {
-			let finished = false;
-			const playStartMs = performance.now();
-			let wrappedFinish = null;
-			const finish = () => {
-				if (finished) return;
-				finished = true;
-				if (wrappedFinish && activeTaskFinishRef.current === wrappedFinish) activeTaskFinishRef.current = null;
-				if (audioSourceRef.current === source) audioSourceRef.current = null;
-				source.onended = null;
-				try {
-					source.disconnect();
-				} catch {}
-				try {
-					analyser.disconnect();
-				} catch {}
-				clearSpeechTimers();
-				resolve();
-			};
-			wrappedFinish = () => {
-				ttsDebug("play:web-audio:end", {
-					segment: task.segment,
-					elapsedMs: Math.round(performance.now() - playStartMs)
-				});
-				finish();
-			};
-			ttsDebug("play:web-audio:start", {
-				segment: task.segment,
-				append: task.append,
-				cached,
-				textChars: text.length,
-				preview: ttsDebugTextPreview(text),
-				durationSecApprox: Math.round(audioBuffer.duration * 100) / 100
-			});
-			activeTaskFinishRef.current = wrappedFinish;
-			source.onended = wrappedFinish;
-			speechTimeoutRef.current = setTimeout(wrappedFinish, Math.max(2500, Math.ceil(audioBuffer.duration * 1e3) + 1200));
-			source.start(0);
-			emitPlaybackStart({
-				text,
-				segment: task.segment,
-				provider: "elevenlabs",
-				cached,
-				startedAtMs: playStartMs
-			});
-		});
-	}, [
-		clearSpeechTimers,
-		makeElevenCacheKey,
-		rememberCachedSegment
-	]);
-	const speakBrowser = useCallback((text, task, generation) => {
-		const config = voiceConfigRef.current;
-		const synth = synthRef.current;
-		const requestedLocale = normalizeSpeechLocale(options.lang);
-		const words = text.trim().split(/\s+/).length;
-		const estimatedMs = Math.max(1200, words / 3 * 1e3);
-		const useTalkModeTts = !synth && Boolean(getElectrobunRendererRpc());
-		ttsDebug("speakBrowser:enter", {
-			path: synth ? "speechSynthesis" : useTalkModeTts ? "talkmode-bridge" : "no-synth-timer-only",
-			segment: task.segment,
-			append: task.append,
-			textChars: text.trim().length,
-			preview: ttsDebugTextPreview(text),
-			voiceConfigProvider: config?.provider ?? null,
-			...config?.provider === "edge" && config.edge?.voice ? { edgeVoiceSetting: config.edge.voice } : {}
-		});
-		return new Promise((resolve) => {
-			let finished = false;
-			const finish = () => {
-				if (finished) return;
-				finished = true;
-				if (activeTaskFinishRef.current === finish) activeTaskFinishRef.current = null;
-				clearSpeechTimers();
-				utteranceRef.current = null;
-				resolve();
-			};
-			activeTaskFinishRef.current = finish;
-			if (!synth) {
-				if (getElectrobunRendererRpc()) {
-					ttsDebug("play:talkmode:dispatch", {
-						segment: task.segment,
-						append: task.append,
-						textChars: text.trim().length,
-						preview: ttsDebugTextPreview(text),
-						engine: "native-talkmode-bridge",
-						note: "No window.speechSynthesis — routing TTS to main-process talkmodeSpeak"
-					});
-					invokeDesktopBridgeRequest({
-						rpcMethod: "talkmodeSpeak",
-						ipcChannel: "talkmode:speak",
-						params: { text: text.trim() }
-					}).catch((err) => {
-						ttsDebug("play:talkmode:speak-failed", {
-							segment: task.segment,
-							preview: ttsDebugTextPreview(text),
-							err: err instanceof Error ? `${err.name}: ${err.message.slice(0, 200)}` : String(err).slice(0, 200)
+						body: proxyRequestBody,
+						signal: controller.signal,
+					};
+				};
+				const shouldFallbackFromCloudProxy = (status) =>
+					status === 400 ||
+					status === 401 ||
+					status === 403 ||
+					status === 404 ||
+					status === 405 ||
+					status === 501;
+				const fetchViaBestAvailableProxy = async () => {
+					const cloudTarget = resolveApiUrl("/api/tts/cloud");
+					try {
+						const cloudRes = await fetch(cloudTarget, makeProxyRequestInit());
+						if (cloudRes.ok || !shouldFallbackFromCloudProxy(cloudRes.status))
+							return cloudRes;
+						ttsDebug("useVoiceChat:cloud-proxy-fallback", {
+							status: cloudRes.status,
+							ttsTarget: describeTtsCloudFetchTargetForDebug(),
 						});
-						console.warn("[useVoiceChat] Desktop speech bridge failed:", err);
+					} catch (error) {
+						ttsDebug("useVoiceChat:cloud-proxy-unavailable", {
+							ttsTarget: describeTtsCloudFetchTargetForDebug(),
+							error: error instanceof Error ? error.message : String(error),
+						});
+					}
+					return await fetch(
+						resolveApiUrl("/api/tts/elevenlabs"),
+						makeProxyRequestInit(),
+					);
+				};
+				const trimmedApiKey =
+					typeof elConfig.apiKey === "string" ? elConfig.apiKey.trim() : "";
+				const hasDirectKey = hasConfiguredApiKey(trimmedApiKey);
+				let res;
+				if (hasDirectKey) {
+					try {
+						const url = new URL(
+							`https://api.elevenlabs.io/v1/text-to-speech/${encodeURIComponent(voiceId)}/stream`,
+						);
+						url.searchParams.set("output_format", "mp3_44100_128");
+						res = await fetch(url.toString(), {
+							method: "POST",
+							headers: {
+								"xi-api-key": trimmedApiKey,
+								"Content-Type": "application/json",
+								Accept: "audio/mpeg",
+							},
+							body: JSON.stringify(requestBody),
+							signal: controller.signal,
+						});
+					} catch {
+						res = await fetchViaBestAvailableProxy();
+					}
+					if (!res.ok && (res.status === 401 || res.status === 403)) {
+						const proxyRes = await fetchViaBestAvailableProxy();
+						if (proxyRes.ok) res = proxyRes;
+					}
+				} else res = await fetchViaBestAvailableProxy();
+				if (activeFetchAbortRef.current === controller)
+					activeFetchAbortRef.current = null;
+				if (!res.ok) {
+					const body = await res.text().catch(() => "");
+					ttsDebug("useVoiceChat:elevenlabs-http-error", {
+						status: res.status,
+						ttsTarget: describeTtsCloudFetchTargetForDebug(),
+						hadBearer: Boolean(apiToken),
+						bodyPreview: body.slice(0, 120),
 					});
-				} else ttsDebug("play:browser:no-synth", {
+					throw new Error(`ElevenLabs ${res.status}: ${body.slice(0, 200)}`);
+				}
+				const audioData = await res.arrayBuffer();
+				audioBytes = new Uint8Array(audioData);
+				rememberCachedSegment(cacheKey, audioBytes.slice());
+			}
+			if (generation !== generationRef.current) return;
+			const audioBuffer = await ctx.decodeAudioData(toArrayBuffer(audioBytes));
+			if (generation !== generationRef.current) return;
+			const analyser = ctx.createAnalyser();
+			analyser.fftSize = 2048;
+			analyser.smoothingTimeConstant = 0.8;
+			analyserRef.current = analyser;
+			timeDomainDataRef.current = new Float32Array(
+				new ArrayBuffer(analyser.fftSize * Float32Array.BYTES_PER_ELEMENT),
+			);
+			const source = ctx.createBufferSource();
+			source.buffer = audioBuffer;
+			source.connect(analyser);
+			analyser.connect(ctx.destination);
+			audioSourceRef.current = source;
+			await new Promise((resolve) => {
+				let finished = false;
+				const playStartMs = performance.now();
+				let wrappedFinish = null;
+				const finish = () => {
+					if (finished) return;
+					finished = true;
+					if (wrappedFinish && activeTaskFinishRef.current === wrappedFinish)
+						activeTaskFinishRef.current = null;
+					if (audioSourceRef.current === source) audioSourceRef.current = null;
+					source.onended = null;
+					try {
+						source.disconnect();
+					} catch {}
+					try {
+						analyser.disconnect();
+					} catch {}
+					clearSpeechTimers();
+					resolve();
+				};
+				wrappedFinish = () => {
+					ttsDebug("play:web-audio:end", {
+						segment: task.segment,
+						elapsedMs: Math.round(performance.now() - playStartMs),
+					});
+					finish();
+				};
+				ttsDebug("play:web-audio:start", {
 					segment: task.segment,
-					textChars: text.trim().length,
+					append: task.append,
+					cached,
+					textChars: text.length,
 					preview: ttsDebugTextPreview(text),
-					engine: "none",
-					note: "No SpeechSynthesis — playback may be silent until Talk Mode or synth is available"
+					durationSecApprox: Math.round(audioBuffer.duration * 100) / 100,
 				});
+				activeTaskFinishRef.current = wrappedFinish;
+				source.onended = wrappedFinish;
+				speechTimeoutRef.current = setTimeout(
+					wrappedFinish,
+					Math.max(2500, Math.ceil(audioBuffer.duration * 1e3) + 1200),
+				);
+				source.start(0);
 				emitPlaybackStart({
 					text,
 					segment: task.segment,
-					provider: "browser",
-					cached: false,
-					startedAtMs: performance.now()
+					provider: "elevenlabs",
+					cached,
+					startedAtMs: playStartMs,
 				});
-				speechTimeoutRef.current = setTimeout(finish, estimatedMs);
-				return;
-			}
-			const utterance = new SpeechSynthesisUtterance(text.trim());
-			utterance.lang = requestedLocale;
-			utteranceRef.current = utterance;
-			let selectedVoice;
-			if (synth?.getVoices) {
-				const voices = synth.getVoices();
-				if (config?.provider === "edge" && config.edge?.voice) {
-					const edgeVoiceName = config.edge.voice;
-					selectedVoice = voices.find((v) => v.voiceURI === edgeVoiceName || v.name === edgeVoiceName);
-					if (!selectedVoice) {
-						const isMale = edgeVoiceName.toLowerCase().includes("guy") || edgeVoiceName.toLowerCase().includes("male");
-						selectedVoice = voices.find((v) => {
-							if (!matchesVoiceLocale(v, requestedLocale)) return false;
-							const nameLower = v.name.toLowerCase();
-							if (isMale) return nameLower.includes("male") || nameLower.includes("alex") || nameLower.includes("david") || nameLower.includes("daniel");
-							else return nameLower.includes("female") || nameLower.includes("samantha") || nameLower.includes("victoria") || nameLower.includes("zira") || nameLower.includes("karen");
-						});
-					}
-				}
-				if (!selectedVoice) if (localePrefix(requestedLocale) === "en") selectedVoice = voices.find((v) => matchesVoiceLocale(v, requestedLocale) && !v.name.toLowerCase().includes("alex") && !v.name.toLowerCase().includes("david")) || voices.find((v) => matchesVoiceLocale(v, requestedLocale));
-				else selectedVoice = voices.find((v) => matchesVoiceLocale(v, requestedLocale));
-				if (selectedVoice) {
-					utterance.voice = selectedVoice;
-					utterance.lang = selectedVoice.lang || requestedLocale;
-				}
-			}
-			utterance.rate = 1;
-			utterance.pitch = 1;
-			ttsDebug("play:browser:web-speech:enqueued", {
+			});
+		},
+		[clearSpeechTimers, makeElevenCacheKey, rememberCachedSegment],
+	);
+	const speakBrowser = useCallback(
+		(text, task, generation) => {
+			const config = voiceConfigRef.current;
+			const synth = synthRef.current;
+			const requestedLocale = normalizeSpeechLocale(options.lang);
+			const words = text.trim().split(/\s+/).length;
+			const estimatedMs = Math.max(1200, (words / 3) * 1e3);
+			const useTalkModeTts = !synth && Boolean(getElectrobunRendererRpc());
+			ttsDebug("speakBrowser:enter", {
+				path: synth
+					? "speechSynthesis"
+					: useTalkModeTts
+						? "talkmode-bridge"
+						: "no-synth-timer-only",
 				segment: task.segment,
 				append: task.append,
 				textChars: text.trim().length,
 				preview: ttsDebugTextPreview(text),
-				requestedLocale,
-				engine: "speechSynthesis",
-				...webSpeechVoiceDebugFields(selectedVoice)
+				voiceConfigProvider: config?.provider ?? null,
+				...(config?.provider === "edge" && config.edge?.voice
+					? { edgeVoiceSetting: config.edge.voice }
+					: {}),
 			});
-			const browserPlayStartMsRef = { value: 0 };
-			utterance.onstart = () => {
-				if (generation !== generationRef.current) return;
-				browserPlayStartMsRef.value = performance.now();
-				ttsDebug("play:browser:speechSynthesis:start", {
+			return new Promise((resolve) => {
+				let finished = false;
+				const finish = () => {
+					if (finished) return;
+					finished = true;
+					if (activeTaskFinishRef.current === finish)
+						activeTaskFinishRef.current = null;
+					clearSpeechTimers();
+					utteranceRef.current = null;
+					resolve();
+				};
+				activeTaskFinishRef.current = finish;
+				if (!synth) {
+					if (getElectrobunRendererRpc()) {
+						ttsDebug("play:talkmode:dispatch", {
+							segment: task.segment,
+							append: task.append,
+							textChars: text.trim().length,
+							preview: ttsDebugTextPreview(text),
+							engine: "native-talkmode-bridge",
+							note: "No window.speechSynthesis — routing TTS to main-process talkmodeSpeak",
+						});
+						invokeDesktopBridgeRequest({
+							rpcMethod: "talkmodeSpeak",
+							ipcChannel: "talkmode:speak",
+							params: { text: text.trim() },
+						}).catch((err) => {
+							ttsDebug("play:talkmode:speak-failed", {
+								segment: task.segment,
+								preview: ttsDebugTextPreview(text),
+								err:
+									err instanceof Error
+										? `${err.name}: ${err.message.slice(0, 200)}`
+										: String(err).slice(0, 200),
+							});
+							console.warn("[useVoiceChat] Desktop speech bridge failed:", err);
+						});
+					} else
+						ttsDebug("play:browser:no-synth", {
+							segment: task.segment,
+							textChars: text.trim().length,
+							preview: ttsDebugTextPreview(text),
+							engine: "none",
+							note: "No SpeechSynthesis — playback may be silent until Talk Mode or synth is available",
+						});
+					emitPlaybackStart({
+						text,
+						segment: task.segment,
+						provider: "browser",
+						cached: false,
+						startedAtMs: performance.now(),
+					});
+					speechTimeoutRef.current = setTimeout(finish, estimatedMs);
+					return;
+				}
+				const utterance = new SpeechSynthesisUtterance(text.trim());
+				utterance.lang = requestedLocale;
+				utteranceRef.current = utterance;
+				let selectedVoice;
+				if (synth?.getVoices) {
+					const voices = synth.getVoices();
+					if (config?.provider === "edge" && config.edge?.voice) {
+						const edgeVoiceName = config.edge.voice;
+						selectedVoice = voices.find(
+							(v) => v.voiceURI === edgeVoiceName || v.name === edgeVoiceName,
+						);
+						if (!selectedVoice) {
+							const isMale =
+								edgeVoiceName.toLowerCase().includes("guy") ||
+								edgeVoiceName.toLowerCase().includes("male");
+							selectedVoice = voices.find((v) => {
+								if (!matchesVoiceLocale(v, requestedLocale)) return false;
+								const nameLower = v.name.toLowerCase();
+								if (isMale)
+									return (
+										nameLower.includes("male") ||
+										nameLower.includes("alex") ||
+										nameLower.includes("david") ||
+										nameLower.includes("daniel")
+									);
+								else
+									return (
+										nameLower.includes("female") ||
+										nameLower.includes("samantha") ||
+										nameLower.includes("victoria") ||
+										nameLower.includes("zira") ||
+										nameLower.includes("karen")
+									);
+							});
+						}
+					}
+					if (!selectedVoice)
+						if (localePrefix(requestedLocale) === "en")
+							selectedVoice =
+								voices.find(
+									(v) =>
+										matchesVoiceLocale(v, requestedLocale) &&
+										!v.name.toLowerCase().includes("alex") &&
+										!v.name.toLowerCase().includes("david"),
+								) || voices.find((v) => matchesVoiceLocale(v, requestedLocale));
+						else
+							selectedVoice = voices.find((v) =>
+								matchesVoiceLocale(v, requestedLocale),
+							);
+					if (selectedVoice) {
+						utterance.voice = selectedVoice;
+						utterance.lang = selectedVoice.lang || requestedLocale;
+					}
+				}
+				utterance.rate = 1;
+				utterance.pitch = 1;
+				ttsDebug("play:browser:web-speech:enqueued", {
 					segment: task.segment,
 					append: task.append,
 					textChars: text.trim().length,
 					preview: ttsDebugTextPreview(text),
 					requestedLocale,
-					engine: "speechSynthesis-utterance-onstart",
-					...webSpeechVoiceDebugFields(selectedVoice)
+					engine: "speechSynthesis",
+					...webSpeechVoiceDebugFields(selectedVoice),
 				});
-				emitPlaybackStart({
-					text,
-					segment: task.segment,
-					provider: "browser",
-					cached: false,
-					startedAtMs: browserPlayStartMsRef.value
-				});
-			};
-			const endBrowserUtterance = () => {
-				if (browserPlayStartMsRef.value > 0) ttsDebug("play:browser:speechSynthesis:end", {
-					segment: task.segment,
-					elapsedMs: Math.round(performance.now() - browserPlayStartMsRef.value)
-				});
-				finish();
-			};
-			utterance.onend = endBrowserUtterance;
-			utterance.onerror = (ev) => {
-				const errEv = ev;
-				ttsDebug("play:browser:speechSynthesis:error", {
-					segment: task.segment,
-					synthesisError: errEv.error ?? "unknown",
-					preview: ttsDebugTextPreview(text),
-					requestedLocale,
-					...webSpeechVoiceDebugFields(selectedVoice)
-				});
-				endBrowserUtterance();
-			};
-			synth.speak(utterance);
-			speechTimeoutRef.current = setTimeout(finish, estimatedMs + 5e3);
-		});
-	}, [clearSpeechTimers, options.lang]);
+				const browserPlayStartMsRef = { value: 0 };
+				utterance.onstart = () => {
+					if (generation !== generationRef.current) return;
+					browserPlayStartMsRef.value = performance.now();
+					ttsDebug("play:browser:speechSynthesis:start", {
+						segment: task.segment,
+						append: task.append,
+						textChars: text.trim().length,
+						preview: ttsDebugTextPreview(text),
+						requestedLocale,
+						engine: "speechSynthesis-utterance-onstart",
+						...webSpeechVoiceDebugFields(selectedVoice),
+					});
+					emitPlaybackStart({
+						text,
+						segment: task.segment,
+						provider: "browser",
+						cached: false,
+						startedAtMs: browserPlayStartMsRef.value,
+					});
+				};
+				const endBrowserUtterance = () => {
+					if (browserPlayStartMsRef.value > 0)
+						ttsDebug("play:browser:speechSynthesis:end", {
+							segment: task.segment,
+							elapsedMs: Math.round(
+								performance.now() - browserPlayStartMsRef.value,
+							),
+						});
+					finish();
+				};
+				utterance.onend = endBrowserUtterance;
+				utterance.onerror = (ev) => {
+					const errEv = ev;
+					ttsDebug("play:browser:speechSynthesis:error", {
+						segment: task.segment,
+						synthesisError: errEv.error ?? "unknown",
+						preview: ttsDebugTextPreview(text),
+						requestedLocale,
+						...webSpeechVoiceDebugFields(selectedVoice),
+					});
+					endBrowserUtterance();
+				};
+				synth.speak(utterance);
+				speechTimeoutRef.current = setTimeout(finish, estimatedMs + 5e3);
+			});
+		},
+		[clearSpeechTimers, options.lang],
+	);
 	const processQueue = useCallback(() => {
 		if (queueWorkerRunningRef.current) return;
 		queueWorkerRunningRef.current = true;
@@ -1240,24 +1531,43 @@ function useVoiceChat(options) {
 						append: task.append,
 						textChars: task.text.length,
 						preview: ttsDebugTextPreview(task.text),
-						...task.debugUtteranceContext ? {
-							messageId: task.debugUtteranceContext.messageId,
-							hearingFull: task.debugUtteranceContext.fullAssistTextPreview
-						} : {}
+						...(task.debugUtteranceContext
+							? {
+									messageId: task.debugUtteranceContext.messageId,
+									hearingFull: task.debugUtteranceContext.fullAssistTextPreview,
+								}
+							: {}),
 					});
 					if (useElevenLabs && elConfig) {
 						usingAudioAnalysisRef.current = true;
 						setUsingAudioAnalysis(true);
 						try {
-							await speakElevenLabs(task.text, elConfig, task, workerGeneration);
+							await speakElevenLabs(
+								task.text,
+								elConfig,
+								task,
+								workerGeneration,
+							);
 							continue;
 						} catch (error) {
-							if (workerGeneration !== generationRef.current || isAbortError(error)) break;
-							console.warn("[useVoiceChat] ElevenLabs TTS failed:", error instanceof Error ? `${error.name}: ${error.message}` : error);
+							if (
+								workerGeneration !== generationRef.current ||
+								isAbortError(error)
+							)
+								break;
+							console.warn(
+								"[useVoiceChat] ElevenLabs TTS failed:",
+								error instanceof Error
+									? `${error.name}: ${error.message}`
+									: error,
+							);
 							ttsDebug("useVoiceChat:elevenlabs-failed", {
-								err: error instanceof Error ? `${error.name}: ${error.message.slice(0, 200)}` : String(error).slice(0, 200),
+								err:
+									error instanceof Error
+										? `${error.name}: ${error.message.slice(0, 200)}`
+										: String(error).slice(0, 200),
 								ttsTarget: describeTtsCloudFetchTargetForDebug(),
-								hadBearer: Boolean(getElizaApiToken()?.trim())
+								hadBearer: Boolean(getElizaApiToken()?.trim()),
 							});
 							usingAudioAnalysisRef.current = false;
 							setUsingAudioAnalysis(false);
@@ -1267,9 +1577,12 @@ function useVoiceChat(options) {
 						usingAudioAnalysisRef.current = false;
 						setUsingAudioAnalysis(false);
 						ttsDebug("processQueue:browser-tts-direct", {
-							reason: elConfig ? "provider_not_elevenlabs" : "missing_elevenlabs_config",
+							reason: elConfig
+								? "provider_not_elevenlabs"
+								: "missing_elevenlabs_config",
 							provider: config?.provider ?? null,
-							nextPath: "speakBrowser — OS Web Speech (often msedge/Microsoft) or Electrobun talkmode"
+							nextPath:
+								"speakBrowser — OS Web Speech (often msedge/Microsoft) or Electrobun talkmode",
 						});
 					}
 					await speakBrowser(task.text, task, workerGeneration);
@@ -1287,37 +1600,43 @@ function useVoiceChat(options) {
 			setIsSpeaking(false);
 		})();
 	}, [speakBrowser, speakElevenLabs]);
-	const enqueueSpeech = useCallback((task) => {
-		const speakable = toSpeakableText(task.text);
-		if (!speakable) return;
-		if (!task.append) cancelPlayback();
-		queueRef.current.push({
-			...task,
-			text: speakable
-		});
-		ttsDebug("enqueueSpeech", {
-			segment: task.segment,
-			append: task.append,
-			textChars: speakable.length,
-			preview: ttsDebugTextPreview(speakable),
-			queueLen: queueRef.current.length
-		});
-		speakingStartRef.current = Date.now();
-		setIsSpeaking(true);
-		processQueue();
-	}, [cancelPlayback, processQueue]);
-	const speak = useCallback((text, speakOptions) => {
-		if (assistantTtsDebounceRef.current != null) {
-			clearTimeout(assistantTtsDebounceRef.current);
-			assistantTtsDebounceRef.current = null;
-		}
-		assistantSpeechRef.current = null;
-		enqueueSpeech({
-			text,
-			append: Boolean(speakOptions?.append),
-			segment: "full"
-		});
-	}, [enqueueSpeech]);
+	const enqueueSpeech = useCallback(
+		(task) => {
+			const speakable = toSpeakableText(task.text);
+			if (!speakable) return;
+			if (!task.append) cancelPlayback();
+			queueRef.current.push({
+				...task,
+				text: speakable,
+			});
+			ttsDebug("enqueueSpeech", {
+				segment: task.segment,
+				append: task.append,
+				textChars: speakable.length,
+				preview: ttsDebugTextPreview(speakable),
+				queueLen: queueRef.current.length,
+			});
+			speakingStartRef.current = Date.now();
+			setIsSpeaking(true);
+			processQueue();
+		},
+		[cancelPlayback, processQueue],
+	);
+	const speak = useCallback(
+		(text, speakOptions) => {
+			if (assistantTtsDebounceRef.current != null) {
+				clearTimeout(assistantTtsDebounceRef.current);
+				assistantTtsDebounceRef.current = null;
+			}
+			assistantSpeechRef.current = null;
+			enqueueSpeech({
+				text,
+				append: Boolean(speakOptions?.append),
+				segment: "full",
+			});
+		},
+		[enqueueSpeech],
+	);
 	const clearAssistantTtsDebounce = useCallback(() => {
 		if (assistantTtsDebounceRef.current != null) {
 			clearTimeout(assistantTtsDebounceRef.current);
@@ -1333,110 +1652,136 @@ function useVoiceChat(options) {
 		const unsent = remainderAfter(latest, state.queuedSpeakablePrefix);
 		if (!unsent) return;
 		const elConfig = voiceConfigRef.current?.elevenlabs;
-		const cacheKey = voiceConfigRef.current?.provider === "elevenlabs" && elConfig ? makeElevenCacheKey(unsent, elConfig) : void 0;
-		const dbgUtterance = isTtsDebugEnabled() ? {
-			messageId: state.messageId,
-			fullAssistTextPreview: ttsDebugTextPreview(latest, 220)
-		} : void 0;
+		const cacheKey =
+			voiceConfigRef.current?.provider === "elevenlabs" && elConfig
+				? makeElevenCacheKey(unsent, elConfig)
+				: void 0;
+		const dbgUtterance = isTtsDebugEnabled()
+			? {
+					messageId: state.messageId,
+					fullAssistTextPreview: ttsDebugTextPreview(latest, 220),
+				}
+			: void 0;
 		const isFirstClip = state.queuedSpeakablePrefix.length === 0;
 		enqueueSpeech({
 			text: unsent,
 			append: !isFirstClip,
 			segment: isFirstClip ? "full" : "remainder",
 			cacheKey,
-			debugUtteranceContext: dbgUtterance
+			debugUtteranceContext: dbgUtterance,
 		});
 		state.queuedSpeakablePrefix = latest;
 	}, [enqueueSpeech, makeElevenCacheKey]);
-	const queueAssistantSpeech = useCallback((messageId, text, isFinal) => {
-		if (!messageId) return;
-		const speakable = toSpeakableText(text);
-		if (!speakable) {
-			ttsDebug("queueAssistantSpeech:skip-empty", { messageId });
-			return;
-		}
-		ttsDebug("queueAssistantSpeech", {
-			messageId,
-			isFinal,
-			speakableChars: speakable.length,
-			preview: ttsDebugTextPreview(speakable)
-		});
-		const current = assistantSpeechRef.current;
-		if (!current || current.messageId !== messageId) {
-			clearAssistantTtsDebounce();
-			assistantSpeechRef.current = {
+	const queueAssistantSpeech = useCallback(
+		(messageId, text, isFinal) => {
+			if (!messageId) return;
+			const speakable = toSpeakableText(text);
+			if (!speakable) {
+				ttsDebug("queueAssistantSpeech:skip-empty", { messageId });
+				return;
+			}
+			ttsDebug("queueAssistantSpeech", {
 				messageId,
-				queuedSpeakablePrefix: "",
-				latestSpeakable: "",
-				finalQueued: false
-			};
-		}
-		const state = assistantSpeechRef.current;
-		if (!state) return;
-		state.latestSpeakable = speakable;
-		if (ASSISTANT_TTS_FINAL_ONLY && !isFinal) return;
-		if (ASSISTANT_TTS_FINAL_ONLY) {
-			if (state.finalQueued) return;
-			clearAssistantTtsDebounce();
-			const elConfig = voiceConfigRef.current?.elevenlabs;
-			enqueueSpeech({
-				text: speakable,
-				append: false,
-				segment: "full",
-				cacheKey: voiceConfigRef.current?.provider === "elevenlabs" && elConfig ? makeElevenCacheKey(speakable, elConfig) : void 0,
-				debugUtteranceContext: isTtsDebugEnabled() ? {
-					messageId,
-					fullAssistTextPreview: ttsDebugTextPreview(speakable, 220)
-				} : void 0
+				isFinal,
+				speakableChars: speakable.length,
+				preview: ttsDebugTextPreview(speakable),
 			});
-			state.queuedSpeakablePrefix = speakable;
-			state.finalQueued = true;
-			return;
-		}
-		if (speakable === state.queuedSpeakablePrefix && (!isFinal || state.finalQueued)) return;
-		if (speakable === state.queuedSpeakablePrefix && isFinal) {
-			clearAssistantTtsDebounce();
-			state.finalQueued = true;
-			return;
-		}
-		const unsent = remainderAfter(speakable, state.queuedSpeakablePrefix);
-		if (!unsent) {
-			if (isFinal) {
+			const current = assistantSpeechRef.current;
+			if (!current || current.messageId !== messageId) {
+				clearAssistantTtsDebounce();
+				assistantSpeechRef.current = {
+					messageId,
+					queuedSpeakablePrefix: "",
+					latestSpeakable: "",
+					finalQueued: false,
+				};
+			}
+			const state = assistantSpeechRef.current;
+			if (!state) return;
+			state.latestSpeakable = speakable;
+			if (ASSISTANT_TTS_FINAL_ONLY && !isFinal) return;
+			if (ASSISTANT_TTS_FINAL_ONLY) {
+				if (state.finalQueued) return;
+				clearAssistantTtsDebounce();
+				const elConfig = voiceConfigRef.current?.elevenlabs;
+				enqueueSpeech({
+					text: speakable,
+					append: false,
+					segment: "full",
+					cacheKey:
+						voiceConfigRef.current?.provider === "elevenlabs" && elConfig
+							? makeElevenCacheKey(speakable, elConfig)
+							: void 0,
+					debugUtteranceContext: isTtsDebugEnabled()
+						? {
+								messageId,
+								fullAssistTextPreview: ttsDebugTextPreview(speakable, 220),
+							}
+						: void 0,
+				});
+				state.queuedSpeakablePrefix = speakable;
+				state.finalQueued = true;
+				return;
+			}
+			if (
+				speakable === state.queuedSpeakablePrefix &&
+				(!isFinal || state.finalQueued)
+			)
+				return;
+			if (speakable === state.queuedSpeakablePrefix && isFinal) {
 				clearAssistantTtsDebounce();
 				state.finalQueued = true;
+				return;
 			}
-			return;
-		}
-		const isFirstClip = state.queuedSpeakablePrefix.length === 0;
-		if (isFinal || isFirstClip && unsent.length >= ASSISTANT_TTS_FIRST_FLUSH_CHARS || !isFirstClip && unsent.length >= ASSISTANT_TTS_MIN_CHUNK_CHARS) {
+			const unsent = remainderAfter(speakable, state.queuedSpeakablePrefix);
+			if (!unsent) {
+				if (isFinal) {
+					clearAssistantTtsDebounce();
+					state.finalQueued = true;
+				}
+				return;
+			}
+			const isFirstClip = state.queuedSpeakablePrefix.length === 0;
+			if (
+				isFinal ||
+				(isFirstClip && unsent.length >= ASSISTANT_TTS_FIRST_FLUSH_CHARS) ||
+				(!isFirstClip && unsent.length >= ASSISTANT_TTS_MIN_CHUNK_CHARS)
+			) {
+				clearAssistantTtsDebounce();
+				const elConfig = voiceConfigRef.current?.elevenlabs;
+				const cacheKey =
+					voiceConfigRef.current?.provider === "elevenlabs" && elConfig
+						? makeElevenCacheKey(unsent, elConfig)
+						: void 0;
+				const dbgUtterance = isTtsDebugEnabled()
+					? {
+							messageId,
+							fullAssistTextPreview: ttsDebugTextPreview(speakable, 220),
+						}
+					: void 0;
+				enqueueSpeech({
+					text: unsent,
+					append: !isFirstClip,
+					segment: isFirstClip ? "full" : "remainder",
+					cacheKey,
+					debugUtteranceContext: dbgUtterance,
+				});
+				state.queuedSpeakablePrefix = speakable;
+				if (isFinal) state.finalQueued = true;
+				return;
+			}
 			clearAssistantTtsDebounce();
-			const elConfig = voiceConfigRef.current?.elevenlabs;
-			const cacheKey = voiceConfigRef.current?.provider === "elevenlabs" && elConfig ? makeElevenCacheKey(unsent, elConfig) : void 0;
-			const dbgUtterance = isTtsDebugEnabled() ? {
-				messageId,
-				fullAssistTextPreview: ttsDebugTextPreview(speakable, 220)
-			} : void 0;
-			enqueueSpeech({
-				text: unsent,
-				append: !isFirstClip,
-				segment: isFirstClip ? "full" : "remainder",
-				cacheKey,
-				debugUtteranceContext: dbgUtterance
-			});
-			state.queuedSpeakablePrefix = speakable;
-			if (isFinal) state.finalQueued = true;
-			return;
-		}
-		clearAssistantTtsDebounce();
-		assistantTtsDebounceRef.current = setTimeout(() => {
-			flushPendingAssistantTts();
-		}, ASSISTANT_TTS_DEBOUNCE_MS);
-	}, [
-		clearAssistantTtsDebounce,
-		enqueueSpeech,
-		flushPendingAssistantTts,
-		makeElevenCacheKey
-	]);
+			assistantTtsDebounceRef.current = setTimeout(() => {
+				flushPendingAssistantTts();
+			}, ASSISTANT_TTS_DEBOUNCE_MS);
+		},
+		[
+			clearAssistantTtsDebounce,
+			enqueueSpeech,
+			flushPendingAssistantTts,
+			makeElevenCacheKey,
+		],
+	);
 	useEffect(() => {
 		if (typeof window === "undefined") return;
 		const handleUserGesture = () => {
@@ -1459,11 +1804,7 @@ function useVoiceChat(options) {
 			removeTalkModeListeners();
 			stopSpeaking();
 		};
-	}, [
-		removeTalkModeListeners,
-		stopListening,
-		stopSpeaking
-	]);
+	}, [removeTalkModeListeners, stopListening, stopSpeaking]);
 	return {
 		isListening,
 		captureMode,
@@ -1479,16 +1820,16 @@ function useVoiceChat(options) {
 		queueAssistantSpeech,
 		stopSpeaking,
 		voiceUnlockedGeneration,
-		assistantTtsQuality
+		assistantTtsQuality,
 	};
 }
 
 //#endregion
 //#region node_modules/.bun/@elizaos+app-core@2.0.0-alpha.537+72829346cb4c43b1/node_modules/@elizaos/app-core/packages/app-core/src/hooks/useActivityEvents.js
 /**
-* Hook that subscribes to WebSocket activity events and maintains a ring buffer
-* of recent entries for the chat widget rail.
-*/
+ * Hook that subscribes to WebSocket activity events and maintains a ring buffer
+ * of recent entries for the chat widget rail.
+ */
 const RING_BUFFER_CAP = 200;
 let nextEventId = 0;
 function makeEventId() {
@@ -1503,40 +1844,46 @@ function summarizeAssistantActivityEvent(data) {
 	const payload = isRecord(data.payload) ? data.payload : null;
 	if (!payload) return null;
 	const source = typeof payload.source === "string" ? payload.source : "";
-	const text = typeof payload.text === "string" ? payload.text.trim().slice(0, 120) : "";
+	const text =
+		typeof payload.text === "string" ? payload.text.trim().slice(0, 120) : "";
 	if (!text) return null;
 	switch (source) {
-		case "lifeops-reminder": return {
-			eventType: "reminder",
-			summary: text
-		};
-		case "lifeops-workflow": return {
-			eventType: "workflow",
-			summary: text
-		};
+		case "lifeops-reminder":
+			return {
+				eventType: "reminder",
+				summary: text,
+			};
+		case "lifeops-workflow":
+			return {
+				eventType: "workflow",
+				summary: text,
+			};
 		case "proactive-gm":
-		case "proactive-gn": return {
-			eventType: "check-in",
-			summary: text
-		};
-		case "proactive-nudge": return {
-			eventType: "nudge",
-			summary: text
-		};
-		default: return null;
+		case "proactive-gn":
+			return {
+				eventType: "check-in",
+				summary: text,
+			};
+		case "proactive-nudge":
+			return {
+				eventType: "nudge",
+				summary: text,
+			};
+		default:
+			return null;
 	}
 }
 /**
-* Subscribe to task/proactive websocket events plus assistant activity events,
-* returning a capped list of recent activity entries.
-*/
+ * Subscribe to task/proactive websocket events plus assistant activity events,
+ * returning a capped list of recent activity entries.
+ */
 function useActivityEvents() {
 	const [events, setEvents] = useState([]);
 	const bufferRef = useRef([]);
 	const pushEvent = useCallback((entry) => {
 		const event = {
 			...entry,
-			id: makeEventId()
+			id: makeEventId(),
 		};
 		const buf = bufferRef.current;
 		buf.unshift(event);
@@ -1549,26 +1896,37 @@ function useActivityEvents() {
 			const sessionId = data.sessionId;
 			const d = data.data;
 			let summary = eventType;
-			if (eventType === "task_registered") summary = `Task started: ${d?.label ?? sessionId ?? "unknown"}`;
-			else if (eventType === "task_complete" || eventType === "stopped") summary = `Task ${eventType === "task_complete" ? "completed" : "stopped"}`;
-			else if (eventType === "tool_running") summary = `Running ${d?.description ?? d?.toolName ?? "tool"}`.slice(0, 80);
+			if (eventType === "task_registered")
+				summary = `Task started: ${d?.label ?? sessionId ?? "unknown"}`;
+			else if (eventType === "task_complete" || eventType === "stopped")
+				summary = `Task ${eventType === "task_complete" ? "completed" : "stopped"}`;
+			else if (eventType === "tool_running")
+				summary = `Running ${d?.description ?? d?.toolName ?? "tool"}`.slice(
+					0,
+					80,
+				);
 			else if (eventType === "blocked") summary = "Waiting for input";
-			else if (eventType === "blocked_auto_resolved") summary = "Decision auto-approved";
-			else if (eventType === "escalation") summary = "Escalated — needs attention";
+			else if (eventType === "blocked_auto_resolved")
+				summary = "Decision auto-approved";
+			else if (eventType === "escalation")
+				summary = "Escalated — needs attention";
 			else if (eventType === "error") summary = "Error occurred";
 			pushEvent({
 				timestamp: Date.now(),
 				eventType,
 				sessionId: sessionId ?? void 0,
-				summary
+				summary,
 			});
 		});
 		const unbindProactive = client.onWsEvent("proactive-message", (data) => {
-			const message = typeof data.message === "string" ? data.message.slice(0, 120) : "Proactive message";
+			const message =
+				typeof data.message === "string"
+					? data.message.slice(0, 120)
+					: "Proactive message";
 			pushEvent({
 				timestamp: Date.now(),
 				eventType: "proactive-message",
-				summary: message
+				summary: message,
 			});
 		});
 		const unbindAgent = client.onWsEvent("agent_event", (data) => {
@@ -1577,7 +1935,7 @@ function useActivityEvents() {
 			pushEvent({
 				timestamp: Date.now(),
 				eventType: activity.eventType,
-				summary: activity.summary
+				summary: activity.summary,
 			});
 		});
 		return () => {
@@ -1591,7 +1949,7 @@ function useActivityEvents() {
 		clearEvents: useCallback(() => {
 			bufferRef.current = [];
 			setEvents([]);
-		}, [])
+		}, []),
 	};
 }
 
@@ -1604,7 +1962,8 @@ function useOptionalBugReport() {
 }
 function useBugReport() {
 	const ctx = useOptionalBugReport();
-	if (!ctx) throw new Error("useBugReport must be used within BugReportProvider");
+	if (!ctx)
+		throw new Error("useBugReport must be used within BugReportProvider");
 	return ctx;
 }
 function useBugReportState() {
@@ -1620,39 +1979,39 @@ function useBugReportState() {
 		close: useCallback(() => {
 			setIsOpen(false);
 			setDraft(null);
-		}, [])
+		}, []),
 	};
 }
 function BugReportProvider({ children, value }) {
 	return (0, import_jsx_runtime.jsx)(BugReportContext.Provider, {
 		value,
-		children
+		children,
 	});
 }
 
 //#endregion
 //#region node_modules/.bun/@elizaos+app-core@2.0.0-alpha.537+72829346cb4c43b1/node_modules/@elizaos/app-core/packages/app-core/src/hooks/useCanvasWindow.js
 /**
-* useCanvasWindow
-*
-* Creates a floating BrowserWindow (via the Electrobun canvas RPC) that is
-* positioned and sized to match a DOM placeholder div.  The BrowserWindow
-* appears to be "embedded" because it is always kept aligned with the div.
-*
-* Works in:
-*   - Electrobun — calls via the preload-exposed renderer RPC
-*   - Legacy desktop bridge compatibility — falls back to the historical bridge
-*
-* Falls back gracefully (isReady=false, no window created) when neither
-* runtime is detected (web / Capacitor / SSR).
-*/
+ * useCanvasWindow
+ *
+ * Creates a floating BrowserWindow (via the Electrobun canvas RPC) that is
+ * positioned and sized to match a DOM placeholder div.  The BrowserWindow
+ * appears to be "embedded" because it is always kept aligned with the div.
+ *
+ * Works in:
+ *   - Electrobun — calls via the preload-exposed renderer RPC
+ *   - Legacy desktop bridge compatibility — falls back to the historical bridge
+ *
+ * Falls back gracefully (isReady=false, no window created) when neither
+ * runtime is detected (web / Capacitor / SSR).
+ */
 function getScreenRect(el) {
 	const rect = el.getBoundingClientRect();
 	return {
 		x: Math.round(rect.left + window.scrollX),
 		y: Math.round(rect.top + window.scrollY),
 		width: Math.round(rect.width),
-		height: Math.round(rect.height)
+		height: Math.round(rect.height),
 	};
 }
 function useCanvasWindow(options) {
@@ -1675,21 +2034,29 @@ function useCanvasWindow(options) {
 		if (!el || !id) return;
 		const bounds = getScreenRect(el);
 		const last = lastBoundsRef.current;
-		if (last && last.x === bounds.x && last.y === bounds.y && last.width === bounds.width && last.height === bounds.height) return;
+		if (
+			last &&
+			last.x === bounds.x &&
+			last.y === bounds.y &&
+			last.width === bounds.width &&
+			last.height === bounds.height
+		)
+			return;
 		lastBoundsRef.current = bounds;
 		invokeDesktopBridgeRequest({
 			rpcMethod: "canvasSetBounds",
 			ipcChannel: "canvas:setBounds",
 			params: {
 				id,
-				...bounds
-			}
+				...bounds,
+			},
 		}).catch((err) => {
 			console.warn("[useCanvasWindow] canvas:setBounds failed", err);
 		});
 	}, []);
 	const scheduleSyncBounds = useCallback(() => {
-		if (trackingFrameRef.current !== null || syncFrameRef.current !== null) return;
+		if (trackingFrameRef.current !== null || syncFrameRef.current !== null)
+			return;
 		syncFrameRef.current = requestAnimationFrame(() => {
 			syncFrameRef.current = null;
 			syncBounds();
@@ -1718,12 +2085,14 @@ function useCanvasWindow(options) {
 		let destroyed = false;
 		let createdId = null;
 		const el = containerRef.current;
-		const initial = el ? getScreenRect(el) : {
-			x: 100,
-			y: 100,
-			width: 800,
-			height: 600
-		};
+		const initial = el
+			? getScreenRect(el)
+			: {
+					x: 100,
+					y: 100,
+					width: 800,
+					height: 600,
+				};
 		invokeDesktopBridgeRequest({
 			rpcMethod: "canvasCreateWindow",
 			ipcChannel: "canvas:createWindow",
@@ -1733,38 +2102,48 @@ function useCanvasWindow(options) {
 				x: initial.x,
 				y: initial.y,
 				width: initial.width,
-				height: initial.height
-			}
-		}).then((result) => {
-			if (!result) return;
-			if (destroyed) {
+				height: initial.height,
+			},
+		})
+			.then((result) => {
+				if (!result) return;
+				if (destroyed) {
+					const id = result.id;
+					if (id)
+						invokeDesktopBridgeRequest({
+							rpcMethod: "canvasDestroyWindow",
+							ipcChannel: "canvas:destroyWindow",
+							params: { id },
+						}).catch((err) => {
+							console.warn(
+								"[useCanvasWindow] canvas:destroyWindow cleanup failed",
+								err,
+							);
+						});
+					return;
+				}
 				const id = result.id;
-				if (id) invokeDesktopBridgeRequest({
-					rpcMethod: "canvasDestroyWindow",
-					ipcChannel: "canvas:destroyWindow",
-					params: { id }
-				}).catch((err) => {
-					console.warn("[useCanvasWindow] canvas:destroyWindow cleanup failed", err);
-				});
-				return;
-			}
-			const id = result.id;
-			if (!id) {
-				console.warn("[useCanvasWindow] canvasCreateWindow returned no id");
-				return;
-			}
-			createdId = id;
-			windowIdRef.current = id;
-			setWindowId(id);
-			lastBoundsRef.current = null;
-			setIsReady(true);
-			scheduleSyncBounds();
-		}).catch((err) => {
-			console.warn("[useCanvasWindow] canvas:createWindow failed", err);
-		});
+				if (!id) {
+					console.warn("[useCanvasWindow] canvasCreateWindow returned no id");
+					return;
+				}
+				createdId = id;
+				windowIdRef.current = id;
+				setWindowId(id);
+				lastBoundsRef.current = null;
+				setIsReady(true);
+				scheduleSyncBounds();
+			})
+			.catch((err) => {
+				console.warn("[useCanvasWindow] canvas:createWindow failed", err);
+			});
 		const isTrackedTarget = (target) => {
 			const trackedElement = containerRef.current;
-			return trackedElement !== null && target instanceof Node && trackedElement.contains(target);
+			return (
+				trackedElement !== null &&
+				target instanceof Node &&
+				trackedElement.contains(target)
+			);
 		};
 		const handleViewportChange = () => {
 			scheduleSyncBounds();
@@ -1776,7 +2155,10 @@ function useCanvasWindow(options) {
 		};
 		const stopAnimationTracking = (event) => {
 			if (!isTrackedTarget(event.target)) return;
-			animationTrackerCountRef.current = Math.max(0, animationTrackerCountRef.current - 1);
+			animationTrackerCountRef.current = Math.max(
+				0,
+				animationTrackerCountRef.current - 1,
+			);
 			if (animationTrackerCountRef.current === 0) {
 				stopTrackingBounds();
 				scheduleSyncBounds();
@@ -1806,14 +2188,36 @@ function useCanvasWindow(options) {
 			ro?.disconnect();
 			window.removeEventListener("resize", handleViewportChange);
 			window.removeEventListener("scroll", handleViewportChange, true);
-			window.removeEventListener("transitionstart", startAnimationTracking, true);
+			window.removeEventListener(
+				"transitionstart",
+				startAnimationTracking,
+				true,
+			);
 			window.removeEventListener("transitionend", stopAnimationTracking, true);
-			window.removeEventListener("transitioncancel", stopAnimationTracking, true);
-			window.removeEventListener("animationstart", startAnimationTracking, true);
+			window.removeEventListener(
+				"transitioncancel",
+				stopAnimationTracking,
+				true,
+			);
+			window.removeEventListener(
+				"animationstart",
+				startAnimationTracking,
+				true,
+			);
 			window.removeEventListener("animationend", stopAnimationTracking, true);
-			window.removeEventListener("animationcancel", stopAnimationTracking, true);
-			window.visualViewport?.removeEventListener("resize", handleViewportChange);
-			window.visualViewport?.removeEventListener("scroll", handleViewportChange);
+			window.removeEventListener(
+				"animationcancel",
+				stopAnimationTracking,
+				true,
+			);
+			window.visualViewport?.removeEventListener(
+				"resize",
+				handleViewportChange,
+			);
+			window.visualViewport?.removeEventListener(
+				"scroll",
+				handleViewportChange,
+			);
 			const id = createdId ?? windowIdRef.current;
 			if (id) {
 				windowIdRef.current = null;
@@ -1823,18 +2227,16 @@ function useCanvasWindow(options) {
 				invokeDesktopBridgeRequest({
 					rpcMethod: "canvasDestroyWindow",
 					ipcChannel: "canvas:destroyWindow",
-					params: { id }
+					params: { id },
 				}).catch((err) => {
-					console.warn("[useCanvasWindow] canvas:destroyWindow teardown failed", err);
+					console.warn(
+						"[useCanvasWindow] canvas:destroyWindow teardown failed",
+						err,
+					);
 				});
 			}
 		};
-	}, [
-		enabled,
-		scheduleSyncBounds,
-		startTrackingBounds,
-		stopTrackingBounds
-	]);
+	}, [enabled, scheduleSyncBounds, startTrackingBounds, stopTrackingBounds]);
 	return {
 		containerRef,
 		windowId,
@@ -1847,8 +2249,8 @@ function useCanvasWindow(options) {
 				ipcChannel: "canvas:navigate",
 				params: {
 					id,
-					url: newUrl
-				}
+					url: newUrl,
+				},
 			}).catch((err) => {
 				console.warn("[useCanvasWindow] canvas:navigate failed", err);
 			});
@@ -1859,7 +2261,7 @@ function useCanvasWindow(options) {
 			invokeDesktopBridgeRequest({
 				rpcMethod: "canvasShow",
 				ipcChannel: "canvas:show",
-				params: { id }
+				params: { id },
 			}).catch((err) => {
 				console.warn("[useCanvasWindow] canvas:show failed", err);
 			});
@@ -1870,31 +2272,35 @@ function useCanvasWindow(options) {
 			invokeDesktopBridgeRequest({
 				rpcMethod: "canvasHide",
 				ipcChannel: "canvas:hide",
-				params: { id }
+				params: { id },
 			}).catch((err) => {
 				console.warn("[useCanvasWindow] canvas:hide failed", err);
 			});
-		}, [])
+		}, []),
 	};
 }
 
 //#endregion
 //#region node_modules/.bun/@elizaos+app-core@2.0.0-alpha.537+72829346cb4c43b1/node_modules/@elizaos/app-core/packages/app-core/src/hooks/useContextMenu.js
 /**
-* Listens for native desktop context-menu events
-* and dispatches actions into the app state.
-*/
+ * Listens for native desktop context-menu events
+ * and dispatches actions into the app state.
+ */
 /** Read saved custom commands from localStorage. */
 function loadCustomCommands() {
 	return loadSavedCustomCommands();
 }
 function getSelectedText(target) {
-	if (target instanceof HTMLInputElement || target instanceof HTMLTextAreaElement) {
+	if (
+		target instanceof HTMLInputElement ||
+		target instanceof HTMLTextAreaElement
+	) {
 		const start = target.selectionStart ?? 0;
 		const end = target.selectionEnd ?? start;
 		return target.value.slice(start, end).trim();
 	}
-	if (typeof window.getSelection === "function") return window.getSelection()?.toString().trim() ?? "";
+	if (typeof window.getSelection === "function")
+		return window.getSelection()?.toString().trim() ?? "";
 	return "";
 }
 function useContextMenu() {
@@ -1920,44 +2326,46 @@ function useContextMenu() {
 		const onCreateSkill = (payload) => {
 			const command = payload;
 			if (!command?.text) return;
-			setState("chatInput", `Create a skill from the following content:\n\n"""${command.text}"""\n\nAnalyze this and create a reusable skill.`);
+			setState(
+				"chatInput",
+				`Create a skill from the following content:\n\n"""${command.text}"""\n\nAnalyze this and create a reusable skill.`,
+			);
 			setTimeout(() => handleChatSend(), 0);
 		};
 		const onQuoteInChat = (payload) => {
 			const command = payload;
 			if (!command?.text) return;
-			setState("chatInput", `> ${command.text}\n\n` + (chatInputRef?.current ?? ""));
+			setState(
+				"chatInput",
+				`> ${command.text}\n\n` + (chatInputRef?.current ?? ""),
+			);
 		};
 		const unsubscribers = [
 			subscribeDesktopBridgeEvent({
 				rpcMessage: "contextMenuSaveAsCommand",
 				ipcChannel: "contextMenu:saveAsCommand",
-				listener: onSaveAsCommand
+				listener: onSaveAsCommand,
 			}),
 			subscribeDesktopBridgeEvent({
 				rpcMessage: "contextMenuAskAgent",
 				ipcChannel: "contextMenu:askAgent",
-				listener: onAskAgent
+				listener: onAskAgent,
 			}),
 			subscribeDesktopBridgeEvent({
 				rpcMessage: "contextMenuCreateSkill",
 				ipcChannel: "contextMenu:createSkill",
-				listener: onCreateSkill
+				listener: onCreateSkill,
 			}),
 			subscribeDesktopBridgeEvent({
 				rpcMessage: "contextMenuQuoteInChat",
 				ipcChannel: "contextMenu:quoteInChat",
-				listener: onQuoteInChat
-			})
+				listener: onQuoteInChat,
+			}),
 		];
 		return () => {
 			for (const unsubscribe of unsubscribers) unsubscribe();
 		};
-	}, [
-		setState,
-		handleChatSend,
-		chatInputRef
-	]);
+	}, [setState, handleChatSend, chatInputRef]);
 	useEffect(() => {
 		if (!desktopRuntime || typeof window === "undefined") return;
 		const onContextMenu = (event) => {
@@ -1968,7 +2376,7 @@ function useContextMenu() {
 			invokeDesktopBridgeRequest({
 				rpcMethod: "desktopShowSelectionContextMenu",
 				ipcChannel: "desktop:showSelectionContextMenu",
-				params: { text }
+				params: { text },
 			});
 		};
 		window.addEventListener("contextmenu", onContextMenu);
@@ -1984,17 +2392,20 @@ function useContextMenu() {
 			setSaveCommandModalOpen(false);
 			setSaveCommandText("");
 		}, []),
-		confirmSaveCommand: useCallback((name) => {
-			appendSavedCustomCommand({
-				name,
-				text: saveCommandText,
-				createdAt: Date.now()
-			});
-			setCustomCommands(loadCustomCommands());
-			setSaveCommandModalOpen(false);
-			setSaveCommandText("");
-			setActionNotice(`Saved /${name} command`, "success");
-		}, [saveCommandText, setActionNotice])
+		confirmSaveCommand: useCallback(
+			(name) => {
+				appendSavedCustomCommand({
+					name,
+					text: saveCommandText,
+					createdAt: Date.now(),
+				});
+				setCustomCommands(loadCustomCommands());
+				setSaveCommandModalOpen(false);
+				setSaveCommandText("");
+				setActionNotice(`Saved /${name} command`, "success");
+			},
+			[saveCommandText, setActionNotice],
+		),
 	};
 }
 
@@ -2005,82 +2416,96 @@ const COMMON_SHORTCUTS = [
 		key: "k",
 		ctrl: true,
 		description: "Open command palette",
-		scope: "global"
+		scope: "global",
 	},
 	{
 		key: "Enter",
 		ctrl: true,
 		description: "Send message",
-		scope: "chat"
+		scope: "chat",
 	},
 	{
 		key: "Escape",
 		description: "Close modal / Cancel",
-		scope: "global"
+		scope: "global",
 	},
 	{
 		key: "?",
 		shift: true,
 		description: "Show keyboard shortcuts",
-		scope: "global"
+		scope: "global",
 	},
 	{
 		key: "r",
 		ctrl: true,
 		description: "Restart agent",
-		scope: "global"
+		scope: "global",
 	},
 	{
 		key: " ",
 		description: "Pause/Resume agent",
-		scope: "global"
+		scope: "global",
 	},
 	{
 		key: "t",
 		ctrl: true,
 		shift: true,
 		description: "Toggle terminal",
-		scope: "global"
-	}
+		scope: "global",
+	},
 ];
 function useShortcutsHelp() {
-	return COMMON_SHORTCUTS.map((s) => `${formatShortcut(s)} — ${s.description}`).join("\n");
+	return COMMON_SHORTCUTS.map(
+		(s) => `${formatShortcut(s)} — ${s.description}`,
+	).join("\n");
 }
 
 //#endregion
 //#region node_modules/.bun/@elizaos+app-core@2.0.0-alpha.537+72829346cb4c43b1/node_modules/@elizaos/app-core/packages/app-core/src/hooks/useMediaQuery.js
 function getMediaQueryMatch(query) {
-	if (typeof window === "undefined" || typeof window.matchMedia !== "function") return false;
+	if (typeof window === "undefined" || typeof window.matchMedia !== "function")
+		return false;
 	return window.matchMedia(query).matches;
 }
 function useMediaQuery(query, options) {
 	const defaultValue = options?.defaultValue ?? false;
-	return useSyncExternalStore(useCallback((onStoreChange) => {
-		if (typeof window === "undefined" || typeof window.matchMedia !== "function") return () => {};
-		const mediaQuery = window.matchMedia(query);
-		const handleChange = () => {
-			onStoreChange();
-		};
-		if (typeof mediaQuery.addEventListener === "function") {
-			mediaQuery.addEventListener("change", handleChange);
-			return () => mediaQuery.removeEventListener("change", handleChange);
-		}
-		mediaQuery.addListener(handleChange);
-		return () => mediaQuery.removeListener(handleChange);
-	}, [query]), useCallback(() => getMediaQueryMatch(query), [query]), useCallback(() => defaultValue, [defaultValue]));
+	return useSyncExternalStore(
+		useCallback(
+			(onStoreChange) => {
+				if (
+					typeof window === "undefined" ||
+					typeof window.matchMedia !== "function"
+				)
+					return () => {};
+				const mediaQuery = window.matchMedia(query);
+				const handleChange = () => {
+					onStoreChange();
+				};
+				if (typeof mediaQuery.addEventListener === "function") {
+					mediaQuery.addEventListener("change", handleChange);
+					return () => mediaQuery.removeEventListener("change", handleChange);
+				}
+				mediaQuery.addListener(handleChange);
+				return () => mediaQuery.removeListener(handleChange);
+			},
+			[query],
+		),
+		useCallback(() => getMediaQueryMatch(query), [query]),
+		useCallback(() => defaultValue, [defaultValue]),
+	);
 }
 
 //#endregion
 //#region node_modules/.bun/@elizaos+app-core@2.0.0-alpha.537+72829346cb4c43b1/node_modules/@elizaos/app-core/packages/app-core/src/hooks/useMusicPlayer.js
 /**
-* Default guild/room id for plugin-music-player when Discord is not used.
-* Keep in sync with `ELIZA_DESKTOP_MUSIC_GUILD_ID` in Electrobun `music-player.ts`.
-*/
+ * Default guild/room id for plugin-music-player when Discord is not used.
+ * Keep in sync with `ELIZA_DESKTOP_MUSIC_GUILD_ID` in Electrobun `music-player.ts`.
+ */
 const ELIZA_DESKTOP_MUSIC_GUILD_ID = "elizaos-desktop";
 /**
-* Guild key used by plugin-music-player for web chat — must match
-* `playAudio` / `queueMusic` (`web-${message.roomId}` when `room.serverId` is unset).
-*/
+ * Guild key used by plugin-music-player for web chat — must match
+ * `playAudio` / `queueMusic` (`web-${message.roomId}` when `room.serverId` is unset).
+ */
 function getWebMusicGuildIdFromRoomId(roomId) {
 	const r = roomId?.trim();
 	if (!r) return ELIZA_DESKTOP_MUSIC_GUILD_ID;
@@ -2092,14 +2517,14 @@ function buildMusicPlayerPaths(guildId) {
 		stream: `/music-player/stream?guildId=${g}`,
 		file: `/music-player/file?guildId=${g}`,
 		nowPlaying: `/music-player/now-playing?guildId=${g}`,
-		queue: `/music-player/queue?guildId=${g}`
+		queue: `/music-player/queue?guildId=${g}`,
 	};
 }
 /**
-* Resolve the API base using the same chain as ElizaClient / resolveApiUrl:
-* boot config → shell injection → sessionStorage → "" (same origin).
-* An empty string means relative URLs go through the Vite dev proxy.
-*/
+ * Resolve the API base using the same chain as ElizaClient / resolveApiUrl:
+ * boot config → shell injection → sessionStorage → "" (same origin).
+ * An empty string means relative URLs go through the Vite dev proxy.
+ */
 function resolveApiBase() {
 	const boot = getBootConfig().apiBase?.trim();
 	if (boot) return boot;
@@ -2112,27 +2537,36 @@ function resolveApiBase() {
 	return "";
 }
 /**
-* Resolves absolute URLs for plugin-music-player HTTP routes.
-* On Electrobun, prefers the main-process URL resolution (direct agent port).
-* Otherwise uses the same API base chain as the rest of the app (boot config →
-* shell injection → sessionStorage → same origin via empty string, which lets
-* the Vite dev proxy forward `/music-player/*` to the agent).
-*/
+ * Resolves absolute URLs for plugin-music-player HTTP routes.
+ * On Electrobun, prefers the main-process URL resolution (direct agent port).
+ * Otherwise uses the same API base chain as the rest of the app (boot config →
+ * shell injection → sessionStorage → same origin via empty string, which lets
+ * the Vite dev proxy forward `/music-player/*` to the agent).
+ */
 async function resolveMusicPlayerPlaybackUrls(options) {
 	const guildId = options?.guildId?.trim() || ELIZA_DESKTOP_MUSIC_GUILD_ID;
 	const desktop = await invokeDesktopBridgeRequest({
 		rpcMethod: "musicPlayerGetDesktopPlaybackUrls",
 		ipcChannel: "musicPlayer:getDesktopPlaybackUrls",
-		params: { guildId }
+		params: { guildId },
 	});
-	if (desktop && desktop.ok === true && typeof desktop.streamUrl === "string" && typeof desktop.guildId === "string" && typeof desktop.apiBase === "string" && typeof desktop.nowPlayingUrl === "string" && typeof desktop.queueUrl === "string") return {
-		ok: true,
-		apiBase: desktop.apiBase,
-		guildId: desktop.guildId,
-		streamUrl: desktop.streamUrl,
-		nowPlayingUrl: desktop.nowPlayingUrl,
-		queueUrl: desktop.queueUrl
-	};
+	if (
+		desktop &&
+		desktop.ok === true &&
+		typeof desktop.streamUrl === "string" &&
+		typeof desktop.guildId === "string" &&
+		typeof desktop.apiBase === "string" &&
+		typeof desktop.nowPlayingUrl === "string" &&
+		typeof desktop.queueUrl === "string"
+	)
+		return {
+			ok: true,
+			apiBase: desktop.apiBase,
+			guildId: desktop.guildId,
+			streamUrl: desktop.streamUrl,
+			nowPlayingUrl: desktop.nowPlayingUrl,
+			queueUrl: desktop.queueUrl,
+		};
 	const root = resolveApiBase().replace(/\/$/, "");
 	const paths = buildMusicPlayerPaths(guildId);
 	return {
@@ -2141,13 +2575,13 @@ async function resolveMusicPlayerPlaybackUrls(options) {
 		guildId,
 		streamUrl: `${root}${paths.stream}`,
 		nowPlayingUrl: `${root}${paths.nowPlaying}`,
-		queueUrl: `${root}${paths.queue}`
+		queueUrl: `${root}${paths.queue}`,
 	};
 }
 /**
-* Loads playback URLs for the music player stream. Use `attachStreamToAudioElement`
-* to point an `<audio>` element at the Ogg Opus stream when a track is playing.
-*/
+ * Loads playback URLs for the music player stream. Use `attachStreamToAudioElement`
+ * to point an `<audio>` element at the Ogg Opus stream when a track is playing.
+ */
 function useMusicPlayerStream(options) {
 	const guildId = options?.guildId ?? ELIZA_DESKTOP_MUSIC_GUILD_ID;
 	const [urls, setUrls] = useState(null);
@@ -2162,14 +2596,17 @@ function useMusicPlayerStream(options) {
 	}, [guildId]);
 	return {
 		urls,
-		attachStreamToAudioElement: useCallback((el) => {
-			if (!el || !urls?.ok) return;
-			el.crossOrigin = "anonymous";
-			if (el.src !== urls.streamUrl) {
-				el.src = urls.streamUrl;
-				el.load();
-			}
-		}, [urls])
+		attachStreamToAudioElement: useCallback(
+			(el) => {
+				if (!el || !urls?.ok) return;
+				el.crossOrigin = "anonymous";
+				if (el.src !== urls.streamUrl) {
+					el.src = urls.streamUrl;
+					el.load();
+				}
+			},
+			[urls],
+		),
 	};
 }
 
@@ -2179,20 +2616,20 @@ const THRESHOLD = 3;
 const WINDOW_MS = 1e3;
 const IS_DEV = typeof process !== "undefined" && false;
 /**
-* Development-only render-rate guard.
-*
-* Tracks render timestamps for the named component and logs a console warning
-* when the component re-renders {@link THRESHOLD} or more times within
-* {@link WINDOW_MS} ms.  No-op in production builds.
-*
-* Usage:
-* ```ts
-* function MyComponent() {
-*   useRenderGuard("MyComponent");
-*   // …
-* }
-* ```
-*/
+ * Development-only render-rate guard.
+ *
+ * Tracks render timestamps for the named component and logs a console warning
+ * when the component re-renders {@link THRESHOLD} or more times within
+ * {@link WINDOW_MS} ms.  No-op in production builds.
+ *
+ * Usage:
+ * ```ts
+ * function MyComponent() {
+ *   useRenderGuard("MyComponent");
+ *   // …
+ * }
+ * ```
+ */
 function useRenderGuard(name) {
 	const timestamps = useRef([]);
 	if (!IS_DEV) return;
@@ -2200,7 +2637,10 @@ function useRenderGuard(name) {
 	const ts = timestamps.current;
 	ts.push(now);
 	while (ts.length > 0 && ts[0] < now - WINDOW_MS) ts.shift();
-	if (ts.length >= THRESHOLD) console.warn(`[RenderGuard] "${name}" rendered ${ts.length}× in the last ${WINDOW_MS}ms`);
+	if (ts.length >= THRESHOLD)
+		console.warn(
+			`[RenderGuard] "${name}" rendered ${ts.length}× in the last ${WINDOW_MS}ms`,
+		);
 }
 
 //#endregion
@@ -2209,34 +2649,37 @@ const IDLE_SIGNAL_PAIRING_STATE = {
 	status: "idle",
 	qrDataUrl: null,
 	phoneNumber: null,
-	error: null
+	error: null,
 };
 function stateFromStatusResponse(response) {
 	return {
 		status: response.status,
 		qrDataUrl: response.qrDataUrl,
 		phoneNumber: response.phoneNumber,
-		error: response.error
+		error: response.error,
 	};
 }
 function toSignalPairingErrorState(error) {
 	return {
 		...IDLE_SIGNAL_PAIRING_STATE,
 		status: "error",
-		error: error instanceof Error ? error.message : String(error)
+		error: error instanceof Error ? error.message : String(error),
 	};
 }
 function useSignalPairing(accountId = "default") {
 	const [state, setState] = useState(IDLE_SIGNAL_PAIRING_STATE);
 	useEffect(() => {
 		let cancelled = false;
-		client.getSignalStatus(accountId).then((response) => {
-			if (cancelled) return;
-			setState(stateFromStatusResponse(response));
-		}).catch((error) => {
-			if (cancelled) return;
-			setState(toSignalPairingErrorState(error));
-		});
+		client
+			.getSignalStatus(accountId)
+			.then((response) => {
+				if (cancelled) return;
+				setState(stateFromStatusResponse(response));
+			})
+			.catch((error) => {
+				if (cancelled) return;
+				setState(toSignalPairingErrorState(error));
+			});
 		return () => {
 			cancelled = true;
 		};
@@ -2248,19 +2691,23 @@ function useSignalPairing(accountId = "default") {
 				...prev,
 				status: "waiting_for_qr",
 				qrDataUrl: data.qrDataUrl ?? null,
-				error: null
+				error: null,
 			}));
 		});
 		const unbindStatus = client.onWsEvent("signal-status", (data) => {
 			if (data.accountId !== accountId) return;
 			const nextStatus = data.status;
-			const clearQrDataUrl = nextStatus === "connected" || nextStatus === "disconnected" || nextStatus === "timeout" || nextStatus === "error";
+			const clearQrDataUrl =
+				nextStatus === "connected" ||
+				nextStatus === "disconnected" ||
+				nextStatus === "timeout" ||
+				nextStatus === "error";
 			setState((prev) => ({
 				...prev,
 				status: nextStatus,
 				phoneNumber: data.phoneNumber ?? prev.phoneNumber,
 				error: data.error ?? null,
-				qrDataUrl: clearQrDataUrl ? null : prev.qrDataUrl
+				qrDataUrl: clearQrDataUrl ? null : prev.qrDataUrl,
 			}));
 		});
 		return () => {
@@ -2273,25 +2720,27 @@ function useSignalPairing(accountId = "default") {
 			status: "initializing",
 			qrDataUrl: null,
 			phoneNumber: null,
-			error: null
+			error: null,
 		});
 		try {
 			const result = await client.startSignalPairing(accountId);
-			if (result.ok) setState((prev) => ({
-				...prev,
-				status: result.status,
-				error: null
-			}));
-			else setState((prev) => ({
-				...prev,
-				status: "error",
-				error: result.error ?? "Failed to start Signal pairing"
-			}));
+			if (result.ok)
+				setState((prev) => ({
+					...prev,
+					status: result.status,
+					error: null,
+				}));
+			else
+				setState((prev) => ({
+					...prev,
+					status: "error",
+					error: result.error ?? "Failed to start Signal pairing",
+				}));
 		} catch (error) {
 			setState((prev) => ({
 				...prev,
 				status: "error",
-				error: error instanceof Error ? error.message : String(error)
+				error: error instanceof Error ? error.message : String(error),
 			}));
 		}
 	}, [accountId]);
@@ -2315,7 +2764,7 @@ function useSignalPairing(accountId = "default") {
 		...state,
 		startPairing,
 		stopPairing,
-		disconnect
+		disconnect,
 	};
 }
 
@@ -2333,15 +2782,19 @@ function useWhatsAppPairing(accountId = "default") {
 		status: "idle",
 		qrDataUrl: null,
 		phoneNumber: null,
-		error: null
+		error: null,
 	});
 	useEffect(() => {
-		client.getWhatsAppStatus(accountId).then((res) => {
-			if (res.authExists) setState((prev) => ({
-				...prev,
-				status: "connected"
-			}));
-		}).catch(() => {});
+		client
+			.getWhatsAppStatus(accountId)
+			.then((res) => {
+				if (res.authExists)
+					setState((prev) => ({
+						...prev,
+						status: "connected",
+					}));
+			})
+			.catch(() => {});
 	}, [accountId]);
 	useEffect(() => {
 		const unbindQr = client.onWsEvent("whatsapp-qr", (data) => {
@@ -2349,7 +2802,7 @@ function useWhatsAppPairing(accountId = "default") {
 			setState((prev) => ({
 				...prev,
 				status: "waiting_for_qr",
-				qrDataUrl: data.qrDataUrl
+				qrDataUrl: data.qrDataUrl,
 			}));
 		});
 		const unbindStatus = client.onWsEvent("whatsapp-status", (data) => {
@@ -2359,7 +2812,7 @@ function useWhatsAppPairing(accountId = "default") {
 				status: data.status,
 				phoneNumber: data.phoneNumber ?? prev.phoneNumber,
 				error: data.error ?? null,
-				qrDataUrl: data.status === "connected" ? null : prev.qrDataUrl
+				qrDataUrl: data.status === "connected" ? null : prev.qrDataUrl,
 			}));
 		});
 		return () => {
@@ -2372,20 +2825,21 @@ function useWhatsAppPairing(accountId = "default") {
 			status: "initializing",
 			qrDataUrl: null,
 			phoneNumber: null,
-			error: null
+			error: null,
 		});
 		try {
 			const result = await client.startWhatsAppPairing(accountId);
-			if (!result.ok) setState((prev) => ({
-				...prev,
-				status: "error",
-				error: result.error ?? "Failed to start pairing"
-			}));
+			if (!result.ok)
+				setState((prev) => ({
+					...prev,
+					status: "error",
+					error: result.error ?? "Failed to start pairing",
+				}));
 		} catch (err) {
 			setState((prev) => ({
 				...prev,
 				status: "error",
-				error: err instanceof Error ? err.message : String(err)
+				error: err instanceof Error ? err.message : String(err),
 			}));
 		}
 	}, [accountId]);
@@ -2395,7 +2849,7 @@ function useWhatsAppPairing(accountId = "default") {
 			status: "idle",
 			qrDataUrl: null,
 			phoneNumber: null,
-			error: null
+			error: null,
 		});
 	}, [accountId]);
 	const disconnect = useCallback(async () => {
@@ -2404,16 +2858,43 @@ function useWhatsAppPairing(accountId = "default") {
 			status: "idle",
 			qrDataUrl: null,
 			phoneNumber: null,
-			error: null
+			error: null,
 		});
 	}, [accountId]);
 	return {
 		...state,
 		startPairing,
 		stopPairing,
-		disconnect
+		disconnect,
 	};
 }
 
 //#endregion
-export { useVoiceChat as C, useChatAvatarVoiceBridge as E, __voiceChatInternals as S, resolveCharacterVoiceConfigFromAppConfig as T, BugReportProvider as _, useRenderGuard as a, useOptionalBugReport as b, getWebMusicGuildIdFromRoomId as c, useMediaQuery as d, COMMON_SHORTCUTS as f, useCanvasWindow as g, useContextMenu as h, useSignalPairing as i, resolveMusicPlayerPlaybackUrls as l, loadCustomCommands as m, getNextTabForStreamPopoutEvent as n, ELIZA_DESKTOP_MUSIC_GUILD_ID as o, useShortcutsHelp as p, useStreamPopoutNavigation as r, buildMusicPlayerPaths as s, useWhatsAppPairing as t, useMusicPlayerStream as u, useBugReport as v, nextIdleMouthOpen as w, useActivityEvents as x, useBugReportState as y };
+export {
+	__voiceChatInternals as S,
+	BugReportProvider as _,
+	buildMusicPlayerPaths as s,
+	COMMON_SHORTCUTS as f,
+	ELIZA_DESKTOP_MUSIC_GUILD_ID as o,
+	getNextTabForStreamPopoutEvent as n,
+	getWebMusicGuildIdFromRoomId as c,
+	loadCustomCommands as m,
+	nextIdleMouthOpen as w,
+	resolveCharacterVoiceConfigFromAppConfig as T,
+	resolveMusicPlayerPlaybackUrls as l,
+	useActivityEvents as x,
+	useBugReport as v,
+	useBugReportState as y,
+	useCanvasWindow as g,
+	useChatAvatarVoiceBridge as E,
+	useContextMenu as h,
+	useMediaQuery as d,
+	useMusicPlayerStream as u,
+	useOptionalBugReport as b,
+	useRenderGuard as a,
+	useShortcutsHelp as p,
+	useSignalPairing as i,
+	useStreamPopoutNavigation as r,
+	useVoiceChat as C,
+	useWhatsAppPairing as t,
+};

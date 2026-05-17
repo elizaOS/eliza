@@ -129,7 +129,7 @@
   },
   "overrides": [
     {
-      "includes": ["packages/lib/eliza/**/*.ts"],
+      "includes": ["src/lib/eliza/**/*.ts"],
       "linter": {
         "rules": {
           "correctness": {

@@ -6,11 +6,6 @@ import type { AppOperatorSurfaceComponent } from "./types";
  * @example
  *   registerOperatorSurface("@elizaos/plugin-babylon", BabylonOperatorSurface);
  */
-export declare function registerOperatorSurface(
-  appName: string,
-  component: AppOperatorSurfaceComponent,
-): void;
-export declare function getAppOperatorSurface(
-  appName: string | null | undefined,
-): AppOperatorSurfaceComponent | null;
+export declare function registerOperatorSurface(appName: string, component: AppOperatorSurfaceComponent): void;
+export declare function getAppOperatorSurface(appName: string | null | undefined): AppOperatorSurfaceComponent | null;
 //# sourceMappingURL=registry.d.ts.map

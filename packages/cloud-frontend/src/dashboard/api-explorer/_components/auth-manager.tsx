@@ -103,7 +103,7 @@ export function AuthManager({
               type={showToken ? "text" : "password"}
               value={authToken}
               readOnly
-              className="w-full h-10 px-3 pr-10 rounded-lg border border-white/10 bg-black/40 text-white font-mono text-sm focus:outline-none"
+              className="w-full h-10 px-3 pr-10 rounded-sm border border-white/10 bg-black/40 text-white font-mono text-sm focus:outline-none"
             />
             <button
               type="button"
@@ -119,7 +119,7 @@ export function AuthManager({
           </div>
           <button
             onClick={handleCopy}
-            className="h-10 px-3 rounded-lg border border-white/10 bg-black/40 text-neutral-400 hover:text-white transition-colors"
+            className="h-10 px-3 rounded-sm border border-white/10 bg-black/40 text-neutral-400 hover:text-white transition-colors"
           >
             {copied ? (
               <Check className="h-4 w-4 text-green-400" />
@@ -131,7 +131,7 @@ export function AuthManager({
       </div>
 
       {/* Notice */}
-      <div className="flex items-center gap-2 px-3 py-2 rounded-lg bg-orange-500/10 border border-orange-500/20">
+      <div className="flex items-center gap-2 px-3 py-2 rounded-sm bg-orange-500/10 border border-orange-500/20">
         <span className="text-xs text-orange-400">
           API calls are billed to your account
         </span>
@@ -148,7 +148,7 @@ export function AuthManager({
               type="text"
               placeholder="Enter custom API key..."
               onChange={(e) => onTokenChange(e.target.value)}
-              className="w-full h-9 px-3 rounded-lg border border-white/10 bg-black/40 text-white text-sm placeholder:text-neutral-500 focus:outline-none focus:ring-1 focus:ring-[#FF5800]/50"
+              className="w-full h-9 px-3 rounded-sm border border-white/10 bg-black/40 text-white text-sm placeholder:text-neutral-500 focus:outline-none focus:ring-1 focus:ring-[#FF5800]/50"
             />
             <button
               onClick={() => void onRefresh()}

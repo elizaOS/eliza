@@ -134,7 +134,7 @@ export default function MarketingPage() {
                 </a>
                 <a href={cloudUrl} className="app-cta app-cta--glass">
                   <Cloud className="app-icon" aria-hidden="true" />
-                  Launch Eliza
+                  Try Eliza Cloud
                 </a>
                 <a href={osUrl} className="app-cta app-cta--ghost">
                   Install elizaOS
@@ -211,7 +211,7 @@ export default function MarketingPage() {
               title="Run in Cloud."
               body="Launch your agent runtime and account dashboard in Eliza Cloud."
               href={cloudUrl}
-              label="Launch Eliza"
+              label="Try Eliza Cloud"
               icon={Cloud}
             />
             <ProductCta

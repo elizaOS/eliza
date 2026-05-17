@@ -18,25 +18,18 @@ import type * as React from "react";
 export type OwnerBadgeVariant = "inline" | "overlay" | "card";
 export type OwnerBadgeSize = "xs" | "sm" | "md";
 export interface OwnerBadgeProps {
-  /** Whether to render. Renders nothing when false (no wrapper, no DOM). */
-  isOwner?: boolean;
-  /** Visual placement preset. */
-  variant?: OwnerBadgeVariant;
-  /** Crown icon size. */
-  size?: OwnerBadgeSize;
-  /** Override the default tooltip (default: "OWNER — full control"). */
-  tooltip?: string;
-  /** Force a specific accent override class. */
-  className?: string;
-  "data-testid"?: string;
+    /** Whether to render. Renders nothing when false (no wrapper, no DOM). */
+    isOwner?: boolean;
+    /** Visual placement preset. */
+    variant?: OwnerBadgeVariant;
+    /** Crown icon size. */
+    size?: OwnerBadgeSize;
+    /** Override the default tooltip (default: "OWNER — full control"). */
+    tooltip?: string;
+    /** Force a specific accent override class. */
+    className?: string;
+    "data-testid"?: string;
 }
-export declare function OwnerBadge({
-  isOwner,
-  variant,
-  size,
-  tooltip,
-  className,
-  "data-testid": dataTestId,
-}: OwnerBadgeProps): React.ReactElement | null;
+export declare function OwnerBadge({ isOwner, variant, size, tooltip, className, "data-testid": dataTestId, }: OwnerBadgeProps): React.ReactElement | null;
 export default OwnerBadge;
 //# sourceMappingURL=OwnerBadge.d.ts.map

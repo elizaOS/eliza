@@ -1,7 +1,6 @@
 interface VoiceEmptyStateProps {
-  onCreateClick: () => void;
+    onCreateClick: () => void;
 }
-export declare function VoiceEmptyState({
-  onCreateClick,
-}: VoiceEmptyStateProps): import("react/jsx-runtime").JSX.Element;
+export declare function VoiceEmptyState({ onCreateClick }: VoiceEmptyStateProps): import("react/jsx-runtime").JSX.Element;
+export {};
 //# sourceMappingURL=voice-empty-state.d.ts.map

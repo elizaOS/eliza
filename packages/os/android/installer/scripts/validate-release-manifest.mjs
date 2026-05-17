@@ -107,7 +107,9 @@ function validateManifest(manifest) {
       partitions.add(artifact.partition);
       expect(typeof artifact.filename === 'string' && /^[^/\\]+\.img$/.test(artifact.filename), errors, `${path}.filename`, 'must be a local .img filename');
       expect(typeof artifact.sha256 === 'string' && /^[a-fA-F0-9]{64}$/.test(artifact.sha256), errors, `${path}.sha256`, 'must be 64 hex characters');
+      expect(typeof artifact.sha256 !== 'string' || artifact.sha256.toLowerCase() !== '0'.repeat(64), errors, `${path}.sha256`, 'must not be the all-zero placeholder; populate with a real checksum before validating');
       expect(Number.isInteger(artifact.sizeBytes) && artifact.sizeBytes > 0, errors, `${path}.sizeBytes`, 'must be a positive integer');
+      expect(!Number.isInteger(artifact.sizeBytes) || artifact.sizeBytes > 1, errors, `${path}.sizeBytes`, 'must not be the sentinel value 1; populate with the real artifact size');
       expect(typeof artifact.required === 'boolean', errors, `${path}.required`, 'must be boolean');
       expect(fastbootModes.has(artifact.fastbootMode), errors, `${path}.fastbootMode`, 'must be bootloader or fastbootd');
     });

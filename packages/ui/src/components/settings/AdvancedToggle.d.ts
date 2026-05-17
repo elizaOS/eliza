@@ -18,20 +18,18 @@ export declare const ADVANCED_TOGGLE_STORAGE_KEY = "eliza:settings-advanced";
  */
 export declare function useAdvancedSettingsEnabled(): boolean;
 export interface AdvancedToggleProps {
-  /**
-   * Optional label override. Defaults to "Advanced settings". The string is
-   * intentionally English-only — this codebase does not localize the
-   * settings panel yet.
-   */
-  label?: string;
-  /**
-   * Optional change callback fired after the persisted state has been
-   * updated. Mostly useful for tests / analytics.
-   */
-  onChange?: (enabled: boolean) => void;
-  className?: string;
+    /**
+     * Optional label override. Defaults to "Advanced settings". The string is
+     * intentionally English-only — this codebase does not localize the
+     * settings panel yet.
+     */
+    label?: string;
+    /**
+     * Optional change callback fired after the persisted state has been
+     * updated. Mostly useful for tests / analytics.
+     */
+    onChange?: (enabled: boolean) => void;
+    className?: string;
 }
-export declare function AdvancedToggle(
-  props: AdvancedToggleProps,
-): import("react/jsx-runtime").JSX.Element;
+export declare function AdvancedToggle(props: AdvancedToggleProps): import("react/jsx-runtime").JSX.Element;
 //# sourceMappingURL=AdvancedToggle.d.ts.map

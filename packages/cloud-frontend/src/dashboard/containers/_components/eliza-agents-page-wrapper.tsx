@@ -1,6 +1,6 @@
 "use client";
 
-import { useSetPageHeader } from "@elizaos/ui";
+import { DashboardRoutePage } from "@elizaos/ui";
 import type { ReactNode } from "react";
 
 interface ElizaAgentsPageWrapperProps {
@@ -10,6 +10,5 @@ interface ElizaAgentsPageWrapperProps {
 export function ElizaAgentsPageWrapper({
   children,
 }: ElizaAgentsPageWrapperProps): ReactNode {
-  useSetPageHeader({ title: "Instances" }, []);
-  return children;
+  return <DashboardRoutePage title="Instances">{children}</DashboardRoutePage>;
 }

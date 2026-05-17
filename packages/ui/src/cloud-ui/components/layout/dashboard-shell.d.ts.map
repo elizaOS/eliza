@@ -1,0 +1,1 @@
+{"version":3,"file":"dashboard-shell.d.ts","sourceRoot":"","sources":["dashboard-shell.tsx"],"names":[],"mappings":"AAEA,OAAO,KAAK,EAAE,SAAS,EAAE,MAAM,OAAO,CAAC;AAGvC,MAAM,WAAW,yBAAyB;IACxC,OAAO,EAAE,SAAS,CAAC;IACnB,MAAM,EAAE,SAAS,CAAC;IAClB,QAAQ,EAAE,SAAS,CAAC;CACrB;AAED,wBAAgB,oBAAoB,CAAC,EACnC,OAAO,EACP,MAAM,EACN,QAAQ,GACT,EAAE,yBAAyB,2CAgB3B"}

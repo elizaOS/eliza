@@ -16,29 +16,24 @@
  * access and don't need a workspace folder grant.
  */
 import { type StoredWorkspaceFolder } from "../storage/workspace-folder";
-export type EnsureWorkspaceFolderResult =
-  | {
-      kind: "skipped";
-      reason: "non-store-build" | "not-electrobun";
-    }
-  | {
-      kind: "stored";
-      folder: StoredWorkspaceFolder;
-      freshlyPicked: boolean;
-    }
-  | {
-      kind: "canceled";
-    }
-  | {
-      kind: "stale-bookmark";
-      oldPath: string;
-    };
+export type EnsureWorkspaceFolderResult = {
+    kind: "skipped";
+    reason: "non-store-build" | "not-electrobun";
+} | {
+    kind: "stored";
+    folder: StoredWorkspaceFolder;
+    freshlyPicked: boolean;
+} | {
+    kind: "canceled";
+} | {
+    kind: "stale-bookmark";
+    oldPath: string;
+};
 interface EnsureOptions {
-  defaultPath?: string;
-  promptTitle?: string;
-  forcePicker?: boolean;
+    defaultPath?: string;
+    promptTitle?: string;
+    forcePicker?: boolean;
 }
-export declare function ensureStoreBuildWorkspaceFolder(
-  options?: EnsureOptions,
-): Promise<EnsureWorkspaceFolderResult>;
+export declare function ensureStoreBuildWorkspaceFolder(options?: EnsureOptions): Promise<EnsureWorkspaceFolderResult>;
+export {};
 //# sourceMappingURL=ensure-store-build-workspace-folder.d.ts.map

@@ -11,13 +11,10 @@
 import type http from "node:http";
 import { type RuntimeMode } from "./runtime-mode";
 export interface ModeGateOutcome {
-  /** True when the dispatcher should stop — guard wrote a 404. */
-  handled: boolean;
-  /** The active runtime mode at gate time. */
-  mode: RuntimeMode;
+    /** True when the dispatcher should stop — guard wrote a 404. */
+    handled: boolean;
+    /** The active runtime mode at gate time. */
+    mode: RuntimeMode;
 }
-export declare function applyRouteModeGuard(
-  req: http.IncomingMessage,
-  res: http.ServerResponse,
-): ModeGateOutcome;
+export declare function applyRouteModeGuard(req: http.IncomingMessage, res: http.ServerResponse): ModeGateOutcome;
 //# sourceMappingURL=route-mode-guard.d.ts.map

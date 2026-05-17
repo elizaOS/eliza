@@ -1,9 +1,8 @@
 import type { ConversationMessage } from "../../api/client-types-chat";
 import type { PatchOp, UiSpec } from "../../config/ui-spec";
-
 interface MessageContentProps {
-  message: ConversationMessage;
-  analysisMode?: boolean;
+    message: ConversationMessage;
+    analysisMode?: boolean;
 }
 export declare function normalizeDisplayText(text: string): string;
 /**
@@ -31,15 +30,13 @@ export declare function compilePatches(patches: PatchOp[]): UiSpec | null;
  * valid PatchOp. A single empty line between patch lines is allowed.
  */
 export declare function findPatchRegions(text: string): Array<{
-  start: number;
-  end: number;
-  spec: UiSpec;
-  raw: string;
+    start: number;
+    end: number;
+    spec: UiSpec;
+    raw: string;
 }>;
 /** Normalize plugin ID: strip @scope/plugin- prefix so both "discord" and "@elizaos/plugin-discord" resolve. */
 export declare function normalizePluginId(id: string): string;
-export declare function MessageContent({
-  message,
-  analysisMode,
-}: MessageContentProps): import("react/jsx-runtime").JSX.Element;
+export declare function MessageContent({ message, analysisMode, }: MessageContentProps): import("react/jsx-runtime").JSX.Element;
+export {};
 //# sourceMappingURL=MessageContent.d.ts.map

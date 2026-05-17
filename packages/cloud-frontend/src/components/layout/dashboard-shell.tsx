@@ -1,7 +1,7 @@
 import {
   DashboardLoadingState,
+  DashboardShellLayout,
   PageHeaderProvider,
-  ScrollArea,
   TooltipProvider,
 } from "@elizaos/ui";
 import { Loader2 } from "lucide-react";
@@ -69,25 +69,22 @@ export function DashboardShell({
     <OnboardingProvider>
       <TooltipProvider>
         <PageHeaderProvider>
-          <div className="theme-cloud dashboard-theme flex h-dvh min-h-dvh w-full overflow-hidden bg-black font-poppins text-white">
-            <Sidebar isOpen={sidebarOpen} onToggle={handleToggleSidebar} />
-
-            <div className="flex min-w-0 flex-1 flex-col gap-2 overflow-hidden p-2 md:gap-3 md:p-3 md:pl-0">
+          <DashboardShellLayout
+            sidebar={
+              <Sidebar isOpen={sidebarOpen} onToggle={handleToggleSidebar} />
+            }
+            header={
               <Header
                 onToggleSidebar={handleToggleSidebar}
                 isAnonymous={headerAnonymous}
                 authGraceActive={headerAuthGraceActive}
               />
-
-              <ScrollArea className="min-w-0 flex-1 border border-white/14 bg-black">
-                <main id="main" className="min-w-0 p-3 md:p-6">
-                  <Suspense fallback={<DashboardLoadingState />}>
-                    <Outlet />
-                  </Suspense>
-                </main>
-              </ScrollArea>
-            </div>
-          </div>
+            }
+          >
+            <Suspense fallback={<DashboardLoadingState />}>
+              <Outlet />
+            </Suspense>
+          </DashboardShellLayout>
         </PageHeaderProvider>
       </TooltipProvider>
       <OnboardingOverlay />

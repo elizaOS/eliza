@@ -21,7 +21,7 @@ export function ContainersEmptyState() {
       </div>
 
       {/* CLI Instructions */}
-      <div className="flex flex-col bg-black/60 rounded-lg border border-white/10 overflow-hidden w-full max-w-sm">
+      <div className="flex flex-col bg-black/60 rounded-sm border border-white/10 overflow-hidden w-full max-w-sm">
         {commands.map((cmd, index) => (
           <div
             key={index}

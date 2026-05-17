@@ -318,7 +318,10 @@ export function disableLocalElizaWorkspace(
   // rewrites, so dropping the static patch only loses redundancy here.
   const ANDROID_ONLY_PATCHES = ["llama-cpp-capacitor@0.1.5"];
   const removedPatches = [];
-  if (rootPkg.patchedDependencies && typeof rootPkg.patchedDependencies === "object") {
+  if (
+    rootPkg.patchedDependencies &&
+    typeof rootPkg.patchedDependencies === "object"
+  ) {
     for (const key of ANDROID_ONLY_PATCHES) {
       if (Object.hasOwn(rootPkg.patchedDependencies, key)) {
         delete rootPkg.patchedDependencies[key];

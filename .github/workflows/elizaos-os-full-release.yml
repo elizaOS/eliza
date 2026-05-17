@@ -109,19 +109,31 @@ jobs:
           path: ./_artifacts
           merge-multiple: true
       - name: Populate manifest with real sha256 + sizes
+        # Discovery is driven by the *manifest filename* — each entry's
+        # `filename` is searched verbatim under ./_artifacts. This keeps
+        # the workflow and manifest in lock-step: rename in the manifest,
+        # rename in the build, no workflow edits required.
+        #
+        # Build workflows that currently feed this step:
+        #   - build-linux-iso.yml      → *.iso           (raw-linux-* entry)
+        #   - build-vm-image.yml       → *.qcow2, *.ova  (vm-linux-* entry)
+        # Android (cf_x86_64, pixel-arm64) and macOS UTM bundles are NOT
+        # produced by any CI workflow today. They must be attached to the
+        # _artifacts staging dir out-of-band (release engineer uploads the
+        # built bundle as a workflow artifact via a prior manual job, or
+        # via release asset download) before this job runs. The strict
+        # gate at the end will fail loudly if any artifact is missing.
         run: |
           set -euo pipefail
           MANIFEST=packages/os/release/beta-2026-05-16/manifest.json
-          declare -A MAP
-          MAP[raw-linux-x86_64-img-zst]=$(find ./_artifacts -type f -name "*.raw.img.zst" | head -1 || true)
-          MAP[vm-linux-x86_64-qcow2]=$(find ./_artifacts -type f -name "*qcow2*" | head -1 || true)
-          MAP[android-cuttlefish-x86_64-zip]=$(find ./_artifacts -type f -name "*cf_x86_64*.zip" | head -1 || true)
-          MAP[android-pixel-arm64-zip]=$(find ./_artifacts -type f -name "*pixel-arm64*.zip" | head -1 || true)
-          MAP[vm-macos-silicon-utm]=$(find ./_artifacts -type f -name "*macos-silicon*.utm.zip" | head -1 || true)
-          for id in "${!MAP[@]}"; do
-            path="${MAP[$id]}"
+          ids=$(node -e '
+            const m = JSON.parse(require("node:fs").readFileSync(process.argv[1], "utf8"));
+            for (const a of m.artifacts) console.log(`${a.id}\t${a.filename}`);
+          ' "$MANIFEST")
+          while IFS=$'\t' read -r id filename; do
+            path=$(find ./_artifacts -type f -name "$filename" | head -1 || true)
             if [ -z "$path" ] || [ ! -f "$path" ]; then
-              echo "::warning::no artifact found for $id — leaving manifest entry as candidate"
+              echo "::warning::no artifact named $filename found for $id — strict gate will fail"
               continue
             fi
             sha=$(sha256sum "$path" | cut -d' ' -f1)
@@ -131,7 +143,16 @@ jobs:
               --artifact "$id" \
               --sha256 "$sha" \
               --size "$size"
-          done
+          done <<< "$ids"
+
+      - name: Gate on publishable checksums (before status promotion)
+        # Status promotion is gated on strict validation. If any artifact
+        # is missing a real checksum, the release stays "candidate" and
+        # this job fails — no half-published manifest.
+        run: |
+          node packages/os/scripts/validate-release-manifest.mjs \
+            --manifest packages/os/release/beta-2026-05-16/manifest.json \
+            --require-publishable-checksums
 
       - name: Promote release status to available
         run: |
@@ -143,12 +164,6 @@ jobs:
             m.release.status = "available";
             fs.writeFileSync(p, JSON.stringify(m, null, 2) + "\n");
           '
-
-      - name: Gate on publishable checksums
-        run: |
-          node packages/os/scripts/validate-release-manifest.mjs \
-            --manifest packages/os/release/beta-2026-05-16/manifest.json \
-            --require-publishable-checksums
 
       - name: Upload populated manifest
         uses: actions/upload-artifact@v4

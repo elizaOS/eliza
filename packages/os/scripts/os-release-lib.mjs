@@ -10,6 +10,11 @@ export const defaultManifestPath = path.join(
 );
 
 const sha256Pattern = /^[a-f0-9]{64}$/;
+const zeroSha256 = "0".repeat(64);
+
+function isPlaceholderSha256(value) {
+  return value === zeroSha256;
+}
 const isoDatePattern = /^\d{4}-\d{2}-\d{2}$/;
 const releaseChannels = new Set(["alpha", "beta", "stable", "nightly"]);
 const artifactKinds = new Set([
@@ -189,11 +194,16 @@ export function validateManifest(manifest, options = {}) {
     if (artifact?.sha256 !== null && !sha256Pattern.test(artifact?.sha256 ?? "")) {
       errors.push(`${prefix}.sha256 must be null or 64 lowercase hex characters`);
     }
+    if (isPlaceholderSha256(artifact?.sha256)) {
+      errors.push(
+        `${prefix}.sha256 is an all-zero placeholder; use null until a real checksum is generated`,
+      );
+    }
     if (artifact?.sizeBytes !== null && (!Number.isInteger(artifact?.sizeBytes) || artifact.sizeBytes <= 0)) {
       errors.push(`${prefix}.sizeBytes must be null or a positive integer`);
     }
     if (requirePublishableChecksums && artifact?.status !== "withdrawn") {
-      if (!sha256Pattern.test(artifact?.sha256 ?? "")) {
+      if (!sha256Pattern.test(artifact?.sha256 ?? "") || isPlaceholderSha256(artifact?.sha256)) {
         errors.push(`${prefix}.sha256 is required for publishable validation`);
       }
       if (!Number.isInteger(artifact?.sizeBytes) || artifact.sizeBytes <= 0) {

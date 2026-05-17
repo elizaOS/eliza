@@ -13,39 +13,28 @@
  */
 import type http from "node:http";
 import type { RuntimeEnvRecord } from "@elizaos/shared";
-import type {
-  AuthIdentityRow,
-  AuthSessionRow,
-  AuthStore,
-} from "../../services/auth-store";
-export type AuthContextSource =
-  | "cookie"
-  | "bearer-session"
-  | "bearer-bootstrap";
+import type { AuthIdentityRow, AuthSessionRow, AuthStore } from "../../services/auth-store";
+export type AuthContextSource = "cookie" | "bearer-session" | "bearer-bootstrap";
 export interface ResolvedAuthContext {
-  session: AuthSessionRow | null;
-  identity: AuthIdentityRow | null;
-  source: AuthContextSource;
+    session: AuthSessionRow | null;
+    identity: AuthIdentityRow | null;
+    source: AuthContextSource;
 }
 export interface EnsureSessionOptions {
-  store: AuthStore;
-  env?: RuntimeEnvRecord;
-  now?: number;
-  /**
-   * When true (default), accept a raw bootstrap-token bearer and let the
-   * caller exchange it. Set false on routes that should NEVER accept a
-   * bootstrap bearer (i.e. anything outside the dedicated exchange route).
-   */
-  allowBootstrapBearer?: boolean;
+    store: AuthStore;
+    env?: RuntimeEnvRecord;
+    now?: number;
+    /**
+     * When true (default), accept a raw bootstrap-token bearer and let the
+     * caller exchange it. Set false on routes that should NEVER accept a
+     * bootstrap bearer (i.e. anything outside the dedicated exchange route).
+     */
+    allowBootstrapBearer?: boolean;
 }
 /**
  * Resolve the request to a session + identity if possible. Returns null on
  * any failure path; never throws on bad input. The caller is responsible
  * for sending the 401.
  */
-export declare function ensureSessionForRequest(
-  req: Pick<http.IncomingMessage, "headers" | "socket">,
-  _res: http.ServerResponse,
-  options: EnsureSessionOptions,
-): Promise<ResolvedAuthContext | null>;
+export declare function ensureSessionForRequest(req: Pick<http.IncomingMessage, "headers" | "socket">, _res: http.ServerResponse, options: EnsureSessionOptions): Promise<ResolvedAuthContext | null>;
 //# sourceMappingURL=auth-context.d.ts.map

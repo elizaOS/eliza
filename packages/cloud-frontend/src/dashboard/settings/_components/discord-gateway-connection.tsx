@@ -1,24 +1,15 @@
 "use client";
 
 import {
-  AlertDialog,
-  AlertDialogAction,
-  AlertDialogCancel,
-  AlertDialogContent,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogHeader,
-  AlertDialogTitle,
-  AlertDialogTrigger,
   Badge,
   Button,
-  Card,
-  CardContent,
-  CardHeader,
-  CardTitle,
   Collapsible,
   CollapsibleContent,
   CollapsibleTrigger,
+  ConnectionCallout,
+  ConnectionCard,
+  ConnectionDisconnectAction,
+  ConnectionInstructions,
   DiscordIcon,
   Input,
   Label,
@@ -32,7 +23,6 @@ import {
   AlertCircle,
   Bot,
   CheckCircle,
-  ChevronDown,
   Clock,
   ExternalLink,
   Loader2,
@@ -40,7 +30,6 @@ import {
   RefreshCw,
   Save,
   Settings,
-  Trash2,
   XCircle,
 } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
@@ -367,424 +356,292 @@ export function DiscordGatewayConnection() {
 
   if (isLoading) {
     return (
-      <Card>
-        <CardContent className="flex items-center justify-center py-8">
-          <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
-        </CardContent>
-      </Card>
+      <ConnectionCard
+        name="Discord Gateway Bot"
+        icon={<DiscordIcon className="text-[#5865F2]" />}
+        description="Connect Discord gateway bots for AI-powered automation"
+        status="loading"
+      />
     );
   }
 
   return (
-    <Card>
-      <CardHeader>
-        <div className="flex items-center justify-between">
-          <div>
-            <CardTitle className="flex items-center gap-2">
-              <DiscordIcon className="h-5 w-5 text-[#5865F2]" />
-              Discord Gateway Bot
-            </CardTitle>
-          </div>
-          {connections.length > 0 && (
-            <Badge variant="outline">
-              {connections.filter((c) => c.status === "connected").length} /{" "}
-              {connections.length} Active
-            </Badge>
-          )}
-        </div>
-      </CardHeader>
-      <CardContent>
-        {connections.length > 0 ? (
-          <div className="space-y-4">
-            {/* Existing Connections */}
-            <div className="space-y-3">
-              {connections.map((conn) => {
-                const character = characters.find(
-                  (c) => c.id === conn.characterId,
-                );
-                const isExpanded = expandedId === conn.id;
-                const edit = editState[conn.id];
+    <ConnectionCard
+      name="Discord Gateway Bot"
+      icon={<DiscordIcon className="text-[#5865F2]" />}
+      description="Connect Discord gateway bots for AI-powered automation"
+      status={connections.length > 0 ? "connected" : "disconnected"}
+      statusBadge={
+        connections.length > 0 ? (
+          <Badge variant="outline">
+            {connections.filter((c) => c.status === "connected").length} /{" "}
+            {connections.length} Active
+          </Badge>
+        ) : null
+      }
+      connectedContent={
+        <div className="space-y-4">
+          {/* Existing Connections */}
+          <div className="space-y-3">
+            {connections.map((conn) => {
+              const character = characters.find(
+                (c) => c.id === conn.characterId,
+              );
+              const isExpanded = expandedId === conn.id;
+              const edit = editState[conn.id];
 
-                return (
-                  <Collapsible
-                    key={conn.id}
-                    open={isExpanded}
-                    onOpenChange={(open) => {
-                      setExpandedId(open ? conn.id : null);
-                      if (open) initEditState(conn);
-                    }}
-                  >
-                    <div className="border rounded-lg">
-                      <CollapsibleTrigger asChild>
-                        <div className="flex items-center gap-4 p-4 cursor-pointer hover:bg-muted/50 transition-colors">
-                          <div className="h-12 w-12 rounded-full bg-[#5865F2] flex items-center justify-center flex-shrink-0">
-                            <Bot className="h-6 w-6 text-white" />
+              return (
+                <Collapsible
+                  key={conn.id}
+                  open={isExpanded}
+                  onOpenChange={(open) => {
+                    setExpandedId(open ? conn.id : null);
+                    if (open) initEditState(conn);
+                  }}
+                >
+                  <div className="border rounded-sm">
+                    <CollapsibleTrigger asChild>
+                      <div className="flex items-center gap-4 p-4 cursor-pointer hover:bg-muted/50 transition-colors">
+                        <div className="h-12 w-12 rounded-full bg-[#5865F2] flex items-center justify-center flex-shrink-0">
+                          <Bot className="h-6 w-6 text-white" />
+                        </div>
+                        <div className="flex-1 min-w-0">
+                          <div className="flex items-center gap-2">
+                            <span className="font-semibold truncate">
+                              App: {conn.applicationId}
+                            </span>
+                            {getStatusBadge(conn.status)}
                           </div>
-                          <div className="flex-1 min-w-0">
-                            <div className="flex items-center gap-2">
-                              <span className="font-semibold truncate">
-                                App: {conn.applicationId}
+                          <div className="text-sm text-muted-foreground">
+                            {character ? (
+                              <>Character: {character.name}</>
+                            ) : (
+                              <span className="text-yellow-600">
+                                No character linked
                               </span>
-                              {getStatusBadge(conn.status)}
-                            </div>
-                            <div className="text-sm text-muted-foreground">
-                              {character ? (
-                                <>Character: {character.name}</>
-                              ) : (
-                                <span className="text-yellow-600">
-                                  No character linked
-                                </span>
-                              )}
-                              {conn.metadata?.responseMode && (
-                                <> · Mode: {conn.metadata.responseMode}</>
-                              )}
-                            </div>
-                            <div className="flex items-center gap-3 text-xs text-muted-foreground mt-1">
-                              <span>
-                                {conn.guildCount} server
-                                {conn.guildCount !== 1 ? "s" : ""}
-                              </span>
-                              <span>·</span>
-                              <span>{conn.eventsReceived} events received</span>
-                              <span>·</span>
-                              <span>{conn.eventsRouted} routed</span>
-                            </div>
-                            {conn.errorMessage && (
-                              <div className="text-sm text-red-500 mt-1">
-                                {conn.errorMessage}
-                              </div>
+                            )}
+                            {conn.metadata?.responseMode && (
+                              <> · Mode: {conn.metadata.responseMode}</>
                             )}
                           </div>
-                          <div className="flex items-center gap-2">
-                            <Button
-                              variant="outline"
-                              size="sm"
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                window.open(
-                                  getInviteUrl(conn.applicationId),
-                                  "_blank",
-                                );
-                              }}
-                            >
-                              <ExternalLink className="h-4 w-4 mr-1" />
-                              Add to Server
-                            </Button>
-                            <Settings
-                              className={`h-4 w-4 transition-transform ${isExpanded ? "rotate-90" : ""}`}
-                            />
+                          <div className="flex items-center gap-3 text-xs text-muted-foreground mt-1">
+                            <span>
+                              {conn.guildCount} server
+                              {conn.guildCount !== 1 ? "s" : ""}
+                            </span>
+                            <span>·</span>
+                            <span>{conn.eventsReceived} events received</span>
+                            <span>·</span>
+                            <span>{conn.eventsRouted} routed</span>
                           </div>
-                        </div>
-                      </CollapsibleTrigger>
-
-                      <CollapsibleContent>
-                        <div className="border-t p-4 space-y-4 bg-muted/30">
-                          {edit && (
-                            <>
-                              {/* Character Selection */}
-                              <div className="grid gap-4 sm:grid-cols-2">
-                                <div className="space-y-2">
-                                  <Label>Character</Label>
-                                  <div className="flex gap-2">
-                                    <Select
-                                      value={edit.characterId}
-                                      onValueChange={(v) =>
-                                        updateEditState(
-                                          conn.id,
-                                          "characterId",
-                                          v,
-                                        )
-                                      }
-                                    >
-                                      <SelectTrigger className="flex-1">
-                                        <SelectValue placeholder="Select a character..." />
-                                      </SelectTrigger>
-                                      <SelectContent>
-                                        {characters.map((char) => (
-                                          <SelectItem
-                                            key={char.id}
-                                            value={char.id}
-                                          >
-                                            {char.name}
-                                          </SelectItem>
-                                        ))}
-                                      </SelectContent>
-                                    </Select>
-                                    <Button
-                                      variant="outline"
-                                      size="icon"
-                                      onClick={handleRefreshCharacters}
-                                      disabled={isLoadingCharacters}
-                                    >
-                                      <RefreshCw
-                                        className={`h-4 w-4 ${isLoadingCharacters ? "animate-spin" : ""}`}
-                                      />
-                                    </Button>
-                                  </div>
-                                </div>
-
-                                <div className="space-y-2">
-                                  <Label>Response Mode</Label>
-                                  <Select
-                                    value={edit.responseMode}
-                                    onValueChange={(v) =>
-                                      updateEditState(
-                                        conn.id,
-                                        "responseMode",
-                                        v,
-                                      )
-                                    }
-                                  >
-                                    <SelectTrigger>
-                                      <SelectValue />
-                                    </SelectTrigger>
-                                    <SelectContent>
-                                      <SelectItem value="always">
-                                        Every message
-                                      </SelectItem>
-                                      <SelectItem value="mention">
-                                        Only when @mentioned
-                                      </SelectItem>
-                                      <SelectItem value="keyword">
-                                        On keywords
-                                      </SelectItem>
-                                    </SelectContent>
-                                  </Select>
-                                </div>
-                              </div>
-
-                              {/* Bot Token Update */}
-                              <div className="space-y-2">
-                                <Label>Update Bot Token (optional)</Label>
-                                <Input
-                                  type="password"
-                                  placeholder="Leave empty to keep current token"
-                                  value={edit.botToken}
-                                  onChange={(e) =>
-                                    updateEditState(
-                                      conn.id,
-                                      "botToken",
-                                      e.target.value,
-                                    )
-                                  }
-                                />
-                                <p className="text-xs text-muted-foreground">
-                                  Only fill this if you need to change the bot
-                                  token. The bot will reconnect after saving.
-                                </p>
-                              </div>
-
-                              {/* Active Toggle */}
-                              <div className="flex items-center justify-between">
-                                <div>
-                                  <Label>Connection Active</Label>
-                                  <p className="text-xs text-muted-foreground">
-                                    Disable to temporarily stop the bot without
-                                    deleting
-                                  </p>
-                                </div>
-                                <Button
-                                  variant={
-                                    edit.isActive ? "default" : "outline"
-                                  }
-                                  size="sm"
-                                  onClick={() =>
-                                    updateEditState(
-                                      conn.id,
-                                      "isActive",
-                                      !edit.isActive,
-                                    )
-                                  }
-                                >
-                                  {edit.isActive ? "Active" : "Inactive"}
-                                </Button>
-                              </div>
-
-                              {/* Action Buttons */}
-                              <div className="flex items-center justify-between pt-2">
-                                <AlertDialog>
-                                  <AlertDialogTrigger asChild>
-                                    <Button
-                                      variant="outline"
-                                      size="sm"
-                                      className="text-red-600 hover:text-red-700"
-                                      disabled={deletingId === conn.id}
-                                    >
-                                      {deletingId === conn.id ? (
-                                        <Loader2 className="h-4 w-4 animate-spin mr-1" />
-                                      ) : (
-                                        <Trash2 className="h-4 w-4 mr-1" />
-                                      )}
-                                      Delete Connection
-                                    </Button>
-                                  </AlertDialogTrigger>
-                                  <AlertDialogContent>
-                                    <AlertDialogHeader>
-                                      <AlertDialogTitle>
-                                        Delete Discord Bot Connection?
-                                      </AlertDialogTitle>
-                                      <AlertDialogDescription>
-                                        This will disconnect the bot and remove
-                                        it from all servers. The bot will stop
-                                        responding to messages immediately.
-                                      </AlertDialogDescription>
-                                    </AlertDialogHeader>
-                                    <AlertDialogFooter>
-                                      <AlertDialogCancel>
-                                        Cancel
-                                      </AlertDialogCancel>
-                                      <AlertDialogAction
-                                        onClick={() => handleDelete(conn.id)}
-                                        className="bg-red-600 hover:bg-red-700"
-                                      >
-                                        Delete
-                                      </AlertDialogAction>
-                                    </AlertDialogFooter>
-                                  </AlertDialogContent>
-                                </AlertDialog>
-
-                                <Button
-                                  onClick={() => handleSaveChanges(conn.id)}
-                                  disabled={savingId === conn.id}
-                                >
-                                  {savingId === conn.id ? (
-                                    <Loader2 className="h-4 w-4 animate-spin mr-2" />
-                                  ) : (
-                                    <Save className="h-4 w-4 mr-2" />
-                                  )}
-                                  Save Changes
-                                </Button>
-                              </div>
-                            </>
+                          {conn.errorMessage && (
+                            <div className="text-sm text-red-500 mt-1">
+                              {conn.errorMessage}
+                            </div>
                           )}
                         </div>
-                      </CollapsibleContent>
-                    </div>
-                  </Collapsible>
-                );
-              })}
-            </div>
+                        <div className="flex items-center gap-2">
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              window.open(
+                                getInviteUrl(conn.applicationId),
+                                "_blank",
+                              );
+                            }}
+                          >
+                            <ExternalLink className="h-4 w-4 mr-1" />
+                            Add to Server
+                          </Button>
+                          <Settings
+                            className={`h-4 w-4 transition-transform ${isExpanded ? "rotate-90" : ""}`}
+                          />
+                        </div>
+                      </div>
+                    </CollapsibleTrigger>
 
-            {/* Add Another Button */}
-            {!showForm && (
-              <Button
-                variant="outline"
-                className="w-full"
-                onClick={() => setShowForm(true)}
-              >
-                <Plus className="h-4 w-4 mr-2" />
-                Add Another Bot
-              </Button>
-            )}
+                    <CollapsibleContent>
+                      <div className="border-t p-4 space-y-4 bg-muted/30">
+                        {edit && (
+                          <>
+                            {/* Character Selection */}
+                            <div className="grid gap-4 sm:grid-cols-2">
+                              <div className="space-y-2">
+                                <Label>Character</Label>
+                                <div className="flex gap-2">
+                                  <Select
+                                    value={edit.characterId}
+                                    onValueChange={(v) =>
+                                      updateEditState(conn.id, "characterId", v)
+                                    }
+                                  >
+                                    <SelectTrigger className="flex-1">
+                                      <SelectValue placeholder="Select a character..." />
+                                    </SelectTrigger>
+                                    <SelectContent>
+                                      {characters.map((char) => (
+                                        <SelectItem
+                                          key={char.id}
+                                          value={char.id}
+                                        >
+                                          {char.name}
+                                        </SelectItem>
+                                      ))}
+                                    </SelectContent>
+                                  </Select>
+                                  <Button
+                                    variant="outline"
+                                    size="icon"
+                                    onClick={handleRefreshCharacters}
+                                    disabled={isLoadingCharacters}
+                                  >
+                                    <RefreshCw
+                                      className={`h-4 w-4 ${isLoadingCharacters ? "animate-spin" : ""}`}
+                                    />
+                                  </Button>
+                                </div>
+                              </div>
 
-            {/* Create Form (collapsible) */}
-            {showForm && (
-              <div className="border rounded-lg p-4 space-y-4">
-                <div className="flex items-center justify-between">
-                  <h4 className="font-medium">Add New Discord Bot</h4>
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    onClick={() => setShowForm(false)}
-                  >
-                    <XCircle className="h-4 w-4" />
-                  </Button>
-                </div>
+                              <div className="space-y-2">
+                                <Label>Response Mode</Label>
+                                <Select
+                                  value={edit.responseMode}
+                                  onValueChange={(v) =>
+                                    updateEditState(conn.id, "responseMode", v)
+                                  }
+                                >
+                                  <SelectTrigger>
+                                    <SelectValue />
+                                  </SelectTrigger>
+                                  <SelectContent>
+                                    <SelectItem value="always">
+                                      Every message
+                                    </SelectItem>
+                                    <SelectItem value="mention">
+                                      Only when @mentioned
+                                    </SelectItem>
+                                    <SelectItem value="keyword">
+                                      On keywords
+                                    </SelectItem>
+                                  </SelectContent>
+                                </Select>
+                              </div>
+                            </div>
 
-                {/* Instructions */}
-                <Collapsible
-                  open={showInstructions}
-                  onOpenChange={setShowInstructions}
-                >
-                  <CollapsibleTrigger asChild>
-                    <Button
-                      variant="ghost"
-                      className="w-full justify-between p-3 h-auto bg-muted text-sm"
-                    >
-                      <span className="font-medium">
-                        How to create a Discord bot
-                      </span>
-                      <ChevronDown
-                        className={`h-4 w-4 transition-transform ${
-                          showInstructions ? "rotate-180" : ""
-                        }`}
-                      />
-                    </Button>
-                  </CollapsibleTrigger>
-                  <CollapsibleContent className="p-3 bg-muted rounded-b-lg border-t">
-                    <ol className="text-sm text-muted-foreground space-y-2 list-decimal list-inside">
-                      <li>
-                        Go to the{" "}
-                        <a
-                          href="https://discord.com/developers/applications"
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          className="text-[#5865F2] hover:underline"
-                        >
-                          Discord Developer Portal
-                        </a>
-                      </li>
-                      <li>
-                        Click &quot;New Application&quot; and give it a name
-                      </li>
-                      <li>
-                        Copy the <strong>Application ID</strong> from the
-                        General Information page
-                      </li>
-                      <li>
-                        Go to the &quot;Bot&quot; section in the left sidebar
-                      </li>
-                      <li>
-                        Click &quot;Reset Token&quot; to generate a new bot
-                        token
-                      </li>
-                      <li>
-                        Copy the <strong>Bot Token</strong> (you&apos;ll only
-                        see it once!)
-                      </li>
-                      <li>
-                        Enable &quot;Message Content Intent&quot; under
-                        Privileged Gateway Intents
-                      </li>
-                      <li>
-                        Paste both values below, select a character, and click
-                        Connect
-                      </li>
-                      <li>
-                        After connecting, click &quot;Add to Server&quot; to
-                        invite the bot
-                      </li>
-                    </ol>
-                  </CollapsibleContent>
+                            {/* Bot Token Update */}
+                            <div className="space-y-2">
+                              <Label>Update Bot Token (optional)</Label>
+                              <Input
+                                type="password"
+                                placeholder="Leave empty to keep current token"
+                                value={edit.botToken}
+                                onChange={(e) =>
+                                  updateEditState(
+                                    conn.id,
+                                    "botToken",
+                                    e.target.value,
+                                  )
+                                }
+                              />
+                              <p className="text-xs text-muted-foreground">
+                                Only fill this if you need to change the bot
+                                token. The bot will reconnect after saving.
+                              </p>
+                            </div>
+
+                            {/* Active Toggle */}
+                            <div className="flex items-center justify-between">
+                              <div>
+                                <Label>Connection Active</Label>
+                                <p className="text-xs text-muted-foreground">
+                                  Disable to temporarily stop the bot without
+                                  deleting
+                                </p>
+                              </div>
+                              <Button
+                                variant={edit.isActive ? "default" : "outline"}
+                                size="sm"
+                                onClick={() =>
+                                  updateEditState(
+                                    conn.id,
+                                    "isActive",
+                                    !edit.isActive,
+                                  )
+                                }
+                              >
+                                {edit.isActive ? "Active" : "Inactive"}
+                              </Button>
+                            </div>
+
+                            {/* Action Buttons */}
+                            <div className="flex items-center justify-between pt-2">
+                              <ConnectionDisconnectAction
+                                title="Delete Discord Bot Connection?"
+                                description="This will disconnect the bot and remove it from all servers. The bot will stop responding to messages immediately."
+                                onDisconnect={() => handleDelete(conn.id)}
+                                isDisconnecting={deletingId === conn.id}
+                                buttonLabel="Delete Connection"
+                                confirmLabel="Delete"
+                              />
+
+                              <Button
+                                onClick={() => handleSaveChanges(conn.id)}
+                                disabled={savingId === conn.id}
+                              >
+                                {savingId === conn.id ? (
+                                  <Loader2 className="h-4 w-4 animate-spin mr-2" />
+                                ) : (
+                                  <Save className="h-4 w-4 mr-2" />
+                                )}
+                                Save Changes
+                              </Button>
+                            </div>
+                          </>
+                        )}
+                      </div>
+                    </CollapsibleContent>
+                  </div>
                 </Collapsible>
-
-                {renderForm()}
-              </div>
-            )}
+              );
+            })}
           </div>
-        ) : (
-          <div className="space-y-4">
-            {/* Instructions */}
-            <Collapsible
-              open={showInstructions}
-              onOpenChange={setShowInstructions}
+
+          {/* Add Another Button */}
+          {!showForm && (
+            <Button
+              variant="outline"
+              className="w-full"
+              onClick={() => setShowForm(true)}
             >
-              <CollapsibleTrigger asChild>
+              <Plus className="h-4 w-4 mr-2" />
+              Add Another Bot
+            </Button>
+          )}
+
+          {/* Create Form (collapsible) */}
+          {showForm && (
+            <div className="border rounded-sm p-4 space-y-4">
+              <div className="flex items-center justify-between">
+                <h4 className="font-medium">Add New Discord Bot</h4>
                 <Button
                   variant="ghost"
-                  className="w-full justify-between p-4 h-auto bg-muted"
+                  size="sm"
+                  onClick={() => setShowForm(false)}
                 >
-                  <span className="font-medium">
-                    How to create a Discord bot
-                  </span>
-                  <ChevronDown
-                    className={`h-4 w-4 transition-transform ${
-                      showInstructions ? "rotate-180" : ""
-                    }`}
-                  />
+                  <XCircle className="h-4 w-4" />
                 </Button>
-              </CollapsibleTrigger>
-              <CollapsibleContent className="p-4 bg-muted rounded-b-lg border-t">
+              </div>
+
+              {/* Instructions */}
+              <ConnectionInstructions
+                title="How to create a Discord bot"
+                open={showInstructions}
+                onOpenChange={setShowInstructions}
+                triggerClassName="p-3 text-sm"
+                contentClassName="p-3"
+              >
                 <ol className="text-sm text-muted-foreground space-y-2 list-decimal list-inside">
                   <li>
                     Go to the{" "}
@@ -823,28 +680,74 @@ export function DiscordGatewayConnection() {
                     the bot
                   </li>
                 </ol>
-              </CollapsibleContent>
-            </Collapsible>
+              </ConnectionInstructions>
 
-            {/* Form */}
-            {renderForm()}
-
-            {/* Features */}
-            <div className="p-4 bg-muted rounded-lg">
-              <h4 className="font-medium mb-2">
-                What your Discord bot can do:
-              </h4>
-              <ul className="text-sm text-muted-foreground space-y-1">
-                <li>• Handle both server channels and direct messages (DMs)</li>
-                <li>• React only when mentioned (configurable)</li>
-                <li>• Process voice messages automatically</li>
-                <li>• Handle multiple Discord servers simultaneously</li>
-              </ul>
+              {renderForm()}
             </div>
-          </div>
-        )}
-      </CardContent>
-    </Card>
+          )}
+        </div>
+      }
+      setupContent={
+        <div className="space-y-4">
+          {/* Instructions */}
+          <ConnectionInstructions
+            title="How to create a Discord bot"
+            open={showInstructions}
+            onOpenChange={setShowInstructions}
+          >
+            <ol className="text-sm text-muted-foreground space-y-2 list-decimal list-inside">
+              <li>
+                Go to the{" "}
+                <a
+                  href="https://discord.com/developers/applications"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="text-[#5865F2] hover:underline"
+                >
+                  Discord Developer Portal
+                </a>
+              </li>
+              <li>Click &quot;New Application&quot; and give it a name</li>
+              <li>
+                Copy the <strong>Application ID</strong> from the General
+                Information page
+              </li>
+              <li>Go to the &quot;Bot&quot; section in the left sidebar</li>
+              <li>Click &quot;Reset Token&quot; to generate a new bot token</li>
+              <li>
+                Copy the <strong>Bot Token</strong> (you&apos;ll only see it
+                once!)
+              </li>
+              <li>
+                Enable &quot;Message Content Intent&quot; under Privileged
+                Gateway Intents
+              </li>
+              <li>
+                Paste both values below, select a character, and click Connect
+              </li>
+              <li>
+                After connecting, click &quot;Add to Server&quot; to invite the
+                bot
+              </li>
+            </ol>
+          </ConnectionInstructions>
+
+          {/* Form */}
+          {renderForm()}
+
+          {/* Features */}
+          <ConnectionCallout
+            title="What your Discord bot can do:"
+            items={[
+              "Handle both server channels and direct messages (DMs)",
+              "React only when mentioned (configurable)",
+              "Process voice messages automatically",
+              "Handle multiple Discord servers simultaneously",
+            ]}
+          />
+        </div>
+      }
+    />
   );
 
   function renderForm() {

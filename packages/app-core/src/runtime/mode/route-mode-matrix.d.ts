@@ -25,26 +25,19 @@
  *     controller; the controller proxies to the target instead.
  */
 import type { RuntimeMode } from "./runtime-mode";
-export type HttpMethod =
-  | "GET"
-  | "POST"
-  | "PUT"
-  | "PATCH"
-  | "DELETE"
-  | "HEAD"
-  | "*";
+export type HttpMethod = "GET" | "POST" | "PUT" | "PATCH" | "DELETE" | "HEAD" | "*";
 export interface RouteModeRule {
-  /**
-   * Pathname or pathname prefix this rule applies to. Prefix matches end
-   * with `/` or `*` (the `*` is stripped during matching).
-   */
-  path: string;
-  /** HTTP method, or `*` for any. */
-  method: HttpMethod;
-  /** Modes the route is visible in. Empty = always hidden = delete. */
-  modes: ReadonlyArray<RuntimeMode>;
-  /** Free-form one-liner so this table doubles as documentation. */
-  reason: string;
+    /**
+     * Pathname or pathname prefix this rule applies to. Prefix matches end
+     * with `/` or `*` (the `*` is stripped during matching).
+     */
+    path: string;
+    /** HTTP method, or `*` for any. */
+    method: HttpMethod;
+    /** Modes the route is visible in. Empty = always hidden = delete. */
+    modes: ReadonlyArray<RuntimeMode>;
+    /** Free-form one-liner so this table doubles as documentation. */
+    reason: string;
 }
 /**
  * Ordered list — first match wins. Put more-specific paths above their
@@ -56,10 +49,7 @@ export declare const ROUTE_MODE_MATRIX: ReadonlyArray<RouteModeRule>;
  * `null` when no entry applies — callers should default-allow in that
  * case (the matrix is an explicit gate list, not a wholesale ACL).
  */
-export declare function findRouteModeRule(
-  pathname: string,
-  method: string,
-): RouteModeRule | null;
+export declare function findRouteModeRule(pathname: string, method: string): RouteModeRule | null;
 /**
  * Returns true when the route is visible in the active runtime mode, or
  * when no matrix entry applies. Returns false when an entry exists and
@@ -67,8 +57,8 @@ export declare function findRouteModeRule(
  * MUST NOT leak any information about why.
  */
 export declare function isRouteVisible(args: {
-  pathname: string;
-  method: string;
-  mode: RuntimeMode;
+    pathname: string;
+    method: string;
+    mode: RuntimeMode;
 }): boolean;
 //# sourceMappingURL=route-mode-matrix.d.ts.map

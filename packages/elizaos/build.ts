@@ -57,17 +57,51 @@ function loadTemplateDefinitions(sourceDir: string) {
   return templates;
 }
 
+function readExistingManifest() {
+  if (!fs.existsSync(MANIFEST_PATH)) return null;
+  try {
+    return JSON.parse(fs.readFileSync(MANIFEST_PATH, "utf-8"));
+  } catch {
+    return null;
+  }
+}
+
+function manifestPayloadMatches(
+  manifest: unknown,
+  payload: { version: string; repoUrl: string; templates: unknown[] },
+): manifest is { generatedAt?: string } {
+  if (!manifest || typeof manifest !== "object") return false;
+  const candidate = manifest as {
+    version?: unknown;
+    repoUrl?: unknown;
+    templates?: unknown;
+  };
+  return (
+    candidate.version === payload.version &&
+    candidate.repoUrl === payload.repoUrl &&
+    JSON.stringify(candidate.templates) === JSON.stringify(payload.templates)
+  );
+}
+
 function prepareTemplates(): void {
   const sourceDir = resolveTemplateSourceDir();
   if (path.resolve(sourceDir) !== path.resolve(TEMPLATE_DIR)) {
     fs.rmSync(TEMPLATE_DIR, { force: true, recursive: true });
     copyDir(sourceDir, TEMPLATE_DIR);
   }
-  const manifest = {
+  const payload = {
     version: "1.0.0",
-    generatedAt: new Date().toISOString(),
     repoUrl: "https://github.com/elizaos/eliza",
     templates: loadTemplateDefinitions(TEMPLATE_DIR),
+  };
+  const existingManifest = readExistingManifest();
+  const manifest = {
+    ...payload,
+    generatedAt:
+      manifestPayloadMatches(existingManifest, payload) &&
+      typeof existingManifest.generatedAt === "string"
+        ? existingManifest.generatedAt
+        : new Date().toISOString(),
   };
   fs.writeFileSync(MANIFEST_PATH, `${JSON.stringify(manifest, null, 2)}\n`);
   execSync(`bunx --bun @biomejs/biome format --write ${MANIFEST_PATH}`, {

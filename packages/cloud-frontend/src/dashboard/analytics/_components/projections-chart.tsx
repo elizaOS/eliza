@@ -121,7 +121,7 @@ export function ProjectionsChart({ data }: ProjectionsChartProps) {
         <CardContent className="border-t border-border/60 p-6">
           <div className="space-y-6">
             <div className="grid grid-cols-2 gap-4 sm:grid-cols-3">
-              <div className="rounded-lg border border-border/60 bg-muted/30 p-4">
+              <div className="rounded-sm border border-border/60 bg-muted/30 p-4">
                 <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
                   Balance
                 </p>
@@ -129,7 +129,7 @@ export function ProjectionsChart({ data }: ProjectionsChartProps) {
                   {formatCurrency(creditBalance)}
                 </p>
               </div>
-              <div className="rounded-lg border border-border/60 bg-muted/30 p-4">
+              <div className="rounded-sm border border-border/60 bg-muted/30 p-4">
                 <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
                   Historical points
                 </p>
@@ -137,7 +137,7 @@ export function ProjectionsChart({ data }: ProjectionsChartProps) {
                   {chartData.filter((d) => !d.isProjected).length}
                 </p>
               </div>
-              <div className="rounded-lg border border-border/60 bg-muted/30 p-4">
+              <div className="rounded-sm border border-border/60 bg-muted/30 p-4">
                 <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
                   Projected points
                 </p>

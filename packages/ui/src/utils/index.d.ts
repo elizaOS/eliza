@@ -1,16 +1,4 @@
-export {
-  isSafeExecutableValue,
-  type ParseClampedIntegerOptions,
-  type ParseClampedNumberOptions,
-  type ParsePositiveNumberOptions,
-  parseClampedFloat,
-  parseClampedInteger,
-  parsePositiveFloat,
-  parsePositiveInteger,
-  resolveElizaPackageRoot,
-  resolveElizaPackageRootSync,
-  stripAssistantStageDirections,
-} from "@elizaos/shared";
+export { isSafeExecutableValue, type ParseClampedIntegerOptions, type ParseClampedNumberOptions, type ParsePositiveNumberOptions, parseClampedFloat, parseClampedInteger, parsePositiveFloat, parsePositiveInteger, resolveElizaPackageRoot, resolveElizaPackageRootSync, stripAssistantStageDirections, } from "@elizaos/shared";
 export * from "./asset-url";
 export * from "./browser-tab-kit-types";
 export * from "./browser-tabs-renderer-registry";

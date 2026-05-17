@@ -12,10 +12,7 @@
  */
 import { type RefObject } from "react";
 import type { BrowserWorkspaceTab } from "../../api";
-import {
-  type BrowserWorkspaceWalletRequest,
-  type BrowserWorkspaceWalletState,
-} from "./browser-workspace-wallet";
+import { type BrowserWorkspaceWalletRequest, type BrowserWorkspaceWalletState } from "./browser-workspace-wallet";
 /**
  * Verify a postMessage origin against the tab's known URL.
  *
@@ -24,65 +21,42 @@ import {
  * against the URL the user or agent explicitly navigated to; if they don't
  * match we refuse to respond.
  */
-export declare function resolveBrowserWorkspaceMessageOrigin(
-  origin: string,
-  tabUrl?: string,
-): string | null;
-export declare function redactBrowserWorkspaceIframeWalletState(
-  state: BrowserWorkspaceWalletState,
-): BrowserWorkspaceWalletState;
-export declare function normalizeBrowserWorkspaceTxRequest(
-  params: unknown,
-  fallbackChainId: number,
-): {
-  broadcast: boolean;
-  chainId: number;
-  data?: string;
-  description?: string;
-  to: string;
-  value: string;
+export declare function resolveBrowserWorkspaceMessageOrigin(origin: string, tabUrl?: string): string | null;
+export declare function redactBrowserWorkspaceIframeWalletState(state: BrowserWorkspaceWalletState): BrowserWorkspaceWalletState;
+export declare function normalizeBrowserWorkspaceTxRequest(params: unknown, fallbackChainId: number): {
+    broadcast: boolean;
+    chainId: number;
+    data?: string;
+    description?: string;
+    to: string;
+    value: string;
 } | null;
-type HandlerResult =
-  | {
-      ok: true;
-      result: unknown;
-    }
-  | {
-      ok: false;
-      error: string;
-    };
+type HandlerResult = {
+    ok: true;
+    result: unknown;
+} | {
+    ok: false;
+    error: string;
+};
 export type BrowserWorkspaceWalletHandlerResult = HandlerResult;
 export interface BrowserWorkspaceWalletHandlerContext {
-  sourceTab: BrowserWorkspaceTab;
-  walletState: BrowserWorkspaceWalletState;
-  tabChainId: number;
-  setTabChainId: (chainId: number) => void;
-  loadWalletState: () => Promise<BrowserWorkspaceWalletState>;
-  postWalletReady: (
-    tab: BrowserWorkspaceTab,
-    state: BrowserWorkspaceWalletState,
-  ) => void;
-  walletStateRef: RefObject<BrowserWorkspaceWalletState>;
+    sourceTab: BrowserWorkspaceTab;
+    walletState: BrowserWorkspaceWalletState;
+    tabChainId: number;
+    setTabChainId: (chainId: number) => void;
+    loadWalletState: () => Promise<BrowserWorkspaceWalletState>;
+    postWalletReady: (tab: BrowserWorkspaceTab, state: BrowserWorkspaceWalletState) => void;
+    walletStateRef: RefObject<BrowserWorkspaceWalletState>;
 }
-export declare function dispatchBrowserWorkspaceWalletRequest(
-  request: BrowserWorkspaceWalletRequest,
-  ctx: BrowserWorkspaceWalletHandlerContext,
-): Promise<HandlerResult>;
+export declare function dispatchBrowserWorkspaceWalletRequest(request: BrowserWorkspaceWalletRequest, ctx: BrowserWorkspaceWalletHandlerContext): Promise<HandlerResult>;
 interface UseBrowserWorkspaceWalletBridgeOptions {
-  iframeRefs: RefObject<Map<string, HTMLIFrameElement | null>>;
-  workspaceTabs: BrowserWorkspaceTab[];
-  walletState: BrowserWorkspaceWalletState;
-  loadWalletState: () => Promise<BrowserWorkspaceWalletState>;
+    iframeRefs: RefObject<Map<string, HTMLIFrameElement | null>>;
+    workspaceTabs: BrowserWorkspaceTab[];
+    walletState: BrowserWorkspaceWalletState;
+    loadWalletState: () => Promise<BrowserWorkspaceWalletState>;
 }
-export declare function useBrowserWorkspaceWalletBridge({
-  iframeRefs,
-  workspaceTabs,
-  walletState,
-  loadWalletState,
-}: UseBrowserWorkspaceWalletBridgeOptions): {
-  postBrowserWalletReady: (
-    tab: BrowserWorkspaceTab,
-    state: BrowserWorkspaceWalletState,
-  ) => void;
+export declare function useBrowserWorkspaceWalletBridge({ iframeRefs, workspaceTabs, walletState, loadWalletState, }: UseBrowserWorkspaceWalletBridgeOptions): {
+    postBrowserWalletReady: (tab: BrowserWorkspaceTab, state: BrowserWorkspaceWalletState) => void;
 };
+export {};
 //# sourceMappingURL=useBrowserWorkspaceWalletBridge.d.ts.map

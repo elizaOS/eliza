@@ -24,10 +24,10 @@ drafter-enabled tier, including the tiny `0_8b` companion.
 
 ## Tier mapping
 
-| Target tier | Drafter size | Student base |
+| Target tier | Drafter size | Student recipe |
 |---|---|---|
-| 0_8b | 0.5B | Qwen/Qwen3.5-0.8B-Base |
-| 2b | 0.5B | Qwen/Qwen3.5-0.8B-Base |
+| 0_8b | 0.1B | `configs/dflash-drafter-0_1b-qwen3_5` distilled from `eliza-1-0_8b` |
+| 2b | 0.3B | `configs/dflash-drafter-0_3b-qwen3_5` distilled from `eliza-1-2b` |
 | 4b | 1.5B | Qwen/Qwen3.5-0.8B-Base |
 | 9b | 1.5B | Qwen/Qwen3.5-0.8B-Base |
 | 27b | 3B | Qwen/Qwen3.5-0.8B-Base |

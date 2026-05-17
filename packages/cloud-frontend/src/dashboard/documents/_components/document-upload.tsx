@@ -218,7 +218,7 @@ export function DocumentUpload({
             <div
               onDragOver={handleDragOver}
               onDrop={handleDrop}
-              className="relative border-2 border-dashed border-border rounded-lg hover:border-primary/50 transition-colors"
+              className="relative border-2 border-dashed border-border rounded-sm hover:border-primary/50 transition-colors"
             >
               <Input
                 id="file-input"
@@ -278,7 +278,7 @@ export function DocumentUpload({
                 {selectedFiles.map((file, index) => (
                   <div
                     key={index}
-                    className="flex items-center gap-2 p-3 bg-muted rounded-lg"
+                    className="flex items-center gap-2 p-3 bg-muted rounded-sm"
                   >
                     <FileText className="h-5 w-5 text-muted-foreground" />
                     <div className="flex-1">

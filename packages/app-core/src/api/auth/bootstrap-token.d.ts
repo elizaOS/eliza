@@ -16,42 +16,27 @@ import type { AuthStore } from "../../services/auth-store";
 export declare const BOOTSTRAP_TOKEN_ALG = "RS256";
 export declare const BOOTSTRAP_TOKEN_SCOPE = "bootstrap";
 export interface BootstrapTokenClaims {
-  iss: string;
-  sub: string;
-  containerId: string;
-  scope: "bootstrap";
-  iat: number;
-  exp: number;
-  jti: string;
+    iss: string;
+    sub: string;
+    containerId: string;
+    scope: "bootstrap";
+    iat: number;
+    exp: number;
+    jti: string;
 }
-export type VerifyBootstrapResult =
-  | {
-      ok: true;
-      claims: BootstrapTokenClaims;
-    }
-  | {
-      ok: false;
-      reason: VerifyBootstrapFailureReason;
-    };
-export type VerifyBootstrapFailureReason =
-  | "missing_issuer_env"
-  | "missing_container_env"
-  | "missing_token"
-  | "jwks_fetch_failed"
-  | "signature_invalid"
-  | "alg_not_allowed"
-  | "issuer_mismatch"
-  | "claims_invalid"
-  | "scope_mismatch"
-  | "container_mismatch"
-  | "expired"
-  | "replay"
-  | "store_error";
+export type VerifyBootstrapResult = {
+    ok: true;
+    claims: BootstrapTokenClaims;
+} | {
+    ok: false;
+    reason: VerifyBootstrapFailureReason;
+};
+export type VerifyBootstrapFailureReason = "missing_issuer_env" | "missing_container_env" | "missing_token" | "jwks_fetch_failed" | "signature_invalid" | "alg_not_allowed" | "issuer_mismatch" | "claims_invalid" | "scope_mismatch" | "container_mismatch" | "expired" | "replay" | "store_error";
 interface VerifyOptions {
-  env?: RuntimeEnvRecord;
-  authStore: AuthStore;
-  fetchImpl?: typeof fetch;
-  now?: () => number;
+    env?: RuntimeEnvRecord;
+    authStore: AuthStore;
+    fetchImpl?: typeof fetch;
+    now?: () => number;
 }
 /**
  * Verify a bootstrap token.
@@ -60,8 +45,6 @@ interface VerifyOptions {
  * fails immediately with `replay`. The caller must NOT call this twice for
  * the same exchange — `recordJtiSeen` is consumed atomically here.
  */
-export declare function verifyBootstrapToken(
-  token: string,
-  options: VerifyOptions,
-): Promise<VerifyBootstrapResult>;
+export declare function verifyBootstrapToken(token: string, options: VerifyOptions): Promise<VerifyBootstrapResult>;
+export {};
 //# sourceMappingURL=bootstrap-token.d.ts.map

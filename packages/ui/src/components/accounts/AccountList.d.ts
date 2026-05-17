@@ -7,11 +7,9 @@
  * sequential PATCH calls (no drag-drop dependency).
  */
 import type { LinkedAccountProviderId } from "@elizaos/shared";
-
 interface AccountListProps {
-  providerId: LinkedAccountProviderId;
+    providerId: LinkedAccountProviderId;
 }
-export declare function AccountList({
-  providerId,
-}: AccountListProps): import("react/jsx-runtime").JSX.Element;
+export declare function AccountList({ providerId }: AccountListProps): import("react/jsx-runtime").JSX.Element;
+export {};
 //# sourceMappingURL=AccountList.d.ts.map

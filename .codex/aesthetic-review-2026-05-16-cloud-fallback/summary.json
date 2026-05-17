@@ -1,0 +1,165 @@
+{
+  "outRoot": "/Users/shawwalters/eliza-workspace/milady/eliza/.codex/aesthetic-review-2026-05-16-cloud-fallback",
+  "pageCount": 49,
+  "screenshotCount": 196,
+  "sheets": [
+    {
+      "viewport": "desktop",
+      "file": "contact-sheets/cloud-desktop.png"
+    },
+    {
+      "viewport": "wide",
+      "file": "contact-sheets/cloud-wide.png"
+    },
+    {
+      "viewport": "mobile-portrait",
+      "file": "contact-sheets/cloud-mobile-portrait.png"
+    },
+    {
+      "viewport": "mobile-landscape",
+      "file": "contact-sheets/cloud-mobile-landscape.png"
+    }
+  ],
+  "issues": [
+    {
+      "page": "Cloud /chat/test-agent",
+      "viewport": "mobile-landscape",
+      "status": 404,
+      "finalUrl": "/chat/test-agent",
+      "navError": null,
+      "pageErrors": [],
+      "consoleErrors": [
+        "Failed to load resource: the server responded with a status of 404 (Not Found)"
+      ],
+      "overflowX": 0,
+      "textLength": 9,
+      "file": "screenshots/cloud__public-chat__mobile-landscape.png"
+    },
+    {
+      "page": "Cloud /dashboard",
+      "viewport": "mobile-landscape",
+      "status": 404,
+      "finalUrl": "/dashboard",
+      "navError": null,
+      "pageErrors": [],
+      "consoleErrors": [
+        "Failed to load resource: the server responded with a status of 404 (Not Found)"
+      ],
+      "overflowX": 0,
+      "textLength": 9,
+      "file": "screenshots/cloud__dashboard__mobile-landscape.png"
+    },
+    {
+      "page": "Cloud /dashboard/account",
+      "viewport": "mobile-landscape",
+      "status": 404,
+      "finalUrl": "/dashboard/account",
+      "navError": null,
+      "pageErrors": [],
+      "consoleErrors": [
+        "Failed to load resource: the server responded with a status of 404 (Not Found)"
+      ],
+      "overflowX": 0,
+      "textLength": 9,
+      "file": "screenshots/cloud__dashboard-account__mobile-landscape.png"
+    },
+    {
+      "page": "Cloud /dashboard/settings",
+      "viewport": "mobile-landscape",
+      "status": 404,
+      "finalUrl": "/dashboard/settings",
+      "navError": null,
+      "pageErrors": [],
+      "consoleErrors": [
+        "Failed to load resource: the server responded with a status of 404 (Not Found)"
+      ],
+      "overflowX": 0,
+      "textLength": 9,
+      "file": "screenshots/cloud__dashboard-settings__mobile-landscape.png"
+    },
+    {
+      "page": "Cloud /dashboard/billing",
+      "viewport": "mobile-landscape",
+      "status": 404,
+      "finalUrl": "/dashboard/billing",
+      "navError": null,
+      "pageErrors": [],
+      "consoleErrors": [
+        "Failed to load resource: the server responded with a status of 404 (Not Found)"
+      ],
+      "overflowX": 0,
+      "textLength": 9,
+      "file": "screenshots/cloud__dashboard-billing__mobile-landscape.png"
+    },
+    {
+      "page": "Cloud /dashboard/billing/success",
+      "viewport": "mobile-landscape",
+      "status": 404,
+      "finalUrl": "/dashboard/billing/success",
+      "navError": null,
+      "pageErrors": [],
+      "consoleErrors": [
+        "Failed to load resource: the server responded with a status of 404 (Not Found)"
+      ],
+      "overflowX": 0,
+      "textLength": 9,
+      "file": "screenshots/cloud__dashboard-billing-success__mobile-landscape.png"
+    },
+    {
+      "page": "Cloud /dashboard/agents",
+      "viewport": "mobile-landscape",
+      "status": 404,
+      "finalUrl": "/dashboard/agents",
+      "navError": null,
+      "pageErrors": [],
+      "consoleErrors": [
+        "Failed to load resource: the server responded with a status of 404 (Not Found)"
+      ],
+      "overflowX": 0,
+      "textLength": 9,
+      "file": "screenshots/cloud__dashboard-agents__mobile-landscape.png"
+    },
+    {
+      "page": "Cloud /dashboard/agents/test-agent",
+      "viewport": "mobile-landscape",
+      "status": 404,
+      "finalUrl": "/dashboard/agents/test-agent",
+      "navError": null,
+      "pageErrors": [],
+      "consoleErrors": [
+        "Failed to load resource: the server responded with a status of 404 (Not Found)"
+      ],
+      "overflowX": 0,
+      "textLength": 9,
+      "file": "screenshots/cloud__dashboard-agent-detail__mobile-landscape.png"
+    },
+    {
+      "page": "Cloud /dashboard/agents/test-agent/chat",
+      "viewport": "mobile-landscape",
+      "status": 404,
+      "finalUrl": "/dashboard/agents/test-agent/chat",
+      "navError": null,
+      "pageErrors": [],
+      "consoleErrors": [
+        "Failed to load resource: the server responded with a status of 404 (Not Found)"
+      ],
+      "overflowX": 0,
+      "textLength": 9,
+      "file": "screenshots/cloud__dashboard-agent-chat__mobile-landscape.png"
+    },
+    {
+      "page": "Cloud /dashboard/apps",
+      "viewport": "mobile-landscape",
+      "status": 404,
+      "finalUrl": "/dashboard/apps",
+      "navError": null,
+      "pageErrors": [],
+      "consoleErrors": [
+        "Failed to load resource: the server responded with a status of 404 (Not Found)"
+      ],
+      "overflowX": 0,
+      "textLength": 9,
+      "file": "screenshots/cloud__dashboard-apps__mobile-landscape.png"
+    }
+  ]
+}

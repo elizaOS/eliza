@@ -10,20 +10,16 @@ import type { ReactNode } from "react";
 import type { ChatSidebarVisibilityHook } from "../../widgets/useChatSidebarVisibility";
 import { type VisibilityCandidate } from "../../widgets/visibility";
 export interface WidgetVisibilityCandidate extends VisibilityCandidate {
-  /** Display label shown next to the toggle. */
-  label: string;
-  /** Optional icon node rendered to the left of the label. */
-  icon?: ReactNode;
+    /** Display label shown next to the toggle. */
+    label: string;
+    /** Optional icon node rendered to the left of the label. */
+    icon?: ReactNode;
 }
 export interface WidgetVisibilityEditorProps {
-  candidates: readonly WidgetVisibilityCandidate[];
-  visibility: ChatSidebarVisibilityHook;
-  onClose: () => void;
+    candidates: readonly WidgetVisibilityCandidate[];
+    visibility: ChatSidebarVisibilityHook;
+    onClose: () => void;
 }
 export declare function buildAppsSectionVisibilityCandidate(): WidgetVisibilityCandidate;
-export declare function WidgetVisibilityEditor({
-  candidates,
-  visibility,
-  onClose,
-}: WidgetVisibilityEditorProps): import("react/jsx-runtime").JSX.Element;
+export declare function WidgetVisibilityEditor({ candidates, visibility, onClose, }: WidgetVisibilityEditorProps): import("react/jsx-runtime").JSX.Element;
 //# sourceMappingURL=WidgetVisibilityPanel.d.ts.map

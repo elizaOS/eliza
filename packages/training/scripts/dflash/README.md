@@ -40,15 +40,15 @@ Two ideas not to conflate:
   for the target to verify. Lives alongside the target in the same
   bundle as `dflash/drafter-<tier>.gguf` for drafter-enabled tiers. The
   drafter's own parameter count is usually smaller than the target (e.g. a
-  0.8B Qwen3.5 student drafts for a 2B target). See
-  `distill_dflash_drafter.py::DEFAULT_STUDENT_BASE` for the per-tier
-  student base.
+  0.3B Qwen3.5 student drafts for a 2B target). See
+  `distill_dflash_drafter.py::DEFAULT_STUDENT_BASE` /
+  `DEFAULT_STUDENT_CONFIG` for the per-tier student recipe.
 
 The **tier ID** in every filename, env var, CLI flag, and script name
 refers to the *target tier*, never the drafter's own size. So
 `dflash/drafter-2b.gguf` is "the drafter that ships with the
 `eliza-1-2b` target bundle" — even though that drafter's weights are a
-0.8B Qwen3.5 distillation.
+0.3B Qwen3.5 distillation.
 
 ## Per-tier job scripts
 
@@ -61,8 +61,9 @@ Each `jobs/distill_dflash_<tier>.sh` script:
    empirically per release.
 4. Calls `dflash_run_distill "$@"`.
 
-The `distill_dflash_0_8b.sh` wrapper trains the tiny drafter for the smallest
-target tier.
+The `distill_dflash_0_8b.sh` wrapper trains the 0.1B drafter for the smallest
+target tier. The `distill_dflash_2b.sh` wrapper trains the 0.3B drafter for
+the 2B target tier.
 
 To run a script:
 
@@ -92,9 +93,9 @@ When the catalog adds a new canonical tier:
    `SUPPORTED_BACKENDS_BY_TIER`, `VOICE_QUANT_BY_TIER`,
    `REQUIRED_PLATFORM_EVIDENCE_BY_TIER` in `eliza1_platform_plan.py` /
    `eliza1_manifest.py`.
-3. Add the student base + acceptance gate
+3. Add the student base/config + acceptance gate
    to `distill_dflash_drafter.py::DEFAULT_STUDENT_BASE` /
-   `ACCEPTANCE_GATE` / `DEFAULT_TARGET_MODEL`.
+   `DEFAULT_STUDENT_CONFIG` / `ACCEPTANCE_GATE` / `DEFAULT_TARGET_MODEL`.
 4. Add `KNOWN_TIERS` entry in
    `prepare_distill_dataset.py` (and the validator will read the gate from
    `distill_dflash_drafter.py`).

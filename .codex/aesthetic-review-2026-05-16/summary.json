@@ -1,0 +1,5445 @@
+{
+  "outRoot": "/Users/shawwalters/eliza-workspace/milady/eliza/.codex/aesthetic-review-2026-05-16",
+  "pageCount": 66,
+  "screenshotCount": 264,
+  "sheets": [
+    {
+      "product": "app",
+      "viewport": "desktop",
+      "file": "contact-sheets/app-desktop.png"
+    },
+    {
+      "product": "app",
+      "viewport": "wide",
+      "file": "contact-sheets/app-wide.png"
+    },
+    {
+      "product": "app",
+      "viewport": "mobile-portrait",
+      "file": "contact-sheets/app-mobile-portrait.png"
+    },
+    {
+      "product": "app",
+      "viewport": "mobile-landscape",
+      "file": "contact-sheets/app-mobile-landscape.png"
+    },
+    {
+      "product": "os",
+      "viewport": "desktop",
+      "file": "contact-sheets/os-desktop.png"
+    },
+    {
+      "product": "os",
+      "viewport": "wide",
+      "file": "contact-sheets/os-wide.png"
+    },
+    {
+      "product": "os",
+      "viewport": "mobile-portrait",
+      "file": "contact-sheets/os-mobile-portrait.png"
+    },
+    {
+      "product": "os",
+      "viewport": "mobile-landscape",
+      "file": "contact-sheets/os-mobile-landscape.png"
+    },
+    {
+      "product": "cloud",
+      "viewport": "desktop",
+      "file": "contact-sheets/cloud-desktop.png"
+    },
+    {
+      "product": "cloud",
+      "viewport": "wide",
+      "file": "contact-sheets/cloud-wide.png"
+    },
+    {
+      "product": "cloud",
+      "viewport": "mobile-portrait",
+      "file": "contact-sheets/cloud-mobile-portrait.png"
+    },
+    {
+      "product": "cloud",
+      "viewport": "mobile-landscape",
+      "file": "contact-sheets/cloud-mobile-landscape.png"
+    }
+  ],
+  "issues": [
+    {
+      "product": "app",
+      "page": "App /",
+      "viewport": "desktop",
+      "status": 200,
+      "navError": null,
+      "pageErrors": [],
+      "overflowX": 0,
+      "textLength": 1579,
+      "clipped": [
+        {
+          "tag": "a",
+          "text": "Skip to content",
+          "cls": "sr-only focus:not-sr-only focus:fixed focus:left-2 focus:top-2 focus:z-[200] foc"
+        },
+        {
+          "tag": "h1",
+          "text": "Your Eliza, everywhere.",
+          "cls": "app-display"
+        },
+        {
+          "tag": "h2",
+          "text": "v2.0.0-beta.2",
+          "cls": ""
+        },
+        {
+          "tag": "h2",
+          "text": "Install the app.",
+          "cls": "app-h2"
+        },
+        {
+          "tag": "h2",
+          "text": "Run in Cloud.",
+          "cls": ""
+        },
+        {
+          "tag": "h2",
+          "text": "Install elizaOS.",
+          "cls": ""
+        }
+      ],
+      "file": "screenshots/app__home__desktop.png"
+    },
+    {
+      "product": "app",
+      "page": "App /leaderboard",
+      "viewport": "desktop",
+      "status": 200,
+      "navError": null,
+      "pageErrors": [],
+      "overflowX": 0,
+      "textLength": 5491,
+      "clipped": [
+        {
+          "tag": "span",
+          "text": "🇺🇸",
+          "cls": "text-3xl leading-none"
+        }
+      ],
+      "file": "screenshots/app__leaderboard__desktop.png"
+    },
+    {
+      "product": "app",
+      "page": "App /login",
+      "viewport": "desktop",
+      "status": 200,
+      "navError": null,
+      "pageErrors": [],
+      "overflowX": 0,
+      "textLength": 94,
+      "clipped": [
+        {
+          "tag": "h1",
+          "text": "Anywhere you want her to be.",
+          "cls": "text-2xl sm:text-3xl font-bold text-neutral-900 text-center mb-8 whitespace-nowr"
+        }
+      ],
+      "file": "screenshots/app__login__desktop.png"
+    },
+    {
+      "product": "app",
+      "page": "App /connected",
+      "viewport": "desktop",
+      "status": 200,
+      "navError": null,
+      "pageErrors": [],
+      "overflowX": 0,
+      "textLength": 94,
+      "clipped": [
+        {
+          "tag": "h1",
+          "text": "Anywhere you want her to be.",
+          "cls": "text-2xl sm:text-3xl font-bold text-neutral-900 text-center mb-8 whitespace-nowr"
+        }
+      ],
+      "file": "screenshots/app__connected__desktop.png"
+    },
+    {
+      "product": "app",
+      "page": "App /get-started",
+      "viewport": "desktop",
+      "status": 200,
+      "navError": null,
+      "pageErrors": [],
+      "overflowX": 0,
+      "textLength": 94,
+      "clipped": [
+        {
+          "tag": "h1",
+          "text": "Anywhere you want her to be.",
+          "cls": "text-2xl sm:text-3xl font-bold text-neutral-900 text-center mb-8 whitespace-nowr"
+        }
+      ],
+      "file": "screenshots/app__get-started__desktop.png"
+    },
+    {
+      "product": "os",
+      "page": "OS /",
+      "viewport": "desktop",
+      "status": 200,
+      "navError": null,
+      "pageErrors": [],
+      "overflowX": 0,
+      "textLength": 1046,
+      "clipped": [
+        {
+          "tag": "a",
+          "text": "Skip to content",
+          "cls": "sr-only focus:not-sr-only focus:fixed focus:left-2 focus:top-2 focus:z-[200] foc"
+        },
+        {
+          "tag": "h1",
+          "text": "The agentic operating system.",
+          "cls": ""
+        },
+        {
+          "tag": "h2",
+          "text": "Download beta.",
+          "cls": ""
+        },
+        {
+          "tag": "h3",
+          "text": "ElizaOS Linux live beta",
+          "cls": ""
+        },
+        {
+          "tag": "h3",
+          "text": "ElizaOS USB installer for Windows",
+          "cls": ""
+        },
+        {
+          "tag": "h3",
+          "text": "ElizaOS VM launcher for Apple Silicon",
+          "cls": ""
+        },
+        {
+          "tag": "h3",
+          "text": "ElizaOS Android beta image bundle",
+          "cls": ""
+        },
+        {
+          "tag": "h2",
+          "text": "Hardware.",
+          "cls": ""
+        }
+      ],
+      "file": "screenshots/os__home__desktop.png"
+    },
+    {
+      "product": "os",
+      "page": "OS /checkout",
+      "viewport": "desktop",
+      "status": 200,
+      "navError": null,
+      "pageErrors": [],
+      "overflowX": 0,
+      "textLength": 467,
+      "clipped": [
+        {
+          "tag": "a",
+          "text": "Skip to content",
+          "cls": "sr-only focus:not-sr-only focus:fixed focus:left-2 focus:top-2 focus:z-[200] foc"
+        },
+        {
+          "tag": "h1",
+          "text": "ElizaOS USB",
+          "cls": ""
+        },
+        {
+          "tag": "h2",
+          "text": "Checkout on elizaOS.",
+          "cls": ""
+        }
+      ],
+      "file": "screenshots/os__checkout__desktop.png"
+    },
+    {
+      "product": "os",
+      "page": "OS /checkout/success",
+      "viewport": "desktop",
+      "status": 200,
+      "navError": null,
+      "pageErrors": [],
+      "overflowX": 0,
+      "textLength": 151,
+      "clipped": [
+        {
+          "tag": "a",
+          "text": "Skip to content",
+          "cls": "sr-only focus:not-sr-only focus:fixed focus:left-2 focus:top-2 focus:z-[200] foc"
+        },
+        {
+          "tag": "h1",
+          "text": "Pre-order received.",
+          "cls": ""
+        }
+      ],
+      "file": "screenshots/os__checkout-success__desktop.png"
+    },
+    {
+      "product": "os",
+      "page": "OS /checkout/cancel",
+      "viewport": "desktop",
+      "status": 200,
+      "navError": null,
+      "pageErrors": [],
+      "overflowX": 0,
+      "textLength": 149,
+      "clipped": [
+        {
+          "tag": "a",
+          "text": "Skip to content",
+          "cls": "sr-only focus:not-sr-only focus:fixed focus:left-2 focus:top-2 focus:z-[200] foc"
+        },
+        {
+          "tag": "h1",
+          "text": "Checkout canceled.",
+          "cls": ""
+        }
+      ],
+      "file": "screenshots/os__checkout-cancel__desktop.png"
+    },
+    {
+      "product": "os",
+      "page": "OS /hardware/usb",
+      "viewport": "desktop",
+      "status": 200,
+      "navError": null,
+      "pageErrors": [],
+      "overflowX": 0,
+      "textLength": 245,
+      "clipped": [
+        {
+          "tag": "a",
+          "text": "Skip to content",
+          "cls": "sr-only focus:not-sr-only focus:fixed focus:left-2 focus:top-2 focus:z-[200] foc"
+        },
+        {
+          "tag": "h1",
+          "text": "ElizaOS USB",
+          "cls": ""
+        }
+      ],
+      "file": "screenshots/os__hardware-usb__desktop.png"
+    },
+    {
+      "product": "os",
+      "page": "OS /hardware/usb-plastic",
+      "viewport": "desktop",
+      "status": 200,
+      "navError": null,
+      "pageErrors": [],
+      "overflowX": 0,
+      "textLength": 263,
+      "clipped": [
+        {
+          "tag": "a",
+          "text": "Skip to content",
+          "cls": "sr-only focus:not-sr-only focus:fixed focus:left-2 focus:top-2 focus:z-[200] foc"
+        },
+        {
+          "tag": "h1",
+          "text": "Branded USB key",
+          "cls": ""
+        }
+      ],
+      "file": "screenshots/os__hardware-usb-plastic__desktop.png"
+    },
+    {
+      "product": "os",
+      "page": "OS /hardware/chibi-usb",
+      "viewport": "desktop",
+      "status": 200,
+      "navError": null,
+      "pageErrors": [],
+      "overflowX": 0,
+      "textLength": 237,
+      "clipped": [
+        {
+          "tag": "a",
+          "text": "Skip to content",
+          "cls": "sr-only focus:not-sr-only focus:fixed focus:left-2 focus:top-2 focus:z-[200] foc"
+        },
+        {
+          "tag": "h1",
+          "text": "Chibi USB key",
+          "cls": ""
+        }
+      ],
+      "file": "screenshots/os__hardware-chibi-usb__desktop.png"
+    },
+    {
+      "product": "os",
+      "page": "OS /hardware/case",
+      "viewport": "desktop",
+      "status": 200,
+      "navError": null,
+      "pageErrors": [],
+      "overflowX": 0,
+      "textLength": 235,
+      "clipped": [
+        {
+          "tag": "a",
+          "text": "Skip to content",
+          "cls": "sr-only focus:not-sr-only focus:fixed focus:left-2 focus:top-2 focus:z-[200] foc"
+        },
+        {
+          "tag": "h1",
+          "text": "Raspberry Pi case",
+          "cls": ""
+        }
+      ],
+      "file": "screenshots/os__hardware-case__desktop.png"
+    },
+    {
+      "product": "os",
+      "page": "OS /hardware/raspberry-pi",
+      "viewport": "desktop",
+      "status": 200,
+      "navError": null,
+      "pageErrors": [],
+      "overflowX": 0,
+      "textLength": 252,
+      "clipped": [
+        {
+          "tag": "a",
+          "text": "Skip to content",
+          "cls": "sr-only focus:not-sr-only focus:fixed focus:left-2 focus:top-2 focus:z-[200] foc"
+        },
+        {
+          "tag": "h1",
+          "text": "Custom Raspberry Pi + case",
+          "cls": ""
+        }
+      ],
+      "file": "screenshots/os__hardware-raspberry-pi__desktop.png"
+    },
+    {
+      "product": "os",
+      "page": "OS /hardware/mini-pc",
+      "viewport": "desktop",
+      "status": 200,
+      "navError": null,
+      "pageErrors": [],
+      "overflowX": 0,
+      "textLength": 250,
+      "clipped": [
+        {
+          "tag": "a",
+          "text": "Skip to content",
+          "cls": "sr-only focus:not-sr-only focus:fixed focus:left-2 focus:top-2 focus:z-[200] foc"
+        },
+        {
+          "tag": "h1",
+          "text": "ElizaOS mini PC",
+          "cls": ""
+        }
+      ],
+      "file": "screenshots/os__hardware-mini-pc__desktop.png"
+    },
+    {
+      "product": "os",
+      "page": "OS /hardware/phone",
+      "viewport": "desktop",
+      "status": 200,
+      "navError": null,
+      "pageErrors": [],
+      "overflowX": 0,
+      "textLength": 226,
+      "clipped": [
+        {
+          "tag": "a",
+          "text": "Skip to content",
+          "cls": "sr-only focus:not-sr-only focus:fixed focus:left-2 focus:top-2 focus:z-[200] foc"
+        },
+        {
+          "tag": "h1",
+          "text": "ElizaOS Phone",
+          "cls": ""
+        }
+      ],
+      "file": "screenshots/os__hardware-phone__desktop.png"
+    },
+    {
+      "product": "os",
+      "page": "OS /hardware/box",
+      "viewport": "desktop",
+      "status": 200,
+      "navError": null,
+      "pageErrors": [],
+      "overflowX": 0,
+      "textLength": 223,
+      "clipped": [
+        {
+          "tag": "a",
+          "text": "Skip to content",
+          "cls": "sr-only focus:not-sr-only focus:fixed focus:left-2 focus:top-2 focus:z-[200] foc"
+        },
+        {
+          "tag": "h1",
+          "text": "ElizaOS Box",
+          "cls": ""
+        }
+      ],
+      "file": "screenshots/os__hardware-box__desktop.png"
+    },
+    {
+      "product": "cloud",
+      "page": "Cloud /",
+      "viewport": "desktop",
+      "status": 200,
+      "navError": null,
+      "pageErrors": [],
+      "overflowX": 0,
+      "textLength": 475,
+      "clipped": [
+        {
+          "tag": "a",
+          "text": "Skip to content",
+          "cls": "sr-only focus:not-sr-only focus:fixed focus:left-2 focus:top-2 focus:z-[200] foc"
+        }
+      ],
+      "file": "screenshots/cloud__home__desktop.png"
+    },
+    {
+      "product": "cloud",
+      "page": "Cloud /os",
+      "viewport": "desktop",
+      "status": 200,
+      "navError": null,
+      "pageErrors": [],
+      "overflowX": 0,
+      "textLength": 475,
+      "clipped": [
+        {
+          "tag": "a",
+          "text": "Skip to content",
+          "cls": "sr-only focus:not-sr-only focus:fixed focus:left-2 focus:top-2 focus:z-[200] foc"
+        }
+      ],
+      "file": "screenshots/cloud__os-alias__desktop.png"
+    },
+    {
+      "product": "cloud",
+      "page": "Cloud /blog",
+      "viewport": "desktop",
+      "status": 200,
+      "navError": null,
+      "pageErrors": [],
+      "overflowX": 0,
+      "textLength": 475,
+      "clipped": [
+        {
+          "tag": "a",
+          "text": "Skip to content",
+          "cls": "sr-only focus:not-sr-only focus:fixed focus:left-2 focus:top-2 focus:z-[200] foc"
+        }
+      ],
+      "file": "screenshots/cloud__blog__desktop.png"
+    },
+    {
+      "product": "cloud",
+      "page": "Cloud /bsc",
+      "viewport": "desktop",
+      "status": 200,
+      "navError": null,
+      "pageErrors": [],
+      "overflowX": 0,
+      "textLength": 312,
+      "clipped": [
+        {
+          "tag": "a",
+          "text": "Skip to content",
+          "cls": "sr-only focus:not-sr-only focus:fixed focus:left-2 focus:top-2 focus:z-[200] foc"
+        },
+        {
+          "tag": "h1",
+          "text": "Buy cloud credit on BSC",
+          "cls": "max-w-3xl font-mono text-4xl font-semibold uppercase tracking-normal text-white "
+        }
+      ],
+      "file": "screenshots/cloud__bsc__desktop.png"
+    },
+    {
+      "product": "cloud",
+      "page": "Cloud /login",
+      "viewport": "desktop",
+      "status": 200,
+      "navError": null,
+      "pageErrors": [],
+      "overflowX": 0,
+      "textLength": 199,
+      "clipped": [
+        {
+          "tag": "a",
+          "text": "Skip to content",
+          "cls": "sr-only focus:not-sr-only focus:fixed focus:left-2 focus:top-2 focus:z-[200] foc"
+        }
+      ],
+      "file": "screenshots/cloud__login__desktop.png"
+    },
+    {
+      "product": "cloud",
+      "page": "Cloud /docs",
+      "viewport": "desktop",
+      "status": 200,
+      "navError": null,
+      "pageErrors": [],
+      "overflowX": 0,
+      "textLength": 2630,
+      "clipped": [
+        {
+          "tag": "a",
+          "text": "Skip to content",
+          "cls": "sr-only focus:not-sr-only focus:fixed focus:left-2 focus:top-2 focus:z-[200] foc"
+        },
+        {
+          "tag": "h1",
+          "text": "Build Agents",
+          "cls": "docs-hero-title"
+        },
+        {
+          "tag": "span",
+          "text": "Build Agents",
+          "cls": "docs-hero-title-line"
+        },
+        {
+          "tag": "p",
+          "text": "Build Agents",
+          "cls": ""
+        }
+      ],
+      "file": "screenshots/cloud__docs__desktop.png"
+    },
+    {
+      "product": "cloud",
+      "page": "Cloud /privacy-policy",
+      "viewport": "desktop",
+      "status": 200,
+      "navError": null,
+      "pageErrors": [],
+      "overflowX": 0,
+      "textLength": 2639,
+      "clipped": [
+        {
+          "tag": "a",
+          "text": "Skip to content",
+          "cls": "sr-only focus:not-sr-only focus:fixed focus:left-2 focus:top-2 focus:z-[200] foc"
+        },
+        {
+          "tag": "h1",
+          "text": "Privacy Policy",
+          "cls": "text-4xl font-bold tracking-tight text-white sm:text-5xl"
+        }
+      ],
+      "file": "screenshots/cloud__privacy__desktop.png"
+    },
+    {
+      "product": "cloud",
+      "page": "Cloud /terms-of-service",
+      "viewport": "desktop",
+      "status": 200,
+      "navError": null,
+      "pageErrors": [],
+      "overflowX": 0,
+      "textLength": 3182,
+      "clipped": [
+        {
+          "tag": "a",
+          "text": "Skip to content",
+          "cls": "sr-only focus:not-sr-only focus:fixed focus:left-2 focus:top-2 focus:z-[200] foc"
+        },
+        {
+          "tag": "h1",
+          "text": "Terms of Service",
+          "cls": "text-4xl font-bold tracking-tight text-white sm:text-5xl"
+        }
+      ],
+      "file": "screenshots/cloud__terms__desktop.png"
+    },
+    {
+      "product": "cloud",
+      "page": "Cloud /invite/accept",
+      "viewport": "desktop",
+      "status": 200,
+      "navError": null,
+      "pageErrors": [],
+      "overflowX": 0,
+      "textLength": 76,
+      "clipped": [
+        {
+          "tag": "a",
+          "text": "Skip to content",
+          "cls": "sr-only focus:not-sr-only focus:fixed focus:left-2 focus:top-2 focus:z-[200] foc"
+        },
+        {
+          "tag": "h3",
+          "text": "Invalid Invitation",
+          "cls": "font-semibold leading-none tracking-tight"
+        }
+      ],
+      "file": "screenshots/cloud__invite-accept__desktop.png"
+    },
+    {
+      "product": "cloud",
+      "page": "Cloud /payment/success",
+      "viewport": "desktop",
+      "status": 200,
+      "navError": null,
+      "pageErrors": [],
+      "overflowX": 0,
+      "textLength": 122,
+      "clipped": [
+        {
+          "tag": "a",
+          "text": "Skip to content",
+          "cls": "sr-only focus:not-sr-only focus:fixed focus:left-2 focus:top-2 focus:z-[200] foc"
+        }
+      ],
+      "file": "screenshots/cloud__payment-success__desktop.png"
+    },
+    {
+      "product": "cloud",
+      "page": "Cloud /payment/:id",
+      "viewport": "desktop",
+      "status": 200,
+      "navError": null,
+      "pageErrors": [],
+      "overflowX": 0,
+      "textLength": 91,
+      "clipped": [
+        {
+          "tag": "a",
+          "text": "Skip to content",
+          "cls": "sr-only focus:not-sr-only focus:fixed focus:left-2 focus:top-2 focus:z-[200] foc"
+        }
+      ],
+      "file": "screenshots/cloud__payment-request__desktop.png"
+    },
+    {
+      "product": "cloud",
+      "page": "Cloud /payment/app-charge/:ids",
+      "viewport": "desktop",
+      "status": 200,
+      "navError": null,
+      "pageErrors": [],
+      "overflowX": 0,
+      "textLength": 82,
+      "clipped": [
+        {
+          "tag": "a",
+          "text": "Skip to content",
+          "cls": "sr-only focus:not-sr-only focus:fixed focus:left-2 focus:top-2 focus:z-[200] foc"
+        }
+      ],
+      "file": "screenshots/cloud__app-charge__desktop.png"
+    },
+    {
+      "product": "cloud",
+      "page": "Cloud /sensitive-requests/:id",
+      "viewport": "desktop",
+      "status": 200,
+      "navError": null,
+      "pageErrors": [],
+      "overflowX": 0,
+      "textLength": 99,
+      "clipped": [
+        {
+          "tag": "a",
+          "text": "Skip to content",
+          "cls": "sr-only focus:not-sr-only focus:fixed focus:left-2 focus:top-2 focus:z-[200] foc"
+        }
+      ],
+      "file": "screenshots/cloud__sensitive-request__desktop.png"
+    },
+    {
+      "product": "cloud",
+      "page": "Cloud /approve/:id",
+      "viewport": "desktop",
+      "status": 200,
+      "navError": null,
+      "pageErrors": [],
+      "overflowX": 0,
+      "textLength": 62,
+      "clipped": [
+        {
+          "tag": "a",
+          "text": "Skip to content",
+          "cls": "sr-only focus:not-sr-only focus:fixed focus:left-2 focus:top-2 focus:z-[200] foc"
+        }
+      ],
+      "file": "screenshots/cloud__approve__desktop.png"
+    },
+    {
+      "product": "cloud",
+      "page": "Cloud /ballot/:id",
+      "viewport": "desktop",
+      "status": 200,
+      "navError": null,
+      "pageErrors": [],
+      "overflowX": 0,
+      "textLength": 34,
+      "clipped": [
+        {
+          "tag": "a",
+          "text": "Skip to content",
+          "cls": "sr-only focus:not-sr-only focus:fixed focus:left-2 focus:top-2 focus:z-[200] foc"
+        }
+      ],
+      "file": "screenshots/cloud__ballot__desktop.png"
+    },
+    {
+      "product": "cloud",
+      "page": "Cloud /auth/success",
+      "viewport": "desktop",
+      "status": 200,
+      "navError": null,
+      "pageErrors": [],
+      "overflowX": 0,
+      "textLength": 146,
+      "clipped": [
+        {
+          "tag": "a",
+          "text": "Skip to content",
+          "cls": "sr-only focus:not-sr-only focus:fixed focus:left-2 focus:top-2 focus:z-[200] foc"
+        }
+      ],
+      "file": "screenshots/cloud__auth-success__desktop.png"
+    },
+    {
+      "product": "cloud",
+      "page": "Cloud /auth/cli-login",
+      "viewport": "desktop",
+      "status": 200,
+      "navError": null,
+      "pageErrors": [],
+      "overflowX": 0,
+      "textLength": 98,
+      "clipped": [
+        {
+          "tag": "a",
+          "text": "Skip to content",
+          "cls": "sr-only focus:not-sr-only focus:fixed focus:left-2 focus:top-2 focus:z-[200] foc"
+        }
+      ],
+      "file": "screenshots/cloud__auth-cli-login__desktop.png"
+    },
+    {
+      "product": "cloud",
+      "page": "Cloud /auth/error",
+      "viewport": "desktop",
+      "status": 200,
+      "navError": null,
+      "pageErrors": [],
+      "overflowX": 0,
+      "textLength": 177,
+      "clipped": [
+        {
+          "tag": "a",
+          "text": "Skip to content",
+          "cls": "sr-only focus:not-sr-only focus:fixed focus:left-2 focus:top-2 focus:z-[200] foc"
+        }
+      ],
+      "file": "screenshots/cloud__auth-error__desktop.png"
+    },
+    {
+      "product": "cloud",
+      "page": "Cloud /auth/callback/email",
+      "viewport": "desktop",
+      "status": 200,
+      "navError": null,
+      "pageErrors": [
+        "useAuth must be used within a <StewardProvider> with an `auth` prop."
+      ],
+      "overflowX": 0,
+      "textLength": 0,
+      "clipped": [],
+      "file": "screenshots/cloud__auth-email-callback__desktop.png"
+    },
+    {
+      "product": "cloud",
+      "page": "Cloud /app-auth/authorize",
+      "viewport": "desktop",
+      "status": 200,
+      "navError": null,
+      "pageErrors": [],
+      "overflowX": 0,
+      "textLength": 123,
+      "clipped": [
+        {
+          "tag": "a",
+          "text": "Skip to content",
+          "cls": "sr-only focus:not-sr-only focus:fixed focus:left-2 focus:top-2 focus:z-[200] foc"
+        }
+      ],
+      "file": "screenshots/cloud__app-auth-authorize__desktop.png"
+    },
+    {
+      "product": "cloud",
+      "page": "Cloud /sandbox-proxy",
+      "viewport": "desktop",
+      "status": 200,
+      "navError": null,
+      "pageErrors": [],
+      "overflowX": 0,
+      "textLength": 69,
+      "clipped": [
+        {
+          "tag": "a",
+          "text": "Skip to content",
+          "cls": "sr-only focus:not-sr-only focus:fixed focus:left-2 focus:top-2 focus:z-[200] foc"
+        }
+      ],
+      "file": "screenshots/cloud__sandbox-proxy__desktop.png"
+    },
+    {
+      "product": "cloud",
+      "page": "Cloud /chat/:characterRef",
+      "viewport": "desktop",
+      "status": 200,
+      "navError": null,
+      "pageErrors": [],
+      "overflowX": 0,
+      "textLength": 60,
+      "clipped": [
+        {
+          "tag": "a",
+          "text": "Skip to content",
+          "cls": "sr-only focus:not-sr-only focus:fixed focus:left-2 focus:top-2 focus:z-[200] foc"
+        }
+      ],
+      "file": "screenshots/cloud__public-chat__desktop.png"
+    },
+    {
+      "product": "cloud",
+      "page": "Cloud /dashboard",
+      "viewport": "desktop",
+      "status": 200,
+      "navError": null,
+      "pageErrors": [],
+      "overflowX": 0,
+      "textLength": 435,
+      "clipped": [
+        {
+          "tag": "a",
+          "text": "Skip to content",
+          "cls": "sr-only focus:not-sr-only focus:fixed focus:left-2 focus:top-2 focus:z-[200] foc"
+        },
+        {
+          "tag": "h1",
+          "text": "Run your Eliza agent on the hosted runtime",
+          "cls": "mt-2 text-3xl font-semibold tracking-normal text-white md:text-4xl"
+        }
+      ],
+      "file": "screenshots/cloud__dashboard__desktop.png"
+    },
+    {
+      "product": "cloud",
+      "page": "Cloud /dashboard/account",
+      "viewport": "desktop",
+      "status": 200,
+      "navError": null,
+      "pageErrors": [],
+      "overflowX": 0,
+      "textLength": 1396,
+      "clipped": [
+        {
+          "tag": "a",
+          "text": "Skip to content",
+          "cls": "sr-only focus:not-sr-only focus:fixed focus:left-2 focus:top-2 focus:z-[200] foc"
+        }
+      ],
+      "file": "screenshots/cloud__dashboard-account__desktop.png"
+    },
+    {
+      "product": "cloud",
+      "page": "Cloud /dashboard/settings",
+      "viewport": "desktop",
+      "status": 200,
+      "navError": null,
+      "pageErrors": [],
+      "overflowX": 0,
+      "textLength": 793,
+      "clipped": [
+        {
+          "tag": "a",
+          "text": "Skip to content",
+          "cls": "sr-only focus:not-sr-only focus:fixed focus:left-2 focus:top-2 focus:z-[200] foc"
+        }
+      ],
+      "file": "screenshots/cloud__dashboard-settings__desktop.png"
+    },
+    {
+      "product": "cloud",
+      "page": "Cloud /dashboard/billing",
+      "viewport": "desktop",
+      "status": 200,
+      "navError": null,
+      "pageErrors": [],
+      "overflowX": 0,
+      "textLength": 281,
+      "clipped": [
+        {
+          "tag": "a",
+          "text": "Skip to content",
+          "cls": "sr-only focus:not-sr-only focus:fixed focus:left-2 focus:top-2 focus:z-[200] foc"
+        }
+      ],
+      "file": "screenshots/cloud__dashboard-billing__desktop.png"
+    },
+    {
+      "product": "cloud",
+      "page": "Cloud /dashboard/billing/success",
+      "viewport": "desktop",
+      "status": 200,
+      "navError": null,
+      "pageErrors": [],
+      "overflowX": 0,
+      "textLength": 429,
+      "clipped": [
+        {
+          "tag": "a",
+          "text": "Skip to content",
+          "cls": "sr-only focus:not-sr-only focus:fixed focus:left-2 focus:top-2 focus:z-[200] foc"
+        }
+      ],
+      "file": "screenshots/cloud__dashboard-billing-success__desktop.png"
+    },
+    {
+      "product": "cloud",
+      "page": "Cloud /dashboard/agents",
+      "viewport": "desktop",
+      "status": 200,
+      "navError": null,
+      "pageErrors": [],
+      "overflowX": 0,
+      "textLength": 475,
+      "clipped": [
+        {
+          "tag": "a",
+          "text": "Skip to content",
+          "cls": "sr-only focus:not-sr-only focus:fixed focus:left-2 focus:top-2 focus:z-[200] foc"
+        }
+      ],
+      "file": "screenshots/cloud__dashboard-agents__desktop.png"
+    },
+    {
+      "product": "cloud",
+      "page": "Cloud /dashboard/agents/test-agent",
+      "viewport": "desktop",
+      "status": 200,
+      "navError": null,
+      "pageErrors": [],
+      "overflowX": 0,
+      "textLength": 331,
+      "clipped": [
+        {
+          "tag": "a",
+          "text": "Skip to content",
+          "cls": "sr-only focus:not-sr-only focus:fixed focus:left-2 focus:top-2 focus:z-[200] foc"
+        }
+      ],
+      "file": "screenshots/cloud__dashboard-agent-detail__desktop.png"
+    },
+    {
+      "product": "cloud",
+      "page": "Cloud /dashboard/agents/test-agent/chat",
+      "viewport": "desktop",
+      "status": 200,
+      "navError": null,
+      "pageErrors": [],
+      "overflowX": 0,
+      "textLength": 331,
+      "clipped": [
+        {
+          "tag": "a",
+          "text": "Skip to content",
+          "cls": "sr-only focus:not-sr-only focus:fixed focus:left-2 focus:top-2 focus:z-[200] foc"
+        }
+      ],
+      "file": "screenshots/cloud__dashboard-agent-chat__desktop.png"
+    },
+    {
+      "product": "cloud",
+      "page": "Cloud /dashboard/apps",
+      "viewport": "desktop",
+      "status": 200,
+      "navError": null,
+      "pageErrors": [],
+      "overflowX": 0,
+      "textLength": 127,
+      "clipped": [
+        {
+          "tag": "a",
+          "text": "Skip to content",
+          "cls": "sr-only focus:not-sr-only focus:fixed focus:left-2 focus:top-2 focus:z-[200] foc"
+        }
+      ],
+      "file": "screenshots/cloud__dashboard-apps__desktop.png"
+    },
+    {
+      "product": "cloud",
+      "page": "Cloud /dashboard/apps/test-app",
+      "viewport": "desktop",
+      "status": 200,
+      "navError": null,
+      "pageErrors": [],
+      "overflowX": 0,
+      "textLength": 127,
+      "clipped": [
+        {
+          "tag": "a",
+          "text": "Skip to content",
+          "cls": "sr-only focus:not-sr-only focus:fixed focus:left-2 focus:top-2 focus:z-[200] foc"
+        }
+      ],
+      "file": "screenshots/cloud__dashboard-app-detail__desktop.png"
+    },
+    {
+      "product": "cloud",
+      "page": "Cloud /dashboard/my-agents",
+      "viewport": "desktop",
+      "status": 200,
+      "navError": null,
+      "pageErrors": [],
+      "overflowX": 0,
+      "textLength": 913,
+      "clipped": [
+        {
+          "tag": "a",
+          "text": "Skip to content",
+          "cls": "sr-only focus:not-sr-only focus:fixed focus:left-2 focus:top-2 focus:z-[200] foc"
+        },
+        {
+          "tag": "h1",
+          "text": "Administer and enter your running agent",
+          "cls": "text-2xl font-semibold text-white md:text-3xl"
+        },
+        {
+          "tag": "p",
+          "text": "Create or deploy an agent",
+          "cls": "mt-1 truncate text-sm font-medium text-white"
+        }
+      ],
+      "file": "screenshots/cloud__dashboard-my-agents__desktop.png"
+    },
+    {
+      "product": "cloud",
+      "page": "Cloud /dashboard/api-keys",
+      "viewport": "desktop",
+      "status": 200,
+      "navError": null,
+      "pageErrors": [],
+      "overflowX": 0,
+      "textLength": 127,
+      "clipped": [
+        {
+          "tag": "a",
+          "text": "Skip to content",
+          "cls": "sr-only focus:not-sr-only focus:fixed focus:left-2 focus:top-2 focus:z-[200] foc"
+        }
+      ],
+      "file": "screenshots/cloud__dashboard-api-keys__desktop.png"
+    },
+    {
+      "product": "cloud",
+      "page": "Cloud /dashboard/mcps",
+      "viewport": "desktop",
+      "status": 200,
+      "navError": null,
+      "pageErrors": [],
+      "overflowX": 0,
+      "textLength": 1413,
+      "clipped": [
+        {
+          "tag": "a",
+          "text": "Skip to content",
+          "cls": "sr-only focus:not-sr-only focus:fixed focus:left-2 focus:top-2 focus:z-[200] foc"
+        }
+      ],
+      "file": "screenshots/cloud__dashboard-mcps__desktop.png"
+    },
+    {
+      "product": "cloud",
+      "page": "Cloud /dashboard/documents",
+      "viewport": "desktop",
+      "status": 200,
+      "navError": null,
+      "pageErrors": [],
+      "overflowX": 0,
+      "textLength": 396,
+      "clipped": [
+        {
+          "tag": "a",
+          "text": "Skip to content",
+          "cls": "sr-only focus:not-sr-only focus:fixed focus:left-2 focus:top-2 focus:z-[200] foc"
+        },
+        {
+          "tag": "h3",
+          "text": "Uploaded Files",
+          "cls": "font-semibold leading-none tracking-tight"
+        }
+      ],
+      "file": "screenshots/cloud__dashboard-documents__desktop.png"
+    },
+    {
+      "product": "cloud",
+      "page": "Cloud /dashboard/analytics",
+      "viewport": "desktop",
+      "status": 200,
+      "navError": null,
+      "pageErrors": [],
+      "overflowX": 0,
+      "textLength": 335,
+      "clipped": [
+        {
+          "tag": "a",
+          "text": "Skip to content",
+          "cls": "sr-only focus:not-sr-only focus:fixed focus:left-2 focus:top-2 focus:z-[200] foc"
+        }
+      ],
+      "file": "screenshots/cloud__dashboard-analytics__desktop.png"
+    },
+    {
+      "product": "cloud",
+      "page": "Cloud /dashboard/earnings",
+      "viewport": "desktop",
+      "status": 200,
+      "navError": null,
+      "pageErrors": [],
+      "overflowX": 0,
+      "textLength": 129,
+      "clipped": [
+        {
+          "tag": "a",
+          "text": "Skip to content",
+          "cls": "sr-only focus:not-sr-only focus:fixed focus:left-2 focus:top-2 focus:z-[200] foc"
+        }
+      ],
+      "file": "screenshots/cloud__dashboard-earnings__desktop.png"
+    },
+    {
+      "product": "cloud",
+      "page": "Cloud /dashboard/affiliates",
+      "viewport": "desktop",
+      "status": 200,
+      "navError": null,
+      "pageErrors": [],
+      "overflowX": 0,
+      "textLength": 2002,
+      "clipped": [
+        {
+          "tag": "a",
+          "text": "Skip to content",
+          "cls": "sr-only focus:not-sr-only focus:fixed focus:left-2 focus:top-2 focus:z-[200] foc"
+        }
+      ],
+      "file": "screenshots/cloud__dashboard-affiliates__desktop.png"
+    },
+    {
+      "product": "cloud",
+      "page": "Cloud /dashboard/invoices/test-invoice",
+      "viewport": "desktop",
+      "status": 200,
+      "navError": null,
+      "pageErrors": [],
+      "overflowX": 0,
+      "textLength": 122,
+      "clipped": [
+        {
+          "tag": "a",
+          "text": "Skip to content",
+          "cls": "sr-only focus:not-sr-only focus:fixed focus:left-2 focus:top-2 focus:z-[200] foc"
+        }
+      ],
+      "file": "screenshots/cloud__dashboard-invoice__desktop.png"
+    },
+    {
+      "product": "cloud",
+      "page": "Cloud /dashboard/chat",
+      "viewport": "desktop",
+      "status": 200,
+      "navError": null,
+      "pageErrors": [],
+      "overflowX": 0,
+      "textLength": 353,
+      "clipped": [
+        {
+          "tag": "a",
+          "text": "Skip to content",
+          "cls": "sr-only focus:not-sr-only focus:fixed focus:left-2 focus:top-2 focus:z-[200] foc"
+        }
+      ],
+      "file": "screenshots/cloud__dashboard-chat__desktop.png"
+    },
+    {
+      "product": "cloud",
+      "page": "Cloud /dashboard/containers",
+      "viewport": "desktop",
+      "status": 200,
+      "navError": null,
+      "pageErrors": [],
+      "overflowX": 0,
+      "textLength": 326,
+      "clipped": [
+        {
+          "tag": "a",
+          "text": "Skip to content",
+          "cls": "sr-only focus:not-sr-only focus:fixed focus:left-2 focus:top-2 focus:z-[200] foc"
+        }
+      ],
+      "file": "screenshots/cloud__dashboard-containers__desktop.png"
+    },
+    {
+      "product": "cloud",
+      "page": "Cloud /dashboard/containers/test-container",
+      "viewport": "desktop",
+      "status": 200,
+      "navError": null,
+      "pageErrors": [],
+      "overflowX": 0,
+      "textLength": 331,
+      "clipped": [
+        {
+          "tag": "a",
+          "text": "Skip to content",
+          "cls": "sr-only focus:not-sr-only focus:fixed focus:left-2 focus:top-2 focus:z-[200] foc"
+        }
+      ],
+      "file": "screenshots/cloud__dashboard-container-detail__desktop.png"
+    },
+    {
+      "product": "cloud",
+      "page": "Cloud /dashboard/containers/agents/test-agent",
+      "viewport": "desktop",
+      "status": 200,
+      "navError": null,
+      "pageErrors": [],
+      "overflowX": 0,
+      "textLength": 331,
+      "clipped": [
+        {
+          "tag": "a",
+          "text": "Skip to content",
+          "cls": "sr-only focus:not-sr-only focus:fixed focus:left-2 focus:top-2 focus:z-[200] foc"
+        }
+      ],
+      "file": "screenshots/cloud__dashboard-container-agent__desktop.png"
+    },
+    {
+      "product": "cloud",
+      "page": "Cloud /dashboard/api-explorer",
+      "viewport": "desktop",
+      "status": 200,
+      "navError": null,
+      "pageErrors": [],
+      "overflowX": 0,
+      "textLength": 4248,
+      "clipped": [
+        {
+          "tag": "a",
+          "text": "Skip to content",
+          "cls": "sr-only focus:not-sr-only focus:fixed focus:left-2 focus:top-2 focus:z-[200] foc"
+        },
+        {
+          "tag": "p",
+          "text": "Transcribe audio to text using ElevenLabs. Supports multiple audio formats inclu",
+          "cls": "text-xs text-neutral-500 line-clamp-2"
+        },
+        {
+          "tag": "p",
+          "text": "Get all available ElevenLabs pre-built public voices (Rachel, Adam, etc.). This ",
+          "cls": "text-xs text-neutral-500 line-clamp-2"
+        },
+        {
+          "tag": "p",
+          "text": "Create a custom voice clone using audio samples. Supports instant cloning (30s, ",
+          "cls": "text-xs text-neutral-500 line-clamp-2"
+        },
+        {
+          "tag": "p",
+          "text": "Retrieve detailed information about a specific cloned voice including usage stat",
+          "cls": "text-xs text-neutral-500 line-clamp-2"
+        }
+      ],
+      "file": "screenshots/cloud__dashboard-api-explorer__desktop.png"
+    },
+    {
+      "product": "cloud",
+      "page": "Cloud /dashboard/admin",
+      "viewport": "desktop",
+      "status": 200,
+      "navError": null,
+      "pageErrors": [],
+      "overflowX": 0,
+      "textLength": 262,
+      "clipped": [
+        {
+          "tag": "a",
+          "text": "Skip to content",
+          "cls": "sr-only focus:not-sr-only focus:fixed focus:left-2 focus:top-2 focus:z-[200] foc"
+        }
+      ],
+      "file": "screenshots/cloud__dashboard-admin__desktop.png"
+    },
+    {
+      "product": "cloud",
+      "page": "Cloud /dashboard/admin/infrastructure",
+      "viewport": "desktop",
+      "status": 200,
+      "navError": null,
+      "pageErrors": [],
+      "overflowX": 0,
+      "textLength": 262,
+      "clipped": [
+        {
+          "tag": "a",
+          "text": "Skip to content",
+          "cls": "sr-only focus:not-sr-only focus:fixed focus:left-2 focus:top-2 focus:z-[200] foc"
+        }
+      ],
+      "file": "screenshots/cloud__dashboard-admin-infra__desktop.png"
+    },
+    {
+      "product": "cloud",
+      "page": "Cloud /dashboard/admin/metrics",
+      "viewport": "desktop",
+      "status": 200,
+      "navError": null,
+      "pageErrors": [],
+      "overflowX": 0,
+      "textLength": 262,
+      "clipped": [
+        {
+          "tag": "a",
+          "text": "Skip to content",
+          "cls": "sr-only focus:not-sr-only focus:fixed focus:left-2 focus:top-2 focus:z-[200] foc"
+        }
+      ],
+      "file": "screenshots/cloud__dashboard-admin-metrics__desktop.png"
+    },
+    {
+      "product": "cloud",
+      "page": "Cloud /dashboard/admin/redemptions",
+      "viewport": "desktop",
+      "status": 200,
+      "navError": null,
+      "pageErrors": [],
+      "overflowX": 0,
+      "textLength": 262,
+      "clipped": [
+        {
+          "tag": "a",
+          "text": "Skip to content",
+          "cls": "sr-only focus:not-sr-only focus:fixed focus:left-2 focus:top-2 focus:z-[200] foc"
+        }
+      ],
+      "file": "screenshots/cloud__dashboard-admin-redemptions__desktop.png"
+    },
+    {
+      "product": "app",
+      "page": "App /",
+      "viewport": "wide",
+      "status": 200,
+      "navError": null,
+      "pageErrors": [],
+      "overflowX": 0,
+      "textLength": 1579,
+      "clipped": [
+        {
+          "tag": "a",
+          "text": "Skip to content",
+          "cls": "sr-only focus:not-sr-only focus:fixed focus:left-2 focus:top-2 focus:z-[200] foc"
+        },
+        {
+          "tag": "h1",
+          "text": "Your Eliza, everywhere.",
+          "cls": "app-display"
+        },
+        {
+          "tag": "h2",
+          "text": "v2.0.0-beta.2",
+          "cls": ""
+        },
+        {
+          "tag": "h2",
+          "text": "Install the app.",
+          "cls": "app-h2"
+        },
+        {
+          "tag": "h2",
+          "text": "Run in Cloud.",
+          "cls": ""
+        },
+        {
+          "tag": "h2",
+          "text": "Install elizaOS.",
+          "cls": ""
+        }
+      ],
+      "file": "screenshots/app__home__wide.png"
+    },
+    {
+      "product": "app",
+      "page": "App /leaderboard",
+      "viewport": "wide",
+      "status": 200,
+      "navError": null,
+      "pageErrors": [],
+      "overflowX": 0,
+      "textLength": 8,
+      "clipped": [],
+      "file": "screenshots/app__leaderboard__wide.png"
+    },
+    {
+      "product": "app",
+      "page": "App /login",
+      "viewport": "wide",
+      "status": null,
+      "navError": "page.goto: Timeout 25000ms exceeded.\nCall log:\n\u001b[2m  - navigating to \"http://127.0.0.1:4511/login\", waiting until \"networkidle\"\u001b[22m\n",
+      "pageErrors": [],
+      "overflowX": 0,
+      "textLength": 94,
+      "clipped": [
+        {
+          "tag": "h1",
+          "text": "Anywhere you want her to be.",
+          "cls": "text-2xl sm:text-3xl font-bold text-neutral-900 text-center mb-8 whitespace-nowr"
+        }
+      ],
+      "file": "screenshots/app__login__wide.png"
+    },
+    {
+      "product": "app",
+      "page": "App /connected",
+      "viewport": "wide",
+      "status": 200,
+      "navError": null,
+      "pageErrors": [],
+      "overflowX": 0,
+      "textLength": 94,
+      "clipped": [
+        {
+          "tag": "h1",
+          "text": "Anywhere you want her to be.",
+          "cls": "text-2xl sm:text-3xl font-bold text-neutral-900 text-center mb-8 whitespace-nowr"
+        }
+      ],
+      "file": "screenshots/app__connected__wide.png"
+    },
+    {
+      "product": "app",
+      "page": "App /get-started",
+      "viewport": "wide",
+      "status": 200,
+      "navError": null,
+      "pageErrors": [],
+      "overflowX": 0,
+      "textLength": 94,
+      "clipped": [
+        {
+          "tag": "h1",
+          "text": "Anywhere you want her to be.",
+          "cls": "text-2xl sm:text-3xl font-bold text-neutral-900 text-center mb-8 whitespace-nowr"
+        }
+      ],
+      "file": "screenshots/app__get-started__wide.png"
+    },
+    {
+      "product": "os",
+      "page": "OS /",
+      "viewport": "wide",
+      "status": 200,
+      "navError": null,
+      "pageErrors": [],
+      "overflowX": 0,
+      "textLength": 1046,
+      "clipped": [
+        {
+          "tag": "a",
+          "text": "Skip to content",
+          "cls": "sr-only focus:not-sr-only focus:fixed focus:left-2 focus:top-2 focus:z-[200] foc"
+        },
+        {
+          "tag": "h1",
+          "text": "The agentic operating system.",
+          "cls": ""
+        },
+        {
+          "tag": "h2",
+          "text": "Download beta.",
+          "cls": ""
+        },
+        {
+          "tag": "h3",
+          "text": "ElizaOS Linux live beta",
+          "cls": ""
+        },
+        {
+          "tag": "h3",
+          "text": "ElizaOS USB installer for Windows",
+          "cls": ""
+        },
+        {
+          "tag": "h3",
+          "text": "ElizaOS VM launcher for Apple Silicon",
+          "cls": ""
+        },
+        {
+          "tag": "h3",
+          "text": "ElizaOS Android beta image bundle",
+          "cls": ""
+        },
+        {
+          "tag": "h2",
+          "text": "Hardware.",
+          "cls": ""
+        }
+      ],
+      "file": "screenshots/os__home__wide.png"
+    },
+    {
+      "product": "os",
+      "page": "OS /checkout",
+      "viewport": "wide",
+      "status": 200,
+      "navError": null,
+      "pageErrors": [],
+      "overflowX": 0,
+      "textLength": 467,
+      "clipped": [
+        {
+          "tag": "a",
+          "text": "Skip to content",
+          "cls": "sr-only focus:not-sr-only focus:fixed focus:left-2 focus:top-2 focus:z-[200] foc"
+        },
+        {
+          "tag": "h1",
+          "text": "ElizaOS USB",
+          "cls": ""
+        },
+        {
+          "tag": "h2",
+          "text": "Checkout on elizaOS.",
+          "cls": ""
+        }
+      ],
+      "file": "screenshots/os__checkout__wide.png"
+    },
+    {
+      "product": "os",
+      "page": "OS /checkout/success",
+      "viewport": "wide",
+      "status": 200,
+      "navError": null,
+      "pageErrors": [],
+      "overflowX": 0,
+      "textLength": 151,
+      "clipped": [
+        {
+          "tag": "a",
+          "text": "Skip to content",
+          "cls": "sr-only focus:not-sr-only focus:fixed focus:left-2 focus:top-2 focus:z-[200] foc"
+        },
+        {
+          "tag": "h1",
+          "text": "Pre-order received.",
+          "cls": ""
+        }
+      ],
+      "file": "screenshots/os__checkout-success__wide.png"
+    },
+    {
+      "product": "os",
+      "page": "OS /checkout/cancel",
+      "viewport": "wide",
+      "status": 200,
+      "navError": null,
+      "pageErrors": [],
+      "overflowX": 0,
+      "textLength": 149,
+      "clipped": [
+        {
+          "tag": "a",
+          "text": "Skip to content",
+          "cls": "sr-only focus:not-sr-only focus:fixed focus:left-2 focus:top-2 focus:z-[200] foc"
+        },
+        {
+          "tag": "h1",
+          "text": "Checkout canceled.",
+          "cls": ""
+        }
+      ],
+      "file": "screenshots/os__checkout-cancel__wide.png"
+    },
+    {
+      "product": "os",
+      "page": "OS /hardware/usb",
+      "viewport": "wide",
+      "status": 200,
+      "navError": null,
+      "pageErrors": [],
+      "overflowX": 0,
+      "textLength": 245,
+      "clipped": [
+        {
+          "tag": "a",
+          "text": "Skip to content",
+          "cls": "sr-only focus:not-sr-only focus:fixed focus:left-2 focus:top-2 focus:z-[200] foc"
+        },
+        {
+          "tag": "h1",
+          "text": "ElizaOS USB",
+          "cls": ""
+        }
+      ],
+      "file": "screenshots/os__hardware-usb__wide.png"
+    },
+    {
+      "product": "os",
+      "page": "OS /hardware/usb-plastic",
+      "viewport": "wide",
+      "status": 200,
+      "navError": null,
+      "pageErrors": [],
+      "overflowX": 0,
+      "textLength": 263,
+      "clipped": [
+        {
+          "tag": "a",
+          "text": "Skip to content",
+          "cls": "sr-only focus:not-sr-only focus:fixed focus:left-2 focus:top-2 focus:z-[200] foc"
+        },
+        {
+          "tag": "h1",
+          "text": "Branded USB key",
+          "cls": ""
+        }
+      ],
+      "file": "screenshots/os__hardware-usb-plastic__wide.png"
+    },
+    {
+      "product": "os",
+      "page": "OS /hardware/chibi-usb",
+      "viewport": "wide",
+      "status": 200,
+      "navError": null,
+      "pageErrors": [],
+      "overflowX": 0,
+      "textLength": 237,
+      "clipped": [
+        {
+          "tag": "a",
+          "text": "Skip to content",
+          "cls": "sr-only focus:not-sr-only focus:fixed focus:left-2 focus:top-2 focus:z-[200] foc"
+        },
+        {
+          "tag": "h1",
+          "text": "Chibi USB key",
+          "cls": ""
+        }
+      ],
+      "file": "screenshots/os__hardware-chibi-usb__wide.png"
+    },
+    {
+      "product": "os",
+      "page": "OS /hardware/case",
+      "viewport": "wide",
+      "status": 200,
+      "navError": null,
+      "pageErrors": [],
+      "overflowX": 0,
+      "textLength": 235,
+      "clipped": [
+        {
+          "tag": "a",
+          "text": "Skip to content",
+          "cls": "sr-only focus:not-sr-only focus:fixed focus:left-2 focus:top-2 focus:z-[200] foc"
+        },
+        {
+          "tag": "h1",
+          "text": "Raspberry Pi case",
+          "cls": ""
+        }
+      ],
+      "file": "screenshots/os__hardware-case__wide.png"
+    },
+    {
+      "product": "os",
+      "page": "OS /hardware/raspberry-pi",
+      "viewport": "wide",
+      "status": 200,
+      "navError": null,
+      "pageErrors": [],
+      "overflowX": 0,
+      "textLength": 252,
+      "clipped": [
+        {
+          "tag": "a",
+          "text": "Skip to content",
+          "cls": "sr-only focus:not-sr-only focus:fixed focus:left-2 focus:top-2 focus:z-[200] foc"
+        },
+        {
+          "tag": "h1",
+          "text": "Custom Raspberry Pi + case",
+          "cls": ""
+        }
+      ],
+      "file": "screenshots/os__hardware-raspberry-pi__wide.png"
+    },
+    {
+      "product": "os",
+      "page": "OS /hardware/mini-pc",
+      "viewport": "wide",
+      "status": 200,
+      "navError": null,
+      "pageErrors": [],
+      "overflowX": 0,
+      "textLength": 250,
+      "clipped": [
+        {
+          "tag": "a",
+          "text": "Skip to content",
+          "cls": "sr-only focus:not-sr-only focus:fixed focus:left-2 focus:top-2 focus:z-[200] foc"
+        },
+        {
+          "tag": "h1",
+          "text": "ElizaOS mini PC",
+          "cls": ""
+        }
+      ],
+      "file": "screenshots/os__hardware-mini-pc__wide.png"
+    },
+    {
+      "product": "os",
+      "page": "OS /hardware/phone",
+      "viewport": "wide",
+      "status": 200,
+      "navError": null,
+      "pageErrors": [],
+      "overflowX": 0,
+      "textLength": 226,
+      "clipped": [
+        {
+          "tag": "a",
+          "text": "Skip to content",
+          "cls": "sr-only focus:not-sr-only focus:fixed focus:left-2 focus:top-2 focus:z-[200] foc"
+        },
+        {
+          "tag": "h1",
+          "text": "ElizaOS Phone",
+          "cls": ""
+        }
+      ],
+      "file": "screenshots/os__hardware-phone__wide.png"
+    },
+    {
+      "product": "os",
+      "page": "OS /hardware/box",
+      "viewport": "wide",
+      "status": 200,
+      "navError": null,
+      "pageErrors": [],
+      "overflowX": 0,
+      "textLength": 223,
+      "clipped": [
+        {
+          "tag": "a",
+          "text": "Skip to content",
+          "cls": "sr-only focus:not-sr-only focus:fixed focus:left-2 focus:top-2 focus:z-[200] foc"
+        },
+        {
+          "tag": "h1",
+          "text": "ElizaOS Box",
+          "cls": ""
+        }
+      ],
+      "file": "screenshots/os__hardware-box__wide.png"
+    },
+    {
+      "product": "cloud",
+      "page": "Cloud /",
+      "viewport": "wide",
+      "status": 200,
+      "navError": null,
+      "pageErrors": [],
+      "overflowX": 0,
+      "textLength": 475,
+      "clipped": [
+        {
+          "tag": "a",
+          "text": "Skip to content",
+          "cls": "sr-only focus:not-sr-only focus:fixed focus:left-2 focus:top-2 focus:z-[200] foc"
+        }
+      ],
+      "file": "screenshots/cloud__home__wide.png"
+    },
+    {
+      "product": "cloud",
+      "page": "Cloud /os",
+      "viewport": "wide",
+      "status": 200,
+      "navError": null,
+      "pageErrors": [],
+      "overflowX": 0,
+      "textLength": 475,
+      "clipped": [
+        {
+          "tag": "a",
+          "text": "Skip to content",
+          "cls": "sr-only focus:not-sr-only focus:fixed focus:left-2 focus:top-2 focus:z-[200] foc"
+        }
+      ],
+      "file": "screenshots/cloud__os-alias__wide.png"
+    },
+    {
+      "product": "cloud",
+      "page": "Cloud /blog",
+      "viewport": "wide",
+      "status": 200,
+      "navError": null,
+      "pageErrors": [],
+      "overflowX": 0,
+      "textLength": 475,
+      "clipped": [
+        {
+          "tag": "a",
+          "text": "Skip to content",
+          "cls": "sr-only focus:not-sr-only focus:fixed focus:left-2 focus:top-2 focus:z-[200] foc"
+        }
+      ],
+      "file": "screenshots/cloud__blog__wide.png"
+    },
+    {
+      "product": "cloud",
+      "page": "Cloud /bsc",
+      "viewport": "wide",
+      "status": 200,
+      "navError": null,
+      "pageErrors": [],
+      "overflowX": 0,
+      "textLength": 312,
+      "clipped": [
+        {
+          "tag": "a",
+          "text": "Skip to content",
+          "cls": "sr-only focus:not-sr-only focus:fixed focus:left-2 focus:top-2 focus:z-[200] foc"
+        },
+        {
+          "tag": "h1",
+          "text": "Buy cloud credit on BSC",
+          "cls": "max-w-3xl font-mono text-4xl font-semibold uppercase tracking-normal text-white "
+        }
+      ],
+      "file": "screenshots/cloud__bsc__wide.png"
+    },
+    {
+      "product": "cloud",
+      "page": "Cloud /login",
+      "viewport": "wide",
+      "status": 200,
+      "navError": null,
+      "pageErrors": [],
+      "overflowX": 0,
+      "textLength": 199,
+      "clipped": [
+        {
+          "tag": "a",
+          "text": "Skip to content",
+          "cls": "sr-only focus:not-sr-only focus:fixed focus:left-2 focus:top-2 focus:z-[200] foc"
+        }
+      ],
+      "file": "screenshots/cloud__login__wide.png"
+    },
+    {
+      "product": "cloud",
+      "page": "Cloud /docs",
+      "viewport": "wide",
+      "status": 200,
+      "navError": null,
+      "pageErrors": [],
+      "overflowX": 0,
+      "textLength": 2630,
+      "clipped": [
+        {
+          "tag": "a",
+          "text": "Skip to content",
+          "cls": "sr-only focus:not-sr-only focus:fixed focus:left-2 focus:top-2 focus:z-[200] foc"
+        },
+        {
+          "tag": "h1",
+          "text": "Build Agents",
+          "cls": "docs-hero-title"
+        },
+        {
+          "tag": "span",
+          "text": "Build Agents",
+          "cls": "docs-hero-title-line"
+        },
+        {
+          "tag": "p",
+          "text": "Build Agents",
+          "cls": ""
+        }
+      ],
+      "file": "screenshots/cloud__docs__wide.png"
+    },
+    {
+      "product": "cloud",
+      "page": "Cloud /privacy-policy",
+      "viewport": "wide",
+      "status": 200,
+      "navError": null,
+      "pageErrors": [],
+      "overflowX": 0,
+      "textLength": 2639,
+      "clipped": [
+        {
+          "tag": "a",
+          "text": "Skip to content",
+          "cls": "sr-only focus:not-sr-only focus:fixed focus:left-2 focus:top-2 focus:z-[200] foc"
+        },
+        {
+          "tag": "h1",
+          "text": "Privacy Policy",
+          "cls": "text-4xl font-bold tracking-tight text-white sm:text-5xl"
+        }
+      ],
+      "file": "screenshots/cloud__privacy__wide.png"
+    },
+    {
+      "product": "cloud",
+      "page": "Cloud /terms-of-service",
+      "viewport": "wide",
+      "status": 200,
+      "navError": null,
+      "pageErrors": [],
+      "overflowX": 0,
+      "textLength": 3182,
+      "clipped": [
+        {
+          "tag": "a",
+          "text": "Skip to content",
+          "cls": "sr-only focus:not-sr-only focus:fixed focus:left-2 focus:top-2 focus:z-[200] foc"
+        },
+        {
+          "tag": "h1",
+          "text": "Terms of Service",
+          "cls": "text-4xl font-bold tracking-tight text-white sm:text-5xl"
+        }
+      ],
+      "file": "screenshots/cloud__terms__wide.png"
+    },
+    {
+      "product": "cloud",
+      "page": "Cloud /invite/accept",
+      "viewport": "wide",
+      "status": 200,
+      "navError": null,
+      "pageErrors": [],
+      "overflowX": 0,
+      "textLength": 76,
+      "clipped": [
+        {
+          "tag": "a",
+          "text": "Skip to content",
+          "cls": "sr-only focus:not-sr-only focus:fixed focus:left-2 focus:top-2 focus:z-[200] foc"
+        },
+        {
+          "tag": "h3",
+          "text": "Invalid Invitation",
+          "cls": "font-semibold leading-none tracking-tight"
+        }
+      ],
+      "file": "screenshots/cloud__invite-accept__wide.png"
+    },
+    {
+      "product": "cloud",
+      "page": "Cloud /payment/success",
+      "viewport": "wide",
+      "status": 200,
+      "navError": null,
+      "pageErrors": [],
+      "overflowX": 0,
+      "textLength": 122,
+      "clipped": [
+        {
+          "tag": "a",
+          "text": "Skip to content",
+          "cls": "sr-only focus:not-sr-only focus:fixed focus:left-2 focus:top-2 focus:z-[200] foc"
+        }
+      ],
+      "file": "screenshots/cloud__payment-success__wide.png"
+    },
+    {
+      "product": "cloud",
+      "page": "Cloud /payment/:id",
+      "viewport": "wide",
+      "status": 200,
+      "navError": null,
+      "pageErrors": [],
+      "overflowX": 0,
+      "textLength": 91,
+      "clipped": [
+        {
+          "tag": "a",
+          "text": "Skip to content",
+          "cls": "sr-only focus:not-sr-only focus:fixed focus:left-2 focus:top-2 focus:z-[200] foc"
+        }
+      ],
+      "file": "screenshots/cloud__payment-request__wide.png"
+    },
+    {
+      "product": "cloud",
+      "page": "Cloud /payment/app-charge/:ids",
+      "viewport": "wide",
+      "status": 200,
+      "navError": null,
+      "pageErrors": [],
+      "overflowX": 0,
+      "textLength": 82,
+      "clipped": [
+        {
+          "tag": "a",
+          "text": "Skip to content",
+          "cls": "sr-only focus:not-sr-only focus:fixed focus:left-2 focus:top-2 focus:z-[200] foc"
+        }
+      ],
+      "file": "screenshots/cloud__app-charge__wide.png"
+    },
+    {
+      "product": "cloud",
+      "page": "Cloud /sensitive-requests/:id",
+      "viewport": "wide",
+      "status": 200,
+      "navError": null,
+      "pageErrors": [],
+      "overflowX": 0,
+      "textLength": 99,
+      "clipped": [
+        {
+          "tag": "a",
+          "text": "Skip to content",
+          "cls": "sr-only focus:not-sr-only focus:fixed focus:left-2 focus:top-2 focus:z-[200] foc"
+        }
+      ],
+      "file": "screenshots/cloud__sensitive-request__wide.png"
+    },
+    {
+      "product": "cloud",
+      "page": "Cloud /approve/:id",
+      "viewport": "wide",
+      "status": 200,
+      "navError": null,
+      "pageErrors": [],
+      "overflowX": 0,
+      "textLength": 62,
+      "clipped": [
+        {
+          "tag": "a",
+          "text": "Skip to content",
+          "cls": "sr-only focus:not-sr-only focus:fixed focus:left-2 focus:top-2 focus:z-[200] foc"
+        }
+      ],
+      "file": "screenshots/cloud__approve__wide.png"
+    },
+    {
+      "product": "cloud",
+      "page": "Cloud /ballot/:id",
+      "viewport": "wide",
+      "status": 200,
+      "navError": null,
+      "pageErrors": [],
+      "overflowX": 0,
+      "textLength": 34,
+      "clipped": [
+        {
+          "tag": "a",
+          "text": "Skip to content",
+          "cls": "sr-only focus:not-sr-only focus:fixed focus:left-2 focus:top-2 focus:z-[200] foc"
+        }
+      ],
+      "file": "screenshots/cloud__ballot__wide.png"
+    },
+    {
+      "product": "cloud",
+      "page": "Cloud /auth/success",
+      "viewport": "wide",
+      "status": 200,
+      "navError": null,
+      "pageErrors": [],
+      "overflowX": 0,
+      "textLength": 146,
+      "clipped": [
+        {
+          "tag": "a",
+          "text": "Skip to content",
+          "cls": "sr-only focus:not-sr-only focus:fixed focus:left-2 focus:top-2 focus:z-[200] foc"
+        }
+      ],
+      "file": "screenshots/cloud__auth-success__wide.png"
+    },
+    {
+      "product": "cloud",
+      "page": "Cloud /auth/cli-login",
+      "viewport": "wide",
+      "status": 200,
+      "navError": null,
+      "pageErrors": [],
+      "overflowX": 0,
+      "textLength": 98,
+      "clipped": [
+        {
+          "tag": "a",
+          "text": "Skip to content",
+          "cls": "sr-only focus:not-sr-only focus:fixed focus:left-2 focus:top-2 focus:z-[200] foc"
+        }
+      ],
+      "file": "screenshots/cloud__auth-cli-login__wide.png"
+    },
+    {
+      "product": "cloud",
+      "page": "Cloud /auth/error",
+      "viewport": "wide",
+      "status": 200,
+      "navError": null,
+      "pageErrors": [],
+      "overflowX": 0,
+      "textLength": 177,
+      "clipped": [
+        {
+          "tag": "a",
+          "text": "Skip to content",
+          "cls": "sr-only focus:not-sr-only focus:fixed focus:left-2 focus:top-2 focus:z-[200] foc"
+        }
+      ],
+      "file": "screenshots/cloud__auth-error__wide.png"
+    },
+    {
+      "product": "cloud",
+      "page": "Cloud /auth/callback/email",
+      "viewport": "wide",
+      "status": 200,
+      "navError": null,
+      "pageErrors": [
+        "useAuth must be used within a <StewardProvider> with an `auth` prop."
+      ],
+      "overflowX": 0,
+      "textLength": 0,
+      "clipped": [],
+      "file": "screenshots/cloud__auth-email-callback__wide.png"
+    },
+    {
+      "product": "cloud",
+      "page": "Cloud /app-auth/authorize",
+      "viewport": "wide",
+      "status": 200,
+      "navError": null,
+      "pageErrors": [],
+      "overflowX": 0,
+      "textLength": 123,
+      "clipped": [
+        {
+          "tag": "a",
+          "text": "Skip to content",
+          "cls": "sr-only focus:not-sr-only focus:fixed focus:left-2 focus:top-2 focus:z-[200] foc"
+        }
+      ],
+      "file": "screenshots/cloud__app-auth-authorize__wide.png"
+    },
+    {
+      "product": "cloud",
+      "page": "Cloud /sandbox-proxy",
+      "viewport": "wide",
+      "status": 200,
+      "navError": null,
+      "pageErrors": [],
+      "overflowX": 0,
+      "textLength": 69,
+      "clipped": [
+        {
+          "tag": "a",
+          "text": "Skip to content",
+          "cls": "sr-only focus:not-sr-only focus:fixed focus:left-2 focus:top-2 focus:z-[200] foc"
+        }
+      ],
+      "file": "screenshots/cloud__sandbox-proxy__wide.png"
+    },
+    {
+      "product": "cloud",
+      "page": "Cloud /chat/:characterRef",
+      "viewport": "wide",
+      "status": 200,
+      "navError": null,
+      "pageErrors": [],
+      "overflowX": 0,
+      "textLength": 60,
+      "clipped": [
+        {
+          "tag": "a",
+          "text": "Skip to content",
+          "cls": "sr-only focus:not-sr-only focus:fixed focus:left-2 focus:top-2 focus:z-[200] foc"
+        }
+      ],
+      "file": "screenshots/cloud__public-chat__wide.png"
+    },
+    {
+      "product": "cloud",
+      "page": "Cloud /dashboard",
+      "viewport": "wide",
+      "status": 200,
+      "navError": null,
+      "pageErrors": [],
+      "overflowX": 0,
+      "textLength": 435,
+      "clipped": [
+        {
+          "tag": "a",
+          "text": "Skip to content",
+          "cls": "sr-only focus:not-sr-only focus:fixed focus:left-2 focus:top-2 focus:z-[200] foc"
+        },
+        {
+          "tag": "h1",
+          "text": "Run your Eliza agent on the hosted runtime",
+          "cls": "mt-2 text-3xl font-semibold tracking-normal text-white md:text-4xl"
+        }
+      ],
+      "file": "screenshots/cloud__dashboard__wide.png"
+    },
+    {
+      "product": "cloud",
+      "page": "Cloud /dashboard/account",
+      "viewport": "wide",
+      "status": 200,
+      "navError": null,
+      "pageErrors": [],
+      "overflowX": 0,
+      "textLength": 1396,
+      "clipped": [
+        {
+          "tag": "a",
+          "text": "Skip to content",
+          "cls": "sr-only focus:not-sr-only focus:fixed focus:left-2 focus:top-2 focus:z-[200] foc"
+        }
+      ],
+      "file": "screenshots/cloud__dashboard-account__wide.png"
+    },
+    {
+      "product": "cloud",
+      "page": "Cloud /dashboard/settings",
+      "viewport": "wide",
+      "status": 200,
+      "navError": null,
+      "pageErrors": [],
+      "overflowX": 0,
+      "textLength": 793,
+      "clipped": [
+        {
+          "tag": "a",
+          "text": "Skip to content",
+          "cls": "sr-only focus:not-sr-only focus:fixed focus:left-2 focus:top-2 focus:z-[200] foc"
+        }
+      ],
+      "file": "screenshots/cloud__dashboard-settings__wide.png"
+    },
+    {
+      "product": "cloud",
+      "page": "Cloud /dashboard/billing",
+      "viewport": "wide",
+      "status": 200,
+      "navError": null,
+      "pageErrors": [],
+      "overflowX": 0,
+      "textLength": 281,
+      "clipped": [
+        {
+          "tag": "a",
+          "text": "Skip to content",
+          "cls": "sr-only focus:not-sr-only focus:fixed focus:left-2 focus:top-2 focus:z-[200] foc"
+        }
+      ],
+      "file": "screenshots/cloud__dashboard-billing__wide.png"
+    },
+    {
+      "product": "cloud",
+      "page": "Cloud /dashboard/billing/success",
+      "viewport": "wide",
+      "status": 200,
+      "navError": null,
+      "pageErrors": [],
+      "overflowX": 0,
+      "textLength": 429,
+      "clipped": [
+        {
+          "tag": "a",
+          "text": "Skip to content",
+          "cls": "sr-only focus:not-sr-only focus:fixed focus:left-2 focus:top-2 focus:z-[200] foc"
+        }
+      ],
+      "file": "screenshots/cloud__dashboard-billing-success__wide.png"
+    },
+    {
+      "product": "cloud",
+      "page": "Cloud /dashboard/agents",
+      "viewport": "wide",
+      "status": 200,
+      "navError": null,
+      "pageErrors": [],
+      "overflowX": 0,
+      "textLength": 475,
+      "clipped": [
+        {
+          "tag": "a",
+          "text": "Skip to content",
+          "cls": "sr-only focus:not-sr-only focus:fixed focus:left-2 focus:top-2 focus:z-[200] foc"
+        }
+      ],
+      "file": "screenshots/cloud__dashboard-agents__wide.png"
+    },
+    {
+      "product": "cloud",
+      "page": "Cloud /dashboard/agents/test-agent",
+      "viewport": "wide",
+      "status": 200,
+      "navError": null,
+      "pageErrors": [],
+      "overflowX": 0,
+      "textLength": 331,
+      "clipped": [
+        {
+          "tag": "a",
+          "text": "Skip to content",
+          "cls": "sr-only focus:not-sr-only focus:fixed focus:left-2 focus:top-2 focus:z-[200] foc"
+        }
+      ],
+      "file": "screenshots/cloud__dashboard-agent-detail__wide.png"
+    },
+    {
+      "product": "cloud",
+      "page": "Cloud /dashboard/agents/test-agent/chat",
+      "viewport": "wide",
+      "status": 200,
+      "navError": null,
+      "pageErrors": [],
+      "overflowX": 0,
+      "textLength": 331,
+      "clipped": [
+        {
+          "tag": "a",
+          "text": "Skip to content",
+          "cls": "sr-only focus:not-sr-only focus:fixed focus:left-2 focus:top-2 focus:z-[200] foc"
+        }
+      ],
+      "file": "screenshots/cloud__dashboard-agent-chat__wide.png"
+    },
+    {
+      "product": "cloud",
+      "page": "Cloud /dashboard/apps",
+      "viewport": "wide",
+      "status": 200,
+      "navError": null,
+      "pageErrors": [],
+      "overflowX": 0,
+      "textLength": 127,
+      "clipped": [
+        {
+          "tag": "a",
+          "text": "Skip to content",
+          "cls": "sr-only focus:not-sr-only focus:fixed focus:left-2 focus:top-2 focus:z-[200] foc"
+        }
+      ],
+      "file": "screenshots/cloud__dashboard-apps__wide.png"
+    },
+    {
+      "product": "cloud",
+      "page": "Cloud /dashboard/apps/test-app",
+      "viewport": "wide",
+      "status": 200,
+      "navError": null,
+      "pageErrors": [],
+      "overflowX": 0,
+      "textLength": 127,
+      "clipped": [
+        {
+          "tag": "a",
+          "text": "Skip to content",
+          "cls": "sr-only focus:not-sr-only focus:fixed focus:left-2 focus:top-2 focus:z-[200] foc"
+        }
+      ],
+      "file": "screenshots/cloud__dashboard-app-detail__wide.png"
+    },
+    {
+      "product": "cloud",
+      "page": "Cloud /dashboard/my-agents",
+      "viewport": "wide",
+      "status": 200,
+      "navError": null,
+      "pageErrors": [],
+      "overflowX": 0,
+      "textLength": 166,
+      "clipped": [
+        {
+          "tag": "a",
+          "text": "Skip to content",
+          "cls": "sr-only focus:not-sr-only focus:fixed focus:left-2 focus:top-2 focus:z-[200] foc"
+        }
+      ],
+      "file": "screenshots/cloud__dashboard-my-agents__wide.png"
+    },
+    {
+      "product": "cloud",
+      "page": "Cloud /dashboard/api-keys",
+      "viewport": "wide",
+      "status": 404,
+      "navError": null,
+      "pageErrors": [],
+      "overflowX": 0,
+      "textLength": 0,
+      "clipped": [],
+      "file": "screenshots/cloud__dashboard-api-keys__wide.png"
+    },
+    {
+      "product": "cloud",
+      "page": "Cloud /dashboard/mcps",
+      "viewport": "wide",
+      "status": 404,
+      "navError": null,
+      "pageErrors": [],
+      "overflowX": 0,
+      "textLength": 0,
+      "clipped": [],
+      "file": "screenshots/cloud__dashboard-mcps__wide.png"
+    },
+    {
+      "product": "cloud",
+      "page": "Cloud /dashboard/documents",
+      "viewport": "wide",
+      "status": 404,
+      "navError": null,
+      "pageErrors": [],
+      "overflowX": 0,
+      "textLength": 0,
+      "clipped": [],
+      "file": "screenshots/cloud__dashboard-documents__wide.png"
+    },
+    {
+      "product": "cloud",
+      "page": "Cloud /dashboard/analytics",
+      "viewport": "wide",
+      "status": 200,
+      "navError": null,
+      "pageErrors": [],
+      "overflowX": 0,
+      "textLength": 235,
+      "clipped": [
+        {
+          "tag": "a",
+          "text": "Skip to content",
+          "cls": "sr-only focus:not-sr-only focus:fixed focus:left-2 focus:top-2 focus:z-[200] foc"
+        }
+      ],
+      "file": "screenshots/cloud__dashboard-analytics__wide.png"
+    },
+    {
+      "product": "cloud",
+      "page": "Cloud /dashboard/earnings",
+      "viewport": "wide",
+      "status": 200,
+      "navError": null,
+      "pageErrors": [],
+      "overflowX": 0,
+      "textLength": 235,
+      "clipped": [
+        {
+          "tag": "a",
+          "text": "Skip to content",
+          "cls": "sr-only focus:not-sr-only focus:fixed focus:left-2 focus:top-2 focus:z-[200] foc"
+        }
+      ],
+      "file": "screenshots/cloud__dashboard-earnings__wide.png"
+    },
+    {
+      "product": "cloud",
+      "page": "Cloud /dashboard/affiliates",
+      "viewport": "wide",
+      "status": 200,
+      "navError": null,
+      "pageErrors": [],
+      "overflowX": 0,
+      "textLength": 235,
+      "clipped": [
+        {
+          "tag": "a",
+          "text": "Skip to content",
+          "cls": "sr-only focus:not-sr-only focus:fixed focus:left-2 focus:top-2 focus:z-[200] foc"
+        }
+      ],
+      "file": "screenshots/cloud__dashboard-affiliates__wide.png"
+    },
+    {
+      "product": "cloud",
+      "page": "Cloud /dashboard/invoices/test-invoice",
+      "viewport": "wide",
+      "status": 200,
+      "navError": null,
+      "pageErrors": [],
+      "overflowX": 0,
+      "textLength": 235,
+      "clipped": [
+        {
+          "tag": "a",
+          "text": "Skip to content",
+          "cls": "sr-only focus:not-sr-only focus:fixed focus:left-2 focus:top-2 focus:z-[200] foc"
+        }
+      ],
+      "file": "screenshots/cloud__dashboard-invoice__wide.png"
+    },
+    {
+      "product": "cloud",
+      "page": "Cloud /dashboard/chat",
+      "viewport": "wide",
+      "status": 200,
+      "navError": null,
+      "pageErrors": [],
+      "overflowX": 0,
+      "textLength": 235,
+      "clipped": [
+        {
+          "tag": "a",
+          "text": "Skip to content",
+          "cls": "sr-only focus:not-sr-only focus:fixed focus:left-2 focus:top-2 focus:z-[200] foc"
+        }
+      ],
+      "file": "screenshots/cloud__dashboard-chat__wide.png"
+    },
+    {
+      "product": "cloud",
+      "page": "Cloud /dashboard/containers",
+      "viewport": "wide",
+      "status": 200,
+      "navError": null,
+      "pageErrors": [],
+      "overflowX": 0,
+      "textLength": 235,
+      "clipped": [
+        {
+          "tag": "a",
+          "text": "Skip to content",
+          "cls": "sr-only focus:not-sr-only focus:fixed focus:left-2 focus:top-2 focus:z-[200] foc"
+        }
+      ],
+      "file": "screenshots/cloud__dashboard-containers__wide.png"
+    },
+    {
+      "product": "cloud",
+      "page": "Cloud /dashboard/containers/test-container",
+      "viewport": "wide",
+      "status": 200,
+      "navError": null,
+      "pageErrors": [],
+      "overflowX": 0,
+      "textLength": 235,
+      "clipped": [
+        {
+          "tag": "a",
+          "text": "Skip to content",
+          "cls": "sr-only focus:not-sr-only focus:fixed focus:left-2 focus:top-2 focus:z-[200] foc"
+        }
+      ],
+      "file": "screenshots/cloud__dashboard-container-detail__wide.png"
+    },
+    {
+      "product": "cloud",
+      "page": "Cloud /dashboard/containers/agents/test-agent",
+      "viewport": "wide",
+      "status": 200,
+      "navError": null,
+      "pageErrors": [],
+      "overflowX": 0,
+      "textLength": 235,
+      "clipped": [
+        {
+          "tag": "a",
+          "text": "Skip to content",
+          "cls": "sr-only focus:not-sr-only focus:fixed focus:left-2 focus:top-2 focus:z-[200] foc"
+        }
+      ],
+      "file": "screenshots/cloud__dashboard-container-agent__wide.png"
+    },
+    {
+      "product": "cloud",
+      "page": "Cloud /dashboard/api-explorer",
+      "viewport": "wide",
+      "status": 200,
+      "navError": null,
+      "pageErrors": [],
+      "overflowX": 0,
+      "textLength": 235,
+      "clipped": [
+        {
+          "tag": "a",
+          "text": "Skip to content",
+          "cls": "sr-only focus:not-sr-only focus:fixed focus:left-2 focus:top-2 focus:z-[200] foc"
+        }
+      ],
+      "file": "screenshots/cloud__dashboard-api-explorer__wide.png"
+    },
+    {
+      "product": "cloud",
+      "page": "Cloud /dashboard/admin",
+      "viewport": "wide",
+      "status": 200,
+      "navError": null,
+      "pageErrors": [],
+      "overflowX": 0,
+      "textLength": 235,
+      "clipped": [
+        {
+          "tag": "a",
+          "text": "Skip to content",
+          "cls": "sr-only focus:not-sr-only focus:fixed focus:left-2 focus:top-2 focus:z-[200] foc"
+        }
+      ],
+      "file": "screenshots/cloud__dashboard-admin__wide.png"
+    },
+    {
+      "product": "cloud",
+      "page": "Cloud /dashboard/admin/infrastructure",
+      "viewport": "wide",
+      "status": 200,
+      "navError": null,
+      "pageErrors": [],
+      "overflowX": 0,
+      "textLength": 235,
+      "clipped": [
+        {
+          "tag": "a",
+          "text": "Skip to content",
+          "cls": "sr-only focus:not-sr-only focus:fixed focus:left-2 focus:top-2 focus:z-[200] foc"
+        }
+      ],
+      "file": "screenshots/cloud__dashboard-admin-infra__wide.png"
+    },
+    {
+      "product": "cloud",
+      "page": "Cloud /dashboard/admin/metrics",
+      "viewport": "wide",
+      "status": 200,
+      "navError": null,
+      "pageErrors": [],
+      "overflowX": 0,
+      "textLength": 235,
+      "clipped": [
+        {
+          "tag": "a",
+          "text": "Skip to content",
+          "cls": "sr-only focus:not-sr-only focus:fixed focus:left-2 focus:top-2 focus:z-[200] foc"
+        }
+      ],
+      "file": "screenshots/cloud__dashboard-admin-metrics__wide.png"
+    },
+    {
+      "product": "cloud",
+      "page": "Cloud /dashboard/admin/redemptions",
+      "viewport": "wide",
+      "status": 200,
+      "navError": null,
+      "pageErrors": [],
+      "overflowX": 0,
+      "textLength": 235,
+      "clipped": [
+        {
+          "tag": "a",
+          "text": "Skip to content",
+          "cls": "sr-only focus:not-sr-only focus:fixed focus:left-2 focus:top-2 focus:z-[200] foc"
+        }
+      ],
+      "file": "screenshots/cloud__dashboard-admin-redemptions__wide.png"
+    },
+    {
+      "product": "app",
+      "page": "App /",
+      "viewport": "mobile-portrait",
+      "status": 200,
+      "navError": null,
+      "pageErrors": [],
+      "overflowX": 0,
+      "textLength": 1579,
+      "clipped": [
+        {
+          "tag": "a",
+          "text": "Skip to content",
+          "cls": "sr-only focus:not-sr-only focus:fixed focus:left-2 focus:top-2 focus:z-[200] foc"
+        },
+        {
+          "tag": "h1",
+          "text": "Your Eliza, everywhere.",
+          "cls": "app-display"
+        },
+        {
+          "tag": "h2",
+          "text": "v2.0.0-beta.2",
+          "cls": ""
+        },
+        {
+          "tag": "h2",
+          "text": "Install the app.",
+          "cls": "app-h2"
+        },
+        {
+          "tag": "h2",
+          "text": "Run in Cloud.",
+          "cls": ""
+        },
+        {
+          "tag": "h2",
+          "text": "Install elizaOS.",
+          "cls": ""
+        }
+      ],
+      "file": "screenshots/app__home__mobile-portrait.png"
+    },
+    {
+      "product": "app",
+      "page": "App /leaderboard",
+      "viewport": "mobile-portrait",
+      "status": 200,
+      "navError": null,
+      "pageErrors": [],
+      "overflowX": 0,
+      "textLength": 5491,
+      "clipped": [
+        {
+          "tag": "span",
+          "text": "🇺🇸",
+          "cls": "text-3xl leading-none"
+        }
+      ],
+      "file": "screenshots/app__leaderboard__mobile-portrait.png"
+    },
+    {
+      "product": "os",
+      "page": "OS /",
+      "viewport": "mobile-portrait",
+      "status": 200,
+      "navError": null,
+      "pageErrors": [],
+      "overflowX": 0,
+      "textLength": 1046,
+      "clipped": [
+        {
+          "tag": "a",
+          "text": "Skip to content",
+          "cls": "sr-only focus:not-sr-only focus:fixed focus:left-2 focus:top-2 focus:z-[200] foc"
+        },
+        {
+          "tag": "h1",
+          "text": "The agentic operating system.",
+          "cls": ""
+        },
+        {
+          "tag": "h2",
+          "text": "Download beta.",
+          "cls": ""
+        },
+        {
+          "tag": "h3",
+          "text": "ElizaOS Linux live beta",
+          "cls": ""
+        },
+        {
+          "tag": "h3",
+          "text": "ElizaOS USB installer for Windows",
+          "cls": ""
+        },
+        {
+          "tag": "h3",
+          "text": "ElizaOS VM launcher for Apple Silicon",
+          "cls": ""
+        },
+        {
+          "tag": "h3",
+          "text": "ElizaOS Android beta image bundle",
+          "cls": ""
+        },
+        {
+          "tag": "h2",
+          "text": "Hardware.",
+          "cls": ""
+        }
+      ],
+      "file": "screenshots/os__home__mobile-portrait.png"
+    },
+    {
+      "product": "os",
+      "page": "OS /checkout",
+      "viewport": "mobile-portrait",
+      "status": 200,
+      "navError": null,
+      "pageErrors": [],
+      "overflowX": 0,
+      "textLength": 467,
+      "clipped": [
+        {
+          "tag": "a",
+          "text": "Skip to content",
+          "cls": "sr-only focus:not-sr-only focus:fixed focus:left-2 focus:top-2 focus:z-[200] foc"
+        },
+        {
+          "tag": "h1",
+          "text": "ElizaOS USB",
+          "cls": ""
+        },
+        {
+          "tag": "h2",
+          "text": "Checkout on elizaOS.",
+          "cls": ""
+        }
+      ],
+      "file": "screenshots/os__checkout__mobile-portrait.png"
+    },
+    {
+      "product": "os",
+      "page": "OS /checkout/success",
+      "viewport": "mobile-portrait",
+      "status": 200,
+      "navError": null,
+      "pageErrors": [],
+      "overflowX": 0,
+      "textLength": 151,
+      "clipped": [
+        {
+          "tag": "a",
+          "text": "Skip to content",
+          "cls": "sr-only focus:not-sr-only focus:fixed focus:left-2 focus:top-2 focus:z-[200] foc"
+        },
+        {
+          "tag": "h1",
+          "text": "Pre-order received.",
+          "cls": ""
+        }
+      ],
+      "file": "screenshots/os__checkout-success__mobile-portrait.png"
+    },
+    {
+      "product": "os",
+      "page": "OS /checkout/cancel",
+      "viewport": "mobile-portrait",
+      "status": 200,
+      "navError": null,
+      "pageErrors": [],
+      "overflowX": 0,
+      "textLength": 149,
+      "clipped": [
+        {
+          "tag": "a",
+          "text": "Skip to content",
+          "cls": "sr-only focus:not-sr-only focus:fixed focus:left-2 focus:top-2 focus:z-[200] foc"
+        },
+        {
+          "tag": "h1",
+          "text": "Checkout canceled.",
+          "cls": ""
+        }
+      ],
+      "file": "screenshots/os__checkout-cancel__mobile-portrait.png"
+    },
+    {
+      "product": "os",
+      "page": "OS /hardware/usb",
+      "viewport": "mobile-portrait",
+      "status": 200,
+      "navError": null,
+      "pageErrors": [],
+      "overflowX": 0,
+      "textLength": 245,
+      "clipped": [
+        {
+          "tag": "a",
+          "text": "Skip to content",
+          "cls": "sr-only focus:not-sr-only focus:fixed focus:left-2 focus:top-2 focus:z-[200] foc"
+        },
+        {
+          "tag": "h1",
+          "text": "ElizaOS USB",
+          "cls": ""
+        }
+      ],
+      "file": "screenshots/os__hardware-usb__mobile-portrait.png"
+    },
+    {
+      "product": "os",
+      "page": "OS /hardware/usb-plastic",
+      "viewport": "mobile-portrait",
+      "status": 200,
+      "navError": null,
+      "pageErrors": [],
+      "overflowX": 0,
+      "textLength": 263,
+      "clipped": [
+        {
+          "tag": "a",
+          "text": "Skip to content",
+          "cls": "sr-only focus:not-sr-only focus:fixed focus:left-2 focus:top-2 focus:z-[200] foc"
+        },
+        {
+          "tag": "h1",
+          "text": "Branded USB key",
+          "cls": ""
+        }
+      ],
+      "file": "screenshots/os__hardware-usb-plastic__mobile-portrait.png"
+    },
+    {
+      "product": "os",
+      "page": "OS /hardware/chibi-usb",
+      "viewport": "mobile-portrait",
+      "status": 200,
+      "navError": null,
+      "pageErrors": [],
+      "overflowX": 0,
+      "textLength": 237,
+      "clipped": [
+        {
+          "tag": "a",
+          "text": "Skip to content",
+          "cls": "sr-only focus:not-sr-only focus:fixed focus:left-2 focus:top-2 focus:z-[200] foc"
+        },
+        {
+          "tag": "h1",
+          "text": "Chibi USB key",
+          "cls": ""
+        }
+      ],
+      "file": "screenshots/os__hardware-chibi-usb__mobile-portrait.png"
+    },
+    {
+      "product": "os",
+      "page": "OS /hardware/case",
+      "viewport": "mobile-portrait",
+      "status": 200,
+      "navError": null,
+      "pageErrors": [],
+      "overflowX": 0,
+      "textLength": 235,
+      "clipped": [
+        {
+          "tag": "a",
+          "text": "Skip to content",
+          "cls": "sr-only focus:not-sr-only focus:fixed focus:left-2 focus:top-2 focus:z-[200] foc"
+        },
+        {
+          "tag": "h1",
+          "text": "Raspberry Pi case",
+          "cls": ""
+        }
+      ],
+      "file": "screenshots/os__hardware-case__mobile-portrait.png"
+    },
+    {
+      "product": "os",
+      "page": "OS /hardware/raspberry-pi",
+      "viewport": "mobile-portrait",
+      "status": 200,
+      "navError": null,
+      "pageErrors": [],
+      "overflowX": 0,
+      "textLength": 252,
+      "clipped": [
+        {
+          "tag": "a",
+          "text": "Skip to content",
+          "cls": "sr-only focus:not-sr-only focus:fixed focus:left-2 focus:top-2 focus:z-[200] foc"
+        },
+        {
+          "tag": "h1",
+          "text": "Custom Raspberry Pi + case",
+          "cls": ""
+        }
+      ],
+      "file": "screenshots/os__hardware-raspberry-pi__mobile-portrait.png"
+    },
+    {
+      "product": "os",
+      "page": "OS /hardware/mini-pc",
+      "viewport": "mobile-portrait",
+      "status": 200,
+      "navError": null,
+      "pageErrors": [],
+      "overflowX": 0,
+      "textLength": 250,
+      "clipped": [
+        {
+          "tag": "a",
+          "text": "Skip to content",
+          "cls": "sr-only focus:not-sr-only focus:fixed focus:left-2 focus:top-2 focus:z-[200] foc"
+        },
+        {
+          "tag": "h1",
+          "text": "ElizaOS mini PC",
+          "cls": ""
+        }
+      ],
+      "file": "screenshots/os__hardware-mini-pc__mobile-portrait.png"
+    },
+    {
+      "product": "os",
+      "page": "OS /hardware/phone",
+      "viewport": "mobile-portrait",
+      "status": 200,
+      "navError": null,
+      "pageErrors": [],
+      "overflowX": 0,
+      "textLength": 226,
+      "clipped": [
+        {
+          "tag": "a",
+          "text": "Skip to content",
+          "cls": "sr-only focus:not-sr-only focus:fixed focus:left-2 focus:top-2 focus:z-[200] foc"
+        },
+        {
+          "tag": "h1",
+          "text": "ElizaOS Phone",
+          "cls": ""
+        }
+      ],
+      "file": "screenshots/os__hardware-phone__mobile-portrait.png"
+    },
+    {
+      "product": "os",
+      "page": "OS /hardware/box",
+      "viewport": "mobile-portrait",
+      "status": 200,
+      "navError": null,
+      "pageErrors": [],
+      "overflowX": 0,
+      "textLength": 223,
+      "clipped": [
+        {
+          "tag": "a",
+          "text": "Skip to content",
+          "cls": "sr-only focus:not-sr-only focus:fixed focus:left-2 focus:top-2 focus:z-[200] foc"
+        },
+        {
+          "tag": "h1",
+          "text": "ElizaOS Box",
+          "cls": ""
+        }
+      ],
+      "file": "screenshots/os__hardware-box__mobile-portrait.png"
+    },
+    {
+      "product": "cloud",
+      "page": "Cloud /",
+      "viewport": "mobile-portrait",
+      "status": 200,
+      "navError": null,
+      "pageErrors": [],
+      "overflowX": 0,
+      "textLength": 203,
+      "clipped": [
+        {
+          "tag": "a",
+          "text": "Skip to content",
+          "cls": "sr-only focus:not-sr-only focus:fixed focus:left-2 focus:top-2 focus:z-[200] foc"
+        },
+        {
+          "tag": "h1",
+          "text": "Launch Eliza.",
+          "cls": "max-w-4xl text-[clamp(3rem,14vw,10rem)] font-medium leading-[0.86] text-black"
+        },
+        {
+          "tag": "p",
+          "text": "© 2026 Eliza Cloud · USA",
+          "cls": "text-sm text-white/70 whitespace-nowrap"
+        }
+      ],
+      "file": "screenshots/cloud__home__mobile-portrait.png"
+    },
+    {
+      "product": "cloud",
+      "page": "Cloud /os",
+      "viewport": "mobile-portrait",
+      "status": 200,
+      "navError": null,
+      "pageErrors": [],
+      "overflowX": 0,
+      "textLength": 203,
+      "clipped": [
+        {
+          "tag": "a",
+          "text": "Skip to content",
+          "cls": "sr-only focus:not-sr-only focus:fixed focus:left-2 focus:top-2 focus:z-[200] foc"
+        },
+        {
+          "tag": "h1",
+          "text": "Launch Eliza.",
+          "cls": "max-w-4xl text-[clamp(3rem,14vw,10rem)] font-medium leading-[0.86] text-black"
+        },
+        {
+          "tag": "p",
+          "text": "© 2026 Eliza Cloud · USA",
+          "cls": "text-sm text-white/70 whitespace-nowrap"
+        }
+      ],
+      "file": "screenshots/cloud__os-alias__mobile-portrait.png"
+    },
+    {
+      "product": "cloud",
+      "page": "Cloud /blog",
+      "viewport": "mobile-portrait",
+      "status": 200,
+      "navError": null,
+      "pageErrors": [],
+      "overflowX": 0,
+      "textLength": 203,
+      "clipped": [
+        {
+          "tag": "a",
+          "text": "Skip to content",
+          "cls": "sr-only focus:not-sr-only focus:fixed focus:left-2 focus:top-2 focus:z-[200] foc"
+        },
+        {
+          "tag": "h1",
+          "text": "Launch Eliza.",
+          "cls": "max-w-4xl text-[clamp(3rem,14vw,10rem)] font-medium leading-[0.86] text-black"
+        },
+        {
+          "tag": "p",
+          "text": "© 2026 Eliza Cloud · USA",
+          "cls": "text-sm text-white/70 whitespace-nowrap"
+        }
+      ],
+      "file": "screenshots/cloud__blog__mobile-portrait.png"
+    },
+    {
+      "product": "cloud",
+      "page": "Cloud /bsc",
+      "viewport": "mobile-portrait",
+      "status": 200,
+      "navError": null,
+      "pageErrors": [],
+      "overflowX": 0,
+      "textLength": 570,
+      "clipped": [
+        {
+          "tag": "a",
+          "text": "Skip to content",
+          "cls": "sr-only focus:not-sr-only focus:fixed focus:left-2 focus:top-2 focus:z-[200] foc"
+        },
+        {
+          "tag": "a",
+          "text": "elizacloud",
+          "cls": "inline-flex text-txt-strong transition-colors hover:text-accent"
+        },
+        {
+          "tag": "span",
+          "text": "elizacloud",
+          "cls": "font-[family-name:var(--font-display)] text-2xl font-normal leading-none trackin"
+        },
+        {
+          "tag": "h2",
+          "text": "Buy cloud credit on BSC",
+          "cls": "lg:text-5xl text-txt-strong mb-4 max-w-3xl text-4xl font-semibold uppercase lead"
+        }
+      ],
+      "file": "screenshots/cloud__bsc__mobile-portrait.png"
+    },
+    {
+      "product": "cloud",
+      "page": "Cloud /login",
+      "viewport": "mobile-portrait",
+      "status": 200,
+      "navError": null,
+      "pageErrors": [],
+      "overflowX": 0,
+      "textLength": 215,
+      "clipped": [
+        {
+          "tag": "a",
+          "text": "Skip to content",
+          "cls": "sr-only focus:not-sr-only focus:fixed focus:left-2 focus:top-2 focus:z-[200] foc"
+        }
+      ],
+      "file": "screenshots/cloud__login__mobile-portrait.png"
+    },
+    {
+      "product": "cloud",
+      "page": "Cloud /docs",
+      "viewport": "mobile-portrait",
+      "status": 200,
+      "navError": null,
+      "pageErrors": [],
+      "overflowX": 0,
+      "textLength": 2630,
+      "clipped": [
+        {
+          "tag": "a",
+          "text": "Skip to content",
+          "cls": "sr-only focus:not-sr-only focus:fixed focus:left-2 focus:top-2 focus:z-[200] foc"
+        },
+        {
+          "tag": "h1",
+          "text": "Build Agents",
+          "cls": "docs-hero-title"
+        },
+        {
+          "tag": "span",
+          "text": "Build Agents",
+          "cls": "docs-hero-title-line"
+        },
+        {
+          "tag": "p",
+          "text": "Build Agents",
+          "cls": ""
+        }
+      ],
+      "file": "screenshots/cloud__docs__mobile-portrait.png"
+    },
+    {
+      "product": "cloud",
+      "page": "Cloud /privacy-policy",
+      "viewport": "mobile-portrait",
+      "status": 200,
+      "navError": null,
+      "pageErrors": [],
+      "overflowX": 0,
+      "textLength": 2616,
+      "clipped": [
+        {
+          "tag": "a",
+          "text": "Skip to content",
+          "cls": "sr-only focus:not-sr-only focus:fixed focus:left-2 focus:top-2 focus:z-[200] foc"
+        },
+        {
+          "tag": "h1",
+          "text": "Privacy Policy",
+          "cls": "text-4xl font-bold tracking-tight text-white sm:text-5xl"
+        },
+        {
+          "tag": "p",
+          "text": "© 2026 Eliza Cloud · USA",
+          "cls": "text-sm text-white/70 whitespace-nowrap"
+        }
+      ],
+      "file": "screenshots/cloud__privacy__mobile-portrait.png"
+    },
+    {
+      "product": "cloud",
+      "page": "Cloud /terms-of-service",
+      "viewport": "mobile-portrait",
+      "status": 200,
+      "navError": null,
+      "pageErrors": [],
+      "overflowX": 0,
+      "textLength": 3159,
+      "clipped": [
+        {
+          "tag": "a",
+          "text": "Skip to content",
+          "cls": "sr-only focus:not-sr-only focus:fixed focus:left-2 focus:top-2 focus:z-[200] foc"
+        },
+        {
+          "tag": "h1",
+          "text": "Terms of Service",
+          "cls": "text-4xl font-bold tracking-tight text-white sm:text-5xl"
+        },
+        {
+          "tag": "p",
+          "text": "© 2026 Eliza Cloud · USA",
+          "cls": "text-sm text-white/70 whitespace-nowrap"
+        }
+      ],
+      "file": "screenshots/cloud__terms__mobile-portrait.png"
+    },
+    {
+      "product": "cloud",
+      "page": "Cloud /invite/accept",
+      "viewport": "mobile-portrait",
+      "status": 200,
+      "navError": null,
+      "pageErrors": [],
+      "overflowX": 0,
+      "textLength": 76,
+      "clipped": [
+        {
+          "tag": "a",
+          "text": "Skip to content",
+          "cls": "sr-only focus:not-sr-only focus:fixed focus:left-2 focus:top-2 focus:z-[200] foc"
+        },
+        {
+          "tag": "h3",
+          "text": "Invalid Invitation",
+          "cls": "font-semibold leading-none tracking-tight"
+        }
+      ],
+      "file": "screenshots/cloud__invite-accept__mobile-portrait.png"
+    },
+    {
+      "product": "cloud",
+      "page": "Cloud /payment/success",
+      "viewport": "mobile-portrait",
+      "status": 200,
+      "navError": null,
+      "pageErrors": [],
+      "overflowX": 0,
+      "textLength": 215,
+      "clipped": [
+        {
+          "tag": "a",
+          "text": "Skip to content",
+          "cls": "sr-only focus:not-sr-only focus:fixed focus:left-2 focus:top-2 focus:z-[200] foc"
+        }
+      ],
+      "file": "screenshots/cloud__payment-success__mobile-portrait.png"
+    },
+    {
+      "product": "cloud",
+      "page": "Cloud /payment/:id",
+      "viewport": "mobile-portrait",
+      "status": 200,
+      "navError": null,
+      "pageErrors": [],
+      "overflowX": 0,
+      "textLength": 91,
+      "clipped": [
+        {
+          "tag": "a",
+          "text": "Skip to content",
+          "cls": "sr-only focus:not-sr-only focus:fixed focus:left-2 focus:top-2 focus:z-[200] foc"
+        }
+      ],
+      "file": "screenshots/cloud__payment-request__mobile-portrait.png"
+    },
+    {
+      "product": "cloud",
+      "page": "Cloud /payment/app-charge/:ids",
+      "viewport": "mobile-portrait",
+      "status": 200,
+      "navError": null,
+      "pageErrors": [],
+      "overflowX": 0,
+      "textLength": 82,
+      "clipped": [
+        {
+          "tag": "a",
+          "text": "Skip to content",
+          "cls": "sr-only focus:not-sr-only focus:fixed focus:left-2 focus:top-2 focus:z-[200] foc"
+        }
+      ],
+      "file": "screenshots/cloud__app-charge__mobile-portrait.png"
+    },
+    {
+      "product": "cloud",
+      "page": "Cloud /sensitive-requests/:id",
+      "viewport": "mobile-portrait",
+      "status": 200,
+      "navError": null,
+      "pageErrors": [],
+      "overflowX": 0,
+      "textLength": 99,
+      "clipped": [
+        {
+          "tag": "a",
+          "text": "Skip to content",
+          "cls": "sr-only focus:not-sr-only focus:fixed focus:left-2 focus:top-2 focus:z-[200] foc"
+        }
+      ],
+      "file": "screenshots/cloud__sensitive-request__mobile-portrait.png"
+    },
+    {
+      "product": "cloud",
+      "page": "Cloud /approve/:id",
+      "viewport": "mobile-portrait",
+      "status": 200,
+      "navError": null,
+      "pageErrors": [],
+      "overflowX": 0,
+      "textLength": 62,
+      "clipped": [
+        {
+          "tag": "a",
+          "text": "Skip to content",
+          "cls": "sr-only focus:not-sr-only focus:fixed focus:left-2 focus:top-2 focus:z-[200] foc"
+        }
+      ],
+      "file": "screenshots/cloud__approve__mobile-portrait.png"
+    },
+    {
+      "product": "cloud",
+      "page": "Cloud /ballot/:id",
+      "viewport": "mobile-portrait",
+      "status": 200,
+      "navError": null,
+      "pageErrors": [],
+      "overflowX": 0,
+      "textLength": 34,
+      "clipped": [
+        {
+          "tag": "a",
+          "text": "Skip to content",
+          "cls": "sr-only focus:not-sr-only focus:fixed focus:left-2 focus:top-2 focus:z-[200] foc"
+        }
+      ],
+      "file": "screenshots/cloud__ballot__mobile-portrait.png"
+    },
+    {
+      "product": "cloud",
+      "page": "Cloud /auth/success",
+      "viewport": "mobile-portrait",
+      "status": 200,
+      "navError": null,
+      "pageErrors": [],
+      "overflowX": 0,
+      "textLength": 146,
+      "clipped": [
+        {
+          "tag": "a",
+          "text": "Skip to content",
+          "cls": "sr-only focus:not-sr-only focus:fixed focus:left-2 focus:top-2 focus:z-[200] foc"
+        }
+      ],
+      "file": "screenshots/cloud__auth-success__mobile-portrait.png"
+    },
+    {
+      "product": "cloud",
+      "page": "Cloud /auth/cli-login",
+      "viewport": "mobile-portrait",
+      "status": 200,
+      "navError": null,
+      "pageErrors": [],
+      "overflowX": 0,
+      "textLength": 98,
+      "clipped": [
+        {
+          "tag": "a",
+          "text": "Skip to content",
+          "cls": "sr-only focus:not-sr-only focus:fixed focus:left-2 focus:top-2 focus:z-[200] foc"
+        }
+      ],
+      "file": "screenshots/cloud__auth-cli-login__mobile-portrait.png"
+    },
+    {
+      "product": "cloud",
+      "page": "Cloud /auth/error",
+      "viewport": "mobile-portrait",
+      "status": 200,
+      "navError": null,
+      "pageErrors": [],
+      "overflowX": 0,
+      "textLength": 177,
+      "clipped": [
+        {
+          "tag": "a",
+          "text": "Skip to content",
+          "cls": "sr-only focus:not-sr-only focus:fixed focus:left-2 focus:top-2 focus:z-[200] foc"
+        }
+      ],
+      "file": "screenshots/cloud__auth-error__mobile-portrait.png"
+    },
+    {
+      "product": "cloud",
+      "page": "Cloud /auth/callback/email",
+      "viewport": "mobile-portrait",
+      "status": 200,
+      "navError": null,
+      "pageErrors": [],
+      "overflowX": 0,
+      "textLength": 111,
+      "clipped": [
+        {
+          "tag": "a",
+          "text": "Skip to content",
+          "cls": "sr-only focus:not-sr-only focus:fixed focus:left-2 focus:top-2 focus:z-[200] foc"
+        }
+      ],
+      "file": "screenshots/cloud__auth-email-callback__mobile-portrait.png"
+    },
+    {
+      "product": "cloud",
+      "page": "Cloud /app-auth/authorize",
+      "viewport": "mobile-portrait",
+      "status": 200,
+      "navError": null,
+      "pageErrors": [],
+      "overflowX": 0,
+      "textLength": 123,
+      "clipped": [
+        {
+          "tag": "a",
+          "text": "Skip to content",
+          "cls": "sr-only focus:not-sr-only focus:fixed focus:left-2 focus:top-2 focus:z-[200] foc"
+        }
+      ],
+      "file": "screenshots/cloud__app-auth-authorize__mobile-portrait.png"
+    },
+    {
+      "product": "cloud",
+      "page": "Cloud /sandbox-proxy",
+      "viewport": "mobile-portrait",
+      "status": 200,
+      "navError": null,
+      "pageErrors": [],
+      "overflowX": 0,
+      "textLength": 69,
+      "clipped": [
+        {
+          "tag": "a",
+          "text": "Skip to content",
+          "cls": "sr-only focus:not-sr-only focus:fixed focus:left-2 focus:top-2 focus:z-[200] foc"
+        }
+      ],
+      "file": "screenshots/cloud__sandbox-proxy__mobile-portrait.png"
+    },
+    {
+      "product": "cloud",
+      "page": "Cloud /chat/:characterRef",
+      "viewport": "mobile-portrait",
+      "status": 200,
+      "navError": null,
+      "pageErrors": [],
+      "overflowX": 0,
+      "textLength": 60,
+      "clipped": [
+        {
+          "tag": "a",
+          "text": "Skip to content",
+          "cls": "sr-only focus:not-sr-only focus:fixed focus:left-2 focus:top-2 focus:z-[200] foc"
+        }
+      ],
+      "file": "screenshots/cloud__public-chat__mobile-portrait.png"
+    },
+    {
+      "product": "cloud",
+      "page": "Cloud /dashboard",
+      "viewport": "mobile-portrait",
+      "status": 200,
+      "navError": null,
+      "pageErrors": [],
+      "overflowX": 0,
+      "textLength": 215,
+      "clipped": [
+        {
+          "tag": "a",
+          "text": "Skip to content",
+          "cls": "sr-only focus:not-sr-only focus:fixed focus:left-2 focus:top-2 focus:z-[200] foc"
+        }
+      ],
+      "file": "screenshots/cloud__dashboard__mobile-portrait.png"
+    },
+    {
+      "product": "cloud",
+      "page": "Cloud /dashboard/account",
+      "viewport": "mobile-portrait",
+      "status": 200,
+      "navError": null,
+      "pageErrors": [],
+      "overflowX": 0,
+      "textLength": 215,
+      "clipped": [
+        {
+          "tag": "a",
+          "text": "Skip to content",
+          "cls": "sr-only focus:not-sr-only focus:fixed focus:left-2 focus:top-2 focus:z-[200] foc"
+        }
+      ],
+      "file": "screenshots/cloud__dashboard-account__mobile-portrait.png"
+    },
+    {
+      "product": "cloud",
+      "page": "Cloud /dashboard/settings",
+      "viewport": "mobile-portrait",
+      "status": 200,
+      "navError": null,
+      "pageErrors": [],
+      "overflowX": 0,
+      "textLength": 215,
+      "clipped": [
+        {
+          "tag": "a",
+          "text": "Skip to content",
+          "cls": "sr-only focus:not-sr-only focus:fixed focus:left-2 focus:top-2 focus:z-[200] foc"
+        }
+      ],
+      "file": "screenshots/cloud__dashboard-settings__mobile-portrait.png"
+    },
+    {
+      "product": "cloud",
+      "page": "Cloud /dashboard/billing",
+      "viewport": "mobile-portrait",
+      "status": 200,
+      "navError": null,
+      "pageErrors": [],
+      "overflowX": 0,
+      "textLength": 215,
+      "clipped": [
+        {
+          "tag": "a",
+          "text": "Skip to content",
+          "cls": "sr-only focus:not-sr-only focus:fixed focus:left-2 focus:top-2 focus:z-[200] foc"
+        }
+      ],
+      "file": "screenshots/cloud__dashboard-billing__mobile-portrait.png"
+    },
+    {
+      "product": "cloud",
+      "page": "Cloud /dashboard/billing/success",
+      "viewport": "mobile-portrait",
+      "status": 200,
+      "navError": null,
+      "pageErrors": [],
+      "overflowX": 0,
+      "textLength": 215,
+      "clipped": [
+        {
+          "tag": "a",
+          "text": "Skip to content",
+          "cls": "sr-only focus:not-sr-only focus:fixed focus:left-2 focus:top-2 focus:z-[200] foc"
+        }
+      ],
+      "file": "screenshots/cloud__dashboard-billing-success__mobile-portrait.png"
+    },
+    {
+      "product": "cloud",
+      "page": "Cloud /dashboard/agents",
+      "viewport": "mobile-portrait",
+      "status": 200,
+      "navError": null,
+      "pageErrors": [],
+      "overflowX": 0,
+      "textLength": 215,
+      "clipped": [
+        {
+          "tag": "a",
+          "text": "Skip to content",
+          "cls": "sr-only focus:not-sr-only focus:fixed focus:left-2 focus:top-2 focus:z-[200] foc"
+        }
+      ],
+      "file": "screenshots/cloud__dashboard-agents__mobile-portrait.png"
+    },
+    {
+      "product": "cloud",
+      "page": "Cloud /dashboard/agents/test-agent",
+      "viewport": "mobile-portrait",
+      "status": 200,
+      "navError": null,
+      "pageErrors": [],
+      "overflowX": 0,
+      "textLength": 215,
+      "clipped": [
+        {
+          "tag": "a",
+          "text": "Skip to content",
+          "cls": "sr-only focus:not-sr-only focus:fixed focus:left-2 focus:top-2 focus:z-[200] foc"
+        }
+      ],
+      "file": "screenshots/cloud__dashboard-agent-detail__mobile-portrait.png"
+    },
+    {
+      "product": "cloud",
+      "page": "Cloud /dashboard/agents/test-agent/chat",
+      "viewport": "mobile-portrait",
+      "status": 200,
+      "navError": null,
+      "pageErrors": [],
+      "overflowX": 0,
+      "textLength": 215,
+      "clipped": [
+        {
+          "tag": "a",
+          "text": "Skip to content",
+          "cls": "sr-only focus:not-sr-only focus:fixed focus:left-2 focus:top-2 focus:z-[200] foc"
+        }
+      ],
+      "file": "screenshots/cloud__dashboard-agent-chat__mobile-portrait.png"
+    },
+    {
+      "product": "cloud",
+      "page": "Cloud /dashboard/apps",
+      "viewport": "mobile-portrait",
+      "status": 200,
+      "navError": null,
+      "pageErrors": [],
+      "overflowX": 0,
+      "textLength": 215,
+      "clipped": [
+        {
+          "tag": "a",
+          "text": "Skip to content",
+          "cls": "sr-only focus:not-sr-only focus:fixed focus:left-2 focus:top-2 focus:z-[200] foc"
+        }
+      ],
+      "file": "screenshots/cloud__dashboard-apps__mobile-portrait.png"
+    },
+    {
+      "product": "cloud",
+      "page": "Cloud /dashboard/apps/test-app",
+      "viewport": "mobile-portrait",
+      "status": 200,
+      "navError": null,
+      "pageErrors": [],
+      "overflowX": 0,
+      "textLength": 215,
+      "clipped": [
+        {
+          "tag": "a",
+          "text": "Skip to content",
+          "cls": "sr-only focus:not-sr-only focus:fixed focus:left-2 focus:top-2 focus:z-[200] foc"
+        }
+      ],
+      "file": "screenshots/cloud__dashboard-app-detail__mobile-portrait.png"
+    },
+    {
+      "product": "cloud",
+      "page": "Cloud /dashboard/my-agents",
+      "viewport": "mobile-portrait",
+      "status": 200,
+      "navError": null,
+      "pageErrors": [],
+      "overflowX": 0,
+      "textLength": 215,
+      "clipped": [
+        {
+          "tag": "a",
+          "text": "Skip to content",
+          "cls": "sr-only focus:not-sr-only focus:fixed focus:left-2 focus:top-2 focus:z-[200] foc"
+        }
+      ],
+      "file": "screenshots/cloud__dashboard-my-agents__mobile-portrait.png"
+    },
+    {
+      "product": "cloud",
+      "page": "Cloud /dashboard/api-keys",
+      "viewport": "mobile-portrait",
+      "status": 200,
+      "navError": null,
+      "pageErrors": [],
+      "overflowX": 0,
+      "textLength": 215,
+      "clipped": [
+        {
+          "tag": "a",
+          "text": "Skip to content",
+          "cls": "sr-only focus:not-sr-only focus:fixed focus:left-2 focus:top-2 focus:z-[200] foc"
+        }
+      ],
+      "file": "screenshots/cloud__dashboard-api-keys__mobile-portrait.png"
+    },
+    {
+      "product": "cloud",
+      "page": "Cloud /dashboard/mcps",
+      "viewport": "mobile-portrait",
+      "status": 200,
+      "navError": null,
+      "pageErrors": [],
+      "overflowX": 0,
+      "textLength": 215,
+      "clipped": [
+        {
+          "tag": "a",
+          "text": "Skip to content",
+          "cls": "sr-only focus:not-sr-only focus:fixed focus:left-2 focus:top-2 focus:z-[200] foc"
+        }
+      ],
+      "file": "screenshots/cloud__dashboard-mcps__mobile-portrait.png"
+    },
+    {
+      "product": "cloud",
+      "page": "Cloud /dashboard/documents",
+      "viewport": "mobile-portrait",
+      "status": 404,
+      "navError": null,
+      "pageErrors": [],
+      "overflowX": 0,
+      "textLength": 0,
+      "clipped": [],
+      "file": "screenshots/cloud__dashboard-documents__mobile-portrait.png"
+    },
+    {
+      "product": "cloud",
+      "page": "Cloud /dashboard/analytics",
+      "viewport": "mobile-portrait",
+      "status": 404,
+      "navError": null,
+      "pageErrors": [],
+      "overflowX": 0,
+      "textLength": 0,
+      "clipped": [],
+      "file": "screenshots/cloud__dashboard-analytics__mobile-portrait.png"
+    },
+    {
+      "product": "cloud",
+      "page": "Cloud /dashboard/earnings",
+      "viewport": "mobile-portrait",
+      "status": 404,
+      "navError": null,
+      "pageErrors": [],
+      "overflowX": 0,
+      "textLength": 0,
+      "clipped": [],
+      "file": "screenshots/cloud__dashboard-earnings__mobile-portrait.png"
+    },
+    {
+      "product": "cloud",
+      "page": "Cloud /dashboard/affiliates",
+      "viewport": "mobile-portrait",
+      "status": 404,
+      "navError": null,
+      "pageErrors": [],
+      "overflowX": 0,
+      "textLength": 0,
+      "clipped": [],
+      "file": "screenshots/cloud__dashboard-affiliates__mobile-portrait.png"
+    },
+    {
+      "product": "cloud",
+      "page": "Cloud /dashboard/invoices/test-invoice",
+      "viewport": "mobile-portrait",
+      "status": 404,
+      "navError": null,
+      "pageErrors": [],
+      "overflowX": 0,
+      "textLength": 0,
+      "clipped": [],
+      "file": "screenshots/cloud__dashboard-invoice__mobile-portrait.png"
+    },
+    {
+      "product": "cloud",
+      "page": "Cloud /dashboard/chat",
+      "viewport": "mobile-portrait",
+      "status": 200,
+      "navError": null,
+      "pageErrors": [],
+      "overflowX": 0,
+      "textLength": 215,
+      "clipped": [
+        {
+          "tag": "a",
+          "text": "Skip to content",
+          "cls": "sr-only focus:not-sr-only focus:fixed focus:left-2 focus:top-2 focus:z-[200] foc"
+        }
+      ],
+      "file": "screenshots/cloud__dashboard-chat__mobile-portrait.png"
+    },
+    {
+      "product": "cloud",
+      "page": "Cloud /dashboard/containers",
+      "viewport": "mobile-portrait",
+      "status": 200,
+      "navError": null,
+      "pageErrors": [],
+      "overflowX": 0,
+      "textLength": 215,
+      "clipped": [
+        {
+          "tag": "a",
+          "text": "Skip to content",
+          "cls": "sr-only focus:not-sr-only focus:fixed focus:left-2 focus:top-2 focus:z-[200] foc"
+        }
+      ],
+      "file": "screenshots/cloud__dashboard-containers__mobile-portrait.png"
+    },
+    {
+      "product": "cloud",
+      "page": "Cloud /dashboard/containers/test-container",
+      "viewport": "mobile-portrait",
+      "status": 200,
+      "navError": null,
+      "pageErrors": [],
+      "overflowX": 0,
+      "textLength": 215,
+      "clipped": [
+        {
+          "tag": "a",
+          "text": "Skip to content",
+          "cls": "sr-only focus:not-sr-only focus:fixed focus:left-2 focus:top-2 focus:z-[200] foc"
+        }
+      ],
+      "file": "screenshots/cloud__dashboard-container-detail__mobile-portrait.png"
+    },
+    {
+      "product": "cloud",
+      "page": "Cloud /dashboard/containers/agents/test-agent",
+      "viewport": "mobile-portrait",
+      "status": 200,
+      "navError": null,
+      "pageErrors": [],
+      "overflowX": 0,
+      "textLength": 215,
+      "clipped": [
+        {
+          "tag": "a",
+          "text": "Skip to content",
+          "cls": "sr-only focus:not-sr-only focus:fixed focus:left-2 focus:top-2 focus:z-[200] foc"
+        }
+      ],
+      "file": "screenshots/cloud__dashboard-container-agent__mobile-portrait.png"
+    },
+    {
+      "product": "cloud",
+      "page": "Cloud /dashboard/api-explorer",
+      "viewport": "mobile-portrait",
+      "status": 200,
+      "navError": null,
+      "pageErrors": [],
+      "overflowX": 0,
+      "textLength": 215,
+      "clipped": [
+        {
+          "tag": "a",
+          "text": "Skip to content",
+          "cls": "sr-only focus:not-sr-only focus:fixed focus:left-2 focus:top-2 focus:z-[200] foc"
+        }
+      ],
+      "file": "screenshots/cloud__dashboard-api-explorer__mobile-portrait.png"
+    },
+    {
+      "product": "cloud",
+      "page": "Cloud /dashboard/admin",
+      "viewport": "mobile-portrait",
+      "status": 200,
+      "navError": null,
+      "pageErrors": [],
+      "overflowX": 0,
+      "textLength": 215,
+      "clipped": [
+        {
+          "tag": "a",
+          "text": "Skip to content",
+          "cls": "sr-only focus:not-sr-only focus:fixed focus:left-2 focus:top-2 focus:z-[200] foc"
+        }
+      ],
+      "file": "screenshots/cloud__dashboard-admin__mobile-portrait.png"
+    },
+    {
+      "product": "cloud",
+      "page": "Cloud /dashboard/admin/infrastructure",
+      "viewport": "mobile-portrait",
+      "status": 200,
+      "navError": null,
+      "pageErrors": [],
+      "overflowX": 0,
+      "textLength": 215,
+      "clipped": [
+        {
+          "tag": "a",
+          "text": "Skip to content",
+          "cls": "sr-only focus:not-sr-only focus:fixed focus:left-2 focus:top-2 focus:z-[200] foc"
+        }
+      ],
+      "file": "screenshots/cloud__dashboard-admin-infra__mobile-portrait.png"
+    },
+    {
+      "product": "cloud",
+      "page": "Cloud /dashboard/admin/metrics",
+      "viewport": "mobile-portrait",
+      "status": 200,
+      "navError": null,
+      "pageErrors": [],
+      "overflowX": 0,
+      "textLength": 215,
+      "clipped": [
+        {
+          "tag": "a",
+          "text": "Skip to content",
+          "cls": "sr-only focus:not-sr-only focus:fixed focus:left-2 focus:top-2 focus:z-[200] foc"
+        }
+      ],
+      "file": "screenshots/cloud__dashboard-admin-metrics__mobile-portrait.png"
+    },
+    {
+      "product": "cloud",
+      "page": "Cloud /dashboard/admin/redemptions",
+      "viewport": "mobile-portrait",
+      "status": 200,
+      "navError": null,
+      "pageErrors": [],
+      "overflowX": 0,
+      "textLength": 215,
+      "clipped": [
+        {
+          "tag": "a",
+          "text": "Skip to content",
+          "cls": "sr-only focus:not-sr-only focus:fixed focus:left-2 focus:top-2 focus:z-[200] foc"
+        }
+      ],
+      "file": "screenshots/cloud__dashboard-admin-redemptions__mobile-portrait.png"
+    },
+    {
+      "product": "app",
+      "page": "App /",
+      "viewport": "mobile-landscape",
+      "status": 200,
+      "navError": null,
+      "pageErrors": [],
+      "overflowX": 0,
+      "textLength": 1579,
+      "clipped": [
+        {
+          "tag": "a",
+          "text": "Skip to content",
+          "cls": "sr-only focus:not-sr-only focus:fixed focus:left-2 focus:top-2 focus:z-[200] foc"
+        },
+        {
+          "tag": "h1",
+          "text": "Your Eliza, everywhere.",
+          "cls": "app-display"
+        },
+        {
+          "tag": "h2",
+          "text": "v2.0.0-beta.2",
+          "cls": ""
+        },
+        {
+          "tag": "h2",
+          "text": "Install the app.",
+          "cls": "app-h2"
+        },
+        {
+          "tag": "h2",
+          "text": "Run in Cloud.",
+          "cls": ""
+        },
+        {
+          "tag": "h2",
+          "text": "Install elizaOS.",
+          "cls": ""
+        }
+      ],
+      "file": "screenshots/app__home__mobile-landscape.png"
+    },
+    {
+      "product": "app",
+      "page": "App /leaderboard",
+      "viewport": "mobile-landscape",
+      "status": 200,
+      "navError": null,
+      "pageErrors": [],
+      "overflowX": 0,
+      "textLength": 5491,
+      "clipped": [
+        {
+          "tag": "span",
+          "text": "🇺🇸",
+          "cls": "text-3xl leading-none"
+        }
+      ],
+      "file": "screenshots/app__leaderboard__mobile-landscape.png"
+    },
+    {
+      "product": "app",
+      "page": "App /login",
+      "viewport": "mobile-landscape",
+      "status": 200,
+      "navError": null,
+      "pageErrors": [],
+      "overflowX": 0,
+      "textLength": 94,
+      "clipped": [
+        {
+          "tag": "h1",
+          "text": "Anywhere you want her to be.",
+          "cls": "text-2xl sm:text-3xl font-bold text-neutral-900 text-center mb-8 whitespace-nowr"
+        }
+      ],
+      "file": "screenshots/app__login__mobile-landscape.png"
+    },
+    {
+      "product": "app",
+      "page": "App /connected",
+      "viewport": "mobile-landscape",
+      "status": 200,
+      "navError": null,
+      "pageErrors": [],
+      "overflowX": 0,
+      "textLength": 94,
+      "clipped": [
+        {
+          "tag": "h1",
+          "text": "Anywhere you want her to be.",
+          "cls": "text-2xl sm:text-3xl font-bold text-neutral-900 text-center mb-8 whitespace-nowr"
+        }
+      ],
+      "file": "screenshots/app__connected__mobile-landscape.png"
+    },
+    {
+      "product": "app",
+      "page": "App /get-started",
+      "viewport": "mobile-landscape",
+      "status": 200,
+      "navError": null,
+      "pageErrors": [],
+      "overflowX": 0,
+      "textLength": 94,
+      "clipped": [
+        {
+          "tag": "h1",
+          "text": "Anywhere you want her to be.",
+          "cls": "text-2xl sm:text-3xl font-bold text-neutral-900 text-center mb-8 whitespace-nowr"
+        }
+      ],
+      "file": "screenshots/app__get-started__mobile-landscape.png"
+    },
+    {
+      "product": "os",
+      "page": "OS /",
+      "viewport": "mobile-landscape",
+      "status": 200,
+      "navError": null,
+      "pageErrors": [],
+      "overflowX": 0,
+      "textLength": 1046,
+      "clipped": [
+        {
+          "tag": "a",
+          "text": "Skip to content",
+          "cls": "sr-only focus:not-sr-only focus:fixed focus:left-2 focus:top-2 focus:z-[200] foc"
+        },
+        {
+          "tag": "h1",
+          "text": "The agentic operating system.",
+          "cls": ""
+        },
+        {
+          "tag": "h2",
+          "text": "Download beta.",
+          "cls": ""
+        },
+        {
+          "tag": "h3",
+          "text": "ElizaOS Linux live beta",
+          "cls": ""
+        },
+        {
+          "tag": "h3",
+          "text": "ElizaOS USB installer for Windows",
+          "cls": ""
+        },
+        {
+          "tag": "h3",
+          "text": "ElizaOS VM launcher for Apple Silicon",
+          "cls": ""
+        },
+        {
+          "tag": "h3",
+          "text": "ElizaOS Android beta image bundle",
+          "cls": ""
+        },
+        {
+          "tag": "h2",
+          "text": "Hardware.",
+          "cls": ""
+        }
+      ],
+      "file": "screenshots/os__home__mobile-landscape.png"
+    },
+    {
+      "product": "os",
+      "page": "OS /checkout",
+      "viewport": "mobile-landscape",
+      "status": 200,
+      "navError": null,
+      "pageErrors": [],
+      "overflowX": 0,
+      "textLength": 467,
+      "clipped": [
+        {
+          "tag": "a",
+          "text": "Skip to content",
+          "cls": "sr-only focus:not-sr-only focus:fixed focus:left-2 focus:top-2 focus:z-[200] foc"
+        },
+        {
+          "tag": "h1",
+          "text": "ElizaOS USB",
+          "cls": ""
+        },
+        {
+          "tag": "h2",
+          "text": "Checkout on elizaOS.",
+          "cls": ""
+        }
+      ],
+      "file": "screenshots/os__checkout__mobile-landscape.png"
+    },
+    {
+      "product": "os",
+      "page": "OS /checkout/success",
+      "viewport": "mobile-landscape",
+      "status": 200,
+      "navError": null,
+      "pageErrors": [],
+      "overflowX": 0,
+      "textLength": 151,
+      "clipped": [
+        {
+          "tag": "a",
+          "text": "Skip to content",
+          "cls": "sr-only focus:not-sr-only focus:fixed focus:left-2 focus:top-2 focus:z-[200] foc"
+        },
+        {
+          "tag": "h1",
+          "text": "Pre-order received.",
+          "cls": ""
+        }
+      ],
+      "file": "screenshots/os__checkout-success__mobile-landscape.png"
+    },
+    {
+      "product": "os",
+      "page": "OS /checkout/cancel",
+      "viewport": "mobile-landscape",
+      "status": 200,
+      "navError": null,
+      "pageErrors": [],
+      "overflowX": 0,
+      "textLength": 149,
+      "clipped": [
+        {
+          "tag": "a",
+          "text": "Skip to content",
+          "cls": "sr-only focus:not-sr-only focus:fixed focus:left-2 focus:top-2 focus:z-[200] foc"
+        },
+        {
+          "tag": "h1",
+          "text": "Checkout canceled.",
+          "cls": ""
+        }
+      ],
+      "file": "screenshots/os__checkout-cancel__mobile-landscape.png"
+    },
+    {
+      "product": "os",
+      "page": "OS /hardware/usb",
+      "viewport": "mobile-landscape",
+      "status": 200,
+      "navError": null,
+      "pageErrors": [],
+      "overflowX": 0,
+      "textLength": 245,
+      "clipped": [
+        {
+          "tag": "a",
+          "text": "Skip to content",
+          "cls": "sr-only focus:not-sr-only focus:fixed focus:left-2 focus:top-2 focus:z-[200] foc"
+        },
+        {
+          "tag": "h1",
+          "text": "ElizaOS USB",
+          "cls": ""
+        }
+      ],
+      "file": "screenshots/os__hardware-usb__mobile-landscape.png"
+    },
+    {
+      "product": "os",
+      "page": "OS /hardware/usb-plastic",
+      "viewport": "mobile-landscape",
+      "status": 200,
+      "navError": null,
+      "pageErrors": [],
+      "overflowX": 0,
+      "textLength": 263,
+      "clipped": [
+        {
+          "tag": "a",
+          "text": "Skip to content",
+          "cls": "sr-only focus:not-sr-only focus:fixed focus:left-2 focus:top-2 focus:z-[200] foc"
+        },
+        {
+          "tag": "h1",
+          "text": "Branded USB key",
+          "cls": ""
+        }
+      ],
+      "file": "screenshots/os__hardware-usb-plastic__mobile-landscape.png"
+    },
+    {
+      "product": "os",
+      "page": "OS /hardware/chibi-usb",
+      "viewport": "mobile-landscape",
+      "status": 200,
+      "navError": null,
+      "pageErrors": [],
+      "overflowX": 0,
+      "textLength": 237,
+      "clipped": [
+        {
+          "tag": "a",
+          "text": "Skip to content",
+          "cls": "sr-only focus:not-sr-only focus:fixed focus:left-2 focus:top-2 focus:z-[200] foc"
+        },
+        {
+          "tag": "h1",
+          "text": "Chibi USB key",
+          "cls": ""
+        }
+      ],
+      "file": "screenshots/os__hardware-chibi-usb__mobile-landscape.png"
+    },
+    {
+      "product": "os",
+      "page": "OS /hardware/case",
+      "viewport": "mobile-landscape",
+      "status": 200,
+      "navError": null,
+      "pageErrors": [],
+      "overflowX": 0,
+      "textLength": 235,
+      "clipped": [
+        {
+          "tag": "a",
+          "text": "Skip to content",
+          "cls": "sr-only focus:not-sr-only focus:fixed focus:left-2 focus:top-2 focus:z-[200] foc"
+        },
+        {
+          "tag": "h1",
+          "text": "Raspberry Pi case",
+          "cls": ""
+        }
+      ],
+      "file": "screenshots/os__hardware-case__mobile-landscape.png"
+    },
+    {
+      "product": "os",
+      "page": "OS /hardware/raspberry-pi",
+      "viewport": "mobile-landscape",
+      "status": 200,
+      "navError": null,
+      "pageErrors": [],
+      "overflowX": 0,
+      "textLength": 252,
+      "clipped": [
+        {
+          "tag": "a",
+          "text": "Skip to content",
+          "cls": "sr-only focus:not-sr-only focus:fixed focus:left-2 focus:top-2 focus:z-[200] foc"
+        },
+        {
+          "tag": "h1",
+          "text": "Custom Raspberry Pi + case",
+          "cls": ""
+        }
+      ],
+      "file": "screenshots/os__hardware-raspberry-pi__mobile-landscape.png"
+    },
+    {
+      "product": "os",
+      "page": "OS /hardware/mini-pc",
+      "viewport": "mobile-landscape",
+      "status": 200,
+      "navError": null,
+      "pageErrors": [],
+      "overflowX": 0,
+      "textLength": 250,
+      "clipped": [
+        {
+          "tag": "a",
+          "text": "Skip to content",
+          "cls": "sr-only focus:not-sr-only focus:fixed focus:left-2 focus:top-2 focus:z-[200] foc"
+        },
+        {
+          "tag": "h1",
+          "text": "ElizaOS mini PC",
+          "cls": ""
+        }
+      ],
+      "file": "screenshots/os__hardware-mini-pc__mobile-landscape.png"
+    },
+    {
+      "product": "os",
+      "page": "OS /hardware/phone",
+      "viewport": "mobile-landscape",
+      "status": 200,
+      "navError": null,
+      "pageErrors": [],
+      "overflowX": 0,
+      "textLength": 226,
+      "clipped": [
+        {
+          "tag": "a",
+          "text": "Skip to content",
+          "cls": "sr-only focus:not-sr-only focus:fixed focus:left-2 focus:top-2 focus:z-[200] foc"
+        },
+        {
+          "tag": "h1",
+          "text": "ElizaOS Phone",
+          "cls": ""
+        }
+      ],
+      "file": "screenshots/os__hardware-phone__mobile-landscape.png"
+    },
+    {
+      "product": "os",
+      "page": "OS /hardware/box",
+      "viewport": "mobile-landscape",
+      "status": 200,
+      "navError": null,
+      "pageErrors": [],
+      "overflowX": 0,
+      "textLength": 223,
+      "clipped": [
+        {
+          "tag": "a",
+          "text": "Skip to content",
+          "cls": "sr-only focus:not-sr-only focus:fixed focus:left-2 focus:top-2 focus:z-[200] foc"
+        },
+        {
+          "tag": "h1",
+          "text": "ElizaOS Box",
+          "cls": ""
+        }
+      ],
+      "file": "screenshots/os__hardware-box__mobile-landscape.png"
+    },
+    {
+      "product": "cloud",
+      "page": "Cloud /",
+      "viewport": "mobile-landscape",
+      "status": 200,
+      "navError": null,
+      "pageErrors": [],
+      "overflowX": 0,
+      "textLength": 223,
+      "clipped": [
+        {
+          "tag": "a",
+          "text": "Skip to content",
+          "cls": "sr-only focus:not-sr-only focus:fixed focus:left-2 focus:top-2 focus:z-[200] foc"
+        },
+        {
+          "tag": "h1",
+          "text": "Launch Eliza.",
+          "cls": "max-w-4xl text-[clamp(3rem,14vw,10rem)] font-medium leading-[0.86] text-black"
+        }
+      ],
+      "file": "screenshots/cloud__home__mobile-landscape.png"
+    },
+    {
+      "product": "cloud",
+      "page": "Cloud /os",
+      "viewport": "mobile-landscape",
+      "status": 200,
+      "navError": null,
+      "pageErrors": [],
+      "overflowX": 0,
+      "textLength": 223,
+      "clipped": [
+        {
+          "tag": "a",
+          "text": "Skip to content",
+          "cls": "sr-only focus:not-sr-only focus:fixed focus:left-2 focus:top-2 focus:z-[200] foc"
+        },
+        {
+          "tag": "h1",
+          "text": "Launch Eliza.",
+          "cls": "max-w-4xl text-[clamp(3rem,14vw,10rem)] font-medium leading-[0.86] text-black"
+        }
+      ],
+      "file": "screenshots/cloud__os-alias__mobile-landscape.png"
+    },
+    {
+      "product": "cloud",
+      "page": "Cloud /blog",
+      "viewport": "mobile-landscape",
+      "status": 200,
+      "navError": null,
+      "pageErrors": [],
+      "overflowX": 0,
+      "textLength": 223,
+      "clipped": [
+        {
+          "tag": "a",
+          "text": "Skip to content",
+          "cls": "sr-only focus:not-sr-only focus:fixed focus:left-2 focus:top-2 focus:z-[200] foc"
+        },
+        {
+          "tag": "h1",
+          "text": "Launch Eliza.",
+          "cls": "max-w-4xl text-[clamp(3rem,14vw,10rem)] font-medium leading-[0.86] text-black"
+        }
+      ],
+      "file": "screenshots/cloud__blog__mobile-landscape.png"
+    },
+    {
+      "product": "cloud",
+      "page": "Cloud /bsc",
+      "viewport": "mobile-landscape",
+      "status": 200,
+      "navError": null,
+      "pageErrors": [],
+      "overflowX": 0,
+      "textLength": 584,
+      "clipped": [
+        {
+          "tag": "a",
+          "text": "Skip to content",
+          "cls": "sr-only focus:not-sr-only focus:fixed focus:left-2 focus:top-2 focus:z-[200] foc"
+        },
+        {
+          "tag": "a",
+          "text": "elizacloud",
+          "cls": "inline-flex text-txt-strong transition-colors hover:text-accent"
+        },
+        {
+          "tag": "span",
+          "text": "elizacloud",
+          "cls": "font-[family-name:var(--font-display)] text-2xl font-normal leading-none trackin"
+        },
+        {
+          "tag": "h2",
+          "text": "Buy cloud credit on BSC",
+          "cls": "lg:text-5xl text-txt-strong mb-4 max-w-3xl text-4xl font-semibold uppercase lead"
+        }
+      ],
+      "file": "screenshots/cloud__bsc__mobile-landscape.png"
+    },
+    {
+      "product": "cloud",
+      "page": "Cloud /login",
+      "viewport": "mobile-landscape",
+      "status": 200,
+      "navError": null,
+      "pageErrors": [],
+      "overflowX": 0,
+      "textLength": 235,
+      "clipped": [
+        {
+          "tag": "a",
+          "text": "Skip to content",
+          "cls": "sr-only focus:not-sr-only focus:fixed focus:left-2 focus:top-2 focus:z-[200] foc"
+        }
+      ],
+      "file": "screenshots/cloud__login__mobile-landscape.png"
+    },
+    {
+      "product": "cloud",
+      "page": "Cloud /docs",
+      "viewport": "mobile-landscape",
+      "status": 200,
+      "navError": null,
+      "pageErrors": [],
+      "overflowX": 0,
+      "textLength": 2630,
+      "clipped": [
+        {
+          "tag": "a",
+          "text": "Skip to content",
+          "cls": "sr-only focus:not-sr-only focus:fixed focus:left-2 focus:top-2 focus:z-[200] foc"
+        },
+        {
+          "tag": "h1",
+          "text": "Build Agents",
+          "cls": "docs-hero-title"
+        },
+        {
+          "tag": "span",
+          "text": "Build Agents",
+          "cls": "docs-hero-title-line"
+        },
+        {
+          "tag": "p",
+          "text": "Build Agents",
+          "cls": ""
+        }
+      ],
+      "file": "screenshots/cloud__docs__mobile-landscape.png"
+    },
+    {
+      "product": "cloud",
+      "page": "Cloud /privacy-policy",
+      "viewport": "mobile-landscape",
+      "status": 200,
+      "navError": null,
+      "pageErrors": [],
+      "overflowX": 0,
+      "textLength": 2636,
+      "clipped": [
+        {
+          "tag": "a",
+          "text": "Skip to content",
+          "cls": "sr-only focus:not-sr-only focus:fixed focus:left-2 focus:top-2 focus:z-[200] foc"
+        },
+        {
+          "tag": "h1",
+          "text": "Privacy Policy",
+          "cls": "text-4xl font-bold tracking-tight text-white sm:text-5xl"
+        }
+      ],
+      "file": "screenshots/cloud__privacy__mobile-landscape.png"
+    },
+    {
+      "product": "cloud",
+      "page": "Cloud /terms-of-service",
+      "viewport": "mobile-landscape",
+      "status": 200,
+      "navError": null,
+      "pageErrors": [],
+      "overflowX": 0,
+      "textLength": 3179,
+      "clipped": [
+        {
+          "tag": "a",
+          "text": "Skip to content",
+          "cls": "sr-only focus:not-sr-only focus:fixed focus:left-2 focus:top-2 focus:z-[200] foc"
+        },
+        {
+          "tag": "h1",
+          "text": "Terms of Service",
+          "cls": "text-4xl font-bold tracking-tight text-white sm:text-5xl"
+        }
+      ],
+      "file": "screenshots/cloud__terms__mobile-landscape.png"
+    },
+    {
+      "product": "cloud",
+      "page": "Cloud /invite/accept",
+      "viewport": "mobile-landscape",
+      "status": 200,
+      "navError": null,
+      "pageErrors": [],
+      "overflowX": 0,
+      "textLength": 76,
+      "clipped": [
+        {
+          "tag": "a",
+          "text": "Skip to content",
+          "cls": "sr-only focus:not-sr-only focus:fixed focus:left-2 focus:top-2 focus:z-[200] foc"
+        },
+        {
+          "tag": "h3",
+          "text": "Invalid Invitation",
+          "cls": "font-semibold leading-none tracking-tight"
+        }
+      ],
+      "file": "screenshots/cloud__invite-accept__mobile-landscape.png"
+    },
+    {
+      "product": "cloud",
+      "page": "Cloud /payment/success",
+      "viewport": "mobile-landscape",
+      "status": 200,
+      "navError": null,
+      "pageErrors": [],
+      "overflowX": 0,
+      "textLength": 235,
+      "clipped": [
+        {
+          "tag": "a",
+          "text": "Skip to content",
+          "cls": "sr-only focus:not-sr-only focus:fixed focus:left-2 focus:top-2 focus:z-[200] foc"
+        }
+      ],
+      "file": "screenshots/cloud__payment-success__mobile-landscape.png"
+    },
+    {
+      "product": "cloud",
+      "page": "Cloud /payment/:id",
+      "viewport": "mobile-landscape",
+      "status": 200,
+      "navError": null,
+      "pageErrors": [],
+      "overflowX": 0,
+      "textLength": 91,
+      "clipped": [
+        {
+          "tag": "a",
+          "text": "Skip to content",
+          "cls": "sr-only focus:not-sr-only focus:fixed focus:left-2 focus:top-2 focus:z-[200] foc"
+        }
+      ],
+      "file": "screenshots/cloud__payment-request__mobile-landscape.png"
+    },
+    {
+      "product": "cloud",
+      "page": "Cloud /payment/app-charge/:ids",
+      "viewport": "mobile-landscape",
+      "status": 200,
+      "navError": null,
+      "pageErrors": [],
+      "overflowX": 0,
+      "textLength": 82,
+      "clipped": [
+        {
+          "tag": "a",
+          "text": "Skip to content",
+          "cls": "sr-only focus:not-sr-only focus:fixed focus:left-2 focus:top-2 focus:z-[200] foc"
+        }
+      ],
+      "file": "screenshots/cloud__app-charge__mobile-landscape.png"
+    },
+    {
+      "product": "cloud",
+      "page": "Cloud /sensitive-requests/:id",
+      "viewport": "mobile-landscape",
+      "status": 200,
+      "navError": null,
+      "pageErrors": [],
+      "overflowX": 0,
+      "textLength": 99,
+      "clipped": [
+        {
+          "tag": "a",
+          "text": "Skip to content",
+          "cls": "sr-only focus:not-sr-only focus:fixed focus:left-2 focus:top-2 focus:z-[200] foc"
+        }
+      ],
+      "file": "screenshots/cloud__sensitive-request__mobile-landscape.png"
+    },
+    {
+      "product": "cloud",
+      "page": "Cloud /approve/:id",
+      "viewport": "mobile-landscape",
+      "status": 200,
+      "navError": null,
+      "pageErrors": [],
+      "overflowX": 0,
+      "textLength": 62,
+      "clipped": [
+        {
+          "tag": "a",
+          "text": "Skip to content",
+          "cls": "sr-only focus:not-sr-only focus:fixed focus:left-2 focus:top-2 focus:z-[200] foc"
+        }
+      ],
+      "file": "screenshots/cloud__approve__mobile-landscape.png"
+    },
+    {
+      "product": "cloud",
+      "page": "Cloud /ballot/:id",
+      "viewport": "mobile-landscape",
+      "status": 200,
+      "navError": null,
+      "pageErrors": [],
+      "overflowX": 0,
+      "textLength": 34,
+      "clipped": [
+        {
+          "tag": "a",
+          "text": "Skip to content",
+          "cls": "sr-only focus:not-sr-only focus:fixed focus:left-2 focus:top-2 focus:z-[200] foc"
+        }
+      ],
+      "file": "screenshots/cloud__ballot__mobile-landscape.png"
+    },
+    {
+      "product": "cloud",
+      "page": "Cloud /auth/success",
+      "viewport": "mobile-landscape",
+      "status": 200,
+      "navError": null,
+      "pageErrors": [],
+      "overflowX": 0,
+      "textLength": 146,
+      "clipped": [
+        {
+          "tag": "a",
+          "text": "Skip to content",
+          "cls": "sr-only focus:not-sr-only focus:fixed focus:left-2 focus:top-2 focus:z-[200] foc"
+        }
+      ],
+      "file": "screenshots/cloud__auth-success__mobile-landscape.png"
+    },
+    {
+      "product": "cloud",
+      "page": "Cloud /auth/cli-login",
+      "viewport": "mobile-landscape",
+      "status": 200,
+      "navError": null,
+      "pageErrors": [],
+      "overflowX": 0,
+      "textLength": 98,
+      "clipped": [
+        {
+          "tag": "a",
+          "text": "Skip to content",
+          "cls": "sr-only focus:not-sr-only focus:fixed focus:left-2 focus:top-2 focus:z-[200] foc"
+        }
+      ],
+      "file": "screenshots/cloud__auth-cli-login__mobile-landscape.png"
+    },
+    {
+      "product": "cloud",
+      "page": "Cloud /auth/error",
+      "viewport": "mobile-landscape",
+      "status": 200,
+      "navError": null,
+      "pageErrors": [],
+      "overflowX": 0,
+      "textLength": 177,
+      "clipped": [
+        {
+          "tag": "a",
+          "text": "Skip to content",
+          "cls": "sr-only focus:not-sr-only focus:fixed focus:left-2 focus:top-2 focus:z-[200] foc"
+        }
+      ],
+      "file": "screenshots/cloud__auth-error__mobile-landscape.png"
+    },
+    {
+      "product": "cloud",
+      "page": "Cloud /auth/callback/email",
+      "viewport": "mobile-landscape",
+      "status": 200,
+      "navError": null,
+      "pageErrors": [],
+      "overflowX": 0,
+      "textLength": 111,
+      "clipped": [
+        {
+          "tag": "a",
+          "text": "Skip to content",
+          "cls": "sr-only focus:not-sr-only focus:fixed focus:left-2 focus:top-2 focus:z-[200] foc"
+        }
+      ],
+      "file": "screenshots/cloud__auth-email-callback__mobile-landscape.png"
+    },
+    {
+      "product": "cloud",
+      "page": "Cloud /app-auth/authorize",
+      "viewport": "mobile-landscape",
+      "status": 200,
+      "navError": null,
+      "pageErrors": [],
+      "overflowX": 0,
+      "textLength": 123,
+      "clipped": [
+        {
+          "tag": "a",
+          "text": "Skip to content",
+          "cls": "sr-only focus:not-sr-only focus:fixed focus:left-2 focus:top-2 focus:z-[200] foc"
+        }
+      ],
+      "file": "screenshots/cloud__app-auth-authorize__mobile-landscape.png"
+    },
+    {
+      "product": "cloud",
+      "page": "Cloud /sandbox-proxy",
+      "viewport": "mobile-landscape",
+      "status": 200,
+      "navError": null,
+      "pageErrors": [],
+      "overflowX": 0,
+      "textLength": 69,
+      "clipped": [
+        {
+          "tag": "a",
+          "text": "Skip to content",
+          "cls": "sr-only focus:not-sr-only focus:fixed focus:left-2 focus:top-2 focus:z-[200] foc"
+        }
+      ],
+      "file": "screenshots/cloud__sandbox-proxy__mobile-landscape.png"
+    },
+    {
+      "product": "cloud",
+      "page": "Cloud /chat/:characterRef",
+      "viewport": "mobile-landscape",
+      "status": 200,
+      "navError": null,
+      "pageErrors": [],
+      "overflowX": 0,
+      "textLength": 60,
+      "clipped": [
+        {
+          "tag": "a",
+          "text": "Skip to content",
+          "cls": "sr-only focus:not-sr-only focus:fixed focus:left-2 focus:top-2 focus:z-[200] foc"
+        }
+      ],
+      "file": "screenshots/cloud__public-chat__mobile-landscape.png"
+    },
+    {
+      "product": "cloud",
+      "page": "Cloud /dashboard",
+      "viewport": "mobile-landscape",
+      "status": 200,
+      "navError": null,
+      "pageErrors": [],
+      "overflowX": 0,
+      "textLength": 235,
+      "clipped": [
+        {
+          "tag": "a",
+          "text": "Skip to content",
+          "cls": "sr-only focus:not-sr-only focus:fixed focus:left-2 focus:top-2 focus:z-[200] foc"
+        }
+      ],
+      "file": "screenshots/cloud__dashboard__mobile-landscape.png"
+    },
+    {
+      "product": "cloud",
+      "page": "Cloud /dashboard/account",
+      "viewport": "mobile-landscape",
+      "status": 200,
+      "navError": null,
+      "pageErrors": [],
+      "overflowX": 0,
+      "textLength": 235,
+      "clipped": [
+        {
+          "tag": "a",
+          "text": "Skip to content",
+          "cls": "sr-only focus:not-sr-only focus:fixed focus:left-2 focus:top-2 focus:z-[200] foc"
+        }
+      ],
+      "file": "screenshots/cloud__dashboard-account__mobile-landscape.png"
+    },
+    {
+      "product": "cloud",
+      "page": "Cloud /dashboard/settings",
+      "viewport": "mobile-landscape",
+      "status": 200,
+      "navError": null,
+      "pageErrors": [],
+      "overflowX": 0,
+      "textLength": 235,
+      "clipped": [
+        {
+          "tag": "a",
+          "text": "Skip to content",
+          "cls": "sr-only focus:not-sr-only focus:fixed focus:left-2 focus:top-2 focus:z-[200] foc"
+        }
+      ],
+      "file": "screenshots/cloud__dashboard-settings__mobile-landscape.png"
+    },
+    {
+      "product": "cloud",
+      "page": "Cloud /dashboard/billing",
+      "viewport": "mobile-landscape",
+      "status": 200,
+      "navError": null,
+      "pageErrors": [],
+      "overflowX": 0,
+      "textLength": 235,
+      "clipped": [
+        {
+          "tag": "a",
+          "text": "Skip to content",
+          "cls": "sr-only focus:not-sr-only focus:fixed focus:left-2 focus:top-2 focus:z-[200] foc"
+        }
+      ],
+      "file": "screenshots/cloud__dashboard-billing__mobile-landscape.png"
+    },
+    {
+      "product": "cloud",
+      "page": "Cloud /dashboard/billing/success",
+      "viewport": "mobile-landscape",
+      "status": 200,
+      "navError": null,
+      "pageErrors": [],
+      "overflowX": 0,
+      "textLength": 235,
+      "clipped": [
+        {
+          "tag": "a",
+          "text": "Skip to content",
+          "cls": "sr-only focus:not-sr-only focus:fixed focus:left-2 focus:top-2 focus:z-[200] foc"
+        }
+      ],
+      "file": "screenshots/cloud__dashboard-billing-success__mobile-landscape.png"
+    },
+    {
+      "product": "cloud",
+      "page": "Cloud /dashboard/agents",
+      "viewport": "mobile-landscape",
+      "status": 200,
+      "navError": null,
+      "pageErrors": [],
+      "overflowX": 0,
+      "textLength": 235,
+      "clipped": [
+        {
+          "tag": "a",
+          "text": "Skip to content",
+          "cls": "sr-only focus:not-sr-only focus:fixed focus:left-2 focus:top-2 focus:z-[200] foc"
+        }
+      ],
+      "file": "screenshots/cloud__dashboard-agents__mobile-landscape.png"
+    },
+    {
+      "product": "cloud",
+      "page": "Cloud /dashboard/agents/test-agent",
+      "viewport": "mobile-landscape",
+      "status": 200,
+      "navError": null,
+      "pageErrors": [],
+      "overflowX": 0,
+      "textLength": 235,
+      "clipped": [
+        {
+          "tag": "a",
+          "text": "Skip to content",
+          "cls": "sr-only focus:not-sr-only focus:fixed focus:left-2 focus:top-2 focus:z-[200] foc"
+        }
+      ],
+      "file": "screenshots/cloud__dashboard-agent-detail__mobile-landscape.png"
+    },
+    {
+      "product": "cloud",
+      "page": "Cloud /dashboard/agents/test-agent/chat",
+      "viewport": "mobile-landscape",
+      "status": 200,
+      "navError": null,
+      "pageErrors": [],
+      "overflowX": 0,
+      "textLength": 235,
+      "clipped": [
+        {
+          "tag": "a",
+          "text": "Skip to content",
+          "cls": "sr-only focus:not-sr-only focus:fixed focus:left-2 focus:top-2 focus:z-[200] foc"
+        }
+      ],
+      "file": "screenshots/cloud__dashboard-agent-chat__mobile-landscape.png"
+    },
+    {
+      "product": "cloud",
+      "page": "Cloud /dashboard/apps",
+      "viewport": "mobile-landscape",
+      "status": 200,
+      "navError": null,
+      "pageErrors": [],
+      "overflowX": 0,
+      "textLength": 235,
+      "clipped": [
+        {
+          "tag": "a",
+          "text": "Skip to content",
+          "cls": "sr-only focus:not-sr-only focus:fixed focus:left-2 focus:top-2 focus:z-[200] foc"
+        }
+      ],
+      "file": "screenshots/cloud__dashboard-apps__mobile-landscape.png"
+    },
+    {
+      "product": "cloud",
+      "page": "Cloud /dashboard/apps/test-app",
+      "viewport": "mobile-landscape",
+      "status": 200,
+      "navError": null,
+      "pageErrors": [],
+      "overflowX": 0,
+      "textLength": 235,
+      "clipped": [
+        {
+          "tag": "a",
+          "text": "Skip to content",
+          "cls": "sr-only focus:not-sr-only focus:fixed focus:left-2 focus:top-2 focus:z-[200] foc"
+        }
+      ],
+      "file": "screenshots/cloud__dashboard-app-detail__mobile-landscape.png"
+    },
+    {
+      "product": "cloud",
+      "page": "Cloud /dashboard/my-agents",
+      "viewport": "mobile-landscape",
+      "status": 200,
+      "navError": null,
+      "pageErrors": [],
+      "overflowX": 0,
+      "textLength": 235,
+      "clipped": [
+        {
+          "tag": "a",
+          "text": "Skip to content",
+          "cls": "sr-only focus:not-sr-only focus:fixed focus:left-2 focus:top-2 focus:z-[200] foc"
+        }
+      ],
+      "file": "screenshots/cloud__dashboard-my-agents__mobile-landscape.png"
+    },
+    {
+      "product": "cloud",
+      "page": "Cloud /dashboard/api-keys",
+      "viewport": "mobile-landscape",
+      "status": 200,
+      "navError": null,
+      "pageErrors": [],
+      "overflowX": 0,
+      "textLength": 235,
+      "clipped": [
+        {
+          "tag": "a",
+          "text": "Skip to content",
+          "cls": "sr-only focus:not-sr-only focus:fixed focus:left-2 focus:top-2 focus:z-[200] foc"
+        }
+      ],
+      "file": "screenshots/cloud__dashboard-api-keys__mobile-landscape.png"
+    },
+    {
+      "product": "cloud",
+      "page": "Cloud /dashboard/mcps",
+      "viewport": "mobile-landscape",
+      "status": 200,
+      "navError": null,
+      "pageErrors": [],
+      "overflowX": 0,
+      "textLength": 235,
+      "clipped": [
+        {
+          "tag": "a",
+          "text": "Skip to content",
+          "cls": "sr-only focus:not-sr-only focus:fixed focus:left-2 focus:top-2 focus:z-[200] foc"
+        }
+      ],
+      "file": "screenshots/cloud__dashboard-mcps__mobile-landscape.png"
+    },
+    {
+      "product": "cloud",
+      "page": "Cloud /dashboard/documents",
+      "viewport": "mobile-landscape",
+      "status": 200,
+      "navError": null,
+      "pageErrors": [],
+      "overflowX": 0,
+      "textLength": 235,
+      "clipped": [
+        {
+          "tag": "a",
+          "text": "Skip to content",
+          "cls": "sr-only focus:not-sr-only focus:fixed focus:left-2 focus:top-2 focus:z-[200] foc"
+        }
+      ],
+      "file": "screenshots/cloud__dashboard-documents__mobile-landscape.png"
+    },
+    {
+      "product": "cloud",
+      "page": "Cloud /dashboard/analytics",
+      "viewport": "mobile-landscape",
+      "status": 200,
+      "navError": null,
+      "pageErrors": [],
+      "overflowX": 0,
+      "textLength": 235,
+      "clipped": [
+        {
+          "tag": "a",
+          "text": "Skip to content",
+          "cls": "sr-only focus:not-sr-only focus:fixed focus:left-2 focus:top-2 focus:z-[200] foc"
+        }
+      ],
+      "file": "screenshots/cloud__dashboard-analytics__mobile-landscape.png"
+    },
+    {
+      "product": "cloud",
+      "page": "Cloud /dashboard/earnings",
+      "viewport": "mobile-landscape",
+      "status": 200,
+      "navError": null,
+      "pageErrors": [],
+      "overflowX": 0,
+      "textLength": 235,
+      "clipped": [
+        {
+          "tag": "a",
+          "text": "Skip to content",
+          "cls": "sr-only focus:not-sr-only focus:fixed focus:left-2 focus:top-2 focus:z-[200] foc"
+        }
+      ],
+      "file": "screenshots/cloud__dashboard-earnings__mobile-landscape.png"
+    },
+    {
+      "product": "cloud",
+      "page": "Cloud /dashboard/affiliates",
+      "viewport": "mobile-landscape",
+      "status": 200,
+      "navError": null,
+      "pageErrors": [],
+      "overflowX": 0,
+      "textLength": 235,
+      "clipped": [
+        {
+          "tag": "a",
+          "text": "Skip to content",
+          "cls": "sr-only focus:not-sr-only focus:fixed focus:left-2 focus:top-2 focus:z-[200] foc"
+        }
+      ],
+      "file": "screenshots/cloud__dashboard-affiliates__mobile-landscape.png"
+    },
+    {
+      "product": "cloud",
+      "page": "Cloud /dashboard/invoices/test-invoice",
+      "viewport": "mobile-landscape",
+      "status": 200,
+      "navError": null,
+      "pageErrors": [],
+      "overflowX": 0,
+      "textLength": 235,
+      "clipped": [
+        {
+          "tag": "a",
+          "text": "Skip to content",
+          "cls": "sr-only focus:not-sr-only focus:fixed focus:left-2 focus:top-2 focus:z-[200] foc"
+        }
+      ],
+      "file": "screenshots/cloud__dashboard-invoice__mobile-landscape.png"
+    },
+    {
+      "product": "cloud",
+      "page": "Cloud /dashboard/chat",
+      "viewport": "mobile-landscape",
+      "status": 200,
+      "navError": null,
+      "pageErrors": [],
+      "overflowX": 0,
+      "textLength": 235,
+      "clipped": [
+        {
+          "tag": "a",
+          "text": "Skip to content",
+          "cls": "sr-only focus:not-sr-only focus:fixed focus:left-2 focus:top-2 focus:z-[200] foc"
+        }
+      ],
+      "file": "screenshots/cloud__dashboard-chat__mobile-landscape.png"
+    },
+    {
+      "product": "cloud",
+      "page": "Cloud /dashboard/containers",
+      "viewport": "mobile-landscape",
+      "status": 200,
+      "navError": null,
+      "pageErrors": [],
+      "overflowX": 0,
+      "textLength": 235,
+      "clipped": [
+        {
+          "tag": "a",
+          "text": "Skip to content",
+          "cls": "sr-only focus:not-sr-only focus:fixed focus:left-2 focus:top-2 focus:z-[200] foc"
+        }
+      ],
+      "file": "screenshots/cloud__dashboard-containers__mobile-landscape.png"
+    },
+    {
+      "product": "cloud",
+      "page": "Cloud /dashboard/containers/test-container",
+      "viewport": "mobile-landscape",
+      "status": 200,
+      "navError": null,
+      "pageErrors": [],
+      "overflowX": 0,
+      "textLength": 235,
+      "clipped": [
+        {
+          "tag": "a",
+          "text": "Skip to content",
+          "cls": "sr-only focus:not-sr-only focus:fixed focus:left-2 focus:top-2 focus:z-[200] foc"
+        }
+      ],
+      "file": "screenshots/cloud__dashboard-container-detail__mobile-landscape.png"
+    },
+    {
+      "product": "cloud",
+      "page": "Cloud /dashboard/containers/agents/test-agent",
+      "viewport": "mobile-landscape",
+      "status": 200,
+      "navError": null,
+      "pageErrors": [],
+      "overflowX": 0,
+      "textLength": 235,
+      "clipped": [
+        {
+          "tag": "a",
+          "text": "Skip to content",
+          "cls": "sr-only focus:not-sr-only focus:fixed focus:left-2 focus:top-2 focus:z-[200] foc"
+        }
+      ],
+      "file": "screenshots/cloud__dashboard-container-agent__mobile-landscape.png"
+    },
+    {
+      "product": "cloud",
+      "page": "Cloud /dashboard/api-explorer",
+      "viewport": "mobile-landscape",
+      "status": 200,
+      "navError": null,
+      "pageErrors": [],
+      "overflowX": 0,
+      "textLength": 235,
+      "clipped": [
+        {
+          "tag": "a",
+          "text": "Skip to content",
+          "cls": "sr-only focus:not-sr-only focus:fixed focus:left-2 focus:top-2 focus:z-[200] foc"
+        }
+      ],
+      "file": "screenshots/cloud__dashboard-api-explorer__mobile-landscape.png"
+    },
+    {
+      "product": "cloud",
+      "page": "Cloud /dashboard/admin",
+      "viewport": "mobile-landscape",
+      "status": 200,
+      "navError": null,
+      "pageErrors": [],
+      "overflowX": 0,
+      "textLength": 235,
+      "clipped": [
+        {
+          "tag": "a",
+          "text": "Skip to content",
+          "cls": "sr-only focus:not-sr-only focus:fixed focus:left-2 focus:top-2 focus:z-[200] foc"
+        }
+      ],
+      "file": "screenshots/cloud__dashboard-admin__mobile-landscape.png"
+    },
+    {
+      "product": "cloud",
+      "page": "Cloud /dashboard/admin/infrastructure",
+      "viewport": "mobile-landscape",
+      "status": 200,
+      "navError": null,
+      "pageErrors": [],
+      "overflowX": 0,
+      "textLength": 235,
+      "clipped": [
+        {
+          "tag": "a",
+          "text": "Skip to content",
+          "cls": "sr-only focus:not-sr-only focus:fixed focus:left-2 focus:top-2 focus:z-[200] foc"
+        }
+      ],
+      "file": "screenshots/cloud__dashboard-admin-infra__mobile-landscape.png"
+    },
+    {
+      "product": "cloud",
+      "page": "Cloud /dashboard/admin/metrics",
+      "viewport": "mobile-landscape",
+      "status": 200,
+      "navError": null,
+      "pageErrors": [],
+      "overflowX": 0,
+      "textLength": 235,
+      "clipped": [
+        {
+          "tag": "a",
+          "text": "Skip to content",
+          "cls": "sr-only focus:not-sr-only focus:fixed focus:left-2 focus:top-2 focus:z-[200] foc"
+        }
+      ],
+      "file": "screenshots/cloud__dashboard-admin-metrics__mobile-landscape.png"
+    },
+    {
+      "product": "cloud",
+      "page": "Cloud /dashboard/admin/redemptions",
+      "viewport": "mobile-landscape",
+      "status": 200,
+      "navError": null,
+      "pageErrors": [],
+      "overflowX": 0,
+      "textLength": 235,
+      "clipped": [
+        {
+          "tag": "a",
+          "text": "Skip to content",
+          "cls": "sr-only focus:not-sr-only focus:fixed focus:left-2 focus:top-2 focus:z-[200] foc"
+        }
+      ],
+      "file": "screenshots/cloud__dashboard-admin-redemptions__mobile-landscape.png"
+    }
+  ]
+}

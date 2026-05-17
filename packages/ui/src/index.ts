@@ -56,9 +56,39 @@ export {
   getInjectedCharacters,
 } from "./character-catalog";
 export * from "./chat/index";
+export {
+  ElizaAvatar,
+  type ElizaAvatarProps,
+  MemoizedChatMessage,
+  type MemoizedChatMessageMessage,
+  type MemoizedChatMessageProps,
+  useReasoningTypewriter,
+  useTypewriterText,
+} from "./cloud-ui/components/ai-elements";
 export { AuthorizeContent } from "./cloud-ui/components/auth/authorize-content";
 export * from "./cloud-ui/components/auth/authorize-return";
-export { DiscordIcon } from "./cloud-ui/components/icons";
+export type { ConnectionCardProps } from "./cloud-ui/components/connection-card";
+export {
+  ConnectionCallout,
+  ConnectionCard,
+  ConnectionConnectedBadge,
+  ConnectionCopyRow,
+  ConnectionDisconnectAction,
+  ConnectionFooterActions,
+  ConnectionIdentityPanel,
+  ConnectionInstructions,
+  ConnectionLoadingCard,
+} from "./cloud-ui/components/connection-card";
+// ConnectionStatus is intentionally not re-exported here to avoid collision
+// with ConnectionStatus from ./components/composites/index (the UI component).
+// The cloud-ui ConnectionStatus type is a string union used internally.
+export {
+  AppleMessagesIcon,
+  DiscordIcon,
+  IMessageIcon,
+  TelegramIcon,
+  WhatsAppIcon,
+} from "./cloud-ui/components/icons";
 export {
   type AspectRatio,
   EnhancedLoading,
@@ -90,6 +120,13 @@ export {
 } from "./cloud-ui/components/theme";
 export {
   getEstimatedReadyMessage,
+  getSupportedMimeType,
+  supportsGetUserMedia,
+  supportsMediaRecorder,
+  type UseAudioPlayerReturn,
+  type UseAudioRecorderReturn,
+  useAudioPlayer,
+  useAudioRecorder,
   type Voice,
   VoiceAudioPlayer,
   type VoiceCloneJob,

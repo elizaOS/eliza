@@ -28,9 +28,9 @@ export function SecurityPreferences() {
 
         <div className="space-y-4">
           {/* API Keys */}
-          <div className="flex items-start justify-between p-4 rounded-none border border-white/10 bg-black/40">
+          <div className="flex items-start justify-between p-4 rounded-sm border border-white/10 bg-black/40">
             <div className="flex items-start gap-3">
-              <div className="rounded-none p-2 bg-blue-500/20 border border-blue-500/40">
+              <div className="rounded-sm p-2 bg-blue-500/20 border border-blue-500/40">
                 <Key className="h-4 w-4 text-blue-400" />
               </div>
               <div className="space-y-1">
@@ -48,9 +48,9 @@ export function SecurityPreferences() {
           </div>
 
           {/* Authentication */}
-          <div className="flex items-start justify-between p-4 rounded-none border border-white/10 bg-black/40">
+          <div className="flex items-start justify-between p-4 rounded-sm border border-white/10 bg-black/40">
             <div className="flex items-start gap-3">
-              <div className="rounded-none p-2 bg-green-500/20 border border-green-500/40">
+              <div className="rounded-sm p-2 bg-green-500/20 border border-green-500/40">
                 <Lock className="h-4 w-4 text-green-400" />
               </div>
               <div className="space-y-1">
@@ -58,7 +58,7 @@ export function SecurityPreferences() {
                   <p className="font-medium text-sm text-white">
                     Two-Factor Authentication
                   </p>
-                  <span className="rounded-none border border-white/20 bg-white/10 px-2 py-0.5 text-xs text-white/70">
+                  <span className="rounded-sm border border-white/20 bg-white/10 px-2 py-0.5 text-xs text-white/70">
                     Coming Soon
                   </span>
                 </div>
@@ -73,9 +73,9 @@ export function SecurityPreferences() {
           </div>
 
           {/* Notifications */}
-          <div className="flex items-start justify-between p-4 rounded-none border border-white/10 bg-black/40">
+          <div className="flex items-start justify-between p-4 rounded-sm border border-white/10 bg-black/40">
             <div className="flex items-start gap-3">
-              <div className="rounded-none p-2 bg-purple-500/20 border border-purple-500/40">
+              <div className="rounded-sm p-2 bg-purple-500/20 border border-purple-500/40">
                 <Bell className="h-4 w-4 text-purple-400" />
               </div>
               <div className="space-y-1">
@@ -83,7 +83,7 @@ export function SecurityPreferences() {
                   <p className="font-medium text-sm text-white">
                     Notification Preferences
                   </p>
-                  <span className="rounded-none border border-white/20 bg-white/10 px-2 py-0.5 text-xs text-white/70">
+                  <span className="rounded-sm border border-white/20 bg-white/10 px-2 py-0.5 text-xs text-white/70">
                     Coming Soon
                   </span>
                 </div>
@@ -110,7 +110,7 @@ export function SecurityPreferences() {
               <p className="text-sm font-medium text-red-400">Danger Zone</p>
             </div>
 
-            <div className="p-4 rounded-none border border-red-500/40 bg-red-500/10">
+            <div className="p-4 rounded-sm border border-red-500/40 bg-red-500/10">
               <div className="space-y-2">
                 <p className="font-medium text-sm text-white">Delete Account</p>
                 <p className="text-xs text-white/60">

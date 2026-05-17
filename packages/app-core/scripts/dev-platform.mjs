@@ -882,11 +882,7 @@ async function launch() {
     let scheduledOpen = false;
     const resolveDevMacAppPath = () => {
       const arch = process.arch === "arm64" ? "arm64" : "x86_64";
-      const buildDir = path.join(
-        electrobunDir,
-        "build",
-        `dev-macos-${arch}`,
-      );
+      const buildDir = path.join(electrobunDir, "build", `dev-macos-${arch}`);
       if (!existsSync(buildDir)) return null;
       try {
         const entries = readdirSync(buildDir);
@@ -930,7 +926,8 @@ async function launch() {
     // Watch for the screenshot server port — if it comes up on its own, the
     // electrobun launcher launched the app properly and we don't need to.
     // If it doesn't come up within the deadline, fall back to `open`.
-    const screenshotPortStr = screenshotEnvElectrobun.ELIZA_SCREENSHOT_SERVER_PORT;
+    const screenshotPortStr =
+      screenshotEnvElectrobun.ELIZA_SCREENSHOT_SERVER_PORT;
     const fallbackDeadlineMs = 45000;
     const startedAt = Date.now();
     const checkAndFallback = async () => {

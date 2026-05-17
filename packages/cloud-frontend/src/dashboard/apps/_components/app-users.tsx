@@ -106,7 +106,7 @@ export function AppUsers({ appId }: AppUsersProps) {
             {users.map((appUser) => (
               <div
                 key={appUser.id}
-                className="flex items-center justify-between rounded-lg border border-border bg-bg-accent p-3 transition-all hover:border-border-strong hover:bg-bg-hover"
+                className="flex items-center justify-between rounded-sm border border-border bg-bg-accent p-3 transition-all hover:border-border-strong hover:bg-bg-hover"
               >
                 <div className="flex items-center gap-3 flex-1 min-w-0">
                   <Avatar className="h-8 w-8">

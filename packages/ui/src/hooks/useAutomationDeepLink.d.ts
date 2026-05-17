@@ -11,22 +11,19 @@
  * Hash is read on mount, written on open/close, and the hashchange event
  * is observed so back/forward navigation works.
  */
-export type AutomationDeepLink =
-  | {
-      kind: "list";
-    }
-  | {
-      kind: "workflow";
-      id: string;
-    }
-  | {
-      kind: "task";
-      id: string;
-    };
+export type AutomationDeepLink = {
+    kind: "list";
+} | {
+    kind: "workflow";
+    id: string;
+} | {
+    kind: "task";
+    id: string;
+};
 export declare function parseAutomationHash(hash: string): AutomationDeepLink;
 export declare function formatAutomationHash(link: AutomationDeepLink): string;
 export declare function useAutomationDeepLink(): {
-  link: AutomationDeepLink;
-  setLink: (next: AutomationDeepLink) => void;
+    link: AutomationDeepLink;
+    setLink: (next: AutomationDeepLink) => void;
 };
 //# sourceMappingURL=useAutomationDeepLink.d.ts.map

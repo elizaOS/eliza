@@ -17,8 +17,5 @@
  * Returns null when the cookie is absent (no active session).
  */
 export declare function readCsrfTokenFromCookie(): string | null;
-export declare function fetchWithCsrf(
-  url: string,
-  init?: RequestInit,
-): Promise<Response>;
+export declare function fetchWithCsrf(url: string, init?: RequestInit): Promise<Response>;
 //# sourceMappingURL=csrf-client.d.ts.map

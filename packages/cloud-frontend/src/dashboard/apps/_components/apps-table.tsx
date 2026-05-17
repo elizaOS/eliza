@@ -15,11 +15,8 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
   Badge,
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuSeparator,
-  DropdownMenuTrigger,
+  DashboardDataList,
+  ListActionMenu,
   StatusBadge,
 } from "@elizaos/ui";
 import { formatDistanceToNow } from "date-fns";
@@ -28,12 +25,11 @@ import {
   Copy,
   ExternalLink,
   Loader2,
-  MoreHorizontal,
   Settings,
   Trash2,
   Users,
 } from "lucide-react";
-import { useState } from "react";
+import { type MouseEvent, useState } from "react";
 import { Link } from "react-router-dom";
 import { toast } from "sonner";
 import type { App } from "../../../lib/data/apps";
@@ -46,9 +42,9 @@ export function AppsTable({ apps }: AppsTableProps) {
   const [deletingId, setDeletingId] = useState<string | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<App | null>(null);
 
-  const handleCopyUrl = async (url: string, e: React.MouseEvent) => {
-    e.preventDefault();
-    e.stopPropagation();
+  const handleCopyUrl = async (url: string, e?: MouseEvent) => {
+    e?.preventDefault();
+    e?.stopPropagation();
     try {
       await navigator.clipboard.writeText(url);
       toast.success("URL copied to clipboard");
@@ -57,9 +53,9 @@ export function AppsTable({ apps }: AppsTableProps) {
     }
   };
 
-  const handleDeleteClick = (app: App, e: React.MouseEvent) => {
-    e.preventDefault();
-    e.stopPropagation();
+  const handleDeleteClick = (app: App, e?: MouseEvent) => {
+    e?.preventDefault();
+    e?.stopPropagation();
     setDeleteTarget(app);
   };
 
@@ -95,7 +91,7 @@ export function AppsTable({ apps }: AppsTableProps) {
 
   return (
     <>
-      <div className="grid grid-cols-1 gap-2">
+      <DashboardDataList className="grid grid-cols-1 gap-2 space-y-0">
         {apps.map((app) => (
           <div
             key={app.id}
@@ -123,55 +119,58 @@ export function AppsTable({ apps }: AppsTableProps) {
                   )}
                 </div>
 
-                {/* Dropdown Menu */}
-                <DropdownMenu>
-                  <DropdownMenuTrigger
-                    className="flex-shrink-0 flex items-center justify-center h-8 w-8 rounded-lg bg-transparent hover:bg-white/10 transition-colors"
-                    onClick={(e) => e.preventDefault()}
-                  >
-                    <MoreHorizontal className="h-4 w-4 text-white/60" />
-                  </DropdownMenuTrigger>
-                  <DropdownMenuContent align="end" className="w-44">
-                    <DropdownMenuItem asChild className="cursor-pointer">
-                      <Link to={`/dashboard/apps/${app.id}`}>
-                        <Settings className="h-4 w-4 mr-2" />
-                        Manage App
-                      </Link>
-                    </DropdownMenuItem>
-                    <DropdownMenuItem
-                      className="cursor-pointer"
-                      onClick={(e) => handleCopyUrl(app.app_url, e)}
-                    >
-                      <Copy className="h-4 w-4 mr-2" />
-                      Copy URL
-                    </DropdownMenuItem>
-                    {app.website_url && (
-                      <DropdownMenuItem asChild className="cursor-pointer">
-                        <a
-                          href={app.website_url}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                        >
-                          <ExternalLink className="h-4 w-4 mr-2" />
-                          Visit Website
-                        </a>
-                      </DropdownMenuItem>
-                    )}
-                    <DropdownMenuSeparator />
-                    <DropdownMenuItem
-                      className="cursor-pointer text-red-500 bg-red-500/10 hover:bg-red-500/20 focus:bg-red-500/20 focus:text-red-500"
-                      onClick={(e) => handleDeleteClick(app, e)}
-                      disabled={deletingId === app.id}
-                    >
-                      {deletingId === app.id ? (
-                        <Loader2 className="h-4 w-4 mr-2 animate-spin text-red-500" />
-                      ) : (
-                        <Trash2 className="h-4 w-4 mr-2 text-red-500" />
-                      )}
-                      Delete App
-                    </DropdownMenuItem>
-                  </DropdownMenuContent>
-                </DropdownMenu>
+                <ListActionMenu
+                  triggerClassName="h-8 w-8 rounded-sm bg-transparent hover:bg-white/10"
+                  contentClassName="w-44"
+                  onTriggerClick={(e) => e.preventDefault()}
+                  items={[
+                    {
+                      asChild: true,
+                      label: "Manage App",
+                      className: "cursor-pointer",
+                      child: (
+                        <Link to={`/dashboard/apps/${app.id}`}>
+                          <Settings className="mr-2 h-4 w-4" />
+                          Manage App
+                        </Link>
+                      ),
+                    },
+                    {
+                      label: "Copy URL",
+                      icon: Copy,
+                      className: "cursor-pointer",
+                      onSelect: () => handleCopyUrl(app.app_url),
+                    },
+                    ...(app.website_url
+                      ? [
+                          {
+                            asChild: true as const,
+                            label: "Visit Website",
+                            className: "cursor-pointer",
+                            child: (
+                              <a
+                                href={app.website_url}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                              >
+                                <ExternalLink className="mr-2 h-4 w-4" />
+                                Visit Website
+                              </a>
+                            ),
+                          },
+                        ]
+                      : []),
+                    { type: "separator" },
+                    {
+                      label: "Delete App",
+                      icon: deletingId === app.id ? Loader2 : Trash2,
+                      disabled: deletingId === app.id,
+                      className:
+                        "cursor-pointer bg-red-500/10 text-red-500 hover:bg-red-500/20 focus:bg-red-500/20 focus:text-red-500 [&_svg]:text-red-500 data-[disabled]:opacity-60",
+                      onSelect: () => handleDeleteClick(app),
+                    },
+                  ]}
+                />
               </div>
 
               {/* Stats & URL */}
@@ -200,7 +199,7 @@ export function AppsTable({ apps }: AppsTableProps) {
             </div>
           </div>
         ))}
-      </div>
+      </DashboardDataList>
 
       {/* Delete Confirmation */}
       <AlertDialog

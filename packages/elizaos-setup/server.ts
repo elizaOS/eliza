@@ -1,4 +1,4 @@
-import { serve } from "bun";
+import type { Server } from "bun";
 import { AdbFlasherBackend } from "./src/backend/adb-backend";
 import { SideloaderIosBackend } from "./src/backend/ios-backend";
 import type {
@@ -13,11 +13,6 @@ import type {
 } from "./src/backend/types";
 import { DependencyManager } from "./src/dependencies/dep-manager";
 import type { DependencyId } from "./src/dependencies/types";
-
-const backend = new AdbFlasherBackend();
-const iosBackend = new SideloaderIosBackend();
-const depManager = new DependencyManager();
-const PORT = Number(process.env.ELIZA_SETUP_PORT ?? 3743);
 
 const VALID_DEP_IDS: DependencyId[] = [
   "adb",
@@ -40,9 +35,29 @@ const cors = {
   "Access-Control-Allow-Headers": "Content-Type",
 };
 
-serve({
-  port: PORT,
-  async fetch(req) {
+export interface CreateServerOptions {
+  port?: number;
+  backend?: AdbFlasherBackend;
+  iosBackend?: SideloaderIosBackend;
+  depManager?: DependencyManager;
+}
+
+export function createServer(options: CreateServerOptions = {}): Server<undefined> {
+  const backend = options.backend ?? new AdbFlasherBackend();
+  const iosBackend = options.iosBackend ?? new SideloaderIosBackend();
+  const depManager = options.depManager ?? new DependencyManager();
+  const port = options.port ?? Number(process.env.ELIZA_SETUP_PORT ?? 3743);
+
+  // Use Bun.serve via the global so this file can be imported by toolchains
+  // (vitest/node) that don't resolve the bare "bun" module specifier. The
+  // factory still requires the Bun runtime to actually call it.
+  const bunGlobal = (globalThis as { Bun?: { serve: typeof import("bun").serve } }).Bun;
+  if (!bunGlobal) {
+    throw new Error("createServer requires the Bun runtime (globalThis.Bun)");
+  }
+  return bunGlobal.serve({
+    port,
+    async fetch(req) {
     const url = new URL(req.url);
 
     if (req.method === "OPTIONS") {
@@ -252,13 +267,23 @@ serve({
     }
 
     return new Response("Not found", { status: 404, headers: cors });
-  },
-});
+    },
+  });
+}
 
-console.log(`elizaOS Setup backend running at http://127.0.0.1:${PORT}`);
-console.log("Run: adb devices   to verify your device is connected");
-
-// Emit the bound URL so the dev orchestrator / Electrobun main process can
-// pick it up and inject `window.__ELIZA_SERVER_URL__` into the renderer
-// before the React app mounts.
-console.log(`[elizaos-setup] ELIZA_SETUP_SERVER_URL=http://127.0.0.1:${PORT}`);
+// Run as a script: `bun server.ts` boots the production server on PORT.
+// When imported (e.g. from a test that calls `createServer({...})`), this
+// branch is a no-op because import.meta.main is false.
+if (import.meta.main) {
+  const server = createServer();
+  console.log(
+    `elizaOS Setup backend running at http://127.0.0.1:${server.port}`,
+  );
+  console.log("Run: adb devices   to verify your device is connected");
+  // Emit the bound URL so the dev orchestrator / Electrobun main process can
+  // pick it up and inject `window.__ELIZA_SERVER_URL__` into the renderer
+  // before the React app mounts.
+  console.log(
+    `[elizaos-setup] ELIZA_SETUP_SERVER_URL=http://127.0.0.1:${server.port}`,
+  );
+}

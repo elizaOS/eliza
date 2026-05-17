@@ -3,24 +3,16 @@
  * Features animated progress bar and celebratory state when milestone is reached.
  */
 interface MilestoneProgressProps {
-  current: number;
-  target: number;
-  label?: string;
-  className?: string;
-  showAmount?: boolean;
+    current: number;
+    target: number;
+    label?: string;
+    className?: string;
+    showAmount?: boolean;
 }
-export declare function MilestoneProgress({
-  current,
-  target,
-  label,
-  className,
-  showAmount,
-}: MilestoneProgressProps): import("react/jsx-runtime").JSX.Element;
+export declare function MilestoneProgress({ current, target, label, className, showAmount, }: MilestoneProgressProps): import("react/jsx-runtime").JSX.Element;
 interface MilestoneCardProps extends MilestoneProgressProps {
-  title?: string;
+    title?: string;
 }
-export declare function MilestoneCard({
-  title,
-  ...props
-}: MilestoneCardProps): import("react/jsx-runtime").JSX.Element;
+export declare function MilestoneCard({ title, ...props }: MilestoneCardProps): import("react/jsx-runtime").JSX.Element;
+export {};
 //# sourceMappingURL=milestone-progress.d.ts.map
