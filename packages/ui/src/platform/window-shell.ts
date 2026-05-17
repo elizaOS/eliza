@@ -12,7 +12,8 @@ export type DetachedSurfaceTab =
 export type WindowShellRoute =
   | { mode: "main" }
   | { mode: "settings"; tab?: string }
-  | { mode: "surface"; tab: DetachedSurfaceTab };
+  | { mode: "surface"; tab: DetachedSurfaceTab }
+  | { mode: "pill" };
 
 export interface DetachedShellTarget {
   settingsSection?: string;
@@ -26,6 +27,10 @@ export function parseWindowShellRoute(search: string): WindowShellRoute {
   if (shell === "settings") {
     const tab = params.get("tab")?.trim() || undefined;
     return tab ? { mode: "settings", tab } : { mode: "settings" };
+  }
+
+  if (shell === "pill") {
+    return { mode: "pill" };
   }
 
   if (shell === "surface") {
@@ -53,8 +58,14 @@ export function resolveWindowShellRoute(
 
 export function isDetachedWindowShell(
   route: WindowShellRoute,
-): route is Exclude<WindowShellRoute, { mode: "main" }> {
-  return route.mode !== "main";
+): route is Exclude<WindowShellRoute, { mode: "main" } | { mode: "pill" }> {
+  return route.mode !== "main" && route.mode !== "pill";
+}
+
+export function isPillWindowShell(
+  route: WindowShellRoute,
+): route is Extract<WindowShellRoute, { mode: "pill" }> {
+  return route.mode === "pill";
 }
 
 export function shouldInstallMainWindowOnboardingPatches(
@@ -68,6 +79,10 @@ export function resolveDetachedShellTarget(
 ): DetachedShellTarget {
   if (route.mode === "main") {
     throw new Error("Main windows do not have a detached shell target");
+  }
+
+  if (route.mode === "pill") {
+    throw new Error("Pill windows do not have a detached shell target");
   }
 
   if (route.mode === "settings") {
@@ -102,7 +117,7 @@ export function syncDetachedShellLocation(
     href?: string;
   },
 ): boolean {
-  if (route.mode === "main") {
+  if (route.mode === "main" || route.mode === "pill") {
     return false;
   }
 

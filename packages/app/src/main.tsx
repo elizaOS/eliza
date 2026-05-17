@@ -95,6 +95,7 @@ import {
 } from "@elizaos/ui";
 import { type ComponentType, lazy, StrictMode, Suspense } from "react";
 import { createRoot } from "react-dom/client";
+import { AndroidVoicePill } from "./components/AndroidVoicePill";
 import {
   APP_BRANDING_BASE,
   APP_CONFIG,
@@ -1641,6 +1642,24 @@ function mountReactApp(): void {
                 <DesktopTrayRuntime />
                 <LifeOpsActivitySignalsEffect />
                 <App />
+                {isAndroid ? (
+                  <div
+                    style={{
+                      position: "fixed",
+                      bottom: "calc(env(safe-area-inset-bottom, 0px) + 16px)",
+                      left: 0,
+                      right: 0,
+                      display: "flex",
+                      justifyContent: "center",
+                      pointerEvents: "none",
+                      zIndex: 9999,
+                    }}
+                  >
+                    <div style={{ pointerEvents: "auto" }}>
+                      <AndroidVoicePill />
+                    </div>
+                  </div>
+                ) : null}
               </>
             )}
           </AppProvider>

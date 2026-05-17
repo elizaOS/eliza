@@ -178,5 +178,5 @@ Write-Host "  ======================================" -ForegroundColor Green
 Write-Host ""
 Write-Host "  Launch Eliza from the Start menu."
 Write-Host ""
-Write-Host "  Docs: https://eliza.how" -ForegroundColor Blue
+Write-Host "  Docs: https://eliza.app" -ForegroundColor Blue
 Write-Host ""
