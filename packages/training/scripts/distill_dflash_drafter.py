@@ -648,7 +648,7 @@ def _run_distillation(args: argparse.Namespace) -> int:
         p.requires_grad_(False)
     if student_config is not None:
         cfg = AutoConfig.from_pretrained(student_config)
-        student = AutoModelForCausalLM.from_config(cfg, torch_dtype=torch.float32).to(device)
+        student = AutoModelForCausalLM.from_config(cfg).to(device=device, dtype=torch.float32)
     else:
         student = AutoModelForCausalLM.from_pretrained(
             student_base, torch_dtype=torch.float32

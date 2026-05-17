@@ -266,7 +266,7 @@ def load_drafter_model(args: argparse.Namespace, target_tok: Any | None = None) 
         args.student_base_resolved = None
         args.student_vocab_size = _tokenizer_vocab_size(tok)
         cfg = AutoConfig.from_pretrained(student_config)
-        model = AutoModelForCausalLM.from_config(cfg, torch_dtype=torch.bfloat16)
+        model = AutoModelForCausalLM.from_config(cfg).to(dtype=torch.bfloat16)
         model.gradient_checkpointing_enable()
         model.train()
         return model, tok
