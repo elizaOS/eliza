@@ -10,6 +10,8 @@ struct PermissionsView: View {
             VStack(alignment: .leading, spacing: 18) {
                 SectionHeader(title: "Permissions", subtitle: "macOS capabilities the native shell should request deliberately.", systemImage: "hand.raised")
 
+                runtimeSetupCard
+
                 if let result = model.lastNativeActionResult {
                     GlassCard {
                         Label(result, systemImage: "info.circle")
@@ -30,6 +32,13 @@ struct PermissionsView: View {
                                     .font(.headline)
                                 Text(capability.detail)
                                     .foregroundStyle(.secondary)
+                                if let permission = model.permissionState(for: capability.id) {
+                                    Text(permissionDetail(permission))
+                                        .font(.caption)
+                                        .foregroundStyle(.tertiary)
+                                        .lineLimit(2)
+                                        .textSelection(.enabled)
+                                }
                             }
 
                             Spacer()
@@ -44,6 +53,62 @@ struct PermissionsView: View {
             .padding(24)
         }
         .navigationTitle("Permissions")
+        .toolbar {
+            ToolbarItem {
+                Button {
+                    model.refreshRuntimeSetupSnapshot()
+                } label: {
+                    Label("Refresh Setup", systemImage: "arrow.clockwise")
+                }
+                .disabled(model.isRefreshingSetup)
+            }
+        }
+        .task {
+            if model.setupSnapshot == nil && !model.isRefreshingSetup {
+                model.refreshRuntimeSetupSnapshot()
+            }
+        }
+    }
+
+    @ViewBuilder
+    private var runtimeSetupCard: some View {
+        if let snapshot = model.setupSnapshot {
+            GlassCard {
+                VStack(alignment: .leading, spacing: 12) {
+                    HStack {
+                        Label("Runtime Setup", systemImage: "checklist")
+                            .font(.headline)
+                        Spacer()
+                        StatusPill(
+                            title: "\(blockedCount(snapshot)) Need Review",
+                            systemImage: blockedCount(snapshot) == 0 ? "checkmark.circle.fill" : "exclamationmark.triangle.fill",
+                            tint: blockedCount(snapshot) == 0 ? theme.primaryTint : theme.warningTint
+                        )
+                    }
+
+                    DetailGrid(rows: [
+                        ("Platform", snapshot.permissions.platform),
+                        ("Shell", snapshot.permissions.shellEnabled ? "Enabled" : "Disabled"),
+                        ("Permissions", "\(snapshot.permissions.permissions.count) reported"),
+                        ("Automation", snapshot.automationMode.mode),
+                        ("Trade mode", snapshot.tradeMode.tradePermissionMode),
+                        ("User execute", snapshot.tradeMode.canUserLocalExecute ? "Enabled" : "Disabled"),
+                        ("Agent auto trade", snapshot.tradeMode.canAgentAutoTrade ? "Enabled" : "Disabled")
+                    ])
+                }
+            }
+        } else if let error = model.lastSetupProbeError {
+            GlassCard {
+                VStack(alignment: .leading, spacing: 8) {
+                    Label("Runtime setup probe failed", systemImage: "exclamationmark.triangle")
+                        .font(.headline)
+                        .foregroundStyle(theme.warningTint)
+                    Text(error)
+                        .foregroundStyle(.secondary)
+                        .textSelection(.enabled)
+                }
+            }
+        }
     }
 
     @ViewBuilder
@@ -143,13 +208,13 @@ struct PermissionsView: View {
         case "calendar":
             URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy_Calendars")
         case "screentime":
-            URL(string: "x-apple.systempreferences:com.apple.Screen-Time-Settings.extension")
+            URL(string: "x-apple.systempreferences:com.apple.preference.screentime")
         case "contacts":
             URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy_Contacts")
         case "notes":
             URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy_Automation")
         case "notifications":
-            URL(string: "x-apple.systempreferences:com.apple.Notifications-Settings.extension")
+            URL(string: "x-apple.systempreferences:com.apple.preference.notifications")
         case "full-disk":
             URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy_AllFiles")
         case "automation":
@@ -168,5 +233,25 @@ struct PermissionsView: View {
         case .unavailable:
             theme.destructiveTint
         }
+    }
+
+    private func blockedCount(_ snapshot: RuntimeSetupSnapshot) -> Int {
+        snapshot.permissions.permissions.values.filter { permission in
+            permission.status == "denied" || permission.status == "restricted" || permission.status == "not-determined"
+        }.count
+    }
+
+    private func permissionDetail(_ permission: RuntimePermissionState) -> String {
+        var parts = ["Runtime: \(permission.status)"]
+
+        if let reason = permission.reason, !reason.isEmpty {
+            parts.append(reason)
+        } else if let restrictedReason = permission.restrictedReason, !restrictedReason.isEmpty {
+            parts.append(restrictedReason)
+        } else {
+            parts.append(permission.canRequest ? "Can request" : "Cannot request")
+        }
+
+        return parts.joined(separator: " - ")
     }
 }

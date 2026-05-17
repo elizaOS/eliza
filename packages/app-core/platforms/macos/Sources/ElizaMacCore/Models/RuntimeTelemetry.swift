@@ -464,3 +464,271 @@ public struct WalletRuntimeSnapshot: Equatable, Sendable {
         self.fetchedAt = fetchedAt
     }
 }
+
+public struct RuntimePermissionFeatureSnapshot: Codable, Equatable, Sendable {
+    public let app: String
+    public let action: String
+    public let at: Int?
+
+    public init(app: String, action: String, at: Int?) {
+        self.app = app
+        self.action = action
+        self.at = at
+    }
+}
+
+public struct RuntimePermissionState: Codable, Equatable, Sendable, Identifiable {
+    public let id: String
+    public let status: String
+    public let restrictedReason: String?
+    public let lastChecked: Int?
+    public let lastRequested: Int?
+    public let lastBlockedFeature: RuntimePermissionFeatureSnapshot?
+    public let canRequest: Bool
+    public let platform: String
+    public let reason: String?
+
+    public init(
+        id: String,
+        status: String,
+        restrictedReason: String?,
+        lastChecked: Int?,
+        lastRequested: Int?,
+        lastBlockedFeature: RuntimePermissionFeatureSnapshot?,
+        canRequest: Bool,
+        platform: String,
+        reason: String?
+    ) {
+        self.id = id
+        self.status = status
+        self.restrictedReason = restrictedReason
+        self.lastChecked = lastChecked
+        self.lastRequested = lastRequested
+        self.lastBlockedFeature = lastBlockedFeature
+        self.canRequest = canRequest
+        self.platform = platform
+        self.reason = reason
+    }
+}
+
+public struct RuntimePermissionsSnapshot: Decodable, Equatable, Sendable {
+    public let permissions: [String: RuntimePermissionState]
+    public let platform: String
+    public let shellEnabled: Bool
+    public let fetchedAt: Date
+
+    public init(
+        permissions: [String: RuntimePermissionState],
+        platform: String,
+        shellEnabled: Bool,
+        fetchedAt: Date
+    ) {
+        self.permissions = permissions
+        self.platform = platform
+        self.shellEnabled = shellEnabled
+        self.fetchedAt = fetchedAt
+    }
+
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: DynamicCodingKey.self)
+        var permissions: [String: RuntimePermissionState] = [:]
+        var platform = "unknown"
+        var shellEnabled = false
+
+        for key in container.allKeys {
+            switch key.stringValue {
+            case "_platform":
+                platform = try container.decode(String.self, forKey: key)
+            case "_shellEnabled":
+                shellEnabled = try container.decode(Bool.self, forKey: key)
+            default:
+                permissions[key.stringValue] = try container.decode(RuntimePermissionState.self, forKey: key)
+            }
+        }
+
+        self.permissions = permissions
+        self.platform = platform
+        self.shellEnabled = shellEnabled
+        self.fetchedAt = Date()
+    }
+}
+
+public struct RuntimeAutomationModeSnapshot: Codable, Equatable, Sendable {
+    public let mode: String
+    public let options: [String]
+
+    public init(mode: String, options: [String]) {
+        self.mode = mode
+        self.options = options
+    }
+}
+
+public struct RuntimeTradeModeSnapshot: Codable, Equatable, Sendable {
+    public let tradePermissionMode: String
+    public let canUserLocalExecute: Bool
+    public let canAgentAutoTrade: Bool
+
+    public init(tradePermissionMode: String, canUserLocalExecute: Bool, canAgentAutoTrade: Bool) {
+        self.tradePermissionMode = tradePermissionMode
+        self.canUserLocalExecute = canUserLocalExecute
+        self.canAgentAutoTrade = canAgentAutoTrade
+    }
+}
+
+public struct RuntimeSetupSnapshot: Equatable, Sendable {
+    public let permissions: RuntimePermissionsSnapshot
+    public let automationMode: RuntimeAutomationModeSnapshot
+    public let tradeMode: RuntimeTradeModeSnapshot
+    public let fetchedAt: Date
+
+    public init(
+        permissions: RuntimePermissionsSnapshot,
+        automationMode: RuntimeAutomationModeSnapshot,
+        tradeMode: RuntimeTradeModeSnapshot,
+        fetchedAt: Date
+    ) {
+        self.permissions = permissions
+        self.automationMode = automationMode
+        self.tradeMode = tradeMode
+        self.fetchedAt = fetchedAt
+    }
+}
+
+public struct RuntimeConversationMetadata: Codable, Equatable, Sendable {
+    public let scope: String
+    public let pageId: String?
+
+    public init(scope: String = "general", pageId: String? = nil) {
+        self.scope = scope
+        self.pageId = pageId
+    }
+}
+
+public struct RuntimeConversation: Codable, Equatable, Sendable, Identifiable {
+    public let id: String
+    public let title: String
+    public let roomId: String
+    public let metadata: RuntimeConversationMetadata?
+    public let createdAt: String
+    public let updatedAt: String
+
+    public init(
+        id: String,
+        title: String,
+        roomId: String,
+        metadata: RuntimeConversationMetadata?,
+        createdAt: String,
+        updatedAt: String
+    ) {
+        self.id = id
+        self.title = title
+        self.roomId = roomId
+        self.metadata = metadata
+        self.createdAt = createdAt
+        self.updatedAt = updatedAt
+    }
+}
+
+public struct RuntimeConversationGreeting: Codable, Equatable, Sendable {
+    public let text: String
+    public let agentName: String
+    public let generated: Bool
+    public let persisted: Bool
+
+    public init(text: String, agentName: String, generated: Bool, persisted: Bool) {
+        self.text = text
+        self.agentName = agentName
+        self.generated = generated
+        self.persisted = persisted
+    }
+}
+
+public struct RuntimeConversationResponse: Codable, Equatable, Sendable {
+    public let conversation: RuntimeConversation
+    public let greeting: RuntimeConversationGreeting?
+
+    public init(conversation: RuntimeConversation, greeting: RuntimeConversationGreeting?) {
+        self.conversation = conversation
+        self.greeting = greeting
+    }
+}
+
+public struct RuntimeConversationMessage: Codable, Equatable, Sendable, Identifiable {
+    public let id: String
+    public let role: String
+    public let text: String
+    public let timestamp: Int
+    public let source: String?
+    public let actionName: String?
+    public let from: String?
+    public let fromUserName: String?
+
+    public init(
+        id: String,
+        role: String,
+        text: String,
+        timestamp: Int,
+        source: String? = nil,
+        actionName: String? = nil,
+        from: String? = nil,
+        fromUserName: String? = nil
+    ) {
+        self.id = id
+        self.role = role
+        self.text = text
+        self.timestamp = timestamp
+        self.source = source
+        self.actionName = actionName
+        self.from = from
+        self.fromUserName = fromUserName
+    }
+}
+
+public struct RuntimeConversationMessagesResponse: Codable, Equatable, Sendable {
+    public let messages: [RuntimeConversationMessage]
+
+    public init(messages: [RuntimeConversationMessage]) {
+        self.messages = messages
+    }
+}
+
+public struct RuntimeChatMessageMetadata: Codable, Equatable, Sendable {
+    public let client: String
+    public let surface: String
+    public let userName: String?
+
+    public init(client: String = "swift-macos", surface: String = "native-chat", userName: String?) {
+        self.client = client
+        self.surface = surface
+        self.userName = userName
+    }
+}
+
+public struct RuntimeChatResponse: Codable, Equatable, Sendable {
+    public let text: String
+    public let agentName: String?
+    public let failureKind: String?
+    public let noResponseReason: String?
+
+    public init(text: String, agentName: String?, failureKind: String?, noResponseReason: String?) {
+        self.text = text
+        self.agentName = agentName
+        self.failureKind = failureKind
+        self.noResponseReason = noResponseReason
+    }
+}
+
+private struct DynamicCodingKey: CodingKey {
+    let stringValue: String
+    let intValue: Int?
+
+    init?(stringValue: String) {
+        self.stringValue = stringValue
+        self.intValue = nil
+    }
+
+    init?(intValue: Int) {
+        self.stringValue = String(intValue)
+        self.intValue = intValue
+    }
+}

@@ -283,6 +283,7 @@ import {
   handleSandboxRouteGroup,
 } from "./server-route-dispatch.ts";
 import { handleSubscriptionRoutes } from "./subscription-routes.ts";
+import { handleSwiftMacRPCRoutes } from "./swift-mac-rpc-routes.ts";
 import { handleUpdateRoutes } from "./update-routes.ts";
 import { registerBuiltinViews } from "./views-registry.ts";
 import { handleViewsRoutes } from "./views-routes.ts";
@@ -1794,6 +1795,20 @@ async function handleRequest(
       pathname,
       url,
       state,
+      json,
+      error,
+    })
+  ) {
+    return;
+  }
+
+  if (
+    await handleSwiftMacRPCRoutes({
+      req,
+      res,
+      method,
+      pathname,
+      readJsonBody,
       json,
       error,
     })

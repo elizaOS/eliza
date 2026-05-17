@@ -28,13 +28,13 @@ struct ElizaMacApp: App {
                     model.startRuntime()
                 }
                 .keyboardShortcut("r", modifiers: [.command])
-                .disabled(model.status.isRunning)
+                .disabled(model.status.isActive)
 
                 Button("Stop Runtime") {
                     model.stopRuntime()
                 }
                 .keyboardShortcut(".", modifiers: [.command])
-                .disabled(!model.status.isRunning)
+                .disabled(!model.status.isActive)
 
                 Divider()
 

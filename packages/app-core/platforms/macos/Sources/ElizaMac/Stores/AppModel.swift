@@ -30,10 +30,17 @@ final class AppModel: ObservableObject {
     @Published var runtimeLogEntries: [RuntimeLogEntry]
     @Published var runtimeSnapshot: RuntimeSnapshot?
     @Published var walletSnapshot: WalletRuntimeSnapshot?
+    @Published var setupSnapshot: RuntimeSetupSnapshot?
+    @Published var activeConversation: RuntimeConversation?
+    @Published var chatMessages: [RuntimeConversationMessage]
     @Published var isRefreshingRuntime: Bool
     @Published var isRefreshingWallet: Bool
+    @Published var isRefreshingSetup: Bool
+    @Published var isSendingChat: Bool
     @Published var lastRuntimeProbeError: String?
     @Published var lastWalletProbeError: String?
+    @Published var lastSetupProbeError: String?
+    @Published var lastChatError: String?
     @Published var lastNativeActionResult: String?
     @Published var consoleURL: URL
     @Published var consoleTitle: String
@@ -55,6 +62,9 @@ final class AppModel: ObservableObject {
     private let runtimeController: RuntimeController
     private let notificationService = MacNotificationService()
     private let automationService = MacAutomationService()
+    private var hasBootstrappedRuntime = false
+    private var runtimeStartupTask: Task<Void, Never>?
+    private var pendingChatPrompts: [String] = []
 
     init(
         selection: AppSection? = .dashboard,
@@ -84,10 +94,17 @@ final class AppModel: ObservableObject {
         runtimeLogEntries: [RuntimeLogEntry] = [],
         runtimeSnapshot: RuntimeSnapshot? = nil,
         walletSnapshot: WalletRuntimeSnapshot? = nil,
+        setupSnapshot: RuntimeSetupSnapshot? = nil,
+        activeConversation: RuntimeConversation? = nil,
+        chatMessages: [RuntimeConversationMessage] = [],
         isRefreshingRuntime: Bool = false,
         isRefreshingWallet: Bool = false,
+        isRefreshingSetup: Bool = false,
+        isSendingChat: Bool = false,
         lastRuntimeProbeError: String? = nil,
         lastWalletProbeError: String? = nil,
+        lastSetupProbeError: String? = nil,
+        lastChatError: String? = nil,
         lastNativeActionResult: String? = nil,
         consoleTitle: String = "Renderer Home",
         consoleDetail: String = "Base renderer target for the current elizaOS runtime.",
@@ -131,10 +148,17 @@ final class AppModel: ObservableObject {
         self.runtimeLogEntries = runtimeLogEntries
         self.runtimeSnapshot = runtimeSnapshot
         self.walletSnapshot = walletSnapshot
+        self.setupSnapshot = setupSnapshot
+        self.activeConversation = activeConversation
+        self.chatMessages = chatMessages
         self.isRefreshingRuntime = isRefreshingRuntime
         self.isRefreshingWallet = isRefreshingWallet
+        self.isRefreshingSetup = isRefreshingSetup
+        self.isSendingChat = isSendingChat
         self.lastRuntimeProbeError = lastRuntimeProbeError
         self.lastWalletProbeError = lastWalletProbeError
+        self.lastSetupProbeError = lastSetupProbeError
+        self.lastChatError = lastChatError
         self.lastNativeActionResult = lastNativeActionResult
         self.consoleURL = resolvedConfiguration.rendererURL
         self.consoleTitle = consoleTitle
@@ -152,6 +176,19 @@ final class AppModel: ObservableObject {
 
     var userDisplayName: String {
         profile.hasDisplayName ? profile.displayName : "there"
+    }
+
+    func bootstrapRuntimeIfNeeded() {
+        guard !hasBootstrappedRuntime, !requiresNameOnboarding else {
+            return
+        }
+        hasBootstrappedRuntime = true
+        guard configuration.launchMode != .disabled else {
+            appendRuntimeEvent("Runtime bootstrap skipped because launch mode is disabled.")
+            return
+        }
+        appendRuntimeEvent("Bootstrapping native shell, then starting the agent runtime in the background.")
+        startRuntime()
     }
 
     var metrics: [ShellMetric] {
@@ -232,12 +269,17 @@ final class AppModel: ObservableObject {
     }
 
     func startRuntime() {
+        guard !status.isActive else {
+            appendRuntimeEvent("Runtime start skipped because the runtime is already \(status.title.lowercased()).")
+            return
+        }
+
         do {
             try runtimeController.start(configuration: configuration)
             status = runtimeController.status
-            appendRuntimeEvent("Runtime started at \(configuration.apiBaseURL.absoluteString).")
-            refreshRuntimeSnapshot(after: 1_500_000_000)
-            refreshWalletSnapshot(after: 1_800_000_000)
+            lastRuntimeProbeError = nil
+            appendRuntimeEvent("Runtime process launched; waiting for agent API at \(configuration.apiBaseURL.absoluteString).")
+            startRuntimeReadinessLoop(apiBase: configuration.apiBaseURL)
         } catch {
             status = .failed(message: error.localizedDescription)
             appendRuntimeEvent("Runtime failed: \(error.localizedDescription)")
@@ -245,13 +287,20 @@ final class AppModel: ObservableObject {
     }
 
     func stopRuntime() {
+        runtimeStartupTask?.cancel()
+        runtimeStartupTask = nil
+        pendingChatPrompts = []
         runtimeController.stop()
         status = runtimeController.status
         runtimeSnapshot = nil
         runtimeLogEntries = []
         walletSnapshot = nil
+        setupSnapshot = nil
+        activeConversation = nil
         lastRuntimeProbeError = nil
         lastWalletProbeError = nil
+        lastSetupProbeError = nil
+        lastChatError = nil
         appendRuntimeEvent("Runtime stopped.")
     }
 
@@ -368,6 +417,7 @@ final class AppModel: ObservableObject {
             } catch {
                 let message = error.localizedDescription
                 lastRuntimeProbeError = message
+                syncControllerStatusAfterProbeFailure()
                 diagnostics = diagnosticsAfterProbeFailure(message)
                 appendRuntimeEvent("Runtime probe failed: \(message)")
             }
@@ -400,6 +450,86 @@ final class AppModel: ObservableObject {
         }
     }
 
+    private func startRuntimeReadinessLoop(apiBase: URL) {
+        runtimeStartupTask?.cancel()
+        runtimeStartupTask = Task {
+            await waitForRuntimeReadiness(apiBase: apiBase)
+        }
+    }
+
+    private func waitForRuntimeReadiness(apiBase: URL) async {
+        let client = RuntimeAPIClient(baseURL: apiBase)
+
+        for attempt in 1...30 {
+            guard !Task.isCancelled else {
+                return
+            }
+
+            do {
+                let health = try await client.fetchHealth()
+                if health.ready {
+                    let snapshot = try await client.fetchSnapshot()
+                    applyRuntimeSnapshot(snapshot, apiBase: apiBase)
+                    appendRuntimeEvent("Agent runtime ready at \(apiBase.absoluteString).")
+                    drainQueuedChatPromptsIfReady()
+                    return
+                }
+
+                status = .starting
+                lastRuntimeProbeError = nil
+                if attempt == 1 || attempt % 5 == 0 {
+                    appendRuntimeEvent("Agent API answered but is not ready yet: \(health.agentState).")
+                }
+            } catch {
+                syncControllerStatusAfterProbeFailure()
+                if case .failed = status {
+                    appendRuntimeOutputTail()
+                    return
+                }
+
+                lastRuntimeProbeError = error.localizedDescription
+                if attempt == 1 || attempt % 5 == 0 {
+                    appendRuntimeEvent("Waiting for agent API: \(error.localizedDescription)")
+                }
+            }
+
+            do {
+                try await Task.sleep(nanoseconds: 1_000_000_000)
+            } catch {
+                return
+            }
+        }
+
+        status = .failed(message: "Agent API did not become ready within 30 seconds.")
+        diagnostics = diagnosticsAfterProbeFailure(status.detail)
+        appendRuntimeOutputTail()
+        appendRuntimeEvent("Runtime readiness timed out at \(apiBase.absoluteString).")
+    }
+
+    func refreshRuntimeSetupSnapshot() {
+        guard !isRefreshingSetup else {
+            return
+        }
+
+        isRefreshingSetup = true
+        let apiBase = configuration.apiBaseURL
+
+        Task {
+            defer {
+                isRefreshingSetup = false
+            }
+
+            do {
+                let snapshot = try await RuntimeAPIClient(baseURL: apiBase).fetchRuntimeSetupSnapshot()
+                applyRuntimeSetupSnapshot(snapshot)
+            } catch {
+                let message = error.localizedDescription
+                lastSetupProbeError = message
+                appendRuntimeEvent("Setup probe failed: \(message)")
+            }
+        }
+    }
+
     private func refreshRuntimeSnapshot(after delay: UInt64) {
         Task {
             do {
@@ -422,6 +552,17 @@ final class AppModel: ObservableObject {
         }
     }
 
+    private func refreshRuntimeSetupSnapshot(after delay: UInt64) {
+        Task {
+            do {
+                try await Task.sleep(nanoseconds: delay)
+            } catch {
+                return
+            }
+            refreshRuntimeSetupSnapshot()
+        }
+    }
+
     @discardableResult
     func submitChatPrompt(_ prompt: String) -> Bool {
         let trimmed = prompt.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -430,22 +571,123 @@ final class AppModel: ObservableObject {
             return false
         }
 
-        openRendererTab(
-            "chat",
-            title: "Chat",
-            additionalQueryItems: [
-                URLQueryItem(name: "prompt", value: trimmed)
-            ]
-        )
-
         if !status.isRunning {
-            startRuntime()
-            appendRuntimeEvent("Queued chat prompt for renderer.")
-        } else {
-            appendRuntimeEvent("Prepared chat prompt for renderer.")
+            pendingChatPrompts.append(trimmed)
+            appendLocalChatMessage(role: "user", text: trimmed)
+            lastChatError = "Agent runtime is starting. This message will send when the API is ready."
+            if !status.isActive {
+                startRuntime()
+            }
+            appendRuntimeEvent("Queued chat prompt for the agent runtime.")
+            return true
         }
 
+        sendChatPromptToRuntime(trimmed)
         return true
+    }
+
+    func refreshActiveConversationMessages() {
+        guard let conversationID = activeConversation?.id else {
+            return
+        }
+
+        Task {
+            do {
+                let response = try await RuntimeAPIClient(baseURL: configuration.apiBaseURL)
+                    .fetchConversationMessages(conversationID: conversationID)
+                chatMessages = response.messages
+                lastChatError = nil
+                appendRuntimeEvent("Native chat refreshed \(response.messages.count) messages.")
+            } catch {
+                lastChatError = error.localizedDescription
+                appendRuntimeEvent("Native chat refresh failed: \(error.localizedDescription)")
+            }
+        }
+    }
+
+    private func sendChatPromptToRuntime(_ prompt: String) {
+        guard !isSendingChat else {
+            pendingChatPrompts.append(prompt)
+            appendRuntimeEvent("Queued chat prompt behind an active agent turn.")
+            return
+        }
+
+        isSendingChat = true
+        appendLocalChatMessage(role: "user", text: prompt)
+
+        Task {
+            defer {
+                isSendingChat = false
+                drainQueuedChatPromptsIfReady()
+            }
+
+            do {
+                let client = RuntimeAPIClient(baseURL: configuration.apiBaseURL)
+                let conversation = try await ensureActiveConversation(client: client)
+                let reply = try await client.sendConversationMessage(
+                    conversationID: conversation.id,
+                    text: prompt,
+                    userName: userDisplayName
+                )
+                let messages = try await client.fetchConversationMessages(conversationID: conversation.id)
+                chatMessages = messages.messages.isEmpty
+                    ? chatMessages + [assistantMessage(from: reply)]
+                    : messages.messages
+                lastChatError = nil
+                appendRuntimeEvent("Native chat turn completed with \(reply.agentName ?? "agent").")
+            } catch {
+                lastChatError = error.localizedDescription
+                appendRuntimeEvent("Native chat failed: \(error.localizedDescription)")
+            }
+        }
+    }
+
+    private func ensureActiveConversation(client: RuntimeAPIClient) async throws -> RuntimeConversation {
+        if let activeConversation {
+            return activeConversation
+        }
+
+        let response = try await client.createConversation(
+            title: "Chat with \(userDisplayName)",
+            includeGreeting: false
+        )
+        activeConversation = response.conversation
+        appendRuntimeEvent("Native chat conversation created: \(response.conversation.id).")
+        return response.conversation
+    }
+
+    private func drainQueuedChatPromptsIfReady() {
+        guard status.isRunning, !isSendingChat, !pendingChatPrompts.isEmpty else {
+            return
+        }
+
+        let prompt = pendingChatPrompts.removeFirst()
+        sendChatPromptToRuntime(prompt)
+    }
+
+    private func appendLocalChatMessage(role: String, text: String) {
+        let timestamp = Int(Date().timeIntervalSince1970 * 1_000)
+        chatMessages.append(
+            RuntimeConversationMessage(
+                id: "local-\(role)-\(timestamp)-\(chatMessages.count)",
+                role: role,
+                text: text,
+                timestamp: timestamp,
+                source: "swift-macos",
+                from: role == "user" ? userDisplayName : nil
+            )
+        )
+    }
+
+    private func assistantMessage(from response: RuntimeChatResponse) -> RuntimeConversationMessage {
+        RuntimeConversationMessage(
+            id: "local-assistant-\(Int(Date().timeIntervalSince1970 * 1_000))",
+            role: "assistant",
+            text: response.text,
+            timestamp: Int(Date().timeIntervalSince1970 * 1_000),
+            source: "swift-macos",
+            from: response.agentName
+        )
     }
 
     @discardableResult
@@ -659,6 +901,25 @@ final class AppModel: ObservableObject {
         }
     }
 
+    func permissionState(for id: String) -> RuntimePermissionState? {
+        setupSnapshot?.permissions.permissions[id]
+    }
+
+    private func syncControllerStatusAfterProbeFailure() {
+        let controllerStatus = runtimeController.status
+        if controllerStatus != status {
+            status = controllerStatus
+        }
+    }
+
+    private func appendRuntimeOutputTail() {
+        let output = runtimeController.recentOutput.suffix(6).joined(separator: "\n")
+        guard !output.isEmpty else {
+            return
+        }
+        appendRuntimeEvent("Runtime process output:\n\(output)")
+    }
+
     private func applyRuntimeSnapshot(_ snapshot: RuntimeSnapshot, apiBase: URL) {
         runtimeSnapshot = snapshot
         runtimeLogEntries = Array(snapshot.logs.entries.suffix(80).reversed())
@@ -685,6 +946,14 @@ final class AppModel: ObservableObject {
         if snapshot.health.ready && walletSnapshot == nil && !isRefreshingWallet {
             refreshWalletSnapshot()
         }
+
+        if snapshot.health.ready && setupSnapshot == nil && !isRefreshingSetup {
+            refreshRuntimeSetupSnapshot()
+        }
+
+        if snapshot.health.ready {
+            drainQueuedChatPromptsIfReady()
+        }
     }
 
     private func applyWalletSnapshot(_ snapshot: WalletRuntimeSnapshot) {
@@ -692,6 +961,22 @@ final class AppModel: ObservableObject {
         lastWalletProbeError = nil
         diagnostics = diagnosticsAfterWalletProbe(snapshot)
         appendRuntimeEvent("Wallet probe refreshed: \(walletSummary(from: snapshot)).")
+    }
+
+    private func applyRuntimeSetupSnapshot(_ snapshot: RuntimeSetupSnapshot) {
+        setupSnapshot = snapshot
+        lastSetupProbeError = nil
+        capabilities = capabilities.map { capability in
+            guard let permission = snapshot.permissions.permissions[capability.id] else {
+                return capability
+            }
+
+            var next = capability
+            next.state = capabilityState(from: permission)
+            return next
+        }
+        diagnostics = diagnosticsAfterSetupProbe(snapshot)
+        appendRuntimeEvent("Setup probe refreshed: \(snapshot.permissions.permissions.count) permissions, automation \(snapshot.automationMode.mode), trade \(snapshot.tradeMode.tradePermissionMode).")
     }
 
     private func diagnostics(from snapshot: RuntimeSnapshot, apiBase: URL) -> [DiagnosticItem] {
@@ -809,6 +1094,50 @@ final class AppModel: ObservableObject {
         return items
     }
 
+    private func diagnosticsAfterSetupProbe(_ snapshot: RuntimeSetupSnapshot) -> [DiagnosticItem] {
+        var items = diagnostics
+
+        items.removeAll { item in
+            item.id == "permissions" || item.id == "automation-mode" || item.id == "trade-mode"
+        }
+
+        let blockedCount = snapshot.permissions.permissions.values.filter { permission in
+            permission.status == "denied" || permission.status == "restricted" || permission.status == "not-determined"
+        }.count
+
+        items.append(
+            DiagnosticItem(
+                id: "permissions",
+                title: "Permissions",
+                detail: "\(snapshot.permissions.permissions.count) reported by runtime on \(snapshot.permissions.platform); \(blockedCount) need review.",
+                systemImage: "hand.raised",
+                severity: blockedCount == 0 ? .info : .warning
+            )
+        )
+
+        items.append(
+            DiagnosticItem(
+                id: "automation-mode",
+                title: "Agent Automation",
+                detail: snapshot.automationMode.mode,
+                systemImage: "point.3.connected.trianglepath.dotted",
+                severity: snapshot.automationMode.mode == "full" ? .info : .warning
+            )
+        )
+
+        items.append(
+            DiagnosticItem(
+                id: "trade-mode",
+                title: "Trade Mode",
+                detail: "\(snapshot.tradeMode.tradePermissionMode); user local execute \(snapshot.tradeMode.canUserLocalExecute ? "enabled" : "disabled"), agent auto trade \(snapshot.tradeMode.canAgentAutoTrade ? "enabled" : "disabled")",
+                systemImage: "wallet.pass",
+                severity: snapshot.tradeMode.canAgentAutoTrade ? .warning : .info
+            )
+        )
+
+        return items
+    }
+
     private func diagnosticsAfterProbeFailure(_ message: String) -> [DiagnosticItem] {
         [
             repositoryDiagnostic(),
@@ -848,6 +1177,17 @@ final class AppModel: ObservableObject {
         }
 
         return "Runtime wallet routes responded without active addresses."
+    }
+
+    private func capabilityState(from permission: RuntimePermissionState) -> CapabilityState {
+        switch permission.status {
+        case "granted", "not-applicable":
+            .ready
+        case "restricted":
+            .unavailable
+        default:
+            .needsSetup
+        }
     }
 
     private func repositoryDiagnostic() -> DiagnosticItem {

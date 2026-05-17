@@ -35,14 +35,14 @@ struct RuntimeOverviewView: View {
                 } label: {
                     Label("Start", systemImage: "play.fill")
                 }
-                .disabled(model.status.isRunning)
+                .disabled(model.status.isActive)
 
                 Button {
                     model.stopRuntime()
                 } label: {
                     Label("Stop", systemImage: "stop.fill")
                 }
-                .disabled(!model.status.isRunning)
+                .disabled(!model.status.isActive)
             }
         }
     }

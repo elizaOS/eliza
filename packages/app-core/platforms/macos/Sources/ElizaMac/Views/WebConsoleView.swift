@@ -45,16 +45,21 @@ struct WebConsoleView: View {
                 } else {
                     VStack(spacing: 16) {
                         EmptyStateView(
-                            title: "Renderer is not running",
-                            detail: "Start the runtime to load this renderer target. Native sections remain available while the local process is stopped.",
-                            systemImage: "play.slash"
+                            title: model.status.isActive ? "Renderer is waiting for the agent runtime" : "Renderer is not running",
+                            detail: model.status.isActive ? "The native shell is supervising startup. Renderer handoff becomes available after readiness." : "Start the runtime to load this renderer target. Native sections remain available while the local process is stopped.",
+                            systemImage: model.status.isActive ? "clock" : "play.slash"
                         )
-                        Button {
-                            model.startRuntime()
-                        } label: {
-                            Label("Start Runtime", systemImage: "play.fill")
+                        if model.status.isActive {
+                            ProgressView()
+                                .controlSize(.small)
+                        } else {
+                            Button {
+                                model.startRuntime()
+                            } label: {
+                                Label("Start Runtime", systemImage: "play.fill")
+                            }
+                            .buttonStyle(.borderedProminent)
                         }
-                        .buttonStyle(.borderedProminent)
                     }
                 }
             }

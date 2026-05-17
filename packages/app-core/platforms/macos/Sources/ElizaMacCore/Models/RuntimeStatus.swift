@@ -51,4 +51,13 @@ public enum RuntimeStatus: Equatable, Sendable {
         }
         return false
     }
+
+    public var isActive: Bool {
+        switch self {
+        case .starting, .running:
+            true
+        case .stopped, .failed:
+            false
+        }
+    }
 }

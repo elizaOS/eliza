@@ -155,17 +155,25 @@ On first launch the main window switches into a transparent AppKit-backed mode a
 
 The menu bar extra uses `.menuBarExtraStyle(.window)` so it can render a compact custom dashboard with Swift Charts instead of a plain menu. Its current graph surfaces are runtime activity bars, model-route capacity lines, feature metrics, wallet readiness, and quick actions for Dashboard, Chat, Plugins, Agents, LifeOps, Health, Approvals, Wallets, and Diagnostics.
 
-The shell now includes a native runtime probe client for:
+The shell now includes a Swift-specific RPC client at `POST /api/swift/rpc`. It mirrors the Electrobun typed-RPC shape with method names and structured params, but keeps the transport native to Swift over localhost JSON:
 
-- `GET /api/health`
-- `GET /api/agents`
-- `GET /api/logs`
-- `GET /api/wallet/config`
-- `GET /api/wallet/addresses`
-- `GET /api/wallet/balances`
-- `GET /api/wallet/steward-status`
+- `runtime.health`
+- `runtime.agents`
+- `runtime.logs`
+- `conversation.create`
+- `conversation.messages`
+- `conversation.send`
+- `wallet.config`
+- `wallet.addresses`
+- `wallet.balances`
+- `wallet.stewardStatus`
+- `permissions.list`
+- `permissions.automationMode`
+- `permissions.tradeMode`
 
-Runtime refresh updates the native Dashboard, Runtime, Diagnostics, Logs, Connectors, Agents, Wallets, and menu bar graph surfaces with the live runtime readiness, plugin load/failure counts, connector statuses, active agent metadata, uptime, recent log entries, wallet source, balance readiness, signing status, and Steward vault status. Probe failures are surfaced as critical diagnostics instead of being hidden behind static defaults.
+Runtime refresh updates the native Dashboard, Runtime, Chat, Diagnostics, Logs, Connectors, Agents, Wallets, Permissions, and menu bar graph surfaces with the live runtime readiness, plugin load/failure counts, connector statuses, active agent metadata, uptime, recent log entries, wallet source, balance readiness, signing status, Steward vault status, runtime permission states, automation mode, and trade mode. Probe failures are surfaced as critical diagnostics instead of being hidden behind static defaults.
+
+Chat is native-first. The Swift composer creates a runtime conversation through `conversation.create`, sends turns through `conversation.send`, refreshes message history through `conversation.messages`, and queues prompts while the background agent process is still starting. It no longer sends prompts by opening a renderer tab.
 
 ## Native macOS Hooks
 
@@ -174,7 +182,7 @@ The Swift shell exposes deliberate macOS actions instead of background prompts:
 - Notifications use `UNUserNotificationCenter` with explicit Request and Test actions.
 - Apple Events are scoped to user-triggered Finder and Terminal actions.
 - Workspaces can be revealed in Finder or opened in Terminal from the native UI.
-- Permissions mirrors the elizaOS macOS capability set: Accessibility, Screen Recording, Microphone, Camera, Shell, Website Blocking, Location, Reminders, Calendar, Health, Screen Time, Contacts, Notes, Notifications, Full Disk Access, and Automation.
+- Permissions mirrors the elizaOS macOS capability set and overlays live `/api/permissions` state: Accessibility, Screen Recording, Microphone, Camera, Shell, Website Blocking, Location, Reminders, Calendar, Health, Screen Time, Contacts, Notes, Notifications, Full Disk Access, and Automation.
 
 Appearance customization is centralized in `ThemeSettings` and surfaced through `ThemeCustomizationView`. Users can change:
 
@@ -196,6 +204,8 @@ The app starts with three runtime modes:
 - `external`: point the shell at an already-running API base.
 - `disabled`: keep the UI open without starting or targeting a runtime.
 
+After first-run naming is complete, the main SwiftUI shell appears first and then starts the agent runtime as a supervised background process. Startup stays in `Starting` until `/api/health` reports `ready: true`; only then do wallet, permissions, setup, and queued chat probes run. If the process exits before readiness, the native Logs and Runtime views show the captured stdout/stderr tail instead of presenting a false running state.
+
 Default ports match the existing repo conventions:
 
 - API: `31337`
@@ -203,6 +213,11 @@ Default ports match the existing repo conventions:
 
 When a profile name is set, runtime launches include:
 
+- `ELIZA_API_PORT`
+- `ELIZA_PORT`
+- `ELIZA_UI_PORT`
+- `ELIZA_DESKTOP_API_BASE`
+- `ELIZA_RENDERER_URL`
 - `ELIZA_USER_NAME`
 - `ELIZA_PROFILE_NAME`
 

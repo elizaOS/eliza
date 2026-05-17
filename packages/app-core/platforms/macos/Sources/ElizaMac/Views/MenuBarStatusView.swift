@@ -6,6 +6,7 @@ import SwiftUI
 struct MenuBarStatusView: View {
     @ObservedObject var model: AppModel
     @Environment(\.elizaTheme) private var theme
+    @Environment(\.openWindow) private var openWindow
 
     private let columns = [
         GridItem(.adaptive(minimum: 116), spacing: 10)
@@ -15,13 +16,16 @@ struct MenuBarStatusView: View {
         ZStack {
             ThemedBackdrop(theme: theme)
 
-            VStack(alignment: .leading, spacing: 14) {
-                header
-                metricGrid
-                charts
-                quickActions
+            ScrollView {
+                VStack(alignment: .leading, spacing: 14) {
+                    header
+                    metricGrid
+                    charts
+                    quickActions
+                }
+                .padding(18)
             }
-            .padding(18)
+            .scrollIndicators(.visible)
         }
         .frame(width: 540, height: 720)
     }
@@ -116,9 +120,9 @@ struct MenuBarStatusView: View {
         GlassCard {
             VStack(alignment: .leading, spacing: 10) {
                 Button {
-                    model.status.isRunning ? model.stopRuntime() : model.startRuntime()
+                    model.status.isActive ? model.stopRuntime() : model.startRuntime()
                 } label: {
-                    Label(model.status.isRunning ? "Stop Runtime" : "Start Runtime", systemImage: model.status.isRunning ? "stop.fill" : "play.fill")
+                    Label(model.status.isActive ? "Stop Runtime" : "Start Runtime", systemImage: model.status.isActive ? "stop.fill" : "play.fill")
                 }
                 .keyboardShortcut("r", modifiers: [.command])
 
@@ -132,31 +136,32 @@ struct MenuBarStatusView: View {
                 Divider()
 
                 QuickActionRow(title: "Dashboard", systemImage: "rectangle.grid.2x2") {
-                    model.openSurface(.dashboard)
+                    open(.dashboard)
                 }
                 QuickActionRow(title: "Chat", systemImage: "bubble.left.and.bubble.right") {
-                    model.openSurface(.chat)
+                    open(.chat)
                 }
                 QuickActionRow(title: "Plugins", systemImage: "puzzlepiece.extension") {
-                    model.openSurface(.plugins)
+                    open(.plugins)
                 }
                 QuickActionRow(title: "Agents", systemImage: "person.2") {
-                    model.openSurface(.agents)
+                    open(.agents)
                 }
                 QuickActionRow(title: "LifeOps", systemImage: "heart.text.square") {
-                    model.openSurface(.lifeOps)
+                    open(.lifeOps)
                 }
                 QuickActionRow(title: "Health", systemImage: "heart.text.square.fill") {
-                    model.openSurface(.health)
+                    open(.health)
                 }
                 QuickActionRow(title: "Approvals", systemImage: "checklist.checked") {
-                    model.openSurface(.approvals)
+                    open(.approvals)
                 }
                 QuickActionRow(title: "Wallets", systemImage: "wallet.pass") {
                     model.openWallets()
+                    openWindow(id: "main")
                 }
                 QuickActionRow(title: "Diagnostics", systemImage: "waveform.path.ecg") {
-                    model.openSurface(.diagnostics)
+                    open(.diagnostics)
                 }
 
                 Divider()
@@ -174,6 +179,11 @@ struct MenuBarStatusView: View {
                 }
             }
         }
+    }
+
+    private func open(_ section: AppSection) {
+        model.openSurface(section)
+        openWindow(id: "main")
     }
 
     private var activitySamples: [ChartSample] {

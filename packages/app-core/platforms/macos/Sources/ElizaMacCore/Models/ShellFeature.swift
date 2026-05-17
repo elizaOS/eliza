@@ -49,8 +49,8 @@ public struct ShellFeature: Identifiable, Equatable, Sendable {
     }
 
     public static let chatDefaults: [ShellFeature] = [
-        ShellFeature(id: "local-chat", title: "Local Chat", detail: "Talk to the active Eliza agent through the native shell.", systemImage: "bubble.left.and.bubble.right", state: .ready, destination: .rendererTab("chat")),
-        ShellFeature(id: "rooms", title: "Rooms", detail: "Route conversations by workspace, channel, and agent persona.", systemImage: "rectangle.3.group.bubble", state: .planned, destination: .rendererTab("chat")),
+        ShellFeature(id: "local-chat", title: "Local Chat", detail: "Talk to the active Eliza agent through the native shell.", systemImage: "bubble.left.and.bubble.right", state: .ready, destination: .section(.chat)),
+        ShellFeature(id: "rooms", title: "Rooms", detail: "Route conversations by workspace, channel, and agent persona.", systemImage: "rectangle.3.group.bubble", state: .planned, destination: .section(.chat)),
         ShellFeature(id: "attachments", title: "Attachments", detail: "Drop files, images, logs, and repo context into a turn.", systemImage: "paperclip", state: .planned, destination: .section(.memory)),
         ShellFeature(id: "voice", title: "Voice", detail: "Prepare transcription, playback, and push-to-talk controls.", systemImage: "waveform", state: .planned, destination: .section(.models))
     ]

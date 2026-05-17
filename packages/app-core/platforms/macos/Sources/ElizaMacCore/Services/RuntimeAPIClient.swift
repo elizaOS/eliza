@@ -21,11 +21,18 @@ public final class RuntimeAPIClient {
     private let baseURL: URL
     private let session: URLSession
     private let decoder: JSONDecoder
+    private let encoder: JSONEncoder
 
-    public init(baseURL: URL, session: URLSession = .shared, decoder: JSONDecoder = JSONDecoder()) {
+    public init(
+        baseURL: URL,
+        session: URLSession = .shared,
+        decoder: JSONDecoder = JSONDecoder(),
+        encoder: JSONEncoder = JSONEncoder()
+    ) {
         self.baseURL = baseURL
         self.session = session
         self.decoder = decoder
+        self.encoder = encoder
     }
 
     public func fetchSnapshot() async throws -> RuntimeSnapshot {
@@ -56,50 +63,131 @@ public final class RuntimeAPIClient {
         )
     }
 
+    public func fetchRuntimeSetupSnapshot() async throws -> RuntimeSetupSnapshot {
+        async let permissions = fetchPermissions()
+        async let automationMode = fetchAutomationMode()
+        async let tradeMode = fetchTradeMode()
+
+        return try await RuntimeSetupSnapshot(
+            permissions: permissions,
+            automationMode: automationMode,
+            tradeMode: tradeMode,
+            fetchedAt: Date()
+        )
+    }
+
     public func fetchHealth() async throws -> RuntimeHealthSnapshot {
-        try await request(RuntimeHealthSnapshot.self, path: "/api/health")
+        try await rpc(RuntimeHealthSnapshot.self, method: "runtime.health")
     }
 
     public func fetchAgents() async throws -> [RuntimeAgentSnapshot] {
-        let response = try await request(RuntimeAgentsResponse.self, path: "/api/agents")
+        let response = try await rpc(RuntimeAgentsResponse.self, method: "runtime.agents")
         return response.agents
     }
 
     public func fetchLogs() async throws -> RuntimeLogsResponse {
-        try await request(RuntimeLogsResponse.self, path: "/api/logs")
+        try await rpc(RuntimeLogsResponse.self, method: "runtime.logs")
     }
 
     public func fetchWalletConfig() async throws -> WalletConfigSnapshot {
-        try await request(WalletConfigSnapshot.self, path: "/api/wallet/config")
+        try await rpc(WalletConfigSnapshot.self, method: "wallet.config")
     }
 
     public func fetchWalletAddresses() async throws -> WalletAddressesSnapshot {
-        try await request(WalletAddressesSnapshot.self, path: "/api/wallet/addresses")
+        try await rpc(WalletAddressesSnapshot.self, method: "wallet.addresses")
     }
 
     public func fetchWalletBalances() async throws -> WalletBalancesSnapshot {
-        try await request(WalletBalancesSnapshot.self, path: "/api/wallet/balances")
+        try await rpc(WalletBalancesSnapshot.self, method: "wallet.balances")
     }
 
     public func fetchStewardStatus() async throws -> StewardStatusSnapshot {
-        try await request(StewardStatusSnapshot.self, path: "/api/wallet/steward-status")
+        try await rpc(StewardStatusSnapshot.self, method: "wallet.stewardStatus")
     }
 
-    private func request<Response: Decodable>(_ responseType: Response.Type, path: String) async throws -> Response {
-        let endpoint = try endpoint(path: path)
+    public func fetchPermissions() async throws -> RuntimePermissionsSnapshot {
+        try await rpc(RuntimePermissionsSnapshot.self, method: "permissions.list")
+    }
+
+    public func fetchAutomationMode() async throws -> RuntimeAutomationModeSnapshot {
+        try await rpc(RuntimeAutomationModeSnapshot.self, method: "permissions.automationMode")
+    }
+
+    public func fetchTradeMode() async throws -> RuntimeTradeModeSnapshot {
+        try await rpc(RuntimeTradeModeSnapshot.self, method: "permissions.tradeMode")
+    }
+
+    public func createConversation(
+        title: String,
+        includeGreeting: Bool = false,
+        metadata: RuntimeConversationMetadata = RuntimeConversationMetadata(scope: "general", pageId: "macos-chat")
+    ) async throws -> RuntimeConversationResponse {
+        try await rpc(
+            RuntimeConversationResponse.self,
+            method: "conversation.create",
+            params: CreateConversationRequest(title: title, includeGreeting: includeGreeting, lang: "en", metadata: metadata)
+        )
+    }
+
+    public func fetchConversationMessages(conversationID: String) async throws -> RuntimeConversationMessagesResponse {
+        try await rpc(
+            RuntimeConversationMessagesResponse.self,
+            method: "conversation.messages",
+            params: ConversationMessagesRequest(conversationID: conversationID)
+        )
+    }
+
+    public func sendConversationMessage(
+        conversationID: String,
+        text: String,
+        userName: String
+    ) async throws -> RuntimeChatResponse {
+        try await rpc(
+            RuntimeChatResponse.self,
+            method: "conversation.send",
+            params: SendConversationMessageRequest(
+                conversationID: conversationID,
+                text: text,
+                channelType: "DM",
+                source: "swift-macos",
+                metadata: RuntimeChatMessageMetadata(userName: userName.isEmpty ? nil : userName)
+            )
+        )
+    }
+
+    private func rpc<Response: Decodable>(_ responseType: Response.Type, method: String) async throws -> Response {
+        try await rpc(responseType, method: method, params: EmptyRPCParams())
+    }
+
+    private func rpc<Response: Decodable, Params: Encodable>(
+        _ responseType: Response.Type,
+        method: String,
+        params: Params
+    ) async throws -> Response {
+        let endpoint = try endpoint(path: "/api/swift/rpc")
         var request = URLRequest(url: endpoint)
-        request.timeoutInterval = 5
+        request.httpMethod = "POST"
+        request.timeoutInterval = 60
+        request.addValue("application/json", forHTTPHeaderField: "Content-Type")
+        request.addValue("application/json", forHTTPHeaderField: "Accept")
+        request.addValue("ElizaMac", forHTTPHeaderField: "X-Eliza-Swift-App")
+        request.httpBody = try encoder.encode(RuntimeRPCRequest(method: method, params: params))
+
         let (data, response) = try await session.data(for: request)
 
         guard let httpResponse = response as? HTTPURLResponse else {
-            throw RuntimeAPIError.invalidResponse(path)
+            throw RuntimeAPIError.invalidResponse("/api/swift/rpc")
         }
 
         guard (200..<300).contains(httpResponse.statusCode) else {
-            throw RuntimeAPIError.httpStatus(httpResponse.statusCode, path)
+            throw RuntimeAPIError.httpStatus(httpResponse.statusCode, "/api/swift/rpc")
         }
 
-        return try decoder.decode(responseType, from: data)
+        let envelope = try decoder.decode(RuntimeRPCResponse<Response>.self, from: data)
+        guard envelope.ok, let result = envelope.result else {
+            throw RuntimeAPIError.httpStatus(envelope.status, method)
+        }
+        return result
     }
 
     private func endpoint(path: String) throws -> URL {
@@ -119,4 +207,44 @@ public final class RuntimeAPIClient {
 
         return url
     }
+}
+
+private struct EmptyRPCParams: Encodable {}
+
+private struct RuntimeRPCRequest<Params: Encodable>: Encodable {
+    let id: String
+    let method: String
+    let params: Params
+
+    init(method: String, params: Params) {
+        self.id = UUID().uuidString
+        self.method = method
+        self.params = params
+    }
+}
+
+private struct RuntimeRPCResponse<Result: Decodable>: Decodable {
+    let ok: Bool
+    let status: Int
+    let result: Result?
+    let error: String?
+}
+
+private struct CreateConversationRequest: Encodable {
+    let title: String
+    let includeGreeting: Bool
+    let lang: String
+    let metadata: RuntimeConversationMetadata
+}
+
+private struct ConversationMessagesRequest: Encodable {
+    let conversationID: String
+}
+
+private struct SendConversationMessageRequest: Encodable {
+    let conversationID: String
+    let text: String
+    let channelType: String
+    let source: String
+    let metadata: RuntimeChatMessageMetadata
 }

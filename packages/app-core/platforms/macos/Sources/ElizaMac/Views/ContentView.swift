@@ -28,6 +28,9 @@ struct ContentView: View {
         }
         .searchable(text: $model.searchText, placement: .toolbar, prompt: "Search Eliza")
         .searchToolbarBehavior(.automatic)
+        .task {
+            model.bootstrapRuntimeIfNeeded()
+        }
         .inspector(isPresented: $model.inspectorVisible) {
             InspectorView(model: model)
                 .inspectorColumnWidth(min: 260, ideal: 300, max: 360)
@@ -39,14 +42,14 @@ struct ContentView: View {
                 } label: {
                     Label("Start Runtime", systemImage: "play.fill")
                 }
-                .disabled(model.status.isRunning)
+                .disabled(model.status.isActive)
 
                 Button {
                     model.stopRuntime()
                 } label: {
                     Label("Stop Runtime", systemImage: "stop.fill")
                 }
-                .disabled(!model.status.isRunning)
+                .disabled(!model.status.isActive)
             }
 
             ToolbarSpacer(.fixed)

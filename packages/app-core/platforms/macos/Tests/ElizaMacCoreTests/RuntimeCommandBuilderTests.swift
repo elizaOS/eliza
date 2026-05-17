@@ -18,8 +18,11 @@ final class RuntimeCommandBuilderTests: XCTestCase {
         XCTAssertEqual(command.executable, "/opt/homebrew/bin/bun")
         XCTAssertEqual(command.arguments, ["run", "start"])
         XCTAssertEqual(command.workingDirectory, "/repo")
-        XCTAssertEqual(command.environment["ELIZA_PORT"], "31337")
         XCTAssertEqual(command.environment["ELIZA_API_PORT"], "31337")
+        XCTAssertEqual(command.environment["ELIZA_PORT"], "2138")
+        XCTAssertEqual(command.environment["ELIZA_UI_PORT"], "2138")
+        XCTAssertEqual(command.environment["ELIZA_DESKTOP_API_BASE"], "http://127.0.0.1:31337")
+        XCTAssertEqual(command.environment["ELIZA_RENDERER_URL"], "http://127.0.0.1:2138")
         XCTAssertEqual(command.environment["ELIZA_NAMESPACE"], "eliza")
     }
 

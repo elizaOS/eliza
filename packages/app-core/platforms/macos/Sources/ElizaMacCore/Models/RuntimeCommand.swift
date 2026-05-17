@@ -25,8 +25,11 @@ public enum RuntimeCommandBuilder {
         let usesEnv = bunExecutable == "/usr/bin/env"
         var environment = [
             "ELIZA_API_PORT": String(configuration.apiPort),
+            "ELIZA_DESKTOP_API_BASE": configuration.apiBaseURL.absoluteString,
             "ELIZA_NAMESPACE": "eliza",
-            "ELIZA_PORT": String(configuration.apiPort)
+            "ELIZA_PORT": String(configuration.uiPort),
+            "ELIZA_RENDERER_URL": configuration.rendererURL.absoluteString,
+            "ELIZA_UI_PORT": String(configuration.uiPort)
         ]
 
         if !configuration.userName.isEmpty {
