@@ -6,6 +6,10 @@ set -euo pipefail
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "${ROOT}"
 
+stat_size() {
+    stat -c%s "$1" 2>/dev/null || stat -f %z "$1"
+}
+
 red() { printf '\033[31m%s\033[0m\n' "$*" >&2; }
 green() { printf '\033[32m%s\033[0m\n' "$*"; }
 yellow() { printf '\033[33m%s\033[0m\n' "$*"; }
@@ -142,7 +146,7 @@ if [ -n "${ISO_SIGNATURE}" ] || [ "${REQUIRE_SIGNATURE}" = "1" ]; then
     green "signature ok"
 fi
 
-iso_bytes="$(stat -c%s "${ISO}")"
+iso_bytes="$(stat_size "${ISO}")"
 iso_mib=$((iso_bytes / 1024 / 1024))
 dev_sectors="$(cat "${sys_dev}/size")"
 dev_gib=$((dev_sectors * 512 / 1024 / 1024 / 1024))

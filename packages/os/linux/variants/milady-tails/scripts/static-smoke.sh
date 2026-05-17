@@ -8,6 +8,10 @@ REPO_ROOT="$(cd "${ROOT}/../../../../.." && pwd)"
 SOURCE_ONLY="${ELIZAOS_STATIC_SOURCE_ONLY:-0}"
 cd "${ROOT}"
 
+stat_mode() {
+    stat -c %a "$1" 2>/dev/null || stat -f %Lp "$1"
+}
+
 echo "==> shell syntax"
 bash -n build.sh build-iso.sh tails/auto/build \
     scripts/dev-sign-update-manifest.sh \
@@ -87,7 +91,7 @@ for executable in \
     scripts/usb-write.sh \
     scripts/security-smoke.sh
 do
-    mode="$(stat -c %a "${executable}")"
+    mode="$(stat_mode "${executable}")"
     if [ "${mode}" != "755" ]; then
         echo "${executable} must be mode 755, got ${mode}" >&2
         exit 1
@@ -97,7 +101,7 @@ done
 echo "==> elizaOS branding"
 for font in Poppins-Regular.ttf Poppins-Medium.ttf OFL.txt; do
     test -f "tails/config/chroot_local-includes/usr/share/fonts/truetype/elizaos/${font}"
-    font_mode="$(stat -c %a "tails/config/chroot_local-includes/usr/share/fonts/truetype/elizaos/${font}")"
+    font_mode="$(stat_mode "tails/config/chroot_local-includes/usr/share/fonts/truetype/elizaos/${font}")"
     if [ "${font_mode}" != "644" ]; then
         echo "${font} must be mode 644, got ${font_mode}" >&2
         exit 1
@@ -417,7 +421,7 @@ if grep -q 'pkill .* -u amnesia' \
     echo "persistence-maintenance must not use broad pkill patterns against the live user." >&2
     exit 1
 fi
-helper_mode="$(stat -c %a tails/config/chroot_local-includes/usr/local/lib/elizaos/persistence-maintenance)"
+helper_mode="$(stat_mode tails/config/chroot_local-includes/usr/local/lib/elizaos/persistence-maintenance)"
 if [ "${helper_mode}" != "755" ]; then
     echo "persistence-maintenance must be mode 755, got ${helper_mode}" >&2
     exit 1
@@ -433,7 +437,7 @@ if [ -d tails/config/chroot_local-includes/lib ]; then
     exit 1
 fi
 if [ -e tails/config/chroot_local-includes/tmp ]; then
-    tmp_mode="$(stat -c %a tails/config/chroot_local-includes/tmp)"
+    tmp_mode="$(stat_mode tails/config/chroot_local-includes/tmp)"
     if [ "${tmp_mode}" != "1777" ]; then
         echo "tails/config/chroot_local-includes/tmp must be mode 1777, got ${tmp_mode}" >&2
         exit 1
@@ -442,7 +446,7 @@ elif [ "${SOURCE_ONLY}" != "1" ]; then
     echo "tails/config/chroot_local-includes/tmp is missing from the full build tree" >&2
     exit 1
 fi
-swapon_mode="$(stat -c %a tails/config/chroot_local-includes/usr/sbin/swapon.tails)"
+swapon_mode="$(stat_mode tails/config/chroot_local-includes/usr/sbin/swapon.tails)"
 if [ "${swapon_mode}" != "755" ]; then
     echo "tails/config/chroot_local-includes/usr/sbin/swapon.tails must be mode 755, got ${swapon_mode}" >&2
     exit 1
@@ -919,7 +923,7 @@ if (
 	'
 fi
 if [ -e tails/chroot/opt/milady/bin/chrome-sandbox ]; then
-    sandbox_mode="$(stat -c %a tails/chroot/opt/milady/bin/chrome-sandbox)"
+    sandbox_mode="$(stat_mode tails/chroot/opt/milady/bin/chrome-sandbox)"
     if [ "${sandbox_mode}" != "755" ]; then
         echo "chrome-sandbox must not be setuid in native-renderer elizaOS Live, got ${sandbox_mode}" >&2
         exit 1

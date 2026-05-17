@@ -167,6 +167,35 @@ sha256_re = re.compile(r"^[a-fA-F0-9]{64}$")
 def fail(message):
     raise SystemExit(message)
 
+def normalize_version(value):
+    parts = []
+    for item in re.split(r"[^0-9]+", str(value or "")):
+        if item:
+            parts.append(int(item))
+    return parts
+
+def version_at_least(current, minimum):
+    current_parts = normalize_version(current)
+    minimum_parts = normalize_version(minimum)
+    if not minimum_parts:
+        return True
+    width = max(len(current_parts), len(minimum_parts))
+    current_parts.extend([0] * (width - len(current_parts)))
+    minimum_parts.extend([0] * (width - len(minimum_parts)))
+    return current_parts >= minimum_parts
+
+def current_os_version():
+    override = os.environ.get("ELIZAOS_OS_VERSION", "").strip()
+    if override:
+        return override
+    os_release = pathlib.Path("/etc/os-release")
+    if not os_release.is_file():
+        return ""
+    for line in os_release.read_text(encoding="utf-8", errors="ignore").splitlines():
+        if line.startswith("VERSION_ID="):
+            return line.split("=", 1)[1].strip().strip('"')
+    return ""
+
 def safe_relative_path(value, field):
     if not isinstance(value, str) or not value or value.startswith("/"):
         fail(f"{field} must be a relative path")
@@ -242,6 +271,34 @@ if not isinstance(channel, str) or not name_re.fullmatch(channel):
 sequence = manifest.get("sequence")
 if not isinstance(sequence, int) or sequence < 1:
     fail("manifest sequence must be a positive integer")
+
+product = manifest.get("product")
+current_product = os.environ.get("ELIZAOS_PRODUCT", "elizaos-live")
+if product is not None:
+    if not isinstance(product, str) or not name_re.fullmatch(product):
+        fail("manifest product is unsafe")
+    if product != current_product:
+        fail("manifest product does not match this image")
+
+architectures = manifest.get("architectures")
+current_architecture = os.environ.get("ELIZAOS_ARCHITECTURE") or os.uname().machine
+if architectures is not None:
+    if (
+        not isinstance(architectures, list)
+        or not architectures
+        or any(not isinstance(item, str) or not name_re.fullmatch(item) for item in architectures)
+    ):
+        fail("manifest architectures must be a non-empty list of safe names")
+    if current_architecture not in architectures:
+        fail("manifest architecture does not match this image")
+
+minimum_os_version = manifest.get("minimumOsVersion")
+if minimum_os_version is not None:
+    if not isinstance(minimum_os_version, str) or not minimum_os_version.strip():
+        fail("manifest minimumOsVersion must be a non-empty string")
+    os_version = current_os_version()
+    if os_version and not version_at_least(os_version, minimum_os_version):
+        fail("manifest minimumOsVersion is newer than this image")
 
 published_at = manifest.get("publishedAt")
 if not isinstance(published_at, str):
