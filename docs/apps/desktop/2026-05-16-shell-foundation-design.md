@@ -5,6 +5,7 @@
 - **Sub-project**: #1 of 4 (shell foundation → conversation persistence → wake word → thread management)
 - **Branch**: `shell-foundation` (off `upstream/shaw/eliza-app-release-blockers` at `5d5545f2b5`)
 - **Worktree**: `/Volumes/OWC Envoy Pro FX/desktop/eliza/eliza-shell-foundation`
+- **v1 implementation**: landed via the tasks in `2026-05-17-shell-foundation-implementation-plan.md` (this branch's commits prefixed `feat(shell)` and `fix(shell)`)
 
 ## Context
 
