@@ -16,10 +16,19 @@
     "typecheck": "tsc --noEmit -p tsconfig.json",
     "build": "bun run build:js && bun run build:types",
     "clean": "rm -rf dist",
+<<<<<<< Updated upstream
     "build:js": "tsup",
     "build:types": "tsc --noCheck -p tsconfig.build.json"
   },
   "dependencies": {
+=======
+    "build:js": "tsup --config ../tsup.plugin-packages.shared.ts",
+    "build:types": "tsc --noCheck -p tsconfig.build.json"
+  },
+  "dependencies": {
+    "@elizaos/agent": "workspace:*",
+    "@elizaos/app-core": "workspace:*",
+>>>>>>> Stashed changes
     "@elizaos/core": "workspace:*",
     "@elizaos/shared": "workspace:*",
     "@elizaos/vault": "workspace:*"

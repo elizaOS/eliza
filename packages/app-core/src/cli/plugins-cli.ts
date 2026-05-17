@@ -251,9 +251,7 @@ export function registerPluginsCli(program: Command): void {
         );
         console.log();
       } catch (err) {
-        console.error(
-          chalk.red(formatError(err)),
-        );
+        console.error(chalk.red(formatError(err)));
         process.exitCode = 1;
       }
     });
@@ -297,9 +295,7 @@ export function registerPluginsCli(program: Command): void {
           console.log();
         }
       } catch (err) {
-        console.error(
-          chalk.red(formatError(err)),
-        );
+        console.error(chalk.red(formatError(err)));
         process.exitCode = 1;
       }
     });
@@ -371,9 +367,7 @@ export function registerPluginsCli(program: Command): void {
           `\n  Install: ${chalk.cyan(`eliza plugins install ${info.name}`)}\n`,
         );
       } catch (err) {
-        console.error(
-          chalk.red(formatError(err)),
-        );
+        console.error(chalk.red(formatError(err)));
         process.exitCode = 1;
       }
     });
@@ -428,9 +422,7 @@ export function registerPluginsCli(program: Command): void {
         }
         console.log();
       } catch (err) {
-        console.error(
-          chalk.red(formatError(err)),
-        );
+        console.error(chalk.red(formatError(err)));
         process.exitCode = 1;
       }
     });
@@ -461,9 +453,7 @@ export function registerPluginsCli(program: Command): void {
         }
         console.log();
       } catch (err) {
-        console.error(
-          chalk.red(formatError(err)),
-        );
+        console.error(chalk.red(formatError(err)));
         process.exitCode = 1;
       }
     });
@@ -491,9 +481,7 @@ export function registerPluginsCli(program: Command): void {
           console.log();
         }
       } catch (err) {
-        console.error(
-          chalk.red(formatError(err)),
-        );
+        console.error(chalk.red(formatError(err)));
         process.exitCode = 1;
       }
     });
@@ -512,9 +500,7 @@ export function registerPluginsCli(program: Command): void {
           `${chalk.green("Done!")} ${registry.size} plugins loaded.\n`,
         );
       } catch (err) {
-        console.error(
-          chalk.red(formatError(err)),
-        );
+        console.error(chalk.red(formatError(err)));
         process.exitCode = 1;
       }
     });
@@ -616,9 +602,7 @@ export function registerPluginsCli(program: Command): void {
           try {
             entryPoint = await resolvePackageEntry(candidate.installPath);
           } catch (err) {
-            fail(
-              `Entry point failed: ${formatError(err)}`,
-            );
+            fail(`Entry point failed: ${formatError(err)}`);
             continue;
           }
 
@@ -640,9 +624,7 @@ export function registerPluginsCli(program: Command): void {
               unknown
             >;
           } catch (err) {
-            fail(
-              `Import failed: ${formatError(err)}`,
-            );
+            fail(`Import failed: ${formatError(err)}`);
             continue;
           }
 
@@ -668,9 +650,7 @@ export function registerPluginsCli(program: Command): void {
           `  ${chalk.bold("Summary:")} ${parts.join(", ")} out of ${candidates.length}\n`,
         );
       } catch (err) {
-        console.error(
-          chalk.red(formatError(err)),
-        );
+        console.error(chalk.red(formatError(err)));
         process.exitCode = 1;
       }
     });
@@ -731,9 +711,7 @@ export function registerPluginsCli(program: Command): void {
           chalk.dim("Restart your agent to load plugins from this path.\n"),
         );
       } catch (err) {
-        console.error(
-          chalk.red(formatError(err)),
-        );
+        console.error(chalk.red(formatError(err)));
         process.exitCode = 1;
       }
     });
@@ -792,9 +770,7 @@ export function registerPluginsCli(program: Command): void {
         }
         console.log();
       } catch (err) {
-        console.error(
-          chalk.red(formatError(err)),
-        );
+        console.error(chalk.red(formatError(err)));
         process.exitCode = 1;
       }
     });
@@ -1001,9 +977,7 @@ export function registerPluginsCli(program: Command): void {
         );
         console.log(chalk.dim("Restart your agent to apply changes.\n"));
       } catch (err) {
-        console.error(
-          chalk.red(formatError(err)),
-        );
+        console.error(chalk.red(formatError(err)));
         process.exitCode = 1;
       }
     });
@@ -1147,9 +1121,7 @@ export function registerPluginsCli(program: Command): void {
           // If the command actually fails, the user will see it.
         }
       } catch (err) {
-        console.error(
-          chalk.red(formatError(err)),
-        );
+        console.error(chalk.red(formatError(err)));
         process.exitCode = 1;
       }
     });

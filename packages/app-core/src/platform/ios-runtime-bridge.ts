@@ -138,11 +138,7 @@ async function fetchIosFullBunSmokeJson<T>(
   try {
     return JSON.parse(text) as T;
   } catch (error) {
-    throw new Error(
-      `${label} returned invalid JSON: ${
-        formatError(error)
-      }`,
-    );
+    throw new Error(`${label} returned invalid JSON: ${formatError(error)}`);
   }
 }
 
@@ -209,11 +205,7 @@ function parseIosFullBunSmokeHttpJson<T>(label: string, value: unknown): T {
   try {
     return JSON.parse(body) as T;
   } catch (error) {
-    throw new Error(
-      `${label} returned invalid JSON: ${
-        formatError(error)
-      }`,
-    );
+    throw new Error(`${label} returned invalid JSON: ${formatError(error)}`);
   }
 }
 
