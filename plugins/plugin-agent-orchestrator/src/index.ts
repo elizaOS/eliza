@@ -12,6 +12,7 @@ import type {
   IAgentRuntime,
   Plugin,
   ServiceClass,
+  TargetInfo,
   ThreadHandle,
 } from "@elizaos/core";
 import {
@@ -149,6 +150,14 @@ export function createAgentOrchestratorPlugin(): Plugin {
         payload: TaskAuditPayload & { runtime: IAgentRuntime },
       ) => Promise<void>)
     | undefined;
+  // Cleanup callback returned by registerProgressHook. Captured here so
+  // dispose() can drop the session-event listener and restore the
+  // sendMessageToTarget middleware. Without this, every plugin reload
+  // stacks another onSessionEvent listener on the AcpService — events
+  // would fan out to N orphaned closures (each with its own thread cache,
+  // progressBySession) and the channel would receive N duplicates per
+  // sub-agent narration chunk.
+  let disposeProgressHook: (() => void) | undefined;
 
   return {
     name: "@elizaos/plugin-agent-orchestrator",
@@ -221,7 +230,7 @@ export function createAgentOrchestratorPlugin(): Plugin {
             ),
           ),
         ).then(() => {
-          registerProgressHook(runtime);
+          disposeProgressHook = registerProgressHook(runtime);
         });
       }, 0);
     },
@@ -231,6 +240,20 @@ export function createAgentOrchestratorPlugin(): Plugin {
           TaskAuditPayload & { runtime: IAgentRuntime }
         >(TASK_AUDIT_EVENT, taskAuditHandler);
         taskAuditHandler = undefined;
+      }
+      if (disposeProgressHook) {
+        try {
+          disposeProgressHook();
+        } catch (err) {
+          runtime.logger?.warn?.(
+            {
+              src: "@elizaos/plugin-agent-orchestrator",
+              err: err instanceof Error ? err.message : String(err),
+            },
+            "progress hook dispose threw",
+          );
+        }
+        disposeProgressHook = undefined;
       }
       const acp = runtime.getService<AcpService>(AcpService.serviceType);
       await acp?.stop();
@@ -390,7 +413,7 @@ function formatToolCallForHuman(tc: AcpToolCall | undefined): string {
  * all plugin.init() complete). The fire-and-forget chain in init() schedules
  * us for after that promise settles.
  */
-function registerProgressHook(runtime: IAgentRuntime): void {
+function registerProgressHook(runtime: IAgentRuntime): () => void {
   const acp = runtime.getService<AcpService>(AcpService.serviceType);
   runtime.logger?.debug?.(
     { src: "@elizaos/plugin-agent-orchestrator" },
@@ -401,8 +424,20 @@ function registerProgressHook(runtime: IAgentRuntime): void {
       { src: "@elizaos/plugin-agent-orchestrator" },
       "AcpService not available; sub-agent progress streaming disabled",
     );
-    return;
+    return () => undefined;
   }
+  // Bound for the per-runtime thread + main-message label caches. Caches
+  // are keyed by `${source}::${roomId}::${label}`; in the personal-bot
+  // single-tenant case `label` cardinality is tiny, but a multi-tenant
+  // process running 1000+ distinct labels over its lifetime would leak
+  // ~100KB without eviction. 200 entries fits all realistic concurrent
+  // labels with insertion-order eviction.
+  const LABEL_CACHE_LIMIT = 200;
+  const evictOldest = <V>(map: Map<string, V>): void => {
+    if (map.size <= LABEL_CACHE_LIMIT) return;
+    const first = map.keys().next();
+    if (!first.done) map.delete(first.value);
+  };
   const lastPostByKey = new Map<string, number>();
   const messageBuffers = new Map<string, string>();
   const messageTimers = new Map<string, NodeJS.Timeout>();
@@ -481,8 +516,10 @@ function registerProgressHook(runtime: IAgentRuntime): void {
   type SendMessageFn = (typeof runtime)["sendMessageToTarget"];
   type RuntimeWithMarker = IAgentRuntime & {
     __orchestratorSendWrapped?: boolean;
+    __orchestratorOriginalSend?: SendMessageFn;
   };
   const taggedRuntime = runtime as RuntimeWithMarker;
+  let restoreSend: (() => void) | undefined;
   if (
     !taggedRuntime.__orchestratorSendWrapped &&
     typeof runtime.sendMessageToTarget === "function"
@@ -531,6 +568,17 @@ function registerProgressHook(runtime: IAgentRuntime): void {
     };
     runtime.sendMessageToTarget = wrapped;
     taggedRuntime.__orchestratorSendWrapped = true;
+    taggedRuntime.__orchestratorOriginalSend = originalSend;
+    restoreSend = () => {
+      // Only restore if we're still the active wrap. If a later wrapper
+      // chained over ours, leave it alone — yanking the middle of a chain
+      // would break downstream consumers.
+      if (runtime.sendMessageToTarget === wrapped) {
+        runtime.sendMessageToTarget = originalSend;
+      }
+      taggedRuntime.__orchestratorSendWrapped = false;
+      taggedRuntime.__orchestratorOriginalSend = undefined;
+    };
   }
   const POST_DEBOUNCE_MS = 1500;
   const MESSAGE_SILENCE_FLUSH_MS = 1500;
@@ -656,13 +704,13 @@ function registerProgressHook(runtime: IAgentRuntime): void {
     hasCap(source, "create_thread") && hasCap(source, "post_to_thread");
 
   async function bestEffortReact(
-    target: { source: string; roomId: string },
+    target: TargetInfo,
     messageId: string,
     emoji: string,
   ): Promise<void> {
     if (typeof runtime.addReactionOnTarget !== "function") return;
     try {
-      await runtime.addReactionOnTarget(target as never, messageId, emoji);
+      await runtime.addReactionOnTarget(target, messageId, emoji);
     } catch {
       // best-effort: reactions are visual sugar, never block the flow
     }
@@ -689,6 +737,17 @@ function registerProgressHook(runtime: IAgentRuntime): void {
   ): Promise<void> {
     const text = sanitizePlannerText(rawText);
     const state = progressBySession.get(sessionId);
+    // Silent-narration mode for capability-poor surfaces. When the target
+    // supports neither threads nor edits (Twitter/X DM, SMS, plain stdio),
+    // every emitProgress would otherwise produce a fresh message. After
+    // the initial 🚀 spawn ack there is nothing useful to say mid-task
+    // without spamming the user — suppress the post and keep narration
+    // off-channel. The user still sees the spawn ack and the final ✅/❌
+    // message from markTaskComplete / markTaskFailed.
+    if (state && !state.thread && !state.canEdit) {
+      state.lastText = text;
+      return;
+    }
     try {
       // ── post into the per-session thread when supported ──
       if (state?.thread && typeof runtime.postToThreadOnTarget === "function") {
@@ -696,9 +755,14 @@ function registerProgressHook(runtime: IAgentRuntime): void {
         // The thread name IS the label — repeating `[label]` in the body
         // is redundant. Strip the emoji-prefixed `[label]` marker so the
         // thread reads as clean prose: `💬 [foo] Reading file...` becomes
-        // `💬 Reading file...`.
+        // `💬 Reading file...`. NOTE: `⚠️` and `⏸️` are 2-codepoint
+        // sequences (base + U+FE0F variation selector), so they cannot
+        // live inside a `[...]` character class — that would only match
+        // a single codepoint and leave the variation selector behind,
+        // silently failing to strip the bracket for those two prefixes.
+        // Express each emoji as its own alternation branch instead.
         const threadText = text.replace(
-          /^([💬⏳⚠️⏸️✅❌🚀])\s+\[[^\]]+\]\s+/u,
+          /^(💬|⏳|⚠️|⏸️|✅|❌|🚀)\s+\[[^\]]+\]\s+/u,
           "$1 ",
         );
         await runtime.postToThreadOnTarget(target, state.thread, {
@@ -768,6 +832,7 @@ function registerProgressHook(runtime: IAgentRuntime): void {
         platformId.trim().length > 0
       ) {
         mainMessageCacheByKey.set(mainCacheKey, platformId);
+        evictOldest(mainMessageCacheByKey);
         const newState: ProgressState = {
           mainMessageId: platformId,
           canEdit,
@@ -845,25 +910,32 @@ function registerProgressHook(runtime: IAgentRuntime): void {
 
   async function markTaskComplete(
     sessionId: string,
-    target: { source: string; roomId: string },
+    target: TargetInfo,
     summary: string,
   ): Promise<void> {
     const state = progressBySession.get(sessionId);
     if (!state) return;
-    // Edit the main spawn message to the final summary so the user has a
-    // single permanent record in the channel (thread holds detail).
+    const completionText = `✅ [${state.label}] ${summary}`;
     if (state.canEdit && typeof runtime.editMessageOnTarget === "function") {
       try {
-        await runtime.editMessageOnTarget(
-          target as never,
-          state.mainMessageId,
-          {
-            text: `✅ [${state.label}] ${summary}`,
-            source: "sub_agent_complete",
-          },
-        );
+        await runtime.editMessageOnTarget(target, state.mainMessageId, {
+          text: completionText,
+          source: "sub_agent_complete",
+        });
       } catch {
         // ignore: reaction below is the secondary signal
+      }
+    } else {
+      // Capability-poor surface (no edit): emitProgress was silenced
+      // mid-task — post the final summary as a fresh message so the user
+      // actually sees the outcome.
+      try {
+        await runtime.sendMessageToTarget(target, {
+          text: completionText,
+          source: "sub_agent_complete",
+        });
+      } catch {
+        // best-effort
       }
     }
     if (state.canReact) {
@@ -873,12 +945,25 @@ function registerProgressHook(runtime: IAgentRuntime): void {
 
   async function markTaskFailed(
     sessionId: string,
-    target: { source: string; roomId: string },
+    target: TargetInfo,
   ): Promise<void> {
     const state = progressBySession.get(sessionId);
     if (!state) return;
     if (state.canReact) {
       void bestEffortReact(target, state.mainMessageId, "❌");
+      return;
+    }
+    // No reaction support and no edit: post a terminal failure message so
+    // the user knows the sub-agent ended on a non-success state.
+    if (!state.canEdit) {
+      try {
+        await runtime.sendMessageToTarget(target, {
+          text: `❌ [${state.label}] failed`,
+          source: "sub_agent_complete",
+        });
+      } catch {
+        // best-effort
+      }
     }
   }
 
@@ -916,217 +1001,249 @@ function registerProgressHook(runtime: IAgentRuntime): void {
     { src: "@elizaos/plugin-agent-orchestrator" },
     "HOOK REGISTERED on AcpService",
   );
-  acp.onSessionEvent(async (sessionId, evName, data) => {
-    runtime.logger?.debug?.(
-      {
-        src: "@elizaos/plugin-agent-orchestrator",
-        sessionId: sessionId.slice(0, 8),
-        ev: evName,
-      },
-      "session event",
-    );
-    try {
-      const session = await acp.getSession(sessionId);
-      const meta = (session?.metadata ?? {}) as Record<string, unknown>;
-      const source = typeof meta.source === "string" ? meta.source : undefined;
-      const roomId =
-        typeof meta.roomId === "string"
-          ? (meta.roomId as `${string}-${string}-${string}-${string}-${string}`)
-          : undefined;
-      if (!source || !roomId) return;
-      const label =
-        typeof meta.label === "string" && meta.label.trim().length > 0
-          ? meta.label
-          : `sub-agent ${sessionId.slice(0, 8)}`;
-      // Start/stop the per-session heartbeat based on lifecycle events.
-      // The interval is capability-aware: fast (10s) when the platform can
-      // edit messages in place, slow (30s) when each tick is a new post.
-      if (evName === "ready" || evName === "tool_running") {
-        startHeartbeat(sessionId, label, source, roomId);
-      } else if (
-        evName === "stopped" ||
-        evName === "error" ||
-        evName === "task_complete" ||
-        // `cancelled` is also a terminal event emitted by acp-service when a
-        // session is cancelled mid-flight (cancelSession or active.cancelled
-        // exit path). Without including it here, the heartbeat keeps polling
-        // and per-session map entries (toolHistory, progressBySession,
-        // lastPostByKey) leak for the life of the runtime.
-        evName === "cancelled"
-      ) {
-        // Mark the main-channel spawn message with the terminal outcome via
-        // reaction + (when supported) inline summary edit, BEFORE the
-        // progressBySession entry is cleared below. This is the user-facing
-        // ✅/❌ that turns a "spawning" message into a permanent done/failed
-        // record. capability-gated — connectors without react/edit just
-        // skip these signals.
-        if (evName === "task_complete") {
-          const summary =
-            typeof (data as { response?: unknown })?.response === "string"
-              ? (
-                  (data as { response: string }).response.split("\n")[0] ?? ""
-                ).slice(0, 200)
-              : "done";
-          // await so the state lookup happens BEFORE progressBySession.delete
-          // below — otherwise the helper races against the cleanup and finds
-          // no state to attach the ✅ to.
-          await markTaskComplete(sessionId, { source, roomId }, summary);
-        } else if (evName === "error" || evName === "cancelled") {
-          await markTaskFailed(sessionId, { source, roomId });
-        }
-        stopHeartbeat(sessionId);
-        toolHistory.delete(sessionId);
-        // Drop any pending `💬` flush. The last narration chunk is typically
-        // the sub-agent's final result — letting it post would duplicate
-        // the structured summary `subAgentCompletionResponseEvaluator`
-        // synthesizes from the same task_complete event. Clearing the
-        // buffer + timer keeps the canonical answer in one place.
-        const pendingTimer = messageTimers.get(sessionId);
-        if (pendingTimer) {
-          clearTimeout(pendingTimer);
-          messageTimers.delete(sessionId);
-        }
-        messageBuffers.delete(sessionId);
-        progressBySession.delete(sessionId);
-        // Drop dedupe keys scoped to this session so the map doesn't grow
-        // unbounded across the runtime's lifetime (one entry per
-        // session*event*text triplet). Without this cleanup a long-lived
-        // orchestrator process leaks memory proportional to historical
-        // session count.
-        for (const key of lastPostByKey.keys()) {
-          if (key.startsWith(`${sessionId}:`)) lastPostByKey.delete(key);
-        }
-      }
-      // Append the human-readable tool call (with file path / command /
-      // pattern args) to per-session history so the heartbeat summarizer
-      // has concrete data to work with when the sub-agent runs in silent
-      // autonomous mode (no narration between tools). Bare titles like
-      // `Read`/`Bash` aren't specific enough to yield a useful summary.
-      if (evName === "tool_running") {
-        const tc = (data as { toolCall?: AcpToolCall })?.toolCall;
-        const formatted = formatToolCallForHuman(tc);
-        const id = tc?.id?.trim() ?? "";
-        if (formatted && formatted !== "tool") {
-          const arr = toolHistory.get(sessionId) ?? [];
-          // Same toolCallId as an existing entry: replace it. claude-agent-acp
-          // sends an initial `tool_call` with empty rawInput / generic title
-          // ("Bash", "Terminal") followed by a `tool_call_update` carrying
-          // the real command/path. Replacing keeps history clean instead of
-          // listing both bare and enriched versions.
-          const existingIdx = id
-            ? arr.findIndex((entry) => entry.id === id)
-            : -1;
-          if (existingIdx >= 0) {
-            arr[existingIdx] = { id, formatted };
-          } else {
-            // Drop consecutive duplicates so loops over the same file don't
-            // dominate the prompt.
-            if (arr[arr.length - 1]?.formatted !== formatted) {
-              arr.push({ id, formatted });
-            }
-          }
-          // Keep last 20 — enough context for a one-sentence summary
-          // without bloating the LLM prompt.
-          if (arr.length > 20) arr.shift();
-          toolHistory.set(sessionId, arr);
-        }
-      }
-      // Skip terminal events — evaluator owns those.
-      if (evName === "task_complete") return;
-      let text: string | undefined;
-      switch (evName) {
-        case "tool_running":
-          // Text-only feed: tool invocations are implicit from the
-          // narration ("Now let me build…"). When ACP doesn't carry
-          // rawInput/locations (claude-agent-sdk only exposes bare
-          // titles), 🔧 markers add visual noise without operational
-          // info. The heartbeat covers long silent stretches.
-          return;
-        case "message": {
-          // Sub-agent narration: each text_delta fires one event.
-          // Accumulate chunks per session and flush on silence (no chunk
-          // for MESSAGE_SILENCE_FLUSH_MS) — posts a complete narrative
-          // segment at natural pauses between thoughts.
-          const chunk =
-            typeof (data as { text?: string })?.text === "string"
-              ? (data as { text: string }).text
-              : "";
-          if (!chunk) return;
-          const prev = messageBuffers.get(sessionId) ?? "";
-          messageBuffers.set(sessionId, prev + chunk);
-          const existing = messageTimers.get(sessionId);
-          if (existing) clearTimeout(existing);
-          const timer = setTimeout(() => {
-            void flushMessageBuffer(sessionId, label, source, roomId);
-          }, MESSAGE_SILENCE_FLUSH_MS);
-          messageTimers.set(sessionId, timer);
-          return;
-        }
-        case "error": {
-          // Deny-by-default: only post `⚠️` for failure kinds that the USER
-          // must act on (auth, rate-limit, etc.). Everything else is
-          // self-heal / retry territory — the orchestrator handles it and
-          // the provider surfaces the live state to the planner; a Discord
-          // post would only pollute conversation memory with phrasings the
-          // LLM paraphrases as obsolete "restart / reconnect" advice on
-          // later turns.
-          const failureKind = (data as { failureKind?: string })?.failureKind;
-          const USER_ACTION_KINDS = new Set([
-            "auth",
-            "login_required",
-            "blocked",
-            "rate_limit",
-          ]);
-          if (!failureKind || !USER_ACTION_KINDS.has(failureKind)) return;
-          const msg = (data as { message?: string })?.message ?? "error";
-          text = `⚠️ [${label}] ${msg}`;
-          break;
-        }
-        case "blocked":
-        case "login_required":
-          text = `⏸️ [${label}] ${evName}`;
-          break;
-        default:
-          return;
-      }
-      if (!text) return;
-      const dedupeKey =
-        evName === "error" ||
-        evName === "blocked" ||
-        evName === "login_required"
-          ? `${sessionId}:${evName}`
-          : `${sessionId}:${evName}:${text}`;
-      const dedupeWindow =
-        evName === "error" ||
-        evName === "blocked" ||
-        evName === "login_required"
-          ? 30_000
-          : POST_DEBOUNCE_MS;
-      const now = Date.now();
-      const last = lastPostByKey.get(dedupeKey);
-      if (last && now - last < dedupeWindow) return;
-      lastPostByKey.set(dedupeKey, now);
+  const unsubscribeSessionEvents = acp.onSessionEvent(
+    async (sessionId, evName, data) => {
       runtime.logger?.debug?.(
         {
           src: "@elizaos/plugin-agent-orchestrator",
           sessionId: sessionId.slice(0, 8),
           ev: evName,
-          source,
-          room: roomId.slice(0, 8),
         },
-        `posting: "${text.slice(0, 80)}"`,
+        "session event",
       );
-      await emitProgress(sessionId, { source, roomId }, text, label);
-    } catch (err) {
-      runtime.logger?.warn?.(
-        {
-          src: "@elizaos/plugin-agent-orchestrator",
-          err: err instanceof Error ? err.message : String(err),
-        },
-        "sub-agent progress hook threw",
-      );
+      try {
+        const session = await acp.getSession(sessionId);
+        const meta = (session?.metadata ?? {}) as Record<string, unknown>;
+        const source =
+          typeof meta.source === "string" ? meta.source : undefined;
+        const roomId =
+          typeof meta.roomId === "string"
+            ? (meta.roomId as `${string}-${string}-${string}-${string}-${string}`)
+            : undefined;
+        if (!source || !roomId) return;
+        const label =
+          typeof meta.label === "string" && meta.label.trim().length > 0
+            ? meta.label
+            : `sub-agent ${sessionId.slice(0, 8)}`;
+        // Start/stop the per-session heartbeat based on lifecycle events.
+        // The interval is capability-aware: fast (10s) when the platform can
+        // edit messages in place, slow (30s) when each tick is a new post.
+        if (evName === "ready" || evName === "tool_running") {
+          startHeartbeat(sessionId, label, source, roomId);
+        } else if (
+          evName === "stopped" ||
+          evName === "error" ||
+          evName === "task_complete" ||
+          // `cancelled` is also a terminal event emitted by acp-service when a
+          // session is cancelled mid-flight (cancelSession or active.cancelled
+          // exit path). Without including it here, the heartbeat keeps polling
+          // and per-session map entries (toolHistory, progressBySession,
+          // lastPostByKey) leak for the life of the runtime.
+          evName === "cancelled"
+        ) {
+          // Mark the main-channel spawn message with the terminal outcome via
+          // reaction + (when supported) inline summary edit, BEFORE the
+          // progressBySession entry is cleared below. This is the user-facing
+          // ✅/❌ that turns a "spawning" message into a permanent done/failed
+          // record. capability-gated — connectors without react/edit just
+          // skip these signals.
+          if (evName === "task_complete") {
+            const summary =
+              typeof (data as { response?: unknown })?.response === "string"
+                ? (
+                    (data as { response: string }).response.split("\n")[0] ?? ""
+                  ).slice(0, 200)
+                : "done";
+            // await so the state lookup happens BEFORE progressBySession.delete
+            // below — otherwise the helper races against the cleanup and finds
+            // no state to attach the ✅ to.
+            await markTaskComplete(sessionId, { source, roomId }, summary);
+          } else if (evName === "error" || evName === "cancelled") {
+            await markTaskFailed(sessionId, { source, roomId });
+          }
+          stopHeartbeat(sessionId);
+          toolHistory.delete(sessionId);
+          // Drop any pending `💬` flush. The last narration chunk is typically
+          // the sub-agent's final result — letting it post would duplicate
+          // the structured summary `subAgentCompletionResponseEvaluator`
+          // synthesizes from the same task_complete event. Clearing the
+          // buffer + timer keeps the canonical answer in one place.
+          const pendingTimer = messageTimers.get(sessionId);
+          if (pendingTimer) {
+            clearTimeout(pendingTimer);
+            messageTimers.delete(sessionId);
+          }
+          messageBuffers.delete(sessionId);
+          progressBySession.delete(sessionId);
+          // Drop dedupe keys scoped to this session so the map doesn't grow
+          // unbounded across the runtime's lifetime (one entry per
+          // session*event*text triplet). Without this cleanup a long-lived
+          // orchestrator process leaks memory proportional to historical
+          // session count.
+          for (const key of lastPostByKey.keys()) {
+            if (key.startsWith(`${sessionId}:`)) lastPostByKey.delete(key);
+          }
+        }
+        // Append the human-readable tool call (with file path / command /
+        // pattern args) to per-session history so the heartbeat summarizer
+        // has concrete data to work with when the sub-agent runs in silent
+        // autonomous mode (no narration between tools). Bare titles like
+        // `Read`/`Bash` aren't specific enough to yield a useful summary.
+        if (evName === "tool_running") {
+          const tc = (data as { toolCall?: AcpToolCall })?.toolCall;
+          const formatted = formatToolCallForHuman(tc);
+          const id = tc?.id?.trim() ?? "";
+          if (formatted && formatted !== "tool") {
+            const arr = toolHistory.get(sessionId) ?? [];
+            // Same toolCallId as an existing entry: replace it. claude-agent-acp
+            // sends an initial `tool_call` with empty rawInput / generic title
+            // ("Bash", "Terminal") followed by a `tool_call_update` carrying
+            // the real command/path. Replacing keeps history clean instead of
+            // listing both bare and enriched versions.
+            const existingIdx = id
+              ? arr.findIndex((entry) => entry.id === id)
+              : -1;
+            if (existingIdx >= 0) {
+              arr[existingIdx] = { id, formatted };
+            } else {
+              // Drop consecutive duplicates so loops over the same file don't
+              // dominate the prompt.
+              if (arr[arr.length - 1]?.formatted !== formatted) {
+                arr.push({ id, formatted });
+              }
+            }
+            // Keep last 20 — enough context for a one-sentence summary
+            // without bloating the LLM prompt.
+            if (arr.length > 20) arr.shift();
+            toolHistory.set(sessionId, arr);
+          }
+        }
+        // Skip terminal events — evaluator owns those.
+        if (evName === "task_complete") return;
+        let text: string | undefined;
+        switch (evName) {
+          case "tool_running":
+            // Text-only feed: tool invocations are implicit from the
+            // narration ("Now let me build…"). When ACP doesn't carry
+            // rawInput/locations (claude-agent-sdk only exposes bare
+            // titles), 🔧 markers add visual noise without operational
+            // info. The heartbeat covers long silent stretches.
+            return;
+          case "message": {
+            // Sub-agent narration: each text_delta fires one event.
+            // Accumulate chunks per session and flush on silence (no chunk
+            // for MESSAGE_SILENCE_FLUSH_MS) — posts a complete narrative
+            // segment at natural pauses between thoughts.
+            const chunk =
+              typeof (data as { text?: string })?.text === "string"
+                ? (data as { text: string }).text
+                : "";
+            if (!chunk) return;
+            const prev = messageBuffers.get(sessionId) ?? "";
+            messageBuffers.set(sessionId, prev + chunk);
+            const existing = messageTimers.get(sessionId);
+            if (existing) clearTimeout(existing);
+            const timer = setTimeout(() => {
+              void flushMessageBuffer(sessionId, label, source, roomId);
+            }, MESSAGE_SILENCE_FLUSH_MS);
+            messageTimers.set(sessionId, timer);
+            return;
+          }
+          case "error": {
+            // Deny-by-default: only post `⚠️` for failure kinds that the USER
+            // must act on (auth, rate-limit, etc.). Everything else is
+            // self-heal / retry territory — the orchestrator handles it and
+            // the provider surfaces the live state to the planner; a Discord
+            // post would only pollute conversation memory with phrasings the
+            // LLM paraphrases as obsolete "restart / reconnect" advice on
+            // later turns.
+            const failureKind = (data as { failureKind?: string })?.failureKind;
+            const USER_ACTION_KINDS = new Set([
+              "auth",
+              "login_required",
+              "blocked",
+              "rate_limit",
+            ]);
+            if (!failureKind || !USER_ACTION_KINDS.has(failureKind)) return;
+            const msg = (data as { message?: string })?.message ?? "error";
+            text = `⚠️ [${label}] ${msg}`;
+            break;
+          }
+          case "blocked":
+          case "login_required":
+            text = `⏸️ [${label}] ${evName}`;
+            break;
+          default:
+            return;
+        }
+        if (!text) return;
+        const dedupeKey =
+          evName === "error" ||
+          evName === "blocked" ||
+          evName === "login_required"
+            ? `${sessionId}:${evName}`
+            : `${sessionId}:${evName}:${text}`;
+        const dedupeWindow =
+          evName === "error" ||
+          evName === "blocked" ||
+          evName === "login_required"
+            ? 30_000
+            : POST_DEBOUNCE_MS;
+        const now = Date.now();
+        const last = lastPostByKey.get(dedupeKey);
+        if (last && now - last < dedupeWindow) return;
+        lastPostByKey.set(dedupeKey, now);
+        runtime.logger?.debug?.(
+          {
+            src: "@elizaos/plugin-agent-orchestrator",
+            sessionId: sessionId.slice(0, 8),
+            ev: evName,
+            source,
+            room: roomId.slice(0, 8),
+          },
+          `posting: "${text.slice(0, 80)}"`,
+        );
+        await emitProgress(sessionId, { source, roomId }, text, label);
+      } catch (err) {
+        runtime.logger?.warn?.(
+          {
+            src: "@elizaos/plugin-agent-orchestrator",
+            err: err instanceof Error ? err.message : String(err),
+          },
+          "sub-agent progress hook threw",
+        );
+      }
+    },
+  );
+  return () => {
+    try {
+      unsubscribeSessionEvents();
+    } catch {
+      // best-effort: AcpService may already be torn down
     }
-  });
+    // Drain pending timers so they don't fire after the hook is dead —
+    // those callbacks reference state we're about to drop and would call
+    // back into the (now reset) sendMessageToTarget surface.
+    for (const timer of messageTimers.values()) clearTimeout(timer);
+    messageTimers.clear();
+    messageBuffers.clear();
+    for (const timer of heartbeatTimers.values()) clearInterval(timer);
+    heartbeatTimers.clear();
+    lastHeartbeatPostAt.clear();
+    lastHeartbeatSummary.clear();
+    toolHistory.clear();
+    progressBySession.clear();
+    threadCacheByKey.clear();
+    mainMessageCacheByKey.clear();
+    lastPostByKey.clear();
+    if (restoreSend) {
+      try {
+        restoreSend();
+      } catch {
+        // best-effort: another wrapper may have chained over ours
+      }
+    }
+  };
 }
 
 export const agentOrchestratorPlugin: Plugin = createAgentOrchestratorPlugin();
