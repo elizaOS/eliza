@@ -107,9 +107,12 @@ import {
 	type LogBody,
 	type Memory,
 	type MemoryMetadata,
+	type ConnectorPostIdentity,
 	type MessageConnector,
+	type MessageConnectorCreateThreadParams,
 	type MessageConnectorMetadata,
 	type MessageConnectorRegistration,
+	type ThreadHandle,
 	type Metadata,
 	type ModelHandler,
 	type ModelParamsMap,
@@ -625,6 +628,13 @@ function normalizeMessageConnector(
 	if (metadata.joinHandler) connector.joinHandler = metadata.joinHandler;
 	if (metadata.leaveHandler) connector.leaveHandler = metadata.leaveHandler;
 	if (metadata.getUser) connector.getUser = metadata.getUser;
+	if (metadata.typingHandler) connector.typingHandler = metadata.typingHandler;
+	if (metadata.stopTypingHandler)
+		connector.stopTypingHandler = metadata.stopTypingHandler;
+	if (metadata.createThreadHandler)
+		connector.createThreadHandler = metadata.createThreadHandler;
+	if (metadata.postToThreadHandler)
+		connector.postToThreadHandler = metadata.postToThreadHandler;
 	if (metadata.contentShaping)
 		connector.contentShaping = {
 			...metadata.contentShaping,
@@ -4676,7 +4686,41 @@ export class AgentRuntime implements IAgentRuntime {
 			const ctxEnd = streamingCtxEnd?.onStreamEnd;
 			if (ctxEnd) ctxEnd();
 
-			resultRef.current = streamedText;
+			// Preserve tool calls + finishReason + usage from the stream result.
+			// The streaming branch used to collapse the response to `streamedText`
+			// (a bare string), discarding any `toolCalls` surfaced by the provider
+			// as a Promise. Callers like `parsePlannerOutput` then saw
+			// `toolCalls.length === 0` and incremented `required_tool_misses` even
+			// though the LLM had emitted a valid native tool call.
+			const streamRaw = rawResponse as {
+				toolCalls?: unknown;
+				finishReason?: unknown;
+				usage?: unknown;
+				providerMetadata?: unknown;
+			};
+			const hasToolCallsField = "toolCalls" in streamRaw;
+			const hasFinishReasonField = "finishReason" in streamRaw;
+			if (hasToolCallsField || hasFinishReasonField) {
+				const resolvedToolCalls = hasToolCallsField
+					? await Promise.resolve(streamRaw.toolCalls).catch(() => [])
+					: [];
+				const resolvedFinishReason = hasFinishReasonField
+					? await Promise.resolve(streamRaw.finishReason).catch(() => undefined)
+					: undefined;
+				const resolvedUsage =
+					"usage" in streamRaw
+						? await Promise.resolve(streamRaw.usage).catch(() => undefined)
+						: undefined;
+				resultRef.current = {
+					text: streamedText,
+					toolCalls: Array.isArray(resolvedToolCalls) ? resolvedToolCalls : [],
+					finishReason: resolvedFinishReason,
+					usage: resolvedUsage,
+					providerMetadata: streamRaw.providerMetadata,
+				};
+			} else {
+				resultRef.current = streamedText;
+			}
 
 			const elapsedTime =
 				(typeof performance !== "undefined" &&
@@ -8620,6 +8664,106 @@ ${section_end}`;
 		const result = await handler(this, target, content);
 		return result as Memory | undefined;
 	}
+
+	private resolveMessageConnector(target: TargetInfo): {
+		connector: MessageConnector;
+		source: string;
+		accountId: string | undefined;
+	} {
+		const source =
+			typeof target.source === "string" ? target.source.trim() : "";
+		const accountId = normalizeConnectorAccountId(target.accountId);
+		const connector =
+			this.messageConnectors.get(connectorRouteKey(source, accountId)) ??
+			this.messageConnectors.get(connectorRouteKey(source));
+		if (!connector) {
+			throw new Error(
+				accountId
+					? `No message connector registered for source: ${source} accountId: ${accountId}`
+					: `No message connector registered for source: ${source}`,
+			);
+		}
+		return { connector, source, accountId };
+	}
+
+	private requireConnectorHook<K extends keyof MessageConnector>(
+		target: TargetInfo,
+		hook: K,
+		capability: string,
+	): MessageConnector {
+		const { connector, source, accountId } =
+			this.resolveMessageConnector(target);
+		if (!connector[hook]) {
+			const detail = accountId
+				? `source: ${source} accountId: ${accountId}`
+				: `source: ${source}`;
+			throw new Error(`Connector does not support ${capability} (${detail})`);
+		}
+		return connector;
+	}
+
+	async editMessageOnTarget(
+		target: TargetInfo,
+		messageId: string,
+		content: Content,
+	): Promise<Memory | void> {
+		const connector = this.requireConnectorHook(
+			target,
+			"editHandler",
+			"edit_message",
+		);
+		return connector.editHandler!(this, { target, messageId, content });
+	}
+
+	async sendTypingOnTarget(target: TargetInfo): Promise<void> {
+		const connector = this.requireConnectorHook(
+			target,
+			"typingHandler",
+			"typing_indicator",
+		);
+		await connector.typingHandler!(this, { target });
+	}
+
+	async stopTypingOnTarget(target: TargetInfo): Promise<void> {
+		const connector = this.requireConnectorHook(
+			target,
+			"stopTypingHandler",
+			"typing_indicator",
+		);
+		await connector.stopTypingHandler!(this, { target });
+	}
+
+	async createThreadOnTarget(
+		target: TargetInfo,
+		params: Omit<MessageConnectorCreateThreadParams, "target"> = {},
+	): Promise<ThreadHandle> {
+		const connector = this.requireConnectorHook(
+			target,
+			"createThreadHandler",
+			"create_thread",
+		);
+		return connector.createThreadHandler!(this, { target, ...params });
+	}
+
+	async postToThreadOnTarget(
+		target: TargetInfo,
+		thread: ThreadHandle,
+		content: Content,
+		identity?: ConnectorPostIdentity,
+	): Promise<Memory | void> {
+		const connector = this.requireConnectorHook(
+			target,
+			"postToThreadHandler",
+			"post_to_thread",
+		);
+		return connector.postToThreadHandler!(this, {
+			target,
+			thread,
+			content,
+			identity,
+		});
+	}
+
 	async getMemoriesByWorldId(params: {
 		worldId: UUID;
 		limit?: number;
