@@ -214,6 +214,7 @@ export function AppMonetizationSettings({
               </p>
               {settings.totalCreatorEarnings > 0 && (
                 <button
+                  type="button"
                   onClick={() =>
                     navigate(`/dashboard/apps/${appId}?tab=earnings`)
                   }
@@ -267,6 +268,7 @@ export function AppMonetizationSettings({
               <div className="flex gap-1.5 flex-wrap">
                 {[0, 25, 50, 100, 200].map((preset) => (
                   <button
+                    type="button"
                     key={preset}
                     className={cn(
                       "px-2.5 py-1 text-xs rounded-sm transition-colors",
@@ -320,6 +322,7 @@ export function AppMonetizationSettings({
               <div className="flex gap-1.5 flex-wrap">
                 {[0, 10, 20, 30, 50].map((preset) => (
                   <button
+                    type="button"
                     key={preset}
                     className={cn(
                       "px-2.5 py-1 text-xs rounded-sm transition-colors",
