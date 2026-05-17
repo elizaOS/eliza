@@ -1,7 +1,6 @@
 #!/usr/bin/env bun
+import { renameSync, rmSync } from "node:fs";
 import { $ } from "bun";
-import { rmSync, renameSync } from "node:fs";
-import { mkdirSync } from "node:fs";
 
 const external = [/^@elizaos\//];
 
@@ -39,7 +38,9 @@ if (!result.success) {
 // Bun outputs dist/index.js; rename to dist/index.mjs.
 renameSync("dist/index.js", "dist/index.mjs");
 if (
-  await Bun.file("dist/index.js.map").exists().catch(() => false)
+  await Bun.file("dist/index.js.map")
+    .exists()
+    .catch(() => false)
 ) {
   renameSync("dist/index.js.map", "dist/index.mjs.map");
 }
@@ -48,4 +49,6 @@ console.log("📝 Generating TypeScript declarations...");
 // wallet tsconfig has noEmit: true — override with --noEmit false, set outDir + rootDir explicitly
 await $`tsc --emitDeclarationOnly --declaration --noEmit false --outDir dist --rootDir src --noCheck --skipLibCheck -p tsconfig.json`.quiet();
 
-console.log(`✅ Build complete in ${((Date.now() - start) / 1000).toFixed(2)}s`);
+console.log(
+  `✅ Build complete in ${((Date.now() - start) / 1000).toFixed(2)}s`,
+);
