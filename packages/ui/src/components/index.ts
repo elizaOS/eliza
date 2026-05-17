@@ -197,8 +197,7 @@ export * from "./custom-actions/CustomActionsView";
 export * from "./pages/AppsPageView";
 export * from "./pages/AppsView";
 export * from "./pages/AutomationsChatPane";
-export * from "./pages/AutomationsFeed";
-export * from "./pages/BrowserWorkspaceView";
+// AutomationsFeed, BrowserWorkspaceView omitted — App.tsx lazy-loads them.
 export * from "./pages/ChatModalView";
 export * from "./pages/ChatView";
 export * from "./pages/ConfigPageView";
@@ -218,9 +217,8 @@ export * from "./pages/RelationshipsView";
 export * from "./pages/ReleaseCenterView";
 export * from "./pages/RuntimeView";
 export * from "./pages/SecretsView";
-export * from "./pages/SettingsView";
+// SettingsView, StreamView omitted — App.tsx lazy-loads them.
 export * from "./pages/SkillsView";
-export * from "./pages/StreamView";
 export * from "./pages/TaskEditor";
 export * from "./pages/TasksPageView";
 export * from "./pages/TrajectoriesView";
@@ -229,7 +227,7 @@ export * from "./pages/VectorBrowserView";
 export * from "./pages/WorkflowEditor";
 export * from "./pages/workflow-graph-events";
 export * from "./settings/ApiKeyConfig";
-export * from "./settings/DesktopWorkspaceSection";
+// DesktopWorkspaceSection omitted — App.tsx lazy-loads it.
 export * from "./settings/PermissionsSection";
 export * from "./settings/PolicyControlsView";
 export * from "./settings/ProviderSwitcher";

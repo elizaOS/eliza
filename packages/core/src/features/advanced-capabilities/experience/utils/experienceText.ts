@@ -1,5 +1,13 @@
-import type { ExperienceService } from "../service.ts";
 import type { Experience } from "../types.ts";
+
+/** Minimal interface of ExperienceService used by this module. */
+interface ExperienceServiceLike {
+	findSimilarExperiences(
+		text: string,
+		limit: number,
+	): Promise<Experience[]>;
+	listExperiences(options: { limit: number }): Promise<Experience[]>;
+}
 
 const DUPLICATE_EXPERIENCE_LIMIT = 5;
 const DUPLICATE_JACCARD_THRESHOLD = 0.45;

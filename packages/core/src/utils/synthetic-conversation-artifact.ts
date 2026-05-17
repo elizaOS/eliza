@@ -1,4 +1,4 @@
-import type { Memory } from "../types/index.ts";
+import type { Memory } from "../types/memory.ts";
 
 const SYNTHETIC_SOURCE_RE = /\b(?:compaction|compactor|synthetic|summary)\b/i;
 const SYNTHETIC_MARKER_RE =

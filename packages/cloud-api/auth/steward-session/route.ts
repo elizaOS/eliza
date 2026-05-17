@@ -63,11 +63,7 @@ function isPermittedOrigin(
   origin: string | null,
   requestHost: string | null,
 ): boolean {
-  if (!origin) {
-    // Browsers always send Origin for cross-site fetch + same-site POST.
-    // No Origin header => not a browser, treat as forbidden.
-    return false;
-  }
+  if (!origin) return false;
   if (PERMITTED_ORIGIN_HOSTS.has(origin)) return true;
   if (origin.endsWith(".elizacloud.ai") || origin.endsWith(".elizaos.ai")) {
     return true;
@@ -84,16 +80,25 @@ function isPermittedOrigin(
   return false;
 }
 
+/**
+ * CSRF check. Modern browsers always send Origin on cross-origin POST/DELETE
+ * and on same-origin POST too (since ~2020). If Origin is present we require
+ * it to be in the allowlist. If it's absent, this is not a browser request
+ * (curl, server-to-server, e2e tests, native app), and CSRF is not possible
+ * — fall through. Referer is a fallback when present but Origin is not.
+ */
 function checkOrigin(c: {
   req: { header: (name: string) => string | undefined };
 }): { ok: true } | { ok: false; reason: string } {
-  const origin = originHost(c.req.header("origin"));
-  const referer = originHost(c.req.header("referer"));
+  const rawOrigin = c.req.header("origin");
+  const rawReferer = c.req.header("referer");
+  const origin = originHost(rawOrigin);
+  const referer = originHost(rawReferer);
   const host = (c.req.header("host") ?? "").split(":")[0]?.toLowerCase() ?? "";
-  // Accept if EITHER Origin or Referer matches. Origin is more reliable but
-  // some legacy clients omit it on same-site requests.
-  if (isPermittedOrigin(origin, host)) return { ok: true };
-  if (isPermittedOrigin(referer, host)) return { ok: true };
+  if (!rawOrigin && !rawReferer) return { ok: true };
+  if (origin && isPermittedOrigin(origin, host)) return { ok: true };
+  if (!origin && referer && isPermittedOrigin(referer, host))
+    return { ok: true };
   return {
     ok: false,
     reason: `origin=${origin ?? "null"} referer=${referer ?? "null"}`,

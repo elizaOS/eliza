@@ -1,9 +1,5 @@
-import type {
-	JsonPrimitive,
-	JsonValue,
-	TextGenerationModelType,
-	UUID,
-} from "../../types/index.ts";
+import type { TextGenerationModelType } from "../../types/model.ts";
+import type { JsonPrimitive, JsonValue, UUID } from "../../types/primitives.ts";
 
 export type { JsonPrimitive, JsonValue };
 

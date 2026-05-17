@@ -14,12 +14,34 @@ export interface StackUrls {
 
 export const PLAYWRIGHT_TEST_AUTH_SECRET = "playwright-local-auth-secret-32bytes";
 
+/**
+ * Strip env vars that announce the current process was launched via bun
+ * (npm_execpath, BUN_INSTALL_BIN, _ etc). Wrangler auto-detects its
+ * "packageManager" from these and refuses to start under the bun runtime,
+ * even when we spawn it via `node` / `npx`.
+ */
+function stripBunAncestryEnv(env: NodeJS.ProcessEnv): NodeJS.ProcessEnv {
+  const cleaned: NodeJS.ProcessEnv = { ...env };
+  const keysToDrop = [
+    "npm_execpath",
+    "npm_lifecycle_event",
+    "npm_lifecycle_script",
+    "npm_command",
+    "npm_node_execpath",
+    "npm_config_user_agent",
+    "BUN_INSTALL_BIN",
+    "_",
+  ];
+  for (const key of keysToDrop) delete cleaned[key];
+  return cleaned;
+}
+
 export function buildSharedEnv(
   urls: StackUrls,
   extra: Record<string, string> = {},
 ): NodeJS.ProcessEnv {
   return {
-    ...process.env,
+    ...stripBunAncestryEnv(process.env),
     NODE_ENV: "test",
     CLOUD_E2E: "1",
     // Mocks
