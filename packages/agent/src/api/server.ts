@@ -90,6 +90,7 @@ type LocalInferenceServerApi = {
   handleLocalInferenceRoutes: (
     req: http.IncomingMessage,
     res: http.ServerResponse,
+    state?: { current: AgentRuntime | null },
   ) => Promise<boolean>;
   handleLocalInferenceTtsRoute?: (
     req: http.IncomingMessage,
@@ -1656,7 +1657,8 @@ async function handleRequest(
   }
 
   const { handleLocalInferenceRoutes } = await getLocalInferenceServerApi();
-  if (await handleLocalInferenceRoutes(req, res)) return;
+  if (await handleLocalInferenceRoutes(req, res, { current: state.runtime }))
+    return;
   const localInferenceServerApi = await getLocalInferenceServerApi();
   if (
     localInferenceServerApi.handleLocalInferenceTtsRoute &&

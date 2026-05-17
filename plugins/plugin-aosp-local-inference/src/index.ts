@@ -28,7 +28,12 @@ export {
   resolveThreads,
 } from "./aosp-llama-adapter.js";
 
-export { ensureAospLocalInferenceHandlers } from "./aosp-local-inference-bootstrap.js";
+export {
+  activateAospLocalInferenceModel,
+  buildAospLoadModelArgs,
+  clearAospLocalInferenceModel,
+  ensureAospLocalInferenceHandlers,
+} from "./aosp-local-inference-bootstrap.js";
 
 // Bundle-safety: force binding identities into the module's init
 // function so Bun.build's tree-shake doesn't collapse this barrel
@@ -45,7 +50,12 @@ import {
   resolveLlamaShimPath as _bs_7_resolveLlamaShimPath,
   resolveThreads as _bs_8_resolveThreads,
 } from "./aosp-llama-adapter.js";
-import { ensureAospLocalInferenceHandlers as _bs_10_ensureAospLocalInferenceHandlers } from "./aosp-local-inference-bootstrap.js";
+import {
+  activateAospLocalInferenceModel as _bs_10_activateAospLocalInferenceModel,
+  buildAospLoadModelArgs as _bs_11_buildAospLoadModelArgs,
+  clearAospLocalInferenceModel as _bs_12_clearAospLocalInferenceModel,
+  ensureAospLocalInferenceHandlers as _bs_13_ensureAospLocalInferenceHandlers,
+} from "./aosp-local-inference-bootstrap.js";
 
 // Path-derived symbol so parents that `export *` two of these don't
 // collide on a shared `__BUNDLE_SAFETY__` name.
@@ -59,7 +69,10 @@ const __bundle_safety_PLUGINS_PLUGIN_AOSP_LOCAL_INFERENCE_SRC_INDEX__ = [
   _bs_6_resolveLibllamaPath,
   _bs_7_resolveLlamaShimPath,
   _bs_8_resolveThreads,
-  _bs_10_ensureAospLocalInferenceHandlers,
+  _bs_10_activateAospLocalInferenceModel,
+  _bs_11_buildAospLoadModelArgs,
+  _bs_12_clearAospLocalInferenceModel,
+  _bs_13_ensureAospLocalInferenceHandlers,
 ];
 const bundleSafetyGlobal = globalThis as typeof globalThis & {
   __bundle_safety_PLUGINS_PLUGIN_AOSP_LOCAL_INFERENCE_SRC_INDEX__?: typeof __bundle_safety_PLUGINS_PLUGIN_AOSP_LOCAL_INFERENCE_SRC_INDEX__;
