@@ -83,6 +83,11 @@
     "./api/client-types-cloud": "./dist/api/client-types-cloud.js",
     "./components/character/CharacterEditor": "./dist/components/character/CharacterEditor.js",
     "./components/chat/widgets/types": "./dist/components/chat/widgets/types.js",
+    "./api/*": {
+      "types": "./dist/api/*.d.ts",
+      "import": "./dist/api/*.js",
+      "default": "./dist/api/*.js"
+    },
     "./api": {
       "types": "./dist/api/index.d.ts",
       "import": "./dist/api/index.js",
