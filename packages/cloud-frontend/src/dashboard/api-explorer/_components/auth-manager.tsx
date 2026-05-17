@@ -69,6 +69,7 @@ export function AuthManager({
           </p>
         )}
         <button
+          type="button"
           onClick={() => void onRefresh()}
           className="flex items-center gap-2 px-3 py-2 text-sm text-neutral-400 hover:text-white transition-colors"
         >
@@ -92,7 +93,7 @@ export function AuthManager({
       {/* Key input */}
       <div className="space-y-2">
         <div className="flex items-center justify-between">
-          <label className="text-sm font-medium text-white">API Key</label>
+          <label htmlFor="auth-manager-api-key" className="text-sm font-medium text-white">API Key</label>
           <span className="text-xs text-neutral-400">
             Used {explorerKey.usage_count} times
           </span>
@@ -100,6 +101,7 @@ export function AuthManager({
         <div className="flex gap-2">
           <div className="relative flex-1">
             <input
+              id="auth-manager-api-key"
               type={showToken ? "text" : "password"}
               value={authToken}
               readOnly
@@ -118,6 +120,7 @@ export function AuthManager({
             </button>
           </div>
           <button
+            type="button"
             onClick={handleCopy}
             className="h-10 px-3 rounded-sm border border-white/10 bg-black/40 text-neutral-400 hover:text-white transition-colors"
           >
@@ -151,6 +154,7 @@ export function AuthManager({
               className="w-full h-9 px-3 rounded-sm border border-white/10 bg-black/40 text-white text-sm placeholder:text-neutral-500 focus:outline-none focus:ring-1 focus:ring-[#FF5800]/50"
             />
             <button
+              type="button"
               onClick={() => void onRefresh()}
               className="text-neutral-400 hover:text-white transition-colors"
             >
