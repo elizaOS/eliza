@@ -741,8 +741,11 @@ function ShellFoundationMount(): JSX.Element {
   const onOpen = useCallback(() => send({ type: "OPEN" }), [send]);
   const onClose = useCallback(() => send({ type: "CLOSE" }), [send]);
 
+  // Match shellReducer's SEND guard exactly. The reducer only accepts SEND
+  // from `summoned` or `listening`; offering input while `responding` would
+  // silently drop the user's text.
   const canSend =
-    state.phase === "summoned" || state.phase === "responding";
+    state.phase === "summoned" || state.phase === "listening";
 
   return (
     <>
@@ -1540,6 +1543,7 @@ export function App() {
         tab !== "apps" &&
         tab !== "views" && <GameViewOverlay />}
       <ShellOverlays actionNotice={actionNotice} />
+      <ShellFoundationMount />
       <SaveCommandModal
         open={contextMenu.saveCommandModalOpen}
         text={contextMenu.saveCommandText}

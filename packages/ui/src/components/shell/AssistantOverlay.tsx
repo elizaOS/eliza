@@ -1,5 +1,6 @@
 import * as React from "react";
 
+import { Z_SHELL_OVERLAY } from "../../lib/floating-layers";
 import { type ShellPhase } from "./shell-state";
 
 export interface AssistantOverlayProps {
@@ -114,9 +115,13 @@ export function AssistantOverlay({
       aria-label="Eliza assistant"
       data-testid="shell-assistant-overlay"
       data-phase={phase}
+      // Sits one tick above the pill so the drawer covers it on open.
+      // Inline style because Tailwind's JIT can't track template-interpolated
+      // arbitrary z-index values. See packages/ui/src/lib/floating-layers.ts.
+      style={{ zIndex: Z_SHELL_OVERLAY + 1 }}
       className={[
         // Position: bottom sheet on mobile, centered drawer on >= sm
-        "fixed inset-x-0 bottom-0 z-[10001]",
+        "fixed inset-x-0 bottom-0",
         "sm:left-1/2 sm:right-auto sm:top-1/2 sm:bottom-auto",
         "sm:-translate-x-1/2 sm:-translate-y-1/2",
         "sm:w-[min(560px,90vw)] sm:h-[min(640px,80vh)]",

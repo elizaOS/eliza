@@ -126,4 +126,21 @@ describe("shellReducer", () => {
     const result = shellReducer(booting, { type: "OPEN" });
     expect(result).toBe(booting);
   });
+
+  it("SEND from responding is a no-op (reducer refuses, callers must gate)", () => {
+    // Final code review caught: App.tsx had canSend include "responding",
+    // but the reducer only accepts SEND from summoned/listening. This test
+    // pins the reducer contract so a future regression is caught at unit level.
+    const responding = reduce(initialShellState, [
+      { type: "BOOT_READY" },
+      { type: "OPEN" },
+      { type: "SEND", text: "hi" },
+    ]);
+    expect(responding.phase).toBe("responding");
+    const stillResponding = shellReducer(responding, {
+      type: "SEND",
+      text: "second",
+    });
+    expect(stillResponding).toBe(responding);
+  });
 });

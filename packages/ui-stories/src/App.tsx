@@ -1,6 +1,7 @@
 import { Story, StoryGroup } from "./Story.tsx";
 import { primitiveStories } from "./stories/primitives.tsx";
 import { brandStories } from "./stories/brand.tsx";
+import { shellFoundationStories } from "./stories/shell-foundation.tsx";
 
 const surfaces = [
   { className: "theme-cloud", label: "theme-cloud — Eliza Cloud" },
@@ -12,6 +13,7 @@ export function App() {
   const groups: StoryGroup[] = [
     { id: "primitives", title: "Primitives — @elizaos/ui/components/ui", stories: primitiveStories },
     { id: "brand", title: "Brand — @elizaos/ui/cloud-ui/components/brand", stories: brandStories },
+    { id: "shell-foundation", title: "Shell Foundation — @elizaos/ui/components/shell", stories: shellFoundationStories },
   ];
 
   return (

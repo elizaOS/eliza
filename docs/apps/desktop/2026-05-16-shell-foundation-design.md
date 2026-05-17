@@ -42,6 +42,13 @@ This sub-project lays the foundation. Three follow-up sub-projects (persistence,
 - Thread list, thread switching, thread auto-naming → sub-project #4
 - TTS for agent responses → deferred to v2 entirely (not one of the four sub-projects)
 
+### Known v1 deviations (carried forward from final code review)
+
+- **Offline visual on the pill / chat input** — `isOnline` is in `ShellState` and `useShellState` subscribes to `NETWORK_STATUS_CHANGE_EVENT`, but no component currently reads it. Offline tinting on the pill and a "Reconnecting…" input placeholder are deferred to a follow-up patch so v1 ships with a minimal surface. State is already plumbed; the UI change is purely additive.
+- **AmbientGlow** was folded into `HomePill`'s class-chain rather than shipped as its own file. Same visuals, one fewer file.
+- **`backgrounds/registry.ts`** is unchanged in v1 — no real trigger for ambient mode swaps yet. Lands with the wake-word sub-project.
+- **Playwright e2e smoke** and **design-review visual regression** are deferred per the plan's "Out of scope" header. v1 ships with unit + integration coverage (51 vitest tests) + a live-browser end-to-end walk performed during Task 7.
+
 ## Architecture
 
 ### Where the work lives

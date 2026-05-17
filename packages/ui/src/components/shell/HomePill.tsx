@@ -1,5 +1,6 @@
 import * as React from "react";
 
+import { Z_SHELL_OVERLAY } from "../../lib/floating-layers";
 import { cn } from "../../lib/utils";
 import { type ShellPhase } from "./shell-state";
 
@@ -42,9 +43,13 @@ export function HomePill({
       data-phase={phase}
       data-testid="shell-home-pill"
       onClick={handleClick}
+      // Use the shell-overlay z-index constant rather than a literal Tailwind
+      // class so the value tracks `floating-layers.ts`. Tailwind's JIT only
+      // sees literal class strings, so the z-index goes via inline style.
+      style={{ zIndex: Z_SHELL_OVERLAY }}
       className={cn(
         // Position
-        "fixed bottom-3 left-1/2 z-[10000] -translate-x-1/2",
+        "fixed bottom-3 left-1/2 -translate-x-1/2",
         // Shape
         "h-10 w-32 rounded-full",
         // Default (idle) visual
