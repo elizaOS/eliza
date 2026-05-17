@@ -34,7 +34,6 @@ app.get("/", async (c) => {
       .where(
         and(
           eq(userIdentities.is_anonymous, true),
-          // biome-ignore lint/style/noNonNullAssertion: expires_at is non-null for anonymous identities by schema invariant
           lt(userIdentities.expires_at!, now),
         ),
       );
