@@ -33,5 +33,13 @@
         <permission name="android.permission.READ_FRAME_BUFFER" />
         <permission name="android.permission.INJECT_EVENTS" />
         <permission name="android.permission.REAL_GET_TASKS" />
+        <!--
+          System-level overlay used by ElizaVoicePillOverlayService to draw
+          the voice pill on top of other apps via WindowManager with
+          TYPE_APPLICATION_OVERLAY. On AOSP system-signed builds this is
+          pre-granted; on sideload/Play APKs the user must grant it via
+          Settings.canDrawOverlays + ACTION_MANAGE_OVERLAY_PERMISSION.
+        -->
+        <permission name="android.permission.SYSTEM_ALERT_WINDOW" />
     </privapp-permissions>
 </permissions>
