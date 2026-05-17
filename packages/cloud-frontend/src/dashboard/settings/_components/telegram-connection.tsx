@@ -195,7 +195,8 @@ export function TelegramConnection() {
                 </a>
               </li>
               <li>
-                Send <code className="bg-background px-1 rounded-sm">/newbot</code>{" "}
+                Send{" "}
+                <code className="bg-background px-1 rounded-sm">/newbot</code>{" "}
                 command
               </li>
               <li>Choose a name for your bot (e.g., &quot;My App Bot&quot;)</li>

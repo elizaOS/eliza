@@ -1,4 +1,4 @@
-import { type ReactNode, Suspense, lazy, useMemo } from "react";
+import { lazy, type ReactNode, Suspense, useMemo } from "react";
 import { matchPath, useLocation } from "react-router-dom";
 
 /**
