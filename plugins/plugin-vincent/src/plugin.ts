@@ -11,7 +11,7 @@
  */
 
 import type http from "node:http";
-import { loadElizaConfig } from "@elizaos/agent";
+import { loadElizaConfig } from "@elizaos/agent/config/config";
 import type { Plugin, Route, RouteRequest, RouteResponse } from "@elizaos/core";
 import { handleVincentRoute } from "./routes";
 
@@ -110,7 +110,8 @@ export const vincentPlugin: Plugin = {
     {
       id: "vincent",
       label: "Vincent",
-      description: "Vincent trading dashboard — Hyperliquid/Polymarket strategy and wallet overview",
+      description:
+        "Vincent trading dashboard — Hyperliquid/Polymarket strategy and wallet overview",
       icon: "Zap",
       path: "/vincent",
       bundlePath: "dist/views/bundle.js",

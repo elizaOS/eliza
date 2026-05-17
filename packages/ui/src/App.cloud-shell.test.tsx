@@ -5,8 +5,8 @@
  *
  * Asserts that `App.tsx` wraps the StartupShell (pre-agent gate) in
  * `<CloudVideoBackground>` so the home screen renders over CLOUDS per brand,
- * and that the cloud component itself produces the expected `<video>` element
- * with cloud sources. Rendering the full <App> would require mocking the
+ * and that the cloud component itself can produce either the expected `<video>`
+ * element with cloud sources or a static poster for startup. Rendering the full <App> would require mocking the
  * entire AppContext + boot config + capacitor surfaces, which is brittle —
  * this hits the two load-bearing facts directly.
  */
@@ -54,6 +54,7 @@ describe("App pre-agent cloud wiring", () => {
     // Brand rules: 8x speed, /clouds basePath, light scrim, black text.
     expect(APP_TSX).toMatch(/speed="8x"/);
     expect(APP_TSX).toMatch(/basePath="\/clouds"/);
+    expect(APP_TSX).toMatch(/animated=\{false\}/);
     expect(APP_TSX).toMatch(/scrim=\{0\.05\}/);
     expect(APP_TSX).toMatch(/text-black/);
   });
@@ -80,6 +81,27 @@ describe("App pre-agent cloud wiring", () => {
     expect(srcAttrs.some((s) => s?.includes("/clouds/clouds_8x_"))).toBe(true);
 
     // children still rendered above the video
+    expect(
+      container.querySelector('[data-testid="welcome"]')?.textContent,
+    ).toBe("welcome");
+  });
+
+  it("CloudVideoBackground can render a static poster without video decode", () => {
+    const { container } = render(
+      <CloudVideoBackground
+        speed="8x"
+        basePath="/clouds"
+        poster="/clouds/poster.jpg"
+        animated={false}
+      >
+        <div data-testid="welcome">welcome</div>
+      </CloudVideoBackground>,
+    );
+
+    expect(container.querySelector("video")).toBeNull();
+    expect(container.querySelector("img")?.getAttribute("src")).toBe(
+      "/clouds/poster.jpg",
+    );
     expect(
       container.querySelector('[data-testid="welcome"]')?.textContent,
     ).toBe("welcome");

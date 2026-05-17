@@ -14,7 +14,14 @@
  * a <video> from it. Pass `--clouds` to include it; otherwise it is skipped.
  */
 
-import { copyFileSync, mkdirSync, readdirSync, statSync } from "node:fs";
+import {
+  copyFileSync,
+  existsSync,
+  mkdirSync,
+  readFileSync,
+  readdirSync,
+  statSync,
+} from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -30,9 +37,23 @@ function copyDir(src, dest) {
     if (st.isDirectory()) {
       copyDir(srcPath, destPath);
     } else {
-      copyFileSync(srcPath, destPath);
+      copyFileIfChanged(srcPath, destPath, st.size);
     }
   }
+}
+
+function copyFileIfChanged(src, dest, srcSize) {
+  if (existsSync(dest)) {
+    const destStat = statSync(dest);
+    if (
+      destStat.isFile() &&
+      destStat.size === srcSize &&
+      readFileSync(src).equals(readFileSync(dest))
+    ) {
+      return;
+    }
+  }
+  copyFileSync(src, dest);
 }
 
 const args = process.argv.slice(2);

@@ -1,4 +1,10 @@
-import { loadElizaConfig } from "@elizaos/agent";
+import { loadElizaConfig } from "@elizaos/agent/config/config";
+import {
+  loadStewardCredentials,
+  resolveEffectiveStewardConfig,
+  saveStewardCredentials,
+} from "@elizaos/app-core/services/steward-credentials";
+import { fingerprintRandomToken } from "@elizaos/app-core/services/steward-sidecar/helpers";
 import {
   type PolicyResult,
   type PolicyRule,
@@ -10,12 +16,6 @@ import {
 import { fetchSolanaNativeBalanceViaRpc } from "../api/wallet";
 import { fetchEvmNativeBalanceViaRpc } from "../api/wallet-evm-balance";
 import { resolveWalletRpcReadiness } from "../api/wallet-rpc";
-import {
-  loadStewardCredentials,
-  resolveEffectiveStewardConfig,
-  saveStewardCredentials,
-} from "../services/steward-credentials";
-import { fingerprintRandomToken } from "../services/steward-sidecar/helpers";
 import type { StewardSignRequest, StewardSignResponse } from "../types/steward";
 
 export interface StewardBridgeOptions {

@@ -14,6 +14,8 @@
 import { Electroview } from "electrobun/view";
 import type { RpcMessageListener } from "../types.js";
 import { getBrowserTabsRendererImpl } from "./browser-tabs-renderer-registry.js";
+import { updateElectrobunBootConfig } from "./electrobun-boot-config.js";
+import { installElectrobunCryptoReadyGuards } from "./electrobun-crypto-ready.js";
 import { ensureElectrobunGlobal } from "./electrobun-stub.js";
 
 type RendererRequestHandler = (params: unknown) => Promise<unknown>;
@@ -23,23 +25,12 @@ type RendererBridgeRpc = {
 };
 
 const listenersByRpcMessage: Record<string, Set<RpcMessageListener>> = {};
-const BOOT_CONFIG_STORE_KEY = Symbol.for("elizaos.app.boot-config");
-const BOOT_CONFIG_WINDOW_KEY = "__ELIZA_APP_BOOT_CONFIG__";
 const RENDERER_LOG_MIRROR_KEY = "__ELIZA_ELECTROBUN_LOG_MIRROR__";
 
 type BootConfig = {
   apiBase?: string;
   apiToken?: string;
   [key: string]: unknown;
-};
-
-type BootConfigStore = {
-  current: BootConfig;
-};
-
-type BootConfigWindow = Window & {
-  [BOOT_CONFIG_WINDOW_KEY]?: BootConfig;
-  [BOOT_CONFIG_STORE_KEY]?: BootConfigStore;
 };
 
 function readRecord(value: unknown): Record<string, unknown> {
@@ -75,22 +66,12 @@ function readRequiredNumber(
 // __electrobun must exist before Electroview.init() tries to write to it.
 // If the built-in preload hasn't fired yet (rare edge case), stub it.
 ensureElectrobunGlobal();
+installElectrobunCryptoReadyGuards();
 
 function updateBootConfig(
   updates: Pick<BootConfig, "apiBase" | "apiToken">,
 ): void {
-  const globalObject = window as BootConfigWindow;
-  const currentConfig =
-    globalObject[BOOT_CONFIG_WINDOW_KEY] ??
-    globalObject[BOOT_CONFIG_STORE_KEY]?.current ??
-    {};
-  const nextConfig = {
-    ...currentConfig,
-    ...updates,
-  };
-
-  globalObject[BOOT_CONFIG_WINDOW_KEY] = nextConfig;
-  globalObject[BOOT_CONFIG_STORE_KEY] = { current: nextConfig };
+  updateElectrobunBootConfig(window, updates);
 }
 
 function dispatchMessage(messageName: string, payload: unknown): void {

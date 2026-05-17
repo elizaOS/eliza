@@ -74,6 +74,51 @@
       "import": "./dist/api/index.js",
       "default": "./dist/api/index.js"
     },
+    "./api/*": {
+      "types": "./src/api/*.d.ts",
+      "eliza-source": {
+        "types": "./src/api/*.ts",
+        "import": "./src/api/*.ts",
+        "default": "./src/api/*.ts"
+      },
+      "bun": {
+        "types": "./src/api/*.ts",
+        "import": "./src/api/*.ts",
+        "default": "./src/api/*.ts"
+      },
+      "import": "./dist/api/*.js",
+      "default": "./dist/api/*.js"
+    },
+    "./diagnostics/*": {
+      "types": "./src/diagnostics/*.d.ts",
+      "eliza-source": {
+        "types": "./src/diagnostics/*.ts",
+        "import": "./src/diagnostics/*.ts",
+        "default": "./src/diagnostics/*.ts"
+      },
+      "bun": {
+        "types": "./src/diagnostics/*.ts",
+        "import": "./src/diagnostics/*.ts",
+        "default": "./src/diagnostics/*.ts"
+      },
+      "import": "./dist/diagnostics/*.js",
+      "default": "./dist/diagnostics/*.js"
+    },
+    "./runtime/*": {
+      "types": "./src/runtime/*.d.ts",
+      "eliza-source": {
+        "types": "./src/runtime/*.ts",
+        "import": "./src/runtime/*.ts",
+        "default": "./src/runtime/*.ts"
+      },
+      "bun": {
+        "types": "./src/runtime/*.ts",
+        "import": "./src/runtime/*.ts",
+        "default": "./src/runtime/*.ts"
+      },
+      "import": "./dist/runtime/*.js",
+      "default": "./dist/runtime/*.js"
+    },
     "./config/character-schema": "./src/config/character-schema.ts",
     "./config/plugin-auto-enable": "./src/config/plugin-auto-enable.ts",
     "./runtime": {

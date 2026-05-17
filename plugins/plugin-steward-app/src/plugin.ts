@@ -18,7 +18,7 @@
  */
 
 import type http from "node:http";
-import type { CompatRuntimeState } from "@elizaos/app-core";
+import type { CompatRuntimeState } from "@elizaos/app-core/api/compat-route-shared";
 import type { Plugin, Route } from "@elizaos/core";
 import { walletRouterAction } from "@elizaos/plugin-wallet";
 import { stewardBalanceProvider } from "./providers/steward-balance";
@@ -379,7 +379,8 @@ export const stewardPlugin: Plugin = {
     {
       id: "steward",
       label: "Steward",
-      description: "Transaction history and approval queue for Steward wallet management",
+      description:
+        "Transaction history and approval queue for Steward wallet management",
       icon: "Shield",
       path: "/steward",
       bundlePath: "dist/views/bundle.js",

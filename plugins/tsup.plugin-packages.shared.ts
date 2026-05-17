@@ -68,12 +68,39 @@ function collectSrcEntries(srcRoot: string): string[] {
   return out;
 }
 
+function resolveRelativeRuntimeSpecifier(
+  importerPath: string,
+  specifier: string,
+): string {
+  if (!specifier.startsWith(".")) {
+    return specifier;
+  }
+  if (specifier.endsWith(".ts") || specifier.endsWith(".tsx")) {
+    return specifier.replace(/\.tsx?$/, ".js");
+  }
+  if (path.extname(specifier)) {
+    return specifier;
+  }
+
+  const absoluteBase = path.resolve(path.dirname(importerPath), specifier);
+  if (existsSync(`${absoluteBase}.ts`) || existsSync(`${absoluteBase}.tsx`)) {
+    return `${specifier}.js`;
+  }
+  if (
+    existsSync(path.join(absoluteBase, "index.ts")) ||
+    existsSync(path.join(absoluteBase, "index.tsx"))
+  ) {
+    return `${specifier}/index.js`;
+  }
+  return specifier;
+}
+
 /**
- * esbuild plugin that rewrites relative `.ts` / `.tsx` import specifiers to
- * `.js` before esbuild compiles. With `bundle: false`, esbuild does per-file
- * transpilation and leaves import specifiers unchanged in the emitted code —
- * so source like `from "./foo.tsx"` becomes a literal `from "./foo.tsx"` in
- * the dist `.js` file, which Node ESM and Vite both refuse to resolve.
+ * esbuild plugin that rewrites relative TypeScript import specifiers to
+ * runtime `.js` specifiers before esbuild compiles. With `bundle: false`,
+ * esbuild does per-file transpilation and leaves import specifiers unchanged
+ * in the emitted code — so source like `from "./foo"` can make Bun/Node walk
+ * into a sibling `.d.ts` file instead of `dist/foo.js`.
  */
 const rewriteRelativeTsExtensions = {
   name: "rewrite-relative-ts-extensions",
@@ -81,8 +108,9 @@ const rewriteRelativeTsExtensions = {
     build.onLoad({ filter: /\.(ts|tsx)$/ }, async (args) => {
       const source = await fsp.readFile(args.path, "utf8");
       const transformed = source.replace(
-        /((?:\bfrom\s+|\bimport\s*\(\s*|\bimport\s+|\bexport\s+(?:\*|\{[^}]*\})\s+from\s+)["'])(\.\.?\/[^"']+?)\.(tsx?)(["'])/g,
-        "$1$2.js$4",
+        /((?:\bfrom\s+|\bimport\s*\(\s*|\bimport\s+|\bexport\s+(?:\*|\{[^}]*\})\s+from\s+)["'])(\.\.?\/[^"']+?)(["'])/g,
+        (_match, prefix: string, specifier: string, suffix: string) =>
+          `${prefix}${resolveRelativeRuntimeSpecifier(args.path, specifier)}${suffix}`,
       );
       return {
         contents: transformed,

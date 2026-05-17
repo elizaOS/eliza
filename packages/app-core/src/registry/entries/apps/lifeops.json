@@ -24,7 +24,7 @@
     "target": "lifeops",
     "capabilities": ["lifeops", "tasks", "calendar", "gmail"],
     "routePlugin": {
-      "specifier": "@elizaos/plugin-lifeops",
+      "specifier": "@elizaos/plugin-lifeops/routes/plugin",
       "exportName": "lifeopsPlugin"
     }
   }
