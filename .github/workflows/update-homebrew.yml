@@ -1,0 +1,49 @@
+# Triggers the homebrew tap repo to update formula + cask
+# when a new GitHub release is published.
+#
+# Required secret: HOMEBREW_TAP_TOKEN
+#   A GitHub PAT with repo scope for elizaOS/homebrew-tap
+
+name: Update Homebrew Tap
+
+on:
+  workflow_call:
+    inputs:
+      version:
+        description: "Version to update to (e.g. 2.0.0-beta.0)"
+        required: true
+        type: string
+    secrets:
+      HOMEBREW_TAP_TOKEN:
+        required: true
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Version to update to (e.g. 2.0.0-beta.0)"
+        required: true
+        type: string
+
+concurrency:
+  group: update-homebrew-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  update-tap:
+    name: Trigger Homebrew tap update
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Determine version
+        id: meta
+        run: |
+          VERSION="${{ inputs.version }}"
+          VERSION="${VERSION#v}"
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+          echo "Triggering Homebrew update for version: $VERSION"
+
+      - name: Dispatch to homebrew-tap
+        uses: peter-evans/repository-dispatch@v4
+        with:
+          token: ${{ secrets.HOMEBREW_TAP_TOKEN }}
+          repository: elizaOS/homebrew-tap
+          event-type: update-homebrew
+          client-payload: '{"version": "${{ steps.meta.outputs.version }}"}'

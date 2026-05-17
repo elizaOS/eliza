@@ -1,0 +1,99 @@
+name: Submit Flatpak to Flathub
+
+on:
+  workflow_call:
+    inputs:
+      version:
+        description: Semver string e.g. 2.0.1
+        required: true
+        type: string
+      tag:
+        description: Git tag e.g. v2.0.1
+        required: true
+        type: string
+    secrets:
+      FLATHUB_TOKEN:
+        required: false
+
+  workflow_dispatch:
+    inputs:
+      version:
+        description: Semver string e.g. 2.0.1
+        required: true
+        type: string
+      tag:
+        description: Git tag e.g. v2.0.1
+        required: true
+        type: string
+
+jobs:
+  submit-to-flathub:
+    runs-on: ubuntu-24.04
+
+    steps:
+      - name: Check if app is listed on Flathub
+        id: flathub_check
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          if gh repo view flathub/ai.elizaos.App >/dev/null 2>&1; then
+            echo "listed=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "listed=false" >> "$GITHUB_OUTPUT"
+            echo "::warning::App not yet listed on Flathub. Submit the initial listing at https://github.com/flathub/flathub before using this workflow."
+          fi
+
+      - name: Checkout flatpak manifest
+        if: steps.flathub_check.outputs.listed == 'true'
+        uses: actions/checkout@v6
+        with:
+          ref: ${{ inputs.tag }}
+          submodules: false
+
+      - name: Update manifest version
+        if: steps.flathub_check.outputs.listed == 'true'
+        env:
+          GH_TOKEN: ${{ secrets.FLATHUB_TOKEN || secrets.GITHUB_TOKEN }}
+        run: |
+          VERSION="${{ inputs.version }}"
+          TAG="${{ inputs.tag }}"
+
+          # Get the tarball sha256 for the release
+          TARBALL_URL="https://github.com/${{ github.repository }}/archive/refs/tags/${TAG}.tar.gz"
+          curl -L "$TARBALL_URL" -o /tmp/release.tar.gz
+          SHA256=$(sha256sum /tmp/release.tar.gz | awk '{print $1}')
+
+          echo "Release tarball SHA256: $SHA256"
+          echo "TARBALL_SHA256=$SHA256" >> "$GITHUB_ENV"
+          echo "TARBALL_URL=$TARBALL_URL" >> "$GITHUB_ENV"
+
+      - name: Create Flathub PR
+        if: steps.flathub_check.outputs.listed == 'true'
+        env:
+          GH_TOKEN: ${{ secrets.FLATHUB_TOKEN || secrets.GITHUB_TOKEN }}
+        run: |
+          VERSION="${{ inputs.version }}"
+          BRANCH="update-to-${VERSION}"
+
+          # Fork the Flathub repo if needed, create branch, push updated manifest, open PR
+          gh repo fork flathub/ai.elizaos.App --clone --remote
+          cd ai.elizaos.App
+          git checkout -b "$BRANCH"
+
+          # Update the manifest with the new version/sha256
+          # (Actual manifest update depends on the Flathub manifest format)
+          sed -i "s|tag: .*|tag: ${VERSION}|g" ai.elizaos.App.yml || true
+          sed -i "s|sha256: .*|sha256: ${TARBALL_SHA256}|g" ai.elizaos.App.yml || true
+
+          git config user.name "elizaOS CI"
+          git config user.email "ci@elizaos.ai"
+          git add -A
+          git commit -m "Update to $VERSION"
+          git push origin "$BRANCH"
+
+          gh pr create \
+            --repo flathub/ai.elizaos.App \
+            --title "Update to elizaOS App $VERSION" \
+            --body "Automated update to version $VERSION (tag: ${{ inputs.tag }})" \
+            --base master \
+            --head "$BRANCH"

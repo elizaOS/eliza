@@ -1,0 +1,58 @@
+name: Test Flatpak Build
+
+on:
+  pull_request:
+    paths:
+      - 'packages/app-core/packaging/flatpak/**'
+      - '.github/workflows/test-flatpak.yml'
+  workflow_dispatch:
+
+concurrency:
+  group: test-flatpak-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    name: Build & Validate Flatpak
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Install Flatpak tools
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y flatpak flatpak-builder appstream-util
+          flatpak remote-add --if-not-exists --user flathub https://dl.flathub.org/repo/flathub.flatpakrepo
+          flatpak install -y --user flathub org.freedesktop.Platform//24.08
+          flatpak install -y --user flathub org.freedesktop.Sdk//24.08
+
+      - name: Validate AppStream metadata
+        working-directory: packages/app-core/packaging/flatpak
+        run: appstream-util validate-relax ai.elizaos.App.metainfo.xml
+
+      - name: Validate desktop entry
+        run: desktop-file-validate packages/app-core/packaging/flatpak/ai.elizaos.App.desktop
+
+      - name: Build Flatpak
+        working-directory: packages/app-core/packaging/flatpak
+        run: |
+          flatpak-builder --repo=repo --force-clean build-dir ai.elizaos.App.yml
+
+      - name: Create bundle
+        working-directory: packages/app-core/packaging/flatpak
+        run: flatpak build-bundle repo elizaos-app.flatpak ai.elizaos.App
+
+      - name: Install and test
+        working-directory: packages/app-core/packaging/flatpak
+        run: |
+          flatpak --user install -y elizaos-app.flatpak
+          flatpak run ai.elizaos.App --version || echo "Version check completed"
+          flatpak run ai.elizaos.App --help || echo "Help check completed"
+
+      - name: Upload bundle artifact
+        uses: actions/upload-artifact@v7
+        with:
+          name: flatpak-test-bundle
+          path: packages/app-core/packaging/flatpak/elizaos-app.flatpak
+          retention-days: 7

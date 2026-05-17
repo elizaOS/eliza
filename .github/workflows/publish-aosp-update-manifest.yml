@@ -1,0 +1,115 @@
+name: Publish AOSP Update Manifest
+
+on:
+  workflow_call:
+    inputs:
+      version:
+        description: Version string (e.g. 2.0.0-beta.0)
+        type: string
+        required: true
+      channel:
+        description: Release channel
+        type: string
+        default: beta
+      tag:
+        description: Git tag / GitHub release tag to attach manifest to
+        type: string
+        required: true
+
+  workflow_dispatch:
+    inputs:
+      version:
+        description: Version string (e.g. 2.0.0-beta.0)
+        type: string
+        required: true
+      channel:
+        description: Release channel
+        type: choice
+        default: beta
+        options:
+          - stable
+          - beta
+          - canary
+      tag:
+        description: Git tag / GitHub release tag (e.g. v2.0.0-beta.2)
+        type: string
+        required: true
+
+jobs:
+  publish-manifest:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Download AOSP artifacts
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          mkdir -p /tmp/aosp
+          gh release download "${{ inputs.tag }}" \
+            --pattern "elizaos-*-android-*.zip" \
+            --dir /tmp/aosp/ 2>/dev/null || echo "::warning::No AOSP image artifacts found in this release"
+          ls -la /tmp/aosp/ || true
+
+      - name: Generate AOSP update manifest
+        run: |
+          VERSION="${{ inputs.version }}"
+          CHANNEL="${{ inputs.channel }}"
+          TAG="${{ inputs.tag }}"
+          RELEASE_DATE=$(date -u +%Y-%m-%d)
+          BASE_URL="https://github.com/${{ github.repository }}/releases/download/${TAG}"
+          ARTIFACTS="[]"
+
+          for f in /tmp/aosp/*.zip; do
+            [[ -f "$f" ]] || continue
+            NAME=$(basename "$f")
+            SHA=$(sha256sum "$f" | awk '{print $1}')
+            SIZE=$(stat -c%s "$f")
+
+            if [[ "$NAME" == *pixel-arm64* ]]; then
+              TARGET="pixel-arm64"; UNLOCK=true
+            elif [[ "$NAME" == *cf_x86_64* || "$NAME" == *cuttlefish* ]]; then
+              TARGET="cuttlefish-x86_64"; UNLOCK=false
+            else
+              TARGET="${NAME%.zip}"; UNLOCK=true
+            fi
+
+            ENTRY="{\"target\":\"$TARGET\",\"filename\":\"$NAME\",\"downloadUrl\":\"$BASE_URL/$NAME\",\"sha256\":\"$SHA\",\"sizeBytes\":$SIZE,\"requiredUnlockedBootloader\":$UNLOCK,\"minimumAndroidVersion\":\"14\"}"
+            if [[ "$ARTIFACTS" == "[]" ]]; then
+              ARTIFACTS="[$ENTRY]"
+            else
+              ARTIFACTS="${ARTIFACTS%]}, $ENTRY]"
+            fi
+          done
+
+          python3 -c "
+          import json, sys
+          m = {
+            'schemaVersion': 1,
+            'channel': '$CHANNEL',
+            'version': '$VERSION',
+            'releaseDate': '$RELEASE_DATE',
+            'artifacts': json.loads('''$ARTIFACTS'''),
+            'releaseNotesUrl': 'https://github.com/${{ github.repository }}/releases/tag/$TAG',
+            'flashingInstructions': 'https://elizaos.ai/docs/aosp-install'
+          }
+          print(json.dumps(m, indent=2))
+          " > /tmp/aosp-update-manifest.json
+
+          echo "Generated manifest:"
+          cat /tmp/aosp-update-manifest.json
+
+      - name: Upload manifests to release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          TAG="${{ inputs.tag }}"
+          CHANNEL="${{ inputs.channel }}"
+          if ! gh release view "$TAG" >/dev/null 2>&1; then
+            echo "::warning::No GitHub release for $TAG — skipping"
+            exit 0
+          fi
+          cp /tmp/aosp-update-manifest.json "aosp-update-manifest-${CHANNEL}.json"
+          gh release upload "$TAG" "aosp-update-manifest-${CHANNEL}.json" --clobber
+          echo "Uploaded aosp-update-manifest-${CHANNEL}.json"

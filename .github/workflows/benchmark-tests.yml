@@ -1,0 +1,58 @@
+name: Benchmark Bridge Tests
+
+concurrency:
+  group: benchmark-tests-${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+on:
+  push:
+    branches: [main, develop]
+    paths:
+      - "packages/app-core/src/benchmark/**"
+      - ".github/workflows/benchmark-tests.yml"
+  pull_request:
+    branches: [main, develop]
+    paths:
+      - "packages/app-core/src/benchmark/**"
+      - ".github/workflows/benchmark-tests.yml"
+  workflow_dispatch:
+
+env:
+  NODE_NO_WARNINGS: "1"
+
+jobs:
+  benchmark:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - lane: benchmark-tests
+            command: bunx vitest run --config packages/app-core/vitest.config.ts packages/app-core/src/benchmark/*.test.ts --passWithNoTests
+          - lane: benchmark-lint
+            command: bunx @biomejs/biome check packages/app-core/src/benchmark
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v6
+        with:
+          submodules: false
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: "24"
+          check-latest: false
+
+      - name: Setup workspace dependencies
+        uses: ./.github/actions/setup-bun-workspace
+        with:
+          bun-version: "1.3.13"
+          install-command: bun install --ignore-scripts --no-frozen-lockfile
+          install-native-deps: "false"
+
+      - name: Run ${{ matrix.lane }} lane
+        env:
+          CI: "true"
+        run: ${{ matrix.command }}

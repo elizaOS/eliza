@@ -1,0 +1,159 @@
+name: vault-ci
+
+# Cross-platform tests for @elizaos/vault. The package's headline
+# claim is that the OS-keyring-backed master key works the same on
+# macOS Keychain, Windows Credential Manager, and Linux Secret
+# Service (libsecret). This workflow makes that claim verifiable in
+# CI on every PR that touches packages/vault/** or the app-core
+# wiring that consumes it.
+
+concurrency:
+  group: vault-ci-${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+on:
+  push:
+    branches: [main, develop]
+    paths:
+      - "packages/vault/**"
+      - "packages/app-core/src/api/plugins-compat-routes.ts"
+      - "packages/app-core/src/api/secrets-manager-routes.ts"
+      - "packages/app-core/src/api/server.ts"
+      - "packages/app-core/src/services/vault-mirror.ts"
+      - "packages/app-core/src/state/usePluginsSkillsState.ts"
+      - "packages/app-core/src/hooks/useSecretsManagerShortcut.ts"
+      - ".github/workflows/vault-ci.yaml"
+  pull_request:
+    branches: [main, develop]
+    paths:
+      - "packages/vault/**"
+      - "packages/app-core/src/api/plugins-compat-routes.ts"
+      - "packages/app-core/src/api/secrets-manager-routes.ts"
+      - "packages/app-core/src/api/server.ts"
+      - "packages/app-core/src/services/vault-mirror.ts"
+      - "packages/app-core/src/state/usePluginsSkillsState.ts"
+      - "packages/app-core/src/hooks/useSecretsManagerShortcut.ts"
+      - ".github/workflows/vault-ci.yaml"
+
+jobs:
+  test:
+    name: test (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: "1.3.13"
+
+      # Linux Secret Service prerequisites — without these the
+      # @napi-rs/keyring round-trip throws on its first call.
+      # The gnome-keyring-daemon is fragile in headless CI:
+      #   * It refuses to start if XDG_RUNTIME_DIR/keyring/ doesn't exist
+      #     (Ubuntu 24.04 runners don't pre-create it).
+      #   * --start and --unlock are mutually exclusive in recent releases.
+      #   * --start prints noisy "discover_other_daemon" warnings on
+      #     stderr but still returns 0 when the daemon has actually
+      #     started; with `set -e` we have to swallow only the warnings,
+      #     not real errors.
+      #
+      # Pattern: pre-create the runtime dir, launch DBus, then start
+      # the daemon and unlock it as separate invocations.
+      - name: Install Secret Service (Linux)
+        if: matrix.os == 'ubuntu-latest'
+        # Run with explicit `bash` (no `-e`) so a non-zero exit from any
+        # one diagnostic command doesn't silently kill the whole step
+        # before the daemon actually starts. The final test step does
+        # the real validation: if libsecret can't reach the keyring
+        # there, the vault test will fail with a clear error.
+        shell: bash {0}
+        run: |
+          set -x
+          sudo apt-get update -y || true
+          sudo apt-get install -y libsecret-1-dev gnome-keyring dbus-x11
+          # Pre-create a runtime directory we know we can own + write
+          # to. /run/user/$UID is sometimes pre-created by the runner
+          # owned by root, making mkdir of subdirs fail; using
+          # $RUNNER_TEMP/runtime sidesteps that entirely. libsecret +
+          # gnome-keyring-daemon both honour XDG_RUNTIME_DIR.
+          runtime_dir="${RUNNER_TEMP:-/tmp}/keyring-runtime"
+          mkdir -p "$runtime_dir/keyring"
+          chmod 700 "$runtime_dir" "$runtime_dir/keyring"
+          export XDG_RUNTIME_DIR="$runtime_dir"
+          echo "XDG_RUNTIME_DIR=$runtime_dir" >> "$GITHUB_ENV"
+          # Launch a session DBus.
+          eval "$(dbus-launch --sh-syntax)" || true
+          if [ -n "${DBUS_SESSION_BUS_ADDRESS:-}" ]; then
+            {
+              echo "DBUS_SESSION_BUS_ADDRESS=$DBUS_SESSION_BUS_ADDRESS"
+              echo "DBUS_SESSION_BUS_PID=$DBUS_SESSION_BUS_PID"
+            } >> "$GITHUB_ENV"
+          fi
+          # Start the daemon. Forks into background and prints env vars
+          # (GNOME_KEYRING_CONTROL, SSH_AUTH_SOCK, etc.) on stdout.
+          # The daemon may exit 1 if it can't bind to the control socket;
+          # tolerate that and let the actual test catch a real issue.
+          daemon_env="$(printf '\n' | gnome-keyring-daemon --start --components=secrets 2>&1 || true)"
+          echo "$daemon_env"
+          echo "$daemon_env" | while IFS='=' read -r key value; do
+            case "$key" in
+              GNOME_KEYRING_CONTROL|SSH_AUTH_SOCK)
+                echo "${key}=${value}" >> "$GITHUB_ENV"
+                ;;
+            esac
+          done
+          # Unlock the default keyring with an empty password.
+          printf '\n' | gnome-keyring-daemon --unlock --components=secrets 2>&1 || true
+          # Always exit 0 — the test step is the source of truth.
+          exit 0
+
+      - name: Install dependencies
+        working-directory: packages/vault
+        run: bun install
+
+      - name: Typecheck
+        working-directory: packages/vault
+        run: bun run typecheck
+
+      - name: Test
+        working-directory: packages/vault
+        run: bun run test
+
+  app-core-wiring:
+    # Verifies the app-core consumer code that wires @elizaos/vault into
+    # cloud direct auth, active-server persistence, and startup integration drift.
+    # These tests are platform-agnostic (no OS keyring access — the vault is mocked at
+    # the boundary), so we only run them on ubuntu-latest.
+    name: app-core wiring tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          submodules: recursive
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: "1.3.13"
+
+      - name: Install workspace dependencies
+        run: bun install
+
+      - name: Generate i18n keyword data (transitive prerequisite)
+        working-directory: packages/shared
+        run: bun run build:i18n
+
+      - name: Run vault wiring tests
+        working-directory: packages/app-core
+        run: |
+          bunx vitest run --config vitest.config.ts \
+            src/api/client-cloud-direct-auth.test.ts \
+            src/state/persistence-cloud-active-server.test.ts \
+            scripts/startup-integration-script-drift.test.ts
