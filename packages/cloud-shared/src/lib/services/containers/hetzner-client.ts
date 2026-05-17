@@ -29,6 +29,7 @@
  *   has a single error type to map to HTTP status codes.
  */
 
+export type { Container, NewContainer } from "../../../db/repositories/containers";
 export { getHetznerContainersClient, HetznerContainersClient } from "./hetzner-client/client";
 export { parseDockerStats } from "./hetzner-client/docker-stats";
 export {
@@ -45,5 +46,3 @@ export {
   type HetznerContainerMetadata,
   type LogChunk,
 } from "./hetzner-client/types";
-
-export type { Container, NewContainer } from "../../../db/repositories/containers";

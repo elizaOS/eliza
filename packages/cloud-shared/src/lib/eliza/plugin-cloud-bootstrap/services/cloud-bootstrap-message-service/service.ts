@@ -69,11 +69,11 @@ import {
 import { getRetryDelay, parseStructuredModelObject, withRetry } from "./retry";
 import {
   EMPTY_STATE,
+  isStateValue,
   type MessageProcessingResult,
   type ResponseDecision,
   type RuntimeWithEvaluators,
   SINGLE_SHOT_TEMPLATE,
-  isStateValue,
   withActionResultsMetadata,
 } from "./types";
 

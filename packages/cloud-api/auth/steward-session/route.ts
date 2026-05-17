@@ -108,7 +108,8 @@ function checkOrigin(
   if (!origin && !referer) {
     return { ok: false, reason: "missing_origin_and_referer" };
   }
-  if (origin && isPermittedOrigin(origin, host, isProduction)) return { ok: true };
+  if (origin && isPermittedOrigin(origin, host, isProduction))
+    return { ok: true };
   if (!origin && referer && isPermittedOrigin(referer, host, isProduction)) {
     return { ok: true };
   }

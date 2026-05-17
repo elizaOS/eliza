@@ -80,7 +80,7 @@ jobs:
           SKIP_SERVER_CHECK: "true"
 
       - name: Run lib tests
-        run: bun test packages/cloud-shared/src/lib/services/gateway-discord/__tests__/ --timeout 60000
+        run: bun test src/lib/services/gateway-discord/__tests__ --timeout 60000
         env:
           SKIP_SERVER_CHECK: "true"
 

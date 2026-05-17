@@ -11,7 +11,9 @@
     "build": "bun run build.ts",
     "typecheck": "tsc --noEmit",
     "test": "bun test src",
-    "test:e2e": "ELIZA_CLOUD_SDK_LIVE=1 vitest run --config vitest.live.config.ts src/live.e2e.test.ts"
+    "test:e2e": "ELIZA_CLOUD_SDK_LIVE=1 vitest run --config vitest.live.config.ts src/live.e2e.test.ts",
+    "lint": "biome check .",
+    "lint:fix": "biome check --write ."
   },
   "exports": {
     ".": {

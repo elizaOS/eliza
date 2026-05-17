@@ -88,7 +88,8 @@ function checkOrigin(
   if (!origin && !referer) {
     return { ok: false, reason: "missing_origin_and_referer" };
   }
-  if (origin && isPermittedOrigin(origin, host, isProduction)) return { ok: true };
+  if (origin && isPermittedOrigin(origin, host, isProduction))
+    return { ok: true };
   if (!origin && referer && isPermittedOrigin(referer, host, isProduction)) {
     return { ok: true };
   }
@@ -131,9 +132,7 @@ function resolveStewardBaseUrl(env: AppEnv["Bindings"]): string | null {
       const url = new URL(trimmed);
       if (url.protocol !== "https:" && url.protocol !== "http:") continue;
       return trimmed;
-    } catch {
-      continue;
-    }
+    } catch {}
   }
   return null;
 }
@@ -172,7 +171,10 @@ async function callStewardExchange(
   try {
     response = await fetch(`${baseUrl}/auth/oauth/exchange`, {
       method: "POST",
-      headers: { "Content-Type": "application/json", Accept: "application/json" },
+      headers: {
+        "Content-Type": "application/json",
+        Accept: "application/json",
+      },
       body: JSON.stringify(body),
     });
   } catch (err) {
@@ -185,7 +187,9 @@ async function callStewardExchange(
   const text = await response.text();
   let parsed: StewardExchangeOk | StewardExchangeErr | null = null;
   try {
-    parsed = text ? (JSON.parse(text) as StewardExchangeOk | StewardExchangeErr) : null;
+    parsed = text
+      ? (JSON.parse(text) as StewardExchangeOk | StewardExchangeErr)
+      : null;
   } catch {
     parsed = null;
   }

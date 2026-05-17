@@ -8,10 +8,8 @@
 
 import { eq } from "drizzle-orm";
 import { dbRead, dbWrite } from "../../../../db/client";
-import {
-  type Container,
-  containersRepository,
-} from "../../../../db/repositories/containers";
+import type { NewContainer } from "../../../../db/repositories/containers";
+import { type Container, containersRepository } from "../../../../db/repositories/containers";
 import { dockerNodesRepository } from "../../../../db/repositories/docker-nodes";
 import { containers as containersTable } from "../../../../db/schemas/containers";
 import type { DockerNode } from "../../../../db/schemas/docker-nodes";
@@ -19,7 +17,12 @@ import { containersEnv } from "../../../config/containers-env";
 import { logger } from "../../../utils/logger";
 import { dockerNodeManager } from "../../docker-node-manager";
 import { getUsedDockerHostPorts } from "../../docker-port-allocation";
-import { allocatePort, shellQuote, WEBUI_PORT_MAX, WEBUI_PORT_MIN } from "../../docker-sandbox-utils";
+import {
+  allocatePort,
+  shellQuote,
+  WEBUI_PORT_MAX,
+  WEBUI_PORT_MIN,
+} from "../../docker-sandbox-utils";
 import { DockerSSHClient } from "../../docker-ssh";
 import { getHetznerVolumeService, isHetznerVolumesAvailable } from "../hetzner-volumes";
 import {
@@ -40,11 +43,7 @@ import {
   validateEnvKey,
 } from "./paths";
 import { loginToImageRegistry, readPulledImageDigest } from "./registry";
-import {
-  findNodeInLocation,
-  findStickyNodeForProject,
-  getDockerNodeLocation,
-} from "./scheduling";
+import { findNodeInLocation, findStickyNodeForProject, getDockerNodeLocation } from "./scheduling";
 import {
   type ContainerBootstrapFile,
   type ContainerMetricsSnapshot,
@@ -55,8 +54,6 @@ import {
   HetznerClientError,
   type HetznerContainerMetadata,
 } from "./types";
-
-import type { NewContainer } from "../../../../db/repositories/containers";
 
 export class HetznerContainersClient {
   // ----------------------------------------------------------------------

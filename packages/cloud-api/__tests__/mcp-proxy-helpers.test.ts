@@ -42,21 +42,21 @@ describe("toolNameFromRpcBody", () => {
 
   test("returns 'unknown' when params is missing or wrong shape", () => {
     expect(toolNameFromRpcBody({ method: "tools/call" })).toBe("unknown");
-    expect(
-      toolNameFromRpcBody({ method: "tools/call", params: null }),
-    ).toBe("unknown");
-    expect(
-      toolNameFromRpcBody({ method: "tools/call", params: [] }),
-    ).toBe("unknown");
-    expect(
-      toolNameFromRpcBody({ method: "tools/call", params: "bad" }),
-    ).toBe("unknown");
+    expect(toolNameFromRpcBody({ method: "tools/call", params: null })).toBe(
+      "unknown",
+    );
+    expect(toolNameFromRpcBody({ method: "tools/call", params: [] })).toBe(
+      "unknown",
+    );
+    expect(toolNameFromRpcBody({ method: "tools/call", params: "bad" })).toBe(
+      "unknown",
+    );
   });
 
   test("returns 'unknown' when params.name is missing or empty", () => {
-    expect(
-      toolNameFromRpcBody({ method: "tools/call", params: {} }),
-    ).toBe("unknown");
+    expect(toolNameFromRpcBody({ method: "tools/call", params: {} })).toBe(
+      "unknown",
+    );
     expect(
       toolNameFromRpcBody({ method: "tools/call", params: { name: "" } }),
     ).toBe("unknown");
