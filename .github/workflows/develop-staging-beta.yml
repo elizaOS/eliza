@@ -161,5 +161,5 @@ jobs:
             exit 0
           fi
 
-          gh workflow run release.yaml --ref develop -f release_type=beta
+          gh workflow run release.yaml --repo "$GITHUB_REPOSITORY" --ref develop -f release_type=beta
           echo "Dispatched release.yaml beta workflow for develop after ${TARGET_SHA} passed staging." >> "$GITHUB_STEP_SUMMARY"
