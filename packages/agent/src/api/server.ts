@@ -22,11 +22,6 @@ function tokenMatches(expected: string, provided: string): boolean {
 
 const MAX_BODY_BYTES = 1024 * 1024; // 1 MB
 
-function strictPortBindingEnabled(): boolean {
-  const value = process.env.ELIZA_API_STRICT_PORT?.trim().toLowerCase();
-  return value === "1" || value === "true" || value === "yes";
-}
-
 import os from "node:os";
 import path from "node:path";
 import {
@@ -2952,6 +2947,11 @@ export type { captureEarlyLogs };
 // ---------------------------------------------------------------------------
 // Server start
 // ---------------------------------------------------------------------------
+
+function strictPortBindingEnabled(): boolean {
+  const value = process.env.ELIZA_API_STRICT_PORT?.trim().toLowerCase();
+  return value === "1" || value === "true" || value === "yes";
+}
 
 export async function startApiServer(opts?: {
   port?: number;
