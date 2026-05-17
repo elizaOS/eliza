@@ -35,10 +35,7 @@ const LazyStewardWalletProviders = lazy(async () => {
 
 function isWalletRoute(pathname: string): boolean {
   return WALLET_ROUTE_PATTERNS.some((pattern) =>
-    matchPath(
-      { path: pattern, end: pattern.endsWith("*") ? false : true },
-      pathname,
-    ),
+    matchPath({ path: pattern, end: !pattern.endsWith("*") }, pathname),
   );
 }
 
