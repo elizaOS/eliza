@@ -70,13 +70,12 @@ export function UsageTab({ user, onTabChange }: UsageTabProps) {
           amount: string | number;
         }
         const transactions: Transaction[] = Array.isArray(data.transactions)
-          ? data.transactions.filter(
-              (t: unknown): t is Transaction => {
-                if (typeof t !== "object" || t === null || !("amount" in t)) return false;
-                const { amount } = t as Record<string, unknown>;
-                return typeof amount === "string" || typeof amount === "number";
-              },
-            )
+          ? data.transactions.filter((t: unknown): t is Transaction => {
+              if (typeof t !== "object" || t === null || !("amount" in t))
+                return false;
+              const { amount } = t as Record<string, unknown>;
+              return typeof amount === "string" || typeof amount === "number";
+            })
           : [];
         const burn = transactions
           .filter((t) => Number(t.amount) < 0)
@@ -86,7 +85,7 @@ export function UsageTab({ user, onTabChange }: UsageTabProps) {
           );
 
         setDailyBurn(burn);
-      } catch (error) {
+      } catch (_error) {
         toast.error("Failed to load daily burn rate");
       } finally {
         setLoading(false);

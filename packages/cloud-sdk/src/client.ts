@@ -55,6 +55,7 @@ import {
   type GetX402PaymentRequestResponse,
   type HttpMethod,
   type JobStatus,
+  type JsonObject,
   type LinkAffiliateRequest,
   type LinkAffiliateResponse,
   type ListAppChargesResponse,
@@ -83,7 +84,6 @@ import {
   type X402SettleResponse,
   type X402SupportedResponse,
   type X402VerifyResponse,
-  type JsonObject,
 } from "./types.js";
 
 function trimTrailingSlash(value: string): string {
@@ -115,7 +115,10 @@ function encodePathParam(value: string | number): string {
   return encodeURIComponent(String(value));
 }
 
-function withPathParams(path: string, params?: Record<string, string | number>): string {
+function withPathParams(
+  path: string,
+  params?: Record<string, string | number>,
+): string {
   if (!params) return path;
   return path.replace(/\{([^}]+)\}/g, (_match, key: string) => {
     const value = params[key];
@@ -141,10 +144,15 @@ export class ElizaCloudClient {
   readonly apiBaseUrl: string;
 
   constructor(options: ElizaCloudClientOptions = {}) {
-    this.baseUrl = normalizeBaseUrl(options.baseUrl, DEFAULT_ELIZA_CLOUD_BASE_URL);
+    this.baseUrl = normalizeBaseUrl(
+      options.baseUrl,
+      DEFAULT_ELIZA_CLOUD_BASE_URL,
+    );
     this.apiBaseUrl = normalizeBaseUrl(
       options.apiBaseUrl,
-      options.baseUrl ? `${this.baseUrl}/api/v1` : DEFAULT_ELIZA_CLOUD_API_BASE_URL,
+      options.baseUrl
+        ? `${this.baseUrl}/api/v1`
+        : DEFAULT_ELIZA_CLOUD_API_BASE_URL,
     );
     const apiOrigin = options.apiBaseUrl
       ? apiOriginFromApiBaseUrl(this.apiBaseUrl)
@@ -181,7 +189,11 @@ export class ElizaCloudClient {
     return this.http.request<TResponse>(method, path, options);
   }
 
-  requestRaw(method: HttpMethod, path: string, options?: CloudRequestOptions): Promise<Response> {
+  requestRaw(
+    method: HttpMethod,
+    path: string,
+    options?: CloudRequestOptions,
+  ): Promise<Response> {
     return this.http.requestRaw(method, path, options);
   }
 
@@ -202,18 +214,26 @@ export class ElizaCloudClient {
     return this.request<OpenApiSpec>("GET", "/api/openapi.json", options);
   }
 
-  startCliLogin(options: CliLoginStartOptions = {}): Promise<CliLoginStartResponse> {
+  startCliLogin(
+    options: CliLoginStartOptions = {},
+  ): Promise<CliLoginStartResponse> {
     const sessionId = options.sessionId ?? getCryptoRandomUuid();
-    const query = options.returnTo ? `?returnTo=${encodeURIComponent(options.returnTo)}` : "";
+    const query = options.returnTo
+      ? `?returnTo=${encodeURIComponent(options.returnTo)}`
+      : "";
     const browserBaseUrl = browserBaseUrlForCliLogin(this.baseUrl);
     const browserUrl = `${browserBaseUrl}/auth/cli-login?session=${encodeURIComponent(
       sessionId,
     )}${query}`;
 
-    return this.request<{ status?: string; expiresAt?: string }>("POST", "/api/auth/cli-session", {
-      json: { sessionId },
-      skipAuth: true,
-    }).then((response) => ({
+    return this.request<{ status?: string; expiresAt?: string }>(
+      "POST",
+      "/api/auth/cli-session",
+      {
+        json: { sessionId },
+        skipAuth: true,
+      },
+    ).then((response) => ({
       sessionId,
       browserUrl,
       status: response.status,
@@ -241,11 +261,15 @@ export class ElizaCloudClient {
     return this.v1.get<ModelListResponse>("/models", { skipAuth: true });
   }
 
-  createResponse(request: ResponsesCreateRequest): Promise<ResponsesCreateResponse> {
+  createResponse(
+    request: ResponsesCreateRequest,
+  ): Promise<ResponsesCreateResponse> {
     return this.v1.post<ResponsesCreateResponse>("/responses", request);
   }
 
-  createChatCompletion(request: ChatCompletionRequest): Promise<ChatCompletionResponse> {
+  createChatCompletion(
+    request: ChatCompletionRequest,
+  ): Promise<ChatCompletionResponse> {
     return this.v1.post<ChatCompletionResponse>("/chat/completions", request);
   }
 
@@ -257,56 +281,90 @@ export class ElizaCloudClient {
     return this.v1.post<GenerateImageResponse>("/generate-image", request);
   }
 
-  getCreditsBalance(options: { fresh?: boolean } = {}): Promise<CreditBalanceResponse> {
-    return this.request<CreditBalanceResponse>("GET", "/api/v1/credits/balance", {
-      query: options.fresh === undefined ? undefined : { fresh: options.fresh },
-    });
+  getCreditsBalance(
+    options: { fresh?: boolean } = {},
+  ): Promise<CreditBalanceResponse> {
+    return this.request<CreditBalanceResponse>(
+      "GET",
+      "/api/v1/credits/balance",
+      {
+        query:
+          options.fresh === undefined ? undefined : { fresh: options.fresh },
+      },
+    );
   }
 
   getCreditsSummary(): Promise<CreditSummaryResponse> {
-    return this.request<CreditSummaryResponse>("GET", "/api/v1/credits/summary");
+    return this.request<CreditSummaryResponse>(
+      "GET",
+      "/api/v1/credits/summary",
+    );
   }
 
   createCreditsCheckout(
     request: CreateCreditsCheckoutRequest,
   ): Promise<CreateCreditsCheckoutResponse> {
-    return this.request<CreateCreditsCheckoutResponse>("POST", "/api/v1/credits/checkout", {
-      json: request,
-    });
+    return this.request<CreateCreditsCheckoutResponse>(
+      "POST",
+      "/api/v1/credits/checkout",
+      {
+        json: request,
+      },
+    );
   }
 
   getAppCreditsBalance(appId: string): Promise<AppCreditsBalanceResponse> {
-    return this.request<AppCreditsBalanceResponse>("GET", "/api/v1/app-credits/balance", {
-      query: { app_id: appId },
-    });
+    return this.request<AppCreditsBalanceResponse>(
+      "GET",
+      "/api/v1/app-credits/balance",
+      {
+        query: { app_id: appId },
+      },
+    );
   }
 
   createAppCreditsCheckout(
     request: CreateAppCreditsCheckoutRequest,
   ): Promise<CreateAppCreditsCheckoutResponse> {
-    return this.request<CreateAppCreditsCheckoutResponse>("POST", "/api/v1/app-credits/checkout", {
-      json: request,
-    });
+    return this.request<CreateAppCreditsCheckoutResponse>(
+      "POST",
+      "/api/v1/app-credits/checkout",
+      {
+        json: request,
+      },
+    );
   }
 
-  verifyAppCreditsCheckout(sessionId: string): Promise<VerifyAppCreditsCheckoutResponse> {
-    return this.request<VerifyAppCreditsCheckoutResponse>("GET", "/api/v1/app-credits/verify", {
-      query: { session_id: sessionId },
-    });
+  verifyAppCreditsCheckout(
+    sessionId: string,
+  ): Promise<VerifyAppCreditsCheckoutResponse> {
+    return this.request<VerifyAppCreditsCheckoutResponse>(
+      "GET",
+      "/api/v1/app-credits/verify",
+      {
+        query: { session_id: sessionId },
+      },
+    );
   }
 
   getX402Supported(): Promise<X402SupportedResponse> {
-    return this.request<X402SupportedResponse>("GET", "/api/v1/x402", { skipAuth: true });
+    return this.request<X402SupportedResponse>("GET", "/api/v1/x402", {
+      skipAuth: true,
+    });
   }
 
-  verifyX402Payment(request: X402FacilitatorPaymentRequest): Promise<X402VerifyResponse> {
+  verifyX402Payment(
+    request: X402FacilitatorPaymentRequest,
+  ): Promise<X402VerifyResponse> {
     return this.request<X402VerifyResponse>("POST", "/api/v1/x402/verify", {
       json: request,
       skipAuth: true,
     });
   }
 
-  settleX402Payment(request: X402FacilitatorPaymentRequest): Promise<X402SettleResponse> {
+  settleX402Payment(
+    request: X402FacilitatorPaymentRequest,
+  ): Promise<X402SettleResponse> {
     return this.request<X402SettleResponse>("POST", "/api/v1/x402/settle", {
       json: request,
       skipAuth: true,
@@ -316,13 +374,20 @@ export class ElizaCloudClient {
   createX402PaymentRequest(
     request: CreateX402PaymentRequest,
   ): Promise<CreateX402PaymentRequestResponse> {
-    return this.request<CreateX402PaymentRequestResponse>("POST", "/api/v1/x402/requests", {
-      json: request,
-    });
+    return this.request<CreateX402PaymentRequestResponse>(
+      "POST",
+      "/api/v1/x402/requests",
+      {
+        json: request,
+      },
+    );
   }
 
   listX402PaymentRequests(): Promise<ListX402PaymentRequestsResponse> {
-    return this.request<ListX402PaymentRequestsResponse>("GET", "/api/v1/x402/requests");
+    return this.request<ListX402PaymentRequestsResponse>(
+      "GET",
+      "/api/v1/x402/requests",
+    );
   }
 
   getX402PaymentRequest(id: string): Promise<GetX402PaymentRequestResponse> {
@@ -355,11 +420,17 @@ export class ElizaCloudClient {
     );
   }
 
-  listAppCharges(appId: string, options: { limit?: number } = {}): Promise<ListAppChargesResponse> {
+  listAppCharges(
+    appId: string,
+    options: { limit?: number } = {},
+  ): Promise<ListAppChargesResponse> {
     return this.request<ListAppChargesResponse>(
       "GET",
       `/api/v1/apps/${encodePathParam(appId)}/charges`,
-      { query: options.limit === undefined ? undefined : { limit: options.limit } },
+      {
+        query:
+          options.limit === undefined ? undefined : { limit: options.limit },
+      },
     );
   }
 
@@ -387,25 +458,44 @@ export class ElizaCloudClient {
     return this.request<AffiliateCodeResponse>("GET", "/api/v1/affiliates");
   }
 
-  createAffiliateCode(request: UpsertAffiliateCodeRequest): Promise<AffiliateCodeResponse> {
-    return this.request<AffiliateCodeResponse>("POST", "/api/v1/affiliates", { json: request });
-  }
-
-  updateAffiliateCode(request: UpsertAffiliateCodeRequest): Promise<AffiliateCodeResponse> {
-    return this.request<AffiliateCodeResponse>("PUT", "/api/v1/affiliates", { json: request });
-  }
-
-  linkAffiliateCode(request: LinkAffiliateRequest): Promise<LinkAffiliateResponse> {
-    return this.request<LinkAffiliateResponse>("POST", "/api/v1/affiliates/link", {
+  createAffiliateCode(
+    request: UpsertAffiliateCodeRequest,
+  ): Promise<AffiliateCodeResponse> {
+    return this.request<AffiliateCodeResponse>("POST", "/api/v1/affiliates", {
       json: request,
     });
   }
 
-  getAppEarnings(appId: string, options: { days?: number } = {}): Promise<AppEarningsResponse> {
+  updateAffiliateCode(
+    request: UpsertAffiliateCodeRequest,
+  ): Promise<AffiliateCodeResponse> {
+    return this.request<AffiliateCodeResponse>("PUT", "/api/v1/affiliates", {
+      json: request,
+    });
+  }
+
+  linkAffiliateCode(
+    request: LinkAffiliateRequest,
+  ): Promise<LinkAffiliateResponse> {
+    return this.request<LinkAffiliateResponse>(
+      "POST",
+      "/api/v1/affiliates/link",
+      {
+        json: request,
+      },
+    );
+  }
+
+  getAppEarnings(
+    appId: string,
+    options: { days?: number } = {},
+  ): Promise<AppEarningsResponse> {
     return this.request<AppEarningsResponse>(
       "GET",
       `/api/v1/apps/${encodePathParam(appId)}/earnings`,
-      { query: options.days === undefined ? undefined : { days: options.days } },
+      {
+        query: options.days === undefined ? undefined : { days: options.days },
+      },
     );
   }
 
@@ -432,28 +522,50 @@ export class ElizaCloudClient {
   }
 
   getRedemptionBalance(): Promise<RedemptionBalanceResponse> {
-    return this.request<RedemptionBalanceResponse>("GET", "/api/v1/redemptions/balance");
+    return this.request<RedemptionBalanceResponse>(
+      "GET",
+      "/api/v1/redemptions/balance",
+    );
   }
 
-  getRedemptionQuote(network: string, pointsAmount?: number): Promise<RedemptionQuoteResponse> {
-    return this.request<RedemptionQuoteResponse>("GET", "/api/v1/redemptions/quote", {
-      query: { network, pointsAmount },
-    });
+  getRedemptionQuote(
+    network: string,
+    pointsAmount?: number,
+  ): Promise<RedemptionQuoteResponse> {
+    return this.request<RedemptionQuoteResponse>(
+      "GET",
+      "/api/v1/redemptions/quote",
+      {
+        query: { network, pointsAmount },
+      },
+    );
   }
 
   getRedemptionStatus(): Promise<RedemptionStatusResponse> {
-    return this.request<RedemptionStatusResponse>("GET", "/api/v1/redemptions/status", {
-      skipAuth: true,
-    });
+    return this.request<RedemptionStatusResponse>(
+      "GET",
+      "/api/v1/redemptions/status",
+      {
+        skipAuth: true,
+      },
+    );
   }
 
-  createRedemption(request: CreateRedemptionRequest): Promise<CreateRedemptionResponse> {
-    return this.request<CreateRedemptionResponse>("POST", "/api/v1/redemptions", {
-      json: request,
-    });
+  createRedemption(
+    request: CreateRedemptionRequest,
+  ): Promise<CreateRedemptionResponse> {
+    return this.request<CreateRedemptionResponse>(
+      "POST",
+      "/api/v1/redemptions",
+      {
+        json: request,
+      },
+    );
   }
 
-  listRedemptions(options: { limit?: number } = {}): Promise<ListRedemptionsResponse> {
+  listRedemptions(
+    options: { limit?: number } = {},
+  ): Promise<ListRedemptionsResponse> {
     return this.request<ListRedemptionsResponse>("GET", "/api/v1/redemptions", {
       query: options.limit === undefined ? undefined : { limit: options.limit },
     });
@@ -463,7 +575,9 @@ export class ElizaCloudClient {
     return this.request<ContainerListResponse>("GET", "/api/v1/containers");
   }
 
-  createContainer(request: CreateContainerRequest): Promise<CreateContainerResponse> {
+  createContainer(
+    request: CreateContainerRequest,
+  ): Promise<CreateContainerResponse> {
     return this.request<CreateContainerResponse>("POST", "/api/v1/containers", {
       json: request,
     });
@@ -487,8 +601,13 @@ export class ElizaCloudClient {
     );
   }
 
-  deleteContainer(containerId: string): Promise<{ success: boolean; message?: string }> {
-    return this.request("DELETE", `/api/v1/containers/${encodePathParam(containerId)}`);
+  deleteContainer(
+    containerId: string,
+  ): Promise<{ success: boolean; message?: string }> {
+    return this.request(
+      "DELETE",
+      `/api/v1/containers/${encodePathParam(containerId)}`,
+    );
   }
 
   getContainerHealth(containerId: string): Promise<ContainerHealthResponse> {
@@ -499,7 +618,10 @@ export class ElizaCloudClient {
   }
 
   getContainerMetrics(containerId: string): Promise<Record<string, unknown>> {
-    return this.request("GET", `/api/v1/containers/${encodePathParam(containerId)}/metrics`);
+    return this.request(
+      "GET",
+      `/api/v1/containers/${encodePathParam(containerId)}/metrics`,
+    );
   }
 
   async getContainerLogs(containerId: string, tail?: number): Promise<string> {
@@ -524,20 +646,32 @@ export class ElizaCloudClient {
     return text;
   }
 
-  getContainerDeployments(containerId: string): Promise<Record<string, unknown>> {
-    return this.request("GET", `/api/v1/containers/${encodePathParam(containerId)}/deployments`);
+  getContainerDeployments(
+    containerId: string,
+  ): Promise<Record<string, unknown>> {
+    return this.request(
+      "GET",
+      `/api/v1/containers/${encodePathParam(containerId)}/deployments`,
+    );
   }
 
   getContainerQuota(): Promise<ContainerQuotaResponse> {
-    return this.request<ContainerQuotaResponse>("GET", "/api/v1/containers/quota");
+    return this.request<ContainerQuotaResponse>(
+      "GET",
+      "/api/v1/containers/quota",
+    );
   }
 
   createContainerCredentials(
     request: Record<string, unknown> = {},
   ): Promise<ContainerCredentialsResponse> {
-    return this.request<ContainerCredentialsResponse>("POST", "/api/v1/containers/credentials", {
-      json: request,
-    });
+    return this.request<ContainerCredentialsResponse>(
+      "POST",
+      "/api/v1/containers/credentials",
+      {
+        json: request,
+      },
+    );
   }
 
   listAgents(): Promise<AgentListResponse> {
@@ -551,10 +685,16 @@ export class ElizaCloudClient {
   }
 
   getAgent(agentId: string): Promise<AgentResponse> {
-    return this.request<AgentResponse>("GET", `/api/v1/eliza/agents/${encodePathParam(agentId)}`);
+    return this.request<AgentResponse>(
+      "GET",
+      `/api/v1/eliza/agents/${encodePathParam(agentId)}`,
+    );
   }
 
-  updateAgent(agentId: string, request: Partial<CreateAgentRequest>): Promise<AgentResponse> {
+  updateAgent(
+    agentId: string,
+    request: Partial<CreateAgentRequest>,
+  ): Promise<AgentResponse> {
     return this.request<AgentResponse>(
       "PATCH",
       `/api/v1/eliza/agents/${encodePathParam(agentId)}`,
@@ -563,19 +703,31 @@ export class ElizaCloudClient {
   }
 
   deleteAgent(agentId: string): Promise<AgentLifecycleResponse> {
-    return this.request("DELETE", `/api/v1/eliza/agents/${encodePathParam(agentId)}`);
+    return this.request(
+      "DELETE",
+      `/api/v1/eliza/agents/${encodePathParam(agentId)}`,
+    );
   }
 
   provisionAgent(agentId: string): Promise<AgentLifecycleResponse> {
-    return this.request("POST", `/api/v1/eliza/agents/${encodePathParam(agentId)}/provision`);
+    return this.request(
+      "POST",
+      `/api/v1/eliza/agents/${encodePathParam(agentId)}/provision`,
+    );
   }
 
   suspendAgent(agentId: string): Promise<AgentLifecycleResponse> {
-    return this.request("POST", `/api/v1/eliza/agents/${encodePathParam(agentId)}/suspend`);
+    return this.request(
+      "POST",
+      `/api/v1/eliza/agents/${encodePathParam(agentId)}/suspend`,
+    );
   }
 
   resumeAgent(agentId: string): Promise<AgentLifecycleResponse> {
-    return this.request("POST", `/api/v1/eliza/agents/${encodePathParam(agentId)}/resume`);
+    return this.request(
+      "POST",
+      `/api/v1/eliza/agents/${encodePathParam(agentId)}/resume`,
+    );
   }
 
   createAgentSnapshot(
@@ -583,19 +735,33 @@ export class ElizaCloudClient {
     snapshotType: SnapshotType = "manual",
     metadata?: Record<string, unknown>,
   ): Promise<Record<string, unknown>> {
-    return this.request("POST", `/api/v1/eliza/agents/${encodePathParam(agentId)}/snapshot`, {
-      json: { snapshotType, metadata },
-    });
+    return this.request(
+      "POST",
+      `/api/v1/eliza/agents/${encodePathParam(agentId)}/snapshot`,
+      {
+        json: { snapshotType, metadata },
+      },
+    );
   }
 
   listAgentBackups(agentId: string): Promise<SnapshotListResponse> {
-    return this.request("GET", `/api/v1/eliza/agents/${encodePathParam(agentId)}/backups`);
+    return this.request(
+      "GET",
+      `/api/v1/eliza/agents/${encodePathParam(agentId)}/backups`,
+    );
   }
 
-  restoreAgentBackup(agentId: string, backupId?: string): Promise<Record<string, unknown>> {
-    return this.request("POST", `/api/v1/eliza/agents/${encodePathParam(agentId)}/restore`, {
-      json: backupId ? { backupId } : {},
-    });
+  restoreAgentBackup(
+    agentId: string,
+    backupId?: string,
+  ): Promise<Record<string, unknown>> {
+    return this.request(
+      "POST",
+      `/api/v1/eliza/agents/${encodePathParam(agentId)}/restore`,
+      {
+        json: backupId ? { backupId } : {},
+      },
+    );
   }
 
   getAgentPairingToken(agentId: string): Promise<PairingTokenResponse> {
@@ -630,21 +796,31 @@ export class ElizaCloudClient {
     requestId: string,
     response: GatewayRelayResponse,
   ): Promise<{ success: boolean }> {
-    return this.v1.post(`/eliza/gateway-relay/sessions/${encodePathParam(sessionId)}/responses`, {
-      requestId,
-      response,
-    });
+    return this.v1.post(
+      `/eliza/gateway-relay/sessions/${encodePathParam(sessionId)}/responses`,
+      {
+        requestId,
+        response,
+      },
+    );
   }
 
-  disconnectGatewayRelaySession(sessionId: string): Promise<{ success: boolean }> {
-    return this.v1.delete(`/eliza/gateway-relay/sessions/${encodePathParam(sessionId)}`);
+  disconnectGatewayRelaySession(
+    sessionId: string,
+  ): Promise<{ success: boolean }> {
+    return this.v1.delete(
+      `/eliza/gateway-relay/sessions/${encodePathParam(sessionId)}`,
+    );
   }
 
   getJob(jobId: string): Promise<JobStatus> {
     return this.request("GET", `/api/v1/jobs/${encodePathParam(jobId)}`);
   }
 
-  async pollJob(jobId: string, options: { timeoutMs?: number; intervalMs?: number } = {}) {
+  async pollJob(
+    jobId: string,
+    options: { timeoutMs?: number; intervalMs?: number } = {},
+  ) {
     const timeoutMs = options.timeoutMs ?? 120_000;
     const intervalMs = options.intervalMs ?? 2_000;
     const deadline = Date.now() + timeoutMs;
@@ -677,17 +853,29 @@ export class ElizaCloudClient {
   }
 
   updateApiKey(apiKeyId: string, request: Partial<ApiKeyCreateRequest>) {
-    return this.request("PATCH", `/api/v1/api-keys/${encodePathParam(apiKeyId)}`, {
-      json: request,
-    });
+    return this.request(
+      "PATCH",
+      `/api/v1/api-keys/${encodePathParam(apiKeyId)}`,
+      {
+        json: request,
+      },
+    );
   }
 
-  deleteApiKey(apiKeyId: string): Promise<{ success?: boolean; message?: string }> {
-    return this.request("DELETE", `/api/v1/api-keys/${encodePathParam(apiKeyId)}`);
+  deleteApiKey(
+    apiKeyId: string,
+  ): Promise<{ success?: boolean; message?: string }> {
+    return this.request(
+      "DELETE",
+      `/api/v1/api-keys/${encodePathParam(apiKeyId)}`,
+    );
   }
 
   regenerateApiKey(apiKeyId: string): Promise<ApiKeyCreateResponse> {
-    return this.request("POST", `/api/v1/api-keys/${encodePathParam(apiKeyId)}/regenerate`);
+    return this.request(
+      "POST",
+      `/api/v1/api-keys/${encodePathParam(apiKeyId)}/regenerate`,
+    );
   }
 
   /**
@@ -697,13 +885,23 @@ export class ElizaCloudClient {
    * `unknown` here to avoid drift.
    */
   listWorkflows(agentId: string): Promise<unknown> {
-    return this.request("GET", `/api/v1/agents/${encodePathParam(agentId)}/workflows`);
+    return this.request(
+      "GET",
+      `/api/v1/agents/${encodePathParam(agentId)}/workflows`,
+    );
   }
 
-  createWorkflow(agentId: string, body: Record<string, unknown>): Promise<unknown> {
-    return this.request("POST", `/api/v1/agents/${encodePathParam(agentId)}/workflows`, {
-      json: body,
-    });
+  createWorkflow(
+    agentId: string,
+    body: Record<string, unknown>,
+  ): Promise<unknown> {
+    return this.request(
+      "POST",
+      `/api/v1/agents/${encodePathParam(agentId)}/workflows`,
+      {
+        json: body,
+      },
+    );
   }
 
   getWorkflow(agentId: string, workflowId: string): Promise<unknown> {
@@ -752,6 +950,8 @@ export class ElizaCloudClient {
   }
 }
 
-export function createElizaCloudClient(options?: ElizaCloudClientOptions): ElizaCloudClient {
+export function createElizaCloudClient(
+  options?: ElizaCloudClientOptions,
+): ElizaCloudClient {
   return new ElizaCloudClient(options);
 }

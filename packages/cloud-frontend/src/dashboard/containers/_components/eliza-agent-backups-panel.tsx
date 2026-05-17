@@ -79,7 +79,9 @@ export function ElizaAgentBackupsPanel({
       const response = await fetch(`/api/v1/eliza/agents/${agentId}/backups`, {
         cache: "no-store",
       });
-      const payload: BackupsApiResponse = await response.json().catch(() => ({}));
+      const payload: BackupsApiResponse = await response
+        .json()
+        .catch(() => ({}));
 
       if (!response.ok || !payload.success) {
         throw new Error(payload.error ?? `HTTP ${response.status}`);

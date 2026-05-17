@@ -29,10 +29,19 @@ export interface JsonObject {
   [key: string]: JsonValue | undefined;
 }
 
-export type HttpMethod = "GET" | "POST" | "PUT" | "PATCH" | "DELETE" | "OPTIONS" | "HEAD";
+export type HttpMethod =
+  | "GET"
+  | "POST"
+  | "PUT"
+  | "PATCH"
+  | "DELETE"
+  | "OPTIONS"
+  | "HEAD";
 
 export type QueryValue = boolean | number | string | null | undefined;
-export type QueryParams = URLSearchParams | Record<string, QueryValue | QueryValue[]>;
+export type QueryParams =
+  | URLSearchParams
+  | Record<string, QueryValue | QueryValue[]>;
 
 export interface CloudApiErrorBody {
   success: false;
@@ -229,14 +238,16 @@ export interface CreateAppCreditsCheckoutRequest {
   cancel_url: string;
 }
 
-export interface CreateAppCreditsCheckoutResponse extends Record<string, unknown> {
+export interface CreateAppCreditsCheckoutResponse
+  extends Record<string, unknown> {
   success: boolean;
   url?: string | null;
   sessionId?: string;
   error?: string;
 }
 
-export interface VerifyAppCreditsCheckoutResponse extends Record<string, unknown> {
+export interface VerifyAppCreditsCheckoutResponse
+  extends Record<string, unknown> {
   success: boolean;
   amount?: number;
   message?: string;
@@ -246,7 +257,12 @@ export interface VerifyAppCreditsCheckoutResponse extends Record<string, unknown
 
 export type AppChargeProvider = "stripe" | "oxapay";
 export type AppChargePaymentContext = "verified_payer" | "any_payer";
-export type AppChargeStatus = "requested" | "pending" | "confirmed" | "expired" | string;
+export type AppChargeStatus =
+  | "requested"
+  | "pending"
+  | "confirmed"
+  | "expired"
+  | string;
 
 export interface PaymentCallbackChannel extends Record<string, unknown> {
   roomId?: string;
@@ -314,7 +330,15 @@ export interface GetAppChargeResponse extends Record<string, unknown> {
   };
 }
 
-export type OxaPayNetwork = "ERC20" | "TRC20" | "BEP20" | "POLYGON" | "SOL" | "BASE" | "ARB" | "OP";
+export type OxaPayNetwork =
+  | "ERC20"
+  | "TRC20"
+  | "BEP20"
+  | "POLYGON"
+  | "SOL"
+  | "BASE"
+  | "ARB"
+  | "OP";
 
 export interface CreateAppChargeCheckoutRequest {
   provider: AppChargeProvider;
@@ -325,7 +349,8 @@ export interface CreateAppChargeCheckoutRequest {
   network?: OxaPayNetwork;
 }
 
-export interface CreateAppChargeCheckoutResponse extends Record<string, unknown> {
+export interface CreateAppChargeCheckoutResponse
+  extends Record<string, unknown> {
   success: boolean;
   checkout: Record<string, unknown> & {
     provider: AppChargeProvider;
@@ -427,14 +452,16 @@ export interface CreateX402PaymentRequest {
   expiresInSeconds?: number;
 }
 
-export interface CreateX402PaymentRequestResponse extends Record<string, unknown> {
+export interface CreateX402PaymentRequestResponse
+  extends Record<string, unknown> {
   success: boolean;
   paymentRequest: X402PaymentRequestView;
   paymentRequired: Record<string, unknown>;
   paymentRequiredHeader: string;
 }
 
-export interface ListX402PaymentRequestsResponse extends Record<string, unknown> {
+export interface ListX402PaymentRequestsResponse
+  extends Record<string, unknown> {
   success: boolean;
   paymentRequests: X402PaymentRequestView[];
 }
@@ -444,7 +471,8 @@ export interface GetX402PaymentRequestResponse extends Record<string, unknown> {
   paymentRequest: X402PaymentRequestView;
 }
 
-export interface SettleX402PaymentRequestResponse extends Record<string, unknown> {
+export interface SettleX402PaymentRequestResponse
+  extends Record<string, unknown> {
   success: boolean;
   paymentRequest: X402PaymentRequestView;
 }
@@ -594,7 +622,8 @@ export interface CreateContainerRequest {
   image: string;
 }
 
-export interface UpdateContainerRequest extends Partial<CreateContainerRequest> {
+export interface UpdateContainerRequest
+  extends Partial<CreateContainerRequest> {
   status?: ContainerStatus;
 }
 
