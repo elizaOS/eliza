@@ -41,9 +41,7 @@ export function StatSummary({
                 {formatValue ? formatValue(item.value) : item.value}
               </div>
               {item.description ? (
-                <p className="mt-1 text-xs text-white/60">
-                  {item.description}
-                </p>
+                <p className="mt-1 text-xs text-white/60">{item.description}</p>
               ) : null}
             </div>
           </BrandCard>

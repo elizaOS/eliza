@@ -21,7 +21,10 @@ export function DataListEmptyState({
   return (
     <div
       data-slot="data-list-empty-state"
-      className={cn("border border-white/10 bg-black/40 p-8 md:p-12", className)}
+      className={cn(
+        "border border-white/10 bg-black/40 p-8 md:p-12",
+        className,
+      )}
     >
       <div className="mx-auto flex max-w-sm flex-col items-center justify-center space-y-4 text-center">
         {Icon ? (

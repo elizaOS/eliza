@@ -1,5 +1,5 @@
-import type { ComponentType, MouseEvent, ReactNode } from "react";
 import { MoreHorizontal } from "lucide-react";
+import type { ComponentType, MouseEvent, ReactNode } from "react";
 import { cn } from "../../lib/utils";
 import { BrandButton } from "../brand";
 import {
@@ -14,6 +14,7 @@ import {
 type ListActionMenuItem =
   | {
       type?: "item";
+      key?: string;
       label: ReactNode;
       icon?: ComponentType<{ className?: string }>;
       onSelect?: () => void;
@@ -24,6 +25,7 @@ type ListActionMenuItem =
     }
   | {
       type?: "item";
+      key?: string;
       label: ReactNode;
       icon?: ComponentType<{ className?: string }>;
       disabled?: boolean;
@@ -34,6 +36,7 @@ type ListActionMenuItem =
     }
   | {
       type: "separator";
+      key?: string;
     };
 
 interface ListActionMenuProps {
@@ -66,12 +69,15 @@ export function ListActionMenu({
           <span className="sr-only">Open actions</span>
         </BrandButton>
       </DropdownMenuTrigger>
-      <DropdownMenuContent align={align} className={cn("w-44", contentClassName)}>
+      <DropdownMenuContent
+        align={align}
+        className={cn("w-44", contentClassName)}
+      >
         {label ? <DropdownMenuLabel>{label}</DropdownMenuLabel> : null}
         {label ? <DropdownMenuSeparator /> : null}
-        {items.map((item, index) => {
+        {items.map((item) => {
           if (item.type === "separator") {
-            return <DropdownMenuSeparator key={`separator-${index}`} />;
+            return <DropdownMenuSeparator key={item.key ?? "separator"} />;
           }
 
           const Icon = item.icon;
@@ -83,7 +89,7 @@ export function ListActionMenu({
           if (item.asChild) {
             return (
               <DropdownMenuItem
-                key={`item-${index}`}
+                key={item.key ?? String(item.label)}
                 asChild
                 className={className}
                 disabled={item.disabled}
@@ -95,7 +101,7 @@ export function ListActionMenu({
 
           return (
             <DropdownMenuItem
-              key={`item-${index}`}
+              key={item.key ?? String(item.label)}
               className={className}
               disabled={item.disabled}
               onClick={item.onSelect}

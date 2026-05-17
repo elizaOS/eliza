@@ -1,12 +1,6 @@
 import type { ReactNode } from "react";
 import { cn } from "../../lib/utils";
-import {
-  Table,
-  TableBody,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from "../table";
+import { Table, TableBody, TableHead, TableHeader, TableRow } from "../table";
 import {
   DashboardDataListCard,
   DashboardDataListDesktop,

@@ -214,6 +214,10 @@ export function ContainersTable({ containers }: ContainersTableProps) {
     return deployDate.toLocaleDateString();
   };
 
+  const openContainerUrl = (url: string) => {
+    window.open(url, "_blank");
+  };
+
   if (containers.length === 0) {
     return null;
   }
@@ -275,6 +279,7 @@ export function ContainersTable({ containers }: ContainersTableProps) {
               <TableRow className="bg-black/40 border-b border-white/10">
                 <TableHead>
                   <button
+                    type="button"
                     onClick={() => handleSort("name")}
                     className="flex items-center gap-1 text-xs font-medium text-neutral-400 hover:text-white transition-colors"
                   >
@@ -284,6 +289,7 @@ export function ContainersTable({ containers }: ContainersTableProps) {
                 </TableHead>
                 <TableHead>
                   <button
+                    type="button"
                     onClick={() => handleSort("status")}
                     className="flex items-center gap-1 text-xs font-medium text-neutral-400 hover:text-white transition-colors"
                   >
@@ -293,6 +299,7 @@ export function ContainersTable({ containers }: ContainersTableProps) {
                 </TableHead>
                 <TableHead>
                   <button
+                    type="button"
                     onClick={() => handleSort("cpu")}
                     className="flex items-center gap-1 text-xs font-medium text-neutral-400 hover:text-white transition-colors"
                   >
@@ -305,6 +312,7 @@ export function ContainersTable({ containers }: ContainersTableProps) {
                 </TableHead>
                 <TableHead>
                   <button
+                    type="button"
                     onClick={() => handleSort("deployed")}
                     className="flex items-center gap-1 text-xs font-medium text-neutral-400 hover:text-white transition-colors"
                   >
@@ -407,7 +415,10 @@ export function ContainersTable({ containers }: ContainersTableProps) {
                         <Tooltip>
                           <TooltipTrigger asChild>
                             <Link to={`/dashboard/containers/${container.id}`}>
-                              <button className="p-2 text-neutral-400 hover:text-white hover:bg-white/5 rounded-lg transition-colors">
+                              <button
+                                type="button"
+                                className="p-2 text-neutral-400 hover:text-white hover:bg-white/5 rounded-lg transition-colors"
+                              >
                                 <FileText className="h-4 w-4" />
                               </button>
                             </Link>
@@ -421,12 +432,14 @@ export function ContainersTable({ containers }: ContainersTableProps) {
                           <Tooltip>
                             <TooltipTrigger asChild>
                               <button
-                                onClick={() =>
-                                  window.open(
-                                    container.load_balancer_url!,
-                                    "_blank",
-                                  )
-                                }
+                                type="button"
+                                onClick={() => {
+                                  if (container.load_balancer_url) {
+                                    openContainerUrl(
+                                      container.load_balancer_url,
+                                    );
+                                  }
+                                }}
                                 className="p-2 text-neutral-400 hover:text-white hover:bg-white/5 rounded-lg transition-colors"
                               >
                                 <ExternalLink className="h-4 w-4" />
@@ -441,6 +454,7 @@ export function ContainersTable({ containers }: ContainersTableProps) {
                         <Tooltip>
                           <TooltipTrigger asChild>
                             <button
+                              type="button"
                               onClick={() => setDeleteId(container.id)}
                               disabled={isDeleting}
                               className="p-2 text-neutral-400 hover:text-red-500 hover:bg-red-500/10 rounded-lg transition-colors disabled:opacity-50"
@@ -539,9 +553,11 @@ export function ContainersTable({ containers }: ContainersTableProps) {
                   {container.load_balancer_url && (
                     <button
                       type="button"
-                      onClick={() =>
-                        window.open(container.load_balancer_url!, "_blank")
-                      }
+                      onClick={() => {
+                        if (container.load_balancer_url) {
+                          openContainerUrl(container.load_balancer_url);
+                        }
+                      }}
                       className="flex flex-1 items-center justify-center gap-1.5 rounded-lg border border-white/10 py-2 text-xs text-neutral-300 transition-colors hover:bg-white/5 hover:text-white"
                     >
                       <ExternalLink className="h-3.5 w-3.5" />

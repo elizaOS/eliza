@@ -28,6 +28,11 @@ export function DashboardTableSkeleton({
   rows = 3,
   className,
 }: DashboardTableSkeletonProps) {
+  const rowIds = Array.from(
+    { length: rows },
+    (_, index) => `dashboard-table-skeleton-row-${index + 1}`,
+  );
+
   return (
     <div className={cn("overflow-hidden rounded-md border", className)}>
       <Table>
@@ -41,8 +46,8 @@ export function DashboardTableSkeleton({
           </TableRow>
         </TableHeader>
         <TableBody>
-          {Array.from({ length: rows }, (_, rowIndex) => (
-            <TableRow key={`dashboard-table-skeleton-${rowIndex}`}>
+          {rowIds.map((rowId) => (
+            <TableRow key={rowId}>
               {columns.map((column) => (
                 <TableCell key={column.key} className={column.cellClassName}>
                   <Skeleton

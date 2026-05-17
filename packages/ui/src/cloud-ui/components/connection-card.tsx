@@ -6,6 +6,7 @@
 
 import { CheckCircle, ChevronDown, Copy, Loader2, XCircle } from "lucide-react";
 import type * as React from "react";
+import { cn } from "../lib/utils";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -25,7 +26,6 @@ import {
   CollapsibleTrigger,
 } from "./collapsible";
 import { Label } from "./label";
-import { cn } from "../lib/utils";
 
 type ConnectionCardStatus =
   | "loading"
@@ -171,8 +171,8 @@ function ConnectionCallout({
       {title && <p className="text-sm font-medium mb-2">{title}</p>}
       {items && items.length > 0 && (
         <ul className="text-xs text-muted-foreground space-y-1">
-          {items.map((item, index) => (
-            <li key={index}>• {item}</li>
+          {items.map((item) => (
+            <li key={String(item)}>• {item}</li>
           ))}
         </ul>
       )}
