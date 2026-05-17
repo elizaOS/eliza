@@ -22,7 +22,7 @@ export interface RunningControlPlaneMock {
   url: string;
   port: number;
   store: ControlPlaneStore;
-  tick(): Promise<{ processed: number; failed: number }>;
+  tick(limit?: number): Promise<{ processed: number; failed: number; skipped: number }>;
   cleanupStuck(): Promise<{ failed: number }>;
 }
 

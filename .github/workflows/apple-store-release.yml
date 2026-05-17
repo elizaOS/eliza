@@ -46,6 +46,8 @@ on:
         required: false
       APP_STORE_API_ISSUER_ID:
         required: false
+      APP_STORE_API_KEY_P8:
+        required: false
   workflow_dispatch:
     inputs:
       platform:
@@ -291,6 +293,7 @@ jobs:
       MAS_INSTALLER_KEY_PASSWORD: ${{ secrets.MAS_INSTALLER_KEY_PASSWORD }}
       APP_STORE_API_KEY_ID: ${{ secrets.APP_STORE_API_KEY_ID }}
       APP_STORE_API_ISSUER_ID: ${{ secrets.APP_STORE_API_ISSUER_ID }}
+      APP_STORE_API_KEY_P8: ${{ secrets.APP_STORE_API_KEY_P8 }}
     steps:
       - name: Checkout
         uses: actions/checkout@v6
@@ -366,6 +369,7 @@ jobs:
           [[ -z "$MAS_INSTALLER_KEY_PASSWORD" ]] && missing+=("MAS_INSTALLER_KEY_PASSWORD")
           [[ -z "$APP_STORE_API_KEY_ID" ]] && missing+=("APP_STORE_API_KEY_ID")
           [[ -z "$APP_STORE_API_ISSUER_ID" ]] && missing+=("APP_STORE_API_ISSUER_ID")
+          [[ -z "$APP_STORE_API_KEY_P8" ]] && missing+=("APP_STORE_API_KEY_P8")
           if [[ ${#missing[@]} -gt 0 ]]; then
             echo "::error::Missing required signing secrets: ${missing[*]}"
             echo "Configure these secrets in the repo settings to enable Mac App Store builds."
@@ -444,12 +448,23 @@ jobs:
 
       - name: Upload to App Store Connect
         run: |
+          # xcrun altool requires the .p8 private key at the canonical path:
+          # ~/.appstoreconnect/private_keys/AuthKey_<KEY_ID>.p8
+          # The key content is provided via the APP_STORE_API_KEY_P8 secret.
+          KEY_DIR="$HOME/.appstoreconnect/private_keys"
+          mkdir -p "$KEY_DIR"
+          KEY_FILE="$KEY_DIR/AuthKey_${{ secrets.APP_STORE_API_KEY_ID }}.p8"
+          printf '%s' "$APP_STORE_API_KEY_P8" > "$KEY_FILE"
+          chmod 600 "$KEY_FILE"
+
           xcrun altool --upload-app \
             --file "$PKG_PATH" \
             --type macos \
             --apiKey "${{ secrets.APP_STORE_API_KEY_ID }}" \
             --apiIssuer "${{ secrets.APP_STORE_API_ISSUER_ID }}" \
             --show-progress
+
+          rm -f "$KEY_FILE"
 
       - name: Upload pkg artifact
         uses: actions/upload-artifact@v7
