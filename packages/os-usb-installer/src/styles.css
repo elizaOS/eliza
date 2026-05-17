@@ -200,6 +200,12 @@ h3 {
   color: var(--brand-white);
 }
 
+.muted {
+  color: #4a4a4a;
+  font-size: 0.9rem;
+  overflow-wrap: anywhere;
+}
+
 .notes-panel .muted {
   color: var(--brand-gray);
 }
@@ -575,12 +581,6 @@ button:disabled {
 /* ---------------------------------------------------------------------------
    Misc
 --------------------------------------------------------------------------- */
-
-.muted {
-  color: #4a4a4a;
-  font-size: 0.9rem;
-  overflow-wrap: anywhere;
-}
 
 .error {
   color: var(--brand-red);

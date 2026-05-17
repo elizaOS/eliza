@@ -1,5 +1,5 @@
-import { execFile, spawn } from "node:child_process";
 import type { ChildProcess } from "node:child_process";
+import { execFile, spawn } from "node:child_process";
 import { createHash } from "node:crypto";
 import { promises as fs } from "node:fs";
 import * as http from "node:http";
