@@ -262,7 +262,7 @@ export function TwilioConnection() {
             </div>
           </div>
 
-          <div className="p-4 bg-muted rounded-lg">
+          <div className="p-4 bg-muted rounded-sm">
             <h4 className="font-medium mb-2">What you can do with Twilio:</h4>
             <ul className="text-sm text-muted-foreground space-y-1">
               <li>• Send and receive SMS/MMS messages</li>

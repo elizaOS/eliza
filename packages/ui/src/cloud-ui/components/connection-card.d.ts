@@ -1,5 +1,5 @@
 import type * as React from "react";
-type ConnectionStatus = "loading" | "not-configured" | "connected" | "disconnected";
+type ConnectionCardStatus = "loading" | "not-configured" | "connected" | "disconnected";
 interface ConnectionCardProps {
     /** Integration name (e.g. "Discord Bot") */
     name: string;
@@ -10,7 +10,7 @@ interface ConnectionCardProps {
     /** Short description of the integration */
     description: string;
     /** Current connection status */
-    status: ConnectionStatus;
+    status: ConnectionCardStatus;
     /** Content shown when connected */
     connectedContent?: React.ReactNode;
     /** Content shown when disconnected (setup form) */
@@ -80,6 +80,6 @@ declare function ConnectionFooterActions({ note, children, className, }: {
     className?: string;
 }): import("react/jsx-runtime").JSX.Element;
 declare function ConnectionCard({ name, icon, description, status, connectedContent, setupContent, notConfiguredMessage, statusBadge, className, }: ConnectionCardProps): import("react/jsx-runtime").JSX.Element;
-export type { ConnectionCardProps, ConnectionStatus };
+export type { ConnectionCardProps, ConnectionCardStatus };
 export { ConnectionCallout, ConnectionCard, ConnectionConnectedBadge, ConnectionCopyRow, ConnectionDisconnectAction, ConnectionFooterActions, ConnectionIdentityPanel, ConnectionInstructions, ConnectionLoadingCard, };
 //# sourceMappingURL=connection-card.d.ts.map

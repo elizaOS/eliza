@@ -195,7 +195,7 @@ export function TelegramConnection() {
                 </a>
               </li>
               <li>
-                Send <code className="bg-background px-1 rounded">/newbot</code>{" "}
+                Send <code className="bg-background px-1 rounded-sm">/newbot</code>{" "}
                 command
               </li>
               <li>Choose a name for your bot (e.g., &quot;My App Bot&quot;)</li>
@@ -225,7 +225,7 @@ export function TelegramConnection() {
             </p>
           </div>
 
-          <div className="p-4 bg-muted rounded-lg">
+          <div className="p-4 bg-muted rounded-sm">
             <h4 className="font-medium mb-2">
               What you can do with Telegram automation:
             </h4>

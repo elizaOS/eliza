@@ -8,7 +8,7 @@ export type { DocsFrontmatter, MdxModule, NavItem } from "./docs-types";
 export type { ApiEndpointCardEndpoint, ApiEndpointCardPricing, EndpointCardProps, } from "./endpoint-card";
 export { EndpointCard } from "./endpoint-card";
 export { LlmsTxtBadge } from "./llms-txt-badge";
-export { Callout, type CalloutType, Cards, Steps, Tabs, } from "./mdx-components";
+export { Callout, type CalloutType, Cards, Steps, } from "./mdx-components";
 export type { OpenApiViewerProps } from "./openapi-viewer";
 export { OpenApiViewer } from "./openapi-viewer";
 //# sourceMappingURL=index.d.ts.map

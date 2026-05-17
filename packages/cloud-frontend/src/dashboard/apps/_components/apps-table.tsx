@@ -120,7 +120,7 @@ export function AppsTable({ apps }: AppsTableProps) {
                 </div>
 
                 <ListActionMenu
-                  triggerClassName="h-8 w-8 rounded-lg bg-transparent hover:bg-white/10"
+                  triggerClassName="h-8 w-8 rounded-sm bg-transparent hover:bg-white/10"
                   contentClassName="w-44"
                   onTriggerClick={(e) => e.preventDefault()}
                   items={[

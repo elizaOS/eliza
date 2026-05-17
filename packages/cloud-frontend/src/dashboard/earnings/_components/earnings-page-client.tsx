@@ -303,10 +303,10 @@ export function EarningsPageClient() {
       <div className="flex flex-col gap-6 max-w-7xl mx-auto">
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
           {[1, 2, 3].map((i) => (
-            <Skeleton key={i} className="h-32 rounded-lg" />
+            <Skeleton key={i} className="h-32 rounded-sm" />
           ))}
         </div>
-        <Skeleton className="h-64 rounded-lg" />
+        <Skeleton className="h-64 rounded-sm" />
       </div>
     );
   }
@@ -347,7 +347,7 @@ export function EarningsPageClient() {
                 ≈ elizaOS tokens at current price
               </p>
             </div>
-            <div className="p-2 rounded-lg bg-[#FF5800]/20">
+            <div className="p-2 rounded-sm bg-[#FF5800]/20">
               <Wallet className="h-6 w-6 text-[#FF5800]" />
             </div>
           </div>
@@ -376,7 +376,7 @@ export function EarningsPageClient() {
               </p>
               <p className="text-xs text-white/40 mt-1">Lifetime earnings</p>
             </div>
-            <div className="p-2 rounded-lg bg-green-500/20">
+            <div className="p-2 rounded-sm bg-green-500/20">
               <TrendingUp className="h-6 w-6 text-green-400" />
             </div>
           </div>
@@ -410,7 +410,7 @@ export function EarningsPageClient() {
                 Converted to elizaOS tokens
               </p>
             </div>
-            <div className="p-2 rounded-lg bg-purple-500/20">
+            <div className="p-2 rounded-sm bg-purple-500/20">
               <CheckCircle className="h-6 w-6 text-purple-400" />
             </div>
           </div>
@@ -466,10 +466,10 @@ export function EarningsPageClient() {
               return (
                 <div
                   key={earning.id}
-                  className="flex items-center justify-between p-3 rounded-lg bg-white/5"
+                  className="flex items-center justify-between p-3 rounded-sm bg-white/5"
                 >
                   <div className="flex items-center gap-3">
-                    <div className="p-2 rounded-lg bg-white/10">
+                    <div className="p-2 rounded-sm bg-white/10">
                       <Icon className="h-4 w-4 text-white/60" />
                     </div>
                     <div>
@@ -514,7 +514,7 @@ export function EarningsPageClient() {
         {redemptionsLoading ? (
           <div className="space-y-3">
             {[1, 2, 3].map((i) => (
-              <Skeleton key={i} className="h-16 rounded-lg" />
+              <Skeleton key={i} className="h-16 rounded-sm" />
             ))}
           </div>
         ) : redemptions.length === 0 ? (
@@ -686,13 +686,13 @@ export function EarningsPageClient() {
 
             {/* Quote Display */}
             {quoteLoading && (
-              <div className="p-4 rounded-lg bg-white/5 animate-pulse">
+              <div className="p-4 rounded-sm bg-white/5 animate-pulse">
                 <p className="text-white/40 text-center">Getting quote...</p>
               </div>
             )}
 
             {quote && !quoteLoading && (
-              <div className="p-4 rounded-lg bg-white/5 space-y-2">
+              <div className="p-4 rounded-sm bg-white/5 space-y-2">
                 {quote.success && quote.quote ? (
                   <>
                     <div className="flex justify-between">

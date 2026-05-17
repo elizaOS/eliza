@@ -249,12 +249,12 @@ export function ElizaAgentBackupsPanel({
         {loading ? (
           <div className="space-y-4">
             <div className="grid gap-4 md:grid-cols-3">
-              <Skeleton className="h-24 rounded-none" />
-              <Skeleton className="h-24 rounded-none" />
-              <Skeleton className="h-24 rounded-none" />
+              <Skeleton className="h-24 rounded-sm" />
+              <Skeleton className="h-24 rounded-sm" />
+              <Skeleton className="h-24 rounded-sm" />
             </div>
-            <Skeleton className="h-16 rounded-none" />
-            <Skeleton className="h-16 rounded-none" />
+            <Skeleton className="h-16 rounded-sm" />
+            <Skeleton className="h-16 rounded-sm" />
           </div>
         ) : error ? (
           <div className="py-8 text-center">

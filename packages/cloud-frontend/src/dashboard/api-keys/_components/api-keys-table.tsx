@@ -143,7 +143,7 @@ export function ApiKeysTable({
             </div>
 
             <div className="flex min-w-0 flex-wrap items-center gap-2 text-xs text-white/60">
-              <span className="rounded-none border border-white/10 bg-black/60 px-1.5 py-0.5 font-mono text-xs text-white">
+              <span className="rounded-sm border border-white/10 bg-black/60 px-1.5 py-0.5 font-mono text-xs text-white">
                 {`${key.keyPrefix}•••••••`}
               </span>
               <BrandButton
@@ -196,7 +196,7 @@ export function ApiKeysTable({
                   {key.permissions.map((permission) => (
                     <span
                       key={permission}
-                      className="rounded-none bg-white/10 px-2 py-0.5 text-xs text-white/70"
+                      className="rounded-sm bg-white/10 px-2 py-0.5 text-xs text-white/70"
                     >
                       {permission}
                     </span>
@@ -241,7 +241,7 @@ export function ApiKeysTable({
                       <p className="text-xs text-white/60">{key.description}</p>
                     ) : null}
                     <div className="flex items-center gap-2 text-xs text-white/60">
-                      <span className="rounded-none bg-black/60 border border-white/10 px-1.5 py-0.5 font-mono text-xs text-white">
+                      <span className="rounded-sm bg-black/60 border border-white/10 px-1.5 py-0.5 font-mono text-xs text-white">
                         {`${key.keyPrefix}•••••••`}
                       </span>
                       <BrandButton
@@ -287,7 +287,7 @@ export function ApiKeysTable({
                         {key.permissions.map((permission) => (
                           <span
                             key={permission}
-                            className="rounded-none bg-white/10 px-2 py-0.5 text-xs text-white/70"
+                            className="rounded-sm bg-white/10 px-2 py-0.5 text-xs text-white/70"
                           >
                             {permission}
                           </span>

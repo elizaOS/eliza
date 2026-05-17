@@ -313,7 +313,7 @@ export function ApiKeysPageClient({ keys, summary }: ApiKeysPageClientProps) {
                   setFormData({ ...formData, name: e.target.value })
                 }
                 autoFocus
-                className="rounded-none border-white/10 bg-black/40 text-white placeholder:text-white/40 focus:ring-1 focus:ring-[#FF5800] focus:border-[#FF5800]"
+                className="rounded-sm border-white/10 bg-black/40 text-white placeholder:text-white/40 focus:ring-1 focus:ring-[#FF5800] focus:border-[#FF5800]"
               />
             </div>
 
@@ -332,7 +332,7 @@ export function ApiKeysPageClient({ keys, summary }: ApiKeysPageClientProps) {
                   setFormData({ ...formData, description: e.target.value })
                 }
                 rows={3}
-                className="rounded-none border-white/10 bg-black/40 text-white placeholder:text-white/40 focus:ring-1 focus:ring-[#FF5800] focus:border-[#FF5800]"
+                className="rounded-sm border-white/10 bg-black/40 text-white placeholder:text-white/40 focus:ring-1 focus:ring-[#FF5800] focus:border-[#FF5800]"
               />
             </div>
 
@@ -340,7 +340,7 @@ export function ApiKeysPageClient({ keys, summary }: ApiKeysPageClientProps) {
               <label className="text-xs font-medium text-white/70 uppercase tracking-wide">
                 Permissions
               </label>
-              <div className="grid gap-3 rounded-none border border-white/10 bg-black/40 p-4">
+              <div className="grid gap-3 rounded-sm border border-white/10 bg-black/40 p-4">
                 {permissionGroups.map((group) => (
                   <div key={group.title} className="space-y-2">
                     <p className="text-xs font-medium uppercase tracking-wide text-white/50">
@@ -388,15 +388,15 @@ export function ApiKeysPageClient({ keys, summary }: ApiKeysPageClientProps) {
                   )
                 }
               >
-                <SelectTrigger className="rounded-none border-white/10 bg-black/40 text-white focus:ring-1 focus:ring-[#FF5800]">
+                <SelectTrigger className="rounded-sm border-white/10 bg-black/40 text-white focus:ring-1 focus:ring-[#FF5800]">
                   <SelectValue placeholder="Select a limit" />
                 </SelectTrigger>
-                <SelectContent className="rounded-none border-white/10 bg-black/90">
+                <SelectContent className="rounded-sm border-white/10 bg-black/90">
                   {rateLimitPresets.map((preset) => (
                     <SelectItem
                       key={preset.value}
                       value={preset.value}
-                      className="rounded-none text-white hover:bg-white/10 focus:bg-white/10"
+                      className="rounded-sm text-white hover:bg-white/10 focus:bg-white/10"
                     >
                       {preset.label}
                     </SelectItem>
@@ -404,7 +404,7 @@ export function ApiKeysPageClient({ keys, summary }: ApiKeysPageClientProps) {
                 </SelectContent>
               </Select>
               {rateLimitPreset === "custom" && (
-                <div className="grid gap-2 rounded-none border border-dashed border-white/10 bg-black/40 p-4">
+                <div className="grid gap-2 rounded-sm border border-dashed border-white/10 bg-black/40 p-4">
                   <label
                     htmlFor="api-key-rate-custom"
                     className="text-xs font-medium text-white/70 uppercase tracking-wide"
@@ -426,7 +426,7 @@ export function ApiKeysPageClient({ keys, summary }: ApiKeysPageClientProps) {
                     }
                     min={100}
                     step={100}
-                    className="rounded-none border-white/10 bg-black/60 text-white placeholder:text-white/40 focus:ring-1 focus:ring-[#FF5800] focus:border-[#FF5800]"
+                    className="rounded-sm border-white/10 bg-black/60 text-white placeholder:text-white/40 focus:ring-1 focus:ring-[#FF5800] focus:border-[#FF5800]"
                   />
                 </div>
               )}
@@ -480,7 +480,7 @@ export function ApiKeysPageClient({ keys, summary }: ApiKeysPageClientProps) {
                   <Input
                     value={createdKey.plainKey}
                     readOnly
-                    className="font-mono text-sm rounded-none border-white/10 bg-black/40 text-white"
+                    className="font-mono text-sm rounded-sm border-white/10 bg-black/40 text-white"
                   />
                   <BrandButton
                     variant="outline"

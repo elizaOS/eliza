@@ -245,7 +245,7 @@ export default function ApiExplorerPage() {
     <>
       {helmet}
       <DashboardPageContainer className="space-y-3 overflow-hidden sm:space-y-6">
-        <div className="flex w-full items-center gap-1 overflow-x-auto rounded-lg bg-neutral-900 p-1 sm:w-fit">
+        <div className="flex w-full items-center gap-1 overflow-x-auto rounded-sm bg-neutral-900 p-1 sm:w-fit">
           {[
             { value: "endpoints" as const, label: "Endpoints" },
             { value: "auth" as const, label: "Auth" },
@@ -255,7 +255,7 @@ export default function ApiExplorerPage() {
               key={tab.value}
               onClick={() => setActiveTab(tab.value)}
               className={cn(
-                "px-3 py-1.5 text-sm font-medium rounded-md transition-colors whitespace-nowrap",
+                "px-3 py-1.5 text-sm font-medium rounded-sm transition-colors whitespace-nowrap",
                 activeTab === tab.value
                   ? "bg-white/10 text-white"
                   : "text-neutral-400 hover:text-white",
@@ -281,7 +281,7 @@ export default function ApiExplorerPage() {
                   {selectedEndpoint.pricing && (
                     <div
                       className={cn(
-                        "flex items-center gap-1.5 px-2.5 py-1 rounded-md text-xs font-medium",
+                        "flex items-center gap-1.5 px-2.5 py-1 rounded-sm text-xs font-medium",
                         getPricingStyle(selectedEndpoint.pricing),
                       )}
                     >
@@ -296,13 +296,13 @@ export default function ApiExplorerPage() {
                   )}
                   <span
                     className={cn(
-                      "px-2.5 py-1 rounded-md text-xs font-bold uppercase",
+                      "px-2.5 py-1 rounded-sm text-xs font-bold uppercase",
                       getMethodColor(selectedEndpoint.method),
                     )}
                   >
                     {selectedEndpoint.method}
                   </span>
-                  <code className="max-w-full truncate rounded-md border border-white/10 bg-black/40 px-2.5 py-1 font-mono text-xs text-white sm:max-w-[42rem]">
+                  <code className="max-w-full truncate rounded-sm border border-white/10 bg-black/40 px-2.5 py-1 font-mono text-xs text-white sm:max-w-[42rem]">
                     {selectedEndpoint.path}
                   </code>
                 </div>
@@ -338,7 +338,7 @@ export default function ApiExplorerPage() {
                     placeholder="Search..."
                     value={searchQuery}
                     onChange={(e) => setSearchQuery(e.target.value)}
-                    className="h-7 w-full rounded-md border border-white/10 bg-neutral-900 pl-7 pr-7 text-[11px] text-white placeholder:text-neutral-500 focus:border-[#FF5800]/50 focus:outline-none focus:ring-1 focus:ring-[#FF5800]/50 sm:h-9 sm:w-48 sm:rounded-lg sm:pl-9 sm:pr-8 sm:text-sm"
+                    className="h-7 w-full rounded-sm border border-white/10 bg-neutral-900 pl-7 pr-7 text-[11px] text-white placeholder:text-neutral-500 focus:border-[#FF5800]/50 focus:outline-none focus:ring-1 focus:ring-[#FF5800]/50 sm:h-9 sm:w-48 sm:rounded-sm sm:pl-9 sm:pr-8 sm:text-sm"
                   />
                   {searchQuery && (
                     <button
@@ -365,7 +365,7 @@ export default function ApiExplorerPage() {
                         setSearchQuery("");
                       }}
                       className={cn(
-                        "flex h-7 shrink-0 items-center gap-1 rounded-md border px-2 text-[11px] font-medium transition-colors sm:h-9 sm:gap-2 sm:rounded-lg sm:px-3 sm:text-xs",
+                        "flex h-7 shrink-0 items-center gap-1 rounded-sm border px-2 text-[11px] font-medium transition-colors sm:h-9 sm:gap-2 sm:rounded-sm sm:px-3 sm:text-xs",
                         selectedCategory === category
                           ? "bg-[#FF5800]/10 text-[#FF5800] border-[#FF5800]/30"
                           : "bg-neutral-900/50 text-neutral-400 border-white/5 hover:text-white hover:border-white/10",
@@ -469,7 +469,7 @@ export default function ApiExplorerPage() {
               <div className="flex gap-2">
                 <button
                   onClick={handleCopyJson}
-                  className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium bg-[#FF5800] text-white rounded-lg hover:bg-[#FF5800]/90 transition-colors"
+                  className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium bg-[#FF5800] text-white rounded-sm hover:bg-[#FF5800]/90 transition-colors"
                 >
                   {copied === "json" ? (
                     <Check className="h-3.5 w-3.5" />
@@ -480,7 +480,7 @@ export default function ApiExplorerPage() {
                 </button>
                 <button
                   onClick={handleCopyYaml}
-                  className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium bg-white/10 text-white rounded-lg hover:bg-white/20 transition-colors"
+                  className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium bg-white/10 text-white rounded-sm hover:bg-white/20 transition-colors"
                 >
                   {copied === "yaml" ? (
                     <Check className="h-3.5 w-3.5" />
@@ -500,7 +500,7 @@ export default function ApiExplorerPage() {
                 />
               </Suspense>
             ) : (
-              <div className="flex items-center justify-center flex-1 min-h-0 bg-black/40 rounded-lg border border-white/10">
+              <div className="flex items-center justify-center flex-1 min-h-0 bg-black/40 rounded-sm border border-white/10">
                 <p className="text-neutral-500">Loading specification...</p>
               </div>
             )}

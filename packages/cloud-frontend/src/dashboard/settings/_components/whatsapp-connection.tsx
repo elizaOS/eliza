@@ -309,7 +309,7 @@ export function WhatsAppConnection() {
           </div>
 
           {/* Capabilities preview */}
-          <div className="p-4 bg-muted rounded-lg">
+          <div className="p-4 bg-muted rounded-sm">
             <h4 className="font-medium mb-2">What you can do with WhatsApp:</h4>
             <ul className="text-sm text-muted-foreground space-y-1">
               <li>• Have AI conversations via WhatsApp</li>

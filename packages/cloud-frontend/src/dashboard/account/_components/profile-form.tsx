@@ -353,7 +353,7 @@ export function ProfileForm({ user }: ProfileFormProps) {
 
         {/* Email Section - Separate from main form to avoid nesting */}
         {!user.email && !emailAdded && (
-          <div className="space-y-2 p-4 border border-orange-500/40 bg-orange-500/5 rounded-none">
+          <div className="space-y-2 p-4 border border-orange-500/40 bg-orange-500/5 rounded-sm">
             <div className="flex items-center gap-2 mb-3">
               <Mail className="h-4 w-4 text-orange-400" />
               <label
@@ -375,7 +375,7 @@ export function ProfileForm({ user }: ProfileFormProps) {
                 placeholder="your@email.com"
                 disabled={isUpdatingEmail}
                 required
-                className="rounded-none border-white/20 bg-black/40 text-white placeholder:text-white/40 focus:ring-1 focus:ring-orange-500 focus:border-orange-500"
+                className="rounded-sm border-white/20 bg-black/40 text-white placeholder:text-white/40 focus:ring-1 focus:ring-orange-500 focus:border-orange-500"
               />
               <BrandButton
                 type="submit"
@@ -414,7 +414,7 @@ export function ProfileForm({ user }: ProfileFormProps) {
               type="email"
               value={user.email}
               disabled
-              className="rounded-none border-white/10 bg-black/60 text-white/50"
+              className="rounded-sm border-white/10 bg-black/60 text-white/50"
             />
             <p className="text-xs text-white/74">
               Email cannot be changed. Please contact support if you need to
@@ -424,7 +424,7 @@ export function ProfileForm({ user }: ProfileFormProps) {
         )}
 
         {emailAdded && !user.email && (
-          <div className="space-y-2 p-4 border border-green-500/40 bg-green-500/5 rounded-none">
+          <div className="space-y-2 p-4 border border-green-500/40 bg-green-500/5 rounded-sm">
             <div className="flex items-center gap-2">
               <Mail className="h-4 w-4 text-green-400" />
               <p className="text-sm font-medium text-green-400">
@@ -508,7 +508,7 @@ export function ProfileForm({ user }: ProfileFormProps) {
               {previewUrl && pendingFile ? (
                 // Preview mode: Show Save and Cancel buttons
                 <div className="space-y-3">
-                  <div className="flex items-center gap-2 p-3 rounded-lg border border-[#FF5800]/30 bg-[#FF5800]/5">
+                  <div className="flex items-center gap-2 p-3 rounded-sm border border-[#FF5800]/30 bg-[#FF5800]/5">
                     <div className="flex-1">
                       <p className="text-sm text-white font-medium truncate">
                         {pendingFile.name}
@@ -559,7 +559,7 @@ export function ProfileForm({ user }: ProfileFormProps) {
                   onDragOver={handleDragOver}
                   onDragLeave={handleDragLeave}
                   onDrop={handleDrop}
-                  className={`flex items-center justify-center gap-3 p-4 rounded-lg border-2 border-dashed transition-all cursor-pointer w-full bg-transparent ${
+                  className={`flex items-center justify-center gap-3 p-4 rounded-sm border-2 border-dashed transition-all cursor-pointer w-full bg-transparent ${
                     isDragging
                       ? "border-[#FF5800] bg-[#FF5800]/10"
                       : "border-white/20 hover:border-[#FF5800]/50 hover:bg-[#FF5800]/5"
@@ -603,7 +603,7 @@ export function ProfileForm({ user }: ProfileFormProps) {
                 required
                 maxLength={100}
                 disabled={isPending}
-                className="rounded-none border-white/10 bg-black/40 text-white placeholder:text-white/40 focus:ring-1 focus:ring-[#FF5800] focus:border-[#FF5800]"
+                className="rounded-sm border-white/10 bg-black/40 text-white placeholder:text-white/40 focus:ring-1 focus:ring-[#FF5800] focus:border-[#FF5800]"
               />
             </div>
 
@@ -621,7 +621,7 @@ export function ProfileForm({ user }: ProfileFormProps) {
                   type="text"
                   value={user.wallet_address}
                   disabled
-                  className="rounded-none border-white/10 bg-black/60 text-white/50 font-mono text-xs"
+                  className="rounded-sm border-white/10 bg-black/60 text-white/50 font-mono text-xs"
                 />
                 {user.wallet_chain_type && (
                   <p className="text-xs text-white/74 capitalize">
@@ -645,7 +645,7 @@ export function ProfileForm({ user }: ProfileFormProps) {
                 defaultValue={user.avatar || ""}
                 placeholder="https://example.com/avatar.jpg"
                 disabled={isPending}
-                className="rounded-none border-white/10 bg-black/40 text-white placeholder:text-white/40 focus:ring-1 focus:ring-[#FF5800] focus:border-[#FF5800]"
+                className="rounded-sm border-white/10 bg-black/40 text-white placeholder:text-white/40 focus:ring-1 focus:ring-[#FF5800] focus:border-[#FF5800]"
               />
               <p className="text-xs text-white/74">
                 Or use the upload button above to add a profile picture.
@@ -665,7 +665,7 @@ export function ProfileForm({ user }: ProfileFormProps) {
                 type="text"
                 value={user.role}
                 disabled
-                className="rounded-none border-white/10 bg-black/60 text-white/50 capitalize"
+                className="rounded-sm border-white/10 bg-black/60 text-white/50 capitalize"
               />
               <p className="text-xs text-white/74">
                 Your role in the organization. Contact an admin to change this.
@@ -677,7 +677,7 @@ export function ProfileForm({ user }: ProfileFormProps) {
           {error && (
             <Alert
               variant="destructive"
-              className="rounded-none border-red-500/40 bg-red-500/10"
+              className="rounded-sm border-red-500/40 bg-red-500/10"
             >
               <AlertDescription className="text-red-400">
                 {error}
@@ -686,7 +686,7 @@ export function ProfileForm({ user }: ProfileFormProps) {
           )}
 
           {success && (
-            <Alert className="rounded-none border-green-500/40 bg-green-500/10">
+            <Alert className="rounded-sm border-green-500/40 bg-green-500/10">
               <AlertDescription className="text-green-400">
                 {success}
               </AlertDescription>

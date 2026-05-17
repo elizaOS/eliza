@@ -197,12 +197,12 @@ export function AppOverview({ app, showApiKey }: AppOverviewProps) {
                 Your API Key (shown once)
               </p>
               <div className="flex items-center gap-2 mb-2">
-                <code className="flex-1 bg-black/30 px-3 py-2 rounded-lg text-xs text-white/80 font-mono overflow-x-auto">
+                <code className="flex-1 bg-black/30 px-3 py-2 rounded-sm text-xs text-white/80 font-mono overflow-x-auto">
                   {displayApiKey}
                 </code>
                 <button
                   onClick={() => copyToClipboard(displayApiKey, "API Key")}
-                  className="p-2 bg-white/10 hover:bg-white/20 rounded-lg transition-colors shrink-0"
+                  className="p-2 bg-white/10 hover:bg-white/20 rounded-sm transition-colors shrink-0"
                 >
                   {copiedItem === "API Key" ? (
                     <Check className="h-4 w-4 text-green-400" />
@@ -294,7 +294,7 @@ export function AppOverview({ app, showApiKey }: AppOverviewProps) {
             </AlertDialog>
           </div>
 
-          <div className="bg-black/40 rounded-lg p-3 border border-white/10">
+          <div className="bg-black/40 rounded-sm p-3 border border-white/10">
             <div className="flex items-center gap-2">
               <code className="flex-1 text-xs text-white/70 font-mono overflow-x-auto">
                 {showKey && displayApiKey ? displayApiKey : maskedApiKey}
@@ -303,7 +303,7 @@ export function AppOverview({ app, showApiKey }: AppOverviewProps) {
                 <>
                   <button
                     onClick={() => setShowKey(!showKey)}
-                    className="p-1.5 hover:bg-white/10 rounded transition-colors"
+                    className="p-1.5 hover:bg-white/10 rounded-sm transition-colors"
                   >
                     {showKey ? (
                       <EyeOff className="h-3.5 w-3.5 text-white/50" />
@@ -313,7 +313,7 @@ export function AppOverview({ app, showApiKey }: AppOverviewProps) {
                   </button>
                   <button
                     onClick={() => copyToClipboard(displayApiKey, "API Key")}
-                    className="p-1.5 hover:bg-white/10 rounded transition-colors"
+                    className="p-1.5 hover:bg-white/10 rounded-sm transition-colors"
                   >
                     {copiedItem === "API Key" ? (
                       <Check className="h-3.5 w-3.5 text-green-400" />
@@ -387,7 +387,7 @@ export function AppOverview({ app, showApiKey }: AppOverviewProps) {
         <div className="bg-neutral-900 rounded-sm p-4">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-3">
-              <div className="p-2 rounded-lg bg-orange-500/10">
+              <div className="p-2 rounded-sm bg-orange-500/10">
                 <Coins className="h-5 w-5 text-orange-400" />
               </div>
               <div>
@@ -415,7 +415,7 @@ export function AppOverview({ app, showApiKey }: AppOverviewProps) {
                 onClick={() =>
                   navigate(`/dashboard/apps/${app.id}?tab=monetization`)
                 }
-                className="p-2 hover:bg-white/10 rounded-lg transition-colors"
+                className="p-2 hover:bg-white/10 rounded-sm transition-colors"
               >
                 <ChevronRight className="h-4 w-4 text-neutral-400" />
               </button>

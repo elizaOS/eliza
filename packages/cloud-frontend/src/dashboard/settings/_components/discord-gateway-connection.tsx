@@ -399,7 +399,7 @@ export function DiscordGatewayConnection() {
                     if (open) initEditState(conn);
                   }}
                 >
-                  <div className="border rounded-lg">
+                  <div className="border rounded-sm">
                     <CollapsibleTrigger asChild>
                       <div className="flex items-center gap-4 p-4 cursor-pointer hover:bg-muted/50 transition-colors">
                         <div className="h-12 w-12 rounded-full bg-[#5865F2] flex items-center justify-center flex-shrink-0">
@@ -622,7 +622,7 @@ export function DiscordGatewayConnection() {
 
           {/* Create Form (collapsible) */}
           {showForm && (
-            <div className="border rounded-lg p-4 space-y-4">
+            <div className="border rounded-sm p-4 space-y-4">
               <div className="flex items-center justify-between">
                 <h4 className="font-medium">Add New Discord Bot</h4>
                 <Button

@@ -153,9 +153,9 @@ export function AffiliatesPageClient() {
   if (loading) {
     return (
       <div className="flex flex-col gap-6 max-w-4xl mx-auto">
-        <Skeleton className="h-44 rounded-lg" />
-        <Skeleton className="h-36 rounded-lg" />
-        <Skeleton className="h-44 rounded-lg" />
+        <Skeleton className="h-44 rounded-sm" />
+        <Skeleton className="h-36 rounded-sm" />
+        <Skeleton className="h-44 rounded-sm" />
       </div>
     );
   }
@@ -215,7 +215,7 @@ export function AffiliatesPageClient() {
         </div>
 
         {loadingReferral ? (
-          <Skeleton className="h-14 rounded-lg" />
+          <Skeleton className="h-14 rounded-sm" />
         ) : referralFetchFailed || !referralMe ? (
           <div className="flex items-center gap-3">
             <p className="text-sm text-white/74">
@@ -231,7 +231,7 @@ export function AffiliatesPageClient() {
             </Button>
           </div>
         ) : !referralMe.is_active ? (
-          <div className="rounded-lg border border-orange-500/30 bg-orange-500/10 p-3 text-sm text-orange-100/90">
+          <div className="rounded-sm border border-orange-500/30 bg-orange-500/10 p-3 text-sm text-orange-100/90">
             <p className="font-medium text-orange-100">Invite link inactive</p>
             <p className="mt-1 text-orange-100/80">
               Your referral code is turned off for new signups. Only an Eliza
@@ -258,7 +258,7 @@ export function AffiliatesPageClient() {
                   ? "1 friend has joined with your link."
                   : `${referralMe.total_referrals} friends have joined with your link.`}
             </p>
-            <div className="flex items-center gap-3 bg-white/5 border border-[#0B35F1]/20 rounded-lg p-3">
+            <div className="flex items-center gap-3 bg-white/5 border border-[#0B35F1]/20 rounded-sm p-3">
               <LinkIcon className="h-5 w-5 text-[#0B35F1]/60 shrink-0" />
               <div className="flex-1 font-mono text-white/80 overflow-hidden text-ellipsis whitespace-nowrap text-sm">
                 {buildReferralInviteLoginUrl(pageOrigin, referralMe.code)}
@@ -316,7 +316,7 @@ export function AffiliatesPageClient() {
           usage—not the same as friend invites above.
         </p>
 
-        <div className="flex items-center gap-3 bg-white/5 border border-white/10 rounded-lg p-3">
+        <div className="flex items-center gap-3 bg-white/5 border border-white/10 rounded-sm p-3">
           <LinkIcon className="h-5 w-5 text-white/40 shrink-0" />
           <div className="flex-1 font-mono text-white/80 overflow-hidden text-ellipsis whitespace-nowrap text-sm">
             {typeof window !== "undefined"
@@ -352,7 +352,7 @@ export function AffiliatesPageClient() {
             </p>
           </div>
 
-          <div className="p-3 bg-white/5 border border-white/10 rounded-lg text-center min-w-[120px]">
+          <div className="p-3 bg-white/5 border border-white/10 rounded-sm text-center min-w-[120px]">
             <span className="block text-xs text-white/40 mb-1">
               Current Markup
             </span>
@@ -388,7 +388,7 @@ export function AffiliatesPageClient() {
           </Button>
         </div>
 
-        <div className="mt-4 p-4 rounded-lg bg-yellow-500/10 border border-yellow-500/20 flex gap-3 text-sm">
+        <div className="mt-4 p-4 rounded-sm bg-yellow-500/10 border border-yellow-500/20 flex gap-3 text-sm">
           <AlertTriangle className="h-5 w-5 text-yellow-500 shrink-0" />
           <div className="text-yellow-500/90">
             <strong>Pricing Example:</strong> If an API normally costs 10
@@ -410,7 +410,7 @@ export function AffiliatesPageClient() {
           for you on every inference.
         </p>
 
-        <div className="bg-[#0A0A0A] rounded-lg border border-white/10 overflow-hidden relative group">
+        <div className="bg-[#0A0A0A] rounded-sm border border-white/10 overflow-hidden relative group">
           <div className="flex items-center justify-between px-4 py-2 border-b border-white/10 bg-white/[0.02]">
             <span className="text-xs font-mono text-white/40">
               cURL Example

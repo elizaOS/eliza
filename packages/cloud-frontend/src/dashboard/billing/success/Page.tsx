@@ -85,7 +85,7 @@ export default function BillingSuccessPage() {
                 your session ID.
               </p>
               {sessionId && (
-                <p className="text-xs text-muted-foreground bg-muted p-2 rounded">
+                <p className="text-xs text-muted-foreground bg-muted p-2 rounded-sm">
                   Session: {sessionId.substring(0, 20)}...
                 </p>
               )}

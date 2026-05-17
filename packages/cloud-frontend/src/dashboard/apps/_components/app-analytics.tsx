@@ -290,7 +290,7 @@ export function AppAnalytics({ appId }: AppAnalyticsProps) {
     <div className="space-y-4">
       {/* Tab Navigation */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-        <div className="flex items-center gap-1 p-1 bg-neutral-900 rounded-lg w-fit overflow-x-auto">
+        <div className="flex items-center gap-1 p-1 bg-neutral-900 rounded-sm w-fit overflow-x-auto">
           {tabs.map((tab) => {
             const Icon = tab.icon;
             return (
@@ -298,7 +298,7 @@ export function AppAnalytics({ appId }: AppAnalyticsProps) {
                 key={tab.value}
                 onClick={() => setActiveTab(tab.value)}
                 className={cn(
-                  "flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium rounded-md transition-colors whitespace-nowrap",
+                  "flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium rounded-sm transition-colors whitespace-nowrap",
                   activeTab === tab.value
                     ? "bg-white/10 text-white"
                     : "text-neutral-400 hover:text-white",
@@ -319,10 +319,10 @@ export function AppAnalytics({ appId }: AppAnalyticsProps) {
                 setPeriod(v)
               }
             >
-              <SelectTrigger className="w-[130px] h-9 bg-neutral-900 border-white/10 rounded-lg">
+              <SelectTrigger className="w-[130px] h-9 bg-neutral-900 border-white/10 rounded-sm">
                 <SelectValue />
               </SelectTrigger>
-              <SelectContent className="bg-neutral-800 border-white/10 rounded-lg">
+              <SelectContent className="bg-neutral-800 border-white/10 rounded-sm">
                 <SelectItem value="hourly">Hourly</SelectItem>
                 <SelectItem value="daily">Daily</SelectItem>
                 <SelectItem value="monthly">Monthly</SelectItem>
@@ -562,7 +562,7 @@ export function AppAnalytics({ appId }: AppAnalyticsProps) {
                             className="flex items-center justify-between"
                           >
                             <span
-                              className="inline-flex px-2 py-0.5 rounded text-[10px]"
+                              className="inline-flex px-2 py-0.5 rounded-sm text-[10px]"
                               style={{
                                 backgroundColor: `${TYPE_COLORS[type] || "#666"}20`,
                                 color: TYPE_COLORS[type] || "#666",
@@ -779,7 +779,7 @@ export function AppAnalytics({ appId }: AppAnalyticsProps) {
                         </td>
                         <td className="py-2 px-2">
                           <span
-                            className="inline-flex px-1.5 py-0.5 rounded text-[10px]"
+                            className="inline-flex px-1.5 py-0.5 rounded-sm text-[10px]"
                             style={{
                               backgroundColor: `${TYPE_COLORS[log.request_type] || "#666"}20`,
                               color: TYPE_COLORS[log.request_type] || "#666",
@@ -790,7 +790,7 @@ export function AppAnalytics({ appId }: AppAnalyticsProps) {
                         </td>
                         <td className="py-2 px-2">
                           <span
-                            className="inline-flex px-1.5 py-0.5 rounded text-[10px]"
+                            className="inline-flex px-1.5 py-0.5 rounded-sm text-[10px]"
                             style={{
                               backgroundColor: `${SOURCE_COLORS[log.source] || "#666"}20`,
                               color: SOURCE_COLORS[log.source] || "#666",

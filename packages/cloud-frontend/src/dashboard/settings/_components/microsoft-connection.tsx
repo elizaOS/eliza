@@ -199,7 +199,7 @@ export function MicrosoftConnection() {
           />
 
           {status?.scopes && status.scopes.length > 0 && (
-            <div className="p-3 bg-muted rounded-lg">
+            <div className="p-3 bg-muted rounded-sm">
               <p className="text-sm font-medium mb-2">Permissions granted:</p>
               <div className="flex flex-wrap gap-2">
                 {status.scopes
@@ -238,14 +238,14 @@ export function MicrosoftConnection() {
       setupContent={
         <div className="space-y-4">
           <div className="grid grid-cols-2 gap-3">
-            <div className="p-3 bg-muted rounded-lg text-center">
+            <div className="p-3 bg-muted rounded-sm text-center">
               <Mail className="h-6 w-6 mx-auto mb-2 text-blue-500" />
               <p className="text-sm font-medium">Outlook</p>
               <p className="text-xs text-muted-foreground">
                 Send & read emails
               </p>
             </div>
-            <div className="p-3 bg-muted rounded-lg text-center">
+            <div className="p-3 bg-muted rounded-sm text-center">
               <Calendar className="h-6 w-6 mx-auto mb-2 text-blue-500" />
               <p className="text-sm font-medium">Calendar</p>
               <p className="text-xs text-muted-foreground">Manage events</p>

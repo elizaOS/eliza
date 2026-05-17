@@ -96,7 +96,7 @@ class TabErrorBoundary extends Component<
   render() {
     if (this.state.error) {
       return (
-        <div className="rounded-md border border-red-200 bg-red-50 p-6 text-center dark:border-red-800 dark:bg-red-950">
+        <div className="rounded-sm border border-red-200 bg-red-50 p-6 text-center dark:border-red-800 dark:bg-red-950">
           <p className="text-sm font-medium text-red-800 dark:text-red-200">
             {this.props.fallback}: {this.state.error.message}
           </p>
@@ -1498,7 +1498,7 @@ export function InfrastructureDashboard() {
           return (
             <button
               type="button"
-              className="flex items-start gap-3 rounded-lg border border-orange-500/30 bg-orange-500/5 px-4 py-2.5 cursor-pointer w-full text-left bg-transparent"
+              className="flex items-start gap-3 rounded-sm border border-orange-500/30 bg-orange-500/5 px-4 py-2.5 cursor-pointer w-full text-left bg-transparent"
               onClick={() => setIncidentsExpanded(!incidentsExpanded)}
               onKeyDown={(e) => e.key === "Enter" && setIncidentsExpanded(!incidentsExpanded)}
             >
@@ -1859,7 +1859,7 @@ export function InfrastructureDashboard() {
                         return (
                           <div key={nodeId} className="space-y-2">
                             {/* Node group header */}
-                            <div className="flex items-center gap-3 px-2 py-1.5 bg-muted/40 rounded-md">
+                            <div className="flex items-center gap-3 px-2 py-1.5 bg-muted/40 rounded-sm">
                               <Server className="h-4 w-4 text-muted-foreground" />
                               <span className="font-mono text-sm font-semibold">
                                 {nodeId}
@@ -2236,7 +2236,7 @@ export function InfrastructureDashboard() {
                                                   SSH Command
                                                 </span>
                                                 <div className="flex items-center gap-2 mt-1">
-                                                  <code className="bg-muted px-2 py-1 rounded text-xs font-mono">
+                                                  <code className="bg-muted px-2 py-1 rounded-sm text-xs font-mono">
                                                     ssh {row.sshUser}@
                                                     {row.nodeHostname} -p{" "}
                                                     {row.sshPort} docker logs -f{" "}
@@ -2393,7 +2393,7 @@ export function InfrastructureDashboard() {
               ) : headscale ? (
                 <>
                   {/* Server status banner */}
-                  <div className="flex items-center gap-3 rounded-lg border border-green-500/30 bg-green-500/10 px-4 py-3">
+                  <div className="flex items-center gap-3 rounded-sm border border-green-500/30 bg-green-500/10 px-4 py-3">
                     <Wifi className="h-5 w-5 text-green-500" />
                     <div>
                       <p className="text-sm font-medium text-green-700 dark:text-green-400">
@@ -2500,7 +2500,7 @@ export function InfrastructureDashboard() {
                   </Table>
                 </>
               ) : (
-                <div className="flex flex-col items-center gap-3 rounded-lg border border-red-500/30 bg-red-500/10 px-4 py-8">
+                <div className="flex flex-col items-center gap-3 rounded-sm border border-red-500/30 bg-red-500/10 px-4 py-8">
                   <WifiOff className="h-8 w-8 text-red-500" />
                   <p className="font-medium text-red-700 dark:text-red-400">
                     Headscale server unavailable
@@ -2670,7 +2670,7 @@ export function InfrastructureDashboard() {
               <input
                 id="editEnabled"
                 type="checkbox"
-                className="h-4 w-4 rounded border-border"
+                className="h-4 w-4 rounded-sm border-border"
                 checked={editNodeForm.enabled}
                 onChange={(e) =>
                   setEditNodeForm((f) => ({ ...f, enabled: e.target.checked }))
@@ -2796,7 +2796,7 @@ export function InfrastructureDashboard() {
               <Copy className="h-3 w-3" />
             </Button>
           </div>
-          <div className="max-h-[500px] overflow-auto rounded-md bg-muted/60 p-4">
+          <div className="max-h-[500px] overflow-auto rounded-sm bg-muted/60 p-4">
             {logsLoading ? (
               <div className="flex items-center justify-center py-8">
                 <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
@@ -2841,7 +2841,7 @@ export function InfrastructureDashboard() {
                   <h4 className="text-sm font-semibold mb-2">Resource Usage</h4>
                   <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
                     {detailsResources.cpuPercent && (
-                      <div className="rounded-md border p-3">
+                      <div className="rounded-sm border p-3">
                         <p className="text-xs text-muted-foreground">CPU</p>
                         <p className="text-lg font-semibold">
                           {detailsResources.cpuPercent}
@@ -2849,7 +2849,7 @@ export function InfrastructureDashboard() {
                       </div>
                     )}
                     {detailsResources.memUsage && (
-                      <div className="rounded-md border p-3">
+                      <div className="rounded-sm border p-3">
                         <p className="text-xs text-muted-foreground">Memory</p>
                         <p className="text-sm font-semibold">
                           {detailsResources.memUsage}
@@ -2862,7 +2862,7 @@ export function InfrastructureDashboard() {
                       </div>
                     )}
                     {detailsResources.netIO && (
-                      <div className="rounded-md border p-3">
+                      <div className="rounded-sm border p-3">
                         <p className="text-xs text-muted-foreground">
                           Network I/O
                         </p>
@@ -2872,7 +2872,7 @@ export function InfrastructureDashboard() {
                       </div>
                     )}
                     {detailsResources.blockIO && (
-                      <div className="rounded-md border p-3">
+                      <div className="rounded-sm border p-3">
                         <p className="text-xs text-muted-foreground">
                           Block I/O
                         </p>
@@ -2882,7 +2882,7 @@ export function InfrastructureDashboard() {
                       </div>
                     )}
                     {detailsResources.pids && (
-                      <div className="rounded-md border p-3">
+                      <div className="rounded-sm border p-3">
                         <p className="text-xs text-muted-foreground">PIDs</p>
                         <p className="text-lg font-semibold">
                           {detailsResources.pids}
@@ -2946,7 +2946,7 @@ export function InfrastructureDashboard() {
                   <h4 className="text-sm font-semibold mb-2">
                     Environment Variables
                   </h4>
-                  <div className="max-h-[200px] overflow-auto rounded-md bg-muted/60 p-3">
+                  <div className="max-h-[200px] overflow-auto rounded-sm bg-muted/60 p-3">
                     <pre className="text-xs font-mono whitespace-pre-wrap">
                       {detailsData.Config.Env.map((env: string) => {
                         const [key] = env.split("=");
@@ -2989,7 +2989,7 @@ export function InfrastructureDashboard() {
                 <summary className="cursor-pointer text-muted-foreground hover:text-foreground">
                   Raw Docker Inspect JSON
                 </summary>
-                <div className="mt-2 max-h-[300px] overflow-auto rounded-md bg-muted/60 p-3">
+                <div className="mt-2 max-h-[300px] overflow-auto rounded-sm bg-muted/60 p-3">
                   <pre className="font-mono whitespace-pre-wrap">
                     {detailsData &&
                       JSON.stringify(
@@ -3064,7 +3064,7 @@ export function InfrastructureDashboard() {
                     {auditResult.ghostContainers.map((g) => (
                       <div
                         key={g.nodeId}
-                        className="rounded-md border border-orange-500/20 bg-orange-500/5 p-3"
+                        className="rounded-sm border border-orange-500/20 bg-orange-500/5 p-3"
                       >
                         <p className="text-xs font-medium text-muted-foreground mb-1">
                           Node: {g.nodeId} ({g.hostname})

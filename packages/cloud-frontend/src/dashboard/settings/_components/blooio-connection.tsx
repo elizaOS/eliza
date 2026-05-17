@@ -199,7 +199,7 @@ export function BlooioConnection() {
           )}
 
           {status?.webhookUrl && !status.hasWebhookSecret && (
-            <div className="p-3 bg-yellow-500/10 border border-yellow-500/30 rounded-lg space-y-3">
+            <div className="p-3 bg-yellow-500/10 border border-yellow-500/30 rounded-sm space-y-3">
               <div>
                 <p className="text-sm font-medium text-yellow-700 dark:text-yellow-400 mb-1">
                   Step 2: Create a webhook in Blooio
@@ -318,7 +318,7 @@ export function BlooioConnection() {
             </p>
           </div>
 
-          <div className="p-4 bg-muted rounded-lg">
+          <div className="p-4 bg-muted rounded-sm">
             <h4 className="font-medium mb-2">What you can do with iMessage:</h4>
             <ul className="text-sm text-muted-foreground space-y-1">
               <li>• Have AI conversations via text message</li>
