@@ -9,6 +9,82 @@ import type {
   ManualInstallInstructions,
 } from "./types";
 
+export type LinuxDistroFamily =
+  | "debian"
+  | "fedora"
+  | "arch"
+  | "suse"
+  | "alpine"
+  | "unknown";
+
+export function detectLinuxDistro(): LinuxDistroFamily {
+  if (process.platform !== "linux") return "unknown";
+  if (existsSync("/etc/debian_version")) return "debian";
+  if (existsSync("/etc/redhat-release")) return "fedora";
+  if (existsSync("/etc/arch-release")) return "arch";
+  if (existsSync("/etc/SUSE-brand") || existsSync("/etc/SuSE-release"))
+    return "suse";
+  if (existsSync("/etc/alpine-release")) return "alpine";
+  return "unknown";
+}
+
+interface LinuxInstallSpec {
+  distro: LinuxDistroFamily;
+  installCommand: string[];
+  packages: string[];
+}
+
+const LINUX_PACKAGE_MAP: Record<
+  "adb" | "fastboot" | "libimobiledevice",
+  Partial<Record<LinuxDistroFamily, string[]>>
+> = {
+  adb: {
+    debian: ["android-tools-adb"],
+    fedora: ["android-tools"],
+    arch: ["android-tools"],
+    suse: ["android-tools"],
+    alpine: ["android-tools"],
+  },
+  fastboot: {
+    debian: ["android-tools-fastboot"],
+    fedora: ["android-tools"],
+    arch: ["android-tools"],
+    suse: ["android-tools"],
+    alpine: ["android-tools"],
+  },
+  libimobiledevice: {
+    debian: ["libimobiledevice-utils"],
+    fedora: ["libimobiledevice-utils"],
+    arch: ["libimobiledevice"],
+    suse: ["libimobiledevice"],
+    alpine: ["libimobiledevice"],
+  },
+};
+
+const LINUX_INSTALL_COMMANDS: Record<
+  Exclude<LinuxDistroFamily, "unknown">,
+  string[]
+> = {
+  debian: ["apt-get", "install", "-y"],
+  fedora: ["dnf", "install", "-y"],
+  arch: ["pacman", "-S", "--noconfirm"],
+  suse: ["zypper", "install", "-y"],
+  alpine: ["apk", "add"],
+};
+
+function getLinuxInstallSpec(
+  depKey: keyof typeof LINUX_PACKAGE_MAP,
+): LinuxInstallSpec | null {
+  const distro = detectLinuxDistro();
+  if (distro === "unknown") return null;
+  const packages = LINUX_PACKAGE_MAP[depKey][distro];
+  if (!packages) return null;
+  return { distro, installCommand: LINUX_INSTALL_COMMANDS[distro], packages };
+}
+
+const LIBIMOBILEDEVICE_UDEV_RULE =
+  "/etc/udev/rules.d/39-libimobiledevice.rules";
+
 const VENDOR_BIN_DIR = join(
   homedir(),
   ".elizaos",
@@ -151,10 +227,21 @@ function getManualInstructions(id: DependencyId): ManualInstallInstructions {
         };
       }
       if (platform === "linux") {
-        return {
-          title: "Install Android Platform Tools (Linux)",
-          steps: [
+        const distro = detectLinuxDistro();
+        const steps: Record<LinuxDistroFamily, string> = {
+          debian:
             "Run: sudo apt update && sudo apt install android-tools-adb android-tools-fastboot",
+          fedora: "Run: sudo dnf install android-tools",
+          arch: "Run: sudo pacman -S android-tools",
+          suse: "Run: sudo zypper install android-tools",
+          alpine: "Run: sudo apk add android-tools",
+          unknown:
+            "No supported package manager detected. Download from: https://developer.android.com/tools/releases/platform-tools",
+        };
+        return {
+          title: `Install Android Platform Tools (Linux/${distro})`,
+          steps: [
+            steps[distro],
             "Or download from: https://developer.android.com/tools/releases/platform-tools",
           ],
           url: "https://developer.android.com/tools/releases/platform-tools",
@@ -183,10 +270,22 @@ function getManualInstructions(id: DependencyId): ManualInstallInstructions {
         };
       }
       if (platform === "linux") {
+        const distro = detectLinuxDistro();
+        const steps: Record<LinuxDistroFamily, string> = {
+          debian:
+            "Run: sudo apt update && sudo apt install libimobiledevice-utils usbmuxd",
+          fedora: "Run: sudo dnf install libimobiledevice-utils usbmuxd",
+          arch: "Run: sudo pacman -S libimobiledevice usbmuxd",
+          suse: "Run: sudo zypper install libimobiledevice usbmuxd",
+          alpine: "Run: sudo apk add libimobiledevice usbmuxd",
+          unknown:
+            "No supported package manager detected; install libimobiledevice + usbmuxd from your distro.",
+        };
         return {
-          title: "Install libimobiledevice (Linux)",
+          title: `Install libimobiledevice (Linux/${distro})`,
           steps: [
-            "Run: sudo apt update && sudo apt install libimobiledevice-utils",
+            steps[distro],
+            "Ensure usbmuxd is running so udev rules under /etc/udev/rules.d/39-libimobiledevice.rules are honored.",
             "Verify: ideviceid --version",
           ],
           url: "https://libimobiledevice.org",
@@ -214,17 +313,33 @@ function getManualInstructions(id: DependencyId): ManualInstallInstructions {
   }
 }
 
-async function runInstallCommand(cmd: string): Promise<boolean> {
+async function runInstallCommand(argv: string[]): Promise<boolean> {
+  if (argv.length === 0) return false;
   try {
-    const proc = Bun.spawn(cmd.split(" "), {
-      stdout: "pipe",
-      stderr: "pipe",
-    });
+    const proc = Bun.spawn(argv, { stdout: "pipe", stderr: "pipe" });
     const exitCode = await proc.exited;
     return exitCode === 0;
   } catch {
     return false;
   }
+}
+
+async function runLinuxInstall(
+  depKey: keyof typeof LINUX_PACKAGE_MAP,
+): Promise<boolean> {
+  const spec = getLinuxInstallSpec(depKey);
+  if (!spec) return false;
+  // Try with sudo non-interactive first; package managers usually need root.
+  const argv = [
+    "sudo",
+    "-n",
+    ...spec.installCommand,
+    ...spec.packages,
+  ];
+  if (await runInstallCommand(argv)) return true;
+  // Fall back to running unprivileged (works only if invoking process is root
+  // or the package manager is configured to need no escalation).
+  return runInstallCommand([...spec.installCommand, ...spec.packages]);
 }
 
 async function downloadSideloader(): Promise<boolean> {
@@ -297,28 +412,33 @@ export class DependencyManager {
       case "adb":
       case "fastboot": {
         if (platform === "darwin") {
-          installed = await runInstallCommand(
-            "brew install android-platform-tools",
-          );
+          installed = await runInstallCommand([
+            "brew",
+            "install",
+            "android-platform-tools",
+          ]);
         } else if (platform === "linux") {
-          installed = await runInstallCommand(
-            "apt-get install -y android-tools-adb android-tools-fastboot",
-          );
+          installed = await runLinuxInstall(id);
         } else if (platform === "win32") {
-          installed = await runInstallCommand(
-            "winget install --silent Google.PlatformTools",
-          );
+          installed = await runInstallCommand([
+            "winget",
+            "install",
+            "--silent",
+            "Google.PlatformTools",
+          ]);
         }
         break;
       }
 
       case "libimobiledevice": {
         if (platform === "darwin") {
-          installed = await runInstallCommand("brew install libimobiledevice");
+          installed = await runInstallCommand([
+            "brew",
+            "install",
+            "libimobiledevice",
+          ]);
         } else if (platform === "linux") {
-          installed = await runInstallCommand(
-            "apt-get install -y libimobiledevice-utils",
-          );
+          installed = await runLinuxInstall("libimobiledevice");
         } else if (platform === "win32") {
           // No native winget package — fall through to manual
           installed = false;
@@ -328,10 +448,12 @@ export class DependencyManager {
 
       case "sideloader": {
         if (platform === "win32") {
-          // Try winget first, fall back to binary download
-          installed = await runInstallCommand(
-            "winget install --silent Dadoum.Sideloader",
-          );
+          installed = await runInstallCommand([
+            "winget",
+            "install",
+            "--silent",
+            "Dadoum.Sideloader",
+          ]);
         }
         if (!installed) {
           installed = await downloadSideloader();
@@ -341,11 +463,17 @@ export class DependencyManager {
     }
 
     if (installed) {
+      // Always trust the post-install probe, not the installer's exit code.
+      // brew/apt/winget can return 0 without putting the binary on PATH (e.g.
+      // when a shim install fails silently, or when PATH needs a shell rehash).
       const result = checkDependency(id);
-      // Even if check still fails (e.g. PATH not refreshed), return found status
-      // if the install command claimed success.
       if (result.status === "found") return result;
-      return { id, status: "found" };
+      return {
+        id,
+        status: "install-failed",
+        errorMessage: `Install command on ${platform} reported success, but '${id}' is still not on PATH. Open a new shell or install manually.`,
+        manualInstructions: getManualInstructions(id),
+      };
     }
 
     return {

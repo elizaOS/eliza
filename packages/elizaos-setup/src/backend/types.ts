@@ -21,6 +21,22 @@ export interface AospBuild {
   /** local path if pre-built artifacts are already available */
   artifactDir?: string;
   sizeBytes: number;
+  /** When true, flash-partitions step appends --wipe-data (factory reset). */
+  wipeData?: boolean;
+}
+
+export interface ManifestArtifact {
+  name: string;
+  url: string;
+  sha256: string;
+  sizeBytes: number;
+}
+
+export interface AndroidReleaseManifest {
+  releaseId?: string;
+  generatedAt?: string;
+  supportedDevices?: Array<{ codename?: string; marketingName?: string }>;
+  artifacts: ManifestArtifact[];
 }
 
 export type FlashStepId =
@@ -63,7 +79,10 @@ export interface FlashPlan {
   build: AospBuild;
   steps: FlashStep[];
   artifactDir: string | null;
-  privilegedFlashImplemented: boolean;
+  /** Original request — used by executor to decide dry-run vs real run, wipeData, etc. */
+  request: FlashRequest;
+  /** Per-artifact local paths after download (filled in by executor). */
+  artifactPaths?: Record<string, string>;
 }
 
 export interface DeviceSpecs {

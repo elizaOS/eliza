@@ -74,18 +74,9 @@ import {
   setCurrentSession,
   setCurrentSessions,
   shortId,
+  stateSessionId,
   waitForSpawnSlot,
 } from "./common.js";
-
-/** Read the session id stored in state by setCurrentSession / setCurrentSessions. */
-function stateSessionId(state: State | undefined): string | undefined {
-  const session = state?.codingSession;
-  if (session !== null && typeof session === "object" && "id" in session) {
-    const { id } = session as { id?: string };
-    return typeof id === "string" ? id : undefined;
-  }
-  return undefined;
-}
 
 const MAX_CONCURRENT_AGENTS = 8;
 const PROVISION_WORKSPACE_TIMEOUT_MS = 60_000;

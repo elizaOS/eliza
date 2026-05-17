@@ -1,6 +1,9 @@
 import { spawnSync } from "node:child_process";
-import { existsSync } from "node:fs";
+import { existsSync, mkdirSync } from "node:fs";
+import { tmpdir } from "node:os";
 import { join } from "node:path";
+
+const ARTIFACT_TMP_ROOT = join(tmpdir(), "elizaos-setup");
 import type {
   AospBuild,
   AospFlasherBackend,
@@ -442,7 +445,7 @@ export class AdbFlasherBackend implements AospFlasherBackend {
         status: "pending",
         detail: artifactDir
           ? `Using local artifacts at ${artifactDir}`
-          : `Downloading ${build.label} (${formatBytes(build.sizeBytes)}) to /tmp/elizaos-flasher/${build.id}/`,
+          : `Downloading ${build.label} (${formatBytes(build.sizeBytes)}) to ${join(ARTIFACT_TMP_ROOT, build.id)}/`,
       },
       {
         id: "verify-artifacts",
@@ -637,7 +640,8 @@ export class AdbFlasherBackend implements AospFlasherBackend {
     // 5. download-artifacts
     let artifactDir = plan.artifactDir;
     if (!artifactDir) {
-      const dest = `/tmp/elizaos-flasher/${build.id}`;
+      const dest = join(ARTIFACT_TMP_ROOT, build.id);
+      mkdirSync(dest, { recursive: true });
       onProgress(
         "download-artifacts",
         "running",

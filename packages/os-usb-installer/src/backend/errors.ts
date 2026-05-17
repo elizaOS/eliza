@@ -50,3 +50,60 @@ export class InvalidImagePathError extends Error {
     super(message);
   }
 }
+
+export class InvalidDiskNumberError extends Error {
+  override readonly name = "InvalidDiskNumberError";
+  constructor(
+    message: string,
+    public readonly value: number,
+  ) {
+    super(message);
+  }
+}
+
+export class InvalidScriptPathError extends Error {
+  override readonly name = "InvalidScriptPathError";
+  constructor(
+    message: string,
+    public readonly value: string,
+  ) {
+    super(message);
+  }
+}
+
+export class UserCancelledElevationError extends Error {
+  override readonly name = "UserCancelledElevationError";
+  constructor(message = "UAC elevation was cancelled by the user.") {
+    super(message);
+  }
+}
+
+export class WslDetectedError extends Error {
+  override readonly name = "WslDetectedError";
+  constructor(
+    message = "Detected WSL — use the Linux installer or run from a real Windows shell.",
+  ) {
+    super(message);
+  }
+}
+
+export class SystemDiskProtectedError extends Error {
+  override readonly name = "SystemDiskProtectedError";
+  constructor(
+    message: string,
+    public readonly diskNumber: number,
+  ) {
+    super(message);
+  }
+}
+
+export class PowerShellExecutionError extends Error {
+  override readonly name = "PowerShellExecutionError";
+  constructor(
+    message: string,
+    public readonly exitCode: number | null,
+    public readonly stderr: string,
+  ) {
+    super(message);
+  }
+}

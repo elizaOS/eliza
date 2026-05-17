@@ -7,6 +7,7 @@ export type DependencyId =
 export type DependencyStatus =
   | "checking"
   | "found"
+  | "found-but-misconfigured"
   | "missing"
   | "installing"
   | "install-failed";
