@@ -1,41 +1,49 @@
 import type { JsonValue } from "@elizaos/electrobun-carrots";
 import type { TraceService } from "../trace/trace-service";
 import { VoiceError } from "./errors";
-import {
-  cloneVoiceTurn,
-  discoverStaticVoiceComponents,
-  summarizeVoiceLatency,
-} from "./voice-pipeline";
-import {
-  recordVoiceTraceStage,
-  startVoiceTraceSession,
-  voiceTraceAutoOpen,
-  type VoiceTraceStage,
-} from "./voice-trace";
 import type {
   VoiceComponentSnapshot,
   VoiceInjectTranscriptParams,
   VoiceInterruptParams,
   VoiceLatencyMark,
   VoiceLatencySummary,
+  VoicePartialRuntimeStreamingMode,
   VoicePipelineId,
   VoicePipelineSnapshot,
   VoicePipelineStatus,
+  VoiceRuntimeStatus,
   VoiceSpeakParams,
   VoiceStartParams,
   VoiceStopParams,
   VoiceSynthesisResult,
   VoiceSynthesizeSpeechParams,
   VoiceTestMode,
+  VoiceTranscribeAudioParams,
   VoiceTurn,
   VoiceTurnId,
   VoiceTurnStatus,
-  VoiceTranscribeAudioParams,
 } from "./types";
+import {
+  evaluateVoiceLatencyBudget,
+  getVoiceLatencyBudgetFromEnv,
+  type VoiceLatencyBudget,
+  type VoiceLatencyBudgetResult,
+} from "./voice-latency-budget";
+import {
+  cloneVoiceTurn,
+  discoverStaticVoiceComponents,
+  summarizeVoiceLatency,
+} from "./voice-pipeline";
 import {
   RuntimeHttpVoiceAdapter,
   type VoiceRuntimeAdapter,
 } from "./voice-runtime-adapter";
+import {
+  recordVoiceTraceStage,
+  startVoiceTraceSession,
+  type VoiceTraceStage,
+  voiceTraceAutoOpen,
+} from "./voice-trace";
 
 type VoiceServiceOptions = {
   traceService?: TraceService;
@@ -85,6 +93,56 @@ function mergeMetadata(
   return { ...(left ?? {}), ...(right ?? {}) };
 }
 
+function latencySummaryJson(
+  summary: VoiceLatencySummary,
+): Record<string, JsonValue> {
+  const json: Record<string, JsonValue> = {};
+  if (summary.inputToVadMs !== undefined)
+    json.inputToVadMs = summary.inputToVadMs;
+  if (summary.vadToAsrPartialMs !== undefined) {
+    json.vadToAsrPartialMs = summary.vadToAsrPartialMs;
+  }
+  if (summary.asrPartialToRuntimePrepareMs !== undefined) {
+    json.asrPartialToRuntimePrepareMs = summary.asrPartialToRuntimePrepareMs;
+  }
+  if (summary.asrFinalToRuntimeCommitMs !== undefined) {
+    json.asrFinalToRuntimeCommitMs = summary.asrFinalToRuntimeCommitMs;
+  }
+  if (summary.runtimeToFirstTokenMs !== undefined) {
+    json.runtimeToFirstTokenMs = summary.runtimeToFirstTokenMs;
+  }
+  if (summary.firstTokenToTtsRequestMs !== undefined) {
+    json.firstTokenToTtsRequestMs = summary.firstTokenToTtsRequestMs;
+  }
+  if (summary.ttsRequestToFirstAudioMs !== undefined) {
+    json.ttsRequestToFirstAudioMs = summary.ttsRequestToFirstAudioMs;
+  }
+  if (summary.ttsFirstAudioToPlaybackMs !== undefined) {
+    json.ttsFirstAudioToPlaybackMs = summary.ttsFirstAudioToPlaybackMs;
+  }
+  if (summary.totalToFirstTokenMs !== undefined) {
+    json.totalToFirstTokenMs = summary.totalToFirstTokenMs;
+  }
+  if (summary.totalToFirstAudioMs !== undefined) {
+    json.totalToFirstAudioMs = summary.totalToFirstAudioMs;
+  }
+  if (summary.totalToPlaybackMs !== undefined) {
+    json.totalToPlaybackMs = summary.totalToPlaybackMs;
+  }
+  return json;
+}
+
+function budgetResultsJson(
+  results: VoiceLatencyBudgetResult[],
+): Record<string, JsonValue>[] {
+  return results.map((result) => ({
+    stage: result.stage,
+    actualMs: result.actualMs ?? null,
+    budgetMs: result.budgetMs,
+    ok: result.ok,
+  }));
+}
+
 export class VoiceService {
   private readonly traceService: TraceService | null;
   private readonly env: Record<string, string | undefined>;
@@ -95,6 +153,7 @@ export class VoiceService {
   private readonly token: string | null;
   private readonly runtimeAdapter: VoiceRuntimeAdapter;
   private readonly pipelineId: VoicePipelineId;
+  private readonly latencyBudget: VoiceLatencyBudget;
   private statusValue: VoicePipelineStatus = "idle";
   private mode: VoiceTestMode = "mock";
   private activeTurn: VoiceTurn | null = null;
@@ -105,6 +164,7 @@ export class VoiceService {
   private error: string | undefined;
   private traceSessionReady: Promise<void> | null = null;
   private readonly unsubscriptions: Array<() => void> = [];
+  private runtimeCommitTurnId: VoiceTurnId | null = null;
 
   constructor(options: VoiceServiceOptions = {}) {
     this.traceService = options.traceService ?? null;
@@ -130,6 +190,7 @@ export class VoiceService {
         token: this.token,
       });
     this.pipelineId = this.pipelineIdFactory();
+    this.latencyBudget = getVoiceLatencyBudgetFromEnv(this.env);
   }
 
   async status(): Promise<VoicePipelineSnapshot> {
@@ -149,7 +210,9 @@ export class VoiceService {
   async start(params: VoiceStartParams = {}): Promise<VoicePipelineSnapshot> {
     this.mode = params.mode ?? "mock";
     this.traceEnabled =
-      params.trace === true || voiceTraceAutoOpen(this.env) || params.autoOpenTraceView === true;
+      params.trace === true ||
+      voiceTraceAutoOpen(this.env) ||
+      params.autoOpenTraceView === true;
     this.autoOpenTraceView =
       params.autoOpenTraceView === true || voiceTraceAutoOpen(this.env);
     this.metadata = params.metadata;
@@ -265,7 +328,12 @@ export class VoiceService {
   }
 
   async latency(): Promise<VoiceLatencySummary> {
-    return summarizeVoiceLatency(this.activeTurn ?? this.recent[0]) ?? {};
+    const summary =
+      summarizeVoiceLatency(this.activeTurn ?? this.recent[0]) ?? {};
+    return {
+      ...summary,
+      budgetResults: evaluateVoiceLatencyBudget(summary, this.latencyBudget),
+    };
   }
 
   async recentTurns(params: { limit?: number } = {}): Promise<VoiceTurn[]> {
@@ -313,7 +381,8 @@ export class VoiceService {
         this.activeTurn.metadata,
         params.metadata,
       );
-      const shouldTrace = this.traceEnabled || params.trace || this.autoOpenTraceView;
+      const shouldTrace =
+        this.traceEnabled || params.trace || this.autoOpenTraceView;
       if (shouldTrace) {
         await this.ensureTraceSession(this.activeTurn);
       }
@@ -330,7 +399,8 @@ export class VoiceService {
       metadata: mergeMetadata(this.metadata, params.metadata),
     };
     this.activeTurn = turn;
-    const shouldTrace = this.traceEnabled || params.trace || this.autoOpenTraceView;
+    const shouldTrace =
+      this.traceEnabled || params.trace || this.autoOpenTraceView;
     if (shouldTrace) {
       await this.ensureTraceSession(turn);
     }
@@ -347,9 +417,15 @@ export class VoiceService {
         mode: this.mode,
       });
       const turnMark = await this.mark("turn", "started", { mode: this.mode });
-      await this.trace("turn-started", "Voice turn started", undefined, turnMark, {
-        mode: this.mode,
-      });
+      await this.trace(
+        "turn-started",
+        "Voice turn started",
+        undefined,
+        turnMark,
+        {
+          mode: this.mode,
+        },
+      );
     }
     return turn;
   }
@@ -398,10 +474,31 @@ export class VoiceService {
     turn.completedAt = turn.updatedAt;
     if (message) turn.error = message;
     if (status === "error") {
-      await this.trace("pipeline-error", "Voice pipeline error", message, undefined, {
-        error: message ?? "error",
-      });
+      await this.trace(
+        "pipeline-error",
+        "Voice pipeline error",
+        message,
+        undefined,
+        {
+          error: message ?? "error",
+        },
+      );
     }
+    const latencySummary = summarizeVoiceLatency(turn) ?? {};
+    const budgetResults = evaluateVoiceLatencyBudget(
+      latencySummary,
+      this.latencyBudget,
+    );
+    await this.trace(
+      "latency-budget",
+      "Voice latency budget",
+      undefined,
+      undefined,
+      {
+        summary: latencySummaryJson(latencySummary),
+        results: budgetResultsJson(budgetResults),
+      },
+    );
     if (turn.traceSessionId && this.traceService) {
       if (status === "completed") {
         await this.traceService.completeSession({
@@ -423,6 +520,7 @@ export class VoiceService {
     this.recent.unshift(cloneVoiceTurn(turn));
     this.recent.splice(20);
     this.activeTurn = null;
+    this.runtimeCommitTurnId = null;
     this.traceSessionReady = null;
   }
 
@@ -462,7 +560,10 @@ export class VoiceService {
   }
 
   private assertLiveModeEnabled(mode: VoiceTestMode): void {
-    if (mode === "local-runtime" && !isTruthy(this.env.ELIZA_VOICE_LIVE_RUNTIME)) {
+    if (
+      mode === "local-runtime" &&
+      !isTruthy(this.env.ELIZA_VOICE_LIVE_RUNTIME)
+    ) {
       throw new VoiceError(
         "VOICE_LOCAL_INFERENCE_UNAVAILABLE",
         "Local runtime voice mode is disabled. Set ELIZA_VOICE_LIVE_RUNTIME=1 to enable it.",
@@ -549,11 +650,19 @@ export class VoiceService {
         metadata: event.metadata,
         initialDetection: false,
       });
-      if (!this.requireActiveTurn().marks.some((mark) => mark.stage === "turn")) {
+      if (
+        !this.requireActiveTurn().marks.some((mark) => mark.stage === "turn")
+      ) {
         const mark = await this.mark("turn", "started", { mode: this.mode });
-        await this.trace("turn-started", "Voice turn started", undefined, mark, {
-          mode: this.mode,
-        });
+        await this.trace(
+          "turn-started",
+          "Voice turn started",
+          undefined,
+          mark,
+          {
+            mode: this.mode,
+          },
+        );
       }
       return;
     }
@@ -589,6 +698,31 @@ export class VoiceService {
       text,
       synthetic: event.synthetic === true,
     });
+    const mode = await this.partialRuntimeStreamingMode();
+    if (mode === "prepare-only" || mode === "draft-api") {
+      const prepareMark = await this.mark("runtime", "prepare.started", {
+        text,
+        mode,
+      });
+      await this.trace(
+        mode === "draft-api"
+          ? "model-prepare-started"
+          : "model-prepare-skipped",
+        mode === "draft-api"
+          ? "Runtime prepare started"
+          : "Runtime prepare skipped",
+        text,
+        prepareMark,
+        {
+          text,
+          partialRuntimeStreamingMode: mode,
+          reason:
+            mode === "prepare-only"
+              ? "No draft runtime API is available."
+              : null,
+        },
+      );
+    }
   }
 
   private async handleAsrFinal(
@@ -607,6 +741,8 @@ export class VoiceService {
     await this.trace("asr-final", "ASR final", turn.transcriptFinal, asrMark, {
       text,
     });
+    if (this.runtimeCommitTurnId === turn.id) return;
+    this.runtimeCommitTurnId = turn.id;
     await this.handoffToRuntime(text);
   }
 
@@ -642,7 +778,18 @@ export class VoiceService {
       modelMark,
       { token: firstTokenText, raw: raw ?? null },
     );
-    if (responseText) this.requireActiveTurn().responseText = responseText;
+    if (responseText) {
+      this.requireActiveTurn().responseText = responseText;
+      if (isTruthy(this.env.ELIZA_VOICE_TRACE_MODEL_DELTAS)) {
+        await this.trace(
+          "model-delta",
+          "Model delta",
+          responseText,
+          modelMark,
+          { text: responseText },
+        );
+      }
+    }
   }
 
   private async handleTtsResult(
@@ -772,23 +919,48 @@ export class VoiceService {
   private async snapshot(
     components: VoiceComponentSnapshot[],
   ): Promise<VoicePipelineSnapshot> {
+    const runtimeStatus = await this.runtimeAdapter.status();
+    const latencySummary = await this.latency();
+    const partialRuntimeStreamingMode =
+      await this.partialRuntimeStreamingMode(runtimeStatus);
     return {
       id: this.pipelineId,
       status: this.statusValue,
       activeTurnId: this.activeTurn?.id,
       components,
-      currentTurn: this.activeTurn ? cloneVoiceTurn(this.activeTurn) : undefined,
+      currentTurn: this.activeTurn
+        ? cloneVoiceTurn(this.activeTurn)
+        : undefined,
       recentTurns: this.recent.slice(0, 10).map(cloneVoiceTurn),
-      latencySummary: summarizeVoiceLatency(this.activeTurn ?? this.recent[0]),
+      latencySummary,
+      latencyBudget: this.latencyBudget,
+      latencyBudgetResults: latencySummary.budgetResults,
+      partialRuntimeStreamingSupported:
+        runtimeStatus.runtimeDraftSupport === true,
+      partialRuntimeStreamingEnabled: isTruthy(
+        this.env.ELIZA_VOICE_STREAM_ASR_PARTIALS,
+      ),
+      partialRuntimeStreamingMode,
+      ttsStreamingSupported: runtimeStatus.ttsStreamingSupport,
+      playbackAckSupported: runtimeStatus.playbackAckSupport,
       error: this.error,
       updatedAt: this.timestamp(),
     };
   }
 
+  private async partialRuntimeStreamingMode(
+    runtimeStatus?: VoiceRuntimeStatus,
+  ): Promise<VoicePartialRuntimeStreamingMode> {
+    if (!isTruthy(this.env.ELIZA_VOICE_STREAM_ASR_PARTIALS)) {
+      return "disabled";
+    }
+    const status = runtimeStatus ?? (await this.runtimeAdapter.status());
+    return status.runtimeDraftSupport === true ? "draft-api" : "prepare-only";
+  }
+
   private timestamp(): string {
     return this.now().toISOString();
   }
-
 }
 
 function clampLimit(value: number, min: number, max: number): number {

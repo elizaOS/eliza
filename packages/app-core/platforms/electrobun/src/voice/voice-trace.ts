@@ -8,11 +8,15 @@ export type VoiceTraceStage =
   | "turn-started"
   | "asr-partial"
   | "asr-final"
+  | "model-prepare-started"
+  | "model-prepare-skipped"
   | "runtime-started"
   | "model-first-token"
+  | "model-delta"
   | "tts-started"
   | "tts-first-audio"
   | "playback-started"
+  | "latency-budget"
   | "pipeline-error";
 
 const TRACE_KIND_BY_STAGE: Readonly<Record<VoiceTraceStage, TraceEventKind>> = {
@@ -20,11 +24,15 @@ const TRACE_KIND_BY_STAGE: Readonly<Record<VoiceTraceStage, TraceEventKind>> = {
   "turn-started": "voice.turn.started",
   "asr-partial": "voice.asr.partial",
   "asr-final": "voice.asr.final",
+  "model-prepare-started": "model.prepare.started",
+  "model-prepare-skipped": "model.prepare.skipped",
   "runtime-started": "model.request.started",
   "model-first-token": "model.first_token",
+  "model-delta": "model.delta",
   "tts-started": "voice.tts.started",
   "tts-first-audio": "voice.tts.first_audio",
   "playback-started": "voice.playback.started",
+  "latency-budget": "voice.latency.budget",
   "pipeline-error": "voice.pipeline.error",
 };
 

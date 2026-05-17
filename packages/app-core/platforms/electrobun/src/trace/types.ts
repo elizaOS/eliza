@@ -53,6 +53,8 @@ export type TraceEventKind =
   | "agent.message.stream.cancelled"
   | "agent.message.stream.error"
   | "model.request.started"
+  | "model.prepare.started"
+  | "model.prepare.skipped"
   | "model.first_token"
   | "model.delta"
   | "model.completed"
@@ -75,6 +77,7 @@ export type TraceEventKind =
   | "voice.tts.started"
   | "voice.tts.first_audio"
   | "voice.playback.started"
+  | "voice.latency.budget"
   | "voice.pipeline.error"
   | "dynamic_view.opened"
   | "dynamic_view.pushed"
@@ -96,6 +99,8 @@ export const TRACE_EVENT_KINDS: readonly TraceEventKind[] = [
   "agent.message.stream.cancelled",
   "agent.message.stream.error",
   "model.request.started",
+  "model.prepare.started",
+  "model.prepare.skipped",
   "model.first_token",
   "model.delta",
   "model.completed",
@@ -118,6 +123,7 @@ export const TRACE_EVENT_KINDS: readonly TraceEventKind[] = [
   "voice.tts.started",
   "voice.tts.first_audio",
   "voice.playback.started",
+  "voice.latency.budget",
   "voice.pipeline.error",
   "dynamic_view.opened",
   "dynamic_view.pushed",

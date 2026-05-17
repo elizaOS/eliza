@@ -1,8 +1,8 @@
 import type { JsonValue } from "@elizaos/electrobun-carrots";
 import {
+  type CatalogModel,
   MODEL_CATALOG,
   VOICE_MODEL_VERSIONS,
-  type CatalogModel,
   type VoiceModelId,
   type VoiceModelVersion,
 } from "@elizaos/shared";
@@ -191,7 +191,11 @@ export function discoverStaticVoiceComponents(): VoiceComponentSnapshot[] {
   );
 }
 
-function markOffset(turn: VoiceTurn, stage: string, name: string): number | null {
+function markOffset(
+  turn: VoiceTurn,
+  stage: string,
+  name: string,
+): number | null {
   const mark = turn.marks.find((candidate) => {
     return candidate.stage === stage && candidate.name === name;
   });
@@ -211,17 +215,24 @@ export function summarizeVoiceLatency(
   const vad = markOffset(turn, "vad", "speech.detected");
   const asrPartial = markOffset(turn, "asr", "partial");
   const asrFinal = markOffset(turn, "asr", "final");
+  const runtimePrepare = markOffset(turn, "runtime", "prepare.started");
   const runtime = markOffset(turn, "runtime", "runtime.started");
   const firstToken = markOffset(turn, "model", "first_token");
+  const ttsStarted = markOffset(turn, "tts", "started");
   const firstAudio = markOffset(turn, "tts", "first_audio");
   const playback = markOffset(turn, "playback", "started");
   return {
     inputToVadMs: span(input, vad),
     vadToAsrPartialMs: span(vad, asrPartial),
+    asrPartialToRuntimePrepareMs: span(asrPartial, runtimePrepare),
     asrFinalToRuntimeMs: span(asrFinal, runtime),
+    asrFinalToRuntimeCommitMs: span(asrFinal, runtime),
     runtimeToFirstTokenMs: span(runtime, firstToken),
+    firstTokenToTtsRequestMs: span(firstToken, ttsStarted),
+    ttsRequestToFirstAudioMs: span(ttsStarted, firstAudio),
     firstTokenToTtsFirstAudioMs: span(firstToken, firstAudio),
     ttsFirstAudioToPlaybackMs: span(firstAudio, playback),
+    totalToFirstTokenMs: span(input, firstToken),
     totalToFirstAudioMs: span(input, firstAudio),
     totalToPlaybackMs: span(input, playback),
   };

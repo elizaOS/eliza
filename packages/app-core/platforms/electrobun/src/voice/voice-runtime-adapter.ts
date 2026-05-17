@@ -64,18 +64,18 @@ const EMPTY_STATUS: Omit<VoiceRuntimeStatus, "mode"> = {
   asrPartialSupport: false,
   ttsStreamingSupport: false,
   playbackSupport: false,
+  playbackAckSupport: false,
+  runtimeDraftSupport: false,
   vadSupport: false,
   turnSupport: false,
 };
 
-function enabled(env: Record<string, string | undefined>, key: string): boolean {
+function enabled(
+  env: Record<string, string | undefined>,
+  key: string,
+): boolean {
   const value = env[key]?.trim().toLowerCase();
-  return (
-    value === "1" ||
-    value === "true" ||
-    value === "yes" ||
-    value === "on"
-  );
+  return value === "1" || value === "true" || value === "yes" || value === "on";
 }
 
 function stripSlash(value: string): string {
@@ -157,7 +157,9 @@ export class RuntimeHttpVoiceAdapter implements VoiceRuntimeAdapter {
   private listening = false;
   private readonly vadHandlers = new Set<Listener<VoiceVadEvent>>();
   private readonly turnHandlers = new Set<Listener<VoiceTurnEvent>>();
-  private readonly asrPartialHandlers = new Set<Listener<VoiceAsrPartialEvent>>();
+  private readonly asrPartialHandlers = new Set<
+    Listener<VoiceAsrPartialEvent>
+  >();
   private readonly asrFinalHandlers = new Set<Listener<VoiceAsrFinalEvent>>();
   private readonly playbackHandlers = new Set<Listener<VoicePlaybackEvent>>();
   private readonly errorHandlers = new Set<Listener<VoiceRuntimeErrorEvent>>();
@@ -192,7 +194,10 @@ export class RuntimeHttpVoiceAdapter implements VoiceRuntimeAdapter {
 
   async components(): Promise<VoiceComponentSnapshot[]> {
     if (!this.liveRuntimeEnabled()) return discoverStaticVoiceComponents();
-    const voiceModels = await this.jsonRequest("GET", "/api/local-inference/voice-models");
+    const voiceModels = await this.jsonRequest(
+      "GET",
+      "/api/local-inference/voice-models",
+    );
     return mergeComponents(
       discoverStaticVoiceComponents(),
       installationsToComponents(voiceModels),
@@ -233,7 +238,9 @@ export class RuntimeHttpVoiceAdapter implements VoiceRuntimeAdapter {
     return this.status();
   }
 
-  async interrupt(params: { reason?: string } = {}): Promise<VoiceRuntimeStatus> {
+  async interrupt(
+    params: { reason?: string } = {},
+  ): Promise<VoiceRuntimeStatus> {
     this.listening = false;
     this.emit(this.turnHandlers, {
       status: "cancelled",
@@ -341,10 +348,9 @@ export class RuntimeHttpVoiceAdapter implements VoiceRuntimeAdapter {
     const conversation = await this.jsonRequest("POST", "/api/conversations", {
       title: "Voice",
     });
-    const conversationId = readId(conversation, [
-      "conversationId",
-      "id",
-    ]) ?? readNestedId(conversation, "conversation", ["id", "conversationId"]);
+    const conversationId =
+      readId(conversation, ["conversationId", "id"]) ??
+      readNestedId(conversation, "conversation", ["id", "conversationId"]);
     if (!conversationId) {
       throw new VoiceError(
         "VOICE_REQUEST_FAILED",

@@ -5,8 +5,6 @@ import { DynamicViewSessionManager } from "../dynamic-views/session-manager";
 import { TraceService } from "../trace/trace-service";
 import { TraceStore } from "../trace/trace-store";
 import { VoiceError } from "./errors";
-import type { VoiceRuntimeAdapter } from "./voice-runtime-adapter";
-import { VoiceService } from "./voice-service";
 import type {
   VoiceAsrFinalEvent,
   VoiceAsrPartialEvent,
@@ -22,6 +20,8 @@ import type {
   VoiceTurnEvent,
   VoiceVadEvent,
 } from "./types";
+import type { VoiceRuntimeAdapter } from "./voice-runtime-adapter";
+import { VoiceService } from "./voice-service";
 
 class FakeCanvas {
   readonly windows: Array<{ id: string; url?: string; title?: string }> = [];
@@ -57,6 +57,7 @@ class MockVoiceRuntimeAdapter implements VoiceRuntimeAdapter {
   synthesized = false;
   played = false;
   runtimeHandedOff = false;
+  runtimeHandoffCount = 0;
   playbackAvailable = true;
   asrAvailable = true;
   ttsAvailable = true;
@@ -76,6 +77,8 @@ class MockVoiceRuntimeAdapter implements VoiceRuntimeAdapter {
       asrPartialSupport: true,
       ttsStreamingSupport: false,
       playbackSupport: this.playbackAvailable,
+      playbackAckSupport: this.playbackAvailable,
+      runtimeDraftSupport: false,
       vadSupport: true,
       turnSupport: true,
     };
@@ -175,6 +178,7 @@ class MockVoiceRuntimeAdapter implements VoiceRuntimeAdapter {
     params: VoiceRuntimeHandoffParams,
   ): Promise<VoiceRuntimeHandoffResult> {
     this.runtimeHandedOff = true;
+    this.runtimeHandoffCount += 1;
     return {
       firstTokenText: "ok",
       responseText: `response:${params.text}`,
@@ -195,7 +199,10 @@ class MockVoiceRuntimeAdapter implements VoiceRuntimeAdapter {
     for (const handler of this.asrFinalHandlers) handler(event);
   }
 
-  private register<T>(set: Set<(event: T) => void>, handler: (event: T) => void): () => void {
+  private register<T>(
+    set: Set<(event: T) => void>,
+    handler: (event: T) => void,
+  ): () => void {
     set.add(handler);
     return () => {
       set.delete(handler);
@@ -292,6 +299,11 @@ describe("VoiceService", () => {
       status: "completed",
       responseText: "response",
     });
+    expect(latency.budgetResults).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ stage: "total_to_playback" }),
+      ]),
+    );
     expect(latency.totalToFirstAudioMs).toBeGreaterThan(0);
     expect(latency.totalToPlaybackMs).toBeGreaterThan(0);
     await expect(voice.recentTurns()).resolves.toHaveLength(1);
@@ -316,6 +328,7 @@ describe("VoiceService", () => {
         "voice.tts.started",
         "voice.tts.first_audio",
         "voice.playback.started",
+        "voice.latency.budget",
         "session.completed",
       ]),
     );
@@ -388,6 +401,65 @@ describe("VoiceService", () => {
         "model.first_token",
       ]),
     );
+  });
+
+  it("does not commit ASR partials to runtime by default", async () => {
+    const { voice, adapter } = harness({
+      ELIZA_VOICE_LIVE_RUNTIME: "1",
+    });
+
+    await voice.start({ mode: "local-runtime" });
+    adapter.emitAsrPartial({ text: "draft words" });
+    await flushVoiceEvents();
+
+    const snapshot = await voice.status();
+    expect(adapter.runtimeHandedOff).toBe(false);
+    expect(snapshot).toMatchObject({
+      partialRuntimeStreamingEnabled: false,
+      partialRuntimeStreamingMode: "disabled",
+    });
+    expect(snapshot.currentTurn).toMatchObject({
+      transcriptPartial: "draft words",
+      status: "asr_partial",
+    });
+  });
+
+  it("marks ASR partial prepare-only mode without calling conversation routes", async () => {
+    const { voice, trace, adapter } = harness({
+      ELIZA_VOICE_LIVE_RUNTIME: "1",
+      ELIZA_VOICE_STREAM_ASR_PARTIALS: "1",
+    });
+
+    await voice.start({ mode: "local-runtime", trace: true });
+    adapter.emitAsrPartial({ text: "draft words" });
+    await flushVoiceEvents();
+
+    const snapshot = await voice.status();
+    expect(adapter.runtimeHandedOff).toBe(false);
+    expect(snapshot).toMatchObject({
+      partialRuntimeStreamingEnabled: true,
+      partialRuntimeStreamingSupported: false,
+      partialRuntimeStreamingMode: "prepare-only",
+    });
+    const events = await trace.searchEvents({
+      runId: snapshot.currentTurn?.id,
+    });
+    expect(events.map((event) => event.kind)).toContain(
+      "model.prepare.skipped",
+    );
+  });
+
+  it("commits the ASR final to runtime once", async () => {
+    const { voice, adapter } = harness({
+      ELIZA_VOICE_LIVE_RUNTIME: "1",
+    });
+
+    await voice.start({ mode: "local-runtime" });
+    adapter.emitAsrFinal({ text: "hello world" });
+    adapter.emitAsrFinal({ text: "hello world" });
+    await flushVoiceEvents();
+
+    expect(adapter.runtimeHandoffCount).toBe(1);
   });
 
   it("starts live audio mode with a mocked adapter", async () => {

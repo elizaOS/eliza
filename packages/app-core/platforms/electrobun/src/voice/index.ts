@@ -1,25 +1,4 @@
 export { VoiceError, voiceErrorToJson } from "./errors";
-export {
-  createVoiceHost,
-  createVoiceHostForRuntime,
-  type VoiceHost,
-} from "./voice-host-requests";
-export {
-  cloneVoiceTurn,
-  discoverStaticVoiceComponents,
-  summarizeVoiceLatency,
-} from "./voice-pipeline";
-export { VoiceService } from "./voice-service";
-export {
-  RuntimeHttpVoiceAdapter,
-  type VoiceRuntimeAdapter,
-  type VoiceRuntimeAdapterOptions,
-} from "./voice-runtime-adapter";
-export {
-  recordVoiceTraceStage,
-  startVoiceTraceSession,
-  voiceTraceAutoOpen,
-} from "./voice-trace";
 export type {
   VoiceComponentRole,
   VoiceComponentSnapshot,
@@ -28,6 +7,7 @@ export type {
   VoiceInterruptParams,
   VoiceLatencyMark,
   VoiceLatencySummary,
+  VoicePartialRuntimeStreamingMode,
   VoicePipelineId,
   VoicePipelineSnapshot,
   VoicePipelineStatus,
@@ -38,8 +18,54 @@ export type {
   VoiceSynthesisResult,
   VoiceSynthesizeSpeechParams,
   VoiceTestMode,
+  VoiceTranscribeAudioParams,
   VoiceTurn,
   VoiceTurnId,
   VoiceTurnStatus,
-  VoiceTranscribeAudioParams,
 } from "./types";
+export {
+  createVoiceHost,
+  createVoiceHostForRuntime,
+  type VoiceHost,
+} from "./voice-host-requests";
+export {
+  evaluateVoiceLatencyBudget,
+  getDefaultVoiceLatencyBudget,
+  getVoiceLatencyBudgetFromEnv,
+  type VoiceLatencyBudget,
+  type VoiceLatencyBudgetResult,
+  type VoiceLatencyBudgetStage,
+} from "./voice-latency-budget";
+export {
+  cloneVoiceTurn,
+  discoverStaticVoiceComponents,
+  summarizeVoiceLatency,
+} from "./voice-pipeline";
+export {
+  UnavailableVoicePlaybackAdapter,
+  type VoicePlaybackAdapter,
+  type VoicePlaybackAdapterStatus,
+} from "./voice-playback-adapter";
+export {
+  RuntimeHttpVoiceAdapter,
+  type VoiceRuntimeAdapter,
+  type VoiceRuntimeAdapterOptions,
+} from "./voice-runtime-adapter";
+export { VoiceService } from "./voice-service";
+export {
+  type VoiceAsrPartialHandlingResult,
+  type VoiceRuntimeDeltaResult,
+  VoiceStreamCoordinator,
+} from "./voice-stream-coordinator";
+export {
+  recordVoiceTraceStage,
+  startVoiceTraceSession,
+  voiceTraceAutoOpen,
+} from "./voice-trace";
+export {
+  getDefaultVoiceTtsChunkingConfig,
+  getVoiceTtsChunkingConfigFromEnv,
+  type VoiceTtsChunk,
+  VoiceTtsChunker,
+  type VoiceTtsChunkingConfig,
+} from "./voice-tts-chunker";

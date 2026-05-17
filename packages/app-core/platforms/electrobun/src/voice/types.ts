@@ -1,4 +1,8 @@
 import type { JsonValue } from "@elizaos/electrobun-carrots";
+import type {
+  VoiceLatencyBudget,
+  VoiceLatencyBudgetResult,
+} from "./voice-latency-budget";
 
 export type VoicePipelineId = string;
 export type VoiceTurnId = string;
@@ -39,8 +43,7 @@ export const VOICE_COMPONENT_STATUSES = [
   "error",
 ] as const;
 
-export type VoiceComponentStatus =
-  (typeof VOICE_COMPONENT_STATUSES)[number];
+export type VoiceComponentStatus = (typeof VOICE_COMPONENT_STATUSES)[number];
 
 export type VoiceComponentRole =
   | "vad"
@@ -110,14 +113,26 @@ export type VoiceTurn = {
 export type VoiceLatencySummary = {
   inputToVadMs?: number;
   vadToAsrPartialMs?: number;
+  asrPartialToRuntimePrepareMs?: number;
   asrFinalToRuntimeMs?: number;
+  asrFinalToRuntimeCommitMs?: number;
   runtimeToFirstTokenMs?: number;
+  firstTokenToTtsRequestMs?: number;
+  ttsRequestToFirstAudioMs?: number;
   firstTokenToTtsFirstAudioMs?: number;
   ttsFirstAudioToPlaybackMs?: number;
+  totalToFirstTokenMs?: number;
   totalToFirstAudioMs?: number;
   totalToPlaybackMs?: number;
+  budgetResults?: VoiceLatencyBudgetResult[];
   raw?: JsonValue;
 };
+
+export type VoicePartialRuntimeStreamingMode =
+  | "disabled"
+  | "prepare-only"
+  | "draft-api"
+  | "unsupported";
 
 export type VoicePipelineSnapshot = {
   id: VoicePipelineId;
@@ -127,6 +142,13 @@ export type VoicePipelineSnapshot = {
   currentTurn?: VoiceTurn;
   recentTurns: VoiceTurn[];
   latencySummary?: VoiceLatencySummary;
+  latencyBudget?: VoiceLatencyBudget;
+  latencyBudgetResults?: VoiceLatencyBudgetResult[];
+  partialRuntimeStreamingSupported: boolean;
+  partialRuntimeStreamingEnabled: boolean;
+  partialRuntimeStreamingMode: VoicePartialRuntimeStreamingMode;
+  ttsStreamingSupported: boolean;
+  playbackAckSupported: boolean;
   error?: string;
   updatedAt: string;
 };
@@ -177,6 +199,8 @@ export type VoiceRuntimeStatus = {
   asrPartialSupport: boolean;
   ttsStreamingSupport: boolean;
   playbackSupport: boolean;
+  playbackAckSupport: boolean;
+  runtimeDraftSupport?: boolean;
   vadSupport: boolean;
   turnSupport: boolean;
   error?: string;
