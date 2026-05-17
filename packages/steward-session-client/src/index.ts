@@ -31,6 +31,15 @@ export const STEWARD_TENANT_ID = "elizacloud";
 /** Same-origin endpoint that exchanges the JWT for HttpOnly cookies. */
 export const STEWARD_SESSION_ENDPOINT = "/api/auth/steward-session";
 
+/**
+ * Same-origin endpoint that swaps a one-time OAuth `code` (the nonce-exchange
+ * flow's `?code=` query param) for HttpOnly cookies. The endpoint calls
+ * Steward's `POST /auth/oauth/exchange` server-side so the access and refresh
+ * tokens never touch the browser URL.
+ */
+export const STEWARD_NONCE_EXCHANGE_ENDPOINT =
+  "/api/auth/steward-nonce-exchange";
+
 // ---------------------------------------------------------------------------
 // Types
 // ---------------------------------------------------------------------------
@@ -56,7 +65,16 @@ export type StewardSessionErrorCode =
   | "invalid_token"
   | "server_secret_missing"
   | "steward_user_sync_failed"
-  | "internal_error";
+  | "internal_error"
+  // Nonce-exchange (response_type=code) outcomes. Surfaced both by the
+  // cloud-api route and proxied through from Steward's /oauth/exchange.
+  | "missing_code"
+  | "code_invalid"
+  | "code_expired"
+  | "code_redirect_mismatch"
+  | "code_tenant_mismatch"
+  | "steward_upstream_unavailable"
+  | "forbidden_origin";
 
 export class StewardSessionError extends Error {
   readonly status: number;
@@ -204,6 +222,70 @@ export async function syncStewardSession(
     );
   }
   return (await response.json()) as StewardSessionResponse;
+}
+
+// ---------------------------------------------------------------------------
+// Nonce-exchange (response_type=code) flow
+// ---------------------------------------------------------------------------
+
+export interface StewardNonceExchangeRequest {
+  /** One-time code from the Steward redirect (`?code=`). */
+  code: string;
+  /**
+   * The `redirect_uri` that was sent to Steward `/authorize`. Steward verifies
+   * this matches what was issued. If omitted, the cloud-api route falls back
+   * to the value provided server-side via env / convention; in practice the
+   * caller should send the same redirect_uri it used originally.
+   */
+  redirectUri?: string;
+  /** Steward tenant ID (e.g. "elizacloud"). */
+  tenantId?: string;
+}
+
+export interface StewardNonceExchangeResponse extends StewardSessionResponse {
+  expiresIn?: number;
+  expiresAt?: number;
+}
+
+export interface ExchangeStewardCodeOpts extends SyncOpts {
+  /** redirect_uri that was sent to /authorize (must match exactly). */
+  redirectUri?: string;
+  /** Steward tenant id. */
+  tenantId?: string;
+}
+
+/**
+ * POSTs the one-time OAuth code to the cloud-api nonce-exchange endpoint.
+ * The route calls Steward `POST /auth/oauth/exchange` server-side, sets the
+ * HttpOnly steward-token + steward-refresh-token cookies, and returns the
+ * Eliza Cloud user id. Throws `StewardSessionError` on non-2xx.
+ */
+export async function exchangeStewardCode(
+  code: string,
+  opts: ExchangeStewardCodeOpts = {},
+): Promise<StewardNonceExchangeResponse> {
+  const endpoint = opts.endpoint ?? STEWARD_NONCE_EXCHANGE_ENDPOINT;
+  const f = opts.fetchImpl ?? fetch;
+  const body: StewardNonceExchangeRequest = {
+    code,
+    ...(opts.redirectUri ? { redirectUri: opts.redirectUri } : {}),
+    ...(opts.tenantId ? { tenantId: opts.tenantId } : {}),
+  };
+  const response = await f(endpoint, {
+    method: "POST",
+    credentials: "include",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+  });
+  if (!response.ok) {
+    const errBody = await readErrorBody(response);
+    throw new StewardSessionError(
+      errBody?.error || "Could not complete Eliza Cloud sign-in.",
+      response.status,
+      errBody?.code ?? null,
+    );
+  }
+  return (await response.json()) as StewardNonceExchangeResponse;
 }
 
 /**

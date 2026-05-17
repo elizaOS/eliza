@@ -13,8 +13,10 @@ import {
   LOGO_FILES,
 } from "@elizaos/shared-brand";
 import {
+  exchangeStewardCode,
   hasStewardAuthedCookie,
   readStoredStewardToken,
+  STEWARD_NONCE_EXCHANGE_ENDPOINT,
   STEWARD_SESSION_ENDPOINT,
   STEWARD_TENANT_ID,
   syncStewardSession,
@@ -124,11 +126,24 @@ function buildCheckoutPath(product: Product) {
   return `/checkout?sku=${encodeURIComponent(product.sku)}`;
 }
 
+/**
+ * Build the redirect_uri we hand to Steward. Kept as a single function so the
+ * value we send at /authorize time exactly matches the value we send at
+ * /exchange time — Steward rejects the exchange if they differ.
+ */
+function buildOAuthRedirectUri(product: Product): string {
+  return `${window.location.origin}${buildCheckoutPath(product)}`;
+}
+
 function buildOAuthUrl(provider: "google" | "discord" | "github") {
   const product = getCheckoutProduct();
   const params = new URLSearchParams({
-    redirect_uri: `${window.location.origin}${buildCheckoutPath(product)}`,
+    redirect_uri: buildOAuthRedirectUri(product),
     tenant_id: stewardTenantId,
+    // Opt into the nonce-exchange flow: Steward redirects back with
+    // `?code=<nonce>` (no tokens in the URL) and we trade the code for
+    // tokens server-side via /api/auth/steward-nonce-exchange.
+    response_type: "code",
   });
   return `${stewardApiUrl}/auth/oauth/${provider}/authorize?${params.toString()}`;
 }
@@ -138,6 +153,32 @@ function getStoredStewardToken() {
 }
 
 const stewardSessionEndpoint = `${cloudApiUrl.replace(/\/$/, "")}${STEWARD_SESSION_ENDPOINT}`;
+const stewardNonceExchangeEndpoint = `${cloudApiUrl.replace(/\/$/, "")}${STEWARD_NONCE_EXCHANGE_ENDPOINT}`;
+
+/**
+ * Read the one-time OAuth code from `?code=` (nonce-exchange flow). Steward
+ * redirects to the callback with `?code=<NONCE>` and **no tokens** in the
+ * URL. We pull the code, strip it from history immediately so it doesn't
+ * appear in browser history / extension snapshots / shared URLs, and POST it
+ * server-side. Returns null when no code is present so the caller can fall
+ * through to the hash / query token fallbacks during the rollout window.
+ */
+function consumeStewardCodeFromQuery(): string | null {
+  if (typeof window === "undefined") return null;
+  const params = new URLSearchParams(window.location.search);
+  const code = params.get("code");
+  if (!code) return null;
+  params.delete("code");
+  const query = params.toString();
+  window.history.replaceState(
+    null,
+    "",
+    query
+      ? `${window.location.pathname}?${query}`
+      : window.location.pathname,
+  );
+  return code;
+}
 
 /**
  * Parse Steward tokens from the URL hash fragment. The hash never leaves the
@@ -446,10 +487,37 @@ function CheckoutPage() {
   );
 
   useEffect(() => {
-    // Preferred path: tokens arrive in the URL hash fragment (#token=...).
-    // Hash is browser-only — never sent to the server, no Referer leak,
-    // never written to access logs. Legacy `?token=` query is still accepted
-    // during the rollout window but stripped from history immediately.
+    // Preferred path: server-side nonce exchange. Steward redirects to
+    // `?code=<nonce>` (no tokens in the URL at all). We POST the code to the
+    // cloud-api server-side exchange route, which calls Steward
+    // `/auth/oauth/exchange` and sets HttpOnly cookies. Access and refresh
+    // tokens never enter this process.
+    const code = consumeStewardCodeFromQuery();
+    if (code) {
+      setStatus("syncing");
+      exchangeStewardCode(code, {
+        endpoint: stewardNonceExchangeEndpoint,
+        redirectUri: buildOAuthRedirectUri(product),
+        tenantId: stewardTenantId,
+      })
+        .then(() => {
+          setIsAuthed(true);
+        })
+        .catch((error: unknown) => {
+          setMessage(
+            error instanceof Error
+              ? error.message
+              : "Could not complete Eliza Cloud sign-in.",
+          );
+        })
+        .finally(() => setStatus("idle"));
+      return;
+    }
+
+    // Fallback (one-release rollout window): tokens in the URL hash
+    // (#token=...). Hash never leaves the browser, but the tokens still
+    // touch JS — preferred only until all consumers have moved to the
+    // nonce-exchange flow above. Legacy `?token=` query also accepted.
     const fromHash = consumeStewardTokensFromHash();
     const params = new URLSearchParams(window.location.search);
     const queryToken = params.get("token");
@@ -494,7 +562,7 @@ function CheckoutPage() {
         );
       })
       .finally(() => setStatus("idle"));
-  }, []);
+  }, [product]);
 
   useEffect(() => {
     setSelectedColor(product.colors[0]);
