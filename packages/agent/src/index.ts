@@ -186,8 +186,6 @@ export { resolveUserPath } from "./config/paths.ts";
 // `agent/src/...` deep imports.
 export {
   getPluginWidgets,
-  getPluginWidgets,
-  type PluginWidgetDeclarationServer,
   type PluginWidgetDeclarationServer,
 } from "./config/plugin-widgets.ts";
 // `contracts/awareness.js` adds the local-only (non-shared) contract surface.
