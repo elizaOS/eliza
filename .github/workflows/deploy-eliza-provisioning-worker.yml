@@ -86,15 +86,25 @@ jobs:
 
             rm -f .git/index.lock
 
-            # Discard local drift, preserve env files.
+            # Discard local drift, preserve env files. Quote globs so the
+            # remote shell doesn't expand them before git sees the pattern,
+            # and fail loud if clean errors out — silently swallowing it is
+            # what let stale build artifacts survive and block checkout below.
+            git reset --hard HEAD 2>/dev/null || true
             git clean -fdx \
               -e .env \
               -e .env.local \
-              -e .env.* \
+              -e '.env.*' \
               -e cloud/.env.local \
-              -e cloud/.env.* \
-              -e node_modules || true
-            git checkout -- . 2>/dev/null || true
+              -e 'cloud/.env.*' \
+              -e node_modules
+
+            # Build artifacts (*.d.ts / *.d.ts.map) sometimes land next to
+            # sources from a prior deploy; if the new HEAD tracks the same
+            # paths, `git checkout -B` aborts with "untracked working tree
+            # files would be overwritten". Sweep them before checkout.
+            find packages -type f \( -name '*.d.ts' -o -name '*.d.ts.map' \) \
+              ! -path '*/node_modules/*' -delete 2>/dev/null || true
 
             # bun.lock became tracked at 4ae092dcda; the host's previous deploy
             # may have left an untracked copy from `bun install` that pre-dates
