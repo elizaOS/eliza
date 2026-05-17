@@ -1,7 +1,22 @@
+import path from "node:path";
+import { fileURLToPath } from "node:url";
 import { defineConfig } from "vitest/config";
+
+const pluginRoot = path.dirname(fileURLToPath(import.meta.url));
+const repoRoot = path.resolve(pluginRoot, "../..");
 
 export default defineConfig({
   resolve: {
+    alias: [
+      {
+        find: /^@elizaos\/core$/,
+        replacement: path.join(repoRoot, "packages/core/src/index.node.ts"),
+      },
+      {
+        find: /^@elizaos\/core\/(.+)$/,
+        replacement: path.join(repoRoot, "packages/core/src/$1"),
+      },
+    ],
     conditions: ["node"],
   },
   ssr: {

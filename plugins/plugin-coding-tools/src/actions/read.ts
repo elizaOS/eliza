@@ -2,7 +2,9 @@ import * as fs from "node:fs/promises";
 
 import {
   type ActionResult,
+  CapabilityError,
   logger as coreLogger,
+  getCapabilityRouter,
   type HandlerCallback,
   type IAgentRuntime,
   type Memory,
@@ -24,8 +26,105 @@ import {
   SANDBOX_SERVICE,
 } from "../types.js";
 
+type ReadTextPayload = {
+  text: string;
+  size: number;
+};
+
 function formatLine(lineNumber: number, content: string): string {
   return `${String(lineNumber).padStart(6, " ")}\t${content}`;
+}
+
+async function finalizeReadResult(params: {
+  runtime: IAgentRuntime;
+  callback?: HandlerCallback;
+  conversationId: string;
+  fileState: InstanceType<typeof FileStateService>;
+  resolved: string;
+  text: string;
+  options: unknown;
+}): Promise<ActionResult> {
+  const lines = params.text.split("\n");
+  const totalLines = lines.length;
+
+  const offset = Math.max(
+    0,
+    Math.floor(readNumberParam(params.options, "offset") ?? 0),
+  );
+  const requestedLimit = readNumberParam(params.options, "limit");
+  const defaultLimit = readPositiveIntSetting(
+    params.runtime,
+    "CODING_TOOLS_MAX_READ_LINES",
+    2000,
+  );
+  const limit = Math.max(1, Math.floor(requestedLimit ?? defaultLimit));
+
+  const endExclusive = Math.min(totalLines, offset + limit);
+  const slice = lines.slice(offset, endExclusive);
+  const truncated = endExclusive < totalLines || offset > 0;
+
+  const formatted = [
+    params.resolved,
+    ...slice.map((content, idx) => formatLine(offset + idx + 1, content)),
+  ].join("\n");
+
+  await params.fileState.recordRead(params.conversationId, params.resolved);
+  coreLogger.debug(
+    `${CODING_TOOLS_LOG_PREFIX} READ ${params.resolved} offset=${offset} returned=${slice.length}/${totalLines}`,
+  );
+
+  if (params.callback) {
+    await params.callback({ text: formatted, source: "coding-tools" });
+  }
+
+  return successActionResult(formatted, {
+    path: params.resolved,
+    lines: slice.length,
+    totalLines,
+    offset,
+    truncated,
+  });
+}
+
+async function readWithCapabilityRouter(params: {
+  runtime: IAgentRuntime;
+  resolved: string;
+  maxBytes: number;
+}): Promise<
+  | { ok: true; payload: ReadTextPayload }
+  | { ok: false; reason: "unavailable" | "failed"; message: string }
+> {
+  const router = getCapabilityRouter(params.runtime);
+  if (!router) return { ok: false, reason: "unavailable", message: "" };
+  try {
+    const result = await router.fs.readText({
+      path: params.resolved,
+      maxBytes: params.maxBytes,
+    });
+    if (result.size > params.maxBytes || result.truncated) {
+      return {
+        ok: false,
+        reason: "failed",
+        message: `file size ${result.size} exceeds ${params.maxBytes}; use offset/limit to read in chunks`,
+      };
+    }
+    return {
+      ok: true,
+      payload: {
+        text: result.text,
+        size: result.size,
+      },
+    };
+  } catch (error) {
+    if (
+      error instanceof CapabilityError &&
+      error.code === "CAPABILITY_UNAVAILABLE"
+    ) {
+      return { ok: false, reason: "unavailable", message: error.message };
+    }
+    const message = error instanceof Error ? error.message : String(error);
+    return { ok: false, reason: "failed", message };
+  }
 }
 
 export async function readFileHandler(
@@ -82,6 +181,29 @@ export async function readFileHandler(
     262_144,
   );
 
+  const routed = await readWithCapabilityRouter({
+    runtime,
+    resolved,
+    maxBytes,
+  });
+  if (routed.ok) {
+    return finalizeReadResult({
+      runtime,
+      callback,
+      conversationId,
+      fileState,
+      resolved,
+      text: routed.payload.text,
+      options,
+    });
+  }
+  if (routed.reason === "failed") {
+    return failureToActionResult({
+      reason: "io_error",
+      message: routed.message,
+    });
+  }
+
   let stat: Awaited<ReturnType<typeof fs.stat>>;
   try {
     stat = await fs.stat(resolved);
@@ -126,42 +248,13 @@ export async function readFileHandler(
   }
 
   const text = buffer.toString("utf8");
-  const lines = text.split("\n");
-  const totalLines = lines.length;
-
-  const offset = Math.max(
-    0,
-    Math.floor(readNumberParam(options, "offset") ?? 0),
-  );
-  const requestedLimit = readNumberParam(options, "limit");
-  const defaultLimit = readPositiveIntSetting(
+  return finalizeReadResult({
     runtime,
-    "CODING_TOOLS_MAX_READ_LINES",
-    2000,
-  );
-  const limit = Math.max(1, Math.floor(requestedLimit ?? defaultLimit));
-
-  const endExclusive = Math.min(totalLines, offset + limit);
-  const slice = lines.slice(offset, endExclusive);
-  const truncated = endExclusive < totalLines || offset > 0;
-
-  const formatted = [
+    callback,
+    conversationId,
+    fileState,
     resolved,
-    ...slice.map((content, idx) => formatLine(offset + idx + 1, content)),
-  ].join("\n");
-
-  await fileState.recordRead(conversationId, resolved);
-  coreLogger.debug(
-    `${CODING_TOOLS_LOG_PREFIX} READ ${resolved} offset=${offset} returned=${slice.length}/${totalLines}`,
-  );
-
-  if (callback) await callback({ text: formatted, source: "coding-tools" });
-
-  return successActionResult(formatted, {
-    path: resolved,
-    lines: slice.length,
-    totalLines,
-    offset,
-    truncated,
+    text,
+    options,
   });
 }
