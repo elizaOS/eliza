@@ -201,6 +201,7 @@ export function AppOverview({ app, showApiKey }: AppOverviewProps) {
                   {displayApiKey}
                 </code>
                 <button
+                  type="button"
                   onClick={() => copyToClipboard(displayApiKey, "API Key")}
                   className="p-2 bg-white/10 hover:bg-white/20 rounded-sm transition-colors shrink-0"
                 >
@@ -262,6 +263,7 @@ export function AppOverview({ app, showApiKey }: AppOverviewProps) {
             <AlertDialog>
               <AlertDialogTrigger asChild>
                 <button
+                  type="button"
                   disabled={isRegenerating}
                   className="text-xs text-neutral-400 hover:text-white flex items-center gap-1 transition-colors"
                 >
@@ -302,6 +304,7 @@ export function AppOverview({ app, showApiKey }: AppOverviewProps) {
               {displayApiKey && (
                 <>
                   <button
+                    type="button"
                     onClick={() => setShowKey(!showKey)}
                     className="p-1.5 hover:bg-white/10 rounded-sm transition-colors"
                   >
@@ -312,6 +315,7 @@ export function AppOverview({ app, showApiKey }: AppOverviewProps) {
                     )}
                   </button>
                   <button
+                    type="button"
                     onClick={() => copyToClipboard(displayApiKey, "API Key")}
                     className="p-1.5 hover:bg-white/10 rounded-sm transition-colors"
                   >
@@ -412,6 +416,7 @@ export function AppOverview({ app, showApiKey }: AppOverviewProps) {
                 {monetizationEnabled ? "Enabled" : "Disabled"}
               </Badge>
               <button
+                type="button"
                 onClick={() =>
                   navigate(`/dashboard/apps/${app.id}?tab=monetization`)
                 }
@@ -432,6 +437,7 @@ export function AppOverview({ app, showApiKey }: AppOverviewProps) {
             Allowed Origins
           </h3>
           <button
+            type="button"
             onClick={() => navigate(`/dashboard/apps/${app.id}?tab=settings`)}
             className="text-xs text-neutral-400 hover:text-white transition-colors"
           >
