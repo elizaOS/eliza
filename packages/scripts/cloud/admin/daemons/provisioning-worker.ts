@@ -24,20 +24,30 @@ type WorkerLogger =
   typeof import("@elizaos/cloud-shared/lib/utils/logger").logger;
 type WorkerService =
   typeof import("@elizaos/cloud-shared/lib/services/provisioning-jobs").provisioningJobService;
+type WorkerNodeManager =
+  typeof import("@elizaos/cloud-shared/lib/services/docker-node-manager").dockerNodeManager;
 
 interface WorkerDeps {
   logger: WorkerLogger;
   provisioningJobService: WorkerService;
+  dockerNodeManager: WorkerNodeManager;
 }
 
 export interface ProvisioningWorkerConfig {
   pollIntervalMs: number;
   batchSize: number;
   runOnce: boolean;
+  nodeHealthIntervalMs: number;
 }
 
 const DEFAULT_POLL_INTERVAL_MS = 30_000;
 const DEFAULT_BATCH_SIZE = 3;
+
+/**
+ * Node health-check cadence. 5 minutes matches the `agent-hot-pool`
+ * CRON_FANOUT schedule. SSH uses `CONTAINERS_SSH_KEY` from this host.
+ */
+const DEFAULT_NODE_HEALTH_INTERVAL_MS = 5 * 60_000;
 
 function parsePositiveInt(value: string | undefined, fallback: number): number {
   if (!value) return fallback;
@@ -60,6 +70,10 @@ export function readWorkerConfig(
     ),
     batchSize: parsePositiveInt(env.WORKER_BATCH_SIZE, DEFAULT_BATCH_SIZE),
     runOnce: env.WORKER_RUN_ONCE === "1" || hasFlag(argv, "--once"),
+    nodeHealthIntervalMs: parsePositiveInt(
+      env.WORKER_NODE_HEALTH_INTERVAL,
+      DEFAULT_NODE_HEALTH_INTERVAL_MS,
+    ),
   };
 }
 
@@ -70,9 +84,11 @@ async function loadDeps(): Promise<WorkerDeps> {
     depsPromise = Promise.all([
       import("@elizaos/cloud-shared/lib/services/provisioning-jobs"),
       import("@elizaos/cloud-shared/lib/utils/logger"),
-    ]).then(([jobsModule, loggerModule]) => ({
+      import("@elizaos/cloud-shared/lib/services/docker-node-manager"),
+    ]).then(([jobsModule, loggerModule, nodeMgrModule]) => ({
       provisioningJobService: jobsModule.provisioningJobService,
       logger: loggerModule.logger,
+      dockerNodeManager: nodeMgrModule.dockerNodeManager,
     }));
   }
   return depsPromise;
@@ -87,21 +103,49 @@ function resultContext(result: ProcessingResult): Record<string, unknown> {
   };
 }
 
-export async function processProvisioningWorkerCycle(
+async function processProvisioningWorkerCycle(
   batchSize = readWorkerConfig().batchSize,
 ): Promise<ProcessingResult> {
   const { provisioningJobService } = await loadDeps();
   return provisioningJobService.processPendingJobs(batchSize);
 }
 
-export async function processHeartbeatCycle(
+async function processHeartbeatCycle(
   concurrency = 5,
 ): Promise<HeartbeatResult> {
   const { provisioningJobService } = await loadDeps();
   return provisioningJobService.processRunningHeartbeats(concurrency);
 }
 
+interface NodeHealthSummary {
+  total: number;
+  healthy: number;
+  unhealthy: number;
+}
+
+/**
+ * Health-checks every enabled `docker_nodes` row (SSH + `docker info`) and
+ * persists the resulting status. Runs on the orchestrator host that already
+ * holds `CONTAINERS_SSH_KEY`, so the node-status truth lives next to the
+ * provisioner that acts on it.
+ */
+async function processNodeHealthCheckCycle(): Promise<NodeHealthSummary> {
+  const { dockerNodeManager } = await loadDeps();
+  const result = await dockerNodeManager.healthCheckAll();
+  let healthy = 0;
+  let unhealthy = 0;
+  for (const status of result.values()) {
+    if (status === "healthy") {
+      healthy += 1;
+    } else {
+      unhealthy += 1;
+    }
+  }
+  return { total: result.size, healthy, unhealthy };
+}
+
 let running = true;
+let lastNodeHealthCheckAt = 0;
 
 async function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
@@ -139,6 +183,28 @@ async function pollCycle(
       error: error instanceof Error ? error.message : String(error),
     });
   }
+
+  // Node health checks run on a longer interval than the heartbeat cycle:
+  // SSH + `docker info` per node is expensive (~MAX_RETRIES * 10s per offline
+  // node) and only feeds capacity decisions that tolerate stale data.
+  // `lastNodeHealthCheckAt` initializes to 0 so the first poll always runs
+  // a check — we want a fresh node-status snapshot at worker startup.
+  const now = Date.now();
+  if (now - lastNodeHealthCheckAt >= config.nodeHealthIntervalMs) {
+    lastNodeHealthCheckAt = now;
+    try {
+      const summary = await processNodeHealthCheckCycle();
+      logger.info("[provisioning-worker] node health check cycle complete", {
+        total: summary.total,
+        healthy: summary.healthy,
+        unhealthy: summary.unhealthy,
+      });
+    } catch (error) {
+      logger.error("[provisioning-worker] node health check cycle failed", {
+        error: error instanceof Error ? error.message : String(error),
+      });
+    }
+  }
 }
 
 async function main(): Promise<void> {
@@ -151,6 +217,7 @@ async function main(): Promise<void> {
     pollIntervalMs: config.pollIntervalMs,
     batchSize: config.batchSize,
     runOnce: config.runOnce,
+    nodeHealthIntervalMs: config.nodeHealthIntervalMs,
   });
 
   if (config.runOnce) {
