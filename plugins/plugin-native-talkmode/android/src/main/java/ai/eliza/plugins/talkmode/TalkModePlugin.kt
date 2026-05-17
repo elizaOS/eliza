@@ -881,7 +881,7 @@ class TalkModePlugin : Plugin() {
         conn.readTimeout = 180_000
         conn.setRequestProperty("Authorization", "Bearer $token")
         conn.setRequestProperty("Content-Type", "application/json")
-        conn.setRequestProperty("Accept", "audio/wav, audio/pcm;q=0.9")
+        conn.setRequestProperty("Accept", "audio/wav")
         conn.doOutput = true
         return conn
     }
@@ -1067,7 +1067,7 @@ class TalkModePlugin : Plugin() {
 
     private fun drainPcmTrack(track: AudioTrack, framesWritten: Long, sampleRate: Int) {
         if (framesWritten <= 0L || sampleRate <= 0) return
-        val maxDrainMs = ((framesWritten * 1000L) / sampleRate).coerceAtMost(30_000L) + 1_000L
+        val maxDrainMs = (framesWritten * 1000L / sampleRate).coerceAtMost(30_000L) + 1_000L
         val deadline = SystemClock.elapsedRealtime() + maxDrainMs
         while (
             !pcmStopRequested.get() &&

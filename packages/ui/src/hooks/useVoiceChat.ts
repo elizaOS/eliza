@@ -149,6 +149,14 @@ function shouldPreferNativeTalkMode(): boolean {
   return Capacitor.isNativePlatform() || !!getElectrobunRendererRpc();
 }
 
+function shouldUseNativeAndroidLocalInferenceTts(): boolean {
+  return (
+    typeof window !== "undefined" &&
+    Capacitor.isNativePlatform() &&
+    Capacitor.getPlatform() === "android"
+  );
+}
+
 function isWindowsElectrobunRenderer(): boolean {
   return (
     typeof window !== "undefined" &&
@@ -200,6 +208,7 @@ interface VoiceTranscriptUpdateMetadata {
 export const __voiceChatInternals = {
   isWindowsElectrobunRenderer,
   shouldPreferNativeTalkMode,
+  shouldUseNativeAndroidLocalInferenceTts,
   shouldAutoRestartBrowserRecognition,
   shouldUseLocalInferenceAsr,
   resumeAudioContextForPlayback,
@@ -1312,7 +1321,7 @@ export function useVoiceChat(options: VoiceChatOptions): VoiceChatState {
 
   const speakLocalInference = useCallback(
     async (text: string, task: SpeakTask, generation: number) => {
-      if (Capacitor.isNativePlatform()) {
+      if (shouldUseNativeAndroidLocalInferenceTts()) {
         if (generation !== generationRef.current) return;
         const talkMode = getTalkModePlugin();
         let playbackStarted = false;

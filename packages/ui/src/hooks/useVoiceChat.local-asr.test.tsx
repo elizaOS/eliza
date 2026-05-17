@@ -1,6 +1,7 @@
 // @vitest-environment jsdom
 
 import { act, cleanup, renderHook } from "@testing-library/react";
+import { Capacitor } from "@capacitor/core";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { fetchWithCsrf } from "../api/csrf-client";
 import {
@@ -143,5 +144,27 @@ describe("useVoiceChat local ASR", () => {
 
     await expect(resumed).resolves.toBe(false);
     expect(context.resume).toHaveBeenCalledTimes(1);
+  });
+
+  it("uses native local inference TTS only on Android", () => {
+    const isNativePlatform = vi
+      .spyOn(Capacitor, "isNativePlatform")
+      .mockReturnValue(true);
+    const getPlatform = vi.spyOn(Capacitor, "getPlatform");
+
+    getPlatform.mockReturnValue("ios");
+    expect(
+      __voiceChatInternals.shouldUseNativeAndroidLocalInferenceTts(),
+    ).toBe(false);
+
+    getPlatform.mockReturnValue("android");
+    expect(
+      __voiceChatInternals.shouldUseNativeAndroidLocalInferenceTts(),
+    ).toBe(true);
+
+    isNativePlatform.mockReturnValue(false);
+    expect(
+      __voiceChatInternals.shouldUseNativeAndroidLocalInferenceTts(),
+    ).toBe(false);
   });
 });
