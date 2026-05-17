@@ -5,6 +5,7 @@
     "": {
       "name": "eliza",
       "dependencies": {
+        "@electric-sql/pglite": "^0.4.5",
         "@elizaos/plugin-agent-orchestrator": "workspace:*",
         "@elizaos/plugin-anthropic": "workspace:*",
         "@elizaos/plugin-elizacloud": "workspace:*",
@@ -32,6 +33,7 @@
         "elysia": "^1.4.21",
         "hono": "^4.12.18",
         "node-edge-tts": "^1.2.9",
+        "pg": "^8.20.0",
         "tailwind-merge": "^3.0.0",
         "zod": "^4.4.3",
       },

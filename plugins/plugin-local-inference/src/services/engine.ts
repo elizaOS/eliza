@@ -98,6 +98,8 @@ import type {
 	VerifierStreamEvent,
 } from "./voice/types";
 
+export { getDflashTargetMetaBlockReason } from "./dflash-target-meta";
+
 /**
  * Default DFlash draft window per round for voice turns. Small (≤8) so a
  * rollback is cheap (AGENTS.md §4 — "small chunk = low latency cost on

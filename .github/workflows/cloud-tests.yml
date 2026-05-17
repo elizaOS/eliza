@@ -13,6 +13,8 @@ on:
       - "packages/cloud-sdk/**"
       - "packages/cloud-services/**"
       - "packages/scripts/cloud/**"
+      - "package.json"
+      - "bun.lock"
       - ".github/workflows/cloud-tests.yml"
       - ".github/actions/cloud-setup-test-env/**"
   push:
@@ -24,6 +26,8 @@ on:
       - "packages/cloud-sdk/**"
       - "packages/cloud-services/**"
       - "packages/scripts/cloud/**"
+      - "package.json"
+      - "bun.lock"
       - ".github/workflows/cloud-tests.yml"
       - ".github/actions/cloud-setup-test-env/**"
 
