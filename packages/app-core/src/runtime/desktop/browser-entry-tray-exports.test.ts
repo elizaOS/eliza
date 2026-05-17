@@ -14,7 +14,7 @@ describe("app-core browser desktop tray exports", () => {
     expect(browserEntry).toContain("DESKTOP_TRAY_MENU_ITEMS");
     expect(browserEntry).toContain('from "./runtime/desktop"');
     expect(browserEntry).not.toContain('from "./index');
-    expect(browserEntry).not.toContain('from "@elizaos/ui"');
+    expect(browserEntry).not.toMatch(/from\s+["']@elizaos\/ui["']/);
     expect(browserEntry).not.toContain("DESKTOP_TRAY_MENU_ITEMS = []");
     expect(DESKTOP_TRAY_MENU_ITEMS.some((item) => item.id === "quit")).toBe(
       true,

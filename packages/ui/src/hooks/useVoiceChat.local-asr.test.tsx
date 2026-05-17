@@ -76,7 +76,7 @@ describe("useVoiceChat local ASR", () => {
           "Content-Type": "audio/wav",
           Accept: "application/json",
         }),
-        body: new Uint8Array([1, 2, 3, 4]),
+        body: expect.any(ArrayBuffer),
       }),
     );
     expect(onTranscriptPreview).toHaveBeenCalledWith(

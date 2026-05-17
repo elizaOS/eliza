@@ -1411,6 +1411,7 @@ export function App() {
           speed="8x"
           basePath="/clouds"
           poster="/clouds/poster-960.jpg"
+          animated={false}
           scrim={0.05}
           style={{ minHeight: "100vh" }}
         >

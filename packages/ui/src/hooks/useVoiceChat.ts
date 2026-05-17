@@ -651,13 +651,15 @@ export function useVoiceChat(options: VoiceChatOptions): VoiceChatState {
 
   const transcribeLocalInferenceAudio = useCallback(
     async (audio: Uint8Array, signal?: AbortSignal): Promise<string> => {
+      const audioBody = new ArrayBuffer(audio.byteLength);
+      new Uint8Array(audioBody).set(audio);
       const res = await fetchWithCsrf(resolveApiUrl("/api/asr/local-inference"), {
         method: "POST",
         headers: {
           "Content-Type": "audio/wav",
           Accept: "application/json",
         },
-        body: audio,
+        body: audioBody,
         signal,
       });
       if (!res.ok) {

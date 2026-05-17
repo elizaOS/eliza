@@ -24,6 +24,8 @@ export type CloudVideoBackgroundProps = {
   posterSizes?: string;
   /** Whether to add a high-priority image preload hint for the poster. */
   preloadPoster?: boolean;
+  /** Whether to load and play the video layer. */
+  animated?: boolean;
   /** Optional dark/light overlay scrim over the video (0–1). */
   scrim?: number;
   /** Scrim color. Default black; switch to white over the blue/orange themes. */
@@ -52,6 +54,7 @@ export function CloudVideoBackground({
   posterSrcSet,
   posterSizes = "100vw",
   preloadPoster = true,
+  animated = true,
   scrim = 0,
   scrimColor = "rgba(0, 0, 0, 1)",
   overlay,
@@ -91,6 +94,12 @@ export function CloudVideoBackground({
   }, [poster, posterSizes, preloadPoster, resolvedPosterSrcSet]);
 
   useEffect(() => {
+    if (!animated) {
+      setLoadVideo(false);
+      setVideoReady(false);
+      videoRef.current?.pause();
+      return;
+    }
     const reduced = window.matchMedia("(prefers-reduced-motion: reduce)");
     let frame = 0;
     const apply = () => {
@@ -108,7 +117,7 @@ export function CloudVideoBackground({
       window.cancelAnimationFrame(frame);
       reduced.removeEventListener("change", apply);
     };
-  }, []);
+  }, [animated]);
 
   useEffect(() => {
     setVideoReady(false);
@@ -117,11 +126,15 @@ export function CloudVideoBackground({
   useEffect(() => {
     const v = videoRef.current;
     if (!loadVideo || !v) return;
-    const p = v.play();
-    if (p && typeof (p as Promise<void>).catch === "function") {
-      (p as Promise<void>).catch(() => {
-        /* autoplay blocked; the poster image stays visible */
-      });
+    try {
+      const p = v.play();
+      if (p && typeof (p as Promise<void>).catch === "function") {
+        (p as Promise<void>).catch(() => {
+          /* autoplay blocked; the poster image stays visible */
+        });
+      }
+    } catch {
+      /* jsdom and some browsers can reject media playback synchronously. */
     }
   }, [loadVideo]);
 
@@ -158,44 +171,44 @@ export function CloudVideoBackground({
           }}
         />
       ) : null}
-      <video
-        ref={videoRef}
-        autoPlay
-        loop
-        muted
-        playsInline
-        preload={loadVideo ? "metadata" : "none"}
-        poster={poster}
-        disableRemotePlayback
-        disablePictureInPicture
-        onCanPlay={() => setVideoReady(true)}
-        onLoadedData={() => setVideoReady(true)}
-        style={{
-          position: "absolute",
-          inset: 0,
-          width: "100%",
-          height: "100%",
-          objectFit: "cover",
-          opacity: videoReady ? 1 : 0,
-          transition: "opacity 700ms ease",
-          zIndex: 1,
-        }}
-      >
-        {loadVideo
-          ? sources.map((s) => (
-              <source
-                key={`${s.src}-${s.type}`}
-                src={`${base}/${s.src}`}
-                type={s.type}
-                media={
-                  "minWidth" in s
-                    ? `(min-width: ${(s as { minWidth: number }).minWidth}px)`
-                    : undefined
-                }
-              />
-            ))
-          : null}
-      </video>
+      {animated ? (
+        <video
+          ref={videoRef}
+          autoPlay
+          loop
+          muted
+          playsInline
+          preload={loadVideo ? "metadata" : "none"}
+          poster={poster}
+          disableRemotePlayback
+          disablePictureInPicture
+          onCanPlay={() => setVideoReady(true)}
+          onLoadedData={() => setVideoReady(true)}
+          style={{
+            position: "absolute",
+            inset: 0,
+            width: "100%",
+            height: "100%",
+            objectFit: "cover",
+            opacity: videoReady ? 1 : 0,
+            transition: "opacity 700ms ease",
+            zIndex: 1,
+          }}
+        >
+          {sources.map((s) => (
+            <source
+              key={`${s.src}-${s.type}`}
+              src={`${base}/${s.src}`}
+              type={s.type}
+              media={
+                "minWidth" in s
+                  ? `(min-width: ${(s as { minWidth: number }).minWidth}px)`
+                  : undefined
+              }
+            />
+          ))}
+        </video>
+      ) : null}
       {scrim > 0 ? (
         <div
           aria-hidden="true"

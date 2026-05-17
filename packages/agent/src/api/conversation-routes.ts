@@ -1740,7 +1740,7 @@ export async function handleConversationRoutes(
               fullText: "",
               agentName: state.agentName,
             });
-            return;
+            return true;
           }
           const providerIssueReply = getChatFailureReply(err, state.logBuffer);
           const failureKind = classifyChatFailure(err, state.logBuffer);

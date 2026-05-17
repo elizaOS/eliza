@@ -6,6 +6,7 @@ export interface LocalAsrRecorder {
 type AudioContextConstructor = typeof AudioContext;
 
 type WindowWithAudioContext = Window & {
+  AudioContext?: AudioContextConstructor;
   webkitAudioContext?: AudioContextConstructor;
 };
 
@@ -43,6 +44,34 @@ function writeAscii(view: DataView, offset: number, value: string): void {
 function clampPcm16(value: number): number {
   if (!Number.isFinite(value)) return 0;
   return Math.max(-1, Math.min(1, value));
+}
+
+export type PcmAudioStats = {
+  rms: number;
+  peak: number;
+};
+
+export function measurePcmAudio(pcm: Float32Array): PcmAudioStats {
+  if (pcm.length === 0) return { rms: 0, peak: 0 };
+
+  let sumSquares = 0;
+  let peak = 0;
+
+  for (const sample of pcm) {
+    const value = Number.isFinite(sample) ? sample : 0;
+    const abs = Math.abs(value);
+    sumSquares += value * value;
+    if (abs > peak) peak = abs;
+  }
+
+  return {
+    rms: Math.sqrt(sumSquares / pcm.length),
+    peak,
+  };
+}
+
+export function isSilentPcmAudio(pcm: Float32Array): boolean {
+  return measurePcmAudio(pcm).peak < 0.0005;
 }
 
 export function encodeMonoPcm16Wav(
