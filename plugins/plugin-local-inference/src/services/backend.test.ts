@@ -291,6 +291,111 @@ describe("BackendDispatcher", () => {
 			/No backend loaded/,
 		);
 	});
+
+	it("ignores ffiStreaming when probeFfiActive is omitted", async () => {
+		const node = new FakeBackend("node-llama-cpp");
+		const server = new FakeBackend("llama-server");
+		const ffi = new FakeBackend("llama-server");
+		const d = new BackendDispatcher(
+			node,
+			server,
+			() => true,
+			() => false,
+			undefined,
+			ffi,
+			// probeFfiActive omitted
+		);
+		await d.load({ modelPath: "/m.gguf", catalog: BASE_CATALOG });
+		expect(server.loaded).toBe(true);
+		expect(ffi.loaded).toBe(false);
+	});
+
+	it("routes the llama-server decision to ffi backend when probe is true", async () => {
+		const node = new FakeBackend("node-llama-cpp");
+		const server = new FakeBackend("llama-server");
+		const ffi = new FakeBackend("llama-server");
+		const d = new BackendDispatcher(
+			node,
+			server,
+			() => true,
+			() => false,
+			undefined,
+			ffi,
+			() => true,
+		);
+		await d.load({ modelPath: "/m.gguf", catalog: BASE_CATALOG });
+		expect(ffi.loaded).toBe(true);
+		expect(server.loaded).toBe(false);
+		expect(d.activeBackendId()).toBe("llama-server");
+	});
+
+	it("keeps subprocess when probe is false even with ffi backend supplied", async () => {
+		const node = new FakeBackend("node-llama-cpp");
+		const server = new FakeBackend("llama-server");
+		const ffi = new FakeBackend("llama-server");
+		const d = new BackendDispatcher(
+			node,
+			server,
+			() => true,
+			() => false,
+			undefined,
+			ffi,
+			() => false,
+		);
+		await d.load({ modelPath: "/m.gguf", catalog: BASE_CATALOG });
+		expect(server.loaded).toBe(true);
+		expect(ffi.loaded).toBe(false);
+	});
+
+	it("does not route to ffi when decision is node-llama-cpp", async () => {
+		// Force node-llama-cpp via env override; ffi probe MUST not override
+		// (selectBackend is a TRANSPORT decision for the llama-server branch
+		// only — it does not apply to the node-llama-cpp branch).
+		const prev = process.env.ELIZA_LOCAL_BACKEND;
+		process.env.ELIZA_LOCAL_BACKEND = "node-llama-cpp";
+		try {
+			const node = new FakeBackend("node-llama-cpp");
+			const server = new FakeBackend("llama-server");
+			const ffi = new FakeBackend("llama-server");
+			const d = new BackendDispatcher(
+				node,
+				server,
+				() => true,
+				() => false,
+				undefined,
+				ffi,
+				() => true,
+			);
+			await d.load({ modelPath: "/m.gguf", catalog: BASE_CATALOG });
+			expect(node.loaded).toBe(true);
+			expect(ffi.loaded).toBe(false);
+		} finally {
+			if (prev === undefined) delete process.env.ELIZA_LOCAL_BACKEND;
+			else process.env.ELIZA_LOCAL_BACKEND = prev;
+		}
+	});
+
+	it("unloads ffi backend when switching to subprocess on a later load", async () => {
+		const node = new FakeBackend("node-llama-cpp");
+		const server = new FakeBackend("llama-server");
+		const ffi = new FakeBackend("llama-server");
+		let ffiActive = true;
+		const d = new BackendDispatcher(
+			node,
+			server,
+			() => true,
+			() => false,
+			undefined,
+			ffi,
+			() => ffiActive,
+		);
+		await d.load({ modelPath: "/m.gguf", catalog: BASE_CATALOG });
+		expect(ffi.loaded).toBe(true);
+		ffiActive = false;
+		await d.load({ modelPath: "/m2.gguf", catalog: BASE_CATALOG });
+		expect(ffi.unloads).toBe(1);
+		expect(server.loaded).toBe(true);
+	});
 });
 
 describe("LocalInferenceEngine backend fallback", () => {
