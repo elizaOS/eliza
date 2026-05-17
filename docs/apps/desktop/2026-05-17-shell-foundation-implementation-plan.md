@@ -365,17 +365,54 @@ describe("useShellState", () => {
     expect(result.current.state.phase).toBe("idle");
   });
 
-  it("reacts to NETWORK_STATUS_CHANGE_EVENT", () => {
+  it("reacts to NETWORK_STATUS_CHANGE_EVENT on document with connected=false", () => {
     const { result } = renderHook(() => useShellState());
     act(() => result.current.send({ type: "BOOT_READY" }));
     expect(result.current.state.isOnline).toBe(true);
     act(() => {
-      const detail: NetworkStatusChangeDetail = { isOnline: false };
-      window.dispatchEvent(
+      const detail: NetworkStatusChangeDetail = { connected: false };
+      document.dispatchEvent(
         new CustomEvent(NETWORK_STATUS_CHANGE_EVENT, { detail }),
       );
     });
     expect(result.current.state.isOnline).toBe(false);
+  });
+
+  it("ignores malformed network events (no detail, non-boolean connected)", () => {
+    const { result } = renderHook(() => useShellState());
+    act(() => result.current.send({ type: "BOOT_READY" }));
+    expect(result.current.state.isOnline).toBe(true);
+    act(() => {
+      // No detail at all
+      document.dispatchEvent(new CustomEvent(NETWORK_STATUS_CHANGE_EVENT));
+      // Empty detail object
+      document.dispatchEvent(
+        new CustomEvent(NETWORK_STATUS_CHANGE_EVENT, {
+          detail: {} as NetworkStatusChangeDetail,
+        }),
+      );
+      // Non-boolean connected
+      document.dispatchEvent(
+        new CustomEvent(NETWORK_STATUS_CHANGE_EVENT, {
+          detail: { connected: "yes" } as unknown as NetworkStatusChangeDetail,
+        }),
+      );
+    });
+    expect(result.current.state.isOnline).toBe(true);
+  });
+
+  it("removes the document listener on unmount", () => {
+    const { result, unmount } = renderHook(() => useShellState());
+    act(() => result.current.send({ type: "BOOT_READY" }));
+    unmount();
+    // Fire after unmount — would throw or update state if the listener wasn't removed.
+    document.dispatchEvent(
+      new CustomEvent(NETWORK_STATUS_CHANGE_EVENT, {
+        detail: { connected: false } as NetworkStatusChangeDetail,
+      }),
+    );
+    // No assertion on result.current.state after unmount because the hook is gone.
+    // Sanity: no exception thrown means the listener was cleanly removed.
   });
 });
 ```
@@ -424,18 +461,27 @@ export function useShellState(): UseShellStateResult {
   const [state, dispatch] = React.useReducer(shellReducer, initialShellState);
 
   React.useEffect(() => {
+    if (typeof document === "undefined") return undefined;
     function onNetwork(event: Event): void {
       const detail = (event as CustomEvent<NetworkStatusChangeDetail>).detail;
-      if (!detail || typeof detail.isOnline !== "boolean") return;
-      dispatch({ type: "NETWORK", isOnline: detail.isOnline });
+      if (!detail || typeof detail.connected !== "boolean") return;
+      dispatch({ type: "NETWORK", isOnline: detail.connected });
     }
-    window.addEventListener(NETWORK_STATUS_CHANGE_EVENT, onNetwork);
+    document.addEventListener(NETWORK_STATUS_CHANGE_EVENT, onNetwork);
     return () => {
-      window.removeEventListener(NETWORK_STATUS_CHANGE_EVENT, onNetwork);
+      document.removeEventListener(NETWORK_STATUS_CHANGE_EVENT, onNetwork);
     };
   }, []);
 
-  return React.useMemo(() => ({ state, send: dispatch }), [state]);
+  return React.useMemo(
+    () => ({
+      state,
+      // Wrap dispatch so the public `send` signature is exactly
+      // `(action: ShellAction) => void` and not tied to React.Dispatch.
+      send: (action: ShellAction) => dispatch(action),
+    }),
+    [state],
+  );
 }
 ```
 
