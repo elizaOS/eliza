@@ -102,7 +102,7 @@ export function shellReducer(
     }
     case "RESPONSE_DONE":
       return state.phase === "responding"
-        ? { ...state, phase: "summoned" }
+        ? { ...state, phase: "summoned", lastError: null }
         : state;
     case "RESPONSE_ERROR":
       return state.phase === "responding"

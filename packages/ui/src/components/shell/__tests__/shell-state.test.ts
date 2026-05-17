@@ -82,6 +82,24 @@ describe("shellReducer", () => {
     expect(next.phase).toBe("summoned");
   });
 
+  it("RESPONSE_DONE clears any prior lastError", () => {
+    // Simulate: send -> error -> send again -> done. After the second
+    // success, the stale error from the first round must be gone.
+    const afterError = reduce(initialShellState, [
+      { type: "BOOT_READY" },
+      { type: "OPEN" },
+      { type: "SEND", text: "first" },
+      { type: "RESPONSE_ERROR", error: "boom" },
+    ]);
+    expect(afterError.lastError).toBe("boom");
+    const afterDone = reduce(afterError, [
+      { type: "SEND", text: "second" },
+      { type: "RESPONSE_DONE" },
+    ]);
+    expect(afterDone.lastError).toBeNull();
+    expect(afterDone.phase).toBe("summoned");
+  });
+
   it("RESPONSE_ERROR moves responding -> summoned and records the error", () => {
     const responding = reduce(initialShellState, [
       { type: "BOOT_READY" },
