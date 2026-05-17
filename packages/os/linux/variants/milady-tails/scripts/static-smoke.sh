@@ -147,10 +147,10 @@ fi
 python3 - <<'PY'
 try:
     import gi
-    gi.require_version("Gtk", "4.0")
+    gi.require_version("Gtk", "3.0")
     from gi.repository import Gtk
 except (ImportError, ValueError):
-    print("skip: python gi/gtk unavailable for greeter CSS parser check")
+    print("skip: python gi/gtk unavailable for GTK 3 greeter CSS parser check")
 else:
     Gtk.CssProvider().load_from_path(
         "tails/config/chroot_local-includes/usr/share/tails/greeter/greeter.css"

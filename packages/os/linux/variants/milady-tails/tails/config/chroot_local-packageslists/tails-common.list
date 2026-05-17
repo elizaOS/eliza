@@ -28,6 +28,19 @@ libnotify-bin
 acl
 libblockdev-crypto3
 strace
+# Needed by inherited Tails Perl helpers used by Persistent Storage and IUK.
+libfunction-parameters-perl
+libipc-system-simple-perl
+libmoo-perl
+libnet-dbus-glib-perl
+libpath-tiny-perl
+libstrictures-perl
+libsyntax-keyword-junction-perl
+libsys-statistics-linux-perl
+libtype-tiny-perl
+libtypes-path-tiny-perl
+libunix-mknod-perl
+libwww-curl-perl
 # needed by the Persistent Storage frontend
 diceware
 gir1.2-handy-1
