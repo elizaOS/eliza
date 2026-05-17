@@ -40,7 +40,7 @@ const config = {
     // and (via build placeholders) the splash/launch surfaces.
     themeColor: "#FF5800",
     backgroundColor: "#FF5800",
-    shareImagePath: "/brand/ogembeds/eliza_ogembed.svg",
+    shareImagePath: "/brand/ogembeds/eliza_ogembed.png",
   },
 
   branding: {

@@ -1,8 +1,8 @@
 /**
- * OrgMemberDtos list component displaying organization members with role management.
+ * Members list component displaying organization members with role management.
  * Supports role updates and member removal with permission checks.
  *
- * @param props - OrgMemberDtos list configuration
+ * @param props - Members list configuration
  * @param props.members - Array of member objects
  * @param props.currentUserId - Current user's ID
  * @param props.currentUserRole - Current user's role
@@ -31,10 +31,10 @@ import {
 } from "@elizaos/ui";
 import { format } from "date-fns";
 import { Crown, Mail, Shield, User, UserMinus, Wallet } from "lucide-react";
-import type { OrgOrgMemberDtoDto } from "@/types/cloud-api";
+import type { OrgMemberDto } from "@/types/cloud-api";
 
-interface OrgMemberDtosListProps {
-  members: OrgOrgMemberDtoDto[];
+interface MembersListProps {
+  members: OrgMemberDto[];
   currentUserId: string;
   currentUserRole: string;
   isOwner: boolean;
@@ -42,14 +42,14 @@ interface OrgMemberDtosListProps {
   onRemove: (userId: string) => void;
 }
 
-export function OrgMemberDtosList({
+export function MembersList({
   members,
   currentUserId,
   currentUserRole,
   isOwner,
   onUpdateRole,
   onRemove,
-}: OrgMemberDtosListProps) {
+}: MembersListProps) {
   if (members.length === 0) {
     return (
       <div className="bg-[rgba(10,10,10,0.75)] border border-brand-surface p-8 text-center">
@@ -135,7 +135,7 @@ export function OrgMemberDtosList({
               </span>
             </div>
 
-            {/* OrgMemberDto Info */}
+            {/* Member Info */}
             <div className="flex-1 min-w-0 w-full">
               <div className="flex flex-col lg:flex-row items-start justify-between gap-3 lg:gap-4">
                 <div className="flex-1 min-w-0 w-full">
@@ -174,7 +174,7 @@ export function OrgMemberDtosList({
                       </p>
                     )}
                     <p className="text-xs font-mono text-white/40">
-                      OrgMemberDto since{" "}
+                      Member since{" "}
                       {format(new Date(member.created_at), "MMM d, yyyy")}
                     </p>
                   </div>
@@ -207,7 +207,7 @@ export function OrgMemberDtosList({
                         <SelectItem value="member">
                           <div className="flex items-center gap-1.5">
                             <User className="h-4 w-4" />
-                            <span className="font-mono">OrgMemberDto</span>
+                            <span className="font-mono">Member</span>
                           </div>
                         </SelectItem>
                       </SelectContent>
@@ -234,7 +234,7 @@ export function OrgMemberDtosList({
                       <AlertDialogContent className="bg-neutral-950 border border-brand-surface">
                         <AlertDialogHeader>
                           <AlertDialogTitle className="text-white font-mono">
-                            Remove OrgMemberDto
+                            Remove Member
                           </AlertDialogTitle>
                           <AlertDialogDescription className="text-white/60 font-mono text-sm">
                             Are you sure you want to remove{" "}

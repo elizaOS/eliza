@@ -177,7 +177,7 @@ export const BANNER_FILES = {
 } as const;
 
 export const OG_EMBED_FILES = {
-  eliza: "eliza_ogembed.svg",
-  cloud: "elizacloud_ogembed.svg",
-  os: "elizaos_ogembed.svg",
+  eliza: "eliza_ogembed.png",
+  cloud: "elizacloud_ogembed.png",
+  os: "elizaos_ogembed.png",
 } as const;
