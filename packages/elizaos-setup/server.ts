@@ -42,22 +42,27 @@ export interface CreateServerOptions {
   depManager?: DependencyManager;
 }
 
-export function createServer(options: CreateServerOptions = {}): Server<undefined> {
-  const backend = options.backend ?? new AdbFlasherBackend();
-  const iosBackend = options.iosBackend ?? new SideloaderIosBackend();
-  const depManager = options.depManager ?? new DependencyManager();
-  const port = options.port ?? Number(process.env.ELIZA_SETUP_PORT ?? 3743);
+export type FetchHandler = (req: Request) => Promise<Response>;
 
-  // Use Bun.serve via the global so this file can be imported by toolchains
-  // (vitest/node) that don't resolve the bare "bun" module specifier. The
-  // factory still requires the Bun runtime to actually call it.
-  const bunGlobal = (globalThis as { Bun?: { serve: typeof import("bun").serve } }).Bun;
-  if (!bunGlobal) {
-    throw new Error("createServer requires the Bun runtime (globalThis.Bun)");
-  }
-  return bunGlobal.serve({
-    port,
-    async fetch(req) {
+export interface CreateFetchHandlerDeps {
+  backend?: AdbFlasherBackend;
+  iosBackend?: SideloaderIosBackend;
+  depManager?: DependencyManager;
+}
+
+/**
+ * Build the route handler in isolation from `Bun.serve`. Exported so tests
+ * (running under vitest/node, where `globalThis.Bun` is absent) can wrap it
+ * with `node:http` and exercise the real wire with `fetch`.
+ */
+export function createFetchHandler(
+  deps: CreateFetchHandlerDeps = {},
+): FetchHandler {
+  const backend = deps.backend ?? new AdbFlasherBackend();
+  const iosBackend = deps.iosBackend ?? new SideloaderIosBackend();
+  const depManager = deps.depManager ?? new DependencyManager();
+
+  return async function fetchHandler(req: Request): Promise<Response> {
     const url = new URL(req.url);
 
     if (req.method === "OPTIONS") {
@@ -267,8 +272,25 @@ export function createServer(options: CreateServerOptions = {}): Server<undefine
     }
 
     return new Response("Not found", { status: 404, headers: cors });
-    },
-  });
+  };
+}
+
+export function createServer(options: CreateServerOptions = {}): Server<undefined> {
+  const port = options.port ?? Number(process.env.ELIZA_SETUP_PORT ?? 3743);
+  const deps: CreateFetchHandlerDeps = {};
+  if (options.backend) deps.backend = options.backend;
+  if (options.iosBackend) deps.iosBackend = options.iosBackend;
+  if (options.depManager) deps.depManager = options.depManager;
+  const handler = createFetchHandler(deps);
+
+  // Use Bun.serve via the global so this file can be imported by toolchains
+  // (vitest/node) that don't resolve the bare "bun" module specifier. The
+  // factory still requires the Bun runtime to actually call it.
+  const bunGlobal = (globalThis as { Bun?: { serve: typeof import("bun").serve } }).Bun;
+  if (!bunGlobal) {
+    throw new Error("createServer requires the Bun runtime (globalThis.Bun)");
+  }
+  return bunGlobal.serve({ port, fetch: handler });
 }
 
 // Run as a script: `bun server.ts` boots the production server on PORT.
