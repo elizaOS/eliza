@@ -216,8 +216,8 @@ const TIER_SPECS: Readonly<Record<Eliza1TierId, TierSpec>> = {
     bucket: "small",
     contextLength: 131072,
     textFile: "text/eliza-1-0_8b-128k.gguf",
-    drafterParams: "0.5B",
-    drafterSizeGb: 0.4,
+    drafterParams: "0.1B",
+    drafterSizeGb: 0.1,
     drafterMinRamGb: 2,
     // WS2: vision is enabled on the smallest viable tier. The Q4_K_M
     // mmproj for 0.8B is ~220 MB (see ELIZA_1_BUNDLE_EXTRAS.json), which
@@ -239,8 +239,8 @@ const TIER_SPECS: Readonly<Record<Eliza1TierId, TierSpec>> = {
     bucket: "small",
     contextLength: 131072,
     textFile: "text/eliza-1-2b-128k.gguf",
-    drafterParams: "0.8B",
-    drafterSizeGb: 0.5,
+    drafterParams: "0.3B",
+    drafterSizeGb: 0.3,
     drafterMinRamGb: 4,
     // WS2: vision enabled — the 2B tier is the standard "small-phone"
     // default for first-run users, so camera-to-reaction and screen
