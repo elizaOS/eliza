@@ -7,7 +7,6 @@ flag="${run_dir}/persistence-maintenance"
 runtime_dir=/run/user/1000
 bus="unix:path=${runtime_dir}/bus"
 units="elizaos-agent.service elizaos-renderer.service milady.service"
-patterns='/opt/milady/bin/bun|/opt/milady/bin/launcher|/usr/local/lib/elizaos/elizaos-webkit-shell|/usr/local/lib/elizaos/start-elizaos-|renderer-server[.]mjs|eliza-dist/entry[.]js'
 
 require_root() {
     if [ "$(id -u)" -ne 0 ]; then
@@ -27,10 +26,8 @@ user_systemctl() {
 
 kill_elizaos_processes() {
     user_systemctl kill --kill-whom=all --signal=TERM ${units}
-    pkill -TERM -u amnesia -f "${patterns}" >/dev/null 2>&1 || true
     sleep 2
     user_systemctl kill --kill-whom=all --signal=KILL ${units}
-    pkill -KILL -u amnesia -f "${patterns}" >/dev/null 2>&1 || true
 }
 
 start_elizaos_units() {

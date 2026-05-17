@@ -6,58 +6,39 @@ interval="${MILADY_KEEPER_INTERVAL:-5}"
 runtime_dir=/run/user/1000
 bus="unix:path=${runtime_dir}/bus"
 maintenance_flag=/run/elizaos/persistence-maintenance
-config_dir=/home/amnesia/.config
-systemd_config_dir="${config_dir}/systemd"
-user_unit_dir="${systemd_config_dir}/user"
-
-ensure_plain_dir() {
-    path="$1"
-
-    if [ -L "${path}" ]; then
-        rm -f -- "${path}"
-    elif [ -e "${path}" ] && [ ! -d "${path}" ]; then
-        rm -f -- "${path}"
-    fi
-
-    install -d -o amnesia -g amnesia -m 0700 "${path}"
-}
-
-prepare_user_unit_dir() {
-    ensure_plain_dir "${config_dir}"
-    ensure_plain_dir "${systemd_config_dir}"
-    ensure_plain_dir "${user_unit_dir}"
-    ensure_plain_dir "${user_unit_dir}/default.target.wants"
-    ensure_plain_dir "${user_unit_dir}/desktop.target.wants"
-}
 
 clear_user_unit_override() {
-    prepare_user_unit_dir
+    runuser -u amnesia -- env HOME=/home/amnesia sh -eu <<'EOF'
+user_unit_dir="${HOME}/.config/systemd/user"
+mkdir -p "${user_unit_dir}/default.target.wants" \
+    "${user_unit_dir}/desktop.target.wants"
 
-    for path in \
-        "${user_unit_dir}/elizaos-agent.service" \
-        "${user_unit_dir}/elizaos-agent.service.d" \
-        "${user_unit_dir}/default.target.wants/elizaos-agent.service" \
-        "${user_unit_dir}/elizaos-renderer.service" \
-        "${user_unit_dir}/elizaos-renderer.service.d" \
-        "${user_unit_dir}/default.target.wants/elizaos-renderer.service" \
-        "${user_unit_dir}/milady.service" \
-        "${user_unit_dir}/milady.service.d" \
-        "${user_unit_dir}/default.target.wants/milady.service" \
-        "${user_unit_dir}/desktop.target.wants/milady.service" \
-        "${user_unit_dir}/tails-dump-user-env.service" \
-        "${user_unit_dir}/tails-dump-user-env.service.d" \
-        "${user_unit_dir}/default.target.wants/tails-dump-user-env.service"
-    do
-        [ -e "${path}" ] || [ -L "${path}" ] || continue
-        rm -rf -- "${path}"
-    done
+for path in \
+    "${user_unit_dir}/elizaos-agent.service" \
+    "${user_unit_dir}/elizaos-agent.service.d" \
+    "${user_unit_dir}/default.target.wants/elizaos-agent.service" \
+    "${user_unit_dir}/elizaos-renderer.service" \
+    "${user_unit_dir}/elizaos-renderer.service.d" \
+    "${user_unit_dir}/default.target.wants/elizaos-renderer.service" \
+    "${user_unit_dir}/milady.service" \
+    "${user_unit_dir}/milady.service.d" \
+    "${user_unit_dir}/default.target.wants/milady.service" \
+    "${user_unit_dir}/desktop.target.wants/milady.service" \
+    "${user_unit_dir}/tails-dump-user-env.service" \
+    "${user_unit_dir}/tails-dump-user-env.service.d" \
+    "${user_unit_dir}/default.target.wants/tails-dump-user-env.service"
+do
+    [ -e "${path}" ] || [ -L "${path}" ] || continue
+    rm -rf -- "${path}" || true
+done
+EOF
 }
 
 while :; do
     if [ -e "${maintenance_flag}" ]; then
         :
     elif [ -S "${runtime_dir}/bus" ]; then
-        clear_user_unit_override
+        clear_user_unit_override || true
         runuser -u amnesia -- env \
             HOME=/home/amnesia \
             XDG_RUNTIME_DIR="${runtime_dir}" \

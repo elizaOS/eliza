@@ -378,8 +378,17 @@ grep -q 'run_dir=/run/elizaos' \
     tails/config/chroot_local-includes/usr/local/lib/elizaos/persistence-maintenance
 grep -Fq 'flag="${run_dir}/persistence-maintenance"' \
     tails/config/chroot_local-includes/usr/local/lib/elizaos/persistence-maintenance
-grep -q 'pkill -TERM -u amnesia' \
+grep -q 'systemctl --user "$@"' \
     tails/config/chroot_local-includes/usr/local/lib/elizaos/persistence-maintenance
+grep -q 'kill --kill-whom=all --signal=TERM' \
+    tails/config/chroot_local-includes/usr/local/lib/elizaos/persistence-maintenance
+grep -q 'kill --kill-whom=all --signal=KILL' \
+    tails/config/chroot_local-includes/usr/local/lib/elizaos/persistence-maintenance
+if grep -q 'pkill .* -u amnesia' \
+    tails/config/chroot_local-includes/usr/local/lib/elizaos/persistence-maintenance; then
+    echo "persistence-maintenance must not use broad pkill patterns against the live user." >&2
+    exit 1
+fi
 helper_mode="$(stat -c %a tails/config/chroot_local-includes/usr/local/lib/elizaos/persistence-maintenance)"
 if [ "${helper_mode}" != "755" ]; then
     echo "persistence-maintenance must be mode 755, got ${helper_mode}" >&2
@@ -432,8 +441,15 @@ if [ -e tails/chroot/etc/systemd/system/display-manager.service ]; then
 fi
 grep -q 'clear_user_unit_override' \
     tails/config/chroot_local-includes/usr/local/lib/elizaos/milady-keeper
+grep -q 'runuser -u amnesia -- env HOME=/home/amnesia sh -eu' \
+    tails/config/chroot_local-includes/usr/local/lib/elizaos/milady-keeper
 grep -Fq 'rm -rf -- "${path}"' \
     tails/config/chroot_local-includes/usr/local/lib/elizaos/milady-keeper
+if grep -q 'ensure_plain_dir\|install -d -o amnesia\|chown .*amnesia' \
+    tails/config/chroot_local-includes/usr/local/lib/elizaos/milady-keeper; then
+    echo "milady-keeper must not mutate /home/amnesia paths as root." >&2
+    exit 1
+fi
 grep -q 'systemctl --user start --no-block milady.service' \
     tails/config/chroot_local-includes/usr/local/lib/elizaos/milady-keeper
 grep -q 'systemctl --user start --no-block elizaos-agent.service' \
