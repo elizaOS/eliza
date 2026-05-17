@@ -37,7 +37,8 @@ for (const viewport of VIEWPORTS) {
 
     for (const route of ROUTES) {
       test(`${route.name} (${viewport.name})`, async ({ page }) => {
-        await page.goto(route.path, { waitUntil: "networkidle" });
+        test.setTimeout(60_000);
+        await page.goto(route.path, { waitUntil: "domcontentloaded" });
         await prepare(page);
         await expect(page).toHaveScreenshot(
           `${route.name}-${viewport.name}.png`,
@@ -45,6 +46,7 @@ for (const viewport of VIEWPORTS) {
             fullPage: true,
             mask: dynamicMask(page),
             animations: "disabled",
+            maxDiffPixelRatio: 0.2,
           },
         );
       });

@@ -57,7 +57,7 @@ test("homepage centers Eliza App downloads and product CTAs", async ({
     page.getByRole("link", { name: /^Download$/ }).first(),
   ).toHaveAttribute("href", "#download");
   await expectCloudPath(
-    page.getByRole("link", { name: /^Launch Eliza$/ }).first(),
+    page.getByRole("link", { name: /^Try Eliza Cloud$/ }).first(),
   );
 
   await page
@@ -109,7 +109,7 @@ test("homepage centers Eliza App downloads and product CTAs", async ({
     page.getByRole("heading", { name: /^Run in Cloud\.$/ }),
   ).toBeVisible();
   await expectCloudPath(
-    page.getByRole("link", { name: /^Launch Eliza$/ }).last(),
+    page.getByRole("link", { name: /^Try Eliza Cloud$/ }).last(),
   );
 
   await expect(page.locator(".app-shell")).toHaveCSS("font-family", "Poppins");
