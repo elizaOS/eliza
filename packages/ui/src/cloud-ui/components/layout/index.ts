@@ -24,8 +24,14 @@ export {
   DashboardSidebar,
   type DashboardSidebarProps,
 } from "./dashboard-sidebar";
-export { DashboardSidebarNavigationItem } from "./dashboard-sidebar-item";
-export { DashboardSidebarNavigationSection } from "./dashboard-sidebar-section";
+export {
+  DashboardSidebarNavigationItem,
+  type DashboardSidebarNavigationItemProps,
+} from "./dashboard-sidebar-item";
+export {
+  DashboardSidebarNavigationSection,
+  type DashboardSidebarNavigationSectionProps,
+} from "./dashboard-sidebar-section";
 export type {
   DashboardSidebarItem,
   DashboardSidebarLinkRenderer,

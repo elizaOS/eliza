@@ -1,0 +1,61 @@
+import type { ReactNode } from "react";
+import { cn } from "../../lib/utils";
+import { Skeleton } from "../skeleton";
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "../table";
+
+interface DashboardTableSkeletonColumn {
+  key: string;
+  label: ReactNode;
+  cellClassName?: string;
+  skeletonClassName?: string;
+}
+
+interface DashboardTableSkeletonProps {
+  columns: readonly DashboardTableSkeletonColumn[];
+  rows?: number;
+  className?: string;
+}
+
+export function DashboardTableSkeleton({
+  columns,
+  rows = 3,
+  className,
+}: DashboardTableSkeletonProps) {
+  return (
+    <div className={cn("overflow-hidden rounded-md border", className)}>
+      <Table>
+        <TableHeader>
+          <TableRow>
+            {columns.map((column) => (
+              <TableHead key={column.key} className={column.cellClassName}>
+                {column.label}
+              </TableHead>
+            ))}
+          </TableRow>
+        </TableHeader>
+        <TableBody>
+          {Array.from({ length: rows }, (_, rowIndex) => (
+            <TableRow key={`dashboard-table-skeleton-${rowIndex}`}>
+              {columns.map((column) => (
+                <TableCell key={column.key} className={column.cellClassName}>
+                  <Skeleton
+                    className={cn("h-4 w-24", column.skeletonClassName)}
+                  />
+                </TableCell>
+              ))}
+            </TableRow>
+          ))}
+        </TableBody>
+      </Table>
+    </div>
+  );
+}
+
+export type { DashboardTableSkeletonColumn, DashboardTableSkeletonProps };

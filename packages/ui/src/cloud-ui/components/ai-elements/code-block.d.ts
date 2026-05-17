@@ -10,30 +10,16 @@ import { Button } from "../button";
  * @param props.children - Optional child components (e.g., copy button)
  */
 export type CodeBlockProps = HTMLAttributes<HTMLDivElement> & {
-  code: string;
-  language: string;
-  showLineNumbers?: boolean;
-  children?: ReactNode;
+    code: string;
+    language: string;
+    showLineNumbers?: boolean;
+    children?: ReactNode;
 };
-export declare const CodeBlock: ({
-  code,
-  language,
-  showLineNumbers,
-  className,
-  children,
-  ...props
-}: CodeBlockProps) => import("react/jsx-runtime").JSX.Element;
+export declare const CodeBlock: ({ code, language, showLineNumbers, className, children, ...props }: CodeBlockProps) => import("react/jsx-runtime").JSX.Element;
 export type CodeBlockCopyButtonProps = ComponentProps<typeof Button> & {
-  onCopy?: () => void;
-  onError?: (error: Error) => void;
-  timeout?: number;
+    onCopy?: () => void;
+    onError?: (error: Error) => void;
+    timeout?: number;
 };
-export declare const CodeBlockCopyButton: ({
-  onCopy,
-  onError,
-  timeout,
-  children,
-  className,
-  ...props
-}: CodeBlockCopyButtonProps) => import("react/jsx-runtime").JSX.Element;
+export declare const CodeBlockCopyButton: ({ onCopy, onError, timeout, children, className, ...props }: CodeBlockCopyButtonProps) => import("react/jsx-runtime").JSX.Element;
 //# sourceMappingURL=code-block.d.ts.map

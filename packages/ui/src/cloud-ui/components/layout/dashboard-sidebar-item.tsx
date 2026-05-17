@@ -9,7 +9,7 @@ import type {
   DashboardSidebarLinkRenderer,
 } from "./dashboard-sidebar-types";
 
-interface DashboardSidebarNavigationItemProps {
+export interface DashboardSidebarNavigationItemProps {
   item: DashboardSidebarItem;
   activePath: string;
   authenticated: boolean;

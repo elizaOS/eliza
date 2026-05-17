@@ -21,30 +21,21 @@
 import * as React from "react";
 import { BrandTabsContent } from "./brand-tabs";
 export interface TabItem {
-  value: string;
-  label: string;
-  icon?: React.ReactNode;
-  disabled?: boolean;
+    value: string;
+    label: string;
+    icon?: React.ReactNode;
+    disabled?: boolean;
 }
 interface BrandTabsResponsiveProps {
-  id: string;
-  tabs: TabItem[];
-  value?: string;
-  defaultValue?: string;
-  onValueChange?: (value: string) => void;
-  children: React.ReactNode;
-  className?: string;
-  breakpoint?: "sm" | "md" | "lg";
+    id: string;
+    tabs: TabItem[];
+    value?: string;
+    defaultValue?: string;
+    onValueChange?: (value: string) => void;
+    children: React.ReactNode;
+    className?: string;
+    breakpoint?: "sm" | "md" | "lg";
 }
-export declare function BrandTabsResponsive({
-  id,
-  tabs,
-  value,
-  defaultValue,
-  onValueChange,
-  children,
-  className,
-  breakpoint,
-}: BrandTabsResponsiveProps): import("react/jsx-runtime").JSX.Element | null;
+export declare function BrandTabsResponsive({ id, tabs, value, defaultValue, onValueChange, children, className, breakpoint, }: BrandTabsResponsiveProps): import("react/jsx-runtime").JSX.Element | null;
 export { BrandTabsContent };
 //# sourceMappingURL=brand-tabs-responsive.d.ts.map

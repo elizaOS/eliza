@@ -91,6 +91,7 @@ export interface LogViewerProps {
   showRetryOnError?: boolean;
   emptyState?: LogViewerEmptyState;
   filteredEmptyState?: LogViewerEmptyState;
+  isFilteredEmpty?: boolean;
   lines?: string[];
   entries?: LogViewerStructuredEntry[];
   onRefresh?: () => void;
@@ -188,6 +189,7 @@ export function LogViewer({
   showRetryOnError = true,
   emptyState = { title: "No logs available" },
   filteredEmptyState = { title: "No logs match your filter" },
+  isFilteredEmpty: isFilteredEmptyOverride,
   lines,
   entries,
   onRefresh,
@@ -212,8 +214,9 @@ export function LogViewer({
 }: LogViewerProps) {
   const itemCount = entries?.length ?? lines?.length ?? 0;
   const isFilteredEmpty =
-    itemCount === 0 &&
-    Boolean(search?.value || (levelFilter && levelFilter.value !== "all"));
+    isFilteredEmptyOverride ??
+    (itemCount === 0 &&
+      Boolean(search?.value || (levelFilter && levelFilter.value !== "all")));
   const hasData = itemCount > 0;
   const renderedLines = React.useMemo(() => {
     const seen = new Map<string, number>();

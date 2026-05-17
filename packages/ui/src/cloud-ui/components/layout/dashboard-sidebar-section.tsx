@@ -15,7 +15,7 @@ import type {
   DashboardSidebarSection as DashboardSidebarSectionData,
 } from "./dashboard-sidebar-types";
 
-interface DashboardSidebarNavigationSectionProps {
+export interface DashboardSidebarNavigationSectionProps {
   section: DashboardSidebarSectionData;
   activePath: string;
   authenticated: boolean;
