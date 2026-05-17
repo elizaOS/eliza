@@ -1143,7 +1143,7 @@ export function ElizaChatInterface({
             description: data.error || "Failed to upload files",
           });
         }
-      } catch (error) {
+      } catch (_error) {
         toast.error("Upload failed", {
           description: "Network error - please try again",
         });
@@ -1197,7 +1197,7 @@ export function ElizaChatInterface({
         // Auto-send the transcribed message (will create room if needed)
         // Use ref to avoid TDZ - sendMessage is defined later in the component
         await sendMessageRef.current?.(transcript);
-      } catch (error) {
+      } catch (_error) {
         toast.error("Failed to process audio. Please try again.");
       } finally {
         // Cleanup: Clear recording and reset processing state

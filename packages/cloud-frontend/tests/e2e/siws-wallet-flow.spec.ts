@@ -23,7 +23,7 @@ async function requireLocalCloud() {
     signal: AbortSignal.timeout(5_000),
   }).catch(() => null);
   test.skip(
-    !health || !health.ok,
+    !health?.ok,
     `local cloud API is not reachable at ${apiBaseUrl}/api/health`,
   );
 }

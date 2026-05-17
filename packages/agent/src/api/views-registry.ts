@@ -11,11 +11,13 @@ import { promises as fs } from "node:fs";
 import path from "node:path";
 import type { IAgentRuntime } from "@elizaos/core";
 import { logger, type Plugin, type ViewDeclaration } from "@elizaos/core";
-import { BUILTIN_VIEWS } from "./builtin-views.ts";
 import type { AgentPlatform } from "./platform-detect.ts";
-import { viewSearchIndex } from "./views-search-index.ts";
+
 export type { ViewRegistryEntry } from "./view-registry-types.ts";
+
+import { BUILTIN_VIEWS } from "./builtin-views.ts";
 import type { ViewRegistryEntry } from "./view-registry-types.ts";
+import { viewSearchIndex } from "./views-search-index.ts";
 
 /** Hero image extensions checked in order when `heroImagePath` is not set. */
 const HERO_EXTENSIONS = [".webp", ".png", ".jpg", ".jpeg", ".svg"] as const;
@@ -37,7 +39,6 @@ function escapeSvgText(value: string): string {
     .replaceAll('"', "&quot;")
     .replaceAll("'", "&apos;");
 }
-
 
 /** Module-level registry storage. Keyed by view id. */
 const registry = new Map<string, ViewRegistryEntry>();

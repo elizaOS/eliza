@@ -158,7 +158,7 @@ export function BillingTab({ user }: BillingTabProps) {
 
         toast.success("Redirecting to payment page...");
         window.location.href = data.payLink;
-      } catch (error) {
+      } catch (_error) {
         toast.error("Failed to create crypto payment");
         setIsProcessingCheckout(false);
       }

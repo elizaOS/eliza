@@ -46,15 +46,31 @@ const SDK_TYPED_ROUTES = new Map(
     ["POST", "/api/v1/eliza/agents/{agentId}/snapshot", "createAgentSnapshot"],
     ["GET", "/api/v1/eliza/agents/{agentId}/backups", "listAgentBackups"],
     ["POST", "/api/v1/eliza/agents/{agentId}/restore", "restoreAgentBackup"],
-    ["POST", "/api/v1/eliza/agents/{agentId}/pairing-token", "getAgentPairingToken"],
-    ["POST", "/api/v1/eliza/gateway-relay/sessions", "registerGatewayRelaySession"],
-    ["GET", "/api/v1/eliza/gateway-relay/sessions/{sessionId}/next", "pollGatewayRelayRequest"],
+    [
+      "POST",
+      "/api/v1/eliza/agents/{agentId}/pairing-token",
+      "getAgentPairingToken",
+    ],
+    [
+      "POST",
+      "/api/v1/eliza/gateway-relay/sessions",
+      "registerGatewayRelaySession",
+    ],
+    [
+      "GET",
+      "/api/v1/eliza/gateway-relay/sessions/{sessionId}/next",
+      "pollGatewayRelayRequest",
+    ],
     [
       "POST",
       "/api/v1/eliza/gateway-relay/sessions/{sessionId}/responses",
       "submitGatewayRelayResponse",
     ],
-    ["DELETE", "/api/v1/eliza/gateway-relay/sessions/{sessionId}", "disconnectGatewayRelaySession"],
+    [
+      "DELETE",
+      "/api/v1/eliza/gateway-relay/sessions/{sessionId}",
+      "disconnectGatewayRelaySession",
+    ],
     ["GET", "/api/v1/jobs/{jobId}", "getJob"],
     ["GET", "/api/v1/user", "getUser"],
     ["PATCH", "/api/v1/user", "updateUser"],
@@ -67,7 +83,13 @@ const SDK_TYPED_ROUTES = new Map(
 );
 
 async function readGeneratedRouteMethods(cloudRoot) {
-  const sourcePath = path.join(cloudRoot, "packages", "sdk", "src", "public-routes.ts");
+  const sourcePath = path.join(
+    cloudRoot,
+    "packages",
+    "sdk",
+    "src",
+    "public-routes.ts",
+  );
   const source = await readFile(sourcePath, "utf8");
   const endpointRe =
     /^\s+"([^"]+)": \{ method: "([^"]+)", path: "([^"]+)", methodName: "([^"]+)"/gm;
@@ -83,7 +105,9 @@ function groupRows(rows) {
   const groups = new Map();
   for (const row of rows) {
     const parts = row.route.split("/").filter(Boolean);
-    const key = row.route.startsWith("/api/v1/") ? parts[2] : (parts[1] ?? "root");
+    const key = row.route.startsWith("/api/v1/")
+      ? parts[2]
+      : (parts[1] ?? "root");
     if (!groups.has(key)) groups.set(key, []);
     groups.get(key).push(row);
   }
@@ -93,7 +117,9 @@ function groupRows(rows) {
 function table(rows, columns) {
   const header = `| ${columns.map((column) => column.title).join(" | ")} |`;
   const separator = `| ${columns.map(() => "---").join(" | ")} |`;
-  const body = rows.map((row) => `| ${columns.map((column) => column.value(row)).join(" | ")} |`);
+  const body = rows.map(
+    (row) => `| ${columns.map((column) => column.value(row)).join(" | ")} |`,
+  );
   return [header, separator, ...body].join("\n");
 }
 
@@ -114,7 +140,9 @@ function coverageTable(rows) {
   ]);
 }
 
-const { cloudRoot, apiRoot, relativeApiRoot } = await findCloudApiRoot(process.cwd());
+const { cloudRoot, apiRoot, relativeApiRoot } = await findCloudApiRoot(
+  process.cwd(),
+);
 const generatedRoutes = await readGeneratedRouteMethods(cloudRoot);
 const routeFiles = await walkRoutes(apiRoot);
 const routePairs = [];
@@ -123,24 +151,37 @@ for (const routeFile of routeFiles) {
   const source = await readFile(routeFile.fullPath, "utf8");
   const route = routePathFromSegments(routeFile.relativeSegments);
   const file = path.relative(cloudRoot, routeFile.fullPath);
-  for (const method of await extractMethods(source, routeFile.fullPath, cloudRoot)) {
+  for (const method of await extractMethods(
+    source,
+    routeFile.fullPath,
+    cloudRoot,
+  )) {
     if (method === "OPTIONS" || method === "HEAD") continue;
     routePairs.push({ method, route, file, scope: scopeForRoute(route) });
   }
 }
 
-routePairs.sort((a, b) => `${a.route} ${a.method}`.localeCompare(`${b.route} ${b.method}`));
+routePairs.sort((a, b) =>
+  `${a.route} ${a.method}`.localeCompare(`${b.route} ${b.method}`),
+);
 
-const publicPairs = routePairs.filter((row) => isGeneratedPublicRoute(row.route));
+const publicPairs = routePairs.filter((row) =>
+  isGeneratedPublicRoute(row.route),
+);
 const nonPublicPairs = routePairs.filter((row) => row.scope !== "public");
 const coveredRoutePairs = routePairs
   .filter((row) => generatedRoutes.has(`${row.method} ${row.route}`))
-  .map((row) => ({ ...row, sdkMethod: generatedRoutes.get(`${row.method} ${row.route}`) }));
+  .map((row) => ({
+    ...row,
+    sdkMethod: generatedRoutes.get(`${row.method} ${row.route}`),
+  }));
 const missingRoutePairs = publicPairs.filter(
   (row) => !generatedRoutes.has(`${row.method} ${row.route}`),
 );
 const generatedRoutesWithoutRouteFile = Array.from(generatedRoutes.entries())
-  .filter(([key]) => !routePairs.some((row) => `${row.method} ${row.route}` === key))
+  .filter(
+    ([key]) => !routePairs.some((row) => `${row.method} ${row.route}` === key),
+  )
   .map(([key, sdkMethod]) => ({ key, sdkMethod }));
 const generatedNonPublicRoutes = Array.from(generatedRoutes.entries())
   .map(([key, sdkMethod]) => {
@@ -150,7 +191,9 @@ const generatedNonPublicRoutes = Array.from(generatedRoutes.entries())
   })
   .filter((row) => !isGeneratedPublicRoute(row.route));
 const highLevelRoutesWithoutRouteFile = Array.from(SDK_TYPED_ROUTES.entries())
-  .filter(([key]) => !routePairs.some((row) => `${row.method} ${row.route}` === key))
+  .filter(
+    ([key]) => !routePairs.some((row) => `${row.method} ${row.route}` === key),
+  )
   .map(([key, sdkMethod]) => ({ key, sdkMethod }));
 
 const routeScopeSummary = Array.from(
@@ -209,7 +252,9 @@ if (missingRoutePairs.length === 0) {
 }
 
 lines.push("## Non-Public Route Inventory", "");
-for (const [scope, rows] of groupRows(routePairs.filter((row) => row.scope !== "public"))) {
+for (const [scope, rows] of groupRows(
+  routePairs.filter((row) => row.scope !== "public"),
+)) {
   lines.push(`### ${scope}`, "", routeTable(rows), "");
 }
 

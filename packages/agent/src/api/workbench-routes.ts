@@ -1,18 +1,22 @@
-import type { AgentRuntime, Task, UUID } from "@elizaos/core";
-import type { TriggerSummary } from "../triggers/types.ts";
+import type { UUID } from "@elizaos/core";
 import {
   PostWorkbenchTodoCompleteRequestSchema,
   PostWorkbenchTodoRequestSchema,
   PutWorkbenchTodoRequestSchema,
 } from "@elizaos/shared";
+import type { TriggerSummary } from "../triggers/types.ts";
+
+export type { WorkbenchRouteContext } from "./workbench-context.ts";
+
+import type {
+  WorkbenchRouteContext,
+  WorkbenchTodoView,
+} from "./workbench-context.ts";
 import { WORKBENCH_TODO_TAG } from "./workbench-helpers.ts";
 import { handleWorkbenchVfsRoutes } from "./workbench-vfs-routes.ts";
-export type { WorkbenchRouteContext } from "./workbench-context.ts";
-import type { WorkbenchRouteContext, WorkbenchTodoView } from "./workbench-context.ts";
 
 export const WORKBENCH_BOOTSTRAP_TODO_NAME =
   "Get the user's name and understand what they need help with";
-
 
 // ---------------------------------------------------------------------------
 // Route handler

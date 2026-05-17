@@ -58,7 +58,7 @@ export function AppUsers({ appId }: AppUsersProps) {
       if (visitorsData.success) {
         setVisitors(visitorsData.visitors);
       }
-    } catch (error) {
+    } catch (_error) {
       toast.error("Failed to load app users");
     } finally {
       setIsLoading(false);

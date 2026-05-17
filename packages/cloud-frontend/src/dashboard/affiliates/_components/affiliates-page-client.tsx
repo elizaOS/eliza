@@ -77,7 +77,7 @@ export function AffiliatesPageClient() {
           await createAffiliateCode();
         }
       }
-    } catch (e) {
+    } catch (_e) {
       toast.error("Failed to load affiliate data");
     } finally {
       setLoading(false);

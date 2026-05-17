@@ -734,20 +734,22 @@ body {
 }
 
 .app-display {
-  max-width: 11ch;
-  font-size: clamp(3.5rem, 9vw, 9.5rem);
+  max-width: 12.5ch;
+  font-size: 3.35rem;
   line-height: 0.9;
-  overflow-wrap: anywhere;
+  overflow-wrap: normal;
+  word-break: normal;
 }
 
 .app-h2 {
-  font-size: clamp(2.45rem, 5.4vw, 5.75rem);
+  font-size: 2.45rem;
   line-height: 0.95;
 }
 
 .app-lede {
   max-width: 45rem;
   color: rgba(8, 9, 12, 0.74);
+  font-size: 1.2rem;
 }
 
 .app-cta {
@@ -844,7 +846,7 @@ body {
 .app-section-copy {
   max-width: 48rem;
   color: rgba(8, 9, 12, 0.66);
-  font-size: clamp(1.05rem, 1.6vw, 1.3rem);
+  font-size: 1.1rem;
   line-height: 1.45;
 }
 
@@ -1000,7 +1002,7 @@ body {
 
 .app-product-cta h2 {
   margin: 1.2rem 0 0;
-  font-size: clamp(2rem, 4vw, 4rem);
+  font-size: 2.35rem;
   line-height: 0.98;
 }
 
@@ -1022,7 +1024,61 @@ body {
   }
 
   .app-display {
-    font-size: clamp(7rem, 8vw, 10.5rem);
+    font-size: 7.75rem;
+  }
+
+  .app-h2 {
+    font-size: 5.25rem;
+  }
+
+  .app-product-cta h2 {
+    font-size: 4rem;
+  }
+}
+
+@media (min-width: 760px) {
+  .app-display {
+    font-size: 5.75rem;
+  }
+
+  .app-h2 {
+    font-size: 4.25rem;
+  }
+
+  .app-lede {
+    font-size: 1.6rem;
+  }
+
+  .app-section-copy {
+    font-size: 1.2rem;
+  }
+
+  .app-product-cta h2 {
+    font-size: 3.25rem;
+  }
+}
+
+@media (min-width: 1200px) {
+  .app-display {
+    font-size: 7rem;
+  }
+
+  .app-h2 {
+    font-size: 4.8rem;
+  }
+}
+
+@media (min-width: 1600px) {
+  .app-display {
+    font-size: 7.75rem;
+  }
+
+  .app-h2 {
+    font-size: 5.25rem;
+  }
+
+  .app-product-cta h2 {
+    font-size: 4rem;
   }
 }
 
@@ -1061,7 +1117,6 @@ body {
 
   .app-display {
     max-width: 100%;
-    font-size: clamp(3.1rem, 16vw, 5.8rem);
   }
 
   .app-lede {
