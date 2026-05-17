@@ -66,20 +66,54 @@ and build chroot both contain them. The next artifact must be an incremental
 repack from the fixed source/chroot, followed by another QEMU normal-boot
 proof.
 
+## Latest Debug Notes
+
+The latest binary-only repack produced a fresh canonical artifact at
+`tails/binary.iso` and `out/binary.iso` with hash:
+
+```text
+31170d32ff6a242d36db3eac276584554df312aa98f6543013f64b844684eca5
+```
+
+Do not use the older named ISO copy in `out/` for validation; it can be stale.
+
+That fresh artifact contains the D-Bus, polkit, and update-service drop-ins,
+but normal QEMU graphical boot still did not reach the greeter. A direct
+kernel/initrd debug boot showed:
+
+- `elizaos-update-verify.service` is fixed and no longer blocks boot before
+  Persistent Storage exists.
+- `dbus.service` still exits with `status=200/CHDIR` when started by systemd.
+- `polkit.service` also exits with `status=200/CHDIR` when started by systemd.
+- `gdm.service` later fails its `generate-config` pre-start step with
+  `status=127`, so the graphical greeter cannot be trusted yet.
+
+An `init=/bin/sh` root shell inside the same root filesystem proved that the
+filesystem, service users, `/run/dbus`, D-Bus binary, polkit binary, and GDM
+`generate-config` script all work when invoked directly. The remaining blocker
+is therefore the systemd service-spawn environment in the live boot, not the
+app runtime, branding assets, or missing binaries.
+
+Before another ISO rebuild, fix or live-test the systemd service-spawn issue.
+The next rebuild should only happen after source/chroot changes have a specific
+reason to address that blocker.
+
 ## Tonight Validation Plan
 
 The fast path to a credible demo is:
 
-1. Repack the current fixed chroot into a fresh `tails/binary.iso`.
-2. Treat `tails/binary.iso` as the canonical fresh artifact, because older
+1. Fix or live-test the remaining systemd service-spawn issue for D-Bus,
+   polkit, and GDM.
+2. Repack the current fixed chroot into a fresh `tails/binary.iso`.
+3. Treat `tails/binary.iso` as the canonical fresh artifact, because older
    named ISO copies in `out/` can be stale.
-3. Point `out/binary.iso` at that exact artifact for test scripts.
-4. Verify the built squashfs contains the D-Bus, polkit, update verifier, and
+4. Point `out/binary.iso` at that exact artifact for test scripts.
+5. Verify the built squashfs contains the D-Bus, polkit, update verifier, and
    health-check fixes.
-5. Boot the exact artifact in QEMU.
-6. If normal graphical boot fails, use the built-in direct-kernel debug boot
+6. Boot the exact artifact in QEMU.
+7. If normal graphical boot fails, use the built-in direct-kernel debug boot
    to collect serial logs before changing code.
-7. Only flash USB after QEMU proves the rebuilt artifact reaches the intended
+8. Only flash USB after QEMU proves the rebuilt artifact reaches the intended
    elizaOS greeter/session/app path.
 
 The easy win before spending more build/test time is keeping this document,
