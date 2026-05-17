@@ -9,40 +9,29 @@ import {
 
 describe("deriveCostTrendingFields", () => {
   test("returns zero when balance is zero", () => {
-    const out = deriveCostTrendingFields(
-      { projectedMonthlyBurn: 50 },
-      0,
-    );
+    const out = deriveCostTrendingFields({ projectedMonthlyBurn: 50 }, 0);
     expect(out.monthlyBurnPercent).toBe(0);
     expect(out.monthlyBurnPercentClamped).toBe(0);
     expect(out.burnAlertThresholdExceeded).toBe(true);
   });
 
   test("rounds percent to one decimal place", () => {
-    const out = deriveCostTrendingFields(
-      { projectedMonthlyBurn: 1 },
-      3,
-    );
+    const out = deriveCostTrendingFields({ projectedMonthlyBurn: 1 }, 3);
     expect(out.monthlyBurnPercent).toBe(33.3);
   });
 
   test("clamps progress percent to 100", () => {
-    const out = deriveCostTrendingFields(
-      { projectedMonthlyBurn: 500 },
-      100,
-    );
+    const out = deriveCostTrendingFields({ projectedMonthlyBurn: 500 }, 100);
     expect(out.monthlyBurnPercent).toBe(500);
     expect(out.monthlyBurnPercentClamped).toBe(100);
   });
 
   test("burnAlertThresholdExceeded triggers at >80% of balance", () => {
     expect(
-      deriveCostTrendingFields({ projectedMonthlyBurn: 80 }, 100)
-        .burnAlertThresholdExceeded,
+      deriveCostTrendingFields({ projectedMonthlyBurn: 80 }, 100).burnAlertThresholdExceeded,
     ).toBe(false);
     expect(
-      deriveCostTrendingFields({ projectedMonthlyBurn: 81 }, 100)
-        .burnAlertThresholdExceeded,
+      deriveCostTrendingFields({ projectedMonthlyBurn: 81 }, 100).burnAlertThresholdExceeded,
     ).toBe(true);
   });
 });
