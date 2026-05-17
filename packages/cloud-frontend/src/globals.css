@@ -63,6 +63,7 @@
 }
 
 /* Brand radius: controls and visible container divs should never render hard-edged. */
+#root,
 #root
   :where(
     button,

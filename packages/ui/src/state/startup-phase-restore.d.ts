@@ -8,48 +8,43 @@ import { client, type OnboardingOptions } from "../api";
 import { scanProviderCredentials } from "../bridge";
 import type { UiLanguage } from "../i18n";
 import { readPersistedMobileRuntimeMode } from "../onboarding/mobile-runtime-mode";
-import {
-  loadPersistedActiveServer,
-  type PersistedActiveServer,
-} from "./persistence";
+import { loadPersistedActiveServer, type PersistedActiveServer } from "./persistence";
 import type { StartupEvent } from "./startup-coordinator";
 export interface RestoringSessionDeps {
-  setStartupError: (v: null) => void;
-  setAuthRequired: (v: boolean) => void;
-  setConnected: (v: boolean) => void;
-  setOnboardingExistingInstallDetected: (v: boolean) => void;
-  setOnboardingOptions: (v: OnboardingOptions) => void;
-  setOnboardingComplete: (v: boolean) => void;
-  setOnboardingLoading: (v: boolean) => void;
-  applyDetectedProviders: (
-    detected: Awaited<ReturnType<typeof scanProviderCredentials>>,
-  ) => void;
-  forceLocalBootstrapRef: React.MutableRefObject<boolean>;
-  onboardingCompletionCommittedRef: React.MutableRefObject<boolean>;
-  uiLanguage: UiLanguage;
+    setStartupError: (v: null) => void;
+    setAuthRequired: (v: boolean) => void;
+    setConnected: (v: boolean) => void;
+    setOnboardingExistingInstallDetected: (v: boolean) => void;
+    setOnboardingOptions: (v: OnboardingOptions) => void;
+    setOnboardingComplete: (v: boolean) => void;
+    setOnboardingLoading: (v: boolean) => void;
+    applyDetectedProviders: (detected: Awaited<ReturnType<typeof scanProviderCredentials>>) => void;
+    forceLocalBootstrapRef: React.MutableRefObject<boolean>;
+    onboardingCompletionCommittedRef: React.MutableRefObject<boolean>;
+    uiLanguage: UiLanguage;
 }
 export interface RestoringSessionCtx {
-  persistedActiveServer: ReturnType<typeof loadPersistedActiveServer>;
-  restoredActiveServer: PersistedActiveServer;
-  shouldPreserveCompletedOnboarding: boolean;
-  hadPriorOnboarding: boolean;
+    persistedActiveServer: ReturnType<typeof loadPersistedActiveServer>;
+    restoredActiveServer: PersistedActiveServer;
+    shouldPreserveCompletedOnboarding: boolean;
+    hadPriorOnboarding: boolean;
 }
 type MobileNativePlatform = "android" | "ios";
 export declare function reconcileMobileRestoredActiveServer(args: {
-  server: PersistedActiveServer;
-  mobileRuntimeMode: ReturnType<typeof readPersistedMobileRuntimeMode>;
-  platform: MobileNativePlatform;
+    server: PersistedActiveServer;
+    mobileRuntimeMode: ReturnType<typeof readPersistedMobileRuntimeMode>;
+    platform: MobileNativePlatform;
 }): PersistedActiveServer | null | undefined;
 export declare function applyRestoredConnection(args: {
-  restoredActiveServer: PersistedActiveServer;
-  clientRef: Pick<typeof client, "setBaseUrl" | "setToken">;
-  startLocalRuntime?: () => Promise<void>;
+    restoredActiveServer: PersistedActiveServer;
+    clientRef: Pick<typeof client, "setBaseUrl" | "setToken">;
+    startLocalRuntime?: () => Promise<void>;
 }): Promise<void>;
 export declare function canRestoreActiveServer(args: {
-  server: PersistedActiveServer;
-  clientApiAvailable: boolean;
-  forceLocal: boolean;
-  isDesktop: boolean;
+    server: PersistedActiveServer;
+    clientApiAvailable: boolean;
+    forceLocal: boolean;
+    isDesktop: boolean;
 }): boolean;
 /**
  * Runs the restoring-session phase.
@@ -61,12 +56,8 @@ export declare function canRestoreActiveServer(args: {
  * @param ctxRef - Mutable ref shared with the polling-backend phase
  * @param cancelled - Ref-flag set true by the cleanup function
  */
-export declare function runRestoringSession(
-  deps: RestoringSessionDeps,
-  dispatch: (event: StartupEvent) => void,
-  ctxRef: React.MutableRefObject<RestoringSessionCtx | null>,
-  cancelled: {
+export declare function runRestoringSession(deps: RestoringSessionDeps, dispatch: (event: StartupEvent) => void, ctxRef: React.MutableRefObject<RestoringSessionCtx | null>, cancelled: {
     current: boolean;
-  },
-): Promise<void>;
+}): Promise<void>;
+export {};
 //# sourceMappingURL=startup-phase-restore.d.ts.map

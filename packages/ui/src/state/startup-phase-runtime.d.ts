@@ -7,17 +7,15 @@
 import { type StartupErrorState } from "./internal";
 import type { StartupEvent } from "./startup-coordinator";
 export interface StartingRuntimeDeps {
-  setAgentStatus: (v: import("../api").AgentStatus | null) => void;
-  setConnected: (v: boolean) => void;
-  setStartupError: (v: StartupErrorState | null) => void;
-  setOnboardingLoading: (v: boolean) => void;
-  setAuthRequired: (v: boolean) => void;
-  setPairingEnabled: (v: boolean) => void;
-  setPairingExpiresAt: (v: number | null) => void;
-  setPendingRestart: (v: boolean | ((prev: boolean) => boolean)) => void;
-  setPendingRestartReasons: (
-    v: string[] | ((prev: string[]) => string[]),
-  ) => void;
+    setAgentStatus: (v: import("../api").AgentStatus | null) => void;
+    setConnected: (v: boolean) => void;
+    setStartupError: (v: StartupErrorState | null) => void;
+    setOnboardingLoading: (v: boolean) => void;
+    setAuthRequired: (v: boolean) => void;
+    setPairingEnabled: (v: boolean) => void;
+    setPairingExpiresAt: (v: number | null) => void;
+    setPendingRestart: (v: boolean | ((prev: boolean) => boolean)) => void;
+    setPendingRestartReasons: (v: string[] | ((prev: string[]) => string[])) => void;
 }
 /**
  * Runs the starting-runtime phase.
@@ -30,16 +28,9 @@ export interface StartingRuntimeDeps {
  * @param cancelled - Ref-flag set true by the cleanup function
  * @param tidRef - Mutable ref for the pending setTimeout handle (for cleanup)
  */
-export declare function runStartingRuntime(
-  deps: StartingRuntimeDeps,
-  dispatch: (event: StartupEvent) => void,
-  effectRunId: number,
-  effectRunRef: React.MutableRefObject<number>,
-  cancelled: {
+export declare function runStartingRuntime(deps: StartingRuntimeDeps, dispatch: (event: StartupEvent) => void, effectRunId: number, effectRunRef: React.MutableRefObject<number>, cancelled: {
     current: boolean;
-  },
-  tidRef: {
+}, tidRef: {
     current: ReturnType<typeof setTimeout> | null;
-  },
-): Promise<void>;
+}): Promise<void>;
 //# sourceMappingURL=startup-phase-runtime.d.ts.map

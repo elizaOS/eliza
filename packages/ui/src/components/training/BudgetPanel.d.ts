@@ -1,5 +1,5 @@
 interface BudgetPanelProps {
-  jobId: string;
+    jobId: string;
 }
 /**
  * Running-cost panel for a Vast.ai training job (M9).
@@ -9,7 +9,6 @@ interface BudgetPanelProps {
  * the watcher (auto-teardown) — this panel only displays state, it
  * does not call any destructive endpoint.
  */
-export declare function BudgetPanel({
-  jobId,
-}: BudgetPanelProps): import("react/jsx-runtime").JSX.Element;
+export declare function BudgetPanel({ jobId }: BudgetPanelProps): import("react/jsx-runtime").JSX.Element;
+export {};
 //# sourceMappingURL=BudgetPanel.d.ts.map

@@ -6,22 +6,16 @@
  */
 import type { ReactNode } from "react";
 export interface ContentLayoutProps {
-  /** Optional header rendered above the content (e.g. SegmentedControl nav). */
-  contentHeader?: ReactNode;
-  /** Content body. */
-  children: ReactNode;
-  /** When true, strips outer padding for modal embedding. */
-  inModal?: boolean;
-  /** Additional classes on the outer scroll container. */
-  className?: string;
-  /** Additional classes on the inner content wrapper. */
-  contentClassName?: string;
+    /** Optional header rendered above the content (e.g. SegmentedControl nav). */
+    contentHeader?: ReactNode;
+    /** Content body. */
+    children: ReactNode;
+    /** When true, strips outer padding for modal embedding. */
+    inModal?: boolean;
+    /** Additional classes on the outer scroll container. */
+    className?: string;
+    /** Additional classes on the inner content wrapper. */
+    contentClassName?: string;
 }
-export declare function ContentLayout({
-  contentHeader,
-  children,
-  inModal,
-  className,
-  contentClassName,
-}: ContentLayoutProps): import("react/jsx-runtime").JSX.Element;
+export declare function ContentLayout({ contentHeader, children, inModal, className, contentClassName, }: ContentLayoutProps): import("react/jsx-runtime").JSX.Element;
 //# sourceMappingURL=content-layout.d.ts.map

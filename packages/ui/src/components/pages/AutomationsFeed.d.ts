@@ -21,21 +21,18 @@
 export type { FeedFilter } from "../../utils/automation-feed-filter";
 export { passesFilter } from "../../utils/automation-feed-filter";
 export interface AutomationsFeedProps {
-  /**
-   * Cred types the user has already connected. Used to compute the
-   * per-row "Connect <Provider> →" missing-creds banner. Keep this
-   * driven from the host (App.tsx pulls connector accounts) so the feed
-   * stays a pure display component.
-   */
-  connectedCredTypes?: ReadonlySet<string>;
-  /**
-   * Render the in-shell chat sidebar. Default: false (host opts in).
-   * Hidden on narrow viewports via the layout regardless.
-   */
-  showChatPane?: boolean;
+    /**
+     * Cred types the user has already connected. Used to compute the
+     * per-row "Connect <Provider> →" missing-creds banner. Keep this
+     * driven from the host (App.tsx pulls connector accounts) so the feed
+     * stays a pure display component.
+     */
+    connectedCredTypes?: ReadonlySet<string>;
+    /**
+     * Render the in-shell chat sidebar. Default: false (host opts in).
+     * Hidden on narrow viewports via the layout regardless.
+     */
+    showChatPane?: boolean;
 }
-export declare function AutomationsFeed({
-  connectedCredTypes,
-  showChatPane,
-}?: AutomationsFeedProps): import("react/jsx-runtime").JSX.Element;
+export declare function AutomationsFeed({ connectedCredTypes, showChatPane, }?: AutomationsFeedProps): import("react/jsx-runtime").JSX.Element;
 //# sourceMappingURL=AutomationsFeed.d.ts.map

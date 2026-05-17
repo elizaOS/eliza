@@ -1,8 +1,4 @@
-export type {
-  CompactMessageStackProps,
-  CompanionMessage,
-  CompanionRole,
-} from "./CompactMessageStack";
+export type { CompactMessageStackProps, CompanionMessage, CompanionRole, } from "./CompactMessageStack";
 export { CompactMessageStack } from "./CompactMessageStack";
 export type { CompanionShellProps } from "./CompanionShell";
 export { CompanionShell } from "./CompanionShell";

@@ -7,24 +7,16 @@
  * `VaultInventoryPanel`. This tab shows every rule in the system and
  * supports wildcard key patterns (e.g. `OPENROUTER_*`).
  */
-import type {
-  AgentSummary,
-  InstalledApp,
-  RoutingConfig,
-  VaultEntryMeta,
-  VaultTabNavigate,
-} from "./types";
+import type { AgentSummary, InstalledApp, RoutingConfig, VaultEntryMeta, VaultTabNavigate } from "./types";
 export interface RoutingTabProps {
-  config: RoutingConfig;
-  agents: AgentSummary[];
-  apps: InstalledApp[];
-  entries: VaultEntryMeta[];
-  onConfigChange: (next: RoutingConfig) => void;
-  navigate: VaultTabNavigate;
-  focusKey: string | null;
-  onFocusApplied: () => void;
+    config: RoutingConfig;
+    agents: AgentSummary[];
+    apps: InstalledApp[];
+    entries: VaultEntryMeta[];
+    onConfigChange: (next: RoutingConfig) => void;
+    navigate: VaultTabNavigate;
+    focusKey: string | null;
+    onFocusApplied: () => void;
 }
-export declare function RoutingTab(
-  props: RoutingTabProps,
-): import("react/jsx-runtime").JSX.Element;
+export declare function RoutingTab(props: RoutingTabProps): import("react/jsx-runtime").JSX.Element;
 //# sourceMappingURL=RoutingTab.d.ts.map

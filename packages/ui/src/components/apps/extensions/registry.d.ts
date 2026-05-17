@@ -7,11 +7,6 @@ import type { AppDetailExtensionComponent } from "./types";
  * @example
  *   registerDetailExtension("babylon-operator-dashboard", BabylonDetailExtension);
  */
-export declare function registerDetailExtension(
-  detailPanelId: string,
-  component: AppDetailExtensionComponent,
-): void;
-export declare function getAppDetailExtension(
-  app: RegistryAppInfo,
-): AppDetailExtensionComponent | null;
+export declare function registerDetailExtension(detailPanelId: string, component: AppDetailExtensionComponent): void;
+export declare function getAppDetailExtension(app: RegistryAppInfo): AppDetailExtensionComponent | null;
 //# sourceMappingURL=registry.d.ts.map

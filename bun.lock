@@ -2114,7 +2114,6 @@
         "@elizaos/shared": "workspace:*",
       },
       "devDependencies": {
-        "tsup": "^8.5.1",
         "typescript": "^6.0.3",
         "vitest": "^4.0.0",
       },
@@ -2951,7 +2950,6 @@
       "devDependencies": {
         "@biomejs/biome": "^2.4.14",
         "@types/node": "24.12.2",
-        "tsup": "8.5.1",
         "typescript": "^6.0.3",
         "vitest": "^4.1.4",
       },
@@ -3487,6 +3485,7 @@
       "dependencies": {
         "ai": "^6.0.174",
         "ollama-ai-provider-v2": "^3.5.0",
+        "zod": "^4.4.3",
       },
       "devDependencies": {
         "@biomejs/biome": "^2.4.14",
@@ -4080,7 +4079,6 @@
       },
       "devDependencies": {
         "@types/node": "22.19.17",
-        "tsup": "^8.5.1",
         "typescript": "^6.0.3",
         "vitest": "^4.0.17",
       },
@@ -4149,7 +4147,6 @@
       "devDependencies": {
         "@elizaos/core": "workspace:*",
         "@types/node": "^24.0.0",
-        "tsup": "^8.5.1",
         "typescript": "^6.0.3",
         "vitest": "^4.0.18",
       },
