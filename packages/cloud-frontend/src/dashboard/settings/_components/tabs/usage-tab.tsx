@@ -12,6 +12,7 @@
 import { BrandCard, CornerBrackets } from "@elizaos/ui";
 import { DollarSign, Info, Loader2 } from "lucide-react";
 import { useEffect, useState } from "react";
+import { toast } from "sonner";
 import type { UserWithOrganizationDto } from "@/types/cloud-api";
 import type { SettingsTab } from "../types";
 
@@ -31,6 +32,8 @@ interface QuotaUsage {
     used: number;
     limit: number | null;
     periodEnd: string | null;
+    usedPercent: number | null;
+    usedPercentClamped: number;
   };
   modelSpecific: Record<
     string,
@@ -38,6 +41,8 @@ interface QuotaUsage {
       used: number;
       limit: number;
       periodEnd: string;
+      usedPercent: number;
+      usedPercentClamped: number;
     }
   >;
 }
@@ -69,14 +74,12 @@ export function UsageTab({ user, onTabChange }: UsageTabProps) {
           amount: string | number;
         }
         const transactions: Transaction[] = Array.isArray(data.transactions)
-          ? data.transactions.filter(
-              (t: unknown): t is Transaction =>
-                typeof t === "object" &&
-                t !== null &&
-                "amount" in t &&
-                (typeof (t as { amount: unknown }).amount === "string" ||
-                  typeof (t as { amount: unknown }).amount === "number"),
-            )
+          ? data.transactions.filter((t: unknown): t is Transaction => {
+              if (typeof t !== "object" || t === null || !("amount" in t))
+                return false;
+              const { amount } = t as Record<string, unknown>;
+              return typeof amount === "string" || typeof amount === "number";
+            })
           : [];
         const burn = transactions
           .filter((t) => Number(t.amount) < 0)
@@ -86,8 +89,8 @@ export function UsageTab({ user, onTabChange }: UsageTabProps) {
           );
 
         setDailyBurn(burn);
-      } catch (error) {
-        console.error("Error fetching daily burn:", error);
+      } catch (_error) {
+        toast.error("Failed to load daily burn rate");
       } finally {
         setLoading(false);
       }
@@ -305,7 +308,7 @@ export function UsageTab({ user, onTabChange }: UsageTabProps) {
                       className="absolute inset-0 bg-[#FF5800]/20"
                       style={{
                         width: quotaUsage?.global.limit
-                          ? `${Math.min(100, (quotaUsage.global.used / quotaUsage.global.limit) * 100)}%`
+                          ? `${quotaUsage.global.usedPercentClamped}%`
                           : "0%",
                       }}
                     />
@@ -317,8 +320,9 @@ export function UsageTab({ user, onTabChange }: UsageTabProps) {
                   </p>
                 </div>
                 <p className="text-xs md:text-sm text-white/60">
-                  {quotaUsage?.global.limit
-                    ? `${((quotaUsage.global.used / quotaUsage.global.limit) * 100).toFixed(1)}% of weekly limit used`
+                  {quotaUsage?.global.usedPercent !== null &&
+                  quotaUsage?.global.usedPercent !== undefined
+                    ? `${quotaUsage.global.usedPercent.toFixed(1)}% of weekly limit used`
                     : "Weekly usage limits not configured"}
                 </p>
               </div>
@@ -345,7 +349,7 @@ export function UsageTab({ user, onTabChange }: UsageTabProps) {
                           <div
                             className="absolute inset-0 bg-[#FF5800]/20"
                             style={{
-                              width: `${Math.min(100, (modelQuota.used / modelQuota.limit) * 100)}%`,
+                              width: `${modelQuota.usedPercentClamped}%`,
                             }}
                           />
                         </div>
@@ -355,10 +359,8 @@ export function UsageTab({ user, onTabChange }: UsageTabProps) {
                         </p>
                       </div>
                       <p className="text-xs md:text-sm text-white/60">
-                        {((modelQuota.used / modelQuota.limit) * 100).toFixed(
-                          1,
-                        )}
-                        % of weekly limit used
+                        {modelQuota.usedPercent.toFixed(1)}% of weekly limit
+                        used
                       </p>
                     </div>
                   </div>

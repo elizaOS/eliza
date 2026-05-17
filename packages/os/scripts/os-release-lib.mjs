@@ -10,6 +10,8 @@ export const defaultManifestPath = path.join(
 );
 
 const sha256Pattern = /^[a-f0-9]{64}$/;
+const isoDatePattern = /^\d{4}-\d{2}-\d{2}$/;
+const releaseChannels = new Set(["alpha", "beta", "stable", "nightly"]);
 const artifactKinds = new Set([
   "raw-image",
   "vm-image",
@@ -19,6 +21,14 @@ const artifactKinds = new Set([
 ]);
 const releaseStatuses = new Set(["planned", "candidate", "available", "withdrawn"]);
 const artifactStatuses = new Set(["planned", "candidate", "published", "withdrawn"]);
+
+function isValidIsoDate(value) {
+  if (typeof value !== "string" || !isoDatePattern.test(value)) {
+    return false;
+  }
+  const time = Date.parse(`${value}T00:00:00Z`);
+  return Number.isFinite(time);
+}
 
 export function parseArgs(argv) {
   const args = {};
@@ -108,13 +118,18 @@ export function validateManifest(manifest, options = {}) {
   }
 
   requireString(errors, manifest?.release?.id, "release.id");
-  if (manifest?.release?.channel !== "beta") {
-    errors.push("release.channel must be beta for the May 2026 beta manifest");
+  if (!releaseChannels.has(manifest?.release?.channel)) {
+    errors.push(
+      `release.channel must be one of ${[...releaseChannels].join(", ")}`,
+    );
   }
   requireString(errors, manifest?.release?.version, "release.version");
   requireDate(errors, manifest?.release?.availableDate, "release.availableDate");
-  if (manifest?.release?.availableDate !== "2026-05-16") {
-    errors.push("release.availableDate must be 2026-05-16");
+  if (
+    typeof manifest?.release?.availableDate === "string" &&
+    !isValidIsoDate(manifest.release.availableDate)
+  ) {
+    errors.push("release.availableDate must be a valid ISO date (YYYY-MM-DD)");
   }
   if (!releaseStatuses.has(manifest?.release?.status)) {
     errors.push("release.status is invalid");
@@ -124,17 +139,17 @@ export function validateManifest(manifest, options = {}) {
   if (!presale?.enabled) {
     errors.push("commerce.usbKeyPresale.enabled must be true");
   }
-  if (presale?.priceUsd !== 49) {
-    errors.push("commerce.usbKeyPresale.priceUsd must be 49");
+  if (typeof presale?.priceUsd !== "number" || presale.priceUsd <= 0) {
+    errors.push("commerce.usbKeyPresale.priceUsd must be a positive number");
   }
-  if (presale?.saleStarts !== "2026-05-16") {
-    errors.push("commerce.usbKeyPresale.saleStarts must be 2026-05-16");
+  if (!isValidIsoDate(presale?.saleStarts)) {
+    errors.push("commerce.usbKeyPresale.saleStarts must be a valid ISO date");
   }
-  if (presale?.estimatedShipWindow?.starts !== "2026-10-01") {
-    errors.push("commerce.usbKeyPresale.estimatedShipWindow.starts must be 2026-10-01");
+  if (!isValidIsoDate(presale?.estimatedShipWindow?.starts)) {
+    errors.push("commerce.usbKeyPresale.estimatedShipWindow.starts must be a valid ISO date");
   }
-  if (presale?.estimatedShipWindow?.ends !== "2026-10-31") {
-    errors.push("commerce.usbKeyPresale.estimatedShipWindow.ends must be 2026-10-31");
+  if (!isValidIsoDate(presale?.estimatedShipWindow?.ends)) {
+    errors.push("commerce.usbKeyPresale.estimatedShipWindow.ends must be a valid ISO date");
   }
 
   if (!Array.isArray(manifest?.artifacts) || manifest.artifacts.length === 0) {

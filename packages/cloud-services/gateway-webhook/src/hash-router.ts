@@ -1,4 +1,7 @@
-import { readFileSync } from "node:fs";
+import {
+  readServiceAccountCaCert,
+  readServiceAccountToken,
+} from "@elizaos/cloud-services-common";
 import HashRing from "hashring";
 import { logger } from "./logger";
 
@@ -11,27 +14,6 @@ interface RingState {
 }
 
 const rings = new Map<string, RingState>();
-
-let k8sToken: string | null = null;
-let k8sCaCert: string | null = null;
-
-function getK8sToken(): string {
-  if (k8sToken !== null) return k8sToken;
-  k8sToken = readFileSync(
-    "/var/run/secrets/kubernetes.io/serviceaccount/token",
-    "utf-8",
-  ).trim();
-  return k8sToken;
-}
-
-function getK8sCaCert(): string {
-  if (k8sCaCert !== null) return k8sCaCert;
-  k8sCaCert = readFileSync(
-    "/var/run/secrets/kubernetes.io/serviceaccount/ca.crt",
-    "utf-8",
-  );
-  return k8sCaCert;
-}
 
 function parseServerUrl(serverUrl: string): {
   serviceName: string;
@@ -74,10 +56,13 @@ async function resolvePodIPs(
 ): Promise<string[]> {
   const apiUrl = `https://kubernetes.default.svc/apis/discovery.k8s.io/v1/namespaces/${namespace}/endpointslices?labelSelector=kubernetes.io/service-name=${serviceName}`;
 
+  const token = readServiceAccountToken();
+  if (!token) return [];
+
   try {
     const res = await fetch(apiUrl, {
-      headers: { Authorization: `Bearer ${getK8sToken()}` },
-      tls: { ca: getK8sCaCert() },
+      headers: { Authorization: `Bearer ${token}` },
+      tls: { ca: readServiceAccountCaCert() ?? undefined },
     } as RequestInit);
 
     if (!res.ok) return [];

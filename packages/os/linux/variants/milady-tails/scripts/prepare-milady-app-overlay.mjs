@@ -3,22 +3,54 @@
 import fs from "node:fs";
 import path from "node:path";
 import process from "node:process";
+import { execFileSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
 
 const args = process.argv.slice(2);
-const check = args.includes("--check");
-const stageArg = args.find((arg) => arg !== "--check");
+
+function parseArgs(argv) {
+  let parsedCheck = false;
+  let parsedStage;
+
+  for (let index = 0; index < argv.length; index += 1) {
+    const arg = argv[index];
+    if (arg === "--check") {
+      parsedCheck = true;
+      continue;
+    }
+    if (arg === "--stage") {
+      parsedStage = argv[index + 1];
+      index += 1;
+      continue;
+    }
+    if (arg.startsWith("--stage=")) {
+      parsedStage = arg.slice("--stage=".length);
+      continue;
+    }
+    if (!arg.startsWith("--") && !parsedStage) {
+      parsedStage = arg;
+    }
+  }
+
+  return { check: parsedCheck, stageArg: parsedStage };
+}
+
+const { check, stageArg } = parseArgs(args);
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
+const defaultStage = path.join(
+  root,
+  "tails/config/chroot_local-includes/usr/share/elizaos/milady-app",
+);
 const stage =
-  stageArg ??
-  path.join(
-    root,
-    "tails/config/chroot_local-includes/usr/share/elizaos/milady-app",
-  );
+  stageArg ?? process.env.ELIZAOS_MILADY_APP_STAGE ?? defaultStage;
 const buildJsonPath = path.join(stage, "Resources/build.json");
 const versionJsonPath = path.join(stage, "Resources/version.json");
 const infoPlistPath = path.join(stage, "Info.plist");
 const brandConfigPath = path.join(stage, "Resources/app/brand-config.json");
+const overlayManifestPath = path.join(
+  stage,
+  "Resources/app/elizaos-live-overlay-manifest.json",
+);
 const rendererRoot = path.join(stage, "Resources/app/renderer");
 const rendererWallpaperPath = path.join(
   root,
@@ -29,6 +61,7 @@ const agentPackageJsonPath = path.join(
   "Resources/app/eliza-dist/node_modules/@elizaos/agent/package.json",
 );
 const nodeModulesPath = path.join(stage, "Resources/app/eliza-dist/node_modules");
+const lucideSentinelExports = ["Feather", "Loader2", "Maximize2", "Settings"];
 const dependencyTargets = [
   {
     linkPath: path.join(stage, "node_modules"),
@@ -54,6 +87,9 @@ function findWorkspaceRoot() {
 }
 
 const workspaceRoot = findWorkspaceRoot();
+const existingOverlayManifest = fs.existsSync(overlayManifestPath)
+  ? JSON.parse(fs.readFileSync(overlayManifestPath, "utf8"))
+  : null;
 
 const liveAgentOrchestratorStub = `
 import { execFile } from "node:child_process";
@@ -440,6 +476,25 @@ function packageJsonWrite(packageName, packageJson) {
   };
 }
 
+function packageManifestPath(packageName) {
+  return path.join(packageDirectory(packageName), "package.json");
+}
+
+function readPackageManifest(packageName) {
+  const filePath = packageManifestPath(packageName);
+  if (!fs.existsSync(filePath)) return null;
+  return JSON.parse(fs.readFileSync(filePath, "utf8"));
+}
+
+function isLiveStubPackage(packageJson) {
+  return packageJson?.version === "0.0.0-elizaos-live-stub";
+}
+
+function shouldWriteLiveFallbackPackage(packageName) {
+  const packageJson = readPackageManifest(packageName);
+  return !packageJson || isLiveStubPackage(packageJson);
+}
+
 function sourcePackageManifest(packageName, packageJson) {
   const rewrite = (value) => {
     if (typeof value === "string") {
@@ -514,6 +569,7 @@ function sourcePackageManifestWrites() {
 function optionalStubPackageWrites() {
   const writes = [];
   for (const [packageName, source] of optionalStubPackages) {
+    if (!shouldWriteLiveFallbackPackage(packageName)) continue;
     const packageDir = packageDirectory(packageName);
     writes.push({
       filePath: path.join(packageDir, "package.json"),
@@ -573,6 +629,13 @@ function syncDirectoryContents(sourceDir, targetDir, { checkOnly }) {
       !fs.existsSync(targetPath) ||
       fs.readFileSync(sourcePath).compare(fs.readFileSync(targetPath)) !== 0
     ) {
+      stale = true;
+    }
+  });
+  walkFiles(targetDir, (targetPath) => {
+    const relativePath = path.relative(targetDir, targetPath);
+    const sourcePath = path.join(sourceDir, relativePath);
+    if (!fs.existsSync(sourcePath)) {
       stale = true;
     }
   });
@@ -644,48 +707,38 @@ function syncWorkspaceRuntimePackages({ checkOnly }) {
 
 function collectLucideReactNames() {
   const names = new Set(["Icon", "LucideIcon", "createLucideIcon"]);
-  const packagesDir = path.join(
-    stage,
-    "Resources/app/eliza-dist/node_modules/@elizaos",
-  );
-  const importRe =
-    /import\s*\{([\s\S]*?)\}\s*from\s*["']lucide-react["']/;
+  const appRuntimeDir = path.join(stage, "Resources/app");
+  const namedImportRe =
+    /\b(?:import|export)\s+(?:type\s+)?\{([^;]*)\}\s+from\s*["']lucide-react["']/g;
+  const destructuredImportRe =
+    /\b(?:const|let|var)\s+\{([\s\S]*?)\}\s*=\s*(?:await\s+)?(?:import\(["']lucide-react["']\)|require\(["']lucide-react["']\))/g;
   const supportedExts = new Set([".js", ".jsx", ".ts", ".tsx"]);
 
-  walkFiles(packagesDir, (filePath) => {
+  function addNamesFromClause(clause) {
+    const imports = clause
+      .replace(/\/\*[\s\S]*?\*\//g, "")
+      .replace(/\/\/.*$/gm, "")
+      .split(",");
+    for (const rawName of imports) {
+      const cleaned = rawName.trim();
+      if (!cleaned) continue;
+      const name = cleaned
+        .replace(/^type\s+/, "")
+        .split(/\s+as\s+/)[0]
+        ?.trim();
+      if (name && /^[A-Za-z_$][\w$]*$/.test(name)) names.add(name);
+    }
+  }
+
+  walkFiles(appRuntimeDir, (filePath) => {
     if (!supportedExts.has(path.extname(filePath))) return;
     const text = fs.readFileSync(filePath, "utf8");
     if (!text.includes("lucide-react")) return;
-    const lines = text.split(/\n/);
-    for (let index = 0; index < lines.length; index += 1) {
-      if (!lines[index].includes("import") || !lines[index].includes("{")) {
-        continue;
-      }
-      let block = lines[index];
-      let cursor = index;
-      while (
-        !block.includes("from") &&
-        cursor + 1 < lines.length &&
-        cursor - index < 40
-      ) {
-        cursor += 1;
-        block += `\n${lines[cursor]}`;
-      }
-      if (!/from\s*["']lucide-react["']/.test(block)) continue;
-      const match = block.match(importRe);
-      if (!match) continue;
-      for (const rawName of match[1].split(",")) {
-        const cleaned = rawName
-          .trim()
-          .replace(/\/\*[\s\S]*?\*\//g, "")
-          .replace(/\/\/.*$/g, "")
-          .trim();
-        if (!cleaned || cleaned.startsWith("type ")) continue;
-        const name = cleaned.split(/\s+as\s+/)[0]?.trim();
-        if (name && /^[A-Za-z_$][\w$]*$/.test(name)) {
-          names.add(name);
-        }
-      }
+    for (const match of [
+      ...text.matchAll(namedImportRe),
+      ...text.matchAll(destructuredImportRe),
+    ]) {
+      addNamesFromClause(match[1]);
     }
   });
 
@@ -693,12 +746,13 @@ function collectLucideReactNames() {
 }
 
 function lucideReactStubWrites() {
+  if (!shouldWriteLiveFallbackPackage("lucide-react")) return [];
   const packageDir = path.join(
     stage,
     "Resources/app/eliza-dist/node_modules/lucide-react",
   );
   const names = new Set(collectLucideReactNames());
-  for (const name of ["Loader2", "Settings"]) {
+  for (const name of lucideSentinelExports) {
     names.add(name);
   }
   const packageJson = {
@@ -730,6 +784,407 @@ function lucideReactStubWrites() {
         "export default Icon;",
         "",
       ].join("\n"),
+    },
+  ];
+}
+
+function relativeToStage(filePath) {
+  return path.relative(stage, filePath).replaceAll(path.sep, "/");
+}
+
+function relativeToRoot(filePath) {
+  return path.relative(root, filePath).replaceAll(path.sep, "/");
+}
+
+function gitOutput(cwd, args) {
+  if (!cwd) return null;
+  try {
+    return execFileSync("git", args, {
+      cwd,
+      encoding: "utf8",
+      stdio: ["ignore", "pipe", "ignore"],
+    }).trim();
+  } catch {
+    return null;
+  }
+}
+
+function buildTimestamp() {
+  if (check && existingOverlayManifest?.build?.generatedAt) {
+    return existingOverlayManifest.build.generatedAt;
+  }
+  const sourceDateEpoch = process.env.SOURCE_DATE_EPOCH;
+  if (sourceDateEpoch && /^\d+$/.test(sourceDateEpoch)) {
+    return new Date(Number(sourceDateEpoch) * 1000).toISOString();
+  }
+  return new Date().toISOString();
+}
+
+function packageNameFromManifest(filePath, packageJson) {
+  if (typeof packageJson?.name === "string" && packageJson.name) {
+    return packageJson.name;
+  }
+  const relative = path.relative(nodeModulesPath, path.dirname(filePath));
+  const parts = relative.split(path.sep);
+  if (parts[0]?.startsWith("@")) return `${parts[0]}/${parts[1]}`;
+  return parts[0] ?? relative;
+}
+
+function collectPackageInventory(projectedPackages = []) {
+  const packages = new Map();
+  walkFiles(nodeModulesPath, (filePath) => {
+    if (path.basename(filePath) !== "package.json") return;
+    let packageJson;
+    try {
+      packageJson = JSON.parse(fs.readFileSync(filePath, "utf8"));
+    } catch {
+      return;
+    }
+    const packageName = packageNameFromManifest(filePath, packageJson);
+    const packagePath = relativeToStage(filePath);
+    packages.set(packagePath, {
+      name: packageName,
+      version: packageJson.version ?? null,
+      path: packagePath,
+      private: packageJson.private === true,
+      liveStub: isLiveStubPackage(packageJson),
+    });
+  });
+
+  for (const projected of projectedPackages) {
+    const packagePath = relativeToStage(packageManifestPath(projected.name));
+    if (packages.has(packagePath)) continue;
+    packages.set(packagePath, {
+      name: projected.name,
+      version: projected.version,
+      path: packagePath,
+      private: true,
+      liveStub: projected.liveStub === true,
+    });
+  }
+
+  return [...packages.values()].sort((left, right) =>
+    left.name.localeCompare(right.name) || left.path.localeCompare(right.path),
+  );
+}
+
+function packageStatus(packageName) {
+  const packageJson = readPackageManifest(packageName);
+  const generated = !packageJson || isLiveStubPackage(packageJson);
+  return {
+    packageName,
+    packagePath: relativeToStage(packageManifestPath(packageName)),
+    indexPath: relativeToStage(path.join(packageDirectory(packageName), "index.js")),
+    generated,
+    packageVersion: generated
+      ? "0.0.0-elizaos-live-stub"
+      : (packageJson?.version ?? null),
+    stubVersion: "0.0.0-elizaos-live-stub",
+  };
+}
+
+function generatedRuntimePackages(lucideNames) {
+  const packages = [
+    {
+      packageName: "agent-orchestrator",
+      packagePath: relativeToStage(packageManifestPath("agent-orchestrator")),
+      indexPath: relativeToStage(
+        path.join(packageDirectory("agent-orchestrator"), "index.js"),
+      ),
+      generated: true,
+      version: "0.0.0-elizaos-live",
+      reason: "Live capability-broker bridge.",
+    },
+    {
+      packageName: "@elizaos/plugin-agent-orchestrator",
+      packagePath: relativeToStage(
+        packageManifestPath("@elizaos/plugin-agent-orchestrator"),
+      ),
+      indexPath: relativeToStage(
+        path.join(packageDirectory("@elizaos/plugin-agent-orchestrator"), "index.js"),
+      ),
+      generated: true,
+      version: "0.0.0-elizaos-live",
+      reason: "Package alias for the live capability-broker bridge.",
+    },
+    ...[...optionalStubPackages.keys()].sort().map((packageName) => ({
+      ...packageStatus(packageName),
+      reason:
+        "Optional desktop connector not required for the live USB base runtime.",
+    })),
+    {
+      ...packageStatus("lucide-react"),
+      generatedFrom: "Resources/app named lucide-react import/export sites",
+      sentinelExports: lucideSentinelExports,
+      exportCount: lucideNames.length,
+      reason: "Renderer icon dependency fallback for packaged runtime imports.",
+    },
+  ];
+  return packages;
+}
+
+function entrypoint(name, relativePath, installPath, options = {}) {
+  const filePath = path.join(stage, relativePath);
+  return {
+    name,
+    stagePath: relativePath,
+    installPath,
+    type: options.type ?? "file",
+    required: options.required !== false,
+    executable: options.executable === true,
+    existsAtGeneration: fs.existsSync(filePath),
+  };
+}
+
+function osEntrypoint(name, livePath, sourcePath, options = {}) {
+  const filePath = path.join(root, "tails/config/chroot_local-includes", sourcePath);
+  return {
+    name,
+    livePath,
+    sourcePath,
+    type: options.type ?? "file",
+    required: options.required !== false,
+    executable: options.executable === true,
+    existsAtGeneration: fs.existsSync(filePath),
+  };
+}
+
+function liveOverlayManifestWrite() {
+  const lucideNames = collectLucideReactNames();
+  const generatedPackages = generatedRuntimePackages(lucideNames);
+  const projectedPackages = generatedPackages
+    .filter((pkg) => pkg.generated)
+    .map((pkg) => ({
+      name: pkg.packageName,
+      version: pkg.version ?? pkg.stubVersion,
+      liveStub: pkg.stubVersion === "0.0.0-elizaos-live-stub",
+    }));
+  const packageInventory = collectPackageInventory(projectedPackages);
+  const sourceRoot =
+    check && existingOverlayManifest?.source?.gitRoot
+      ? existingOverlayManifest.source.gitRoot
+      : (workspaceRoot ?? gitOutput(root, ["rev-parse", "--show-toplevel"]));
+  const sourceCommit =
+    check && existingOverlayManifest?.source?.gitCommit
+      ? existingOverlayManifest.source.gitCommit
+      : gitOutput(sourceRoot, ["rev-parse", "HEAD"]);
+  const dirtyStatus =
+    check && typeof existingOverlayManifest?.source?.gitDirty === "boolean"
+      ? null
+      : gitOutput(sourceRoot, ["status", "--short"]);
+  const gitDirty =
+    check && typeof existingOverlayManifest?.source?.gitDirty === "boolean"
+      ? existingOverlayManifest.source.gitDirty
+      : dirtyStatus !== null
+        ? dirtyStatus.length > 0
+        : null;
+
+  return [
+    {
+      filePath: overlayManifestPath,
+      content: `${JSON.stringify(
+        {
+          schemaVersion: 1,
+          generatedBy: "prepare-milady-app-overlay.mjs",
+          build: {
+            generatedAt: buildTimestamp(),
+            sourceDateEpoch:
+              check && "sourceDateEpoch" in (existingOverlayManifest?.build ?? {})
+                ? existingOverlayManifest.build.sourceDateEpoch
+                : (process.env.SOURCE_DATE_EPOCH ?? null),
+          },
+          source: {
+            gitRoot: sourceRoot,
+            gitCommit: sourceCommit,
+            gitDirty,
+            variantRoot: root,
+          },
+          stagePath: {
+            default: path.relative(root, defaultStage),
+            overrideEnv: "ELIZAOS_MILADY_APP_STAGE",
+            overrideArg: "--stage",
+            current: stage,
+          },
+          app: {
+            name: nextVersionInfo.name,
+            identifier: nextVersionInfo.identifier,
+            appRoot: "/opt/milady",
+            stagedRoot: stage,
+            appRuntimeRoot: "Resources/app",
+            rendererRoot: "Resources/app/renderer",
+            nodeModulesRoot: relativeToStage(nodeModulesPath),
+          },
+          packages: {
+            packageCount: packageInventory.length,
+            packageJsonCount: packageInventory.length,
+            inventory: packageInventory,
+          },
+          generated: {
+            packages: generatedPackages,
+            optionalPluginStubs: generatedPackages.filter((pkg) =>
+              optionalStubPackages.has(pkg.packageName),
+            ),
+            localPatches: [
+              {
+                packageName: "@elizaos/plugin-app-control",
+                path: relativeToStage(
+                  path.join(
+                    packageDirectory("@elizaos/plugin-app-control"),
+                    "package.json",
+                  ),
+                ),
+                behavior: "package manifest is rewritten to source entrypoints",
+              },
+              {
+                packageName: "@elizaos/plugin-local-inference",
+                env: "ELIZAOS_LIVE_EMBEDDING_FALLBACK",
+                behavior:
+                  "live launcher may enable zero-vector embedding fallback when no local inference backend is active",
+              },
+              {
+                packageName: "@elizaos/core",
+                behavior: "test-only exports are stripped from the packaged node entrypoint",
+              },
+            ],
+          },
+          entrypoints: [
+            entrypoint("Electrobun launcher", "bin/launcher", "/opt/milady/bin/launcher", {
+              executable: true,
+            }),
+            entrypoint("Bundled Bun", "bin/bun", "/opt/milady/bin/bun", {
+              executable: true,
+            }),
+            entrypoint(
+              "Agent runtime",
+              "Resources/app/eliza-dist/entry.js",
+              "/opt/milady/Resources/app/eliza-dist/entry.js",
+            ),
+            entrypoint(
+              "Renderer shell",
+              "Resources/app/renderer/index.html",
+              "/opt/milady/Resources/app/renderer/index.html",
+            ),
+            entrypoint("Build metadata", "Resources/build.json", "/opt/milady/Resources/build.json"),
+            entrypoint(
+              "Version metadata",
+              "Resources/version.json",
+              "/opt/milady/Resources/version.json",
+            ),
+            entrypoint(
+              "Brand config",
+              "Resources/app/brand-config.json",
+              "/opt/milady/Resources/app/brand-config.json",
+            ),
+          ],
+          osEntrypoints: [
+            osEntrypoint(
+              "Live app launcher wrapper",
+              "/usr/local/bin/milady",
+              "usr/local/bin/milady",
+              { executable: true },
+            ),
+            osEntrypoint(
+              "Agent user service launcher",
+              "/usr/local/lib/elizaos/start-elizaos-agent-user",
+              "usr/local/lib/elizaos/start-elizaos-agent-user",
+              { executable: true },
+            ),
+            osEntrypoint(
+              "Renderer user service launcher",
+              "/usr/local/lib/elizaos/start-elizaos-renderer-user",
+              "usr/local/lib/elizaos/start-elizaos-renderer-user",
+              { executable: true },
+            ),
+            osEntrypoint(
+              "Browser user service launcher",
+              "/usr/local/lib/elizaos/start-elizaos-browser-user",
+              "usr/local/lib/elizaos/start-elizaos-browser-user",
+              { executable: true },
+            ),
+            osEntrypoint(
+              "Renderer server",
+              "/usr/local/lib/elizaos/renderer-server.mjs",
+              "usr/local/lib/elizaos/renderer-server.mjs",
+              { executable: true },
+            ),
+            osEntrypoint(
+              "System supervisor unit",
+              "/etc/systemd/system/milady.service",
+              "etc/systemd/system/milady.service",
+            ),
+            osEntrypoint(
+              "User browser unit",
+              "/etc/systemd/user/milady.service",
+              "etc/systemd/user/milady.service",
+            ),
+            osEntrypoint(
+              "User agent unit",
+              "/etc/systemd/user/elizaos-agent.service",
+              "etc/systemd/user/elizaos-agent.service",
+            ),
+            osEntrypoint(
+              "User renderer unit",
+              "/etc/systemd/user/elizaos-renderer.service",
+              "etc/systemd/user/elizaos-renderer.service",
+            ),
+          ],
+          expectedPorts: {
+            api: {
+              env: "ELIZA_API_PORT",
+              bindEnv: "ELIZA_API_BIND",
+              defaultPort: 31337,
+              defaultBind: "127.0.0.1",
+              strictPortEnv: "ELIZA_API_STRICT_PORT",
+              strictPortDefault: true,
+            },
+            renderer: {
+              env: "ELIZAOS_RENDERER_PORT",
+              defaultPort: 5174,
+              defaultBind: "127.0.0.1",
+            },
+          },
+          runtime: {
+            apiPortEnv: "ELIZA_API_PORT",
+            defaultApiPort: 31337,
+            apiBindEnv: "ELIZA_API_BIND",
+            defaultApiBind: "127.0.0.1",
+            closeMinimizesToTrayEnv: "ELIZAOS_CLOSE_MINIMIZES_TO_TRAY",
+            closeMinimizesToTrayDefault: true,
+            exitOnLastWindowClosed: false,
+            cefProfileCompatEnv: "ELIZAOS_CEF_PROFILE_COMPAT",
+            chromiumUserDataDir: chromiumFlags["user-data-dir"],
+          },
+          fallbacks: {
+            optionalPluginStubs: [...optionalStubPackages.keys()].sort(),
+            lucideReactStub: {
+              generatedFrom: "Resources/app named lucide-react import/export sites",
+              sentinelExports: lucideSentinelExports,
+            },
+            localEmbeddingFallback: {
+              env: "ELIZAOS_LIVE_EMBEDDING_FALLBACK",
+              defaultEnabledInLiveLauncher: true,
+            },
+          },
+          repositoryResolution: {
+            expectedOrgName: "elizaOS",
+            expectedRepoName: "eliza",
+            forbiddenHardCodedNeedles: [
+              "github.com/milady-ai/milady",
+              'orgName:"milady-ai"',
+              'repoName:"milady"',
+              'docsUrl:"https://docs.milady.ai"',
+              'appUrl:"https://app.milady.ai"',
+            ],
+          },
+          validation: {
+            script: relativeToRoot(path.join(root, "scripts/validate-runtime-overlay.mjs")),
+            cheapCheck:
+              "node scripts/validate-runtime-overlay.mjs --stage tails/config/chroot_local-includes/usr/share/elizaos/milady-app",
+          },
+        },
+        null,
+        2,
+      )}\n`,
     },
   ];
 }
@@ -933,12 +1388,18 @@ function localInferenceFallbackWrites() {
     .map(([relativePath, kind]) => {
       const filePath = path.join(stage, relativePath);
       if (!fs.existsSync(filePath)) return null;
+      const content = patchLocalInferenceFallback(
+        fs.readFileSync(filePath, "utf8"),
+        kind,
+      );
+      if (!content.includes("ELIZAOS_LIVE_EMBEDDING_FALLBACK")) {
+        throw new Error(
+          `${filePath}: local inference embedding fallback patch did not apply`,
+        );
+      }
       return {
         filePath,
-        content: patchLocalInferenceFallback(
-          fs.readFileSync(filePath, "utf8"),
-          kind,
-        ),
+        content,
       };
     })
     .filter(Boolean);
@@ -1167,6 +1628,7 @@ const nextBuildInfo = {
   runtime: {
     ...(buildInfo.runtime ?? {}),
     exitOnLastWindowClosed: false,
+    closeMinimizesToTray: true,
   },
   chromiumFlags,
 };
@@ -1225,6 +1687,7 @@ const runtimePackagePatchWrites = hasNodeModules
       ...lucideReactStubWrites(),
       ...localInferenceFallbackWrites(),
       ...sanitizedCoreRuntimeWrites(),
+      ...liveOverlayManifestWrite(),
     ]
   : [];
 const runtimePatchWrites = [

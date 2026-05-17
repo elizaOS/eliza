@@ -39,6 +39,12 @@ interface LogsState {
   fetchedAt: string | null;
 }
 
+interface LogsApiResponse {
+  success?: boolean;
+  error?: string;
+  data?: string;
+}
+
 const STATUS_BADGE_STYLES: Record<string, string> = {
   running: "border-green-500/40 bg-green-500/10 text-green-400",
   provisioning: "border-blue-500/40 bg-blue-500/10 text-blue-400",
@@ -106,18 +112,13 @@ export function ElizaAgentLogsViewer({
           cache: "no-store",
         },
       );
-      const payload = await response.json().catch(() => ({}));
+      const payload: LogsApiResponse = await response.json().catch(() => ({}));
 
-      if (!response.ok || !(payload as { success?: boolean }).success) {
-        throw new Error(
-          (payload as { error?: string }).error ?? `HTTP ${response.status}`,
-        );
+      if (!response.ok || !payload.success) {
+        throw new Error(payload.error ?? `HTTP ${response.status}`);
       }
 
-      const raw =
-        typeof (payload as { data?: unknown }).data === "string"
-          ? (payload as { data: string }).data
-          : "";
+      const raw = typeof payload.data === "string" ? payload.data : "";
 
       setLogsState({
         raw,

@@ -21,7 +21,8 @@ import {
 interface ElizaAgentPricingBannerProps {
   runningCount: number;
   idleCount: number;
-  creditBalance: number;
+  /** null = balance unavailable (e.g. still loading); renders as "—". */
+  creditBalance: number | null;
 }
 
 export function ElizaAgentPricingBanner({
@@ -32,13 +33,13 @@ export function ElizaAgentPricingBanner({
   const totalMonthlyCost =
     runningCount * MONTHLY_RUNNING_COST + idleCount * MONTHLY_IDLE_COST;
 
-  const hoursRemaining = estimateHoursRemaining(
-    creditBalance,
-    runningCount,
-    idleCount,
-  );
+  const hoursRemaining =
+    creditBalance !== null
+      ? estimateHoursRemaining(creditBalance, runningCount, idleCount)
+      : null;
 
-  const isLowBalance = creditBalance < AGENT_PRICING.LOW_CREDIT_WARNING;
+  const isLowBalance =
+    creditBalance !== null && creditBalance < AGENT_PRICING.LOW_CREDIT_WARNING;
   const hasAgents = runningCount + idleCount > 0;
 
   return (
@@ -132,7 +133,7 @@ export function ElizaAgentPricingBanner({
               {hoursRemaining !== null ? formatDuration(hoursRemaining) : "—"}
             </p>
             <p className="text-[10px] text-white/30 font-mono">
-              Balance: {formatUSD(creditBalance)}
+              Balance: {creditBalance !== null ? formatUSD(creditBalance) : "—"}
             </p>
           </div>
         </div>

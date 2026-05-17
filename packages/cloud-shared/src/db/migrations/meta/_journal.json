@@ -799,6 +799,69 @@
       "when": 1778657000000,
       "tag": "0119_add_tts_first_line_cache",
       "breakpoints": true
+    },
+    {
+      "idx": 114,
+      "version": "7",
+      "when": 1778657100000,
+      "tag": "0100_add_vendor_connections",
+      "breakpoints": true
+    },
+    {
+      "idx": 115,
+      "version": "7",
+      "when": 1778657200000,
+      "tag": "0102_add_org_storage_quota",
+      "breakpoints": true
+    },
+    {
+      "idx": 116,
+      "version": "7",
+      "when": 1778657300000,
+      "tag": "0115_add_sensitive_requests",
+      "breakpoints": true
+    },
+    {
+      "idx": 117,
+      "version": "7",
+      "when": 1778657400000,
+      "tag": "0116_add_payment_requests",
+      "breakpoints": true
+    },
+    {
+      "idx": 118,
+      "version": "7",
+      "when": 1778657500000,
+      "tag": "0117_add_voice_imprints",
+      "breakpoints": true
+    },
+    {
+      "idx": 119,
+      "version": "7",
+      "when": 1778657600000,
+      "tag": "0120_add_oauth_intents",
+      "breakpoints": true
+    },
+    {
+      "idx": 120,
+      "version": "7",
+      "when": 1778657700000,
+      "tag": "0121_add_identity_links",
+      "breakpoints": true
+    },
+    {
+      "idx": 121,
+      "version": "7",
+      "when": 1778657800000,
+      "tag": "0122_add_approval_requests",
+      "breakpoints": true
+    },
+    {
+      "idx": 122,
+      "version": "7",
+      "when": 1778657900000,
+      "tag": "0123_add_secret_ballots",
+      "breakpoints": true
     }
   ]
 }

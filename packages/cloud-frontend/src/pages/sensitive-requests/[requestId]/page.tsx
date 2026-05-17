@@ -282,7 +282,10 @@ export default function SensitiveRequestPage() {
 
   return (
     <div className="flex min-h-screen items-center justify-center bg-[#080A0D] px-4 py-6 text-white">
-      <main className="w-full max-w-[520px] border border-white/10 bg-black/55 p-5">
+      <main
+        id="main"
+        className="w-full max-w-[520px] border border-white/10 bg-black/55 p-5"
+      >
         <div className="flex items-start gap-3">
           <div className="flex h-9 w-9 shrink-0 items-center justify-center border border-white/10 bg-white/5">
             {effectiveStatus === "success" ||
@@ -295,7 +298,7 @@ export default function SensitiveRequestPage() {
             )}
           </div>
           <div className="min-w-0">
-            <p className="text-xs font-medium uppercase tracking-[0.14em] text-white/45">
+            <p className="text-xs font-medium uppercase tracking-[0.14em] text-white/74">
               Eliza Cloud
             </p>
             <h1 className="mt-1 text-lg font-semibold">{copy.title}</h1>

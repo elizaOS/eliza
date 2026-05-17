@@ -4,6 +4,12 @@ This document is deliberately blunt. elizaOS Live is a real live-OS
 integration, but the current branch is still a demo/productization branch,
 not a final enterprise release.
 
+Product positioning: elizaOS Live is a USB-bootable distro built on
+Tails live-OS plumbing. The primary user experience should be elizaOS
+Live, not a visibly rebranded Tails session. Tails remains credited in
+license/about materials and preserved in engineering internals where
+renaming would break upstream contracts.
+
 ## Clean and Standard
 
 These parts are aligned with normal Tails/live-build practice:
@@ -18,6 +24,8 @@ These parts are aligned with normal Tails/live-build practice:
 - Root is reserved for narrow supervised OS capabilities; normal app/UI
   work runs as the live user.
 - Static smoke checks cover high-risk integration mistakes.
+- Security smoke checks cover the current broker, sudoers, persistence,
+  systemd, update-marker, SBOM, and provenance policy.
 - The USB writer uses removable-disk guard rails instead of blindly
   running `dd`.
 
@@ -34,10 +42,35 @@ production release:
 | Model boot | Fallbacks prevent startup from requiring a private model download | Signed model catalog; onboarding-driven download/provider choice |
 | Privileged actions | Conservative capability runner, mostly status/root-status | Approval-gated policy, audit log, AppArmor/polkit review |
 | Branding | Direct Tails UI/string overrides where needed | Stable brand overlay package; keep required Tails internals untouched |
-| Updates | Rebuild ISO for OS changes | Signed app/model updates plus signed OS delta or full-image updater |
+| Updates | Baked runtime plus checked signed-runtime verifier foundation; rebuild ISO for OS/base changes | Production keys, downloader, revocation, signed app/model updates, plus signed OS delta or full-image updater |
+| USB flasher | Guarded developer script | Signed GUI + CLI for macOS, Windows, Linux with the same disk-safety policy |
+| Enterprise controls | Planning docs only | Signed manifests, rings, policy pins, mirrors, rollback, and non-secret audit evidence |
 
 None of these should be hidden. They should stay explicit in docs and
 checks until replaced.
+
+## Checked Security Policy
+
+The concrete policy lives in [`security-model.md`](./security-model.md).
+Cheap validation lives in `scripts/security-smoke.sh`.
+
+Default security smoke is a development gate:
+
+```sh
+scripts/security-smoke.sh
+```
+
+It fails on elizaOS-owned policy violations and warns on inherited Tails
+exceptions or missing production infrastructure. Release candidates must run
+strict mode:
+
+```sh
+ELIZAOS_SECURITY_STRICT=1 scripts/security-smoke.sh
+```
+
+Strict mode treats inherited broad sudoers, missing production update keyring,
+and missing SBOM/provenance artifacts as blockers. The USB writer has a
+signature-verification path, but production still needs a real release keyring.
 
 ## Root Capability Boundary
 
@@ -55,13 +88,56 @@ packages, networking, services, persistence, devices, and recovery flows.
 It is also the fastest way to break Tails' guarantees if unbounded. The
 broker model is the release path.
 
+Current checked policy:
+
+- the only elizaOS-owned sudoers entry is
+  `/usr/local/lib/elizaos/capability-runner root-status`
+- `capability-runner` may expose status, privacy-mode status, the Persistent
+  Storage launcher, and exact root-status smoke only
+- package installation, service mutation, network mutation, disk writes, and
+  arbitrary command execution are not broker capabilities
+
+Known production finding: inherited Tails sudoers for Persistent Storage and
+IUK updates contains broad internal authority. elizaOS does not add to it, but
+enterprise release needs an explicit accept/mitigate decision.
+
+## Persistence and Update Boundaries
+
+Current checked persistence policy:
+
+- elizaOS Persistent Storage binds only `.eliza`, `.milady`,
+  `.config/elizaOS`, legacy `.config/milady` names, and elizaOS CEF cache
+  paths
+- no elizaOS persistence binding may target all of `/home/amnesia`, `/etc`,
+  `/usr`, `/var`, `/root`, `/opt`, or an unencrypted external path
+- activation/deactivation must quiesce elizaOS user units before bind-mount
+  changes
+- runtime cache cleanup must stay under elizaOS-owned paths and use `find -P
+  -xdev`
+
+Current checked update policy:
+
+- inherited Tails IUK signature-verification tests must remain present
+- app/runtime verifier requires a detached signature, complete file inventory,
+  hash validation, and materialization into a root-owned runtime store before
+  launcher selection
+- runtime wrappers ignore caller-supplied runtime paths by default and fall
+  back to the baked `/opt/milady` runtime when selector trust is missing
+- development tooling can sign test manifests, validate model catalogs, and
+  generate lightweight release evidence; production keys and full SBOM remain
+  separate release gates
+- docs must state signed app/runtime, signed model catalog, rollback, and
+  fail-closed behavior
+- production strict mode fails until release keys, SBOM, and provenance
+  artifacts exist
+
 ## Definition of Demo-Complete
 
 The demo is complete when the fresh ISO passes:
 
 - boot menu and Plymouth show elizaOS
-- greeter appears and can start a normal Tails/GNOME session
-- desktop remains usable with normal Tails tools
+- greeter appears and can start a normal GNOME live session
+- desktop remains usable with normal live-OS tools
 - elizaOS app launches automatically as a normal window
 - close button minimizes/restores or relaunches cleanly without feeling
   broken
@@ -86,6 +162,27 @@ Production-grade requires the demo gates plus:
 - accessibility, localization, and recovery flows
 - threat model for amnesia, persistence, root capabilities, updates, and
   model downloads
+- `ELIZAOS_SECURITY_STRICT=1 scripts/security-smoke.sh` passes
 
 The branch should not be marketed as finished enterprise software before
 those gates are complete.
+
+## Enterprise Hardening Backlog
+
+The enterprise backlog is not just packaging. Required work:
+
+- signing key custody, release approval, revocation, and emergency
+  rotation procedures
+- separate update rings for nightly, beta, canary, pilot, broad, and
+  emergency rollback
+- signed manifests for ISO, OS deltas, app/runtime bundles, model catalog,
+  and policy bundles
+- internal mirror support with pinned trust roots
+- capability-broker policy review, argument allowlists, and audit logging
+- AppArmor, polkit, sudoers, systemd unit, and update-path review
+- CVE, SBOM, license, and provenance gates before promotion
+- persistent-storage migration tests across versions and rollback paths
+- hardware compatibility matrix, including GPU, Wi-Fi, Secure Boot status,
+  and problematic USB controllers
+- recovery guide for broken updates, forgotten persistence passphrases,
+  failed USB writes, and enterprise deprovisioning

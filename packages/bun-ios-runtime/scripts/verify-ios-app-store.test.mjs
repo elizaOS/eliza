@@ -68,7 +68,7 @@ test("accepts HTTPS/WSS-only app policy", () => {
     "index.html": `<meta http-equiv="Content-Security-Policy" content="connect-src 'self' eliza-local-agent: https://* wss://*">`,
     "capacitor.config.json": JSON.stringify({
       server: {
-        allowNavigation: ["*.elizacloud.ai", "app.eliza.how"],
+        allowNavigation: ["*.elizacloud.ai", "eliza.app"],
       },
     }),
   });

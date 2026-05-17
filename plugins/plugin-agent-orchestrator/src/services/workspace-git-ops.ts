@@ -18,7 +18,7 @@ import type {
   PushOptions,
   WorkspaceResult,
   WorkspaceStatusResult,
-} from "./workspace-service.js";
+} from "./workspace-types.js";
 
 /**
  * Get workspace git status (branch, staged/modified/untracked files).

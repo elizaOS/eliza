@@ -17,6 +17,7 @@ import {
   type ModelMessage,
   Output,
   streamText,
+  type TextStreamPart,
 } from "ai";
 import type { CloudMergedProviderOptions } from "./cloud-provider-options";
 import type {
@@ -229,7 +230,9 @@ export class VercelAIGatewayProvider implements AIProvider {
         try {
           const toolCallIndexes = new Map<string, number>();
           let nextToolCallIndex = 0;
-          for await (const part of result.fullStream as AsyncIterable<any>) {
+          for await (const part of result.fullStream as AsyncIterable<
+            TextStreamPart<Record<string, never>>
+          >) {
             if (part.type === "text-delta") {
               controller.enqueue(
                 encoder.encode(

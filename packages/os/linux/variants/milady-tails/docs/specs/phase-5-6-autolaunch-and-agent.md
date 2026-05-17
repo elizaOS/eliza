@@ -34,9 +34,10 @@ are not release-complete.
 ## PHASE 5 — Auto-launch Milady on greeter exit
 
 Mechanism: a root-owned systemd path watches for the live user's session
-bus, then starts a system service that runs Milady as `amnesia`. The XDG
-autostart entry remains as a harmless session backup; `/usr/local/bin/milady`
-uses a lock so the two paths cannot create duplicate app instances.
+bus, then starts the elizaOS user services through a root-owned supervisor.
+`/usr/local/bin/milady` uses a lock so restart paths cannot create duplicate
+app instances. XDG autostart is intentionally not used; the app lifecycle is
+owned by systemd.
 
 Files to add (under `TAILS/config/chroot_local-includes/`):
 
@@ -50,9 +51,8 @@ Files to add (under `TAILS/config/chroot_local-includes/`):
 3. **`usr/local/bin/milady`** — canonical wrapper; refuses root/non-amnesia,
    pins `ELIZA_STATE_DIR=/home/amnesia/.eliza` and XDG dirs, exports
    elizaOS mode/broker env, and holds a lock to prevent duplicate instances.
-4. **`etc/xdg/autostart/milady.desktop`** — backup/session launch entry.
-   It calls `/usr/local/bin/milady`, `X-GNOME-Autostart-Phase=Applications`,
-   `NoDisplay=true`.
+4. **`etc/systemd/user/*.service`** — live-user agent, renderer, and app
+   shell services enabled for `default.target`.
 5. **`etc/dconf/db/local.d/00_Tails_defaults`** — currently patched in place
    for elizaOS wallpaper/favorites while preserving Tails' existing
    `enabled-extensions`. If this is split later into a sibling

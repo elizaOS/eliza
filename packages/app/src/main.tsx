@@ -104,6 +104,7 @@ import {
 } from "./app-config";
 import { APP_ENV_ALIASES, APP_ENV_PREFIX } from "./brand-env";
 import { APP_CHARACTER_CATALOG } from "./character-catalog";
+import { AndroidVoicePill } from "./components/AndroidVoicePill";
 import { buildAssistantLaunchHashRoute } from "./deep-link-routing";
 import {
   apiBaseToDeviceBridgeUrl,
@@ -1641,6 +1642,24 @@ function mountReactApp(): void {
                 <DesktopTrayRuntime />
                 <LifeOpsActivitySignalsEffect />
                 <App />
+                {isAndroid ? (
+                  <div
+                    style={{
+                      position: "fixed",
+                      bottom: "calc(env(safe-area-inset-bottom, 0px) + 16px)",
+                      left: 0,
+                      right: 0,
+                      display: "flex",
+                      justifyContent: "center",
+                      pointerEvents: "none",
+                      zIndex: 9999,
+                    }}
+                  >
+                    <div style={{ pointerEvents: "auto" }}>
+                      <AndroidVoicePill />
+                    </div>
+                  </div>
+                ) : null}
               </>
             )}
           </AppProvider>

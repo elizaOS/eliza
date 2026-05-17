@@ -63,6 +63,12 @@ export interface TalkModeStateEvent {
   state?: string;
 }
 
+export interface TalkModePlaybackStartEvent {
+  provider?: "elevenlabs" | "local-inference" | "system";
+  sampleRate?: number;
+  channels?: number;
+}
+
 export interface MobileSignalsSnapshot {
   source: "mobile_device";
   platform: "ios" | "android" | "web";
@@ -590,6 +596,10 @@ export interface TalkModePluginLike extends NativePlugin {
     eventName: "stateChange",
     listenerFunc: (event: TalkModeStateEvent) => void,
   ): Promise<PluginListenerHandle>;
+  addListener(
+    eventName: "playbackStart",
+    listenerFunc: (event: TalkModePlaybackStartEvent) => void,
+  ): Promise<PluginListenerHandle>;
   checkPermissions(): Promise<TalkModePermissionStatus>;
   requestPermissions(): Promise<TalkModePermissionStatus>;
   start(options?: {
@@ -605,6 +615,20 @@ export interface TalkModePluginLike extends NativePlugin {
     };
   }): Promise<{ started: boolean; error?: string }>;
   stop(): Promise<void>;
+  speak(options: {
+    text: string;
+    directive?: Record<string, unknown>;
+    useLocalInferenceTts?: boolean;
+    useSystemTts?: boolean;
+  }): Promise<{
+    completed: boolean;
+    interrupted: boolean;
+    interruptedAt?: number;
+    usedSystemTts: boolean;
+    error?: string;
+  }>;
+  stopSpeaking(): Promise<{ interruptedAt?: number }>;
+  isSpeaking(): Promise<{ speaking: boolean }>;
 }
 
 export type GenericNativePlugin = NativePlugin;

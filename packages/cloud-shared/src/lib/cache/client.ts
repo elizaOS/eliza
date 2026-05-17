@@ -626,6 +626,8 @@ export class CacheClient {
     this.nativeRedisReady = false;
     this.nativeRedisConnectPromise = import("wadis")
       .then(({ Wadis }) => {
+        // Wadis's exported types don't exactly match WadisClientLike (the local
+        // structural interface we use). The runtime shape is compatible.
         this.redis = new WadisRedisAdapter(new Wadis() as unknown as WadisClientLike);
         this.nativeRedisReady = true;
         logger.info("[Cache] ✓ Cache client initialized with Wadis Wasm Redis");
@@ -646,6 +648,18 @@ export class CacheClient {
 
     const env = getCloudAwareEnv();
     this.enabled = env.CACHE_ENABLED !== "false";
+
+    // MOCK_REDIS=1 is an explicit opt-in for tests/CI. It forces the in-memory
+    // adapter regardless of any other configuration, but never activates
+    // silently when unset — real creds are still honored when MOCK_REDIS is
+    // not "1".
+    if (this.enabled && process.env.MOCK_REDIS === "1") {
+      this.nativeRedisConnectPromise = null;
+      this.nativeRedisReady = true;
+      this.redis = new MemoryCacheAdapter();
+      logger.info("[Cache] ✓ Cache client initialized with in-memory mock (MOCK_REDIS=1)");
+      return;
+    }
 
     if (!this.enabled) {
       // CACHE_DISABLE_REASON acknowledges an intentional disable
@@ -1112,9 +1126,6 @@ export class CacheClient {
   /**
    * Atomically gets a value and deletes the key using GETDEL (Redis ≥6.2).
    * Used for single-use values (e.g. SIWE nonce) to prevent replay attacks.
-   *
-   * @param key - Cache key.
-   * @returns The value if present, or null.
    */
   async getAndDelete<T>(key: string): Promise<T | null> {
     const redis = await this.getRedisClient();

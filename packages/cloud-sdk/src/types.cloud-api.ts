@@ -59,7 +59,8 @@ export type CurrentUserResponse = ApiSuccessEnvelope<CurrentUserDto>;
 
 export type UpdatedUserDto = Omit<CurrentUserDto, "organization">;
 
-export interface UpdatedUserResponse extends ApiSuccessEnvelope<UpdatedUserDto> {
+export interface UpdatedUserResponse
+  extends ApiSuccessEnvelope<UpdatedUserDto> {
   message: string;
 }
 

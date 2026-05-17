@@ -27,6 +27,7 @@ interface AnalyticsTimeSeriesPoint {
   inputTokens: number;
   outputTokens: number;
   successRate: number;
+  successRatePercent: number;
 }
 
 interface AnalyticsCostTrending {
@@ -35,6 +36,9 @@ interface AnalyticsCostTrending {
   burnChangePercent: number;
   projectedMonthlyBurn: number;
   daysUntilBalanceZero: number | null;
+  monthlyBurnPercent: number;
+  monthlyBurnPercentClamped: number;
+  burnAlertThresholdExceeded: boolean;
 }
 
 interface AnalyticsProviderBreakdownItem {

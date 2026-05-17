@@ -36,11 +36,11 @@ public final class RuntimeAPIClient {
     }
 
     public func fetchSnapshot() async throws -> RuntimeSnapshot {
-        async let health = fetchHealth()
-        async let agents = fetchAgents()
-        async let logs = fetchLogs()
+        let health = try await fetchHealth()
+        async let agents = fetchOptionalAgents()
+        async let logs = fetchOptionalLogs()
 
-        return try await RuntimeSnapshot(
+        return await RuntimeSnapshot(
             health: health,
             agents: agents,
             logs: logs,
@@ -87,6 +87,22 @@ public final class RuntimeAPIClient {
 
     public func fetchLogs() async throws -> RuntimeLogsResponse {
         try await rpc(RuntimeLogsResponse.self, method: "runtime.logs")
+    }
+
+    private func fetchOptionalAgents() async -> [RuntimeAgentSnapshot] {
+        do {
+            return try await fetchAgents()
+        } catch {
+            return []
+        }
+    }
+
+    private func fetchOptionalLogs() async -> RuntimeLogsResponse {
+        do {
+            return try await fetchLogs()
+        } catch {
+            return RuntimeLogsResponse(entries: [], sources: [], tags: [])
+        }
     }
 
     public func fetchWalletConfig() async throws -> WalletConfigSnapshot {

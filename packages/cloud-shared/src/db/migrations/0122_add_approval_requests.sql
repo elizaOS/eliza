@@ -28,10 +28,10 @@ CREATE TABLE IF NOT EXISTS approval_requests (
   metadata JSONB NOT NULL DEFAULT '{}'::jsonb
 );
 
-CREATE INDEX idx_approval_requests_org_created ON approval_requests(organization_id, created_at DESC);
-CREATE INDEX idx_approval_requests_status_expires ON approval_requests(status, expires_at) WHERE status IN ('pending','delivered');
-CREATE INDEX idx_approval_requests_agent ON approval_requests(agent_id) WHERE agent_id IS NOT NULL;
-CREATE INDEX idx_approval_requests_expected_signer ON approval_requests(expected_signer_identity_id) WHERE expected_signer_identity_id IS NOT NULL;
+CREATE INDEX IF NOT EXISTS idx_approval_requests_org_created ON approval_requests(organization_id, created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_approval_requests_status_expires ON approval_requests(status, expires_at) WHERE status IN ('pending','delivered');
+CREATE INDEX IF NOT EXISTS idx_approval_requests_agent ON approval_requests(agent_id) WHERE agent_id IS NOT NULL;
+CREATE INDEX IF NOT EXISTS idx_approval_requests_expected_signer ON approval_requests(expected_signer_identity_id) WHERE expected_signer_identity_id IS NOT NULL;
 
 CREATE TABLE IF NOT EXISTS approval_request_events (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -45,4 +45,4 @@ CREATE TABLE IF NOT EXISTS approval_request_events (
   occurred_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
-CREATE INDEX idx_approval_request_events_request ON approval_request_events(approval_request_id, occurred_at);
+CREATE INDEX IF NOT EXISTS idx_approval_request_events_request ON approval_request_events(approval_request_id, occurred_at);

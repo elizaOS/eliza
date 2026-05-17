@@ -43,6 +43,9 @@ const root: typeof globalThis & {
   FinalizationRegistry?: unknown;
 } = globalThis;
 
+// These casts assign minimal polyfill classes to the global slots normally
+// occupied by Web IDL builtins. The polyfills are structurally compatible
+// enough for the transitive dependencies that reference them during init.
 if (root.MessagePort === undefined) {
   root.MessagePort = MessagePortPolyfill as unknown as typeof MessagePort;
 }

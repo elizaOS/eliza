@@ -61,6 +61,57 @@ def build_webview(url: str) -> WebKit2.WebView:
     return view
 
 
+def env_int(name: str, default: int) -> int:
+    raw = os.environ.get(name)
+    if raw is None or raw == "":
+        return default
+    return int(raw)
+
+
+def configure_pill_window(window: Gtk.Window) -> None:
+    """Pin the voice-pill overlay to the bottom-center of the primary screen.
+
+    Frameless, no taskbar entry, always on top. Width/height/bottom-margin
+    come from ELIZAOS_PILL_* env vars set by start-elizaos-pill-user.
+    """
+    width = env_int("ELIZAOS_PILL_WIDTH", 560)
+    height = env_int("ELIZAOS_PILL_HEIGHT", 140)
+    bottom_margin = env_int("ELIZAOS_PILL_BOTTOM_MARGIN", 24)
+
+    window.set_decorated(False)
+    window.set_resizable(False)
+    window.set_default_size(width, height)
+    window.set_size_request(width, height)
+    window.set_keep_above(True)
+    window.set_skip_taskbar_hint(True)
+    window.set_skip_pager_hint(True)
+    window.set_app_paintable(True)
+    window.set_type_hint(Gdk.WindowTypeHint.UTILITY)
+    window.stick()
+
+    visual = window.get_screen().get_rgba_visual()
+    if visual is not None:
+        window.set_visual(visual)
+
+    def place(*_args) -> None:
+        screen = window.get_screen()
+        if screen is None:
+            return
+        display = Gdk.Display.get_default()
+        monitor = display.get_primary_monitor() if display is not None else None
+        if monitor is None and display is not None and display.get_n_monitors() > 0:
+            monitor = display.get_monitor(0)
+        if monitor is None:
+            return
+        geom = monitor.get_geometry()
+        x = geom.x + (geom.width - width) // 2
+        y = geom.y + geom.height - height - bottom_margin
+        window.move(x, y)
+
+    window.connect("realize", place)
+    window.connect("show", place)
+
+
 def main() -> int:
     ensure_live_user()
 
@@ -69,9 +120,16 @@ def main() -> int:
         "http://127.0.0.1:5174/?apiBase=http%3A%2F%2F127.0.0.1%3A31337",
     )
 
-    window = Gtk.Window(title="elizaOS")
-    window.set_default_size(1280, 900)
-    window.set_position(Gtk.WindowPosition.CENTER)
+    shell_mode = os.environ.get("ELIZAOS_SHELL_MODE", "main")
+    is_pill = shell_mode == "pill"
+
+    title = "elizaOS Voice" if is_pill else "elizaOS"
+    window = Gtk.Window(title=title)
+    if is_pill:
+        configure_pill_window(window)
+    else:
+        window.set_default_size(1280, 900)
+        window.set_position(Gtk.WindowPosition.CENTER)
     window.set_wmclass("elizaOS", "elizaOS")
     window.set_icon_name("elizaos")
 
@@ -87,7 +145,11 @@ def main() -> int:
         GLib.timeout_add_seconds(3, lambda: (_view.load_uri(url), False)[1])
         return False
 
-    window.connect("delete-event", minimize_to_background)
+    # The pill overlay closes on user request (e.g. the close gesture on the
+    # pill itself). The main shell minimizes instead so the home surface
+    # stays one keystroke away.
+    if not is_pill:
+        window.connect("delete-event", minimize_to_background)
     view.connect("load-failed", reload_after_failure)
     window.connect("destroy", Gtk.main_quit)
 
@@ -106,6 +168,17 @@ def main() -> int:
             provider,
             Gtk.STYLE_PROVIDER_PRIORITY_APPLICATION,
         )
+
+    if is_pill:
+        # The pill renderer paints its own background; the GTK window must be
+        # transparent so the pill floats over whatever is behind it. Override
+        # the screen-wide rule with a higher-priority per-window provider.
+        pill_provider = Gtk.CssProvider()
+        pill_provider.load_from_data(b"window, webview { background: transparent; }")
+        window.get_style_context().add_provider(
+            pill_provider, Gtk.STYLE_PROVIDER_PRIORITY_USER
+        )
+        view.set_background_color(Gdk.RGBA(0.0, 0.0, 0.0, 0.0))
 
     window.show_all()
     window.present()

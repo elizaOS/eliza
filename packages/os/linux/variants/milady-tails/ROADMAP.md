@@ -8,7 +8,7 @@ No optimism inflation. Where something is risky or unknown, it says so.
 
 ---
 
-## Where we are right now (2026-05-16)
+## Where we are right now (2026-05-17)
 
 **Done and proven:**
 - The **containerized build pipeline** works. A full elizaOS ISO
@@ -21,10 +21,10 @@ No optimism inflation. Where something is risky or unknown, it says so.
 - Brand assets rendered; build infra clean-code reviewed; the Phase 6
   agent/runtime integration risks are documented.
 - Local overlays now exist for elizaOS branding, Privacy Mode, elizaOS app
-  install/autostart, a conservative elizaOS capability broker, and elizaOS
-  Persistent Storage.
+  install/systemd launch, a conservative elizaOS capability broker, elizaOS
+  Persistent Storage, and a checked signed-runtime verifier foundation.
 - The old root-level usbeliza prototype has been removed from this branch;
-  the active Linux distro work now lives under this Tails-based variant.
+  the active Linux distro work now lives under this live-build variant.
 
 **Not done:**
 - The current full ISO build/test pass is still in progress. The latest
@@ -40,6 +40,10 @@ No optimism inflation. Where something is risky or unknown, it says so.
 So: the *build machine* is mostly complete. The *product* — elizaOS Live
 — has the core overlays in place, but the next heavy gate is still a
 fresh rebuild + boot + app + mode/persistence validation.
+
+Product identity rule: the boot, greeter, and desktop should read as
+elizaOS Live. Tails remains the underlying live-OS plumbing and is credited
+in license/about docs, but it should not be the visible primary brand.
 
 ---
 
@@ -62,9 +66,14 @@ claims demo readiness after the app stays running in the rebuilt image.
 ### Milestone B — "v1.0 fully complete" (the real product)
 
 **Phases 1–11.** elizaOS is the desktop. You boot the USB, land in the
-elizaOS app, chat with Eliza, she builds apps, runs the local LLM or a
-signed cloud/model provider, opens windows — in all 4 storage×privacy
-combos, with encrypted persistence, validated on real hardware, released.
+elizaOS app, chat with Eliza, build apps, run the local LLM or a signed
+cloud/model provider, open windows — in all 4 storage×privacy combos,
+with encrypted persistence, validated on real hardware, and released with
+honest signing, provenance, recovery, and distribution docs. Fast
+app/runtime updates, signed model catalogs, OS delta updates, and enterprise
+mirrors can land as staged v1.x capabilities, but v1.0 must not imply they
+are production-complete until their keys, services, manifests, and rollback
+tests exist.
 
 - Effort: **multi-week.** The honest breakdown is below.
 - Risk: medium-high, concentrated in Phases 4 and 6 (see Risk section).
@@ -125,22 +134,32 @@ elizaOS Live v1.0 is done when **all of this is true on real hardware**:
 
 1. The ISO `dd`'s to a USB stick and boots on 2–3 real machines (Intel,
    AMD, NVIDIA).
-2. Boot menu offers "elizaOS" and "elizaOS — Privacy Mode"; everything at
-   the OS layer is elizaOS-branded; Tails is credited (greeter footer,
-   About, CREDITS).
+2. Boot menu offers "elizaOS" and "elizaOS — Privacy Mode"; everything in
+   the primary OS path is elizaOS-branded; Tails is credited in
+   About/CREDITS/license materials, not as the main boot or greeter brand.
 3. After the greeter, the elizaOS app launches as the desktop and the v36
    3-question onboarding runs in chat.
 4. Eliza works: local LLM chat (GPU-accelerated), BUILD_APP (stub +
    Claude), OPEN_APP, SET_WALLPAPER, the customization actions.
 5. Persistent mode: create encrypted storage via the greeter; chat
    history, built apps, models, Wi-Fi, API keys survive a reboot.
-6. Amnesia mode: nothing persists, system leaves no trace on shutdown.
-7. Privacy mode: traffic routes through Tor; Normal mode: direct.
+6. Amnesia mode: user state does not persist and no persistence volume is
+   unlocked.
+7. Privacy mode: supported traffic routes through Tor; Normal mode:
+   direct. Chromium/WebView caveats are disclosed until fixed.
 8. **All 4 storage×privacy combos behave identically** except speed and
    trace footprint — proven by the Phase 8 harness, every gap documented.
 9. The one known v1.0 gap (Chromium WebView Tor leak) is documented, not
    silent.
-10. License audit done; CREDITS/NOTICE complete; release tagged.
+10. The baked ISO runtime is documented as the factory fallback; any
+    persistent runtime update path is either disabled or protected by
+    boot-time signature/hash verification before activation.
+11. Signed model catalog/download behavior is either implemented and tested
+    or explicitly documented as release debt; no large/private model is
+    silently assumed to be present in the ISO.
+12. License audit done; CREDITS/NOTICE complete; release artifacts are
+    signed or clearly marked test-signed, with SBOM/provenance status
+    documented.
 
 Anything short of that isn't v1.0 — it's a milestone on the way.
 
@@ -161,7 +180,7 @@ Anything short of that isn't v1.0 — it's a milestone on the way.
    some of this; the release path needs cleaner package boundaries.
 4. **elizaOS app build fragility.** The desktop build needs an exact
    `eliza`-first + `setup-upstreams.mjs` + `MILADY_ELIZA_SOURCE=local`
-   sequence. If the milady repo's lockfile/dist-tag state drifts, the
+   sequence. If the app repo's lockfile/dist-tag state drifts, the
    `just milady-app` recipe breaks. Worth fixing upstream.
 5. **Latent Tails Trixie bugs.** Every build run so far surfaced one.
    The chroot-hooks and binary stages are now proven, but Phase 2+'s
@@ -178,7 +197,7 @@ Anything short of that isn't v1.0 — it's a milestone on the way.
 1. **Finish the current low-CPU rebuild.** Do not call it done until the
    fresh ISO checksum is known and the artifact is booted.
 2. **QEMU visual pass for Phase 2** — confirm elizaOS boot menu, Plymouth,
-   greeter, wallpaper, system identity, and Tails credit.
+   greeter, wallpaper, system identity, and legal/about attribution.
 3. **QEMU/runtime pass for Phase 3-7** — confirm direct/privacy networking,
    elizaOS launch/chrome-sandbox, always-on normal-window behavior,
    conservative broker status/root-status, and Persistent Storage.
@@ -191,20 +210,37 @@ Anything short of that isn't v1.0 — it's a milestone on the way.
 
 The demo ISO is not the whole product. Real distribution needs:
 
-- **Signed releases:** versioned ISO, SHA256, detached signature, release
-  notes, SBOM, license bundle, and a reproducible build target.
-- **No-full-ISO updates where possible:** signed app/runtime updates can
-  land in encrypted persistence; OS/base updates should use a Tails-style
-  incremental update path or a full-image fallback.
+- **Signed releases:** versioned ISO, SHA256/SHA512, detached signatures,
+  release notes, SBOM, license bundle, and provenance tying artifact hashes
+  to source revision, dependency snapshot, builder identity, and signing
+  event.
+- **Fast app/runtime updates:** the ISO carries a baked fallback runtime;
+  an updated runtime in encrypted persistence is selected only after
+  boot-time signature/hash verification against a signed manifest. Failed
+  verification falls back to the ISO runtime.
 - **Model delivery:** do not bake large/private models into every ISO by
   default. Onboarding should offer cloud sign-in, local-only mode, or a
-  signed Eliza-1 download cached in persistent storage.
+  signed Eliza-1 download cached in persistent storage. The model catalog
+  needs signed metadata, hashes, license/source information, hardware
+  requirements, revocation, and enterprise mirror support.
+- **OS/base update path:** signed full ISO plus guarded writer is the safe
+  first production path; signed Tails-style incremental kits or binary
+  deltas are v1.x work where they are safer than full-image replacement.
 - **USB writer UX:** keep the guarded CLI script for developers, then add
-  the same removable-disk checks to the desktop app so users can write a
-  new elizaOS USB without Etcher.
-- **Enterprise channel:** staged rollout rings, revocation, fleet policy,
-  recovery image, hardware compatibility notes, and root-capability audit
-  logs.
+  the same removable-disk checks to a signed macOS/Windows/Linux flasher
+  so users can create or refresh an elizaOS USB without depending on
+  Etcher.
+- **Enterprise channel:** staged rollout rings, revocation, policy pins,
+  internal mirrors for ISO/delta/app/model artifacts, recovery image,
+  hardware compatibility notes, persistent-storage migrations, and
+  non-secret fleet evidence.
+- **Recovery and rollback:** runtime rollback to previous persistent
+  version or ISO fallback, model rollback/deletion, OS full-image fallback,
+  and tested Persistent Storage migration failure handling.
+- **Demo debt accounting:** release docs must say which of the above are
+  implemented, test-signed, or still planned. Do not present enterprise
+  mirrors/policy, production keys, app update channels, model catalogs, or
+  OS deltas as complete until they exist.
 
 See [`docs/distribution-and-updates.md`](./docs/distribution-and-updates.md)
 and [`docs/production-readiness.md`](./docs/production-readiness.md).

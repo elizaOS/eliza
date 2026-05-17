@@ -5,7 +5,7 @@
 
 "use client";
 
-import { BRAND_PATHS, LOGO_FILES } from "@elizaos/shared-brand";
+import { BRAND_PATHS, EXTERNAL_URLS, LOGO_FILES } from "@elizaos/shared-brand";
 import { Link } from "react-router-dom";
 
 export default function Footer() {
@@ -26,20 +26,20 @@ export default function Footer() {
               </p>
             </div>
             <p className="text-sm text-white/70 whitespace-nowrap">
-              © 2026 eliza cloud · USA
+              © 2026 Eliza Cloud · USA
             </p>
           </div>
 
           <div className="flex flex-col gap-1 md:gap-2 items-end">
             <div className="flex flex-col gap-1.5 text-right relative">
               <a
-                href="https://eliza.app"
+                href={EXTERNAL_URLS.app}
                 className="text-base text-white transition-colors hover:text-[#FF5800]"
               >
-                Get App
+                Download the app
               </a>
               <a
-                href="https://elizaos.ai"
+                href={EXTERNAL_URLS.os}
                 className="text-base text-white transition-colors hover:text-[#FF5800]"
               >
                 Install elizaOS

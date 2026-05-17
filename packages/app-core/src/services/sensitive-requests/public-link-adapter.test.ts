@@ -91,7 +91,6 @@ describe("publicLinkSensitiveRequestAdapter", () => {
 
   it("falls back to the default cloud base when no setting or env is provided", async () => {
     const previous = process.env.ELIZAOS_CLOUD_BASE_URL;
-    process.env.ELIZAOS_CLOUD_BASE_URL = undefined as unknown as string;
     delete process.env.ELIZAOS_CLOUD_BASE_URL;
     try {
       const result = await publicLinkSensitiveRequestAdapter.deliver({

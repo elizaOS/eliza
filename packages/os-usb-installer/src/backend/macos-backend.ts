@@ -1,11 +1,19 @@
 import { execFile } from "node:child_process";
 import { createHash } from "node:crypto";
-import { promises as fs } from "node:fs";
+import { createWriteStream, promises as fs } from "node:fs";
 import * as http from "node:http";
 import * as https from "node:https";
+import * as os from "node:os";
 import * as path from "node:path";
 import { promisify } from "node:util";
 import { DEFAULT_ELIZAOS_IMAGES } from "./dry-run-backend";
+import {
+  DiskutilPermissionError,
+  InvalidDevicePathError,
+  InvalidImagePathError,
+  PlistParseError,
+  UserCancelledAuthError,
+} from "./errors";
 import type {
   ElizaOsImage,
   InstallerStep,
@@ -26,8 +34,15 @@ const STEP_LABELS: Record<InstallerStepId, string> = {
   complete: "Complete",
 };
 
-const TWO_TB = 2 * 1024 ** 4;
-const INSTALLER_TMP_DIR = "/tmp/elizaos-installer";
+const INSTALLER_TMP_DIR = path.join(os.tmpdir(), "elizaos-installer");
+
+// Strict regexes used to gate paths before they hit any subprocess.
+// imagePath must be an absolute file under a known macOS prefix; rawDisk must
+// be a whole-disk character device like /dev/rdisk3 (NOT /dev/rdisk3s1).
+const IMAGE_PATH_RE =
+  /^\/(?:tmp|var|Users|Volumes|private)\/[A-Za-z0-9._/-]+$/;
+const RAW_DISK_RE = /^\/dev\/rdisk\d+$/;
+const DEVICE_DISK_RE = /^\/dev\/disk(\d+)$/;
 
 interface DiskUtilPlistDisk {
   DeviceIdentifier: string;
@@ -48,49 +63,75 @@ interface DiskUtilInfoPlist {
   TotalSize?: number;
   Removable?: boolean;
   RemovableMediaOrExternalDevice?: boolean;
+  // Ejectable covers USB-NVMe enclosures (e.g. Samsung T7) that may not set
+  // Removable=true but do report themselves as ejectable external devices.
+  Ejectable?: boolean;
   Internal?: boolean;
   OSInternalMedia?: boolean;
   VirtualOrPhysical?: string;
 }
 
-// Minimal plist parser for the flat dict structure diskutil emits.
-// Handles <key>, <string>, <integer>, <true/>, <false/>, nested <dict> and <array>.
+// ---------------------------------------------------------------------------
+// Shell escaping for osascript / `do shell script` round-tripping.
+// ---------------------------------------------------------------------------
+
+// POSIX single-quote escape: 'a'\''b' style. Safe to concatenate.
+export function shellSingleQuote(s: string): string {
+  return `'${s.replace(/'/g, `'\\''`)}'`;
+}
+
+// AppleScript-string escape (inside the `"..."` we hand to -e).
+// Only backslashes and double-quotes need escaping inside that string literal.
+export function appleScriptStringEscape(s: string): string {
+  return s.replace(/\\/g, "\\\\").replace(/"/g, '\\"');
+}
+
+// ---------------------------------------------------------------------------
+// Plist parser. Homemade because we deliberately don't want a runtime dep,
+// but every failure path now throws a typed PlistParseError instead of
+// silently returning {}.
+// ---------------------------------------------------------------------------
+
 function parsePlistValue(
   xml: string,
   pos: number,
 ): { value: unknown; end: number } {
-  // skip whitespace
   while (pos < xml.length && /\s/.test(xml[pos] ?? "")) pos++;
 
-  if (xml.startsWith("<true/>", pos)) {
-    return { value: true, end: pos + 7 };
-  }
-  if (xml.startsWith("<false/>", pos)) {
-    return { value: false, end: pos + 8 };
-  }
+  if (xml.startsWith("<true/>", pos)) return { value: true, end: pos + 7 };
+  if (xml.startsWith("<false/>", pos)) return { value: false, end: pos + 8 };
+
   if (xml.startsWith("<integer>", pos)) {
     const end = xml.indexOf("</integer>", pos + 9);
-    const raw = xml.slice(pos + 9, end);
-    return { value: Number(raw), end: end + 10 };
+    if (end === -1) {
+      throw new PlistParseError("unterminated <integer>", xml.slice(pos, pos + 80));
+    }
+    return { value: Number(xml.slice(pos + 9, end)), end: end + 10 };
   }
   if (xml.startsWith("<real>", pos)) {
     const end = xml.indexOf("</real>", pos + 6);
-    const raw = xml.slice(pos + 6, end);
-    return { value: Number(raw), end: end + 7 };
+    if (end === -1) {
+      throw new PlistParseError("unterminated <real>", xml.slice(pos, pos + 80));
+    }
+    return { value: Number(xml.slice(pos + 6, end)), end: end + 7 };
   }
   if (xml.startsWith("<string>", pos)) {
     const end = xml.indexOf("</string>", pos + 8);
-    const raw = xml.slice(pos + 8, end);
-    return { value: raw, end: end + 9 };
+    if (end === -1) {
+      throw new PlistParseError("unterminated <string>", xml.slice(pos, pos + 80));
+    }
+    return { value: xml.slice(pos + 8, end), end: end + 9 };
   }
-  if (xml.startsWith("<dict>", pos)) {
-    return parsePlistDict(xml, pos);
-  }
-  if (xml.startsWith("<array>", pos)) {
-    return parsePlistArray(xml, pos);
-  }
-  // skip unknown tag
+  if (xml.startsWith("<string/>", pos)) return { value: "", end: pos + 9 };
+  if (xml.startsWith("<dict>", pos)) return parsePlistDict(xml, pos);
+  if (xml.startsWith("<array>", pos)) return parsePlistArray(xml, pos);
+  if (xml.startsWith("<array/>", pos)) return { value: [], end: pos + 8 };
+  if (xml.startsWith("<dict/>", pos)) return { value: {}, end: pos + 7 };
+
   const tagEnd = xml.indexOf(">", pos);
+  if (tagEnd === -1) {
+    throw new PlistParseError("malformed tag", xml.slice(pos, pos + 80));
+  }
   return { value: null, end: tagEnd + 1 };
 }
 
@@ -98,8 +139,11 @@ function parsePlistDict(
   xml: string,
   pos: number,
 ): { value: Record<string, unknown>; end: number } {
-  // consume <dict>
-  pos = xml.indexOf("<dict>", pos) + 6;
+  const dictStart = xml.indexOf("<dict>", pos);
+  if (dictStart === -1) {
+    throw new PlistParseError("expected <dict>", xml.slice(pos, pos + 80));
+  }
+  pos = dictStart + 6;
   const out: Record<string, unknown> = {};
   while (pos < xml.length) {
     while (pos < xml.length && /\s/.test(xml[pos] ?? "")) pos++;
@@ -108,6 +152,9 @@ function parsePlistDict(
     }
     if (xml.startsWith("<key>", pos)) {
       const keyEnd = xml.indexOf("</key>", pos + 5);
+      if (keyEnd === -1) {
+        throw new PlistParseError("unterminated <key>", xml.slice(pos, pos + 80));
+      }
       const key = xml.slice(pos + 5, keyEnd);
       pos = keyEnd + 6;
       while (pos < xml.length && /\s/.test(xml[pos] ?? "")) pos++;
@@ -118,14 +165,18 @@ function parsePlistDict(
       pos++;
     }
   }
-  return { value: out, end: pos };
+  throw new PlistParseError("unterminated <dict>", xml.slice(-80));
 }
 
 function parsePlistArray(
   xml: string,
   pos: number,
 ): { value: unknown[]; end: number } {
-  pos = xml.indexOf("<array>", pos) + 7;
+  const arrayStart = xml.indexOf("<array>", pos);
+  if (arrayStart === -1) {
+    throw new PlistParseError("expected <array>", xml.slice(pos, pos + 80));
+  }
+  pos = arrayStart + 7;
   const out: unknown[] = [];
   while (pos < xml.length) {
     while (pos < xml.length && /\s/.test(xml[pos] ?? "")) pos++;
@@ -136,13 +187,36 @@ function parsePlistArray(
     out.push(value);
     pos = end;
   }
-  return { value: out, end: pos };
+  throw new PlistParseError("unterminated <array>", xml.slice(-80));
 }
 
 function parsePlist(xml: string): unknown {
   const dictPos = xml.indexOf("<dict>");
-  if (dictPos === -1) return {};
+  if (dictPos === -1) {
+    throw new PlistParseError(
+      "no <dict> root found in plist",
+      xml.slice(0, 200),
+    );
+  }
   return parsePlistDict(xml, dictPos).value;
+}
+
+// ---------------------------------------------------------------------------
+// diskutil wrappers
+// ---------------------------------------------------------------------------
+
+interface SubprocessError {
+  code?: number;
+  stderr?: string;
+  stdout?: string;
+}
+
+function isSubprocessError(err: unknown): err is SubprocessError {
+  return (
+    typeof err === "object" &&
+    err !== null &&
+    ("code" in err || "stderr" in err || "stdout" in err)
+  );
 }
 
 async function getDiskUtilList(): Promise<DiskUtilListPlist> {
@@ -152,7 +226,7 @@ async function getDiskUtilList(): Promise<DiskUtilListPlist> {
 
 async function getDiskUtilInfo(
   deviceIdentifier: string,
-): Promise<DiskUtilInfoPlist> {
+): Promise<DiskUtilInfoPlist | null> {
   try {
     const { stdout } = await execFileAsync("diskutil", [
       "info",
@@ -160,10 +234,29 @@ async function getDiskUtilInfo(
       `/dev/${deviceIdentifier}`,
     ]);
     return parsePlist(stdout) as DiskUtilInfoPlist;
-  } catch {
-    return {};
+  } catch (err: unknown) {
+    if (isSubprocessError(err)) {
+      const stderr = (err.stderr ?? "").toLowerCase();
+      if (
+        stderr.includes("permission denied") ||
+        stderr.includes("operation not permitted")
+      ) {
+        throw new DiskutilPermissionError(
+          `diskutil info denied for /dev/${deviceIdentifier}: ${err.stderr?.trim()}`,
+          deviceIdentifier,
+        );
+      }
+      if (stderr.includes("could not find")) {
+        return null;
+      }
+    }
+    throw err;
   }
 }
+
+// ---------------------------------------------------------------------------
+// Network helpers
+// ---------------------------------------------------------------------------
 
 async function fetchGitHubIsoImages(): Promise<ElizaOsImage[]> {
   return new Promise((resolve) => {
@@ -234,8 +327,9 @@ async function downloadFile(
   onProgress: (bytes: number, total: number) => void,
 ): Promise<void> {
   await fs.mkdir(path.dirname(destPath), { recursive: true });
+  const partialPath = `${destPath}.partial`;
 
-  return new Promise((resolve, reject) => {
+  await new Promise<void>((resolve, reject) => {
     function doRequest(requestUrl: string): void {
       const protocol = requestUrl.startsWith("https://") ? https : http;
       protocol
@@ -271,13 +365,13 @@ async function downloadFile(
             }
             const total = Number(res.headers["content-length"] ?? 0);
             let received = 0;
-            const writeStream = require("node:fs").createWriteStream(destPath);
+            const writeStream = createWriteStream(partialPath);
             res.on("data", (chunk: Buffer) => {
               received += chunk.length;
               onProgress(received, total);
             });
             res.pipe(writeStream);
-            writeStream.on("finish", resolve);
+            writeStream.on("finish", () => resolve());
             writeStream.on("error", reject);
             res.on("error", reject);
           },
@@ -286,11 +380,32 @@ async function downloadFile(
     }
     doRequest(url);
   });
+
+  await fs.rename(partialPath, destPath);
 }
 
 async function sha256File(filePath: string): Promise<string> {
   const data = await fs.readFile(filePath);
   return createHash("sha256").update(data).digest("hex");
+}
+
+async function fileSize(filePath: string): Promise<number> {
+  const stat = await fs.stat(filePath);
+  return stat.size;
+}
+
+async function cleanupPartialFiles(dir: string): Promise<void> {
+  let entries: string[];
+  try {
+    entries = await fs.readdir(dir);
+  } catch {
+    return;
+  }
+  await Promise.all(
+    entries
+      .filter((e) => e.endsWith(".partial"))
+      .map((e) => fs.rm(path.join(dir, e), { force: true })),
+  );
 }
 
 function pendingSteps(): InstallerStep[] {
@@ -302,7 +417,48 @@ function pendingSteps(): InstallerStep[] {
   }));
 }
 
+// ---------------------------------------------------------------------------
+// Path validation — exported for tests.
+// ---------------------------------------------------------------------------
+
+export function validateImagePath(imagePath: string): string {
+  if (!IMAGE_PATH_RE.test(imagePath)) {
+    throw new InvalidImagePathError(
+      `Image path does not match allowed shape: ${imagePath}`,
+      imagePath,
+    );
+  }
+  return imagePath;
+}
+
+export function deriveRawDisk(devicePath: string): string {
+  const m = DEVICE_DISK_RE.exec(devicePath);
+  if (!m) {
+    throw new InvalidDevicePathError(
+      `Device path is not a whole disk (/dev/diskN): ${devicePath}`,
+      devicePath,
+    );
+  }
+  const rawDisk = `/dev/rdisk${m[1]}`;
+  if (!RAW_DISK_RE.test(rawDisk)) {
+    throw new InvalidDevicePathError(
+      `Derived raw disk failed validation: ${rawDisk}`,
+      rawDisk,
+    );
+  }
+  return rawDisk;
+}
+
+// ---------------------------------------------------------------------------
+// Backend
+// ---------------------------------------------------------------------------
+
 export class MacOsUsbInstallerBackend implements UsbInstallerBackend {
+  constructor() {
+    // Clean up any leftover partial downloads from a prior interrupted run.
+    void cleanupPartialFiles(INSTALLER_TMP_DIR);
+  }
+
   async listRemovableDrives(): Promise<RemovableDrive[]> {
     const plist = await getDiskUtilList();
     const disks = plist.AllDisksAndPartitions ?? [];
@@ -311,30 +467,42 @@ export class MacOsUsbInstallerBackend implements UsbInstallerBackend {
     for (const disk of disks) {
       const deviceId = disk.DeviceIdentifier;
       if (!deviceId) continue;
-      if (disk.Size > TWO_TB) continue;
 
       const info = await getDiskUtilInfo(deviceId);
+      if (!info) continue;
+
       const isInternal =
         info.Internal === true || info.OSInternalMedia === true;
       const isVirtual = info.VirtualOrPhysical === "Virtual";
       const isRemovable =
         info.Removable === true || info.RemovableMediaOrExternalDevice === true;
+      const isEjectable = info.Ejectable === true;
       const busProtocol = (info.BusProtocol ?? "").toLowerCase();
       const isUsb = busProtocol === "usb";
       const isDiskImage = busProtocol === "disk image" || isVirtual;
 
+      // USB-NVMe enclosures (e.g. Samsung T7) report BusProtocol=USB and
+      // Ejectable=true but may not set Removable=true. They must never have
+      // Internal=true — that flag alone blocks the drive regardless of other fields.
+      const isExternalUsbEnclosure = isEjectable && !isInternal;
+
       const content = disk.Content ?? "";
       const isApfsOrHfs =
-        content.startsWith("Apple_APFS") || content.startsWith("Apple_HFS");
+        content.startsWith("Apple_APFS") ||
+        content.startsWith("Apple_HFS") ||
+        content.startsWith("Apple_CoreStorage");
 
       let safety: RemovableDrive["safety"] = "unknown";
-      if (isInternal || isApfsOrHfs) {
+      if (isInternal) {
+        // Internal flag is an absolute block.
+        safety = "blocked-system";
+      } else if (isApfsOrHfs) {
+        // APFS/HFS/CoreStorage partitions are never installer targets.
         safety = "blocked-system";
       } else if (isDiskImage) {
-        // Disk images (mounted .dmg, simulator runtimes, etc.) are not real USB drives.
-        // Skip them entirely — they are not writable installer targets.
+        // Disk images are not real USB drives. Skip entirely.
         continue;
-      } else if (isUsb || isRemovable) {
+      } else if (isUsb || isRemovable || isExternalUsbEnclosure) {
         safety = "safe-removable";
       }
 
@@ -429,8 +597,9 @@ export class MacOsUsbInstallerBackend implements UsbInstallerBackend {
 
     const { image, drive } = plan;
     const cacheDir = INSTALLER_TMP_DIR;
-    const imagePath = path.join(cacheDir, `${image.id}.iso`);
-    const rawDisk = drive.devicePath.replace("/dev/disk", "/dev/rdisk");
+    await cleanupPartialFiles(cacheDir);
+    const imagePath = validateImagePath(path.join(cacheDir, `${image.id}.iso`));
+    const rawDisk = deriveRawDisk(drive.devicePath);
 
     // Step: resolve-image (download)
     onProgress("resolve-image", 0);
@@ -449,12 +618,25 @@ export class MacOsUsbInstallerBackend implements UsbInstallerBackend {
     }
     onProgress("resolve-image", 1);
 
+    // Pre-checksum: verify size matches manifest if known.
+    if (image.sizeBytes > 0) {
+      const actualSize = await fileSize(imagePath);
+      if (actualSize !== image.sizeBytes) {
+        // Drop the bad file so the next run will re-download from scratch.
+        await fs.rm(imagePath, { force: true });
+        throw new Error(
+          `Downloaded image size ${actualSize} does not match manifest ${image.sizeBytes}; deleted and aborting.`,
+        );
+      }
+    }
+
     // Step: checksum
     onProgress("checksum", 0);
     const ZEROED_CHECKSUM = "0".repeat(64);
     if (image.checksumSha256 !== ZEROED_CHECKSUM) {
       const actual = await sha256File(imagePath);
       if (actual !== image.checksumSha256) {
+        await fs.rm(imagePath, { force: true });
         throw new Error(
           `Checksum mismatch: expected ${image.checksumSha256}, got ${actual}`,
         );
@@ -464,15 +646,26 @@ export class MacOsUsbInstallerBackend implements UsbInstallerBackend {
 
     // Step: write
     onProgress("write", 0);
-    // Unmount the disk first
     await execFileAsync("diskutil", ["unmountDisk", drive.devicePath]);
 
-    // Use osascript to pop native macOS auth dialog, dd writes via raw disk for speed
-    const ddCmd = `dd if=${imagePath} of=${rawDisk} bs=1m`;
-    await execFileAsync("osascript", [
-      "-e",
-      `do shell script "${ddCmd}" with administrator privileges`,
-    ]);
+    // Build the `dd` invocation with shell-quoted paths so that even though
+    // osascript double-evaluates the string, no metacharacter can escape.
+    const ddCmd = `dd if=${shellSingleQuote(imagePath)} of=${shellSingleQuote(rawDisk)} bs=1m`;
+    const appleScript = `do shell script "${appleScriptStringEscape(ddCmd)}" with administrator privileges`;
+
+    try {
+      await execFileAsync("osascript", ["-e", appleScript]);
+    } catch (err: unknown) {
+      if (isSubprocessError(err)) {
+        const stderr = err.stderr ?? "";
+        if (/user cancell?ed\./i.test(stderr)) {
+          throw new UserCancelledAuthError(
+            "Authentication cancelled — click Write to retry.",
+          );
+        }
+      }
+      throw err;
+    }
     onProgress("write", 1);
 
     // Step: verify (eject)

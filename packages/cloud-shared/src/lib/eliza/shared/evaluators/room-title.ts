@@ -55,7 +55,7 @@ IMPORTANT: Your response must ONLY contain the <response></response> XML block a
  * Handler - generates and saves room title
  * IMPORTANT: Runs as fire-and-forget to avoid blocking message response
  */
-async function handler(runtime: IAgentRuntime, message: Memory): Promise<any> {
+async function handler(runtime: IAgentRuntime, message: Memory): Promise<void> {
   const { roomId } = message;
 
   if (!roomId) {
@@ -208,4 +208,7 @@ const legacyRoomTitleEvaluator = {
   examples: [],
 };
 
+// The evaluator conforms to the legacy elizaOS evaluator shape (validate/handler).
+// The current Evaluator interface uses shouldRun/prompt/schema. The runtime
+// still accepts the legacy shape at runtime, so this cast is intentional.
 export const roomTitleEvaluator = legacyRoomTitleEvaluator as unknown as Evaluator;

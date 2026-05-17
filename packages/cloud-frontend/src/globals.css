@@ -480,7 +480,7 @@
 [data-sonner-toast][data-type="loading"] {
   background: rgba(var(--accent-rgb), 0.15);
   border-color: rgba(var(--accent-rgb), 0.3);
-  color: rgb(255, 255, 255);
+  color: var(--brand-white);
 }
 
 /* Toast icons */
@@ -1499,7 +1499,7 @@ button:not(:disabled),
   background: linear-gradient(
     90deg,
     var(--accent) 0%,
-    #fff 50%,
+    var(--brand-white) 50%,
     var(--accent) 100%
   );
   background-size: 200% auto;
@@ -1821,7 +1821,7 @@ button:not(:disabled),
 }
 
 .checkout-visual.usb::after {
-  background: linear-gradient(90deg, #d6d6d1, #fff);
+  background: linear-gradient(90deg, #d6d6d1, var(--brand-white));
   border: 1px solid rgba(17, 17, 17, 0.18);
   border-radius: 0.25rem;
   content: "";
@@ -1837,7 +1837,7 @@ button:not(:disabled),
 }
 
 .checkout-visual.chibi {
-  background: #fff;
+  background: var(--brand-white);
 }
 
 .checkout-visual > img {
@@ -1860,7 +1860,7 @@ button:not(:disabled),
 
 .checkout-visual span {
   bottom: 1.25rem;
-  color: #fff;
+  color: var(--brand-white);
   font-size: 1.35rem;
   font-weight: 760;
   left: 50%;

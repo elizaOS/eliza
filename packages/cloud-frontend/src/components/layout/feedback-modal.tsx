@@ -23,7 +23,7 @@ import { toast } from "sonner";
 function feedbackErrorMessage(value: unknown): string | null {
   if (typeof value !== "object" || value === null || Array.isArray(value))
     return null;
-  const error = (value as { error?: unknown }).error;
+  const { error } = value as Record<string, unknown>;
   return typeof error === "string" ? error : null;
 }
 

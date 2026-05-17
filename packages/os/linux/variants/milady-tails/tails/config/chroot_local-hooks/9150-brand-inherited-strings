@@ -25,7 +25,7 @@ do
     # name after gettext generation. Remove translated launcher strings so
     # every locale falls back to the curated elizaOS English labels.
     perl -0pi -e '
-        s/^(Name|Comment|Keywords)\[[^\n]+\]\s*=\s*[^\n]*\n//mg;
+        s/^(Name|GenericName|Comment|Keywords)\[[^\n]+\]\s*=\s*[^\n]*\n//mg;
         s/Categories=Utilities;Tails;/Categories=Utilities;ElizaOS;/g;
     ' "${file}"
 done

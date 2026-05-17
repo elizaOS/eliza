@@ -136,6 +136,12 @@ export async function openDatabase(
     mode: encryption,
     readonly: false,
   });
+  // CapacitorSQLitePlugin's open() returns void; the underlying native bridge
+  // attaches a connection object. The @capacitor-community/sqlite v3 types do
+  // not expose a retrieveConnection on CapacitorSQLitePlugin — that method
+  // exists on SQLiteDBConnectionsWrapper, a different class. The cast below
+  // matches the plugin's actual runtime behavior where open() resolves to the
+  // SQLiteDBConnection on native. Filed as a typing gap in the community plugin.
   const connection = (await CapacitorSQLite.open({
     database: opts.name,
     readonly: false,

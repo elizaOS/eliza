@@ -366,7 +366,10 @@ function getRegistryFromRuntime(
   if (!runtime) return null;
   const service = runtime.getService(PERMISSIONS_REGISTRY_SERVICE);
   if (!service) return null;
-  return service as unknown as IPermissionsRegistry;
+  // Single-step cast: IPermissionsRegistry is a plain interface (no Service
+  // base), so getService<T> generic isn't usable, but the types are
+  // non-conflicting and a single cast from Service to interface suffices.
+  return service as IPermissionsRegistry;
 }
 
 function buildPermissionFailure(

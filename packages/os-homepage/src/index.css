@@ -7,11 +7,6 @@
 @source "../../ui/src";
 
 :root {
-  --brand-blue: #0b35f1;
-  --brand-orange: #ff5800;
-  --brand-white: #ffffff;
-  --brand-black: #000000;
-  --brand-gray: #d1d0d4;
   --background: var(--brand-blue);
   --foreground: var(--brand-white);
   --radius-xs: 3px;
@@ -28,7 +23,7 @@ html {
 body {
   margin: 0;
   font-family: "Poppins", sans-serif;
-  background: var(--brand-blue);
+  background: var(--brand-black);
   color: var(--brand-white);
   -webkit-font-smoothing: antialiased;
   text-rendering: optimizeLegibility;
@@ -69,7 +64,7 @@ img {
   gap: 1.5rem;
   padding: 1rem clamp(1rem, 4vw, 3rem);
   background: transparent;
-  color: var(--brand-white);
+  color: var(--brand-black);
 }
 
 .site-header-solid {
@@ -131,7 +126,7 @@ img {
 }
 
 .band-inner {
-  width: min(100%, 82rem);
+  width: min(100%, 96rem);
   margin: 0 auto;
 }
 
@@ -153,6 +148,50 @@ img {
 
 .hero-os-inner {
   max-width: 52rem;
+}
+
+.hero-cloud {
+  position: relative;
+  display: flex;
+  min-height: 100svh;
+  align-items: center;
+  overflow: hidden;
+  padding-top: clamp(7rem, 10vw, 10rem);
+  padding-bottom: clamp(3rem, 7vw, 6rem);
+  color: var(--brand-black);
+}
+
+.cloud-video,
+.cloud-scrim {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+}
+
+.cloud-video {
+  object-fit: cover;
+}
+
+.cloud-scrim {
+  background:
+    linear-gradient(
+      90deg,
+      rgba(255, 255, 255, 0.92) 0%,
+      rgba(255, 255, 255, 0.7) 42%,
+      rgba(255, 255, 255, 0.2) 100%
+    ),
+    linear-gradient(
+      180deg,
+      rgba(255, 255, 255, 0.78) 0%,
+      rgba(255, 255, 255, 0.15) 100%
+    );
+}
+
+.hero-cloud-inner {
+  position: relative;
+  z-index: 1;
+  max-width: 56rem;
 }
 
 .detail-grid {
@@ -238,15 +277,20 @@ h3 {
   justify-content: center;
   gap: 0.55rem;
   padding: 0 1.25rem;
+  border-radius: var(--radius-xs);
   background: var(--brand-white);
   color: var(--brand-blue);
   font-size: 0.96rem;
   font-weight: 500;
   line-height: 1;
+  transition:
+    background 150ms ease,
+    color 150ms ease;
 }
 
 .button:hover {
-  background: var(--brand-gray);
+  background: var(--brand-black);
+  color: var(--brand-white);
 }
 
 .button-dark {
@@ -257,6 +301,26 @@ h3 {
 .button-dark:hover {
   background: var(--brand-orange);
   color: var(--brand-black);
+}
+
+.hero-cloud .button {
+  background: var(--brand-blue);
+  color: var(--brand-white);
+}
+
+.hero-cloud .button:hover {
+  background: var(--brand-orange);
+  color: var(--brand-black);
+}
+
+.hero-cloud .button-dark {
+  background: var(--brand-black);
+  color: var(--brand-white);
+}
+
+.hero-cloud .button-dark:hover {
+  background: var(--brand-blue);
+  color: var(--brand-white);
 }
 
 .icon {
@@ -295,6 +359,7 @@ h3 {
 .install-card {
   display: block;
   padding: 1.25rem 1.4rem;
+  border-radius: var(--radius-xs);
   background: var(--brand-white);
   color: var(--brand-black);
 }
@@ -318,6 +383,95 @@ h3 {
   color: var(--brand-blue);
   font-size: 0.92rem;
   font-weight: 500;
+}
+
+.release-section {
+  padding-top: clamp(3.5rem, 7vw, 6rem);
+  padding-bottom: clamp(4rem, 8vw, 7rem);
+}
+
+.release-head {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 1.25rem;
+  align-items: end;
+  margin-bottom: clamp(2rem, 4vw, 3rem);
+}
+
+.release-head .section-lede {
+  margin: 0;
+}
+
+@media (min-width: 760px) {
+  .release-head {
+    grid-template-columns: minmax(0, 1fr) minmax(16rem, 0.4fr);
+  }
+
+  .release-head .section-lede {
+    justify-self: end;
+    text-align: right;
+  }
+}
+
+.release-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(16rem, 1fr));
+  gap: clamp(1.25rem, 2.5vw, 2rem);
+}
+
+.release-item {
+  display: grid;
+  align-content: space-between;
+  min-height: 14.5rem;
+  gap: 1.25rem;
+  padding: 1.5rem 0;
+  background: transparent;
+  color: var(--brand-black);
+}
+
+.release-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.55rem;
+  color: var(--brand-blue);
+  font-size: 0.78rem;
+  font-weight: 500;
+  text-transform: uppercase;
+}
+
+.release-item h3 {
+  max-width: 13ch;
+  margin: 0;
+  font-size: clamp(1.55rem, 2.4vw, 2.3rem);
+}
+
+.release-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+  align-items: center;
+}
+
+.release-actions .button {
+  background: var(--brand-blue);
+  color: var(--brand-white);
+}
+
+.release-actions .button:hover {
+  background: var(--brand-black);
+}
+
+.checksum-link {
+  display: inline-flex;
+  min-height: 3.25rem;
+  align-items: center;
+  color: var(--brand-blue);
+  font-size: 0.9rem;
+  font-weight: 500;
+}
+
+.checksum-link:hover {
+  color: var(--brand-orange);
 }
 
 .punch-band {
@@ -625,6 +779,7 @@ h3 {
   justify-content: space-between;
   gap: 0.5rem;
   border: 0;
+  border-radius: var(--radius-xs);
   background: rgba(255, 255, 255, 0.08);
   color: var(--brand-white);
   padding: 0.85rem;
@@ -662,6 +817,7 @@ h3 {
   width: 2.4rem;
   height: 2.4rem;
   border: 0;
+  border-radius: var(--radius-xs);
   outline: 2px solid rgba(255, 255, 255, 0.35);
   outline-offset: 0;
   cursor: pointer;
@@ -686,6 +842,7 @@ h3 {
   min-height: 3.25rem;
   flex: 1 1 16rem;
   border: 0;
+  border-radius: var(--radius-xs);
   padding: 0 1rem;
   background: var(--brand-white);
   color: var(--brand-black);
@@ -698,6 +855,7 @@ h3 {
   min-height: 3.25rem;
   align-items: center;
   border: 0;
+  border-radius: var(--radius-xs);
   background: var(--brand-white);
   color: var(--brand-black);
   padding: 0 1rem;
@@ -731,13 +889,26 @@ h3 {
 
 @media (max-width: 640px) {
   .site-header {
-    align-items: flex-start;
-    flex-direction: column;
+    align-items: center;
+    gap: 0.75rem;
+    padding: 1rem;
   }
 
   .brand img,
   .site-footer img {
-    height: 1.45rem;
+    height: 1.35rem;
+  }
+
+  .site-nav {
+    width: auto;
+    gap: 0.75rem;
+    overflow: visible;
+    padding-bottom: 0;
+    font-size: 0.78rem;
+  }
+
+  .site-nav a:nth-child(n + 3) {
+    display: none;
   }
 
   .button {

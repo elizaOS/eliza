@@ -175,6 +175,8 @@ export const ownerAppInlineSensitiveRequestAdapter: SensitiveRequestDeliveryAdap
     }): Promise<DeliveryResult> {
       // Adapter contract takes the loose dispatch shape; this adapter
       // requires the policy SensitiveRequest internally.
+      // rawRequest is DispatchSensitiveRequest (permissive shape); cast to the
+      // full SensitiveRequest used internally by this adapter.
       const request = rawRequest as unknown as SensitiveRequest;
       if (!isOwnerAppInlineRuntime(runtime)) {
         return {

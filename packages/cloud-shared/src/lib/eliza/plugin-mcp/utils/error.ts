@@ -40,6 +40,7 @@ export async function handleMcpError(
         },
         template: errorAnalysisPrompt,
       });
+      // biome-ignore lint/correctness/useHookAtTopLevel: runtime.useModel is not a React hook
       responseText = await runtime.useModel(ModelType.TEXT_SMALL, { prompt });
     } catch {
       // Use fallback

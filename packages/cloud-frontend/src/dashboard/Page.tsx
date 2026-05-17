@@ -48,29 +48,41 @@ export default function DashboardPage() {
   const dashboard = useDashboardData(session.ready && session.authenticated);
   const credits = useCreditsBalance();
 
+  // Helmet must render even during the auth-loading short-circuit; without
+  // this, the homepage <title> bleeds through while auth resolves.
+  const head = (
+    <Helmet>
+      <title>Eliza Cloud Console</title>
+      <meta
+        name="description"
+        content="Run your Eliza agent on the hosted runtime and manage runtime instances, API access, billing, connected devices, and monetization from the Eliza Cloud dashboard."
+      />
+    </Helmet>
+  );
+
   if (!session.ready)
-    return <DashboardLoadingState label="Loading dashboard" />;
+    return (
+      <>
+        {head}
+        <DashboardLoadingState label="Loading dashboard" />
+      </>
+    );
 
   const userName = dashboard.data?.user.name?.split(" ")[0] || "User";
   const agents = dashboard.data?.agents ?? [];
-  const creditBalance = credits.data?.balance ?? 0;
+  const creditBalance =
+    typeof credits.data?.balance === "number" ? credits.data.balance : null;
 
   return (
     <>
-      <Helmet>
-        <title>Eliza Cloud Console</title>
-        <meta
-          name="description"
-          content="Run your Eliza agent on the hosted runtime and manage runtime instances, API access, billing, connected devices, and monetization from the Eliza Cloud dashboard."
-        />
-      </Helmet>
+      {head}
       <DashboardPageWrapper userName={userName}>
         <DashboardPageContainer>
           <DashboardPageStack className="pt-4 md:pt-6">
             <section className="flex flex-col gap-3 md:flex-row md:items-end md:justify-between">
               <div className="max-w-2xl">
                 <p className="text-sm font-medium uppercase tracking-normal text-[#FF5800]">
-                  ElizaOS Platform / Eliza Cloud
+                  elizaOS Platform / Eliza Cloud
                 </p>
                 <h1 className="mt-2 text-3xl font-semibold tracking-normal text-white md:text-4xl">
                   Run your Eliza agent on the hosted runtime

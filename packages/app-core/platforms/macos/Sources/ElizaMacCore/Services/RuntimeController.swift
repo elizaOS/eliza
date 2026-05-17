@@ -115,7 +115,6 @@ public final class RuntimeController {
                 }
             }
         }
-
         do {
             try nextProcess.run()
         } catch {
@@ -125,7 +124,7 @@ public final class RuntimeController {
             throw error
         }
 
-        logger.info("[RuntimeController] Launched runtime pid=\(nextProcess.processIdentifier, privacy: .public)")
+        logger.info("[RuntimeController] Started runtime pid=\(nextProcess.processIdentifier, privacy: .public); waiting for health")
     }
 
     private func ensureRuntimePreflight(configuration: RuntimeConfiguration) throws {

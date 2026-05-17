@@ -46,7 +46,7 @@ export default function BscPromoPage() {
             to="/"
             className="font-mono text-sm uppercase text-white/60 hover:text-white"
           >
-            eliza cloud
+            Eliza Cloud
           </Link>
 
           <section className="grid gap-8 lg:grid-cols-[1fr_420px] lg:items-start">

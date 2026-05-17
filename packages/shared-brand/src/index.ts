@@ -11,6 +11,22 @@
  * script will produce.
  */
 
+/**
+ * Canonical external URLs for every Eliza surface. Import from here instead
+ * of hardcoding strings so a domain change is a one-line edit.
+ */
+export const EXTERNAL_URLS = {
+  app: "https://eliza.app",
+  cloud: "https://elizacloud.ai",
+  os: "https://elizaos.ai",
+  docs: "https://docs.elizaos.ai",
+  github: "https://github.com/elizaOS/eliza",
+  discord: "https://discord.gg/eliza",
+  twitter: "https://x.com/elizaos",
+} as const;
+
+export type ExternalUrlKey = keyof typeof EXTERNAL_URLS;
+
 export const BRAND_COLORS = {
   blue: "#0B35F1",
   orange: "#FF5800",

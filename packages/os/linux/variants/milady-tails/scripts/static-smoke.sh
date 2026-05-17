@@ -5,10 +5,19 @@ set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 REPO_ROOT="$(cd "${ROOT}/../../../../.." && pwd)"
+SOURCE_ONLY="${ELIZAOS_STATIC_SOURCE_ONLY:-0}"
 cd "${ROOT}"
 
+stat_mode() {
+    stat -c %a "$1" 2>/dev/null || stat -f %Lp "$1"
+}
+
 echo "==> shell syntax"
-bash -n build.sh build-iso.sh tails/auto/build scripts/generate-elizaos-brand-assets.sh
+bash -n build.sh build-iso.sh tails/auto/build \
+    scripts/dev-sign-update-manifest.sh \
+    scripts/usb-write.sh \
+    scripts/generate-elizaos-brand-assets.sh \
+    scripts/security-smoke.sh
 sh -n \
     tails/auto/config \
     tails/config/chroot_local-hooks/9100-install-milady \
@@ -23,16 +32,25 @@ sh -n \
     tails/config/chroot_local-includes/usr/local/lib/elizaos/capability-runner \
     tails/config/chroot_local-includes/usr/local/lib/elizaos/milady-keeper \
     tails/config/chroot_local-includes/usr/local/lib/elizaos/persistence-maintenance \
+    tails/config/chroot_local-includes/usr/local/lib/elizaos/runtime-env \
     tails/config/chroot_local-includes/usr/local/lib/elizaos/start-elizaos-agent-user \
     tails/config/chroot_local-includes/usr/local/lib/elizaos/start-elizaos-browser-user \
+    tails/config/chroot_local-includes/usr/local/lib/elizaos/start-elizaos-pill-user \
     tails/config/chroot_local-includes/usr/local/lib/elizaos/start-elizaos-renderer-user \
     tails/config/chroot_local-includes/usr/local/lib/elizaos/start-milady-user \
+    tails/config/chroot_local-includes/usr/local/lib/elizaos/update-health-check \
+    tails/config/chroot_local-includes/usr/local/lib/elizaos/update-manager \
     tails/config/chroot_local-includes/usr/local/lib/persistent-storage/on-activated-hooks/MiladyData/10-clean-runtime-state \
     tails/config/chroot_local-includes/usr/local/lib/persistent-storage/on-activated-hooks/MiladyData/20-restart-milady \
     tails/config/chroot_local-includes/usr/local/lib/persistent-storage/on-deactivated-hooks/MiladyData/20-restart-milady
 
 node --check scripts/prepare-milady-app-overlay.mjs
+node --check scripts/generate-release-evidence.mjs
+node --check scripts/validate-model-catalog.mjs
+node --check scripts/validate-runtime-overlay.mjs
 node --check tails/config/chroot_local-includes/usr/local/lib/elizaos/renderer-server.mjs
+python3 -m json.tool schemas/update-manifest.schema.json >/dev/null
+python3 -m json.tool schemas/model-catalog.schema.json >/dev/null
 python3 - \
     tails/config/chroot_local-includes/usr/local/bin/tails-documentation \
     tails/config/chroot_local-includes/usr/local/lib/elizaos/elizaos-webkit-shell \
@@ -56,6 +74,7 @@ PY
 for unit in \
     tails/config/chroot_local-includes/etc/systemd/user/elizaos-agent.service \
     tails/config/chroot_local-includes/etc/systemd/user/elizaos-renderer.service \
+    tails/config/chroot_local-includes/etc/systemd/user/elizaos-pill.service \
     tails/config/chroot_local-includes/etc/systemd/user/milady.service
 do
     grep -q '^ConditionUser=1000$' "${unit}"
@@ -63,12 +82,19 @@ done
 
 for executable in \
     tails/config/chroot_local-includes/usr/local/lib/elizaos/elizaos-webkit-shell \
+    tails/config/chroot_local-includes/usr/local/lib/elizaos/runtime-env \
     tails/config/chroot_local-includes/usr/local/lib/elizaos/start-elizaos-browser-user \
     tails/config/chroot_local-includes/usr/local/lib/elizaos/start-elizaos-agent-user \
+    tails/config/chroot_local-includes/usr/local/lib/elizaos/start-elizaos-pill-user \
     tails/config/chroot_local-includes/usr/local/lib/elizaos/start-elizaos-renderer-user \
-    tails/config/chroot_local-includes/usr/local/lib/elizaos/start-milady-user
+    tails/config/chroot_local-includes/usr/local/lib/elizaos/start-milady-user \
+    tails/config/chroot_local-includes/usr/local/lib/elizaos/update-health-check \
+    tails/config/chroot_local-includes/usr/local/lib/elizaos/update-manager \
+    scripts/dev-sign-update-manifest.sh \
+    scripts/usb-write.sh \
+    scripts/security-smoke.sh
 do
-    mode="$(stat -c %a "${executable}")"
+    mode="$(stat_mode "${executable}")"
     if [ "${mode}" != "755" ]; then
         echo "${executable} must be mode 755, got ${mode}" >&2
         exit 1
@@ -78,7 +104,7 @@ done
 echo "==> elizaOS branding"
 for font in Poppins-Regular.ttf Poppins-Medium.ttf OFL.txt; do
     test -f "tails/config/chroot_local-includes/usr/share/fonts/truetype/elizaos/${font}"
-    font_mode="$(stat -c %a "tails/config/chroot_local-includes/usr/share/fonts/truetype/elizaos/${font}")"
+    font_mode="$(stat_mode "tails/config/chroot_local-includes/usr/share/fonts/truetype/elizaos/${font}")"
     if [ "${font_mode}" != "644" ]; then
         echo "${font} must be mode 644, got ${font_mode}" >&2
         exit 1
@@ -88,6 +114,8 @@ grep -q "Poppins 10" \
     tails/config/chroot_local-includes/etc/dconf/db/local.d/00_Tails_defaults
 grep -q "Poppins Medium 10" \
     tails/config/chroot_local-includes/etc/dconf/db/local.d/00_Tails_defaults
+grep -q '^gir1.2-udisks-2.0$' \
+    tails/config/chroot_local-packageslists/tails-common.list
 grep -q '#0B35F1' scripts/generate-elizaos-brand-assets.sh
 grep -q 'logo_white_bluebg.svg' scripts/generate-elizaos-brand-assets.sh
 if rg -n '#FF5800|#FF0000|#ff5800|#ff0000|ORANGE|RED|#ffe600|#f0b90b|#08080a|#0a0a0a|#03061f' \
@@ -101,18 +129,20 @@ then
 fi
 grep -q 'font-family: "Poppins"' \
     tails/config/chroot_local-includes/usr/share/tails/greeter/greeter.css
-grep -q 'id="elizaos-live-theme"' \
-    tails/config/chroot_local-includes/usr/share/elizaos/milady-app/Resources/app/renderer/index.html
-grep -q '#F7F9FF' \
-    tails/config/chroot_local-includes/usr/share/elizaos/milady-app/Resources/app/renderer/index.html
-grep -q '"theme_color": "#F7F9FF"' \
-    tails/config/chroot_local-includes/usr/share/elizaos/milady-app/Resources/app/renderer/site.webmanifest
-if rg -n '#08080a|#0a0a0a|black-translucent' \
-    tails/config/chroot_local-includes/usr/share/elizaos/milady-app/Resources/app/renderer/index.html \
-    tails/config/chroot_local-includes/usr/share/elizaos/milady-app/Resources/app/renderer/site.webmanifest
-then
-    echo "Packaged app renderer must not expose the old dark shell metadata." >&2
-    exit 1
+if [ "${SOURCE_ONLY}" != "1" ]; then
+    grep -q 'id="elizaos-live-theme"' \
+        tails/config/chroot_local-includes/usr/share/elizaos/milady-app/Resources/app/renderer/index.html
+    grep -q '#F7F9FF' \
+        tails/config/chroot_local-includes/usr/share/elizaos/milady-app/Resources/app/renderer/index.html
+    grep -q '"theme_color": "#F7F9FF"' \
+        tails/config/chroot_local-includes/usr/share/elizaos/milady-app/Resources/app/renderer/site.webmanifest
+    if rg -n '#08080a|#0a0a0a|black-translucent' \
+        tails/config/chroot_local-includes/usr/share/elizaos/milady-app/Resources/app/renderer/index.html \
+        tails/config/chroot_local-includes/usr/share/elizaos/milady-app/Resources/app/renderer/site.webmanifest
+    then
+        echo "Packaged app renderer must not expose the old dark shell metadata." >&2
+        exit 1
+    fi
 fi
 python3 - <<'PY'
 try:
@@ -149,7 +179,7 @@ grep -q '"distribution": "elizaOS"' \
 grep -q '"partition_label": "elizaOS"' \
     tails/config/chroot_local-includes/usr/lib/python3/dist-packages/tails_installer/config.py
 if command -v identify >/dev/null 2>&1; then
-    identify \
+    image_paths=(
         tails/config/chroot_local-includes/usr/share/tails/desktop_wallpaper.png \
         tails/config/chroot_local-includes/usr/share/tails/screensaver_background.png \
         tails/config/binary_local-includes/EFI/debian/grub/splash.png \
@@ -157,10 +187,15 @@ if command -v identify >/dev/null 2>&1; then
         tails/config/chroot_local-includes/usr/share/tails/elizaos-about-logo.png \
         tails/config/chroot_local-includes/usr/share/plymouth/themes/elizaos/elizaos-wordmark.png \
         tails/config/chroot_local-includes/usr/share/tails-installer/tails-liveusb-header.png \
-        tails/config/chroot_local-includes/usr/share/elizaos/milady-app/Resources/app/assets/appIcon.png \
-        tails/config/chroot_local-includes/usr/share/elizaos/milady-app/Resources/app/renderer/favicon-256x256.png \
         tails/config/chroot_local-includes/usr/share/pixmaps/elizaos.png \
-        >/dev/null
+    )
+    if [ "${SOURCE_ONLY}" != "1" ]; then
+        image_paths+=(
+            tails/config/chroot_local-includes/usr/share/elizaos/milady-app/Resources/app/assets/appIcon.png
+            tails/config/chroot_local-includes/usr/share/elizaos/milady-app/Resources/app/renderer/favicon-256x256.png
+        )
+    fi
+    identify "${image_paths[@]}" >/dev/null
 fi
 if rg -n \
     'Tails-based|Tails Cloner|Tails Documentation|Connect Tails|Tails USB stick|Milady Data|Save Milady|Activate Milady|Welcome to Milady|elizaOS \(Tails-based\)' \
@@ -182,16 +217,25 @@ then
     echo "Visible elizaOS branding still contains stale Tails/Milady strings." >&2
     exit 1
 fi
-if rg -n '^(Name|Comment|Keywords)\[' \
-    tails/config/chroot_local-includes/usr/share/applications/tails-documentation.desktop \
-    tails/config/chroot_local-includes/usr/share/applications/tails-backup.desktop \
-    tails/config/chroot_local-includes/usr/share/applications/tails-installer.desktop \
-    tails/config/chroot_local-includes/usr/share/applications/tca.desktop \
-    tails/config/chroot_local-includes/usr/share/applications/org.boum.tails.AdditionalSoftware.desktop \
+launcher_paths=(
+    tails/config/chroot_local-includes/usr/share/applications/tails-documentation.desktop
+    tails/config/chroot_local-includes/usr/share/applications/tails-backup.desktop
+    tails/config/chroot_local-includes/usr/share/applications/tails-installer.desktop
+    tails/config/chroot_local-includes/usr/share/applications/tca.desktop
+    tails/config/chroot_local-includes/usr/share/applications/org.boum.tails.AdditionalSoftware.desktop
     tails/config/chroot_local-includes/usr/share/applications/whisperback.desktop
-then
-    echo "Brand-sensitive desktop launchers must fall back to curated elizaOS labels." >&2
-    exit 1
+)
+existing_launcher_paths=()
+for launcher_path in "${launcher_paths[@]}"; do
+    if [ -e "${launcher_path}" ]; then
+        existing_launcher_paths+=("${launcher_path}")
+    fi
+done
+if [ "${#existing_launcher_paths[@]}" -gt 0 ]; then
+    if rg -n '^(Name|Comment|Keywords)\[' "${existing_launcher_paths[@]}"; then
+        echo "Brand-sensitive desktop launchers must fall back to curated elizaOS labels." >&2
+        exit 1
+    fi
 fi
 
 if command -v desktop-file-validate >/dev/null 2>&1; then
@@ -225,11 +269,23 @@ grep -q 'ELIZA_STARTUP_STATE_FILE' \
     tails/config/chroot_local-includes/usr/local/bin/milady
 grep -q 'ELIZA_STARTUP_EVENTS_FILE' \
     tails/config/chroot_local-includes/usr/local/bin/milady
+grep -q '/usr/local/lib/elizaos/runtime-env' \
+    tails/config/chroot_local-includes/usr/local/bin/milady
+grep -q 'ELIZAOS_RUNTIME_DIR:-/opt/milady' \
+    tails/config/chroot_local-includes/usr/local/bin/milady
 grep -q 'ELIZA_APP_ID.*ai.elizaos.app' \
     tails/config/chroot_local-includes/usr/local/bin/milady
 grep -q 'ELIZAOS_LIVE_EMBEDDING_FALLBACK.*:-1' \
     tails/config/chroot_local-includes/usr/local/bin/milady
 grep -q 'ELIZA_DISABLE_PROACTIVE_AGENT.*:-1' \
+    tails/config/chroot_local-includes/usr/local/bin/milady
+grep -q 'ELIZAOS_CLOSE_MINIMIZES_TO_TRAY.*:-1' \
+    tails/config/chroot_local-includes/usr/local/bin/milady
+grep -q 'ELIZAOS_CEF_PROFILE_COMPAT.*:-1' \
+    tails/config/chroot_local-includes/usr/local/bin/milady
+grep -q 'normalize_tcp_port' \
+    tails/config/chroot_local-includes/usr/local/bin/milady
+grep -q 'normalize_loopback_bind' \
     tails/config/chroot_local-includes/usr/local/bin/milady
 grep -q 'ELIZA_API_PORT.*:-31337' \
     tails/config/chroot_local-includes/usr/local/bin/milady
@@ -237,7 +293,35 @@ grep -q 'ELIZA_DESKTOP_API_BASE.*127.0.0.1' \
     tails/config/chroot_local-includes/usr/local/bin/milady
 grep -q 'ELIZA_API_BASE.*ELIZA_DESKTOP_API_BASE' \
     tails/config/chroot_local-includes/usr/local/bin/milady
+grep -q 'ELIZA_API_STRICT_PORT.*:-1' \
+    tails/config/chroot_local-includes/usr/local/bin/milady
+grep -q 'ELIZA_API_STRICT_PORT.*:-1' \
+    tails/config/chroot_local-includes/usr/local/lib/elizaos/start-elizaos-agent-user
+grep -q '/usr/local/lib/elizaos/runtime-env' \
+    tails/config/chroot_local-includes/usr/local/lib/elizaos/start-elizaos-agent-user
+grep -q '/usr/local/lib/elizaos/runtime-env' \
+    tails/config/chroot_local-includes/usr/local/lib/elizaos/start-elizaos-renderer-user
+grep -q 'strictPortBindingEnabled' \
+    "${REPO_ROOT}/packages/agent/src/api/server.ts"
+grep -q 'Strict port binding is enabled' \
+    "${REPO_ROOT}/packages/agent/src/api/server.ts"
+grep -q '"Feather"' scripts/prepare-milady-app-overlay.mjs
+grep -q '"Maximize2"' scripts/prepare-milady-app-overlay.mjs
+grep -q 'Resources/app' scripts/prepare-milady-app-overlay.mjs
+grep -q 'matchAll(namedImportRe)' scripts/prepare-milady-app-overlay.mjs
+grep -q 'matchAll(destructuredImportRe)' scripts/prepare-milady-app-overlay.mjs
+grep -q 'shouldWriteLiveFallbackPackage' scripts/prepare-milady-app-overlay.mjs
+grep -q 'elizaos-live-overlay-manifest.json' scripts/prepare-milady-app-overlay.mjs
+grep -q 'expectedPorts' scripts/prepare-milady-app-overlay.mjs
+grep -q 'validate-runtime-overlay.mjs' docs/runtime-packaging.md
+grep -q 'closeMinimizesToTray: true' scripts/prepare-milady-app-overlay.mjs
+grep -Fq 'runtime["closeMinimizesToTray"] = True' \
+    tails/config/chroot_local-hooks/9100-install-milady
 grep -q 'prepare_cef_profile' \
+    tails/config/chroot_local-includes/usr/local/bin/milady
+grep -q 'safe_cache_component' \
+    tails/config/chroot_local-includes/usr/local/bin/milady
+grep -q 'archive_cef_path' \
     tails/config/chroot_local-includes/usr/local/bin/milady
 grep -q 'ln -sfn . "${cef_root}/partitions"' \
     tails/config/chroot_local-includes/usr/local/bin/milady
@@ -251,6 +335,11 @@ if grep -q 'mkdir -p.*partitions/default' \
     exit 1
 fi
 if grep -q 'rm -rf.*partitions/default' \
+    tails/config/chroot_local-includes/usr/local/bin/milady; then
+    echo "Milady launcher must not wipe the persistent CEF profile on every start." >&2
+    exit 1
+fi
+if grep -q 'rm -rf.*Partitions/default' \
     tails/config/chroot_local-includes/usr/local/bin/milady; then
     echo "Milady launcher must not wipe the persistent CEF profile on every start." >&2
     exit 1
@@ -320,11 +409,22 @@ for launcher in \
 do
     grep -q 'persistence-maintenance wait' "${launcher}"
 done
-grep -q '/run/elizaos/persistence-maintenance' \
+grep -q 'run_dir=/run/elizaos' \
     tails/config/chroot_local-includes/usr/local/lib/elizaos/persistence-maintenance
-grep -q 'pkill -TERM -u amnesia' \
+grep -Fq 'flag="${run_dir}/persistence-maintenance"' \
     tails/config/chroot_local-includes/usr/local/lib/elizaos/persistence-maintenance
-helper_mode="$(stat -c %a tails/config/chroot_local-includes/usr/local/lib/elizaos/persistence-maintenance)"
+grep -q 'systemctl --user "$@"' \
+    tails/config/chroot_local-includes/usr/local/lib/elizaos/persistence-maintenance
+grep -q 'kill --kill-whom=all --signal=TERM' \
+    tails/config/chroot_local-includes/usr/local/lib/elizaos/persistence-maintenance
+grep -q 'kill --kill-whom=all --signal=KILL' \
+    tails/config/chroot_local-includes/usr/local/lib/elizaos/persistence-maintenance
+if grep -q 'pkill .* -u amnesia' \
+    tails/config/chroot_local-includes/usr/local/lib/elizaos/persistence-maintenance; then
+    echo "persistence-maintenance must not use broad pkill patterns against the live user." >&2
+    exit 1
+fi
+helper_mode="$(stat_mode tails/config/chroot_local-includes/usr/local/lib/elizaos/persistence-maintenance)"
 if [ "${helper_mode}" != "755" ]; then
     echo "persistence-maintenance must be mode 755, got ${helper_mode}" >&2
     exit 1
@@ -339,12 +439,17 @@ if [ -d tails/config/chroot_local-includes/lib ]; then
     echo "top-level chroot_local-includes/lib would replace Tails' /lib -> /usr/lib symlink" >&2
     exit 1
 fi
-tmp_mode="$(stat -c %a tails/config/chroot_local-includes/tmp)"
-if [ "${tmp_mode}" != "1777" ]; then
-    echo "tails/config/chroot_local-includes/tmp must be mode 1777, got ${tmp_mode}" >&2
+if [ -e tails/config/chroot_local-includes/tmp ]; then
+    tmp_mode="$(stat_mode tails/config/chroot_local-includes/tmp)"
+    if [ "${tmp_mode}" != "1777" ]; then
+        echo "tails/config/chroot_local-includes/tmp must be mode 1777, got ${tmp_mode}" >&2
+        exit 1
+    fi
+elif [ "${SOURCE_ONLY}" != "1" ]; then
+    echo "tails/config/chroot_local-includes/tmp is missing from the full build tree" >&2
     exit 1
 fi
-swapon_mode="$(stat -c %a tails/config/chroot_local-includes/usr/sbin/swapon.tails)"
+swapon_mode="$(stat_mode tails/config/chroot_local-includes/usr/sbin/swapon.tails)"
 if [ "${swapon_mode}" != "755" ]; then
     echo "tails/config/chroot_local-includes/usr/sbin/swapon.tails must be mode 755, got ${swapon_mode}" >&2
     exit 1
@@ -371,13 +476,22 @@ if [ -e tails/chroot/etc/systemd/system/display-manager.service ]; then
 fi
 grep -q 'clear_user_unit_override' \
     tails/config/chroot_local-includes/usr/local/lib/elizaos/milady-keeper
-grep -q 'rm -rf "${path}"' \
+grep -q 'runuser -u amnesia -- env HOME=/home/amnesia sh -eu' \
     tails/config/chroot_local-includes/usr/local/lib/elizaos/milady-keeper
+grep -Fq 'rm -rf -- "${path}"' \
+    tails/config/chroot_local-includes/usr/local/lib/elizaos/milady-keeper
+if grep -q 'ensure_plain_dir\|install -d -o amnesia\|chown .*amnesia' \
+    tails/config/chroot_local-includes/usr/local/lib/elizaos/milady-keeper; then
+    echo "milady-keeper must not mutate /home/amnesia paths as root." >&2
+    exit 1
+fi
 grep -q 'systemctl --user start --no-block milady.service' \
     tails/config/chroot_local-includes/usr/local/lib/elizaos/milady-keeper
 grep -q 'systemctl --user start --no-block elizaos-agent.service' \
     tails/config/chroot_local-includes/usr/local/lib/elizaos/milady-keeper
 grep -q 'systemctl --user start --no-block elizaos-renderer.service' \
+    tails/config/chroot_local-includes/usr/local/lib/elizaos/milady-keeper
+grep -q 'systemctl --user start --no-block elizaos-pill.service' \
     tails/config/chroot_local-includes/usr/local/lib/elizaos/milady-keeper
 grep -q 'ELIZA_API_PORT.*:-31337' \
     tails/config/chroot_local-includes/usr/local/lib/elizaos/start-elizaos-agent-user
@@ -425,6 +539,24 @@ grep -q 'gi.require_version("Gdk", "3.0")' \
     tails/config/chroot_local-includes/usr/local/lib/elizaos/elizaos-webkit-shell
 grep -q 'gi.require_version("WebKit2", "4.1")' \
     tails/config/chroot_local-includes/usr/local/lib/elizaos/elizaos-webkit-shell
+grep -q 'ELIZAOS_SHELL_MODE' \
+    tails/config/chroot_local-includes/usr/local/lib/elizaos/elizaos-webkit-shell
+grep -q 'configure_pill_window' \
+    tails/config/chroot_local-includes/usr/local/lib/elizaos/elizaos-webkit-shell
+grep -q 'set_keep_above(True)' \
+    tails/config/chroot_local-includes/usr/local/lib/elizaos/elizaos-webkit-shell
+grep -q 'ELIZAOS_SHELL_MODE=pill' \
+    tails/config/chroot_local-includes/usr/local/lib/elizaos/start-elizaos-pill-user
+grep -q 'shell=pill' \
+    tails/config/chroot_local-includes/usr/local/lib/elizaos/start-elizaos-pill-user
+grep -q 'elizaos-webkit-shell' \
+    tails/config/chroot_local-includes/usr/local/lib/elizaos/start-elizaos-pill-user
+grep -q 'ELIZAOS_RENDERER_PORT.*:-5174' \
+    tails/config/chroot_local-includes/usr/local/lib/elizaos/start-elizaos-pill-user
+grep -q '^ExecStart=/usr/local/lib/elizaos/start-elizaos-pill-user$' \
+    tails/config/chroot_local-includes/etc/systemd/user/elizaos-pill.service
+grep -q 'systemctl --global enable elizaos-pill.service' \
+    tails/config/chroot_local-hooks/52-update-systemd-units
 grep -q 'set_network_proxy_settings(WebKit2.NetworkProxyMode.NO_PROXY' \
     tails/config/chroot_local-includes/usr/local/lib/elizaos/elizaos-webkit-shell
 grep -q 'base_data_directory=data_dir' \
@@ -475,6 +607,52 @@ grep -q 'systemctl --global enable elizaos-agent.service' \
     tails/config/chroot_local-hooks/52-update-systemd-units
 grep -q 'systemctl --global enable elizaos-renderer.service' \
     tails/config/chroot_local-hooks/52-update-systemd-units
+grep -q 'systemctl enable elizaos-update-verify.service' \
+    tails/config/chroot_local-hooks/52-update-systemd-units
+grep -q 'Wants=elizaos-update-health-check.service' \
+    tails/config/chroot_local-includes/etc/systemd/system/milady.service
+grep -q 'ExecStart=/usr/local/lib/elizaos/update-health-check' \
+    tails/config/chroot_local-includes/etc/systemd/system/elizaos-update-health-check.service
+grep -q 'ELIZAOS_UPDATE_HEALTH_MARK_BAD_ON_TIMEOUT' \
+    tails/config/chroot_local-includes/usr/local/lib/elizaos/update-health-check
+grep -q 'ExecStart=/usr/local/lib/elizaos/update-manager verify' \
+    tails/config/chroot_local-includes/etc/systemd/system/elizaos-update-verify.service
+grep -q 'ReadWritePaths=/run/elizaos' \
+    tails/config/chroot_local-includes/etc/systemd/system/elizaos-update-verify.service
+grep -q '/live/persistence/TailsData_unlocked/elizaos-system' \
+    tails/config/chroot_local-includes/etc/systemd/system/elizaos-update-verify.service
+grep -q 'ProtectHome=read-only' \
+    tails/config/chroot_local-includes/etc/systemd/system/elizaos-update-verify.service
+grep -q 'ELIZAOS_RUNTIME_ROOT' \
+    tails/config/chroot_local-includes/usr/local/lib/elizaos/runtime-env
+if grep -q 'ELIZAOS_ALLOW_RUNTIME_ENV_OVERRIDES' \
+    tails/config/chroot_local-includes/usr/local/lib/elizaos/runtime-env; then
+    echo "runtime-env must not expose caller-controlled runtime override escape hatches." >&2
+    exit 1
+fi
+grep -q 'gpgv --keyring' \
+    tails/config/chroot_local-includes/usr/local/lib/elizaos/update-manager
+grep -q 'write_fallback_selector "missing-keyring"' \
+    tails/config/chroot_local-includes/usr/local/lib/elizaos/update-manager
+grep -q 'filesComplete.*true' \
+    tails/config/chroot_local-includes/usr/local/lib/elizaos/update-manager
+grep -q 'runtime_store' \
+    tails/config/chroot_local-includes/usr/local/lib/elizaos/update-manager
+grep -q 'contains unlisted file' \
+    tails/config/chroot_local-includes/usr/local/lib/elizaos/update-manager
+grep -q 'materialized runtime hash mismatch' \
+    tails/config/chroot_local-includes/usr/local/lib/elizaos/update-manager
+grep -q 'modelCatalog' \
+    schemas/update-manifest.schema.json
+grep -q 'filesComplete' \
+    schemas/update-manifest.schema.json
+grep -q 'elizaos.modelCatalog' \
+    schemas/model-catalog.schema.json
+grep -q 'ELIZAOS_RELEASE_KEYRING' scripts/usb-write.sh
+grep -q 'gpgv --keyring' scripts/usb-write.sh
+grep -q 'elizaos.sbomLite' scripts/generate-release-evidence.mjs
+grep -q 'elizaos.releaseProvenance' scripts/generate-release-evidence.mjs
+grep -q 'elizaos.modelCatalog' scripts/validate-model-catalog.mjs
 if grep -Eq 'apt-(update|install)|restart-network' \
     tails/config/chroot_local-includes/usr/local/lib/elizaos/capability-runner; then
     echo "capability-runner must not expose broad package/network mutation commands" >&2
@@ -486,6 +664,7 @@ grep -q 'args = \["root-status"\]' \
 if [ -e tails/config/chroot_local-includes/usr/share/elizaos/milady-app/Resources/build.json ]; then
     echo "==> Milady live overlay"
     node scripts/prepare-milady-app-overlay.mjs --check
+    node scripts/validate-runtime-overlay.mjs
 fi
 
 echo "==> Milady package exports"
@@ -580,12 +759,14 @@ for (const packageName of [
     const packagePath = `${root}/Resources/app/eliza-dist/node_modules/${packageName}/package.json`;
     const indexPath = `${root}/Resources/app/eliza-dist/node_modules/${packageName}/index.js`;
     const pkg = JSON.parse(fs.readFileSync(packagePath, "utf8"));
-    if (pkg.version !== "0.0.0-elizaos-live-stub" || pkg.type !== "module") {
-      throw new Error(`${packagePath}: optional desktop connector must be an elizaOS Live stub`);
-    }
-    const index = fs.readFileSync(indexPath, "utf8");
-    if (!index.includes("export default undefined")) {
-      throw new Error(`${indexPath}: optional desktop connector stub is malformed`);
+    if (pkg.version === "0.0.0-elizaos-live-stub") {
+      if (pkg.type !== "module") {
+        throw new Error(`${packagePath}: optional desktop connector stub must be ESM`);
+      }
+      const index = fs.readFileSync(indexPath, "utf8");
+      if (!index.includes("export default undefined")) {
+        throw new Error(`${indexPath}: optional desktop connector stub is malformed`);
+      }
     }
   }
 }
@@ -616,9 +797,13 @@ for (const root of [
     }
   }
   const googleStubPath = `${nodeModules}/@elizaos/plugin-google/index.js`;
-  const googleStub = fs.readFileSync(googleStubPath, "utf8");
-  if (!googleStub.includes("googlePlugin")) {
-    throw new Error(`${googleStubPath}: Google connector stub is malformed`);
+  const googlePackagePath = `${nodeModules}/@elizaos/plugin-google/package.json`;
+  const googlePackage = JSON.parse(fs.readFileSync(googlePackagePath, "utf8"));
+  if (googlePackage.version === "0.0.0-elizaos-live-stub") {
+    const googleStub = fs.readFileSync(googleStubPath, "utf8");
+    if (!googleStub.includes("googlePlugin")) {
+      throw new Error(`${googleStubPath}: Google connector stub is malformed`);
+    }
   }
 
   const rendererRoot = `${root}/Resources/app/renderer`;
@@ -686,18 +871,19 @@ for (const root of [
   const lucidePackagePath = `${root}/Resources/app/eliza-dist/node_modules/lucide-react/package.json`;
   const lucideIndexPath = `${root}/Resources/app/eliza-dist/node_modules/lucide-react/index.js`;
   const lucidePackage = JSON.parse(fs.readFileSync(lucidePackagePath, "utf8"));
-  if (lucidePackage.version !== "0.0.0-elizaos-live-stub") {
-    throw new Error(`${lucidePackagePath}: lucide-react must be an elizaOS Live stub`);
-  }
-  const lucideIndex = fs.readFileSync(lucideIndexPath, "utf8");
-  for (const expected of [
-    "export function Icon()",
-    "export const createLucideIcon",
-    "export const Loader2",
-    "export const Settings",
-  ]) {
-    if (!lucideIndex.includes(expected)) {
-      throw new Error(`${lucideIndexPath}: missing ${expected}`);
+  if (lucidePackage.version === "0.0.0-elizaos-live-stub") {
+    const lucideIndex = fs.readFileSync(lucideIndexPath, "utf8");
+    for (const expected of [
+      "export function Icon()",
+      "export const createLucideIcon",
+      "export const Feather",
+      "export const Loader2",
+      "export const Maximize2",
+      "export const Settings",
+    ]) {
+      if (!lucideIndex.includes(expected)) {
+        throw new Error(`${lucideIndexPath}: missing ${expected}`);
+      }
     }
   }
 
@@ -748,6 +934,9 @@ if (JSON.stringify(build.availableRenderers) !== JSON.stringify(["native"])) {
 if (build.runtime?.exitOnLastWindowClosed !== false) {
   throw new Error(`${path}: runtime.exitOnLastWindowClosed must be false`);
 }
+if (build.runtime?.closeMinimizesToTray !== true) {
+  throw new Error(`${path}: runtime.closeMinimizesToTray must be true`);
+}
 if (
   build.chromiumFlags?.["user-data-dir"] !==
   "/home/amnesia/.cache/ai.elizaos.app/dev/CEF/partitions"
@@ -757,7 +946,7 @@ if (
 	'
 fi
 if [ -e tails/chroot/opt/milady/bin/chrome-sandbox ]; then
-    sandbox_mode="$(stat -c %a tails/chroot/opt/milady/bin/chrome-sandbox)"
+    sandbox_mode="$(stat_mode tails/chroot/opt/milady/bin/chrome-sandbox)"
     if [ "${sandbox_mode}" != "755" ]; then
         echo "chrome-sandbox must not be setuid in native-renderer elizaOS Live, got ${sandbox_mode}" >&2
         exit 1

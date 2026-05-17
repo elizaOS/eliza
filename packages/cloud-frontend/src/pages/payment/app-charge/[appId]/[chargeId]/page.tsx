@@ -286,7 +286,10 @@ export default function AppChargePaymentPage() {
 
   return (
     <div className="min-h-screen bg-[#080A0D] px-4 py-8 text-white sm:px-6 lg:px-8">
-      <main className="mx-auto flex min-h-[calc(100vh-4rem)] w-full max-w-xl items-center">
+      <main
+        id="main"
+        className="mx-auto flex min-h-[calc(100vh-4rem)] w-full max-w-xl items-center"
+      >
         <section className="w-full border border-white/10 bg-white/[0.03] p-5 shadow-2xl shadow-black/30 sm:p-7">
           <div className="flex items-start justify-between gap-4">
             <div className="flex min-w-0 items-center gap-3">

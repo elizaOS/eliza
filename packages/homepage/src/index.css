@@ -10,11 +10,7 @@
 :root {
   --font-sans: "Poppins";
   --font-mono: "Poppins";
-  --brand-blue: #0b35f1;
-  --brand-orange: #ff5800;
-  --brand-white: #ffffff;
-  --brand-black: #000000;
-  --brand-gray: #d1d0d4;
+  --radius-xs: 3px;
 }
 
 body {
@@ -307,10 +303,16 @@ body {
 }
 
 .app-nav-download {
+  border-radius: var(--radius-xs);
   background: var(--brand-black);
   color: var(--brand-white);
   padding: 0.55rem 0.95rem;
   font-weight: 500;
+}
+
+.app-nav-download:hover {
+  background: var(--brand-blue);
+  color: var(--brand-white);
 }
 
 .app-hero {
@@ -415,6 +417,7 @@ body {
   gap: 0.5rem;
   min-height: 3.25rem;
   padding: 0 1.5rem;
+  border-radius: var(--radius-xs);
   font-weight: 500;
   font-size: 1rem;
   transition:
@@ -430,7 +433,8 @@ body {
 }
 
 .app-cta--black:hover {
-  background: rgba(0, 0, 0, 0.85);
+  background: var(--brand-blue);
+  color: var(--brand-white);
 }
 
 .app-cta--orange-secondary {
@@ -439,7 +443,8 @@ body {
 }
 
 .app-cta--orange-secondary:hover {
-  background: var(--brand-white);
+  background: var(--brand-black);
+  color: var(--brand-white);
 }
 
 .app-cta--orange {
@@ -458,7 +463,8 @@ body {
 }
 
 .app-cta--white:hover {
-  background: var(--brand-gray);
+  background: var(--brand-black);
+  color: var(--brand-white);
 }
 
 .app-icon {
@@ -598,7 +604,6 @@ body {
 @media (max-width: 640px) {
   .app-header {
     align-items: flex-start;
-    flex-direction: column;
     gap: 1rem;
   }
 
@@ -625,5 +630,500 @@ body {
 
   .app-download-row span:not(:first-child) {
     grid-column: 1 / -1;
+  }
+}
+
+/* Eliza App current launch layout */
+.app-shell {
+  background: #f6f8fb;
+  color: var(--brand-black);
+}
+
+.brand-section {
+  padding: clamp(4.5rem, 8vw, 7rem) clamp(1rem, 4vw, 4rem);
+}
+
+.brand-section--cloud {
+  min-height: min(55rem, 100svh);
+  background: #e8edf4;
+}
+
+.brand-section--white {
+  background: #f8fafc;
+}
+
+.brand-section--black {
+  background: #08090c;
+}
+
+.app-band-inner {
+  width: min(100%, 112rem);
+  max-width: 112rem;
+}
+
+.app-header {
+  position: absolute;
+  gap: 1rem;
+  padding: 1rem clamp(1rem, 3vw, 2rem);
+}
+
+.app-nav {
+  gap: 0.35rem;
+  padding: 0.35rem;
+  background: transparent;
+}
+
+.app-nav a {
+  display: inline-flex;
+  align-items: center;
+  min-height: 2.45rem;
+  padding: 0 0.8rem;
+  border-radius: var(--radius-xs);
+  color: rgba(8, 9, 12, 0.78);
+}
+
+.app-nav a:hover {
+  background: var(--brand-black);
+  color: var(--brand-white);
+}
+
+.app-nav .app-nav-download {
+  background: var(--brand-black);
+  color: var(--brand-white);
+}
+
+.app-nav .app-nav-download:hover {
+  background: var(--brand-blue);
+  color: var(--brand-white);
+}
+
+.app-hero {
+  padding-top: clamp(6.5rem, 10vw, 10rem);
+}
+
+.app-hero-grid {
+  grid-template-columns: minmax(0, 1fr);
+  gap: clamp(2rem, 6vw, 5rem);
+}
+
+@media (min-width: 960px) {
+  .app-hero-grid {
+    grid-template-columns: minmax(0, 1fr) minmax(18rem, 26rem);
+  }
+}
+
+.app-cloud-scrim {
+  background:
+    linear-gradient(90deg, rgba(248, 250, 252, 0.92), rgba(248, 250, 252, 0.64)),
+    linear-gradient(0deg, rgba(255, 255, 255, 0.24), rgba(255, 255, 255, 0));
+  opacity: 1;
+}
+
+.app-hero-copy {
+  max-width: 57rem;
+  min-width: 0;
+}
+
+.app-kicker {
+  color: rgba(8, 9, 12, 0.68);
+}
+
+.app-display {
+  max-width: 12.5ch;
+  font-size: 3.35rem;
+  line-height: 0.9;
+  overflow-wrap: normal;
+  word-break: normal;
+}
+
+.app-h2 {
+  font-size: 2.45rem;
+  line-height: 0.95;
+}
+
+.app-lede {
+  max-width: 45rem;
+  color: rgba(8, 9, 12, 0.74);
+  font-size: 1.2rem;
+}
+
+.app-cta {
+  min-height: 3.1rem;
+  border-radius: var(--radius-xs);
+  box-shadow: 0 16px 38px rgba(8, 9, 12, 0.1);
+}
+
+.app-cta--glass {
+  background: rgba(255, 255, 255, 0.72);
+  color: var(--brand-black);
+  backdrop-filter: blur(16px);
+}
+
+.app-cta--glass:hover {
+  background: var(--brand-blue);
+  color: var(--brand-white);
+}
+
+.app-cta--ghost {
+  background: transparent;
+  color: var(--brand-black);
+  box-shadow: none;
+}
+
+.app-cta--ghost:hover {
+  background: var(--brand-black);
+  color: var(--brand-white);
+}
+
+.app-release-panel {
+  display: grid;
+  gap: 1.25rem;
+  align-self: end;
+  min-width: 0;
+  padding: 1.25rem;
+  border-radius: var(--radius-xs);
+  background: rgba(255, 255, 255, 0.72);
+  box-shadow: 0 24px 80px rgba(8, 9, 12, 0.12);
+  backdrop-filter: blur(18px);
+}
+
+.app-release-panel h2 {
+  margin: 0.75rem 0 0.2rem;
+  font-size: clamp(1.45rem, 3vw, 2.2rem);
+  line-height: 1;
+  overflow-wrap: anywhere;
+}
+
+.app-release-panel p {
+  margin: 0;
+  color: rgba(8, 9, 12, 0.58);
+}
+
+.app-pill {
+  display: inline-flex;
+  width: fit-content;
+  min-height: 1.75rem;
+  align-items: center;
+  padding: 0 0.65rem;
+  border-radius: var(--radius-xs);
+  background: rgba(255, 88, 0, 0.1);
+  color: #b63f00;
+  font-size: 0.78rem;
+  font-weight: 500;
+}
+
+.app-release-link,
+.app-checksum-row a {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  min-width: 0;
+  color: var(--brand-blue);
+  font-weight: 500;
+  text-decoration: none;
+}
+
+.app-release-link:hover,
+.app-checksum-row a:hover {
+  text-decoration: underline;
+}
+
+.app-download-band {
+  gap: clamp(1.75rem, 4vw, 3rem);
+}
+
+.app-section-heading {
+  display: grid;
+  gap: 1rem;
+  max-width: 62rem;
+}
+
+.app-section-copy {
+  max-width: 48rem;
+  color: rgba(8, 9, 12, 0.66);
+  font-size: 1.1rem;
+  line-height: 1.45;
+}
+
+.app-section-heading .app-kicker,
+.app-section-heading .app-h2,
+.app-section-heading .app-section-copy {
+  margin: 0;
+}
+
+.app-download-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 22rem), 1fr));
+  gap: 0.85rem;
+}
+
+.app-download-card {
+  position: relative;
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: 1rem;
+  min-width: 0;
+  min-height: 11rem;
+  padding: 1rem;
+  border-radius: var(--radius-xs);
+  background: #ffffff;
+  color: var(--brand-black);
+  text-decoration: none;
+  box-shadow: 0 20px 60px rgba(8, 9, 12, 0.06);
+}
+
+.app-download-card:hover {
+  background: #eef3ff;
+  transform: translateY(-1px);
+}
+
+.app-card-icon {
+  display: inline-flex;
+  width: 2.6rem;
+  height: 2.6rem;
+  align-items: center;
+  justify-content: center;
+  border-radius: var(--radius-xs);
+  background: #eef3ff;
+  color: var(--brand-blue);
+}
+
+.app-download-card-copy,
+.app-download-card-meta {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+}
+
+.app-download-card-copy {
+  gap: 0.35rem;
+  padding-right: 1.5rem;
+}
+
+.app-download-card-copy strong {
+  font-size: 1.15rem;
+}
+
+.app-download-card-copy span,
+.app-download-card-copy small,
+.app-download-card-meta {
+  color: rgba(8, 9, 12, 0.6);
+  line-height: 1.35;
+}
+
+.app-download-card-copy small {
+  overflow-wrap: anywhere;
+}
+
+.app-download-card-meta {
+  grid-column: 1 / -1;
+  gap: 0.15rem;
+  font-size: 0.86rem;
+}
+
+.app-card-arrow {
+  position: absolute;
+  top: 1.1rem;
+  right: 1rem;
+  color: rgba(8, 9, 12, 0.45);
+}
+
+.app-store-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 15rem), 1fr));
+  gap: 0.75rem;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.app-store-card {
+  display: flex;
+  gap: 0.8rem;
+  min-width: 0;
+  padding: 0.9rem;
+  border-radius: var(--radius-xs);
+  background: rgba(8, 9, 12, 0.035);
+  color: rgba(8, 9, 12, 0.52);
+}
+
+.app-store-card div {
+  display: grid;
+  min-width: 0;
+  gap: 0.2rem;
+}
+
+.app-store-card strong,
+.app-store-card span {
+  overflow-wrap: anywhere;
+}
+
+.app-store-card span {
+  font-size: 0.84rem;
+}
+
+.app-checksum-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.85rem 1.25rem;
+  align-items: center;
+  color: rgba(8, 9, 12, 0.6);
+}
+
+.app-action-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 24rem), 1fr));
+  gap: 1rem;
+}
+
+.app-product-cta {
+  display: flex;
+  min-width: 0;
+  min-height: 18rem;
+  flex-direction: column;
+  justify-content: space-between;
+  gap: 2rem;
+  padding: clamp(1.25rem, 3vw, 2rem);
+  border-radius: var(--radius-xs);
+  background: rgba(255, 255, 255, 0.055);
+  color: var(--brand-white);
+}
+
+.app-product-icon {
+  width: 2rem;
+  height: 2rem;
+  color: var(--brand-orange);
+}
+
+.app-product-cta h2 {
+  margin: 1.2rem 0 0;
+  font-size: 2.35rem;
+  line-height: 0.98;
+}
+
+.app-product-cta p {
+  max-width: 32rem;
+  margin: 1rem 0 0;
+  color: rgba(255, 255, 255, 0.68);
+  font-size: 1.05rem;
+  line-height: 1.45;
+}
+
+.app-footer {
+  background: #08090c;
+}
+
+@media (min-width: 1600px) {
+  .brand-section {
+    padding-inline: clamp(4rem, 7vw, 8rem);
+  }
+
+  .app-display {
+    font-size: 7.75rem;
+  }
+
+  .app-h2 {
+    font-size: 5.25rem;
+  }
+
+  .app-product-cta h2 {
+    font-size: 4rem;
+  }
+}
+
+@media (min-width: 760px) {
+  .app-display {
+    font-size: 5.75rem;
+  }
+
+  .app-h2 {
+    font-size: 4.25rem;
+  }
+
+  .app-lede {
+    font-size: 1.6rem;
+  }
+
+  .app-section-copy {
+    font-size: 1.2rem;
+  }
+
+  .app-product-cta h2 {
+    font-size: 3.25rem;
+  }
+}
+
+@media (min-width: 1200px) {
+  .app-display {
+    font-size: 7rem;
+  }
+
+  .app-h2 {
+    font-size: 4.8rem;
+  }
+}
+
+@media (min-width: 1600px) {
+  .app-display {
+    font-size: 7.75rem;
+  }
+
+  .app-h2 {
+    font-size: 5.25rem;
+  }
+
+  .app-product-cta h2 {
+    font-size: 4rem;
+  }
+}
+
+@media (max-width: 760px) {
+  .app-header {
+    position: absolute;
+    align-items: center;
+    gap: 0.75rem;
+    background: transparent;
+  }
+
+  .app-nav {
+    width: auto;
+    justify-content: flex-end;
+    padding: 0;
+    overflow-x: auto;
+  }
+
+  .app-nav a {
+    flex: 0 0 auto;
+    min-height: 2.25rem;
+    padding: 0 0.65rem;
+    font-size: 0.78rem;
+  }
+
+  .brand-section--cloud {
+    min-height: auto;
+  }
+
+  .app-hero {
+    padding-top: clamp(3.5rem, 12vw, 5rem);
+  }
+
+  .app-display {
+    max-width: 100%;
+  }
+
+  .app-lede {
+    font-size: 1.12rem;
+  }
+
+  .app-cta-row {
+    align-items: stretch;
+  }
+
+  .app-cta {
+    width: 100%;
+  }
+
+  .app-release-panel {
+    align-self: stretch;
   }
 }

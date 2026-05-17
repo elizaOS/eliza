@@ -2425,11 +2425,13 @@ export async function runLifeOperationHandler(
       let windowPolicy:
         | CreateLifeOpsDefinitionRequest["windowPolicy"]
         | undefined = editingDeferredDefinitionDraft
-        ? ((detailObject(details, "windowPolicy") as unknown as
+        ? // detailObject returns Record<string,unknown>; cast to the policy
+          // type at this validated boundary.
+          ((detailObject(details, "windowPolicy") as
             | CreateLifeOpsDefinitionRequest["windowPolicy"]
             | undefined) ?? deferredDefinitionDraft.request.windowPolicy)
         : (deferredDefinitionDraft?.request.windowPolicy ??
-          (detailObject(details, "windowPolicy") as unknown as
+          (detailObject(details, "windowPolicy") as
             | CreateLifeOpsDefinitionRequest["windowPolicy"]
             | undefined));
       const explicitPriority = detailNumber(details, "priority");
@@ -2670,8 +2672,9 @@ export async function runLifeOperationHandler(
           title,
           metadata: definitionMetadata,
           windowPolicy,
+          // detailObject returns Record<string,unknown>; cast at validated boundary.
           websiteAccess:
-            (detailObject(details, "websiteAccess") as unknown as
+            (detailObject(details, "websiteAccess") as
               | CreateLifeOpsDefinitionRequest["websiteAccess"]
               | undefined) ?? deferredDefinitionDraft?.request.websiteAccess,
         },
@@ -3039,10 +3042,11 @@ export async function runLifeOperationHandler(
         description: detailString(details, "description"),
         cadence: normalizeCadenceDetail(detailObject(details, "cadence")),
         priority: detailNumber(details, "priority"),
+        // detailObject returns Record<string,unknown>; cast at validated boundary.
         windowPolicy: detailObject(
           details,
           "windowPolicy",
-        ) as unknown as UpdateLifeOpsDefinitionRequest["windowPolicy"],
+        ) as UpdateLifeOpsDefinitionRequest["windowPolicy"],
         reminderPlan: detailObject(
           details,
           "reminderPlan",

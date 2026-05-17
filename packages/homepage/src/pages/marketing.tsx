@@ -1,13 +1,25 @@
-import { BRAND_PATHS, LOGO_FILES } from "@elizaos/shared-brand";
-import { ArrowRight, Download } from "lucide-react";
+import { BRAND_PATHS, EXTERNAL_URLS, LOGO_FILES } from "@elizaos/shared-brand";
+import { CloudVideoBackground } from "@elizaos/ui";
+import {
+  ArrowRight,
+  BadgeCheck,
+  Cloud,
+  Download,
+  ExternalLink,
+  MonitorDown,
+  Package,
+  Smartphone,
+  Store,
+} from "lucide-react";
 import { releaseData } from "@/generated/release-data";
 
-const cloudUrl = "https://elizacloud.ai/login?intent=launch";
-const osUrl = "https://elizaos.ai";
-const releaseFallbackUrl = "https://github.com/elizaOS/eliza/releases";
+const cloudUrl = `${EXTERNAL_URLS.cloud}/login?intent=launch`;
+const osUrl = EXTERNAL_URLS.os;
+const releaseFallbackUrl = `${EXTERNAL_URLS.github}/releases`;
 
 const primaryDownloadIds = [
   "macos-arm64",
+  "macos-x64",
   "windows-x64",
   "linux-x64",
   "android-apk",
@@ -15,9 +27,32 @@ const primaryDownloadIds = [
 
 const fallbackDownloads: Record<(typeof primaryDownloadIds)[number], string> = {
   "macos-arm64": "macOS Apple Silicon",
-  "windows-x64": "Windows x64",
-  "linux-x64": "Linux AppImage",
+  "macos-x64": "macOS Intel",
+  "windows-x64": "Windows",
+  "linux-x64": "Linux",
   "android-apk": "Android APK",
+};
+
+const platformDescriptions: Record<
+  (typeof primaryDownloadIds)[number],
+  string
+> = {
+  "macos-arm64": "For M1, M2, M3, and newer Apple Silicon Macs.",
+  "macos-x64": "For Intel Macs.",
+  "windows-x64": "For 64-bit Windows PCs.",
+  "linux-x64": "For 64-bit Linux desktops.",
+  "android-apk": "Direct APK sideload while Play Store review is pending.",
+};
+
+const platformIcon: Record<
+  (typeof primaryDownloadIds)[number],
+  typeof Package
+> = {
+  "macos-arm64": MonitorDown,
+  "macos-x64": MonitorDown,
+  "windows-x64": MonitorDown,
+  "linux-x64": Package,
+  "android-apk": Smartphone,
 };
 
 export default function MarketingPage() {
@@ -25,15 +60,21 @@ export default function MarketingPage() {
     const releaseDownload = releaseData.release.downloads.find(
       (download) => download.id === id,
     );
+    const Icon = platformIcon[id];
 
     return {
       id,
       label: releaseDownload?.label ?? fallbackDownloads[id],
       href: releaseDownload?.url ?? releaseFallbackUrl,
-      detail: releaseDownload?.sizeLabel ?? "Release page",
+      detail: releaseDownload
+        ? `${releaseDownload.note} · ${releaseDownload.sizeLabel}`
+        : "Release page",
       meta: releaseDownload
         ? `From ${releaseDownload.releaseTagName}`
         : "Opens release page",
+      fileName: releaseDownload?.fileName ?? "Latest release",
+      description: platformDescriptions[id],
+      icon: Icon,
     };
   });
 
@@ -55,78 +96,131 @@ export default function MarketingPage() {
           />
         </a>
         <nav className="app-nav" aria-label="Eliza products">
+          <a href="#download">Downloads</a>
+          <a href={cloudUrl}>Cloud</a>
+          <a href={osUrl}>OS</a>
           <a href="#download" className="app-nav-download">
             Download
           </a>
-          <a href={cloudUrl}>Eliza Cloud</a>
         </nav>
       </header>
 
       <main id="main">
         <section className="brand-section brand-section--cloud app-hero">
-          <video
-            className="app-cloud-video"
-            autoPlay
-            muted
-            loop
-            playsInline
-            preload="metadata"
+          <CloudVideoBackground
+            speed="4x"
+            basePath={BRAND_PATHS.clouds}
             poster={BRAND_PATHS.poster}
-          >
-            <source
-              src={`${BRAND_PATHS.clouds}/clouds_4x_720p.webm`}
-              type="video/webm"
-            />
-            <source
-              src={`${BRAND_PATHS.clouds}/clouds_4x_720p.mp4`}
-              type="video/mp4"
-            />
-          </video>
+            style={{
+              position: "absolute",
+              inset: 0,
+              width: "100%",
+              height: "100%",
+            }}
+          />
           <div className="app-cloud-scrim" />
-          <div className="app-band-inner app-hero-copy app-hero-copy--cloud">
-            <h1 className="app-display">Your Eliza, everywhere.</h1>
-            <p className="app-lede">Desktop, mobile, and cloud — one Eliza.</p>
-            <div className="app-cta-row">
-              <a href="#download" className="app-cta app-cta--black">
-                <Download className="app-icon" aria-hidden="true" />
-                Download the app
-              </a>
-              <a href={cloudUrl} className="app-cta app-cta--white">
-                Launch Eliza
-                <ArrowRight className="app-icon" aria-hidden="true" />
-              </a>
+          <div className="app-band-inner app-hero-grid app-hero-copy--cloud">
+            <div className="app-hero-copy">
+              <p className="app-kicker">Eliza App</p>
+              <h1 className="app-display">Your Eliza, everywhere.</h1>
+              <p className="app-lede">
+                Download the desktop and mobile app, connect one agent across
+                your devices, and keep Cloud and elizaOS one click away.
+              </p>
+              <div className="app-cta-row">
+                <a href="#download" className="app-cta app-cta--black">
+                  <Download className="app-icon" aria-hidden="true" />
+                  Download the app
+                </a>
+                <a href={cloudUrl} className="app-cta app-cta--glass">
+                  <Cloud className="app-icon" aria-hidden="true" />
+                  Launch Eliza
+                </a>
+                <a href={osUrl} className="app-cta app-cta--ghost">
+                  Install elizaOS
+                  <ArrowRight className="app-icon" aria-hidden="true" />
+                </a>
+              </div>
             </div>
+            <section className="app-release-panel" aria-label="Current release">
+              <div>
+                <span className="app-pill">Latest release</span>
+                <h2>{releaseData.release.tagName}</h2>
+                <p>{releaseData.release.publishedAtLabel}</p>
+              </div>
+              <a href={releaseData.release.url} className="app-release-link">
+                Release notes
+                <ExternalLink className="app-icon" aria-hidden="true" />
+              </a>
+            </section>
           </div>
         </section>
 
-        <section id="download" className="brand-section brand-section--black">
+        <section id="download" className="brand-section brand-section--white">
           <div className="app-band-inner app-download-band">
-            <h2 className="app-h2 app-h2--light">Install.</h2>
-            <div className="app-download-list">
-              {downloads.map((download) => (
-                <DownloadLink key={download.id} {...download} />
+            <div className="app-section-heading">
+              <p className="app-kicker">Downloads</p>
+              <h2 className="app-h2">Install the app.</h2>
+              <p className="app-section-copy">
+                Release cards link directly to the published GitHub assets.
+                Store distribution is listed separately and stays disabled until
+                review is complete.
+              </p>
+            </div>
+            <div className="app-download-grid">
+              {downloads.map((download) => {
+                const Icon = download.icon;
+                return (
+                  <DownloadLink key={download.id} {...download} icon={Icon} />
+                );
+              })}
+            </div>
+
+            <ul className="app-store-grid" aria-label="App store status">
+              {releaseData.storeTargets.map((target) => (
+                <li className="app-store-card" key={target.platform}>
+                  <Store className="app-icon" aria-hidden="true" />
+                  <div>
+                    <strong>{target.label}</strong>
+                    <span>Coming soon · {target.rolloutChannel}</span>
+                  </div>
+                </li>
               ))}
+            </ul>
+
+            <div className="app-checksum-row">
+              {releaseData.release.checksum ? (
+                <a href={releaseData.release.checksum.url}>
+                  <BadgeCheck className="app-icon" aria-hidden="true" />
+                  Verify with {releaseData.release.checksum.fileName}
+                </a>
+              ) : (
+                <span>Checksums publish with release assets.</span>
+              )}
+              <a href={releaseData.release.url}>
+                View all assets
+                <ExternalLink className="app-icon" aria-hidden="true" />
+              </a>
             </div>
           </div>
         </section>
 
-        <section className="brand-section brand-section--blue">
-          <div className="app-band-inner app-action-band">
-            <h2 className="app-h2 app-h2--light">Install the OS.</h2>
-            <a href={osUrl} className="app-cta app-cta--white">
-              ElizaOS
-              <ArrowRight className="app-icon" aria-hidden="true" />
-            </a>
-          </div>
-        </section>
-
-        <section className="brand-section brand-section--orange">
-          <div className="app-band-inner app-action-band">
-            <h2 className="app-h2">Run in cloud.</h2>
-            <a href={cloudUrl} className="app-cta app-cta--black">
-              Launch Eliza
-              <ArrowRight className="app-icon" aria-hidden="true" />
-            </a>
+        <section className="brand-section brand-section--black">
+          <div className="app-band-inner app-action-grid">
+            <ProductCta
+              title="Run in Cloud."
+              body="Launch your agent runtime and account dashboard in Eliza Cloud."
+              href={cloudUrl}
+              label="Launch Eliza"
+              icon={Cloud}
+            />
+            <ProductCta
+              title="Install elizaOS."
+              body="Use the full operating system when you want device-level control."
+              href={osUrl}
+              label="Install elizaOS"
+              icon={MonitorDown}
+            />
           </div>
         </section>
       </main>
@@ -140,8 +234,10 @@ export default function MarketingPage() {
             draggable={false}
           />
           <nav className="app-footer-nav" aria-label="Footer">
-            <a href={osUrl}>elizaOS</a>
+            <a href="#download">Downloads</a>
             <a href={cloudUrl}>Eliza Cloud</a>
+            <a href={osUrl}>ElizaOS</a>
+            <a href={releaseData.release.url}>GitHub Releases</a>
           </nav>
         </div>
       </footer>
@@ -154,18 +250,61 @@ function DownloadLink({
   href,
   detail,
   meta,
+  fileName,
+  description,
+  icon: Icon,
 }: {
   label: string;
   href: string;
   detail: string;
   meta: string;
+  fileName: string;
+  description: string;
+  icon: typeof Package;
 }) {
   return (
-    <a className="app-download-row" href={href}>
-      <span>{label}</span>
-      <span>{detail}</span>
-      <span>{meta}</span>
-      <ArrowRight className="app-icon" aria-hidden="true" />
+    <a className="app-download-card" href={href}>
+      <span className="app-card-icon">
+        <Icon className="app-icon" aria-hidden="true" />
+      </span>
+      <span className="app-download-card-copy">
+        <strong>{label}</strong>
+        <span>{description}</span>
+        <small>{fileName}</small>
+      </span>
+      <span className="app-download-card-meta">
+        <span>{detail}</span>
+        <span>{meta}</span>
+      </span>
+      <ArrowRight className="app-icon app-card-arrow" aria-hidden="true" />
     </a>
+  );
+}
+
+function ProductCta({
+  title,
+  body,
+  href,
+  label,
+  icon: Icon,
+}: {
+  title: string;
+  body: string;
+  href: string;
+  label: string;
+  icon: typeof Package;
+}) {
+  return (
+    <article className="app-product-cta">
+      <div>
+        <Icon className="app-product-icon" aria-hidden="true" />
+        <h2>{title}</h2>
+        <p>{body}</p>
+      </div>
+      <a href={href} className="app-cta app-cta--white">
+        {label}
+        <ArrowRight className="app-icon" aria-hidden="true" />
+      </a>
+    </article>
   );
 }

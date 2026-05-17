@@ -19,12 +19,12 @@ export default function LandingHeader() {
 
   return (
     <motion.header className="pointer-events-auto fixed top-0 left-0 z-[100] w-full bg-transparent">
-      <div className="flex h-16 items-center justify-between w-full px-6 sm:px-8 lg:px-12">
+      <div className="flex h-16 w-full items-center justify-between px-5 sm:px-8 lg:px-12">
         <Link to="/" className="flex items-center gap-3">
           <img
-            src={`${BRAND_PATHS.logos}/${LOGO_FILES.cloudBlack}`}
+            src={`${BRAND_PATHS.logos}/${LOGO_FILES.cloudWhite}`}
             alt="Eliza Cloud"
-            className="h-7 w-auto sm:h-8"
+            className="h-6 w-auto sm:h-8"
             draggable={false}
           />
         </Link>
@@ -34,13 +34,13 @@ export default function LandingHeader() {
             <>
               <Link
                 to="/dashboard/agents"
-                className="inline-flex min-h-11 items-center justify-center bg-black px-5 text-sm font-medium text-white transition-colors hover:bg-[#0B35F1]"
+                className="inline-flex min-h-10 items-center justify-center rounded-[3px] bg-black px-4 text-sm font-medium text-white transition-colors hover:bg-[#0B35F1] sm:min-h-11 sm:px-5"
               >
                 Launch Eliza
               </Link>
               <Link
                 to="/dashboard"
-                className="hidden min-h-11 items-center justify-center bg-[#FF5800] px-5 text-sm font-medium text-black transition-colors hover:bg-black hover:text-white sm:inline-flex"
+                className="hidden min-h-11 items-center justify-center rounded-[3px] bg-[#FF5800] px-5 text-sm font-medium text-black transition-colors hover:bg-black hover:text-white sm:inline-flex"
               >
                 Developer Dashboard
               </Link>
@@ -50,7 +50,7 @@ export default function LandingHeader() {
             <>
               <button
                 aria-disabled={!ready}
-                className="inline-flex min-h-11 items-center justify-center bg-black px-5 text-sm font-medium text-white transition-colors hover:bg-[#0B35F1] disabled:opacity-50"
+                className="inline-flex min-h-10 items-center justify-center rounded-[3px] bg-black px-4 text-sm font-medium text-white transition-colors hover:bg-[#0B35F1] disabled:opacity-50 sm:min-h-11 sm:px-5"
                 onClick={launchEliza}
                 disabled={!ready}
                 type="button"
@@ -58,7 +58,7 @@ export default function LandingHeader() {
                 Launch Eliza
               </button>
               <button
-                className="hidden min-h-11 items-center justify-center bg-[#FF5800] px-5 text-sm font-medium text-black transition-colors hover:bg-black hover:text-white disabled:opacity-50 sm:inline-flex"
+                className="hidden min-h-11 items-center justify-center rounded-[3px] bg-[#FF5800] px-5 text-sm font-medium text-black transition-colors hover:bg-black hover:text-white disabled:opacity-50 sm:inline-flex"
                 onClick={openDashboard}
                 disabled={!ready}
                 type="button"

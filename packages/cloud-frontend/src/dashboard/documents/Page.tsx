@@ -9,8 +9,25 @@ export default function DocumentsPage() {
   const { ready, authenticated } = useRequireAuth();
   const agentsQuery = useMyAgents();
 
+  // Render Helmet unconditionally so the title is set even while auth
+  // resolves; otherwise the homepage <title> bleeds through.
+  const head = (
+    <Helmet>
+      <title>Knowledge</title>
+      <meta
+        name="description"
+        content="Upload and manage documents for your agents to enhance AI responses with custom knowledge."
+      />
+    </Helmet>
+  );
+
   if (!ready || !authenticated)
-    return <DashboardLoadingState label="Loading Knowledge" />;
+    return (
+      <>
+        {head}
+        <DashboardLoadingState label="Loading Knowledge" />
+      </>
+    );
 
   const characters: ElizaCharacter[] =
     agentsQuery.data?.map((a) => ({
@@ -24,13 +41,7 @@ export default function DocumentsPage() {
 
   return (
     <>
-      <Helmet>
-        <title>Knowledge</title>
-        <meta
-          name="description"
-          content="Upload and manage documents for your agents to enhance AI responses with custom knowledge."
-        />
-      </Helmet>
+      {head}
       {agentsQuery.isLoading ? (
         <DashboardLoadingState label="Loading Knowledge" />
       ) : (

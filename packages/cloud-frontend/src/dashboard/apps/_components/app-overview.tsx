@@ -211,7 +211,7 @@ export function AppOverview({ app, showApiKey }: AppOverviewProps) {
                   )}
                 </button>
               </div>
-              <p className="text-xs text-white/50">
+              <p className="text-xs text-white/74">
                 Save this key securely. You won&apos;t see it again. This
                 message disappears in 60 seconds.
               </p>

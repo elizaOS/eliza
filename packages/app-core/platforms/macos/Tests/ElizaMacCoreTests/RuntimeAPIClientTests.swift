@@ -81,6 +81,47 @@ final class RuntimeAPIClientTests: XCTestCase {
         }
     }
 
+    func testFetchSnapshotKeepsHealthWhenOptionalRoutesFail() async throws {
+        RuntimeURLProtocolStub.responses = [
+            "runtime.health": (200, rpcEnvelope("""
+            {
+              "ready": true,
+              "runtime": "ok",
+              "database": "ok",
+              "plugins": { "loaded": 12, "failed": 0 },
+              "coordinator": "not_wired",
+              "connectors": {},
+              "uptime": 91,
+              "agentState": "running"
+            }
+            """)),
+            "runtime.agents": (200, """
+            {
+              "ok": false,
+              "status": 401,
+              "error": "Unauthorized",
+              "result": {}
+            }
+            """),
+            "runtime.logs": (200, """
+            {
+              "ok": false,
+              "status": 404,
+              "error": "Not found",
+              "result": {}
+            }
+            """)
+        ]
+
+        let snapshot = try await RuntimeAPIClient(baseURL: runtimeBaseURL, session: stubbedSession).fetchSnapshot()
+
+        XCTAssertTrue(snapshot.health.ready)
+        XCTAssertEqual(snapshot.agents, [])
+        XCTAssertEqual(snapshot.logs.entries, [])
+        XCTAssertEqual(Set(RuntimeURLProtocolStub.requestedPaths), ["/api/swift/rpc"])
+        XCTAssertEqual(Set(RuntimeURLProtocolStub.requestedRPCMethods), ["runtime.health", "runtime.agents", "runtime.logs"])
+    }
+
     func testFetchWalletSnapshotReadsRuntimeWalletRoutes() async throws {
         RuntimeURLProtocolStub.responses = [
             "wallet.config": (200, rpcEnvelope("""

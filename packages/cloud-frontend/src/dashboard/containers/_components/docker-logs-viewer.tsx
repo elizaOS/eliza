@@ -243,7 +243,7 @@ export function DockerLogsViewer({
           ) : logsState.lines.length === 0 ? (
             <div className="text-center py-8">
               <Terminal className="h-8 w-8 text-neutral-600 mx-auto mb-3" />
-              <p className="text-white/50 text-sm">No logs available</p>
+              <p className="text-white/74 text-sm">No logs available</p>
             </div>
           ) : (
             <ScrollArea className="h-[500px] w-full rounded-none border border-white/10">

@@ -14,7 +14,7 @@ if (!root) {
 // In all browser contexts (Vite dev server or static deployment) use the
 // HTTP backend which talks to the local Bun server via the /api Vite proxy.
 const isElectrobun =
-  typeof (globalThis as Record<string, unknown>)["electrobun"] !== "undefined";
+  typeof (globalThis as Record<string, unknown>).electrobun !== "undefined";
 
 async function main() {
   let backend;

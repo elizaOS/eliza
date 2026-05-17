@@ -1,5 +1,6 @@
 import type http from "node:http";
 import { stringToUuid } from "@elizaos/core";
+import { formatError } from "@elizaos/shared";
 import {
   type BenchmarkSession,
   type CuaServiceLike,
@@ -62,7 +63,7 @@ export async function handleCuaRoute(params: {
     } catch (err: unknown) {
       writeJson(res, 500, {
         ok: false,
-        error: err instanceof Error ? err.message : String(err),
+        error: formatError(err),
       });
     }
     return true;
@@ -86,7 +87,7 @@ export async function handleCuaRoute(params: {
     } catch (err: unknown) {
       writeJson(res, 500, {
         ok: false,
-        error: err instanceof Error ? err.message : String(err),
+        error: formatError(err),
       });
     }
     return true;
@@ -168,7 +169,7 @@ export async function handleCuaRoute(params: {
     } catch (err: unknown) {
       writeJson(res, 500, {
         ok: false,
-        error: err instanceof Error ? err.message : String(err),
+        error: formatError(err),
       });
     }
 
@@ -197,7 +198,7 @@ export async function handleCuaRoute(params: {
     } catch (err: unknown) {
       writeJson(res, 500, {
         ok: false,
-        error: err instanceof Error ? err.message : String(err),
+        error: formatError(err),
       });
     }
 
@@ -226,7 +227,7 @@ export async function handleCuaRoute(params: {
     } catch (err: unknown) {
       writeJson(res, 500, {
         ok: false,
-        error: err instanceof Error ? err.message : String(err),
+        error: formatError(err),
       });
     }
 

@@ -1,6 +1,6 @@
 /* Pull in the full @elizaos/ui stylesheet bundle so theme tokens, Tailwind
  * utilities, and brand fonts are all available. */
-@import "@elizaos/ui/styles/styles.css";
+@import "@ui-src/styles/styles.css";
 
 /* ----------------------------------------------------------------------------
  * Brand tokens used by the gallery shell itself (not by the components — those
@@ -44,8 +44,8 @@ body,
   align-self: start;
   height: 100vh;
   overflow-y: auto;
-  background: #000;
-  color: #fff;
+  background: var(--brand-black);
+  color: var(--brand-white);
   padding: 20px 16px;
   border-right: 1px solid var(--gallery-orange);
   font-family: var(--font-sans, "Poppins", system-ui, sans-serif);
@@ -93,7 +93,7 @@ body,
 
 .gallery-toc a:hover {
   background: var(--gallery-orange);
-  color: #000;
+  color: var(--brand-black);
 }
 
 /* ----------------------------------------------------------------------------
@@ -237,7 +237,7 @@ body,
   padding: 6px 10px;
   font-weight: 600;
   background: rgba(0, 0, 0, 0.35);
-  color: #fff;
+  color: var(--brand-white);
   border-bottom: 1px solid rgba(255, 255, 255, 0.12);
 }
 
@@ -256,17 +256,17 @@ body,
  * the component sample). */
 .gallery-tile.theme-cloud {
   background: linear-gradient(180deg, #0230f5 0%, #075cff 50%, #17adff 100%);
-  color: #ffffff;
+  color: var(--brand-white);
 }
 
 .gallery-tile.theme-os {
   background: var(--gallery-blue);
-  color: #ffffff;
+  color: var(--brand-white);
 }
 
 .gallery-tile.theme-app {
   background: #0a0a0a;
-  color: #ffffff;
+  color: var(--brand-white);
 }
 
 /* Helper layout utilities used inside stories. */

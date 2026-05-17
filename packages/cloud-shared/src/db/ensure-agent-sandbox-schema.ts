@@ -268,8 +268,24 @@ async function runEnsureAgentSandboxSchema(): Promise<void> {
  * Production has had migrations applied out of order during CF cutover. Keep
  * this idempotent guard until all live databases have converged on migration
  * 0115 or later.
+ *
+ * Local dev / tests always run `db:migrate` on boot, so the guard is dead
+ * weight there — worse, it issues ~15 sequential ALTER/CREATE statements
+ * per request, each opening a fresh TCP connection (Worker pool config sets
+ * `maxUses: 1`), which the PGlite socket bridge intermittently drops with
+ * "Connection terminated unexpectedly". Short-circuit when:
+ *   - ENVIRONMENT === "local" (the dev script sets this), or
+ *   - SKIP_AGENT_SANDBOX_ENSURE === "1" (escape hatch for tests/CI).
  */
+function shouldSkipEnsure(): boolean {
+  const env = getCloudAwareEnv();
+  if (env.SKIP_AGENT_SANDBOX_ENSURE === "1") return true;
+  if (env.ENVIRONMENT === "local") return true;
+  return false;
+}
+
 export async function ensureAgentSandboxSchema(): Promise<void> {
+  if (shouldSkipEnsure()) return;
   const key = applyDatabaseUrlFallback(getCloudAwareEnv()) ?? "__missing_database_url__";
   let promise = ensurePromises.get(key);
   if (!promise) {

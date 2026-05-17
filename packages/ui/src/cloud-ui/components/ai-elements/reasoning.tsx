@@ -48,7 +48,6 @@ const useReasoning = () => {
  * Collapsible reasoning display component showing AI thinking process.
  * Auto-closes after streaming completes and displays duration.
  *
- * @param props - Reasoning component props
  * @param props.isStreaming - Whether reasoning is currently streaming
  * @param props.open - Controlled open state
  * @param props.defaultOpen - Default open state (uncontrolled)

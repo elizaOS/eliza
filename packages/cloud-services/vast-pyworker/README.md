@@ -229,7 +229,7 @@ bundle repo (e.g. `elizaos/eliza-1` with `bundles/27b/text/eliza-1-pro-27b-128k.
 1. Update the Vast template's `MODEL_REPO` / `MODEL_FILE` env (re-run
    `upsert-template.ts` with the new env, or change in the Vast UI).
 2. Optionally change `MODEL_ALIAS` to `vast/eliza-1-27b-eliza-v0.1` and add
-   the matching catalog entry in `cloud/packages/lib/models/catalog.ts`.
+   the matching catalog entry in `packages/cloud-shared/src/lib/models/catalog.ts`.
 3. Vast cycles workers automatically once the template is updated; the next
    cold-start downloads the new GGUF on first run, then caches it on the
    worker volume.

@@ -80,10 +80,6 @@ export interface ApiErrorResponse {
 
 /**
  * Create a standardized error response object.
- *
- * @param errorCode - The error code from API_ERRORS
- * @param details - Optional additional details
- * @returns Standardized error response object
  */
 export function createErrorResponse(
   errorCode: ApiErrorCode,
@@ -103,11 +99,6 @@ export function createErrorResponse(
 
 /**
  * Create an error response with a custom message while maintaining structure.
- *
- * @param message - Custom error message
- * @param code - Optional error code
- * @param details - Optional additional details
- * @returns Standardized error response object
  */
 export function createCustomErrorResponse(
   message: string,
@@ -131,9 +122,6 @@ export function createCustomErrorResponse(
 
 /**
  * Map common error patterns to standardized error codes.
- *
- * @param error - The error to analyze
- * @returns The appropriate API error code
  */
 export function getErrorCodeFromException(error: unknown): ApiErrorCode {
   if (!(error instanceof Error)) {
@@ -177,9 +165,6 @@ export function getErrorCodeFromException(error: unknown): ApiErrorCode {
 
 /**
  * Get HTTP status code for an error code.
- *
- * @param errorCode - The API error code
- * @returns Appropriate HTTP status code
  */
 export function getStatusCodeForError(errorCode: ApiErrorCode): number {
   switch (errorCode) {

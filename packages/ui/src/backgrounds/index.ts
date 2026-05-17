@@ -2,10 +2,7 @@ export type {
   BackgroundEditAction,
   BackgroundEditPayload,
 } from "./BACKGROUND_EDIT-action-contract";
-export {
-  applyBackgroundEdit,
-  BACKGROUND_EDIT_ACTION_TYPE,
-} from "./BACKGROUND_EDIT-action-contract";
+export { BACKGROUND_EDIT_ACTION_TYPE } from "./BACKGROUND_EDIT-action-contract";
 export type { BackgroundHostProps } from "./BackgroundHost";
 export { BackgroundHost } from "./BackgroundHost";
 export type { CloudVideoBackgroundProps } from "./CloudVideoBackground";

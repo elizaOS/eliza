@@ -210,7 +210,7 @@ export class LocalSensitiveRequestStore {
       action: "fulfilled",
       outcome: "success",
       createdAt: at,
-      metadata: redactedMetadata({ event } as unknown as JsonObject),
+      metadata: redactedMetadata({ event } as JsonObject),
     });
   }
 

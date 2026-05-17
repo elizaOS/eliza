@@ -416,7 +416,7 @@ export function ProfileForm({ user }: ProfileFormProps) {
               disabled
               className="rounded-none border-white/10 bg-black/60 text-white/50"
             />
-            <p className="text-xs text-white/50">
+            <p className="text-xs text-white/74">
               Email cannot be changed. Please contact support if you need to
               update this.
             </p>
@@ -485,7 +485,7 @@ export function ProfileForm({ user }: ProfileFormProps) {
                 <label className="text-xs font-medium text-white/70 uppercase tracking-wide">
                   Profile Picture
                 </label>
-                <p className="text-xs text-white/50 mt-1">
+                <p className="text-xs text-white/74 mt-1">
                   PNG, JPG or WEBP. Max 5MB. Drag & drop or click to upload.
                 </p>
               </div>
@@ -510,7 +510,7 @@ export function ProfileForm({ user }: ProfileFormProps) {
                       <p className="text-sm text-white font-medium truncate">
                         {pendingFile.name}
                       </p>
-                      <p className="text-xs text-white/50">
+                      <p className="text-xs text-white/74">
                         {(pendingFile.size / 1024).toFixed(1)} KB
                       </p>
                     </div>
@@ -621,7 +621,7 @@ export function ProfileForm({ user }: ProfileFormProps) {
                   className="rounded-none border-white/10 bg-black/60 text-white/50 font-mono text-xs"
                 />
                 {user.wallet_chain_type && (
-                  <p className="text-xs text-white/50 capitalize">
+                  <p className="text-xs text-white/74 capitalize">
                     Connected via {user.wallet_chain_type} wallet
                   </p>
                 )}
@@ -644,7 +644,7 @@ export function ProfileForm({ user }: ProfileFormProps) {
                 disabled={isPending}
                 className="rounded-none border-white/10 bg-black/40 text-white placeholder:text-white/40 focus:ring-1 focus:ring-[#FF5800] focus:border-[#FF5800]"
               />
-              <p className="text-xs text-white/50">
+              <p className="text-xs text-white/74">
                 Or use the upload button above to add a profile picture.
               </p>
             </div>
@@ -660,7 +660,7 @@ export function ProfileForm({ user }: ProfileFormProps) {
                 disabled
                 className="rounded-none border-white/10 bg-black/60 text-white/50 capitalize"
               />
-              <p className="text-xs text-white/50">
+              <p className="text-xs text-white/74">
                 Your role in the organization. Contact an admin to change this.
               </p>
             </div>

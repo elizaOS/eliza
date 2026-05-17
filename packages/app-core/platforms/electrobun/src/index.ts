@@ -70,6 +70,7 @@ import {
 } from "./native/mac-window-effects";
 import { getPermissionManager } from "./native/permissions";
 import { checkWebGpuSupport } from "./native/webgpu-browser-support";
+import { createPillWindow } from "./pill-window";
 import { printElectrobunDevSettingsBanner } from "./print-electrobun-dev-settings-banner";
 import {
 	createRendererApiProxyRequestInit,
@@ -2148,6 +2149,16 @@ async function main(): Promise<void> {
 			/* non-fatal */
 		}
 		getFloatingChatManager().configure(url, preload);
+		// Spawn the always-on-top voice pill overlay alongside the main window.
+		// The pill loads the same renderer with `?shell=pill`, which routes to
+		// a minimal <VoicePill> mount in apps/app/src/main.tsx.
+		try {
+			createPillWindow({ rendererUrl: url, preload });
+		} catch (err) {
+			logger.warn(
+				`[Main] Failed to spawn pill window: ${err instanceof Error ? err.message : String(err)}`,
+			);
+		}
 	});
 
 	// Per-window RPC tracking: surface windows each get their own typed
