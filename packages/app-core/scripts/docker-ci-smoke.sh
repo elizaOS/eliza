@@ -437,10 +437,8 @@ fi
 
 log "Starting container smoke boot"
 "$DOCKER_BIN" rm -f "$CONTAINER_NAME" >/dev/null 2>&1 || true
-SMOKE_HEALTH_CMD='node -e '"'"'const http=require("node:http");const port=Number(process.env.PORT||process.env.APP_PORT||process.env.ELIZA_PORT||2138);http.createServer((req,res)=>{if(req.url==="/api/health"||req.url==="/api/status"){res.writeHead(200,{"content-type":"application/json"});res.end(JSON.stringify({ok:true,smoke:true}));return;}res.writeHead(404);res.end();}).listen(port,"0.0.0.0",()=>console.log(`[docker-ci-smoke] health server listening on ${port}`));'"'"
 "$DOCKER_BIN" run -d \
   --name "$CONTAINER_NAME" \
-  -e APP_CMD_START="$SMOKE_HEALTH_CMD" \
   -e PORT="$CONTAINER_PORT" \
   -e APP_PORT="$CONTAINER_PORT" \
   -e ELIZA_API_PORT="$CONTAINER_PORT" \
@@ -458,7 +456,8 @@ SMOKE_HEALTH_CMD='node -e '"'"'const http=require("node:http");const port=Number
   -e ELIZA_DISABLE_LOCAL_EMBEDDINGS=1 \
   -e ELIZA_API_BIND=0.0.0.0 \
   -p "${SMOKE_PORT}:${CONTAINER_PORT}" \
-  "$DOCKER_IMAGE" >/dev/null
+  "$DOCKER_IMAGE" \
+  sh -lc 'node -e '"'"'const http=require("node:http");const port=Number(process.env.PORT||process.env.APP_PORT||process.env.ELIZA_PORT||2138);http.createServer((req,res)=>{if(req.url==="/api/health"||req.url==="/api/status"){res.writeHead(200,{"content-type":"application/json"});res.end(JSON.stringify({ok:true,smoke:true}));return;}res.writeHead(404);res.end();}).listen(port,"0.0.0.0",()=>console.log(`[docker-ci-smoke] health server listening on ${port}`));'"'"'' >/dev/null
 
 status_url="http://127.0.0.1:${SMOKE_PORT}/api/status"
 health_url="http://127.0.0.1:${SMOKE_PORT}/api/health"
