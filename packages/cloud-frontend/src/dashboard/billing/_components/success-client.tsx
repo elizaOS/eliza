@@ -1,12 +1,12 @@
 /**
  * Credit balance display component showing current credit balance.
- * Fetches and displays balance with loading state.
+ * Fetches and displays balance with loading, error, and success states.
  */
 
 "use client";
 
-import { Loader2 } from "lucide-react";
-import { useEffect, useState } from "react";
+import { AlertCircle, Loader2, RefreshCw } from "lucide-react";
+import { useCallback, useEffect, useState } from "react";
 
 async function getCreditBalance(): Promise<number> {
   const res = await fetch("/api/v1/credits/balance", {
@@ -20,8 +20,11 @@ async function getCreditBalance(): Promise<number> {
       body?.error ?? `Failed to fetch credit balance (${res.status})`,
     );
   }
-  const data = (await res.json()) as { balance: number };
-  return Number(data.balance ?? 0);
+  const data = (await res.json()) as { balance?: number };
+  if (typeof data.balance !== "number") {
+    throw new Error("Credit balance missing from API response");
+  }
+  return data.balance;
 }
 
 interface CreditBalanceDisplayProps {
@@ -32,16 +35,24 @@ interface CreditBalanceDisplayProps {
 export function CreditBalanceDisplay(_props: CreditBalanceDisplayProps) {
   const [creditBalance, setCreditBalance] = useState<number | null>(null);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
 
-  useEffect(() => {
-    async function fetchCreditBalance() {
+  const fetchCreditBalance = useCallback(async () => {
+    setLoading(true);
+    setError(null);
+    try {
       const balance = await getCreditBalance();
       setCreditBalance(balance);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Unknown error");
+    } finally {
       setLoading(false);
     }
-
-    fetchCreditBalance();
   }, []);
+
+  useEffect(() => {
+    fetchCreditBalance();
+  }, [fetchCreditBalance]);
 
   if (loading) {
     return (
@@ -54,11 +65,30 @@ export function CreditBalanceDisplay(_props: CreditBalanceDisplayProps) {
     );
   }
 
+  if (error || creditBalance === null) {
+    return (
+      <div className="rounded-lg border border-red-500/40 bg-red-500/10 p-4">
+        <div className="flex items-center gap-2 text-sm text-red-400">
+          <AlertCircle className="h-4 w-4" />
+          Could not load balance{error ? `: ${error}` : ""}
+        </div>
+        <button
+          type="button"
+          onClick={() => void fetchCreditBalance()}
+          className="mt-2 inline-flex items-center gap-1 text-xs text-red-300 hover:text-red-200"
+        >
+          <RefreshCw className="h-3 w-3" />
+          Refresh balance
+        </button>
+      </div>
+    );
+  }
+
   return (
     <div className="rounded-lg border bg-muted/50 p-4">
       <div className="text-sm text-muted-foreground">Current Balance</div>
       <div className="text-3xl font-bold mt-1">
-        ${creditBalance !== null ? Number(creditBalance).toFixed(2) : "0.00"}
+        ${creditBalance.toFixed(2)}
       </div>
       <div className="text-sm text-muted-foreground">USD</div>
     </div>

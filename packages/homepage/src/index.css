@@ -10,11 +10,6 @@
 :root {
   --font-sans: "Poppins";
   --font-mono: "Poppins";
-  --brand-blue: #0b35f1;
-  --brand-orange: #ff5800;
-  --brand-white: #ffffff;
-  --brand-black: #000000;
-  --brand-gray: #d1d0d4;
   --radius-xs: 3px;
 }
 

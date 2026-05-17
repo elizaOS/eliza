@@ -366,12 +366,12 @@ export function ElizaAgentBackupsPanel({
                           >
                             {timestamp.absolute}
                           </p>
-                          <p className="text-xs text-white/50">
+                          <p className="text-xs text-white/74">
                             {timestamp.relative}
                           </p>
                         </div>
 
-                        <div className="flex flex-wrap items-center gap-4 text-xs text-white/50">
+                        <div className="flex flex-wrap items-center gap-4 text-xs text-white/74">
                           <span
                             style={{ fontFamily: "var(--font-roboto-mono)" }}
                           >
@@ -402,7 +402,7 @@ export function ElizaAgentBackupsPanel({
                             Restore this backup
                           </BrandButton>
                         ) : isLatest ? (
-                          <p className="text-xs text-white/50">
+                          <p className="text-xs text-white/74">
                             Use “Restore latest” above for stopped-agent
                             recovery.
                           </p>

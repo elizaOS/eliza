@@ -15,10 +15,11 @@
     "lint:check": "bunx @biomejs/biome check .",
     "format": "bunx @biomejs/biome format --write .",
     "format:check": "bunx @biomejs/biome format .",
-    "predev": "node ../shared-brand/scripts/sync-to-public.mjs ./public",
-    "prebuild": "node ../shared-brand/scripts/sync-to-public.mjs ./public"
+    "predev": "node ../shared-brand/scripts/sync-to-public.mjs ./public --clouds",
+    "prebuild": "node ../shared-brand/scripts/sync-to-public.mjs ./public --clouds"
   },
   "dependencies": {
+    "@elizaos/checkout-shared": "workspace:*",
     "@elizaos/shared-brand": "workspace:*",
     "@elizaos/ui": "workspace:*",
     "@fontsource-variable/open-sans": "^5.2.7",

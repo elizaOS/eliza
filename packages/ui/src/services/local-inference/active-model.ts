@@ -21,15 +21,14 @@ import { recommendForFirstRun } from "./recommendation";
 import { listInstalledModels, touchElizaModel } from "./registry";
 import type { ActiveModelState, CatalogModel, InstalledModel } from "./types";
 
+export type { KvOffloadMode, LocalInferenceLoadArgs } from "./load-args.js";
 export {
   ELIZA_1_PLACEHOLDER_IDS,
   FIRST_RUN_DEFAULT_MODEL_ID,
   recommendForFirstRun,
 };
 
-export type { KvOffloadMode, LocalInferenceLoadArgs } from "./load-args.js";
 import type { KvOffloadMode, LocalInferenceLoadArgs } from "./load-args.js";
-
 
 /**
  * Allow-list for KV cache type strings. The eliza fork of node-llama-cpp

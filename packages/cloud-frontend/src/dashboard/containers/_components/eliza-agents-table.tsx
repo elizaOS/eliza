@@ -470,7 +470,7 @@ export function ElizaAgentsTable({
           </div>
           <div className="space-y-1.5">
             <p className="text-white font-medium">No agents yet</p>
-            <p className="text-sm text-white/45">
+            <p className="text-sm text-white/74">
               Deploy your first agent to get started.
             </p>
           </div>
@@ -922,7 +922,7 @@ export function ElizaAgentsTable({
             <AlertDialogTitle className="text-white">
               Delete Agent
             </AlertDialogTitle>
-            <AlertDialogDescription className="text-white/50">
+            <AlertDialogDescription className="text-white/74">
               {deleteTargetBusy
                 ? "This agent is still provisioning. Wait for the job to finish before deleting."
                 : "This will permanently delete the agent and stop any running container."}

@@ -496,6 +496,13 @@
       "name": "@elizaos/bun-ios-runtime",
       "version": "0.0.0",
     },
+    "packages/checkout-shared": {
+      "name": "@elizaos/checkout-shared",
+      "version": "0.1.0",
+      "devDependencies": {
+        "typescript": "^6.0.3",
+      },
+    },
     "packages/cloud-api": {
       "name": "@elizaos/cloud-api",
       "version": "0.1.0",
@@ -547,6 +554,7 @@
       "name": "@elizaos/cloud-frontend",
       "version": "0.1.0",
       "dependencies": {
+        "@elizaos/checkout-shared": "workspace:*",
         "@elizaos/cloud-shared": "workspace:*",
         "@elizaos/shared-brand": "workspace:*",
         "@elizaos/ui": "workspace:*",
@@ -1643,6 +1651,13 @@
         "vercel": "^53.1.1",
       },
     },
+    "packages/hardware-catalog": {
+      "name": "@elizaos/hardware-catalog",
+      "version": "0.1.0",
+      "dependencies": {
+        "@elizaos/shared-brand": "workspace:*",
+      },
+    },
     "packages/homepage": {
       "name": "eliza-app",
       "version": "2.0.0-beta.2",
@@ -1698,6 +1713,7 @@
       "name": "@elizaos/os-homepage",
       "version": "0.1.0",
       "dependencies": {
+        "@elizaos/checkout-shared": "workspace:*",
         "@elizaos/shared-brand": "workspace:*",
         "@elizaos/ui": "workspace:*",
         "@fontsource-variable/open-sans": "^5.2.7",
@@ -4875,6 +4891,8 @@
 
     "@elizaos/capacitor-wifi": ["@elizaos/capacitor-wifi@workspace:plugins/plugin-native-wifi"],
 
+    "@elizaos/checkout-shared": ["@elizaos/checkout-shared@workspace:packages/checkout-shared"],
+
     "@elizaos/cloud-api": ["@elizaos/cloud-api@workspace:packages/cloud-api"],
 
     "@elizaos/cloud-e2e": ["@elizaos/cloud-e2e@workspace:packages/cloud-e2e"],
@@ -4978,6 +4996,8 @@
     "@elizaos/gateway-webhook": ["@elizaos/gateway-webhook@workspace:packages/cloud-services/gateway-webhook"],
 
     "@elizaos/gcp-examples": ["@elizaos/gcp-examples@workspace:packages/examples/gcp"],
+
+    "@elizaos/hardware-catalog": ["@elizaos/hardware-catalog@workspace:packages/hardware-catalog"],
 
     "@elizaos/interrupt-bench": ["@elizaos/interrupt-bench@workspace:packages/benchmarks/interrupt-bench"],
 

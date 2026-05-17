@@ -67,10 +67,13 @@ export function LandingPage({ accessError }: LandingPageProps) {
   }
 
   return (
-    <div className="theme-cloud flex min-h-screen w-full flex-col bg-black text-white">
+    <main
+      id="main"
+      className="theme-cloud flex min-h-screen w-full flex-col bg-black text-white"
+    >
       <LandingHeader />
       <HeroSection />
       <Footer />
-    </div>
+    </main>
   );
 }

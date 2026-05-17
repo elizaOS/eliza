@@ -261,10 +261,10 @@ function buildSwarmRoomMetadata(
   content: Record<string, unknown>,
   metadata: Record<string, unknown>,
 ): {
-  originRoomId: unknown;
-  taskRoomId: unknown;
+  originRoomId: string;
+  taskRoomId: string | undefined;
   worktreeRoomId?: string;
-  swarmRooms: Array<{ roomId: unknown; roles: string[] }>;
+  swarmRooms: Array<{ roomId: string; roles: string[] }>;
 } {
   const taskRoomId =
     pickRoutingString(params, content, metadata, "taskRoomId") ??
@@ -274,9 +274,9 @@ function buildSwarmRoomMetadata(
   const worktreeRoomId =
     pickRoutingString(params, content, metadata, "worktreeRoomId") ??
     pickRoutingString(params, content, metadata, "coordinationRoomId");
-  const roomMap = new Map<string, { roomId: unknown; roles: string[] }>();
-  const add = (roomId: unknown, role: string) => {
-    if (typeof roomId !== "string" || !roomId.trim()) return;
+  const roomMap = new Map<string, { roomId: string; roles: string[] }>();
+  const add = (roomId: string | undefined, role: string) => {
+    if (!roomId || !roomId.trim()) return;
     const key = roomId.trim();
     const current = roomMap.get(key) ?? { roomId: key, roles: [] };
     if (!current.roles.includes(role)) current.roles.push(role);

@@ -5,10 +5,13 @@
  * brand files are always fresh in the served static tree.
  *
  * Usage:
- *   node packages/shared-brand/scripts/sync-to-public.mjs <consumer-public-dir>
+ *   node packages/shared-brand/scripts/sync-to-public.mjs <consumer-public-dir> [--clouds]
  *
  * The target directory is created if missing. Existing files are overwritten.
  * Files NOT present in `assets/` are left alone (the script only adds/updates).
+ *
+ * The `clouds/` tree (~17MB) is heavy and only needed by consumers that render
+ * a <video> from it. Pass `--clouds` to include it; otherwise it is skipped.
  */
 
 import { copyFileSync, mkdirSync, readdirSync, statSync } from "node:fs";
@@ -32,9 +35,12 @@ function copyDir(src, dest) {
   }
 }
 
-const target = process.argv[2];
+const args = process.argv.slice(2);
+const includeClouds = args.includes("--clouds");
+const positional = args.filter((a) => !a.startsWith("--"));
+const target = positional[0];
 if (!target) {
-  console.error("usage: sync-to-public.mjs <consumer-public-dir>");
+  console.error("usage: sync-to-public.mjs <consumer-public-dir> [--clouds]");
   process.exit(1);
 }
 
@@ -57,5 +63,9 @@ copyDir(
   join(ASSETS_ROOT, "favicons"),
   join(resolvedTarget, "brand", "favicons"),
 );
-copyDir(join(ASSETS_ROOT, "clouds"), join(resolvedTarget, "clouds"));
-console.log(`[shared-brand] synced into ${resolvedTarget}`);
+if (includeClouds) {
+  copyDir(join(ASSETS_ROOT, "clouds"), join(resolvedTarget, "clouds"));
+}
+console.log(
+  `[shared-brand] synced into ${resolvedTarget}${includeClouds ? " (with clouds)" : ""}`,
+);

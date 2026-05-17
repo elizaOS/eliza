@@ -1,3 +1,4 @@
+import { startStripeCheckout } from "@elizaos/checkout-shared";
 import {
   BRAND_COLORS,
   BRAND_PATHS,
@@ -211,22 +212,14 @@ export default function CheckoutPage() {
     setIsStartingCheckout(true);
 
     try {
-      const response = await fetch("/api/stripe/create-checkout-session", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
+      await startStripeCheckout(
+        {
           hardwareColor: selectedColor.name,
           hardwareSku: product.sku,
           returnUrl: "billing",
-        }),
-      });
-      const data = await response.json();
-
-      if (!response.ok || !data.url) {
-        throw new Error(data.error || "Could not start hardware checkout.");
-      }
-
-      window.location.href = data.url;
+        },
+        { apiBaseUrl: "", credentials: "same-origin" },
+      );
     } catch (error) {
       setCheckoutError(
         error instanceof Error
@@ -298,7 +291,7 @@ export default function CheckoutPage() {
                   {product.colors.map((color) => (
                     <button
                       aria-label={`Select ${color.name}`}
-                      className={`size-8 ${
+                      className={`size-8 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white focus-visible:ring-offset-2 focus-visible:ring-offset-black ${
                         selectedColor.id === color.id
                           ? "ring-2 ring-[#FF5800]"
                           : "ring-1 ring-white/30"

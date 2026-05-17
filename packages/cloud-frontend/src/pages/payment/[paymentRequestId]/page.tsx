@@ -163,7 +163,10 @@ export default function PaymentRequestPage() {
 
   return (
     <div className="min-h-screen bg-[#080A0D] px-4 py-8 text-white sm:px-6 lg:px-8">
-      <main className="mx-auto flex min-h-[calc(100vh-4rem)] w-full max-w-xl items-center">
+      <main
+        id="main"
+        className="mx-auto flex min-h-[calc(100vh-4rem)] w-full max-w-xl items-center"
+      >
         <section className="w-full border border-white/10 bg-white/[0.03] p-5 shadow-2xl shadow-black/30 sm:p-7">
           <div className="flex flex-col items-center text-center">
             <div className="flex h-16 w-16 items-center justify-center border border-[#0B35F1]/30 bg-[#0B35F1]/10">

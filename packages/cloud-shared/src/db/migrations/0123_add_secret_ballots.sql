@@ -7,23 +7,30 @@
 -- v1 stores ballot values as base64-encoded plaintext in `value_ciphertext`.
 -- Wave H+ will swap server-side counting for Shamir-shared shares stored in
 -- the same column without a schema migration.
+--
+-- Idempotent: safe to apply against databases where some of these objects
+-- already exist.
 
-CREATE TYPE "secret_ballot_status" AS ENUM (
-  'open',
-  'tallied',
-  'expired',
-  'canceled'
-);
+DO $$ BEGIN
+  CREATE TYPE "secret_ballot_status" AS ENUM (
+    'open',
+    'tallied',
+    'expired',
+    'canceled'
+  );
+EXCEPTION WHEN duplicate_object THEN NULL; END $$;
 
-CREATE TYPE "secret_ballot_event_name" AS ENUM (
-  'ballot.created',
-  'ballot.distributed',
-  'ballot.vote_recorded',
-  'ballot.vote_rejected',
-  'ballot.tallied',
-  'ballot.expired',
-  'ballot.canceled'
-);
+DO $$ BEGIN
+  CREATE TYPE "secret_ballot_event_name" AS ENUM (
+    'ballot.created',
+    'ballot.distributed',
+    'ballot.vote_recorded',
+    'ballot.vote_rejected',
+    'ballot.tallied',
+    'ballot.expired',
+    'ballot.canceled'
+  );
+EXCEPTION WHEN duplicate_object THEN NULL; END $$;
 
 CREATE TABLE IF NOT EXISTS "secret_ballots" (
   "id" uuid PRIMARY KEY DEFAULT gen_random_uuid() NOT NULL,
@@ -43,14 +50,14 @@ CREATE TABLE IF NOT EXISTS "secret_ballots" (
   CONSTRAINT "secret_ballots_threshold_positive" CHECK ("threshold" >= 1)
 );
 
-CREATE INDEX "secret_ballots_org_created_idx"
+CREATE INDEX IF NOT EXISTS "secret_ballots_org_created_idx"
   ON "secret_ballots" ("organization_id", "created_at" DESC);
 
-CREATE INDEX "secret_ballots_status_expires_idx"
+CREATE INDEX IF NOT EXISTS "secret_ballots_status_expires_idx"
   ON "secret_ballots" ("status", "expires_at")
   WHERE "status" = 'open';
 
-CREATE INDEX "secret_ballots_agent_idx"
+CREATE INDEX IF NOT EXISTS "secret_ballots_agent_idx"
   ON "secret_ballots" ("agent_id")
   WHERE "agent_id" IS NOT NULL;
 
@@ -63,13 +70,13 @@ CREATE TABLE IF NOT EXISTS "secret_ballot_votes" (
   "recorded_at" timestamptz NOT NULL DEFAULT now()
 );
 
-CREATE UNIQUE INDEX "secret_ballot_votes_ballot_identity_unique"
+CREATE UNIQUE INDEX IF NOT EXISTS "secret_ballot_votes_ballot_identity_unique"
   ON "secret_ballot_votes" ("ballot_id", "participant_identity_id");
 
-CREATE UNIQUE INDEX "secret_ballot_votes_ballot_token_unique"
+CREATE UNIQUE INDEX IF NOT EXISTS "secret_ballot_votes_ballot_token_unique"
   ON "secret_ballot_votes" ("ballot_id", "participant_token_hash");
 
-CREATE INDEX "secret_ballot_votes_ballot_idx"
+CREATE INDEX IF NOT EXISTS "secret_ballot_votes_ballot_idx"
   ON "secret_ballot_votes" ("ballot_id");
 
 CREATE TABLE IF NOT EXISTS "secret_ballot_events" (
@@ -80,5 +87,5 @@ CREATE TABLE IF NOT EXISTS "secret_ballot_events" (
   "occurred_at" timestamptz NOT NULL DEFAULT now()
 );
 
-CREATE INDEX "secret_ballot_events_ballot_occurred_idx"
+CREATE INDEX IF NOT EXISTS "secret_ballot_events_ballot_occurred_idx"
   ON "secret_ballot_events" ("ballot_id", "occurred_at");

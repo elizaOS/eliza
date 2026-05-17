@@ -7,11 +7,6 @@
 @source "../../ui/src";
 
 :root {
-  --brand-blue: #0b35f1;
-  --brand-orange: #ff5800;
-  --brand-white: #ffffff;
-  --brand-black: #000000;
-  --brand-gray: #d1d0d4;
   --background: var(--brand-blue);
   --foreground: var(--brand-white);
   --radius-xs: 3px;

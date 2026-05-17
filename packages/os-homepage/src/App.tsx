@@ -1,4 +1,8 @@
 import {
+  startStripeCheckout,
+  StripeCheckoutError,
+} from "@elizaos/checkout-shared";
+import {
   BRAND_COLORS,
   BRAND_PATHS,
   CONCEPT_PRODUCT_IMAGES,
@@ -562,38 +566,22 @@ function CheckoutPage() {
     setStatus("checkout");
     setMessage(null);
     try {
-      const stewardToken = getStoredStewardToken();
-      const response = await fetch(
-        `${cloudApiUrl}/api/stripe/create-checkout-session`,
+      await startStripeCheckout(
         {
-          method: "POST",
-          credentials: "include",
-          headers: {
-            "Content-Type": "application/json",
-            ...(stewardToken
-              ? { Authorization: `Bearer ${stewardToken}` }
-              : {}),
-          },
-          body: JSON.stringify({
-            hardwareColor: selectedColor,
-            hardwareSku: product.sku,
-            returnUrl: "billing",
-          }),
+          hardwareColor: selectedColor,
+          hardwareSku: product.sku,
+          returnUrl: "billing",
+        },
+        {
+          apiBaseUrl: cloudApiUrl,
+          bearerToken: getStoredStewardToken(),
         },
       );
-      const data = (await response.json().catch(() => null)) as {
-        error?: string;
-        url?: string;
-      } | null;
-
-      if (!response.ok || !data?.url) {
-        if (response.status === 401) setIsAuthed(false);
-        throw new Error(data?.error || "Could not start checkout.");
-      }
-
-      window.location.href = data.url;
     } catch (error) {
       setStatus("idle");
+      if (error instanceof StripeCheckoutError && error.status === 401) {
+        setIsAuthed(false);
+      }
       setMessage(
         error instanceof Error ? error.message : "Could not start checkout.",
       );
