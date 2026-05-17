@@ -13,6 +13,10 @@ import {
   rateLimit,
 } from "@/lib/middleware/rate-limit-hono-cloudflare";
 import { analyticsService } from "@/lib/services/analytics";
+import {
+  deriveCostTrendingFields,
+  toSuccessRatePercent,
+} from "@/lib/services/analytics-derived";
 import { organizationsService } from "@/lib/services/organizations";
 import { logger } from "@/lib/utils/logger";
 import type { AppEnv } from "@/types/cloud-worker-env";
@@ -122,6 +126,12 @@ app.get("/", async (c) => {
       throw new Error(`Organization ${user.organization_id} not found`);
     }
 
+    const creditBalance = Number(organization.credit_balance ?? 0);
+    const costTrendingDerived = deriveCostTrendingFields(
+      costTrending,
+      creditBalance,
+    );
+
     return c.json({
       success: true,
       data: {
@@ -139,8 +149,9 @@ app.get("/", async (c) => {
           inputTokens: point.inputTokens,
           outputTokens: point.outputTokens,
           successRate: point.successRate,
+          successRatePercent: toSuccessRatePercent(point.successRate),
         })),
-        costTrending,
+        costTrending: { ...costTrending, ...costTrendingDerived },
         providerBreakdown,
         modelBreakdown,
         trends,

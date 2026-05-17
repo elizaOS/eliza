@@ -221,6 +221,7 @@ export interface AnalyticsTimeSeriesPointDto {
   inputTokens: number;
   outputTokens: number;
   successRate: number;
+  successRatePercent: number;
 }
 export interface AnalyticsUserBreakdownDto {
   userId: string;
@@ -238,6 +239,9 @@ export interface AnalyticsCostTrendingDto {
   burnChangePercent: number;
   projectedMonthlyBurn: number;
   daysUntilBalanceZero: number | null;
+  monthlyBurnPercent: number;
+  monthlyBurnPercentClamped: number;
+  burnAlertThresholdExceeded: boolean;
 }
 export interface AnalyticsProviderBreakdownDto {
   provider: string;

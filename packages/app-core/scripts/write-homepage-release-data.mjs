@@ -483,7 +483,7 @@ function buildStaticOsArtifacts(channel, version) {
       requiresHardware: "8 GB USB drive",
     },
     {
-      id: "elizaos-aosp-flasher-macos",
+      id: "elizaos-setup-macos",
       label: "AOSP Flasher — macOS",
       description:
         "GUI tool for macOS that detects a connected Pixel via ADB, downloads the elizaOS AOSP build, and guides through bootloader unlock and flashing.",
@@ -499,7 +499,7 @@ function buildStaticOsArtifacts(channel, version) {
       requiresHardware: "Android device with unlocked bootloader",
     },
     {
-      id: "elizaos-aosp-flasher-linux",
+      id: "elizaos-setup-linux",
       label: "AOSP Flasher — Linux",
       description:
         "GUI tool for Linux that detects a connected Pixel via ADB, downloads the elizaOS AOSP build, and guides through bootloader unlock and flashing.",
@@ -515,7 +515,7 @@ function buildStaticOsArtifacts(channel, version) {
       requiresHardware: "Android device with unlocked bootloader",
     },
     {
-      id: "elizaos-aosp-flasher-windows",
+      id: "elizaos-setup-windows",
       label: "AOSP Flasher — Windows",
       description:
         "GUI tool for Windows that detects a connected Pixel via ADB, downloads the elizaOS AOSP build, and guides through bootloader unlock and flashing.",

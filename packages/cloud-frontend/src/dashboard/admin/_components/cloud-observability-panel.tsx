@@ -128,13 +128,7 @@ export function CloudObservabilityPanel() {
   );
 }
 
-function Metric({
-  label,
-  value,
-}: {
-  label: string;
-  value: number | null;
-}) {
+function Metric({ label, value }: { label: string; value: number | null }) {
   return (
     <div className="border border-[#242424] bg-[#0d0d0d] p-3">
       <div className="flex items-center gap-2 text-[#858585]">

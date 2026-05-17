@@ -5,11 +5,7 @@
  * Lazily creates a Stripe customer for the org if one doesn't exist.
  */
 
-import {
-  HARDWARE_PRODUCTS,
-  HARDWARE_SKUS,
-  findBySku,
-} from "@elizaos/hardware-catalog";
+import { HARDWARE_SKUS, findBySku } from "@elizaos/hardware-catalog";
 import { Hono } from "hono";
 import type Stripe from "stripe";
 import { z } from "zod";
@@ -26,8 +22,6 @@ import { logger } from "@/lib/utils/logger";
 import type { AppEnv } from "@/types/cloud-worker-env";
 
 const CUSTOM_AMOUNT_LIMITS = { MIN_AMOUNT: 1, MAX_AMOUNT: 1000 } as const;
-
-void HARDWARE_PRODUCTS;
 
 const checkoutRequestSchema = z
   .object({
@@ -99,16 +93,19 @@ app.post("/", rateLimit(RateLimitPresets.STRICT), async (c) => {
     const organizationId = user.organization_id;
 
     if (hardwareSku) {
-      const hardware = HARDWARE_PRODUCTS[hardwareSku];
+      const hardware = findBySku(hardwareSku);
+      if (!hardware) {
+        return c.json({ error: "Unknown hardware SKU" }, 400);
+      }
       lineItems = [
         {
           price_data: {
             currency: stripeCurrency,
             product_data: {
-              name: hardware.name,
-              description: hardware.description,
+              name: hardware.stripeName,
+              description: hardware.stripeDescription,
             },
-            unit_amount: Math.round(hardware.amount * 100),
+            unit_amount: Math.round(hardware.priceUsd * 100),
           },
           quantity: 1,
         },
@@ -118,7 +115,7 @@ app.post("/", rateLimit(RateLimitPresets.STRICT), async (c) => {
         user_id: user.id,
         hardware_sku: hardwareSku,
         hardware_color: hardwareColor ?? "unspecified",
-        preorder_amount: hardware.amount.toFixed(2),
+        preorder_amount: hardware.priceUsd.toFixed(2),
         type: "hardware_preorder",
       };
     } else if (creditPackId) {

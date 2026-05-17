@@ -60,7 +60,7 @@ export function ConfirmDialog({
               variant === "danger"
                 ? "border-destructive/70 bg-destructive text-destructive-fg hover:border-destructive hover:bg-destructive"
                 : variant === "warn"
-                  ? "border-warn/55 bg-warn/92 text-warn-fg hover:border-warn hover:bg-warn"
+                  ? "border-warn/55 bg-warn/92 !text-black hover:border-warn hover:bg-warn"
                   : "border-accent/55 bg-accent/22 text-accent-fg hover:border-accent/75 hover:bg-accent/32"
             }
             onClick={onConfirm}

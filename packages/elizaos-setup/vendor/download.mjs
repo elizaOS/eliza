@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // @ts-check
 /**
- * Download vendor binaries (adb, fastboot, sideloader) for aosp-flasher.
+ * Download vendor binaries (adb, fastboot, sideloader) for elizaos-setup.
  * Installs to ~/.elizaos/flasher/vendor/bin/{platform}/
  *
  * Usage:
@@ -57,7 +57,7 @@ async function downloadFile(url, destPath) {
 
   const response = await fetch(url, {
     redirect: "follow",
-    headers: { "User-Agent": "elizaos-aosp-flasher/1.0" },
+    headers: { "User-Agent": "elizaos-setup/1.0" },
   });
 
   if (!response.ok) {
@@ -179,7 +179,7 @@ async function downloadSideloader() {
       {
         headers: {
           Accept: "application/vnd.github+json",
-          "User-Agent": "elizaos-aosp-flasher/1.0",
+          "User-Agent": "elizaos-setup/1.0",
         },
       },
     );

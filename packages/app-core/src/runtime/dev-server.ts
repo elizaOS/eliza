@@ -26,6 +26,7 @@ import type { AgentRuntime } from "@elizaos/core";
 import { logger } from "@elizaos/core";
 import {
   colorizeDevSettingsStartupBanner,
+  formatError,
   resolveApiToken,
   resolveDesktopApiPort,
   setRestartHandler,
@@ -154,7 +155,7 @@ async function bootstrapRuntime(reason: string): Promise<void> {
       }
     } catch (err) {
       logger.warn(
-        `${getLogPrefix()} Failed to apply saved GitHub token (runtime continues without it): ${err instanceof Error ? err.message : String(err)}`,
+        `${getLogPrefix()} Failed to apply saved GitHub token (runtime continues without it): ${formatError(err)}`,
       );
     }
 
@@ -225,7 +226,7 @@ async function bootstrapRuntime(reason: string): Promise<void> {
         }
       } catch (recoveryErr) {
         logger.error(
-          `${getLogPrefix()} PGlite auto-reset failed (${recoveryErr instanceof Error ? recoveryErr.message : recoveryErr})`,
+          `${getLogPrefix()} PGlite auto-reset failed (${formatError(recoveryErr)})`,
         );
       }
     }
@@ -274,7 +275,7 @@ async function createRuntime(): Promise<AgentRuntime> {
       await shutdownRuntime(currentRuntime, "dev-server createRuntime");
     } catch (err) {
       logger.warn(
-        `${getLogPrefix()} Error stopping old runtime: ${err instanceof Error ? err.message : err}`,
+        `${getLogPrefix()} Error stopping old runtime: ${formatError(err)}`,
       );
     }
     currentRuntime = null;
@@ -369,7 +370,7 @@ async function shutdown(): Promise<void> {
       await shutdownRuntime(currentRuntime, "dev-server shutdown");
     } catch (err) {
       logger.warn(
-        `${getLogPrefix()} Error stopping runtime during shutdown: ${err instanceof Error ? err.message : err}`,
+        `${getLogPrefix()} Error stopping runtime during shutdown: ${formatError(err)}`,
       );
     }
     currentRuntime = null;

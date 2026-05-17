@@ -2656,14 +2656,12 @@ export const tasksAction: Action & {
     // the response evaluator, but incomplete completions still need the TASKS
     // surface so the parent can send a follow-up to the same session instead
     // of asking the user to paste command output.
-    const content = message.content as {
-      metadata?: unknown;
-      source?: unknown;
-    };
+    const content = message.content;
     if (content.source === "sub_agent") {
+      const rawMetadata = content["metadata"];
       const metadata =
-        content.metadata !== null && typeof content.metadata === "object"
-          ? (content.metadata as Record<string, unknown>)
+        rawMetadata !== null && typeof rawMetadata === "object"
+          ? (rawMetadata as Record<string, unknown>)
           : undefined;
       return (
         metadata?.subAgent === true &&

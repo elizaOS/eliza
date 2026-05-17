@@ -422,13 +422,18 @@ export function buildControlPlaneApp(options: ControlPlaneMockOptions): {
     });
   });
 
-  app.post("/api/v1/cron/pool-:rest", async (c) => {
+  // Hono parameters do not match partial-segment patterns like `pool-:rest`,
+  // so use a single catchall handler that inspects the suffix.
+  app.post("/api/v1/cron/:name", async (c) => {
+    const name = c.req.param("name");
+    if (!name.startsWith("pool-")) {
+      return c.json({ success: false, error: "Not found" }, 404);
+    }
     await latency();
-    const rest = c.req.param("rest");
-    const count = store.incrementCron(`pool-${rest}-tick`);
+    const count = store.incrementCron(`${name}-tick`);
     return c.json({
       success: true,
-      data: { kind: `pool-${rest}`, count, timestamp: now().toISOString() },
+      data: { kind: name, count, timestamp: now().toISOString() },
     });
   });
 
