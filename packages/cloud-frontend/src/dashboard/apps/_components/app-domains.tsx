@@ -136,7 +136,7 @@ export function AppDomains({ appId }: AppDomainsProps) {
     const primaryDomain = domains.find((d) => d.isPrimary);
     if (primaryDomain?.customDomain && !primaryDomain.customDomainVerified) {
       pollIntervalRef.current = setInterval(() => {
-        checkDomainStatus(primaryDomain.customDomain!, true);
+        checkDomainStatus(primaryDomain.customDomain ?? "", true);
       }, 15000);
 
       return () => {
@@ -338,10 +338,10 @@ export function AppDomains({ appId }: AppDomainsProps) {
                   }
                   sslStatus={primaryDomain.sslStatus}
                   onRefresh={() =>
-                    checkDomainStatus(primaryDomain.customDomain!)
+                    checkDomainStatus(primaryDomain.customDomain ?? "")
                   }
                   onRemove={() =>
-                    handleRemoveDomain(primaryDomain.customDomain!)
+                    handleRemoveDomain(primaryDomain.customDomain ?? "")
                   }
                   isChecking={isChecking}
                   isRemoving={isRemoving}
@@ -845,9 +845,9 @@ function DnsConfigPanel({
               Verification Record
             </h4>
             <div className="space-y-2">
-              {txtRecords.map((record, i) => (
+              {txtRecords.map((record) => (
                 <DnsRecordRow
-                  key={i}
+                  key={record.name}
                   type="TXT"
                   name={record.name}
                   value={record.value}
@@ -864,9 +864,9 @@ function DnsConfigPanel({
             {isApex ? "A Record" : "CNAME Record"}
           </h4>
           <div className="space-y-2">
-            {dnsRecords.map((record, i) => (
+            {dnsRecords.map((record) => (
               <DnsRecordRow
-                key={i}
+                key={record.name}
                 type={record.type}
                 name={record.name}
                 value={record.value}
