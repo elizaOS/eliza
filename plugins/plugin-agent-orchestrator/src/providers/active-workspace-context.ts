@@ -10,7 +10,7 @@
  */
 
 import type { IAgentRuntime, Memory, Provider, State } from "@elizaos/core";
-import { getAcpService } from "../actions/common.js";
+import { getAcpService, logger } from "../actions/common.js";
 import {
   formatTaskAgentStatus,
   getTaskAgentFrameworkState,
@@ -72,7 +72,11 @@ export const activeWorkspaceContextProvider: Provider = {
     let frameworkState = FALLBACK_FRAMEWORK_STATE;
     try {
       frameworkState = await getTaskAgentFrameworkState(runtime, acpService);
-    } catch {
+    } catch (err) {
+      logger(runtime).debug?.(
+        "[activeWorkspaceContext] getTaskAgentFrameworkState failed",
+        err,
+      );
       frameworkState = FALLBACK_FRAMEWORK_STATE;
     }
 
@@ -85,7 +89,11 @@ export const activeWorkspaceContextProvider: Provider = {
             setTimeout(() => resolve([]), 2000),
           ),
         ]);
-      } catch {
+      } catch (err) {
+        logger(runtime).debug?.(
+          "[activeWorkspaceContext] listSessions failed",
+          err,
+        );
         sessions = [];
       }
     }
@@ -93,7 +101,11 @@ export const activeWorkspaceContextProvider: Provider = {
     let workspaces: WorkspaceResult[] = [];
     try {
       workspaces = wsService?.listWorkspaces() ?? [];
-    } catch {
+    } catch (err) {
+      logger(runtime).debug?.(
+        "[activeWorkspaceContext] listWorkspaces failed",
+        err,
+      );
       workspaces = [];
     }
     const tasks = uniqueTasks([]);

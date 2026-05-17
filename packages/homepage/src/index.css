@@ -609,7 +609,6 @@ body {
 @media (max-width: 640px) {
   .app-header {
     align-items: flex-start;
-    flex-direction: column;
     gap: 1rem;
   }
 
