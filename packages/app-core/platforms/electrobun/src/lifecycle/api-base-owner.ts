@@ -33,14 +33,14 @@
 import { pushApiBaseToRenderer } from "../api-base";
 
 interface ApiBaseSnapshot {
-	base: string | null;
-	token: string;
+  base: string | null;
+  token: string;
 }
 
 let current: ApiBaseSnapshot = { base: null, token: "" };
 
 function safeJsonForHtml(value: unknown): string {
-	return JSON.stringify(value).replace(/<\//g, "<\\/");
+  return JSON.stringify(value).replace(/<\//g, "<\\/");
 }
 
 /**
@@ -52,12 +52,12 @@ function safeJsonForHtml(value: unknown): string {
  * agent supervisor confirms ready, after a runtime-mode change, etc.
  */
 export function setCurrent(base: string | null, token: string = ""): void {
-	current = { base, token };
+  current = { base, token };
 }
 
 /** Read the current snapshot — for tests + diagnostic logging. */
 export function getCurrent(): Readonly<ApiBaseSnapshot> {
-	return current;
+  return current;
 }
 
 /**
@@ -76,21 +76,21 @@ export function getCurrent(): Readonly<ApiBaseSnapshot> {
  * apiBase and every `/api/*` call returns SPA HTML.
  */
 export function injectIntoHtml(html: string): string {
-	if (!current.base) return html;
-	const baseLiteral = safeJsonForHtml(current.base);
-	const tokenLiteral = current.token ? safeJsonForHtml(current.token) : "";
-	const tokenInject = tokenLiteral
-		? `Object.defineProperty(window,"__ELIZA_API_TOKEN__",{value:${tokenLiteral},configurable:true,writable:true,enumerable:false});`
-		: "";
-	const bootConfigInject = `(function(){var k=Symbol.for("elizaos.app.boot-config"),w=window,prev=w.__ELIZAOS_APP_BOOT_CONFIG__||w.__ELIZA_APP_BOOT_CONFIG__||(w[k]&&w[k].current)||{},next=Object.assign({},prev,{apiBase:${baseLiteral}${tokenLiteral ? `,apiToken:${tokenLiteral}` : ""}});w.__ELIZAOS_APP_BOOT_CONFIG__=next;w.__ELIZA_APP_BOOT_CONFIG__=next;w[k]={current:next};})();`;
-	const script = `<script>window.__ELIZA_API_BASE__=${baseLiteral};${tokenInject}${bootConfigInject}</script>`;
-	if (html.includes("</head>")) {
-		return html.replace("</head>", `${script}</head>`);
-	}
-	if (html.includes("<body")) {
-		return html.replace("<body", `${script}<body`);
-	}
-	return script + html;
+  if (!current.base) return html;
+  const baseLiteral = safeJsonForHtml(current.base);
+  const tokenLiteral = current.token ? safeJsonForHtml(current.token) : "";
+  const tokenInject = tokenLiteral
+    ? `Object.defineProperty(window,"__ELIZA_API_TOKEN__",{value:${tokenLiteral},configurable:true,writable:true,enumerable:false});`
+    : "";
+  const bootConfigInject = `(function(){var k=Symbol.for("elizaos.app.boot-config"),w=window,prev=w.__ELIZAOS_APP_BOOT_CONFIG__||w.__ELIZA_APP_BOOT_CONFIG__||(w[k]&&w[k].current)||{},next=Object.assign({},prev,{apiBase:${baseLiteral}${tokenLiteral ? `,apiToken:${tokenLiteral}` : ""}});w.__ELIZAOS_APP_BOOT_CONFIG__=next;w.__ELIZA_APP_BOOT_CONFIG__=next;w[k]={current:next};})();`;
+  const script = `<script>window.__ELIZA_API_BASE__=${baseLiteral};${tokenInject}${bootConfigInject}</script>`;
+  if (html.includes("</head>")) {
+    return html.replace("</head>", `${script}</head>`);
+  }
+  if (html.includes("<body")) {
+    return html.replace("<body", `${script}<body`);
+  }
+  return script + html;
 }
 
 /**
@@ -100,8 +100,8 @@ export function injectIntoHtml(html: string): string {
  * should iterate their window registry and call this per window.
  */
 export function pushToWindow(win: { webview: { rpc?: unknown } }): void {
-	if (!current.base) return;
-	pushApiBaseToRenderer(win, current.base, current.token || undefined);
+  if (!current.base) return;
+  pushApiBaseToRenderer(win, current.base, current.token || undefined);
 }
 
 /**
@@ -110,10 +110,10 @@ export function pushToWindow(win: { webview: { rpc?: unknown } }): void {
  * `pushApiBaseToRenderer(win, base, token)` directly.
  */
 export function notifyChange(
-	win: { webview: { rpc?: unknown } },
-	base: string | null,
-	token: string = "",
+  win: { webview: { rpc?: unknown } },
+  base: string | null,
+  token: string = "",
 ): void {
-	setCurrent(base, token);
-	pushToWindow(win);
+  setCurrent(base, token);
+  pushToWindow(win);
 }

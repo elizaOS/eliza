@@ -6,5 +6,5 @@
 import { Utils } from "electrobun/bun";
 
 export function shutdownAfterFatalError(): void {
-	Utils.quit();
+  Utils.quit();
 }

@@ -5,7 +5,7 @@
  */
 
 export const Utils = {
-	quit: () => {},
+  quit: () => {},
 };
 
 export const BrowserWindow = {};

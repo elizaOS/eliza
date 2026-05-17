@@ -17,50 +17,50 @@
 import type { BootProgressSnapshot, EmbeddedAgentStatus } from "./rpc-schema";
 
 export type AgentHealthSnapshot = Pick<
-	BootProgressSnapshot,
-	"phase" | "lastError" | "pluginsLoaded" | "pluginsFailed" | "database"
+  BootProgressSnapshot,
+  "phase" | "lastError" | "pluginsLoaded" | "pluginsFailed" | "database"
 >;
 
 export type AgentHealthReader = (
-	port: number,
+  port: number,
 ) => Promise<AgentHealthSnapshot | null>;
 
 /** Default reader: in-process HTTP fetch against the agent child's /api/health. */
 export const readAgentHealthSnapshotViaHttp: AgentHealthReader = async (
-	port: number,
+  port: number,
 ): Promise<AgentHealthSnapshot | null> => {
-	try {
-		const response = await fetch(`http://127.0.0.1:${port}/api/health`, {
-			method: "GET",
-			signal: AbortSignal.timeout(2_000),
-		});
-		if (!response.ok) return null;
-		const raw = (await response.json()) as {
-			database?: unknown;
-			plugins?: { loaded?: unknown; failed?: unknown };
-			startup?: { phase?: unknown; lastError?: unknown };
-		};
-		const phaseRaw = raw.startup?.phase;
-		const lastErrorRaw = raw.startup?.lastError;
-		const loadedRaw = raw.plugins?.loaded;
-		const failedRaw = raw.plugins?.failed;
-		const databaseRaw = raw.database;
-		return {
-			phase: typeof phaseRaw === "string" ? phaseRaw : null,
-			lastError: typeof lastErrorRaw === "string" ? lastErrorRaw : null,
-			pluginsLoaded: typeof loadedRaw === "number" ? loadedRaw : null,
-			pluginsFailed: typeof failedRaw === "number" ? failedRaw : null,
-			database:
-				databaseRaw === "ok" ||
-				databaseRaw === "unknown" ||
-				databaseRaw === "error"
-					? databaseRaw
-					: null,
-		};
-	} catch {
-		// Pre-listen, mid-restart, or timeout. Caller fills with `null`s.
-		return null;
-	}
+  try {
+    const response = await fetch(`http://127.0.0.1:${port}/api/health`, {
+      method: "GET",
+      signal: AbortSignal.timeout(2_000),
+    });
+    if (!response.ok) return null;
+    const raw = (await response.json()) as {
+      database?: unknown;
+      plugins?: { loaded?: unknown; failed?: unknown };
+      startup?: { phase?: unknown; lastError?: unknown };
+    };
+    const phaseRaw = raw.startup?.phase;
+    const lastErrorRaw = raw.startup?.lastError;
+    const loadedRaw = raw.plugins?.loaded;
+    const failedRaw = raw.plugins?.failed;
+    const databaseRaw = raw.database;
+    return {
+      phase: typeof phaseRaw === "string" ? phaseRaw : null,
+      lastError: typeof lastErrorRaw === "string" ? lastErrorRaw : null,
+      pluginsLoaded: typeof loadedRaw === "number" ? loadedRaw : null,
+      pluginsFailed: typeof failedRaw === "number" ? failedRaw : null,
+      database:
+        databaseRaw === "ok" ||
+        databaseRaw === "unknown" ||
+        databaseRaw === "error"
+          ? databaseRaw
+          : null,
+    };
+  } catch {
+    // Pre-listen, mid-restart, or timeout. Caller fills with `null`s.
+    return null;
+  }
 };
 
 /**
@@ -69,22 +69,22 @@ export const readAgentHealthSnapshotViaHttp: AgentHealthReader = async (
  * no side effects beyond the reader call.
  */
 export async function composeBootProgressSnapshot(
-	status: EmbeddedAgentStatus,
-	readHealth: AgentHealthReader,
-	now: () => Date = () => new Date(),
+  status: EmbeddedAgentStatus,
+  readHealth: AgentHealthReader,
+  now: () => Date = () => new Date(),
 ): Promise<BootProgressSnapshot> {
-	const port = status.port;
-	const health = port !== null ? await readHealth(port) : null;
-	return {
-		state: status.state,
-		phase: health?.phase ?? null,
-		lastError: health?.lastError ?? status.error ?? null,
-		pluginsLoaded: health?.pluginsLoaded ?? null,
-		pluginsFailed: health?.pluginsFailed ?? null,
-		database: health?.database ?? null,
-		agentName: status.agentName,
-		port,
-		startedAt: status.startedAt,
-		updatedAt: now().toISOString(),
-	};
+  const port = status.port;
+  const health = port !== null ? await readHealth(port) : null;
+  return {
+    state: status.state,
+    phase: health?.phase ?? null,
+    lastError: health?.lastError ?? status.error ?? null,
+    pluginsLoaded: health?.pluginsLoaded ?? null,
+    pluginsFailed: health?.pluginsFailed ?? null,
+    database: health?.database ?? null,
+    agentName: status.agentName,
+    port,
+    startedAt: status.startedAt,
+    updatedAt: now().toISOString(),
+  };
 }
