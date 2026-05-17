@@ -183,7 +183,10 @@ export function WithdrawDialog({
 
               {/* Amount input */}
               <div className="space-y-2">
-                <label htmlFor="withdraw-amount" className="text-xs text-neutral-400">
+                <label
+                  htmlFor="withdraw-amount"
+                  className="text-xs text-neutral-400"
+                >
                   Withdrawal Amount
                 </label>
                 <div className="relative">
