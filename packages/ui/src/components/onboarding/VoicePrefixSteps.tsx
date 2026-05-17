@@ -775,8 +775,8 @@ function FamilyStep(props: VoicePrefixStepsProps): React.ReactElement {
   return (
     <div className="flex flex-col gap-3" data-testid="voice-prefix-family">
       <p className="text-sm">
-        Introduce other people the agent might hear. You can add more anytime
-        in Settings → Voice → Profiles.
+        Introduce other people the agent might hear. You can add more anytime in
+        Settings → Voice → Profiles.
       </p>
 
       {captured.length > 0 ? (

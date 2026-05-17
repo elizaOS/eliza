@@ -44,17 +44,17 @@ import { AppsPageView } from "./components/pages/AppsPageView";
 import { ChatView } from "./components/pages/ChatView";
 import type { PageScope } from "./components/pages/page-scoped-conversations";
 import { SecretsManagerModalRoot } from "./components/settings/SecretsManagerSection";
+import { AssistantOverlay } from "./components/shell/AssistantOverlay";
 import { BugReportModal } from "./components/shell/BugReportModal";
+import { ChatSurface } from "./components/shell/ChatSurface";
 import { ConnectionFailedBanner } from "./components/shell/ConnectionFailedBanner";
 import { ConnectionLostOverlay } from "./components/shell/ConnectionLostOverlay";
 import { Header } from "./components/shell/Header";
+import { HomePill } from "./components/shell/HomePill";
 import { ShellOverlays } from "./components/shell/ShellOverlays";
 import { StartupFailureView } from "./components/shell/StartupFailureView";
 import { StartupShell } from "./components/shell/StartupShell";
 import { SystemWarningBanner } from "./components/shell/SystemWarningBanner";
-import { AssistantOverlay } from "./components/shell/AssistantOverlay";
-import { ChatSurface } from "./components/shell/ChatSurface";
-import { HomePill } from "./components/shell/HomePill";
 import { useShellState } from "./components/shell/useShellState";
 import { Button } from "./components/ui/button";
 import { ErrorBoundary } from "./components/ui/error-boundary";
@@ -721,7 +721,7 @@ function greetingForTimeOfDay(): string {
   return "Good evening! What would you like to do?";
 }
 
-function ShellFoundationMount(): JSX.Element {
+function ShellFoundationMount() {
   const app = useApp();
   const { state, send } = useShellState();
 
@@ -751,8 +751,7 @@ function ShellFoundationMount(): JSX.Element {
   // Match shellReducer's SEND guard exactly. The reducer only accepts SEND
   // from `summoned` or `listening`; offering input while `responding` would
   // silently drop the user's text.
-  const canSend =
-    state.phase === "summoned" || state.phase === "listening";
+  const canSend = state.phase === "summoned" || state.phase === "listening";
 
   return (
     <>

@@ -6,7 +6,9 @@ import path from "node:path";
 import process from "node:process";
 
 const repoRoot = path.resolve(import.meta.dirname, "../../../../..");
-const args = process.argv.slice(2);
+const rawArgs = process.argv.slice(2);
+const withControlPlane = rawArgs.includes("--with-control-plane");
+const args = rawArgs.filter((a) => a !== "--with-control-plane");
 const host = process.env.PGLITE_HOST || "127.0.0.1";
 const port = Number.parseInt(
   process.env.DEV_CLOUD_PGLITE_PORT || process.env.PGLITE_PORT || "55432",
@@ -160,8 +162,44 @@ async function main() {
     stdio: "inherit",
   });
 
+  // When --with-control-plane is passed, also boot the container-control-plane
+  // bun service on :8791 so the cloud-api can forward provisioning jobs to it
+  // (otherwise provision endpoints succeed but jobs queue forever).
+  let controlPlane = null;
+  if (withControlPlane) {
+    const controlPlaneEnv = {
+      ...env,
+      // Control-plane reads DATABASE_URL directly (not through dev-vars).
+      DATABASE_URL:
+        env.DATABASE_URL || `postgresql://postgres@${host}:${port}/postgres`,
+      MILADY_LOCAL_DOCKER_PROVIDER:
+        env.MILADY_LOCAL_DOCKER_PROVIDER || "1",
+      ENVIRONMENT: env.ENVIRONMENT || "local",
+      ELIZA_AGENT_IMAGE: env.ELIZA_AGENT_IMAGE || "eliza-cloud-agent:local",
+      ELIZA_AGENT_PORT: env.ELIZA_AGENT_PORT || "2138",
+      ELIZA_AGENT_BRIDGE_PORT: env.ELIZA_AGENT_BRIDGE_PORT || "18790",
+      NEXT_PUBLIC_API_URL:
+        env.NEXT_PUBLIC_API_URL || `http://127.0.0.1:${apiPort}`,
+    };
+    console.log("[cloud-api-dev] starting container-control-plane on :8791");
+    controlPlane = spawn(bun, ["run", "start"], {
+      cwd: path.join(
+        repoRoot,
+        "packages",
+        "cloud-services",
+        "container-control-plane",
+      ),
+      env: controlPlaneEnv,
+      stdio: "inherit",
+    });
+    controlPlane.on("exit", (code) => {
+      console.warn(`[cloud-api-dev] control-plane exited (code ${code})`);
+    });
+  }
+
   const shutdown = () => {
     wrangler.kill("SIGTERM");
+    controlPlane?.kill("SIGTERM");
     pgliteChild?.kill("SIGTERM");
   };
   process.once("SIGINT", shutdown);

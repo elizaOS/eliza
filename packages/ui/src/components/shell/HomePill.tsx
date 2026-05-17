@@ -2,7 +2,7 @@ import * as React from "react";
 
 import { Z_SHELL_OVERLAY } from "../../lib/floating-layers";
 import { cn } from "../../lib/utils";
-import { type ShellPhase } from "./shell-state";
+import type { ShellPhase } from "./shell-state";
 
 export interface HomePillProps {
   phase: ShellPhase;
@@ -66,8 +66,7 @@ export function HomePill({
         phase === "responding" &&
           "shadow-[0_0_18px_rgba(var(--accent-rgb),0.35)]",
         // Summoned: faint glow
-        phase === "summoned" &&
-          "shadow-[0_0_10px_rgba(255,255,255,0.15)]",
+        phase === "summoned" && "shadow-[0_0_10px_rgba(255,255,255,0.15)]",
       )}
     />
   );

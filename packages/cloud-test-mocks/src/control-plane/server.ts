@@ -516,7 +516,7 @@ export function buildControlPlaneApp(options: ControlPlaneMockOptions): {
   // so use a single catchall handler that inspects the suffix.
   const poolCatchallHandler = async (c: Context) => {
     const name = c.req.param("name");
-    if (!name.startsWith("pool-")) {
+    if (!name || !name.startsWith("pool-")) {
       return c.json({ success: false, error: "Not found" }, 404);
     }
     await latency();

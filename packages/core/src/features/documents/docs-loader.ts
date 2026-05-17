@@ -17,6 +17,7 @@ interface DocumentServiceLike {
 		fragmentCount: number;
 	}>;
 }
+
 import { isTextBackedDocumentContent } from "./utils.ts";
 
 export function getDocumentsPath(runtimePath?: string): string {

@@ -4,7 +4,7 @@ import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { HomePill } from "../HomePill";
-import { type ShellPhase } from "../shell-state";
+import type { ShellPhase } from "../shell-state";
 
 afterEach(() => cleanup());
 
@@ -24,9 +24,7 @@ describe("HomePill", () => {
 
   it("calls onClose when clicked from summoned", () => {
     const onClose = vi.fn();
-    render(
-      <HomePill phase="summoned" onOpen={() => {}} onClose={onClose} />,
-    );
+    render(<HomePill phase="summoned" onOpen={() => {}} onClose={onClose} />);
     fireEvent.click(screen.getByRole("button"));
     expect(onClose).toHaveBeenCalledTimes(1);
   });
@@ -39,24 +37,38 @@ describe("HomePill", () => {
     "responding",
   ])("renders a data-phase attribute for phase=%s", (phase) => {
     render(<HomePill phase={phase} onOpen={() => {}} onClose={() => {}} />);
-    expect(
-      screen.getByRole("button").getAttribute("data-phase"),
-    ).toBe(phase);
+    expect(screen.getByRole("button").getAttribute("data-phase")).toBe(phase);
   });
 
   it("is aria-pressed=true when summoned/listening/responding, false when idle/booting", () => {
     const { rerender } = render(
       <HomePill phase="idle" onOpen={() => {}} onClose={() => {}} />,
     );
-    expect(screen.getByRole("button").getAttribute("aria-pressed")).toBe("false");
+    expect(screen.getByRole("button").getAttribute("aria-pressed")).toBe(
+      "false",
+    );
     rerender(<HomePill phase="booting" onOpen={() => {}} onClose={() => {}} />);
-    expect(screen.getByRole("button").getAttribute("aria-pressed")).toBe("false");
-    rerender(<HomePill phase="summoned" onOpen={() => {}} onClose={() => {}} />);
-    expect(screen.getByRole("button").getAttribute("aria-pressed")).toBe("true");
-    rerender(<HomePill phase="listening" onOpen={() => {}} onClose={() => {}} />);
-    expect(screen.getByRole("button").getAttribute("aria-pressed")).toBe("true");
-    rerender(<HomePill phase="responding" onOpen={() => {}} onClose={() => {}} />);
-    expect(screen.getByRole("button").getAttribute("aria-pressed")).toBe("true");
+    expect(screen.getByRole("button").getAttribute("aria-pressed")).toBe(
+      "false",
+    );
+    rerender(
+      <HomePill phase="summoned" onOpen={() => {}} onClose={() => {}} />,
+    );
+    expect(screen.getByRole("button").getAttribute("aria-pressed")).toBe(
+      "true",
+    );
+    rerender(
+      <HomePill phase="listening" onOpen={() => {}} onClose={() => {}} />,
+    );
+    expect(screen.getByRole("button").getAttribute("aria-pressed")).toBe(
+      "true",
+    );
+    rerender(
+      <HomePill phase="responding" onOpen={() => {}} onClose={() => {}} />,
+    );
+    expect(screen.getByRole("button").getAttribute("aria-pressed")).toBe(
+      "true",
+    );
   });
 
   it("is disabled while booting", () => {

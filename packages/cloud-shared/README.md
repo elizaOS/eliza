@@ -28,7 +28,6 @@ Much of the prose below predates the consolidation and describes the old `cloud/
 - [API Reference](#api-reference)
 - [Deployment](#deployment)
 - [Mobile App (iOS & Android)](#-mobile-app-ios--android)
-- [AWS ECS Container Deployment](#-aws-ecs-container-deployment)
 - [Troubleshooting](#troubleshooting)
 - [Additional Resources](#additional-resources)
 
@@ -39,8 +38,8 @@ Eliza Cloud V2 is a full-stack AI-as-a-Service platform that combines:
 - **Multi-Modal AI Generation**: Text chat, image creation, video generation, music generation, and TTS
 - **elizaOS Integration**: Full-featured autonomous agent runtime with memory, rooms, and plugins
 - **SaaS Platform**: User management, API keys, credit-based billing, usage tracking
-- **Container Deployment**: Deploy elizaOS projects via `elizaos deploy` CLI to AWS ECS
-- **Enterprise Features**: Steward-backed session auth, API keys, Stripe billing, ECR image storage, health monitoring
+- **Container Deployment**: Deploy elizaOS projects via the `container-control-plane` (Hetzner) and Railway for managed services
+- **Enterprise Features**: Steward-backed session auth, API keys, Stripe billing, health monitoring
 
 ## ✨ Key Features
 
@@ -104,11 +103,9 @@ Eliza Cloud V2 is a full-stack AI-as-a-Service platform that combines:
   - Usage statistics and audit logs
 
 - **Container Deployments**:
-  - Deploy elizaOS projects via `elizaos deploy` CLI
-  - Docker-based deployments to AWS ECS (Elastic Container Service)
-  - ECR (Elastic Container Registry) for Docker image storage
-  - EC2-based ECS (t4g.small ARM instances, 1 per user)
-  - Health checks and monitoring via ECS
+  - Deploy elizaOS projects via the `container-control-plane` service on Hetzner
+  - Docker image build + push via GHCR
+  - Health checks and per-container monitoring
 
 ### 📊 Management & Analytics
 
@@ -161,7 +158,7 @@ cloud/
 │   │   │   ├── generate-image/  # Image generation
 │   │   │   ├── generate-video/  # Video generation
 │   │   │   ├── gallery/     # Media gallery
-│   │   │   ├── containers/  # Container management (AWS ECS/ECR)
+│   │   │   ├── containers/  # Container management (Hetzner via container-control-plane)
 │   │   │   ├── api-keys/    # API key CRUD
 │   │   │   ├── character-assistant/  # Character creator AI
 │   │   │   ├── user/        # User info
@@ -223,10 +220,8 @@ cloud/
 │   │   ├── usage.ts         # Usage tracking
 │   │   └── ...
 │   ├── services/            # Business logic services
-│   │   ├── ecr.ts           # AWS ECR integration
-│   │   ├── ecs.ts           # AWS ECS deployment
 │   │   ├── health-monitor.ts  # Provider health checks
-│   │   └── containers.ts    # Container management
+│   │   └── containers.ts    # Container management (Hetzner / container-control-plane)
 │   ├── eliza/               # elizaOS integration
 │   │   ├── agent-runtime.ts # AgentRuntime wrapper
 │   │   ├── agent.ts         # Agent management
@@ -277,7 +272,7 @@ graph TD
     G -->|AI Chat| H[OpenRouter]
     G -->|Image/Video| I[Configured Providers]
     G -->|Data| J[Drizzle ORM]
-    G -->|Container| K[AWS ECS/ECR]
+    G -->|Container| K[Hetzner / container-control-plane]
     G -->|elizaOS| L[AgentRuntime]
     H --> M[Response]
     I --> M
@@ -295,7 +290,7 @@ The platform uses a single database with integrated schemas:
    - Organizations (`db/schemas/organizations.ts`), users (`db/schemas/users.ts`), authentication
    - API keys (`db/schemas/api-keys.ts`), usage tracking (`db/schemas/usage-records.ts`)
    - Credit system (`db/schemas/credit-transactions.ts`, `db/schemas/credit-packs.ts`), billing, Stripe integration
-   - Containers (`db/schemas/containers.ts`), ECS/ECR deployments
+   - Containers (`db/schemas/containers.ts`), Hetzner-backed container deployments
    - Generations (`db/schemas/generations.ts` - image/video records)
    - Conversations (`db/schemas/conversations.ts` - platform-level chat)
    - **elizaOS Tables** (integrated via `@elizaos/plugin-sql` schema):
@@ -345,9 +340,9 @@ The platform uses a single database with integrated schemas:
 
 ### Storage & Infrastructure
 
-- **Cloudflare R2**: Media storage (images/videos)
-- **@aws-sdk/client-ecr 3.x**: AWS Elastic Container Registry
-- **@aws-sdk/client-ecs 3.x**: AWS Elastic Container Service deployment
+- **Cloudflare R2**: Media storage (images/videos), accessed via `@aws-sdk/client-s3` pointed at the R2 endpoint
+- **Hetzner + `container-control-plane`**: Container deployment backend
+- **Railway**: Hosting for `gateway-discord` and `gateway-webhook` services
 
 ### Styling & UI
 
@@ -400,10 +395,10 @@ The platform uses a single database with integrated schemas:
    - Required for video generation
    - Create account and get API key
 
-6. **AWS** ([aws.amazon.com](https://aws.amazon.com))
-   - Required for container deployments
-   - AWS credentials (Access Key ID, Secret Access Key)
-   - ECS/ECR configuration, VPC, subnets, security groups
+6. **Hetzner Cloud** (for container deployments)
+   - Used by `packages/cloud-services/container-control-plane`
+   - See `packages/cloud-infra/cloud/RAILWAY.md` and the container-control-plane
+     README for the active deployment topology
 
 7. **Stripe** ([stripe.com](https://stripe.com))
    - Required for billing/credits
@@ -853,138 +848,22 @@ and [Billing](https://elizacloud.ai/docs/billing) for current pricing behavior.
 
 **Location**: `/dashboard/containers` and `/app/api/v1/containers/route.ts`
 
+Container deployments are managed by the `cloud-services/container-control-plane`
+service running on Hetzner. Docker images are built and pushed to GHCR; the
+control plane provisions and supervises per-tenant containers.
+
 **Features**:
 
 - Deploy elizaOS projects via `elizaos deploy` CLI
-- **Multi-project support**: Deploy multiple different projects per user
-- **Multi-architecture support**: Auto-detects platform and deploys to matching AWS instance type
-  - **ARM64**: t4g.small (AWS Graviton2, $15.76/month) - Recommended for cost savings
-  - **x86_64**: t3.small (Intel/AMD, $18.68/month) - Universal compatibility
-- **Smart update detection**: Automatically detects and updates existing deployments
-- Docker-based deployments to AWS ECS (Elastic Container Service)
-- ECR (Elastic Container Registry) for Docker image storage with project-specific repositories
-- CloudFormation stack per project: `elizaos-{userId}-{projectName}`
-- Optimized health checks (15s interval, 5min grace period)
-- Health monitoring via CloudWatch and ECS
-- Quota enforcement (prevents race conditions)
+- Multi-project support per organization
+- Smart update detection: existing deployments are detected and updated in place
+- Docker image build + push via GHCR
+- Health checks and per-container monitoring
+- Quota enforcement
 - Environment variable injection
 - Credit-based billing with automatic deduction
 - Container management CLI: `elizaos containers list|delete|logs`
-- **Async deployment**: API returns immediately, CLI polls with beautiful progress
-
-**How It Works**:
-
-1. User gets API key from `/dashboard/api-keys`
-2. User runs `elizaos deploy --project-name my-project --api-key eliza_xxxxx` from project directory
-3. CLI auto-detects if project already deployed (checks `project_name`)
-4. CLI requests ECR credentials from the cloud API
-5. CLI builds Docker image locally using project's Dockerfile (or generates one)
-6. CLI pushes Docker image to project-specific ECR repository
-7. CLI creates/updates container deployment via cloud API:
-   - **Fresh deployment**: Creates new CloudFormation stack
-   - **Update deployment**: Updates existing CloudFormation stack (zero-downtime)
-8. Cloud provisions/updates dedicated EC2 instance with ECS
-9. Container accessible via AWS Load Balancer URL
-10. Credits automatically deducted based on container resources (CPU/memory)
-
-**Multi-Project Example**:
-
-```bash
-# Deploy first project
-cd ~/chatbot
-elizaos deploy --project-name chatbot --api-key eliza_xxx
-# URL: https://fc51b251-chatbot.containers.elizacloud.ai
-
-# Deploy second project (same user, different project)
-cd ~/assistant
-elizaos deploy --project-name assistant --api-key eliza_xxx
-# URL: https://fc51b251-assistant.containers.elizacloud.ai
-
-# Update chatbot
-cd ~/chatbot
-# ... make changes ...
-elizaos deploy --project-name chatbot  # Auto-detected as update
-# URL unchanged: https://fc51b251-chatbot.containers.elizacloud.ai
-```
-
-**Human-Readable URLs**:
-
-- Format: `https://{userId-prefix}-{project-name}.containers.elizacloud.ai`
-- Example: `https://fc51b251-chatbot.containers.elizacloud.ai`
-- Uses first segment of UUID + project name for easy recognition
-
-**Instance Specs (Auto-Selected)**:
-
-**ARM64 (t4g.small - Recommended)**:
-
-- **2 vCPUs** (ARM Graviton2)
-- **2 GiB RAM** (2048 MB)
-- **$15.76/month** ($12.26 instance + $3.50 storage/monitoring)
-- Default container allocation: 1.75 vCPU (1792 units), 1.75 GiB RAM (1792 MB, 87.5% of instance)
-
-**x86_64 (t3.small - Universal)**:
-
-- **2 vCPUs** (Intel/AMD)
-- **2 GiB RAM** (2048 MB)
-- **$18.68/month** ($15.18 instance + $3.50 storage/monitoring)
-- Default container allocation: 1.75 vCPU (1792 units), 1.75 GiB RAM (1792 MB, 87.5% of instance)
-
-Platform is automatically detected from your system. ARM64 provides better cost efficiency ($2.92/month savings) while x86_64 ensures universal compatibility.
-
-**Container Management**:
-
-```bash
-# List all containers (with project names)
-elizaos containers list --api-key eliza_xxx
-
-# View logs (auto-detects from current directory)
-cd ~/chatbot
-elizaos containers logs  # Finds chatbot project automatically
-
-# Delete container (auto-detects from current directory)
-cd ~/chatbot
-elizaos containers delete  # Finds and deletes chatbot project
-```
-
-**Deployment Architecture**:
-
-```
-┌──────────────┐
-│   CLI Tool   │
-│  (elizaos)   │
-└──────┬───────┘
-       │ 1. Request ECR credentials
-       ▼
-┌──────────────┐
-│  Cloud API   │
-│   (Next.js)  │
-└──────┬───────┘
-       │ 2. Return ECR auth token + repository
-       ▼
-┌──────────────┐
-│  Docker CLI  │
-│ (local build)│
-└──────┬───────┘
-       │ 3. Push image to ECR
-       ▼
-┌──────────────┐     4. Deploy container     ┌──────────────┐
-│     ECR      │ ─────────────────────────▶ │  EC2 + ECS   │
-│  (Registry)  │                              │  (Runtime)   │
-└──────────────┘                              └──────┬───────┘
-                                                      │
-                                                      ▼
-                                              ┌──────────────┐
-                                              │ Load Balancer│
-                                              │   (Public)   │
-                                              └──────────────┘
-```
-
-**Docker Image Requirements**:
-
-- Must expose a port (default: 3000)
-- Must include a `/health` endpoint for ECS health checks
-- Dockerfile can be auto-generated if not present
-- Environment variables passed from cloud API
+- Async deployment: API returns immediately, CLI polls progress
 
 **API**:
 
@@ -1000,17 +879,20 @@ Authorization: Bearer eliza_your_api_key
   "environment_vars": {
     "NODE_ENV": "production"
   },
-  "ecr_image_uri": "123456789012.dkr.ecr.us-east-1.amazonaws.com/elizaos/my-project:latest"
+  "image_uri": "ghcr.io/elizaos/my-project:latest"
 }
 ```
 
-**Requirements**:
+**Docker Image Requirements**:
 
-- AWS account with ECS/ECR/EC2 access and CloudFormation permissions
-- elizaOS Cloud account with API key
-- VPC with public subnets configured
-- IAM roles for ECS task execution
-- Environment variables set (see `.env.example`)
+- Must expose a port (default: 3000)
+- Must include a `/health` endpoint for control-plane health checks
+- Dockerfile can be auto-generated if not present
+- Environment variables passed from cloud API
+
+See `packages/cloud-services/container-control-plane/README.md` for the host-side
+implementation and `packages/cloud-infra/cloud/RAILWAY.md` for the deployment
+topology.
 
 ### 6. elizaOS Agent Integration
 
@@ -1345,17 +1227,13 @@ Add to your Claude Desktop config:
   - storage_url (R2)
   - dimensions, file_size, mime_type
 
-- **containers**: AWS ECS container deployments
-  - ecr_repository_uri, ecr_image_tag (Docker image in ECR)
-  - ecs_cluster_arn, ecs_service_arn, ecs_task_definition_arn (ECS resources)
-  - load_balancer_url (ALB URL for accessing the container)
+- **containers**: Hetzner-backed container deployments managed by
+  `cloud-services/container-control-plane`
+  - image_uri, image_tag (Docker image in GHCR)
+  - host / endpoint URL for accessing the container
   - status: pending, building, deploying, running, failed, stopped
   - environment_vars, desired_count, cpu, memory, port
   - Unique constraint on (organization_id, name)
-
-- **alb_priorities**: Application Load Balancer priority management
-  - Ensures each container gets a unique priority for ALB routing rules
-  - Prevents priority conflicts when multiple containers share an ALB
 
 - **conversations**: Platform-level chat history
   - title, model, settings
@@ -1600,22 +1478,6 @@ DELETE /api/v1/containers/{id}
 GET /api/v1/containers/quota
 ```
 
-#### ECR Credentials
-
-```bash
-# Get ECR credentials for pushing Docker images
-POST /api/v1/containers/credentials
-{
-  "projectId": "my-project",
-  "version": "1.0.0"
-}
-
-# Response includes:
-# - ecrRepositoryUri: Where to push the image
-# - authToken: Docker login credentials
-# - ecrImageUri: Full image URI to use in deployment
-```
-
 #### API Keys
 
 ```bash
@@ -1816,33 +1678,12 @@ DATABASE_URL=postgres://prod-url bun run db:migrate
 
 **Solutions**:
 
-- Check AWS credentials are correct: `AWS_REGION`, `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY`
-- Verify ECS configuration:
-  - `ECS_CLUSTER_NAME` - cluster must exist or CloudFormation will create it
-  - `AWS_VPC_ID` - must be a valid VPC ID
-  - `AWS_SUBNET_IDS` - comma-separated subnet IDs in different AZs
-  - `AWS_SECURITY_GROUP_IDS` - security group must allow HTTP/HTTPS ingress
-  - `ECS_EXECUTION_ROLE_ARN` - IAM role for ECS task execution
-- Test AWS credentials: `aws sts get-caller-identity`
+- Check `container-control-plane` health and credentials (Hetzner API token)
+- Verify GHCR push credentials for the image build step
 - Check quota: `GET /api/v1/containers/quota`
-- View logs in AWS CloudWatch or ECS console
+- View logs via the control-plane service and per-container logs
 
-Use the deployment notes in this README plus Cloudflare/Vercel provider logs for
-detailed troubleshooting.
-
-#### 5. Docker Image Push Fails
-
-**Error**: "Failed to push image to ECR" or "Authentication failed"
-
-**Solutions**:
-
-- Verify Docker is running: `docker info`
-- Check AWS ECR credentials are valid
-- Ensure image was built successfully: `docker images`
-- Verify network connectivity to ECR
-- Try re-authenticating: Request new credentials from `/api/v1/containers/credentials`
-
-#### 6. Image/Video Generation Fails
+#### 5. Image/Video Generation Fails
 
 **Error**: "No image/video was generated" or timeout
 
@@ -1854,7 +1695,7 @@ detailed troubleshooting.
 - Check rate limits in provider dashboard
 - View error in `/dashboard/analytics`
 
-#### 7. Credits Not Deducting
+#### 6. Credits Not Deducting
 
 **Error**: Usage not tracking or credits not deducted
 
@@ -1865,7 +1706,7 @@ detailed troubleshooting.
 - Check for database transaction errors in logs
 - Ensure `calculateCost()` is being called
 
-#### 8. Stripe Webhook Not Working
+#### 7. Stripe Webhook Not Working
 
 **Error**: Credits not added after purchase
 
@@ -1887,135 +1728,6 @@ detailed troubleshooting.
 - [Steward auth implementation](packages/lib/auth.ts)
 - [AI SDK Docs](https://ai-sdk.dev/docs)
 - [elizaOS Documentation](https://github.com/elizaos/eliza)
-
-## 🚀 AWS ECS Container Deployment
-
-Deploy elizaOS agents to AWS ECS (Elastic Container Service) using Docker containers. Each user gets a dedicated EC2 instance (t4g.small ARM, Graviton2) managed via CloudFormation.
-
-### Quick Start
-
-```bash
-# 1. Get your API key from the dashboard
-# Visit https://your-domain.com/dashboard/api-keys
-
-# 2. Set your API key
-export ELIZAOS_API_KEY="eliza_your_api_key_here"
-
-# 3. Ensure Docker is running locally
-docker --version
-docker info
-
-# 4. Deploy your elizaOS project
-cd your-elizaos-project
-elizaos deploy
-```
-
-### How It Works
-
-1. **CLI** requests ECR credentials from the cloud API
-2. **CLI** builds Docker image locally
-3. **CLI** pushes image to AWS ECR (Elastic Container Registry)
-4. **CLI** creates container deployment via cloud API
-5. **Cloud** deploys to dedicated EC2 instance (t4g.small ARM) with ECS
-6. **Agent** runs on AWS with health checks and monitoring
-
-### AWS Infrastructure Setup (Platform Maintainers)
-
-**1. Configure Environment Variables**
-
-```bash
-# AWS Credentials
-AWS_REGION=us-east-1
-AWS_ACCESS_KEY_ID=your_aws_access_key
-AWS_SECRET_ACCESS_KEY=your_aws_secret
-
-# Network Configuration
-AWS_VPC_ID=vpc-xxxxx
-AWS_SUBNET_IDS=subnet-xxxxx,subnet-yyyyy
-AWS_SECURITY_GROUP_IDS=sg-xxxxx
-
-# ECS Configuration
-ECS_CLUSTER_NAME=elizaos-production
-ECS_EXECUTION_ROLE_ARN=arn:aws:iam::ACCOUNT:role/ecsTaskExecutionRole
-ECS_TASK_ROLE_ARN=arn:aws:iam::ACCOUNT:role/ecsTaskRole
-
-# Optional: Shared ALB (recommended for cost savings)
-ECS_SHARED_ALB_ARN=arn:aws:elasticloadbalancing:...
-ECS_SHARED_LISTENER_ARN=arn:aws:elasticloadbalancing:...
-
-# Environment (for stack naming)
-ENVIRONMENT=production
-```
-
-**2. Start the Platform**
-
-```bash
-npm run dev  # Development
-npm run build && npm start  # Production
-```
-
-Users can now deploy via: `elizaos deploy`
-
-### For Users: Deployment Options
-
-```bash
-# Basic deployment
-elizaos deploy
-
-# With custom name and resources
-elizaos deploy \
-  --name my-agent \
-  --port 8080 \
-  --desired-count 2 \
-  --cpu 512 \
-  --memory 1024
-
-# With environment variables
-elizaos deploy \
-  --env "OPENAI_API_KEY=sk-..." \
-  --env "DATABASE_URL=postgresql://..."
-
-# Using existing Docker image
-elizaos deploy \
-  --skip-build \
-  --image-uri 123456789.dkr.ecr.us-east-1.amazonaws.com/my-project:v1.0.0
-```
-
-### Verification
-
-```bash
-# Check container status via API
-curl https://elizacloud.ai/api/v1/containers \
-  -H "Authorization: Bearer $ELIZAOS_API_KEY"
-
-# View in dashboard
-# https://elizacloud.ai/dashboard/containers
-```
-
-### Cost & Billing
-
-Container deployments are billed **daily**:
-
-- **Deployment and running costs**: modelled by the current billing constants and surfaced in the dashboard/API docs
-  - Billed automatically at midnight UTC
-  - 48-hour warning email sent when credits are low
-  - Container shut down after 48 hours if no credits added
-
-**Infrastructure** (managed by elizaOS Cloud):
-
-- t4g.small (1.75 vCPU + 1.75 GB RAM) default instance type
-- ECR image storage included
-- Load balancing included
-- Auto-scaling available for additional instances
-
-**Daily Billing Behavior**:
-
-1. CRON runs daily at midnight UTC
-2. Charges each running container according to the current billing configuration
-3. If insufficient credits: 48-hour shutdown warning email
-4. If still insufficient after 48 hours: container stopped
-
----
 
 ---
 
@@ -2064,9 +1776,8 @@ Container deployments are billed **daily**:
 
 - [Cloudflare R2](https://developers.cloudflare.com/r2/)
 - [Cloudflare R2 Pricing](https://developers.cloudflare.com/r2/pricing/)
-- [AWS ECS Documentation](https://docs.aws.amazon.com/ecs/)
-- [AWS ECR Documentation](https://docs.aws.amazon.com/ecr/)
-- [AWS SDK for JavaScript](https://docs.aws.amazon.com/sdk-for-javascript/)
+- [Hetzner Cloud API](https://docs.hetzner.cloud/)
+- [Railway Docs](https://docs.railway.app/)
 
 ### UI & Styling
 

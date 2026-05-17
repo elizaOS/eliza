@@ -1,5 +1,6 @@
 import { createCipheriv, createDecipheriv, randomBytes } from "crypto";
 import { getCloudAwareEnv } from "../../runtime/cloud-bindings";
+import { logger } from "../../utils/logger";
 
 export class DecryptionError extends Error {
   constructor(
@@ -86,10 +87,39 @@ type KMSClientType = {
   send(command: unknown): Promise<{ Plaintext?: Uint8Array; CiphertextBlob?: Uint8Array }>;
 };
 
+/**
+ * @deprecated AWS KMS is being retired. New deployments should use
+ * {@link LocalKMSProvider} with `SECRETS_MASTER_KEY` (AES-256-GCM).
+ *
+ * This provider is retained only so existing deployments that previously
+ * encrypted DEKs under a provisioned AWS KMS key can still decrypt their
+ * secrets. To migrate off AWS KMS:
+ *   1. Set `SECRETS_MASTER_KEY` to a 64-hex-char value.
+ *   2. Unset `AWS_KMS_KEY_ID` so {@link SecretsEncryptionService} picks
+ *      {@link LocalKMSProvider} for new encryptions.
+ *   3. Call `SecretsEncryptionService.rotate()` over all stored secrets
+ *      to re-encrypt each DEK under the local master key.
+ *   4. Once all secrets are rotated, this class and the
+ *      `@aws-sdk/client-kms` dependency can be removed.
+ *
+ * See `packages/cloud-infra/cloud/AWS_RETIREMENT.md` for the full plan.
+ */
 export class AWSKMSProvider implements KMSProvider {
+  private static deprecationWarned = false;
   private keyId = process.env.AWS_KMS_KEY_ID || "";
   private region = process.env.AWS_REGION || "us-east-1";
   private client: KMSClientType | null = null;
+
+  constructor() {
+    if (!AWSKMSProvider.deprecationWarned) {
+      AWSKMSProvider.deprecationWarned = true;
+      logger.warn(
+        "[AWSKMSProvider] AWS KMS is deprecated and pending removal. " +
+          "Migrate to LocalKMSProvider by setting SECRETS_MASTER_KEY and rotating stored secrets. " +
+          "See packages/cloud-infra/cloud/AWS_RETIREMENT.md (Stage 3).",
+      );
+    }
+  }
 
   private async getClient(): Promise<KMSClientType> {
     if (this.client) return this.client;

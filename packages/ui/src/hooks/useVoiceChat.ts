@@ -434,7 +434,7 @@ export function useVoiceChat(options: VoiceChatOptions): VoiceChatState {
     return () => {
       cancelled = true;
     };
-  }, [effectiveVoiceConfig?.asr?.provider]);
+  }, []);
 
   // ── Mouth animation loop ──────────────────────────────────────────
 
@@ -653,15 +653,18 @@ export function useVoiceChat(options: VoiceChatOptions): VoiceChatState {
     async (audio: Uint8Array, signal?: AbortSignal): Promise<string> => {
       const audioBody = new ArrayBuffer(audio.byteLength);
       new Uint8Array(audioBody).set(audio);
-      const res = await fetchWithCsrf(resolveApiUrl("/api/asr/local-inference"), {
-        method: "POST",
-        headers: {
-          "Content-Type": "audio/wav",
-          Accept: "application/json",
+      const res = await fetchWithCsrf(
+        resolveApiUrl("/api/asr/local-inference"),
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "audio/wav",
+            Accept: "application/json",
+          },
+          body: audioBody,
+          signal,
         },
-        body: audioBody,
-        signal,
-      });
+      );
       if (!res.ok) {
         const body = await res.text().catch(() => "");
         throw new Error(

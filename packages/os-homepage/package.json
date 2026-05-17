@@ -9,6 +9,7 @@
     "deploy": "bunx wrangler pages deploy dist --project-name elizaos-homepage --branch main",
     "preview": "bun --bun vite preview --port 4455",
     "typecheck": "tsc -b",
+    "test": "node --test tests/smoke.node.test.mjs",
     "test:e2e": "../../node_modules/.bin/playwright test",
     "screenshots": "node scripts/capture-screenshots.mjs",
     "lint": "bunx @biomejs/biome check --write --unsafe .",

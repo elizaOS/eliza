@@ -49,7 +49,10 @@ export interface ButtonProps
 }
 
 const Button = React.forwardRef<HTMLButtonElement, ButtonProps>(
-  ({ className, variant, size, asChild = false, style, type, ...props }, ref) => {
+  (
+    { className, variant, size, asChild = false, style, type, ...props },
+    ref,
+  ) => {
     const Comp = asChild ? Slot : "button";
     // Default to type="button" so a Button inside or near a <form> doesn't
     // accidentally submit on Enter. Callers that genuinely want submit behaviour

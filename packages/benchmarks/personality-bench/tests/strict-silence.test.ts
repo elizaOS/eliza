@@ -168,7 +168,7 @@ describe("strict-silence rubric", () => {
       const v = await gradeStrictSilence(s, resolveOptions(NO_LLM));
       // The vacuous probe layer has confidence=0 (NEEDS_REVIEW), which gets
       // filtered out — result should not be FAIL.
-      expect(v.verdict).not.toBe("FAIL");
+      expect(v.verdict !== "FAIL").toBe(true);
     });
 
     it("still scores normally when preceding user message is substantive", async () => {

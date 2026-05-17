@@ -106,8 +106,8 @@ describe("AssistantOverlay", () => {
 
     render(
       <AssistantOverlay phase="summoned" onClose={() => {}}>
-        <button>first-inside</button>
-        <button>second-inside</button>
+        <button type="button">first-inside</button>
+        <button type="button">second-inside</button>
       </AssistantOverlay>,
     );
 
@@ -125,7 +125,7 @@ describe("AssistantOverlay", () => {
 
     const { unmount } = render(
       <AssistantOverlay phase="summoned" onClose={() => {}}>
-        <button>inside</button>
+        <button type="button">inside</button>
       </AssistantOverlay>,
     );
 
@@ -138,8 +138,8 @@ describe("AssistantOverlay", () => {
   it("traps Tab inside the dialog (Shift+Tab from first wraps to last)", () => {
     render(
       <AssistantOverlay phase="summoned" onClose={() => {}}>
-        <button>alpha</button>
-        <button>omega</button>
+        <button type="button">alpha</button>
+        <button type="button">omega</button>
       </AssistantOverlay>,
     );
 

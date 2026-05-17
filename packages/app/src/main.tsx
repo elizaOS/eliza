@@ -16,6 +16,8 @@ import {
 import {
   installIosLocalAgentFetchBridge,
   installIosLocalAgentNativeRequestBridge,
+  type IosLocalAgentNativeRequestOptions,
+  type IosLocalAgentNativeRequestResult,
   primeIosFullBunRuntime,
 } from "@elizaos/app-core/api/ios-local-agent-transport";
 import { Agent } from "@elizaos/capacitor-agent";
@@ -48,7 +50,6 @@ import {
   type AppBootConfig,
   AppProvider,
   AppWindowRenderer,
-  ELIZA_DEFAULT_THEME,
   applyForceFreshOnboardingReset,
   applyLaunchConnection,
   applyLaunchConnectionFromUrl,
@@ -58,11 +59,10 @@ import {
   CONNECT_EVENT,
   client,
   dispatchAppEvent,
+  ELIZA_DEFAULT_THEME,
   getBootConfig,
   getWindowNavigationPath,
   IOS_LOCAL_AGENT_IPC_BASE,
-  type IosLocalAgentNativeRequestOptions,
-  type IosLocalAgentNativeRequestResult,
   initializeCapacitorBridge,
   initializeStorageBridge,
   installAndroidNativeAgentFetchBridge,
@@ -92,7 +92,7 @@ import {
   syncDetachedShellLocation,
   TRAY_ACTION_EVENT,
 } from "@elizaos/ui";
-import React, { type ComponentType, lazy, StrictMode, Suspense } from "react";
+import { type ComponentType, lazy, StrictMode, Suspense } from "react";
 import { createRoot } from "react-dom/client";
 import {
   APP_BRANDING_BASE,

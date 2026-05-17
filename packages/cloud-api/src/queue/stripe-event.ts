@@ -55,15 +55,18 @@ interface StripeEventDelivery {
 }
 
 /** Type guard: detect an expanded Stripe.Invoice on a PaymentIntent.invoice field. */
-function isInvoiceExpanded(invoice: unknown): invoice is Stripe.Invoice {
+export function isInvoiceExpanded(invoice: unknown): invoice is Stripe.Invoice {
   return typeof invoice === "object" && invoice !== null && "id" in invoice;
 }
+
+/** Hard cap on the credit amount we accept from Stripe metadata, in USD. */
+export const STRIPE_MAX_CREDITS = MAX_CREDITS;
 
 /**
  * Parse a metadata "credits" string into a USD-rounded number.
  * Returns null when the input is not a finite positive number within bounds.
  */
-function parseAndValidateCredits(creditsStr: string): number | null {
+export function parseAndValidateCredits(creditsStr: string): number | null {
   const credits = Number.parseFloat(creditsStr);
   if (!Number.isFinite(credits) || credits <= 0 || credits > MAX_CREDITS) {
     return null;

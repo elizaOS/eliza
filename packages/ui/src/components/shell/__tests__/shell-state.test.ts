@@ -1,8 +1,8 @@
 import { describe, expect, it } from "vitest";
 import {
+  initialShellState,
   type ShellAction,
   type ShellState,
-  initialShellState,
   shellReducer,
 } from "../shell-state";
 

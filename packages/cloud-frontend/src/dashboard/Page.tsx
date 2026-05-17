@@ -3,8 +3,8 @@ import {
   DashboardActionCardsSkeleton,
   DashboardLoadingState,
   DashboardPageContainer,
-  DashboardPageWrapper,
   DashboardPageStack,
+  DashboardPageWrapper,
 } from "@elizaos/ui";
 import { useQuery } from "@tanstack/react-query";
 import { Helmet } from "react-helmet-async";

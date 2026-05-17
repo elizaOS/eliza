@@ -1,21 +1,10 @@
 import { describe, expect, it } from "vitest";
 
-import {
-  AssistantOverlay,
-} from "../AssistantOverlay";
-import {
-  ChatSurface,
-} from "../ChatSurface";
-import {
-  HomePill,
-} from "../HomePill";
-import {
-  initialShellState,
-  shellReducer,
-} from "../shell-state";
-import {
-  useShellState,
-} from "../useShellState";
+import { AssistantOverlay } from "../AssistantOverlay";
+import { ChatSurface } from "../ChatSurface";
+import { HomePill } from "../HomePill";
+import { initialShellState, shellReducer } from "../shell-state";
+import { useShellState } from "../useShellState";
 
 describe("shell exports", () => {
   it("exposes the shell-foundation public API", () => {

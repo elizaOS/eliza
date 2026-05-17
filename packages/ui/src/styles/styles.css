@@ -26,10 +26,10 @@
  */
 electrobun-webview,
 electrobun-wgpu {
-  display: block !important;
-  width: 100% !important;
-  height: 100% !important;
-  background: transparent !important;
+  display: block;
+  width: 100%;
+  height: 100%;
+  background: transparent;
 }
 
 @source "..";
@@ -93,7 +93,7 @@ body.native textarea {
 :root[data-theme-switching] *,
 :root[data-theme-switching] *::before,
 :root[data-theme-switching] *::after {
-  transition: none !important;
+  transition: none;
 }
 
 /* ── Typing indicator animation ─────────────────────────────────────── */
@@ -310,9 +310,9 @@ kbd {
   *,
   *::before,
   *::after {
-    animation-duration: 0.01ms !important;
-    animation-iteration-count: 1 !important;
-    transition-duration: 0.01ms !important;
-    scroll-behavior: auto !important;
+    animation-duration: 0.01ms;
+    animation-iteration-count: 1;
+    transition-duration: 0.01ms;
+    scroll-behavior: auto;
   }
 }

@@ -1188,6 +1188,13 @@ export class ElizaSandboxService {
     }
 
     const attempts = [
+      // Try the cloud-agent image's native /bridge JSON-RPC first. This is
+      // the canonical surface served by packages/app-core/deploy/cloud-agent-shared.ts.
+      // It returns 200 with {result:{text}} on success, 500 with
+      // {error:{message}} on runtime failures (e.g. no LLM key). When an
+      // image doesn't expose /bridge (legacy public ghcr.io/elizaos/eliza
+      // image) it 404s and we fall through to the REST attempts below.
+      () => this.bridgeNativeJsonRpcSend(rec, rpc, params),
       () => this.bridgeConversationMessageSend(rec, rpc, params),
       () => this.bridgeOpenAiChatCompletionSend(rec, rpc, params),
       () => this.bridgeCentralChannelMessageSend(rec, rpc, params),
@@ -1236,6 +1243,62 @@ export class ElizaSandboxService {
 
   private bridgeResponseHasText(response: BridgeResponse): boolean {
     return typeof response.result?.text === "string" && response.result.text.trim().length > 0;
+  }
+
+  /**
+   * Native JSON-RPC POST to the cloud-agent image's `/bridge` endpoint.
+   * Source: packages/app-core/deploy/cloud-agent-shared.ts (the handler this
+   * proxies to). Returns the agent's reply unchanged on 200, propagates
+   * runtime errors as JSON-RPC error envelopes on 500, throws
+   * BridgeRouteUnavailableError on 404 so callers fall through to legacy
+   * REST endpoints (the public ghcr.io/elizaos/eliza image doesn't expose
+   * /bridge).
+   */
+  private async bridgeNativeJsonRpcSend(
+    rec: AgentSandbox,
+    rpc: BridgeRequest,
+    _params: Record<string, unknown>,
+  ): Promise<BridgeResponse> {
+    if (!rec.bridge_url) {
+      throw new BridgeRouteUnavailableError("Sandbox has no bridge_url", 0);
+    }
+    const url = await this.getSafeBridgeEndpoint(rec, "/bridge");
+    const res = await fetch(url, {
+      method: "POST",
+      headers: this.getAgentJsonHeaders(rec),
+      body: JSON.stringify({
+        jsonrpc: "2.0",
+        id: rpc.id ?? null,
+        method: "message.send",
+        params: rpc.params ?? {},
+      }),
+      signal: AbortSignal.timeout(60_000),
+    });
+    if (res.status === 404) {
+      throw new BridgeRouteUnavailableError(
+        "Cloud-agent /bridge route not present (legacy image?)",
+        res.status,
+      );
+    }
+    // Parse envelope; cloud-agent returns valid JSON-RPC on both 200 and 500.
+    const body = (await res.json().catch(() => null)) as {
+      jsonrpc?: string;
+      id?: unknown;
+      result?: { text?: string };
+      error?: { code?: number; message?: string };
+    } | null;
+    if (!body || body.jsonrpc !== "2.0") {
+      throw new BridgeRouteUnavailableError(
+        `Cloud-agent /bridge returned non-JSON-RPC body (status ${res.status})`,
+        res.status,
+      );
+    }
+    return {
+      jsonrpc: "2.0",
+      id: rpc.id,
+      ...(body.result ? { result: body.result as BridgeResponse["result"] } : {}),
+      ...(body.error ? { error: body.error as BridgeResponse["error"] } : {}),
+    };
   }
 
   private async bridgeConversationMessageSend(

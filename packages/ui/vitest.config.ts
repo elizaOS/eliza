@@ -164,6 +164,10 @@ export default defineConfig({
       "**/*.e2e.test.{ts,tsx}",
       "**/*.e2e.spec.{ts,tsx}",
       "**/*.spec.{ts,tsx}",
+      // Heavy jsdom flows live under __e2e__/ — they routinely take >5min
+      // and blow past the global suite budget. Run them via the dedicated
+      // `test:slow` script (vitest.e2e.config.ts) with a 15min cap.
+      "**/__e2e__/**",
     ],
   },
 });

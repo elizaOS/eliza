@@ -5,9 +5,9 @@ import {
   type NetworkStatusChangeDetail,
 } from "../../events";
 import {
+  initialShellState,
   type ShellAction,
   type ShellState,
-  initialShellState,
   shellReducer,
 } from "./shell-state";
 

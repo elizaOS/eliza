@@ -1,42 +1,38 @@
 export { resolveAppBranding } from "@elizaos/shared";
-export * from "@elizaos/ui/browser";
 export {
-  client,
   type AppRunSummary,
   type AppSessionJsonValue,
   type BabylonActivityItem,
   type BabylonAgentStatus,
   type BabylonChatMessage,
   type BabylonTeamAgent,
+  client,
 } from "@elizaos/ui/api";
-export {
-  type IosRuntimeConfig,
-  resolveIosRuntimeConfig,
-} from "@elizaos/ui/platform/ios-runtime";
+export * from "@elizaos/ui/browser";
 export { registerDetailExtension } from "@elizaos/ui/components/apps/extensions/registry";
-export type { AppDetailExtensionProps } from "@elizaos/ui/components/apps/extensions/types";
 export {
   formatDetailTimestamp,
-  selectLatestRunForApp,
   SurfaceBadge,
   SurfaceCard,
   SurfaceEmptyState,
   SurfaceGrid,
   SurfaceSection,
   type SurfaceTone,
+  selectLatestRunForApp,
   toneForHealthState,
   toneForStatusText,
   toneForViewerAttachment,
 } from "@elizaos/ui/components/apps/extensions/surface";
-export { registerOverlayApp } from "@elizaos/ui/components/apps/overlay-app-registry";
+export type { AppDetailExtensionProps } from "@elizaos/ui/components/apps/extensions/types";
 export type {
   OverlayApp,
   OverlayAppContext,
 } from "@elizaos/ui/components/apps/overlay-app-api";
+export { registerOverlayApp } from "@elizaos/ui/components/apps/overlay-app-registry";
 export {
-  GameOperatorShell,
   type GameOperatorAction,
   type GameOperatorEvent,
+  GameOperatorShell,
 } from "@elizaos/ui/components/apps/surfaces/GameOperatorShell";
 export { registerOperatorSurface } from "@elizaos/ui/components/apps/surfaces/registry";
 export type { AppOperatorSurfaceProps } from "@elizaos/ui/components/apps/surfaces/types";
@@ -44,7 +40,15 @@ export { PagePanel } from "@elizaos/ui/components/composites/page-panel";
 export { Button } from "@elizaos/ui/components/ui/button";
 export { Input } from "@elizaos/ui/components/ui/input";
 export { Spinner } from "@elizaos/ui/components/ui/spinner";
+export {
+  type IosRuntimeConfig,
+  resolveIosRuntimeConfig,
+} from "@elizaos/ui/platform/ios-runtime";
 export { useApp } from "@elizaos/ui/state/useApp";
+export {
+  type AutomationNodeContributorContext,
+  registerAutomationNodeContributor,
+} from "./api/automation-node-contributors";
 export {
   DESKTOP_TRAY_MENU_ITEMS,
   DesktopSurfaceNavigationRuntime,
@@ -52,10 +56,6 @@ export {
   DetachedShellRoot,
 } from "./runtime/desktop";
 export { AppWindowRenderer } from "./runtime/desktop/AppWindowRenderer";
-export {
-  type AutomationNodeContributorContext,
-  registerAutomationNodeContributor,
-} from "./api/automation-node-contributors";
 export { getHostExecutionCapabilities } from "./services/task-host-capabilities";
 
 export type CompatRuntimeState = {

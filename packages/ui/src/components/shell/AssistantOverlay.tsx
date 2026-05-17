@@ -1,7 +1,7 @@
 import * as React from "react";
 
 import { Z_SHELL_OVERLAY } from "../../lib/floating-layers";
-import { type ShellPhase } from "./shell-state";
+import type { ShellPhase } from "./shell-state";
 
 export interface AssistantOverlayProps {
   phase: ShellPhase;
@@ -53,9 +53,8 @@ export function AssistantOverlay({
     // focusable yet (e.g., empty ChatSurface with disabled send).
     const dialog = dialogRef.current;
     if (dialog) {
-      const firstFocusable = dialog.querySelector<HTMLElement>(
-        FOCUSABLE_SELECTOR,
-      );
+      const firstFocusable =
+        dialog.querySelector<HTMLElement>(FOCUSABLE_SELECTOR);
       (firstFocusable ?? dialog).focus();
     }
 

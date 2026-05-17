@@ -40,7 +40,7 @@ function parseBootProgressState(
 ): BootProgressSnapshot["state"] | null {
   return typeof value === "string" &&
     BOOT_PROGRESS_STATES.some((state) => state === value)
-    ? value
+    ? (value as BootProgressSnapshot["state"])
     : null;
 }
 

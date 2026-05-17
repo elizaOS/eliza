@@ -1,7 +1,7 @@
 import * as React from "react";
 
 import { cn } from "../../lib/utils";
-import { type ShellMessage } from "./shell-state";
+import type { ShellMessage } from "./shell-state";
 
 export interface ChatSurfaceProps {
   messages: readonly ShellMessage[];
@@ -34,16 +34,14 @@ export function ChatSurface({
   }, [canSendNow, onSend, trimmed]);
 
   return (
-    <div
-      className="flex h-full flex-col"
-      data-testid="shell-chat-surface"
-    >
+    <div className="flex h-full flex-col" data-testid="shell-chat-surface">
       <div className="flex-1 overflow-y-auto p-4">
         {messages.length === 0 ? (
-          <p className="text-sm text-muted">{greeting ?? "Ask Eliza anything."}</p>
+          <p className="text-sm text-muted">
+            {greeting ?? "Ask Eliza anything."}
+          </p>
         ) : (
           <ul
-            role="list"
             aria-live="polite"
             aria-atomic="false"
             aria-label="Conversation"
@@ -64,6 +62,7 @@ export function ChatSurface({
                 >
                   {isEmptyAssistant ? (
                     <span
+                      role="status"
                       aria-label="Eliza is typing"
                       className="inline-flex gap-0.5"
                     >

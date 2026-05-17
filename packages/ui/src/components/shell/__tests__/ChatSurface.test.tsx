@@ -4,7 +4,7 @@ import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { ChatSurface } from "../ChatSurface";
-import { type ShellMessage } from "../shell-state";
+import type { ShellMessage } from "../shell-state";
 
 afterEach(() => cleanup());
 
@@ -25,24 +25,28 @@ describe("ChatSurface", () => {
 
   it("renders bubbles for prior messages", () => {
     const messages: ShellMessage[] = [
-      { id: "1", role: "user", content: "Remind me to call Alex at 3pm", createdAt: 0 },
-      { id: "2", role: "assistant", content: "Done — reminder set for 3:00 PM.", createdAt: 0 },
+      {
+        id: "1",
+        role: "user",
+        content: "Remind me to call Alex at 3pm",
+        createdAt: 0,
+      },
+      {
+        id: "2",
+        role: "assistant",
+        content: "Done — reminder set for 3:00 PM.",
+        createdAt: 0,
+      },
     ];
     render(
-      <ChatSurface
-        messages={messages}
-        onSend={() => {}}
-        canSend={true}
-      />,
+      <ChatSurface messages={messages} onSend={() => {}} canSend={true} />,
     );
     expect(screen.getByText("Remind me to call Alex at 3pm")).toBeTruthy();
     expect(screen.getByText(/Done — reminder set/)).toBeTruthy();
   });
 
   it("disables send when input is empty", () => {
-    render(
-      <ChatSurface messages={[]} onSend={() => {}} canSend={true} />,
-    );
+    render(<ChatSurface messages={[]} onSend={() => {}} canSend={true} />);
     expect(
       (screen.getByRole("button", { name: /send/i }) as HTMLButtonElement)
         .disabled,
@@ -51,9 +55,7 @@ describe("ChatSurface", () => {
 
   it("enables send when input has text and calls onSend", () => {
     const onSend = vi.fn();
-    render(
-      <ChatSurface messages={[]} onSend={onSend} canSend={true} />,
-    );
+    render(<ChatSurface messages={[]} onSend={onSend} canSend={true} />);
     const input = screen.getByPlaceholderText(/ask eliza/i);
     fireEvent.change(input, { target: { value: "Hi" } });
     const send = screen.getByRole("button", {
@@ -65,16 +67,8 @@ describe("ChatSurface", () => {
   });
 
   it("clears the input after a successful send", () => {
-    render(
-      <ChatSurface
-        messages={[]}
-        onSend={() => {}}
-        canSend={true}
-      />,
-    );
-    const input = screen.getByPlaceholderText(
-      /ask eliza/i,
-    ) as HTMLInputElement;
+    render(<ChatSurface messages={[]} onSend={() => {}} canSend={true} />);
+    const input = screen.getByPlaceholderText(/ask eliza/i) as HTMLInputElement;
     fireEvent.change(input, { target: { value: "Hi" } });
     fireEvent.click(screen.getByRole("button", { name: /send/i }));
     expect(input.value).toBe("");
@@ -93,7 +87,9 @@ describe("ChatSurface", () => {
 
   it("renders a disabled mic placeholder for v1", () => {
     render(<ChatSurface messages={[]} onSend={() => {}} canSend={true} />);
-    const mic = screen.getByRole("button", { name: /microphone/i }) as HTMLButtonElement;
+    const mic = screen.getByRole("button", {
+      name: /microphone/i,
+    }) as HTMLButtonElement;
     expect(mic.disabled).toBe(true);
   });
 
@@ -122,7 +118,9 @@ describe("ChatSurface", () => {
       { id: "u", role: "user", content: "Hi", createdAt: 0 },
       { id: "a", role: "assistant", content: "", createdAt: 1 },
     ];
-    render(<ChatSurface messages={messages} onSend={() => {}} canSend={true} />);
+    render(
+      <ChatSurface messages={messages} onSend={() => {}} canSend={true} />,
+    );
     const typing = screen.getByLabelText(/eliza is typing/i);
     expect(typing).toBeTruthy();
   });
@@ -132,7 +130,9 @@ describe("ChatSurface", () => {
       { id: "u", role: "user", content: "Hi", createdAt: 0 },
       { id: "a", role: "assistant", content: "Hello", createdAt: 1 },
     ];
-    render(<ChatSurface messages={messages} onSend={() => {}} canSend={true} />);
+    render(
+      <ChatSurface messages={messages} onSend={() => {}} canSend={true} />,
+    );
     const list = screen.getByRole("list");
     expect(list.getAttribute("aria-live")).toBe("polite");
     expect(list.getAttribute("aria-atomic")).toBe("false");

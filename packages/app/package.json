@@ -129,7 +129,7 @@
   },
   "devDependencies": {
     "@capacitor/cli": "8.3.4",
-    "@playwright/test": "^1.58.2",
+    "@playwright/test": "^1.59.1",
     "@tailwindcss/vite": "^4.1.18",
     "@types/react": "^19.0.0",
     "@types/react-dom": "^19.0.0",

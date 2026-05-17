@@ -137,8 +137,4 @@ export function ExportButton({
   );
 }
 
-export type {
-  AnalyticsExportFormat,
-  AnalyticsExportType,
-  ExportButtonProps,
-};
+export type { AnalyticsExportFormat, AnalyticsExportType, ExportButtonProps };

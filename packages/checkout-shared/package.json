@@ -14,7 +14,8 @@
     "src"
   ],
   "scripts": {
-    "typecheck": "tsc --noEmit -p tsconfig.json"
+    "typecheck": "tsc --noEmit -p tsconfig.json",
+    "test": "echo 'no tests'"
   },
   "devDependencies": {
     "typescript": "^6.0.3"
