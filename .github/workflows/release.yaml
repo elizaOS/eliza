@@ -217,18 +217,72 @@ jobs:
             esac
           }
 
+          version_packages() {
+            local next_version="$1"
+            node - "${next_version}" <<'NODE'
+          const fs = require("node:fs");
+          const path = require("node:path");
+
+          const nextVersion = process.argv[2];
+          const root = process.cwd();
+          const lernaPath = path.join(root, "lerna.json");
+          const lerna = JSON.parse(fs.readFileSync(lernaPath, "utf8"));
+          const packagePatterns = lerna.packages || [];
+          const packageJsonPaths = new Set();
+
+          function addPackageJson(packageDir) {
+            const packageJsonPath = path.join(root, packageDir, "package.json");
+            if (!fs.existsSync(packageJsonPath)) {
+              return;
+            }
+            packageJsonPaths.add(packageJsonPath);
+          }
+
+          for (const pattern of packagePatterns) {
+            if (!pattern.includes("*")) {
+              addPackageJson(pattern);
+              continue;
+            }
+
+            const [baseDir, rest] = pattern.split("*");
+            const normalizedBase = baseDir.replace(/\/$/, "");
+            if (!fs.existsSync(path.join(root, normalizedBase))) {
+              continue;
+            }
+            for (const entry of fs.readdirSync(path.join(root, normalizedBase), { withFileTypes: true })) {
+              if (!entry.isDirectory()) {
+                continue;
+              }
+              addPackageJson(path.join(normalizedBase, entry.name, rest.replace(/^\//, "")));
+            }
+          }
+
+          lerna.version = nextVersion;
+          fs.writeFileSync(lernaPath, `${JSON.stringify(lerna, null, 2)}\n`);
+
+          let updated = 0;
+          for (const packageJsonPath of [...packageJsonPaths].sort()) {
+            const pkg = JSON.parse(fs.readFileSync(packageJsonPath, "utf8"));
+            if (pkg.private === true) {
+              continue;
+            }
+            const oldVersion = pkg.version;
+            pkg.version = nextVersion;
+            fs.writeFileSync(packageJsonPath, `${JSON.stringify(pkg, null, 2)}\n`);
+            updated += 1;
+            console.log(`${path.relative(root, packageJsonPath)}: ${oldVersion} => ${nextVersion}`);
+          }
+
+          console.log(`Updated ${updated} public packages to ${nextVersion}`);
+          NODE
+          }
+
           # Determine version strategy based on release type and current version
           if [[ "${{ steps.release_type.outputs.is_release_event }}" == "true" ]]; then
             # Tagged release from git tag or GitHub release tag
             VERSION="${{ steps.release_type.outputs.version }}"
             echo "📦 Tagged release: Setting exact version to ${VERSION}"
-            bunx lerna version ${VERSION} \
-              --force-publish \
-              --yes \
-              --no-private \
-              --no-git-tag-version \
-              --no-push \
-              --allow-branch release/*
+            version_packages "${VERSION}"
               
           elif [[ "${RELEASE_TYPE}" == "beta" ]]; then
             echo "🔵 Beta release workflow..."
@@ -255,21 +309,11 @@ jobs:
                 echo "Versioning directly to next beta ${NEXT_VERSION}"
               fi
 
-              bunx lerna version "${NEXT_VERSION}" \
-                --force-publish \
-                --yes \
-                --no-private \
-                --no-git-tag-version \
-                --no-push
+              version_packages "${NEXT_VERSION}"
             else
               # No existing beta tags, safe to start at .0
               echo "No existing beta tags found, starting at ${BASE_VERSION}-beta.0"
-              bunx lerna version "${BASE_VERSION}-beta.0" \
-                --force-publish \
-                --yes \
-                --no-private \
-                --no-git-tag-version \
-                --no-push
+              version_packages "${BASE_VERSION}-beta.0"
             fi
             
           elif [[ "${RELEASE_TYPE}" == "latest" ]]; then
@@ -292,13 +336,8 @@ jobs:
               # Check if this version already exists on npm
               if npm view "@elizaos/core@${VERSION}" version >/dev/null 2>&1; then
                 echo "⚠️ Version ${VERSION} already exists on npm — bumping again (attempt ${i}/${MAX_RETRIES})"
-                bunx lerna version prerelease \
-                  --preid "${RELEASE_TYPE}" \
-                  --force-publish \
-                  --yes \
-                  --no-private \
-                  --no-git-tag-version \
-                  --no-push
+                NEXT_VERSION=$(node -p "require('semver').inc(require('./lerna.json').version, 'prerelease', '${RELEASE_TYPE}')")
+                version_packages "${NEXT_VERSION}"
                 VERSION=$(node -p "require('./lerna.json').version")
                 sleep 1  # Brief delay for npm registry consistency
               else
