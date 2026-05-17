@@ -118,7 +118,16 @@ export function VoicePrefixSteps(
       data-step={props.step}
     >
       <header className="flex flex-wrap items-center justify-between gap-2 text-xs text-muted">
-        <span data-testid="voice-prefix-progress">{progressLabel}</span>
+        <span
+          data-testid="voice-prefix-progress"
+          role="progressbar"
+          aria-valuenow={stepIndex + 1}
+          aria-valuemin={1}
+          aria-valuemax={allSteps.length}
+          aria-valuetext={progressLabel}
+        >
+          {progressLabel}
+        </span>
         {stepMeta.optional ? (
           <span className="rounded-full bg-bg/60 px-2 py-0.5 text-[10px] uppercase tracking-wide">
             optional
@@ -126,12 +135,13 @@ export function VoicePrefixSteps(
         ) : null}
       </header>
 
-      <h2
+      <h1
         className="text-lg font-semibold"
         data-testid="voice-prefix-step-name"
+        aria-live="polite"
       >
         {stepMeta.defaultName}
-      </h2>
+      </h1>
       <p
         className="text-sm text-muted"
         data-testid="voice-prefix-step-subtitle"
@@ -545,7 +555,7 @@ function UserSpeaksStep(props: VoicePrefixStepsProps): React.ReactElement {
 
 function OwnerConfirmStep(props: VoicePrefixStepsProps): React.ReactElement {
   const [displayName, setDisplayName] = React.useState(
-    props.initialOwnerDisplayName ?? "Shaw",
+    props.initialOwnerDisplayName ?? "",
   );
   const [finalizing, setFinalizing] = React.useState(false);
   const [finalized, setFinalized] = React.useState(false);

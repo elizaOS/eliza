@@ -1416,7 +1416,7 @@ export function App() {
         >
           <div
             data-testid="pre-agent-cloud-shell"
-            className="flex min-h-[100vh] w-full flex-col text-black"
+            className="flex min-h-[100vh] w-full flex-col text-txt"
             style={{ borderRadius: "var(--radius-xs, 2px)" }}
           >
             <StartupShell />

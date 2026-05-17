@@ -8,20 +8,27 @@ export interface StateHelloProps {
 export function StateHello(props: StateHelloProps): React.JSX.Element {
   const { transcript, onBegin } = props;
   return (
-    <section className="eliza-ob-screen centered" data-eliza-ob-state="hello">
+    <main className="eliza-ob-screen centered" data-eliza-ob-state="hello">
       <div className="eliza-ob-hello">
         <div
           className="eliza-ob-agent-canvas"
           style={{ width: "min(270px, 78vw)", height: 112 }}
+          aria-hidden="true"
         >
           <AvatarHost />
         </div>
-        <div className="eliza-ob-hello-word">Hello</div>
-        <div className="eliza-ob-transcript">{transcript ?? ""}</div>
+        <h1 className="eliza-ob-hello-word">Hello</h1>
+        <div
+          className="eliza-ob-transcript"
+          aria-live="polite"
+          aria-atomic="true"
+        >
+          {transcript ?? ""}
+        </div>
         <button type="button" className="eliza-ob-btn orange" onClick={onBegin}>
           Tap to begin
         </button>
       </div>
-    </section>
+    </main>
   );
 }
