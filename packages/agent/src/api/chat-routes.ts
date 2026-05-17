@@ -134,6 +134,8 @@ const ANDROID_LOCAL_CURRENT_DATA_PATTERN =
 const ANDROID_LOCAL_CONTEXTUAL_MEMORY_PATTERN =
   /\b(what\s+did\s+i\s+just\s+say|what\s+(?:is|'s)\s+my\s+name|who\s+am\s+i|do\s+you\s+remember|remember\s+(?:me|my|that)|what\s+was\s+my|what\s+did\s+we|previous(?:ly)?|earlier|last\s+(?:message|thing|question|conversation)|recent\s+(?:message|conversation)|my\s+(?:name|email|address|phone|preference|preferences))\b/i;
 
+type AndroidLocalDirectChatMode = "short" | "long";
+
 function readRuntimeStringSetting(
   runtime: AgentRuntime,
   key: string,
@@ -158,6 +160,82 @@ function readPositiveIntegerSetting(
   const raw = readRuntimeStringSetting(runtime, key);
   const parsed = raw ? Number.parseInt(raw, 10) : Number.NaN;
   return Number.isFinite(parsed) && parsed > 0 ? Math.floor(parsed) : fallback;
+}
+
+function readPositiveIntegerValue(value: unknown): number | null {
+  const parsed =
+    typeof value === "number"
+      ? value
+      : typeof value === "string" && value.trim().length > 0
+        ? Number.parseInt(value, 10)
+        : Number.NaN;
+  return Number.isFinite(parsed) && parsed > 0 ? Math.floor(parsed) : null;
+}
+
+function readBooleanValue(value: unknown): boolean | null {
+  if (typeof value === "boolean") return value;
+  if (typeof value !== "string") return null;
+  if (/^(1|true|yes|on)$/i.test(value.trim())) return true;
+  if (/^(0|false|no|off)$/i.test(value.trim())) return false;
+  return null;
+}
+
+function readAndroidLocalDirectChatSettings(args: {
+  runtime: AgentRuntime;
+  message: ReturnType<typeof createMessageMemory>;
+}): {
+  maxTokens: number;
+  stopOnFirstSentence: boolean;
+  mode: AndroidLocalDirectChatMode;
+} {
+  const defaultMaxTokens = readPositiveIntegerSetting(
+    args.runtime,
+    "ELIZA_MOBILE_LOCAL_DIRECT_REPLY_MAX_TOKENS",
+    20,
+  );
+  const longMaxTokens = Math.max(
+    defaultMaxTokens,
+    readPositiveIntegerSetting(
+      args.runtime,
+      "ELIZA_MOBILE_LOCAL_DIRECT_REPLY_LONG_MAX_TOKENS",
+      256,
+    ),
+  );
+  const metadata = asRecord(args.message.content.metadata) ?? {};
+  const directOptions =
+    asRecord(metadata.androidLocalDirect) ??
+    asRecord(metadata.mobileLocalDirect) ??
+    {};
+  const benchmarkOptions = asRecord(metadata.benchmarkHarness) ?? {};
+  const requestedMaxTokens =
+    readPositiveIntegerValue(directOptions.maxTokens) ??
+    readPositiveIntegerValue(directOptions.max_tokens) ??
+    readPositiveIntegerValue(benchmarkOptions.maxTokens) ??
+    readPositiveIntegerValue(benchmarkOptions.max_tokens);
+  const explicitLong =
+    readBooleanValue(directOptions.longGeneration) ??
+    readBooleanValue(benchmarkOptions.longGeneration) ??
+    false;
+  const explicitStopOnFirstSentence =
+    readBooleanValue(directOptions.stopOnFirstSentence) ??
+    readBooleanValue(directOptions.stop_on_first_sentence) ??
+    readBooleanValue(benchmarkOptions.stopOnFirstSentence) ??
+    readBooleanValue(benchmarkOptions.stop_on_first_sentence);
+  const longMode =
+    explicitLong ||
+    (requestedMaxTokens != null && requestedMaxTokens > defaultMaxTokens);
+  const cappedRequestedMaxTokens =
+    requestedMaxTokens != null
+      ? Math.min(requestedMaxTokens, longMaxTokens)
+      : null;
+  const maxTokens = longMode
+    ? (cappedRequestedMaxTokens ?? longMaxTokens)
+    : (cappedRequestedMaxTokens ?? defaultMaxTokens);
+  return {
+    maxTokens,
+    stopOnFirstSentence: explicitStopOnFirstSentence ?? !longMode,
+    mode: longMode ? "long" : "short",
+  };
 }
 
 function isAndroidLocalDirectChatRuntime(runtime: AgentRuntime): boolean {
@@ -267,10 +345,15 @@ function normalizeAndroidLocalDirectUserText(text: string): string {
 function buildAndroidLocalDirectChatPrompt(args: {
   runtime: AgentRuntime;
   userText: string;
+  mode: AndroidLocalDirectChatMode;
 }): string {
+  const responseInstruction =
+    args.mode === "long"
+      ? "Answer directly in concise natural language. Include the requested detail, but stay within the token budget."
+      : "One natural sentence under 10 words. Stop after it.";
   const systemText = [
     "Eliza-1 on Android.",
-    "One natural sentence under 10 words. Stop after it.",
+    responseInstruction,
     "If asked local/on-device: yes, local Eliza-1 with DFlash.",
     "No markdown, labels, tools, logs, or hidden reasoning.",
   ].join("\n");
@@ -342,7 +425,10 @@ function stripAndroidLocalReasoning(text: string): string {
   return next;
 }
 
-function cleanAndroidLocalDirectChatReply(raw: unknown): string {
+function cleanAndroidLocalDirectChatReply(
+  raw: unknown,
+  options: { stopOnFirstSentence?: boolean } = {},
+): string {
   let text = stripAndroidLocalReasoning(extractAndroidLocalModelText(raw));
   text = text
     .split("<|im_end|>")[0]
@@ -350,11 +436,14 @@ function cleanAndroidLocalDirectChatReply(raw: unknown): string {
     .replace(/^\s*(assistant|eliza)\s*:\s*/i, "")
     .replace(/\bMilady-1\b/gi, "Eliza-1")
     .trim();
-  text = truncateAndroidLocalReplyToFirstSentence(text);
-  if (text.length <= 700) {
+  if (options.stopOnFirstSentence !== false) {
+    text = truncateAndroidLocalReplyToFirstSentence(text);
+  }
+  const maxReplyChars = options.stopOnFirstSentence === false ? 2_000 : 700;
+  if (text.length <= maxReplyChars) {
     return text;
   }
-  const truncated = text.slice(0, 700);
+  const truncated = text.slice(0, maxReplyChars);
   const sentenceEnd = Math.max(
     truncated.lastIndexOf("."),
     truncated.lastIndexOf("!"),
@@ -379,21 +468,21 @@ async function maybeGenerateAndroidLocalDirectChatResponse(args: {
     extractCompatTextContent(args.message.content),
   );
   if (!userText) return null;
+  const directSettings = readAndroidLocalDirectChatSettings(args);
+  const { maxTokens, stopOnFirstSentence } = directSettings;
   const prompt = buildAndroidLocalDirectChatPrompt({
     runtime: args.runtime,
     userText,
+    mode: directSettings.mode,
   });
-  const maxTokens = readPositiveIntegerSetting(
-    args.runtime,
-    "ELIZA_MOBILE_LOCAL_DIRECT_REPLY_MAX_TOKENS",
-    20,
-  );
   const startedAt = Date.now();
   args.runtime.logger.info(
     {
       src: "eliza-api",
       promptChars: prompt.length,
       maxTokens,
+      mode: directSettings.mode,
+      stopOnFirstSentence,
       messageId: args.message.id,
     },
     "[eliza-api] Android local direct chat fast path start",
@@ -434,7 +523,7 @@ async function maybeGenerateAndroidLocalDirectChatResponse(args: {
         thinking: "off",
       },
       androidLocal: {
-        stopOnFirstSentence: true,
+        stopOnFirstSentence,
         minFirstSentenceChars: 12,
       },
     },
@@ -443,11 +532,15 @@ async function maybeGenerateAndroidLocalDirectChatResponse(args: {
     onStreamChunk: (chunk: string) => {
       streamedRaw += chunk;
       streamedChunks += 1;
-      const snapshot = cleanAndroidLocalDirectChatReply(streamedRaw);
+      const snapshot = cleanAndroidLocalDirectChatReply(streamedRaw, {
+        stopOnFirstSentence,
+      });
       emitCleanStreamingSnapshot(snapshot);
     },
   });
-  const text = cleanAndroidLocalDirectChatReply(raw);
+  const text = cleanAndroidLocalDirectChatReply(raw, {
+    stopOnFirstSentence,
+  });
   if (!text) {
     args.runtime.logger.warn(
       { src: "eliza-api", messageId: args.message.id },
@@ -463,6 +556,8 @@ async function maybeGenerateAndroidLocalDirectChatResponse(args: {
     latencyMs,
     promptChars: prompt.length,
     maxTokens,
+    generationMode: directSettings.mode,
+    stopOnFirstSentence,
     streamedChunks,
   } satisfies LocalInferenceChatMetadata;
   const responseContent = {

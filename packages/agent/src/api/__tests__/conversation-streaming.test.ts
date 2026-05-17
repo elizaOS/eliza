@@ -220,6 +220,9 @@ describe("generateChatResponse token streaming", () => {
     const directParams = useModel.mock.calls[0]?.[1] as { prompt?: string };
     expect(directParams.prompt).not.toContain("/no_think");
     expect(directParams.prompt).toContain("can you hear me locally?");
+    expect(directParams.prompt).toContain(
+      "One natural sentence under 10 words. Stop after it.",
+    );
 
     expect(useModel).toHaveBeenCalledWith(
       expect.anything(),
@@ -247,6 +250,147 @@ describe("generateChatResponse token streaming", () => {
       expect.objectContaining({
         provider: "mobile-local-direct-reply",
         streamedChunks: 2,
+      }),
+    );
+  });
+
+  it("allows benchmark harnesses to request long Android local direct generations", async () => {
+    const chunks: string[] = [];
+    const useModel = createUseModelMock(async (_modelType, params) => {
+      const textParams = params as {
+        onStreamChunk?: (chunk: string) => Promise<void> | void;
+      };
+      await textParams.onStreamChunk?.("First sentence.");
+      await textParams.onStreamChunk?.(" Second sentence.");
+      await textParams.onStreamChunk?.(" Third sentence.");
+      return "First sentence. Second sentence. Third sentence.";
+    });
+    const runtime = createRuntime({
+      getSetting: (key: string) => {
+        const values: Record<string, string> = {
+          ELIZA_MOBILE_PLATFORM: "android",
+          ELIZA_LOCAL_LLAMA: "1",
+          ELIZA_MOBILE_LOCAL_DIRECT_REPLY: "1",
+        };
+        return values[key] ?? null;
+      },
+      useModel,
+    });
+
+    const message = createChatMessage("write three local benchmark sentences");
+    message.content = {
+      ...message.content,
+      metadata: {
+        benchmarkHarness: {
+          maxTokens: 96,
+        },
+      },
+    } as typeof message.content;
+
+    const result = await generateChatResponse(
+      runtime,
+      message,
+      "Streaming Agent",
+      {
+        timeoutDuration: 5_000,
+        onChunk: (chunk) => {
+          chunks.push(chunk);
+        },
+      },
+    );
+
+    const directParams = useModel.mock.calls[0]?.[1] as { prompt?: string };
+    expect(directParams.prompt).not.toContain(
+      "One natural sentence under 10 words. Stop after it.",
+    );
+    expect(directParams.prompt).toContain(
+      "Answer directly in concise natural language.",
+    );
+
+    expect(useModel).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({
+        stream: true,
+        maxTokens: 96,
+        providerOptions: expect.objectContaining({
+          androidLocal: expect.objectContaining({
+            stopOnFirstSentence: false,
+          }),
+        }),
+      }),
+    );
+    expect(chunks.join("")).toBe(
+      "First sentence. Second sentence. Third sentence.",
+    );
+    expect(result.text).toBe(
+      "First sentence. Second sentence. Third sentence.",
+    );
+    expect(result.localInference).toEqual(
+      expect.objectContaining({
+        generationMode: "long",
+        maxTokens: 96,
+        provider: "mobile-local-direct-reply",
+        stopOnFirstSentence: false,
+      }),
+    );
+  });
+
+  it("uses the long Android local direct cap when longGeneration is explicit", async () => {
+    const useModel = createUseModelMock(async (_modelType, params) => {
+      const textParams = params as {
+        onStreamChunk?: (chunk: string) => Promise<void> | void;
+      };
+      await textParams.onStreamChunk?.("Long direct generation.");
+      return "Long direct generation.";
+    });
+    const runtime = createRuntime({
+      getSetting: (key: string) => {
+        const values: Record<string, string> = {
+          ELIZA_MOBILE_LOCAL_DIRECT_REPLY_LONG_MAX_TOKENS: "64",
+          ELIZA_MOBILE_PLATFORM: "android",
+          ELIZA_LOCAL_LLAMA: "1",
+          ELIZA_MOBILE_LOCAL_DIRECT_REPLY: "1",
+        };
+        return values[key] ?? null;
+      },
+      useModel,
+    });
+
+    const message = createChatMessage("write a longer local direct benchmark");
+    message.content = {
+      ...message.content,
+      metadata: {
+        androidLocalDirect: {
+          longGeneration: true,
+        },
+      },
+    } as typeof message.content;
+
+    const result = await generateChatResponse(
+      runtime,
+      message,
+      "Streaming Agent",
+      {
+        timeoutDuration: 5_000,
+      },
+    );
+
+    expect(useModel).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({
+        maxTokens: 64,
+        providerOptions: expect.objectContaining({
+          androidLocal: expect.objectContaining({
+            stopOnFirstSentence: false,
+          }),
+        }),
+      }),
+    );
+    expect(result.localInference).toEqual(
+      expect.objectContaining({
+        generationMode: "long",
+        maxTokens: 64,
+        stopOnFirstSentence: false,
       }),
     );
   });
