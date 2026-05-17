@@ -1,13 +1,9 @@
 #!/usr/bin/env bun
 
-import { join } from "node:path";
-import { fileURLToPath } from "node:url";
-
 const externalDeps = ["@elizaos/core", "pdfjs-dist"];
 
 async function build(): Promise<void> {
   const totalStart = Date.now();
-  const rootDir = fileURLToPath(new URL(".", import.meta.url));
 
   const nodeStart = Date.now();
   console.log("🔨 Building @elizaos/plugin-pdf for Node (ESM)...");
@@ -54,14 +50,7 @@ async function build(): Promise<void> {
 
   const { mkdir, writeFile } = await import("node:fs/promises");
   const { $ } = await import("bun");
-  const tscPath = join(
-    rootDir,
-    "node_modules",
-    ".bin",
-    process.platform === "win32" ? "tsc.exe" : "tsc"
-  );
-
-  await $`${tscPath} --project tsconfig.build.json`;
+  await $`bunx tsc --project tsconfig.build.json`;
 
   await mkdir("dist/node", { recursive: true });
   await mkdir("dist/browser", { recursive: true });
