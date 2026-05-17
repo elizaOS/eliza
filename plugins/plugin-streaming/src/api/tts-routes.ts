@@ -169,7 +169,7 @@ export async function handleTtsRoutes(ctx: TtsRouteContext): Promise<boolean> {
       const modelId = optionalString(body.modelId);
       const speed = optionalPositiveNumber(body.speed);
       const sampleRate = optionalPositiveNumber(body.sampleRate);
-      const format = optionalString(body.format);
+      const format = optionalAudioFormat(body.format);
       const audio = await useLocalInferenceTts(runtime, {
         text,
         ...(voice ? { voice } : {}),
@@ -453,8 +453,15 @@ async function useLocalInferenceTts(
   throw new Error("No local-inference TEXT_TO_SPEECH provider is registered");
 }
 
+const ALLOWED_TTS_FORMATS = new Set(["wav", "mp3", "ogg", "flac", "pcm"]);
+
 function optionalString(value: unknown): string | undefined {
   return typeof value === "string" && value.trim() ? value.trim() : undefined;
+}
+
+function optionalAudioFormat(value: unknown): string | undefined {
+  const s = optionalString(value);
+  return s && ALLOWED_TTS_FORMATS.has(s) ? s : undefined;
 }
 
 function optionalPositiveNumber(value: unknown): number | undefined {

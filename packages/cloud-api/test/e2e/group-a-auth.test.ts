@@ -206,9 +206,18 @@ describe("Group A: auth + sessions", () => {
   // /api/auth/steward-session — POST sets cookie; DELETE clears. Public.
   // --------------------------------------------------------------------
   describe("/api/auth/steward-session", () => {
+    // /api/auth/steward-session enforces a strict Origin/Referer CSRF check.
+    // E2E POST/DELETE callers (curl, vitest) must send an Origin matching the
+    // dev allowlist (`localhost`/`127.0.0.1`/`0.0.0.0`) or one of the prod
+    // hosts. We send `Origin: http://localhost:8787` (the default wrangler
+    // dev port) so the check passes.
+    const stewardSessionHeaders = { Origin: "http://localhost:8787" };
+
     test("POST validation: missing token returns 400", async () => {
       if (!reachableOnly()) return;
-      const res = await api.post("/api/auth/steward-session", {});
+      const res = await api.post("/api/auth/steward-session", {}, {
+        headers: stewardSessionHeaders,
+      });
       expect(res.status).toBe(400);
       const body = (await res.json()) as { error?: string };
       expect(body.error).toBe("Token required");
@@ -216,9 +225,11 @@ describe("Group A: auth + sessions", () => {
 
     test("POST auth gate: invalid steward JWT returns 401", async () => {
       if (!reachableOnly()) return;
-      const res = await api.post("/api/auth/steward-session", {
-        token: "bogus.jwt.token",
-      });
+      const res = await api.post(
+        "/api/auth/steward-session",
+        { token: "bogus.jwt.token" },
+        { headers: stewardSessionHeaders },
+      );
       expect([401, 503]).toContain(res.status);
       const body = (await res.json()) as { code?: string; error?: string };
       expect(["invalid_token", "server_secret_missing"]).toContain(
@@ -226,9 +237,21 @@ describe("Group A: auth + sessions", () => {
       );
     });
 
+    test("POST without Origin returns 403 (CSRF protection)", async () => {
+      if (!reachableOnly()) return;
+      const res = await api.post("/api/auth/steward-session", {
+        token: "bogus.jwt.token",
+      });
+      expect(res.status).toBe(403);
+      const body = (await res.json()) as { error?: string };
+      expect(body.error).toBe("Forbidden");
+    });
+
     test("DELETE clears cookies and returns ok", async () => {
       if (!reachableOnly()) return;
-      const res = await api.delete("/api/auth/steward-session");
+      const res = await api.delete("/api/auth/steward-session", {
+        headers: stewardSessionHeaders,
+      });
       expect(res.status).toBe(200);
       const body = (await res.json()) as { ok?: boolean };
       expect(body.ok).toBe(true);

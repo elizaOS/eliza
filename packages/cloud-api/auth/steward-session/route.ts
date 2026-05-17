@@ -30,8 +30,12 @@ const STEWARD_REFRESH_TOKEN_COOKIE = "steward-refresh-token";
 
 /**
  * Origins permitted to set / clear Steward session cookies. Anything else
- * gets a 403 — same-origin XHR and the elizaos.ai checkout are the only two
- * legitimate callers.
+ * gets a 403 — same-origin XHR from `*.elizacloud.ai` and the cross-origin
+ * `elizaos.ai` checkout POST are the only two legitimate browser callers.
+ * Explicit, exact hosts only. The `*.pages.dev` wildcard is intentionally
+ * NOT included — anyone can deploy to `*.pages.dev`, so it's a CSRF surface
+ * in production. Preview deploys use the explicit `dev.` / `staging.` hosts
+ * already in the allowlist.
  */
 const PERMITTED_ORIGIN_HOSTS = new Set<string>([
   "elizacloud.ai",
@@ -40,6 +44,16 @@ const PERMITTED_ORIGIN_HOSTS = new Set<string>([
   "staging.elizacloud.ai",
   "elizaos.ai",
   "www.elizaos.ai",
+]);
+
+/**
+ * Local development origins. Only honored when the worker is NOT running in
+ * production. Production deploys never trust localhost as an Origin.
+ */
+const LOCAL_DEV_ORIGIN_HOSTS = new Set<string>([
+  "localhost",
+  "127.0.0.1",
+  "0.0.0.0",
 ]);
 
 function originHost(rawOrigin: string | undefined): string | null {
@@ -53,52 +67,51 @@ function originHost(rawOrigin: string | undefined): string | null {
 
 /**
  * Validate Origin / Referer against the request host to block cross-site
- * POST/DELETE. localhost and Cloudflare Pages preview hosts (`*.pages.dev`)
- * are allowed for development. The cookie is SameSite=Lax (and the route is
- * called via XHR, which makes Lax effectively Strict for these requests), so
- * this header check is a belt-and-suspenders layer specifically for the
- * cross-origin POST case (elizaos.ai -> api.elizacloud.ai).
+ * POST/DELETE. The cookie is SameSite=Lax (and the route is called via XHR,
+ * which makes Lax effectively Strict for these requests), so this header
+ * check is the second layer specifically for the cross-origin POST case
+ * (elizaos.ai → api.elizacloud.ai).
  */
 function isPermittedOrigin(
   origin: string | null,
   requestHost: string | null,
+  isProduction: boolean,
 ): boolean {
   if (!origin) return false;
   if (PERMITTED_ORIGIN_HOSTS.has(origin)) return true;
   if (origin.endsWith(".elizacloud.ai") || origin.endsWith(".elizaos.ai")) {
     return true;
   }
-  if (origin.endsWith(".pages.dev")) return true; // CF Pages previews
-  if (
-    origin === "localhost" ||
-    origin === "127.0.0.1" ||
-    origin === "0.0.0.0"
-  ) {
-    return true;
-  }
   if (requestHost && origin === requestHost) return true;
+  if (!isProduction && LOCAL_DEV_ORIGIN_HOSTS.has(origin)) return true;
   return false;
 }
 
 /**
  * CSRF check. Modern browsers always send Origin on cross-origin POST/DELETE
- * and on same-origin POST too (since ~2020). If Origin is present we require
- * it to be in the allowlist. If it's absent, this is not a browser request
- * (curl, server-to-server, e2e tests, native app), and CSRF is not possible
- * — fall through. Referer is a fallback when present but Origin is not.
+ * (Fetch spec) and on same-origin POST too since 2020. We REQUIRE Origin or
+ * Referer on every mutating request — no header-less fallthrough. Tooling
+ * (curl, server-to-server, e2e tests, native app) must send an explicit
+ * `Origin: http://localhost:8787` (in dev) or the configured prod host. This
+ * closes the legacy-browser / extension CSRF hole flagged by the prior SSO
+ * audit.
  */
-function checkOrigin(c: {
-  req: { header: (name: string) => string | undefined };
-}): { ok: true } | { ok: false; reason: string } {
+function checkOrigin(
+  c: { req: { header: (name: string) => string | undefined } },
+  isProduction: boolean,
+): { ok: true } | { ok: false; reason: string } {
   const rawOrigin = c.req.header("origin");
   const rawReferer = c.req.header("referer");
   const origin = originHost(rawOrigin);
   const referer = originHost(rawReferer);
   const host = (c.req.header("host") ?? "").split(":")[0]?.toLowerCase() ?? "";
-  if (!rawOrigin && !rawReferer) return { ok: true };
-  if (origin && isPermittedOrigin(origin, host)) return { ok: true };
-  if (!origin && referer && isPermittedOrigin(referer, host))
+  if (!origin && !referer) {
+    return { ok: false, reason: "missing_origin_and_referer" };
+  }
+  if (origin && isPermittedOrigin(origin, host, isProduction)) return { ok: true };
+  if (!origin && referer && isPermittedOrigin(referer, host, isProduction)) {
     return { ok: true };
+  }
   return {
     ok: false,
     reason: `origin=${origin ?? "null"} referer=${referer ?? "null"}`,
@@ -127,7 +140,8 @@ const app = new Hono<AppEnv>();
 
 app.post("/", async (c) => {
   try {
-    const originCheck = checkOrigin(c);
+    const isProduction = c.env.NODE_ENV === "production";
+    const originCheck = checkOrigin(c, isProduction);
     if (!originCheck.ok) {
       logStewardAuth("forbidden-origin", null);
       logger.warn("[steward-auth] rejected cross-origin POST", {
@@ -245,7 +259,8 @@ app.post("/", async (c) => {
 });
 
 app.delete("/", (c) => {
-  const originCheck = checkOrigin(c);
+  const isProduction = c.env.NODE_ENV === "production";
+  const originCheck = checkOrigin(c, isProduction);
   if (!originCheck.ok) {
     logStewardAuth("forbidden-origin-delete", null);
     return c.json({ error: "Forbidden" }, 403);

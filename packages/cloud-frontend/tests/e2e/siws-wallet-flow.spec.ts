@@ -367,6 +367,50 @@ test.describe("SIWS (Solana) wallet flow", () => {
     const bridgeSecret = envLine?.slice("BRIDGE_SECRET=".length) ?? "";
 
     // Chat — the echo-mode image responds with "[echo] <text>".
+    // Wait for the bridge server to be reachable AND for the agent runtime
+    // to be fully initialized. The container's HEALTHCHECK probe goes green
+    // as soon as /health (port 2138) responds — but the /bridge HTTP server
+    // (port 18790) binds a few hundred ms later, and the runtime itself
+    // takes ~5-10s to load plugin-sql, migrations, and elizaOS plugins.
+    // Sending message.send before runtime is ready returns 503 with
+    // {"error":"Agent runtime not ready"}. Poll status.get until
+    // result.status === "running".
+    const bridgeDeadline = Date.now() + 120_000;
+    let runtimeReady = false;
+    while (Date.now() < bridgeDeadline) {
+      try {
+        const ping = await fetch(`http://127.0.0.1:${bridgePort}/bridge`, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${bridgeSecret}`,
+          },
+          body: JSON.stringify({
+            jsonrpc: "2.0",
+            id: "ping",
+            method: "status.get",
+            params: {},
+          }),
+          signal: AbortSignal.timeout(5_000),
+        });
+        if (ping.ok) {
+          const pingBody = (await ping.json()) as {
+            result?: { status?: string };
+          };
+          if (pingBody.result?.status === "running") {
+            runtimeReady = true;
+            break;
+          }
+        } else {
+          await ping.body?.cancel();
+        }
+      } catch {
+        // socket error / TCP refused — bridge not bound yet, retry
+      }
+      await new Promise((r) => setTimeout(r, 1000));
+    }
+    expect(runtimeReady, "agent runtime initialized within 120s").toBe(true);
+
     // Chat — proves the bridge route is reachable and authenticated. The
     // cloud-agent image ships with @elizaos/core + plugin-sql, so the
     // runtime is real (not echo). Reply content depends on whether an LLM
