@@ -28,6 +28,7 @@ function gh404Fallback(): Plugin {
 export default defineConfig({
   plugins: [react(), tailwindcss(), gh404Fallback()],
   resolve: {
+    dedupe: ["react", "react-dom", "react-router", "react-router-dom"],
     alias: [
       { find: "@", replacement: path.resolve(__dirname, "./src") },
       {

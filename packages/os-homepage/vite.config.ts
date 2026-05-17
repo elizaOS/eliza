@@ -25,6 +25,7 @@ function spa404Fallback(): Plugin {
 export default defineConfig({
   plugins: [react(), tailwindcss(), spa404Fallback()],
   resolve: {
+    dedupe: ["react", "react-dom", "react-router", "react-router-dom"],
     alias: {
       "@": path.resolve(packageDir, "./src"),
       "@elizaos/ui/button": path.resolve(

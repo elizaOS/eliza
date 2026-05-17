@@ -729,8 +729,8 @@ article {
 
 .app-cloud-scrim {
   background:
-    linear-gradient(90deg, rgba(255, 88, 0, 0.94), rgba(255, 88, 0, 0.82)),
-    linear-gradient(0deg, rgba(255, 255, 255, 0.12), rgba(255, 255, 255, 0));
+    linear-gradient(90deg, rgba(248, 250, 252, 0.92), rgba(248, 250, 252, 0.64)),
+    linear-gradient(0deg, rgba(255, 255, 255, 0.24), rgba(255, 255, 255, 0));
   opacity: 1;
 }
 

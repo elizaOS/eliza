@@ -81,6 +81,20 @@ function envString(env: Bindings, key: string): string | null {
   return typeof value === "string" && value.trim() ? value.trim() : null;
 }
 
+function solanaRpcUrl(env: Bindings): string {
+  const configured = envString(env, "CRYPTO_DIRECT_SOLANA_RPC_URL");
+  const heliusApiKey = envString(env, "HELIUS_API_KEY");
+  if (heliusApiKey && (!configured || configured.includes("api.mainnet-beta.solana.com"))) {
+    return `https://mainnet.helius-rpc.com/?api-key=${heliusApiKey}`;
+  }
+  return (
+    configured ??
+    envString(env, "SOLANA_RPC_URL") ??
+    envString(env, "NEXT_PUBLIC_SOLANA_RPC_URL") ??
+    "https://api.mainnet-beta.solana.com"
+  );
+}
+
 function directPaymentConfig(
   env: Bindings,
   network: DirectWalletNetwork,
@@ -139,11 +153,7 @@ function directPaymentConfig(
     tokenDecimals: Number(envString(env, "CRYPTO_DIRECT_SOLANA_TOKEN_DECIMALS") ?? 6),
     receiveAddress,
     secureAddress,
-    rpcUrl:
-      envString(env, "CRYPTO_DIRECT_SOLANA_RPC_URL") ??
-      envString(env, "SOLANA_RPC_URL") ??
-      envString(env, "NEXT_PUBLIC_SOLANA_RPC_URL") ??
-      "https://api.mainnet-beta.solana.com",
+    rpcUrl: solanaRpcUrl(env),
     enabled: Boolean(receiveAddress),
   };
 }
