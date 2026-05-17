@@ -26,7 +26,7 @@ export function StateHello(props: StateHelloProps): React.JSX.Element {
           {transcript ?? ""}
         </div>
         <button type="button" className="eliza-ob-btn orange" onClick={onBegin}>
-          Tap to begin
+          Begin
         </button>
       </div>
     </main>

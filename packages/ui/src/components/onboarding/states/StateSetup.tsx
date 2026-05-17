@@ -97,7 +97,7 @@ export function StateSetup(props: StateSetupProps): React.JSX.Element {
           className="eliza-ob-btn text-only"
           onClick={onChooseRemote}
         >
-          Connect To Remote Instance
+          Connect to a remote instance
         </button>
       </div>
     </section>
