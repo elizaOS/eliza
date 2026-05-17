@@ -8,6 +8,7 @@ import {
   ANDROID_APP_ACTION_FORBIDDEN_MARKERS,
   ANDROID_APP_ACTION_REQUIRED_DEEP_LINKS,
   ANDROID_APP_ACTION_SHORTCUT_IDS,
+  androidAospRoleLauncherIntentFilter,
   ensureAndroidMainActivityShortcutsMetadata,
   patchAndroidAppActionsXmlResource,
   validateAndroidAppActionsXmlResource,
@@ -40,6 +41,26 @@ test("Android MainActivity receives App Actions shortcuts metadata once", () => 
     1,
   );
   assert.equal(repatched, patched);
+});
+
+test("AOSP role launcher filters stay out of stock Android manifests", () => {
+  assert.equal(androidAospRoleLauncherIntentFilter(), "");
+  assert.equal(
+    androidAospRoleLauncherIntentFilter({
+      enabled: false,
+      category: "android.intent.category.APP_CONTACTS",
+    }),
+    "",
+  );
+
+  const contactsFilter = androidAospRoleLauncherIntentFilter({
+    enabled: true,
+    category: "android.intent.category.APP_CONTACTS",
+  });
+
+  assert.match(contactsFilter, /android\.intent\.action\.MAIN/);
+  assert.match(contactsFilter, /android\.intent\.category\.LAUNCHER/);
+  assert.match(contactsFilter, /android\.intent\.category\.APP_CONTACTS/);
 });
 
 test("Android App Actions shortcuts are rewritten to the configured package and URL scheme", () => {
