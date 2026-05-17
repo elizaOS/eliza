@@ -8,7 +8,6 @@ import Electrobun, {
   ApplicationMenu,
   BrowserView,
   BuildConfig,
-  GlobalShortcut,
   Updater,
   Utils,
   WGPU,
@@ -71,7 +70,7 @@ import {
 } from "./native/mac-window-effects";
 import { getPermissionManager } from "./native/permissions";
 import { checkWebGpuSupport } from "./native/webgpu-browser-support";
-import { createPillWindow, togglePillWindow } from "./pill-window";
+import { createPillWindow } from "./pill-window";
 import { printElectrobunDevSettingsBanner } from "./print-electrobun-dev-settings-banner";
 import {
   createRendererApiProxyRequestInit,
@@ -1886,55 +1885,6 @@ function setupDockReopen(): void {
   });
 }
 
-/**
- * Resolve the pill-toggle accelerator. Honors `MILADY_PILL_TOGGLE_CHORD` for
- * user override; otherwise defaults to Option+Space on macOS (Cmd+Space is
- * Spotlight) and Ctrl+Space on Win/Linux.
- */
-function resolvePillToggleChord(): string {
-  const override = process.env.MILADY_PILL_TOGGLE_CHORD?.trim();
-  if (override) return override;
-  return process.platform === "darwin" ? "Alt+Space" : "Ctrl+Space";
-}
-
-let pillToggleChord: string | null = null;
-
-function registerPillToggleShortcut(): void {
-  if (pillToggleChord) {
-    return;
-  }
-  const chord = resolvePillToggleChord();
-  const ok = GlobalShortcut.register(chord, () => {
-    const { visible } = togglePillWindow();
-    logger.info(
-      `[pill-window] toggle (${chord}) -> ${visible ? "visible" : "hidden"}`,
-    );
-  });
-  if (!ok) {
-    logger.warn(
-      `[pill-window] Failed to register global shortcut '${chord}' (already in use or rejected by OS)`,
-    );
-    return;
-  }
-  pillToggleChord = chord;
-  cleanupFns.push(unregisterPillToggleShortcut);
-  logger.info(`[pill-window] Registered global toggle shortcut '${chord}'`);
-}
-
-function unregisterPillToggleShortcut(): void {
-  if (!pillToggleChord) return;
-  const chord = pillToggleChord;
-  pillToggleChord = null;
-  const ok = GlobalShortcut.unregister(chord);
-  if (!ok) {
-    logger.warn(
-      `[pill-window] Failed to unregister global shortcut '${chord}'`,
-    );
-    return;
-  }
-  logger.info(`[pill-window] Unregistered global toggle shortcut '${chord}'`);
-}
-
 async function runShutdownCleanup(reason: string): Promise<void> {
   logger.info(`[Main] App quitting (${reason}), disposing native modules...`);
   isQuitting = true;
@@ -2209,7 +2159,6 @@ async function main(): Promise<void> {
         `[Main] Failed to spawn pill window: ${err instanceof Error ? err.message : String(err)}`,
       );
     }
-    registerPillToggleShortcut();
   });
 
   // Per-window RPC tracking: surface windows each get their own typed

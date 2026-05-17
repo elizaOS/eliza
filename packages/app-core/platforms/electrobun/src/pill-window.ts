@@ -12,14 +12,6 @@
  *  - Quitting the app closes both (handled by Electrobun's standard
  *    `exitOnLastWindowClosed` behavior firing when both windows are gone,
  *    or by the application's quit menu).
- *
- * Visibility toggling:
- *  Electrobun's BrowserWindow surface (v1.18) exposes `minimize()`,
- *  `unminimize()`, `isMinimized()`, `focus()`, and `show()` (which is an
- *  alias for `focusWindow`). There is no native `hide()`. We treat
- *  `minimize()` as our hide primitive because it removes the pill from the
- *  active layer without destroying it. `togglePillWindow()` flips between
- *  minimized and visible+focused, recreating the window if it was closed.
  */
 
 import { type BrowserWindow, Screen } from "electrobun/bun";
@@ -35,11 +27,6 @@ interface PillWindowFrame {
   y: number;
   width: number;
   height: number;
-}
-
-interface PillWindowSpawnArgs {
-  rendererUrl: string;
-  preload: string;
 }
 
 function resolvePillFrame(): PillWindowFrame {
@@ -61,9 +48,11 @@ function buildPillRendererUrl(rendererUrl: string): string {
 }
 
 let pillWindow: BrowserWindow | null = null;
-let lastSpawnArgs: PillWindowSpawnArgs | null = null;
 
-export function createPillWindow(args: PillWindowSpawnArgs): BrowserWindow {
+export function createPillWindow(args: {
+  rendererUrl: string;
+  preload: string;
+}): BrowserWindow {
   if (pillWindow) {
     return pillWindow;
   }
@@ -93,7 +82,6 @@ export function createPillWindow(args: PillWindowSpawnArgs): BrowserWindow {
   });
 
   pillWindow = win;
-  lastSpawnArgs = args;
   logger.info(
     `[pill-window] Spawned pill overlay at (${frame.x},${frame.y}) ${frame.width}x${frame.height}`,
   );
@@ -102,90 +90,4 @@ export function createPillWindow(args: PillWindowSpawnArgs): BrowserWindow {
 
 export function getPillWindow(): BrowserWindow | null {
   return pillWindow;
-}
-
-/**
- * Whether the pill window currently looks visible to the user. False if the
- * window was never created, was closed, or is minimized. Note: Electrobun
- * does not expose a true `isVisible()` check, so this is a best-effort
- * derivation from the live window handle plus `isMinimized()`.
- */
-export function isPillWindowVisible(): boolean {
-  if (!pillWindow) return false;
-  try {
-    return !pillWindow.isMinimized();
-  } catch (err) {
-    logger.warn(
-      `[pill-window] isMinimized check failed: ${err instanceof Error ? err.message : String(err)}`,
-    );
-    return false;
-  }
-}
-
-/**
- * Hide the pill window by minimizing it. Electrobun's BrowserWindow does
- * not expose a native `hide()`, so `minimize()` is the closest approximation
- * that keeps the window alive for fast re-show. No-op if the pill window is
- * not currently spawned.
- */
-export function hidePillWindow(): void {
-  if (!pillWindow) return;
-  try {
-    pillWindow.minimize();
-  } catch (err) {
-    logger.warn(
-      `[pill-window] minimize failed: ${err instanceof Error ? err.message : String(err)}`,
-    );
-  }
-}
-
-/**
- * Show + focus the pill window. If the window was closed (handle cleared),
- * recreate it using the last spawn args. Returns the live BrowserWindow
- * handle, or `null` if no spawn args have been recorded yet (i.e. the pill
- * was never created in this process).
- */
-export function showPillWindow(): BrowserWindow | null {
-  if (!pillWindow) {
-    if (!lastSpawnArgs) {
-      logger.warn(
-        "[pill-window] showPillWindow called before pill window was ever spawned",
-      );
-      return null;
-    }
-    return createPillWindow(lastSpawnArgs);
-  }
-
-  try {
-    if (pillWindow.isMinimized()) {
-      pillWindow.unminimize();
-    }
-  } catch (err) {
-    logger.warn(
-      `[pill-window] unminimize failed: ${err instanceof Error ? err.message : String(err)}`,
-    );
-  }
-
-  try {
-    pillWindow.focus();
-  } catch (err) {
-    logger.warn(
-      `[pill-window] focus failed: ${err instanceof Error ? err.message : String(err)}`,
-    );
-  }
-
-  return pillWindow;
-}
-
-/**
- * Flip pill visibility: hide if visible, show + focus if hidden/destroyed.
- * Returns the resulting visibility state for the caller to log/telemeter.
- */
-export function togglePillWindow(): { visible: boolean } {
-  if (isPillWindowVisible()) {
-    hidePillWindow();
-    return { visible: false };
-  }
-  showPillWindow();
-  return { visible: true };
 }

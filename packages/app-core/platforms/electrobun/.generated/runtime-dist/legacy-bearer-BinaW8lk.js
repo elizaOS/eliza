@@ -33,76 +33,76 @@ const LEGACY_REJECT_AUDIT_ACTION = "auth.legacy_token.rejected";
  * the value up via the audit log on next call.
  */
 const state = {
-  deadline: null,
-  invalidated: false,
+	deadline: null,
+	invalidated: false,
 };
 function parseEnvDeadline(env) {
-  const raw = env.ELIZA_LEGACY_GRACE_UNTIL?.trim();
-  if (!raw) return null;
-  const parsed = Number(raw);
-  if (!Number.isFinite(parsed) || parsed <= 0) return null;
-  return parsed;
+	const raw = env.ELIZA_LEGACY_GRACE_UNTIL?.trim();
+	if (!raw) return null;
+	const parsed = Number(raw);
+	if (!Number.isFinite(parsed) || parsed <= 0) return null;
+	return parsed;
 }
 async function decideLegacyBearer(_store, env = process.env, now = Date.now()) {
-  if (state.invalidated)
-    return {
-      allowed: false,
-      reason: "invalidated",
-    };
-  const envDeadline = parseEnvDeadline(env);
-  if (envDeadline) {
-    state.deadline = envDeadline;
-    if (now >= envDeadline)
-      return {
-        allowed: false,
-        reason: "post_grace",
-      };
-    return { allowed: true };
-  }
-  if (state.deadline === null) state.deadline = now + LEGACY_GRACE_WINDOW_MS;
-  if (now >= state.deadline)
-    return {
-      allowed: false,
-      reason: "post_grace",
-    };
-  return { allowed: true };
+	if (state.invalidated)
+		return {
+			allowed: false,
+			reason: "invalidated",
+		};
+	const envDeadline = parseEnvDeadline(env);
+	if (envDeadline) {
+		state.deadline = envDeadline;
+		if (now >= envDeadline)
+			return {
+				allowed: false,
+				reason: "post_grace",
+			};
+		return { allowed: true };
+	}
+	if (state.deadline === null) state.deadline = now + LEGACY_GRACE_WINDOW_MS;
+	if (now >= state.deadline)
+		return {
+			allowed: false,
+			reason: "post_grace",
+		};
+	return { allowed: true };
 }
 /**
  * Audit-emit a successful legacy bearer use (deprecation event). Caller
  * should await; failures propagate.
  */
 async function recordLegacyBearerUse(store, meta) {
-  await appendAuditEvent(
-    {
-      actorIdentityId: null,
-      ip: meta.ip,
-      userAgent: meta.userAgent,
-      action: LEGACY_USE_AUDIT_ACTION,
-      outcome: "success",
-      metadata: {},
-    },
-    { store },
-  );
+	await appendAuditEvent(
+		{
+			actorIdentityId: null,
+			ip: meta.ip,
+			userAgent: meta.userAgent,
+			action: LEGACY_USE_AUDIT_ACTION,
+			outcome: "success",
+			metadata: {},
+		},
+		{ store },
+	);
 }
 /** Audit-emit a rejected legacy bearer attempt (post-grace or invalidated). */
 async function recordLegacyBearerRejection(store, meta) {
-  await appendAuditEvent(
-    {
-      actorIdentityId: null,
-      ip: meta.ip,
-      userAgent: meta.userAgent,
-      action: LEGACY_REJECT_AUDIT_ACTION,
-      outcome: "failure",
-      metadata: { reason: meta.reason },
-    },
-    { store },
-  );
+	await appendAuditEvent(
+		{
+			actorIdentityId: null,
+			ip: meta.ip,
+			userAgent: meta.userAgent,
+			action: LEGACY_REJECT_AUDIT_ACTION,
+			outcome: "failure",
+			metadata: { reason: meta.reason },
+		},
+		{ store },
+	);
 }
 
 //#endregion
 export {
-  decideLegacyBearer,
-  LEGACY_DEPRECATION_HEADER,
-  recordLegacyBearerRejection,
-  recordLegacyBearerUse,
+	decideLegacyBearer,
+	LEGACY_DEPRECATION_HEADER,
+	recordLegacyBearerRejection,
+	recordLegacyBearerUse,
 };

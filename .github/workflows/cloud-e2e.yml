@@ -17,113 +17,14 @@ on:
       - "packages/cloud-e2e/**"
       - ".github/workflows/cloud-e2e.yml"
   workflow_dispatch:
-    inputs:
-      spec:
-        description: "Spec path/glob to run (default: all)"
-        required: false
-        default: "tests/**.spec.ts"
-      headed:
-        description: "Run headed (debug — slow)"
-        type: boolean
-        default: false
 
 concurrency:
   group: cloud-e2e-${{ github.event.pull_request.number || github.ref }}
   cancel-in-progress: true
 
 jobs:
-  smoke:
-    name: Smoke (onboarding)
-    runs-on: ubuntu-latest
-    timeout-minutes: 15
-    env:
-      NODE_ENV: test
-      NODE_OPTIONS: --max-old-space-size=4096
-    steps:
-      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
-        with:
-          fetch-depth: 1
-
-      - uses: ./.github/actions/cloud-setup-test-env
-
-      - name: Cache Playwright browsers
-        id: pw-cache
-        uses: actions/cache@v4
-        with:
-          path: ~/.cache/ms-playwright
-          key: pw-${{ runner.os }}-${{ hashFiles('packages/cloud-e2e/package.json') }}
-          restore-keys: |
-            pw-${{ runner.os }}-
-
-      - name: Install Playwright (system deps always; browsers only on cache miss)
-        working-directory: packages/cloud-e2e
-        run: |
-          if [ "${{ steps.pw-cache.outputs.cache-hit }}" = "true" ]; then
-            bunx playwright install-deps chromium
-          else
-            bunx playwright install --with-deps chromium
-          fi
-
-      - name: Build cloud-shared (drizzle artifacts)
-        # cloud-e2e fixture re-runs migrations against PGlite so build is best-effort.
-        run: bun run --cwd packages/cloud-shared build || true
-
-      - name: Run cloud E2E (smoke — onboarding only)
-        id: run-smoke
-        run: bun run cloud:e2e -- --grep onboarding
-        env:
-          CI: "true"
-          MOCK_REDIS: "1"
-          MOCK_HETZNER_LATENCY: "0"
-          MOCK_HETZNER_ACTION_MS: "30"
-          CONTROL_PLANE_TICK_MS: "50"
-          DATABASE_URL: "pglite://./.eliza-ci/.pgdata"
-          HCLOUD_TOKEN: "test-token"
-          CONTAINER_CONTROL_PLANE_TOKEN: "test-token"
-          CRON_SECRET: "test-cron-secret"
-
-      - name: Failure summary
-        if: failure() && steps.run-smoke.outcome == 'failure'
-        run: |
-          {
-            echo "## cloud-e2e smoke failure"
-            echo ""
-            echo "Onboarding smoke spec failed. Inspect the \`cloud-e2e-smoke-playwright-${{ github.run_attempt }}\` and \`cloud-e2e-smoke-traces-${{ github.run_attempt }}\` artifacts for details."
-          } >> "$GITHUB_STEP_SUMMARY"
-
-      - name: Upload Playwright report
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: cloud-e2e-smoke-playwright-${{ github.run_attempt }}
-          path: |
-            packages/cloud-e2e/playwright-report
-          retention-days: 7
-          if-no-files-found: ignore
-
-      - name: Upload Playwright traces
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: cloud-e2e-smoke-traces-${{ github.run_attempt }}
-          path: |
-            packages/cloud-e2e/test-results/**/trace.zip
-          retention-days: 3
-          if-no-files-found: ignore
-
-      - name: Upload process logs (boot diagnostics)
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: cloud-e2e-smoke-process-logs-${{ github.run_attempt }}
-          path: |
-            packages/cloud-e2e/.logs
-          retention-days: 7
-          if-no-files-found: ignore
-
-  full:
-    name: Full mock-stack E2E
-    needs: [smoke]
+  e2e:
+    name: Mock-stack E2E
     runs-on: ubuntu-latest
     timeout-minutes: 30
     env:
@@ -136,76 +37,37 @@ jobs:
 
       - uses: ./.github/actions/cloud-setup-test-env
 
-      - name: Cache Playwright browsers
-        id: pw-cache
-        uses: actions/cache@v4
-        with:
-          path: ~/.cache/ms-playwright
-          key: pw-${{ runner.os }}-${{ hashFiles('packages/cloud-e2e/package.json') }}
-          restore-keys: |
-            pw-${{ runner.os }}-
-
-      - name: Install Playwright (system deps always; browsers only on cache miss)
-        working-directory: packages/cloud-e2e
-        run: |
-          if [ "${{ steps.pw-cache.outputs.cache-hit }}" = "true" ]; then
-            bunx playwright install-deps chromium
-          else
-            bunx playwright install --with-deps chromium
-          fi
+      - name: Install Playwright browsers (chromium only)
+        run: bunx playwright install --with-deps chromium
 
       - name: Build cloud-shared (drizzle artifacts)
+        # cloud-e2e fixture re-runs migrations against PGlite so build is best-effort.
         run: bun run --cwd packages/cloud-shared build || true
 
-      - name: Run cloud E2E (full suite)
-        id: run-full
+      - name: Run cloud E2E
+        run: bun run cloud:e2e
         env:
           CI: "true"
+          # mocks read these
           MOCK_REDIS: "1"
           MOCK_HETZNER_LATENCY: "0"
           MOCK_HETZNER_ACTION_MS: "30"
           CONTROL_PLANE_TICK_MS: "50"
+          # placeholder values so client code doesn't crash on lookup; no real creds
           DATABASE_URL: "pglite://./.eliza-ci/.pgdata"
           HCLOUD_TOKEN: "test-token"
           CONTAINER_CONTROL_PLANE_TOKEN: "test-token"
           CRON_SECRET: "test-cron-secret"
-          INPUT_SPEC: ${{ inputs.spec }}
-          INPUT_HEADED: ${{ inputs.headed }}
-        run: |
-          SPEC="${INPUT_SPEC:-tests/**.spec.ts}"
-          if [ "${INPUT_HEADED}" = "true" ]; then
-            bun run cloud:e2e -- "$SPEC" --headed
-          else
-            bun run cloud:e2e -- "$SPEC"
-          fi
 
-      - name: Failure summary
-        if: failure() && steps.run-full.outcome == 'failure'
-        run: |
-          {
-            echo "## cloud-e2e full failure"
-            echo ""
-            echo "Full mock-stack E2E failed. Inspect the \`cloud-e2e-playwright-${{ github.run_attempt }}\` and \`cloud-e2e-traces-${{ github.run_attempt }}\` artifacts for failing spec output and traces."
-          } >> "$GITHUB_STEP_SUMMARY"
-
-      - name: Upload Playwright report
+      - name: Upload Playwright artifacts
         if: always()
         uses: actions/upload-artifact@v4
         with:
           name: cloud-e2e-playwright-${{ github.run_attempt }}
           path: |
             packages/cloud-e2e/playwright-report
+            packages/cloud-e2e/test-results
           retention-days: 7
-          if-no-files-found: ignore
-
-      - name: Upload Playwright traces
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: cloud-e2e-traces-${{ github.run_attempt }}
-          path: |
-            packages/cloud-e2e/test-results/**/trace.zip
-          retention-days: 3
           if-no-files-found: ignore
 
       - name: Upload process logs (boot diagnostics)

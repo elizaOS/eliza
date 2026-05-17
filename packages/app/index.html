@@ -32,7 +32,7 @@
     }
   </script>
   <script>
-    (() => {
+    (function () {
       if (typeof window === 'undefined' || typeof window.fetch !== 'function') return;
       if (window.__ELIZA_ANDROID_IPC_FETCH_BRIDGE__) return;
 
@@ -82,7 +82,7 @@
       function headersToRecord(headers) {
         var record = {};
         if (!headers) return record;
-        new Headers(headers).forEach((value, key) => {
+        new Headers(headers).forEach(function (value, key) {
           record[key] = value;
         });
         return record;

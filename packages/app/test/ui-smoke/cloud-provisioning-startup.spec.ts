@@ -42,10 +42,10 @@ async function clickIfVisible(locator: ReturnType<Page["getByRole"]>) {
 }
 
 for (const viewport of VIEWPORTS) {
-  test.skip(`cloud provisioning reaches chat from startup on ${viewport.name}`, async ({
-    page,
-    baseURL,
-  }) => {
+	test.skip(`cloud provisioning reaches chat from startup on ${viewport.name}`, async ({
+		page,
+		baseURL,
+	}) => {
     const apiBase = apiBaseFromTest(baseURL);
     let provisionRequests = 0;
     let jobPollRequests = 0;
@@ -566,9 +566,7 @@ test.skip("new cloud agent shows provisioning chat immediately, accepts a setup 
 
   await expect.poll(() => createRequests).toBeGreaterThanOrEqual(1);
   await expect(page.getByText(/setting up your agent/i).first()).toBeVisible();
-  await expect(
-    page.getByText(/your personal ai container is warming up/i),
-  ).toBeVisible();
+  await expect(page.getByText(/your personal ai container is warming up/i)).toBeVisible();
   await expect(page.getByPlaceholder(/ask me anything/i)).toBeVisible();
   await expect.poll(() => jobPollRequests).toBeGreaterThan(0);
 

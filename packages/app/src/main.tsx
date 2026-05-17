@@ -141,6 +141,13 @@ function cachedDynamicImport<T>(
   return promise;
 }
 
+function importAppCore() {
+  return cachedDynamicImport(
+    "@elizaos/app-core",
+    () => import("@elizaos/app-core"),
+  );
+}
+
 function importAppCompanion() {
   return cachedDynamicImport(
     "@elizaos/plugin-companion",
@@ -473,8 +480,7 @@ function buildAppBootConfig({
 
 function initializeAppModules(): Promise<void> {
   appModulesInitialized ??= (async () => {
-    // @elizaos/app-core is statically imported at the top of this module so
-    // there is no need to dynamically import it again here.
+    await importAppCore();
 
     const [companionModule, lifeOpsModule, vincentModule] = await Promise.all([
       importAppCompanion(),

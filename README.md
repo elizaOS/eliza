@@ -93,17 +93,6 @@ The generated project exposes the runtime scripts you'll use day-to-day: `bun ru
 
 Full reference: `elizaos --help` or `elizaos <command> --help`.
 
-## Local mock stack
-
-One command boots the full local cloud stack with mocks (Hetzner + control-plane + cloud-api with `MOCK_REDIS` + PGlite, plus cloud-frontend):
-
-```bash
-bun run cloud:mock          # boot with existing PGlite data
-bun run cloud:mock:fresh    # wipe PGlite + re-run migrations first
-```
-
-Ports are auto-picked and printed in a ready banner; logs stream to `./.logs/<service>.log`. Pass `--help` to `bun scripts/cloud/mock-stack-up.mjs` for flags (skip individual services, pin ports, etc.). Ctrl+C tears the stack down in reverse order.
-
 ## Standalone usage
 
 Use `@elizaos/core` directly — no CLI, no dashboard, just the runtime in your code.

@@ -264,11 +264,7 @@ async function startHarness(): Promise<{ server: ViteDevServer; url: string }> {
   const port = await getFreePort();
   const harnessRoot = path.join(outputRoot, "harness");
   await mkdir(path.join(harnessRoot, "src"), { recursive: true });
-  await writeFile(
-    path.join(harnessRoot, "index.html"),
-    buildIndexHtml(),
-    "utf-8",
-  );
+  await writeFile(path.join(harnessRoot, "index.html"), buildIndexHtml(), "utf-8");
   await writeFile(
     path.join(harnessRoot, "src/main.tsx"),
     buildHarnessSource(),
@@ -337,14 +333,8 @@ async function startHarness(): Promise<{ server: ViteDevServer; url: string }> {
           ),
           replacement: mockPath,
         },
-        {
-          find: /^@elizaos\/ui$/,
-          replacement: path.join(uiRoot, "src/index.ts"),
-        },
-        {
-          find: /^@elizaos\/ui\/(.+)$/,
-          replacement: path.join(uiRoot, "src/$1"),
-        },
+        { find: /^@elizaos\/ui$/, replacement: path.join(uiRoot, "src/index.ts") },
+        { find: /^@elizaos\/ui\/(.+)$/, replacement: path.join(uiRoot, "src/$1") },
       ],
     },
     plugins: [
@@ -441,11 +431,7 @@ async function captureState(args: {
       );
     }
 
-    await page.screenshot({
-      path: screenshotPath,
-      fullPage: true,
-      timeout: 5000,
-    });
+    await page.screenshot({ path: screenshotPath, fullPage: true, timeout: 5000 });
     return {
       capture: {
         stateId: slug,
@@ -458,10 +444,7 @@ async function captureState(args: {
     };
   } catch (error) {
     await mkdir(diagnosticsRoot, { recursive: true });
-    const failShot = path.join(
-      diagnosticsRoot,
-      `${args.viewport.id}-${slug}.png`,
-    );
+    const failShot = path.join(diagnosticsRoot, `${args.viewport.id}-${slug}.png`);
     const consolePath = path.join(
       diagnosticsRoot,
       `${args.viewport.id}-${slug}.console.txt`,

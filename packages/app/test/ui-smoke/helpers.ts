@@ -218,9 +218,7 @@ export async function openSettingsSection(
   });
 }
 
-function settingsSectionIdFromLabel(
-  sectionName: string | RegExp,
-): string | null {
+function settingsSectionIdFromLabel(sectionName: string | RegExp): string | null {
   if (typeof sectionName === "string") {
     return SETTINGS_SECTION_IDS_BY_LABEL.get(sectionName) ?? null;
   }

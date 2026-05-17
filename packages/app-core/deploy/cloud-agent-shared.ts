@@ -698,41 +698,20 @@ export function startCloudAgent(userConfig: CloudAgentConfig = {}): void {
           );
           return;
         }
-        // Wrap processMessage so a runtime error (e.g.
-        // NoModelProviderConfiguredError when no LLM key is set) returns a
-        // structured JSON-RPC error envelope instead of crashing the
-        // request handler and dropping the socket. The HTTP server stays
-        // up; the next message gets a fresh chance.
-        try {
-          const responseText = await agentRuntime.processMessage(
-            rpc.params ?? {},
-          );
-          res.writeHead(200);
-          res.end(
-            JSON.stringify({
-              jsonrpc: "2.0",
-              id: rpc.id,
-              result: {
-                text: responseText,
-                metadata: { timestamp: Date.now() },
-              },
-            }),
-          );
-        } catch (err) {
-          const message = err instanceof Error ? err.message : String(err);
-          console.error("[cloud-agent] message.send failed:", message);
-          res.writeHead(500);
-          res.end(
-            JSON.stringify({
-              jsonrpc: "2.0",
-              id: rpc.id,
-              error: {
-                code: -32000,
-                message,
-              },
-            }),
-          );
-        }
+        const responseText = await agentRuntime.processMessage(
+          rpc.params ?? {},
+        );
+        res.writeHead(200);
+        res.end(
+          JSON.stringify({
+            jsonrpc: "2.0",
+            id: rpc.id,
+            result: {
+              text: responseText,
+              metadata: { timestamp: Date.now() },
+            },
+          }),
+        );
         return;
       }
 

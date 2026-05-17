@@ -490,7 +490,6 @@
         "@cloudflare/workers-types": "^4.20260429.1",
         "@elizaos/cloud-shared": "workspace:*",
         "@elizaos/hardware-catalog": "workspace:*",
-        "@elizaos/steward-session-client": "workspace:*",
         "@fal-ai/client": "^1.10.1",
         "@fal-ai/server-proxy": "^1.2.1",
         "@neondatabase/serverless": "^1.1.0",
@@ -538,7 +537,6 @@
         "@elizaos/cloud-shared": "workspace:*",
         "@elizaos/hardware-catalog": "workspace:*",
         "@elizaos/shared-brand": "workspace:*",
-        "@elizaos/steward-session-client": "workspace:*",
         "@elizaos/ui": "workspace:*",
         "@fontsource-variable/inter": "^5.2.8",
         "@fontsource-variable/open-sans": "^5.2.7",
@@ -1724,7 +1722,6 @@
         "@elizaos/checkout-shared": "workspace:*",
         "@elizaos/hardware-catalog": "workspace:*",
         "@elizaos/shared-brand": "workspace:*",
-        "@elizaos/steward-session-client": "workspace:*",
         "@elizaos/ui": "workspace:*",
         "@fontsource-variable/open-sans": "^5.2.7",
         "@fontsource/poppins": "^5.2.7",
@@ -1803,11 +1800,9 @@
       "name": "@elizaos/shared",
       "version": "2.0.0-beta.2",
       "dependencies": {
-        "@elizaos/contracts": "workspace:*",
         "@elizaos/core": "workspace:*",
         "chalk": "^5.3.0",
         "drizzle-orm": "0.45.2",
-        "phonemizer": "^1.2.1",
         "react": "^19.0.0",
         "yaml": "^2.8.2",
         "zod": "^4.4.3",
@@ -1838,10 +1833,6 @@
         "@types/node": "^25.0.0",
         "typescript": "^6.0.3",
       },
-    },
-    "packages/steward-session-client": {
-      "name": "@elizaos/steward-session-client",
-      "version": "0.1.0",
     },
     "packages/ui": {
       "name": "@elizaos/ui",
@@ -2955,7 +2946,6 @@
         "@elizaos/core": "workspace:*",
         "@elizaos/plugin-capacitor-bridge": "workspace:*",
         "@elizaos/shared": "workspace:*",
-        "phonemizer": "^1.2.1",
       },
       "devDependencies": {
         "@biomejs/biome": "^2.4.14",
@@ -5267,8 +5257,6 @@
     "@elizaos/shared-brand": ["@elizaos/shared-brand@workspace:packages/shared-brand"],
 
     "@elizaos/skills": ["@elizaos/skills@workspace:packages/skills"],
-
-    "@elizaos/steward-session-client": ["@elizaos/steward-session-client@workspace:packages/steward-session-client"],
 
     "@elizaos/three-agent-dialogue": ["@elizaos/three-agent-dialogue@workspace:packages/benchmarks/three-agent-dialogue"],
 
@@ -10281,8 +10269,6 @@
     "pgpass": ["pgpass@1.0.5", "", { "dependencies": { "split2": "^4.1.0" } }, "sha512-FdW9r/jQZhSeohs1Z3sI1yxFQNFvMcnmfuj4WBMUTxOrAyLMaTcE1aAMBiTlbMNaXvBCQuVi0R7hd8udDSP7ug=="],
 
     "phin": ["phin@3.7.1", "", { "dependencies": { "centra": "^2.7.0" } }, "sha512-GEazpTWwTZaEQ9RhL7Nyz0WwqilbqgLahDM3D0hxWwmVDI52nXEybHqiN6/elwpkJBhcuj+WbBu+QfT0uhPGfQ=="],
-
-    "phonemizer": ["phonemizer@1.2.1", "", {}, "sha512-v0KJ4mi2T4Q7eJQ0W15Xd4G9k4kICSXE8bpDeJ8jisL4RyJhNWsweKTOi88QXFc4r4LZlz5jVL5lCHhkpdT71A=="],
 
     "picocolors": ["picocolors@1.1.1", "", {}, "sha512-xceH2snhtb5M9liqDsmEw56le376mTZkEX/jEb/RxNFyegNul7eNslCXP9FDj/Lcu0X8KEyMceP2ntpaHrDEVA=="],
 
