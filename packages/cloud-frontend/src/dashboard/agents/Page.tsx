@@ -1,9 +1,12 @@
-import { DashboardLoadingState, DashboardPageContainer } from "@elizaos/ui";
+import {
+  ContainersSkeleton,
+  DashboardLoadingState,
+  DashboardPageContainer,
+} from "@elizaos/ui";
 import { Helmet } from "react-helmet-async";
 import { useRequireAuth } from "../../lib/auth-hooks";
 import { useCreditsBalance } from "../../lib/data/credits";
 import { type AgentListItem, useAgents } from "../../lib/data/eliza-agents";
-import { ContainersSkeleton } from "../containers/_components/containers-skeleton";
 import { ElizaAgentPricingBanner } from "../containers/_components/eliza-agent-pricing-banner";
 import { ElizaAgentsPageWrapper } from "../containers/_components/eliza-agents-page-wrapper";
 import {

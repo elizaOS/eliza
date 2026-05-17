@@ -1,4 +1,6 @@
 import {
+  DashboardActionCards,
+  DashboardActionCardsSkeleton,
   DashboardLoadingState,
   DashboardPageContainer,
   DashboardPageStack,
@@ -13,10 +15,6 @@ import {
   AgentsSection,
   AgentsSectionSkeleton,
 } from "./_components/agents-section";
-import {
-  DashboardActionCards,
-  DashboardActionCardsSkeleton,
-} from "./_components/dashboard-action-cards";
 import { DashboardPageWrapper } from "./_components/dashboard-page-wrapper";
 
 interface DashboardAgent {

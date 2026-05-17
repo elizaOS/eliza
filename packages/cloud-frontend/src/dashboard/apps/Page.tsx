@@ -1,4 +1,6 @@
 import {
+  AppsEmptyState,
+  AppsSkeleton,
   DashboardErrorState,
   DashboardPageContainer,
   DashboardStatCard,
@@ -15,9 +17,7 @@ import {
 import { Helmet } from "react-helmet-async";
 import { useRequireAuth } from "../../lib/auth-hooks";
 import { useApps } from "../../lib/data/apps";
-import { AppsEmptyState } from "./_components/apps-empty-state";
 import { AppsPageWrapper } from "./_components/apps-page-wrapper";
-import { AppsSkeleton } from "./_components/apps-skeleton";
 import { AppsTable } from "./_components/apps-table";
 import { CreateAppButton } from "./_components/create-app-button";
 
