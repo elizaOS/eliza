@@ -411,6 +411,13 @@ export function createAlarmAction(deps: MacosAlarmActionDeps = {}): Action {
     ],
     parameters: [
       {
+        name: "action",
+        description:
+          "Canonical operation discriminator: set, cancel, or list. Legacy subaction/op aliases are still accepted.",
+        required: false,
+        schema: { type: "string", enum: [...ALARM_SUBACTIONS] },
+      },
+      {
         name: "subaction",
         description:
           "Operation to perform: set, cancel, or list. Inferred from message text when omitted.",
@@ -482,6 +489,7 @@ export function createAlarmAction(deps: MacosAlarmActionDeps = {}): Action {
 
       const params = readParameters(options);
       const explicit =
+        normalizeSubactionValue(params.action) ??
         normalizeSubactionValue(params.subaction) ??
         normalizeSubactionValue(params.op);
       const subaction = explicit ?? inferSubactionFromText(getText(message));

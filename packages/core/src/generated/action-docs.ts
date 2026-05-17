@@ -2870,6 +2870,18 @@ export const allActionsSpec = {
 				"Manage native macOS alarms via UNUserNotificationCenter. Subactions: set (schedule a new alarm), cancel (remove a scheduled alarm by id), list (show pending alarms). Subaction inferred from message text when not explicitly provided.",
 			parameters: [
 				{
+					name: "action",
+					description:
+						"Canonical operation discriminator: set, cancel, or list. Legacy subaction/op aliases are still accepted.",
+					required: false,
+					schema: {
+						type: "string",
+						enum: ["set", "cancel", "list"],
+					},
+					descriptionCompressed:
+						"Canonical operation discriminator: set, cancel, or list. Legacy subaction/op aliases are still accepted.",
+				},
+				{
 					name: "subaction",
 					description:
 						"Operation to perform: set, cancel, or list. Inferred from message text when omitted.",
@@ -2957,6 +2969,7 @@ export const allActionsSpec = {
 					actions: ["ALARM"],
 					params: {
 						ALARM: {
+							action: "set",
 							subaction: "set",
 							timeIso: "example",
 							title: "example",
