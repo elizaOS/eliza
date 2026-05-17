@@ -10,8 +10,9 @@ const repoRoot = path.resolve(here, "../../../..");
 const integrationRoot = path.join(repoRoot, "packages/cloud-api/test/e2e");
 const bun = process.env.BUN || process.env.npm_execpath || "bun";
 
-const serverPreload = "packages/cloud-api/test/e2e/preload.ts";
-const dbPreload = "packages/cloud-api/test/e2e/preload.ts";
+const preloadPath = path.join(integrationRoot, "preload.ts");
+const serverPreload = preloadPath;
+const dbPreload = preloadPath;
 const timeoutMs = process.env.CLOUD_INTEGRATION_TIMEOUT_MS || "120000";
 
 const isolatedServerFiles = new Set(["packages/cloud-api/test/e2e/agent-token-flow.test.ts"]);
