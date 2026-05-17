@@ -53,15 +53,37 @@ The concrete failures found in serial logs were:
 
 Source fixes are now staged and covered by smoke checks:
 
-- `dbus.service.d/elizaos-working-directory.conf` pins D-Bus to
-  `WorkingDirectory=/`.
+- `dbus.service.d/elizaos-working-directory.conf` creates `/run/dbus` with
+  `RuntimeDirectory=dbus` and starts D-Bus from `WorkingDirectory=/run/dbus`.
+- `polkit.service.d/elizaos-working-directory.conf` pins polkit to
+  `WorkingDirectory=/` so it cannot inherit an invalid working directory.
 - The update verifier and health checker use systemd's `-` optional path
   prefix for the Persistent Storage update store, so the services do not fail
   just because persistence has not been created.
 
-The `46f75de4...` ISO does not contain those fixes. The next artifact must be
-an incremental repack from the fixed source/chroot, followed by another QEMU
-normal-boot proof.
+The `46f75de4...` ISO does not contain those fixes. The current HEAD source
+and build chroot both contain them. The next artifact must be an incremental
+repack from the fixed source/chroot, followed by another QEMU normal-boot
+proof.
+
+## Tonight Validation Plan
+
+The fast path to a credible demo is:
+
+1. Repack the current fixed chroot into a fresh `tails/binary.iso`.
+2. Treat `tails/binary.iso` as the canonical fresh artifact, because older
+   named ISO copies in `out/` can be stale.
+3. Point `out/binary.iso` at that exact artifact for test scripts.
+4. Verify the built squashfs contains the D-Bus, polkit, update verifier, and
+   health-check fixes.
+5. Boot the exact artifact in QEMU.
+6. If normal graphical boot fails, use the built-in direct-kernel debug boot
+   to collect serial logs before changing code.
+7. Only flash USB after QEMU proves the rebuilt artifact reaches the intended
+   elizaOS greeter/session/app path.
+
+The easy win before spending more build/test time is keeping this document,
+the PR branch, and the share branch synchronized with the current truth.
 
 ## Still Pending
 
