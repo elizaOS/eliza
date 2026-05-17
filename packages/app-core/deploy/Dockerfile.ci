@@ -45,6 +45,16 @@ RUN mkdir -p /tmp/docker-runtime-deps \
     uuid@14.0.0 \
     ws@8.20.0 \
   && mkdir -p /app/node_modules \
+  && rm -rf \
+    /app/node_modules/@electric-sql/pglite \
+    /app/node_modules/@neondatabase/serverless \
+    /app/node_modules/@node-rs/argon2 \
+    /app/node_modules/dotenv \
+    /app/node_modules/drizzle-orm \
+    /app/node_modules/jose \
+    /app/node_modules/pg \
+    /app/node_modules/uuid \
+    /app/node_modules/ws \
   && cp -a /tmp/docker-runtime-deps/node_modules/. /app/node_modules/ \
   && rm -rf /tmp/docker-runtime-deps
 
