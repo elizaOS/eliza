@@ -1,9 +1,15 @@
 # User experience flows
 
-Plain-language walkthrough of what users actually see and do. Mirrors
-Tails' Welcome Screen pattern with elizaOS branding. **Same greeter window
-every boot** — the only thing that changes is whether a persistence
-partition has been created on the USB.
+Plain-language walkthrough of what users actually see and do. elizaOS Live
+uses a proven live-USB welcome-screen pattern, but the visible product is
+elizaOS Live. Tails remains credited in the license/about materials and
+engineering docs, not as the primary user-facing brand.
+
+**Same greeter window every boot** — the only thing that changes is
+whether an encrypted persistence partition has been created on the USB.
+Status as of 2026-05-17: this is the intended v1 behavior. Source overlays
+exist, but QEMU and real-USB validation are still required before every row
+below is marked proven.
 
 ---
 
@@ -38,7 +44,7 @@ Always shows the same fields:
 │                                                  │
 │            [  Start elizaOS  ]                   │
 │                                                  │
-│            powered by Tails — about              │
+│            About elizaOS                         │
 └──────────────────────────────────────────────────┘
 ```
 
@@ -64,7 +70,8 @@ Steps:
    - "Last question. What do you want me to build first?"
 5. User chats with elizaOS, builds apps, etc. All in RAM.
 6. Power off / unplug → **everything gone**. The USB itself is
-   unmodified (live ISO is read-only on the stick).
+   unmodified apart from normal boot media reads; user state is not
+   written to the USB.
 
 Optionally during the session, after the agent action exists: user says
 "save my work to this USB" -> elizaOS opens the Persistent Storage UI:
@@ -87,7 +94,8 @@ Persistent Storage row shows:
 
 Steps:
 1. User types their passphrase, clicks **Unlock** → LUKS partition
-   unlocks, gets bind-mounted to `~/.eliza/`, `~/.milady/`, etc.
+   unlocks, gets bind-mounted to `~/.eliza/`, legacy app state dirs, and
+   selected system settings.
 2. User clicks **Start elizaOS**.
 3. GNOME desktop loads.
 4. The elizaOS app auto-launches as the always-on home window — **already
@@ -127,8 +135,8 @@ survives.**
 ## Privacy Mode (orthogonal to storage mode)
 
 Privacy Mode is picked at the **boot menu** (one step earlier than the
-greeter), so it's independent of amnesia / persistent. All 4 combos
-work:
+greeter), so it's independent of amnesia / persistent. All 4 combinations
+are valid product modes:
 
 ```
                   Normal Mode (default)    Privacy Mode (Tor)
@@ -139,9 +147,9 @@ work:
 
 - **Normal Mode** — direct internet. Fast. Anthropic API, OpenAI,
   HuggingFace downloads all at full speed. Default.
-- **Privacy Mode** — Tor routing. Same features, slow speeds. Cloud
-  APIs may be blocked (providers often refuse Tor exits). Local LLM
-  works identically.
+- **Privacy Mode** — Tor routing for the live networking stack. Same
+  product surface, slower speeds. Cloud APIs may be blocked because
+  providers often refuse Tor exits. Local LLM works identically.
 
 The user can pick a different combination on every boot. No commitment.
 
@@ -180,14 +188,14 @@ verified behavior.
 | Voice (Whisper STT, Kokoro TTS) | ✓ identical, local |
 | Wallpaper / SET_WM / theming | ✓ identical |
 | GPU acceleration (NVIDIA / AMD / Intel) | ✓ identical |
-| MAC spoofing | ✓ identical (Tails-default, can toggle in greeter) |
-| Cloud APIs (Anthropic, OpenAI, etc.) | ✓ identical (slower in Privacy Mode) |
+| MAC spoofing | ✓ identical (enabled by default, can toggle in greeter) |
+| Cloud APIs (Anthropic, OpenAI, etc.) | Intended, but provider blocks over Tor are expected |
 
 **The one v1.0 gap**: Chromium WebView windows may leak in Privacy
-Mode (CEF doesn't auto-inherit SOCKS proxy). The elizaOS agent (Bun fetch)
-respects Tor, but if elizaOS opens a `chromium --app=...` window for an
-OAuth flow, that window may bypass Tor. This is a known security gap,
-documented in `docs/privacy-mode-v1-gap.md`, fixed in v1.1.
+Mode (CEF doesn't auto-inherit SOCKS proxy). The elizaOS agent path is
+intended to respect Tor, but if elizaOS opens a Chromium app window for an
+OAuth flow, that window may bypass Tor until the runtime is patched. This
+is a known security gap documented in `docs/privacy-mode-v1-gap.md`.
 
 ---
 
@@ -196,10 +204,11 @@ documented in `docs/privacy-mode-v1-gap.md`, fixed in v1.1.
 ### Amnesia mode
 
 - RAM contents physically lost on power-off.
-- `memlockd` aggressively zeros RAM on shutdown (Tails default, kept).
+- `memlockd` aggressively zeros RAM on shutdown (upstream live-OS behavior,
+  kept).
 - No swap partition mounted → no spillover of memory to disk.
-- **System leaves no forensic trace.** Cold-boot RAM attacks are
-  theoretically possible but practically rare.
+- The product goal is no intentional local trace after shutdown. Cold-boot
+  RAM attacks are theoretically possible but practically rare.
 - USB itself is unchanged — the ISO is read-only on the stick.
 
 ### Persistent mode
@@ -215,8 +224,8 @@ documented in `docs/privacy-mode-v1-gap.md`, fixed in v1.1.
 ### Installed mode
 
 **Not supported in v1.0.** See `PLAN.md § Deferred` for the rationale —
-Tails refuses this by design, we're considering it carefully for v2.0
-because the threat model implications matter.
+the upstream live-OS design refuses this by default, and we're considering
+it carefully for v2.0 because the threat model implications matter.
 
 ---
 

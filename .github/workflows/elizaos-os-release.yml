@@ -55,19 +55,17 @@ jobs:
           bun run --cwd packages/aosp-flasher typecheck || echo "WARN: aosp-flasher not yet present"
           bun run --cwd packages/aosp-flasher build || echo "WARN: aosp-flasher build skipped"
 
-      - name: Validate VM metadata
+      - name: Validate Linux live USB metadata
         run: |
-          cd packages/os/linux
-          python3 -m unittest discover -s vm/tests
-          vm/scripts/package-metadata.sh \
-            --output-dir vm/output/ci-bundle-metadata \
-            --archive -- --target qemu
+          cd packages/os/linux/variants/milady-tails
+          ELIZAOS_STATIC_SOURCE_ONLY=1 ./scripts/static-smoke.sh
 
       - name: Validate OS homepage
         run: |
           bun run --cwd packages/os-homepage lint:check
           bun run --cwd packages/os-homepage typecheck
           bun run --cwd packages/os-homepage build
+          (cd packages/os-homepage && ../../node_modules/.bin/playwright install --with-deps chromium)
           bun run --cwd packages/os-homepage test:e2e
 
       - name: Capture homepage contact sheet

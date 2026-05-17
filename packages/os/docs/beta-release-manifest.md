@@ -1,9 +1,13 @@
-# ElizaOS OS beta release manifest
+# elizaOS OS beta release manifest
 
 The May 16 2026 beta release manifest lives at
 `packages/os/release/beta-2026-05-16/manifest.json`. It is the source of truth
 for downloadable OS artifacts, USB key presale terms, required validation
 evidence, and checksum policy.
+
+The manifest is release metadata, not automatic promotion evidence. Artifact
+entries with `candidate` status, missing `sizeBytes`, or missing `sha256`
+must not be presented as production-ready downloads.
 
 ## Beta terms
 
@@ -18,14 +22,16 @@ evidence, and checksum policy.
 
 The manifest must include all public beta artifact classes:
 
-- Raw image: primary compressed image for USB flashing and direct disk writes.
+- Raw image: primary compressed elizaOS Live image for USB flashing.
 - VM image: QEMU/UTM bundles for evaluation and CI smoke tests.
 - Android image: Cuttlefish and physical-device flashing bundles.
 
 Each artifact entry records target platform, architecture, filename, download
 URL, publication status, size, SHA-256, signature state, and required evidence.
 Before public promotion, every non-withdrawn artifact should have a concrete
-`sizeBytes` and `sha256`.
+`sizeBytes` and `sha256`, plus validation evidence for its required gates.
+For the Linux live image, that includes QEMU boot, real USB boot, internal
+disk safety checks, and documented privacy/persistence limitations.
 
 ## Script workflow
 

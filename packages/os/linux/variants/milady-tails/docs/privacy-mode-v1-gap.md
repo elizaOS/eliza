@@ -1,8 +1,9 @@
 # Privacy Mode v1 Chromium WebView gap
 
-Privacy Mode routes elizaOS agent traffic through Tor by booting the live
-networking stack in Tor-only mode. That covers agent-side requests made from
-Bun, system tools, and the Tails-managed browser path.
+Privacy Mode is intended to route elizaOS agent traffic through Tor by
+booting the live networking stack in Tor-only mode. That covers
+agent-side requests made from Bun, system tools, and the preserved
+Tor-managed browser path once the rebuilt ISO passes network validation.
 
 The known v1.0 gap is Chromium WebView traffic launched by the Electrobun
 runtime. The WebView does not automatically inherit the SOCKS proxy used by
@@ -11,8 +12,9 @@ patched to inject an explicit proxy configuration.
 
 ## v1.0 Behavior
 
-- elizaOS agent requests: routed through Tor in Privacy Mode.
-- System Tor Browser behavior: preserved from Tails.
+- elizaOS agent requests: intended to route through Tor in Privacy Mode;
+  must be verified in the rebuilt ISO.
+- Tor-managed browser behavior: preserved from the upstream live-OS stack.
 - Chromium WebView windows: not guaranteed to use Tor in v1.0.
 - Mode switching: requires reboot because Privacy Mode is selected from the
   boot menu.

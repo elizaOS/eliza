@@ -6,19 +6,50 @@ import process from "node:process";
 import { fileURLToPath } from "node:url";
 
 const args = process.argv.slice(2);
-const check = args.includes("--check");
-const stageArg = args.find((arg) => arg !== "--check");
+
+function parseArgs(argv) {
+  let parsedCheck = false;
+  let parsedStage;
+
+  for (let index = 0; index < argv.length; index += 1) {
+    const arg = argv[index];
+    if (arg === "--check") {
+      parsedCheck = true;
+      continue;
+    }
+    if (arg === "--stage") {
+      parsedStage = argv[index + 1];
+      index += 1;
+      continue;
+    }
+    if (arg.startsWith("--stage=")) {
+      parsedStage = arg.slice("--stage=".length);
+      continue;
+    }
+    if (!arg.startsWith("--") && !parsedStage) {
+      parsedStage = arg;
+    }
+  }
+
+  return { check: parsedCheck, stageArg: parsedStage };
+}
+
+const { check, stageArg } = parseArgs(args);
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
+const defaultStage = path.join(
+  root,
+  "tails/config/chroot_local-includes/usr/share/elizaos/milady-app",
+);
 const stage =
-  stageArg ??
-  path.join(
-    root,
-    "tails/config/chroot_local-includes/usr/share/elizaos/milady-app",
-  );
+  stageArg ?? process.env.ELIZAOS_MILADY_APP_STAGE ?? defaultStage;
 const buildJsonPath = path.join(stage, "Resources/build.json");
 const versionJsonPath = path.join(stage, "Resources/version.json");
 const infoPlistPath = path.join(stage, "Info.plist");
 const brandConfigPath = path.join(stage, "Resources/app/brand-config.json");
+const overlayManifestPath = path.join(
+  stage,
+  "Resources/app/elizaos-live-overlay-manifest.json",
+);
 const rendererRoot = path.join(stage, "Resources/app/renderer");
 const rendererWallpaperPath = path.join(
   root,
@@ -440,6 +471,25 @@ function packageJsonWrite(packageName, packageJson) {
   };
 }
 
+function packageManifestPath(packageName) {
+  return path.join(packageDirectory(packageName), "package.json");
+}
+
+function readPackageManifest(packageName) {
+  const filePath = packageManifestPath(packageName);
+  if (!fs.existsSync(filePath)) return null;
+  return JSON.parse(fs.readFileSync(filePath, "utf8"));
+}
+
+function isLiveStubPackage(packageJson) {
+  return packageJson?.version === "0.0.0-elizaos-live-stub";
+}
+
+function shouldWriteLiveFallbackPackage(packageName) {
+  const packageJson = readPackageManifest(packageName);
+  return !packageJson || isLiveStubPackage(packageJson);
+}
+
 function sourcePackageManifest(packageName, packageJson) {
   const rewrite = (value) => {
     if (typeof value === "string") {
@@ -514,6 +564,7 @@ function sourcePackageManifestWrites() {
 function optionalStubPackageWrites() {
   const writes = [];
   for (const [packageName, source] of optionalStubPackages) {
+    if (!shouldWriteLiveFallbackPackage(packageName)) continue;
     const packageDir = packageDirectory(packageName);
     writes.push({
       filePath: path.join(packageDir, "package.json"),
@@ -644,48 +695,38 @@ function syncWorkspaceRuntimePackages({ checkOnly }) {
 
 function collectLucideReactNames() {
   const names = new Set(["Icon", "LucideIcon", "createLucideIcon"]);
-  const packagesDir = path.join(
-    stage,
-    "Resources/app/eliza-dist/node_modules/@elizaos",
-  );
-  const importRe =
-    /import\s*\{([\s\S]*?)\}\s*from\s*["']lucide-react["']/;
+  const appRuntimeDir = path.join(stage, "Resources/app");
+  const namedImportRe =
+    /\b(?:import|export)\s+(?:type\s+)?\{([^;]*)\}\s+from\s*["']lucide-react["']/g;
+  const destructuredImportRe =
+    /\b(?:const|let|var)\s+\{([\s\S]*?)\}\s*=\s*(?:await\s+)?(?:import\(["']lucide-react["']\)|require\(["']lucide-react["']\))/g;
   const supportedExts = new Set([".js", ".jsx", ".ts", ".tsx"]);
 
-  walkFiles(packagesDir, (filePath) => {
+  function addNamesFromClause(clause) {
+    const imports = clause
+      .replace(/\/\*[\s\S]*?\*\//g, "")
+      .replace(/\/\/.*$/gm, "")
+      .split(",");
+    for (const rawName of imports) {
+      const cleaned = rawName.trim();
+      if (!cleaned) continue;
+      const name = cleaned
+        .replace(/^type\s+/, "")
+        .split(/\s+as\s+/)[0]
+        ?.trim();
+      if (name && /^[A-Za-z_$][\w$]*$/.test(name)) names.add(name);
+    }
+  }
+
+  walkFiles(appRuntimeDir, (filePath) => {
     if (!supportedExts.has(path.extname(filePath))) return;
     const text = fs.readFileSync(filePath, "utf8");
     if (!text.includes("lucide-react")) return;
-    const lines = text.split(/\n/);
-    for (let index = 0; index < lines.length; index += 1) {
-      if (!lines[index].includes("import") || !lines[index].includes("{")) {
-        continue;
-      }
-      let block = lines[index];
-      let cursor = index;
-      while (
-        !block.includes("from") &&
-        cursor + 1 < lines.length &&
-        cursor - index < 40
-      ) {
-        cursor += 1;
-        block += `\n${lines[cursor]}`;
-      }
-      if (!/from\s*["']lucide-react["']/.test(block)) continue;
-      const match = block.match(importRe);
-      if (!match) continue;
-      for (const rawName of match[1].split(",")) {
-        const cleaned = rawName
-          .trim()
-          .replace(/\/\*[\s\S]*?\*\//g, "")
-          .replace(/\/\/.*$/g, "")
-          .trim();
-        if (!cleaned || cleaned.startsWith("type ")) continue;
-        const name = cleaned.split(/\s+as\s+/)[0]?.trim();
-        if (name && /^[A-Za-z_$][\w$]*$/.test(name)) {
-          names.add(name);
-        }
-      }
+    for (const match of [
+      ...text.matchAll(namedImportRe),
+      ...text.matchAll(destructuredImportRe),
+    ]) {
+      addNamesFromClause(match[1]);
     }
   });
 
@@ -693,12 +734,13 @@ function collectLucideReactNames() {
 }
 
 function lucideReactStubWrites() {
+  if (!shouldWriteLiveFallbackPackage("lucide-react")) return [];
   const packageDir = path.join(
     stage,
     "Resources/app/eliza-dist/node_modules/lucide-react",
   );
   const names = new Set(collectLucideReactNames());
-  for (const name of ["Loader2", "Settings"]) {
+  for (const name of ["Feather", "Loader2", "Maximize2", "Settings"]) {
     names.add(name);
   }
   const packageJson = {
@@ -730,6 +772,49 @@ function lucideReactStubWrites() {
         "export default Icon;",
         "",
       ].join("\n"),
+    },
+  ];
+}
+
+function liveOverlayManifestWrite() {
+  return [
+    {
+      filePath: overlayManifestPath,
+      content: `${JSON.stringify(
+        {
+          schemaVersion: 1,
+          generatedBy: "prepare-milady-app-overlay.mjs",
+          stagePath: {
+            default: path.relative(root, defaultStage),
+            overrideEnv: "ELIZAOS_MILADY_APP_STAGE",
+            overrideArg: "--stage",
+          },
+          runtime: {
+            apiPortEnv: "ELIZA_API_PORT",
+            defaultApiPort: 31337,
+            apiBindEnv: "ELIZA_API_BIND",
+            defaultApiBind: "127.0.0.1",
+            closeMinimizesToTrayEnv: "ELIZAOS_CLOSE_MINIMIZES_TO_TRAY",
+            closeMinimizesToTrayDefault: true,
+            exitOnLastWindowClosed: false,
+            cefProfileCompatEnv: "ELIZAOS_CEF_PROFILE_COMPAT",
+            chromiumUserDataDir: chromiumFlags["user-data-dir"],
+          },
+          fallbacks: {
+            optionalPluginStubs: [...optionalStubPackages.keys()].sort(),
+            lucideReactStub: {
+              generatedFrom: "Resources/app named lucide-react import/export sites",
+              sentinelExports: ["Feather", "Loader2", "Settings"],
+            },
+            localEmbeddingFallback: {
+              env: "ELIZAOS_LIVE_EMBEDDING_FALLBACK",
+              defaultEnabledInLiveLauncher: true,
+            },
+          },
+        },
+        null,
+        2,
+      )}\n`,
     },
   ];
 }
@@ -933,12 +1018,18 @@ function localInferenceFallbackWrites() {
     .map(([relativePath, kind]) => {
       const filePath = path.join(stage, relativePath);
       if (!fs.existsSync(filePath)) return null;
+      const content = patchLocalInferenceFallback(
+        fs.readFileSync(filePath, "utf8"),
+        kind,
+      );
+      if (!content.includes("ELIZAOS_LIVE_EMBEDDING_FALLBACK")) {
+        throw new Error(
+          `${filePath}: local inference embedding fallback patch did not apply`,
+        );
+      }
       return {
         filePath,
-        content: patchLocalInferenceFallback(
-          fs.readFileSync(filePath, "utf8"),
-          kind,
-        ),
+        content,
       };
     })
     .filter(Boolean);
@@ -1167,6 +1258,7 @@ const nextBuildInfo = {
   runtime: {
     ...(buildInfo.runtime ?? {}),
     exitOnLastWindowClosed: false,
+    closeMinimizesToTray: true,
   },
   chromiumFlags,
 };
@@ -1225,6 +1317,7 @@ const runtimePackagePatchWrites = hasNodeModules
       ...lucideReactStubWrites(),
       ...localInferenceFallbackWrites(),
       ...sanitizedCoreRuntimeWrites(),
+      ...liveOverlayManifestWrite(),
     ]
   : [];
 const runtimePatchWrites = [

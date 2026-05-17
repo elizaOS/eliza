@@ -50,7 +50,7 @@ class MiladyData(Feature):
     def _run_persistence_maintenance(self, command: str):
         subprocess.run(
             ["/usr/local/lib/elizaos/persistence-maintenance", command],
-            check=False,
+            check=True,
         )
 
     def do_activate(self, job, non_blocking=False):
