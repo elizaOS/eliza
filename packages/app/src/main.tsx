@@ -1,4 +1,5 @@
 import { ErrorBoundary } from "@elizaos/ui";
+import { VoicePill } from "@elizaos/ui/components/voice-pill";
 import "@elizaos/ui/styles";
 
 import { App as CapacitorApp } from "@capacitor/app";
@@ -12,6 +13,11 @@ import {
   DesktopTrayRuntime,
   DetachedShellRoot,
 } from "@elizaos/app-core";
+import {
+  installIosLocalAgentFetchBridge,
+  installIosLocalAgentNativeRequestBridge,
+  primeIosFullBunRuntime,
+} from "@elizaos/app-core/api/ios-local-agent-transport";
 import { Agent } from "@elizaos/capacitor-agent";
 import { Desktop } from "@elizaos/capacitor-desktop";
 import type { DeviceBridgeClient } from "@elizaos/capacitor-llama";
@@ -62,8 +68,6 @@ import {
   installAndroidNativeAgentFetchBridge,
   installDesktopPermissionsClientPatch,
   installForceFreshOnboardingClientPatch,
-  installIosLocalAgentFetchBridge,
-  installIosLocalAgentNativeRequestBridge,
   installLocalProviderCloudPreferencePatch,
   isAppWindowRoute,
   isDetachedWindowShell,
@@ -77,7 +81,6 @@ import {
   type NetworkStatusChangeDetail,
   normalizeMobileRuntimeMode,
   preSeedAndroidLocalRuntimeIfFresh,
-  primeIosFullBunRuntime,
   resolveWindowShellRoute,
   routeOnboardingDeepLink,
   SHARE_TARGET_EVENT,
@@ -88,7 +91,6 @@ import {
   subscribeDesktopBridgeEvent,
   syncDetachedShellLocation,
   TRAY_ACTION_EVENT,
-  VoicePill,
 } from "@elizaos/ui";
 import React, { type ComponentType, lazy, StrictMode, Suspense } from "react";
 import { createRoot } from "react-dom/client";
@@ -2117,13 +2119,13 @@ function applyStoredDetachedShellTheme(): void {
 async function main(): Promise<void> {
   registerViewServiceWorker();
 
-  const appWindowSlug =
-    window.location.pathname.startsWith("/apps/")
-      ? window.location.pathname.slice("/apps/".length).split("/")[0]
-      : resolveAppWindowSlug();
+  const appWindowSlug = window.location.pathname.startsWith("/apps/")
+    ? window.location.pathname.slice("/apps/".length).split("/")[0]
+    : resolveAppWindowSlug();
   if (appWindowSlug === "model-tester") {
-    await importSideEffectAppModule("@elizaos/app-model-tester", () =>
-      import("@elizaos/app-model-tester"),
+    await importSideEffectAppModule(
+      "@elizaos/app-model-tester",
+      () => import("@elizaos/app-model-tester"),
     );
     setupPlatformStyles();
     mountReactApp();

@@ -22,6 +22,7 @@ export * from "./chat/index.ts";
 export * from "./components/apps/extensions/registry.ts";
 export * from "./components/apps/extensions/surface.tsx";
 export * from "./components/apps/extensions/types.ts";
+export * from "./components/apps/AppWindowRenderer.tsx";
 export * from "./components/apps/overlay-app-api.ts";
 export * from "./components/apps/overlay-app-registry.ts";
 export * from "./components/apps/surfaces/GameOperatorShell.tsx";

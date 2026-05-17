@@ -1,9 +1,8 @@
+import { type ConversationMessage, useApp } from "@elizaos/ui";
 import {
-  type ConversationMessage,
-  useApp,
   VoicePill,
   type VoicePillMessage,
-} from "@elizaos/ui";
+} from "@elizaos/ui/components/voice-pill";
 import { useCallback, useMemo } from "react";
 
 /**
@@ -51,8 +50,7 @@ function projectPillMessages(
 }
 
 export function AndroidVoicePill() {
-  const { conversationMessages, activeConversationId, sendChatText } =
-    useApp();
+  const { conversationMessages, activeConversationId, sendChatText } = useApp();
 
   // Drive the in-WebView pill from the same conversation state the main
   // composer renders, so messages stay in sync without a separate transport.
