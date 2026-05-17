@@ -1099,7 +1099,23 @@ function registerProgressHook(runtime: IAgentRuntime): () => void {
             messageTimers.delete(sessionId);
           }
           messageBuffers.delete(sessionId);
+          // Capture the label BEFORE deleting state so we can evict the
+          // per-(source, roomId, label) cache entries below — without
+          // this the closed thread keeps mascarading as "active", and the
+          // sendMessageToTarget middleware would redirect the user's
+          // next plain follow-up into A's archived thread instead of
+          // posting it to the main channel (greptile #1 review).
+          const terminalState = progressBySession.get(sessionId);
           progressBySession.delete(sessionId);
+          if (terminalState) {
+            const cacheKey = threadCacheKey(
+              source,
+              roomId,
+              terminalState.label,
+            );
+            threadCacheByKey.delete(cacheKey);
+            mainMessageCacheByKey.delete(cacheKey);
+          }
           // Drop dedupe keys scoped to this session so the map doesn't grow
           // unbounded across the runtime's lifetime (one entry per
           // session*event*text triplet). Without this cleanup a long-lived
