@@ -11,7 +11,13 @@
  * even if our seeding code stayed the same.
  */
 
-import { hasRoleAccess, stringToUuid, type UUID } from "@elizaos/core";
+import {
+  hasRoleAccess,
+  type IAgentRuntime,
+  type Memory,
+  stringToUuid,
+  type UUID,
+} from "@elizaos/core";
 import { describe, expect, it } from "vitest";
 import {
   BENCHMARK_OWNER_ENTITY_ID,
@@ -174,8 +180,7 @@ describe("hasRoleAccess against a seeded bench world", () => {
     await seedBenchUserRole(runtime, session, adminEntityId, "ADMIN");
 
     const allowed = await hasRoleAccess(
-      // biome-ignore lint/suspicious/noExplicitAny: cross-module structural fake.
-      runtime as any,
+      runtime as unknown as IAgentRuntime,
       {
         id: stringToUuid("probe-admin-msg"),
         entityId: adminEntityId,
@@ -183,8 +188,7 @@ describe("hasRoleAccess against a seeded bench world", () => {
         roomId: session.roomId,
         content: { text: "probe", source: "benchmark" },
         createdAt: Date.now(),
-        // biome-ignore lint/suspicious/noExplicitAny: cross-module structural fake.
-      } as any,
+      } as unknown as Memory,
       "ADMIN",
     );
     expect(allowed).toBe(true);
@@ -199,8 +203,7 @@ describe("hasRoleAccess against a seeded bench world", () => {
     await seedBenchUserRole(runtime, session, userEntityId, "USER");
 
     const allowed = await hasRoleAccess(
-      // biome-ignore lint/suspicious/noExplicitAny: cross-module structural fake.
-      runtime as any,
+      runtime as unknown as IAgentRuntime,
       {
         id: stringToUuid("probe-user-msg"),
         entityId: userEntityId,
@@ -208,8 +211,7 @@ describe("hasRoleAccess against a seeded bench world", () => {
         roomId: session.roomId,
         content: { text: "probe", source: "benchmark" },
         createdAt: Date.now(),
-        // biome-ignore lint/suspicious/noExplicitAny: cross-module structural fake.
-      } as any,
+      } as unknown as Memory,
       "ADMIN",
     );
     expect(allowed).toBe(false);
@@ -223,8 +225,7 @@ describe("hasRoleAccess against a seeded bench world", () => {
     // No setEntityRole call — the canonical owner gets through via
     // isCanonicalOwner (world.metadata.ownership.ownerId).
     const allowed = await hasRoleAccess(
-      // biome-ignore lint/suspicious/noExplicitAny: cross-module structural fake.
-      runtime as any,
+      runtime as unknown as IAgentRuntime,
       {
         id: stringToUuid("probe-owner-msg"),
         entityId: BENCHMARK_OWNER_ENTITY_ID,
@@ -232,8 +233,7 @@ describe("hasRoleAccess against a seeded bench world", () => {
         roomId: session.roomId,
         content: { text: "probe", source: "benchmark" },
         createdAt: Date.now(),
-        // biome-ignore lint/suspicious/noExplicitAny: cross-module structural fake.
-      } as any,
+      } as unknown as Memory,
       "ADMIN",
     );
     expect(allowed).toBe(true);

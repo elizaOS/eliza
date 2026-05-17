@@ -1,3 +1,4 @@
+import { stringToUuid } from "@elizaos/core";
 import { describe, expect, it } from "vitest";
 import { coerceParams } from "./params";
 import {
@@ -14,8 +15,7 @@ import {
   summarizeBenchmarkTurnUsage,
 } from "./server-utils";
 
-const uuid = (value: string) =>
-  value as unknown as import("@elizaos/core").UUID;
+const uuid = (value: string) => stringToUuid(value);
 
 describe("coerceParams", () => {
   it("returns object params as-is", () => {

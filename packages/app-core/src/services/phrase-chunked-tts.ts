@@ -83,7 +83,7 @@ async function ensurePhraseChunkerLoaded(): Promise<void> {
   if (_PhraseChunkerClass) return;
   _servicesImport ??= import(
     "@elizaos/plugin-local-inference/services"
-  ) as unknown as Promise<{
+  ) as Promise<{
     PhraseChunker: PhraseChunkerConstructor;
   }>;
   const mod = await _servicesImport;

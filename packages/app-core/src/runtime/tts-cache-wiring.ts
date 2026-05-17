@@ -79,6 +79,9 @@ export async function wrapEdgeTtsHandlerWithFirstLineCache(
 
   const { wrapWithFirstLineCache, fingerprintVoiceSettings } = wrapModule;
 
+  // EdgeTtsHandler uses `input: unknown` (loose public shape) while TtsHandler
+  // requires `input: TtsHandlerInput` (concrete union). They are structurally
+  // compatible at runtime — the cast bridges the static mismatch.
   const wrapped = wrapWithFirstLineCache(
     inner as unknown as Parameters<typeof wrapWithFirstLineCache>[0],
     {
@@ -164,5 +167,7 @@ export async function wrapEdgeTtsHandlerWithFirstLineCache(
     `[tts-cache-wiring] edge-tts wrapped with first-line cache (algo ${FIRST_SENTENCE_SNIP_VERSION})`,
   );
 
+  // TtsHandler (stricter input) → EdgeTtsHandler (looser input: unknown).
+  // Structurally compatible at runtime; cast bridges the static mismatch.
   return wrapped as unknown as EdgeTtsHandler;
 }
