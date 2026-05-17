@@ -156,6 +156,38 @@ lint:
 test:
     ./scripts/static-smoke.sh
 
+# --- CI aliases -------------------------------------------------------------
+#
+# The release pipeline (.github/workflows/build-linux-iso.yml) calls a fixed
+# set of `iso-*` targets so a single contract spans every variant. These are
+# thin wrappers around the recipes above. If a step has no underlying
+# implementation in this variant it prints a clear "skipping" message and
+# exits 0 — the workflow gates the corresponding step explicitly so we never
+# silently pretend a missing step ran.
+
+# Stage build inputs (Milady app rsync into chroot_local-includes).
+iso-stage: milady-app
+    @echo "iso-stage: staged Milady app into chroot_local-includes overlay"
+
+# Pre-cache the bundled LLM model. The milady-tails variant currently
+# downloads the model from the chroot during live-build (no separate
+# pre-cache step) — this is a no-op so the workflow stays uniform.
+iso-cache-model:
+    @echo "iso-cache-model: skipping — milady-tails resolves the model inside live-build's chroot; no separate cache step"
+
+# Pre-cache the eliza CLI binary. Same story — fetched inside live-build.
+iso-cache-cli:
+    @echo "iso-cache-cli: skipping — milady-tails resolves the eliza CLI inside live-build's chroot; no separate cache step"
+
+# Alias for `config` (live-build go/no-go).
+iso-config: config
+
+# Alias for `static-smoke` (pre-build sanity check).
+iso-check: static-smoke
+
+# Alias for the full ISO build.
+iso-build: build
+
 # --- Clean ------------------------------------------------------------------
 
 # Remove build artifacts (out/ + the chroot/binary/cache trees inside

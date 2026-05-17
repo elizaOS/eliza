@@ -202,7 +202,7 @@ export function ContainerDeploymentHistory({
                 <Clock className="h-8 w-8 text-white/60" />
               </div>
               <p className="text-white/60">No deployment history available</p>
-              <p className="text-sm text-white/50 mt-2">
+              <p className="text-sm text-white/74 mt-2">
                 Deployment records will appear here after your first deployment
               </p>
             </div>

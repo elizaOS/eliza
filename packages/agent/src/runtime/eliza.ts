@@ -343,7 +343,10 @@ async function getPluginLocalEmbedding(): Promise<
 
 let _optionalPluginCache: Map<string, Promise<unknown>> | null = null;
 function getOptionalPlugin(packageName: string): Promise<unknown> {
-  const cache = (_optionalPluginCache ??= new Map());
+  if (_optionalPluginCache === null) {
+    _optionalPluginCache = new Map();
+  }
+  const cache = _optionalPluginCache;
   const cached = cache.get(packageName);
   if (cached) return cached;
   const promise = loadOptionalPlugin(packageName);

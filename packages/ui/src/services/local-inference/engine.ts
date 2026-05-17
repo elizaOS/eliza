@@ -18,7 +18,6 @@
 
 import fs from "node:fs/promises";
 import path from "node:path";
-import type { LocalInferenceLoadArgs } from "./active-model";
 import { findCatalogModel } from "./catalog";
 import {
   type DflashServerPlan,
@@ -26,6 +25,7 @@ import {
   dflashRequired,
   getDflashRuntimeStatus,
 } from "./dflash-server";
+import type { LocalInferenceLoadArgs } from "./load-args";
 import { listInstalledModels } from "./registry";
 import type { InstalledModel } from "./types";
 

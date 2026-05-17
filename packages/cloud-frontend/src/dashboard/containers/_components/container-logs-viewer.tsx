@@ -490,7 +490,7 @@ export function ContainerLogsViewer({
                     "No logs available for this container"}
                 </p>
                 {!logsState.infoMessage && (
-                  <p className="text-xs text-white/50">
+                  <p className="text-xs text-white/74">
                     Logs may take a few moments to appear after deployment
                   </p>
                 )}

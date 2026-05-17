@@ -329,7 +329,6 @@ export const readAttachmentAction: Action = {
 	contexts: ["general", "files", "media", "messaging", "documents", "web"],
 	roleGate: { minRole: "ADMIN" },
 	similes: [
-		"READ_ATTACHMENT",
 		"SAVE_ATTACHMENT_AS_DOCUMENT",
 		"OPEN_ATTACHMENT",
 		"INSPECT_ATTACHMENT",

@@ -51,6 +51,27 @@ describe("collectPluginNames AOSP terminal plugins", () => {
     expect(names.has("agent-orchestrator")).toBe(false);
   });
 
+  it("does not allow config allow-list entries to bypass stock Android gating", () => {
+    process.env.ELIZA_PLATFORM = "android";
+    const config: ElizaConfig = {
+      plugins: {
+        allow: ["shell", "coding-tools", "agent-orchestrator"],
+        entries: {
+          shell: { enabled: true },
+          "coding-tools": { enabled: true },
+          "agent-orchestrator": { enabled: true },
+        },
+      },
+      features: { shell: true, codingTools: true },
+      agents: { defaults: { agentOrchestrator: true } },
+    } as ElizaConfig;
+    const names = collectPluginNames(config);
+    expect(names.has("@elizaos/plugin-shell")).toBe(false);
+    expect(names.has("@elizaos/plugin-coding-tools")).toBe(false);
+    expect(names.has("agent-orchestrator")).toBe(false);
+    expect(names.has("@elizaos/plugin-agent-orchestrator")).toBe(false);
+  });
+
   it("excludes shell + coding-tools + orchestrator on iOS", () => {
     process.env.ELIZA_PLATFORM = "ios";
     const names = collectPluginNames(emptyConfig);
@@ -58,6 +79,22 @@ describe("collectPluginNames AOSP terminal plugins", () => {
     expect(names.has("@elizaos/plugin-shell")).toBe(false);
     expect(names.has("@elizaos/plugin-coding-tools")).toBe(false);
     expect(names.has("agent-orchestrator")).toBe(false);
+  });
+
+  it("does not allow config allow-list entries to bypass iOS gating", () => {
+    process.env.ELIZA_PLATFORM = "ios";
+    const config: ElizaConfig = {
+      plugins: {
+        allow: ["shell", "coding-tools", "agent-orchestrator"],
+      },
+      features: { shell: true, codingTools: true },
+      agents: { defaults: { agentOrchestrator: true } },
+    } as ElizaConfig;
+    const names = collectPluginNames(config);
+    expect(names.has("@elizaos/plugin-shell")).toBe(false);
+    expect(names.has("@elizaos/plugin-coding-tools")).toBe(false);
+    expect(names.has("agent-orchestrator")).toBe(false);
+    expect(names.has("@elizaos/plugin-agent-orchestrator")).toBe(false);
   });
 
   it("includes ELIZAOS_ANDROID_CORE_PLUGINS alongside terminal plugins on AOSP", () => {

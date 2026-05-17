@@ -60,6 +60,8 @@ export interface SpeakOptions {
   text: string;
   /** Optional directive overrides */
   directive?: TTSDirective;
+  /** Route through the on-device local-inference TTS endpoint on native Android */
+  useLocalInferenceTts?: boolean;
   /** Force use of system TTS */
   useSystemTts?: boolean;
 }
@@ -233,6 +235,18 @@ export interface TalkModeErrorEvent {
 }
 
 /**
+ * Native playback has started.
+ */
+export interface TalkModePlaybackStartEvent {
+  /** Playback provider that produced the audio */
+  provider: "elevenlabs" | "local-inference" | "system";
+  /** PCM sample rate when known */
+  sampleRate?: number;
+  /** PCM channel count when known */
+  channels?: number;
+}
+
+/**
  * Permission status for talk mode
  */
 export interface TalkModePermissionStatus {
@@ -362,6 +376,11 @@ export interface TalkModePlugin {
   addListener(
     eventName: "error",
     listenerFunc: (event: TalkModeErrorEvent) => void,
+  ): Promise<PluginListenerHandle>;
+
+  addListener(
+    eventName: "playbackStart",
+    listenerFunc: (event: TalkModePlaybackStartEvent) => void,
   ): Promise<PluginListenerHandle>;
 
   /**

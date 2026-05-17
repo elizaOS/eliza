@@ -27,6 +27,12 @@ interface BackupRecord {
   createdAt: string;
 }
 
+interface BackupsApiResponse {
+  success?: boolean;
+  error?: string;
+  data?: BackupRecord[];
+}
+
 const SNAPSHOT_TYPE_LABELS: Record<BackupRecord["snapshotType"], string> = {
   auto: "Auto",
   manual: "Manual",
@@ -73,19 +79,15 @@ export function ElizaAgentBackupsPanel({
       const response = await fetch(`/api/v1/eliza/agents/${agentId}/backups`, {
         cache: "no-store",
       });
-      const payload = await response.json().catch(() => ({}));
+      const payload: BackupsApiResponse = await response
+        .json()
+        .catch(() => ({}));
 
-      if (!response.ok || !(payload as { success?: boolean }).success) {
-        throw new Error(
-          (payload as { error?: string }).error ?? `HTTP ${response.status}`,
-        );
+      if (!response.ok || !payload.success) {
+        throw new Error(payload.error ?? `HTTP ${response.status}`);
       }
 
-      setBackups(
-        Array.isArray((payload as { data?: unknown[] }).data)
-          ? ((payload as { data: BackupRecord[] }).data ?? [])
-          : [],
-      );
+      setBackups(Array.isArray(payload.data) ? payload.data : []);
     } catch (fetchError) {
       setError(
         fetchError instanceof Error ? fetchError.message : String(fetchError),
@@ -364,12 +366,12 @@ export function ElizaAgentBackupsPanel({
                           >
                             {timestamp.absolute}
                           </p>
-                          <p className="text-xs text-white/50">
+                          <p className="text-xs text-white/74">
                             {timestamp.relative}
                           </p>
                         </div>
 
-                        <div className="flex flex-wrap items-center gap-4 text-xs text-white/50">
+                        <div className="flex flex-wrap items-center gap-4 text-xs text-white/74">
                           <span
                             style={{ fontFamily: "var(--font-roboto-mono)" }}
                           >
@@ -400,7 +402,7 @@ export function ElizaAgentBackupsPanel({
                             Restore this backup
                           </BrandButton>
                         ) : isLatest ? (
-                          <p className="text-xs text-white/50">
+                          <p className="text-xs text-white/74">
                             Use “Restore latest” above for stopped-agent
                             recovery.
                           </p>

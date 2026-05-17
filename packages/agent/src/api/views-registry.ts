@@ -11,8 +11,12 @@ import { promises as fs } from "node:fs";
 import path from "node:path";
 import type { IAgentRuntime } from "@elizaos/core";
 import { logger, type Plugin, type ViewDeclaration } from "@elizaos/core";
-import { BUILTIN_VIEWS } from "./builtin-views.ts";
 import type { AgentPlatform } from "./platform-detect.ts";
+
+export type { ViewRegistryEntry } from "./view-registry-types.ts";
+
+import { BUILTIN_VIEWS } from "./builtin-views.ts";
+import type { ViewRegistryEntry } from "./view-registry-types.ts";
 import { viewSearchIndex } from "./views-search-index.ts";
 
 /** Hero image extensions checked in order when `heroImagePath` is not set. */
@@ -34,40 +38,6 @@ function escapeSvgText(value: string): string {
     .replaceAll(">", "&gt;")
     .replaceAll('"', "&quot;")
     .replaceAll("'", "&apos;");
-}
-
-export interface ViewRegistryEntry extends ViewDeclaration {
-  /** Owning plugin name. */
-  pluginName: string;
-  /** Absolute path to the plugin's package root, if resolvable. */
-  pluginDir?: string;
-  /** Resolved URL served by the agent: `/api/views/<id>/bundle.js`. */
-  bundleUrl?: string;
-  /** Resolved URL served by the agent: `/api/views/<id>/hero`. */
-  heroImageUrl?: string;
-  /** True when the bundle file exists on disk. */
-  available: boolean;
-  /** Unix timestamp (ms) when this entry was registered. */
-  loadedAt: number;
-  /**
-   * Platform this view is available on. Populated from
-   * `ViewDeclaration.platforms` (first entry) or defaults to "web".
-   * Used by platform-aware route filtering to gate dynamic bundles on
-   * restricted platforms (iOS App Store, Google Play).
-   */
-  platform: AgentPlatform;
-  /** First 12 hex chars of the SHA-256 content hash of the bundle file. */
-  bundleHash?: string;
-  /** Bundle URL with `?v=<hash>` for immutable long-lived caching. */
-  bundleUrlVersioned?: string;
-  /** Bundle file size in bytes. */
-  bundleSize?: number;
-  /**
-   * True for entries registered by the built-in shell itself
-   * (pluginName === "@elizaos/builtin"). These views live in the main
-   * bundle and have no separate bundle file.
-   */
-  builtin?: boolean;
 }
 
 /** Module-level registry storage. Keyed by view id. */

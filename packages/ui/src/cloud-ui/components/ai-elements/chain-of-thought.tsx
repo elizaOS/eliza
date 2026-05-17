@@ -2,7 +2,6 @@
  * Chain of thought component displaying AI reasoning steps in a collapsible format.
  * Supports controlled and uncontrolled open states with step indicators.
  *
- * @param props - Chain of thought configuration
  * @param props.open - Controlled open state
  * @param props.defaultOpen - Default open state (uncontrolled)
  * @param props.onOpenChange - Callback when open state changes

@@ -27,14 +27,14 @@ export {
 } from "./api/app-plugins-routes.ts";
 export { handlePluginRoutes } from "./api/plugin-routes.ts";
 export {
-  installAndRestart,
-  installPlugin,
   type InstallPhase,
   type InstallProgress,
   type InstallResult,
+  installAndRestart,
+  installPlugin,
   listInstalledPlugins,
   type ProgressCallback,
+  type UninstallResult,
   uninstallAndRestart,
   uninstallPlugin,
-  type UninstallResult,
 } from "./services/plugin-installer.ts";

@@ -1,6 +1,5 @@
 import type http from "node:http";
 import type { AgentRuntime, Media, UUID } from "@elizaos/core";
-import type { AppManager } from "@elizaos/plugin-app-manager";
 import type {
   AgentAutomationMode,
   AgentStartupDiagnostics,

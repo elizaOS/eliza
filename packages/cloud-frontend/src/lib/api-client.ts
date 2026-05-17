@@ -106,12 +106,8 @@ function errorDetails(
   payload: unknown,
   status: number,
 ): { code: string; message: string } {
-  if (typeof payload === "object" && payload) {
-    const body = payload as {
-      error?: unknown;
-      code?: unknown;
-      message?: unknown;
-    };
+  if (typeof payload === "object" && payload !== null) {
+    const body = payload as Record<string, unknown>;
     const message =
       (typeof body.error === "string" && body.error) ||
       (typeof body.message === "string" && body.message) ||

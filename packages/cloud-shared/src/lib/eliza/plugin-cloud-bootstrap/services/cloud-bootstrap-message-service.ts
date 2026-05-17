@@ -104,9 +104,9 @@ function withActionResultsMetadata(
         ...getContentMetadata(message.content),
         actionResults,
       },
-    // Content has a strict index signature (ContentValue), but metadata holds
-    // plugin-extension data. The cast is intentional: metadata is stored via
-    // the Content index signature at runtime.
+      // Content has a strict index signature (ContentValue), but metadata holds
+      // plugin-extension data. The cast is intentional: metadata is stored via
+      // the Content index signature at runtime.
     } as unknown as Content,
   };
 }

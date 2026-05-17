@@ -1,6 +1,7 @@
 import process from "node:process";
 import { loadElizaConfig } from "@elizaos/agent";
 import { type AgentRuntime, logger, ModelType } from "@elizaos/core";
+import { formatError } from "@elizaos/shared";
 import { wrapEdgeTtsHandlerWithFirstLineCache } from "./tts-cache-wiring.js";
 
 export interface EdgeTtsConfig {
@@ -110,7 +111,7 @@ export async function ensureTextToSpeechHandler(
     );
   } catch (error) {
     throw new Error(
-      `[eliza] Could not register Edge TTS for TEXT_TO_SPEECH: ${error instanceof Error ? error.message : String(error)}`,
+      `[eliza] Could not register Edge TTS for TEXT_TO_SPEECH: ${formatError(error)}`,
     );
   }
 }

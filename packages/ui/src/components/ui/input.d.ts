@@ -4,7 +4,7 @@ import * as React from "react";
 declare const inputVariants: (
   props?:
     | ({
-        variant?: "default" | "form" | "config" | null | undefined;
+        variant?: "default" | "config" | "form" | null | undefined;
         density?: "default" | "compact" | "relaxed" | null | undefined;
       } & import("class-variance-authority/types").ClassProp)
     | undefined,

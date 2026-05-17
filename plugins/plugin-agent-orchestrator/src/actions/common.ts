@@ -4,6 +4,7 @@ import type {
   IAgentRuntime,
   Memory,
   State,
+  StateValue,
 } from "@elizaos/core";
 import type {
   AcpJsonRpcMessage,
@@ -63,9 +64,12 @@ export type HandlerOptionsLike =
 export function getAcpService(
   runtime: IAgentRuntime,
 ): AcpActionService | undefined {
+  // Single-step cast: getService returns Service|null; AcpActionService is a
+  // plain interface (no Service base) so we can't use the generic parameter,
+  // but the structural types are non-conflicting so one cast suffices.
   return (runtime.getService?.("ACP_SERVICE") ??
     runtime.getService?.("ACP_SUBPROCESS_SERVICE") ??
-    undefined) as unknown as AcpActionService | undefined;
+    undefined) as AcpActionService | undefined;
 }
 
 export function logger(runtime: IAgentRuntime): IAgentRuntime["logger"] {
@@ -268,6 +272,16 @@ export function errorResult(error: string, text?: string): ActionResult {
   return { success: false, error, ...(text ? { text } : {}) };
 }
 
+/** Read the session id stored in state by setCurrentSession / setCurrentSessions. */
+export function stateSessionId(state: State | undefined): string | undefined {
+  const session = state?.codingSession;
+  if (session !== null && typeof session === "object" && "id" in session) {
+    const { id } = session as { id?: string };
+    return typeof id === "string" ? id : undefined;
+  }
+  return undefined;
+}
+
 export async function resolveSession(
   service: AcpActionService,
   sessionId: string | undefined,
@@ -277,9 +291,7 @@ export async function resolveSession(
   missingId?: string;
   sessions: SessionInfo[];
 }> {
-  const stateSession = (
-    state as { codingSession?: { id?: string } } | undefined
-  )?.codingSession?.id;
+  const stateSession = stateSessionId(state);
   const targetId = sessionId ?? stateSession;
   if (targetId) {
     const found = await Promise.resolve(service.getSession(targetId));
@@ -297,14 +309,14 @@ export function setCurrentSession(
   state: State | undefined,
   session: SpawnResult | SessionInfo,
 ): void {
-  if (state) (state as { codingSession?: unknown }).codingSession = session;
+  if (state) state.codingSession = session as StateValue;
 }
 
 export function setCurrentSessions(
   state: State | undefined,
   sessions: SpawnResult[],
 ): void {
-  if (state) (state as { codingSessions?: unknown }).codingSessions = sessions;
+  if (state) state.codingSessions = sessions as StateValue;
 }
 
 export function emitSessionEvent(

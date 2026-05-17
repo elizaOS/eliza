@@ -64,7 +64,8 @@ export default function AgentDashboardPage() {
   const idleCount = agents.filter(
     (a) => a.status === "stopped" || a.status === "disconnected",
   ).length;
-  const creditBalance = credits.data?.balance ?? 0;
+  const creditBalance =
+    typeof credits.data?.balance === "number" ? credits.data.balance : null;
   const showSkeleton = enabled && agentsQuery.isLoading;
 
   return (

@@ -230,7 +230,9 @@ export class VercelAIGatewayProvider implements AIProvider {
         try {
           const toolCallIndexes = new Map<string, number>();
           let nextToolCallIndex = 0;
-          for await (const part of result.fullStream as AsyncIterable<TextStreamPart<Record<string, never>>>) {
+          for await (const part of result.fullStream as AsyncIterable<
+            TextStreamPart<Record<string, never>>
+          >) {
             if (part.type === "text-delta") {
               controller.enqueue(
                 encoder.encode(

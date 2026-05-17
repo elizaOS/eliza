@@ -1,0 +1,1 @@
+{"version":3,"file":"navigation-events.d.ts","sourceRoot":"","sources":["navigation-events.ts"],"names":[],"mappings":"AAAA,OAAO,KAAK,EAAE,kBAAkB,EAAE,MAAM,SAAS,CAAC;AAElD;;;;GAIG;AACH,qBAAa,kBAAkB;IAC7B,OAAO,CAAC,SAAS,CAAmD;IAEpE,SAAS,CAAC,QAAQ,EAAE,CAAC,MAAM,EAAE,kBAAkB,KAAK,IAAI,GAAG,MAAM,IAAI;IAOrE,IAAI,CAAC,MAAM,EAAE,kBAAkB,GAAG,IAAI;CAUvC"}

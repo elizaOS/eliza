@@ -41,3 +41,14 @@ export {
 	type TextGenerationSlot,
 	type TokenizerFamily,
 } from "@elizaos/shared";
+
+/** RAM requirements for a model bundle. */
+export interface RamBudget {
+	/** Minimum RAM the bundle will boot under, in megabytes. */
+	minMb: number;
+	/** RAM the bundle expects for nominal workloads, in megabytes. */
+	recommendedMb: number;
+	/** Where the numbers came from. `manifest` only when both came from
+	 *  a validated `eliza-1.manifest.json` next to the installed bundle. */
+	source: "manifest" | "catalog";
+}

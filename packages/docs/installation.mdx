@@ -1,9 +1,9 @@
 ---
 title: "Installation"
-description: "Install the elizaOS CLI and scaffold your first project or plugin"
+description: "Install the elizaOS CLI and scaffold your first project or plugin."
 ---
 
-The public `elizaos` package installs the `elizaos` binary. The CLI is intentionally small: it creates and upgrades generated workspaces, shows template information, and prints version information. Running, building, and testing happens through scripts inside the generated project or plugin.
+The public `elizaos` package installs the `elizaos` binary. The CLI is small on purpose: it creates and upgrades generated workspaces, shows template information, and prints versions. Running, building, and testing happens through scripts inside the generated project or plugin.
 
 ## Prerequisites
 
@@ -16,6 +16,8 @@ The public `elizaos` package installs the `elizaos` binary. The CLI is intention
 </Note>
 
 ## Install the CLI
+
+
 
 You can run the CLI without a global install:
 
@@ -40,7 +42,7 @@ elizaos version
   The npm package name is `elizaos`, and the binary is `elizaos`.
 </Tip>
 
-## Create a Project
+## Create a project
 
 Create a deployable product workspace:
 
@@ -63,7 +65,7 @@ bun run typecheck
 bun run lint
 ```
 
-## Create a Plugin
+## Create a plugin
 
 Create a runtime extension:
 
@@ -77,7 +79,7 @@ bun run test
 
 Plugins add runtime capabilities such as actions, providers, evaluators, services, routes, or app surfaces. They are consumed by projects after they are built and added as dependencies or local workspace packages.
 
-## Inspect Templates
+## Inspect templates
 
 List available templates:
 
@@ -94,7 +96,7 @@ For automation:
 elizaos info --json
 ```
 
-## Upgrade Generated Files
+## Upgrade generated files
 
 Run upgrades from the root of a generated project or plugin:
 
@@ -139,19 +141,19 @@ The upgrade command reads `.elizaos/template.json`, renders the latest version o
   </Accordion>
 </AccordionGroup>
 
-## See Also
+## See also
 
 <CardGroup cols={2}>
   <Card title="Quickstart" icon="rocket" href="/quickstart">
     Create and run a generated project.
   </Card>
-  <Card title="CLI Reference" icon="terminal" href="/cli-reference/overview">
+  <Card title="CLI reference" icon="terminal" href="/cli-reference/overview">
     Commands, flags, and examples.
   </Card>
-  <Card title="Project Overview" icon="diagram-project" href="/quickstart">
+  <Card title="Project overview" icon="diagram-project" href="/quickstart">
     Understand generated project structure.
   </Card>
-  <Card title="Create a Plugin" icon="puzzle-piece" href="/plugins/create-a-plugin">
+  <Card title="Create a plugin" icon="puzzle-piece" href="/plugins/create-a-plugin">
     Build a reusable runtime extension.
   </Card>
 </CardGroup>

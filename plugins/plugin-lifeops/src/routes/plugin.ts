@@ -616,6 +616,10 @@ function scheduledTasksRouteHandler(): LegacyRouteHandler {
   });
   return async (req, res, runtime): Promise<void> => {
     const httpReq = req as http.IncomingMessage;
+    // Cast: the elizaOS LegacyRouteHandler passes RouteResponse (an abstract
+    // wrapper), but the underlying value at runtime is a raw Node.js
+    // ServerResponse. The shapes differ at the type level, so we cast through
+    // unknown to access the raw response methods needed by buildLifeOpsContext.
     const httpRes = res as unknown as http.ServerResponse;
     const ctx = buildLifeOpsContext(
       httpReq,

@@ -80,15 +80,21 @@ export function CloudObservabilityPanel() {
         </div>
 
         <div className="grid gap-3 md:grid-cols-4">
-          <Metric label="Requests" value={snapshot?.requests.length ?? 0} />
+          <Metric
+            label="Requests"
+            value={snapshot ? snapshot.requests.length : null}
+          />
           <Metric
             label="Slow Requests"
-            value={snapshot?.slowRequests.length ?? 0}
+            value={snapshot ? snapshot.slowRequests.length : null}
           />
-          <Metric label="Slow DB" value={snapshot?.slowDb.length ?? 0} />
+          <Metric
+            label="Slow DB"
+            value={snapshot ? snapshot.slowDb.length : null}
+          />
           <Metric
             label="Duplicate Reads"
-            value={snapshot?.duplicateReadRequests.length ?? 0}
+            value={snapshot ? snapshot.duplicateReadRequests.length : null}
           />
         </div>
 
@@ -122,7 +128,7 @@ export function CloudObservabilityPanel() {
   );
 }
 
-function Metric({ label, value }: { label: string; value: number }) {
+function Metric({ label, value }: { label: string; value: number | null }) {
   return (
     <div className="border border-[#242424] bg-[#0d0d0d] p-3">
       <div className="flex items-center gap-2 text-[#858585]">
@@ -133,7 +139,9 @@ function Metric({ label, value }: { label: string; value: number }) {
         )}
         <span className="text-xs font-mono">{label}</span>
       </div>
-      <div className="mt-2 text-2xl font-semibold text-white">{value}</div>
+      <div className="mt-2 text-2xl font-semibold text-white">
+        {value !== null ? value : "—"}
+      </div>
     </div>
   );
 }

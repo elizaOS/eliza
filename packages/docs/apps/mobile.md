@@ -63,6 +63,12 @@ libraries, `MANAGE_APP_OPS_MODES`, `PACKAGE_USAGE_STATS`,
 `MANAGE_VIRTUAL_MACHINE`, and other system-only permissions, then audits the
 source tree and artifact.
 
+The `android-cloud` target strips `ElizaAgentService`, system-only permissions
+such as `MANAGE_APP_OPS_MODES`, `PACKAGE_USAGE_STATS`, and
+`MANAGE_VIRTUAL_MACHINE`, staged
+`assets/agent` files, and `libeliza_` native runtime libraries before the APK
+is assembled.
+
 ## Platform Support
 
 | Platform | Minimum Version | Scheme | Notes |

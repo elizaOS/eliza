@@ -11,6 +11,8 @@ import type {
   LegacyRouteHandler,
   Plugin,
   Route,
+  RouteRequest,
+  RouteResponse,
 } from "@elizaos/core";
 import { getAcpService } from "./actions/common.js";
 import type { RouteContext } from "./api/route-utils.js";
@@ -27,13 +29,15 @@ function buildRouteContext(runtime: IAgentRuntime): RouteContext {
 
 function codingAgentRouteHandler(): LegacyRouteHandler {
   return async (
-    req: unknown,
-    res: unknown,
-    runtime: unknown,
+    req: RouteRequest,
+    res: RouteResponse,
+    agentRuntime: IAgentRuntime,
   ): Promise<void> => {
-    const httpReq = req as http.IncomingMessage;
-    const httpRes = res as http.ServerResponse;
-    const agentRuntime = runtime as IAgentRuntime;
+    // Cast: LegacyRouteHandler receives RouteRequest/RouteResponse at the type
+    // level, but the elizaOS runtime passes raw Node.js http objects at
+    // runtime. Access the underlying Node.js API via these casts.
+    const httpReq = req as unknown as http.IncomingMessage;
+    const httpRes = res as unknown as http.ServerResponse;
     const url = new URL(
       httpReq.url ?? "/",
       `http://${httpReq.headers?.host ?? "localhost"}`,

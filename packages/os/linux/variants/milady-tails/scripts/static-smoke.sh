@@ -8,6 +8,10 @@ REPO_ROOT="$(cd "${ROOT}/../../../../.." && pwd)"
 SOURCE_ONLY="${ELIZAOS_STATIC_SOURCE_ONLY:-0}"
 cd "${ROOT}"
 
+stat_mode() {
+    stat -c %a "$1" 2>/dev/null || stat -f %Lp "$1"
+}
+
 echo "==> shell syntax"
 bash -n build.sh build-iso.sh tails/auto/build \
     scripts/dev-sign-update-manifest.sh \
@@ -31,6 +35,7 @@ sh -n \
     tails/config/chroot_local-includes/usr/local/lib/elizaos/runtime-env \
     tails/config/chroot_local-includes/usr/local/lib/elizaos/start-elizaos-agent-user \
     tails/config/chroot_local-includes/usr/local/lib/elizaos/start-elizaos-browser-user \
+    tails/config/chroot_local-includes/usr/local/lib/elizaos/start-elizaos-pill-user \
     tails/config/chroot_local-includes/usr/local/lib/elizaos/start-elizaos-renderer-user \
     tails/config/chroot_local-includes/usr/local/lib/elizaos/start-milady-user \
     tails/config/chroot_local-includes/usr/local/lib/elizaos/update-health-check \
@@ -69,6 +74,7 @@ PY
 for unit in \
     tails/config/chroot_local-includes/etc/systemd/user/elizaos-agent.service \
     tails/config/chroot_local-includes/etc/systemd/user/elizaos-renderer.service \
+    tails/config/chroot_local-includes/etc/systemd/user/elizaos-pill.service \
     tails/config/chroot_local-includes/etc/systemd/user/milady.service
 do
     grep -q '^ConditionUser=1000$' "${unit}"
@@ -79,6 +85,7 @@ for executable in \
     tails/config/chroot_local-includes/usr/local/lib/elizaos/runtime-env \
     tails/config/chroot_local-includes/usr/local/lib/elizaos/start-elizaos-browser-user \
     tails/config/chroot_local-includes/usr/local/lib/elizaos/start-elizaos-agent-user \
+    tails/config/chroot_local-includes/usr/local/lib/elizaos/start-elizaos-pill-user \
     tails/config/chroot_local-includes/usr/local/lib/elizaos/start-elizaos-renderer-user \
     tails/config/chroot_local-includes/usr/local/lib/elizaos/start-milady-user \
     tails/config/chroot_local-includes/usr/local/lib/elizaos/update-health-check \
@@ -87,7 +94,7 @@ for executable in \
     scripts/usb-write.sh \
     scripts/security-smoke.sh
 do
-    mode="$(stat -c %a "${executable}")"
+    mode="$(stat_mode "${executable}")"
     if [ "${mode}" != "755" ]; then
         echo "${executable} must be mode 755, got ${mode}" >&2
         exit 1
@@ -97,7 +104,7 @@ done
 echo "==> elizaOS branding"
 for font in Poppins-Regular.ttf Poppins-Medium.ttf OFL.txt; do
     test -f "tails/config/chroot_local-includes/usr/share/fonts/truetype/elizaos/${font}"
-    font_mode="$(stat -c %a "tails/config/chroot_local-includes/usr/share/fonts/truetype/elizaos/${font}")"
+    font_mode="$(stat_mode "tails/config/chroot_local-includes/usr/share/fonts/truetype/elizaos/${font}")"
     if [ "${font_mode}" != "644" ]; then
         echo "${font} must be mode 644, got ${font_mode}" >&2
         exit 1
@@ -417,7 +424,7 @@ if grep -q 'pkill .* -u amnesia' \
     echo "persistence-maintenance must not use broad pkill patterns against the live user." >&2
     exit 1
 fi
-helper_mode="$(stat -c %a tails/config/chroot_local-includes/usr/local/lib/elizaos/persistence-maintenance)"
+helper_mode="$(stat_mode tails/config/chroot_local-includes/usr/local/lib/elizaos/persistence-maintenance)"
 if [ "${helper_mode}" != "755" ]; then
     echo "persistence-maintenance must be mode 755, got ${helper_mode}" >&2
     exit 1
@@ -433,7 +440,7 @@ if [ -d tails/config/chroot_local-includes/lib ]; then
     exit 1
 fi
 if [ -e tails/config/chroot_local-includes/tmp ]; then
-    tmp_mode="$(stat -c %a tails/config/chroot_local-includes/tmp)"
+    tmp_mode="$(stat_mode tails/config/chroot_local-includes/tmp)"
     if [ "${tmp_mode}" != "1777" ]; then
         echo "tails/config/chroot_local-includes/tmp must be mode 1777, got ${tmp_mode}" >&2
         exit 1
@@ -442,7 +449,7 @@ elif [ "${SOURCE_ONLY}" != "1" ]; then
     echo "tails/config/chroot_local-includes/tmp is missing from the full build tree" >&2
     exit 1
 fi
-swapon_mode="$(stat -c %a tails/config/chroot_local-includes/usr/sbin/swapon.tails)"
+swapon_mode="$(stat_mode tails/config/chroot_local-includes/usr/sbin/swapon.tails)"
 if [ "${swapon_mode}" != "755" ]; then
     echo "tails/config/chroot_local-includes/usr/sbin/swapon.tails must be mode 755, got ${swapon_mode}" >&2
     exit 1
@@ -483,6 +490,8 @@ grep -q 'systemctl --user start --no-block milady.service' \
 grep -q 'systemctl --user start --no-block elizaos-agent.service' \
     tails/config/chroot_local-includes/usr/local/lib/elizaos/milady-keeper
 grep -q 'systemctl --user start --no-block elizaos-renderer.service' \
+    tails/config/chroot_local-includes/usr/local/lib/elizaos/milady-keeper
+grep -q 'systemctl --user start --no-block elizaos-pill.service' \
     tails/config/chroot_local-includes/usr/local/lib/elizaos/milady-keeper
 grep -q 'ELIZA_API_PORT.*:-31337' \
     tails/config/chroot_local-includes/usr/local/lib/elizaos/start-elizaos-agent-user
@@ -530,6 +539,24 @@ grep -q 'gi.require_version("Gdk", "3.0")' \
     tails/config/chroot_local-includes/usr/local/lib/elizaos/elizaos-webkit-shell
 grep -q 'gi.require_version("WebKit2", "4.1")' \
     tails/config/chroot_local-includes/usr/local/lib/elizaos/elizaos-webkit-shell
+grep -q 'ELIZAOS_SHELL_MODE' \
+    tails/config/chroot_local-includes/usr/local/lib/elizaos/elizaos-webkit-shell
+grep -q 'configure_pill_window' \
+    tails/config/chroot_local-includes/usr/local/lib/elizaos/elizaos-webkit-shell
+grep -q 'set_keep_above(True)' \
+    tails/config/chroot_local-includes/usr/local/lib/elizaos/elizaos-webkit-shell
+grep -q 'ELIZAOS_SHELL_MODE=pill' \
+    tails/config/chroot_local-includes/usr/local/lib/elizaos/start-elizaos-pill-user
+grep -q 'shell=pill' \
+    tails/config/chroot_local-includes/usr/local/lib/elizaos/start-elizaos-pill-user
+grep -q 'elizaos-webkit-shell' \
+    tails/config/chroot_local-includes/usr/local/lib/elizaos/start-elizaos-pill-user
+grep -q 'ELIZAOS_RENDERER_PORT.*:-5174' \
+    tails/config/chroot_local-includes/usr/local/lib/elizaos/start-elizaos-pill-user
+grep -q '^ExecStart=/usr/local/lib/elizaos/start-elizaos-pill-user$' \
+    tails/config/chroot_local-includes/etc/systemd/user/elizaos-pill.service
+grep -q 'systemctl --global enable elizaos-pill.service' \
+    tails/config/chroot_local-hooks/52-update-systemd-units
 grep -q 'set_network_proxy_settings(WebKit2.NetworkProxyMode.NO_PROXY' \
     tails/config/chroot_local-includes/usr/local/lib/elizaos/elizaos-webkit-shell
 grep -q 'base_data_directory=data_dir' \
@@ -919,7 +946,7 @@ if (
 	'
 fi
 if [ -e tails/chroot/opt/milady/bin/chrome-sandbox ]; then
-    sandbox_mode="$(stat -c %a tails/chroot/opt/milady/bin/chrome-sandbox)"
+    sandbox_mode="$(stat_mode tails/chroot/opt/milady/bin/chrome-sandbox)"
     if [ "${sandbox_mode}" != "755" ]; then
         echo "chrome-sandbox must not be setuid in native-renderer elizaOS Live, got ${sandbox_mode}" >&2
         exit 1

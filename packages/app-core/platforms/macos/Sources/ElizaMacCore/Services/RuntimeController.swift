@@ -88,7 +88,7 @@ public final class RuntimeController {
                 self.logger.info("[RuntimeController] Runtime process exited")
             }
         }
-        status = .running(apiBase: configuration.apiBaseURL)
-        logger.info("[RuntimeController] Started runtime pid=\(nextProcess.processIdentifier, privacy: .public)")
+        status = .starting
+        logger.info("[RuntimeController] Started runtime pid=\(nextProcess.processIdentifier, privacy: .public); waiting for health")
     }
 }

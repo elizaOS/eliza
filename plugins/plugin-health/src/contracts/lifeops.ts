@@ -887,8 +887,7 @@ export interface LifeOpsWorkflowPermissionPolicy {
 // `@elizaos/plugin-browser/contracts`. `LIFEOPS_BROWSER_KINDS`,
 // `LifeOpsBrowserKind`, `LIFEOPS_BROWSER_ACTION_KINDS`,
 // `LifeOpsBrowserActionKind`, and `LifeOpsBrowserAction` remain here
-// because workflow-linked session shapes below still reference them;
-// Phase 5 will revisit those references.
+// because workflow-linked session shapes below still reference them.
 export const LIFEOPS_BROWSER_KINDS = ["chrome", "safari"] as const;
 export type LifeOpsBrowserKind = (typeof LIFEOPS_BROWSER_KINDS)[number];
 

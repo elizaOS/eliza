@@ -2,7 +2,6 @@
  * Voice audio player component with playback controls.
  * Supports play/pause, volume control, mute, and progress tracking.
  *
- * @param props - Voice audio player configuration
  * @param props.audioUrl - URL of audio file to play
  * @param props.className - Additional CSS classes
  */

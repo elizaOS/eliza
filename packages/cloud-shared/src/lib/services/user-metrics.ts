@@ -43,6 +43,12 @@ import { users } from "../../db/schemas/users";
 import { cache } from "../cache/client";
 import { CacheKeys, CacheStaleTTL, CacheTTL } from "../cache/keys";
 import { logger } from "../utils/logger";
+import {
+  type DistributionEntry,
+  type RetentionRatePoint,
+  toDistribution,
+  toRetentionRates,
+} from "./analytics-derived";
 
 /**
  * Maps a MetricsPlatform to Eliza room source values.
@@ -91,9 +97,22 @@ export interface MetricsOverview {
   newSignups7d: number;
   avgMessagesPerUser: number;
   platformBreakdown: Record<string, number>;
-  oauthRate: OAuthConnectionRate;
+  /**
+   * `platformBreakdown` rendered as ordered entries with share-of-DAU
+   * percent values, computed server-side so the UI is display-only.
+   */
+  platformDistribution: DistributionEntry[];
+  oauthRate: OAuthConnectionRate & {
+    /** `rate` rendered as a 0..100 percent rounded to 1dp. */
+    ratePercent: number;
+  };
   dailyTrend: DailyMetric[];
   retentionCohorts: RetentionCohort[];
+  /**
+   * `retentionCohorts` rendered as percent rates per cohort day,
+   * computed server-side so the UI is display-only.
+   */
+  retentionRates: RetentionRatePoint[];
 }
 
 // ---------------------------------------------------------------------------
@@ -341,9 +360,14 @@ class UserMetricsService {
       newSignups7d: signups7d.total,
       avgMessagesPerUser: Math.round(avgMessagesPerUser * 100) / 100,
       platformBreakdown: dauResult.byPlatform,
-      oauthRate,
+      platformDistribution: toDistribution(dauResult.byPlatform),
+      oauthRate: {
+        ...oauthRate,
+        ratePercent: Math.round(oauthRate.rate * 1000) / 10,
+      },
       dailyTrend,
       retentionCohorts: retention,
+      retentionRates: toRetentionRates(retention),
     };
   }
 

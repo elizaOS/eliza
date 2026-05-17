@@ -533,7 +533,6 @@ export const PromptInput = ({
       if (accept.includes("image/*")) {
         return f.type.startsWith("image/");
       }
-      // NOTE: keep simple; expand as needed
       return true;
     },
     [accept],

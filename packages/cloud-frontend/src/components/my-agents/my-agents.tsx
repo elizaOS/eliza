@@ -89,17 +89,17 @@ function AgentConsoleOverview({
 
   return (
     <section className="grid gap-4 lg:grid-cols-[minmax(0,1.2fr)_minmax(360px,0.8fr)]">
-      <div className="rounded-sm border border-white/36 bg-white/58 p-5 shadow-sm">
+      <div className="border border-white/10 bg-black p-5">
         <div className="flex flex-col gap-5 md:flex-row md:items-start md:justify-between">
           <div className="max-w-2xl space-y-3">
-            <p className="text-xs font-semibold uppercase tracking-normal text-accent">
+            <p className="text-[11px] font-semibold uppercase tracking-[0.2em] text-[#FF5800]">
               Agent console
             </p>
             <div className="space-y-2">
-              <h1 className="text-2xl font-semibold tracking-normal text-[#06131f] md:text-3xl">
+              <h1 className="text-2xl font-semibold text-white md:text-3xl">
                 Administer and enter your running agent
               </h1>
-              <p className="text-sm leading-6 text-[#06131f]/68">
+              <p className="text-sm leading-6 text-white/60">
                 Use this page as the control room for your hosted Eliza agent:
                 open the live chat, inspect runtime state, manage API access,
                 connect app devices, and keep billing in view.
@@ -110,7 +110,7 @@ function AgentConsoleOverview({
           <div className="flex shrink-0 flex-col gap-2 sm:flex-row md:flex-col">
             <Link
               to={chatPath}
-              className="inline-flex h-10 items-center justify-center gap-2 rounded-sm border border-accent bg-primary px-4 text-sm font-medium text-primary-fg transition-colors hover:bg-accent-hover"
+              className="inline-flex h-10 items-center justify-center gap-2 border border-[#FF5800] bg-[#FF5800] px-4 text-sm font-medium text-black transition-colors hover:bg-[#FF5800]/90"
             >
               <MessageCircle className="h-4 w-4" />
               {primaryAgent ? "Open agent chat" : "Go to my agent"}
@@ -118,7 +118,7 @@ function AgentConsoleOverview({
             <button
               type="button"
               onClick={onCreateNew}
-              className="inline-flex h-10 items-center justify-center gap-2 rounded-sm border border-white/42 bg-white/36 px-4 text-sm font-medium text-[#06131f]/78 transition-colors hover:bg-white/58 hover:text-[#06131f]"
+              className="inline-flex h-10 items-center justify-center gap-2 border border-white/15 bg-black px-4 text-sm font-medium text-white/80 transition-colors hover:bg-white/5"
             >
               <Server className="h-4 w-4" />
               Runtime admin
@@ -126,28 +126,28 @@ function AgentConsoleOverview({
           </div>
         </div>
 
-        <div className="mt-5 grid gap-px overflow-hidden rounded-sm border border-white/42 bg-white/42 sm:grid-cols-3">
-          <div className="bg-white/44 p-4">
-            <p className="text-[11px] uppercase tracking-normal text-[#06131f]/48">
+        <div className="mt-5 grid gap-px border border-white/10 bg-white/5 sm:grid-cols-3">
+          <div className="bg-black p-4">
+            <p className="text-[11px] uppercase tracking-[0.2em] text-white/35">
               Owned agents
             </p>
-            <p className="mt-1 text-2xl font-semibold text-[#06131f]">
+            <p className="mt-1 text-2xl font-semibold text-white tabular-nums">
               {ownedAgents.length}
             </p>
           </div>
-          <div className="bg-white/44 p-4">
-            <p className="text-[11px] uppercase tracking-normal text-[#06131f]/48">
+          <div className="bg-black p-4">
+            <p className="text-[11px] uppercase tracking-[0.2em] text-white/35">
               Running
             </p>
-            <p className="mt-1 text-2xl font-semibold text-[#06131f]">
+            <p className="mt-1 text-2xl font-semibold text-white tabular-nums">
               {runningCount}
             </p>
           </div>
-          <div className="bg-white/44 p-4">
-            <p className="text-[11px] uppercase tracking-normal text-[#06131f]/48">
+          <div className="bg-black p-4">
+            <p className="text-[11px] uppercase tracking-[0.2em] text-white/35">
               Chat target
             </p>
-            <p className="mt-1 truncate text-sm font-medium text-[#06131f]">
+            <p className="mt-1 truncate text-sm font-medium text-white">
               {primaryAgent?.name ?? "Create or deploy an agent"}
             </p>
           </div>
@@ -161,19 +161,19 @@ function AgentConsoleOverview({
             <Link
               key={section.title}
               to={section.to}
-              className="group flex items-start gap-3 rounded-sm border border-white/36 bg-white/50 p-4 shadow-sm transition-colors hover:border-accent/40 hover:bg-white/68"
+              className="group flex items-start gap-3 border border-white/10 bg-black p-4 transition-colors hover:border-[#FF5800]/40 hover:bg-white/[0.03]"
             >
-              <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-sm border border-white/48 bg-white/52 text-accent">
+              <span className="flex h-9 w-9 shrink-0 items-center justify-center border border-white/10 bg-black text-[#FF5800]">
                 <Icon className="h-4 w-4" />
               </span>
               <span className="min-w-0 flex-1">
                 <span className="flex items-center justify-between gap-3">
-                  <span className="text-sm font-medium text-[#06131f]">
+                  <span className="text-sm font-medium text-white">
                     {section.title}
                   </span>
-                  <ArrowRight className="h-4 w-4 shrink-0 text-[#06131f]/34 transition-colors group-hover:text-accent" />
+                  <ArrowRight className="h-4 w-4 shrink-0 text-white/30 transition-colors group-hover:text-[#FF5800]" />
                 </span>
-                <span className="mt-1 block text-xs leading-5 text-[#06131f]/62">
+                <span className="mt-1 block text-xs leading-5 text-white/55">
                   {section.description}
                 </span>
               </span>

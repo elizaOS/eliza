@@ -28,7 +28,8 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 function appendQuery(url: URL, query?: QueryParams): URL {
   if (!query) return url;
 
-  const params = query instanceof URLSearchParams ? query : new URLSearchParams();
+  const params =
+    query instanceof URLSearchParams ? query : new URLSearchParams();
 
   if (!(query instanceof URLSearchParams)) {
     for (const [key, value] of Object.entries(query)) {
@@ -43,7 +44,11 @@ function appendQuery(url: URL, query?: QueryParams): URL {
   return url;
 }
 
-function appendQueryValue(params: URLSearchParams, key: string, value: QueryValue | QueryValue[]) {
+function appendQueryValue(
+  params: URLSearchParams,
+  key: string,
+  value: QueryValue | QueryValue[],
+) {
   if (Array.isArray(value)) {
     for (const item of value) {
       appendQueryValue(params, key, item);
@@ -54,7 +59,11 @@ function appendQueryValue(params: URLSearchParams, key: string, value: QueryValu
   params.append(key, String(value));
 }
 
-function resolveUrl(baseUrl: string, path: string, query?: QueryParams): string {
+function resolveUrl(
+  baseUrl: string,
+  path: string,
+  query?: QueryParams,
+): string {
   const url = /^https?:\/\//i.test(path)
     ? new URL(path)
     : new URL(`${trimTrailingSlash(baseUrl)}${ensureLeadingSlash(path)}`);
@@ -77,7 +86,11 @@ async function parseResponseBody(response: Response): Promise<unknown> {
   }
 }
 
-function normalizeErrorBody(status: number, statusText: string, body: unknown): CloudApiErrorBody {
+function normalizeErrorBody(
+  status: number,
+  statusText: string,
+  body: unknown,
+): CloudApiErrorBody {
   if (isRecord(body)) {
     const rawError = body.error;
     const error =
@@ -93,7 +106,10 @@ function normalizeErrorBody(status: number, statusText: string, body: unknown): 
       success: false,
       error,
       details: isRecord(body.details) ? body.details : undefined,
-      requiredCredits: typeof body.requiredCredits === "number" ? body.requiredCredits : undefined,
+      requiredCredits:
+        typeof body.requiredCredits === "number"
+          ? body.requiredCredits
+          : undefined,
       quota: isQuota(body.quota) ? body.quota : undefined,
     };
   }
@@ -108,10 +124,17 @@ function normalizeErrorBody(status: number, statusText: string, body: unknown): 
 }
 
 function isQuota(value: unknown): value is { current: number; max: number } {
-  return isRecord(value) && typeof value.current === "number" && typeof value.max === "number";
+  return (
+    isRecord(value) &&
+    typeof value.current === "number" &&
+    typeof value.max === "number"
+  );
 }
 
-function timeoutSignal(timeoutMs?: number, signal?: AbortSignal): AbortSignal | undefined {
+function timeoutSignal(
+  timeoutMs?: number,
+  signal?: AbortSignal,
+): AbortSignal | undefined {
   if (signal) return signal;
   if (!timeoutMs) return undefined;
   return AbortSignal.timeout(timeoutMs);
@@ -147,7 +170,10 @@ export class ElizaCloudHttpClient {
   private readonly defaultHeaders: HeadersInit | undefined;
 
   constructor(options: ElizaCloudClientOptions = {}) {
-    this.baseUrl = normalizeBaseUrl(options.baseUrl, DEFAULT_ELIZA_CLOUD_API_BASE_URL);
+    this.baseUrl = normalizeBaseUrl(
+      options.baseUrl,
+      DEFAULT_ELIZA_CLOUD_API_BASE_URL,
+    );
     this.apiKey = options.apiKey;
     this.bearerToken = options.bearerToken;
     this.fetchImpl = options.fetchImpl ?? fetch;
@@ -230,7 +256,11 @@ export class ElizaCloudHttpClient {
     const body = await parseResponseBody(response);
 
     if (!response.ok) {
-      const errorBody = normalizeErrorBody(response.status, response.statusText, body);
+      const errorBody = normalizeErrorBody(
+        response.status,
+        response.statusText,
+        body,
+      );
       throw response.status === 402
         ? new InsufficientCreditsError(errorBody)
         : new CloudApiError(response.status, errorBody);
@@ -243,7 +273,10 @@ export class ElizaCloudHttpClient {
     return body as TResponse;
   }
 
-  async get<TResponse>(path: string, options?: CloudRequestOptions): Promise<TResponse> {
+  async get<TResponse>(
+    path: string,
+    options?: CloudRequestOptions,
+  ): Promise<TResponse> {
     return this.request<TResponse>("GET", path, options);
   }
 
@@ -271,7 +304,10 @@ export class ElizaCloudHttpClient {
     return this.request<TResponse>("PATCH", path, { ...options, json: body });
   }
 
-  async delete<TResponse>(path: string, options?: CloudRequestOptions): Promise<TResponse> {
+  async delete<TResponse>(
+    path: string,
+    options?: CloudRequestOptions,
+  ): Promise<TResponse> {
     return this.request<TResponse>("DELETE", path, options);
   }
 }
@@ -280,12 +316,18 @@ export class CloudApiClient extends ElizaCloudHttpClient {
   constructor(
     baseUrl: string = DEFAULT_ELIZA_CLOUD_API_BASE_URL,
     apiKey?: string,
-    options: Omit<ElizaCloudClientOptions, "apiBaseUrl" | "apiKey" | "baseUrl"> = {},
+    options: Omit<
+      ElizaCloudClientOptions,
+      "apiBaseUrl" | "apiKey" | "baseUrl"
+    > = {},
   ) {
     super({ ...options, baseUrl, apiKey });
   }
 
-  async postUnauthenticated<TResponse>(path: string, body: unknown): Promise<TResponse> {
+  async postUnauthenticated<TResponse>(
+    path: string,
+    body: unknown,
+  ): Promise<TResponse> {
     return this.post<TResponse>(path, body, { skipAuth: true });
   }
 }

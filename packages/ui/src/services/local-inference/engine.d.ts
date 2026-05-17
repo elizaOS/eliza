@@ -15,7 +15,7 @@
  * installed, `available()` returns false and callers surface a clear error
  * instead of crashing the process.
  */
-import type { LocalInferenceLoadArgs } from "./active-model";
+import type { LocalInferenceLoadArgs } from "./load-args";
 
 type ResolvedGpuLayers = number | "max" | "auto";
 export declare function gpuLayersForKvOffload(
@@ -24,6 +24,9 @@ export declare function gpuLayersForKvOffload(
 export declare function resolveGpuLayersForLoad(
   resolved?: LocalInferenceLoadArgs,
 ): ResolvedGpuLayers;
+export declare function getDflashTargetMetaBlockReason(
+  input: unknown,
+): string | null;
 export interface GenerateArgs {
   prompt: string;
   stopSequences?: string[];

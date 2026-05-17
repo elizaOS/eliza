@@ -77,7 +77,7 @@ export function AffiliatesPageClient() {
           await createAffiliateCode();
         }
       }
-    } catch (e) {
+    } catch (_e) {
       toast.error("Failed to load affiliate data");
     } finally {
       setLoading(false);
@@ -218,7 +218,7 @@ export function AffiliatesPageClient() {
           <Skeleton className="h-14 rounded-lg" />
         ) : referralFetchFailed || !referralMe ? (
           <div className="flex items-center gap-3">
-            <p className="text-sm text-white/50">
+            <p className="text-sm text-white/74">
               Could not load your invite link.
             </p>
             <Button
@@ -245,7 +245,7 @@ export function AffiliatesPageClient() {
               </a>
               .
             </p>
-            <p className="mt-2 font-mono text-xs text-white/50 break-all">
+            <p className="mt-2 font-mono text-xs text-white/74 break-all">
               {buildReferralInviteLoginUrl(pageOrigin, referralMe.code)}
             </p>
           </div>

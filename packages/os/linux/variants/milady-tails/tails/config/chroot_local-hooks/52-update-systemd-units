@@ -14,6 +14,7 @@ for path in \
     /etc/systemd/system/elizaos-update-verify.service \
     /etc/systemd/user/elizaos-agent.service \
     /etc/systemd/user/elizaos-renderer.service \
+    /etc/systemd/user/elizaos-pill.service \
     /etc/systemd/user/milady.service \
     /usr/share/applications/milady.desktop \
     /usr/local/bin/milady \
@@ -32,6 +33,7 @@ chmod 644 /etc/systemd/system/milady.path /etc/systemd/system/milady.service \
     /etc/systemd/system/elizaos-update-health-check.service \
     /etc/systemd/system/elizaos-update-verify.service \
     /etc/systemd/user/elizaos-agent.service /etc/systemd/user/elizaos-renderer.service \
+    /etc/systemd/user/elizaos-pill.service \
     /etc/systemd/user/milady.service 2>/dev/null || true
 chmod 755 /usr/local/bin/milady 2>/dev/null || true
 
@@ -97,6 +99,7 @@ systemctl --global enable tails-post-greeter-docs.service
 systemctl --global enable tails-post-greeter-whisperback.service
 systemctl --global enable elizaos-agent.service
 systemctl --global enable elizaos-renderer.service
+systemctl --global enable elizaos-pill.service
 systemctl --global enable milady.service
 
 # This causes the proxies to run during the whole session, instead of

@@ -177,12 +177,17 @@ export { CharacterSchema } from "./config/character-schema.ts";
 export { loadElizaConfig, saveElizaConfig } from "./config/config.ts";
 export * from "./config/index.ts";
 export { resolveUserPath } from "./config/paths.ts";
+// Phase 4F: surface plugin-widgets / plugin-validation / plugin-manager
+// types through the barrel so `@elizaos/plugin-registry` consumes them
+// without reaching into subpaths. The implementations remain agent-private.
 // === Phase 4F ===
 // plugin-routes / plugins-compat-routes moved to @elizaos/plugin-registry.
 // Re-export the internal helpers they consume so the plugin can stay free of
 // `agent/src/...` deep imports.
 export {
   getPluginWidgets,
+  getPluginWidgets,
+  type PluginWidgetDeclarationServer,
   type PluginWidgetDeclarationServer,
 } from "./config/plugin-widgets.ts";
 // `contracts/awareness.js` adds the local-only (non-shared) contract surface.
@@ -240,6 +245,31 @@ export {
   resolveJsRuntimeBridge,
 } from "./services/js-runtime-bridge.ts";
 export * from "./services/plugin-installer";
+export type {
+  CoreManagerLike,
+  CoreStatusLike,
+  EjectResult,
+  InstallProgressLike,
+  PluginInstallOptionsLike,
+  PluginInstallResult,
+  PluginManagerLike,
+  PluginUninstallResult,
+  RegistryPluginAppMeta,
+  RegistryPluginAppSessionFeature,
+  RegistryPluginAppSessionInfo,
+  RegistryPluginAppSessionMode,
+  RegistryPluginInfo,
+  RegistryPluginNpmInfo,
+  RegistryPluginViewerInfo,
+  RegistrySearchResult,
+  RegistryVersionSupport,
+  ReinjectResult,
+  SyncResult,
+} from "./services/plugin-manager-types.ts";
+export {
+  isCoreManagerLike,
+  isPluginManagerLike,
+} from "./services/plugin-manager-types.ts";
 export {
   type ClusterMemoriesQuery,
   type ClusterSearchQuery,

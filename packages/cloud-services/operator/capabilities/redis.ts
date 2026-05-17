@@ -1,3 +1,4 @@
+import { createRequire } from "node:module";
 import Redis from "ioredis";
 import { Log } from "pepr";
 
@@ -5,8 +6,23 @@ const REDIS_URL = process.env.REDIS_URL || "redis://redis.eliza-infra.svc:6379";
 const AGENT_ROUTING_TTL_SECONDS = 30 * 24 * 3600;
 let client: Redis | null = null;
 
+function createMockRedis(): Redis {
+  const requireCJS = createRequire(import.meta.url);
+  // biome-ignore lint/suspicious/noExplicitAny: ESM/CJS interop with ioredis-mock
+  const mod = requireCJS("ioredis-mock") as any;
+  const Ctor = mod?.default ?? mod;
+  return new Ctor() as Redis;
+}
+
 function getClient(): Redis {
   if (!client) {
+    // MOCK_REDIS=1 is an explicit opt-in for tests/CI; never silently used
+    // when unset, so real Redis is still chosen when MOCK_REDIS is unset.
+    if (process.env.MOCK_REDIS === "1") {
+      client = createMockRedis();
+      return client;
+    }
+
     client = new Redis(REDIS_URL, {
       retryStrategy: (times) => Math.min(times * 500, 5000),
       maxRetriesPerRequest: 3,

@@ -16,6 +16,7 @@ import {
   XCircle,
 } from "lucide-react";
 import { useCallback, useEffect, useMemo, useState } from "react";
+import { Helmet } from "react-helmet-async";
 import { useParams } from "react-router-dom";
 import { ApiError, api } from "../../../lib/api-client";
 
@@ -188,23 +189,37 @@ export default function ApprovalPage() {
     }
   }, [approvalId]);
 
+  const head = (
+    <Helmet>
+      <title>Approval Request | Eliza Cloud</title>
+    </Helmet>
+  );
+
   if (loading) {
     return (
-      <div className="flex min-h-screen items-center justify-center">
-        <Loader2 className="h-6 w-6 animate-spin text-zinc-400" />
-      </div>
+      <>
+        {head}
+        <div className="flex min-h-screen items-center justify-center">
+          <Loader2 className="h-6 w-6 animate-spin text-zinc-400" />
+        </div>
+      </>
     );
   }
 
   if (loadError || !request) {
     return (
-      <div className="mx-auto flex min-h-screen max-w-md flex-col items-center justify-center gap-3 p-6 text-center">
-        <AlertCircle className="h-8 w-8 text-red-500" />
-        <h1 className="text-lg font-semibold">
-          Could not load approval request
-        </h1>
-        <p className="text-sm text-zinc-500">{loadError ?? "Unknown error"}</p>
-      </div>
+      <>
+        {head}
+        <div className="mx-auto flex min-h-screen max-w-md flex-col items-center justify-center gap-3 p-6 text-center">
+          <AlertCircle className="h-8 w-8 text-red-500" />
+          <h1 className="text-lg font-semibold">
+            Could not load approval request
+          </h1>
+          <p className="text-sm text-zinc-500">
+            {loadError ?? "Unknown error"}
+          </p>
+        </div>
+      </>
     );
   }
 
@@ -213,110 +228,115 @@ export default function ApprovalPage() {
   const expiresAt = formatTimestamp(request.expiresAt);
 
   return (
-    <div className="mx-auto max-w-xl p-6">
-      <div className="flex items-center gap-2">
-        <ShieldCheck className="h-6 w-6 text-blue-500" />
-        <h1 className="text-xl font-semibold">Approval request</h1>
-      </div>
+    <>
+      {head}
+      <div className="mx-auto max-w-xl p-6">
+        <div className="flex items-center gap-2">
+          <ShieldCheck className="h-6 w-6 text-blue-500" />
+          <h1 className="text-xl font-semibold">Approval request</h1>
+        </div>
 
-      <div className="mt-4 rounded-lg border border-zinc-200 bg-white p-4 dark:border-zinc-800 dark:bg-zinc-950">
-        <dl className="grid grid-cols-1 gap-3 text-sm">
-          <div>
-            <dt className="text-zinc-500">Kind</dt>
-            <dd className="font-mono">{request.challengeKind}</dd>
-          </div>
-          <div>
-            <dt className="text-zinc-500">Status</dt>
-            <dd>{statusLabel(request.status)}</dd>
-          </div>
-          {expiresAt ? (
+        <div className="mt-4 rounded-lg border border-zinc-200 bg-white p-4 dark:border-zinc-800 dark:bg-zinc-950">
+          <dl className="grid grid-cols-1 gap-3 text-sm">
             <div>
-              <dt className="text-zinc-500">Expires</dt>
-              <dd>{expiresAt}</dd>
+              <dt className="text-zinc-500">Kind</dt>
+              <dd className="font-mono">{request.challengeKind}</dd>
             </div>
-          ) : null}
-          {request.expectedSignerIdentityId ? (
             <div>
-              <dt className="text-zinc-500">Expected signer</dt>
-              <dd className="break-all font-mono text-xs">
-                {request.expectedSignerIdentityId}
-              </dd>
+              <dt className="text-zinc-500">Status</dt>
+              <dd>{statusLabel(request.status)}</dd>
             </div>
-          ) : null}
-          {signerKind ? (
-            <div>
-              <dt className="text-zinc-500">Signer kind</dt>
-              <dd>{signerKind}</dd>
-            </div>
-          ) : null}
-        </dl>
+            {expiresAt ? (
+              <div>
+                <dt className="text-zinc-500">Expires</dt>
+                <dd>{expiresAt}</dd>
+              </div>
+            ) : null}
+            {request.expectedSignerIdentityId ? (
+              <div>
+                <dt className="text-zinc-500">Expected signer</dt>
+                <dd className="break-all font-mono text-xs">
+                  {request.expectedSignerIdentityId}
+                </dd>
+              </div>
+            ) : null}
+            {signerKind ? (
+              <div>
+                <dt className="text-zinc-500">Signer kind</dt>
+                <dd>{signerKind}</dd>
+              </div>
+            ) : null}
+          </dl>
 
-        {challenge.message ? (
-          <div className="mt-4">
-            <p className="text-xs uppercase tracking-wide text-zinc-500">
-              Challenge message
-            </p>
-            <pre className="mt-1 max-h-64 overflow-auto whitespace-pre-wrap break-all rounded bg-zinc-50 p-3 text-xs dark:bg-zinc-900">
-              {challenge.message}
-            </pre>
+          {challenge.message ? (
+            <div className="mt-4">
+              <p className="text-xs uppercase tracking-wide text-zinc-500">
+                Challenge message
+              </p>
+              <pre className="mt-1 max-h-64 overflow-auto whitespace-pre-wrap break-all rounded bg-zinc-50 p-3 text-xs dark:bg-zinc-900">
+                {challenge.message}
+              </pre>
+            </div>
+          ) : null}
+        </div>
+
+        {submitResult === "approved" ? (
+          <div className="mt-6 flex items-center gap-2 rounded-lg border border-green-200 bg-green-50 p-3 text-sm text-green-800 dark:border-green-900 dark:bg-green-950 dark:text-green-200">
+            <CheckCircle2 className="h-5 w-5" />
+            Signature accepted.
+          </div>
+        ) : null}
+
+        {submitResult === "denied" ? (
+          <div className="mt-6 flex items-center gap-2 rounded-lg border border-zinc-300 bg-zinc-50 p-3 text-sm text-zinc-700 dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-300">
+            <XCircle className="h-5 w-5" />
+            Approval denied.
+          </div>
+        ) : null}
+
+        {!isTerminal && !submitResult ? (
+          <div className="mt-6 space-y-3">
+            <label className="block text-sm font-medium">Signature</label>
+            <textarea
+              value={signature}
+              onChange={(event) => setSignature(event.target.value)}
+              placeholder={
+                signerKind === "wallet"
+                  ? "0x..."
+                  : signerKind === "ed25519"
+                    ? "base64 ed25519 signature"
+                    : "Paste signature"
+              }
+              rows={4}
+              className="w-full rounded border border-zinc-300 bg-white p-2 font-mono text-xs dark:border-zinc-700 dark:bg-zinc-950"
+            />
+            {submitError ? (
+              <p className="text-sm text-red-600">{submitError}</p>
+            ) : null}
+            <div className="flex gap-2">
+              <button
+                type="button"
+                onClick={handleApprove}
+                disabled={submitting || signature.trim().length === 0}
+                className="inline-flex items-center gap-2 rounded bg-blue-600 px-4 py-2 text-sm font-medium text-white disabled:opacity-50"
+              >
+                {submitting ? (
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                ) : null}
+                Approve
+              </button>
+              <button
+                type="button"
+                onClick={handleDeny}
+                disabled={submitting}
+                className="inline-flex items-center gap-2 rounded border border-zinc-300 px-4 py-2 text-sm dark:border-zinc-700"
+              >
+                Deny
+              </button>
+            </div>
           </div>
         ) : null}
       </div>
-
-      {submitResult === "approved" ? (
-        <div className="mt-6 flex items-center gap-2 rounded-lg border border-green-200 bg-green-50 p-3 text-sm text-green-800 dark:border-green-900 dark:bg-green-950 dark:text-green-200">
-          <CheckCircle2 className="h-5 w-5" />
-          Signature accepted.
-        </div>
-      ) : null}
-
-      {submitResult === "denied" ? (
-        <div className="mt-6 flex items-center gap-2 rounded-lg border border-zinc-300 bg-zinc-50 p-3 text-sm text-zinc-700 dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-300">
-          <XCircle className="h-5 w-5" />
-          Approval denied.
-        </div>
-      ) : null}
-
-      {!isTerminal && !submitResult ? (
-        <div className="mt-6 space-y-3">
-          <label className="block text-sm font-medium">Signature</label>
-          <textarea
-            value={signature}
-            onChange={(event) => setSignature(event.target.value)}
-            placeholder={
-              signerKind === "wallet"
-                ? "0x..."
-                : signerKind === "ed25519"
-                  ? "base64 ed25519 signature"
-                  : "Paste signature"
-            }
-            rows={4}
-            className="w-full rounded border border-zinc-300 bg-white p-2 font-mono text-xs dark:border-zinc-700 dark:bg-zinc-950"
-          />
-          {submitError ? (
-            <p className="text-sm text-red-600">{submitError}</p>
-          ) : null}
-          <div className="flex gap-2">
-            <button
-              type="button"
-              onClick={handleApprove}
-              disabled={submitting || signature.trim().length === 0}
-              className="inline-flex items-center gap-2 rounded bg-blue-600 px-4 py-2 text-sm font-medium text-white disabled:opacity-50"
-            >
-              {submitting ? <Loader2 className="h-4 w-4 animate-spin" /> : null}
-              Approve
-            </button>
-            <button
-              type="button"
-              onClick={handleDeny}
-              disabled={submitting}
-              className="inline-flex items-center gap-2 rounded border border-zinc-300 px-4 py-2 text-sm dark:border-zinc-700"
-            >
-              Deny
-            </button>
-          </div>
-        </div>
-      ) : null}
-    </div>
+    </>
   );
 }

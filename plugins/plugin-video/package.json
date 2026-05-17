@@ -22,7 +22,7 @@
   "files": [
     "dist",
     "package.json",
-    "tsup.config.ts"
+    "build.ts"
   ],
   "dependencies": {
     "@elizaos/core": "workspace:*",
@@ -32,13 +32,12 @@
   },
   "devDependencies": {
     "@types/node": "22.19.17",
-    "tsup": "^8.5.1",
     "typescript": "^6.0.3",
     "vitest": "^4.0.17"
   },
   "scripts": {
-    "build": "tsup --format esm --dts",
-    "dev": "tsup --format esm --dts --watch",
+    "build": "bun run build.ts",
+    "dev": "bun run build.ts",
     "typecheck": "tsc --noEmit -p tsconfig.json",
     "test": "vitest run --config vitest.config.ts"
   },

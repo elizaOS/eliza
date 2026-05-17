@@ -77,12 +77,6 @@ export function WarmPoolPanel() {
     fetchState();
   }, [fetchState]);
 
-  const ready = state?.size.ready ?? 0;
-  const provisioning = state?.size.provisioning ?? 0;
-  const target = state?.forecast.targetPoolSize ?? 0;
-  const max = state?.maxPoolSize ?? 10;
-  const min = state?.minPoolSize ?? 1;
-
   return (
     <Card>
       <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
@@ -120,9 +114,10 @@ export function WarmPoolPanel() {
         ) : (
           <>
             <div className="flex items-baseline gap-2">
-              <span className="text-2xl font-bold">{ready}</span>
+              <span className="text-2xl font-bold">{state.size.ready}</span>
               <span className="text-sm text-muted-foreground">
-                ready / target {target} / max {max}
+                ready / target {state.forecast.targetPoolSize} / max{" "}
+                {state.maxPoolSize}
               </span>
               {!state.enabled && (
                 <Badge variant="secondary" className="ml-auto">
@@ -131,15 +126,17 @@ export function WarmPoolPanel() {
               )}
             </div>
             <div className="flex flex-wrap gap-2 text-xs">
-              {provisioning > 0 && (
-                <Badge variant="outline">{provisioning} provisioning</Badge>
+              {state.size.provisioning > 0 && (
+                <Badge variant="outline">
+                  {state.size.provisioning} provisioning
+                </Badge>
               )}
               {state.size.stale > 0 && (
                 <Badge variant="destructive">
                   {state.size.stale} stale image
                 </Badge>
               )}
-              <Badge variant="outline">floor {min}</Badge>
+              <Badge variant="outline">floor {state.minPoolSize}</Badge>
             </div>
             <div className="text-xs text-muted-foreground space-y-1">
               <div>

@@ -113,6 +113,7 @@
   --shadow-2xl: var(--shadow-2xl);
   --shadow-inset: var(--shadow-inset);
 
+  --radius-xs: var(--radius-xs);
   --radius-sm: var(--radius-sm);
   --radius-md: var(--radius-md);
   --radius-lg: var(--radius-lg);

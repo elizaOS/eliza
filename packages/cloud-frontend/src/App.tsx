@@ -131,6 +131,9 @@ const AgentPage = lazyWithPreload(() => import("./dashboard/agents/Page"));
 const AgentDetailPage = lazyWithPreload(
   () => import("./dashboard/agents/[id]/Page"),
 );
+const AgentChatPage = lazyWithPreload(
+  () => import("./dashboard/agents/[id]/chat/Page"),
+);
 
 const AppsPage = lazyWithPreload(() => import("./dashboard/apps/Page"));
 const AppDetailPage = lazyWithPreload(
@@ -272,6 +275,10 @@ const PRELOAD_ROUTES: ReadonlyArray<RoutePreload> = [
   {
     path: "/dashboard/containers",
     preload: preloadAll(DashboardLayout.preload, ContainersPage.preload),
+  },
+  {
+    path: "/dashboard/agents/:id/chat",
+    preload: preloadAll(DashboardLayout.preload, AgentChatPage.preload),
   },
   {
     path: "/dashboard/agents/:id",
@@ -532,6 +539,8 @@ function DashboardRedirect({ to }: { to: string }) {
   return <Navigate to={`${to}${location.search}`} replace />;
 }
 
+const DashboardChatRedirect = lazy(() => import("./dashboard/chat-redirect"));
+
 function ElizaOsCheckoutRedirect() {
   const location = useLocation();
   const target = `https://elizaos.ai/checkout${location.search}`;
@@ -668,6 +677,7 @@ function App() {
 
           <Route path="agents" element={<AgentPage />} />
           <Route path="agents/:id" element={<AgentDetailPage />} />
+          <Route path="agents/:id/chat" element={<AgentChatPage />} />
 
           <Route path="apps" element={<AppsPage />} />
           <Route
@@ -686,10 +696,7 @@ function App() {
           <Route path="affiliates" element={<AffiliatesPage />} />
           <Route path="invoices/:id" element={<InvoiceDetailPage />} />
 
-          <Route
-            path="chat"
-            element={<DashboardRedirect to="/dashboard/my-agents" />}
-          />
+          <Route path="chat" element={<DashboardChatRedirect />} />
           <Route
             path="image"
             element={<DashboardRedirect to="/dashboard/api-explorer" />}

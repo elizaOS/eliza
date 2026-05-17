@@ -19,7 +19,7 @@ jobs:
         run: |
           set -euo pipefail
 
-          CHECKSUMS_FILE="packages/aosp-flasher/vendor/checksums.json"
+          CHECKSUMS_FILE="packages/elizaos-setup/vendor/checksums.json"
 
           download_and_hash() {
             local platform="$1"
@@ -64,7 +64,7 @@ jobs:
         run: |
           set -euo pipefail
 
-          CHECKSUMS_FILE="packages/aosp-flasher/vendor/checksums.json"
+          CHECKSUMS_FILE="packages/elizaos-setup/vendor/checksums.json"
 
           if git diff --quiet "$CHECKSUMS_FILE"; then
             echo "No changes to checksums — skipping PR."
@@ -86,7 +86,7 @@ jobs:
           ## Automated vendor checksum update
 
           Weekly update of SHA-256 hashes for Android Platform Tools in
-          \`packages/aosp-flasher/vendor/checksums.json\`.
+          \`packages/elizaos-setup/vendor/checksums.json\`.
 
           - macOS platform-tools
           - Linux platform-tools

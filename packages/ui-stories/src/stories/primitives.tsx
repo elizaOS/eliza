@@ -26,6 +26,7 @@ import {
   AvatarImage,
 } from "@ui-src/components/ui/avatar.tsx";
 import { Badge } from "@ui-src/components/ui/badge.tsx";
+import { Banner } from "@ui-src/components/ui/banner.tsx";
 import { Button } from "@ui-src/components/ui/button.tsx";
 import {
   Card,
@@ -44,6 +45,12 @@ import {
 } from "@ui-src/components/ui/carousel.tsx";
 import { Checkbox } from "@ui-src/components/ui/checkbox.tsx";
 import {
+  Collapsible,
+  CollapsibleContent,
+  CollapsibleTrigger,
+} from "@ui-src/components/ui/collapsible.tsx";
+import { CopyButton } from "@ui-src/components/ui/copy-button.tsx";
+import {
   Dialog,
   DialogContent,
   DialogDescription,
@@ -60,13 +67,29 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@ui-src/components/ui/dropdown-menu.tsx";
+import { EmptyState } from "@ui-src/components/ui/empty-state.tsx";
 import {
   HoverCard,
   HoverCardContent,
   HoverCardTrigger,
 } from "@ui-src/components/ui/hover-card.tsx";
 import { Input } from "@ui-src/components/ui/input.tsx";
+import {
+  InputGroup,
+  InputGroupAddon,
+  InputGroupInput,
+  InputGroupText,
+} from "@ui-src/components/ui/input-group.tsx";
 import { Label } from "@ui-src/components/ui/label.tsx";
+import {
+  Pagination,
+  PaginationContent,
+  PaginationEllipsis,
+  PaginationItem,
+  PaginationLink,
+  PaginationNext,
+  PaginationPrevious,
+} from "@ui-src/components/ui/pagination.tsx";
 import {
   Popover,
   PopoverContent,
@@ -74,6 +97,7 @@ import {
 } from "@ui-src/components/ui/popover.tsx";
 import { Progress } from "@ui-src/components/ui/progress.tsx";
 import { ScrollArea } from "@ui-src/components/ui/scroll-area.tsx";
+import { SegmentedControl } from "@ui-src/components/ui/segmented-control.tsx";
 import {
   Select,
   SelectContent,
@@ -97,12 +121,23 @@ import { Spinner } from "@ui-src/components/ui/spinner.tsx";
 import { StatusBadge, StatusDot } from "@ui-src/components/ui/status-badge.tsx";
 import { Switch } from "@ui-src/components/ui/switch.tsx";
 import {
+  Table,
+  TableBody,
+  TableCaption,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@ui-src/components/ui/table.tsx";
+import { TagEditor } from "@ui-src/components/ui/tag-editor.tsx";
+import {
   Tabs,
   TabsContent,
   TabsList,
   TabsTrigger,
 } from "@ui-src/components/ui/tabs.tsx";
 import { Textarea } from "@ui-src/components/ui/textarea.tsx";
+import { Toggle } from "@ui-src/components/ui/toggle.tsx";
 import {
   Tooltip,
   TooltipContent,
@@ -113,13 +148,18 @@ import { Heading, Text } from "@ui-src/components/ui/typography.tsx";
 import {
   AlertTriangle,
   Bell,
+  Bold,
   Bot,
   Check,
   ChevronRight,
   Cloud,
   Cpu,
+  Inbox,
+  Italic,
+  Search,
   Settings,
   Trash2,
+  Underline,
 } from "lucide-react";
 import { useState } from "react";
 import type { StoryDefinition } from "../Story.tsx";
@@ -139,6 +179,79 @@ function ControlledCheckbox() {
       checked={on}
       onCheckedChange={(v: boolean | "indeterminate") => setOn(v === true)}
     />
+  );
+}
+
+function ControlledSegmented() {
+  const [value, setValue] = useState<"local" | "cloud" | "mobile">("local");
+  return (
+    <SegmentedControl
+      value={value}
+      onValueChange={setValue}
+      items={[
+        { value: "local", label: "Local" },
+        { value: "cloud", label: "Cloud" },
+        { value: "mobile", label: "Mobile" },
+      ]}
+    />
+  );
+}
+
+function ControlledTagEditor() {
+  const [tags, setTags] = useState<string[]>(["local", "cloud"]);
+  return (
+    <TagEditor
+      items={tags}
+      onChange={setTags}
+      label="Tags"
+      placeholder="Add a tag..."
+    />
+  );
+}
+
+function ControlledPagination() {
+  const [page, setPage] = useState(2);
+  const pages = [1, 2, 3];
+  return (
+    <Pagination>
+      <PaginationContent>
+        <PaginationItem>
+          <PaginationPrevious
+            href="#"
+            onClick={(e) => {
+              e.preventDefault();
+              setPage((p) => Math.max(1, p - 1));
+            }}
+          />
+        </PaginationItem>
+        {pages.map((p) => (
+          <PaginationItem key={p}>
+            <PaginationLink
+              href="#"
+              isActive={p === page}
+              onClick={(e) => {
+                e.preventDefault();
+                setPage(p);
+              }}
+            >
+              {p}
+            </PaginationLink>
+          </PaginationItem>
+        ))}
+        <PaginationItem>
+          <PaginationEllipsis />
+        </PaginationItem>
+        <PaginationItem>
+          <PaginationNext
+            href="#"
+            onClick={(e) => {
+              e.preventDefault();
+              setPage((p) => p + 1);
+            }}
+          />
+        </PaginationItem>
+      </PaginationContent>
+    </Pagination>
   );
 }
 
@@ -704,6 +817,162 @@ export const primitiveStories: StoryDefinition[] = [
           <TooltipContent>Connected.</TooltipContent>
         </Tooltip>
       </TooltipProvider>
+    ),
+  },
+  {
+    id: "p-banner",
+    name: "Banner",
+    importPath: 'import { Banner } from "@elizaos/ui/components/ui/banner"',
+    render: () => (
+      <div className="gallery-stack">
+        <Banner variant="info">Local inference is online.</Banner>
+        <Banner variant="warning" dismissible>
+          Cloud quota near limit.
+        </Banner>
+        <Banner
+          variant="error"
+          action={<Button size="sm">Retry</Button>}
+        >
+          Failed to load eliza-1.
+        </Banner>
+      </div>
+    ),
+  },
+  {
+    id: "p-collapsible",
+    name: "Collapsible",
+    importPath:
+      'import { Collapsible, CollapsibleTrigger, CollapsibleContent } from "@elizaos/ui/components/ui/collapsible"',
+    render: () => (
+      <Collapsible style={{ width: 240 }}>
+        <CollapsibleTrigger asChild>
+          <Button variant="outline">Toggle details</Button>
+        </CollapsibleTrigger>
+        <CollapsibleContent>
+          <div style={{ paddingTop: 8, fontSize: 13 }}>
+            Local-first by default. No cloud required.
+          </div>
+        </CollapsibleContent>
+      </Collapsible>
+    ),
+  },
+  {
+    id: "p-copy-button",
+    name: "CopyButton",
+    importPath:
+      'import { CopyButton } from "@elizaos/ui/components/ui/copy-button"',
+    render: () => (
+      <div className="gallery-row">
+        <CopyButton value="bun install @elizaos/ui" />
+        <CopyButton value="claude-opus-4-7" copyLabel="Copy model" />
+      </div>
+    ),
+  },
+  {
+    id: "p-empty-state",
+    name: "EmptyState",
+    importPath:
+      'import { EmptyState } from "@elizaos/ui/components/ui/empty-state"',
+    render: () => (
+      <div style={{ width: "100%" }}>
+        <EmptyState
+          variant="dashed"
+          icon={<Inbox />}
+          title="No agents yet"
+          description="Spawn your first local agent to get started."
+          action={<Button size="sm">Create agent</Button>}
+        />
+      </div>
+    ),
+  },
+  {
+    id: "p-input-group",
+    name: "InputGroup",
+    importPath:
+      'import { InputGroup, InputGroupInput, InputGroupAddon, InputGroupText } from "@elizaos/ui/components/ui/input-group"',
+    render: () => (
+      <InputGroup style={{ width: 260 }}>
+        <InputGroupAddon>
+          <Search />
+        </InputGroupAddon>
+        <InputGroupInput placeholder="Search models..." />
+        <InputGroupAddon align="inline-end">
+          <InputGroupText>cmd+K</InputGroupText>
+        </InputGroupAddon>
+      </InputGroup>
+    ),
+  },
+  {
+    id: "p-pagination",
+    name: "Pagination",
+    importPath:
+      'import { Pagination, PaginationContent, PaginationItem, PaginationLink, PaginationNext, PaginationPrevious, PaginationEllipsis } from "@elizaos/ui/components/ui/pagination"',
+    render: () => <ControlledPagination />,
+  },
+  {
+    id: "p-segmented-control",
+    name: "SegmentedControl",
+    importPath:
+      'import { SegmentedControl } from "@elizaos/ui/components/ui/segmented-control"',
+    render: () => <ControlledSegmented />,
+  },
+  {
+    id: "p-table",
+    name: "Table",
+    importPath:
+      'import { Table, TableHeader, TableBody, TableRow, TableHead, TableCell, TableCaption } from "@elizaos/ui/components/ui/table"',
+    render: () => (
+      <Table style={{ width: 360 }}>
+        <TableCaption>Active local models.</TableCaption>
+        <TableHeader>
+          <TableRow>
+            <TableHead>Model</TableHead>
+            <TableHead>Tok/s</TableHead>
+            <TableHead>State</TableHead>
+          </TableRow>
+        </TableHeader>
+        <TableBody>
+          <TableRow>
+            <TableCell>eliza-1</TableCell>
+            <TableCell>1.2k</TableCell>
+            <TableCell>ready</TableCell>
+          </TableRow>
+          <TableRow>
+            <TableCell>claude-opus-4-7</TableCell>
+            <TableCell>—</TableCell>
+            <TableCell>cloud</TableCell>
+          </TableRow>
+        </TableBody>
+      </Table>
+    ),
+  },
+  {
+    id: "p-tag-editor",
+    name: "TagEditor",
+    importPath:
+      'import { TagEditor } from "@elizaos/ui/components/ui/tag-editor"',
+    render: () => (
+      <div style={{ width: 280 }}>
+        <ControlledTagEditor />
+      </div>
+    ),
+  },
+  {
+    id: "p-toggle",
+    name: "Toggle",
+    importPath: 'import { Toggle } from "@elizaos/ui/components/ui/toggle"',
+    render: () => (
+      <div className="gallery-row">
+        <Toggle aria-label="Bold">
+          <Bold />
+        </Toggle>
+        <Toggle aria-label="Italic" defaultPressed>
+          <Italic />
+        </Toggle>
+        <Toggle aria-label="Underline">
+          <Underline />
+        </Toggle>
+      </div>
     ),
   },
   {

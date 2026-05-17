@@ -829,7 +829,6 @@ export const voiceCallAction: Action & {
   name: ACTION_NAME,
   suppressPostActionContinuation: true,
   similes: [
-    "PLACE_CALL",
     "CALL_ME",
     "ESCALATE_TO_USER",
     "CALL_THIRD_PARTY",

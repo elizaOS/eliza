@@ -390,14 +390,12 @@ export type ConfigUiHint = {
   hidden?: boolean;
   /** Layout width hint. */
   width?: "full" | "half" | "third";
-  /** Legacy conditional visibility. */
   /** Whether the field is read-only. */
   readonly?: boolean;
   /** Regex pattern for string validation. */
   pattern?: string;
   /** Error message when pattern doesn't match. */
   patternError?: string;
-  // Phase 2: json-render features
   /** Rich visibility condition. */
   visible?: VisibilityCondition;
   /** Declarative validation checks. */

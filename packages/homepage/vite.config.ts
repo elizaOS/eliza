@@ -28,25 +28,44 @@ function gh404Fallback(): Plugin {
 export default defineConfig({
   plugins: [react(), tailwindcss(), gh404Fallback()],
   resolve: {
-    alias: {
-      "@": path.resolve(__dirname, "./src"),
-      "@elizaos/ui/button": path.resolve(
-        __dirname,
-        "../ui/src/cloud-ui/components/button.tsx",
-      ),
-      "@elizaos/ui/dropdown-menu": path.resolve(
-        __dirname,
-        "../ui/src/cloud-ui/components/dropdown-menu.tsx",
-      ),
-      "@elizaos/ui/input": path.resolve(
-        __dirname,
-        "../ui/src/cloud-ui/components/input.tsx",
-      ),
-      "@elizaos/ui/product-switcher": path.resolve(
-        __dirname,
-        "../ui/src/cloud-ui/components/product-switcher.tsx",
-      ),
-    },
+    alias: [
+      { find: "@", replacement: path.resolve(__dirname, "./src") },
+      {
+        find: "@elizaos/ui/button",
+        replacement: path.resolve(
+          __dirname,
+          "../ui/src/cloud-ui/components/button.tsx",
+        ),
+      },
+      {
+        find: "@elizaos/ui/dropdown-menu",
+        replacement: path.resolve(
+          __dirname,
+          "../ui/src/cloud-ui/components/dropdown-menu.tsx",
+        ),
+      },
+      {
+        find: "@elizaos/ui/input",
+        replacement: path.resolve(
+          __dirname,
+          "../ui/src/cloud-ui/components/input.tsx",
+        ),
+      },
+      {
+        find: "@elizaos/ui/product-switcher",
+        replacement: path.resolve(
+          __dirname,
+          "../ui/src/cloud-ui/components/product-switcher.tsx",
+        ),
+      },
+      {
+        find: /^@elizaos\/ui$/,
+        replacement: path.resolve(
+          __dirname,
+          "../ui/src/backgrounds/CloudVideoBackground.tsx",
+        ),
+      },
+    ],
   },
   server: {
     port: 4444,
