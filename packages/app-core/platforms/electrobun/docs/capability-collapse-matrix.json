@@ -15,19 +15,55 @@
       "operation": "grep",
       "currentPluginBehavior": "Ripgrep-backed regex search with output modes, glob/type filters, context flags, case-insensitive and multiline options, head limit, and VCS excludes.",
       "currentSatelliteParity": "fs.search is literal case-insensitive substring search with path/root/limit/includeHidden only.",
-      "decision": "Do not route yet. Add ripgrep-equivalent search options or keep plugin-owned search until parity exists."
+      "requiredParityBeforeRouting": [
+        "regex mode",
+        "literal mode",
+        "case-sensitivity control",
+        "multiline support",
+        "include and exclude glob filters",
+        "type filters",
+        "VCS and generated-file exclusion policy",
+        "context-before and context-after output",
+        "head limit",
+        "deterministic ordering",
+        "structured file/line/column match records",
+        "truncation metadata",
+        "explicit unsupported-option errors"
+      ],
+      "decision": "Do not route yet. Add a first-class search method with these semantics or keep plugin-owned search until parity exists."
     },
     {
       "operation": "glob",
       "currentPluginBehavior": "File globbing with generated/VCS excludes, recent-file ordering by mtime, and a 100-result cap.",
       "currentSatelliteParity": "No direct glob or recursive find method with pattern semantics.",
-      "decision": "Do not route yet. Add explicit glob/find parity before routing."
+      "requiredParityBeforeRouting": [
+        "cwd/root policy",
+        "one or more patterns",
+        "hidden/generated/VCS exclusion policy",
+        "file/dir/symlink filters",
+        "max-results",
+        "deterministic recent-file ordering where requested",
+        "typed file metadata",
+        "truncation metadata",
+        "explicit unsupported-option errors"
+      ],
+      "decision": "Do not route yet. Add a first-class glob/find method before routing."
     },
     {
       "operation": "edit",
       "currentPluginBehavior": "Must-read-first and stale-read gate, exact substring replacement, optional replace-all, ambiguity protection, secret detection, and first-line reporting.",
       "currentSatelliteParity": "fs.writeText overwrites full text only and has no compare-and-swap, old-string match, patch, secret gate, or read-state contract.",
-      "decision": "Do not route through generic write. Add an explicit edit/patch method or keep local implementation."
+      "requiredParityBeforeRouting": [
+        "read-state or expected-digest protection",
+        "exact old-string replacement",
+        "replace-all behavior",
+        "ambiguity detection",
+        "first-changed-line metadata",
+        "secret-pattern rejection",
+        "atomic write behavior",
+        "structured patch errors"
+      ],
+      "decision": "Do not route through generic write. Add a first-class edit/patch method or keep local implementation."
     }
   ],
   "entries": [

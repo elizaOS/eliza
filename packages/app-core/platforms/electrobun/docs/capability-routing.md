@@ -10,7 +10,7 @@ Agent
   -> first-party Satellite
 ```
 
-Plugins do not import Electrobun main-process modules and do not call individual Satellites directly. The desktop router calls runtime methods such as `fs.list`, `fs.readText`, `pty.command.run`, `git.status`, `git.diff`, `git.command.run`, and `model.status`. In Electrobun, `eliza.runtime` forwards those methods to `eliza.fs`, `eliza.pty`, `eliza.git`, or `eliza.local-model`.
+Plugins do not import Electrobun main-process modules and do not call individual Satellites directly. The desktop router calls runtime methods such as `fs.list`, `fs.readText`, `fs.writeText`, `pty.command.run`, `git.status`, `git.diff`, `git.command.run`, and `model.status`. In Electrobun, `eliza.runtime` forwards those methods to `eliza.fs`, `eliza.pty`, `eliza.git`, or `eliza.local-model`.
 
 ## Plugin Layer
 
@@ -52,6 +52,14 @@ The shared fallback router returns structured `CAPABILITY_UNAVAILABLE` errors. A
 - secret-pattern rejection before write
 
 For `ls`, the router receives the validated directory path, ignore globs, and the requested listing limit. The effective cap remains governed by `eliza.fs` policy. If the router is absent or explicitly unavailable, the previous local implementation remains the fallback.
+
+Search remains plugin-owned until `eliza.fs` has method parity:
+
+| Path | Required `eliza.fs` parity before routing |
+| --- | --- |
+| `FILE action=grep` | A first-class search method with regex mode, literal mode, case sensitivity, multiline support, include/exclude glob filters, type filters, VCS/generated exclusion policy, context-before/context-after, head limit, deterministic ordering, structured file/line/column match records, truncation metadata, and explicit unsupported-option errors. The current literal `fs.search` method is not enough. |
+| `FILE action=glob` | A first-class glob/find method with cwd/root policy, one or more patterns, hidden/generated/VCS exclusion policy, file/dir/symlink filters, max-results, deterministic recent-file ordering where requested, typed file metadata, truncation metadata, and explicit unsupported-option errors. Directory `fs.list` is not enough. |
+| `FILE action=edit` | A first-class edit/patch method with read-state or expected-digest protection, exact old-string replacement, replace-all behavior, ambiguity detection, first-changed-line metadata, secret-pattern rejection, atomic write behavior, and structured patch errors. Generic `fs.writeText` is not enough and must not be used for edit routing. |
 
 `plugin-coding-tools` SHELL now prefers `capability-router.pty.runCommand()` for command execution. The action still owns command parsing, timeout selection, terminal support checks, history recording, and output formatting.
 
