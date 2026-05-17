@@ -8,7 +8,7 @@
     <property name="default-height">640</property>
     <!-- Same width request as gnome-control-center's cc-window.ui minus the width of the sidebar (200) -->
     <property name="default-width">780</property>
-    <property name="icon-name">tails-persistent-storage</property>
+    <property name="icon-name">elizaos</property>
     <property name="window-position">center</property>
     <signal name="delete-event" handler="on_close"/>
     <child>
