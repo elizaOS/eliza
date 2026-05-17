@@ -1,5 +1,6 @@
 import {
   ContainersEmptyState,
+  ContainersPageWrapper,
   ContainersSkeleton,
   DashboardErrorState,
   DashboardPageContainer,
@@ -10,7 +11,6 @@ import { Activity, AlertCircle, Server, TrendingUp } from "lucide-react";
 import { Helmet } from "react-helmet-async";
 import { useRequireAuth } from "../../lib/auth-hooks";
 import { useContainers } from "../../lib/data/containers";
-import { ContainersPageWrapper } from "./_components/containers-page-wrapper";
 import { ContainersTable } from "./_components/containers-table";
 import { DeployFromCLI } from "./_components/deploy-from-cli";
 

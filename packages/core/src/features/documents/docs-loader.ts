@@ -2,13 +2,21 @@ import * as fs from "node:fs";
 import * as path from "node:path";
 import { logger } from "../../logger";
 import type { UUID } from "../../types";
-import type { DocumentService } from "./service.ts";
 import type {
 	AddDocumentOptions,
 	DocumentAddedByRole,
 	DocumentAddedFrom,
 	DocumentVisibilityScope,
 } from "./types.ts";
+
+/** Minimal interface of DocumentService used by this module, avoids circular import with service.ts. */
+interface DocumentServiceLike {
+	addDocument(options: AddDocumentOptions): Promise<{
+		clientDocumentId: string;
+		storedDocumentMemoryId: UUID;
+		fragmentCount: number;
+	}>;
+}
 import { isTextBackedDocumentContent } from "./utils.ts";
 
 export function getDocumentsPath(runtimePath?: string): string {
@@ -41,7 +49,7 @@ export function getDocumentsPath(runtimePath?: string): string {
 }
 
 export async function loadDocumentsFromPath(
-	service: DocumentService,
+	service: DocumentServiceLike,
 	agentId: UUID,
 	worldId?: UUID,
 	documentsPath?: string,
@@ -135,7 +143,7 @@ export async function addDocumentFromFilePath({
 	addedFrom,
 	metadata,
 }: {
-	service: DocumentService;
+	service: DocumentServiceLike;
 	agentId: UUID;
 	worldId?: UUID;
 	roomId?: UUID;

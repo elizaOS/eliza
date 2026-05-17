@@ -2,13 +2,13 @@ import {
   ContainersSkeleton,
   DashboardLoadingState,
   DashboardPageContainer,
+  ElizaAgentsPageWrapper,
 } from "@elizaos/ui";
 import { Helmet } from "react-helmet-async";
 import { useRequireAuth } from "../../lib/auth-hooks";
 import { useCreditsBalance } from "../../lib/data/credits";
 import { type AgentListItem, useAgents } from "../../lib/data/eliza-agents";
 import { ElizaAgentPricingBanner } from "../containers/_components/eliza-agent-pricing-banner";
-import { ElizaAgentsPageWrapper } from "../containers/_components/eliza-agents-page-wrapper";
 import {
   type ElizaAgentRow,
   ElizaAgentsTable,

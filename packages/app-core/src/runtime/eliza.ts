@@ -71,6 +71,12 @@ async function _localInference() {
   return _localInferenceRuntime;
 }
 
+import {
+  getSharedCompatRuntimeState,
+  patchHttpCreateServerForCompat,
+  startApiServer,
+} from "../api/server.js";
+import { invalidateCorsAllowedPorts } from "../api/server-cors.js";
 import { isRuntimeAutonomyEnabled } from "./autonomy-policy.js";
 import {
   ensureTextToSpeechHandler,
@@ -1132,8 +1138,6 @@ export async function startEliza(
   // singleton with the live runtime via its `server.updateRuntime` wrapper,
   // so the early listener picks up the runtime as soon as it's available.
   try {
-    const { patchHttpCreateServerForCompat, getSharedCompatRuntimeState } =
-      await import("../api/server");
     patchHttpCreateServerForCompat();
     const earlyCompatState = getSharedCompatRuntimeState();
 
@@ -1171,7 +1175,6 @@ export async function startEliza(
       // patch is in place — the wrapper short-circuits on null state.
       earlyCompatState.current = currentRuntime;
 
-      const { startApiServer } = await import("../api/server");
       // Desktop launcher sets ELIZA_API_PORT (default 31337) to match the
       // renderer's hardcoded API base; honor it when present. CLI/server-only
       // mode (no ELIZA_API_PORT) keeps the legacy `resolveServerOnlyPort`
@@ -1213,15 +1216,9 @@ export async function startEliza(
         overwriteUiPort: true,
       });
       // Invalidate cached CORS port set so the new port is allowed.
-      // Dynamic import may be unavailable in non-server build targets (mobile); ignore.
-      try {
-        const { invalidateCorsAllowedPorts } = await import(
-          "../api/server-cors.js"
-        );
-        invalidateCorsAllowedPorts();
-      } catch {
-        // server-cors not available in this build target — CORS cache stays stale until restart
-      }
+      // server-cors is statically imported at the top of this module — the
+      // previous dynamic import was INEFFECTIVE_DYNAMIC_IMPORT.
+      invalidateCorsAllowedPorts();
 
       logger.info(
         `[eliza] API server listening on http://localhost:${actualApiPort}`,

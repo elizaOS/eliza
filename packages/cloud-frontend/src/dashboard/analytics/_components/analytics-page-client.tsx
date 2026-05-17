@@ -16,7 +16,9 @@ import {
   BrandTabsContent,
   BrandTabsResponsive,
   CornerBrackets,
+  CostInsightsCard,
   DashboardPageContainer,
+  ExportButton,
   KeyMetricsGrid,
   useSetPageHeader,
 } from "@elizaos/ui";
@@ -33,8 +35,6 @@ import type {
   EnhancedAnalyticsDataDto,
   ProjectionsDataDto,
 } from "@/types/cloud-api";
-import { CostInsightsCard } from "./cost-insights-card";
-import { ExportButton } from "./export-button";
 import { AnalyticsFilters } from "./filters";
 import { ModelBreakdown } from "./model-breakdown";
 import { ProjectionsChart } from "./projections-chart";
