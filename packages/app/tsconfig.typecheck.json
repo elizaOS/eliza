@@ -94,8 +94,12 @@
       "@elizaos/core": ["../core/dist/index.d.ts"],
       "@elizaos/shared": ["../shared/src/index.ts"],
       "@elizaos/shared/*": ["../shared/src/*"],
-      "@elizaos/capacitor-agent": ["../native-plugins/agent/src/index.ts"],
-      "@elizaos/capacitor-desktop": ["../native-plugins/desktop/src/index.ts"],
+      "@elizaos/capacitor-agent": [
+        "../../plugins/plugin-native-agent/src/index.ts"
+      ],
+      "@elizaos/capacitor-desktop": [
+        "../../plugins/plugin-native-desktop/src/index.ts"
+      ],
       "@elizaos/capacitor-llama": ["../native-plugins/llama/src/index.ts"],
       "@elizaos/native-activity-tracker": [
         "../native-plugins/activity-tracker/src/index.ts"
