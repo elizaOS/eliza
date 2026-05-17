@@ -35,6 +35,7 @@ sh -n \
     tails/config/chroot_local-includes/usr/local/lib/elizaos/runtime-env \
     tails/config/chroot_local-includes/usr/local/lib/elizaos/start-elizaos-agent-user \
     tails/config/chroot_local-includes/usr/local/lib/elizaos/start-elizaos-browser-user \
+    tails/config/chroot_local-includes/usr/local/lib/elizaos/start-elizaos-pill-user \
     tails/config/chroot_local-includes/usr/local/lib/elizaos/start-elizaos-renderer-user \
     tails/config/chroot_local-includes/usr/local/lib/elizaos/start-milady-user \
     tails/config/chroot_local-includes/usr/local/lib/elizaos/update-health-check \
@@ -73,6 +74,7 @@ PY
 for unit in \
     tails/config/chroot_local-includes/etc/systemd/user/elizaos-agent.service \
     tails/config/chroot_local-includes/etc/systemd/user/elizaos-renderer.service \
+    tails/config/chroot_local-includes/etc/systemd/user/elizaos-pill.service \
     tails/config/chroot_local-includes/etc/systemd/user/milady.service
 do
     grep -q '^ConditionUser=1000$' "${unit}"
@@ -83,6 +85,7 @@ for executable in \
     tails/config/chroot_local-includes/usr/local/lib/elizaos/runtime-env \
     tails/config/chroot_local-includes/usr/local/lib/elizaos/start-elizaos-browser-user \
     tails/config/chroot_local-includes/usr/local/lib/elizaos/start-elizaos-agent-user \
+    tails/config/chroot_local-includes/usr/local/lib/elizaos/start-elizaos-pill-user \
     tails/config/chroot_local-includes/usr/local/lib/elizaos/start-elizaos-renderer-user \
     tails/config/chroot_local-includes/usr/local/lib/elizaos/start-milady-user \
     tails/config/chroot_local-includes/usr/local/lib/elizaos/update-health-check \
@@ -488,6 +491,8 @@ grep -q 'systemctl --user start --no-block elizaos-agent.service' \
     tails/config/chroot_local-includes/usr/local/lib/elizaos/milady-keeper
 grep -q 'systemctl --user start --no-block elizaos-renderer.service' \
     tails/config/chroot_local-includes/usr/local/lib/elizaos/milady-keeper
+grep -q 'systemctl --user start --no-block elizaos-pill.service' \
+    tails/config/chroot_local-includes/usr/local/lib/elizaos/milady-keeper
 grep -q 'ELIZA_API_PORT.*:-31337' \
     tails/config/chroot_local-includes/usr/local/lib/elizaos/start-elizaos-agent-user
 grep -q 'ELIZAOS_LIVE_EMBEDDING_FALLBACK.*:-1' \
@@ -534,6 +539,24 @@ grep -q 'gi.require_version("Gdk", "3.0")' \
     tails/config/chroot_local-includes/usr/local/lib/elizaos/elizaos-webkit-shell
 grep -q 'gi.require_version("WebKit2", "4.1")' \
     tails/config/chroot_local-includes/usr/local/lib/elizaos/elizaos-webkit-shell
+grep -q 'ELIZAOS_SHELL_MODE' \
+    tails/config/chroot_local-includes/usr/local/lib/elizaos/elizaos-webkit-shell
+grep -q 'configure_pill_window' \
+    tails/config/chroot_local-includes/usr/local/lib/elizaos/elizaos-webkit-shell
+grep -q 'set_keep_above(True)' \
+    tails/config/chroot_local-includes/usr/local/lib/elizaos/elizaos-webkit-shell
+grep -q 'ELIZAOS_SHELL_MODE=pill' \
+    tails/config/chroot_local-includes/usr/local/lib/elizaos/start-elizaos-pill-user
+grep -q 'shell=pill' \
+    tails/config/chroot_local-includes/usr/local/lib/elizaos/start-elizaos-pill-user
+grep -q 'elizaos-webkit-shell' \
+    tails/config/chroot_local-includes/usr/local/lib/elizaos/start-elizaos-pill-user
+grep -q 'ELIZAOS_RENDERER_PORT.*:-5174' \
+    tails/config/chroot_local-includes/usr/local/lib/elizaos/start-elizaos-pill-user
+grep -q '^ExecStart=/usr/local/lib/elizaos/start-elizaos-pill-user$' \
+    tails/config/chroot_local-includes/etc/systemd/user/elizaos-pill.service
+grep -q 'systemctl --global enable elizaos-pill.service' \
+    tails/config/chroot_local-hooks/52-update-systemd-units
 grep -q 'set_network_proxy_settings(WebKit2.NetworkProxyMode.NO_PROXY' \
     tails/config/chroot_local-includes/usr/local/lib/elizaos/elizaos-webkit-shell
 grep -q 'base_data_directory=data_dir' \
