@@ -2,10 +2,7 @@ import type { Experience } from "../types.ts";
 
 /** Minimal interface of ExperienceService used by this module. */
 interface ExperienceServiceLike {
-	findSimilarExperiences(
-		text: string,
-		limit: number,
-	): Promise<Experience[]>;
+	findSimilarExperiences(text: string, limit: number): Promise<Experience[]>;
 	listExperiences(options: { limit: number }): Promise<Experience[]>;
 }
 

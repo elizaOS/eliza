@@ -410,9 +410,7 @@ export interface Action {
 		| readonly ConnectorAccountPolicy[];
 
 	/** Compatibility alias for early adopters of connectorAccountPolicy. */
-	accountPolicy?:
-		| ConnectorAccountPolicy
-		| readonly ConnectorAccountPolicy[];
+	accountPolicy?: ConnectorAccountPolicy | readonly ConnectorAccountPolicy[];
 
 	/** Child tool/action names or inline definitions exposed beneath this action. */
 	subActions?: Array<string | Action>;

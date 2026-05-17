@@ -184,9 +184,9 @@ export class CredentialProtector extends Service {
 	static async start(runtime: IAgentRuntime): Promise<Service> {
 		const service = new CredentialProtector();
 		// Access the inner SecurityModule from the wrapper
-		const wrapper = runtime.getService("security-module") as
-			| SecurityModuleWrapperLike
-			| null;
+		const wrapper = runtime.getService(
+			"security-module",
+		) as SecurityModuleWrapperLike | null;
 		if (!wrapper) {
 			throw new Error(
 				"[CredentialProtector] SecurityModule service not available",
