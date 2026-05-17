@@ -44,11 +44,11 @@ import type {
 	StewardTokenBalancesResponse,
 	StewardWalletAddressesResponse,
 	StewardWebhookEvent,
-	StewardWebhookEventType,
 	StewardWebhookEventsResponse,
+	StewardWebhookEventType,
 	TradePermissionMode,
-	WalletAddressPair,
 	WalletAddresses,
+	WalletAddressPair,
 	WalletBalancesResponse,
 	WalletChain,
 	WalletChainKind,
@@ -133,11 +133,11 @@ export type {
 	StewardTokenBalancesResponse,
 	StewardWalletAddressesResponse,
 	StewardWebhookEvent,
-	StewardWebhookEventType,
 	StewardWebhookEventsResponse,
+	StewardWebhookEventType,
 	TradePermissionMode,
-	WalletAddressPair,
 	WalletAddresses,
+	WalletAddressPair,
 	WalletBalancesResponse,
 	WalletChain,
 	WalletChainKind,
@@ -204,7 +204,10 @@ export const WALLET_RPC_PROVIDER_OPTIONS = {
 	],
 	solana: [
 		{ id: "eliza-cloud" as SolanaWalletRpcProvider, label: "Eliza Cloud" },
-		{ id: "helius-birdeye" as SolanaWalletRpcProvider, label: "Helius + Birdeye" },
+		{
+			id: "helius-birdeye" as SolanaWalletRpcProvider,
+			label: "Helius + Birdeye",
+		},
 	],
 } as const;
 
@@ -220,8 +223,19 @@ const WALLET_RPC_PROVIDER_ALIASES = {
 } as const;
 
 const WALLET_RPC_PROVIDER_IDS: Record<WalletRpcChain, ReadonlySet<string>> = {
-	evm: new Set<EvmWalletRpcProvider>(["eliza-cloud", "alchemy", "infura", "ankr"]),
-	bsc: new Set<BscWalletRpcProvider>(["eliza-cloud", "alchemy", "ankr", "nodereal", "quicknode"]),
+	evm: new Set<EvmWalletRpcProvider>([
+		"eliza-cloud",
+		"alchemy",
+		"infura",
+		"ankr",
+	]),
+	bsc: new Set<BscWalletRpcProvider>([
+		"eliza-cloud",
+		"alchemy",
+		"ankr",
+		"nodereal",
+		"quicknode",
+	]),
 	solana: new Set<SolanaWalletRpcProvider>(["eliza-cloud", "helius-birdeye"]),
 };
 
