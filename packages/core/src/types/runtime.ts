@@ -111,6 +111,12 @@ export type MessageConnectorCapability =
 	| "join_channel"
 	| "leave_channel"
 	| "get_user"
+	| "create_thread"
+	| "post_to_thread"
+	| "typing_indicator"
+	| "webhook_identity"
+	| "rich_components"
+	| "rich_embed"
 	| (string & {});
 
 export type PostConnectorCapability =
@@ -298,6 +304,33 @@ export interface MessageConnectorGetUserParams {
 	target?: TargetInfo;
 }
 
+export interface MessageConnectorTypingParams {
+	target: TargetInfo;
+}
+
+export interface ThreadHandle {
+	threadId: string;
+	parentChannelId?: string;
+}
+
+export interface MessageConnectorCreateThreadParams {
+	target: TargetInfo;
+	parentMessageId?: string;
+	name?: string;
+}
+
+export interface ConnectorPostIdentity {
+	name?: string;
+	avatarUrl?: string;
+}
+
+export interface MessageConnectorPostToThreadParams {
+	target: TargetInfo;
+	thread: ThreadHandle;
+	content: Content;
+	identity?: ConnectorPostIdentity;
+}
+
 export interface MessageConnector {
 	source: string;
 	accountId?: string;
@@ -371,6 +404,22 @@ export interface MessageConnector {
 		runtime: IAgentRuntime,
 		params: MessageConnectorGetUserParams,
 	) => Promise<unknown>;
+	typingHandler?: (
+		runtime: IAgentRuntime,
+		params: MessageConnectorTypingParams,
+	) => Promise<void>;
+	stopTypingHandler?: (
+		runtime: IAgentRuntime,
+		params: MessageConnectorTypingParams,
+	) => Promise<void>;
+	createThreadHandler?: (
+		runtime: IAgentRuntime,
+		params: MessageConnectorCreateThreadParams,
+	) => Promise<ThreadHandle>;
+	postToThreadHandler?: (
+		runtime: IAgentRuntime,
+		params: MessageConnectorPostToThreadParams,
+	) => Promise<Memory> | Promise<void>;
 	contentShaping?: ConnectorContentShaping;
 }
 
@@ -1004,6 +1053,23 @@ export interface IAgentRuntime extends IDatabaseAdapter<object> {
 		target: TargetInfo,
 		content: Content,
 	): Promise<Memory | undefined>;
+	editMessageOnTarget(
+		target: TargetInfo,
+		messageId: string,
+		content: Content,
+	): Promise<Memory | void>;
+	sendTypingOnTarget(target: TargetInfo): Promise<void>;
+	stopTypingOnTarget(target: TargetInfo): Promise<void>;
+	createThreadOnTarget(
+		target: TargetInfo,
+		params?: Omit<MessageConnectorCreateThreadParams, "target">,
+	): Promise<ThreadHandle>;
+	postToThreadOnTarget(
+		target: TargetInfo,
+		thread: ThreadHandle,
+		content: Content,
+		identity?: ConnectorPostIdentity,
+	): Promise<Memory | void>;
 
 	/**
 	 * Pipeline hooks: register with `registerPipelineHook`, run with `applyPipelineHooks`.

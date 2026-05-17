@@ -31,6 +31,20 @@ export type SessionEventName =
   | "reconnected"
   | string;
 
+/**
+ * Set of session statuses that mean "this session is finished and will
+ * not emit further activity". Exported here so providers, the progress
+ * hook, and the orchestrator service share a single source of truth.
+ * Adding a new terminal status only requires updating this set.
+ */
+export const TERMINAL_SESSION_STATUSES: ReadonlySet<string> = new Set([
+  "stopped",
+  "completed",
+  "error",
+  "errored",
+  "cancelled",
+]);
+
 export type SessionEventCallback = (
   sessionId: string,
   event: SessionEventName,
@@ -203,4 +217,23 @@ export interface AcpToolCall {
     | "cancelled"
     | string;
   output?: string;
+  /**
+   * ACP `kind` (when present) — typically `read`, `edit`, `execute`,
+   * `search`, `fetch`, etc. Lets downstream consumers format the
+   * Claude-Code-style display (e.g. `Bash(git status)` for kind=execute).
+   */
+  kind?: string;
+  /**
+   * ACP `rawInput` — the actual tool arguments object as the agent
+   * emitted it. For Read/Edit/Write the most useful field is usually
+   * `file_path`. For Bash/Terminal it's `command`. For Grep it's
+   * `pattern` / `path`. Forwarded as-is so consumers can pick what they
+   * surface.
+   */
+  rawInput?: Record<string, unknown>;
+  /**
+   * ACP `locations` array — file path + line hints attached to the call.
+   * For Read/Edit this typically holds the target file.
+   */
+  locations?: Array<{ path?: string; line?: number }>;
 }

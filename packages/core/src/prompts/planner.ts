@@ -18,6 +18,7 @@ rules:
 - attachments/memory/snippets do not replace explicit current run/check/fetch/inspect/build/deploy/verify/look up now; call tool
 - exposed tool can try => call it; do not say "I cannot browse/search/run/inspect/build/deploy/verify"
 - no tool fits or task complete => no toolCalls, set messageToUser
+- set completed=false when this turn's tool calls do not yet achieve the goal (read-then-act, multi-step deploy/build, verification pending); completed=true only when the goal is achieved this turn. omit when unknown.
 
 If context has "# Routing hints", follow them. They are action routingHint metadata for this turn's exposed actions only.
 
@@ -51,9 +52,14 @@ export const plannerSchema: JSONSchema = {
 			},
 		},
 		messageToUser: { type: "string" },
+		// Optional explicit completion signal. When the planner emits
+		// `completed: false`, the post-tool gate (`tryGateEvaluator`) MUST
+		// fall through to the full evaluator regardless of `messageToUser`,
+		// because the planner itself is signaling that the goal is not yet
+		// achieved this turn (read-then-act, multi-step deploy/build,
+		// verification pending). Omitting the field preserves the original
+		// PR #7514 cost optimization for callers that don't care.
+		completed: { type: "boolean" },
 	},
 	required: ["thought", "toolCalls"],
 };
-
-export const v5PlannerTemplate = plannerTemplate;
-export const v5PlannerSchema = plannerSchema;
