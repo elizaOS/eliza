@@ -277,6 +277,7 @@ export function MCPsSection({ servers, className }: MCPsSectionProps) {
         <div className="flex gap-1.5 flex-wrap">
           {categories.map((cat) => (
             <button
+              type="button"
               key={cat}
               onClick={() => setCategoryFilter(cat)}
               className={cn(
@@ -373,9 +374,9 @@ export function MCPsSection({ servers, className }: MCPsSectionProps) {
                 <div className="grid gap-6 md:grid-cols-2">
                   {/* Endpoint */}
                   <div className="flex flex-col space-y-3">
-                    <label className="text-xs text-neutral-500 uppercase tracking-wider">
+                    <p className="text-xs text-neutral-500 uppercase tracking-wider">
                       MCP Endpoint
-                    </label>
+                    </p>
                     <div className="flex items-center gap-2">
                       <div className="flex-1 bg-white/5 border border-white/10 p-3 font-mono text-sm text-white/80 rounded-sm overflow-x-auto">
                         {typeof window !== "undefined"
@@ -403,9 +404,9 @@ export function MCPsSection({ servers, className }: MCPsSectionProps) {
 
                   {/* Config */}
                   <div className="flex flex-col space-y-3">
-                    <label className="text-xs text-neutral-500 uppercase tracking-wider">
+                    <p className="text-xs text-neutral-500 uppercase tracking-wider">
                       Configuration
-                    </label>
+                    </p>
                     <div className="bg-white/5 border border-white/10 p-3 font-mono text-xs text-white/70 rounded-sm overflow-x-auto">
                       <pre>
                         {JSON.stringify(
@@ -431,9 +432,9 @@ export function MCPsSection({ servers, className }: MCPsSectionProps) {
 
                 {/* Tools */}
                 <div className="mt-6 flex flex-col space-y-3">
-                  <label className="text-xs text-neutral-500 uppercase tracking-wider">
+                  <p className="text-xs text-neutral-500 uppercase tracking-wider">
                     Available Tools ({selectedServer.toolCount})
-                  </label>
+                  </p>
                   <div className="flex flex-wrap gap-1.5">
                     {selectedServer.features.map((feature) => (
                       <span
@@ -457,9 +458,9 @@ export function MCPsSection({ servers, className }: MCPsSectionProps) {
                     animate={{ opacity: 1, y: 0 }}
                     className="mt-6 flex flex-col space-y-3"
                   >
-                    <label className="text-xs text-neutral-500 uppercase tracking-wider">
+                    <p className="text-xs text-neutral-500 uppercase tracking-wider">
                       Server Response
-                    </label>
+                    </p>
                     <div className="bg-white/5 border border-white/10 p-3 font-mono text-xs text-green-400/80 rounded-sm overflow-x-auto max-h-48 overflow-y-auto">
                       <pre>{testResult}</pre>
                     </div>
@@ -499,6 +500,7 @@ export function MCPsSection({ servers, className }: MCPsSectionProps) {
                     <span className="hidden sm:inline">Open Endpoint</span>
                   </a>
                   <button
+                    type="button"
                     className="flex items-center gap-2 px-4 py-2 bg-white/5 border border-white/10 text-white/70 hover:border-white/30 hover:text-white transition-colors rounded-sm text-sm"
                     onClick={() =>
                       window.open(
@@ -512,6 +514,7 @@ export function MCPsSection({ servers, className }: MCPsSectionProps) {
                   </button>
                 </div>
                 <button
+                  type="button"
                   onClick={() => testMcpServer(selectedServer)}
                   disabled={testingServer === selectedServer.id}
                   className="flex items-center gap-2 px-6 py-2 bg-[#FF5800]/20 border border-[#FF5800]/30 text-[#FF5800] hover:bg-[#FF5800]/30 transition-colors rounded-sm text-sm disabled:opacity-50"
