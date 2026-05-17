@@ -670,8 +670,14 @@ grep -q 'systemctl --global enable elizaos-renderer.service' \
     tails/config/chroot_local-hooks/52-update-systemd-units
 grep -q 'systemctl enable elizaos-update-verify.service' \
     tails/config/chroot_local-hooks/52-update-systemd-units
-grep -q 'Wants=elizaos-update-health-check.service' \
+grep -q 'Wants=.*elizaos-update-verify.service' \
     tails/config/chroot_local-includes/etc/systemd/system/milady.service
+grep -q 'Wants=.*elizaos-update-health-check.service' \
+    tails/config/chroot_local-includes/etc/systemd/system/milady.service
+grep -q 'After=display-manager.service elizaos-update-verify.service' \
+    tails/config/chroot_local-includes/etc/systemd/system/milady.service
+grep -q 'DirectoryMode=0755' \
+    tails/config/chroot_local-includes/usr/lib/systemd/system/run-nosymfollow.mount.d/elizaos-root-mode.conf
 grep -q 'ExecStart=/usr/local/lib/elizaos/update-health-check' \
     tails/config/chroot_local-includes/etc/systemd/system/elizaos-update-health-check.service
 grep -q 'ELIZAOS_UPDATE_HEALTH_MARK_BAD_ON_TIMEOUT' \
@@ -688,12 +694,11 @@ grep -q '/live/persistence/TailsData_unlocked/elizaos-system' \
     tails/config/chroot_local-includes/etc/systemd/system/elizaos-update-verify.service
 grep -q 'ProtectHome=read-only' \
     tails/config/chroot_local-includes/etc/systemd/system/elizaos-update-verify.service
-grep -q 'WorkingDirectory=/' \
-    tails/config/chroot_local-includes/etc/systemd/system/polkit.service.d/elizaos-working-directory.conf
-grep -q 'RuntimeDirectory=dbus' \
-    tails/config/chroot_local-includes/etc/systemd/system/dbus.service.d/elizaos-working-directory.conf
-grep -q 'WorkingDirectory=/run/dbus' \
-    tails/config/chroot_local-includes/etc/systemd/system/dbus.service.d/elizaos-working-directory.conf
+if [ -e tails/config/chroot_local-includes/etc/systemd/system/dbus.service.d/elizaos-working-directory.conf ] ||
+    [ -e tails/config/chroot_local-includes/etc/systemd/system/polkit.service.d/elizaos-working-directory.conf ]; then
+    echo "D-Bus and polkit should not carry elizaOS working-directory workarounds; fix root filesystem mode instead." >&2
+    exit 1
+fi
 grep -q 'ELIZAOS_RUNTIME_ROOT' \
     tails/config/chroot_local-includes/usr/local/lib/elizaos/runtime-env
 if grep -q 'ELIZAOS_ALLOW_RUNTIME_ENV_OVERRIDES' \

@@ -1,7 +1,7 @@
 [Unit]
 Description=elizaOS AI desktop home supervisor
-After=display-manager.service
-Wants=elizaos-update-health-check.service
+After=display-manager.service elizaos-update-verify.service
+Wants=elizaos-update-verify.service elizaos-update-health-check.service
 ConditionPathExists=/usr/local/bin/milady
 ConditionPathExists=/opt/milady/bin/launcher
 RefuseManualStop=yes
