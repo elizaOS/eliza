@@ -345,7 +345,10 @@ function installedBundleContextSize(
 ): number | undefined {
 	const manifest = manifestLoader(installed.id, installed);
 	if (manifest) {
-		const contextSize = manifestTextContextForInstalledPath(installed, manifest);
+		const contextSize = manifestTextContextForInstalledPath(
+			installed,
+			manifest,
+		);
 		if (contextSize !== undefined) return contextSize;
 	}
 	return readLegacyStagedManifestTextContext(installed);
