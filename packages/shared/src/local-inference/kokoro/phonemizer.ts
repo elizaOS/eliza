@@ -3,14 +3,14 @@
  *
  * Kokoro is trained against espeak-ng IPA tokens with a small fixed vocab
  * (~178 entries: IPA symbols + stress/punct markers + special <s>/<pad>).
- * Production deployments should bring real espeak-ng (`phonemize` npm
- * package wraps the C library); the bundled fallback here is a
+ * Production deployments should bring real espeak-ng phonemization
+ * (`phonemizer` is the pure-JS eSpeak NG package); the bundled fallback here is a
  * deterministic letter-to-pseudo-phoneme adapter that produces audible
  * speech for ASCII English text but loses prosodic accuracy.
  *
  * Resolution order:
  *   1. Caller-provided `KokoroPhonemizer` (preferred — bring your own).
- *   2. Dynamically-imported `phonemize` npm package, if installed.
+ *   2. Dynamically-imported `phonemizer`/`phonemize` npm package, if installed.
  *   3. Bundled `FallbackG2PPhonemizer` (degrades gracefully, never throws on
  *      ASCII input).
  *
@@ -223,7 +223,7 @@ export class FallbackG2PPhonemizer implements KokoroPhonemizer {
       // surface non-English text rather than emit silence.
       if (cp > 127) {
         throw new KokoroPhonemizerError(
-          `[kokoro] fallback phonemizer cannot handle non-ASCII character '${ch}' (U+${cp.toString(16).padStart(4, "0")}). Install the 'phonemize' npm package or pass a custom KokoroPhonemizer for full Unicode coverage.`,
+          `[kokoro] fallback phonemizer cannot handle non-ASCII character '${ch}' (U+${cp.toString(16).padStart(4, "0")}). Install the 'phonemizer' npm package or pass a custom KokoroPhonemizer for full Unicode coverage.`,
         );
       }
     }
@@ -244,29 +244,48 @@ export class FallbackG2PPhonemizer implements KokoroPhonemizer {
 }
 
 interface PhonemizeMod {
-  // The `phonemize` npm package's typing varies between v1/v2; we treat it
-  // structurally so a minor version bump does not break our import.
-  phonemize?: (text: string, opts?: unknown) => string | Promise<string>;
+  // The `phonemizer` / legacy `phonemize` npm package typing varies between
+  // packages and versions; treat it structurally so minor updates do not break
+  // mobile TTS.
+  phonemize?: (
+    text: string,
+    langOrOpts?: unknown,
+  ) => string | string[] | Promise<string | string[]>;
   default?: { phonemize?: PhonemizeMod["phonemize"] };
 }
 
 /**
- * Wraps the npm `phonemize` package when present. It returns an IPA string
+ * Wraps the npm `phonemizer` package when present. It returns an IPA string
  * which we tokenise with the same VOCAB above. Real Kokoro inference should
  * use a proper espeak tokenizer — production deployments bring their own;
  * this is the "install npm and it works" middle ground.
  */
 export class NpmPhonemizePhonemizer implements KokoroPhonemizer {
-  readonly id = "phonemize";
-  private constructor(private readonly mod: PhonemizeMod) {}
+  readonly id: string;
+  private constructor(
+    private readonly mod: PhonemizeMod,
+    id = "phonemizer",
+    private readonly callStyle: "language" | "options" = "language",
+  ) {
+    this.id = id;
+  }
 
   static async tryLoad(): Promise<NpmPhonemizePhonemizer | null> {
+    try {
+      const mod = (await import("phonemizer")) as PhonemizeMod;
+      const phon = mod.phonemize ?? mod.default?.phonemize;
+      if (typeof phon !== "function") return null;
+      return new NpmPhonemizePhonemizer(mod);
+    } catch {
+      // Older local installs used a package named `phonemize`. Keep it as a
+      // secondary, deliberately non-bundled fallback for developer machines.
+    }
     try {
       const spec = "phonemize";
       const mod = (await import(/* @vite-ignore */ spec)) as PhonemizeMod;
       const phon = mod.phonemize ?? mod.default?.phonemize;
       if (typeof phon !== "function") return null;
-      return new NpmPhonemizePhonemizer(mod);
+      return new NpmPhonemizePhonemizer(mod, "phonemize", "options");
     } catch {
       return null;
     }
@@ -279,8 +298,17 @@ export class NpmPhonemizePhonemizer implements KokoroPhonemizer {
         "[kokoro] 'phonemize' module loaded but does not export a phonemize() function",
       );
     }
-    const out = await phon(text, { lang });
-    const phonemes = typeof out === "string" ? out : String(out);
+    const out = await phon(
+      text,
+      this.callStyle === "language"
+        ? kokoroLangToPhonemizerLanguage(lang)
+        : { lang },
+    );
+    const phonemes = Array.isArray(out)
+      ? out.join(" ")
+      : typeof out === "string"
+        ? out
+        : String(out);
     const ids: number[] = [BOS];
     for (const ch of phonemes.toLowerCase()) {
       const id = VOCAB[ch];
@@ -291,7 +319,18 @@ export class NpmPhonemizePhonemizer implements KokoroPhonemizer {
   }
 }
 
-/** Lazy resolver: caller override → npm `phonemize` → bundled fallback. */
+export function kokoroLangToPhonemizerLanguage(lang: string): string {
+  switch (lang.trim().toLowerCase()) {
+    case "a":
+      return "en-us";
+    case "b":
+      return "en-gb";
+    default:
+      return lang || "en-us";
+  }
+}
+
+/** Lazy resolver: caller override → npm `phonemizer` → bundled fallback. */
 export async function resolvePhonemizer(
   override?: KokoroPhonemizer,
 ): Promise<KokoroPhonemizer> {

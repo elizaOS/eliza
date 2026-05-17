@@ -1046,6 +1046,7 @@ public class ElizaAgentService extends Service {
             File abiLlamaShim = new File(abiDir, "libeliza-llama-shim.so");
             File abiSpeculativeShim = new File(abiDir, "libeliza-llama-speculative-shim.so");
             boolean nativeLlamaBundled = abiLibllama.isFile() && abiLlamaShim.isFile();
+            boolean brandedAospBuild = BuildConfig.AOSP_BUILD && isBrandedDevice();
             if (nativeLlamaBundled && !env.containsKey("ELIZA_LOCAL_LLAMA")) {
                 agentEnv.put("ELIZA_LOCAL_LLAMA", "1");
                 Log.i(TAG, "agent/" + abiDir.getName()
@@ -1057,6 +1058,13 @@ public class ElizaAgentService extends Service {
                 }
                 if (!env.containsKey("ELIZA_KOKORO_PREWARM")) {
                     agentEnv.put("ELIZA_KOKORO_PREWARM", "1");
+                }
+                if (!brandedAospBuild && !env.containsKey("ELIZA_KOKORO_DEFAULT_VOICE_ID")) {
+                    // The stock APK should default to a release-safe Kokoro
+                    // voice. AOSP/product builds can opt into a custom voice
+                    // through ELIZA_KOKORO_DEFAULT_VOICE_ID without changing
+                    // the Play Store APK behavior.
+                    agentEnv.put("ELIZA_KOKORO_DEFAULT_VOICE_ID", "af_bella");
                 }
                 if (!env.containsKey("ELIZA_KOKORO_PREWARM_DELAY_MS")) {
                     // Kokoro's first on-device ORT/WASM synthesis can be
@@ -1071,7 +1079,6 @@ public class ElizaAgentService extends Service {
                     Log.i(TAG, "agent/" + abiDir.getName()
                         + "/libeliza-llama-speculative-shim.so present; enabling in-process DFlash (ELIZA_DFLASH=1)");
                 }
-                boolean brandedAospBuild = BuildConfig.AOSP_BUILD && isBrandedDevice();
                 if (BuildConfig.DEBUG && !env.containsKey("ELIZA_AOSP_LLAMA_DEBUG_LOG")) {
                     File debugLog = new File(agentStateDir(), "aosp-llama-debug.log");
                     agentEnv.put("ELIZA_AOSP_LLAMA_DEBUG_LOG", debugLog.getAbsolutePath());

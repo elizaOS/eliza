@@ -77,7 +77,8 @@
 	"dependencies": {
 		"@elizaos/core": "workspace:*",
 		"@elizaos/shared": "workspace:*",
-		"@elizaos/plugin-capacitor-bridge": "workspace:*"
+		"@elizaos/plugin-capacitor-bridge": "workspace:*",
+		"phonemizer": "^1.2.1"
 	},
 	"optionalDependencies": {
 		"node-llama-cpp": "3.18.1",
