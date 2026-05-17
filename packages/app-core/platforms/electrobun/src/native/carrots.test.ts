@@ -7,8 +7,12 @@ import {
 } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import type { CarrotWorkerMessage } from "@elizaos/electrobun-carrots";
+import type {
+  CarrotWorkerMessage,
+  JsonValue,
+} from "@elizaos/electrobun-carrots";
 import { describe, expect, it } from "vitest";
+import type { DynamicViewHost } from "../dynamic-views/host";
 import { CarrotManager, type CarrotWorkerHandle } from "./carrots";
 
 function withTempDir<T>(fn: (dir: string) => T): T {
@@ -254,6 +258,67 @@ describe("CarrotManager", () => {
             ).payload;
             expect(list).toHaveLength(1);
             expect(list[0]).toMatchObject({ id: "bunny.search" });
+            resolve();
+          } catch (error) {
+            reject(error);
+          }
+        }, 10);
+      });
+    }));
+
+  it("dispatches dynamic view host requests for trusted workers", () =>
+    withTempDir((dir) => {
+      const worker = new FakeWorkerHandle();
+      const opened: JsonValue[] = [];
+      const dynamicViewHost: DynamicViewHost = {
+        register: async () => ({ ok: true }),
+        unregister: async () => ({ removed: true }),
+        list: async () => ({ views: [] }),
+        open: async (params) => {
+          opened.push(params ?? null);
+          return {
+            sessionId: "session-1",
+            viewId: "agent.run.trace",
+            title: "Trace",
+            placement: "floating",
+            status: "open",
+            createdAt: "2026-05-17T00:00:00.000Z",
+            updatedAt: "2026-05-17T00:00:00.000Z",
+          };
+        },
+        close: async () => ({ ok: true }),
+        push: async () => ({ ok: true }),
+        sessions: async () => ({ sessions: [] }),
+      };
+      const manager = new CarrotManager({
+        storeRoot: join(dir, "store"),
+        workerRunner: { start: () => worker },
+        now: () => 1700000000000,
+        dynamicViewHost,
+      });
+      manager.installFromDirectory({ sourceDir: writePayload(dir) });
+      manager.startWorker("bunny.search");
+
+      worker.emit({
+        type: "host-request",
+        requestId: 14,
+        method: "dynamic-view-open",
+        params: { viewId: "agent.run.trace" },
+      });
+
+      return new Promise<void>((resolve, reject) => {
+        setTimeout(() => {
+          try {
+            const response = worker.messages.find(
+              (m) => m.type === "host-response" && m.requestId === 14,
+            );
+            expect(opened).toEqual([{ viewId: "agent.run.trace" }]);
+            expect(response).toMatchObject({
+              type: "host-response",
+              requestId: 14,
+              success: true,
+              payload: { sessionId: "session-1" },
+            });
             resolve();
           } catch (error) {
             reject(error);

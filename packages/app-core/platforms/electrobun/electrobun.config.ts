@@ -327,6 +327,7 @@ export function resolveElectrobunCopyMap({
 	const copy: Record<string, string> = {
 		[rendererDistDir]: "renderer",
 		"src/preload.js": "bun/preload.js",
+		"src/dynamic-views/demo": "bun/demo",
 		"assets/appIcon.png": "assets/appIcon.png",
 		"assets/appIcon.ico": "assets/appIcon.ico",
 	};

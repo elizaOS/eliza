@@ -53,6 +53,12 @@ import {
 import { desktopHttpRequest } from "./desktop-http-request";
 import { formatRendererDiagnosticLine } from "./diagnostic-format";
 import {
+  createDynamicViewHostForRuntime,
+  getDynamicViewRegistry,
+  getDynamicViewSessionManager,
+  registerBuiltInDynamicViews,
+} from "./dynamic-views";
+import {
   composeExtensionStatusSnapshot,
   readExtensionStatusViaHttp,
 } from "./extension-rpc";
@@ -289,6 +295,18 @@ export function buildBunRpcHandlers({
   const musicPlayer = getMusicPlayerManager();
   const browserWorkspace = getBrowserWorkspaceManager();
   const carrots = getCarrotManager();
+  registerBuiltInDynamicViews();
+  const dynamicViewRegistry = getDynamicViewRegistry();
+  const dynamicViewSessions = getDynamicViewSessionManager({
+    registry: dynamicViewRegistry,
+    canvas,
+    workerStatusProvider: {
+      getWorkerStatus: (id) => carrots.getWorkerStatus(id),
+    },
+  });
+  carrots.setDynamicViewHost(
+    createDynamicViewHostForRuntime(dynamicViewSessions),
+  );
   configureCarrotManagerEvents(sendToWebview);
 
   return {
@@ -806,6 +824,18 @@ export function buildBunRpcHandlers({
       carrots.getLogs(params.id, params.maxBytes),
     carrotInvokeWorker: async (params) => carrots.invokeWorker(params),
     carrotTailWorkerEvents: async (params) => carrots.tailWorkerEvents(params),
+    dynamicViewRegister: async (params) =>
+      dynamicViewRegistry.register(params.manifest, { update: params.update }),
+    dynamicViewUnregister: async (params) => ({
+      removed: dynamicViewRegistry.unregister(params.viewId),
+    }),
+    dynamicViewList: async () => ({ views: dynamicViewRegistry.list() }),
+    dynamicViewOpen: async (params) => dynamicViewSessions.open(params),
+    dynamicViewClose: async (params) => dynamicViewSessions.close(params),
+    dynamicViewPush: async (params) => dynamicViewSessions.push(params),
+    dynamicViewSessions: async () => ({
+      sessions: dynamicViewSessions.list(),
+    }),
 
     // ---- Browser Workspace ----
     browserWorkspaceGetSnapshot: async () => ({

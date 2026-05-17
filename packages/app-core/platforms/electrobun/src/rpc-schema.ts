@@ -20,6 +20,15 @@ import type {
   JsonValue,
 } from "@elizaos/electrobun-carrots";
 import type { RPCSchema } from "electrobun/bun";
+import type {
+  DynamicViewCloseParams,
+  DynamicViewManifest,
+  DynamicViewOpenParams,
+  DynamicViewPushParams,
+  DynamicViewRegisterParams,
+  DynamicViewSession,
+  DynamicViewUnregisterParams,
+} from "./dynamic-views/types";
 
 // ============================================================================
 // Shared Types
@@ -1116,6 +1125,34 @@ export type ElizaDesktopRPCSchema = {
       carrotTailWorkerEvents: {
         params: CarrotTailWorkerEventsRequest;
         response: CarrotWorkerEventsTailSnapshot;
+      };
+      dynamicViewRegister: {
+        params: DynamicViewRegisterParams;
+        response: DynamicViewManifest;
+      };
+      dynamicViewUnregister: {
+        params: DynamicViewUnregisterParams;
+        response: { removed: boolean };
+      };
+      dynamicViewList: {
+        params: undefined;
+        response: { views: DynamicViewManifest[] };
+      };
+      dynamicViewOpen: {
+        params: DynamicViewOpenParams;
+        response: DynamicViewSession;
+      };
+      dynamicViewClose: {
+        params: DynamicViewCloseParams;
+        response: DynamicViewSession;
+      };
+      dynamicViewPush: {
+        params: DynamicViewPushParams;
+        response: { ok: true };
+      };
+      dynamicViewSessions: {
+        params: undefined;
+        response: { sessions: DynamicViewSession[] };
       };
       /**
        * Aggregated boot/startup snapshot. Combines `agentStatus` with the
@@ -2298,6 +2335,13 @@ export const CHANNEL_TO_RPC_METHOD: Record<string, string> = {
   "carrot:getLogs": "carrotGetLogs",
   "carrot:invokeWorker": "carrotInvokeWorker",
   "carrot:tailWorkerEvents": "carrotTailWorkerEvents",
+  "dynamic-view:register": "dynamicViewRegister",
+  "dynamic-view:unregister": "dynamicViewUnregister",
+  "dynamic-view:list": "dynamicViewList",
+  "dynamic-view:open": "dynamicViewOpen",
+  "dynamic-view:close": "dynamicViewClose",
+  "dynamic-view:push": "dynamicViewPush",
+  "dynamic-view:sessions": "dynamicViewSessions",
 
   // Browser Workspace
   "browser-workspace:getSnapshot": "browserWorkspaceGetSnapshot",

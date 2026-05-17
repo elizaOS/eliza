@@ -38,6 +38,7 @@ import {
 } from "@elizaos/electrobun-carrots";
 import { resolveApiToken } from "@elizaos/shared";
 import { BrowserView, BrowserWindow, Utils } from "electrobun/bun";
+import type { DynamicViewHost } from "../dynamic-views/host";
 import { logger } from "../logger.js";
 import type { SendToWebview } from "../types.js";
 import { getAgentManager, getDiagnosticLogPath } from "./agent";
@@ -116,6 +117,7 @@ export interface CarrotManagerOptions {
   workerRunner?: CarrotWorkerRunner;
   now?: () => number;
   events?: CarrotManagerEvents;
+  dynamicViewHost?: DynamicViewHost;
 }
 
 const CARROT_STORE_ENV_KEYS = [
@@ -296,6 +298,7 @@ export class CarrotManager {
     number,
     PendingDirectInvoke
   >();
+  private dynamicViewHost: DynamicViewHost | null;
   private nextInvokeId = 1;
 
   constructor(options: CarrotManagerOptions = {}) {
@@ -304,10 +307,15 @@ export class CarrotManager {
     this.now = options.now ?? Date.now;
     this.maxWorkerEvents = resolveWorkerEventBufferLimit();
     this.events = options.events ?? {};
+    this.dynamicViewHost = options.dynamicViewHost ?? null;
   }
 
   setEvents(events: CarrotManagerEvents): void {
     this.events = events;
+  }
+
+  setDynamicViewHost(host: DynamicViewHost | null): void {
+    this.dynamicViewHost = host;
   }
 
   getStoreRoot(): string {
@@ -1020,6 +1028,27 @@ export class CarrotManager {
         throw new Error(
           "invoke-carrot must be routed through startInvokeCarrot",
         );
+      case "dynamic-view-register":
+        this.requireManageCarrots(callerId, "dynamic-view-register");
+        return this.requireDynamicViewHost(method).register(params);
+      case "dynamic-view-unregister":
+        this.requireManageCarrots(callerId, "dynamic-view-unregister");
+        return this.requireDynamicViewHost(method).unregister(params);
+      case "dynamic-view-list":
+        this.requireManageCarrots(callerId, "dynamic-view-list");
+        return this.requireDynamicViewHost(method).list();
+      case "dynamic-view-open":
+        this.requireManageCarrots(callerId, "dynamic-view-open");
+        return this.requireDynamicViewHost(method).open(params);
+      case "dynamic-view-close":
+        this.requireManageCarrots(callerId, "dynamic-view-close");
+        return this.requireDynamicViewHost(method).close(params);
+      case "dynamic-view-push":
+        this.requireManageCarrots(callerId, "dynamic-view-push");
+        return this.requireDynamicViewHost(method).push(params);
+      case "dynamic-view-sessions":
+        this.requireManageCarrots(callerId, "dynamic-view-sessions");
+        return this.requireDynamicViewHost(method).sessions();
       case "set-auth-token": {
         const record = this.workers.get(callerId);
         if (!record?.context) {
@@ -1077,6 +1106,13 @@ export class CarrotManager {
         agentStatus: status as unknown as JsonValue,
       };
     }
+  }
+
+  private requireDynamicViewHost(method: string): DynamicViewHost {
+    if (!this.dynamicViewHost) {
+      throw new Error(`${method}: dynamic view host is not configured.`);
+    }
+    return this.dynamicViewHost;
   }
 
   private readAgentManagerLogsTail(params: JsonValue | undefined): JsonValue {
