@@ -183,7 +183,7 @@ export function WithdrawDialog({
 
               {/* Amount input */}
               <div className="space-y-2">
-                <label className="text-xs text-neutral-400">
+                <label htmlFor="withdraw-amount" className="text-xs text-neutral-400">
                   Withdrawal Amount
                 </label>
                 <div className="relative">
@@ -191,6 +191,7 @@ export function WithdrawDialog({
                     $
                   </span>
                   <Input
+                    id="withdraw-amount"
                     type="number"
                     value={amount}
                     onChange={(e) => setAmount(e.target.value)}
@@ -205,6 +206,7 @@ export function WithdrawDialog({
                     Minimum: ${payoutThreshold.toFixed(2)}
                   </span>
                   <button
+                    type="button"
                     onClick={() => setAmount(withdrawableBalance.toFixed(2))}
                     className="text-[#FF5800] hover:text-[#FF5800]/80 transition-colors"
                   >
