@@ -373,8 +373,11 @@ function getLifeOpsSearchService(
   runtime: IAgentRuntime,
 ): CrossChannelNativeSearchService | null {
   const service = runtime.getService("lifeops");
+  // Single-step cast: CrossChannelNativeSearchService is a plain interface
+  // (no Service base), so getService<T> generic isn't usable, but the types
+  // are non-conflicting and a single cast from Service to interface suffices.
   return isObjectService(service)
-    ? (service as unknown as CrossChannelNativeSearchService)
+    ? (service as CrossChannelNativeSearchService)
     : null;
 }
 

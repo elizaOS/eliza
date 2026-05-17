@@ -1,5 +1,5 @@
-import { useCallback, useState } from "react";
 import { VoicePill, type VoicePillMessage } from "@elizaos/ui";
+import { useCallback, useState } from "react";
 
 /**
  * AndroidVoicePill
@@ -18,20 +18,28 @@ import { VoicePill, type VoicePillMessage } from "@elizaos/ui";
  */
 
 const INITIAL_MESSAGES: VoicePillMessage[] = [
-  { id: "a-welcome", role: "agent", text: "Hello, Shaw. What's on the list today?" },
+  {
+    id: "a-welcome",
+    role: "agent",
+    text: "Hello, Shaw. What's on the list today?",
+  },
 ];
 
 const PLACEHOLDER_REPLY = "Acknowledged.";
 const PLACEHOLDER_REPLY_DELAY_MS = 350;
 
 export function AndroidVoicePill() {
-  const [messages, setMessages] = useState<VoicePillMessage[]>(INITIAL_MESSAGES);
+  const [messages, setMessages] =
+    useState<VoicePillMessage[]>(INITIAL_MESSAGES);
 
   const handleSubmit = useCallback((text: string): void => {
     const trimmed = text.trim();
     if (trimmed.length === 0) return;
     const userId = `u-${Date.now()}`;
-    setMessages((prev) => [...prev, { id: userId, role: "user", text: trimmed }]);
+    setMessages((prev) => [
+      ...prev,
+      { id: userId, role: "user", text: trimmed },
+    ]);
     // Placeholder agent reply — replace with real on-device agent call.
     window.setTimeout(() => {
       setMessages((prev) => [

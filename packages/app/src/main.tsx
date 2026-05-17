@@ -95,7 +95,6 @@ import {
 } from "@elizaos/ui";
 import { type ComponentType, lazy, StrictMode, Suspense } from "react";
 import { createRoot } from "react-dom/client";
-import { AndroidVoicePill } from "./components/AndroidVoicePill";
 import {
   APP_BRANDING_BASE,
   APP_CONFIG,
@@ -105,6 +104,7 @@ import {
 } from "./app-config";
 import { APP_ENV_ALIASES, APP_ENV_PREFIX } from "./brand-env";
 import { APP_CHARACTER_CATALOG } from "./character-catalog";
+import { AndroidVoicePill } from "./components/AndroidVoicePill";
 import { buildAssistantLaunchHashRoute } from "./deep-link-routing";
 import {
   apiBaseToDeviceBridgeUrl,

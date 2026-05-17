@@ -63,9 +63,12 @@ export type HandlerOptionsLike =
 export function getAcpService(
   runtime: IAgentRuntime,
 ): AcpActionService | undefined {
+  // Single-step cast: getService returns Service|null; AcpActionService is a
+  // plain interface (no Service base) so we can't use the generic parameter,
+  // but the structural types are non-conflicting so one cast suffices.
   return (runtime.getService?.("ACP_SERVICE") ??
     runtime.getService?.("ACP_SUBPROCESS_SERVICE") ??
-    undefined) as unknown as AcpActionService | undefined;
+    undefined) as AcpActionService | undefined;
 }
 
 export function logger(runtime: IAgentRuntime): IAgentRuntime["logger"] {

@@ -12,6 +12,15 @@ import { Service } from "@elizaos/core";
 import type { AcpService } from "./acp-service.js";
 import type { SessionEventName, SessionInfo } from "./types.js";
 
+// IAgentRuntime extension: some runtimes expose sendMessageToTarget for
+// connector-aware reply routing. This is not part of the core interface.
+type RuntimeWithSendTarget = IAgentRuntime & {
+  sendMessageToTarget?: (
+    target: { source: string; roomId?: UUID; accountId?: string },
+    content: Content,
+  ) => Promise<Memory | undefined>;
+};
+
 const ACPX_ROUTER_SOURCE = "sub_agent";
 const SUB_AGENT_ENTITY_NAMESPACE = "acpx:sub-agent";
 const DEFAULT_ROUND_TRIP_CAP = 32;
@@ -518,14 +527,12 @@ export class SubAgentRouter extends Service {
             subAgentTargetRoomId: target.roomId,
             subAgentTargetRoomRole: target.roles[0],
             subAgentTargetRoomRoles: target.roles,
-            // Cast: swarmRoomsMetadata returns
-            // `Array<Record<string, string | string[]>>` which is structurally
-            // a JsonValue but TypeScript widens it to SwarmRoomTarget[] when
-            // inlined into the Content.metadata literal. Cast to the
-            // metadata-shape type-checked sibling fields use.
+            // Cast: the Content index signature expects MetadataValue but
+            // swarmRoomsMetadata returns Array<Record<string, string|string[]>>,
+            // which is a valid JsonValue[] but TypeScript can't infer that here.
             subAgentSwarmRooms: swarmRoomsMetadata(
               origin.swarmRooms,
-            ) as unknown as Array<{ [key: string]: string | string[] }>,
+            ) as Array<Record<string, string | string[]>>,
             taskRoomId: origin.taskRoomId,
             ...(origin.worktreeRoomId
               ? { worktreeRoomId: origin.worktreeRoomId }
@@ -599,14 +606,8 @@ export class SubAgentRouter extends Service {
     sessionId: string,
     target: SwarmRoomTarget,
   ): HandlerCallback | undefined {
-    const sendToTarget = (
-      this.runtime as unknown as {
-        sendMessageToTarget?: (
-          target: { source: string; roomId?: UUID; accountId?: string },
-          content: Content,
-        ) => Promise<Memory | undefined>;
-      }
-    ).sendMessageToTarget?.bind(this.runtime);
+    const sendToTarget = (this.runtime as RuntimeWithSendTarget)
+      .sendMessageToTarget?.bind(this.runtime);
     if (!sendToTarget) return undefined;
     const source = origin.source;
     if (!source) return undefined;

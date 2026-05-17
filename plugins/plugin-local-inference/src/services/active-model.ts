@@ -42,13 +42,13 @@ import {
 	type VoiceTierSlot,
 } from "./voice/voice-budget";
 
+export type { KvOffloadMode, LocalInferenceLoadArgs } from "./load-args.js";
 export {
 	ELIZA_1_PLACEHOLDER_IDS,
 	FIRST_RUN_DEFAULT_MODEL_ID,
 	recommendForFirstRun,
 };
 
-export type { KvOffloadMode, LocalInferenceLoadArgs } from "./load-args.js";
 import type { KvOffloadMode, LocalInferenceLoadArgs } from "./load-args.js";
 
 /**

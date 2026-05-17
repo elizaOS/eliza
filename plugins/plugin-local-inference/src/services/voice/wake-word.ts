@@ -110,6 +110,7 @@ const FRAME_SAMPLES = 1280;
  * matches the same shape the previous ONNX backend exposed to callers.
  */
 export type { WakeWordModel } from "./types.js";
+
 import type { WakeWordModel } from "./types.js";
 
 export interface WakeWordConfig {

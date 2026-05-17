@@ -182,10 +182,12 @@ export async function runScheduleHandler(
       ? { circadianContractView: sleepWindow }
       : { circadianContractView: null }),
   });
-  const callbackData = data as unknown as Content["data"];
   await callback?.({
     text,
-    data: callbackData,
+    // ProviderDataRecord values are JSON-serializable and satisfy the Content
+    // index signature at runtime; the cast bridges the broader ProviderValue
+    // vs narrower ContentValue type gap.
+    data: data as Content["data"],
   });
   return {
     text,
