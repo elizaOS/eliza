@@ -109,12 +109,8 @@ const FRAME_SAMPLES = 1280;
  * future async-friendly backend (e.g. a worker-thread variant) and
  * matches the same shape the previous ONNX backend exposed to callers.
  */
-export interface WakeWordModel {
-	readonly frameSamples: number;
-	readonly sampleRate: number;
-	scoreFrame(frame: Float32Array): Promise<number>;
-	reset(): void;
-}
+export type { WakeWordModel } from "./types.js";
+import type { WakeWordModel } from "./types.js";
 
 export interface WakeWordConfig {
 	/** P(wake) above this fires a detection. openWakeWord default ~0.5. */

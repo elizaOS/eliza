@@ -426,12 +426,8 @@ export interface VadDetectorConfig {
 
 type SegmentPhase = "idle" | "speaking" | "paused";
 
-export interface VadLike {
-	readonly windowSamples: number;
-	readonly sampleRate: number;
-	process(window: Float32Array): Promise<number>;
-	reset(): void;
-}
+export type { VadLike } from "./types.js";
+import type { VadLike } from "./types.js";
 
 export type VadProviderId = "qwen-toolkit" | "silero-cpp" | "silero-ggml";
 export type VadProviderPreference = "auto" | VadProviderId;

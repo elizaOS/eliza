@@ -31,7 +31,7 @@
  *                   ∈ [0, 1].
  */
 
-import type { WakeWordModel } from "./wake-word";
+import type { WakeWordModel } from "./types";
 
 /** PCM frame size the streaming pipeline expects (80 ms @ 16 kHz). */
 const FRAME_SAMPLES = 1280;

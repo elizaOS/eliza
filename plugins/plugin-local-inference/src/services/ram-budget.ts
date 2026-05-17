@@ -31,7 +31,7 @@ import path from "node:path";
 import { ELIZA_1_TIER_IDS, type Eliza1TierId, MODEL_CATALOG } from "./catalog";
 import { estimateQuantizedKvBytesPerToken } from "./kv-spill";
 import { type Eliza1Manifest, validateManifest } from "./manifest";
-import type { CatalogModel, InstalledModel } from "./types";
+import type { CatalogModel, InstalledModel, RamBudget } from "./types";
 
 const MB_PER_GB = 1024;
 const BYTES_PER_MB = 1024 * 1024;
@@ -60,15 +60,7 @@ export function ramHeadroomReserveMb(): number {
 	return DEFAULT_RAM_HEADROOM_RESERVE_MB;
 }
 
-export interface RamBudget {
-	/** Minimum RAM the bundle will boot under, in megabytes. */
-	minMb: number;
-	/** RAM the bundle expects for nominal workloads, in megabytes. */
-	recommendedMb: number;
-	/** Where the numbers came from. `manifest` only when both came from
-	 *  a validated `eliza-1.manifest.json` next to the installed bundle. */
-	source: "manifest" | "catalog";
-}
+export type { RamBudget } from "./types.js";
 
 /**
  * Loader contract — keeps the helper testable without touching disk.

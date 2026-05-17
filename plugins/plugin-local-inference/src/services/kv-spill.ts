@@ -27,7 +27,7 @@
  * and conservative, and the gate fails *closed*.
  */
 
-import type { RamBudget } from "./ram-budget";
+import type { RamBudget } from "./types";
 
 /** Context length below which spill never applies (AGENTS.md §3 item 7). */
 export const KV_SPILL_MIN_CONTEXT = 65536;

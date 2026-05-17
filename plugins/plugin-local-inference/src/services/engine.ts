@@ -23,7 +23,7 @@ import {
 	ResponseSkeletonStreamExtractor,
 } from "@elizaos/core";
 import { resolveKokoroEngineConfig } from "@elizaos/shared";
-import type { LocalInferenceLoadArgs } from "./active-model";
+import type { LocalInferenceLoadArgs } from "./load-args";
 import type {
 	GenerateArgs as BackendGenerateArgs,
 	BackendPlan,

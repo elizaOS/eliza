@@ -635,8 +635,8 @@ function joinTranscriptParts(head: string, tail: string): string {
  * OpenVINO Whisper streaming transcriber.
  * ==================================================================== */
 
-/** Injectable decoder: decodes one PCM window (16 kHz mono fp32) into text. */
-export type StreamingPcmDecoder = (pcm16k: Float32Array) => Promise<string>;
+export type { StreamingPcmDecoder } from "./types.js";
+import type { StreamingPcmDecoder } from "./types.js";
 
 export interface OpenVinoStreamingTranscriberOptions {
 	vad?: VadEventSource;

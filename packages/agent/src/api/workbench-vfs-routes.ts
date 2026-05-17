@@ -35,7 +35,7 @@ import {
   type VirtualFilesystemService,
   type VirtualFilesystemSnapshot,
 } from "../services/virtual-filesystem.ts";
-import type { WorkbenchRouteContext } from "./workbench-routes.ts";
+import type { WorkbenchRouteContext } from "./workbench-context.ts";
 
 export async function handleWorkbenchVfsRoutes(
   ctx: WorkbenchRouteContext,

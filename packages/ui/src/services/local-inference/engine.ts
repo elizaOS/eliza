@@ -18,7 +18,7 @@
 
 import fs from "node:fs/promises";
 import path from "node:path";
-import type { LocalInferenceLoadArgs } from "./active-model";
+import type { LocalInferenceLoadArgs } from "./load-args";
 import { findCatalogModel } from "./catalog";
 import {
   type DflashServerPlan,

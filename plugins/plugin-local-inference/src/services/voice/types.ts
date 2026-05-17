@@ -667,3 +667,28 @@ export type VoiceSchedulerTelemetryEvent =
 export type VoiceSchedulerTelemetryListener = (
 	event: VoiceSchedulerTelemetryEvent,
 ) => void;
+
+// ---------------------------------------------------------------------------
+// Shared interfaces extracted here to break circular dependencies between
+// vad.ts ↔ vad-ggml.ts, wake-word.ts ↔ wake-word-ggml.ts, and
+// transcriber.ts ↔ openvino-whisper-asr.ts.
+// ---------------------------------------------------------------------------
+
+/** Minimal VAD model contract consumed by SileroVadGgml and qwen-toolkit adapter. */
+export interface VadLike {
+	readonly windowSamples: number;
+	readonly sampleRate: number;
+	process(window: Float32Array): Promise<number>;
+	reset(): void;
+}
+
+/** Minimal wake-word model contract consumed by OpenWakeWordGgmlModel. */
+export interface WakeWordModel {
+	readonly frameSamples: number;
+	readonly sampleRate: number;
+	scoreFrame(frame: Float32Array): Promise<number>;
+	reset(): void;
+}
+
+/** Streaming PCM decoder function type consumed by OpenVinoWhisperAsr. */
+export type StreamingPcmDecoder = (pcm16k: Float32Array) => Promise<string>;
