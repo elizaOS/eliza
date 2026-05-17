@@ -16,7 +16,7 @@ export interface DeviceProfileCopy {
 const COPY: Record<DeviceProfile, DeviceProfileCopy> = {
   ios: {
     recommendation:
-      "I recommend cloud for your device. Running in the cloud means I have a lot less limitations around what I can do.",
+      "I recommend cloud for your device. Running in the cloud means I have far fewer limitations around what I can do.",
     preferLocal: false,
   },
   android: {

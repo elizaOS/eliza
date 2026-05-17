@@ -621,7 +621,8 @@ function OwnerConfirmStep(props: VoicePrefixStepsProps): React.ReactElement {
           data-testid="voice-prefix-owner-confirm-crown"
         />
         <p className="text-sm">
-          You are the OWNER. The agent will only execute privileged actions for
+          You're the owner of this device. The agent will only execute
+          privileged actions (paying, posting, file edits, system changes) for
           you.
         </p>
       </div>
@@ -704,7 +705,7 @@ function FamilyStep(props: VoicePrefixStepsProps): React.ReactElement {
   const [captured, setCaptured] = React.useState<FamilyMemberCapture[]>([]);
   const [phase, setPhase] = React.useState<FamilyCapturePhase>("idle");
   const [draftName, setDraftName] = React.useState("");
-  const [draftRelationship, setDraftRelationship] = React.useState("family");
+  const [draftRelationship, setDraftRelationship] = React.useState("");
   const [captureError, setCaptureError] = React.useState<string | null>(null);
   const [countdown, setCountdown] = React.useState(0);
   const countdownRef = React.useRef<ReturnType<typeof setInterval> | null>(
@@ -763,7 +764,7 @@ function FamilyStep(props: VoicePrefixStepsProps): React.ReactElement {
         },
       ]);
       setDraftName("");
-      setDraftRelationship("family");
+      setDraftRelationship("");
       setPhase("idle");
     } catch (err) {
       setCaptureError(err instanceof Error ? err.message : "Recording failed.");
@@ -774,8 +775,8 @@ function FamilyStep(props: VoicePrefixStepsProps): React.ReactElement {
   return (
     <div className="flex flex-col gap-3" data-testid="voice-prefix-family">
       <p className="text-sm">
-        Optional: introduce other people the agent might hear. You can add more
-        anytime in Settings → Voice → Profiles.
+        Introduce other people the agent might hear. You can add more anytime
+        in Settings → Voice → Profiles.
       </p>
 
       {captured.length > 0 ? (

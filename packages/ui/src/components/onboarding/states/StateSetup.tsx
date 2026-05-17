@@ -11,11 +11,14 @@ export interface StateSetupProps {
   onChooseRemote: () => void;
 }
 
+// Languages identified by their native name rather than a flag emoji.
+// Flags conflate language with country (English ≠ 🇺🇸, Spanish ≠ 🇪🇸), which
+// excludes huge user populations and is a standard i18n anti-pattern.
 const LANGUAGES: ReadonlyArray<{ value: string; label: string }> = [
-  { value: "en-US", label: "🇺🇸 English" },
-  { value: "es-ES", label: "🇪🇸 Spanish" },
-  { value: "ja-JP", label: "🇯🇵 Japanese" },
-  { value: "ko-KR", label: "🇰🇷 Korean" },
+  { value: "en-US", label: "English" },
+  { value: "es-ES", label: "Español" },
+  { value: "ja-JP", label: "日本語" },
+  { value: "ko-KR", label: "한국어" },
 ];
 
 export function StateSetup(props: StateSetupProps): React.JSX.Element {
