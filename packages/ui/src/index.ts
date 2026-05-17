@@ -363,6 +363,27 @@ export * from "./onboarding/pre-seed-local-runtime";
 // === Phase 5C: ./onboarding-config moved to @elizaos/app-core/onboarding/onboarding-config ===
 export * from "./platform/index";
 export * from "./providers/index";
+export {
+  AssistantOverlay,
+  type AssistantOverlayProps,
+} from "./components/shell/AssistantOverlay";
+export {
+  ChatSurface,
+  type ChatSurfaceProps,
+} from "./components/shell/ChatSurface";
+export { HomePill, type HomePillProps } from "./components/shell/HomePill";
+export {
+  type ShellAction,
+  type ShellMessage,
+  type ShellPhase,
+  type ShellState,
+  initialShellState,
+  shellReducer,
+} from "./components/shell/shell-state";
+export {
+  useShellState,
+  type UseShellStateResult,
+} from "./components/shell/useShellState";
 export * from "./shell-params";
 export * from "./slots/task-coordinator-slots";
 export type {
