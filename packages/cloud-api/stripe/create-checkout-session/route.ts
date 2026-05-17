@@ -5,6 +5,11 @@
  * Lazily creates a Stripe customer for the org if one doesn't exist.
  */
 
+import {
+  HARDWARE_PRODUCTS,
+  HARDWARE_SKUS,
+  findBySku,
+} from "@elizaos/hardware-catalog";
 import { Hono } from "hono";
 import type Stripe from "stripe";
 import { z } from "zod";
@@ -21,49 +26,8 @@ import { logger } from "@/lib/utils/logger";
 import type { AppEnv } from "@/types/cloud-worker-env";
 
 const CUSTOM_AMOUNT_LIMITS = { MIN_AMOUNT: 1, MAX_AMOUNT: 1000 } as const;
-const HARDWARE_PRODUCTS = {
-  "elizaos-phone": {
-    amount: 499,
-    name: "ElizaOS Phone preorder deposit",
-    description: "Reserve first-party ElizaOS phone hardware.",
-  },
-  "elizaos-box": {
-    amount: 299,
-    name: "ElizaOS Box preorder deposit",
-    description: "Reserve the ElizaOS home/runtime box.",
-  },
-  "elizaos-usb-chibi": {
-    amount: 49,
-    name: "Chibi USB key preorder",
-    description: "Character ElizaOS USB installer key. Ships October 2026.",
-  },
-  "elizaos-usb": {
-    amount: 49,
-    name: "ElizaOS USB key preorder",
-    description: "First-party ElizaOS USB installer key. Ships October 2026.",
-  },
-  "elizaos-usb-plastic": {
-    amount: 49,
-    name: "Branded USB key preorder",
-    description:
-      "Simple plastic ElizaOS USB installer key. Ships October 2026.",
-  },
-  "elizaos-raspberry-pi-case": {
-    amount: 49,
-    name: "ElizaOS Raspberry Pi case preorder",
-    description: "Reserve the ElizaOS Raspberry Pi case.",
-  },
-  "elizaos-custom-raspberry-pi-case": {
-    amount: 149,
-    name: "ElizaOS Raspberry Pi + case preorder",
-    description: "Reserve the custom Raspberry Pi and ElizaOS case kit.",
-  },
-  "elizaos-mini-pc": {
-    amount: 1999,
-    name: "ElizaOS mini PC preorder",
-    description: "Reserve the first-party ElizaOS mini PC.",
-  },
-} as const;
+
+void HARDWARE_PRODUCTS;
 
 const checkoutRequestSchema = z
   .object({
@@ -80,18 +44,7 @@ const checkoutRequestSchema = z
       )
       .finite("Amount must be a valid number")
       .optional(),
-    hardwareSku: z
-      .enum([
-        "elizaos-phone",
-        "elizaos-box",
-        "elizaos-usb-chibi",
-        "elizaos-usb",
-        "elizaos-usb-plastic",
-        "elizaos-raspberry-pi-case",
-        "elizaos-custom-raspberry-pi-case",
-        "elizaos-mini-pc",
-      ])
-      .optional(),
+    hardwareSku: z.enum(HARDWARE_SKUS).optional(),
     hardwareColor: z.string().min(1).max(32).optional(),
     returnUrl: z.enum(["settings", "billing"]).optional().default("settings"),
   })

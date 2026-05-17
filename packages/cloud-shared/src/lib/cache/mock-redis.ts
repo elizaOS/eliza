@@ -11,7 +11,22 @@
 
 import { createRequire } from "node:module";
 
-const requireCJS = createRequire(import.meta.url);
+// Lazy: `import.meta.url` is undefined in some bundle contexts (e.g. the
+// Cloudflare Workers dev bundle reload path), so building createRequire at
+// module load throws. Defer until first use, which only happens when
+// MOCK_REDIS=1 and ioredis-mock is actually needed.
+let _requireCJS: NodeJS.Require | null = null;
+function getRequireCJS(): NodeJS.Require {
+  if (_requireCJS) return _requireCJS;
+  const url = import.meta.url;
+  if (!url) {
+    throw new Error(
+      "mock-redis: import.meta.url is undefined; cannot resolve ioredis-mock via createRequire",
+    );
+  }
+  _requireCJS = createRequire(url);
+  return _requireCJS;
+}
 
 interface IoRedisLike {
   get(key: string): Promise<string | null>;
@@ -44,7 +59,7 @@ interface IoRedisLike {
 
 function createIoRedisMock(): IoRedisLike {
   // biome-ignore lint/suspicious/noExplicitAny: ESM/CJS interop with ioredis-mock
-  const mod = requireCJS("ioredis-mock") as any;
+  const mod = getRequireCJS()("ioredis-mock") as any;
   const Ctor = mod?.default ?? mod;
   return new Ctor() as IoRedisLike;
 }

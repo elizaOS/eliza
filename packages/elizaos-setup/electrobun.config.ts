@@ -2,8 +2,8 @@ import { defineConfig } from "electrobun";
 
 export default defineConfig({
   app: {
-    name: "elizaOS AOSP Flasher",
-    identifier: "ai.elizaos.aosp-flasher",
+    name: "elizaOS Setup",
+    identifier: "ai.elizaos.setup",
     version: "1.0.0",
   },
   build: {

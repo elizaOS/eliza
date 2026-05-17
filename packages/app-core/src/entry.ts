@@ -8,7 +8,7 @@
  */
 import "@elizaos/shared";
 import process from "node:process";
-import { getLogPrefix } from "@elizaos/shared";
+import { formatErrorWithStack, getLogPrefix } from "@elizaos/shared";
 import { applyCliProfileEnv, parseCliProfileArgs } from "./cli/profile";
 
 process.title = process.env.APP_CLI_NAME?.trim() || "eliza";
@@ -88,7 +88,7 @@ import("./cli/run-main")
   .catch((error) => {
     console.error(
       `${getLogPrefix()} Failed to start CLI:`,
-      error instanceof Error ? (error.stack ?? error.message) : error,
+      formatErrorWithStack(error),
     );
     process.exit(1);
   });

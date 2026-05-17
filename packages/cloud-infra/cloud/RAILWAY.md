@@ -57,6 +57,20 @@ Railway, with container-based workloads provisioned on Hetzner via the
 - AWS resources (legacy gateway-discord on AWS Lambda, S3 buckets, etc.) are
   being phased out. New AWS dependencies should not be added.
 
+## AWS retirement summary
+
+Full classification, plan, owners, and outstanding items live in
+[`AWS_RETIREMENT.md`](./AWS_RETIREMENT.md). Quick map:
+
+| AWS thing | Status | Target |
+|---|---|---|
+| `@aws-sdk/client-s3` (cloud-shared) | **Keep** | Cloudflare R2 / Supabase / generic S3 endpoint — SDK is provider-agnostic |
+| `@aws-sdk/client-kms` (cloud-shared encryption) | **Keep (optional)** | `LocalKMSProvider` (AES-256-GCM with `SECRETS_MASTER_KEY`) is the default. AWS KMS provider only fires when `AWS_KMS_KEY_ID` is set |
+| `legacy-gateway-discord-aws/` terraform | **Deleted** | n/a — was a stale duplicate |
+| `cloud-services/gateway-discord/terraform/` (EKS) | **Retire** | Gateway-discord is a Docker/Bun service; redeploy on Railway / Hetzner. Terraform + CI workflow kept until Railway path lands. |
+| `packages/examples/aws/` Lambda example | **Keep** | Documentation example for users who want to deploy elizaOS on Lambda. Not part of Eliza Cloud infra. |
+| AWS ECR/ECS code | **Already removed** | Replaced by `container-control-plane` + Hetzner. README references are stale and have been pruned. |
+
 ## Removed: legacy fullstack `railway.toml`
 
 `packages/cloud-infra/cloud/railway.toml` used to deploy the old Next.js

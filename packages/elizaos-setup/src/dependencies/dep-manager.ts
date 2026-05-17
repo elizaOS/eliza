@@ -232,7 +232,7 @@ async function downloadSideloader(): Promise<boolean> {
     "https://api.github.com/repos/Dadoum/Sideloader/releases/latest";
   try {
     const res = await fetch(apiUrl, {
-      headers: { "User-Agent": "aosp-flasher/1.0" },
+      headers: { "User-Agent": "elizaos-setup/1.0" },
     });
     if (!res.ok) return false;
 

@@ -24,6 +24,7 @@
   "dependencies": {
     "@elizaos/checkout-shared": "workspace:*",
     "@elizaos/cloud-shared": "workspace:*",
+    "@elizaos/hardware-catalog": "workspace:*",
     "@elizaos/shared-brand": "workspace:*",
     "@elizaos/ui": "workspace:*",
     "@fontsource-variable/inter": "^5.2.8",

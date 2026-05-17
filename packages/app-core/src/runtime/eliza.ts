@@ -407,7 +407,7 @@ async function registerAppRoutePlugins(runtime: AgentRuntime): Promise<void> {
       );
     } catch (err) {
       logger.warn(
-        `[eliza] Failed to register app route plugin ${id}: ${err instanceof Error ? err.message : String(err)}`,
+        `[eliza] Failed to register app route plugin ${id}: ${formatError(err)}`,
       );
     }
   }
@@ -429,7 +429,7 @@ async function registerTrainingRuntimeHooks(
     )) as RuntimeHookModule;
   } catch (err) {
     logger.warn(
-      `[eliza] @elizaos/plugin-training not installed, skipping runtime hooks: ${err instanceof Error ? err.message : String(err)}`,
+      `[eliza] @elizaos/plugin-training not installed, skipping runtime hooks: ${formatError(err)}`,
     );
     return;
   }
@@ -494,7 +494,7 @@ async function repairRuntimeAfterBoot(
       );
     } catch (error) {
       throw new Error(
-        `[eliza] AutonomyService restart after SQL compatibility repair failed: ${error instanceof Error ? error.message : String(error)}`,
+        `[eliza] AutonomyService restart after SQL compatibility repair failed: ${formatError(error)}`,
       );
     }
   }
@@ -510,7 +510,7 @@ async function repairRuntimeAfterBoot(
         );
       } catch (err) {
         throw new Error(
-          `[eliza] Failed to enable autonomy loop: ${err instanceof Error ? err.message : String(err)}`,
+          `[eliza] Failed to enable autonomy loop: ${formatError(err)}`,
         );
       }
     }
@@ -571,9 +571,7 @@ async function ensureTriggerEventBridge(runtime: AgentRuntime): Promise<void> {
     logger.info("[eliza] trigger event bridge armed");
   } catch (err) {
     logger.warn(
-      `[eliza] Failed to start trigger event bridge: ${
-        err instanceof Error ? err.message : String(err)
-      }`,
+      `[eliza] Failed to start trigger event bridge: ${formatError(err)}`,
     );
   }
 }
@@ -619,9 +617,9 @@ async function ensureConnectorTargetCatalog(
     logger.info("[eliza] connector-target-catalog registered");
   } catch (err) {
     logger.warn(
-      `[eliza] Failed to register connector-target-catalog: ${
-        err instanceof Error ? err.message : String(err)
-      }`,
+      `[eliza] Failed to register connector-target-catalog: ${formatError(
+        err,
+      )}`,
     );
   }
 }
@@ -661,9 +659,7 @@ async function ensureTelegramBotPolling(runtime: AgentRuntime): Promise<void> {
     });
 
     bot.catch((err: unknown) =>
-      logger.warn(
-        `[eliza] Telegram bot error: ${err instanceof Error ? err.message : String(err)}`,
-      ),
+      logger.warn(`[eliza] Telegram bot error: ${formatError(err)}`),
     );
 
     // Fire-and-forget — bot.launch() only resolves on stop()
@@ -673,9 +669,7 @@ async function ensureTelegramBotPolling(runtime: AgentRuntime): Promise<void> {
         allowedUpdates: ["message", "message_reaction"],
       })
       .catch((err: unknown) =>
-        logger.warn(
-          `[eliza] Telegram bot launch error: ${err instanceof Error ? err.message : String(err)}`,
-        ),
+        logger.warn(`[eliza] Telegram bot launch error: ${formatError(err)}`),
       );
 
     _telegramBot = bot;
@@ -685,9 +679,7 @@ async function ensureTelegramBotPolling(runtime: AgentRuntime): Promise<void> {
     await new Promise((r) => setTimeout(r, 500));
     logger.info("[eliza] Telegram bot polling started");
   } catch (err) {
-    logger.warn(
-      `[eliza] Telegram bot setup failed: ${err instanceof Error ? err.message : String(err)}`,
-    );
+    logger.warn(`[eliza] Telegram bot setup failed: ${formatError(err)}`);
   }
 }
 
@@ -806,7 +798,7 @@ async function warmupEmbeddingModelImpl(
   } catch (err) {
     // Non-fatal: the plugin will attempt its own download on first use
     logger.warn(
-      `[eliza] Embedding model warmup failed (will retry on first use): ${err instanceof Error ? err.message : String(err)}`,
+      `[eliza] Embedding model warmup failed (will retry on first use): ${formatError(err)}`,
     );
   }
 }
@@ -999,7 +991,7 @@ async function resetPluginSqlPgliteSingleton(context: string): Promise<void> {
       ]);
     } catch (err) {
       logger.warn(
-        `[eliza] ${context}: failed to close plugin-sql PGlite singleton: ${err instanceof Error ? err.message : String(err)}`,
+        `[eliza] ${context}: failed to close plugin-sql PGlite singleton: ${formatError(err)}`,
       );
     } finally {
       if (timeoutHandle) {
@@ -1058,9 +1050,7 @@ function normalizePgliteStartupError(err: unknown): unknown {
 
   const dataDir =
     getPgliteDataDirFromError(err) ?? resolveManagedPgliteDataDir();
-  const detail =
-    collectErrorMessages(err)[0] ??
-    (err instanceof Error ? err.message : String(err));
+  const detail = collectErrorMessages(err)[0] ?? formatError(err);
   const wrapped = new Error(
     dataDir
       ? `PGlite initialization failed for ${dataDir}: ${detail}. Stop the app, then rename or delete only this directory before retrying: ${dataDir}`
@@ -1248,7 +1238,7 @@ export async function startEliza(
           await sandboxRegistry.register();
         } catch (err) {
           logger.error(
-            `[eliza] Failed to register sandbox in Redis (gateways will not route inbound platform messages here until the next heartbeat succeeds): ${err instanceof Error ? err.message : String(err)}`,
+            `[eliza] Failed to register sandbox in Redis (gateways will not route inbound platform messages here until the next heartbeat succeeds): ${formatError(err)}`,
           );
         }
         sandboxRegistry.startHeartbeat(30_000);
@@ -1275,7 +1265,7 @@ export async function startEliza(
             await sandboxRegistry.unregister();
           } catch (err) {
             logger.warn(
-              `[eliza] Sandbox unregister failed (keys will expire via TTL): ${err instanceof Error ? err.message : String(err)}`,
+              `[eliza] Sandbox unregister failed (keys will expire via TTL): ${formatError(err)}`,
             );
           }
         }
@@ -1362,10 +1352,7 @@ if (isDirectRuntimeRun()) {
     printDirectRuntimeVersion();
   } else {
     startEliza().catch((err) => {
-      console.error(
-        "[eliza] Fatal error:",
-        err instanceof Error ? (err.stack ?? err.message) : err,
-      );
+      console.error("[eliza] Fatal error:", formatErrorWithStack(err));
       process.exit(1);
     });
   }
