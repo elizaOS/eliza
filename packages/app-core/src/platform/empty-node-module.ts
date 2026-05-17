@@ -1,6 +1,18 @@
 const noop = () => undefined;
 const asyncNoop = async () => undefined;
 const falseNoop = () => false;
+const noopProxyHandler: ProxyHandler<typeof noop> = {
+  get: (_target, key) => (key === "prototype" ? noop.prototype : noop),
+  apply: () => undefined,
+  ownKeys: (target) => Reflect.ownKeys(target),
+  getOwnPropertyDescriptor: (target, key) =>
+    Reflect.getOwnPropertyDescriptor(target, key) ?? {
+      configurable: true,
+      enumerable: false,
+      value: noop,
+      writable: true,
+    },
+};
 
 export const pipeline = asyncNoop;
 export const finished = asyncNoop;
@@ -19,10 +31,7 @@ export const isRegExp = falseNoop;
 export const isSet = falseNoop;
 export const isTypedArray = falseNoop;
 
-export default new Proxy(noop, {
-  get: () => noop,
-  apply: () => undefined,
-});
+export default new Proxy(noop, noopProxyHandler);
 
 // elizaOS server-only stubs (browser bundle reach-through)
 export const ACCOUNT_CREDENTIAL_PROVIDER_IDS = [];
