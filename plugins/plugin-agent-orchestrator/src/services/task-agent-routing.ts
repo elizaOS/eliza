@@ -129,7 +129,7 @@ export function resolveSpawnWorkdir(
   return { workdir: process.cwd() };
 }
 
-function resolveWorkdirByConvention(
+export function resolveWorkdirByConvention(
   runtime: IAgentRuntime | undefined,
   task: string,
   userRequest: string,
@@ -141,8 +141,10 @@ function resolveWorkdirByConvention(
     readConfigEnvKey("TASK_AGENT_WORKDIR_ROOTS") ??
     process.env.TASK_AGENT_WORKDIR_ROOTS ??
     "~/Projects";
+  // Use the OS path delimiter so Windows drives (`C:\projects;D:\work`) parse
+  // correctly. `:` would otherwise split a Windows drive letter mid-path.
   const roots = rootsRaw
-    .split(":")
+    .split(path.delimiter)
     .map((r) => r.trim())
     .filter(Boolean)
     .map(expandHomePath);
