@@ -88,6 +88,8 @@ grep -q "Poppins 10" \
     tails/config/chroot_local-includes/etc/dconf/db/local.d/00_Tails_defaults
 grep -q "Poppins Medium 10" \
     tails/config/chroot_local-includes/etc/dconf/db/local.d/00_Tails_defaults
+grep -q '^gir1.2-udisks-2.0$' \
+    tails/config/chroot_local-packageslists/tails-common.list
 grep -q '#0B35F1' scripts/generate-elizaos-brand-assets.sh
 grep -q 'logo_white_bluebg.svg' scripts/generate-elizaos-brand-assets.sh
 if rg -n '#FF5800|#FF0000|#ff5800|#ff0000|ORANGE|RED|#ffe600|#f0b90b|#08080a|#0a0a0a|#03061f' \

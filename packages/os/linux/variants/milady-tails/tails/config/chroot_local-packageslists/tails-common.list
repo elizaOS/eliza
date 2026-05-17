@@ -51,6 +51,7 @@ gir1.2-gdm-1.0
 gir1.2-glib-2.0
 gir1.2-gnomedesktop-3.0
 gir1.2-gtk-3.0
+gir1.2-udisks-2.0
 gir1.2-webkit2-4.1
 python3-gi
 python3-pycountry
