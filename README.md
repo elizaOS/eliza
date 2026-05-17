@@ -12,7 +12,7 @@
 - elizacloud.ai
 - eliza.app
 
-## Quickstart
+## Agent Quickstart
 
 ```bash
 bun install            # workspace install
@@ -21,6 +21,10 @@ bun run build          # turbo build across the workspace
 bun run lint           # turbo lint across the workspace
 bun run test           # full test suite (packages/scripts/run-all-tests.mjs)
 ```
+
+## You can whitelabel this
+
+elizaOS is designed to power your app or operating system. While you can fork this repo, we've tried to make it easy for you to build your own agent and application at any level of the stack-- use the low level @elizaos/core framework, or power your backend with @elizaos/agent. Or build an entire application or operating system. It's all here, and we're happy to share it with you.
 
 ## Create a new project
 
