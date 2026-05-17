@@ -247,6 +247,7 @@ export default function ApiExplorerPage() {
             { value: "openapi" as const, label: "OpenAPI" },
           ].map((tab) => (
             <button
+              type="button"
               key={tab.value}
               onClick={() => setActiveTab(tab.value)}
               className={cn(
@@ -266,6 +267,7 @@ export default function ApiExplorerPage() {
             <div className="min-w-0 space-y-3 sm:space-y-6">
               <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
                 <button
+                  type="button"
                   onClick={() => setSelectedEndpoint(null)}
                   className="flex items-center gap-2 text-sm text-neutral-400 hover:text-white transition-colors"
                 >
@@ -337,6 +339,7 @@ export default function ApiExplorerPage() {
                   />
                   {searchQuery && (
                     <button
+                      type="button"
                       onClick={() => setSearchQuery("")}
                       className="absolute right-1.5 sm:right-2 top-1/2 -translate-y-1/2 text-neutral-500 hover:text-white transition-colors"
                     >
@@ -354,6 +357,7 @@ export default function ApiExplorerPage() {
                         ).length;
                   return (
                     <button
+                      type="button"
                       key={category}
                       onClick={() => {
                         setSelectedCategory(category);
@@ -463,6 +467,7 @@ export default function ApiExplorerPage() {
               </div>
               <div className="flex gap-2">
                 <button
+                  type="button"
                   onClick={handleCopyJson}
                   className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium bg-[#FF5800] text-white rounded-sm hover:bg-[#FF5800]/90 transition-colors"
                 >
@@ -474,6 +479,7 @@ export default function ApiExplorerPage() {
                   JSON
                 </button>
                 <button
+                  type="button"
                   onClick={handleCopyYaml}
                   className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium bg-white/10 text-white rounded-sm hover:bg-white/20 transition-colors"
                 >
