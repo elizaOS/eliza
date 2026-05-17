@@ -1,0 +1,389 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Container Shutdown Warning</title>
+    <style>
+      * {
+        margin: 0;
+        padding: 0;
+        box-sizing: border-box;
+      }
+      body {
+        font-family:
+          -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto,
+          "Helvetica Neue", Arial, sans-serif;
+        line-height: 1.6;
+        color: #1f2937;
+        background: linear-gradient(135deg, #dc2626 0%, #991b1b 100%);
+        padding: 40px 20px;
+      }
+      .email-wrapper {
+        max-width: 600px;
+        margin: 0 auto;
+        background: white;
+        border-radius: 16px;
+        overflow: hidden;
+        box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
+      }
+      .header-banner {
+        background: linear-gradient(135deg, #dc2626 0%, #991b1b 100%);
+        padding: 50px 40px;
+        text-align: center;
+        color: white;
+      }
+      .warning-icon {
+        font-size: 64px;
+        margin-bottom: 16px;
+        animation: shake 0.5s ease-in-out infinite;
+      }
+      @keyframes shake {
+        0%,
+        100% {
+          transform: translateX(0);
+        }
+        25% {
+          transform: translateX(-5px);
+        }
+        75% {
+          transform: translateX(5px);
+        }
+      }
+      .header-banner h1 {
+        font-size: 28px;
+        font-weight: 700;
+        margin-bottom: 12px;
+        letter-spacing: -0.5px;
+      }
+      .header-banner p {
+        font-size: 17px;
+        opacity: 0.95;
+        margin: 0;
+      }
+      .content {
+        padding: 40px;
+      }
+      .urgent-card {
+        background: linear-gradient(135deg, #fef2f2 0%, #fee2e2 100%);
+        border-left: 6px solid #dc2626;
+        border-radius: 12px;
+        padding: 24px;
+        margin-bottom: 30px;
+        box-shadow: 0 4px 12px rgba(220, 38, 38, 0.2);
+      }
+      .urgent-card strong {
+        display: block;
+        font-size: 18px;
+        color: #991b1b;
+        margin-bottom: 8px;
+      }
+      .urgent-card p {
+        color: #7f1d1d;
+        font-size: 15px;
+        margin: 0;
+        line-height: 1.6;
+      }
+      .countdown-card {
+        background: linear-gradient(135deg, #dc2626 0%, #991b1b 100%);
+        border-radius: 16px;
+        padding: 36px;
+        text-align: center;
+        margin: 30px 0;
+        color: white;
+        box-shadow: 0 12px 32px rgba(220, 38, 38, 0.4);
+      }
+      .countdown-label {
+        font-size: 13px;
+        text-transform: uppercase;
+        letter-spacing: 1.5px;
+        opacity: 0.9;
+        margin-bottom: 12px;
+        font-weight: 600;
+      }
+      .countdown-time {
+        font-size: 52px;
+        font-weight: 700;
+        margin: 16px 0;
+        text-shadow: 0 2px 16px rgba(0, 0, 0, 0.2);
+        line-height: 1;
+      }
+      .countdown-subtitle {
+        font-size: 15px;
+        opacity: 0.9;
+        margin-top: 12px;
+      }
+      .container-info {
+        background: #f9fafb;
+        border-radius: 12px;
+        padding: 24px;
+        margin: 24px 0;
+      }
+      .container-info h3 {
+        color: #374151;
+        font-size: 16px;
+        margin-bottom: 16px;
+        display: flex;
+        align-items: center;
+        gap: 8px;
+      }
+      .info-row {
+        display: flex;
+        justify-content: space-between;
+        padding: 12px 0;
+        border-bottom: 1px solid #e5e7eb;
+      }
+      .info-row:last-child {
+        border-bottom: none;
+      }
+      .info-label {
+        color: #6b7280;
+        font-size: 14px;
+      }
+      .info-value {
+        color: #1f2937;
+        font-weight: 600;
+        font-size: 14px;
+      }
+      .impact-section {
+        background: #fef2f2;
+        border-radius: 12px;
+        padding: 28px;
+        margin: 30px 0;
+        border: 2px solid #fee2e2;
+      }
+      .impact-section h3 {
+        color: #991b1b;
+        font-size: 19px;
+        margin-bottom: 18px;
+        display: flex;
+        align-items: center;
+        gap: 10px;
+      }
+      .impact-list {
+        list-style: none;
+        padding: 0;
+        margin: 0;
+      }
+      .impact-list li {
+        padding: 12px 0 12px 36px;
+        color: #7f1d1d;
+        font-size: 15px;
+        position: relative;
+        border-bottom: 1px solid #fee2e2;
+      }
+      .impact-list li:last-child {
+        border-bottom: none;
+      }
+      .impact-list li:before {
+        content: "🔴";
+        position: absolute;
+        left: 0;
+        top: 12px;
+        font-size: 14px;
+      }
+      .cta-section {
+        text-align: center;
+        margin: 40px 0;
+        padding: 20px 0;
+      }
+      .cta-button {
+        display: inline-block;
+        background: linear-gradient(135deg, #dc2626 0%, #991b1b 100%);
+        color: white;
+        padding: 18px 44px;
+        text-decoration: none;
+        border-radius: 12px;
+        font-weight: 600;
+        font-size: 18px;
+        box-shadow: 0 10px 28px rgba(220, 38, 38, 0.5);
+        transition:
+          transform 0.2s,
+          box-shadow 0.2s;
+      }
+      .cta-button:hover {
+        transform: translateY(-3px);
+        box-shadow: 0 14px 36px rgba(220, 38, 38, 0.6);
+      }
+      .cost-section {
+        background: linear-gradient(135deg, #d1fae5 0%, #a7f3d0 100%);
+        border-left: 6px solid #10b981;
+        border-radius: 12px;
+        padding: 24px;
+        margin: 30px 0;
+      }
+      .cost-section strong {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        color: #065f46;
+        font-size: 16px;
+        margin-bottom: 10px;
+      }
+      .cost-section p {
+        color: #047857;
+        font-size: 14px;
+        margin: 0;
+        line-height: 1.7;
+      }
+      .footer {
+        background: #f9fafb;
+        padding: 30px 40px;
+        text-align: center;
+        border-top: 1px solid #e5e7eb;
+      }
+      .footer p {
+        color: #6b7280;
+        font-size: 13px;
+        margin: 8px 0;
+      }
+      .footer-logo {
+        font-size: 20px;
+        font-weight: 700;
+        color: #dc2626;
+        margin-bottom: 12px;
+      }
+      @media only screen and (max-width: 600px) {
+        .header-banner {
+          padding: 40px 24px;
+        }
+        .header-banner h1 {
+          font-size: 24px;
+        }
+        .content {
+          padding: 30px 24px;
+        }
+        .countdown-time {
+          font-size: 42px;
+        }
+        .cta-button {
+          display: block;
+          padding: 16px 32px;
+          font-size: 16px;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <div class="email-wrapper">
+      <div class="header-banner">
+        <div class="warning-icon">🚨</div>
+        <h1>Container Shutdown Warning</h1>
+        <p>Urgent action required for {{organizationName}}</p>
+      </div>
+
+      <div class="content">
+        <div class="urgent-card">
+          <strong>⚠️ Your container will be shut down in 48 hours</strong>
+          <p>
+            Your account has insufficient credits to continue running your
+            deployed container. Add funds within the next 48 hours to prevent
+            service interruption.
+          </p>
+        </div>
+
+        <div class="countdown-card">
+          <div class="countdown-label">Time Until Shutdown</div>
+          <div class="countdown-time">48 Hours</div>
+          <div class="countdown-subtitle">Scheduled: {{shutdownTime}}</div>
+        </div>
+
+        <div class="container-info">
+          <h3>📦 Container Details</h3>
+          <div class="info-row">
+            <span class="info-label">Container Name</span>
+            <span class="info-value">{{containerName}}</span>
+          </div>
+          <div class="info-row">
+            <span class="info-label">Project</span>
+            <span class="info-value">{{projectName}}</span>
+          </div>
+          <div class="info-row">
+            <span class="info-label">Daily Cost</span>
+            <span class="info-value">${{dailyCost}}/day</span>
+          </div>
+          <div class="info-row">
+            <span class="info-label">Current Balance</span>
+            <span class="info-value" style="color: #dc2626"
+              >${{currentBalance}}</span
+            >
+          </div>
+          <div class="info-row">
+            <span class="info-label">Required to Continue</span>
+            <span class="info-value">${{requiredCredits}}</span>
+          </div>
+        </div>
+
+        <div class="impact-section">
+          <h3>
+            <span>⚡</span>
+            <span>What happens when shutdown occurs?</span>
+          </h3>
+          <ul class="impact-list">
+            <li>
+              <strong>Container will be stopped</strong><br />
+              <span style="font-size: 13px; color: #991b1b; opacity: 0.8"
+                >Your agent will go offline and stop responding</span
+              >
+            </li>
+            <li>
+              <strong>API endpoints will become unavailable</strong><br />
+              <span style="font-size: 13px; color: #991b1b; opacity: 0.8"
+                >All requests to your container URL will fail</span
+              >
+            </li>
+            <li>
+              <strong>Data in memory will be lost</strong><br />
+              <span style="font-size: 13px; color: #991b1b; opacity: 0.8"
+                >Persistent storage will be retained for 30 days</span
+              >
+            </li>
+          </ul>
+        </div>
+
+        <div class="cta-section">
+          <a href="{{billingUrl}}" class="cta-button"> 💳 Add Credits Now → </a>
+        </div>
+
+        <div class="cost-section">
+          <strong>
+            <span>💡</span>
+            <span>Quick Cost Reference</span>
+          </strong>
+          <p>
+            Containers are billed daily at ${{dailyCost}}/day
+            (${{monthlyCost}}/month). Add at least ${{minimumRecommended}} to
+            keep your container running for the next week, or set up
+            auto-recharge to never worry about credits again.
+          </p>
+        </div>
+
+        <div
+          style="
+            background: #f3f4f6;
+            border-radius: 10px;
+            padding: 20px;
+            margin-top: 30px;
+            text-align: center;
+          "
+        >
+          <p style="color: #6b7280; font-size: 14px; margin: 0">
+            <strong>Questions?</strong> Reply to this email or visit our
+            <a href="{{dashboardUrl}}" style="color: #dc2626">dashboard</a>
+            to manage your containers.
+          </p>
+        </div>
+      </div>
+
+      <div class="footer">
+        <div class="footer-logo">Eliza Cloud</div>
+        <p>© {{currentYear}} Eliza Cloud. All rights reserved.</p>
+        <p style="margin-top: 12px">
+          You received this urgent alert because your container
+          "{{containerName}}" is scheduled for shutdown due to insufficient
+          credits.
+        </p>
+      </div>
+    </div>
+  </body>
+</html>
