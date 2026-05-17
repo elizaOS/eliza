@@ -25,9 +25,15 @@ export function StateDeviceMode(
       data-eliza-ob-state="device-mode"
     >
       <h1>Local Runtime</h1>
-      <div className="eliza-ob-choice-list">
+      <div
+        className="eliza-ob-choice-list"
+        role="radiogroup"
+        aria-label="Local runtime mode"
+      >
         <button
           type="button"
+          role="radio"
+          aria-checked={selected === "local-cloud"}
           className={`eliza-ob-choice${selected === "local-cloud" ? " selected" : ""}`}
           onClick={() => onChoose("local-cloud")}
         >
@@ -39,6 +45,8 @@ export function StateDeviceMode(
         </button>
         <button
           type="button"
+          role="radio"
+          aria-checked={selected === "local-only"}
           className={`eliza-ob-choice${selected === "local-only" ? " selected" : ""}`}
           onClick={() => {
             onChoose("local-only");

@@ -217,18 +217,82 @@ jobs:
             esac
           }
 
+          version_packages() {
+            local next_version="$1"
+            node - "${next_version}" <<'NODE'
+          const fs = require("node:fs");
+          const path = require("node:path");
+
+          const nextVersion = process.argv[2];
+          const root = process.cwd();
+          const lernaPath = path.join(root, "lerna.json");
+          const lernaSource = fs.readFileSync(lernaPath, "utf8");
+          const lerna = JSON.parse(lernaSource);
+          const packagePatterns = lerna.packages || [];
+          const packageJsonPaths = new Set();
+
+          function detectIndent(source) {
+            const match = source.match(/\{\n([ \t]+)"/);
+            if (!match) {
+              return 2;
+            }
+            return match[1].includes("\t") ? "\t" : match[1].length;
+          }
+
+          function addPackageJson(packageDir) {
+            const packageJsonPath = path.join(root, packageDir, "package.json");
+            if (!fs.existsSync(packageJsonPath)) {
+              return;
+            }
+            packageJsonPaths.add(packageJsonPath);
+          }
+
+          for (const pattern of packagePatterns) {
+            if (!pattern.includes("*")) {
+              addPackageJson(pattern);
+              continue;
+            }
+
+            const [baseDir, rest] = pattern.split("*");
+            const normalizedBase = baseDir.replace(/\/$/, "");
+            if (!fs.existsSync(path.join(root, normalizedBase))) {
+              continue;
+            }
+            for (const entry of fs.readdirSync(path.join(root, normalizedBase), { withFileTypes: true })) {
+              if (!entry.isDirectory()) {
+                continue;
+              }
+              addPackageJson(path.join(normalizedBase, entry.name, rest.replace(/^\//, "")));
+            }
+          }
+
+          lerna.version = nextVersion;
+          fs.writeFileSync(lernaPath, `${JSON.stringify(lerna, null, detectIndent(lernaSource))}\n`);
+
+          let updated = 0;
+          for (const packageJsonPath of [...packageJsonPaths].sort()) {
+            const source = fs.readFileSync(packageJsonPath, "utf8");
+            const pkg = JSON.parse(source);
+            if (pkg.private === true) {
+              continue;
+            }
+            const oldVersion = pkg.version;
+            pkg.version = nextVersion;
+            fs.writeFileSync(packageJsonPath, `${JSON.stringify(pkg, null, detectIndent(source))}\n`);
+            updated += 1;
+            console.log(`${path.relative(root, packageJsonPath)}: ${oldVersion} => ${nextVersion}`);
+          }
+
+          console.log(`Updated ${updated} public packages to ${nextVersion}`);
+          NODE
+          }
+
           # Determine version strategy based on release type and current version
           if [[ "${{ steps.release_type.outputs.is_release_event }}" == "true" ]]; then
             # Tagged release from git tag or GitHub release tag
             VERSION="${{ steps.release_type.outputs.version }}"
             echo "📦 Tagged release: Setting exact version to ${VERSION}"
-            bunx lerna version ${VERSION} \
-              --force-publish \
-              --yes \
-              --no-private \
-              --no-git-tag-version \
-              --no-push \
-              --allow-branch release/*
+            version_packages "${VERSION}"
               
           elif [[ "${RELEASE_TYPE}" == "beta" ]]; then
             echo "🔵 Beta release workflow..."
@@ -244,40 +308,22 @@ jobs:
               HIGHEST_VERSION=${HIGHEST_TAG#v}
               echo "Highest existing beta tag: ${HIGHEST_VERSION}"
 
-              # Only sync if lerna.json is BEHIND the tags (not ahead).
               HIGHEST_NUM=$(echo "$HIGHEST_VERSION" | grep -o '[0-9]*$')
               CURRENT_NUM=$(echo "$CURRENT_VERSION" | grep -o '[0-9]*$')
 
-              if [[ "$CURRENT_NUM" -lt "$HIGHEST_NUM" ]]; then
-                echo "Syncing lerna.json from ${CURRENT_VERSION} to ${HIGHEST_VERSION} (behind tags)..."
-                bunx lerna version ${HIGHEST_VERSION} \
-                  --force-publish \
-                  --yes \
-                  --no-private \
-                  --no-git-tag-version \
-                  --no-push
-              elif [[ "$CURRENT_NUM" -gt "$HIGHEST_NUM" ]]; then
-                echo "lerna.json (${CURRENT_VERSION}) is ahead of highest tag (${HIGHEST_VERSION}) — skipping sync"
+              if [[ "$CURRENT_NUM" -gt "$HIGHEST_NUM" ]]; then
+                NEXT_VERSION="${BASE_VERSION}-beta.$((CURRENT_NUM + 1))"
+                echo "lerna.json (${CURRENT_VERSION}) is ahead of highest tag (${HIGHEST_VERSION}); bumping to ${NEXT_VERSION}"
+              else
+                NEXT_VERSION="${BASE_VERSION}-beta.$((HIGHEST_NUM + 1))"
+                echo "Versioning directly to next beta ${NEXT_VERSION}"
               fi
 
-              # Now increment to the next beta
-              echo "Incrementing from $(node -p "require('./lerna.json').version")..."
-              bunx lerna version prerelease \
-                --preid beta \
-                --force-publish \
-                --yes \
-                --no-private \
-                --no-git-tag-version \
-                --no-push
+              version_packages "${NEXT_VERSION}"
             else
               # No existing beta tags, safe to start at .0
               echo "No existing beta tags found, starting at ${BASE_VERSION}-beta.0"
-              bunx lerna version "${BASE_VERSION}-beta.0" \
-                --force-publish \
-                --yes \
-                --no-private \
-                --no-git-tag-version \
-                --no-push
+              version_packages "${BASE_VERSION}-beta.0"
             fi
             
           elif [[ "${RELEASE_TYPE}" == "latest" ]]; then
@@ -300,13 +346,11 @@ jobs:
               # Check if this version already exists on npm
               if npm view "@elizaos/core@${VERSION}" version >/dev/null 2>&1; then
                 echo "⚠️ Version ${VERSION} already exists on npm — bumping again (attempt ${i}/${MAX_RETRIES})"
-                bunx lerna version prerelease \
-                  --preid "${RELEASE_TYPE}" \
-                  --force-publish \
-                  --yes \
-                  --no-private \
-                  --no-git-tag-version \
-                  --no-push
+                CURRENT_VERSION=$(node -p "require('./lerna.json').version")
+                CURRENT_BASE=$(get_base_version "$CURRENT_VERSION")
+                CURRENT_NUM=$(echo "$CURRENT_VERSION" | grep -o '[0-9]*$')
+                NEXT_VERSION="${CURRENT_BASE}-${RELEASE_TYPE}.$((CURRENT_NUM + 1))"
+                version_packages "${NEXT_VERSION}"
                 VERSION=$(node -p "require('./lerna.json').version")
                 sleep 1  # Brief delay for npm registry consistency
               else
@@ -482,11 +526,11 @@ jobs:
             packages/agent/dist/package.json \
             packages/app-core/dist/package.json \
             packages/elizaos/dist/index.js \
-            packages/prompts/dist/typescript/index.ts \
+            packages/prompts/specs/actions/plugins.generated.json \
             packages/shared/dist/package.json \
             packages/skills/dist/index.js \
             packages/core/dist/index.node.js \
-            plugins/plugin-whatsapp/dist/src/index.d.ts \
+            plugins/plugin-whatsapp/dist/index.d.ts \
             packages/ui/dist/package.json; do
             if [ ! -f "${artifact}" ]; then
               echo "❌ Missing publish artifact: ${artifact}"

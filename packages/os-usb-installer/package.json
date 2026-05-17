@@ -14,9 +14,9 @@
     }
   },
   "scripts": {
-    "predev": "node ../shared-brand/scripts/sync-to-public.mjs ./public",
+    "predev": "node ../shared-brand/scripts/sync-to-public.mjs ./public --logos --favicons --ogembeds",
     "dev": "vite",
-    "prebuild": "node ../shared-brand/scripts/sync-to-public.mjs ./public",
+    "prebuild": "node ../shared-brand/scripts/sync-to-public.mjs ./public --logos --favicons --ogembeds",
     "build": "tsc --noEmit -p tsconfig.json && vite build",
     "typecheck": "tsc --noEmit -p tsconfig.json",
     "test": "vitest run --config ./vitest.config.ts",

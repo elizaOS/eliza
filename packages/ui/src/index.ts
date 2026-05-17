@@ -219,6 +219,27 @@ export {
 } from "./components/pages/vector-browser-utils";
 export * from "./components/primitives/index";
 export { AppPageSidebar } from "./components/shared/AppPageSidebar";
+export {
+  AssistantOverlay,
+  type AssistantOverlayProps,
+} from "./components/shell/AssistantOverlay";
+export {
+  ChatSurface,
+  type ChatSurfaceProps,
+} from "./components/shell/ChatSurface";
+export { HomePill, type HomePillProps } from "./components/shell/HomePill";
+export {
+  initialShellState,
+  type ShellAction,
+  type ShellMessage,
+  type ShellPhase,
+  type ShellState,
+  shellReducer,
+} from "./components/shell/shell-state";
+export {
+  type UseShellStateResult,
+  useShellState,
+} from "./components/shell/useShellState";
 export { Switch } from "./components/ui/switch";
 export {
   Tabs,

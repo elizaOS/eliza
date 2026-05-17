@@ -63,6 +63,9 @@ vi.mock("@elizaos/cloud-shared/lib/steward-url", () => ({
 
 vi.mock("../../lib/steward-session", () => ({
   syncStewardSessionCookie: vi.fn(),
+  consumeStewardCodeFromQuery: vi.fn(() => null),
+  consumeStewardTokensFromHash: vi.fn(() => null),
+  exchangeStewardCodeViaApi: vi.fn(),
 }));
 
 vi.mock("./steward-wallet-providers", () => ({

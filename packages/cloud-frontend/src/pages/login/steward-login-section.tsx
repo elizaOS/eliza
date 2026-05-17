@@ -1,8 +1,5 @@
 import { resolveBrowserStewardApiUrl } from "@elizaos/cloud-shared/lib/steward-url";
-import {
-  writeStoredStewardRefreshToken,
-  writeStoredStewardToken,
-} from "@elizaos/steward-session-client";
+import { writeStoredStewardToken } from "@elizaos/steward-session-client";
 import { Alert, AlertDescription, DiscordIcon } from "@elizaos/ui";
 import type { StewardProviders } from "@stwd/sdk";
 import { StewardAuth } from "@stwd/sdk";
@@ -16,10 +13,16 @@ import {
 } from "react-router-dom";
 import { toast } from "sonner";
 import { getErrorMessage } from "../../lib/error-message";
-import { syncStewardSessionCookie } from "../../lib/steward-session";
+import {
+  consumeStewardCodeFromQuery,
+  consumeStewardTokensFromHash,
+  exchangeStewardCodeViaApi,
+  syncStewardSessionCookie,
+} from "../../lib/steward-session";
 import { resolveLoginReturnTo } from "./login-return-to";
 import {
   buildStewardOAuthAuthorizeUrl,
+  buildStewardOAuthRedirectUri,
   type StewardOAuthProvider,
 } from "./steward-oauth-url";
 import { WalletButtons } from "./wallet-buttons";
@@ -158,14 +161,48 @@ export default function StewardLoginSection() {
   }, [auth]);
 
   useEffect(() => {
-    const token = searchParams.get("token");
-    const refreshToken = searchParams.get("refreshToken");
+    // Preferred path: server-side nonce exchange. Steward redirects with
+    // `?code=<nonce>` (no tokens in URL). POST the code to the cloud-api
+    // exchange route, which calls Steward /auth/oauth/exchange server-side
+    // and sets HttpOnly cookies. Access + refresh tokens never enter JS.
+    const code = consumeStewardCodeFromQuery();
+    if (code) {
+      exchangeStewardCodeViaApi(code, {
+        redirectUri: buildStewardOAuthRedirectUri(
+          window.location.origin,
+          window.location.search,
+        ),
+        tenantId: STEWARD_TENANT_ID,
+      })
+        .then(() => {
+          setRedirectTo(resolveLoginReturnTo(searchParams));
+        })
+        .catch((sessionError) => {
+          setCallbackError(
+            getErrorMessage(
+              sessionError,
+              "Could not complete Eliza Cloud sign-in.",
+            ),
+          );
+        });
+      return;
+    }
+
+    // Fallback (one-release rollout window): tokens in URL hash (#token=...).
+    // Hash never leaves the browser per spec, but tokens still touch JS —
+    // preferred only until all consumers have moved to the code flow above.
+    const fromHash = consumeStewardTokensFromHash();
+    const queryToken = searchParams.get("token");
+    const queryRefreshToken = searchParams.get("refreshToken");
+    const token = fromHash?.token ?? queryToken;
+    const refreshToken = fromHash?.refreshToken ?? queryRefreshToken ?? null;
     if (!token) return;
 
     writeStoredStewardToken(token);
-    if (refreshToken) {
-      writeStoredStewardRefreshToken(refreshToken);
-    }
+    // Refresh token is forwarded to the server only so it can be set as the
+    // HttpOnly steward-refresh-token cookie — it is NOT persisted in
+    // localStorage (XSS-reachable). After first login the HttpOnly cookie
+    // is the only persistence; refresh is via /api/auth/steward-refresh.
 
     syncStewardSessionCookie(token, refreshToken)
       .then(() => {
@@ -180,6 +217,7 @@ export default function StewardLoginSection() {
 
   useEffect(() => {
     if (PLAYWRIGHT_TEST_AUTH_ENABLED) return;
+    if (searchParams.get("code")) return;
     if (searchParams.get("token")) return;
     if (searchParams.get("error")) return;
 

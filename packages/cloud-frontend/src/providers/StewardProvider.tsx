@@ -3,12 +3,12 @@
 import { resolveBrowserStewardApiUrl } from "@elizaos/cloud-shared/lib/steward-url";
 import {
   clearStoredStewardToken,
-  STEWARD_REFRESH_TOKEN_KEY,
+  STEWARD_REFRESH_ENDPOINT,
   STEWARD_SESSION_ENDPOINT,
   STEWARD_TOKEN_KEY,
 } from "@elizaos/steward-session-client";
 import { StewardProvider, useAuth as useStewardAuth } from "@stwd/react";
-import { StewardAuth, StewardClient } from "@stwd/sdk";
+import { StewardClient } from "@stwd/sdk";
 import { createContext, useEffect, useMemo, useRef } from "react";
 
 /**
@@ -67,6 +67,8 @@ const ELIZA_CLOUD_COOKIE_HOSTS = new Set([
 ]);
 const ELIZA_CLOUD_DIRECT_SESSION_ENDPOINT =
   "https://api.elizacloud.ai/api/auth/steward-session";
+const ELIZA_CLOUD_DIRECT_REFRESH_ENDPOINT =
+  "https://api.elizacloud.ai/api/auth/steward-refresh";
 
 export const LocalStewardAuthContext = createContext<ReturnType<
   typeof useStewardAuth
@@ -110,6 +112,25 @@ function configuredSessionEndpoint(): string {
   return STEWARD_SESSION_ENDPOINT;
 }
 
+function configuredRefreshEndpoint(): string {
+  // Mirrors configuredSessionEndpoint() exactly so the cookie-based refresh
+  // call hits the same host as the session sync (same cookie domain, same
+  // CORS allowance, same Pages-Functions vs direct-API decision).
+  const apiBase =
+    import.meta.env?.VITE_API_URL ||
+    import.meta.env?.NEXT_PUBLIC_API_URL ||
+    process.env.NEXT_PUBLIC_API_URL;
+  if (apiBase && !isPlaceholderValue(apiBase)) {
+    if (!(isBrowserOnElizaHost() && isLocalhostApiBase(apiBase))) {
+      return `${trimTrailingSlash(apiBase)}${STEWARD_REFRESH_ENDPOINT}`;
+    }
+  }
+  if (isBrowserOnElizaHost()) {
+    return ELIZA_CLOUD_DIRECT_REFRESH_ENDPOINT;
+  }
+  return STEWARD_REFRESH_ENDPOINT;
+}
+
 function stewardSessionClearUrls(): string[] {
   if (typeof window === "undefined") return [configuredSessionEndpoint()];
   const urls = new Set([STEWARD_SESSION_ENDPOINT, configuredSessionEndpoint()]);
@@ -129,15 +150,6 @@ function readStoredToken(): string | null {
   if (typeof window === "undefined") return null;
   try {
     return localStorage.getItem(STEWARD_TOKEN_KEY);
-  } catch {
-    return null;
-  }
-}
-
-function readStoredRefreshToken(): string | null {
-  if (typeof window === "undefined") return null;
-  try {
-    return localStorage.getItem(STEWARD_REFRESH_TOKEN_KEY);
   } catch {
     return null;
   }
@@ -221,33 +233,21 @@ function AuthTokenSync({ children }: { children: React.ReactNode }) {
   const auth = useStewardAuth();
   const { isAuthenticated, user } = auth;
   const lastSyncedToken = useRef<string | null>(null);
-  const lastSyncedRefreshToken = useRef<string | null>(null);
   const wasAuthenticated = useRef(false);
-  const authInstanceRef = useRef<InstanceType<typeof StewardAuth> | null>(null);
 
-  const apiUrl = resolveBrowserStewardApiUrl();
-  const tenantId = process.env.NEXT_PUBLIC_STEWARD_TENANT_ID;
-
-  // Create a standalone StewardAuth for refresh purposes (uses localStorage)
-  useEffect(() => {
-    if (typeof window === "undefined") return;
-    authInstanceRef.current = new StewardAuth({
-      baseUrl: apiUrl,
-      ...(tenantId ? { tenantId } : {}),
-    });
-  }, [apiUrl, tenantId]);
-
-  // Sync localStorage token → cookie and keep it alive via auto-refresh
+  // Sync localStorage access token → cookie and keep it alive via the
+  // cookie-based refresh endpoint. The refresh token itself is no longer
+  // read from localStorage — it lives only in the HttpOnly
+  // `steward-refresh-token` cookie and is replayed server-side by the
+  // /api/auth/steward-refresh route.
   // biome-ignore lint/correctness/useExhaustiveDependencies: intentional re-run trigger
   useEffect(() => {
     const syncToken = () => {
       const token = readStoredToken();
-      const refreshToken = readStoredRefreshToken();
       if (!token) {
         // No token at all — clear the server cookie if we had one
         if (wasAuthenticated.current && lastSyncedToken.current) {
           lastSyncedToken.current = null;
-          lastSyncedRefreshToken.current = null;
           wasAuthenticated.current = false;
           clearServerStewardSessionCookies();
         }
@@ -259,21 +259,20 @@ function AuthTokenSync({ children }: { children: React.ReactNode }) {
       // path may recover. Only explicit sign-out clears cookies.
       if (tokenIsExpired(token)) return;
 
-      if (
-        token === lastSyncedToken.current &&
-        refreshToken === lastSyncedRefreshToken.current
-      ) {
+      if (token === lastSyncedToken.current) {
         return;
       }
       lastSyncedToken.current = token;
-      lastSyncedRefreshToken.current = refreshToken;
       wasAuthenticated.current = true;
 
+      // No refreshToken in the body — the HttpOnly steward-refresh-token
+      // cookie (set on first login) is the only persistence. credentials:
+      // 'include' keeps cross-site cookie flow on .elizacloud.ai working.
       fetch(configuredSessionEndpoint(), {
         method: "POST",
         credentials: "include",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ token, refreshToken }),
+        body: JSON.stringify({ token }),
       })
         .then(async (res) => {
           if (res.ok) {
@@ -313,7 +312,6 @@ function AuthTokenSync({ children }: { children: React.ReactNode }) {
             "[steward] Stored token rejected by server (401) — clearing",
           );
           lastSyncedToken.current = null;
-          lastSyncedRefreshToken.current = null;
           wasAuthenticated.current = false;
           clearStaleStewardSession();
         })
@@ -324,34 +322,56 @@ function AuthTokenSync({ children }: { children: React.ReactNode }) {
 
     const checkAndRefresh = async () => {
       const token = readStoredToken();
-      if (!token) return;
+      // Check if we have an access token to look at expiry. Even when
+      // localStorage is empty (cookie-only mode) we still want to attempt a
+      // refresh on visibility/online so the steward-authed marker can be
+      // re-established — but only if hasStewardAuthedCookie() suggests the
+      // server thinks we have a session. Without that we'd 401-spam.
+      if (token) {
+        const secs = tokenSecsRemaining(token);
+        // Refresh eagerly when the token is within the lookahead window OR
+        // already expired (e.g. tab was idle longer than 15 min). Dropping
+        // the `secs > 0` guard is the key fix for the silent-logout bug:
+        // previously, once the access token expired we stopped trying to
+        // refresh even though the refresh token was still good.
+        if (secs !== null && secs >= REFRESH_AHEAD_SECS) return;
+      } else {
+        // No access token in localStorage and no obvious need to refresh.
+        return;
+      }
 
-      const secs = tokenSecsRemaining(token);
-
-      // Refresh eagerly when the token is within the lookahead window OR
-      // already expired (e.g. tab was idle longer than 15 min). Dropping
-      // the `secs > 0` guard is the key fix for the silent-logout bug:
-      // previously, once the access token expired we stopped trying to
-      // refresh even though the refresh token was still good.
-      if (secs !== null && secs >= REFRESH_AHEAD_SECS) return;
-
-      const auth = authInstanceRef.current;
-      if (!auth) return;
-
+      // Cookie-based refresh: the browser sends the HttpOnly
+      // steward-refresh-token cookie automatically. The server rotates and
+      // returns ok with no body tokens; the new access cookie is now live.
+      // The access token in localStorage can no longer be refreshed by JS
+      // (we don't get it back) — call sites that rely on Authorization:
+      // Bearer should migrate to cookie-based auth. For now, on success we
+      // wipe the stored access token so the next syncToken() reads the
+      // cookie-only state cleanly; @stwd/react will repopulate it on its
+      // own auth-state cycle if still applicable.
       try {
-        const newSession = await auth.refreshSession();
-        if (newSession) {
-          // refreshSession already updated localStorage, now sync the new token to cookie
-          syncToken();
-        } else if (secs !== null && secs <= 0) {
-          // Refresh returned null AND the access token is truly expired —
-          // now it's safe to clear the server cookie; the user is logged out.
+        const res = await fetch(configuredRefreshEndpoint(), {
+          method: "POST",
+          credentials: "include",
+        });
+        if (res.ok) {
+          // The new access token is in the HttpOnly cookie — JS cannot read
+          // it. Bump the "we have a server session" marker so listeners
+          // re-check auth state.
+          try {
+            window.dispatchEvent(new CustomEvent("steward-token-sync"));
+          } catch {
+            // ignore
+          }
+          return;
+        }
+        if (res.status === 401) {
+          // Refresh cookie revoked / missing — full sign-out.
           if (wasAuthenticated.current && lastSyncedToken.current) {
             lastSyncedToken.current = null;
-            lastSyncedRefreshToken.current = null;
             wasAuthenticated.current = false;
-            clearServerStewardSessionCookies();
           }
+          clearStaleStewardSession();
         }
       } catch (err) {
         console.warn("[steward] Auto-refresh failed", err);

@@ -10,16 +10,9 @@
  *   - no EventEmitter listener accumulation occurs across load/unload cycles.
  */
 
-import type { Plugin, ViewDeclaration } from "@elizaos/core";
 import { EventEmitter } from "node:events";
-import {
-  afterEach,
-  beforeEach,
-  describe,
-  expect,
-  it,
-  vi,
-} from "vitest";
+import type { Plugin, ViewDeclaration } from "@elizaos/core";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   getView,
   listViews,
@@ -37,12 +30,15 @@ function makePlugin(
   viewCount: number,
   extra?: Partial<ViewDeclaration>,
 ): Plugin {
-  const views: ViewDeclaration[] = Array.from({ length: viewCount }, (_, i) => ({
-    id: `${pluginName}.view${i}`,
-    label: `${pluginName} View ${i}`,
-    path: `/${pluginName}/view${i}`,
-    ...extra,
-  }));
+  const views: ViewDeclaration[] = Array.from(
+    { length: viewCount },
+    (_, i) => ({
+      id: `${pluginName}.view${i}`,
+      label: `${pluginName} View ${i}`,
+      path: `/${pluginName}/view${i}`,
+      ...extra,
+    }),
+  );
   return { name: pluginName, description: `Test plugin ${pluginName}`, views };
 }
 
@@ -207,7 +203,9 @@ describe("multiple plugins simultaneously", () => {
 
     const afterUnregister = listViews({ developerMode: true }).map((e) => e.id);
     // All multi-plugin views gone
-    expect(afterUnregister.filter((id) => id.startsWith("multi-plugin-"))).toHaveLength(0);
+    expect(
+      afterUnregister.filter((id) => id.startsWith("multi-plugin-")),
+    ).toHaveLength(0);
     // Baseline views (builtins) still present
     for (const id of baselineIds) {
       expect(afterUnregister).toContain(id);
@@ -221,7 +219,8 @@ describe("multiple plugins simultaneously", () => {
 
 describe("WeakRef collectability after unregister", () => {
   it("a WeakRef to a removed entry's value becomes undefined after GC (skipped when global.gc unavailable)", async () => {
-    const gcAvailable = typeof (globalThis as Record<string, unknown>).gc === "function";
+    const gcAvailable =
+      typeof (globalThis as Record<string, unknown>).gc === "function";
     if (!gcAvailable) {
       // Cannot force GC — document the skip explicitly and pass.
       console.info(

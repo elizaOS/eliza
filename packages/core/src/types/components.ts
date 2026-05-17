@@ -1,10 +1,10 @@
+import type { ConnectorAccountPolicy } from "./connector-account-policy";
 import type {
 	AgentContext,
 	CacheScope,
 	ContextGate,
 	RoleGate,
 } from "./contexts";
-import type { ConnectorAccountPolicy } from "./connector-account-policy";
 import type { Memory } from "./memory";
 import type { Content, JsonPrimitive, JsonValue } from "./primitives";
 import type { IAgentRuntime } from "./runtime";

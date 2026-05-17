@@ -70,6 +70,11 @@ jobs:
         run: node --max-old-space-size=8192 packages/app-core/scripts/run-mobile-build.mjs ios
         env:
           LANG: en_US.UTF-8
+          # This simulator smoke validates the compatibility host. Full-Bun
+          # App Store/device builds are covered by release workflows with an
+          # explicit ELIZA_IOS_BUN_ENGINE_XCFRAMEWORK artifact.
+          ELIZA_IOS_APP_STORE_LOCAL_RUNTIME: "0"
+          ELIZA_IOS_FULL_BUN_ENGINE: "0"
           ELIZA_IOS_BUILD_DESTINATION: "generic/platform=iOS Simulator"
           ELIZA_IOS_BUILD_SDK: "iphonesimulator"
           NODE_OPTIONS: "--max-old-space-size=8192"

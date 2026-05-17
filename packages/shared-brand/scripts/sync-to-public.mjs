@@ -5,13 +5,24 @@
  * brand files are always fresh in the served static tree.
  *
  * Usage:
- *   node packages/shared-brand/scripts/sync-to-public.mjs <consumer-public-dir> [--clouds]
+ *   node packages/shared-brand/scripts/sync-to-public.mjs <consumer-public-dir> [flags]
  *
- * The target directory is created if missing. Existing files are overwritten.
- * Files NOT present in `assets/` are left alone (the script only adds/updates).
+ * Per-category flags (each consumer opts in only to what its source references):
+ *   --logos             (default) sync brand/logos/
+ *   --favicons          (default) sync brand/favicons/
+ *   --ogembeds          sync brand/ogembeds/
+ *   --banners           sync brand/banners/
+ *   --concepts          sync brand/concepts/
+ *   --background        sync brand/background/ (excludes .mp4 unless --background-videos)
+ *   --background-videos include .mp4 files in background/
+ *   --clouds[=speeds]   sync clouds/ at repo root (speeds optional, e.g. --clouds=4x,8x)
  *
- * The `clouds/` tree (~17MB) is heavy and only needed by consumers that render
- * a <video> from it. Pass `--clouds` to include it; otherwise it is skipped.
+ * Default (no flags except positional target): --logos --favicons only.
+ *
+ * The target directory is created if missing. Existing files are overwritten;
+ * files NOT present in `assets/` are left alone (the script only adds/updates),
+ * except for `background/` and `clouds/` which are cleaned before sync to drop
+ * orphan files.
  */
 
 import {
@@ -70,33 +81,60 @@ const selectedCloudSpeeds =
           .filter(Boolean),
       )
     : null;
+
 const positional = args.filter((a) => !a.startsWith("--"));
 const target = positional[0];
 if (!target) {
-  console.error("usage: sync-to-public.mjs <consumer-public-dir> [--clouds]");
+  console.error(
+    "usage: sync-to-public.mjs <consumer-public-dir> [--logos] [--favicons] [--ogembeds] [--banners] [--concepts] [--background] [--clouds[=speeds]]",
+  );
   process.exit(1);
 }
 
+const flags = new Set(args.filter((a) => a.startsWith("--")).map((a) => a.split("=")[0]));
+// Default: logos + favicons when no category flags are passed.
+const categoryFlags = ["--logos", "--favicons", "--ogembeds", "--banners", "--concepts", "--background"];
+const noCategorySpecified = !categoryFlags.some((f) => flags.has(f));
+const include = {
+  logos: noCategorySpecified || flags.has("--logos"),
+  favicons: noCategorySpecified || flags.has("--favicons"),
+  ogembeds: flags.has("--ogembeds"),
+  banners: flags.has("--banners"),
+  concepts: flags.has("--concepts"),
+  background: flags.has("--background"),
+};
+
 const resolvedTarget = resolve(target);
-copyDir(join(ASSETS_ROOT, "logos"), join(resolvedTarget, "brand", "logos"));
-copyDir(join(ASSETS_ROOT, "banners"), join(resolvedTarget, "brand", "banners"));
-copyDir(
-  join(ASSETS_ROOT, "ogembeds"),
-  join(resolvedTarget, "brand", "ogembeds"),
-);
-copyDir(
-  join(ASSETS_ROOT, "concepts"),
-  join(resolvedTarget, "brand", "concepts"),
-);
-copyDirClean(
-  join(ASSETS_ROOT, "background"),
-  join(resolvedTarget, "brand", "background"),
-  (entry) => includeBackgroundVideos || !entry.endsWith(".mp4"),
-);
-copyDir(
-  join(ASSETS_ROOT, "favicons"),
-  join(resolvedTarget, "brand", "favicons"),
-);
+const synced = [];
+
+if (include.logos) {
+  copyDir(join(ASSETS_ROOT, "logos"), join(resolvedTarget, "brand", "logos"));
+  synced.push("logos");
+}
+if (include.favicons) {
+  copyDir(join(ASSETS_ROOT, "favicons"), join(resolvedTarget, "brand", "favicons"));
+  synced.push("favicons");
+}
+if (include.ogembeds) {
+  copyDir(join(ASSETS_ROOT, "ogembeds"), join(resolvedTarget, "brand", "ogembeds"));
+  synced.push("ogembeds");
+}
+if (include.banners) {
+  copyDir(join(ASSETS_ROOT, "banners"), join(resolvedTarget, "brand", "banners"));
+  synced.push("banners");
+}
+if (include.concepts) {
+  copyDir(join(ASSETS_ROOT, "concepts"), join(resolvedTarget, "brand", "concepts"));
+  synced.push("concepts");
+}
+if (include.background) {
+  copyDirClean(
+    join(ASSETS_ROOT, "background"),
+    join(resolvedTarget, "brand", "background"),
+    (entry) => includeBackgroundVideos || !entry.endsWith(".mp4"),
+  );
+  synced.push(includeBackgroundVideos ? "background+videos" : "background");
+}
 if (includeClouds) {
   copyDirClean(
     join(ASSETS_ROOT, "clouds"),
@@ -112,7 +150,9 @@ if (includeClouds) {
       );
     },
   );
+  synced.push(
+    selectedCloudSpeeds ? `clouds(${[...selectedCloudSpeeds].join(",")})` : "clouds",
+  );
 }
-console.log(
-  `[shared-brand] synced into ${resolvedTarget}${includeClouds ? ` (with clouds${selectedCloudSpeeds ? `: ${[...selectedCloudSpeeds].join(",")}` : ""})` : ""}`,
-);
+
+console.log(`[shared-brand] synced into ${resolvedTarget}: ${synced.join(", ") || "(nothing)"}`);

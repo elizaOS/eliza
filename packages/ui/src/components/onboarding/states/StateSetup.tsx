@@ -11,11 +11,14 @@ export interface StateSetupProps {
   onChooseRemote: () => void;
 }
 
+// Languages identified by their native name rather than a flag emoji.
+// Flags conflate language with country (English ≠ 🇺🇸, Spanish ≠ 🇪🇸), which
+// excludes huge user populations and is a standard i18n anti-pattern.
 const LANGUAGES: ReadonlyArray<{ value: string; label: string }> = [
-  { value: "en-US", label: "🇺🇸 English" },
-  { value: "es-ES", label: "🇪🇸 Spanish" },
-  { value: "ja-JP", label: "🇯🇵 Japanese" },
-  { value: "ko-KR", label: "🇰🇷 Korean" },
+  { value: "en-US", label: "English" },
+  { value: "es-ES", label: "Español" },
+  { value: "ja-JP", label: "日本語" },
+  { value: "ko-KR", label: "한국어" },
 ];
 
 export function StateSetup(props: StateSetupProps): React.JSX.Element {
@@ -52,9 +55,16 @@ export function StateSetup(props: StateSetupProps): React.JSX.Element {
           {copy.recommendation}
         </span>
       </div>
-      <div className="eliza-ob-choice-list">
+      <h2 className="eliza-ob-runtime-prompt">Where should Eliza run?</h2>
+      <div
+        className="eliza-ob-choice-list"
+        role="radiogroup"
+        aria-label="Where Eliza should run"
+      >
         <button
           type="button"
+          role="radio"
+          aria-checked={selected === "cloud"}
           className={`eliza-ob-choice${selected === "cloud" ? " selected" : ""}`}
           onClick={() => onChooseRuntime("cloud")}
         >
@@ -66,6 +76,8 @@ export function StateSetup(props: StateSetupProps): React.JSX.Element {
         </button>
         <button
           type="button"
+          role="radio"
+          aria-checked={selected === "device"}
           className={`eliza-ob-choice${selected === "device" ? " selected" : ""}`}
           onClick={() => onChooseRuntime("device")}
         >
@@ -86,7 +98,7 @@ export function StateSetup(props: StateSetupProps): React.JSX.Element {
           className="eliza-ob-btn text-only"
           onClick={onChooseRemote}
         >
-          Connect To Remote Instance
+          Connect to a remote instance
         </button>
       </div>
     </section>

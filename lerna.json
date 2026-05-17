@@ -1,5 +1,5 @@
 {
-  "version": "2.0.0-beta.1",
+  "version": "2.0.0-beta.4",
   "packages": [
     "packages/*",
     "packages/app-core/platforms/*",
@@ -19,7 +19,11 @@
         "new-beginnings",
         "beta"
       ],
-      "ignoreChanges": ["**/*.md", "**/test/**", "**/__tests__/**"],
+      "ignoreChanges": [
+        "**/*.md",
+        "**/test/**",
+        "**/__tests__/**"
+      ],
       "verifyAccess": false
     },
     "version": {

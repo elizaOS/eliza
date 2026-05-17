@@ -5377,6 +5377,7 @@ export function hasTextGenerationHandler(runtime: IAgentRuntime): boolean {
  * Tracks the latest response ID per agent+room to handle message superseding
  */
 const latestResponseIds = new Map<string, Map<string, string>>();
+const DEFAULT_POST_DELIVERY_SIDE_EFFECT_TIMEOUT_MS = 5_000;
 
 function clearLatestResponseId(
 	agentId: UUID,
@@ -5396,6 +5397,67 @@ function clearLatestResponseId(
 	if (agentMap.size === 0) {
 		latestResponseIds.delete(agentId);
 	}
+}
+
+function resolvePostDeliverySideEffectTimeoutMs(): number {
+	const raw = process.env.ELIZA_POST_DELIVERY_SIDE_EFFECT_TIMEOUT_MS?.trim();
+	if (!raw) return DEFAULT_POST_DELIVERY_SIDE_EFFECT_TIMEOUT_MS;
+	const parsed = Number.parseInt(raw, 10);
+	if (!Number.isFinite(parsed) || parsed <= 0) {
+		return DEFAULT_POST_DELIVERY_SIDE_EFFECT_TIMEOUT_MS;
+	}
+	return Math.max(100, parsed);
+}
+
+async function runPostDeliverySideEffect(
+	runtime: Pick<IAgentRuntime, "logger" | "agentId">,
+	label: string,
+	task: () => Promise<unknown>,
+): Promise<void> {
+	const timeoutMs = resolvePostDeliverySideEffectTimeoutMs();
+	let timeoutHandle: ReturnType<typeof setTimeout> | undefined;
+	try {
+		const result = await Promise.race([
+			Promise.resolve()
+				.then(task)
+				.then(() => "completed" as const),
+			new Promise<"timed_out">((resolve) => {
+				timeoutHandle = setTimeout(() => resolve("timed_out"), timeoutMs);
+				(timeoutHandle as { unref?: () => void }).unref?.();
+			}),
+		]);
+		if (result === "timed_out") {
+			runtime.logger.warn(
+				{
+					src: "service:message",
+					agentId: runtime.agentId,
+					label,
+					timeoutMs,
+				},
+				"Post-delivery side effect timed out",
+			);
+		}
+	} catch (err) {
+		runtime.logger.warn(
+			{
+				src: "service:message",
+				agentId: runtime.agentId,
+				label,
+				err: err instanceof Error ? err.message : String(err),
+			},
+			"Post-delivery side effect failed",
+		);
+	} finally {
+		if (timeoutHandle) clearTimeout(timeoutHandle);
+	}
+}
+
+function detachPostDeliverySideEffect(
+	runtime: Pick<IAgentRuntime, "logger" | "agentId">,
+	label: string,
+	task: () => Promise<unknown>,
+): void {
+	void runPostDeliverySideEffect(runtime, label, task);
 }
 
 export function isSimpleReplyResponse(
@@ -8718,14 +8780,7 @@ export class DefaultMessageService implements IMessageService {
 		let responseContent: Content | null = null;
 		let responseMessages: Memory[] = [];
 		let mode: StrategyMode = "none";
-		// Holds a deferred simple-mode reply that will be flushed after
-		// evaluators + reflection have had a chance to override it. Declared
-		// out here so the post-evaluation flush at the bottom of handleMessage
-		// can see the same variable that the simple-mode branch sets.
-		let pendingSimpleEmit: Content | null = null;
-		// Track memory IDs created for the simple-mode reply so we can clean
-		// them up if reflection overrides the deferred emit (Greptile P1 fix).
-		const pendingSimpleMemoryIds: string[] = [];
+		let simpleReplyDelivered = false;
 
 		if (shouldRespondToMessage) {
 			let result: StrategyResult;
@@ -8866,7 +8921,10 @@ export class DefaultMessageService implements IMessageService {
 							"Simple response used providers",
 						);
 					}
-					// WHY order: hooks → createMemory → deferred callback matches wire + DB.
+					// Keep content hooks and DB write before delivery so the wire
+					// response and stored memory match. Do not put MESSAGE_SENT
+					// handlers or post-turn evaluators before the callback; they are
+					// side effects and must not stall user-visible streaming.
 					await runtime.applyPipelineHooks(
 						"outgoing_before_deliver",
 						outgoingPipelineHookContext(responseContent, {
@@ -8893,18 +8951,19 @@ export class DefaultMessageService implements IMessageService {
 							);
 							await runtime.createMemory(responseMemory, "messages");
 
-							await this.emitMessageSent(
-								runtime,
-								responseMemory,
-								message.content.source ?? "messageHandler",
+							detachPostDeliverySideEffect(runtime, "MESSAGE_SENT", () =>
+								this.emitMessageSent(
+									runtime,
+									responseMemory,
+									message.content.source ?? "messageHandler",
+								),
 							);
-
-							if (responseMemory.id) {
-								pendingSimpleMemoryIds.push(responseMemory.id);
-							}
 						}
 					}
-					pendingSimpleEmit = responseContent;
+					if (callback) {
+						await callback(responseContent);
+						simpleReplyDelivered = true;
+					}
 				}
 			}
 		} else {
@@ -9012,19 +9071,30 @@ export class DefaultMessageService implements IMessageService {
 		// that are not part of the unified evaluator service.
 		const didRespondGate =
 			shouldRespondToMessage && !isStopResponse(responseContent);
-		await runPostTurnEvaluators(runtime, message, state, {
-			didRespond: didRespondGate,
-			responses: responseMessages,
-		});
-		await runtime.runActionsByMode("ALWAYS_AFTER", message, state, {
-			didRespond: didRespondGate,
-			responses: responseMessages,
-		});
-
-		// Flush the deferred simple-mode reply after hooks have had a chance
-		// to attach callbacks. Chaining is handled inside the v5 planner loop.
-		if (pendingSimpleEmit && callback) {
-			await callback(pendingSimpleEmit);
+		if (simpleReplyDelivered) {
+			void (async () => {
+				await runPostDeliverySideEffect(runtime, "post_turn_evaluators", () =>
+					runPostTurnEvaluators(runtime, message, state, {
+						didRespond: didRespondGate,
+						responses: responseMessages,
+					}),
+				);
+				await runPostDeliverySideEffect(runtime, "ALWAYS_AFTER", () =>
+					runtime.runActionsByMode("ALWAYS_AFTER", message, state, {
+						didRespond: didRespondGate,
+						responses: responseMessages,
+					}),
+				);
+			})();
+		} else {
+			await runPostTurnEvaluators(runtime, message, state, {
+				didRespond: didRespondGate,
+				responses: responseMessages,
+			});
+			await runtime.runActionsByMode("ALWAYS_AFTER", message, state, {
+				didRespond: didRespondGate,
+				responses: responseMessages,
+			});
 		}
 
 		const didRespond =

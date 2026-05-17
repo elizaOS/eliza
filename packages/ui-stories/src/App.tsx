@@ -3,6 +3,7 @@ import { primitiveStories } from "./stories/primitives.tsx";
 import { brandStories } from "./stories/brand.tsx";
 import { cloudDashboardStories } from "./stories/cloud-dashboard.tsx";
 import { analyticsStories } from "./stories/analytics.tsx";
+import { shellFoundationStories } from "./stories/shell-foundation.tsx";
 
 const groups: StoryGroup[] = [
   {
@@ -24,6 +25,11 @@ const groups: StoryGroup[] = [
     id: "analytics",
     title: "Analytics — shared dashboard views",
     stories: analyticsStories,
+  },
+  {
+    id: "shell-foundation",
+    title: "Shell Foundation — @elizaos/ui/components/shell",
+    stories: shellFoundationStories,
   },
 ];
 

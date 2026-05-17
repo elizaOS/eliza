@@ -20,8 +20,8 @@ import { useState } from "react";
 import { cn } from "../../lib/utils";
 import { BrandButton } from "../brand/brand-button";
 import { DashboardTableSkeleton } from "../data-list/dashboard-table-skeleton";
-import { DashboardRoutePage } from "../layout/dashboard-route-page";
 import { EmptyState } from "../empty-state";
+import { DashboardRoutePage } from "../layout/dashboard-route-page";
 import { ListSkeleton } from "../list-skeleton";
 
 interface DashboardActionLinkProps {

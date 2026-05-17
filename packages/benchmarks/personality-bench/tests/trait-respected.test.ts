@@ -207,7 +207,7 @@ describe("trait-respected rubric", () => {
       );
       const v = await gradeTraitRespected(s, resolveOptions(NO_LLM));
       // The vacuous probe layer has confidence=0 — it should not produce FAIL.
-      expect(v.verdict).not.toBe("FAIL");
+      expect(v.verdict !== "FAIL").toBe(true);
     });
 
     it("still FAILs when preceding user message is substantive", async () => {

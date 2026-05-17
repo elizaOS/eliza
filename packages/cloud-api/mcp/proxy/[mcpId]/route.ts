@@ -26,7 +26,7 @@ import type { AppEnv } from "@/types/cloud-worker-env";
 const CREDITS_PER_DOLLAR = 100;
 
 /** JSON subset for proxied MCP-RPC bodies (avoid `unknown`; values are forwarded as JSON). */
-type McpProxyJson =
+export type McpProxyJson =
   | string
   | number
   | boolean
@@ -34,7 +34,7 @@ type McpProxyJson =
   | McpProxyJson[]
   | { readonly [key: string]: McpProxyJson };
 
-function toolNameFromRpcBody(body: McpProxyJson): string {
+export function toolNameFromRpcBody(body: McpProxyJson): string {
   if (body === null || typeof body !== "object" || Array.isArray(body)) {
     return "unknown";
   }
@@ -48,7 +48,7 @@ function toolNameFromRpcBody(body: McpProxyJson): string {
   return typeof name === "string" && name.length > 0 ? name : "unknown";
 }
 
-async function parseJsonBody(request: Request): Promise<McpProxyJson> {
+export async function parseJsonBody(request: Request): Promise<McpProxyJson> {
   const contentType = request.headers.get("content-type");
   if (!contentType?.includes("application/json")) {
     return {};

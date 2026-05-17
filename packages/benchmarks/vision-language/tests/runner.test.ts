@@ -76,7 +76,7 @@ describe("runOneBenchmark", () => {
 describe("lookupBaseline", () => {
   it("returns the registered Qwen2.5-VL baseline for a known (tier, benchmark) pair", () => {
     const baseline = lookupBaseline("eliza-1-9b", "screenspot");
-    expect(baseline).not.toBeNull();
+    expect(baseline !== null).toBe(true);
     expect(baseline?.score).toBeCloseTo(0.876);
     expect(baseline?.source).toMatch(/Qwen/);
   });

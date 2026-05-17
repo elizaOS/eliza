@@ -1,9 +1,11 @@
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 
 const PREV_MOCK = process.env.MOCK_REDIS;
+const PREV_CACHE_ENABLED = process.env.CACHE_ENABLED;
 
 beforeAll(() => {
   process.env.MOCK_REDIS = "1";
+  process.env.CACHE_ENABLED = "true";
 });
 
 afterAll(() => {
@@ -11,6 +13,12 @@ afterAll(() => {
     delete process.env.MOCK_REDIS;
   } else {
     process.env.MOCK_REDIS = PREV_MOCK;
+  }
+
+  if (PREV_CACHE_ENABLED === undefined) {
+    delete process.env.CACHE_ENABLED;
+  } else {
+    process.env.CACHE_ENABLED = PREV_CACHE_ENABLED;
   }
 });
 

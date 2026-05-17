@@ -28,7 +28,7 @@ test("homepage centers Eliza App downloads and product CTAs", async ({
   page,
 }) => {
   await page.goto("/", { waitUntil: "domcontentloaded" });
-  await page.waitForLoadState("networkidle");
+  await expect(page.locator("h1").first()).toBeVisible({ timeout: 10_000 });
 
   await expect
     .poll(async () =>

@@ -8,10 +8,10 @@
  * 1. It hard-codes `baseUrl: "."` when no explicit baseUrl is set. TypeScript
  *    6.0 deprecated `baseUrl` and emits TS5101 for it when injected
  *    unconditionally.
- * 2. Some installs are patched to use `@rollup/wasm-node`, but the patch can
- *    leave malformed code behind when the cached package was already partially
- *    patched. Repair that shape deterministically so DTS workers remain valid
- *    CommonJS.
+ * 2. Some installs are patched while the workspace aliases `rollup` to
+ *    `@rollup/wasm-node`. Repair malformed code deterministically so DTS
+ *    workers remain valid CommonJS while still requiring `rollup`, which lets
+ *    the package manager resolve the alias.
  *
  * The workspace-root tsup is already patched. This script finds every
  * bun-cached tsup@8.5.1 that still has the unpatched line and removes the
@@ -33,10 +33,10 @@ const BASE_URL_NEEDLE = 'baseUrl: compilerOptions.baseUrl || ".",';
 const BASE_URL_REPLACEMENT =
   "// Patched: do not inject `baseUrl` (deprecated in TS 6.0). Preserve any\n" +
   "            // explicit user-set baseUrl from `compilerOptions` via the spread above.";
-const ROLLUP_REQUIRE = /require\("rollup"\)/g;
-const WASM_NODE_REQUIRE = 'require("@rollup/wasm-node")';
-const ROLLUP_IMPORT_LINE = `  const { rollup } = await Promise.resolve().then(() => _interopRequireWildcard(${WASM_NODE_REQUIRE}));`;
-const WATCH_IMPORT_LINE = `  const { watch } = await Promise.resolve().then(() => _interopRequireWildcard(${WASM_NODE_REQUIRE}));`;
+const WASM_NODE_REQUIRE = /require\("@rollup\/wasm-node"\)/g;
+const ROLLUP_REQUIRE = 'require("rollup")';
+const ROLLUP_IMPORT_LINE = `  const { rollup } = await Promise.resolve().then(() => _interopRequireWildcard(${ROLLUP_REQUIRE}));`;
+const WATCH_IMPORT_LINE = `  const { watch } = await Promise.resolve().then(() => _interopRequireWildcard(${ROLLUP_REQUIRE}));`;
 const STRAY_ROLLUP_LINE =
   /\n\s*const getDuration = \(\) => \{\n\s*const \{ rollup \} = await Promise\.resolve\(\)\.then\(\(\) => _interopRequireWildcard\(require\("@rollup\/wasm-node"\)\)\);\n\s*\};/;
 const STRAY_WATCH_LINE =
@@ -62,7 +62,7 @@ for (const entry of readdirSync(bunCacheDir)) {
     next = next.replace(BASE_URL_NEEDLE, BASE_URL_REPLACEMENT);
   }
 
-  next = next.replace(ROLLUP_REQUIRE, WASM_NODE_REQUIRE);
+  next = next.replace(WASM_NODE_REQUIRE, ROLLUP_REQUIRE);
   next = next.replace(
     STRAY_ROLLUP_LINE,
     "\n    const getDuration = () => `${Date.now() - start}ms`;",

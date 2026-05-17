@@ -1,4 +1,11 @@
 import type { Action, ActionParameters } from "../types/components";
+import type {
+	ConnectorAccountAccessGate,
+	ConnectorAccountPolicy,
+	ConnectorAccountPurpose,
+	ConnectorAccountRole,
+	ConnectorAccountStatus,
+} from "../types/connector-account-policy";
 import type { Memory, MemoryMetadata } from "../types/memory";
 import type { Metadata } from "../types/primitives";
 import type {
@@ -7,13 +14,6 @@ import type {
 	PostConnectorRegistration,
 } from "../types/runtime";
 import { Service } from "../types/service";
-import type {
-	ConnectorAccountAccessGate,
-	ConnectorAccountPolicy,
-	ConnectorAccountPurpose,
-	ConnectorAccountRole,
-	ConnectorAccountStatus,
-} from "../types/connector-account-policy";
 
 // Re-export so existing imports from this module continue to work.
 export type {

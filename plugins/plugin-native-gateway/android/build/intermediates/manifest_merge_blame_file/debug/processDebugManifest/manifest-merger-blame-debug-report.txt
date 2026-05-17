@@ -7,7 +7,7 @@
 5-->INJECTED
 6
 7    <uses-permission android:name="android.permission.INTERNET" />
-7-->/Users/shawwalters/eliza-workspace/milady/eliza/packages/native-plugins/gateway/android/src/main/AndroidManifest.xml:3:5-67
-7-->/Users/shawwalters/eliza-workspace/milady/eliza/packages/native-plugins/gateway/android/src/main/AndroidManifest.xml:3:22-64
+7-->/Users/shawwalters/eliza-workspace/milady/eliza/plugins/plugin-native-gateway/android/src/main/AndroidManifest.xml:3:5-67
+7-->/Users/shawwalters/eliza-workspace/milady/eliza/plugins/plugin-native-gateway/android/src/main/AndroidManifest.xml:3:22-64
 8
 9</manifest>

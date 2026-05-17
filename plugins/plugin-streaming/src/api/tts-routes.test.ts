@@ -104,6 +104,45 @@ describe("handleTtsRoutes local-inference", () => {
     expect(res.status).toBe(200);
   });
 
+  it("forwards model hint to the provider", async () => {
+    const useModel = vi.fn(async (_modelType, params, _provider) => {
+      expect(params).toMatchObject({
+        text: "hi",
+        model: "kokoro-onnx",
+      });
+      return riffWav();
+    });
+    const ctx = makeContext({
+      state: { config: {}, runtime: { useModel } as never },
+      readJsonBody: vi.fn(async () => ({
+        text: "hi",
+        model: "kokoro-onnx",
+      })),
+    });
+
+    await expect(handleTtsRoutes(ctx)).resolves.toBe(true);
+
+    const res = ctx.res as unknown as ReturnType<typeof makeRes>;
+    expect(res.status).toBe(200);
+  });
+
+  it("rejects unknown format values", async () => {
+    const useModel = vi.fn(async (_modelType, params, _provider) => {
+      expect(params).not.toHaveProperty("format");
+      return riffWav();
+    });
+    const ctx = makeContext({
+      state: { config: {}, runtime: { useModel } as never },
+      readJsonBody: vi.fn(async () => ({
+        text: "hi",
+        format: "exe",
+      })),
+    });
+
+    await expect(handleTtsRoutes(ctx)).resolves.toBe(true);
+    expect(useModel).toHaveBeenCalled();
+  });
+
   it("fails closed when no local provider is registered", async () => {
     const useModel = vi.fn(async () => {
       throw new Error("No handler found for delegate type: TEXT_TO_SPEECH");

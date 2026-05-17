@@ -9,6 +9,9 @@
     "rules": {
       "style": {
         "noDescendingSpecificity": "warn"
+      },
+      "a11y": {
+        "useSemanticElements": "warn"
       }
     }
   }

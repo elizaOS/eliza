@@ -1,10 +1,12 @@
-name: Build Agent Image (develop/main)
+name: Build Agent Image
 
-# Continuous publication of the cloud-agent container image used by the
-# cloud sandbox provisioner. The release-triggered workflow (image.yaml)
-# still handles tagged releases; this one keeps :develop / :stable /
-# :latest pointing at the head of each branch so provisioners don't pin
-# stale builds.
+# Single source of truth for the cloud-agent container image used by the
+# cloud sandbox provisioner. Three trigger surfaces:
+#   - push to develop/main → :develop / :stable + :latest, plus :sha-<short>
+#   - GitHub release created → release tag (e.g. v2.0.0-alpha.176)
+#   - workflow_dispatch → manual reruns
+# The previous release-only workflow (image.yaml) duplicated this entire
+# pre-build sequence; it's been deleted in favor of this consolidated build.
 
 on:
   push:
@@ -20,6 +22,8 @@ on:
       - "packages/app-core/**"
       - ".github/workflows/build-agent-image.yml"
       - ".dockerignore"
+  release:
+    types: [created]
   workflow_dispatch:
 
 env:
@@ -224,8 +228,9 @@ jobs:
         uses: docker/metadata-action@v6
         with:
           images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
-          # develop  → :develop + :sha-<short>
-          # main     → :stable  + :latest + :sha-<short>
+          # develop push  → :develop + :sha-<short>
+          # main push     → :stable + :latest + :sha-<short>
+          # release       → the git tag verbatim (e.g. v2.0.0-alpha.176)
           # Keeping :latest on main avoids breaking the four code sites that
           # still hardcode it (containers-env fallback, sandbox-provider
           # fallback, two test fixtures) until they migrate to :stable.
@@ -233,6 +238,7 @@ jobs:
             type=raw,value=develop,enable=${{ github.ref == 'refs/heads/develop' }}
             type=raw,value=stable,enable=${{ github.ref == 'refs/heads/main' }}
             type=raw,value=latest,enable=${{ github.ref == 'refs/heads/main' }}
+            type=ref,event=tag
             type=sha,prefix=sha-,format=short
 
       - id: push
@@ -253,3 +259,14 @@ jobs:
           subject-name: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
           subject-digest: ${{ steps.push.outputs.digest }}
           push-to-registry: true
+
+      - name: Make Docker image public
+        # Idempotent — patching to public when already public is a no-op.
+        # Previously lived in image.yaml; folded in here on consolidation.
+        run: |
+          curl \
+            -X PATCH \
+            -H "Authorization: Bearer ${{ secrets.GITHUB_TOKEN }}" \
+            -H "Accept: application/vnd.github.v3+json" \
+            https://api.github.com/user/packages/container/${{ env.IMAGE_NAME }}/visibility \
+            -d '{"visibility":"public"}'

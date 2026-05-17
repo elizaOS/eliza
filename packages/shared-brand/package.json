@@ -19,6 +19,7 @@
     "scripts"
   ],
   "scripts": {
-    "sync": "node scripts/sync-to-public.mjs"
+    "sync": "node scripts/sync-to-public.mjs",
+    "test": "echo 'no tests'"
   }
 }

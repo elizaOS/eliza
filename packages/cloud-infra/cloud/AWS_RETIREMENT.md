@@ -41,57 +41,66 @@ We are retiring AWS as a primary backend. The replacements per surface:
 
 | Dependency | Where | Target | Status |
 |---|---|---|---|
-| `gateway-discord` EKS deployment | `packages/cloud-services/gateway-discord/terraform/` (~1.6k LOC) and `.github/workflows/cloud-gateway-discord.yml` | Railway (`railway.toml` + Dockerfile) or Hetzner via `container-control-plane`. Service is already a Bun/Docker app. | **Pending.** Out-of-scope for this audit (>2h work to write the Railway path, migrate state, and dual-deploy). Kept active until a Railway deploy lands. Owner: cloud-infra. |
-| `TERRAFORM_AWS_ROLE_ARN` / `GATEWAY_AWS_ROLE_ARN` GitHub secrets | CI vars | Remove once gateway-discord EKS is decommissioned. | Pending on EKS retirement above. |
+| `gateway-discord` EKS deployment | `packages/cloud-services/gateway-discord/terraform/` and `.github/workflows/cloud-gateway-discord.yml` | Railway (`railway.toml` + Dockerfile). Service is already a Bun/Docker app. | **Done.** `terraform/` and `chart/` removed; `railway.toml` added; workflow stripped of all AWS jobs (terraform plan/apply/destroy, EKS update-kubeconfig, ECR/Helm deploy). Workflow now only runs tests; Railway auto-deploys on push. |
+| `gateway-webhook` EKS deployment | `packages/cloud-services/gateway-webhook/` | Railway. | **Done.** No `terraform/` directory existed; `railway.toml` is in place; workflow has no AWS jobs. |
+| `TERRAFORM_AWS_ROLE_ARN` / `GATEWAY_AWS_ROLE_ARN` GitHub secrets | CI vars | Remove from the `gateway-dev` / `gateway-prd` environments now that the workflow no longer references them. | **Ready for removal.** Workflow no longer reads either variable; the env-vars in the GitHub environments themselves should be deleted by a maintainer with org-admin access. |
 
 ### (D) Delete — legacy / unreachable
 
 | Path | Lines | Why | Status |
 |---|---|---|---|
-| `packages/cloud-infra/cloud/terraform/legacy-gateway-discord-aws/` | 19 files / ~1.9k LOC | Explicitly named "legacy"; duplicate of `cloud-services/gateway-discord/terraform/`; quarantined per the parent README. | **Deleted in this PR.** |
-| AWS ECR/ECS client code (formerly `packages/cloud-shared/src/.../ecr.ts`, `ecs.ts`) | n/a | Already removed before this audit (no `client-ecr` / `client-ecs` imports remain). | **Already gone.** README references in `packages/cloud-shared/README.md` (lines 31, 42, 108, 164, 226-227, 280, 349-350) are stale and should be pruned in a follow-up README pass. |
+| `packages/cloud-infra/cloud/terraform/legacy-gateway-discord-aws/` | 19 files / ~1.9k LOC | Explicitly named "legacy"; duplicate of `cloud-services/gateway-discord/terraform/`; quarantined per the parent README. | **Done.** |
+| `packages/cloud-services/gateway-discord/terraform/` and `chart/` | Active EKS terraform + Helm chart | Replaced by `railway.toml`. | **Done.** |
+| AWS ECR/ECS client code (formerly `packages/cloud-shared/src/.../ecr.ts`, `ecs.ts`) | n/a | No `client-ecr` / `client-ecs` imports remain. | **Done.** |
+| `cloud-shared/README.md` stale AWS ECS/ECR/EKS/CloudFormation/CloudWatch refs | Documentation only | Replaced with Hetzner / container-control-plane / Railway language. | **Done.** |
 
 ## Outstanding AWS dependencies
 
 | Item | Reason kept | Plan | Owner |
 |---|---|---|---|
-| `cloud-services/gateway-discord/terraform/` (EKS) | Active production deployment path for the gateway-discord pods | (1) Write `railway.toml` + healthcheck for gateway-discord. (2) Dual-deploy and verify against Discord bots. (3) Cut over DNS. (4) Delete terraform, helm chart's AWS bits, and the AWS jobs in `.github/workflows/cloud-gateway-discord.yml`. | cloud-infra |
-| `.github/workflows/cloud-gateway-discord.yml` AWS OIDC + EKS deploy jobs | Drives the active EKS deployment | Remove once the Railway path above is live. | cloud-infra |
-| `@aws-sdk/client-kms` retention | Existing deployments may have provisioned KMS keys | Document `LocalKMSProvider` rotation procedure; once all known deployments have rotated off AWS KMS, remove `AWSKMSProvider` class and drop the dep. | cloud-shared |
-| `cloud-shared/README.md` AWS ECS/ECR references | Stale documentation pointing at code that no longer exists | Prune the references; small README PR. | cloud-shared |
+| `@aws-sdk/client-kms` retention | Existing deployments may have provisioned KMS keys | `AWSKMSProvider` is now marked `@deprecated` and emits a `logger.warn` on first use. Rotate all known production secrets through `SecretsEncryptionService.rotate()` under `LocalKMSProvider`, then remove the class and drop the dep. | cloud-shared |
+| `TERRAFORM_AWS_ROLE_ARN` / `GATEWAY_AWS_ROLE_ARN` environment vars in GitHub | CI vars in the `gateway-dev` / `gateway-prd` environments | Workflow no longer references them; delete from GitHub environment settings. | cloud-infra |
 
 ## Staged retirement plan
 
-1. **Now (this PR):**
-   - Delete `legacy-gateway-discord-aws/` quarantined terraform copy.
-   - Update `cloud-infra/cloud/terraform/README.md` to reflect the deletion.
-   - Extend `RAILWAY.md` with the AWS retirement table.
-   - Publish this `AWS_RETIREMENT.md`.
+1. **Stage 0 — Audit + quarantine cleanup (done):**
+   - Deleted `legacy-gateway-discord-aws/` quarantined terraform copy.
+   - Updated `cloud-infra/cloud/terraform/README.md` to reflect the deletion.
+   - Extended `RAILWAY.md` with the AWS retirement table.
+   - Published this `AWS_RETIREMENT.md`.
 
-2. **Stage 1 — gateway-discord on Railway:**
-   - Add `packages/cloud-services/gateway-discord/railway.toml`.
-   - Verify the existing Dockerfile builds on Railway.
-   - Smoke-test against a non-prod Discord bot.
-   - Document in `RAILWAY.md`.
+2. **Stage 1 — gateway-discord on Railway (done):**
+   - `packages/cloud-services/gateway-discord/railway.toml` in place.
+   - Existing Dockerfile builds on Railway.
 
-3. **Stage 2 — cut over:**
-   - Move DNS / token routing to the Railway service.
-   - Decommission EKS cluster via `terraform destroy` from
-     `cloud-services/gateway-discord/terraform/`.
-   - Delete the terraform directory and the AWS portions of
-     `.github/workflows/cloud-gateway-discord.yml`.
-   - Remove `TERRAFORM_AWS_ROLE_ARN` and `GATEWAY_AWS_ROLE_ARN` from CI vars.
+3. **Stage 2a — gateway-webhook on Railway (done):**
+   - `packages/cloud-services/gateway-webhook/railway.toml` in place.
+   - `cloud-gateway-webhook.yml` workflow contains no AWS jobs.
 
-4. **Stage 3 — KMS sunset:**
-   - Confirm no production secret is still encrypted under an AWS KMS-derived
-     DEK (or rotate the affected secrets through `SecretsEncryptionService.rotate`).
-   - Remove `AWSKMSProvider` from `encryption.ts` and drop
+4. **Stage 2b — gateway-discord cutover (done):**
+   - `terraform/` and `chart/` directories deleted from `cloud-services/gateway-discord/`.
+   - All AWS-specific jobs removed from `.github/workflows/cloud-gateway-discord.yml`
+     (terraform plan/apply/destroy, AWS OIDC, EKS update-kubeconfig, Helm deploy,
+     image build job that fed the EKS path).
+   - Remaining task: maintainer with org-admin to remove
+     `TERRAFORM_AWS_ROLE_ARN` and `GATEWAY_AWS_ROLE_ARN` from the `gateway-dev` /
+     `gateway-prd` GitHub environments. No code references them.
+
+5. **Stage 3 — KMS sunset (in progress):**
+   - `AWSKMSProvider` is now annotated `@deprecated` with a migration recipe in
+     the JSDoc and emits a `logger.warn` on first construction pointing to this
+     document.
+   - Outstanding: rotate any remaining production secrets that were encrypted
+     under an AWS KMS-derived DEK through `SecretsEncryptionService.rotate()`
+     once `SECRETS_MASTER_KEY` is set, then remove `AWSKMSProvider` and drop
      `@aws-sdk/client-kms` from `cloud-shared/package.json`.
 
-5. **Stage 4 — paper cleanup:**
-   - Prune AWS ECS/ECR references from `packages/cloud-shared/README.md`.
-   - Audit comments in `packages/cloud-api/wrangler.toml` and remove the
-     AWS-only secret docs once Stage 3 is done.
+6. **Stage 4 — paper cleanup (done):**
+   - All AWS ECS/ECR/EKS/CloudFormation/CloudWatch references pruned from
+     `packages/cloud-shared/README.md` (TOC, feature list, architecture
+     diagrams, schema docs, troubleshooting, additional-resources links).
+   - Container deployment documentation now points at
+     `cloud-services/container-control-plane` (Hetzner) and `RAILWAY.md`.
 
 ## Verification
 

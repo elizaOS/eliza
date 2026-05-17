@@ -36,6 +36,7 @@ import type {
 	ElizaInferenceFfi,
 	ElizaInferenceRegion,
 } from "./voice/ffi-bindings";
+import { SAMANTHA_PLACEHOLDER_BYTE_LENGTH } from "./voice/samantha-preset-placeholder";
 import type {
 	AudioChunk,
 	OmniVoiceBackend,
@@ -45,7 +46,6 @@ import type {
 	TextToken,
 	VoiceSchedulerTelemetryEvent,
 } from "./voice/types";
-import { SAMANTHA_PLACEHOLDER_BYTE_LENGTH } from "./voice/samantha-preset-placeholder";
 import {
 	VOICE_PRESET_MAGIC,
 	VOICE_PRESET_VERSION_V1,
