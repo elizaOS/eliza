@@ -3,7 +3,7 @@ Description=Verify staged elizaOS runtime update manifest
 Documentation=man:gpgv(1)
 Wants=tails-persistent-storage.service
 After=local-fs.target tails-persistent-storage.service
-Before=milady.path milady.service
+Before=milady.service
 
 [Service]
 Type=oneshot
