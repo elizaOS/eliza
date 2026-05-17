@@ -1,18 +1,20 @@
 # Convergence, Annotation, and Deletion Audit
 
-Generated: 2026-05-17T17:32:41.459Z
+Generated: 2026-05-17T17:44:12.972Z
 
 Branch: codex/phase-11-event-bridge-wip
 
-Ahead/behind origin/develop: 18	0
+Ahead/behind origin/develop: 20	0
 
 Dirty status at generation:
 
-- clean
+- M packages/app-core/platforms/electrobun/scripts/generate-convergence-audit.ts
 
 ## Executive Summary
 
-This audit keeps one broad PR track and stops the infrastructure-building spiral. Plugins stay plugins, app plugins stay app/product bundles, connectors stay connector plugins, Electrobun remains the desktop shell, AgentManager remains the runtime owner, and Satellites remain limited to desktop/system capability providers.
+This audit stops the infrastructure-building spiral. Plugins stay plugins, app plugins stay app/product bundles, connectors stay connector plugins, Electrobun remains the desktop shell, AgentManager remains the runtime owner, and Satellites remain limited to desktop/system capability providers.
+
+The current local branch may still contain multiple phases, but it should not be pushed blindly as a broad mega-PR unless maintainers explicitly want that review shape. The stack recommendation below keeps the work reviewable without changing the architectural boundary decisions.
 
 No Swift host/controller path is part of this architecture. The only retained boundary pattern is typed RPC/local API/SSE between layers.
 
@@ -53,6 +55,8 @@ No Swift host/controller path is part of this architecture. The only retained bo
 - packages/core
 - packages/agent
 - packages/app-core
+- packages/app-core/platforms/electrobun core shell
+- packages/electrobun-carrots
 - connector plugins
 - provider plugins
 - app plugins
@@ -66,6 +70,8 @@ No Swift host/controller path is part of this architecture. The only retained bo
 - eliza.pty
 - eliza.runtime
 - eliza.surface
+
+eliza.surface remains dev/admin only and is not a production UI replacement.
 
 ## Future Satellite Candidates
 
@@ -250,6 +256,45 @@ plugins/plugin-xmtp | Plugin-shaped directory without package.json. Needs owner 
 - Keep connector/provider package metadata unchanged unless maintainers already have a metadata convention.
 - Keep Satellite manifests focused on capability boundaries and trusted/full-permission status.
 - Do not add source comments unless a hidden constraint or security boundary would otherwise be unclear.
+
+## PR Stack Recommendation
+
+Do not blindly push every local phase into the platform convergence PR unless maintainers explicitly ask for a mega-PR. Recommended stack:
+
+1. Platform convergence PR
+   - first-party Satellites
+   - AgentManager-backed eliza.runtime
+   - worker invoke/event bridge
+   - dynamic view registry/session infrastructure
+
+2. Trace PR
+   - TraceStore and TraceService
+   - dynamic agent.run.trace view
+   - runtime and capability trace hooks
+
+3. Voice instrumentation PR
+   - VoiceService
+   - mock/text pipeline
+   - voice trace integration
+
+4. Live voice adapter PR
+   - VoiceRuntimeAdapter
+   - live flags
+   - ASR/TTS runtime route wiring
+
+5. Voice latency PR
+   - latency budgets
+   - stream coordinator
+   - TTS chunker
+   - barge-in semantics
+
+6. Voice validation PR
+   - voice:validate scripts
+   - structured validation reports
+
+7. Convergence audit PR
+   - this matrix and generator
+   - no migration or production code changes
 
 ## Full Matrix
 
