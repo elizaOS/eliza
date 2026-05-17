@@ -92,16 +92,20 @@ describe("shellReducer", () => {
     expect(closed.phase).toBe("idle");
   });
 
-  it("SEND moves summoned -> responding and appends a user message", () => {
+  it("SEND moves summoned -> responding and appends user + assistant placeholder messages", () => {
     const summoned = reduce(initialShellState, [
       { type: "BOOT_READY" },
       { type: "OPEN" },
     ]);
     const next = shellReducer(summoned, { type: "SEND", text: "hello" });
     expect(next.phase).toBe("responding");
-    expect(next.messages).toEqual([
+    expect(next.messages).toHaveLength(2);
+    expect(next.messages[0]).toEqual(
       expect.objectContaining({ role: "user", content: "hello" }),
-    ]);
+    );
+    expect(next.messages[1]).toEqual(
+      expect.objectContaining({ role: "assistant", content: "" }),
+    );
   });
 
   it("RESPONSE_DELTA appends to the latest assistant message", () => {
