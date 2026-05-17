@@ -1,9 +1,6 @@
 import { createHash } from "node:crypto";
 import Decimal from "decimal.js";
-import type {
-  AiPricingEntry,
-  NewAiPricingEntry,
-} from "../../../db/repositories/ai-pricing";
+import type { AiPricingEntry, NewAiPricingEntry } from "../../../db/repositories/ai-pricing";
 import type { PricingDimensions } from "../../../db/schemas/ai-pricing";
 import { PLATFORM_MARKUP_MULTIPLIER } from "../../pricing-constants";
 import { normalizeProviderKey } from "../../providers/model-id-translation";

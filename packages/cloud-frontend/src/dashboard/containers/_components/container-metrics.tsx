@@ -9,6 +9,7 @@
 
 "use client";
 
+import { toRatePercent } from "@elizaos/cloud-shared/lib/services/analytics-derived";
 import {
   Badge,
   Button,
@@ -140,10 +141,10 @@ export function ContainerMetrics({
   }
 
   if (!metrics) return null;
-  const healthyTaskPercent =
-    metrics.task_count > 0
-      ? (metrics.healthy_task_count / metrics.task_count) * 100
-      : 0;
+  const healthyTaskPercent = toRatePercent(
+    metrics.healthy_task_count,
+    metrics.task_count,
+  );
 
   return (
     <Card className="shadow-lg shadow-black/50">
