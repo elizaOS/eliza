@@ -1,22 +1,15 @@
 import { logger } from "@elizaos/core";
-import { localInferenceEngine } from "./engine";
+import { localInferenceEngine } from "./engine.js";
 
-let activeVoicePrewarm:
-	| { modelId: string; promise: Promise<boolean> }
-	| null = null;
-
-export function shouldPrewarmLocalVoiceStack(modelId: string): boolean {
+let activeVoicePrewarm = null;
+export function shouldPrewarmLocalVoiceStack(modelId) {
 	return /^eliza-1(?:-|$)/.test(modelId);
 }
-
-export async function prewarmLocalVoiceStackForModel(
-	modelId: string,
-): Promise<boolean> {
+export async function prewarmLocalVoiceStackForModel(modelId) {
 	if (!shouldPrewarmLocalVoiceStack(modelId)) return false;
 	if (activeVoicePrewarm?.modelId === modelId) {
 		return activeVoicePrewarm.promise;
 	}
-
 	const started = Date.now();
 	const promise = (async () => {
 		await localInferenceEngine.ensureActiveBundleVoiceReady();
@@ -46,7 +39,6 @@ export async function prewarmLocalVoiceStackForModel(
 				activeVoicePrewarm = null;
 			}
 		});
-
 	activeVoicePrewarm = { modelId, promise };
 	return promise;
 }

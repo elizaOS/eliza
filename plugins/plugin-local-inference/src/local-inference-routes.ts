@@ -7,7 +7,6 @@ import * as https from "node:https";
 import os from "node:os";
 import path from "node:path";
 import {
-	type AgentRuntime,
 	type ContentValue,
 	logger,
 	readJsonBody,
@@ -28,9 +27,7 @@ import {
 import {
 	assertManifestEvalsPassed,
 	CandidateModelActivationError,
-	resolveLocalInferenceLoadArgs,
 } from "./services/active-model.js";
-import { localInferenceService } from "./services/service.js";
 import { prewarmLocalVoiceStackForModel } from "./services/voice-prewarm.js";
 
 type ModelRole = "chat" | "embedding" | "drafter";
@@ -55,10 +52,6 @@ type MobileDeviceBridgeStatus = {
 	connected?: boolean;
 	reason?: string;
 	devices: Array<{ loadedPath?: string | null }>;
-};
-
-export type LocalInferenceRouteState = {
-	current?: AgentRuntime | null;
 };
 
 let mobileDeviceBridgeApiPromise: Promise<MobileDeviceBridgeApi> | null = null;
@@ -165,61 +158,16 @@ interface RoutingPreferencesFile {
 	preferences: RoutingPreferences;
 }
 
-type LocalInferenceActiveSnapshot = {
+let activeModelState: {
 	modelId: string | null;
 	loadedAt: string | null;
 	status: "idle" | "loading" | "ready" | "error";
 	error?: string;
-	loadedContextSize?: number | null;
-	loadedCacheTypeK?: string | null;
-	loadedCacheTypeV?: string | null;
-	loadedGpuLayers?: number | null;
-};
-
-type AospActiveModelStateFile = {
-	version?: number;
-	status?: "ready" | "error";
-	role?: "chat" | "embedding";
-	provider?: string;
-	path?: string;
-	loadedAt?: string;
-	updatedAt?: string;
-	error?: string;
-};
-
-let activeModelState: LocalInferenceActiveSnapshot = {
-	modelId: null,
-	loadedAt: null,
-	status: "idle",
-};
-
-function getDesktopActiveSnapshot(): LocalInferenceActiveSnapshot | null {
-	const active = localInferenceService.getActive();
-	if (active.status === "idle" && !active.modelId) return null;
-	return {
-		modelId: active.modelId,
-		loadedAt: active.loadedAt,
-		status: active.status,
-		...(active.error ? { error: active.error } : {}),
-		...(active.loadedContextSize !== undefined
-			? { loadedContextSize: active.loadedContextSize }
-			: {}),
-		...(active.loadedCacheTypeK !== undefined
-			? { loadedCacheTypeK: active.loadedCacheTypeK }
-			: {}),
-		...(active.loadedCacheTypeV !== undefined
-			? { loadedCacheTypeV: active.loadedCacheTypeV }
-			: {}),
-		...(active.loadedGpuLayers !== undefined
-			? { loadedGpuLayers: active.loadedGpuLayers }
-			: {}),
-	};
-}
+} = { modelId: null, loadedAt: null, status: "idle" };
 
 export function getLocalInferenceActiveModelId(): string | undefined {
-	const active = getDesktopActiveSnapshot() ?? activeModelState;
-	return active.status === "ready" && active.modelId?.trim()
-		? active.modelId.trim()
+	return activeModelState.status === "ready" && activeModelState.modelId?.trim()
+		? activeModelState.modelId.trim()
 		: undefined;
 }
 
@@ -266,10 +214,6 @@ function registryPath(): string {
 
 function assignmentsPath(): string {
 	return path.join(localInferenceRoot(), "assignments.json");
-}
-
-function aospActiveModelStatePath(): string {
-	return path.join(localInferenceRoot(), "aosp-active.json");
 }
 
 function routingPath(): string {
@@ -677,65 +621,9 @@ async function installedSnapshot(): Promise<InstalledModel[]> {
 	return readRegistry();
 }
 
-async function canonicalExistingPath(filePath: string): Promise<string> {
-	try {
-		return await fsp.realpath(filePath);
-	} catch {
-		return filePath;
-	}
-}
-
-async function getAospActiveSnapshot(): Promise<LocalInferenceActiveSnapshot | null> {
-	const active = await readJsonFile<AospActiveModelStateFile | null>(
-		aospActiveModelStatePath(),
-		null,
-	);
-	if (
-		!active ||
-		active.provider !== "eliza-aosp-llama" ||
-		typeof active.path !== "string" ||
-		active.path.trim().length === 0
-	) {
-		return null;
-	}
-	const installed = await installedSnapshot();
-	const activePath = await canonicalExistingPath(active.path);
-	const resolvedInstalledModel =
-		installed.find((model) => model.path === active.path) ??
-		(
-			await Promise.all(
-				installed.map(async (model) => ({
-					model,
-					path: await canonicalExistingPath(model.path),
-				})),
-			)
-		).find((entry) => entry.path === activePath)?.model;
-	if (!resolvedInstalledModel || active.role !== "chat") return null;
-	if (active.status === "ready") {
-		return {
-			modelId: resolvedInstalledModel.id,
-			loadedAt: active.loadedAt ?? null,
-			status: "ready",
-		};
-	}
-	if (active.status === "error") {
-		return {
-			modelId: resolvedInstalledModel.id,
-			loadedAt: active.updatedAt ?? active.loadedAt ?? null,
-			status: "error",
-			error: active.error ?? "AOSP local inference failed to load the model",
-		};
-	}
-	return null;
-}
-
-export async function getLocalInferenceActiveSnapshot(): Promise<LocalInferenceActiveSnapshot> {
-	const desktopActive = getDesktopActiveSnapshot();
-	if (desktopActive) return desktopActive;
-
-	const aospActive = await getAospActiveSnapshot();
-	if (aospActive) return aospActive;
-
+export async function getLocalInferenceActiveSnapshot(): Promise<
+	typeof activeModelState
+> {
 	const bridgeStatus = await getMobileDeviceBridgeApi()
 		.then((api) => api.getMobileDeviceBridgeStatus())
 		.catch(() => getMobileDeviceBridgeStatusUnavailable());
@@ -973,104 +861,8 @@ async function setRoutingForChat(provider: string): Promise<void> {
 	await writeJsonFile(routingPath(), { version: 1, preferences });
 }
 
-async function getConnectedMobileDeviceBridgeApi(): Promise<MobileDeviceBridgeApi | null> {
-	if (prefersInProcessLocalLlama()) return null;
-	try {
-		const api = await getMobileDeviceBridgeApi();
-		const status = api.getMobileDeviceBridgeStatus();
-		return status.connected ? api : null;
-	} catch {
-		return null;
-	}
-}
-
-function prefersInProcessLocalLlama(): boolean {
-	return process.env.ELIZA_LOCAL_LLAMA?.trim() === "1";
-}
-
-function providerForActiveSnapshot(
-	active: LocalInferenceActiveSnapshot,
-): string {
-	if (prefersInProcessLocalLlama()) return LOCAL_INFERENCE_PROVIDER_ID;
-	const desktopActive = getDesktopActiveSnapshot();
-	if (
-		desktopActive?.status === "ready" &&
-		desktopActive.modelId &&
-		desktopActive.modelId === active.modelId
-	) {
-		return LOCAL_INFERENCE_PROVIDER_ID;
-	}
-	return "capacitor-llama";
-}
-
-async function activateWithAospLocalInference(
-	installed: InstalledModel,
-): Promise<LocalInferenceActiveSnapshot> {
-	const mod = await import("@elizaos/plugin-aosp-local-inference");
-	if (typeof mod.activateAospLocalInferenceModel !== "function") {
-		throw new Error(
-			"@elizaos/plugin-aosp-local-inference does not expose activateAospLocalInferenceModel.",
-		);
-	}
-	const loadArgs =
-		typeof mod.buildAospLoadModelArgs === "function"
-			? mod.buildAospLoadModelArgs("chat", installed.path)
-			: await resolveLocalInferenceLoadArgs(installed);
-	return mod.activateAospLocalInferenceModel({
-		modelId: installed.id,
-		modelPath: installed.path,
-		loadArgs: loadArgs as never,
-	}) as Promise<LocalInferenceActiveSnapshot>;
-}
-
-async function clearAospLocalInference(): Promise<LocalInferenceActiveSnapshot> {
-	const mod = await import("@elizaos/plugin-aosp-local-inference");
-	if (typeof mod.clearAospLocalInferenceModel !== "function") {
-		throw new Error(
-			"@elizaos/plugin-aosp-local-inference does not expose clearAospLocalInferenceModel.",
-		);
-	}
-	return mod.clearAospLocalInferenceModel() as Promise<LocalInferenceActiveSnapshot>;
-}
-
-async function activateInstalledModelWithRuntime(
-	installed: InstalledModel,
-	runtime: AgentRuntime | null | undefined,
-): Promise<{
-	active: LocalInferenceActiveSnapshot;
-	provider: string;
-}> {
-	if (prefersInProcessLocalLlama()) {
-		const active = await activateWithAospLocalInference(installed);
-		return { active, provider: LOCAL_INFERENCE_PROVIDER_ID };
-	}
-
-	const bridge = await getConnectedMobileDeviceBridgeApi();
-	if (bridge) {
-		await bridge.loadMobileDeviceBridgeModel(installed.path, installed.id);
-		return {
-			active: {
-				modelId: installed.id,
-				loadedAt: new Date().toISOString(),
-				status: "ready",
-			},
-			provider: "capacitor-llama",
-		};
-	}
-
-	const active = await localInferenceService.setActive(
-		runtime ?? null,
-		installed.id,
-	);
-	if (active.status === "error") {
-		throw new Error(active.error ?? "Failed to load model");
-	}
-	return { active, provider: LOCAL_INFERENCE_PROVIDER_ID };
-}
-
 async function activateInstalledModel(
 	installed: InstalledModel,
-	runtime?: AgentRuntime | null,
 ): Promise<LocalInferenceChatResult> {
 	activeModelState = {
 		modelId: installed.id,
@@ -1078,17 +870,19 @@ async function activateInstalledModel(
 		status: "loading",
 	};
 	try {
-		const { active, provider } = await activateInstalledModelWithRuntime(
-			installed,
-			runtime ?? null,
-		);
-		activeModelState = active;
+		const { loadMobileDeviceBridgeModel } = await getMobileDeviceBridgeApi();
+		await loadMobileDeviceBridgeModel(installed.path, installed.id);
+		activeModelState = {
+			modelId: installed.id,
+			loadedAt: new Date().toISOString(),
+			status: "ready",
+		};
 		return buildLocalInferenceChatResult({
 			intent: "use_local",
 			status: "ready",
 			modelId: installed.id,
 			activeModelId: installed.id,
-			provider,
+			provider: "capacitor-llama",
 		});
 	} catch (error) {
 		const message = error instanceof Error ? error.message : String(error);
@@ -1157,7 +951,7 @@ export async function getLocalInferenceChatStatus(
 			status: "ready",
 			modelId: active.modelId,
 			activeModelId: active.modelId,
-			provider: providerForActiveSnapshot(active),
+			provider: "capacitor-llama",
 		});
 	}
 
@@ -1220,7 +1014,7 @@ export async function handleLocalInferenceChatCommand(
 	}
 
 	if (intent === "use_local") {
-		await setRoutingForChat(LOCAL_INFERENCE_PROVIDER_ID);
+		await setRoutingForChat("capacitor-llama");
 		const installed = await installedSnapshot();
 		const requested = await resolveDefaultChatModel(prompt);
 		const installedModel = installed.find(
@@ -1237,7 +1031,7 @@ export async function handleLocalInferenceChatCommand(
 					status: "downloading",
 					modelId: requested.id,
 					activeModelId: activeModelState.modelId,
-					provider: LOCAL_INFERENCE_PROVIDER_ID,
+					provider: "capacitor-llama",
 					progress: progressForJob(job),
 				},
 				"I also set chat routing to prefer local inference.",
@@ -1310,7 +1104,6 @@ function writeSse(res: http.ServerResponse, payload: unknown): void {
 export async function handleLocalInferenceRoutes(
 	req: http.IncomingMessage,
 	res: http.ServerResponse,
-	state: LocalInferenceRouteState = {},
 ): Promise<boolean> {
 	const method = (req.method ?? "GET").toUpperCase();
 	const url = new URL(req.url ?? "/", "http://localhost");
@@ -1585,11 +1378,13 @@ export async function handleLocalInferenceRoutes(
 				loadedAt: null,
 				status: "loading",
 			};
-			const { active } = await activateInstalledModelWithRuntime(
-				installed,
-				state.current ?? null,
-			);
-			activeModelState = active;
+			const { loadMobileDeviceBridgeModel } = await getMobileDeviceBridgeApi();
+			await loadMobileDeviceBridgeModel(installed.path, installed.id);
+			activeModelState = {
+				modelId: installed.id,
+				loadedAt: new Date().toISOString(),
+				status: "ready",
+			};
 			sendJson(res, activeModelState);
 			void prewarmLocalVoiceStackForModel(installed.id);
 		} catch (error) {
@@ -1609,14 +1404,10 @@ export async function handleLocalInferenceRoutes(
 	}
 	if (method === "DELETE" && pathname === "/api/local-inference/active") {
 		try {
-			if (prefersInProcessLocalLlama()) {
-				activeModelState = await clearAospLocalInference();
-			} else {
-				const { unloadMobileDeviceBridgeModel } =
-					await getMobileDeviceBridgeApi();
-				await unloadMobileDeviceBridgeModel();
-				activeModelState = { modelId: null, loadedAt: null, status: "idle" };
-			}
+			const { unloadMobileDeviceBridgeModel } =
+				await getMobileDeviceBridgeApi();
+			await unloadMobileDeviceBridgeModel();
+			activeModelState = { modelId: null, loadedAt: null, status: "idle" };
 			sendJson(res, activeModelState);
 		} catch (error) {
 			sendJsonError(

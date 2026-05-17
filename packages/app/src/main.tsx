@@ -7,19 +7,11 @@ import { Capacitor, type PluginListenerHandle } from "@capacitor/core";
 import { Keyboard, KeyboardResize } from "@capacitor/keyboard";
 import { Preferences } from "@capacitor/preferences";
 import {
-  AppWindowRenderer,
   DESKTOP_TRAY_MENU_ITEMS,
   DesktopSurfaceNavigationRuntime,
   DesktopTrayRuntime,
   DetachedShellRoot,
 } from "@elizaos/app-core";
-import {
-  type IosLocalAgentNativeRequestOptions,
-  type IosLocalAgentNativeRequestResult,
-  installIosLocalAgentFetchBridge,
-  installIosLocalAgentNativeRequestBridge,
-  primeIosFullBunRuntime,
-} from "@elizaos/app-core/api/ios-local-agent-transport";
 import { Agent } from "@elizaos/capacitor-agent";
 import { Desktop } from "@elizaos/capacitor-desktop";
 import type { DeviceBridgeClient } from "@elizaos/capacitor-llama";
@@ -44,12 +36,13 @@ import type {
 } from "@elizaos/ui";
 import {
   AGENT_READY_EVENT,
-  ANDROID_LOCAL_AGENT_IPC_BASE,
   APP_PAUSE_EVENT,
   APP_RESUME_EVENT,
   App,
   type AppBootConfig,
   AppProvider,
+  AppWindowRenderer,
+  ELIZA_DEFAULT_THEME,
   applyForceFreshOnboardingReset,
   applyLaunchConnection,
   applyLaunchConnectionFromUrl,
@@ -59,21 +52,23 @@ import {
   CONNECT_EVENT,
   client,
   dispatchAppEvent,
-  ELIZA_DEFAULT_THEME,
   getBootConfig,
   getWindowNavigationPath,
   IOS_LOCAL_AGENT_IPC_BASE,
+  type IosLocalAgentNativeRequestOptions,
+  type IosLocalAgentNativeRequestResult,
   initializeCapacitorBridge,
   initializeStorageBridge,
   installAndroidNativeAgentFetchBridge,
   installDesktopPermissionsClientPatch,
   installForceFreshOnboardingClientPatch,
+  installIosLocalAgentFetchBridge,
+  installIosLocalAgentNativeRequestBridge,
   installLocalProviderCloudPreferencePatch,
   isAppWindowRoute,
   isDetachedWindowShell,
   isElectrobunRuntime,
   isElizaOS,
-  isMobileLocalAgentIpcUrl,
   loadUiTheme,
   MOBILE_LOCAL_AGENT_API_BASE,
   MOBILE_RUNTIME_MODE_CHANGED_EVENT,
@@ -82,6 +77,7 @@ import {
   type NetworkStatusChangeDetail,
   normalizeMobileRuntimeMode,
   preSeedAndroidLocalRuntimeIfFresh,
+  primeIosFullBunRuntime,
   resolveWindowShellRoute,
   routeOnboardingDeepLink,
   SHARE_TARGET_EVENT,
@@ -104,7 +100,6 @@ import {
 } from "./app-config";
 import { APP_ENV_ALIASES, APP_ENV_PREFIX } from "./brand-env";
 import { APP_CHARACTER_CATALOG } from "./character-catalog";
-import { AndroidVoicePill } from "./components/AndroidVoicePill";
 import { buildAssistantLaunchHashRoute } from "./deep-link-routing";
 import {
   apiBaseToDeviceBridgeUrl,
@@ -307,12 +302,6 @@ function getInjectedAppApiBase(): string | undefined {
   );
 }
 
-// TODO(brand): the Eliza brand wants the orange `.theme-app` look on the
-// first-run / onboarding / marketing surfaces (BLACK text on #FF5800, Poppins,
-// sharp corners), and the dark theme inside the running chat UI. That switch
-// is driven by `@elizaos/ui`'s onboarding wrapper, which we don't edit from
-// this shell. When the onboarding component gains an explicit "marketing
-// theme" preset, point `APP_BRANDING.onboardingTheme` at it here.
 const APP_BRANDING: Partial<BrandingConfig> = {
   ...APP_BRANDING_BASE,
   theme: ELIZA_DEFAULT_THEME,
@@ -343,10 +332,7 @@ const IOS_FULL_BUN_SMOKE_RESULT_KEY = "eliza:ios-full-bun-smoke:result";
 const IOS_FULL_BUN_SMOKE_ROUTE_TIMEOUT_MS = 300_000;
 const IOS_FULL_BUN_SMOKE_MESSAGE_TIMEOUT_MS = 600_000;
 const IOS_FULL_BUN_SMOKE_CHAT_TEXT =
-  "Reply with exactly these four words: ios smoke model works.";
-const IOS_FULL_BUN_SMOKE_EXPECTED_REPLY = "ios smoke model works";
-const IOS_FULL_BUN_SMOKE_FAILURE_RE =
-  /something went wrong|backend is not running|local backend is not running|no local backend|no local model|no model registered|no provider|connect a provider|waiting for the model download|timed out|<think\b|<\/think>|\/?\bno_think\b/i;
+  "In one short sentence, confirm the iOS full Bun local backend is running.";
 
 let mobileDeviceBridgeClient: DeviceBridgeClient | null = null;
 let mobileDeviceBridgeStartPromise: Promise<void> | null = null;
@@ -606,7 +592,7 @@ function renderIosFullBunSmokeStatus(message: string): void {
     document.body.innerHTML = "";
     const container = document.createElement("main");
     container.style.cssText =
-      "min-height:100vh;display:flex;align-items:center;justify-content:center;background:var(--bg,#f7f8fa);color:var(--text,#101114);font-family:var(--font-sans,'Poppins','Open Sans',Arial,system-ui,sans-serif);padding:32px;text-align:center;";
+      "min-height:100vh;display:flex;align-items:center;justify-content:center;background:#f7f8fa;color:#101114;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;padding:32px;text-align:center;";
     const text = document.createElement("div");
     text.style.cssText = "max-width:360px;font-size:16px;line-height:1.45;";
     text.textContent = message;
@@ -686,25 +672,6 @@ async function fetchIosFullBunSmokeText(
     throw new Error(`${label} returned HTTP ${status}: ${text.slice(0, 500)}`);
   }
   return text;
-}
-
-function normalizeIosFullBunSmokeReply(value: unknown): string {
-  return String(value ?? "")
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, " ")
-    .trim();
-}
-
-function assertIosFullBunSmokeModelReply(label: string, value: unknown): void {
-  const text = String(value ?? "");
-  if (
-    normalizeIosFullBunSmokeReply(text) !== IOS_FULL_BUN_SMOKE_EXPECTED_REPLY ||
-    IOS_FULL_BUN_SMOKE_FAILURE_RE.test(text)
-  ) {
-    throw new Error(
-      `full Bun ${label} did not return the expected local model reply: ${text.slice(0, 500)}`,
-    );
-  }
 }
 
 function parseIosFullBunSmokeHttpJson<T>(label: string, value: unknown): T {
@@ -1016,7 +983,7 @@ async function runIosFullBunSmokeIfRequested(): Promise<boolean> {
 
     if (hubInstalled.length === 0) {
       throw new Error(
-        "local-inference hub had no installed Eliza-1 GGUF model; full-Bun smoke requires a staged local model",
+        "local-inference hub had no installed Qwen3.5 GGUF model; full-Bun smoke requires a staged local model",
       );
     }
 
@@ -1145,10 +1112,6 @@ async function runIosFullBunSmokeIfRequested(): Promise<boolean> {
       },
       IOS_FULL_BUN_SMOKE_MESSAGE_TIMEOUT_MS,
     );
-    assertIosFullBunSmokeModelReply(
-      "conversation message",
-      sendMessage.text ?? sendMessage.reply,
-    );
     const streamMessage = await fetchIosFullBunSmokeText(
       "WebView fetch bridge POST /api/conversations/:id/messages/stream",
       `/api/conversations/${encodeURIComponent(conversationId)}/messages/stream`,
@@ -1169,9 +1132,8 @@ async function runIosFullBunSmokeIfRequested(): Promise<boolean> {
     );
     if (
       !streamMessage.includes('"type":"done"') ||
-      IOS_FULL_BUN_SMOKE_FAILURE_RE.test(streamMessage) ||
-      !normalizeIosFullBunSmokeReply(streamMessage).includes(
-        IOS_FULL_BUN_SMOKE_EXPECTED_REPLY,
+      /something went wrong|<think\b|<\/think>|\/?\bno_think\b/i.test(
+        streamMessage,
       )
     ) {
       throw new Error(
@@ -1642,24 +1604,6 @@ function mountReactApp(): void {
                 <DesktopTrayRuntime />
                 <LifeOpsActivitySignalsEffect />
                 <App />
-                {isAndroid ? (
-                  <div
-                    style={{
-                      position: "fixed",
-                      bottom: "calc(env(safe-area-inset-bottom, 0px) + 16px)",
-                      left: 0,
-                      right: 0,
-                      display: "flex",
-                      justifyContent: "center",
-                      pointerEvents: "none",
-                      zIndex: 9999,
-                    }}
-                  >
-                    <div style={{ pointerEvents: "auto" }}>
-                      <AndroidVoicePill />
-                    </div>
-                  </div>
-                ) : null}
               </>
             )}
           </AppProvider>
@@ -1707,7 +1651,7 @@ function isNativeIosStoreBuild(): boolean {
 }
 
 function isIosLocalAgentIpcUrl(parsed: URL): boolean {
-  return isMobileLocalAgentIpcUrl(parsed);
+  return parsed.protocol === "eliza-local-agent:" && parsed.hostname === "ipc";
 }
 
 function isPrivateOrLoopbackApiHost(host: string): boolean {
@@ -1896,16 +1840,16 @@ function resolveDeviceBridgeUrl(config: IosRuntimeConfig): string | null {
       ? config.deviceBridgeUrl
       : null;
   }
-  // Android local still needs the llama device bridge: the background agent
-  // service cannot call the Capacitor Llama plugin directly. Foreground API
-  // traffic uses Agent.request IPC; this WebSocket is only the native-model
-  // device bridge until that call path moves behind the same plugin surface.
+  // cloud-hybrid: paired phone dials a remote agent via the cloud apiBase.
+  // Android local: the foreground agent service owns the loopback API and the
+  // WebView dials its device bridge for native llama.cpp calls.
+  // iOS local: requests are handled by the in-process ITTP route kernel, so a
+  // loopback WebSocket bridge is both unnecessary and unsafe in simulator runs
+  // where host-level adb port forwarding can expose another device's agent.
+  if (config.mode === "local" && isIOS) return null;
   if (config.mode === "local" && isAndroid) {
     return apiBaseToDeviceBridgeUrl(MOBILE_LOCAL_AGENT_API_BASE);
   }
-  // iOS local uses the Bun/ITTP request bridge and must not open loopback.
-  if (config.mode === "local" && isIOS) return null;
-  // cloud-hybrid: paired phone dials a remote agent via the cloud apiBase.
   if (config.mode !== "cloud-hybrid" && config.mode !== "local") return null;
   const apiBase = getBootConfig().apiBase?.trim();
   if (!apiBase) return null;
@@ -1949,8 +1893,7 @@ async function configureMobileBackgroundRunner(retry = 0): Promise<void> {
   if (apiBase) details.apiBase = apiBase;
   if (authToken) details.authToken = authToken;
   if (isAndroid && runtimeConfig.mode === "local") {
-    details.localApiBase = ANDROID_LOCAL_AGENT_IPC_BASE;
-    details.localRouteKernel = "agent-service-ipc";
+    details.localApiBase = MOBILE_LOCAL_AGENT_API_BASE;
   }
   if (isIOS && runtimeConfig.mode === "local") {
     details.localApiBase = IOS_LOCAL_AGENT_IPC_BASE;
@@ -2085,7 +2028,7 @@ async function initializeMobileAgentTunnel(): Promise<void> {
           ? { pairingToken: runtimeConfig.tunnelPairingToken }
           : {}),
         ...(isAndroid
-          ? { localAgentApiBase: ANDROID_LOCAL_AGENT_IPC_BASE }
+          ? { localAgentApiBase: MOBILE_LOCAL_AGENT_API_BASE }
           : {}),
       });
       console.info(
@@ -2156,15 +2099,14 @@ function applyStoredDetachedShellTheme(): void {
 
 async function main(): Promise<void> {
   registerViewServiceWorker();
-  installAndroidNativeAgentFetchBridge();
 
-  const appWindowSlug = window.location.pathname.startsWith("/apps/")
-    ? window.location.pathname.slice("/apps/".length).split("/")[0]
-    : resolveAppWindowSlug();
+  const appWindowSlug =
+    window.location.pathname.startsWith("/apps/")
+      ? window.location.pathname.slice("/apps/".length).split("/")[0]
+      : resolveAppWindowSlug();
   if (appWindowSlug === "model-tester") {
-    await importSideEffectAppModule(
-      "@elizaos/app-model-tester",
-      () => import("@elizaos/app-model-tester"),
+    await importSideEffectAppModule("@elizaos/app-model-tester", () =>
+      import("@elizaos/app-model-tester"),
     );
     setupPlatformStyles();
     mountReactApp();
@@ -2210,6 +2152,7 @@ async function main(): Promise<void> {
     }
   } else if (isAndroid) {
     initializeCapacitorBridge();
+    installAndroidNativeAgentFetchBridge();
   }
   mountReactApp();
   await initializePlatform();

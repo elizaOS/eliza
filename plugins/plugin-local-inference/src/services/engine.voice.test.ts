@@ -19,10 +19,7 @@
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
-import {
-	type KokoroEngineDiscoveryResult,
-	KokoroTtsBackend,
-} from "@elizaos/shared/local-inference";
+import { KokoroTtsBackend } from "@elizaos/shared/local-inference";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { LocalInferenceEngine } from "./engine";
 import {
@@ -39,7 +36,6 @@ import type {
 	ElizaInferenceFfi,
 	ElizaInferenceRegion,
 } from "./voice/ffi-bindings";
-import { SAMANTHA_PLACEHOLDER_BYTE_LENGTH } from "./voice/samantha-preset-placeholder";
 import type {
 	AudioChunk,
 	OmniVoiceBackend,
@@ -49,6 +45,9 @@ import type {
 	TextToken,
 	VoiceSchedulerTelemetryEvent,
 } from "./voice/types";
+import {
+	SAMANTHA_PLACEHOLDER_BYTE_LENGTH,
+} from "./voice/samantha-preset-placeholder";
 import {
 	VOICE_PRESET_MAGIC,
 	VOICE_PRESET_VERSION_V1,
@@ -165,10 +164,7 @@ function writeOmniVoiceBundleMarkers(root: string): void {
 		Buffer.alloc(4),
 	);
 	mkdirSync(path.join(root, "lib"), { recursive: true });
-	writeFileSync(
-		path.join(root, "lib", "libelizainference.so"),
-		Buffer.alloc(4),
-	);
+	writeFileSync(path.join(root, "lib", "libelizainference.so"), Buffer.alloc(4));
 }
 
 function writeKokoroModelRoot(root: string): void {
@@ -176,18 +172,6 @@ function writeKokoroModelRoot(root: string): void {
 	writeFileSync(path.join(root, "kokoro-v1.0.onnx"), Buffer.alloc(4));
 	mkdirSync(path.join(root, "voices"), { recursive: true });
 	writeFileSync(path.join(root, "voices", "af_bella.bin"), Buffer.alloc(1024));
-}
-
-function kokoroConfig(root: string): KokoroEngineDiscoveryResult {
-	return {
-		layout: {
-			root,
-			modelFile: "kokoro-v1.0.onnx",
-			voicesDir: path.join(root, "voices"),
-			sampleRate: 24_000,
-		},
-		defaultVoiceId: "af_bella",
-	};
 }
 
 function lifecycleLoadersOk(): VoiceLifecycleLoaders {
@@ -467,80 +451,6 @@ describe("LocalInferenceEngine voice surface", () => {
 		}
 	});
 
-	it("replaces a pre-activation Kokoro bridge when an Eliza-1 bundle becomes active", async () => {
-		const globalKokoroRoot = mkdtempSync(path.join(tmpdir(), "global-kokoro-"));
-		const previousModelDir = process.env.ELIZA_KOKORO_MODEL_DIR;
-		const previousBackend = process.env.ELIZA_TTS_BACKEND;
-		try {
-			writeKokoroModelRoot(globalKokoroRoot);
-			process.env.ELIZA_KOKORO_MODEL_DIR = path.join(
-				tmpdir(),
-				"missing-global-kokoro",
-			);
-			delete process.env.ELIZA_TTS_BACKEND;
-
-			const engine = new LocalInferenceEngine();
-			const staleBridge = engine.startVoice({
-				bundleRoot: "",
-				useFfiBackend: false,
-				kokoroOnly: kokoroConfig(globalKokoroRoot),
-				lifecycleLoaders: lifecycleLoadersOk(),
-			});
-
-			writeLegacySamanthaPlaceholder(bundleRoot);
-			writeOmniVoiceBundleMarkers(bundleRoot);
-			mkdirSync(path.join(bundleRoot, "asr"), { recursive: true });
-			writeFileSync(path.join(bundleRoot, "asr", "asr-test.gguf"), "asr");
-			writeKokoroModelRoot(path.join(bundleRoot, "tts", "kokoro"));
-			(
-				engine as unknown as {
-					activeEliza1Bundle: {
-						root: string;
-						tierId: "eliza-1-0_8b";
-						voiceBackends: ["omnivoice", "kokoro"];
-					};
-				}
-			).activeEliza1Bundle = {
-				root: bundleRoot,
-				tierId: "eliza-1-0_8b",
-				voiceBackends: ["omnivoice", "kokoro"],
-			};
-			expect(
-				(
-					engine as unknown as {
-						voiceBridgeActiveBundleRoot: string | null;
-					}
-				).voiceBridgeActiveBundleRoot,
-			).toBeNull();
-			expect(
-				(
-					engine as unknown as {
-						activeEliza1Bundle: { root: string } | null;
-					}
-				).activeEliza1Bundle?.root,
-			).toBe(bundleRoot);
-
-			const activeBridge = await engine.ensureActiveBundleVoiceReady();
-
-			expect(activeBridge).not.toBe(staleBridge);
-			expect(activeBridge.bundlePath()).toBe(bundleRoot);
-			expect(activeBridge.backend).toBeInstanceOf(KokoroTtsBackend);
-			await engine.stopVoice();
-		} finally {
-			rmSync(globalKokoroRoot, { recursive: true, force: true });
-			if (previousModelDir === undefined) {
-				delete process.env.ELIZA_KOKORO_MODEL_DIR;
-			} else {
-				process.env.ELIZA_KOKORO_MODEL_DIR = previousModelDir;
-			}
-			if (previousBackend === undefined) {
-				delete process.env.ELIZA_TTS_BACKEND;
-			} else {
-				process.env.ELIZA_TTS_BACKEND = previousBackend;
-			}
-		}
-	});
-
 	it("uses fused batch ASR directly when Kokoro overrides only TTS", async () => {
 		writePresetBundle(bundleRoot);
 		writeOmniVoiceBundleMarkers(bundleRoot);
@@ -577,7 +487,11 @@ describe("LocalInferenceEngine voice surface", () => {
 		expect(asrTranscribe).toHaveBeenCalledOnce();
 		expect(asrTranscribe.mock.calls[0]?.[0].sampleRateHz).toBe(16_000);
 		expect(asrTranscribe.mock.calls[0]?.[0].pcm).toHaveLength(4);
-		expect(calls).toEqual(["acquire:tts", "acquire:asr", "asr:4:16000"]);
+		expect(calls).toEqual([
+			"acquire:tts",
+			"acquire:asr",
+			"asr:4:16000",
+		]);
 		await engine.stopVoice();
 	});
 

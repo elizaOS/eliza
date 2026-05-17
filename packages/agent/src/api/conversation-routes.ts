@@ -41,7 +41,6 @@ import {
   generateChatResponse,
   generateConversationTitle,
   getChatFailureReply,
-  getRecentVisibleAssistantMemoryTextSince,
   hasRecentVisibleAssistantMemorySince,
   initSse,
   normalizeChatResponseText,
@@ -1590,12 +1589,10 @@ export async function handleConversationRoutes(
           onSnapshot: (text) => {
             if (!text) return;
             if (
+              !streamedText ||
               disconnectTracker.isAborted() ||
               disconnectTracker.checkConnectionClosed()
             ) {
-              return;
-            }
-            if (text === streamedText) {
               return;
             }
             // Structured field extractors can briefly normalize whitespace or
@@ -1609,16 +1606,8 @@ export async function handleConversationRoutes(
             ) {
               return;
             }
-            if (text.startsWith(streamedText)) {
-              const chunk = text.slice(streamedText.length);
-              streamedText = text;
-              if (chunk) {
-                writeChatTokenSse(res, chunk, streamedText);
-              }
-              return;
-            }
             streamedText = text;
-            writeSseJson(res, { type: "token", text: "", fullText: text });
+            writeChatTokenSse(res, text, streamedText);
           },
           resolveNoResponseText: () =>
             resolveNoResponseFallback(state.logBuffer, runtime),
@@ -1731,43 +1720,27 @@ export async function handleConversationRoutes(
             { err: getErrorMessage(err) },
             "Chat generation failed with no streamed text",
           );
-          const persistedReplyText =
-            await getRecentVisibleAssistantMemoryTextSince(
+          const alreadyPersistedVisibleAssistantTurn =
+            await hasRecentVisibleAssistantMemorySince(
               runtime,
               conv.roomId,
               turnStartedAt,
             );
-          if (persistedReplyText) {
-            const resolvedPersistedText = normalizeChatResponseText(
-              persistedReplyText,
-              state.logBuffer,
-              runtime,
-            );
+          if (alreadyPersistedVisibleAssistantTurn) {
             logger.warn(
               {
                 err: getErrorMessage(err),
                 conversationId: conv.id,
                 roomId: conv.roomId,
-                persistedTextLength: resolvedPersistedText.length,
               },
-              "Chat generation failed after an assistant reply was already persisted — streaming persisted reply",
+              "Chat generation failed after an assistant reply was already persisted — suppressing synthetic fallback",
             );
-            if (resolvedPersistedText) {
-              for (const chunk of chunkVisibleTextForSse(
-                resolvedPersistedText,
-              )) {
-                if (disconnectTracker.isAborted()) break;
-                streamedText += chunk;
-                writeChatTokenSse(res, chunk, streamedText);
-                await new Promise((resolve) => setTimeout(resolve, 60));
-              }
-            }
             writeSseJson(res, {
               type: "done",
-              fullText: resolvedPersistedText,
+              fullText: "",
               agentName: state.agentName,
             });
-            return true;
+            return;
           }
           const providerIssueReply = getChatFailureReply(err, state.logBuffer);
           const failureKind = classifyChatFailure(err, state.logBuffer);

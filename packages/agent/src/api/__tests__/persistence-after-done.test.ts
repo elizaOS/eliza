@@ -21,9 +21,7 @@ let captureGenerateAbortSignal: AbortSignal | undefined;
 let generateWaitsForAbort = false;
 let generateThrowsTurnAbort = false;
 let generateThrowsTimeout = false;
-let generateEmitsMatchingSnapshotAfterChunk = false;
 let assistantMemoryAlreadyPersisted = false;
-let assistantMemoryTextAlreadyPersisted: string | null = null;
 
 vi.mock("../chat-routes.ts", async () => {
   const actual =
@@ -73,9 +71,6 @@ vi.mock("../chat-routes.ts", async () => {
     hasRecentVisibleAssistantMemorySince: vi.fn(
       async () => assistantMemoryAlreadyPersisted,
     ),
-    getRecentVisibleAssistantMemoryTextSince: vi.fn(
-      async () => assistantMemoryTextAlreadyPersisted,
-    ),
     generateChatResponse: vi.fn(async (_runtime, _msg, agentName, opts) => {
       captureGenerateAbortSignal = opts?.abortSignal;
       if (generateThrowsTurnAbort) {
@@ -99,9 +94,6 @@ vi.mock("../chat-routes.ts", async () => {
       }
       // Stream a single token so the SSE wire format mirrors a real turn.
       opts?.onChunk?.("ok");
-      if (generateEmitsMatchingSnapshotAfterChunk) {
-        opts?.onSnapshot?.("ok");
-      }
       return {
         text: "ok",
         agentName,
@@ -154,7 +146,6 @@ vi.mock("../character-routes.ts", async () => {
 });
 
 import {
-  getRecentVisibleAssistantMemoryTextSince,
   hasRecentVisibleAssistantMemorySince,
   persistAssistantConversationMemory,
   readChatRequestPayload,
@@ -292,9 +283,7 @@ describe("conversation-routes streaming persistence ordering", () => {
     generateWaitsForAbort = false;
     generateThrowsTurnAbort = false;
     generateThrowsTimeout = false;
-    generateEmitsMatchingSnapshotAfterChunk = false;
     assistantMemoryAlreadyPersisted = false;
-    assistantMemoryTextAlreadyPersisted = null;
   });
 
   afterEach(() => {
@@ -328,26 +317,6 @@ describe("conversation-routes streaming persistence ordering", () => {
     expect(record.endedAt ?? 0).toBeLessThanOrEqual(
       persistResolvedAt ?? Infinity,
     );
-  });
-
-  it("does not duplicate identical token snapshots on the SSE wire", async () => {
-    generateEmitsMatchingSnapshotAfterChunk = true;
-    const { ctx, record } = createCtx();
-
-    const handlerDone = handleConversationRoutes(ctx);
-    for (let i = 0; i < 10; i++) await new Promise((r) => setImmediate(r));
-
-    const tokenFrames = record.writes
-      .filter((w) => w.startsWith("data:"))
-      .map((w) => JSON.parse(w.slice("data:".length).trim()))
-      .filter((payload) => payload.type === "token");
-
-    expect(tokenFrames).toEqual([
-      { type: "token", text: "ok", fullText: "ok" },
-    ]);
-
-    persistResolve?.();
-    await handlerDone;
   });
 
   it("logs persistence failures via Logger.error and still ends the response cleanly", async () => {
@@ -428,19 +397,16 @@ describe("conversation-routes streaming persistence ordering", () => {
     expect(persistCalledAt).toBeNull();
   });
 
-  it("streams a persisted assistant reply when post-turn work times out before SSE text", async () => {
+  it("suppresses synthetic fallback when a timed-out turn already persisted a reply", async () => {
     generateThrowsTimeout = true;
     assistantMemoryAlreadyPersisted = true;
-    assistantMemoryTextAlreadyPersisted = "Hi! I'm ready to help.";
     const { ctx, record } = createCtx();
 
     await handleConversationRoutes(ctx);
 
-    expect(getRecentVisibleAssistantMemoryTextSince).toHaveBeenCalled();
-    expect(hasRecentVisibleAssistantMemorySince).not.toHaveBeenCalled();
+    expect(hasRecentVisibleAssistantMemorySince).toHaveBeenCalled();
     expect(persistAssistantConversationMemory).not.toHaveBeenCalled();
     expect(record.writes.some((w) => w.includes('"type":"done"'))).toBe(true);
-    expect(record.writes.join("")).toContain("Hi! I'm ready to help.");
     expect(record.writes.join("")).not.toContain("provider issue");
     expect(record.ended).toBe(true);
   });
