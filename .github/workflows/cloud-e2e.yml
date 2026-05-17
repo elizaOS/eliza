@@ -60,6 +60,7 @@ jobs:
         run: bun run --cwd packages/cloud-shared build || true
 
       - name: Run cloud E2E (smoke — onboarding only)
+        id: run-smoke
         run: bun run cloud:e2e -- --grep onboarding
         env:
           CI: "true"
@@ -72,15 +73,33 @@ jobs:
           CONTAINER_CONTROL_PLANE_TOKEN: "test-token"
           CRON_SECRET: "test-cron-secret"
 
-      - name: Upload Playwright artifacts
+      - name: Failure summary
+        if: failure() && steps.run-smoke.outcome == 'failure'
+        run: |
+          {
+            echo "## cloud-e2e smoke failure"
+            echo ""
+            echo "Onboarding smoke spec failed. Inspect the \`cloud-e2e-smoke-playwright-${{ github.run_attempt }}\` and \`cloud-e2e-smoke-traces-${{ github.run_attempt }}\` artifacts for details."
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload Playwright report
         if: always()
         uses: actions/upload-artifact@v4
         with:
           name: cloud-e2e-smoke-playwright-${{ github.run_attempt }}
           path: |
             packages/cloud-e2e/playwright-report
-            packages/cloud-e2e/test-results
           retention-days: 7
+          if-no-files-found: ignore
+
+      - name: Upload Playwright traces
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: cloud-e2e-smoke-traces-${{ github.run_attempt }}
+          path: |
+            packages/cloud-e2e/test-results/**/trace.zip
+          retention-days: 3
           if-no-files-found: ignore
 
       - name: Upload process logs (boot diagnostics)
@@ -130,6 +149,7 @@ jobs:
         run: bun run --cwd packages/cloud-shared build || true
 
       - name: Run cloud E2E (full suite)
+        id: run-full
         run: bun run cloud:e2e
         env:
           CI: "true"
@@ -142,15 +162,33 @@ jobs:
           CONTAINER_CONTROL_PLANE_TOKEN: "test-token"
           CRON_SECRET: "test-cron-secret"
 
-      - name: Upload Playwright artifacts
+      - name: Failure summary
+        if: failure() && steps.run-full.outcome == 'failure'
+        run: |
+          {
+            echo "## cloud-e2e full failure"
+            echo ""
+            echo "Full mock-stack E2E failed. Inspect the \`cloud-e2e-playwright-${{ github.run_attempt }}\` and \`cloud-e2e-traces-${{ github.run_attempt }}\` artifacts for failing spec output and traces."
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload Playwright report
         if: always()
         uses: actions/upload-artifact@v4
         with:
           name: cloud-e2e-playwright-${{ github.run_attempt }}
           path: |
             packages/cloud-e2e/playwright-report
-            packages/cloud-e2e/test-results
           retention-days: 7
+          if-no-files-found: ignore
+
+      - name: Upload Playwright traces
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: cloud-e2e-traces-${{ github.run_attempt }}
+          path: |
+            packages/cloud-e2e/test-results/**/trace.zip
+          retention-days: 3
           if-no-files-found: ignore
 
       - name: Upload process logs (boot diagnostics)
