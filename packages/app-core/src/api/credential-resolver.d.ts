@@ -1,13 +1,15 @@
 export interface ResolvedCredential {
-    providerId: string;
-    envVar: string;
-    apiKey: string;
-    authType: "api-key" | "subscription";
+  providerId: string;
+  envVar: string;
+  apiKey: string;
+  authType: "api-key" | "subscription";
 }
 /**
  * Resolve the real credential for a specific provider.
  */
-export declare function resolveProviderCredential(providerId: string): ResolvedCredential | null;
+export declare function resolveProviderCredential(
+  providerId: string,
+): ResolvedCredential | null;
 /**
  * Multi-account credential resolution. When the install has any
  * `LinkedAccountConfig` records for the requested provider, the pool
@@ -19,10 +21,13 @@ export declare function resolveProviderCredential(providerId: string): ResolvedC
  * session glued to the same account so token refreshes and rate-limit
  * tracking stay coherent.
  */
-export declare function resolveProviderCredentialMulti(providerId: string, opts?: {
+export declare function resolveProviderCredentialMulti(
+  providerId: string,
+  opts?: {
     sessionKey?: string;
     exclude?: string[];
-}): Promise<ResolvedCredential | null>;
+  },
+): Promise<ResolvedCredential | null>;
 /**
  * Scan all credential sources. Returns every provider that has a
  * resolvable credential on this machine.

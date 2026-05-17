@@ -17,7 +17,10 @@ import type { AgentRuntime } from "@elizaos/core";
  * signature and `@elizaos/plugin-edge-tts`'s TTS handler. The wrapper passes
  * the input through unchanged, so structural compatibility is what matters.
  */
-export type EdgeTtsHandler = (runtime: AgentRuntime, input: unknown) => Promise<unknown>;
+export type EdgeTtsHandler = (
+  runtime: AgentRuntime,
+  input: unknown,
+) => Promise<unknown>;
 /**
  * Wrap an `@elizaos/plugin-edge-tts` `ModelType.TEXT_TO_SPEECH` handler with
  * the local first-line cache.
@@ -25,5 +28,7 @@ export type EdgeTtsHandler = (runtime: AgentRuntime, input: unknown) => Promise<
  * Returns `null` if the cache plugin isn't available (e.g. browser bundle,
  * missing node:sqlite); callers should fall back to the unwrapped handler.
  */
-export declare function wrapEdgeTtsHandlerWithFirstLineCache(inner: EdgeTtsHandler): Promise<EdgeTtsHandler | null>;
+export declare function wrapEdgeTtsHandlerWithFirstLineCache(
+  inner: EdgeTtsHandler,
+): Promise<EdgeTtsHandler | null>;
 //# sourceMappingURL=tts-cache-wiring.d.ts.map

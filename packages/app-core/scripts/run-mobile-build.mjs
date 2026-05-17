@@ -48,6 +48,12 @@ import path from "node:path";
 import process from "node:process";
 import { fileURLToPath } from "node:url";
 import {
+  appStoreExecutionProfile,
+  findForbiddenRuntimeImportGroups,
+  findForbiddenRuntimeStrings,
+  formatForbiddenRuntimeFindings,
+} from "../../bun-ios-runtime/scripts/ios-app-store-runtime-policy.mjs";
+import {
   loadAospVariantConfig,
   resolveAppConfigPath,
 } from "./aosp/lib/load-variant-config.mjs";
@@ -59,12 +65,6 @@ import {
 } from "./lib/capacitor-platform-templates.mjs";
 import { resolveRepoRootFromImportMeta } from "./lib/repo-root.mjs";
 import { stageAndroidAgentRuntime } from "./lib/stage-android-agent.mjs";
-import {
-  appStoreExecutionProfile,
-  findForbiddenRuntimeImportGroups,
-  findForbiddenRuntimeStrings,
-  formatForbiddenRuntimeFindings,
-} from "../../bun-ios-runtime/scripts/ios-app-store-runtime-policy.mjs";
 
 // ── Paths ───────────────────────────────────────────────────────────────
 
@@ -1414,7 +1414,10 @@ function removeXmlCommentsContaining(xml, markers) {
   for (const marker of markers) {
     const escapedMarker = escapeRegExp(marker);
     patched = patched.replace(
-      new RegExp(`\\n?\\s*<!--[\\s\\S]*?${escapedMarker}[\\s\\S]*?-->\\s*`, "g"),
+      new RegExp(
+        `\\n?\\s*<!--[\\s\\S]*?${escapedMarker}[\\s\\S]*?-->\\s*`,
+        "g",
+      ),
       "\n",
     );
   }

@@ -12,20 +12,20 @@
 import type { RuntimeEnvRecord } from "@elizaos/shared";
 export declare const DEFAULT_JWKS_TTL_MS: number;
 export interface JwksKey {
-    kty: string;
-    kid?: string;
-    use?: string;
-    alg?: string;
-    n?: string;
-    e?: string;
-    x?: string;
-    y?: string;
-    crv?: string;
-    k?: string;
-    [otherProperty: string]: string | undefined;
+  kty: string;
+  kid?: string;
+  use?: string;
+  alg?: string;
+  n?: string;
+  e?: string;
+  x?: string;
+  y?: string;
+  crv?: string;
+  k?: string;
+  [otherProperty: string]: string | undefined;
 }
 export interface JwksDocument {
-    keys: JwksKey[];
+  keys: JwksKey[];
 }
 /**
  * Resolve the eliza state directory.
@@ -46,17 +46,24 @@ export declare function resolveJwksCachePath(env?: RuntimeEnvRecord): string;
  * different issuer, or older than `ttlMs`. Callers must treat `null` as
  * "must refresh from network" — never as "no keys, allow through".
  */
-export declare function readCachedJwks(issuer: string, options?: {
+export declare function readCachedJwks(
+  issuer: string,
+  options?: {
     env?: RuntimeEnvRecord;
     now?: number;
     ttlMs?: number;
-}): Promise<JwksDocument | null>;
+  },
+): Promise<JwksDocument | null>;
 /**
  * Write the JWKS document to disk. The parent directory is created with mode
  * 0700 to keep cached keys out of unrelated reads.
  */
-export declare function writeCachedJwks(issuer: string, jwks: JwksDocument, options?: {
+export declare function writeCachedJwks(
+  issuer: string,
+  jwks: JwksDocument,
+  options?: {
     env?: RuntimeEnvRecord;
     now?: number;
-}): Promise<void>;
+  },
+): Promise<void>;
 //# sourceMappingURL=cloud-jwks-store.d.ts.map

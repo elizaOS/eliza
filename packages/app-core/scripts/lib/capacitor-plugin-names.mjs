@@ -28,7 +28,8 @@ export const CAPACITOR_PLUGIN_NAMES = fs.existsSync(sourcePluginsRoot)
       .readdirSync(NATIVE_PLUGINS_ROOT, { withFileTypes: true })
       .filter(
         (entry) =>
-          entry.isDirectory() && entry.name.startsWith(NATIVE_PLUGIN_DIR_PREFIX),
+          entry.isDirectory() &&
+          entry.name.startsWith(NATIVE_PLUGIN_DIR_PREFIX),
       )
       .map((entry) => entry.name.slice(NATIVE_PLUGIN_DIR_PREFIX.length))
       .filter((name) => {

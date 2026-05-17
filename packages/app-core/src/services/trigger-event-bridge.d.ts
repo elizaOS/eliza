@@ -24,7 +24,12 @@
  * reference) and clears the rate-limit map.
  */
 import { executeTriggerTask } from "@elizaos/agent";
-import { type AgentRuntime, EventType, type IAgentRuntime, type Task } from "@elizaos/core";
+import {
+  type AgentRuntime,
+  EventType,
+  type IAgentRuntime,
+  type Task,
+} from "@elizaos/core";
 /**
  * Core `EventType`s the bridge subscribes to. Triggers created with an
  * `eventKind` outside this list can still be fired through the manual
@@ -33,20 +38,23 @@ import { type AgentRuntime, EventType, type IAgentRuntime, type Task } from "@el
  */
 export declare const EXPOSED_EVENTS: readonly EventType[];
 export interface TriggerEventBridgeOptions {
-    /** Rate-limit floor per trigger in milliseconds. Default 1000. */
-    minIntervalMs?: number;
-    /** Override the event list (tests only). Defaults to `EXPOSED_EVENTS`. */
-    events?: readonly EventType[];
-    /** Injection seam for the trigger lookup (tests only). */
-    listTriggers?: (runtime: IAgentRuntime) => Promise<Task[]>;
-    /** Injection seam for the dispatcher (tests only). */
-    dispatch?: typeof executeTriggerTask;
-    /** Injection seam for the current time (tests only). Defaults to `Date.now`. */
-    now?: () => number;
+  /** Rate-limit floor per trigger in milliseconds. Default 1000. */
+  minIntervalMs?: number;
+  /** Override the event list (tests only). Defaults to `EXPOSED_EVENTS`. */
+  events?: readonly EventType[];
+  /** Injection seam for the trigger lookup (tests only). */
+  listTriggers?: (runtime: IAgentRuntime) => Promise<Task[]>;
+  /** Injection seam for the dispatcher (tests only). */
+  dispatch?: typeof executeTriggerTask;
+  /** Injection seam for the current time (tests only). Defaults to `Date.now`. */
+  now?: () => number;
 }
 export interface TriggerEventBridgeHandle {
-    /** Unregister every event handler and clear rate-limit state. Idempotent. */
-    stop: () => void;
+  /** Unregister every event handler and clear rate-limit state. Idempotent. */
+  stop: () => void;
 }
-export declare function startTriggerEventBridge(runtime: AgentRuntime, options?: TriggerEventBridgeOptions): TriggerEventBridgeHandle;
+export declare function startTriggerEventBridge(
+  runtime: AgentRuntime,
+  options?: TriggerEventBridgeOptions,
+): TriggerEventBridgeHandle;
 //# sourceMappingURL=trigger-event-bridge.d.ts.map

@@ -12,5 +12,8 @@ export declare function resolveCanonicalStateDir(): string;
  * Opaque vault id for OS secret stores: `mldy1-` + first 16 chars of base64url(sha256(canonicalStateDir)).
  */
 export declare function deriveAgentVaultId(canonicalStateDir?: string): string;
-export declare function keychainAccountForSecretKind(vaultId: string, kind: SecureStoreSecretKind): string;
+export declare function keychainAccountForSecretKind(
+  vaultId: string,
+  kind: SecureStoreSecretKind,
+): string;
 //# sourceMappingURL=agent-vault-id.d.ts.map

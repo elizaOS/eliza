@@ -1,5 +1,5 @@
 import { createElizaPlugin } from "@elizaos/agent";
-import { ModelType, stringToUuid, type Plugin } from "@elizaos/core";
+import { ModelType, type Plugin, stringToUuid } from "@elizaos/core";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { itIf } from "../../../../test/helpers/conditional-tests.ts";
 import { selectLiveProvider } from "../../../../test/helpers/live-provider";

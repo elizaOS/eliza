@@ -31,12 +31,15 @@ export declare function _resetSharedVaultForTesting(next?: Vault | null): void;
  * Vault key shape: the env-var name itself (e.g. `OPENROUTER_API_KEY`),
  * matching the read-side hydration path.
  */
-export declare function mirrorPluginSensitiveToVault(plugin: {
+export declare function mirrorPluginSensitiveToVault(
+  plugin: {
     parameters: Array<{
-        key: string;
-        sensitive: boolean;
+      key: string;
+      sensitive: boolean;
     }>;
-}, body: unknown): Promise<{
-    failures: string[];
+  },
+  body: unknown,
+): Promise<{
+  failures: string[];
 }>;
 //# sourceMappingURL=vault-mirror.d.ts.map

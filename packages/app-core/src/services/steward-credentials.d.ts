@@ -6,17 +6,17 @@
  * Environment variables always override file values.
  */
 export interface PersistedStewardCredentials {
-    apiUrl: string;
-    tenantId: string;
-    agentId: string;
-    apiKey: string;
-    agentToken: string;
-    walletAddresses?: {
-        evm?: string;
-        solana?: string;
-    };
-    agentName?: string;
-    createdAt?: string;
+  apiUrl: string;
+  tenantId: string;
+  agentId: string;
+  apiKey: string;
+  agentToken: string;
+  walletAddresses?: {
+    evm?: string;
+    solana?: string;
+  };
+  agentName?: string;
+  createdAt?: string;
 }
 /**
  * Load persisted steward credentials from disk.
@@ -26,12 +26,16 @@ export declare function loadStewardCredentials(): PersistedStewardCredentials | 
 /**
  * Save steward credentials to disk with restrictive permissions (0o600).
  */
-export declare function saveStewardCredentials(credentials: PersistedStewardCredentials): void;
+export declare function saveStewardCredentials(
+  credentials: PersistedStewardCredentials,
+): void;
 /**
  * Resolve effective steward configuration by merging:
  *   env vars > persisted file > defaults
  *
  * Returns null if steward is not configured at all.
  */
-export declare function resolveEffectiveStewardConfig(env?: NodeJS.ProcessEnv): PersistedStewardCredentials | null;
+export declare function resolveEffectiveStewardConfig(
+  env?: NodeJS.ProcessEnv,
+): PersistedStewardCredentials | null;
 //# sourceMappingURL=steward-credentials.d.ts.map

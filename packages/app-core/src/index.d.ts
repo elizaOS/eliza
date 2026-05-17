@@ -16,8 +16,16 @@ export * from "./config/app-config";
 export * from "./diagnostics/integration-observability";
 export * from "./onboarding/onboarding-config";
 export * from "./permissions/types";
-export { type InitializeAppBootstrapClientsArgs, initializeAppBootstrapBridges, installAppBootstrapClientPatches, } from "./platform/capacitor-bootstrap";
-export { IOS_FULL_BUN_SMOKE_REQUEST_KEY, IOS_FULL_BUN_SMOKE_RESULT_KEY, runIosFullBunSmokeIfRequested, } from "./platform/ios-runtime-bridge";
+export {
+  type InitializeAppBootstrapClientsArgs,
+  initializeAppBootstrapBridges,
+  installAppBootstrapClientPatches,
+} from "./platform/capacitor-bootstrap";
+export {
+  IOS_FULL_BUN_SMOKE_REQUEST_KEY,
+  IOS_FULL_BUN_SMOKE_RESULT_KEY,
+  runIosFullBunSmokeIfRequested,
+} from "./platform/ios-runtime-bridge";
 export * from "./registry";
 export { type ConfigField, getPlugins } from "./registry";
 export * from "./runtime/android-avf-microdroid-bridge";

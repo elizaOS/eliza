@@ -35,5 +35,10 @@
  * not loosen that boundary.
  */
 import type http from "node:http";
-export declare function handleSecretsInventoryRoute(req: http.IncomingMessage, res: http.ServerResponse, pathname: string, method: string): Promise<boolean>;
+export declare function handleSecretsInventoryRoute(
+  req: http.IncomingMessage,
+  res: http.ServerResponse,
+  pathname: string,
+  method: string,
+): Promise<boolean>;
 //# sourceMappingURL=secrets-inventory-routes.d.ts.map

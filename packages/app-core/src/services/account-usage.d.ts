@@ -19,15 +19,15 @@ import type { LinkedAccountUsage } from "@elizaos/shared";
  * the probe is the thing that stamps it.
  */
 export interface UsageSnapshot extends LinkedAccountUsage {
-    refreshedAt: number;
+  refreshedAt: number;
 }
 export interface UsageEntry {
-    ts: number;
-    tokens?: number;
-    latencyMs?: number;
-    ok: boolean;
-    model?: string;
-    errorCode?: string;
+  ts: number;
+  tokens?: number;
+  latencyMs?: number;
+  ok: boolean;
+  model?: string;
+  errorCode?: string;
 }
 type FetchLike = typeof fetch;
 /**
@@ -42,7 +42,10 @@ type FetchLike = typeof fetch;
  * (`five_hour: { utilization }`) response shapes. Throws on any HTTP
  * error with the status code included in the message.
  */
-export declare function pollAnthropicUsage(accessToken: string, fetchImpl?: FetchLike): Promise<UsageSnapshot>;
+export declare function pollAnthropicUsage(
+  accessToken: string,
+  fetchImpl?: FetchLike,
+): Promise<UsageSnapshot>;
 /**
  * Probe Codex / ChatGPT's usage endpoint.
  *
@@ -54,22 +57,32 @@ export declare function pollAnthropicUsage(accessToken: string, fetchImpl?: Fetc
  * `used_percent` is already on the 0..100 scale. `reset_at` is epoch
  * seconds. Codex has no weekly equivalent, so `weeklyPct` stays undefined.
  */
-export declare function pollCodexUsage(accessToken: string, accountId: string, fetchImpl?: FetchLike): Promise<UsageSnapshot>;
+export declare function pollCodexUsage(
+  accessToken: string,
+  accountId: string,
+  fetchImpl?: FetchLike,
+): Promise<UsageSnapshot>;
 /**
  * Append a usage entry for the given `(providerId, accountId)` pair.
  * One line per call, written synchronously with mode 0o600. The day
  * directory is created on demand.
  */
-export declare function recordCall(providerId: string, accountId: string, entry: Omit<UsageEntry, "ts">): void;
+export declare function recordCall(
+  providerId: string,
+  accountId: string,
+  entry: Omit<UsageEntry, "ts">,
+): void;
 export interface DailyCounters {
-    calls: number;
-    tokens: number;
-    errors: number;
+  calls: number;
+  tokens: number;
+  errors: number;
 }
 /**
  * Read today's JSONL and aggregate `(calls, tokens, errors)`. Lines that
  * fail to parse are skipped silently (best-effort).
  */
-export declare function readTodayCounters(providerId: string, accountId: string): DailyCounters;
-export {};
+export declare function readTodayCounters(
+  providerId: string,
+  accountId: string,
+): DailyCounters;
 //# sourceMappingURL=account-usage.d.ts.map
