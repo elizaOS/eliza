@@ -1,5 +1,35 @@
 {
   "version": 1,
+  "expertDecision": {
+    "nextAction": "finish plugin-coding-tools edit/search/list parity decisions before adding packages/ui trace renderers",
+    "rationale": "Capability routing is already partially implemented for plugin-coding-tools. The remaining direct local filesystem mechanics are a permission, trace, and behavior-drift risk. Reusable trace components should follow once execution boundaries are coherent."
+  },
+  "pluginCodingToolsFsParity": [
+    {
+      "operation": "ls",
+      "currentPluginBehavior": "Session cwd fallback, sandbox path validation, ignore globs, directory-first ordering, file/dir/symlink display, and a 1000-entry cap.",
+      "currentSatelliteParity": "fs.list has root guard, hidden/generated exclusions, limits, and typed FileStat entries, but no plugin ignore-glob input and different ordering/output semantics.",
+      "decision": "Route after router and Satellite params preserve ignore patterns and plugin formatting can be rebuilt from FileStat."
+    },
+    {
+      "operation": "grep",
+      "currentPluginBehavior": "Ripgrep-backed regex search with output modes, glob/type filters, context flags, case-insensitive and multiline options, head limit, and VCS excludes.",
+      "currentSatelliteParity": "fs.search is literal case-insensitive substring search with path/root/limit/includeHidden only.",
+      "decision": "Do not route yet. Add ripgrep-equivalent search options or keep plugin-owned search until parity exists."
+    },
+    {
+      "operation": "glob",
+      "currentPluginBehavior": "File globbing with generated/VCS excludes, recent-file ordering by mtime, and a 100-result cap.",
+      "currentSatelliteParity": "No direct glob or recursive find method with pattern semantics.",
+      "decision": "Do not route yet. Add explicit glob/find parity before routing."
+    },
+    {
+      "operation": "edit",
+      "currentPluginBehavior": "Must-read-first and stale-read gate, exact substring replacement, optional replace-all, ambiguity protection, secret detection, and first-line reporting.",
+      "currentSatelliteParity": "fs.writeText overwrites full text only and has no compare-and-swap, old-string match, patch, secret gate, or read-state contract.",
+      "decision": "Do not route through generic write. Add an explicit edit/patch method or keep local implementation."
+    }
+  ],
   "entries": [
     {
       "pluginId": "plugin-coding-tools",

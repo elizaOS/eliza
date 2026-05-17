@@ -109,3 +109,22 @@ The shared fallback router returns structured `CAPABILITY_UNAVAILABLE` errors. P
 - `plugin-browser` and `plugin-computeruse` overlap with possible future `eliza.computer` scope.
 - `plugin-local-inference` must keep provider ownership while `eliza.local-model` controls desktop status/routing.
 - `plugin-native-system` needs owner review before any implementation collapse.
+
+## plugin-coding-tools FS Parity Decision
+
+Do not route the remaining edit/search/list paths through `eliza.fs` as a batch. Route them only after explicit per-method parity is in place.
+
+| Path | Current plugin behavior | Current `eliza.fs` parity | Decision |
+| --- | --- | --- | --- |
+| `FILE action=ls` | Session cwd fallback, absolute path validation, ignore globs, directory-first ordering, file/dir/symlink display, 1000-entry cap. | `fs.list` has root guard, hidden/generated exclusions, limits, and typed stats, but no plugin ignore-glob input and different ordering/output semantics. | Route after router exposes list params that preserve ignore patterns and plugin formatting can be rebuilt from typed `FileStat`. |
+| `FILE action=grep` | Ripgrep-backed regex search with output modes, glob/type filters, context flags, case-insensitive and multiline options, head limit, VCS excludes. | `fs.search` is literal case-insensitive substring search with path/root/limit/includeHidden only. | Do not route yet. Add a search method with ripgrep-equivalent options or keep plugin-owned search until parity exists. |
+| `FILE action=glob` | File globbing with VCS/generated excludes, recent-file ordering by mtime, 100-result cap. | No direct glob/list-recursive method with pattern semantics. | Do not route yet. Add explicit glob/find parity before routing. |
+| `FILE action=edit` | Must-read-first/stale-read gate, exact substring replacement, optional replace-all, ambiguity protection, secret detection, line reporting. | `fs.writeText` overwrites full text only and has no compare-and-swap, old-string match, patch, secret gate, or read-state contract. | Do not route through generic write. Add an explicit edit/patch method or keep local implementation. |
+
+Safe routing order:
+
+1. `ls`, once ignore/filter semantics are represented in router/Satellite params.
+2. `grep` and `glob`, only after search/glob semantics are explicit rather than approximated.
+3. `edit`, only after the Satellite has a first-class edit/patch operation with stale-read or expected-content protection.
+
+The review boundary stays small: each method should land as its own commit with focused tests.
