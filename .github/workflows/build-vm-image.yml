@@ -85,12 +85,12 @@ jobs:
       - name: Convert to OVA (for VirtualBox / VMware)
         id: ova
         if: inputs.format == 'ova' || inputs.format == 'all' || inputs.format == 'vmdk' || inputs.format == ''
-        continue-on-error: true
         run: |
-          BASE_QCOW=$(find packages/os/linux -maxdepth 1 -name "*.qcow2" | head -1)
+          set -euo pipefail
+          BASE_QCOW=$(find packages/os/linux -maxdepth 3 -name "*.qcow2" | head -1)
           if [ -z "$BASE_QCOW" ]; then
-            echo "No qcow2 image found, skipping OVA conversion"
-            exit 0
+            echo "ERROR: no qcow2 image found after VM build — OVA conversion cannot proceed"
+            exit 1
           fi
           DATE=$(date +%Y.%m.%d)
           VMDK="elizaos-vm-${DATE}.vmdk"
@@ -148,11 +148,11 @@ jobs:
             elizaos-vm-*.ova.sha256
             elizaos-vm-*.qcow2
             packages/os/linux/vm/output/
-          if-no-files-found: warn
+          if-no-files-found: error
           retention-days: 7
 
       - name: Upload to GitHub Release
-        if: github.event_name == 'release' || (github.event_name == 'workflow_dispatch' && inputs.publish == 'true') || (github.event_name == 'workflow_call' && inputs.publish == true)
+        if: github.event_name == 'release' || (github.event_name == 'workflow_dispatch' && inputs.publish) || (github.event_name == 'workflow_call' && inputs.publish == true)
         uses: softprops/action-gh-release@v2
         with:
           files: |

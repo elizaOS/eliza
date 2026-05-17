@@ -15,8 +15,8 @@
     "package:mac": "electrobun build --platform darwin",
     "package:linux": "electrobun build --platform linux",
     "package:windows": "electrobun build --platform win32",
-    "postinstall": "node vendor/download.mjs || true",
-    "vendor:update": "node vendor/download.mjs"
+    "postinstall": "node vendor/download.mjs",
+    "vendor:update": "node vendor/download.mjs --strict"
   },
   "dependencies": {
     "vite": "^8.0.0"

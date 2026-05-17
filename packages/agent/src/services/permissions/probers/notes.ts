@@ -25,6 +25,8 @@ import {
 
 const ID = "notes" as const;
 const NOTES_BUNDLE_ID = "com.apple.Notes";
+const NOTES_AUTOMATION_REASON =
+  "Notes access uses macOS Automation permission for Notes.app.";
 
 async function checkNotesAccess(): Promise<
   "granted" | "denied" | "not-determined"
@@ -38,7 +40,10 @@ export const notesProber: Prober = {
   async check(): Promise<PermissionState> {
     if (!IS_DARWIN) return platformUnsupportedState(ID);
     const status = await checkNotesAccess();
-    return buildState(ID, status, { canRequest: status === "not-determined" });
+    return buildState(ID, status, {
+      canRequest: status === "not-determined",
+      reason: status === "granted" ? undefined : NOTES_AUTOMATION_REASON,
+    });
   },
 
   async request({ reason: _reason }): Promise<PermissionState> {

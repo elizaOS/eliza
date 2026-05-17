@@ -216,7 +216,7 @@ export async function downloadAndVerifyArtifacts(
     const writeStream = createWriteStream(partialPath);
 
     const bodyStream = Readable.fromWeb(
-      response.body as Parameters<typeof Readable.fromWeb>[0],
+      response.body as unknown as Parameters<typeof Readable.fromWeb>[0],
     );
 
     bodyStream.on("data", (chunk: Buffer) => {
@@ -566,6 +566,7 @@ export class AdbFlasherBackend implements AospFlasherBackend {
     const { device, build } = plan;
     const serial = device.serial;
     const dryRun = plan.request.dryRun === true;
+    const stopAfter = plan.request.stopAfter;
 
     if (plan.steps[0]?.id !== "detect-device") {
       throw new Error("Unexpected plan shape — steps out of order");
@@ -579,9 +580,13 @@ export class AdbFlasherBackend implements AospFlasherBackend {
           "complete",
           `DRY RUN: would run: ${step.detail}`,
         );
+        if (stopAfter && step.id === stopAfter) return;
       }
       return;
     }
+
+    const shouldStop = (stepId: FlashStepId): boolean =>
+      stopAfter !== undefined && stepId === stopAfter;
 
     // 1. detect-device
     onProgress("detect-device", "running", `adb -s ${serial} get-state`);
@@ -595,6 +600,7 @@ export class AdbFlasherBackend implements AospFlasherBackend {
       throw new Error(`Device ${serial} is not connected`);
     }
     onProgress("detect-device", "complete", stateResult.stdout.trim());
+    if (shouldStop("detect-device")) return;
 
     // 2. check-bootloader
     onProgress(
@@ -617,6 +623,7 @@ export class AdbFlasherBackend implements AospFlasherBackend {
         ? "Bootloader is unlocked"
         : "Bootloader is locked — will need unlock",
     );
+    if (shouldStop("check-bootloader")) return;
 
     // 3. reboot-bootloader
     onProgress(
@@ -656,6 +663,7 @@ export class AdbFlasherBackend implements AospFlasherBackend {
       throw new Error("Device did not enter fastboot within 60 seconds");
     }
     onProgress("reboot-bootloader", "complete", "Device in fastboot mode");
+    if (shouldStop("reboot-bootloader")) return;
 
     const unlockVar = run(this.fastboot, ["-s", serial, "getvar", "unlocked"]);
     const unlockOutput = (unlockVar.stdout + unlockVar.stderr).toLowerCase();
@@ -694,6 +702,7 @@ export class AdbFlasherBackend implements AospFlasherBackend {
       }
       onProgress("unlock-bootloader", "complete", "Bootloader unlocked");
     }
+    if (shouldStop("unlock-bootloader")) return;
 
     // 5. download-artifacts
     let artifactDir = plan.artifactDir;

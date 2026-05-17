@@ -28,12 +28,12 @@ const CONSOLE_ERROR_ALLOWLIST: RegExp[] = [
 // third-party heartbeats. Keep this empty until proven necessary.
 const NETWORK_FAILURE_ALLOWLIST: RegExp[] = [/\/__telemetry__/];
 
-// Page-title sanity per route. The homepage title is the brand fallback;
-// when a sub-page accidentally inherits it (because of missing <title> on
-// that route), it's a real bug we want to fail on.
-const CLOUD_TITLE = /eliza cloud - Run in Cloud/i;
+// Default <title> set by RootLayout's <Helmet>. Sub-pages that forget to
+// set their own Helmet title fall back to this, which is the bug pattern we
+// fix by hoisting <Helmet> above auth-loading short-circuits.
+const HOMEPAGE_TITLE_FALLBACK = /Eliza Cloud - Launch Eliza/i;
 const ROUTE_TITLE_RULES: Record<string, RegExp> = {
-  "/": CLOUD_TITLE,
+  "/": HOMEPAGE_TITLE_FALLBACK,
 };
 
 interface CapturedFailures {
@@ -301,6 +301,11 @@ for (const route of publicRoutes) {
     if (titleRule) {
       expect(title, `unexpected title on ${route}: ${title}`).toMatch(
         titleRule,
+      );
+    }
+    if (pathKey !== "/") {
+      expect(title, `${route} fell back to homepage title`).not.toMatch(
+        HOMEPAGE_TITLE_FALLBACK,
       );
     }
     expect(title, `missing title on ${route}`).not.toHaveLength(0);

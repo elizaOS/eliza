@@ -487,6 +487,10 @@ export class DependencyManager {
     return ids.map((id) => checkDependency(id));
   }
 
+  async checkOne(id: DependencyId): Promise<DependencyCheckResult> {
+    return checkDependency(id);
+  }
+
   async autoInstall(id: DependencyId): Promise<DependencyCheckResult> {
     // If already present, skip
     const existing = checkDependency(id);

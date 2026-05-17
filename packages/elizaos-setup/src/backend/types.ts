@@ -72,6 +72,11 @@ export interface FlashRequest {
   buildId: string;
   wipeData: boolean;
   dryRun: boolean;
+  /**
+   * If set, the executor stops after the named step completes.
+   * Used by the bootloader-unlock guide UI to drive single backend operations.
+   */
+  stopAfter?: FlashStepId;
 }
 
 export interface FlashPlan {

@@ -23,6 +23,8 @@ function statusIcon(status: DependencyCheckResult["status"]): string {
       return "⏳";
     case "found":
       return "✅";
+    case "found-but-misconfigured":
+      return "⚠️";
     case "missing":
       return "❌";
     case "installing":

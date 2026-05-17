@@ -169,8 +169,10 @@ function progressFromSteps(steps: IosInstallStep[]): number {
 type Screen =
   | "scanning"
   | "no-device"
+  | "select-device"
   | "region-notice"
   | "select-app"
+  | "confirm-install"
   | "apple-id-login"
   | "two-factor"
   | "installing"
@@ -184,16 +186,16 @@ interface IosFlasherProps {
 
 export function IosFlasher({ serverUrl }: IosFlasherProps) {
   const [screen, setScreen] = useState<Screen>("scanning");
-  const [_devices, setDevices] = useState<IosDevice[]>([]);
+  const [devices, setDevices] = useState<IosDevice[]>([]);
   const [apps, setApps] = useState<IosApp[]>([]);
   const [selectedDevice, setSelectedDevice] = useState<IosDevice | null>(null);
   const [selectedApp, setSelectedApp] = useState<IosApp | null>(null);
   const [regionNotice, setRegionNotice] = useState<
     "eu-dma" | "japan-sca" | "worldwide"
   >("worldwide");
-  const [_plan, setPlan] = useState<IosInstallPlan | null>(null);
+  const [plan, setPlan] = useState<IosInstallPlan | null>(null);
   const [steps, setSteps] = useState<IosInstallStep[]>([]);
-  const [_authState, setAuthState] = useState<IosAuthState>({ status: "idle" });
+  const [authState, setAuthState] = useState<IosAuthState>({ status: "idle" });
   const [appleId, setAppleId] = useState("");
   const [password, setPassword] = useState("");
   const [twoFaCode, setTwoFaCode] = useState("");
@@ -219,7 +221,6 @@ export function IosFlasher({ serverUrl }: IosFlasherProps) {
       setDevices(data);
 
       if (data.length > 0 && !regionShownRef.current) {
-        setSelectedDevice(data[0] ?? null);
         regionShownRef.current = true;
 
         // Fetch region notice and apps in parallel
@@ -233,7 +234,13 @@ export function IosFlasher({ serverUrl }: IosFlasherProps) {
           );
         if (appsRes.ok) setApps((await appsRes.json()) as IosApp[]);
 
-        setScreen("region-notice");
+        if (data.length === 1) {
+          setSelectedDevice(data[0] ?? null);
+          setScreen("region-notice");
+        } else {
+          // Multiple devices — let the user pick.
+          setScreen("select-device");
+        }
         stopScanning();
       } else if (data.length === 0 && screen === "scanning") {
         setScreen("no-device");
@@ -256,6 +263,15 @@ export function IosFlasher({ serverUrl }: IosFlasherProps) {
 
   async function handleSelectApp(app: IosApp) {
     setSelectedApp(app);
+    setScreen("confirm-install");
+  }
+
+  function handleSelectDevice(device: IosDevice) {
+    setSelectedDevice(device);
+    setScreen("region-notice");
+  }
+
+  function handleConfirmInstall() {
     setScreen("apple-id-login");
   }
 
@@ -495,6 +511,96 @@ export function IosFlasher({ serverUrl }: IosFlasherProps) {
     );
   }
 
+  function renderSelectDeviceScreen() {
+    return (
+      <div style={s.card}>
+        <p style={s.heading}>Multiple devices detected</p>
+        <p style={s.subheading}>
+          Pick the iPhone or iPad you want to install elizaOS on.
+        </p>
+        {devices.map((device) => (
+          <button
+            key={device.udid}
+            style={s.appCard}
+            type="button"
+            onClick={() => handleSelectDevice(device)}
+          >
+            <div style={{ fontWeight: 700, marginBottom: "4px" }}>
+              {device.name}
+            </div>
+            <div style={{ fontSize: "13px", color: C.muted }}>
+              {device.model} · iOS {device.osVersion} · {device.connectionType}
+            </div>
+          </button>
+        ))}
+      </div>
+    );
+  }
+
+  function renderConfirmInstallScreen() {
+    const regionLabel: Record<typeof regionNotice, string> = {
+      "eu-dma": "EU (Digital Markets Act)",
+      "japan-sca": "Japan (Smartphone Competition Act)",
+      worldwide: "Worldwide (7-day signing cert)",
+    };
+    return (
+      <div style={s.card}>
+        <p style={s.heading}>Review install</p>
+        <div style={s.notice}>
+          <div style={{ marginBottom: "6px" }}>
+            <strong>App:</strong> {selectedApp?.name ?? "—"}
+            {selectedApp ? ` v${selectedApp.version}` : ""}
+          </div>
+          <div style={{ marginBottom: "6px" }}>
+            <strong>Device:</strong> {selectedDevice?.name ?? "—"} ·{" "}
+            {selectedDevice?.model ?? ""} · iOS{" "}
+            {selectedDevice?.osVersion ?? ""}
+          </div>
+          <div style={{ marginBottom: "6px" }}>
+            <strong>Signed by:</strong>{" "}
+            {appleId.trim() || "<your Apple ID — collected next>"}
+          </div>
+          <div>
+            <strong>Region:</strong> {regionLabel[regionNotice]}
+          </div>
+        </div>
+        <button style={s.button} type="button" onClick={handleConfirmInstall}>
+          Continue to Apple ID
+        </button>
+        <button
+          style={s.buttonSecondary}
+          type="button"
+          onClick={() => setScreen("select-app")}
+        >
+          Back
+        </button>
+      </div>
+    );
+  }
+
+  function renderAuthStatusBanner() {
+    if (authState.status === "authenticating") {
+      return (
+        <p style={{ ...s.subheading, color: C.accentDim }}>
+          Sending credentials…
+        </p>
+      );
+    }
+    if (authState.status === "awaiting-2fa") {
+      return (
+        <p style={{ ...s.subheading, color: C.accentDim }}>Awaiting 2FA…</p>
+      );
+    }
+    if (authState.status === "failed" && authState.errorMessage) {
+      return (
+        <p style={{ color: C.error, fontSize: "13px", marginBottom: "8px" }}>
+          {authState.errorMessage}
+        </p>
+      );
+    }
+    return null;
+  }
+
   function renderSelectAppScreen() {
     return (
       <div style={s.card}>
@@ -562,6 +668,7 @@ export function IosFlasher({ serverUrl }: IosFlasherProps) {
             placeholder="••••••••"
             required
           />
+          {renderAuthStatusBanner()}
           {error && (
             <p style={{ color: C.error, fontSize: "13px", margin: "0 0 8px" }}>
               {error}
@@ -609,6 +716,7 @@ export function IosFlasher({ serverUrl }: IosFlasherProps) {
             placeholder="000000"
             required
           />
+          {renderAuthStatusBanner()}
           {error && (
             <p style={{ color: C.error, fontSize: "13px", margin: "0 0 8px" }}>
               {error}
@@ -631,6 +739,11 @@ export function IosFlasher({ serverUrl }: IosFlasherProps) {
     return (
       <div style={s.card}>
         <p style={s.heading}>Installing…</p>
+        {plan && (
+          <p style={s.subheading}>
+            {plan.app.name} v{plan.app.version} → {plan.device.name}
+          </p>
+        )}
         {steps.map((step, i) => (
           <div
             key={step.id}
@@ -736,10 +849,14 @@ export function IosFlasher({ serverUrl }: IosFlasherProps) {
         return renderScanningScreen();
       case "no-device":
         return renderNoDeviceScreen();
+      case "select-device":
+        return renderSelectDeviceScreen();
       case "region-notice":
         return renderRegionNoticeScreen();
       case "select-app":
         return renderSelectAppScreen();
+      case "confirm-install":
+        return renderConfirmInstallScreen();
       case "apple-id-login":
         return renderAppleIdLoginScreen();
       case "two-factor":

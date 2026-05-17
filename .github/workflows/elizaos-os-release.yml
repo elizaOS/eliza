@@ -48,12 +48,13 @@ jobs:
           packages/os/android/installer/tests/run-tests.sh
           node packages/os/android/installer/scripts/validate-release-manifest.mjs \
             packages/os/android/installer/manifests/android-release-manifest.example.json
+          node packages/os/android/installer/scripts/validate-release-manifest.mjs \
+            packages/os/release/beta-2026-05-16/android-release-manifest.json
 
-      - name: Validate AOSP flasher
-        continue-on-error: true
+      - name: Validate elizaos-setup (formerly aosp-flasher)
         run: |
-          bun run --cwd packages/elizaos-setup typecheck || echo "WARN: elizaos-setup not yet present"
-          bun run --cwd packages/elizaos-setup build || echo "WARN: elizaos-setup build skipped"
+          bun run --cwd packages/elizaos-setup typecheck
+          bun run --cwd packages/elizaos-setup build
 
       - name: Validate Linux live USB metadata
         run: |
@@ -70,17 +71,24 @@ jobs:
 
       - name: Capture homepage contact sheet
         run: |
+          set -euo pipefail
           bun --bun --cwd packages/os-homepage vite preview --host 127.0.0.1 --port 4455 &
           echo $! > /tmp/os-homepage-preview.pid
+          ready=0
           for i in {1..60}; do
             if curl -fsS http://127.0.0.1:4455 >/dev/null; then
+              ready=1
               break
             fi
             sleep 1
           done
-          curl -fsS http://127.0.0.1:4455 >/dev/null
+          if [ "$ready" != "1" ]; then
+            echo "ERROR: os-homepage preview never came up on 127.0.0.1:4455"
+            kill "$(cat /tmp/os-homepage-preview.pid)" 2>/dev/null || true
+            exit 1
+          fi
           bun run --cwd packages/os-homepage screenshots
-          kill "$(cat /tmp/os-homepage-preview.pid)"
+          kill "$(cat /tmp/os-homepage-preview.pid)" 2>/dev/null || true
 
       - name: Upload release evidence
         uses: actions/upload-artifact@v4

@@ -1,20 +1,33 @@
 {
+  "$schema": "Pinned SHA-256 hashes for vendor downloads. Updated weekly by .github/workflows/update-vendor-checksums.yml. Mismatches block the install.",
   "platform-tools": {
     "darwin": {
       "url": "https://dl.google.com/android/repository/platform-tools-latest-darwin.zip",
-      "note": "SHA-256 verified at download time via Google CDN TLS"
+      "sha256": null,
+      "size": null,
+      "updated": null
     },
     "linux": {
       "url": "https://dl.google.com/android/repository/platform-tools-latest-linux.zip",
-      "note": "SHA-256 verified at download time via Google CDN TLS"
+      "sha256": null,
+      "size": null,
+      "updated": null
     },
     "win32": {
       "url": "https://dl.google.com/android/repository/platform-tools-latest-windows.zip",
-      "note": "SHA-256 verified at download time via Google CDN TLS"
+      "sha256": null,
+      "size": null,
+      "updated": null
     }
   },
   "sideloader": {
-    "note": "Downloaded from GitHub releases API — latest version at install time",
-    "repo": "https://github.com/Dadoum/Sideloader"
+    "repo": "https://github.com/Dadoum/Sideloader",
+    "note": "Fetched via GitHub releases API at install time. Verified by looking for a matching .sha256 sibling asset on the release; if none, the install refuses unless an entry is pinned below.",
+    "pinned": {
+      "version": null,
+      "darwin": { "asset": null, "sha256": null },
+      "linux": { "asset": null, "sha256": null },
+      "win32": { "asset": null, "sha256": null }
+    }
   }
 }

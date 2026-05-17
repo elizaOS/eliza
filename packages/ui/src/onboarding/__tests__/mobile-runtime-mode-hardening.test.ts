@@ -355,11 +355,12 @@ describe("persistMobileRuntimeModeForServerTarget", () => {
     expect(window.localStorage.getItem(MOBILE_RUNTIME_MODE_STORAGE_KEY)).toBe(
       "cloud",
     );
-    expect(preferencesSetMock.mock.calls[0][0]).toEqual({
+    const setCalls = (preferencesSetMock as Mock).mock.calls;
+    expect(setCalls[0]?.[0]).toEqual({
       key: MOBILE_RUNTIME_MODE_STORAGE_KEY,
       value: "local",
     });
-    expect(preferencesSetMock.mock.calls[1][0]).toEqual({
+    expect(setCalls[1]?.[0]).toEqual({
       key: MOBILE_RUNTIME_MODE_STORAGE_KEY,
       value: "cloud",
     });

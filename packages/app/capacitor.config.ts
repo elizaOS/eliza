@@ -96,6 +96,14 @@ const config: CapacitorConfig = {
     ],
   },
   plugins: {
+    BackgroundRunner: {
+      label: "eliza-tasks",
+      src: "runners/eliza-tasks.js",
+      event: "wake",
+      repeat: true,
+      interval: 15,
+      autoStart: true,
+    },
     Keyboard: {
       resize: "body",
       resizeOnFullScreen: true,

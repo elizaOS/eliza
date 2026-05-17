@@ -187,11 +187,21 @@ public class MobileSignalsPlugin: CAPPlugin, CAPBridgedPlugin {
     }
 
     private func requestNotificationPermissions(_ call: CAPPluginCall) {
-        UNUserNotificationCenter.current().requestAuthorization(options: [.alert, .sound, .badge]) { [weak self] _, error in
-            DispatchQueue.main.async {
-                guard let self = self else { return }
-                self.buildPermissionResult(reason: error?.localizedDescription) { result in
+        readNotificationPermission { [weak self] notification in
+            guard let self = self else { return }
+            guard notification.canRequest else {
+                self.buildPermissionResult(reason: notification.reason) { result in
                     call.resolve(result)
+                }
+                return
+            }
+
+            UNUserNotificationCenter.current().requestAuthorization(options: [.alert, .sound, .badge]) { [weak self] _, error in
+                DispatchQueue.main.async {
+                    guard let self = self else { return }
+                    self.buildPermissionResult(reason: error?.localizedDescription) { result in
+                        call.resolve(result)
+                    }
                 }
             }
         }

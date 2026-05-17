@@ -25,9 +25,9 @@ function makeMockBackend(): AospFlasherBackend {
 
       return {
         device,
-        build,
+        build: { ...build, wipeData: request.wipeData },
         artifactDir: null,
-        privilegedFlashImplemented: true,
+        request,
         steps: [
           {
             id: "detect-device" as const,
@@ -130,7 +130,7 @@ describe("createFlashPlan with mock device", () => {
     expect(plan.device.model).toBe("Pixel 9 Pro");
     expect(plan.device.codename).toBe("caiman");
     expect(plan.build.id).toBe(build.id);
-    expect(plan.privilegedFlashImplemented).toBe(true);
+    expect(plan.request.deviceSerial).toBe(MOCK_DEVICE.serial);
   });
 
   it("produces all required flash steps in order", async () => {

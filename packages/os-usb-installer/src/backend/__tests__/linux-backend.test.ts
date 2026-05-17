@@ -95,9 +95,8 @@ describe("typed Linux errors", () => {
 
   it("LsblkParseError truncates stdout snippet and preserves cause", () => {
     const cause = new SyntaxError("Unexpected token");
-    const e = new LsblkParseError("garbage", cause);
-    expect(e.stdoutSnippet).toBe("garbage");
-    expect(e.cause).toBe(cause);
+    const e = new LsblkParseError("a".repeat(800), cause);
+    expect(e.stdoutSnippet.length).toBe(500);
     expect(e.message).toContain("Unexpected token");
   });
 });

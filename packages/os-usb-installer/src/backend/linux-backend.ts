@@ -292,7 +292,10 @@ export class LinuxUsbInstallerBackend implements UsbInstallerBackend {
     try {
       parsed = JSON.parse(stdout) as LsblkOutput;
     } catch (error) {
-      throw new LsblkParseError(stdout.slice(0, 500), error);
+      throw new LsblkParseError(
+        stdout,
+        error instanceof Error ? error : new Error(String(error)),
+      );
     }
     const drives: RemovableDrive[] = [];
 
@@ -440,7 +443,10 @@ export class LinuxUsbInstallerBackend implements UsbInstallerBackend {
     try {
       childData = JSON.parse(childStdout);
     } catch (error) {
-      throw new LsblkParseError(childStdout.slice(0, 500), error);
+      throw new LsblkParseError(
+        childStdout,
+        error instanceof Error ? error : new Error(String(error)),
+      );
     }
     const targetDevice = childData.blockdevices[0];
     if (targetDevice?.children) {
@@ -454,7 +460,7 @@ export class LinuxUsbInstallerBackend implements UsbInstallerBackend {
           const stderr = e.stderr ?? "";
           // Exit code 32 / "not mounted" is acceptable (race vs. lsblk).
           if (e.code !== 32 && !/not mounted/i.test(stderr)) {
-            throw new UnmountFailedError(partPath, stderr);
+            throw new UnmountFailedError(partPath, stderr.trim() || "unknown error");
           }
         }
       }
