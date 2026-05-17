@@ -995,8 +995,7 @@ export class EngineVoiceBridge {
 					sampleRate,
 				});
 		} else {
-			backend =
-				opts.ttsBackendOverride ?? new StubOmniVoiceBackend(sampleRate);
+			backend = opts.ttsBackendOverride ?? new StubOmniVoiceBackend(sampleRate);
 		}
 
 		const config: SchedulerConfig = {

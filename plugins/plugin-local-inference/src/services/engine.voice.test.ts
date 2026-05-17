@@ -45,9 +45,7 @@ import type {
 	TextToken,
 	VoiceSchedulerTelemetryEvent,
 } from "./voice/types";
-import {
-	SAMANTHA_PLACEHOLDER_BYTE_LENGTH,
-} from "./voice/samantha-preset-placeholder";
+import { SAMANTHA_PLACEHOLDER_BYTE_LENGTH } from "./voice/samantha-preset-placeholder";
 import {
 	VOICE_PRESET_MAGIC,
 	VOICE_PRESET_VERSION_V1,
@@ -164,7 +162,10 @@ function writeOmniVoiceBundleMarkers(root: string): void {
 		Buffer.alloc(4),
 	);
 	mkdirSync(path.join(root, "lib"), { recursive: true });
-	writeFileSync(path.join(root, "lib", "libelizainference.so"), Buffer.alloc(4));
+	writeFileSync(
+		path.join(root, "lib", "libelizainference.so"),
+		Buffer.alloc(4),
+	);
 }
 
 function writeKokoroModelRoot(root: string): void {
@@ -487,11 +488,7 @@ describe("LocalInferenceEngine voice surface", () => {
 		expect(asrTranscribe).toHaveBeenCalledOnce();
 		expect(asrTranscribe.mock.calls[0]?.[0].sampleRateHz).toBe(16_000);
 		expect(asrTranscribe.mock.calls[0]?.[0].pcm).toHaveLength(4);
-		expect(calls).toEqual([
-			"acquire:tts",
-			"acquire:asr",
-			"asr:4:16000",
-		]);
+		expect(calls).toEqual(["acquire:tts", "acquire:asr", "asr:4:16000"]);
 		await engine.stopVoice();
 	});
 
