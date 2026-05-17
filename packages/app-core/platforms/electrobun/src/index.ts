@@ -34,7 +34,6 @@ import { shouldCreateDesktopTray } from "./desktop-tray-config";
 import { scheduleDevtoolsLayoutRefresh } from "./devtools-layout";
 import { createElectrobunBrowserWindow } from "./electrobun-window-options";
 import { getFloatingChatManager } from "./floating-chat-window";
-import { createPillWindow } from "./pill-window";
 import * as apiBaseOwner from "./lifecycle/api-base-owner";
 import {
 	markDesktopSessionStale,
@@ -71,6 +70,7 @@ import {
 } from "./native/mac-window-effects";
 import { getPermissionManager } from "./native/permissions";
 import { checkWebGpuSupport } from "./native/webgpu-browser-support";
+import { createPillWindow } from "./pill-window";
 import { printElectrobunDevSettingsBanner } from "./print-electrobun-dev-settings-banner";
 import {
 	createRendererApiProxyRequestInit,

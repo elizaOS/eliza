@@ -14,7 +14,7 @@
  *    or by the application's quit menu).
  */
 
-import { BrowserWindow, Screen } from "electrobun/bun";
+import { type BrowserWindow, Screen } from "electrobun/bun";
 import { createElectrobunBrowserWindow } from "./electrobun-window-options";
 import { logger } from "./logger";
 
