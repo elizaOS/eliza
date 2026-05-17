@@ -32,6 +32,8 @@ interface QuotaUsage {
     used: number;
     limit: number | null;
     periodEnd: string | null;
+    usedPercent: number | null;
+    usedPercentClamped: number;
   };
   modelSpecific: Record<
     string,
@@ -39,6 +41,8 @@ interface QuotaUsage {
       used: number;
       limit: number;
       periodEnd: string;
+      usedPercent: number;
+      usedPercentClamped: number;
     }
   >;
 }
@@ -304,7 +308,7 @@ export function UsageTab({ user, onTabChange }: UsageTabProps) {
                       className="absolute inset-0 bg-[#FF5800]/20"
                       style={{
                         width: quotaUsage?.global.limit
-                          ? `${Math.min(100, (quotaUsage.global.used / quotaUsage.global.limit) * 100)}%`
+                          ? `${quotaUsage.global.usedPercentClamped}%`
                           : "0%",
                       }}
                     />
@@ -316,8 +320,9 @@ export function UsageTab({ user, onTabChange }: UsageTabProps) {
                   </p>
                 </div>
                 <p className="text-xs md:text-sm text-white/60">
-                  {quotaUsage?.global.limit
-                    ? `${((quotaUsage.global.used / quotaUsage.global.limit) * 100).toFixed(1)}% of weekly limit used`
+                  {quotaUsage?.global.usedPercent !== null &&
+                  quotaUsage?.global.usedPercent !== undefined
+                    ? `${quotaUsage.global.usedPercent.toFixed(1)}% of weekly limit used`
                     : "Weekly usage limits not configured"}
                 </p>
               </div>
@@ -344,7 +349,7 @@ export function UsageTab({ user, onTabChange }: UsageTabProps) {
                           <div
                             className="absolute inset-0 bg-[#FF5800]/20"
                             style={{
-                              width: `${Math.min(100, (modelQuota.used / modelQuota.limit) * 100)}%`,
+                              width: `${modelQuota.usedPercentClamped}%`,
                             }}
                           />
                         </div>
@@ -354,10 +359,8 @@ export function UsageTab({ user, onTabChange }: UsageTabProps) {
                         </p>
                       </div>
                       <p className="text-xs md:text-sm text-white/60">
-                        {((modelQuota.used / modelQuota.limit) * 100).toFixed(
-                          1,
-                        )}
-                        % of weekly limit used
+                        {modelQuota.usedPercent.toFixed(1)}% of weekly limit
+                        used
                       </p>
                     </div>
                   </div>

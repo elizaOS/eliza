@@ -79,7 +79,7 @@ import {
 
 /** Read the session id stored in state by setCurrentSession / setCurrentSessions. */
 function stateSessionId(state: State | undefined): string | undefined {
-  const session = state?.["codingSession"];
+  const session = state?.codingSession;
   if (session !== null && typeof session === "object" && "id" in session) {
     const { id } = session as { id?: string };
     return typeof id === "string" ? id : undefined;
@@ -877,8 +877,8 @@ async function runStopAgent(
       await Promise.all(
         sessions.map((session) => service.stopSession(session.id)),
       );
-      if (state) state["codingSession"] = undefined;
-      if (state) state["codingSessions"] = [] as StateValue;
+      if (state) state.codingSession = undefined;
+      if (state) state.codingSessions = [] as StateValue;
       const text = `Stopped ${sessions.length} sessions`;
       await callbackText(callback, text);
       return { success: true, text, data: { stoppedCount: sessions.length } };
@@ -902,7 +902,7 @@ async function runStopAgent(
 
     await service.stopSession(target.id);
     if (stateSessionId(state) === target.id) {
-      if (state) state["codingSession"] = undefined;
+      if (state) state.codingSession = undefined;
     }
     await callbackText(callback, `Stopped task-agent session ${target.id}.`);
     return {
@@ -2658,7 +2658,7 @@ export const tasksAction: Action & {
     // of asking the user to paste command output.
     const content = message.content;
     if (content.source === "sub_agent") {
-      const rawMetadata = content["metadata"];
+      const rawMetadata = content.metadata;
       const metadata =
         rawMetadata !== null && typeof rawMetadata === "object"
           ? (rawMetadata as Record<string, unknown>)

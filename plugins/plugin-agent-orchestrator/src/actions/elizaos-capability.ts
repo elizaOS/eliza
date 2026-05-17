@@ -123,11 +123,11 @@ function resultText(op: ElizaOsCapabilityOp, stdout: string): string {
 function failureText(error: unknown): string {
   if (error && typeof error === "object") {
     const obj = error as Record<string, unknown>;
-    if (typeof obj["stderr"] === "string" && obj["stderr"].trim()) {
-      return obj["stderr"].trim();
+    if (typeof obj.stderr === "string" && obj.stderr.trim()) {
+      return obj.stderr.trim();
     }
-    if (typeof obj["message"] === "string" && obj["message"].trim()) {
-      return obj["message"].trim();
+    if (typeof obj.message === "string" && obj.message.trim()) {
+      return obj.message.trim();
     }
   }
   return "elizaOS capability broker failed.";

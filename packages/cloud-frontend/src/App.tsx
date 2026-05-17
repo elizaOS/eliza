@@ -539,6 +539,8 @@ function DashboardRedirect({ to }: { to: string }) {
   return <Navigate to={`${to}${location.search}`} replace />;
 }
 
+const DashboardChatRedirect = lazy(() => import("./dashboard/chat-redirect"));
+
 function ElizaOsCheckoutRedirect() {
   const location = useLocation();
   const target = `https://elizaos.ai/checkout${location.search}`;

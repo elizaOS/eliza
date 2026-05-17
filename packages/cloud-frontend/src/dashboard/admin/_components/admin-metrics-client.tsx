@@ -233,8 +233,13 @@ export function AdminMetricsClient() {
     // `retentionRates` mirrors `retentionCohorts` 1:1 with server-computed
     // percent values, so use index lookup to keep the platform filter.
     return overview.retentionCohorts
-      .map((cohort, index) => ({ cohort, rates: overview.retentionRates[index] }))
-      .filter(({ cohort }) => cohort.platform === null && cohort.cohort_size > 0)
+      .map((cohort, index) => ({
+        cohort,
+        rates: overview.retentionRates[index],
+      }))
+      .filter(
+        ({ cohort }) => cohort.platform === null && cohort.cohort_size > 0,
+      )
       .slice(-30)
       .map(({ cohort, rates }) => ({
         date: formatDateUTC(cohort.cohort_date),
@@ -383,7 +388,7 @@ export function AdminMetricsClient() {
           icon={Link2}
           loading={loading}
           value={
-            overview ? `${(overview.oauthRate.rate * 100).toFixed(1)}%` : "0%"
+            overview ? `${overview.oauthRate.ratePercent.toFixed(1)}%` : "0%"
           }
           helper={
             overview
@@ -669,12 +674,11 @@ export function AdminMetricsClient() {
                         </div>
                       ),
                     )}
-                    {overview &&
-                      overview.platformDistribution.length === 0 && (
-                        <p className="text-center text-sm font-mono text-white/40">
-                          No platform data yet
-                        </p>
-                      )}
+                    {overview && overview.platformDistribution.length === 0 && (
+                      <p className="text-center text-sm font-mono text-white/40">
+                        No platform data yet
+                      </p>
+                    )}
                   </div>
                 )}
               </div>
@@ -792,7 +796,7 @@ export function AdminMetricsClient() {
                   <div className="flex flex-col items-center gap-4 py-6">
                     <div className="text-5xl font-mono font-bold text-white">
                       {overview
-                        ? (overview.oauthRate.rate * 100).toFixed(1)
+                        ? overview.oauthRate.ratePercent.toFixed(1)
                         : "0"}
                       %
                     </div>
