@@ -1,12 +1,13 @@
 #!/usr/bin/env node
 
-import { spawnSync } from "node:child_process";
+import { spawn, spawnSync } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const repoRoot = path.resolve(here, "../../../..");
+const cloudApiRoot = path.join(repoRoot, "packages/cloud-api");
 const integrationRoot = path.join(repoRoot, "packages/cloud-api/test/e2e");
 const bun = process.env.BUN || process.env.npm_execpath || "bun";
 
@@ -63,6 +64,65 @@ function run(label, preload, files) {
   console.log(`[cloud-integration] PASS ${label}`);
 }
 
+async function isServerHealthy() {
+  const baseUrl =
+    process.env.TEST_API_BASE_URL?.trim() ||
+    process.env.TEST_BASE_URL?.trim() ||
+    "http://localhost:8787";
+  try {
+    const response = await fetch(`${baseUrl}/api/health`, {
+      signal: AbortSignal.timeout(1_000),
+    });
+    return response.ok;
+  } catch {
+    return false;
+  }
+}
+
+async function waitForServer(child) {
+  const deadline = Date.now() + 90_000;
+  while (Date.now() < deadline) {
+    if (child.exitCode !== null) {
+      throw new Error(
+        `[cloud-integration] API server exited before becoming healthy (code ${child.exitCode})`,
+      );
+    }
+    if (await isServerHealthy()) {
+      return;
+    }
+    await new Promise((resolve) => setTimeout(resolve, 1_000));
+  }
+  throw new Error("[cloud-integration] Timed out waiting for API server health");
+}
+
+async function ensureServer() {
+  if (process.env.REQUIRE_E2E_SERVER === "0") {
+    return null;
+  }
+  if (await isServerHealthy()) {
+    return null;
+  }
+  if (process.env.TEST_API_BASE_URL || process.env.TEST_BASE_URL) {
+    throw new Error("[cloud-integration] Configured API server is not healthy");
+  }
+
+  console.log("[cloud-integration] START API dev server at http://localhost:8787");
+  const child = spawn(bun, ["run", process.env.TEST_SERVER_SCRIPT || "dev"], {
+    cwd: cloudApiRoot,
+    env: process.env,
+    stdio: "inherit",
+  });
+  await waitForServer(child);
+  return child;
+}
+
+function stopServer(child) {
+  if (!child || child.exitCode !== null) {
+    return;
+  }
+  child.kill("SIGTERM");
+}
+
 const allFiles = walk(integrationRoot);
 const serverFiles = allFiles.filter(
   (file) => !isDbOnlyFile(file) && !isolatedServerFiles.has(file) && !isolatedDbFiles.has(file),
@@ -71,9 +131,14 @@ const dbFiles = allFiles.filter(
   (file) => isDbOnlyFile(file) && !isolatedServerFiles.has(file) && !isolatedDbFiles.has(file),
 );
 
-run("server-backed integration", serverPreload, serverFiles);
-for (const file of isolatedServerFiles) {
-  run(file, serverPreload, [file]);
+const server = await ensureServer();
+try {
+  run("server-backed integration", serverPreload, serverFiles);
+  for (const file of isolatedServerFiles) {
+    run(file, serverPreload, [file]);
+  }
+} finally {
+  stopServer(server);
 }
 run("db/service integration", dbPreload, dbFiles);
 for (const file of isolatedDbFiles) {
