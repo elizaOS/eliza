@@ -36,6 +36,10 @@ const buildNativePluginsScript = path.join(
   __dirname,
   "build-native-plugins.mjs",
 );
+const syncPublicAssetsScript = path.resolve(
+  __dirname,
+  "../../shared-brand/scripts/sync-to-public.mjs",
+);
 const bunExecutable = path
   .basename(process.execPath)
   .toLowerCase()
@@ -114,6 +118,14 @@ await run(process.execPath, [buildNativePluginsScript], appDir);
 
 if (fullSetup) {
   await run(bunExecutable, ["install", "--ignore-scripts"], appDir);
+}
+
+if (fs.existsSync(syncPublicAssetsScript)) {
+  await run(
+    process.execPath,
+    [syncPublicAssetsScript, path.join(appDir, "public"), "--clouds"],
+    repoRoot,
+  );
 }
 
 await run(bunExecutable, ["run", "build:web"], appDir);

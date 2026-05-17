@@ -201,6 +201,16 @@ describe("androidNativeAgentTransportForUrl", { timeout: 15_000 }, () => {
     ).resolves.toBeNull();
   });
 
+  it("does not install the Android local-agent transport for desktop loopback HTTP", async () => {
+    capacitorState.isNative = false;
+    capacitorState.platform = "web";
+
+    await expect(
+      androidNativeAgentTransportForUrl("http://127.0.0.1:31337/api/status"),
+    ).resolves.toBeNull();
+    expect(agentRequestMock).not.toHaveBeenCalled();
+  });
+
   it("bridges direct /api fetches through the native Agent plugin in Android local mode", async () => {
     const fetchMock = vi.fn();
     const storage = new Map<string, string>();

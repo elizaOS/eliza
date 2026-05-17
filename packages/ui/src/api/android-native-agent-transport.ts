@@ -3,6 +3,7 @@ import { getBootConfig } from "../config/boot-config";
 import { isAndroidLocalAgentUrl } from "../onboarding/local-agent-token";
 import {
   ANDROID_LOCAL_AGENT_IPC_BASE,
+  isMobileLocalAgentIpcUrl,
   mobileLocalAgentPathFromUrl,
 } from "../onboarding/mobile-runtime-mode";
 import { type AgentRequestTransport, fetchAgentTransport } from "./transport";
@@ -77,7 +78,7 @@ function isNativeIos(): boolean {
 }
 
 function isLocalAgentIpcUrl(value: string): boolean {
-  return localAgentPathFromUrl(value) !== null;
+  return isMobileLocalAgentIpcUrl(value);
 }
 
 function localAgentPathFromUrl(value: string): string | null {

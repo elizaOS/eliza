@@ -56,6 +56,14 @@ export default defineConfig({
         find: /^@elizaos\/shared\/(.+)$/,
         replacement: path.join(root, "packages/shared/src/$1"),
       },
+      {
+        find: /^@elizaos\/ui$/,
+        replacement: path.join(root, "packages/ui/src/index.ts"),
+      },
+      {
+        find: /^@elizaos\/ui\/(.+)$/,
+        replacement: path.join(root, "packages/ui/src/$1"),
+      },
     ],
   },
 });

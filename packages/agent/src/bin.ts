@@ -38,59 +38,63 @@ _binDebugLog(
   `[bin.ts] started ELIZA_PLATFORM=${process.env.ELIZA_PLATFORM ?? "(unset)"} ELIZA_STATE_DIR=${process.env.ELIZA_STATE_DIR ?? "(unset)"}`,
 );
 
-if (process.env.ELIZA_PLATFORM === "android") {
-  _binDebugLog("[bin.ts] entering android block");
-  try {
-    const { registerAospLlamaLoader, ensureAospLocalInferenceHandlers } =
-      await import("@elizaos/plugin-aosp-local-inference");
-    (
-      globalThis as {
-        __elizaAospLlamaLoader?: typeof registerAospLlamaLoader;
-      }
-    ).__elizaAospLlamaLoader = registerAospLlamaLoader;
-    (
-      globalThis as {
-        __elizaAospLocalInferenceBootstrap?: typeof ensureAospLocalInferenceHandlers;
-      }
-    ).__elizaAospLocalInferenceBootstrap = ensureAospLocalInferenceHandlers;
-  } catch (e) {
-    // Android-only local inference is optional outside the privileged AOSP build.
-    _binDebugLog(
-      `[bin.ts] aosp-local-inference init error (ok): ${e instanceof Error ? e.message : String(e)}`,
-    );
+async function bootstrapMobileEntrypoint(): Promise<void> {
+  if (process.env.ELIZA_PLATFORM === "android") {
+    _binDebugLog("[bin.ts] entering android block");
+    try {
+      const { registerAospLlamaLoader, ensureAospLocalInferenceHandlers } =
+        await import("@elizaos/plugin-aosp-local-inference");
+      (
+        globalThis as {
+          __elizaAospLlamaLoader?: typeof registerAospLlamaLoader;
+        }
+      ).__elizaAospLlamaLoader = registerAospLlamaLoader;
+      (
+        globalThis as {
+          __elizaAospLocalInferenceBootstrap?: typeof ensureAospLocalInferenceHandlers;
+        }
+      ).__elizaAospLocalInferenceBootstrap = ensureAospLocalInferenceHandlers;
+    } catch (e) {
+      // Android-only local inference is optional outside the privileged AOSP build.
+      _binDebugLog(
+        `[bin.ts] aosp-local-inference init error (ok): ${e instanceof Error ? e.message : String(e)}`,
+      );
+    }
+
+    try {
+      await import("./runtime/android-app-plugins.ts");
+      _binDebugLog("[bin.ts] android-app-plugins loaded ok");
+    } catch (e) {
+      // Android-only app plugins not bundled in this build; plugin-resolver.ts
+      // returns null for these IDs and the rest of the runtime is unaffected.
+      _binDebugLog(
+        `[bin.ts] android-app-plugins init error (ok): ${e instanceof Error ? e.message : String(e)}`,
+      );
+    }
   }
 
-  try {
-    await import("./runtime/android-app-plugins.ts");
-    _binDebugLog("[bin.ts] android-app-plugins loaded ok");
-  } catch (e) {
-    // Android-only app plugins not bundled in this build; plugin-resolver.ts
-    // returns null for these IDs and the rest of the runtime is unaffected.
-    _binDebugLog(
-      `[bin.ts] android-app-plugins init error (ok): ${e instanceof Error ? e.message : String(e)}`,
-    );
+  if (process.env.ELIZA_DEVICE_BRIDGE_ENABLED === "1") {
+    try {
+      const { ensureMobileDeviceBridgeInferenceHandlers } = await import(
+        "@elizaos/plugin-capacitor-bridge/mobile-device-bridge-bootstrap"
+      );
+      (
+        globalThis as {
+          __elizaMobileDeviceBridgeBootstrap?: typeof ensureMobileDeviceBridgeInferenceHandlers;
+        }
+      ).__elizaMobileDeviceBridgeBootstrap =
+        ensureMobileDeviceBridgeInferenceHandlers;
+    } catch {
+      // Device bridge is explicitly opt-in; absence just leaves cloud/local-model
+      // provider selection to the runtime.
+    }
   }
+
+  _binDebugLog("[bin.ts] pre-runAutonomousCli");
+  await runAutonomousCli();
 }
-_binDebugLog("[bin.ts] pre-runAutonomousCli");
 
-if (process.env.ELIZA_DEVICE_BRIDGE_ENABLED === "1") {
-  try {
-    const { ensureMobileDeviceBridgeInferenceHandlers } = await import(
-      "@elizaos/plugin-capacitor-bridge/mobile-device-bridge-bootstrap"
-    );
-    (
-      globalThis as {
-        __elizaMobileDeviceBridgeBootstrap?: typeof ensureMobileDeviceBridgeInferenceHandlers;
-      }
-    ).__elizaMobileDeviceBridgeBootstrap =
-      ensureMobileDeviceBridgeInferenceHandlers;
-  } catch {
-    // Device bridge is explicitly opt-in; absence just leaves cloud/local-model
-    // provider selection to the runtime.
-  }
-}
-
-runAutonomousCli().catch((error) => {
+bootstrapMobileEntrypoint().catch((error) => {
   const msg =
     error instanceof Error ? (error.stack ?? error.message) : String(error);
   _binDebugLog(`[bin.ts] FATAL runAutonomousCli threw: ${msg}`);

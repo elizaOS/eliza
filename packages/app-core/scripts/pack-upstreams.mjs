@@ -23,6 +23,11 @@ const ELIZA_ROOT = existsSync(
 )
   ? ROOT
   : path.join(ROOT, "eliza");
+const PATCH_TSUP_DTS_SCRIPT = existsSync(
+  path.join(ELIZA_ROOT, "packages", "scripts", "patch-tsup-dts.mjs"),
+)
+  ? path.join(ELIZA_ROOT, "packages", "scripts", "patch-tsup-dts.mjs")
+  : path.join(ELIZA_ROOT, "scripts", "patch-tsup-dts.mjs");
 
 // Seed packages to pack. Their local workspace dependencies are added
 // automatically so PR tarball install tests do not depend on already-published
@@ -40,7 +45,7 @@ const SEED_TARGETS = [
   },
   {
     label: "@elizaos/cloud-sdk",
-    dir: path.join(ELIZA_ROOT, "cloud", "packages", "sdk"),
+    dir: path.join(ELIZA_ROOT, "packages", "cloud-sdk"),
   },
   {
     label: "@elizaos/cloud-routing",
@@ -105,7 +110,6 @@ function collectWorkspacePackages(root) {
       const pkgJson = readPackageJson(path.dirname(entryPath));
       if (
         !pkgJson ||
-        pkgJson.private === true ||
         typeof pkgJson.name !== "string" ||
         typeof pkgJson.version !== "string"
       ) {
@@ -300,11 +304,7 @@ async function packUpstreams() {
     );
   }
 
-  await runCommand(
-    "node",
-    [path.join(ELIZA_ROOT, "scripts", "patch-tsup-dts.mjs")],
-    ELIZA_ROOT,
-  );
+  await runCommand("node", [PATCH_TSUP_DTS_SCRIPT], ELIZA_ROOT);
 
   if (!existsSync(ARTIFACTS_DIR)) {
     mkdirSync(ARTIFACTS_DIR, { recursive: true });

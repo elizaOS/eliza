@@ -53,7 +53,7 @@ export async function handleAgentLifecycleRoutes(
     | null;
 
   if (method === "POST" && pathname === "/api/agent/start") {
-    state.agentState = "paused";
+    state.agentState = "running";
     state.startedAt = Date.now();
     state.model = detectRuntimeModel(state.runtime);
 

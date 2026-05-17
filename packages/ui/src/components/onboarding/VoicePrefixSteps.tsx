@@ -111,6 +111,13 @@ export function VoicePrefixSteps(
   const stepIndex = allSteps.indexOf(props.step);
   const progressLabel = `Step ${stepIndex + 1} of ${allSteps.length}`;
 
+  // Lifted state: per-step readiness for Continue. WelcomeStep reports back
+  // when the user has either granted mic permission or explicitly been denied
+  // (denial is still "ready" — the user has made a choice). Other steps don't
+  // report and default to ready=true.
+  const [welcomeReady, setWelcomeReady] = React.useState(false);
+  const continueDisabled = props.step === "welcome" && !welcomeReady;
+
   return (
     <div
       className="flex w-full flex-col gap-4"
@@ -118,7 +125,16 @@ export function VoicePrefixSteps(
       data-step={props.step}
     >
       <header className="flex flex-wrap items-center justify-between gap-2 text-xs text-muted">
-        <span data-testid="voice-prefix-progress">{progressLabel}</span>
+        <span
+          data-testid="voice-prefix-progress"
+          role="progressbar"
+          aria-valuenow={stepIndex + 1}
+          aria-valuemin={1}
+          aria-valuemax={allSteps.length}
+          aria-valuetext={progressLabel}
+        >
+          {progressLabel}
+        </span>
         {stepMeta.optional ? (
           <span className="rounded-full bg-bg/60 px-2 py-0.5 text-[10px] uppercase tracking-wide">
             optional
@@ -126,12 +142,13 @@ export function VoicePrefixSteps(
         ) : null}
       </header>
 
-      <h2
+      <h1
         className="text-lg font-semibold"
         data-testid="voice-prefix-step-name"
+        aria-live="polite"
       >
         {stepMeta.defaultName}
-      </h2>
+      </h1>
       <p
         className="text-sm text-muted"
         data-testid="voice-prefix-step-subtitle"
@@ -141,7 +158,7 @@ export function VoicePrefixSteps(
 
       <main className="rounded-lg border border-border/35 bg-card/40 p-4">
         {props.step === "welcome" ? (
-          <WelcomeStep {...props} />
+          <WelcomeStep {...props} onPermissionResolved={setWelcomeReady} />
         ) : props.step === "tier" ? (
           <TierStep {...props} tier={tier} tierSummary={props.tierSummary} />
         ) : props.step === "models" ? (
@@ -158,18 +175,22 @@ export function VoicePrefixSteps(
       </main>
 
       <footer className="flex items-center justify-between">
-        <Button
-          variant="ghost"
-          size="sm"
-          onClick={() => {
-            const prev = previousVoicePrefixStep(props.step, tier);
-            if (prev) props.onAdvance(prev);
-            else props.onBack();
-          }}
-          data-testid="voice-prefix-back"
-        >
-          Back
-        </Button>
+        {previousVoicePrefixStep(props.step, tier) ? (
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={() => {
+              const prev = previousVoicePrefixStep(props.step, tier);
+              if (prev) props.onAdvance(prev);
+              else props.onBack();
+            }}
+            data-testid="voice-prefix-back"
+          >
+            Back
+          </Button>
+        ) : (
+          <span aria-hidden="true" />
+        )}
         <div className="flex items-center gap-2">
           {stepMeta.optional ? (
             <Button
@@ -185,13 +206,22 @@ export function VoicePrefixSteps(
           ) : null}
           <Button
             size="sm"
+            disabled={continueDisabled}
             onClick={() =>
               props.onAdvance(nextVoicePrefixStep(props.step, tier))
             }
             data-testid="voice-prefix-continue"
+            aria-describedby={
+              continueDisabled ? "voice-prefix-continue-help" : undefined
+            }
           >
             Continue
           </Button>
+          {continueDisabled ? (
+            <span id="voice-prefix-continue-help" className="sr-only">
+              Grant or deny microphone access first.
+            </span>
+          ) : null}
         </div>
       </footer>
     </div>
@@ -200,18 +230,27 @@ export function VoicePrefixSteps(
 
 // ── Step 1 — Welcome + permissions ────────────────────────────────────────
 
-function WelcomeStep(props: VoicePrefixStepsProps): React.ReactElement {
+function WelcomeStep(
+  props: VoicePrefixStepsProps & {
+    onPermissionResolved?: (resolved: boolean) => void;
+  },
+): React.ReactElement {
   const [permissionGranted, setPermissionGranted] = React.useState<
     boolean | null
   >(null);
   const onRequest = React.useCallback(async () => {
     if (!props.onRequestMicPermission) {
       setPermissionGranted(true);
+      props.onPermissionResolved?.(true);
       return;
     }
     const granted = await props.onRequestMicPermission();
     setPermissionGranted(granted);
-  }, [props.onRequestMicPermission]);
+    // Either outcome counts as "user has decided" — Continue unlocks. The
+    // denial path keeps the warning message visible so the user knows they
+    // can still proceed but voice features will be limited.
+    props.onPermissionResolved?.(true);
+  }, [props.onRequestMicPermission, props.onPermissionResolved]);
 
   return (
     <div className="flex flex-col gap-3" data-testid="voice-prefix-welcome">
@@ -473,12 +512,20 @@ function UserSpeaksStep(props: VoicePrefixStepsProps): React.ReactElement {
   return (
     <div className="flex flex-col gap-3" data-testid="voice-prefix-user-speaks">
       {state.error ? (
-        <p
-          className="text-xs text-warn"
+        <div
+          role="alert"
+          aria-live="assertive"
+          className="rounded-md border border-warn/30 bg-warn/10 p-2 text-xs"
           data-testid="voice-prefix-user-speaks-error"
         >
-          {state.error}
-        </p>
+          <p className="font-medium text-warn">
+            We couldn't reach the voice service. Try again in a moment, or skip
+            this step and come back to it from Settings.
+          </p>
+          <p className="mt-1 text-[10px] text-muted">
+            <span className="font-mono">{state.error}</span>
+          </p>
+        </div>
       ) : null}
       {state.session === null ? (
         <p
@@ -545,7 +592,7 @@ function UserSpeaksStep(props: VoicePrefixStepsProps): React.ReactElement {
 
 function OwnerConfirmStep(props: VoicePrefixStepsProps): React.ReactElement {
   const [displayName, setDisplayName] = React.useState(
-    props.initialOwnerDisplayName ?? "Shaw",
+    props.initialOwnerDisplayName ?? "",
   );
   const [finalizing, setFinalizing] = React.useState(false);
   const [finalized, setFinalized] = React.useState(false);
@@ -574,7 +621,8 @@ function OwnerConfirmStep(props: VoicePrefixStepsProps): React.ReactElement {
           data-testid="voice-prefix-owner-confirm-crown"
         />
         <p className="text-sm">
-          You are the OWNER. The agent will only execute privileged actions for
+          You're the owner of this device. The agent will only execute
+          privileged actions (paying, posting, file edits, system changes) for
           you.
         </p>
       </div>
@@ -657,7 +705,7 @@ function FamilyStep(props: VoicePrefixStepsProps): React.ReactElement {
   const [captured, setCaptured] = React.useState<FamilyMemberCapture[]>([]);
   const [phase, setPhase] = React.useState<FamilyCapturePhase>("idle");
   const [draftName, setDraftName] = React.useState("");
-  const [draftRelationship, setDraftRelationship] = React.useState("family");
+  const [draftRelationship, setDraftRelationship] = React.useState("");
   const [captureError, setCaptureError] = React.useState<string | null>(null);
   const [countdown, setCountdown] = React.useState(0);
   const countdownRef = React.useRef<ReturnType<typeof setInterval> | null>(
@@ -716,7 +764,7 @@ function FamilyStep(props: VoicePrefixStepsProps): React.ReactElement {
         },
       ]);
       setDraftName("");
-      setDraftRelationship("family");
+      setDraftRelationship("");
       setPhase("idle");
     } catch (err) {
       setCaptureError(err instanceof Error ? err.message : "Recording failed.");
@@ -727,8 +775,8 @@ function FamilyStep(props: VoicePrefixStepsProps): React.ReactElement {
   return (
     <div className="flex flex-col gap-3" data-testid="voice-prefix-family">
       <p className="text-sm">
-        Optional: introduce other people the agent might hear. You can add more
-        anytime in Settings → Voice → Profiles.
+        Introduce other people the agent might hear. You can add more anytime
+        in Settings → Voice → Profiles.
       </p>
 
       {captured.length > 0 ? (

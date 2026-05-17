@@ -2,6 +2,48 @@ import { describe, expect, it, vi } from "vitest";
 import { ElizaClient } from "./client";
 
 describe("ElizaClient agent streaming transport", () => {
+  it("resolves chat streams immediately after a terminal done event", async () => {
+    const encoder = new TextEncoder();
+    const read = vi
+      .fn()
+      .mockResolvedValueOnce({
+        done: false,
+        value: encoder.encode(
+          'data: {"type":"token","text":"hi","fullText":"hi"}\n\n' +
+            'data: {"type":"done","fullText":"hi","agentName":"Milady"}\n\n',
+        ),
+      })
+      .mockRejectedValueOnce(new Error("read after terminal event"));
+    const cancel = vi.fn(async () => {});
+    const request = vi.fn(async () => {
+      return {
+        ok: true,
+        status: 200,
+        body: {
+          getReader: () => ({ read, cancel }),
+        },
+      } as unknown as Response;
+    });
+    const client = new ElizaClient("http://agent.example:31337", "token");
+    client.setRequestTransport({ request });
+    const onToken = vi.fn();
+
+    const result = await client.streamChatEndpoint(
+      "/api/conversations/conversation-id/messages/stream",
+      "hello",
+      onToken,
+    );
+
+    expect(result).toEqual({
+      text: "hi",
+      agentName: "Milady",
+      completed: true,
+    });
+    expect(onToken).toHaveBeenCalledWith("hi", "hi");
+    expect(read).toHaveBeenCalledTimes(1);
+    expect(cancel).toHaveBeenCalledWith("elizaos-sse-terminal-done");
+  });
+
   it("streams security audit events through the configured request transport", async () => {
     const globalFetch = vi.fn();
     vi.stubGlobal("fetch", globalFetch);

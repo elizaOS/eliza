@@ -215,9 +215,13 @@ describe("Group A: auth + sessions", () => {
 
     test("POST validation: missing token returns 400", async () => {
       if (!reachableOnly()) return;
-      const res = await api.post("/api/auth/steward-session", {}, {
-        headers: stewardSessionHeaders,
-      });
+      const res = await api.post(
+        "/api/auth/steward-session",
+        {},
+        {
+          headers: stewardSessionHeaders,
+        },
+      );
       expect(res.status).toBe(400);
       const body = (await res.json()) as { error?: string };
       expect(body.error).toBe("Token required");
@@ -259,6 +263,80 @@ describe("Group A: auth + sessions", () => {
       const setCookie = res.headers.get("set-cookie") ?? "";
       // Hono's deleteCookie sets Max-Age=0 or an Expires=Thu, 01 Jan 1970.
       expect(/steward-token/i.test(setCookie) || setCookie === "").toBe(true);
+    });
+  });
+
+  // --------------------------------------------------------------------
+  // /api/auth/steward-nonce-exchange — POST. Server-side OAuth code
+  // exchange (response_type=code flow). Public route. Same CSRF gating
+  // as /api/auth/steward-session.
+  // --------------------------------------------------------------------
+  describe("POST /api/auth/steward-nonce-exchange", () => {
+    const nonceHeaders = { Origin: "http://localhost:8787" };
+
+    test("validation: missing code returns 400 missing_code", async () => {
+      if (!reachableOnly()) return;
+      const res = await api.post(
+        "/api/auth/steward-nonce-exchange",
+        { redirectUri: "https://elizaos.ai/checkout" },
+        { headers: nonceHeaders },
+      );
+      expect(res.status).toBe(400);
+      const body = (await res.json()) as { code?: string; error?: string };
+      expect(body.code).toBe("missing_code");
+    });
+
+    test("validation: missing redirectUri returns 400", async () => {
+      if (!reachableOnly()) return;
+      const res = await api.post(
+        "/api/auth/steward-nonce-exchange",
+        { code: "abc" },
+        { headers: nonceHeaders },
+      );
+      expect(res.status).toBe(400);
+      const body = (await res.json()) as { code?: string };
+      expect(body.code).toBe("missing_code");
+    });
+
+    test("CSRF: POST without Origin returns 403 forbidden_origin", async () => {
+      if (!reachableOnly()) return;
+      const res = await api.post("/api/auth/steward-nonce-exchange", {
+        code: "abc",
+        redirectUri: "https://elizaos.ai/checkout",
+      });
+      expect(res.status).toBe(403);
+      const body = (await res.json()) as { code?: string; error?: string };
+      expect(body.code).toBe("forbidden_origin");
+    });
+
+    test("happy-path inputs reach upstream; bogus code is rejected", async () => {
+      if (!reachableOnly()) return;
+      const res = await api.post(
+        "/api/auth/steward-nonce-exchange",
+        {
+          code: "not-a-real-steward-code",
+          redirectUri: "https://elizaos.ai/checkout",
+          tenantId: "elizacloud",
+        },
+        { headers: nonceHeaders },
+      );
+      // Possible outcomes depending on deployment:
+      //   503 server_secret_missing       — no Steward JWT secret configured
+      //   503 steward_upstream_unavailable — STEWARD_API_URL unset
+      //   502 steward_upstream_unavailable — upstream unreachable
+      //   401 code_invalid                 — upstream rejected the nonce
+      //   401 invalid_token                — upstream returned a token we cannot verify
+      expect([401, 502, 503]).toContain(res.status);
+      const body = (await res.json()) as { code?: string; error?: string };
+      expect([
+        "code_invalid",
+        "code_expired",
+        "code_redirect_mismatch",
+        "code_tenant_mismatch",
+        "invalid_token",
+        "server_secret_missing",
+        "steward_upstream_unavailable",
+      ]).toContain(body.code ?? "");
     });
   });
 

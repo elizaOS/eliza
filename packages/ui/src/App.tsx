@@ -52,6 +52,10 @@ import { ShellOverlays } from "./components/shell/ShellOverlays";
 import { StartupFailureView } from "./components/shell/StartupFailureView";
 import { StartupShell } from "./components/shell/StartupShell";
 import { SystemWarningBanner } from "./components/shell/SystemWarningBanner";
+import { AssistantOverlay } from "./components/shell/AssistantOverlay";
+import { ChatSurface } from "./components/shell/ChatSurface";
+import { HomePill } from "./components/shell/HomePill";
+import { useShellState } from "./components/shell/useShellState";
 import { Button } from "./components/ui/button";
 import { ErrorBoundary } from "./components/ui/error-boundary";
 import {
@@ -707,6 +711,61 @@ function ViewRouter({
     <ErrorBoundary>
       <LazyViewBoundary>{view}</LazyViewBoundary>
     </ErrorBoundary>
+  );
+}
+
+function greetingForTimeOfDay(): string {
+  const hour = new Date().getHours();
+  if (hour < 12) return "Good morning! What would you like to do?";
+  if (hour < 18) return "Good afternoon! What would you like to do?";
+  return "Good evening! What would you like to do?";
+}
+
+function ShellFoundationMount(): JSX.Element {
+  const app = useApp();
+  const { state, send } = useShellState();
+
+  // Drive BOOT_READY from Shaw's startup coordinator.
+  const ready = app.startupCoordinator.phase === "ready";
+  useEffect(() => {
+    if (ready) send({ type: "BOOT_READY" });
+  }, [ready, send]);
+
+  // v1: mocked agent. Echoes the user's text after 400ms. When the agent
+  // integration sub-project lands, replace this with a real `client` stream
+  // subscription that pushes RESPONSE_DELTA / RESPONSE_DONE / RESPONSE_ERROR.
+  const onSend = useCallback(
+    (text: string) => {
+      send({ type: "SEND", text });
+      window.setTimeout(() => {
+        send({ type: "RESPONSE_DELTA", delta: `Echo: ${text}` });
+        send({ type: "RESPONSE_DONE" });
+      }, 400);
+    },
+    [send],
+  );
+
+  const onOpen = useCallback(() => send({ type: "OPEN" }), [send]);
+  const onClose = useCallback(() => send({ type: "CLOSE" }), [send]);
+
+  // Match shellReducer's SEND guard exactly. The reducer only accepts SEND
+  // from `summoned` or `listening`; offering input while `responding` would
+  // silently drop the user's text.
+  const canSend =
+    state.phase === "summoned" || state.phase === "listening";
+
+  return (
+    <>
+      <HomePill phase={state.phase} onOpen={onOpen} onClose={onClose} />
+      <AssistantOverlay phase={state.phase} onClose={onClose}>
+        <ChatSurface
+          messages={state.messages}
+          onSend={onSend}
+          canSend={canSend}
+          greeting={greetingForTimeOfDay()}
+        />
+      </AssistantOverlay>
+    </>
   );
 }
 
@@ -1417,7 +1476,7 @@ export function App() {
         >
           <div
             data-testid="pre-agent-cloud-shell"
-            className="flex min-h-[100vh] w-full flex-col text-black"
+            className="flex min-h-[100vh] w-full flex-col text-txt"
             style={{ borderRadius: "var(--radius-xs, 2px)" }}
           >
             <StartupShell />
@@ -1491,6 +1550,7 @@ export function App() {
         tab !== "apps" &&
         tab !== "views" && <GameViewOverlay />}
       <ShellOverlays actionNotice={actionNotice} />
+      {isCoordinatorReady && <ShellFoundationMount />}
       <SaveCommandModal
         open={contextMenu.saveCommandModalOpen}
         text={contextMenu.saveCommandText}
