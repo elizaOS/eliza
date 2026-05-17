@@ -24,7 +24,7 @@ No optimism inflation. Where something is risky or unknown, it says so.
   install/autostart, a conservative elizaOS capability broker, and elizaOS
   Persistent Storage.
 - The old root-level usbeliza prototype has been removed from this branch;
-  the active Linux distro work now lives under this Tails-based variant.
+  the active Linux distro work now lives under this live-build variant.
 
 **Not done:**
 - The current full ISO build/test pass is still in progress. The latest
