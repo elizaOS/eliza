@@ -23,7 +23,7 @@
     "type": "server-launch",
     "capabilities": ["documents"],
     "routePlugin": {
-      "specifier": "@elizaos/plugin-documents",
+      "specifier": "@elizaos/plugin-documents/plugin",
       "exportName": "documentsPlugin"
     }
   }

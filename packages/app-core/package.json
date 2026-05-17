@@ -96,6 +96,36 @@
       "import": "./dist/services/vault-mirror.js",
       "default": "./dist/services/vault-mirror.js"
     },
+    "./security/agent-vault-id": {
+      "types": "./dist/security/agent-vault-id.d.ts",
+      "import": "./dist/security/agent-vault-id.js",
+      "default": "./dist/security/agent-vault-id.js"
+    },
+    "./security/platform-secure-store": {
+      "types": "./dist/security/platform-secure-store.d.ts",
+      "import": "./dist/security/platform-secure-store.js",
+      "default": "./dist/security/platform-secure-store.js"
+    },
+    "./security/platform-secure-store-node": {
+      "types": "./dist/security/platform-secure-store-node.d.ts",
+      "import": "./dist/security/platform-secure-store-node.js",
+      "default": "./dist/security/platform-secure-store-node.js"
+    },
+    "./services/steward-credentials": {
+      "types": "./dist/services/steward-credentials.d.ts",
+      "import": "./dist/services/steward-credentials.js",
+      "default": "./dist/services/steward-credentials.js"
+    },
+    "./services/steward-sidecar/helpers": {
+      "types": "./dist/services/steward-sidecar/helpers.d.ts",
+      "import": "./dist/services/steward-sidecar/helpers.js",
+      "default": "./dist/services/steward-sidecar/helpers.js"
+    },
+    "./services/task-host-capabilities": {
+      "types": "./dist/services/task-host-capabilities.d.ts",
+      "import": "./dist/services/task-host-capabilities.js",
+      "default": "./dist/services/task-host-capabilities.js"
+    },
     "./services/app-updates/update-policy": {
       "types": "./dist/services/app-updates/update-policy.d.ts",
       "import": "./dist/services/app-updates/update-policy.js",

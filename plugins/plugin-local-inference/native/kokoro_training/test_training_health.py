@@ -7,6 +7,7 @@ import sys
 import torch
 from pathlib import Path
 import logging
+import pytest
 
 logging.basicConfig(level=logging.INFO, format='%(message)s')
 logger = logging.getLogger(__name__)
@@ -24,6 +25,19 @@ logger.info("=" * 80)
 
 # Load config
 config = EnglishTrainingConfig()
+
+# elizaOS: this is a corpus-dependent diagnostic, so skip cleanly in CI/dev
+# checkouts that do not have LJSpeech + MFA TextGrid alignments staged.
+required_dataset_files = [
+    Path(config.data_dir) / "metadata.csv",
+    Path(config.data_dir) / "wavs",
+    Path(config.data_dir) / "TextGrid" / "wavs",
+]
+if not all(path.exists() for path in required_dataset_files):
+    pytest.skip(
+        f"LJSpeech health diagnostic requires metadata, wavs, and MFA alignments under {config.data_dir}",
+        allow_module_level=True,
+    )
 
 # Load dataset
 logger.info("\nLoading dataset...")

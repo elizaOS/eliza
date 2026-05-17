@@ -68,16 +68,23 @@ python3 packages/training/scripts/voice/samantha_lora/eval_voice.py \
     --out "$RUN/out" \
     --val-clips-dir "$RUN/processed/wavs_norm"
 
-# 6. Dry-run publish (sanity-checks the bundle without uploading).
+# 6. Package the publishable HF voice release.
+python3 packages/training/scripts/kokoro/package_voice_for_release.py \
+    --run-dir "$RUN/out" \
+    --release-dir "$RUN/release" \
+    --voice-name af_same \
+    --voice-display-name Samantha
+
+# 7. Dry-run publish (sanity-checks the bundle without uploading).
 HF_TOKEN=hf_xxx packages/training/scripts/voice/samantha_lora/publish_samantha.sh \
-    --release-dir "$RUN/out" \
-    --hf-repo elizaos/eliza-1-voice-kokoro-samantha \
+    --release-dir "$RUN/release/af_same" \
+    --hf-repo elizaos/eliza-1 \
     --dry-run
 
-# 7. Real push (only when step 5 was green).
+# 8. Real push (only when step 5 was green).
 HF_TOKEN=hf_xxx packages/training/scripts/voice/samantha_lora/publish_samantha.sh \
-    --release-dir "$RUN/out" \
-    --hf-repo elizaos/eliza-1-voice-kokoro-samantha \
+    --release-dir "$RUN/release/af_same" \
+    --hf-repo elizaos/eliza-1 \
     --push --private --update-catalog
 ```
 
@@ -94,6 +101,7 @@ fails, the next will refuse to start (and tell you why). The chain:
 | train_lora          | export_adapter  | checkpoints/best (or step_*) present      |
 | export_adapter      | eval_voice      | manifest.json + voice.bin                 |
 | eval_voice          | publish_samantha| gate_report.passed=true                   |
+| package_voice_for_release | publish_samantha | voice.bin + voice-preset.json + manifest-fragment.json |
 
 ## Failure modes + recovery
 
@@ -141,7 +149,7 @@ to push without a real token — no half-pushed states.
 
 ## After a successful push
 
-1. Verify the HF repo is live: `huggingface-cli download elizaos/eliza-1-voice-kokoro-samantha`
+1. Verify the HF repo is live: `huggingface-cli download elizaos/eliza-1 voice/kokoro/voices/af_same.bin`
 2. Bump the catalog (`packages/shared/src/local-inference/voice-models.ts`)
    if `--update-catalog` was not passed: refresh `sha256` + `sizeBytes`
    from the new release. (The runtime auto-update checker reads this.)

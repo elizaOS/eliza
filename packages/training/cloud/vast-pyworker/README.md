@@ -61,12 +61,13 @@ For autoscaled deployment (recommended for prod), provision a Vast
 Serverless endpoint that owns the template:
 
 ```bash
-# 1. Upsert the template (once per size/quant combo).
+# 1. Upsert the GGUF template (once per size).
 VASTAI_API_KEY=vastai_… \
-VAST_TEMPLATE_NAME=eliza-cloud-eliza-1-9b-vllm \
+VAST_TEMPLATE_NAME=eliza-cloud-eliza-1-9b-gguf \
 PYWORKER_REPO=https://github.com/elizaOS/cloud.git \
 PYWORKER_REF=<commit-sha> \
-MODEL_REPO=elizaos/eliza-1-9b-polarquant \
+MODEL_REPO=elizaos/eliza-1 \
+MODEL_FILE=bundles/9b/text/eliza-1-9b-128k.gguf \
 MODEL_ALIAS=vast/eliza-1-9b \
 bun eliza/cloud/scripts/vast/upsert-template.ts
 # → prints VAST_TEMPLATE_ID=<n>
@@ -83,7 +84,9 @@ directory drives the vLLM path: it pulls the manifest, launches
 `vllm serve` with the manifest's `vllm_args`, tails for
 `Application startup complete`, and then `exec`s the pyworker with
 `LLAMA_SERVER_PORT=$VLLM_PORT` and `LLAMA_SERVER_LOG=/var/log/vllm-server.log`
-so the heartbeat handlers wire up to the vLLM endpoint.
+so the heartbeat handlers wire up to the vLLM endpoint. The canonical
+`elizaos/eliza-1` GGUF bundle repo uses the upstream llama-server `onstart.sh`
+path instead.
 
 ### `onstart-vllm.sh` quick reference
 
@@ -91,7 +94,7 @@ Required env (sourced from the manifest's `vast_template_env` block):
 
 | Var               | Meaning                                              |
 |-------------------|------------------------------------------------------|
-| `MODEL_REPO`      | HuggingFace repo id (e.g. `elizaos/eliza-1-9b`).     |
+| `MODEL_REPO`      | HuggingFace repo id for a vLLM-compatible checkpoint. |
 | `MODEL_ALIAS`     | Display alias the pyworker reports (e.g. `vast/eliza-1-9b`). |
 | `VLLM_PORT`       | Port vLLM binds to (must match the manifest `port`). |
 | `VLLM_REGISTRY_KEY` | Training-side key, used for log lines + manifest auto-resolve. |
@@ -109,25 +112,25 @@ log tailing works.
 Pick an offer manually:
 
 ```bash
-# Find a 2x H200 box.
+# Find a 2x H200 box for the 27B GGUF path.
 vastai search offers 'gpu_name=H200_SXM num_gpus>=2 reliability>=0.95 verified=true' \
   --order 'dph+' --limit 5
 
 # Launch using one of the offer IDs.
 vastai create instance <offer-id> \
-  --image vllm/vllm-openai:v0.20.1 \
+  --image ghcr.io/ggml-org/llama.cpp:server-cuda \
   --disk 120 \
   --label eliza-1-27b \
-  --env '-p 8000:8000 -e MODEL_REPO=elizaos/eliza-1-27b-fp8 -e MODEL_ALIAS=vast/eliza-1-27b -e VLLM_PORT=8000 -e VLLM_REGISTRY_KEY=eliza-1-27b' \
-  --onstart-cmd "$(cat onstart-vllm.sh)"
+  --env '-p 8080:8080 -e MODEL_REPO=elizaos/eliza-1 -e MODEL_FILE=bundles/27b/text/eliza-1-27b-128k.gguf -e MODEL_ALIAS=vast/eliza-1-27b' \
+  --onstart-cmd "$(cat ../../cloud-services/vast-pyworker/onstart.sh)"
 
 # Get the public endpoint.
 vastai show instance <instance-id>
-# → forward 8000 → http://<public-ip>:<mapped-port>/v1
+# → forward 8080 → http://<public-ip>:<mapped-port>/v1
 ```
 
-`vllm/vllm-openai:v0.20.1` is the image pin used in the canonical
-serve script header. Bump the tag in lockstep with that file.
+`ghcr.io/ggml-org/llama.cpp:server-cuda` is the image used for the canonical
+GGUF deploy path.
 
 ## Routing from Eliza Cloud
 

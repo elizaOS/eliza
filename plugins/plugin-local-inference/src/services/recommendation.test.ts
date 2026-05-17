@@ -75,6 +75,7 @@ describe("local inference recommendations", () => {
 			freeRamGb: 5,
 			platform: "linux",
 			arch: "arm64",
+			cpuFeatures: { neon: true, dotprod: true, i8mm: false },
 			recommendedBucket: "small",
 			mobile: { platform: "android" },
 		});
@@ -92,6 +93,7 @@ describe("local inference recommendations", () => {
 			freeRamGb: 5,
 			platform: "darwin",
 			arch: "arm64",
+			cpuFeatures: { neon: true, dotprod: true, i8mm: true },
 			recommendedBucket: "small",
 			mobile: { platform: "ios" },
 		});
@@ -114,6 +116,7 @@ describe("local inference recommendations", () => {
 				freeRamGb: Math.max(totalRamGb - 1, 0),
 				platform: "darwin",
 				arch: "arm64",
+				cpuFeatures: { neon: true, dotprod: true, i8mm: true },
 				recommendedBucket: "small",
 				mobile: { platform: "ios" },
 			});
@@ -131,6 +134,7 @@ describe("local inference recommendations", () => {
 			freeRamGb: 4,
 			platform: "darwin",
 			arch: "arm64",
+			cpuFeatures: { neon: true, dotprod: true, i8mm: true },
 			recommendedBucket: "mid",
 			mobile: { platform: "ios" },
 		});
@@ -424,13 +428,38 @@ describe("canBundleBeDefaultOnDevice", () => {
 		expect(deviceCapsFromProbe(probe)).toEqual({
 			availableBackends: ["cpu", "vulkan"],
 			ramMb: 16 * 1024,
+			cpuFeatures: undefined,
 		});
 		expect(deviceCapsFromProbe(hardware({ totalRamGb: 8, gpu: null }))).toEqual(
 			{
 				availableBackends: ["cpu"],
 				ramMb: 8 * 1024,
+				cpuFeatures: undefined,
 			},
 		);
+	});
+
+	it("does not recommend CPU-only ARM tiers when OS feature evidence is absent", () => {
+		const probe = hardware({
+			totalRamGb: 16,
+			freeRamGb: 12,
+			platform: "linux",
+			arch: "arm64",
+			gpu: null,
+			cpuFeatures: undefined,
+			recommendedBucket: "mid",
+			source: "os-fallback",
+		});
+
+		const recommended = selectRecommendedModels(probe);
+
+		expect(recommended.TEXT_SMALL.model).toBeNull();
+		expect(recommended.TEXT_LARGE.model).toBeNull();
+		expect(deviceCapsFromProbe(probe)).toEqual({
+			availableBackends: [],
+			ramMb: 16 * 1024,
+			cpuFeatures: undefined,
+		});
 	});
 
 	it("does not treat OpenVINO NPU availability as an Eliza-1 chat backend", () => {
@@ -455,6 +484,7 @@ describe("canBundleBeDefaultOnDevice", () => {
 		expect(deviceCapsFromProbe(openvinoProbe)).toEqual({
 			availableBackends: ["cpu"],
 			ramMb: 16 * 1024,
+			cpuFeatures: undefined,
 		});
 	});
 

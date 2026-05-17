@@ -38,6 +38,7 @@ import { ElizaClient } from "./client-base";
 import type {
   AgentAutomationMode,
   AgentAutomationModeResponse,
+  AgentBootProgress,
   AgentEventsResponse,
   AgentSelfStatusSnapshot,
   AgentStatus,
@@ -410,6 +411,7 @@ export interface ConnectorAccountAuditEventsResponse {
 declare module "./client-base" {
   interface ElizaClient {
     getStatus(): Promise<AgentStatus>;
+    getBootProgress(): Promise<AgentBootProgress | null>;
     getAgentSelfStatus(): Promise<AgentSelfStatusSnapshot>;
     getRuntimeSnapshot(opts?: {
       depth?: number;
@@ -1009,6 +1011,14 @@ ElizaClient.prototype.getStatus = async function (this: ElizaClient) {
     return (await nativeAgent.getStatus()) as AgentStatus;
   }
   return this.fetch("/api/status");
+};
+
+ElizaClient.prototype.getBootProgress = async function (this: ElizaClient) {
+  try {
+    return await getDesktopStatusRpc<AgentBootProgress>("bootProgress");
+  } catch {
+    return null;
+  }
 };
 
 ElizaClient.prototype.getAgentSelfStatus = async function (this: ElizaClient) {

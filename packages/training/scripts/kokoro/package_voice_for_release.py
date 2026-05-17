@@ -3,14 +3,15 @@
 
 Inputs:
 
-  --run-dir   <run-dir>/ with checkpoints/best.pt, eval.json, kokoro.onnx,
-                       voice.bin (typically all emitted by run_finetune.sh)
+  --run-dir   <run-dir>/ with eval.json and voice.bin. kokoro.onnx is copied
+                       when present (full model fine-tunes) but voice-only
+                       releases are valid for Samantha/Kokoro style tensors.
 
 Outputs:
 
   <release-dir>/<voice_name>/
   ├── voice.bin                 # the 256-dim ref_s table, runtime-readable
-  ├── kokoro.onnx               # the fine-tuned model (or a hard-link to base)
+  ├── kokoro.onnx               # optional fine-tuned model sidecar
   ├── voice-preset.json         # the ELZ1 envelope (see voice-preset-format.ts)
   ├── eval.json                 # the gate report
   ├── manifest-fragment.json    # the catalog fragment for publish-time merge
@@ -90,6 +91,54 @@ def _voice_preset(
     }
 
 
+def _manifest_fragment(
+    *,
+    voice_name: str,
+    display_name: str,
+    voice_lang: str,
+    voice_tags: list[str],
+    base_model: str,
+    synthetic: bool,
+    has_onnx: bool,
+) -> dict[str, Any]:
+    voice_remote = f"voice/kokoro/voices/{voice_name}.bin"
+    artifacts: list[dict[str, Any]] = [
+        {"role": "voice-preset", "path": voice_remote},
+    ]
+    engine: dict[str, Any] = {
+        "kind": "kokoro",
+        "baseModel": base_model,
+        "onnxPath": None,
+    }
+    if has_onnx:
+        onnx_remote = f"voice/kokoro/voices/{voice_name}/kokoro.onnx"
+        engine["onnxPath"] = onnx_remote
+        artifacts.append({"role": "voice-onnx", "path": onnx_remote})
+
+    return {
+        "schemaVersion": 1,
+        "kind": "eliza-1-kokoro-voice-fragment",
+        "generatedAt": datetime.now(timezone.utc).isoformat(),
+        "synthetic": synthetic,
+        "voice": {
+            "id": voice_name,
+            "displayName": display_name,
+            "lang": voice_lang,
+            "file": f"{voice_name}.bin",
+            "hfPath": voice_remote,
+            "dim": 256,
+            "tags": voice_tags,
+        },
+        "engine": engine,
+        "artifacts": artifacts,
+        "integration": {
+            "runtimeBackendDir": "packages/shared/src/local-inference/kokoro/",
+            "voicePresetFormat": "packages/shared/src/local-inference/kokoro/types.ts",
+            "catalogTable": "packages/shared/src/local-inference/kokoro/voice-presets.ts",
+        },
+    }
+
+
 def _readme(*, voice_name: str, eval_report: dict[str, Any] | None) -> str:
     lines = [
         f"# Kokoro voice pack: {voice_name}",
@@ -99,7 +148,7 @@ def _readme(*, voice_name: str, eval_report: dict[str, Any] | None) -> str:
         "## Contents",
         "",
         "- `voice.bin` — 256-dim ref_s table, raw float32 LE, shape (510, 1, 256).",
-        "- `kokoro.onnx` — fine-tuned model in onnx-community/Kokoro-82M-v1.0-ONNX layout.",
+        "- `kokoro.onnx` — optional fine-tuned model sidecar in ONNX layout.",
         "- `voice-preset.json` — ELZ1 voice envelope consumed by the runtime.",
         "- `manifest-fragment.json` — catalog fragment to merge at publish time.",
         "- `eval.json` — gate report (UTMOS, WER, speaker similarity, RTF).",
@@ -127,12 +176,12 @@ def _readme(*, voice_name: str, eval_report: dict[str, Any] | None) -> str:
             "## Runtime hand-off",
             "",
             "1. Copy the bundle into the per-tier release tree at "
-            "`<bundle>/tts/<voice_name>/`.",
+            "`elizaos/eliza-1:voice/kokoro/voices/<voice_name>.bin`.",
             "2. Append the `voice` block from `manifest-fragment.json` to "
-            "`packages/app-core/src/services/local-inference/voice/kokoro/voice-presets.ts`.",
-            "3. Re-run `packages/training/scripts/publish_all_eliza1.sh` "
-            "with `--include-voice <voice_name>` (or pass the fragment to "
-            "the publish flow per the readiness doc).",
+            "`packages/shared/src/local-inference/kokoro/voice-presets.ts`.",
+            "3. Re-run the elizaos/eliza-1 publish preflight and verify "
+            "`packages/shared/src/local-inference/voice-models.ts` records "
+            "`voice/kokoro/voices/<voice_name>.bin`.",
         ]
     )
     return "\n".join(lines) + "\n"
@@ -173,12 +222,8 @@ def main(argv: list[str] | None = None) -> int:
     missing = []
     if not have_bin:
         missing.append("voice.bin")
-    if not have_onnx:
-        missing.append("kokoro.onnx")
     if not have_eval:
         missing.append("eval.json")
-    if not have_frag:
-        missing.append("manifest-fragment.json")
     if missing and not args.allow_missing and not args.synthetic_smoke:
         log.error("release bundle missing required artifacts: %s", missing)
         return 2
@@ -201,6 +246,19 @@ def main(argv: list[str] | None = None) -> int:
         synthetic=args.synthetic_smoke,
     )
     (release / "voice-preset.json").write_text(json.dumps(preset, indent=2) + "\n")
+
+    if not have_frag:
+        fragment = _manifest_fragment(
+            voice_name=args.voice_name,
+            display_name=args.voice_display_name or args.voice_name,
+            voice_lang=args.voice_lang,
+            voice_tags=args.voice_tags.split(","),
+            base_model=args.base_model,
+            synthetic=args.synthetic_smoke,
+            has_onnx=have_onnx,
+        )
+        fragment_dst.write_text(json.dumps(fragment, indent=2) + "\n")
+        have_frag = True
 
     eval_report: dict[str, Any] | None = None
     if have_eval:

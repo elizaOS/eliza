@@ -5,7 +5,12 @@
  * Polls the agent status until running, then dispatches AGENT_RUNNING.
  */
 
-import { type AgentStartupDiagnostics, client } from "../api";
+import {
+  type AgentBootProgress,
+  type AgentStartupDiagnostics,
+  type AgentStatus,
+  client,
+} from "../api";
 import {
   computeAgentDeadlineExtensions,
   getAgentReadyTimeoutMs,
@@ -40,6 +45,34 @@ export interface StartingRuntimeDeps {
   setPendingRestartReasons: (
     v: string[] | ((prev: string[]) => string[]),
   ) => void;
+}
+
+function mapBootProgressToAgentStatus(
+  progress: AgentBootProgress,
+): AgentStatus {
+  const startup: AgentStartupDiagnostics = {
+    phase: progress.phase ?? progress.state,
+    attempt: 0,
+  };
+  if (progress.lastError) {
+    startup.lastError = progress.lastError;
+  }
+  return {
+    state: progress.state,
+    agentName: progress.agentName?.trim() || "Eliza",
+    model: undefined,
+    uptime:
+      typeof progress.startedAt === "number"
+        ? Math.max(0, Date.now() - progress.startedAt)
+        : undefined,
+    startedAt: progress.startedAt ?? undefined,
+    port: progress.port ?? undefined,
+    startup,
+  };
+}
+
+function isRuntimeReadyFromBootProgress(progress: AgentBootProgress): boolean {
+  return progress.state === "running" && progress.phase === "running";
 }
 
 /**
@@ -123,6 +156,53 @@ export async function runStartingRuntime(
       return;
     }
     try {
+      const bootProgress = await client.getBootProgress().catch(() => null);
+      if (bootProgress) {
+        const bootStatus = mapBootProgressToAgentStatus(bootProgress);
+        deps.setAgentStatus(bootStatus);
+        lastDiag = bootStatus.startup;
+
+        if (isRuntimeReadyFromBootProgress(bootProgress)) {
+          deps.setConnected(true);
+          dispatch({ type: "AGENT_RUNNING" });
+          return;
+        }
+
+        if (
+          bootProgress.state === "not_started" ||
+          bootProgress.state === "stopped"
+        ) {
+          try {
+            const status = await client.startAgent();
+            deps.setAgentStatus(status);
+            lastDiag = status.startup;
+          } catch (e: unknown) {
+            lastErr = e;
+          }
+        } else if (bootProgress.state === "error") {
+          deps.setStartupError(
+            describeAgentFailure(lastErr, false, bootStatus.startup),
+          );
+          deps.setOnboardingLoading(false);
+          dispatch({
+            type: "AGENT_ERROR",
+            message: bootStatus.startup?.lastError ?? "Agent failed to start",
+          });
+          return;
+        } else {
+          deadline = computeAgentDeadlineExtensions({
+            agentWaitStartedAt: started,
+            agentDeadlineAt: deadline,
+            state: bootStatus.state,
+          });
+        }
+
+        await new Promise<void>((r) => {
+          tidRef.current = setTimeout(r, 500);
+        });
+        continue;
+      }
+
       let status = await client.getStatus();
       deps.setAgentStatus(status);
       deps.setConnected(true);

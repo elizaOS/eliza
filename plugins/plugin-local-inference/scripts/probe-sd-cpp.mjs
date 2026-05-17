@@ -41,6 +41,8 @@
  */
 
 import { spawn } from "node:child_process";
+import { readFile } from "node:fs/promises";
+import { basename, dirname, join } from "node:path";
 import process from "node:process";
 
 const ARG_JSON = process.argv.includes("--json");
@@ -53,8 +55,9 @@ const SUPPORTED_MODELS = [
 	"imagegen-flux-1-schnell-q4_k_m",
 ];
 
-// stable-diffusion.cpp accelerator flags (parity with sd-cpp.ts).
-const ACCELERATORS = ["auto", "cpu", "cuda", "vulkan", "metal"];
+// `auto` and `cpu` are always legal sd-cpp modes. GPU accelerators are added
+// only when the binary manifest, --help, or --version proves support.
+const BASE_ACCELERATORS = ["auto", "cpu"];
 
 function resolveBinary() {
 	const fromEnv = process.env.SD_CPP_BIN;
@@ -62,13 +65,13 @@ function resolveBinary() {
 	return "sd";
 }
 
-function runVersion(binary) {
+function runCommand(binary, args) {
 	return new Promise((resolve) => {
 		let stdout = "";
 		let stderr = "";
 		let proc;
 		try {
-			proc = spawn(binary, ["--version"]);
+			proc = spawn(binary, args);
 		} catch (err) {
 			resolve({ ok: false, code: null, error: err, stdout: "", stderr: "" });
 			return;
@@ -88,6 +91,10 @@ function runVersion(binary) {
 	});
 }
 
+function runVersion(binary) {
+	return runCommand(binary, ["--version"]);
+}
+
 function parseVersionLine(stdout, stderr) {
 	const text = (stdout || stderr || "").trim();
 	if (!text) return null;
@@ -96,6 +103,93 @@ function parseVersionLine(stdout, stderr) {
 	// return the first non-empty line so onboarding can show it verbatim.
 	const firstLine = text.split(/\r?\n/).find((l) => l.trim().length > 0);
 	return firstLine?.trim() ?? null;
+}
+
+async function probeCapabilities(binary, versionResult) {
+	const helpResult = await runCommand(binary, ["--help"]).catch(() => null);
+	const manifestAccelerators = await readCapabilityManifest(binary);
+	const textEvidence = [
+		versionResult.stdout,
+		versionResult.stderr,
+		helpResult?.stdout ?? "",
+		helpResult?.stderr ?? "",
+	].join("\n");
+	const accelerators = new Set(BASE_ACCELERATORS);
+	const evidence = [];
+	for (const accelerator of manifestAccelerators) {
+		accelerators.add(accelerator);
+		evidence.push("manifest");
+	}
+	if (hasPositiveCudaEvidence(textEvidence)) {
+		accelerators.add("cuda");
+		evidence.push("help_or_version");
+	}
+	if (/\b(sd_vulkan|ggml_vulkan|vulkan)\b/i.test(textEvidence)) {
+		accelerators.add("vulkan");
+	}
+	if (/\b(sd_metal|ggml_metal|metal)\b/i.test(textEvidence)) {
+		accelerators.add("metal");
+	}
+	return { accelerators: [...accelerators], evidence: [...new Set(evidence)] };
+}
+
+async function readCapabilityManifest(binary) {
+	const candidates = [
+		`${binary}.json`,
+		`${binary}.manifest.json`,
+		join(dirname(binary), `${basename(binary)}.manifest.json`),
+		join(dirname(binary), "sd-cpp.manifest.json"),
+		join(dirname(binary), "manifest.json"),
+	];
+	for (const candidate of [...new Set(candidates)]) {
+		try {
+			return extractAccelerators(JSON.parse(await readFile(candidate, "utf8")));
+		} catch {
+			// Optional sidecar; help/version may still prove capabilities.
+		}
+	}
+	return [];
+}
+
+function extractAccelerators(value) {
+	const found = new Set();
+	const visit = (node) => {
+		if (Array.isArray(node)) {
+			for (const item of node) visit(item);
+			return;
+		}
+		if (typeof node === "string") {
+			const normalized = node.toLowerCase();
+			if (isAccelerator(normalized)) found.add(normalized);
+			return;
+		}
+		if (!node || typeof node !== "object") return;
+		for (const [key, child] of Object.entries(node)) {
+			const normalizedKey = key.toLowerCase();
+			if (isAccelerator(normalizedKey) && child === true) {
+				found.add(normalizedKey);
+			}
+			visit(child);
+		}
+	};
+	visit(value);
+	return [...found];
+}
+
+function isAccelerator(value) {
+	return value === "cuda" || value === "vulkan" || value === "metal" || value === "cpu";
+}
+
+function hasPositiveCudaEvidence(text) {
+	const lower = text.toLowerCase();
+	if (
+		/(without|no|disabled|disable|not built with|unsupported)[^\n]{0,40}cuda/.test(
+			lower,
+		)
+	) {
+		return false;
+	}
+	return /\b(sd_cuda|ggml_cuda|cuda|cublas|cudart)\b/.test(lower);
 }
 
 async function main() {
@@ -121,12 +215,14 @@ async function main() {
 		return;
 	}
 
+	const capabilities = await probeCapabilities(binary, versionResult);
 	emit({
 		available: true,
 		binary,
 		version: parseVersionLine(versionResult.stdout, versionResult.stderr),
 		supportedModels: SUPPORTED_MODELS,
-		accelerators: ACCELERATORS,
+		accelerators: capabilities.accelerators,
+		evidence: capabilities.evidence,
 	});
 }
 

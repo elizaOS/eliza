@@ -6,14 +6,16 @@
  *   POST /api/wallet/transfer/execute — token / BNB transfer execution
  */
 import type http from "node:http";
-import { loadElizaConfig } from "@elizaos/agent";
+import { loadElizaConfig } from "@elizaos/agent/config/config";
 import {
   type CompatRuntimeState,
-  ensureCompatApiAuthorized,
   readCompatJsonBody,
+} from "@elizaos/app-core/api/compat-route-shared";
+import { ensureCompatApiAuthorized } from "@elizaos/app-core/api/auth";
+import {
   sendJsonError as sendJsonErrorResponse,
   sendJson as sendJsonResponse,
-} from "@elizaos/app-core";
+} from "@elizaos/app-core/api/response";
 import { logger } from "@elizaos/core";
 import {
   canUseLocalTradeExecution as _canUseLocalTradeExecution,

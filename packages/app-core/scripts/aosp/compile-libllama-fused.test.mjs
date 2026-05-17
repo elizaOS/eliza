@@ -22,22 +22,20 @@ import {
   parseArgs,
 } from "./compile-libllama.mjs";
 
-test("parseAndroidTarget accepts the four fused android targets", () => {
+test("parseAndroidTarget accepts the wired fused android targets", () => {
   for (const target of FUSED_ANDROID_TARGETS) {
     const parsed = parseAndroidTarget(target);
     assert.equal(parsed.fused, true);
     assert.equal(parsed.target, target);
     assert.ok(["arm64-v8a", "x86_64"].includes(parsed.androidAbi));
-    assert.ok(["cpu", "vulkan"].includes(parsed.backend));
+    assert.equal(parsed.backend, "cpu");
   }
 });
 
-test("parseAndroidTarget accepts the four non-fused android targets", () => {
+test("parseAndroidTarget accepts the wired non-fused android targets", () => {
   for (const target of [
     "android-arm64-cpu",
-    "android-arm64-vulkan",
     "android-x86_64-cpu",
-    "android-x86_64-vulkan",
   ]) {
     const parsed = parseAndroidTarget(target);
     assert.equal(parsed.fused, false);
@@ -56,6 +54,21 @@ test("parseAndroidTarget rejects desktop/server fused targets", () => {
     assert.throws(
       () => parseAndroidTarget(target),
       /unsupported --target/,
+      `should reject ${target}`,
+    );
+  }
+});
+
+test("parseAndroidTarget rejects Android Vulkan instead of silently producing CPU artifacts", () => {
+  for (const target of [
+    "android-arm64-vulkan",
+    "android-arm64-vulkan-fused",
+    "android-x86_64-vulkan",
+    "android-x86_64-vulkan-fused",
+  ]) {
+    assert.throws(
+      () => parseAndroidTarget(target),
+      /Android Vulkan artifacts are not wired.*CPU-only\/basic libllama/s,
       `should reject ${target}`,
     );
   }
@@ -82,13 +95,13 @@ test("parseArgs accepts multiple --target invocations", () => {
     "--target",
     "android-arm64-cpu-fused",
     "--target",
-    "android-x86_64-vulkan-fused",
+    "android-x86_64-cpu-fused",
     "--dry-run",
   ]);
   assert.equal(args.targets.length, 2);
   assert.deepEqual(
     args.targets.map((t) => t.target),
-    ["android-arm64-cpu-fused", "android-x86_64-vulkan-fused"],
+    ["android-arm64-cpu-fused", "android-x86_64-cpu-fused"],
   );
 });
 

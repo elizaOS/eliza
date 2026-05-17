@@ -10,8 +10,12 @@
  * preference survives enabling the plugin later.
  */
 
-import { existsSync } from "node:fs";
-import { join as pathJoin } from "node:path";
+import { existsSync, readFileSync } from "node:fs";
+import {
+	dirname as pathDirname,
+	join as pathJoin,
+	resolve as pathResolve,
+} from "node:path";
 import type { AgentRuntime } from "@elizaos/core";
 import {
 	ELIZA_1_PLACEHOLDER_IDS,
@@ -247,9 +251,114 @@ export interface LocalInferenceLoadOverrides {
 	maxThreads?: number;
 }
 
+interface ResolveLocalInferenceLoadArgsOptions {
+	manifestLoader?: ManifestLoader;
+}
+
+function bundleRootForInstalledModel(installed: InstalledModel): string {
+	return installed.bundleRoot ?? pathDirname(pathDirname(installed.path));
+}
+
+function manifestTextContextForInstalledPath(
+	installed: InstalledModel,
+	manifest: Eliza1Manifest,
+): number | undefined {
+	const modelPath = pathResolve(installed.path);
+	const bundleRoot = bundleRootForInstalledModel(installed);
+	for (const entry of manifest.files.text) {
+		if (
+			typeof entry.ctx !== "number" ||
+			!Number.isInteger(entry.ctx) ||
+			entry.ctx < 256
+		) {
+			continue;
+		}
+		if (pathResolve(bundleRoot, entry.path) === modelPath) {
+			return entry.ctx;
+		}
+	}
+	return undefined;
+}
+
+function candidateManifestPaths(installed: InstalledModel): string[] {
+	const candidates = [
+		installed.manifestPath,
+		installed.bundleRoot
+			? pathJoin(installed.bundleRoot, "eliza-1.manifest.json")
+			: undefined,
+		pathJoin(pathDirname(pathDirname(installed.path)), "eliza-1.manifest.json"),
+		pathJoin(pathDirname(installed.path), "eliza-1.manifest.json"),
+	];
+	return [...new Set(candidates.filter((p): p is string => Boolean(p)))];
+}
+
+function readLegacyStagedManifestTextContext(
+	installed: InstalledModel,
+): number | undefined {
+	if (installed.source !== "eliza-download") return undefined;
+	const modelPath = pathResolve(installed.path);
+	const bundleRoot = bundleRootForInstalledModel(installed);
+
+	for (const manifestPath of candidateManifestPaths(installed)) {
+		let parsed: unknown;
+		try {
+			parsed = JSON.parse(readFileSync(manifestPath, "utf8"));
+		} catch {
+			continue;
+		}
+		if (!parsed || typeof parsed !== "object") continue;
+		const raw = parsed as {
+			id?: unknown;
+			version?: unknown;
+			defaultEligible?: unknown;
+			files?: { text?: unknown };
+		};
+		if (typeof raw.id === "string" && raw.id !== installed.id) continue;
+		const version = typeof raw.version === "string" ? raw.version : "";
+		const stagedOrCandidate =
+			raw.defaultEligible === false ||
+			/(?:candidate|staged|dev|local)/i.test(version);
+		if (!stagedOrCandidate) continue;
+		if (!Array.isArray(raw.files?.text)) continue;
+		for (const entry of raw.files.text) {
+			if (!entry || typeof entry !== "object") continue;
+			const file = entry as { path?: unknown; ctx?: unknown };
+			if (typeof file.path !== "string") continue;
+			if (
+				typeof file.ctx !== "number" ||
+				!Number.isInteger(file.ctx) ||
+				file.ctx < 256
+			) {
+				continue;
+			}
+			if (pathResolve(bundleRoot, file.path) === modelPath) {
+				return file.ctx;
+			}
+		}
+	}
+	return undefined;
+}
+
+function installedBundleContextSize(
+	installed: InstalledModel,
+	manifestLoader: ManifestLoader,
+): number | undefined {
+	const manifest = manifestLoader(installed.id, installed);
+	if (manifest) {
+		const contextSize = manifestTextContextForInstalledPath(
+			installed,
+			manifest,
+		);
+		if (contextSize !== undefined) return contextSize;
+	}
+	return readLegacyStagedManifestTextContext(installed);
+}
+
 function applyCatalogDefaults(
 	args: LocalInferenceLoadArgs,
+	installed: InstalledModel,
 	catalog: CatalogModel | undefined,
+	manifestLoader: ManifestLoader,
 ): void {
 	const runtime = catalog?.runtime;
 
@@ -263,8 +372,10 @@ function applyCatalogDefaults(
 	// window instead of falling back to whatever default the binding
 	// happens to use ("auto" → smallest fitting, which historically meant
 	// 4k or 8k even for 128k-trained models).
-	if (catalog?.contextLength !== undefined && args.contextSize === undefined) {
-		args.contextSize = catalog.contextLength;
+	if (args.contextSize === undefined) {
+		args.contextSize =
+			installedBundleContextSize(installed, manifestLoader) ??
+			catalog?.contextLength;
 	}
 
 	// Catalog-declared GPU offload default — only apply when the caller
@@ -378,12 +489,14 @@ function stripBundlePrefix(catalogFile: string, modelId: string): string {
 export async function resolveLocalInferenceLoadArgs(
 	installed: InstalledModel,
 	overrides?: LocalInferenceLoadOverrides,
+	options: ResolveLocalInferenceLoadArgsOptions = {},
 ): Promise<LocalInferenceLoadArgs> {
 	const args: LocalInferenceLoadArgs = { modelPath: installed.path };
 	const catalog = findCatalogModel(installed.id);
 	const runtime = catalog?.runtime;
+	const manifestLoader = options.manifestLoader ?? defaultManifestLoader;
 
-	applyCatalogDefaults(args, catalog);
+	applyCatalogDefaults(args, installed, catalog, manifestLoader);
 
 	// WS2: when the tier declares vision and the per-tier mmproj GGUF is
 	// already on disk, plumb the path. The text load is never gated on

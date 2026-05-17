@@ -226,7 +226,16 @@ function canFit(
 	catalog: CatalogModel[],
 	options: { installed?: InstalledModel; manifestLoader?: ManifestLoader } = {},
 ): boolean {
+	if (!hasUsableCpuBackendForRecommendation(hardware)) return false;
 	return assessCatalogModelFit(hardware, model, catalog, options) !== "wontfit";
+}
+
+function hasUsableCpuBackendForRecommendation(
+	hardware: HardwareProbe,
+): boolean {
+	if (hardware.gpu) return true;
+	if (hardware.arch !== "arm64" && hardware.arch !== "arm") return true;
+	return hardware.cpuFeatures?.neon === true;
 }
 
 /**
@@ -460,11 +469,17 @@ function rankLadderByLongContext(ladder: CatalogModel[]): CatalogModel[] {
  * ladder uses, because the floor is "will it boot at all".
  */
 export function deviceCapsFromProbe(hardware: HardwareProbe): Eliza1DeviceCaps {
-	const backends: Eliza1Backend[] = ["cpu"];
+	const backends: Eliza1Backend[] =
+		hardware.arch === "arm64" || hardware.arch === "arm"
+			? hardware.cpuFeatures?.neon === true
+				? ["cpu"]
+				: []
+			: ["cpu"];
 	if (hardware.gpu) backends.push(hardware.gpu.backend);
 	return {
 		availableBackends: backends,
 		ramMb: Math.round(hardware.totalRamGb * 1024),
+		cpuFeatures: hardware.cpuFeatures,
 	};
 }
 

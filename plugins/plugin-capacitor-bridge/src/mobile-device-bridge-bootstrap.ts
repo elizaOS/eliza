@@ -56,8 +56,8 @@ const ELIZA_1_LOAD_METADATA: Record<
 		contextSize: number;
 	}
 > = {
-	"eliza-1-0_8b": { contextSize: 32768 },
-	"eliza-1-2b": { contextSize: 32768 },
+	"eliza-1-0_8b": { contextSize: 131072 },
+	"eliza-1-2b": { contextSize: 131072 },
 	"eliza-1-4b": { contextSize: 65536 },
 	"eliza-1-9b": { contextSize: 65536 },
 	"eliza-1-27b": { contextSize: 131072 },
@@ -912,7 +912,7 @@ const RECOMMENDED_MODELS: Record<
 	TEXT_EMBEDDING: {
 		id: "eliza-1-embedding",
 		hfRepo: "elizaos/eliza-1",
-		ggufFile: "bundles/2b/embedding/eliza-1-embedding.gguf",
+		ggufFile: "bundles/4b/embedding/eliza-1-embedding.gguf",
 		localFile: "eliza-1-embedding.gguf",
 	},
 };

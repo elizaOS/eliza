@@ -83,6 +83,38 @@ describe("ElizaClient desktop status RPC fallback", () => {
     expect(request).not.toHaveBeenCalled();
   });
 
+  it("uses desktop boot progress when available", async () => {
+    const progress = {
+      state: "running",
+      phase: "running",
+      lastError: null,
+      pluginsLoaded: 22,
+      pluginsFailed: 0,
+      database: "ok",
+      agentName: "Milady",
+      port: 31337,
+      startedAt: 1234,
+      updatedAt: "2026-05-17T00:00:00.000Z",
+    };
+    installDesktopRpc({
+      bootProgress: vi.fn(async () => progress),
+    });
+    const { client, request } = makeClientWithTransport({});
+
+    await expect(client.getBootProgress()).resolves.toEqual(progress);
+
+    expect(request).not.toHaveBeenCalled();
+  });
+
+  it("returns null when desktop boot progress is unavailable", async () => {
+    installDesktopRpc({});
+    const { client, request } = makeClientWithTransport({});
+
+    await expect(client.getBootProgress()).resolves.toBeNull();
+
+    expect(request).not.toHaveBeenCalled();
+  });
+
   it("falls back for self-status and runtime snapshot reads", async () => {
     installDesktopRpc({
       getRuntimeSnapshot: vi.fn(() => new Promise(() => undefined)),

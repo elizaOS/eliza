@@ -1,4 +1,4 @@
-import { parseClampedFloat, parsePositiveInteger } from "@elizaos/agent";
+import { parseClampedFloat, parsePositiveInteger } from "@elizaos/shared";
 import type {
   AgentRuntime,
   Memory,

@@ -88,8 +88,9 @@ import {
   subscribeDesktopBridgeEvent,
   syncDetachedShellLocation,
   TRAY_ACTION_EVENT,
+  VoicePill,
 } from "@elizaos/ui";
-import { type ComponentType, lazy, StrictMode, Suspense } from "react";
+import React, { type ComponentType, lazy, StrictMode, Suspense } from "react";
 import { createRoot } from "react-dom/client";
 import {
   APP_BRANDING_BASE,
@@ -1561,6 +1562,11 @@ function isPhoneCompanionMode(): boolean {
   return getWindowUrlSearchParams().get("mode") === "companion";
 }
 
+function isVoicePillShellMode(): boolean {
+  if (typeof window === "undefined") return false;
+  return getWindowUrlSearchParams().get("shell") === "pill";
+}
+
 function resolveAppWindowSlug(): string | null {
   if (!isAppWindowRoute()) return null;
   const path = getWindowNavigationPath();
@@ -1578,6 +1584,17 @@ function resolveAppWindowSlug(): string | null {
 function mountReactApp(): void {
   const rootEl = document.getElementById("root");
   if (!rootEl) throw new Error("Root element #root not found");
+
+  if (isVoicePillShellMode()) {
+    createRoot(rootEl).render(
+      <ErrorBoundary>
+        <StrictMode>
+          <VoicePill ariaLabel={APP_BRANDING_BASE.appName ?? "Eliza"} />
+        </StrictMode>
+      </ErrorBoundary>,
+    );
+    return;
+  }
 
   const phoneCompanion = isPhoneCompanionMode();
   const detachedShell = isDetachedWindowShell(windowShellRoute);
@@ -2108,6 +2125,12 @@ async function main(): Promise<void> {
     await importSideEffectAppModule("@elizaos/app-model-tester", () =>
       import("@elizaos/app-model-tester"),
     );
+    setupPlatformStyles();
+    mountReactApp();
+    return;
+  }
+
+  if (isVoicePillShellMode()) {
     setupPlatformStyles();
     mountReactApp();
     return;

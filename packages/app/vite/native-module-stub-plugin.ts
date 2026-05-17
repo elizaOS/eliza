@@ -74,7 +74,7 @@ export function generateNodeBuiltinStub(
     // and is a valid class base (so `class X extends noop` works).
     "function noop() { return noop; }",
     "const asyncNoop = () => Promise.resolve();",
-    "const handler = { get(t, p) { if (typeof p === 'symbol') return undefined; if (p === '__esModule') return true; if (p === 'default') return t; if (p === 'prototype') return {}; return noop; }, has() { return true; }, ownKeys() { return []; }, getOwnPropertyDescriptor() { return { configurable: true, enumerable: true }; } };",
+    "const handler = { get(t, p) { if (p === 'prototype' || p === 'name' || p === 'length' || typeof p === 'symbol') return Reflect.get(t, p); if (p === '__esModule') return true; if (p === 'default') return t; return noop; }, has() { return true; }, ownKeys(t) { return Reflect.ownKeys(t); }, getOwnPropertyDescriptor(t, p) { return Reflect.getOwnPropertyDescriptor(t, p) ?? { configurable: true, enumerable: true, writable: true, value: noop }; } };",
     "const stub = new Proxy({}, handler);",
     "export default stub;",
   ];

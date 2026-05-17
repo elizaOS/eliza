@@ -1,4 +1,50 @@
+export { resolveAppBranding } from "@elizaos/shared";
 export * from "@elizaos/ui";
+export {
+  client,
+  type AppRunSummary,
+  type AppSessionJsonValue,
+  type BabylonActivityItem,
+  type BabylonAgentStatus,
+  type BabylonChatMessage,
+  type BabylonTeamAgent,
+} from "@elizaos/ui/api";
+export {
+  type IosRuntimeConfig,
+  resolveIosRuntimeConfig,
+} from "@elizaos/ui/platform/ios-runtime";
+export { registerDetailExtension } from "@elizaos/ui/components/apps/extensions/registry";
+export type { AppDetailExtensionProps } from "@elizaos/ui/components/apps/extensions/types";
+export {
+  formatDetailTimestamp,
+  selectLatestRunForApp,
+  SurfaceBadge,
+  SurfaceCard,
+  SurfaceEmptyState,
+  SurfaceGrid,
+  SurfaceSection,
+  type SurfaceTone,
+  toneForHealthState,
+  toneForStatusText,
+  toneForViewerAttachment,
+} from "@elizaos/ui/components/apps/extensions/surface";
+export { registerOverlayApp } from "@elizaos/ui/components/apps/overlay-app-registry";
+export type {
+  OverlayApp,
+  OverlayAppContext,
+} from "@elizaos/ui/components/apps/overlay-app-api";
+export {
+  GameOperatorShell,
+  type GameOperatorAction,
+  type GameOperatorEvent,
+} from "@elizaos/ui/components/apps/surfaces/GameOperatorShell";
+export { registerOperatorSurface } from "@elizaos/ui/components/apps/surfaces/registry";
+export type { AppOperatorSurfaceProps } from "@elizaos/ui/components/apps/surfaces/types";
+export { PagePanel } from "@elizaos/ui/components/composites/page-panel";
+export { Button } from "@elizaos/ui/components/ui/button";
+export { Input } from "@elizaos/ui/components/ui/input";
+export { Spinner } from "@elizaos/ui/components/ui/spinner";
+export { useApp } from "@elizaos/ui/state/useApp";
 export {
   DESKTOP_TRAY_MENU_ITEMS,
   DesktopSurfaceNavigationRuntime,
@@ -6,6 +52,11 @@ export {
   DetachedShellRoot,
 } from "./runtime/desktop";
 export { AppWindowRenderer } from "./runtime/desktop/AppWindowRenderer";
+export {
+  type AutomationNodeContributorContext,
+  registerAutomationNodeContributor,
+} from "./api/automation-node-contributors";
+export { getHostExecutionCapabilities } from "./services/task-host-capabilities";
 
 export type CompatRuntimeState = {
   current: unknown;
@@ -40,36 +91,6 @@ export async function readCompatJsonBody(): Promise<unknown> {
 export function sharedVault(): never {
   throw new Error("sharedVault is server-only");
 }
-
-// `IosLocalAgentNativeRequestOptions`, `IosLocalAgentNativeRequestResult`, and
-// `primeIosFullBunRuntime` live in app-core (moved from @elizaos/ui in Phase 5C).
-// The published @elizaos/ui dist still carries the old type declarations, creating
-// an ambiguous star-export when browser.ts re-exports both. Pin app-core's version.
-export type {
-  IosLocalAgentNativeRequestOptions,
-  IosLocalAgentNativeRequestResult,
-} from "./api/ios-local-agent-transport";
-export { primeIosFullBunRuntime } from "./api/ios-local-agent-transport";
-// Reach-through to the full app-core surface so eliza's `main.tsx` can
-// resolve desktop runtime symbols that the minimal browser entry omits. UI
-// symbols are bridged from `@elizaos/ui` for legacy plugin UI modules, but
-// AppWindowRenderer is exported explicitly above so the same-named UI renderer
-// does not create an ambiguous star export. We import from
-// `./index.ts` (the source barrel) — tsconfig.build.json has
-// `rewriteRelativeImportExtensions: true`, so this becomes `./index.js`
-// in the published dist. Same file at runtime; no pre-built `dist/`
-// required for local-source consumers (vite in milady's source mode).
-// Server-only re-exports inside the barrel (account-pool,
-// onboarding-routes, etc.) are kept renderer-safe by stubbing
-// `@elizaos/agent` and `@elizaos/plugin-elizacloud` to browser stubs
-// (see apps/app/vite.config.ts native-module-stub plugin).
-export * from "./index.ts";
-// `ConfigField` and `getPlugins` exist in both `@elizaos/ui` (UI component +
-// runtime helper) and the app-core registry barrel. Pin the registry side
-// explicitly so eliza's main.tsx gets the registry `ConfigField` type it
-// expects; UI consumers can still import the component directly from
-// `@elizaos/ui`.
-export { type ConfigField, getPlugins } from "./index.ts";
 
 // Noop stub for the removed desktop-onboarding runtime. The mobile/web
 // renderer does not mount it; it exists for legacy unconditional imports.

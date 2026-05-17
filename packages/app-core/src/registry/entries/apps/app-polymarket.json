@@ -24,7 +24,7 @@
     "capabilities": ["polymarket", "prediction-markets", "trading", "wallet"],
     "curatedSlug": "polymarket",
     "routePlugin": {
-      "specifier": "@elizaos/plugin-polymarket-app",
+      "specifier": "@elizaos/plugin-polymarket-app/plugin",
       "exportName": "polymarketPlugin"
     }
   }

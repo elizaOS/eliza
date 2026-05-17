@@ -154,7 +154,13 @@ def test_scambench_spec_only_includes_scambench(publish_dataset):
 
 def test_synthesized_spec_only_small_subdirs(publish_dataset):
     spec = publish_dataset._spec_synthesized()
-    allowed_subs = {"action_examples", "action_pairs", "core_prompts"}
+    allowed_subs = {
+        "action_examples",
+        "action_pairs",
+        "core_prompts",
+        "evaluators",
+        "phase3",
+    }
     for f in spec.files:
         rel = f.relative_to(ROOT)
         # data/synthesized/<sub>/<file>.jsonl
@@ -164,6 +170,15 @@ def test_synthesized_spec_only_small_subdirs(publish_dataset):
             rel.parts[2] in allowed_subs
         ), f"unexpected synthesized subdir: {rel.parts[2]}"
         assert f.suffix == ".jsonl"
+
+
+def test_combined_spec_includes_all_consolidated_paths(publish_dataset):
+    spec = publish_dataset._spec_combined()
+    targets = set(spec.path_in_repo.values())
+    assert {"train.jsonl", "val.jsonl", "test.jsonl", "manifest.json"} <= targets
+    assert any(t.startswith("synthesized/evaluators/") for t in targets)
+    assert any(t.startswith("synthesized/phase3/") for t in targets)
+    assert "sft/0_6b/UPLOAD_MANIFEST.json" in targets
 
 
 def test_abliteration_spec_is_pointer_only(publish_dataset):

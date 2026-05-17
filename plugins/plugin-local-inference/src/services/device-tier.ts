@@ -126,17 +126,20 @@ function isMobile(probe: HardwareProbe): boolean {
 }
 
 /**
- * Compute the AVX2 baseline. The hardware probe has no direct AVX2 field
- * today — assume modern Apple Silicon (no AVX, but has Neon) and any
- * Linux/Win x86_64 ≥ 4 cores qualifies. CPU < 4 cores fails.
+ * Compute the CPU SIMD baseline. The hardware probe has no direct AVX2 field
+ * today for x86_64, so Linux/Win x86_64 ≥ 4 cores qualifies. ARM must expose
+ * NEON/Advanced SIMD in the probe; when ARM feature data is absent, do not
+ * claim the CPU route.
  *
  * This is a coarse heuristic; the precise check belongs in the FFI layer
  * (it can `cpuid` the actual flags). The tier classifier just refuses POOR
  * when the probe is clearly under-equipped.
  */
 function hasAvx2Baseline(probe: HardwareProbe): boolean {
-	if (probe.appleSilicon) return true; // M-series Neon is the equivalent baseline.
-	if (probe.arch !== "x64" && probe.arch !== "arm64") return false;
+	if (probe.arch === "arm64" || probe.arch === "arm") {
+		return probe.cpuFeatures?.neon === true && probe.cpuCores >= 4;
+	}
+	if (probe.arch !== "x64") return false;
 	return probe.cpuCores >= 4;
 }
 

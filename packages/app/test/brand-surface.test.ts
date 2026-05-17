@@ -128,4 +128,15 @@ describe("brand surfaces", () => {
     }
     expect(offenders).toEqual([]);
   });
+
+  it("desktop pill shell mounts the minimal voice pill instead of the full app", () => {
+    const src = read("src/main.tsx");
+    expect(src).toContain('getWindowUrlSearchParams().get("shell") === "pill"');
+    expect(src).toMatch(
+      /if \(isVoicePillShellMode\(\)\) \{[\s\S]*?<VoicePill[\s\S]*?return;[\s\S]*?\}/,
+    );
+    expect(src).toMatch(
+      /if \(isVoicePillShellMode\(\)\) \{[\s\S]*?setupPlatformStyles\(\);[\s\S]*?mountReactApp\(\);[\s\S]*?return;[\s\S]*?\}/,
+    );
+  });
 });

@@ -244,16 +244,13 @@ export const ABI_TARGETS = [
   },
 ];
 
-// `*-fused` android targets that match dflash's target list one-for-one.
+// `*-fused` android targets that are wired to real AOSP artifacts.
 // Membership in this set is the only way the fused (omnivoice-grafted) build
 // path activates from this script — there is no env-var shortcut and no
-// implicit upgrade from a non-fused `--abi` invocation. Mirrors the dflash
-// build script's FUSED_TARGETS check at scripts/build-llama-cpp-dflash.mjs.
+// implicit upgrade from a non-fused `--abi` invocation.
 export const FUSED_ANDROID_TARGETS = Object.freeze([
   "android-arm64-cpu-fused",
-  "android-arm64-vulkan-fused",
   "android-x86_64-cpu-fused",
-  "android-x86_64-vulkan-fused",
 ]);
 
 /**
@@ -277,17 +274,22 @@ export function parseAndroidTarget(target) {
       `[compile-libllama] unsupported --target ${target}. ` +
         `Supported: ${[
           "android-arm64-cpu",
-          "android-arm64-vulkan",
           "android-arm64-cpu-fused",
-          "android-arm64-vulkan-fused",
           "android-x86_64-cpu",
-          "android-x86_64-vulkan",
           "android-x86_64-cpu-fused",
-          "android-x86_64-vulkan-fused",
         ].join(", ")}`,
     );
   }
   const [, arch, backend] = match;
+  if (backend === "vulkan") {
+    throw new Error(
+      `[compile-libllama] unsupported --target ${target}: Android Vulkan ` +
+        `artifacts are not wired in this musl AOSP path yet. Refusing to ` +
+        `produce a CPU-only/basic libllama build for a Vulkan target. Use ` +
+        `android-${arch}-cpu${fused ? "-fused" : ""} or add real GGML_VULKAN ` +
+        `CMake flags plus Vulkan backend shared-object staging first.`,
+    );
+  }
   const androidAbi = arch === "x86_64" ? "x86_64" : "arm64-v8a";
   return { target, arch, backend, fused, androidAbi };
 }
@@ -315,7 +317,7 @@ export function parseArgs(argv) {
     // Optional explicit --target=android-<arch>-<backend>[-fused] triples
     // (see parseAndroidTarget). When present, this list takes precedence
     // over --abi (which is the legacy bulk-build entry point that produces
-    // both libllama.so for cpu+vulkan, no fusion).
+    // CPU-only libllama.so for one or both ABIs, no fusion).
     targets: [],
     skipIfPresent: false,
     jobs: Math.max(1, Math.min(os.cpus().length, 8)),
@@ -359,6 +361,8 @@ export function parseArgs(argv) {
       // Validates the triple and records it. Resolved further below.
       args.targets.push(parseAndroidTarget(value));
       i += 1;
+    } else if (arg.startsWith("--target=")) {
+      args.targets.push(parseAndroidTarget(arg.slice("--target=".length)));
     } else if (arg === "--dry-run") {
       args.dryRun = true;
     } else if (arg === "--jobs" || arg === "-j") {
@@ -376,8 +380,9 @@ export function parseArgs(argv) {
           "[--assets-dir <PATH>] [--cache-dir <PATH>] [--src-dir <PATH>] " +
           "[--abi <arm64-v8a|x86_64>] [--target <android-<arch>-<backend>[-fused]>] " +
           "[--jobs <N>] [--skip-if-present] [--dry-run]\n" +
-          "  --target <TRIPLE>  Build a single target. Triples match the dflash build\n" +
-          "                    script: android-{arm64,x86_64}-{cpu,vulkan}[-fused].\n" +
+          "  --target <TRIPLE>  Build a single target: android-{arm64,x86_64}-cpu[-fused].\n" +
+          "                    Android Vulkan targets fail closed until GGML_VULKAN\n" +
+          "                    flags and Vulkan backend artifact staging are wired.\n" +
           "                    -fused enables the omnivoice graft (same as dflash's\n" +
           "                    *-fused desktop targets) — one binary serving text +\n" +
           "                    POST /v1/audio/speech.\n" +

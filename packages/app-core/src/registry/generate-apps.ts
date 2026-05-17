@@ -36,7 +36,7 @@ const INTERNAL_TOOLS: InternalToolDef[] = [
     groupOrder: 0,
     icon: "Calendar",
     routePlugin: {
-      specifier: "@elizaos/plugin-lifeops",
+      specifier: "@elizaos/plugin-lifeops/routes/plugin",
       exportName: "lifeopsPlugin",
     },
   },
@@ -209,7 +209,7 @@ const CURATED_APPS: CuratedDef[] = [
     dependsOn: ["wallet"],
     capabilities: ["vincent", "delegated-trading", "wallet"],
     routePlugin: {
-      specifier: "@elizaos/plugin-vincent",
+      specifier: "@elizaos/plugin-vincent/plugin",
       exportName: "vincentPlugin",
     },
   },
@@ -226,7 +226,7 @@ const CURATED_APPS: CuratedDef[] = [
     dependsOn: ["wallet"],
     capabilities: ["hyperliquid", "trading", "wallet"],
     routePlugin: {
-      specifier: "@elizaos/plugin-hyperliquid-app",
+      specifier: "@elizaos/plugin-hyperliquid-app/plugin",
       exportName: "hyperliquidPlugin",
     },
   },
@@ -243,7 +243,7 @@ const CURATED_APPS: CuratedDef[] = [
     dependsOn: ["wallet"],
     capabilities: ["polymarket", "prediction-markets", "trading", "wallet"],
     routePlugin: {
-      specifier: "@elizaos/plugin-polymarket-app",
+      specifier: "@elizaos/plugin-polymarket-app/plugin",
       exportName: "polymarketPlugin",
     },
   },
@@ -257,7 +257,7 @@ const CURATED_APPS: CuratedDef[] = [
     icon: "Briefcase",
     groupOrder: 9,
     routePlugin: {
-      specifier: "@elizaos/plugin-shopify-ui",
+      specifier: "@elizaos/plugin-shopify-ui/plugin",
       exportName: "shopifyPlugin",
     },
   },
@@ -273,7 +273,7 @@ const CURATED_APPS: CuratedDef[] = [
     groupOrder: 100,
     visible: false,
     routePlugin: {
-      specifier: "@elizaos/plugin-steward-app",
+      specifier: "@elizaos/plugin-steward-app/plugin",
       exportName: "stewardPlugin",
     },
   },

@@ -1066,10 +1066,20 @@ public class ElizaAgentService extends Service {
                     // cache priming.
                     agentEnv.put("ELIZA_KOKORO_PREWARM_DELAY_MS", "60000");
                 }
-                if (abiSpeculativeShim.isFile() && !env.containsKey("ELIZA_DFLASH")) {
+                if (abiSpeculativeShim.isFile() && brandedAospBuild && !env.containsKey("ELIZA_DFLASH")) {
                     agentEnv.put("ELIZA_DFLASH", "1");
                     Log.i(TAG, "agent/" + abiDir.getName()
-                        + "/libeliza-llama-speculative-shim.so present; enabling in-process DFlash (ELIZA_DFLASH=1)");
+                        + "/libeliza-llama-speculative-shim.so present on branded AOSP build; enabling in-process DFlash (ELIZA_DFLASH=1)");
+                } else if (abiSpeculativeShim.isFile() && !brandedAospBuild) {
+                    // Ship the speculative shim in stock APKs so explicit
+                    // ELIZA_DFLASH diagnostics still work, but do not make
+                    // DFlash the default merely because the .so is present.
+                    // Pixel APK validation showed the current 2B drafter path
+                    // is functional but slower than target-only decode for
+                    // short chat turns, so stock Android stays target-only
+                    // until benchmark gating or a faster drafter path lands.
+                    Log.i(TAG, "agent/" + abiDir.getName()
+                        + "/libeliza-llama-speculative-shim.so present; leaving DFlash opt-in for stock APK");
                 }
                 boolean brandedAospBuild = BuildConfig.AOSP_BUILD && isBrandedDevice();
                 if (BuildConfig.DEBUG && !env.containsKey("ELIZA_AOSP_LLAMA_DEBUG_LOG")) {

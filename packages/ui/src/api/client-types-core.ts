@@ -143,6 +143,19 @@ export interface AgentStatus {
   startup?: AgentStartupDiagnostics;
 }
 
+export interface AgentBootProgress {
+  state: "not_started" | "starting" | "running" | "stopped" | "error";
+  phase: string | null;
+  lastError: string | null;
+  pluginsLoaded: number | null;
+  pluginsFailed: number | null;
+  database: "ok" | "unknown" | "error" | null;
+  agentName: string | null;
+  port: number | null;
+  startedAt: number | null;
+  updatedAt: string;
+}
+
 export type ProviderModelCategory =
   | "chat"
   | "embedding"

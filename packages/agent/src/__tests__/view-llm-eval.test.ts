@@ -52,8 +52,17 @@ function defaultModel(provider: JudgeProvider): string {
 }
 
 const JUDGE_PROVIDER = detectProvider();
-const JUDGE_MODEL =
-  process.env.VIEW_EVAL_MODEL ?? defaultModel(JUDGE_PROVIDER);
+const JUDGE_MODEL = process.env.VIEW_EVAL_MODEL ?? defaultModel(JUDGE_PROVIDER);
+const CEREBRAS_MIN_REQUEST_INTERVAL_MS = Number.parseInt(
+  process.env.CEREBRAS_MIN_REQUEST_INTERVAL_MS ?? "2500",
+  10,
+);
+const CEREBRAS_MAX_RETRIES = Number.parseInt(
+  process.env.CEREBRAS_MAX_RETRIES ?? "5",
+  10,
+);
+const LIVE_SINGLE_SCENARIO_TIMEOUT_MS = 180_000;
+const LIVE_BATCH_SCENARIO_TIMEOUT_MS = 600_000;
 
 // ---------------------------------------------------------------------------
 // Evaluation types
@@ -79,7 +88,11 @@ interface EvalResult {
 function stubAgentResponse(userMessage: string): string {
   const lower = userMessage.toLowerCase();
 
-  if (lower.includes("show me all") || lower.includes("list") || lower.includes("what views")) {
+  if (
+    lower.includes("show me all") ||
+    lower.includes("list") ||
+    lower.includes("what views")
+  ) {
     return (
       "Here are the available views:\n" +
       "- **Wallet** — Manage your crypto assets and wallet\n" +
@@ -109,7 +122,11 @@ function stubAgentResponse(userMessage: string): string {
     return "I've opened the Wallet view for you. You can now manage your crypto assets.";
   }
 
-  if (lower.includes("go to settings") || lower === "settings" || lower.includes("open settings")) {
+  if (
+    lower.includes("go to settings") ||
+    lower === "settings" ||
+    lower.includes("open settings")
+  ) {
     return "Navigating to Settings now.";
   }
 
@@ -161,7 +178,11 @@ function stubAgentResponse(userMessage: string): string {
     return "Installing the weather plugin… Done! A new Weather view is now available. You can access it from the View Manager.";
   }
 
-  if (lower.includes("click") || lower.includes("press") || lower.includes("button")) {
+  if (
+    lower.includes("click") ||
+    lower.includes("press") ||
+    lower.includes("button")
+  ) {
     return "I've clicked the Send button in the Wallet view for you.";
   }
 
@@ -169,7 +190,11 @@ function stubAgentResponse(userMessage: string): string {
     return "The Wallet view has been refreshed with the latest data.";
   }
 
-  if (lower.includes("fill") || lower.includes("recipient") || lower.includes("address")) {
+  if (
+    lower.includes("fill") ||
+    lower.includes("recipient") ||
+    lower.includes("address")
+  ) {
     return "I've filled in the recipient address field in the wallet Send form.";
   }
 
@@ -177,7 +202,11 @@ function stubAgentResponse(userMessage: string): string {
     return "To send funds, I'll need the recipient address and amount. Please confirm and I'll initiate the transfer in the Wallet view.";
   }
 
-  if (lower.includes("what can you do") || lower.includes("capabilities") || lower.includes("help me")) {
+  if (
+    lower.includes("what can you do") ||
+    lower.includes("capabilities") ||
+    lower.includes("help me")
+  ) {
     return "I can navigate to views, search for capabilities, interact with views on your behalf, and install new plugins. Try saying 'show me all views' to explore what's available.";
   }
 
@@ -188,38 +217,83 @@ function stubAgentResponse(userMessage: string): string {
 // LLM judge
 // ---------------------------------------------------------------------------
 
-async function callCerebrasJudge(
-  prompt: string,
-): Promise<string> {
-  const baseUrl = process.env.CEREBRAS_BASE_URL ?? "https://api.cerebras.ai/v1";
-  const response = await fetch(`${baseUrl}/chat/completions`, {
-    method: "POST",
-    headers: {
-      "Authorization": `Bearer ${process.env.CEREBRAS_API_KEY}`,
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify({
-      model: JUDGE_MODEL,
-      messages: [{ role: "user", content: prompt }],
-      max_tokens: 512,
-      temperature: 0,
-    }),
+const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
+
+let cerebrasQueue: Promise<void> = Promise.resolve();
+let lastCerebrasRequestAt = 0;
+
+async function withCerebrasRateLimit<T>(task: () => Promise<T>): Promise<T> {
+  const previous = cerebrasQueue;
+  let release: () => void = () => {};
+  cerebrasQueue = new Promise((resolve) => {
+    release = resolve;
   });
 
-  if (!response.ok) {
+  await previous;
+  try {
+    const now = Date.now();
+    const elapsed = now - lastCerebrasRequestAt;
+    if (elapsed < CEREBRAS_MIN_REQUEST_INTERVAL_MS) {
+      await sleep(CEREBRAS_MIN_REQUEST_INTERVAL_MS - elapsed);
+    }
+    lastCerebrasRequestAt = Date.now();
+    return await task();
+  } finally {
+    release();
+  }
+}
+
+function retryAfterMs(response: Response, attempt: number): number {
+  const retryAfter = response.headers.get("retry-after");
+  if (retryAfter) {
+    const seconds = Number.parseFloat(retryAfter);
+    if (Number.isFinite(seconds)) {
+      return Math.max(1000, seconds * 1000);
+    }
+  }
+
+  return Math.min(45_000, 5000 * 2 ** attempt);
+}
+
+async function callCerebrasJudge(prompt: string): Promise<string> {
+  const baseUrl = process.env.CEREBRAS_BASE_URL ?? "https://api.cerebras.ai/v1";
+  for (let attempt = 0; attempt <= CEREBRAS_MAX_RETRIES; attempt++) {
+    const response = await withCerebrasRateLimit(() =>
+      fetch(`${baseUrl}/chat/completions`, {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${process.env.CEREBRAS_API_KEY}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          model: JUDGE_MODEL,
+          messages: [{ role: "user", content: prompt }],
+          max_tokens: 512,
+          temperature: 0,
+        }),
+      }),
+    );
+
+    if (response.ok) {
+      const data = (await response.json()) as {
+        choices: { message: { content: string } }[];
+      };
+      return data.choices[0]?.message?.content ?? "";
+    }
+
     const text = await response.text();
+    if (response.status === 429 && attempt < CEREBRAS_MAX_RETRIES) {
+      await sleep(retryAfterMs(response, attempt));
+      continue;
+    }
+
     throw new Error(`Cerebras API error ${response.status}: ${text}`);
   }
 
-  const data = await response.json() as {
-    choices: { message: { content: string } }[];
-  };
-  return data.choices[0]?.message?.content ?? "";
+  throw new Error("Cerebras judge exhausted retries");
 }
 
-async function callAnthropicJudge(
-  prompt: string,
-): Promise<string> {
+async function callAnthropicJudge(prompt: string): Promise<string> {
   const response = await fetch("https://api.anthropic.com/v1/messages", {
     method: "POST",
     headers: {
@@ -239,7 +313,7 @@ async function callAnthropicJudge(
     throw new Error(`Anthropic API error ${response.status}: ${text}`);
   }
 
-  const data = await response.json() as {
+  const data = (await response.json()) as {
     content: { type: string; text: string }[];
   };
   return data.content.find((c) => c.type === "text")?.text ?? "";
@@ -318,92 +392,122 @@ describe.skipIf(!hasAnyCredential)(
   () => {
     // ── Smoke test: single scenario ──────────────────────────────────────
 
-    it('evaluates "show me all views" with score >= 7', async () => {
-      const scenario = getScenarioById("show-all-views");
-      const result = await evaluateScenario(scenario);
+    it(
+      'evaluates "show me all views" with score >= 7',
+      async () => {
+        const scenario = getScenarioById("show-all-views");
+        const result = await evaluateScenario(scenario);
 
-      expect(result.score).toBeGreaterThanOrEqual(7);
-      expect(result.pass).toBe(true);
-    }, 30_000);
+        expect(result.score).toBeGreaterThanOrEqual(7);
+        expect(result.pass).toBe(true);
+      },
+      LIVE_SINGLE_SCENARIO_TIMEOUT_MS,
+    );
 
-    it('evaluates "open wallet" with correct navigation', async () => {
-      const scenario = getScenarioById("open-wallet");
-      const result = await evaluateScenario(scenario);
+    it(
+      'evaluates "open wallet" with correct navigation',
+      async () => {
+        const scenario = getScenarioById("open-wallet");
+        const result = await evaluateScenario(scenario);
 
-      expect(result.score).toBeGreaterThanOrEqual(7);
-      // navigationCorrect may be null if the judge finds it not applicable,
-      // but it should not be false for a navigation scenario.
-      expect(result.navigationCorrect).not.toBe(false);
-    }, 30_000);
+        expect(result.score).toBeGreaterThanOrEqual(7);
+        // navigationCorrect may be null if the judge finds it not applicable,
+        // but it should not be false for a navigation scenario.
+        expect(result.navigationCorrect).not.toBe(false);
+      },
+      LIVE_SINGLE_SCENARIO_TIMEOUT_MS,
+    );
 
     // ── Discovery scenarios ──────────────────────────────────────────────
 
-    it("discovery scenarios score >= 7 on average", async () => {
-      const scenarios = getScenariosByTag("discovery");
-      const results = await Promise.all(scenarios.map(evaluateScenario));
+    it(
+      "discovery scenarios score >= 7 on average",
+      async () => {
+        const scenarios = getScenariosByTag("discovery");
+        const results = await Promise.all(scenarios.map(evaluateScenario));
 
-      const total = results.reduce((sum, r) => sum + r.score, 0);
-      const average = total / results.length;
+        const total = results.reduce((sum, r) => sum + r.score, 0);
+        const average = total / results.length;
 
-      // Surface failures for debugging
-      const failures = results.filter((r) => !r.pass);
-      if (failures.length > 0) {
-        console.error(
-          "Failing discovery scenarios:",
-          failures.map((f) => `${f.scenarioId}: ${f.reasoning}`),
-        );
-      }
+        // Surface failures for debugging
+        const failures = results.filter((r) => !r.pass);
+        if (failures.length > 0) {
+          console.error(
+            "Failing discovery scenarios:",
+            failures.map((f) => `${f.scenarioId}: ${f.reasoning}`),
+          );
+        }
 
-      expect(average).toBeGreaterThanOrEqual(7);
-    }, 120_000);
+        expect(average).toBeGreaterThanOrEqual(7);
+      },
+      LIVE_BATCH_SCENARIO_TIMEOUT_MS,
+    );
 
     // ── Navigation scenarios ─────────────────────────────────────────────
 
-    it("navigation scenarios have correct navigation direction", async () => {
-      const scenarios = getScenariosByTag("navigation").slice(0, 5); // cap for cost
-      const results = await Promise.all(scenarios.map(evaluateScenario));
+    it(
+      "navigation scenarios have correct navigation direction",
+      async () => {
+        const scenarios = getScenariosByTag("navigation").slice(0, 5); // cap for cost
+        const results = await Promise.all(scenarios.map(evaluateScenario));
 
-      const withNavAssertion = results.filter(
-        (r) => r.navigationCorrect !== null,
-      );
-      const correct = withNavAssertion.filter((r) => r.navigationCorrect === true);
+        const withNavAssertion = results.filter(
+          (r) => r.navigationCorrect !== null,
+        );
+        const correct = withNavAssertion.filter(
+          (r) => r.navigationCorrect === true,
+        );
 
-      // At least 80% of applicable navigation scenarios should be correct.
-      if (withNavAssertion.length > 0) {
-        expect(correct.length / withNavAssertion.length).toBeGreaterThanOrEqual(0.8);
-      }
-    }, 120_000);
+        // At least 80% of applicable navigation scenarios should be correct.
+        if (withNavAssertion.length > 0) {
+          expect(
+            correct.length / withNavAssertion.length,
+          ).toBeGreaterThanOrEqual(0.8);
+        }
+      },
+      LIVE_BATCH_SCENARIO_TIMEOUT_MS,
+    );
 
     // ── Error handling scenarios ─────────────────────────────────────────
 
-    it("error-handling scenarios respond helpfully without crashing", async () => {
-      const scenarios = getScenariosByTag("error-handling");
-      const results = await Promise.all(scenarios.map(evaluateScenario));
+    it(
+      "error-handling scenarios respond helpfully without crashing",
+      async () => {
+        const scenarios = getScenariosByTag("error-handling");
+        const results = await Promise.all(scenarios.map(evaluateScenario));
 
-      const failures = results.filter((r) => r.score < 5);
-      expect(failures).toHaveLength(0);
-    }, 120_000);
+        const failures = results.filter((r) => r.score < 5);
+        expect(failures).toHaveLength(0);
+      },
+      LIVE_BATCH_SCENARIO_TIMEOUT_MS,
+    );
 
     // ── Full suite summary (informational) ───────────────────────────────
 
-    it("full journey suite: at least 80% of scenarios score >= 7", async () => {
-      // Run all scenarios but cap to avoid excessive API cost in tests.
-      const scenarios = VIEW_USER_JOURNEYS.slice(0, 10);
-      const results = await Promise.all(scenarios.map(evaluateScenario));
+    it(
+      "full journey suite: at least 80% of scenarios score >= 7",
+      async () => {
+        // Run all scenarios but cap to avoid excessive API cost in tests.
+        const scenarios = VIEW_USER_JOURNEYS.slice(0, 10);
+        const results = await Promise.all(scenarios.map(evaluateScenario));
 
-      const passing = results.filter((r) => r.pass);
-      const passRate = passing.length / results.length;
+        const passing = results.filter((r) => r.pass);
+        const passRate = passing.length / results.length;
 
-      const failures = results.filter((r) => !r.pass);
-      if (failures.length > 0) {
-        console.error(
-          "Failing scenarios:",
-          failures.map((f) => `${f.scenarioId} (score=${f.score}): ${f.reasoning}`),
-        );
-      }
+        const failures = results.filter((r) => !r.pass);
+        if (failures.length > 0) {
+          console.error(
+            "Failing scenarios:",
+            failures.map(
+              (f) => `${f.scenarioId} (score=${f.score}): ${f.reasoning}`,
+            ),
+          );
+        }
 
-      expect(passRate).toBeGreaterThanOrEqual(0.8);
-    }, 300_000);
+        expect(passRate).toBeGreaterThanOrEqual(0.8);
+      },
+      LIVE_BATCH_SCENARIO_TIMEOUT_MS,
+    );
   },
 );
 
@@ -425,8 +529,14 @@ describe("view-user-journeys scenario library", () => {
   it("all scenarios have required fields", () => {
     for (const s of VIEW_USER_JOURNEYS) {
       expect(s.id, `scenario ${s.id} missing id`).toBeTruthy();
-      expect(s.description, `scenario ${s.id} missing description`).toBeTruthy();
-      expect(s.userMessage, `scenario ${s.id} missing userMessage`).toBeTruthy();
+      expect(
+        s.description,
+        `scenario ${s.id} missing description`,
+      ).toBeTruthy();
+      expect(
+        s.userMessage,
+        `scenario ${s.id} missing userMessage`,
+      ).toBeTruthy();
       expect(
         s.expectedBehavior,
         `scenario ${s.id} missing expectedBehavior`,
@@ -435,10 +545,7 @@ describe("view-user-journeys scenario library", () => {
         s.verificationCriteria.length,
         `scenario ${s.id} has no verification criteria`,
       ).toBeGreaterThan(0);
-      expect(
-        s.tags.length,
-        `scenario ${s.id} has no tags`,
-      ).toBeGreaterThan(0);
+      expect(s.tags.length, `scenario ${s.id} has no tags`).toBeGreaterThan(0);
     }
   });
 

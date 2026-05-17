@@ -2870,6 +2870,7 @@
   "startupshell.ScanningNetwork": "Scanning your network...",
   "startupshell.SignInElizaCloud": "Sign in with Eliza Cloud",
   "startupshell.SplashTagline": "Your local-first AI assistant",
+  "startupshell.Starting": "Starting…",
   "startupshell.WaitingForAuth": "Waiting for auth...",
   "startupshell.YourCloudAgents": "Your cloud agents",
   "statusbar.GoLive": "Go Live",

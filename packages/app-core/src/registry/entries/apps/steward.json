@@ -24,7 +24,7 @@
     "capabilities": ["wallet", "trading"],
     "curatedSlug": "steward",
     "routePlugin": {
-      "specifier": "@elizaos/plugin-steward-app",
+      "specifier": "@elizaos/plugin-steward-app/plugin",
       "exportName": "stewardPlugin"
     }
   }

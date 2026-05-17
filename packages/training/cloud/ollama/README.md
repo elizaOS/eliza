@@ -1,7 +1,7 @@
 # Ollama Modelfiles for the Eliza-1 series
 
-Three Modelfiles, one per published size, all pulling from the
-public `elizaos/eliza-1-Nb-gguf` sibling repos on HuggingFace.
+Three Modelfiles, one per published size, all pulling GGUF artifacts from the
+public consolidated `elizaos/eliza-1` bundle repo on HuggingFace.
 
 | File | Size | Target GPU | Resident VRAM |
 |------|-----:|-----------|--------------:|

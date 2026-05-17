@@ -23,7 +23,7 @@
     "type": "server-launch",
     "capabilities": ["training", "trajectories"],
     "routePlugin": {
-      "specifier": "@elizaos/plugin-training",
+      "specifier": "@elizaos/plugin-training/setup-routes",
       "exportName": "trainingPlugin"
     }
   }

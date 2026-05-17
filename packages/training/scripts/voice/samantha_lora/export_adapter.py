@@ -41,6 +41,7 @@ import hashlib
 import json
 import logging
 import os
+import shutil
 import subprocess
 import sys
 from datetime import datetime, timezone
@@ -127,11 +128,16 @@ def _export_merged(
     if rc != 0:
         raise SystemExit(f"[export_adapter] merge failed: extract returned {rc}")
 
+    canonical_voice_bin = out_dir / "voice.bin"
+    if voice_bin.name != canonical_voice_bin.name:
+        shutil.copy2(voice_bin, canonical_voice_bin)
+
     return {
         "format": "kokoro_voice_bin",
-        "filename": voice_bin.name,
-        "sha256": _sha256(voice_bin),
-        "size_bytes": voice_bin.stat().st_size,
+        "filename": canonical_voice_bin.name,
+        "voice_id_filename": voice_bin.name,
+        "sha256": _sha256(canonical_voice_bin),
+        "size_bytes": canonical_voice_bin.stat().st_size,
     }
 
 

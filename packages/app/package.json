@@ -51,8 +51,8 @@
     "cap:open:ios": "node scripts/ensure-capacitor-platform.mjs ios && capacitor open ios",
     "cap:open:android": "node scripts/ensure-capacitor-platform.mjs android && capacitor open android",
     "build:web": "node ../../node_modules/@elizaos/vitest-vite/bin/vite.js build",
-    "predev": "node ../shared-brand/scripts/sync-to-public.mjs ./public",
-    "prebuild": "node ../shared-brand/scripts/sync-to-public.mjs ./public"
+    "predev": "node ../shared-brand/scripts/sync-to-public.mjs ./public --clouds",
+    "prebuild": "node ../shared-brand/scripts/sync-to-public.mjs ./public --clouds"
   },
   "dependencies": {
     "@capacitor/android": "8.3.4",

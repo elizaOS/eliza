@@ -78,6 +78,18 @@ export const ABI_TARGETS = [
   },
 ];
 
+function failUnsupportedTarget(target) {
+  throw new Error(
+    `[compile-libllama] unsupported --target ${target}. ` +
+      `This legacy distro-android script only builds CPU libllama.so via ` +
+      `--abi <arm64-v8a|x86_64>. It does not wire DFlash/OmniVoice fused ` +
+      `artifacts or Android Vulkan backend shared objects, so refusing to ` +
+      `produce a CPU-only/basic libllama build for a requested target. Use ` +
+      `packages/app-core/scripts/aosp/compile-libllama.mjs for supported ` +
+      `android-*-cpu[-fused] targets.`,
+  );
+}
+
 function defaultAssetsDir(brand) {
   if (brand.androidAssetsDir) {
     return path.resolve(repoRoot, brand.androidAssetsDir);
@@ -140,6 +152,10 @@ export function parseSubArgs(argv, brand) {
       }
       args.abis = [value];
       i += 1;
+    } else if (arg === "--target") {
+      failUnsupportedTarget(readFlagValue(arg, i));
+    } else if (arg.startsWith("--target=")) {
+      failUnsupportedTarget(arg.slice("--target=".length));
     } else if (arg === "--jobs" || arg === "-j") {
       const value = Number.parseInt(readFlagValue(arg, i), 10);
       if (!Number.isFinite(value) || value <= 0) {
@@ -153,7 +169,8 @@ export function parseSubArgs(argv, brand) {
       console.log(
         "Usage: node packages/scripts/distro-android/compile-libllama.mjs [--brand-config <PATH>] " +
           "[--assets-dir <PATH>] [--cache-dir <PATH>] [--abi <arm64-v8a|x86_64>] " +
-          "[--jobs <N>] [--skip-if-present]",
+          "[--jobs <N>] [--skip-if-present]\n" +
+          "  --target is intentionally unsupported here; Vulkan/fused targets must fail closed.",
       );
       process.exit(0);
     } else {

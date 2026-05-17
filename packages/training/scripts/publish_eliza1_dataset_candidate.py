@@ -32,7 +32,7 @@ from typing import Any, Iterable
 
 ROOT = Path(__file__).resolve().parent.parent
 DEFAULT_CANDIDATE_ROOT = ROOT / "data" / "candidates" / "eliza1"
-DEFAULT_REPO_ID = "elizaos/eliza-1-training-candidates"
+DEFAULT_REPO_ID = "elizaos/eliza-1-training"
 SCHEMA_VERSION = "eliza1.dataset_candidate.v1"
 ELIZA1_TRAJECTORY_RECORD_SCHEMA = "eliza.eliza1_trajectory_record.v1"
 PRIVACY_ATTESTATION_SCHEMA = "eliza.privacy_filter_attestation.v1"

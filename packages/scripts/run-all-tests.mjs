@@ -27,7 +27,7 @@
  *     shard (1-indexed N).
  *
  *   --no-cloud
- *     Skip the cloud test step at the end.
+ *     Skip cloud package tasks and the cloud test step at the end.
  *
  *   --filter=<regex>
  *     Match against `<packageName> (<relativeDir>)#<scriptName>`.
@@ -104,7 +104,7 @@ if (helpFlag) {
       "Usage: node packages/scripts/run-all-tests.mjs [options]",
       "",
       "Options:",
-      "  --no-cloud           Skip the final cloud test step.",
+      "  --no-cloud           Skip cloud package tasks and the final cloud test step.",
       "  --filter=<regex>     Filter package tasks by `<name> (<dir>)#<script>`.",
       "  --pattern=<regex>    Same surface as --filter; combined via intersection.",
       "  --only=e2e | test    Forward VITEST_E2E_ONLY / VITEST_UNIT_ONLY env to children.",
@@ -204,6 +204,9 @@ const MAX_CAPTURED_OUTPUT_CHARS = 16_000;
 const ADDITIONAL_PACKAGE_DIRS = [
   path.join(repoRoot, "packages", "app-core", "platforms", "electrobun"),
 ];
+const NO_CLOUD_PACKAGE_DIRS = new Set([
+  path.join("packages", "cloud-e2e"),
+]);
 
 // Combine --filter, --pattern, and TEST_PACKAGE_FILTER. All three (when set)
 // must match a task's label for it to run — they intersect rather than
@@ -759,6 +762,12 @@ for (const packageJsonPath of packageJsonPaths) {
   const scriptNames = collectScriptsToRun(scripts);
 
   if (scriptNames.length === 0) {
+    continue;
+  }
+  if (noCloud && NO_CLOUD_PACKAGE_DIRS.has(relativeDir)) {
+    console.log(
+      `[eliza-test] SKIP ${packageJson.name || relativeDir} (${relativeDir}) (cloud package skipped by --no-cloud)`,
+    );
     continue;
   }
 
