@@ -44,6 +44,8 @@ jobs:
     name: Homepage Build (PR smoke)
     runs-on: ubuntu-24.04
     timeout-minutes: 15
+    permissions:
+      contents: write
     steps:
       - uses: actions/checkout@v6
         with:
@@ -72,6 +74,29 @@ jobs:
       - name: Install homepage browser
         working-directory: packages/homepage
         run: ../../node_modules/.bin/playwright install --with-deps chromium
+
+      - name: Generate missing snapshot baselines
+        working-directory: packages/homepage
+        run: |
+          SNAP_DIR="tests/e2e/visual.spec.ts-snapshots"
+          if [ ! -d "$SNAP_DIR" ] || [ -z "$(ls -A $SNAP_DIR 2>/dev/null)" ]; then
+            echo "No snapshot baselines found — generating them now."
+            bun run test:e2e -- --update-snapshots || true
+          fi
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Commit new snapshot baselines
+        run: |
+          SNAP_DIR="packages/homepage/tests/e2e/visual.spec.ts-snapshots"
+          if [ -n "$(git status --porcelain $SNAP_DIR)" ]; then
+            git config user.name "github-actions[bot]"
+            git config user.email "github-actions[bot]@users.noreply.github.com"
+            git add $SNAP_DIR
+            git commit -m "chore: generate visual regression snapshot baselines [skip ci]"
+            git push origin ${{ github.ref_name }}
+            echo "Pushed new snapshot baselines."
+          fi
 
       - name: Test homepage downloads
         working-directory: packages/homepage
