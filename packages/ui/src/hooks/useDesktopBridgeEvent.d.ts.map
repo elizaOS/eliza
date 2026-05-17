@@ -1,1 +1,0 @@
-{"version":3,"file":"useDesktopBridgeEvent.d.ts","sourceRoot":"","sources":["useDesktopBridgeEvent.ts"],"names":[],"mappings":"AAAA;;;;;;;;;;;;;;;;;;;;;;GAsBG;AAKH,MAAM,WAAW,yBAAyB;IACxC,UAAU,EAAE,MAAM,CAAC;IACnB,UAAU,EAAE,MAAM,CAAC;CACpB;AAED,wBAAgB,qBAAqB,CAAC,CAAC,GAAG,OAAO,EAC/C,OAAO,EAAE,yBAAyB,EAClC,OAAO,EAAE,CAAC,OAAO,EAAE,CAAC,KAAK,IAAI,GAC5B,IAAI,CAeN"}

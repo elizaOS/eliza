@@ -1,8 +1,0 @@
-
-.env.local
-convex/_generated/
-!convex/_generated/
-convex/_generated/*
-!convex/_generated/*.d.ts
-.env.local
-node_modules/

@@ -1,8 +1,0 @@
-#!/bin/sh
-
-set -e
-
-# Import physical_hard_disk
-. /usr/lib/bilibop/common.sh
-
-physical_hard_disk /

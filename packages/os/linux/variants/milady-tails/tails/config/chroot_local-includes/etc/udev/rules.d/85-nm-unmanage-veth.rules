@@ -1,1 +1,0 @@
-ENV{INTERFACE}=="veth*", ENV{NM_UNMANAGED}="1"

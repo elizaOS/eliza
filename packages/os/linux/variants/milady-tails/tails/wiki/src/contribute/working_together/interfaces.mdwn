@@ -1,3 +1,0 @@
-[[!meta title="Interfaces between roles and teams"]]
-
-[[!map pages="contribute/working_together/interfaces/*"]]

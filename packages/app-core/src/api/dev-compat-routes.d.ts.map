@@ -1,1 +1,0 @@
-{"version":3,"file":"dev-compat-routes.d.ts","sourceRoot":"","sources":["dev-compat-routes.ts"],"names":[],"mappings":"AAAA,OAAO,KAAK,IAAI,MAAM,WAAW,CAAC;AAElC,OAAO,EACL,KAAK,kBAAkB,EAExB,MAAM,uBAAuB,CAAC;AAY/B;;;;;;;;GAQG;AACH,wBAAsB,qBAAqB,CACzC,GAAG,EAAE,IAAI,CAAC,eAAe,EACzB,GAAG,EAAE,IAAI,CAAC,cAAc,EACxB,KAAK,EAAE,kBAAkB,GACxB,OAAO,CAAC,OAAO,CAAC,CAsLlB"}

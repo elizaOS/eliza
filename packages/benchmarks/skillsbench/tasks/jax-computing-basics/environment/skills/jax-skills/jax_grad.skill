@@ -1,9 +1,0 @@
-name: jax-grad
-description: Compute gradient of logistic loss
-inputs:
-  x: jax.Array
-  y: jax.Array
-  w: jax.Array
-outputs:
-  grad: jax.Array
-implementation: jax_skills.logistic_grad

@@ -1,4 +1,0 @@
-[[!meta title="pages tagged job/staff"]]
-
-[[!inline pages="tagged(job/staff)" actions="no" archive="yes"
-feedshow=10]]

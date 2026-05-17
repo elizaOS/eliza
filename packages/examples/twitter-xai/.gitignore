@@ -1,9 +1,0 @@
-.env
-.env.*
-.venv/
-__pycache__/
-
-# Polling cursor files (runtime state)
-python/.x_last_seen_id
-rust/xai-agent/.x_last_seen_id
-

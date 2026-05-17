@@ -1,4 +1,0 @@
-build/
-build-*/
-*.o
-*.a

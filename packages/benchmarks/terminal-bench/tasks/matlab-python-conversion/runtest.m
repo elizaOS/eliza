@@ -1,3 +1,0 @@
-function runtest(folder)
-  % … code …
-endfunction

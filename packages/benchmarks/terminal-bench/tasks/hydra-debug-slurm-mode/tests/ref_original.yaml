@@ -1,6 +1,0 @@
-notes: my-experiment
-debug: false
-train:
-  batch_size: 32
-  learning_rate: 1.0e-05
-  max_num_epochs: 100

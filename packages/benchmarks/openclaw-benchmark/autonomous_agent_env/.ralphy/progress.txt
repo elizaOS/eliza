@@ -1,4 +1,0 @@
-# Ralphy Progress Log
-
-- [✓] 2026-02-04 21:05 - echo hello
-- [✗] 2026-02-04 21:43 - Verify Ralphy CLI installation

@@ -1,1 +1,0 @@
-{"version":3,"file":"ConversationsSidebar.d.ts","sourceRoot":"","sources":["ConversationsSidebar.tsx"],"names":[],"mappings":"AAoEA,KAAK,2BAA2B,GAAG,SAAS,GAAG,YAAY,CAAC;AAE5D,UAAU,yBAAyB;IACjC,MAAM,CAAC,EAAE,OAAO,CAAC;IACjB,OAAO,CAAC,EAAE,MAAM,IAAI,CAAC;IACrB,OAAO,CAAC,EAAE,2BAA2B,CAAC;CACvC;AAwCD,wBAAgB,oBAAoB,CAAC,EACnC,MAAc,EACd,OAAO,EACP,OAAmB,GACpB,EAAE,yBAAyB,2CAmuB3B"}

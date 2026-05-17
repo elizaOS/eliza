@@ -1,9 +1,0 @@
-#!/bin/sh
-
-set -e
-set -u
-
-# shellcheck source=tails-shell-library/libgnome-bookmarks.sh
-. /usr/local/lib/tails-shell-library/libgnome-bookmarks.sh
-
-add_gnome_bookmark "$@"

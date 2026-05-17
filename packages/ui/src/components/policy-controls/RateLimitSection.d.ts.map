@@ -1,1 +1,0 @@
-{"version":3,"file":"RateLimitSection.d.ts","sourceRoot":"","sources":["RateLimitSection.tsx"],"names":[],"mappings":"AAEA,OAAO,KAAK,EAAE,eAAe,EAAE,MAAM,SAAS,CAAC;AAsC/C,wBAAgB,gBAAgB,CAAC,EAC/B,MAAM,EACN,QAAQ,GACT,EAAE;IACD,MAAM,EAAE,eAAe,CAAC;IACxB,QAAQ,EAAE,CAAC,MAAM,EAAE,eAAe,KAAK,IAAI,CAAC;CAC7C,2CAuBA;AAED,wBAAgB,gBAAgB,CAAC,MAAM,EAAE,eAAe,GAAG,MAAM,CAEhE"}

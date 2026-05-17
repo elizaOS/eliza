@@ -1,3 +1,0 @@
-[[!meta title="Release notes for the latest version"]]
-
-[[!inline pages="page(news/version_*)" show="1" feeds="no" sort="-meta(date) age -path"]]

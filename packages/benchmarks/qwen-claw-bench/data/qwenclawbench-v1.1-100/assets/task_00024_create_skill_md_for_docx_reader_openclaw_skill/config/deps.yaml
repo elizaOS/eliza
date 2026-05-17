@@ -1,5 +1,0 @@
-skill: docx-reader
-dependencies:
-  - name: python-docx
-    version: "0.8.11"
-    source: pypi

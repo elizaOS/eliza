@@ -1,1 +1,0 @@
-import "./register-routes.ts";

@@ -1,3 +1,0 @@
-[[commands]]
-allowed_user = "amnesia"
-executable = "/usr/local/sbin/unsafe-browser"

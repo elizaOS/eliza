@@ -1,1 +1,0 @@
-# Orchestrator lifecycle benchmark tests.
