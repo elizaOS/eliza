@@ -697,10 +697,26 @@ function collectLucideReactNames() {
   const names = new Set(["Icon", "LucideIcon", "createLucideIcon"]);
   const appRuntimeDir = path.join(stage, "Resources/app");
   const namedImportRe =
-    /\b(?:import|export)\s+(?:type\s+)?\{([\s\S]*?)\}\s+from\s*["']lucide-react["']/g;
+    /\b(?:import|export)\s+(?:type\s+)?\{([^;]*)\}\s+from\s*["']lucide-react["']/g;
   const destructuredImportRe =
     /\b(?:const|let|var)\s+\{([\s\S]*?)\}\s*=\s*(?:await\s+)?(?:import\(["']lucide-react["']\)|require\(["']lucide-react["']\))/g;
   const supportedExts = new Set([".js", ".jsx", ".ts", ".tsx"]);
+
+  function addNamesFromClause(clause) {
+    const imports = clause
+      .replace(/\/\*[\s\S]*?\*\//g, "")
+      .replace(/\/\/.*$/gm, "")
+      .split(",");
+    for (const rawName of imports) {
+      const cleaned = rawName.trim();
+      if (!cleaned) continue;
+      const name = cleaned
+        .replace(/^type\s+/, "")
+        .split(/\s+as\s+/)[0]
+        ?.trim();
+      if (name && /^[A-Za-z_$][\w$]*$/.test(name)) names.add(name);
+    }
+  }
 
   walkFiles(appRuntimeDir, (filePath) => {
     if (!supportedExts.has(path.extname(filePath))) return;
@@ -710,19 +726,7 @@ function collectLucideReactNames() {
       ...text.matchAll(namedImportRe),
       ...text.matchAll(destructuredImportRe),
     ]) {
-      const imports = match[1]
-        .replace(/\/\*[\s\S]*?\*\//g, "")
-        .replace(/\/\/.*$/gm, "")
-        .split(",");
-      for (const rawName of imports) {
-        const cleaned = rawName.trim();
-        if (!cleaned) continue;
-        const name = cleaned
-          .replace(/^type\s+/, "")
-          .split(/\s+as\s+/)[0]
-          ?.trim();
-        if (name && /^[A-Za-z_$][\w$]*$/.test(name)) names.add(name);
-      }
+      addNamesFromClause(match[1]);
     }
   });
 
@@ -736,7 +740,7 @@ function lucideReactStubWrites() {
     "Resources/app/eliza-dist/node_modules/lucide-react",
   );
   const names = new Set(collectLucideReactNames());
-  for (const name of ["Feather", "Loader2", "Settings"]) {
+  for (const name of ["Feather", "Loader2", "Maximize2", "Settings"]) {
     names.add(name);
   }
   const packageJson = {

@@ -273,6 +273,7 @@ grep -q 'strictPortBindingEnabled' \
 grep -q 'Strict port binding is enabled' \
     "${REPO_ROOT}/packages/agent/src/api/server.ts"
 grep -q '"Feather"' scripts/prepare-milady-app-overlay.mjs
+grep -q '"Maximize2"' scripts/prepare-milady-app-overlay.mjs
 grep -q 'Resources/app' scripts/prepare-milady-app-overlay.mjs
 grep -q 'matchAll(namedImportRe)' scripts/prepare-milady-app-overlay.mjs
 grep -q 'matchAll(destructuredImportRe)' scripts/prepare-milady-app-overlay.mjs
@@ -759,6 +760,7 @@ for (const root of [
       "export const createLucideIcon",
       "export const Feather",
       "export const Loader2",
+      "export const Maximize2",
       "export const Settings",
     ]) {
       if (!lucideIndex.includes(expected)) {
