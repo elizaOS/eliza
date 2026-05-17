@@ -4,6 +4,7 @@ name: Cloud Tests
 # Source: cloud/.github/workflows/tests.yml in the original elizaOS/cloud repo.
 
 on:
+  workflow_dispatch:
   pull_request:
     branches: [develop, main]
     paths:
