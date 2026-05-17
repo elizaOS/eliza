@@ -63,7 +63,7 @@ jobs:
             bun-ubuntu-
 
       - name: Install workspace deps
-        run: bun install --frozen-lockfile
+        run: bun install --no-save --ignore-scripts
 
       - name: Pre-build packages/agent dist (required by Dockerfile.ci)
         run: bun run --cwd packages/agent build:docker-dist
