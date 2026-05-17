@@ -105,8 +105,6 @@ export async function signInternalToken(options: SignTokenOptions): Promise<{
 /**
  * Verify an internal JWT and extract its payload.
  *
- * @param token - The JWT to verify
- * @returns Verification result with payload if valid
  * @throws Error if token is invalid, expired, or has wrong issuer/audience
  */
 export async function verifyInternalToken(token: string): Promise<VerificationResult> {
@@ -134,9 +132,6 @@ export async function verifyInternalToken(token: string): Promise<VerificationRe
 
 /**
  * Extract the Bearer token from an Authorization header.
- *
- * @param authHeader - The Authorization header value
- * @returns The token if valid Bearer format, null otherwise
  */
 export function extractBearerToken(authHeader: string | null): string | null {
   if (!authHeader) return null;

@@ -11,6 +11,7 @@ import {
   Users as UsersIcon,
 } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
+import { toast } from "sonner";
 
 interface AppUserDisplay {
   id: string;
@@ -58,7 +59,7 @@ export function AppUsers({ appId }: AppUsersProps) {
         setVisitors(visitorsData.visitors);
       }
     } catch (error) {
-      console.error("Failed to fetch data:", error);
+      toast.error("Failed to load app users");
     } finally {
       setIsLoading(false);
     }

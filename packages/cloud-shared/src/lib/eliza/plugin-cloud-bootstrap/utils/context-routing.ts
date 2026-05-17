@@ -227,6 +227,9 @@ export function setContextRoutingMetadata(message: Memory, routing: ContextRouti
 
   const existingMetadata = isRecord(message.content.metadata) ? message.content.metadata : {};
 
+  // Content has a strict index signature (ContentValue), but metadata is a
+  // plain record of plugin-extension data. The cast is intentional: metadata
+  // is assigned via the Content index signature at runtime.
   message.content = {
     ...message.content,
     metadata: {

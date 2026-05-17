@@ -4,6 +4,18 @@
 // Node-only code.
 
 const noop = () => undefined;
+const noopProxyHandler: ProxyHandler<typeof noop> = {
+  get: (_target, key) => (key === "prototype" ? noop.prototype : noop),
+  apply: () => undefined,
+  ownKeys: (target) => Reflect.ownKeys(target),
+  getOwnPropertyDescriptor: (target, key) =>
+    Reflect.getOwnPropertyDescriptor(target, key) ?? {
+      configurable: true,
+      enumerable: false,
+      value: noop,
+      writable: true,
+    },
+};
 export const ACCOUNT_CREDENTIAL_PROVIDER_IDS = [];
 export const AccountCredentialRecord = noop;
 export const AGENT_EVENT_ALLOWED_STREAMS = [];
@@ -145,4 +157,4 @@ export const typeWalletCapabilityStatus = noop;
 export const UninstallResult = noop;
 export const validatePluginConfig = noop;
 export const validateMcpServerConfig = noop;
-export default new Proxy(noop, { get: () => noop, apply: () => undefined });
+export default new Proxy(noop, noopProxyHandler);

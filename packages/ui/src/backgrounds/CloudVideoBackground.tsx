@@ -110,6 +110,8 @@ export function CloudVideoBackground({
         playsInline
         preload="metadata"
         poster={poster}
+        disableRemotePlayback
+        disablePictureInPicture
         style={{
           position: "absolute",
           inset: 0,

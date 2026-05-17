@@ -198,9 +198,9 @@ function redactCallback(callback: Record<string, unknown>): SensitiveRequestCall
 }
 
 function redactDelivery(delivery: Record<string, unknown>): SensitiveRequestDeliveryPlan {
-  return redactSensitiveRequestMetadata(
-    delivery as never,
-  ) as unknown as SensitiveRequestDeliveryPlan;
+  // redactSensitiveRequestMetadata returns unknown; we assert the redacted
+  // delivery is still a valid SensitiveRequestDeliveryPlan shape.
+  return redactSensitiveRequestMetadata(delivery) as SensitiveRequestDeliveryPlan;
 }
 
 function isSecretTarget(
@@ -246,7 +246,9 @@ function redactTarget(
       storage: target.storage ? { kind: target.storage.kind, key: target.storage.key } : undefined,
     };
   }
-  return redactSensitiveRequestMetadata(target as never) as unknown as SensitiveRequestTarget;
+  // redactSensitiveRequestMetadata returns unknown; assert the redacted
+  // target is still a valid SensitiveRequestTarget.
+  return redactSensitiveRequestMetadata(target) as SensitiveRequestTarget;
 }
 
 function actorTypeForAudit(
@@ -349,6 +351,9 @@ export class SensitiveRequestsService {
       source_room_id: params.sourceRoomId,
       source_channel_type: params.sourceChannelType,
       source_platform: params.sourcePlatform,
+      // Drizzle schemas type JSONB columns as Record<string, unknown>.
+      // SensitiveRequestTarget/Policy/Callback lack index signatures, so the
+      // cast requires going through unknown first.
       target: params.target as unknown as Record<string, unknown>,
       policy: policy as unknown as Record<string, unknown>,
       delivery: {

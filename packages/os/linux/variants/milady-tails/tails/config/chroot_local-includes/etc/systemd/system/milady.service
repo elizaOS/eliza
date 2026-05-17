@@ -12,3 +12,6 @@ ExecStart=/usr/local/lib/elizaos/milady-keeper
 Restart=always
 RestartSec=2
 SyslogIdentifier=milady-supervisor
+NoNewPrivileges=yes
+PrivateTmp=yes
+ProtectSystem=full

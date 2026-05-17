@@ -22,7 +22,7 @@ export default function LandingHeader() {
       <div className="flex h-16 items-center justify-between w-full px-6 sm:px-8 lg:px-12">
         <Link to="/" className="flex items-center gap-3">
           <img
-            src={`${BRAND_PATHS.logos}/${LOGO_FILES.cloudBlack}`}
+            src={`${BRAND_PATHS.logos}/${LOGO_FILES.cloudWhite}`}
             alt="Eliza Cloud"
             className="h-7 w-auto sm:h-8"
             draggable={false}

@@ -80,18 +80,6 @@ export interface DashboardData {
 }
 
 /**
- * Fetches the credit balance for an organization.
- */
-async function getCreditBalance(organizationId: string): Promise<number> {
-  try {
-    const org = await organizationsRepository.findById(organizationId);
-    return org ? Number(org.credit_balance) : 0;
-  } catch {
-    return 0;
-  }
-}
-
-/**
  * Internal function to fetch dashboard data (not cached at React level).
  *
  * @param user - Authenticated user with organization.
@@ -193,7 +181,7 @@ async function fetchDashboardDataInternal(
       created_at: a.created_at,
       updated_at: a.updated_at,
     })),
-    creditBalance: await getCreditBalance(organizationId),
+    creditBalance: org ? Number(org.credit_balance) : 0,
   };
 }
 

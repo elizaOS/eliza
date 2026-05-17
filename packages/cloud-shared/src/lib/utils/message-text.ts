@@ -20,9 +20,6 @@ const EXCLUDED_FIELDS = new Set(["source", "action", "inReplyTo", "type", "id"])
 /**
  * Extract text content from a message content object.
  * Handles multiple storage formats used by elizaOS.
- *
- * @param content - The parsed message content object
- * @returns The extracted text content, or empty string if not found
  */
 export function extractTextFromContent(content: unknown): string {
   if (!content || typeof content !== "object") {
@@ -66,9 +63,6 @@ export function extractTextFromContent(content: unknown): string {
 /**
  * Extract text content from message metadata.
  * Some elizaOS messages store text in metadata instead of content.
- *
- * @param metadata - The message metadata object
- * @returns The extracted text content, or empty string if not found
  */
 export function extractTextFromMetadata(metadata: unknown): string {
   if (!metadata || typeof metadata !== "object") {
@@ -90,10 +84,6 @@ export function extractTextFromMetadata(metadata: unknown): string {
 
 /**
  * Extract text content from a message, checking both content and metadata.
- *
- * @param content - The parsed message content object
- * @param metadata - The message metadata object (optional)
- * @returns The extracted text content, or empty string if not found
  */
 export function extractMessageText(content: unknown, metadata?: unknown): string {
   // Try content first

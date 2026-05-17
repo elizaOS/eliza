@@ -92,10 +92,7 @@ export type AvatarStyle = "random" | "eliza";
 /**
  * Generate a default avatar URL for a new character.
  * Randomly selects from the curated CLOUD_AGENT_AVATARS list.
- *
- * @param name - The character name (used for deterministic selection if needed)
- * @param options - Optional configuration
- * @returns A local avatar URL from /public/avatars/
+ * When a name is provided, selection is deterministic (same name → same avatar).
  */
 export function generateDefaultAvatarUrl(
   name?: string,
@@ -171,10 +168,6 @@ export function getAvailableAvatarStyles(): Array<{
 
 /**
  * Ensure a character has an avatar URL, using the fallback if needed.
- *
- * @param avatarUrl - The character's current avatar URL (may be null/undefined/empty)
- * @param name - Optional character name for deterministic avatar selection
- * @returns A valid avatar URL (either the original or a deterministic/fallback avatar)
  */
 export function ensureAvatarUrl(avatarUrl: string | null | undefined, name?: string): string {
   if (avatarUrl && avatarUrl.trim() !== "") {

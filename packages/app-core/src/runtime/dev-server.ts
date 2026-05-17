@@ -428,12 +428,15 @@ async function main() {
   }
   syncResolvedApiPort(process.env, actualPort);
   // Invalidate cached CORS port set so the new port is allowed.
+  // Dynamic import may be unavailable in non-server build targets (mobile); ignore.
   try {
     const { invalidateCorsAllowedPorts } = await import(
       "../api/server-cors.js"
     );
     invalidateCorsAllowedPorts();
-  } catch {}
+  } catch {
+    // server-cors not available in this build target — CORS cache stays stale until restart
+  }
   // Use console.log for startup timing to bypass logger filtering
   console.log(
     `${getLogPrefix()} API server ready on port ${actualPort} (${apiReady - apiStart}ms)`,

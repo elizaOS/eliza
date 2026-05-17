@@ -268,6 +268,8 @@ export class RoomsService {
           metadata: roomInput.metadata,
           createdAt: new Date(),
         } as typeof roomTable.$inferInsert)
+        // Drizzle's .returning() infers the insert model type, not the select
+        // model / elizaOS Room shape. The DB returns all columns; the cast is safe.
         .returning()) as unknown as Room[];
       const room = rows[0];
 

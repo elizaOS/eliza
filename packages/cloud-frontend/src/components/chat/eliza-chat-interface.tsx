@@ -469,7 +469,7 @@ export function ElizaChatInterface({
         }
       } catch (err) {
         if (err instanceof Error && err.name === "AbortError") return;
-        console.error("Error loading messages:", err);
+        toast.error("Failed to load messages");
       } finally {
         if (
           loadMessagesRequestIdRef.current === requestId &&
@@ -1062,7 +1062,6 @@ export function ElizaChatInterface({
 
         return audioUrl;
       } catch (error) {
-        console.error("TTS error:", error);
         toast.error("Failed to generate speech");
         throw error;
       }
@@ -1145,7 +1144,6 @@ export function ElizaChatInterface({
           });
         }
       } catch (error) {
-        console.error("[ElizaChat] File upload error:", error);
         toast.error("Upload failed", {
           description: "Network error - please try again",
         });
@@ -1200,7 +1198,6 @@ export function ElizaChatInterface({
         // Use ref to avoid TDZ - sendMessage is defined later in the component
         await sendMessageRef.current?.(transcript);
       } catch (error) {
-        console.error("[ElizaChat STT] Processing error:", error);
         toast.error("Failed to process audio. Please try again.");
       } finally {
         // Cleanup: Clear recording and reset processing state

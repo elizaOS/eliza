@@ -5,29 +5,40 @@ set -eu
 interval="${MILADY_KEEPER_INTERVAL:-5}"
 runtime_dir=/run/user/1000
 bus="unix:path=${runtime_dir}/bus"
-user_unit_dir=/home/amnesia/.config/systemd/user
+maintenance_flag=/run/elizaos/persistence-maintenance
 
 clear_user_unit_override() {
-    for path in \
-        "${user_unit_dir}/elizaos-agent.service" \
-        "${user_unit_dir}/elizaos-agent.service.d" \
-        "${user_unit_dir}/default.target.wants/elizaos-agent.service" \
-        "${user_unit_dir}/elizaos-renderer.service" \
-        "${user_unit_dir}/elizaos-renderer.service.d" \
-        "${user_unit_dir}/default.target.wants/elizaos-renderer.service" \
-        "${user_unit_dir}/milady.service" \
-        "${user_unit_dir}/milady.service.d" \
-        "${user_unit_dir}/default.target.wants/milady.service" \
-        "${user_unit_dir}/desktop.target.wants/milady.service"
-    do
-        [ -e "${path}" ] || [ -L "${path}" ] || continue
-        rm -rf "${path}"
-    done
+    runuser -u amnesia -- env HOME=/home/amnesia sh -eu <<'EOF'
+user_unit_dir="${HOME}/.config/systemd/user"
+mkdir -p "${user_unit_dir}/default.target.wants" \
+    "${user_unit_dir}/desktop.target.wants"
+
+for path in \
+    "${user_unit_dir}/elizaos-agent.service" \
+    "${user_unit_dir}/elizaos-agent.service.d" \
+    "${user_unit_dir}/default.target.wants/elizaos-agent.service" \
+    "${user_unit_dir}/elizaos-renderer.service" \
+    "${user_unit_dir}/elizaos-renderer.service.d" \
+    "${user_unit_dir}/default.target.wants/elizaos-renderer.service" \
+    "${user_unit_dir}/milady.service" \
+    "${user_unit_dir}/milady.service.d" \
+    "${user_unit_dir}/default.target.wants/milady.service" \
+    "${user_unit_dir}/desktop.target.wants/milady.service" \
+    "${user_unit_dir}/tails-dump-user-env.service" \
+    "${user_unit_dir}/tails-dump-user-env.service.d" \
+    "${user_unit_dir}/default.target.wants/tails-dump-user-env.service"
+do
+    [ -e "${path}" ] || [ -L "${path}" ] || continue
+    rm -rf -- "${path}" || true
+done
+EOF
 }
 
 while :; do
-    if [ -S "${runtime_dir}/bus" ]; then
-        clear_user_unit_override
+    if [ -e "${maintenance_flag}" ]; then
+        :
+    elif [ -S "${runtime_dir}/bus" ]; then
+        clear_user_unit_override || true
         runuser -u amnesia -- env \
             HOME=/home/amnesia \
             XDG_RUNTIME_DIR="${runtime_dir}" \

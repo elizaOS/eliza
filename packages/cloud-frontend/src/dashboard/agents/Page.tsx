@@ -38,8 +38,25 @@ export default function AgentDashboardPage() {
   const agentsQuery = useAgents();
   const credits = useCreditsBalance();
 
+  // Helmet must render even during the auth-loading short-circuit; without
+  // this, the homepage <title> bleeds through while auth resolves.
+  const head = (
+    <Helmet>
+      <title>Instances</title>
+      <meta
+        name="description"
+        content="View, launch, and manage your instances backed by Eliza Cloud."
+      />
+    </Helmet>
+  );
+
   if (!session.ready)
-    return <DashboardLoadingState label="Loading instances" />;
+    return (
+      <>
+        {head}
+        <DashboardLoadingState label="Loading instances" />
+      </>
+    );
 
   const agents = agentsQuery.data ?? [];
   const sandboxes = agents.map(toAgentRow);
@@ -52,13 +69,7 @@ export default function AgentDashboardPage() {
 
   return (
     <>
-      <Helmet>
-        <title>Instances</title>
-        <meta
-          name="description"
-          content="View, launch, and manage your instances backed by Eliza Cloud."
-        />
-      </Helmet>
+      {head}
       <ElizaAgentsPageWrapper>
         <DashboardPageContainer className="space-y-6">
           <div className="space-y-1.5">

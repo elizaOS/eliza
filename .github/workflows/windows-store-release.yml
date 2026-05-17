@@ -147,7 +147,7 @@ jobs:
 
   submit-to-store:
     needs: [build-msix]
-    if: needs.build-msix.result == 'success' && inputs.submit_to_store == true && needs.build-msix.outputs.can_submit == 'true'
+    if: needs.build-msix.result == 'success' && inputs.submit_to_store != false && needs.build-msix.outputs.can_submit == 'true'
     runs-on: windows-2025
     timeout-minutes: 30
     steps:

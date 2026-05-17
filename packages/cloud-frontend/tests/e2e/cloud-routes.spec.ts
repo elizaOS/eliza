@@ -132,6 +132,12 @@ const dashboardRoutes = [
   "/dashboard/containers/container_1",
   "/dashboard/containers/agents/agent_1",
   "/dashboard/api-explorer",
+];
+
+// Admin routes require an admin role beyond the basic test-auth user, so they
+// redirect to /login under the standard Playwright session. They have their
+// own auth-required smoke instead of being in dashboardRoutes.
+const adminDashboardRoutes = [
   "/dashboard/admin",
   "/dashboard/admin/infrastructure",
   "/dashboard/admin/metrics",
@@ -333,6 +339,16 @@ for (const [from, toPattern] of dashboardRedirects) {
     await setTestAuth(page);
     await page.goto(from);
     await expect(page).toHaveURL(toPattern);
+  });
+}
+
+for (const route of adminDashboardRoutes) {
+  test(`admin route requires admin auth: ${route}`, async ({ page }) => {
+    // Standard test-auth user is NOT an admin, so admin routes must bounce.
+    // This is the inverse of "renders" — we assert the gate is in place.
+    await setTestAuth(page);
+    await page.goto(route);
+    await expect(page).toHaveURL(/\/login\?returnTo=/);
   });
 }
 

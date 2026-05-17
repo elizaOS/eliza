@@ -1,10 +1,10 @@
-import { BRAND_PATHS, LOGO_FILES } from "@elizaos/shared-brand";
+import { BRAND_PATHS, EXTERNAL_URLS, LOGO_FILES } from "@elizaos/shared-brand";
 import { ArrowRight, Download } from "lucide-react";
 import { releaseData } from "@/generated/release-data";
 
-const cloudUrl = "https://elizacloud.ai/login?intent=launch";
-const osUrl = "https://elizaos.ai";
-const releaseFallbackUrl = "https://github.com/elizaOS/eliza/releases";
+const cloudUrl = `${EXTERNAL_URLS.cloud}/login?intent=launch`;
+const osUrl = EXTERNAL_URLS.os;
+const releaseFallbackUrl = `${EXTERNAL_URLS.github}/releases`;
 
 const primaryDownloadIds = [
   "macos-arm64",
@@ -72,13 +72,35 @@ export default function MarketingPage() {
             playsInline
             preload="metadata"
             poster={BRAND_PATHS.poster}
+            disableRemotePlayback
+            disablePictureInPicture
           >
+            <source
+              src={`${BRAND_PATHS.clouds}/clouds_4x_1080p.webm`}
+              type="video/webm"
+              media="(min-width: 1280px)"
+            />
+            <source
+              src={`${BRAND_PATHS.clouds}/clouds_4x_1080p.mp4`}
+              type="video/mp4"
+              media="(min-width: 1280px)"
+            />
             <source
               src={`${BRAND_PATHS.clouds}/clouds_4x_720p.webm`}
               type="video/webm"
+              media="(min-width: 768px)"
             />
             <source
               src={`${BRAND_PATHS.clouds}/clouds_4x_720p.mp4`}
+              type="video/mp4"
+              media="(min-width: 768px)"
+            />
+            <source
+              src={`${BRAND_PATHS.clouds}/clouds_4x_480p.webm`}
+              type="video/webm"
+            />
+            <source
+              src={`${BRAND_PATHS.clouds}/clouds_4x_480p.mp4`}
               type="video/mp4"
             />
           </video>
@@ -112,9 +134,9 @@ export default function MarketingPage() {
 
         <section className="brand-section brand-section--blue">
           <div className="app-band-inner app-action-band">
-            <h2 className="app-h2 app-h2--light">Install the OS.</h2>
+            <h2 className="app-h2 app-h2--light">Install elizaOS.</h2>
             <a href={osUrl} className="app-cta app-cta--white">
-              ElizaOS
+              elizaOS
               <ArrowRight className="app-icon" aria-hidden="true" />
             </a>
           </div>
@@ -122,7 +144,7 @@ export default function MarketingPage() {
 
         <section className="brand-section brand-section--orange">
           <div className="app-band-inner app-action-band">
-            <h2 className="app-h2">Run in cloud.</h2>
+            <h2 className="app-h2">Run in Cloud.</h2>
             <a href={cloudUrl} className="app-cta app-cta--black">
               Launch Eliza
               <ArrowRight className="app-icon" aria-hidden="true" />

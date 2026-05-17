@@ -2,15 +2,16 @@ import {
   BRAND_COLORS,
   BRAND_PATHS,
   CONCEPT_PRODUCT_IMAGES,
+  EXTERNAL_URLS,
   LOGO_FILES,
 } from "@elizaos/shared-brand";
 import { StewardAuth } from "@stwd/sdk";
 import { ArrowRight, CreditCard, Download, ShoppingBag } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 
-const appUrl = "https://eliza.app";
-const cloudUrl = "https://elizacloud.ai/login?intent=launch";
-const checkoutBaseUrl = "https://elizaos.ai/checkout";
+const appUrl = EXTERNAL_URLS.app;
+const cloudUrl = `${EXTERNAL_URLS.cloud}/login?intent=launch`;
+const checkoutBaseUrl = `${EXTERNAL_URLS.os}/checkout`;
 const cloudApiUrl =
   import.meta.env.VITE_ELIZA_CLOUD_API_URL || "https://api.elizacloud.ai";
 const stewardApiUrl = `${cloudApiUrl.replace(/\/$/, "")}/steward`;
@@ -82,10 +83,10 @@ const hardwareProducts: Product[] = [
   {
     slug: "phone",
     sku: "elizaos-phone",
-    name: "ElizaOS Phone",
+    name: "Eliza Phone",
     ships: "Pre-order",
     image: CONCEPT_PRODUCT_IMAGES.phone,
-    imageAlt: "ElizaOS phone concept",
+    imageAlt: "Eliza Phone concept",
     summary: "The runtime in your hand.",
     detail: "AOSP build with elizaOS as the shell.",
     colors: ["Orange", "Blue", "White", "Blue glass"],
@@ -575,7 +576,7 @@ function HomePage() {
         <section className="band band-blue hero-os">
           <div className="band-inner hero-os-inner">
             <img
-              src="/brand/logos/logo_white_bluebg.svg"
+              src={`${BRAND_PATHS.logos}/${LOGO_FILES.markWhiteBlueBg}`}
               alt=""
               aria-hidden="true"
               className="hero-mark"

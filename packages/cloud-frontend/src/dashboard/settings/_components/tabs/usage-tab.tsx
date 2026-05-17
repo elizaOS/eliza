@@ -12,6 +12,7 @@
 import { BrandCard, CornerBrackets } from "@elizaos/ui";
 import { DollarSign, Info, Loader2 } from "lucide-react";
 import { useEffect, useState } from "react";
+import { toast } from "sonner";
 import type { UserWithOrganizationDto } from "@/types/cloud-api";
 import type { SettingsTab } from "../types";
 
@@ -87,7 +88,7 @@ export function UsageTab({ user, onTabChange }: UsageTabProps) {
 
         setDailyBurn(burn);
       } catch (error) {
-        console.error("Error fetching daily burn:", error);
+        toast.error("Failed to load daily burn rate");
       } finally {
         setLoading(false);
       }

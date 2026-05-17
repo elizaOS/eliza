@@ -167,7 +167,7 @@ export async function verifyManifestSignature(
  * Convenience wrapper: encode a string body to UTF-8 bytes and verify. The
  * caller MUST pass the EXACT body bytes the server signed — JSON `.parse`
  * round-trips lose whitespace and would change the hash. The Cloud
- * endpoint at `cloud/apps/api/v1/voice-models/catalog/route.ts` signs the
+ * endpoint at `packages/cloud-api/v1/voice-models/catalog/route.ts` signs the
  * serialized response body before sending; mirror that on the client by
  * verifying the raw response text before parsing.
  */

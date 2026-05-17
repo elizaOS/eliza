@@ -79,9 +79,6 @@ export function trackOrphanedBlobBatch(
  *
  * SECURITY: Validates that the extracted userId is a valid UUID format to prevent
  * path traversal attacks (e.g., "../../../etc/passwd").
- *
- * @param url - The blob URL to extract the user ID from.
- * @returns The user ID if valid, null otherwise.
  */
 export function extractUserIdFromBlobPath(url: string): string | null {
   try {

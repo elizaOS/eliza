@@ -13,6 +13,10 @@ import {
 } from "@elizaos/core";
 import { stableSerialize } from "../stable-serialize";
 
+// Uses any[] for args because defineCompatMethod passes concrete implementations
+// with specific typed parameter lists. TypeScript requires function argument
+// contravariance, so unknown[] would reject those implementations.
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
 type CompatDatabaseMethod = (...args: any[]) => Promise<unknown> | unknown;
 type CompatDatabaseAdapter = IDatabaseAdapter & Record<string, unknown>;
 type LegacyDeleteAllMemories = (roomId: UUID, tableName: string) => Promise<void>;

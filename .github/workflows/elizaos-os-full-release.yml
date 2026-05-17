@@ -11,6 +11,24 @@ on:
         default: false
 
 jobs:
+  # Compute the bare semver version string (no leading 'v') from the ref name.
+  # On a 'release' event github.ref_name is the tag (e.g. v2.0.1); we strip
+  # the prefix here so downstream jobs get a clean version like '2.0.1'.
+  prepare:
+    runs-on: ubuntu-24.04
+    outputs:
+      version: ${{ steps.parse.outputs.version }}
+      tag: ${{ steps.parse.outputs.tag }}
+    steps:
+      - name: Parse version from ref
+        id: parse
+        run: |
+          TAG="${{ github.ref_name }}"
+          VERSION="${TAG#v}"
+          echo "tag=$TAG"     >> "$GITHUB_OUTPUT"
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+          echo "Resolved: tag=$TAG version=$VERSION"
+
   trigger-linux-iso:
     uses: ./.github/workflows/build-linux-iso.yml
     with:
@@ -30,12 +48,12 @@ jobs:
     secrets: inherit
 
   publish-apt:
-    needs: [trigger-debian-package]
+    needs: [prepare, trigger-debian-package]
     if: needs.trigger-debian-package.result == 'success'
     uses: ./.github/workflows/publish-apt-repo.yml
     with:
-      version: ${{ github.ref_name }}
-      tag: ${{ github.ref_name }}
+      version: ${{ needs.prepare.outputs.version }}
+      tag: ${{ needs.prepare.outputs.tag }}
       channel: stable
     secrets: inherit
 

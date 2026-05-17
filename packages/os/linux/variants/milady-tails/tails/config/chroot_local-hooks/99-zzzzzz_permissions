@@ -12,20 +12,24 @@ echo "Ensuring filesystem permissions are correct"
 chmod 1777 /tmp
 
 chown root:root \
+    /usr/local/lib/elizaos \
     /usr/local/bin/milady \
     /usr/local/lib/elizaos/capability-runner \
     /usr/local/lib/elizaos/elizaos-webkit-shell \
     /usr/local/lib/elizaos/milady-keeper \
+    /usr/local/lib/elizaos/persistence-maintenance \
     /usr/local/lib/elizaos/renderer-server.mjs \
     /usr/local/lib/elizaos/start-elizaos-agent-user \
     /usr/local/lib/elizaos/start-elizaos-browser-user \
     /usr/local/lib/elizaos/start-elizaos-renderer-user \
     /usr/local/lib/elizaos/start-milady-user
 chmod 0755 \
+    /usr/local/lib/elizaos \
     /usr/local/bin/milady \
     /usr/local/lib/elizaos/capability-runner \
     /usr/local/lib/elizaos/elizaos-webkit-shell \
     /usr/local/lib/elizaos/milady-keeper \
+    /usr/local/lib/elizaos/persistence-maintenance \
     /usr/local/lib/elizaos/renderer-server.mjs \
     /usr/local/lib/elizaos/start-elizaos-agent-user \
     /usr/local/lib/elizaos/start-elizaos-browser-user \
@@ -51,3 +55,13 @@ if [ -e /etc/generate-sudoers.d/elizaos-capability-runner.toml ]; then
     chown root:root /etc/generate-sudoers.d/elizaos-capability-runner.toml
     chmod 0644 /etc/generate-sudoers.d/elizaos-capability-runner.toml
 fi
+
+for python_pkg in \
+    /usr/lib/python3/dist-packages/tps \
+    /usr/lib/python3/dist-packages/tps_frontend
+do
+    [ -d "${python_pkg}" ] || continue
+    chown -R root:root "${python_pkg}"
+    find "${python_pkg}" -type d -exec chmod 0755 {} +
+    find "${python_pkg}" -type f -exec chmod go-w {} +
+done
