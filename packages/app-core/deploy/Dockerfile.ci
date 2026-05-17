@@ -147,6 +147,7 @@ WORKDIR /app
 COPY --from=pruner /app /app
 
 ENV NODE_ENV=production
+ENV ELIZA_DISABLE_DIRECT_RUN=1
 ENV ELIZA_DISABLE_EDGE_TTS=1
 ENV TSX_TSCONFIG_PATH=${APP_CORE_DIR}/deploy/tsx-runtime-tsconfig.json
 ENV APP_CORE_DIR=${APP_CORE_DIR}
