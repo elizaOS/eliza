@@ -96,4 +96,60 @@ describe("AssistantOverlay", () => {
     fireEvent.keyDown(document.body, { key: "Escape" });
     expect(onClose).not.toHaveBeenCalled();
   });
+
+  it("moves focus into the dialog when it opens", () => {
+    const triggerButton = document.createElement("button");
+    triggerButton.textContent = "open";
+    document.body.appendChild(triggerButton);
+    triggerButton.focus();
+    expect(document.activeElement).toBe(triggerButton);
+
+    render(
+      <AssistantOverlay phase="summoned" onClose={() => {}}>
+        <button>first-inside</button>
+        <button>second-inside</button>
+      </AssistantOverlay>,
+    );
+
+    // Focus moves to the first focusable descendant inside the dialog.
+    expect(document.activeElement?.textContent).toBe("first-inside");
+
+    triggerButton.remove();
+  });
+
+  it("restores focus to the previously focused element on unmount/close", () => {
+    const triggerButton = document.createElement("button");
+    triggerButton.textContent = "trigger";
+    document.body.appendChild(triggerButton);
+    triggerButton.focus();
+
+    const { unmount } = render(
+      <AssistantOverlay phase="summoned" onClose={() => {}}>
+        <button>inside</button>
+      </AssistantOverlay>,
+    );
+
+    expect(document.activeElement?.textContent).toBe("inside");
+    unmount();
+    expect(document.activeElement).toBe(triggerButton);
+    triggerButton.remove();
+  });
+
+  it("traps Tab inside the dialog (Shift+Tab from first wraps to last)", () => {
+    render(
+      <AssistantOverlay phase="summoned" onClose={() => {}}>
+        <button>alpha</button>
+        <button>omega</button>
+      </AssistantOverlay>,
+    );
+
+    // After open the first descendant has focus.
+    expect(document.activeElement?.textContent).toBe("alpha");
+
+    fireEvent.keyDown(document, { key: "Tab", shiftKey: true });
+    expect(document.activeElement?.textContent).toBe("omega");
+
+    fireEvent.keyDown(document, { key: "Tab" });
+    expect(document.activeElement?.textContent).toBe("alpha");
+  });
 });
