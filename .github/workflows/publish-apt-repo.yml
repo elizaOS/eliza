@@ -62,6 +62,25 @@ jobs:
             echo "can_publish=true" >> "$GITHUB_OUTPUT"
           fi
 
+      - name: Checkout main repo (to create apt-repo branch if needed)
+        if: steps.gpg_check.outputs.can_publish == 'true'
+        uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+          path: main-repo
+
+      - name: Ensure apt-repo branch exists
+        if: steps.gpg_check.outputs.can_publish == 'true'
+        run: |
+          cd main-repo
+          if git ls-remote --heads origin apt-repo | grep -q apt-repo; then
+            echo "apt-repo branch already exists"
+          else
+            echo "apt-repo branch does not exist — creating orphan branch"
+            git push origin "$(git hash-object -t tree /dev/null):refs/heads/apt-repo"
+            echo "Created empty apt-repo branch"
+          fi
+
       - name: Checkout apt-repo branch
         if: steps.gpg_check.outputs.can_publish == 'true'
         uses: actions/checkout@v6
@@ -70,7 +89,7 @@ jobs:
           path: apt-repo
           fetch-depth: 0
 
-      - name: Checkout main repo (for conf files)
+      - name: Checkout release tag (for conf files)
         if: steps.gpg_check.outputs.can_publish == 'true'
         uses: actions/checkout@v6
         with:

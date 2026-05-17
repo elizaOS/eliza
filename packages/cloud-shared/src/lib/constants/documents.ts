@@ -68,9 +68,6 @@ const UNSAFE_FILENAME_CHARS = /[/\\:*?"<>|]/;
 /**
  * Validates that a filename doesn't contain path-unsafe characters.
  * Prevents path traversal attacks like "foo/../../bar.txt".
- *
- * @param filename - The filename to validate.
- * @returns True if the filename is safe to use.
  */
 export function isValidFilename(filename: string): boolean {
   if (!filename || typeof filename !== "string") return false;

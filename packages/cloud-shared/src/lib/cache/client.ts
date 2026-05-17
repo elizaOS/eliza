@@ -626,6 +626,8 @@ export class CacheClient {
     this.nativeRedisReady = false;
     this.nativeRedisConnectPromise = import("wadis")
       .then(({ Wadis }) => {
+        // Wadis's exported types don't exactly match WadisClientLike (the local
+        // structural interface we use). The runtime shape is compatible.
         this.redis = new WadisRedisAdapter(new Wadis() as unknown as WadisClientLike);
         this.nativeRedisReady = true;
         logger.info("[Cache] ✓ Cache client initialized with Wadis Wasm Redis");
@@ -1112,9 +1114,6 @@ export class CacheClient {
   /**
    * Atomically gets a value and deletes the key using GETDEL (Redis ≥6.2).
    * Used for single-use values (e.g. SIWE nonce) to prevent replay attacks.
-   *
-   * @param key - Cache key.
-   * @returns The value if present, or null.
    */
   async getAndDelete<T>(key: string): Promise<T | null> {
     const redis = await this.getRedisClient();

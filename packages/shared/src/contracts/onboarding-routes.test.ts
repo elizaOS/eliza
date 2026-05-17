@@ -134,11 +134,12 @@ describe("PostOnboardingRequestSchema", () => {
   });
 
   it("passes voice preset fields through unchanged (passthrough)", () => {
-    const parsed = PostOnboardingRequestSchema.parse({
+    const input: Record<string, unknown> = {
       name: "Eliza",
       voicePresetId: "vox1",
       voiceLang: "en",
-    } as unknown as { name: string });
+    };
+    const parsed = PostOnboardingRequestSchema.parse(input);
     expect((parsed as Record<string, unknown>).voicePresetId).toBe("vox1");
     expect((parsed as Record<string, unknown>).voiceLang).toBe("en");
   });

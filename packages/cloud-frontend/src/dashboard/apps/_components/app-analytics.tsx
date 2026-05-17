@@ -39,6 +39,7 @@ import {
   XAxis,
   YAxis,
 } from "recharts";
+import { toast } from "sonner";
 import { cn } from "@/lib/utils";
 
 interface AppAnalyticsProps {
@@ -169,7 +170,7 @@ export function AppAnalytics({ appId }: AppAnalyticsProps) {
           setLastUpdated(new Date());
         }
       } catch (error) {
-        console.error("Failed to fetch analytics:", error);
+        toast.error("Failed to load analytics");
       } finally {
         setIsLoading(false);
       }
@@ -199,7 +200,7 @@ export function AppAnalytics({ appId }: AppAnalyticsProps) {
         setVisitors(visitorsData.visitors);
       }
     } catch (error) {
-      console.error("Failed to fetch request stats:", error);
+      toast.error("Failed to load request stats");
     } finally {
       setIsLoadingStats(false);
     }
@@ -219,7 +220,7 @@ export function AppAnalytics({ appId }: AppAnalyticsProps) {
           setLogsTotal(data.total);
         }
       } catch (error) {
-        console.error("Failed to fetch request logs:", error);
+        toast.error("Failed to load request logs");
       } finally {
         setIsLoadingLogs(false);
       }

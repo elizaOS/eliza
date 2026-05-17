@@ -5,14 +5,18 @@
   "description": "Electrobun desktop app for flashing elizaOS AOSP builds onto Pixel devices via ADB and fastboot.",
   "type": "module",
   "scripts": {
+    "predev": "node ../shared-brand/scripts/sync-to-public.mjs ./public",
     "dev": "vite",
+    "prebuild": "node ../shared-brand/scripts/sync-to-public.mjs ./public",
     "build": "tsc --noEmit -p tsconfig.json && vite build",
     "typecheck": "tsc --noEmit -p tsconfig.json",
     "test": "vitest run --config ./vitest.config.ts",
     "lint": "bunx @biomejs/biome check src vite.config.ts vitest.config.ts",
     "package:mac": "electrobun build --platform darwin",
     "package:linux": "electrobun build --platform linux",
-    "package:windows": "electrobun build --platform win32"
+    "package:windows": "electrobun build --platform win32",
+    "postinstall": "node vendor/download.mjs || true",
+    "vendor:update": "node vendor/download.mjs"
   },
   "dependencies": {
     "vite": "^8.0.0"

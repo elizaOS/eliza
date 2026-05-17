@@ -175,10 +175,6 @@ export const MONITORING = {
 
 /**
  * Calculate the effective elizaOS tokens a user receives after safety spread.
- *
- * @param usdValue - The USD value being redeemed
- * @param twapPrice - The TWAP price of elizaOS in USD
- * @returns The elizaOS tokens the user will receive
  */
 export function calculateEffectiveTokens(usdValue: number, twapPrice: number): number {
   // Apply safety spread (user gets slightly less than theoretical)

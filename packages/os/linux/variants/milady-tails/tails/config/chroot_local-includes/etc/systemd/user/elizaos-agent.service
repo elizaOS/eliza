@@ -14,6 +14,7 @@ RestartSec=2
 SyslogIdentifier=elizaos-agent
 KillMode=mixed
 Nice=5
+NoNewPrivileges=yes
 
 [Install]
 WantedBy=default.target

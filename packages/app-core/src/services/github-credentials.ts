@@ -14,7 +14,7 @@
  * rest is a deliberately separate concern and would land in a follow-up.
  *
  * Cloud users (Eliza Cloud session active) are out of scope here — they
- * use the `platformCredentials` table in `cloud/packages/db/schemas/` via
+ * use the `platformCredentials` table in `packages/cloud-shared/src/db/schemas/` via
  * the dedicated OAuth flow. This module is the local-first surface only.
  */
 

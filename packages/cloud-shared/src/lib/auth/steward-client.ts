@@ -148,8 +148,6 @@ function extractClaims(payload: JWTPayload): StewardTokenClaims {
  * @param env - Object exposing STEWARD_SESSION_SECRET / STEWARD_JWT_SECRET.
  *   Pass Hono `c.env` on Workers, or `process.env` on Node. Callers
  *   that still rely on the legacy global may pass `process.env` explicitly.
- * @param token - The Steward JWT from Authorization header
- * @returns Verified claims or null if invalid/expired/missing secret
  */
 export async function verifyStewardTokenCached(
   env: StewardVerifyEnv,

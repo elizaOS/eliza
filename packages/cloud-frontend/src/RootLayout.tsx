@@ -38,13 +38,13 @@ export default function RootLayout() {
       <Helmet>
         <html lang="en" />
         <body className="font-sans antialiased selection:bg-[#FF5800] selection:text-white" />
-        <title>eliza cloud - Launch Eliza</title>
+        <title>Eliza Cloud - Launch Eliza</title>
         <meta
           name="description"
           content="Launch your Eliza agent in the cloud or open the developer dashboard."
         />
         <link rel="canonical" href={`${baseUrl}/`} />
-        <meta property="og:title" content="eliza cloud - Launch Eliza" />
+        <meta property="og:title" content="Eliza Cloud - Launch Eliza" />
         <meta
           property="og:description"
           content="Launch your Eliza agent in the cloud or open the developer dashboard."

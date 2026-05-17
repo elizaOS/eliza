@@ -741,8 +741,6 @@ function DnsConfigPanel({
   const isApex = domain.split(".").length === 2;
   const currentStatus = domainStatus?.status || "pending";
 
-  // TODO(cloudflare): replace placeholder DNS targets once Cloudflare anycast IP and
-  // CNAME target are finalized for the cloud deployment.
   const dnsRecords: DnsInstruction[] = domainStatus?.dnsInstructions || [
     isApex
       ? { type: "A", name: "@", value: "76.76.21.21" }

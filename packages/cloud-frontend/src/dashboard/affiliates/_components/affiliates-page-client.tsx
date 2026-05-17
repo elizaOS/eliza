@@ -78,7 +78,7 @@ export function AffiliatesPageClient() {
         }
       }
     } catch (e) {
-      console.error("Failed to load affiliate data", e);
+      toast.error("Failed to load affiliate data");
     } finally {
       setLoading(false);
     }

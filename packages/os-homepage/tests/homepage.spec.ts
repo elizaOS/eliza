@@ -2,9 +2,10 @@ import { expect, test } from "playwright/test";
 
 const heroCopy = [
   "The agentic operating system.",
+  "For devices that run themselves.",
   "Local first",
-  "Open source",
-  "Runs on your phone",
+  "Runs on your device",
+  "No account required",
 ];
 
 const installerCopy = [
@@ -31,14 +32,16 @@ const hardwareCopy = [
   "Ships October 2026",
 ];
 
-test("lander renders hero with cloud video and primary copy", async ({
-  page,
-}) => {
+test("lander renders elizaOS hero and primary copy", async ({ page }) => {
   await page.goto("/");
 
-  await expect(page.locator('[data-hero="cloud"] img')).toHaveCount(0);
-  const heroVideo = page.locator('[data-testid="cloud-video"]');
-  await expect(heroVideo).toHaveCount(1);
+  const hero = page.locator(".hero-os");
+  await expect(hero).toBeVisible();
+  await expect(hero.locator(".hero-mark")).toHaveCount(1);
+  await expect(hero.getByRole("link", { name: /^Download/i })).toHaveAttribute(
+    "href",
+    "#download",
+  );
 
   const h1 = page.getByRole("heading", { level: 1 });
   await expect(h1).toContainText(/operating system/i);

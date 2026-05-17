@@ -383,35 +383,108 @@ jobs:
           echo "npm publish for tag ${{ needs.validate.outputs.tag }} will be handled automatically by release.yaml"
 
   # ─────────────────────────────────────────────
-  # 7. SNAP-NOTIFY — reminder to run snap publish
+  # 7. SNAP — publish to Snap Store
   # ─────────────────────────────────────────────
-  snap-notify:
-    name: Snap Store (manual reminder)
+  snap:
+    name: Snap Store
     needs: validate
-    runs-on: ubuntu-24.04
-    steps:
-      - name: Snap Store publish reminder
-        run: |
-          echo "## Snap Store" >> "$GITHUB_STEP_SUMMARY"
-          echo "" >> "$GITHUB_STEP_SUMMARY"
-          echo "**Action required:** Snap Store publish must be triggered manually." >> "$GITHUB_STEP_SUMMARY"
-          echo "" >> "$GITHUB_STEP_SUMMARY"
-          echo "Run \`.github/workflows/snap-build-test.yml\` for this version:" >> "$GITHUB_STEP_SUMMARY"
-          echo "https://github.com/${{ github.repository }}/actions/workflows/snap-build-test.yml" >> "$GITHUB_STEP_SUMMARY"
-          echo "" >> "$GITHUB_STEP_SUMMARY"
-          echo "The snap workflow only builds and tests; a separate Snap Store credential" >> "$GITHUB_STEP_SUMMARY"
-          echo "setup and \`snapcraft upload\` step is required to publish to the Snap Store." >> "$GITHUB_STEP_SUMMARY"
-          echo ""
-          echo "Snap Store publish: run snap-build-test.yml manually for version ${{ needs.validate.outputs.tag }}"
-          echo "Workflow: https://github.com/${{ github.repository }}/actions/workflows/snap-build-test.yml"
+    if: needs.validate.outputs.build_linux_os == 'true'
+    uses: ./.github/workflows/snap-publish.yml
+    with:
+      version: ${{ needs.validate.outputs.version }}
+      channel: ${{ needs.validate.outputs.channel == 'stable' && 'stable' || 'edge' }}
+      tag: ${{ needs.validate.outputs.tag }}
+    secrets: inherit
 
   # ─────────────────────────────────────────────
-  # 8. SUMMARY — report all results; optionally
+  # 8. WINDOWS STORE — build + submit MSIX
+  # ─────────────────────────────────────────────
+  windows-store:
+    name: Windows Store (MSIX)
+    needs: [validate, desktop]
+    if: needs.validate.outputs.build_desktop == 'true' && needs.desktop.result == 'success'
+    uses: ./.github/workflows/windows-store-release.yml
+    with:
+      version: ${{ needs.validate.outputs.version }}
+      tag: ${{ needs.validate.outputs.tag }}
+      submit_to_store: true
+    secrets: inherit
+
+  # ─────────────────────────────────────────────
+  # 9. ANDROID SIDELOAD MANIFEST — publish after
+  #    Android build succeeds.
+  #    version_code is computed from the semver:
+  #    MAJOR*10000 + MINOR*100 + PATCH (pre-release
+  #    suffix stripped) so it is deterministic from
+  #    the version string alone.
+  #    Uses gh workflow run because version_code
+  #    must be derived at runtime and reusable
+  #    workflow calls do not support computed inputs.
+  # ─────────────────────────────────────────────
+  android-update-manifest:
+    name: Android Sideload Manifest
+    needs: [validate, android]
+    if: needs.validate.outputs.build_android == 'true' && needs.android.result == 'success'
+    runs-on: ubuntu-24.04
+    env:
+      GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+    steps:
+      - name: Compute version_code and dispatch manifest publish
+        run: |
+          VERSION="${{ needs.validate.outputs.version }}"
+          TAG="${{ needs.validate.outputs.tag }}"
+          CHANNEL="${{ needs.validate.outputs.channel }}"
+
+          # Strip pre-release suffix (e.g. 2.0.1-beta.0 → 2.0.1) before arithmetic
+          BASE_VERSION="${VERSION%%-*}"
+          IFS='.' read -r MAJOR MINOR PATCH <<< "$BASE_VERSION"
+          VERSION_CODE=$(( MAJOR * 10000 + MINOR * 100 + PATCH ))
+          echo "version_code=$VERSION_CODE for version $VERSION (channel: $CHANNEL)"
+
+          gh workflow run publish-android-update-manifest.yml \
+            --ref "$TAG" \
+            -f version="$VERSION" \
+            -f version_code="$VERSION_CODE" \
+            -f channel="$CHANNEL" \
+            -f tag="$TAG"
+
+  # ─────────────────────────────────────────────
+  # 10. AOSP MANIFEST — publish after Linux OS
+  #     build succeeds.
+  # ─────────────────────────────────────────────
+  aosp-update-manifest:
+    name: AOSP Update Manifest
+    needs: [validate, linux-os-iso]
+    if: needs.validate.outputs.build_linux_os == 'true' && needs.linux-os-iso.result == 'success'
+    uses: ./.github/workflows/publish-aosp-update-manifest.yml
+    with:
+      version: ${{ needs.validate.outputs.version }}
+      channel: ${{ needs.validate.outputs.channel }}
+      tag: ${{ needs.validate.outputs.tag }}
+    secrets: inherit
+
+  # ─────────────────────────────────────────────
+  # 11. APT REPO — publish .deb after Linux deb
+  #     build succeeds.
+  # ─────────────────────────────────────────────
+  apt-repo:
+    name: apt Repository
+    needs: [validate, linux-os-deb]
+    if: needs.validate.outputs.build_linux_os == 'true' && needs.linux-os-deb.result == 'success'
+    uses: ./.github/workflows/publish-apt-repo.yml
+    with:
+      version: ${{ needs.validate.outputs.version }}
+      tag: ${{ needs.validate.outputs.tag }}
+      channel: ${{ needs.validate.outputs.channel == 'stable' && 'stable' || 'beta' }}
+    secrets: inherit
+
+  # ─────────────────────────────────────────────
+  # 12. SUMMARY — report all results; optionally
   #    publish the GitHub release draft.
   # ─────────────────────────────────────────────
   summary:
     name: Release Summary
-    needs: [validate, desktop, android, apple, linux-os-iso, linux-os-deb, linux-os-vm, npm, snap-notify]
+    needs: [validate, desktop, android, apple, linux-os-iso, linux-os-deb, linux-os-vm, npm, snap, windows-store, android-update-manifest, aosp-update-manifest, apt-repo]
     if: always()
     runs-on: ubuntu-24.04
     env:
@@ -453,17 +526,18 @@ jobs:
             echo ""
             echo "| Platform | Result |"
             echo "|----------|--------|"
-            echo "| Desktop (Electrobun)   | $(result_icon '${{ needs.desktop.result }}') |"
-            echo "| Android                | $(result_icon '${{ needs.android.result }}') |"
-            echo "| Apple (iOS + macOS)    | $(result_icon '${{ needs.apple.result }}') |"
-            echo "| Linux ISO              | $(result_icon "$ISO_R") |"
-            echo "| Linux .deb             | $(result_icon "$DEB_R") |"
-            echo "| Linux VM image         | $(result_icon "$VM_R") |"
-            echo "| npm (auto-triggered)   | $(result_icon '${{ needs.npm.result }}') |"
-            echo "| Snap (manual reminder) | $(result_icon '${{ needs.snap-notify.result }}') |"
-            echo ""
-            echo "### Snap Store"
-            echo "Run [snap-build-test.yml](https://github.com/${{ github.repository }}/actions/workflows/snap-build-test.yml) manually and then publish to the Snap Store."
+            echo "| Desktop (Electrobun)         | $(result_icon '${{ needs.desktop.result }}') |"
+            echo "| Android                      | $(result_icon '${{ needs.android.result }}') |"
+            echo "| Apple (iOS + macOS)          | $(result_icon '${{ needs.apple.result }}') |"
+            echo "| Linux ISO                    | $(result_icon "$ISO_R") |"
+            echo "| Linux .deb                   | $(result_icon "$DEB_R") |"
+            echo "| Linux VM image               | $(result_icon "$VM_R") |"
+            echo "| npm (auto-triggered)         | $(result_icon '${{ needs.npm.result }}') |"
+            echo "| Snap Store                   | $(result_icon '${{ needs.snap.result }}') |"
+            echo "| Windows Store (MSIX)         | $(result_icon '${{ needs.windows-store.result }}') |"
+            echo "| Android sideload manifest    | $(result_icon '${{ needs.android-update-manifest.result }}') |"
+            echo "| AOSP update manifest         | $(result_icon '${{ needs.aosp-update-manifest.result }}') |"
+            echo "| apt repository               | $(result_icon '${{ needs.apt-repo.result }}') |"
           } >> "$GITHUB_STEP_SUMMARY"
 
       - name: Publish GitHub release (if all succeeded and not draft)

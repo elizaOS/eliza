@@ -101,18 +101,29 @@ const demoMcpServers = [
 export default function MCPsPage() {
   const { ready, authenticated } = useRequireAuth();
 
+  // Render Helmet unconditionally so the page title is set even while
+  // auth resolves — otherwise the homepage <title> leaks through.
+  const head = (
+    <Helmet>
+      <title>MCP Servers</title>
+      <meta
+        name="description"
+        content="Explore and connect to Model Context Protocol (MCP) servers. Access ready-to-use tools for AI agents including time, weather, crypto prices, and more."
+      />
+    </Helmet>
+  );
+
   if (!ready || !authenticated)
-    return <DashboardLoadingState label="Loading MCPs" />;
+    return (
+      <>
+        {head}
+        <DashboardLoadingState label="Loading MCPs" />
+      </>
+    );
 
   return (
     <>
-      <Helmet>
-        <title>MCP Servers</title>
-        <meta
-          name="description"
-          content="Explore and connect to Model Context Protocol (MCP) servers. Access ready-to-use tools for AI agents including time, weather, crypto prices, and more."
-        />
-      </Helmet>
+      {head}
       <MCPsPageWrapper>
         <DashboardPageContainer>
           <DashboardPageStack>

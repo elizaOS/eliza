@@ -42,7 +42,7 @@ type HardwareProduct = {
 const products: HardwareProduct[] = [
   {
     sku: "elizaos-phone",
-    name: "ElizaOS Phone",
+    name: "Eliza Phone",
     price: "$499 deposit",
     subtitle: "Reserve first-party phone hardware.",
     colors: [
@@ -79,7 +79,7 @@ const products: HardwareProduct[] = [
   },
   {
     sku: "elizaos-usb",
-    name: "ElizaOS USB key",
+    name: "ElizaOS USB",
     price: "$49",
     subtitle: "Simple branded USB installer. Ships October 2026.",
     colors: [

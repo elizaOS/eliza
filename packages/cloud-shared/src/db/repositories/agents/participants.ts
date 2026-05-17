@@ -169,6 +169,8 @@ export class ParticipantsRepository {
         roomState: input.roomState ? JSON.stringify(input.roomState) : undefined,
         createdAt: new Date(),
       })
+      // Drizzle's .returning() infers the insert model type, not InferSelectModel.
+      // The DB returns all columns; the cast to ParticipantRecord is safe.
       .returning()) as unknown as ParticipantRecord[];
 
     return requireParticipant(results[0], "create");

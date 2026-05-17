@@ -27,8 +27,8 @@
 !packages/vault/dist/**
 !packages/skills/dist
 !packages/skills/dist/**
-!cloud/packages/sdk/dist
-!cloud/packages/sdk/dist/**
+!packages/cloud-sdk/dist
+!packages/cloud-sdk/dist/**
 !plugins/*/dist
 !plugins/*/dist/**
 **/target

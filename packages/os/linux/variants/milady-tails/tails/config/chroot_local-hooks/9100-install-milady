@@ -94,6 +94,7 @@ build_info["defaultRenderer"] = "native"
 build_info["availableRenderers"] = ["native"]
 runtime = build_info.setdefault("runtime", {})
 runtime["exitOnLastWindowClosed"] = False
+runtime["closeMinimizesToTray"] = True
 build_info["chromiumFlags"] = {
     "disable-gpu": True,
     "disable-gpu-compositing": True,

@@ -72,6 +72,8 @@ interface AuthSqlTables {
 let authSqlTablesPromise: Promise<AuthSqlTables> | undefined;
 
 async function getAuthSqlTables(): Promise<AuthSqlTables> {
+  // Dynamic import of @elizaos/plugin-sql returns the full module; we only
+  // consume the auth table exports. The cast crosses the module→subset boundary.
   authSqlTablesPromise ??= import(
     "@elizaos/plugin-sql"
   ) as unknown as Promise<AuthSqlTables>;

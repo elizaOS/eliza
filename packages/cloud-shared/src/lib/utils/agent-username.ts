@@ -68,9 +68,6 @@ export const RESERVED_USERNAMES = new Set([
 
 /**
  * Validates a username against all rules.
- *
- * @param username - The username to validate
- * @returns Validation result with error message if invalid
  */
 export function validateUsername(username: string): UsernameValidationResult {
   // Normalize to lowercase
@@ -155,9 +152,6 @@ export function slugify(name: string): string {
 
 /**
  * Pads a string to meet the minimum username length with random alphanumeric characters.
- *
- * @param str - The string to pad
- * @returns The padded string meeting minimum length requirements
  */
 function padToMinLength(str: string): string {
   const chars = "abcdefghijklmnopqrstuvwxyz0123456789";
@@ -169,9 +163,7 @@ function padToMinLength(str: string): string {
 
 /**
  * Generates a username from a name, ensuring it meets validation rules.
- *
- * @param name - The name to generate a username from
- * @returns A valid username (may need uniqueness check)
+ * Result may still need a uniqueness check.
  */
 export function generateUsernameFromName(name: string): string {
   let slug = slugify(name);
@@ -245,9 +237,6 @@ export function generateUniqueUsername(
 
 /**
  * Extracts username from a URL path like /chat/@username
- *
- * @param path - The URL path
- * @returns The username or null if not found
  */
 export function extractUsernameFromPath(path: string): string | null {
   const match = path.match(/\/@([a-z0-9]+(?:-[a-z0-9]+)*)/);

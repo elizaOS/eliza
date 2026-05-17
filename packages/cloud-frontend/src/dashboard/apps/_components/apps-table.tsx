@@ -80,7 +80,6 @@ export function AppsTable({ apps }: AppsTableProps) {
       toast.success("App deleted successfully");
       window.location.reload();
     } catch (error) {
-      console.error("Error deleting app:", error);
       toast.error("Failed to delete app", {
         description:
           error instanceof Error ? error.message : "Please try again",

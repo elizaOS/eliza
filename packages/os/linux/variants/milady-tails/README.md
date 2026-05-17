@@ -1,9 +1,16 @@
 # elizaOS Live
 
-A live-USB distribution that boots as **elizaOS**, includes the bundled
-elizaOS desktop app as the home surface, and gives users **two opt-in
-features**: encrypted persistence on the USB stick, and Tor routing for
-privacy.
+elizaOS Live is a bootable USB Linux distribution. It uses Tails'
+live-OS plumbing for the hard parts of amnesia, Tor mode, MAC spoofing,
+AppArmor, persistence, and live-build, but the primary boot, greeter, and
+desktop experience are branded as **elizaOS Live**. Tails attribution is
+kept in credits, license files, and engineering docs; users should not see
+derivative branding as the main product identity.
+
+The product boots into a normal GNOME desktop with the bundled elizaOS app
+as the home surface. Users choose storage behavior and network privacy per
+boot: amnesia or encrypted USB persistence, and direct networking or Tor
+Privacy Mode.
 
 ```
 ┌────────────────────────────────────────────────┐
@@ -20,7 +27,7 @@ privacy.
 └────────────────────────────────────────────────┘
 ```
 
-## v1.0 scope (locked 2026-05-14)
+## Product scope
 
 **USB-only** distribution. Boot from a USB stick. **Pick one of two
 storage modes at boot, optionally combine with Tor privacy mode**.
@@ -29,7 +36,7 @@ storage modes at boot, optionally combine with Tor privacy mode**.
 
 |  | What user gets | What survives reboot |
 |---|---|---|
-| **Amnesia** (default) | RAM only, no disk writes, system leaves no trace on shutdown | Nothing — fresh every time |
+| **Amnesia** (default) | RAM-only user state; no persistence unlocked | Nothing — fresh every time |
 | **Persistent USB** (opt-in) | LUKS-encrypted partition on the same USB stick, bind-mounted to `~/.eliza/` and friends | Chat history, built apps, model downloads, Wi-Fi, API keys |
 
 A returning user can pick a different mode per-boot. The greeter
@@ -43,19 +50,32 @@ sealed.
 |  | What user gets |
 |---|---|
 | **Normal** (default) | Direct internet. Fast cloud APIs, fast model downloads. |
-| **Privacy Mode** (opt-in) | All traffic routed through Tor. Slow but anonymous. Same features. |
+| **Privacy Mode** (opt-in) | Tor-routed networking. Slow but anonymous where supported. Same product surface, with the current WebView caveat below. |
 
-**All four combos work**. See `docs/user-experience.md` for the
-boot-time walkthrough and the feature-parity matrix.
+The target contract is that all four combinations work with the same
+feature surface, except for speed and persistence. The source overlays are
+implemented, but the rebuilt ISO still needs QEMU and real-USB validation
+before those rows can be treated as proven behavior. See
+[`docs/user-experience.md`](./docs/user-experience.md) for the boot-time
+walkthrough and [`docs/mode-parity.md`](./docs/mode-parity.md) for the
+acceptance matrix.
 
 ## What we're NOT shipping in v1.0
 
-- **Install to internal disk** — deferred to v2.0. Tails refuses this
-  by design (forensic concerns); we're considering it carefully with
-  respect for their reasoning. See `PLAN.md § Deferred`.
+- **Install to internal disk** — deferred to v2.0. The upstream live-OS
+  design refuses this for forensic reasons; we're considering it carefully.
+  See `PLAN.md § Deferred`.
 - **Runtime privacy toggle** — switching modes requires reboot in v1.0.
 - **Closing the Chromium WebView Tor-leak gap** — known v1.0 gap,
-  fixed in v1.1.
+  targeted for v1.1.
+- **Production update infrastructure** — current demo builds still require
+  a new ISO for OS/base changes. The production plan is signed app/runtime
+  updates in encrypted persistence, signed model downloads, and signed OS
+  deltas or full-image fallback. See
+  [`docs/distribution-and-updates.md`](./docs/distribution-and-updates.md).
+- **End-user GUI USB flasher** — developers can use the guarded
+  `just usb-write` path today. Production needs the same removable-disk
+  policy in a signed cross-platform flasher.
 
 ## Repo Shape
 
@@ -79,19 +99,24 @@ lists + branding overrides.
 This matches the `packages/os/android/vendor/eliza/` pattern in this
 monorepo (brand vendor tree inside the upstream system's structure).
 
+Primary UI should say elizaOS. Engineering paths may still contain
+`tails`, `milady`, or upstream filenames because those names are part of
+the plumbing and package contracts. Do not rename those paths only for
+cosmetic reasons.
+
 ## License
 
 GPL-3.0-or-later for the inherited live-OS components. Our additions are
 Apache-2.0 where possible, dual-licensed under both where required.
 
-## Status
+## Status: Demo Branch Versus Production
 
-**Current branch status, 2026-05-16:** the elizaOS Live source tree is
-ready for a full build/test pass. `scripts/static-smoke.sh` passes in the
-build worktree, the old usbeliza prototype has been removed from the PR
-branch, and a low-CPU full ISO build is running separately from this docs
-worktree. Do not call the image demo-complete until that build finishes
-and the resulting ISO passes QEMU greeter + desktop + app checks.
+**Current branch status, 2026-05-17:** the elizaOS Live source tree is
+ready for a full build/test pass. The old usbeliza prototype has been
+removed from the PR branch, and a low-CPU full ISO build is running
+separately from this docs worktree. Do not call the image demo-complete
+until static smoke, the full ISO build, and the resulting QEMU greeter +
+desktop + app checks all pass.
 
 **Phase 1 — done.** The containerized build pipeline produced a bootable
 base ISO, and Tails' normal live-OS boot path was verified through QEMU
@@ -104,9 +129,11 @@ rows/hooks are in the tree. The current gate is the rebuilt ISO plus QEMU
 and USB validation.
 
 **Phases 8–9 — spec/backlog.** Mode-parity harness and customization
-actions are planned but not production-complete. See [`PLAN.md`](./PLAN.md) for the phase map and
-[`ROADMAP.md`](./ROADMAP.md) for the honest road to a real,
-fully-working demo.
+actions are planned but not production-complete. Production also still
+needs signed releases, update/rollback infrastructure, a GUI USB flasher,
+hardware compatibility evidence, and enterprise policy/audit hardening.
+See [`PLAN.md`](./PLAN.md) for the phase map and [`ROADMAP.md`](./ROADMAP.md)
+for the road from demo to release.
 
 ## Build it
 
