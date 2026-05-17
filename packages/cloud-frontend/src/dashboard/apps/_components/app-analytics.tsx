@@ -295,6 +295,7 @@ export function AppAnalytics({ appId }: AppAnalyticsProps) {
             const Icon = tab.icon;
             return (
               <button
+                type="button"
                 key={tab.value}
                 onClick={() => setActiveTab(tab.value)}
                 className={cn(
@@ -519,8 +520,8 @@ export function AppAnalytics({ appId }: AppAnalyticsProps) {
                             paddingAngle={2}
                             dataKey="value"
                           >
-                            {sourceData.map((entry, index) => (
-                              <Cell key={`cell-${index}`} fill={entry.color} />
+                            {sourceData.map((entry) => (
+                              <Cell key={entry.color} fill={entry.color} />
                             ))}
                           </Pie>
                         </PieChart>

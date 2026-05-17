@@ -78,6 +78,7 @@ export function AppDetailsTabs({ app, showApiKey }: AppDetailsTabsProps) {
           const Icon = tab.icon;
           return (
             <button
+              type="button"
               key={tab.value}
               onClick={() => handleTabChange(tab.value)}
               className={cn(

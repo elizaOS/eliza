@@ -93,7 +93,12 @@ export function AuthManager({
       {/* Key input */}
       <div className="space-y-2">
         <div className="flex items-center justify-between">
-          <label htmlFor="auth-manager-api-key" className="text-sm font-medium text-white">API Key</label>
+          <label
+            htmlFor="auth-manager-api-key"
+            className="text-sm font-medium text-white"
+          >
+            API Key
+          </label>
           <span className="text-xs text-neutral-400">
             Used {explorerKey.usage_count} times
           </span>

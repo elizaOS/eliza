@@ -44,7 +44,7 @@ interface AnalyticsData {
   periodEnd: string;
 }
 
-export function AnalyticsTab({ user }: AnalyticsTabProps) {
+export function AnalyticsTab({ user: _user }: AnalyticsTabProps) {
   const [cadence, setCadence] = useState<Cadence>("day");
   const [timeRange, setTimeRange] = useState<TimeRange>("7days");
   const [focusMetric, setFocusMetric] = useState<FocusMetric>("requests");

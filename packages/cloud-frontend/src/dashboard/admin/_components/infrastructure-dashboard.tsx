@@ -381,7 +381,7 @@ function NodeStatusBadge({ status }: { status: string }) {
 
 function LiveHealthBadge({
   health,
-  severity,
+  severity: _severity,
 }: {
   health: string;
   severity: string;
@@ -1540,8 +1540,11 @@ export function InfrastructureDashboard() {
                 )}
                 {incidentsExpanded && (
                   <div className="space-y-1 mt-2">
-                    {visibleIncidents.map((incident, i) => (
-                      <div key={i} className="flex items-center gap-2 text-sm">
+                    {visibleIncidents.map((incident) => (
+                      <div
+                        key={incident.title}
+                        className="flex items-center gap-2 text-sm"
+                      >
                         <Badge
                           variant={
                             incident.severity === "critical"
