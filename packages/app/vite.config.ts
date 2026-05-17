@@ -15,7 +15,7 @@ import {
   syncElizaEnvAliases,
 } from "@elizaos/shared";
 import tailwindcss from "@tailwindcss/vite";
-import react from "@vitejs/plugin-react";
+import react from "@vitejs/plugin-react-swc";
 import {
   createLogger,
   defineConfig,
