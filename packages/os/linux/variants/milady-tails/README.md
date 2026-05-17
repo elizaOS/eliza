@@ -173,6 +173,14 @@ offline docs in a cool build.
   known Chromium WebView privacy-mode caveat
 - [`docs/production-readiness.md`](./docs/production-readiness.md) —
   what is clean, what is demo glue, and what must harden before release
+- [`docs/runtime-packaging.md`](./docs/runtime-packaging.md) — how the
+  bundled Milady/eliza app is staged, installed, validated, and what replaces
+  the current demo packaging path for production
+- [`docs/security-model.md`](./docs/security-model.md) — root/user,
+  persistence, update, service, and release-security boundaries
+- [`docs/inherited-tails-sudoers-review.md`](./docs/inherited-tails-sudoers-review.md) —
+  formal review of broad sudoers inherited from Tails and the exact
+  allowlist enforced by security smoke
 - [`docs/distribution-and-updates.md`](./docs/distribution-and-updates.md) —
   release, update, model, USB writer, and enterprise distribution plan
 - [`tails/README.md`](./tails/README.md) — upstream Tails README,

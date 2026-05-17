@@ -53,10 +53,11 @@ Production policy:
 - broker logs must not include prompts, secrets, tokens, model inputs, or file
   contents
 
-Inherited Tails sudoers rules are not owned by this branch. They remain a
-production review item because the upstream Tails updater and Persistent
-Storage stack include broad internal rules. elizaOS policy must not add new
-broad rules on top of them.
+Inherited Tails sudoers rules are reviewed in
+[`inherited-tails-sudoers-review.md`](./inherited-tails-sudoers-review.md).
+They are accepted only as inherited Tails feature plumbing for Greeter,
+Persistent Storage, Tor Browser, Tails Upgrader, and WhisperBack. elizaOS
+policy must not add new broad rules on top of them.
 
 ## Persistence Boundary
 
