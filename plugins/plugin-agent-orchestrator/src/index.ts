@@ -460,6 +460,12 @@ function registerProgressHook(runtime: IAgentRuntime): void {
     roomId: string,
     label: string,
   ): string => `${source}::${roomId}::${label}`;
+  // Cache the main-channel 🚀 message id by label too, so a respawn for the
+  // same logical project doesn't post a duplicate "🚀 [label] running" line.
+  // Together with threadCacheByKey, the result is exactly one main message +
+  // exactly one thread per (source, roomId, label) for the life of the
+  // orchestrator (cleared by stop()/dispose()).
+  const mainMessageCacheByKey = new Map<string, string>();
 
   // Cross-platform outgoing-message middleware. When the planner-loop's REPLY
   // action (or any other plugin) calls `runtime.sendMessageToTarget` for a
@@ -687,8 +693,16 @@ function registerProgressHook(runtime: IAgentRuntime): void {
       // ── post into the per-session thread when supported ──
       if (state?.thread && typeof runtime.postToThreadOnTarget === "function") {
         if (state.lastText === text) return;
+        // The thread name IS the label — repeating `[label]` in the body
+        // is redundant. Strip the emoji-prefixed `[label]` marker so the
+        // thread reads as clean prose: `💬 [foo] Reading file...` becomes
+        // `💬 Reading file...`.
+        const threadText = text.replace(
+          /^([💬⏳⚠️⏸️✅❌🚀])\s+\[[^\]]+\]\s+/u,
+          "$1 ",
+        );
         await runtime.postToThreadOnTarget(target, state.thread, {
-          text,
+          text: threadText,
           source: "sub_agent_progress",
         });
         state.lastText = text;
@@ -710,6 +724,37 @@ function registerProgressHook(runtime: IAgentRuntime): void {
       }
       // ── first emit OR fallback: send a fresh main-channel message ──
       const sessionLabel = state?.label ?? label ?? "sub-agent";
+      const mainCacheKey = threadCacheKey(
+        target.source,
+        target.roomId,
+        sessionLabel,
+      );
+      // Reuse the existing 🚀 main message for this label when it exists —
+      // respawn / rate-limit retry / follow-up should NOT post a duplicate
+      // "🚀 [label] running" line. Bind state to the cached message id and
+      // skip the network send entirely. The thread (also cached by label)
+      // continues to receive narration.
+      const cachedMainId = mainMessageCacheByKey.get(mainCacheKey);
+      const canEdit = resolveCanEdit(target.source);
+      const canReact = resolveCanReact(target.source);
+      const canThread = resolveCanThread(target.source);
+      if (!state && cachedMainId) {
+        const newState: ProgressState = {
+          mainMessageId: cachedMainId,
+          canEdit,
+          canReact,
+          canThread,
+          label: sessionLabel,
+          thread: threadCacheByKey.get(mainCacheKey),
+          lastText: "",
+        };
+        progressBySession.set(sessionId, newState);
+        // Recursive call lands on the thread/edit branch above now that
+        // state is populated. No duplicate "🚀 [label] running" hits the
+        // main channel.
+        await emitProgress(sessionId, target, rawText, sessionLabel);
+        return;
+      }
       const initialText = state ? text : `🚀 [${sessionLabel}] running`;
       const sent = await runtime.sendMessageToTarget(target, {
         text: initialText,
@@ -722,9 +767,7 @@ function registerProgressHook(runtime: IAgentRuntime): void {
         typeof platformId === "string" &&
         platformId.trim().length > 0
       ) {
-        const canEdit = resolveCanEdit(target.source);
-        const canReact = resolveCanReact(target.source);
-        const canThread = resolveCanThread(target.source);
+        mainMessageCacheByKey.set(mainCacheKey, platformId);
         const newState: ProgressState = {
           mainMessageId: platformId,
           canEdit,

@@ -542,22 +542,17 @@ async function runSpawnAgent(
           : undefined,
     });
 
-    // Acknowledgement reply. Ideally Stage-1's `replyText` ("On it.",
-    // "Reçu, je lance.") would handle this via the response-handler
-    // early-reply path, but that path is only active for voice channels
-    // upstream (`deliverResponseHandlerEarlyReply` returns undefined
-    // outside `isVoiceChannelMessage`). For text channels, without an
-    // ack here the user sees silence between request and sub-agent
-    // completion. Until the upstream early-reply gate is widened, we
-    // emit a short locale-neutral confirmation. Callers can suppress
-    // explicitly via `deferUserReply: true`.
-    const ackText = deferUserReply ? "" : "On it.";
-    if (callback && ackText) {
-      await callbackText(callback, ackText);
-    }
+    // No text ack here. The orchestrator's progress hook posts a single
+    // "🚀 [label] running" message (the spawn ack), creates the thread
+    // when supported, and edits the same message to ✅/❌ at task_complete /
+    // error. That single main-channel message IS the user-visible ack —
+    // emitting "On it." here would duplicate it and (worse) bring the
+    // planner's hallucinated messageToUser onto the main channel via the
+    // bootstrap REPLY path. The orchestrator owns user-facing comm for
+    // sub-agent turns; the planner does not.
     return {
       success: true,
-      text: ackText,
+      text: "",
       // Terminate the planner loop after the first spawn fires.
       //
       // TASKS_SPAWN_AGENT is fire-and-forget: the action returns the
