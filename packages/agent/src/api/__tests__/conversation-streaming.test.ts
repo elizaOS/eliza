@@ -196,7 +196,7 @@ describe("generateChatResponse token streaming", () => {
       useModel,
     });
 
-    const message = createChatMessage("can you hear me locally?");
+    const message = createChatMessage("/no_think can you hear me locally?");
     message.content = {
       ...message.content,
       channelType: ChannelType.VOICE_DM,
@@ -217,17 +217,25 @@ describe("generateChatResponse token streaming", () => {
       },
     );
 
+    const directParams = useModel.mock.calls[0]?.[1] as { prompt?: string };
+    expect(directParams.prompt).not.toContain("/no_think");
+    expect(directParams.prompt).toContain("can you hear me locally?");
+
     expect(useModel).toHaveBeenCalledWith(
       expect.anything(),
       expect.objectContaining({
         stream: true,
         maxTokens: 20,
-        providerOptions: {
-          androidLocal: {
+        prompt: expect.stringContaining("<think>\n\n</think>\n"),
+        providerOptions: expect.objectContaining({
+          androidLocal: expect.objectContaining({
             minFirstSentenceChars: 12,
             stopOnFirstSentence: true,
-          },
-        },
+          }),
+          eliza: expect.objectContaining({
+            thinking: "off",
+          }),
+        }),
         onStreamChunk: expect.any(Function),
       }),
     );

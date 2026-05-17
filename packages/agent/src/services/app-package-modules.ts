@@ -360,6 +360,19 @@ function bridgeExportToSpecifier(
   return `${packageName}/${normalized.slice(2)}`;
 }
 
+function isMobileBundleRuntime(): boolean {
+  return (
+    (globalThis as { __ELIZA_MOBILE_BUNDLE__?: boolean })
+      .__ELIZA_MOBILE_BUNDLE__ === true ||
+    process.env.ELIZA_PLATFORM === "android" ||
+    process.env.ELIZA_PLATFORM === "ios"
+  );
+}
+
+function isSelfAgentPackage(packageName: string | null): boolean {
+  return packageName === "@elizaos/agent";
+}
+
 async function importLocalAppRouteModule(
   appIdentifier: string,
 ): Promise<AppRouteModule | null> {
@@ -502,6 +515,9 @@ export async function importAppRouteModule(
   if (!packageName) {
     return null;
   }
+  if (isMobileBundleRuntime() && isSelfAgentPackage(packageName)) {
+    return null;
+  }
 
   const bridgeSpecifier = bridgeExportToSpecifier(
     packageName,
@@ -539,6 +555,10 @@ export async function importAppRouteModule(
 export async function importAppPlugin(
   packageName: string,
 ): Promise<Plugin | null> {
+  if (isMobileBundleRuntime() && isSelfAgentPackage(packageName)) {
+    return null;
+  }
+
   try {
     const localModule = await importLocalAppPluginModule(packageName);
     if (localModule) {

@@ -841,7 +841,7 @@ function gbnfRefForFieldSchema(
 		) {
 			if (enumValues.length === 1)
 				return gbnfJsonStringLiteral(String(enumValues[0]));
-			const ruleName = `fieldenum_${hashStringSet(enumValues.map(String))}`;
+			const ruleName = `fieldenum-${hashStringSet(enumValues.map(String))}`;
 			builder.rule(
 				ruleName,
 				enumValues.map((v) => gbnfJsonStringLiteral(String(v))).join(" | "),
@@ -1285,14 +1285,14 @@ export function buildPlannerActionGrammarStrict(
 	// concatenation produced malformed JSON like `{"action":"MESSAGE_"READ""…`;
 	// and (2) the shared suffix rule decoupled the action name from the
 	// per-action params rule — the model could legally pair `MESSAGE_READ` with
-	// `paramsofaction_MESSAGE_SEND`. Each branch must encode the full action
+	// `paramsofaction-MESSAGE-SEND`. Each branch must encode the full action
 	// name as a literal, then bind to its own params rule.
 	for (const descriptor of sortedDescriptors) {
 		const fullName = descriptor.name;
 		const sanitized = sanitizeGbnfRuleName(fullName);
-		const paramsRuleName = `paramsofaction_${sanitized}`;
+		const paramsRuleName = `paramsofaction-${sanitized}`;
 		emitActionParamsRule(builder, paramsRuleName, descriptor.parametersSchema);
-		const branchRuleName = `callofaction_${sanitized}`;
+		const branchRuleName = `callofaction-${sanitized}`;
 		const branchBody = [
 			gbnfLiteral(`{"action":${JSON.stringify(fullName)}`),
 			gbnfLiteral(',"parameters":'),
@@ -1328,13 +1328,13 @@ export function buildPlannerActionGrammarStrict(
 const plannerStrictCache = new Map<string, PlannerActionGrammarResult>();
 
 /**
- * GBNF rule names must match `[a-zA-Z_][a-zA-Z0-9_-]*`. Action names in the
- * registry are typically `UPPER_SNAKE_CASE` already, but sanitize defensively
- * for plugin-supplied action names that might carry `:` / `.` / spaces.
+ * GBNF rule names must stay inside the name characters accepted by the
+ * bundled llama.cpp grammar parser. The current fork accepts letters, digits,
+ * and hyphens; it does not accept underscores in rule names.
  */
 function sanitizeGbnfRuleName(name: string): string {
-	const cleaned = name.replace(/[^A-Za-z0-9_]/g, "_");
-	return /^[A-Za-z_]/.test(cleaned) ? cleaned : `_${cleaned}`;
+	const cleaned = name.replace(/[^A-Za-z0-9-]/g, "-").replace(/-+/g, "-");
+	return /^[A-Za-z0-9]/.test(cleaned) ? cleaned : `r-${cleaned}`;
 }
 
 /**
@@ -1391,8 +1391,8 @@ function emitObjectRule(
 	const propertyTokens: Record<string, string> = {};
 	for (const key of propertyNames) {
 		const sanitizedKey = sanitizeGbnfRuleName(key);
-		const propertyRuleName = `${ruleName}_p_${sanitizedKey}`;
-		const contextRuleName = `${ruleName}_${sanitizedKey}`;
+		const propertyRuleName = `${ruleName}-p-${sanitizedKey}`;
+		const contextRuleName = `${ruleName}-${sanitizedKey}`;
 		const valueExpr = propertyValueGbnf(
 			builder,
 			properties[key],
@@ -1432,7 +1432,7 @@ function emitObjectRule(
  * as a side effect on `builder`.
  *
  * `contextRuleName` is the parent-scoped namespace prefix used to mint stable
- * unique rule names for nested constructs (e.g. `..._obj`, `..._item`).
+ * unique rule names for nested constructs (e.g. `...-obj`, `...-item`).
  */
 /**
  * Build a GBNF rule that matches only numbers within a [min, max] range.
@@ -1547,7 +1547,7 @@ function propertyValueGbnf(
 		const maximum = (propSchema as { maximum?: number }).maximum;
 		// If bounds are specified, emit a bounded rule; otherwise use the shared rule.
 		if (typeof minimum === "number" || typeof maximum === "number") {
-			const boundedRuleName = `${contextRuleName}_bounded`;
+			const boundedRuleName = `${contextRuleName}-bounded`;
 			return buildBoundedNumberRule(builder, boundedRuleName, propSchema);
 		}
 		builder.useShared("jsonnumber");
@@ -1575,7 +1575,7 @@ function propertyValueGbnf(
 			depth < MAX_NESTED_OBJECT_DEPTH &&
 			schemaHasDeclaredProperties(items as JSONSchema)
 		) {
-			const itemRuleName = `${contextRuleName}_item`;
+			const itemRuleName = `${contextRuleName}-item`;
 			emitObjectRule(builder, itemRuleName, items as JSONSchema, depth + 1);
 			builder.useShared("ws");
 			return `"[" ws ( ${itemRuleName} ( ws "," ws ${itemRuleName} )* )? ws "]"`;
@@ -1588,7 +1588,7 @@ function propertyValueGbnf(
 		depth < MAX_NESTED_OBJECT_DEPTH &&
 		schemaHasDeclaredProperties(propSchema)
 	) {
-		const objRuleName = `${contextRuleName}_obj`;
+		const objRuleName = `${contextRuleName}-obj`;
 		emitObjectRule(builder, objRuleName, propSchema, depth + 1);
 		return objRuleName;
 	}

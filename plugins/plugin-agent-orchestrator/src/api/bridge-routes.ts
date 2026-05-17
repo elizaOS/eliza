@@ -100,8 +100,11 @@ function delay(ms: number): Promise<void> {
 const BRIDGE_CREDENTIAL_ADAPTER_SERVICE = "SubAgentCredentialBridgeAdapter";
 
 function getAdapter(ctx: RouteContext): BridgeCredentialAdapter | null {
+  // Single-step cast: BridgeCredentialAdapter is a plain interface without the
+  // Service base class, so we cannot use the getService<T> generic, but the
+  // types don't conflict and one cast suffices.
   return (ctx.runtime.getService(BRIDGE_CREDENTIAL_ADAPTER_SERVICE) ??
-    null) as unknown as BridgeCredentialAdapter | null;
+    null) as BridgeCredentialAdapter | null;
 }
 
 async function handlePost(

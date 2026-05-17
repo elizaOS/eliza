@@ -1,4 +1,7 @@
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import path from "node:path";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const serviceMock = vi.hoisted(() => {
 	let active = {
@@ -46,8 +49,16 @@ import {
 	getLocalInferenceChatStatus,
 } from "./local-inference-routes.js";
 
+const originalStateDir = process.env.ELIZA_STATE_DIR;
+let tempStateDir: string | null = null;
+
 describe("local inference chat status", () => {
 	beforeEach(() => {
+		if (tempStateDir) {
+			rmSync(tempStateDir, { recursive: true, force: true });
+		}
+		tempStateDir = mkdtempSync(path.join(tmpdir(), "eliza-local-routes-"));
+		process.env.ELIZA_STATE_DIR = tempStateDir;
 		serviceMock.setActive({
 			modelId: null,
 			loadedAt: null,
@@ -57,6 +68,18 @@ describe("local inference chat status", () => {
 			loadedCacheTypeV: null,
 			loadedGpuLayers: null,
 		});
+	});
+
+	afterEach(() => {
+		if (tempStateDir) {
+			rmSync(tempStateDir, { recursive: true, force: true });
+			tempStateDir = null;
+		}
+		if (originalStateDir === undefined) {
+			delete process.env.ELIZA_STATE_DIR;
+		} else {
+			process.env.ELIZA_STATE_DIR = originalStateDir;
+		}
 	});
 
 	it("uses the desktop active-model service state for chat status", async () => {
@@ -88,5 +111,49 @@ describe("local inference chat status", () => {
 		});
 		expect(status.text).toContain("Model: eliza-1-0_8b.");
 		expect(status.text).not.toMatch(/none is loaded|waiting to be activated/i);
+	});
+
+	it("uses the AOSP active marker when the native APK loader has the chat model open", async () => {
+		const root = path.join(tempStateDir ?? "", "local-inference");
+		const modelPath = path.join(
+			root,
+			"models",
+			"eliza-1-0_8b.bundle",
+			"text",
+			"eliza-1-0_8b-32k.gguf",
+		);
+		mkdirSync(path.dirname(modelPath), { recursive: true });
+		writeFileSync(modelPath, "GGUF");
+		writeFileSync(
+			path.join(root, "registry.json"),
+			JSON.stringify({
+				version: 1,
+				models: [
+					{
+						id: "eliza-1-0_8b",
+						displayName: "eliza-1-0_8b",
+						path: modelPath,
+						runtimeRole: "chat",
+					},
+				],
+			}),
+		);
+		writeFileSync(
+			path.join(root, "aosp-active.json"),
+			JSON.stringify({
+				version: 1,
+				status: "ready",
+				role: "chat",
+				provider: "eliza-aosp-llama",
+				path: modelPath,
+				loadedAt: "2026-05-16T02:09:05.833Z",
+			}),
+		);
+
+		await expect(getLocalInferenceActiveSnapshot()).resolves.toMatchObject({
+			modelId: "eliza-1-0_8b",
+			status: "ready",
+			loadedAt: "2026-05-16T02:09:05.833Z",
+		});
 	});
 });

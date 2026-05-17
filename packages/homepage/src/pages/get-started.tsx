@@ -262,7 +262,7 @@ function ProvisioningChatStep({ onContinue }: { onContinue: () => void }) {
       {isReady && (
         <Button
           onClick={onContinue}
-          className="w-full h-[52px] rounded-xl bg-neutral-900 text-white font-medium hover:bg-neutral-800 mt-4"
+          className="w-full h-[52px] rounded-sm bg-black text-white font-medium hover:bg-[#FF5800] hover:text-black transition-colors mt-4"
         >
           <Check className="size-4 mr-2" />
           Continue to dashboard
@@ -852,7 +852,7 @@ export default function GetStartedPage() {
               </animated.div>
 
               {(discordError || telegramError) && (
-                <div className="w-full mb-4 p-3 rounded-xl bg-red-50 border border-red-200">
+                <div className="w-full mb-4 p-3 rounded-sm bg-red-50 border border-red-200">
                   <p className="text-sm text-red-600 text-center">
                     {discordError || telegramError}
                   </p>
@@ -862,10 +862,10 @@ export default function GetStartedPage() {
               <div className="w-full flex flex-col gap-3">
                 <animated.button
                   onClick={() => handleMethodSelect("telegram")}
-                  className="w-full h-[72px] bg-white/40 hover:bg-white/60 backdrop-blur-sm rounded-xl border border-white/60 hover:border-white/80 transition-all flex items-center gap-4 px-5 cursor-pointer"
+                  className="w-full h-[72px] bg-white hover:bg-[#FF5800] text-black rounded-sm border border-black transition-colors flex items-center gap-4 px-5 cursor-pointer"
                   style={cardTrail[0]}
                 >
-                  <div className="w-12 h-12 rounded-xl bg-[#229ED9]/20 flex items-center justify-center shrink-0">
+                  <div className="w-12 h-12 rounded-sm bg-[#229ED9]/20 flex items-center justify-center shrink-0">
                     <TelegramIcon className="size-6 text-[#229ED9]" />
                   </div>
                   <div className="flex-1 text-left">
@@ -875,7 +875,7 @@ export default function GetStartedPage() {
 
                 <animated.button
                   onClick={() => handleMethodSelect("imessage")}
-                  className="w-full h-[72px] bg-white/40 hover:bg-white/60 backdrop-blur-sm rounded-xl border border-white/60 hover:border-white/80 transition-all flex items-center gap-4 px-5 cursor-pointer"
+                  className="w-full h-[72px] bg-white hover:bg-[#FF5800] text-black rounded-sm border border-black transition-colors flex items-center gap-4 px-5 cursor-pointer"
                   style={cardTrail[1]}
                 >
                   <div className="w-12 h-12 shrink-0 flex items-center justify-center">
@@ -888,10 +888,10 @@ export default function GetStartedPage() {
 
                 <animated.button
                   onClick={() => handleMethodSelect("whatsapp")}
-                  className="w-full h-[72px] bg-white/40 hover:bg-white/60 backdrop-blur-sm rounded-xl border border-white/60 hover:border-white/80 transition-all flex items-center gap-4 px-5 cursor-pointer"
+                  className="w-full h-[72px] bg-white hover:bg-[#FF5800] text-black rounded-sm border border-black transition-colors flex items-center gap-4 px-5 cursor-pointer"
                   style={cardTrail[2]}
                 >
-                  <div className="w-12 h-12 rounded-xl bg-[#25D366]/20 flex items-center justify-center shrink-0">
+                  <div className="w-12 h-12 rounded-sm bg-[#25D366]/20 flex items-center justify-center shrink-0">
                     <WhatsAppIcon className="size-6 text-[#25D366]" />
                   </div>
                   <div className="flex-1 text-left">
@@ -901,10 +901,10 @@ export default function GetStartedPage() {
 
                 <animated.button
                   onClick={() => handleMethodSelect("discord")}
-                  className="w-full h-[72px] bg-white/40 hover:bg-white/60 backdrop-blur-sm rounded-xl border border-white/60 hover:border-white/80 transition-all flex items-center gap-4 px-5 cursor-pointer"
+                  className="w-full h-[72px] bg-white hover:bg-[#FF5800] text-black rounded-sm border border-black transition-colors flex items-center gap-4 px-5 cursor-pointer"
                   style={cardTrail[3]}
                 >
-                  <div className="w-12 h-12 rounded-xl bg-[#5865F2]/20 flex items-center justify-center shrink-0">
+                  <div className="w-12 h-12 rounded-sm bg-[#5865F2]/20 flex items-center justify-center shrink-0">
                     <DiscordIcon className="size-6 text-[#5865F2]" />
                   </div>
                   <div className="flex-1 text-left">
@@ -937,7 +937,7 @@ export default function GetStartedPage() {
               <Button
                 onClick={handleTelegramClick}
                 disabled={isTelegramLoading}
-                className="w-full h-[52px] rounded-xl bg-[#229ED9] hover:bg-[#229ED9]/90 text-white font-medium gap-2"
+                className="w-full h-[52px] rounded-sm bg-[#229ED9] hover:bg-[#229ED9]/90 text-white font-medium gap-2"
               >
                 {isTelegramLoading ? (
                   "Connecting..."
@@ -953,7 +953,7 @@ export default function GetStartedPage() {
 
           {step === "PHONE_INPUT" && (
             <>
-              <div className="w-12 h-12 rounded-xl bg-[#229ED9]/20 flex items-center justify-center mb-6">
+              <div className="w-12 h-12 rounded-sm bg-[#229ED9]/20 flex items-center justify-center mb-6">
                 <TelegramIcon className="size-6 text-[#229ED9]" />
               </div>
 
@@ -986,7 +986,7 @@ export default function GetStartedPage() {
               <Button
                 onClick={handlePhoneSubmit}
                 disabled={!hasPhoneNumber || isSubmittingPhone}
-                className={`w-full h-[52px] rounded-xl font-medium transition-colors ${
+                className={`w-full h-[52px] rounded-sm font-medium transition-colors ${
                   hasPhoneNumber
                     ? "bg-neutral-900 text-white hover:bg-neutral-800"
                     : "bg-neutral-300 text-neutral-500 cursor-not-allowed"
@@ -1010,7 +1010,7 @@ export default function GetStartedPage() {
                 Just text this number to start talking with Eliza
               </p>
 
-              <div className="w-full p-4 bg-white/50 backdrop-blur-sm border border-white/60 rounded-xl mb-6">
+              <div className="w-full p-4 bg-white border border-black rounded-sm mb-6">
                 <div className="flex items-center justify-between gap-3">
                   <span className="text-lg font-mono text-neutral-900">
                     {ELIZA_PHONE_FORMATTED}
@@ -1032,7 +1032,7 @@ export default function GetStartedPage() {
 
               <Button
                 onClick={handleOpenMessages}
-                className="w-full h-[52px] rounded-xl bg-[#34C759] hover:bg-[#2DB84D] text-white font-medium gap-2"
+                className="w-full h-[52px] rounded-sm bg-[#34C759] hover:bg-[#2DB84D] text-white font-medium gap-2"
               >
                 <AppleMessagesIcon className="size-5" />
                 Open iMessage
@@ -1069,7 +1069,7 @@ export default function GetStartedPage() {
                   const waNumber = getWhatsAppNumber().replace(/\D/g, "");
                   window.open(`https://wa.me/${waNumber}`, "_blank");
                 }}
-                className="w-full h-[52px] rounded-xl bg-[#25D366] hover:bg-[#25D366]/90 text-white font-medium gap-2"
+                className="w-full h-[52px] rounded-sm bg-[#25D366] hover:bg-[#25D366]/90 text-white font-medium gap-2"
               >
                 <WhatsAppIcon className="size-5" />
                 Open WhatsApp
@@ -1119,7 +1119,7 @@ export default function GetStartedPage() {
               </p>
 
               {discordError && (
-                <div className="w-full mb-4 p-3 rounded-xl bg-red-50 border border-red-200">
+                <div className="w-full mb-4 p-3 rounded-sm bg-red-50 border border-red-200">
                   <p className="text-sm text-red-600 text-center">
                     {discordError}
                   </p>
@@ -1130,7 +1130,7 @@ export default function GetStartedPage() {
                 <>
                   <Button
                     onClick={() => handleMethodSelect("discord")}
-                    className="w-full h-[52px] rounded-xl bg-[#5865F2] text-white font-medium hover:bg-[#5865F2]/90"
+                    className="w-full h-[52px] rounded-sm bg-[#5865F2] text-white font-medium hover:bg-[#5865F2]/90"
                   >
                     Try Again
                   </Button>
@@ -1174,7 +1174,7 @@ export default function GetStartedPage() {
                     disabled={
                       !hasPhoneNumber || isSubmittingPhone || isDiscordLoading
                     }
-                    className={`w-full h-[52px] rounded-xl font-medium transition-colors ${
+                    className={`w-full h-[52px] rounded-sm font-medium transition-colors ${
                       hasPhoneNumber
                         ? "bg-[#5865F2] text-white hover:bg-[#5865F2]/90"
                         : "bg-neutral-300 text-neutral-500 cursor-not-allowed"
@@ -1226,7 +1226,7 @@ export default function GetStartedPage() {
                 </>
               )}
               <div className="w-full flex flex-col gap-4">
-                <div className="w-full p-4 bg-white/50 backdrop-blur-sm border border-white/60 rounded-xl">
+                <div className="w-full p-4 bg-white border border-black rounded-sm">
                   <div className="flex items-start gap-3">
                     <div className="w-7 h-7 rounded-full bg-[#5865F2]/20 flex items-center justify-center shrink-0 mt-0.5">
                       <span className="text-xs font-bold text-[#5865F2]">
@@ -1256,7 +1256,7 @@ export default function GetStartedPage() {
                   </div>
                 </div>
 
-                <div className="w-full p-4 bg-white/50 backdrop-blur-sm border border-white/60 rounded-xl">
+                <div className="w-full p-4 bg-white border border-black rounded-sm">
                   <div className="flex items-start gap-3">
                     <div className="w-7 h-7 rounded-full bg-[#5865F2]/20 flex items-center justify-center shrink-0 mt-0.5">
                       <span className="text-xs font-bold text-[#5865F2]">
@@ -1286,7 +1286,7 @@ export default function GetStartedPage() {
                   </div>
                 </div>
 
-                <div className="w-full p-4 bg-white/50 backdrop-blur-sm border border-white/60 rounded-xl">
+                <div className="w-full p-4 bg-white border border-black rounded-sm">
                   <div className="flex items-start gap-3">
                     <div className="w-7 h-7 rounded-full bg-[#5865F2]/20 flex items-center justify-center shrink-0 mt-0.5">
                       <span className="text-xs font-bold text-[#5865F2]">
@@ -1309,7 +1309,7 @@ export default function GetStartedPage() {
 
               <Button
                 onClick={handleContinueToConnected}
-                className="w-full h-[52px] rounded-xl bg-[#5865F2] hover:bg-[#5865F2]/90 text-white font-medium mt-6"
+                className="w-full h-[52px] rounded-sm bg-[#5865F2] hover:bg-[#5865F2]/90 text-white font-medium mt-6"
               >
                 Continue
               </Button>

@@ -20,7 +20,8 @@ import { Link } from "react-router-dom";
 import { cn } from "@/lib/utils";
 
 interface DashboardActionCardsProps {
-  creditBalance: number;
+  /** null = balance unavailable (loading already handled by skeleton above). */
+  creditBalance: number | null;
   className?: string;
 }
 
@@ -37,11 +38,13 @@ export function DashboardActionCards({
   className,
 }: DashboardActionCardsProps) {
   const formattedBalance =
-    creditBalance >= 1
-      ? `$${creditBalance.toFixed(2)}`
-      : creditBalance > 0
-        ? `$${creditBalance.toFixed(4)}`
-        : "$0.00";
+    creditBalance === null
+      ? "—"
+      : creditBalance >= 1
+        ? `$${creditBalance.toFixed(2)}`
+        : creditBalance > 0
+          ? `$${creditBalance.toFixed(4)}`
+          : "$0.00";
 
   return (
     <div className={cn("grid gap-3 sm:grid-cols-2 xl:grid-cols-5", className)}>

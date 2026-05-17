@@ -1,9 +1,9 @@
 [Desktop Entry]
 Type=Application
-_Name=About Tails
-_Comment=Learn more about Tails
+_Name=About elizaOS
+_Comment=Learn more about elizaOS
 Exec=tails-about
 Icon=gtk-about
 Terminal=false
-Categories=Utilities;Tails;
+Categories=Utility;System;
 StartupNotify=true

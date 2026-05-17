@@ -4,6 +4,7 @@ import {
   ArrowLeft,
   Cloud,
   ExternalLink,
+  MessageCircle,
   Server,
   Terminal,
 } from "lucide-react";
@@ -117,7 +118,18 @@ export default function AgentDetailPage() {
             <span>Instances</span>
           </Link>
 
-          {showConnect && <ElizaConnectButton agentId={agent.id} />}
+          <div className="flex items-center gap-2">
+            {agent.status === "running" && (
+              <Link
+                to={`/dashboard/agents/${agent.id}/chat`}
+                className="inline-flex items-center gap-1.5 h-8 px-3 text-sm font-medium border border-[#FF5800] bg-[#FF5800] text-black hover:bg-[#FF5800]/90 transition-colors"
+              >
+                <MessageCircle className="h-3.5 w-3.5" />
+                Chat
+              </Link>
+            )}
+            {showConnect && <ElizaConnectButton agentId={agent.id} />}
+          </div>
         </div>
 
         <div className="space-y-4">
@@ -305,7 +317,7 @@ export default function AgentDetailPage() {
                   <span className="text-[11px] uppercase tracking-widest text-white/35 shrink-0">
                     Web UI
                   </span>
-                  <span className="text-white/50 font-mono text-xs break-all">
+                  <span className="text-white/74 font-mono text-xs break-all">
                     {adminDetails.webUiUrl}
                   </span>
                 </div>
@@ -324,9 +336,9 @@ export default function AgentDetailPage() {
 
               <div className="space-y-2">
                 <div className="flex items-center gap-3 px-4 py-3 border border-white/10 bg-black/60">
-                  <Terminal className="h-4 w-4 text-emerald-400 shrink-0" />
+                  <Terminal className="h-4 w-4 text-green-400 shrink-0" />
                   <code
-                    className="text-sm text-emerald-400 font-mono flex-1"
+                    className="text-sm text-green-400 font-mono flex-1"
                     style={{ fontFamily: "var(--font-roboto-mono)" }}
                   >
                     {adminDetails.sshCommand}
@@ -418,7 +430,7 @@ function InfoCell({
 }) {
   const valueColor =
     accent === "emerald"
-      ? "text-emerald-400"
+      ? "text-green-400"
       : accent === "blue"
         ? "text-blue-400"
         : accent === "orange"

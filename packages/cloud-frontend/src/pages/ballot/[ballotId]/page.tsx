@@ -11,6 +11,7 @@
 
 import { AlertCircle, CheckCircle2, Loader2, Vote } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
+import { Helmet } from "react-helmet-async";
 import { useParams, useSearchParams } from "react-router-dom";
 import { ApiError, api } from "../../../lib/api-client";
 
@@ -118,99 +119,114 @@ export default function BallotPage() {
     }
   }, [ballotId, scopedToken, value]);
 
+  const head = (
+    <Helmet>
+      <title>Ballot | Eliza Cloud</title>
+    </Helmet>
+  );
+
   if (isLoading) {
     return (
-      <div className="flex min-h-screen items-center justify-center">
-        <Loader2 className="h-6 w-6 animate-spin" />
-      </div>
+      <>
+        {head}
+        <div className="flex min-h-screen items-center justify-center">
+          <Loader2 className="h-6 w-6 animate-spin" />
+        </div>
+      </>
     );
   }
 
   if (error || !ballot) {
     return (
-      <div className="mx-auto max-w-md py-16 text-center">
-        <AlertCircle className="mx-auto h-8 w-8 text-red-500" />
-        <p className="mt-4 text-sm text-gray-700">
-          {error ?? "Ballot not found."}
-        </p>
-      </div>
+      <>
+        {head}
+        <div className="mx-auto max-w-md py-16 text-center">
+          <AlertCircle className="mx-auto h-8 w-8 text-red-500" />
+          <p className="mt-4 text-sm text-gray-700">
+            {error ?? "Ballot not found."}
+          </p>
+        </div>
+      </>
     );
   }
 
   const isClosed = ballot.status !== "open";
 
   return (
-    <div className="mx-auto max-w-lg space-y-6 py-12">
-      <header className="space-y-2">
-        <div className="flex items-center gap-2 text-sm text-gray-500">
-          <Vote className="h-4 w-4" />
-          <span>Secret ballot</span>
-        </div>
-        <h1 className="text-2xl font-semibold">{ballot.purpose}</h1>
-        <p className="text-sm text-gray-600">
-          {ballot.threshold} of {ballot.participants.length} participants
-          required.
-        </p>
-        <p className="text-xs text-gray-500">
-          Expires {formatDate(ballot.expiresAt) ?? "soon"}.
-        </p>
-      </header>
+    <>
+      {head}
+      <div className="mx-auto max-w-lg space-y-6 py-12">
+        <header className="space-y-2">
+          <div className="flex items-center gap-2 text-sm text-gray-500">
+            <Vote className="h-4 w-4" />
+            <span>Secret ballot</span>
+          </div>
+          <h1 className="text-2xl font-semibold">{ballot.purpose}</h1>
+          <p className="text-sm text-gray-600">
+            {ballot.threshold} of {ballot.participants.length} participants
+            required.
+          </p>
+          <p className="text-xs text-gray-500">
+            Expires {formatDate(ballot.expiresAt) ?? "soon"}.
+          </p>
+        </header>
 
-      {isClosed ? (
-        <div className="rounded-md border border-gray-200 bg-gray-50 p-4 text-sm text-gray-700">
-          This ballot is {ballot.status} and is no longer accepting votes.
-        </div>
-      ) : (
-        <form
-          className="space-y-4"
-          onSubmit={(event) => {
-            event.preventDefault();
-            void handleSubmit();
-          }}
-        >
-          <label className="block text-sm">
-            <span className="text-gray-700">Your scoped token</span>
-            <input
-              type="text"
-              value={scopedToken}
-              onChange={(event) => setScopedToken(event.target.value)}
-              className="mt-1 w-full rounded-md border border-gray-300 px-3 py-2 text-sm"
-              placeholder="sb_..."
-              autoComplete="off"
-              spellCheck={false}
-              required
-            />
-          </label>
-          <label className="block text-sm">
-            <span className="text-gray-700">Your vote</span>
-            <textarea
-              value={value}
-              onChange={(event) => setValue(event.target.value)}
-              className="mt-1 w-full rounded-md border border-gray-300 px-3 py-2 text-sm"
-              rows={3}
-              required
-            />
-          </label>
-          <button
-            type="submit"
-            disabled={isSubmitting || !scopedToken.trim() || !value.trim()}
-            className="inline-flex items-center gap-2 rounded-md bg-black px-4 py-2 text-sm font-medium text-white disabled:opacity-50"
+        {isClosed ? (
+          <div className="rounded-md border border-gray-200 bg-gray-50 p-4 text-sm text-gray-700">
+            This ballot is {ballot.status} and is no longer accepting votes.
+          </div>
+        ) : (
+          <form
+            className="space-y-4"
+            onSubmit={(event) => {
+              event.preventDefault();
+              void handleSubmit();
+            }}
           >
-            {isSubmitting ? (
-              <Loader2 className="h-4 w-4 animate-spin" />
-            ) : (
-              <CheckCircle2 className="h-4 w-4" />
-            )}
-            Submit vote
-          </button>
-        </form>
-      )}
+            <label className="block text-sm">
+              <span className="text-gray-700">Your scoped token</span>
+              <input
+                type="text"
+                value={scopedToken}
+                onChange={(event) => setScopedToken(event.target.value)}
+                className="mt-1 w-full rounded-md border border-gray-300 px-3 py-2 text-sm"
+                placeholder="sb_..."
+                autoComplete="off"
+                spellCheck={false}
+                required
+              />
+            </label>
+            <label className="block text-sm">
+              <span className="text-gray-700">Your vote</span>
+              <textarea
+                value={value}
+                onChange={(event) => setValue(event.target.value)}
+                className="mt-1 w-full rounded-md border border-gray-300 px-3 py-2 text-sm"
+                rows={3}
+                required
+              />
+            </label>
+            <button
+              type="submit"
+              disabled={isSubmitting || !scopedToken.trim() || !value.trim()}
+              className="inline-flex items-center gap-2 rounded-md bg-black px-4 py-2 text-sm font-medium text-white disabled:opacity-50"
+            >
+              {isSubmitting ? (
+                <Loader2 className="h-4 w-4 animate-spin" />
+              ) : (
+                <CheckCircle2 className="h-4 w-4" />
+              )}
+              Submit vote
+            </button>
+          </form>
+        )}
 
-      {submitMessage ? (
-        <div className="rounded-md border border-gray-200 bg-white p-3 text-sm text-gray-700">
-          {submitMessage}
-        </div>
-      ) : null}
-    </div>
+        {submitMessage ? (
+          <div className="rounded-md border border-gray-200 bg-white p-3 text-sm text-gray-700">
+            {submitMessage}
+          </div>
+        ) : null}
+      </div>
+    </>
   );
 }

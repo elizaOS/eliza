@@ -207,7 +207,7 @@ export function DesktopTalkModePanel() {
           <Button
             variant="outline"
             size="sm"
-            className="min-h-10 rounded-xl px-3 text-xs-tight font-semibold"
+            className="min-h-10 rounded-sm px-3 text-xs-tight font-semibold"
             onClick={() =>
               void runAction(
                 "voice-talkmode-refresh",
@@ -225,7 +225,7 @@ export function DesktopTalkModePanel() {
       <CardContent className="flex flex-col gap-4 px-4 pb-4">
         {(error || message) && (
           <div
-            className={`rounded-xl border px-3 py-2.5 text-xs-tight leading-5 ${
+            className={`rounded-sm border px-3 py-2.5 text-xs-tight leading-5 ${
               error
                 ? "border-danger/40 bg-danger/10 text-danger"
                 : "border-ok/40 bg-ok/10 text-ok"
@@ -266,7 +266,7 @@ export function DesktopTalkModePanel() {
 
         <Input
           type="text"
-          className="min-h-10 rounded-xl bg-bg text-xs"
+          className="min-h-10 rounded-sm bg-bg text-xs"
           value={phrase}
           onChange={(event) => setPhrase(event.target.value)}
           placeholder={t("voiceconfigview.testPhrase")}
@@ -276,7 +276,7 @@ export function DesktopTalkModePanel() {
           <Button
             variant="outline"
             size="sm"
-            className="min-h-10 rounded-xl px-3 text-xs-tight font-semibold"
+            className="min-h-10 rounded-sm px-3 text-xs-tight font-semibold"
             onClick={() =>
               void runAction(
                 "voice-talkmode-start-stop",
@@ -316,7 +316,7 @@ export function DesktopTalkModePanel() {
           <Button
             variant="outline"
             size="sm"
-            className="min-h-10 rounded-xl px-3 text-xs-tight font-semibold"
+            className="min-h-10 rounded-sm px-3 text-xs-tight font-semibold"
             onClick={() =>
               void runAction(
                 "voice-talkmode-speak",
@@ -338,7 +338,7 @@ export function DesktopTalkModePanel() {
           <Button
             variant="outline"
             size="sm"
-            className="min-h-10 rounded-xl px-3 text-xs-tight font-semibold"
+            className="min-h-10 rounded-sm px-3 text-xs-tight font-semibold"
             onClick={() =>
               void runAction(
                 "voice-talkmode-stop-speaking",
@@ -499,7 +499,7 @@ function WakeWordSection({
         <div className="text-xs font-semibold text-muted">
           {t("voiceconfigview.WakeWord")}
         </div>
-        <div className="flex min-h-10 items-center gap-2 rounded-xl border border-border/50 bg-bg-hover px-3">
+        <div className="flex min-h-10 items-center gap-2 rounded-sm border border-border/50 bg-bg-hover px-3">
           <span className="text-xs-tight font-medium text-muted-strong">
             {enabled
               ? t("common.enabled", { defaultValue: "Enabled" })
@@ -524,7 +524,7 @@ function WakeWordSection({
         <span className="text-xs font-semibold">
           {t("voiceconfigview.Triggers")}
         </span>
-        <div className="flex min-h-10 flex-wrap gap-1.5 rounded-xl border border-border/60 bg-bg px-2 py-2">
+        <div className="flex min-h-10 flex-wrap gap-1.5 rounded-sm border border-border/60 bg-bg px-2 py-2">
           {triggers.map((trigger) => (
             <span
               key={trigger}
@@ -600,7 +600,7 @@ function WakeWordSection({
                 key={m.id}
                 variant={active ? "default" : "outline"}
                 size="sm"
-                className="h-auto min-h-12 flex-col rounded-xl py-2"
+                className="h-auto min-h-12 flex-col rounded-sm py-2"
                 onClick={() => void handleModelSizeChange(m.id)}
               >
                 <div className="font-semibold">{m.id}</div>
@@ -677,7 +677,7 @@ function AsrAdvancedSection({
   }, [currentAsrProvider]);
 
   return (
-    <div className="rounded-2xl border border-border/60 bg-card/92 p-4 shadow-sm flex flex-col gap-3">
+    <div className="rounded border border-border/60 bg-card/92 p-4 shadow-sm flex flex-col gap-3">
       <div className="flex flex-col gap-0.5">
         <span className="text-xs font-semibold text-muted">
           ASR (speech-to-text) provider
@@ -695,7 +695,7 @@ function AsrAdvancedSection({
               key={p.id}
               variant={active ? "default" : "outline"}
               size="sm"
-              className="h-auto min-h-14 flex-col rounded-xl py-2"
+              className="h-auto min-h-14 flex-col rounded-sm py-2"
               onClick={() => onChange(p.id)}
             >
               <div className="font-semibold">{p.label}</div>
@@ -705,13 +705,13 @@ function AsrAdvancedSection({
         })}
       </div>
       {currentAsrProvider === "local-inference" && localStatusBusy && (
-        <div className="rounded-xl border border-warn/35 bg-warn/10 px-3 py-2 text-xs-tight leading-5 text-warn">
+        <div className="rounded-sm border border-warn/35 bg-warn/10 px-3 py-2 text-xs-tight leading-5 text-warn">
           Downloading Qwen3-ASR bundle... ASR will use the cloud fallback until
           the local model is ready.
         </div>
       )}
       {currentAsrProvider === "openai" && (
-        <div className="rounded-xl border border-border/40 bg-bg-hover/60 px-3 py-2 text-2xs leading-5 text-muted">
+        <div className="rounded-sm border border-border/40 bg-bg-hover/60 px-3 py-2 text-2xs leading-5 text-muted">
           Uses your OpenAI API key from the Providers section.
         </div>
       )}
@@ -903,7 +903,7 @@ export function VoiceConfigView() {
 
   if (loading) {
     return (
-      <div className="rounded-2xl border border-border/60 bg-card/92 px-4 py-6 text-center text-xs text-muted shadow-sm">
+      <div className="rounded border border-border/60 bg-card/92 px-4 py-6 text-center text-xs text-muted shadow-sm">
         {t("voiceconfigview.LoadingVoiceConfig")}
       </div>
     );
@@ -916,7 +916,7 @@ export function VoiceConfigView() {
 
   return (
     <div className="flex flex-col gap-4">
-      <div className="rounded-2xl border border-border/60 bg-card/92 p-4 shadow-sm">
+      <div className="rounded border border-border/60 bg-card/92 p-4 shadow-sm">
         <div className="text-xs font-semibold text-muted">
           {t("voiceconfigview.TTSProvider")}
         </div>
@@ -928,7 +928,7 @@ export function VoiceConfigView() {
                 key={p.id}
                 variant={active ? "default" : "outline"}
                 size="sm"
-                className="h-auto min-h-14 flex-col rounded-xl py-2"
+                className="h-auto min-h-14 flex-col rounded-sm py-2"
                 onClick={() => handleProviderChange(p.id)}
               >
                 <div className="font-semibold">
@@ -942,7 +942,7 @@ export function VoiceConfigView() {
           })}
         </div>
       </div>
-      <div className="flex flex-col gap-2 rounded-2xl border border-border/60 bg-card/92 px-4 py-3 shadow-sm sm:flex-row sm:items-center sm:justify-between">
+      <div className="flex flex-col gap-2 rounded border border-border/60 bg-card/92 px-4 py-3 shadow-sm sm:flex-row sm:items-center sm:justify-between">
         <span className="text-xs leading-5 text-txt">
           {currentProvider === "elevenlabs"
             ? `ElevenLabs — ${currentMode === "cloud" ? t("voiceconfigview.ServedViaElizaCloud") : t("voiceconfigview.RequiresApiKey")}`
@@ -961,7 +961,7 @@ export function VoiceConfigView() {
         </span>
       </div>
       {currentProvider === "elevenlabs" && (
-        <div className="rounded-2xl border border-border/60 bg-card/92 p-4 shadow-sm flex flex-col gap-4">
+        <div className="rounded border border-border/60 bg-card/92 p-4 shadow-sm flex flex-col gap-4">
           <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
             <span className="text-xs font-semibold text-muted">
               {t("voiceconfigview.APISource")}
@@ -984,7 +984,7 @@ export function VoiceConfigView() {
               </span>
               <Input
                 type="password"
-                className="min-h-10 rounded-xl bg-bg text-xs"
+                className="min-h-10 rounded-sm bg-bg text-xs"
                 placeholder={
                   voiceConfig.elevenlabs?.apiKey
                     ? t("mediasettingssection.ApiKeySetLeaveBlank")
@@ -1018,7 +1018,7 @@ export function VoiceConfigView() {
                   <Button
                     key={preset.id}
                     variant={active ? "default" : "outline"}
-                    className={`h-auto min-h-16 flex-col items-start rounded-xl px-3 py-2.5 text-left transition-all ${
+                    className={`h-auto min-h-16 flex-col items-start rounded-sm px-3 py-2.5 text-left transition-all ${
                       active
                         ? "border-accent/45 bg-accent/12 text-txt shadow-sm"
                         : "border-border/60 bg-bg text-txt hover:border-border-strong hover:bg-bg-hover"
@@ -1045,7 +1045,7 @@ export function VoiceConfigView() {
               <Button
                 variant="outline"
                 size="sm"
-                className="min-h-10 rounded-xl px-3 text-xs-tight font-semibold"
+                className="min-h-10 rounded-sm px-3 text-xs-tight font-semibold"
                 disabled={testing}
                 onClick={() => handleTestVoice(selectedPreset.previewUrl)}
               >
@@ -1059,7 +1059,7 @@ export function VoiceConfigView() {
                 <Button
                   variant="outline"
                   size="sm"
-                  className="min-h-10 rounded-xl px-3 text-xs-tight font-semibold"
+                  className="min-h-10 rounded-sm px-3 text-xs-tight font-semibold"
                   onClick={() => {
                     if (audioRef.current) {
                       audioRef.current.pause();
@@ -1075,17 +1075,17 @@ export function VoiceConfigView() {
         </div>
       )}
       {currentProvider === "edge" && (
-        <div className="rounded-2xl border border-border/60 bg-card/92 px-4 py-3 text-xs leading-5 text-muted shadow-sm">
+        <div className="rounded border border-border/60 bg-card/92 px-4 py-3 text-xs leading-5 text-muted shadow-sm">
           {t("voiceconfigview.EdgeTTSUsesMicros")}
         </div>
       )}
       {currentProvider === "robot-voice" && (
-        <div className="rounded-2xl border border-border/60 bg-card/92 px-4 py-3 text-xs leading-5 text-muted shadow-sm">
+        <div className="rounded border border-border/60 bg-card/92 px-4 py-3 text-xs leading-5 text-muted shadow-sm">
           {t("voiceconfigview.SimpleVoiceUsesYo")}
         </div>
       )}
 
-      <div className="flex items-center justify-between rounded-2xl border border-border/60 bg-card/92 px-4 py-3 shadow-sm">
+      <div className="flex items-center justify-between rounded border border-border/60 bg-card/92 px-4 py-3 shadow-sm">
         <div className="flex flex-col gap-0.5">
           <span className="text-xs font-semibold text-txt">
             Advanced settings

@@ -16,7 +16,7 @@ import { PairingCommandHint } from "./PairingCommandHint";
 const SCREEN_SHELL_CLASS =
   "relative flex min-h-screen w-full items-center justify-center overflow-y-auto bg-bg px-4 py-6 font-body text-txt sm:px-6";
 const SCREEN_CARD_CLASS =
-  "relative z-10 w-full max-w-[620px] overflow-hidden border border-border/60 bg-card/95 shadow-[0_30px_120px_rgba(0,0,0,0.35)] backdrop-blur-xl";
+  "relative z-10 w-full max-w-[620px] overflow-hidden border border-border/60 bg-card/95 shadow-[0_30px_120px_rgba(0,0,0,0.35)] ";
 const SURFACE_PANEL_CLASS =
   "rounded-lg border border-border/50 bg-bg/40 p-4 shadow-sm sm:p-5";
 
@@ -81,7 +81,7 @@ export function PairingView() {
               <div
                 id="pairing-code-expiry"
                 aria-live="polite"
-                className="inline-flex min-h-10 items-center rounded-xl border border-border/60 bg-bg/55 px-3 py-2 text-xs font-medium text-muted shadow-sm"
+                className="inline-flex min-h-10 items-center rounded-sm border border-border/60 bg-bg/55 px-3 py-2 text-xs font-medium text-muted shadow-sm"
               >
                 {expiryText}
               </div>
@@ -129,7 +129,7 @@ export function PairingView() {
                       .filter(Boolean)
                       .join(" ") || undefined
                   }
-                  className="h-12 rounded-xl text-base sm:text-sm"
+                  className="h-12 rounded-sm text-base sm:text-sm"
                 />
               </div>
 
@@ -137,7 +137,7 @@ export function PairingView() {
                 <div
                   id="pairing-code-error"
                   role="alert"
-                  className="rounded-xl border border-danger/30 bg-danger/10 px-3 py-3 text-sm leading-relaxed text-danger"
+                  className="rounded-sm border border-danger/30 bg-danger/10 px-3 py-3 text-sm leading-relaxed text-danger"
                 >
                   {pairingError}
                 </div>
@@ -173,7 +173,7 @@ export function PairingView() {
             </form>
           ) : (
             <div className="space-y-5 text-sm">
-              <div className="rounded-xl border border-border/60 bg-bg/40 px-4 py-3.5 text-muted">
+              <div className="rounded-sm border border-border/60 bg-bg/40 px-4 py-3.5 text-muted">
                 <p className="leading-relaxed">
                   {t("pairingview.PairingIsNotEnabl")}
                 </p>

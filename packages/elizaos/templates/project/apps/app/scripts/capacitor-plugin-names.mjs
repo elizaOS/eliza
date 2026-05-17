@@ -4,10 +4,8 @@ import { fileURLToPath } from "node:url";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const repoRoot = path.resolve(__dirname, "..", "..", "..");
-const localNativePluginsRoot = path.resolve(
-  repoRoot,
-  "eliza/packages/native-plugins",
-);
+const localNativePluginsRoot = path.resolve(repoRoot, "eliza/plugins");
+const _NATIVE_PLUGIN_DIR_PREFIX = "plugin-native-";
 
 function readSourceModeMarker() {
   try {

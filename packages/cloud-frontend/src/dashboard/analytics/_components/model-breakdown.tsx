@@ -130,7 +130,7 @@ export function ModelBreakdown({ models }: ModelBreakdownProps) {
                       {formatTokens(model.totalTokens)}
                     </td>
                     <td className="py-3 text-right tabular-nums">
-                      <span className="text-emerald-600 dark:text-emerald-400">
+                      <span className="text-green-600 dark:text-green-400">
                         {(model.successRate * 100).toFixed(1)}%
                       </span>
                     </td>

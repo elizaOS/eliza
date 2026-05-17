@@ -18,64 +18,64 @@
         "./packages/shared/src/local-inference/index.ts"
       ],
       "@elizaos/capacitor-wifi": [
-        "./packages/native-plugins/wifi/dist/index.d.ts"
+        "./plugins/plugin-native-wifi/dist/index.d.ts"
       ],
       "@elizaos/capacitor-messages": [
-        "./packages/native-plugins/messages/dist/index.d.ts"
+        "./plugins/plugin-native-messages/dist/index.d.ts"
       ],
       "@elizaos/capacitor-screencapture": [
-        "./packages/native-plugins/screencapture/dist/index.d.ts"
+        "./plugins/plugin-native-screencapture/dist/index.d.ts"
       ],
       "@elizaos/native-activity-tracker": [
-        "./packages/native-plugins/activity-tracker/dist/index.d.ts"
+        "./plugins/plugin-native-activity-tracker/dist/index.d.ts"
       ],
       "@elizaos/capacitor-camera": [
-        "./packages/native-plugins/camera/dist/index.d.ts"
+        "./plugins/plugin-native-camera/dist/index.d.ts"
       ],
       "@elizaos/capacitor-location": [
-        "./packages/native-plugins/location/dist/index.d.ts"
+        "./plugins/plugin-native-location/dist/index.d.ts"
       ],
       "@elizaos/capacitor-swabble": [
-        "./packages/native-plugins/swabble/dist/index.d.ts"
+        "./plugins/plugin-native-swabble/dist/index.d.ts"
       ],
       "@elizaos/capacitor-contacts": [
-        "./packages/native-plugins/contacts/dist/index.d.ts"
+        "./plugins/plugin-native-contacts/dist/index.d.ts"
       ],
       "@elizaos/capacitor-talkmode": [
-        "./packages/native-plugins/talkmode/dist/index.d.ts"
+        "./plugins/plugin-native-talkmode/dist/index.d.ts"
       ],
       "@elizaos/capacitor-desktop": [
-        "./packages/native-plugins/desktop/dist/index.d.ts"
+        "./plugins/plugin-native-desktop/dist/index.d.ts"
       ],
       "@elizaos/capacitor-agent": [
-        "./packages/native-plugins/agent/dist/index.d.ts"
+        "./plugins/plugin-native-agent/dist/index.d.ts"
       ],
       "@elizaos/capacitor-canvas": [
-        "./packages/native-plugins/canvas/dist/index.d.ts"
+        "./plugins/plugin-native-canvas/dist/index.d.ts"
       ],
       "@elizaos/capacitor-mobile-signals": [
-        "./packages/native-plugins/mobile-signals/dist/index.d.ts"
+        "./plugins/plugin-native-mobile-signals/dist/index.d.ts"
       ],
       "@elizaos/capacitor-system": [
-        "./packages/native-plugins/system/dist/index.d.ts"
+        "./plugins/plugin-native-system/dist/index.d.ts"
       ],
       "@elizaos/capacitor-phone": [
-        "./packages/native-plugins/phone/dist/index.d.ts"
+        "./plugins/plugin-native-phone/dist/index.d.ts"
       ],
       "@elizaos/capacitor-websiteblocker": [
-        "./packages/native-plugins/websiteblocker/dist/index.d.ts"
+        "./plugins/plugin-native-websiteblocker/dist/index.d.ts"
       ],
       "@elizaos/capacitor-appblocker": [
-        "./packages/native-plugins/appblocker/dist/index.d.ts"
+        "./plugins/plugin-native-appblocker/dist/index.d.ts"
       ],
       "@elizaos/macosalarm": [
-        "./packages/native-plugins/macosalarm/dist/index.d.ts"
+        "./plugins/plugin-native-macosalarm/dist/index.d.ts"
       ],
       "@elizaos/capacitor-gateway": [
-        "./packages/native-plugins/gateway/dist/index.d.ts"
+        "./plugins/plugin-native-gateway/dist/index.d.ts"
       ],
       "@elizaos/capacitor-llama": [
-        "./packages/native-plugins/llama/dist/index.d.ts"
+        "./plugins/plugin-native-llama/dist/index.d.ts"
       ],
       "@elizaos/schemas": ["./packages/schemas/dist/index.d.ts"],
       "@elizaos/scenario-runner": [
@@ -368,7 +368,7 @@
   },
   "include": [
     "packages/*/src/**/*",
-    "packages/native-plugins/*/src/**/*",
+    "plugins/plugin-native-*/src/**/*",
     "plugins/*/*.ts",
     "plugins/*/src/**/*",
     "plugins/*/typescript/**/*.ts",

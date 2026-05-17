@@ -23,7 +23,6 @@ import {
 	ResponseSkeletonStreamExtractor,
 } from "@elizaos/core";
 import { resolveKokoroEngineConfig } from "@elizaos/shared";
-import type { LocalInferenceLoadArgs } from "./active-model";
 import type {
 	GenerateArgs as BackendGenerateArgs,
 	BackendPlan,
@@ -53,6 +52,7 @@ import {
 	getDflashTargetMetaBlockReason,
 } from "./dflash-target-meta";
 import type { LocalUsageBlock } from "./llama-server-metrics";
+import type { LocalInferenceLoadArgs } from "./load-args";
 import { MemoryMonitor } from "./memory-monitor";
 import { listInstalledModels } from "./registry";
 import {

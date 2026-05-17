@@ -83,8 +83,6 @@
     "./api/client-types-cloud": "./dist/api/client-types-cloud.js",
     "./components/character/CharacterEditor": "./dist/components/character/CharacterEditor.js",
     "./components/chat/widgets/types": "./dist/components/chat/widgets/types.js",
-    "./config/app-config": "./dist/config/app-config.js",
-    "./onboarding-config": "./dist/onboarding-config.js",
     "./api": {
       "types": "./dist/api/index.d.ts",
       "import": "./dist/api/index.js",
@@ -216,6 +214,7 @@
     "@elizaos/capacitor-bun-runtime": "workspace:*"
   },
   "dependencies": {
+    "@elizaos/app-core": "workspace:*",
     "@elizaos/core": "workspace:*",
     "@elizaos/shared": "workspace:*",
     "@fontsource-variable/open-sans": "^5.2.7",

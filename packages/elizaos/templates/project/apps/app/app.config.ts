@@ -11,7 +11,7 @@
  * Scaffold placeholders are replaced by `elizaos create` at project
  * creation time. Edit any value below to change app identity.
  */
-import type { AppConfig } from "@elizaos/ui";
+import type { AppConfig } from "@elizaos/app-core";
 
 interface AppWebConfig {
   shortName: string;

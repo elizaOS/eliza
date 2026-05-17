@@ -1,0 +1,11 @@
+[Desktop Entry]
+Type=Application
+Name=elizaOS
+Comment=elizaOS AI desktop
+Exec=/usr/local/bin/milady
+TryExec=/usr/local/bin/milady
+Icon=elizaos
+Terminal=false
+Categories=Utility;
+StartupNotify=true
+StartupWMClass=Milady

@@ -223,7 +223,10 @@ export interface AnalyticsTimeSeriesPointDto {
   totalCost: number;
   inputTokens: number;
   outputTokens: number;
+  /** Success rate as a fraction in [0, 1]. */
   successRate: number;
+  /** Success rate as a 0..100 percent rounded to 1dp. */
+  successRatePercent: number;
 }
 
 export interface AnalyticsUserBreakdownDto {
@@ -243,6 +246,12 @@ export interface AnalyticsCostTrendingDto {
   burnChangePercent: number;
   projectedMonthlyBurn: number;
   daysUntilBalanceZero: number | null;
+  /** Projected monthly burn as a 0..N percent of credit balance (1dp). */
+  monthlyBurnPercent: number;
+  /** Same as monthlyBurnPercent clamped to 100 for progress bars (1dp). */
+  monthlyBurnPercentClamped: number;
+  /** True when projected monthly burn exceeds 80% of current balance. */
+  burnAlertThresholdExceeded: boolean;
 }
 
 export interface AnalyticsProviderBreakdownDto {

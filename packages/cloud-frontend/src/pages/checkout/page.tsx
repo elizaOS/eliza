@@ -1,3 +1,9 @@
+import { startStripeCheckout } from "@elizaos/checkout-shared";
+import {
+  HARDWARE_PRODUCTS,
+  type Product as HardwareProduct,
+} from "@elizaos/hardware-catalog";
+import { BRAND_COLORS, BRAND_PATHS, LOGO_FILES } from "@elizaos/shared-brand";
 import { CloudVideoBackground } from "@elizaos/ui";
 import {
   ArrowRight,
@@ -13,164 +19,29 @@ import { Link, useSearchParams } from "react-router-dom";
 import { useSessionAuth } from "@/lib/hooks/use-session-auth";
 import LandingHeader from "../../components/layout/landing-header";
 
-type HardwareSku =
-  | "elizaos-phone"
-  | "elizaos-box"
-  | "elizaos-usb-chibi"
-  | "elizaos-usb"
-  | "elizaos-raspberry-pi-case"
-  | "elizaos-custom-raspberry-pi-case"
-  | "elizaos-mini-pc"
-  | "elizaos-usb-plastic";
-
-type HardwareProduct = {
-  sku: HardwareSku;
-  name: string;
-  price: string;
-  subtitle: string;
-  colors: Array<{ id: string; name: string }>;
-  image?: string;
-  kind: "phone" | "box" | "usb" | "chibi" | "mini";
-};
-
-const products: HardwareProduct[] = [
-  {
-    sku: "elizaos-phone",
-    name: "ElizaOS Phone",
-    price: "$499 deposit",
-    subtitle: "Reserve first-party phone hardware.",
-    colors: [
-      { id: "phone-orange", name: "Orange" },
-      { id: "phone-blue-frame", name: "Blue" },
-      { id: "phone-white", name: "White" },
-      { id: "phone-blue-glass", name: "Blue" },
-    ],
-    image: "/brand/concepts/concept_phone.jpg",
-    kind: "phone",
-  },
-  {
-    sku: "elizaos-box",
-    name: "ElizaOS Box",
-    price: "$299 deposit",
-    subtitle: "Reserve the ElizaOS home/runtime box.",
-    colors: [
-      { id: "box-orange", name: "Orange" },
-      { id: "box-blue", name: "Blue" },
-      { id: "box-white", name: "White" },
-      { id: "box-black", name: "Black" },
-    ],
-    image: "/brand/concepts/billboard_concept.jpg",
-    kind: "box",
-  },
-  {
-    sku: "elizaos-usb-chibi",
-    name: "Chibi USB key",
-    price: "$49",
-    subtitle: "Character USB installer. Ships October 2026.",
-    colors: [{ id: "chibi-orange", name: "Orange" }],
-    image: "/brand/concepts/chibi_usb_concept.jpg",
-    kind: "chibi",
-  },
-  {
-    sku: "elizaos-usb",
-    name: "ElizaOS USB key",
-    price: "$49",
-    subtitle: "Simple branded USB installer. Ships October 2026.",
-    colors: [
-      { id: "usb-orange", name: "Orange" },
-      { id: "usb-blue", name: "Blue" },
-      { id: "usb-white", name: "White" },
-      { id: "usb-black", name: "Black" },
-    ],
-    image: "/brand/concepts/concept_usbdrive.jpg",
-    kind: "usb",
-  },
-  {
-    sku: "elizaos-usb-plastic",
-    name: "Branded USB key",
-    price: "$49",
-    subtitle: "Simple plastic USB installer. Ships October 2026.",
-    colors: [
-      { id: "usb-orange", name: "Orange" },
-      { id: "usb-blue", name: "Blue" },
-      { id: "usb-white", name: "White" },
-      { id: "usb-black", name: "Black" },
-    ],
-    image: "/brand/concepts/concept_usbdrive.jpg",
-    kind: "usb",
-  },
-  {
-    sku: "elizaos-raspberry-pi-case",
-    name: "Raspberry Pi case",
-    price: "$49",
-    subtitle: "ElizaOS case for a local agent board.",
-    colors: [
-      { id: "case-orange", name: "Orange" },
-      { id: "case-blue", name: "Blue" },
-      { id: "case-white", name: "White" },
-      { id: "case-black", name: "Black" },
-    ],
-    image: "/product/elizaos-box-concept.avif",
-    kind: "box",
-  },
-  {
-    sku: "elizaos-custom-raspberry-pi-case",
-    name: "Raspberry Pi + case",
-    price: "$149",
-    subtitle: "Custom Pi kit in the ElizaOS case.",
-    colors: [
-      { id: "kit-orange", name: "Orange" },
-      { id: "kit-blue", name: "Blue" },
-      { id: "kit-white", name: "White" },
-      { id: "kit-black", name: "Black" },
-    ],
-    image: "/product/elizaos-box-concept.avif",
-    kind: "box",
-  },
-  {
-    sku: "elizaos-mini-pc",
-    name: "ElizaOS mini PC",
-    price: "$1999",
-    subtitle: "Always-on local compute for agents.",
-    colors: [
-      { id: "mini-orange", name: "Orange" },
-      { id: "mini-blue", name: "Blue" },
-      { id: "mini-white", name: "White" },
-      { id: "mini-black", name: "Black" },
-    ],
-    image: "/brand/concepts/concept_minipc.jpg",
-    kind: "mini",
-  },
-];
+const products = HARDWARE_PRODUCTS;
 
 const colorMap: Record<string, string> = {
-  Orange: "#FF5800",
-  Blue: "#0B35F1",
-  White: "#FFFFFF",
-  Black: "#000000",
+  Orange: BRAND_COLORS.orange,
+  Blue: BRAND_COLORS.blue,
+  "Blue glass": BRAND_COLORS.blue,
+  White: BRAND_COLORS.white,
+  Black: BRAND_COLORS.black,
 };
 
 function getProduct(sku: string | null): HardwareProduct {
-  return (
+  const fallback =
     products.find((product) => product.sku === sku) ??
     products.find((product) => product.sku === "elizaos-usb") ??
-    products[0]
-  );
+    products[0];
+  if (!fallback) throw new Error("Hardware catalog is empty");
+  return fallback;
 }
 
 function HardwareVisual({ product }: { product: HardwareProduct }) {
-  if (product.image) {
-    return (
-      <div className={`checkout-visual ${product.kind}`}>
-        <img alt="" src={product.image} />
-      </div>
-    );
-  }
-
   return (
     <div className={`checkout-visual ${product.kind}`}>
-      <img alt="" src="/product/elizaos-face.svg" />
-      <span>{product.kind === "usb" ? "USB" : "elizaOS"}</span>
+      <img alt={product.imageAlt} src={product.image} />
     </div>
   );
 }
@@ -205,22 +76,14 @@ export default function CheckoutPage() {
     setIsStartingCheckout(true);
 
     try {
-      const response = await fetch("/api/stripe/create-checkout-session", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
+      await startStripeCheckout(
+        {
           hardwareColor: selectedColor.name,
           hardwareSku: product.sku,
           returnUrl: "billing",
-        }),
-      });
-      const data = await response.json();
-
-      if (!response.ok || !data.url) {
-        throw new Error(data.error || "Could not start hardware checkout.");
-      }
-
-      window.location.href = data.url;
+        },
+        { apiBaseUrl: "", credentials: "same-origin" },
+      );
     } catch (error) {
       setCheckoutError(
         error instanceof Error
@@ -233,9 +96,9 @@ export default function CheckoutPage() {
 
   return (
     <CloudVideoBackground
-      basePath="/clouds"
+      basePath={BRAND_PATHS.clouds}
       speed="4x"
-      poster="/clouds/poster.jpg"
+      poster={BRAND_PATHS.poster}
       scrim={0.86}
       scrimColor="rgba(0,0,0,1)"
       className="theme-cloud min-h-screen bg-black font-poppins text-white"
@@ -248,22 +111,25 @@ export default function CheckoutPage() {
         />
       </Helmet>
       <LandingHeader />
-      <main className="relative z-10 mx-auto grid min-h-screen w-full max-w-7xl gap-10 px-5 pb-16 pt-28 text-white md:grid-cols-[0.85fr_1.15fr] md:px-8 lg:px-12">
+      <main
+        id="main"
+        className="relative z-10 mx-auto grid min-h-screen w-full max-w-7xl gap-10 px-5 pb-16 pt-28 text-white md:grid-cols-[0.85fr_1.15fr] md:px-8 lg:px-12"
+      >
         <section className="self-center">
           <img
-            src="/brand/logos/elizacloud_logotext.svg"
-            alt="eliza cloud"
+            src={`${BRAND_PATHS.logos}/${LOGO_FILES.cloudWhite}`}
+            alt="Eliza Cloud"
             className="mb-8 h-9 w-auto"
             draggable={false}
           />
           <p className="text-xs font-bold uppercase text-[#FF5800]">preorder</p>
-          <h1 className="mt-3 max-w-xl text-5xl font-extrabold leading-[0.9] text-white md:text-7xl">
+          <h1 className="mt-3 max-w-xl break-words text-4xl font-extrabold leading-[0.9] text-white sm:text-5xl md:text-7xl">
             {product.name}
           </h1>
           <p className="mt-5 max-w-lg text-lg font-medium leading-snug text-white/72">
             Reserve with your Eliza Cloud account.
           </p>
-          <div className="mt-8 flex flex-wrap gap-3 text-xs font-semibold uppercase text-white/60">
+          <div className="mt-8 flex flex-wrap gap-3 text-xs font-semibold uppercase text-white/74">
             <span>{product.price}</span>
             <span>{product.subtitle}</span>
           </div>
@@ -282,14 +148,14 @@ export default function CheckoutPage() {
                     <h2 className="text-2xl font-semibold text-white">
                       {product.name}
                     </h2>
-                    <p className="text-sm text-white/60">{product.subtitle}</p>
+                    <p className="text-sm text-white/74">{product.subtitle}</p>
                   </div>
                 </div>
                 <div className="mt-6 flex flex-wrap gap-2">
                   {product.colors.map((color) => (
                     <button
                       aria-label={`Select ${color.name}`}
-                      className={`size-8 ${
+                      className={`size-8 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white focus-visible:ring-offset-2 focus-visible:ring-offset-black ${
                         selectedColor.id === color.id
                           ? "ring-2 ring-[#FF5800]"
                           : "ring-1 ring-white/30"

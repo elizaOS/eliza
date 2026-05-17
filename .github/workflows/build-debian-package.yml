@@ -42,30 +42,31 @@ jobs:
 
       - name: Build .deb package
         id: deb
-        continue-on-error: true
         run: |
+          set -euo pipefail
           if [ ! -d packages/app-core/packaging/debian ]; then
-            echo "WARN: packages/app-core/packaging/debian not found; skipping .deb build"
-            exit 0
+            echo "ERROR: packages/app-core/packaging/debian is missing — debian packaging dir is required for the .deb build. Repo state is bad."
+            exit 1
           fi
           cd packages/app-core/packaging/debian
-          dpkg-buildpackage -us -uc -b 2>/dev/null || debuild -us -uc -b 2>/dev/null || true
+          dpkg-buildpackage -us -uc -b
 
       - name: Find and checksum .deb
         id: find_deb
         run: |
+          set -euo pipefail
           DEB=$(find . -maxdepth 3 -name "*.deb" | head -1)
-          if [ -n "$DEB" ]; then
-            sha256sum "$DEB" > "${DEB}.sha256"
-            DEB_SHA256=$(cut -d' ' -f1 "${DEB}.sha256")
-            DEB_SIZE=$(stat --format="%s" "$DEB")
-            echo "deb_path=$DEB" >> "$GITHUB_OUTPUT"
-            echo "deb_sha256=$DEB_SHA256" >> "$GITHUB_OUTPUT"
-            echo "deb_size=$DEB_SIZE" >> "$GITHUB_OUTPUT"
-            echo "Found .deb: $DEB ($DEB_SIZE bytes)"
-          else
-            echo "WARN: no .deb file produced"
+          if [ -z "$DEB" ]; then
+            echo "ERROR: no .deb file produced after dpkg-buildpackage"
+            exit 1
           fi
+          sha256sum "$DEB" > "${DEB}.sha256"
+          DEB_SHA256=$(cut -d' ' -f1 "${DEB}.sha256")
+          DEB_SIZE=$(stat --format="%s" "$DEB")
+          echo "deb_path=$DEB" >> "$GITHUB_OUTPUT"
+          echo "deb_sha256=$DEB_SHA256" >> "$GITHUB_OUTPUT"
+          echo "deb_size=$DEB_SIZE" >> "$GITHUB_OUTPUT"
+          echo "Found .deb: $DEB ($DEB_SIZE bytes)"
 
       - name: Upload .deb artifact
         uses: actions/upload-artifact@v4
@@ -74,7 +75,7 @@ jobs:
           path: |
             **/*.deb
             **/*.deb.sha256
-          if-no-files-found: warn
+          if-no-files-found: error
           retention-days: 30
 
       - name: Upload to GitHub Release

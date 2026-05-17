@@ -1,40 +1,38 @@
 ---
 title: Overview
-description: "Build autonomous AI agents in TypeScript, Python, or Rust"
+description: "elizaOS — the agentic operating system. Build Eliza agents in TypeScript, Python, or Rust."
 ---
 
+<img src="/brand/banners/elizaos_banner.svg" alt="elizaOS" />
+
 <Tip>
-  **elizaOS** — the open framework for autonomous AI agents. Ship in three commands. Run anywhere.
+  **elizaOS** — the open agentic operating system (AIOS). Three commands. Runs anywhere.
 </Tip>
 
-## Build AI Agents in Your Language
+## Build agents in your language
 
-elizaOS is available in **TypeScript**, **Python**, and **Rust** with identical APIs. Choose your preferred language and get started in minutes.
+elizaOS ships **TypeScript**, **Python**, and **Rust** with identical APIs. Pick one. Start in minutes.
 
 <CardGroup cols={3}>
   <Card title="TypeScript" icon="js" href="/quickstart#typescript">
-    The original elizaOS experience. Full Node.js ecosystem.
+    The original elizaOS surface. Full Node.js ecosystem.
   </Card>
   <Card title="Python" icon="python" href="/quickstart#python">
     Pythonic APIs with Pydantic models and async/await.
   </Card>
   <Card title="Rust" icon="gear" href="/quickstart#rust">
-    Native performance + WebAssembly for browser deployment.
+    Native performance plus WebAssembly for browser deployment.
   </Card>
 </CardGroup>
 
 ---
 
-## Create, Then Run Project Scripts
+## Create, then run project scripts
 
 <Tabs>
   <Tab title="TypeScript">
-    ```bash
-    npx elizaos create my-agent-app --template project
-    cd my-agent-app
-    bun install
-    bun run dev
-    ```
+    ```bash npx elizaos create my-agent-app --template project cd my-agent-app
+    bun install bun run dev ```
   </Tab>
   <Tab title="Python">
     ```bash pip install elizaos # Install the package python -c "from elizaos
@@ -79,25 +77,25 @@ elizaOS is available in **TypeScript**, **Python**, and **Rust** with identical 
   <Card title="90+ Plugins" icon="puzzle-piece">
     Discord, X, Telegram, Ethereum, Solana, OpenAI, and more
   </Card>
-  <Card title="Persistent Memory" icon="brain">
+  <Card title="Persistent memory" icon="brain">
     Agents remember and learn from every interaction
   </Card>
-  <Card title="Deploy Anywhere" icon="server">
+  <Card title="Deploy anywhere" icon="server">
     Local, Docker, AWS, GCP, Vercel, Cloudflare, or your own infrastructure
   </Card>
-  <Card title="Browser Ready" icon="globe">
+  <Card title="Browser ready" icon="globe">
     Run agents client-side with WASM and PGLite
   </Card>
-  <Card title="Truly Open" icon="code-branch">
+  <Card title="Truly open" icon="code-branch">
     Every line is open source. Extend, contribute, build together.
   </Card>
 </CardGroup>
 
-Your agents can trade onchain, manage social media, create content, analyze data, or interact with any API, blockchain, or repository.
+Eliza agents can trade onchain, manage social media, create content, analyze data, or talk to any API, blockchain, or repository.
 
 ---
 
-## API Consistency Across Languages
+## API consistency across languages
 
 All three implementations share identical interfaces:
 
@@ -111,7 +109,7 @@ All three implementations share identical interfaces:
 
 ---
 
-## Quick Example
+## Quick example
 
 <Tabs>
   <Tab title="TypeScript">
@@ -123,7 +121,7 @@ import { plugin as sqlPlugin } from '@elizaos/plugin-sql';
 const runtime = new AgentRuntime({
 character: {
 name: 'Eliza',
-bio: 'A helpful AI assistant.',
+bio: 'An Eliza agent.',
 },
 plugins: [sqlPlugin, openaiPlugin],
 });
@@ -140,7 +138,7 @@ from elizaos_plugin_openai import get_openai_plugin
 
 character = Character(
     name="Eliza",
-    bio="A helpful AI assistant.",
+    bio="An Eliza agent.",
 )
 
 runtime = AgentRuntime(
@@ -162,7 +160,7 @@ use elizaos_plugin_openai::create_openai_plugin;
 async fn main() -> anyhow::Result<()> {
 let character = parse_character(r#"{
 "name": "Eliza",
-"bio": "A helpful AI assistant."
+"bio": "An Eliza agent."
 }"#)?;
 
     let runtime = AgentRuntime::new(RuntimeOptions {
@@ -183,16 +181,16 @@ let character = parse_character(r#"{
 
 ---
 
-## Explore Examples
+## Explore examples
 
 <CardGroup cols={2}>
-  <Card title="Chat Applications" icon="comments" href="/examples-gallery/chat-apps">
+  <Card title="Chat applications" icon="comments" href="/examples-gallery/chat-apps">
     Build interactive CLI and web chat interfaces
   </Card>
   <Card title="REST APIs" icon="server" href="/examples-gallery/rest-apis">
     Express, FastAPI, Actix, and 5 more frameworks
   </Card>
-  <Card title="Browser Apps" icon="browser" href="/examples-gallery/web-apps">
+  <Card title="Browser apps" icon="browser" href="/examples-gallery/web-apps">
     React, Next.js, and pure HTML implementations
   </Card>
   <Card title="Serverless" icon="cloud" href="/examples-gallery/serverless">
@@ -202,7 +200,7 @@ let character = parse_character(r#"{
 
 ---
 
-## Get Started
+## Get started
 
 <CardGroup cols={2}>
   <Card
@@ -233,21 +231,21 @@ let character = parse_character(r#"{
 
 ---
 
-## Design Philosophy
+## Design philosophy
 
-**Ship Fast** — Three commands to a live agent. No boilerplate, no config hell.
+**Ship fast** — Three commands to a live agent. No boilerplate, no config hell.
 
-**Any Language** — TypeScript, Python, or Rust. Same APIs, same capabilities.
+**Any language** — TypeScript, Python, or Rust. Same APIs, same capabilities.
 
-**Scale Freely** — Start with a character file. Scale to millions of interactions.
+**Scale freely** — Start with a character file. Scale to millions of interactions.
 
-**Truly Open** — Every line is open source. Extend through plugins, contribute to core, build the future together.
+**Truly open** — Every line is open source. Extend through plugins, contribute to core, build the future together.
 
 <Card
-  title="Contribute to Core"
+  title="Contribute to core"
   icon="code-branch"
   href="/guides/contributing"
 >
-  Join the community building the most popular agentic framework
+  Join the community building the agentic operating system
 </Card>
 ```

@@ -103,8 +103,6 @@ export const kaminoLiquidityProvider: Provider = {
   cacheScope: "turn",
   roleGate: { minRole: "USER" },
   get: async (runtime: IAgentRuntime, message: Memory, _state: State) => {
-    console.log("KAMINO_LIQUIDITY provider called");
-
     let liquidityInfo = "";
 
     try {
@@ -125,8 +123,6 @@ export const kaminoLiquidityProvider: Provider = {
         liquidityInfo += "❌ Kamino liquidity service not available.\n";
       } else {
         if (tokenIdentifier) {
-          console.log(`Token identifier found: ${tokenIdentifier}`);
-
           liquidityInfo += `=== KAMINO LIQUIDITY POOL STATS ===\n\n`;
           liquidityInfo += `Token: ${tokenIdentifier}\n\n`;
 

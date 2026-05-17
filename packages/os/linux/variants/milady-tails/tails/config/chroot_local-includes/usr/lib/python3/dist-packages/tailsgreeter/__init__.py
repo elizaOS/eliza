@@ -15,13 +15,13 @@
 #  You should have received a copy of the GNU General Public License
 #  along with this program.  If not, see <http://www.gnu.org/licenses/>
 #
-"""Tails Greeter
+"""elizaOS Greeter
 
 """
 
 __appname__ = "tails-greeter"
 __version__ = "1.0.11"
 
-APPLICATION_TITLE = "Welcome to Tails!"
+APPLICATION_TITLE = "Welcome to elizaOS!"
 APPLICATION_ICON_NAME = "gdm-setup"
 TRANSLATION_DOMAIN = "tails"

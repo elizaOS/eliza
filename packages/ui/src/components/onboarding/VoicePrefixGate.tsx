@@ -85,7 +85,7 @@ export function VoicePrefixGate({
       data-testid="voice-prefix-gate"
       className="flex min-h-screen w-full items-center justify-center bg-bg p-6"
     >
-      <div className="w-full max-w-xl rounded-xl border border-border/40 bg-card/60 p-8 shadow-lg">
+      <div className="w-full max-w-xl rounded-sm border border-border/40 bg-card/60 p-8 shadow-sm">
         <VoicePrefixSteps
           step={step}
           tier={null}

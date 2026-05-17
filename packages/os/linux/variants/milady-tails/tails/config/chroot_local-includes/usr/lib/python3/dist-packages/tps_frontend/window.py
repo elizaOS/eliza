@@ -151,7 +151,7 @@ class Window(Gtk.ApplicationWindow):
             can_delete = False
             explanation = _(
                 "Impossible to delete the Persistent Storage while it is unlocked.\n\n"
-                "To delete the Persistent Storage, restart Tails without "
+                "To delete the Persistent Storage, restart elizaOS without "
                 "unlocking the Persistent Storage and open "
                 "the Persistent Storage settings again.",
             )
@@ -167,7 +167,7 @@ class Window(Gtk.ApplicationWindow):
                     "Impossible to delete the Persistent Storage because "
                     "the USB stick is read-only.\n\n"
                     "To delete the Persistent Storage, turn off the read-only "
-                    "protection of the USB stick, restart Tails without unlocking "
+                    "protection of the USB stick, restart elizaOS without unlocking "
                     "the Persistent Storage "
                     "and open the Persistent Storage settings again.",
                 )

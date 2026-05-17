@@ -358,7 +358,7 @@ export function IdentitySettingsSection() {
   return (
     <div className="flex flex-col gap-5">
       {showCharacterBootstrapping ? (
-        <div className="rounded-2xl border border-border/60 bg-card/92 px-4 py-6 text-center text-xs text-muted shadow-sm">
+        <div className="rounded border border-border/60 bg-card/92 px-4 py-6 text-center text-xs text-muted shadow-sm">
           {t("settings.identity.loading", {
             defaultValue: "Loading identity settings…",
           })}
@@ -380,7 +380,7 @@ export function IdentitySettingsSection() {
             onChange={(event) =>
               handleCharacterFieldInput("name", event.target.value)
             }
-            className="rounded-xl border-border/60 bg-card/80"
+            className="rounded-sm border-border/60 bg-card/80"
           />
         </SettingsField>
 
@@ -395,7 +395,7 @@ export function IdentitySettingsSection() {
             >
               <SelectTrigger
                 aria-labelledby="settings-identity-voice-label"
-                className="min-w-0 flex-1 h-11 rounded-xl border-border/60 bg-card/80 px-3 text-sm shadow-none"
+                className="min-w-0 flex-1 h-11 rounded-sm border-border/60 bg-card/80 px-3 text-sm shadow-none"
               >
                 <SelectValue
                   placeholder={t("charactereditor.SelectAVoice", {
@@ -403,7 +403,7 @@ export function IdentitySettingsSection() {
                   })}
                 />
               </SelectTrigger>
-              <SelectContent className="border-border/60 bg-bg/92 shadow-2xl backdrop-blur-md">
+              <SelectContent className="border-border/60 bg-bg/92 shadow-sm ">
                 {voiceGroups.map((group) => (
                   <SelectGroup key={group.label}>
                     <SelectLabel className="px-2.5 py-1 text-2xs font-semibold text-muted">
@@ -473,7 +473,7 @@ export function IdentitySettingsSection() {
           onChange={(event) =>
             handleCharacterFieldInput("system", event.target.value)
           }
-          className="min-h-[14rem] rounded-xl border-border/60 bg-card/80 font-mono text-xs leading-relaxed"
+          className="min-h-[14rem] rounded-sm border-border/60 bg-card/80 font-mono text-xs leading-relaxed"
         />
       </SettingsField>
 

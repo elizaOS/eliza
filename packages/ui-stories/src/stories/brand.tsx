@@ -100,6 +100,7 @@ function SimpleTabsExample() {
 
 export const brandStories: StoryDefinition[] = [
   {
+    id: "brand-button",
     name: "BrandButton",
     importPath:
       'import { BrandButton } from "@elizaos/ui/cloud-ui/components/brand/brand-button"',
@@ -118,6 +119,7 @@ export const brandStories: StoryDefinition[] = [
     ),
   },
   {
+    id: "brand-card",
     name: "BrandCard",
     importPath:
       'import { BrandCard, AgentCard } from "@elizaos/ui/cloud-ui/components/brand/brand-card"',
@@ -149,6 +151,7 @@ export const brandStories: StoryDefinition[] = [
     ),
   },
   {
+    id: "brand-tabs",
     name: "BrandTabs",
     importPath:
       'import { BrandTabs, BrandTabsList, BrandTabsTrigger, BrandTabsContent } from "@elizaos/ui/cloud-ui/components/brand/brand-tabs"',
@@ -166,18 +169,21 @@ export const brandStories: StoryDefinition[] = [
     ),
   },
   {
+    id: "brand-tabs-simple",
     name: "SimpleBrandTabs",
     importPath:
       'import { SimpleBrandTabs } from "@elizaos/ui/cloud-ui/components/brand/brand-tabs"',
     render: () => <SimpleTabsExample />,
   },
   {
+    id: "brand-tabs-responsive",
     name: "BrandTabsResponsive",
     importPath:
       'import { BrandTabsResponsive } from "@elizaos/ui/cloud-ui/components/brand/brand-tabs-responsive"',
     render: () => <ResponsiveTabsExample id="story-brand-tabs-responsive" />,
   },
   {
+    id: "brand-corner-brackets",
     name: "CornerBrackets",
     importPath:
       'import { CornerBrackets } from "@elizaos/ui/cloud-ui/components/brand/corner-brackets"',
@@ -196,6 +202,7 @@ export const brandStories: StoryDefinition[] = [
     ),
   },
   {
+    id: "brand-dashboard-section",
     name: "DashboardSection",
     importPath:
       'import { DashboardSection } from "@elizaos/ui/cloud-ui/components/brand/dashboard-section"',
@@ -209,6 +216,7 @@ export const brandStories: StoryDefinition[] = [
     ),
   },
   {
+    id: "brand-dashboard-stat-card",
     name: "DashboardStatCard",
     importPath:
       'import { DashboardStatCard } from "@elizaos/ui/cloud-ui/components/brand/dashboard-stat-card"',
@@ -233,18 +241,21 @@ export const brandStories: StoryDefinition[] = [
     ),
   },
   {
+    id: "brand-eliza-cloud-lockup",
     name: "ElizaCloudLockup",
     importPath:
       'import { ElizaCloudLockup } from "@elizaos/ui/cloud-ui/components/brand/eliza-cloud-lockup"',
     render: () => <ElizaCloudLockup />,
   },
   {
+    id: "brand-eliza-logo",
     name: "ElizaLogo",
     importPath:
       'import { ElizaLogo } from "@elizaos/ui/cloud-ui/components/brand/eliza-logo"',
     render: () => <ElizaLogo />,
   },
   {
+    id: "brand-hud-container",
     name: "HUDContainer",
     importPath:
       'import { HUDContainer } from "@elizaos/ui/cloud-ui/components/brand/hud-container"',
@@ -255,6 +266,7 @@ export const brandStories: StoryDefinition[] = [
     ),
   },
   {
+    id: "brand-key-metrics-grid",
     name: "KeyMetricsGrid",
     importPath:
       'import { KeyMetricsGrid } from "@elizaos/ui/cloud-ui/components/brand/key-metrics-grid"',
@@ -265,6 +277,7 @@ export const brandStories: StoryDefinition[] = [
     ),
   },
   {
+    id: "brand-lock-on-button",
     name: "LockOnButton",
     importPath:
       'import { LockOnButton } from "@elizaos/ui/cloud-ui/components/brand/lock-on-button"',
@@ -283,6 +296,7 @@ export const brandStories: StoryDefinition[] = [
     ),
   },
   {
+    id: "brand-mini-stat-card",
     name: "MiniStatCard",
     importPath:
       'import { MiniStatCard } from "@elizaos/ui/cloud-ui/components/brand/mini-stat-card"',
@@ -301,6 +315,7 @@ export const brandStories: StoryDefinition[] = [
     ),
   },
   {
+    id: "brand-prompt-card-grid",
     name: "PromptCard + PromptCardGrid",
     importPath:
       'import { PromptCard, PromptCardGrid } from "@elizaos/ui/cloud-ui/components/brand/prompt-card"',
@@ -321,6 +336,7 @@ export const brandStories: StoryDefinition[] = [
     ),
   },
   {
+    id: "brand-section-header",
     name: "SectionHeader + SectionLabel",
     importPath:
       'import { SectionHeader, SectionLabel } from "@elizaos/ui/cloud-ui/components/brand/section-header"',

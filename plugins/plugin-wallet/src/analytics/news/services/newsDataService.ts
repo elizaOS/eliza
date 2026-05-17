@@ -30,13 +30,6 @@ export class NewsDataService extends Service {
     return "Provides real-world cryptocurrency news and events from Brave New Coin RSS feed";
   }
 
-  constructor(runtime?: IAgentRuntime) {
-    super(runtime);
-    console.log(
-      "✅ [NewsDataService] Initialized with Brave New Coin RSS feed",
-    );
-  }
-
   /**
    * Start the NewsData service (static method for framework)
    */
@@ -58,9 +51,7 @@ export class NewsDataService extends Service {
   /**
    * Stop the service instance
    */
-  async stop(): Promise<void> {
-    console.log("✅ [NewsDataService] Stopped");
-  }
+  async stop(): Promise<void> {}
 
   /**
    * Parse RSS XML to extract news items
@@ -197,10 +188,6 @@ export class NewsDataService extends Service {
       const limit = options?.limit || 10;
       const query = options?.query?.toLowerCase();
 
-      console.log(
-        `🔍 [NewsDataService] Fetching news from Brave New Coin RSS feed`,
-      );
-
       const response = await fetch(this.rssUrl, {
         method: "GET",
         headers: {
@@ -220,10 +207,6 @@ export class NewsDataService extends Service {
 
       const xmlText = await response.text();
       const rssItems = this.parseRSS(xmlText);
-
-      console.log(
-        `✅ [NewsDataService] Parsed ${rssItems.length} news articles from RSS`,
-      );
 
       // Convert RSS items to RealWorldNewsArticle format
       let articles: RealWorldNewsArticle[] = rssItems.map((item, index) => ({
@@ -259,9 +242,6 @@ export class NewsDataService extends Service {
             `${article.title} ${article.description || ""} ${article.content || ""} ${article.category?.join(" ") || ""}`.toLowerCase();
           return searchText.includes(query);
         });
-        console.log(
-          `🔍 [NewsDataService] Filtered to ${articles.length} articles matching query: ${query}`,
-        );
       }
 
       // Limit results

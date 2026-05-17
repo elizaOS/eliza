@@ -1,6 +1,6 @@
-# Build infrastructure — the containerized milady-tails build
+# Build infrastructure — the containerized elizaOS Live build
 
-milady-tails builds its ISO in a **plain Docker container**. Any host
+elizaOS Live builds its ISO in a **plain Docker container**. Any host
 with Docker — Linux, macOS, Windows/WSL2, CI — runs `just build` and
 gets the same ISO. There is no Vagrant, no libvirt, no VM, and no
 host-specific setup beyond Docker itself.
@@ -27,7 +27,7 @@ Tails source for a possible upstream MR.
 ## How it works
 
 ```
-build.sh ──┬── docker build ──> milady-tails-builder image
+build.sh ──┬── docker build ──> elizaos-tails-builder image
            │     (Dockerfile: Debian Trixie + live-build deps +
            │      Tails' own live-build fork + apt-cacher-ng)
            │
@@ -57,7 +57,7 @@ build.sh ──┬── docker build ──> milady-tails-builder image
 - **`build-iso.sh`** — the container entrypoint. Runs Tails' own
   `auto/config && auto/build` (via `lb config` / `lb build`) inside the
   mounted source. See "Why each step" below.
-- **`acng.conf`** — apt-cacher-ng config, derived from Tails' own.
+- **`acng.conf`** — apt-cacher-ng config inherited from the upstream live-build workflow.
 
 ### Why apt-cacher-ng is *required*, not just an optimization
 
@@ -100,15 +100,33 @@ identically whether built from a clone or the vendored copy.
 just config        # ~1 min go/no-go — does Tails' config tree process?
 just build         # full clean ISO → out/  (~1–1.5 h cold, faster cached)
 just build-fast    # same, low-compression squashfs (faster, larger ISO)
+just build-cool    # low-CPU demo build; skips docs, caps Docker+squashfs to 2 CPUs
+just build-demo    # fastest full demo build; skips bundled offline website/docs
 just binary        # ~10 min incremental — squashfs + ISO only, reusing chroot/
+just binary-cool   # low-CPU incremental rebuild
 just nspawn        # seconds — boot the built chroot for non-GUI sanity checks
 just boot          # boot the latest ISO in QEMU
 just clean         # remove build artifacts
 just cache-clean   # drop the apt-cacher-ng cache volume
 ```
 
+`build.sh` also accepts Docker resource caps directly:
+
+```
+ELIZAOS_BUILD_CPUS=2 ./build.sh build
+ELIZAOS_MKSQUASHFS_PROCESSORS=2 ./build.sh build
+ELIZAOS_BUILD_CPUS=2 ELIZAOS_BUILD_MEMORY=8g ./build.sh binary
+ELIZAOS_SKIP_WEBSITE=1 MT_FAST=1 ./build.sh build
+```
+
+The CPU cap is the safest knob when the same laptop is also running
+Android Studio, Gradle, AOSP, or app builds. The squashfs processor cap
+keeps the final compression step from spawning one worker per host CPU.
+The memory cap is optional; set it only if the host needs a hard Docker
+ceiling.
+
 The three dev-loop speeds:
-1. **App work** (the Milady desktop) — develop the app on your host
+1. **App work** (the elizaOS desktop) — develop the app on your host
    with normal hot-reload. Never touches the ISO.
 2. **OS-level config** (branding, hooks, units) — `just nspawn` boots
    the built `chroot/` in seconds for non-GUI sanity.

@@ -1,6 +1,6 @@
 #!/usr/bin/python3 -I
 """
-Tails electrum wrapper
+elizaOS Electrum wrapper
 
 Test with "python3 electrum.py doctest".
 The tests will start the tor-browser so you probably
@@ -29,9 +29,9 @@ HOME_DIR = os.environ["HOME"]
 
 @dataclass
 class CampaignOption:
-    text: str  # "donate today to keep Tails thriving"
+    text: str  # "donate today to keep elizaOS thriving"
     address: str  # bc1asdfoobar
-    label: str  # sth like "Donation to Tails"
+    label: str  # sth like "Donation to elizaOS"
     probability: int  # expressed in percent (ie to set it to 20%, just use 20)
 
     @property
@@ -59,7 +59,7 @@ class CampaignOptions:
 CAMPAIGN = CampaignOptions(
     CampaignOption(  # benevolent
         _(
-            "Tails needs donations to keep everybody free and safe "
+            "elizaOS needs donations to keep everybody free and safe "
             "online.\n\nEvery bit helps in our fight against surveillance "
             "and censorship!\n\n",
         ),
@@ -69,7 +69,7 @@ CAMPAIGN = CampaignOptions(
     ),
     CampaignOption(  # selfish
         _(
-            "Tails protects your wallet.\n\nHelp us keep your bitcoins safe!\n\n",
+            "elizaOS protects your wallet.\n\nHelp us keep your bitcoins safe!\n\n",
         ),
         "bitcoin:bc1qtt04zfgjxg7lpqhk9vk8hnmnwf88ucwww5arsd",
         "Donation to Tor",
@@ -190,7 +190,7 @@ def verify_start():
 
     disabled_text = _("Persistence is disabled for Electrum")
     warning_text = _(
-        "When you reboot Tails, all of Electrum's data will be lost, including your Bitcoin wallet.\nIt is strongly recommended to only run Electrum when its persistence feature is activated.",
+        "When you reboot elizaOS, all of Electrum's data will be lost, including your Bitcoin wallet.\nIt is strongly recommended to only run Electrum when its persistence feature is activated.",
     )
     question_text = _("Do you want to start Electrum anyway?")
     dialog_msg = "<b><big>{}</big></b>\n\n{}\n\n{}\n".format(

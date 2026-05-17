@@ -1204,11 +1204,7 @@ const PERSONALITY_GLOBAL_SCOPE = "global";
 function getBenchPersonalityStore(
   runtime: AgentRuntime,
 ): BenchPersonalityStore | null {
-  const service = (
-    runtime as unknown as {
-      getService: (name: string) => unknown;
-    }
-  ).getService(PERSONALITY_STORE_SERVICE);
+  const service = runtime.getService(PERSONALITY_STORE_SERVICE);
   if (!service || typeof service !== "object") return null;
   const candidate = service as Partial<BenchPersonalityStore>;
   if (

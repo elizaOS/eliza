@@ -5,8 +5,8 @@
  * workspace package via root package.json `workspaces`, then runs each
  * package's `test` / `test:integration` / `test:e2e` / `test:playwright`
  * / `test:ui` / `test:live` script in turn. After the workspace sweep
- * finishes, also shells out to `bun run --cwd cloud test` (unless
- * `--no-cloud` is passed) so the cloud bun workspace runs locally too.
+ * finishes, also shells out to `bun run test:cloud` (unless
+ * `--no-cloud` is passed) so the cloud packages run locally too.
  *
  * Lane / shard / filter knobs are honoured via a mix of CLI flags and
  * env vars so CI matrices can drive sharding deterministically:
@@ -696,20 +696,15 @@ function runScript(cwd, scriptName, label, extraEnv = {}) {
 
 function runCloudTests() {
   return new Promise((resolve, reject) => {
-    const cloudDir = path.join(repoRoot, "cloud");
-    if (!fs.existsSync(cloudDir)) {
-      console.log("[eliza-test] SKIP cloud (cloud/ directory not found)");
-      resolve({ skipped: true });
-      return;
-    }
+    // Post-consolidation: cloud tests live inside packages/cloud-*. Run them via the root `test:cloud` script.
     console.log("[eliza-test] START cloud#test");
     const startedAt = Date.now();
-    const child = spawn(bunCmd, ["run", "test"], {
-      cwd: cloudDir,
+    const child = spawn(bunCmd, ["run", "test:cloud"], {
+      cwd: repoRoot,
       env: {
         ...process.env,
         NODE_NO_WARNINGS: process.env.NODE_NO_WARNINGS || "1",
-        PWD: cloudDir,
+        PWD: repoRoot,
       },
       stdio: ["ignore", "pipe", "pipe"],
     });

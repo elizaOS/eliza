@@ -586,7 +586,7 @@ class TailsInstallerCreator:
         chmod'ing them since Python for Windows is unable to delete
         read-only files.
         """
-        self.log.info(_("Removing existing Tails system"))
+        self.log.info(_("Removing existing elizaOS system"))
         for path in self.get_liveos_toplevel_files(absolute=True):
             if not os.path.exists(path):
                 continue
@@ -598,7 +598,7 @@ class TailsInstallerCreator:
                     raise TailsInstallerError(
                         _(
                             "Unable to remove file from"
-                            " previous Tails system: %(message)s"
+                            " previous elizaOS system: %(message)s"
                         )
                         % {"message": str(e)}
                     ) from e
@@ -616,7 +616,7 @@ class TailsInstallerCreator:
                     raise TailsInstallerError(
                         _(
                             "Unable to remove directory from"
-                            " previous Tails system: %(message)s"
+                            " previous elizaOS system: %(message)s"
                         )
                         % {"message": str(e)}
                     ) from e
@@ -975,7 +975,7 @@ class TailsInstallerCreator:
             return False
 
     def device_can_be_upgraded(self, device_data=None):
-        # Checks that device already has Tails installed
+        # Checks that device already has elizaOS installed
         if not device_data:
             device = self.drive
         else:
@@ -984,7 +984,7 @@ class TailsInstallerCreator:
             not self.device_is_isohybrid(device)
             and self.is_partition_GPT(device)
             and device["fstype"] == "vfat"
-            and device["label"] == "Tails"
+            and device["label"] == CONFIG["branding"]["partition_label"]
         )
 
     def device_is_isohybrid(self, drive=None):

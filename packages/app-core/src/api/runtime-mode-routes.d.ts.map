@@ -1,0 +1,1 @@
+{"version":3,"file":"runtime-mode-routes.d.ts","sourceRoot":"","sources":["runtime-mode-routes.ts"],"names":[],"mappings":"AAAA;;;;;;;;GAQG;AAEH,OAAO,KAAK,IAAI,MAAM,WAAW,CAAC;AAGlC,OAAO,KAAK,EAAE,kBAAkB,EAAE,MAAM,uBAAuB,CAAC;AAGhE,wBAAsB,sBAAsB,CAC1C,GAAG,EAAE,IAAI,CAAC,eAAe,EACzB,GAAG,EAAE,IAAI,CAAC,cAAc,EACxB,KAAK,EAAE,kBAAkB,GACxB,OAAO,CAAC,OAAO,CAAC,CAkBlB"}

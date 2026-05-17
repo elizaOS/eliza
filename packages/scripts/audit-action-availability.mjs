@@ -16,7 +16,7 @@ const DEFAULT_ROOTS = [
   "packages/core/src",
   "packages/agent/src/actions",
   "plugins",
-  "cloud/packages/lib/eliza",
+  "packages/cloud-shared/src/lib/eliza",
 ];
 const SKIP_DIRS = new Set([
   "node_modules",

@@ -19,6 +19,7 @@ import {
   type User,
 } from "discord.js";
 import { logger } from "./logger";
+import { MockUpstashRedis } from "./mock-redis";
 import {
   forwardToServer,
   refreshKedaActivity,
@@ -311,8 +312,12 @@ export class GatewayManager {
     this.voiceHandler = new VoiceMessageHandler();
 
     // Initialize Redis for failover coordination
-    // Requires both URL and token, or falls back to environment variables
-    if (config.redisUrl && config.redisToken) {
+    // MOCK_REDIS=1 is an explicit opt-in for tests/CI; never silently used
+    // when unset, so real credentials are still honored when present.
+    if (process.env.MOCK_REDIS === "1") {
+      this.redis = new MockUpstashRedis() as unknown as Redis;
+      logger.info("[GatewayManager] using in-memory mock Redis (MOCK_REDIS=1)");
+    } else if (config.redisUrl && config.redisToken) {
       this.redis = new Redis({
         url: config.redisUrl,
         token: config.redisToken,

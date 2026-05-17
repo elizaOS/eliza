@@ -62,7 +62,7 @@
                             <property name="can-focus">False</property>
                             <property name="label" translatable="yes">Your Persistent Storage is unlocked.
 
-Its content is available until you shut down Tails.
+Its content is available until you shut down elizaOS.
 
 &lt;a href="doc/persistent_storage/backup"&gt;Learn how to make a backup of your Persistent Storage.&lt;/a&gt;</property>
                             <property name="use-markup">True</property>
@@ -88,7 +88,7 @@ Its content is available until you shut down Tails.
                         <property name="visible">True</property>
                         <property name="can-focus">False</property>
                         <property name="margin-top">18</property>
-                        <property name="label" translatable="yes">Turn on the features of the Persistent Storage for the data that you want to save to your Tails USB stick.</property>
+                        <property name="label" translatable="yes">Turn on the features of the Persistent Storage for the data that you want to save to your elizaOS USB stick.</property>
                         <property name="wrap">True</property>
                         <property name="max-width-chars">50</property>
                         <property name="xalign">0</property>
@@ -425,6 +425,36 @@ Its content is available until you shut down Tails.
                             <property name="can-focus">False</property>
                             <property name="selection-mode">none</property>
                             <child>
+                              <object class="HdyActionRow" id="milady_data_row">
+                                <property name="visible">True</property>
+                                <property name="can-focus">False</property>
+                                <property name="title" translatable="yes">elizaOS Data</property>
+                                <property name="subtitle" translatable="yes">Save elizaOS memory, settings, and local runtime state.</property>
+                                <property name="icon-name">applications-system</property>
+                                <child>
+                                  <object class="GtkBox" id="milady_data_box">
+                                    <property name="valign">center</property>
+                                    <property name="margin_start">6</property>
+                                    <property name="spacing">6</property>
+                                    <property name="visible">True</property>
+                                    <child>
+                                      <object class="GtkSwitch" id="milady_data_switch">
+                                        <property name="visible">True</property>
+                                        <property name="can-focus">True</property>
+                                        <property name="halign">end</property>
+                                        <property name="valign">center</property>
+                                        <child internal-child="accessible">
+                                          <object class="AtkObject" id="milady_data_switch-atkobject">
+                                            <property name="AtkObject::accessible-name" translatable="yes">Activate elizaOS Data</property>
+                                          </object>
+                                        </child>
+                                      </object>
+                                    </child>
+                                  </object>
+                                </child>
+                              </object>
+                            </child>
+                            <child>
                               <object class="HdyActionRow" id="browser_bookmarks_row">
                                 <property name="visible">True</property>
                                 <property name="can-focus">True</property>
@@ -646,7 +676,7 @@ Its content is available until you shut down Tails.
                                 <property name="visible">True</property>
                                 <property name="can-focus">False</property>
                                 <property name="title" translatable="yes">Additional Software</property>
-                                <property name="subtitle" translatable="yes">Install additional software automatically when starting Tails.</property>
+                                <property name="subtitle" translatable="yes">Install additional software automatically when starting elizaOS.</property>
                                 <property name="icon-name">package-x-generic</property>
                                 <child>
                                   <object class="GtkBox" id="additional_software_box">
@@ -782,7 +812,7 @@ Its content is available until you shut down Tails.
                             <property name="visible">True</property>
                             <property name="can-focus">False</property>
                             <property name="halign">start</property>
-                            <property name="label" translatable="yes">To add or remove custom features, modify /live/persistence/TailsData_unlocked/persistence.conf.</property>
+                            <property name="label" translatable="yes">To add or remove custom features, modify the Persistent Storage configuration file directly.</property>
                             <property name="selectable">True</property>
                           </object>
                           <packing>

@@ -41,6 +41,10 @@ class BrowserBookmarks(Feature):
     pass
 
 
+class MiladyData(Feature):
+    pass
+
+
 class WelcomeScreen(Feature):
     pass
 

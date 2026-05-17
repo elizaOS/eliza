@@ -1093,7 +1093,7 @@ export default function Leaderboard() {
           transformOrigin: "bottom center",
         }}
       >
-        <div className="flex items-center gap-4 bg-neutral-200/50 rounded-3xl px-4 py-4">
+        <div className="flex items-center gap-4 bg-white border border-black rounded-sm px-4 py-4">
           <div className="relative flex items-center gap-1.5 text-neutral-600 cursor-pointer">
             <svg
               viewBox="0 0 24 24"
@@ -1156,10 +1156,10 @@ export default function Leaderboard() {
               setTimeout(() => verifyInputsRef.current[0]?.focus(), 100);
             }
           }}
-          className={`w-full rounded-3xl py-4 text-[17px] font-semibold transition-colors ${
+          className={`w-full rounded-sm py-4 text-[17px] font-semibold transition-colors ${
             phoneDigits.length === country.placeholder.replace(/\D/g, "").length
-              ? "bg-neutral-900 text-white hover:bg-black cursor-pointer"
-              : "bg-neutral-300 text-neutral-500 cursor-not-allowed"
+              ? "bg-black text-white hover:bg-[#FF5800] hover:text-black cursor-pointer"
+              : "bg-white/60 text-black/40 cursor-not-allowed"
           }`}
         >
           Continue with phone
@@ -1224,7 +1224,7 @@ export default function Leaderboard() {
                   const focusIdx = Math.min(i + pasted.length, 5);
                   verifyInputsRef.current[focusIdx]?.focus();
                 }}
-                className="flex-1 min-w-0 aspect-square bg-neutral-200/50 rounded-xl text-center text-3xl font-semibold text-black outline-none focus:ring-2 focus:ring-neutral-400"
+                className="flex-1 min-w-0 aspect-square bg-white border border-black rounded-sm text-center text-3xl font-semibold text-black outline-none focus:ring-2 focus:ring-[#FF5800]"
               />
             );
           })}
@@ -1232,10 +1232,10 @@ export default function Leaderboard() {
         <button
           type="button"
           disabled={verifyCode.some((d) => !d)}
-          className={`w-full rounded-3xl py-4 text-[17px] font-semibold transition-colors ${
+          className={`w-full rounded-sm py-4 text-[17px] font-semibold transition-colors ${
             verifyCode.every((d) => d)
-              ? "bg-neutral-900 text-white hover:bg-black cursor-pointer"
-              : "bg-neutral-300 text-neutral-500 cursor-not-allowed"
+              ? "bg-black text-white hover:bg-[#FF5800] hover:text-black cursor-pointer"
+              : "bg-white/60 text-black/40 cursor-not-allowed"
           }`}
         >
           Verify

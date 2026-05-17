@@ -1,15 +1,15 @@
-# milady-tails ISO builder — containerized, OS-agnostic
+# elizaOS Live ISO builder — containerized, OS-agnostic
 #
 # Replaces Tails' Vagrant+libvirt build VM with a plain container.
 # Any host with Docker (Linux / macOS / Windows / CI) builds the same
 # ISO from the same builder image. Run --privileged: live-build does
 # chroot, mount, loop-device, and debootstrap operations.
 #
-# Build:  docker build -t milady-tails-builder .
+# Build:  docker build -t elizaos-tails-builder .
 # Run:    docker run --rm --privileged \
 #           -v <tails-source>:/build \
 #           -v <output-dir>:/out \
-#           milady-tails-builder
+#           elizaos-tails-builder
 #
 # Tails targets Debian Trixie; match the base image to minimise the
 # arg-translation surface against Tails' config/. Pinned by digest so

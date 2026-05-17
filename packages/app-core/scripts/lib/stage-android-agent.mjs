@@ -22,8 +22,8 @@
  *   arm64-v8a/libgcc_s.so.1
  *
  * Downloads are cached under `~/.cache/eliza-android-agent/<bun-version>/`
- * and the staging step is idempotent — already-staged files with the
- * matching size are left in place.
+ * and the staging step is idempotent — already-staged files with matching
+ * bytes are left in place.
  *
  * Pinned versions:
  *   - bun 1.3.13                     validated by Android agent bring-up
@@ -44,9 +44,9 @@ const BUN_VERSION = "1.3.13";
 // Bun 1.3.13 has a segfault we hit during inference on Cuttlefish at
 // peak ~2.3 GB RSS ("panic(main thread): Segmentation fault at address
 // 0x5420"). The canary channel ships the upstream fix while we wait for
-// 1.3.14+. ELIZA_BUN_CHANNEL=stable forces back to BUN_VERSION; default
-// is canary so AOSP/cvd inference doesn't crash mid-token.
-const BUN_CHANNEL = (process.env.ELIZA_BUN_CHANNEL ?? "canary").toLowerCase();
+// 1.3.14+. Stock APK builds should stay on the validated stable pin unless
+// explicitly overridden; AOSP/CVD builds pass canary from run-mobile-build.
+const DEFAULT_BUN_CHANNEL = "canary";
 const ALPINE_BRANCH = "v3.21";
 
 /**
@@ -76,6 +76,12 @@ const ABI_TARGETS = [
     alpineArch: "aarch64",
     ldName: "ld-musl-aarch64.so.1",
   },
+];
+
+const NATIVE_LLAMA_ASSET_ENV_KEYS = [
+  "ELIZA_ANDROID_AGENT_NATIVE_ASSET_DIR",
+  "ELIZA_AOSP_LLAMA_ASSET_DIR",
+  "ELIZA_DFLASH_ANDROID_LIBDIR",
 ];
 
 const APK_PACKAGES = [
@@ -197,9 +203,44 @@ async function downloadFile(url, targetPath) {
   fs.writeFileSync(targetPath, buf);
 }
 
-async function ensureBunBinary({ cacheDir, bunArch, log }) {
-  const channelTag = BUN_CHANNEL === "canary" ? "canary" : `bun-${BUN_VERSION}`;
-  const cacheKey = BUN_CHANNEL === "canary" ? "canary" : BUN_VERSION;
+function normalizeBunChannel(value) {
+  const channel = String(value ?? DEFAULT_BUN_CHANNEL)
+    .trim()
+    .toLowerCase();
+  if (channel === "stable" || channel === "release") return "stable";
+  if (channel === "canary") return "canary";
+  throw new Error(
+    `Unsupported ELIZA_BUN_CHANNEL=${JSON.stringify(value)}. ` +
+      "Expected stable or canary.",
+  );
+}
+
+function resolveBunChannel(preferredChannel) {
+  return normalizeBunChannel(
+    process.env.ELIZA_BUN_CHANNEL ?? preferredChannel ?? DEFAULT_BUN_CHANNEL,
+  );
+}
+
+function bunCacheKey(channel) {
+  return channel === "canary" ? "canary" : BUN_VERSION;
+}
+
+function bunChannelLabel(channel) {
+  return channel === "canary" ? "bun-canary" : `bun-${BUN_VERSION}`;
+}
+
+function defaultBunCacheDir(channel) {
+  return path.join(
+    os.homedir(),
+    ".cache",
+    "eliza-android-agent",
+    `bun-${bunCacheKey(channel)}`,
+  );
+}
+
+async function ensureBunBinary({ cacheDir, bunArch, bunChannel, log }) {
+  const channelTag = bunChannel === "canary" ? "canary" : `bun-v${BUN_VERSION}`;
+  const cacheKey = bunCacheKey(bunChannel);
   const archCache = path.join(cacheDir, `bun-${bunArch}-${cacheKey}`);
   const bunPath = path.join(archCache, "bun");
   // Canary cache invalidates after 24h so we pull bug-fix snapshots
@@ -208,7 +249,7 @@ async function ensureBunBinary({ cacheDir, bunArch, log }) {
     if (!fs.existsSync(bunPath)) return false;
     const st = fs.statSync(bunPath);
     if (st.size <= 1_000_000) return false;
-    if (BUN_CHANNEL !== "canary") return true;
+    if (bunChannel !== "canary") return true;
     const ageMs = Date.now() - st.mtimeMs;
     return ageMs < 24 * 60 * 60 * 1000;
   })();
@@ -216,11 +257,10 @@ async function ensureBunBinary({ cacheDir, bunArch, log }) {
   fs.mkdirSync(archCache, { recursive: true });
   const zipPath = path.join(archCache, "bun.zip");
   const url =
-    BUN_CHANNEL === "canary"
+    bunChannel === "canary"
       ? `https://github.com/oven-sh/bun/releases/download/canary/bun-linux-${bunArch}-musl.zip`
       : `https://github.com/oven-sh/bun/releases/download/${channelTag}/bun-linux-${bunArch}-musl.zip`;
-  const channelLabel =
-    BUN_CHANNEL === "canary" ? "bun-canary" : `bun-${BUN_VERSION}`;
+  const channelLabel = bunChannelLabel(bunChannel);
   log(`Downloading ${channelLabel} (${bunArch}-musl) from ${url}`);
   await downloadFile(url, zipPath);
   await run("unzip", ["-q", "-o", zipPath, "-d", archCache]);
@@ -318,10 +358,77 @@ function copyIfDifferent(source, target) {
   if (fs.existsSync(target)) {
     const a = fs.statSync(source);
     const b = fs.statSync(target);
-    if (a.size === b.size && a.mtimeMs <= b.mtimeMs) return false;
+    if (a.size === b.size) {
+      const sameBytes = fs.readFileSync(source).equals(fs.readFileSync(target));
+      if (sameBytes) return false;
+    }
   }
   fs.copyFileSync(source, target);
   return true;
+}
+
+function resolveNativeLlamaAssetDir(androidAbi) {
+  if (androidAbi !== "arm64-v8a") return null;
+  for (const key of NATIVE_LLAMA_ASSET_ENV_KEYS) {
+    const raw = process.env[key]?.trim();
+    if (!raw) continue;
+    const resolved = path.resolve(raw);
+    if (fs.existsSync(resolved) && fs.statSync(resolved).isDirectory()) {
+      return { dir: resolved, key };
+    }
+  }
+  return null;
+}
+
+function shouldStageNativeLlamaAsset(name) {
+  return (
+    /^lib(?:llama|ggml|mtmd|eliza-llama|elizainference).*(?:\.so|\.so\.\d.*)$/.test(
+      name,
+    ) ||
+    /^libomnivoice(?:\.so|\.so\.\d.*)$/.test(name) ||
+    name === "llama-server" ||
+    name === "llama-omnivoice-server" ||
+    name === "CAPABILITIES.json" ||
+    name === "OMNIVOICE_FUSE_VERIFY.json"
+  );
+}
+
+function stageNativeLlamaAssetsForAbi({ androidAbi, abiAssetsDir, log }) {
+  const source = resolveNativeLlamaAssetDir(androidAbi);
+  if (!source) return 0;
+
+  let changes = 0;
+  let copied = 0;
+  for (const entry of fs.readdirSync(source.dir, { withFileTypes: true })) {
+    if (!entry.isFile() || !shouldStageNativeLlamaAsset(entry.name)) continue;
+    const src = path.join(source.dir, entry.name);
+    const dst = path.join(abiAssetsDir, entry.name);
+    if (copyIfDifferent(src, dst)) changes += 1;
+    if (
+      entry.name === "llama-server" ||
+      entry.name === "llama-omnivoice-server"
+    ) {
+      fs.chmodSync(dst, fs.statSync(dst).mode | 0o755);
+    }
+    copied += 1;
+  }
+
+  const required = ["libllama.so", "libeliza-llama-shim.so"];
+  const missing = required.filter(
+    (name) => !fs.existsSync(path.join(abiAssetsDir, name)),
+  );
+  if (missing.length > 0) {
+    log(
+      `Native llama asset dir from ${source.key} did not provide ${missing.join(", ")}; ` +
+        `ELIZA_LOCAL_LLAMA will remain disabled for ${androidAbi}.`,
+    );
+  } else {
+    log(
+      `Staged ${copied} native llama asset file(s) for ${androidAbi} from ${source.key}` +
+        (changes > 0 ? ` (${changes} updated)` : " (already current)"),
+    );
+  }
+  return changes;
 }
 
 function writeIfChanged(target, content) {
@@ -433,17 +540,14 @@ export function stageSeccompShimForAbi({
  *
  * Optional:
  *   cacheDir    Defaults to ~/.cache/eliza-android-agent/<bun-version>/.
+ *   bunChannel  stable | canary. ELIZA_BUN_CHANNEL overrides this option.
  *   log         Defaults to console.log.
  */
 export async function stageAndroidAgentRuntime({
   androidDir,
   spikeDir,
-  cacheDir = path.join(
-    os.homedir(),
-    ".cache",
-    "eliza-android-agent",
-    `bun-${BUN_CHANNEL === "canary" ? "canary" : BUN_VERSION}`,
-  ),
+  cacheDir,
+  bunChannel: preferredBunChannel,
   log = console.log,
 } = {}) {
   if (!androidDir)
@@ -452,7 +556,10 @@ export async function stageAndroidAgentRuntime({
     throw new Error("stageAndroidAgentRuntime: spikeDir is required");
 
   const tlog = logFor(log);
-  fs.mkdirSync(cacheDir, { recursive: true });
+  const bunChannel = resolveBunChannel(preferredBunChannel);
+  const resolvedCacheDir = cacheDir ?? defaultBunCacheDir(bunChannel);
+  tlog(`Staging Android agent runtime with ${bunChannelLabel(bunChannel)}.`);
+  fs.mkdirSync(resolvedCacheDir, { recursive: true });
 
   // Runtime files ship under `assets/agent/{abi}/` for AOSP builds that can
   // execute from priv-app data, and under `jniLibs/{abi}/libeliza_*.so` for
@@ -480,9 +587,14 @@ export async function stageAndroidAgentRuntime({
     fs.mkdirSync(abiAssetsDir, { recursive: true });
     fs.mkdirSync(abiJniDir, { recursive: true });
 
-    const bunPath = await ensureBunBinary({ cacheDir, bunArch, log: tlog });
+    const bunPath = await ensureBunBinary({
+      cacheDir: resolvedCacheDir,
+      bunArch,
+      bunChannel,
+      log: tlog,
+    });
     const extractDir = await ensureAlpineApkExtracted({
-      cacheDir,
+      cacheDir: resolvedCacheDir,
       alpineArch,
       log: tlog,
     });
@@ -506,6 +618,12 @@ export async function stageAndroidAgentRuntime({
     for (const [src, dst] of sources) {
       if (copyIfDifferent(src, dst)) abiChanges += 1;
     }
+
+    abiChanges += stageNativeLlamaAssetsForAbi({
+      androidAbi,
+      abiAssetsDir,
+      log: tlog,
+    });
 
     // llama-server is produced by compile-libllama.mjs (per-ABI). It already
     // lands at <abiAssetsDir>/llama-server when that script ran successfully,
@@ -588,16 +706,6 @@ export async function stageAndroidAgentRuntime({
       jniSources.push([
         sigsysShimSrc,
         path.join(abiJniDir, "libsigsys-handler.so"),
-      ]);
-    }
-    const speculativeShimSrc = path.join(
-      abiAssetsDir,
-      "libeliza-llama-speculative-shim.so",
-    );
-    if (fs.existsSync(speculativeShimSrc)) {
-      jniSources.push([
-        speculativeShimSrc,
-        path.join(abiJniDir, "libeliza_llama_speculative_shim.so"),
       ]);
     }
     for (const [src, dst] of jniSources) {
@@ -686,6 +794,8 @@ export async function stageAndroidAgentRuntime({
     "pglite.data",
     "vector.tar.gz",
     "fuzzystrmatch.tar.gz",
+    "ort-wasm-simd-threaded.mjs",
+    "ort-wasm-simd-threaded.wasm",
     "plugins-manifest.json",
   ];
   for (const name of pgliteAssets) {

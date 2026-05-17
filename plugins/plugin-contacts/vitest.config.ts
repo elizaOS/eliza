@@ -9,7 +9,7 @@ export default defineConfig({
     alias: {
       "@elizaos/capacitor-contacts": resolve(
         rootDir,
-        "../../packages/native-plugins/contacts/src/index.ts",
+        "../../plugins/plugin-native-contacts/src/index.ts",
       ),
     },
   },

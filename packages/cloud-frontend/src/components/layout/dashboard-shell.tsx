@@ -80,7 +80,7 @@ export function DashboardShell({
               />
 
               <ScrollArea className="min-w-0 flex-1 border border-white/14 bg-black">
-                <main className="min-w-0 p-3 md:p-6">
+                <main id="main" className="min-w-0 p-3 md:p-6">
                   <Suspense fallback={<DashboardLoadingState />}>
                     <Outlet />
                   </Suspense>

@@ -1,126 +1,105 @@
+import {
+  StripeCheckoutError,
+  startStripeCheckout,
+} from "@elizaos/checkout-shared";
+import {
+  HARDWARE_PRODUCTS as hardwareProducts,
+  type Product,
+} from "@elizaos/hardware-catalog";
+import {
+  BRAND_COLORS,
+  BRAND_PATHS,
+  EXTERNAL_URLS,
+  LOGO_FILES,
+} from "@elizaos/shared-brand";
 import { StewardAuth } from "@stwd/sdk";
 import { ArrowRight, CreditCard, Download, ShoppingBag } from "lucide-react";
 import { type ReactNode, useEffect, useMemo, useState } from "react";
-import { type OsArtifact, OsDownloads } from "./components/OsDownloads";
 
-const appUrl = "https://eliza.app";
-const cloudUrl = "https://elizacloud.ai/login?intent=launch";
-const checkoutBaseUrl = "https://elizaos.ai/checkout";
-const githubUrl = "https://github.com/elizaOS/eliza";
-const xUrl = "https://x.com/elizaos";
+const appUrl = EXTERNAL_URLS.app;
+const cloudUrl = `${EXTERNAL_URLS.cloud}/login?intent=launch`;
+const checkoutBaseUrl = `${EXTERNAL_URLS.os}/checkout`;
 const cloudApiUrl =
   import.meta.env.VITE_ELIZA_CLOUD_API_URL || "https://api.elizacloud.ai";
 const stewardApiUrl = `${cloudApiUrl.replace(/\/$/, "")}/steward`;
 const stewardTenantId = "elizacloud";
 const betaManifestUrl = "/downloads/elizaos-beta-manifest.json";
 
-type Product = {
-  slug: string;
-  sku: string;
-  name: string;
-  price?: string;
-  ships?: string;
-  image: string;
-  imageAlt: string;
-  summary: string;
-  detail: string;
-  colors: string[];
+type ReleaseArtifact = {
+  id: string;
+  label: string;
+  kind: string;
+  platform: string;
+  architecture: string;
+  url: string;
+  checksumUrl?: string;
 };
 
-const hardwareProducts: Product[] = [
-  {
-    slug: "usb",
-    sku: "elizaos-usb",
-    name: "ElizaOS USB",
-    price: "$49",
-    ships: "Ships October 2026",
-    image: "/assets/concept_usbdrive.jpg",
-    imageAlt: "Blue ElizaOS USB drive concept",
-    summary: "Boot elizaOS from your pocket.",
-    detail: "Live image on a stick. Plug into any UEFI PC and run.",
-    colors: ["Orange", "Blue", "White", "Black"],
-  },
-  {
-    slug: "case",
-    sku: "elizaos-raspberry-pi-case",
-    name: "Raspberry Pi case",
-    price: "$49",
-    ships: "Ships October 2026",
-    image: "/assets/elizaos-box-concept.avif",
-    imageAlt: "ElizaOS Raspberry Pi case concept",
-    summary: "A shell for a local agent.",
-    detail: "Bring your own Pi. We ship the enclosure.",
-    colors: ["Orange", "Blue", "White", "Black"],
-  },
-  {
-    slug: "raspberry-pi",
-    sku: "elizaos-custom-raspberry-pi-case",
-    name: "Custom Raspberry Pi + case",
-    price: "$149",
-    ships: "Ships October 2026",
-    image: "/assets/elizaos-box-concept.avif",
-    imageAlt: "ElizaOS Raspberry Pi kit concept",
-    summary: "Plug in, boot, run local.",
-    detail: "Pi, case, SD card pre-imaged. One box, one cable.",
-    colors: ["Orange", "Blue", "White", "Black"],
-  },
-  {
-    slug: "mini-pc",
-    sku: "elizaos-mini-pc",
-    name: "ElizaOS mini PC",
-    price: "$1999",
-    ships: "Ships October 2026",
-    image: "/assets/concept_minipc.jpg",
-    imageAlt: "ElizaOS mini PC concept",
-    summary: "Always-on compute for agents.",
-    detail: "Desktop-class inference at home. Quiet, owned, yours.",
-    colors: ["Orange", "Blue", "White", "Black"],
-  },
-  {
-    slug: "phone",
-    sku: "elizaos-phone",
-    name: "ElizaOS Phone",
-    ships: "Pre-order",
-    image: "/assets/concept_phone.jpg",
-    imageAlt: "ElizaOS phone concept",
-    summary: "The runtime in your hand.",
-    detail: "AOSP build with elizaOS as the shell.",
-    colors: ["Orange", "Blue", "White", "Blue glass"],
-  },
-  {
-    slug: "box",
-    sku: "elizaos-box",
-    name: "ElizaOS Box",
-    ships: "Pre-order",
-    image: "/assets/elizaos-box-concept.avif",
-    imageAlt: "ElizaOS box hardware concept",
-    summary: "A household agent appliance.",
-    detail: "Sits on the shelf. Runs the home.",
-    colors: ["Orange", "Blue", "White", "Black"],
-  },
-  {
-    slug: "chibi-usb",
-    sku: "elizaos-usb-chibi",
-    name: "Chibi USB key",
-    price: "$49",
-    ships: "Ships October 2026",
-    image: "/assets/chibi_usb_concept.jpg",
-    imageAlt: "Chibi ElizaOS USB key concept",
-    summary: "Same boot key. Smaller mascot shell.",
-    detail: "ElizaOS USB in a collector enclosure.",
-    colors: ["Orange"],
-  },
-];
+type ReleaseManifest = {
+  product: string;
+  channel: string;
+  availableFrom: string;
+  artifacts: ReleaseArtifact[];
+};
+
+const releaseFallback: ReleaseManifest = {
+  product: "ElizaOS",
+  channel: "beta",
+  availableFrom: "2026-05-16",
+  artifacts: [
+    {
+      id: "elizaos-live-beta-x86_64",
+      label: "ElizaOS Linux live beta",
+      kind: "raw-image",
+      platform: "linux-bare-metal",
+      architecture: "x86_64",
+      url: "https://github.com/elizaOS/eliza/releases/download/elizaos-beta/elizaos-live-beta-x86_64.img.zst",
+      checksumUrl:
+        "https://github.com/elizaOS/eliza/releases/download/elizaos-beta/SHA256SUMS",
+    },
+    {
+      id: "elizaos-usb-installer-windows-x86_64",
+      label: "ElizaOS USB installer for Windows",
+      kind: "usb-installer",
+      platform: "windows",
+      architecture: "x86_64",
+      url: "https://github.com/elizaOS/eliza/releases/download/elizaos-beta/elizaos-usb-installer-beta-windows-x86_64.exe",
+      checksumUrl:
+        "https://github.com/elizaOS/eliza/releases/download/elizaos-beta/SHA256SUMS",
+    },
+    {
+      id: "elizaos-vm-macos-silicon",
+      label: "ElizaOS VM launcher for Apple Silicon",
+      kind: "vm-bundle",
+      platform: "macos",
+      architecture: "arm64",
+      url: "https://github.com/elizaOS/eliza/releases/download/elizaos-beta/elizaos-vm-macos-silicon.zip",
+      checksumUrl:
+        "https://github.com/elizaOS/eliza/releases/download/elizaos-beta/SHA256SUMS",
+    },
+    {
+      id: "elizaos-android-beta",
+      label: "ElizaOS Android beta image bundle",
+      kind: "android-image",
+      platform: "android",
+      architecture: "arm64",
+      url: "https://github.com/elizaOS/eliza/releases/download/elizaos-beta/elizaos-android-beta.zip",
+      checksumUrl:
+        "https://github.com/elizaOS/eliza/releases/download/elizaos-beta/SHA256SUMS",
+    },
+  ],
+};
 
 function productCheckoutUrl(sku: string) {
   return `${checkoutBaseUrl}?sku=${sku}`;
 }
 
 function getDefaultProduct(): Product {
-  return (
+  const fallback =
     hardwareProducts.find((product) => product.sku === "elizaos-usb") ??
-    hardwareProducts[0]
-  );
+    hardwareProducts[0];
+  if (!fallback) throw new Error("Hardware catalog is empty");
+  return fallback;
 }
 
 function getCheckoutProduct(): Product {
@@ -179,6 +158,80 @@ function ProductImage({ product }: { product: Product }) {
   );
 }
 
+function platformLabel(platform: string) {
+  return platform
+    .replace(/-/g, " ")
+    .replace(/\b\w/g, (letter: string) => letter.toUpperCase());
+}
+
+function ReleaseDownloads() {
+  const [manifest, setManifest] = useState<ReleaseManifest>(releaseFallback);
+
+  useEffect(() => {
+    let ignore = false;
+
+    fetch(betaManifestUrl)
+      .then((response) => (response.ok ? response.json() : null))
+      .then((data: ReleaseManifest | null) => {
+        if (!ignore && data?.artifacts?.length) {
+          setManifest(data);
+        }
+      })
+      .catch(() => {});
+
+    return () => {
+      ignore = true;
+    };
+  }, []);
+
+  const releaseDate = new Date(
+    `${manifest.availableFrom}T00:00:00`,
+  ).toLocaleDateString("en-US", {
+    month: "long",
+    day: "numeric",
+    year: "numeric",
+  });
+
+  return (
+    <section id="download" className="band band-white release-section">
+      <div className="band-inner">
+        <div className="release-head">
+          <div>
+            <p className="section-kicker">
+              {manifest.product} {manifest.channel}
+            </p>
+            <h2>Download beta.</h2>
+          </div>
+          <p className="section-lede">Available {releaseDate}.</p>
+        </div>
+
+        <div className="release-grid">
+          {manifest.artifacts.map((artifact) => (
+            <article className="release-item" key={artifact.id}>
+              <div className="release-meta">
+                <span>{platformLabel(artifact.platform)}</span>
+                <span>{artifact.architecture}</span>
+              </div>
+              <h3>{artifact.label}</h3>
+              <div className="release-actions">
+                <a href={artifact.url} className="button button-dark">
+                  Download
+                  <Download className="icon" />
+                </a>
+                {artifact.checksumUrl ? (
+                  <a href={artifact.checksumUrl} className="checksum-link">
+                    SHA256
+                  </a>
+                ) : null}
+              </div>
+            </article>
+          ))}
+        </div>
+      </div>
+    </section>
+  );
+}
+
 function CloudHero({ children }: { children: ReactNode }) {
   return (
     <section className="band hero-cloud" data-hero="cloud">
@@ -228,16 +281,21 @@ function HardwareTiles() {
 function Header({ solid = false }: { solid?: boolean }) {
   return (
     <header className={solid ? "site-header site-header-solid" : "site-header"}>
+      <a
+        href="#main"
+        className="sr-only focus:not-sr-only focus:fixed focus:left-2 focus:top-2 focus:z-[200] focus:bg-black focus:px-3 focus:py-2 focus:text-sm focus:text-white focus:outline focus:outline-2 focus:outline-[color:var(--brand-orange)]"
+      >
+        Skip to content
+      </a>
       <a href="/" className="brand" aria-label="elizaOS home">
         <img
-          src="/brand/logos/elizaOS_text_white.svg"
+          src={`${BRAND_PATHS.logos}/${LOGO_FILES.osWhite}`}
           alt="elizaOS"
           draggable={false}
         />
       </a>
       <nav className="site-nav" aria-label="Product switcher">
         <a href="/#download">Download</a>
-        <a href="#downloads">All downloads</a>
         <a href="/#hardware">Hardware</a>
       </nav>
     </header>
@@ -248,15 +306,13 @@ function Footer() {
   return (
     <footer className="site-footer">
       <img
-        src="/brand/logos/elizaOS_text_white.svg"
+        src={`${BRAND_PATHS.logos}/${LOGO_FILES.osWhite}`}
         alt="elizaOS"
         draggable={false}
       />
       <nav aria-label="Community">
         <a href={appUrl}>App</a>
         <a href={cloudUrl}>Cloud</a>
-        <a href={githubUrl}>GitHub</a>
-        <a href={xUrl}>X</a>
       </nav>
     </footer>
   );
@@ -266,7 +322,7 @@ function ProductDetail({ product }: { product: Product }) {
   return (
     <div className="os-shell">
       <Header solid />
-      <main>
+      <main id="main">
         <section className="band band-blue product-detail-hero">
           <div className="band-inner detail-grid">
             <div>
@@ -311,7 +367,7 @@ function CheckoutResult({
   return (
     <div className="os-shell">
       <Header solid />
-      <main>
+      <main id="main">
         <section className="band band-blue checkout-result">
           <div className="band-inner">
             <h1>{success ? "Pre-order received." : "Checkout canceled."}</h1>
@@ -416,38 +472,22 @@ function CheckoutPage() {
     setStatus("checkout");
     setMessage(null);
     try {
-      const stewardToken = getStoredStewardToken();
-      const response = await fetch(
-        `${cloudApiUrl}/api/stripe/create-checkout-session`,
+      await startStripeCheckout(
         {
-          method: "POST",
-          credentials: "include",
-          headers: {
-            "Content-Type": "application/json",
-            ...(stewardToken
-              ? { Authorization: `Bearer ${stewardToken}` }
-              : {}),
-          },
-          body: JSON.stringify({
-            hardwareColor: selectedColor,
-            hardwareSku: product.sku,
-            returnUrl: "billing",
-          }),
+          hardwareColor: selectedColor.name,
+          hardwareSku: product.sku,
+          returnUrl: "billing",
+        },
+        {
+          apiBaseUrl: cloudApiUrl,
+          bearerToken: getStoredStewardToken(),
         },
       );
-      const data = (await response.json().catch(() => null)) as {
-        error?: string;
-        url?: string;
-      } | null;
-
-      if (!response.ok || !data?.url) {
-        if (response.status === 401) setIsAuthed(false);
-        throw new Error(data?.error || "Could not start checkout.");
-      }
-
-      window.location.href = data.url;
     } catch (error) {
       setStatus("idle");
+      if (error instanceof StripeCheckoutError && error.status === 401) {
+        setIsAuthed(false);
+      }
       setMessage(
         error instanceof Error ? error.message : "Could not start checkout.",
       );
@@ -457,7 +497,7 @@ function CheckoutPage() {
   return (
     <div className="os-shell">
       <Header solid />
-      <main>
+      <main id="main">
         <section className="band band-blue checkout-hero">
           <div className="band-inner checkout-grid">
             <div className="checkout-copy">
@@ -514,24 +554,24 @@ function CheckoutPage() {
                 {product.colors.map((color) => (
                   <button
                     type="button"
-                    key={color}
+                    key={color.id}
                     className={
-                      selectedColor === color
+                      selectedColor.id === color.id
                         ? "color-swatch color-swatch-active"
                         : "color-swatch"
                     }
                     style={{
                       backgroundColor:
-                        color === "Orange"
-                          ? "#FF5800"
-                          : color.startsWith("Blue")
-                            ? "#0B35F1"
-                            : color === "Black"
-                              ? "#000000"
-                              : "#FFFFFF",
+                        color.name === "Orange"
+                          ? BRAND_COLORS.orange
+                          : color.name.startsWith("Blue")
+                            ? BRAND_COLORS.blue
+                            : color.name === "Black"
+                              ? BRAND_COLORS.black
+                              : BRAND_COLORS.white,
                     }}
                     onClick={() => setSelectedColor(color)}
-                    aria-label={`Select ${color}`}
+                    aria-label={`Select ${color.name}`}
                   />
                 ))}
               </fieldset>
@@ -583,311 +623,27 @@ function CheckoutPage() {
   );
 }
 
-// Maps a manifest artifact to an OsArtifact for the downloads section.
-function manifestToOsArtifacts(manifest: unknown): OsArtifact[] {
-  if (!manifest || typeof manifest !== "object") return [];
-  const m = manifest as Record<string, unknown>;
-  const release = m.release as Record<string, string> | undefined;
-  const channel =
-    (release?.channel as OsArtifact["channel"] | undefined) ?? "beta";
-  const version = release?.version ?? "0.0.0";
-  const artifacts = Array.isArray(m.artifacts) ? m.artifacts : [];
-  return artifacts.map((artifact: Record<string, unknown>): OsArtifact => {
-    const target = artifact.target as Record<string, string> | null;
-    const platform = (() => {
-      const p = target?.platform ?? "";
-      if (/android|cuttlefish/i.test(p)) return "android" as const;
-      if (/macos|apple/i.test(p)) return "macos" as const;
-      if (/windows|win/i.test(p)) return "windows" as const;
-      return "linux" as const;
-    })();
-    const kind = (() => {
-      const k = String(artifact.kind ?? "");
-      if (k === "raw-image") return "iso" as const;
-      if (k === "vm-image") return "ova" as const;
-      if (k === "android-image") return "apk" as const;
-      if (k === "usb-installer") return "desktop-app" as const;
-      return "iso" as const;
-    })();
-    return {
-      id: String(artifact.id ?? ""),
-      label: String(artifact.filename ?? "").replace(/\.zst$|\.zip$/, ""),
-      description: String(artifact.notes ?? ""),
-      platform,
-      kind,
-      channel,
-      version,
-      downloadUrl:
-        typeof artifact.downloadUrl === "string" ? artifact.downloadUrl : null,
-      checksumUrl: null,
-      sizeBytes:
-        typeof artifact.sizeBytes === "number" ? artifact.sizeBytes : null,
-      sha256: typeof artifact.sha256 === "string" ? artifact.sha256 : null,
-      releaseNotesUrl: null,
-    };
-  });
-}
-
-// Static OS artifacts for distribution channels not yet in the manifest.
-function staticOsArtifacts(
-  channel: OsArtifact["channel"],
-  version: string,
-): OsArtifact[] {
-  return [
-    {
-      id: `elizaos-linux-live-${channel}`,
-      label: "elizaOS Linux Live ISO",
-      description:
-        "Bootable ISO for USB flashing and bare-metal installs. Flash to an 8 GB+ USB drive with the USB Installer app.",
-      platform: "linux",
-      kind: "iso",
-      channel,
-      version,
-      downloadUrl: null,
-      checksumUrl: null,
-      sizeBytes: null,
-      sha256: null,
-      releaseNotesUrl: null,
-      requiresHardware: "8 GB USB drive",
-    },
-    {
-      id: "elizaos-debian-package",
-      label: "elizaOS Debian / Ubuntu package",
-      description:
-        "Install elizaOS on an existing Debian or Ubuntu system via apt.",
-      platform: "linux",
-      kind: "deb",
-      channel,
-      version,
-      downloadUrl: null,
-      checksumUrl: null,
-      sizeBytes: null,
-      sha256: null,
-      releaseNotesUrl: null,
-    },
-    {
-      id: "elizaos-vm-ova",
-      label: "elizaOS VM (OVA)",
-      description:
-        "OVA image for VirtualBox, VMware Fusion, and UTM. Import directly — no flashing required.",
-      platform: "cross-platform",
-      kind: "ova",
-      channel,
-      version,
-      downloadUrl: null,
-      checksumUrl: null,
-      sizeBytes: null,
-      sha256: null,
-      releaseNotesUrl: null,
-    },
-    {
-      id: "elizaos-android-apk",
-      label: "elizaOS Android APK",
-      description:
-        "Sideload elizaOS onto any Android device without AOSP flashing. No unlocked bootloader required.",
-      platform: "android",
-      kind: "apk",
-      channel,
-      version,
-      downloadUrl: null,
-      checksumUrl: null,
-      sizeBytes: null,
-      sha256: null,
-      releaseNotesUrl: null,
-    },
-    {
-      id: "elizaos-usb-installer-macos",
-      label: "USB Installer — macOS",
-      description:
-        "Desktop app for macOS that writes the elizaOS ISO to a USB drive using diskutil and dd with native authorization.",
-      platform: "macos",
-      kind: "desktop-app",
-      channel,
-      version,
-      downloadUrl: null,
-      checksumUrl: null,
-      sizeBytes: null,
-      sha256: null,
-      releaseNotesUrl: null,
-      requiresHardware: "8 GB USB drive",
-    },
-    {
-      id: "elizaos-usb-installer-linux",
-      label: "USB Installer — Linux",
-      description:
-        "Desktop app for Linux that writes the elizaOS ISO to a USB drive using lsblk and dd via pkexec.",
-      platform: "linux",
-      kind: "desktop-app",
-      channel,
-      version,
-      downloadUrl: null,
-      checksumUrl: null,
-      sizeBytes: null,
-      sha256: null,
-      releaseNotesUrl: null,
-      requiresHardware: "8 GB USB drive",
-    },
-    {
-      id: "elizaos-usb-installer-windows",
-      label: "USB Installer — Windows",
-      description:
-        "Desktop app for Windows that writes the elizaOS ISO to a USB drive using PowerShell disk management.",
-      platform: "windows",
-      kind: "desktop-app",
-      channel,
-      version,
-      downloadUrl: null,
-      checksumUrl: null,
-      sizeBytes: null,
-      sha256: null,
-      releaseNotesUrl: null,
-      requiresHardware: "8 GB USB drive",
-    },
-    {
-      id: "elizaos-aosp-flasher-macos",
-      label: "AOSP Flasher — macOS",
-      description:
-        "GUI tool for macOS that detects a connected Pixel via ADB and guides through bootloader unlock and flashing.",
-      platform: "macos",
-      kind: "desktop-app",
-      channel,
-      version,
-      downloadUrl: null,
-      checksumUrl: null,
-      sizeBytes: null,
-      sha256: null,
-      releaseNotesUrl: null,
-      requiresHardware: "Android device with unlocked bootloader",
-    },
-    {
-      id: "elizaos-aosp-flasher-linux",
-      label: "AOSP Flasher — Linux",
-      description:
-        "GUI tool for Linux that detects a connected Pixel via ADB and guides through bootloader unlock and flashing.",
-      platform: "linux",
-      kind: "desktop-app",
-      channel,
-      version,
-      downloadUrl: null,
-      checksumUrl: null,
-      sizeBytes: null,
-      sha256: null,
-      releaseNotesUrl: null,
-      requiresHardware: "Android device with unlocked bootloader",
-    },
-    {
-      id: "elizaos-aosp-flasher-windows",
-      label: "AOSP Flasher — Windows",
-      description:
-        "GUI tool for Windows that detects a connected Pixel via ADB and guides through bootloader unlock and flashing.",
-      platform: "windows",
-      kind: "desktop-app",
-      channel,
-      version,
-      downloadUrl: null,
-      checksumUrl: null,
-      sizeBytes: null,
-      sha256: null,
-      releaseNotesUrl: null,
-      requiresHardware: "Android device with unlocked bootloader",
-    },
-  ];
-}
-
-function useOsArtifacts(manifestUrl: string): OsArtifact[] {
-  const [artifacts, setArtifacts] = useState<OsArtifact[]>([]);
-
-  useEffect(() => {
-    fetch(manifestUrl)
-      .then((res) => res.json())
-      .then((manifest: unknown) => {
-        const fromManifest = manifestToOsArtifacts(manifest);
-        const m = manifest as Record<string, unknown> | null;
-        const release = m?.release as Record<string, string> | undefined;
-        const channel =
-          (release?.channel as OsArtifact["channel"] | undefined) ?? "beta";
-        const version = release?.version ?? "0.0.0";
-        const manifestIds = new Set(fromManifest.map((a) => a.id));
-        const extra = staticOsArtifacts(channel, version).filter(
-          (a) => !manifestIds.has(a.id),
-        );
-        setArtifacts([...fromManifest, ...extra]);
-      })
-      .catch(() => {
-        // Manifest unavailable; show static artifacts.
-        setArtifacts(staticOsArtifacts("beta", "2.0.0-beta.2-os.20260516"));
-      });
-  }, [manifestUrl]);
-
-  return artifacts;
-}
-
 function HomePage() {
-  const osArtifacts = useOsArtifacts(betaManifestUrl);
   return (
     <div className="os-shell">
       <Header />
-      <main>
+      <main id="main">
         <CloudHero>
-          <div className="hero-os-inner">
-            <h1>The agentic operating system.</h1>
-            <p className="hero-copy">For devices that run themselves.</p>
-            <p className="hero-copy">
-              Local first. Open source. Runs on your phone.
-            </p>
-            <div className="hero-actions">
-              <a href="#download" className="button">
-                Download
-                <Download className="icon" />
-              </a>
-              <a href="#hardware" className="button button-dark">
-                Hardware
-                <ShoppingBag className="icon" />
-              </a>
-            </div>
+          <h1>The agentic operating system.</h1>
+          <p className="hero-copy">For devices that run themselves.</p>
+          <div className="hero-actions">
+            <a href="#download" className="button button-dark">
+              Download
+              <Download className="icon" />
+            </a>
+            <a href="#hardware" className="button">
+              Hardware
+              <ShoppingBag className="icon" />
+            </a>
           </div>
         </CloudHero>
 
-        <section id="download" className="band band-white">
-          <div className="band-inner split-band">
-            <div>
-              <h2>Install elizaOS.</h2>
-              <p className="section-lede">Pick a target. Boot.</p>
-            </div>
-            <div className="install-stack">
-              <a href={betaManifestUrl} className="install-card">
-                <div className="install-card-head">
-                  <span>Linux PC</span>
-                  <strong>ISO + USB installer</strong>
-                </div>
-              </a>
-              <a href={appUrl} className="install-card">
-                <div className="install-card-head">
-                  <span>Mac, Windows, Linux</span>
-                  <strong>VM launcher</strong>
-                </div>
-              </a>
-              <a href={betaManifestUrl} className="install-card">
-                <div className="install-card-head">
-                  <span>Android</span>
-                  <strong>APK + AOSP image</strong>
-                </div>
-              </a>
-            </div>
-          </div>
-        </section>
-
-        <section className="band band-orange">
-          <div className="band-inner punch-band">
-            <h2>Local first.</h2>
-            <p>
-              Your agent runs on your device. No account required. Supported Mac
-              hardware is limited.
-            </p>
-          </div>
-        </section>
-
-        <OsDownloads artifacts={osArtifacts} />
+        <ReleaseDownloads />
 
         <section id="hardware" className="band band-blue">
           <div className="band-inner">

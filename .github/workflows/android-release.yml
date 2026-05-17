@@ -157,6 +157,13 @@ jobs:
       - name: Install dependencies
         run: bun install
 
+      - name: Build workspace web runtime packages
+        run: |
+          bun run --cwd packages/core build
+          bun run --cwd packages/shared build
+          bun run --cwd packages/vault build
+          bun run --cwd packages/app-core build:dist
+
       - name: Prepare Android platform
         working-directory: packages/app
         run: bun run build:android:cloud

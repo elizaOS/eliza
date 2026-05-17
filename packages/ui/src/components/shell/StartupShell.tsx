@@ -27,7 +27,6 @@ import {
   saveVoicePrefixDone,
 } from "../../state/persistence";
 import type { StartupErrorReason, StartupErrorState } from "../../state/types";
-import { resolveAppAssetUrl } from "../../utils";
 import { BootstrapStep } from "../onboarding/BootstrapStep";
 import { OnboardingRoot } from "../onboarding/states";
 import { VoicePrefixGate } from "../onboarding/VoicePrefixGate";
@@ -310,12 +309,6 @@ export function StartupShell() {
       data-startup-phase={phase}
       className="flex items-center justify-center h-full w-full bg-[#ffe600] text-black overflow-hidden"
     >
-      <img
-        src={resolveAppAssetUrl("splash-bg.png")}
-        alt=""
-        aria-hidden="true"
-        className="pointer-events-none absolute inset-0 h-full w-full object-cover"
-      />
       <div
         className="relative z-10 flex flex-col items-center gap-5 px-6 text-center w-full"
         style={{ maxWidth: 360 }}
@@ -354,15 +347,7 @@ export function StartupShell() {
  */
 function BootstrapGateShell({ children }: { children: ReactNode }) {
   return (
-    <div className="relative flex min-h-full w-full flex-col bg-black text-white">
-      <div
-        aria-hidden="true"
-        className="absolute inset-0 overflow-hidden pointer-events-none"
-      >
-        <div className="absolute inset-0 bg-[radial-gradient(circle_at_top,rgba(255,255,255,0.14),transparent_36%),linear-gradient(180deg,rgba(11,14,20,0.18),rgba(6,7,8,0.56))]" />
-        <div className="absolute left-[-10%] top-[8%] h-[24rem] w-[24rem] rounded-full bg-[rgba(240,185,11,0.1)] blur-[110px]" />
-        <div className="absolute bottom-[-12%] right-[-8%] h-[20rem] w-[20rem] rounded-full bg-[rgba(255,255,255,0.08)] blur-[120px]" />
-      </div>
+    <div className="relative flex min-h-full w-full flex-col bg-[#ffe600] text-black">
       <div className="relative z-10 flex flex-1 items-center justify-center px-4 pb-[max(1.5rem,var(--safe-area-bottom,0px))] pt-[calc(var(--safe-area-top,0px)_+_3.75rem)] sm:px-6 md:px-8">
         <div className="flex w-full max-w-[32rem] flex-col items-center gap-4">
           {children}

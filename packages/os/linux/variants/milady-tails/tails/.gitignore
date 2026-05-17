@@ -67,6 +67,7 @@
 /config/chroot_local-includes/usr/share/tails/unlock-veracrypt-volumes/*.ui
 /config/chroot_local-includes/usr/share/tails-installer/*.ui
 /config/chroot_local-includes/usr/share/whisperback/*.ui
+/config/chroot_local-includes/usr/share/elizaos/milady-app/
 /tmp/
 
 # The test suite's local configuration files

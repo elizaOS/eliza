@@ -1,6 +1,6 @@
 import { StrictMode } from "react";
 import { createRoot } from "react-dom/client";
-import "@elizaos/ui/styles";
+import "@ui-src/styles.ts";
 import { App } from "./App.tsx";
 import "./stories.css";
 

@@ -95,7 +95,7 @@ export const SidebarSearchBar = React.forwardRef<
           type="text"
           value={value}
           placeholder={inputPlaceholder}
-          className="h-10 w-full rounded-xl border border-border/34 bg-card pl-10 pr-10 text-sm text-txt shadow-xs placeholder:text-muted focus-visible:border-accent/28 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-accent/24 disabled:cursor-not-allowed disabled:opacity-50 "
+          className="h-10 w-full rounded-sm border border-border/34 bg-card pl-10 pr-10 text-sm text-txt shadow-xs placeholder:text-muted focus-visible:border-accent/28 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-accent/24 disabled:cursor-not-allowed disabled:opacity-50 "
           {...props}
         />
         {loading ? (

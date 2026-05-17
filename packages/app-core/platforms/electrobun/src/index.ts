@@ -70,6 +70,7 @@ import {
 } from "./native/mac-window-effects";
 import { getPermissionManager } from "./native/permissions";
 import { checkWebGpuSupport } from "./native/webgpu-browser-support";
+import { createPillWindow } from "./pill-window";
 import { printElectrobunDevSettingsBanner } from "./print-electrobun-dev-settings-banner";
 import {
 	createRendererApiProxyRequestInit,
@@ -1038,7 +1039,27 @@ function attachMainWindow(
 		}
 	});
 
-	win.on("close", () => {
+	win.on("close", (event: unknown) => {
+		if (!isQuitting && process.env.ELIZAOS_CLOSE_MINIMIZES_TO_TRAY !== "0") {
+			const closeEvent = event as { preventDefault?: () => void } | undefined;
+			if (typeof closeEvent?.preventDefault === "function") {
+				closeEvent.preventDefault();
+				void getDesktopManager()
+					.hideWindow()
+					.catch((err: unknown) => {
+						logger.warn(
+							`[Main] Failed to minimize window on close: ${err instanceof Error ? err.message : String(err)}`,
+						);
+					});
+				logger.info("[Main] Window close requested - minimized to tray");
+				showBackgroundRunNoticeOnce();
+				return;
+			}
+			logger.info(
+				"[Main] Window close requested - agent continues in background",
+			);
+		}
+
 		if (currentWindow?.id === win.id) {
 			currentWindow = null;
 			currentSendToWebview = null;
@@ -2128,6 +2149,16 @@ async function main(): Promise<void> {
 			/* non-fatal */
 		}
 		getFloatingChatManager().configure(url, preload);
+		// Spawn the always-on-top voice pill overlay alongside the main window.
+		// The pill loads the same renderer with `?shell=pill`, which routes to
+		// a minimal <VoicePill> mount in apps/app/src/main.tsx.
+		try {
+			createPillWindow({ rendererUrl: url, preload });
+		} catch (err) {
+			logger.warn(
+				`[Main] Failed to spawn pill window: ${err instanceof Error ? err.message : String(err)}`,
+			);
+		}
 	});
 
 	// Per-window RPC tracking: surface windows each get their own typed

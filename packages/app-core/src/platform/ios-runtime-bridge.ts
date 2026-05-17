@@ -6,7 +6,8 @@
 // Preferences so the simulator host can read it. The probe runs once per
 // page load and is a no-op when the flag is absent.
 import { Preferences } from "@capacitor/preferences";
-import { primeIosFullBunRuntime } from "@elizaos/ui";
+import { formatError } from "@elizaos/shared";
+import { primeIosFullBunRuntime } from "../api/ios-local-agent-transport";
 
 export const IOS_FULL_BUN_SMOKE_REQUEST_KEY =
   "eliza:ios-full-bun-smoke:request";
@@ -137,11 +138,7 @@ async function fetchIosFullBunSmokeJson<T>(
   try {
     return JSON.parse(text) as T;
   } catch (error) {
-    throw new Error(
-      `${label} returned invalid JSON: ${
-        error instanceof Error ? error.message : String(error)
-      }`,
-    );
+    throw new Error(`${label} returned invalid JSON: ${formatError(error)}`);
   }
 }
 
@@ -208,11 +205,7 @@ function parseIosFullBunSmokeHttpJson<T>(label: string, value: unknown): T {
   try {
     return JSON.parse(body) as T;
   } catch (error) {
-    throw new Error(
-      `${label} returned invalid JSON: ${
-        error instanceof Error ? error.message : String(error)
-      }`,
-    );
+    throw new Error(`${label} returned invalid JSON: ${formatError(error)}`);
   }
 }
 
@@ -696,7 +689,7 @@ export async function runIosFullBunSmokeIfRequested(): Promise<boolean> {
       ok: false,
       phase: "failed",
       finishedAt: new Date().toISOString(),
-      error: error instanceof Error ? error.message : String(error),
+      error: formatError(error),
     });
   } finally {
     delete window.__ELIZA_IOS_LOCAL_AGENT_DEBUG__;

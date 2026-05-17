@@ -2,19 +2,19 @@ import { expect, test } from "playwright/test";
 
 const heroCopy = [
   "The agentic operating system.",
-  "Local first",
-  "Open source",
-  "Runs on your phone",
+  "For devices that run themselves.",
 ];
 
 const installerCopy = [
-  "Install elizaOS.",
-  "Linux PC",
-  "ISO + USB installer",
-  "VM launcher",
-  "Mac, Windows, Linux",
-  "Android",
-  "APK + AOSP image",
+  "Download beta.",
+  "ElizaOS beta",
+  "ElizaOS Linux live beta",
+  "ElizaOS USB installer for Windows",
+  "ElizaOS VM launcher for Apple Silicon",
+  "ElizaOS Android beta image bundle",
+  "x86_64",
+  "arm64",
+  "SHA256",
 ];
 
 const hardwareCopy = [
@@ -31,14 +31,16 @@ const hardwareCopy = [
   "Ships October 2026",
 ];
 
-test("lander renders hero with cloud video and primary copy", async ({
-  page,
-}) => {
+test("lander renders elizaOS hero and primary copy", async ({ page }) => {
   await page.goto("/");
 
-  await expect(page.locator('[data-hero="cloud"] img')).toHaveCount(0);
-  const heroVideo = page.locator('[data-testid="cloud-video"]');
-  await expect(heroVideo).toHaveCount(1);
+  const hero = page.locator(".hero-cloud");
+  await expect(hero).toBeVisible();
+  await expect(hero.getByTestId("cloud-video")).toHaveCount(1);
+  await expect(hero.getByRole("link", { name: /^Download/i })).toHaveAttribute(
+    "href",
+    "#download",
+  );
 
   const h1 = page.getByRole("heading", { level: 1 });
   await expect(h1).toContainText(/operating system/i);
@@ -47,6 +49,20 @@ test("lander renders hero with cloud video and primary copy", async ({
   for (const copy of [...heroCopy, ...installerCopy, ...hardwareCopy]) {
     await expect(page.getByText(copy, { exact: false }).first()).toBeVisible();
   }
+});
+
+test("download section exposes release artifact links", async ({ page }) => {
+  await page.goto("/");
+
+  const downloads = page.locator("#download");
+  await expect(downloads).toBeVisible();
+
+  await expect(
+    downloads.getByRole("link", { name: "Download" }).first(),
+  ).toHaveAttribute("href", /elizaos-live-beta-x86_64\.img\.zst$/);
+  await expect(
+    downloads.getByRole("link", { name: "SHA256" }).first(),
+  ).toHaveAttribute("href", /SHA256SUMS$/);
 });
 
 test("anchor sections #download and #hardware exist and are reachable", async ({
@@ -88,14 +104,6 @@ test("footer renders wordmark, link nav, and social links", async ({
     "href",
     /elizacloud\.ai/,
   );
-  await expect(footer.getByRole("link", { name: "GitHub" })).toHaveAttribute(
-    "href",
-    /github\.com\/elizaOS/,
-  );
-  await expect(footer.getByRole("link", { name: "X" })).toHaveAttribute(
-    "href",
-    /x\.com\/elizaos/,
-  );
 });
 
 test("hero has no horizontal overflow", async ({ page }) => {
@@ -131,7 +139,7 @@ test("checkout lives on elizaOS and starts with Eliza Cloud auth", async ({
   ).toBeVisible();
   await expect(page.locator(".checkout-product-shot img")).toHaveAttribute(
     "src",
-    "/assets/concept_usbdrive.jpg",
+    "/brand/concepts/concept_usbdrive.jpg",
   );
 
   const googleLink = page.getByRole("link", { name: "Google" });

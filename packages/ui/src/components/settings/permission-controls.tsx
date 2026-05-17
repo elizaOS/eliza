@@ -377,7 +377,7 @@ export function PermissionRow({
       </div>
       <div className="flex w-full items-center justify-end gap-2 sm:w-auto">
         {isShell && onToggleShell && status !== "not-applicable" && (
-          <div className="flex min-h-10 items-center gap-2 rounded-xl border border-border/50 bg-bg-hover px-3">
+          <div className="flex min-h-10 items-center gap-2 rounded-sm border border-border/50 bg-bg-hover px-3">
             <span className="text-xs-tight font-medium text-muted-strong">
               {shellEnabled
                 ? translateWithFallback(
@@ -414,7 +414,7 @@ export function PermissionRow({
           <Button
             variant="default"
             size="sm"
-            className="min-h-10 rounded-xl px-3 text-xs-tight font-semibold"
+            className="min-h-10 rounded-sm px-3 text-xs-tight font-semibold"
             onClick={action.type === "request" ? onRequest : onOpenSettings}
             aria-label={`${action.ariaLabelPrefix} ${name}`}
           >
@@ -459,7 +459,7 @@ export function CapabilityToggle({
 
   return (
     <div
-      className={`flex flex-col gap-3 rounded-2xl border px-4 py-3 shadow-sm transition-colors sm:flex-row sm:items-center ${
+      className={`flex flex-col gap-3 rounded border px-4 py-3 shadow-sm transition-colors sm:flex-row sm:items-center ${
         enabled
           ? "border-accent/30 bg-accent/10"
           : "border-border/60 bg-card/92"
@@ -488,7 +488,7 @@ export function CapabilityToggle({
         </div>
       </div>
       <div className="flex w-full justify-end sm:w-auto">
-        <div className="flex min-h-10 items-center gap-2 rounded-xl border border-border/50 bg-bg-hover px-3">
+        <div className="flex min-h-10 items-center gap-2 rounded-sm border border-border/50 bg-bg-hover px-3">
           <span className="text-xs-tight font-medium text-muted-strong">
             {enabled
               ? translateWithFallback(

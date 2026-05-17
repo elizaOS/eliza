@@ -11,6 +11,24 @@ on:
         default: false
 
 jobs:
+  # Compute the bare semver version string (no leading 'v') from the ref name.
+  # On a 'release' event github.ref_name is the tag (e.g. v2.0.1); we strip
+  # the prefix here so downstream jobs get a clean version like '2.0.1'.
+  prepare:
+    runs-on: ubuntu-24.04
+    outputs:
+      version: ${{ steps.parse.outputs.version }}
+      tag: ${{ steps.parse.outputs.tag }}
+    steps:
+      - name: Parse version from ref
+        id: parse
+        run: |
+          TAG="${{ github.ref_name }}"
+          VERSION="${TAG#v}"
+          echo "tag=$TAG"     >> "$GITHUB_OUTPUT"
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+          echo "Resolved: tag=$TAG version=$VERSION"
+
   trigger-linux-iso:
     uses: ./.github/workflows/build-linux-iso.yml
     with:
@@ -29,8 +47,128 @@ jobs:
       publish: ${{ github.event_name == 'release' || inputs.publish == true }}
     secrets: inherit
 
-  summary:
+  verify-artifacts:
+    name: Verify build artifacts exist and are non-empty
     needs: [trigger-linux-iso, trigger-debian-package, trigger-vm-image]
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Download Linux ISO artifact
+        uses: actions/download-artifact@v4
+        with:
+          pattern: elizaos-linux-iso-*
+          path: ./_verify/iso
+          merge-multiple: true
+
+      - name: Download Debian package artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: elizaos-debian-package
+          path: ./_verify/deb
+
+      - name: Download VM image artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: elizaos-vm-image
+          path: ./_verify/vm
+
+      - name: Assert artifacts present and non-empty
+        run: |
+          set -euo pipefail
+          fail=0
+          assert_nonempty() {
+            local pattern="$1"
+            local label="$2"
+            local match
+            match=$(find "$pattern" -type f \( -name "$3" \) -size +0c 2>/dev/null | head -1)
+            if [ -z "$match" ]; then
+              echo "ERROR: missing or empty $label artifact (pattern $3 under $pattern)"
+              fail=1
+            else
+              echo "OK: $label -> $match ($(stat --format=%s "$match") bytes)"
+            fi
+          }
+          assert_nonempty ./_verify/iso "Linux ISO" "*.iso"
+          assert_nonempty ./_verify/deb "Debian .deb" "*.deb"
+          assert_nonempty ./_verify/vm  "VM image"   "*.ova"
+          exit "$fail"
+
+  populate-and-validate-manifest:
+    name: Populate manifest checksums and gate on publishable validation
+    needs: [verify-artifacts]
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: "1.3.13"
+      - name: Download all release artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: ./_artifacts
+          merge-multiple: true
+      - name: Populate manifest with real sha256 + sizes
+        run: |
+          set -euo pipefail
+          MANIFEST=packages/os/release/beta-2026-05-16/manifest.json
+          declare -A MAP
+          MAP[raw-linux-x86_64-img-zst]=$(find ./_artifacts -type f -name "*.raw.img.zst" | head -1 || true)
+          MAP[vm-linux-x86_64-qcow2]=$(find ./_artifacts -type f -name "*qcow2*" | head -1 || true)
+          MAP[android-cuttlefish-x86_64-zip]=$(find ./_artifacts -type f -name "*cf_x86_64*.zip" | head -1 || true)
+          MAP[android-pixel-arm64-zip]=$(find ./_artifacts -type f -name "*pixel-arm64*.zip" | head -1 || true)
+          MAP[vm-macos-silicon-utm]=$(find ./_artifacts -type f -name "*macos-silicon*.utm.zip" | head -1 || true)
+          for id in "${!MAP[@]}"; do
+            path="${MAP[$id]}"
+            if [ -z "$path" ] || [ ! -f "$path" ]; then
+              echo "::warning::no artifact found for $id — leaving manifest entry as candidate"
+              continue
+            fi
+            sha=$(sha256sum "$path" | cut -d' ' -f1)
+            size=$(stat --format=%s "$path")
+            node packages/os/scripts/update-release-manifest.mjs \
+              --manifest "$MANIFEST" \
+              --artifact "$id" \
+              --sha256 "$sha" \
+              --size "$size"
+          done
+
+      - name: Promote release status to available
+        run: |
+          set -euo pipefail
+          node -e '
+            const fs = require("node:fs");
+            const p = "packages/os/release/beta-2026-05-16/manifest.json";
+            const m = JSON.parse(fs.readFileSync(p, "utf8"));
+            m.release.status = "available";
+            fs.writeFileSync(p, JSON.stringify(m, null, 2) + "\n");
+          '
+
+      - name: Gate on publishable checksums
+        run: |
+          node packages/os/scripts/validate-release-manifest.mjs \
+            --manifest packages/os/release/beta-2026-05-16/manifest.json \
+            --require-publishable-checksums
+
+      - name: Upload populated manifest
+        uses: actions/upload-artifact@v4
+        with:
+          name: elizaos-os-release-manifest-published
+          path: packages/os/release/beta-2026-05-16/manifest.json
+          retention-days: 90
+
+  publish-apt:
+    needs: [prepare, trigger-debian-package, verify-artifacts]
+    if: needs.trigger-debian-package.result == 'success' && needs.verify-artifacts.result == 'success'
+    uses: ./.github/workflows/publish-apt-repo.yml
+    with:
+      version: ${{ needs.prepare.outputs.version }}
+      tag: ${{ needs.prepare.outputs.tag }}
+      channel: stable
+    secrets: inherit
+
+  summary:
+    needs: [trigger-linux-iso, trigger-debian-package, trigger-vm-image, verify-artifacts, populate-and-validate-manifest, publish-apt]
     runs-on: ubuntu-latest
     if: always()
     timeout-minutes: 5
@@ -44,4 +182,7 @@ jobs:
             echo "| Linux ISO | ${{ needs.trigger-linux-iso.result }} |"
             echo "| Debian .deb | ${{ needs.trigger-debian-package.result }} |"
             echo "| VM Image | ${{ needs.trigger-vm-image.result }} |"
+            echo "| Verify artifacts | ${{ needs.verify-artifacts.result }} |"
+            echo "| Populate + gate manifest | ${{ needs.populate-and-validate-manifest.result }} |"
+            echo "| apt Repo | ${{ needs.publish-apt.result }} |"
           } >> "$GITHUB_STEP_SUMMARY"

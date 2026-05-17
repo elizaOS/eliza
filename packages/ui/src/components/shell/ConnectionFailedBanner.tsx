@@ -25,7 +25,7 @@ export function ConnectionFailedBanner() {
         role="status"
         aria-live="polite"
         data-window-titlebar-banner="true"
-        className={`shrink-0 z-[${Z_SYSTEM_CRITICAL}] flex items-center gap-3 bg-warn px-4 py-2 text-sm font-medium text-[color:var(--accent-foreground)] shadow-lg`}
+        className={`shrink-0 z-[${Z_SYSTEM_CRITICAL}] flex items-center gap-3 bg-warn px-4 py-2 text-sm font-medium text-[color:var(--accent-foreground)] shadow-sm`}
       >
         <Spinner
           size={16}
@@ -50,7 +50,7 @@ export function ConnectionFailedBanner() {
         role="alert"
         aria-live="assertive"
         data-window-titlebar-banner="true"
-        className={`shrink-0 z-[${Z_SYSTEM_CRITICAL}] flex items-center justify-between gap-3 bg-danger px-4 py-2 text-sm font-medium text-white shadow-lg`}
+        className={`shrink-0 z-[${Z_SYSTEM_CRITICAL}] flex items-center justify-between gap-3 bg-danger px-4 py-2 text-sm font-medium text-white shadow-sm`}
       >
         <span className="truncate">
           {t("connectionfailedbanner.ConnectionLostAfte")}{" "}

@@ -144,7 +144,7 @@ def main():
     args = p.parse_args()
 
     if DISK_IOERRORS.exists():
-        msg = "Error reading data from your Tails USB stick.\nPlease visit https://tails.net/ioerror for troubleshooting."
+        msg = "Error reading data from your elizaOS USB stick.\nPlease visit https://tails.net/ioerror for troubleshooting."
     else:
         output = run_lspci(["-d::0300", "-nn"])
         gpus = parse_lspci(output)

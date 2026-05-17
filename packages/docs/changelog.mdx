@@ -1,9 +1,9 @@
 ---
 title: Changelog
-description: What's new in Eliza — features, improvements, and fixes.
+description: What shipped in Eliza and elizaOS — features, improvements, fixes.
 ---
 
-<Update label="2026-04-29" description="Week of April 29; verification verdicts return to chat, first-party app protection, ElizaOS local agent on Android, open-in-cloud from the homepage" tags={["Feature", "Update", "Fix"]}>
+<Update label="2026-04-29" description="Week of April 29; verification verdicts return to chat, first-party app protection, elizaOS local agent on Android, open-in-cloud from the homepage" tags={["Feature", "Update", "Fix"]}>
 
 ## Verification verdicts return to chat
 
@@ -17,9 +17,9 @@ The runtime now protects first-party [apps](/dashboard/apps) — Companion, Wall
 
 The [app verification](/dashboard/apps) browser-check now fails closed if `puppeteer-core` isn't available, so missing dependencies can't quietly skip the check. If you intentionally run without browser verification, opt out explicitly by setting `ELIZA_BROWSER_VERIFY_OPTIONAL=1`.
 
-## ElizaOS local agent on Android
+## elizaOS local agent on Android
 
-[ElizaOS](/architecture) builds now run the agent as its own SELinux-confined process. A dedicated `eliza_agent` domain transitions the runtime out of the priv-app sandbox into a tighter policy scoped to the agent's exec/data directories and loopback networking. Phase B of the same landing also relabels the on-disk agent tree after extraction so the policy actually sticks. Net effect: the agent runs with only the kernel-enforced capabilities it needs, not full priv-app reach.
+[elizaOS](/architecture) builds now run the agent as its own SELinux-confined process. A dedicated `eliza_agent` domain transitions the runtime out of the priv-app sandbox into a tighter policy scoped to the agent's exec/data directories and loopback networking. Phase B of the same landing also relabels the on-disk agent tree after extraction so the policy actually sticks. Net effect: the agent runs with only the kernel-enforced capabilities it needs, not full priv-app reach.
 
 ## Open in cloud from the homepage
 
@@ -36,14 +36,14 @@ A new **Open in cloud** button on the Eliza homepage takes you from a marketing 
 
 ## Bug fixes
 
-- Fixed [ElizaOS](/architecture) AOSP cuttlefish builds failing during boot validation — the build pipeline now completes end to end and the boot path is validated automatically
+- Fixed [elizaOS](/architecture) AOSP cuttlefish builds failing during boot validation — the build pipeline now completes end to end and the boot path is validated automatically
 - Fixed a dependency conflict where `@elizaos/plugin-openai` could pull in a duplicate `@ai-sdk/provider` version on fresh installs — the plugin is now pinned to the workspace
 - Fixed scheduling and activity column repair throwing on databases where the underlying table didn't yet exist — the migration now guards on table existence first
 - Fixed the static asset manifest going out of sync after new hero artwork was added, which could cause missing-image fallbacks in the [apps view](/dashboard/apps)
 
 </Update>
 
-<Update label="2026-04-28" description="Week of April 28; refreshed app heroes, self-correcting action params, LifeOps connector quiet-by-default, ElizaOS role auto-assignment" tags={["Feature", "Update", "Fix"]}>
+<Update label="2026-04-28" description="Week of April 28; refreshed app heroes, self-correcting action params, LifeOps connector quiet-by-default, elizaOS role auto-assignment" tags={["Feature", "Update", "Fix"]}>
 
 ## Refreshed app catalog artwork
 

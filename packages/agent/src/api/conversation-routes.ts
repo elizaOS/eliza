@@ -1590,10 +1590,12 @@ export async function handleConversationRoutes(
           onSnapshot: (text) => {
             if (!text) return;
             if (
-              !streamedText ||
               disconnectTracker.isAborted() ||
               disconnectTracker.checkConnectionClosed()
             ) {
+              return;
+            }
+            if (text === streamedText) {
               return;
             }
             // Structured field extractors can briefly normalize whitespace or
@@ -1607,8 +1609,16 @@ export async function handleConversationRoutes(
             ) {
               return;
             }
+            if (text.startsWith(streamedText)) {
+              const chunk = text.slice(streamedText.length);
+              streamedText = text;
+              if (chunk) {
+                writeChatTokenSse(res, chunk, streamedText);
+              }
+              return;
+            }
             streamedText = text;
-            writeChatTokenSse(res, text, streamedText);
+            writeSseJson(res, { type: "token", text: "", fullText: text });
           },
           resolveNoResponseText: () =>
             resolveNoResponseFallback(state.logBuffer, runtime),

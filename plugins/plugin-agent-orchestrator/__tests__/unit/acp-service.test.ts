@@ -131,6 +131,34 @@ afterEach(() => {
 });
 
 describe("AcpService", () => {
+  it("fails with a clear diagnostic when acpx is missing on Android", async () => {
+    const previousPlatform = process.env.ELIZA_PLATFORM;
+    process.env.ELIZA_PLATFORM = "android";
+    try {
+      const service = new AcpService(runtime({ ELIZA_ACP_CLI: "/no/acpx" }));
+      const events: Array<[string, string, unknown]> = [];
+      service.onSessionEvent((sid, event, data) =>
+        events.push([sid, event, data]),
+      );
+      await service.start();
+
+      await expect(
+        service.spawnSession({
+          name: "missing-acpx",
+          agentType: "codex",
+          workdir: "/tmp/acp-test",
+        }),
+      ).rejects.toThrow(/acpx CLI is not available/);
+
+      expect(spawnMock).not.toHaveBeenCalled();
+      expect(events.some(([, event]) => event === "error")).toBe(true);
+      await service.stop();
+    } finally {
+      if (previousPlatform === undefined) delete process.env.ELIZA_PLATFORM;
+      else process.env.ELIZA_PLATFORM = previousPlatform;
+    }
+  });
+
   it("static start wires the runtime-backed durable session store", async () => {
     const rt = runtime() as {
       databaseAdapter: { query: ReturnType<typeof vi.fn> };

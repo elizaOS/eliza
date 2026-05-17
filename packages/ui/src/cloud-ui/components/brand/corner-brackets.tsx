@@ -2,7 +2,6 @@
  * Corner brackets component providing decorative corner elements.
  * Supports multiple sizes, colors, variants (corners or full border), and hover effects.
  *
- * @param props - Corner brackets configuration
  * @param props.size - Size variant (sm, md, lg, xl)
  * @param props.color - Border color
  * @param props.variant - Display variant (corners or full-border)

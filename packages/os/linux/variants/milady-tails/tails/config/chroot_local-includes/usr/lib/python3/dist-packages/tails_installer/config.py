@@ -32,9 +32,9 @@ CONFIG = {
         "enabled": False,
     },
     "branding": {
-        "distribution": "Tails",
+        "distribution": "elizaOS",
         "header": "tails-liveusb-header.png",
-        "color": "#56347c",
-        "partition_label": "Tails",
+        "color": "#0B35F1",
+        "partition_label": "elizaOS",
     },
 }

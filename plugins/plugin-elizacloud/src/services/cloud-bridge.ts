@@ -182,7 +182,7 @@ export class CloudBridgeService extends Service {
       }
     });
 
-    ws.addEventListener("close", (event: CloseEvent) => {
+    ws.addEventListener("close", (event) => {
       conn.state = "disconnected";
       if (conn.heartbeatTimer) clearInterval(conn.heartbeatTimer);
 

@@ -1,0 +1,71 @@
+#!/bin/sh
+set -e
+set -u
+
+mode=unknown
+for param in "$@"; do
+  case "$param" in
+    install | download | purge | remove | upgrade | dist-upgrade)
+      mode=binuris
+      break
+    ;;
+    source)
+      mode=srcuris
+      break
+    ;;
+    update)
+      mode=update
+      break
+    ;;
+    check | autoclean | autoremove)
+      mode=noop
+      break
+    ;;
+  esac
+done
+
+# let's fail as early as possible:
+if [ "$mode" = unknown ]; then
+  echo "E: unsupported apt-get operation, mode is still unknown" >&2
+  echo "E: requested operation follows:" "$@"                    >&2
+  exit 1
+fi
+
+building_with_tagged_APT_snapshots() {
+  grep --recursive --quiet --silent --fixed-strings \
+	tagged.snapshots.deb.tails.boum.org \
+	/etc/apt/sources.list.d/
+}
+
+if [ "$mode" = binuris ]; then
+  apt-get.real "$@" --print-uris|perl -ne 'if (/^'\''(.+)'\'' ([^_]+)_([^_]+)_/) { my ($url, $package, $version)=($1,$2,$3); $version =~ s/%3a/:/g; print "$package $version $url\n"; }' >> /debootstrap/$mode
+  apt-get.real "$@"
+elif [ "$mode" = srcuris ]; then
+  # all uris: perl -ne 'if (/^'\''(.+)'\'' (\S+)/) { my ($url, $filename) = ($1, $2); print "$filename $url\n"; }'
+  # only dsc: perl -ne 'if (/^'\''(.+)'\'' (\S+\.dsc)/) { my ($url, $filename) = ($1, $2); print "$filename $url\n"; }'
+  apt-get.real "$@" --print-uris|perl -ne 'if (/^'\''(.+)'\'' (\S+\.dsc)/) { my ($url, $filename) = ($1, $2); print "$filename $url\n"; }' >> /debootstrap/$mode.tmp
+  apt-get.real "$@"
+  while read -r filename uri; do
+    # extract source and version w/o taking the GnuPG version in the signature section, and add uri after that
+    s_v=$(awk '/^(Source|Version):/ {print $2}' "$filename" | head -2 | xargs)
+    echo "$s_v $uri" >> /debootstrap/$mode
+  done < /debootstrap/$mode.tmp
+  rm /debootstrap/$mode.tmp
+elif [ "$mode" = update ]; then
+  echo "command:" "$@" >> /debootstrap/noop
+  set +e
+  apt-get.real "$@"
+  RET=$?
+  set -e
+  if [ $RET -ne 0 ] && building_with_tagged_APT_snapshots ; then
+    echo "APT update failed."
+    echo "You may be experiencing a known issue,"
+    echo "that thankfully has a documented workaround:"
+    echo "see https://gitlab.tails.boum.org/tails/tails/-/issues/20009"
+  fi
+  exit $RET
+else
+  # handle both noop and unknown here, each into its own file; unknown should be empty:
+  echo "command:" "$@" >> /debootstrap/$mode
+  apt-get.real "$@"
+fi

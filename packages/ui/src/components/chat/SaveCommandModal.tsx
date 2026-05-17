@@ -78,7 +78,7 @@ export function SaveCommandModal({
         if (!isOpen) onClose();
       }}
     >
-      <DialogContent className="w-full max-w-md p-0 overflow-hidden rounded-xl">
+      <DialogContent className="w-full max-w-md p-0 overflow-hidden rounded-sm">
         <DialogHeader className="px-5 py-3 shrink-0">
           <DialogTitle className="font-bold text-sm">
             {t("savecommandmodal.SaveAsCommand")}

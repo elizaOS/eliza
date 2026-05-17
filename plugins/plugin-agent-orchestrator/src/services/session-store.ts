@@ -1,13 +1,4 @@
-import { constants } from "node:fs";
-import {
-  access,
-  mkdir,
-  open,
-  readFile,
-  rename,
-  rm,
-  writeFile,
-} from "node:fs/promises";
+import { mkdir, open, readFile, rename, rm, writeFile } from "node:fs/promises";
 import { homedir } from "node:os";
 import { dirname, join } from "node:path";
 import type {
@@ -659,18 +650,8 @@ export class AcpSessionStore implements SessionStore {
     }
 
     const filePath = resolveStateFile(options.runtime, options.stateFile);
-    try {
-      access(dirname(filePath), constants.W_OK).catch(() => undefined);
-      this.backend = "file";
-      this.delegate = new FileSessionStore(filePath, logger);
-    } catch (error) {
-      this.backend = "memory";
-      this.delegate = new InMemorySessionStore();
-      logger?.warn?.(
-        "acpx SessionStore could not initialize file storage; sessions will not persist across restarts",
-        error,
-      );
-    }
+    this.backend = "file";
+    this.delegate = new FileSessionStore(filePath, logger);
   }
 
   create(session: SessionInfo): Promise<void> {

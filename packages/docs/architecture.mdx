@@ -1,16 +1,16 @@
 ---
-title: System Architecture
+title: System architecture
 sidebarTitle: Architecture
-description: High-level overview of the Eliza AI system architecture, layers, plugin system, and cross-platform delivery.
+description: Eliza system architecture — layers, plugin system, and cross-platform delivery.
 ---
 
-Eliza is a cross-platform AI agent runtime built on top of [elizaOS](https://elizaos.ai). It delivers the same backend across CLI, web, desktop (Electrobun), and mobile (Capacitor) through a layered architecture. This page covers the full system from entry points through runtime lifecycle, plugin loading, API surface, and build tooling.
+Eliza is the agent. [elizaOS](https://elizaos.ai) is the agentic operating system it runs on. The same backend ships to CLI, web, desktop (Electrobun), and mobile (Capacitor) through a layered architecture. This page covers entry points, runtime lifecycle, plugin loading, the API surface, and build tooling.
 
 <Info>
 Source paths like `packages/app-core/src/...` and `packages/agent/src/...` live in the `eliza/` git submodule. Initialize it with `bun run setup:upstreams` or `git submodule update --init --recursive` to browse these files locally.
 </Info>
 
-## High-Level Diagram
+## High-level diagram
 
 ```
 +---------------------------------------------------------------+
@@ -56,7 +56,7 @@ Source paths like `packages/app-core/src/...` and `packages/agent/src/...` live 
 +---------------------------------------------------------------+
 ```
 
-## Entry Points and Boot Sequence
+## Entry points and boot sequence
 
 > **Note:** Source paths like `packages/app-core/src/...` and `packages/agent/src/...` referenced throughout this page live in the elizaOS submodule at `eliza/`. Run `bun run setup:upstreams` to populate the submodule for local inspection.
 
@@ -104,7 +104,7 @@ A combined dev server that starts the elizaOS runtime in headless mode and wires
 4. Registers a restart handler that stops the old runtime, creates a new one, and hot-swaps references
 5. Includes exponential backoff retry logic (1s, 2s, 4s, ..., 30s cap) for runtime bootstrap failures
 
-## Runtime Lifecycle
+## Runtime lifecycle
 
 The `startEliza()` function in `eliza/packages/app-core/src/runtime/eliza.ts` orchestrates the full lifecycle from config loading through agent operation.
 
@@ -175,7 +175,7 @@ Restart is pluggable via `setRestartHandler()`:
 | Dev-server / API | Hot-swap | Stops the current runtime, reloads config from disk, creates a new `AgentRuntime`, and swaps the reference in the API server |
 | Electrobun | `AgentManager.restart()` | Uses the Electrobun app's native restart mechanism |
 
-## elizaOS Integration Layer
+## elizaOS integration layer
 
 Eliza extends elizaOS through several integration points:
 
@@ -220,7 +220,7 @@ The runtime applies compatibility patches after creation:
 - `installRuntimeMethodBindings()` -- binds `getConversationLength()` to the runtime instance, fixing private-field access errors when plugins store and later invoke the method without a receiver
 - `installActionAliases()` -- adds backward-compatible action aliases (e.g., `CODE_TASK` maps to `START_CODING_TASK`)
 
-## Plugin Loading Pipeline
+## Plugin loading pipeline
 
 Plugin resolution (`resolvePlugins()`) handles three tiers of plugins through a multi-stage pipeline:
 
@@ -278,7 +278,7 @@ Two plugins require special ordering to avoid race conditions:
 1. **`plugin-sql`** -- registered first so the database adapter is ready before other plugins call `runtime.db`. Includes PGLite corruption recovery (backs up corrupt data, resets, retries once).
 2. **`plugin-local-embedding`** -- registered second so its `TEXT_EMBEDDING` handler (priority 10) is available before the cloud plugin's handler (priority 0), preventing unintended paid API calls during startup.
 
-## Action, Provider, and Evaluator System
+## Action, provider, and evaluator system
 
 Eliza inherits elizaOS's three-part extension model:
 
@@ -309,7 +309,7 @@ Actions are operations the agent can invoke based on conversation context. Each 
 
 Evaluators run after each conversation turn to assess agent performance and update state. They are defined by plugins and can trigger actions, update memory, or modify agent behavior.
 
-## Memory and State Management
+## Memory and state management
 
 ### Database Layer
 
@@ -339,7 +339,7 @@ On macOS with Apple Silicon, Metal GPU acceleration is enabled by default with `
 
 The trajectory logger (`trajectories`) records agent decision paths for debugging and reinforcement learning. The runtime waits up to 3 seconds for the service to register, then enables it by default.
 
-## API Server Architecture
+## API server architecture
 
 The API server (`eliza/packages/app-core/src/api/server.ts`) is a raw Node.js `http.createServer()` instance -- no Express or framework overhead.
 
@@ -396,7 +396,7 @@ Authorization: Bearer <token>
 
 If the API is bound to a non-loopback address (`ELIZA_API_BIND` is not `127.0.0.1` or `localhost`) and no token is set, the server auto-generates a temporary token and logs it to stderr.
 
-## WebSocket Event System
+## WebSocket event system
 
 The API server exposes a WebSocket endpoint at `/ws` on the same port as the API (31337 by default, configurable via `ELIZA_API_PORT`).
 
@@ -435,7 +435,7 @@ All server-sent events use a standard envelope:
 
 Events are buffered in a ring buffer on the server so newly connected clients can receive recent history.
 
-## Service Architecture
+## Service architecture
 
 Eliza's `eliza/packages/app-core/src/services/` directory contains standalone service modules:
 
@@ -458,7 +458,7 @@ Eliza's `eliza/packages/app-core/src/services/` directory contains standalone se
 | **Skill Catalog** | `skill-catalog-client.ts` | Skills registry API client for browsing and installing |
 | **MCP Marketplace** | `mcp-marketplace.ts` | MCP server discovery and marketplace integration |
 
-## Configuration Cascade
+## Configuration cascade
 
 Eliza resolves configuration through a priority cascade:
 
@@ -513,7 +513,7 @@ Eliza uses a Zod-validated JSON configuration file (`eliza.json`):
   </Tab>
 </Tabs>
 
-## Security Boundaries
+## Security boundaries
 
 ### API Authentication
 
@@ -546,7 +546,7 @@ The sandbox uses Docker container isolation with configurable image, memory limi
 - Sensitive values in plugin parameters are masked in API responses (`****` or `sk-a...z123`)
 - The built-in **`@elizaos/core`** secrets stack (`ENABLE_SECRETS_MANAGER` / `SECRETS` service) provides runtime secret storage and scoping
 
-## Cross-Platform Delivery
+## Cross-platform delivery
 
 The same backend serves all platforms:
 
@@ -570,7 +570,7 @@ The Gateway runs on port **18789** (default) and provides:
 - Tailscale integration (serve/funnel modes)
 - OpenAI-compatible HTTP endpoints (`/v1/chat/completions`, `/v1/responses`)
 
-## Build System
+## Build system
 
 ### Tooling
 

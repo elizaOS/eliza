@@ -5,7 +5,7 @@
 // agent process running on AOSP does NOT use it — on Android the runtime
 // goes through `bun:ffi` against `libllama.so` + `libeliza-llama-shim.so`
 // directly via `aosp-llama-adapter.ts`. The only consumer of this package
-// is `packages/native-plugins/llama/src/capacitor-llama-adapter.ts`, which
+// is `plugins/plugin-native-llama/src/capacitor-llama-adapter.ts`, which
 // dynamically imports it inside the WebView path. Bun.build still has to
 // resolve the import statically; the stub keeps the bundle building while
 // guaranteeing the WebView path throws clearly if it's ever hit on AOSP.

@@ -1,4 +1,5 @@
 import { type Context, Hono } from "hono";
+import { streamSSE } from "hono/streaming";
 import { ControlPlaneStore, type Job, type Sandbox } from "./store";
 
 export interface ControlPlaneMockOptions {
@@ -16,6 +17,18 @@ export interface ControlPlaneMockOptions {
   hetznerActionPollTimeoutMs?: number;
   /** Stuck-provisioning cutoff in ms (default 10 minutes). */
   stuckProvisioningMs?: number;
+  /** Default warm-pool target size; `agent-hot-pool` cron drives toward this. */
+  hotPoolSize?: number;
+  /** Default agent image used by hot-pool cron. */
+  defaultAgentImage?: string;
+  /** Stub log lines returned by GET /containers/:id/logs. */
+  containerLogLines?: string[];
+  /** Bearer token required on `/api/v1/admin/*` endpoints. */
+  adminToken?: string;
+  /** ms until container create/delete/restart actions resolve. Default 30. */
+  containerActionMs?: number;
+  /** ms between SSE events on the bridge stream. Default 5. */
+  bridgeStreamIntervalMs?: number;
 }
 
 interface HetznerActionResponse {
@@ -40,11 +53,26 @@ export function buildControlPlaneApp(options: ControlPlaneMockOptions): {
   const store = options.store ?? new ControlPlaneStore(now);
   const actionPollTimeoutMs = options.hetznerActionPollTimeoutMs ?? 5000;
   const stuckProvisioningMs = options.stuckProvisioningMs ?? 10 * 60 * 1000;
+  const hotPoolSize = options.hotPoolSize ?? 0;
+  const defaultAgentImage = options.defaultAgentImage ?? "elizaos/agent:latest";
+  const containerLogLines = options.containerLogLines ?? [
+    "[mock] container started",
+    "[mock] health check passed",
+  ];
+  const adminToken = options.adminToken ?? "test-admin-token";
+  const containerActionMs = options.containerActionMs ?? 30;
+  const bridgeStreamIntervalMs = options.bridgeStreamIntervalMs ?? 5;
+
+  store.setHotPoolTarget(hotPoolSize);
 
   const app = new Hono();
 
   app.use("*", async (c, next) => {
     if (c.req.path === "/health") return next();
+    // Admin endpoints use their own token, validated per-route.
+    if (c.req.path.startsWith("/api/v1/admin/")) return next();
+    // Compat endpoints are public stubs.
+    if (c.req.path.startsWith("/api/compat/")) return next();
     const auth = c.req.header("authorization") ?? c.req.header("Authorization");
     if (!auth || !auth.startsWith("Bearer ") || auth.slice(7).trim() !== token) {
       return c.json({ success: false, error: "Unauthorized" }, 401);
@@ -121,6 +149,334 @@ export function buildControlPlaneApp(options: ControlPlaneMockOptions): {
   app.post("/cron/cleanup-stuck-provisioning", async (c) => {
     const result = await cleanupStuck();
     return c.json({ success: true, data: result });
+  });
+
+  // ── Latency injection ─────────────────────────────────────────────────
+  async function latency(): Promise<void> {
+    if (process.env.MOCK_HETZNER_LATENCY === "0") return;
+    await new Promise((r) => setTimeout(r, 5));
+  }
+
+  function requireAdmin(c: Context): Response | null {
+    const auth = c.req.header("authorization") ?? c.req.header("Authorization");
+    if (!auth || !auth.startsWith("Bearer ") || auth.slice(7).trim() !== adminToken) {
+      return c.json({ success: false, error: "Unauthorized (admin)" }, 401);
+    }
+    return null;
+  }
+
+  // ── Containers CRUD ──────────────────────────────────────────────────
+  app.post("/api/v1/containers", async (c) => {
+    const auth = requireForwardedAuth(c);
+    if (auth instanceof Response) return auth;
+    await latency();
+    const body = (await c.req.json().catch(() => null)) as Record<string, unknown> | null;
+    if (!body) return c.json({ success: false, error: "JSON body required" }, 400);
+    const name = typeof body.name === "string" ? body.name : undefined;
+    const projectName = typeof body.project_name === "string" ? body.project_name : undefined;
+    const image = typeof body.image === "string" ? body.image : undefined;
+    if (!name || !projectName || !image) {
+      return c.json({ success: false, error: "name, project_name, image required" }, 400);
+    }
+    const env =
+      body.environment_vars && typeof body.environment_vars === "object" && !Array.isArray(body.environment_vars)
+        ? Object.fromEntries(
+            Object.entries(body.environment_vars as Record<string, unknown>).map(([k, v]) => [
+              k,
+              String(v),
+            ]),
+          )
+        : {};
+    const container = store.createContainer({
+      name,
+      projectName,
+      organizationId: auth.organizationId,
+      userId: auth.userId,
+      image,
+      port: typeof body.port === "number" ? body.port : undefined,
+      desiredCount: typeof body.desired_count === "number" ? body.desired_count : undefined,
+      cpu: typeof body.cpu === "number" ? body.cpu : undefined,
+      memoryMb: typeof body.memory === "number" ? body.memory : undefined,
+      healthCheckPath:
+        typeof body.health_check_path === "string" ? body.health_check_path : undefined,
+      environmentVars: env,
+      actionMs: containerActionMs,
+    });
+    return c.json(
+      {
+        success: true,
+        data: container,
+        polling: {
+          endpoint: `/api/v1/containers/${container.id}`,
+          intervalMs: 50,
+          expectedDurationMs: containerActionMs * 4,
+        },
+      },
+      201,
+    );
+  });
+
+  app.get("/api/v1/containers/:id", async (c) => {
+    const auth = requireForwardedAuth(c);
+    if (auth instanceof Response) return auth;
+    await latency();
+    store.resolveContainerActions();
+    const container = store.getContainer(c.req.param("id"));
+    if (!container) return c.json({ success: false, error: "Container not found" }, 404);
+    if (container.organizationId !== auth.organizationId) {
+      return c.json({ success: false, error: "Container not found" }, 404);
+    }
+    return c.json({ success: true, data: container });
+  });
+
+  app.patch("/api/v1/containers/:id", async (c) => {
+    const auth = requireForwardedAuth(c);
+    if (auth instanceof Response) return auth;
+    await latency();
+    const id = c.req.param("id");
+    const container = store.getContainer(id);
+    if (!container || container.organizationId !== auth.organizationId) {
+      return c.json({ success: false, error: "Container not found" }, 404);
+    }
+    const body = (await c.req.json().catch(() => null)) as Record<string, unknown> | null;
+    if (!body) return c.json({ success: false, error: "JSON body required" }, 400);
+    if (body.environment_vars !== undefined) {
+      if (typeof body.environment_vars !== "object" || body.environment_vars === null || Array.isArray(body.environment_vars)) {
+        return c.json({ success: false, error: "environment_vars must be an object" }, 400);
+      }
+      const env = Object.fromEntries(
+        Object.entries(body.environment_vars as Record<string, unknown>).map(([k, v]) => [k, String(v)]),
+      );
+      const updated = store.updateContainer(id, { environmentVars: env });
+      return c.json({ success: true, data: updated });
+    }
+    if (body.desired_count !== undefined) {
+      const next = Number(body.desired_count);
+      if (!Number.isFinite(next)) {
+        return c.json({ success: false, error: "desired_count must be a number" }, 400);
+      }
+      const updated = store.updateContainer(id, { desiredCount: next });
+      return c.json({ success: true, data: updated });
+    }
+    if (body.action === "restart" || body.status === "restarting") {
+      const updated = store.updateContainer(id, {
+        status: "restarting",
+        pendingActionAt: now().getTime() + containerActionMs,
+        pendingAction: "running",
+      });
+      return c.json({ success: true, data: updated });
+    }
+    return c.json(
+      { success: false, error: "PATCH supports environment_vars, desired_count, or action=restart" },
+      400,
+    );
+  });
+
+  app.delete("/api/v1/containers/:id", async (c) => {
+    const auth = requireForwardedAuth(c);
+    if (auth instanceof Response) return auth;
+    await latency();
+    const id = c.req.param("id");
+    const container = store.getContainer(id);
+    if (!container || container.organizationId !== auth.organizationId) {
+      return c.json({ success: false, error: "Container not found" }, 404);
+    }
+    store.updateContainer(id, {
+      status: "deleting",
+      pendingActionAt: now().getTime() + containerActionMs,
+      pendingAction: "deleted",
+    });
+    return c.json({ success: true });
+  });
+
+  app.post("/api/v1/containers/:id/workspace-sync", async (c) => {
+    const auth = requireForwardedAuth(c);
+    if (auth instanceof Response) return auth;
+    await latency();
+    const id = c.req.param("id");
+    const container = store.getContainer(id);
+    if (!container || container.organizationId !== auth.organizationId) {
+      return c.json({ success: false, error: "Container not found" }, 404);
+    }
+    const updated = store.updateContainer(id, { workspaceSyncs: container.workspaceSyncs + 1 });
+    return c.json(
+      {
+        success: true,
+        data: {
+          containerId: id,
+          syncCount: updated.workspaceSyncs,
+          acceptedAt: now().toISOString(),
+        },
+      },
+      202,
+    );
+  });
+
+  app.get("/api/v1/containers/:id/logs", async (c) => {
+    const auth = requireForwardedAuth(c);
+    if (auth instanceof Response) return auth;
+    await latency();
+    const id = c.req.param("id");
+    const container = store.getContainer(id);
+    if (!container || container.organizationId !== auth.organizationId) {
+      return c.json({ success: false, error: "Container not found" }, 404);
+    }
+    const tailRaw = Number(c.req.query("tail") ?? "200");
+    const tail = Number.isFinite(tailRaw) ? Math.max(1, Math.floor(tailRaw)) : 200;
+    const lines = containerLogLines.slice(-tail).join("\n");
+    return c.text(lines, 200, { "content-type": "text/plain; charset=utf-8" });
+  });
+
+  app.get("/api/v1/containers/:id/metrics", async (c) => {
+    const auth = requireForwardedAuth(c);
+    if (auth instanceof Response) return auth;
+    await latency();
+    const id = c.req.param("id");
+    const container = store.getContainer(id);
+    if (!container || container.organizationId !== auth.organizationId) {
+      return c.json({ success: false, error: "Container not found" }, 404);
+    }
+    return c.json({
+      success: true,
+      data: {
+        containerId: id,
+        cpu: { usagePct: 12.5, limit: container.cpu },
+        memory: { usedMb: 64, limitMb: container.memoryMb },
+        disk: { usedMb: 128, limitMb: 1024 },
+        timestamp: now().toISOString(),
+      },
+    });
+  });
+
+  // ── JSON-RPC bridge + SSE ────────────────────────────────────────────
+  app.post("/api/v1/eliza/agents/:agentId/bridge", async (c) => {
+    const auth = requireForwardedAuth(c);
+    if (auth instanceof Response) return auth;
+    await latency();
+    const body = (await c.req.json().catch(() => null)) as Record<string, unknown> | null;
+    if (!body || body.jsonrpc !== "2.0" || typeof body.method !== "string") {
+      return c.json(
+        { jsonrpc: "2.0", error: { code: -32600, message: "Invalid JSON-RPC request" } },
+        400,
+      );
+    }
+    const id = body.id ?? null;
+    const method = body.method;
+    let result: unknown;
+    if (method === "ping") {
+      result = { pong: true, agentId: c.req.param("agentId") };
+    } else if (method === "getStatus") {
+      result = { status: "running", agentId: c.req.param("agentId"), uptimeMs: 1000 };
+    } else {
+      result = {};
+    }
+    return c.json({ jsonrpc: "2.0", id, result });
+  });
+
+  app.get("/api/v1/eliza/agents/:agentId/bridge/stream", async (c) => {
+    const authResult = requireForwardedAuth(c);
+    if (authResult instanceof Response) return authResult;
+    return streamSSE(c, async (stream) => {
+      await stream.writeSSE({ event: "ready", data: JSON.stringify({ agentId: c.req.param("agentId") }) });
+      for (let i = 0; i < 3; i += 1) {
+        await stream.sleep(bridgeStreamIntervalMs);
+        await stream.writeSSE({ event: "tick", data: JSON.stringify({ n: i + 1 }) });
+      }
+      await stream.writeSSE({ event: "done", data: JSON.stringify({}) });
+    });
+  });
+
+  // ── Hot pool / autoscale crons ───────────────────────────────────────
+  app.post("/api/v1/cron/deployment-monitor", async (c) => {
+    await latency();
+    const count = store.incrementCron("deployment-monitor-tick");
+    return c.json({
+      success: true,
+      data: { count, timestamp: now().toISOString() },
+    });
+  });
+
+  app.post("/api/v1/cron/agent-hot-pool", async (c) => {
+    await latency();
+    const count = store.incrementCron("agent-hot-pool-tick");
+    const added = store.replenishWarmPool(defaultAgentImage, store.getHotPoolTarget());
+    return c.json({
+      success: true,
+      data: {
+        count,
+        image: defaultAgentImage,
+        target: store.getHotPoolTarget(),
+        added,
+        warmPoolSize: store.warmPoolSnapshot().length,
+        timestamp: now().toISOString(),
+      },
+    });
+  });
+
+  app.post("/api/v1/cron/node-autoscale", async (c) => {
+    await latency();
+    const count = store.incrementCron("node-autoscale-tick");
+    return c.json({
+      success: true,
+      data: { count, action: "noop", timestamp: now().toISOString() },
+    });
+  });
+
+  // Hono parameters do not match partial-segment patterns like `pool-:rest`,
+  // so use a single catchall handler that inspects the suffix.
+  app.post("/api/v1/cron/:name", async (c) => {
+    const name = c.req.param("name");
+    if (!name.startsWith("pool-")) {
+      return c.json({ success: false, error: "Not found" }, 404);
+    }
+    await latency();
+    const count = store.incrementCron(`${name}-tick`);
+    return c.json({
+      success: true,
+      data: { kind: name, count, timestamp: now().toISOString() },
+    });
+  });
+
+  // ── Admin endpoints ──────────────────────────────────────────────────
+  app.post("/api/v1/admin/warm-pool", async (c) => {
+    const unauthorized = requireAdmin(c);
+    if (unauthorized) return unauthorized;
+    await latency();
+    const body = (await c.req.json().catch(() => null)) as Record<string, unknown> | null;
+    if (!body || typeof body.target !== "number" || !Number.isFinite(body.target)) {
+      return c.json({ success: false, error: "target (number) required" }, 400);
+    }
+    store.setHotPoolTarget(body.target);
+    return c.json({
+      success: true,
+      data: { target: store.getHotPoolTarget(), warmPoolSize: store.warmPoolSnapshot().length },
+    });
+  });
+
+  app.post("/api/v1/admin/docker-nodes/:id/health-check", async (c) => {
+    const unauthorized = requireAdmin(c);
+    if (unauthorized) return unauthorized;
+    await latency();
+    return c.json({
+      success: true,
+      data: { nodeId: c.req.param("id"), healthy: true, timestamp: now().toISOString() },
+    });
+  });
+
+  // ── Compat ───────────────────────────────────────────────────────────
+  app.get("/api/compat/agents/:id", async (c) => {
+    await latency();
+    const id = c.req.param("id");
+    return c.json({
+      success: true,
+      data: {
+        id,
+        name: "Mock Agent",
+        bio: ["A stub agent character returned by the control-plane mock."],
+        system: "You are a mock agent.",
+        plugins: [],
+      },
+    });
   });
 
   async function hetznerFetch(path: string, init: RequestInit = {}): Promise<Response> {

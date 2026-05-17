@@ -13,6 +13,12 @@ import { Redis as UpstashRedis } from "@upstash/redis";
 import { createClient } from "redis";
 import { getCloudAwareEnv } from "../runtime/cloud-bindings";
 import { logger } from "../utils/logger";
+import { MemoryCacheAdapter } from "./adapters/memory-cache-adapter";
+import { NodeRedisAdapter } from "./adapters/node-redis-adapter";
+import { SocketRedisAdapter } from "./adapters/socket-redis-adapter";
+import type { CacheRedisClient } from "./adapters/types";
+import { UpstashRedisAdapter } from "./adapters/upstash-redis-adapter";
+import { type WadisClientLike, WadisRedisAdapter } from "./adapters/wadis-redis-adapter";
 import { SocketRedis } from "./socket-redis";
 
 function isCloudflareWorkerRuntime(): boolean {
@@ -70,503 +76,8 @@ function parseCacheValue<T>(value: unknown): T {
   }
 }
 
-interface CacheRedisClient {
-  readonly backend: string;
-  get(key: string): Promise<string | null>;
-  setex(key: string, ttlSeconds: number, value: string): Promise<unknown>;
-  set(key: string, value: string, options?: { nx?: boolean; px?: number }): Promise<string | null>;
-  incr(key: string): Promise<number>;
-  expire(key: string, ttlSeconds: number): Promise<unknown>;
-  pexpire(key: string, ttlMs: number): Promise<unknown>;
-  pttl(key: string): Promise<number | null>;
-  getdel(key: string): Promise<string | null>;
-  del(...keys: string[]): Promise<unknown>;
-  scan(
-    cursor: string | number,
-    options: { match: string; count: number },
-  ): Promise<[string | number, string[]]>;
-  mget(...keys: string[]): Promise<Array<string | null>>;
-  lpush(key: string, ...values: string[]): Promise<number>;
-  rpop(key: string): Promise<string | null>;
-  llen(key: string): Promise<number>;
-}
-
-type NativeRedisClient = ReturnType<typeof createClient>;
-
-class SocketRedisAdapter implements CacheRedisClient {
-  readonly backend = "redis-socket";
-
-  constructor(private readonly client: SocketRedis) {}
-
-  async get(key: string): Promise<string | null> {
-    const v = await this.client.get<string>(key);
-    return v === null ? null : typeof v === "string" ? v : JSON.stringify(v);
-  }
-
-  setex(key: string, ttlSeconds: number, value: string): Promise<unknown> {
-    return this.client.setex(key, ttlSeconds, value);
-  }
-
-  set(key: string, value: string, options?: { nx?: boolean; px?: number }): Promise<string | null> {
-    return this.client.set(key, value, options);
-  }
-
-  incr(key: string): Promise<number> {
-    return this.client.incr(key);
-  }
-
-  expire(key: string, ttlSeconds: number): Promise<unknown> {
-    return this.client.expire(key, ttlSeconds);
-  }
-
-  pexpire(key: string, ttlMs: number): Promise<unknown> {
-    return this.client.pexpire(key, ttlMs);
-  }
-
-  pttl(key: string): Promise<number | null> {
-    return this.client.pttl(key);
-  }
-
-  async getdel(key: string): Promise<string | null> {
-    const v = await this.client.getdel<string>(key);
-    return v === null ? null : typeof v === "string" ? v : JSON.stringify(v);
-  }
-
-  del(...keys: string[]): Promise<unknown> {
-    return this.client.del(...keys);
-  }
-
-  scan(
-    cursor: string | number,
-    options: { match: string; count: number },
-  ): Promise<[string | number, string[]]> {
-    return this.client.scan(cursor, options);
-  }
-
-  mget(...keys: string[]): Promise<Array<string | null>> {
-    return this.client.mget(...keys) as Promise<Array<string | null>>;
-  }
-
-  lpush(key: string, ...values: string[]): Promise<number> {
-    return this.client.lpush(key, ...values);
-  }
-
-  async rpop(key: string): Promise<string | null> {
-    const v = await this.client.rpop<string>(key);
-    return v === null ? null : typeof v === "string" ? v : JSON.stringify(v);
-  }
-
-  llen(key: string): Promise<number> {
-    return this.client.llen(key);
-  }
-}
-
-class UpstashRedisAdapter implements CacheRedisClient {
-  readonly backend = "redis-rest";
-
-  constructor(private readonly client: UpstashRedis) {}
-
-  get(key: string): Promise<string | null> {
-    return this.client.get<string>(key);
-  }
-
-  setex(key: string, ttlSeconds: number, value: string): Promise<unknown> {
-    return this.client.setex(key, ttlSeconds, value);
-  }
-
-  set(key: string, value: string, options?: { nx?: boolean; px?: number }): Promise<string | null> {
-    return this.client.set(key, value, options as never) as Promise<string | null>;
-  }
-
-  incr(key: string): Promise<number> {
-    return this.client.incr(key);
-  }
-
-  expire(key: string, ttlSeconds: number): Promise<unknown> {
-    return this.client.expire(key, ttlSeconds);
-  }
-
-  pexpire(key: string, ttlMs: number): Promise<unknown> {
-    return this.client.pexpire(key, ttlMs);
-  }
-
-  pttl(key: string): Promise<number | null> {
-    return this.client.pttl(key);
-  }
-
-  getdel(key: string): Promise<string | null> {
-    return this.client.getdel<string>(key);
-  }
-
-  del(...keys: string[]): Promise<unknown> {
-    return this.client.del(...keys);
-  }
-
-  scan(
-    cursor: string | number,
-    options: { match: string; count: number },
-  ): Promise<[string | number, string[]]> {
-    return this.client.scan(cursor, options);
-  }
-
-  mget(...keys: string[]): Promise<Array<string | null>> {
-    return this.client.mget<string[]>(...keys) as Promise<Array<string | null>>;
-  }
-
-  lpush(key: string, ...values: string[]): Promise<number> {
-    return this.client.lpush(key, ...values);
-  }
-
-  rpop(key: string): Promise<string | null> {
-    return this.client.rpop<string>(key) as Promise<string | null>;
-  }
-
-  llen(key: string): Promise<number> {
-    return this.client.llen(key);
-  }
-}
-
-class NodeRedisAdapter implements CacheRedisClient {
-  readonly backend = "redis-native";
-
-  constructor(private readonly client: NativeRedisClient) {}
-
-  get(key: string): Promise<string | null> {
-    return this.client.get(key);
-  }
-
-  setex(key: string, ttlSeconds: number, value: string): Promise<unknown> {
-    return this.client.setEx(key, ttlSeconds, value);
-  }
-
-  set(key: string, value: string, options?: { nx?: boolean; px?: number }): Promise<string | null> {
-    if (options?.nx || options?.px) {
-      return this.client.set(key, value, {
-        ...(options.nx ? { NX: true } : {}),
-        ...(options.px ? { PX: options.px } : {}),
-      });
-    }
-
-    return this.client.set(key, value);
-  }
-
-  incr(key: string): Promise<number> {
-    return this.client.incr(key);
-  }
-
-  expire(key: string, ttlSeconds: number): Promise<unknown> {
-    return this.client.expire(key, ttlSeconds);
-  }
-
-  pexpire(key: string, ttlMs: number): Promise<unknown> {
-    return (
-      this.client as NativeRedisClient & {
-        pExpire: (key: string, ttlMs: number) => Promise<unknown>;
-      }
-    ).pExpire(key, ttlMs);
-  }
-
-  pttl(key: string): Promise<number | null> {
-    return (this.client as NativeRedisClient & { pTTL: (key: string) => Promise<number> }).pTTL(
-      key,
-    );
-  }
-
-  getdel(key: string): Promise<string | null> {
-    return this.client.getDel(key);
-  }
-
-  del(...keys: string[]): Promise<unknown> {
-    if (keys.length === 1) {
-      return this.client.del(keys[0]);
-    }
-
-    return this.client.del(keys);
-  }
-
-  async scan(
-    cursor: string | number,
-    options: { match: string; count: number },
-  ): Promise<[string | number, string[]]> {
-    // redis v5 typed `scan` expects RedisArgument (string|Buffer) — v4 took a
-    // number cursor. Coerce to string so we work cleanly under both.
-    const result = await this.client.scan(String(cursor), {
-      MATCH: options.match,
-      COUNT: options.count,
-    });
-
-    return [result.cursor, result.keys];
-  }
-
-  mget(...keys: string[]): Promise<Array<string | null>> {
-    return this.client.mGet(keys);
-  }
-
-  lpush(key: string, ...values: string[]): Promise<number> {
-    return this.client.lPush(key, values);
-  }
-
-  rpop(key: string): Promise<string | null> {
-    return this.client.rPop(key);
-  }
-
-  llen(key: string): Promise<number> {
-    return this.client.lLen(key);
-  }
-}
-
-interface WadisClientLike {
-  get(key: string): Promise<string | null>;
-  setex(key: string, ttlSeconds: number, value: string): Promise<unknown>;
-  set(...args: Array<string | number>): Promise<"OK" | null>;
-  incr(key: string): Promise<number>;
-  expire(key: string, ttlSeconds: number): Promise<unknown>;
-  pexpire(key: string, ttlMs: number): Promise<unknown>;
-  pttl(key: string): Promise<number>;
-  getdel(key: string): Promise<string | null>;
-  del(...keys: string[]): Promise<unknown>;
-  scan(
-    cursor: string | number,
-    ...args: Array<string | number>
-  ): Promise<[string | number, string[]]>;
-  mget(...keys: string[]): Promise<Array<string | null>>;
-  lpush(key: string, ...values: string[]): Promise<number>;
-  rpop(key: string): Promise<string | null>;
-  llen(key: string): Promise<number>;
-}
-
-class WadisRedisAdapter implements CacheRedisClient {
-  readonly backend = "wadis";
-
-  constructor(private readonly client: WadisClientLike) {}
-
-  get(key: string): Promise<string | null> {
-    return this.client.get(key);
-  }
-
-  setex(key: string, ttlSeconds: number, value: string): Promise<unknown> {
-    return this.client.setex(key, ttlSeconds, value);
-  }
-
-  set(key: string, value: string, options?: { nx?: boolean; px?: number }): Promise<string | null> {
-    const args: Array<string | number> = [key, value];
-    if (options?.nx) args.push("NX");
-    if (options?.px) args.push("PX", options.px);
-    return this.client.set(...args);
-  }
-
-  incr(key: string): Promise<number> {
-    return this.client.incr(key);
-  }
-
-  expire(key: string, ttlSeconds: number): Promise<unknown> {
-    return this.client.expire(key, ttlSeconds);
-  }
-
-  pexpire(key: string, ttlMs: number): Promise<unknown> {
-    return this.client.pexpire(key, ttlMs);
-  }
-
-  pttl(key: string): Promise<number | null> {
-    return this.client.pttl(key);
-  }
-
-  getdel(key: string): Promise<string | null> {
-    return this.client.getdel(key);
-  }
-
-  del(...keys: string[]): Promise<unknown> {
-    return this.client.del(...keys);
-  }
-
-  scan(
-    cursor: string | number,
-    options: { match: string; count: number },
-  ): Promise<[string | number, string[]]> {
-    return this.client.scan(cursor, "MATCH", options.match, "COUNT", options.count);
-  }
-
-  mget(...keys: string[]): Promise<Array<string | null>> {
-    return this.client.mget(...keys);
-  }
-
-  lpush(key: string, ...values: string[]): Promise<number> {
-    return this.client.lpush(key, ...values);
-  }
-
-  rpop(key: string): Promise<string | null> {
-    return this.client.rpop(key);
-  }
-
-  llen(key: string): Promise<number> {
-    return this.client.llen(key);
-  }
-}
-
-class MemoryCacheAdapter implements CacheRedisClient {
-  readonly backend = "memory";
-  private readonly values = new Map<string, { value: string; expireAt: number | null }>();
-  private readonly lists = new Map<string, { values: string[]; expireAt: number | null }>();
-
-  private now(): number {
-    return Date.now();
-  }
-
-  private getValue(key: string): string | null {
-    const entry = this.values.get(key);
-    if (!entry) return null;
-    if (entry.expireAt !== null && entry.expireAt <= this.now()) {
-      this.values.delete(key);
-      return null;
-    }
-    return entry.value;
-  }
-
-  private getList(key: string): string[] | null {
-    const entry = this.lists.get(key);
-    if (!entry) return null;
-    if (entry.expireAt !== null && entry.expireAt <= this.now()) {
-      this.lists.delete(key);
-      return null;
-    }
-    return entry.values;
-  }
-
-  private setValue(key: string, value: string, ttlMs?: number): void {
-    this.values.set(key, {
-      value,
-      expireAt: ttlMs === undefined ? null : this.now() + ttlMs,
-    });
-    this.lists.delete(key);
-  }
-
-  private setExpiry(key: string, ttlMs: number): number {
-    const expireAt = this.now() + ttlMs;
-    const valueEntry = this.values.get(key);
-    if (valueEntry && this.getValue(key) !== null) {
-      valueEntry.expireAt = expireAt;
-      return 1;
-    }
-
-    const listEntry = this.lists.get(key);
-    if (listEntry && this.getList(key) !== null) {
-      listEntry.expireAt = expireAt;
-      return 1;
-    }
-
-    return 0;
-  }
-
-  private deleteExpired(): void {
-    for (const key of this.values.keys()) {
-      this.getValue(key);
-    }
-    for (const key of this.lists.keys()) {
-      this.getList(key);
-    }
-  }
-
-  private patternToRegExp(pattern: string): RegExp {
-    const escaped = pattern.replace(/[.+^${}()|[\]\\]/g, "\\$&").replace(/\*/g, ".*");
-    return new RegExp(`^${escaped}$`);
-  }
-
-  async get(key: string): Promise<string | null> {
-    return this.getValue(key);
-  }
-
-  async setex(key: string, ttlSeconds: number, value: string): Promise<unknown> {
-    this.setValue(key, value, ttlSeconds * 1000);
-    return "OK";
-  }
-
-  async set(
-    key: string,
-    value: string,
-    options?: { nx?: boolean; px?: number },
-  ): Promise<string | null> {
-    if (options?.nx && this.getValue(key) !== null) {
-      return null;
-    }
-    this.setValue(key, value, options?.px);
-    return "OK";
-  }
-
-  async incr(key: string): Promise<number> {
-    const next = Number.parseInt(this.getValue(key) ?? "0", 10) + 1;
-    this.setValue(key, String(next));
-    return next;
-  }
-
-  async expire(key: string, ttlSeconds: number): Promise<unknown> {
-    return this.setExpiry(key, ttlSeconds * 1000);
-  }
-
-  async pexpire(key: string, ttlMs: number): Promise<unknown> {
-    return this.setExpiry(key, ttlMs);
-  }
-
-  async pttl(key: string): Promise<number | null> {
-    const valueEntry = this.values.get(key);
-    if (valueEntry && this.getValue(key) !== null) {
-      return valueEntry.expireAt === null ? -1 : Math.max(valueEntry.expireAt - this.now(), 0);
-    }
-
-    const listEntry = this.lists.get(key);
-    if (listEntry && this.getList(key) !== null) {
-      return listEntry.expireAt === null ? -1 : Math.max(listEntry.expireAt - this.now(), 0);
-    }
-
-    return -2;
-  }
-
-  async getdel(key: string): Promise<string | null> {
-    const value = this.getValue(key);
-    this.values.delete(key);
-    return value;
-  }
-
-  async del(...keys: string[]): Promise<unknown> {
-    let deleted = 0;
-    for (const key of keys) {
-      if (this.values.delete(key)) deleted += 1;
-      if (this.lists.delete(key)) deleted += 1;
-    }
-    return deleted;
-  }
-
-  async scan(
-    cursor: string | number,
-    options: { match: string; count: number },
-  ): Promise<[string | number, string[]]> {
-    this.deleteExpired();
-    const pattern = this.patternToRegExp(options.match);
-    const keys = [...this.values.keys(), ...this.lists.keys()].filter((key) => pattern.test(key));
-    return [0, keys.slice(0, options.count)];
-  }
-
-  async mget(...keys: string[]): Promise<Array<string | null>> {
-    return keys.map((key) => this.getValue(key));
-  }
-
-  async lpush(key: string, ...values: string[]): Promise<number> {
-    const existing = this.getList(key) ?? [];
-    const entry = this.lists.get(key) ?? { values: existing, expireAt: null };
-    entry.values.unshift(...values);
-    this.lists.set(key, entry);
-    this.values.delete(key);
-    return entry.values.length;
-  }
-
-  async rpop(key: string): Promise<string | null> {
-    const list = this.getList(key);
-    return list?.pop() ?? null;
-  }
-
-  async llen(key: string): Promise<number> {
-    return this.getList(key)?.length ?? 0;
-  }
-}
+// CacheRedisClient interface and the five adapter classes
+// (Socket / Upstash / NodeRedis / Wadis / Memory) now live in ./adapters/*.
 
 /**
  * Redis cache client with circuit breaker, stale-while-revalidate, and error handling.
@@ -626,6 +137,8 @@ export class CacheClient {
     this.nativeRedisReady = false;
     this.nativeRedisConnectPromise = import("wadis")
       .then(({ Wadis }) => {
+        // Wadis's exported types don't exactly match WadisClientLike (the local
+        // structural interface we use). The runtime shape is compatible.
         this.redis = new WadisRedisAdapter(new Wadis() as unknown as WadisClientLike);
         this.nativeRedisReady = true;
         logger.info("[Cache] ✓ Cache client initialized with Wadis Wasm Redis");
@@ -646,6 +159,18 @@ export class CacheClient {
 
     const env = getCloudAwareEnv();
     this.enabled = env.CACHE_ENABLED !== "false";
+
+    // MOCK_REDIS=1 is an explicit opt-in for tests/CI. It forces the in-memory
+    // adapter regardless of any other configuration, but never activates
+    // silently when unset — real creds are still honored when MOCK_REDIS is
+    // not "1".
+    if (this.enabled && process.env.MOCK_REDIS === "1") {
+      this.nativeRedisConnectPromise = null;
+      this.nativeRedisReady = true;
+      this.redis = new MemoryCacheAdapter();
+      logger.info("[Cache] ✓ Cache client initialized with in-memory mock (MOCK_REDIS=1)");
+      return;
+    }
 
     if (!this.enabled) {
       // CACHE_DISABLE_REASON acknowledges an intentional disable
@@ -1112,9 +637,6 @@ export class CacheClient {
   /**
    * Atomically gets a value and deletes the key using GETDEL (Redis ≥6.2).
    * Used for single-use values (e.g. SIWE nonce) to prevent replay attacks.
-   *
-   * @param key - Cache key.
-   * @returns The value if present, or null.
    */
   async getAndDelete<T>(key: string): Promise<T | null> {
     const redis = await this.getRedisClient();

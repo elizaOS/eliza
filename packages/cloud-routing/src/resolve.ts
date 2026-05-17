@@ -131,8 +131,6 @@ function buildLocalKeyHeaders(
       return { [spec.localKeyAuth.headerName]: key };
     case "bearer":
       return { Authorization: `Bearer ${key}` };
-    case "query":
-      return {};
   }
 }
 

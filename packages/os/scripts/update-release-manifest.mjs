@@ -13,7 +13,7 @@
 //   sha256        — the hex checksum
 //   sizeBytes     — file size in bytes (integer)
 //   downloadUrl   — canonical download URL
-//   status        — set to "available" (was "candidate")
+//   status        — set to "published" (was "candidate")
 //   validation.evidence — appended with "sha256-generated" if not already present
 //
 // Exits non-zero when the artifact id is not found.
@@ -79,7 +79,7 @@ if (args.url) {
   artifact.downloadUrl = args.url;
 }
 
-artifact.status = 'available';
+artifact.status = 'published';
 
 // Append "sha256-generated" evidence marker if a checksum was provided
 // and the marker is not already present.

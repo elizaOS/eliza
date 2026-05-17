@@ -5,24 +5,41 @@ import { fileURLToPath } from "node:url";
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
 /**
- * Absolute path to `eliza/packages/native-plugins` (Capacitor + Electrobun plugin packages).
+ * Absolute path to `eliza/plugins` — workspace plugin root. Native plugins
+ * live under `plugin-native-*` (formerly `packages/native-plugins/*`).
  * Resolved from `packages/app/scripts/` so build scripts and repo utilities share one root.
  */
-export const NATIVE_PLUGINS_ROOT = path.resolve(
-  __dirname,
-  "../../../packages/native-plugins",
-);
+const NATIVE_PLUGIN_PREFIX = "plugin-native-";
+export const NATIVE_PLUGINS_ROOT = path.resolve(__dirname, "../../../plugins");
 
-/** Short names of each real workspace package under {@link NATIVE_PLUGINS_ROOT}. */
+/**
+ * Short names of each real native workspace plugin (without the
+ * `plugin-native-` prefix), matching the historical directory names that
+ * lived under `packages/native-plugins/`.
+ */
 export const CAPACITOR_PLUGIN_NAMES = fs
   .readdirSync(NATIVE_PLUGINS_ROOT, { withFileTypes: true })
-  .filter((entry) => entry.isDirectory())
-  .map((entry) => entry.name)
+  .filter(
+    (entry) =>
+      entry.isDirectory() && entry.name.startsWith(NATIVE_PLUGIN_PREFIX),
+  )
+  .map((entry) => entry.name.slice(NATIVE_PLUGIN_PREFIX.length))
   .filter((name) => {
-    const pluginDir = path.join(NATIVE_PLUGINS_ROOT, name);
+    const pluginDir = path.join(
+      NATIVE_PLUGINS_ROOT,
+      `${NATIVE_PLUGIN_PREFIX}${name}`,
+    );
     return (
       fs.existsSync(path.join(pluginDir, "package.json")) &&
       fs.existsSync(path.join(pluginDir, "src", "index.ts"))
     );
   })
   .sort((left, right) => left.localeCompare(right));
+
+/** Resolve the absolute plugin directory for a short native plugin name. */
+export function resolveNativePluginDir(name) {
+  return path.join(NATIVE_PLUGINS_ROOT, `${NATIVE_PLUGIN_PREFIX}${name}`);
+}
+
+// Alias kept for callers that adopted the shorter name.
+export const nativePluginDir = resolveNativePluginDir;

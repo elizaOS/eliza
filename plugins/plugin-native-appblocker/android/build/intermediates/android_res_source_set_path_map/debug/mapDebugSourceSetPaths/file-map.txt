@@ -1,0 +1,9 @@
+ai.eliza.plugins.appblocker.elizaos-capacitor-appblocker-pngs-0 /Users/shawwalters/eliza-workspace/milady/eliza/packages/native-plugins/appblocker/android/build/generated/res/pngs/debug
+ai.eliza.plugins.appblocker.elizaos-capacitor-appblocker-updated_navigation_xml-1 /Users/shawwalters/eliza-workspace/milady/eliza/packages/native-plugins/appblocker/android/build/generated/updated_navigation_xml/debug
+ai.eliza.plugins.appblocker.elizaos-capacitor-appblocker-mergeDebugResources-2 /Users/shawwalters/eliza-workspace/milady/eliza/packages/native-plugins/appblocker/android/build/intermediates/incremental/debug/mergeDebugResources/merged.dir
+ai.eliza.plugins.appblocker.elizaos-capacitor-appblocker-mergeDebugResources-3 /Users/shawwalters/eliza-workspace/milady/eliza/packages/native-plugins/appblocker/android/build/intermediates/incremental/debug/mergeDebugResources/stripped.dir
+ai.eliza.plugins.appblocker.elizaos-capacitor-appblocker-debug-4 /Users/shawwalters/eliza-workspace/milady/eliza/packages/native-plugins/appblocker/android/build/intermediates/merged_res/debug/mergeDebugResources
+ai.eliza.plugins.appblocker.elizaos-capacitor-appblocker-debug-5 /Users/shawwalters/eliza-workspace/milady/eliza/packages/native-plugins/appblocker/android/build/intermediates/packaged_res/debug/packageDebugResources
+ai.eliza.plugins.appblocker.elizaos-capacitor-appblocker-debug-6 /Users/shawwalters/eliza-workspace/milady/eliza/packages/native-plugins/appblocker/android/src/debug/res
+ai.eliza.plugins.appblocker.elizaos-capacitor-appblocker-main-7 /Users/shawwalters/eliza-workspace/milady/eliza/packages/native-plugins/appblocker/android/src/main/res
+gradleHome-0 /Users/shawwalters/.gradle

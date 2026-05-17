@@ -15,7 +15,10 @@ picture-uri='file:///usr/share/tails/desktop_wallpaper.png'
 [org/gnome/desktop/interface]
 clock-format='24h'
 clock-show-date=true
+document-font-name='Poppins 10'
+font-name='Poppins 10'
 menus-have-icons=true
+titlebar-font='Poppins Medium 10'
 
 [org/gnome/desktop/lockdown]
 disable-log-out = true
@@ -82,7 +85,7 @@ sleep-inactive-battery-type ='nothing'
 
 [org/gnome/shell]
 enabled-extensions = ['apps-menu@gnome-shell-extensions.gcampax.github.com', 'window-list@gnome-shell-extensions.gcampax.github.com', 'status-menu-helper@tails.boum.org', 'date@tails.boum.org', 'torstatus@tails.boum.org', 'no-overview@fthx']
-favorite-apps=['org.boum.tails.TorBrowser.desktop', 'tca.desktop', 'org.boum.tails.PersistentStorage.desktop', 'tails-documentation.desktop', 'whisperback.desktop', 'tails-installer.desktop', 'thunderbird.desktop', 'org.gnome.World.Secrets.desktop', 'org.gnome.Nautilus.desktop']
+favorite-apps=['milady.desktop', 'org.boum.tails.TorBrowser.desktop', 'tca.desktop', 'org.boum.tails.PersistentStorage.desktop', 'tails-documentation.desktop', 'whisperback.desktop', 'tails-installer.desktop', 'thunderbird.desktop', 'org.gnome.World.Secrets.desktop', 'org.gnome.Nautilus.desktop']
 
 [org/gnome/shell/extensions/ding]
 icon-size='standard'

@@ -1,12 +1,13 @@
 /**
  * Returns true if any Capacitor plugin under the given directory (typically
- * `eliza/packages/native-plugins`) needs a rebuild (missing dist or src /
- * config newer than dist marker).
+ * `eliza/plugins`, formerly `eliza/packages/native-plugins`) needs a rebuild
+ * (missing dist or src / config newer than dist marker).
  */
 import fs from "node:fs";
 import path from "node:path";
 
 const SRC_EXTS = new Set([".ts", ".tsx"]);
+const NATIVE_PLUGIN_DIR_PREFIX = "plugin-native-";
 
 function newestMtimeInDir(dir) {
   let max = 0;
@@ -46,7 +47,7 @@ function distMarkerPath(pluginRoot) {
 
 export function capacitorPluginsBuildNeeded(pluginsDir, pluginNames) {
   for (const name of pluginNames) {
-    const root = path.join(pluginsDir, name);
+    const root = path.join(pluginsDir, `${NATIVE_PLUGIN_DIR_PREFIX}${name}`);
     const marker = distMarkerPath(root);
     if (!marker) {
       return true;

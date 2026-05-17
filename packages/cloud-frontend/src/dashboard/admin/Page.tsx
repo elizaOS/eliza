@@ -221,7 +221,7 @@ export default function AdminPage() {
             <DashboardStatCard
               label="Total Violations"
               value={overview.totalViolations}
-              icon={<AlertTriangle className="h-4 w-4 text-amber-500" />}
+              icon={<AlertTriangle className="h-4 w-4 text-orange-500" />}
               accent="amber"
             />
             <DashboardStatCard

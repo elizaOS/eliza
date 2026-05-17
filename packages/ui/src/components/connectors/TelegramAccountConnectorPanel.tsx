@@ -227,7 +227,7 @@ export function TelegramAccountConnectorPanel() {
             <Button
               variant="default"
               size="sm"
-              className="h-8 rounded-xl px-4 text-xs-tight font-semibold"
+              className="h-8 rounded-sm px-4 text-xs-tight font-semibold"
               onClick={() => {
                 void startAuth();
               }}
@@ -264,7 +264,7 @@ export function TelegramAccountConnectorPanel() {
               <Button
                 variant="default"
                 size="sm"
-                className="h-8 rounded-xl px-4 text-xs-tight font-semibold"
+                className="h-8 rounded-sm px-4 text-xs-tight font-semibold"
                 onClick={() => {
                   void submitAuthInput();
                 }}
@@ -289,7 +289,7 @@ export function TelegramAccountConnectorPanel() {
             <Button
               variant="outline"
               size="sm"
-              className="h-8 rounded-xl px-4 text-xs-tight font-semibold"
+              className="h-8 rounded-sm px-4 text-xs-tight font-semibold"
               onClick={() => {
                 void restartAgent();
               }}
@@ -306,7 +306,7 @@ export function TelegramAccountConnectorPanel() {
           <Button
             variant="outline"
             size="sm"
-            className="h-8 rounded-xl px-4 text-xs-tight font-semibold"
+            className="h-8 rounded-sm px-4 text-xs-tight font-semibold"
             onClick={() => {
               void disconnect();
             }}

@@ -21,6 +21,8 @@ describe("getClientApiKeySecret", () => {
         ],
       }),
     );
+    // bun:test mock() returns a typed mock function; the cast to typeof fetch
+    // is necessary to assign it to the globalThis.fetch slot.
     globalThis.fetch = fetchMock as unknown as typeof fetch;
 
     await expect(getClientApiKeySecret("api-key-1")).rejects.toThrow(

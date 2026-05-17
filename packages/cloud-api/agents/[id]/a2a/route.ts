@@ -10,6 +10,7 @@
  */
 
 import { gateway } from "@ai-sdk/gateway";
+import { calculateCreditMarkup } from "@elizaos/cloud-shared/billing";
 import { streamText } from "ai";
 import { Hono } from "hono";
 import { z } from "zod";
@@ -291,10 +292,10 @@ async function handleChat(
   );
 
   const markupPct = Number(character.inference_markup_percentage || 0);
-  const creatorMarkup = character.monetization_enabled
-    ? baseCost * (markupPct / 100)
-    : 0;
-  const totalCost = baseCost + creatorMarkup;
+  const { totalCredits: totalCost } = calculateCreditMarkup({
+    baseCredits: baseCost,
+    markupPercent: character.monetization_enabled ? markupPct : 0,
+  });
 
   let reservation: CreditReservation;
   try {
@@ -341,10 +342,11 @@ async function handleChat(
       usage?.inputTokens || 0,
       usage?.outputTokens || 0,
     );
-    const actualCreatorMarkup = character.monetization_enabled
-      ? actualBaseCost * (markupPct / 100)
-      : 0;
-    const actualTotal = actualBaseCost + actualCreatorMarkup;
+    const { markupCredits: actualCreatorMarkup, totalCredits: actualTotal } =
+      calculateCreditMarkup({
+        baseCredits: actualBaseCost,
+        markupPercent: character.monetization_enabled ? markupPct : 0,
+      });
 
     if (character.monetization_enabled && actualCreatorMarkup > 0) {
       await agentMonetizationService.recordCreatorEarnings({

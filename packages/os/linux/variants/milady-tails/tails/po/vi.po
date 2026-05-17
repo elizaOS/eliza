@@ -13,7 +13,7 @@ msgid ""
 msgstr ""
 "Project-Id-Version: Tor Project\n"
 "Report-Msgid-Bugs-To: \n"
-"POT-Creation-Date: 2026-04-22 08:04+0200\n"
+"POT-Creation-Date: 2026-05-16 16:43+0000\n"
 "PO-Revision-Date: 2026-04-03 09:12+0000\n"
 "Last-Translator: Anonymous <noreply@weblate.org>\n"
 "Language-Team: Vietnamese <https://hosted.weblate.org/projects/tor/tails-gui/"
@@ -100,8 +100,8 @@ msgstr ""
 "Bền Vững và kích hoạt tính năng <b>Phần mềm bổ sung</b>."
 
 #: config/chroot_local-includes/usr/local/lib/additional-software/asp-handle-package-changes:103
-#: ../config/chroot_local-includes/usr/share/tails/greeter/main.ui.in:312
-#: ../config/chroot_local-includes/usr/share/tails/greeter/main.ui.in:331
+#: ../config/chroot_local-includes/usr/share/tails/greeter/main.ui.in:325
+#: ../config/chroot_local-includes/usr/share/tails/greeter/main.ui.in:344
 msgid "Create Persistent Storage"
 msgstr "Tạo Kho Lưu Trữ Bền Vững"
 
@@ -193,22 +193,24 @@ msgstr "Phần mềm bổ sung đã được cài đặt thành công"
 
 #: config/chroot_local-includes/usr/share/tails/additional-software/configuration-window.ui:8
 #: ../config/chroot_local-includes/usr/share/applications/org.boum.tails.AdditionalSoftware.desktop.in.h:1
-#: ../config/chroot_local-includes/usr/share/tails/persistent-storage/features_view.ui.in:648
+#: ../config/chroot_local-includes/usr/share/tails/persistent-storage/features_view.ui.in:678
 msgid "Additional Software"
 msgstr "Phần mềm bổ sung"
 
 #: config/chroot_local-includes/usr/share/tails/additional-software/configuration-window.ui:51
+#, fuzzy
 msgid ""
 "You can install additional software automatically from your persistent "
-"storage when starting Tails."
+"storage when starting elizaOS."
 msgstr ""
 "Bạn có thể cài đặt thêm phần mềm một cách tự động từ dung lượng lưu trữ liên "
 "tục của bạn khi khởi động hệ điều hành Tails."
 
 #: config/chroot_local-includes/usr/share/tails/additional-software/configuration-window.ui:77
+#, fuzzy
 msgid ""
 "The following software is installed automatically from your persistent "
-"storage when starting Tails."
+"storage when starting elizaOS."
 msgstr ""
 "Phần mềm sau đây được cài đặt tự động từ bộ lưu trữ liên tục của bạn khi "
 "khởi động Tails."
@@ -231,7 +233,7 @@ msgstr "_Khởi tạo vùng lưu trữ liên tục kéo dài"
 #: config/chroot_local-includes/usr/local/bin/electrum:62
 #, fuzzy
 msgid ""
-"Tails needs donations to keep everybody free and safe online.\n"
+"elizaOS needs donations to keep everybody free and safe online.\n"
 "\n"
 "Every bit helps in our fight against surveillance and censorship!\n"
 "\n"
@@ -246,7 +248,7 @@ msgstr ""
 
 #: config/chroot_local-includes/usr/local/bin/electrum:72
 msgid ""
-"Tails protects your wallet.\n"
+"elizaOS protects your wallet.\n"
 "\n"
 "Help us keep your bitcoins safe!\n"
 "\n"
@@ -273,8 +275,9 @@ msgid "Persistence is disabled for Electrum"
 msgstr "Bộ nhớ lưu trữ bền vững đã được vô hiệu hoá đối với Electrum"
 
 #: config/chroot_local-includes/usr/local/bin/electrum:193
+#, fuzzy
 msgid ""
-"When you reboot Tails, all of Electrum's data will be lost, including your "
+"When you reboot elizaOS, all of Electrum's data will be lost, including your "
 "Bitcoin wallet.\n"
 "It is strongly recommended to only run Electrum when its persistence feature "
 "is activated."
@@ -773,8 +776,10 @@ msgid "Persistent Storage Still Locked"
 msgstr "Ổ đĩa lưu trữ bền vững vẫn bị khoá"
 
 #: config/chroot_local-includes/usr/lib/python3/dist-packages/tailsgreeter/ui/main_window.py:183
+#, fuzzy
 msgid ""
-"Do you really want to start Tails without unlocking your Persistent Storage?"
+"Do you really want to start elizaOS without unlocking your Persistent "
+"Storage?"
 msgstr ""
 "Bạn có thực sự muốn khởi động Tails mà không mở khoá ổ đĩa lưu trữ bền vững "
 "của bạn chứ?"
@@ -790,10 +795,10 @@ msgstr "_Bố cục bàn phím"
 
 #: config/chroot_local-includes/usr/lib/python3/dist-packages/tailsgreeter/ui/main_window.py:195
 msgid ""
-"Your language and keyboard layout will be saved unencrypted on your Tails "
+"Your language and keyboard layout will be saved unencrypted on your elizaOS "
 "USB stick and applied automatically in the future.\n"
 "\n"
-"Someone who finds your Tails USB stick can see your language and keyboard "
+"Someone who finds your elizaOS USB stick can see your language and keyboard "
 "layout."
 msgstr ""
 
@@ -831,7 +836,9 @@ msgid "Failed to repair the file system of your Persistent Storage."
 msgstr "Sữa chữa hệ thống tập tin của kho lưu trữ lâu dài thất bại."
 
 #: config/chroot_local-includes/usr/lib/python3/dist-packages/tailsgreeter/ui/main_window.py:544
-msgid "Start Tails to send an error report and learn how to recover your data."
+#, fuzzy
+msgid ""
+"Start elizaOS to send an error report and learn how to recover your data."
 msgstr ""
 "Khởi động Tails để gửi một báo cáo lỗi và tìm hiểu cách khôi phục dữ liệu "
 "của bạn."
@@ -855,8 +862,9 @@ msgid "Close"
 msgstr "Đóng"
 
 #: config/chroot_local-includes/usr/lib/python3/dist-packages/tailsgreeter/ui/main_window.py:580
+#, fuzzy
 msgid ""
-"You aborted the repair of the file system. You can either start Tails "
+"You aborted the repair of the file system. You can either start elizaOS "
 "without Persistent Storage or restart the computer to try repairing the file "
 "system again."
 msgstr ""
@@ -865,14 +873,17 @@ msgstr ""
 "chữa kho lưu trữ lâu dài lại."
 
 #: config/chroot_local-includes/usr/lib/python3/dist-packages/tailsgreeter/ui/main_window.py:866
-msgid "Start Tails and open the Persistent Storage settings to find out more."
+#, fuzzy
+msgid ""
+"Start elizaOS and open the Persistent Storage settings to find out more."
 msgstr ""
 "Khởi động Tails và mở Cài đặt Ổ đĩa lưu trữ Bền vững để tìm hiểu thêm nữa."
 
 #: config/chroot_local-includes/usr/lib/python3/dist-packages/tailsgreeter/ui/main_window.py:896
+#, fuzzy
 msgid ""
 "Your Persistent Storage is unlocked. Its content will be available until you "
-"shut down Tails."
+"shut down elizaOS."
 msgstr ""
 "Ổ đĩa lưu trữ Bền vững của bạn được mở khoá. Nội dung của nó sẽ được khả "
 "dụng cho tới khi bạn tắt Tails đi."
@@ -890,7 +901,8 @@ msgstr ""
 "thiết bị USB của bạn có thể đang bị hỏng."
 
 #: config/chroot_local-includes/usr/lib/python3/dist-packages/tailsgreeter/ui/main_window.py:924
-msgid "Start Tails to learn how to recover your data."
+#, fuzzy
+msgid "Start elizaOS to learn how to recover your data."
 msgstr "Khởi động Tails để tìm hiểu cách khôi phục lại dữ liệu của bạn."
 
 #: config/chroot_local-includes/usr/lib/python3/dist-packages/tailsgreeter/ui/main_window.py:935
@@ -898,10 +910,11 @@ msgid "File System Errors"
 msgstr "Lỗi hệ thống tập tin"
 
 #: config/chroot_local-includes/usr/lib/python3/dist-packages/tailsgreeter/ui/main_window.py:937
+#, fuzzy
 msgid ""
 "Errors were detected in the file system of your Persistent Storage.\n"
 "\n"
-"Tails can try to fix these errors, but this might erase some of your data "
+"elizaOS can try to fix these errors, but this might erase some of your data "
 "and take a long time.\n"
 "\n"
 "If you already have an up-to-date backup of your Persistent Storage, we "
@@ -931,8 +944,9 @@ msgid "Create Partition Image"
 msgstr "Tạo ảnh phân vùng"
 
 #: config/chroot_local-includes/usr/lib/python3/dist-packages/tailsgreeter/ui/main_window.py:958
+#, fuzzy
 msgid ""
-"Start Tails to learn how to create a partition image of your Persistent "
+"Start elizaOS to learn how to create a partition image of your Persistent "
 "Storage."
 msgstr ""
 "Khởi động Tails để tìm hiểu cách tạo ảnh phân vùng của kho lưu trữ lâu dài "
@@ -943,24 +957,27 @@ msgid "Failed to unlock the Persistent Storage due to file system errors."
 msgstr "Mở khóa kho lưu trữ lâu dài thất bại do lỗi hệ thống tập tin."
 
 #: config/chroot_local-includes/usr/lib/python3/dist-packages/tailsgreeter/ui/main_window.py:976
+#, fuzzy
 msgid ""
-"Failed to upgrade the Persistent Storage. Please start Tails and send an "
+"Failed to upgrade the Persistent Storage. Please start elizaOS and send an "
 "error report."
 msgstr ""
 "Đã thất bại khi nâng cấp Ổ đĩa lưu trữ Bền vững. Xin vui lòng khởi động "
 "Tails và gửi đi một báo cáo lỗi."
 
 #: config/chroot_local-includes/usr/lib/python3/dist-packages/tailsgreeter/ui/main_window.py:983
+#, fuzzy
 msgid ""
-"Failed to unlock the Persistent Storage. Please start Tails and send an "
+"Failed to unlock the Persistent Storage. Please start elizaOS and send an "
 "error report."
 msgstr ""
 "Đã thất bại khi mở khoá Ổ đĩa lưu trữ Bền vững. Xin vui lòng khởi động Tails "
 "và gửi một báo cáo lỗi."
 
 #: config/chroot_local-includes/usr/lib/python3/dist-packages/tailsgreeter/ui/main_window.py:991
+#, fuzzy
 msgid ""
-"Failed to activate the Persistent Storage. Please start Tails and send an "
+"Failed to activate the Persistent Storage. Please start elizaOS and send an "
 "error report."
 msgstr ""
 "Đã thất bại khi kích hoạt Ổ đĩa lưu trữ Bền vững. Xin vui lòng khởi động "
@@ -1053,12 +1070,13 @@ msgid "Unable to copy %(infile)s to %(outfile)s: %(message)s"
 msgstr "Không thể chép %(infile)s tới %(outfile)s: %(message)s"
 
 #: config/chroot_local-includes/usr/lib/python3/dist-packages/tails_installer/creator.py:589
-msgid "Removing existing Tails system"
+#, fuzzy
+msgid "Removing existing elizaOS system"
 msgstr "Loại bỏ hệ thống Tails đang tồn tại"
 
 #: config/chroot_local-includes/usr/lib/python3/dist-packages/tails_installer/creator.py:600
-#, python-format
-msgid "Unable to remove file from previous Tails system: %(message)s"
+#, fuzzy, python-format
+msgid "Unable to remove file from previous elizaOS system: %(message)s"
 msgstr "Không thể loại bỏ tập tin khỏi hệ thống Tails trước đó: %(message)s"
 
 #: config/chroot_local-includes/usr/lib/python3/dist-packages/tails_installer/creator.py:610
@@ -1067,8 +1085,8 @@ msgid "Unable to chmod %(file)s: %(message)s"
 msgstr "Không thể chmod %(file)s: %(message)s"
 
 #: config/chroot_local-includes/usr/lib/python3/dist-packages/tails_installer/creator.py:618
-#, python-format
-msgid "Unable to remove directory from previous Tails system: %(message)s"
+#, fuzzy, python-format
+msgid "Unable to remove directory from previous elizaOS system: %(message)s"
 msgstr "Không thể loại bỏ thư mục khỏi hệ thống Tails trước đó: %(message)s"
 
 #: config/chroot_local-includes/usr/lib/python3/dist-packages/tails_installer/creator.py:669
@@ -1193,9 +1211,11 @@ msgid "Synchronizing data on disk..."
 msgstr "Đang đồng bộ hóa dữ liệu trên ổ đĩa..."
 
 #: config/chroot_local-includes/usr/lib/python3/dist-packages/tails_installer/gui.py:157
+#, fuzzy
 msgid ""
 "Unable to clone because the target USB stick is being used. Close all open "
-"files on the target USB stick, restart Tails Cloner, and try to clone again."
+"files on the target USB stick, restart elizaOS USB Cloner, and try to clone "
+"again."
 msgstr ""
 "Không thể nhân bản được bởi vì cây USB đang được sử dụng. Đóng tất cả các "
 "tệp được mở trên cây USB, khởi động lại Trình cài đặt Tails, và thử nhân bản "
@@ -1215,22 +1235,25 @@ msgid "Cloning complete! (%s)"
 msgstr "Clone nhân bản hoàn tất! (%s)"
 
 #: config/chroot_local-includes/usr/lib/python3/dist-packages/tails_installer/gui.py:239
-msgid "Tails installation failed!"
+#, fuzzy
+msgid "elizaOS installation failed!"
 msgstr "Việc cài đặt Tails đã thất bại!"
 
 #: config/chroot_local-includes/usr/lib/python3/dist-packages/tails_installer/gui.py:341
 #: ../config/chroot_local-includes/usr/share/applications/tails-installer.desktop.in.h:1
-msgid "Tails Cloner"
-msgstr "Trình clone nhân bản Tails"
+msgid "elizaOS USB Cloner"
+msgstr ""
 
 #: config/chroot_local-includes/usr/lib/python3/dist-packages/tails_installer/gui.py:393
 #: ../config/chroot_local-includes/usr/share/tails-installer/tails-installer.ui.in:164
-msgid "Clone the current Tails"
+#, fuzzy
+msgid "Clone the current elizaOS"
 msgstr "Tạo bản sao clone của Tails hiện tại"
 
 #: config/chroot_local-includes/usr/lib/python3/dist-packages/tails_installer/gui.py:401
 #: ../config/chroot_local-includes/usr/share/tails-installer/tails-installer.ui.in:200
-msgid "Use a downloaded Tails ISO image"
+#, fuzzy
+msgid "Use a downloaded elizaOS ISO image"
 msgstr "Sử dụng tập tin image ISO Tails đã được tải xuống"
 
 #: config/chroot_local-includes/usr/lib/python3/dist-packages/tails_installer/gui.py:453
@@ -1266,7 +1289,8 @@ msgid "No ISO image selected"
 msgstr "Không có tập tin image ISO nào được chọn"
 
 #: config/chroot_local-includes/usr/lib/python3/dist-packages/tails_installer/gui.py:495
-msgid "Please select a Tails ISO image."
+#, fuzzy
+msgid "Please select an elizaOS ISO image."
 msgstr "Xin vui lòng lựa chọn một tập tin image ISO Tails."
 
 #: config/chroot_local-includes/usr/lib/python3/dist-packages/tails_installer/gui.py:546
@@ -1292,11 +1316,11 @@ msgstr ""
 "Bền vững."
 
 #: config/chroot_local-includes/usr/lib/python3/dist-packages/tails_installer/gui.py:591
-#, python-format
+#, fuzzy, python-format
 msgid ""
 "The USB stick \"%(pretty_name)s\" is configured as non-removable by its "
-"manufacturer and Tails will fail to start from it. Please try installing on "
-"a different model."
+"manufacturer and elizaOS will fail to start from it. Please try installing "
+"on a different model."
 msgstr ""
 "Thẻ nhớ USB \"%(pretty_name)s\" được cấu hình không thể loại bỏ được bởi nhà "
 "sản xuất của nó và Tails sẽ bị hỏng nếu khởi chạy từ nó. Xin vui lòng thử "
@@ -1308,19 +1332,19 @@ msgid "The device \"%(pretty_name)s\" is read-only."
 msgstr ""
 
 #: config/chroot_local-includes/usr/lib/python3/dist-packages/tails_installer/gui.py:608
-#, python-format
+#, fuzzy, python-format
 msgid ""
-"The device \"%(pretty_name)s\" is too small to install Tails (at least "
+"The device \"%(pretty_name)s\" is too small to install elizaOS (at least "
 "%(size)s GB is required)."
 msgstr ""
 "Thiết bị \"%(pretty_name)s\" quá nhỏ để cài đặt Tails (yêu cầu ít nhất "
 "%(size)s GB)."
 
 #: config/chroot_local-includes/usr/lib/python3/dist-packages/tails_installer/gui.py:623
-#, python-format
+#, fuzzy, python-format
 msgid ""
-"To upgrade device \"%(pretty_name)s\" from this Tails, you need to use a "
-"downloaded Tails ISO image:\n"
+"To upgrade device \"%(pretty_name)s\" from this elizaOS, you need to use a "
+"downloaded elizaOS ISO image:\n"
 "%(dl_url)s"
 msgstr ""
 "Để nâng cấp thiết bị \"%(pretty_name)s\" từ Tails này, bạn cần phải sử dụng "
@@ -1328,7 +1352,8 @@ msgstr ""
 "%(dl_url)s"
 
 #: config/chroot_local-includes/usr/lib/python3/dist-packages/tails_installer/gui.py:644
-msgid "No device suitable to install Tails could be found"
+#, fuzzy
+msgid "No device suitable to install elizaOS could be found"
 msgstr "Đã không thể tìm thấy thiết bị nào phù hợp cho việc cài đặt Tails"
 
 #: config/chroot_local-includes/usr/lib/python3/dist-packages/tails_installer/gui.py:647
@@ -1337,7 +1362,8 @@ msgid "Plug in a USB stick of at least %0.1f GB."
 msgstr "Hãy cắm một ổ USB di động với dung lượng tối thiểu %0.1f GB."
 
 #: config/chroot_local-includes/usr/lib/python3/dist-packages/tails_installer/gui.py:660
-msgid "An error happened while installing Tails"
+#, fuzzy
+msgid "An error happened while installing elizaOS"
 msgstr "Một lỗi đã xuất hiện trong khi cài đặt Tails"
 
 #: config/chroot_local-includes/usr/lib/python3/dist-packages/tails_installer/gui.py:717
@@ -1412,7 +1438,8 @@ msgid "%(filename)s selected"
 msgstr "%(filename)s được chọn"
 
 #: config/chroot_local-includes/usr/lib/python3/dist-packages/tails_installer/source.py:37
-msgid "Unable to find Tails on ISO"
+#, fuzzy
+msgid "Unable to find elizaOS on ISO"
 msgstr "Không thể tìm thấy Tails trên file ISO"
 
 #: config/chroot_local-includes/usr/lib/python3/dist-packages/tails_installer/source.py:44
@@ -1534,21 +1561,24 @@ msgid "Partitioning Error"
 msgstr "Lỗi phân vùng"
 
 #: config/chroot_local-includes/usr/local/lib/tails-report-disk-partitioning-errors:19
-msgid "Errors were detected in the partitioning of your Tails USB stick."
+#, fuzzy
+msgid "Errors were detected in the partitioning of your elizaOS USB stick."
 msgstr ""
 "Một số lỗi đã được phát hiện trong quá trình phân vùng thiết bị USB chứa "
 "Tails của bạn."
 
 #: config/chroot_local-includes/usr/local/lib/tails-report-disk-partitioning-errors:26
+#, fuzzy
 msgid ""
-"We recommend that you create a backup of your Tails using <i>Tails Cloner</"
-"i> to migrate to a new USB stick."
+"We recommend that you create a backup of your elizaOS using <i>elizaOS USB "
+"Cloner</i> to migrate to a new USB stick."
 msgstr ""
 "Chúng tôi khuyến cáo bạn tạo một bản sao lưu của Tails của bạn bằng <i>Tails "
 "Cloner</i> để chuyển sang một thiết bị USB mới."
 
 #: config/chroot_local-includes/usr/local/lib/tails-report-disk-partitioning-errors:33
-msgid "Open Tails Cloner"
+#, fuzzy
+msgid "Open elizaOS USB Cloner"
 msgstr "Mở Tails Cloner"
 
 #: config/chroot_local-includes/usr/local/lib/tails-report-disk-partitioning-errors:42
@@ -1556,8 +1586,9 @@ msgid "Creation of Persistent Storage has been disabled."
 msgstr "Việc tạo kho lưu trữ lâu dài đã bị vô hiệu hóa."
 
 #: config/chroot_local-includes/usr/local/lib/tails-report-disk-partitioning-errors:44
+#, fuzzy
 msgid ""
-"We recommend that you reinstall Tails from scratch. If the error persists, "
+"We recommend that you reinstall elizaOS from scratch. If the error persists, "
 "reinstall on a new USB stick."
 msgstr ""
 "Chúng tôi khuyến cáo bạn tải lại Tails từ đầu. Nếu lỗi vẫn tiếp diễn, hãy "
@@ -1606,28 +1637,13 @@ msgstr "Khởi động lại"
 msgid "Power Off"
 msgstr "Tắt nguồn"
 
-#: config/chroot_local-includes/usr/local/bin/tails-about:27
-#: ../config/chroot_local-includes/usr/share/desktop-directories/Tails.directory.in.h:1
-msgid "Tails"
-msgstr "Tails"
-
-#: config/chroot_local-includes/usr/local/bin/tails-about:30
-#: ../config/chroot_local-includes/usr/share/applications/tails-about.desktop.in.h:1
-msgid "About Tails"
-msgstr "Về Tails"
-
-#: config/chroot_local-includes/usr/local/bin/tails-about:34
+#: config/chroot_local-includes/usr/local/bin/tails-about:33
 msgid "Check for Upgrades"
 msgstr "Kiểm tra bản nâng cấp"
 
-#: config/chroot_local-includes/usr/local/bin/tails-about:57
+#: config/chroot_local-includes/usr/local/bin/tails-about:56
 msgid "UNRELEASED"
 msgstr "CHƯA PHÁT HÀNH"
-
-#: config/chroot_local-includes/usr/local/bin/tails-about:64
-#, python-format
-msgid "Built from %s"
-msgstr "Được xây dựng từ %s"
 
 #: config/chroot_local-includes/usr/local/bin/tails-additional-software-config:114
 #, python-brace-format
@@ -1665,8 +1681,9 @@ msgstr ""
 "href=\"org.gnome.Terminal.desktop\">APT trên dòng lệnh command</a>."
 
 #: config/chroot_local-includes/usr/local/bin/tails-additional-software-config:227
+#, fuzzy
 msgid ""
-"To do so, unlock your Persistent Storage when starting Tails and install "
+"To do so, unlock your Persistent Storage when starting elizaOS and install "
 "some software using <a href=\"synaptic.desktop\">Synaptic Package Manager</"
 "a> or <a href=\"org.gnome.Terminal.desktop\">APT on the command line</a>."
 msgstr ""
@@ -1686,7 +1703,9 @@ msgstr ""
 "hoặc <a href=\"org.gnome.Terminal.desktop\">APT qua dòng lệnh</a>."
 
 #: config/chroot_local-includes/usr/local/bin/tails-additional-software-config:258
-msgid "To do so, install Tails on a USB stick and create a Persistent Storage."
+#, fuzzy
+msgid ""
+"To do so, install elizaOS on a USB stick and create a Persistent Storage."
 msgstr ""
 "Để làm như vậy, hãy cài đặt Tails trên một thiết bị USB và tạo một kho lưu "
 "trữ bền vững."
@@ -1857,14 +1876,14 @@ msgid ""
 msgstr ""
 
 #: config/chroot_local-includes/usr/local/bin/tails-upgrade-frontend-wrapper:37
-#, python-brace-format
+#, fuzzy, python-brace-format
 msgid ""
 "<b>Not enough memory available to check for upgrades.</b>\n"
 "\n"
-"Make sure this system satisfies the requirements for running Tails.\n"
+"Make sure this system satisfies the requirements for running elizaOS.\n"
 "See file:///usr/share/doc/tails/website/doc/about/requirements.en.html\n"
 "\n"
-"Try to restart Tails to check for upgrades again.\n"
+"Try to restart elizaOS to check for upgrades again.\n"
 "\n"
 "Or do a manual upgrade.\n"
 "See {manual_upgrade_url}"
@@ -1935,9 +1954,10 @@ msgstr ""
 "khoá ổ đĩa lưu trữ liên tục kéo dài của bạn</a>."
 
 #: config/chroot_local-includes/usr/lib/python3/dist-packages/tca/ui/main_window.py:418
+#, fuzzy
 msgid ""
 "To save your bridge, <a href=\"doc/persistent_storage\">create a Persistent "
-"Storage</a> on your Tails USB stick."
+"Storage</a> on your elizaOS USB stick."
 msgstr ""
 "Để sao lưu cầu Bridge của bạn, <a href=\"doc/persistent_storage\">khởi tạo "
 "một ổ đĩa lưu trữ liên tục kéo dài</a> trên thẻ nhớ USB Tails của bạn."
@@ -2340,7 +2360,7 @@ msgstr "_Gửi Báo cáo Sự cố"
 msgid ""
 "Impossible to delete the Persistent Storage while it is unlocked.\n"
 "\n"
-"To delete the Persistent Storage, restart Tails without unlocking the "
+"To delete the Persistent Storage, restart elizaOS without unlocking the "
 "Persistent Storage and open the Persistent Storage settings again."
 msgstr ""
 "Để xoá bỏ đi Ổ đĩa lưu trữ Bền vững, hãy khởi động lại Tails mà không mở "
@@ -2353,7 +2373,7 @@ msgid ""
 "only.\n"
 "\n"
 "To delete the Persistent Storage, turn off the read-only protection of the "
-"USB stick, restart Tails without unlocking the Persistent Storage and open "
+"USB stick, restart elizaOS without unlocking the Persistent Storage and open "
 "the Persistent Storage settings again."
 msgstr ""
 "Để xoá bỏ đi Ổ đĩa lưu trữ Bền vững, hãy khởi động lại Tails mà không mở "
@@ -2616,8 +2636,9 @@ msgstr ""
 "\\n\\n"
 
 #: config/chroot_local-includes/usr/local/sbin/unsafe-browser:50
+#, fuzzy
 msgid ""
-"To use the Unsafe Browser, restart Tails and make sure that the Unsafe "
+"To use the Unsafe Browser, restart elizaOS and make sure that the Unsafe "
 "Browser is enabled in the additional settings of the Welcome Screen."
 msgstr ""
 "Để sử dụng trình duyệt không an toàn, hãy khởi động lại Tails và chắc chắn "
@@ -2625,7 +2646,8 @@ msgstr ""
 "Màn hình Chào mừng."
 
 #: config/chroot_local-includes/usr/local/sbin/unsafe-browser:52
-msgid "To use the Unsafe Browser, restart Tails."
+#, fuzzy
+msgid "To use the Unsafe Browser, restart elizaOS."
 msgstr "Để sử dụng trình duyệt không an toàn, khởi động lại Tails."
 
 #: config/chroot_local-includes/usr/local/sbin/unsafe-browser:55
@@ -2633,9 +2655,10 @@ msgid "_Restart"
 msgstr "_Khởi động lại"
 
 #: config/chroot_local-includes/usr/local/sbin/unsafe-browser:57
+#, fuzzy
 msgid ""
-"Do you really want to restart Tails now?\\n\\nAll your current work will be "
-"lost."
+"Do you really want to restart elizaOS now?\\n\\nAll your current work will "
+"be lost."
 msgstr ""
 "Bạn có thật sự muốn khởi động lại Tails ngay bây giờ không?\\n\\nTất cả công "
 "việc hiện tại của bạn sẽ bị mất."
@@ -2772,7 +2795,7 @@ msgstr "Khối block khóa key liên lạc công cộng OpenPGP không hợp l�
 msgid ""
 "You turned on Offline Mode in the Welcome Screen.\n"
 "It is impossible to connect to Tor in Offline Mode.\n"
-"To connect to Tor and the Internet, restart Tails without Offline Mode."
+"To connect to Tor and the Internet, restart elizaOS without Offline Mode."
 msgstr ""
 
 #: config/chroot_local-includes/usr/local/lib/polkit-policy-change-message:65
@@ -2803,19 +2826,25 @@ msgstr "Cấu hình của những máy in"
 
 #: ../config/chroot_local-includes/usr/share/applications/tails-documentation.desktop.in.h:1
 #, fuzzy
-msgid "Tails Documentation"
-msgstr "Tài liệu về Tails"
+msgid "elizaOS Documentation"
+msgstr "Tài liệu"
 
 #: ../config/chroot_local-includes/usr/share/applications/tails-documentation.desktop.in.h:2
-msgid "Learn how to use Tails"
+#, fuzzy
+msgid "Learn how to use elizaOS"
 msgstr "Tìm hiểu cách sử dụng Tails"
 
 #: ../config/chroot_local-includes/usr/share/applications/tails-documentation.desktop.in.h:3
 msgid "learn"
 msgstr ""
 
+#: ../config/chroot_local-includes/usr/share/applications/tails-about.desktop.in.h:1
+msgid "About elizaOS"
+msgstr ""
+
 #: ../config/chroot_local-includes/usr/share/applications/tails-about.desktop.in.h:2
-msgid "Learn more about Tails"
+#, fuzzy
+msgid "Learn more about elizaOS"
 msgstr "Tìm hiểu thêm về Tails"
 
 #: ../config/chroot_local-includes/usr/share/applications/tails-backup.desktop.in.h:1
@@ -2823,8 +2852,9 @@ msgid "Back Up Persistent Storage"
 msgstr "Sao lưu backup lại Ổ đĩa lưu trữ Bền vững"
 
 #: ../config/chroot_local-includes/usr/share/applications/tails-backup.desktop.in.h:2
+#, fuzzy
 msgid ""
-"Make a backup of the Tails Persistent Storage to another Tails USB stick"
+"Make a backup of the elizaOS Persistent Storage to another elizaOS USB stick"
 msgstr ""
 "Tạo ra một bản sao lưu backup của Ổ đĩa lưu trữ Bền vững Tails sang một thẻ "
 "USB stick khác"
@@ -2834,16 +2864,18 @@ msgid "backup"
 msgstr ""
 
 #: ../config/chroot_local-includes/usr/share/applications/tails-installer.desktop.in.h:2
-msgid "Install, clone, upgrade Tails"
+#, fuzzy
+msgid "Install, clone, upgrade elizaOS"
 msgstr "Cài đặt, tạo bản sao clone, nâng cấp Tails"
 
 #: ../config/chroot_local-includes/usr/share/applications/tails-installer.desktop.in.h:3
 #, fuzzy
-msgid "install;clone;upgrade;manual"
+msgid "elizaOS;install;clone;upgrade;USB;"
 msgstr "Cài đặt, tạo bản sao clone, nâng cấp Tails"
 
 #: ../config/chroot_local-includes/usr/share/applications/tca.desktop.in.h:2
-msgid "Connect Tails to the Tor network"
+#, fuzzy
+msgid "Connect elizaOS to the Tor network"
 msgstr "Kết nối Tails tới mạng lưới Tor Network"
 
 #: ../config/chroot_local-includes/usr/share/applications/tca.desktop.in.h:3
@@ -2888,7 +2920,7 @@ msgstr ""
 #, fuzzy
 msgid ""
 "Configure the additional software installed from your Persistent Storage "
-"when starting Tails"
+"when starting elizaOS"
 msgstr ""
 "Định cấu hình phần mềm bổ sung được cài đặt từ ổ đĩa lưu trữ liên tục kéo "
 "dài khi bắt đầu khởi chạy Tails"
@@ -2899,16 +2931,21 @@ msgid "persistent;storage;package;install"
 msgstr "Xoá Ổ đĩa lưu trữ liên tục kéo dài và Cài đặt lại"
 
 #: ../config/chroot_local-includes/usr/share/applications/whisperback.desktop.in.h:1
-msgid "WhisperBack Error Reporting"
-msgstr "Báo cáo lỗi WhisperBack"
+msgid "Send Feedback"
+msgstr ""
 
 #: ../config/chroot_local-includes/usr/share/applications/whisperback.desktop.in.h:2
-msgid "Send feedback via encrypted e-mail"
-msgstr "Gửi phản hồi thông qua thư email được mã hoá"
+msgid "Send encrypted feedback to elizaOS support"
+msgstr ""
 
 #: ../config/chroot_local-includes/usr/share/applications/whisperback.desktop.in.h:3
-msgid "feedback;bug;report;tails;error;"
+#, fuzzy
+msgid "feedback;support;report;elizaos;error;"
 msgstr "phản hồi; lỗi bug;báo cáo;tails;lỗi;"
+
+#: ../config/chroot_local-includes/usr/share/desktop-directories/Tails.directory.in.h:1
+msgid "Tails"
+msgstr "Tails"
 
 #: ../config/chroot_local-includes/usr/share/desktop-directories/Tails.directory.in.h:2
 msgid "Tails specific tools"
@@ -2928,7 +2965,7 @@ msgstr ""
 
 #: ../config/chroot_local-includes/usr/share/tails/greeter/additional_settings.ui.in:18
 #: ../config/chroot_local-includes/usr/share/tails/greeter/additional_settings.ui.in:56
-#: ../config/chroot_local-includes/usr/share/tails/greeter/main.ui.in:869
+#: ../config/chroot_local-includes/usr/share/tails/greeter/main.ui.in:882
 msgid "Administration Password"
 msgstr "Mật khẩu Quản trị"
 
@@ -2954,7 +2991,7 @@ msgid "Disable"
 msgstr "Vô hiệu"
 
 #: ../config/chroot_local-includes/usr/share/tails/greeter/additional_settings.ui.in:186
-#: ../config/chroot_local-includes/usr/share/tails/greeter/main.ui.in:873
+#: ../config/chroot_local-includes/usr/share/tails/greeter/main.ui.in:886
 msgid "MAC Address Anonymization"
 msgstr "Ẩn danh hoá địa chỉ MAC"
 
@@ -3031,90 +3068,98 @@ msgstr "Tắt Trình duyệt Không an toàn"
 msgid "Settings were loaded from the Persistent Storage."
 msgstr "Cài đặt được tải từ ổ đĩa lưu trữ liên tục kéo dài."
 
-#: ../config/chroot_local-includes/usr/share/tails/greeter/main.ui.in:98
-msgid "Welcome to Tails!"
+#: ../config/chroot_local-includes/usr/share/tails/greeter/main.ui.in:111
+#, fuzzy
+msgid "Welcome to elizaOS!"
 msgstr "Chào mừng đến với Tails!"
 
-#: ../config/chroot_local-includes/usr/share/tails/greeter/main.ui.in:131
+#: ../config/chroot_local-includes/usr/share/tails/greeter/main.ui.in:144
 msgid "Language and Formats"
 msgstr ""
 
-#: ../config/chroot_local-includes/usr/share/tails/greeter/main.ui.in:167
+#: ../config/chroot_local-includes/usr/share/tails/greeter/main.ui.in:180
 msgid "Default Settings"
 msgstr "Những cài đặt mặc định"
 
-#: ../config/chroot_local-includes/usr/share/tails/greeter/main.ui.in:217
-#: ../config/chroot_local-includes/usr/share/tails/greeter/main.ui.in:238
+#: ../config/chroot_local-includes/usr/share/tails/greeter/main.ui.in:230
+#: ../config/chroot_local-includes/usr/share/tails/greeter/main.ui.in:251
 msgid "Save"
 msgstr "Lưu"
 
-#: ../config/chroot_local-includes/usr/share/tails/greeter/main.ui.in:267
-#: ../config/chroot_local-includes/usr/share/tails/greeter/main.ui.in:379
+#: ../config/chroot_local-includes/usr/share/tails/greeter/main.ui.in:280
+#: ../config/chroot_local-includes/usr/share/tails/greeter/main.ui.in:392
 msgid "_Persistent Storage"
 msgstr "_Ổ đĩa lưu trữ liên tục kéo dài"
 
-#: ../config/chroot_local-includes/usr/share/tails/greeter/main.ui.in:287
+#: ../config/chroot_local-includes/usr/share/tails/greeter/main.ui.in:300
+#, fuzzy
 msgid ""
 "You can save some of your files and configuration in an encrypted Persistent "
-"Storage on your Tails USB stick: your documents, browser bookmarks, Wi-Fi "
+"Storage on your elizaOS USB stick: your documents, browser bookmarks, Wi-Fi "
 "passwords, and so on."
 msgstr ""
 "Bạn có thể sao lưu một số tập tin của bạn và cấu hình trong một ổ đĩa lưu "
 "trữ liên tục kéo dài đã mã hoá trên thẻ nhớ USB Tails của bạn: tài liệu của "
 "bạn, các dấu trang trình duyệt, mật khẩu Wi-Fi, và nhiều nữa."
 
-#: ../config/chroot_local-includes/usr/share/tails/greeter/main.ui.in:314
-msgid "Create and configure a Persistent Storage after starting Tails"
+#: ../config/chroot_local-includes/usr/share/tails/greeter/main.ui.in:327
+#, fuzzy
+msgid "Create and configure a Persistent Storage after starting elizaOS"
 msgstr ""
 "Khởi tạo và định cấu hình một Ổ đĩa lưu trữ Bền vững sau khi khởi động Tails"
 
-#: ../config/chroot_local-includes/usr/share/tails/greeter/main.ui.in:406
+#: ../config/chroot_local-includes/usr/share/tails/greeter/main.ui.in:419
 msgid "Show Passphrase"
 msgstr "Hiển thị cụm mật khẩu"
 
-#: ../config/chroot_local-includes/usr/share/tails/greeter/main.ui.in:463
+#: ../config/chroot_local-includes/usr/share/tails/greeter/main.ui.in:476
 #, fuzzy
 msgid "Enter your passphrase"
 msgstr "Xác minh đoạn mật khẩu:"
 
-#: ../config/chroot_local-includes/usr/share/tails/greeter/main.ui.in:478
+#: ../config/chroot_local-includes/usr/share/tails/greeter/main.ui.in:491
 msgid "Unlock Encryption"
 msgstr "Mở khoá Mã hoá"
 
-#: ../config/chroot_local-includes/usr/share/tails/greeter/main.ui.in:545
+#: ../config/chroot_local-includes/usr/share/tails/greeter/main.ui.in:558
 #, fuzzy
 msgid "Impossible to unlock the Persistent Storage."
 msgstr "Đã thất bại khi khởi tạo Ổ đĩa lưu trữ Bền vững"
 
-#: ../config/chroot_local-includes/usr/share/tails/greeter/main.ui.in:605
+#: ../config/chroot_local-includes/usr/share/tails/greeter/main.ui.in:618
 #, fuzzy
 msgid "Partitioning Errors"
 msgstr "Phân vùng và ổ đĩa"
 
-#: ../config/chroot_local-includes/usr/share/tails/greeter/main.ui.in:641
+#: ../config/chroot_local-includes/usr/share/tails/greeter/main.ui.in:654
+#, fuzzy
 msgid ""
-"Errors were detected in the partitioning of your Tails USB stick.\n"
+"Errors were detected in the partitioning of your elizaOS USB stick.\n"
 "\n"
-"Try reinstalling Tails. If the error persists, reinstall on a new USB stick."
+"Try reinstalling elizaOS. If the error persists, reinstall on a new USB "
+"stick."
 msgstr ""
+"Chúng tôi khuyến cáo bạn tải lại Tails từ đầu. Nếu lỗi vẫn tiếp diễn, hãy "
+"tải lại trên một thiết bị USB mới."
 
-#: ../config/chroot_local-includes/usr/share/tails/greeter/main.ui.in:673
+#: ../config/chroot_local-includes/usr/share/tails/greeter/main.ui.in:686
 msgid "_Additional Settings"
 msgstr "_Cài đặt bổ sung"
 
-#: ../config/chroot_local-includes/usr/share/tails/greeter/main.ui.in:756
+#: ../config/chroot_local-includes/usr/share/tails/greeter/main.ui.in:769
 msgid "Add an additional setting"
 msgstr "Thêm một cài đặt bổ sung"
 
-#: ../config/chroot_local-includes/usr/share/tails/greeter/main.ui.in:803
+#: ../config/chroot_local-includes/usr/share/tails/greeter/main.ui.in:816
 msgid "Shutdown"
 msgstr "Tắt đi"
 
-#: ../config/chroot_local-includes/usr/share/tails/greeter/main.ui.in:812
-msgid "_Start Tails"
+#: ../config/chroot_local-includes/usr/share/tails/greeter/main.ui.in:825
+#, fuzzy
+msgid "_Start elizaOS"
 msgstr "_Khởi chạy Tails"
 
-#: ../config/chroot_local-includes/usr/share/tails/greeter/main.ui.in:841
+#: ../config/chroot_local-includes/usr/share/tails/greeter/main.ui.in:854
 msgid ""
 "The default settings are safe in most situations. To add a custom setting, "
 "press the \"+\" button below."
@@ -3122,7 +3167,7 @@ msgstr ""
 "Những cài đặt mặc định là an toàn trong hầu hết các tình huống. Để thêm vào "
 "một cài đặt tuỳ chọn, nhấp vào nút \"+\" bên dưới."
 
-#: ../config/chroot_local-includes/usr/share/tails/greeter/main.ui.in:877
+#: ../config/chroot_local-includes/usr/share/tails/greeter/main.ui.in:890
 msgid "Network Configuration"
 msgstr "Cấu hình mạng lưới"
 
@@ -3181,10 +3226,11 @@ msgid "Send Error Report"
 msgstr "Gửi báo cáo lỗi"
 
 #: ../config/chroot_local-includes/usr/share/tails/persistent-storage/features_view.ui.in:63
+#, fuzzy
 msgid ""
 "Your Persistent Storage is unlocked.\n"
 "\n"
-"Its content is available until you shut down Tails.\n"
+"Its content is available until you shut down elizaOS.\n"
 "\n"
 "<a href=\"doc/persistent_storage/backup\">Learn how to make a backup of your "
 "Persistent Storage.</a>"
@@ -3197,9 +3243,10 @@ msgstr ""
 "bản backup cho ổ đĩa lưu trữ liên tục kéo dài của bạn.</a>"
 
 #: ../config/chroot_local-includes/usr/share/tails/persistent-storage/features_view.ui.in:91
+#, fuzzy
 msgid ""
 "Turn on the features of the Persistent Storage for the data that you want to "
-"save to your Tails USB stick."
+"save to your elizaOS USB stick."
 msgstr ""
 "Bật các tính năng của ổ đĩa lưu trữ liên tục kéo dài cho dữ liệu mà bạn muốn "
 "sao lưu tới thẻ nhớ USB Tails của bạn."
@@ -3273,99 +3320,114 @@ msgid "Applications"
 msgstr "Ứng dụng"
 
 #: ../config/chroot_local-includes/usr/share/tails/persistent-storage/features_view.ui.in:431
+msgid "elizaOS Data"
+msgstr ""
+
+#: ../config/chroot_local-includes/usr/share/tails/persistent-storage/features_view.ui.in:432
+msgid "Save elizaOS memory, settings, and local runtime state."
+msgstr ""
+
+#: ../config/chroot_local-includes/usr/share/tails/persistent-storage/features_view.ui.in:448
+#, fuzzy
+msgid "Activate elizaOS Data"
+msgstr "Kích hoạt Máy khách SSH"
+
+#: ../config/chroot_local-includes/usr/share/tails/persistent-storage/features_view.ui.in:461
 msgid "Tor Browser Bookmarks"
 msgstr "Các dấu trang Bookmark của Trình duyệt Tor"
 
-#: ../config/chroot_local-includes/usr/share/tails/persistent-storage/features_view.ui.in:447
+#: ../config/chroot_local-includes/usr/share/tails/persistent-storage/features_view.ui.in:477
 msgid "Activate Tor Browser Bookmarks"
 msgstr "Kích hoạt Dấu trang Trình duyệt Tor"
 
-#: ../config/chroot_local-includes/usr/share/tails/persistent-storage/features_view.ui.in:460
+#: ../config/chroot_local-includes/usr/share/tails/persistent-storage/features_view.ui.in:490
 msgid "Electrum Bitcoin Wallet"
 msgstr "Ví tiền điện tử Bitcoin Electrum"
 
-#: ../config/chroot_local-includes/usr/share/tails/persistent-storage/features_view.ui.in:476
+#: ../config/chroot_local-includes/usr/share/tails/persistent-storage/features_view.ui.in:506
 msgid "Activate Electrum Bitcoin Wallet"
 msgstr "Kích hoạt ví tiền điện tử Bitcoin Electrum"
 
-#: ../config/chroot_local-includes/usr/share/tails/persistent-storage/features_view.ui.in:489
+#: ../config/chroot_local-includes/usr/share/tails/persistent-storage/features_view.ui.in:519
 msgid "Thunderbird Email Client"
 msgstr "Email khách Thunderbird"
 
-#: ../config/chroot_local-includes/usr/share/tails/persistent-storage/features_view.ui.in:505
+#: ../config/chroot_local-includes/usr/share/tails/persistent-storage/features_view.ui.in:535
 msgid "Activate Thunderbird Email Client"
 msgstr "Kích hoạt Email khách Thunderbird"
 
-#: ../config/chroot_local-includes/usr/share/tails/persistent-storage/features_view.ui.in:518
+#: ../config/chroot_local-includes/usr/share/tails/persistent-storage/features_view.ui.in:548
 msgid "GnuPG"
 msgstr "GnuPG"
 
-#: ../config/chroot_local-includes/usr/share/tails/persistent-storage/features_view.ui.in:519
+#: ../config/chroot_local-includes/usr/share/tails/persistent-storage/features_view.ui.in:549
 msgid "OpenPGP keys outside of Thunderbird, including in Kleopatra."
 msgstr ""
 "Các khoá key OpenPGP bên ngoài Thunderbird, bao gồm cả trong Kleopatra."
 
-#: ../config/chroot_local-includes/usr/share/tails/persistent-storage/features_view.ui.in:535
+#: ../config/chroot_local-includes/usr/share/tails/persistent-storage/features_view.ui.in:565
 msgid "Activate GnuPG"
 msgstr "Kích hoạt GnuPG"
 
-#: ../config/chroot_local-includes/usr/share/tails/persistent-storage/features_view.ui.in:548
+#: ../config/chroot_local-includes/usr/share/tails/persistent-storage/features_view.ui.in:578
 msgid "Pidgin Internet Messenger"
 msgstr "Trình nhắn tin Pidgin Internet Messenger"
 
-#: ../config/chroot_local-includes/usr/share/tails/persistent-storage/features_view.ui.in:564
+#: ../config/chroot_local-includes/usr/share/tails/persistent-storage/features_view.ui.in:594
 msgid "Activate Pidgin Internet Messenger"
 msgstr "Kích hoạt trình nhắn tin Pidgin Internet Messenger"
 
-#: ../config/chroot_local-includes/usr/share/tails/persistent-storage/features_view.ui.in:577
+#: ../config/chroot_local-includes/usr/share/tails/persistent-storage/features_view.ui.in:607
 msgid "SSH Client"
 msgstr "Máy khách SSH"
 
-#: ../config/chroot_local-includes/usr/share/tails/persistent-storage/features_view.ui.in:593
+#: ../config/chroot_local-includes/usr/share/tails/persistent-storage/features_view.ui.in:623
 msgid "Activate SSH Client"
 msgstr "Kích hoạt Máy khách SSH"
 
-#: ../config/chroot_local-includes/usr/share/tails/persistent-storage/features_view.ui.in:620
+#: ../config/chroot_local-includes/usr/share/tails/persistent-storage/features_view.ui.in:650
 msgid "Advanced Settings"
 msgstr "Cài đặt nâng cao"
 
-#: ../config/chroot_local-includes/usr/share/tails/persistent-storage/features_view.ui.in:649
-msgid "Install additional software automatically when starting Tails."
+#: ../config/chroot_local-includes/usr/share/tails/persistent-storage/features_view.ui.in:679
+#, fuzzy
+msgid "Install additional software automatically when starting elizaOS."
 msgstr "Tự động cài đặt phần mềm bổ sung khi khởi chạy Tails."
 
-#: ../config/chroot_local-includes/usr/share/tails/persistent-storage/features_view.ui.in:674
+#: ../config/chroot_local-includes/usr/share/tails/persistent-storage/features_view.ui.in:704
 msgid "Configure Additional Software"
 msgstr "Cấu hình phần mềm bổ sung"
 
-#: ../config/chroot_local-includes/usr/share/tails/persistent-storage/features_view.ui.in:687
+#: ../config/chroot_local-includes/usr/share/tails/persistent-storage/features_view.ui.in:717
 msgid "Activate Additional Software"
 msgstr "Kích hoạt phần mềm bổ sung"
 
-#: ../config/chroot_local-includes/usr/share/tails/persistent-storage/features_view.ui.in:700
+#: ../config/chroot_local-includes/usr/share/tails/persistent-storage/features_view.ui.in:730
 msgid "Dotfiles"
 msgstr "Tập tin Dotfiles"
 
-#: ../config/chroot_local-includes/usr/share/tails/persistent-storage/features_view.ui.in:701
+#: ../config/chroot_local-includes/usr/share/tails/persistent-storage/features_view.ui.in:731
 msgid "Symlink every file in the Dotfiles folder into the Home folder."
 msgstr "Symlink mọi tập tin trong thư mục Dotfiles vào trong thư mục chủ Home."
 
-#: ../config/chroot_local-includes/usr/share/tails/persistent-storage/features_view.ui.in:734
+#: ../config/chroot_local-includes/usr/share/tails/persistent-storage/features_view.ui.in:764
 msgid "Activate Dotfiles"
 msgstr "Kích hoạt Dotfiles"
 
-#: ../config/chroot_local-includes/usr/share/tails/persistent-storage/features_view.ui.in:766
+#: ../config/chroot_local-includes/usr/share/tails/persistent-storage/features_view.ui.in:796
 msgid "Custom"
 msgstr "Tùy chỉnh"
 
-#: ../config/chroot_local-includes/usr/share/tails/persistent-storage/features_view.ui.in:785
+#: ../config/chroot_local-includes/usr/share/tails/persistent-storage/features_view.ui.in:815
+#, fuzzy
 msgid ""
-"To add or remove custom features, modify /live/persistence/"
-"TailsData_unlocked/persistence.conf."
+"To add or remove custom features, modify the Persistent Storage "
+"configuration file directly."
 msgstr ""
 "Để thêm hoặc loại bỏ các tính năng tuỳ chỉnh, hãy chỉnh sửa /live/"
 "persistence/TailsData_unlocked/persistence.conf."
 
-#: ../config/chroot_local-includes/usr/share/tails/persistent-storage/features_view.ui.in:827
+#: ../config/chroot_local-includes/usr/share/tails/persistent-storage/features_view.ui.in:857
 msgid ""
 "<a href=\"doc/persistent_storage\">Learn more about the Persistent Storage.</"
 "a>"
@@ -3374,11 +3436,12 @@ msgstr ""
 "kéo dài.</a>"
 
 #: ../config/chroot_local-includes/usr/share/tails/persistent-storage/locked_view.ui.in:53
+#, fuzzy
 msgid ""
 "<b>Your Persistent Storage is locked.</b>\n"
 "\n"
 "To use or configure your Persistent Storage, unlock it in the Welcome Screen "
-"when starting Tails.\n"
+"when starting elizaOS.\n"
 "\n"
 "To delete your Persistent Storage, click <b>Delete</b> on the right of the "
 "title bar."
@@ -3432,11 +3495,12 @@ msgid "_Create Persistent Storage"
 msgstr "_Khởi tạo ổ đĩa lưu trữ liên tục kéo dài"
 
 #: ../config/chroot_local-includes/usr/share/tails/persistent-storage/welcome_view.ui.in:56
+#, fuzzy
 msgid ""
-"Everything you do disappears automatically when you shut down Tails.\n"
+"Everything you do disappears automatically when you shut down elizaOS.\n"
 "\n"
 "But you can save some of your files and configuration in an encrypted "
-"Persistent Storage on your Tails USB stick, for example:\n"
+"Persistent Storage on your elizaOS USB stick, for example:\n"
 "\n"
 "• Your documents\n"
 "• Your Wi-Fi passwords\n"
@@ -3461,11 +3525,12 @@ msgstr ""
 "kéo dài.</a>"
 
 #: ../config/chroot_local-includes/usr/share/tails/persistent-storage/welcome_view.ui.in:93
+#, fuzzy
 msgid ""
 "Sorry, it is impossible to create a Persistent Storage on this device.\n"
 "\n"
-"To be able to use Tails with a Persistent Storage, please follow our "
-"instructions on <a href=\"install\">installing Tails on a USB stick</a>."
+"To be able to use elizaOS with a Persistent Storage, please follow our "
+"instructions on <a href=\"install\">installing elizaOS on a USB stick</a>."
 msgstr ""
 "Xin lỗi, việc khởi tạo một Ổ đĩa lưu trữ liên tục kéo dài trên thiết bị này "
 "là bất khả thi.\n"
@@ -3488,8 +3553,9 @@ msgid "_Change Passphrase…"
 msgstr "_Thay đổi Cụm mật khẩu…"
 
 #: ../config/chroot_local-includes/usr/share/tails/persistent-storage/window.ui.in:66
-msgid "_Restart Tails"
-msgstr "_Khởi động lại Tails"
+#, fuzzy
+msgid "_Restart elizaOS"
+msgstr "Khởi động lại sau"
 
 #: ../config/chroot_local-includes/usr/share/tails/unlock-veracrypt-volumes/main.ui.in:61
 msgid "File Containers"
@@ -4196,6 +4262,29 @@ msgstr "Tháng mười hai"
 msgid "Clock"
 msgstr "Đồng hồ"
 
+#~ msgid "Tails Cloner"
+#~ msgstr "Trình clone nhân bản Tails"
+
+#~ msgid "About Tails"
+#~ msgstr "Về Tails"
+
+#, python-format
+#~ msgid "Built from %s"
+#~ msgstr "Được xây dựng từ %s"
+
+#, fuzzy
+#~ msgid "Tails Documentation"
+#~ msgstr "Tài liệu về Tails"
+
+#~ msgid "WhisperBack Error Reporting"
+#~ msgstr "Báo cáo lỗi WhisperBack"
+
+#~ msgid "Send feedback via encrypted e-mail"
+#~ msgstr "Gửi phản hồi thông qua thư email được mã hoá"
+
+#~ msgid "_Restart Tails"
+#~ msgstr "_Khởi động lại Tails"
+
 #~ msgid "Bridge address malformed"
 #~ msgstr "Địa chỉ cầu Bridge không đúng dạng"
 
@@ -4216,9 +4305,6 @@ msgstr "Đồng hồ"
 
 #~ msgid "Scan QR Code"
 #~ msgstr "Quét mã QR"
-
-#~ msgid "Documentation"
-#~ msgstr "Tài liệu"
 
 #, fuzzy
 #~| msgid ""

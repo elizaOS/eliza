@@ -1,10 +1,10 @@
 [Desktop Entry]
 Type=Application
 _Name=Back Up Persistent Storage
-_Comment=Make a backup of the Tails Persistent Storage to another Tails USB stick
+_Comment=Make a backup of the elizaOS Persistent Storage to another elizaOS USB stick
 _Keywords=backup
-Icon=tails-backup.svg
+Icon=elizaos
 Exec=/usr/bin/kgx --title 'Log of Persistent Storage Backup' -- /usr/local/bin/tails-backup
 Terminal=false
-Categories=System;Tails;
+Categories=System;Utility;
 StartupNotify=false

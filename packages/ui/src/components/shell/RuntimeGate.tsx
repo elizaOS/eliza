@@ -67,11 +67,7 @@ import {
   type UiTheme,
   useApp,
 } from "../../state";
-import {
-  getElizaApiBase,
-  preOpenWindow,
-  resolveAppAssetUrl,
-} from "../../utils";
+import { getElizaApiBase, preOpenWindow } from "../../utils";
 import { LanguageDropdown } from "../shared/LanguageDropdown";
 import { ThemeToggle } from "../shared/ThemeToggle";
 import { Button } from "../ui/button";
@@ -2011,22 +2007,6 @@ function GateShell({
       style={{ height: "100dvh" }}
     >
       <div
-        aria-hidden="true"
-        className="pointer-events-none fixed inset-0 overflow-hidden"
-      >
-        {/* Splash background. Dark-mode is letterboxed against the wrapper
-            bg below, which provides a complementary brand tone. */}
-        <img
-          src={resolveAppAssetUrl("splash-bg.png")}
-          alt=""
-          className="absolute inset-0 h-full w-full object-contain object-center"
-        />
-        {/* Subtle vignette to keep panel content readable when window is large
-            and the image sits centered with letterbox. */}
-        <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_center,transparent_30%,rgba(0,0,0,0.55)_100%)]" />
-      </div>
-
-      <div
         className="flex items-center gap-2"
         style={{
           position: "absolute",
@@ -2053,7 +2033,7 @@ function GateShell({
 
       <div className="relative z-10 flex h-full min-h-0 items-center justify-center px-3 pb-[calc(max(0.75rem,var(--safe-area-bottom,0px))_+_var(--keyboard-height,0px))] pt-[calc(var(--safe-area-top,0px)_+_3.75rem)] sm:px-6 md:px-8">
         <div
-          className="flex max-h-full min-h-0 w-full max-w-[64rem] flex-col items-center gap-3 overflow-y-auto border-2 border-black px-3 py-4 shadow-[9px_9px_0_rgba(0,0,0,0.62)] backdrop-blur-md sm:gap-4 sm:px-6 sm:py-5 md:px-8 md:py-6"
+          className="flex max-h-full min-h-0 w-full max-w-[64rem] flex-col items-center gap-3 overflow-y-auto border-2 border-black px-3 py-4 shadow-[9px_9px_0_rgba(0,0,0,0.62)]  sm:gap-4 sm:px-6 sm:py-5 md:px-8 md:py-6"
           style={{
             borderRadius: 0,
             clipPath:
@@ -2349,12 +2329,6 @@ function ElizaOSLocalSplash({ message }: { message: string }) {
       data-testid="runtime-gate-elizaos-local-splash"
       className="relative flex h-full w-full items-center justify-center overflow-hidden bg-[#ffe600] text-black"
     >
-      <img
-        src={resolveAppAssetUrl("splash-bg.png")}
-        alt=""
-        aria-hidden="true"
-        className="pointer-events-none absolute inset-0 h-full w-full object-cover"
-      />
       <div
         className="relative z-10 flex w-full flex-col items-center gap-5 px-6 text-center"
         style={{ maxWidth: 360 }}

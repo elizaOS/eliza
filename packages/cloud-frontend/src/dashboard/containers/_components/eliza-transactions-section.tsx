@@ -22,9 +22,9 @@ interface StewardTxRecord {
 // ── Helpers ──────────────────────────────────────────────────────────────────
 
 const STATUS_COLORS: Record<string, { text: string; dot: string }> = {
-  signed: { text: "text-emerald-400", dot: "bg-emerald-500" },
-  confirmed: { text: "text-emerald-400", dot: "bg-emerald-500" },
-  approved: { text: "text-emerald-400", dot: "bg-emerald-500" },
+  signed: { text: "text-green-400", dot: "bg-green-500" },
+  confirmed: { text: "text-green-400", dot: "bg-green-500" },
+  approved: { text: "text-green-400", dot: "bg-green-500" },
   broadcast: { text: "text-blue-400", dot: "bg-blue-500" },
   pending: { text: "text-[#FF5800]", dot: "bg-[#FF5800]" },
   failed: { text: "text-red-400", dot: "bg-red-500" },

@@ -324,7 +324,7 @@ export function DesktopWorkspaceSection({
 
       {(actionError || actionMessage) && (
         <div
-          className={`rounded-xl border px-3 py-2 text-sm ${
+          className={`rounded-sm border px-3 py-2 text-sm ${
             actionError
               ? "border-danger/40 bg-danger/10 text-danger"
               : "border-ok/40 bg-ok/10 text-ok"
@@ -372,7 +372,7 @@ export function DesktopWorkspaceSection({
                 Copy Full Diagnostics Bundle
               </Button>
             </div>
-            <pre className="max-h-72 overflow-auto break-all rounded-xl border border-border bg-bg px-3 py-3 text-xs-tight leading-5 text-txt">
+            <pre className="max-h-72 overflow-auto break-all rounded-sm border border-border bg-bg px-3 py-3 text-xs-tight leading-5 text-txt">
               {devStackText}
             </pre>
           </CardContent>
@@ -766,7 +766,7 @@ export function DesktopWorkspaceSection({
                 {t("desktopworkspacesection.SaveFileDialog")}
               </Button>
             </div>
-            <div className="space-y-2 rounded-xl border border-border bg-bg px-3 py-3 text-xs text-muted">
+            <div className="space-y-2 rounded-sm border border-border bg-bg px-3 py-3 text-xs text-muted">
               <div>
                 <div className="mb-1 font-semibold text-txt">
                   {t("desktopworkspacesection.OpenDialogResult")}
@@ -796,7 +796,7 @@ export function DesktopWorkspaceSection({
             <Textarea
               value={clipboardDraft}
               onChange={(event) => setClipboardDraft(event.target.value)}
-              className="min-h-24 w-full rounded-xl border border-border bg-bg px-3 py-2 text-sm text-txt outline-none"
+              className="min-h-24 w-full rounded-sm border border-border bg-bg px-3 py-2 text-sm text-txt outline-none"
               placeholder={t("desktopworkspacesection.ClipboardDraft")}
             />
             <div className="grid gap-2 sm:grid-cols-2">
@@ -898,7 +898,7 @@ export function DesktopWorkspaceSection({
                 </>
               )}
             </div>
-            <div className="rounded-xl border border-border bg-bg px-3 py-3 text-xs text-muted">
+            <div className="rounded-sm border border-border bg-bg px-3 py-3 text-xs text-muted">
               {snapshot?.clipboard ? (
                 <>
                   <div className="font-semibold text-txt">

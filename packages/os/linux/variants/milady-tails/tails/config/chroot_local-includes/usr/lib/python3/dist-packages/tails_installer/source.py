@@ -34,7 +34,7 @@ class LocalIsoSource(Source):
         self.path = os.path.abspath(_to_unicode(path))
         self.size = os.stat(self.path)[ST_SIZE]
         if not iso_is_live_system(self.path):
-            raise SourceError(_("Unable to find Tails on ISO"))
+            raise SourceError(_("Unable to find elizaOS on ISO"))
         self.dev = None
         # This can fail for devices not supported by UDisks such as aufs mounts
         try:

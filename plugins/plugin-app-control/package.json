@@ -22,7 +22,7 @@
 		"dist"
 	],
 	"scripts": {
-		"build": "tsup src/index.ts src/workers/app-worker-entry.ts --format esm --dts --clean && bun run build:views",
+		"build": "tsup src/index.ts src/workers/app-worker-entry.ts --format esm --clean && tsc --declaration --emitDeclarationOnly --noEmit false -p tsconfig.json && bun run build:views",
 		"dev": "tsup src/index.ts src/workers/app-worker-entry.ts --format esm --dts --watch",
 		"test": "vitest run",
 		"clean": "rm -rf dist .turbo",

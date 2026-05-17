@@ -7,7 +7,7 @@ const SCRIPT_DIR = path.dirname(fileURLToPath(import.meta.url));
 const APP_CORE_ROOT = path.resolve(SCRIPT_DIR, "..");
 
 const BIOME_CRASHER_PATHS = new Set([
-  "eliza/packages/native-plugins/screencapture/src/web.ts",
+  "eliza/plugins/plugin-native-screencapture/src/web.ts",
   "eliza/packages/app-core/src/types/elizaos-tui-fallback.d.ts",
   "eliza/packages/app-core/src/types/optional-plugin-modules.d.ts",
   "scripts/type-audit-report.json",

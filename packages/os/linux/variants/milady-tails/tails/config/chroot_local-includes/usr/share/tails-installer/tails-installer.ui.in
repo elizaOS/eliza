@@ -161,7 +161,7 @@
             <property name="spacing">6</property>
             <child>
               <object class="GtkRadioButton" id="radio_button_source_device">
-                <property name="label" translatable="yes">Clone the current Tails</property>
+                <property name="label" translatable="yes">Clone the current elizaOS</property>
                 <property name="visible">True</property>
                 <property name="can_focus">False</property>
                 <property name="receives_default">False</property>
@@ -197,7 +197,7 @@
                 <property name="spacing">6</property>
                 <child>
                   <object class="GtkRadioButton" id="radio_button_source_iso">
-                    <property name="label" translatable="yes">Use a downloaded Tails ISO image</property>
+                    <property name="label" translatable="yes">Use a downloaded elizaOS ISO image</property>
                     <property name="visible">True</property>
                     <property name="can_focus">False</property>
                     <property name="receives_default">False</property>

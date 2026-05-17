@@ -91,6 +91,11 @@ type LocalInferenceServerApi = {
     req: http.IncomingMessage,
     res: http.ServerResponse,
   ) => Promise<boolean>;
+  handleLocalInferenceTtsRoute?: (
+    req: http.IncomingMessage,
+    res: http.ServerResponse,
+    state: { current: AgentRuntime | null },
+  ) => Promise<boolean>;
 };
 
 let localInferenceServerApiPromise: Promise<LocalInferenceServerApi> | null =
@@ -1652,6 +1657,15 @@ async function handleRequest(
 
   const { handleLocalInferenceRoutes } = await getLocalInferenceServerApi();
   if (await handleLocalInferenceRoutes(req, res)) return;
+  const localInferenceServerApi = await getLocalInferenceServerApi();
+  if (
+    localInferenceServerApi.handleLocalInferenceTtsRoute &&
+    (await localInferenceServerApi.handleLocalInferenceTtsRoute(req, res, {
+      current: state.runtime,
+    }))
+  ) {
+    return;
+  }
 
   if (
     await handleBackgroundTasksRoute({
@@ -2934,6 +2948,11 @@ export type { captureEarlyLogs };
 // Server start
 // ---------------------------------------------------------------------------
 
+function strictPortBindingEnabled(): boolean {
+  const value = process.env.ELIZA_API_STRICT_PORT?.trim().toLowerCase();
+  return value === "1" || value === "true" || value === "yes";
+}
+
 export async function startApiServer(opts?: {
   port?: number;
   runtime?: AgentRuntime;
@@ -3584,6 +3603,15 @@ export async function startApiServer(opts?: {
     // Always register generic stream routes. If a streaming destination is
     // configured, inject it so /api/stream/live can fetch credentials.
     void (async () => {
+      if (
+        isMobilePlatform() &&
+        process.env.ELIZA_MOBILE_ENABLE_STREAMING_ROUTES !== "1"
+      ) {
+        logger.debug(
+          "[eliza-api] Desktop streaming routes disabled on mobile platform.",
+        );
+        return;
+      }
       try {
         const streamRoutes = await import("@elizaos/plugin-streaming");
         const handleStreamRoute =
@@ -4418,17 +4446,23 @@ export async function startApiServer(opts?: {
   }
   return new Promise((resolve, reject) => {
     let currentPort = port;
+    const strictPortBinding = strictPortBindingEnabled();
 
     server.on("error", (err: NodeJS.ErrnoException) => {
       if (err.code === "EADDRINUSE") {
         logger.warn(
           `[eliza-api] Port ${currentPort} is already in use. Checking fallback...`,
         );
-        if (currentPort !== 0) {
+        if (currentPort !== 0 && !strictPortBinding) {
           logger.warn(`[eliza-api] Retrying with dynamic port (0)...`);
           currentPort = 0;
           server.listen(0, host);
           return;
+        }
+        if (strictPortBinding) {
+          logger.error(
+            `[eliza-api] Strict port binding is enabled; refusing dynamic fallback from ${currentPort}.`,
+          );
         }
       } else {
         logger.error(

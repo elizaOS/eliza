@@ -57,7 +57,7 @@ export function SidebarFilterBar({
           <SelectTrigger
             data-testid={selectTestId}
             aria-label={selectAriaLabel}
-            className="h-10 min-w-0 flex-1 rounded-xl border border-border/60 bg-card/88 px-3 text-sm text-txt shadow-sm"
+            className="h-10 min-w-0 flex-1 rounded-sm border border-border/60 bg-card/88 px-3 text-sm text-txt shadow-sm"
           >
             <SelectValue />
           </SelectTrigger>

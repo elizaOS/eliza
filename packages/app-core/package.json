@@ -71,6 +71,11 @@
       "import": "./dist/api/compat-route-shared.js",
       "default": "./dist/api/compat-route-shared.js"
     },
+    "./api/ios-local-agent-transport": {
+      "types": "./dist/api/ios-local-agent-transport.d.ts",
+      "import": "./dist/api/ios-local-agent-transport.js",
+      "default": "./dist/api/ios-local-agent-transport.js"
+    },
     "./api/response": {
       "types": "./dist/api/response.d.ts",
       "import": "./dist/api/response.js",
@@ -90,6 +95,11 @@
       "types": "./dist/services/vault-mirror.d.ts",
       "import": "./dist/services/vault-mirror.js",
       "default": "./dist/services/vault-mirror.js"
+    },
+    "./services/app-updates/update-policy": {
+      "types": "./dist/services/app-updates/update-policy.d.ts",
+      "import": "./dist/services/app-updates/update-policy.js",
+      "default": "./dist/services/app-updates/update-policy.js"
     },
     "./platform/native-plugin-entrypoints": {
       "types": "./dist/platform/native-plugin-entrypoints.d.ts",

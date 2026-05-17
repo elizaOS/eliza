@@ -16,7 +16,7 @@
 </p>
 
 <p align="center">
-  <a href="https://eliza.how">eliza.how</a>
+  <a href="https://eliza.app">eliza.app</a>
 </p>
 
 ---

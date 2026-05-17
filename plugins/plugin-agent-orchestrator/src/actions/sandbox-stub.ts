@@ -19,6 +19,7 @@ import type {
   Action,
   ActionResult,
   HandlerCallback,
+  HandlerOptions,
   IAgentRuntime,
   Memory,
   State,
@@ -54,7 +55,7 @@ function buildTasksUnsupportedAction({
       _runtime: IAgentRuntime,
       _message: Memory,
       _state?: State,
-      _options?: unknown,
+      _options?: HandlerOptions,
       callback?: HandlerCallback,
     ): Promise<ActionResult> => {
       if (callback) {

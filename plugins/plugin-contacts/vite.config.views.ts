@@ -13,7 +13,7 @@ export default {
     alias: {
       "@elizaos/capacitor-contacts": fileURLToPath(
         new URL(
-          "../../packages/native-plugins/contacts/src/index.ts",
+          "../../plugins/plugin-native-contacts/src/index.ts",
           import.meta.url,
         ),
       ),

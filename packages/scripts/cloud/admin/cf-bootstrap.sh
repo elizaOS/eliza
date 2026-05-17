@@ -15,7 +15,7 @@
 # Usage:
 #   bash packages/scripts/cf-bootstrap.sh
 #
-# After running, paste the printed namespace IDs into cloud/apps/api/wrangler.toml
+# After running, paste the printed namespace IDs into packages/cloud-api/wrangler.toml
 # at the `id = "REPLACE_ME"` lines.
 # =============================================================================
 
@@ -44,7 +44,7 @@ echo
 # -----------------------------------------------------------------------------
 echo "[2/4] Creating KV namespaces"
 echo "      Capture the printed \`id\` values and paste them into"
-echo "      cloud/apps/api/wrangler.toml (kv_namespaces blocks)."
+echo "      packages/cloud-api/wrangler.toml (kv_namespaces blocks)."
 echo
 
 for NS in SESSION_CACHE RATE_LIMIT CACHE; do
@@ -89,10 +89,10 @@ echo "============================================================"
 echo "  Bootstrap complete."
 echo
 echo "  Next steps:"
-echo "    1. Open cloud/apps/api/wrangler.toml"
+echo "    1. Open packages/cloud-api/wrangler.toml"
 echo "    2. Replace each REPLACE_ME 'id' with the matching namespace ID"
 echo "       printed above (SESSION_CACHE, RATE_LIMIT, CACHE)."
-echo "    3. Set 'account_id' in cloud/apps/api/wrangler.toml to your Cloudflare"
+echo "    3. Set 'account_id' in packages/cloud-api/wrangler.toml to your Cloudflare"
 echo "       account ID (wrangler whoami)."
 echo "    4. Push secrets:  bun run cf:secrets:put:staging"
 echo "                      bun run cf:secrets:put:prod"

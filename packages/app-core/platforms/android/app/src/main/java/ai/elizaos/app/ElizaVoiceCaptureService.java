@@ -23,7 +23,7 @@ import app.eliza.R;
  * Holds a microphone-typed foreground service so the OS doesn't kill the
  * TalkMode plugin's SpeechRecognizer / AudioRecord pipeline when the app
  * is backgrounded. The actual STT + audio playback path lives in the
- * TalkMode plugin (packages/native-plugins/talkmode/android/…) — this
+ * TalkMode plugin (plugins/plugin-native-talkmode/android/…) — this
  * service just provides the lifecycle anchor + persistent notification.
  *
  * On API 34+ the service MUST run with

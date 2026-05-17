@@ -1,0 +1,64 @@
+name: Update OS Release Manifest Checksums
+
+on:
+  workflow_call:
+    inputs:
+      manifest_path:
+        description: Repo-relative path to the release manifest JSON (e.g. packages/os/release/beta-2026-05-16/manifest.json)
+        type: string
+        required: true
+      tag:
+        description: Git tag / GitHub release tag to download artifacts from
+        type: string
+        required: true
+
+  workflow_dispatch:
+    inputs:
+      manifest_path:
+        description: Repo-relative path to the release manifest JSON
+        type: string
+        required: true
+      tag:
+        description: Git tag / GitHub release tag (e.g. v2.0.0-beta.2-os.20260516)
+        type: string
+        required: true
+
+permissions:
+  contents: write
+
+jobs:
+  update-checksums:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Download OS artifacts from release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          mkdir -p /tmp/os-artifacts
+          gh release download "${{ inputs.tag }}" \
+            --pattern "elizaos-*.zst" \
+            --dir /tmp/os-artifacts/ 2>/dev/null || echo "::warning::Some patterns had no matches"
+          gh release download "${{ inputs.tag }}" \
+            --pattern "elizaos-*.zip" \
+            --dir /tmp/os-artifacts/ 2>/dev/null || echo "::warning::Some patterns had no matches"
+          ls -la /tmp/os-artifacts/
+
+      - name: Update manifest checksums
+        run: |
+          node packages/os/scripts/update-manifest-checksums.mjs \
+            --manifest "${{ inputs.manifest_path }}" \
+            --artifacts-dir /tmp/os-artifacts/
+
+      - name: Commit updated manifest
+        run: |
+          git config user.name "elizaOS CI"
+          git config user.email "ci@elizaos.ai"
+          git add "${{ inputs.manifest_path }}"
+          git diff --staged --quiet || \
+            git commit -m "chore: update OS release manifest checksums for ${{ inputs.tag }}"
+          git push

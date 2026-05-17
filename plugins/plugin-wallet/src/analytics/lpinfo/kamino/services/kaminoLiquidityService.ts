@@ -718,7 +718,6 @@ export class KaminoLiquidityService extends Service {
 
       // Normalize token identifier
       const normalizedToken = this.normalizeTokenIdentifier(tokenIdentifier);
-      console.log("normalizedToken", normalizedToken);
 
       const stats: TokenLiquidityStats = {
         tokenIdentifier: tokenIdentifier,

@@ -1,6 +1,6 @@
 [Desktop Entry]
 Type=Application
-Name=Tails Greeter
+Name=elizaOS Greeter
 Exec=/usr/local/lib/tails-greeter
 X-GNOME-Provides=tails-greeter
 NoDisplay=true

@@ -104,8 +104,14 @@ function formatBytes(bytes) {
 }
 
 function noteForAsset(name) {
+  if (/macos.*\.app\.tar\.gz$/i.test(name)) {
+    return "macOS app archive";
+  }
   if (/\.dmg$/i.test(name)) {
     return "DMG installer";
+  }
+  if (/\.exe\.zip$/i.test(name)) {
+    return "Windows EXE archive";
   }
   if (/\.msix$/i.test(name)) {
     return "MSIX package";
@@ -127,6 +133,9 @@ function noteForAsset(name) {
   }
   if (/\.tar\.gz$/i.test(name)) {
     return "tar.gz package";
+  }
+  if (/\.tar\.zst$/i.test(name)) {
+    return "tar.zst package";
   }
   return "Release asset";
 }
@@ -229,6 +238,11 @@ function buildRelease(release) {
         (asset) =>
           /macos-arm64/i.test(asset.name) && /\.dmg$/i.test(asset.name),
         (asset) => /arm64/i.test(asset.name) && /\.dmg$/i.test(asset.name),
+        (asset) =>
+          /macos-arm64/i.test(asset.name) &&
+          /\.app\.tar\.gz$/i.test(asset.name),
+        (asset) =>
+          /arm64/i.test(asset.name) && /\.app\.tar\.gz$/i.test(asset.name),
       ]),
     },
     {
@@ -240,6 +254,13 @@ function buildRelease(release) {
           /mac/i.test(asset.name) &&
           !/arm64/i.test(asset.name) &&
           /\.dmg$/i.test(asset.name),
+        (asset) =>
+          /macos-x64/i.test(asset.name) &&
+          /\.app\.tar\.gz$/i.test(asset.name),
+        (asset) =>
+          /mac/i.test(asset.name) &&
+          !/arm64/i.test(asset.name) &&
+          /\.app\.tar\.gz$/i.test(asset.name),
       ]),
     },
     {
@@ -250,6 +271,9 @@ function buildRelease(release) {
           /ElizaOSApp-Setup/i.test(asset.name) && /\.exe$/i.test(asset.name),
         (asset) => /setup/i.test(asset.name) && /\.exe$/i.test(asset.name),
         (asset) => /win/i.test(asset.name) && /\.exe$/i.test(asset.name),
+        (asset) =>
+          /windows-x64/i.test(asset.name) && /\.exe\.zip$/i.test(asset.name),
+        (asset) => /win/i.test(asset.name) && /\.exe\.zip$/i.test(asset.name),
         (asset) => /win/i.test(asset.name) && /\.msix$/i.test(asset.name),
       ]),
     },
@@ -258,6 +282,7 @@ function buildRelease(release) {
       label: "Linux",
       pick: pickAssetFromReleases(prioritizedReleases, [
         (asset) => /linux/i.test(asset.name) && /\.appimage$/i.test(asset.name),
+        (asset) => /linux/i.test(asset.name) && /\.tar\.zst$/i.test(asset.name),
         (asset) => /linux/i.test(asset.name) && /\.tar\.gz$/i.test(asset.name),
       ]),
     },
@@ -458,7 +483,7 @@ function buildStaticOsArtifacts(channel, version) {
       requiresHardware: "8 GB USB drive",
     },
     {
-      id: "elizaos-aosp-flasher-macos",
+      id: "elizaos-setup-macos",
       label: "AOSP Flasher — macOS",
       description:
         "GUI tool for macOS that detects a connected Pixel via ADB, downloads the elizaOS AOSP build, and guides through bootloader unlock and flashing.",
@@ -474,7 +499,7 @@ function buildStaticOsArtifacts(channel, version) {
       requiresHardware: "Android device with unlocked bootloader",
     },
     {
-      id: "elizaos-aosp-flasher-linux",
+      id: "elizaos-setup-linux",
       label: "AOSP Flasher — Linux",
       description:
         "GUI tool for Linux that detects a connected Pixel via ADB, downloads the elizaOS AOSP build, and guides through bootloader unlock and flashing.",
@@ -490,7 +515,7 @@ function buildStaticOsArtifacts(channel, version) {
       requiresHardware: "Android device with unlocked bootloader",
     },
     {
-      id: "elizaos-aosp-flasher-windows",
+      id: "elizaos-setup-windows",
       label: "AOSP Flasher — Windows",
       description:
         "GUI tool for Windows that detects a connected Pixel via ADB, downloads the elizaOS AOSP build, and guides through bootloader unlock and flashing.",

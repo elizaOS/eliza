@@ -279,7 +279,7 @@ function MobileSignalsPermissionsPanel() {
                 <Button
                   variant="default"
                   size="sm"
-                  className="min-h-10 rounded-xl px-3 text-xs-tight font-semibold"
+                  className="min-h-10 rounded-sm px-3 text-xs-tight font-semibold"
                   disabled={busyAction === action.id}
                   onClick={() => void handleAction(action)}
                 >

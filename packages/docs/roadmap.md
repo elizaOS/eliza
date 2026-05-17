@@ -1,12 +1,12 @@
 ---
 title: "Roadmap"
 sidebarTitle: "Roadmap"
-description: "Product direction and rationale; see the changelog for shipped changes."
+description: "Eliza and elizaOS direction and rationale; see the changelog for shipped changes."
 ---
 
 # Eliza roadmap
 
-High-level direction and rationale. Not exhaustive; see the published **[Changelog](changelog.mdx)** (or `docs/changelog.mdx` in-repo) for shipped changes with WHYs.
+Direction and rationale for Eliza on elizaOS. Not exhaustive; see the **[Changelog](changelog.mdx)** for shipped changes with WHYs.
 
 ## Principles: energy and experience (desktop)
 

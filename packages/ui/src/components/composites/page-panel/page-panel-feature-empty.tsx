@@ -61,7 +61,7 @@ export function PagePanelFeatureEmpty({
               return (
                 <div
                   key={item.id}
-                  className="rounded-xl border border-border/24 bg-bg/45 px-3 py-3"
+                  className="rounded-sm border border-border/24 bg-bg/45 px-3 py-3"
                 >
                   <FeatureIcon
                     className={cn("mx-auto h-4 w-4", item.tone ?? "text-muted")}

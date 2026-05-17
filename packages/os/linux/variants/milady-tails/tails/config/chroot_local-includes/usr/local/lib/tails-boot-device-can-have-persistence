@@ -22,7 +22,7 @@ if (! $running_system->started_from_writable_device) {
 }
 
 if (! $running_system->started_from_device_installed_with_tails_installer) {
-    say STDERR "The boot device was not created using a USB image or Tails Cloner";
+    say STDERR "The boot device was not created using a USB image or elizaOS USB Cloner";
     exit 32;
 }
 

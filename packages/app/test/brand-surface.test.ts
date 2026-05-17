@@ -13,6 +13,7 @@ import { describe, expect, it } from "vitest";
 
 const here = import.meta.dirname;
 const root = join(here, "..");
+const appCorePlatformsRoot = join(root, "..", "app-core", "platforms");
 
 const BRAND_ORANGE = "#FF5800";
 
@@ -20,8 +21,15 @@ function read(rel: string): string {
   return readFileSync(join(root, rel), "utf8");
 }
 
-function has(rel: string): boolean {
-  return existsSync(join(root, rel));
+function readGeneratedOrTemplate(rel: string): string {
+  const generatedPath = join(root, rel);
+  if (existsSync(generatedPath)) return readFileSync(generatedPath, "utf8");
+
+  const [platform, ...segments] = rel.split("/");
+  return readFileSync(
+    join(appCorePlatformsRoot, platform, ...segments),
+    "utf8",
+  );
 }
 
 describe("brand surfaces", () => {
@@ -39,33 +47,28 @@ describe("brand surfaces", () => {
     expect(src).toMatch(/android:\s*\{[^}]*backgroundColor:\s*"#FF5800"/s);
   });
 
-  it.skipIf(
-    !has("android/app/src/main/res/values/colors.xml") ||
-      !has("android/app/src/main/res/values/styles.xml"),
-  )(
-    "Android colors.xml + styles.xml use brand orange for splash + status bar",
-    () => {
-      const colors = read("android/app/src/main/res/values/colors.xml");
-      expect(colors).toContain('<color name="eliza_orange">#FF5800</color>');
-      expect(colors).toContain(
-        '<color name="splash_background">#FF5800</color>',
-      );
-      expect(colors).toContain('<color name="colorPrimary">#FF5800</color>');
+  it("Android colors.xml + styles.xml use brand orange for splash + status bar", () => {
+    const colors = readGeneratedOrTemplate(
+      "android/app/src/main/res/values/colors.xml",
+    );
+    expect(colors).toContain('<color name="eliza_orange">#FF5800</color>');
+    expect(colors).toContain('<color name="splash_background">#FF5800</color>');
+    expect(colors).toContain('<color name="colorPrimary">#FF5800</color>');
 
-      const styles = read("android/app/src/main/res/values/styles.xml");
-      expect(styles).toContain("@color/eliza_orange");
-      expect(styles).toMatch(/statusBarColor[^<]*@color\/eliza_orange/);
-    },
-  );
+    const styles = readGeneratedOrTemplate(
+      "android/app/src/main/res/values/styles.xml",
+    );
+    expect(styles).toContain("@color/eliza_orange");
+    expect(styles).toMatch(/statusBarColor[^<]*@color\/eliza_orange/);
+  });
 
-  it.skipIf(!has("ios/App/App/Base.lproj/LaunchScreen.storyboard"))(
-    "iOS LaunchScreen.storyboard backdrop is brand orange",
-    () => {
-      const xml = read("ios/App/App/Base.lproj/LaunchScreen.storyboard");
-      // 1.0 / 0.345 / 0.0 is #FF5800 in sRGB to 3 decimals.
-      expect(xml).toMatch(/red="1\.0"\s+green="0\.345"\s+blue="0\.0"/);
-    },
-  );
+  it("iOS LaunchScreen.storyboard backdrop is brand orange", () => {
+    const xml = readGeneratedOrTemplate(
+      "ios/App/App/Base.lproj/LaunchScreen.storyboard",
+    );
+    // 1.0 / 0.345 / 0.0 is #FF5800 in sRGB to 3 decimals.
+    expect(xml).toMatch(/red="1\.0"\s+green="0\.345"\s+blue="0\.0"/);
+  });
 
   it("index.html FOUC fallback is unified with the dark chat shell, not a foreign color", () => {
     const html = read("index.html");

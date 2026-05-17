@@ -10,7 +10,7 @@ const sharedSrc = resolve(monorepoRoot, "packages/shared/src");
 const coreSrc = resolve(monorepoRoot, "packages/core/src");
 const bunRuntimeSrc = resolve(
   monorepoRoot,
-  "packages/native-plugins/bun-runtime/src/index.ts",
+  "plugins/plugin-native-bun-runtime/src/index.ts",
 );
 const reactPath = realpathSync(resolve(packageRoot, "node_modules/react"));
 const reactDomPath = realpathSync(

@@ -53,9 +53,7 @@ export class MockCloudSetupSessionService implements CloudSetupSessionService {
     this.provisioningTurns = options.provisioningTurns ?? 1;
   }
 
-  async startSession(
-    input: StartSessionInput,
-  ): Promise<SetupSessionEnvelope> {
+  async startSession(input: StartSessionInput): Promise<SetupSessionEnvelope> {
     const sessionId = this.randomId();
     const containerId = this.randomId();
     const envelope: SetupSessionEnvelope = {

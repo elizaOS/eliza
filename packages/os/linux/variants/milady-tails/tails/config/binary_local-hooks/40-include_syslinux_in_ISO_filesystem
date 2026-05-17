@@ -36,9 +36,16 @@ LINUX_BINARY_UTILS_DIR='binary/utils/linux'
 WIN32_BINARY_UTILS_DIR='binary/utils/win32'
 BINARY_MBR_DIR='binary/utils/mbr'
 CHROOT_SYSLINUX_BIN='chroot/usr/bin/syslinux'
-CHROOT_SYSLINUX_MBR='chroot/usr/lib/SYSLINUX/gptmbr.bin'
+CHROOT_SYSLINUX_MBR='chroot/usr/lib/syslinux/mbr/gptmbr.bin'
 
 ### Main
+Check_package "$CHROOT_SYSLINUX_BIN" syslinux
+Restore_cache cache/packages_binary
+Install_package
+
 mkdir -p "$LINUX_BINARY_UTILS_DIR" "$WIN32_BINARY_UTILS_DIR" "$BINARY_MBR_DIR"
 cp "$CHROOT_SYSLINUX_BIN" "$LINUX_BINARY_UTILS_DIR/"
 cp "$CHROOT_SYSLINUX_MBR" "$BINARY_MBR_DIR/mbr.bin"
+
+Save_cache cache/packages_binary
+Remove_package

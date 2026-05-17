@@ -53,7 +53,9 @@
     "windows-x64-cuda": "evidence/platform/windows-x64-cuda.json",
     "windows-x64-vulkan": "evidence/platform/windows-x64-vulkan.json",
     "linux-x64-cpu": "evidence/platform/linux-x64-cpu.json",
-    "windows-x64-cpu": "evidence/platform/windows-x64-cpu.json"
+    "windows-x64-cpu": "evidence/platform/windows-x64-cpu.json",
+    "windows-arm64-cpu": "evidence/platform/windows-arm64-cpu.json",
+    "windows-arm64-vulkan": "evidence/platform/windows-arm64-vulkan.json"
   },
   "hf": {
     "repoId": "elizaos/eliza-1",

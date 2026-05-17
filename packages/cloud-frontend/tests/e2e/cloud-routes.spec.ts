@@ -28,12 +28,12 @@ const CONSOLE_ERROR_ALLOWLIST: RegExp[] = [
 // third-party heartbeats. Keep this empty until proven necessary.
 const NETWORK_FAILURE_ALLOWLIST: RegExp[] = [/\/__telemetry__/];
 
-// Page-title sanity per route. The homepage title is the brand fallback;
-// when a sub-page accidentally inherits it (because of missing <title> on
-// that route), it's a real bug we want to fail on.
-const CLOUD_TITLE = /eliza cloud - Run in Cloud/i;
+// Default <title> set by RootLayout's <Helmet>. Sub-pages that forget to
+// set their own Helmet title fall back to this, which is the bug pattern we
+// fix by hoisting <Helmet> above auth-loading short-circuits.
+const HOMEPAGE_TITLE_FALLBACK = /Eliza Cloud - Launch Eliza/i;
 const ROUTE_TITLE_RULES: Record<string, RegExp> = {
-  "/": CLOUD_TITLE,
+  "/": HOMEPAGE_TITLE_FALLBACK,
 };
 
 interface CapturedFailures {
@@ -140,8 +140,10 @@ const dashboardRoutes = [
 
 // Legacy paths kept for inbound links; the real implementation redirects them
 // to the canonical dashboard surface. Tested separately from the renders list.
+// /dashboard/chat is intentionally not in this list — it's a smart route
+// (redirects to an existing agent's chat OR shows an empty state) rather than
+// a pure redirect.
 const dashboardRedirects: Array<[from: string, toPattern: RegExp]> = [
-  ["/dashboard/chat", /\/dashboard\/my-agents$/],
   ["/dashboard/image", /\/dashboard\/api-explorer$/],
   ["/dashboard/video", /\/dashboard\/api-explorer$/],
   ["/dashboard/gallery", /\/dashboard\/api-explorer$/],
@@ -281,7 +283,10 @@ test.beforeEach(async ({ page }) => {
 for (const route of publicRoutes) {
   test(`public route renders: ${route}`, async ({ page }) => {
     const captured = attachFailureCollectors(page);
-    await page.goto(route);
+    // networkidle so lazy route chunks finish loading before we sample the
+    // page title (otherwise sub-pages still on the Suspense fallback show
+    // the global RootLayout <title> and trip the homepage-leak assertion).
+    await page.goto(route, { waitUntil: "networkidle" });
     await expect(page.locator("body")).toBeVisible();
     await expect(page.locator("text=Not found")).toHaveCount(0);
     const screenshot = await captureRouteScreenshot(page);
@@ -291,6 +296,14 @@ for (const route of publicRoutes) {
     // must not silently fall back to the homepage title.
     const pathKey = route.split("?")[0];
     const titleRule = ROUTE_TITLE_RULES[pathKey];
+    if (pathKey !== "/") {
+      // Wait up to 5s for Helmet on the actual page to win over the global
+      // RootLayout title. Lazy-loaded routes (Suspense + dynamic import)
+      // need a beat after networkidle before their <Helmet> applies.
+      await expect
+        .poll(async () => page.title(), { timeout: 5_000 })
+        .not.toMatch(HOMEPAGE_TITLE_FALLBACK);
+    }
     const title = await page.title();
     if (titleRule) {
       expect(title, `unexpected title on ${route}: ${title}`).toMatch(

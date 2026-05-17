@@ -5,6 +5,7 @@
  * desktop notifications, and full-reset flows.
  */
 
+import { isIosInProcessLocalAgentBase } from "@elizaos/app-core/api/ios-local-agent-transport";
 import { logger } from "@elizaos/core";
 import { getDefaultStylePreset } from "@elizaos/shared";
 import { type MutableRefObject, useCallback, useEffect, useRef } from "react";
@@ -14,7 +15,6 @@ import type {
   OnboardingOptions,
 } from "../api";
 import { type AgentStatus, client, type StreamEventEnvelope } from "../api";
-import { isIosInProcessLocalAgentBase } from "../api/ios-local-agent-transport";
 import { invokeDesktopBridgeRequest, isElectrobunRuntime } from "../bridge";
 import { dispatchElizaCloudStatusUpdated } from "../events";
 import {

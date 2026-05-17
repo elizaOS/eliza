@@ -15,7 +15,7 @@
 import process from "node:process";
 import type { AgentRuntime, IAgentRuntime } from "@elizaos/core";
 import { logger } from "@elizaos/core";
-import { FIRST_SENTENCE_SNIP_VERSION } from "@elizaos/shared";
+import { FIRST_SENTENCE_SNIP_VERSION, formatError } from "@elizaos/shared";
 
 /**
  * Loose handler shape that matches both the runtime's generic registerModel
@@ -65,7 +65,7 @@ export async function wrapEdgeTtsHandlerWithFirstLineCache(
     )) as typeof import("@elizaos/plugin-local-inference/services");
   } catch (err) {
     logger.debug(
-      `[tts-cache-wiring] @elizaos/plugin-local-inference/services unavailable; cache disabled: ${err instanceof Error ? err.message : String(err)}`,
+      `[tts-cache-wiring] @elizaos/plugin-local-inference/services unavailable; cache disabled: ${formatError(err)}`,
     );
     return null;
   }
@@ -79,6 +79,9 @@ export async function wrapEdgeTtsHandlerWithFirstLineCache(
 
   const { wrapWithFirstLineCache, fingerprintVoiceSettings } = wrapModule;
 
+  // EdgeTtsHandler uses `input: unknown` (loose public shape) while TtsHandler
+  // requires `input: TtsHandlerInput` (concrete union). They are structurally
+  // compatible at runtime — the cast bridges the static mismatch.
   const wrapped = wrapWithFirstLineCache(
     inner as unknown as Parameters<typeof wrapWithFirstLineCache>[0],
     {
@@ -164,5 +167,7 @@ export async function wrapEdgeTtsHandlerWithFirstLineCache(
     `[tts-cache-wiring] edge-tts wrapped with first-line cache (algo ${FIRST_SENTENCE_SNIP_VERSION})`,
   );
 
+  // TtsHandler (stricter input) → EdgeTtsHandler (looser input: unknown).
+  // Structurally compatible at runtime; cast bridges the static mismatch.
   return wrapped as unknown as EdgeTtsHandler;
 }

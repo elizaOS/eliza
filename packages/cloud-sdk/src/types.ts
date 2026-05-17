@@ -29,10 +29,19 @@ export interface JsonObject {
   [key: string]: JsonValue | undefined;
 }
 
-export type HttpMethod = "GET" | "POST" | "PUT" | "PATCH" | "DELETE" | "OPTIONS" | "HEAD";
+export type HttpMethod =
+  | "GET"
+  | "POST"
+  | "PUT"
+  | "PATCH"
+  | "DELETE"
+  | "OPTIONS"
+  | "HEAD";
 
 export type QueryValue = boolean | number | string | null | undefined;
-export type QueryParams = URLSearchParams | Record<string, QueryValue | QueryValue[]>;
+export type QueryParams =
+  | URLSearchParams
+  | Record<string, QueryValue | QueryValue[]>;
 
 export interface CloudApiErrorBody {
   success: false;
@@ -126,13 +135,13 @@ export interface ModelListResponse {
 
 export interface ResponsesCreateRequest extends Record<string, unknown> {
   model: string;
-  input?: unknown;
+  input?: JsonValue;
 }
 
 export interface ResponsesCreateResponse extends Record<string, unknown> {
   id?: string;
   status?: string;
-  output?: unknown;
+  output?: JsonValue;
   output_text?: string;
   usage?: {
     input_tokens?: number;
@@ -147,7 +156,7 @@ export interface ResponsesCreateResponse extends Record<string, unknown> {
 
 export interface ChatCompletionRequest extends Record<string, unknown> {
   model?: string;
-  messages: unknown[];
+  messages: JsonValue[];
 }
 
 export interface ChatCompletionResponse extends Record<string, unknown> {
@@ -229,14 +238,16 @@ export interface CreateAppCreditsCheckoutRequest {
   cancel_url: string;
 }
 
-export interface CreateAppCreditsCheckoutResponse extends Record<string, unknown> {
+export interface CreateAppCreditsCheckoutResponse
+  extends Record<string, unknown> {
   success: boolean;
   url?: string | null;
   sessionId?: string;
   error?: string;
 }
 
-export interface VerifyAppCreditsCheckoutResponse extends Record<string, unknown> {
+export interface VerifyAppCreditsCheckoutResponse
+  extends Record<string, unknown> {
   success: boolean;
   amount?: number;
   message?: string;
@@ -246,7 +257,12 @@ export interface VerifyAppCreditsCheckoutResponse extends Record<string, unknown
 
 export type AppChargeProvider = "stripe" | "oxapay";
 export type AppChargePaymentContext = "verified_payer" | "any_payer";
-export type AppChargeStatus = "requested" | "pending" | "confirmed" | "expired" | string;
+export type AppChargeStatus =
+  | "requested"
+  | "pending"
+  | "confirmed"
+  | "expired"
+  | string;
 
 export interface PaymentCallbackChannel extends Record<string, unknown> {
   roomId?: string;
@@ -314,7 +330,15 @@ export interface GetAppChargeResponse extends Record<string, unknown> {
   };
 }
 
-export type OxaPayNetwork = "ERC20" | "TRC20" | "BEP20" | "POLYGON" | "SOL" | "BASE" | "ARB" | "OP";
+export type OxaPayNetwork =
+  | "ERC20"
+  | "TRC20"
+  | "BEP20"
+  | "POLYGON"
+  | "SOL"
+  | "BASE"
+  | "ARB"
+  | "OP";
 
 export interface CreateAppChargeCheckoutRequest {
   provider: AppChargeProvider;
@@ -325,7 +349,8 @@ export interface CreateAppChargeCheckoutRequest {
   network?: OxaPayNetwork;
 }
 
-export interface CreateAppChargeCheckoutResponse extends Record<string, unknown> {
+export interface CreateAppChargeCheckoutResponse
+  extends Record<string, unknown> {
   success: boolean;
   checkout: Record<string, unknown> & {
     provider: AppChargeProvider;
@@ -368,7 +393,7 @@ export interface LinkAffiliateResponse extends Record<string, unknown> {
 export interface X402SupportedResponse extends Record<string, unknown> {
   success: boolean;
   version?: string;
-  kinds?: unknown[];
+  kinds?: string[];
   schemes?: string[];
   networks?: string[];
   addresses?: Record<string, string>;
@@ -377,8 +402,8 @@ export interface X402SupportedResponse extends Record<string, unknown> {
 }
 
 export interface X402FacilitatorPaymentRequest {
-  paymentPayload: unknown;
-  paymentRequirements: unknown;
+  paymentPayload: JsonObject;
+  paymentRequirements: JsonObject;
 }
 
 export interface X402VerifyResponse extends Record<string, unknown> {
@@ -427,14 +452,16 @@ export interface CreateX402PaymentRequest {
   expiresInSeconds?: number;
 }
 
-export interface CreateX402PaymentRequestResponse extends Record<string, unknown> {
+export interface CreateX402PaymentRequestResponse
+  extends Record<string, unknown> {
   success: boolean;
   paymentRequest: X402PaymentRequestView;
   paymentRequired: Record<string, unknown>;
   paymentRequiredHeader: string;
 }
 
-export interface ListX402PaymentRequestsResponse extends Record<string, unknown> {
+export interface ListX402PaymentRequestsResponse
+  extends Record<string, unknown> {
   success: boolean;
   paymentRequests: X402PaymentRequestView[];
 }
@@ -444,7 +471,8 @@ export interface GetX402PaymentRequestResponse extends Record<string, unknown> {
   paymentRequest: X402PaymentRequestView;
 }
 
-export interface SettleX402PaymentRequestResponse extends Record<string, unknown> {
+export interface SettleX402PaymentRequestResponse
+  extends Record<string, unknown> {
   success: boolean;
   paymentRequest: X402PaymentRequestView;
 }
@@ -589,12 +617,13 @@ export interface CreateContainerRequest {
   /** Internal coding-container bootstrap mount. Defaults to /data. */
   volume_mount_path?: string;
   /** Internal coding-container source bundle, written into the mounted volume before start. */
-  bootstrap_source?: unknown;
+  bootstrap_source?: JsonValue;
   /** Full image reference (e.g. `ghcr.io/owner/repo:tag`). The Hetzner-Docker backend pulls it directly. */
   image: string;
 }
 
-export interface UpdateContainerRequest extends Partial<CreateContainerRequest> {
+export interface UpdateContainerRequest
+  extends Partial<CreateContainerRequest> {
   status?: ContainerStatus;
 }
 
@@ -658,7 +687,7 @@ export interface CreateAgentResponse {
 
 export interface AgentLifecycleResponse extends Record<string, unknown> {
   success?: boolean;
-  data?: Record<string, unknown>;
+  data?: JsonObject;
   jobId?: string;
 }
 
@@ -706,7 +735,7 @@ export interface GatewayRelayResponse {
   error?: {
     code: number;
     message: string;
-    data?: unknown;
+    data?: JsonValue;
   };
 }
 
@@ -733,7 +762,7 @@ export interface PollGatewayRelayResponse {
 export interface JobStatus {
   id: string;
   status: "pending" | "in_progress" | "completed" | "failed" | string;
-  result?: unknown;
+  result?: JsonValue;
   error?: string;
 }
 

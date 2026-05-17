@@ -38,9 +38,9 @@ class WelcomeView(View):
                             "Sorry, it is impossible to create a Persistent Storage "
                             "because there is already a second partition "
                             "on the USB stick.\n\n"
-                            "To be able to use Tails with a Persistent Storage, "
+                            "To be able to use elizaOS with a Persistent Storage, "
                             "please try to follow our instructions on "
-                            '<a href="install">installing Tails on a USB stick</a> '
+                            '<a href="install">installing elizaOS on a USB stick</a> '
                             "again.",
                         ),
                     )
@@ -50,7 +50,7 @@ class WelcomeView(View):
                 ):
                     logger.warning(
                         "You can only create a Persistent Storage on a USB stick "
-                        "installed with a USB image or Tails Cloner.",
+                        "installed with a USB image or elizaOS USB Cloner.",
                     )
 
         if device_is_supported:

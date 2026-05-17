@@ -48,7 +48,7 @@
                 <property name="can_focus">False</property>
                 <property name="halign">start</property>
                 <property name="valign">start</property>
-                <property name="label" translatable="yes">You can install additional software automatically from your persistent storage when starting Tails.</property>
+                <property name="label" translatable="yes">You can install additional software automatically from your persistent storage when starting elizaOS.</property>
                 <property name="use_markup">True</property>
                 <property name="wrap">True</property>
                 <property name="xalign">0</property>
@@ -74,7 +74,7 @@
               <object class="GtkLabel">
                 <property name="visible">True</property>
                 <property name="can_focus">False</property>
-                <property name="label" translatable="yes">The following software is installed automatically from your persistent storage when starting Tails.</property>
+                <property name="label" translatable="yes">The following software is installed automatically from your persistent storage when starting elizaOS.</property>
                 <property name="wrap">True</property>
                 <property name="xalign">0</property>
                 <accessibility>

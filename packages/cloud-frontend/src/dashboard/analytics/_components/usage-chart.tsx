@@ -28,7 +28,7 @@ interface UsageChartProps {
     timestamp: Date | string;
     totalRequests: number;
     totalCost: number;
-    successRate: number;
+    successRatePercent: number;
   }>;
   granularity: "hour" | "day" | "week" | "month";
 }
@@ -79,7 +79,7 @@ export function UsageChart({ data, granularity }: UsageChartProps) {
           fullLabel: detailedDate(timestamp),
           requests: point.totalRequests,
           cost: point.totalCost,
-          successRate: Number((point.successRate * 100).toFixed(2)),
+          successRate: point.successRatePercent,
         };
       }),
     // formatDate depends on granularity, so both are needed

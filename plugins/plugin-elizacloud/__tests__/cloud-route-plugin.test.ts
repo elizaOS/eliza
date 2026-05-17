@@ -17,6 +17,9 @@ describe("elizaCloudRoutePlugin", () => {
       "POST /api/cloud/agents/:agentId/provision",
       "POST /api/cloud/agents/:agentId/connect",
       "POST /api/cloud/agents/:agentId/shutdown",
+      "POST /api/cloud/coding-containers/promotions",
+      "POST /api/cloud/coding-containers",
+      "POST /api/cloud/coding-containers/:containerId/sync",
     ]) {
       expect(routes.has(route)).toBe(true);
     }

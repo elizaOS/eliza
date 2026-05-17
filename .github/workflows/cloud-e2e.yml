@@ -1,0 +1,81 @@
+name: cloud-e2e
+
+# Mock-stack E2E for cloud-api + cloud-frontend.
+# Runs `bun run cloud:e2e`, which boots in-process PGlite + ioredis-mock + Hetzner mock +
+# control-plane mock and drives real cloud-api / cloud-frontend dev servers via Playwright.
+
+on:
+  pull_request:
+    branches: [develop, main]
+    paths:
+      - "packages/cloud-api/**"
+      - "packages/cloud-frontend/**"
+      - "packages/cloud-shared/**"
+      - "packages/cloud-services/**"
+      - "packages/cloud-sdk/**"
+      - "packages/cloud-test-mocks/**"
+      - "packages/cloud-e2e/**"
+      - ".github/workflows/cloud-e2e.yml"
+  workflow_dispatch:
+
+concurrency:
+  group: cloud-e2e-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  e2e:
+    name: Mock-stack E2E
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      NODE_ENV: test
+      NODE_OPTIONS: --max-old-space-size=4096
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+        with:
+          fetch-depth: 1
+
+      - uses: ./.github/actions/cloud-setup-test-env
+
+      - name: Install Playwright browsers (chromium only)
+        run: bunx playwright install --with-deps chromium
+
+      - name: Build cloud-shared (drizzle artifacts)
+        # cloud-e2e fixture re-runs migrations against PGlite so build is best-effort.
+        run: bun run --cwd packages/cloud-shared build || true
+
+      - name: Run cloud E2E
+        run: bun run cloud:e2e
+        env:
+          CI: "true"
+          # mocks read these
+          MOCK_REDIS: "1"
+          MOCK_HETZNER_LATENCY: "0"
+          MOCK_HETZNER_ACTION_MS: "30"
+          CONTROL_PLANE_TICK_MS: "50"
+          # placeholder values so client code doesn't crash on lookup; no real creds
+          DATABASE_URL: "pglite://./.eliza-ci/.pgdata"
+          HCLOUD_TOKEN: "test-token"
+          CONTAINER_CONTROL_PLANE_TOKEN: "test-token"
+          CRON_SECRET: "test-cron-secret"
+
+      - name: Upload Playwright artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: cloud-e2e-playwright-${{ github.run_attempt }}
+          path: |
+            packages/cloud-e2e/playwright-report
+            packages/cloud-e2e/test-results
+          retention-days: 7
+          if-no-files-found: ignore
+
+      - name: Upload process logs (boot diagnostics)
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: cloud-e2e-process-logs-${{ github.run_attempt }}
+          path: |
+            packages/cloud-e2e/.logs
+          retention-days: 7
+          if-no-files-found: ignore

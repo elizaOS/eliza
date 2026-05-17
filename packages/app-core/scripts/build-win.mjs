@@ -56,7 +56,7 @@ try {
     console.log("\n=== Step 3/4: Build Capacitor plugins ===");
     const plugins = CAPACITOR_PLUGIN_NAMES;
     for (const plugin of plugins) {
-      const pluginDir = join(NATIVE_PLUGINS_ROOT, plugin);
+      const pluginDir = join(NATIVE_PLUGINS_ROOT, `plugin-native-${plugin}`);
       if (!existsSync(pluginDir)) {
         console.log(`  [plugin:${plugin}] directory not found, skipping`);
         continue;

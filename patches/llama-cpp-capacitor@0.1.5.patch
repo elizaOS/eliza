@@ -258,7 +258,7 @@ index f849d84..2c5a9dc 100644
 +add_library(
 +    llama-cpp-arm64
 +    SHARED
-+    ${ELIZA_REPO_ROOT}/packages/native-plugins/llama/android/eliza-dflash-jni.cpp
++    ${ELIZA_REPO_ROOT}/plugins/plugin-native-llama/android/eliza-dflash-jni.cpp
 +    ${ELIZA_LLAMA_CPP_DIR}/common/json-schema-to-grammar.cpp
 +)
 +

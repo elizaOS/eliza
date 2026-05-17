@@ -37,6 +37,11 @@
   "ignoreUnresolved": ["bun-types", "node:sqlite"],
   "ignoreWorkspaces": ["."],
   "workspaces": {
+    "packages/cloud-routing": {
+      "entry": ["src/index.ts", "src/**/*.test.ts"],
+      "project": ["src/**/*.ts"],
+      "ignore": ["dist/**", ".turbo/**"]
+    },
     "packages/cloud-sdk": {
       "entry": [
         "src/index.ts",
@@ -142,7 +147,6 @@
         "src/billing/index.ts",
         "src/db/index.ts",
         "src/lib/index.ts",
-        "src/routing/index.ts",
         "src/types/index.ts",
         "src/**/*.test.ts",
         "drizzle.config.ts"
@@ -529,10 +533,10 @@
       ],
       "ignore": ["dist/**"]
     },
-    "packages/native-plugins/gateway": {
+    "plugins/plugin-native-gateway": {
       "ignoreBinaries": ["pod"]
     },
-    "packages/native-plugins/activity-tracker": {
+    "plugins/plugin-native-activity-tracker": {
       "ignoreBinaries": ["swiftc"]
     },
     "plugins/plugin-companion": {

@@ -2,7 +2,7 @@
  * Verifies the `POST /api/agents/:id/message` route added in #7680.
  *
  * Local-mode parity with the cloud agent-server endpoint
- * (`cloud/services/agent-server/src/routes.ts`). Before this fix the route
+ * (`packages/cloud-services/agent-server/src/routes.ts`). Before this fix the route
  * was not registered at all on the local server, so the local chat shape
  * 404'd even when a local-inference TEXT_LARGE handler was loaded — the
  * OpenAI-compat `/v1/chat/completions` path worked on the same boot.

@@ -6,5 +6,5 @@ _Keywords=configuration;saved
 Icon=tails-persistent-storage.svg
 Exec=/usr/local/bin/tails-persistent-storage
 Terminal=false
-Categories=System;Tails;
+Categories=System;Utility;
 StartupNotify=true

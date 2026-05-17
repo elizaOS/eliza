@@ -11,6 +11,22 @@
  * script will produce.
  */
 
+/**
+ * Canonical external URLs for every Eliza surface. Import from here instead
+ * of hardcoding strings so a domain change is a one-line edit.
+ */
+export const EXTERNAL_URLS = {
+  app: "https://eliza.app",
+  cloud: "https://elizacloud.ai",
+  os: "https://elizaos.ai",
+  docs: "https://docs.elizaos.ai",
+  github: "https://github.com/elizaOS/eliza",
+  discord: "https://discord.gg/eliza",
+  twitter: "https://x.com/elizaos",
+} as const;
+
+export type ExternalUrlKey = keyof typeof EXTERNAL_URLS;
+
 export const BRAND_COLORS = {
   blue: "#0B35F1",
   orange: "#FF5800",
@@ -56,6 +72,8 @@ export const FONT_WEIGHTS = [400, 500, 600, 700, 800] as const;
  */
 export const BRAND_PATHS = {
   logos: "/brand/logos",
+  banners: "/brand/banners",
+  ogembeds: "/brand/ogembeds",
   concepts: "/brand/concepts",
   background: "/brand/background",
   favicons: "/brand/favicons",
@@ -152,3 +170,15 @@ export const LOGO_FILES = {
 } as const;
 
 export type LogoVariant = keyof typeof LOGO_FILES;
+
+export const BANNER_FILES = {
+  eliza: "eliza_banner.svg",
+  cloud: "elizacloud_banner.svg",
+  os: "elizaos_banner.svg",
+} as const;
+
+export const OG_EMBED_FILES = {
+  eliza: "eliza_ogembed.svg",
+  cloud: "elizacloud_ogembed.svg",
+  os: "elizaos_ogembed.svg",
+} as const;

@@ -1,4 +1,10 @@
 export {
+  type CreditMarkupBreakdown,
+  type CreditMarkupInput,
+  calculateCreditMarkup,
+  DEFAULT_PLATFORM_FEE_RATE,
+} from "./credit-markup.js";
+export {
   applyMarkup,
   applyMarkupCents,
   calculateTwilioSmsBilling,

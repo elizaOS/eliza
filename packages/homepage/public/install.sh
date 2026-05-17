@@ -407,7 +407,7 @@ main() {
   printf "${BOLD}${GREEN}  Installation complete!${RESET}\n"
   printf "${BOLD}${GREEN}  ======================================${RESET}\n"
   printf "\n"
-  printf "  Docs: ${BLUE}https://eliza.how${RESET}\n"
+  printf "  Docs: ${BLUE}https://eliza.app${RESET}\n"
   printf "\n"
 }
 

@@ -187,7 +187,7 @@ export default function ContainerDetailsPage() {
               >
                 {container.cpu}
               </p>
-              <p className="text-xs text-white/50 mt-1">vCPU units</p>
+              <p className="text-xs text-white/74 mt-1">vCPU units</p>
             </div>
           </BrandCard>
 
@@ -197,8 +197,8 @@ export default function ContainerDetailsPage() {
           >
             <div className="relative z-10">
               <div className="flex items-center justify-between mb-4">
-                <div className="p-2 rounded-none bg-emerald-500/10 border border-emerald-500/20">
-                  <HardDrive className="h-5 w-5 text-emerald-500" />
+                <div className="p-2 rounded-none bg-green-500/10 border border-green-500/20">
+                  <HardDrive className="h-5 w-5 text-green-500" />
                 </div>
               </div>
               <p
@@ -213,7 +213,7 @@ export default function ContainerDetailsPage() {
               >
                 {container.memory} MB
               </p>
-              <p className="text-xs text-white/50 mt-1">RAM allocated</p>
+              <p className="text-xs text-white/74 mt-1">RAM allocated</p>
             </div>
           </BrandCard>
 
@@ -223,8 +223,8 @@ export default function ContainerDetailsPage() {
           >
             <div className="relative z-10">
               <div className="flex items-center justify-between mb-4">
-                <div className="p-2 rounded-none bg-amber-500/10 border border-amber-500/20">
-                  <Clock className="h-5 w-5 text-amber-500" />
+                <div className="p-2 rounded-none bg-orange-500/10 border border-orange-500/20">
+                  <Clock className="h-5 w-5 text-orange-500" />
                 </div>
               </div>
               <p
@@ -240,7 +240,7 @@ export default function ContainerDetailsPage() {
                 {lastDeployed ? lastDeployed.toLocaleDateString() : "Never"}
               </p>
               {lastDeployed && (
-                <p className="text-xs text-white/50 mt-1">
+                <p className="text-xs text-white/74 mt-1">
                   {lastDeployed.toLocaleTimeString()}
                 </p>
               )}

@@ -80,7 +80,6 @@ export function AppsTable({ apps }: AppsTableProps) {
       toast.success("App deleted successfully");
       window.location.reload();
     } catch (error) {
-      console.error("Error deleting app:", error);
       toast.error("Failed to delete app", {
         description:
           error instanceof Error ? error.message : "Please try again",
@@ -177,7 +176,7 @@ export function AppsTable({ apps }: AppsTableProps) {
 
               {/* Stats & URL */}
               <div className="mt-2 flex min-w-0 flex-wrap items-center gap-x-3 gap-y-1 text-xs">
-                <span className="min-w-0 basis-full truncate text-white/50 sm:basis-auto">
+                <span className="min-w-0 basis-full truncate text-white/74 sm:basis-auto">
                   {app.app_url}
                 </span>
                 <span className="hidden text-white/20 sm:inline">·</span>

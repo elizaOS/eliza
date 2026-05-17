@@ -113,13 +113,14 @@
   --shadow-2xl: var(--shadow-2xl);
   --shadow-inset: var(--shadow-inset);
 
+  --radius-xs: var(--radius-xs);
   --radius-sm: var(--radius-sm);
   --radius-md: var(--radius-md);
   --radius-lg: var(--radius-lg);
   --radius-xl: var(--radius-xl);
   --radius-2xl: var(--radius-2xl);
   --radius-3xl: var(--radius-3xl);
-  --radius-4xl: calc(var(--radius-3xl) + 0.25rem);
+  --radius-4xl: var(--radius-xs);
 
   --font-size-3xs: var(--text-3xs);
   --font-size-3xs--line-height: 0.75rem;

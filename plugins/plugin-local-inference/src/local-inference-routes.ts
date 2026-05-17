@@ -170,6 +170,17 @@ type LocalInferenceActiveSnapshot = {
 	loadedGpuLayers?: number | null;
 };
 
+type AospActiveModelStateFile = {
+	version?: number;
+	status?: "ready" | "error";
+	role?: "chat" | "embedding";
+	provider?: string;
+	path?: string;
+	loadedAt?: string;
+	updatedAt?: string;
+	error?: string;
+};
+
 let activeModelState: LocalInferenceActiveSnapshot = {
 	modelId: null,
 	loadedAt: null,
@@ -249,6 +260,10 @@ function registryPath(): string {
 
 function assignmentsPath(): string {
 	return path.join(localInferenceRoot(), "assignments.json");
+}
+
+function aospActiveModelStatePath(): string {
+	return path.join(localInferenceRoot(), "aosp-active.json");
 }
 
 function routingPath(): string {
@@ -656,9 +671,64 @@ async function installedSnapshot(): Promise<InstalledModel[]> {
 	return readRegistry();
 }
 
+async function canonicalExistingPath(filePath: string): Promise<string> {
+	try {
+		return await fsp.realpath(filePath);
+	} catch {
+		return filePath;
+	}
+}
+
+async function getAospActiveSnapshot(): Promise<LocalInferenceActiveSnapshot | null> {
+	const active = await readJsonFile<AospActiveModelStateFile | null>(
+		aospActiveModelStatePath(),
+		null,
+	);
+	if (
+		!active ||
+		active.provider !== "eliza-aosp-llama" ||
+		typeof active.path !== "string" ||
+		active.path.trim().length === 0
+	) {
+		return null;
+	}
+	const installed = await installedSnapshot();
+	const activePath = await canonicalExistingPath(active.path);
+	const resolvedInstalledModel =
+		installed.find((model) => model.path === active.path) ??
+		(
+			await Promise.all(
+				installed.map(async (model) => ({
+					model,
+					path: await canonicalExistingPath(model.path),
+				})),
+			)
+		).find((entry) => entry.path === activePath)?.model;
+	if (!resolvedInstalledModel || active.role !== "chat") return null;
+	if (active.status === "ready") {
+		return {
+			modelId: resolvedInstalledModel.id,
+			loadedAt: active.loadedAt ?? null,
+			status: "ready",
+		};
+	}
+	if (active.status === "error") {
+		return {
+			modelId: resolvedInstalledModel.id,
+			loadedAt: active.updatedAt ?? active.loadedAt ?? null,
+			status: "error",
+			error: active.error ?? "AOSP local inference failed to load the model",
+		};
+	}
+	return null;
+}
+
 export async function getLocalInferenceActiveSnapshot(): Promise<LocalInferenceActiveSnapshot> {
 	const desktopActive = getDesktopActiveSnapshot();
 	if (desktopActive) return desktopActive;
+
+	const aospActive = await getAospActiveSnapshot();
+	if (aospActive) return aospActive;
 
 	const bridgeStatus = await getMobileDeviceBridgeApi()
 		.then((api) => api.getMobileDeviceBridgeStatus())

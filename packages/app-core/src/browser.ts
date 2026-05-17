@@ -41,6 +41,15 @@ export function sharedVault(): never {
   throw new Error("sharedVault is server-only");
 }
 
+// `IosLocalAgentNativeRequestOptions`, `IosLocalAgentNativeRequestResult`, and
+// `primeIosFullBunRuntime` live in app-core (moved from @elizaos/ui in Phase 5C).
+// The published @elizaos/ui dist still carries the old type declarations, creating
+// an ambiguous star-export when browser.ts re-exports both. Pin app-core's version.
+export type {
+  IosLocalAgentNativeRequestOptions,
+  IosLocalAgentNativeRequestResult,
+} from "./api/ios-local-agent-transport";
+export { primeIosFullBunRuntime } from "./api/ios-local-agent-transport";
 // Reach-through to the full app-core surface so eliza's `main.tsx` can
 // resolve desktop runtime symbols that the minimal browser entry omits. UI
 // symbols are bridged from `@elizaos/ui` for legacy plugin UI modules, but
@@ -55,7 +64,6 @@ export function sharedVault(): never {
 // `@elizaos/agent` and `@elizaos/plugin-elizacloud` to browser stubs
 // (see apps/app/vite.config.ts native-module-stub plugin).
 export * from "./index.ts";
-
 // `ConfigField` and `getPlugins` exist in both `@elizaos/ui` (UI component +
 // runtime helper) and the app-core registry barrel. Pin the registry side
 // explicitly so eliza's main.tsx gets the registry `ConfigField` type it

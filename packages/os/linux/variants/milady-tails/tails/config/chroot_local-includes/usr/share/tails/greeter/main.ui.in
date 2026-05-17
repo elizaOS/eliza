@@ -92,10 +92,23 @@
             <property name="orientation">vertical</property>
             <property name="spacing">6</property>
             <child>
+              <object class="GtkImage" id="image_elizaos_logo">
+                <property name="visible">True</property>
+                <property name="can-focus">False</property>
+                <property name="file">/usr/share/tails/greeter/icons/elizaos-logo.png</property>
+                <property name="pixel-size">96</property>
+              </object>
+              <packing>
+                <property name="expand">False</property>
+                <property name="fill">True</property>
+                <property name="position">0</property>
+              </packing>
+            </child>
+            <child>
               <object class="GtkLabel" id="label_header_title">
                 <property name="visible">True</property>
                 <property name="can-focus">False</property>
-                <property name="label" translatable="yes">Welcome to Tails!</property>
+                <property name="label" translatable="yes">Welcome to elizaOS!</property>
                 <attributes>
                   <attribute name="weight" value="semibold"/>
                   <attribute name="scale" value="1.5"/>
@@ -104,7 +117,7 @@
               <packing>
                 <property name="expand">False</property>
                 <property name="fill">True</property>
-                <property name="position">0</property>
+                <property name="position">1</property>
               </packing>
             </child>
         </object>
@@ -284,7 +297,7 @@
               <object class="GtkLabel" id="label_storagecreate_explain">
                 <property name="visible">True</property>
                 <property name="can-focus">False</property>
-                <property name="label" translatable="yes">You can save some of your files and configuration in an encrypted Persistent Storage on your Tails USB stick: your documents, browser bookmarks, Wi-Fi passwords, and so on.</property>
+                <property name="label" translatable="yes">You can save some of your files and configuration in an encrypted Persistent Storage on your elizaOS USB stick: your documents, browser bookmarks, Wi-Fi passwords, and so on.</property>
                 <property name="wrap">True</property>
                 <property name="track-visited-links">False</property>
                 <property name="xalign">0</property>
@@ -311,7 +324,7 @@
                         <property name="can-focus">False</property>
                         <property name="title" translatable="yes">Create Persistent Storage</property>
                         <property name="icon-name">tails-persistent-storage</property>
-                        <property name="subtitle" translatable="yes">Create and configure a Persistent Storage after starting Tails</property>
+                        <property name="subtitle" translatable="yes">Create and configure a Persistent Storage after starting elizaOS</property>
                         <child>
                           <object class="GtkBox" id="create_tps_row_box">
                             <property name="visible">True</property>
@@ -638,9 +651,9 @@
               <object class="GtkLabel" id="label_partition_errors">
                 <property name="visible">True</property>
                 <property name="can-focus">False</property>
-                <property name="label" translatable="yes">Errors were detected in the partitioning of your Tails USB stick.
+                <property name="label" translatable="yes">Errors were detected in the partitioning of your elizaOS USB stick.
 
-Try reinstalling Tails. If the error persists, reinstall on a new USB stick.</property>
+Try reinstalling elizaOS. If the error persists, reinstall on a new USB stick.</property>
                 <property name="xalign">0</property>
               </object>
               <packing>
@@ -809,7 +822,7 @@ Try reinstalling Tails. If the error persists, reinstall on a new USB stick.</pr
     </child>
     <child>
       <object class="GtkButton" id="button_start">
-        <property name="label" translatable="yes">_Start Tails</property>
+        <property name="label" translatable="yes">_Start elizaOS</property>
         <property name="visible">True</property>
         <property name="can-focus">True</property>
         <property name="receives-default">False</property>

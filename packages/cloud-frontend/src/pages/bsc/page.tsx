@@ -40,13 +40,13 @@ export default function BscPromoPage() {
           content="Buy $10 or more in Eliza Cloud credit with BSC and receive $5 extra credit."
         />
       </Helmet>
-      <main className="min-h-screen bg-[#050505] text-white">
+      <main id="main" className="min-h-screen bg-[#050505] text-white">
         <div className="mx-auto flex min-h-screen max-w-5xl flex-col gap-8 px-5 py-10">
           <Link
             to="/"
             className="font-mono text-sm uppercase text-white/60 hover:text-white"
           >
-            eliza cloud
+            Eliza Cloud
           </Link>
 
           <section className="grid gap-8 lg:grid-cols-[1fr_420px] lg:items-start">
@@ -124,7 +124,7 @@ export default function BscPromoPage() {
                     </div>
                   </label>
                   {amountValue !== null && amountValue < 10 && (
-                    <p className="font-mono text-xs text-amber-200">
+                    <p className="font-mono text-xs text-orange-200">
                       The BSC bonus starts at $10.
                     </p>
                   )}

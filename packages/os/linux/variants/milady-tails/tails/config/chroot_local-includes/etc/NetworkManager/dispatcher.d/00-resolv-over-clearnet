@@ -21,3 +21,24 @@ for ns in ${IP4_NAMESERVERS}; do
         echo "nameserver ${ns}" >> "${RESOLV_CLEARNET_CONF}"
     fi
 done
+
+if [ ! -s "${RESOLV_CLEARNET_CONF}" ] && command -v nmcli >/dev/null 2>&1; then
+    nmcli --get-values IP4.DNS device show "$1" 2>/dev/null \
+        | while read -r ns; do
+            if echo "${ns}" | grep --extended-regexp -q "^${IP4_REGEX}$"; then
+                echo "nameserver ${ns}" >> "${RESOLV_CLEARNET_CONF}"
+            fi
+        done
+fi
+
+if [ ! -s "${RESOLV_CLEARNET_CONF}" ]; then
+    printf '%s\n' \
+        'nameserver 1.1.1.1' \
+        'nameserver 9.9.9.9' \
+        >> "${RESOLV_CLEARNET_CONF}"
+fi
+
+if [ "$(cat /etc/elizaos/privacy-mode 2>/dev/null || printf on)" = "off" ] \
+        && [ -s "${RESOLV_CLEARNET_CONF}" ]; then
+    cp "${RESOLV_CLEARNET_CONF}" /etc/resolv.conf
+fi

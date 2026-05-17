@@ -6,6 +6,10 @@
  */
 
 import {
+  iosInProcessAgentTransportForUrl,
+  isIosInProcessLocalAgentBase,
+} from "@elizaos/app-core/api/ios-local-agent-transport";
+import {
   extractAssistantReplyText,
   stripAssistantStageDirections,
 } from "@elizaos/shared";
@@ -38,10 +42,6 @@ import type {
 } from "./client-types";
 import { ApiError } from "./client-types";
 import { desktopHttpTransportForUrl } from "./desktop-http-transport";
-import {
-  iosInProcessAgentTransportForUrl,
-  isIosInProcessLocalAgentBase,
-} from "./ios-local-agent-transport";
 import { nativeCloudHttpTransportForUrl } from "./native-cloud-http-transport";
 import { defaultFetchTimeoutMs } from "./request-timeout";
 import { type AgentRequestTransport, fetchAgentTransport } from "./transport";

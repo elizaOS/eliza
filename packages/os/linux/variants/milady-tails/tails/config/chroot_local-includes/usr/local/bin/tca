@@ -10,7 +10,7 @@ if ! tails_network_enabled; then
     dialog_title=$(gettext "Tor Connection")
     dialog_text=$(gettext "You turned on Offline Mode in the Welcome Screen.
 It is impossible to connect to Tor in Offline Mode.
-To connect to Tor and the Internet, restart Tails without Offline Mode.")
+To connect to Tor and the Internet, restart elizaOS without Offline Mode.")
     exec zenity --error --no-wrap --title "$dialog_title" --text="$dialog_text"
 fi
 

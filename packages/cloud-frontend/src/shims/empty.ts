@@ -259,8 +259,8 @@ export const on_ = () => ({
 export const types = {};
 export const inspect = (v: unknown) => String(v);
 export const format = (v: unknown) => String(v);
-export const promisify = (fn: unknown) => fn;
-export const callbackify = (fn: unknown) => fn;
+export const promisify = (fn: StubFn) => fn;
+export const callbackify = (fn: StubFn) => fn;
 export const inherits = () => {};
 export const isDeepStrictEqual = () => false;
 export const TextDecoder = globalThis.TextDecoder;

@@ -9,8 +9,8 @@ import {
   type AdvancedCapabilityPluginId,
   applyAdvancedCapabilitiesConfig,
   applyPluginRuntimeMutation,
-  type CoreManagerLike,
   CORE_PLUGINS,
+  type CoreManagerLike,
   type ElizaConfig,
   getPluginWidgets,
   type InstallProgressLike,
@@ -21,9 +21,9 @@ import {
   type PluginParamInfo,
   type PluginWidgetDeclarationServer,
   type RegistryPluginManagerInfo as RegistryPluginInfo,
+  type ResolvedPlugin,
   resolveAdvancedCapabilitiesEnabled,
   resolveDefaultAgentWorkspaceDir,
-  type ResolvedPlugin,
   saveElizaConfig,
   validatePluginConfig,
 } from "@elizaos/agent";
@@ -459,7 +459,7 @@ export async function handlePluginRoutes(
       existingEvmPlugin.setupGuideUrl =
         existingEvmPlugin.setupGuideUrl ?? evmDiagnostic.setupGuideUrl;
       existingEvmPlugin.tags = Array.from(
-        new Set([...(existingEvmPlugin.tags), ...evmDiagnostic.tags]),
+        new Set([...existingEvmPlugin.tags, ...evmDiagnostic.tags]),
       );
     } else {
       allPlugins.push(evmDiagnostic);
@@ -1195,7 +1195,7 @@ export async function handlePluginRoutes(
       }
 
       // Auto-enable the newly installed plugin so the runtime loads it after restart.
-      const installedId = (result.pluginName)
+      const installedId = result.pluginName
         .replace(/^@[^/]+\/plugin-/, "")
         .replace(/^@[^/]+\//, "")
         .replace(/^plugin-/, "");
@@ -1348,7 +1348,7 @@ export async function handlePluginRoutes(
       if (!state.config.plugins.entries) {
         state.config.plugins.entries = {};
       }
-      const updatedId = (result.pluginName)
+      const updatedId = result.pluginName
         .replace(/^@[^/]+\/plugin-/, "")
         .replace(/^@[^/]+\//, "")
         .replace(/^plugin-/, "");
@@ -1457,7 +1457,7 @@ export async function handlePluginRoutes(
         return true;
       }
 
-      const removedId = (result.pluginName)
+      const removedId = result.pluginName
         .replace(/^@[^/]+\/plugin-/, "")
         .replace(/^@[^/]+\//, "")
         .replace(/^plugin-/, "");

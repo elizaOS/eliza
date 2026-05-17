@@ -167,7 +167,7 @@ describe("buildResponseGrammar — Stage-1 envelope", () => {
 		const modeSpan = responseSkeleton.spans.find((s) => s.key === "mode");
 		expect(modeSpan).toEqual({ kind: "literal", key: "mode", value: '"ONLY"' });
 		// The literal is in the grammar root, not as a sampled enum rule.
-		expect(grammar).not.toContain("fieldenum_");
+		expect(grammar).not.toContain("fieldenum-");
 		expect(grammar).toContain('"\\"ONLY\\""');
 	});
 
@@ -539,10 +539,10 @@ describe("buildPlannerActionGrammarStrict — single-call per-action union gramm
 		// Branches are root-level alternatives — both call rules referenced
 		// from the root.
 		expect(r.grammar).toMatch(
-			/^root ::= callofaction_ALPHA \| callofaction_BRAVO/m,
+			/^root ::= callofaction-ALPHA \| callofaction-BRAVO/m,
 		);
-		expect(r.grammar).toMatch(/^callofaction_ALPHA ::= /m);
-		expect(r.grammar).toMatch(/^callofaction_BRAVO ::= /m);
+		expect(r.grammar).toMatch(/^callofaction-ALPHA ::= /m);
+		expect(r.grammar).toMatch(/^callofaction-BRAVO ::= /m);
 		// Action name is pinned as a literal inside each call rule, NOT free.
 		expect(r.grammar).toContain('"{\\"action\\":\\"ALPHA\\""');
 		expect(r.grammar).toContain('"{\\"action\\":\\"BRAVO\\""');
@@ -551,7 +551,7 @@ describe("buildPlannerActionGrammarStrict — single-call per-action union gramm
 	it("emits an empty `{}` params rule for actions with no parameters", () => {
 		const r = buildPlannerActionGrammarStrict([makeAction("EMPTY")]);
 		if (r === null) throw new Error("expected grammar");
-		expect(r.grammar).toMatch(/^paramsofaction_EMPTY ::= "\{\}"$/m);
+		expect(r.grammar).toMatch(/^paramsofaction-EMPTY ::= "\{\}"$/m);
 	});
 
 	it("does NOT factor SNAKE_CASE prefixes — each branch must pin the full action name", () => {
@@ -562,7 +562,7 @@ describe("buildPlannerActionGrammarStrict — single-call per-action union gramm
 		// JSON-quoted on top of the already-opened action-value quote; (2) the
 		// shared suffix rule decoupled the action name from its params rule, so
 		// the model could legally pair `MESSAGE_READ` with
-		// `paramsofaction_MESSAGE_SEND`. Each call branch must encode the full
+		// `paramsofaction-MESSAGE-SEND`. Each call branch must encode the full
 		// action name as a single quoted literal.
 		const r = buildPlannerActionGrammarStrict([
 			makeAction("MESSAGE_SEND"),
@@ -603,7 +603,7 @@ describe("buildPlannerActionGrammarStrict — single-call per-action union gramm
 		expect(r.grammar).toContain('"\\"thread\\""');
 		// And NOT fall back to free jsonstring for this property's value.
 		expect(r.grammar).toMatch(
-			/paramsofaction_MSG_p_kind ::= "\\"kind\\":" \( "\\"user\\"" \| "\\"channel\\"" \| "\\"thread\\"" \)/,
+			/paramsofaction-MSG-p-kind ::= "\\"kind\\":" \( "\\"user\\"" \| "\\"channel\\"" \| "\\"thread\\"" \)/,
 		);
 	});
 
@@ -632,7 +632,7 @@ describe("buildPlannerActionGrammarStrict — single-call per-action union gramm
 		expect(r.grammar).toContain('"\\"bio\\""');
 		// Array structure: opening bracket, optional elements, closing bracket.
 		expect(r.grammar).toMatch(
-			/paramsofaction_CHAR_p_fields ::= "\\"fields\\":" "\[" ws/,
+			/paramsofaction-CHAR-p-fields ::= "\\"fields\\":" "\[" ws/,
 		);
 	});
 
@@ -651,7 +651,7 @@ describe("buildPlannerActionGrammarStrict — single-call per-action union gramm
 		]);
 		if (r === null) throw new Error("expected grammar");
 		expect(r.grammar).toMatch(
-			/paramsofaction_REPLY_p_text ::= "\\"text\\":" jsonstring/,
+			/paramsofaction-REPLY-p-text ::= "\\"text\\":" jsonstring/,
 		);
 		expect(r.grammar).toMatch(/^jsonstring ::= /m);
 	});
@@ -672,10 +672,10 @@ describe("buildPlannerActionGrammarStrict — single-call per-action union gramm
 		]);
 		if (r === null) throw new Error("expected grammar");
 		expect(r.grammar).toMatch(
-			/paramsofaction_TASK_p_id ::= "\\"id\\":" "task-" \[0-9\]\+/,
+			/paramsofaction-TASK-p-id ::= "\\"id\\":" "task-" \[0-9\]\+/,
 		);
 		expect(r.grammar).not.toMatch(
-			/paramsofaction_TASK_p_id ::= "\\"id\\":" jsonstring/,
+			/paramsofaction-TASK-p-id ::= "\\"id\\":" jsonstring/,
 		);
 	});
 
@@ -695,7 +695,7 @@ describe("buildPlannerActionGrammarStrict — single-call per-action union gramm
 		]);
 		if (r === null) throw new Error("expected grammar");
 		expect(r.grammar).toMatch(
-			/paramsofaction_CODE_p_code ::= "\\"code\\":" \[A-Z\] \[A-Z\] \[0-9\] \[0-9\] \[0-9\] \[0-9\]/,
+			/paramsofaction-CODE-p-code ::= "\\"code\\":" \[A-Z\] \[A-Z\] \[0-9\] \[0-9\] \[0-9\] \[0-9\]/,
 		);
 	});
 
@@ -715,7 +715,7 @@ describe("buildPlannerActionGrammarStrict — single-call per-action union gramm
 		]);
 		if (r === null) throw new Error("expected grammar");
 		expect(r.grammar).toMatch(
-			/paramsofaction_WILDCARD_p_id ::= "\\"id\\":" jsonstring/,
+			/paramsofaction-WILDCARD-p-id ::= "\\"id\\":" jsonstring/,
 		);
 	});
 
@@ -735,7 +735,7 @@ describe("buildPlannerActionGrammarStrict — single-call per-action union gramm
 		]);
 		if (r === null) throw new Error("expected grammar");
 		expect(r.grammar).toMatch(
-			/paramsofaction_ALT_p_id ::= "\\"id\\":" jsonstring/,
+			/paramsofaction-ALT-p-id ::= "\\"id\\":" jsonstring/,
 		);
 	});
 
@@ -772,10 +772,10 @@ describe("buildPlannerActionGrammarStrict — single-call per-action union gramm
 		if (r === null) throw new Error("expected grammar");
 		// Property rule references the nested object rule, not jsonvalue.
 		expect(r.grammar).toMatch(
-			/paramsofaction_PAYMENT_p_paymentContext ::= "\\"paymentContext\\":" paramsofaction_PAYMENT_paymentContext_obj/,
+			/paramsofaction-PAYMENT-p-paymentContext ::= "\\"paymentContext\\":" paramsofaction-PAYMENT-paymentContext-obj/,
 		);
 		// Nested object rule exists and pins kind's enum members.
-		expect(r.grammar).toMatch(/paramsofaction_PAYMENT_paymentContext_obj ::= /);
+		expect(r.grammar).toMatch(/paramsofaction-PAYMENT-paymentContext-obj ::= /);
 		expect(r.grammar).toContain('"\\"any_payer\\""');
 		expect(r.grammar).toContain('"\\"verified_payer\\""');
 		expect(r.grammar).toContain('"\\"specific_payer\\""');
@@ -797,7 +797,7 @@ describe("buildPlannerActionGrammarStrict — single-call per-action union gramm
 		]);
 		if (r === null) throw new Error("expected grammar");
 		expect(r.grammar).toMatch(
-			/paramsofaction_BAG_p_extras ::= "\\"extras\\":" jsonvalue/,
+			/paramsofaction-BAG-p-extras ::= "\\"extras\\":" jsonvalue/,
 		);
 	});
 
@@ -827,10 +827,10 @@ describe("buildPlannerActionGrammarStrict — single-call per-action union gramm
 		if (r === null) throw new Error("expected grammar");
 		// Property rule wraps the item rule in array brackets.
 		expect(r.grammar).toMatch(
-			/paramsofaction_PAGES_p_entries ::= "\\"entries\\":" "\[" ws \( paramsofaction_PAGES_entries_item /,
+			/paramsofaction-PAGES-p-entries ::= "\\"entries\\":" "\[" ws \( paramsofaction-PAGES-entries-item /,
 		);
 		// Item rule exists and references the kind enum.
-		expect(r.grammar).toMatch(/paramsofaction_PAGES_entries_item ::= /);
+		expect(r.grammar).toMatch(/paramsofaction-PAGES-entries-item ::= /);
 		expect(r.grammar).toContain('"\\"page\\""');
 		expect(r.grammar).toContain('"\\"comment\\""');
 	});
@@ -858,10 +858,10 @@ describe("buildPlannerActionGrammarStrict — single-call per-action union gramm
 			}),
 		]);
 		if (r === null) throw new Error("expected grammar");
-		// Depths 0..3 each emit their own nested _obj rule; depth 4 stops the
+		// Depths 0..3 each emit their own nested -obj rule; depth 4 stops the
 		// recursion and the deepest object falls back to jsonvalue.
 		const objRules = (
-			r.grammar.match(/paramsofaction_DEEP_(?:[A-Za-z0-9_]+_)*next_obj ::=/g) ??
+			r.grammar.match(/paramsofaction-DEEP-(?:[A-Za-z0-9-]+-)*next-obj ::=/g) ??
 			[]
 		).length;
 		expect(objRules).toBeLessThanOrEqual(4);
@@ -891,7 +891,7 @@ describe("buildPlannerActionGrammarStrict — single-call per-action union gramm
 		// Required `a` precedes the optional-group; optional `b` is wrapped in
 		// `( "," ( ... ) )*` (zero-or-more, leading comma).
 		expect(r.grammar).toMatch(
-			/paramsofaction_MIXED ::= "\{" paramsofaction_MIXED_p_a \( "," \( paramsofaction_MIXED_p_b \) \)\* "\}"/,
+			/paramsofaction-MIXED ::= "\{" paramsofaction-MIXED-p-a \( "," \( paramsofaction-MIXED-p-b \) \)\* "\}"/,
 		);
 	});
 
@@ -950,8 +950,8 @@ describe("buildPlannerActionGrammarStrict — single-call per-action union gramm
 		// Plugin-supplied action names occasionally carry `:` or `.`.
 		const r = buildPlannerActionGrammarStrict([makeAction("plugin:foo.bar")]);
 		if (r === null) throw new Error("expected grammar");
-		expect(r.grammar).toContain("callofaction_plugin_foo_bar");
-		expect(r.grammar).not.toContain("callofaction_plugin:foo.bar");
+		expect(r.grammar).toContain("callofaction-plugin-foo-bar");
+		expect(r.grammar).not.toContain("callofaction-plugin:foo.bar");
 	});
 });
 
@@ -1073,7 +1073,7 @@ describe("buildPlannerActionGrammarStrict — realistic action set (P2-4 product
 		// Root union has one branch per action (alphabetical inside the grammar
 		// since the strict builder sorts by name for cache stability).
 		expect(r.grammar).toMatch(
-			/^root ::= callofaction_CHARACTER \| callofaction_IGNORE \| callofaction_MESSAGE \| callofaction_PAYMENT/m,
+			/^root ::= callofaction-CHARACTER \| callofaction-IGNORE \| callofaction-MESSAGE \| callofaction-PAYMENT/m,
 		);
 		// Each call rule pins the action name as a literal.
 		expect(r.grammar).toContain('"{\\"action\\":\\"MESSAGE\\""');
@@ -1121,22 +1121,22 @@ describe("buildPlannerActionGrammarStrict — realistic action set (P2-4 product
 			characterAction,
 		]);
 		if (r === null) throw new Error("expected grammar");
-		// callofaction_PAYMENT references paramsofaction_PAYMENT (not _MESSAGE
+		// callofaction-PAYMENT references paramsofaction-PAYMENT (not _MESSAGE
 		// / _CHARACTER) before the thought field.
 		const paymentCallLine = r.grammar
 			.split("\n")
-			.find((l) => l.startsWith("callofaction_PAYMENT ::="));
+			.find((l) => l.startsWith("callofaction-PAYMENT ::="));
 		expect(paymentCallLine).toBeDefined();
-		expect(paymentCallLine).toContain("paramsofaction_PAYMENT");
-		expect(paymentCallLine).not.toContain("paramsofaction_MESSAGE");
-		expect(paymentCallLine).not.toContain("paramsofaction_CHARACTER");
+		expect(paymentCallLine).toContain("paramsofaction-PAYMENT");
+		expect(paymentCallLine).not.toContain("paramsofaction-MESSAGE");
+		expect(paymentCallLine).not.toContain("paramsofaction-CHARACTER");
 
 		const messageCallLine = r.grammar
 			.split("\n")
-			.find((l) => l.startsWith("callofaction_MESSAGE ::="));
+			.find((l) => l.startsWith("callofaction-MESSAGE ::="));
 		expect(messageCallLine).toBeDefined();
-		expect(messageCallLine).toContain("paramsofaction_MESSAGE");
-		expect(messageCallLine).not.toContain("paramsofaction_PAYMENT");
+		expect(messageCallLine).toContain("paramsofaction-MESSAGE");
+		expect(messageCallLine).not.toContain("paramsofaction-PAYMENT");
 	});
 
 	it("returns the same actionSchemas map as the loose grammar would", () => {
@@ -1425,7 +1425,7 @@ describe("buildBoundedNumberRule — integer and float range constraints", () =>
 		if (!result) return;
 		// The grammar should contain alternation with the bounded values.
 		// Check that the bounded rule is present and references both 0 and 5.
-		expect(result.grammar).toContain("_count_bounded");
+		expect(result.grammar).toContain("-count-bounded");
 		expect(result.grammar).toContain('"\\"0\\""');
 		expect(result.grammar).toContain('"\\"5\\""');
 	});
@@ -1446,7 +1446,7 @@ describe("buildBoundedNumberRule — integer and float range constraints", () =>
 		expect(result).not.toBeNull();
 		if (!result) return;
 		// For 0-100 (101 values), still under the 200 threshold, so expect direct alternation.
-		expect(result.grammar).toContain("_count_bounded");
+		expect(result.grammar).toContain("-count-bounded");
 		// Should have the edge values in JSON-encoded GBNF format.
 		expect(result.grammar).toContain('"\\"0\\""');
 		expect(result.grammar).toContain('"\\"100\\""');
@@ -1493,9 +1493,9 @@ describe("buildBoundedNumberRule — integer and float range constraints", () =>
 		if (!result) return;
 		// Should reference the shared jsonnumber rule, not emit a bounded rule.
 		expect(result.grammar).toContain("jsonnumber");
-		// Should not emit a _bounded rule for this parameter.
+		// Should not emit a -bounded rule for this parameter.
 		const lines = result.grammar.split("\n");
-		const boundedLines = lines.filter((l) => l.includes("_value_bounded"));
+		const boundedLines = lines.filter((l) => l.includes("-value-bounded"));
 		expect(boundedLines.length).toBe(0);
 	});
 
@@ -1557,7 +1557,7 @@ describe("buildBoundedNumberRule — boundary, single-value, and degenerate rang
 		// max - min = 199 (just under the 200 threshold) → bounded rule emitted.
 		const boundedRule = result.grammar
 			.split("\n")
-			.find((l) => l.includes("_count_bounded ::="));
+			.find((l) => l.includes("-count-bounded ::="));
 		expect(boundedRule).toBeDefined();
 		// 200 alternatives separated by " | "
 		const alternatives = (boundedRule ?? "").split(" | ");
@@ -1569,9 +1569,9 @@ describe("buildBoundedNumberRule — boundary, single-value, and degenerate rang
 		// The parameter rule references the bounded rule, not the unbounded jsonnumber.
 		const paramRule = result.grammar
 			.split("\n")
-			.find((l) => l.includes("_p_count ::="));
+			.find((l) => l.includes("-p-count ::="));
 		expect(paramRule).toBeDefined();
-		expect(paramRule).toContain("_count_bounded");
+		expect(paramRule).toContain("-count-bounded");
 		expect(paramRule).not.toContain("jsonnumber");
 	});
 
@@ -1592,10 +1592,10 @@ describe("buildBoundedNumberRule — boundary, single-value, and degenerate rang
 		if (!result) return;
 		// No bounded rule should be emitted at all — the parameter resolves
 		// straight to the shared unbounded jsonnumber.
-		expect(result.grammar).not.toContain("_count_bounded");
+		expect(result.grammar).not.toContain("-count-bounded");
 		const paramRule = result.grammar
 			.split("\n")
-			.find((l) => l.includes("_p_count ::="));
+			.find((l) => l.includes("-p-count ::="));
 		expect(paramRule).toBeDefined();
 		// The parameter line is exactly `"\"count\":" jsonnumber` — i.e. the
 		// value part is just the shared rule, with no extra references.
@@ -1619,11 +1619,11 @@ describe("buildBoundedNumberRule — boundary, single-value, and degenerate rang
 		if (!result) return;
 		// Float ranges never emit a bounded rule — the value part references
 		// jsonnumber directly. Server-side validates the actual numeric bounds.
-		expect(result.grammar).not.toContain("_ratio_bounded");
+		expect(result.grammar).not.toContain("-ratio-bounded");
 		expect(result.grammar).toContain("jsonnumber");
 		const paramRule = result.grammar
 			.split("\n")
-			.find((l) => l.includes("_p_ratio ::="));
+			.find((l) => l.includes("-p-ratio ::="));
 		expect(paramRule).toBeDefined();
 		expect(paramRule).toMatch(/::= "\\"ratio\\":" jsonnumber$/);
 	});
@@ -1645,7 +1645,7 @@ describe("buildBoundedNumberRule — boundary, single-value, and degenerate rang
 		if (!result) return;
 		const boundedRule = result.grammar
 			.split("\n")
-			.find((l) => l.includes("_delta_bounded ::="));
+			.find((l) => l.includes("-delta-bounded ::="));
 		expect(boundedRule).toBeDefined();
 		const alternatives = (boundedRule ?? "").split(" | ");
 		// 11 values: -5, -4, -3, -2, -1, 0, 1, 2, 3, 4, 5
@@ -1672,10 +1672,10 @@ describe("buildBoundedNumberRule — boundary, single-value, and degenerate rang
 		if (!result) return;
 		const boundedRule = result.grammar
 			.split("\n")
-			.find((l) => l.includes("_pin_bounded ::="));
+			.find((l) => l.includes("-pin-bounded ::="));
 		expect(boundedRule).toBeDefined();
 		// Exactly one alternative, the literal `"7"` — no alternation pipe.
-		expect(boundedRule).toBe('paramsofaction_FIXED7_pin_bounded ::= "\\"7\\""');
+		expect(boundedRule).toBe('paramsofaction-FIXED7-pin-bounded ::= "\\"7\\""');
 		expect(boundedRule).not.toContain(" | ");
 	});
 
@@ -1698,10 +1698,10 @@ describe("buildBoundedNumberRule — boundary, single-value, and degenerate rang
 		// falls back to the shared `jsonnumber` rule (same shape as the large-
 		// range and float cases) instead of emitting an empty rule body that
 		// would produce malformed GBNF.
-		expect(result.grammar).not.toContain("_bad_bounded");
+		expect(result.grammar).not.toContain("-bad-bounded");
 		const paramRule = result.grammar
 			.split("\n")
-			.find((l) => l.includes("_p_bad ::="));
+			.find((l) => l.includes("-p-bad ::="));
 		expect(paramRule).toBeDefined();
 		expect(paramRule).toMatch(/::= "\\"bad\\":" jsonnumber$/);
 	});

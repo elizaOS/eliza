@@ -29,7 +29,7 @@ msgid ""
 msgstr ""
 "Project-Id-Version: Tor Project\n"
 "Report-Msgid-Bugs-To: \n"
-"POT-Creation-Date: 2026-04-22 08:04+0200\n"
+"POT-Creation-Date: 2026-05-16 16:43+0000\n"
 "PO-Revision-Date: 2026-04-14 17:09+0000\n"
 "Last-Translator: Arif Budiman <arifpedia@gmail.com>\n"
 "Language-Team: Indonesian <https://hosted.weblate.org/projects/tor/tails-gui/"
@@ -115,8 +115,8 @@ msgstr ""
 "Penyimpanan Tetap dan mengaktifkan fitur <b>Perangkat Lunak Tambahan</b>."
 
 #: config/chroot_local-includes/usr/local/lib/additional-software/asp-handle-package-changes:103
-#: ../config/chroot_local-includes/usr/share/tails/greeter/main.ui.in:312
-#: ../config/chroot_local-includes/usr/share/tails/greeter/main.ui.in:331
+#: ../config/chroot_local-includes/usr/share/tails/greeter/main.ui.in:325
+#: ../config/chroot_local-includes/usr/share/tails/greeter/main.ui.in:344
 msgid "Create Persistent Storage"
 msgstr "Membuat Penyimpanan Persisten"
 
@@ -208,22 +208,24 @@ msgstr "Perangkat lunak tambahan berhasil terpasang"
 
 #: config/chroot_local-includes/usr/share/tails/additional-software/configuration-window.ui:8
 #: ../config/chroot_local-includes/usr/share/applications/org.boum.tails.AdditionalSoftware.desktop.in.h:1
-#: ../config/chroot_local-includes/usr/share/tails/persistent-storage/features_view.ui.in:648
+#: ../config/chroot_local-includes/usr/share/tails/persistent-storage/features_view.ui.in:678
 msgid "Additional Software"
 msgstr "Perangkat Lunak Tambahan"
 
 #: config/chroot_local-includes/usr/share/tails/additional-software/configuration-window.ui:51
+#, fuzzy
 msgid ""
 "You can install additional software automatically from your persistent "
-"storage when starting Tails."
+"storage when starting elizaOS."
 msgstr ""
 "Anda dapat memasang perangkat lunak tambahan secara otomatis dari tempat "
 "penyimpanan tetap saat memulai Tails."
 
 #: config/chroot_local-includes/usr/share/tails/additional-software/configuration-window.ui:77
+#, fuzzy
 msgid ""
 "The following software is installed automatically from your persistent "
-"storage when starting Tails."
+"storage when starting elizaOS."
 msgstr ""
 "Perangkat lunak ini terpasang secara otomatis dari tempat penyimpanan tetap "
 "saat memulai Tails."
@@ -244,8 +246,9 @@ msgid "_Create persistent storage"
 msgstr "_Buat tempat penyimpanan tetap"
 
 #: config/chroot_local-includes/usr/local/bin/electrum:62
+#, fuzzy
 msgid ""
-"Tails needs donations to keep everybody free and safe online.\n"
+"elizaOS needs donations to keep everybody free and safe online.\n"
 "\n"
 "Every bit helps in our fight against surveillance and censorship!\n"
 "\n"
@@ -258,8 +261,9 @@ msgstr ""
 "\n"
 
 #: config/chroot_local-includes/usr/local/bin/electrum:72
+#, fuzzy
 msgid ""
-"Tails protects your wallet.\n"
+"elizaOS protects your wallet.\n"
 "\n"
 "Help us keep your bitcoins safe!\n"
 "\n"
@@ -290,8 +294,9 @@ msgid "Persistence is disabled for Electrum"
 msgstr "Persistensi dinonfungsikan untuk Electrum"
 
 #: config/chroot_local-includes/usr/local/bin/electrum:193
+#, fuzzy
 msgid ""
-"When you reboot Tails, all of Electrum's data will be lost, including your "
+"When you reboot elizaOS, all of Electrum's data will be lost, including your "
 "Bitcoin wallet.\n"
 "It is strongly recommended to only run Electrum when its persistence feature "
 "is activated."
@@ -783,8 +788,10 @@ msgid "Persistent Storage Still Locked"
 msgstr "Penyimpanan Persisten Masih Terkunci"
 
 #: config/chroot_local-includes/usr/lib/python3/dist-packages/tailsgreeter/ui/main_window.py:183
+#, fuzzy
 msgid ""
-"Do you really want to start Tails without unlocking your Persistent Storage?"
+"Do you really want to start elizaOS without unlocking your Persistent "
+"Storage?"
 msgstr ""
 "Anda yakin hendak memulai Tails tanpa membuka Penyimpanan Persisten Anda?"
 
@@ -797,11 +804,12 @@ msgid "Language and Keyboard layout"
 msgstr "Bahasa dan tata letak keyboard"
 
 #: config/chroot_local-includes/usr/lib/python3/dist-packages/tailsgreeter/ui/main_window.py:195
+#, fuzzy
 msgid ""
-"Your language and keyboard layout will be saved unencrypted on your Tails "
+"Your language and keyboard layout will be saved unencrypted on your elizaOS "
 "USB stick and applied automatically in the future.\n"
 "\n"
-"Someone who finds your Tails USB stick can see your language and keyboard "
+"Someone who finds your elizaOS USB stick can see your language and keyboard "
 "layout."
 msgstr ""
 "Bahasa dan tata letak papan ketik Anda akan disimpan tanpa enkripsi pada "
@@ -844,7 +852,9 @@ msgid "Failed to repair the file system of your Persistent Storage."
 msgstr "Gagal memperbaiki sistem berkas Penyimpanan Persistent Anda."
 
 #: config/chroot_local-includes/usr/lib/python3/dist-packages/tailsgreeter/ui/main_window.py:544
-msgid "Start Tails to send an error report and learn how to recover your data."
+#, fuzzy
+msgid ""
+"Start elizaOS to send an error report and learn how to recover your data."
 msgstr ""
 "Mulailah Tails untuk mengirim laporan kesalahan dan belajar bagaimana "
 "memulihkan data Anda."
@@ -867,8 +877,9 @@ msgid "Close"
 msgstr "Tutup"
 
 #: config/chroot_local-includes/usr/lib/python3/dist-packages/tailsgreeter/ui/main_window.py:580
+#, fuzzy
 msgid ""
-"You aborted the repair of the file system. You can either start Tails "
+"You aborted the repair of the file system. You can either start elizaOS "
 "without Persistent Storage or restart the computer to try repairing the file "
 "system again."
 msgstr ""
@@ -877,15 +888,18 @@ msgstr ""
 "sistem berkas lagi."
 
 #: config/chroot_local-includes/usr/lib/python3/dist-packages/tailsgreeter/ui/main_window.py:866
-msgid "Start Tails and open the Persistent Storage settings to find out more."
+#, fuzzy
+msgid ""
+"Start elizaOS and open the Persistent Storage settings to find out more."
 msgstr ""
 "Mulai Tails dan buka pengaturan Penyimpanan Persisten untuk mengetahui lebih "
 "lanjut."
 
 #: config/chroot_local-includes/usr/lib/python3/dist-packages/tailsgreeter/ui/main_window.py:896
+#, fuzzy
 msgid ""
 "Your Persistent Storage is unlocked. Its content will be available until you "
-"shut down Tails."
+"shut down elizaOS."
 msgstr ""
 "Penyimpanan Menetap Anda tidak terkunci. Memulai kembali Tails untuk "
 "menguncinya lagi."
@@ -903,7 +917,8 @@ msgstr ""
 "stik USB Anda kemungkinan mengalami kegagalan."
 
 #: config/chroot_local-includes/usr/lib/python3/dist-packages/tailsgreeter/ui/main_window.py:924
-msgid "Start Tails to learn how to recover your data."
+#, fuzzy
+msgid "Start elizaOS to learn how to recover your data."
 msgstr "Mulai Tails untuk mempelajari cara memulihkan data Anda."
 
 #: config/chroot_local-includes/usr/lib/python3/dist-packages/tailsgreeter/ui/main_window.py:935
@@ -911,10 +926,11 @@ msgid "File System Errors"
 msgstr "Kesalahan Sistem Berkas"
 
 #: config/chroot_local-includes/usr/lib/python3/dist-packages/tailsgreeter/ui/main_window.py:937
+#, fuzzy
 msgid ""
 "Errors were detected in the file system of your Persistent Storage.\n"
 "\n"
-"Tails can try to fix these errors, but this might erase some of your data "
+"elizaOS can try to fix these errors, but this might erase some of your data "
 "and take a long time.\n"
 "\n"
 "If you already have an up-to-date backup of your Persistent Storage, we "
@@ -943,8 +959,9 @@ msgid "Create Partition Image"
 msgstr "Buat Citra Partisi"
 
 #: config/chroot_local-includes/usr/lib/python3/dist-packages/tailsgreeter/ui/main_window.py:958
+#, fuzzy
 msgid ""
-"Start Tails to learn how to create a partition image of your Persistent "
+"Start elizaOS to learn how to create a partition image of your Persistent "
 "Storage."
 msgstr ""
 "Mulai Tails untuk mempelajari cara membuat citra partisi dari Penyimpanan "
@@ -956,24 +973,27 @@ msgstr ""
 "Gagal membuka kunci Penyimpanan Persisten karena kesalahan sistem berkas."
 
 #: config/chroot_local-includes/usr/lib/python3/dist-packages/tailsgreeter/ui/main_window.py:976
+#, fuzzy
 msgid ""
-"Failed to upgrade the Persistent Storage. Please start Tails and send an "
+"Failed to upgrade the Persistent Storage. Please start elizaOS and send an "
 "error report."
 msgstr ""
 "Gagal meningkatkan Penyimpanan Persisten. Silakan mulai Tails dan kirim "
 "laporan kesalahan."
 
 #: config/chroot_local-includes/usr/lib/python3/dist-packages/tailsgreeter/ui/main_window.py:983
+#, fuzzy
 msgid ""
-"Failed to unlock the Persistent Storage. Please start Tails and send an "
+"Failed to unlock the Persistent Storage. Please start elizaOS and send an "
 "error report."
 msgstr ""
 "Gagal membuka kunci Penyimpanan Persisten. Silakan mulai Tails dan kirim "
 "laporan kesalahan."
 
 #: config/chroot_local-includes/usr/lib/python3/dist-packages/tailsgreeter/ui/main_window.py:991
+#, fuzzy
 msgid ""
-"Failed to activate the Persistent Storage. Please start Tails and send an "
+"Failed to activate the Persistent Storage. Please start elizaOS and send an "
 "error report."
 msgstr ""
 "Gagal mengaktifkan Penyimpanan Persisten. Silakan mulai Tails dan kirim "
@@ -1060,12 +1080,13 @@ msgid "Unable to copy %(infile)s to %(outfile)s: %(message)s"
 msgstr "Tidak bisa menyalin %(infile)s ke %(outfile)s: %(message)s"
 
 #: config/chroot_local-includes/usr/lib/python3/dist-packages/tails_installer/creator.py:589
-msgid "Removing existing Tails system"
+#, fuzzy
+msgid "Removing existing elizaOS system"
 msgstr "Mencabut sistem Tails yang sudah ada"
 
 #: config/chroot_local-includes/usr/lib/python3/dist-packages/tails_installer/creator.py:600
-#, python-format
-msgid "Unable to remove file from previous Tails system: %(message)s"
+#, fuzzy, python-format
+msgid "Unable to remove file from previous elizaOS system: %(message)s"
 msgstr "Tidak dapat menghapus berkas dari sistem Tails sebelumnya: %(message)s"
 
 #: config/chroot_local-includes/usr/lib/python3/dist-packages/tails_installer/creator.py:610
@@ -1074,8 +1095,8 @@ msgid "Unable to chmod %(file)s: %(message)s"
 msgstr "Tidak dapat melakukan chmod pada %(file)s: %(message)s"
 
 #: config/chroot_local-includes/usr/lib/python3/dist-packages/tails_installer/creator.py:618
-#, python-format
-msgid "Unable to remove directory from previous Tails system: %(message)s"
+#, fuzzy, python-format
+msgid "Unable to remove directory from previous elizaOS system: %(message)s"
 msgstr ""
 "Tidak dapat menghapus direktori dari sistem Tails sebelumnya: %(message)s"
 
@@ -1201,9 +1222,11 @@ msgid "Synchronizing data on disk..."
 msgstr "Sinkronisasi data pada disk..."
 
 #: config/chroot_local-includes/usr/lib/python3/dist-packages/tails_installer/gui.py:157
+#, fuzzy
 msgid ""
 "Unable to clone because the target USB stick is being used. Close all open "
-"files on the target USB stick, restart Tails Cloner, and try to clone again."
+"files on the target USB stick, restart elizaOS USB Cloner, and try to clone "
+"again."
 msgstr ""
 "Tidak dapat mengkloning karena stik USB tujuan sedang digunakan. Tutup semua "
 "berkas yang terbuka pada stik USB tujuan, mulai ulang Tails Cloner, lalu "
@@ -1223,22 +1246,25 @@ msgid "Cloning complete! (%s)"
 msgstr "Pemasangan sudah tuntas! (%s)"
 
 #: config/chroot_local-includes/usr/lib/python3/dist-packages/tails_installer/gui.py:239
-msgid "Tails installation failed!"
+#, fuzzy
+msgid "elizaOS installation failed!"
 msgstr "Instalasi Tails gagal!"
 
 #: config/chroot_local-includes/usr/lib/python3/dist-packages/tails_installer/gui.py:341
 #: ../config/chroot_local-includes/usr/share/applications/tails-installer.desktop.in.h:1
-msgid "Tails Cloner"
-msgstr "Installer untuk Tails"
+msgid "elizaOS USB Cloner"
+msgstr ""
 
 #: config/chroot_local-includes/usr/lib/python3/dist-packages/tails_installer/gui.py:393
 #: ../config/chroot_local-includes/usr/share/tails-installer/tails-installer.ui.in:164
-msgid "Clone the current Tails"
+#, fuzzy
+msgid "Clone the current elizaOS"
 msgstr "Kloning Tails saat ini"
 
 #: config/chroot_local-includes/usr/lib/python3/dist-packages/tails_installer/gui.py:401
 #: ../config/chroot_local-includes/usr/share/tails-installer/tails-installer.ui.in:200
-msgid "Use a downloaded Tails ISO image"
+#, fuzzy
+msgid "Use a downloaded elizaOS ISO image"
 msgstr "Gunakan gambar Tails ISO yang sudah diunduh"
 
 #: config/chroot_local-includes/usr/lib/python3/dist-packages/tails_installer/gui.py:453
@@ -1274,7 +1300,8 @@ msgid "No ISO image selected"
 msgstr "Tidak ada file ISO yang dipilih"
 
 #: config/chroot_local-includes/usr/lib/python3/dist-packages/tails_installer/gui.py:495
-msgid "Please select a Tails ISO image."
+#, fuzzy
+msgid "Please select an elizaOS ISO image."
 msgstr "Silakan pilih file ISO dari Tails."
 
 #: config/chroot_local-includes/usr/lib/python3/dist-packages/tails_installer/gui.py:546
@@ -1300,11 +1327,11 @@ msgstr ""
 "Persisten."
 
 #: config/chroot_local-includes/usr/lib/python3/dist-packages/tails_installer/gui.py:591
-#, python-format
+#, fuzzy, python-format
 msgid ""
 "The USB stick \"%(pretty_name)s\" is configured as non-removable by its "
-"manufacturer and Tails will fail to start from it. Please try installing on "
-"a different model."
+"manufacturer and elizaOS will fail to start from it. Please try installing "
+"on a different model."
 msgstr ""
 "USB flash disk %(pretty_name)sdiatur sebagai tidak dapat dicopot oleh "
 "produsennya dan Tails akan gagal jika dijalankan dengan menggunakan flash "
@@ -1317,19 +1344,19 @@ msgid "The device \"%(pretty_name)s\" is read-only."
 msgstr "Perangkat \"%(pretty_name)s\" hanya-baca."
 
 #: config/chroot_local-includes/usr/lib/python3/dist-packages/tails_installer/gui.py:608
-#, python-format
+#, fuzzy, python-format
 msgid ""
-"The device \"%(pretty_name)s\" is too small to install Tails (at least "
+"The device \"%(pretty_name)s\" is too small to install elizaOS (at least "
 "%(size)s GB is required)."
 msgstr ""
 "Device \"%(pretty_name)s\" terlalu kecil untuk menginstall Tails (minimal "
 "perlu %(size)s GB)."
 
 #: config/chroot_local-includes/usr/lib/python3/dist-packages/tails_installer/gui.py:623
-#, python-format
+#, fuzzy, python-format
 msgid ""
-"To upgrade device \"%(pretty_name)s\" from this Tails, you need to use a "
-"downloaded Tails ISO image:\n"
+"To upgrade device \"%(pretty_name)s\" from this elizaOS, you need to use a "
+"downloaded elizaOS ISO image:\n"
 "%(dl_url)s"
 msgstr ""
 "Untuk memutakhirkan perangkat \"%(pretty_name)s\" dari Tails ini, Anda harus "
@@ -1337,7 +1364,8 @@ msgstr ""
 "%(dl_url)s"
 
 #: config/chroot_local-includes/usr/lib/python3/dist-packages/tails_installer/gui.py:644
-msgid "No device suitable to install Tails could be found"
+#, fuzzy
+msgid "No device suitable to install elizaOS could be found"
 msgstr "Tidak ditemukan perangkat yang sesuai untuk memasang Tails"
 
 #: config/chroot_local-includes/usr/lib/python3/dist-packages/tails_installer/gui.py:647
@@ -1346,7 +1374,8 @@ msgid "Plug in a USB stick of at least %0.1f GB."
 msgstr "Silakan masukkan USB flash disk atau SD card sebesar minimal %0.1fGB."
 
 #: config/chroot_local-includes/usr/lib/python3/dist-packages/tails_installer/gui.py:660
-msgid "An error happened while installing Tails"
+#, fuzzy
+msgid "An error happened while installing elizaOS"
 msgstr "Terjadi kesalahan saat memasang Tails"
 
 #: config/chroot_local-includes/usr/lib/python3/dist-packages/tails_installer/gui.py:717
@@ -1421,7 +1450,8 @@ msgid "%(filename)s selected"
 msgstr "%(filename)s terpilih"
 
 #: config/chroot_local-includes/usr/lib/python3/dist-packages/tails_installer/source.py:37
-msgid "Unable to find Tails on ISO"
+#, fuzzy
+msgid "Unable to find elizaOS on ISO"
 msgstr "Tidak dapat menemukan Tails pada ISO"
 
 #: config/chroot_local-includes/usr/lib/python3/dist-packages/tails_installer/source.py:44
@@ -1540,19 +1570,22 @@ msgid "Partitioning Error"
 msgstr "Partisi dan Drive"
 
 #: config/chroot_local-includes/usr/local/lib/tails-report-disk-partitioning-errors:19
-msgid "Errors were detected in the partitioning of your Tails USB stick."
+#, fuzzy
+msgid "Errors were detected in the partitioning of your elizaOS USB stick."
 msgstr "Kesalahan terdeteksi pada partisi stik USB Tails Anda."
 
 #: config/chroot_local-includes/usr/local/lib/tails-report-disk-partitioning-errors:26
+#, fuzzy
 msgid ""
-"We recommend that you create a backup of your Tails using <i>Tails Cloner</"
-"i> to migrate to a new USB stick."
+"We recommend that you create a backup of your elizaOS using <i>elizaOS USB "
+"Cloner</i> to migrate to a new USB stick."
 msgstr ""
 "Kami menyarankan Anda membuat cadangan Tails Anda menggunakan <i>Tails "
 "Cloner</i> untuk bermigrasi ke stik USB baru."
 
 #: config/chroot_local-includes/usr/local/lib/tails-report-disk-partitioning-errors:33
-msgid "Open Tails Cloner"
+#, fuzzy
+msgid "Open elizaOS USB Cloner"
 msgstr "Buka Tails Cloner"
 
 #: config/chroot_local-includes/usr/local/lib/tails-report-disk-partitioning-errors:42
@@ -1560,8 +1593,9 @@ msgid "Creation of Persistent Storage has been disabled."
 msgstr "Pembuatan Penyimpanan Persisten telah dinonaktifkan."
 
 #: config/chroot_local-includes/usr/local/lib/tails-report-disk-partitioning-errors:44
+#, fuzzy
 msgid ""
-"We recommend that you reinstall Tails from scratch. If the error persists, "
+"We recommend that you reinstall elizaOS from scratch. If the error persists, "
 "reinstall on a new USB stick."
 msgstr ""
 "Kami menyarankan Anda memasang ulang Tails dari awal. Jika kesalahan tetap "
@@ -1610,28 +1644,13 @@ msgstr "Mulai ulang"
 msgid "Power Off"
 msgstr "Matikan"
 
-#: config/chroot_local-includes/usr/local/bin/tails-about:27
-#: ../config/chroot_local-includes/usr/share/desktop-directories/Tails.directory.in.h:1
-msgid "Tails"
-msgstr "Tails"
-
-#: config/chroot_local-includes/usr/local/bin/tails-about:30
-#: ../config/chroot_local-includes/usr/share/applications/tails-about.desktop.in.h:1
-msgid "About Tails"
-msgstr "Tentang Tails"
-
-#: config/chroot_local-includes/usr/local/bin/tails-about:34
+#: config/chroot_local-includes/usr/local/bin/tails-about:33
 msgid "Check for Upgrades"
 msgstr "Galat saat memeriksa pemutakhiran"
 
-#: config/chroot_local-includes/usr/local/bin/tails-about:57
+#: config/chroot_local-includes/usr/local/bin/tails-about:56
 msgid "UNRELEASED"
 msgstr "BELUM DIRILIS"
-
-#: config/chroot_local-includes/usr/local/bin/tails-about:64
-#, python-format
-msgid "Built from %s"
-msgstr "Dibangun dari %s"
 
 #: config/chroot_local-includes/usr/local/bin/tails-additional-software-config:114
 #, python-brace-format
@@ -1669,8 +1688,9 @@ msgstr ""
 "href=\"org.gnome.Terminal.desktop\">APT pada baris perintah</a>."
 
 #: config/chroot_local-includes/usr/local/bin/tails-additional-software-config:227
+#, fuzzy
 msgid ""
-"To do so, unlock your Persistent Storage when starting Tails and install "
+"To do so, unlock your Persistent Storage when starting elizaOS and install "
 "some software using <a href=\"synaptic.desktop\">Synaptic Package Manager</"
 "a> or <a href=\"org.gnome.Terminal.desktop\">APT on the command line</a>."
 msgstr ""
@@ -1690,7 +1710,9 @@ msgstr ""
 "atau <a href=\"org.gnome.Terminal.desktop\">APT di baris perintah</a>."
 
 #: config/chroot_local-includes/usr/local/bin/tails-additional-software-config:258
-msgid "To do so, install Tails on a USB stick and create a Persistent Storage."
+#, fuzzy
+msgid ""
+"To do so, install elizaOS on a USB stick and create a Persistent Storage."
 msgstr ""
 "Untuk melakukannya, pasang Tails pada stik USB dan buat Penyimpanan "
 "Persisten."
@@ -1862,14 +1884,14 @@ msgid ""
 msgstr ""
 
 #: config/chroot_local-includes/usr/local/bin/tails-upgrade-frontend-wrapper:37
-#, python-brace-format
+#, fuzzy, python-brace-format
 msgid ""
 "<b>Not enough memory available to check for upgrades.</b>\n"
 "\n"
-"Make sure this system satisfies the requirements for running Tails.\n"
+"Make sure this system satisfies the requirements for running elizaOS.\n"
 "See file:///usr/share/doc/tails/website/doc/about/requirements.en.html\n"
 "\n"
-"Try to restart Tails to check for upgrades again.\n"
+"Try to restart elizaOS to check for upgrades again.\n"
 "\n"
 "Or do a manual upgrade.\n"
 "See {manual_upgrade_url}"
@@ -1941,9 +1963,10 @@ msgstr ""
 "Penyimpanan Persisten Anda</a>."
 
 #: config/chroot_local-includes/usr/lib/python3/dist-packages/tca/ui/main_window.py:418
+#, fuzzy
 msgid ""
 "To save your bridge, <a href=\"doc/persistent_storage\">create a Persistent "
-"Storage</a> on your Tails USB stick."
+"Storage</a> on your elizaOS USB stick."
 msgstr ""
 "Untuk menyimpan bridge Anda, <a href=\"doc/first_steps/persistence\">Buat "
 "Penyimpanan Persistent</a> pada stik USB Tails Anda."
@@ -2334,10 +2357,11 @@ msgid "_Send Error Report"
 msgstr "_Kirim Laporan Kesalahan"
 
 #: config/chroot_local-includes/usr/lib/python3/dist-packages/tps_frontend/window.py:153
+#, fuzzy
 msgid ""
 "Impossible to delete the Persistent Storage while it is unlocked.\n"
 "\n"
-"To delete the Persistent Storage, restart Tails without unlocking the "
+"To delete the Persistent Storage, restart elizaOS without unlocking the "
 "Persistent Storage and open the Persistent Storage settings again."
 msgstr ""
 "Tidak mungkin menghapus Penyimpanan Persisten saat sedang tidak terkunci.\n"
@@ -2346,12 +2370,13 @@ msgstr ""
 "Penyimpanan Persisten lalu buka pengaturan Penyimpanan Persisten lagi."
 
 #: config/chroot_local-includes/usr/lib/python3/dist-packages/tps_frontend/window.py:167
+#, fuzzy
 msgid ""
 "Impossible to delete the Persistent Storage because the USB stick is read-"
 "only.\n"
 "\n"
 "To delete the Persistent Storage, turn off the read-only protection of the "
-"USB stick, restart Tails without unlocking the Persistent Storage and open "
+"USB stick, restart elizaOS without unlocking the Persistent Storage and open "
 "the Persistent Storage settings again."
 msgstr ""
 "Tidak mungkin menghapus Penyimpanan Persisten karena stik USB hanya-baca.\n"
@@ -2610,8 +2635,9 @@ msgid "The Unsafe Browser was disabled in the Welcome Screen.\\n\\n"
 msgstr "Peramban Tidak Aman dinonaktifkan di Layar Sambutan.\\n\\n"
 
 #: config/chroot_local-includes/usr/local/sbin/unsafe-browser:50
+#, fuzzy
 msgid ""
-"To use the Unsafe Browser, restart Tails and make sure that the Unsafe "
+"To use the Unsafe Browser, restart elizaOS and make sure that the Unsafe "
 "Browser is enabled in the additional settings of the Welcome Screen."
 msgstr ""
 "Untuk menggunakan Peramban Tidak Aman, mulai ulang Tails dan pastikan "
@@ -2619,7 +2645,8 @@ msgstr ""
 "Datang."
 
 #: config/chroot_local-includes/usr/local/sbin/unsafe-browser:52
-msgid "To use the Unsafe Browser, restart Tails."
+#, fuzzy
+msgid "To use the Unsafe Browser, restart elizaOS."
 msgstr "Untuk menggunakan Peramban Tidak Aman, mulai ulang Tails."
 
 #: config/chroot_local-includes/usr/local/sbin/unsafe-browser:55
@@ -2627,9 +2654,10 @@ msgid "_Restart"
 msgstr "_Mulai Ulang"
 
 #: config/chroot_local-includes/usr/local/sbin/unsafe-browser:57
+#, fuzzy
 msgid ""
-"Do you really want to restart Tails now?\\n\\nAll your current work will be "
-"lost."
+"Do you really want to restart elizaOS now?\\n\\nAll your current work will "
+"be lost."
 msgstr ""
 "Anda yakin hendak memulai ulang Tails sekarang?\\n\\nSemua pekerjaan Anda "
 "saat ini akan hilang."
@@ -2763,10 +2791,11 @@ msgid "Invalid contact OpenPGP public key block"
 msgstr "Blok kunci umum OpenPGP kontak tidak benar"
 
 #: config/chroot_local-includes/usr/local/bin/tca:11
+#, fuzzy
 msgid ""
 "You turned on Offline Mode in the Welcome Screen.\n"
 "It is impossible to connect to Tor in Offline Mode.\n"
-"To connect to Tor and the Internet, restart Tails without Offline Mode."
+"To connect to Tor and the Internet, restart elizaOS without Offline Mode."
 msgstr ""
 "Anda menyalakan Mode Offline di Layar Selamat Datang.\n"
 "Tidak mungkin terhubung ke Tor dalam Mode Offline.\n"
@@ -2804,19 +2833,26 @@ msgid "configuration;saved"
 msgstr "konfigurasi;disimpan"
 
 #: ../config/chroot_local-includes/usr/share/applications/tails-documentation.desktop.in.h:1
-msgid "Tails Documentation"
-msgstr "Dokumentasi Tails"
+#, fuzzy
+msgid "elizaOS Documentation"
+msgstr "Dokumentasi"
 
 #: ../config/chroot_local-includes/usr/share/applications/tails-documentation.desktop.in.h:2
-msgid "Learn how to use Tails"
+#, fuzzy
+msgid "Learn how to use elizaOS"
 msgstr "Pelajari bagaimana menggunakan Tails"
 
 #: ../config/chroot_local-includes/usr/share/applications/tails-documentation.desktop.in.h:3
 msgid "learn"
 msgstr "pelajari"
 
+#: ../config/chroot_local-includes/usr/share/applications/tails-about.desktop.in.h:1
+msgid "About elizaOS"
+msgstr ""
+
 #: ../config/chroot_local-includes/usr/share/applications/tails-about.desktop.in.h:2
-msgid "Learn more about Tails"
+#, fuzzy
+msgid "Learn more about elizaOS"
 msgstr "Pelajari lebih lanjut tentang Tails"
 
 #: ../config/chroot_local-includes/usr/share/applications/tails-backup.desktop.in.h:1
@@ -2824,8 +2860,9 @@ msgid "Back Up Persistent Storage"
 msgstr "Membuat Penyimpanan Persisten"
 
 #: ../config/chroot_local-includes/usr/share/applications/tails-backup.desktop.in.h:2
+#, fuzzy
 msgid ""
-"Make a backup of the Tails Persistent Storage to another Tails USB stick"
+"Make a backup of the elizaOS Persistent Storage to another elizaOS USB stick"
 msgstr "Buat cadangan Penyimpanan Persisten Tails ke stik USB Tails lainnya"
 
 #: ../config/chroot_local-includes/usr/share/applications/tails-backup.desktop.in.h:3
@@ -2833,15 +2870,18 @@ msgid "backup"
 msgstr "cadangan"
 
 #: ../config/chroot_local-includes/usr/share/applications/tails-installer.desktop.in.h:2
-msgid "Install, clone, upgrade Tails"
+#, fuzzy
+msgid "Install, clone, upgrade elizaOS"
 msgstr "Pasang, kloning, tingkatkan Tails"
 
 #: ../config/chroot_local-includes/usr/share/applications/tails-installer.desktop.in.h:3
-msgid "install;clone;upgrade;manual"
+#, fuzzy
+msgid "elizaOS;install;clone;upgrade;USB;"
 msgstr "Pasang, klon, dan upgrade Tails"
 
 #: ../config/chroot_local-includes/usr/share/applications/tca.desktop.in.h:2
-msgid "Connect Tails to the Tor network"
+#, fuzzy
+msgid "Connect elizaOS to the Tor network"
 msgstr "Hubungkan Tails ke jaringan Tor"
 
 #: ../config/chroot_local-includes/usr/share/applications/tca.desktop.in.h:3
@@ -2881,9 +2921,10 @@ msgid "mount;encrypted;container;truecrypt"
 msgstr "kait;terenkripsi;kontainer;truecrypt"
 
 #: ../config/chroot_local-includes/usr/share/applications/org.boum.tails.AdditionalSoftware.desktop.in.h:2
+#, fuzzy
 msgid ""
 "Configure the additional software installed from your Persistent Storage "
-"when starting Tails"
+"when starting elizaOS"
 msgstr ""
 "Konfigurasikan perangkat lunak tambahan yang dipasang dari Penyimpanan "
 "Persisten Anda saat memulai Tails"
@@ -2893,16 +2934,21 @@ msgid "persistent;storage;package;install"
 msgstr "persisten;penyimpanan;paket;pasang"
 
 #: ../config/chroot_local-includes/usr/share/applications/whisperback.desktop.in.h:1
-msgid "WhisperBack Error Reporting"
-msgstr "Pelaporan Kesalahan WhisperBack"
+msgid "Send Feedback"
+msgstr ""
 
 #: ../config/chroot_local-includes/usr/share/applications/whisperback.desktop.in.h:2
-msgid "Send feedback via encrypted e-mail"
-msgstr "kirim umpan balik via surel terenkripsi"
+msgid "Send encrypted feedback to elizaOS support"
+msgstr ""
 
 #: ../config/chroot_local-includes/usr/share/applications/whisperback.desktop.in.h:3
-msgid "feedback;bug;report;tails;error;"
+#, fuzzy
+msgid "feedback;support;report;elizaos;error;"
 msgstr "masukan;bug;laporan;tails;kesalahan;"
+
+#: ../config/chroot_local-includes/usr/share/desktop-directories/Tails.directory.in.h:1
+msgid "Tails"
+msgstr "Tails"
 
 #: ../config/chroot_local-includes/usr/share/desktop-directories/Tails.directory.in.h:2
 msgid "Tails specific tools"
@@ -2922,7 +2968,7 @@ msgstr ""
 
 #: ../config/chroot_local-includes/usr/share/tails/greeter/additional_settings.ui.in:18
 #: ../config/chroot_local-includes/usr/share/tails/greeter/additional_settings.ui.in:56
-#: ../config/chroot_local-includes/usr/share/tails/greeter/main.ui.in:869
+#: ../config/chroot_local-includes/usr/share/tails/greeter/main.ui.in:882
 msgid "Administration Password"
 msgstr "Password Admin"
 
@@ -2948,7 +2994,7 @@ msgid "Disable"
 msgstr "Matikan"
 
 #: ../config/chroot_local-includes/usr/share/tails/greeter/additional_settings.ui.in:186
-#: ../config/chroot_local-includes/usr/share/tails/greeter/main.ui.in:873
+#: ../config/chroot_local-includes/usr/share/tails/greeter/main.ui.in:886
 msgid "MAC Address Anonymization"
 msgstr "Pengaturan anonim alamat MAC"
 
@@ -3019,90 +3065,96 @@ msgstr "Nonaktifkan Peramban Tidak Aman"
 msgid "Settings were loaded from the Persistent Storage."
 msgstr "Pengaturan dimuat dari Penyimpanan Persisten."
 
-#: ../config/chroot_local-includes/usr/share/tails/greeter/main.ui.in:98
-msgid "Welcome to Tails!"
+#: ../config/chroot_local-includes/usr/share/tails/greeter/main.ui.in:111
+#, fuzzy
+msgid "Welcome to elizaOS!"
 msgstr "Selamat datang di Tails!"
 
-#: ../config/chroot_local-includes/usr/share/tails/greeter/main.ui.in:131
+#: ../config/chroot_local-includes/usr/share/tails/greeter/main.ui.in:144
 msgid "Language and Formats"
 msgstr "Bahasa dan Format"
 
-#: ../config/chroot_local-includes/usr/share/tails/greeter/main.ui.in:167
+#: ../config/chroot_local-includes/usr/share/tails/greeter/main.ui.in:180
 msgid "Default Settings"
 msgstr "Pengaturan Default"
 
-#: ../config/chroot_local-includes/usr/share/tails/greeter/main.ui.in:217
-#: ../config/chroot_local-includes/usr/share/tails/greeter/main.ui.in:238
+#: ../config/chroot_local-includes/usr/share/tails/greeter/main.ui.in:230
+#: ../config/chroot_local-includes/usr/share/tails/greeter/main.ui.in:251
 msgid "Save"
 msgstr "Simpan"
 
-#: ../config/chroot_local-includes/usr/share/tails/greeter/main.ui.in:267
-#: ../config/chroot_local-includes/usr/share/tails/greeter/main.ui.in:379
+#: ../config/chroot_local-includes/usr/share/tails/greeter/main.ui.in:280
+#: ../config/chroot_local-includes/usr/share/tails/greeter/main.ui.in:392
 msgid "_Persistent Storage"
 msgstr "_Penyimpanan Persisten"
 
-#: ../config/chroot_local-includes/usr/share/tails/greeter/main.ui.in:287
+#: ../config/chroot_local-includes/usr/share/tails/greeter/main.ui.in:300
+#, fuzzy
 msgid ""
 "You can save some of your files and configuration in an encrypted Persistent "
-"Storage on your Tails USB stick: your documents, browser bookmarks, Wi-Fi "
+"Storage on your elizaOS USB stick: your documents, browser bookmarks, Wi-Fi "
 "passwords, and so on."
 msgstr ""
 "Anda dapat menyimpan beberapa berkas dan konfigurasi Anda dalam Penyimpanan "
 "Persisten terenkripsi pada stik USB Tails Anda: dokumen Anda, markah "
 "peramban, kata sandi Wi-Fi, dan sebagainya."
 
-#: ../config/chroot_local-includes/usr/share/tails/greeter/main.ui.in:314
-msgid "Create and configure a Persistent Storage after starting Tails"
+#: ../config/chroot_local-includes/usr/share/tails/greeter/main.ui.in:327
+#, fuzzy
+msgid "Create and configure a Persistent Storage after starting elizaOS"
 msgstr "Buat dan konfigurasikan Penyimpanan Persisten setelah memulai Tails"
 
-#: ../config/chroot_local-includes/usr/share/tails/greeter/main.ui.in:406
+#: ../config/chroot_local-includes/usr/share/tails/greeter/main.ui.in:419
 msgid "Show Passphrase"
 msgstr "Tampilkan Frasa Sandi"
 
-#: ../config/chroot_local-includes/usr/share/tails/greeter/main.ui.in:463
+#: ../config/chroot_local-includes/usr/share/tails/greeter/main.ui.in:476
 msgid "Enter your passphrase"
 msgstr "Masukkan frasa sandi Anda"
 
-#: ../config/chroot_local-includes/usr/share/tails/greeter/main.ui.in:478
+#: ../config/chroot_local-includes/usr/share/tails/greeter/main.ui.in:491
 msgid "Unlock Encryption"
 msgstr "Buka Kunci Enkripsi"
 
-#: ../config/chroot_local-includes/usr/share/tails/greeter/main.ui.in:545
+#: ../config/chroot_local-includes/usr/share/tails/greeter/main.ui.in:558
 msgid "Impossible to unlock the Persistent Storage."
 msgstr "Tidak mungkin membuka kunci Penyimpanan Persisten."
 
-#: ../config/chroot_local-includes/usr/share/tails/greeter/main.ui.in:605
+#: ../config/chroot_local-includes/usr/share/tails/greeter/main.ui.in:618
 msgid "Partitioning Errors"
 msgstr "Partisi dan Drive"
 
-#: ../config/chroot_local-includes/usr/share/tails/greeter/main.ui.in:641
+#: ../config/chroot_local-includes/usr/share/tails/greeter/main.ui.in:654
+#, fuzzy
 msgid ""
-"Errors were detected in the partitioning of your Tails USB stick.\n"
+"Errors were detected in the partitioning of your elizaOS USB stick.\n"
 "\n"
-"Try reinstalling Tails. If the error persists, reinstall on a new USB stick."
+"Try reinstalling elizaOS. If the error persists, reinstall on a new USB "
+"stick."
 msgstr ""
 "Kesalahan terdeteksi pada partisi stik USB Tails Anda.\n"
 "\n"
 "Coba pasang ulang Tails. Jika kesalahan tetap terjadi, pasang ulang pada "
 "stik USB baru."
 
-#: ../config/chroot_local-includes/usr/share/tails/greeter/main.ui.in:673
+#: ../config/chroot_local-includes/usr/share/tails/greeter/main.ui.in:686
 msgid "_Additional Settings"
 msgstr "_Pengaturan Tambahan"
 
-#: ../config/chroot_local-includes/usr/share/tails/greeter/main.ui.in:756
+#: ../config/chroot_local-includes/usr/share/tails/greeter/main.ui.in:769
 msgid "Add an additional setting"
 msgstr "Tambah pengaturan tambahan"
 
-#: ../config/chroot_local-includes/usr/share/tails/greeter/main.ui.in:803
+#: ../config/chroot_local-includes/usr/share/tails/greeter/main.ui.in:816
 msgid "Shutdown"
 msgstr "Matikan"
 
-#: ../config/chroot_local-includes/usr/share/tails/greeter/main.ui.in:812
-msgid "_Start Tails"
+#: ../config/chroot_local-includes/usr/share/tails/greeter/main.ui.in:825
+#, fuzzy
+msgid "_Start elizaOS"
 msgstr "_Mulai Tails"
 
-#: ../config/chroot_local-includes/usr/share/tails/greeter/main.ui.in:841
+#: ../config/chroot_local-includes/usr/share/tails/greeter/main.ui.in:854
 msgid ""
 "The default settings are safe in most situations. To add a custom setting, "
 "press the \"+\" button below."
@@ -3110,7 +3162,7 @@ msgstr ""
 "Pengaturan default aman untuk banyak situasi. Untuk menambah pengaturan "
 "tambahan, tekan tombol \"+\" di bawah."
 
-#: ../config/chroot_local-includes/usr/share/tails/greeter/main.ui.in:877
+#: ../config/chroot_local-includes/usr/share/tails/greeter/main.ui.in:890
 msgid "Network Configuration"
 msgstr "Konfigurasi Jaringan"
 
@@ -3169,10 +3221,11 @@ msgid "Send Error Report"
 msgstr "Pelaporan Kesalahan WhisperBack"
 
 #: ../config/chroot_local-includes/usr/share/tails/persistent-storage/features_view.ui.in:63
+#, fuzzy
 msgid ""
 "Your Persistent Storage is unlocked.\n"
 "\n"
-"Its content is available until you shut down Tails.\n"
+"Its content is available until you shut down elizaOS.\n"
 "\n"
 "<a href=\"doc/persistent_storage/backup\">Learn how to make a backup of your "
 "Persistent Storage.</a>"
@@ -3185,9 +3238,10 @@ msgstr ""
 "Penyimpanan Persisten Anda.</a>"
 
 #: ../config/chroot_local-includes/usr/share/tails/persistent-storage/features_view.ui.in:91
+#, fuzzy
 msgid ""
 "Turn on the features of the Persistent Storage for the data that you want to "
-"save to your Tails USB stick."
+"save to your elizaOS USB stick."
 msgstr ""
 "Nyalakan fitur-fitur Penyimpanan Persisten untuk data yang ingin Anda simpan "
 "ke stik USB Tails Anda."
@@ -3261,98 +3315,113 @@ msgid "Applications"
 msgstr "Aplikasi"
 
 #: ../config/chroot_local-includes/usr/share/tails/persistent-storage/features_view.ui.in:431
+msgid "elizaOS Data"
+msgstr ""
+
+#: ../config/chroot_local-includes/usr/share/tails/persistent-storage/features_view.ui.in:432
+msgid "Save elizaOS memory, settings, and local runtime state."
+msgstr ""
+
+#: ../config/chroot_local-includes/usr/share/tails/persistent-storage/features_view.ui.in:448
+#, fuzzy
+msgid "Activate elizaOS Data"
+msgstr "Aplikasi SSH"
+
+#: ../config/chroot_local-includes/usr/share/tails/persistent-storage/features_view.ui.in:461
 msgid "Tor Browser Bookmarks"
 msgstr "Markah Tor Browser"
 
-#: ../config/chroot_local-includes/usr/share/tails/persistent-storage/features_view.ui.in:447
+#: ../config/chroot_local-includes/usr/share/tails/persistent-storage/features_view.ui.in:477
 msgid "Activate Tor Browser Bookmarks"
 msgstr "Aktifkan Markah Tor Browser"
 
-#: ../config/chroot_local-includes/usr/share/tails/persistent-storage/features_view.ui.in:460
+#: ../config/chroot_local-includes/usr/share/tails/persistent-storage/features_view.ui.in:490
 msgid "Electrum Bitcoin Wallet"
 msgstr "Dompet Bitcoin Electrum"
 
-#: ../config/chroot_local-includes/usr/share/tails/persistent-storage/features_view.ui.in:476
+#: ../config/chroot_local-includes/usr/share/tails/persistent-storage/features_view.ui.in:506
 msgid "Activate Electrum Bitcoin Wallet"
 msgstr "Aktifkan Dompet Bitcoin Electrum"
 
-#: ../config/chroot_local-includes/usr/share/tails/persistent-storage/features_view.ui.in:489
+#: ../config/chroot_local-includes/usr/share/tails/persistent-storage/features_view.ui.in:519
 msgid "Thunderbird Email Client"
 msgstr "Thunderbird"
 
-#: ../config/chroot_local-includes/usr/share/tails/persistent-storage/features_view.ui.in:505
+#: ../config/chroot_local-includes/usr/share/tails/persistent-storage/features_view.ui.in:535
 msgid "Activate Thunderbird Email Client"
 msgstr "Aktifkan Klien Email Thunderbird"
 
-#: ../config/chroot_local-includes/usr/share/tails/persistent-storage/features_view.ui.in:518
+#: ../config/chroot_local-includes/usr/share/tails/persistent-storage/features_view.ui.in:548
 msgid "GnuPG"
 msgstr "GnuPG"
 
-#: ../config/chroot_local-includes/usr/share/tails/persistent-storage/features_view.ui.in:519
+#: ../config/chroot_local-includes/usr/share/tails/persistent-storage/features_view.ui.in:549
 msgid "OpenPGP keys outside of Thunderbird, including in Kleopatra."
 msgstr "Kunci OpenPGP di luar Thunderbird, termasuk di Kleopatra."
 
-#: ../config/chroot_local-includes/usr/share/tails/persistent-storage/features_view.ui.in:535
+#: ../config/chroot_local-includes/usr/share/tails/persistent-storage/features_view.ui.in:565
 msgid "Activate GnuPG"
 msgstr "Aktifkan GnuPG"
 
-#: ../config/chroot_local-includes/usr/share/tails/persistent-storage/features_view.ui.in:548
+#: ../config/chroot_local-includes/usr/share/tails/persistent-storage/features_view.ui.in:578
 msgid "Pidgin Internet Messenger"
 msgstr "Pesan Instan Internet Pidgin"
 
-#: ../config/chroot_local-includes/usr/share/tails/persistent-storage/features_view.ui.in:564
+#: ../config/chroot_local-includes/usr/share/tails/persistent-storage/features_view.ui.in:594
 msgid "Activate Pidgin Internet Messenger"
 msgstr "Aktifkan Pesan Instan Internet Pidgin"
 
-#: ../config/chroot_local-includes/usr/share/tails/persistent-storage/features_view.ui.in:577
+#: ../config/chroot_local-includes/usr/share/tails/persistent-storage/features_view.ui.in:607
 msgid "SSH Client"
 msgstr "Klien SSH"
 
-#: ../config/chroot_local-includes/usr/share/tails/persistent-storage/features_view.ui.in:593
+#: ../config/chroot_local-includes/usr/share/tails/persistent-storage/features_view.ui.in:623
 msgid "Activate SSH Client"
 msgstr "Aplikasi SSH"
 
-#: ../config/chroot_local-includes/usr/share/tails/persistent-storage/features_view.ui.in:620
+#: ../config/chroot_local-includes/usr/share/tails/persistent-storage/features_view.ui.in:650
 msgid "Advanced Settings"
 msgstr "Pengaturan Lanjutan"
 
-#: ../config/chroot_local-includes/usr/share/tails/persistent-storage/features_view.ui.in:649
-msgid "Install additional software automatically when starting Tails."
+#: ../config/chroot_local-includes/usr/share/tails/persistent-storage/features_view.ui.in:679
+#, fuzzy
+msgid "Install additional software automatically when starting elizaOS."
 msgstr "Pasang perangkat lunak tambahan secara otomatis saat memulai Tails."
 
-#: ../config/chroot_local-includes/usr/share/tails/persistent-storage/features_view.ui.in:674
+#: ../config/chroot_local-includes/usr/share/tails/persistent-storage/features_view.ui.in:704
 msgid "Configure Additional Software"
 msgstr "Konfigurasikan Perangkat Lunak Tambahan"
 
-#: ../config/chroot_local-includes/usr/share/tails/persistent-storage/features_view.ui.in:687
+#: ../config/chroot_local-includes/usr/share/tails/persistent-storage/features_view.ui.in:717
 msgid "Activate Additional Software"
 msgstr "Perangkat Lunak Tambahan"
 
-#: ../config/chroot_local-includes/usr/share/tails/persistent-storage/features_view.ui.in:700
+#: ../config/chroot_local-includes/usr/share/tails/persistent-storage/features_view.ui.in:730
 msgid "Dotfiles"
 msgstr "Berkas titik"
 
-#: ../config/chroot_local-includes/usr/share/tails/persistent-storage/features_view.ui.in:701
+#: ../config/chroot_local-includes/usr/share/tails/persistent-storage/features_view.ui.in:731
 msgid "Symlink every file in the Dotfiles folder into the Home folder."
 msgstr "Buat symlink setiap berkas di folder Dotfiles ke folder Home."
 
-#: ../config/chroot_local-includes/usr/share/tails/persistent-storage/features_view.ui.in:734
+#: ../config/chroot_local-includes/usr/share/tails/persistent-storage/features_view.ui.in:764
 msgid "Activate Dotfiles"
 msgstr "Aktifkan Dotfiles"
 
-#: ../config/chroot_local-includes/usr/share/tails/persistent-storage/features_view.ui.in:766
+#: ../config/chroot_local-includes/usr/share/tails/persistent-storage/features_view.ui.in:796
 msgid "Custom"
 msgstr "Kustom"
 
-#: ../config/chroot_local-includes/usr/share/tails/persistent-storage/features_view.ui.in:785
+#: ../config/chroot_local-includes/usr/share/tails/persistent-storage/features_view.ui.in:815
+#, fuzzy
 msgid ""
-"To add or remove custom features, modify /live/persistence/"
-"TailsData_unlocked/persistence.conf."
+"To add or remove custom features, modify the Persistent Storage "
+"configuration file directly."
 msgstr ""
 "Untuk menambahkan atau menghapus fitur kustom, ubah /live/persistence/"
 "TailsData_unlocked/persistence.conf."
 
-#: ../config/chroot_local-includes/usr/share/tails/persistent-storage/features_view.ui.in:827
+#: ../config/chroot_local-includes/usr/share/tails/persistent-storage/features_view.ui.in:857
 msgid ""
 "<a href=\"doc/persistent_storage\">Learn more about the Persistent Storage.</"
 "a>"
@@ -3361,11 +3430,12 @@ msgstr ""
 "Persisten.</a>"
 
 #: ../config/chroot_local-includes/usr/share/tails/persistent-storage/locked_view.ui.in:53
+#, fuzzy
 msgid ""
 "<b>Your Persistent Storage is locked.</b>\n"
 "\n"
 "To use or configure your Persistent Storage, unlock it in the Welcome Screen "
-"when starting Tails.\n"
+"when starting elizaOS.\n"
 "\n"
 "To delete your Persistent Storage, click <b>Delete</b> on the right of the "
 "title bar."
@@ -3419,11 +3489,12 @@ msgid "_Create Persistent Storage"
 msgstr "_Buat Penyimpanan Persisten"
 
 #: ../config/chroot_local-includes/usr/share/tails/persistent-storage/welcome_view.ui.in:56
+#, fuzzy
 msgid ""
-"Everything you do disappears automatically when you shut down Tails.\n"
+"Everything you do disappears automatically when you shut down elizaOS.\n"
 "\n"
 "But you can save some of your files and configuration in an encrypted "
-"Persistent Storage on your Tails USB stick, for example:\n"
+"Persistent Storage on your elizaOS USB stick, for example:\n"
 "\n"
 "• Your documents\n"
 "• Your Wi-Fi passwords\n"
@@ -3448,11 +3519,12 @@ msgstr ""
 "Persisten.</a>"
 
 #: ../config/chroot_local-includes/usr/share/tails/persistent-storage/welcome_view.ui.in:93
+#, fuzzy
 msgid ""
 "Sorry, it is impossible to create a Persistent Storage on this device.\n"
 "\n"
-"To be able to use Tails with a Persistent Storage, please follow our "
-"instructions on <a href=\"install\">installing Tails on a USB stick</a>."
+"To be able to use elizaOS with a Persistent Storage, please follow our "
+"instructions on <a href=\"install\">installing elizaOS on a USB stick</a>."
 msgstr ""
 "Maaf, tidak mungkin membuat Penyimpanan Persisten pada perangkat ini.\n"
 "\n"
@@ -3473,8 +3545,9 @@ msgid "_Change Passphrase…"
 msgstr "_Ubah Frasa Sandi…"
 
 #: ../config/chroot_local-includes/usr/share/tails/persistent-storage/window.ui.in:66
-msgid "_Restart Tails"
-msgstr "_Mulai Ulang Tails"
+#, fuzzy
+msgid "_Restart elizaOS"
+msgstr "Memulai kembali nanti"
 
 #: ../config/chroot_local-includes/usr/share/tails/unlock-veracrypt-volumes/main.ui.in:61
 msgid "File Containers"
@@ -4183,6 +4256,28 @@ msgstr "Desember"
 msgid "Clock"
 msgstr "Jam"
 
+#~ msgid "Tails Cloner"
+#~ msgstr "Installer untuk Tails"
+
+#~ msgid "About Tails"
+#~ msgstr "Tentang Tails"
+
+#, python-format
+#~ msgid "Built from %s"
+#~ msgstr "Dibangun dari %s"
+
+#~ msgid "Tails Documentation"
+#~ msgstr "Dokumentasi Tails"
+
+#~ msgid "WhisperBack Error Reporting"
+#~ msgstr "Pelaporan Kesalahan WhisperBack"
+
+#~ msgid "Send feedback via encrypted e-mail"
+#~ msgstr "kirim umpan balik via surel terenkripsi"
+
+#~ msgid "_Restart Tails"
+#~ msgstr "_Mulai Ulang Tails"
+
 #~ msgid "Bridge address malformed"
 #~ msgstr "Alamat bridge tidak valid"
 
@@ -4204,9 +4299,6 @@ msgstr "Jam"
 
 #~ msgid "Scan QR Code"
 #~ msgstr "Pindai Kode QR"
-
-#~ msgid "Documentation"
-#~ msgstr "Dokumentasi"
 
 #, fuzzy
 #~| msgid ""

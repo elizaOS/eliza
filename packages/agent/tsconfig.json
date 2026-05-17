@@ -56,6 +56,7 @@
       "@elizaos/plugin-shopify-ui": ["../../plugins/plugin-shopify-ui/src/index.ts"],
       "@elizaos/plugin-vincent": ["../../plugins/plugin-vincent/src/index.ts"],
       "@elizaos/ui": ["../ui/src/index.ts"],
+      "@elizaos/ui/*": ["../ui/src/*"],
       "@elizaos/ui/api/client-types-cloud": [
         "../ui/src/api/client-types-cloud.ts"
       ],

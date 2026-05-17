@@ -224,7 +224,7 @@ Parallel notes:
 Owner files:
 
 - `packages/ui/src/desktop-runtime/DesktopTrayRuntime.tsx`
-- `packages/native-plugins/desktop/*`
+- `plugins/plugin-native-desktop/*`
 - `packages/app/src/main.tsx`
 - New `packages/ui/src/desktop-runtime/CompanionBar.tsx`
 

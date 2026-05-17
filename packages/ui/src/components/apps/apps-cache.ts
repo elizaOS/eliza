@@ -1,4 +1,4 @@
-import type { RegistryAppInfo } from "../../api";
+import type { RegistryAppInfo } from "@elizaos/shared";
 
 const CACHE_KEY = "eliza:apps:catalog:v1";
 

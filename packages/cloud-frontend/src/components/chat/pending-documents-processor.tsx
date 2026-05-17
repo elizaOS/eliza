@@ -122,9 +122,12 @@ export function PendingDocumentsProcessor({
         });
 
         if (response.ok) {
-          const data = await response.json();
-          const failedCount = data.failedCount ?? 0;
-          const successCount = data.successCount ?? 0;
+          const data = (await response.json()) as {
+            failedCount: number;
+            successCount: number;
+            results?: Array<{ status: string; blobUrl: string }>;
+          };
+          const { failedCount, successCount } = data;
 
           // Handle sessionStorage based on processing results
           if (failedCount === 0) {
@@ -134,13 +137,13 @@ export function PendingDocumentsProcessor({
             } catch {
               // sessionStorage may fail in private browsing
             }
-          } else if (data.results && Array.isArray(data.results)) {
+          } else if (data.results && data.results.length > 0) {
             // Partial failure - update sessionStorage to only contain failed files
             // This prevents re-processing already successful files on refresh
             const failedBlobUrls = new Set(
               data.results
-                .filter((r: { status: string }) => r.status === "error")
-                .map((r: { blobUrl: string }) => r.blobUrl),
+                .filter((r) => r.status === "error")
+                .map((r) => r.blobUrl),
             );
             const failedFiles = pending.files.filter((f) =>
               failedBlobUrls.has(f.blobUrl),

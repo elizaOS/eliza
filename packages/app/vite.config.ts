@@ -35,7 +35,8 @@ const _require = createRequire(import.meta.url);
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const elizaRoot = path.resolve(here, "../..");
-const nativePluginsRoot = path.join(elizaRoot, "packages/native-plugins");
+const nativePluginsRoot = path.join(elizaRoot, "plugins");
+const NATIVE_PLUGIN_DIR_PREFIX = "plugin-native-";
 const appCoreSrcRoot = path.join(elizaRoot, "packages/app-core/src");
 const pluginBrowserBridgeSrcRoot = path.join(
   elizaRoot,
@@ -274,7 +275,10 @@ syncElizaEnvAliases({
 
 const NATIVE_PLUGIN_ALIAS_ENTRIES = CAPACITOR_PLUGIN_NAMES.map((name) => ({
   find: new RegExp(`^@elizaos/capacitor-${escapeRegExp(name)}$`),
-  replacement: path.join(nativePluginsRoot, `${name}/src/index.ts`),
+  replacement: path.join(
+    nativePluginsRoot,
+    `${NATIVE_PLUGIN_DIR_PREFIX}${name}/src/index.ts`,
+  ),
 }));
 const CAPACITOR_BUILD_TARGET = process.env.ELIZA_CAPACITOR_BUILD_TARGET ?? "";
 const IS_CAPACITOR_MOBILE_BUILD =

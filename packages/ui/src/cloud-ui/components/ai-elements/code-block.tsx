@@ -25,7 +25,6 @@ const CodeBlockContext = createContext<CodeBlockContextType>({
  * Code block component with syntax highlighting and copy functionality.
  * Supports light/dark themes and optional line numbers.
  *
- * @param props - Code block configuration
  * @param props.code - Source code to display
  * @param props.language - Programming language for syntax highlighting
  * @param props.showLineNumbers - Whether to display line numbers

@@ -477,10 +477,6 @@ export const roomOpAction: Action = {
 	contexts: [...ROOM_CONTEXTS],
 	roleGate: { minRole: "ADMIN" },
 	similes: [
-		"MUTE_ROOM",
-		"UNMUTE_ROOM",
-		"FOLLOW_ROOM",
-		"UNFOLLOW_ROOM",
 		"MUTE_CHAT",
 		"UNMUTE_CHAT",
 		"MUTE_TELEGRAM",

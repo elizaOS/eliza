@@ -353,12 +353,12 @@ export function ProfileForm({ user }: ProfileFormProps) {
 
         {/* Email Section - Separate from main form to avoid nesting */}
         {!user.email && !emailAdded && (
-          <div className="space-y-2 p-4 border border-amber-500/40 bg-amber-500/5 rounded-none">
+          <div className="space-y-2 p-4 border border-orange-500/40 bg-orange-500/5 rounded-none">
             <div className="flex items-center gap-2 mb-3">
-              <Mail className="h-4 w-4 text-amber-400" />
+              <Mail className="h-4 w-4 text-orange-400" />
               <label
                 htmlFor="new-email"
-                className="text-xs font-medium text-amber-400 uppercase tracking-wide"
+                className="text-xs font-medium text-orange-400 uppercase tracking-wide"
               >
                 Add Email Address
               </label>
@@ -375,7 +375,7 @@ export function ProfileForm({ user }: ProfileFormProps) {
                 placeholder="your@email.com"
                 disabled={isUpdatingEmail}
                 required
-                className="rounded-none border-white/20 bg-black/40 text-white placeholder:text-white/40 focus:ring-1 focus:ring-amber-500 focus:border-amber-500"
+                className="rounded-none border-white/20 bg-black/40 text-white placeholder:text-white/40 focus:ring-1 focus:ring-orange-500 focus:border-orange-500"
               />
               <BrandButton
                 type="submit"
@@ -416,7 +416,7 @@ export function ProfileForm({ user }: ProfileFormProps) {
               disabled
               className="rounded-none border-white/10 bg-black/60 text-white/50"
             />
-            <p className="text-xs text-white/50">
+            <p className="text-xs text-white/74">
               Email cannot be changed. Please contact support if you need to
               update this.
             </p>
@@ -457,7 +457,7 @@ export function ProfileForm({ user }: ProfileFormProps) {
                     />
                   </div>
                   {/* Preview badge */}
-                  <div className="absolute -top-1 -right-1 bg-amber-500 text-black text-[10px] font-bold px-2 py-0.5 rounded-full animate-pulse">
+                  <div className="absolute -top-1 -right-1 bg-orange-500 text-black text-[10px] font-bold px-2 py-0.5 rounded-full animate-pulse">
                     PREVIEW
                   </div>
                 </div>
@@ -473,7 +473,7 @@ export function ProfileForm({ user }: ProfileFormProps) {
                         : "User")
                     }
                   />
-                  <AvatarFallback className="text-xl bg-gradient-to-br from-[#FF5800]/20 to-[#FF5800]/5">
+                  <AvatarFallback className="text-xl bg-[#FF5800]/15">
                     {getInitials(user.name, user.email, user.wallet_address)}
                   </AvatarFallback>
                 </Avatar>
@@ -485,7 +485,7 @@ export function ProfileForm({ user }: ProfileFormProps) {
                 <label className="text-xs font-medium text-white/70 uppercase tracking-wide">
                   Profile Picture
                 </label>
-                <p className="text-xs text-white/50 mt-1">
+                <p className="text-xs text-white/74 mt-1">
                   PNG, JPG or WEBP. Max 5MB. Drag & drop or click to upload.
                 </p>
               </div>
@@ -510,7 +510,7 @@ export function ProfileForm({ user }: ProfileFormProps) {
                       <p className="text-sm text-white font-medium truncate">
                         {pendingFile.name}
                       </p>
-                      <p className="text-xs text-white/50">
+                      <p className="text-xs text-white/74">
                         {(pendingFile.size / 1024).toFixed(1)} KB
                       </p>
                     </div>
@@ -593,7 +593,7 @@ export function ProfileForm({ user }: ProfileFormProps) {
                 htmlFor="name"
                 className="text-xs font-medium text-white/70 uppercase tracking-wide"
               >
-                Full Name <span className="text-rose-400">*</span>
+                Full Name <span className="text-red-400">*</span>
               </label>
               <Input
                 id="name"
@@ -621,7 +621,7 @@ export function ProfileForm({ user }: ProfileFormProps) {
                   className="rounded-none border-white/10 bg-black/60 text-white/50 font-mono text-xs"
                 />
                 {user.wallet_chain_type && (
-                  <p className="text-xs text-white/50 capitalize">
+                  <p className="text-xs text-white/74 capitalize">
                     Connected via {user.wallet_chain_type} wallet
                   </p>
                 )}
@@ -644,7 +644,7 @@ export function ProfileForm({ user }: ProfileFormProps) {
                 disabled={isPending}
                 className="rounded-none border-white/10 bg-black/40 text-white placeholder:text-white/40 focus:ring-1 focus:ring-[#FF5800] focus:border-[#FF5800]"
               />
-              <p className="text-xs text-white/50">
+              <p className="text-xs text-white/74">
                 Or use the upload button above to add a profile picture.
               </p>
             </div>
@@ -660,7 +660,7 @@ export function ProfileForm({ user }: ProfileFormProps) {
                 disabled
                 className="rounded-none border-white/10 bg-black/60 text-white/50 capitalize"
               />
-              <p className="text-xs text-white/50">
+              <p className="text-xs text-white/74">
                 Your role in the organization. Contact an admin to change this.
               </p>
             </div>
@@ -670,9 +670,9 @@ export function ProfileForm({ user }: ProfileFormProps) {
           {error && (
             <Alert
               variant="destructive"
-              className="rounded-none border-rose-500/40 bg-rose-500/10"
+              className="rounded-none border-red-500/40 bg-red-500/10"
             >
-              <AlertDescription className="text-rose-400">
+              <AlertDescription className="text-red-400">
                 {error}
               </AlertDescription>
             </Alert>

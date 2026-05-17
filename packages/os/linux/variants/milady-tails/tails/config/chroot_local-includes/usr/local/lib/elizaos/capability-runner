@@ -1,0 +1,96 @@
+#!/bin/sh
+
+set -eu
+
+self=/usr/local/lib/elizaos/capability-runner
+
+usage() {
+    cat >&2 <<'EOF'
+usage: capability-runner <command> [args...]
+
+commands:
+  status
+  root-status
+  open-persistent-storage
+  privacy-mode
+EOF
+    exit 64
+}
+
+need_root() {
+    if [ "$(id -u)" -ne 0 ]; then
+        exec sudo -n "${self}" "$@"
+    fi
+}
+
+privacy_mode() {
+    case "$(cat /etc/elizaos/privacy-mode 2>/dev/null || printf on)" in
+        off) printf '%s\n' off ;;
+        *) printf '%s\n' on ;;
+    esac
+}
+
+persistent_storage_state() {
+    if mountpoint -q /live/persistence/TailsData_unlocked 2>/dev/null; then
+        printf '%s\n' unlocked
+    elif [ -e /dev/mapper/TailsData_unlocked ]; then
+        printf '%s\n' unlocked
+    elif [ -e /dev/disk/by-label/TailsData ]; then
+        printf '%s\n' locked
+    else
+        printf '%s\n' unavailable
+    fi
+}
+
+launch_persistent_storage() {
+    if command -v setsid >/dev/null 2>&1; then
+        setsid tails-persistent-storage >/dev/null 2>&1 &
+    else
+        tails-persistent-storage >/dev/null 2>&1 &
+    fi
+}
+
+[ "$#" -ge 1 ] || usage
+command_name="$1"
+shift
+
+case "${command_name}" in
+    status)
+        [ "$#" -eq 0 ] || usage
+        printf 'edition=elizaOS\n'
+        printf 'base=tails\n'
+        printf 'user=%s\n' "$(id -un)"
+        printf 'uid=%s\n' "$(id -u)"
+        printf 'privacy_mode=%s\n' "$(privacy_mode)"
+        printf 'persistent_storage=%s\n' "$(persistent_storage_state)"
+        ;;
+    root-status)
+        [ "$#" -eq 0 ] || usage
+        need_root "${command_name}"
+        printf 'root=yes\n'
+        printf 'uid=%s\n' "$(id -u)"
+        printf 'runner=%s\n' "${self}"
+        ;;
+    open-persistent-storage)
+        [ "$#" -eq 0 ] || usage
+        if [ "$(id -u)" -eq 0 ]; then
+            runuser -u amnesia -- sh -c '
+                if command -v setsid >/dev/null 2>&1; then
+                    setsid tails-persistent-storage >/dev/null 2>&1 &
+                else
+                    tails-persistent-storage >/dev/null 2>&1 &
+                fi
+            '
+        else
+            launch_persistent_storage
+        fi
+        printf 'launched=1\n'
+        ;;
+    privacy-mode)
+        [ "$#" -eq 0 ] || usage
+        privacy_mode
+        ;;
+    *)
+        usage
+        ;;
+esac

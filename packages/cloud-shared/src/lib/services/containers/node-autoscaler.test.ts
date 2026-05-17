@@ -1,7 +1,8 @@
 import { beforeEach, describe, expect, mock, test } from "bun:test";
+import type { DockerNode } from "../../../db/repositories/docker-nodes";
 
 const mocks = {
-  nodes: [] as any[],
+  nodes: [] as DockerNode[],
   createNode: mock(),
   findAllNodes: mock(),
   createServer: mock(),

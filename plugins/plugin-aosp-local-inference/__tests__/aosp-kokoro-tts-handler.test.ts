@@ -3,7 +3,41 @@ import {
   KokoroMockRuntime,
 } from "@elizaos/shared";
 import { describe, expect, it } from "bun:test";
-import { makeKokoroTextToSpeechHandler } from "../src/aosp-local-inference-bootstrap";
+import {
+  makeKokoroTextToSpeechHandler,
+  prewarmKokoroTextToSpeechHandler,
+} from "../src/aosp-local-inference-bootstrap";
+
+async function withEnv<T>(
+  overrides: Record<string, string | undefined>,
+  run: () => Promise<T>,
+): Promise<T> {
+  const previous = new Map<string, string | undefined>();
+  for (const key of Object.keys(overrides)) {
+    previous.set(key, process.env[key]);
+    const value = overrides[key];
+    if (value === undefined) {
+      delete process.env[key];
+    } else {
+      process.env[key] = value;
+    }
+  }
+  try {
+    return await run();
+  } finally {
+    for (const [key, value] of previous) {
+      if (value === undefined) {
+        delete process.env[key];
+      } else {
+        process.env[key] = value;
+      }
+    }
+  }
+}
+
+function wait(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
 
 function kokoroDiscovery(): KokoroEngineDiscoveryResult {
   return {
@@ -72,5 +106,62 @@ describe("AOSP Kokoro TEXT_TO_SPEECH handler", () => {
         signal: controller.signal,
       }),
     ).rejects.toThrow(/aborted/);
+  });
+
+  it("only pre-warms when explicitly enabled", async () => {
+    let calls = 0;
+    const handler = async () => {
+      calls++;
+      return new Uint8Array([0, 1, 2, 3]);
+    };
+
+    await withEnv(
+      {
+        ELIZA_KOKORO_PREWARM: undefined,
+        ELIZA_KOKORO_PREWARM_DELAY_MS: "1",
+      },
+      async () => {
+        prewarmKokoroTextToSpeechHandler(handler);
+        await wait(10);
+      },
+    );
+    expect(calls).toBe(0);
+
+    await withEnv(
+      {
+        ELIZA_KOKORO_PREWARM: "1",
+        ELIZA_KOKORO_PREWARM_DELAY_MS: "1",
+        ELIZA_KOKORO_PREWARM_TIMEOUT_MS: "100",
+      },
+      async () => {
+        prewarmKokoroTextToSpeechHandler(handler);
+        await wait(10);
+      },
+    );
+    expect(calls).toBe(1);
+  });
+
+  it("skips delayed pre-warm when foreground TTS already ran", async () => {
+    let calls = 0;
+    const handler = async () => {
+      calls++;
+      return new Uint8Array([0, 1, 2, 3]);
+    };
+
+    await withEnv(
+      {
+        ELIZA_KOKORO_PREWARM: "1",
+        ELIZA_KOKORO_PREWARM_DELAY_MS: "1",
+        ELIZA_KOKORO_PREWARM_TIMEOUT_MS: "100",
+      },
+      async () => {
+        prewarmKokoroTextToSpeechHandler(handler, {
+          shouldSkip: () => true,
+        });
+        await wait(10);
+      },
+    );
+
+    expect(calls).toBe(0);
   });
 });

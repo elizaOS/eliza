@@ -80,7 +80,6 @@ export function AppSettings({ app }: AppSettingsProps) {
 
       toast.success("App updated successfully");
     } catch (error) {
-      console.error("Error updating app:", error);
       toast.error("Failed to update app", {
         description:
           error instanceof Error ? error.message : "Please try again",
@@ -120,7 +119,6 @@ export function AppSettings({ app }: AppSettingsProps) {
         preventScrollReset: true,
       });
     } catch (error) {
-      console.error("Error regenerating API key:", error);
       toast.error("Failed to regenerate API key", {
         description:
           error instanceof Error ? error.message : "Please try again",
@@ -145,7 +143,6 @@ export function AppSettings({ app }: AppSettingsProps) {
       toast.success("App deleted successfully");
       navigate("/dashboard/apps");
     } catch (error) {
-      console.error("Error deleting app:", error);
       toast.error("Failed to delete app", {
         description:
           error instanceof Error ? error.message : "Please try again",

@@ -27,25 +27,26 @@ const PLAYWRIGHT_TEST_AUTH_MARKER_COOKIE = "eliza-test-auth";
 const PLAYWRIGHT_TEST_USER_ID = "22222222-2222-4222-8222-222222222222";
 const PLAYWRIGHT_TEST_USER_EMAIL = "local-live-test-user@agent.local";
 
-type ImportMetaEnvLike = {
-  env?: Record<string, string | undefined>;
-};
-
-function hasViteEnv(meta: ImportMeta): meta is ImportMeta & ImportMetaEnvLike {
-  const env = (meta as ImportMetaEnvLike).env;
-  return typeof env === "object" && env !== null;
-}
-
-function getViteEnvFlag(name: string): string | undefined {
-  return hasViteEnv(import.meta) ? import.meta.env?.[name] : undefined;
-}
-
+/**
+ * IMPORTANT: do NOT use dynamic property access on `import.meta.env` here.
+ *
+ * Vite replaces `import.meta.env` in production builds with a literal that
+ * only carries the 5 standard fields (BASE_URL / DEV / MODE / PROD / SSR).
+ * Custom `VITE_*` vars are inlined ONLY when accessed by their literal name
+ * (`import.meta.env.VITE_FOO`). A dynamic `env[name]` lookup ends up reading
+ * from that 5-field object and always returns `undefined` in prod — which
+ * silently disables the Playwright test-auth bypass and makes every
+ * authed-route test render the unauthenticated dashboard shell.
+ */
 function isPlaywrightTestAuthEnabled(): boolean {
-  return (
-    getViteEnvFlag("VITE_PLAYWRIGHT_TEST_AUTH") === "true" ||
-    (typeof process !== "undefined" &&
-      process.env?.NEXT_PUBLIC_PLAYWRIGHT_TEST_AUTH === "true")
-  );
+  if (import.meta.env?.VITE_PLAYWRIGHT_TEST_AUTH === "true") return true;
+  if (
+    typeof process !== "undefined" &&
+    process.env?.NEXT_PUBLIC_PLAYWRIGHT_TEST_AUTH === "true"
+  ) {
+    return true;
+  }
+  return false;
 }
 
 function hasCookie(name: string, value?: string): boolean {

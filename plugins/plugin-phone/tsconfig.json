@@ -24,7 +24,7 @@
       "drizzle-orm": ["../plugin-sql/node_modules/drizzle-orm"],
       "drizzle-orm/*": ["../plugin-sql/node_modules/drizzle-orm/*"],
       "@elizaos/capacitor-phone": [
-        "../../packages/native-plugins/phone/src/index.ts"
+        "../../plugins/plugin-native-phone/src/index.ts"
       ],
       "@elizaos/plugin-browser": ["../plugin-browser/src/index.ts"],
       "@elizaos/agent": ["../../packages/agent/src/index.ts"],

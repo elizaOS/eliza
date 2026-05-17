@@ -13,7 +13,7 @@ msgid ""
 msgstr ""
 "Project-Id-Version: Tor Project\n"
 "Report-Msgid-Bugs-To: \n"
-"POT-Creation-Date: 2026-04-22 08:04+0200\n"
+"POT-Creation-Date: 2026-05-16 16:43+0000\n"
 "PO-Revision-Date: 2026-04-03 09:12+0000\n"
 "Last-Translator: Anonymous <noreply@weblate.org>\n"
 "Language-Team: Bengali <https://hosted.weblate.org/projects/tor/tails-gui/bn/"
@@ -100,8 +100,8 @@ msgstr ""
 "তৈরি করতে পারেন এবং <b>অতিরিক্ত সফটওয়্যার</b> বৈশিষ্ট্য সক্রিয় করতে পারবেন ।"
 
 #: config/chroot_local-includes/usr/local/lib/additional-software/asp-handle-package-changes:103
-#: ../config/chroot_local-includes/usr/share/tails/greeter/main.ui.in:312
-#: ../config/chroot_local-includes/usr/share/tails/greeter/main.ui.in:331
+#: ../config/chroot_local-includes/usr/share/tails/greeter/main.ui.in:325
+#: ../config/chroot_local-includes/usr/share/tails/greeter/main.ui.in:344
 msgid "Create Persistent Storage"
 msgstr "অবিরাম স্টোরেজ তৈরি করুন"
 
@@ -193,22 +193,24 @@ msgstr "অতিরিক্ত সফ্টওয়্যার সফলভ�
 
 #: config/chroot_local-includes/usr/share/tails/additional-software/configuration-window.ui:8
 #: ../config/chroot_local-includes/usr/share/applications/org.boum.tails.AdditionalSoftware.desktop.in.h:1
-#: ../config/chroot_local-includes/usr/share/tails/persistent-storage/features_view.ui.in:648
+#: ../config/chroot_local-includes/usr/share/tails/persistent-storage/features_view.ui.in:678
 msgid "Additional Software"
 msgstr "অতিরিক্ত সফটওয়্যার"
 
 #: config/chroot_local-includes/usr/share/tails/additional-software/configuration-window.ui:51
+#, fuzzy
 msgid ""
 "You can install additional software automatically from your persistent "
-"storage when starting Tails."
+"storage when starting elizaOS."
 msgstr ""
 "Tails শুরু করার সময় আপনি আপনার একরোখা স্টোরেজ থেকে স্বয়ংক্রিয়ভাবে অতিরিক্ত "
 "সফটওয়্যার ইনস্টল করতে পারেন ।"
 
 #: config/chroot_local-includes/usr/share/tails/additional-software/configuration-window.ui:77
+#, fuzzy
 msgid ""
 "The following software is installed automatically from your persistent "
-"storage when starting Tails."
+"storage when starting elizaOS."
 msgstr ""
 "Tails শুরু করার সময় নিম্নোক্ত সফটওয়্যারটি আপনার একরোখা ভাণ্ডার থেকে স্বয়ংক্রিয়ভাবে "
 "সংস্থাপিত হয় ।"
@@ -230,7 +232,7 @@ msgstr "_স্থায়ীভাবে বিদ্যমান / পার�
 
 #: config/chroot_local-includes/usr/local/bin/electrum:62
 msgid ""
-"Tails needs donations to keep everybody free and safe online.\n"
+"elizaOS needs donations to keep everybody free and safe online.\n"
 "\n"
 "Every bit helps in our fight against surveillance and censorship!\n"
 "\n"
@@ -238,7 +240,7 @@ msgstr ""
 
 #: config/chroot_local-includes/usr/local/bin/electrum:72
 msgid ""
-"Tails protects your wallet.\n"
+"elizaOS protects your wallet.\n"
 "\n"
 "Help us keep your bitcoins safe!\n"
 "\n"
@@ -265,8 +267,9 @@ msgid "Persistence is disabled for Electrum"
 msgstr "অধ্যবসায় জন্য ইস্ট্রাম নিষ্ক্রিয় করা হয়েছে"
 
 #: config/chroot_local-includes/usr/local/bin/electrum:193
+#, fuzzy
 msgid ""
-"When you reboot Tails, all of Electrum's data will be lost, including your "
+"When you reboot elizaOS, all of Electrum's data will be lost, including your "
 "Bitcoin wallet.\n"
 "It is strongly recommended to only run Electrum when its persistence feature "
 "is activated."
@@ -751,7 +754,8 @@ msgstr "অবিরাম স্টোরেজ তৈরি করুন"
 #: config/chroot_local-includes/usr/lib/python3/dist-packages/tailsgreeter/ui/main_window.py:183
 #, fuzzy
 msgid ""
-"Do you really want to start Tails without unlocking your Persistent Storage?"
+"Do you really want to start elizaOS without unlocking your Persistent "
+"Storage?"
 msgstr "স্থায়ী সঞ্চয়স্থান আনলক করতে আপনার পাসফ্রেজটি লিখুন"
 
 #: config/chroot_local-includes/usr/lib/python3/dist-packages/tailsgreeter/ui/main_window.py:186
@@ -766,10 +770,10 @@ msgstr "_কিবোর্ডের ভিত্তি ধরণ"
 
 #: config/chroot_local-includes/usr/lib/python3/dist-packages/tailsgreeter/ui/main_window.py:195
 msgid ""
-"Your language and keyboard layout will be saved unencrypted on your Tails "
+"Your language and keyboard layout will be saved unencrypted on your elizaOS "
 "USB stick and applied automatically in the future.\n"
 "\n"
-"Someone who finds your Tails USB stick can see your language and keyboard "
+"Someone who finds your elizaOS USB stick can see your language and keyboard "
 "layout."
 msgstr ""
 
@@ -809,7 +813,8 @@ msgid "Failed to repair the file system of your Persistent Storage."
 msgstr "অবিরাম স্টোরেজ তৈরি করুন"
 
 #: config/chroot_local-includes/usr/lib/python3/dist-packages/tailsgreeter/ui/main_window.py:544
-msgid "Start Tails to send an error report and learn how to recover your data."
+msgid ""
+"Start elizaOS to send an error report and learn how to recover your data."
 msgstr ""
 
 #: config/chroot_local-includes/usr/lib/python3/dist-packages/tailsgreeter/ui/main_window.py:559
@@ -829,20 +834,22 @@ msgstr "বন্ধ"
 
 #: config/chroot_local-includes/usr/lib/python3/dist-packages/tailsgreeter/ui/main_window.py:580
 msgid ""
-"You aborted the repair of the file system. You can either start Tails "
+"You aborted the repair of the file system. You can either start elizaOS "
 "without Persistent Storage or restart the computer to try repairing the file "
 "system again."
 msgstr ""
 
 #: config/chroot_local-includes/usr/lib/python3/dist-packages/tailsgreeter/ui/main_window.py:866
-msgid "Start Tails and open the Persistent Storage settings to find out more."
-msgstr ""
+#, fuzzy
+msgid ""
+"Start elizaOS and open the Persistent Storage settings to find out more."
+msgstr "অবিরাম স্টোরেজ তৈরি করুন"
 
 #: config/chroot_local-includes/usr/lib/python3/dist-packages/tailsgreeter/ui/main_window.py:896
 #, fuzzy
 msgid ""
 "Your Persistent Storage is unlocked. Its content will be available until you "
-"shut down Tails."
+"shut down elizaOS."
 msgstr "আপনার স্থায়ী সঞ্চয়স্থান আনলক হয়। আবার এটি লক করার জন্য পুশ পুনরারন।"
 
 #: config/chroot_local-includes/usr/lib/python3/dist-packages/tailsgreeter/ui/main_window.py:911
@@ -856,7 +863,7 @@ msgid ""
 msgstr ""
 
 #: config/chroot_local-includes/usr/lib/python3/dist-packages/tailsgreeter/ui/main_window.py:924
-msgid "Start Tails to learn how to recover your data."
+msgid "Start elizaOS to learn how to recover your data."
 msgstr ""
 
 #: config/chroot_local-includes/usr/lib/python3/dist-packages/tailsgreeter/ui/main_window.py:935
@@ -867,7 +874,7 @@ msgstr ""
 msgid ""
 "Errors were detected in the file system of your Persistent Storage.\n"
 "\n"
-"Tails can try to fix these errors, but this might erase some of your data "
+"elizaOS can try to fix these errors, but this might erase some of your data "
 "and take a long time.\n"
 "\n"
 "If you already have an up-to-date backup of your Persistent Storage, we "
@@ -889,7 +896,7 @@ msgstr "অবিরাম স্টোরেজ তৈরি করুন"
 #: config/chroot_local-includes/usr/lib/python3/dist-packages/tailsgreeter/ui/main_window.py:958
 #, fuzzy
 msgid ""
-"Start Tails to learn how to create a partition image of your Persistent "
+"Start elizaOS to learn how to create a partition image of your Persistent "
 "Storage."
 msgstr "অবিরাম স্টোরেজ তৈরি করুন"
 
@@ -899,22 +906,25 @@ msgid "Failed to unlock the Persistent Storage due to file system errors."
 msgstr "অবিরাম স্টোরেজ তৈরি করুন"
 
 #: config/chroot_local-includes/usr/lib/python3/dist-packages/tailsgreeter/ui/main_window.py:976
+#, fuzzy
 msgid ""
-"Failed to upgrade the Persistent Storage. Please start Tails and send an "
+"Failed to upgrade the Persistent Storage. Please start elizaOS and send an "
 "error report."
-msgstr ""
+msgstr "অবিরাম স্টোরেজ তৈরি করুন"
 
 #: config/chroot_local-includes/usr/lib/python3/dist-packages/tailsgreeter/ui/main_window.py:983
+#, fuzzy
 msgid ""
-"Failed to unlock the Persistent Storage. Please start Tails and send an "
+"Failed to unlock the Persistent Storage. Please start elizaOS and send an "
 "error report."
-msgstr ""
+msgstr "অবিরাম স্টোরেজ তৈরি করুন"
 
 #: config/chroot_local-includes/usr/lib/python3/dist-packages/tailsgreeter/ui/main_window.py:991
+#, fuzzy
 msgid ""
-"Failed to activate the Persistent Storage. Please start Tails and send an "
+"Failed to activate the Persistent Storage. Please start elizaOS and send an "
 "error report."
-msgstr ""
+msgstr "অবিরাম স্টোরেজ তৈরি করুন"
 
 #: config/chroot_local-includes/usr/lib/python3/dist-packages/tailsgreeter/ui/main_window.py:1002
 #, fuzzy
@@ -997,13 +1007,13 @@ msgid "Unable to copy %(infile)s to %(outfile)s: %(message)s"
 msgstr "কপি করতে অক্ষম %(infile)s থেকে %(outfile)sঃ%(message)s"
 
 #: config/chroot_local-includes/usr/lib/python3/dist-packages/tails_installer/creator.py:589
-msgid "Removing existing Tails system"
+msgid "Removing existing elizaOS system"
 msgstr ""
 
 #: config/chroot_local-includes/usr/lib/python3/dist-packages/tails_installer/creator.py:600
-#, python-format
-msgid "Unable to remove file from previous Tails system: %(message)s"
-msgstr ""
+#, fuzzy, python-format
+msgid "Unable to remove file from previous elizaOS system: %(message)s"
+msgstr "কপি করতে অক্ষম %(infile)s থেকে %(outfile)sঃ%(message)s"
 
 #: config/chroot_local-includes/usr/lib/python3/dist-packages/tails_installer/creator.py:610
 #, python-format
@@ -1011,9 +1021,9 @@ msgid "Unable to chmod %(file)s: %(message)s"
 msgstr "Chmod করতে অক্ষম %(file)sঃ%(message)s"
 
 #: config/chroot_local-includes/usr/lib/python3/dist-packages/tails_installer/creator.py:618
-#, python-format
-msgid "Unable to remove directory from previous Tails system: %(message)s"
-msgstr ""
+#, fuzzy, python-format
+msgid "Unable to remove directory from previous elizaOS system: %(message)s"
+msgstr "ডিভাইস মাউন্ট করতে অক্ষম: %(message)s"
 
 #: config/chroot_local-includes/usr/lib/python3/dist-packages/tails_installer/creator.py:669
 #, python-format
@@ -1137,7 +1147,8 @@ msgstr "ডিস্কের ডেটা সিঙ্ক্রোনাইজ 
 #: config/chroot_local-includes/usr/lib/python3/dist-packages/tails_installer/gui.py:157
 msgid ""
 "Unable to clone because the target USB stick is being used. Close all open "
-"files on the target USB stick, restart Tails Cloner, and try to clone again."
+"files on the target USB stick, restart elizaOS USB Cloner, and try to clone "
+"again."
 msgstr ""
 
 #: config/chroot_local-includes/usr/lib/python3/dist-packages/tails_installer/gui.py:189
@@ -1154,23 +1165,25 @@ msgid "Cloning complete! (%s)"
 msgstr "ইনস্টলেশন সম্পূর্ণ! (%s)"
 
 #: config/chroot_local-includes/usr/lib/python3/dist-packages/tails_installer/gui.py:239
-msgid "Tails installation failed!"
+#, fuzzy
+msgid "elizaOS installation failed!"
 msgstr "Tails ইনস্টলেশন ব্যর্থ হয়েছে!"
 
 #: config/chroot_local-includes/usr/lib/python3/dist-packages/tails_installer/gui.py:341
 #: ../config/chroot_local-includes/usr/share/applications/tails-installer.desktop.in.h:1
-#, fuzzy
-msgid "Tails Cloner"
-msgstr "Tails ইনস্টলার"
+msgid "elizaOS USB Cloner"
+msgstr ""
 
 #: config/chroot_local-includes/usr/lib/python3/dist-packages/tails_installer/gui.py:393
 #: ../config/chroot_local-includes/usr/share/tails-installer/tails-installer.ui.in:164
-msgid "Clone the current Tails"
+#, fuzzy
+msgid "Clone the current elizaOS"
 msgstr "বর্তমান Tails ক্লোন করুন"
 
 #: config/chroot_local-includes/usr/lib/python3/dist-packages/tails_installer/gui.py:401
 #: ../config/chroot_local-includes/usr/share/tails-installer/tails-installer.ui.in:200
-msgid "Use a downloaded Tails ISO image"
+#, fuzzy
+msgid "Use a downloaded elizaOS ISO image"
 msgstr "একটি ডাউনলোড করা Tails ISO ইমেজ ব্যবহার করুন"
 
 #: config/chroot_local-includes/usr/lib/python3/dist-packages/tails_installer/gui.py:453
@@ -1207,7 +1220,8 @@ msgid "No ISO image selected"
 msgstr "কোন ISO ইমেজ নির্বাচিত নেই"
 
 #: config/chroot_local-includes/usr/lib/python3/dist-packages/tails_installer/gui.py:495
-msgid "Please select a Tails ISO image."
+#, fuzzy
+msgid "Please select an elizaOS ISO image."
 msgstr "একটি Tails ISO ইমেজ নির্বাচন করুন।"
 
 #: config/chroot_local-includes/usr/lib/python3/dist-packages/tails_installer/gui.py:546
@@ -1229,11 +1243,11 @@ msgid ""
 msgstr ""
 
 #: config/chroot_local-includes/usr/lib/python3/dist-packages/tails_installer/gui.py:591
-#, python-format
+#, fuzzy, python-format
 msgid ""
 "The USB stick \"%(pretty_name)s\" is configured as non-removable by its "
-"manufacturer and Tails will fail to start from it. Please try installing on "
-"a different model."
+"manufacturer and elizaOS will fail to start from it. Please try installing "
+"on a different model."
 msgstr ""
 "ইউএসবি স্টিক \"%(pretty_name)s\" তার প্রস্তুতকারকের দ্বারা অ অপসারণযোগ্য হিসাবে "
 "কনফিগার করা হয় এবং টালি এটি চালু করতে ব্যর্থ হবে। একটি ভিন্ন মডেল ইনস্টল করার "
@@ -1245,9 +1259,9 @@ msgid "The device \"%(pretty_name)s\" is read-only."
 msgstr ""
 
 #: config/chroot_local-includes/usr/lib/python3/dist-packages/tails_installer/gui.py:608
-#, python-format
+#, fuzzy, python-format
 msgid ""
-"The device \"%(pretty_name)s\" is too small to install Tails (at least "
+"The device \"%(pretty_name)s\" is too small to install elizaOS (at least "
 "%(size)s GB is required)."
 msgstr ""
 "ডিভাইস \"%(pretty_name)s\" টিল ইনস্টল করার জন্য খুব ছোট হয় (কমপক্ষে %(size)s "
@@ -1256,13 +1270,14 @@ msgstr ""
 #: config/chroot_local-includes/usr/lib/python3/dist-packages/tails_installer/gui.py:623
 #, python-format
 msgid ""
-"To upgrade device \"%(pretty_name)s\" from this Tails, you need to use a "
-"downloaded Tails ISO image:\n"
+"To upgrade device \"%(pretty_name)s\" from this elizaOS, you need to use a "
+"downloaded elizaOS ISO image:\n"
 "%(dl_url)s"
 msgstr ""
 
 #: config/chroot_local-includes/usr/lib/python3/dist-packages/tails_installer/gui.py:644
-msgid "No device suitable to install Tails could be found"
+#, fuzzy
+msgid "No device suitable to install elizaOS could be found"
 msgstr "Tails ইনস্টল করার উপযুক্ত কোন ডিভাইস পাওয়া যায়নি"
 
 #: config/chroot_local-includes/usr/lib/python3/dist-packages/tails_installer/gui.py:647
@@ -1271,7 +1286,8 @@ msgid "Plug in a USB stick of at least %0.1f GB."
 msgstr "কমপক্ষে %0.1f গিগাবাইটের একটি USB ফ্ল্যাশ ড্রাইভ অথবা SD কার্ড প্লাগ করুন।"
 
 #: config/chroot_local-includes/usr/lib/python3/dist-packages/tails_installer/gui.py:660
-msgid "An error happened while installing Tails"
+#, fuzzy
+msgid "An error happened while installing elizaOS"
 msgstr "পুচ্ছ ইনস্টল করার সময় একটি ত্রুটি ঘটেছে"
 
 #: config/chroot_local-includes/usr/lib/python3/dist-packages/tails_installer/gui.py:717
@@ -1341,8 +1357,9 @@ msgid "%(filename)s selected"
 msgstr "%(filename)s নির্বাচিত"
 
 #: config/chroot_local-includes/usr/lib/python3/dist-packages/tails_installer/source.py:37
-msgid "Unable to find Tails on ISO"
-msgstr ""
+#, fuzzy
+msgid "Unable to find elizaOS on ISO"
+msgstr "পার্টিশন খুঁজে পাওয়া যায়নি"
 
 #: config/chroot_local-includes/usr/lib/python3/dist-packages/tails_installer/source.py:44
 #, python-format
@@ -1448,18 +1465,18 @@ msgid "Partitioning Error"
 msgstr "পার্টিশন এবং ড্রাইভসমূহ"
 
 #: config/chroot_local-includes/usr/local/lib/tails-report-disk-partitioning-errors:19
-msgid "Errors were detected in the partitioning of your Tails USB stick."
+msgid "Errors were detected in the partitioning of your elizaOS USB stick."
 msgstr ""
 
 #: config/chroot_local-includes/usr/local/lib/tails-report-disk-partitioning-errors:26
 msgid ""
-"We recommend that you create a backup of your Tails using <i>Tails Cloner</"
-"i> to migrate to a new USB stick."
+"We recommend that you create a backup of your elizaOS using <i>elizaOS USB "
+"Cloner</i> to migrate to a new USB stick."
 msgstr ""
 
 #: config/chroot_local-includes/usr/local/lib/tails-report-disk-partitioning-errors:33
 #, fuzzy
-msgid "Open Tails Cloner"
+msgid "Open elizaOS USB Cloner"
 msgstr "Tails ইনস্টলার"
 
 #: config/chroot_local-includes/usr/local/lib/tails-report-disk-partitioning-errors:42
@@ -1469,7 +1486,7 @@ msgstr "আপনার একরোখা ভাণ্ডার তৈরি �
 
 #: config/chroot_local-includes/usr/local/lib/tails-report-disk-partitioning-errors:44
 msgid ""
-"We recommend that you reinstall Tails from scratch. If the error persists, "
+"We recommend that you reinstall elizaOS from scratch. If the error persists, "
 "reinstall on a new USB stick."
 msgstr ""
 
@@ -1516,28 +1533,13 @@ msgstr "পুনরায় চালু করুন"
 msgid "Power Off"
 msgstr "যন্ত্র বন্ধ"
 
-#: config/chroot_local-includes/usr/local/bin/tails-about:27
-#: ../config/chroot_local-includes/usr/share/desktop-directories/Tails.directory.in.h:1
-msgid "Tails"
-msgstr "Tails"
-
-#: config/chroot_local-includes/usr/local/bin/tails-about:30
-#: ../config/chroot_local-includes/usr/share/applications/tails-about.desktop.in.h:1
-msgid "About Tails"
-msgstr "Tails সম্পর্কে"
-
-#: config/chroot_local-includes/usr/local/bin/tails-about:34
+#: config/chroot_local-includes/usr/local/bin/tails-about:33
 #, fuzzy
 msgid "Check for Upgrades"
 msgstr "আপগ্রেডগুলির জন্য চেক করার সময় ত্রুটি"
 
-#: config/chroot_local-includes/usr/local/bin/tails-about:57
+#: config/chroot_local-includes/usr/local/bin/tails-about:56
 msgid "UNRELEASED"
-msgstr ""
-
-#: config/chroot_local-includes/usr/local/bin/tails-about:64
-#, python-format
-msgid "Built from %s"
 msgstr ""
 
 #: config/chroot_local-includes/usr/local/bin/tails-additional-software-config:114
@@ -1576,8 +1578,9 @@ msgstr ""
 "সফটওয়্যার ইন্সটল করুন ।"
 
 #: config/chroot_local-includes/usr/local/bin/tails-additional-software-config:227
+#, fuzzy
 msgid ""
-"To do so, unlock your Persistent Storage when starting Tails and install "
+"To do so, unlock your Persistent Storage when starting elizaOS and install "
 "some software using <a href=\"synaptic.desktop\">Synaptic Package Manager</"
 "a> or <a href=\"org.gnome.Terminal.desktop\">APT on the command line</a>."
 msgstr ""
@@ -1598,7 +1601,8 @@ msgstr ""
 "সফটওয়্যার ইন্সটল করতে হবে ।"
 
 #: config/chroot_local-includes/usr/local/bin/tails-additional-software-config:258
-msgid "To do so, install Tails on a USB stick and create a Persistent Storage."
+msgid ""
+"To do so, install elizaOS on a USB stick and create a Persistent Storage."
 msgstr ""
 
 #: config/chroot_local-includes/usr/local/bin/tails-additional-software-config:304
@@ -1758,10 +1762,10 @@ msgstr ""
 msgid ""
 "<b>Not enough memory available to check for upgrades.</b>\n"
 "\n"
-"Make sure this system satisfies the requirements for running Tails.\n"
+"Make sure this system satisfies the requirements for running elizaOS.\n"
 "See file:///usr/share/doc/tails/website/doc/about/requirements.en.html\n"
 "\n"
-"Try to restart Tails to check for upgrades again.\n"
+"Try to restart elizaOS to check for upgrades again.\n"
 "\n"
 "Or do a manual upgrade.\n"
 "See {manual_upgrade_url}"
@@ -1823,7 +1827,7 @@ msgstr ""
 #: config/chroot_local-includes/usr/lib/python3/dist-packages/tca/ui/main_window.py:418
 msgid ""
 "To save your bridge, <a href=\"doc/persistent_storage\">create a Persistent "
-"Storage</a> on your Tails USB stick."
+"Storage</a> on your elizaOS USB stick."
 msgstr ""
 
 #: config/chroot_local-includes/usr/lib/python3/dist-packages/tca/ui/main_window.py:438
@@ -2202,7 +2206,7 @@ msgstr "WhisperBack ত্রুটি রিপোর্টিং"
 msgid ""
 "Impossible to delete the Persistent Storage while it is unlocked.\n"
 "\n"
-"To delete the Persistent Storage, restart Tails without unlocking the "
+"To delete the Persistent Storage, restart elizaOS without unlocking the "
 "Persistent Storage and open the Persistent Storage settings again."
 msgstr ""
 
@@ -2212,7 +2216,7 @@ msgid ""
 "only.\n"
 "\n"
 "To delete the Persistent Storage, turn off the read-only protection of the "
-"USB stick, restart Tails without unlocking the Persistent Storage and open "
+"USB stick, restart elizaOS without unlocking the Persistent Storage and open "
 "the Persistent Storage settings again."
 msgstr ""
 
@@ -2473,23 +2477,25 @@ msgstr ""
 
 #: config/chroot_local-includes/usr/local/sbin/unsafe-browser:50
 msgid ""
-"To use the Unsafe Browser, restart Tails and make sure that the Unsafe "
+"To use the Unsafe Browser, restart elizaOS and make sure that the Unsafe "
 "Browser is enabled in the additional settings of the Welcome Screen."
 msgstr ""
 
 #: config/chroot_local-includes/usr/local/sbin/unsafe-browser:52
-msgid "To use the Unsafe Browser, restart Tails."
-msgstr ""
+#, fuzzy
+msgid "To use the Unsafe Browser, restart elizaOS."
+msgstr "অসুরক্ষিত ব্রাউজার শুরু হচ্ছে ..."
 
 #: config/chroot_local-includes/usr/local/sbin/unsafe-browser:55
 msgid "_Restart"
 msgstr ""
 
 #: config/chroot_local-includes/usr/local/sbin/unsafe-browser:57
+#, fuzzy
 msgid ""
-"Do you really want to restart Tails now?\\n\\nAll your current work will be "
-"lost."
-msgstr ""
+"Do you really want to restart elizaOS now?\\n\\nAll your current work will "
+"be lost."
+msgstr "স্থায়ী সঞ্চয়স্থান আনলক করতে আপনার পাসফ্রেজটি লিখুন"
 
 #: config/chroot_local-includes/usr/local/sbin/unsafe-browser:58
 msgid "Restart Now"
@@ -2620,7 +2626,7 @@ msgstr "যোগাযোগের OpenPGP সর্বজনীন কী ব�
 msgid ""
 "You turned on Offline Mode in the Welcome Screen.\n"
 "It is impossible to connect to Tor in Offline Mode.\n"
-"To connect to Tor and the Internet, restart Tails without Offline Mode."
+"To connect to Tor and the Internet, restart elizaOS without Offline Mode."
 msgstr ""
 
 #: config/chroot_local-includes/usr/local/lib/polkit-policy-change-message:65
@@ -2649,20 +2655,25 @@ msgstr "প্রিন্টার কনফিগারেশন"
 
 #: ../config/chroot_local-includes/usr/share/applications/tails-documentation.desktop.in.h:1
 #, fuzzy
-msgid "Tails Documentation"
-msgstr "টাইল ডকুমেন্টেশন"
+msgid "elizaOS Documentation"
+msgstr "ডকুমেন্টেশন"
 
 #: ../config/chroot_local-includes/usr/share/applications/tails-documentation.desktop.in.h:2
 #, fuzzy
-msgid "Learn how to use Tails"
+msgid "Learn how to use elizaOS"
 msgstr "Tails ব্যবহার কিভাবে শিখুন?"
 
 #: ../config/chroot_local-includes/usr/share/applications/tails-documentation.desktop.in.h:3
 msgid "learn"
 msgstr ""
 
+#: ../config/chroot_local-includes/usr/share/applications/tails-about.desktop.in.h:1
+msgid "About elizaOS"
+msgstr ""
+
 #: ../config/chroot_local-includes/usr/share/applications/tails-about.desktop.in.h:2
-msgid "Learn more about Tails"
+#, fuzzy
+msgid "Learn more about elizaOS"
 msgstr "Tails সম্পর্কে আরও জানুন"
 
 #: ../config/chroot_local-includes/usr/share/applications/tails-backup.desktop.in.h:1
@@ -2672,7 +2683,7 @@ msgstr "অবিরাম স্টোরেজ তৈরি করুন"
 
 #: ../config/chroot_local-includes/usr/share/applications/tails-backup.desktop.in.h:2
 msgid ""
-"Make a backup of the Tails Persistent Storage to another Tails USB stick"
+"Make a backup of the elizaOS Persistent Storage to another elizaOS USB stick"
 msgstr ""
 
 #: ../config/chroot_local-includes/usr/share/applications/tails-backup.desktop.in.h:3
@@ -2680,15 +2691,15 @@ msgid "backup"
 msgstr ""
 
 #: ../config/chroot_local-includes/usr/share/applications/tails-installer.desktop.in.h:2
-msgid "Install, clone, upgrade Tails"
+msgid "Install, clone, upgrade elizaOS"
 msgstr ""
 
 #: ../config/chroot_local-includes/usr/share/applications/tails-installer.desktop.in.h:3
-msgid "install;clone;upgrade;manual"
+msgid "elizaOS;install;clone;upgrade;USB;"
 msgstr ""
 
 #: ../config/chroot_local-includes/usr/share/applications/tca.desktop.in.h:2
-msgid "Connect Tails to the Tor network"
+msgid "Connect elizaOS to the Tor network"
 msgstr ""
 
 #: ../config/chroot_local-includes/usr/share/applications/tca.desktop.in.h:3
@@ -2732,7 +2743,7 @@ msgstr ""
 #, fuzzy
 msgid ""
 "Configure the additional software installed from your Persistent Storage "
-"when starting Tails"
+"when starting elizaOS"
 msgstr "Tails শুরু করার সময় আপনার একরোখা স্টোরেজ থেকে অতিরিক্ত সফ্টওয়্যার ইনস্টল করুন"
 
 #: ../config/chroot_local-includes/usr/share/applications/org.boum.tails.AdditionalSoftware.desktop.in.h:3
@@ -2740,16 +2751,21 @@ msgid "persistent;storage;package;install"
 msgstr ""
 
 #: ../config/chroot_local-includes/usr/share/applications/whisperback.desktop.in.h:1
-msgid "WhisperBack Error Reporting"
-msgstr "WhisperBack ত্রুটি রিপোর্টিং"
+msgid "Send Feedback"
+msgstr ""
 
 #: ../config/chroot_local-includes/usr/share/applications/whisperback.desktop.in.h:2
-msgid "Send feedback via encrypted e-mail"
-msgstr "এনক্রিপ্ট ইমেইল মাধ্যমে প্রতিক্রিয়া পাঠান"
+msgid "Send encrypted feedback to elizaOS support"
+msgstr ""
 
 #: ../config/chroot_local-includes/usr/share/applications/whisperback.desktop.in.h:3
-msgid "feedback;bug;report;tails;error;"
+#, fuzzy
+msgid "feedback;support;report;elizaos;error;"
 msgstr "প্রতিক্রিয়া; বাগ; প্রতিবেদন; টাইলস; সমস্যা;"
+
+#: ../config/chroot_local-includes/usr/share/desktop-directories/Tails.directory.in.h:1
+msgid "Tails"
+msgstr "Tails"
 
 #: ../config/chroot_local-includes/usr/share/desktop-directories/Tails.directory.in.h:2
 msgid "Tails specific tools"
@@ -2769,7 +2785,7 @@ msgstr ""
 
 #: ../config/chroot_local-includes/usr/share/tails/greeter/additional_settings.ui.in:18
 #: ../config/chroot_local-includes/usr/share/tails/greeter/additional_settings.ui.in:56
-#: ../config/chroot_local-includes/usr/share/tails/greeter/main.ui.in:869
+#: ../config/chroot_local-includes/usr/share/tails/greeter/main.ui.in:882
 msgid "Administration Password"
 msgstr "প্রশাসন পাসওয়ার্ড"
 
@@ -2795,7 +2811,7 @@ msgid "Disable"
 msgstr "টর অক্ষম"
 
 #: ../config/chroot_local-includes/usr/share/tails/greeter/additional_settings.ui.in:186
-#: ../config/chroot_local-includes/usr/share/tails/greeter/main.ui.in:873
+#: ../config/chroot_local-includes/usr/share/tails/greeter/main.ui.in:886
 msgid "MAC Address Anonymization"
 msgstr ""
 
@@ -2853,90 +2869,93 @@ msgstr "অসুরক্ষিত ব্রাউজার শুরু হচ
 msgid "Settings were loaded from the Persistent Storage."
 msgstr "স্থির ভলিউমের অনুমতিসমূহ সঠিককরণ।"
 
-#: ../config/chroot_local-includes/usr/share/tails/greeter/main.ui.in:98
-msgid "Welcome to Tails!"
+#: ../config/chroot_local-includes/usr/share/tails/greeter/main.ui.in:111
+#, fuzzy
+msgid "Welcome to elizaOS!"
 msgstr "Tails এ স্বাগতম!"
 
-#: ../config/chroot_local-includes/usr/share/tails/greeter/main.ui.in:131
+#: ../config/chroot_local-includes/usr/share/tails/greeter/main.ui.in:144
 msgid "Language and Formats"
 msgstr ""
 
-#: ../config/chroot_local-includes/usr/share/tails/greeter/main.ui.in:167
+#: ../config/chroot_local-includes/usr/share/tails/greeter/main.ui.in:180
 msgid "Default Settings"
 msgstr "ডিফল্ট সেটিংস"
 
-#: ../config/chroot_local-includes/usr/share/tails/greeter/main.ui.in:217
-#: ../config/chroot_local-includes/usr/share/tails/greeter/main.ui.in:238
+#: ../config/chroot_local-includes/usr/share/tails/greeter/main.ui.in:230
+#: ../config/chroot_local-includes/usr/share/tails/greeter/main.ui.in:251
 msgid "Save"
 msgstr "সংরক্ষণ করুন"
 
-#: ../config/chroot_local-includes/usr/share/tails/greeter/main.ui.in:267
-#: ../config/chroot_local-includes/usr/share/tails/greeter/main.ui.in:379
+#: ../config/chroot_local-includes/usr/share/tails/greeter/main.ui.in:280
+#: ../config/chroot_local-includes/usr/share/tails/greeter/main.ui.in:392
 #, fuzzy
 msgid "_Persistent Storage"
 msgstr "অবিরাম স্টোরেজ তৈরি করুন"
 
-#: ../config/chroot_local-includes/usr/share/tails/greeter/main.ui.in:287
+#: ../config/chroot_local-includes/usr/share/tails/greeter/main.ui.in:300
 msgid ""
 "You can save some of your files and configuration in an encrypted Persistent "
-"Storage on your Tails USB stick: your documents, browser bookmarks, Wi-Fi "
+"Storage on your elizaOS USB stick: your documents, browser bookmarks, Wi-Fi "
 "passwords, and so on."
 msgstr ""
 
-#: ../config/chroot_local-includes/usr/share/tails/greeter/main.ui.in:314
+#: ../config/chroot_local-includes/usr/share/tails/greeter/main.ui.in:327
 #, fuzzy
-msgid "Create and configure a Persistent Storage after starting Tails"
+msgid "Create and configure a Persistent Storage after starting elizaOS"
 msgstr ""
 "Tails শুরু করার সময় আপনার অবিরাম সঞ্চয় থেকে স্বয়ংক্রিয়ভাবে এটি ইনস্টল করতে হবে ।"
 
-#: ../config/chroot_local-includes/usr/share/tails/greeter/main.ui.in:406
+#: ../config/chroot_local-includes/usr/share/tails/greeter/main.ui.in:419
 msgid "Show Passphrase"
 msgstr "পাসফ্রেজ দেখান"
 
-#: ../config/chroot_local-includes/usr/share/tails/greeter/main.ui.in:463
+#: ../config/chroot_local-includes/usr/share/tails/greeter/main.ui.in:476
 #, fuzzy
 msgid "Enter your passphrase"
 msgstr "পাসফ্রেজ যাচাই করুন:"
 
-#: ../config/chroot_local-includes/usr/share/tails/greeter/main.ui.in:478
+#: ../config/chroot_local-includes/usr/share/tails/greeter/main.ui.in:491
 msgid "Unlock Encryption"
 msgstr ""
 
-#: ../config/chroot_local-includes/usr/share/tails/greeter/main.ui.in:545
+#: ../config/chroot_local-includes/usr/share/tails/greeter/main.ui.in:558
 #, fuzzy
 msgid "Impossible to unlock the Persistent Storage."
 msgstr "অবিরাম স্টোরেজ তৈরি করুন"
 
-#: ../config/chroot_local-includes/usr/share/tails/greeter/main.ui.in:605
+#: ../config/chroot_local-includes/usr/share/tails/greeter/main.ui.in:618
 #, fuzzy
 msgid "Partitioning Errors"
 msgstr "পার্টিশন এবং ড্রাইভসমূহ"
 
-#: ../config/chroot_local-includes/usr/share/tails/greeter/main.ui.in:641
+#: ../config/chroot_local-includes/usr/share/tails/greeter/main.ui.in:654
 msgid ""
-"Errors were detected in the partitioning of your Tails USB stick.\n"
+"Errors were detected in the partitioning of your elizaOS USB stick.\n"
 "\n"
-"Try reinstalling Tails. If the error persists, reinstall on a new USB stick."
+"Try reinstalling elizaOS. If the error persists, reinstall on a new USB "
+"stick."
 msgstr ""
 
-#: ../config/chroot_local-includes/usr/share/tails/greeter/main.ui.in:673
+#: ../config/chroot_local-includes/usr/share/tails/greeter/main.ui.in:686
 #, fuzzy
 msgid "_Additional Settings"
 msgstr "_Additional Settings"
 
-#: ../config/chroot_local-includes/usr/share/tails/greeter/main.ui.in:756
+#: ../config/chroot_local-includes/usr/share/tails/greeter/main.ui.in:769
 msgid "Add an additional setting"
 msgstr "অতিরিক্ত সেটিংস সংরক্ষণ করুন"
 
-#: ../config/chroot_local-includes/usr/share/tails/greeter/main.ui.in:803
+#: ../config/chroot_local-includes/usr/share/tails/greeter/main.ui.in:816
 msgid "Shutdown"
 msgstr "শাটডাউন"
 
-#: ../config/chroot_local-includes/usr/share/tails/greeter/main.ui.in:812
-msgid "_Start Tails"
+#: ../config/chroot_local-includes/usr/share/tails/greeter/main.ui.in:825
+#, fuzzy
+msgid "_Start elizaOS"
 msgstr "_Start Tails"
 
-#: ../config/chroot_local-includes/usr/share/tails/greeter/main.ui.in:841
+#: ../config/chroot_local-includes/usr/share/tails/greeter/main.ui.in:854
 msgid ""
 "The default settings are safe in most situations. To add a custom setting, "
 "press the \"+\" button below."
@@ -2944,7 +2963,7 @@ msgstr ""
 "অধিকাংশ পরিস্থিতিতে ডিফল্ট সেটিংস নিরাপদ। একটি কাস্টম সেটিং যোগ করতে, নীচের \"+"
 "\" বোতাম টিপুন।"
 
-#: ../config/chroot_local-includes/usr/share/tails/greeter/main.ui.in:877
+#: ../config/chroot_local-includes/usr/share/tails/greeter/main.ui.in:890
 msgid "Network Configuration"
 msgstr "নেটওয়ার্ক কনফিগারেশন"
 
@@ -3009,7 +3028,7 @@ msgstr "WhisperBack ত্রুটি রিপোর্টিং"
 msgid ""
 "Your Persistent Storage is unlocked.\n"
 "\n"
-"Its content is available until you shut down Tails.\n"
+"Its content is available until you shut down elizaOS.\n"
 "\n"
 "<a href=\"doc/persistent_storage/backup\">Learn how to make a backup of your "
 "Persistent Storage.</a>"
@@ -3018,7 +3037,7 @@ msgstr ""
 #: ../config/chroot_local-includes/usr/share/tails/persistent-storage/features_view.ui.in:91
 msgid ""
 "Turn on the features of the Persistent Storage for the data that you want to "
-"save to your Tails USB stick."
+"save to your elizaOS USB stick."
 msgstr ""
 
 #: ../config/chroot_local-includes/usr/share/tails/persistent-storage/features_view.ui.in:108
@@ -3100,109 +3119,122 @@ msgid "Applications"
 msgstr "অ্যাপ্লিকেশন"
 
 #: ../config/chroot_local-includes/usr/share/tails/persistent-storage/features_view.ui.in:431
+msgid "elizaOS Data"
+msgstr ""
+
+#: ../config/chroot_local-includes/usr/share/tails/persistent-storage/features_view.ui.in:432
+msgid "Save elizaOS memory, settings, and local runtime state."
+msgstr ""
+
+#: ../config/chroot_local-includes/usr/share/tails/persistent-storage/features_view.ui.in:448
+#, fuzzy
+msgid "Activate elizaOS Data"
+msgstr "SSH Client"
+
+#: ../config/chroot_local-includes/usr/share/tails/persistent-storage/features_view.ui.in:461
 #, fuzzy
 msgid "Tor Browser Bookmarks"
 msgstr "ব্রাউজারের বুকমার্ক"
 
-#: ../config/chroot_local-includes/usr/share/tails/persistent-storage/features_view.ui.in:447
+#: ../config/chroot_local-includes/usr/share/tails/persistent-storage/features_view.ui.in:477
 #, fuzzy
 msgid "Activate Tor Browser Bookmarks"
 msgstr "ব্রাউজারের বুকমার্ক"
 
-#: ../config/chroot_local-includes/usr/share/tails/persistent-storage/features_view.ui.in:460
+#: ../config/chroot_local-includes/usr/share/tails/persistent-storage/features_view.ui.in:490
 #, fuzzy
 msgid "Electrum Bitcoin Wallet"
 msgstr "ইলেক্ট্রামের বিটকয়েন ওয়াট এবং কনফিগারেশন"
 
-#: ../config/chroot_local-includes/usr/share/tails/persistent-storage/features_view.ui.in:476
+#: ../config/chroot_local-includes/usr/share/tails/persistent-storage/features_view.ui.in:506
 #, fuzzy
 msgid "Activate Electrum Bitcoin Wallet"
 msgstr "ইলেক্ট্রামের বিটকয়েন ওয়াট এবং কনফিগারেশন"
 
-#: ../config/chroot_local-includes/usr/share/tails/persistent-storage/features_view.ui.in:489
+#: ../config/chroot_local-includes/usr/share/tails/persistent-storage/features_view.ui.in:519
 #, fuzzy
 msgid "Thunderbird Email Client"
 msgstr "থান্ডারবার্ড"
 
-#: ../config/chroot_local-includes/usr/share/tails/persistent-storage/features_view.ui.in:505
+#: ../config/chroot_local-includes/usr/share/tails/persistent-storage/features_view.ui.in:535
 msgid "Activate Thunderbird Email Client"
 msgstr ""
 
-#: ../config/chroot_local-includes/usr/share/tails/persistent-storage/features_view.ui.in:518
+#: ../config/chroot_local-includes/usr/share/tails/persistent-storage/features_view.ui.in:548
 msgid "GnuPG"
 msgstr "GnuPG"
 
-#: ../config/chroot_local-includes/usr/share/tails/persistent-storage/features_view.ui.in:519
+#: ../config/chroot_local-includes/usr/share/tails/persistent-storage/features_view.ui.in:549
 msgid "OpenPGP keys outside of Thunderbird, including in Kleopatra."
 msgstr ""
 
-#: ../config/chroot_local-includes/usr/share/tails/persistent-storage/features_view.ui.in:535
+#: ../config/chroot_local-includes/usr/share/tails/persistent-storage/features_view.ui.in:565
 msgid "Activate GnuPG"
 msgstr ""
 
-#: ../config/chroot_local-includes/usr/share/tails/persistent-storage/features_view.ui.in:548
+#: ../config/chroot_local-includes/usr/share/tails/persistent-storage/features_view.ui.in:578
 msgid "Pidgin Internet Messenger"
 msgstr ""
 
-#: ../config/chroot_local-includes/usr/share/tails/persistent-storage/features_view.ui.in:564
+#: ../config/chroot_local-includes/usr/share/tails/persistent-storage/features_view.ui.in:594
 msgid "Activate Pidgin Internet Messenger"
 msgstr ""
 
-#: ../config/chroot_local-includes/usr/share/tails/persistent-storage/features_view.ui.in:577
+#: ../config/chroot_local-includes/usr/share/tails/persistent-storage/features_view.ui.in:607
 msgid "SSH Client"
 msgstr "SSH Client"
 
-#: ../config/chroot_local-includes/usr/share/tails/persistent-storage/features_view.ui.in:593
+#: ../config/chroot_local-includes/usr/share/tails/persistent-storage/features_view.ui.in:623
 #, fuzzy
 msgid "Activate SSH Client"
 msgstr "SSH Client"
 
-#: ../config/chroot_local-includes/usr/share/tails/persistent-storage/features_view.ui.in:620
+#: ../config/chroot_local-includes/usr/share/tails/persistent-storage/features_view.ui.in:650
 #, fuzzy
 msgid "Advanced Settings"
 msgstr "অতিরিক্ত বিন্যাস"
 
-#: ../config/chroot_local-includes/usr/share/tails/persistent-storage/features_view.ui.in:649
+#: ../config/chroot_local-includes/usr/share/tails/persistent-storage/features_view.ui.in:679
 #, fuzzy
-msgid "Install additional software automatically when starting Tails."
+msgid "Install additional software automatically when starting elizaOS."
 msgstr ""
 "Tails শুরু করার সময় আপনি আপনার একরোখা স্টোরেজ থেকে স্বয়ংক্রিয়ভাবে অতিরিক্ত "
 "সফটওয়্যার ইনস্টল করতে পারেন ।"
 
-#: ../config/chroot_local-includes/usr/share/tails/persistent-storage/features_view.ui.in:674
+#: ../config/chroot_local-includes/usr/share/tails/persistent-storage/features_view.ui.in:704
 #, fuzzy
 msgid "Configure Additional Software"
 msgstr "অতিরিক্ত সফটওয়্যার"
 
-#: ../config/chroot_local-includes/usr/share/tails/persistent-storage/features_view.ui.in:687
+#: ../config/chroot_local-includes/usr/share/tails/persistent-storage/features_view.ui.in:717
 #, fuzzy
 msgid "Activate Additional Software"
 msgstr "অতিরিক্ত সফটওয়্যার"
 
-#: ../config/chroot_local-includes/usr/share/tails/persistent-storage/features_view.ui.in:700
+#: ../config/chroot_local-includes/usr/share/tails/persistent-storage/features_view.ui.in:730
 msgid "Dotfiles"
 msgstr "Dotfiles"
 
-#: ../config/chroot_local-includes/usr/share/tails/persistent-storage/features_view.ui.in:701
+#: ../config/chroot_local-includes/usr/share/tails/persistent-storage/features_view.ui.in:731
 msgid "Symlink every file in the Dotfiles folder into the Home folder."
 msgstr ""
 
-#: ../config/chroot_local-includes/usr/share/tails/persistent-storage/features_view.ui.in:734
+#: ../config/chroot_local-includes/usr/share/tails/persistent-storage/features_view.ui.in:764
 #, fuzzy
 msgid "Activate Dotfiles"
 msgstr "Dotfiles"
 
-#: ../config/chroot_local-includes/usr/share/tails/persistent-storage/features_view.ui.in:766
+#: ../config/chroot_local-includes/usr/share/tails/persistent-storage/features_view.ui.in:796
 msgid "Custom"
 msgstr "পছন্দসই"
 
-#: ../config/chroot_local-includes/usr/share/tails/persistent-storage/features_view.ui.in:785
+#: ../config/chroot_local-includes/usr/share/tails/persistent-storage/features_view.ui.in:815
 msgid ""
-"To add or remove custom features, modify /live/persistence/"
-"TailsData_unlocked/persistence.conf."
+"To add or remove custom features, modify the Persistent Storage "
+"configuration file directly."
 msgstr ""
 
-#: ../config/chroot_local-includes/usr/share/tails/persistent-storage/features_view.ui.in:827
+#: ../config/chroot_local-includes/usr/share/tails/persistent-storage/features_view.ui.in:857
 msgid ""
 "<a href=\"doc/persistent_storage\">Learn more about the Persistent Storage.</"
 "a>"
@@ -3213,7 +3245,7 @@ msgid ""
 "<b>Your Persistent Storage is locked.</b>\n"
 "\n"
 "To use or configure your Persistent Storage, unlock it in the Welcome Screen "
-"when starting Tails.\n"
+"when starting elizaOS.\n"
 "\n"
 "To delete your Persistent Storage, click <b>Delete</b> on the right of the "
 "title bar."
@@ -3262,10 +3294,10 @@ msgstr "অবিরাম স্টোরেজ তৈরি করুন"
 
 #: ../config/chroot_local-includes/usr/share/tails/persistent-storage/welcome_view.ui.in:56
 msgid ""
-"Everything you do disappears automatically when you shut down Tails.\n"
+"Everything you do disappears automatically when you shut down elizaOS.\n"
 "\n"
 "But you can save some of your files and configuration in an encrypted "
-"Persistent Storage on your Tails USB stick, for example:\n"
+"Persistent Storage on your elizaOS USB stick, for example:\n"
 "\n"
 "• Your documents\n"
 "• Your Wi-Fi passwords\n"
@@ -3280,8 +3312,8 @@ msgstr ""
 msgid ""
 "Sorry, it is impossible to create a Persistent Storage on this device.\n"
 "\n"
-"To be able to use Tails with a Persistent Storage, please follow our "
-"instructions on <a href=\"install\">installing Tails on a USB stick</a>."
+"To be able to use elizaOS with a Persistent Storage, please follow our "
+"instructions on <a href=\"install\">installing elizaOS on a USB stick</a>."
 msgstr ""
 
 #: ../config/chroot_local-includes/usr/share/tails/persistent-storage/welcome_view.ui.in:141
@@ -3301,8 +3333,8 @@ msgstr "পাসফ্রেজ দেখান"
 
 #: ../config/chroot_local-includes/usr/share/tails/persistent-storage/window.ui.in:66
 #, fuzzy
-msgid "_Restart Tails"
-msgstr "Tails পুনরারম্ভ করুন"
+msgid "_Restart elizaOS"
+msgstr "পরে পুনরায় আরম্ভ করুন"
 
 #: ../config/chroot_local-includes/usr/share/tails/unlock-veracrypt-volumes/main.ui.in:61
 msgid "File Containers"
@@ -3936,11 +3968,29 @@ msgstr ""
 msgid "Clock"
 msgstr ""
 
+#, fuzzy
+#~ msgid "Tails Cloner"
+#~ msgstr "Tails ইনস্টলার"
+
+#~ msgid "About Tails"
+#~ msgstr "Tails সম্পর্কে"
+
+#, fuzzy
+#~ msgid "Tails Documentation"
+#~ msgstr "টাইল ডকুমেন্টেশন"
+
+#~ msgid "WhisperBack Error Reporting"
+#~ msgstr "WhisperBack ত্রুটি রিপোর্টিং"
+
+#~ msgid "Send feedback via encrypted e-mail"
+#~ msgstr "এনক্রিপ্ট ইমেইল মাধ্যমে প্রতিক্রিয়া পাঠান"
+
+#, fuzzy
+#~ msgid "_Restart Tails"
+#~ msgstr "Tails পুনরারম্ভ করুন"
+
 #~ msgid "Scan QR Code"
 #~ msgstr "কিউআর কোডটি স্ক্যান করুন"
-
-#~ msgid "Documentation"
-#~ msgstr "ডকুমেন্টেশন"
 
 #, fuzzy
 #~| msgid ""

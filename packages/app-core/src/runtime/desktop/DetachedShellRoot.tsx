@@ -27,7 +27,7 @@ import {
 } from "react";
 
 interface DetachedShellRootProps {
-  route: Exclude<WindowShellRoute, { mode: "main" }>;
+  route: Exclude<WindowShellRoute, { mode: "main" } | { mode: "pill" }>;
 }
 
 type ExtractComponent<TValue> =

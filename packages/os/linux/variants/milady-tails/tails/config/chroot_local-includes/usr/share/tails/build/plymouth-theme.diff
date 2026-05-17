@@ -5,5 +5,5 @@
 -#[Daemon]
 -#Theme=ceratopsian
 +[Daemon]
-+Theme=text
++Theme=elizaos
  #ShowDelay=0

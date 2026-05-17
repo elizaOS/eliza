@@ -5,6 +5,8 @@ export * from "./account-pool";
 export * from "./api/auth.ts";
 export * from "./api/automation-node-contributors";
 export * from "./api/compat-route-shared";
+// === Phase 5C: desktop runtime + app-config + onboarding-config + ios-local-agent-transport moved from @elizaos/ui ===
+export * from "./api/ios-local-agent-transport";
 export * from "./api/response";
 export * from "./api/secrets-inventory-routes";
 export * from "./api/secrets-manager-routes";
@@ -14,7 +16,6 @@ export * from "./api/server-wallet-trade";
 export * from "./api/setup-contract";
 export * from "./api/training-benchmarks";
 export * from "./api/workbench-compat-routes";
-// === Phase 5C: desktop runtime + app-config + onboarding-config moved from @elizaos/ui ===
 export * from "./config/app-config";
 export * from "./diagnostics/integration-observability";
 export * from "./onboarding/onboarding-config";

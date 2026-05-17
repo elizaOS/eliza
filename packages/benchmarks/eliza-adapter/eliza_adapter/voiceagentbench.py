@@ -71,7 +71,7 @@ logger = logging.getLogger(__name__)
 #   * BROWSER — plugins/plugin-browser/src/actions/browser.ts. Used as
 #     a best-effort target for ``find_restaurant`` / ``book_table``
 #     because there is no canonical "restaurant search" action.
-#   * ALARM — packages/native-plugins/macosalarm/src/actions.ts.
+#   * ALARM — plugins/plugin-native-macosalarm/src/actions.ts.
 #     Subactions: set, cancel, list.
 
 _VOICE_TOOL_TO_ELIZA_ACTION: dict[str, dict[str, str]] = {

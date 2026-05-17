@@ -52,7 +52,7 @@
                       <object class="GtkLabel" id="placeholder_label1">
                         <property name="label" translatable="yes">&lt;b&gt;Your Persistent Storage is locked.&lt;/b&gt;
 
-To use or configure your Persistent Storage, unlock it in the Welcome Screen when starting Tails.
+To use or configure your Persistent Storage, unlock it in the Welcome Screen when starting elizaOS.
 
 To delete your Persistent Storage, click &lt;b&gt;Delete&lt;/b&gt; on the right of the title bar.</property>
                         <property name="max-width-chars">50</property>

@@ -135,6 +135,11 @@ describe("Eliza-1 runtime quant metadata", () => {
 
     expect(entry?.companionModelIds ?? []).toEqual(["eliza-1-0_8b-drafter"]);
     expect(entry?.runtime?.dflash?.drafterModelId).toBe("eliza-1-0_8b-drafter");
+    const drafter = MODEL_CATALOG.find(
+      (model) => model.id === "eliza-1-0_8b-drafter",
+    );
+    expect(drafter?.params).toBe("0.1B");
+    expect(drafter?.sizeGb).toBe(0.1);
     expect(entry?.runtime?.optimizations?.requiresKernel).toContain("dflash");
     expect(
       MODEL_CATALOG.some((model) => model.id === "eliza-1-0_8b-drafter"),
@@ -142,6 +147,15 @@ describe("Eliza-1 runtime quant metadata", () => {
     expect(entry?.sourceModel?.components.drafter?.file).toBe(
       "bundles/0_8b/dflash/drafter-0_8b.gguf",
     );
+  });
+
+  it("attaches the 0.3B DFlash companion to the 2B tier", () => {
+    const drafter = MODEL_CATALOG.find(
+      (model) => model.id === "eliza-1-2b-drafter",
+    );
+
+    expect(drafter?.params).toBe("0.3B");
+    expect(drafter?.sizeGb).toBe(0.3);
   });
 
   it("gates M-RoPE DFlash tiers until the verifier path is hardware-validated", () => {

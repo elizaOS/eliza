@@ -117,7 +117,7 @@ function PipelineNodeButton({
       type="button"
       onClick={onClick}
       className={`
-        flex min-w-[90px] flex-col items-center gap-1.5 rounded-xl border
+        flex min-w-[90px] flex-col items-center gap-1.5 rounded-sm border
         px-3 py-2.5 transition-all duration-150 cursor-pointer select-none
         ${statusClasses[node.status]}
       `}

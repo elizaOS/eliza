@@ -70,7 +70,7 @@ and the verification recipes (`nm -gU`, `otool -l`).
 
 | Consumer | Path | What it pulls |
 |---|---|---|
-| `@elizaos/capacitor-bun-runtime` | `eliza/packages/native-plugins/bun-runtime/` | `LlamaCpp.xcframework` via the Pod's `vendored_frameworks` |
+| `@elizaos/capacitor-bun-runtime` | `eliza/plugins/plugin-native-bun-runtime/` | `LlamaCpp.xcframework` via the Pod's `vendored_frameworks` |
 | `@elizaos/bun-ios-runtime` | `eliza/packages/bun-ios-runtime/` | Pending wire-up (see M02-deps-cross-build) |
 | `milady` iOS app shell | `milady/native/ios-bun-port/` | Pending wire-up (the directory is being migrated to depend on this package) |
 

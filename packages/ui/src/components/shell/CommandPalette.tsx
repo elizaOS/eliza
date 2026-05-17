@@ -245,7 +245,7 @@ export function CommandPalette() {
       }}
     >
       <DialogContent
-        className="flex max-h-[min(420px,calc(100dvh_-_1rem))] w-[min(calc(100vw_-_1rem),32.5rem)] max-w-none flex-col rounded-xl p-0 sm:top-[30%] sm:translate-y-0"
+        className="flex max-h-[min(420px,calc(100dvh_-_1rem))] w-[min(calc(100vw_-_1rem),32.5rem)] max-w-none flex-col rounded-sm p-0 sm:top-[30%] sm:translate-y-0"
         onKeyDown={handlePaletteKeyDown}
       >
         <DialogHeader className="sr-only">

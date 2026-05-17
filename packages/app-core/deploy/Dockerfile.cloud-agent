@@ -19,8 +19,12 @@ RUN apt-get update && \
 
 WORKDIR /app
 
-# Copy the entrypoint (standalone Node.js script, no build step needed)
+# Copy the entrypoint + its sibling module (standalone TS, no build step).
+# Both files are required at runtime — cloud-agent-entrypoint.ts does
+# `import "./cloud-agent-shared.ts"`. Build was previously failing in the
+# container with "Cannot find module './cloud-agent-shared.ts'".
 COPY eliza/packages/app-core/deploy/cloud-agent-entrypoint.ts ./entrypoint.ts
+COPY eliza/packages/app-core/deploy/cloud-agent-shared.ts ./cloud-agent-shared.ts
 
 # Install tsx for running TypeScript directly
 RUN npm install -g tsx@4

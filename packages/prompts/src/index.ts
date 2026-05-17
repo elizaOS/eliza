@@ -731,10 +731,10 @@ extract OPTIONAL. Populate ONLY durable fact about user/person/relationship.
 - extract.addressedTo: UUIDs preferred or participant names addressed. Agent id/name when user talks to agent; other participant by name/@mention. Empty/omit if broadcast/unclear. Do not guess.
 - omit extract when no durable fact/addressee. Never invent.
 
-Call {{handleResponseToolName}} exactly once. No plain-text answer.
+Call {{handleResponseToolName}} exactly once. If native tool calls are unavailable, return the same envelope as plain JSON.
 
 return:
-Use the {{handleResponseToolName}} tool. Do not return JSON as message text.
+Use the {{handleResponseToolName}} tool when available; otherwise return only the JSON envelope.
 
 JSON only. Return one JSON object. No prose, fences, thinking, or markdown.
 `;

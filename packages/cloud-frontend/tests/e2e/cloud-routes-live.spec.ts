@@ -71,7 +71,7 @@ test.describe("live: public routes against real backend", () => {
       const captured = collect(page);
       const resp = await page.goto(route, { waitUntil: "networkidle" });
       expect(resp, `no response for ${route}`).not.toBeNull();
-      expect(resp!.status(), `bad status on ${route}`).toBeLessThan(400);
+      expect(resp?.status(), `bad status on ${route}`).toBeLessThan(400);
 
       // Settle SSR-hydrated content
       await page.waitForTimeout(1500);
@@ -86,12 +86,12 @@ test.describe("live: public routes against real backend", () => {
       const problems: string[] = [];
       if (captured.pageErrors.length) {
         problems.push(
-          `Page errors:\n${captured.pageErrors.map((e) => "  - " + e).join("\n")}`,
+          `Page errors:\n${captured.pageErrors.map((e) => `  - ${e}`).join("\n")}`,
         );
       }
       if (captured.consoleErrors.length) {
         problems.push(
-          `Console errors:\n${captured.consoleErrors.map((e) => "  - " + e).join("\n")}`,
+          `Console errors:\n${captured.consoleErrors.map((e) => `  - ${e}`).join("\n")}`,
         );
       }
       if (captured.failedResponses.length) {

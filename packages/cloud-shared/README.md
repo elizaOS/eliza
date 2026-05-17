@@ -1,6 +1,17 @@
-# Eliza Cloud
+# @elizaos/cloud-shared
 
-A comprehensive AI agent development platform built with Next.js 15, featuring multi-model AI generation (text, image, video, music, voice), full elizaOS runtime integration, enterprise authentication, credit-based billing, and production-ready cloud infrastructure.
+Shared backend code for Eliza Cloud — billing arithmetic, db schemas/repositories/migrations, server services (Discord/Telegram/Twitter/Hetzner/sandbox/etc.), and Cloudflare-worker types.
+
+Consumed by:
+
+- `@elizaos/cloud-api` — Cloudflare Worker (Hono)
+- `@elizaos/cloud-frontend` — Vite + React 19, deployed to Cloudflare Pages
+- `@elizaos/cloud-services/*` — auxiliary Node services
+- A few plugins (`plugin-elizacloud` via `@elizaos/cloud-sdk`, `plugin-tailscale`/`plugin-wallet`/`plugin-streaming` via `@elizaos/cloud-routing`)
+
+See [CLAUDE.md](./CLAUDE.md) for layout, commands, migration workflow, and architecture rules.
+
+Much of the prose below predates the consolidation and describes the old `cloud/` monorepo root (Next.js + nested workspaces). Treat it as historical reference for product/business context; defer to CLAUDE.md and the actual source for current structure.
 
 ## 📋 Table of Contents
 

@@ -60,7 +60,7 @@ export function ShortcutsOverlay() {
 
   return (
     <Dialog open={open} onOpenChange={setOpen}>
-      <DialogContent className="max-w-lg rounded-xl max-h-[80vh] overflow-y-auto p-0">
+      <DialogContent className="max-w-lg rounded-sm max-h-[80vh] overflow-y-auto p-0">
         <DialogHeader
           className="px-5 py-4"
           style={{ borderBottom: "1px solid var(--border)" }}

@@ -82,10 +82,10 @@ export function ElizaPoliciesSection({ agentId }: ElizaPoliciesSectionProps) {
 
   if (error) {
     return (
-      <div className="flex items-start gap-3 p-4 bg-amber-950/20 border border-amber-500/20">
-        <span className="w-2 h-2 rounded-full bg-amber-500 shrink-0 mt-1" />
+      <div className="flex items-start gap-3 p-4 bg-orange-950/20 border border-orange-500/20">
+        <span className="w-2 h-2 rounded-full bg-orange-500 shrink-0 mt-1" />
         <div>
-          <p className="font-mono text-xs text-amber-400">{error}</p>
+          <p className="font-mono text-xs text-orange-400">{error}</p>
           <button
             type="button"
             onClick={fetchPolicies}
@@ -126,7 +126,7 @@ export function ElizaPoliciesSection({ agentId }: ElizaPoliciesSectionProps) {
               <div className="flex items-center gap-3">
                 <span
                   className={`inline-block w-2 h-2 rounded-full ${
-                    policy.enabled ? "bg-emerald-500" : "bg-white/20"
+                    policy.enabled ? "bg-green-500" : "bg-white/20"
                   }`}
                 />
                 <span
@@ -139,7 +139,7 @@ export function ElizaPoliciesSection({ agentId }: ElizaPoliciesSectionProps) {
               <span
                 className={`font-mono text-[10px] tracking-wide px-2 py-0.5 border ${
                   policy.enabled
-                    ? "text-emerald-400 border-emerald-500/30 bg-emerald-500/10"
+                    ? "text-green-400 border-green-500/30 bg-green-500/10"
                     : "text-white/30 border-white/10"
                 }`}
               >

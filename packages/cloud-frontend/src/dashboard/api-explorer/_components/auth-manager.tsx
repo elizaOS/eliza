@@ -122,7 +122,7 @@ export function AuthManager({
             className="h-10 px-3 rounded-lg border border-white/10 bg-black/40 text-neutral-400 hover:text-white transition-colors"
           >
             {copied ? (
-              <Check className="h-4 w-4 text-emerald-400" />
+              <Check className="h-4 w-4 text-green-400" />
             ) : (
               <Copy className="h-4 w-4" />
             )}
@@ -131,8 +131,8 @@ export function AuthManager({
       </div>
 
       {/* Notice */}
-      <div className="flex items-center gap-2 px-3 py-2 rounded-lg bg-amber-500/10 border border-amber-500/20">
-        <span className="text-xs text-amber-400">
+      <div className="flex items-center gap-2 px-3 py-2 rounded-lg bg-orange-500/10 border border-orange-500/20">
+        <span className="text-xs text-orange-400">
           API calls are billed to your account
         </span>
       </div>

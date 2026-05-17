@@ -120,7 +120,7 @@ jobs:
           # declarations tsc step fails with TS2307 if that file is missing.
           (cd packages/contracts && bun run build)
           (cd packages/core && bun run build.ts --node-only)
-          for pkg in packages/shared packages/cloud-sdk packages/skills packages/ui; do
+          for pkg in packages/shared packages/cloud-sdk packages/cloud-routing packages/skills packages/ui; do
             if [[ -f "$pkg/package.json" ]] && jq -e '.scripts.build' "$pkg/package.json" >/dev/null; then
               echo "::group::Building $pkg"
               (cd "$pkg" && bun install --no-frozen-lockfile --ignore-scripts && bun run build)

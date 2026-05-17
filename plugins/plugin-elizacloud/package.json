@@ -54,15 +54,27 @@
     }
   },
   "dependencies": {
+    "@ai-sdk/gateway": "3.0.109",
     "@ai-sdk/openai": "^3.0.9",
+    "@ai-sdk/provider": "3.0.10",
+    "@ai-sdk/provider-utils": "4.0.26",
     "@elizaos/cloud-sdk": "workspace:*",
     "@elizaos/core": "workspace:*",
     "@elizaos/shared": "workspace:*",
+    "@noble/curves": "1.9.1",
+    "@noble/hashes": "1.8.0",
+    "@opentelemetry/api": "1.9.0",
+    "@scure/bip32": "1.7.0",
+    "@scure/bip39": "1.6.0",
+    "abitype": "1.2.3",
     "ai": "^6.0.30",
+    "isows": "1.0.7",
     "jose": "^6.2.2",
     "js-tiktoken": "^1.0.21",
+    "ox": "0.14.20",
     "undici": "8.2.0",
-    "viem": "^2.48.8"
+    "viem": "^2.48.8",
+    "ws": "8.18.3"
   },
   "devDependencies": {
     "@biomejs/biome": "^2.4.14",

@@ -114,10 +114,10 @@ export class PluginCompiler {
       warnings = result.warnings;
       output = primary.contents;
     } catch (error) {
-      if (!isEsbuildServiceStoppedError(error)) {
+      if (!isRecoverableEsbuildRuntimeError(error)) {
         throw error;
       }
-      output = transpileWithBun(entrySource, loader);
+      output = await transpileWithoutEsbuild(entrySource, loader, format);
     }
 
     const durationMs = Date.now() - start;
@@ -167,17 +167,24 @@ function defaultOutFile(entry: string): string {
   return `dist/${stem}.js`;
 }
 
-function isEsbuildServiceStoppedError(error: unknown): boolean {
+function isRecoverableEsbuildRuntimeError(error: unknown): boolean {
   const message =
     error instanceof Error
       ? error.message
       : typeof error === "string"
         ? error
         : "";
-  return /service (?:was stopped|is no longer running)/i.test(message);
+  return [
+    /service (?:was stopped|is no longer running)/i,
+    /installed esbuild for another platform/i,
+  ].some((pattern) => pattern.test(message));
 }
 
-function transpileWithBun(entrySource: string, loader: esbuild.Loader): string {
+async function transpileWithoutEsbuild(
+  entrySource: string,
+  loader: esbuild.Loader,
+  format: PluginCompilerFormat,
+): Promise<string> {
   const bunGlobal = globalThis as typeof globalThis & {
     Bun?: {
       Transpiler?: new (options: {
@@ -186,16 +193,10 @@ function transpileWithBun(entrySource: string, loader: esbuild.Loader): string {
       }) => { transformSync(source: string): string };
     };
   };
-  if (!bunGlobal.Bun) {
-    throw new Error(
-      "PluginCompiler.compile: esbuild service stopped and Bun is unavailable",
-    );
-  }
-  const Transpiler = bunGlobal.Bun.Transpiler;
+
+  const Transpiler = bunGlobal.Bun?.Transpiler;
   if (!Transpiler) {
-    throw new Error(
-      "PluginCompiler.compile: esbuild service stopped and Bun.Transpiler is unavailable",
-    );
+    return transpileWithTypeScript(entrySource, loader, format);
   }
 
   const transpiler = new Transpiler({
@@ -203,6 +204,34 @@ function transpileWithBun(entrySource: string, loader: esbuild.Loader): string {
     target: "node",
   });
   return transpiler.transformSync(entrySource);
+}
+
+async function transpileWithTypeScript(
+  entrySource: string,
+  loader: esbuild.Loader,
+  format: PluginCompilerFormat,
+): Promise<string> {
+  let ts: typeof import("typescript");
+  try {
+    ts = await import("typescript");
+  } catch (error) {
+    throw new Error(
+      "PluginCompiler.compile: esbuild is unavailable and neither Bun.Transpiler nor TypeScript is available",
+      { cause: error },
+    );
+  }
+
+  const result = ts.transpileModule(entrySource, {
+    compilerOptions: {
+      esModuleInterop: true,
+      jsx: ts.JsxEmit.ReactJSX,
+      module: format === "cjs" ? ts.ModuleKind.CommonJS : ts.ModuleKind.ESNext,
+      target: ts.ScriptTarget.ES2022,
+    },
+    fileName: `plugin.${toTypeScriptExtension(loader)}`,
+  });
+
+  return result.outputText;
 }
 
 function toBunLoader(loader: esbuild.Loader): "js" | "jsx" | "ts" | "tsx" {
@@ -213,6 +242,21 @@ function toBunLoader(loader: esbuild.Loader): "js" | "jsx" | "ts" | "tsx" {
       return "jsx";
     case "js":
       return "js";
+    default:
+      return "ts";
+  }
+}
+
+function toTypeScriptExtension(
+  loader: esbuild.Loader,
+): "js" | "jsx" | "ts" | "tsx" {
+  switch (loader) {
+    case "jsx":
+      return "jsx";
+    case "js":
+      return "js";
+    case "tsx":
+      return "tsx";
     default:
       return "ts";
   }

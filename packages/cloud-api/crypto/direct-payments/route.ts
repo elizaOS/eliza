@@ -7,7 +7,7 @@
 
 import { Hono } from "hono";
 import { z } from "zod";
-import { requireUserWithOrg } from "@/lib/auth/workers-hono-auth";
+import { requireUserOrApiKeyWithOrg } from "@/lib/auth/workers-hono-auth";
 import {
   RateLimitPresets,
   rateLimit,
@@ -34,7 +34,7 @@ app.get("/config", rateLimit(RateLimitPresets.STANDARD), (c) => {
 
 app.post("/", rateLimit(RateLimitPresets.STRICT), async (c) => {
   try {
-    const user = await requireUserWithOrg(c);
+    const user = await requireUserOrApiKeyWithOrg(c);
     if (!user.wallet_address) {
       return c.json(
         {

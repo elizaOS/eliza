@@ -35,7 +35,6 @@ jobs:
       - run: bun run --cwd packages/os-usb-installer test
       - name: Package desktop app
         run: bun run --cwd packages/os-usb-installer package:${{ matrix.platform }}
-        continue-on-error: true
       - uses: actions/upload-artifact@v4
         with:
           name: ${{ matrix.artifact }}

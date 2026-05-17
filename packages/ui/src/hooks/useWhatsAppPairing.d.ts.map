@@ -1,0 +1,1 @@
+{"version":3,"file":"useWhatsAppPairing.d.ts","sourceRoot":"","sources":["useWhatsAppPairing.ts"],"names":[],"mappings":"AAIA,YAAY,EAAE,qBAAqB,EAAE,MAAM,0BAA0B,CAAC;AAEtE,OAAO,KAAK,EAAE,qBAAqB,EAAE,MAAM,0BAA0B,CAAC;AAStE,wBAAgB,kBAAkB,CAAC,SAAS,SAA+B;;;;YANjE,qBAAqB;eAClB,MAAM,GAAG,IAAI;iBACX,MAAM,GAAG,IAAI;WACnB,MAAM,GAAG,IAAI;EA0GrB"}

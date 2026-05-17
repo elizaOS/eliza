@@ -21,6 +21,7 @@ let captureGenerateAbortSignal: AbortSignal | undefined;
 let generateWaitsForAbort = false;
 let generateThrowsTurnAbort = false;
 let generateThrowsTimeout = false;
+let generateEmitsMatchingSnapshotAfterChunk = false;
 let assistantMemoryAlreadyPersisted = false;
 let assistantMemoryTextAlreadyPersisted: string | null = null;
 
@@ -98,6 +99,9 @@ vi.mock("../chat-routes.ts", async () => {
       }
       // Stream a single token so the SSE wire format mirrors a real turn.
       opts?.onChunk?.("ok");
+      if (generateEmitsMatchingSnapshotAfterChunk) {
+        opts?.onSnapshot?.("ok");
+      }
       return {
         text: "ok",
         agentName,
@@ -288,6 +292,7 @@ describe("conversation-routes streaming persistence ordering", () => {
     generateWaitsForAbort = false;
     generateThrowsTurnAbort = false;
     generateThrowsTimeout = false;
+    generateEmitsMatchingSnapshotAfterChunk = false;
     assistantMemoryAlreadyPersisted = false;
     assistantMemoryTextAlreadyPersisted = null;
   });
@@ -323,6 +328,26 @@ describe("conversation-routes streaming persistence ordering", () => {
     expect(record.endedAt ?? 0).toBeLessThanOrEqual(
       persistResolvedAt ?? Infinity,
     );
+  });
+
+  it("does not duplicate identical token snapshots on the SSE wire", async () => {
+    generateEmitsMatchingSnapshotAfterChunk = true;
+    const { ctx, record } = createCtx();
+
+    const handlerDone = handleConversationRoutes(ctx);
+    for (let i = 0; i < 10; i++) await new Promise((r) => setImmediate(r));
+
+    const tokenFrames = record.writes
+      .filter((w) => w.startsWith("data:"))
+      .map((w) => JSON.parse(w.slice("data:".length).trim()))
+      .filter((payload) => payload.type === "token");
+
+    expect(tokenFrames).toEqual([
+      { type: "token", text: "ok", fullText: "ok" },
+    ]);
+
+    persistResolve?.();
+    await handlerDone;
   });
 
   it("logs persistence failures via Logger.error and still ends the response cleanly", async () => {

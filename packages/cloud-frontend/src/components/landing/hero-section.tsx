@@ -1,5 +1,6 @@
 "use client";
 
+import { BRAND_PATHS } from "@elizaos/shared-brand";
 import { CloudVideoBackground } from "@elizaos/ui";
 import { ArrowRight } from "lucide-react";
 import { useNavigate } from "react-router-dom";
@@ -11,22 +12,16 @@ export default function HeroSection() {
 
   return (
     <CloudVideoBackground
-      basePath="/clouds"
+      basePath={BRAND_PATHS.clouds}
       speed="4x"
-      poster="/clouds/poster.jpg"
+      poster={BRAND_PATHS.poster}
       scrim={0.18}
       scrimColor="rgba(255,255,255,1)"
-      style={{ minHeight: "100vh" }}
+      style={{ minHeight: "100svh" }}
     >
-      <div className="relative mx-auto flex min-h-screen w-full max-w-7xl flex-col items-start justify-center px-6 py-28 text-black sm:px-10 lg:px-16">
-        <img
-          src="/brand/logos/elizacloud_logotext_black.svg"
-          alt="eliza cloud"
-          className="mb-10 h-9 w-auto sm:h-11"
-          draggable={false}
-        />
+      <div className="relative mx-auto flex min-h-[100svh] w-full max-w-7xl flex-col items-start justify-center px-6 py-28 text-black sm:px-10 lg:px-16">
         <h1
-          className="max-w-4xl text-[clamp(4rem,14vw,10rem)] font-medium leading-[0.86] text-black"
+          className="max-w-4xl text-[clamp(3rem,14vw,10rem)] font-medium leading-[0.86] text-black"
           style={{ fontFamily: "Poppins, Arial, system-ui, sans-serif" }}
         >
           Launch Eliza.
@@ -38,8 +33,7 @@ export default function HeroSection() {
           <button
             type="button"
             onClick={launchEliza}
-            className="inline-flex min-h-14 items-center justify-center gap-2 bg-black px-8 py-4 text-base font-medium text-white transition hover:bg-[#0B35F1] sm:text-lg"
-            style={{ borderRadius: 2 }}
+            className="inline-flex min-h-14 items-center justify-center gap-2 rounded-[3px] bg-black px-8 py-4 text-base font-medium text-white transition hover:bg-[#0B35F1] sm:text-lg"
           >
             Launch Eliza
             <ArrowRight className="h-5 w-5" />
@@ -47,8 +41,7 @@ export default function HeroSection() {
           <button
             type="button"
             onClick={openDashboard}
-            className="inline-flex min-h-14 items-center justify-center bg-[#FF5800] px-7 py-4 text-base font-medium text-black transition hover:bg-black hover:text-white"
-            style={{ borderRadius: 2 }}
+            className="inline-flex min-h-14 items-center justify-center rounded-[3px] bg-[#FF5800] px-7 py-4 text-base font-medium text-black transition hover:bg-black hover:text-white"
           >
             Developer Dashboard
           </button>

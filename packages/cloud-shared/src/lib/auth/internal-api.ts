@@ -24,9 +24,6 @@ export interface InternalAuthResult {
 /**
  * Validates and verifies the internal JWT asynchronously.
  * Returns the auth result if valid, or an error response if invalid.
- *
- * @param request - The incoming request
- * @returns Auth result with pod identity, or Response error
  */
 export async function validateInternalJWTAsync(
   request: Request,

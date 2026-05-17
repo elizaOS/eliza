@@ -1,11 +1,12 @@
-# Eliza Cloud V2
+# @elizaos/cloud-shared
+
+Single backend package for Eliza Cloud. See [CLAUDE.md](./CLAUDE.md) for the package layout, commands, and architecture rules — this file covers product/business assumptions only.
 
 ## Stack
-- **Runtime**: Bun
-- **Framework**: Next.js 15 (App Router)
-- **Database**: PostgreSQL + Drizzle ORM
-- **Deployment**: Cloudflare Workers (API) + Cloudflare Pages (frontend)
-- **UI**: React + Tailwind CSS
+- **Runtime**: Bun (server), browser (only what cloud-frontend imports)
+- **API consumer**: `@elizaos/cloud-api` — Hono on Cloudflare Workers
+- **UI consumer**: `@elizaos/cloud-frontend` — Vite + React 19, deployed to Cloudflare Pages
+- **Database**: PostgreSQL via Drizzle ORM (Neon in prod, PGlite locally)
 
 ## Default Cloud Product Assumptions
 
@@ -19,52 +20,6 @@
 
 See [docs/api-authentication.md](docs/api-authentication.md) for cookie vs API key vs Bearer vs wallet auth, CORS sources, rate-limit presets, and the canonical JSON error shape. For **why** session-only vs programmatic routes are split (edge + handlers), see [docs/auth-api-consistency.md](docs/auth-api-consistency.md). For **why** OpenRouter vs legacy `xai/` / `mistral/` model and provider spellings are normalized together in billing and usage SQL, see [docs/openrouter-model-id-compatibility.md](docs/openrouter-model-id-compatibility.md).
 
-## Commands
-```bash
-bun install          # Install dependencies
-bun run dev          # Start dev server
-bun run build        # Production build
-bun run db:migrate   # Apply database migrations
-bun run db:generate  # Generate migration from schema
-bun run db:studio    # Open Drizzle Studio
-```
+## Commands, structure, migrations, type-checking
 
-## Database Migrations
-
-**Never use `db:push` - it's removed. All schema changes go through migrations.**
-
-### Schema Change Workflow
-1. Edit schema in `packages/db/schemas/`
-2. `bun run db:generate`
-3. Review SQL in `packages/db/migrations/`
-4. `bun run db:migrate`
-5. Commit both schema + migration
-
-### Custom Migrations
-```bash
-npx drizzle-kit generate --custom --name=descriptive_name
-```
-
-### Rules
-- No `CREATE INDEX CONCURRENTLY` (runs in transaction)
-- Use `IF NOT EXISTS` / `IF EXISTS`
-- Never edit applied migrations
-- See `docs/database-migrations.md` for details
-
-## Project Structure
-```
-app/               # Next.js App Router pages
-packages/
-  lib/             # Business logic, services
-  db/
-    schemas/       # Drizzle schema definitions
-    migrations/    # SQL migration files
-    repositories/  # Data access layer
-  components/      # React components
-  ui/              # Shared UI component library
-  tests/           # Test suites
-  types/           # Shared TypeScript generic types
-  scripts/         # CLI utilities
-  infra/           # Infrastructure logic
-  config/          # Shared settings
-```
+See [CLAUDE.md](./CLAUDE.md) — single source of truth. It covers the flat `src/{billing,db,lib,types}/` layout, subpath exports, drizzle workflow, migration rules, and architecture commandments.

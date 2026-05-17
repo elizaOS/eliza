@@ -114,7 +114,7 @@ dist/
 The `ElizaosCapacitorBunRuntime.podspec` references the produced xcframework
 via `vendored_frameworks`. The Pod is added to the iOS project by
 `run-mobile-build.mjs`'s generator. The Swift `LlamaBridgeImpl.swift`
-in `eliza/packages/native-plugins/bun-runtime/ios/Sources/.../bridge/`
+in `eliza/plugins/plugin-native-bun-runtime/ios/Sources/.../bridge/`
 binds to the C symbols via `@_silgen_name` — no module map or umbrella
 header needed.
 

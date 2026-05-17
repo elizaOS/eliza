@@ -9,6 +9,7 @@
 
 import { AlertCircle, CreditCard, Loader2 } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
+import { Helmet } from "react-helmet-async";
 import { Link, useParams } from "react-router-dom";
 import { ApiError, api } from "../../../lib/api-client";
 
@@ -117,37 +118,52 @@ export default function PaymentRequestPage() {
     window.location.assign(url);
   };
 
+  // Helmet must render in every branch so the page title is set even during
+  // the loading / error short-circuits; otherwise the global homepage title
+  // ("Eliza Cloud - Launch Eliza") bleeds through.
+  const head = (
+    <Helmet>
+      <title>Payment Request | Eliza Cloud</title>
+    </Helmet>
+  );
+
   if (isLoading) {
     return (
-      <div className="flex min-h-screen items-center justify-center bg-[#080A0D] p-4">
-        <Loader2 className="h-8 w-8 animate-spin text-cyan-200/70" />
-      </div>
+      <>
+        {head}
+        <div className="flex min-h-screen items-center justify-center bg-[#080A0D] p-4">
+          <Loader2 className="h-8 w-8 animate-spin text-blue-200/70" />
+        </div>
+      </>
     );
   }
 
   if (!paymentRequest) {
     return (
-      <div className="flex min-h-screen items-center justify-center bg-[#080A0D] p-4 text-white">
-        <div className="w-full max-w-sm border border-red-400/30 bg-red-500/10 p-5">
-          <div className="flex items-center gap-3">
-            <AlertCircle className="h-6 w-6 text-red-300" />
-            <div>
-              <h1 className="text-base font-semibold">
-                Payment request unavailable
-              </h1>
-              <p className="mt-1 text-sm text-red-100/75">
-                {error || "This payment link is unavailable."}
-              </p>
+      <>
+        {head}
+        <div className="flex min-h-screen items-center justify-center bg-[#080A0D] p-4 text-white">
+          <div className="w-full max-w-sm border border-red-400/30 bg-red-500/10 p-5">
+            <div className="flex items-center gap-3">
+              <AlertCircle className="h-6 w-6 text-red-300" />
+              <div>
+                <h1 className="text-base font-semibold">
+                  Payment request unavailable
+                </h1>
+                <p className="mt-1 text-sm text-red-100/75">
+                  {error || "This payment link is unavailable."}
+                </p>
+              </div>
             </div>
+            <Link
+              className="mt-5 inline-flex text-sm text-blue-200 hover:text-white"
+              to="/"
+            >
+              Return home
+            </Link>
           </div>
-          <Link
-            className="mt-5 inline-flex text-sm text-cyan-200 hover:text-white"
-            to="/"
-          >
-            Return home
-          </Link>
         </div>
-      </div>
+      </>
     );
   }
 
@@ -162,72 +178,78 @@ export default function PaymentRequestPage() {
   const shortId = paymentRequest.id.slice(0, 8);
 
   return (
-    <div className="min-h-screen bg-[#080A0D] px-4 py-8 text-white sm:px-6 lg:px-8">
-      <main className="mx-auto flex min-h-[calc(100vh-4rem)] w-full max-w-xl items-center">
-        <section className="w-full border border-white/10 bg-white/[0.03] p-5 shadow-2xl shadow-black/30 sm:p-7">
-          <div className="flex flex-col items-center text-center">
-            <div className="flex h-16 w-16 items-center justify-center border border-[#0B35F1]/30 bg-[#0B35F1]/10">
-              <CreditCard className="h-7 w-7 text-cyan-200" />
-            </div>
-            <div className="mt-5 text-5xl font-semibold leading-none sm:text-6xl">
-              {formatAmount(
-                paymentRequest.amountCents,
-                paymentRequest.currency,
-              )}
-            </div>
-            <div className="mt-3 text-sm text-white/55">
-              {isPaid
-                ? "Paid"
-                : isExpired
-                  ? paymentRequest.status === "cancelled"
-                    ? "Cancelled"
-                    : paymentRequest.status === "failed"
-                      ? "Failed"
-                      : "Expired"
-                  : expiresLabel
-                    ? `Pending - expires ${expiresLabel}`
-                    : "Pending"}
-            </div>
-            {paymentRequest.reason && (
-              <p className="mt-3 max-w-md text-sm text-white/65">
-                {paymentRequest.reason}
-              </p>
-            )}
-          </div>
-
-          {error && (
-            <div className="mt-7 flex items-center gap-3 border border-red-400/30 bg-red-500/10 p-3 text-sm text-red-100">
-              <AlertCircle className="h-5 w-5 shrink-0 text-red-300" />
-              <span>{error}</span>
-            </div>
-          )}
-
-          <div className="mt-8">
-            <button
-              type="button"
-              disabled={!canPay || isPaying}
-              onClick={beginCheckout}
-              className="flex w-full items-center justify-center gap-3 border border-amber-300/30 bg-amber-400/10 px-4 py-4 text-amber-100 transition hover:border-amber-200/60 hover:bg-amber-300/15 disabled:pointer-events-none disabled:opacity-30"
-            >
-              {isPaying ? (
-                <Loader2 className="h-5 w-5 animate-spin" />
-              ) : (
-                <CreditCard className="h-5 w-5" />
-              )}
-              <span className="text-sm font-medium">
+    <>
+      {head}
+      <div className="min-h-screen bg-[#080A0D] px-4 py-8 text-white sm:px-6 lg:px-8">
+        <main
+          id="main"
+          className="mx-auto flex min-h-[calc(100vh-4rem)] w-full max-w-xl items-center"
+        >
+          <section className="w-full border border-white/10 bg-white/[0.03] p-5 shadow-2xl shadow-black/30 sm:p-7">
+            <div className="flex flex-col items-center text-center">
+              <div className="flex h-16 w-16 items-center justify-center border border-[#0B35F1]/30 bg-[#0B35F1]/10">
+                <CreditCard className="h-7 w-7 text-blue-200" />
+              </div>
+              <div className="mt-5 text-5xl font-semibold leading-none sm:text-6xl">
+                {formatAmount(
+                  paymentRequest.amountCents,
+                  paymentRequest.currency,
+                )}
+              </div>
+              <div className="mt-3 text-sm text-white/55">
                 {isPaid
-                  ? "Already paid"
-                  : `Pay with ${paymentRequest.provider}`}
-              </span>
-            </button>
-          </div>
+                  ? "Paid"
+                  : isExpired
+                    ? paymentRequest.status === "cancelled"
+                      ? "Cancelled"
+                      : paymentRequest.status === "failed"
+                        ? "Failed"
+                        : "Expired"
+                    : expiresLabel
+                      ? `Pending - expires ${expiresLabel}`
+                      : "Pending"}
+              </div>
+              {paymentRequest.reason && (
+                <p className="mt-3 max-w-md text-sm text-white/65">
+                  {paymentRequest.reason}
+                </p>
+              )}
+            </div>
 
-          <div className="mt-6 flex items-center justify-between border-t border-white/10 pt-4 text-xs text-white/35">
-            <span>#{shortId}</span>
-            <span>{paymentRequest.provider}</span>
-          </div>
-        </section>
-      </main>
-    </div>
+            {error && (
+              <div className="mt-7 flex items-center gap-3 border border-red-400/30 bg-red-500/10 p-3 text-sm text-red-100">
+                <AlertCircle className="h-5 w-5 shrink-0 text-red-300" />
+                <span>{error}</span>
+              </div>
+            )}
+
+            <div className="mt-8">
+              <button
+                type="button"
+                disabled={!canPay || isPaying}
+                onClick={beginCheckout}
+                className="flex w-full items-center justify-center gap-3 border border-orange-300/30 bg-orange-400/10 px-4 py-4 text-orange-100 transition hover:border-orange-200/60 hover:bg-orange-300/15 disabled:pointer-events-none disabled:opacity-30"
+              >
+                {isPaying ? (
+                  <Loader2 className="h-5 w-5 animate-spin" />
+                ) : (
+                  <CreditCard className="h-5 w-5" />
+                )}
+                <span className="text-sm font-medium">
+                  {isPaid
+                    ? "Already paid"
+                    : `Pay with ${paymentRequest.provider}`}
+                </span>
+              </button>
+            </div>
+
+            <div className="mt-6 flex items-center justify-between border-t border-white/10 pt-4 text-xs text-white/35">
+              <span>#{shortId}</span>
+              <span>{paymentRequest.provider}</span>
+            </div>
+          </section>
+        </main>
+      </div>
+    </>
   );
 }

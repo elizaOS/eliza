@@ -82,10 +82,7 @@ export class DexScreenerService extends Service {
     return service;
   }
 
-  async stop(): Promise<void> {
-    // Cleanup if needed
-    console.log("DexScreener service stopped");
-  }
+  async stop(): Promise<void> {}
 
   private async get<T>(
     path: string,

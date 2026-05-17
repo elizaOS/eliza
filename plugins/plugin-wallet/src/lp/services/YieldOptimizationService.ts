@@ -331,13 +331,10 @@ export class YieldOptimizationService
   }
 
   public async findBestYield(
-    userId: string,
-    currentTokenA: string,
-    currentTokenB: string,
+    _userId: string,
+    _currentTokenA: string,
+    _currentTokenB: string,
   ): Promise<OptimizationOpportunity[]> {
-    console.log(
-      `Finding best yield for user ${userId} with tokens ${currentTokenA} and ${currentTokenB}`,
-    );
     return [];
   }
 }

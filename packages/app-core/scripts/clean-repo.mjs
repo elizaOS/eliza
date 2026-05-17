@@ -16,7 +16,7 @@ import { fileURLToPath } from "node:url";
 import {
   CAPACITOR_PLUGIN_NAMES,
   NATIVE_PLUGINS_ROOT,
-  nativePluginDir,
+  resolveNativePluginDir as nativePluginDir,
 } from "../../app/scripts/capacitor-plugin-names.mjs";
 import { resolveRepoRootFromImportMeta } from "./lib/repo-root.mjs";
 

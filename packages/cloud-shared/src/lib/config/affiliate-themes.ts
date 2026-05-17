@@ -207,9 +207,6 @@ export const AFFILIATE_THEMES: Record<string, AffiliateTheme> = {
 /**
  * Get the theme configuration for an affiliate.
  * Falls back to default theme if affiliate ID is not found.
- *
- * @param affiliateId - The affiliate identifier
- * @returns The theme configuration
  */
 export function getAffiliateTheme(affiliateId: string | undefined | null): AffiliateTheme {
   if (!affiliateId) {
@@ -236,9 +233,6 @@ export function hasAffiliateTheme(affiliateId: string): boolean {
 /**
  * Generate CSS custom properties object from theme colors.
  * Use this to apply theme colors as inline styles on container elements.
- *
- * @param theme - The affiliate theme
- * @returns CSS properties object
  */
 export function getThemeCSSVariables(theme: AffiliateTheme): Record<`--${string}`, string> {
   return {
@@ -254,9 +248,6 @@ export function getThemeCSSVariables(theme: AffiliateTheme): Record<`--${string}
 /**
  * Get the affiliate ID from character metadata.
  * Checks character_data.affiliate.affiliateId
- *
- * @param characterData - The character_data field from a character
- * @returns The affiliate ID or undefined
  */
 export function getAffiliateIdFromCharacter(
   characterData: Record<string, unknown> | undefined | null,
@@ -274,10 +265,6 @@ export function getAffiliateIdFromCharacter(
 /**
  * Resolve the theme for a character based on URL params and character metadata.
  * Priority: URL source param > character metadata > default
- *
- * @param source - The source URL parameter
- * @param characterData - The character's character_data field
- * @returns The resolved affiliate theme
  */
 export function resolveCharacterTheme(
   source: string | undefined | null,

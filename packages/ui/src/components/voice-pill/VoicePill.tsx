@@ -1,13 +1,15 @@
 import {
-  type FormEvent,
+  type ChangeEvent,
   type KeyboardEvent,
+  type MouseEvent,
+  type PointerEvent,
   useCallback,
   useEffect,
   useRef,
   useState,
 } from "react";
 
-import "./VoicePill.css";
+import "./voice-pill.css";
 
 export interface VoicePillMessage {
   id: string;
@@ -16,51 +18,41 @@ export interface VoicePillMessage {
 }
 
 export interface VoicePillProps {
-  /** Initial open state. Default false. */
-  defaultOpen?: boolean;
-  /** Controlled open state. If provided, `onOpenChange` should also be provided. */
+  /** Controlled open state. If omitted, component manages its own. */
   open?: boolean;
+  /** Fired when the open state changes (click on pill-hit). */
   onOpenChange?: (open: boolean) => void;
-
-  /** Initial recording state. Default false. */
-  defaultRecording?: boolean;
-  /** Controlled recording state. */
+  /** "Always-on recording" flag. Red pulse when true. */
   recording?: boolean;
+  /** Fired when the mic button toggles recording. */
   onRecordingChange?: (recording: boolean) => void;
-
-  /** Greeting text shown above the pill when no chat is open. */
-  greeting?: string;
-
-  /** Conversation messages to render in the expanded panel. */
+  /** Conversation rendered in the expanded panel. */
   messages?: VoicePillMessage[];
-
-  /** Called when the user submits the composer (Enter or click Send). */
-  onSubmit?: (text: string) => void | Promise<void>;
-  /** Called when the user clicks the [+] add button. */
-  onAddClick?: () => void;
-
-  /** Placeholder for the input. Default "Ask Eliza…". */
+  /** Composer placeholder. Default "Ask Eliza…" */
   placeholder?: string;
-
-  /** className passthrough on the outer wrapper for positioning by parent. */
+  /** Called when user submits text via Enter or send. Component clears input after. */
+  onSubmit?: (text: string) => void;
+  /** Called when user clicks the + button. */
+  onAdd?: () => void;
+  /** aria-label for the pill. Default "Eliza". */
+  ariaLabel?: string;
+  /** Extra className on the outer container. */
   className?: string;
 }
 
 const DEFAULT_PLACEHOLDER = "Ask Eliza…";
-const DEFAULT_MESSAGES: VoicePillMessage[] = [
-  { id: "default-agent-ready", role: "agent", text: "Ready when you are." },
-];
+const DEFAULT_ARIA_LABEL = "Eliza";
 
-function useControllableBoolean(
-  controlled: boolean | undefined,
-  defaultValue: boolean,
-  onChange: ((next: boolean) => void) | undefined,
-): [boolean, (next: boolean) => void] {
-  const [internal, setInternal] = useState<boolean>(defaultValue);
+function useControllable<T>(
+  controlled: T | undefined,
+  initial: T,
+  onChange: ((next: T) => void) | undefined,
+): [T, (next: T) => void] {
+  const [internal, setInternal] = useState<T>(initial);
   const isControlled = controlled !== undefined;
-  const value = isControlled ? controlled : internal;
+  const value = isControlled ? (controlled as T) : internal;
   const setValue = useCallback(
-    (next: boolean) => {
+    (next: T) => {
       if (!isControlled) {
         setInternal(next);
       }
@@ -99,32 +91,32 @@ function SendIcon() {
 
 export function VoicePill(props: VoicePillProps) {
   const {
-    defaultOpen = false,
     open: openProp,
     onOpenChange,
-    defaultRecording = false,
     recording: recordingProp,
     onRecordingChange,
-    greeting,
     messages,
-    onSubmit,
-    onAddClick,
     placeholder = DEFAULT_PLACEHOLDER,
+    onSubmit,
+    onAdd,
+    ariaLabel = DEFAULT_ARIA_LABEL,
     className,
   } = props;
 
-  const [open, setOpen] = useControllableBoolean(
+  const [open, setOpen] = useControllable<boolean>(
     openProp,
-    defaultOpen,
+    false,
     onOpenChange,
   );
-  const [recording, setRecording] = useControllableBoolean(
+  const [recording, setRecording] = useControllable<boolean>(
     recordingProp,
-    defaultRecording,
+    false,
     onRecordingChange,
   );
-  const [text, setText] = useState<string>("");
+  const [inputValue, setInputValue] = useState<string>("");
+
   const inputRef = useRef<HTMLInputElement>(null);
+  const chatRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     if (open) {
@@ -132,132 +124,191 @@ export function VoicePill(props: VoicePillProps) {
     }
   }, [open]);
 
-  const togglePill = useCallback(() => {
+  const toggleOpen = useCallback(() => {
     setOpen(!open);
   }, [open, setOpen]);
 
-  const toggleRecording = useCallback(() => {
-    setRecording(!recording);
-  }, [recording, setRecording]);
-
-  const submit = useCallback(async () => {
-    const trimmed = text.trim();
-    if (!trimmed) return;
-    setText("");
-    if (onSubmit) {
-      await onSubmit(trimmed);
-    }
-  }, [text, onSubmit]);
-
-  const handleFormSubmit = useCallback(
-    (event: FormEvent<HTMLFormElement>) => {
-      event.preventDefault();
-      void submit();
+  const handleHitClick = useCallback(
+    (event: MouseEvent<HTMLDivElement>) => {
+      // Ignore clicks bubbling out of the expanded chat panel (composer buttons,
+      // input, etc.) — only bare pill-hit clicks should toggle.
+      if (
+        chatRef.current &&
+        event.target instanceof Node &&
+        chatRef.current.contains(event.target)
+      ) {
+        return;
+      }
+      toggleOpen();
     },
-    [submit],
+    [toggleOpen],
+  );
+
+  const handleHitKeyDown = useCallback(
+    (event: KeyboardEvent<HTMLDivElement>) => {
+      if (event.target !== event.currentTarget) {
+        return;
+      }
+      if (event.key === "Enter" || event.key === " ") {
+        event.preventDefault();
+        toggleOpen();
+      }
+    },
+    [toggleOpen],
+  );
+
+  const handleMicClick = useCallback(
+    (event: MouseEvent<HTMLButtonElement>) => {
+      event.stopPropagation();
+      setRecording(!recording);
+    },
+    [recording, setRecording],
+  );
+
+  const handleAddClick = useCallback(
+    (event: MouseEvent<HTMLButtonElement>) => {
+      event.stopPropagation();
+      onAdd?.();
+    },
+    [onAdd],
+  );
+
+  const send = useCallback(() => {
+    const trimmed = inputValue.trim();
+    if (!trimmed) return;
+    onSubmit?.(trimmed);
+    setInputValue("");
+  }, [inputValue, onSubmit]);
+
+  const handleSendClick = useCallback(
+    (event: MouseEvent<HTMLButtonElement>) => {
+      event.stopPropagation();
+      send();
+    },
+    [send],
+  );
+
+  const handleInputChange = useCallback(
+    (event: ChangeEvent<HTMLInputElement>) => {
+      setInputValue(event.target.value);
+    },
+    [],
   );
 
   const handleInputKeyDown = useCallback(
     (event: KeyboardEvent<HTMLInputElement>) => {
+      // Keep keystrokes from bubbling to the hit area's Enter/Space toggle.
+      event.stopPropagation();
       if (event.key === "Enter" && !event.shiftKey) {
         event.preventDefault();
-        void submit();
+        send();
       }
     },
-    [submit],
+    [send],
   );
 
-  const resolvedMessages: VoicePillMessage[] = messages ?? DEFAULT_MESSAGES;
+  const stopPointer = useCallback(
+    (event: MouseEvent<HTMLInputElement> | PointerEvent<HTMLInputElement>) => {
+      event.stopPropagation();
+    },
+    [],
+  );
+
   const wrapperClassName = className
-    ? `voice-pill-anchor ${className}`
-    : "voice-pill-anchor";
+    ? `elizaos-voice-pill ${className}`
+    : "elizaos-voice-pill";
+
+  const pillClassName = recording
+    ? "elizaos-voice-pill__pill elizaos-voice-pill__pill--recording"
+    : "elizaos-voice-pill__pill";
+
+  const chatClassName = open
+    ? "elizaos-voice-pill__chat"
+    : "elizaos-voice-pill__chat elizaos-voice-pill__chat--collapsed";
+
+  const micClassName = recording
+    ? "elizaos-voice-pill__ctrl elizaos-voice-pill__ctrl--recording"
+    : "elizaos-voice-pill__ctrl";
 
   return (
     <div className={wrapperClassName}>
-      {greeting && !open ? (
-        <div className="voice-pill-greeting">{greeting}</div>
-      ) : null}
-
+      {/* biome-ignore lint/a11y/useSemanticElements: this wrapper contains nested chat input controls, so it cannot be a native button. */}
       <div
-        className={
-          open ? "voice-pill-chat" : "voice-pill-chat voice-pill-chat-hidden"
-        }
-        aria-hidden={open ? undefined : true}
-      >
-        {resolvedMessages.length > 0 ? (
-          <div className="voice-pill-messages">
-            {resolvedMessages.map((message) => (
-              <div
-                key={message.id}
-                className={
-                  message.role === "user"
-                    ? "voice-pill-msg user"
-                    : "voice-pill-msg agent"
-                }
-              >
-                {message.text}
-              </div>
-            ))}
-          </div>
-        ) : null}
-
-        <form className="voice-pill-composer" onSubmit={handleFormSubmit}>
-          <button
-            type="button"
-            className="voice-pill-ctrl-btn"
-            aria-label="Attach"
-            onClick={onAddClick}
-            tabIndex={open ? 0 : -1}
-          >
-            <PlusIcon />
-          </button>
-          <input
-            ref={inputRef}
-            type="text"
-            className="voice-pill-input"
-            placeholder={placeholder}
-            aria-label="Message Eliza"
-            value={text}
-            onChange={(event) => setText(event.target.value)}
-            onKeyDown={handleInputKeyDown}
-            tabIndex={open ? 0 : -1}
-          />
-          <button
-            type="button"
-            className={
-              recording
-                ? "voice-pill-ctrl-btn recording-on"
-                : "voice-pill-ctrl-btn"
-            }
-            aria-label="Voice input"
-            aria-pressed={recording}
-            onClick={toggleRecording}
-            tabIndex={open ? 0 : -1}
-          >
-            <MicIcon />
-          </button>
-          <button
-            type="submit"
-            className="voice-pill-send-btn"
-            aria-label="Send"
-            tabIndex={open ? 0 : -1}
-          >
-            <SendIcon />
-          </button>
-        </form>
-      </div>
-
-      <button
-        type="button"
-        className="voice-pill-hit"
-        aria-label="Eliza"
+        className="elizaos-voice-pill__hit"
+        role="button"
+        tabIndex={0}
         aria-expanded={open}
-        onClick={togglePill}
+        aria-label={ariaLabel}
+        onClick={handleHitClick}
+        onKeyDown={handleHitKeyDown}
       >
-        <span className={recording ? "voice-pill recording" : "voice-pill"} />
-      </button>
+        <div ref={chatRef} className={chatClassName} aria-hidden={!open}>
+          {messages && messages.length > 0 ? (
+            <div className="elizaos-voice-pill__messages">
+              {messages.map((message) => (
+                <div
+                  key={message.id}
+                  className={
+                    message.role === "user"
+                      ? "elizaos-voice-pill__msg elizaos-voice-pill__msg--user"
+                      : "elizaos-voice-pill__msg elizaos-voice-pill__msg--agent"
+                  }
+                >
+                  {message.text}
+                </div>
+              ))}
+            </div>
+          ) : null}
+          <div className="elizaos-voice-pill__composer">
+            <button
+              type="button"
+              className="elizaos-voice-pill__ctrl"
+              aria-label="Add"
+              onClick={handleAddClick}
+              tabIndex={open ? 0 : -1}
+            >
+              <PlusIcon />
+            </button>
+            <input
+              ref={inputRef}
+              type="text"
+              className="elizaos-voice-pill__input"
+              placeholder={placeholder}
+              aria-label="Message Eliza"
+              value={inputValue}
+              onChange={handleInputChange}
+              onKeyDown={handleInputKeyDown}
+              onClick={stopPointer}
+              onMouseDown={stopPointer}
+              tabIndex={open ? 0 : -1}
+            />
+            <button
+              type="button"
+              className={micClassName}
+              aria-label="Audio"
+              aria-pressed={recording}
+              onClick={handleMicClick}
+              tabIndex={open ? 0 : -1}
+            >
+              <MicIcon />
+            </button>
+            <button
+              type="button"
+              className="elizaos-voice-pill__send"
+              aria-label="Send"
+              onClick={handleSendClick}
+              tabIndex={open ? 0 : -1}
+            >
+              <SendIcon />
+            </button>
+          </div>
+        </div>
+        <span className={pillClassName} aria-hidden="true" />
+      </div>
     </div>
   );
 }
+
+VoicePill.displayName = "VoicePill";
 
 export default VoicePill;

@@ -48,8 +48,7 @@ const CATEGORIES: Category[] = [
   {
     key: "tools",
     label: "Install Tools",
-    description:
-      "Desktop apps for creating elizaOS USB drives and flashing Android devices.",
+    description: "Make an elizaOS USB. Flash an Android device.",
     filter: (a) => a.kind === "desktop-app",
   },
 ];
@@ -205,8 +204,7 @@ export function OsDownloads({ artifacts }: OsDownloadsProps) {
         <div className="section-head">
           <h2>Downloads.</h2>
           <p className="section-lede">
-            elizaOS runs on Linux PCs, Android devices, and virtual machines.
-            Pick your target.
+            Linux PCs, Android, and virtual machines. Pick your target.
           </p>
         </div>
 
@@ -223,8 +221,8 @@ export function OsDownloads({ artifacts }: OsDownloadsProps) {
 
         <div className="artifact-channel-note">
           <p>
-            <strong>Beta</strong> — feature-complete, may have rough edges.
-            Checksums and signatures are published alongside each build.
+            <strong>Beta</strong> — feature-complete, rough edges expected.
+            Checksums and signatures published with each build.
           </p>
         </div>
       </div>

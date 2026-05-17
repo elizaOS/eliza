@@ -224,7 +224,7 @@ async function executeDexScreener(
           ),
         );
       }
-      case "new-pairs": {
+      case "new_pairs": {
         const limit = Math.min(25, Math.max(1, params.limit ?? 10));
         const pairs = requireDexResult(
           await service.getNewPairs({ chain: params.chain, limit }),
@@ -236,18 +236,18 @@ async function executeDexScreener(
             `New trading pairs${params.chain ? ` on ${params.chain}` : ""}:\n${topPairs(service, pairs, limit)}`,
             {
               target: "dexscreener",
-              subaction: "new-pairs",
+              subaction: "new_pairs",
               chain: params.chain,
               pairs,
             },
           ),
         );
       }
-      case "chain-pairs": {
+      case "chain_pairs": {
         if (!params.chain) {
           return emit(
             context,
-            failure("Provide chain for chain-pairs.", "MISSING_CHAIN"),
+            failure("Provide chain for chain_pairs.", "MISSING_CHAIN"),
           );
         }
         const limit = Math.min(25, Math.max(1, params.limit ?? 10));
@@ -262,7 +262,7 @@ async function executeDexScreener(
             `Top ${params.chain} pairs by ${sortBy}:\n${topPairs(service, pairs, limit)}`,
             {
               target: "dexscreener",
-              subaction: "chain-pairs",
+              subaction: "chain_pairs",
               chain: params.chain,
               sortBy,
               pairs,
@@ -679,8 +679,8 @@ export function createDexScreenerTokenInfoProvider(): TokenInfoProvider {
       "search",
       "token",
       "trending",
-      "new-pairs",
-      "chain-pairs",
+      "new_pairs",
+      "chain_pairs",
       "boosted",
       "profiles",
     ],
