@@ -5,7 +5,6 @@ export default pluginDefault;
 
 // Node-only route handlers (depend on node:os and other node built-ins).
 export { handleCloudBillingRoute } from "./routes/cloud-billing-routes";
-export { handleCloudCodingContainerRoute } from "./routes/cloud-coding-container-routes";
 export { handleCloudCompatRoute } from "./routes/cloud-compat-routes";
 export { handleCloudRelayRoute } from "./routes/cloud-relay-routes";
 export {
