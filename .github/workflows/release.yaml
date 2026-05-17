@@ -530,7 +530,7 @@ jobs:
             packages/shared/dist/package.json \
             packages/skills/dist/index.js \
             packages/core/dist/index.node.js \
-            plugins/plugin-whatsapp/dist/src/index.d.ts \
+            plugins/plugin-whatsapp/dist/index.d.ts \
             packages/ui/dist/package.json; do
             if [ ! -f "${artifact}" ]; then
               echo "❌ Missing publish artifact: ${artifact}"
