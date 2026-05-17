@@ -8,6 +8,7 @@ import {
   type Memory,
   type UUID,
 } from "@elizaos/core";
+import { formatError } from "@elizaos/shared";
 
 type TelegramStandaloneUser = {
   id?: number | string;
@@ -298,7 +299,7 @@ export async function handleTelegramStandaloneMessage(
   } catch (outerErr) {
     logger.warn(
       `[eliza] Telegram handler error: ${
-        outerErr instanceof Error ? outerErr.message : String(outerErr)
+        formatError(outerErr)
       }`,
     );
     await ctx

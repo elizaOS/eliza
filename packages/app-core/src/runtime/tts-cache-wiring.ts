@@ -15,7 +15,7 @@
 import process from "node:process";
 import type { AgentRuntime, IAgentRuntime } from "@elizaos/core";
 import { logger } from "@elizaos/core";
-import { FIRST_SENTENCE_SNIP_VERSION } from "@elizaos/shared";
+import { FIRST_SENTENCE_SNIP_VERSION, formatError } from "@elizaos/shared";
 
 /**
  * Loose handler shape that matches both the runtime's generic registerModel
@@ -65,7 +65,7 @@ export async function wrapEdgeTtsHandlerWithFirstLineCache(
     )) as typeof import("@elizaos/plugin-local-inference/services");
   } catch (err) {
     logger.debug(
-      `[tts-cache-wiring] @elizaos/plugin-local-inference/services unavailable; cache disabled: ${err instanceof Error ? err.message : String(err)}`,
+      `[tts-cache-wiring] @elizaos/plugin-local-inference/services unavailable; cache disabled: ${formatError(err)}`,
     );
     return null;
   }

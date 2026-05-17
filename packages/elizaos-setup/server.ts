@@ -178,5 +178,5 @@ serve({
   },
 });
 
-console.log(`AOSP Flasher backend running at http://localhost:${PORT}`);
+console.log(`elizaOS Setup backend running at http://localhost:${PORT}`);
 console.log("Run: adb devices   to verify your device is connected");

@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 set -e
-echo "Starting elizaOS AOSP Flasher..."
+echo "Starting elizaOS Setup..."
 echo "Connected devices:"
 adb devices -l 2>/dev/null || echo "  (adb not found)"
 echo ""

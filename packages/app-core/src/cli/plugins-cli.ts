@@ -6,7 +6,7 @@ import {
   type PluginManagerLike,
 } from "@elizaos/agent";
 import { type IAgentRuntime, PluginManagerService } from "@elizaos/core";
-import { parseClampedInteger } from "@elizaos/shared";
+import { formatError, parseClampedInteger } from "@elizaos/shared";
 import chalk from "chalk";
 import type { Command } from "commander";
 
@@ -252,7 +252,7 @@ export function registerPluginsCli(program: Command): void {
         console.log();
       } catch (err) {
         console.error(
-          chalk.red(err instanceof Error ? err.message : String(err)),
+          chalk.red(formatError(err)),
         );
         process.exitCode = 1;
       }
@@ -298,7 +298,7 @@ export function registerPluginsCli(program: Command): void {
         }
       } catch (err) {
         console.error(
-          chalk.red(err instanceof Error ? err.message : String(err)),
+          chalk.red(formatError(err)),
         );
         process.exitCode = 1;
       }
@@ -372,7 +372,7 @@ export function registerPluginsCli(program: Command): void {
         );
       } catch (err) {
         console.error(
-          chalk.red(err instanceof Error ? err.message : String(err)),
+          chalk.red(formatError(err)),
         );
         process.exitCode = 1;
       }
@@ -429,7 +429,7 @@ export function registerPluginsCli(program: Command): void {
         console.log();
       } catch (err) {
         console.error(
-          chalk.red(err instanceof Error ? err.message : String(err)),
+          chalk.red(formatError(err)),
         );
         process.exitCode = 1;
       }
@@ -462,7 +462,7 @@ export function registerPluginsCli(program: Command): void {
         console.log();
       } catch (err) {
         console.error(
-          chalk.red(err instanceof Error ? err.message : String(err)),
+          chalk.red(formatError(err)),
         );
         process.exitCode = 1;
       }
@@ -492,7 +492,7 @@ export function registerPluginsCli(program: Command): void {
         }
       } catch (err) {
         console.error(
-          chalk.red(err instanceof Error ? err.message : String(err)),
+          chalk.red(formatError(err)),
         );
         process.exitCode = 1;
       }
@@ -513,7 +513,7 @@ export function registerPluginsCli(program: Command): void {
         );
       } catch (err) {
         console.error(
-          chalk.red(err instanceof Error ? err.message : String(err)),
+          chalk.red(formatError(err)),
         );
         process.exitCode = 1;
       }
@@ -550,7 +550,7 @@ export function registerPluginsCli(program: Command): void {
         } catch (err) {
           console.log(
             chalk.dim(
-              `  (Could not read eliza.json: ${err instanceof Error ? err.message : String(err)} — scanning default directory only)\n`,
+              `  (Could not read eliza.json: ${formatError(err)} — scanning default directory only)\n`,
             ),
           );
         }
@@ -617,7 +617,7 @@ export function registerPluginsCli(program: Command): void {
             entryPoint = await resolvePackageEntry(candidate.installPath);
           } catch (err) {
             fail(
-              `Entry point failed: ${err instanceof Error ? err.message : String(err)}`,
+              `Entry point failed: ${formatError(err)}`,
             );
             continue;
           }
@@ -641,7 +641,7 @@ export function registerPluginsCli(program: Command): void {
             >;
           } catch (err) {
             fail(
-              `Import failed: ${err instanceof Error ? err.message : String(err)}`,
+              `Import failed: ${formatError(err)}`,
             );
             continue;
           }
@@ -669,7 +669,7 @@ export function registerPluginsCli(program: Command): void {
         );
       } catch (err) {
         console.error(
-          chalk.red(err instanceof Error ? err.message : String(err)),
+          chalk.red(formatError(err)),
         );
         process.exitCode = 1;
       }
@@ -732,7 +732,7 @@ export function registerPluginsCli(program: Command): void {
         );
       } catch (err) {
         console.error(
-          chalk.red(err instanceof Error ? err.message : String(err)),
+          chalk.red(formatError(err)),
         );
         process.exitCode = 1;
       }
@@ -793,7 +793,7 @@ export function registerPluginsCli(program: Command): void {
         console.log();
       } catch (err) {
         console.error(
-          chalk.red(err instanceof Error ? err.message : String(err)),
+          chalk.red(formatError(err)),
         );
         process.exitCode = 1;
       }
@@ -816,7 +816,7 @@ export function registerPluginsCli(program: Command): void {
           catalog = JSON.parse(nodeFs.readFileSync(pluginsPath, "utf8"));
         } catch (err) {
           console.log(
-            `\n${chalk.red("Error:")} Could not read plugins.json: ${err instanceof Error ? err.message : String(err)}\n`,
+            `\n${chalk.red("Error:")} Could not read plugins.json: ${formatError(err)}\n`,
           );
           process.exitCode = 1;
           return;
@@ -1002,7 +1002,7 @@ export function registerPluginsCli(program: Command): void {
         console.log(chalk.dim("Restart your agent to apply changes.\n"));
       } catch (err) {
         console.error(
-          chalk.red(err instanceof Error ? err.message : String(err)),
+          chalk.red(formatError(err)),
         );
         process.exitCode = 1;
       }
@@ -1148,7 +1148,7 @@ export function registerPluginsCli(program: Command): void {
         }
       } catch (err) {
         console.error(
-          chalk.red(err instanceof Error ? err.message : String(err)),
+          chalk.red(formatError(err)),
         );
         process.exitCode = 1;
       }

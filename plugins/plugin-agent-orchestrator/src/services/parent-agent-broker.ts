@@ -632,8 +632,8 @@ export interface ParentAgentBrokerRequest {
   args: unknown;
 }
 
-function getLogger(runtime: IAgentRuntime): Logger | undefined {
-  return (runtime as IAgentRuntime & { logger?: Logger }).logger;
+function getLogger(runtime: IAgentRuntime): Logger {
+  return runtime.logger;
 }
 
 function normalizeString(value: unknown): string | undefined {

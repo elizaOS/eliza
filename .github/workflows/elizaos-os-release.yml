@@ -8,7 +8,7 @@ on:
       - "packages/os/**"
       - "packages/os-homepage/**"
       - "packages/os-usb-installer/**"
-      - "packages/aosp-flasher/**"
+      - "packages/elizaos-setup/**"
 
 jobs:
   validate-os-release:
@@ -52,8 +52,8 @@ jobs:
       - name: Validate AOSP flasher
         continue-on-error: true
         run: |
-          bun run --cwd packages/aosp-flasher typecheck || echo "WARN: aosp-flasher not yet present"
-          bun run --cwd packages/aosp-flasher build || echo "WARN: aosp-flasher build skipped"
+          bun run --cwd packages/elizaos-setup typecheck || echo "WARN: elizaos-setup not yet present"
+          bun run --cwd packages/elizaos-setup build || echo "WARN: elizaos-setup build skipped"
 
       - name: Validate Linux live USB metadata
         run: |

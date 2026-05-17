@@ -17,11 +17,13 @@ interface CostAlertsProps {
     burnChangePercent: number;
     daysUntilBalanceZero: number | null;
     projectedMonthlyBurn: number;
+    monthlyBurnPercent: number;
+    burnAlertThresholdExceeded: boolean;
   };
   creditBalance: number;
 }
 
-export function CostAlerts({ costTrending, creditBalance }: CostAlertsProps) {
+export function CostAlerts({ costTrending }: CostAlertsProps) {
   const alerts: Array<{
     type: "warning" | "error" | "info";
     title: string;
@@ -47,13 +49,11 @@ export function CostAlerts({ costTrending, creditBalance }: CostAlertsProps) {
     });
   }
 
-  const numericBalance = Number(creditBalance);
-
-  if (costTrending.projectedMonthlyBurn > numericBalance * 0.8) {
+  if (costTrending.burnAlertThresholdExceeded) {
     alerts.push({
       type: "warning",
       title: "High Projected Monthly Cost",
-      description: `At current burn rate, you'll spend $${costTrending.projectedMonthlyBurn.toFixed(2)} this month, which is ${((costTrending.projectedMonthlyBurn / numericBalance) * 100).toFixed(0)}% of your current balance.`,
+      description: `At current burn rate, you'll spend $${costTrending.projectedMonthlyBurn.toFixed(2)} this month, which is ${costTrending.monthlyBurnPercent.toFixed(0)}% of your current balance.`,
     });
   }
 
