@@ -15,9 +15,6 @@ const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-
  * Validates that a string is a valid UUID format.
  * Use this to validate user input before database queries.
  *
- * @param value - The string to validate.
- * @returns True if the string is a valid UUID.
- *
  * @example
  * ```ts
  * const characterId = searchParams.characterId;

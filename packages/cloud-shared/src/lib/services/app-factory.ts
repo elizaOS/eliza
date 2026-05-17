@@ -154,9 +154,6 @@ export class AppFactoryService {
       parallelTasks.push(repoTask);
     }
 
-    // TODO(cloudflare): wire subdomain assignment against Cloudflare Workers / Pages.
-    // For now creation proceeds without a hosted subdomain.
-
     // Wait for parallel tasks to complete
     await Promise.all(parallelTasks);
 

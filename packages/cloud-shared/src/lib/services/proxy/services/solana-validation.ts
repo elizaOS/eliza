@@ -7,9 +7,8 @@ import { isValidSolanaAddress } from "./address-validation";
 export { isValidSolanaAddress } from "./address-validation";
 
 /**
- * Validates Solana address and throws descriptive error if invalid
+ * Validates Solana address and throws descriptive error if invalid.
  *
- * @param address - The address to validate
  * @throws Error with user-friendly message if invalid
  */
 export function validateSolanaAddress(address: string): void {

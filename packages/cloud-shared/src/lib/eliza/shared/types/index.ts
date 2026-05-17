@@ -26,7 +26,6 @@ export interface RunEndedEventPayload {
 /**
  * Callback for streaming text chunks.
  * Called for each chunk of text as it's generated.
- * @param chunk - The text chunk
  * @param messageId - Optional message ID for coordination
  */
 export type StreamChunkCallback = (chunk: string, messageId?: UUID) => Promise<void>;
@@ -34,7 +33,6 @@ export type StreamChunkCallback = (chunk: string, messageId?: UUID) => Promise<v
 /**
  * Callback for streaming reasoning/chain-of-thought.
  * Shows the LLM's planning process in real-time.
- * @param chunk - The reasoning text chunk
  * @param phase - Current phase of reasoning (planning, actions, response)
  * @param messageId - Optional message ID for coordination
  */

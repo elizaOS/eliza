@@ -1112,9 +1112,6 @@ export class CacheClient {
   /**
    * Atomically gets a value and deletes the key using GETDEL (Redis ≥6.2).
    * Used for single-use values (e.g. SIWE nonce) to prevent replay attacks.
-   *
-   * @param key - Cache key.
-   * @returns The value if present, or null.
    */
   async getAndDelete<T>(key: string): Promise<T | null> {
     const redis = await this.getRedisClient();

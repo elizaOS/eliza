@@ -23,8 +23,6 @@ export interface ExportOptions {
 /**
  * Sanitize value to prevent spreadsheet formula injection attacks.
  * Values starting with =, +, -, @, tab, or carriage return are prefixed with '
- * @param value - The value to sanitize
- * @returns Sanitized value safe for spreadsheet export
  */
 function sanitizeSpreadsheetValue(value: string): string {
   const dangerousChars = ["=", "+", "-", "@", "\t", "\r"];
@@ -38,11 +36,6 @@ function sanitizeSpreadsheetValue(value: string): string {
 
 /**
  * Generates CSV content from data.
- *
- * @param data - Array of data objects.
- * @param columns - Column definitions.
- * @param options - Export options.
- * @returns CSV string.
  */
 export function generateCSV(
   data: Array<Record<string, unknown>>,
