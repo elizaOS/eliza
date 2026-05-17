@@ -748,7 +748,6 @@ export const roleAction: Action = {
 		});
 	},
 	similes: [
-		"UPDATE_ROLE",
 		"ASSIGN_ROLE",
 		"SET_ROLE",
 		"REVOKE_ROLE",

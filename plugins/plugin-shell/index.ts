@@ -173,3 +173,16 @@ export {
   spawnWithFallback,
   truncateMiddle,
 } from "./utils/shellUtils";
+export {
+  detectTerminalCapabilities,
+  formatTerminalCapabilities,
+  isAndroidRuntime,
+  missingTerminalToolForCommand,
+  missingToolMessage,
+  resolveExecutable,
+  resolveTerminalShell,
+  type ShellResolution,
+  type TerminalToolName,
+  TERMINAL_TOOL_NAMES,
+  type ToolCapability,
+} from "./utils/terminalCapabilities";

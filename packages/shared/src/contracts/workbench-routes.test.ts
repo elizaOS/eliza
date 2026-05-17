@@ -2,7 +2,11 @@ import { describe, expect, it } from "vitest";
 import {
   PostWorkbenchTodoCompleteRequestSchema,
   PostWorkbenchTodoRequestSchema,
+  PostWorkbenchVfsProjectRequestSchema,
+  PostWorkbenchVfsRollbackRequestSchema,
+  PostWorkbenchVfsSnapshotRequestSchema,
   PutWorkbenchTodoRequestSchema,
+  PutWorkbenchVfsFileRequestSchema,
 } from "./workbench-routes.js";
 
 describe("PostWorkbenchTodoRequestSchema", () => {
@@ -91,6 +95,39 @@ describe("PutWorkbenchTodoRequestSchema", () => {
       PutWorkbenchTodoRequestSchema.parse({
         name: "x",
         project: "y",
+      }),
+    ).toThrow();
+  });
+});
+
+describe("workbench VFS request schemas", () => {
+  it("trims project ids and file paths", () => {
+    expect(
+      PostWorkbenchVfsProjectRequestSchema.parse({
+        projectId: "  app-ide  ",
+      }),
+    ).toEqual({ projectId: "app-ide" });
+    expect(
+      PutWorkbenchVfsFileRequestSchema.parse({
+        path: "  src/index.ts  ",
+        content: "console.log(1)",
+      }).path,
+    ).toBe("src/index.ts");
+  });
+
+  it("accepts optional snapshot notes and rollback snapshot ids", () => {
+    expect(PostWorkbenchVfsSnapshotRequestSchema.parse({})).toEqual({});
+    expect(
+      PostWorkbenchVfsRollbackRequestSchema.parse({ snapshotId: " snap-1 " }),
+    ).toEqual({ snapshotId: "snap-1" });
+  });
+
+  it("rejects unknown VFS request fields", () => {
+    expect(() =>
+      PutWorkbenchVfsFileRequestSchema.parse({
+        path: "x",
+        content: "y",
+        mode: "append",
       }),
     ).toThrow();
   });

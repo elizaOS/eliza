@@ -9,6 +9,7 @@
 
 import { AlertCircle, CreditCard, Loader2 } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
+import { Helmet } from "react-helmet-async";
 import { Link, useParams } from "react-router-dom";
 import { ApiError, api } from "../../../lib/api-client";
 
@@ -117,17 +118,31 @@ export default function PaymentRequestPage() {
     window.location.assign(url);
   };
 
+  // Helmet must render in every branch so the page title is set even during
+  // the loading / error short-circuits; otherwise the global homepage title
+  // ("Eliza Cloud - Launch Eliza") bleeds through.
+  const head = (
+    <Helmet>
+      <title>Payment Request | Eliza Cloud</title>
+    </Helmet>
+  );
+
   if (isLoading) {
     return (
-      <div className="flex min-h-screen items-center justify-center bg-[#080A0D] p-4">
-        <Loader2 className="h-8 w-8 animate-spin text-blue-200/70" />
-      </div>
+      <>
+        {head}
+        <div className="flex min-h-screen items-center justify-center bg-[#080A0D] p-4">
+          <Loader2 className="h-8 w-8 animate-spin text-blue-200/70" />
+        </div>
+      </>
     );
   }
 
   if (!paymentRequest) {
     return (
-      <div className="flex min-h-screen items-center justify-center bg-[#080A0D] p-4 text-white">
+      <>
+        {head}
+        <div className="flex min-h-screen items-center justify-center bg-[#080A0D] p-4 text-white">
         <div className="w-full max-w-sm border border-red-400/30 bg-red-500/10 p-5">
           <div className="flex items-center gap-3">
             <AlertCircle className="h-6 w-6 text-red-300" />
@@ -147,7 +162,8 @@ export default function PaymentRequestPage() {
             Return home
           </Link>
         </div>
-      </div>
+        </div>
+      </>
     );
   }
 
@@ -162,6 +178,8 @@ export default function PaymentRequestPage() {
   const shortId = paymentRequest.id.slice(0, 8);
 
   return (
+    <>
+    {head}
     <div className="min-h-screen bg-[#080A0D] px-4 py-8 text-white sm:px-6 lg:px-8">
       <main
         id="main"
@@ -232,5 +250,6 @@ export default function PaymentRequestPage() {
         </section>
       </main>
     </div>
+    </>
   );
 }

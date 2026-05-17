@@ -59,7 +59,7 @@ export default defineConfig({
         ),
       },
       {
-        find: "@elizaos/ui",
+        find: /^@elizaos\/ui$/,
         replacement: path.resolve(__dirname, "../ui/src/index.ts"),
       },
     ],

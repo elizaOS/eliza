@@ -20,8 +20,6 @@
     "build:types": "tsc --noCheck -p tsconfig.build.json"
   },
   "dependencies": {
-    "@elizaos/agent": "workspace:*",
-    "@elizaos/app-core": "workspace:*",
     "@elizaos/core": "workspace:*",
     "@elizaos/shared": "workspace:*",
     "@elizaos/vault": "workspace:*"

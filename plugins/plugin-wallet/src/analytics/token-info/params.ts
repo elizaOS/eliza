@@ -10,11 +10,13 @@ const SUBACTION_ALIASES: Record<string, TokenInfoSubaction> = {
   info: "token",
   "token-info": "token",
   token_info: "token",
-  pairs: "chain-pairs",
-  "new pairs": "new-pairs",
-  new_pairs: "new-pairs",
-  chain_pairs: "chain-pairs",
-  chainpairs: "chain-pairs",
+  pairs: "chain_pairs",
+  "new pairs": "new_pairs",
+  "new-pairs": "new_pairs",
+  new_pairs: "new_pairs",
+  chain_pairs: "chain_pairs",
+  "chain-pairs": "chain_pairs",
+  chainpairs: "chain_pairs",
   boosted_tokens: "boosted",
   boostedtokens: "boosted",
   token_profiles: "profiles",
@@ -86,7 +88,7 @@ export function normalizeTokenInfoSubaction(
   const normalized = value
     .trim()
     .toLowerCase()
-    .replace(/[\s_]+/g, "-");
+    .replace(/[\s-]+/g, "_");
   if ((TOKEN_INFO_SUBACTIONS as readonly string[]).includes(normalized)) {
     return normalized as TokenInfoSubaction;
   }
@@ -115,7 +117,7 @@ export function inferTokenInfoSubaction(
     /\b(new|latest|fresh)\b/.test(text) &&
     /\b(pair|pairs|tokens?)\b/.test(text)
   ) {
-    return "new-pairs";
+    return "new_pairs";
   }
   if (
     /\b(pair|pairs)\b/.test(text) &&
@@ -123,7 +125,7 @@ export function inferTokenInfoSubaction(
       text,
     )
   ) {
-    return "chain-pairs";
+    return "chain_pairs";
   }
   if (/\b(trending|hot|popular|gainers)\b/.test(text)) return "trending";
   if (/\b(search|find|look for)\b/.test(text)) return "search";
@@ -140,7 +142,7 @@ export function parseTokenInfoParams(
     typeof message.content.text === "string" ? message.content.text : "";
   const subaction =
     normalizeTokenInfoSubaction(
-      raw.subaction ?? raw.action ?? raw.operation ?? raw.kind,
+      raw.action ?? raw.subaction ?? raw.operation ?? raw.kind,
     ) ?? inferTokenInfoSubaction(message, state);
   const target = readStringParam(raw, "target", "provider", "source");
   const query =

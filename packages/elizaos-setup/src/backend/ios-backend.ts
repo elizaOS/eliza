@@ -263,14 +263,15 @@ export class SideloaderIosBackend implements IosBackend {
       }
       onProgress("detect-device", "complete");
 
-      // Step: authenticate — skip if already authenticated
+      // Authentication MUST have completed before reaching the executor.
+      // The UI calls /ios/authenticate (and /ios/2fa if needed) before /ios/execute.
       if (this.authState.status !== "authenticated") {
         onProgress(
           "authenticate",
-          "waiting-user",
-          "Waiting for Apple ID sign-in",
+          "failed",
+          "Apple ID authentication did not complete before install.",
         );
-        return;
+        throw new IosAuthNotReadyError();
       }
       onProgress("authenticate", "complete");
 
@@ -294,6 +295,21 @@ export class SideloaderIosBackend implements IosBackend {
 
       const ipaBuffer = await ipaResponse.arrayBuffer();
       await Bun.write(ipaPath, ipaBuffer);
+
+      // Verify the file was actually written with the expected byte count.
+      const writtenStat = await stat(ipaPath).catch(() => null);
+      if (
+        !writtenStat ||
+        writtenStat.size !== ipaBuffer.byteLength
+      ) {
+        const actual = writtenStat ? writtenStat.size : 0;
+        throw new IpaWriteFailedError(
+          ipaPath,
+          ipaBuffer.byteLength,
+          actual,
+        );
+      }
+
       onProgress(
         "download-ipa",
         "complete",
@@ -344,10 +360,13 @@ export class SideloaderIosBackend implements IosBackend {
     } catch (err) {
       // Surface unexpected errors without hiding them
       onProgress("install-ipa", "failed", String(err));
+      throw err;
     } finally {
       if (tmpDir) {
         await rm(tmpDir, { recursive: true, force: true }).catch(() => {});
       }
+      // Auth is per-attempt — never carry it into the next install.
+      this.resetAuth();
     }
   }
 }

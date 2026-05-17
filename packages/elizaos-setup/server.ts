@@ -9,7 +9,22 @@ import type { DependencyId } from "./src/dependencies/types";
 const backend = new AdbFlasherBackend();
 const iosBackend = new SideloaderIosBackend();
 const depManager = new DependencyManager();
-const PORT = 3743;
+const PORT = Number(process.env.ELIZA_SETUP_PORT ?? 3743);
+
+const VALID_DEP_IDS: DependencyId[] = [
+  "adb",
+  "fastboot",
+  "libimobiledevice",
+  "sideloader",
+];
+
+function parseDepId(pathname: string, suffix: string): DependencyId | null {
+  // pathname = "/dependencies/<id>" or "/dependencies/<id>/install"
+  const rest = pathname.slice("/dependencies/".length);
+  const idPart = suffix ? rest.replace(suffix, "") : rest;
+  const id = idPart as DependencyId;
+  return VALID_DEP_IDS.includes(id) ? id : null;
+}
 
 const cors = {
   "Access-Control-Allow-Origin": "*",
@@ -31,10 +46,43 @@ serve({
       return Response.json(results, { headers: cors });
     }
 
-    if (url.pathname.startsWith("/dependencies/") && req.method === "POST") {
-      const id = url.pathname.slice("/dependencies/".length) as DependencyId;
-      const validIds: DependencyId[] = ["adb", "fastboot", "libimobiledevice", "sideloader"];
-      if (!validIds.includes(id)) {
+    // GET /dependencies/:id — check a single dependency
+    if (
+      url.pathname.startsWith("/dependencies/") &&
+      !url.pathname.endsWith("/install") &&
+      req.method === "GET"
+    ) {
+      const id = parseDepId(url.pathname, "");
+      if (!id) {
+        return new Response("Unknown dependency", { status: 400, headers: cors });
+      }
+      const result = await depManager.checkOne(id);
+      return Response.json(result, { headers: cors });
+    }
+
+    // POST /dependencies/:id/install — trigger auto-install (canonical path)
+    if (
+      url.pathname.startsWith("/dependencies/") &&
+      url.pathname.endsWith("/install") &&
+      req.method === "POST"
+    ) {
+      const id = parseDepId(url.pathname, "/install");
+      if (!id) {
+        return new Response("Unknown dependency", { status: 400, headers: cors });
+      }
+      const result = await depManager.autoInstall(id);
+      return Response.json(result, { headers: cors });
+    }
+
+    // POST /dependencies/:id — legacy alias (kept for the brief window where
+    // the old client may still be running against a new server).
+    if (
+      url.pathname.startsWith("/dependencies/") &&
+      !url.pathname.endsWith("/install") &&
+      req.method === "POST"
+    ) {
+      const id = parseDepId(url.pathname, "");
+      if (!id) {
         return new Response("Unknown dependency", { status: 400, headers: cors });
       }
       const result = await depManager.autoInstall(id);
@@ -178,5 +226,12 @@ serve({
   },
 });
 
-console.log(`elizaOS Setup backend running at http://localhost:${PORT}`);
+console.log(`elizaOS Setup backend running at http://127.0.0.1:${PORT}`);
 console.log("Run: adb devices   to verify your device is connected");
+
+// Emit the bound URL so the dev orchestrator / Electrobun main process can
+// pick it up and inject `window.__ELIZA_SERVER_URL__` into the renderer
+// before the React app mounts.
+console.log(
+  `[elizaos-setup] ELIZA_SETUP_SERVER_URL=http://127.0.0.1:${PORT}`,
+);

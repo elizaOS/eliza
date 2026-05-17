@@ -822,30 +822,149 @@ async function launch() {
     });
   }
 
-  pushChild("electrobun", "bun", ["run", "dev"], electrobunDir, {
-    NODE_ENV: "development",
-    ELECTROBUN_SKIP_CODESIGN: "1",
-    ...appIdentityEnv(appDir),
-    ...(desktopCefWorkaroundEnv
-      ? { ELIZA_DESKTOP_FORCE_CEF: desktopCefWorkaroundEnv }
-      : {}),
-    ...(desktopUnsafeDevtoolsEnv
-      ? {
-          ELIZA_ALLOW_UNSAFE_NATIVE_DEVTOOLS: desktopUnsafeDevtoolsEnv,
+  const electrobunChild = pushChild(
+    "electrobun",
+    "bun",
+    ["run", "dev"],
+    electrobunDir,
+    {
+      NODE_ENV: "development",
+      ELECTROBUN_SKIP_CODESIGN: "1",
+      ...appIdentityEnv(appDir),
+      ...(desktopCefWorkaroundEnv
+        ? { ELIZA_DESKTOP_FORCE_CEF: desktopCefWorkaroundEnv }
+        : {}),
+      ...(desktopUnsafeDevtoolsEnv
+        ? {
+            ELIZA_ALLOW_UNSAFE_NATIVE_DEVTOOLS: desktopUnsafeDevtoolsEnv,
+          }
+        : {}),
+      ...(rendererUrlForShell
+        ? { ELIZA_RENDERER_URL: rendererUrlForShell }
+        : {}),
+      ...(skipApi
+        ? {}
+        : {
+            ELIZA_API_PORT: apiPort,
+            ELIZA_UI_PORT: String(uiDevPort),
+            ELIZA_NAMESPACE:
+              process.env.ELIZA_NAMESPACE ?? defaultElizaNamespace,
+            ELIZA_DESKTOP_API_BASE: `http://127.0.0.1:${apiPort}`,
+          }),
+      ELIZA_BROWSER_WORKSPACE_PORT: String(browserWorkspacePort),
+      ...screenshotEnvElectrobun,
+    },
+  );
+
+  // macOS-only safety net: on some setups, `bunx electrobun dev` finishes
+  // building (copying the WGPU library, packaging app/bun/index.js into the
+  // bundle, etc.) but the native launcher it forks never registers a window
+  // because it was started via POSIX fork-exec instead of LaunchServices.
+  // Symptom: electrobun child stays alive, no `.app` window appears, the
+  // screenshot server port never starts listening.
+  //
+  // The fix is to also `open` the .app explicitly — LaunchServices then
+  // registers it as a GUI app with window-creation rights. If electrobun
+  // already launched it, `open` is a no-op (LaunchServices won't
+  // double-launch a registered bundle).
+  //
+  // **Crucially**, we wait until electrobun's build phase is _done_ before
+  // opening — otherwise the running app would hold files in the bundle and
+  // electrobun's bun-bundler would fail with PermissionDenied trying to write
+  // app/bun/index.js. We watch for the screenshot server port (preferred
+  // signal, only set after electrobun launches the launcher) and use a
+  // bundle-mtime stability check as a fallback. Honors
+  // `ELIZA_DESKTOP_AUTO_OPEN=0` to opt out.
+  if (
+    process.platform === "darwin" &&
+    process.env.ELIZA_DESKTOP_AUTO_OPEN !== "0"
+  ) {
+    let scheduledOpen = false;
+    const resolveDevMacAppPath = () => {
+      const arch = process.arch === "arm64" ? "arm64" : "x86_64";
+      const buildDir = path.join(
+        electrobunDir,
+        "build",
+        `dev-macos-${arch}`,
+      );
+      if (!existsSync(buildDir)) return null;
+      try {
+        const entries = readdirSync(buildDir);
+        const appBundle = entries.find((e) => e.endsWith(".app"));
+        return appBundle ? path.join(buildDir, appBundle) : null;
+      } catch {
+        return null;
+      }
+    };
+    const triggerOpen = (reason) => {
+      if (scheduledOpen) return;
+      scheduledOpen = true;
+      const macAppPath = resolveDevMacAppPath();
+      if (!macAppPath) {
+        console.log(
+          "[eliza] LaunchServices auto-open skipped — no .app bundle found in dev build dir",
+        );
+        return;
+      }
+      try {
+        const opener = spawn("open", [macAppPath], {
+          stdio: "ignore",
+          detached: true,
+        });
+        opener.unref();
+        opener.on("error", (err) => {
+          console.log(
+            `[eliza] LaunchServices auto-open failed: ${err.message}`,
+          );
+        });
+        console.log(
+          `[eliza] LaunchServices auto-open (${reason}): open ${path.basename(macAppPath)}`,
+        );
+      } catch (err) {
+        console.log(
+          `[eliza] LaunchServices auto-open threw: ${err instanceof Error ? err.message : String(err)}`,
+        );
+      }
+    };
+
+    // Watch for the screenshot server port — if it comes up on its own, the
+    // electrobun launcher launched the app properly and we don't need to.
+    // If it doesn't come up within the deadline, fall back to `open`.
+    const screenshotPortStr = screenshotEnvElectrobun.ELIZA_SCREENSHOT_SERVER_PORT;
+    const fallbackDeadlineMs = 45000;
+    const startedAt = Date.now();
+    const checkAndFallback = async () => {
+      if (scheduledOpen) return;
+      if (!electrobunChild || electrobunChild.exitCode != null) return;
+      const port = screenshotPortStr ? Number(screenshotPortStr) : 0;
+      if (port > 0) {
+        try {
+          // Try to connect — if it succeeds, the launcher's screenshot
+          // server is listening and the app is up. Done.
+          await new Promise((resolve, reject) => {
+            const sock = createConnection({ host: "127.0.0.1", port }, () => {
+              sock.end();
+              resolve();
+            });
+            sock.on("error", reject);
+            sock.setTimeout(500, () => {
+              sock.destroy();
+              reject(new Error("timeout"));
+            });
+          });
+          return; // screenshot server is up, nothing to do
+        } catch {
+          // not listening yet — keep waiting unless past deadline
         }
-      : {}),
-    ...(rendererUrlForShell ? { ELIZA_RENDERER_URL: rendererUrlForShell } : {}),
-    ...(skipApi
-      ? {}
-      : {
-          ELIZA_API_PORT: apiPort,
-          ELIZA_UI_PORT: String(uiDevPort),
-          ELIZA_NAMESPACE: process.env.ELIZA_NAMESPACE ?? defaultElizaNamespace,
-          ELIZA_DESKTOP_API_BASE: `http://127.0.0.1:${apiPort}`,
-        }),
-    ELIZA_BROWSER_WORKSPACE_PORT: String(browserWorkspacePort),
-    ...screenshotEnvElectrobun,
-  });
+      }
+      if (Date.now() - startedAt >= fallbackDeadlineMs) {
+        triggerOpen("fallback after 45s with no screenshot server");
+        return;
+      }
+      setTimeout(checkAndFallback, 3000);
+    };
+    setTimeout(checkAndFallback, 8000);
+  }
 }
 
 /**

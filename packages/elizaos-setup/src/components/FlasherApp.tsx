@@ -664,6 +664,8 @@ function BootloaderGuideScreen({
 interface ConfirmingScreenProps {
   device: ConnectedDevice;
   build: AospBuild;
+  wipeData: boolean;
+  onWipeDataChange: (next: boolean) => void;
   onFlash: () => void;
   onCancel: () => void;
 }
@@ -671,6 +673,8 @@ interface ConfirmingScreenProps {
 function ConfirmingScreen({
   device,
   build,
+  wipeData,
+  onWipeDataChange,
   onFlash,
   onCancel,
 }: ConfirmingScreenProps) {
@@ -729,6 +733,14 @@ function ConfirmingScreen({
               onChange={(e) => setCheckedBackup(e.target.checked)}
             />
             <span>I have backed up all important data</span>
+          </label>
+          <label className="ack-row">
+            <input
+              type="checkbox"
+              checked={wipeData}
+              onChange={(e) => onWipeDataChange(e.target.checked)}
+            />
+            <span>Wipe data (factory reset device)</span>
           </label>
         </div>
 
@@ -907,6 +919,7 @@ export function FlasherApp({ backend }: FlasherAppProps) {
   const [steps, setSteps] = useState<FlashStep[]>([]);
   const [terminalLines, setTerminalLines] = useState<string[]>([]);
   const [globalError, setGlobalError] = useState<string | null>(null);
+  const [wipeData, setWipeData] = useState(false);
 
   const buildsLoadedRef = useRef(false);
 
@@ -990,35 +1003,23 @@ export function FlasherApp({ backend }: FlasherAppProps) {
     action: "reboot-bootloader" | "unlock-bootloader",
   ) {
     if (!selectedDevice) return;
-    if (action === "reboot-bootloader") {
-      const plan = await backend.createFlashPlan({
-        deviceSerial: selectedDevice.serial,
-        buildId: selectedBuildId,
-        wipeData: false,
-        dryRun: true,
-      });
-      // We just need the reboot-to-bootloader step to run via the backend
-      // For the guide we call the backend's execute but only with reboot step
-      // Simplest: just execute a dry plan to show intent — real action is separate
-      void plan; // acknowledged
-      // For now, we trigger via the execute endpoint with a plan that has just the reboot step
-      // The backend handles the actual adb reboot bootloader call.
-      // We reconstruct a minimal plan with only the relevant step.
-      const minimalPlan = {
-        ...plan,
-        steps: plan.steps.filter((s) => s.id === "reboot-bootloader"),
-      };
-      await new Promise<void>((resolve, reject) => {
-        backend
-          .executeFlashPlan(minimalPlan, (_stepId, status, detail) => {
-            if (status === "failed") reject(new Error(detail));
-            if (status === "complete") resolve();
-          })
-          .then(resolve)
-          .catch(reject);
-      });
-    }
-    // unlock-bootloader: just return — guide tells user to confirm on device
+
+    // Tell the backend to stop after the requested step. The executor still
+    // runs the prefix steps (detect-device, etc.) so the device is in the
+    // right state, but bails out after the requested operation completes.
+    const plan = await backend.createFlashPlan({
+      deviceSerial: selectedDevice.serial,
+      buildId: selectedBuildId,
+      wipeData: false,
+      dryRun: false,
+      stopAfter: action,
+    });
+
+    await backend.executeFlashPlan(plan, (_stepId, status, detail) => {
+      if (status === "failed") {
+        throw new Error(detail);
+      }
+    });
   }
 
   async function handleFlash() {
@@ -1030,7 +1031,7 @@ export function FlasherApp({ backend }: FlasherAppProps) {
       const plan = await backend.createFlashPlan({
         deviceSerial: selectedDevice.serial,
         buildId: selectedBuildId,
-        wipeData: false,
+        wipeData,
         dryRun: false,
       });
       setSteps(plan.steps.map((s) => ({ ...s, status: "pending" as const })));
@@ -1142,6 +1143,8 @@ export function FlasherApp({ backend }: FlasherAppProps) {
           <ConfirmingScreen
             device={selectedDevice}
             build={selectedBuild}
+            wipeData={wipeData}
+            onWipeDataChange={setWipeData}
             onFlash={() => void handleFlash()}
             onCancel={() => setScreen("specs-check")}
           />

@@ -274,7 +274,7 @@ export function errorResult(error: string, text?: string): ActionResult {
 
 /** Read the session id stored in state by setCurrentSession / setCurrentSessions. */
 export function stateSessionId(state: State | undefined): string | undefined {
-  const session = state?.["codingSession"];
+  const session = state?.codingSession;
   if (session !== null && typeof session === "object" && "id" in session) {
     const { id } = session as { id?: string };
     return typeof id === "string" ? id : undefined;

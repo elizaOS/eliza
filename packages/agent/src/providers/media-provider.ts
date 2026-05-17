@@ -13,7 +13,6 @@
  */
 
 import { logger } from "@elizaos/core";
-import { OllamaVisionProvider } from "@elizaos/plugin-ollama";
 import type {
   AudioGenConfig,
   AudioGenProvider,

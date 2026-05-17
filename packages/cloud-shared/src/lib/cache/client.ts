@@ -13,6 +13,12 @@ import { Redis as UpstashRedis } from "@upstash/redis";
 import { createClient } from "redis";
 import { getCloudAwareEnv } from "../runtime/cloud-bindings";
 import { logger } from "../utils/logger";
+import { MemoryCacheAdapter } from "./adapters/memory-cache-adapter";
+import { NodeRedisAdapter } from "./adapters/node-redis-adapter";
+import { SocketRedisAdapter } from "./adapters/socket-redis-adapter";
+import type { CacheRedisClient } from "./adapters/types";
+import { UpstashRedisAdapter } from "./adapters/upstash-redis-adapter";
+import { type WadisClientLike, WadisRedisAdapter } from "./adapters/wadis-redis-adapter";
 import { SocketRedis } from "./socket-redis";
 
 function isCloudflareWorkerRuntime(): boolean {
@@ -70,30 +76,15 @@ function parseCacheValue<T>(value: unknown): T {
   }
 }
 
-interface CacheRedisClient {
-  readonly backend: string;
-  get(key: string): Promise<string | null>;
-  setex(key: string, ttlSeconds: number, value: string): Promise<unknown>;
-  set(key: string, value: string, options?: { nx?: boolean; px?: number }): Promise<string | null>;
-  incr(key: string): Promise<number>;
-  expire(key: string, ttlSeconds: number): Promise<unknown>;
-  pexpire(key: string, ttlMs: number): Promise<unknown>;
-  pttl(key: string): Promise<number | null>;
-  getdel(key: string): Promise<string | null>;
-  del(...keys: string[]): Promise<unknown>;
-  scan(
-    cursor: string | number,
-    options: { match: string; count: number },
-  ): Promise<[string | number, string[]]>;
-  mget(...keys: string[]): Promise<Array<string | null>>;
-  lpush(key: string, ...values: string[]): Promise<number>;
-  rpop(key: string): Promise<string | null>;
-  llen(key: string): Promise<number>;
-}
+// CacheRedisClient interface and the five adapter classes
+// (Socket / Upstash / NodeRedis / Wadis / Memory) now live in ./adapters/*.
+// They are imported above. Keeping a marker for the removed legacy block:
+//   SocketRedisAdapter, UpstashRedisAdapter, NodeRedisAdapter,
+//   WadisRedisAdapter, MemoryCacheAdapter, WadisClientLike
+// were extracted on 2026-05-16.
 
-type NativeRedisClient = ReturnType<typeof createClient>;
-
-class SocketRedisAdapter implements CacheRedisClient {
+// biome-ignore lint/correctness/noUnusedVariables: kept as anchor reference for the removed block below.
+const _removedAdapterClassesAnchor = `class SocketRedisAdapter implements CacheRedisClient {
   readonly backend = "redis-socket";
 
   constructor(private readonly client: SocketRedis) {}

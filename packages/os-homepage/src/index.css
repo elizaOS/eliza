@@ -38,6 +38,18 @@ code {
   font-family: "Poppins", sans-serif;
 }
 
+button,
+input,
+select,
+textarea,
+a,
+div,
+article,
+img,
+video {
+  border-radius: var(--radius-xs);
+}
+
 a {
   color: inherit;
   text-decoration: none;
@@ -158,7 +170,7 @@ img {
   overflow: hidden;
   padding-top: clamp(7rem, 10vw, 10rem);
   padding-bottom: clamp(3rem, 7vw, 6rem);
-  color: var(--brand-black);
+  color: var(--brand-white);
 }
 
 .cloud-video,
@@ -177,15 +189,11 @@ img {
   background:
     linear-gradient(
       90deg,
-      rgba(255, 255, 255, 0.92) 0%,
-      rgba(255, 255, 255, 0.7) 42%,
-      rgba(255, 255, 255, 0.2) 100%
+      rgba(11, 53, 241, 0.96) 0%,
+      rgba(11, 53, 241, 0.88) 46%,
+      rgba(11, 53, 241, 0.66) 100%
     ),
-    linear-gradient(
-      180deg,
-      rgba(255, 255, 255, 0.78) 0%,
-      rgba(255, 255, 255, 0.15) 100%
-    );
+    linear-gradient(180deg, rgba(0, 0, 0, 0.12) 0%, rgba(0, 0, 0, 0.04) 100%);
 }
 
 .hero-cloud-inner {
@@ -332,6 +340,7 @@ h3 {
 .product-image {
   display: block;
   width: 100%;
+  border-radius: var(--radius-xs);
   object-fit: cover;
   background: var(--brand-gray);
 }
@@ -425,6 +434,7 @@ h3 {
   min-height: 14.5rem;
   gap: 1.25rem;
   padding: 1.5rem 0;
+  border-radius: var(--radius-xs);
   background: transparent;
   color: var(--brand-black);
 }
@@ -516,9 +526,11 @@ h3 {
   align-items: center;
   margin-bottom: clamp(2rem, 5vw, 3.5rem);
   padding: clamp(1.25rem, 2vw, 1.75rem);
+  border-radius: var(--radius-xs);
   background: var(--brand-black);
   color: var(--brand-white);
   transition: transform 160ms ease;
+  overflow: hidden;
 }
 
 .hw-featured:hover {
@@ -602,11 +614,13 @@ h3 {
   display: flex;
   flex-direction: column;
   padding: 1rem;
+  border-radius: var(--radius-xs);
   background: var(--brand-black);
   color: var(--brand-white);
   transition:
     background 120ms ease,
     color 120ms ease;
+  overflow: hidden;
 }
 
 .hw-tile:hover {
@@ -761,8 +775,10 @@ h3 {
   display: grid;
   gap: 1.25rem;
   padding: clamp(1rem, 3vw, 2rem);
+  border-radius: var(--radius-xs);
   background: var(--brand-black);
   color: var(--brand-white);
+  overflow: hidden;
 }
 
 .checkout-product-picker {
@@ -966,9 +982,11 @@ h3 {
   flex-direction: column;
   gap: 1rem;
   padding: clamp(1rem, 2.5vw, 1.5rem);
+  border-radius: var(--radius-xs);
   background: rgba(255, 255, 255, 0.06);
   border: 1px solid rgba(255, 255, 255, 0.1);
   transition: background 0.15s ease;
+  overflow: hidden;
 }
 
 .artifact-card[data-available="false"] {
@@ -995,6 +1013,7 @@ h3 {
 .artifact-badge {
   display: inline-block;
   padding: 0.15rem 0.55rem;
+  border-radius: var(--radius-xs);
   font-size: 0.72rem;
   font-weight: 500;
   text-transform: uppercase;
@@ -1036,6 +1055,7 @@ h3 {
   align-items: center;
   gap: 0.45rem;
   padding: 0.55rem 0.75rem;
+  border-radius: var(--radius-xs);
   background: rgba(255, 88, 0, 0.12);
   border-left: 2px solid var(--brand-orange);
   font-size: 0.82rem;
@@ -1105,6 +1125,7 @@ h3 {
 .artifact-channel-note {
   margin-top: clamp(1.5rem, 3vw, 2.5rem);
   padding: 1rem 1.25rem;
+  border-radius: var(--radius-xs);
   background: rgba(255, 255, 255, 0.05);
   border-left: 2px solid var(--brand-blue);
   font-size: 0.9rem;
