@@ -1,5 +1,5 @@
-import { realpathSync } from "node:fs";
-import { resolve } from "node:path";
+import { createRequire } from "node:module";
+import { resolve, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 import { defineConfig } from "vitest/config";
 
@@ -12,10 +12,12 @@ const bunRuntimeSrc = resolve(
   monorepoRoot,
   "plugins/plugin-native-bun-runtime/src/index.ts",
 );
-const reactPath = realpathSync(resolve(packageRoot, "node_modules/react"));
-const reactDomPath = realpathSync(
-  resolve(packageRoot, "node_modules/react-dom"),
-);
+
+// Resolve react/react-dom tolerating bun workspace hoisting (deps may live in
+// the monorepo root node_modules rather than the package-local node_modules).
+const _require = createRequire(import.meta.url);
+const reactPath = dirname(_require.resolve("react/package.json"));
+const reactDomPath = dirname(_require.resolve("react-dom/package.json"));
 
 export default defineConfig({
   resolve: {
