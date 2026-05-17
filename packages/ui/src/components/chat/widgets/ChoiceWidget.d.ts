@@ -9,16 +9,21 @@
  * agent only ever sees one decision per prompt.
  */
 export type ChoiceOption = {
-    value: string;
-    label: string;
+  value: string;
+  label: string;
 };
 export type ChoiceWidgetProps = {
-    /** Stable id from the source `[CHOICE:scope id=xxx]` marker. */
-    id: string;
-    /** Scope hint from the marker, e.g. "app-create" or "plugin-create". */
-    scope: string;
-    options: ChoiceOption[];
-    onChoose: (value: string) => void;
+  /** Stable id from the source `[CHOICE:scope id=xxx]` marker. */
+  id: string;
+  /** Scope hint from the marker, e.g. "app-create" or "plugin-create". */
+  scope: string;
+  options: ChoiceOption[];
+  onChoose: (value: string) => void;
 };
-export declare function ChoiceWidget({ id, scope, options, onChoose, }: ChoiceWidgetProps): import("react/jsx-runtime").JSX.Element | null;
+export declare function ChoiceWidget({
+  id,
+  scope,
+  options,
+  onChoose,
+}: ChoiceWidgetProps): import("react/jsx-runtime").JSX.Element | null;
 //# sourceMappingURL=ChoiceWidget.d.ts.map

@@ -9,23 +9,27 @@ import { type ReactNode } from "react";
 import { type BrandingConfig } from "../config/branding";
 import { type UiLanguage } from "../i18n";
 export interface TranslationContextValue {
-    /** Translate a key, optionally with interpolation values. */
-    t: (key: string, values?: Record<string, unknown>) => string;
-    uiLanguage: UiLanguage;
-    /** Change the UI language. Persists to localStorage and syncs to server. */
-    setUiLanguage: (language: UiLanguage) => void;
+  /** Translate a key, optionally with interpolation values. */
+  t: (key: string, values?: Record<string, unknown>) => string;
+  uiLanguage: UiLanguage;
+  /** Change the UI language. Persists to localStorage and syncs to server. */
+  setUiLanguage: (language: UiLanguage) => void;
 }
-export declare function TranslationProvider({ children, onLanguageSyncError, branding, }: {
-    children: ReactNode;
-    /** Optional callback when the server config sync fails. */
-    onLanguageSyncError?: (language: UiLanguage) => void;
-    /**
-     * Branding used to seed `{{appName}}` in translated strings. Threaded
-     * down explicitly because `TranslationProvider` wraps `AppProviderInner`,
-     * which is where `BrandingContext.Provider` lives — `useContext`
-     * here would always read the static default.
-     */
-    branding?: Partial<BrandingConfig>;
+export declare function TranslationProvider({
+  children,
+  onLanguageSyncError,
+  branding,
+}: {
+  children: ReactNode;
+  /** Optional callback when the server config sync fails. */
+  onLanguageSyncError?: (language: UiLanguage) => void;
+  /**
+   * Branding used to seed `{{appName}}` in translated strings. Threaded
+   * down explicitly because `TranslationProvider` wraps `AppProviderInner`,
+   * which is where `BrandingContext.Provider` lives — `useContext`
+   * here would always read the static default.
+   */
+  branding?: Partial<BrandingConfig>;
 }): import("react/jsx-runtime").JSX.Element;
 /**
  * Read-only access to the translator and current language.

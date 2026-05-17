@@ -23,7 +23,10 @@ export declare function getStorageValue(key: string): Promise<string | null>;
 /**
  * Set a value in storage (works on both native and web)
  */
-export declare function setStorageValue(key: string, value: string): Promise<void>;
+export declare function setStorageValue(
+  key: string,
+  value: string,
+): Promise<void>;
 /**
  * Remove a value from storage (works on both native and web)
  */

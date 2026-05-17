@@ -3,10 +3,13 @@
  * Visual explanation of the monetization model.
  */
 interface RevenueFlowDiagramProps {
-    markupPercentage: number;
-    purchaseSharePercentage: number;
-    className?: string;
+  markupPercentage: number;
+  purchaseSharePercentage: number;
+  className?: string;
 }
-export declare function RevenueFlowDiagram({ markupPercentage, purchaseSharePercentage, className, }: RevenueFlowDiagramProps): import("react/jsx-runtime").JSX.Element;
-export {};
+export declare function RevenueFlowDiagram({
+  markupPercentage,
+  purchaseSharePercentage,
+  className,
+}: RevenueFlowDiagramProps): import("react/jsx-runtime").JSX.Element;
 //# sourceMappingURL=revenue-flow-diagram.d.ts.map

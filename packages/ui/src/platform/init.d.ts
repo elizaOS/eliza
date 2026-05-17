@@ -34,30 +34,38 @@ export declare function canRunLocal(): boolean;
 export declare function canHostLocalAgent(): boolean;
 export declare function isWebPlatform(): boolean;
 export interface ShareTargetFile {
-    name: string;
-    path?: string;
+  name: string;
+  path?: string;
 }
 export interface ShareTargetPayload {
-    source?: string;
-    title?: string;
-    text?: string;
-    url?: string;
-    files?: ShareTargetFile[];
+  source?: string;
+  title?: string;
+  text?: string;
+  url?: string;
+  files?: ShareTargetFile[];
 }
 declare global {
-    interface Window {
-        __ELIZAOS_SHARE_QUEUE__?: ShareTargetPayload[];
-    }
+  interface Window {
+    __ELIZAOS_SHARE_QUEUE__?: ShareTargetPayload[];
+  }
 }
-export declare function dispatchShareTarget(payload: ShareTargetPayload, dispatchEvent: (name: string, detail: unknown) => void, eventName: string): void;
+export declare function dispatchShareTarget(
+  payload: ShareTargetPayload,
+  dispatchEvent: (name: string, detail: unknown) => void,
+  eventName: string,
+): void;
 export interface DeepLinkHandlers {
-    onChat?: () => void;
-    onSettings?: () => void;
-    onConnect?: (gatewayUrl: string) => void;
-    onShare?: (payload: ShareTargetPayload) => void;
-    onUnknown?: (path: string) => void;
+  onChat?: () => void;
+  onSettings?: () => void;
+  onConnect?: (gatewayUrl: string) => void;
+  onShare?: (payload: ShareTargetPayload) => void;
+  onUnknown?: (path: string) => void;
 }
-export declare function handleDeepLink(url: string, protocol: string, handlers: DeepLinkHandlers): void;
+export declare function handleDeepLink(
+  url: string,
+  protocol: string,
+  handlers: DeepLinkHandlers,
+): void;
 export declare function setupPlatformStyles(): void;
 export declare function isPopoutWindow(): boolean;
 export declare function injectPopoutApiBase(): void;

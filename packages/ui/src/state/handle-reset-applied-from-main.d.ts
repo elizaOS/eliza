@@ -11,21 +11,32 @@
 import type { AgentStatus } from "../api/client";
 import { type LifecycleAction } from "./types";
 export type HandleResetAppliedFromMainDeps = {
-    performanceNow: () => number;
-    isLifecycleBusy: () => boolean;
-    getActiveLifecycleAction: () => LifecycleAction;
-    beginLifecycleAction: (action: LifecycleAction) => boolean;
-    finishLifecycleAction: () => void;
-    setActionNotice: (text: string, tone: "info" | "success" | "error", ttlMs?: number, once?: boolean, busy?: boolean) => void;
-    parseTrayResetPayload: (payload: unknown) => AgentStatus | null;
-    completeResetLocalState: (postResetAgentStatus: AgentStatus | null) => Promise<void>;
-    alertDesktopMessage: (args: {
-        title: string;
-        message: string;
-        type: "error";
-    }) => Promise<void>;
-    logResetInfo: (message: string, detail?: Record<string, unknown>) => void;
-    logResetWarn: (message: string, detail?: unknown) => void;
+  performanceNow: () => number;
+  isLifecycleBusy: () => boolean;
+  getActiveLifecycleAction: () => LifecycleAction;
+  beginLifecycleAction: (action: LifecycleAction) => boolean;
+  finishLifecycleAction: () => void;
+  setActionNotice: (
+    text: string,
+    tone: "info" | "success" | "error",
+    ttlMs?: number,
+    once?: boolean,
+    busy?: boolean,
+  ) => void;
+  parseTrayResetPayload: (payload: unknown) => AgentStatus | null;
+  completeResetLocalState: (
+    postResetAgentStatus: AgentStatus | null,
+  ) => Promise<void>;
+  alertDesktopMessage: (args: {
+    title: string;
+    message: string;
+    type: "error";
+  }) => Promise<void>;
+  logResetInfo: (message: string, detail?: Record<string, unknown>) => void;
+  logResetWarn: (message: string, detail?: unknown) => void;
 };
-export declare function handleResetAppliedFromMainCore(payload: unknown, d: HandleResetAppliedFromMainDeps): Promise<void>;
+export declare function handleResetAppliedFromMainCore(
+  payload: unknown,
+  d: HandleResetAppliedFromMainDeps,
+): Promise<void>;
 //# sourceMappingURL=handle-reset-applied-from-main.d.ts.map

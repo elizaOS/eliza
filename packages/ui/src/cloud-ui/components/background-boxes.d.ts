@@ -1,8 +1,16 @@
 import React from "react";
-export declare const BoxesCore: ({ className, ...rest }: {
-    className?: string;
+export declare const BoxesCore: ({
+  className,
+  ...rest
+}: {
+  className?: string;
 }) => import("react/jsx-runtime").JSX.Element;
-export declare const Boxes: React.MemoExoticComponent<({ className, ...rest }: {
+export declare const Boxes: React.MemoExoticComponent<
+  ({
+    className,
+    ...rest
+  }: {
     className?: string;
-}) => import("react/jsx-runtime").JSX.Element>;
+  }) => import("react/jsx-runtime").JSX.Element
+>;
 //# sourceMappingURL=background-boxes.d.ts.map

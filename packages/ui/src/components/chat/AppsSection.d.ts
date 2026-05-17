@@ -6,8 +6,10 @@
  */
 import type { ReactNode } from "react";
 export interface AppsSectionProps {
-    /** Optional action node rendered at the top-right of the section header. */
-    headerAction?: ReactNode;
+  /** Optional action node rendered at the top-right of the section header. */
+  headerAction?: ReactNode;
 }
-export declare function AppsSection({ headerAction }?: AppsSectionProps): import("react/jsx-runtime").JSX.Element | null;
+export declare function AppsSection({
+  headerAction,
+}?: AppsSectionProps): import("react/jsx-runtime").JSX.Element | null;
 //# sourceMappingURL=AppsSection.d.ts.map

@@ -11,17 +11,17 @@
  */
 import type { ResolvedContentPack } from "@elizaos/shared";
 export interface UseContentPackResult {
-    activePack: ResolvedContentPack | null;
-    loadedPacks: ResolvedContentPack[];
-    error: string | null;
-    setError: (error: string | null) => void;
-    canPickDirectory: boolean;
-    activate: (pack: ResolvedContentPack) => void;
-    deactivate: () => void;
-    toggle: (pack: ResolvedContentPack) => void;
-    loadFromUrl: (url: string) => Promise<void>;
-    loadFromFiles: (files: File[]) => Promise<void>;
-    isSafeContentPackUrl: (value: string) => boolean;
+  activePack: ResolvedContentPack | null;
+  loadedPacks: ResolvedContentPack[];
+  error: string | null;
+  setError: (error: string | null) => void;
+  canPickDirectory: boolean;
+  activate: (pack: ResolvedContentPack) => void;
+  deactivate: () => void;
+  toggle: (pack: ResolvedContentPack) => void;
+  loadFromUrl: (url: string) => Promise<void>;
+  loadFromFiles: (files: File[]) => Promise<void>;
+  isSafeContentPackUrl: (value: string) => boolean;
 }
 export declare function useContentPack(): UseContentPackResult;
 //# sourceMappingURL=useContentPack.d.ts.map

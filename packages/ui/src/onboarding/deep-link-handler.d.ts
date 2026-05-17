@@ -35,6 +35,7 @@
  * and resolves to a no-op when the native bridge is unavailable.
  */
 import { type RuntimePickerTarget } from "./reload-into-runtime-picker";
+
 type OnboardingStepId = "provider" | "local" | "cloud" | "remote";
 /**
  * Parses `eliza://onboard/step/<id>` (or any scheme matching `urlScheme`)
@@ -48,21 +49,23 @@ type OnboardingStepId = "provider" | "local" | "cloud" | "remote";
  * @param urlScheme  The app's deep-link scheme without the trailing `:`
  *                   (e.g. `"eliza"`).
  */
-export declare function routeOnboardingDeepLink(url: string, urlScheme: string): boolean;
+export declare function routeOnboardingDeepLink(
+  url: string,
+  urlScheme: string,
+): boolean;
 export declare function installOnboardingDeepLinkListener(options: {
-    urlScheme: string;
-    onError?: (error: unknown) => void;
-    /**
-     * Optional fall-through called for any URL that did NOT match the
-     * onboarding contract. Lets the host wire its existing deep-link switch
-     * (chat, settings, share, ...) without losing those URLs.
-     */
-    onUnmatched?: (url: string) => void;
+  urlScheme: string;
+  onError?: (error: unknown) => void;
+  /**
+   * Optional fall-through called for any URL that did NOT match the
+   * onboarding contract. Lets the host wire its existing deep-link switch
+   * (chat, settings, share, ...) without losing those URLs.
+   */
+  onUnmatched?: (url: string) => void;
 }): Promise<() => void>;
 export declare const __TEST_ONLY__: {
-    ONBOARD_HOST: string;
-    STEP_SEGMENT: string;
-    STEP_TO_PICKER_TARGET: Record<OnboardingStepId, RuntimePickerTarget>;
+  ONBOARD_HOST: string;
+  STEP_SEGMENT: string;
+  STEP_TO_PICKER_TARGET: Record<OnboardingStepId, RuntimePickerTarget>;
 };
-export {};
 //# sourceMappingURL=deep-link-handler.d.ts.map

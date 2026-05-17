@@ -20,42 +20,54 @@
  */
 import { type VoiceModelId } from "@elizaos/shared";
 export interface VoiceModelInstallationView {
-    readonly id: VoiceModelId;
-    readonly installedVersion: string | null;
-    readonly pinned: boolean;
-    readonly lastError?: string | null;
+  readonly id: VoiceModelId;
+  readonly installedVersion: string | null;
+  readonly pinned: boolean;
+  readonly lastError?: string | null;
 }
 export interface VoiceUpdatePreferencesView {
-    readonly autoUpdateOnWifi: boolean;
-    readonly autoUpdateOnCellular: boolean;
-    readonly autoUpdateOnMetered: boolean;
+  readonly autoUpdateOnWifi: boolean;
+  readonly autoUpdateOnCellular: boolean;
+  readonly autoUpdateOnMetered: boolean;
 }
 export interface ModelUpdatesPanelProps {
-    /**
-     * Per-id installation state (installed version + pin flag). Caller wires
-     * from the runtime's `/api/local-inference/voice-models/status` endpoint
-     * once it lands; pass an empty array to surface "no models installed"
-     * placeholders for every id in `VOICE_MODEL_VERSIONS`.
-     */
-    readonly installations: ReadonlyArray<VoiceModelInstallationView>;
-    readonly preferences: VoiceUpdatePreferencesView;
-    readonly isOwner: boolean;
-    readonly lastCheckedAt?: string | null;
-    readonly checking?: boolean;
-    readonly onCheckNow: () => void;
-    readonly onUpdateNow: (id: VoiceModelId) => void;
-    readonly onTogglePin: (id: VoiceModelId, pinned: boolean) => void;
-    readonly onSetPreferences: (next: VoiceUpdatePreferencesView) => void;
+  /**
+   * Per-id installation state (installed version + pin flag). Caller wires
+   * from the runtime's `/api/local-inference/voice-models/status` endpoint
+   * once it lands; pass an empty array to surface "no models installed"
+   * placeholders for every id in `VOICE_MODEL_VERSIONS`.
+   */
+  readonly installations: ReadonlyArray<VoiceModelInstallationView>;
+  readonly preferences: VoiceUpdatePreferencesView;
+  readonly isOwner: boolean;
+  readonly lastCheckedAt?: string | null;
+  readonly checking?: boolean;
+  readonly onCheckNow: () => void;
+  readonly onUpdateNow: (id: VoiceModelId) => void;
+  readonly onTogglePin: (id: VoiceModelId, pinned: boolean) => void;
+  readonly onSetPreferences: (next: VoiceUpdatePreferencesView) => void;
 }
-export declare function ModelUpdatesPanel({ installations, preferences, isOwner, lastCheckedAt, checking, onCheckNow, onUpdateNow, onTogglePin, onSetPreferences, }: ModelUpdatesPanelProps): import("react/jsx-runtime").JSX.Element;
+export declare function ModelUpdatesPanel({
+  installations,
+  preferences,
+  isOwner,
+  lastCheckedAt,
+  checking,
+  onCheckNow,
+  onUpdateNow,
+  onTogglePin,
+  onSetPreferences,
+}: ModelUpdatesPanelProps): import("react/jsx-runtime").JSX.Element;
 /**
  * Standalone hook helper for callers that don't yet have a server route to
  * mount against — preserves the panel's contract (so storybooks render)
  * but tolerates absent endpoints.
  */
-export declare function useStaticVoiceUpdatePreferences(initial?: VoiceUpdatePreferencesView): {
-    preferences: VoiceUpdatePreferencesView;
-    setPreferences: (next: VoiceUpdatePreferencesView) => void;
+export declare function useStaticVoiceUpdatePreferences(
+  initial?: VoiceUpdatePreferencesView,
+): {
+  preferences: VoiceUpdatePreferencesView;
+  setPreferences: (next: VoiceUpdatePreferencesView) => void;
 };
 export default ModelUpdatesPanel;
 //# sourceMappingURL=ModelUpdatesPanel.d.ts.map
