@@ -29,6 +29,40 @@ docs updates.
 Those changes are correct in source and covered by smoke checks, but they are
 not on the already-flashed USB until a fresh ISO is rebuilt and flashed again.
 
+## 2026-05-17 Rebuild Attempt
+
+A fresh full build completed with the current app/runtime and branding work:
+
+```text
+out/tails-amd64-stable@0fa159b265-20260517T0928Z.iso
+sha256 46f75de4f91a751a6b22f310edce119d755153580db3df04d6ee8741136e474e
+```
+
+The ISO metadata is valid and identifies itself as elizaOS, but the normal
+BIOS QEMU boot stayed at a black cursor. A direct kernel/initrd debug boot
+reached systemd and serial login, which means the root filesystem can start,
+but the graphical greeter/session was blocked by boot-time service failures.
+
+The concrete failures found in serial logs were:
+
+- `dbus.service` exited with `status=200/CHDIR`, preventing the normal
+  D-Bus/GDM graphical path from starting.
+- `elizaos-update-verify.service` failed systemd mount namespacing when
+  `/live/persistence/TailsData_unlocked/elizaos-system` did not exist yet,
+  which is the expected state before Persistent Storage is enabled.
+
+Source fixes are now staged and covered by smoke checks:
+
+- `dbus.service.d/elizaos-working-directory.conf` pins D-Bus to
+  `WorkingDirectory=/`.
+- The update verifier and health checker use systemd's `-` optional path
+  prefix for the Persistent Storage update store, so the services do not fail
+  just because persistence has not been created.
+
+The `46f75de4...` ISO does not contain those fixes. The next artifact must be
+an incremental repack from the fixed source/chroot, followed by another QEMU
+normal-boot proof.
+
 ## Still Pending
 
 - Rebuild the current HEAD ISO.
