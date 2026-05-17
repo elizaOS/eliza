@@ -53,7 +53,7 @@
     }
   },
   "scripts": {
-    "build": "tsup --config tsup.config.ts && tsc --declaration --emitDeclarationOnly --noEmit false --outDir dist --rootDir src",
+    "build": "bun run build.ts",
     "check": "tsc --noEmit",
     "lint": "bunx @biomejs/biome check --write --unsafe .",
     "test": "vitest run --config ./vitest.config.ts",
@@ -89,7 +89,6 @@
   "devDependencies": {
     "@elizaos/core": "workspace:*",
     "@types/node": "^24.0.0",
-    "tsup": "^8.5.1",
     "typescript": "^6.0.3",
     "vitest": "^4.0.18"
   },

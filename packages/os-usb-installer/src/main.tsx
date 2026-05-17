@@ -11,6 +11,8 @@ if (!root) {
   throw new Error("Missing #root element");
 }
 
+const rootElement: HTMLElement = root;
+
 // In Electrobun (desktop app) the native IPC backend is available.
 // In all browser contexts (Vite dev server or static deployment) use the
 // HTTP backend which talks to the local Bun server via the /api Vite proxy.
@@ -26,7 +28,7 @@ async function main() {
     backend = new HttpUsbInstallerBackend();
   }
 
-  createRoot(root).render(
+  createRoot(rootElement).render(
     <StrictMode>
       <InstallerApp backend={backend} />
     </StrictMode>,

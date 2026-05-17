@@ -341,6 +341,12 @@ export function DependencyGate({ onReady }: Props) {
               {dep.status === "missing" && (
                 <div style={styles.depStatus}>Not found on this system</div>
               )}
+              {dep.status === "found-but-misconfigured" && (
+                <div style={styles.depStatus}>
+                  {dep.errorMessage ??
+                    "Found on system but reported an error when probed"}
+                </div>
+              )}
               {dep.status === "installing" && (
                 <div style={styles.depStatus}>Installing…</div>
               )}
