@@ -52,6 +52,10 @@ import { ShellOverlays } from "./components/shell/ShellOverlays";
 import { StartupFailureView } from "./components/shell/StartupFailureView";
 import { StartupShell } from "./components/shell/StartupShell";
 import { SystemWarningBanner } from "./components/shell/SystemWarningBanner";
+import { AssistantOverlay } from "./components/shell/AssistantOverlay";
+import { ChatSurface } from "./components/shell/ChatSurface";
+import { HomePill } from "./components/shell/HomePill";
+import { useShellState } from "./components/shell/useShellState";
 import { Button } from "./components/ui/button";
 import { ErrorBoundary } from "./components/ui/error-boundary";
 import {
@@ -707,6 +711,55 @@ function ViewRouter({
     <ErrorBoundary>
       <LazyViewBoundary>{view}</LazyViewBoundary>
     </ErrorBoundary>
+  );
+}
+
+function ShellFoundationMount(): JSX.Element {
+  const app = useApp();
+  const { state, send } = useShellState();
+
+  // Drive BOOT_READY from Shaw's startup coordinator.
+  const ready = app.startupCoordinator.phase === "ready";
+  useEffect(() => {
+    if (ready) send({ type: "BOOT_READY" });
+  }, [ready, send]);
+
+  // v1: mocked agent. Echoes the user's text after 400ms. When the agent
+  // integration sub-project lands, replace this with a real `client` stream
+  // subscription that pushes RESPONSE_DELTA / RESPONSE_DONE / RESPONSE_ERROR.
+  const onSend = useCallback(
+    (text: string) => {
+      send({ type: "SEND", text });
+      window.setTimeout(() => {
+        send({ type: "RESPONSE_DELTA", delta: `Echo: ${text}` });
+        send({ type: "RESPONSE_DONE" });
+      }, 400);
+    },
+    [send],
+  );
+
+  const canSend =
+    state.phase === "summoned" || state.phase === "responding";
+
+  return (
+    <>
+      <HomePill
+        phase={state.phase}
+        onOpen={() => send({ type: "OPEN" })}
+        onClose={() => send({ type: "CLOSE" })}
+      />
+      <AssistantOverlay
+        phase={state.phase}
+        onClose={() => send({ type: "CLOSE" })}
+      >
+        <ChatSurface
+          messages={state.messages}
+          onSend={onSend}
+          canSend={canSend}
+          greeting="Good morning! What would you like to do?"
+        />
+      </AssistantOverlay>
+    </>
   );
 }
 
@@ -1420,6 +1473,7 @@ export function App() {
             style={{ borderRadius: "var(--radius-xs, 2px)" }}
           >
             <StartupShell />
+            <ShellFoundationMount />
           </div>
         </CloudVideoBackground>
         <BugReportModal />
