@@ -3,9 +3,12 @@ import {
   StripeCheckoutError,
 } from "@elizaos/checkout-shared";
 import {
+  HARDWARE_PRODUCTS as hardwareProducts,
+  type Product,
+} from "@elizaos/hardware-catalog";
+import {
   BRAND_COLORS,
   BRAND_PATHS,
-  CONCEPT_PRODUCT_IMAGES,
   EXTERNAL_URLS,
   LOGO_FILES,
 } from "@elizaos/shared-brand";

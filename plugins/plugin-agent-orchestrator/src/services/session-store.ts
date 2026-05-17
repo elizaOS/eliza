@@ -1,6 +1,4 @@
-import { constants } from "node:fs";
 import {
-  access,
   mkdir,
   open,
   readFile,

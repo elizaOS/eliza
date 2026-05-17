@@ -15,8 +15,8 @@ CREATE TABLE IF NOT EXISTS identity_links (
   created_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
-CREATE UNIQUE INDEX idx_identity_links_unique_pair
+CREATE UNIQUE INDEX IF NOT EXISTS idx_identity_links_unique_pair
   ON identity_links(left_entity_id, right_entity_id, provider);
-CREATE INDEX idx_identity_links_left ON identity_links(left_entity_id);
-CREATE INDEX idx_identity_links_right ON identity_links(right_entity_id);
-CREATE INDEX idx_identity_links_org_user ON identity_links(organization_id, user_id);
+CREATE INDEX IF NOT EXISTS idx_identity_links_left ON identity_links(left_entity_id);
+CREATE INDEX IF NOT EXISTS idx_identity_links_right ON identity_links(right_entity_id);
+CREATE INDEX IF NOT EXISTS idx_identity_links_org_user ON identity_links(organization_id, user_id);

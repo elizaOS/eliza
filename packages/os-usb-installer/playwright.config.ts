@@ -8,13 +8,13 @@ export default defineConfig({
   },
   webServer: {
     command:
-      "bun run build && bun --bun vite preview --host 127.0.0.1 --port 4455",
-    url: "http://127.0.0.1:4455",
+      "bun run build && bun --bun vite preview --host 127.0.0.1 --port 4456",
+    url: "http://127.0.0.1:4456",
     reuseExistingServer: !process.env.CI,
     timeout: 120_000,
   },
   use: {
-    baseURL: "http://127.0.0.1:4455",
+    baseURL: "http://127.0.0.1:4456",
     trace: "retain-on-failure",
   },
   projects: [

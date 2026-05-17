@@ -1,4 +1,5 @@
 import { BRAND_PATHS, EXTERNAL_URLS, LOGO_FILES } from "@elizaos/shared-brand";
+import { CloudVideoBackground } from "@elizaos/ui";
 import {
   ArrowRight,
   BadgeCheck,
@@ -106,46 +107,17 @@ export default function MarketingPage() {
 
       <main id="main">
         <section className="brand-section brand-section--cloud app-hero">
-          <video
-            className="app-cloud-video"
-            autoPlay
-            muted
-            loop
-            playsInline
-            preload="metadata"
+          <CloudVideoBackground
+            speed="4x"
+            basePath={BRAND_PATHS.clouds}
             poster={BRAND_PATHS.poster}
-            disableRemotePlayback
-            disablePictureInPicture
-          >
-            <source
-              src={`${BRAND_PATHS.clouds}/clouds_4x_1080p.webm`}
-              type="video/webm"
-              media="(min-width: 1280px)"
-            />
-            <source
-              src={`${BRAND_PATHS.clouds}/clouds_4x_1080p.mp4`}
-              type="video/mp4"
-              media="(min-width: 1280px)"
-            />
-            <source
-              src={`${BRAND_PATHS.clouds}/clouds_4x_720p.webm`}
-              type="video/webm"
-              media="(min-width: 768px)"
-            />
-            <source
-              src={`${BRAND_PATHS.clouds}/clouds_4x_720p.mp4`}
-              type="video/mp4"
-              media="(min-width: 768px)"
-            />
-            <source
-              src={`${BRAND_PATHS.clouds}/clouds_4x_480p.webm`}
-              type="video/webm"
-            />
-            <source
-              src={`${BRAND_PATHS.clouds}/clouds_4x_480p.mp4`}
-              type="video/mp4"
-            />
-          </video>
+            style={{
+              position: "absolute",
+              inset: 0,
+              width: "100%",
+              height: "100%",
+            }}
+          />
           <div className="app-cloud-scrim" />
           <div className="app-band-inner app-hero-grid app-hero-copy--cloud">
             <div className="app-hero-copy">

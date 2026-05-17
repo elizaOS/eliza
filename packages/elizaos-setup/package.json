@@ -1,5 +1,5 @@
 {
-  "name": "@elizaos/aosp-flasher",
+  "name": "@elizaos/elizaos-setup",
   "version": "1.0.0",
   "private": true,
   "description": "Electrobun desktop app for flashing elizaOS AOSP builds onto Pixel devices via ADB and fastboot.",

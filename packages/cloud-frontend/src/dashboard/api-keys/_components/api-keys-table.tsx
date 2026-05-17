@@ -283,7 +283,7 @@ export function ApiKeysTable({
                     <span className="font-medium text-white">
                       {key.usageCount.toLocaleString()} requests
                     </span>
-                    <p className="text-xs text-white/50">
+                    <p className="text-xs text-white/74">
                       Rate limit {key.rateLimit.toLocaleString()} / min
                     </p>
                   </div>
@@ -306,7 +306,7 @@ export function ApiKeysTable({
                         ))}
                       </div>
                     ) : (
-                      <p className="text-xs text-white/50">
+                      <p className="text-xs text-white/74">
                         No permissions configured
                       </p>
                     )}

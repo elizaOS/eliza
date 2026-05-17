@@ -38,10 +38,10 @@ CREATE TABLE IF NOT EXISTS payment_requests (
   metadata JSONB NOT NULL DEFAULT '{}'::jsonb
 );
 
-CREATE INDEX idx_payment_requests_org_created ON payment_requests(organization_id, created_at DESC);
-CREATE INDEX idx_payment_requests_status_expires ON payment_requests(status, expires_at) WHERE status IN ('pending','delivered');
-CREATE INDEX idx_payment_requests_provider_intent ON payment_requests USING GIN (provider_intent);
-CREATE INDEX idx_payment_requests_agent ON payment_requests(agent_id) WHERE agent_id IS NOT NULL;
+CREATE INDEX IF NOT EXISTS idx_payment_requests_org_created ON payment_requests(organization_id, created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_payment_requests_status_expires ON payment_requests(status, expires_at) WHERE status IN ('pending','delivered');
+CREATE INDEX IF NOT EXISTS idx_payment_requests_provider_intent ON payment_requests USING GIN (provider_intent);
+CREATE INDEX IF NOT EXISTS idx_payment_requests_agent ON payment_requests(agent_id) WHERE agent_id IS NOT NULL;
 
 CREATE TABLE IF NOT EXISTS payment_request_events (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -55,4 +55,4 @@ CREATE TABLE IF NOT EXISTS payment_request_events (
   occurred_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
-CREATE INDEX idx_payment_request_events_request ON payment_request_events(payment_request_id, occurred_at);
+CREATE INDEX IF NOT EXISTS idx_payment_request_events_request ON payment_request_events(payment_request_id, occurred_at);

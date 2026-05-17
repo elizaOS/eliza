@@ -41,9 +41,9 @@ export default function AppsPage() {
   const { data, isLoading, isError, error } = useApps();
 
   const apps = data ?? [];
-  const totalUsers = apps.reduce((sum, app) => sum + (app.total_users ?? 0), 0);
+  const totalUsers = apps.reduce((sum, app) => sum + app.total_users, 0);
   const totalRequests = apps.reduce(
-    (sum, app) => sum + (app.total_requests ?? 0),
+    (sum, app) => sum + app.total_requests,
     0,
   );
   const activeCount = apps.filter((a) => a.is_active).length;

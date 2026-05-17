@@ -212,11 +212,11 @@ export const HARDWARE_PRODUCTS = [
     stripeName: "ElizaOS Box preorder deposit",
     stripeDescription: "Reserve the ElizaOS home/runtime box.",
   },
-] as const;
+] as const satisfies readonly Product[];
 
 export type HardwareSku = (typeof HARDWARE_PRODUCTS)[number]["sku"];
 
-export const HARDWARE_SKUS = HARDWARE_PRODUCTS.map((p) => p.sku) as readonly [
+export const HARDWARE_SKUS = HARDWARE_PRODUCTS.map((p) => p.sku) as [
   HardwareSku,
   ...HardwareSku[],
 ];
