@@ -8,7 +8,6 @@ import { Avatar, AvatarFallback } from "../avatar";
 /**
  * Message container component with role-based styling.
  *
- * @param props - Message props
  * @param props.from - Message role (user or assistant)
  */
 export type MessageProps = HTMLAttributes<HTMLDivElement> & {
@@ -51,7 +50,6 @@ const messageContentVariants = cva(
 /**
  * Message content container with variant styling (contained or flat).
  *
- * @param props - Message content props including variant
  */
 export type MessageContentProps = HTMLAttributes<HTMLDivElement> &
   VariantProps<typeof messageContentVariants>;
@@ -73,7 +71,6 @@ export const MessageContent = ({
 /**
  * Avatar component for message display.
  *
- * @param props - Avatar props
  * @param props.src - Image source URL
  * @param props.name - Optional name for alt text
  */

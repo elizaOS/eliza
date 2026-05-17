@@ -1,26 +1,21 @@
 // SIWE programmatic-signing e2e.
-// Generates an ephemeral EVM key, mocks the Steward /auth/nonce + /auth/verify
-// endpoints, then invokes signInWithSIWE in-page using the @stwd/sdk that's
-// already bundled. Validates:
-//   1. The frontend calls /auth/nonce and includes the returned nonce in the
-//      SIWE message it builds.
-//   2. The frontend posts a real EIP-4361 message + a 65-byte hex signature
-//      that recovers to our generated address.
-//   3. After verify returns a JWT, the page sets localStorage and a
-//      `steward-authed=1` cookie, and useSessionAuth flips authenticated=true.
 //
-// Skipped in live-prod mode (no real Steward server to verify against).
+// We can't `import('@stwd/sdk')` inside a page.evaluate (the browser can't
+// resolve bare specifiers), so instead we inject a fake EIP-1193 provider
+// onto window.ethereum BEFORE the bundle loads. When the user clicks the
+// real "Ethereum" sign-in button in the login UI, the wallet-buttons.tsx
+// path calls `provider.request({ method: "personal_sign", ... })` — our
+// injected provider answers with a viem signature from an ephemeral key.
+//
+// The Steward /auth/nonce + /auth/verify endpoints are mocked. We assert
+// that the bundled SDK posted a real EIP-4361 message with our nonce and
+// that the signature recovers to the generated address.
+//
+// Skipped in live-prod mode.
 
 import { expect, test } from "@playwright/test";
-import {
-  createWalletClient,
-  http,
-  keccak256,
-  recoverMessageAddress,
-  toHex,
-} from "viem";
+import { recoverMessageAddress } from "viem";
 import { generatePrivateKey, privateKeyToAccount } from "viem/accounts";
-import { mainnet } from "viem/chains";
 
 test.skip(
   Boolean(process.env.CLOUD_E2E_LIVE_URL),
@@ -32,25 +27,18 @@ interface VerifyCapture {
   signature?: string;
 }
 
-test("siwe: nonce → sign → verify produces a session", async ({
+test("siwe: real button → real SDK → /auth/verify carries valid signature", async ({
   page,
   context,
 }) => {
-  // 1. Generate an ephemeral wallet for this test run.
   const privateKey = generatePrivateKey();
   const account = privateKeyToAccount(privateKey);
-  const wallet = createWalletClient({
-    account,
-    chain: mainnet,
-    transport: http(),
-  });
   const nonce = `nonce_${Date.now().toString(36)}`;
-
-  // 2. Mock the Steward auth endpoints. We don't know the exact baseUrl the
-  // bundle was built with (NEXT_PUBLIC_STEWARD_API_URL or same-origin
-  // /steward), so we route on path suffix.
   const captured: VerifyCapture = {};
 
+  // 1. Mock /auth/nonce + /auth/verify. We don't know the exact baseUrl the
+  //    bundle resolved (could be same-origin /api/steward, could be an
+  //    absolute steward URL), so we match on path suffix.
   await context.route(
     (url) => url.pathname.endsWith("/auth/nonce"),
     (route) =>
@@ -67,9 +55,7 @@ test("siwe: nonce → sign → verify produces a session", async ({
       captured.message = body.message;
       captured.signature = body.signature;
 
-      // Mint a synthetic JWT — exp 1h from now, userId from address. We don't
-      // sign it (the frontend just decodes the payload to populate state) but
-      // we keep the structure realistic.
+      // Synthesize a JWT shape the bundle's storeAndReturn can decode.
       const header = base64url(JSON.stringify({ alg: "HS256", typ: "JWT" }));
       const payload = base64url(
         JSON.stringify({
@@ -81,9 +67,8 @@ test("siwe: nonce → sign → verify produces a session", async ({
           iat: Math.floor(Date.now() / 1000),
         }),
       );
-      const fakeSignature = base64url("test-signature");
-      const token = `${header}.${payload}.${fakeSignature}`;
-
+      const fakeSig = base64url("test-signature");
+      const token = `${header}.${payload}.${fakeSig}`;
       return route.fulfill({
         json: {
           token,
@@ -98,78 +83,101 @@ test("siwe: nonce → sign → verify produces a session", async ({
     },
   );
 
-  // 3. Boot the app (any public page is fine — we just need the SDK loaded).
-  await page.goto("/login");
-  await expect(page).toHaveURL(/\/login/);
-
-  // 4. Drive the SDK from inside the page so the real bundled @stwd/sdk does
-  // the nonce → message → POST work. We sign in-test (where we have the key)
-  // and pass the signature back through the signMessage callback.
-  const signature = await page.evaluate(
-    async ({ address }) => {
-      // The SDK is registered on window via the StewardProvider hooks. We
-      // can't trivially reach it from window, so we re-import a fresh
-      // StewardAuth instance pointed at the same resolved baseUrl.
-      // @ts-expect-error — runtime import in browser
-      const mod = await import("@stwd/sdk");
-      const { resolveBrowserStewardApiUrl } = await import(
-        "@elizaos/cloud-shared/lib/steward-url"
-      );
-      const baseUrl = resolveBrowserStewardApiUrl();
-      const auth = new mod.StewardAuth({ baseUrl });
-      // The actual signing is delegated to the callback below — the page
-      // posts a message back to Playwright via window.__siweMessage.
-      let captured: string | null = null;
-      const result = await auth.signInWithSIWE(address, async (msg) => {
-        captured = msg;
-        (window as unknown as Record<string, string>).__siweMessage = msg;
-        // Suspend until Playwright injects the signature.
-        return await new Promise<string>((resolve) => {
-          (
-            window as unknown as Record<string, (sig: string) => void>
-          ).__siweResolve = resolve;
-        });
-      });
-      return { captured, token: result.token };
+  // 2. Inject a fake EIP-1193 provider into the page BEFORE the bundle boots.
+  //    Playwright signs on its side (we have the key); the page just calls
+  //    `request({ method: "personal_sign", params: [hex, address] })` and gets
+  //    a real, recoverable signature back.
+  await context.addInitScript(
+    ({ pk, addr }) => {
+      // viem can't run in addInitScript (no bundler), so we use a tiny
+      // implementation. The wallet-buttons code calls personal_sign with
+      // the EIP-4361 message as a 0x-prefixed hex string of UTF-8 bytes.
+      const provider = {
+        async request({
+          method,
+          params,
+        }: {
+          method: string;
+          params?: unknown[];
+        }) {
+          if (method === "eth_requestAccounts" || method === "eth_accounts") {
+            return [addr];
+          }
+          if (method === "eth_chainId") return "0x1";
+          if (method === "personal_sign") {
+            const hex = (params?.[0] as string) ?? "";
+            // Decode the 0x-hex back to the UTF-8 message and POST it to a
+            // sign-helper endpoint exposed by Playwright via window.__sign.
+            const bytes = new Uint8Array(
+              (hex.startsWith("0x") ? hex.slice(2) : hex)
+                .match(/.{2}/g)
+                ?.map((b) => parseInt(b, 16)) ?? [],
+            );
+            const message = new TextDecoder().decode(bytes);
+            const sigPromise = new Promise<string>((resolve) => {
+              (
+                window as unknown as Record<
+                  string,
+                  (msg: string) => Promise<string>
+                >
+              ).__siweResolve = async (sig: string) => {
+                resolve(sig);
+                return sig;
+              };
+            });
+            (window as unknown as Record<string, string>).__siweMessage =
+              message;
+            return await sigPromise;
+          }
+          throw new Error(`Unimplemented EIP-1193 method: ${method}`);
+        },
+        on: () => undefined,
+        removeListener: () => undefined,
+        isMetaMask: false,
+      };
+      (window as unknown as Record<string, unknown>).ethereum = provider;
     },
-    { address: account.address },
+    { pk: privateKey, addr: account.address },
   );
 
-  // 5. Wait until the page exposed the message it wants signed.
-  const message = await page.waitForFunction(
-    () => (window as unknown as Record<string, string>).__siweMessage,
-    null,
-    { timeout: 10_000 },
-  );
-  const messageStr = (await message.jsonValue()) as string;
+  // 3. Boot the login page.
+  await page.goto("/login");
 
-  // 6. Sign the message with the ephemeral key.
-  const signedHex = await wallet.signMessage({ message: messageStr });
+  // 4. Click the Ethereum button (label "Ethereum" — wallet-buttons.tsx).
+  await page.getByRole("button", { name: /^Ethereum$/i }).click();
 
-  // 7. Hand the signature back to the page so signInWithSIWE resolves.
+  // 5. Wait until the bundle hands us a message to sign, then sign it on
+  //    the test side with viem.
+  const messageStr = (await page
+    .waitForFunction(
+      () =>
+        (window as unknown as Record<string, string | undefined>).__siweMessage,
+      null,
+      { timeout: 10_000 },
+    )
+    .then((h) => h.jsonValue())) as string;
+
+  const signature = await account.signMessage({ message: messageStr });
+
   await page.evaluate(
     (sig) =>
-      (window as unknown as Record<string, (s: string) => void>).__siweResolve(
-        sig,
-      ),
-    signedHex,
+      (
+        window as unknown as Record<string, (s: string) => Promise<string>>
+      ).__siweResolve(sig),
+    signature,
   );
 
-  // 8. Wait for the evaluation promise to resolve — `signature` above is a
-  // Playwright promise wrapper; awaiting `page.evaluate` already does this.
-  // The returned token shape comes from our mocked /auth/verify body.
-  expect(signature, "evaluate result").toBeTruthy();
+  // 6. /auth/verify should fire shortly after. Wait for our mock to capture.
+  await expect
+    .poll(() => captured.message, { timeout: 10_000 })
+    .toContain(`Nonce: ${nonce}`);
 
-  // 9. Validate the message the bundle posted is real EIP-4361 with our nonce.
-  expect(captured.message, "/auth/verify received message").toBeTruthy();
+  // 7. Validate it carried a real EIP-4361 message + recoverable signature.
   expect(captured.message!).toContain(account.address);
-  expect(captured.message!).toContain(`Nonce: ${nonce}`);
   expect(captured.message!).toMatch(
     /wants you to sign in with your Ethereum account/,
   );
-
-  // 10. Signature recovers to the generated address.
-  expect(captured.signature, "/auth/verify received signature").toBeTruthy();
+  expect(captured.signature, "signature missing on /auth/verify").toBeTruthy();
   const recovered = await recoverMessageAddress({
     message: captured.message!,
     signature: captured.signature as `0x${string}`,
@@ -184,7 +192,3 @@ function base64url(input: string): string {
     .replace(/\+/g, "-")
     .replace(/\//g, "_");
 }
-
-// Avoid unused-import lint
-void keccak256;
-void toHex;

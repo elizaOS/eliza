@@ -2,7 +2,6 @@
  * Branch component for displaying multiple conversation branches.
  * Supports navigation between branches with previous/next controls.
  *
- * @param props - Branch configuration
  * @param props.defaultBranch - Default branch index to display
  * @param props.onBranchChange - Callback when branch changes
  */

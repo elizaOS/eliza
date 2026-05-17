@@ -21,8 +21,8 @@ No optimism inflation. Where something is risky or unknown, it says so.
 - Brand assets rendered; build infra clean-code reviewed; the Phase 6
   agent/runtime integration risks are documented.
 - Local overlays now exist for elizaOS branding, Privacy Mode, elizaOS app
-  install/autostart, a conservative elizaOS capability broker, and elizaOS
-  Persistent Storage.
+  install/systemd launch, a conservative elizaOS capability broker, elizaOS
+  Persistent Storage, and a checked signed-runtime verifier foundation.
 - The old root-level usbeliza prototype has been removed from this branch;
   the active Linux distro work now lives under this live-build variant.
 
@@ -68,7 +68,12 @@ claims demo readiness after the app stays running in the rebuilt image.
 **Phases 1–11.** elizaOS is the desktop. You boot the USB, land in the
 elizaOS app, chat with Eliza, build apps, run the local LLM or a signed
 cloud/model provider, open windows — in all 4 storage×privacy combos,
-with encrypted persistence, validated on real hardware, released.
+with encrypted persistence, validated on real hardware, and released with
+honest signing, provenance, recovery, and distribution docs. Fast
+app/runtime updates, signed model catalogs, OS delta updates, and enterprise
+mirrors can land as staged v1.x capabilities, but v1.0 must not imply they
+are production-complete until their keys, services, manifests, and rollback
+tests exist.
 
 - Effort: **multi-week.** The honest breakdown is below.
 - Risk: medium-high, concentrated in Phases 4 and 6 (see Risk section).
@@ -146,7 +151,15 @@ elizaOS Live v1.0 is done when **all of this is true on real hardware**:
    trace footprint — proven by the Phase 8 harness, every gap documented.
 9. The one known v1.0 gap (Chromium WebView Tor leak) is documented, not
    silent.
-10. License audit done; CREDITS/NOTICE complete; release tagged.
+10. The baked ISO runtime is documented as the factory fallback; any
+    persistent runtime update path is either disabled or protected by
+    boot-time signature/hash verification before activation.
+11. Signed model catalog/download behavior is either implemented and tested
+    or explicitly documented as release debt; no large/private model is
+    silently assumed to be present in the ISO.
+12. License audit done; CREDITS/NOTICE complete; release artifacts are
+    signed or clearly marked test-signed, with SBOM/provenance status
+    documented.
 
 Anything short of that isn't v1.0 — it's a milestone on the way.
 
@@ -197,23 +210,37 @@ Anything short of that isn't v1.0 — it's a milestone on the way.
 
 The demo ISO is not the whole product. Real distribution needs:
 
-- **Signed releases:** versioned ISO, SHA256, detached signature, release
-  notes, SBOM, license bundle, and a reproducible build target.
-- **No-full-ISO updates where possible:** signed app/runtime updates land
-  in encrypted persistence with the read-only ISO bundle as fallback;
-  model downloads use a signed catalog; OS/base updates use signed
-  incremental kits where safe and a full-image fallback where necessary.
+- **Signed releases:** versioned ISO, SHA256/SHA512, detached signatures,
+  release notes, SBOM, license bundle, and provenance tying artifact hashes
+  to source revision, dependency snapshot, builder identity, and signing
+  event.
+- **Fast app/runtime updates:** the ISO carries a baked fallback runtime;
+  an updated runtime in encrypted persistence is selected only after
+  boot-time signature/hash verification against a signed manifest. Failed
+  verification falls back to the ISO runtime.
 - **Model delivery:** do not bake large/private models into every ISO by
   default. Onboarding should offer cloud sign-in, local-only mode, or a
-  signed Eliza-1 download cached in persistent storage.
+  signed Eliza-1 download cached in persistent storage. The model catalog
+  needs signed metadata, hashes, license/source information, hardware
+  requirements, revocation, and enterprise mirror support.
+- **OS/base update path:** signed full ISO plus guarded writer is the safe
+  first production path; signed Tails-style incremental kits or binary
+  deltas are v1.x work where they are safer than full-image replacement.
 - **USB writer UX:** keep the guarded CLI script for developers, then add
   the same removable-disk checks to a signed macOS/Windows/Linux flasher
   so users can create or refresh an elizaOS USB without depending on
   Etcher.
-- **Enterprise channel:** staged rollout rings, revocation, fleet policy,
-  internal mirrors, recovery image, hardware compatibility notes,
-  persistent-storage migrations, and root-capability audit logs that do
-  not capture secrets.
+- **Enterprise channel:** staged rollout rings, revocation, policy pins,
+  internal mirrors for ISO/delta/app/model artifacts, recovery image,
+  hardware compatibility notes, persistent-storage migrations, and
+  non-secret fleet evidence.
+- **Recovery and rollback:** runtime rollback to previous persistent
+  version or ISO fallback, model rollback/deletion, OS full-image fallback,
+  and tested Persistent Storage migration failure handling.
+- **Demo debt accounting:** release docs must say which of the above are
+  implemented, test-signed, or still planned. Do not present enterprise
+  mirrors/policy, production keys, app update channels, model catalogs, or
+  OS deltas as complete until they exist.
 
 See [`docs/distribution-and-updates.md`](./docs/distribution-and-updates.md)
 and [`docs/production-readiness.md`](./docs/production-readiness.md).

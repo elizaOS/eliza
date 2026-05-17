@@ -44,8 +44,9 @@ export class HttpUsbInstallerBackend implements UsbInstallerBackend {
       body: JSON.stringify({ plan }),
     });
     if (!res.ok) throw new Error(`Backend error: ${res.status}`);
+    if (!res.body) throw new Error("Backend response did not include a body");
 
-    const reader = res.body!.getReader();
+    const reader = res.body.getReader();
     const decoder = new TextDecoder();
 
     while (true) {

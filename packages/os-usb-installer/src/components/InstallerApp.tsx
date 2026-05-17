@@ -1,4 +1,4 @@
-import { BRAND_PATHS, LOGO_FILES } from "@elizaos/shared-brand";
+import { BRAND_PATHS, EXTERNAL_URLS, LOGO_FILES } from "@elizaos/shared-brand";
 import { useCallback, useEffect, useRef, useState } from "react";
 import type {
   ElizaOsImage,
@@ -988,7 +988,7 @@ export function InstallerApp({ backend }: InstallerAppProps) {
         />
         <a
           className="cta-link"
-          href="https://elizaos.ai"
+          href={EXTERNAL_URLS.docs}
           target="_blank"
           rel="noreferrer"
         >

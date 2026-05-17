@@ -1,39 +1,51 @@
-CREATE TYPE "sensitive_request_kind" AS ENUM (
-  'secret',
-  'payment',
-  'oauth',
-  'private_info'
-);
+-- Sensitive request primitives (secrets, payments, oauth, private info).
+-- Idempotent: safe to apply against databases where some of these objects
+-- already exist (Wave A pre-deploy or repeated runs).
 
-CREATE TYPE "sensitive_request_status" AS ENUM (
-  'pending',
-  'fulfilled',
-  'failed',
-  'canceled',
-  'expired'
-);
+DO $$ BEGIN
+  CREATE TYPE "sensitive_request_kind" AS ENUM (
+    'secret',
+    'payment',
+    'oauth',
+    'private_info'
+  );
+EXCEPTION WHEN duplicate_object THEN NULL; END $$;
 
-CREATE TYPE "sensitive_request_audit_event" AS ENUM (
-  'request.created',
-  'request.viewed',
-  'request.submitted',
-  'request.fulfilled',
-  'request.failed',
-  'request.canceled',
-  'request.expired',
-  'token.used',
-  'secret.set',
-  'private_info.submitted'
-);
+DO $$ BEGIN
+  CREATE TYPE "sensitive_request_status" AS ENUM (
+    'pending',
+    'fulfilled',
+    'failed',
+    'canceled',
+    'expired'
+  );
+EXCEPTION WHEN duplicate_object THEN NULL; END $$;
 
-CREATE TYPE "sensitive_request_actor_type" AS ENUM (
-  'user',
-  'api_key',
-  'token',
-  'system'
-);
+DO $$ BEGIN
+  CREATE TYPE "sensitive_request_audit_event" AS ENUM (
+    'request.created',
+    'request.viewed',
+    'request.submitted',
+    'request.fulfilled',
+    'request.failed',
+    'request.canceled',
+    'request.expired',
+    'token.used',
+    'secret.set',
+    'private_info.submitted'
+  );
+EXCEPTION WHEN duplicate_object THEN NULL; END $$;
 
-CREATE TABLE "sensitive_requests" (
+DO $$ BEGIN
+  CREATE TYPE "sensitive_request_actor_type" AS ENUM (
+    'user',
+    'api_key',
+    'token',
+    'system'
+  );
+EXCEPTION WHEN duplicate_object THEN NULL; END $$;
+
+CREATE TABLE IF NOT EXISTS "sensitive_requests" (
   "id" uuid PRIMARY KEY DEFAULT gen_random_uuid() NOT NULL,
   "kind" "sensitive_request_kind" NOT NULL,
   "status" "sensitive_request_status" DEFAULT 'pending' NOT NULL,
@@ -59,7 +71,7 @@ CREATE TABLE "sensitive_requests" (
   "updated_at" timestamp DEFAULT now() NOT NULL
 );
 
-CREATE TABLE "sensitive_request_events" (
+CREATE TABLE IF NOT EXISTS "sensitive_request_events" (
   "id" uuid PRIMARY KEY DEFAULT gen_random_uuid() NOT NULL,
   "request_id" uuid NOT NULL REFERENCES "sensitive_requests"("id") ON DELETE cascade,
   "organization_id" uuid REFERENCES "organizations"("id") ON DELETE cascade,
@@ -70,26 +82,26 @@ CREATE TABLE "sensitive_request_events" (
   "created_at" timestamp DEFAULT now() NOT NULL
 );
 
-CREATE INDEX "sensitive_requests_organization_idx"
+CREATE INDEX IF NOT EXISTS "sensitive_requests_organization_idx"
   ON "sensitive_requests" ("organization_id");
 
-CREATE INDEX "sensitive_requests_agent_idx"
+CREATE INDEX IF NOT EXISTS "sensitive_requests_agent_idx"
   ON "sensitive_requests" ("agent_id");
 
-CREATE INDEX "sensitive_requests_status_expires_idx"
+CREATE INDEX IF NOT EXISTS "sensitive_requests_status_expires_idx"
   ON "sensitive_requests" ("status", "expires_at");
 
-CREATE UNIQUE INDEX "sensitive_requests_token_hash_idx"
+CREATE UNIQUE INDEX IF NOT EXISTS "sensitive_requests_token_hash_idx"
   ON "sensitive_requests" ("token_hash");
 
-CREATE INDEX "sensitive_requests_created_by_idx"
+CREATE INDEX IF NOT EXISTS "sensitive_requests_created_by_idx"
   ON "sensitive_requests" ("created_by");
 
-CREATE INDEX "sensitive_request_events_request_created_idx"
+CREATE INDEX IF NOT EXISTS "sensitive_request_events_request_created_idx"
   ON "sensitive_request_events" ("request_id", "created_at");
 
-CREATE INDEX "sensitive_request_events_organization_created_idx"
+CREATE INDEX IF NOT EXISTS "sensitive_request_events_organization_created_idx"
   ON "sensitive_request_events" ("organization_id", "created_at");
 
-CREATE INDEX "sensitive_request_events_event_type_idx"
+CREATE INDEX IF NOT EXISTS "sensitive_request_events_event_type_idx"
   ON "sensitive_request_events" ("event_type");

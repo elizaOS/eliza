@@ -25,7 +25,7 @@
 
 import { existsSync } from "node:fs";
 import path from "node:path";
-import type { VadLike } from "./vad";
+import type { VadLike } from "./types";
 
 /* ---- ABI constants (mirrors include/silero_vad/silero_vad.h) ---- */
 

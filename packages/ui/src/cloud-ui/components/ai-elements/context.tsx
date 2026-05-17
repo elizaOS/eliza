@@ -2,7 +2,6 @@
  * Context component displaying token usage and cost information.
  * Shows used/max tokens, cost estimates, and provides hover card with details.
  *
- * @param props - Context configuration
  * @param props.usedTokens - Number of tokens used
  * @param props.maxTokens - Maximum tokens allowed
  * @param props.usage - Language model usage data

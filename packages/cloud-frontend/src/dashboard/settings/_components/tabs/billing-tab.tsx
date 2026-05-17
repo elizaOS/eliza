@@ -25,11 +25,11 @@ import { DirectCryptoCreditCard } from "../../../billing/_components/direct-cryp
 import { PayAsYouGoCard } from "../../../billing/_components/pay-as-you-go-card";
 
 export interface BillingUser {
-  organization_id: string | null;
+  organization_id: string;
   wallet_address?: string | null;
   organization: {
     credit_balance: string | number;
-  } | null;
+  };
 }
 
 interface BillingTabProps {
@@ -67,7 +67,7 @@ export function BillingTab({ user }: BillingTabProps) {
   );
 
   const [balance, setBalance] = useState(
-    Number(user.organization?.credit_balance ?? 0),
+    Number(user.organization.credit_balance),
   );
 
   const fetchBalance = useCallback(async (fresh = false) => {
@@ -158,7 +158,7 @@ export function BillingTab({ user }: BillingTabProps) {
 
         toast.success("Redirecting to payment page...");
         window.location.href = data.payLink;
-      } catch (error) {
+      } catch (_error) {
         toast.error("Failed to create crypto payment");
         setIsProcessingCheckout(false);
       }

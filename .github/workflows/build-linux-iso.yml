@@ -68,15 +68,24 @@ jobs:
         uses: actions/cache@v4
         with:
           path: ~/.cache/usbeliza-build/models
-          key: elizaos-model-cache-${{ hashFiles('packages/os/linux/Justfile') }}
+          key: elizaos-model-cache-${{ hashFiles('packages/os/linux/variants/milady-tails/Justfile') }}
           restore-keys: elizaos-model-cache-
 
       - name: Restore CLI cache
         uses: actions/cache@v4
         with:
           path: ~/.cache/usbeliza-build/cli
-          key: elizaos-cli-cache-${{ hashFiles('packages/os/linux/Justfile') }}
+          key: elizaos-cli-cache-${{ hashFiles('packages/os/linux/variants/milady-tails/Justfile') }}
           restore-keys: elizaos-cli-cache-
+
+      - name: Restore live-build chroot/debs cache
+        uses: actions/cache@v4
+        with:
+          path: |
+            packages/os/linux/variants/milady-tails/tails/cache
+            packages/os/linux/variants/milady-tails/tails/.build
+          key: elizaos-iso-livebuild-${{ runner.os }}-${{ hashFiles('packages/os/linux/variants/milady-tails/tails/**/package-lists/**', 'packages/os/linux/variants/milady-tails/tails/**/*.list.chroot', 'packages/os/linux/variants/milady-tails/build-iso.sh', 'packages/os/linux/variants/milady-tails/Dockerfile') }}
+          restore-keys: elizaos-iso-livebuild-${{ runner.os }}-
 
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@stable
@@ -93,35 +102,51 @@ jobs:
           key: elizaos-iso-rust-${{ runner.os }}-${{ hashFiles('packages/os/linux/**/Cargo.lock', 'packages/os/linux/**/Cargo.toml') }}
           restore-keys: elizaos-iso-rust-${{ runner.os }}-
 
+      - name: Detect KVM acceleration
+        id: kvm
+        run: |
+          if command -v kvm-ok >/dev/null 2>&1 && kvm-ok >/dev/null 2>&1; then
+            echo "have_kvm=true" >> "$GITHUB_OUTPUT"
+          elif [ -e /dev/kvm ]; then
+            echo "have_kvm=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "have_kvm=false" >> "$GITHUB_OUTPUT"
+          fi
+
       - name: Stage ISO build
-        working-directory: packages/os/linux
+        working-directory: packages/os/linux/variants/milady-tails
+        env:
+          ELIZAOS_BUILD_MILADY_APP: "1"
         run: just iso-stage
 
-      - name: Cache pre-downloaded models
-        working-directory: packages/os/linux
+      # Model/CLI caching is not implemented for the milady-tails variant —
+      # the chroot resolves them inline during live-build. The targets exist
+      # as documented no-ops so the workflow contract stays uniform.
+      - name: Cache pre-downloaded models (variant no-op)
+        working-directory: packages/os/linux/variants/milady-tails
         run: just iso-cache-model
 
-      - name: Cache pre-downloaded CLIs
-        working-directory: packages/os/linux
+      - name: Cache pre-downloaded CLIs (variant no-op)
+        working-directory: packages/os/linux/variants/milady-tails
         run: just iso-cache-cli
 
       - name: Configure live-build
-        working-directory: packages/os/linux
+        working-directory: packages/os/linux/variants/milady-tails
         run: just iso-config
 
       - name: Validate ISO config
-        working-directory: packages/os/linux
+        working-directory: packages/os/linux/variants/milady-tails
         run: just iso-check
 
       - name: Build ISO
-        working-directory: packages/os/linux
-        run: sudo just iso-build
+        working-directory: packages/os/linux/variants/milady-tails
+        run: sudo --preserve-env=ELIZAOS_BUILD_MILADY_APP just iso-build
         timeout-minutes: 90
 
       - name: Locate and rename ISO
         id: iso
         run: |
-          ISO=$(find packages/os/linux -name "*.iso" | head -1)
+          ISO=$(find packages/os/linux/variants/milady-tails -name "*.iso" | head -1)
           if [ -z "$ISO" ]; then
             echo "ERROR: ISO not found after build"
             exit 1
@@ -141,15 +166,16 @@ jobs:
           sha256sum "${{ steps.iso.outputs.path }}" > "${{ steps.iso.outputs.filename }}.sha256"
 
       - name: Smoke test ISO (headless QEMU)
-        if: runner.os == 'Linux'
-        continue-on-error: true
+        if: runner.os == 'Linux' && steps.kvm.outputs.have_kvm == 'true'
         run: |
+          set -euo pipefail
           sudo apt-get install -y --no-install-recommends qemu-system-x86 ovmf
-          # Boot headless for 60 seconds and check for boot completion via serial
-          QEMU_TIMEOUT=120
+          QEMU_TIMEOUT=180
           ISO_PATH="${{ steps.iso.outputs.path }}"
           SERIAL_LOG=$(mktemp)
+          # Allow non-zero exit when timeout fires; we assert on log contents.
           timeout "$QEMU_TIMEOUT" qemu-system-x86_64 \
+            -enable-kvm \
             -cdrom "$ISO_PATH" \
             -boot d \
             -m 2G \
@@ -162,9 +188,17 @@ jobs:
           if grep -qi "elizaOS\|eliza\|login:" "$SERIAL_LOG" 2>/dev/null; then
             echo "ISO smoke test: boot strings found in serial log"
           else
-            echo "WARN: boot strings not detected in serial log (QEMU may not support KVM in CI)"
+            echo "ERROR: boot strings not detected in serial log"
+            tail -200 "$SERIAL_LOG" || true
+            rm -f "$SERIAL_LOG"
+            exit 1
           fi
           rm -f "$SERIAL_LOG"
+
+      - name: Smoke test ISO (KVM unavailable — skipped)
+        if: runner.os == 'Linux' && steps.kvm.outputs.have_kvm != 'true'
+        run: |
+          echo "::notice::QEMU/KVM unavailable on this runner; skipping ISO boot smoke test (not silently passed — the gate above is the contract)."
 
       - name: Upload ISO artifact
         uses: actions/upload-artifact@v4
@@ -176,7 +210,7 @@ jobs:
           retention-days: 7
 
       - name: Upload to GitHub Release
-        if: github.event_name == 'release' || (github.event_name == 'workflow_dispatch' && inputs.publish == 'true') || (github.event_name == 'workflow_call' && inputs.publish == true)
+        if: github.event_name == 'release' || (github.event_name == 'workflow_dispatch' && inputs.publish) || (github.event_name == 'workflow_call' && inputs.publish == true)
         uses: softprops/action-gh-release@v2
         with:
           files: |

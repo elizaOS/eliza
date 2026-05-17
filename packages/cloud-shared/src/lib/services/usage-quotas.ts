@@ -5,6 +5,7 @@
 import { usageQuotasRepository } from "../../db/repositories";
 import type { NewUsageQuota, UsageQuota } from "../../db/schemas/usage-quotas";
 import { logger } from "../utils/logger";
+import { deriveQuotaUsage } from "./analytics-derived";
 
 /**
  * Parameters for creating a usage quota.
@@ -171,8 +172,23 @@ class UsageQuotasService {
   }
 
   async getCurrentUsage(organizationId: string): Promise<{
-    global: { used: number; limit: number | null; periodEnd: string | null };
-    modelSpecific: Record<string, { used: number; limit: number; periodEnd: string }>;
+    global: {
+      used: number;
+      limit: number | null;
+      periodEnd: string | null;
+      usedPercent: number | null;
+      usedPercentClamped: number;
+    };
+    modelSpecific: Record<
+      string,
+      {
+        used: number;
+        limit: number;
+        periodEnd: string;
+        usedPercent: number;
+        usedPercentClamped: number;
+      }
+    >;
   }> {
     const quotas = await usageQuotasRepository.findActiveByOrganization(organizationId);
 
@@ -181,20 +197,43 @@ class UsageQuotasService {
         used: 0,
         limit: null as number | null,
         periodEnd: null as string | null,
+        usedPercent: null as number | null,
+        usedPercentClamped: 0,
       },
-      modelSpecific: {} as Record<string, { used: number; limit: number; periodEnd: string }>,
+      modelSpecific: {} as Record<
+        string,
+        {
+          used: number;
+          limit: number;
+          periodEnd: string;
+          usedPercent: number;
+          usedPercentClamped: number;
+        }
+      >,
     };
 
     for (const quota of quotas) {
       if (quota.quota_type === "global") {
-        result.global.used = Number(quota.current_usage);
-        result.global.limit = Number(quota.credits_limit);
+        const used = Number(quota.current_usage);
+        const limit = Number(quota.credits_limit);
+        const derived = deriveQuotaUsage(used, limit);
+        result.global.used = used;
+        result.global.limit = limit;
         result.global.periodEnd = quota.period_end.toISOString();
+        result.global.usedPercent = derived.usedPercent;
+        result.global.usedPercentClamped = derived.usedPercentClamped;
       } else if (quota.quota_type === "model_specific" && quota.model_name) {
+        const used = Number(quota.current_usage);
+        const limit = Number(quota.credits_limit);
+        const derived = deriveQuotaUsage(used, limit);
         result.modelSpecific[quota.model_name] = {
-          used: Number(quota.current_usage),
-          limit: Number(quota.credits_limit),
+          used,
+          limit,
           periodEnd: quota.period_end.toISOString(),
+          // usedPercent is non-null here because model_specific quotas always
+          // have a positive limit.
+          usedPercent: derived.usedPercent ?? 0,
+          usedPercentClamped: derived.usedPercentClamped,
         };
       }
     }

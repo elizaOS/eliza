@@ -33,6 +33,7 @@ import type {
   IAgentRuntime,
   Memory,
   State,
+  StateValue,
 } from "@elizaos/core";
 import { logger as coreLogger } from "@elizaos/core";
 import {
@@ -73,6 +74,7 @@ import {
   setCurrentSession,
   setCurrentSessions,
   shortId,
+  stateSessionId,
   waitForSpawnSlot,
 } from "./common.js";
 
@@ -261,10 +263,10 @@ function buildSwarmRoomMetadata(
   content: Record<string, unknown>,
   metadata: Record<string, unknown>,
 ): {
-  originRoomId: unknown;
-  taskRoomId: unknown;
+  originRoomId: string;
+  taskRoomId: string | undefined;
   worktreeRoomId?: string;
-  swarmRooms: Array<{ roomId: unknown; roles: string[] }>;
+  swarmRooms: Array<{ roomId: string; roles: string[] }>;
 } {
   const taskRoomId =
     pickRoutingString(params, content, metadata, "taskRoomId") ??
@@ -274,9 +276,9 @@ function buildSwarmRoomMetadata(
   const worktreeRoomId =
     pickRoutingString(params, content, metadata, "worktreeRoomId") ??
     pickRoutingString(params, content, metadata, "coordinationRoomId");
-  const roomMap = new Map<string, { roomId: unknown; roles: string[] }>();
-  const add = (roomId: unknown, role: string) => {
-    if (typeof roomId !== "string" || !roomId.trim()) return;
+  const roomMap = new Map<string, { roomId: string; roles: string[] }>();
+  const add = (roomId: string | undefined, role: string) => {
+    if (!roomId?.trim()) return;
     const key = roomId.trim();
     const current = roomMap.get(key) ?? { roomId: key, roles: [] };
     if (!current.roles.includes(role)) current.roles.push(role);
@@ -866,23 +868,15 @@ async function runStopAgent(
       await Promise.all(
         sessions.map((session) => service.stopSession(session.id)),
       );
-      if (state)
-        (
-          state as {
-            codingSession?: unknown;
-            codingSessions?: unknown;
-          }
-        ).codingSession = undefined;
-      if (state) (state as { codingSessions?: unknown }).codingSessions = [];
+      if (state) state.codingSession = undefined;
+      if (state) state.codingSessions = [] as StateValue;
       const text = `Stopped ${sessions.length} sessions`;
       await callbackText(callback, text);
       return { success: true, text, data: { stoppedCount: sessions.length } };
     }
 
     const requestedId =
-      pickString(params, content, "sessionId") ??
-      (state as { codingSession?: { id?: string } } | undefined)?.codingSession
-        ?.id;
+      pickString(params, content, "sessionId") ?? stateSessionId(state);
     const target = requestedId
       ? await Promise.resolve(service.getSession(requestedId))
       : newestSession(sessions);
@@ -898,11 +892,8 @@ async function runStopAgent(
     }
 
     await service.stopSession(target.id);
-    if (
-      (state as { codingSession?: { id?: string } } | undefined)?.codingSession
-        ?.id === target.id
-    ) {
-      (state as { codingSession?: unknown }).codingSession = undefined;
+    if (stateSessionId(state) === target.id) {
+      if (state) state.codingSession = undefined;
     }
     await callbackText(callback, `Stopped task-agent session ${target.id}.`);
     return {
@@ -1005,9 +996,7 @@ async function runCancel(
     const all = pickBoolean(params, content, "all") ?? false;
     const threadId = pickString(params, content, "threadId");
     const sessionId =
-      pickString(params, content, "sessionId") ??
-      (state as { codingSession?: { id?: string } } | undefined)?.codingSession
-        ?.id;
+      pickString(params, content, "sessionId") ?? stateSessionId(state);
     const search = pickString(params, content, "search")?.toLowerCase();
     const sessions = await Promise.resolve(service.listSessions());
 
@@ -2658,14 +2647,12 @@ export const tasksAction: Action & {
     // the response evaluator, but incomplete completions still need the TASKS
     // surface so the parent can send a follow-up to the same session instead
     // of asking the user to paste command output.
-    const content = message.content as {
-      metadata?: unknown;
-      source?: unknown;
-    };
+    const content = message.content;
     if (content.source === "sub_agent") {
+      const rawMetadata = content.metadata;
       const metadata =
-        content.metadata !== null && typeof content.metadata === "object"
-          ? (content.metadata as Record<string, unknown>)
+        rawMetadata !== null && typeof rawMetadata === "object"
+          ? (rawMetadata as Record<string, unknown>)
           : undefined;
       return (
         metadata?.subAgent === true &&

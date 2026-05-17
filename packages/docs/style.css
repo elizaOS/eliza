@@ -1,3 +1,12 @@
+/* Brand tokens — standalone Mintlify stylesheet, kept in sync with packages/ui/src/styles/base.css */
+:root {
+  --brand-blue: #0b35f1;
+  --brand-orange: #ff5800;
+  --brand-white: #ffffff;
+  --brand-black: #000000;
+  --brand-gray: #d1d0d4;
+}
+
 #sidebar * {
   font-size: 12px;
   line-height: 1.3;
@@ -196,11 +205,11 @@ a[href*="llms-full.txt"] svg[style*="robot.svg"] {
 }
 
 a[href*="discord.gg"]:hover {
-  color: #0b35f1;
+  color: var(--brand-blue);
 }
 
 a[href*="discord.gg"]:hover * {
-  color: #0b35f1;
+  color: var(--brand-blue);
   background-color: currentColor;
 }
 
@@ -270,8 +279,8 @@ code[class*="language-"],
 .prose pre,
 [class*="code-block"] pre,
 div[class*="codeblock"] pre {
-  background: #000000 !important;
-  color: #ffffff !important;
+  background: var(--brand-black) !important;
+  color: var(--brand-white) !important;
   border-radius: 0 !important;
 }
 
@@ -291,7 +300,7 @@ pre code .token {
 /* Blockquote: orange left bar */
 blockquote,
 .prose blockquote {
-  border-left: 4px solid #ff5800 !important;
+  border-left: 4px solid var(--brand-orange) !important;
   border-radius: 0 !important;
   padding-left: 1rem;
 }
@@ -306,5 +315,5 @@ div[role="note"] {
 
 [data-callout="tip"],
 [data-callout="info"] {
-  border-left: 4px solid #ff5800 !important;
+  border-left: 4px solid var(--brand-orange) !important;
 }

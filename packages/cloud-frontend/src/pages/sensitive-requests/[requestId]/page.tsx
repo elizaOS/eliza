@@ -14,6 +14,7 @@ import {
   useMemo,
   useState,
 } from "react";
+import { Helmet } from "react-helmet-async";
 import { useLocation, useParams } from "react-router-dom";
 import { ApiError, api } from "../../../lib/api-client";
 
@@ -272,99 +273,115 @@ export default function SensitiveRequestPage() {
     [canSubmit, fields, location.search, request, submitPath],
   );
 
+  const head = (
+    <Helmet>
+      <title>Sensitive Request | Eliza Cloud</title>
+    </Helmet>
+  );
+
   if (loading) {
     return (
-      <div className="flex min-h-screen items-center justify-center bg-[#080A0D] p-4">
-        <Loader2 className="h-8 w-8 animate-spin text-white/60" />
-      </div>
+      <>
+        {head}
+        <div className="flex min-h-screen items-center justify-center bg-[#080A0D] p-4">
+          <Loader2 className="h-8 w-8 animate-spin text-white/60" />
+        </div>
+      </>
     );
   }
 
   return (
-    <div className="flex min-h-screen items-center justify-center bg-[#080A0D] px-4 py-6 text-white">
-      <main className="w-full max-w-[520px] border border-white/10 bg-black/55 p-5">
-        <div className="flex items-start gap-3">
-          <div className="flex h-9 w-9 shrink-0 items-center justify-center border border-white/10 bg-white/5">
-            {effectiveStatus === "success" ||
-            effectiveStatus === "fulfilled" ? (
-              <CheckCircle2 className="h-4 w-4 text-green-300" />
-            ) : effectiveStatus === "pending" ? (
-              <LockKeyhole className="h-4 w-4 text-[#FF8A47]" />
-            ) : (
-              <AlertCircle className="h-4 w-4 text-red-300" />
-            )}
+    <>
+      {head}
+      <div className="flex min-h-screen items-center justify-center bg-[#080A0D] px-4 py-6 text-white">
+        <main
+          id="main"
+          className="w-full max-w-[520px] border border-white/10 bg-black/55 p-5"
+        >
+          <div className="flex items-start gap-3">
+            <div className="flex h-9 w-9 shrink-0 items-center justify-center border border-white/10 bg-white/5">
+              {effectiveStatus === "success" ||
+              effectiveStatus === "fulfilled" ? (
+                <CheckCircle2 className="h-4 w-4 text-green-300" />
+              ) : effectiveStatus === "pending" ? (
+                <LockKeyhole className="h-4 w-4 text-[#FF8A47]" />
+              ) : (
+                <AlertCircle className="h-4 w-4 text-red-300" />
+              )}
+            </div>
+            <div className="min-w-0">
+              <p className="text-xs font-medium uppercase tracking-[0.14em] text-white/74">
+                Eliza Cloud
+              </p>
+              <h1 className="mt-1 text-lg font-semibold">{copy.title}</h1>
+              <p className="mt-1 text-sm leading-relaxed text-white/74">
+                {copy.body}
+              </p>
+            </div>
           </div>
-          <div className="min-w-0">
-            <p className="text-xs font-medium uppercase tracking-[0.14em] text-white/45">
-              Eliza Cloud
-            </p>
-            <h1 className="mt-1 text-lg font-semibold">{copy.title}</h1>
-            <p className="mt-1 text-sm leading-relaxed text-white/74">
-              {copy.body}
-            </p>
-          </div>
-        </div>
 
-        {request?.reason ? (
-          <div className="mt-5 border border-white/10 bg-white/[0.03] px-3 py-2 text-sm text-white/70">
-            {request.reason}
-          </div>
-        ) : null}
+          {request?.reason ? (
+            <div className="mt-5 border border-white/10 bg-white/[0.03] px-3 py-2 text-sm text-white/70">
+              {request.reason}
+            </div>
+          ) : null}
 
-        {error ? (
-          <Alert className="mt-5" variant="destructive">
-            <AlertCircle />
-            <AlertTitle>Request issue</AlertTitle>
-            <AlertDescription>{error}</AlertDescription>
-          </Alert>
-        ) : null}
+          {error ? (
+            <Alert className="mt-5" variant="destructive">
+              <AlertCircle />
+              <AlertTitle>Request issue</AlertTitle>
+              <AlertDescription>{error}</AlertDescription>
+            </Alert>
+          ) : null}
 
-        {canSubmit ? (
-          <form
-            className="mt-5 space-y-4"
-            onSubmit={handleSubmit}
-            autoComplete="off"
-          >
-            {fields.map((field) => {
-              const type = field.input === "secret" ? "password" : field.input;
-              const useTextarea =
-                field.input === "text" && field.name.length > 24;
-              return (
-                <label className="block space-y-2" key={field.name}>
-                  <span className="text-sm font-medium text-white/85">
-                    {field.label}
-                  </span>
-                  {useTextarea ? (
-                    <Textarea
-                      name={field.name}
-                      required={field.required}
-                      disabled={submitting}
-                      autoComplete="off"
-                      autoCorrect="off"
-                      autoCapitalize="off"
-                      spellCheck={false}
-                    />
-                  ) : (
-                    <Input
-                      name={field.name}
-                      type={type}
-                      required={field.required}
-                      disabled={submitting}
-                      autoComplete="off"
-                      autoCorrect="off"
-                      autoCapitalize="off"
-                      spellCheck={false}
-                    />
-                  )}
-                </label>
-              );
-            })}
-            <Button className="w-full" type="submit" disabled={submitting}>
-              {submitting ? "Submitting..." : submitLabel}
-            </Button>
-          </form>
-        ) : null}
-      </main>
-    </div>
+          {canSubmit ? (
+            <form
+              className="mt-5 space-y-4"
+              onSubmit={handleSubmit}
+              autoComplete="off"
+            >
+              {fields.map((field) => {
+                const type =
+                  field.input === "secret" ? "password" : field.input;
+                const useTextarea =
+                  field.input === "text" && field.name.length > 24;
+                return (
+                  <label className="block space-y-2" key={field.name}>
+                    <span className="text-sm font-medium text-white/85">
+                      {field.label}
+                    </span>
+                    {useTextarea ? (
+                      <Textarea
+                        name={field.name}
+                        required={field.required}
+                        disabled={submitting}
+                        autoComplete="off"
+                        autoCorrect="off"
+                        autoCapitalize="off"
+                        spellCheck={false}
+                      />
+                    ) : (
+                      <Input
+                        name={field.name}
+                        type={type}
+                        required={field.required}
+                        disabled={submitting}
+                        autoComplete="off"
+                        autoCorrect="off"
+                        autoCapitalize="off"
+                        spellCheck={false}
+                      />
+                    )}
+                  </label>
+                );
+              })}
+              <Button className="w-full" type="submit" disabled={submitting}>
+                {submitting ? "Submitting..." : submitLabel}
+              </Button>
+            </form>
+          ) : null}
+        </main>
+      </div>
+    </>
   );
 }

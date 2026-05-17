@@ -19,10 +19,14 @@ chown root:root \
     /usr/local/lib/elizaos/milady-keeper \
     /usr/local/lib/elizaos/persistence-maintenance \
     /usr/local/lib/elizaos/renderer-server.mjs \
+    /usr/local/lib/elizaos/runtime-env \
     /usr/local/lib/elizaos/start-elizaos-agent-user \
     /usr/local/lib/elizaos/start-elizaos-browser-user \
+    /usr/local/lib/elizaos/start-elizaos-pill-user \
     /usr/local/lib/elizaos/start-elizaos-renderer-user \
-    /usr/local/lib/elizaos/start-milady-user
+    /usr/local/lib/elizaos/start-milady-user \
+    /usr/local/lib/elizaos/update-health-check \
+    /usr/local/lib/elizaos/update-manager
 chmod 0755 \
     /usr/local/lib/elizaos \
     /usr/local/bin/milady \
@@ -31,23 +35,33 @@ chmod 0755 \
     /usr/local/lib/elizaos/milady-keeper \
     /usr/local/lib/elizaos/persistence-maintenance \
     /usr/local/lib/elizaos/renderer-server.mjs \
+    /usr/local/lib/elizaos/runtime-env \
     /usr/local/lib/elizaos/start-elizaos-agent-user \
     /usr/local/lib/elizaos/start-elizaos-browser-user \
+    /usr/local/lib/elizaos/start-elizaos-pill-user \
     /usr/local/lib/elizaos/start-elizaos-renderer-user \
-    /usr/local/lib/elizaos/start-milady-user
+    /usr/local/lib/elizaos/start-milady-user \
+    /usr/local/lib/elizaos/update-health-check \
+    /usr/local/lib/elizaos/update-manager
 
 chown root:root \
+    /etc/systemd/system/elizaos-update-health-check.service \
+    /etc/systemd/system/elizaos-update-verify.service \
     /etc/systemd/system/milady.path \
     /etc/systemd/system/milady.service \
     /etc/systemd/user/elizaos-agent.service \
     /etc/systemd/user/elizaos-renderer.service \
+    /etc/systemd/user/elizaos-pill.service \
     /etc/systemd/user/milady.service \
     /usr/share/applications/milady.desktop
 chmod 0644 \
+    /etc/systemd/system/elizaos-update-health-check.service \
+    /etc/systemd/system/elizaos-update-verify.service \
     /etc/systemd/system/milady.path \
     /etc/systemd/system/milady.service \
     /etc/systemd/user/elizaos-agent.service \
     /etc/systemd/user/elizaos-renderer.service \
+    /etc/systemd/user/elizaos-pill.service \
     /etc/systemd/user/milady.service \
     /usr/share/applications/milady.desktop
 

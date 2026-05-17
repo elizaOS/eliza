@@ -25,9 +25,9 @@ describe("DEFAULT_SETUP_POLICY", () => {
     expect(DEFAULT_SETUP_POLICY.budgets.maxTokensPerTurn).toBeLessThanOrEqual(
       2000,
     );
-    expect(DEFAULT_SETUP_POLICY.budgets.maxToolCallsPerTurn).toBeLessThanOrEqual(
-      4,
-    );
+    expect(
+      DEFAULT_SETUP_POLICY.budgets.maxToolCallsPerTurn,
+    ).toBeLessThanOrEqual(4);
     expect(DEFAULT_SETUP_POLICY.budgets.maxTurns).toBeLessThanOrEqual(40);
   });
 });

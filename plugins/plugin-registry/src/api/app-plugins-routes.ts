@@ -35,8 +35,8 @@ import {
   scheduleCompatRuntimeRestart,
 } from "@elizaos/app-core/api/compat-route-shared";
 import {
-  sendJson as sendJsonResponse,
   sendJsonError as sendJsonErrorResponse,
+  sendJson as sendJsonResponse,
 } from "@elizaos/app-core/api/response";
 import {
   type ConfigField,
@@ -142,9 +142,9 @@ function envKeyForRegistryEntry(entry: RegistryEntry): string | undefined {
     const [first] = entry.auth.credentialKeys;
     if (first) return first;
   }
-	for (const [key, field] of Object.entries(entry.config) as Array<
-		[string, ConfigField]
-	>) {
+  for (const [key, field] of Object.entries(entry.config) as Array<
+    [string, ConfigField]
+  >) {
     if (field.required && (field.type === "secret" || field.sensitive)) {
       return key;
     }

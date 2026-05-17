@@ -1,0 +1,1 @@
+{"version":3,"file":"desktop-shell-compat.d.ts","sourceRoot":"","sources":["desktop-shell-compat.tsx"],"names":[],"mappings":"AAAA,eAAO,MAAM,uBAAuB,aAAc,CAAC;AAEnD,wBAAgB,+BAA+B,IAAI,IAAI,CAEtD;AAED,wBAAgB,kBAAkB,IAAI,IAAI,CAEzC;AAED,MAAM,WAAW,sBAAsB;IACrC,KAAK,CAAC,EAAE,OAAO,CAAC;CACjB;AAED,wBAAgB,iBAAiB,CAAC,MAAM,EAAE,sBAAsB,GAAG,IAAI,CAEtE"}

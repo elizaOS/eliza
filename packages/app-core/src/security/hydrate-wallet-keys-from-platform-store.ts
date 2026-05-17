@@ -1,4 +1,5 @@
 import { logger } from "@elizaos/core";
+import { formatError } from "@elizaos/shared";
 
 import { sharedVault } from "../services/vault-mirror";
 import { deriveAgentVaultId } from "./agent-vault-id";
@@ -107,7 +108,7 @@ export async function hydrateWalletKeysFromNodePlatformSecureStore(): Promise<vo
       }
     } catch (err) {
       logger.warn(
-        `[wallet][vault] os-store migration failed: ${err instanceof Error ? err.message : String(err)}`,
+        `[wallet][vault] os-store migration failed: ${formatError(err)}`,
       );
     }
   }
@@ -126,7 +127,7 @@ export async function hydrateWalletKeysFromNodePlatformSecureStore(): Promise<vo
     }
   } catch (err) {
     logger.warn(
-      `[wallet][os-store] steward hydrate failed: ${err instanceof Error ? err.message : String(err)}`,
+      `[wallet][os-store] steward hydrate failed: ${formatError(err)}`,
     );
   }
 }

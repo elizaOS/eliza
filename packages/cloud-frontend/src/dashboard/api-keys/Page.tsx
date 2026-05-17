@@ -60,7 +60,9 @@ export default function ApiKeysPage() {
 
 function ApiKeysPageContent({
   keys,
-}: { keys: ReturnType<typeof useApiKeys>["data"] }) {
+}: {
+  keys: ReturnType<typeof useApiKeys>["data"];
+}) {
   const displayKeys: ApiKeyDisplay[] = (keys ?? []).map((key) => ({
     id: key.id,
     name: key.name,

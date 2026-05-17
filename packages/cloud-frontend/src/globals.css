@@ -29,6 +29,14 @@
   --font-dm-mono: var(--font-open-sans);
   --font-inter: var(--font-open-sans);
   --font-roboto-mono: var(--font-open-sans);
+  --radius-xs: 3px;
+  --radius-sm: var(--radius-xs);
+  --radius-md: var(--radius-xs);
+  --radius-lg: var(--radius-xs);
+  --radius-xl: var(--radius-xs);
+  --radius-2xl: var(--radius-xs);
+  --radius-3xl: var(--radius-xs);
+  --radius: var(--radius-xs);
 
   --background: var(--bg);
   --foreground: var(--text);
@@ -52,6 +60,28 @@
   --sidebar-accent-foreground: var(--text);
   --sidebar-border: var(--border);
   --sidebar-ring: var(--ring);
+}
+
+/* Brand radius: controls and visible container divs should never render hard-edged. */
+#root,
+#root
+  :where(
+    button,
+    [role="button"],
+    input,
+    select,
+    textarea,
+    a,
+    div,
+    article,
+    aside,
+    [data-slot]
+  ) {
+  border-radius: var(--radius-xs);
+}
+
+#root :where(.rounded-full, [class*="rounded-full"]) {
+  border-radius: var(--radius-full);
 }
 
 @layer base {
@@ -451,7 +481,7 @@
 
 /* Sonner Toast Customization */
 [data-sonner-toast] {
-  border-radius: 0px;
+  border-radius: var(--radius-xs);
   border: 1px solid rgba(255, 255, 255, 0.1);
   background: rgba(0, 0, 0, 0.8);
   backdrop-filter: blur(12px);
@@ -493,7 +523,7 @@
   background: rgba(255, 255, 255, 0.1);
   border-color: rgba(255, 255, 255, 0.2);
   color: white;
-  border-radius: 0px;
+  border-radius: var(--radius-xs);
 }
 
 [data-close-button]:hover {
@@ -1728,7 +1758,7 @@ button:not(:disabled),
   height: 2.75rem;
   background: rgba(255, 255, 255, 0.05);
   border: 1px solid rgba(255, 255, 255, 0.1);
-  border-radius: 0.75rem;
+  border-radius: var(--radius-xs);
   color: #fafafa;
   font-size: 0.875rem;
 }
@@ -1743,7 +1773,7 @@ button:not(:disabled),
   height: 2.75rem;
   background: rgba(255, 255, 255, 0.05);
   border: 1px solid rgba(255, 255, 255, 0.1);
-  border-radius: 0.75rem;
+  border-radius: var(--radius-xs);
   color: #fafafa;
   font-size: 0.875rem;
 }
@@ -1802,7 +1832,7 @@ button:not(:disabled),
   aspect-ratio: 1 / 1;
   background: #0057ff;
   border: 1px solid rgba(17, 17, 17, 0.12);
-  border-radius: 18px;
+  border-radius: var(--radius-xs);
   display: grid;
   justify-items: center;
   min-height: 18rem;
@@ -1812,7 +1842,7 @@ button:not(:disabled),
 
 .checkout-visual.phone {
   border: 8px solid #050505;
-  border-radius: 2rem;
+  border-radius: var(--radius-xs);
 }
 
 .checkout-visual.usb {
@@ -1823,7 +1853,7 @@ button:not(:disabled),
 .checkout-visual.usb::after {
   background: linear-gradient(90deg, #d6d6d1, var(--brand-white));
   border: 1px solid rgba(17, 17, 17, 0.18);
-  border-radius: 0.25rem;
+  border-radius: var(--radius-xs);
   content: "";
   height: 42%;
   position: absolute;

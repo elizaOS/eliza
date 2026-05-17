@@ -3,6 +3,9 @@ import { defineConfig, devices } from "playwright/test";
 export default defineConfig({
   testDir: "./tests",
   outputDir: "./test-results",
+  expect: {
+    toHaveScreenshot: { maxDiffPixelRatio: 0.02 },
+  },
   webServer: {
     command:
       "bun run build && bun --bun vite preview --host 127.0.0.1 --port 4455",

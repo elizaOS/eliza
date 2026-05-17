@@ -17,7 +17,7 @@ import { existsSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
 
-import type { StreamingPcmDecoder } from "./transcriber";
+import type { StreamingPcmDecoder } from "./types";
 
 export const OPENVINO_WHISPER_DEFAULT_DEVICE_CHAIN = "NPU,CPU";
 

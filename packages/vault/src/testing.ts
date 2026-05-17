@@ -13,12 +13,12 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { generateMasterKey } from "./crypto.js";
 import { inMemoryMasterKey } from "./master-key.js";
+import { PgliteVaultImpl } from "./pglite-vault.js";
 import type { AuditRecord } from "./types.js";
-import { createVault, type Vault } from "./vault.js";
+import type { Vault } from "./vault.js";
 
 export interface TestVault {
   readonly vault: Vault;
-  readonly storePath: string;
   readonly auditLogPath: string;
   /** All audit entries written so far. */
   getAuditRecords(): Promise<readonly AuditRecord[]>;
@@ -43,28 +43,12 @@ export async function createTestVault(
   const ownsWorkDir = !opts.workDir;
   const workDir =
     opts.workDir ?? (await fs.mkdtemp(join(tmpdir(), "eliza-vault-")));
-  const storePath = join(workDir, "vault.json");
   const auditLogPath = join(workDir, "audit", "vault.jsonl");
-  // Force the file backend regardless of ELIZA_VAULT_BACKEND. This fixture
-  // promises a `storePath` pointing at vault.json (callers like
-  // vault-integration.test.ts read it directly to assert ciphertext at
-  // rest); the PGlite backend doesn't create that file. Tests that need
-  // PGlite-specific behavior should use PgliteVaultImpl directly.
-  const previousBackend = process.env.ELIZA_VAULT_BACKEND;
-  process.env.ELIZA_VAULT_BACKEND = "file";
-  let vault: Vault;
-  try {
-    vault = createVault({
-      workDir,
-      masterKey: inMemoryMasterKey(generateMasterKey()),
-    });
-  } finally {
-    if (previousBackend === undefined) {
-      delete process.env.ELIZA_VAULT_BACKEND;
-    } else {
-      process.env.ELIZA_VAULT_BACKEND = previousBackend;
-    }
-  }
+  const vault: Vault = new PgliteVaultImpl({
+    dataDir: join(workDir, ".vault-pglite"),
+    masterKey: inMemoryMasterKey(generateMasterKey()),
+    auditPath: auditLogPath,
+  });
   if (opts.values) {
     for (const [key, value] of Object.entries(opts.values)) {
       await vault.set(key, value);
@@ -77,7 +61,6 @@ export async function createTestVault(
   }
   return {
     vault,
-    storePath,
     auditLogPath,
     async getAuditRecords() {
       let raw: string;

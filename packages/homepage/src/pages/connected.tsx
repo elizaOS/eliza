@@ -225,7 +225,7 @@ export default function ConnectedPage() {
             <button
               type="button"
               aria-label="Open user menu"
-              className="focus:outline-none focus:ring-2 focus:ring-black/30 rounded-full"
+              className="focus:outline-none focus:ring-2 focus:ring-black focus:ring-offset-2 focus:ring-offset-[color:var(--brand-orange)] rounded-full"
             >
               {user.avatar ? (
                 <img

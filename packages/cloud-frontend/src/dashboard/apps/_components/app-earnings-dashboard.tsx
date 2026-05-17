@@ -405,9 +405,9 @@ export function AppEarningsDashboard({ appId }: AppEarningsDashboardProps) {
                   fontSize: "12px",
                 }}
                 formatter={(value) => {
-                  const numericValue = Array.isArray(value)
-                    ? Number(value[0] ?? 0)
-                    : Number(value ?? 0);
+                  const raw = Array.isArray(value) ? value[0] : value;
+                  const numericValue = Number(raw);
+                  if (!Number.isFinite(numericValue)) return "—";
                   return `$${numericValue.toFixed(4)}`;
                 }}
               />

@@ -2,7 +2,6 @@
  * Share buttons component providing social sharing and copy link functionality.
  * Supports native share API, Twitter sharing, and clipboard copy.
  *
- * @param props - Share buttons configuration
  * @param props.url - URL to share
  * @param props.title - Title for sharing
  * @param props.description - Optional description for sharing

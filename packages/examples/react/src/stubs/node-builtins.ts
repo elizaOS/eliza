@@ -123,6 +123,21 @@ export function randomBytes(size: number): Uint8Array {
   return bytes;
 }
 
+export function randomFillSync<T extends ArrayBufferView>(buffer: T): T {
+  if (buffer instanceof Uint8Array) {
+    globalThis.crypto?.getRandomValues(buffer as Uint8Array<ArrayBuffer>);
+    return buffer;
+  }
+
+  const bytes = new Uint8Array(
+    buffer.buffer,
+    buffer.byteOffset,
+    buffer.byteLength,
+  );
+  globalThis.crypto?.getRandomValues(bytes as Uint8Array<ArrayBuffer>);
+  return buffer;
+}
+
 export function randomUUID(): string {
   return globalThis.crypto?.randomUUID?.() ?? toHex(randomBytes(16));
 }
@@ -278,6 +293,7 @@ export function readFileSync(): string {
   return "";
 }
 export function writeFileSync(): void {}
+export function unlinkSync(): void {}
 export function statSync(): typeof emptyStats {
   return emptyStats;
 }
@@ -307,9 +323,11 @@ export async function readlink(): Promise<string> {
   return "";
 }
 export async function symlink(): Promise<void> {}
+export async function cp(): Promise<void> {}
 
 export const promises = {
   access,
+  cp,
   mkdir,
   readFile,
   writeFile,
@@ -334,6 +352,7 @@ export const remove = rm;
 export const removeSync = (): void => {};
 export const copy = async (): Promise<void> => {};
 export const copySync = (): void => {};
+export const cpSync = copySync;
 export const move = rename;
 export const moveSync = (): void => {};
 
@@ -544,6 +563,8 @@ const nodeBuiltins = {
   basename,
   copy,
   copySync,
+  cp,
+  cpSync,
   connect,
   cpus,
   createConnection,
@@ -592,6 +613,7 @@ const nodeBuiltins = {
   promises,
   promisify,
   randomBytes,
+  randomFillSync,
   randomUUID,
   readFile,
   readFileSync,
@@ -618,6 +640,7 @@ const nodeBuiltins = {
   symlink,
   tmpdir,
   unlink,
+  unlinkSync,
   webcrypto,
   writeFile,
   writeFileSync,

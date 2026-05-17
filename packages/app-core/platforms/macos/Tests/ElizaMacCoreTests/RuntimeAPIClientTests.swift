@@ -70,6 +70,32 @@ final class RuntimeAPIClientTests: XCTestCase {
         }
     }
 
+    func testFetchSnapshotKeepsHealthWhenOptionalRoutesFail() async throws {
+        RuntimeURLProtocolStub.responses = [
+            "/api/health": (200, """
+            {
+              "ready": true,
+              "runtime": "ok",
+              "database": "ok",
+              "plugins": { "loaded": 12, "failed": 0 },
+              "coordinator": "not_wired",
+              "connectors": {},
+              "uptime": 91,
+              "agentState": "running"
+            }
+            """),
+            "/api/agents": (401, "{}"),
+            "/api/logs": (404, "{}")
+        ]
+
+        let snapshot = try await RuntimeAPIClient(baseURL: runtimeBaseURL, session: stubbedSession).fetchSnapshot()
+
+        XCTAssertTrue(snapshot.health.ready)
+        XCTAssertEqual(snapshot.agents, [])
+        XCTAssertEqual(snapshot.logs.entries, [])
+        XCTAssertEqual(Set(RuntimeURLProtocolStub.requestedPaths), ["/api/health", "/api/agents", "/api/logs"])
+    }
+
     func testFetchWalletSnapshotReadsRuntimeWalletRoutes() async throws {
         RuntimeURLProtocolStub.responses = [
             "/api/wallet/config": (200, """

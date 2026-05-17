@@ -6,6 +6,10 @@ set -euo pipefail
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "${ROOT}"
 
+stat_size() {
+    stat -c%s "$1" 2>/dev/null || stat -f %z "$1"
+}
+
 red() { printf '\033[31m%s\033[0m\n' "$*" >&2; }
 green() { printf '\033[32m%s\033[0m\n' "$*"; }
 yellow() { printf '\033[33m%s\033[0m\n' "$*"; }
@@ -13,6 +17,8 @@ bold() { printf '\033[1m%s\033[0m\n' "$*"; }
 
 DEVICE="${1:-}"
 ISO="${2:-}"
+ISO_SIGNATURE="${ELIZAOS_ISO_SIGNATURE:-}"
+REQUIRE_SIGNATURE="${ELIZAOS_REQUIRE_ISO_SIGNATURE:-0}"
 
 if [ -z "${DEVICE}" ]; then
     red "Usage: $0 /dev/sdX [iso-path]"
@@ -101,7 +107,46 @@ if [ -f "${ISO}.sha256" ]; then
     green "sha256 ok"
 fi
 
-iso_bytes="$(stat -c%s "${ISO}")"
+if [ -z "${ISO_SIGNATURE}" ] && [ -f "${ISO}.sig" ]; then
+    ISO_SIGNATURE="${ISO}.sig"
+fi
+
+find_release_keyring() {
+    for keyring in \
+        "${ELIZAOS_RELEASE_KEYRING:-}" \
+        "${ROOT}/keys/elizaos-release.gpg" \
+        "${ROOT}/tails/config/chroot_local-includes/usr/share/keyrings/elizaos-release.gpg" \
+        /usr/share/keyrings/elizaos-release.gpg \
+        /etc/elizaos/release-keyring.gpg
+    do
+        [ -n "${keyring}" ] || continue
+        [ -r "${keyring}" ] || continue
+        printf '%s\n' "${keyring}"
+        return 0
+    done
+    return 1
+}
+
+if [ -n "${ISO_SIGNATURE}" ] || [ "${REQUIRE_SIGNATURE}" = "1" ]; then
+    [ -n "${ISO_SIGNATURE}" ] || ISO_SIGNATURE="${ISO}.sig"
+    if [ ! -f "${ISO_SIGNATURE}" ]; then
+        red "Missing ISO signature: ${ISO_SIGNATURE}"
+        exit 2
+    fi
+    command -v gpgv >/dev/null 2>&1 || {
+        red "gpgv is required to verify ISO signatures."
+        exit 2
+    }
+    if ! release_keyring="$(find_release_keyring)"; then
+        red "No elizaOS release keyring found. Set ELIZAOS_RELEASE_KEYRING."
+        exit 2
+    fi
+    yellow "Verifying ISO signature with ${release_keyring}"
+    gpgv --keyring "${release_keyring}" "${ISO_SIGNATURE}" "${ISO}" >/dev/null
+    green "signature ok"
+fi
+
+iso_bytes="$(stat_size "${ISO}")"
 iso_mib=$((iso_bytes / 1024 / 1024))
 dev_sectors="$(cat "${sys_dev}/size")"
 dev_gib=$((dev_sectors * 512 / 1024 / 1024 / 1024))

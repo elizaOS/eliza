@@ -24,6 +24,8 @@ import {
 
 const ID = "automation" as const;
 const SYSTEM_EVENTS_BUNDLE_ID = "com.apple.systemevents";
+const AUTOMATION_REASON =
+  "Automation access lets the app send Apple Events to System Events for macOS control tasks.";
 
 async function checkAutomationAccess(): Promise<
   "granted" | "denied" | "not-determined"
@@ -40,7 +42,10 @@ export const automationProber: Prober = {
   async check(): Promise<PermissionState> {
     if (!IS_DARWIN) return platformUnsupportedState(ID);
     const status = await checkAutomationAccess();
-    return buildState(ID, status, { canRequest: status === "not-determined" });
+    return buildState(ID, status, {
+      canRequest: status === "not-determined",
+      reason: status === "granted" ? undefined : AUTOMATION_REASON,
+    });
   },
 
   async request({ reason: _reason }): Promise<PermissionState> {

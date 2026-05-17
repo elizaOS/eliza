@@ -87,9 +87,8 @@ const config: CapacitorConfig = {
     allowNavigation: [
       ...localNavigationHosts,
       "*.elizacloud.ai",
-      "app.eliza.how",
-      "cloud.eliza.how",
-      "*.eliza.how",
+      "eliza.app",
+      "*.eliza.app",
       "rs-sdk-demo.fly.dev",
       "*.fly.dev",
       "hyperscape.gg",

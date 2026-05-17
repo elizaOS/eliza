@@ -2,7 +2,6 @@
  * Prompt input component for image generation with advanced options.
  * Supports prompt input, number of images, aspect ratio, and style preset selection.
  *
- * @param props - Prompt input configuration
  * @param props.prompt - Current prompt text
  * @param props.onPromptChange - Callback when prompt changes
  * @param props.onSubmit - Callback when form is submitted

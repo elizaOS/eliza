@@ -20,7 +20,7 @@ await build({
   splitting: false,
   sourcemap: "linked",
   minify: false,
-  external: ["@elizaos/core", "ai", "ollama-ai-provider-v2"],
+  external: ["@elizaos/core", "ai", "ollama-ai-provider-v2", "zod"],
   naming: {
     entry: "index.node.js",
   },
@@ -35,7 +35,7 @@ await build({
   splitting: false,
   sourcemap: "linked",
   minify: false,
-  external: ["@elizaos/core", "ai", "ollama-ai-provider-v2"],
+  external: ["@elizaos/core", "ai", "ollama-ai-provider-v2", "zod"],
   naming: {
     entry: "index.browser.js",
   },
@@ -50,7 +50,7 @@ await build({
   splitting: false,
   sourcemap: "linked",
   minify: false,
-  external: ["@elizaos/core", "ai", "ollama-ai-provider-v2"],
+  external: ["@elizaos/core", "ai", "ollama-ai-provider-v2", "zod"],
   naming: {
     entry: "index.node.cjs",
   },

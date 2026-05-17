@@ -5,15 +5,15 @@ declare const buttonVariants: (
   props?:
     | ({
         variant?:
+          | "link"
           | "default"
           | "surface"
+          | "destructive"
           | "surfaceAccent"
           | "surfaceDestructive"
-          | "destructive"
           | "outline"
           | "secondary"
           | "ghost"
-          | "link"
           | null
           | undefined;
         size?:

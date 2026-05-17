@@ -571,7 +571,7 @@ function MCPCard({
                     </span>
                   )}
                 </h3>
-                <p className="text-xs text-white/50">
+                <p className="text-xs text-white/74">
                   v{server.version} - {server.toolCount} tools
                 </p>
               </div>
@@ -592,7 +592,7 @@ function MCPCard({
               {server.status.replace("_", " ")}
             </Badge>
           </div>
-          <p className="text-xs text-white/50 line-clamp-2 leading-relaxed min-h-[2.5rem]">
+          <p className="text-xs text-white/74 line-clamp-2 leading-relaxed min-h-[2.5rem]">
             {server.description}
           </p>
         </div>

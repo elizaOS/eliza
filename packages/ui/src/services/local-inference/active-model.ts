@@ -21,90 +21,14 @@ import { recommendForFirstRun } from "./recommendation";
 import { listInstalledModels, touchElizaModel } from "./registry";
 import type { ActiveModelState, CatalogModel, InstalledModel } from "./types";
 
+export type { KvOffloadMode, LocalInferenceLoadArgs } from "./load-args.js";
 export {
   ELIZA_1_PLACEHOLDER_IDS,
   FIRST_RUN_DEFAULT_MODEL_ID,
   recommendForFirstRun,
 };
 
-/**
- * KV cache placement strategy. `node-llama-cpp` does not currently expose a
- * direct KV-cache placement knob distinct from the model-level `gpuLayers`
- * setting (the KV cache lives wherever the layer that owns it lives). We
- * keep the type here so the API/UI surface and the upstream out-of-process
- * `llama-server` backend can plumb a real choice through; the in-process
- * binding maps any non-default value to a `gpuLayers` override or warns
- * loudly when the value cannot be honoured.
- */
-export type KvOffloadMode = "cpu" | "gpu" | "split" | { gpuLayers: number };
-
-/**
- * Per-load overrides accepted by `localInferenceLoader.loadModel(...)` and
- * `POST /api/local-inference/active`. Catalog defaults are merged in
- * `resolveLocalInferenceLoadArgs`; per-call overrides supplied by the
- * caller win over both catalog metadata and env-var fallbacks.
- *
- * Backend support matrix (verified against
- * eliza/packages/app-core/node_modules/node-llama-cpp/dist/evaluator/...
- * type definitions, May 2026):
- *
- *   - `contextSize`        → node-llama-cpp `LlamaContextOptions.contextSize`
- *   - `cacheTypeK/V`       → node-llama-cpp `experimentalKvCacheKeyType` /
- *                            `experimentalKvCacheValueType`. The eliza
- *                            fork binding (elizaOS/node-llama-cpp@
- *                            v3.18.1-eliza.3+) extends `GgmlType` to
- *                            accept the lowercase aliases `tbq3_0`,
- *                            `tbq4_0`, `qjl1_256`, `q4_polar` (mapped to
- *                            enum slots 43/44/46/47). Whether the C++
- *                            kernel for those types actually runs depends
- *                            on the loaded `@node-llama-cpp/<platform>`
- *                            binary: the elizaOS/llama.cpp prebuild
- *                            implements them; the upstream prebuild
- *                            forwards an unknown enum int to ggml and
- *                            errors at the kernel layer.
- *   - `gpuLayers`          → node-llama-cpp `LlamaModelOptions.gpuLayers`
- *   - `flashAttention`     → node-llama-cpp `LlamaContextOptions.flashAttention`
- *                            (also as `defaultContextFlashAttention` at
- *                            model load).
- *   - `mmap`/`mlock`       → node-llama-cpp `useMmap` / `useMlock`
- *   - `kvOffload`          → not directly exposed by node-llama-cpp; the
- *                            in-process backend translates `cpu` →
- *                            `gpuLayers: 0`, `gpu` → `gpuLayers: "max"`,
- *                            `split` → `gpuLayers: "auto"`, and
- *                            `{gpuLayers}` → that exact integer.
- */
-export interface LocalInferenceLoadArgs {
-  modelPath: string;
-  contextSize?: number;
-  useGpu?: boolean;
-  maxThreads?: number;
-  draftModelPath?: string;
-  draftContextSize?: number;
-  draftMin?: number;
-  draftMax?: number;
-  speculativeSamples?: number;
-  mobileSpeculative?: boolean;
-  cacheTypeK?: string;
-  cacheTypeV?: string;
-  disableThinking?: boolean;
-  /**
-   * Number of model layers to offload to the GPU. `"auto"` and `"max"` are
-   * resolved by the backend's own probing — keep the explicit number type
-   * here so the API surface accepts the most common `gpuLayers: 32` shape
-   * without an extra string branch.
-   */
-  gpuLayers?: number;
-  /**
-   * Where to place the KV cache. See `KvOffloadMode`. node-llama-cpp does
-   * not expose this distinct from `gpuLayers`; the backend translates
-   * the request to a `gpuLayers` override or throws when the value
-   * cannot be honoured.
-   */
-  kvOffload?: KvOffloadMode;
-  flashAttention?: boolean;
-  mmap?: boolean;
-  mlock?: boolean;
-}
+import type { KvOffloadMode, LocalInferenceLoadArgs } from "./load-args.js";
 
 /**
  * Allow-list for KV cache type strings. The eliza fork of node-llama-cpp

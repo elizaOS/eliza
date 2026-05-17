@@ -12,7 +12,7 @@
 
 import type { IAgentRuntime } from "@elizaos/core";
 import { logger, ModelType } from "@elizaos/core";
-import type { ViewRegistryEntry } from "./views-registry.ts";
+import type { ViewRegistryEntry } from "./view-registry-types.ts";
 
 export interface ViewSearchEntry {
   viewId: string;

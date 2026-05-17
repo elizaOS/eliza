@@ -31,11 +31,11 @@ CREATE TABLE IF NOT EXISTS oauth_intents (
   metadata JSONB NOT NULL DEFAULT '{}'::jsonb
 );
 
-CREATE UNIQUE INDEX idx_oauth_intents_state_token_hash ON oauth_intents(state_token_hash);
-CREATE INDEX idx_oauth_intents_org_created ON oauth_intents(organization_id, created_at DESC);
-CREATE INDEX idx_oauth_intents_status_expires ON oauth_intents(status, expires_at) WHERE status IN ('pending');
-CREATE INDEX idx_oauth_intents_agent ON oauth_intents(agent_id) WHERE agent_id IS NOT NULL;
-CREATE INDEX idx_oauth_intents_expected_identity ON oauth_intents(expected_identity_id) WHERE expected_identity_id IS NOT NULL;
+CREATE UNIQUE INDEX IF NOT EXISTS idx_oauth_intents_state_token_hash ON oauth_intents(state_token_hash);
+CREATE INDEX IF NOT EXISTS idx_oauth_intents_org_created ON oauth_intents(organization_id, created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_oauth_intents_status_expires ON oauth_intents(status, expires_at) WHERE status IN ('pending');
+CREATE INDEX IF NOT EXISTS idx_oauth_intents_agent ON oauth_intents(agent_id) WHERE agent_id IS NOT NULL;
+CREATE INDEX IF NOT EXISTS idx_oauth_intents_expected_identity ON oauth_intents(expected_identity_id) WHERE expected_identity_id IS NOT NULL;
 
 CREATE TABLE IF NOT EXISTS oauth_intent_events (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -49,4 +49,4 @@ CREATE TABLE IF NOT EXISTS oauth_intent_events (
   occurred_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
-CREATE INDEX idx_oauth_intent_events_intent ON oauth_intent_events(oauth_intent_id, occurred_at);
+CREATE INDEX IF NOT EXISTS idx_oauth_intent_events_intent ON oauth_intent_events(oauth_intent_id, occurred_at);

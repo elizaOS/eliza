@@ -25,7 +25,7 @@ turn-by-turn directions.
 | **Phase 2 — elizaOS system branding** | 🔨 Source implemented; final rebuilt-ISO visual pass in progress |
 | **Phase 3 — Privacy mode** | 🔨 Source implemented; needs rebuilt-ISO network/Tor validation |
 | **Phase 4 — Bake elizaOS app** | 🔨 App payload staged + install hook/package list implemented; needs rebuilt-ISO runtime validation |
-| **Phase 5 — Autolaunch** | 🔨 Desktop/autostart/systemd wrapper implemented; needs boot validation |
+| **Phase 5 — Autolaunch** | 🔨 Desktop/systemd wrapper implemented; needs boot validation |
 | **Phase 6 — Agent/broker** | 🔨 OS broker/env path implemented; approval-gated privileged actions still need hardening |
 | **Phase 7 — Persistence** | 🔨 Tails Persistent Storage row/hooks implemented; needs persistence validation |
 | **Phases 8–9** | 📋 Spec/backlog ([`docs/specs/`](./docs/specs/)), not release-complete |
@@ -40,7 +40,8 @@ What exists right now:
   run (5 builder-box fixes + 1 package-list fix — `gdisk`/`mtools` for the
   partitioning initramfs hook). All upstream-worthy.
 - **Complete file-level specs** for every implementation phase (2–9) plus a
-  product hardening plan for distribution, updates, and production readiness.
+  product hardening plan for distribution, updates, production readiness,
+  and the demo debt that still blocks a real release.
 - **elizaOS OS-branding overlays** for boot menus, Plymouth, greeter,
   dark GNOME defaults, wallpaper, identity strings, and Tails attribution.
 - The **elizaOS desktop app** builds and is staged into the Tails
@@ -136,6 +137,31 @@ Any dev on Linux/macOS/Windows/CI runs `just build` and gets the same
 ISO. The earlier Vagrant attempt is documented (and buried) in
 [`docs/build-infrastructure.md`](./docs/build-infrastructure.md); don't
 resurrect it.
+
+### Distribution architecture: ISO fallback plus verified updates
+
+The production release shape is not "rebuild the ISO for every app
+change." The intended architecture is:
+
+- bake a known-good elizaOS app/runtime into the read-only ISO as the
+  factory fallback
+- store app/runtime updates in encrypted Persistent Storage
+- select a persistent runtime only after boot-time signature and hash
+  verification against a signed manifest
+- fall back to the ISO runtime if persistence is absent, corrupted,
+  revoked, incompatible, or fails verification
+- deliver local models through a signed model catalog and signed/hash-pinned
+  downloads, not by silently baking large/private models into every ISO
+- update the base OS through signed full ISOs first, then signed
+  Tails-style incremental kits or binary deltas where safe
+- support enterprise channels with policy pins, internal mirrors,
+  revocation, staged rollout rings, and non-secret fleet evidence
+
+The checked verifier foundation now exists for signed app/runtime manifests,
+root-owned materialization, and baked-runtime fallback. Production keys,
+downloader UX, revocation, mirrors, rollback health promotion, model
+downloads, and provenance gates are still release work. Until those exist,
+builds are demos or test artifacts even if they boot.
 
 ### First-boot UX: elizaOS-branded greeter + elizaOS app
 
@@ -318,14 +344,14 @@ first window and keeps it available as the home agent without hiding the
 normal desktop.
 
 **Spec:** [`docs/specs/phase-5-6-autolaunch-and-agent.md`](./docs/specs/phase-5-6-autolaunch-and-agent.md)
-— mostly config, not code: Tails honors `/etc/xdg/autostart/`, and the
-current implementation adds a root-owned systemd path/service supervisor.
+— mostly config, not code: the current implementation uses root-owned systemd
+supervision plus live-user services.
 
 - [x] `etc/systemd/system/milady.path` + `milady.service` — root-owned
   system service starts when the live user session bus appears, runs
   the app as `amnesia`, and restarts it if it exits
-- [x] `etc/xdg/autostart/milady.desktop` — backup/session launch entry
-  using `/usr/local/bin/milady`
+- [x] live-user systemd services — start the agent, renderer, and app shell
+  using `/usr/local/bin/milady` and elizaOS launch helpers
 - [x] `/usr/local/bin/milady` — pins `ELIZA_STATE_DIR=/home/amnesia/.eliza`
   plus XDG dirs in the launch env and uses a lock to avoid duplicate app
   instances
@@ -428,10 +454,22 @@ flow, `OPEN_TERMINAL`, `SET_WALLPAPER`).
 
 ## Phase 11 — Release v1.0 ⏳ NOT STARTED
 
-- [ ] Doc polish, CREDITS, license bundle
+- [ ] Doc polish, CREDITS, license bundle, and Tails attribution audit
 - [ ] License audit (every file: authored vs. Tails-derived)
-- [ ] Build reproducibility check
-- [ ] Cut release tag, attach ISO to a GitHub Release
+- [ ] SBOM generation for OS packages and bundled app/runtime payload
+- [ ] Release manifest format for ISO, checksums, model catalog, and
+  app/runtime bundle metadata
+- [ ] Signing/provenance decision: production keys if ready; otherwise mark
+  artifacts test-signed and not production-complete
+- [ ] Build reproducibility/provenance check: source revision, dependency
+  snapshot, builder image, artifact hashes, and signing event recorded
+- [ ] Recovery docs for app/runtime fallback, model deletion, failed USB
+  writes, failed OS update, and Persistent Storage migration failure
+- [ ] Confirm distribution docs accurately label missing fast-update,
+  enterprise mirror/policy, rollback, and OS delta infrastructure as demo
+  debt if still unimplemented
+- [ ] Cut release tag and attach artifacts only after the above status is
+  explicit in release notes
 - [ ] Open a Discussions thread for v1.1 priorities
 
 ---

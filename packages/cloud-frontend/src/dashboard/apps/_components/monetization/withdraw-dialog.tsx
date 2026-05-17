@@ -47,7 +47,7 @@ export function WithdrawDialog({
   const [state, setState] = useState<WithdrawState>("confirm");
   const [amount, setAmount] = useState(withdrawableBalance.toFixed(2));
   const [error, setError] = useState<string | null>(null);
-  const [newBalance, setNewBalance] = useState(0);
+  const [newBalance, setNewBalance] = useState<number | null>(null);
 
   const parsedAmount = parseFloat(amount) || 0;
   const isValidAmount =
@@ -126,10 +126,14 @@ export function WithdrawDialog({
         return;
       }
 
-      setNewBalance(data.newBalance ?? 0);
+      const returnedBalance =
+        typeof data.newBalance === "number" ? data.newBalance : null;
+      setNewBalance(returnedBalance);
       setState("success");
       triggerConfetti();
-      onSuccess?.(data.newBalance ?? 0);
+      if (returnedBalance !== null) {
+        onSuccess?.(returnedBalance);
+      }
     } catch (err) {
       setState("error");
       setError(
@@ -272,9 +276,15 @@ export function WithdrawDialog({
               <span className="text-xs text-neutral-500">
                 Remaining App Balance
               </span>
-              <p className="text-lg font-mono font-semibold text-white">
-                ${newBalance.toFixed(2)}
-              </p>
+              {newBalance !== null ? (
+                <p className="text-lg font-mono font-semibold text-white">
+                  ${newBalance.toFixed(2)}
+                </p>
+              ) : (
+                <p className="text-xs font-mono text-neutral-400 mt-1">
+                  Withdrawal succeeded; refresh to see new balance.
+                </p>
+              )}
             </div>
             <DialogFooter className="mt-6">
               <Button

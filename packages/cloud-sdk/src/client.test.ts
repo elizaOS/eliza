@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { ElizaCloudClient } from "./client.js";
+import { CloudApiError } from "./http.js";
 
 type RecordedRequest = {
   url: string;
@@ -8,7 +9,9 @@ type RecordedRequest = {
   body?: unknown;
 };
 
-function createClientRecorder(responseBody: Record<string, unknown> = { success: true }) {
+function createClientRecorder(
+  responseBody: Record<string, unknown> = { success: true },
+) {
   const requests: RecordedRequest[] = [];
   const fetchImpl = (async (input, init = {}) => {
     const headers = new Headers(init.headers);
@@ -17,7 +20,9 @@ function createClientRecorder(responseBody: Record<string, unknown> = { success:
       method: init.method ?? "GET",
       headers: Object.fromEntries(headers.entries()),
       body:
-        typeof init.body === "string" && init.body.length > 0 ? JSON.parse(init.body) : undefined,
+        typeof init.body === "string" && init.body.length > 0
+          ? JSON.parse(init.body)
+          : undefined,
     });
 
     return new Response(JSON.stringify(responseBody), {
@@ -82,7 +87,10 @@ describe("ElizaCloudClient payment and monetization helpers", () => {
   });
 
   it("creates app charges and payer checkouts on the app money routes", async () => {
-    const { client, requests } = createClientRecorder({ success: true, charge: { id: "chg_1" } });
+    const { client, requests } = createClientRecorder({
+      success: true,
+      charge: { id: "chg_1" },
+    });
 
     await client.createAppCharge("app_1", {
       amount: 7,
@@ -95,9 +103,14 @@ describe("ElizaCloudClient payment and monetization helpers", () => {
       network: "BASE",
     });
 
-    expect(requests.map((request) => `${request.method} ${new URL(request.url).pathname}`)).toEqual(
-      ["POST /api/v1/apps/app_1/charges", "POST /api/v1/apps/app_1/charges/chg_1/checkout"],
-    );
+    expect(
+      requests.map(
+        (request) => `${request.method} ${new URL(request.url).pathname}`,
+      ),
+    ).toEqual([
+      "POST /api/v1/apps/app_1/charges",
+      "POST /api/v1/apps/app_1/charges/chg_1/checkout",
+    ]);
     expect(requests[1]?.body).toEqual({
       provider: "oxapay",
       payCurrency: "USDC",
@@ -119,12 +132,58 @@ describe("ElizaCloudClient payment and monetization helpers", () => {
       payoutAddress: "0x0000000000000000000000000000000000000001",
     });
 
-    expect(requests.map((request) => `${request.method} ${new URL(request.url).pathname}`)).toEqual(
-      [
-        "POST /api/v1/affiliates",
-        "POST /api/v1/apps/app_1/earnings/withdraw",
-        "POST /api/v1/redemptions",
-      ],
+    expect(
+      requests.map(
+        (request) => `${request.method} ${new URL(request.url).pathname}`,
+      ),
+    ).toEqual([
+      "POST /api/v1/affiliates",
+      "POST /api/v1/apps/app_1/earnings/withdraw",
+      "POST /api/v1/redemptions",
+    ]);
+  });
+});
+
+describe("ElizaCloudClient.getContainerLogs", () => {
+  it("returns the raw log body on a 2xx response", async () => {
+    const fetchImpl = (async (_input) =>
+      new Response("line1\nline2\n", {
+        status: 200,
+        headers: { "Content-Type": "text/plain" },
+      })) as typeof fetch;
+
+    const client = new ElizaCloudClient({
+      baseUrl: "https://cloud.test",
+      apiKey: "eliza_test_key",
+      fetchImpl,
+    });
+
+    expect(await client.getContainerLogs("c_1")).toBe("line1\nline2\n");
+  });
+
+  it("throws CloudApiError carrying status and body on a non-ok response", async () => {
+    const fetchImpl = (async (_input) =>
+      new Response("container not found", {
+        status: 404,
+        statusText: "Not Found",
+        headers: { "Content-Type": "text/plain" },
+      })) as typeof fetch;
+
+    const client = new ElizaCloudClient({
+      baseUrl: "https://cloud.test",
+      apiKey: "eliza_test_key",
+      fetchImpl,
+    });
+
+    await expect(client.getContainerLogs("c_missing")).rejects.toMatchObject({
+      name: "CloudApiError",
+      statusCode: 404,
+    });
+    await expect(client.getContainerLogs("c_missing")).rejects.toBeInstanceOf(
+      CloudApiError,
+    );
+    await expect(client.getContainerLogs("c_missing")).rejects.toThrow(
+      /container not found/,
     );
   });
 });
@@ -135,7 +194,10 @@ describe("ElizaCloudClient CLI login", () => {
     const fetchImpl = (async (input) => {
       requestedUrl = String(input);
       return new Response(
-        JSON.stringify({ status: "pending", expiresAt: "2026-05-14T08:00:00.000Z" }),
+        JSON.stringify({
+          status: "pending",
+          expiresAt: "2026-05-14T08:00:00.000Z",
+        }),
         {
           status: 201,
           headers: { "content-type": "application/json" },
@@ -148,7 +210,9 @@ describe("ElizaCloudClient CLI login", () => {
       fetchImpl,
     });
 
-    const result = await client.startCliLogin({ sessionId: "cli-test-session" });
+    const result = await client.startCliLogin({
+      sessionId: "cli-test-session",
+    });
 
     expect(requestedUrl).toBe("https://api.elizacloud.ai/api/auth/cli-session");
     expect(result.browserUrl).toBe(

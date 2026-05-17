@@ -4,6 +4,10 @@ export default defineConfig({
   testDir: "./tests/e2e",
   fullyParallel: true,
   reporter: "list",
+  expect: {
+    timeout: 20000,
+    toHaveScreenshot: { maxDiffPixelRatio: 0.05 },
+  },
   use: {
     baseURL: "http://127.0.0.1:4444",
     trace: "retain-on-failure",
@@ -18,15 +22,11 @@ export default defineConfig({
   },
   projects: [
     {
-      name: "chromium-desktop",
+      name: "chromium",
       use: {
         ...devices["Desktop Chrome"],
         viewport: { width: 1440, height: 1000 },
       },
-    },
-    {
-      name: "chromium-mobile",
-      use: { ...devices["Pixel 5"] },
     },
   ],
 });

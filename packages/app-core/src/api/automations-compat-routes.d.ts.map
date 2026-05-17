@@ -1,0 +1,1 @@
+{"version":3,"file":"automations-compat-routes.d.ts","sourceRoot":"","sources":["automations-compat-routes.ts"],"names":[],"mappings":"AAAA;;;;;;;;;;;;;GAaG;AAEH,OAAO,KAAK,IAAI,MAAM,WAAW,CAAC;AASlC,OAAO,KAAK,EAAE,kBAAkB,EAAE,MAAM,uBAAuB,CAAC;AA2ThE,wBAAsB,6BAA6B,CACjD,GAAG,EAAE,IAAI,CAAC,eAAe,EACzB,GAAG,EAAE,IAAI,CAAC,cAAc,EACxB,KAAK,EAAE,kBAAkB,GACxB,OAAO,CAAC,OAAO,CAAC,CAwBlB"}

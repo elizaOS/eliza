@@ -430,19 +430,13 @@ final class AppModel: ObservableObject {
             return false
         }
 
-        openRendererTab(
-            "chat",
-            title: "Chat",
-            additionalQueryItems: [
-                URLQueryItem(name: "prompt", value: trimmed)
-            ]
-        )
+        openRendererTab("chat", title: "Chat")
 
         if !status.isRunning {
             startRuntime()
-            appendRuntimeEvent("Queued chat prompt for renderer.")
+            appendRuntimeEvent("Queued chat prompt for renderer without exposing it in the URL.")
         } else {
-            appendRuntimeEvent("Prepared chat prompt for renderer.")
+            appendRuntimeEvent("Prepared chat prompt for renderer without exposing it in the URL.")
         }
 
         return true

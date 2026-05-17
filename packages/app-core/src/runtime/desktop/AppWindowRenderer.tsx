@@ -9,6 +9,7 @@
  * The renderer never mounts the main shell (sidebars, header, chat panes).
  */
 
+import { formatError } from "@elizaos/shared";
 import {
   type AppLaunchResult,
   type AppRunSummary,
@@ -299,7 +300,7 @@ function RegistryAppWindowView({ slug }: { slug: string }): JSX.Element {
           status: "error",
           run: null,
           launchUrl: null,
-          message: err instanceof Error ? err.message : String(err),
+          message: formatError(err),
         });
       }
     })();

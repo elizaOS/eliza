@@ -23,7 +23,7 @@ async function requireLocalCloud() {
     signal: AbortSignal.timeout(5_000),
   }).catch(() => null);
   test.skip(
-    !health || !health.ok,
+    !health?.ok,
     `local cloud API is not reachable at ${apiBaseUrl}/api/health`,
   );
 }
@@ -209,7 +209,6 @@ test.describe("SIWS (Solana) wallet flow", () => {
   test("create + provision an agent using SIWS-issued API key", async () => {
     const { apiKey } = await signInWithFreshSolanaKey();
 
-    // Create
     const createRes = await fetch(`${apiBaseUrl}/api/v1/eliza/agents`, {
       method: "POST",
       headers: {

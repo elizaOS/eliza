@@ -3,19 +3,18 @@ import { expect, test } from "playwright/test";
 const heroCopy = [
   "The agentic operating system.",
   "For devices that run themselves.",
-  "Local first",
-  "Runs on your device",
-  "No account required",
 ];
 
 const installerCopy = [
-  "Install elizaOS.",
-  "Linux PC",
-  "ISO + USB installer",
-  "VM launcher",
-  "Mac, Windows, Linux",
-  "Android",
-  "APK + AOSP image",
+  "Download beta.",
+  "ElizaOS beta",
+  "ElizaOS Linux live beta",
+  "ElizaOS USB installer for Windows",
+  "ElizaOS VM launcher for Apple Silicon",
+  "ElizaOS Android beta image bundle",
+  "x86_64",
+  "arm64",
+  "SHA256",
 ];
 
 const hardwareCopy = [
@@ -35,9 +34,9 @@ const hardwareCopy = [
 test("lander renders elizaOS hero and primary copy", async ({ page }) => {
   await page.goto("/");
 
-  const hero = page.locator(".hero-os");
+  const hero = page.locator(".hero-cloud");
   await expect(hero).toBeVisible();
-  await expect(hero.locator(".hero-mark")).toHaveCount(1);
+  await expect(hero.getByTestId("cloud-video")).toHaveCount(1);
   await expect(hero.getByRole("link", { name: /^Download/i })).toHaveAttribute(
     "href",
     "#download",
@@ -50,6 +49,20 @@ test("lander renders elizaOS hero and primary copy", async ({ page }) => {
   for (const copy of [...heroCopy, ...installerCopy, ...hardwareCopy]) {
     await expect(page.getByText(copy, { exact: false }).first()).toBeVisible();
   }
+});
+
+test("download section exposes release artifact links", async ({ page }) => {
+  await page.goto("/");
+
+  const downloads = page.locator("#download");
+  await expect(downloads).toBeVisible();
+
+  await expect(
+    downloads.getByRole("link", { name: "Download" }).first(),
+  ).toHaveAttribute("href", /elizaos-live-beta-x86_64\.img\.zst$/);
+  await expect(
+    downloads.getByRole("link", { name: "SHA256" }).first(),
+  ).toHaveAttribute("href", /SHA256SUMS$/);
 });
 
 test("anchor sections #download and #hardware exist and are reachable", async ({

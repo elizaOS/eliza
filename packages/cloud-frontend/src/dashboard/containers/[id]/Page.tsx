@@ -187,7 +187,7 @@ export default function ContainerDetailsPage() {
               >
                 {container.cpu}
               </p>
-              <p className="text-xs text-white/50 mt-1">vCPU units</p>
+              <p className="text-xs text-white/74 mt-1">vCPU units</p>
             </div>
           </BrandCard>
 
@@ -213,7 +213,7 @@ export default function ContainerDetailsPage() {
               >
                 {container.memory} MB
               </p>
-              <p className="text-xs text-white/50 mt-1">RAM allocated</p>
+              <p className="text-xs text-white/74 mt-1">RAM allocated</p>
             </div>
           </BrandCard>
 
@@ -240,7 +240,7 @@ export default function ContainerDetailsPage() {
                 {lastDeployed ? lastDeployed.toLocaleDateString() : "Never"}
               </p>
               {lastDeployed && (
-                <p className="text-xs text-white/50 mt-1">
+                <p className="text-xs text-white/74 mt-1">
                   {lastDeployed.toLocaleTimeString()}
                 </p>
               )}

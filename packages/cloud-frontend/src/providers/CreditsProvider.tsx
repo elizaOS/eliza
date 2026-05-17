@@ -39,8 +39,8 @@ async function readApiErrorMessage(response: Response): Promise<string> {
   const contentType = response.headers.get("content-type") ?? "";
   if (contentType.includes("application/json")) {
     const body = (await response.json()) as {
-      error?: unknown;
-      message?: unknown;
+      error?: string;
+      message?: string;
     };
     if (typeof body.error === "string" && body.error) return body.error;
     if (typeof body.message === "string" && body.message) return body.message;
@@ -55,7 +55,7 @@ async function readBalance(response: Response): Promise<number> {
       `Credit balance endpoint returned ${contentType || "a non-JSON response"}`,
     );
   }
-  const data = (await response.json()) as { balance?: unknown };
+  const data = (await response.json()) as { balance?: number };
   const balance = Number(data.balance);
   if (!Number.isFinite(balance)) {
     throw new Error("Credit balance endpoint returned an invalid balance");

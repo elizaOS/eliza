@@ -20,6 +20,9 @@ for path in \
     "${user_unit_dir}/elizaos-renderer.service" \
     "${user_unit_dir}/elizaos-renderer.service.d" \
     "${user_unit_dir}/default.target.wants/elizaos-renderer.service" \
+    "${user_unit_dir}/elizaos-pill.service" \
+    "${user_unit_dir}/elizaos-pill.service.d" \
+    "${user_unit_dir}/default.target.wants/elizaos-pill.service" \
     "${user_unit_dir}/milady.service" \
     "${user_unit_dir}/milady.service.d" \
     "${user_unit_dir}/default.target.wants/milady.service" \
@@ -48,7 +51,7 @@ while :; do
             HOME=/home/amnesia \
             XDG_RUNTIME_DIR="${runtime_dir}" \
             DBUS_SESSION_BUS_ADDRESS="${bus}" \
-            systemctl --user reset-failed elizaos-agent.service elizaos-renderer.service milady.service >/dev/null 2>&1 || true
+            systemctl --user reset-failed elizaos-agent.service elizaos-renderer.service elizaos-pill.service milady.service >/dev/null 2>&1 || true
         runuser -u amnesia -- env \
             HOME=/home/amnesia \
             XDG_RUNTIME_DIR="${runtime_dir}" \
@@ -59,6 +62,11 @@ while :; do
             XDG_RUNTIME_DIR="${runtime_dir}" \
             DBUS_SESSION_BUS_ADDRESS="${bus}" \
             systemctl --user start --no-block elizaos-renderer.service >/dev/null 2>&1 || true
+        runuser -u amnesia -- env \
+            HOME=/home/amnesia \
+            XDG_RUNTIME_DIR="${runtime_dir}" \
+            DBUS_SESSION_BUS_ADDRESS="${bus}" \
+            systemctl --user start --no-block elizaos-pill.service >/dev/null 2>&1 || true
         runuser -u amnesia -- env \
             HOME=/home/amnesia \
             XDG_RUNTIME_DIR="${runtime_dir}" \

@@ -169,7 +169,7 @@ export function AppAnalytics({ appId }: AppAnalyticsProps) {
           setTotalStats(data.totalStats);
           setLastUpdated(new Date());
         }
-      } catch (error) {
+      } catch (_error) {
         toast.error("Failed to load analytics");
       } finally {
         setIsLoading(false);
@@ -199,7 +199,7 @@ export function AppAnalytics({ appId }: AppAnalyticsProps) {
       if (visitorsData.success) {
         setVisitors(visitorsData.visitors);
       }
-    } catch (error) {
+    } catch (_error) {
       toast.error("Failed to load request stats");
     } finally {
       setIsLoadingStats(false);
@@ -219,7 +219,7 @@ export function AppAnalytics({ appId }: AppAnalyticsProps) {
           setRequestLogs(data.requests);
           setLogsTotal(data.total);
         }
-      } catch (error) {
+      } catch (_error) {
         toast.error("Failed to load request logs");
       } finally {
         setIsLoadingLogs(false);

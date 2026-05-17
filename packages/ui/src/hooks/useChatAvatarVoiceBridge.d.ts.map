@@ -1,0 +1,1 @@
+{"version":3,"file":"useChatAvatarVoiceBridge.d.ts","sourceRoot":"","sources":["useChatAvatarVoiceBridge.ts"],"names":[],"mappings":"AAMA,MAAM,WAAW,+BAA+B;IAC9C,SAAS,EAAE,MAAM,CAAC;IAClB,UAAU,EAAE,OAAO,CAAC;IACpB,gBAAgB,EAAE,CAAC,UAAU,EAAE,OAAO,KAAK,IAAI,CAAC;CACjD;AAED;;;GAGG;AACH,wBAAgB,wBAAwB,CAAC,EACvC,SAAS,EACT,UAAU,EACV,gBAAgB,GACjB,EAAE,+BAA+B,GAAG,IAAI,CAkBxC"}

@@ -25,8 +25,17 @@ export default function BillingPage() {
         />
       ) : !user ? (
         <DashboardLoadingState label="Loading billing" />
+      ) : !user.organization || !user.organization_id ? (
+        <DashboardErrorState message="No organization associated with this account" />
       ) : (
-        <BillingPageWrapper user={user} canceled={canceled} />
+        <BillingPageWrapper
+          user={{
+            organization_id: user.organization_id,
+            wallet_address: user.wallet_address,
+            organization: user.organization,
+          }}
+          canceled={canceled}
+        />
       )}
     </>
   );

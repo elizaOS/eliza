@@ -2,7 +2,6 @@
  * Node components for React Flow diagrams.
  * Provides node container with handles, header, title, description, and footer components.
  *
- * @param props - Node props including handle configuration
  * @param props.handles - Handle configuration (target and source)
  */
 

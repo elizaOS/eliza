@@ -126,7 +126,10 @@ async function getBriefLifeOpsService(
   runtime: IAgentRuntime,
 ): Promise<BriefLifeOpsService> {
   const { LifeOpsService } = await import("../lifeops/service.js");
-  return new LifeOpsService(runtime) as unknown as BriefLifeOpsService;
+  // Single-step cast: LifeOpsService is a mixin-composed class that
+  // structurally satisfies BriefLifeOpsService, but TypeScript cannot verify
+  // this through the composed type so a cast is required.
+  return new LifeOpsService(runtime) as BriefLifeOpsService;
 }
 
 function periodWindow(period: LifeOpsBriefingPeriod): {

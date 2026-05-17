@@ -2,7 +2,6 @@
  * Image component for displaying AI-generated images from base64 data.
  * Uses a plain `<img>` so it stays framework-agnostic.
  *
- * @param props - Image props including base64 data and media type
  * @param props.base64 - Base64 encoded image data
  * @param props.mediaType - MIME type of the image
  * @param props.alt - Alt text for accessibility
