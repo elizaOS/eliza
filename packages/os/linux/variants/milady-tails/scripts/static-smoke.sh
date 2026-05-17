@@ -689,6 +689,10 @@ grep -q '/live/persistence/TailsData_unlocked/elizaos-system' \
 grep -q 'ProtectHome=read-only' \
     tails/config/chroot_local-includes/etc/systemd/system/elizaos-update-verify.service
 grep -q 'WorkingDirectory=/' \
+    tails/config/chroot_local-includes/etc/systemd/system/polkit.service.d/elizaos-working-directory.conf
+grep -q 'RuntimeDirectory=dbus' \
+    tails/config/chroot_local-includes/etc/systemd/system/dbus.service.d/elizaos-working-directory.conf
+grep -q 'WorkingDirectory=/run/dbus' \
     tails/config/chroot_local-includes/etc/systemd/system/dbus.service.d/elizaos-working-directory.conf
 grep -q 'ELIZAOS_RUNTIME_ROOT' \
     tails/config/chroot_local-includes/usr/local/lib/elizaos/runtime-env
