@@ -25,9 +25,7 @@ export type LinkedAccountFlagConfig = {
   organizationId?: string;
 };
 
-export type LinkedAccountFlagsConfig = Partial<
-  Record<string, LinkedAccountFlagConfig>
->;
+export type LinkedAccountFlagsConfig = Record<string, LinkedAccountFlagConfig>;
 
 /**
  * Restricted set of provider IDs that can own multi-account credential

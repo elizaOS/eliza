@@ -297,11 +297,7 @@ export async function handleTelegramStandaloneMessage(
       { continueAfterActions: true },
     );
   } catch (outerErr) {
-    logger.warn(
-      `[eliza] Telegram handler error: ${
-        formatError(outerErr)
-      }`,
-    );
+    logger.warn(`[eliza] Telegram handler error: ${formatError(outerErr)}`);
     await ctx
       .reply("Sorry, I encountered an error processing your message.")
       .catch(() => {});

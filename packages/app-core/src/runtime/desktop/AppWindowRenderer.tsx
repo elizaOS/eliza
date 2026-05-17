@@ -9,6 +9,7 @@
  * The renderer never mounts the main shell (sidebars, header, chat panes).
  */
 
+import { formatError } from "@elizaos/shared";
 import {
   type AppLaunchResult,
   type AppRunSummary,
@@ -53,7 +54,6 @@ import { FineTuningView } from "@elizaos/ui/components/training/injected";
 import { useBootConfig } from "@elizaos/ui/config/boot-config-react";
 import { useApp } from "@elizaos/ui/state/useApp";
 import { openExternalUrl } from "@elizaos/ui/utils";
-import { formatError } from "@elizaos/shared";
 import {
   type JSX,
   Suspense,
