@@ -66,7 +66,16 @@ function run(label, preload, files) {
   );
   const result = spawnSync(
     bun,
-    ["test", "--max-concurrency=1", "--preload", preload, ...files, "--timeout", timeoutMs],
+    [
+      "test",
+      "--coverage=false",
+      "--max-concurrency=1",
+      "--preload",
+      preload,
+      ...files,
+      "--timeout",
+      timeoutMs,
+    ],
     {
       cwd: repoRoot,
       env: integrationEnv,
