@@ -1,6 +1,7 @@
 import { Story, type StoryGroup } from "./Story.tsx";
 import { primitiveStories } from "./stories/primitives.tsx";
 import { brandStories } from "./stories/brand.tsx";
+import { cloudDashboardStories } from "./stories/cloud-dashboard.tsx";
 
 const groups: StoryGroup[] = [
   {
@@ -12,6 +13,11 @@ const groups: StoryGroup[] = [
     id: "brand",
     title: "Brand — @elizaos/ui/cloud-ui/components/brand",
     stories: brandStories,
+  },
+  {
+    id: "cloud-dashboard",
+    title: "Cloud Dashboard — shared composites",
+    stories: cloudDashboardStories,
   },
 ];
 
