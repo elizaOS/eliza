@@ -44,12 +44,8 @@ const DEFAULT_POLL_INTERVAL_MS = 30_000;
 const DEFAULT_BATCH_SIZE = 3;
 
 /**
- * Node health-check cadence. The same daemon now owns this responsibility
- * (previously container-control-plane forwarded from a CF Worker cron, which
- * left the orchestrator host blind to its own nodes when the control-plane
- * was offline or missed its SSH key). 5 minutes mirrors the legacy CRON_FANOUT
- * schedule for `agent-hot-pool`. SSH for the check itself uses the
- * `CONTAINERS_SSH_KEY` env var that already powers provision/stop on this host.
+ * Node health-check cadence. 5 minutes matches the `agent-hot-pool`
+ * CRON_FANOUT schedule. SSH uses `CONTAINERS_SSH_KEY` from this host.
  */
 const DEFAULT_NODE_HEALTH_INTERVAL_MS = 5 * 60_000;
 
@@ -129,12 +125,9 @@ export interface NodeHealthSummary {
 
 /**
  * Health-checks every enabled `docker_nodes` row (SSH + `docker info`) and
- * persists the resulting status. Previously owned by the CF-cron-forwarded
- * container-control-plane service; folded into this daemon so the orchestrator
- * host that already has SSH access keeps the truth, instead of relying on a
- * second moving piece that can be missing its key (verified in prod
- * 2026-05-17: cores were stuck `offline` because the control-plane host
- * lacked CONTAINERS_SSH_KEY, despite the keys being valid here).
+ * persists the resulting status. Runs on the orchestrator host that already
+ * holds `CONTAINERS_SSH_KEY`, so the node-status truth lives next to the
+ * provisioner that acts on it.
  */
 export async function processNodeHealthCheckCycle(): Promise<NodeHealthSummary> {
   const { dockerNodeManager } = await loadDeps();
@@ -191,10 +184,9 @@ async function pollCycle(
     });
   }
 
-  // Node health checks ride on a longer interval than the heartbeat cycle:
-  // SSH + `docker info` per node is expensive (~MAX_RETRIES * 10s timeout
-  // worst-case per offline node) and the data only feeds capacity decisions
-  // that don't need sub-minute freshness. Skip when not yet due.
+  // Node health checks run on a longer interval than the heartbeat cycle:
+  // SSH + `docker info` per node is expensive (~MAX_RETRIES * 10s per offline
+  // node) and only feeds capacity decisions that tolerate stale data.
   const now = Date.now();
   if (now - lastNodeHealthCheckAt >= config.nodeHealthIntervalMs) {
     lastNodeHealthCheckAt = now;
