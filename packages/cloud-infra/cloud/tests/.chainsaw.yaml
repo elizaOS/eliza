@@ -1,0 +1,16 @@
+apiVersion: chainsaw.kyverno.io/v1alpha2
+kind: Configuration
+metadata:
+  name: eliza-operator-tests
+spec:
+  timeouts:
+    apply: 10s
+    assert: 30s
+    cleanup: 60s
+    delete: 60s
+    exec: 120s
+  cleanup:
+    skipDelete: false
+  execution:
+    failFast: false
+    parallel: 3

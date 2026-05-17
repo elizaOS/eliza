@@ -1,0 +1,249 @@
+---
+title: Changelog
+description: Latest updates, new features, and improvements to elizaOS Cloud.
+---
+
+import { Callout } from "@/docs/components";
+
+# Changelog
+
+Stay up to date with the latest changes to elizaOS Cloud.
+
+---
+
+## April 2026
+
+### Apr 28, 2026
+
+**OpenRouter model id compatibility (xAI & Mistral)**
+
+- **Consistent ids** — Usage, cost breakdown, and pricing resolution treat **legacy** gateway-style ids (`xai/…`, `mistral/…`) and **OpenRouter** catalog ids (`x-ai/…`, `mistralai/…`) as the same logical model or provider where it matters for billing and charts. **Why:** After OpenRouter became the primary text path, stored settings and historical rows could use either spelling; without normalization the same model appeared twice in analytics or failed price lookup depending on which string was stored.
+- **SQL grouping for top-N** — Model breakdowns group on normalized keys in the database before `LIMIT`, so ranked “top models” stay correct when traffic was split across spellings. **Why:** Merging only in application code after a capped query can exclude rows that only qualify after merge.
+
+Docs: see the [Models API](/docs/api/models) for current model identifiers and
+the [Billing guide](/docs/billing) for pricing behavior.
+
+---
+
+### Apr 6, 2026
+
+**Auth API consistency — API keys, sessions, and clearer errors**
+
+- **Programmatic access** — Many dashboard and org APIs (apps/domains, ElevenLabs voices, API key CRUD except Explorer, profile, crypto payment **list/status** `GET`, org members and invites **management**) now accept the same **API keys** you use for chat, so CI and backends do not need a browser cookie. **Why:** One credential model for automation; avoids “request reached the server but auth failed” confusion when only cookies worked before.
+- **Session-only endpoints** — Some flows stay **browser session only** (e.g. accepting an invite, redeeming a signup code, Stripe checkout, CLI web **completion** after login). If you send `X-API-Key` or `Bearer eliza_…` there, the edge returns **`401`** with code **`session_auth_required`**. **Why:** Clear signal that the URL expects a logged-in user in the product, not a script key; reduces abuse on one-time or redirect flows.
+- **CLI login paths** — Creating a CLI session and polling status stay easy for the terminal; completing login in the browser follows normal API auth rules. **Why:** Completion issues API key material and must align with cookie session semantics.
+
+Docs: see [Authentication](/docs/authentication) and the
+[API overview](/docs/api/overview).
+
+---
+
+## March 2026
+
+### Mar 30, 2026
+
+**Referral invite links — API, dashboard UI, docs**
+
+- **`GET /api/v1/referrals`** — Returns the signed-in user’s referral row as flat JSON (`code`, `total_referrals`, `is_active`); creates a code via `getOrCreateCode` on first success. **Why:** One round trip for “my link,” no separate create endpoint; idempotent and safe for duplicate calls from header + Affiliates page.
+- **HTTP semantics** — `401` for auth failures (including `Authentication required` and API key errors), **`403` for `ForbiddenError`** (e.g. no org), `500` for unexpected errors. **Why:** Callers can tell “not logged in” from “logged in but not allowed” instead of masking 403 as 500.
+- **Dashboard** — Header **Invite** (lazy fetch, clipboard, toast; hidden for anonymous users and during `authGraceActive`). Affiliates page **Invite friends** card above the affiliate link (distinct styling); inactive codes show a warning and block copy in header. **Why:** Discoverability without a new nav item; avoids conflating `?ref=` with `?affiliate=`; grace-period gating avoids broken clicks mid-session sync.
+- **Docs** — README referral docs were updated alongside the API and dashboard
+  changes. Shared type `ReferralMeResponse` + `parseReferralMeResponse` in
+  `packages/lib/types/referral-me.ts`. **Why:** flat JSON and parser reduce
+  client bugs.
+
+### Mar 28, 2026
+
+**Per-agent Anthropic extended thinking (MCP / A2A)**
+
+- **`user_characters.settings.anthropicThinkingBudgetTokens`**: integer token budget for Anthropic “extended thinking” on **`POST /api/agents/{id}/mcp`** (`chat`) and **`POST /api/agents/{id}/a2a`** (`chat`). **`0`** disables thinking for that agent even if `ANTHROPIC_COT_BUDGET` is set; omitted or invalid values fall back to env default. **Why:** Agent owners set inference policy in stored character data without redeploying; request bodies must not carry budgets so third-party MCP/A2A callers cannot inflate token spend.
+- **`ANTHROPIC_COT_BUDGET`**: clarified as **default** when the character does not set the key (and for routes that have no resolved character). **`ANTHROPIC_COT_BUDGET_MAX`**: optional ceiling on any effective budget. **Why:** Operators keep a baseline and a worst-case cap while still allowing per-agent overrides.
+
+Docs: see [A2A Protocol](/docs/a2a) and [MCP Integration](/docs/mcps) for
+agent protocol usage.
+
+### Mar 27, 2026
+
+**Anthropic extended thinking (deploy policy)**
+
+- Optional **`ANTHROPIC_COT_BUDGET`**: positive integer enables Anthropic extended thinking for eligible Claude models via `providerOptions.anthropic.thinking`; unset or `0` leaves behavior unchanged. **Why:** Thinking uses extra tokens—keeping control in environment config avoids arbitrary client-controlled budgets and keeps billing/support predictable.
+- Provider-option **merge helpers** preserve existing `gateway` / `google` keys when adding Anthropic fragments. **Why:** Routes already set gateway order or image modalities; overwriting the whole `providerOptions` object would drop those settings.
+
+**Agent unit tests and pricing mocks**
+
+- **`mockAgentPricingMinimumDepositForRouteTests`**: route tests that tweak minimum deposit now spread the real `AGENT_PRICING` object instead of replacing it with `{ MINIMUM_DEPOSIT }` only. **Why:** `mock.module` replaces the entire module for the process; partial objects removed hourly rates and warning thresholds and broke Agent billing cron tests when the full unit suite ran.
+- Billing cron test file renamed to `z-agent-billing-route.test.ts` with stable queue-backed DB mocks re-registered in `beforeEach`. **Why:** Reduces order-dependent failures when other tests also mock `@/db/client`.
+
+Engineering details live in the repository changelog and Cloud engineering
+notes.
+
+### Mar 8, 2026
+
+**Anthropic Messages API compatibility**
+
+- Added `POST /api/v1/messages`, an Anthropic Messages API-compatible endpoint for Claude Code and Anthropic SDK clients.
+- Streaming now emits Anthropic-style SSE events for both text and tool use blocks.
+- Added docs for the new Messages endpoint and exposed it as a public API-key route in the proxy.
+
+**Eliza App connection enforcement**
+
+- Telegram, Discord, and iMessage Eliza App channels now require one connected data source before the agent processes messages.
+- Added an in-character connection nudge flow plus a post-OAuth success page that returns users to their messaging channel.
+- OAuth callback handling now invalidates the connection-enforcement cache immediately after a successful connection.
+
+### Mar 4, 2026
+
+**Wallet API — SIWE, wallet header auth, topup, docs**
+
+- **SIWE (EIP-4361):** `GET /api/auth/siwe/nonce` and `POST /api/auth/siwe/verify` for programmatic wallet sign-in. Returns API key; new wallets get account and initial free credits. **Why:** Agents and headless clients need to sign in and obtain an API key without a browser; nonce prevents replay, domain binding prevents phishing.
+- **Wallet header signature:** Per-request auth via `X-Wallet-Address`, `X-Timestamp`, `X-Wallet-Signature`. First valid request for an unknown wallet creates the account (same path as SIWE). **Why:** Clients that prefer not to store an API key can prove ownership on each request; method+path in the signed message prevents replay on other endpoints.
+- **x402 topup:** Can credit the signer when wallet sig headers are present, or use `body.walletAddress`. All wallet signup (SIWE, wallet-header, topup) uses shared `findOrCreateUserByWalletAddress` (slug `wallet-${address}`, optional initial credits, race handling). **Why:** One consistent signup path; topup with wallet sig ties payer to credited account.
+- **Proxy & CORS:** Requests with `X-Wallet-Signature` pass through without a browser session; wallet headers added to `Access-Control-Allow-Headers`; `/api/v1/topup` added to public paths. **Why:** Otherwise wallet-header auth would get 401 at the proxy before the API runs.
+- **Docs:** [Wallet API](/docs/wallet-api) and
+  [Authentication](/docs/authentication) updated, README subsection, changelog.
+  llms.txt regenerated.
+
+**Referrals & Affiliates — docs, safety, and cleanup**
+
+- **Documentation**: Added referral and affiliate flow notes. Referral revenue
+  is 50/40/10 (ElizaCloud / app owner / creator); affiliate revenue is markup on
+  top-up and MCP, passed to the customer. No double-apply on the same
+  transaction.
+- **Revenue math**: Single source of truth for referral splits (`REFERRAL_REVENUE_SPLITS` in `lib/services/referrals.ts`) with startup assertions (50+40+10=100%, 8+2=10%). `calculateRevenueSplits` now asserts total allocated equals purchase amount so changes to constants cannot silently over- or under-pay.
+- **Dead code removed**: Removed unused `processReferralCommission` and `COMMISSION_RATE` from referrals service and unused `referralSignupsRepository` import from Stripe webhook to avoid accidental re-use (which would have double-paid referral on top of 50/40/10).
+- **Comparison doc**: Added an affiliate/referral comparison note covering
+  commission tiers vs 50/40/10, affiliate markup usage, and revenue math.
+- **README**: Referrals & Affiliates subsection under Credit System & Billing with links to the new docs.
+
+**Signup codes — env config, Discord/Telegram wiring, docs**
+
+- **Config**: Signup codes now load from `SIGNUP_CODES_JSON` env var (JSON object); if unset, default to `{}`. **Why:** Env allows per-environment codes without a config file in the repo; default keeps the app runnable when the var is not set.
+- **Eliza App**: Optional `signup_code` in Discord and Telegram auth request bodies; for **new** users only, we apply the bonus in `createUserWithOrganization` (invalid or already-used code logs a warning and does not block account creation). **Why:** New users can get base credits + signup bonus in one step; existing users and bad codes do not break signup.
+- **Docs**: README signup code notes were expanded with WHYs (why env var, why
+  one per org, why session-only redeem, why CRITICAL rate limit, why no-cache,
+  two-layer one-per-org).
+
+---
+
+## January 2026
+
+### Jan 8, 2026
+
+<div className="status-badge status-new">New</div>
+
+**Documentation Redesign**
+
+- Completely redesigned documentation with AAA pro quality styling
+- New sidebar organization matching dashboard structure
+- Comprehensive API reference with real endpoint documentation
+- Added protocol documentation (A2A, MCP, x402)
+
+**Features**
+
+- Agent monetization and earnings system
+- x402 crypto payment integration
+- Improved API Explorer
+
+---
+
+## December 2025
+
+### Dec 28, 2025
+
+**MCP Integration**
+
+- Full MCP protocol support
+- MCP registry with curated servers
+- Custom MCP server hosting
+- Tool invocation in agents
+
+### Dec 15, 2025
+
+**Video Generation**
+
+- MiniMax Video-01 integration
+- Runway Gen-3 support
+- Image-to-video generation
+- Gallery management for videos
+
+### Dec 5, 2025
+
+**Knowledge Base Improvements**
+
+- Increased document size limits
+- Better chunking algorithms
+- Improved retrieval accuracy
+- Document metadata support
+
+---
+
+## November 2025
+
+### Nov 25, 2025
+
+**Voice Cloning**
+
+- ElevenLabs integration
+- Voice cloning from samples
+- Multi-language TTS
+- Speech-to-text support
+
+### Nov 15, 2025
+
+**Container Deployment**
+
+- Custom Docker container support
+- Auto-scaling
+- Health monitoring
+- Log streaming
+
+### Nov 5, 2025
+
+**Apps & API Keys**
+
+- App creation and management
+- Scoped API keys
+- Usage analytics per app
+- Webhook support
+
+---
+
+## October 2025
+
+### Oct 20, 2025
+
+**A2A Protocol**
+
+- Agent-to-Agent communication
+- Agent discovery
+- Task delegation
+- Streaming tasks
+
+### Oct 10, 2025
+
+**Image Generation**
+
+- Fal.ai integration
+- FLUX model support
+- Multiple aspect ratios
+- Batch generation
+
+### Oct 1, 2025
+
+**Initial Release**
+
+- Chat completions API
+- OpenAI compatibility
+- Multi-model gateway
+- Agent creator
+- Basic dashboard
+
+---
+
+## Subscribe to Updates
+
+Get notified about new features and changes:
+
+- **Discord**: Join [discord.gg/elizaos](https://discord.gg/elizaos)
+- **Twitter**: Follow [@elizaOS](https://twitter.com/elizaOS)
+- **GitHub**: Watch [elizaOS/eliza](https://github.com/elizaOS/eliza)

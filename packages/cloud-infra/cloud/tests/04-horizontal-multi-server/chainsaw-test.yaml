@@ -1,0 +1,139 @@
+apiVersion: chainsaw.kyverno.io/v1alpha1
+kind: Test
+metadata:
+  name: horizontal-multi-server
+spec:
+  description: Two independent Server CRs with different projects/tiers, verify isolation
+  steps:
+    - name: Create both Server CRs
+      try:
+        - script:
+            content: kubectl apply -f server-alpha.yaml
+        - apply:
+            file: server-beta.yaml
+      cleanup:
+        - script:
+            content: kubectl delete server srv-alpha -n eliza-agents --ignore-not-found
+
+    - name: Assert alpha Deployment
+      try:
+        - assert:
+            timeout: 15s
+            file: assert-alpha-deployment.yaml
+
+    - name: Assert beta Deployment
+      try:
+        - assert:
+            timeout: 15s
+            file: assert-beta-deployment.yaml
+
+    - name: Assert alpha Service exists
+      try:
+        - assert:
+            resource:
+              apiVersion: v1
+              kind: Service
+              metadata:
+                name: srv-alpha
+                namespace: eliza-agents
+              spec:
+                selector:
+                  eliza.ai/server: srv-alpha
+
+    - name: Assert beta Service exists
+      try:
+        - assert:
+            resource:
+              apiVersion: v1
+              kind: Service
+              metadata:
+                name: srv-beta
+                namespace: eliza-agents
+              spec:
+                selector:
+                  eliza.ai/server: srv-beta
+
+    - name: Assert KEDA dual triggers are distinct
+      try:
+        - assert:
+            resource:
+              apiVersion: keda.sh/v1alpha1
+              kind: ScaledObject
+              metadata:
+                name: srv-alpha
+                namespace: eliza-agents
+              spec:
+                triggers:
+                  - type: redis
+                    metadata:
+                      listName: keda:srv-alpha:activity
+                  - type: cpu
+                    metricType: Utilization
+                    metadata:
+                      value: "70"
+        - assert:
+            resource:
+              apiVersion: keda.sh/v1alpha1
+              kind: ScaledObject
+              metadata:
+                name: srv-beta
+                namespace: eliza-agents
+              spec:
+                triggers:
+                  - type: redis
+                    metadata:
+                      listName: keda:srv-beta:activity
+                  - type: cpu
+                    metricType: Utilization
+                    metadata:
+                      value: "70"
+
+    - name: Assert both CRs reconciled (status.phase proves Redis written)
+      try:
+        - script:
+            timeout: 60s
+            content: |
+              for name in srv-alpha srv-beta; do
+                PHASE=$(kubectl get server "$name" -n eliza-agents -o jsonpath='{.status.phase}')
+                echo "$name phase=$PHASE"
+                echo "$PHASE" | grep -qE "^(Pending|ScaledDown)$" || { echo "FAIL: $name phase=$PHASE, expected Pending or ScaledDown"; exit 1; }
+              done
+
+    - name: Delete alpha, verify beta survives
+      try:
+        - script:
+            timeout: 30s
+            content: |
+              kubectl delete server srv-alpha -n eliza-agents
+              for i in $(seq 1 15); do
+                kubectl get server srv-alpha -n eliza-agents > /dev/null 2>&1 || break
+                sleep 2
+              done
+        - assert:
+            timeout: 15s
+            resource:
+              apiVersion: apps/v1
+              kind: Deployment
+              metadata:
+                name: srv-beta
+                namespace: eliza-agents
+        - assert:
+            resource:
+              apiVersion: v1
+              kind: Service
+              metadata:
+                name: srv-beta
+                namespace: eliza-agents
+        - assert:
+            resource:
+              apiVersion: keda.sh/v1alpha1
+              kind: ScaledObject
+              metadata:
+                name: srv-beta
+                namespace: eliza-agents
+        - script:
+            timeout: 15s
+            content: |
+              PHASE=$(kubectl get server srv-beta -n eliza-agents -o jsonpath='{.status.phase}')
+              echo "srv-beta phase=$PHASE"
+              echo "$PHASE" | grep -qE "^(Pending|ScaledDown)$" || { echo "FAIL: phase=$PHASE, expected Pending or ScaledDown"; exit 1; }

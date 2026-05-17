@@ -1,0 +1,301 @@
+---
+title: Error Handling
+description: Understand elizaOS Cloud API errors and how to handle them gracefully in your applications.
+---
+
+import { Callout, Cards } from "@/docs/components";
+
+# Error Handling
+
+<div className="status-badge status-stable">Stable</div>
+
+Learn how to handle API errors effectively in your elizaOS Cloud integrations.
+
+## Error Format
+
+All errors follow a consistent JSON format:
+
+```json
+{
+  "error": {
+    "code": "ERROR_CODE",
+    "message": "Human-readable description",
+    "details": "Additional context (optional)",
+    "requestId": "req_abc123"
+  }
+}
+```
+
+## HTTP Status Codes
+
+| Status | Meaning             | Action                 |
+| ------ | ------------------- | ---------------------- |
+| `400`  | Bad Request         | Fix request parameters |
+| `401`  | Unauthorized        | Check authentication   |
+| `402`  | Payment Required    | Add credits or payment |
+| `403`  | Forbidden           | Check permissions      |
+| `404`  | Not Found           | Verify resource exists |
+| `409`  | Conflict            | Resolve conflict       |
+| `422`  | Unprocessable       | Fix validation errors  |
+| `429`  | Rate Limited        | Slow down, retry later |
+| `500`  | Server Error        | Retry, contact support |
+| `503`  | Service Unavailable | Wait, retry later      |
+
+## Error Codes
+
+### Authentication Errors
+
+| Code              | Description              | Solution              |
+| ----------------- | ------------------------ | --------------------- |
+| `UNAUTHORIZED`    | Invalid/missing auth     | Check API key         |
+| `INVALID_API_KEY` | API key not recognized   | Verify key is correct |
+| `EXPIRED_TOKEN`   | Session expired          | Re-authenticate       |
+| `FORBIDDEN`       | Insufficient permissions | Check key permissions |
+
+### Request Errors
+
+| Code               | Description              | Solution             |
+| ------------------ | ------------------------ | -------------------- |
+| `INVALID_REQUEST`  | Malformed request        | Check request format |
+| `MISSING_FIELD`    | Required field missing   | Add required field   |
+| `INVALID_FIELD`    | Field value invalid      | Fix field value      |
+| `VALIDATION_ERROR` | Schema validation failed | Check all fields     |
+
+### Resource Errors
+
+| Code             | Description            | Solution              |
+| ---------------- | ---------------------- | --------------------- |
+| `NOT_FOUND`      | Resource doesn't exist | Verify resource ID    |
+| `ALREADY_EXISTS` | Duplicate resource     | Use existing resource |
+| `CONFLICT`       | State conflict         | Resolve conflict      |
+
+### Rate Limiting
+
+| Code             | Description         | Solution       |
+| ---------------- | ------------------- | -------------- |
+| `RATE_LIMITED`   | Too many requests   | Wait and retry |
+| `QUOTA_EXCEEDED` | Plan quota exceeded | Upgrade plan   |
+
+### Payment Errors
+
+| Code                   | Description        | Solution             |
+| ---------------------- | ------------------ | -------------------- |
+| `INSUFFICIENT_CREDITS` | Not enough credits | Top up account       |
+| `PAYMENT_REQUIRED`     | Payment needed     | Add payment method   |
+| `PAYMENT_FAILED`       | Payment declined   | Check payment method |
+
+### Generation Errors
+
+| Code                | Description              | Solution                   |
+| ------------------- | ------------------------ | -------------------------- |
+| `CONTENT_POLICY`    | Content policy violation | Modify content             |
+| `GENERATION_FAILED` | Generation error         | Retry with different input |
+| `MODEL_UNAVAILABLE` | Model offline            | Try different model        |
+| `CONTEXT_LENGTH`    | Input too long           | Reduce input size          |
+
+## Handling Errors
+
+### JavaScript Example
+
+```javascript
+async function makeRequest(url, options) {
+  try {
+    const response = await fetch(url, options);
+
+    if (!response.ok) {
+      const error = await response.json();
+
+      switch (error.error.code) {
+        case "RATE_LIMITED":
+          const retryAfter = response.headers.get("Retry-After");
+          await sleep(retryAfter * 1000);
+          return makeRequest(url, options); // Retry
+
+        case "UNAUTHORIZED":
+          throw new AuthError("Invalid API key");
+
+        case "INSUFFICIENT_CREDITS":
+          throw new PaymentError("Please top up your account");
+
+        default:
+          throw new ApiError(error.error.message, error.error.code);
+      }
+    }
+
+    return response.json();
+  } catch (error) {
+    if (error instanceof ApiError) throw error;
+    throw new NetworkError("Network request failed");
+  }
+}
+```
+
+### Python Example
+
+```python
+import requests
+import time
+
+class ElizaAPIError(Exception):
+    def __init__(self, code, message):
+        self.code = code
+        self.message = message
+
+def make_request(url, headers, data=None, retries=3):
+    for attempt in range(retries):
+        try:
+            response = requests.post(url, headers=headers, json=data)
+
+            if response.status_code == 429:
+                retry_after = int(response.headers.get('Retry-After', 60))
+                time.sleep(retry_after)
+                continue
+
+            if not response.ok:
+                error = response.json()['error']
+                raise ElizaAPIError(error['code'], error['message'])
+
+            return response.json()
+
+        except requests.RequestException as e:
+            if attempt == retries - 1:
+                raise
+            time.sleep(2 ** attempt)  # Exponential backoff
+```
+
+## Retry Strategy
+
+### Retryable Errors
+
+These errors can be retried:
+
+- `429` Rate Limited - Wait for `Retry-After`
+- `500` Server Error - Exponential backoff
+- `503` Service Unavailable - Wait and retry
+- `GENERATION_FAILED` - Retry with modifications
+
+### Non-Retryable Errors
+
+Don't retry these:
+
+- `400` Bad Request
+- `401` Unauthorized
+- `403` Forbidden
+- `404` Not Found
+- `CONTENT_POLICY`
+
+### Exponential Backoff
+
+```javascript
+async function retryWithBackoff(fn, maxRetries = 5) {
+  for (let i = 0; i < maxRetries; i++) {
+    try {
+      return await fn();
+    } catch (error) {
+      if (!isRetryable(error) || i === maxRetries - 1) {
+        throw error;
+      }
+
+      const delay = Math.min(1000 * Math.pow(2, i), 30000);
+      const jitter = Math.random() * 1000;
+      await sleep(delay + jitter);
+    }
+  }
+}
+```
+
+## Debugging
+
+### Request ID
+
+Every response includes a request ID:
+
+```
+X-Request-Id: req_abc123def456
+```
+
+Include this when contacting support.
+
+### Verbose Errors
+
+Enable verbose errors in development:
+
+```bash
+curl -X POST "https://elizacloud.ai/api/v1/chat/completions" \
+  -H "Authorization: Bearer YOUR_API_KEY" \
+  -H "X-Debug: true" \
+  -d '...'
+```
+
+## Best Practices
+
+- **Handle All Errors** — Never assume requests will succeed
+- **Log Errors** — Log error codes and request IDs for debugging
+- **User Feedback** — Show meaningful error messages to users
+- **Graceful Degradation** — Have fallbacks for critical features
+
+## Troubleshooting
+
+### "UNAUTHORIZED" errors
+
+**Problem**: Getting 401 errors on every request.
+
+**Solutions**:
+
+1. Verify your API key starts with `eliza_`
+2. Check the key hasn't been revoked in [Dashboard → API Keys](/dashboard/api-keys)
+3. Ensure you're sending either `Authorization: Bearer YOUR_KEY` or `X-API-Key: YOUR_KEY`
+
+### "RATE_LIMITED" errors
+
+**Problem**: Getting 429 errors during normal usage.
+
+**Solutions**:
+
+1. Implement exponential backoff (see code example above)
+2. Check your rate limit headers: `X-RateLimit-Remaining`
+3. Upgrade your plan for higher limits at [Dashboard → Billing](/dashboard/billing)
+
+### "INSUFFICIENT_CREDITS" errors
+
+**Problem**: Getting 402 errors.
+
+**Solutions**:
+
+1. Check your balance at [Dashboard → Billing](/dashboard/billing)
+2. Enable auto top-up to avoid interruptions
+3. Top up credits via Stripe or crypto payments
+
+### Streaming not working
+
+**Problem**: Stream responses come as a single chunk.
+
+**Solutions**:
+
+1. Ensure `stream: true` is set in your request body
+2. Don't buffer the response—read chunks as they arrive
+3. Check your proxy/CDN isn't buffering SSE responses
+
+### Agent not responding as expected
+
+**Problem**: Agent ignores personality/style settings.
+
+**Solutions**:
+
+1. Verify character JSON is valid with the [API Explorer](/dashboard/api-explorer)
+2. Check you're using the agent ID (not model name) as the `model` parameter
+3. Clear conversation history and start fresh
+
+## Next Steps
+
+<Cards>
+  <Cards.Card title="Rate Limits" href="/docs/rate-limits">
+    Handle rate limiting
+  </Cards.Card>
+  <Cards.Card title="API Reference" href="/docs/api">
+    Complete API documentation
+  </Cards.Card>
+  <Cards.Card title="Authentication" href="/docs/authentication">
+    Fix auth errors
+  </Cards.Card>
+</Cards>

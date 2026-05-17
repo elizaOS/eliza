@@ -1,0 +1,36 @@
+apiVersion: keda.sh/v1alpha1
+kind: ScaledObject
+metadata:
+  name: srv-gen
+  namespace: eliza-agents
+  labels:
+    eliza.ai/managed-by: server-operator
+    eliza.ai/server: srv-gen
+    eliza.ai/tier: shared
+    eliza.ai/project: cloud
+spec:
+  scaleTargetRef:
+    name: srv-gen
+  minReplicaCount: 0
+  maxReplicaCount: 2
+  cooldownPeriod: 900
+  pollingInterval: 30
+  advanced:
+    horizontalPodAutoscalerConfig:
+      behavior:
+        scaleDown:
+          stabilizationWindowSeconds: 300
+          policies:
+            - type: Pods
+              value: 1
+              periodSeconds: 60
+  triggers:
+    - type: redis
+      metadata:
+        address: redis.eliza-infra.svc:6379
+        listName: keda:srv-gen:activity
+        listLength: "1"
+    - type: cpu
+      metricType: Utilization
+      metadata:
+        value: "70"

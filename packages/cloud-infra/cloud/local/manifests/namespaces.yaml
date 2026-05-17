@@ -1,0 +1,9 @@
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: eliza-agents
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: eliza-infra

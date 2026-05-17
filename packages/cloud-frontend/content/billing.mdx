@@ -1,0 +1,225 @@
+---
+title: Billing & Credits
+description: Understand elizaOS Cloud pricing, credits system, and billing management.
+---
+
+import { Callout, Cards } from "@/docs/components";
+
+# Billing & Credits
+
+<div className="status-badge status-stable">Stable</div>
+
+elizaOS Cloud bills usage in USD-backed credits for flexible, pay-as-you-go pricing.
+
+<Callout type="info">
+  Provider pricing is refreshed from upstream catalogs and pricing pages. The
+  dashboard and API Explorer reflect the latest stored rates; this page gives
+  the billing model and current ranges, not a frozen source-of-truth table.
+</Callout>
+
+## Overview
+
+- **Credits**: Universal currency for all services
+- **Pay-as-you-go**: Only pay for what you use
+- **Top-up**: Purchase credits as needed
+- **Auto top-up**: Automatic refills (optional)
+
+## Pricing Model
+
+### Chat & Language Models
+
+- Token pricing is model-specific and refreshed from provider catalogs.
+- The platform applies a 20% markup to the upstream provider cost.
+- Current curated chat models span roughly `$0.00024` to `$0.018` per 1K input tokens.
+
+### Embeddings
+
+- Embeddings are billed per token using the active provider rate plus 20%.
+- `text-embedding-3-small` is currently about `$0.000024` per 1K input tokens after markup.
+
+### Image Generation
+
+- Image generation is billed per output image.
+- Current supported models span roughly `$0.0468` to `$0.0960` per generated image.
+
+### Video Generation
+
+- Video generation is billed from the model’s actual provider economics, not a flat platform fee.
+- Depending on the selected model, default request costs currently span roughly `$0.336` to `$3.840`.
+- Some models bill per second, some bill per request duration, and some bill by resolution/audio combination.
+
+### Voice
+
+- TTS is billed per character. Current published rates are roughly `$0.060` to `$0.120` per 1K characters after markup.
+- STT is billed per decoded audio duration. Current rate is about `$0.0044` per minute after markup.
+- Voice cloning is billed by clone tier and should be reviewed against your ElevenLabs contract if you use account-specific pricing.
+
+### Infrastructure
+
+| Resource                        | Cost                   |
+| ------------------------------- | ---------------------- |
+| Container (per day)             | 0.67 credits (~$20/mo) |
+| Container deployment (one-time) | 0.50 credits           |
+| Knowledge storage (per GB/day)  | 0.01 credits           |
+
+<Callout type="info">
+  Containers are billed **daily**. If credits run low, you'll receive a 48-hour
+  warning before shutdown.
+</Callout>
+
+## Credit Packs
+
+Purchase credit packs from the dashboard. The available pack sizes and promotions
+can change over time, so use the billing UI or credit-pack API for the current
+offerings.
+
+## Checking Balance
+
+### Dashboard
+
+View your balance at [Dashboard → Billing](/dashboard/billing).
+
+### API
+
+```bash
+curl -X GET "https://elizacloud.ai/api/v1/credits/summary" \
+  -H "Authorization: Bearer YOUR_API_KEY"
+```
+
+```json
+{
+  "balance": 4523.5,
+  "pending": 0,
+  "usage": {
+    "today": 45.2,
+    "thisMonth": 1250.0
+  }
+}
+```
+
+## Top Up Credits
+
+### Stripe Checkout
+
+```bash
+curl -X POST "https://elizacloud.ai/api/stripe/create-checkout-session" \
+  -H "Authorization: Bearer YOUR_API_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "packId": "growth"
+  }'
+```
+
+### x402 Crypto Payment
+
+<div className="status-badge status-new">New</div>
+
+Pay with USDC via x402 protocol:
+
+```bash
+curl -X POST "https://elizacloud.ai/api/v1/credits/topup" \
+  -H "Authorization: Bearer YOUR_API_KEY" \
+  -H "X-PAYMENT: <x402-payment-header>"
+```
+
+<Callout type="info">See crypto payment documentation for details.</Callout>
+
+## Auto Top-Up
+
+Configure automatic credit refills:
+
+```bash
+curl -X POST "https://elizacloud.ai/api/auto-top-up/settings" \
+  -H "Authorization: Bearer YOUR_API_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "enabled": true,
+    "threshold": 100,
+    "amount": 1000
+  }'
+```
+
+| Setting     | Description                      |
+| ----------- | -------------------------------- |
+| `enabled`   | Enable auto top-up               |
+| `threshold` | Trigger when balance falls below |
+| `amount`    | Credits to add                   |
+
+## Usage Analytics
+
+Track your spending via the credits summary endpoint:
+
+```bash
+curl -X GET "https://elizacloud.ai/api/v1/credits/summary" \
+  -H "Authorization: Bearer YOUR_API_KEY"
+```
+
+See the [Credits API](/docs/api/credits) for the complete response format including usage breakdown by agents and apps.
+
+## Invoices
+
+### List Invoices
+
+```bash
+curl -X GET "https://elizacloud.ai/api/invoices/list" \
+  -H "Authorization: Bearer YOUR_API_KEY"
+```
+
+### Download Invoice
+
+```bash
+curl -X GET "https://elizacloud.ai/api/invoices/{id}" \
+  -H "Authorization: Bearer YOUR_API_KEY"
+```
+
+## Payment Methods
+
+Payment methods are managed through the Stripe checkout flow. When you create a checkout session via `/api/v1/credits/checkout`, Stripe handles payment method collection securely.
+
+<Callout type="info">
+  Saved payment methods and auto top-up can be configured in your [Dashboard →
+  Billing](/dashboard/billing) settings.
+</Callout>
+
+## Cost Alerts
+
+Cost alerts can be configured in your [Dashboard → Billing](/dashboard/billing) settings. You can set:
+
+- **Email notifications** when balance drops below a threshold
+- **Auto top-up** to automatically add credits when balance is low
+
+## Free Tier
+
+New accounts receive:
+
+- A signup credit grant when enabled
+- Basic access to all features
+- Community support
+
+<Callout type="info">Free credits expire after 30 days of inactivity.</Callout>
+
+## Enterprise
+
+For high-volume usage:
+
+- Custom pricing
+- Volume discounts
+- Dedicated support
+- SLA guarantees
+- Custom invoicing
+
+Contact [sales@eliza.ai](mailto:sales@eliza.ai) for enterprise plans.
+
+## Next Steps
+
+<Cards>
+  <Cards.Card title="Earnings" href="/docs/earnings">
+    Earn from your agents
+  </Cards.Card>
+  <Cards.Card title="Billing" href="/docs/billing">
+    Pay with crypto
+  </Cards.Card>
+  <Cards.Card title="API Reference" href="/docs/api">
+    Usage tracking APIs
+  </Cards.Card>
+</Cards>

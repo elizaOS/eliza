@@ -1,0 +1,383 @@
+---
+title: Credits & Billing
+description: Manage credits and billing on elizaOS Cloud.
+---
+
+import { Callout, Tabs } from "@/docs/components";
+
+# Credits & Billing
+
+<div className="status-badge status-stable">Stable</div>
+
+Manage your credits, billing settings, and view usage.
+
+<Callout type="info">
+  **API Key Support:** All billing endpoints support API key authentication. This enables:
+  - **Developers** to monitor usage and manage billing programmatically
+  - **AI Agents** to autonomously manage their own budgets and ensure continuous operation
+  - **Automation** to configure auto-top-up settings without manual intervention
+</Callout>
+
+## Get Credit Balance
+
+<div className="api-endpoint">
+  <span className="method-badge method-badge-get">GET</span>
+  <span className="path">/api/v1/credits/balance</span>
+</div>
+
+Get your current credit balance.
+
+### Query Parameters
+
+| Parameter | Type    | Description                                                    |
+| --------- | ------- | -------------------------------------------------------------- |
+| `fresh`   | boolean | Set to `true` to bypass cache (use after payment confirmation) |
+
+### Response
+
+```json
+{
+  "balance": 50.0
+}
+```
+
+---
+
+## Get Credit Summary
+
+<div className="api-endpoint">
+  <span className="method-badge method-badge-get">GET</span>
+  <span className="path">/api/v1/credits/summary</span>
+</div>
+
+Get comprehensive credit status including organization balance, agent budgets, app earnings, and redeemable earnings.
+
+### Response
+
+```json
+{
+  "success": true,
+  "organization": {
+    "id": "org_abc123",
+    "name": "My Organization",
+    "creditBalance": 50.0,
+    "autoTopUpEnabled": false,
+    "autoTopUpThreshold": null,
+    "autoTopUpAmount": null,
+    "hasPaymentMethod": true
+  },
+  "agents": [
+    {
+      "id": "agent_xyz789",
+      "name": "My Assistant",
+      "isPublic": false,
+      "monetizationEnabled": false,
+      "hasBudget": true,
+      "allocated": 10.0,
+      "spent": 2.5,
+      "available": 7.5,
+      "dailyLimit": 5.0,
+      "dailySpent": 1.0,
+      "dailyRemaining": 4.0,
+      "isPaused": false,
+      "pauseReason": null,
+      "totalEarnings": 0,
+      "totalRequests": 150
+    }
+  ],
+  "agentsSummary": {
+    "total": 3,
+    "withBudget": 2,
+    "paused": 0,
+    "totalAllocated": 20.0,
+    "totalSpent": 5.0,
+    "totalAvailable": 15.0
+  },
+  "apps": [
+    {
+      "id": "app_def456",
+      "name": "Customer Portal",
+      "slug": "customer-portal",
+      "monetizationEnabled": true,
+      "inferenceMarkupPercentage": 20,
+      "totalCreatorEarnings": 125.5,
+      "totalPlatformRevenue": 31.38
+    }
+  ],
+  "earnings": {
+    "availableBalance": 125.5,
+    "totalEarned": 200.0,
+    "totalRedeemed": 74.5,
+    "totalPending": 0,
+    "breakdown": {
+      "miniapps": 100.0,
+      "agents": 75.0,
+      "mcps": 25.0
+    }
+  },
+  "recentTransactions": [
+    {
+      "id": "txn_abc123",
+      "type": "usage",
+      "amount": -0.05,
+      "description": "Chat completion (gpt-4o)",
+      "createdAt": "2024-01-15T10:30:00Z"
+    }
+  ],
+  "pricing": {
+    "creditsPerDollar": 100,
+    "minimumTopUp": 5.0,
+    "x402Enabled": true
+  }
+}
+```
+
+---
+
+## Create Checkout Session
+
+<div className="api-endpoint">
+  <span className="method-badge method-badge-post">POST</span>
+  <span className="path">/api/v1/credits/checkout</span>
+</div>
+
+Create a Stripe checkout session to purchase credits.
+
+### Request
+
+```json
+{
+  "amount": 50.0
+}
+```
+
+### Response
+
+```json
+{
+  "success": true,
+  "checkoutUrl": "https://checkout.stripe.com/c/pay/cs_xxx...",
+  "sessionId": "cs_xxx..."
+}
+```
+
+Redirect the user to `checkoutUrl` to complete the payment.
+
+---
+
+## Verify Payment
+
+<div className="api-endpoint">
+  <span className="method-badge method-badge-post">POST</span>
+  <span className="path">/api/v1/credits/verify</span>
+</div>
+
+Verify a completed payment and add credits.
+
+### Request
+
+```json
+{
+  "sessionId": "cs_xxx..."
+}
+```
+
+### Response
+
+```json
+{
+  "success": true,
+  "creditsAdded": 50.0,
+  "newBalance": 100.0
+}
+```
+
+---
+
+## Billing Settings
+
+<div className="api-endpoint">
+  <span className="method-badge method-badge-get">GET</span>
+  <span className="path">/api/v1/billing/settings</span>
+</div>
+
+Get billing configuration including auto-top-up settings.
+
+### Response
+
+```json
+{
+  "success": true,
+  "settings": {
+    "autoTopUp": {
+      "enabled": true,
+      "amount": 25.0,
+      "threshold": 5.0,
+      "hasPaymentMethod": true
+    },
+    "limits": {
+      "minAmount": 1,
+      "maxAmount": 1000,
+      "minThreshold": 0,
+      "maxThreshold": 1000
+    }
+  }
+}
+```
+
+---
+
+## Update Billing Settings
+
+<div className="api-endpoint">
+  <span className="method-badge method-badge-put">PUT</span>
+  <span className="path">/api/v1/billing/settings</span>
+</div>
+
+Configure auto-top-up to automatically replenish credits when balance falls below a threshold.
+
+<Callout type="info">
+  **Why Auto-Top-Up?** AI agents operating autonomously need uninterrupted access to credits. 
+  Auto-top-up ensures your agents never stop working due to insufficient balance.
+</Callout>
+
+### Request
+
+```json
+{
+  "autoTopUp": {
+    "enabled": true,
+    "amount": 25.0,
+    "threshold": 5.0
+  }
+}
+```
+
+### Parameters
+
+| Parameter | Type | Description |
+|-----------|------|-------------|
+| `autoTopUp.enabled` | boolean | Enable or disable auto-top-up |
+| `autoTopUp.amount` | number | Amount to charge when triggered ($1-$1000) |
+| `autoTopUp.threshold` | number | Balance threshold to trigger top-up ($0-$1000) |
+
+### Response
+
+```json
+{
+  "success": true,
+  "message": "Billing settings updated successfully",
+  "settings": {
+    "autoTopUp": {
+      "enabled": true,
+      "amount": 25.0,
+      "threshold": 5.0,
+      "hasPaymentMethod": true
+    }
+  }
+}
+```
+
+<Callout type="warning">
+  Auto-top-up requires a saved payment method. Add a payment method via the dashboard before enabling.
+</Callout>
+
+---
+
+## Trigger Auto-Top-Up
+
+<div className="api-endpoint">
+  <span className="method-badge method-badge-post">POST</span>
+  <span className="path">/api/auto-top-up/trigger</span>
+</div>
+
+Manually trigger an auto-top-up check. Useful for testing or when you want to top up immediately.
+
+### Response
+
+```json
+{
+  "success": true,
+  "message": "Auto top-up successful! Added $25.00",
+  "amount": 25.0,
+  "previousBalance": 3.5,
+  "newBalance": 28.5
+}
+```
+
+---
+
+## Get Transaction History
+
+<div className="api-endpoint">
+  <span className="method-badge method-badge-get">GET</span>
+  <span className="path">/api/credits/transactions</span>
+</div>
+
+Get credit transaction history for your organization.
+
+### Query Parameters
+
+| Parameter | Type    | Description                              |
+| --------- | ------- | ---------------------------------------- |
+| `limit`   | integer | Max results returned (default: 100)      |
+| `hours`   | integer | Limit results to the last N hours        |
+
+### Response
+
+```json
+{
+  "transactions": [
+    {
+      "id": "txn_abc123",
+      "organization_id": "org_123",
+      "type": "usage",
+      "amount": -100,
+      "description": "Text to speech generation",
+      "metadata": null,
+      "stripe_payment_intent_id": null,
+      "created_at": "2024-01-15T10:30:00.000Z"
+    }
+  ],
+  "total": 1,
+  "period": {
+    "start": "2024-01-15T09:30:00.000Z",
+    "end": "2024-01-15T10:30:00.000Z"
+  }
+}
+```
+
+Note: `offset` is not supported for this endpoint.
+
+---
+
+## Crypto Payments
+
+For cryptocurrency payments, use the crypto payment endpoints:
+
+<div className="api-endpoint">
+  <span className="method-badge method-badge-post">POST</span>
+  <span className="path">/api/crypto/payments</span>
+</div>
+
+Create a crypto payment request.
+
+<div className="api-endpoint">
+  <span className="method-badge method-badge-get">GET</span>
+  <span className="path">/api/crypto/status</span>
+</div>
+
+Check crypto payment status.
+
+---
+
+## Pricing Reference
+
+Pricing is calculated from current model/provider configuration and usage.
+Use the billing dashboard, API Explorer, and model catalog endpoints for live
+rates rather than copying static numbers from this page.
+
+<Callout type="info">
+  Actual pricing is calculated based on model and token usage. Check the
+  [Dashboard](/dashboard/billing) for real-time pricing.
+</Callout>

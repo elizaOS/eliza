@@ -1,0 +1,282 @@
+---
+title: Gallery
+description: Manage your generated images and videos in the elizaOS Cloud Gallery.
+---
+
+import { Callout, Cards } from "@/docs/components";
+
+# Gallery
+
+Store, organize, and share your AI-generated content.
+
+<div className="status-badge status-stable">Stable</div>
+
+## Overview
+
+The Gallery provides:
+
+- **Storage**: All generated images and videos
+- **Organization**: Collections and tags
+- **Sharing**: Public links and embeds
+- **Management**: Download, delete, and organize
+
+## Dashboard
+
+Access your gallery at [Dashboard → Gallery](/dashboard/gallery).
+
+## API
+
+### List Gallery Items
+
+```bash
+curl -X GET "https://elizacloud.ai/api/v1/gallery?type=image&limit=20" \
+  -H "Authorization: Bearer YOUR_API_KEY"
+```
+
+### Response
+
+```json
+{
+  "items": [
+    {
+      "id": "gal_abc123",
+      "type": "image",
+      "url": "https://your-storage.vercel-storage.com/images/abc123.png",
+      "prompt": "A sunset over mountains",
+      "model": "google/gemini-2.5-flash-image",
+      "width": 1024,
+      "height": 1024,
+      "createdAt": "2024-01-15T10:30:00Z",
+      "tags": ["landscape", "sunset"]
+    }
+  ],
+  "total": 150,
+  "page": 1,
+  "pageSize": 20
+}
+```
+
+### Query Parameters
+
+| Parameter    | Type    | Description                      |
+| ------------ | ------- | -------------------------------- |
+| `type`       | string  | `image` or `video`               |
+| `limit`      | integer | Items per page (max 100)         |
+| `page`       | integer | Page number                      |
+| `tags`       | string  | Filter by tags (comma-separated) |
+| `collection` | string  | Filter by collection ID          |
+| `search`     | string  | Search prompts                   |
+
+### Get Single Item
+
+```bash
+curl -X GET "https://elizacloud.ai/api/v1/gallery/gal_abc123" \
+  -H "Authorization: Bearer YOUR_API_KEY"
+```
+
+### Delete Item
+
+```bash
+curl -X DELETE "https://elizacloud.ai/api/v1/gallery/gal_abc123" \
+  -H "Authorization: Bearer YOUR_API_KEY"
+```
+
+## Collections
+
+Organize items into collections:
+
+### Create Collection
+
+```bash
+curl -X POST "https://elizacloud.ai/api/v1/gallery/collections" \
+  -H "Authorization: Bearer YOUR_API_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "name": "Product Shots",
+    "description": "Generated product images"
+  }'
+```
+
+### Add to Collection
+
+```bash
+curl -X POST "https://elizacloud.ai/api/v1/gallery/collections/{collectionId}/items" \
+  -H "Authorization: Bearer YOUR_API_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "itemIds": ["gal_abc123", "gal_def456"]
+  }'
+```
+
+### List Collections
+
+```bash
+curl -X GET "https://elizacloud.ai/api/v1/gallery/collections" \
+  -H "Authorization: Bearer YOUR_API_KEY"
+```
+
+## Tags
+
+Add tags for organization:
+
+### Update Tags
+
+```bash
+curl -X PATCH "https://elizacloud.ai/api/v1/gallery/gal_abc123" \
+  -H "Authorization: Bearer YOUR_API_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "tags": ["landscape", "sunset", "mountain"]
+  }'
+```
+
+### Search by Tags
+
+```bash
+curl -X GET "https://elizacloud.ai/api/v1/gallery?tags=landscape,sunset" \
+  -H "Authorization: Bearer YOUR_API_KEY"
+```
+
+## Sharing
+
+### Generate Share Link
+
+```bash
+curl -X POST "https://elizacloud.ai/api/v1/gallery/gal_abc123/share" \
+  -H "Authorization: Bearer YOUR_API_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "expiresIn": "7d",
+    "password": "optional-password"
+  }'
+```
+
+```json
+{
+  "shareUrl": "https://elizacloud.ai/share/xyz789",
+  "expiresAt": "2024-01-22T10:30:00Z"
+}
+```
+
+### Share Options
+
+| Option          | Description                              |
+| --------------- | ---------------------------------------- |
+| `expiresIn`     | Link expiration (1h, 1d, 7d, 30d, never) |
+| `password`      | Optional password protection             |
+| `allowDownload` | Allow visitors to download               |
+
+### Revoke Share
+
+```bash
+curl -X DELETE "https://elizacloud.ai/api/v1/gallery/gal_abc123/share" \
+  -H "Authorization: Bearer YOUR_API_KEY"
+```
+
+## Storage
+
+### Storage Limits
+
+| Plan       | Storage   |
+| ---------- | --------- |
+| Free       | 1 GB      |
+| Pro        | 50 GB     |
+| Enterprise | Unlimited |
+
+### Check Usage
+
+```bash
+curl -X GET "https://elizacloud.ai/api/v1/gallery/storage" \
+  -H "Authorization: Bearer YOUR_API_KEY"
+```
+
+```json
+{
+  "used": 1073741824,
+  "limit": 53687091200,
+  "usedFormatted": "1 GB",
+  "limitFormatted": "50 GB"
+}
+```
+
+## Bulk Operations
+
+### Bulk Delete
+
+```bash
+curl -X POST "https://elizacloud.ai/api/v1/gallery/bulk/delete" \
+  -H "Authorization: Bearer YOUR_API_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "itemIds": ["gal_abc123", "gal_def456", "gal_ghi789"]
+  }'
+```
+
+### Bulk Tag
+
+```bash
+curl -X POST "https://elizacloud.ai/api/v1/gallery/bulk/tag" \
+  -H "Authorization: Bearer YOUR_API_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "itemIds": ["gal_abc123", "gal_def456"],
+    "tags": ["approved", "final"]
+  }'
+```
+
+## Download
+
+### Single Item
+
+```bash
+curl -X GET "https://elizacloud.ai/api/v1/gallery/gal_abc123/download" \
+  -H "Authorization: Bearer YOUR_API_KEY" \
+  --output image.png
+```
+
+### Bulk Download (ZIP)
+
+```bash
+curl -X POST "https://elizacloud.ai/api/v1/gallery/bulk/download" \
+  -H "Authorization: Bearer YOUR_API_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "itemIds": ["gal_abc123", "gal_def456"]
+  }' \
+  --output gallery.zip
+```
+
+## Auto-Save
+
+Generated content is automatically saved to your gallery:
+
+```javascript
+const image = await client.images.generate({
+  prompt: "A beautiful sunset",
+  saveToGallery: true, // Default: true
+  galleryTags: ["sunset", "landscape"],
+});
+
+console.log(image.galleryId); // gal_abc123
+```
+
+## Best Practices
+
+- **Organize Early** — Use collections and tags from the start to stay organized
+- **Clean Up** — Delete unwanted generations regularly to save storage quota
+- **Backup** — Download important content periodically using bulk export
+- **Share Wisely** — Use expiring links with passwords for sensitive content
+
+## Next Steps
+
+<Cards>
+  <Cards.Card title="Image Generation" href="/docs/image-generation">
+    Generate more images
+  </Cards.Card>
+  <Cards.Card title="Video Generation" href="/docs/video-generation">
+    Create videos
+  </Cards.Card>
+  <Cards.Card title="Billing" href="/docs/billing">
+    Storage pricing
+  </Cards.Card>
+</Cards>

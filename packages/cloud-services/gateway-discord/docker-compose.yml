@@ -1,0 +1,30 @@
+version: "3.8"
+
+services:
+  gateway-discord:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    ports:
+      - "3001:3000"
+    environment:
+      - NODE_ENV=production
+      - PORT=3000
+      - POD_NAME=gateway-local
+      # URL resolution: ELIZA_CLOUD_URL → NEXT_PUBLIC_APP_URL → default
+      - ELIZA_CLOUD_URL=${ELIZA_CLOUD_URL:-}
+      - NEXT_PUBLIC_APP_URL=${NEXT_PUBLIC_APP_URL:-http://host.docker.internal:3000}
+      # JWT Authentication - Gateway exchanges bootstrap secret for JWT tokens
+      - GATEWAY_BOOTSTRAP_SECRET=${GATEWAY_BOOTSTRAP_SECRET}
+      - REDIS_URL=${REDIS_URL}
+      - KV_REST_API_URL=${KV_REST_API_URL}
+      - KV_REST_API_TOKEN=${KV_REST_API_TOKEN}
+      - BLOB_READ_WRITE_TOKEN=${BLOB_READ_WRITE_TOKEN}
+      - LOG_LEVEL=${LOG_LEVEL:-info}
+    restart: unless-stopped
+    healthcheck:
+      test: [ "CMD", "bun", "-e", "fetch('http://localhost:3000/health').then(r => process.exit(r.ok ? 0 : 1)).catch(() => process.exit(1))" ]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 5s

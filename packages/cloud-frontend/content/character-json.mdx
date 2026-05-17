@@ -1,0 +1,323 @@
+---
+title: Character JSON
+description: Complete reference for elizaOS character JSON configuration. Define agent personality, behavior, and settings.
+---
+
+import { Callout, Cards } from "@/docs/components";
+
+# Character JSON
+
+Define your agent's personality and behavior with the character JSON format.
+
+<div className="status-badge status-stable">Stable</div>
+
+## Overview
+
+The character JSON is the core configuration for an elizaOS agent. It defines:
+
+- **Identity**: Name, bio, and background
+- **Personality**: Communication style and behavior
+- **Capabilities**: Model settings and plugins
+- **Knowledge**: Topics and expertise areas
+
+## Complete Schema
+
+```json
+{
+  "name": "Agent Name",
+  "description": "Brief description",
+  "bio": ["First bio statement", "Second bio statement"],
+  "lore": ["Background story element", "Another lore element"],
+  "style": {
+    "all": ["Global style instruction"],
+    "chat": ["Chat-specific style"],
+    "post": ["Social media style"]
+  },
+  "topics": ["topic1", "topic2"],
+  "adjectives": ["helpful", "friendly"],
+  "modelProvider": "openai",
+  "settings": {
+    "model": "gpt-4o",
+    "temperature": 0.7,
+    "maxTokens": 4096
+  },
+  "plugins": [],
+  "clients": []
+}
+```
+
+## Field Reference
+
+### Core Identity
+
+| Field         | Type     | Required | Description           |
+| ------------- | -------- | -------- | --------------------- |
+| `name`        | string   | ✓        | Agent display name    |
+| `description` | string   |          | Brief description     |
+| `bio`         | string[] | ✓        | Background statements |
+| `lore`        | string[] |          | Backstory elements    |
+
+### Personality
+
+| Field        | Type     | Required | Description            |
+| ------------ | -------- | -------- | ---------------------- |
+| `style.all`  | string[] |          | Global style rules     |
+| `style.chat` | string[] |          | Chat interaction style |
+| `style.post` | string[] |          | Social media style     |
+| `topics`     | string[] |          | Expertise areas        |
+| `adjectives` | string[] |          | Personality traits     |
+
+### Model Settings
+
+| Field                  | Type   | Required | Description         |
+| ---------------------- | ------ | -------- | ------------------- |
+| `modelProvider`        | string | ✓        | AI provider         |
+| `settings.model`       | string |          | Specific model      |
+| `settings.temperature` | number |          | Creativity (0-2)    |
+| `settings.maxTokens`   | number |          | Max response length |
+
+## Bio Guidelines
+
+The bio array defines your agent's background:
+
+```json
+{
+  "bio": [
+    "Expert in machine learning and data science",
+    "10 years of experience in AI research",
+    "Published author and conference speaker",
+    "Passionate about explaining complex topics simply"
+  ]
+}
+```
+
+**Best Practices:**
+
+- 3-5 statements
+- Mix expertise and personality
+- Be specific about capabilities
+- Include relevant experience
+
+## Style Instructions
+
+### Global Style (`style.all`)
+
+Applies to all interactions:
+
+```json
+{
+  "style": {
+    "all": [
+      "Be professional yet approachable",
+      "Use clear, concise language",
+      "Cite sources when making claims",
+      "Ask clarifying questions when needed"
+    ]
+  }
+}
+```
+
+### Chat Style (`style.chat`)
+
+Specific to chat conversations:
+
+```json
+{
+  "style": {
+    "chat": [
+      "Keep responses focused and concise",
+      "Use bullet points for complex topics",
+      "Provide examples when helpful",
+      "End with a question to continue the conversation"
+    ]
+  }
+}
+```
+
+### Post Style (`style.post`)
+
+For social media interactions:
+
+```json
+{
+  "style": {
+    "post": [
+      "Keep posts under 280 characters",
+      "Use relevant hashtags",
+      "Be engaging and thought-provoking",
+      "Include a call to action"
+    ]
+  }
+}
+```
+
+## Model Providers
+
+### Available Providers
+
+| Provider    | Models                           |
+| ----------- | -------------------------------- |
+| `openai`    | OpenAI-compatible model ids from the current catalog |
+| `anthropic` | claude-sonnet-4-6, claude-opus-4-7 |
+| `google`    | gemini-1.5-pro, gemini-1.5-flash |
+
+### Provider Settings
+
+```json
+{
+  "modelProvider": "openai",
+  "settings": {
+    "model": "gpt-4o",
+    "temperature": 0.7,
+    "maxTokens": 4096,
+    "topP": 0.9,
+    "frequencyPenalty": 0,
+    "presencePenalty": 0
+  }
+}
+```
+
+## Advanced Settings
+
+### Knowledge Base
+
+Connect documents:
+
+```json
+{
+  "settings": {
+    "knowledge": {
+      "enabled": true,
+      "documentIds": ["doc_abc123"],
+      "queryLimit": 5,
+      "minScore": 0.7
+    }
+  }
+}
+```
+
+### MCP Tools
+
+Enable MCP servers:
+
+```json
+{
+  "settings": {
+    "mcp": {
+      "enabled": true,
+      "servers": [{ "id": "weather", "url": "https://mcp.eliza.ai/weather" }]
+    }
+  }
+}
+```
+
+### Voice
+
+Configure voice synthesis:
+
+```json
+{
+  "settings": {
+    "voice": {
+      "provider": "elevenlabs",
+      "voiceId": "voice_abc123",
+      "model": "eleven_multilingual_v2"
+    }
+  }
+}
+```
+
+## Templates
+
+### Customer Support
+
+```json
+{
+  "name": "Support Assistant",
+  "bio": [
+    "Dedicated customer support specialist",
+    "Expert in troubleshooting and problem-solving",
+    "Patient and thorough in explanations"
+  ],
+  "style": {
+    "all": [
+      "Always be polite and empathetic",
+      "Acknowledge the customer's issue",
+      "Provide step-by-step solutions"
+    ],
+    "chat": [
+      "Ask for specifics when needed",
+      "Confirm understanding before solving",
+      "Follow up on resolution"
+    ]
+  },
+  "topics": ["support", "troubleshooting", "product help"],
+  "modelProvider": "openai",
+  "settings": {
+    "model": "gpt-4o",
+    "temperature": 0.5
+  }
+}
+```
+
+### Research Assistant
+
+```json
+{
+  "name": "Research Assistant",
+  "bio": [
+    "Academic researcher with expertise in literature review",
+    "Skilled at synthesizing complex information",
+    "Trained on scientific methodology"
+  ],
+  "style": {
+    "all": [
+      "Use academic language appropriately",
+      "Cite sources when possible",
+      "Be precise and thorough"
+    ],
+    "chat": [
+      "Break down complex topics",
+      "Provide evidence for claims",
+      "Suggest further reading"
+    ]
+  },
+  "topics": ["research", "analysis", "academic writing"],
+  "modelProvider": "anthropic",
+  "settings": {
+    "model": "claude-sonnet-4-6",
+    "temperature": 0.3
+  }
+}
+```
+
+## Validation
+
+The character JSON is validated on upload. Common errors:
+
+| Error                 | Cause                 | Solution               |
+| --------------------- | --------------------- | ---------------------- |
+| `name required`       | Missing name field    | Add name               |
+| `invalid provider`    | Unknown modelProvider | Use supported provider |
+| `invalid temperature` | Outside 0-2 range     | Adjust temperature     |
+
+## Best Practices
+
+- **Be Specific** — Detailed bios and styles produce more consistent agents
+- **Test Thoroughly** — Try various scenarios before deploying
+- **Iterate** — Refine based on actual conversations
+- **Version Control** — Track changes to your character files in git
+
+## Next Steps
+
+<Cards>
+  <Cards.Card title="Agent Creator" href="/docs/agent-creator">
+    Build agents visually
+  </Cards.Card>
+  <Cards.Card title="AI Agents" href="/docs/agents">
+    Deploy your agent
+  </Cards.Card>
+  <Cards.Card title="Knowledge Base" href="/docs/documents">
+    Add documents for RAG
+  </Cards.Card>
+</Cards>

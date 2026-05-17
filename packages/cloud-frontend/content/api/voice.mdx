@@ -1,0 +1,395 @@
+---
+title: Voice & TTS
+description: Text-to-speech and voice cloning on elizaOS Cloud.
+---
+
+import { Callout, Tabs } from "@/docs/components";
+
+# Voice & TTS
+
+<div className="status-badge status-stable">Stable</div>
+
+Text-to-speech generation and voice cloning capabilities.
+
+<Callout type="info">
+  **API Key Support:** `/api/v1/voice/*` endpoints support both session-based authentication and API key authentication.
+  Legacy `/api/elevenlabs/*` endpoints are session-based only.
+</Callout>
+
+## Endpoint Patterns
+
+Voice APIs are available at two paths:
+
+| Pattern | Description | Auth | Use Case |
+|---------|-------------|------|----------|
+| `/api/v1/voice/*` | **Recommended** - Generic, provider-agnostic endpoints | Session or API key | New integrations, programmatic access |
+| `/api/elevenlabs/*` | Legacy endpoints (still supported) | Session only | Existing integrations, backwards compatibility |
+
+API key authentication is available only on `/api/v1/voice/*`. Legacy `/api/elevenlabs/*` endpoints require session-based auth and do not accept API keys.
+
+---
+
+## Text to Speech
+
+<div className="api-endpoint">
+  <span className="method-badge method-badge-post">POST</span>
+  <span className="path">/api/v1/voice/tts</span>
+</div>
+
+<Callout type="default">
+  Legacy path: `/api/elevenlabs/tts` (still supported for backwards compatibility)
+</Callout>
+
+Convert text to speech audio using premium AI voices.
+
+<Tabs items={['cURL', 'JavaScript', 'Python']}>
+  <Tabs.Tab>
+```bash
+curl -X POST "https://elizacloud.ai/api/v1/voice/tts" \
+  -H "X-API-Key: YOUR_API_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "text": "Hello, this is a test of the text to speech system.",
+    "voiceId": "21m00Tcm4TlvDq8ikWAM",
+    "modelId": "eleven_multilingual_v2"
+  }' \
+  --output speech.mp3
+```
+  </Tabs.Tab>
+  <Tabs.Tab>
+```javascript
+const response = await fetch('https://elizacloud.ai/api/v1/voice/tts', {
+  method: 'POST',
+  headers: {
+    'X-API-Key': 'YOUR_API_KEY',
+    'Content-Type': 'application/json',
+  },
+  body: JSON.stringify({
+    text: 'Hello, this is a test.',
+    voiceId: '21m00Tcm4TlvDq8ikWAM',
+    modelId: 'eleven_multilingual_v2',
+  }),
+});
+
+const audioBlob = await response.blob();
+const audioUrl = URL.createObjectURL(audioBlob);
+
+```
+  </Tabs.Tab>
+  <Tabs.Tab>
+```python
+import requests
+
+response = requests.post(
+    'https://elizacloud.ai/api/v1/voice/tts',
+    headers={
+        'X-API-Key': 'YOUR_API_KEY',
+        'Content-Type': 'application/json',
+    },
+    json={
+        'text': 'Hello, this is a test.',
+        'voiceId': '21m00Tcm4TlvDq8ikWAM',
+        'modelId': 'eleven_multilingual_v2',
+    }
+)
+
+with open('speech.mp3', 'wb') as f:
+    f.write(response.content)
+```
+
+  </Tabs.Tab>
+</Tabs>
+
+### Parameters
+
+| Parameter          | Type   | Required | Description                                 |
+| ------------------ | ------ | -------- | ------------------------------------------- |
+| `text`             | string | ✓        | Text to convert to speech (max 5000 chars)  |
+| `voiceId`          | string | ✓        | Voice ID to use (see List Voices)           |
+| `modelId`          | string |          | Model ID. Default: `eleven_multilingual_v2` |
+| `stability`        | number |          | Voice stability (0-1). Default: 0.5         |
+| `similarity_boost` | number |          | Voice similarity (0-1). Default: 0.75       |
+
+### Available Models
+
+| Model                    | Languages | Quality | Speed   |
+| ------------------------ | --------- | ------- | ------- |
+| `eleven_multilingual_v2` | 29        | Highest | Medium  |
+| `eleven_turbo_v2_5`      | 32        | High    | Fast    |
+| `eleven_flash_v2_5`      | 32        | High    | Fast    |
+| `eleven_v3`              | Multi     | Highest | Medium  |
+
+<Callout type="info">
+  Voice pricing is refreshed separately from the text/image/video catalogs. TTS
+  is billed per character, STT per decoded audio duration, and voice cloning by
+  clone tier.
+</Callout>
+
+### Response
+
+Returns audio data as `audio/mpeg` stream. The `Content-Length` header indicates file size.
+
+---
+
+## Speech to Text
+
+<div className="api-endpoint">
+  <span className="method-badge method-badge-post">POST</span>
+  <span className="path">/api/v1/voice/stt</span>
+</div>
+
+<Callout type="default">
+  Legacy path: `/api/elevenlabs/stt` (still supported for backwards compatibility)
+</Callout>
+
+Transcribe audio to text.
+
+### Request
+
+Upload audio as `multipart/form-data`:
+
+```bash
+curl -X POST "https://elizacloud.ai/api/v1/voice/stt" \
+  -H "X-API-Key: YOUR_API_KEY" \
+  -F "audio=@recording.mp3"
+```
+
+### Response
+
+Returns JSON with `transcript` and `duration_ms`.
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `transcript` | string | Transcribed text |
+| `duration_ms` | number | Audio duration in milliseconds |
+
+```json
+{
+  "transcript": "Hello, this is a transcription test.",
+  "duration_ms": 3245
+}
+```
+
+---
+
+## List Voices
+
+<div className="api-endpoint">
+  <span className="method-badge method-badge-get">GET</span>
+  <span className="path">/api/v1/voice/list</span>
+</div>
+
+<Callout type="default">
+  Legacy path: `/api/elevenlabs/voices/user` (still supported for backwards compatibility)
+</Callout>
+
+Get your cloned voices with pagination and filtering.
+
+### Query Parameters
+
+| Parameter | Type | Description |
+|-----------|------|-------------|
+| `includeInactive` | boolean | Include inactive voices (default: false) |
+| `cloneType` | string | Filter by `instant` or `professional` |
+| `limit` | number | Results per page (default: 50, max: 100) |
+| `offset` | number | Pagination offset |
+
+### Response
+
+```json
+{
+  "success": true,
+  "voices": [
+    {
+      "id": "123e4567-e89b-12d3-a456-426614174000",
+      "elevenlabsVoiceId": "xyz789",
+      "name": "My Custom Voice",
+      "description": "A professional voice clone",
+      "cloneType": "instant",
+      "sampleCount": 3,
+      "usageCount": 150,
+      "isActive": true,
+      "createdAt": "2024-01-15T10:30:00Z"
+    }
+  ],
+  "total": 5,
+  "limit": 50,
+  "offset": 0,
+  "hasMore": false
+}
+```
+
+---
+
+## Clone Voice
+
+<div className="api-endpoint">
+  <span className="method-badge method-badge-post">POST</span>
+  <span className="path">/api/v1/voice/clone</span>
+</div>
+
+<Callout type="default">
+  Legacy path: `/api/elevenlabs/voices/clone` (still supported for backwards compatibility)
+</Callout>
+
+Create a voice clone from audio samples.
+
+### Request
+
+Upload audio samples as `multipart/form-data`:
+
+```bash
+curl -X POST "https://elizacloud.ai/api/v1/voice/clone" \
+  -H "X-API-Key: YOUR_API_KEY" \
+  -F "name=My Voice" \
+  -F "cloneType=instant" \
+  -F "file0=@sample1.mp3" \
+  -F "file1=@sample2.mp3"
+```
+
+### Response
+
+```json
+{
+  "id": "123e4567-e89b-12d3-a456-426614174000",
+  "name": "My Voice",
+  "status": "processing"
+}
+```
+
+<Callout type="info">
+  **Voice Cloning Tips:** - Provide 1-5 minutes of clear audio for best results
+  - Use high-quality recordings with minimal background noise - Speaking clearly
+  and at a natural pace produces better clones - Multiple samples in different
+  contexts improve voice quality
+</Callout>
+
+---
+
+## Get Voice
+
+<div className="api-endpoint">
+  <span className="method-badge method-badge-get">GET</span>
+  <span className="path">/api/v1/voice/{"{id}"}</span>
+</div>
+
+<Callout type="default">
+  Legacy path: `/api/elevenlabs/voices/{id}` (still supported for backwards compatibility)
+</Callout>
+
+Get details for a specific voice by its internal UUID.
+
+```bash
+curl "https://elizacloud.ai/api/v1/voice/123e4567-e89b-12d3-a456-426614174000" \
+  -H "X-API-Key: YOUR_API_KEY"
+```
+
+---
+
+## Update Voice
+
+<div className="api-endpoint">
+  <span className="method-badge method-badge-patch">PATCH</span>
+  <span className="path">/api/v1/voice/{"{id}"}</span>
+</div>
+
+Update a voice's metadata.
+
+```bash
+curl -X PATCH "https://elizacloud.ai/api/v1/voice/123e4567-e89b-12d3-a456-426614174000" \
+  -H "X-API-Key: YOUR_API_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{"name": "Updated Voice Name", "isActive": true}'
+```
+
+---
+
+## Delete Voice
+
+<div className="api-endpoint">
+  <span className="method-badge method-badge-delete">DELETE</span>
+  <span className="path">/api/v1/voice/{"{id}"}</span>
+</div>
+
+<Callout type="default">
+  Legacy path: `/api/elevenlabs/voices/{id}` (still supported for backwards compatibility)
+</Callout>
+
+Delete a cloned voice from your account.
+
+```bash
+curl -X DELETE "https://elizacloud.ai/api/v1/voice/123e4567-e89b-12d3-a456-426614174000" \
+  -H "X-API-Key: YOUR_API_KEY"
+```
+
+### Response
+
+```json
+{
+  "success": true,
+  "message": "Voice deleted successfully"
+}
+```
+
+---
+
+## Voice Cloning Jobs
+
+<div className="api-endpoint">
+  <span className="method-badge method-badge-get">GET</span>
+  <span className="path">/api/v1/voice/jobs</span>
+</div>
+
+<Callout type="default">
+  Legacy path: `/api/elevenlabs/voices/jobs` (still supported for backwards compatibility)
+</Callout>
+
+Check status of active voice cloning jobs.
+
+### Response
+
+```json
+{
+  "success": true,
+  "jobs": [
+    {
+      "id": "job_xyz789",
+      "voiceName": "My Voice",
+      "jobType": "instant",
+      "status": "processing",
+      "progress": 50,
+      "createdAt": "2024-01-15T10:30:00Z"
+    }
+  ],
+  "total": 1
+}
+```
+
+### Status Values
+
+| Status       | Description                          |
+| ------------ | ------------------------------------ |
+| `pending`    | Job is queued                        |
+| `processing` | Voice clone is being generated       |
+| `completed`  | Voice is ready to use                |
+| `failed`     | Cloning failed (check audio quality) |
+
+---
+
+## Pricing
+
+Voice pricing can vary by provider configuration and clone tier. See
+[Billing & Credits](/docs/billing) and the dashboard/API Explorer for current
+rates.
+
+---
+
+## Error Handling
+
+| Code | Error                | Solution                                |
+| ---- | -------------------- | --------------------------------------- |
+| 400  | Invalid voice ID     | Use a valid voice from List Voices      |
+| 400  | Text too long        | Split text into chunks under 5000 chars |
+| 402  | Insufficient credits | Add credits to your account             |
+| 404  | Voice not found      | Voice may have been deleted             |
+| 429  | Rate limited         | Wait and retry                          |

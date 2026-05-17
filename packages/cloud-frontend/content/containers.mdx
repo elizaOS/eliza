@@ -1,0 +1,126 @@
+---
+title: Containers
+description: Deploy custom Docker containers on Eliza Cloud.
+---
+
+import { Callout, Steps, Cards } from "@/docs/components";
+
+# Containers
+
+Deploy custom Docker images on Eliza Cloud managed container infrastructure.
+
+<div className="status-badge status-beta">Beta</div>
+
+## Overview
+
+Container deployment provides:
+
+- **Custom runtimes**: Run your own Docker image.
+- **Project identity**: Use `project_name` as the stable deployment identifier.
+- **Managed health checks**: Poll your `health_check_path` and update status.
+- **Logs and metrics**: Fetch logs and runtime metrics through the API.
+- **Earnings-first billing**: Daily hosting can be paid from redeemable earnings before org credits.
+
+## Quick Start
+
+```bash
+curl -X POST "https://www.elizacloud.ai/api/v1/containers" \
+  -H "Authorization: Bearer $ELIZA_CLOUD_API_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "name": "my-service",
+    "project_name": "my-service",
+    "image": "ghcr.io/acme/my-service:latest",
+    "port": 3000,
+    "cpu": 256,
+    "memory": 512,
+    "desired_count": 1,
+    "health_check_path": "/health",
+    "environment_vars": {
+      "NODE_ENV": "production"
+    }
+  }'
+```
+
+## Deploying a Container
+
+<Steps>
+### Build and push your image
+
+Push to a registry that Cloud nodes can pull from, such as GHCR, Docker Hub, or your private registry.
+
+### Create the container
+
+Send `image`, `project_name`, `port`, resources, and any `environment_vars`.
+
+### Poll status
+
+Poll `GET /api/v1/containers/{id}` until `data.status` is `running` or `failed`.
+
+### Patch your Cloud app
+
+For app projects, patch the Eliza Cloud app `app_url` and `allowed_origins` to the running container URL.
+</Steps>
+
+## Deployment Configuration
+
+```json
+{
+  "name": "my-service",
+  "project_name": "my-service",
+  "image": "ghcr.io/acme/my-service:latest",
+  "port": 3000,
+  "cpu": 256,
+  "memory": 512,
+  "desired_count": 1,
+  "health_check_path": "/health",
+  "environment_vars": {
+    "PORT": "3000",
+    "ELIZA_APP_ID": "uuid-abc123"
+  }
+}
+```
+
+| Field | Description |
+| ----- | ----------- |
+| `name` | Human-readable container name. |
+| `project_name` | Stable project identifier used for deployment records and project-scoped volumes. |
+| `image` | Full image reference pulled directly by the container backend. |
+| `port` | Application port. Default: 3000. |
+| `cpu` | CPU units used for API compatibility and billing. Default: 256. |
+| `memory` | Memory in MB. Default: 512. |
+| `desired_count` | Currently must be 1. |
+| `health_check_path` | HTTP health path. Default: `/health`. |
+| `environment_vars` | String key/value environment variables. |
+
+<Callout type="info">
+  The current public create-container payload uses `image`, not the older `ecr_image_uri` field. The backend pulls the image directly on the target Docker node.
+</Callout>
+
+## Billing
+
+Daily container billing calculates hosting cost and, when `payAsYouGoFromEarnings` is enabled for the organization, debits the owner's redeemable earnings first. Any remainder falls through to organization credits.
+
+When earnings-first billing is off, hosting bills come only from credits and earnings remain available for token cashout.
+
+## Best Practices
+
+- Expose a fast `/health` route.
+- Keep `desired_count` at `1`.
+- Keep secrets server-side and pass only required runtime env vars.
+- Use a stable `project_name`; project-scoped persistent data is keyed by organization and project name.
+- For monetized apps, pass `ELIZA_APP_ID` to your container and patch the Cloud app URL after deploy.
+
+## Next Steps
+
+<Cards>
+  <Cards.Card title="Monetized Apps" href="/docs/monetized-apps">
+    Deploy an earning app
+  </Cards.Card>
+  <Cards.Card title="Containers API" href="/docs/api/containers">
+    API reference
+  </Cards.Card>
+  <Cards.Card title="Billing" href="/docs/billing">
+    Understand hosting costs
+  </Cards.Card>
+</Cards>

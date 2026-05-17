@@ -1,0 +1,189 @@
+---
+title: Knowledge
+description: Upload and query documents for RAG on elizaOS Cloud.
+---
+
+import { Callout, Tabs } from "@/docs/components";
+
+# Knowledge
+
+<div className="status-badge status-stable">Stable</div>
+
+Upload documents and query your knowledge base for RAG applications.
+
+## Upload Document
+
+<div className="api-endpoint">
+  <span className="method-badge method-badge-post">POST</span>
+  <span className="path">/api/v1/documents/upload-file</span>
+</div>
+
+Upload one or more documents to your knowledge base using multipart form data.
+
+### Request
+
+Use `multipart/form-data` with the `files` field:
+
+```bash
+curl -X POST "https://elizacloud.ai/api/v1/documents/upload-file" \
+  -H "Authorization: Bearer YOUR_API_KEY" \
+  -F "files=@document.pdf" \
+  -F "characterId=optional_agent_id"
+```
+
+### Parameters
+
+| Parameter     | Type   | Required | Description                          |
+| ------------- | ------ | -------- | ------------------------------------ |
+| `files`       | file[] | ✓        | One or more files to upload (max 5) |
+| `characterId` | string |          | Associate with a specific agent      |
+
+### Upload Limits
+
+| Limit                | Value         |
+| -------------------- | ------------- |
+| Max file size        | 5 MB per file |
+| Max files per batch  | 5 files       |
+| Max total batch size | 5 MB          |
+
+### Supported Formats
+
+| Format    | Extensions      |
+| --------- | --------------- |
+| PDF       | `.pdf`          |
+| Text      | `.txt`, `.md`   |
+| Documents | `.doc`, `.docx` |
+| Web       | `.html`         |
+| Data      | `.json`, `.csv` |
+
+### Response
+
+```json
+{
+  "success": true,
+  "data": [
+    {
+      "id": "doc_abc123",
+      "filename": "document.pdf",
+      "type": "application/pdf",
+      "size": 1048576,
+      "uploadedAt": 1705312800000,
+      "fragmentCount": 42,
+      "status": "success"
+    }
+  ],
+  "message": "Successfully uploaded 1 file(s)",
+  "successCount": 1,
+  "failedCount": 0,
+  "totalCount": 1
+}
+```
+
+---
+
+## List Documents
+
+<div className="api-endpoint">
+  <span className="method-badge method-badge-get">GET</span>
+  <span className="path">/api/v1/documents</span>
+</div>
+
+Get all documents in your knowledge base.
+
+### Response
+
+```json
+{
+  "documents": [
+    {
+      "id": "doc_abc123",
+      "name": "company-handbook.pdf",
+      "size": 2097152,
+      "chunks": 85,
+      "createdAt": "2024-01-15T10:30:00Z"
+    }
+  ],
+  "total": 15
+}
+```
+
+---
+
+## Query Knowledge
+
+<div className="api-endpoint">
+  <span className="method-badge method-badge-get">GET</span>
+  <span className="path">/api/v1/documents/query</span>
+</div>
+
+Search your knowledge base.
+
+### Request
+
+```json
+{
+  "query": "How do I reset my password?",
+  "limit": 5,
+  "minScore": 0.7
+}
+```
+
+### Parameters
+
+| Parameter  | Type    | Required | Description              |
+| ---------- | ------- | -------- | ------------------------ |
+| `query`    | string  | ✓        | Search query             |
+| `limit`    | integer |          | Max results (default: 5) |
+| `minScore` | number  |          | Minimum similarity (0-1) |
+
+### Response
+
+```json
+{
+  "results": [
+    {
+      "content": "To reset your password, go to Settings > Security > Reset Password...",
+      "score": 0.92,
+      "documentId": "doc_abc123",
+      "documentName": "user-guide.pdf"
+    }
+  ]
+}
+```
+
+---
+
+## Get Document
+
+<div className="api-endpoint">
+  <span className="method-badge method-badge-get">GET</span>
+  <span className="path">/api/v1/documents/{"{id}"}</span>
+</div>
+
+Get document details.
+
+---
+
+## Delete Document
+
+<div className="api-endpoint">
+  <span className="method-badge method-badge-delete">DELETE</span>
+  <span className="path">/api/v1/documents/{"{id}"}</span>
+</div>
+
+Remove a document from your knowledge base.
+
+---
+
+## Check Document
+
+<div className="api-endpoint">
+  <span className="method-badge method-badge-post">POST</span>
+  <span className="path">/api/v1/documents/check</span>
+</div>
+
+Check whether an agent or character has documents.
+
+<Callout type="info">
+  Documents are stored in the runtime documents table and chunked for search.
+</Callout>

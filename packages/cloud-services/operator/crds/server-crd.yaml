@@ -1,0 +1,121 @@
+apiVersion: apiextensions.k8s.io/v1
+kind: CustomResourceDefinition
+metadata:
+  name: servers.eliza.ai
+spec:
+  group: eliza.ai
+  versions:
+    - name: v1alpha1
+      served: true
+      storage: true
+      schema:
+        openAPIV3Schema:
+          type: object
+          properties:
+            spec:
+              type: object
+              required: [capacity, tier, image]
+              properties:
+                capacity:
+                  type: integer
+                  minimum: 1
+                  maximum: 200
+                tier:
+                  type: string
+                  enum: [shared, dedicated]
+                project:
+                  type: string
+                image:
+                  type: string
+                maxReplicas:
+                  type: integer
+                  minimum: 0
+                  default: 3
+                secretRef:
+                  type: string
+                resources:
+                  type: object
+                  properties:
+                    requests:
+                      type: object
+                      properties:
+                        memory:
+                          type: string
+                        cpu:
+                          type: string
+                    limits:
+                      type: object
+                      properties:
+                        memory:
+                          type: string
+                        cpu:
+                          type: string
+                cooldownPeriod:
+                  type: integer
+                  minimum: 0
+                  default: 900
+                  description: KEDA cooldown in seconds before scale-to-zero (default 900)
+                pollingInterval:
+                  type: integer
+                  minimum: 5
+                  default: 30
+                  description: KEDA polling interval in seconds (default 30)
+                agents:
+                  type: array
+                  items:
+                    type: object
+                    required: [agentId, characterRef]
+                    properties:
+                      agentId:
+                        type: string
+                      characterRef:
+                        type: string
+            status:
+              type: object
+              properties:
+                phase:
+                  type: string
+                  enum: [Pending, Running, ScaledDown, Draining]
+                readyAgents:
+                  type: integer
+                totalAgents:
+                  type: integer
+                replicas:
+                  type: integer
+                podNames:
+                  type: array
+                  items:
+                    type: string
+                lastActivity:
+                  type: string
+                  format: date-time
+                observedGeneration:
+                  type: integer
+      subresources:
+        status: {}
+      additionalPrinterColumns:
+        - name: Phase
+          type: string
+          jsonPath: .status.phase
+        - name: Tier
+          type: string
+          jsonPath: .spec.tier
+        - name: Project
+          type: string
+          jsonPath: .spec.project
+        - name: Agents
+          type: integer
+          jsonPath: .status.totalAgents
+        - name: Capacity
+          type: integer
+          jsonPath: .spec.capacity
+        - name: Age
+          type: date
+          jsonPath: .metadata.creationTimestamp
+  scope: Namespaced
+  names:
+    plural: servers
+    singular: server
+    kind: Server
+    shortNames:
+      - srv

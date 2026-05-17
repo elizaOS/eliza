@@ -1,0 +1,24 @@
+apiVersion: eliza.ai/v1alpha1
+kind: Server
+metadata:
+  name: shared-eliza
+  namespace: eliza-agents
+spec:
+  capacity: 50
+  tier: shared
+  project: cloud
+  image: localhost:5001/agent-server:dev
+  maxReplicas: 10
+  cooldownPeriod: 60
+  pollingInterval: 30
+  secretRef: eliza-agent-secrets
+  agents:
+    - agentId: "b850bc30-45f8-0041-a00a-83df46d8555d"
+      characterRef: "eliza"
+  resources:
+    requests:
+      memory: "1Gi"
+      cpu: "500m"
+    limits:
+      memory: "4Gi"
+      cpu: "2000m"

@@ -1,0 +1,163 @@
+---
+title: Apps
+description: Create and manage Eliza Cloud apps for hosting, chat routing, domains, analytics, and monetization.
+---
+
+import { Callout, Steps, Cards } from "@/docs/components";
+
+# Apps
+
+Apps are Cloud records that connect your product to Eliza Cloud APIs. A Cloud app is separate from your deployable project and from any `@elizaos/app-*` app plugin loaded inside an Eliza runtime.
+
+<div className="status-badge status-stable">Stable</div>
+
+## Overview
+
+An Eliza Cloud app provides:
+
+- **App identity**: A stable `id` for chat routing, domains, analytics, and marketplace records.
+- **API key**: A one-time key for server-side app administration.
+- **Allowed origins**: The browser origins allowed to call app-owned surfaces.
+- **Monetization**: Creator markup for app-scoped chat usage.
+- **Domains and hosting metadata**: App URL, managed app domains, and custom domains.
+
+Use a **project** for deployable product workspace state and container `project_name`. Use the **Cloud app** `id` when calling `/api/v1/apps/{id}/chat`.
+
+## Quick Start
+
+```bash
+curl -X POST "https://www.elizacloud.ai/api/v1/apps" \
+  -H "Authorization: Bearer $ELIZA_CLOUD_API_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "name": "My App",
+    "app_url": "https://placeholder.invalid",
+    "allowed_origins": ["https://placeholder.invalid"],
+    "description": "Custom AI app",
+    "website_url": "https://example.com",
+    "skipGitHubRepo": true
+  }'
+```
+
+```json
+{
+  "success": true,
+  "app": {
+    "id": "uuid-abc123",
+    "name": "My App",
+    "app_url": "https://placeholder.invalid",
+    "allowed_origins": ["https://placeholder.invalid"],
+    "created_at": "2026-05-05T10:30:00Z"
+  },
+  "apiKey": {
+    "id": "key_abc123"
+  }
+}
+```
+
+<Callout type="warning">
+  The app API key is server-side only. For user-facing chat, forward the user's bearer token to the app-scoped chat endpoint so the user's organization balance is charged.
+</Callout>
+
+## Creating an App
+
+<Steps>
+### Register the app
+
+Create the Cloud app with `name`, `app_url`, and optional metadata. If your container URL does not exist yet, use a placeholder URL and patch it after deployment.
+
+### Enable monetization
+
+```bash
+curl -X PUT "https://www.elizacloud.ai/api/v1/apps/$APP_ID/monetization" \
+  -H "Authorization: Bearer $ELIZA_CLOUD_API_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "monetizationEnabled": true,
+    "inferenceMarkupPercentage": 100,
+    "purchaseSharePercentage": 10
+  }'
+```
+
+### Deploy your project
+
+Deploy your project as a container with `POST /api/v1/containers` or the SDK `createContainer()` helper. Use `project_name` for the deployment identifier and pass the Cloud app ID through environment variables.
+
+### Patch the app URL
+
+```bash
+curl -X PATCH "https://www.elizacloud.ai/api/v1/apps/$APP_ID" \
+  -H "Authorization: Bearer $ELIZA_CLOUD_API_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "app_url": "https://my-app.example.com",
+    "allowed_origins": ["https://my-app.example.com"]
+  }'
+```
+</Steps>
+
+## App-Scoped Chat
+
+Route user chats through the Cloud app record:
+
+```ts
+const response = await fetch(`https://www.elizacloud.ai/api/v1/apps/${APP_ID}/chat`, {
+  method: "POST",
+  headers: {
+    "Content-Type": "application/json",
+    Authorization: `Bearer ${userStewardJwt}`,
+  },
+  body: JSON.stringify({
+    model: "provider/model-id",
+    messages: [{ role: "user", content: "Hello" }],
+    stream: false,
+  }),
+});
+```
+
+The app-scoped endpoint charges the user's organization credit balance. If `monetizationEnabled` is true, `inferenceMarkupPercentage` is credited to the Cloud app creator's redeemable earnings.
+
+<Callout type="info">
+  `X-Affiliate-Code` is currently implemented on generic chat/message routes such as `/api/v1/chat/completions` and `/api/v1/messages`. The app-scoped route `/api/v1/apps/{id}/chat` does not currently read that header.
+</Callout>
+
+## Monetization Fields
+
+| Field | Type | Description |
+| ----- | ---- | ----------- |
+| `monetizationEnabled` | boolean | Enables creator earnings for the app. |
+| `inferenceMarkupPercentage` | number | Creator markup on inference, 0-1000. |
+| `purchaseSharePercentage` | number | Purchase share percentage, 0-100. |
+
+Older `enabled` plus nested `pricing` payloads are not accepted by the current app monetization endpoint.
+
+## Earnings and Hosting
+
+Creator markup lands in redeemable earnings. Daily container billing can use those earnings first, then organization credits, when the billing setting `payAsYouGoFromEarnings` is enabled.
+
+Redeem available earnings for elizaOS tokens from [Dashboard -> Earnings](/dashboard/earnings) or the [Redemptions API](/docs/api/redemptions).
+
+## Best Practices
+
+- Keep admin API keys on the server.
+- Forward user bearer tokens for user-facing app-scoped chat.
+- Store the Cloud app `id` separately from container `project_name`.
+- Patch `app_url` and `allowed_origins` after container deployment.
+- Handle 402 responses by sending users to [Dashboard -> Billing](/dashboard/billing).
+
+## Next Steps
+
+<Cards>
+  <Cards.Card title="Monetized Apps" href="/docs/monetized-apps">
+    Build and deploy a monetized app
+  </Cards.Card>
+  <Cards.Card title="App Domains" href="/docs/app-domains">
+    Configure custom domains
+  </Cards.Card>
+  <Cards.Card title="Containers" href="/docs/containers">
+    Deploy custom containers
+  </Cards.Card>
+  <Cards.Card title="Apps API" href="/docs/api/apps">
+    API reference
+  </Cards.Card>
+</Cards>

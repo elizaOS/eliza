@@ -1,0 +1,76 @@
+---
+title: Models
+description: List and discover available AI models on elizaOS Cloud.
+---
+
+import { Callout, Tabs } from "@/docs/components";
+
+# Models
+
+<div className="status-badge status-stable">Stable</div>
+
+Discover and list available AI models.
+
+## List Models
+
+<div className="api-endpoint">
+  <span className="method-badge method-badge-get">GET</span>
+  <span className="path">/api/v1/models</span>
+</div>
+
+Returns a list of available models for the current deployment.
+
+### Request
+
+```bash
+curl -X GET "https://elizacloud.ai/api/v1/models" \
+  -H "Authorization: Bearer YOUR_API_KEY"
+```
+
+### Response
+
+```json
+{
+  "object": "list",
+  "data": [
+    {
+      "id": "provider/model-id",
+      "object": "model",
+      "created": 1705312800,
+      "owned_by": "provider",
+      "capabilities": ["chat"]
+    }
+  ]
+}
+```
+
+---
+
+## Chat Models
+
+The `/api/v1/models` response is the source of truth for the full live catalog.
+Provider availability, context windows, and capabilities can change with
+provider catalogs and deployment configuration.
+
+---
+
+## Embedding Models
+
+Embedding model availability and dimensions are returned by the model catalog
+or the embeddings API response for the current deployment.
+
+---
+
+## Image Models
+
+Image model availability is also catalog-driven. Use `/api/v1/models` and the
+Image Generation API reference for current defaults.
+
+---
+
+## Model Selection Tips
+
+<Callout type="info">
+  Start with the dashboard or API Explorer defaults, then switch models based
+  on observed quality, latency, and cost for your workload.
+</Callout>

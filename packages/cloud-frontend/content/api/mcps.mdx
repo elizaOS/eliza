@@ -1,0 +1,168 @@
+---
+title: MCPs
+description: Model Context Protocol servers on elizaOS Cloud.
+---
+
+import { Callout, Tabs } from "@/docs/components";
+
+# MCPs
+
+<div className="status-badge status-stable">Stable</div>
+
+Manage Model Context Protocol (MCP) servers for your agents.
+
+## List MCPs
+
+<div className="api-endpoint">
+  <span className="method-badge method-badge-get">GET</span>
+  <span className="path">/api/v1/mcps</span>
+</div>
+
+Get all your MCP configurations.
+
+### Response
+
+```json
+{
+  "mcps": [
+    {
+      "id": "mcp_abc123",
+      "name": "Weather Tool",
+      "type": "stdio",
+      "status": "active",
+      "tools": ["get_weather", "get_forecast"]
+    }
+  ]
+}
+```
+
+---
+
+## Create MCP
+
+<div className="api-endpoint">
+  <span className="method-badge method-badge-post">POST</span>
+  <span className="path">/api/v1/mcps</span>
+</div>
+
+Add a new MCP server.
+
+### Request
+
+```json
+{
+  "name": "Custom Tool Server",
+  "type": "http",
+  "config": {
+    "url": "https://my-mcp-server.example.com",
+    "transport": "sse"
+  }
+}
+```
+
+---
+
+## Get MCP
+
+<div className="api-endpoint">
+  <span className="method-badge method-badge-get">GET</span>
+  <span className="path">/api/v1/mcps/{"{mcpId}"}</span>
+</div>
+
+Get MCP details and available tools.
+
+### Response
+
+```json
+{
+  "id": "mcp_abc123",
+  "name": "Weather Tool",
+  "type": "http",
+  "status": "active",
+  "tools": [
+    {
+      "name": "get_weather",
+      "description": "Get current weather for a location",
+      "parameters": {
+        "location": "string"
+      }
+    }
+  ]
+}
+```
+
+---
+
+## Update MCP
+
+<div className="api-endpoint">
+  <span className="method-badge method-badge-put">PUT</span>
+  <span className="path">/api/v1/mcps/{"{mcpId}"}</span>
+</div>
+
+Update MCP configuration.
+
+---
+
+## Delete MCP
+
+<div className="api-endpoint">
+  <span className="method-badge method-badge-delete">DELETE</span>
+  <span className="path">/api/v1/mcps/{"{mcpId}"}</span>
+</div>
+
+Remove an MCP server.
+
+---
+
+## Publish MCP
+
+<div className="api-endpoint">
+  <span className="method-badge method-badge-post">POST</span>
+  <span className="path">/api/v1/mcps/{"{mcpId}"}/publish</span>
+</div>
+
+Publish MCP to the registry.
+
+---
+
+## MCP Registry
+
+<div className="api-endpoint">
+  <span className="method-badge method-badge-get">GET</span>
+  <span className="path">/api/mcp/registry</span>
+</div>
+
+Browse available MCPs in the registry.
+
+### Response
+
+```json
+{
+  "mcps": [
+    {
+      "id": "weather",
+      "name": "Weather MCP",
+      "description": "Get weather data",
+      "author": "elizaOS",
+      "downloads": 1500
+    }
+  ]
+}
+```
+
+---
+
+## Demo MCPs
+
+Pre-configured demo MCPs for testing:
+
+| MCP     | Endpoint            | Description   |
+| ------- | ------------------- | ------------- |
+| Weather | `/api/mcps/weather` | Weather data  |
+| Time    | `/api/mcps/time`    | Time zones    |
+| Crypto  | `/api/mcps/crypto`  | Crypto prices |
+
+<Callout type="info">
+  MCPs enable your agents to use external tools and data sources.
+</Callout>

@@ -1,0 +1,352 @@
+---
+title: MCP Integration
+description: Connect Model Context Protocol (MCP) servers to your agents on elizaOS Cloud for extended capabilities.
+---
+
+import { Callout, Steps, Tabs, Cards } from "@/docs/components";
+
+# MCP Integration
+
+Extend your agents with external tools and services using the Model Context Protocol.
+
+<div className="status-badge status-stable">Stable</div>
+
+<Callout type="info">
+  This page covers **connecting MCP servers to your agents**. For protocol
+  details and building your own MCP server, see [MCP Protocol](/docs/mcp).
+</Callout>
+
+## Overview
+
+MCP (Model Context Protocol) allows agents to:
+
+- **Access external tools**: Search, calculations, APIs
+- **Use resources**: Files, databases, services
+- **Execute prompts**: Pre-defined interaction templates
+
+## Quick Start
+
+### Dashboard
+
+Browse and connect MCP servers at [Dashboard → MCPs](/dashboard/mcps).
+
+### API
+
+```bash
+curl -X POST "https://elizacloud.ai/api/v1/mcps" \
+  -H "Authorization: Bearer YOUR_API_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "name": "Weather MCP",
+    "url": "https://mcp.eliza.ai/weather",
+    "agentId": "agent_abc123"
+  }'
+```
+
+## MCP Registry
+
+elizaOS Cloud provides a curated registry of MCP servers:
+
+| Server         | Description                   | Tools                          |
+| -------------- | ----------------------------- | ------------------------------ |
+| **Weather**    | Current weather and forecasts | `get_weather`, `get_forecast`  |
+| **Search**     | Web search capabilities       | `search_web`, `search_images`  |
+| **Crypto**     | Cryptocurrency data           | `get_price`, `get_market_data` |
+| **Calculator** | Math operations               | `calculate`, `convert_units`   |
+| **Time**       | Time and timezone tools       | `get_time`, `convert_timezone` |
+
+### Browse Registry
+
+```bash
+curl -X GET "https://elizacloud.ai/api/mcp/registry" \
+  -H "Authorization: Bearer YOUR_API_KEY"
+```
+
+```json
+{
+  "servers": [
+    {
+      "id": "weather",
+      "name": "Weather MCP",
+      "description": "Get weather data for any location",
+      "url": "https://mcp.eliza.ai/weather",
+      "tools": [
+        {
+          "name": "get_weather",
+          "description": "Get current weather for a location",
+          "inputSchema": {
+            "type": "object",
+            "properties": {
+              "location": { "type": "string" }
+            }
+          }
+        }
+      ]
+    }
+  ]
+}
+```
+
+## Connecting MCP Servers
+
+<Steps>
+### Select a Server
+Browse the MCP registry or use a custom server URL.
+
+### Configure Connection
+
+Provide the server URL and any required authentication.
+
+### Link to Agent
+
+Connect the MCP server to your agent.
+
+### Test
+
+Verify the tools are available in the agent.
+
+</Steps>
+
+### Connect via API
+
+```bash
+curl -X POST "https://elizacloud.ai/api/v1/mcps" \
+  -H "Authorization: Bearer YOUR_API_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "name": "My MCP Server",
+    "url": "https://my-mcp-server.com",
+    "agentId": "agent_abc123",
+    "authentication": {
+      "type": "bearer",
+      "token": "mcp_token_xxx"
+    }
+  }'
+```
+
+## Using MCP Tools
+
+When MCP servers are connected, agents can use their tools automatically:
+
+```javascript
+const response = await fetch("https://elizacloud.ai/api/v1/chat/completions", {
+  method: "POST",
+  headers: {
+    Authorization: "Bearer YOUR_API_KEY",
+    "Content-Type": "application/json",
+  },
+  body: JSON.stringify({
+    model: "agent_abc123", // Agent with MCP connected
+    messages: [{ role: "user", content: "What's the weather in Tokyo?" }],
+  }),
+});
+```
+
+The agent will automatically invoke the `get_weather` tool and include the result in its response.
+
+## MCP Protocol
+
+### JSON-RPC Interface
+
+elizaOS Cloud exposes an MCP-compatible JSON-RPC interface:
+
+```bash
+curl -X POST "https://elizacloud.ai/api/mcp" \
+  -H "Authorization: Bearer YOUR_API_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "jsonrpc": "2.0",
+    "method": "tools/list",
+    "id": 1
+  }'
+```
+
+### Available Methods
+
+| Method           | Description              |
+| ---------------- | ------------------------ |
+| `tools/list`     | List available tools     |
+| `tools/call`     | Execute a tool           |
+| `resources/list` | List available resources |
+| `resources/read` | Read a resource          |
+| `prompts/list`   | List available prompts   |
+| `prompts/get`    | Get a prompt             |
+
+### Execute Tool
+
+```json
+{
+  "jsonrpc": "2.0",
+  "method": "tools/call",
+  "params": {
+    "name": "get_weather",
+    "arguments": {
+      "location": "San Francisco"
+    }
+  },
+  "id": 2
+}
+```
+
+Response:
+
+```json
+{
+  "jsonrpc": "2.0",
+  "result": {
+    "content": [
+      {
+        "type": "text",
+        "text": "Current weather in San Francisco: 65°F, Partly Cloudy"
+      }
+    ]
+  },
+  "id": 2
+}
+```
+
+## Custom MCP Servers
+
+### Server Requirements
+
+Your MCP server must implement:
+
+1. **HTTP Transport**: Accept POST requests
+2. **JSON-RPC 2.0**: Standard JSON-RPC protocol
+3. **MCP Methods**: `initialize`, `tools/list`, `tools/call`
+
+### Basic Server Example
+
+```javascript
+// Simple MCP server with Express
+const express = require("express");
+const app = express();
+
+app.use(express.json());
+
+const tools = [
+  {
+    name: "greet",
+    description: "Greet a person",
+    inputSchema: {
+      type: "object",
+      properties: {
+        name: { type: "string" },
+      },
+      required: ["name"],
+    },
+  },
+];
+
+app.post("/mcp", (req, res) => {
+  const { method, params, id } = req.body;
+
+  if (method === "tools/list") {
+    return res.json({
+      jsonrpc: "2.0",
+      result: { tools },
+      id,
+    });
+  }
+
+  if (method === "tools/call") {
+    const { name, arguments: args } = params;
+    if (name === "greet") {
+      return res.json({
+        jsonrpc: "2.0",
+        result: {
+          content: [{ type: "text", text: `Hello, ${args.name}!` }],
+        },
+        id,
+      });
+    }
+  }
+
+  res.json({
+    jsonrpc: "2.0",
+    error: { code: -32601, message: "Method not found" },
+    id,
+  });
+});
+
+app.listen(3000);
+```
+
+## Demo Servers
+
+elizaOS Cloud provides demo MCP servers for testing:
+
+| Server  | URL                 | Description              |
+| ------- | ------------------- | ------------------------ |
+| Weather | `/api/mcps/weather` | Weather data demo        |
+| Time    | `/api/mcps/time`    | Time and timezone demo   |
+| Crypto  | `/api/mcps/crypto`  | Cryptocurrency data demo |
+
+### Test Demo Server
+
+```bash
+curl -X POST "https://elizacloud.ai/api/mcps/weather" \
+  -H "Authorization: Bearer YOUR_API_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "jsonrpc": "2.0",
+    "method": "tools/call",
+    "params": {
+      "name": "get_weather",
+      "arguments": { "location": "New York" }
+    },
+    "id": 1
+  }'
+```
+
+## Managing MCP Connections
+
+### List Connected MCPs
+
+```bash
+curl -X GET "https://elizacloud.ai/api/v1/mcps?agentId=agent_abc123" \
+  -H "Authorization: Bearer YOUR_API_KEY"
+```
+
+### Disconnect MCP
+
+```bash
+curl -X DELETE "https://elizacloud.ai/api/v1/mcps/mcp_abc123" \
+  -H "Authorization: Bearer YOUR_API_KEY"
+```
+
+### Publish Custom MCP
+
+Share your MCP server in the registry:
+
+```bash
+curl -X POST "https://elizacloud.ai/api/v1/mcps/{mcpId}/publish" \
+  -H "Authorization: Bearer YOUR_API_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "visibility": "public",
+    "description": "My custom MCP server",
+    "category": "utilities"
+  }'
+```
+
+## Best Practices
+
+- **Minimal Tools** — Only connect tools your agent actually needs to reduce latency
+- **Test Thoroughly** — Verify tools work correctly before deploying to production
+- **Handle Errors** — MCP calls can fail; implement graceful fallbacks in your agent
+- **Monitor Usage** — Track tool invocations in [Dashboard](/dashboard) for optimization
+
+## Next Steps
+
+<Cards>
+  <Cards.Card title="AI Agents" href="/docs/agents">
+    Create agents with MCP tools
+  </Cards.Card>
+  <Cards.Card title="MCP Protocol" href="/docs/mcp">
+    Deep dive into MCP protocol
+  </Cards.Card>
+  <Cards.Card title="A2A Protocol" href="/docs/a2a">
+    Agent-to-Agent communication
+  </Cards.Card>
+</Cards>

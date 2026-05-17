@@ -1,0 +1,9 @@
+name = "eliza-cloud"
+pages_build_output_dir = "./dist"
+compatibility_date = "2026-04-29"
+
+[vars]
+API_UPSTREAM = "https://api.elizacloud.ai"
+
+[env.preview.vars]
+API_UPSTREAM = "https://api-staging.elizacloud.ai"

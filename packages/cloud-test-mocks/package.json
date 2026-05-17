@@ -1,0 +1,27 @@
+{
+  "name": "@elizaos/cloud-test-mocks",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "main": "./src/index.ts",
+  "exports": {
+    ".": "./src/index.ts",
+    "./hetzner": "./src/hetzner/index.ts",
+    "./control-plane": "./src/control-plane/index.ts"
+  },
+  "bin": {
+    "hetzner-mock": "./bin/hetzner-mock.ts",
+    "control-plane-mock": "./bin/control-plane-mock.ts"
+  },
+  "scripts": {
+    "start:hetzner": "bun run ./bin/hetzner-mock.ts",
+    "start:control-plane": "bun run ./bin/control-plane-mock.ts",
+    "test": "bun test"
+  },
+  "dependencies": {
+    "hono": "4.12.18"
+  },
+  "devDependencies": {
+    "bun-types": "*"
+  }
+}

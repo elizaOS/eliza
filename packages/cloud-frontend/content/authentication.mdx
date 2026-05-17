@@ -1,0 +1,290 @@
+---
+title: Authentication
+description: Learn how to authenticate with elizaOS Cloud APIs using API keys, session tokens, wallet signatures (SIWE and per-request), and x402 payments.
+---
+
+import { Callout, Tabs, Cards } from "@/docs/components";
+
+# Authentication
+
+Secure your API requests with elizaOS Cloud authentication methods.
+
+<div className="status-badge status-stable">Stable</div>
+
+## Overview
+
+elizaOS Cloud supports multiple authentication methods:
+
+| Method           | Use Case                    | Header / flow                                      |
+| ---------------- | --------------------------- | -------------------------------------------------- |
+| **API Key**      | Server-to-server            | `Authorization: Bearer eliza_xxx` or `X-API-Key`   |
+| **Session**      | Browser apps                | Cookie-based (Steward)                               |
+| **SIWE**         | Wallet sign-in, get API key | GET nonce → sign message → POST verify → use key   |
+| **Wallet header**| Per-request wallet auth     | `X-Wallet-Address`, `X-Timestamp`, `X-Wallet-Signature` |
+| **x402**         | Crypto payments             | `X-PAYMENT: ...`                                   |
+
+## API Keys
+
+### Creating an API Key
+
+1. Navigate to [Dashboard → API Keys](/dashboard/api-keys)
+2. Click "Create API Key"
+3. Name your key and set permissions
+4. Copy and securely store the key
+
+<Callout type="warning">
+  API keys are shown only once. Store them securely immediately after creation.
+</Callout>
+
+### Using API Keys
+
+<Tabs items={['cURL', 'JavaScript', 'Python']}>
+  <Tabs.Tab>
+```bash
+curl -X GET "https://elizacloud.ai/api/v1/dashboard" \
+  -H "Authorization: Bearer eliza_xxxxxxxxxxxx"
+```
+  </Tabs.Tab>
+  <Tabs.Tab>
+```javascript
+const response = await fetch('https://elizacloud.ai/api/v1/dashboard', {
+  headers: {
+    'Authorization': 'Bearer eliza_xxxxxxxxxxxx',
+  },
+});
+```
+  </Tabs.Tab>
+  <Tabs.Tab>
+```python
+import requests
+
+response = requests.get(
+'https://elizacloud.ai/api/v1/dashboard',
+headers={'Authorization': 'Bearer eliza_xxxxxxxxxxxx'}
+)
+
+```
+  </Tabs.Tab>
+</Tabs>
+
+### Key Prefix
+
+API keys use the `eliza_` prefix. The same header formats work for dashboard,
+server, CLI, and wallet-issued keys.
+
+### Key Permissions
+
+Restrict keys to specific endpoints:
+
+```json
+{
+  "name": "Production Chat Key",
+  "permissions": [
+    "chat:read",
+    "chat:write",
+    "embeddings:read"
+  ],
+  "rateLimit": 100
+}
+```
+
+### Available Permissions
+
+Permissions can be used to restrict what operations an API key can perform.
+
+| Permission   | Description         |
+| ------------ | ------------------- |
+| `chat`       | Chat completions    |
+| `embeddings` | Generate embeddings |
+| `images`     | Image generation    |
+| `video`      | Video generation    |
+| `voice`      | Voice/TTS           |
+| `knowledge`  | Knowledge base      |
+| `agents`     | Agent management    |
+| `apps`       | App management      |
+
+<Callout type="info">
+  If no permissions are specified when creating an API key, the key has access
+  to all endpoints by default. Use permissions to create restricted keys for
+  specific use cases.
+</Callout>
+
+## API Key Management
+
+### List Keys
+
+```bash
+curl -X GET "https://elizacloud.ai/api/v1/api-keys" \
+  -H "Authorization: Bearer eliza_xxxxxxxxxxxx"
+```
+
+### Regenerate Key
+
+```bash
+curl -X POST "https://elizacloud.ai/api/v1/api-keys/{id}/regenerate" \
+  -H "Authorization: Bearer eliza_xxxxxxxxxxxx"
+```
+
+### Revoke Key
+
+```bash
+curl -X DELETE "https://elizacloud.ai/api/v1/api-keys/{id}" \
+  -H "Authorization: Bearer eliza_xxxxxxxxxxxx"
+```
+
+## Session Authentication
+
+For browser-based applications, sign in through Steward (hosted login). After login,
+the app stores the Steward session and sets HTTP-only cookies; API calls use `credentials: "include"`.
+
+```javascript
+import { useSessionAuth } from "@/lib/hooks/use-session-auth";
+
+function MyComponent() {
+  const { authenticated } = useSessionAuth();
+
+  const makeApiCall = async () => {
+    const response = await fetch("https://elizacloud.ai/api/v1/dashboard", {
+      credentials: "include",
+    });
+  };
+}
+```
+
+## Wallet & SIWE (Sign-In With Ethereum)
+
+Wallet-based auth supports agents and headless clients that cannot use browser sessions.
+
+### SIWE flow (get an API key)
+
+1. **GET /api/auth/siwe/nonce** — Returns `{ nonce, domain, uri, chainId, version, statement }`. Nonce is one-time, 5 min TTL (Redis). **Why nonce?** Prevents replay; timestamp-only can be replayed within the window.
+2. Build the EIP-4361 message with the nonce and sign it with the wallet.
+3. **POST /api/auth/siwe/verify** — Body `{ message, signature }`. Server validates domain and signature, consumes the nonce, then finds or creates user/org and returns **`apiKey`** with `user` and `organization`. New wallets get initial free credits (configurable via `INITIAL_FREE_CREDITS`).
+4. Use the returned API key: `X-API-Key: <key>` or `Authorization: Bearer <key>` on subsequent requests.
+
+### Wallet header signature (no API key)
+
+Send on every request instead of storing an API key:
+
+- **X-Wallet-Address**: Ethereum address (any case).
+- **X-Timestamp**: Unix ms (must be within ±5 min of server time). **Why?** Binds the signature to a time window and limits replay.
+- **X-Wallet-Signature**: Signature of the message  
+  `Eliza Cloud Authentication\nTimestamp: ${timestamp}\nMethod: ${method}\nPath: ${path}`  
+  so the signature is bound to this request. **Why method + path?** Prevents reusing the same signature on another endpoint.
+
+If the wallet is unknown, the first valid signed request **creates** the account (same as SIWE signup). After that, any endpoint that uses `requireAuthOrApiKey` accepts wallet-header auth.
+
+### x402 topup with wallet
+
+**POST /api/v1/topup/10**, **/50**, **/100** (x402 payment-gated):
+
+- With **wallet sig headers**: credits go to the signer’s wallet (no body `walletAddress` needed).
+- Without wallet sig: send **body.walletAddress**; that wallet’s org is credited. New wallets are created without initial free credits (payment only).
+
+See [Wallet API](/docs/wallet-api) for full reference, WHYs, and file list.
+
+## x402 Authentication
+
+Pay per request with cryptocurrency:
+
+```bash
+curl -X POST "https://elizacloud.ai/api/v1/chat/completions" \
+  -H "Content-Type: application/json" \
+  -H "X-PAYMENT: <x402-payment-header>" \
+  -d '{"model": "gpt-4o", "messages": [...]}'
+```
+
+<Callout type="info">
+  See the crypto payments section below for details.
+</Callout>
+
+## Security Best Practices
+
+### Do's
+
+- ✅ Use environment variables for API keys
+- ✅ Rotate keys regularly
+- ✅ Use minimal permissions
+- ✅ Monitor key usage
+- ✅ Use different keys for different environments
+
+### Don'ts
+
+- ❌ Commit keys to version control
+- ❌ Share keys between applications
+- ❌ Use production keys in development
+- ❌ Expose keys in client-side code
+- ❌ Log API keys
+
+### Environment Variables
+
+```bash
+# .env.local (never commit this file)
+ELIZA_API_KEY=eliza_xxxxxxxxxxxx
+```
+
+```javascript
+// Access in your code
+const apiKey = process.env.ELIZA_API_KEY;
+```
+
+## Error Responses
+
+### 401 Unauthorized
+
+```json
+{
+  "error": {
+    "code": "UNAUTHORIZED",
+    "message": "Invalid or missing authentication"
+  }
+}
+```
+
+**Causes:**
+
+- Missing API key
+- Invalid API key
+- Expired session
+
+### 403 Forbidden
+
+```json
+{
+  "error": {
+    "code": "FORBIDDEN",
+    "message": "Insufficient permissions"
+  }
+}
+```
+
+**Causes:**
+
+- Key lacks required permission
+- Resource access denied
+
+## Rate Limiting
+
+Rate limits are endpoint-specific. See [Rate Limits](/docs/rate-limits) for the
+current presets and retry guidance. Rate-limited responses include headers such
+as:
+
+```
+X-RateLimit-Limit: 60
+X-RateLimit-Remaining: 45
+X-RateLimit-Reset: 1705312860
+```
+
+## Next Steps
+
+<Cards>
+  <Cards.Card title="API Reference" href="/docs/api">
+    Complete API documentation
+  </Cards.Card>
+  <Cards.Card title="Billing" href="/docs/billing">
+    Manage credits and payments
+  </Cards.Card>
+  <Cards.Card title="Rate Limits" href="/docs/rate-limits">
+    Understand rate limiting
+  </Cards.Card>
+</Cards>
