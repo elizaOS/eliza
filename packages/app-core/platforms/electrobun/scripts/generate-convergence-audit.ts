@@ -1117,6 +1117,7 @@ ${markdownList(s.ownerDecisionItems)}
 ## Proposed Annotation Plan
 
 - Add README-level role annotations to trace-first candidates before wiring behavior.
+- Use \`docs/trace-first-annotations.md\` as the first review-boundary map for top trace-first packages.
 - Add dynamic-view manifests only for contextual inspection surfaces, not fixed dashboards.
 - Keep connector/provider package metadata unchanged unless maintainers already have a metadata convention.
 - Keep Satellite manifests focused on capability boundaries and trusted/full-permission status.
