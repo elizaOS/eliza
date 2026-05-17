@@ -145,7 +145,7 @@ export async function handleTtsRoutes(ctx: TtsRouteContext): Promise<boolean> {
 
   // ── POST /api/tts/local-inference ──────────────────────────────────────
   if (method === "POST" && pathname === "/api/tts/local-inference") {
-    const body = await readJsonBody<{ text?: string }>(req, res);
+    const body = await readJsonBody<LocalInferenceTtsRequestBody>(req, res);
     if (!body) return true;
 
     const text =
@@ -164,7 +164,30 @@ export async function handleTtsRoutes(ctx: TtsRouteContext): Promise<boolean> {
     }
 
     try {
-      const audio = await useLocalInferenceTts(runtime, text);
+      const audio = await useLocalInferenceTts(runtime, {
+        text,
+        ...(optionalString(body.voice)
+          ? { voice: optionalString(body.voice) }
+          : {}),
+        ...(optionalString(body.voiceId)
+          ? { voice: optionalString(body.voiceId) }
+          : {}),
+        ...(optionalString(body.model)
+          ? { model: optionalString(body.model) }
+          : {}),
+        ...(optionalString(body.modelId)
+          ? { modelId: optionalString(body.modelId) }
+          : {}),
+        ...(optionalPositiveNumber(body.speed)
+          ? { speed: optionalPositiveNumber(body.speed) }
+          : {}),
+        ...(optionalPositiveNumber(body.sampleRate)
+          ? { sampleRate: optionalPositiveNumber(body.sampleRate) }
+          : {}),
+        ...(optionalString(body.format)
+          ? { format: optionalString(body.format) }
+          : {}),
+      });
       const bytes = normalizeAudioBytes(audio);
       if (bytes.length === 0) {
         error(res, "Local inference TEXT_TO_SPEECH returned empty audio", 502);
@@ -393,16 +416,37 @@ const LOCAL_TTS_PROVIDER_IDS = [
   "eliza-aosp-llama",
 ] as const;
 
+interface LocalInferenceTtsRequestBody {
+  text?: string;
+  voice?: string;
+  voiceId?: string;
+  model?: string;
+  modelId?: string;
+  speed?: number;
+  sampleRate?: number;
+  format?: string;
+}
+
+interface LocalInferenceTtsRequest {
+  text: string;
+  voice?: string;
+  model?: string;
+  modelId?: string;
+  speed?: number;
+  sampleRate?: number;
+  format?: string;
+}
+
 async function useLocalInferenceTts(
   runtime: IAgentRuntime,
-  text: string,
+  request: LocalInferenceTtsRequest,
 ): Promise<Buffer | Uint8Array | ArrayBuffer> {
   let lastError: unknown;
   for (const provider of LOCAL_TTS_PROVIDER_IDS) {
     try {
       return await runtime.useModel(
         ModelType.TEXT_TO_SPEECH,
-        { text },
+        request,
         provider,
       );
     } catch (err) {
@@ -416,6 +460,16 @@ async function useLocalInferenceTts(
     throw lastError;
   }
   throw new Error("No local-inference TEXT_TO_SPEECH provider is registered");
+}
+
+function optionalString(value: unknown): string | undefined {
+  return typeof value === "string" && value.trim() ? value.trim() : undefined;
+}
+
+function optionalPositiveNumber(value: unknown): number | undefined {
+  return typeof value === "number" && Number.isFinite(value) && value > 0
+    ? value
+    : undefined;
 }
 
 function isMissingProviderError(error: unknown): boolean {
