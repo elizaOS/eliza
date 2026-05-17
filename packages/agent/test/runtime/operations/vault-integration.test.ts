@@ -23,7 +23,13 @@
  *   - Pruning the operation record does NOT delete the vault entry.
  */
 
-import { mkdtempSync, readdirSync, readFileSync, rmSync } from "node:fs";
+import {
+  mkdtempSync,
+  readdirSync,
+  readFileSync,
+  rmSync,
+  statSync,
+} from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import {
@@ -85,6 +91,18 @@ function readOpFile(id: string): string {
     join(stateDir, "runtime-operations", `${id}.json`),
     "utf8",
   );
+}
+
+function expectTreeNotToContain(root: string, needle: string): void {
+  for (const entry of readdirSync(root)) {
+    const path = join(root, entry);
+    const stat = statSync(path);
+    if (stat.isDirectory()) {
+      expectTreeNotToContain(path, needle);
+      continue;
+    }
+    expect(readFileSync(path).includes(needle)).toBe(false);
+  }
 }
 
 describe("vault × runtime-ops — accepted operation persists ref, never plaintext", () => {
@@ -159,8 +177,7 @@ describe("vault × runtime-ops — accepted operation persists ref, never plaint
     }
 
     // Invariant 3: the vault has the secret, encrypted at rest.
-    const vaultJson = readFileSync(testVault.storePath, "utf8");
-    expect(vaultJson).not.toContain(apiKey);
+    expectTreeNotToContain(testVault.dataDir, apiKey);
     const desc = await testVault.vault.describe(apiKeyRef);
     expect(desc?.sensitive).toBe(true);
 

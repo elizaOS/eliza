@@ -19,6 +19,7 @@ import type { Vault } from "./vault.js";
 
 export interface TestVault {
   readonly vault: Vault;
+  readonly dataDir: string;
   readonly auditLogPath: string;
   /** All audit entries written so far. */
   getAuditRecords(): Promise<readonly AuditRecord[]>;
@@ -43,9 +44,10 @@ export async function createTestVault(
   const ownsWorkDir = !opts.workDir;
   const workDir =
     opts.workDir ?? (await fs.mkdtemp(join(tmpdir(), "eliza-vault-")));
+  const dataDir = join(workDir, ".vault-pglite");
   const auditLogPath = join(workDir, "audit", "vault.jsonl");
   const vault: Vault = new PgliteVaultImpl({
-    dataDir: join(workDir, ".vault-pglite"),
+    dataDir,
     masterKey: inMemoryMasterKey(generateMasterKey()),
     auditPath: auditLogPath,
   });
@@ -61,6 +63,7 @@ export async function createTestVault(
   }
   return {
     vault,
+    dataDir,
     auditLogPath,
     async getAuditRecords() {
       let raw: string;
@@ -83,6 +86,9 @@ export async function createTestVault(
       }
     },
     async dispose() {
+      if ("close" in vault && typeof vault.close === "function") {
+        await vault.close();
+      }
       if (ownsWorkDir) {
         await fs.rm(workDir, { recursive: true, force: true });
       }
