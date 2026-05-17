@@ -103,21 +103,21 @@ function resultContext(result: ProcessingResult): Record<string, unknown> {
   };
 }
 
-export async function processProvisioningWorkerCycle(
+async function processProvisioningWorkerCycle(
   batchSize = readWorkerConfig().batchSize,
 ): Promise<ProcessingResult> {
   const { provisioningJobService } = await loadDeps();
   return provisioningJobService.processPendingJobs(batchSize);
 }
 
-export async function processHeartbeatCycle(
+async function processHeartbeatCycle(
   concurrency = 5,
 ): Promise<HeartbeatResult> {
   const { provisioningJobService } = await loadDeps();
   return provisioningJobService.processRunningHeartbeats(concurrency);
 }
 
-export interface NodeHealthSummary {
+interface NodeHealthSummary {
   total: number;
   healthy: number;
   unhealthy: number;
@@ -129,7 +129,7 @@ export interface NodeHealthSummary {
  * holds `CONTAINERS_SSH_KEY`, so the node-status truth lives next to the
  * provisioner that acts on it.
  */
-export async function processNodeHealthCheckCycle(): Promise<NodeHealthSummary> {
+async function processNodeHealthCheckCycle(): Promise<NodeHealthSummary> {
   const { dockerNodeManager } = await loadDeps();
   const result = await dockerNodeManager.healthCheckAll();
   let healthy = 0;
@@ -187,6 +187,8 @@ async function pollCycle(
   // Node health checks run on a longer interval than the heartbeat cycle:
   // SSH + `docker info` per node is expensive (~MAX_RETRIES * 10s per offline
   // node) and only feeds capacity decisions that tolerate stale data.
+  // `lastNodeHealthCheckAt` initializes to 0 so the first poll always runs
+  // a check — we want a fresh node-status snapshot at worker startup.
   const now = Date.now();
   if (now - lastNodeHealthCheckAt >= config.nodeHealthIntervalMs) {
     lastNodeHealthCheckAt = now;
