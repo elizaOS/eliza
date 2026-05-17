@@ -499,9 +499,9 @@
   "platformTargets": {
     "linux-x64-cpu": {
       "kernelVerification": "reference-only",
-      "runtimeDispatch": "needs-runtime-smoke",
-      "deviceRun": "needs-hardware",
-      "nextGate": "Run native CPU backend smoke for QJL/Polar SIMD paths and DFlash lifecycle."
+      "runtimeDispatch": "runtime-ready",
+      "deviceRun": "verified",
+      "nextGate": "2026-05-17: native Linux x64 CPU graph smoke passed on BEAST with the 0.6B Q4_POLAR GGUF; runtime_graph_smoke covered cache-backed Turbo3/Turbo4 through llama-bench. QJL/Polar SIMD arithmetic remains covered by reference/fixture paths rather than KV cache storage aliases."
     },
     "linux-x64-cuda": {
       "kernelVerification": "verified",

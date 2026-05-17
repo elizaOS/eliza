@@ -3,7 +3,7 @@
 	"$schema": "https://biomejs.dev/schemas/2.4.14/schema.json",
 	"extends": "//",
 	"files": {
-		"includes": ["**", "!src/preload.js"]
+		"includes": ["src/**/*.ts", "src/**/*.tsx", "!src/**/*.d.ts"]
 	},
 	"formatter": {
 		"indentStyle": "tab"

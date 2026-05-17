@@ -34,13 +34,13 @@
  *     behavior — it surfaces the gap loudly rather than silently degrading.
  */
 
-import { FfiStreamingRunner } from "./ffi-streaming-runner";
 import type {
 	BackendPlan,
 	GenerateArgs,
 	GenerateResult,
 	LocalInferenceBackend,
 } from "./backend";
+import type { FfiStreamingRunner } from "./ffi-streaming-runner";
 import type {
 	ElizaInferenceContextHandle,
 	ElizaInferenceFfi,

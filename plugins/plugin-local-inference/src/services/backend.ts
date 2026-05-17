@@ -497,13 +497,16 @@ export class BackendDispatcher implements LocalInferenceBackend {
 				);
 			}
 		}
+		const ffiStreaming = this.ffiStreaming;
 		const wantsFfi =
 			decision.backend === "llama-server" &&
-			this.ffiStreaming !== undefined &&
+			ffiStreaming !== undefined &&
 			(this.probeFfiActive?.() ?? false);
 		const target =
 			decision.backend === "llama-server"
-				? (wantsFfi ? this.ffiStreaming! : this.llamaServer)
+				? wantsFfi
+					? ffiStreaming
+					: this.llamaServer
 				: this.nodeLlamaCpp;
 		if (this.active && this.active !== target) {
 			await this.active.unload();
