@@ -17,16 +17,15 @@
  */
 import type { Vault } from "@elizaos/vault";
 export interface VaultBootstrapResult {
-  migrated: number;
-  failed: string[];
+    migrated: number;
+    failed: string[];
 }
 interface VaultBootstrapOptions {
-  configPath?: string;
-  stateDir?: string;
-  /** Test seam — defaults to `sharedVault()`. */
-  vault?: Vault;
+    configPath?: string;
+    stateDir?: string;
+    /** Test seam — defaults to `sharedVault()`. */
+    vault?: Vault;
 }
-export declare function runVaultBootstrap(
-  opts?: VaultBootstrapOptions,
-): Promise<VaultBootstrapResult>;
+export declare function runVaultBootstrap(opts?: VaultBootstrapOptions): Promise<VaultBootstrapResult>;
+export {};
 //# sourceMappingURL=vault-bootstrap.d.ts.map

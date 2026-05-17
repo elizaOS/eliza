@@ -10,7 +10,5 @@ export declare const SENSITIVE_ENV_RESPONSE_KEYS: Set<string>;
  * /api/config response. Returns a shallow-cloned config with a filtered env
  * block — the original object is never mutated.
  */
-export declare function filterConfigEnvForResponse(
-  config: Record<string, unknown>,
-): Record<string, unknown>;
+export declare function filterConfigEnvForResponse(config: Record<string, unknown>): Record<string, unknown>;
 //# sourceMappingURL=server-config-filter.d.ts.map

@@ -82,7 +82,13 @@ export {
 // ConnectionStatus is intentionally not re-exported here to avoid collision
 // with ConnectionStatus from ./components/composites/index (the UI component).
 // The cloud-ui ConnectionStatus type is a string union used internally.
-export { DiscordIcon } from "./cloud-ui/components/icons";
+export {
+  AppleMessagesIcon,
+  DiscordIcon,
+  IMessageIcon,
+  TelegramIcon,
+  WhatsAppIcon,
+} from "./cloud-ui/components/icons";
 export {
   type AspectRatio,
   EnhancedLoading,

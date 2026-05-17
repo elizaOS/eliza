@@ -20,14 +20,17 @@ import {
   CardHeader,
   CardTitle,
   Checkbox,
+  CodeDisplay,
   Input,
   Label,
+  ApiParameterSelect as CustomSelect,
   ScrollArea,
   Tabs,
   TabsContent,
   TabsList,
   TabsTrigger,
   Textarea,
+  useAudioRecorder,
 } from "@elizaos/ui";
 import {
   CheckIcon,
@@ -55,9 +58,6 @@ import {
 } from "@/lib/swagger/endpoint-discovery";
 import { cn } from "@/lib/utils";
 import { toast } from "@/lib/utils/toast-adapter";
-import { useAudioRecorder } from "../../../components/chat/hooks/use-audio-recorder";
-import { CodeDisplay } from "./code-display";
-import { CustomSelect } from "./custom-select";
 
 interface ApiTesterProps {
   endpoint: ApiEndpoint;

@@ -31,17 +31,19 @@ export function StatSummary({
         return (
           <BrandCard key={item.title} corners={false} className="p-4">
             <div className="flex flex-row items-center justify-between space-y-0 pb-2">
-              <h4 className="text-sm font-medium uppercase tracking-wide text-white/50">
+              <h4 className="text-sm font-medium uppercase tracking-wide text-muted-foreground">
                 {item.title}
               </h4>
-              {Icon ? <Icon className="h-5 w-5 text-[#FF5800]" /> : null}
+              {Icon ? <Icon className="h-5 w-5 text-accent" /> : null}
             </div>
             <div>
-              <div className="mt-2 text-2xl font-semibold text-white">
+              <div className="mt-2 text-2xl font-semibold text-txt-strong">
                 {formatValue ? formatValue(item.value) : item.value}
               </div>
               {item.description ? (
-                <p className="mt-1 text-xs text-white/60">{item.description}</p>
+                <p className="mt-1 text-xs text-muted-foreground">
+                  {item.description}
+                </p>
               ) : null}
             </div>
           </BrandCard>

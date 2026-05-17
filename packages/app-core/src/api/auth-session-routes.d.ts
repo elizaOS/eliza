@@ -26,10 +26,6 @@ export declare function _resetAuthSessionRoutesLimiter(): void;
  * matched and the response was sent; false to fall through to the rest of
  * the API surface.
  */
-export declare function handleAuthSessionRoutes(
-  req: http.IncomingMessage,
-  res: http.ServerResponse,
-  state: CompatRuntimeState,
-): Promise<boolean>;
+export declare function handleAuthSessionRoutes(req: http.IncomingMessage, res: http.ServerResponse, state: CompatRuntimeState): Promise<boolean>;
 export { SESSION_COOKIE_NAME };
 //# sourceMappingURL=auth-session-routes.d.ts.map

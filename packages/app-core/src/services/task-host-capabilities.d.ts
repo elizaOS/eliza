@@ -38,31 +38,23 @@ import type { IAgentRuntime } from "@elizaos/core";
  * `plugins/plugin-lifeops/src/lifeops/scheduled-task/runner.test.ts` which
  * imports both and asserts structural compatibility.
  */
-export type TaskExecutionProfileForHost =
-  | "foreground"
-  | "bg-light-30s"
-  | "bg-heavy-fgs"
-  | "notify-only";
+export type TaskExecutionProfileForHost = "foreground" | "bg-light-30s" | "bg-heavy-fgs" | "notify-only";
 /**
  * Resolves the host's currently-available execution profiles. Pure
  * function of `globalThis.Capacitor` + `runtime.getSetting`; safe to call
  * on every fire.
  */
-export declare function getHostExecutionCapabilities(
-  runtime: IAgentRuntime,
-): ReadonlySet<TaskExecutionProfileForHost>;
+export declare function getHostExecutionCapabilities(runtime: IAgentRuntime): ReadonlySet<TaskExecutionProfileForHost>;
 /**
  * Snapshot helper for diagnostics — returns the same data as
  * `getHostExecutionCapabilities` but as a structured object that's
  * easier to serialize into `/api/health` extensions.
  */
-export declare function describeHostExecutionCapabilities(
-  runtime: IAgentRuntime,
-): {
-  profiles: TaskExecutionProfileForHost[];
-  isCapacitor: boolean;
-  hasBackgroundRunner: boolean;
-  hasElizaTasksPlugin: boolean;
-  fgsActive: boolean;
+export declare function describeHostExecutionCapabilities(runtime: IAgentRuntime): {
+    profiles: TaskExecutionProfileForHost[];
+    isCapacitor: boolean;
+    hasBackgroundRunner: boolean;
+    hasElizaTasksPlugin: boolean;
+    fgsActive: boolean;
 };
 //# sourceMappingURL=task-host-capabilities.d.ts.map

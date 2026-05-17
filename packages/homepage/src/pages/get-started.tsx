@@ -1,15 +1,15 @@
 import { Button } from "@elizaos/ui/button";
-import { animated, useSpring, useTrail } from "@react-spring/web";
-import { ArrowLeft, Check, Copy, ExternalLink, Info, Send } from "lucide-react";
-import { useCallback, useEffect, useRef, useState } from "react";
-import { Link, useNavigate, useSearchParams } from "react-router-dom";
-import { ElizaLogo } from "@/components/brand/eliza-logo";
 import {
   AppleMessagesIcon,
   DiscordIcon,
   TelegramIcon,
   WhatsAppIcon,
-} from "@/components/icons/platform-icons";
+} from "@elizaos/ui/cloud-ui";
+import { animated, useSpring, useTrail } from "@react-spring/web";
+import { ArrowLeft, Check, Copy, ExternalLink, Info, Send } from "lucide-react";
+import { useCallback, useEffect, useRef, useState } from "react";
+import { Link, useNavigate, useSearchParams } from "react-router-dom";
+import { ElizaLogo } from "@/components/brand/eliza-logo";
 import {
   buildFullPhoneNumber,
   PhoneNumberInput,

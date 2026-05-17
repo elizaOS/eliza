@@ -319,6 +319,48 @@ def load_dataset(args: argparse.Namespace) -> list[str]:
     """Load the distillation JSONL corpus."""
     import json  # noqa: PLC0415
 
+    def append_record(rec: dict[str, Any]) -> None:
+        if "text" in rec and isinstance(rec["text"], str):
+            examples.append(rec["text"])
+            return
+        if "messages" in rec:
+            # Render chat messages later, after the target tokenizer is loaded.
+            examples.append(json.dumps(rec["messages"]))
+            return
+        native_json = rec.get("native_json")
+        if isinstance(native_json, str):
+            try:
+                native = json.loads(native_json)
+            except json.JSONDecodeError:
+                native = {}
+            if isinstance(native, dict):
+                append_record(native)
+                return
+        request_json = rec.get("request_json")
+        response_json = rec.get("response_json")
+        if isinstance(request_json, str):
+            try:
+                request = json.loads(request_json)
+            except json.JSONDecodeError:
+                request = {}
+            messages = request.get("messages") if isinstance(request, dict) else None
+            if isinstance(messages, list):
+                if isinstance(response_json, str):
+                    try:
+                        response = json.loads(response_json)
+                    except json.JSONDecodeError:
+                        response = {}
+                    if isinstance(response, dict):
+                        text = response.get("text")
+                        tool_calls = response.get("toolCalls") or response.get("tool_calls")
+                        assistant: dict[str, Any] = {"role": "assistant"}
+                        if isinstance(text, str):
+                            assistant["content"] = text
+                        if tool_calls:
+                            assistant["tool_calls"] = tool_calls
+                        messages = [*messages, assistant]
+                examples.append(json.dumps(messages))
+
     dataset_path = Path(args.dataset_path)
     if not dataset_path.exists():
         log.error("Dataset not found: %s", dataset_path)
@@ -330,12 +372,8 @@ def load_dataset(args: argparse.Namespace) -> list[str]:
             if not line:
                 continue
             rec = json.loads(line)
-            if "text" in rec and isinstance(rec["text"], str):
-                examples.append(rec["text"])
-            elif "messages" in rec:
-                # Defer chat template rendering to train() where we have the
-                # target tokenizer loaded.
-                examples.append(json.dumps(rec["messages"]))
+            if isinstance(rec, dict):
+                append_record(rec)
     if not examples:
         log.error("Dataset %s produced 0 examples", dataset_path)
         sys.exit(2)
@@ -357,6 +395,7 @@ def train(
     args: argparse.Namespace,
 ) -> float | None:
     """Run the KD training loop. Returns final KL loss value."""
+    import json  # noqa: PLC0415
     import torch  # noqa: PLC0415
     import torch.nn.functional as F  # noqa: PLC0415
     from torch.utils.data import DataLoader  # noqa: PLC0415
@@ -370,8 +409,26 @@ def train(
     out_dir.mkdir(parents=True, exist_ok=True)
 
     def collate(batch: list[str]) -> dict[str, Any]:
+        rendered: list[str] = []
+        for item in batch:
+            text = item
+            if item.startswith("["):
+                try:
+                    messages = json.loads(item)
+                except json.JSONDecodeError:
+                    messages = None
+                if isinstance(messages, list) and hasattr(target_tok, "apply_chat_template"):
+                    try:
+                        text = target_tok.apply_chat_template(
+                            messages,
+                            tokenize=False,
+                            add_generation_prompt=False,
+                        )
+                    except Exception:
+                        text = item
+            rendered.append(text)
         enc = target_tok(
-            batch,
+            rendered,
             return_tensors="pt",
             padding="max_length",
             truncation=True,
@@ -658,7 +715,8 @@ def main(argv: list[str] | None = None) -> None:
     if not args.target_checkpoint:
         log.error("--target-checkpoint is required for a real run")
         sys.exit(2)
-    if not Path(args.target_checkpoint).exists():
+    checkpoint_path = Path(args.target_checkpoint)
+    if not checkpoint_path.exists() and "/" not in args.target_checkpoint:
         log.error("target checkpoint %s does not exist", args.target_checkpoint)
         sys.exit(2)
 

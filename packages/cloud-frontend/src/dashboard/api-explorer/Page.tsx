@@ -1,7 +1,9 @@
 import {
   DashboardLoadingState,
   DashboardPageContainer,
+  EndpointCard,
   MonacoEditorSkeleton,
+  OpenApiViewer,
   useSetPageHeader,
 } from "@elizaos/ui";
 import {
@@ -21,7 +23,7 @@ import {
   TrendingUp,
   X,
 } from "lucide-react";
-import { lazy, Suspense, useEffect, useState } from "react";
+import { Suspense, useEffect, useState } from "react";
 import { Helmet } from "react-helmet-async";
 import {
   API_ENDPOINTS,
@@ -39,14 +41,7 @@ import { toast } from "@/lib/utils/toast-adapter";
 import { useRequireAuth } from "../../lib/auth-hooks";
 import { ApiTester } from "./_components/api-tester";
 import { AuthManager } from "./_components/auth-manager";
-import { EndpointCard } from "./_components/endpoint-card";
 import { useExplorerApiKey } from "./_components/use-explorer-api-key";
-
-const OpenApiViewer = lazy(() =>
-  import("./_components/openapi-viewer").then((mod) => ({
-    default: mod.OpenApiViewer,
-  })),
-);
 
 const categoryDescriptions: Record<string, string> = {
   All: "Explore the complete set of API endpoints available in the Eliza platform.",

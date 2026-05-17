@@ -5,11 +5,11 @@ import type { CompatRuntimeState } from "./compat-route-shared";
  * surface "last background tick" on the dashboard.
  */
 export interface WakeTelemetry {
-  lastWakeFiredAt: number | null;
-  lastWakeKind: "refresh" | "processing" | null;
-  lastWakeDurationMs: number | null;
-  lastWakeRanTasks: number | null;
-  lastWakeError: string | null;
+    lastWakeFiredAt: number | null;
+    lastWakeKind: "refresh" | "processing" | null;
+    lastWakeDurationMs: number | null;
+    lastWakeRanTasks: number | null;
+    lastWakeError: string | null;
 }
 export declare function getWakeTelemetry(): Readonly<WakeTelemetry>;
 export declare function __resetWakeTelemetryForTests(): void;
@@ -19,12 +19,6 @@ export declare function __resetWakeTelemetryForTests(): void;
  */
 export declare function getDeviceSecret(): string;
 export declare function __setDeviceSecretForTests(secret: string | null): void;
-export declare function __setDeviceSecretPathForTests(
-  filePath: string | null,
-): void;
-export declare function handleInternalWakeRoute(
-  req: http.IncomingMessage,
-  res: http.ServerResponse,
-  state: CompatRuntimeState,
-): Promise<boolean>;
+export declare function __setDeviceSecretPathForTests(filePath: string | null): void;
+export declare function handleInternalWakeRoute(req: http.IncomingMessage, res: http.ServerResponse, state: CompatRuntimeState): Promise<boolean>;
 //# sourceMappingURL=internal-routes.d.ts.map

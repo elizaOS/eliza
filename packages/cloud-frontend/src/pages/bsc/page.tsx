@@ -97,6 +97,7 @@ export default function BscPromoPage() {
         poster={BRAND_PATHS.poster}
         scrim={0.82}
         scrimColor="rgba(0,0,0,1)"
+        overlay={<div className="absolute inset-0 bg-black/35 sm:hidden" />}
         className="theme-cloud min-h-screen bg-black text-white"
       >
         <main id="main" className="relative z-10 min-h-screen">

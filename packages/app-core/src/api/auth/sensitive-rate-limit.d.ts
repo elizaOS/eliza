@@ -25,16 +25,16 @@
 export declare const SENSITIVE_RATE_LIMIT_WINDOW_MS: number;
 export declare const SENSITIVE_RATE_LIMIT_MAX = 5;
 declare class SensitiveRateLimiter {
-  private readonly buckets;
-  /**
-   * Returns true when the request is allowed, false when the limit is
-   * exhausted. Each successful call increments the bucket, so repeated
-   * `consume` calls in the same window will eventually return false even
-   * for valid traffic — this is intentional.
-   */
-  consume(ip: string | null, now?: number): boolean;
-  reset(): void;
-  sweep(now?: number): void;
+    private readonly buckets;
+    /**
+     * Returns true when the request is allowed, false when the limit is
+     * exhausted. Each successful call increments the bucket, so repeated
+     * `consume` calls in the same window will eventually return false even
+     * for valid traffic — this is intentional.
+     */
+    consume(ip: string | null, now?: number): boolean;
+    reset(): void;
+    sweep(now?: number): void;
 }
 /**
  * Look up (or lazily create) the named sensitive-route limiter. Use one
@@ -49,4 +49,5 @@ export declare function getSensitiveLimiter(name: string): SensitiveRateLimiter;
 export declare const bootstrapExchangeLimiter: SensitiveRateLimiter;
 /** Reset state. Test-only. */
 export declare function _resetSensitiveLimiters(): void;
+export {};
 //# sourceMappingURL=sensitive-rate-limit.d.ts.map

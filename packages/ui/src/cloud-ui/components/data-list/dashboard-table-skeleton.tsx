@@ -34,7 +34,7 @@ export function DashboardTableSkeleton({
   );
 
   return (
-    <div className={cn("overflow-hidden rounded-md border", className)}>
+    <div className={cn("overflow-hidden rounded-sm border", className)}>
       <Table>
         <TableHeader>
           <TableRow>

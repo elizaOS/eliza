@@ -74,7 +74,13 @@ export {
   ConnectionInstructions,
   ConnectionLoadingCard,
 } from "./cloud-ui/components/connection-card";
-export { DiscordIcon } from "./cloud-ui/components/icons";
+export {
+  AppleMessagesIcon,
+  DiscordIcon,
+  IMessageIcon,
+  TelegramIcon,
+  WhatsAppIcon,
+} from "./cloud-ui/components/icons";
 export {
   type AspectRatio,
   EnhancedLoading,
