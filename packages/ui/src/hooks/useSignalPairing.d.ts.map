@@ -1,0 +1,1 @@
+{"version":3,"file":"useSignalPairing.d.ts","sourceRoot":"","sources":["useSignalPairing.ts"],"names":[],"mappings":"AAIA,YAAY,EAAE,mBAAmB,EAAE,MAAM,0BAA0B,CAAC;AAEpE,OAAO,KAAK,EAAE,mBAAmB,EAAE,MAAM,0BAA0B,CAAC;AAqCpE,wBAAgB,gBAAgB,CAAC,SAAS,SAA+B;;;;YAlC/D,mBAAmB;eAChB,MAAM,GAAG,IAAI;iBACX,MAAM,GAAG,IAAI;WACnB,MAAM,GAAG,IAAI;EAsJrB"}

@@ -1,0 +1,1 @@
+{"version":3,"file":"ConnectorAccountAuditList.d.ts","sourceRoot":"","sources":["ConnectorAccountAuditList.tsx"],"names":[],"mappings":"AASA,MAAM,WAAW,8BAA8B;IAC7C,QAAQ,EAAE,MAAM,CAAC;IACjB,SAAS,CAAC,EAAE,MAAM,CAAC;IACnB,KAAK,CAAC,EAAE,MAAM,CAAC;IACf,SAAS,CAAC,EAAE,MAAM,CAAC;CACpB;AAuBD,wBAAgB,yBAAyB,CAAC,EACxC,QAAQ,EACR,SAAS,EACT,KAAU,EACV,SAAS,GACV,EAAE,8BAA8B,2CAsHhC"}

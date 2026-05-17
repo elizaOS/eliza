@@ -1,13 +1,10 @@
 import type { AgentRequestTransport } from "./transport";
 export interface IttpAgentRequestContext {
-  timeoutMs?: number;
+    timeoutMs?: number;
 }
-export type IttpAgentRequestHandler = (
-  request: Request,
-  context: IttpAgentRequestContext,
-) => Promise<Response>;
+export type IttpAgentRequestHandler = (request: Request, context: IttpAgentRequestContext) => Promise<Response>;
 export interface FetchRouteKernel {
-  fetch(request: Request): Response | Promise<Response>;
+    fetch(request: Request): Response | Promise<Response>;
 }
 export type IttpRouteKernel = IttpAgentRequestHandler | FetchRouteKernel;
 /**
@@ -20,7 +17,5 @@ export type IttpRouteKernel = IttpAgentRequestHandler | FetchRouteKernel;
  * Hono apps expose the same `app.fetch(request)` shape, so they can be passed
  * directly once a real shared route kernel exists.
  */
-export declare function createIttpAgentTransport(
-  handler: IttpRouteKernel,
-): AgentRequestTransport;
+export declare function createIttpAgentTransport(handler: IttpRouteKernel): AgentRequestTransport;
 //# sourceMappingURL=ittp-agent-transport.d.ts.map

@@ -1,0 +1,16 @@
+export declare const Z_BASE = 0;
+export declare const Z_DROPDOWN = 10;
+export declare const Z_STICKY = 20;
+export declare const Z_MODAL_BACKDROP = 50;
+export declare const Z_MODAL = 100;
+export declare const Z_DIALOG_OVERLAY = 160;
+export declare const Z_DIALOG = 170;
+export declare const Z_OVERLAY = 200;
+export declare const Z_TOOLTIP = 300;
+export declare const Z_SYSTEM_BANNER = 9998;
+export declare const Z_SYSTEM_CRITICAL = 9999;
+export declare const Z_SHELL_OVERLAY = 10000;
+export declare const Z_GLOBAL_EMOTE = 11000;
+export declare const CONFIG_SELECT_FLOATING_LAYER_NAME = "config-select";
+export declare const CONFIG_SELECT_FLOATING_LAYER_Z_INDEX = 12000;
+//# sourceMappingURL=floating-layers.d.ts.map

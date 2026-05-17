@@ -34,6 +34,8 @@ if (!result.success) {
 }
 
 console.log("📝 Generating TypeScript declarations...");
-await $`tsc --emitDeclarationOnly --declaration --declarationDir dist --noCheck -p tsconfig.json`.quiet();
+// Override noEmit/rootDir so declarations land directly in dist/
+// allowImportingTsExtensions in tsconfig forces noEmit:true, so we override with --noEmit false
+await $`tsc --emitDeclarationOnly --declaration --noEmit false --declarationDir dist --rootDir src --noCheck --skipLibCheck -p tsconfig.json`.quiet();
 
 console.log(`✅ Build complete in ${((Date.now() - start) / 1000).toFixed(2)}s`);

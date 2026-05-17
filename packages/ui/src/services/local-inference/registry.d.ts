@@ -29,7 +29,7 @@ export declare function touchElizaModel(id: string): Promise<void>;
  * touch files it doesn't own. Callers surface that refusal as a 4xx.
  */
 export declare function removeElizaModel(id: string): Promise<{
-  removed: boolean;
-  reason?: "external" | "not-found";
+    removed: boolean;
+    reason?: "external" | "not-found";
 }>;
 //# sourceMappingURL=registry.d.ts.map

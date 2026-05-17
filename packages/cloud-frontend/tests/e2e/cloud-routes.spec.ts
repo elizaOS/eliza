@@ -146,8 +146,10 @@ const adminDashboardRoutes = [
 
 // Legacy paths kept for inbound links; the real implementation redirects them
 // to the canonical dashboard surface. Tested separately from the renders list.
+// /dashboard/chat is intentionally not in this list — it's a smart route
+// (redirects to an existing agent's chat OR shows an empty state) rather than
+// a pure redirect.
 const dashboardRedirects: Array<[from: string, toPattern: RegExp]> = [
-  ["/dashboard/chat", /\/dashboard\/my-agents$/],
   ["/dashboard/image", /\/dashboard\/api-explorer$/],
   ["/dashboard/video", /\/dashboard\/api-explorer$/],
   ["/dashboard/gallery", /\/dashboard\/api-explorer$/],
