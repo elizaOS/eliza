@@ -10,12 +10,14 @@
 
 import type {
   IAgentRuntime,
+  Memory,
   Plugin,
   ServiceClass,
   TargetInfo,
   ThreadHandle,
 } from "@elizaos/core";
 import {
+  EventType,
   isLocalCodeExecutionAllowed,
   ModelType,
   promoteSubactionsToActions,
@@ -158,6 +160,12 @@ export function createAgentOrchestratorPlugin(): Plugin {
   // progressBySession) and the channel would receive N duplicates per
   // sub-agent narration chunk.
   let disposeProgressHook: (() => void) | undefined;
+  // Forwarding listener for MESSAGE_RECEIVED → in-flight sub-agent.
+  // Captured here so dispose() can unregister it; otherwise hot-reloads
+  // stack duplicate listeners that each forward to acpx independently.
+  let activeSessionForwardHandler:
+    | ((payload: { message: Memory }) => Promise<void>)
+    | undefined;
 
   return {
     name: "@elizaos/plugin-agent-orchestrator",
@@ -204,6 +212,62 @@ export function createAgentOrchestratorPlugin(): Plugin {
         TASK_AUDIT_EVENT,
         taskAuditHandler,
       );
+      // Forward user messages to an in-flight sub-agent when the channel
+      // already has one running for this (source, roomId). The sub-agent
+      // ingests the new prompt mid-task — claude-agent-acp queues it for
+      // the next planner turn so it stays mid-flight without restarting.
+      // Cross-platform: no thread dependency. Discord/Slack thread replies
+      // and plain WhatsApp/SMS follow-ups both work via the same code path
+      // because the bind is on (source, roomId) of the live SessionStore
+      // entry, not on a Discord thread id.
+      activeSessionForwardHandler = async ({ message }) => {
+        try {
+          if (!message?.entityId || message.entityId === runtime.agentId)
+            return;
+          const acp = runtime.getService<AcpService>(AcpService.serviceType);
+          if (!acp || typeof acp.listSessions !== "function") return;
+          const sessions = await Promise.resolve(acp.listSessions()).catch(
+            () => [],
+          );
+          if (!Array.isArray(sessions)) return;
+          const active = sessions.find((s) => {
+            if (TERMINAL_SESSION_STATUSES.has(s.status)) return false;
+            const meta = s.metadata as Record<string, unknown> | undefined;
+            return (
+              typeof meta?.roomId === "string" && meta.roomId === message.roomId
+            );
+          });
+          if (!active) return;
+          const text =
+            typeof (message.content as { text?: unknown })?.text === "string"
+              ? ((message.content as { text: string }).text ?? "").trim()
+              : "";
+          if (!text) return;
+          if (typeof acp.sendPrompt !== "function") return;
+          await acp.sendPrompt(active.id, text).catch((err: unknown) =>
+            runtime.logger?.warn?.(
+              {
+                src: "@elizaos/plugin-agent-orchestrator",
+                sessionId: active.id,
+                err: err instanceof Error ? err.message : String(err),
+              },
+              "active-session forward failed",
+            ),
+          );
+        } catch (err) {
+          runtime.logger?.warn?.(
+            {
+              src: "@elizaos/plugin-agent-orchestrator",
+              err: err instanceof Error ? err.message : String(err),
+            },
+            "active-session forward listener threw",
+          );
+        }
+      };
+      runtime.registerEvent(
+        EventType.MESSAGE_RECEIVED,
+        activeSessionForwardHandler,
+      );
       // Service registration & startup happens AFTER plugin.init() returns —
       // plugins are wired in two phases (register-types, then run-inits).
       // Calling `getServiceLoadPromise` here would either hang (waiting on
@@ -240,6 +304,13 @@ export function createAgentOrchestratorPlugin(): Plugin {
           TaskAuditPayload & { runtime: IAgentRuntime }
         >(TASK_AUDIT_EVENT, taskAuditHandler);
         taskAuditHandler = undefined;
+      }
+      if (activeSessionForwardHandler) {
+        runtime.unregisterEvent?.(
+          EventType.MESSAGE_RECEIVED,
+          activeSessionForwardHandler,
+        );
+        activeSessionForwardHandler = undefined;
       }
       if (disposeProgressHook) {
         try {
