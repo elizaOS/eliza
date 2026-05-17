@@ -1,8 +1,7 @@
 import { type ChildProcessWithoutNullStreams, spawn } from "node:child_process";
 import { randomUUID } from "node:crypto";
-import { existsSync } from "node:fs";
-import { mkdir } from "node:fs/promises";
-import { tmpdir } from "node:os";
+import { mkdir, readdir, stat, unlink } from "node:fs/promises";
+import { homedir, tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { type IAgentRuntime, Service } from "@elizaos/core";
 import {
@@ -14,22 +13,22 @@ import {
   InMemorySessionStore,
   type SessionStoreBackend,
 } from "./session-store.js";
-import { normalizeTaskAgentAdapter } from "./task-agent-routing.js";
-import type {
-  AcpEventCallback,
-  AcpJsonRpcMessage,
-  AcpToolCall,
-  AgentType,
-  ApprovalPreset,
-  AvailableAgentInfo,
-  PromptResult,
-  SendOptions,
-  SessionEventCallback,
-  SessionEventName,
-  SessionInfo,
-  SessionStore,
-  SpawnOptions,
-  SpawnResult,
+import {
+  type AcpEventCallback,
+  type AcpJsonRpcMessage,
+  type AcpToolCall,
+  type AgentType,
+  type ApprovalPreset,
+  type AvailableAgentInfo,
+  type PromptResult,
+  type SendOptions,
+  type SessionEventCallback,
+  type SessionEventName,
+  type SessionInfo,
+  type SessionStore,
+  type SpawnOptions,
+  type SpawnResult,
+  TERMINAL_SESSION_STATUSES,
 } from "./types.js";
 
 type RuntimeLike = IAgentRuntime & {
@@ -82,13 +81,18 @@ const KILL_GRACE_MS = 5_000;
 const DEFAULT_WORKDIR_ROOT = join(tmpdir(), "eliza-acp");
 const MAX_CAPTURED_TOOL_OUTPUT_CHARS = 12_000;
 const TOOL_OUTPUT_END_MARKER = "[/tool output]";
-const DEFAULT_AGENTS: AgentType[] = [
-  "elizaos",
-  "pi-agent",
-  "opencode",
-  "codex",
-  "claude",
-];
+const ACP_HEALTH_CHECK_INTERVAL_MS = 60_000;
+const ACP_STALE_LOCK_MAX_AGE_MS = 10 * 60_000;
+// Untracked acpx stream files older than this get unlinked. Real spawns
+// finalize their store entry in seconds; 24h is grace for in-flight spawns.
+const ACP_REVERSE_ORPHAN_MAX_AGE_MS = 24 * 60 * 60_000;
+// On startup, a session whose acpx stream file was written within this window
+// is treated as still-alive (the subprocess survived the orchestrator
+// restart) and kept in its current status. Older sessions are reconciled
+// to errored. 90s covers tsx hot-reload latency + acpx subprocess flush
+// cadence; well below normal sub-agent silence stretches.
+const RECONCILE_LIVE_WINDOW_MS = 90_000;
+const DEFAULT_AGENTS: AgentType[] = ["codex", "claude", "opencode"];
 const DENY_ENV_PATTERNS = [
   /DISCORD.*TOKEN/i,
   /TELEGRAM.*TOKEN/i,
@@ -97,23 +101,33 @@ const DENY_ENV_PATTERNS = [
   /ELIZA_VAULT_PASSPHRASE/i,
 ];
 
-const SAFE_ELIZAOS_ENV_KEYS = new Set([
-  "ELIZAOS_BASE",
-  "ELIZAOS_CAPABILITY_RUNNER",
-  "ELIZAOS_EDITION",
-  "ELIZAOS_PRIVACY_MODE",
-]);
-
 export class AcpService extends Service {
   static serviceType = "ACP_SUBPROCESS_SERVICE";
 
+  // Process-wide registry of live AcpService instances. The SIGTERM/SIGINT
+  // listener is registered exactly ONCE per Node process and fans out to
+  // every live instance. This avoids:
+  //  - MaxListenersExceededWarning when multiple AcpServices run in the same
+  //    process (multi-tenant elizaOS, test runners that create + destroy
+  //    instances back-to-back, hot-reload cycles).
+  //  - Per-instance `process.once` handler closures leaking after stop() if
+  //    the signal never fires (tests, short-lived workers).
+  private static readonly liveInstances = new Set<AcpService>();
+  private static shutdownHookInstalled = false;
+  private static readonly sharedShutdownHandler = (): void => {
+    // Snapshot to avoid mutation-during-iteration if stop() removes the
+    // instance from the set.
+    const instances = [...AcpService.liveInstances];
+    for (const inst of instances) void inst.stop();
+  };
+
   capabilityDescription =
-    "Manages asynchronous Agent Client Protocol task-agent sessions for open-ended background work";
+    "Manages asynchronous ACPX task-agent sessions for open-ended background work";
 
   readonly defaultApprovalPreset: ApprovalPreset;
   readonly agentSelectionStrategy: string;
 
-  protected readonly runtime: RuntimeLike;
+  protected override readonly runtime: RuntimeLike;
   private readonly logger: RuntimeLogger;
   private readonly store: SessionStore;
   private readonly cliPath: string;
@@ -125,6 +139,7 @@ export class AcpService extends Service {
   private readonly activeProcesses = new Map<string, ProcessRecord>();
   private readonly outputBuffers = new Map<string, string[]>();
   private started = false;
+  private healthCheckTimer: NodeJS.Timeout | undefined;
 
   constructor(runtime: IAgentRuntime, opts: { store?: SessionStore } = {}) {
     super(runtime);
@@ -133,11 +148,9 @@ export class AcpService extends Service {
     this.store = opts.store ?? new InMemorySessionStore();
     this.cliPath = this.setting("ELIZA_ACP_CLI") ?? "acpx";
     this.defaultAgent =
-      normalizeTaskAgentAdapter(
-        this.setting("BENCHMARK_TASK_AGENT") ??
-          this.setting("ELIZA_ACP_DEFAULT_AGENT") ??
-          this.setting("ELIZA_DEFAULT_AGENT_TYPE"),
-      ) ?? "elizaos";
+      this.setting("ELIZA_ACP_DEFAULT_AGENT") ??
+      this.setting("ELIZA_DEFAULT_AGENT_TYPE") ??
+      "codex";
     this.defaultApprovalPreset = normalizeApprovalPreset(
       boolSetting(this.setting("ACPX_APPROVE_ALL")) === true
         ? "approve-all"
@@ -165,15 +178,118 @@ export class AcpService extends Service {
   }
 
   async start(): Promise<void> {
+    // Idempotent: a double-start (hot reload, retry path) without an
+    // intervening stop() would otherwise re-register a second SIGTERM/SIGINT
+    // handler, leak the prior healthCheckTimer, and leave the first
+    // shutdownHandler stuck on the process forever (only the latest one
+    // ever gets passed to process.off in stop()).
+    if (this.started) return;
     this.started = true;
     this.log("debug", "AcpService initialized", {
-      transportCommand: this.cliPath,
+      cliPath: this.cliPath,
       defaultAgent: this.defaultAgent,
       defaultApprovalPreset: this.defaultApprovalPreset,
     });
+    await this.reconcileOrphanedSessions();
+    await this.cleanReverseOrphanedAcpxFiles();
+    await this.cleanStaleLocks();
+    this.healthCheckTimer = setInterval(() => {
+      void this.runHealthCheck();
+    }, ACP_HEALTH_CHECK_INTERVAL_MS);
+    this.healthCheckTimer.unref?.();
+    // Catch SIGTERM/SIGINT so the orchestrator's exit triggers stop() and we
+    // kill spawned subprocess trees before dying. Without this, tsx watch's
+    // SIGTERM tears down the parent without giving us a chance to clean up,
+    // and `claude-agent-acp` / `npm exec` grandchildren leak as zombies.
+    //
+    // One signal hook per process, fanning out to every live instance via
+    // the static `liveInstances` registry. Per-instance handlers would hit
+    // Node's MaxListenersExceededWarning (default 10) under multi-tenant
+    // elizaOS or rapid test create/destroy cycles, and stale closures would
+    // leak if the instance was destroyed without a SIGTERM ever firing.
+    AcpService.liveInstances.add(this);
+    if (!AcpService.shutdownHookInstalled) {
+      process.once("SIGTERM", AcpService.sharedShutdownHandler);
+      process.once("SIGINT", AcpService.sharedShutdownHandler);
+      AcpService.shutdownHookInstalled = true;
+    }
+  }
+
+  private async reconcileOrphanedSessions(): Promise<void> {
+    const all = await this.store.list().catch(() => [] as SessionInfo[]);
+    const orphaned = all.filter(
+      (s) => !TERMINAL_SESSION_STATUSES.has(s.status),
+    );
+    if (orphaned.length === 0) return;
+    const sessionsDir = join(this.acpxStateRoot(), "sessions");
+    const liveCutoffMs = Date.now() - RECONCILE_LIVE_WINDOW_MS;
+    const verdicts = await Promise.all(
+      orphaned.map(async (s) => {
+        if (!s.acpxSessionId) return { session: s, alive: false };
+        const stateFile = join(sessionsDir, `${s.acpxSessionId}.stream.ndjson`);
+        try {
+          const st = await stat(stateFile);
+          return { session: s, alive: st.mtimeMs > liveCutoffMs };
+        } catch {
+          return { session: s, alive: false };
+        }
+      }),
+    );
+    const dead = verdicts.filter((v) => !v.alive).map((v) => v.session);
+    const live = verdicts.filter((v) => v.alive).map((v) => v.session);
+    if (live.length > 0) {
+      this.log(
+        "info",
+        "reconcile: keeping recently-active sessions as-is (acpx stream still writing)",
+        {
+          count: live.length,
+          ids: live.map((s) => s.id.slice(0, 8)),
+          windowMs: RECONCILE_LIVE_WINDOW_MS,
+        },
+      );
+    }
+    if (dead.length === 0) return;
+    this.log("info", "reconcile: marking stale orphans errored", {
+      count: dead.length,
+      ids: dead.map((s) => s.id.slice(0, 8)),
+    });
+    await Promise.allSettled(
+      dead.map((s) =>
+        this.store
+          .updateStatus(
+            s.id,
+            "errored",
+            "Sub-agent was mid-flight when the runtime restarted; spawn a fresh sub-agent to continue the work.",
+          )
+          .catch((err) =>
+            this.log("warn", "failed to mark orphaned session errored", {
+              sessionId: s.id,
+              err,
+            }),
+          ),
+      ),
+    );
   }
 
   async stop(): Promise<void> {
+    if (this.healthCheckTimer) {
+      clearInterval(this.healthCheckTimer);
+      this.healthCheckTimer = undefined;
+    }
+    AcpService.liveInstances.delete(this);
+    // The shared SIGTERM/SIGINT hook is `process.once` — it self-removes
+    // when fired. If nothing fired and the last instance is going away,
+    // explicitly off() the hook so a respawned instance later in the
+    // process can install a fresh one (otherwise shutdownHookInstalled
+    // stays true but the listener is gone).
+    if (
+      AcpService.liveInstances.size === 0 &&
+      AcpService.shutdownHookInstalled
+    ) {
+      process.off("SIGTERM", AcpService.sharedShutdownHandler);
+      process.off("SIGINT", AcpService.sharedShutdownHandler);
+      AcpService.shutdownHookInstalled = false;
+    }
     const stops = Array.from(this.activeProcesses.keys()).map((sessionId) =>
       this.stopTrackedProcess(sessionId),
     );
@@ -181,14 +297,103 @@ export class AcpService extends Service {
     this.started = false;
   }
 
+  private acpxStateRoot(): string {
+    return join(homedir(), ".acpx");
+  }
+
+  private async cleanStaleLocks(): Promise<void> {
+    const queuesDir = join(this.acpxStateRoot(), "queues");
+    const cleaned = await scanAndUnlinkOlderThan(
+      queuesDir,
+      (name) => name.endsWith(".lock"),
+      ACP_STALE_LOCK_MAX_AGE_MS,
+    );
+    if (cleaned > 0) {
+      this.log("info", "cleaned stale acpx queue locks", {
+        cleaned,
+        olderThanMs: ACP_STALE_LOCK_MAX_AGE_MS,
+      });
+    }
+  }
+
+  // GC acpx stream files with no SessionStore entry (subprocess started
+  // but orchestrator never persisted — crash between spawn and store.create).
+  private async cleanReverseOrphanedAcpxFiles(): Promise<void> {
+    const sessionsDir = join(this.acpxStateRoot(), "sessions");
+    const sessions = await this.store.list().catch(() => [] as SessionInfo[]);
+    const trackedAcpxIds = new Set(
+      sessions.map((s) => s.acpxSessionId).filter(Boolean) as string[],
+    );
+    const { deleted, lingering } = await scanAndUnlinkOlderThanDetailed(
+      sessionsDir,
+      (name) => {
+        if (!name.endsWith(".stream.ndjson")) return false;
+        const acpxId = name.replace(/\.stream\.ndjson$/, "");
+        return !trackedAcpxIds.has(acpxId);
+      },
+      ACP_REVERSE_ORPHAN_MAX_AGE_MS,
+    );
+    if (deleted > 0 || lingering > 0) {
+      this.log("info", "reverse-orphan acpx scan", {
+        deleted,
+        lingering,
+        olderThanMs: ACP_REVERSE_ORPHAN_MAX_AGE_MS,
+      });
+    }
+  }
+
+  private async runHealthCheck(): Promise<void> {
+    if (!this.started) return;
+    const sessions = await this.store.list().catch(() => [] as SessionInfo[]);
+    const sessionsDir = join(this.acpxStateRoot(), "sessions");
+    let healed = 0;
+    for (const s of sessions) {
+      if (TERMINAL_SESSION_STATUSES.has(s.status)) continue;
+      if (!s.acpxSessionId) continue;
+      const stateFile = join(sessionsDir, `${s.acpxSessionId}.stream.ndjson`);
+      try {
+        await stat(stateFile);
+      } catch {
+        const message =
+          "Sub-agent state was lost (process exited without persisting); spawn a fresh sub-agent to continue.";
+        await this.store.updateStatus(s.id, "errored", message).catch((err) =>
+          this.log("warn", "health-check: failed to mark errored", {
+            sessionId: s.id,
+            err,
+          }),
+        );
+        this.emitSessionEvent(s.id, "error", {
+          message,
+          failureKind: "session_state_lost",
+        });
+        healed++;
+      }
+    }
+    if (healed > 0) {
+      this.log("info", "health-check self-healed sessions", { healed });
+    }
+    await this.cleanReverseOrphanedAcpxFiles();
+  }
+
+  private async hasAcpxSessionState(acpxSessionId: string): Promise<boolean> {
+    const stateFile = join(
+      this.acpxStateRoot(),
+      "sessions",
+      `${acpxSessionId}.stream.ndjson`,
+    );
+    try {
+      await stat(stateFile);
+      return true;
+    } catch {
+      return false;
+    }
+  }
+
   async spawnSession(opts: SpawnOptions): Promise<SpawnResult> {
     this.ensureStarted();
     const id = randomUUID();
     const name = opts.name?.trim() || id;
-    this.assertTransportAvailable(id);
-    const agentType =
-      normalizeTaskAgentAdapter(opts.agentType ?? this.defaultAgent) ??
-      this.defaultAgent;
+    const agentType = opts.agentType ?? this.defaultAgent;
     const approvalPreset = opts.approvalPreset ?? this.defaultApprovalPreset;
     const workdir = resolve(
       opts.workdir ??
@@ -295,6 +500,19 @@ export class AcpService extends Service {
   ): Promise<PromptResult> {
     this.ensureStarted();
     const session = await this.requireSession(sessionId);
+    if (session.acpxSessionId) {
+      const exists = await this.hasAcpxSessionState(session.acpxSessionId);
+      if (!exists) {
+        const message =
+          "Sub-agent state was lost (process exited without persisting); spawn a fresh sub-agent to continue.";
+        await this.store.updateStatus(sessionId, "errored", message);
+        this.emitSessionEvent(sessionId, "error", {
+          message,
+          failureKind: "session_state_lost",
+        });
+        throw new Error(message);
+      }
+    }
     const startedAt = Date.now();
     await this.store.updateStatus(sessionId, "busy");
     const args = this.baseArgs({
@@ -545,8 +763,7 @@ export class AcpService extends Service {
     timeoutMs?: number;
     model?: string;
   }): string[] {
-    const format =
-      this.setting("ELIZA_ACP_FORMAT") ?? this.setting("ACPX_FORMAT") ?? "json";
+    const format = this.setting("ACPX_FORMAT") ?? "json";
     const args = [
       "--format",
       format,
@@ -569,12 +786,9 @@ export class AcpService extends Service {
   }
 
   private agentCommandArgs(agentType: AgentType, args: string[]): string[] {
-    const normalizedAgentType =
-      normalizeTaskAgentAdapter(agentType) ?? agentType;
-    if (normalizedAgentType !== "opencode")
-      return [normalizedAgentType, ...args];
+    if (agentType !== "opencode") return [agentType, ...args];
     const command = this.opencodeAgentCommand();
-    if (!command) return [normalizedAgentType, ...args];
+    if (!command) return [agentType, ...args];
     return ["--agent", command, ...args];
   }
 
@@ -586,8 +800,13 @@ export class AcpService extends Service {
     return new Promise((resolveRun) => {
       const proc = spawn(this.cliPath, opts.args, {
         cwd: opts.workdir,
-        env: this.buildEnv(opts.env, undefined, undefined, opts.agentType),
+        env: this.buildEnv(opts.env),
         stdio: ["pipe", "pipe", "pipe"],
+        // Place the child in its own process group so we can SIGTERM the
+        // whole tree (acpx → npm exec → claude-agent-acp) via the negative
+        // pid trick on shutdown. Without `detached: true` the grandchildren
+        // get re-parented to init on parent death and leak as zombies.
+        detached: true,
       });
       const record: ProcessRecord = {
         proc,
@@ -632,7 +851,7 @@ export class AcpService extends Service {
       proc.on("error", (err: NodeJS.ErrnoException) => {
         record.stderr = capStderr(record.stderr + errorMessage(err));
         if (err.code === "ENOENT") {
-          const message = `ACP transport command not found at ${this.cliPath}. Set ELIZA_ACP_CLI to an ACP-compatible agent transport.`;
+          const message = `acpx CLI not found at ${this.cliPath}. Set ELIZA_ACP_CLI or npm install -g acpx@latest.`;
           record.stderr = capStderr(`${record.stderr}\n${message}`);
           if (opts.sessionId)
             this.emitSessionEvent(opts.sessionId, "error", {
@@ -680,14 +899,73 @@ export class AcpService extends Service {
             failureKind: "auth",
           });
         }
-        if (opts.sessionId && opts.activeForSession) {
-          const event = record.cancelled ? "cancelled" : "stopped";
-          this.emitSessionEvent(opts.sessionId, event, {
-            sessionId: opts.sessionId,
-            response: finalText,
-            exitCode: code,
-            signal,
+        if (
+          opts.sessionId &&
+          !record.cancelled &&
+          code !== 0 &&
+          code !== null
+        ) {
+          const sessionId = opts.sessionId;
+          const exitMessage = this.classifyExitError(code, record.stderr);
+          void this.store.get(sessionId).then((session) => {
+            if (session && !TERMINAL_SESSION_STATUSES.has(session.status)) {
+              void this.store
+                .updateStatus(sessionId, "errored", exitMessage)
+                .catch(() => undefined);
+              this.log(
+                "warn",
+                "subprocess crashed mid-flight; marked errored",
+                {
+                  sessionId,
+                  priorStatus: session.status,
+                  code,
+                  signal,
+                },
+              );
+            }
           });
+        }
+        if (opts.sessionId && opts.activeForSession) {
+          // claude-agent-sdk often exits cleanly (code 0) without sending
+          // an explicit `{result: {stopReason: "end_turn"}}` ACP message
+          // before close. Without that message, `handleAcpEvent` never
+          // emits `task_complete`, so the only terminal event the
+          // downstream evaluator sees is `stopped` — which it ignores,
+          // leaving the user with no Discord summary even though the
+          // sub-agent committed real work. Promote a clean exit with
+          // captured output to `task_complete` so the response evaluator
+          // can route a synthetic completion message back through the
+          // pipeline.
+          const cleanCompletion =
+            !record.cancelled &&
+            (code === 0 || code === null) &&
+            finalText.trim().length > 0;
+          if (record.cancelled) {
+            this.emitSessionEvent(opts.sessionId, "cancelled", {
+              sessionId: opts.sessionId,
+              response: finalText,
+              exitCode: code,
+              signal,
+            });
+          } else if (cleanCompletion) {
+            // Emit exactly one terminal event per session-exit. Listeners
+            // gating on `stopped` must also accept `task_complete` (the
+            // evaluator already does); emitting both causes duplicate
+            // processing downstream.
+            this.emitSessionEvent(opts.sessionId, "task_complete", {
+              response: finalText,
+              durationMs: Date.now() - startedAt,
+              stopReason: stopReason ?? "exit",
+              exitCode: code,
+            });
+          } else {
+            this.emitSessionEvent(opts.sessionId, "stopped", {
+              sessionId: opts.sessionId,
+              response: finalText,
+              exitCode: code,
+              signal,
+            });
+          }
         }
         resolveRun({
           code,
@@ -715,7 +993,7 @@ export class AcpService extends Service {
     try {
       return JSON.parse(line) as AcpJsonRpcMessage;
     } catch {
-      this.log("warn", "malformed ACP NDJSON line ignored", {
+      this.log("warn", "malformed acpx NDJSON line ignored", {
         sessionId,
         line: line.slice(0, 200),
       });
@@ -740,7 +1018,13 @@ export class AcpService extends Service {
     ) {
       void this.store
         .update(localSessionId, { acpxSessionId: protocolSessionId })
-        .catch(() => undefined);
+        .catch((err) =>
+          this.log("warn", "failed to persist acpxSessionId", {
+            sessionId: localSessionId,
+            protocolSessionId,
+            err,
+          }),
+        );
     }
     for (const callback of this.acpCallbacks) callback(event, sessionId);
     const method = typeof event.method === "string" ? event.method : undefined;
@@ -774,7 +1058,12 @@ export class AcpService extends Service {
           message: description,
           request: params,
         });
-      void this.store.updateStatus(sessionId, "blocked").catch(() => undefined);
+      void this.store.updateStatus(sessionId, "blocked").catch((err) =>
+        this.log("warn", "failed to persist blocked status", {
+          sessionId,
+          err,
+        }),
+      );
     }
 
     if (sessionId && method === "session/update") {
@@ -803,25 +1092,68 @@ export class AcpService extends Service {
         this.appendOutput(sessionId, content.text);
         this.emitSessionEvent(sessionId, "message", { text: content.text });
       }
-      // tool_call: emit tool_running while in_progress; ignore in_progress -> failed/completed transitions don't need re-emit
+      // tool_call: emit tool_running on first submission OR while in_progress;
+      // ignore terminal transitions (completed/failed) — they just need output
+      // capture, not re-emit. Some ACP adapters (notably claude-agent-sdk)
+      // submit tool_call without ever sending a status="in_progress" update,
+      // so gating only on `in_progress|running` misses the activation entirely.
+      // Treating the initial `tool_call` (without `_update` suffix) as a
+      // running submission catches that case.
       if (
         sessionUpdate === "tool_call" ||
         sessionUpdate === "tool_call_update"
       ) {
         const status = stringifyMaybe(updateBlock?.status);
         const toolOutput = updateBlock?.rawOutput ?? updateBlock?.content;
+        const ub = (updateBlock ?? {}) as Record<string, unknown>;
+        const rawInput =
+          ub.rawInput &&
+          typeof ub.rawInput === "object" &&
+          !Array.isArray(ub.rawInput)
+            ? (ub.rawInput as Record<string, unknown>)
+            : undefined;
+        const locations = Array.isArray(ub.locations)
+          ? (ub.locations as Array<{ path?: string; line?: number }>)
+          : undefined;
         const toolCall: AcpToolCall = {
           id: stringifyMaybe(updateBlock?.toolCallId ?? updateBlock?.id) ?? "",
           title: stringifyMaybe(updateBlock?.title) ?? "",
           status: (status as AcpToolCall["status"]) ?? "running",
           output: stringifyMaybe(toolOutput),
+          kind: stringifyMaybe(ub.kind),
+          rawInput,
+          locations,
         };
-        if (status === "in_progress" || status === "running") {
+        const isInitialSubmission = sessionUpdate === "tool_call";
+        const isRunningStatus =
+          status === "in_progress" || status === "running";
+        const isTerminalStatus =
+          status === "completed" || status === "failed" || status === "error";
+        // Claude-agent-acp emits the initial `tool_call` with an empty
+        // `rawInput: {}` and a generic title ("Terminal", "Read") — the
+        // actual command / file_path lands in a subsequent
+        // `tool_call_update` payload that often carries no `status` field.
+        // Re-emit `tool_running` whenever an update brings new rawInput so
+        // downstream consumers (heartbeat tool history) can replace the
+        // bare title with the enriched version.
+        const hasRichInput =
+          (rawInput && Object.keys(rawInput).length > 0) ||
+          (locations && locations.length > 0);
+        const isInformativeUpdate =
+          sessionUpdate === "tool_call_update" &&
+          !isTerminalStatus &&
+          hasRichInput;
+        if (isInitialSubmission || isRunningStatus || isInformativeUpdate) {
           this.emitSessionEvent(sessionId, "tool_running", { toolCall });
-          void this.store
-            .updateStatus(sessionId, "tool_running")
-            .catch(() => undefined);
-        } else {
+          void this.store.updateStatus(sessionId, "tool_running").catch((err) =>
+            this.log("warn", "failed to persist tool_running status", {
+              sessionId,
+              toolCallId: toolCall.id,
+              err,
+            }),
+          );
+        }
+        if (isTerminalStatus) {
           const captured = captureTerminalToolOutput(
             toolCall,
             toolOutput,
@@ -839,17 +1171,27 @@ export class AcpService extends Service {
 
     if (sessionId && result && typeof result.stopReason === "string") {
       stopReason = result.stopReason;
-      if (emitPromptTerminalEvents && stopReason === "end_turn") {
-        this.emitSessionEvent(sessionId, "task_complete", {
-          response: finalText,
-          durationMs: Date.now() - startedAt,
-          stopReason,
-        });
-      } else if (emitPromptTerminalEvents && stopReason === "error") {
-        this.emitSessionEvent(sessionId, "error", {
-          message: "acpx prompt ended with stopReason error",
-          stopReason,
-        });
+      if (emitPromptTerminalEvents) {
+        // Treat any non-error terminal stopReason as a completion so
+        // downstream evaluators get a chance to summarize the work for
+        // the user. claude-agent-sdk emits a variety of stopReasons
+        // (`end_turn`, `max_tokens`, `interrupted`, `tool_use`, ...);
+        // limiting completion to `end_turn` silently dropped sessions
+        // that hit token limits, ran out of turns, or stopped for any
+        // other non-error reason — the sub-agent did real work (commits,
+        // edits, deploys) and the user got nothing back.
+        if (stopReason === "error") {
+          this.emitSessionEvent(sessionId, "error", {
+            message: "acpx prompt ended with stopReason error",
+            stopReason,
+          });
+        } else {
+          this.emitSessionEvent(sessionId, "task_complete", {
+            response: finalText,
+            durationMs: Date.now() - startedAt,
+            stopReason,
+          });
+        }
       }
     }
 
@@ -883,7 +1225,7 @@ export class AcpService extends Service {
 
   private async requireSession(sessionId: string): Promise<SessionInfo> {
     const session = await this.store.get(sessionId);
-    if (!session) throw new Error(`ACP session not found: ${sessionId}`);
+    if (!session) throw new Error(`acpx session not found: ${sessionId}`);
     return session;
   }
 
@@ -894,7 +1236,7 @@ export class AcpService extends Service {
         !["stopped", "errored", "completed", "cancelled"].includes(s.status),
     );
     if (active.length >= this.maxSessions)
-      throw new Error(`ACP max session limit reached (${this.maxSessions})`);
+      throw new Error(`acpx max session limit reached (${this.maxSessions})`);
   }
 
   private async stopTrackedProcess(sessionId: string): Promise<void> {
@@ -908,9 +1250,9 @@ export class AcpService extends Service {
 
   private terminateProcess(_sessionId: string, record: ProcessRecord): void {
     record.killedByService = true;
-    if (!record.exited) record.proc.kill("SIGTERM");
+    if (!record.exited) killProcessTree(record.proc, "SIGTERM");
     record.killTimer = setTimeout(() => {
-      if (!record.exited) record.proc.kill("SIGKILL");
+      if (!record.exited) killProcessTree(record.proc, "SIGKILL");
     }, KILL_GRACE_MS);
   }
 
@@ -932,13 +1274,7 @@ export class AcpService extends Service {
     for (const [key, value] of Object.entries(extra ?? {})) {
       if (typeof value === "string") env[key] = value;
     }
-    if (agentType === "elizaos") {
-      delete env.ANTHROPIC_MODEL;
-      delete env.OPENCODE_CONFIG_CONTENT;
-      delete env.OPENCODE_MODEL;
-      delete env.OPENAI_MODEL;
-    }
-    if (model && agentType !== "elizaos") {
+    if (model) {
       env.OPENAI_MODEL = model;
       if (agentType === "claude") env.ANTHROPIC_MODEL = model;
       if (agentType === "opencode") env.OPENCODE_MODEL = model;
@@ -960,13 +1296,13 @@ export class AcpService extends Service {
 
   private classifyExitError(code: number | null, stderr: string): string {
     if (code === 1 && isAuthText(stderr))
-      return "ACP transport auth failed. Re-authenticate the selected agent or set the required provider credentials.";
+      return "acpx auth failed. Re-authenticate the selected agent or set ACPX_AUTH_* credentials.";
     if (code === 4)
-      return "ACP session was not found. This is likely an internal session bookkeeping error.";
-    if (code === 5) return "ACP transport permission denied.";
-    if (code === 3) return "ACP prompt timed out.";
+      return "acpx session was not found. This is likely an internal session bookkeeping error.";
+    if (code === 5) return "acpx permission denied.";
+    if (code === 3) return "acpx prompt timed out.";
     if (stderr.trim()) return stderr.trim().slice(0, 500);
-    return `ACP transport exited with code ${code ?? "unknown"}`;
+    return `acpx subprocess exited with code ${code ?? "unknown"}`;
   }
 
   private lastOutput(sessionId: string): string {
@@ -1008,17 +1344,6 @@ export class AcpService extends Service {
       this.setting("ELIZA_ACP_NO_TERMINAL") ?? this.setting("ACPX_NO_TERMINAL"),
     );
     return configured === true;
-  }
-
-  private assertTransportAvailable(sessionId: string): void {
-    if (process.env.ELIZA_PLATFORM !== "android") return;
-    if (!this.cliPath.includes("/") || existsSync(this.cliPath)) return;
-    const message = `acpx CLI is not available at ${this.cliPath}. Install the ACP transport or set ELIZA_ACP_CLI to a valid executable.`;
-    this.emitSessionEvent(sessionId, "error", {
-      message,
-      failureKind: "not_found",
-    });
-    throw new Error(message);
   }
 }
 
@@ -1070,19 +1395,12 @@ function shouldForwardEnv(key: string): boolean {
     key === "TERM" ||
     key.startsWith("ACPX_AUTH_") ||
     key.startsWith("ELIZA_") ||
-    SAFE_ELIZAOS_ENV_KEYS.has(key) ||
     [
-      "XDG_RUNTIME_DIR",
-      "XDG_CONFIG_HOME",
-      "XDG_CACHE_HOME",
-      "XDG_DATA_HOME",
-      "XDG_STATE_HOME",
       "OPENAI_API_KEY",
       "ANTHROPIC_API_KEY",
       "CEREBRAS_API_KEY",
       "CEREBRAS_BASE_URL",
       "CEREBRAS_MODEL",
-      "OPENAI_BASE_URL",
       "OPENAI_MODEL",
       "ANTHROPIC_MODEL",
       "OPENCODE_MODEL",
@@ -1284,6 +1602,90 @@ function isPidAlive(pid: number): boolean {
   } catch {
     return false;
   }
+}
+
+// SIGTERM the entire process group (negative pid). acpx forks `npm exec`
+// which forks `claude-agent-acp`; killing only the immediate child re-parents
+// the grandchildren to init and leaks them as zombies. Negative pid sends to
+// the group leader set by `detached: true` in the spawn call.
+function killProcessTree(
+  proc: ChildProcessWithoutNullStreams,
+  signal: NodeJS.Signals,
+): void {
+  if (!proc.pid) return;
+  try {
+    process.kill(-proc.pid, signal);
+  } catch {
+    // Group may already be gone, or the platform doesn't support it
+    // (Windows). Fall back to a direct signal on the lead process.
+    try {
+      proc.kill(signal);
+    } catch {
+      // best-effort
+    }
+  }
+}
+
+/**
+ * Shared `readdir → filter → stat → unlink-if-older-than` scan used by the
+ * lock-file GC and the orphaned acpx stream GC. Returns the number of files
+ * unlinked. Missing directory is treated as zero work (best-effort cleanup,
+ * never throws to the caller).
+ *
+ * Exported for unit tests only — not part of the plugin's public API.
+ */
+export async function scanAndUnlinkOlderThan(
+  dir: string,
+  predicate: (name: string) => boolean,
+  maxAgeMs: number,
+): Promise<number> {
+  const { deleted } = await scanAndUnlinkOlderThanDetailed(
+    dir,
+    predicate,
+    maxAgeMs,
+  );
+  return deleted;
+}
+
+/**
+ * Variant that also reports how many matching files were left untouched
+ * (younger than the threshold) — `cleanReverseOrphanedAcpxFiles` logs both
+ * counts because lingering reverse-orphans are a useful signal even when
+ * nothing got deleted on this pass.
+ */
+export async function scanAndUnlinkOlderThanDetailed(
+  dir: string,
+  predicate: (name: string) => boolean,
+  maxAgeMs: number,
+): Promise<{ deleted: number; lingering: number }> {
+  let entries: string[];
+  try {
+    entries = await readdir(dir);
+  } catch {
+    return { deleted: 0, lingering: 0 };
+  }
+  const matching = entries.filter(predicate);
+  if (matching.length === 0) return { deleted: 0, lingering: 0 };
+  const now = Date.now();
+  let deleted = 0;
+  let lingering = 0;
+  await Promise.allSettled(
+    matching.map(async (name) => {
+      const path = join(dir, name);
+      try {
+        const st = await stat(path);
+        if (now - st.mtimeMs > maxAgeMs) {
+          await unlink(path);
+          deleted++;
+        } else {
+          lingering++;
+        }
+      } catch {
+        // best-effort
+      }
+    }),
+  );
+  return { deleted, lingering };
 }
 
 function toSpawnResult(session: SessionInfo): SpawnResult {
