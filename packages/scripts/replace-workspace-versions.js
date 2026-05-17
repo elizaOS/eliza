@@ -21,8 +21,11 @@ import { dirname, join } from "node:path";
 const DRY_RUN = process.argv.includes("--dry-run");
 const VERBOSE = process.argv.includes("--verbose") || DRY_RUN;
 
-// Get the workspace root
-const workspaceRoot = dirname(dirname(new URL(import.meta.url).pathname));
+// Get the workspace root: this script lives at packages/scripts/<file>, so the
+// repo root is three dirnames up (file → scripts → packages → repo root).
+const workspaceRoot = dirname(
+  dirname(dirname(new URL(import.meta.url).pathname)),
+);
 
 // Read version from lerna.json
 function getVersion() {
