@@ -636,6 +636,7 @@ function joinTranscriptParts(head: string, tail: string): string {
  * ==================================================================== */
 
 export type { StreamingPcmDecoder } from "./types.js";
+
 import type { StreamingPcmDecoder } from "./types.js";
 
 export interface OpenVinoStreamingTranscriberOptions {

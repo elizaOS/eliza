@@ -90,10 +90,10 @@ export class SideloaderIosBackend implements IosBackend {
 
       devices.push({
         udid,
-        name: kv["DeviceName"] ?? "Unknown Device",
-        model: kv["ProductType"] ?? "Unknown",
-        osVersion: kv["ProductVersion"] ?? "Unknown",
-        architecture: mapArchitecture(kv["CPUArchitecture"] ?? ""),
+        name: kv.DeviceName ?? "Unknown Device",
+        model: kv.ProductType ?? "Unknown",
+        osVersion: kv.ProductVersion ?? "Unknown",
+        architecture: mapArchitecture(kv.CPUArchitecture ?? ""),
         connectionType,
       });
     }
@@ -130,8 +130,16 @@ export class SideloaderIosBackend implements IosBackend {
       requiresAppleId: true,
       steps: [
         { id: "detect-device", label: "Detect device", status: "pending" },
-        { id: "authenticate", label: "Sign in with Apple ID", status: "pending" },
-        { id: "verify-2fa", label: "Two-factor authentication", status: "pending" },
+        {
+          id: "authenticate",
+          label: "Sign in with Apple ID",
+          status: "pending",
+        },
+        {
+          id: "verify-2fa",
+          label: "Two-factor authentication",
+          status: "pending",
+        },
         { id: "download-ipa", label: "Download app", status: "pending" },
         { id: "sign-ipa", label: "Sign app", status: "pending" },
         { id: "install-ipa", label: "Install on device", status: "pending" },
@@ -157,7 +165,11 @@ export class SideloaderIosBackend implements IosBackend {
       return this.authState;
     }
 
-    if (combined.includes("2fa") || combined.includes("two-factor") || combined.includes("verification code")) {
+    if (
+      combined.includes("2fa") ||
+      combined.includes("two-factor") ||
+      combined.includes("verification code")
+    ) {
       this.authState = { status: "awaiting-2fa", appleId };
       return this.authState;
     }
@@ -180,7 +192,11 @@ export class SideloaderIosBackend implements IosBackend {
 
     const combined = (stdout + stderr).toLowerCase();
 
-    if (exitCode === 0 || combined.includes("success") || combined.includes("authenticated")) {
+    if (
+      exitCode === 0 ||
+      combined.includes("success") ||
+      combined.includes("authenticated")
+    ) {
       this.authState = { ...this.authState, status: "authenticated" };
       return this.authState;
     }
@@ -195,7 +211,11 @@ export class SideloaderIosBackend implements IosBackend {
 
   async executeInstallPlan(
     plan: IosInstallPlan,
-    onProgress: (stepId: IosInstallStepId, status: IosInstallStepStatus, detail?: string) => void,
+    onProgress: (
+      stepId: IosInstallStepId,
+      status: IosInstallStepStatus,
+      detail?: string,
+    ) => void,
   ): Promise<void> {
     const { udid } = plan.device;
     let tmpDir: string | null = null;
@@ -203,16 +223,27 @@ export class SideloaderIosBackend implements IosBackend {
     try {
       // Step: detect-device
       onProgress("detect-device", "running");
-      const { stdout: deviceList, exitCode: detectExit } = await runCommand("ideviceid", ["-l"]);
+      const { stdout: deviceList, exitCode: detectExit } = await runCommand(
+        "ideviceid",
+        ["-l"],
+      );
       if (detectExit !== 0 || !deviceList.includes(udid)) {
-        onProgress("detect-device", "failed", "Device not found. Ensure it is connected and trusted.");
+        onProgress(
+          "detect-device",
+          "failed",
+          "Device not found. Ensure it is connected and trusted.",
+        );
         return;
       }
       onProgress("detect-device", "complete");
 
       // Step: authenticate — skip if already authenticated
       if (this.authState.status !== "authenticated") {
-        onProgress("authenticate", "waiting-user", "Waiting for Apple ID sign-in");
+        onProgress(
+          "authenticate",
+          "waiting-user",
+          "Waiting for Apple ID sign-in",
+        );
         return;
       }
       onProgress("authenticate", "complete");
@@ -227,13 +258,21 @@ export class SideloaderIosBackend implements IosBackend {
 
       const ipaResponse = await fetch(plan.app.ipaUrl);
       if (!ipaResponse.ok) {
-        onProgress("download-ipa", "failed", `Download failed: HTTP ${ipaResponse.status}`);
+        onProgress(
+          "download-ipa",
+          "failed",
+          `Download failed: HTTP ${ipaResponse.status}`,
+        );
         return;
       }
 
       const ipaBuffer = await ipaResponse.arrayBuffer();
       await Bun.write(ipaPath, ipaBuffer);
-      onProgress("download-ipa", "complete", `Downloaded ${(ipaBuffer.byteLength / 1_048_576).toFixed(1)} MB`);
+      onProgress(
+        "download-ipa",
+        "complete",
+        `Downloaded ${(ipaBuffer.byteLength / 1_048_576).toFixed(1)} MB`,
+      );
 
       // Step: sign-ipa
       onProgress("sign-ipa", "running", "Signing with Apple ID certificate…");
@@ -246,7 +285,11 @@ export class SideloaderIosBackend implements IosBackend {
         signedPath,
       ]);
       if (signResult.exitCode !== 0) {
-        onProgress("sign-ipa", "failed", signResult.stderr.trim() || "Signing failed");
+        onProgress(
+          "sign-ipa",
+          "failed",
+          signResult.stderr.trim() || "Signing failed",
+        );
         return;
       }
       onProgress("sign-ipa", "complete");
@@ -261,7 +304,11 @@ export class SideloaderIosBackend implements IosBackend {
         udid,
       ]);
       if (installResult.exitCode !== 0) {
-        onProgress("install-ipa", "failed", installResult.stderr.trim() || "Install failed");
+        onProgress(
+          "install-ipa",
+          "failed",
+          installResult.stderr.trim() || "Install failed",
+        );
         return;
       }
       onProgress("install-ipa", "complete");

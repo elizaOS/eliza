@@ -16,7 +16,12 @@ export type IosInstallStepId =
   | "install-ipa"
   | "complete";
 
-export type IosInstallStepStatus = "pending" | "running" | "complete" | "failed" | "waiting-user";
+export type IosInstallStepStatus =
+  | "pending"
+  | "running"
+  | "complete"
+  | "failed"
+  | "waiting-user";
 
 export interface IosInstallStep {
   id: IosInstallStepId;
@@ -51,7 +56,12 @@ export interface IosInstallPlan {
 }
 
 export interface IosAuthState {
-  status: "idle" | "authenticating" | "awaiting-2fa" | "authenticated" | "failed";
+  status:
+    | "idle"
+    | "authenticating"
+    | "awaiting-2fa"
+    | "authenticated"
+    | "failed";
   appleId?: string;
   errorMessage?: string;
 }
@@ -65,6 +75,10 @@ export interface IosBackend {
   submit2fa(code: string): Promise<IosAuthState>;
   executeInstallPlan(
     plan: IosInstallPlan,
-    onProgress: (stepId: IosInstallStepId, status: IosInstallStepStatus, detail?: string) => void,
+    onProgress: (
+      stepId: IosInstallStepId,
+      status: IosInstallStepStatus,
+      detail?: string,
+    ) => void,
   ): Promise<void>;
 }

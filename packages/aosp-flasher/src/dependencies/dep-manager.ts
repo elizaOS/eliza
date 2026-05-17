@@ -9,7 +9,14 @@ import type {
   ManualInstallInstructions,
 } from "./types";
 
-const VENDOR_BIN_DIR = join(homedir(), ".elizaos", "flasher", "vendor", "bin", process.platform);
+const VENDOR_BIN_DIR = join(
+  homedir(),
+  ".elizaos",
+  "flasher",
+  "vendor",
+  "bin",
+  process.platform,
+);
 
 const DEPENDENCY_DEFINITIONS: Record<DependencyId, Dependency> = {
   adb: {
@@ -22,7 +29,8 @@ const DEPENDENCY_DEFINITIONS: Record<DependencyId, Dependency> = {
   fastboot: {
     id: "fastboot",
     name: "Fastboot",
-    description: "Flashes firmware partitions on Android devices in bootloader mode",
+    description:
+      "Flashes firmware partitions on Android devices in bootloader mode",
     commands: ["fastboot"],
     requiredFor: ["android"],
   },
@@ -103,8 +111,16 @@ function checkDependency(id: DependencyId): DependencyCheckResult {
   }
 
   // All binaries found — use the first one as the representative path
-  const primaryPath = paths[0]!;
-  const version = getVersion(def.commands[0]!, primaryPath);
+  const primaryPath = paths[0];
+  const primaryCommand = def.commands[0];
+  if (!primaryPath || !primaryCommand) {
+    return {
+      id,
+      status: "missing",
+      manualInstructions: getManualInstructions(id),
+    };
+  }
+  const version = getVersion(primaryCommand, primaryPath);
 
   const result: DependencyCheckResult = {
     id,
@@ -260,7 +276,12 @@ async function downloadSideloader(): Promise<boolean> {
 
 export class DependencyManager {
   async checkAll(): Promise<DependencyCheckResult[]> {
-    const ids: DependencyId[] = ["adb", "fastboot", "libimobiledevice", "sideloader"];
+    const ids: DependencyId[] = [
+      "adb",
+      "fastboot",
+      "libimobiledevice",
+      "sideloader",
+    ];
     return ids.map((id) => checkDependency(id));
   }
 

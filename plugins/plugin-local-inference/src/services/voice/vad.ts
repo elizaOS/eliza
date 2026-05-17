@@ -427,6 +427,7 @@ export interface VadDetectorConfig {
 type SegmentPhase = "idle" | "speaking" | "paused";
 
 export type { VadLike } from "./types.js";
+
 import type { VadLike } from "./types.js";
 
 export type VadProviderId = "qwen-toolkit" | "silero-cpp" | "silero-ggml";

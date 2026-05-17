@@ -1,6 +1,15 @@
-export type DependencyId = "adb" | "fastboot" | "libimobiledevice" | "sideloader";
+export type DependencyId =
+  | "adb"
+  | "fastboot"
+  | "libimobiledevice"
+  | "sideloader";
 
-export type DependencyStatus = "checking" | "found" | "missing" | "installing" | "install-failed";
+export type DependencyStatus =
+  | "checking"
+  | "found"
+  | "missing"
+  | "installing"
+  | "install-failed";
 
 export interface Dependency {
   id: DependencyId;

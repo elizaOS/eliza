@@ -1,5 +1,8 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import type { DependencyCheckResult, DependencyId } from "../dependencies/types";
+import type {
+  DependencyCheckResult,
+  DependencyId,
+} from "../dependencies/types";
 
 const SERVER = "http://localhost:3743";
 
@@ -248,7 +251,9 @@ export function DependencyGate({ onReady }: Props) {
 
   const handleInstall = useCallback(async (id: DependencyId) => {
     setResults((prev) =>
-      prev.map((r) => (r.id === id ? { ...r, status: "installing" as const } : r)),
+      prev.map((r) =>
+        r.id === id ? { ...r, status: "installing" as const } : r,
+      ),
     );
     try {
       const res = await fetch(`${SERVER}/dependencies/${id}/install`, {
@@ -287,13 +292,22 @@ export function DependencyGate({ onReady }: Props) {
     onReadyRef.current();
   }, [requiredFound, bypassWarning]);
 
-  const depIds: DependencyId[] = ["adb", "fastboot", "libimobiledevice", "sideloader"];
+  const depIds: DependencyId[] = [
+    "adb",
+    "fastboot",
+    "libimobiledevice",
+    "sideloader",
+  ];
   // Fill in checking placeholders while loading
   const displayResults: DependencyCheckResult[] =
     checking && results.length === 0
       ? depIds.map((id) => ({ id, status: "checking" as const }))
       : depIds.map(
-          (id) => results.find((r) => r.id === id) ?? { id, status: "checking" as const },
+          (id) =>
+            results.find((r) => r.id === id) ?? {
+              id,
+              status: "checking" as const,
+            },
         );
 
   return (
@@ -336,8 +350,8 @@ export function DependencyGate({ onReady }: Props) {
                       {dep.manualInstructions.title}
                     </div>
                     <ol style={{ margin: 0, padding: "0 0 0 16px" }}>
-                      {dep.manualInstructions.steps.map((step, i) => (
-                        <li key={i} style={styles.manualStep}>
+                      {dep.manualInstructions.steps.map((step) => (
+                        <li key={step} style={styles.manualStep}>
                           {step}
                         </li>
                       ))}
@@ -352,6 +366,7 @@ export function DependencyGate({ onReady }: Props) {
             <div style={styles.depActions}>
               {dep.status === "missing" && (
                 <button
+                  type="button"
                   style={styles.installBtn}
                   onClick={() => void handleInstall(dep.id)}
                 >
@@ -363,6 +378,7 @@ export function DependencyGate({ onReady }: Props) {
               )}
               {dep.status === "install-failed" && (
                 <button
+                  type="button"
                   style={styles.installBtn}
                   onClick={() => void handleInstall(dep.id)}
                 >
@@ -376,10 +392,12 @@ export function DependencyGate({ onReady }: Props) {
         <div style={styles.footer}>
           {bypassWarning && !requiredFound && (
             <div style={styles.warningText}>
-              adb and fastboot are required for Android flashing. Continue anyway?
+              adb and fastboot are required for Android flashing. Continue
+              anyway?
             </div>
           )}
           <button
+            type="button"
             style={
               requiredFound
                 ? styles.continueBtn

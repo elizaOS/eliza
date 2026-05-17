@@ -65,8 +65,10 @@ function UsbInstallerPanel() {
             margin: "0",
           }}
         >
-          Launch the <strong style={{ color: "#cccccc" }}>elizaOS USB Installer</strong> app
-          from your Applications folder to create a bootable elizaOS USB drive.
+          Launch the{" "}
+          <strong style={{ color: "#cccccc" }}>elizaOS USB Installer</strong>{" "}
+          app from your Applications folder to create a bootable elizaOS USB
+          drive.
         </p>
       </div>
     </div>

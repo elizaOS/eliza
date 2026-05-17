@@ -530,9 +530,9 @@ export class SubAgentRouter extends Service {
             // Cast: the Content index signature expects MetadataValue but
             // swarmRoomsMetadata returns Array<Record<string, string|string[]>>,
             // which is a valid JsonValue[] but TypeScript can't infer that here.
-            subAgentSwarmRooms: swarmRoomsMetadata(
-              origin.swarmRooms,
-            ) as Array<Record<string, string | string[]>>,
+            subAgentSwarmRooms: swarmRoomsMetadata(origin.swarmRooms) as Array<
+              Record<string, string | string[]>
+            >,
             taskRoomId: origin.taskRoomId,
             ...(origin.worktreeRoomId
               ? { worktreeRoomId: origin.worktreeRoomId }
@@ -606,8 +606,9 @@ export class SubAgentRouter extends Service {
     sessionId: string,
     target: SwarmRoomTarget,
   ): HandlerCallback | undefined {
-    const sendToTarget = (this.runtime as RuntimeWithSendTarget)
-      .sendMessageToTarget?.bind(this.runtime);
+    const sendToTarget = (
+      this.runtime as RuntimeWithSendTarget
+    ).sendMessageToTarget?.bind(this.runtime);
     if (!sendToTarget) return undefined;
     const source = origin.source;
     if (!source) return undefined;

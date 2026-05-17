@@ -1,4 +1,5 @@
-import React, { useCallback, useEffect, useRef, useState } from "react";
+import type React from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import type {
   IosApp,
   IosAuthState,
@@ -146,11 +147,16 @@ const s = {
 
 function stepIcon(status: IosInstallStepStatus): string {
   switch (status) {
-    case "complete": return "✅";
-    case "failed": return "❌";
-    case "running": return "⏳";
-    case "waiting-user": return "👤";
-    default: return "○";
+    case "complete":
+      return "✅";
+    case "failed":
+      return "❌";
+    case "running":
+      return "⏳";
+    case "waiting-user":
+      return "👤";
+    default:
+      return "○";
   }
 }
 
@@ -178,14 +184,16 @@ interface IosFlasherProps {
 
 export function IosFlasher({ serverUrl }: IosFlasherProps) {
   const [screen, setScreen] = useState<Screen>("scanning");
-  const [devices, setDevices] = useState<IosDevice[]>([]);
+  const [_devices, setDevices] = useState<IosDevice[]>([]);
   const [apps, setApps] = useState<IosApp[]>([]);
   const [selectedDevice, setSelectedDevice] = useState<IosDevice | null>(null);
   const [selectedApp, setSelectedApp] = useState<IosApp | null>(null);
-  const [regionNotice, setRegionNotice] = useState<"eu-dma" | "japan-sca" | "worldwide">("worldwide");
-  const [plan, setPlan] = useState<IosInstallPlan | null>(null);
+  const [regionNotice, setRegionNotice] = useState<
+    "eu-dma" | "japan-sca" | "worldwide"
+  >("worldwide");
+  const [_plan, setPlan] = useState<IosInstallPlan | null>(null);
   const [steps, setSteps] = useState<IosInstallStep[]>([]);
-  const [authState, setAuthState] = useState<IosAuthState>({ status: "idle" });
+  const [_authState, setAuthState] = useState<IosAuthState>({ status: "idle" });
   const [appleId, setAppleId] = useState("");
   const [password, setPassword] = useState("");
   const [twoFaCode, setTwoFaCode] = useState("");
@@ -212,7 +220,10 @@ export function IosFlasher({ serverUrl }: IosFlasherProps) {
           fetch(`${serverUrl}/ios/region`),
           fetch(`${serverUrl}/ios/apps`),
         ]);
-        if (regionRes.ok) setRegionNotice((await regionRes.json()) as "eu-dma" | "japan-sca" | "worldwide");
+        if (regionRes.ok)
+          setRegionNotice(
+            (await regionRes.json()) as "eu-dma" | "japan-sca" | "worldwide",
+          );
         if (appsRes.ok) setApps((await appsRes.json()) as IosApp[]);
 
         setScreen("region-notice");
@@ -223,7 +234,7 @@ export function IosFlasher({ serverUrl }: IosFlasherProps) {
     } catch {
       // Network not ready yet — keep polling
     }
-  }, [serverUrl, screen]);
+  }, [serverUrl, screen, stopScanning]);
 
   function stopScanning() {
     if (scanIntervalRef.current !== null) {
@@ -236,7 +247,7 @@ export function IosFlasher({ serverUrl }: IosFlasherProps) {
     scanIntervalRef.current = setInterval(scanDevices, 2000);
     scanDevices();
     return () => stopScanning();
-  }, []); // intentional: set up once on mount
+  }, [scanDevices, stopScanning]); // intentional: set up once on mount
 
   // ── Handlers ──
   async function handleContinueFromRegion() {
@@ -358,7 +369,9 @@ export function IosFlasher({ serverUrl }: IosFlasherProps) {
                   ? {
                       ...step,
                       status: payload.status!,
-                      ...(payload.detail !== undefined ? { detail: payload.detail } : {}),
+                      ...(payload.detail !== undefined
+                        ? { detail: payload.detail }
+                        : {}),
                     }
                   : step,
               ),
@@ -377,8 +390,16 @@ export function IosFlasher({ serverUrl }: IosFlasherProps) {
   function renderScanningScreen() {
     return (
       <div style={s.card}>
-        <p style={{ ...s.heading, textAlign: "center" }}>Scanning for iPhone/iPad…</p>
-        <div style={{ display: "flex", justifyContent: "center", margin: "24px 0" }}>
+        <p style={{ ...s.heading, textAlign: "center" }}>
+          Scanning for iPhone/iPad…
+        </p>
+        <div
+          style={{
+            display: "flex",
+            justifyContent: "center",
+            margin: "24px 0",
+          }}
+        >
           <div style={s.spinner} />
         </div>
         <p style={{ ...s.subheading, textAlign: "center" }}>
@@ -391,13 +412,21 @@ export function IosFlasher({ serverUrl }: IosFlasherProps) {
   function renderNoDeviceScreen() {
     return (
       <div style={s.card}>
-        <p style={{ ...s.heading, textAlign: "center" }}>Connect your iPhone or iPad</p>
-        <div style={{ textAlign: "center", fontSize: "48px", margin: "16px 0" }}>🔌</div>
+        <p style={{ ...s.heading, textAlign: "center" }}>
+          Connect your iPhone or iPad
+        </p>
+        <div
+          style={{ textAlign: "center", fontSize: "48px", margin: "16px 0" }}
+        >
+          🔌
+        </div>
         <p style={{ ...s.subheading, textAlign: "center" }}>
-          Plug your device in with a USB cable, unlock it, and tap <strong>Trust This Computer</strong> if prompted.
+          Plug your device in with a USB cable, unlock it, and tap{" "}
+          <strong>Trust This Computer</strong> if prompted.
         </p>
         <div style={{ ...s.notice, marginTop: "12px" }}>
-          <strong>Tip:</strong> Make sure iTunes or Finder is not blocking the connection.
+          <strong>Tip:</strong> Make sure iTunes or Finder is not blocking the
+          connection.
         </div>
         <button
           style={s.button}
@@ -416,7 +445,10 @@ export function IosFlasher({ serverUrl }: IosFlasherProps) {
   }
 
   function renderRegionNoticeScreen() {
-    const content: Record<"eu-dma" | "japan-sca" | "worldwide", { emoji: string; body: string }> = {
+    const content: Record<
+      "eu-dma" | "japan-sca" | "worldwide",
+      { emoji: string; body: string }
+    > = {
       "eu-dma": {
         emoji: "🇪🇺",
         body: "EU users: You have a legal right under the Digital Markets Act to install apps outside the App Store. Sideloading is permitted in the European Union.",
@@ -437,13 +469,25 @@ export function IosFlasher({ serverUrl }: IosFlasherProps) {
         <p style={{ ...s.heading, textAlign: "center" }}>
           {emoji} Before you begin
         </p>
-        <div style={{ ...s.notice, marginTop: "16px", fontSize: "14px", color: C.text }}>
+        <div
+          style={{
+            ...s.notice,
+            marginTop: "16px",
+            fontSize: "14px",
+            color: C.text,
+          }}
+        >
           {body}
         </div>
         <p style={{ ...s.subheading }}>
-          elizaOS will be installed directly onto your device using your Apple ID. No jailbreak required.
+          elizaOS will be installed directly onto your device using your Apple
+          ID. No jailbreak required.
         </p>
-        <button style={s.button} type="button" onClick={handleContinueFromRegion}>
+        <button
+          style={s.button}
+          type="button"
+          onClick={handleContinueFromRegion}
+        >
           Continue
         </button>
       </div>
@@ -455,23 +499,28 @@ export function IosFlasher({ serverUrl }: IosFlasherProps) {
       <div style={s.card}>
         <p style={s.heading}>Choose an app to install</p>
         <p style={s.subheading}>
-          Device: <strong>{selectedDevice?.name ?? "Unknown"}</strong> — iOS {selectedDevice?.osVersion}
+          Device: <strong>{selectedDevice?.name ?? "Unknown"}</strong> — iOS{" "}
+          {selectedDevice?.osVersion}
         </p>
         {apps.map((app) => (
-          <div
+          <button
             key={app.id}
             style={s.appCard}
-            role="button"
-            tabIndex={0}
+            type="button"
             onClick={() => handleSelectApp(app)}
-            onKeyDown={(e) => e.key === "Enter" && handleSelectApp(app)}
           >
-            <div style={{ fontWeight: 700, marginBottom: "4px" }}>{app.name}</div>
-            <div style={{ fontSize: "13px", color: C.muted, marginBottom: "6px" }}>
+            <div style={{ fontWeight: 700, marginBottom: "4px" }}>
+              {app.name}
+            </div>
+            <div
+              style={{ fontSize: "13px", color: C.muted, marginBottom: "6px" }}
+            >
               v{app.version} · requires iOS {app.minOsVersion}
             </div>
-            <div style={{ fontSize: "13px", color: C.text }}>{app.description}</div>
-          </div>
+            <div style={{ fontSize: "13px", color: C.text }}>
+              {app.description}
+            </div>
+          </button>
         ))}
       </div>
     );
@@ -482,11 +531,15 @@ export function IosFlasher({ serverUrl }: IosFlasherProps) {
       <div style={s.card}>
         <p style={s.heading}>Sign in with Apple ID</p>
         <div style={s.notice}>
-          🔒 Your password is sent only to Apple servers — never stored or logged by this app.
+          🔒 Your password is sent only to Apple servers — never stored or
+          logged by this app.
         </div>
         <form onSubmit={handleAppleIdLogin}>
-          <label style={s.label}>Apple ID (email)</label>
+          <label htmlFor="apple-id-email" style={s.label}>
+            Apple ID (email)
+          </label>
           <input
+            id="apple-id-email"
             style={s.input}
             type="email"
             autoComplete="email"
@@ -495,8 +548,11 @@ export function IosFlasher({ serverUrl }: IosFlasherProps) {
             placeholder="you@icloud.com"
             required
           />
-          <label style={s.label}>Password</label>
+          <label htmlFor="apple-id-password" style={s.label}>
+            Password
+          </label>
           <input
+            id="apple-id-password"
             style={s.input}
             type="password"
             autoComplete="current-password"
@@ -506,7 +562,9 @@ export function IosFlasher({ serverUrl }: IosFlasherProps) {
             required
           />
           {error && (
-            <p style={{ color: C.error, fontSize: "13px", margin: "0 0 8px" }}>{error}</p>
+            <p style={{ color: C.error, fontSize: "13px", margin: "0 0 8px" }}>
+              {error}
+            </p>
           )}
           <button style={s.button} type="submit" disabled={loading}>
             {loading ? "Signing in…" : "Sign in"}
@@ -535,21 +593,31 @@ export function IosFlasher({ serverUrl }: IosFlasherProps) {
         </p>
         <form onSubmit={handleSubmit2fa}>
           <input
-            style={{ ...s.input, textAlign: "center", fontSize: "28px", letterSpacing: "8px" }}
+            style={{
+              ...s.input,
+              textAlign: "center",
+              fontSize: "28px",
+              letterSpacing: "8px",
+            }}
             type="text"
             inputMode="numeric"
             pattern="[0-9]{6}"
             maxLength={6}
             value={twoFaCode}
             onChange={(e) => setTwoFaCode(e.target.value.replace(/\D/g, ""))}
-            autoFocus
             placeholder="000000"
             required
           />
           {error && (
-            <p style={{ color: C.error, fontSize: "13px", margin: "0 0 8px" }}>{error}</p>
+            <p style={{ color: C.error, fontSize: "13px", margin: "0 0 8px" }}>
+              {error}
+            </p>
           )}
-          <button style={s.button} type="submit" disabled={loading || twoFaCode.length !== 6}>
+          <button
+            style={s.button}
+            type="submit"
+            disabled={loading || twoFaCode.length !== 6}
+          >
             {loading ? "Verifying…" : "Verify"}
           </button>
         </form>
@@ -567,16 +635,28 @@ export function IosFlasher({ serverUrl }: IosFlasherProps) {
             key={step.id}
             style={{
               ...s.stepRow,
-              borderBottom: i < steps.length - 1 ? `1px solid ${C.border}` : "none",
+              borderBottom:
+                i < steps.length - 1 ? `1px solid ${C.border}` : "none",
             }}
           >
-            <span style={{ fontSize: "18px", minWidth: "24px" }}>{stepIcon(step.status)}</span>
+            <span style={{ fontSize: "18px", minWidth: "24px" }}>
+              {stepIcon(step.status)}
+            </span>
             <div style={{ flex: 1 }}>
-              <div style={{ fontSize: "14px", fontWeight: step.status === "running" ? 700 : 400 }}>
+              <div
+                style={{
+                  fontSize: "14px",
+                  fontWeight: step.status === "running" ? 700 : 400,
+                }}
+              >
                 {step.label}
               </div>
               {step.detail && (
-                <div style={{ fontSize: "12px", color: C.muted, marginTop: "2px" }}>{step.detail}</div>
+                <div
+                  style={{ fontSize: "12px", color: C.muted, marginTop: "2px" }}
+                >
+                  {step.detail}
+                </div>
               )}
             </div>
           </div>
@@ -584,11 +664,20 @@ export function IosFlasher({ serverUrl }: IosFlasherProps) {
         <div style={s.progressBar}>
           <div style={s.progressFill(pct)} />
         </div>
-        <p style={{ textAlign: "right", fontSize: "12px", color: C.muted, marginTop: "6px" }}>
+        <p
+          style={{
+            textAlign: "right",
+            fontSize: "12px",
+            color: C.muted,
+            marginTop: "6px",
+          }}
+        >
           {pct}%
         </p>
         {error && (
-          <p style={{ color: C.error, fontSize: "13px", marginTop: "12px" }}>{error}</p>
+          <p style={{ color: C.error, fontSize: "13px", marginTop: "12px" }}>
+            {error}
+          </p>
         )}
       </div>
     );
@@ -597,13 +686,18 @@ export function IosFlasher({ serverUrl }: IosFlasherProps) {
   function renderCompleteScreen() {
     return (
       <div style={s.card}>
-        <p style={{ ...s.heading, textAlign: "center" }}>✅ elizaOS installed!</p>
+        <p style={{ ...s.heading, textAlign: "center" }}>
+          ✅ elizaOS installed!
+        </p>
         <p style={{ ...s.subheading, textAlign: "center" }}>
-          Open elizaOS on your {selectedDevice?.name ?? "device"} to get started.
+          Open elizaOS on your {selectedDevice?.name ?? "device"} to get
+          started.
         </p>
         {regionNotice === "worldwide" && (
           <div style={s.notice}>
-            <strong>Renewal reminder:</strong> The sideloaded certificate expires in 7 days. Run this installer again before it expires to keep the app working.
+            <strong>Renewal reminder:</strong> The sideloaded certificate
+            expires in 7 days. Run this installer again before it expires to
+            keep the app working.
           </div>
         )}
         <button
@@ -637,14 +731,22 @@ export function IosFlasher({ serverUrl }: IosFlasherProps) {
   // ── Screen dispatch ──
   function renderScreen() {
     switch (screen) {
-      case "scanning": return renderScanningScreen();
-      case "no-device": return renderNoDeviceScreen();
-      case "region-notice": return renderRegionNoticeScreen();
-      case "select-app": return renderSelectAppScreen();
-      case "apple-id-login": return renderAppleIdLoginScreen();
-      case "two-factor": return renderTwoFactorScreen();
-      case "installing": return renderInstallingScreen();
-      case "complete": return renderCompleteScreen();
+      case "scanning":
+        return renderScanningScreen();
+      case "no-device":
+        return renderNoDeviceScreen();
+      case "region-notice":
+        return renderRegionNoticeScreen();
+      case "select-app":
+        return renderSelectAppScreen();
+      case "apple-id-login":
+        return renderAppleIdLoginScreen();
+      case "two-factor":
+        return renderTwoFactorScreen();
+      case "installing":
+        return renderInstallingScreen();
+      case "complete":
+        return renderCompleteScreen();
     }
   }
 
