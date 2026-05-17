@@ -5418,7 +5418,9 @@ async function runPostDeliverySideEffect(
 	let timeoutHandle: ReturnType<typeof setTimeout> | undefined;
 	try {
 		const result = await Promise.race([
-			Promise.resolve().then(task).then(() => "completed" as const),
+			Promise.resolve()
+				.then(task)
+				.then(() => "completed" as const),
 			new Promise<"timed_out">((resolve) => {
 				timeoutHandle = setTimeout(() => resolve("timed_out"), timeoutMs);
 				(timeoutHandle as { unref?: () => void }).unref?.();
@@ -8949,15 +8951,12 @@ export class DefaultMessageService implements IMessageService {
 							);
 							await runtime.createMemory(responseMemory, "messages");
 
-							detachPostDeliverySideEffect(
-								runtime,
-								"MESSAGE_SENT",
-								() =>
-									this.emitMessageSent(
-										runtime,
-										responseMemory,
-										message.content.source ?? "messageHandler",
-									),
+							detachPostDeliverySideEffect(runtime, "MESSAGE_SENT", () =>
+								this.emitMessageSent(
+									runtime,
+									responseMemory,
+									message.content.source ?? "messageHandler",
+								),
 							);
 						}
 					}
@@ -9074,14 +9073,11 @@ export class DefaultMessageService implements IMessageService {
 			shouldRespondToMessage && !isStopResponse(responseContent);
 		if (simpleReplyDelivered) {
 			void (async () => {
-				await runPostDeliverySideEffect(
-					runtime,
-					"post_turn_evaluators",
-					() =>
-						runPostTurnEvaluators(runtime, message, state, {
-							didRespond: didRespondGate,
-							responses: responseMessages,
-						}),
+				await runPostDeliverySideEffect(runtime, "post_turn_evaluators", () =>
+					runPostTurnEvaluators(runtime, message, state, {
+						didRespond: didRespondGate,
+						responses: responseMessages,
+					}),
 				);
 				await runPostDeliverySideEffect(runtime, "ALWAYS_AFTER", () =>
 					runtime.runActionsByMode("ALWAYS_AFTER", message, state, {
