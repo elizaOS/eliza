@@ -188,6 +188,8 @@ if command -v identify >/dev/null 2>&1; then
         tails/config/chroot_local-includes/usr/share/plymouth/themes/elizaos/elizaos-wordmark.png \
         tails/config/chroot_local-includes/usr/share/tails-installer/tails-liveusb-header.png \
         tails/config/chroot_local-includes/usr/share/tails/bootx64.png \
+        tails/config/chroot_local-includes/usr/share/icons/hicolor/scalable/apps/elizaos.svg \
+        tails/config/chroot_local-includes/usr/share/pixmaps/elizaos.svg \
         tails/config/chroot_local-includes/usr/share/pixmaps/elizaos.png \
     )
     if [ "${SOURCE_ONLY}" != "1" ]; then
@@ -255,6 +257,19 @@ grep -q '^Name=elizaOS$' \
     tails/config/chroot_local-includes/usr/share/applications/milady.desktop
 grep -q '^Icon=elizaos$' \
     tails/config/chroot_local-includes/usr/share/applications/milady.desktop
+grep -q '^Icon=elizaos$' \
+    tails/config/chroot_local-includes/usr/share/applications/org.boum.tails.PersistentStorage.desktop.in
+grep -q '<property name="icon-name">elizaos</property>' \
+    tails/config/chroot_local-includes/usr/share/tails/greeter/main.ui.in
+grep -q '<property name="icon-name">elizaos</property>' \
+    tails/config/chroot_local-includes/usr/share/tails/persistent-storage/window.ui.in
+for persistent_storage_view in \
+    tails/config/chroot_local-includes/usr/share/tails/persistent-storage/locked_view.ui.in \
+    tails/config/chroot_local-includes/usr/share/tails/persistent-storage/welcome_view.ui.in \
+    tails/config/chroot_local-includes/usr/share/tails/persistent-storage/passphrase_view.ui.in
+do
+    grep -q '/usr/share/pixmaps/elizaos.svg' "${persistent_storage_view}"
+done
 grep -q '^Exec=/usr/local/bin/milady$' \
     tails/config/chroot_local-includes/usr/share/applications/milady.desktop
 
