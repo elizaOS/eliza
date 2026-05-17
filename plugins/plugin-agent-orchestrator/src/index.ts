@@ -8,7 +8,12 @@
  * @module @elizaos/plugin-agent-orchestrator
  */
 
-import type { IAgentRuntime, Plugin, ServiceClass } from "@elizaos/core";
+import type {
+  IAgentRuntime,
+  Plugin,
+  ServiceClass,
+  ThreadHandle,
+} from "@elizaos/core";
 import {
   isLocalCodeExecutionAllowed,
   ModelType,
@@ -427,9 +432,20 @@ function registerProgressHook(runtime: IAgentRuntime): void {
   // the initial ack and edits that message in place on subsequent updates
   // instead of posting new messages. Falls back to send when the cap is
   // absent (current behavior preserved).
+  // Per-session UX state. Capability flags resolved once on first event so
+  // the lifecycle is deterministic (e.g. a connector that gains/loses a cap
+  // mid-task doesn't flip routing). The thread is the key anti-pollution
+  // mechanism: when supported, ALL narration + heartbeat live in the
+  // thread, so the main channel's recentMessages provider never sees them
+  // and the planner LLM cannot paraphrase past status into hallucinations
+  // on later turns.
   type ProgressState = {
     mainMessageId: string;
     canEdit: boolean;
+    canReact: boolean;
+    canThread: boolean;
+    label: string;
+    thread?: ThreadHandle;
     lastText: string;
   };
   const progressBySession = new Map<string, ProgressState>();
@@ -521,7 +537,7 @@ function registerProgressHook(runtime: IAgentRuntime): void {
         lastHeartbeatSummary.set(sessionId, trimmedSummary);
         const text = `⏳ [${label}] ${trimmedSummary.length > 200 ? `${trimmedSummary.slice(0, 197)}...` : trimmedSummary}`;
         lastHeartbeatPostAt.set(sessionId, now);
-        await emitProgress(sessionId, { source, roomId }, text);
+        await emitProgress(sessionId, { source, roomId }, text, label);
       } catch {
         // best-effort heartbeat — never crash
       }
@@ -539,15 +555,46 @@ function registerProgressHook(runtime: IAgentRuntime): void {
     lastHeartbeatSummary.delete(sessionId);
   };
 
-  // Capture progress state on first ack: store mainMessageId + capability
-  // probe so subsequent updates can pick edit-in-place when supported.
-  function resolveCanEdit(source: string): boolean {
+  // Generic capability probe — multi-integration aware. The orchestrator
+  // routes UX through whichever surface the target connector supports,
+  // falling back gracefully when a capability is missing (e.g. Twitter/X
+  // has no threads, terminal stdio has neither threads nor reactions).
+  function hasCap(source: string, capability: string): boolean {
     const connectors = runtime.getMessageConnectors?.();
     if (!Array.isArray(connectors)) return false;
     const conn = connectors.find((c) => c.source === source);
-    return Boolean(conn?.capabilities?.includes("edit_message"));
+    return Boolean(conn?.capabilities?.includes(capability));
+  }
+  const resolveCanEdit = (source: string): boolean =>
+    hasCap(source, "edit_message");
+  const resolveCanReact = (source: string): boolean =>
+    hasCap(source, "react_message");
+  const resolveCanThread = (source: string): boolean =>
+    hasCap(source, "create_thread") && hasCap(source, "post_to_thread");
+
+  async function bestEffortReact(
+    target: { source: string; roomId: string },
+    messageId: string,
+    emoji: string,
+  ): Promise<void> {
+    if (typeof runtime.addReactionOnTarget !== "function") return;
+    try {
+      await runtime.addReactionOnTarget(target as never, messageId, emoji);
+    } catch {
+      // best-effort: reactions are visual sugar, never block the flow
+    }
   }
 
+  // emitProgress is the single hot path for sub-agent narration + heartbeat.
+  // Routing ladder (capability-aware):
+  //   1. THREAD exists (or can be created) → all narration goes in thread.
+  //      This is the ANTI-POLLUTION key: thread messages never enter the
+  //      main channel's recentMessages window, so the planner LLM cannot
+  //      paraphrase past status updates into hallucinations on later turns.
+  //   2. canEdit → edit a single main-channel message in place.
+  //   3. Fallback → send a new main-channel message each time.
+  // First call lazily initializes state: creates the thread when supported
+  // and adds a 🚀 reaction to the spawn message when supported.
   async function emitProgress(
     sessionId: string,
     target: {
@@ -555,58 +602,98 @@ function registerProgressHook(runtime: IAgentRuntime): void {
       roomId: `${string}-${string}-${string}-${string}-${string}`;
     },
     rawText: string,
+    label?: string,
   ): Promise<void> {
     const text = sanitizePlannerText(rawText);
     const state = progressBySession.get(sessionId);
-    const canUseEdit =
-      state?.canEdit &&
-      state.mainMessageId &&
-      typeof runtime.editMessageOnTarget === "function";
-    runtime.logger?.info?.(
-      {
-        src: "@elizaos/plugin-agent-orchestrator",
-        sessionId: sessionId.slice(0, 8),
-        hasState: Boolean(state),
-        canUseEdit,
-        textPrefix: text.slice(0, 60),
-      },
-      "emitProgress called",
-    );
     try {
-      if (canUseEdit) {
-        if (state!.lastText === text) return;
-        await runtime.editMessageOnTarget(target, state!.mainMessageId, {
+      // ── post into the per-session thread when supported ──
+      if (state?.thread && typeof runtime.postToThreadOnTarget === "function") {
+        if (state.lastText === text) return;
+        await runtime.postToThreadOnTarget(target, state.thread, {
           text,
           source: "sub_agent_progress",
         });
-        state!.lastText = text;
+        state.lastText = text;
         return;
       }
+      // ── edit the single main-channel message in place ──
+      if (
+        state?.canEdit &&
+        state.mainMessageId &&
+        typeof runtime.editMessageOnTarget === "function"
+      ) {
+        if (state.lastText === text) return;
+        await runtime.editMessageOnTarget(target, state.mainMessageId, {
+          text,
+          source: "sub_agent_progress",
+        });
+        state.lastText = text;
+        return;
+      }
+      // ── first emit OR fallback: send a fresh main-channel message ──
+      const sessionLabel = state?.label ?? label ?? "sub-agent";
+      const initialText = state ? text : `🚀 [${sessionLabel}] running`;
       const sent = await runtime.sendMessageToTarget(target, {
-        text,
+        text: initialText,
         source: "sub_agent_progress",
       });
       const platformId = (sent?.metadata as Record<string, unknown> | undefined)
         ?.platformMessageId;
-      runtime.logger?.info?.(
-        {
-          src: "@elizaos/plugin-agent-orchestrator",
-          sessionId: sessionId.slice(0, 8),
-          sentReturnedMemory: Boolean(sent),
-          platformId,
-        },
-        "emitProgress send result",
-      );
       if (
         !state &&
         typeof platformId === "string" &&
         platformId.trim().length > 0
       ) {
-        progressBySession.set(sessionId, {
+        const canEdit = resolveCanEdit(target.source);
+        const canReact = resolveCanReact(target.source);
+        const canThread = resolveCanThread(target.source);
+        const newState: ProgressState = {
           mainMessageId: platformId,
-          canEdit: resolveCanEdit(target.source),
-          lastText: text,
-        });
+          canEdit,
+          canReact,
+          canThread,
+          label: sessionLabel,
+          lastText: initialText,
+        };
+        progressBySession.set(sessionId, newState);
+        // 🚀 reaction marks "spawning/running" without polluting message text.
+        if (canReact) {
+          void bestEffortReact(target, platformId, "🚀");
+        }
+        // Create the per-session thread off the spawn message. Narration
+        // flows here from the next emit; the main channel stays clean.
+        if (canThread && typeof runtime.createThreadOnTarget === "function") {
+          try {
+            const thread = await runtime.createThreadOnTarget(target, {
+              parentMessageId: platformId,
+              name: sessionLabel,
+            });
+            newState.thread = thread;
+            // Post the first narration chunk into the thread immediately so
+            // the user sees the substantive content on the same turn as the
+            // spawn ack — no silent gap before the first heartbeat.
+            if (
+              text !== initialText &&
+              typeof runtime.postToThreadOnTarget === "function"
+            ) {
+              await runtime.postToThreadOnTarget(target, thread, {
+                text,
+                source: "sub_agent_progress",
+              });
+              newState.lastText = text;
+            }
+          } catch (err: unknown) {
+            runtime.logger?.warn?.(
+              {
+                src: "@elizaos/plugin-agent-orchestrator",
+                sessionId,
+                err: err instanceof Error ? err.message : String(err),
+              },
+              "createThread failed; falling back to main-channel edits",
+            );
+          }
+        }
       }
     } catch (err: unknown) {
       runtime.logger?.warn?.(
@@ -617,6 +704,45 @@ function registerProgressHook(runtime: IAgentRuntime): void {
         },
         "emitProgress failed",
       );
+    }
+  }
+
+  async function markTaskComplete(
+    sessionId: string,
+    target: { source: string; roomId: string },
+    summary: string,
+  ): Promise<void> {
+    const state = progressBySession.get(sessionId);
+    if (!state) return;
+    // Edit the main spawn message to the final summary so the user has a
+    // single permanent record in the channel (thread holds detail).
+    if (state.canEdit && typeof runtime.editMessageOnTarget === "function") {
+      try {
+        await runtime.editMessageOnTarget(
+          target as never,
+          state.mainMessageId,
+          {
+            text: `✅ [${state.label}] ${summary}`,
+            source: "sub_agent_complete",
+          },
+        );
+      } catch {
+        // ignore: reaction below is the secondary signal
+      }
+    }
+    if (state.canReact) {
+      void bestEffortReact(target, state.mainMessageId, "✅");
+    }
+  }
+
+  async function markTaskFailed(
+    sessionId: string,
+    target: { source: string; roomId: string },
+  ): Promise<void> {
+    const state = progressBySession.get(sessionId);
+    if (!state) return;
+    if (state.canReact) {
+      void bestEffortReact(target, state.mainMessageId, "❌");
     }
   }
 
@@ -648,7 +774,7 @@ function registerProgressHook(runtime: IAgentRuntime): void {
     // Reset heartbeat clock — message just posted, no need for a status
     // tick within the next heartbeat interval.
     lastHeartbeatPostAt.set(sessionId, Date.now());
-    await emitProgress(sessionId, { source, roomId }, text);
+    await emitProgress(sessionId, { source, roomId }, text, label);
   }
   runtime.logger?.debug?.(
     { src: "@elizaos/plugin-agent-orchestrator" },
@@ -692,6 +818,26 @@ function registerProgressHook(runtime: IAgentRuntime): void {
         // lastPostByKey) leak for the life of the runtime.
         evName === "cancelled"
       ) {
+        // Mark the main-channel spawn message with the terminal outcome via
+        // reaction + (when supported) inline summary edit, BEFORE the
+        // progressBySession entry is cleared below. This is the user-facing
+        // ✅/❌ that turns a "spawning" message into a permanent done/failed
+        // record. capability-gated — connectors without react/edit just
+        // skip these signals.
+        if (evName === "task_complete") {
+          const summary =
+            typeof (data as { response?: unknown })?.response === "string"
+              ? (
+                  (data as { response: string }).response.split("\n")[0] ?? ""
+                ).slice(0, 200)
+              : "done";
+          // await so the state lookup happens BEFORE progressBySession.delete
+          // below — otherwise the helper races against the cleanup and finds
+          // no state to attach the ✅ to.
+          await markTaskComplete(sessionId, { source, roomId }, summary);
+        } else if (evName === "error" || evName === "cancelled") {
+          await markTaskFailed(sessionId, { source, roomId });
+        }
         stopHeartbeat(sessionId);
         toolHistory.delete(sessionId);
         // Drop any pending `💬` flush. The last narration chunk is typically
@@ -831,7 +977,7 @@ function registerProgressHook(runtime: IAgentRuntime): void {
         },
         `posting: "${text.slice(0, 80)}"`,
       );
-      await emitProgress(sessionId, { source, roomId }, text);
+      await emitProgress(sessionId, { source, roomId }, text, label);
     } catch (err) {
       runtime.logger?.warn?.(
         {
