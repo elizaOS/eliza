@@ -1414,10 +1414,7 @@ function removeXmlCommentsContaining(xml, markers) {
   for (const marker of markers) {
     const escapedMarker = escapeRegExp(marker);
     patched = patched.replace(
-      new RegExp(
-        `\\n?\\s*<!--[\\s\\S]*?${escapedMarker}[\\s\\S]*?-->\\s*`,
-        "g",
-      ),
+      new RegExp(`\\n?\\s*<!--[\\s\\S]*?${escapedMarker}[\\s\\S]*?-->\\s*`, "g"),
       "\n",
     );
   }
