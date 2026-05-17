@@ -29,16 +29,25 @@ export function useShellState(): UseShellStateResult {
   const [state, dispatch] = React.useReducer(shellReducer, initialShellState);
 
   React.useEffect(() => {
+    if (typeof document === "undefined") return undefined;
     function onNetwork(event: Event): void {
       const detail = (event as CustomEvent<NetworkStatusChangeDetail>).detail;
-      if (!detail || typeof detail.isOnline !== "boolean") return;
-      dispatch({ type: "NETWORK", isOnline: detail.isOnline });
+      if (!detail || typeof detail.connected !== "boolean") return;
+      dispatch({ type: "NETWORK", isOnline: detail.connected });
     }
-    window.addEventListener(NETWORK_STATUS_CHANGE_EVENT, onNetwork);
+    document.addEventListener(NETWORK_STATUS_CHANGE_EVENT, onNetwork);
     return () => {
-      window.removeEventListener(NETWORK_STATUS_CHANGE_EVENT, onNetwork);
+      document.removeEventListener(NETWORK_STATUS_CHANGE_EVENT, onNetwork);
     };
   }, []);
 
-  return React.useMemo(() => ({ state, send: dispatch }), [state]);
+  return React.useMemo(
+    () => ({
+      state,
+      // Wrap dispatch so the public `send` signature is exactly
+      // `(action: ShellAction) => void` and not tied to React.Dispatch.
+      send: (action: ShellAction) => dispatch(action),
+    }),
+    [state],
+  );
 }
