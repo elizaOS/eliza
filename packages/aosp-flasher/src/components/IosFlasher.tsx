@@ -204,6 +204,13 @@ export function IosFlasher({ serverUrl }: IosFlasherProps) {
   const regionShownRef = useRef(false);
 
   // ── Polling for devices ──
+  const stopScanning = useCallback(() => {
+    if (scanIntervalRef.current !== null) {
+      clearInterval(scanIntervalRef.current);
+      scanIntervalRef.current = null;
+    }
+  }, []);
+
   const scanDevices = useCallback(async () => {
     try {
       const res = await fetch(`${serverUrl}/ios/devices`);
@@ -235,13 +242,6 @@ export function IosFlasher({ serverUrl }: IosFlasherProps) {
       // Network not ready yet — keep polling
     }
   }, [serverUrl, screen, stopScanning]);
-
-  function stopScanning() {
-    if (scanIntervalRef.current !== null) {
-      clearInterval(scanIntervalRef.current);
-      scanIntervalRef.current = null;
-    }
-  }
 
   useEffect(() => {
     scanIntervalRef.current = setInterval(scanDevices, 2000);
@@ -363,12 +363,13 @@ export function IosFlasher({ serverUrl }: IosFlasherProps) {
           } else if (payload.error) {
             setError(payload.error);
           } else if (payload.stepId && payload.status) {
+            const nextStatus = payload.status;
             setSteps((prev) =>
               prev.map((step) =>
                 step.id === payload.stepId
                   ? {
                       ...step,
-                      status: payload.status!,
+                      status: nextStatus,
                       ...(payload.detail !== undefined
                         ? { detail: payload.detail }
                         : {}),
