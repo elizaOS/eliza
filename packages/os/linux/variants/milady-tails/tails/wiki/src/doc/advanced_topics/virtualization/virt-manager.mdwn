@@ -1,0 +1,270 @@
+[[!meta title="virt-manager"]]
+
+[*virt-manager*](http://virt-manager.org/) is a Free Software
+virtualization solution for Linux. *virt-manager* has a more complex
+interface than *GNOME Boxes* but it also has a more
+complete set of features.
+
+[[!inline pages="doc/advanced_topics/virtualization.caution" raw="yes" sort="age"]]
+
+<div class="tip">
+
+<p><i>virt-manager</i> is the only virtualization
+solution that allows to use a Persistent
+Storage. See [[running Tails from a USB
+image|virt-manager#usb_image]].</p>
+
+</div>
+
+<div class="note">
+
+<p>The following instructions have been tested on Debian 13 (Trixie).</p>
+
+</div>
+
+[[!toc]]
+
+Terminology
+===========
+
+*virt-manager* is based on a set of lower level virtualization tools,
+going from the user interface to the hardware interactions with the
+processor. This terminology is a bit confusing and other documentation
+might mention the following tools:
+
+- *KVM* is the module of the Linux kernel that interacts with the
+  virtualization features of the processor.
+
+- *QEMU* is the virtualization software that emulates virtual
+  processors and peripherals based on *KVM* and that starts and stops
+  virtual machines.
+
+- *libvirt* is a library that allows *virt-manager* to interact with
+  the virtualization capabilities provided by *QEMU*.
+
+- *SPICE* is a protocol that allows to visualize the desktop of
+  virtual machines.
+
+- *virt-manager* is the graphical interface that allows to create,
+  configure, and run virtual machines.
+
+<a id="iso"></a>
+
+Installation
+============
+
+To install *virt-manager* in Debian or Ubuntu, execute the following
+command:
+
+<p class="command">sudo apt install virt-manager libvirt-daemon-system</p>
+
+Running Tails from an ISO image
+===============================
+
+1. [[Download Tails as an ISO image|install/download-iso]], instead of a USB image.
+
+1. Start *virt-manager*.
+
+1. Double-click on **QEMU/KVM - Not Connected** to connect to the *QEMU*
+   system of your host.
+
+1. To create a new virtual machine, choose
+   <b>File&nbsp;▸ New Virtual Machine</b>.
+
+1. In *step 1*, choose **Local install media (ISO image or CDROM)**.
+
+1. In *step 2*:
+
+   1. Select the **Browse** button and then the **Browse Local** button to
+      choose the ISO image that you want to start from.
+
+   2. Unselect **Automatically detected from the installation media / source**.
+
+   3. Enter **Debian 13** in the field **Choose the operating system you are installing**.
+
+1. In *step 3*, allocate at least 3072 MB of memory.
+
+1. In *step 4*, unselect **Enable storage for this virtual machine**.
+
+1. In *step 5*:
+
+   - Type a name of your choice for the new virtual machine.
+
+   - Click **Finish** to start the virtual machine.
+
+<div class="tip">
+
+If you get the error message
+"<b>Error starting domain: Requested operation is not valid: network 'default' is not active</b>",
+then try to start the default virtual network:
+
+<ol>
+<li>Click on <b>QEMU/KVM - Not Connected</b>.</li>
+<li>Choose <b>Edit&nbsp;▸ Connection details</b>
+    to administer the connection to your local
+    <i>QEMU</i> system.</li>
+<li>Click on <b>Virtual Networks</b> tab, then
+    select the <b>default</b> virtual network in
+    the left pane.</li>
+<li>Click on the [[!img lib/media-playback-start.png alt="Start Network"
+    link="no" class="symbolic"]] icon on the bottom of the left pane to
+    start the default virtual network.</li>
+</ol>
+
+</div>
+
+<a id="usb_image"></a>
+
+Running Tails from a USB image
+==============================
+
+Running Tails from a USB image is the only virtualization solution that
+allows you to use a Persistent Storage in a virtual machine.
+
+1. [[Download Tails as a USB image|install/download]], instead of an ISO image.
+
+1. Increase the size of the USB image to be at least 8 GB. This creates
+   space for automatic upgrades and the Persistent Storage.
+
+   <p class="command-template">truncate -s
+   <span class="command-placeholder">size</span>
+   <span class="command-placeholder">tails.img</span></p>
+
+   - <span class="command-placeholder">size</span> has to be at least
+     `7200M`.
+
+   - <span class="command-placeholder">tails.img</span> is the file name
+     of the USB image that you want to resize.
+
+1. Start *virt-manager*.
+
+1. Double-click on **QEMU/KVM - Not Connected** to connect to the *QEMU*
+   system of your host.
+
+1. To create a new virtual machine, choose
+   <b>File&nbsp;▸ New Virtual Machine</b>.
+
+1. In *step 1*, choose **Import existing disk image**.
+
+1. In *step 2*:
+
+   1. Select the **Browse** button and then the **Browse Local** button to
+      choose the USB image that you want to start from.
+
+   1. Specify **Debian 13** in the field **Choose the operating system you are
+      installing**.
+
+1. In *step 3*, allocate at least 3072 MB of RAM.
+
+1. In *step 4*:
+
+   1. Type a name of your choice for the new virtual machine.
+
+   1. Choose **Customize configuration before install**.
+
+   1. Click **Finish** to open the configuration view.
+
+1. In the configuration view, choose **VirtIO Disk 1** or **IDE Disk 1**
+
+   1. Set **Disk bus** to **USB**.
+
+   1. Click **Apply**.
+
+   1. Expand the **Advanced options**.
+
+   1. Select **Removable**.
+
+   1. Click **Apply** again.
+
+   1. Click **Begin Installation** in the top left corner to start the virtual
+      machine.
+
+After you start on the USB image, you can [[create a Persistent
+Storage|persistent_storage]] on it.
+
+<a id="usb"></a>
+
+Running Tails from a USB stick
+==============================
+
+To run Tails from a USB stick using *virt-manager*, first
+create a virtual machine running from an ISO image as described
+[[above|virt-manager#iso]].
+
+Then do the following:
+
+  1. From the virtual machine window, choose **Virtual Machine**&nbsp;▸ **Shut
+     Down**&nbsp;▸ **Force Off** to shut down the virtual machine.
+
+  1. Plug in the USB stick from which you want to run Tails.
+
+  1. Choose **View**&nbsp;▸ **Details** to edit the configuration of the
+     virtual machine.
+
+  1. Click on the **Add Hardware** button on the bottom of the left
+     pane.
+
+  1. Select **USB Host Device** in the left pane.
+
+  1. In the right pane, click on the device from which you want to run
+     Tails, and click **Finish**.
+
+You can keep the original ISO image connected as a virtual DVD to
+install Tails onto the USB stick if needed.
+
+<a id="disconnect"></a>
+
+You can also remove the original ISO image and start directly from the
+USB stick once Tails is already installed on it. To do so:
+
+  1. Shut down the virtual machine.
+
+  1. In the configuration of the virtual machine, click on **SATA CDROM
+     1** in the left pane.
+
+  1. Select **Remove** in the right pane.
+
+  1. To enable the USB stick as a boot option:
+
+     1. Click on **Boot Options** in the left pane.
+
+     1. Select the **USB** boot option corresponding to your USB device.
+
+     1. Click **Apply**.
+
+  1. To start the virtual machine choose **View**&nbsp;▸ **Console** and then
+     **Virtual Machine**&nbsp;▸ **Run**.
+
+After you start on the USB device, you can [[create a Persistent
+Storage|persistent_storage]] on it.
+
+# Troubleshooting
+
+<a id="graphics-issues"></a>
+
+## Graphics issues
+
+Issues with graphics support in Tails running inside a virtual machine
+with *virt-manager* are common. The best solution can vary depending
+on the version of the virtualization software and on the virtual
+machine configuration. For example:
+
+- The *Auto resize VM with window* feature does not work in all
+  configurations.
+
+- The video device that provides optimal graphics performance can be
+  different depending on the version of the host operating system.
+
+To troubleshoot such issues:
+
+1. Ensure the virtual machine has a *Spice* display and a *Spice*
+   channel configured, as opposed to *VNC* ones.
+
+2. Try various virtual video device models.
+
+   Start with *Virtio* and *QXL* video devices: they generally give
+   the best results. If they don't perform well for you, try every
+   other video device model.
+
+3. Try enabling or disabling the OpenGL and 3D acceleration options
+   of the display and video device.

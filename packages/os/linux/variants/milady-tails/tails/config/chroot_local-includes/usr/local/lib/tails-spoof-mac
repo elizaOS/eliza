@@ -1,0 +1,228 @@
+#!/bin/sh
+
+set -e
+set -u
+
+# This script spoofs or resets the MAC address of all NICs given as
+# arguments according to the setting in Tails Greeter. The default (i.e
+# before Tails Greeter has been run) is to enable MAC spoofing.
+
+MAC_SPOOFING_FAILED_STATE_FILE=/var/lib/live/config/tails.mac-spoofing-failed
+
+# shellcheck source=tails-shell-library/hardware.sh
+. /usr/local/lib/tails-shell-library/hardware.sh
+# shellcheck source=tails-shell-library/log.sh
+. /usr/local/lib/tails-shell-library/log.sh
+# shellcheck source=tails-shell-library/tails-greeter.sh
+. /usr/local/lib/tails-shell-library/tails-greeter.sh
+
+# Get LIVE_USERNAME
+. /etc/live/config.d/username.conf
+
+# Get LANG
+. /etc/locale.conf
+export LANG
+
+. /usr/bin/gettext.sh
+TEXTDOMAIN="tails"
+export TEXTDOMAIN
+
+stop_and_disable_NM() {
+    for s in NetworkManager-dispatcher.service \
+        NetworkManager-wait-online.service \
+        NetworkManager.service; do
+        systemctl stop "${s}"
+        systemctl disable "${s}"
+        systemctl mask "${s}"
+    done
+    log "Networking disabled"
+}
+
+notify_live_user() {
+    if systemctl --user --machine="${LIVE_USERNAME}"@ is-active gnome-session.target; then
+        /usr/local/lib/run-with-user-env /usr/local/lib/tails-report-mac-spoofing-failed "${1}" "${2}"
+    else
+        printf "%s\n%s" "${1}" "${2}" >"${MAC_SPOOFING_FAILED_STATE_FILE}"
+    fi
+}
+
+notify_panic_success() {
+    local nic nic_name is_wifi is_wired title text other_wifi_cards other_wired_cards
+    nic="${1}"
+    # Print the NIC name with quotes
+    nic_name="\"${2}\""
+    is_wifi="${3}"
+    is_wired="${4}"
+    other_wifi_cards="${5}"
+    other_wired_cards="${6}"
+
+    if [ "${is_wifi:-}" = true ] && [ "${other_wifi_cards:-}" = true ]; then
+        title=$(eval_gettext "Wi-Fi Interface Disabled")
+        text=$(eval_gettext "MAC address anonymization failed for one of your Wi-Fi interfaces, so it is temporarily disabled.")
+        text="${text}\n\n${nic}: ${nic_name}"
+    elif [ "${is_wifi:-}" = true ] && [ "${other_wifi_cards:-}" != true ]; then
+        title=$(eval_gettext "Wi-Fi Disabled")
+        text=$(eval_gettext "MAC address anonymization failed for your Wi-Fi interface, so it is temporarily disabled.")
+    elif [ "${is_wired:-}" = true ] && [ "${other_wired_cards:-}" = true ]; then
+        title=$(eval_gettext "Wired Interface Disabled")
+        text=$(eval_gettext "MAC address anonymization failed for one of your wired interfaces, so it is temporarily disabled.")
+        text="${text}\n\n${nic}: ${nic_name}"
+    elif [ "${is_wired:-}" = true ] && [ "${other_wired_cards:-}" != true ]; then
+        title=$(eval_gettext "Wired Network Disabled")
+        text=$(eval_gettext "MAC address anonymization failed for your wired interface, so it is temporarily disabled.")
+    else
+        title=$(eval_gettext "Network Interface Disabled")
+        text=$(eval_gettext "MAC address anonymization failed for one of your network interfaces, so it is temporarily disabled.")
+    fi
+
+    notify_live_user "${title}" "${text}"
+}
+
+notify_panic_failure() {
+    local nic nic_name title text
+    nic="${1}"
+    # Print the NIC name with quotes
+    nic_name="\"${2}\""
+    other_nics="${3}"
+    title=$(gettext "All Networking Disabled")
+    if [ "${other_nics:-}" = true ]; then
+        text=$(eval_gettext "MAC address anonymization failed for one of your network interfaces. The error recovery also failed, so all networking is disabled.")
+        text="${text}\n\n${nic}: ${nic_name}"
+    else
+        text=$(eval_gettext "MAC address anonymization failed for your network interface. The error recovery also failed, so all networking is disabled.")
+    fi
+    notify_live_user "${title}" "${text}"
+}
+
+mac_spoof_panic() {
+    local nic
+    local module
+    local nic_name
+    nic=${1}
+    if ! /sbin/ip link set dev "${nic}" down; then
+        log "Failed to down NIC ${nic} in panic mode."
+    fi
+    module=$(get_module_used_by_nic "${nic}")
+    nic_name="$(get_name_of_nic "${nic}")"
+
+    # Check if the NIC is a WiFi card or a wired card. We use this
+    # information to display a more user-friendly message. We have to
+    # do that check before unloading the module, else we won't be able
+    # to get the information.
+    local is_wifi is_wired
+    if iw dev "${nic}" info 2>/dev/null 1>&2; then
+        is_wifi=true
+    elif ethtool "${nic}" 2>/dev/null 1>&2; then
+        is_wired=true
+    fi
+
+    interfaces=$(get_all_ethernet_nics)
+
+    # Check if there are other WiFi or wired cards
+    local other_wifi_cards other_wired_cards
+    if [ "${is_wifi:-}" = true ]; then
+        for interface in ${interfaces}; do
+            if [ "${interface}" = "${1}" ]; then
+                continue
+            fi
+            if iw dev "${interface}" info 2>/dev/null 1>&2; then
+                other_wifi_cards=true
+                break
+            fi
+        done
+    elif [ "${is_wired:-}" = true ]; then
+        for interface in ${interfaces}; do
+            if [ "${interface}" = "${1}" ]; then
+                continue
+            fi
+            if ethtool "${interface}" 2>/dev/null 1>&2; then
+                other_wired_cards=true
+                break
+            fi
+        done
+    fi
+    local other_nics
+    if [ "${other_wifi_cards:-}" = true ] || [ "${other_wired_cards:-}" = true ]; then
+        other_nics=true
+    fi
+
+    echo "install ${module} /bin/true" >> \
+        /etc/modprobe.d/"${module}"-blocklist.conf
+    unload_module_and_rev_deps "${module}" || :
+    if nic_exists "${nic}"; then
+        log "Failed to unload module ${module} of NIC ${nic}."
+        stop_and_disable_NM
+        notify_panic_failure "${nic}" "${nic_name}" "${other_nics:-}"
+    else
+        log "Successfully unloaded module ${module} of NIC ${nic}."
+        notify_panic_success "${nic}" "${nic_name}" "${is_wifi:-}" "${is_wired:-}" \
+            "${other_wifi_cards:-}" "${other_wired_cards:-}"
+    fi
+}
+
+spoof_mac() {
+    local msg
+    set +e
+    msg="$(macchanger -e "${1}" 2>&1)"
+    ret="${?}"
+    set -e
+    if [ "${ret}" != 0 ]; then
+        log "macchanger failed for NIC ${1}, returned ${ret} and said: ${msg}"
+        return 1
+    fi
+}
+
+set_log_tag spoof-mac
+
+NIC="${1}"
+
+if ! mac_spoof_is_enabled; then
+    exit 0
+fi
+
+log "Trying to spoof MAC address of NIC ${NIC}..."
+
+if ! nic_exists "${NIC}"; then
+    log "NIC ${NIC} doesn't exist, skipping"
+    exit 1
+fi
+
+OLD_MAC="$(get_current_mac_of_nic "${NIC}")"
+
+# There is a 1/2^24 chance macchanger will randomly pick the real MAC
+# address. We try to making it really unlikely repeating it up to
+# three times. Theoretically speaking this leaks information about the
+# real MAC address at each occasion but actually leaking the real MAC
+# address will be more serious in practice.
+# shellcheck disable=SC2034
+for i in 1 2 3; do
+    if ! spoof_mac "${NIC}"; then
+        # If our MAC spoofing primitive fails, we fail safe by forcing
+        # us to enter into panic mode.
+        unset NEW_MAC
+        break
+    fi
+    NEW_MAC="$(get_current_mac_of_nic "${NIC}")"
+    if [ "${OLD_MAC}" != "${NEW_MAC}" ]; then
+        break
+    fi
+done
+
+# MAC spoofing fail-safe: if $NIC's MAC address isn't spoofed at this
+# point we have to take some drastic measures in order to prevent
+# potential leaks.
+if [ -z "${OLD_MAC:-}" ] || [ -z "${NEW_MAC:-}" ] ||
+    [ "${OLD_MAC:-}" = "${NEW_MAC:-}" ] ||
+    grep -qs -w 'debug=test_mac_spoof_panic' /proc/cmdline; then
+    log "Failed to spoof MAC address of NIC ${NIC}. Going into panic mode."
+    if ! mac_spoof_panic "${NIC}"; then
+        # If mac_spoof_panic() fails we're quite screwed, so we kill
+        # NetworkManager without notification to do our best to
+        # prevent a MAC address leak.
+        log "Panic mode failed for NIC ${NIC}."
+        stop_and_disable_NM
+    fi
+    exit 1
+fi
+
+log "Successfully spoofed MAC address of NIC ${NIC}"

@@ -1,0 +1,10 @@
+[[!meta title="Stickers"]]
+
+These stickers are published under the same license as the [[Tails
+logo|contribute/how/promote/logo]].
+
+[Flyeralarm](https://www.flyeralarm.com/) has good prices, ships all
+around Europe, and we already have a [[PDF|tails-sticker-flyeralarm.pdf]]
+to print 5 cm round stickers with them.
+
+[[!map pages="contribute/how/promote/stickers/*"]]

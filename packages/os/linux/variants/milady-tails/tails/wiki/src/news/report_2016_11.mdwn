@@ -1,0 +1,200 @@
+[[!meta title="Tails report for November, 2016"]]
+[[!meta date="Fri, 09 Dec 2016 12:34:56 +0000"]]
+[[!pagetemplate template="news.tmpl"]]
+
+[[!toc levels=2]]
+
+Releases
+========
+
+* [[Tails 2.7 was released on November 15|news/version_2.7]] (minor release).
+
+* [[Tails 2.7.1 was released on November 30|news/version_2.7.1]] (minor release).
+
+* Tails 2.9 is [[scheduled for December 13|contribute/calendar]].
+
+The following changes were introduced in Tails 2.7:
+
+  - Fix multi-architecture support in *Synaptic*. This should fix
+    broken installations of additional packages from *Synaptic*.
+    ([[!tails_ticket 11820]])
+
+  - Set default spell checking language of *Icedove* to English instead of
+    French. ([[!tails_ticket 11037]])
+
+Code
+====
+
+New *Tails Greeter*
+-------------------
+
+After many months of development, the [[redesigned version of *Tails
+Greeter* is ready to be tested|news/test_redesigned_Tails_Greeter]].
+
+Tails based on Debian 9 (Stretch)
+---------------------------------
+
+We made lots of progress on porting Tails to Debian 9 (Stretch).
+This work culminated with the
+[[release of Tails 3.0~alpha1|news/test_3.0-alpha1]].
+
+* Merged the devel Git branch, and upgraded to a current snapshot of
+  the Debian archive.
+* Switched userspace to 64-bit (x86_64).
+* By running our [[manual test suite|contribute/release_process/test]]
+  on Stretch-based ISO images and testing our entire
+  [[documentation|doc]], we identified a few regressions and
+  [[!tails_ticket 11916 desc="documentation that needs updating"]].
+* [[!tails_ticket 11789 desc="GNOME with its default black theme"]]
+* Fixed a long-standing issue with
+  [[!tails_ticket 7018 desc="the firewall not being set up during early boot"]].
+* Fixed the Greeter
+  [[!tails_ticket 11694 desc="not switching to the Desktop VT upon login"]],
+  and
+  [[!tails_ticket 11919 desc="not displaying the More Options window properly"]].
+* Test suite:
+  - Fixed [[!tails_ticket 11698 desc="a bug in the debugging code"]].
+  - Ported great numbers of test cases to Stretch, including the
+    persistence, Tor enforcement, encryption, Evince and MAC spoofing ones.
+* Verified that
+  [[!tails_ticket 11812 desc="tails-security-check's CA pinning is repaired"]].
+* Verified that MAC address spoofing works in various cases,
+  including [[!tails_ticket 11943 desc="Wi-Fi connections"]] and
+  existing persistent network connections created on Tails 2.x.
+* Switch to
+  [[!tails_ticket 11829 desc="using the aufs kernel module from Debian"]].
+* Made progress on porting to GnuPG v2: [[!tails_ticket 11905]],
+  [[!tails_ticket 11948]].
+* Removed [[!tails_ticket 7687 desc="ekeyd"]] and
+  [[!tails_ticket 11534 desc="obsolete udev rules"]].
+* Fixed handling of `/etc/hosts`.
+* Fixed issues in the revamped greeter to have it included in next Jessie alpha ISO. A testing ISO is available. Among others, last changes include:
+  - fix on-the-fly translation [[!tails_ticket 11947]] [[!tails_ticket 11957]]
+  - update user visible strings [[!tails_ticket 11438]]
+  - integrate latest icons [[!tails_ticket 11472]]
+
+Reproducible ISO build
+----------------------
+
+We had an initial sprint about reproducible builds.
+We are very happy with the progress we've made: the tree that becomes
+`filesystem.squashfs` is now almost fully reproducible; so is also the
+tree that is the basis for automatic upgrades. Along the way, we've
+contributed a number of patches to Debian and upstream projects.
+
+* Make our PO files update reproducibly, by
+  [[!tails_ticket 11967 desc="not updating them unless something other than POT-Creation-Date has changed"]].
+* live-build:
+  - Use xorriso, that honors the
+    [SOURCE_DATE_EPOCH](https://reproducible-builds.org/specs/source-date-epoch/)
+    variable, to build the ISO filesystem reproducibly.
+  - Expose the `SOURCE_DATE_EPOCH` variable when running scripts
+    inside the chroot.
+  - Clamp mtimes to `SOURCE_DATE_EPOCH` in the chroot and
+    binary filesystems.
+  - Use `SOURCE_DATE_EPOCH` to populate `/.disk/info` timestamp.
+  - Use `SOURCE_DATE_EPOCH` when templating syslinux templates.
+* Made mksquashfs honor `SOURCE_DATE_EPOCH` for the filesystem
+  creation date, and had it clamp mtimes to `SOURCE_DATE_EPOCH`.
+* Incremental upgrade kits:
+  - Made aufs white-outs reproducible.
+  - Made aufs pseudo-links permanent, so that they are reproducible.
+  - Passed `--sort=name --clamp-mtime --mtime=@$SOURCE_DATE_EPOCH`
+    to tar.
+* Made [[!tails_ticket 11966 desc="our web site build reproducibly"]]…
+  and then discovered [[!tails_ticket 11987 desc="more bits"]] that
+  are not generated in a deterministic way, which lead us to discover
+  that our `cleanall` build option did not clean as well as it should
+  ([[!tails_gitweb_commit 541bbe5fd3c1127232ce271041f9dddb94e3f5d7 desc="fix"]]).
+* Eliminated
+  various causes for non-determinism, such as caches and other
+  generated files.
+* On the infrastructure side of things:
+  - Vagrant boxes management: we came up with a new design that
+    will be reflected on the blueprint shortly.
+  - Experimented with using our Vagrant + libvirt build system
+    on one of our Jenkins ISO builders, and started work towards
+    migrating them all.
+
+Documentation and website
+=========================
+
+- Explain why it is impossible to connect to *GMail* from
+  *Icedove*.
+
+- spriver updated our documentation on [[shutdown|doc/first_steps/shutdown]]
+  and *OpenPGP Applet* to 2.0.
+
+- Chris Lamb fixed a bunch of
+  typos.
+
+User experience
+===============
+
+Infrastructure
+==============
+
+- The deployment of our mechanism for the [[distribution and activation of the
+  revocation certificate of the Tails signing
+  key|doc/about/openpgp_keys/signing_key_revocation]] has progressed a lot and
+  it is now operational. Thanks to everybody who accepted being part of this!
+
+* We finished deploying our
+  new infrastructure of download mirrors which allows for more mirrors,
+  easier maintenance, and more flexibility in the future.
+
+- Our test suite covers 213 scenarios, 4 more that in October.
+
+Funding
+=======
+
+- We continued our donation campaign and wrote about [[what we do with our
+  money|news/what_we_do_with_your_money]] and [[our plans for
+  the coming years|news/our_plans_for_2017]].
+
+- Our grant proposal for NLnet on porting Tails to Debian Stretch was rejected.
+
+- Our grant proposal for ISC Project on a translation platform for our website was
+  rejected.
+
+Outreach
+========
+
+- Cristina Carnevali presented Tails
+  at Linux Day 2016 in Bologna, Italy.
+
+- Tails was presented in the security track of the Iberian hackmeeting
+  in Firestone, Donostia, Basque Country.
+
+- gagz presented Tails at Capitole du libre 2016, Toulouse, France.
+
+Translation
+===========
+
+- All the website:
+
+  - de: 57% (2880) strings translated, 4% strings fuzzy, 51% words translated
+  - fa: 46% (2344) strings translated, 7% strings fuzzy, 52% words translated
+  - fr: 79% (3979) strings translated, 4% strings fuzzy, 78% words translated
+  - it: 17% (885) strings translated, 2% strings fuzzy, 18% words translated
+  - pt: 31% (1593) strings translated, 8% strings fuzzy, 29% words translated
+
+  Total original words: 50832
+
+- [[Core pages of the website|contribute/l10n_tricks/core_po_files.txt]]:
+
+  - de: 85% (1569) strings translated, 8% strings fuzzy, 85% words translated
+  - fa: 39% (724) strings translated, 9% strings fuzzy, 40% words translated
+  - fr: 90% (1657) strings translated, 7% strings fuzzy, 91% words translated
+  - it: 47% (871) strings translated, 6% strings fuzzy, 53% words translated
+  - pt: 51% (947) strings translated, 12% strings fuzzy, 52% words translated
+
+  Total original words: 16995
+
+Metrics
+=======
+
+* Tails has been started more than 613099 times this month. This makes 20437 boots a day on average.
+  It's the first time we're over 20000 boots a day!
+* 14634 downloads of the OpenPGP signature of Tails ISO from our website.
+* 110 bug reports were received through WhisperBack.

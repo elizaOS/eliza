@@ -1,0 +1,356 @@
+# SOME DESCRIPTIVE TITLE
+# Copyright (C) YEAR Free Software Foundation, Inc.
+# This file is distributed under the same license as the PACKAGE package.
+# FIRST AUTHOR <EMAIL@ADDRESS>, YEAR.
+#
+msgid ""
+msgstr ""
+"Project-Id-Version: PACKAGE VERSION\n"
+"Report-Msgid-Bugs-To: tails-l10n@boum.org\n"
+"POT-Creation-Date: 2025-09-17 11:40+0200\n"
+"PO-Revision-Date: 2025-09-18 16:00+0000\n"
+"Last-Translator: xin <xin@riseup.net>\n"
+"Language-Team: LANGUAGE <LL@li.org>\n"
+"Language: pt\n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+"Plural-Forms: nplurals=2; plural=n > 1;\n"
+"X-Generator: Weblate 5.13.2\n"
+
+#. type: Plain text
+#, no-wrap
+msgid "[[!meta title=\"Connecting to a local network\"]]\n"
+msgstr "[[!meta title=\"Conectando a uma rede local \"]]\n"
+
+#. type: Plain text
+#, no-wrap
+msgid "[[!toc levels=2]]\n"
+msgstr "[[!toc levels=2]]\n"
+
+#. type: Title =
+#, no-wrap
+msgid "Connecting to a local network"
+msgstr "Conectando a uma rede local"
+
+#. type: Plain text
+msgid ""
+"You can connect to a local network using a wired, Wi-Fi, or mobile data "
+"connection:"
+msgstr ""
+"Você pode conectar a uma rede local usando uma conexão com fio, Wi-Fi, ou de "
+"dados móveis:"
+
+#. type: Bullet: '1. '
+msgid "Open the system menu in the top-right corner."
+msgstr "Abra o menu do sistema no canto superior direito."
+
+#. type: Plain text
+#, no-wrap
+msgid "   [[!img doc/first_steps/desktop/system-with-wired.png class=\"screenshot\" alt=\"\"]]\n"
+msgstr ""
+"   [[!img doc/first_steps/desktop/system-with-wired.png class=\"screenshot\" "
+"alt=\"\"]]\n"
+
+#. type: Bullet: '   - '
+msgid ""
+"If a wired connection is detected, Tails automatically connects to the "
+"network."
+msgstr ""
+"Se uma conexão com fio for detectada, Tails conectará automaticamente à rede."
+
+#. type: Bullet: '   - '
+#, fuzzy
+#| msgid ""
+#| "To connect to a Wi-Fi network, choose [[!img lib/go-next.png link=\"no\" "
+#| "class=\"symbolic\" alt=\"\"]] in the **Wi-Fi** button. A list of "
+#| "available Wi-Fi networks appears below the **Wi-Fi** button."
+msgid ""
+"To connect to a Wi-Fi network, click [[!img lib/go-next.png link=\"no\" "
+"class=\"symbolic\" alt=\"\"]] on the right of the **Wi-Fi** button."
+msgstr ""
+"Para conectar a uma rede Wi-Fi, escolha [[!img lib/go-next.png link=\"no\" "
+"class=\"symbolic\" alt=\"\"]] no botão de **Wi-Fi**. Uma lista de redes Wi-"
+"Fi disponíveis será mostrada abaixo do botão de **Wi-Fi**."
+
+#. type: Plain text
+#, no-wrap
+msgid "     A list of available Wi-Fi networks appears below the **Wi-Fi** button.\n"
+msgstr ""
+
+#. type: Plain text
+#, no-wrap
+msgid "     <div class=\"bug\">\n"
+msgstr "     <div class=\"bug\">\n"
+
+#. type: Plain text
+#, no-wrap
+msgid ""
+"     <p>If there is no <b>Wi-Fi</b> menu, your Wi-Fi interface might not\n"
+"     be compatible with Tails. See [[Troubleshooting Wi-Fi not\n"
+"     working|no-wifi]].</p>\n"
+msgstr ""
+"     <p>Se não houver um menu <b>Wi-Fi</b>, sua interface Wi-Fi pode não ser\n"
+"     compatível com o Tails. Veja [[Resolvendo problemas quando Wi-Fi não\n"
+"     funciona|no-wifi]].</p>\n"
+
+#. type: Plain text
+#, no-wrap
+msgid "     </div>\n"
+msgstr "     </div>\n"
+
+#. type: Bullet: '   - '
+msgid "To connect to a mobile data network, choose **Mobile Broadband**."
+msgstr ""
+"Para conectar a uma rede de dados moveis, escolha <span "
+"class=\"guilabel\">Banda larga móvel</span>."
+
+#. type: Plain text
+#, no-wrap
+msgid "   <div class=\"note\">\n"
+msgstr "   <div class=\"note\">\n"
+
+#. type: Plain text
+#, no-wrap
+msgid ""
+"   <p>It is currently impossible to [[use a VPN in\n"
+"   Tails|support/faq#vpn]].</p>\n"
+msgstr ""
+"   <p>No momento, não é possível [[usar uma VPN no\n"
+"   Tails|support/faq#vpn]].</p>\n"
+
+#. type: Plain text
+#, no-wrap
+msgid "   </div>\n"
+msgstr "   </div>\n"
+
+#. type: Bullet: '1. '
+msgid ""
+"After you connect to a local network, the *Tor Connection* assistant appears "
+"to help you [[connect to the Tor network|tor]]."
+msgstr ""
+"Após você se conectar à uma rede local, o assistente de *Conexão Tor* vai "
+"aparecer para te auxiliar a se [[conectar à rede Tor|tor]]."
+
+#. type: Plain text
+#, no-wrap
+msgid "   [[!img tor/tor-connection.png class=\"screenshot\" alt=\"\"]]\n"
+msgstr "   [[!img tor/tor-connection.png class=\"screenshot\" alt=\"\"]]\n"
+
+#. type: Title =
+#, no-wrap
+msgid "Saving your network settings"
+msgstr "Salvando suas configurações de rede"
+
+#. type: Plain text
+msgid ""
+"To remember the password for Wi-Fi networks and custom network "
+"configurations across different Tails sessions, turn on the [[Network "
+"Connections|persistent_storage/configure#network_connections]] feature of "
+"the Persistent Storage."
+msgstr ""
+"Para guardar senhas de redes Wi-Fi e configurações customizadas de rede para "
+"serem usadas em diferentes sessões do Tails, ative a funcionalidade "
+"[[Conexões de Rede|persistent_storage/configure#network_connections]] do "
+"Armazenamento Persistente."
+
+#. type: Title =
+#, no-wrap
+msgid "Modifying your network settings"
+msgstr "Modificando suas configurações de rede"
+
+#. type: Plain text
+#, fuzzy
+#| msgid ""
+#| "To modify your network settings, for example, to configure whether or not "
+#| "to automatically connect to a Wi-Fi network, choose **Applications&nbsp;▸ "
+#| "System Tools&nbsp;▸ Settings&nbsp;▸ Network**."
+msgid ""
+"To modify your network settings, for example, to configure whether or not to "
+"automatically connect to a Wi-Fi network, choose **Apps&nbsp;▸ System "
+"Tools&nbsp;▸ Settings&nbsp;▸ Network**."
+msgstr ""
+"Para modificar suas configurações de rede, por exemplo, para configurar "
+"quando se conectar ou não automaticamente à uma rede Wi-Fi, escolha "
+"**Aplicativos&nbsp;▸ Ferramentas de sistema&nbsp;▸ Configurações&nbsp;▸ "
+"Rede**."
+
+#~ msgid ""
+#~ "To connect to a Wi-Fi network, choose <span class=\"guilabel\">Wi-Fi Not "
+#~ "Connected</span> and then **Select Network**."
+#~ msgstr ""
+#~ "Para conectar a uma rede Wi-Fi, escolha <span class=\"guilabel\">Wi-Fi "
+#~ "Não Conectado</span> e depois <span class=\"guilabel\">Selecionar uma "
+#~ "Rede</span>."
+
+#, no-wrap
+#~ msgid ""
+#~ "   <div class=\"note\">\n"
+#~ "   <p>It is currently impossible to connect to a network using:</p>\n"
+#~ msgstr ""
+#~ "   <div class=\"note\">\n"
+#~ "   <p>Atualmente é impossível conectar a uma rede usando:</p>\n"
+
+#, no-wrap
+#~ msgid ""
+#~ "   <ul>\n"
+#~ "   <li>Dial-up modems.</li>\n"
+#~ "   <li>VPNs, see [[the corresponding FAQ|support/faq#vpn]].</li>\n"
+#~ "   </ul>\n"
+#~ msgstr ""
+#~ "   <ul>\n"
+#~ "   <li>Modem de linha discada.</li>\n"
+#~ "   <li>VPNs, veja [[as Perguntas Frequentes correspondente|support/faq#vpn]].</li>\n"
+#~ "   </ul>\n"
+
+#, no-wrap
+#~ msgid ""
+#~ "For more information, open\n"
+#~ "*[[GNOME Help|first_steps/desktop#help]]*\n"
+#~ "and choose **Networking, web & email**.\n"
+#~ msgstr ""
+#~ "Para mais informações, abra o\n"
+#~ "*[[GNOME Ajuda|first_steps/desktop#help]]*\n"
+#~ "e escolha **Rede, web & e-mail**.\n"
+
+#~ msgid "After establishing a connection to a network:"
+#~ msgstr "Após se conectar numa rede:"
+
+#~ msgid ""
+#~ "If you can already access the Internet, Tor is automatically started."
+#~ msgstr ""
+#~ "Se você já tem acesso à Internet, Tor será iniciado automaticamente."
+
+#~ msgid ""
+#~ "If you need to log in to a captive portal before being granted access to "
+#~ "the Internet, see our documentation on [[logging in to captive portals|"
+#~ "doc/anonymous_internet/unsafe_browser]]."
+#~ msgstr ""
+#~ "Se você precisa fazer login em um portal captivo para conseguir acesso à "
+#~ "internet, veja a nossa documentação sobre [[como fazer login em portais "
+#~ "captivos|doc/anonymous_internet/unsafe_browser]]."
+
+#, fuzzy
+#~ msgid ""
+#~ "If you are concerned about being identified as a Tails user on your "
+#~ "network, read our documentation about [[network fingerprinting|tor/hide]]."
+#~ msgstr ""
+#~ "Se você está preocupado/a com ser identificado/a como um usuário de Tails "
+#~ "em sua rede local, veja nossa documentação sobre [[fingerprint de rede|"
+#~ "doc/about/fingerprint]]."
+
+#~ msgid "<a id=\"no-wi-fi\"></a>\n"
+#~ msgstr "<a id=\"no-wi-fi\"></a>\n"
+
+#~ msgid ""
+#~ "[[!inline pages=\"doc/anonymous_internet/networkmanager/no-wifi.inline\" "
+#~ "raw=\"yes\" sort=\"age\"]]\n"
+#~ msgstr ""
+#~ "[[!inline pages=\"doc/anonymous_internet/networkmanager/no-"
+#~ "wifi.inline.pt\" raw=\"yes\" sort=\"age\"]]\n"
+
+#~ msgid "[[!img first_steps/desktop/network-wired.png link=no]]\n"
+#~ msgstr "[[!img first_steps/desktop/network-wired.png link=no]]\n"
+
+#~ msgid "[[!img first_steps/desktop/network-wireless.png link=no]]\n"
+#~ msgstr "[[!img first_steps/desktop/network-wireless.png link=no]]\n"
+
+#, fuzzy
+#~ msgid "Connecting to a network\n"
+#~ msgstr "[[!meta title=\"Conectando à rede com o NetworkManager\"]]\n"
+
+#, fuzzy
+#~ msgid ""
+#~ "If you want to reuse your custom\n"
+#~ "configuration or the passwords of encrypted wireless connections across "
+#~ "separate\n"
+#~ "working sessions, you can activate the [[<span class=\"guilabel\">Network "
+#~ "connections</span> persistence\n"
+#~ "feature|first_steps/persistence/configure#network_connections]].\n"
+#~ msgstr ""
+#~ "Se você quer reutilizar suas configurações ou senhas personalizadas do\n"
+#~ "*NetworkManager* em sessões de trabalho distintas,\n"
+#~ "você pode ativar a [[funcionalidade de persistência de <span "
+#~ "class=\"guilabel\">Conexões de\n"
+#~ "rede</span>|first_steps/persistence/configure#network_connections]].\n"
+
+#, fuzzy
+#~ msgid ""
+#~ "*NetworkManager* allows you to connect to a\n"
+#~ "network using a wired or wireless connection (Wi-Fi, 3G, or GSM):\n"
+#~ msgstr ""
+#~ "O *NetworkManager* permite que você conecte a\n"
+#~ "uma rede local usando conexão com ou sem fio (Wi-Fi, 3G, ou GSM):\n"
+
+#~ msgid ""
+#~ "To connect to a wireless connection, click on the <span "
+#~ "class=\"application\">NetworkManager Applet</span> to see the list of "
+#~ "available connections. Then select the one you want to connect to."
+#~ msgstr ""
+#~ "Para conectar a uma conexão sem fio, clique no <span "
+#~ "class=\"application\">Miniaplicativo NetworkManager</span> para ver uma "
+#~ "lista de conexões disponíveis. A seguir, selecione a conexão à qual você "
+#~ "quer conectar."
+
+#~ msgid ""
+#~ "The name is quite self-explanatory – this is what you should use to "
+#~ "manage your network, which usually only consists of establishing an "
+#~ "Internet connection. In many cases this is done more or less "
+#~ "automatically. For example, if you are connected with wire, "
+#~ "NetworkManager will try to obtain network access automatically. If you "
+#~ "want to connect via wireless with a supported wireless adapter, you are "
+#~ "basically two clicks away."
+#~ msgstr ""
+#~ "O nome é relativamente auto-explicativo - esta é a ferramenta que você "
+#~ "deve usar para gerenciar sua rede, o que usualmente consiste em "
+#~ "estabelecer uma conexão à Internet. Em muitos casos, isto é feito de "
+#~ "forma mais ou menos automática. Por exemplo, se você estiver conectado "
+#~ "por cabo, o NetworkManager tentará obter acesso à rede automaticamente. "
+#~ "Se você quiser se conectar por rede sem fio com um adaptador de rede "
+#~ "suportado, você estará basicamente a apenas dois cliques de distância."
+
+#~ msgid ""
+#~ "Click on its icon in the notification area to find the list of available "
+#~ "connections:"
+#~ msgstr ""
+#~ "Clique neste ícone na área de notificação para encontrar uma lista de "
+#~ "conexões disponíveis:"
+
+#~ msgid ""
+#~ "All wireless networks your computer is picking up are listed there, as "
+#~ "are all wired networks you have access to (usually one per wire), so the "
+#~ "second click is used for choosing any one of these. If the network is "
+#~ "protected you will be prompted for a password."
+#~ msgstr ""
+#~ "Todas as redes sem fio que seu computador estiver detectando serão "
+#~ "listadas aqui, assim como todas as redes com fio às quais você tiver "
+#~ "acesso (em geral, uma por fio). Com mais um clique, você pode escolher "
+#~ "qualquer uma destas rede para se conectar. Se a rede estiver protegida, "
+#~ "uma senha será pedida a você."
+
+#~ msgid "Mobile and Dial-Up Modems\n"
+#~ msgstr "Modems Móveis e de Discagem\n"
+
+#~ msgid ""
+#~ "NetworkManager supports mobile modems but do not support dial-up modems "
+#~ "at the moment."
+#~ msgstr ""
+#~ "O NetworkManager suporta modems móveis mas não suporta modems de discagem "
+#~ "no momento. [[Veja o tíquete correspondente.todo/Add_Gnome_PPP_for_Dial-"
+#~ "Up_Users]]"
+
+#~ msgid ""
+#~ "VPN\n"
+#~ "===\n"
+#~ msgstr ""
+#~ "VPN\n"
+#~ "===\n"
+
+#, fuzzy
+#~ msgid "There is currently no documented method of using VPN with Tails."
+#~ msgstr ""
+#~ "Por enquanto não há nenhum método documentado para usar VPN com Tails."
+
+#~ msgid "[[!tails_todo vpn_support desc=\"See the corresponding ticket.\"]]\n"
+#~ msgstr ""
+#~ "[[!tails_todo vpn_support desc=\"Veja o tíquete correspondente.\"]]\n"

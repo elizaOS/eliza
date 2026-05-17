@@ -1,0 +1,35 @@
+#include <tunables/global>
+
+/usr/bin/onionshare {
+  #include <abstractions/dbus-session-strict>
+  #include <abstractions/gnome>
+  #include <abstractions/ibus>
+  #include <abstractions/onionshare>
+  #include <abstractions/vulkan>
+
+  /usr/bin/ r,
+  /usr/bin/onionshare r,
+  /proc/*/cmdline r,
+
+  # Required to open URLs in Tor Browser
+  /{usr/,}bin/{e,}grep rix,
+  /{usr/,}bin/gio rix,
+  /{usr/,}bin/which rix,
+  /usr/bin/xdg-open rmix,
+  /usr/lib/@{multiarch}/glib-[0-9]*/gio-launch-desktop ix,
+  /usr/local/bin/tor-browser rmUx,
+
+  # The freedesktop.org abstraction doesn't allow `k`
+  /usr/share/icons/*/index.theme k,
+
+  # Why do these still emit audit journal entries?
+  owner @{HOME}/.config/ibus/bus/ rw,
+  owner @{HOME}/.config/ibus/bus/* rw,
+  deny @{HOME}/.ICEauthority r,
+
+  # Accessibility support
+  owner /{,var/}run/user/*/at-spi2-*/ rw,
+  owner /{,var/}run/user/*/at-spi2-*/** rw,
+
+  #include <local/usr.bin.onionshare>
+}

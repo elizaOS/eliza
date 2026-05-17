@@ -1,0 +1,51 @@
+[[!meta date="Fri, 22 Oct 2010 02:02:02 +0000"]]
+[[!pagetemplate template="news.tmpl"]]
+[[!tag announce]]
+
+The Amnesic Incognito Live System, version 0.6, is out.
+
+Please note Tails released images are now signed using a new
+[[OpenPGP key|doc/about/openpgp_keys]].
+
+Notable changes include:
+
+- Tor 0.2.1.26
+- Vidalia 0.2.10
+- New Linux kernel (2.6.32) supports a lot more hardware.
+- Newly supported wireless chipsets include RT2860, RTL8192,
+  BCM4306/3, BCM4311, BCM4312, BCM4318.
+- New bundled software: vector-based drawing (Inkscape), .po files
+  editor (Poedit), [[!wikipedia Shamir's_Secret_Sharing]]
+  (gfshare and ssss).
+- New GnuPG package brings saner defaults and hkps:// support.
+  It is now pre-configured to use a hkps:// server over Tor.
+- Use (authenticated) HTP instead of
+  NTP. Tor and Vidalia are now started only
+  once HTP is done. Desktop notifications explain what's happening.
+- Warn the user when T(A)ILS is running inside a virtual machine.
+- Add a Nautilus shortcut to securely erase free space in a partition.
+- Preliminary Monkeysphere support: Iceweasel extension is installed,
+  MSVA is configured to use a hkps:// keyserver.
+- WhisperBack 1.3 lets the user optionally provide an email address
+  and OpenPGP key.
+
+A few bugs were fixed, including:
+
+- IPv6 communication with the outside is now really forbidden.
+- Torbutton 1.2.5-3 fixes the [[exposure of a rare
+  User-Agent|security/Iceweasel_exposes_a_rare_User-Agent]].
+- Autostart Iceweasel with the GNOME session to workaround the
+  "Iceweasel first page is not loaded" bug.
+- The DNS cache now forgets automapped .onion's on Tor restart.
+
+... and of course the usual bunch of software security updates.
+
+See the online
+Changelog
+for details.
+
+This release is likely to be the last one to be based on Debian
+Lenny. Further development will be based on the (to be released
+soon) next Debian stable release: Squeeze.
+
+[[Download it, seed it!|install]]

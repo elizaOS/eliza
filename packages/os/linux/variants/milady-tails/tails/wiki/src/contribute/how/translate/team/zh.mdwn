@@ -1,0 +1,18 @@
+[[!meta title="Translate Tails into Chinese"]]
+
+[[!toc levels=2]]
+
+# How to join the Chinese translation team?
+
+New contributors should first subscribe to the [[mailing list for
+translators|https://www.autistici.org/mailman/listinfo/tails-l10n/]] and
+introduce themselves to the Chinese team on the list.
+
+We currently work in both Simplified and Traditional Chinese and use
+`opencc` to convert our work between the two writing systems.
+
+# Contributors' repositories
+
+* jxtsai: [[https://github.com/twngo/Tails-zh_TW]] (traditional Chinese)
+* MDrights: [[https://github.com/mdrights/tails-zh_CN]] (simplified
+  Chinese)

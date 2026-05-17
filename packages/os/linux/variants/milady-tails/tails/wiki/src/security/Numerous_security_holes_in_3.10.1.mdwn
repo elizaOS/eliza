@@ -1,0 +1,38 @@
+[[!meta date="Mon, 10 Dec 2018 16:28:27 +0100"]]
+[[!meta title="Numerous security holes in Tails 3.10.1"]]
+[[!pagetemplate template="news.tmpl"]]
+
+[[!tag security/fixed]]
+
+Several security holes that affect Tails 3.10.1 are now fixed in Tails 3.11.
+
+We **strongly** encourage you to
+[[upgrade to Tails 3.11|news/version_3.11]] as soon as possible.
+
+
+ - Tor Browser: [[!mfsa 2018-30]]
+ - Thunderbird: [[!mfsa 2018-28]]
+ - Linux:
+   - [[!cve CVE-2017-5715]]
+   - [[!cve CVE-2017-5753]]
+   - [[!cve CVE-2018-12896]]
+   - [[!cve CVE-2018-13053]]
+   - [[!cve CVE-2018-17972]]
+   - [[!cve CVE-2018-18281]]
+   - [[!cve CVE-2018-18445]]
+   - [[!cve CVE-2018-18710]]
+ - cURL:
+   - [[!debsa2018 4331]]
+ - Ghostscript:
+   - [[!debsa2018 4336]]
+   - [[!debsa2018 4346]]
+ - Perl:
+   - [[!debsa2018 4347]]
+ - Policykit:
+   - [[!debsa2018 4350]]
+ - Samba:
+   - [[!debsa2018 4345]]
+ - OpenSSL:
+   - [[!debsa2018 4348]]
+ - libtiff:
+   - [[!debsa2018 4349]]

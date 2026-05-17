@@ -1,0 +1,171 @@
+[[!meta title="Gabriela, November 2022"]]
+
+[[!img gabriela.jpg link="no" alt="Afro-Brazilian handmade jewelry that hides a Tails USB stick"]]
+
+**Can you tell us a bit about who you are and what you do?**
+
+I'm a hardware and programming girl. I program in Python and Rails. I
+also participate in a hackerspace and a feminist hacker collective in
+Brazil. We organize talks and workshops to empower women in their use of
+technology.
+
+In my work, I use different words, words that are more familiar to
+people, and elements from Brazilian culture, especially from the culture
+of my region, Bahia. I try to make connections between modern technology
+and ancestral cultures. 
+
+**How did you discover Tails?**
+
+When I was at the university, I didn't have a computer of my own, so I
+learned to use live Linux distributions as portable operating systems.
+
+In 2010, I started being more concerned about the privacy of my data and
+discovered Tails. I immediately got very interested and started using
+Tails for all of my work and studies to protect my data while working on
+the university's computer and Internet connection.
+
+I stopped using Tails for some time when I could afford to buy a
+computer of my own. But I still love Tails because it saved me so many
+times.
+
+**Tell me about your work teaching Tails to other women in Brazil.**
+
+In 2015, I went back to Tails because I was working on feminist
+security. I started teaching other women how to use Tails, women who
+work with reproductive rights. For these workshops, I developed the idea
+of mixing Linux with jewelry to create *patuás*, a type of Brazilian
+protection amulets.
+
+By saying *patuá* instead of *Tails*, these woman could understand much
+better what is Tails and what it can do for them. Let's build an amulet,
+a *patuá*, to protect you, your community, and your organization.
+
+Tails is useful for them not only to work on reproductive rights but
+also for their personal data. These women didn't have computers of their
+own and used the computers at work or in school or the computers of
+their husbands and boyfriends.
+
+When they started learning about Tails and the importance of privacy, it
+was very transforming because their boyfriends had a very bad influence
+on them. Their boyfriends treated them like they were not smart and
+wouldn't be able to work with a technology like Tails.
+
+But I taught them how to install Tails, create a passphrase, and also
+share Tails with other people by doing a copy of their amulet.
+
+**In my experience, it's hard to make people understand why privacy is
+important and why people should make additional efforts to use something
+like Tails. How did you make them understand that privacy was important
+for them?**
+
+For women who work on digital and reproductive rights, it was much
+easier to talk about the importance of privacy because a single mistake
+can compromise an entire organization and get them in trouble with the
+police.
+
+For other women, they started sharing stories about their boyfriends and
+how they surveilled everything they did online. Their boyfriends used to
+check their data on the computer, their browsing history, etc. I asked
+them how nice it would be if this information was only accessible to
+them and then the importance of privacy became clear to them.
+
+Some of these women had their home raided by the police after being
+denounced for their work on abortion. All the information about their
+patients was not in their phones, but in their Tails amulet, and the
+police couldn't find any evidence about their work.
+
+**How do these women communicate with their patients?**
+
+They use *WhatsApp* because their patients have no technical knowledge.
+Their patients don't use *Signal* or *Pidgin*. Sometimes their phone is
+so old that they have to use *WhatsApp Web*. It's a weakness but there
+is no way around.
+
+**How do they organize their work between Tails and *WhatsApp*?**
+
+I tried using *WhatsApp Web* from Tails but it didn't work. They had to
+use *WhatsApp* on their phone to communicate with the patients. But they
+used Tails for all their internal organizing: emails, web browsing,
+editing files online, and keeping all their files encrypted.
+
+But when some of these women managed to buy their own computer, they
+also stopped using Tails.
+
+When the pandemic started, many women were left without computers to
+use, only their phone. Some of them got in touch with me again and asked
+about using Tails on their phone. They thought that Tails would work on
+their phones from a micro SD, like it did on a computer. Unfortunately,
+it's not possible.
+
+After the pandemic, women are asking me for Tails workshops again now
+that they can access other computers again at work or at the university.
+I'm now applying for grants to buy more USB sticks and do more workshops
+with them.
+
+**Which parts of Tails worked the best for them?**
+
+Carrying their files without worrying about happens if they lost their
+Tails or got robbed.
+
+The ease of having a portable computer was the most incredible for them.
+
+These women felt very powerful when using Tails. When they shut down the
+university's computer to restart on Tails, they felt like a hacker from
+the movies, a special agent, or superheroine. They hoped that a friend
+would ask them what they were doing so they could show off their
+superpowers.
+
+**What didn't work so much for them?**
+
+- Creating an encrypted folder
+
+  Creating a safe password that they could remember was very stressful.
+  They didn't want to use an easy password but, when they used a more
+  secure password, they forgot it and lost all their data.
+
+- Upgrading
+
+  Sometimes the upgrade would fail, probably because of the connection.
+  They would continue using Tails without upgrading. It's good because
+  they could continue using Tails even without upgrading, even though I
+  told them that it was important to upgrade. Sometimes I organized
+  Tails upgrade parties.
+
+- Translations
+
+  Some parts of Tails were only in English.
+
+- Some websites are impossible to access using Tor
+
+  For example, social networks and some government websites. But it's good that
+  they understood the interest of accessing these parts of their private lives
+  through Tails.
+
+**What do you think is the biggest limitation for them to be more
+autonomous in their use of Tails and not require your help so much?**
+
+People think that Tails is a very complicated beast, a *bicho de sete
+cabeças*, but when I show them in-person, they can see that it's not
+that complicated. It's much easier because I manage to get them to relax
+and feel confident. They feel more capable. It's not the same when we do
+online calls.
+
+I write them documentation with a different language, more entertaining
+and motivating. After the pandemic, everything is more complicated and
+difficult because people are mental tired.
+
+I'm also take a Tails amulet everywhere I go to make it easier for them
+to see how it works and how convenient it is.
+
+I miss short videos about the basic functions of Tails. People work a
+lot with videos in Brazil. They could watch the videos from their phone
+while Tails is running on the computer and follow them in real time.
+But videos are heavy and these people often don't have a good connection
+or they can only connect from their phone. GIFs can be lighter and
+faster.
+
+When I present Tails to people in rural communities or quilombolas, I
+always refer to it as *patuá*, a digital amulet. Tails is an English
+acronym and people have a hard time with English words.  Sometimes
+people asked me about having a custom Tails, only because it would feel
+more approachable with a different name.

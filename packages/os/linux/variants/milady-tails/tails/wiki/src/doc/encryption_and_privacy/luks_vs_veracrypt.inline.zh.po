@@ -1,0 +1,74 @@
+# SOME DESCRIPTIVE TITLE
+# Copyright (C) YEAR Free Software Foundation, Inc.
+# This file is distributed under the same license as the PACKAGE package.
+# FIRST AUTHOR <EMAIL@ADDRESS>, YEAR.
+#
+msgid ""
+msgstr ""
+"Project-Id-Version: PACKAGE VERSION\n"
+"Report-Msgid-Bugs-To: tails-l10n@boum.org\n"
+"POT-Creation-Date: 2025-09-17 11:40+0200\n"
+"PO-Revision-Date: 2023-03-11 19:31+0000\n"
+"Last-Translator: xin <xin@riseup.net>\n"
+"Language-Team: LANGUAGE <LL@li.org>\n"
+"Language: zh\n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+"Plural-Forms: nplurals=1; plural=0;\n"
+"X-Generator: Weblate 4.9.1\n"
+
+#. type: Plain text
+#, no-wrap
+msgid "[[!meta robots=\"noindex\"]]\n"
+msgstr "[[!meta robots=\"noindex\"]]\n"
+
+#. type: Plain text
+msgid "We recommend that you use:"
+msgstr ""
+
+#. type: Bullet: '- '
+msgid ""
+"*VeraCrypt* to share encrypted files across different operating systems."
+msgstr ""
+
+#. type: Bullet: '- '
+msgid "*LUKS* to encrypt files for Tails and Linux."
+msgstr ""
+
+#. type: Plain text
+#, no-wrap
+msgid ""
+"<table>\n"
+"<tr><th></th><th class=\"w30\"><i>LUKS</i></th><th class=\"w30\"><i>VeraCrypt</i></th></tr>\n"
+"<tr><td>Compatibility</td><td>Linux</td><td>Windows + macOS + Linux</td></tr>\n"
+"<tr><td>Create new volumes</td><td class=\"check\"><span class=\"check\">Yes</span></td><td class=\"cross\">Outside of Tails</td></tr>\n"
+"<tr><td>Open and modify existing volumes</td><td class=\"check\">Yes</td><td class=\"check\">Yes</td></tr>\n"
+"<tr><td>Encrypted partitions (or entire disks)¹</td><td class=\"check\">Yes</td><td class=\"check\">Yes</td></tr>\n"
+"<tr><td>Encrypted file containers¹</td><td class=\"cross\">Complicated </td><td class=\"check\">Easy</td></tr>\n"
+"<tr><td>Plausible deniability²</td><td class=\"cross\">No</td><td class=\"check\">Yes</td></tr>\n"
+"<tr><td>Ease of use</td><td class=\"check\">Easier</td><td class=\"cross\">More complicated</td></tr>\n"
+"<tr><td>Speed</td><td class=\"check\">Faster</td><td class=\"cross\">Slower</td></tr>\n"
+"</table>\n"
+msgstr ""
+
+#. type: Bullet: '1. '
+msgid ""
+"See the [[difference between *file containers* and *partitions*|"
+"veracrypt#container-vs-partition]]."
+msgstr ""
+
+#. type: Bullet: '2. '
+msgid ""
+"*Plausible deniability*: in some cases (for example, with *VeraCrypt* hidden "
+"volumes), it is impossible for an adversary to technically prove the "
+"existence of an encrypted volume."
+msgstr ""
+
+#. type: Plain text
+#, no-wrap
+msgid ""
+"   Still, [[!wikipedia Deniable_encryption desc=\"deniable encryption\"]] might not protect you if\n"
+"   you are forced to reveal the existence of the encrypted volume. See\n"
+"   [VeraCrypt: Plausible Deniability](https://www.veracrypt.fr/en/Plausible%20Deniability.html).\n"
+msgstr ""

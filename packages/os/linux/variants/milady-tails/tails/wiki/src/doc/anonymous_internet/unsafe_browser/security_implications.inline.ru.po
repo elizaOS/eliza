@@ -1,0 +1,130 @@
+# SOME DESCRIPTIVE TITLE
+# Copyright (C) YEAR Free Software Foundation, Inc.
+# This file is distributed under the same license as the PACKAGE package.
+# FIRST AUTHOR <EMAIL@ADDRESS>, YEAR.
+#
+msgid ""
+msgstr ""
+"Project-Id-Version: PACKAGE VERSION\n"
+"POT-Creation-Date: 2025-06-10 12:51+0200\n"
+"PO-Revision-Date: 2023-03-15 21:28+0000\n"
+"Last-Translator: xin <xin@riseup.net>\n"
+"Language-Team: LANGUAGE <LL@li.org>\n"
+"Language: ru\n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+"Plural-Forms: nplurals=3; plural=n%10==1 && n%100!=11 ? 0 : n%10>=2 && "
+"n%10<=4 && (n%100<10 || n%100>=20) ? 1 : 2;\n"
+"X-Generator: Weblate 4.9.1\n"
+
+#. type: Plain text
+#, no-wrap
+msgid "[[!meta robots=\"noindex\"]]\n"
+msgstr "[[!meta robots=\"noindex\"]]\n"
+
+#. type: Plain text
+msgid ""
+"The *Unsafe Browser* does not use Tor. The websites that you visit can see "
+"your real IP address."
+msgstr ""
+"*Небезопасный браузер* не использует Tor. Посещаемые вами сайты могут видеть "
+"ваш настоящий IP-адрес."
+
+#. type: Plain text
+msgid "This is why we recommend that you:"
+msgstr "Вот почему мы рекомендуем:"
+
+#. type: Bullet: '- '
+msgid ""
+"Only use the *Unsafe Browser* to sign in to a network using a captive portal "
+"or [[browse trusted web pages on the local network|advanced_topics/"
+"lan#browser]]."
+msgstr ""
+"Используйте *небезопасный браузер* только для входа в сеть через сайт "
+"авторизации или [[веб-сёрфинга по доверенным страницам внутри вашей "
+"локальной сети|advanced_topics/lan#browser]]."
+
+#. type: Bullet: '- '
+msgid "Close the *Unsafe Browser* after signing in to the network."
+msgstr ""
+
+#~ msgid "- **The *Unsafe Browser* is not anonymous.**"
+#~ msgstr "- ***Небезопасный браузер* нельзя считать анонимным.**"
+
+#, fuzzy
+#~| msgid ""
+#~| "Close the *Unsafe Browser* after signing in to the network, to avoid "
+#~| "using it by mistake."
+#~ msgid ""
+#~ "Close the *Unsafe Browser* after signing in to the network.  Not only you "
+#~ "can use it by mistake, but keeping it open could actually allow an "
+#~ "advanced attacker to deanonymize you."
+#~ msgstr ""
+#~ "после входа в сеть закройте небезопасный браузер, чтобы случайно им не "
+#~ "воспользоваться."
+
+#~ msgid "- **The *Unsafe Browser* can be used to deanonymize you.**"
+#~ msgstr ""
+#~ "- ** *Unsafe Browser* может быть использован, чтобы деанонимизировать "
+#~ "вас.**"
+
+#, fuzzy, no-wrap
+#~| msgid ""
+#~| "  An attacker could exploit a security vulnerability in another\n"
+#~| "  application in Tails to start an invisible *Unsafe Browser* and reveal\n"
+#~| "  your IP address, even if you are not using the *Unsafe Browser*.\n"
+#~ msgid ""
+#~ "  An attacker could exploit a security vulnerability in another\n"
+#~ "  application in Tails to start the *Unsafe Browser* and reveal\n"
+#~ "  your IP address, even if you are not using the *Unsafe Browser*.\n"
+#~ msgstr "  Злоумышленник может воспользоваться уязвимостью в каком-нибудь другом приложении Tails, чтобы незаметно запустить *небезопасный браузер* и определить ваш IP-адрес, даже если вы сами не используете *небезопасный браузер*.\n"
+
+#, fuzzy, no-wrap
+#~| msgid ""
+#~| "  For example, an attacker could exploit a security vulnerability in\n"
+#~| "  *Thunderbird* by sending you a [phishing\n"
+#~| "  email](https://ssd.eff.org/en/module/how-avoid-phishing-attacks) that\n"
+#~| "  could start an invisible *Unsafe Browser* and reveal them your IP\n"
+#~| "  address.\n"
+#~ msgid ""
+#~ "  For example, an attacker could exploit a security vulnerability in\n"
+#~ "  *Thunderbird* by sending you a [phishing\n"
+#~ "  email](https://ssd.eff.org/en/module/how-avoid-phishing-attacks) that\n"
+#~ "  starts the *Unsafe Browser* and reveals your IP\n"
+#~ "  address to the attacker.\n"
+#~ msgstr "  К примеру, злоумышленник может воспользоваться уязвимостью почтового клиента *Thunderbird* и отправить вам [фишинговое письмо](https://ssd.eff.org/ru/module/%D1%80%D1%83%D0%BA%D0%BE%D0%B2%D0%BE%D0%B4%D1%81%D1%82%D0%B2%D0%BE-%D0%BF%D0%BE-%D0%B7%D0%B0%D1%89%D0%B8%D1%82%D0%B5-%D0%BE%D1%82-%D1%84%D0%B8%D1%88%D0%B8%D0%BD%D0%B3%D0%BE%D0%B2%D1%8B%D1%85-%D0%B0%D1%82%D0%B0%D0%BA). Оно поможет незаметно запустить *небезопасный браузер* и раскрыть злоумышленнику ваш IP-адрес.\n"
+
+#, no-wrap
+#~ msgid ""
+#~ "  Such an attack is very unlikely but could be performed by a strong\n"
+#~ "  attacker, such as a government or a hacking firm.\n"
+#~ msgstr ""
+#~ "  Такая атака маловероятна, но может быть проведена сильным\n"
+#~ "  злоумышленником, например правительством или хакерской группой.\n"
+
+#, fuzzy
+#~| msgid ""
+#~| "Only enable the *Unsafe Browser* if you need to sign to a network using "
+#~| "a captive portal."
+#~ msgid ""
+#~ "Only open the *Unsafe Browser* if you need to sign to a network using a "
+#~ "captive portal, and close it when you are done."
+#~ msgstr ""
+#~ "Включайте *небезопасный браузер* только для входа в сеть через сайт "
+#~ "авторизации."
+
+#~ msgid ""
+#~ "Always upgrade to the latest version of Tails to fix known "
+#~ "vulnerabilities as soon as possible."
+#~ msgstr ""
+#~ "Регулярно обновляйте Tails до последней версии. Это поможет быстрее "
+#~ "избавляться от обнаруженных уязвимостей."
+
+#, no-wrap
+#~ msgid ""
+#~ "  We have plans to fix the root cause of this problem but it requires\n"
+#~ "  [[!tails_ticket 12213 desc=\"important engineering work\"]].\n"
+#~ msgstr ""
+#~ "  У нас есть планы по устранению основной причины этой проблемы, но для этого требуется\n"
+#~ "  [[!tails_ticket 12213 desc=\"серьёзная инженерная работа\"]].\n"

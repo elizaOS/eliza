@@ -1,0 +1,84 @@
+[[!meta title="Release schedule"]]
+
+[[!toc levels=2]]
+
+Tails has a time-based release schedule, aligned with
+[Tor Browser release schedule](https://gitlab.torproject.org/tpo/applications/tor-browser/-/wikis/Release-Schedule),
+which itself depends on the
+[Firefox ESR
+(Extended Support Release) release schedule](https://whattrainisitnow.com/calendar/).
+
+We publish a new version of Tails on each new release of Firefox, usually every
+4 weeks.
+
+On top of that, we occasionally publish an extra emergency release in
+order to quickly fix a critical security vulnerability that became
+publicly known or is being used in the wild. The most common example
+of this is when Mozilla publishes a ["chemspill"
+release](https://wiki.mozilla.org/Release_Management/Chemspill)
+of Firefox.
+
+See our actual [[release schedule|contribute/calendar]].
+
+Schedule
+========
+
+A typical release week looks like this:
+
+* Monday: get ready, initiate communication with the Applications team
+
+* Tuesday:
+
+  1. Once a trustworthy-enough Tor Browser tarball is ready,
+     a Tails Team member
+     [[imports the new Tor Browser|contribute/release_process/tor-browser]]
+     into a new MR, then ensures this MR passes our QA and is merged in time
+     for the next steps.
+
+  2. Mozilla announces the new Firefox ESR release.
+
+  3. The Applications team announces the new Tor Browser release.
+
+* Wednesday:
+
+  1. The [[contribute/working_together/roles/release_manager]]
+     for this release does most of the [[contribute/release_process]].
+
+  2. The RM and Tails Team members start doing
+     [[QA|contribute/release_process/test]] on the candidate Tails images.
+
+  3. A [[contribute/working_together/roles/technical_writer]] writes
+     the release notes for the upcoming Tails release.
+
+* Thursday:
+
+  1. The RM and Tails Team members finish doing
+     [[QA|contribute/release_process/test]] on the candidate Tails images.
+
+  2. The RM completes the release process, which includes announcing the new
+     Tails release to the world.
+
+<a id="versioning"></a>
+
+Versioning scheme
+=================
+
+* We always increment the first number when switching to a new major
+  release of Debian. When we do this we reset the second number to zero.
+
+* We may also increment the first number whenever it make sense for Tails
+  only (user-visible changes).
+
+* The second number is incremented for every release that does not
+  increment the first number.
+
+* We add an extra, third number for emergency releases.
+
+Release candidates and beta releases
+====================================
+
+Most Tails stable releases are published directly, without a prior beta release
+or release candidate (RC). But some changes deserve more caution, in which case
+we often choose to release a beta or RC. See how to [[decide whether to release
+a beta or
+a RC|contribute/working_together/interfaces/developers_and_release_managers#beta-or-rc]].

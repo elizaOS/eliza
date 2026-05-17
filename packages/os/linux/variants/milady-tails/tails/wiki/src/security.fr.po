@@ -1,0 +1,159 @@
+# SOME DESCRIPTIVE TITLE
+# Copyright (C) YEAR Free Software Foundation, Inc.
+# This file is distributed under the same license as the PACKAGE package.
+# FIRST AUTHOR <EMAIL@ADDRESS>, YEAR.
+#
+msgid ""
+msgstr ""
+"Project-Id-Version: Tails\n"
+"Report-Msgid-Bugs-To: tails-l10n@boum.org\n"
+"POT-Creation-Date: 2025-09-17 11:40+0200\n"
+"PO-Revision-Date: 2025-11-02 18:19+0000\n"
+"Last-Translator: xin <xin@riseup.net>\n"
+"Language-Team: Tails translators <tails@boum.org>\n"
+"Language: fr\n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+"Plural-Forms: nplurals=2; plural=n > 1;\n"
+"X-Generator: Weblate 5.13.2\n"
+
+#. type: Plain text
+#, no-wrap
+msgid "[[!meta title=\"Security audits and advisories\"]]\n"
+msgstr "[[!meta title=\"Annonces et audits de sécurité\"]]\n"
+
+#. type: Plain text
+#, no-wrap
+msgid "[[!toc levels=3]]\n"
+msgstr "[[!toc levels=3]]\n"
+
+#. type: Plain text
+msgid ""
+"Since Tails is based on Debian, it takes advantage of all the work done by "
+"the Debian security team. As quoted from <https://www.debian.org/security/>:"
+msgstr ""
+"Tails est basé sur Debian et profite ainsi de tout le travail effectué par "
+"l'équipe sécurité de Debian. Pour plus d'information sur la sécurité de "
+"Debian : <https://www.debian.org/security/> :"
+
+#. type: Plain text
+#, no-wrap
+msgid ""
+"> Debian takes security very seriously. We handle all security\n"
+"problems brought to our attention and ensure that they are corrected within a\n"
+"reasonable timeframe. Many advisories are coordinated with other free software\n"
+"vendors and are published the same day a vulnerability is made public and we\n"
+"also have a Security Audit team that reviews the archive looking for new or\n"
+"unfixed security bugs.\n"
+msgstr ""
+"> Debian prend les questions de sécurité très au sérieux.\n"
+"Nous traitons tous les problèmes de sécurité qui sont portés à notre attention\n"
+"et nous nous assurons qu'ils sont corrigés avec un délai raisonnable. De nombreuses\n"
+"annonces de sécurité sont gérées en coordination avec les autres distributeurs de\n"
+"logiciel libre, et sont publiées le même jour que la vulnérabilité associée. L'équipe\n"
+"d'audit de sécurité est chargée d'inspecter l'archive à la recherche de bogues de\n"
+"sécurité nouveaux ou non corrigés.\n"
+
+#. type: Plain text
+#, no-wrap
+msgid ""
+"> Experience has shown that \"security through obscurity\" does\n"
+"not work. Public disclosure allows for more rapid and better solutions to\n"
+"security problems. In that vein, this page addresses Debian's status with\n"
+"respect to various known security vulnerabilities, which could potentially affect\n"
+"Debian.\n"
+msgstr ""
+"> L'expérience a montré que « la sécurité par le secret » ne fonctionne pas.\n"
+"Une diffusion publique des problèmes de sécurité apporte des solutions plus rapidement et meilleures.\n"
+"Dans cet esprit, cette page indique l'état de Debian sur différentes\n"
+"failles de sécurité connues, qui pourraient potentiellement affecter\n"
+"Debian.\n"
+
+#. type: Plain text
+msgid ""
+"See also our [[security issue response policy|contribute/security_policy]]."
+msgstr ""
+"Voir aussi notre [[politique de réponse aux problèmes de sécurité|contribute/"
+"security_policy]]."
+
+#. type: Plain text
+#, no-wrap
+msgid "<h1 id=\"audits\">Security audits</h1>\n"
+msgstr "<h1 id=\"audits\">Audits de sécurité</h1>\n"
+
+#. type: Plain text
+#, no-wrap
+msgid "[[!inline pages=\"tagged(security/audit)\" actions=\"no\" archive=\"yes\" feeds=\"no\" show=0 sort=\"-meta(date) age -path\"]]\n"
+msgstr "[[!inline pages=\"tagged(security/audit)\" actions=\"no\" archive=\"yes\" feeds=\"no\" show=0 sort=\"-meta(date) age -path\"]]\n"
+
+#. type: Title #
+#, no-wrap
+msgid "Current security vulnerabilities"
+msgstr "Failles de sécurité actuelles"
+
+#. type: Plain text
+#, no-wrap
+msgid ""
+"[[!inline pages=\"page(security/*) and !security/*/*\n"
+"and !security/fixed and !security/fixed.* and !security/fixed/*\n"
+"and !tagged(security/fixed)\"\n"
+"actions=no archive=yes feeds=no show=0 sort=\"-meta(date) age -path\"]]\n"
+msgstr ""
+"[[!inline pages=\"page(security/*) and !security/*/*\n"
+"and !security/fixed and !security/fixed.* and !security/fixed/*\n"
+"and !tagged(security/fixed)\"\n"
+"actions=no archive=yes feeds=no show=0 sort=\"-meta(date) age -path\"]]\n"
+
+#. type: Title #
+#, no-wrap
+msgid "Fixed security vulnerabilities"
+msgstr "Failles de sécurité corrigées"
+
+#. type: Plain text
+#, no-wrap
+msgid ""
+"[[!inline pages=\"page(security/*) and !security/*/* and tagged(security/fixed) and !security/Numerous_security_holes_in_* and !security/known_security_vulnerabilities_in_*\"\n"
+"actions=no archive=yes feeds=no show=10 sort=\"-meta(date) age -path\"]]\n"
+msgstr ""
+"[[!inline pages=\"page(security/*) and !security/*/* and tagged(security/fixed) and !security/Numerous_security_holes_in_* and !security/known_security_vulnerabilities_in_*\"\n"
+"actions=no archive=yes feeds=no show=10 sort=\"-meta(date) age -path\"]]\n"
+
+#. type: Title ##
+#, no-wrap
+msgid "Other vulnerabilities solved in included applications"
+msgstr "Autres failles de sécurité résolues dans les applications incluses"
+
+#. type: Plain text
+#, no-wrap
+msgid ""
+"[[!inline pages=\"page(security/*) and !security/*/* and tagged(security/fixed) and (security/Numerous_security_holes_in_* or security/known_security_vulnerabilities_in_*)\"\n"
+"actions=no archive=yes feeds=no show=10 sort=\"-meta(date) age -path\"]]\n"
+msgstr ""
+"[[!inline pages=\"page(security/*) and !security/*/* and tagged(security/fixed) and (security/Numerous_security_holes_in_* or security/known_security_vulnerabilities_in_*)\"\n"
+"actions=no archive=yes feeds=no show=10 sort=\"-meta(date) age -path\"]]\n"
+
+#. type: Plain text
+#, no-wrap
+msgid "<!-- Feed buttons used by config/chroot_local-includes/usr/local/bin/tails-security-check\n"
+msgstr "<!-- Feed buttons used by config/chroot_local-includes/usr/local/bin/tails-security-check\n"
+
+#. type: Plain text
+#, no-wrap
+msgid ""
+"[[!inline pages=\"page(security/*) and !security/*/*\n"
+"and !security/fixed and !security/fixed.* and !security/fixed/*\"\n"
+"actions=no archive=yes feedonly=yes show=10 sort=\"-meta(date) age -path\"]]\n"
+msgstr ""
+"[[!inline pages=\"page(security/*) and !security/*/*\n"
+"and !security/fixed and !security/fixed.* and !security/fixed/*\"\n"
+"actions=no archive=yes feedonly=yes show=10 sort=\"-meta(date) age -path\"]]\n"
+
+#. type: Plain text
+#, no-wrap
+msgid "-->\n"
+msgstr "-->\n"
+
+#, no-wrap
+#~ msgid "Security audits"
+#~ msgstr "Audits de sécurité"

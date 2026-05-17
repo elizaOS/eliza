@@ -1,0 +1,38 @@
+[[!meta date="Sat, 14 Sep 2013 00:00:00 +0000"]]
+[[!meta title="Numerous security holes in Tails 0.20"]]
+[[!pagetemplate template="news.tmpl"]]
+
+[[!tag security/fixed]]
+
+Several security holes affect Tails 0.20.
+
+We **strongly** urge you to [[upgrade to Tails 0.20.1|news/version_0.20.1]]
+as soon as possible in case you are still using an older version.
+
+Details
+=======
+
+ - Iceweasel:
+   - [[!debsa2013 2759]]
+   - [[!mfsa 2013-76]]
+   - [[!mfsa 2013-79]]
+   - [[!mfsa 2013-82]]
+   - [[!mfsa 2013-83]]
+   - [[!mfsa 2013-88]]
+   - [[!mfsa 2013-89]]
+   - [[!mfsa 2013-90]]
+   - [[!mfsa 2013-91]]
+ - imagemagick: [[!debsa2013 2750]]
+ - tiff: [[!debsa2013 2744]]
+ - Linux kernel:
+   - [[!cve CVE-2013-4125]]
+   - [[!cve CVE-2013-4163]]
+   - [[!cve CVE-2013-4162]]
+   - [[!cve CVE-2013-4205]]
+   - [[!cve CVE-2013-2899]]
+   - [[!cve CVE-2013-2898]]
+   - [[!cve CVE-2013-2896]]
+   - [[!cve CVE-2013-2892]]
+   - [[!cve CVE-2013-2888]]
+   - [[!cve CVE-2013-0343]]
+   - [[!cve CVE-2013-4254]]

@@ -1,0 +1,148 @@
+# SOME DESCRIPTIVE TITLE
+# Copyright (C) YEAR Free Software Foundation, Inc.
+# This file is distributed under the same license as the PACKAGE package.
+# FIRST AUTHOR <EMAIL@ADDRESS>, YEAR.
+#
+msgid ""
+msgstr ""
+"Project-Id-Version: PACKAGE VERSION\n"
+"Report-Msgid-Bugs-To: tails-l10n@boum.org\n"
+"POT-Creation-Date: 2026-01-06 19:05+0000\n"
+"PO-Revision-Date: 2024-10-12 15:37+0000\n"
+"Last-Translator: victor dargallo <victordargallo@disroot.org>\n"
+"Language-Team: LANGUAGE <LL@li.org>\n"
+"Language: ca\n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+"Plural-Forms: nplurals=2; plural=n != 1;\n"
+"X-Generator: Weblate 5.3\n"
+
+#. type: Plain text
+#, no-wrap
+msgid "[[!meta title=\"Sound and video\"]]\n"
+msgstr "[[!meta title=\"So i vídeo\"]]\n"
+
+#. type: Plain text
+msgid "Tails includes several sound and video applications:"
+msgstr "Tails inclou diverses aplicacions de so i vídeo:"
+
+#. type: Bullet: '  - '
+msgid ""
+"[*Audacity*](https://www.audacityteam.org/), a multi-track audio editor."
+msgstr ""
+"[*Audacity*](https://www.audacityteam.org/), un editor d'àudio multipista."
+
+#. type: Plain text
+#, no-wrap
+msgid "    See the [official documentation](http://manual.audacityteam.org/).\n"
+msgstr "    Consulteu la [documentació oficial](http://manual.audacityteam.org/).\n"
+
+#. type: Bullet: '  - '
+msgid ""
+"[*Brasero*](https://wiki.gnome.org/Apps/Brasero), an application to burn, "
+"copy, and erase CDs and DVDs."
+msgstr ""
+"[*Brasero*](https://wiki.gnome.org/Apps/Brasero), una aplicació per "
+"enregistrar, copiar i esborrar CD i DVD."
+
+#. type: Bullet: '  - '
+msgid ""
+"[*Sound Juicer*](https://wiki.gnome.org/Apps/SoundJuicer), a CD ripper "
+"application."
+msgstr ""
+"[*Sound Juicer*](https://wiki.gnome.org/Apps/SoundJuicer), una aplicació "
+"d'extracció de CD."
+
+#. type: Bullet: '  - '
+msgid ""
+"[*Sound Recorder*](https://wiki.gnome.org/Apps/SoundRecorder), a sound "
+"recorder."
+msgstr ""
+"[*Enregistrador de so*](https://wiki.gnome.org/Apps/SoundRecorder), un "
+"enregistrador de so."
+
+#. type: Bullet: '  - '
+msgid "[*Videos*](https://apps.gnome.org/Totem/), an audio and video player."
+msgstr ""
+"[*Vídeos*](https://apps.gnome.org/ca/Totem/), un reproductor d'àudio i vídeo."
+
+#. type: Plain text
+#, fuzzy
+#| msgid ""
+#| "These applications can be started from the **Applications&nbsp;▸ Sound & "
+#| "Video** menu."
+msgid ""
+"These applications are available in the **Apps&nbsp;▸ Sound & Video** "
+"submenu."
+msgstr ""
+"Aquestes aplicacions es poden iniciar des del menú **Aplicacions&nbsp;▸ So i "
+"vídeo**."
+
+#. type: Plain text
+msgid ""
+"You can also install using the [[Additional Software|persistent_storage/"
+"additional_software]] feature:"
+msgstr ""
+"També podeu instal·lar-lo mitjançant la funcionalitat de [[Programari "
+"Addicional|persistent_storage/additional_software]]:"
+
+#. type: Bullet: '- '
+#, fuzzy
+#| msgid ""
+#| "**[*VLC*](https://www.videolan.org/vlc/)**, a multimedia player with "
+#| "advanced features."
+msgid ""
+"[*VLC*](https://www.videolan.org/vlc/), a multimedia player with advanced "
+"features."
+msgstr ""
+"**[*VLC*](https://www.videolan.org/vlc/)**, un reproductor multimèdia amb "
+"funcions avançades."
+
+#. type: Plain text
+#, no-wrap
+msgid "  <div class=\"bug\">\n"
+msgstr "  <div class=\"bug\">\n"
+
+#. type: Plain text
+#, no-wrap
+msgid "  <p>Watching [[!wikipedia IPTV]] channels from <i>VLC</i> in Tails doesn't work.</p>\n"
+msgstr "  <p>Veure canals [[!wikipedia_ca IPTV]] des de <i>VLC</i> no funciona a Tails.</p>\n"
+
+#. type: Plain text
+#, no-wrap
+msgid "  </div>\n"
+msgstr "  </div>\n"
+
+#. type: Bullet: '- '
+#, fuzzy
+#| msgid "- **[*Pitivi*](https://www.pitivi.org/)**, a video editor."
+msgid "[*Pitivi*](https://www.pitivi.org/), a video editor."
+msgstr "- **[*Pitivi*](https://www.pitivi.org/)**, un editor de vídeo."
+
+#. type: Bullet: '- '
+#, fuzzy
+#| msgid ""
+#| "**[*Cheese*](https://wiki.gnome.org/Apps/Cheese)**, an application to "
+#| "take pictures and videos from your webcam."
+msgid ""
+"[*GNOME Camera*](https://apps.gnome.org/Snapshot/), from the `gnome-"
+"snapshot` package, an application to take pictures and videos from your "
+"webcam."
+msgstr ""
+"**[*Cheese*](https://wiki.gnome.org/Apps/Cheese)**, una aplicació per fer "
+"fotos i vídeos des de la vostra càmera web."
+
+#. type: Plain text
+#, no-wrap
+msgid "[[!inline pages=\"doc/sensitive_documents/persistence\" raw=\"yes\" sort=\"age\"]]\n"
+msgstr "[[!inline pages=\"doc/sensitive_documents/persistence.ca\" raw=\"yes\" sort=\"age\"]]\n"
+
+#. type: Plain text
+#, no-wrap
+msgid "[[!inline pages=\"doc/sensitive_documents/metadata.inline\" raw=\"yes\" sort=\"age\"]]\n"
+msgstr "[[!inline pages=\"doc/sensitive_documents/metadata.inline.ca\" raw=\"yes\" sort=\"age\"]]\n"
+
+#, no-wrap
+#~ msgid "    See the [official documentation](https://help.gnome.org/users/brasero/stable/).\n"
+#~ msgstr "    Consulteu la [documentació oficial](https://help.gnome.org/users/brasero/stable/).\n"

@@ -1,0 +1,33 @@
+#!/bin/sh
+
+set -e
+set -u
+set -o pipefail
+
+TOR_BROWSER_TARBALL="${1}"
+if [ -n "${2:-}" ]; then
+    TOR_BROWSER_REPO="${2}"
+else
+    TOR_BROWSER_REPO=$(pwd)
+fi
+
+TOR_BROWSER_TMP=$(mktemp -d)
+trap 'rm -r "${TOR_BROWSER_TMP}"' EXIT HUP INT QUIT TERM
+
+cd "${TOR_BROWSER_TMP}"
+tar xf "${TOR_BROWSER_TARBALL}"
+cd tor-browser
+7z x Browser/browser/omni.ja defaults/preferences
+echo 'pref("torbrowser.running_in_tails", true);' >>defaults/preferences/000-tor-browser.js
+mkdir -p actors chrome/browser/content/browser/abouttor
+cp "${TOR_BROWSER_REPO}"/browser/components/abouttor/AboutTorParent.sys.mjs actors/
+cp "${TOR_BROWSER_REPO}"/browser/components/abouttor/content/* \
+    chrome/browser/content/browser/abouttor/
+7z a -mtc=off -tzip -- Browser/browser/omni.ja \
+    actors/ chrome/browser/content/browser/abouttor/ defaults/preferences
+mkdir -p localization/en-US/toolkit/global
+sed '/^#/d' "${TOR_BROWSER_REPO}"/toolkit/locales/en-US/toolkit/global/tor-browser.ftl \
+    >localization/en-US/toolkit/global/tor-browser.ftl
+7z a -mtc=off -tzip -- Browser/omni.ja \
+    localization/en-US/toolkit/global/tor-browser.ftl
+TOR_SKIP_LAUNCH=1 ./start-tor-browser.desktop --verbose

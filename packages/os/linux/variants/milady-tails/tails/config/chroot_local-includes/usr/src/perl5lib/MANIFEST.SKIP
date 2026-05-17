@@ -1,0 +1,5 @@
+^cover_db
+~$
+^debian
+\.bak$
+\.old$

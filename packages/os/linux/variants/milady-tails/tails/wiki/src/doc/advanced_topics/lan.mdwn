@@ -1,0 +1,61 @@
+[[!meta title="Accessing resources on the local network"]]
+
+The term "local network" refers to the set of computers and devices
+that can be reached directly from your computer without going through
+the Internet.
+
+For example, your home router, your network printer, or
+the intranet of your company are usually on your
+local network, also called LAN for Local Area Network. In technical
+terms, this refers to the set of IP addresses defined in
+[RFC1918](https://tools.ietf.org/html/rfc1918), like IP addresses that start
+with `192.168`.
+
+[[!toc]]
+
+Security considerations
+=======================
+
+Accessing resources on the local network can be useful in the context of
+Tails, for example to exchange documents with someone on the same local
+network without going through the Internet.
+
+But an application that can connect to both resources on the
+Internet (going through Tor) and resources on the local network (without going
+through Tor) can deanonymize you.
+
+This page describes some of the security measures built into Tails to
+protect from such attacks and explains how to access some types of
+resources on the local network.
+
+<div class="caution">
+
+<p>Connections made to the local network are not anonymous and do not go
+through Tor.</p>
+
+</div>
+
+<a id="browser"></a>
+
+Browsing web pages on the local network
+=======================================
+
+It is impossible to access web pages on the local network using *Tor Browser*.
+This prevents websites on the Internet from deanonymizing you
+using the content of other web pages that might be specific to your local
+network and reveal where you are.
+
+To access web pages on the local network, use the
+[[*Unsafe Browser*|anonymous_internet/unsafe_browser]] instead.
+
+<a id="http"></a>
+
+Downloading files from web pages on the local network
+=====================================================
+
+To download files from web pages on the local network, you can use the
+`curl` command instead. For example, to download a document available on
+the local network at *http://192.168.1.40/document.pdf*
+execute the following command:
+
+    curl http://192.168.1.40/document.pdf

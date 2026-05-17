@@ -1,0 +1,13 @@
+[Unit]
+Description=Warn the user if the computer is not shipping up-to-date UEFI CA
+Documentation=https://tails.net/support/known_issues/secure_boot_certificates
+ConditionUser=1000
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/lib/tails-uefi-ca-notify-user
+RemainAfterExit=yes
+
+[Install]
+WantedBy=desktop.target
+

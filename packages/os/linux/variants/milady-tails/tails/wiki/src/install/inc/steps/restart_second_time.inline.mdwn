@@ -1,0 +1,35 @@
+[[!meta robots="noindex"]]
+
+<h1 id="restart-new" class="step">Restart on your new Tails</h1>
+
+<div class="step-image">[[!img install/inc/infography/restart-on-new-tails.png link="no" alt=""]]</div>
+
+1. Shut down the computer.
+
+1. Unplug the other USB stick and leave the new USB stick plugged in.
+
+1. Switch on the computer and start on your new Tails USB stick.
+
+1. The Boot Loader appears and
+   Tails starts automatically after 4 seconds.
+
+1. After 30&ndash;60 seconds, the Welcome Screen appears.
+
+   <div class="bug">
+
+   <p>If the following message about partitioning errors appears in the Welcome
+   Screen, please start again from step 4: <a href="#install">Install Tails by
+   cloning</a>.</p>
+
+   <p class="code">Errors were detected in the partitioning of your Tails USB stick.</p>
+
+   <p>If the error persists, reinstall Tails on one of our [[recommended USB
+   sticks|doc/about/requirements]].</p>
+
+   </div>
+
+1. In the Welcome Screen, select your language and
+   keyboard layout in the <b>Language and Formats</b> section.
+   Click <b>Start Tails</b>.
+
+1. After 15&ndash;30 seconds, the Tails desktop appears.

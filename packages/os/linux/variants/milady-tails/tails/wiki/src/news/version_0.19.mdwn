@@ -1,0 +1,62 @@
+[[!meta date="Wed, 26 Jun 2013 10:36:45 +0000"]]
+[[!pagetemplate template="news.tmpl"]]
+[[!meta title="Tails 0.19 is out"]]
+[[!tag announce]]
+
+Tails, The Amnesic Incognito Live System, version 0.19, is out.
+
+All users must upgrade as soon as possible: this release fixes
+[[numerous security issues|security/Numerous_security_holes_in_0.18]].
+
+[[!toc levels=1]]
+
+# Changes
+
+Notable user-visible changes include:
+
+* New features
+  - Linux 3.9.5-1.
+  - Iceweasel 17.0.7esr + Torbrowser patches.
+  - Unblock Bluetooth, Wi-Fi, WWAN and WiMAX; block every other type
+    of wireless device.
+
+* Bugfixes
+  - Fix write access to boot medium at the block device level.
+  - tails-greeter l10n-related fixes.
+  - gpgApplet: partial fix for clipboard emptying after a wrong passphrase was entered.
+
+* Minor improvements
+  - Drop GNOME proxy settings.
+  - Format newly created persistent volumes as ext4.
+  - GnuPG: don't connect to the keyserver specified by the key owner.
+  - GnuPG: locate keys only from local keyrings.
+  - Upgrade live-boot and live-config to the 3.0.x final version from Wheezy.
+
+* Localization: many translation updates all over the place.
+
+* Test suite
+  - Re-enable previously disabled boot device permissions test.
+
+See the online
+Changelog
+for technical details.
+
+# Known issue
+
+No new known issue but [[longstanding known issues|support/known_issues]].
+
+# I want to try it / to upgrade!
+
+See the Getting started page.
+
+As no software is ever perfect, we maintain a list of [[problems
+that affects the last release of Tails|support/known_issues]].
+
+# What's coming up?
+
+The next Tails release is scheduled for around August 7.
+
+
+Would you want to help? There are many ways [[**you** can
+contribute to Tails|contribute]]. If you want to help, come talk
+to us!

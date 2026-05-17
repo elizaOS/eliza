@@ -1,0 +1,56 @@
+#!/bin/sh
+
+set -eu
+
+# Check that no argument begins with a '-', so that URIs can be passed
+# but options cannot. See #19595.
+for arg in "$@"; do
+    case "$arg" in
+    -*)
+        echo "Error: option '$arg' not supported" >&2
+        exit 1
+        ;;
+    esac
+done
+
+# Avoid that Flatpak prints a warning about its exports directories not
+# being set in the XDG_DATA_DIRS environment variable.
+# Comment this out for more verbose output from Flatpak.
+export FLATPAK_FANCY_OUTPUT=0
+
+# If this script is run as amnesia, re-run it as root, so that we have
+# the privileges required to run Tor Browser in a separate network
+# namespace.
+# Before doing so, save the environment in a file, so that we can pass
+# it to the Tor Browser process later.
+if [ "$(id -u)" = 1000 ]; then
+    ENVFILE=$(mktemp --suffix -env)
+    export ENVFILE
+    env --null >"${ENVFILE}"
+    exec sudo "$0" "$@"
+fi
+
+# Explanation of the following command:
+#
+# 1. `ip netns exec tbb` runs the command in the network namespace
+#    named "tbb", which enforces that the tor control port traffic is
+#    filtered by the Tor Browser onion-grater profile configured in
+#    config/chroot_local-includes/etc/onion-grater.d/tor-browser.yml.
+#
+# 2. `sudo -u amnesia` drops root privileges to run the command as
+#    amnesia, so that the Tor Browser process is not running as root.
+#
+# 3. `run-with-env --env-file="${ENVFILE}" --delete` reads the
+#    environment from the file we created above and passes the allowed
+#    environment variables to the Tor Browser process (see
+#    config/chroot_local-includes/usr/lib/python3/dist-packages/tailslib/userenv.py
+#    for the list of allowed variables).
+#
+# 4. `flatpak run --command=tor-browser org.boum.tails.TorBrowser` runs
+#    the actual Tor Browser process in a Flatpak sandbox.
+
+exec \
+    /bin/ip netns exec tbb \
+    sudo -u amnesia -- \
+    /usr/local/lib/run-with-env --env-file="${ENVFILE}" --delete -- \
+    flatpak --installation=tails run --allow=unconfined --file-forwarding --command=tor-browser org.boum.tails.TorBrowser "$@"

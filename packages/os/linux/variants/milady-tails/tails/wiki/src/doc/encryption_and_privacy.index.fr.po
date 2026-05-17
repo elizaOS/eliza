@@ -1,0 +1,118 @@
+# SOME DESCRIPTIVE TITLE
+# Copyright (C) YEAR Free Software Foundation, Inc.
+# This file is distributed under the same license as the PACKAGE package.
+# FIRST AUTHOR <EMAIL@ADDRESS>, YEAR.
+#
+msgid ""
+msgstr ""
+"Project-Id-Version: SACKAGE VERSION\n"
+"Report-Msgid-Bugs-To: tails-l10n@boum.org\n"
+"POT-Creation-Date: 2026-03-27 10:22+0000\n"
+"PO-Revision-Date: 2026-03-29 13:22+0000\n"
+"Last-Translator: xin <xin@riseup.net>\n"
+"Language-Team: SLANGUAGE <LL@li.org>\n"
+"Language: fr\n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+"Plural-Forms: nplurals=2; plural=n > 1;\n"
+"X-Generator: Weblate 5.13.2\n"
+
+#. type: Bullet: '- '
+msgid ""
+"[[Managing passwords using the *Secrets* password manager|"
+"encryption_and_privacy/manage_passwords]]"
+msgstr ""
+"[[Gérer des mots de passe avec le gestionnaire de mots de passe *Secrets*|"
+"encryption_and_privacy/manage_passwords]]"
+
+#. type: Bullet: '- '
+msgid ""
+"[[Creating and using *LUKS* encrypted volumes|encryption_and_privacy/"
+"encrypted_volumes]]"
+msgstr ""
+"[[Créer et utiliser des volumes chiffrés *LUKS*|encryption_and_privacy/"
+"encrypted_volumes]]"
+
+#. type: Bullet: '- '
+msgid ""
+"[[Using *VeraCrypt* encrypted volumes|encryption_and_privacy/veracrypt]]"
+msgstr ""
+"[[Utiliser des volumes chiffrés *VeraCrypt*|encryption_and_privacy/"
+"veracrypt]]"
+
+#. type: Bullet: '- '
+msgid ""
+"[[Encrypting text and files using *GnuPG* and *Kleopatra*|"
+"encryption_and_privacy/kleopatra]]"
+msgstr ""
+"[[Chiffrer du texte et des fichiers avec *GnuPG* et *Kleopatra*|"
+"encryption_and_privacy/kleopatra]]"
+
+#. type: Bullet: '- '
+msgid "[[Securely deleting files|encryption_and_privacy/secure_deletion]]"
+msgstr ""
+"[[Effacer de manière sécurisée des fichiers|encryption_and_privacy/"
+"secure_deletion]]"
+
+#, fuzzy
+#~| msgid ""
+#~| "[[Calculating checksums using *GtkHash*|encryption_and_privacy/"
+#~| "checksums]]"
+#~ msgid ""
+#~ "- [[Calculating checksums using *GtkHash*|encryption_and_privacy/"
+#~ "checksums]]"
+#~ msgstr ""
+#~ "[[Calculer des sommes de contrôle avec *GtkHash*|encryption_and_privacy/"
+#~ "checksums]]"
+
+#, fuzzy
+#~| msgid ""
+#~| "[[Using the screen keyboard|encryption_and_privacy/virtual_keyboard]]"
+#~ msgid ""
+#~ "- [[Using the screen keyboard|encryption_and_privacy/virtual_keyboard]]"
+#~ msgstr ""
+#~ "[[Utiliser le clavier visuel|encryption_and_privacy/virtual_keyboard]]"
+
+#, fuzzy, no-wrap
+#~| msgid ""
+#~| "  - Encrypted volumes\n"
+#~| "    - [[!traillink Creating_and_using_<em>LUKS</em>_encrypted_volumes|encryption_and_privacy/encrypted_volumes]]\n"
+#~| "    - [[!traillink Using_<em>VeraCrypt</em>_encrypted_volumes|encryption_and_privacy/veracrypt]]\n"
+#~| "  - [[!traillink Encrypting,_decrypting,_signing,_and_verifying_text_using_OpenPGP_and_<em>OpenPGP_Applet</em>|encryption_and_privacy/gpgapplet]]\n"
+#~| "    - [[!traillink Encrypting_text_with_a_passphrase|encryption_and_privacy/gpgapplet/passphrase_encryption]]\n"
+#~| "    - [[!traillink Encrypting_and_signing_text_using_public-key_cryptography|encryption_and_privacy/gpgapplet/public-key_cryptography]]\n"
+#~| "    - [[!traillink Decrypting_and_verify_text|encryption_and_privacy/gpgapplet/decrypt_verify]]\n"
+#~| "  - [[!traillink Securely_deleting_files_and_clean_diskspace|encryption_and_privacy/secure_deletion]]\n"
+#~| "  - [[!traillink Managing_passwords_using_<em>KeePassXC</em>|encryption_and_privacy/manage_passwords]]\n"
+#~| "  - [[!traillink Calculating_checksums_using_<em>GtkHash</em>|encryption_and_privacy/checksums]]\n"
+#~ msgid ""
+#~ "  - Encrypted volumes\n"
+#~ "    - [[!traillink Creating_and_using_<em>LUKS</em>_encrypted_volumes|encryption_and_privacy/encrypted_volumes]]\n"
+#~ "    - [[!traillink Using_<em>VeraCrypt</em>_encrypted_volumes|encryption_and_privacy/veracrypt]]\n"
+#~ "  - [[!traillink Encrypting,_decrypting,_signing,_and_verifying_text_using_OpenPGP_and_<em>OpenPGP_Applet</em>|encryption_and_privacy/gpgapplet]]\n"
+#~ "    - [[!traillink Encrypting_text_with_a_passphrase|encryption_and_privacy/gpgapplet/passphrase_encryption]]\n"
+#~ "    - [[!traillink Encrypting_and_signing_text_using_public-key_cryptography|encryption_and_privacy/gpgapplet/public-key_cryptography]]\n"
+#~ "    - [[!traillink Decrypting_and_verify_text|encryption_and_privacy/gpgapplet/decrypt_verify]]\n"
+#~ "  - [[!traillink Securely_deleting_files_and_clean_diskspace|encryption_and_privacy/secure_deletion]]\n"
+#~ "  - [[!traillink Calculating_checksums_using_<em>GtkHash</em>|encryption_and_privacy/checksums]]\n"
+#~ "  - [[!traillink Using_the_screen_keyboard|encryption_and_privacy/virtual_keyboard]]\n"
+#~ msgstr ""
+#~ "  - Volumes chiffrés\n"
+#~ "    - [[!traillink Créer_et_utiliser_des_volumes_chiffrés_avec_<em>LUKS</em>|encryption_and_privacy/encrypted_volumes]]\n"
+#~ "    - [[!traillink Utiliser_des_volumes_chiffrés_avec_<em>VeraCrypt</em>|encryption_and_privacy/veracrypt]]\n"
+#~ "  - [[!traillink Chiffrer,_déchiffrer,_signer,_et_vérifier_du_texte_avec_OpenPGP_et_l'<em>applet_OpenPGP</em>|encryption_and_privacy/gpgapplet]]\n"
+#~ "    - [[!traillink Chiffrer_du_texte_avec_une_phrase_de_passe|encryption_and_privacy/gpgapplet/passphrase_encryption]]\n"
+#~ "    - [[!traillink Chiffrer_et_signer_du_texte_avec_une_clé_publique|encryption_and_privacy/gpgapplet/public-key_cryptography]]\n"
+#~ "    - [[!traillink Déchiffrer_et_vérifier_du_texte|encryption_and_privacy/gpgapplet/decrypt_verify]]\n"
+#~ "  - [[!traillink Effacer_des_fichiers_de_façon_sécurisée_et_nettoyer_l'espace_disque|encryption_and_privacy/secure_deletion]]\n"
+#~ "  - [[!traillink Gérer_ses_mots_de_passe_avec_<em>KeePassXC</em>|encryption_and_privacy/manage_passwords]]\n"
+#~ "  - [[!traillink Calculer_des_sommes_de_contrôle_avec_<em>GtkHash</em>|encryption_and_privacy/checksums]]\n"
+
+#~ msgid ""
+#~ "[[!traillink Your_data_won't_be_saved_unless_explicitly_asked|"
+#~ "encryption_and_privacy/your_data_wont_be_saved_unless_explicitly_asked]]"
+#~ msgstr ""
+#~ "[[!traillink "
+#~ "Vos_données_ne_seront_pas_sauvegardées_à_moins_que_vous_ne_le_demandiez_explicitement|"
+#~ "encryption_and_privacy/your_data_wont_be_saved_unless_explicitly_asked]]"

@@ -1,0 +1,72 @@
+# -*- mode: ruby -*-
+# vi: set ft=ruby :
+#
+# Tails: https://tails.net/
+#
+# This program is free software: you can redistribute it and/or modify
+# it under the terms of the GNU General Public License as published by
+# the Free Software Foundation, either version 3 of the License, or
+# (at your option) any later version.
+#
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU General Public License for more details.
+#
+# You should have received a copy of the GNU General Public License
+# along with this program.  If not, see <http://www.gnu.org/licenses/>.
+
+require_relative 'lib/tails_build_settings'
+
+ENV['VAGRANT_DEFAULT_PROVIDER'] = 'libvirt'
+
+Vagrant.configure('2') do |config|
+  config.vm.box = box_name
+  config.vm.box_url = 'http://127.0.0.1/dev/null'
+  ENV['EXPORTED_VARIABLES'] ||= ''
+  env_vars = ENV.select { |k, _| ENV['EXPORTED_VARIABLES'].split.include?(k) }
+                .map { |k, v| "#{k}='#{v}'" }.join(' ')
+  config.vm.provision(
+    'shell',
+    inline: "sudo #{env_vars} /vagrant/provision/setup-tails-builder"
+  )
+  config.vm.synced_folder('.', '/vagrant', type: '9p', readonly: true)
+  config.vm.synced_folder('..', '/amnesia.git', type: '9p', readonly: true)
+  config.vm.provider(:libvirt) do |domain|
+    domain.default_prefix = config.vm.box
+    domain.driver = 'kvm'
+    domain.management_network_guest_ipv6 = 'no'
+    domain.connect_via_ssh = false
+    domain.machine_arch = 'x86_64'
+    domain.machine_type = ENV['TAILS_BUILD_MACHINE_TYPE'] || 'q35'
+    if ENV['TAILS_BUILD_CPU_MODEL']
+      domain.cpu_mode  = 'custom'
+      domain.cpu_model = ENV['TAILS_BUILD_CPU_MODEL']
+    else
+      domain.cpu_mode = 'host-passthrough'
+    end
+    domain.emulator_path = '/usr/bin/qemu-system-x86_64'
+    cpus = ENV['TAILS_BUILD_CPUS'].to_i
+
+    domain.memory = if ENV['TAILS_BUILD_MEMORY']
+                      ENV['TAILS_BUILD_MEMORY'].to_i
+                    elsif ENV['TAILS_RAM_BUILD'] == 'yes'
+                      vm_memory_for_ram_builds
+                    else
+                      vm_memory_for_disk_builds(cpus)
+                    end
+    domain.cpus = cpus
+    if ENV['TAILS_PROXY_TYPE'] == 'vmproxy'
+      domain.storage(
+        :file, size: '15G', allow_existing: true,
+        path: 'apt-cacher-ng-data.qcow2'
+      )
+    end
+    if ENV['TAILS_WEBSITE_CACHE'] == 'yes'
+      domain.storage(
+        :file, size: '3G', allow_existing: true,
+        path: 'tails-website-cache.qcow2'
+      )
+    end
+  end
+end

@@ -1,0 +1,383 @@
+# SOME DESCRIPTIVE TITLE
+# Copyright (C) YEAR Free Software Foundation, Inc.
+# This file is distributed under the same license as the PACKAGE package.
+# FIRST AUTHOR <EMAIL@ADDRESS>, YEAR.
+msgid ""
+msgstr ""
+"Project-Id-Version: Tails l10n\n"
+"Report-Msgid-Bugs-To: tails-l10n@boum.org\n"
+"POT-Creation-Date: 2025-09-17 11:40+0200\n"
+"PO-Revision-Date: 2024-05-20 15:54+0000\n"
+"Last-Translator: xin <xin@riseup.net>\n"
+"Language-Team: Tails Chinese translators <jxt@twngo.xyz>\n"
+"Language: zh_TW\n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+"Plural-Forms: nplurals=1; plural=0;\n"
+"X-Generator: Weblate 5.3\n"
+
+#. type: Plain text
+#, fuzzy, no-wrap
+msgid "[[!meta title=\"MAC address anonymization\"]]\n"
+msgstr "[[!meta title=\"MAC 地址欺騙\"]]\n"
+
+#. type: Plain text
+#, no-wrap
+msgid "<a id=\"what-is-mac-address\"></a>\n"
+msgstr "<a id=\"what-is-mac-address\"></a>\n"
+
+#. type: Title =
+#, fuzzy, no-wrap
+msgid "What is a MAC address?"
+msgstr "什麼是 MAC 地址?\n"
+
+#. type: Plain text
+#, fuzzy
+msgid ""
+"Every network interface — wired or Wi-Fi — has a [[!wikipedia MAC address]], "
+"which is a serial number assigned to each interface at the factory by the "
+"vendor. MAC addresses are used on the local network to identify the "
+"communications of each network interface."
+msgstr ""
+"每一個網路介面— 不管是有線還是無線 — 都會有[[!wikipedia_zh MAC-地址]], 它是由"
+"製造商在出廠時所給予的一組序列號碼。 MAC-地址用於本地區域網路內來識別每一個網"
+"路介面的通訊。"
+
+#. type: Plain text
+msgid ""
+"While your IP address identifies where you are on the Internet, your MAC "
+"address identifies which device you are using on the local network. MAC "
+"addresses are only useful on the local network and are not sent over the "
+"Internet."
+msgstr ""
+"IP-地址用於識別位於網際網路上的位置，而 MAC-地址則是在本地區域網路內識別出你"
+"的設備。MAC-地址只能用於本地內部網路而無法送出到互聯網上。"
+
+#. type: Plain text
+msgid ""
+"Having such a unique identifier used on the local network can harm your "
+"privacy.  Here are two examples:"
+msgstr ""
+"在本地區域網路內利用此獨特的識別方式可能會傷害用戶隱私，看看這兩個例子:"
+
+#. type: Plain text
+#, no-wrap
+msgid ""
+"1. If you use your laptop to connect to several Wi-Fi networks, the\n"
+"same MAC address of your Wi-Fi interface is used on all those local networks. Someone\n"
+"observing those networks can recognize your MAC address and **track your\n"
+"geographical location**.\n"
+msgstr ""
+"1. 如果你的筆電連接到好幾個 Wi-Fi 網路,\n"
+"在不同的區域網路間，你的無線網卡使用了同一個 MAC-地址 \n"
+"某人觀察這些網路活動可以認出你的MAC-地址然後追踪\n"
+"出你的地理位置**。\n"
+
+#. type: Plain text
+#, no-wrap
+msgid ""
+"1. Unless you choose to [[hide that you are connecting to the Tor\n"
+"network|anonymous_internet/tor]], someone who monitors your Internet\n"
+"connection can know that. In this case, your MAC address can **reveal that you are\n"
+"a Tor user**.\n"
+msgstr ""
+
+#. type: Title =
+#, fuzzy, no-wrap
+msgid "What is MAC address anonymization?"
+msgstr "什麼是MAC-地址欺騙\n"
+
+#. type: Plain text
+#, fuzzy
+msgid ""
+"When MAC address anonymization is enabled, Tails temporarily changes the MAC "
+"addresses of your network interfaces to random values for the time of your "
+"Tails session.  MAC address anonymization hides the serial number of your "
+"network interface, and so, to some extent, who you are, from the local "
+"network."
+msgstr ""
+"Tails 可以暫時地改變你網路介面中的 MAC-地址，在工作期間改成隨機值。這即是我們"
+"所稱的 \"MAC-地址欺騙\" . Tails底下的MAC-地址欺騙可以隱藏用戶的網路介面序號，"
+"或是某些情況下，進一步隱藏用戶在本地區域網路的身份。"
+
+#. type: Plain text
+#, fuzzy
+msgid ""
+"MAC address anonymization is enabled by default in Tails because it is "
+"usually beneficial. But in some situations it might also lead to "
+"connectivity problems or make your network activity look suspicious. This "
+"documentation explains whether to use MAC address anonymization or not, "
+"depending on your situation."
+msgstr ""
+"Tails　底下MAC-地址欺騙的功能默認為啟用狀態，因為它通常會帶來好處。但在某些狀"
+"況下，它可能會導致連線問題或是讓你的網路活動顯得可疑。 這份文件解釋了是否要使"
+"用MAC-地址欺騙，它完全得視你的狀況而定。"
+
+#. type: Plain text
+#, no-wrap
+msgid "<div class=\"tip\">\n"
+msgstr "<div class=\"tip\">\n"
+
+#. type: Plain text
+#, no-wrap
+msgid ""
+"<p>To learn how Tails implements MAC address anonymization, see our\n"
+"[[design documentation about MAC address anonymization|contribute/design/MAC_address]].</p>\n"
+msgstr ""
+
+#. type: Plain text
+#, no-wrap
+msgid "</div>\n"
+msgstr "</div>\n"
+
+#. type: Title =
+#, fuzzy, no-wrap
+msgid "When to keep MAC address anonymization enabled"
+msgstr "何時要啟用MAC-地址欺騙功能\n"
+
+#. type: Plain text
+#, fuzzy, no-wrap
+msgid ""
+"**MAC address anonymization is enabled by default for all network interfaces.** This is\n"
+"usually beneficial, even if you don't want to hide your geographical location.\n"
+msgstr ""
+"**MAC-地址欺騙在所有的網路介面上默認為啟用狀態**\n"
+"這通常有好處，即便沒必要隱藏自己的地理位置。\n"
+
+#. type: Plain text
+msgid "Here are a few examples:"
+msgstr "這裏有些例子:"
+
+#. type: Bullet: '* '
+#, fuzzy
+msgid ""
+"**Using your own computer on an public network without registration**, for "
+"example a free Wi-Fi service in a restaurant where you don't need to "
+"register with your identity. In this case, MAC address anonymization hides "
+"the fact that your computer is connected to this network."
+msgstr ""
+"**在不必註冊的公共網路內使用你自己的電腦**, 例如在餐廳使用免費的無線上網服"
+"務，它不必註冊身份。在這裏情況下MAC-地址欺騙功能可以隱藏你的電腦正在連線使用"
+"這個網路的事實。"
+
+#. type: Bullet: '* '
+#, fuzzy
+msgid ""
+"**Using your own computer on a network that you use frequently**, for "
+"example at a friend's place, at work, at university, etc. You already have a "
+"strong relationship with this place but MAC address anonymization hides the "
+"fact that your computer is connected to this network *at a particular time*. "
+"It also hides the fact that *you* are connecting to the Tor network on this "
+"network."
+msgstr ""
+"**在一個經常使用的網路內使用自己的電腦**, 例如在朋友家、辦公室或是大學等等。"
+"你和這些地方有明顯的關係但MAC-地址欺騙可以隱藏你的電腦在某個特定時刻正連結到"
+"這些網路。它也會隱藏你正透過 Tails在使用網路的狀況。"
+
+#. type: Title =
+#, fuzzy, no-wrap
+msgid "When to disable MAC address anonymization"
+msgstr "何時要取消MAC-地址欺騙功能\n"
+
+#. type: Plain text
+#, fuzzy
+msgid ""
+"In some situations MAC address anonymization is not useful but can instead "
+"be problematic. In such cases, you might want to disable MAC address "
+"anonymization as instructed below."
+msgstr ""
+"某些情況下MAC-地址欺騙沒有作法反而會造成麻煩。在這樣的狀況下，你或許想要 [[取"
+"消MAC-地址欺騙功能|mac_spoofing#disable]]."
+
+#. type: Plain text
+#, fuzzy
+msgid ""
+"Note that even if MAC address anonymization is disabled, your anonymity on "
+"the Internet is preserved:"
+msgstr "注意：即便取消了MAC-地址欺騙，你在互聯網上的匿名性仍受保護："
+
+#. type: Bullet: '- '
+msgid ""
+"An adversary on the local network can only see encrypted connections to the "
+"Tor network."
+msgstr "在本地區域網域內的敵方只可以看到連線到 Tor 網路的加密連線。"
+
+#. type: Bullet: '- '
+msgid ""
+"Your MAC address is not sent over the Internet to the websites that you are "
+"visiting."
+msgstr "你的MAC-地址不會透過互聯網傳送到你所訪造的網站。"
+
+#. type: Plain text
+#, fuzzy
+msgid ""
+"However, as [[discussed above|doc/first_steps/welcome_screen/"
+"mac_spoofing#what-is-mac-address]], disabling MAC address anonymization "
+"makes it possible for someone to track your geographical location. If this "
+"is problematic, consider using a different network interface, like a [[USB "
+"Wi-Fi adapter|doc/anonymous_internet/no-wifi#wifi-adapters]], or moving to "
+"another network."
+msgstr ""
+"不管如何，取消MAC-地址欺騙功能容易讓本地區域網路來追踪你的地理位置。如果這會"
+"很麻煩，請考慮使用不同的網路設備或移動到其它網路。"
+
+#. type: Bullet: '- '
+#, fuzzy
+msgid ""
+"**Using a public computer**, for example in an Internet café or a library.  "
+"This computer is regularly used on this local network, and its MAC address "
+"is not associated with your identity. In this case, MAC address "
+"anonymization can make it impossible to connect. It can even **look "
+"suspicious** to the network administrators to see an unknown MAC address "
+"being used on that network."
+msgstr ""
+"**仗用公共電腦**例如在網咖或是圖書館的電腦。這些電腦已經常被用在本地區域網"
+"路，它的MAC-地址不會和你扯上關係。這種情況下，MAC-地址欺騙可能會讓它無法連"
+"線。 甚者，它可能讓網管人員覺得**很可疑**，因為有一個未知的MAC-地址出現在網路"
+"中。"
+
+#. type: Bullet: '- '
+#, fuzzy
+msgid ""
+"On some network interfaces, **MAC address anonymization is impossible** due "
+"to limitations in the hardware or in Linux. Tails temporarily disables such "
+"network interfaces. You might disable MAC address anonymization to be able "
+"to use them."
+msgstr ""
+"在某些網路介面下， ** MAC-地址欺騙是不可能**，因為硬體本身或是 Linux  系統下"
+"的限制。 Tails 會暫時地取消這類的網路介面。你可能要取消 MAC-地址欺騙 才能使用"
+"網路。"
+
+#. type: Bullet: '- '
+#, fuzzy
+msgid ""
+"Some networks **only allow connections from a list of authorized MAC "
+"addresses**. In this case, MAC address anonymization makes it impossible to "
+"connect to such networks. If you were granted access to such network in the "
+"past, then MAC address anonymization might prevent you from connecting."
+msgstr ""
+"有些網路 **只許可某些取得授權的 MAC-地址才可以連線使用**. 這種情況下，MAC-地"
+"址欺騙就可能造成無法連到這個網路上。如果你之前已取得連入此網路的權限，MAC-地"
+"址欺騙則可能讓你無連上。"
+
+#. type: Bullet: '- '
+#, fuzzy
+msgid ""
+"**Using your own computer at home**. Your identity and the MAC address of "
+"your computer are already associated to this local network, so MAC address "
+"anonymization is probably useless. But if access to your local network is "
+"restricted based on MAC addresses it might be impossible to connect with an "
+"anonymized MAC address."
+msgstr ""
+"**在家中使用自己的電腦**你的身份和電腦的MAC-地已和本地區域網路産生關聯，所以"
+"MAC-地址欺騙可能沒用了。但如果接取本地區域網路僅限於MAC-地址，它就不太可能透"
+"過一個欺騙的MAC-地址來連結。"
+
+#. type: Plain text
+#, no-wrap
+msgid "<a id=\"disable\"></a>\n"
+msgstr "<a id=\"disable\"></a>\n"
+
+#. type: Title =
+#, fuzzy, no-wrap
+msgid "Disable MAC address anonymization"
+msgstr "取消MAC-地址欺騙\n"
+
+#. type: Plain text
+msgid ""
+"You can disable MAC address anonymization from the [[Welcome Screen|"
+"welcome_screen]]:"
+msgstr ""
+
+#. type: Bullet: '1. '
+msgid ""
+"When the Welcome Screen appears, click on the **[[!img lib/list-add.png "
+"alt=\"Add Additional Setting\" class=\"symbolic\" link=\"no\"]]** button."
+msgstr ""
+
+#. type: Plain text
+#, no-wrap
+msgid "   [[!img additional.png class=\"screenshot\" alt=\"\"]]\n"
+msgstr ""
+
+#. type: Bullet: '2. '
+msgid ""
+"Choose **MAC Address Anonymization** in the **Additional Settings** dialog."
+msgstr ""
+
+#. type: Bullet: '3. '
+msgid "Select the **Don't anonymize MAC addresses** option."
+msgstr ""
+
+#. type: Title =
+#, fuzzy, no-wrap
+msgid "Other considerations"
+msgstr "其它考量\n"
+
+#. type: Bullet: '- '
+msgid ""
+"Other means of surveillance can reveal your geographical location: video "
+"surveillance, mobile phone activity, credit card transactions, social "
+"interactions, etc."
+msgstr ""
+"其它的監控方式可以揭示你的地理位置：影像監控、行動電話活動、信用卡交易、社交"
+"人際互動等等。"
+
+#. type: Bullet: '- '
+msgid ""
+"While using Wi-Fi, anybody within range of your Wi-Fi interface can see your "
+"MAC address, even without being connected to the same Wi-Fi access point."
+msgstr ""
+"使用 Wi-Fi 無線網路時，在同一個無線網路區域範圍內的任何人都可以看到你的 MAC-"
+"地址, 甚致還不必連結到同一個無線接入點。"
+
+#. type: Bullet: '- '
+msgid ""
+"When using mobile phone connectivity, such as 3G or GSM, the identifier of "
+"your SIM card (IMSI) and the serial number of your phone (IMEI) are always "
+"revealed to the mobile phone operator."
+msgstr ""
+"當使用行動網路連線時，如 LTE, 3G 或 GSM , 你的 SIM-卡 (IMSI) 和手機序號 "
+"(IMEI) 都會揭露資訊到行動電話營運商。"
+
+#. type: Bullet: '- '
+#, fuzzy
+msgid ""
+"Some [[!wikipedia captive portals]] might send your MAC address over the "
+"Internet to their authentication servers. This should not affect your "
+"decision regarding MAC address anonymization. If you decide to disable MAC "
+"address anonymization your computer can already be identified by your ISP."
+msgstr ""
+"有些 [[!wikipedia_zh desc=\"Captive Portals\" Captive Portal]] 可能會把MAC-地"
+"址透過互聯網送到它們的認證伺服器。這不該影響你對MAC-地址的決定。如果你要取消"
+"MAC-地址欺騙，你的電腦早已能被你的 ISP所識別。"
+
+#~ msgid ""
+#~ "2. As explained in our documentation on [[network\n"
+#~ "fingerprint|about/fingerprint]], someone observing the traffic coming out "
+#~ "of\n"
+#~ "your computer on the local network can probably see that you are using "
+#~ "Tails. In\n"
+#~ "that case, your MAC address can **identify you as a Tails user**.\n"
+#~ msgstr ""
+#~ "2. 如同我們在文件[[網路指紋|about/fingerprint]]\n"
+#~ "上的解釋，某人可以觀測你的電腦\n"
+#~ "在本地區域網路內的流量進出，可能會猜出你正在使用 Tails \n"
+#~ "這種情況下，你的MAC-地址可以**辨識出你是一名Taisl使用者**\n"
+
+#~ msgid ""
+#~ "When the **Additional Settings** dialog appears, click on **MAC Address "
+#~ "Spoofing**."
+#~ msgstr ""
+#~ "Klicken Sie auf <span class=\"guilabel\">Manipulation der MAC-Adresse</"
+#~ "span>, sobald das Fenster <span class=\"guilabel\">Zusätzliche "
+#~ "Einstellungen</span> erscheint."
+
+#~ msgid ""
+#~ "You can disable MAC address spoofing from [[<span "
+#~ "class=\"application\">Tails\n"
+#~ "Greeter</span>|startup_options#tails_greeter]]:\n"
+#~ msgstr ""
+#~ "要取消MAC-地址欺騙功能，可在 [[<span class=\"application\">Tails\n"
+#~ "Greeter</span>|startup_options#tails_greeter]] 底下進行:\n"

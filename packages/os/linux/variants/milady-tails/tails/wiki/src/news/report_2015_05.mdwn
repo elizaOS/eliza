@@ -1,0 +1,248 @@
+[[!meta title="Tails report for May, 2015"]]
+[[!meta date="Tue, 04 Aug 2015 11:35:53 +0000"]]
+[[!pagetemplate template="news.tmpl"]]
+
+Last month, despite all the blossoming flowers (at least in the northern hemisphere), we still worked on our computers to release 1.4 :)
+
+Let's use this report to mention that we provide [[many user support options|support]] (public email, encrypted mail, IRC) but we don't do user support on Twitter. We also saw that there is an active subReddit dedicated to Tails, but we don't follow it and thus cannot guarantee the quality of answers provided there.
+
+That being said, we're really happy to see the growing community around Tails!
+
+[[!toc]]
+
+Releases
+========
+
+* [[Tails 1.4 was released on May 12, 2015|news/version_1.4]] (major release).
+
+* The next release (1.4.1) is planned for June 30.
+
+The following changes were introduced in Tails 1.4.
+
+## New features
+
+  - *Tor Browser* 4.5 now has a **[[security slider|doc/anonymous_internet/Tor_Browser#security-level]]** that you can use to
+    disable browser features, such as JavaScript, as a trade-off between
+    security and usability. The security slider is set to *low* by
+    default to provide the same level of security as previous versions
+    and the most usable experience.
+
+    [[We disabled in Tails the new circuit view of *Tor Browser* 4.5|doc/anonymous_internet/Tor_Browser#circuitview]] for
+    security reasons. You can still use the network map of *Vidalia* to
+    inspect your circuits.
+
+  - *OpenPGP Applet* now has a **shortcut to the *gedit* text
+    editor**, thanks to Ivan Bliminse.
+
+  - ***Paperkey*** lets you print a
+    backup of your OpenPGP secret keys on paper.
+
+## Upgrades and changes
+
+  - *Tor Browser* 4.5 protects better against **third-party tracking**. Often
+    when visiting a website, many connections are created to transfer
+    both the content of the main website (its page, images, and so on)
+    and third-party content from other websites (advertisements, *Like*
+    buttons, and so on). In *Tor Browser* 4.5, all such content, from
+    the main website as well as the third-party websites, goes through
+    the same Tor circuits. And these circuits are not reused when
+    visiting a different website. This prevents third-party websites
+    from correlating your visits to different websites.
+
+  - *Tor Browser* 4.5 now keeps using the **same Tor circuit** while you are visiting a
+    website. This prevents the website from suddenly changing language,
+    behavior, or logging you out.
+
+  - ***[Disconnect](https://search.disconnect.me/)*** is the new
+    **default search engine**. *Disconnect* provides Google search
+    results to Tor users without captchas or bans.
+
+  - Better support for **Vietnamese** in *LibreOffice* through the
+    installation of `fonts-linuxlibertine`.
+
+  - Disable security warnings when connecting to POP3 and IMAP ports
+    that are mostly used for StartTLS nowadays.
+
+  - Support for **more printers** through the installation of
+    `printer-driver-gutenprint`.
+
+  - Upgrade **Tor** to 0.2.6.7.
+
+  - Upgrade ***I2P*** to [0.9.19](https://geti2p.net/en/blog/post/2015/04/12/0.9.19-Release)
+    that has several fixes and improvements for floodfill
+    performance.
+
+  - Remove the obsolete **#i2p-help IRC channel** from *Pidgin*.
+
+  - Remove the command line email client **`mutt`** and **`msmtp`**.
+
+There are numerous other changes that might not be apparent in the daily
+operation of a typical user. Technical details of all the changes
+are listed in the Changelog.
+
+## Fixed problems
+
+  - Make the browser theme of the Windows 8 camouflage compatible with
+    the *Unsafe Browser* and the *I2P Browser*.
+
+  - Remove the **Tor Network Settings...** from the *Torbutton* menu.
+
+  - Better support for Chromebook C720-2800 through the upgrade of
+    `syslinux`.
+
+  - Fix the localization of *Tails Upgrader*.
+
+  - Fix the OpenPGP key servers configured in *Seahorse*.
+
+  - Prevent *Tor Browser* from crashing when *Orca* is enabled.
+
+Upcoming code changes
+=====================
+
+Here are the upcoming changes we have already been working on for the next releases:
+
+* We fixed cases where the hardware clock was set to the system time on shutdown ([[!tails_ticket 9364]]).
+
+* We disabled LAN access in Tor Browser ([[!tails_ticket 7976]]).
+
+* We prevented Tails Installer from upgrading devices that has no Tails installed ([[!tails_ticket 5623]]).
+
+* We removed `/var/cache/man/` from the ISO image ([[!tails_ticket 9417]]).
+
+* We installed the Linux kernel from Debian Jessie ([[!tails_ticket 9341]]).
+
+* We installed the `apparmor-profiles` package ([[!tails_ticket 9539]]).
+
+* We started porting our ISO build system to Debian Jessie ([[!tails_ticket 9262]]).
+
+* We worked with upstream on sandboxing I2P ([[!tails_ticket 7724]]).
+
+Miscellaneous
+-------------
+
+* We continued working on packaging Tails Installer for Debian ([[!tails_ticket 8866]]).
+
+* We started evaluating Tails on touchscreen devices, and made progress on 32-bit UEFI support.
+
+Documentation and website
+=========================
+
+* We published a security advisory about Claws Mail leaking plaintext of encrypted emails to IMAP server and documented workarounds.
+
+* We added a link to Riseup documentation about Claws Mail configuration, since it's a common question.
+
+* We documented the new [[security slider in Tor Browser|doc/anonymous_internet/Tor_Browser#security-level]].
+
+* We made clearer in Tor Browser documentation that you have to activate persistence to [[download files larger than the available RAM|doc/anonymous_internet/Tor_Browser#confinement]].
+
+* A [[workaround when the chosen language layout is not applied|support/known_issues#keyboard_layout]] is now explained.
+
+* We added to [[our "features" page|doc/about/features]] the version of Debian Tails is currently based on, and the list of supported languages.
+
+* We completed the [[page with our OpenPGP keys|doc/about/openpgp_keys]] that had not been updated after the creation of many new mailing lists.
+
+* We updated the [[automatic upgrade page|doc/upgrade]] to explain the process when upgrading more than one version, and gave the command-line to start the upgrader manually if you had no network at startup.
+
+* We added a note in the persistence configuration page to list often requested features that are not implemented yet.
+
+User experience
+===============
+
+- On the Download and Verify Tails browser extension:
+  - We wrote a draft HTML code
+    to start the work of Giorgio Maone on the code.
+
+- On the Installation Assistant:
+  - We analyzed the results of the user testing on the third iteration of
+    the router. See subtasks of [[!tails_ticket 9445]].
+  - We drafted a new wireframe for the overview of the installation
+    scenario.
+  - We worked together with [wedodata](http://www.wedodata.fr) to improve the infography
+    describing the installation
+    steps.
+  - We started working on a ikiwiki
+    prototype of the Installation Assistant.
+
+Infrastructure
+==============
+
+* We improved our automated test suite to make it a lot more robust. As a result, some of us are now able to run it entirely without any false positive!
+
+* We wrote new tests for Electrum, the "Report an error" launcher, etc.
+
+* We investigated how we can run the Tor Browser's automated test suite as part of our own. We now have a working, though hackish, proof-of-concept.
+
+* Our test suite covers 182 scenarios, 5 more that in April.
+
+* The bot that gives information about tickets on IRC now displays links to Redmine.
+
+Funding
+=======
+
+* We published our income statement for 2014.
+
+Outreach
+========
+
+* A talk about Tails took place at a [[MiniDebConf in Bucharest, Romania|http://bucharest2015.mini.debconf.org/]] on May 16th ([[slides|contribute/how/promote/slides/MiniDebConf-Bucarest-20150516/MiniDCtalk/]]).
+
+Upcoming events
+---------------
+
+* Cornelius Kölbel will speak about Tails at Tübix on June 13th (in German).
+
+* Les Chats Cosmiques is organizing a workshop about Tails and Tor at La Cantine Brestoise in Brest, France on June 18.
+
+* Tchou and Fiodor Tonti will be in [Pas Sage en Seine 2015](https://www.passageenseine.org/) at NUMA in Paris, France on June 18 to present our UX work and conduct user testing of the future Installation Assistant.
+
+* Please let us know if you organize an event about Tails, we'll be glad to announce it :)
+
+On-going discussions
+====================
+
+* anonym and intrigeri submitted a RFC for a persistent Tor state.
+
+* anonym and intrigeri submitted for review a new user scenario for time synchronization when Tor cannot start due to a wrong system clock.
+
+* We are discussing changes to our version number scheme.
+
+* We are discussing having public archives of <tails-support@boum.org>.
+
+Press and testimonials
+======================
+
+* Many online newspapers covered the 1.4 release, see our press page.
+
+Translation
+===========
+
+* We're planning to improve our website's translation platform. If you're knowledgeable about one or if you want to help testing some, please see the [[!tails_ticket 9049]] and blueprint!
+
+All website PO files
+--------------------
+
+  - de: 19% (1251) strings translated, 0% strings fuzzy, 17% words translated
+  - fr: 46% (3023) strings translated, 2% strings fuzzy, 43% words translated
+  - pt: 28% (1861) strings translated, 3% strings fuzzy, 26% words translated
+
+Total original words: 75770
+
+[[Core PO files|contribute/l10n_tricks/core_po_files.txt]]
+---------------------------------------
+
+  - de: 60% (791) strings translated, 1% strings fuzzy, 68% words translated
+  - fr: 89% (1184) strings translated, 5% strings fuzzy, 90% words translated
+  - pt: 84% (1119) strings translated, 8% strings fuzzy, 87% words translated
+
+Total original words: 14259
+
+Metrics
+=======
+
+* Tails has been started more than 421,127 times this month. This makes 13,584 boots a day on average.
+
+* 24,204 downloads of the OpenPGP signature of Tails ISO from our website.
+
+* 107 bug reports were received through WhisperBack.
+
+-- Report by BitingBird for Tails folks

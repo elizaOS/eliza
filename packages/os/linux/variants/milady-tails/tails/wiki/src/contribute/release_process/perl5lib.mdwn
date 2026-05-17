@@ -1,0 +1,26 @@
+[[!meta title="Testing perl5lib"]]
+
+[[!toc levels=1]]
+
+<a id="build-deps"></a>
+
+Install build and test dependencies
+===================================
+
+    cat $(git rev-parse --show-toplevel)/config/chroot_local-packageslists/tails-perl5lib.list \
+       | grep -E -v '^#' \
+       | xargs sudo apt --yes install && \
+    sudo apt install \
+       libmodule-build-perl \
+       libdist-zilla-plugin-test-notabs-perl \
+       libdist-zilla-plugin-test-perl-critic-perl \
+       libdist-zilla-app-command-authordebs-perl && \
+    sudo apt update && \
+    cd "$(git rev-parse --show-toplevel)/config/chroot_local-includes/usr/src/perl5lib" && \
+    dzil authordebs --install
+
+Run the test suite
+==================
+
+    cd "$(git rev-parse --show-toplevel)/config/chroot_local-includes/usr/src/perl5lib" && \
+    dzil test --all

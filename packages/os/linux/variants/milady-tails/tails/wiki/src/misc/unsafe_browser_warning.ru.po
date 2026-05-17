@@ -1,0 +1,93 @@
+# SOME DESCRIPTIVE TITLE
+# Copyright (C) YEAR Free Software Foundation, Inc.
+# This file is distributed under the same license as the PACKAGE package.
+# FIRST AUTHOR <EMAIL@ADDRESS>, YEAR.
+#
+msgid ""
+msgstr ""
+"Project-Id-Version: PACKAGE VERSION\n"
+"POT-Creation-Date: 2025-04-17 17:36-0600\n"
+"PO-Revision-Date: 2024-04-30 15:48+0000\n"
+"Last-Translator: xin <xin@riseup.net>\n"
+"Language-Team: LANGUAGE <LL@li.org>\n"
+"Language: ru\n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+"Plural-Forms: nplurals=3; plural=n%10==1 && n%100!=11 ? 0 : n%10>=2 && "
+"n%10<=4 && (n%100<10 || n%100>=20) ? 1 : 2;\n"
+"X-Generator: Weblate 5.3\n"
+
+#. type: Plain text
+#, fuzzy, no-wrap
+#| msgid "[[!meta title=\"Warning! This browser is not anonymous!\"]]\n"
+msgid "[[!meta title=\"Unsafe Browser\"]]\n"
+msgstr "[[!meta title=\"Внимание! Это не анонимный браузер!\"]]\n"
+
+#. type: Plain text
+#, no-wrap
+msgid "[[!meta stylesheet=\"unsafe_browser_warning\" rel=\"stylesheet\"]]\n"
+msgstr "[[!meta stylesheet=\"unsafe_browser_warning\" rel=\"stylesheet\"]]\n"
+
+#. type: Plain text
+#, no-wrap
+msgid "[[!meta robots=\"noindex\"]]\n"
+msgstr "[[!meta robots=\"noindex\"]]\n"
+
+#. type: Plain text
+#, no-wrap
+msgid "<div id=\"unsafe\">\n"
+msgstr "<div id=\"unsafe\">\n"
+
+#. type: Plain text
+#, fuzzy, no-wrap
+#| msgid "[[!meta title=\"Warning! This browser is not anonymous!\"]]\n"
+msgid "<p class=\"big\">This browser is not anonymous.</p>\n"
+msgstr "[[!meta title=\"Внимание! Это не анонимный браузер!\"]]\n"
+
+#. type: Plain text
+#, no-wrap
+msgid "</div>\n"
+msgstr "</div>\n"
+
+#. type: Plain text
+#, no-wrap
+msgid "<div id=\"eyes\">[[!img unsafe.jpg link=\"no\" alt=\"\"]]</div>\n"
+msgstr "<div id=\"eyes\">[[!img unsafe.jpg link=\"no\" alt=\"\"]]</div>\n"
+
+#. type: Plain text
+#, no-wrap
+msgid "[[!inline pages=\"doc/anonymous_internet/unsafe_browser/security_implications.inline\" raw=\"yes\" sort=\"age\"]]\n"
+msgstr "[[!inline pages=\"doc/anonymous_internet/unsafe_browser/security_implications.inline.ru\" raw=\"yes\" sort=\"age\"]]\n"
+
+#. type: Title =
+#, no-wrap
+msgid "What captive portals are"
+msgstr ""
+
+#. type: Plain text
+#, no-wrap
+msgid "[[!inline pages=\"doc/anonymous_internet/unsafe_browser/captive_portal.inline\" raw=\"yes\" sort=\"age\"]]\n"
+msgstr "[[!inline pages=\"doc/anonymous_internet/unsafe_browser/captive_portal.inline.ru\" raw=\"yes\" sort=\"age\"]]\n"
+
+#. type: Title =
+#, no-wrap
+msgid "Signing in to a network using a captive portal"
+msgstr "Вход в сеть через сайт авторизации"
+
+#. type: Plain text
+#, no-wrap
+msgid "[[!inline pages=\"doc/anonymous_internet/unsafe_browser/signing_in.inline\" raw=\"yes\" sort=\"age\"]]\n"
+msgstr "[[!inline pages=\"doc/anonymous_internet/unsafe_browser/signing_in.inline.ru\" raw=\"yes\" sort=\"age\"]]\n"
+
+#, fuzzy
+#~| msgid ""
+#~| "<strong>Note that the Unsafe Browser is never anonymous, not even after "
+#~| "you have logged in to a captive portal.</strong>"
+#~ msgid ""
+#~ "<strong>Only use the <em>Unsafe Browser</em> to log in to captive portals."
+#~ "</strong>"
+#~ msgstr ""
+#~ "<strong>Beachten Sie, dass der Unsichere Browser niemals anonym ist, "
+#~ "selbst dann nicht, wenn Sie sich in einem Captive Portal angemeldet haben."
+#~ "</strong>"

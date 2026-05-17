@@ -1,0 +1,758 @@
+[[!meta title="Automatic upgrades"]]
+
+[[!toc levels=3]]
+
+# Rationale
+
+Partial upgrades should provide only what has changed between two
+releases (deltas) and have a way to apply those changes to the
+previous version. 
+
+At boot-time the security warning telling that a new Tails version is available
+should provide an automated way of doing the upgrade.
+
+# Definitions
+
+* **upgrade-description file**: a file that describes the upgrade from
+  a given version, to another, newer given version of a software
+  product.
+
+* **Incremental Upgrade Kit (IUK)**: a file that contains everything
+  needed to upgrade from.
+
+* **full image**: a file that is sufficient to install and run Tails
+  (currently, that means an ISO or USB image).
+
+* **target files**: the whole set of files included by reference into
+  an upgrade; e.g. this may be an IUK or a full image.
+
+# Roadmap
+
+See [[!tails_blueprint incremental_upgrades]].
+
+<a id="code"></a>
+
+# Code
+
+The code that implements this design lives in:
+
+* [[!tails_gitweb_dir config/chroot_local-includes/usr/src/iuk]]
+* [[!tails_gitweb config/chroot_local-includes/usr/local/bin/tails-upgrade-frontend-wrapper]]
+* [[!tails_gitweb config/chroot_local-includes/etc/sudoers.d/zzz_upgrade]]
+* [[!tails_gitweb config/chroot_local-includes/usr/lib/systemd/user/tails-upgrade-frontend.service]]
+
+# Scenarios
+
+## As a Tails user
+
+### When I boot Tails
+
+The scenarios are described in Cucumber-style, using [[!cpan
+Test-BDD-Cucumber]], in a [[!tais_gitweb_dir config/chroot_local-includes/usr/src/iuk/features/frontend desc="dedicated directory"]], and can be run with pherkin
+(see [[contribute/release_process/tails-iuk]] for details).
+
+## As a Tails developer
+
+### When I prepare a bugfix release
+
+#### I should prepare an IUK
+
+The scenarios about this are described in Cucumber-style, using
+[[!cpan Test-BDD-Cucumber]], in [[!tais_gitweb_dir config/chroot_local-includes/usr/src/iuk/features/create desc="dedicated directory"]]. Run the `features/create` to run
+them (see [[contribute/release_process/tails-iuk]] for details).
+
+Documentation on how to actually do that is on
+[[contribute/release_process#prepare-iuk]].
+
+#### I should test the IUK
+
+Until we have more complete [[!tails_ticket 6090 desc="automated tests"]],
+I should manually try to install the IUK as intended on top of the old
+version of Tails, and I should check that the resulting system behaves
+as it should.
+
+See [[contribute/release_process/test#incremental-upgrades]].
+
+#### I should prepare upgrade-description files
+
+* for the previous release (to announce they may upgrade using the IUK
+  that's being prepared)
+
+* for the new release (to announce no upgrade is available)
+
+See [[contribute/release_process#prepare-upgrade-description-files]].
+
+#### I should publish the IUK
+
+See [[contribute/release_process#publish-iuk]].
+
+#### I should publish upgrade-description files
+
+This is done at the same time as the release is announced, by simply
+pushing the release Git branch live to master.
+
+### When I prepare a major release
+
+#### I should prepare an upgrade-description file
+
+* for the previous release (to announce they may upgrade using the
+  release that's being prepared)
+
+* for the new release (to announce that no upgrade is available)
+
+See [[contribute/release_process#prepare-upgrade-description-files]].
+
+#### I should publish the upgrade-description file
+
+This is done at the same time as the release is announced, by simply
+pushing the release Git branch live to master.
+
+# Implementation
+
+## Upgrade paths
+
+To ease implementation, we only support upgrades from Tails versions
+that have a recent enough Upgrader.
+
+E.g. say one has installed Tails 0.11 a while ago, and forgets
+about it. We then release Tails 0.11.1, and publish a `0.11_to_0.11.1`
+IUK, advertised by the upgrade-description file for 0.11 users. We then
+release Tails 0.11.2, and publish:
+
+* a `0.11_to_0.11.2` IUK advertised by the upgrade-description file
+  for users who initially installed 0.11, regardless of whether they
+  already upgraded to 0.11.1 or not;
+
+* a `0.11.1_to_0.11.2` IUK, advertised by the upgrade-description file
+  for users who initially installed 0.11.1.
+
+## Infrastructure
+
+### generate an IUK
+
+We have a `tails-create-iuk` program that takes two Tails full images as input, and:
+
+* builds the "diff" SquashFS
+* gets the new kernel(s), initrd(s), bootloader configuration
+* brings all this together into a single file, in the IUK format
+
+### Incremental Upgrade Kit
+
+#### IUK format
+
+An IUK is a SquashFS archive that contains the following files:
+
+* `FORMAT`: contains the version of the IUK format, as
+  a positive integer encoded in ASCII (currently it is *2*).
+
+* `control.yml`: YAML associative array with the following keys:
+  - `delete_files`: a list of file paths to delete from the system
+    partition. These paths are relative to the Tails system partition
+    root, and must be compatible with a FAT32 filesystem.
+
+* `overlay`: optional directory whose contents will be extracted onto
+  the system partition root, overwriting existing files: kernel(s),
+  initrd(s), bootloader configuration, `live/*.squashfs` (the SquashFS
+  "diff" that must be stacked on top of the SquashFS filesystem from
+  the initial version of Tails that was manually installed to the
+  device), etc. All these files target a FAT32 filesystem, so its
+  limitations apply (e.g. on filename, file size, permissions).
+
+### Mirrors infrastructure
+
+Using something like [Mozilla's
+channels](https://wiki.mozilla.org/Software_Update:Channels)
+(*stable*, *beta*, *nightly*) would e.g. allow us to push beta
+upgrades earlier to a brave subset of users. Subscribing to a channel
+other than *stable* is something that would be worth
+[[persisting|doc/persistent_storage]]. We are not likely to
+implement a channels system in phase one, but the infrastructure we
+set up does leave room for such future extension.
+
+<a id="upgrade-description-files"></a>
+
+### Upgrade-description files
+
+We want the client to get an answer to questions such as "I run
+version N+2 of product P on architecture A, on a device initially
+installed as version N and then upgraded to N+2, what stable release upgrade
+is available?". To allow us changing the way the answer is computed in
+the future, the amount of work done on the client's side should be
+kept to a minimum. So, let's insert a level of indirection, and
+pre-compute server-side the answer to the queries we want to support.
+
+The answers are distributed on our HTTP servers in the form of a set
+of upgrade-description file files.
+
+#### upgrade-description file URL
+
+* `https://tails.net/upgrade`
+* URL schema version (so we can change it in the future), that is currently `v2`
+* product name (e.g. *Tails*, but some day we may have *TailsServer*,
+  *TailsHandheld* or whatever)
+* initial install version -- the version initially installed on the
+  device to upgrade, e.g. *0.11* or *0.11.1*
+* build-target (e.g. *amd64*)
+* channel (e.g. *stable* or *beta*)
+* `upgrade.yml`
+
+Example: <https://tails.net/upgrade/v2/Tails/6.0/amd64/stable/upgrades.yml>
+
+Such a file shall be shipped along with its OpenPGP detached signature
+(`upgrades.yml.pgp`).
+
+#### upgrade-description file format
+
+An upgrade-description file contains a YAML associative array with the
+following top-level keys:
+
+* `product-name`
+* `initial-install-version`
+* `build-target`
+* `channel`
+* `upgrades`: a list of upgrade elements.
+
+Each upgrade element is itself an associative array describing an
+upgrade to an individual product version, with the following keys:
+
+* `version` -- the version of this upgrade, that is the version of the
+  running product after the upgrade is completed and the system
+  restarted (e.g. *0.11.1*)
+
+* `type` -- *major* or *minor*
+
+* `details-url` (optional) -- a URL to a web page with more
+  information about the specified upgrade (e.g.
+  the release notes)
+
+* `upgrade-paths` -- a list of at least one and no more than two
+  upgrade path elements.
+
+An upgrade path element describes a set of target files that lives on
+a remote server that must all be downloaded and applied to the product
+to upgrade it to that version. The keys for an upgrade path element are
+as follows:
+
+* `type` -- *full* or *incremental* (IUK are about incremental
+  upgrades, but let's make room to announce full images this way too
+  at some point)
+
+* `target-files`: a list of target files for this upgrade path.
+
+Every target file element has the following keys:
+
+* `url` -- A URL to the target file.
+
+* `size` -- The size of the upgrade, in bytes.
+
+* `sha256` -- The SHA-256 hash of the patch file, encoded as an
+  hexadecimal string. If the client generated value does not match
+  this, the integrity check fails after download. (Other kind of
+  hashes may be added in a future revision of the upgrade-description
+  file format -- which of these multiple hashes the client must verify
+  will need to be specified when this happens.)
+
+Example that would be found at
+`https://tails.net/upgrade/v2/Tails/0.11.1/amd64/stable/upgrades.yml`:
+
+	product-name: Tails
+	initial-install-version: 0.11.1
+	channel: stable
+	build-target: amd64
+	
+	upgrades:
+	  - version: 0.11.2
+	    type: minor
+	    details-url: https://tails.net/news/version_0.11.2/
+	    upgrade-paths:
+	      - type: incremental
+	        target-files:
+	          - url: https://download.tails.net/tails/stable/iuk/v2/Tails_amd64_0.11.1_to_0.11.2.iuk
+	            size: 37345648
+	            sha256: 5c5c47f6155e7807c971251fdad28d5f72ff78db446e43a41e4b900f29229a7d
+	      - type: full
+	        target-files:
+	          - url: https://download.tails.net/tails/stable/tails-amd64-0.11.2/Tails-amd64-0.11.2.iso
+	            size: 762123456
+	            sha256: 1015e37e14c6daaecd528b4a841ef6ac2156a5790346d0fd036f9566ce5f641b
+
+### Initial implementation details
+
+This section is not a specification. The URL where the IUK's are
+stored, and their file name, may change. If this happens, any
+upgrade-description file available on Tails HTTP mirrors, that
+references an IUK whose URL changes, must be upgraded accordingly.
+
+#### IUK file basename
+
+An IUK's file basename is not an authoritative source of information
+regarding its content. However, it should be unique (among IUKs that
+exist on the Tails HTTP servers at a given time).
+
+An IUK's file name is built from these underscore-separated elements,
+followed by the `.iuk` suffix:
+
+* product name (e.g. *Tails*)
+* build-target (e.g. *amd64*)
+* initial install version -- the version initially installed on the device to
+  upgrade, e.g. *0.11* or *0.11.1*
+* `to`
+* the version of this upgrade, that is the version of the running
+  product after the upgrade is completed and the system restarted (e.g.
+  *0.11.2*)
+
+Example: `Tails_amd64_0.11.1_to_0.11.2.iuk`
+
+#### IUK URL
+
+A given IUK is meant to be made available at the URL composed from:
+
+* `https://download.tails.net/tails/iuk/v2/`
+* the IUK file basename
+
+Example: <https://mirrors.edge.kernel.org/tails/stable/iuk/v2/Tails_amd64_6.0_to_6.1.iuk>
+
+## Client and user interface
+
+The program currently telling that a new Tails version is available
+must be upgraded to use upgrade-description files
+instead of the current Atom feed.
+
+### upgrade-description downloader and verifier
+
+This program has the responsibility to download and verify an
+upgrade-description file.
+
+* Build the URI to its upgrade-description file (might even be done at
+  build time and hard-coded into the image) and to its
+  cryptographic signature.
+
+* Fetch the upgrade-description file and its signature at these URIs.
+
+* Verify the cryptographic signature of the upgrade-description file.
+
+* Check that content of the upgrade-description file matches the
+  currently running system (in terms of product name, initial install
+  version, build-target and channel).
+
+* Once all these steps have been successfully performed, the content
+  of the upgrade-description file is trusted to be legit, and is
+  returned to the caller as such.
+
+Failure, at any of the above steps, must be reported to the caller.
+
+### upgrade frontend
+
+* The upgrade frontend is run (with password-less sudo) by the desktop
+  `amnesia` user, as the dedicated `tails-upgrade-frontend` user that
+  has the right to run all other upgrade programs as their
+  own dedicated user.
+
+* Get a verified upgrade-description file from the upgrade-description
+  downloader and verifier.
+
+* Extract information about available upgrades from the
+  upgrade-description file.
+
+* Present such information to the user, let them decide if they want
+  to perform the upgrade.
+
+* If an upgrade path to the new version is available:
+  - securely create a tempdir in `tmpfs`, owned by
+    `tails-iuk-get-target-file:tails-iuk-get-target-file`,
+    with mode 0750
+  - run the IUK downloader and verifier, asking it to drop the
+    verified target file into the tempdir (either the default umask
+    will do, or steps shall be taken to make sure the
+    `tails-install-iuk` user may read the resulting files)
+
+* Else, point at full upgrade documentation.
+
+* Shutdown the network.
+
+* Remount the system partition read-write.
+
+* Perform the upgrade using the files provided by the "target files
+  downloader and verifier".
+
+* Tell the user the upgrade process is finished, and they *MUST*
+  immediately reboot (due to system partition being left mounted
+  read-write, 'cause we cannot remount it read-only once it's been
+  mounted read-write).
+
+* The upgrade frontend checks if enough disk space is available on the
+  Tails system partition. The (disk space needed / target file size)
+  factor was defined experimentally to 3.0 (2.72 fails, 2.8 works, and
+  we want some safety margin in case other IUKs are not formed exactly
+  the same way). If too little disk space is available, the
+  upgrade is not attempted, and the user is pointed at the
+  full upgrade path.
+
+* The upgrade frontend is run by a shell wrapper that checks if enough
+  free memory is available: we do not want the user to miss upgrades,
+  merely because the Tails Upgrader was run in low-memory conditions,
+  and could not do its job.
+
+### target file downloader and verifier
+
+This program has the responsibility to download and verify a target
+file, and make available to the caller either the verified target
+file, or some error message.
+
+* Takes as arguments: URI, size, hash type, hash value, destination
+  path where the verified target file should be left, and
+  possibly options.
+
+Detailed executable scenarios describe and test the behaviour of this
+piece of software in Cucumber-style, using [[!cpan
+Test-BDD-Cucumber]]. They may be found in the
+[[!tais_gitweb_dir config/chroot_local-includes/usr/src/iuk/features/download_target_file desc="dedicated directory"]], and run with pherkin
+(see [[contribute/release_process/tails-iuk]] for details).
+
+### install an IUK
+
+Once a user has downloaded an IUK, they must have it installed.
+
+We need an installer for IUKs:
+
+* **Input**: the path to an (already verified) IUK.
+* **Output**: success or failure (with error message when applicable).
+
+Installing an IUK should happen at the same time as normal Tails
+operation, but very carefully, because we need to remount the boot
+medium read-write.
+
+* Verify the IUK is in a supported format.
+
+* Remount the boot-medium read-write.
+
+* Mount the IUK archive.
+
+* If the `overlay` directory exists in the IUK, copy its contents
+  onto the system partition root, overwriting existing files.
+
+* If a new SquashFS diff file (`live/*.squashfs`) was provided
+  in the `overlay` directory:
+
+  * ensure `live/Tails.module` contains:
+    - one line that says `filesystem.squashfs`
+    - one line that contains the filename of that new SquashFS diff
+  * remove any old SquashFS diff file that is not referenced
+    by `live/Tails.module` anymore.
+
+* Delete files that are listed in the `delete_files` control field.
+
+* Upgrade syslinux with the binary found in `utils/linux/syslinux` on
+  the Tails system partition. Likewise, upgrade the boot device's MBR
+  with the one found in `utils/mbr/mbr.bin` on the Tails system
+  partition. This ensures that the installed version of syslinux
+  matches the version of the COM32 modules that were shipped by the
+  IUK.
+
+Detailed executable scenarios describe and test the behaviour of this
+piece of software in Cucumber-style, using [[!cpan
+Test-BDD-Cucumber]]. They may be found in a
+[[!tais_gitweb_dir config/chroot_local-includes/usr/src/iuk/features/install desc="dedicated directory"]], and run
+with pherkin
+(see [[contribute/release_process/tails-iuk]] for details).
+
+Resources:
+
+* [Mozilla's updates
+  processing](https://wiki.mozilla.org/Software_Update:Processing_Updates):
+  building up some mechanism (such as their pending / applying /
+  succeeded / failed status) to avoid retrying the same buggy upgrade
+  in a loop seems worth being considered.
+
+### full upgrade
+
+The Tails Cloner is still in charge of performing full upgrades.
+It deletes any `live/*.squashfs` file other than the one shipped
+in the new ISO.
+
+### signature verification
+
+upgrade-description file polling, parsing and verification is
+implemented in Perl. Signature verification is made using
+Sequoia SOP.
+
+<a id="security"></a>
+
+# Security
+
+We want to use secure upgrade tools such as TUF or Thandy once they are
+ready enough for production wrt. our usecases. Unfortunately, this is
+not the case yet, and we haven't the resources to seriously contribute
+to TUF or Thandy.
+
+Therefore, given we want to have some automatic upgrade system
+*soon*, the simple one we will ship in phase one will clearly be less
+secure than TUF of Thandy against certain types of attacks.
+
+However, we believe it is at least as secure as the way users are
+currently able to manually check if a new Tails version is available,
+to download and to verify it. Let's discuss this.
+
+In what follows, we will call "the old Tails upgrade system" the way
+users used to be able, as of November 2013, to manually check if
+a new Tails version is available, download target files, and verify
+their integrity.
+
+## Upgrade-description files
+
+Given:
+
+* upgrade-description files are published on <https://tails.net/>;
+  in the old Tails upgrade system, this is the canonical place where
+  Tails users can check for upgrades availability.
+
+* The upgrade-description downloader and verifier checks the SSL
+  certificate presented by the server is valid (in phase one, using
+  simple CA-based validation).
+
+Hence, the trust-path to availability and freshness of
+upgrade-description files is as good as with the old Tails
+upgrade system.
+
+Moreover, upgrade-description files are signed by the Tails OpenPGP
+signing key. Then, the trust-path to the content of upgrade-description
+files is better than the old Tails upgrade system.
+
+## Target files
+
+Given:
+
+* Communication to HTTP servers that provide target files is made over
+  HTTPS. However, no security is to be expected from
+  transport-level security here. Mirrors are not trusted anyway.
+
+* Availability, location, hash and size of target files are published
+  in upgrade-description files, towards which some minimal trust-path
+  was established (see above).
+
+* In the old Tails upgrade system, target files are signed by the Tails
+  OpenPGP signing key.
+
+As a consequence, the availability, freshness and content of target
+files is protected as well as it is in the old Tails upgrade system.
+
+<a id="security-discussion"></a>
+
+## Discussion
+
+**Note**: the attack definitions below come straight from the [TUF
+security
+documentation](https://theupdateframework.io/security/)
+(2012-05-04).
+
+We believe the upgrade system described on this page is at least as
+secure as the old Tails upgrade system.
+
+### Arbitrary software installation
+
+> An attacker installs anything they want on the client system.
+> That is, an attacker can provide arbitrary files in response to
+> download requests and the files will not be detected
+> as illegitimate.
+
+Both the old and new Tails upgrade systems are immune to this attack,
+as long as the trust-path to the upgrade-description file is not
+broken, and OpenPGP signatures on the target files are carefully
+verified. We have seen above why we believe the trust-path to
+upgrade-description files to be at least as secure as the old Tails
+upgrade system. In the new Tails upgrade system, OpenPGP signatures are
+automatically verified, which provides this kind of protection even to
+users would not have checked manually in the context of the old
+upgrade system.
+
+### Rollback attacks
+
+> An attacker presents a software upgrade system with older files than
+> those the client has already seen, causing the client to use files
+> older than those the client knows about.
+
+Given the upgrade-description downloader and verifier checks the
+version of the proposed upgrades against the version of the currently
+running system, the upgrade system described on this page is immune to
+this attack.
+
+### Indefinite freeze attacks
+
+> An attacker continues to present a software upgrade system with the
+> same files the client has already seen. The result is that the
+> client does not know that new files are available.
+
+Both with the old and new Tails upgrade systems, mounting such an
+attack requires either to take control of the Tails website or to
+break the SSL/TLS connection between the client and the server.
+
+This attack is slightly mitigated by the fact that we are announcing
+new releases in other ways:
+
+* one that does not rely on our website at all (Twitter);
+
+* one that does not rely on our website to be safe at the time Tails
+  Upgrader checks for available upgrades, as long as it was safe at
+  the time the new release was published ([[amnesia-news@boum.org|https://www.autistici.org/mailman/listinfo/amnesia-news]]
+  announce mailing list).
+
+The move to a secure upgrade system, such as TUF, would make this
+stronger, thanks to short-lived signatures on meta-data.
+
+### Endless data attacks
+
+> An attacker responds to a file download request with an endless
+> stream of data, causing harm to clients (e.g. a disk partition
+> filling up or memory exhaustion).
+
+The old Tails upgrade system offers no protection at all against
+performing this class of attacks, so the new one cannot do worse.
+
+However, the new Tails upgrade system, by including the expected size
+of the target files in the set of meta-data verified before
+downloading them, allows the target files downloader and verifier to
+avoid downloading more data than expected (thanks to [[!cpan
+LWP::UserAgent]]'s `max_size` method).
+
+The upgrade-description files downloader and verifier could refuse to
+download upgrade-description files bigger than some reasonable
+constant, but this is not implemented yet.
+
+This attack, when performed against the upgrade-description files
+downloader and verifier is slightly mitigated in the same way as
+"Indefinite freeze attacks" are.
+
+### Slow retrieval attacks
+
+> An attacker responds to clients with a very slow stream of data that
+> essentially results in the client never continuing the
+> upgrade process.
+
+The old Tails upgrade system offers no protection at all against this
+class of attacks, so the new one cannot do worse. However, one change
+brought by the new Tails upgrade system is that we control the
+programs used to download upgrade-description files and target files;
+hence, we could set timeouts on download operations so that, at least,
+the user can be made aware of what is happening. Currently, the
+default timeout settings (if any) of these programs, libraries, and
+underlying kernel networking code are used.
+
+### Extraneous dependencies attacks
+
+> An attacker indicates to clients that in order to install the
+> software they wanted, they also need to install unrelated software.
+> This unrelated software can be from a trusted source but may have
+> known vulnerabilities that are exploitable by the attacker.
+
+In the old Tails upgrade system, changing the list of needed files
+could be done by taking control of the Tails website or breaking the
+client/server SSL/TLS connection; in the new Tails upgrade system,
+mounting this attack requires being able to sign a modified
+upgrade-description file with the Tails OpenPGP signing key instead,
+which is most probably harder.
+
+### Mix-and-match attacks
+
+> An attacker presents clients with a view of a repository that
+> includes files that never existed together on the repository at the
+> same time. This can result in, for example, outdated versions of
+> dependencies being installed.
+
+The list of needed target files to perform an upgrade, along with their
+hashes, is available in a single location, that is in an
+upgrade-description file; therefore, we believe the upgrade system
+described on this page to be immune to mix-and-match attacks.
+
+### Wrong software installation
+
+> An attacker provides a client with a trusted file that is not the
+> one the client wanted.
+
+The old Tails upgrade system does not protect against this attack:
+a mirror can replace an ISO file and its detached OpenPGP signature
+with an obsolete pair of files, renamed to match the expected file
+names of the new release. Given some released versions of Tails
+shipped with a dysfunctional "security warning if upgrade is
+available" system, many users would probably not notice.
+
+The new Tails upgrade system is as secure, wrt. wrong software
+installation attacks, as the trust-path to upgrade-description files
+are. Breaking this is clearly harder than renaming a pair of files on
+a mirror controlled by an attacker, so the new Tails upgrade system is
+more secure than the old one against wrong software installation.
+
+### Malicious mirrors preventing upgrades
+
+> An attacker in control of one repository mirror is able to prevent
+> users from obtaining upgrades from other, good mirrors.
+
+In both the old and new Tails upgrade systems, mirrors are used for
+target files only, as part of a DNS round-robin pool that contains
+more than 6 members, so when retrying a failed download at a later
+time, one is likely to land onto another mirror. We then believe both
+the old and new Tails upgrade system to be relatively safe from this
+class of attacks, as long as failed downloads are tried again later.
+
+### Vulnerability to key compromises
+
+> An attacker who is able to compromise a single key or less than
+> a given threshold of keys can compromise clients. This includes
+> relying on a single online key (such as only being protected by SSL)
+> or a single offline key (such as most software upgrade systems use to
+> sign files).
+
+Both the old and new Tails upgrade systems are vulnerable to this class
+of attacks, due to the reliance on the Tails OpenPGP signing key.
+The future move to a secure upgrade system such as TUF or Thandy will
+fix this.
+
+## Privilege separation
+
+The default Live user (`amnesia`) is allowed to run the upgrade
+frontend, without arguments, as the dedicated `tails-upgrade-frontend`
+user, who itself:
+
+* is allowed to run the `tails-shutdown-network` and `/sbin/reboot`
+  programs, using passwordless sudo, as any user;
+
+* is allowed to run the `tails-install-iuk` program, with any
+  arguments, using passwordless sudo, as the `tails-install-iuk` user;
+
+* is allowed to run the `tails-iuk-get-target-file` program, with any
+  argument, using passwordless sudo, as the
+  `tails-iuk-get-target-file` user;
+
+* is allowed to run `tails-iuk-mktemp-get-target-file`, using
+  passwordless sudo, as the `tails-iuk-get-target-file` user;
+
+* is allowed to run `tails-iuk-cancel-download`, using passwordless sudo,
+  as any user.
+
+The `tails-install-iuk` user is allowed to run, using passwordless
+sudo, every command required by its task with any arguments.
+This includes e.g. `cp` so for all practical security purposes,
+it can effectively escalate to arbitrary code execution as root.
+It is a member of the `tails-iuk-get-target-file` group, which allows it to
+read the files downloaded by the `tails-iuk-get-target-file` program.
+
+## Running syslinux after applying an IUK
+
+Anyone who can feed `tails-install-iuk` with an arbitrary IUK can run
+arbitrary code as root, by storing the attack code in one of the
+tarballs contained in the IUK, as `utils/linux/syslinux`. This does
+not introduce new security risks: the very same adversary could plant
+a persistent rootkit anyway. Our protection against this instead
+relies in the privilege separation described above: all that the
+`amnesia` user can do is run the frontend with no arguments.
+
+# Research
+
+## Secure upgrade
+
+* [TUF: The Update Framework](https://www.updateframework.com/)
+* [Thandy specification](https://gitlab.torproject.org/legacy/gitolite/thandy/-/blob/HEAD/specs/thandy-spec.txt)
+
+## Discarded options and historical information
+
+See the [[page about discarded options and historical
+information|contribute/design/upgrades/archive]].

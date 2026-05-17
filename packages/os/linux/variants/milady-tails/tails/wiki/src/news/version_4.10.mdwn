@@ -1,0 +1,84 @@
+[[!meta title="Tails 4.10 is out"]]
+[[!meta date="Tue, 25 Aug 2020 12:34:56 +0000"]]
+[[!pagetemplate template="news.tmpl"]]
+[[!tag announce]]
+
+This release fixes [[many security
+vulnerabilities|security/Numerous_security_holes_in_4.9]]. You should upgrade as soon as possible.
+
+[[!toc levels=1]]
+
+# Changes and updates
+
+- Update *Tor Browser* to [9.5.4](https://blog.torproject.org/new-release-tor-browser-954).
+
+- Update *Tor* to [0.4.3.6](https://gitweb.torproject.org/tor.git/tree/ChangeLog).
+
+- Update *Electrum* from 3.3.8 to
+  [4.0.2](https://github.com/spesmilo/electrum/blob/master/RELEASE-NOTES).
+
+- Update *Linux* to 5.7.10. This should improve the support for newer
+  hardware (graphics, Wi-Fi, etc.).
+
+- Hide the welcome message when starting Thunderbird.
+
+# Fixed problems
+
+- Fix support for USB Wi-Fi adapters with Atheros AR9271 hardware.
+  ([[!tails_ticket 17834]])
+
+- Fix USB tethering from iPhone. ([[!tails_ticket 17820]])
+
+For more details, read our [[!tails_gitweb debian/changelog desc="changelog"]].
+
+<a id="known-issues"></a>
+
+# Known issues
+
+<!--
+
+Copy the known issues from the previous version if they haven't been
+solved or move them to /support/known_issues if more appropriate.
+
+-->
+
+None specific to this release.
+
+See the list of [[long-standing issues|support/known_issues]].
+
+# Get Tails 4.10
+
+## To upgrade your Tails USB stick and keep your Persistent Storage
+
+- Automatic upgrades are available from Tails 4.2 or later to 4.10.
+
+- If you cannot do an automatic upgrade or if Tails fails to start after an
+  automatic upgrade, please try to do a [[manual upgrade|doc/upgrade/#manual]].
+
+## To install Tails on a new USB stick
+
+Follow our installation instructions:
+
+  - [[Install from Windows|install/windows]]
+  - [[Install from macOS|install/mac]]
+  - [[Install from Linux|install/linux]]
+
+<div class="caution"><p>The Persistent Storage on the USB stick will be lost if
+you install instead of upgrading.</p></div>
+
+## To download only
+
+If you don't need installation or upgrade instructions, you can download
+Tails 4.10 directly:
+
+  - [[For USB sticks (USB image)|install/download]]
+  - [[For DVDs and virtual machines (ISO image)|install/download-iso]]
+
+# What's coming up?
+
+Tails 4.11 is [[scheduled|contribute/calendar]] for September 22.
+
+
+We need your help and there are many ways to [[contribute to
+Tails|contribute]] (<a href="https://tails.net/donate/?r=4.10">donating</a> is only one of
+them). Come [[talk to us|doc/about/contact#tails-dev]]!

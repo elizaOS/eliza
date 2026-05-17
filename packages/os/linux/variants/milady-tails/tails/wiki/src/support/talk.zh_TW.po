@@ -1,0 +1,128 @@
+# SOME DESCRIPTIVE TITLE
+# Copyright (C) YEAR Free Software Foundation, Inc.
+# This file is distributed under the same license as the PACKAGE package.
+# FIRST AUTHOR <EMAIL@ADDRESS>, YEAR.
+#
+msgid ""
+msgstr ""
+"Project-Id-Version: PACKAGE VERSION\n"
+"Report-Msgid-Bugs-To: tails-l10n@boum.org\n"
+"POT-Creation-Date: 2026-03-12 10:28+0000\n"
+"PO-Revision-Date: 2018-11-02 13:29+0000\n"
+"Last-Translator: emmapeel <emma.peel@riseup.net>\n"
+"Language-Team: LANGUAGE <LL@li.org>\n"
+"Language: zh_TW\n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+"Plural-Forms: nplurals=1; plural=0;\n"
+"X-Generator: Weblate 2.19.1\n"
+
+#. type: Content of: <div>
+#, fuzzy
+msgid "[[!meta title=\"Contact us\"]]"
+msgstr "[[!meta title=\"保持聯絡\"]]"
+
+#. type: Content of: <h1>
+msgid "Report an error"
+msgstr ""
+
+#. type: Content of: <div><div><h3>
+msgid "WhisperBack"
+msgstr ""
+
+#. type: Content of: <div><div><p>
+msgid "<i class=\"fa-4x fa-solid fa-user-secret\"></i>"
+msgstr ""
+
+#. type: Content of: <div><div><p>
+msgid ""
+"Reporting an error from Tails using [[<i>WhisperBack</i>|doc/first_steps/"
+"whisperback]] is the most private and the most useful way of contacting us."
+msgstr ""
+
+#. type: Content of: <h1>
+msgid "Other support channels"
+msgstr ""
+
+#. type: Content of: <div><div><h3>
+msgid "Forum"
+msgstr ""
+
+#. type: Content of: <div><div><p>
+msgid "<i class=\"fa-4x fa-regular fa-comments\"></i>"
+msgstr ""
+
+#. type: Content of: <div><div><p><p>
+msgid ""
+"Talk with other Tails users in the [[Tails category of the Tor Forum|https://"
+"forum.torproject.org/c/support/tails/33]]."
+msgstr ""
+
+#. type: Content of: <div><div><h3>
+msgid "Email"
+msgstr "E-Mail"
+
+#. type: Content of: <div><div><p>
+msgid "<i class=\"fa-4x fa-regular fa-envelope\"></i>"
+msgstr ""
+
+#. type: Content of: <div><div><p>
+#, fuzzy
+msgid "Write us at [[support@tails.net|doc/about/contact#support]]."
+msgstr "[[tails-support-private@boum.org|about/contact#tails-support-private]]"
+
+#. type: Content of: <div><div><p>
+msgid "Please write in English."
+msgstr ""
+
+#. type: Content of: <div><div><p>
+msgid ""
+"Encrypting your emails with our [[OpenPGP key|doc/about/"
+"openpgp_keys#support]] is the only way to achieve end-to-end encryption."
+msgstr ""
+"使用我們的 [[OpenPGP-密鑰|doc/about/openpgp_keys#support]] 來加密電郵，這是唯"
+"一可以達到端對端安全通訊的方式。"
+
+#. type: Content of: <div><div><h3>
+msgid "Chat"
+msgstr "聊天"
+
+#. type: Content of: <div><div><p>
+msgid "<i class=\"fa-4x fa-regular fa-message\"></i>"
+msgstr ""
+
+#. type: Content of: <div><div>
+msgid "[[!inline pages=\"support/chat\" raw=\"yes\" sort=\"age\"]]"
+msgstr ""
+
+#~ msgid "[[!img lib/email.png link=no]]"
+#~ msgstr "[[!img lib/email.png link=no]]"
+
+#~ msgid "[[!img lib/chat.png link=no]]"
+#~ msgstr "[[!img lib/chat.png link=no]]"
+
+#~ msgid "Join our XMPP chat room to talk to contributors and users."
+#~ msgstr "加入 XMPP 聊天室和其它貢獻者或使用者聊聊。"
+
+#, fuzzy
+#~ msgid "Room: <code>tails</code>"
+#~ msgstr "room: <code>tails</code>"
+
+#, fuzzy
+#~ msgid "Server: <code>chat.disroot.org</code>"
+#~ msgstr "server: <code>conference.riseup.net</code>"
+
+#~ msgid "use TLS/SSL to connect!"
+#~ msgstr "使用 TLS/SSL 連線!"
+
+#, fuzzy
+#~ msgid ""
+#~ "[[!inline pages=\"support/talk/no_reply_every_request.inline\" "
+#~ "raw=\"yes\"]] [[!inline pages=\"support/talk/languages.inline\" "
+#~ "raw=\"yes\"]]"
+#~ msgstr ""
+#~ "[[!inline pages=\"support/talk/languages.inline.zh_TW\" raw=\"yes\"]]"
+
+#~ msgid "Mail us on our private mailing list:"
+#~ msgstr "在私密郵件群組中寄信給我們："

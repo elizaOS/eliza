@@ -1,0 +1,31 @@
+- [[Starting Tails|first_steps/start]]
+
+  * [[Starting Tails on PC|first_steps/start/pc]]
+
+  * [[Starting Tails on Mac|first_steps/start/mac]]
+
+- [[Accessibility|first_steps/accessibility]]
+
+- [[Welcome Screen|first_steps/welcome_screen]]
+
+  * [[Administration password|first_steps/welcome_screen/administration_password]]
+
+  * [[MAC address anonymization|first_steps/welcome_screen/mac_spoofing]]
+
+- [[Introduction to GNOME and the Tails desktop|first_steps/desktop]]
+
+  * [[Why is the time wrong?|first_steps/desktop/time]]
+
+- [[Reporting an error using *WhisperBack*|first_steps/whisperback]]
+
+- [[Shutting down Tails|first_steps/shutdown]]
+
+- [[Uninstalling Tails|doc/first_steps/uninstall]]
+
+  - [[Uninstalling Tails using  Windows|doc/first_steps/uninstall/windows]]
+
+  - [[Uninstalling Tails using macOS|doc/first_steps/uninstall/mac]]
+
+  - [[Uninstalling Tails using Linux|doc/first_steps/uninstall/linux]]
+
+  - [[Uninstalling Tails using Tails itself|doc/first_steps/uninstall/tails]]

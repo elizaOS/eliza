@@ -1,0 +1,67 @@
+[[!meta date="Tue, 2 Oct 2018 12:34:56 +0000"]]
+[[!meta title="Tails 3.9.1 is out"]]
+[[!pagetemplate template="news.tmpl"]]
+[[!tag announce]]
+
+This release is an emergency release to fix [[critical security
+vulnerabilities in *Tor Browser* and *Thunderbird*|security/Numerous_security_holes_in_3.9]].
+
+You should upgrade as soon as possible.
+
+[[!toc levels=1]]
+
+# Changes
+
+## Upgrades and changes
+
+- Update *Tor Browser* to 8.0.2.
+
+  This fixes 2 critical security [vulnerabilities in
+  JavaScript](https://www.mozilla.org/en-US/security/advisories/mfsa2018-24/)
+  in *Firefox*.
+
+- Update *Thunderbird* to fix these same vulnerabilities.
+
+## Fixed problems
+
+- Fix the update of *Additional Software*. ([[!tails_ticket 15978]])
+
+- Fix opening VeraCrypt file containers using the **Open With Unlock VeraCrypt
+  Volumes** of *GNOME Files*. ([[!tails_ticket 15954]])
+
+- Fix the display of the **General** tab in the preferences of *Tor Browser*.
+  ([[!tails_ticket 15917]])
+
+- Fix displaying the help of *GNOME Videos*. ([[!tails_ticket 15841]])
+
+- Uninstall *mutt*. ([[!tails_ticket 15904]])
+
+For more details, read our [[!tails_gitweb debian/changelog desc="changelog"]].
+
+<a id="known-issues"></a>
+
+# Known issues
+
+None specific to this release.
+
+See the list of [[long-standing issues|support/known_issues]].
+
+# Get Tails 3.9.1
+
+- To install, follow our [[installation instructions|install]].
+
+- To upgrade, automatic upgrades are available from 3.8 and 3.9 to 3.9.1.
+
+  If you cannot do an automatic upgrade or if Tails fails to start after an
+  automatic upgrade, please try to do a [[manual upgrade|doc/upgrade#manual]].
+
+- [[Download Tails 3.9.1.|install/download]]
+
+# What's coming up?
+
+Tails 3.10 is [[scheduled|contribute/calendar]] for October 23.
+
+
+We need your help and there are many ways to [[contribute to
+Tails|contribute]] (<a href="https://tails.net/donate/?r=3.9.1">donating</a> is only one of
+them). Come [[talk to us|doc/about/contact#tails-dev]]!

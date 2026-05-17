@@ -1,0 +1,30 @@
+[[!meta title="Mirror pools"]]
+
+The Tails downloads are served using a HTTP mirror pool.
+
+[[!toc levels=2]]
+
+<a id="http-pool"></a>
+
+# HTTP pool
+
+The HTTP pool is a web service that redirects clients to the nearest mirror
+based on their IP geolocation data:
+
+- IP geolocation data is automatically and periodically updated from [MaxMind's
+  GeoLite2](https://dev.maxmind.com/geoip/geolite2-free-geolocation-data?lang=en)
+  databases.
+
+- Downloads are served under the `download.tails.net` domain (see [mirror
+  statistics](https://download.tails.net/tails?mirrorstats)).
+
+- [Mirrorbits](https://github.com/etix/mirrorbits) performs the actual
+  redirections according to its own internal score system, which is based on
+  mirrors' weights and IP geolocation data
+  (Autonomous Systems, countries and calculated distances).
+
+- The list of mirrors is maintained by Sysadmins via Puppet (see
+  [[!tails_gitweb_puppet_code site/profile/manifests/tails/mirrorbits.pp desc="code"]]
+  and [[!tails_gitlab
+  tails/puppet-code/-/blob/5b1462c0db7f01566bb935632ac862c60d12b885/hieradata/common.yaml#L372
+  desc="example data"]])

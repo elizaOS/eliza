@@ -1,0 +1,18 @@
+#!/bin/sh
+
+set -e
+
+# Install Plymouth (in lb 2.x, the "standard" packages list pulls
+# console-common in, which plymouth conflicts with, so we have to deal
+# with that at this stage.)
+
+echo "Installing and configuring Plymouth"
+
+apt-get --yes purge console-common
+apt-get --yes install plymouth plymouth-label plymouth-themes
+
+patch -p1 < /usr/share/tails/build/plymouth-theme.diff
+
+# Install the plymouth initramfs script to the init-top stage
+install -m 755 /usr/share/initramfs-tools/scripts/init-premount/plymouth \
+               /usr/share/initramfs-tools/scripts/init-top/plymouth

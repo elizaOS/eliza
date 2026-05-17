@@ -1,0 +1,8 @@
+[Unit]
+Description=Report errors about disk being corrupted
+ConditionUser=1000
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/lib/tails-report-disk-ioerrors
+RemainAfterExit=yes

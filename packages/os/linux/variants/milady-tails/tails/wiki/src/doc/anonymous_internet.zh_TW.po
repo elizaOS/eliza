@@ -1,0 +1,28 @@
+# SOME DESCRIPTIVE TITLE
+# Copyright (C) YEAR Free Software Foundation, Inc.
+# This file is distributed under the same license as the PACKAGE package.
+# FIRST AUTHOR <EMAIL@ADDRESS>, YEAR.
+msgid ""
+msgstr ""
+"Project-Id-Version: Tails l10n\n"
+"Report-Msgid-Bugs-To: tails-l10n@boum.org\n"
+"POT-Creation-Date: 2021-05-25 18:59-0500\n"
+"PO-Revision-Date: 2018-11-02 16:41+0000\n"
+"Last-Translator: Weblate Admin <admin@example.com>\n"
+"Language-Team: Tails Chinese translators <jxt@twngo.xyz>\n"
+"Language: zh_TW\n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+"Plural-Forms: nplurals=1; plural=0;\n"
+"X-Generator: Weblate 2.19.1\n"
+
+#. type: Plain text
+#, fuzzy, no-wrap
+msgid "[[!meta title=\"Uncensored and anonymous Internet\"]]\n"
+msgstr "[[!meta title=\"Connect to the Internet anonymously\"]]\n"
+
+#. type: Plain text
+#, no-wrap
+msgid "[[!inline pages=\"doc/anonymous_internet.index\" raw=\"yes\" sort=\"age\"]]\n"
+msgstr "[[!inline pages=\"doc/anonymous_internet.index.zh_TW\" raw=\"yes\" sort=\"age\"]]\n"

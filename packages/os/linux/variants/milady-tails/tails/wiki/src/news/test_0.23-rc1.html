@@ -1,0 +1,434 @@
+[[!meta title="Call for testing: 0.23~rc1"]]
+
+[[!meta date="Mon, 07 Mar 2014 01:23:45 +0000"]]
+[[!pagetemplate template="news.tmpl"]]
+
+<p>You can help Tails! The first (and hopefully only) release candidate for the
+upcoming version 0.23 is out. Please test it and see if all works for you.</p>
+
+[[!toc levels=1]]
+
+<h1>How to test Tails 0.23~rc1?</h1>
+
+<ol>
+  <li>
+    <p>
+      <strong>Keep in mind that this is a test image.</strong> We have made sure
+      that it is not broken in an obvious way, but it might still contain
+      undiscovered issues.
+    </p>
+  </li>
+  <li>
+    <p>Download the ISO image and its signature:</p>
+    <p>
+      <a class="download-file"
+         href=""
+      >Tails 0.23~rc1 ISO image</a>
+    </p>
+    <p>
+      Tails 0.23~rc1 signature
+    </p>
+  </li>
+  <li>
+    <p>
+      Verify the ISO image.
+    </p>
+  </li>
+  <li>
+    <p>
+      Have a look at the list of <a href="#known_issues">known issues
+      of this release</a> and the list of [[longstanding known
+      issues|support/known_issues]].
+    </p>
+  </li>
+  <li>
+    <p>
+      Test wildly!
+    </p>
+  </li>
+</ol>
+
+<p>If you find anything that is not working as it should, please [[report to
+us|doc/first_steps/whisperback]]! Bonus points if you check that it is not a
+<a href="#known_issues">known issue of this release</a> or a
+[[longstanding known issue|support/known_issues]].</p>
+
+<h1>How to automatically upgrade from 0.22.1?</h1>
+
+<p>
+  These steps allow you to automatically upgrade a device installed
+  with <i>Tails Installer</i> from Tails
+  0.22.1 to Tails 0.23~rc1 using the <i>Tails Upgrader</i>:
+</p>
+
+<ul>
+  <li>
+    <p>
+      Start Tails 0.22.1 and [[set an administration
+      password|doc/first_steps/welcome_screen/administration_password]].
+    </p>
+  </li>
+  <li>
+    <p>
+      Run this command in a <i>Terminal</i>
+      to select the "alpha" upgrade channel and start the upgrade:
+      <pre><code>echo 'TAILS_CHANNEL="alpha"' | sudo tee --append /etc/os-release && \
+tails-upgrade-frontend-wrapper</code></pre>
+    </p>
+  </li>
+</ul>
+
+<h1>What's new since 0.22.1?</h1>
+
+<ul>
+
+<li>Major improvements</li>
+<ul>
+  <li>
+    <p>
+      Spoof the network interfaces' MAC address by default (Closes:
+      [[!tails_ticket 5421]]), as specified in our on [[design
+      document|contribute/design/MAC_address]] .
+    </p>
+  </li>
+  <li>
+    <p>
+      Rework the way to configure how Tor connects to the network
+      (bridges, proxies, restrictive firewalls): add an option to
+      Tails Greeter, start Tor Launcher when needed (Closes:
+      [[!tails_ticket 5920]], [[!tails_ticket 5343]]).
+    </p>
+  </li>
+</ul>
+
+<li><p>Bugfixes</p></li>
+<ul>
+  <li>
+    <p>
+      Additional software: do not crash when persistence is
+      disabled (Closes: [[!tails_ticket 6440]]).
+    </p>
+  </li>
+  <li>
+    <p>
+      Upgrade Pidgin to 2.10.9, that fixes some regressions introduced
+      in the 2.10.8 security update (Closes: [[!tails_ticket 6661]]).
+    </p>
+  </li>
+  <li>
+    <p>
+      Wait for Tor to have fully bootstrapped, plus a bit more time,
+      before checking for upgrades (Closes: [[!tails_ticket 6728]])
+      and unfixed known security issues.
+    </p>
+  </li>
+  <li>
+    <p>
+      Disable the Intel Management Engine Interface driver (Closes:
+      [[!tails_ticket 6460]]). We don't need it in Tails, it might be
+      dangerous, and it causes bugs on various hardware such as
+      systems that reboot when asked to shut down.
+    </p>
+  </li>
+  <li>
+    <p>
+      Add a launcher for the Tails documentation. This makes it
+      available in Windows Camouflage mode (Closes: [[!tails_ticket
+      5374]], [[!tails_ticket 6767]]).
+    </p>
+  </li>
+  <li>
+    <p>
+      Remove the obsolete wikileaks.de account from Pidgin (Closes:
+      [[!tails_ticket 6807]]).
+    </p>
+  </li>
+</ul>
+
+<li><p>Minor improvements</p></li>
+<ul>
+  <li>
+    <p>
+      Upgrade Tor to 0.2.4.21-1~d60.squeeze+1.
+    </p>
+  </li>
+  <li>
+    <p>
+      Upgrade obfsproxy to 0.2.6-2~~squeeze+1.
+    </p>
+  </li>
+  <li>
+    <p>
+      Upgrade I2P to 0.9.11-1deb6u1.
+    </p>
+  </li>
+  <li>
+    <p>
+      Install 64-bit kernel instead of the 686-pae one (Closes:
+      [[!tails_ticket 5456]]). This is a necessary first step towards
+      UEFI boot support.
+    </p>
+  </li>
+  <li>
+    <p>
+      Install Monkeysign (in a not-so-functional shape yet).
+    </p>
+  </li>
+  <li>
+    <p>
+      Disable the autologin text consoles (Closes: [[!tails_ticket
+      5588]]). This was one of the blockers before a screen saver can
+      be installed in a meaningful way ([[!tails_ticket 5684]]).
+    </p>
+  </li>
+  <li>
+    <p>
+      Don't localize the text consoles anymore: it is broken on
+      Wheezy, the intended users can as well use loadkeys, and we now
+      do not have to trust setupcon to be safe for being run as root
+      by the desktop user.
+    </p>
+  </li>
+  <li>
+    <p>
+      Make it possible to manually start IBus.
+    </p>
+  </li>
+  <li>
+    <p>
+      Reintroduce the possibility to switch identities in the Tor
+      Browser, using a filtering proxy in front of the Tor ControlPort
+      to avoid giving full control over Tor to the desktop user
+      (Closes: [[!tails_ticket 6383]]).
+    </p>
+  </li>
+  <li>
+    <p>
+      Incremental upgrades improvements:
+    </p>
+    <ul>
+      <li>
+        <p>
+          Drop the Tails Upgrader launcher, to limit users' confusion
+          (Closes: [[!tails_ticket 6513]]).
+        </p>
+      </li>
+      <li>
+        <p>
+          Lock down sudo credentials a bit.
+        </p>
+      </li>
+      <li>
+        <p>
+          Hide debugging information (Closes: [[!tails_ticket 6505]]).
+        </p>
+      </li>
+      <li>
+        <p>
+          Include ~/.xsession-errors in WhisperBack bug reports. This
+          captures the Tails Upgrader errors and debugging
+          information.
+        </p>
+      </li>
+      <li>
+        <p>
+          Report more precisely why an incremental upgrade cannot be done
+          (Closes: [[!tails_ticket 6575]]).
+        </p>
+      </li>
+      <li>
+        <p>
+          Various user interface and phrasing improvements.
+        </p>
+      </li>
+    </ul>
+  </li>
+  <li>
+    <p>
+      Don't install the Cookie Monster browser extension (Closes:
+      [[!tails_ticket 6790]]).
+    </p>
+  </li>
+  <li>
+    <p>
+      Add a browser bookmark pointing to Tor's Stack Exchange
+      (Closes: [[!tails_ticket 6632]]).
+    </p>
+  </li>
+  <li>
+    <p>
+      Remove the preconfigured #tor channel from Pidgin: apparently,
+      too many Tails users go ask Tails questions there, without
+      making it clear that they are running Tails, hence creating a
+      user-support nightmare (Closes: [[!tails_ticket 6679]]).
+    </p>
+  </li>
+  <li>
+    <p>
+      Use (most of) Tor Browser's mozconfig (Closes: [[!tails_ticket
+      6474]]).
+    </p>
+  </li>
+  <li>
+    <p>
+      Rebase the browser on top of iceweasel 24.3.0esr-1, to get the
+      certificate authorities added by Debian back (Closes:
+      [[!tails_ticket 6704]]).
+    </p>
+  </li>
+  <li>
+    <p>
+      Give access to the relevant documentation pages from Tails
+      Greeter.
+    </p>
+  </li>
+  <li>
+    <p>
+      Hide Tails Greeter's password mismatch warning when entry is
+      changed.
+    </p>
+  </li>
+  <li>
+    <p>
+      Persistent Volume Assistant:
+    </p>
+    <ul>
+      <li>
+        <p>
+          Take into account our installer is now called Tails
+          Installer.
+        </p>
+      </li>
+      <li>
+        <p>
+          Optimize window height (Closes: [[!tails_ticket 5458]]).
+        </p>
+      </li>
+      <li>
+        <p>
+          Display device paths in a more user-friendly way (Closes:
+          [[!tails_ticket 5311]]).
+        </p>
+      </li>
+    </ul>
+  </li>
+</ul>
+
+<li>Build system</li>
+<ul>
+  <li>
+    <p>
+      Ease updating POT and PO files at release time, and importing
+      translations from Transifex (Closes: [[!tails_ticket 6288]],
+      [[!tails_ticket 6207]]).
+    </p>
+  </li>
+  <li>
+    <p>
+      Drop custom poedit backport, install it from
+      squeeze-backports-sloppy.
+    </p>
+  </li>
+  <li>
+    <p>
+      Make ISO and IUK smaller (Closes: [[!tails_ticket 6390]],
+      [[!tails_ticket 6425]]):
+    </p>
+    <ul>
+      <li>
+        <p>
+          Exclude more files from being included in the ISO.
+        </p>
+      </li>
+      <li>
+        <p>
+          Remove *.pyc later so that they are not recreated.
+        </p>
+      </li>
+      <li>
+        <p>
+          Truncate log files later so that they are not filled again.
+        </p>
+      </li>
+      <li>
+        <p>
+          At ISO build time, set mtime to the epoch for large files
+          whose content generally does not change between
+          releases. This forces rsync to compare the actual content of
+          these files, when preparing an IUK, instead of blindly
+          adding it to the IUK merely because the mtime has changed,
+          while the content is the same.
+        </p>
+      </li>
+      <li>
+        <p>
+          Make local hooks logging consistent.
+        </p>
+      </li>
+    </ul>
+  </li>
+</ul>
+
+<li>Test suite</li>
+<ul>
+  <li>
+    <p>
+      Migrate from JRuby to native Ruby + rjb.
+    </p>
+  </li>
+  <li>
+    <p>
+      The test suite can now be run on Debian Wheezy +
+      backports.
+    </p>
+  </li>
+  <li>
+    <p>
+      Fix buggy "persistence is not enabled" step (Closes:
+      [[!tails_ticket 5465]]).
+    </p>
+  </li>
+  <li>
+    <p>
+      Use IPv6 private address as of RFC 4193 for the test suite's
+      virtual network. Otherwise dnsmasq from Wheezy complains, as it
+      is not capable of handling public IPv6 addresses.
+    </p>
+  </li>
+  <li>
+    <p>
+      Delete volumes after each scenario unless tagged
+      @keep_volumes.
+    </p>
+  </li>
+  <li>
+    <p>
+      Add an anti-test to make sure the memory erasure test works
+      fine.
+    </p>
+  </li>
+  <li>
+    <p>
+      A *lot* of bugfixes, simplifications and robustness
+      improvements.
+    </p>
+  </li>
+</ul>
+
+</ul>
+
+<h1><a id="known_issues"></a>Known issues in 0.23~rc1</h1>
+
+<ul>
+  <li>
+    <p>
+      Selecting a non-English locale [[!tails_ticket 6885
+      desc="breaks bridge mode"]].
+    </p>
+  </li>
+</ul>
+
+<p>
+  All these issues are being worked on and will hopefully be fixed in
+  Tails 0.23.
+</p>

@@ -1,0 +1,5 @@
+# Allow root to use the --close-from option. This is used by some of our
+# apps (e.g. tca, tails-installer) which open a file descriptor with
+# higher privileges and then drop privileges via sudo, passing the open
+# file descriptor with --close-from.
+Defaults:root closefrom_override

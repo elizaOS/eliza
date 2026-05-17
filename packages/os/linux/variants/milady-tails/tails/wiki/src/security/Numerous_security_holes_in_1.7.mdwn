@@ -1,0 +1,27 @@
+[[!meta date="Sun, 13 Dec 2015 01:02:03 +0000"]]
+[[!meta title="Numerous security holes in Tails 1.7"]]
+[[!pagetemplate template="news.tmpl"]]
+
+[[!tag security/fixed]]
+
+Several security holes that affect Tails 1.7 are now fixed in Tails 1.8.1.
+
+We **strongly** encourage you to [[upgrade to Tails 1.8.1|news/version_1.8.1]] as soon as possible.
+
+Details
+=======
+
+* Tor Browser: [[!mfsa 2015-134]], [[!mfsa 2015-138]],
+  [[!mfsa 2015-139]], [[!mfsa 2015-145]], [[!mfsa 2015-146]],
+  [[!mfsa 2015-147]], [[!mfsa 2015-149]]
+* libreoffice: [[!debsa2015 3394]]
+* krb5: [[!debsa2015 3395]]
+* linux: [[!debsa2015 3396]]
+* wpa: [[!debsa2015 3397]]
+* libpng: [[!debsa2015 3399]]
+* openjdk-7: [[!debsa2015 3401]]
+* nspr: [[!debsa2015 3406]]
+* dpkg: [[!debsa2015 3407]]
+* gnutls26: [[!debsa2015 3408]]
+* icedove: [[!debsa2015 3410]]
+* openssl: [[!debsa2015 3413]]

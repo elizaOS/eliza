@@ -1,0 +1,129 @@
+# SOME DESCRIPTIVE TITLE
+# Copyright (C) YEAR Free Software Foundation, Inc.
+# This file is distributed under the same license as the PACKAGE package.
+# FIRST AUTHOR <EMAIL@ADDRESS>, YEAR.
+#
+#, fuzzy
+msgid ""
+msgstr ""
+"Project-Id-Version: PACKAGE VERSION\n"
+"POT-Creation-Date: 2026-03-30 09:38+0000\n"
+"PO-Revision-Date: YEAR-MO-DA HO:MI+ZONE\n"
+"Last-Translator: FULL NAME <EMAIL@ADDRESS>\n"
+"Language-Team: LANGUAGE <LL@li.org>\n"
+"Language: sr_Latn\n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+
+#. type: Content of: outside any tag (error?)
+msgid "[[!meta robots=\"noindex\"]]"
+msgstr ""
+
+#. type: Content of: <ol><li><p>
+msgid "Make sure that you have installed Tails using either:"
+msgstr ""
+
+#. type: Content of: <ol><li><ul><li>
+msgid "[[<i>Rufus</i> from Windows|install/windows#rufus]]"
+msgstr ""
+
+#. type: Content of: <ol><li><ul><li>
+msgid "[[<i>balenaEtcher</i> from macOS|install/mac#etcher]]"
+msgstr ""
+
+#. type: Content of: <ol><li><ul><li>
+msgid "[[<i>GNOME Disks</i> from Linux|install/linux#install]]"
+msgstr ""
+
+#. type: Content of: <ol><li><ul><li>
+msgid "[[the Linux command line|install/expert#install]]"
+msgstr ""
+
+#. type: Content of: <ol><li><p>
+msgid ""
+"Select the <b>Start [[!img lib/start.png alt=\"\" class=\"symbolic\" "
+"link=\"no\"]]</b> button."
+msgstr ""
+
+#. type: Content of: <ol><li><p>
+msgid ""
+"Press and hold the <b>Shift</b> key while you select the <b>Power</b> [[!img "
+"lib/system-shutdown.png alt=\"\" class=\"symbolic\" link=\"no\"]] button and "
+"then <b>Restart</b>."
+msgstr ""
+
+#. type: Content of: <ol><li><p>
+msgid "Windows shuts down and restarts on the <b>Choose an option</b> screen."
+msgstr ""
+
+#. type: Content of: <ol><li><p>
+msgid ""
+"In the <strong>Choose an option</strong> screen, choose <strong>Use a "
+"device</strong>."
+msgstr ""
+
+#. type: Content of: <ol><li>
+msgid ""
+"[[!img install/inc/screenshots/choose_an_option.png class=\"screenshot\" "
+"alt=\"\"]]"
+msgstr ""
+
+#. type: Content of: <ol><li><div><p>
+msgid ""
+"If the <strong>Choose an option</strong> screen or the <strong>Use a device</"
+"strong> option don't appear, refer to the [[instructions on starting Tails "
+"using the Boot Menu key|doc/first_steps/start/pc#boot-menu-key]]."
+msgstr ""
+
+#. type: Content of: <ol><li><p>
+msgid "In the <b>Use a device</b> screen, select <b>USB HDD</b>."
+msgstr ""
+
+#. type: Content of: <ol><li><div><p>
+msgid "Windows shuts down and the computer restarts on your Tails USB stick."
+msgstr ""
+
+#. type: Content of: <ol><li><div><p>
+msgid ""
+"<span class=\"windows upgrade-windows\">In the future, we</span> <span "
+"class=\"standalone\">We</span> recommend that you only plug in your Tails "
+"USB stick while Windows is shutting down. Otherwise, a virus in Windows "
+"could infect your Tails USB stick and break its security."
+msgstr ""
+
+#. type: Content of: <ol><li><div><p>
+msgid ""
+"Such an attack is possible in theory but very unlikely in practice. We don't "
+"know of any virus capable of infecting Tails.  <span "
+"class=\"standalone\">See our [[warning on plugging Tails in untrusted "
+"systems|doc/about/warnings/computer#software]].</span>"
+msgstr ""
+
+#. type: Content of: <ol><li><p>
+msgid ""
+"If the computer starts on Tails, the Boot Loader appears and Tails starts "
+"automatically after 4 seconds."
+msgstr ""
+
+#. type: Content of: <ol><li><p>
+msgid ""
+"[[!img install/inc/screenshots/grub.png class=\"screenshot\" alt=\"Black "
+"screen ('GNU GRUB') with Tails logo and 3 options: 'Tails' and 'Tails "
+"(Troubleshooting Mode)' and 'Tails (External Hard Disk)'.\"]]"
+msgstr ""
+
+#. type: Content of: <ol><li><ul><li><p>
+msgid ""
+"The <b>Troubleshooting Mode</b> entry disables some features of the Linux "
+"kernel and might work better on some computers. You can try this option if "
+"you think you are experiencing hardware compatibility errors while starting "
+"Tails."
+msgstr ""
+
+#. type: Content of: <ol><li><ul><li><p>
+msgid ""
+"The <b>External Hard Disk</b> entry makes it possible to [[start from an "
+"external hard disk|doc/advanced_topics/external_hard_disk]] and some "
+"[[problematic USB sticks|support/known_issues#problematic-usb-stick]]."
+msgstr ""

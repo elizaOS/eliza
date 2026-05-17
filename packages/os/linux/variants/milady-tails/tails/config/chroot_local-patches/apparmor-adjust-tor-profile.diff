@@ -1,0 +1,14 @@
+--- a/etc/apparmor.d/system_tor	2016-06-01 21:34:23.000000000 +0000
++++ b/etc/apparmor.d/system_tor	2016-06-10 11:09:09.249017739 +0000
+@@ -4,6 +4,11 @@
+ profile system_tor flags=(attach_disconnected) {
+   #include <abstractions/tor>
+
++  /etc/tor/* w,
++
++  # Used by Tor to do clearnet DNS lookups while in bridge mode (#8775).
++  /etc/resolv-over-clearnet.conf r,
++
+   owner /var/lib/tor/** rwk,
+   owner /var/lib/tor/ r,
+   owner /var/log/tor/* w,

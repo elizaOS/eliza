@@ -1,0 +1,291 @@
+[[!meta title="Custom APT repository"]]
+
+We use a custom APT repository to store our custom packages.
+
+[[!toc levels=2]]
+
+Overview
+========
+
+We use one single APT repository hosting multiple *suites*:
+
+* We have a (read-only) suite for every past release: `0.9`,
+  `0.10.1`, etc.
+
+* We have a suite for each *main* branch: `stable`, `testing`,
+  `devel`, `feature-jessie`
+
+* We have an overlay suite for each *topic* branch: `bugfix/*`,
+  `feature/*`, etc.
+  **Note**: the APT suite corresponding to a given Git topic
+  branch contains *only* the packages this branch adds to the tag or
+  *main* branch it diverged from. Think of it as an overlay.
+
+* We also have a less formal `unstable` suite, that should not be used
+  by any Tails git branch; it can be used as hosting space for other
+  packaging work we might do, e.g. acting as upstream or
+  Debian maintainers.
+
+The suite(s) to use as sources for APT, during the build and inside
+the resulting system, are determined by the content of the
+`config/base_branch` and `config/APT_overlays.d/*` files. See details in
+the *Build system* section below.
+
+Basically, a cronjob fetches the Tails Git repository every
+few minutes, detects new branches, and accordingly create new suites
+in the custom APT repository.
+
+We manage our APT repository with [[!debpts reprepro]].
+See the corresponding
+[[documentation|https://gitlab.torproject.org/tpo/tpa/team/-/wikis/tails/services#custom-apt-repository]]
+for details.
+
+Build system
+============
+
+The Tails ISO build system dynamically adds APT sources that will be
+used during the build, and inside the resulting ISO itself.
+
+If the last version in `debian/changelog` was released already (i.e.
+a matching tag exists), then the build system adds the suite
+corresponding to this release (e.g. `1.5` or `3.0`), and that's all.
+
+Else, it adds:
+
+* one APT source for the base branch of the one being built, as found
+  in `config/base_branch`;
+
+* one APT source for each suite listed in
+  `config/APT_overlays.d/*`; note that only the name of such
+  files matters, and their content is ignored.
+
+In practice, `config/APT_overlays.d/` should contain:
+
+* for a topic branch:
+
+  - if needed, a file that is named like the branch's own overlay APT
+    suite; e.g. for the `bugfix/12345-whatever` branch, it would be
+    called `config/APT_overlays.d/bugfix-12345-whatever`
+
+  - any file representing APT suites that came from merging its base
+    branch into this topic branch, that is:
+
+* for a base branch (`stable`, `testing`, `devel` or
+  `feature/jessie`): a file for each additional, overlay APT suite that
+  came from topic branches that ship Debian packages and were merged
+  into this base branch since last time it was used to prepare
+  a release.
+
+The code that implements this is [[!tails_gitweb
+auto/scripts/tails-custom-apt-sources]]. It has [[!tails_gitweb
+features/build.feature desc="automated tests"]].
+
+At release time, the release manager:
+
+1. merges into the release branch's APT suite all APT overlay
+   suites found in `config/APT_overlays.d/`;
+
+2. empties `config/APT_overlays.d/` in the release branch;
+
+3. merges the release branch into other base branches as needed, and
+   ensures that all resulting `config/APT_overlays.d/`:s make sense.
+
+<a id="ssh-access"></a>
+
+SSH access
+==========
+
+Configure your SSH client to connect to the APT server:
+
+	Host incoming.deb.tails.boum.org
+		Port 3003
+
+HTTP access
+===========
+
+The custom APT repository can be browsed at <https://deb.tails.boum.org/>.
+
+Workflow
+========
+
+<a id="workflow-import-package"></a>
+
+Importing a new package
+-----------------------
+
+### Creating a new branch
+
+Push your branch to Git.
+
+Then, drop a new file in
+`config/APT_overlays.d/`, named after the APT suite corresponding to
+your new branch:
+
+    ./bin/add-APT-overlay
+
+Incidentally, this gives you the name of the APT suite you'll have
+to upload to later on.
+
+For details, see the *Build system* section above.
+
+Wait a few minutes for the new APT suite to appear on <https://deb.tails.boum.org/dists/>:
+
+    ./bin/add-APT-overlay --wait
+
+### Building a package
+
+If you want to import a package from Debian instead of building one, instead see
+[[how to grant a freeze
+exception|contribute/APT_repository/time-based_snapshots#freeze-exception]].
+
+Make sure the `Distribution:` field in your `.changes` file matches
+the suite you want the package to land in (e.g.
+pass `--changes-option=-DDistribution=feature-torbrowser` to
+pdebuild's `--debbuildopts`).
+
+Make sure to have the `.changes` file include the original source
+archive (`.orig.tar.{gz,bz2,xz}`) if it is not already in our APT
+repository; this can be done by passing `-sa` to pdebuild's
+`--debbuildopts`.
+
+### Configuring an upload tool
+
+#### Configuring dupload
+
+Add this configuration snippet to your `dupload` configuration:
+
+	$config::cfg{'tails'} = {
+	        fqdn => "incoming.deb.tails.boum.org",
+	        method => "scp",
+	        login => "reprepro",
+	        incoming => "/srv/reprepro/incoming/",
+	        dinstall_runs => 1,
+	};
+
+#### Configuring dput
+
+Add this to `.dput.cf`:
+
+    [tails]
+    fqdn            = incoming.deb.tails.boum.org
+    method          = scp
+    login           = reprepro
+    incoming        = /srv/reprepro/incoming/
+    run_dinstall    = 0
+
+If you don't have upload rights to Debian / don't use dput to upload to anything
+else but Tails, you might want to also add this section to `.dput.cf` to
+use the `[tails]` section by default:
+
+    [DEFAULT]
+    default_host_main = tails
+
+
+### Uploading and importing process
+
+Carefully prepare and build your package. Usual precautions, (Lintian
+etc.) apply.
+
+Carefully check the `.changes` file (especially the `Distribution`
+control field, and the included files list; the former can be fixed
+with the `changestool(1)` command, from [[!debpkg reprepro]]).
+
+If the `.orig.tar.{gz,bz2,xz}` tarball is present neither in the
+`.changes` file nor in our custom APT repository, add it using:
+
+	$ changestool $CHANGES_FILE includeallsources
+
+Make sure that the `.changes` file lists the _binary_ packages too:
+Tails has no package auto-builder that would build them from source
+for you.
+
+Sign the `.changes` file with a key that is in the uploaders list:
+
+	$ debsign $CHANGES_FILE
+
+Upload the files to the incoming queue:
+
+	$ dupload --to tails $CHANGES_FILE
+
+or, using dput:
+
+	$ dput tails $CHANGES_FILE
+
+reprepro will automatically notice the new files and import them into
+the suite specified in your `.changes` file.
+
+Check the result:
+
+	$ ssh reprepro@incoming.deb.tails.boum.org reprepro list $SUITE $PACKAGENAME
+
+<a id="workflow-merge-main-branch"></a>
+
+Merging a main branch
+----------------------
+
+When a Git *main* branch (`devel`, `testing`, `stable`)
+is merged into another *main* branch, the corresponding
+operation must be done on the APT suites.
+
+[[!tails_gitweb bin/merge-main-branch]] does both: merging in Git and in our
+custom APT repository. It also leads you through some manual checks you
+must perform.
+
+1. Set some environment variables:
+
+            WORKDIR=$(mktemp -d)
+            # the branch you want to merge
+            SRC=stable
+            # the branch you want to merge _into_
+            DST=devel
+
+2. Merge the Git branch and APT suite:
+
+        ./bin/merge-main-branch "${SRC:?}" "${DST:?}"
+
+<a id="workflow-reset"></a>
+
+Resetting a suite to the state of another one
+---------------------------------------------
+
+1. Set some environment variables:
+
+   - `SUITE_TO_RESET`: the suite to reset
+   - `DESIRED_NEW_STATE`: the final state `$SUITE_TO_RESET` should be in
+
+2. Reset the suite:
+
+        ./bin/reset-custom-APT-suite "${SUITE_TO_RESET:?}" "${DESIRED_NEW_STATE:?}"
+
+<a id="workflow-merge-overlays"></a>
+
+Merging APT overlays
+--------------------
+
+This operation merges all APT overlays listed in the given branch's
+`config/APT_overlays.d/` into its own APT suite, empties
+`config/APT_overlays.d/` accordingly, then commits and pushes to Git.
+
+    ./bin/merge-APT-overlays "${BRANCH:?}"
+
+Giving access to a core developer
+---------------------------------
+
+1. Give SSH access to the `reprepro` user on the system that hosts
+   reprepro (using the `ssh_authorized_key` Puppet resource, until
+   [[!tails_ticket 12346]] is resolved).
+
+2. Import the developer's public GnuPG key into the `reprepro` user's
+   GnuPG keyring -- should be doable using Puppet, some day
+
+3. Add the developer's OpenPGP key ID to `$reprepro_uploaders` in our
+   `tails::reprepro` Puppet module. Deploy.
+
+Contributing without privileged access
+--------------------------------------
+
+Non-core developers without access to the "private" APT infrastructure
+would add the .deb they want to their Git branch as we have been
+doing until now, push the result to their own Git repository... and at
+merge time, we would rewrite their history to remove the .deb, and
+import it into our APT repo.

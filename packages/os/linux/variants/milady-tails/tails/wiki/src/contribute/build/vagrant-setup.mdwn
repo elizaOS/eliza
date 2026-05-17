@@ -1,0 +1,100 @@
+[[!meta title="Vagrant"]]
+
+Tails can be [[built|contribute/build]] in a virtual machine that is
+managed using [Vagrant] and [vagrant-libvirt]. Here lies more details
+on how Tails uses Vagrant, its configuration, and how to create and
+upload the template virtual machine.
+
+[Vagrant]: http://vagrantup.com/
+[vagrant-libvirt]: https://github.com/vagrant-libvirt/vagrant-libvirt/
+
+[[!toc levels=2]]
+
+Configuration
+=============
+
+Vagrant support files are located in the `vagrant` directory at the root of the
+[[amnesia.git|contribute/git]] repository.
+
+This directory contains:
+
+ * `Vagrantfile`: [configuration file for Vagrant](http://vagrantup.com/docs/vagrantfile/),
+
+ * `provision/setup-tails-builder`: idempotent provisioning script that is
+   run inside the virtual machine upon boot,
+
+ * `provision/assets/build-tails`: build script to be run inside the
+   virtual machine,
+
+ * to build the base box:
+
+   - `definitions/tails-builder/generate-tails-builder-box.sh`: Script
+     that generates the base box.
+
+   - `definitions/tails-builder/postinstall.sh`: Script that is run
+     inside the base box before finalizing it, e.g. for installing the
+     packages we need.
+
+   - `vagrant/lib/tails_build_settings.rb` defines the basebox properties
+     (memory, Debian version, architecture, ...) and the basebox name.
+
+We choose to use the [Shell
+provisioner](https://developer.hashicorp.com/vagrant/docs/provisioning/shell), as long as we
+make this script reentrant it will lower the learning curve for contributors
+not familiar with Puppet or Chef.
+
+The Tails [[!tails_gitweb vagrant/Vagrantfile desc="Vagrantfile"]] is
+configured to share the local clone of the Tails repository inside the running
+basebox through a 9pfs mount.
+
+Automated basebox creation
+==========================
+
+While implementing [[!tails_blueprint reproducible_builds desc="reproducible builds"]] of
+Tails, we choose to automate the basebox creation. Rather than downloading a
+big binary, everyone building Tails for the first time will start by generating
+the appropriate basebox if it's not already available locally.
+
+To ensure that the baseboxes are identical enough, we defined a mechanism for
+its generation:
+
+To freeze the build environment, we use APT snapshots in the same way we do in
+the Tails build system, by storing the serials for the various APT repositories
+in [[!tails_gitweb_dir
+vagrant/definitions/tails-builder/config/APT_snapshots.d/]].
+
+Only the debian-security APT source uses Debian's APT repository, so that we
+get security fixes. This will probably not influence the reproducibility of the
+ISO. This is done in the [[!tails_gitweb vagrant/provision/setup-tails-builder
+desc="Vagrant provisioning script"]].
+
+To ensure that changes in the Vagrant build system are still taken into account
+when using a basebox, we dynamically set the name of the basebox by including
+the short ID of the last commit in the `vagrant` directory in the related
+branch, as well as its date, in the name of the basebox. That's done with
+[[!tails_gitweb_dir vagrant/lib/tails_build_settings.rb]] as explained above.
+
+We update the basebox APT snapshots serials when we prepare a new Tails
+major release.
+
+A new VM is created from the basebox for each build. After the build, the VM is
+destroyed ([[!tails_ticket 11980]] and [[!tails_ticket 11981]]).
+
+The `keeprunning` build option can be used so that the VM is kept running and
+reused for subsequent builds of the same branch.
+
+The VM encodes (in `/var/lib/vagrant_box_build_from`) the branch for which it
+has been started for. The ISO build aborts if the branch being built is not the
+same as the one that is encoded in this file. This prevents the reuse of a
+running VM to build another branch than the one it has been started for
+initially.
+
+To ensure that the `apt-cacher-ng` cache is not lost when the VM is destroyed,
+it is stored in a dedicated virtual disk, and plugged into every new build VM.
+
+Jenkins
+=======
+
+All these features and the [[basic ones|contribute/build]] are used by our
+Jenkins ISO builders. See [[here for
+specifics|https://gitlab.torproject.org/tpo/tpa/team/-/wikis/tails/services/jenkins/automated-builds-in-jenkins]].

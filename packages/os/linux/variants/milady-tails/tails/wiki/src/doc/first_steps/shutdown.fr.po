@@ -1,0 +1,198 @@
+# SOME DESCRIPTIVE TITLE
+# Copyright (C) YEAR Free Software Foundation, Inc.
+# This file is distributed under the same license as the PACKAGE package.
+# FIRST AUTHOR <EMAIL@ADDRESS>, YEAR.
+#
+msgid ""
+msgstr ""
+"Project-Id-Version: Tails\n"
+"Report-Msgid-Bugs-To: tails-l10n@boum.org\n"
+"POT-Creation-Date: 2025-09-17 11:40+0200\n"
+"PO-Revision-Date: 2025-09-18 15:38+0000\n"
+"Last-Translator: xin <xin@riseup.net>\n"
+"Language-Team: Tails translators <tails@boum.org>\n"
+"Language: fr\n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+"Plural-Forms: nplurals=2; plural=n > 1;\n"
+"X-Generator: Weblate 5.13.2\n"
+
+#. type: Plain text
+#, no-wrap
+msgid "[[!meta title=\"Shutting down Tails\"]]\n"
+msgstr "[[!meta title=\"Éteindre Tails\"]]\n"
+
+#. type: Plain text
+msgid "There are 2 ways of shutting down Tails."
+msgstr "Il y a deux moyens d'éteindre Tails."
+
+#. type: Plain text
+#, no-wrap
+msgid "[[!toc levels=1]]\n"
+msgstr "[[!toc levels=1]]\n"
+
+#. type: Plain text
+#, no-wrap
+msgid ""
+"With both techniques, all the data stored in [[!wikipedia Random-access_memory\n"
+"desc=\"RAM\"]] is securely erased to protect you from [[cold boot\n"
+"attacks|doc/advanced_topics/cold_boot_attacks]].\n"
+msgstr ""
+"Avec ces deux techniques, les données stockées dans la [[!wikipedia_fr\n"
+"mémoire vive]] sont effacées de manière sécurisée afin d'éviter les [[attaques par\n"
+"démarrage à froid|doc/advanced_topics/cold_boot_attacks]].\n"
+
+#. type: Title =
+#, no-wrap
+msgid "Shutdown from the system menu"
+msgstr "Extinction depuis le menu système"
+
+#. type: Plain text
+msgid "Click on the system menu in the upper right corner of the screen."
+msgstr "Cliquez sur le menu système dans le coin en haut à droite de l'écran."
+
+#. type: Bullet: '* '
+msgid ""
+"Choose [[!img lib/system-shutdown.png link=\"no\" class=\"symbolic\" "
+"alt=\"Power Off\"]] to shutdown the computer."
+msgstr ""
+"Choisissez [[!img lib/system-shutdown.png link=\"no\" class=\"symbolic\" "
+"alt=\"Éteindre\"]] pour éteindre l'ordinateur."
+
+#. type: Bullet: '* '
+msgid ""
+"Choose [[!img lib/view-refresh.png link=\"no\" class=\"symbolic\" "
+"alt=\"Restart\"]] to restart the computer on Tails or on your regular "
+"operating system."
+msgstr ""
+"Choisissez [[!img lib/view-refresh.png link=\"no\" class=\"symbolic\" "
+"alt=\"Redémarrer\"]] pour redémarrer l'ordinateur avec Tails ou avec votre "
+"système d'exploitation habituel."
+
+#. type: Plain text
+#, no-wrap
+msgid "[[!img desktop/system-with-wifi-only.png class=\"screenshot\" alt=\"\"]]\n"
+msgstr ""
+"[[!img desktop/system-with-wifi-only.png class=\"screenshot\" alt=\"\"]]\n"
+
+#. type: Title =
+#, no-wrap
+msgid "Emergency shutdown"
+msgstr "Extinction d'urgence"
+
+#. type: Plain text
+msgid ""
+"To trigger an emergency shutdown, unplug the USB stick or eject the DVD from "
+"which Tails is running. Doing so might be faster than shutting down from the "
+"system menu."
+msgstr ""
+"Pour déclencher une extinction d'urgence, débranchez la clé USB ou éjectez "
+"le DVD sur lequel Tails fonctionne. Cette façon de faire est plus rapide "
+"qu'une extinction depuis le menu système."
+
+#. type: Plain text
+#, no-wrap
+msgid "<div class=\"caution\">\n"
+msgstr "<div class=\"caution\">\n"
+
+#. type: Plain text
+#, no-wrap
+msgid ""
+"<p>You risk breaking your Persistent Storage and losing data when you unplug\n"
+"your USB stick while Tails is running.</p>\n"
+msgstr ""
+"<p>Vous risquez de corrompre le stockage persistant et de perdre des données lorsque vous débranchez\n"
+"votre clé USB pendant que Tails est en fonctionnement.</p>\n"
+
+#. type: Plain text
+#, no-wrap
+msgid ""
+"<p>If you use a Persistent Storage, only unplug your Tails USB stick in an\n"
+"emergency.</p>\n"
+msgstr ""
+"<p>Si vous utilisez le stockage persistant, débranchez votre clé USB Tails uniquement en cas\n"
+"d'urgence.</p>\n"
+
+#. type: Plain text
+#, no-wrap
+msgid "</div>\n"
+msgstr "</div>\n"
+
+#~ msgid ""
+#~ "- By physically removing the USB stick or DVD that Tails is running from."
+#~ msgstr ""
+#~ "- En enlevant physiquement la clé USB ou le DVD depuis lequel vous "
+#~ "utilisez Tails."
+
+#, no-wrap
+#~ msgid ""
+#~ "  <p>Only physically remove the USB stick in case of emergency as doing\n"
+#~ "  so can sometimes break the file system of the Persistent Storage.</p>\n"
+#~ msgstr ""
+#~ "  <p>Ne retirez physiquement la clé USB qu'en cas d'urgence, car cela peut \n"
+#~ "  parfois endommager le système de fichiers du stockage persistant.</p>\n"
+
+#, no-wrap
+#~ msgid ""
+#~ "  <p>If you cannot unlock the Persistent Storage anymore after\n"
+#~ "  physically removing the USB stick, try to do a [[file system check on\n"
+#~ "  the Persistent Storage|persistent_storage/check]]\n"
+#~ "  to fix it.</p>\n"
+#~ msgstr ""
+#~ "  <p>Si vous ne pouvez pas déverrouiller le stockage persistant après \n"
+#~ "  avoir retiré physiquement la clé USB, essayez d'effectuer une [[vérification \n"
+#~ "  du système de fichiers sur le stockage persistant|persistent_storage/check]]\n"
+#~ "  pour résoudre le problème.</p>\n"
+
+#~ msgid ""
+#~ "<p>This method might in rare occasions break the file system of your "
+#~ "persistent\n"
+#~ "volume. <strong>Use this method only in case of emergency.</strong></p>\n"
+#~ msgstr ""
+#~ "<p>Cette méthode peut dans certains cas endommager le système de fichiers "
+#~ "de\n"
+#~ "votre volume persistant. <strong>Utilisez uniquement cette méthode en cas "
+#~ "d'urgence.</strong></p>\n"
+
+#~ msgid "<div class=\"bug\">\n"
+#~ msgstr "<div class=\"bug\">\n"
+
+#~ msgid ""
+#~ "This method does not work [[with DVD|support/known_issues#index11h2]], "
+#~ "see [[!tails_ticket 5447]]."
+#~ msgstr ""
+#~ "Cette méthode ne fonctionne pas [[avec les DVD|support/"
+#~ "known_issues#index11h2]], voir le [[!tails_ticket 5447]]."
+
+#~ msgid "- By pressing the power button of the computer."
+#~ msgstr "- En appuyant sur le bouton d'allumage de l'ordinateur."
+
+#~ msgid ""
+#~ "This method does not work [[after using the <span "
+#~ "class=\"application\">Tails\n"
+#~ "Installer</span>|support/known_issues#index10h2]], see\n"
+#~ "[[!tails_ticket 5677]].\n"
+#~ msgstr ""
+#~ "Cette méthode ne fonctionne pas [[après avoir utilisé l'<span "
+#~ "class=\"application\">Installeur\n"
+#~ " Tails</span>|support/known_issues#index10h2]], voir le\n"
+#~ "[[!tails_ticket 5677]].\n"
+
+#~ msgid ""
+#~ "<p>Using the [[**read-only** option|persistence/use]]\n"
+#~ "of the persistent volume prevents this problem.</p>\n"
+#~ msgstr ""
+#~ "<p>Utiliser l'[[option **lecture-seule**|persistence/use]]\n"
+#~ "du volume persistant protège contre ce problème.</p>\n"
+
+#~ msgid ""
+#~ "By clicking on the [[system shutdown icon|desktop#shutdown]] located in "
+#~ "the upper right corner of the notification area and choosing <span "
+#~ "class=\"guimenuitem\">Shutdown Immediately</span> or <span "
+#~ "class=\"guimenuitem\">Reboot Immediately</span>."
+#~ msgstr ""
+#~ "En cliquant sur le [[bouton d'extinction|desktop#shutdown]], situé dans "
+#~ "le coin en haut à droite de la zone de notification, puis en choisissant "
+#~ "**Éteindre immédiatement** ou <span class=\"guimenuitem\">Redémarrer "
+#~ "immédiatement</span>."

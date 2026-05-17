@@ -1,0 +1,32 @@
+[[!meta title="Berliners, come test new features with us (again) and get a T-shirt!"]]
+[[!meta date="Wed, 10 Jan 2018 12:34:56 +0000"]]
+[[!pagetemplate template="news.tmpl"]]
+[[!tag announce]]
+
+We are working on making it much easier to **permanently install
+additional software in Tails**.
+
+We want to test our design with users to make sure that it is really
+easy to use.
+
+Don't be shy! It will be a great opportunity to contribute to world-class
+privacy software like Tails, even if you don't feel really tech-savvy.
+
+The tests will take place in Berlin (Wedding) in January on:
+
+- Saturday 27
+- Sunday 28
+- Monday 29
+
+Plan to stay with us for 1 hour.
+
+We will give you a Tails T-shirt as a token of our thanks.
+
+[[!img 33c3/t-shirt.jpg link="no"]]
+
+Please, take this survey so we can organize our schedule:
+
+<strike>https://survey.tails.boum.org/</strike> (We have enough people already!)
+
+And if you can't come, maybe you can share this with 2-3 other people in
+Berlin?

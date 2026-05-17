@@ -1,0 +1,89 @@
+[[!meta title="Tails 4.18 is out"]]
+[[!meta date="Tue, 20 Apr 2021 12:34:56 +0000"]]
+[[!pagetemplate template="news.tmpl"]]
+[[!tag announce]]
+
+This release fixes known security vulnerabilities.
+You should upgrade as soon as possible.
+
+<h1 id="changes">Changes and updates</h1>
+
+- Remove "Synchronizing the system's clock" notification when connecting to Tor network
+
+  We removed this notification because it didn't recommend a specific action for
+  users to take and it was unclear. It might have given users the impression
+  that they should alter their UTC clock settings. ([[!tails_ticket 7439]])
+
+  [[!img version_4.18/time-sync.png link="no"]]
+
+- Remove Poedit
+
+  We now use Weblate to provide translated text for Tails and the Tails website,
+  so Poedit isn't as necessary. To install Poedit in Tails, see our guide on
+  Additional Software. ([[!tails_ticket 18236]])
+
+- Update *Tor Browser* to [10.0.16](https://blog.torproject.org/new-release-tor-browser-10016).
+
+- Update *Thunderbird* to [78.9.0-1](https://www.thunderbird.net/en-US/thunderbird/78.9.1/releasenotes/).
+
+- Update some Intel and Linux firmware packages. This should improve support for newer
+hardware (graphics, Wi-Fi, and so on).
+
+<h1 id="upgrades">Fixed problems</h1>
+
+- Use more reliable Debian repositories
+
+  Tails now connects to the APT repositories of Debian using their HTTPS address instead of their .onion address, for increased reliability with
+  the Additional Software feature.
+  We left other Tails and Tor Project APT onion sources as is. ([[!tails_ticket 17993]])
+
+- Display an error message when the Upgrader fails to download the signing key.
+  This has been a silent error since 4.14. ([[!tails_ticket 18238]])
+
+For more details, read our [[!tails_gitweb debian/changelog desc="changelog"]].
+
+<h1 id="issues">Known issues</h1>
+
+[[!inline pages="news/version_4.14/broken_upgrades" raw="yes" sort="age"]]
+
+See the list of [[long-standing issues|support/known_issues]].
+
+<h1 id="get">Get Tails 4.18</h1>
+
+## To upgrade your Tails USB stick and keep your Persistent Storage
+
+- Automatic upgrades are broken from Tails 4.14 and earlier. See the
+  <a href="#broken-upgrades">known issue above</a>.
+
+- Automatic upgrades are available from Tails 4.14 or later to 4.18.
+
+- If you cannot do an automatic upgrade or if Tails fails to start after an
+  automatic upgrade, please try to do a [[manual upgrade|doc/upgrade/#manual]].
+
+## To install Tails on a new USB stick
+
+Follow our installation instructions:
+
+  - [[Install from Windows|install/windows]]
+  - [[Install from macOS|install/mac]]
+  - [[Install from Linux|install/linux]]
+
+<div class="caution"><p>The Persistent Storage on the USB stick will be lost if
+you install instead of upgrading.</p></div>
+
+## To download only
+
+If you don't need installation or upgrade instructions, you can download
+Tails 4.18 directly:
+
+  - [[For USB sticks (USB image)|install/download]]
+  - [[For DVDs and virtual machines (ISO image)|install/download-iso]]
+
+<h1 id="next">What's coming up?</h1>
+
+Tails 4.19 is [[scheduled|contribute/calendar]] for June 1.
+
+
+We need your help and there are many ways to [[contribute to
+Tails|contribute]] (<a href="https://tails.net/donate/?r=4.17">donating</a> is only one of
+them). Come [[talk to us|doc/about/contact#tails-dev]]!

@@ -1,0 +1,27 @@
+[[!meta title="Exchanging Monero using Feather"]]
+
+[*Feather*](https://featherwallet.org/) is a Monero wallet
+with a graphical interface similar to that of
+[[*Electrum*|doc/anonymous_internet/electrum]].
+
+To learn how to use *Feather* in Tails, see
+the [Feather Wallet Documentation](https://docs.featherwallet.org/).
+
+<div class="caution">
+
+<p>If you follow the guide linked to above, you will install <i>Feather</i> as an AppImage
+instead of using the
+[[Additional Software|persistent_storage/additional_software]] feature. This is
+because <i>Feather</i> is not included in Debian.</p>
+
+<p>Because <i>Feather</i> is not included in Debian, it does not receive the
+same [[high level of scrutiny|doc/about/trust/#trust_debian]] as software in Debian.
+This makes it much more likely for a security issue in <i>Feather</i> to go
+undiscovered.</p>
+
+<p>Also, because <i>Feather</i> is not being installed using the Additional
+Software feature, it will not be automatically updated.</p>
+
+</div>
+
+Please report your findings about using *Feather* in Tails on [[!tails_ticket 17823]].

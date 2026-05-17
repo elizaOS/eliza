@@ -1,0 +1,129 @@
+[[!meta date="Thu, 04 Jul 2013 17:26:39 +0000"]]
+[[!pagetemplate template="news.tmpl"]]
+[[!meta title="Tails report for June, 2013"]]
+
+[[!toc levels=1]]
+
+Releases
+========
+
+Tails 0.19 [[was released|news/version_0.19]] on June 26.
+
+Metrics
+=======
+
+- 140 517 connections of Tails to the Tor network. This makes a boot
+  every 18.5 seconds on average (this is an approximation from the
+  requests made to the security announcements feed when Tails is
+  connected to Tor).
+
+- 66 non-empty bug reports were received through WhisperBack.
+
+- 110 comments were posted on the forum, with 32 signed by Tails,
+  before we closed it.
+
+Code
+====
+
+- Tails was upgraded
+  to Linux 3.9.
+
+- The feature/set-wireless-devices-state
+  branch was merged, eventually.
+
+- We tried to get in touch with the WiNoN developers. No reply so far.
+
+- Many branches were merged just in time for the 0.19 freeze.
+
+- Two
+  serious
+  bugs were
+  discovered while testing 0.19~rc1, and fixed for 0.19 final.
+  This reinforces our conviction that we should run our test suite
+  automatically as soon as possible.
+
+- Some solutions to get rid of the JRuby
+  mess were
+  experimented with.
+
+- Access restriction to ptrace was
+  updated for the upcoming
+  Debian kernel.
+
+- The Iceweasel warning when leaving HTTPS
+  was disabled. Thanks to
+  winterfairy for the initial patch.
+
+- The wrong search
+  engine bug
+  was fixed.
+
+- Git over HTTPS was
+  fixed.
+
+- All Pidgin protocols but IRC and Jabber/XMPP
+  were disabled.
+
+- The WhisperBack help
+  was partly updated.
+
+- Information about Alsa
+  was added to
+  WhisperBack reports.
+
+- The "remember additional packages" feature was
+  adapted to work with newer live-boot.
+
+Documentation and Website
+=========================
+
+- We closed the forum.
+
+- We decided not to follow Tor to StackExchange yet. We need more time
+  to decide what we will do, now that our previously preferred option
+  was discarded.
+
+- The release process was automated a bit. So was our custom Iceweasel
+  package release process.
+
+Localization and Internationalization
+=====================================
+
+- Our POT files were
+  merged first, and then we
+  intltoolize'd our translation system.
+  This should help pushing these strings to Transifex.
+
+On-going discussions
+====================
+
+- Flashproxy
+
+- Accessibility for blind and visually impaired users
+
+- Making the boot medium read-only
+
+- Wrong MIME type returned for ISO signatures
+
+- Download over HTTP by default?
+
+- Network fingerprint
+
+Infrastructure
+==============
+
+- Our Git repositories are now all hosted in a central
+  place
+  ([[documentation|contribute/git]]). Thanks a lot to immerda.ch for
+  their continued support!
+
+- We worked on improving backups for our infrastructure.
+
+Funding
+=======
+
+- We kept working on funding with sponsor Foxtrot.
+
+- We are working on short-term funding with sponsor Bravo.
+
+- The way we will contract bounty hunters was rebooted. Stay tuned.

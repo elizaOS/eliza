@@ -1,0 +1,18 @@
+SUBSYSTEM!="block", GOTO="bilibop_end"
+ACTION!="add|change", GOTO="bilibop_end"
+KERNEL!="sd?*|mmcblk?*|mspblk?*", GOTO="bilibop_end"
+
+SUBSYSTEMS=="usb|firewire|memstick|mmc", \
+	PROGRAM=="/usr/libexec/bilibop/test $tempnode", \
+	ENV{UDISKS_SYSTEM}="1", \
+	GROUP="disk", \
+	GOTO="bilibop_disk"
+
+GOTO="bilibop_end"
+LABEL="bilibop_disk"
+
+KERNEL=="sd?|mmcblk?|mspblk?", \
+	ENV{ID_DRIVE_DETACHABLE}="0", \
+	SYMLINK+="TailsBootDev"
+
+LABEL="bilibop_end"

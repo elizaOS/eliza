@@ -1,0 +1,79 @@
+# SOME DESCRIPTIVE TITLE
+# Copyright (C) YEAR Free Software Foundation, Inc.
+# This file is distributed under the same license as the PACKAGE package.
+# FIRST AUTHOR <EMAIL@ADDRESS>, YEAR.
+#
+msgid ""
+msgstr ""
+"Project-Id-Version: PACKAGE VERSION\n"
+"Report-Msgid-Bugs-To: tails-l10n@boum.org\n"
+"POT-Creation-Date: 2025-06-26 18:01+0000\n"
+"PO-Revision-Date: 2024-09-13 08:11+0000\n"
+"Last-Translator: xin <xin@riseup.net>\n"
+"Language-Team: LANGUAGE <LL@li.org>\n"
+"Language: pt\n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+"Plural-Forms: nplurals=2; plural=n > 1;\n"
+"X-Generator: Weblate 5.3\n"
+
+#. type: Bullet: '- '
+#, fuzzy
+#| msgid ""
+#| "[[!traillink Removing_metadata_using_<i>mat2</i>|sensitive_documents/"
+#| "metadata]]"
+msgid "[[Removing metadata from files|sensitive_documents/metadata]]"
+msgstr ""
+"[[!traillink Removendo_metadados_com_<i>mat2</i>|sensitive_documents/"
+"metadata]]"
+
+#. type: Bullet: '- '
+#, fuzzy
+#| msgid "[[!traillink Office_suite|sensitive_documents/office_suite]]"
+msgid "[[Office suite|sensitive_documents/office_suite]]"
+msgstr ""
+"[[!traillink Programas_para_escritório|sensitive_documents/office_suite]]"
+
+#. type: Bullet: '- '
+#, fuzzy
+#| msgid "- [[Graphics|sensitive_documents/graphics]]"
+msgid "[[Graphics|sensitive_documents/graphics]]"
+msgstr "- [[Gráficos|sensitive_documents/graphics]]"
+
+#. type: Bullet: '- '
+#, fuzzy
+#| msgid "[[!traillink Sound_and_video|sensitive_documents/sound_and_video]]"
+msgid "[[Sound and video|sensitive_documents/sound_and_video]]"
+msgstr "[[!traillink Áudio_e_vídeo|sensitive_documents/sound_and_video]]"
+
+#. type: Bullet: '- '
+#, fuzzy
+#| msgid "- [[Graphics|sensitive_documents/graphics]]"
+msgid "[[Editing PDFs|sensitive_documents/pdf]]"
+msgstr "- [[Gráficos|sensitive_documents/graphics]]"
+
+#. type: Bullet: '- '
+#, fuzzy
+#| msgid ""
+#| "[[!traillink Printing_and_scanning|sensitive_documents/"
+#| "printing_and_scanning]]"
+msgid "[[Printing and scanning|sensitive_documents/printing_and_scanning]]"
+msgstr ""
+"[[!traillink Imprimindo_e_escaneando|sensitive_documents/"
+"printing_and_scanning]]"
+
+#. type: Bullet: '- '
+#, fuzzy
+#| msgid ""
+#| "[[!traillink Printing_and_scanning|sensitive_documents/"
+#| "printing_and_scanning]]"
+msgid ""
+"[[Screenshot and screencast|sensitive_documents/screenshot_and_screencast]]"
+msgstr ""
+"[[!traillink Imprimindo_e_escaneando|sensitive_documents/"
+"printing_and_scanning]]"
+
+#~ msgid ""
+#~ "[[!traillink Desktop_publishing|sensitive_documents/desktop_publishing]]"
+#~ msgstr "[[!traillink Editoração|sensitive_documents/desktop_publishing]]"

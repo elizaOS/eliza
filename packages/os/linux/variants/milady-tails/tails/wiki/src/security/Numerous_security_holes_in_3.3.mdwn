@@ -1,0 +1,24 @@
+[[!meta date="Sat, 06 Jan 2018 12:34:56 +0000"]]
+[[!meta title="Numerous security holes in Tails 3.3"]]
+[[!pagetemplate template="news.tmpl"]]
+
+[[!tag security/fixed]]
+
+Several security holes that affect Tails 3.3 are now fixed in Tails 3.4.
+
+We **strongly** encourage you to
+[[upgrade to Tails 3.4|news/version_3.4]] as soon as possible.
+
+- imagemagick: [[!debsa2017 4040]], [[!debsa2017 4074]]
+- libxml-libxml-perl: [[!debsa2017 4042]]
+- samba: [[!debsa2017 4043]]
+- ffmpeg: [[!debsa2017 4049]]
+- curl: [[!debsa2017 4051]]
+- libxcursor: [[!debsa2017 4059]] 
+- openssl1.0: [[!debsa2017 4065]]
+- rsync: [[!debsa2017 4068]]
+- enigmail: [[!debsa2017 4070]]
+- sensible-utils: [[!debsa2017 4071]]
+- linux: [[!debsa2017 4073]], [[!debsa2018 4078]]
+- gimp: [[!debsa2017 4077]]
+- poppler: [[!debsa2018 4079]]

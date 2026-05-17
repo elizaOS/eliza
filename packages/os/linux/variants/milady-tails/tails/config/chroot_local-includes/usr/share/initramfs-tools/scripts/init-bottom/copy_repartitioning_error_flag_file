@@ -1,0 +1,23 @@
+#!/bin/sh
+
+PREREQS=""
+
+prereqs() { echo "$PREREQS"; }
+
+case "$1" in
+prereqs)
+    prereqs
+    exit 0
+    ;;
+esac
+
+set -eu
+
+INITRAMFS_FLAG_FILE=/run/repartitioning-failed
+ROOTFS_FLAG_FILE=/root/var/lib/live/config/tails.disk-partitioning-errors
+
+if [ -f "${INITRAMFS_FLAG_FILE}" ]; then
+    echo "Repartitioning failed"
+    mkdir -p "$(dirname "${ROOTFS_FLAG_FILE}")"
+    cp "${INITRAMFS_FLAG_FILE}" "${ROOTFS_FLAG_FILE}"
+fi

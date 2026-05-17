@@ -1,0 +1,9 @@
+#!/bin/sh
+
+set -e
+set -u
+
+echo "Updating the shared MIME-Info database cache with our custom file associations"
+
+update-mime-database /usr/local/share/mime
+update-mime-database /usr/share/mime

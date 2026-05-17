@@ -1,0 +1,136 @@
+[[!meta title="Tails report for December, 2017"]]
+[[!meta date="Tue, 16 Jan 2018 18:43:52 +0000"]]
+[[!pagetemplate template="news.tmpl"]]
+
+[[!toc]]
+
+Releases
+========
+
+* No Tails version was released in December 2017.
+
+* We updated our [[release schedule for 2018|contribute/calendar]].
+
+Code
+====
+
+* We published our [[plans for 2018|news/our_plans_for_2018]].
+
+* We started improving the backend of the *Additional Software* persistent
+  feature. We worked on:
+
+  - Not blocking the opening of the desktop ([[!tails_ticket 9059]],
+  Blueprint).
+  - Making it work offline ([[!tails_ticket 14570]]).
+
+Documentation and website
+=========================
+
+* Cody and sajolida started fixing issues identified in the expert review
+  done by jaster on our installation instructions in August:
+
+  - Solve all the smaller issues.
+  - Create tickets for all remaining issues on Redmine. ([[!tails_ticket 14548]])
+  - Make plans to restructure our support page in depth.
+
+* We wrote design documents for our [[installation
+  instructions|contribute/design/installation_instructions]] and verification
+  extension (*Tails Verification*).
+
+User experience
+===============
+
+## New download page
+
+We completely redesigned our [[download page|install/download]]. This work was
+triggered by the rewrite of *Tails Verification* (our browser extension) into
+*Web Extensions* but the result improves the overall experience.
+
+*Tails Verification* is also now available for Chrome.
+
+## UX work on VeraCrypt in GNOME
+
+We designed the user experience for our work on the integration of *VeraCrypt* in GNOME.
+
+1. We analyzed the results of our online survey.
+
+2. We did some paper prototypes of the interactions and tested them with users.
+
+Hot topics on our help desk
+===========================
+
+1. [[!tails_ticket 15024 desc="Printing to PDF with Tor Browser does not work anymore"]]
+
+Infrastructure
+==============
+
+ - We have converted two sources of email sent by cron with Icinga 2
+   monitoring checks that are easier to track and fine-tune
+   ([[!tails_ticket 11598]], [[!tails_ticket 12455]]).
+
+ - We have fixed a longstanding bug that made the UX of our CI system
+   confusing when deleting a branch in Git ([[!tails_ticket 15069]]).
+
+ - We have set up a local email server on every Jenkins node that runs
+   automated ISO tests, as a first step towards making our automatic
+   _Thunderbird_ tests more robust ([[!tails_ticket 12277]]).
+
+ - We have tuned our servers to get a little bit better performance
+   out of our CI system ([[!tails_ticket 15054]]).
+
+ - We have extended the blueprint about upgrading the hardware for
+   automated tests.
+
+Outreach
+========
+
+Past events
+-----------
+
+ - 34c3: A fair number of Tails developers and contributors attended
+   the [[34th Chaos Communication Congress (34c3)|https://events.ccc.de/congress/2017/wiki/index.php/Main_Page]]
+   in Leipzig.
+   During this event, we set up a table to meet with interested parties-
+   users, contributors, or anyone interested.
+   We were able to reach both newcomers and long-time users of Tails,
+   answer questions, help, exchange stickers, give away USB keys and
+   t-shirts in exchange of donations, get feedback or just chat.
+   It was, of course, also a great opportunity to meet people in person,
+   discuss, work, and have fun both within the project and with friend projects.
+
+Upcoming events
+---------------
+
+ - We will have a booth [[at FOSDEM|http://fosdem.org/2018]] in Brussels on February 3&ndash;4.
+
+ - sajolida will be at the [Internet Freedom Festival](https://internetfreedomfestival.org/) in Valencia on March 5&ndash;9.
+
+Translation
+===========
+
+## All the website
+
+  - de: 54% (2846) strings translated, 7% strings fuzzy, 48% words translated
+  - fa: 39% (2076) strings translated, 10% strings fuzzy, 41% words translated
+  - fr: 91% (4786) strings translated, 1% strings fuzzy, 88% words translated
+  - it: 36% (1919) strings translated, 5% strings fuzzy, 32% words translated
+  - pt: 23% (1216) strings translated, 9% strings fuzzy, 19% words translated
+
+Total original words: 56302
+
+## [[Core pages of the website|contribute/l10n_tricks/core_po_files.txt]]
+
+  - de: 76% (1454) strings translated, 13% strings fuzzy, 77% words translated
+  - fa: 33% (640) strings translated, 11% strings fuzzy, 33% words translated
+  - fr: 97% (1848) strings translated, 2% strings fuzzy, 96% words translated
+  - it: 71% (1342) strings translated, 13% strings fuzzy, 71% words translated
+  - pt: 41% (784) strings translated, 15% strings fuzzy, 41% words translated
+
+Total original words: 17235
+
+Metrics
+=======
+
+* Tails has been started more than 637276 times this month. This makes 20557 boots a day on average.
+* 9215 downloads of the OpenPGP signature of Tails ISO from our website.
+* 66 bug reports were received through WhisperBack.

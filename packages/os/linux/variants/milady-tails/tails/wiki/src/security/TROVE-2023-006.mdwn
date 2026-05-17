@@ -1,0 +1,18 @@
+[[!meta title="Possible remote attack on onion services"]]
+[[!meta date="Wed, 15 Nov 2023 14:00:00 +0000"]]
+[[!pagetemplate template="news.tmpl"]]
+[[!tag security/fixed]]
+
+<div class="caution">
+
+<p><strong>Creating onion services from Tails 5.19 and earlier is unsafe.</strong></p>
+
+<p>We recommend that you stop using <em>OnionShare</em> and upgrade to Tails
+5.19.1.</p>
+
+</div>
+
+The Tor Project has released a security fix for a vulnerability named
+TROVE-2023-006.
+
+[[!inline pages="news/version_5.19.1/TROVE-2023-006.inline" raw="yes" sort="age"]]

@@ -1,0 +1,266 @@
+# SOME DESCRIPTIVE TITLE
+# Copyright (C) YEAR Free Software Foundation, Inc.
+# This file is distributed under the same license as the PACKAGE package.
+# FIRST AUTHOR <EMAIL@ADDRESS>, YEAR.
+#
+msgid ""
+msgstr ""
+"Project-Id-Version: PACKAGE VERSION\n"
+"POT-Creation-Date: 2026-03-30 09:38+0000\n"
+"PO-Revision-Date: 2024-11-27 10:19+0000\n"
+"Last-Translator: Benjamin Held <Benjamin.Held@protonmail.com>\n"
+"Language-Team: LANGUAGE <LL@li.org>\n"
+"Language: bg\n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+"Plural-Forms: nplurals=2; plural=n != 1;\n"
+"X-Generator: Weblate 5.3\n"
+
+#. type: Content of: outside any tag (error?)
+msgid "[[!meta robots=\"noindex\"]]"
+msgstr ""
+
+#. type: Content of: <p>
+msgid ""
+"Most computers do not start automatically on the Tails USB stick, but you "
+"can press a Boot Menu key to display a list of possible devices to start "
+"from."
+msgstr ""
+
+#. type: Content of: <div><p>
+msgid ""
+"If Windows is <span class=\"linux upgrade-linux\">also</span> installed on "
+"the computer, you can refer instead to the [[instructions on starting Tails "
+"from Windows|doc/first_steps/start/pc#windows-restart]].  Starting Tails "
+"from Windows is easier than using the Boot Menu key."
+msgstr ""
+
+#. type: Content of: <p>
+msgid "The following screenshot is an example of a Boot Menu:"
+msgstr ""
+
+#. type: Content of: <p>
+msgid ""
+"[[!img install/inc/screenshots/boot_menu.png class=\"screenshot\" alt=\"\"]]"
+msgstr ""
+
+#. type: Content of: <p>
+msgid ""
+"This animation summarizes how to use the Boot Menu key to start on the USB "
+"stick:"
+msgstr ""
+
+#. type: Content of: <p>
+msgid ""
+"The following instructions explain in detail how to use the Boot Menu key to "
+"start on the USB stick:"
+msgstr ""
+
+#. type: Content of: <ol><li><p>
+msgid "Make sure that you have installed Tails using either:"
+msgstr ""
+
+#. type: Content of: <ol><li><ul><li>
+msgid "[[<i>Rufus</i> from Windows|install/windows#rufus]]"
+msgstr ""
+
+#. type: Content of: <ol><li><ul><li>
+msgid "[[<i>balenaEtcher</i> from macOS|install/mac#etcher]]"
+msgstr ""
+
+#. type: Content of: <ol><li><ul><li>
+msgid "[[<i>GNOME Disks</i> from Linux|install/linux#install]]"
+msgstr ""
+
+#. type: Content of: <ol><li><ul><li>
+msgid "[[the Linux command line|install/expert#install]]"
+msgstr ""
+
+#. type: Content of: <ol><li><p>
+msgid "Shut down the computer while leaving the USB stick plugged in."
+msgstr ""
+
+#. type: Content of: <ol><li><p>
+msgid "Shut down the computer and plug in the Tails USB stick."
+msgstr ""
+
+#. type: Content of: <ol><li><p>
+msgid "Shut down the computer."
+msgstr ""
+
+#. type: Content of: <ol><li><p>
+msgid ""
+"Plug in the other Tails USB stick that you want to <span class=\"pc-"
+"clone\">install</span> <span class=\"upgrade\">upgrade</span> from."
+msgstr ""
+
+#. type: Content of: <ol><li><p>
+msgid ""
+"Unplug your Tails USB stick while leaving the intermediary USB stick plugged "
+"in."
+msgstr ""
+
+#. type: Content of: <ol><li><p>
+msgid ""
+"Identify the possible Boot Menu keys for the computer depending on the "
+"computer manufacturer in the following list:"
+msgstr ""
+
+#. type: Content of: <ol><li><table><tr><th>
+msgid "Manufacturer"
+msgstr ""
+
+#. type: Content of: <ol><li><table><tr><th>
+msgid "Key"
+msgstr ""
+
+#. type: Content of: <ol><li><table><tr><td>
+msgid "Acer"
+msgstr ""
+
+#. type: Content of: <ol><li><table><tr><td>
+msgid "F12, F9, F2, Esc"
+msgstr ""
+
+#. type: Content of: <ol><li><table><tr><td>
+msgid "Apple"
+msgstr ""
+
+#. type: Content of: <ol><li><table><tr><td>
+msgid "Option"
+msgstr ""
+
+#. type: Content of: <ol><li><table><tr><td>
+msgid "Asus"
+msgstr ""
+
+#. type: Content of: <ol><li><table><tr><td>
+msgid "Esc"
+msgstr ""
+
+#. type: Content of: <ol><li><table><tr><td>
+msgid "Clevo"
+msgstr ""
+
+#. type: Content of: <ol><li><table><tr><td>
+msgid "F7"
+msgstr ""
+
+#. type: Content of: <ol><li><table><tr><td>
+msgid "Dell"
+msgstr ""
+
+#. type: Content of: <ol><li><table><tr><td>
+msgid "F12"
+msgstr ""
+
+#. type: Content of: <ol><li><table><tr><td>
+msgid "Fujitsu"
+msgstr ""
+
+#. type: Content of: <ol><li><table><tr><td>
+msgid "F12, Esc"
+msgstr ""
+
+#. type: Content of: <ol><li><table><tr><td>
+msgid "HP"
+msgstr ""
+
+#. type: Content of: <ol><li><table><tr><td>
+msgid "F9"
+msgstr ""
+
+#. type: Content of: <ol><li><table><tr><td>
+msgid "Huawei"
+msgstr ""
+
+#. type: Content of: <ol><li><table><tr><td>
+msgid "Intel"
+msgstr ""
+
+#. type: Content of: <ol><li><table><tr><td>
+msgid "F10"
+msgstr ""
+
+#. type: Content of: <ol><li><table><tr><td>
+msgid "Lenovo"
+msgstr ""
+
+#. type: Content of: <ol><li><table><tr><td>
+msgid "F12, <a href=\"https://support.lenovo.com/solutions/ht062552\">Novo</a>"
+msgstr ""
+
+#. type: Content of: <ol><li><table><tr><td>
+msgid "MSI"
+msgstr ""
+
+#. type: Content of: <ol><li><table><tr><td>
+msgid "F11"
+msgstr ""
+
+#. type: Content of: <ol><li><table><tr><td>
+msgid "Samsung"
+msgstr ""
+
+#. type: Content of: <ol><li><table><tr><td>
+msgid "Esc, F12, F2"
+msgstr ""
+
+#. type: Content of: <ol><li><table><tr><td>
+msgid "Sony"
+msgstr ""
+
+#. type: Content of: <ol><li><table><tr><td>
+msgid "F11, Esc, F10"
+msgstr ""
+
+#. type: Content of: <ol><li><table><tr><td>
+msgid "Toshiba"
+msgstr ""
+
+#. type: Content of: <ol><li><table><tr><td>
+msgid "Others&hellip;"
+msgstr ""
+
+#. type: Content of: <ol><li><div><p>
+msgid ""
+"On many computers, a message is displayed very briefly when switching on "
+"that also explains how to get to the Boot Menu or edit the BIOS settings."
+msgstr ""
+
+#. type: Content of: <ol><li><p>
+msgid "Switch on the computer."
+msgstr ""
+
+#. type: Content of: <ol><li><p>
+msgid ""
+"Immediately press several times the first possible Boot Menu key identified "
+"in step 2."
+msgstr ""
+
+#. type: Content of: <ol><li><p>
+msgid ""
+"If the computer starts on another operating system or returns an error "
+"message, shut down the computer again and repeat step 3 for all the possible "
+"Boot Menu keys identified in step 2."
+msgstr ""
+
+#. type: Content of: <ol><li><p>
+msgid ""
+"If a Boot Menu with a list of devices appears, select your USB stick and "
+"press <b>Enter</b>."
+msgstr ""
+
+#. type: Content of: <ol><li><p>
+msgid ""
+"If the computer starts on Tails, the Boot Loader appears and Tails starts "
+"automatically after 4 seconds."
+msgstr ""
+
+#. type: Content of: <ol><li><p>
+msgid ""
+"[[!img install/inc/screenshots/grub.png class=\"screenshot\" alt=\"Black "
+"screen ('GNU GRUB') with Tails logo and 3 options: 'Tails' and 'Tails "
+"(Troubleshooting Mode)' and 'Tails (External Hard Disk)'.\"]]"
+msgstr ""

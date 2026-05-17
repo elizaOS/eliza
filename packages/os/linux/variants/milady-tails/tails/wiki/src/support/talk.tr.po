@@ -1,0 +1,103 @@
+# SOME DESCRIPTIVE TITLE
+# Copyright (C) YEAR Free Software Foundation, Inc.
+# This file is distributed under the same license as the PACKAGE package.
+# FIRST AUTHOR <EMAIL@ADDRESS>, YEAR.
+#
+msgid ""
+msgstr ""
+"Project-Id-Version: PACKAGE VERSION\n"
+"Report-Msgid-Bugs-To: tails-l10n@boum.org\n"
+"POT-Creation-Date: 2026-03-12 10:28+0000\n"
+"PO-Revision-Date: 2018-07-02 13:02+0000\n"
+"Last-Translator: emmapeel <emma.peel@riseup.net>\n"
+"Language-Team: LANGUAGE <LL@li.org>\n"
+"Language: tr\n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+"Plural-Forms: nplurals=2; plural=n > 1;\n"
+"X-Generator: Weblate 2.10.1\n"
+
+#. type: Content of: <div>
+msgid "[[!meta title=\"Contact us\"]]"
+msgstr ""
+
+#. type: Content of: <h1>
+msgid "Report an error"
+msgstr ""
+
+#. type: Content of: <div><div><h3>
+msgid "WhisperBack"
+msgstr ""
+
+#. type: Content of: <div><div><p>
+msgid "<i class=\"fa-4x fa-solid fa-user-secret\"></i>"
+msgstr ""
+
+#. type: Content of: <div><div><p>
+msgid ""
+"Reporting an error from Tails using [[<i>WhisperBack</i>|doc/first_steps/"
+"whisperback]] is the most private and the most useful way of contacting us."
+msgstr ""
+
+#. type: Content of: <h1>
+msgid "Other support channels"
+msgstr ""
+
+#. type: Content of: <div><div><h3>
+msgid "Forum"
+msgstr ""
+
+#. type: Content of: <div><div><p>
+msgid "<i class=\"fa-4x fa-regular fa-comments\"></i>"
+msgstr ""
+
+#. type: Content of: <div><div><p><p>
+msgid ""
+"Talk with other Tails users in the [[Tails category of the Tor Forum|https://"
+"forum.torproject.org/c/support/tails/33]]."
+msgstr ""
+
+#. type: Content of: <div><div><h3>
+msgid "Email"
+msgstr ""
+
+#. type: Content of: <div><div><p>
+msgid "<i class=\"fa-4x fa-regular fa-envelope\"></i>"
+msgstr ""
+
+#. type: Content of: <div><div><p>
+msgid "Write us at [[support@tails.net|doc/about/contact#support]]."
+msgstr ""
+
+#. type: Content of: <div><div><p>
+msgid "Please write in English."
+msgstr ""
+
+#. type: Content of: <div><div><p>
+msgid ""
+"Encrypting your emails with our [[OpenPGP key|doc/about/"
+"openpgp_keys#support]] is the only way to achieve end-to-end encryption."
+msgstr ""
+
+#. type: Content of: <div><div><h3>
+msgid "Chat"
+msgstr ""
+
+#. type: Content of: <div><div><p>
+msgid "<i class=\"fa-4x fa-regular fa-message\"></i>"
+msgstr ""
+
+#. type: Content of: <div><div>
+msgid "[[!inline pages=\"support/chat\" raw=\"yes\" sort=\"age\"]]"
+msgstr ""
+
+#~ msgid "[[!img lib/email.png link=no]]"
+#~ msgstr "[[!img lib/email.png link=no]]"
+
+#, fuzzy
+#~ msgid ""
+#~ "[[!inline pages=\"support/talk/no_reply_every_request.inline\" "
+#~ "raw=\"yes\"]] [[!inline pages=\"support/talk/languages.inline\" "
+#~ "raw=\"yes\"]]"
+#~ msgstr "[[!inline pages=\"support/talk/languages.inline.tr\" raw=\"yes\"]]"

@@ -1,0 +1,40 @@
+[[!meta title="Converting dangerous documents to safe PDFs using Dangerzone"]]
+[[!meta date="Tue, 06 Aug 2024 18:00:00 +0000"]]
+[[!pagetemplate template="news.tmpl"]]
+[[!tag announce]]
+
+Today, we added documentation on our website to [[install *Dangerzone* in
+Tails|doc/persistent_storage/additional_software/dangerzone]].
+
+When you receive untrusted documents, for example, email attachments,
+*[Dangerzone](https://dangerzone.rocks/)* allows you to convert them into safe
+PDFs before opening.
+
+*Dangerzone* is particularly useful for journalists who might receive dangerous
+documents from anonymous sources or download them from the Internet.
+
+*Dangerzone* is an essential tool and is built by great people. It was first
+written by [Micah Lee](https://micahflee.com/about/) to protect investigative
+journalists while working at [The Intercept](https://theintercept.com/).
+*Dangerzone* is now maintained by [Freedom of the Press
+Foundation](https://freedom.press), a nonprofit that protects public-interest
+journalism. Edward Snowden and Laura Poitras are on its Board of Directors.
+
+It's totally the kind of software that aligns with [[our
+mission|contribute/mission]]. The only reason why we are not including
+*Dangerzone* in Tails by default is because *Dangerzone* is too big and not
+available in Debian.
+
+So, we collaborated with Alex Pyrgiotis from Freedom of the Press Foundation to
+make it as easy as possible to install *Dangerzone* in Tails as [[Additional
+Software|doc/persistent_storage/additional_software]]. The setup requires using
+the command line, but, after that, *Dangerzone* will install automatically
+every time you start Tails.
+
+*Dangerzone* will allow more investigative journalists to use the safe
+environment that Tails provides when manipulating sensitive documents.
+
+It's also the first time that we recommend installing a 3rd party package that
+is not available in Debian. We know that a lot of software that would be useful
+for our users is not readily available in Debian. If this first experiment is
+successful, we might document more such packages.

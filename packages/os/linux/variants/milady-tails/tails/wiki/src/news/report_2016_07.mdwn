@@ -1,0 +1,85 @@
+[[!meta title="Tails report for July, 2016"]]
+[[!meta date="Wed, 10 Aug 2016 14:29:35 +0000"]]
+[[!pagetemplate template="news.tmpl"]]
+
+[[!toc ]]
+
+Releases
+========
+
+* There have been no releases in July.
+* Tails 2.5 is [[scheduled for August 3|contribute/calendar]].
+
+Code
+====
+
+- Icedove: Tails' Icedove Apparmor profile [has been accepted in Debian](https://bugs.debian.org/cgi-bin/bugreport.cgi?bug=829731)!
+- DAVE: We have added new mirrors to our mirror pool, and soon we will update our Firefox Add-on with this [[!tails_ticket 11109 desc="changes"]].
+- Tails Server: There is a lot of progress the GUI, there have been user testing, ephemeral hidden services are created now with stem, the code is integrated in Tails now, it is possible to reset the onion addresses, the application is translatable and there are ISO images available for testing now! You can read more about this here and here
+- We keep reducing our delta with upstream: now we have dropped the custom value for kernel.perf_event_paranoid sysctl ([[!tails_ticket 11511]]).
+
+Documentation and website
+=========================
+
+- We have documented how to get the source code of packages
+  shipped in Tails ([[!tails_ticket 6311]]).
+- That manual ISO build needs a HTTP proxy [[!tails_ticket 11046]].
+- The monitoring service also has more documentation now: [[!tails_ticket 11366]].
+- We have added Linux Mint instructions to our Installation Assistant: [[!tails_ticket 11561]].
+- And also [[how to save KeePassX settings using Dotfiles|doc/encryption_and_privacy/manage_passwords]].
+- We have added Veracrypt to the list of [[programs often asked by users|support/faq/#software]] (*spoiler: get it on Debian first*).
+- We added links to Debian Reproducible Builds on our documentation.
+
+User experience
+===============
+
+- Two user tests have been done for Tails Server, with technical and non-technical users. More information on the results: first and second
+- We have made some statistics about how quick our users update Tails. Most users update quickly, but there is still a 15% that update from Tails 4 months or older. [[!tails_ticket 10478 desc="More info on the ticket"]].
+
+Infrastructure
+==============
+
+- After a lot of work, we have finished implementing Tails servers
+**monitoring system**! Read the [[sysadmins documentation|https://gitlab.torproject.org/tpo/tpa/team/-/wikis/tails/services#icinga2]]
+for details.
+- We noticed that the apt-cacher-ng cache disk was filling up because of expired time-based snapshots. So we re-implemented our puppet modules to prevent this ([[!tails_ticket 11532]]).
+- Our test suite covers 209 scenarios, one more that in June.
+- 1178 ISO images were automatically built and tested by our continuous integration infrastructure.
+
+Outreach
+========
+
+- Nuit du Hack, France: jvoisin and fr33tux did a presentation about Tails: Here the [video](https://youtu.be/SnPTk5tG07M?t=4538)
+- Rancho Electrónico, Mexico city, hosted talks about Tails every Monday of July on their 'Digital self-defense' workshops.
+
+Translation
+===========
+
+- We have finished deciding a merge strategy for our Weblate install: [[!tails_ticket 10257]].
+
+## All the website
+
+  - de: 57% (2894) strings translated, 3% strings fuzzy, 51% words translated
+  - fa: 46% (2346) strings translated, 7% strings fuzzy, 52% words translated
+  - fr: 77% (3880) strings translated, 3% strings fuzzy, 77% words translated
+  - it: 17% (890) strings translated, 2% strings fuzzy, 18% words translated
+  - pt: 32% (1639) strings translated, 7% strings fuzzy, 30% words translated
+
+Total original words: 50335
+
+## [[Core pages of the website|contribute/l10n_tricks/core_po_files.txt]]
+
+  - de: 88% (1618) strings translated, 4% strings fuzzy, 88% words translated
+  - fa: 39% (726) strings translated, 9% strings fuzzy, 41% words translated
+  - fr: 88% (1624) strings translated, 5% strings fuzzy, 89% words translated
+  - it: 48% (876) strings translated, 6% strings fuzzy, 55% words translated
+  - pt: 54% (993) strings translated, 10% strings fuzzy, 54% words translated
+
+Total original words: 16625
+
+Metrics
+=======
+
+- Tails has been started more than 544.464 times this month. This makes 17.563 boots a day on average.
+- 7.364 downloads of the OpenPGP signature of Tails ISO from our website.
+- 89 bug reports were received through WhisperBack.

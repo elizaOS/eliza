@@ -1,0 +1,24 @@
+[[!meta title="Pedro, May 2017"]]
+
+Pedro is 23 years old and studies applied mathematics in college in
+Brazil. He has been a Linux user since 11 years; Qubes OS is now his
+main operating system.
+
+He learned about Tails via the homepage of the Tor website before the
+Snowden leaks, and got interested by the amnesic property of Tails.
+He feels he knows his way around Tails and uses it once or twice
+a week to browse hidden services websites and for encrypted chat
+(that he finds easier to use on Tails than elsewhere).
+
+### What he likes
+
+- carrying a computer environment in his pocket
+- OnionShare
+- easy to use, practical
+- how the project cares about people and security
+
+### What he dislikes
+
+- GNOME is heavy and slow on old hardware
+- the end of 32-bit support
+- no more Windows Camouflage

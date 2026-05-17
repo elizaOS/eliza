@@ -1,0 +1,48 @@
+#!/usr/bin/python3 -I
+
+# This script exports allow-listed environment variables from the file
+# specified in the ENVFILE argument and then executes the specified
+# command.
+#
+# If any environment variables from ENVFILE are already set in the
+# current environment, those are *not* overwritten, so environment
+# variables set by the caller take precedence over the ones from ENVFILE.
+#
+# ENVFILE must be null-terminated.
+
+import argparse
+import os
+import sys
+
+from tailslib.userenv import read_allowed_env_from_file
+
+
+def main():
+    if os.geteuid() != 1000:
+        print(f"{sys.argv[0]}: This script must be run as amnesia", file=sys.stderr)
+        sys.exit(1)
+
+    # Parse arguments
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--env-file", required=True)
+    parser.add_argument("--delete", action="store_true", default=False)
+    parser.add_argument("CMD", help="Command to run")
+    parser.add_argument(
+        "ARGS", nargs=argparse.REMAINDER, help="Arguments to pass to the command"
+    )
+    args = parser.parse_args()
+
+    env = read_allowed_env_from_file(args.env_file)
+
+    # Update with environment variables from the current environment
+    # (because those should take precedence)
+    env.update(os.environ)
+
+    if args.delete:
+        os.remove(args.env_file)
+
+    os.execvpe(args.CMD, [args.CMD, *args.ARGS], env)
+
+
+if __name__ == "__main__":
+    main()

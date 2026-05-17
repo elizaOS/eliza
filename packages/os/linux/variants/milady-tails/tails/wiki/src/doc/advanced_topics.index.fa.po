@@ -1,0 +1,109 @@
+# SOME DESCRIPTIVE TITLE
+# Copyright (C) YEAR Free Software Foundation, Inc.
+# This file is distributed under the same license as the PACKAGE package.
+# FIRST AUTHOR <EMAIL@ADDRESS>, YEAR.
+#
+msgid ""
+msgstr ""
+"Project-Id-Version: PACKAGE VERSION\n"
+"Report-Msgid-Bugs-To: tails-l10n@boum.org\n"
+"POT-Creation-Date: 2025-06-10 12:51+0200\n"
+"PO-Revision-Date: 2015-10-25 17:41+0000\n"
+"Last-Translator: sprint5 <translation5@451f.org>\n"
+"Language-Team: Persian <http://weblate.451f.org:8889/projects/tails/"
+"advanced_topicsindex/fa/>\n"
+"Language: fa\n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+"Plural-Forms: nplurals=1; plural=0;\n"
+"X-Generator: Weblate 2.4-dev\n"
+
+#. type: Bullet: '- '
+#, fuzzy
+msgid "[[Running Tails in a virtual machine|advanced_topics/virtualization]]"
+msgstr "[[!traillink نصب_نرم‌افزارهای_اضافی|first_steps/additional_software]]"
+
+#. type: Bullet: '  * '
+msgid "[[*GNOME Boxes*|advanced_topics/virtualization/boxes]]"
+msgstr ""
+
+#. type: Bullet: '  * '
+#, fuzzy
+msgid "[[*virt-manager*|advanced_topics/virtualization/virt-manager]]"
+msgstr "[[!traillink نصب_نرم‌افزارهای_اضافی|first_steps/additional_software]]"
+
+#. type: Bullet: '- '
+#, fuzzy
+msgid ""
+"[[Modifying the boot options using the Boot Loader|advanced_topics/"
+"boot_options]]"
+msgstr ""
+"[[!traillink محافظت_در_برابر_حملات_راه‌اندازی_سرد|advanced_topics/"
+"cold_boot_attacks]]"
+
+#. type: Bullet: '- '
+#, fuzzy
+msgid ""
+"[[Starting Tails from an external hard disk or problematic USB stick|"
+"advanced_topics/external_hard_disk]]"
+msgstr "[[!traillink نصب_نرم‌افزارهای_اضافی|first_steps/additional_software]]"
+
+#. type: Bullet: '- '
+#, fuzzy
+msgid "[[Accessing the internal hard disk|advanced_topics/internal_hard_disk]]"
+msgstr "[[!traillink نصب_نرم‌افزارهای_اضافی|first_steps/additional_software]]"
+
+#. type: Bullet: '- '
+#, fuzzy
+msgid ""
+"[[Protection against cold boot attacks|advanced_topics/cold_boot_attacks]]"
+msgstr ""
+"[[!traillink محافظت_در_برابر_حملات_راه‌اندازی_سرد|advanced_topics/"
+"cold_boot_attacks]]"
+
+#. type: Bullet: '- '
+#, fuzzy
+msgid "[[Accessing resources on the local network|advanced_topics/lan]]"
+msgstr "[[!traillink نصب_نرم‌افزارهای_اضافی|first_steps/additional_software]]"
+
+#. type: Bullet: '- '
+#, fuzzy
+msgid "[[Enabling a wireless device|advanced_topics/wireless_devices]]"
+msgstr "[[!traillink نصب_نرم‌افزارهای_اضافی|first_steps/additional_software]]"
+
+#. type: Bullet: '- '
+#, fuzzy
+msgid "[[Chatting with *Dino* and OMEMO|advanced_topics/dino]]"
+msgstr "[[!traillink نصب_نرم‌افزارهای_اضافی|first_steps/additional_software]]"
+
+#. type: Bullet: '- '
+#, fuzzy
+msgid "[[Exchanging Monero with *Feather*|advanced_topics/feather]]"
+msgstr "[[!traillink نصب_نرم‌افزارهای_اضافی|first_steps/additional_software]]"
+
+#, fuzzy, no-wrap
+#~ msgid ""
+#~ "  - [[!traillink Running_Tails_in_a_virtual_machine|advanced_topics/virtualization]]\n"
+#~ "    - [[!traillink <span_class=\"application\">VirtualBox</span>|advanced_topics/virtualization/virtualbox]]\n"
+#~ "    - [[!traillink <span_class=\"application\">GNOME_Boxes</span>|advanced_topics/virtualization/boxes]]\n"
+#~ "    - [[!traillink <span_class=\"application\">virt-manager</span>|advanced_topics/virtualization/virt-manager]]\n"
+#~ "  - [[!traillink Modifying_the_boot_options_using_the_Boot_Loader|advanced_topics/boot_options]]\n"
+#~ "  - [[!traillink Starting_Tails_from_an_external_hard_disk|advanced_topics/external_hard_disk]]\n"
+#~ "  - [[!traillink Accessing_the_internal_hard_disk|advanced_topics/internal_hard_disk]]\n"
+#~ "  - Persistent Storage\n"
+#~ "    - [[!traillink Changing_the_passphrase_of_the_Persistent_Storage|advanced_topics/persistence/change_passphrase]]\n"
+#~ "    - [[!traillink Checking_the_file_system_of_the_Persistent_Storage|advanced_topics/persistence/check_file_system]]\n"
+#~ "  - [[!traillink Protection_against_cold_boot_attacks|advanced_topics/cold_boot_attacks]]\n"
+#~ "  - [[!traillink Accessing_resources_on_the_local_network|advanced_topics/lan]]\n"
+#~ "  - [[!traillink Enabling_a_wireless_device|advanced_topics/wireless_devices]]\n"
+#~ "  - [[!traillink Chatting_with_*Dino*_and_OMEMO|advanced_topics/dino]]\n"
+#~ "  - [[!traillink Exchanging_Monero_with_*Feather*|advanced_topics/feather]]\n"
+#~ msgstr ""
+#~ "  - [[!traillink مجازی‌سازی|advanced_topics/virtualization]]\n"
+#~ "    - [[!traillink <span_class=\"application\">ویرچوال‌باکس</span>|advanced_topics/virtualization/virtualbox]]\n"
+#~ "    - [[!traillink <span_class=\"application\">جعبه‌های_گنوم</span>|advanced_topics/virtualization/boxes]]\n"
+#~ "    - [[!traillink <span_class=\"application\">ویرت‌منجر</span>|advanced_topics/virtualization/virt-manager]]\n"
+#~ "  - [[!traillink دسترسی_به_منابع_روی_شبکه_محلی|advanced_topics/lan]]\n"
+#~ "  - [[!traillink فعال_کردن_یک_دستگاه_بی‌سیم|advanced_topics/wireless_devices]]\n"
+#~ "  - [[!traillink گرفتن_نسخه_پشتیبان_از_کلیدهای_مخفی_اُپن‌پی‌جی‌پی_روی_کاغذ_با_استفاده_از_<span_class=\"application\">پیپرکی</span>|advanced_topics/paperkey]]\n"

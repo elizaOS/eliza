@@ -1,0 +1,147 @@
+[[!meta title="Tails report for October, 2019"]]
+[[!meta date="Tue, 12 Nov 2019 11:00:00 +0000"]]
+[[!pagetemplate template="news.tmpl"]]
+
+[[!toc ]]
+
+Releases
+========
+
+* [[Tails 4.0 was released on October 22|news/version_4.0]] (major release).
+
+* Tails 4.1 is [[scheduled for December 3|contribute/calendar]].
+
+The following changes were introduced in Tails 4.0:
+
+- Replace *KeePassX* with [*KeePassXC*](https://keepassxc.org/), which
+  is more actively developed.
+- Remove *Scribus*.
+- Usability improvements to *Tails Greeter*
+- Tails 4.0 starts 20% faster.
+- Tails 4.0 requires about 250 MB less of RAM.
+- Tails 4.0 is 47 MB smaller to download than Tails 3.16, despite all
+  these changes.
+- Add support for *Thunderbolt* devices.
+- ... and a lot more!
+
+Code
+====
+
+* We finished integrating _Tor Browser_ 9.0 into Tails ([[!tails_ticket 16356]]).
+
+* Rafael Bonifaz and Sandy Acurio from the Centro de Autonomía Digital published some
+  scripts to [run a Mumble server and Mumble clients from Tails](https://autonomia.digital/tails/mumble/anonymity/2019/10/09/tails-mumble.html).
+
+Documentation and website
+=========================
+
+- We improved our documentation on verifying Tails using
+  OpenPGP. ([[!tails_ticket 16175]] and [[!tails_ticket 15697]])
+
+- We improved a lot our manual upgrade documentation, which all users
+  have to follow to upgrade to Tails 4.0:
+
+  - We merged /upgrade and [[/doc/upgrade|doc/upgrade]].
+
+  - We wrote full scenarios to do manual upgrades from:
+
+    - [[Windows|doc/upgrade/windows]]
+    - [[macOS|doc/upgrade/mac]]
+    - [[Linux|doc/upgrade/linux]]
+
+Hot topics on our help desk
+===========================
+
+1. A lot of people reported having issues [[!tails_ticket 17185 desc="installing Tails with Etcher on MacOS"]].
+
+1. We got also numerous reports from people having trouble to [[!tails_ticket 17183 desc="import PGP keys with Seahorse"]].
+
+1. And some users are facing a graphic issue on computers with two GPU caused by [[!tails_ticket 17199 desc="MAC spoofing running udevadm trigger"]].
+
+Infrastructure
+==============
+
+* We have published the [[technical design documentation that describes
+  the setup of our translation platform|/contribute/design/translation_platform/]].
+
+* We upgraded the SMTP relay behind _WhisperBack_ to a v3 Onion service.
+
+* We made progress towards upgrading _Chutney_ for our test suite ([[!tails_ticket 16792]]).
+
+Funding
+=======
+
+- We launched our end-of-year donation campaign:
+
+  - We blogged about [[why supporting Tails is more important than
+    ever|news/2019-fundraiser]] and [[our achievements in
+    2019|news/achievements_in_2019]].
+
+  - We received a very generous anonymous donation of 300 Moneros
+    (around 15&#8239;000€)!
+
+Outreach
+========
+
+Past events
+-----------
+
+* Tails was presented in Thessaloniki during [2 days for radical technologies](https://anopoli.espivblogs.net/2019/10/03/2-days-for-radical-technologies/)
+
+* intrigeri attended the [Mozilla
+  Festival](https://www.mozillafestival.org/) on October 26-27 in
+  London (UK). We held a booth there, talked with lots of people
+  including a number of Tails users, and ran a "Discover Tails and
+  translate it into your own language" session.
+
+* There were a Tails workshop and a talk about the last 10 years of Tails at the [privacyweek in Vienna](https://privacyweek.at/)
+
+
+On-going discussions
+====================
+
+* We've started discussing how we will adapt to the fact Firefox
+  will now be released every 4 weeks.
+
+Press and testimonials
+======================
+
+* 2019-10-24: ris [announced the release of Tails
+  4.0](https://lwn.net/Articles/802876/) in Linux Weekly News.
+
+* 2019-10-23: heise.de published a review of Tails 4.0.
+
+Translations
+============
+
+* We have issued a [[call for
+  translations|news/call-for-translations]].
+
+* We have published a [[documentation for
+  translators|/contribute/how/translate/with_translation_platform/]] who
+  want to use our new web based translation platform.
+
+## All the website
+
+  - fr: 89% (5318) strings translated, 2% strings fuzzy
+  - es: 51% (3067) strings translated, 5% strings fuzzy
+  - de: 35% (2128) strings translated, 11% strings fuzzy
+  - it: 31% (1837) strings translated, 8% strings fuzzy
+  - fa: 28% (1694) strings translated, 11% strings fuzzy
+  - pt: 23% (1364) strings translated, 9% strings fuzzy
+
+## [[Core pages of the website|contribute/l10n_tricks/core_po_files.txt]]
+
+  - fr: 93% (1667) strings translated, 4% strings fuzzy
+  - es: 85% (1523) strings translated, 6% strings fuzzy
+  - de: 64% (1139) strings translated, 16% strings fuzzy
+  - it: 60% (1071) strings translated, 18% strings fuzzy
+  - pt: 44% (793) strings translated, 14% strings fuzzy
+  - fa: 33% (598) strings translated, 14% strings fuzzy
+
+Metrics
+=======
+
+* Tails has been started more than 794&#8239;831 times this month.
+  This makes 25&#8239;640 boots a day on average.
+

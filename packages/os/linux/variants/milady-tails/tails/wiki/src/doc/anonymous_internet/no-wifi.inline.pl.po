@@ -1,0 +1,181 @@
+# SOME DESCRIPTIVE TITLE
+# Copyright (C) YEAR Free Software Foundation, Inc.
+# This file is distributed under the same license as the PACKAGE package.
+# FIRST AUTHOR <EMAIL@ADDRESS>, YEAR.
+#
+msgid ""
+msgstr ""
+"Project-Id-Version: PACKAGE VERSION\n"
+"POT-Creation-Date: 2026-04-01 02:00+0000\n"
+"PO-Revision-Date: 2024-05-17 14:54+0000\n"
+"Last-Translator: xin <xin@riseup.net>\n"
+"Language-Team: LANGUAGE <LL@li.org>\n"
+"Language: pl\n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+"Plural-Forms: nplurals=3; plural=n==1 ? 0 : n%10>=2 && n%10<=4 && (n%100<10 "
+"|| n%100>=20) ? 1 : 2;\n"
+"X-Generator: Weblate 5.3\n"
+
+#. type: Plain text
+#, no-wrap
+msgid "[[!meta robots=\"noindex\"]]\n"
+msgstr "[[!meta robots=\"noindex\"]]\n"
+
+#. type: Plain text
+msgid ""
+"If your Wi-Fi interface is not working, you might experience the following:"
+msgstr ""
+
+#. type: Bullet: '* '
+msgid "There is no **Wi-Fi** menu in the system menu:"
+msgstr ""
+
+#. type: Plain text
+#, no-wrap
+msgid "  [[!img no-wifi/system_without_wifi.png class=\"screenshot\" alt=\"\"]]\n"
+msgstr ""
+
+#. type: Bullet: '* '
+msgid ""
+"There is a **Wi-Fi** menu in the system menu, but connecting to a Wi-Fi "
+"network fails."
+msgstr ""
+
+#. type: Bullet: '* '
+msgid "The interface is disabled because MAC address anonymization failed:"
+msgstr ""
+
+#. type: Plain text
+#, no-wrap
+msgid "  [[!img no-wifi/mac_spoofing_disabled.png class=\"screenshot\" alt=\"Notification: MAC address anonymization failed\"]]\n"
+msgstr ""
+
+#. type: Plain text
+#, no-wrap
+msgid ""
+"  In this case, you can disable MAC address anonymization in the Welcome\n"
+"  Screen. Doing so has security implications, so read carefully our\n"
+"  [[documentation about MAC address\n"
+"  anonymization|first_steps/welcome_screen/mac_spoofing]].\n"
+msgstr ""
+
+#. type: Bullet: '* '
+msgid "The following notification appears:"
+msgstr ""
+
+#. type: Plain text
+#, no-wrap
+msgid "      Activation of network connection failed\n"
+msgstr ""
+
+#. type: Plain text
+msgid "To connect to the Internet, you can try to:"
+msgstr ""
+
+#. type: Bullet: '* '
+msgid ""
+"Use an Ethernet cable instead of Wi-Fi if possible. Wired interfaces work "
+"much more reliably than Wi-Fi in Tails."
+msgstr ""
+
+#. type: Bullet: '* '
+msgid ""
+"Share the Wi-Fi or mobile data connection of your phone using a USB cable. "
+"Sharing a connection this way is called *USB tethering*."
+msgstr ""
+
+#. type: Plain text
+#, no-wrap
+msgid "  [[!img no-wifi/usb-tethering.png link=\"no\" class=\"svg\" alt=\"\"]]\n"
+msgstr ""
+
+#. type: Plain text
+#, no-wrap
+msgid "  See instructions for:\n"
+msgstr ""
+
+#. type: Bullet: '  * '
+msgid "[iPhones or iPads](https://support.apple.com/en-us/HT204023)"
+msgstr ""
+
+#. type: Plain text
+#, no-wrap
+msgid "    Only sharing mobile data works on iPhones and iPads; sharing Wi-Fi does not work.\n"
+msgstr ""
+
+#. type: Bullet: '  * '
+msgid "[Android](https://support.google.com/android/answer/9059108?hl=en)"
+msgstr ""
+
+#. type: Plain text
+#, no-wrap
+msgid ""
+"  <div class=\"caution\">\n"
+"  <p>Tails cannot hide the information that identifies your phone on the local\n"
+"  network. If you connect your phone to a:</p>\n"
+"  <ul>\n"
+"  <li><p>Wi-Fi network: the network can see the MAC\n"
+"  address of your phone.</p>\n"
+"  <p>This has security implications that we explain in our [[documentation on\n"
+"  MAC address anonymization|first_steps/welcome_screen/mac_spoofing]].  Some\n"
+"  phones have a feature to hide the MAC address of the phone.</p></li>\n"
+"  <li><p>Mobile data network: the network is able to know the identifier of\n"
+"  your SIM card (IMSI) and the serial number of your phone (IMEI).</p></li>\n"
+"  </ul>\n"
+"  </div>\n"
+msgstr ""
+
+#. type: Plain text
+#, no-wrap
+msgid "<a id=\"wifi-adapters\"></a>\n"
+msgstr ""
+
+#. type: Bullet: '* '
+msgid "Buy a USB Wi-Fi adapter that works in Tails:"
+msgstr ""
+
+#. type: Bullet: '  - '
+msgid "Panda Wireless Ultra ($25)"
+msgstr ""
+
+#. type: Plain text
+#, no-wrap
+msgid "    [[Buy on Amazon|https://www.amazon.com/d/B00762YNMG]]\n"
+msgstr ""
+
+#. type: Bullet: '  - '
+msgid "ThinkPenguin TPE-N150USB ($64)"
+msgstr ""
+
+#. type: Plain text
+#, no-wrap
+msgid "    [[Buy on ThinkPenguin|https://www.thinkpenguin.com/gnu-linux/penguin-wireless-n-usb-adapter-gnu-linux-tpe-n150usb]]\n"
+msgstr ""
+
+#. type: Plain text
+#, no-wrap
+msgid "<!--\n"
+msgstr ""
+
+#. type: Plain text
+#, no-wrap
+msgid ""
+"  <table>\n"
+"  <tr><th>Vendor</th><th>Model</th><th>Size</th><th>Speed</th><th>Price</th><th>Buy offline</th><th>Buy online</th></tr>\n"
+"  <tr><td>Panda Wireless</td><td>Ultra</td><td>Nano</td><td>150 Mbit/s</td><td>$25</td><td>No</td><td><a href=\"https://www.amazon.com/d/B00762YNMG\">Amazon</a></td></tr> 148f:5370\n"
+"  <tr><td>ThinkPenguin</td><td>TPE-N150USB</td><td>Nano</td><td>150 Mbit/s</td><td>$64</td><td>No</td><td><a href=\"https://www.thinkpenguin.com/gnu-linux/penguin-wireless-n-usb-adapter-gnu-linux-tpe-n150usb\">ThinkPenguin</a></td></tr> ????:????\n"
+"  </table>\n"
+msgstr ""
+
+#. type: Plain text
+#, no-wrap
+msgid "-->\n"
+msgstr ""
+
+#. type: Bullet: '* '
+msgid ""
+"Check in our list of [[known Wi-Fi issues|support/known_issues#problematic-"
+"wifi]] if there is a workaround to get your Wi-Fi interface to work in Tails."
+msgstr ""

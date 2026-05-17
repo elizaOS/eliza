@@ -1,0 +1,57 @@
+[[!meta title="Help Tails: Mac and PC UEFI hardware needed"]]
+[[!meta date="Sat, 12 Oct 2013 09:00:00 +0000"]]
+[[!pagetemplate template="news.tmpl"]]
+[[!tag announce]]
+
+For the moment, Tails has very limited support for Mac.
+Also, Tails lacks UEFI support, so quite a few recent PC's refuse to
+boot from a Tails USB stick.
+
+We will be working on this in the next few months. However, our testing
+and development possibilities are limited: we do not own the right
+hardware yet.
+
+[[!toc levels=2]]
+
+What we need
+============
+
+If you can afford it, please consider donating known-working hardware
+of the kind described below.
+
+Alternatively, you may want to consider donating through
+Bitcoin and dropping us an email to earmark
+your donation for hardware purchase.
+
+Else, there are [[many other ways|contribute]] you can contribute to
+Tails :)
+
+MacBook Pro or MacBook Air (2010 or later)
+------------------------------------------
+
+* EFI 2.6 firmware or later: you can check this on the [Apple firmware
+  updates page](https://support.apple.com/kb/HT1237)
+* preferably with embedded DVD reader
+* preferably 13"
+
+Recent PC laptops
+-----------------
+
+* must support booting Debian off UEFI: send us the exact brand and
+  model of the hardware you could donate, and we will happily check
+  this for you
+* well supported by Debian Wheezy
+* preferably 13" or less
+
+When and how many
+-----------------
+
+We need this hardware by the end of November but the sooner,
+the better.
+
+We could definitely make use of several such computers. One item of
+each category is enough for initial development, but it would be much
+better not to rely on a single person for maintaining support of this
+kind of hardware.
+
+Thanks in advance!

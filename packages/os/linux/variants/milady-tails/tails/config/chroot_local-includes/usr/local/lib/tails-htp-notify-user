@@ -1,0 +1,74 @@
+#!/usr/bin/perl
+
+use strict;
+use warnings;
+use 5.10.1;
+
+#man{{{
+
+=head1 NAME
+
+tails-htp-notify-user
+
+=head1 VERSION
+
+Version X.XX
+
+=head1 AUTHOR
+
+Tails dev team <foundations@tails.net>
+See https://tails.net/.
+
+=cut
+
+#}}}
+
+use Data::Dumper;
+use Desktop::Notify;
+use English '-no_match_vars';
+use Locale::TextDomain 'tails';
+use POSIX;
+
+### initialization
+
+my $htp_done_file    = '/run/htpdate/done';
+my $htp_success_file = '/run/htpdate/success';
+my $htp_log_file     = '/var/log/htpdate.log';
+my $debug;
+
+### subroutines
+
+sub debug { say STDERR $_[0] if $debug; }
+
+### main
+
+exit 0 if -e $htp_success_file;
+
+my $notify = Desktop::Notify->new()
+    or die "Failed creating Desktop::Notify object.";
+debug('$notify:' . "\n" . Dumper($notify));
+
+# Wait until htpdate is done
+until ( -e $htp_done_file ) {
+    sleep 1;
+}
+
+# in case htpdate failed, notify the user with the corresponding logs
+unless (-e $htp_success_file) {
+    open(my $htp_log, '<', $htp_log_file)
+        or die "Can not open file '$htp_log_file': $OS_ERROR";
+    my $last_log;
+    while (<$htp_log>) {
+        if ($_ =~ /^Running htpdate\./) {
+            $last_log = '';
+            next;
+        }
+        $last_log .= $_;
+    }
+    my $failure_summary      = __("Failed to synchronize the clock!");
+    my $failure_body         = $last_log;
+    my $failure_notification = $notify->create(summary => $failure_summary,
+                                               body    => $failure_body,
+                                               timeout => 0);
+    $failure_notification->show();
+}

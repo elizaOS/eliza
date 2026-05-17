@@ -1,0 +1,45 @@
+[[!meta title="GNOME Boxes"]]
+
+[*GNOME Boxes*](https://apps.gnome.org/Boxes/) aims at providing a simple
+interface to create and use virtual machines for Linux with GNOME.
+*GNOME Boxes* does not allow the use of a Persistent Storage.
+
+[[!inline pages="doc/advanced_topics/virtualization.caution" raw="yes" sort="age"]]
+
+<div class="note">
+
+<p>The following instructions have been tested on Debian 13 (Trixie).</p>
+
+</div>
+
+Installation
+============
+
+To install *GNOME Boxes* in Debian or Ubuntu, execute the following
+command:
+
+<p class="command">sudo apt install gnome-boxes</p>
+
+Running Tails from an ISO image
+===============================
+
+  1. [[Download Tails as an ISO image|install/download-iso]], instead of a USB image.
+
+  1. Start *GNOME Boxes*.
+
+  1. Select the [[!img lib/list-add.png alt="New" class="symbolic" link="no"]] button
+     in the top-left corner.
+
+  1. In the menu **Create new virtual machine**, select **Install from File**.
+
+  1. Choose the ISO image that you want to start from.
+
+  1. In the **New Virtual Machine** dialog:
+
+     1. In the field **Name**, enter a name of your choice.
+
+     1. In the field **Operating System**, enter **Debian 13**.
+
+     1. In the field **Memory**, enter at least 3.0 GB.
+
+  1. Select the **Create** button.

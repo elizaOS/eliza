@@ -1,0 +1,18 @@
+[[!meta date="Sat, 30 Apr 2022 12:03:37 -0000"]]
+[[!meta title="Known security vulnerabilities in Tails 4.29"]]
+[[!pagetemplate template="news.tmpl"]]
+
+[[!tag security/fixed]]
+
+Tails 5.0 fixes known security
+vulnerabilities in 4.29. You should upgrade as soon as possible.
+
+If you are interested in learning more about the security vulnerabilities fixed
+in this release, you can refer to:
+
+- The release notes of *Tor Browser* and other applications linked from
+  the [[release notes of Tails 5.0|news/version_5.0]].
+
+- The list of recent [Debian security
+  advisories](https://www.debian.org/security/) published since Tails
+  4.29.

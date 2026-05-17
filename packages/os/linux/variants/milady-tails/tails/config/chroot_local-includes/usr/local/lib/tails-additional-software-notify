@@ -1,0 +1,121 @@
+#!/usr/bin/python3 -I
+
+import argparse
+import gettext
+import os
+import os.path
+import subprocess
+import sys
+
+import gi
+
+from gi.repository import GLib
+
+gi.require_version("Notify", "0.7")
+from gi.repository import Notify  # NOQA: E402
+
+gettext.textdomain("tails")
+_ = gettext.gettext
+
+
+def get_parser():
+    p = argparse.ArgumentParser(usage=get_help())
+    p.add_argument("title")
+    p.add_argument("body")
+    p.add_argument("accept_label", nargs="?")
+    p.add_argument("deny_label", nargs="?")
+    p.add_argument("documentation_target", nargs="?")
+    p.add_argument("urgent", nargs="?", type=bool, default=False)
+    p.add_argument("--timeout", default=None, type=int)
+    return p
+
+
+class ASPNotifier:
+    """Display a notification and exit with a meaningful code."""
+
+    def __init__(self, args):
+        """Shows a notification with two optional action buttons.
+
+        If there are no buttons, exit straight away with a meaningful code.
+        """
+        wait = args.accept_label or args.deny_label or args.documentation_target
+        if not wait:
+            # For some reason, providing an "invalid" app_name makes the notification
+            # behave better: we want the notification to survive our command, so that we
+            # can exit immediately.
+            # If we were to use our correct app_name, that would not work.
+            # Using any other string works fine. But this string is visible to the user,
+            # so we should still use something meaningful.
+            Notify.init("AdditionalSoftware")
+        else:
+            Notify.init("org.boum.tails.AdditionalSoftware")
+
+        # We need to hold a reference to the notification until the callbacks
+        # are called. That's why we use an instance variable.
+        self.notification: Notify.Notification = Notify.Notification.new(
+            args.title, args.body, icon="package-x-generic"
+        )
+        if args.urgent:
+            self.notification.set_urgency(Notify.Urgency.CRITICAL)
+        if args.documentation_target:
+            self.notification.add_action(
+                "documentation",
+                _("Learn More"),
+                self.cb_notification_clicked,
+                args.documentation_target,
+            )
+        if args.deny_label:
+            self.notification.add_action(
+                "deny", args.deny_label, self.cb_notification_clicked, None
+            )
+        if args.accept_label:
+            self.notification.add_action(
+                "accept", args.accept_label, self.cb_notification_clicked, None
+            )
+        self.notification.connect("closed", self.cb_notification_closed)
+        self.notification.show()
+        sys.stdout.write("id=%i" % self.notification.props.id)
+        if not wait:
+            sys.exit(0)
+
+    def cb_notification_clicked(self, notification, action, user_data=None):
+        """Exit the program with a meaningful code on action triggering."""
+        if action == "accept":
+            sys.exit(0)
+        elif action == "deny":
+            sys.exit(3)
+        elif action == "documentation":
+            subprocess.Popen(["/usr/local/bin/tails-documentation", user_data])
+            sys.exit(5)
+
+    def cb_notification_closed(self, notification):
+        """Exit the program with a meaningful code on notification close."""
+        sys.exit(4)
+
+
+def get_help() -> str:
+    """The subcommand which displays help"""
+    program_name = os.path.basename(sys.argv[0])
+    return (
+        f"{program_name} <summary> <body> [<accept_label> [<deny_label> "
+        "[documentation_target [<urgent>]]]]\n"
+        "Shows a notification with <summary>, <body> and optional "
+        "buttons. Waits until the notification was closed if any buttons"
+        "were specified, else exits immediately.\n"
+        "\n"
+        "Returns: 0 if the button with <accept_label> is selected or no\n"
+        "           buttons were specified\n"
+        "         2 if the arguments are wrong\n"
+        "         3 if the button with <deny_label> is selected\n"
+        "         4 if the notification is closed another way\n"
+        "         5 if the documentation button is selected and the\n"
+        "           documentation helper is launched.\n"
+    )
+
+
+if __name__ == "__main__":
+    args = get_parser().parse_args()
+
+    mainloop = GLib.MainLoop.new(None, False)
+    ASPNotifier(args)
+    mainloop.run()

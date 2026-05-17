@@ -1,0 +1,41 @@
+[[!meta date="Sun, 10 Jan 2016 01:02:03 +0000"]]
+[[!pagetemplate template="news.tmpl"]]
+[[!meta title="Tails 1.8.2 is out"]]
+[[!tag announce]]
+
+This release fixes [[numerous security
+issues|security/Numerous_security_holes_in_1.8.1]]. All users must
+upgrade as soon as possible.
+
+[[!toc levels=1]]
+
+# Changes
+
+## Upgrades and changes
+
+- Upgrade Tor Browser to [5.0.7](https://blog.torproject.org/blog/tor-browser-507-released)
+
+# Known issues
+
+* Automatic upgrades are much slower to apply than before.
+  Expect the upgrade to take around an hour *after* the download is
+  finished. See [[!tails_ticket 10757]] for details.
+
+See the current list of [[known issues|support/known_issues]].
+
+# Download or upgrade
+
+Go to the [[install]] or [[upgrade|doc/upgrade/]] page.
+
+If your Tails does not
+boot after an automatic upgrade, please [[upgrade your Tails
+manually|doc/upgrade#manual]].
+
+# What's coming up?
+
+The next Tails release is [[scheduled|contribute/calendar]] for January 26.
+
+
+We need your help and there are many ways to [[contribute to
+Tails|contribute]] (donating is only one of
+them). Come [[talk to us|doc/about/contact#tails-dev]]!

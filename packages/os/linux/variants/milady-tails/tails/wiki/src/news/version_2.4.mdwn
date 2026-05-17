@@ -1,0 +1,111 @@
+[[!meta date="Tue, 07 Jun 2016 12:34:56 +0000"]]
+[[!pagetemplate template="news.tmpl"]]
+[[!meta title="Tails 2.4 is out"]]
+[[!tag announce]]
+
+This release fixes [[many security
+issues|security/Numerous_security_holes_in_2.3]] and users should
+upgrade as soon as possible.
+
+[[!toc levels=1]]
+
+# Changes
+
+## New features
+
+- We enabled the automatic account configuration of *Icedove* which
+  discovers the correct parameters to connect to your email provider
+  based on your email address. We improved it to rely only on secure
+  protocol and we are working on sharing these improvements with Mozilla
+  so that users of *Thunderbird* outside Tails can benefit from them as well.
+
+  [[!img autoconfig.png link="no"]]
+
+## Upgrades and changes
+
+- Update *Tor Browser* to
+  [6.0.1](https://blog.torproject.org/blog/tor-browser-601-released), based
+  on Firefox 45.
+
+- Remove the preconfigured `#tails` IRC channel. [[Join us on XMPP
+  instead!|support/chat]]
+
+- Always display minimize and maximize buttons in titlebars.
+  ([[!tails_ticket 11270]])
+
+- Remove *GNOME Tweak Tool* and *hledger*. You can add them back using
+  the *Additional software
+  packages*
+  persistence feature.
+
+- Use secure HKPS OpenPGP key server in *Enigmail*.
+
+- Harden our firewall by rejecting `RELATED` packets and restricting Tor
+  to only send `NEW` TCP `syn` packets. ([[!tails_ticket 11391]])
+
+- Harden our kernel by:
+  * Setting various security-related kernel options: `slab_nomerge slub_debug=FZ
+    mce=0 vsyscall=none`. ([[!tails_ticket 11143]])
+  * Removing the *.map* files of the kernel.
+    ([[!tails_ticket  10951]])
+
+## Fixed problems
+
+- Update the *DRM* and *Mesa* graphical libraries. This should fix
+  recent problems with starting Tails on some hardware. ([[!tails_ticket 11303]])
+
+- Some printers that stopped working in Tails 2.0 should work again.
+  ([[!tails_ticket 10965]])
+
+- Enable Packetization Layer Path MTU Discovery for IPv4. This should
+  make the connections to `obfs4` Tor bridges more reliable. ([[!tails_ticket 9268]])
+
+- Remove our custom ciphers and MACs settings for SSH. This should fix
+  connectivity issues with other distributions such as OpenBSD.
+  ([[!tails_ticket 7315]])
+
+- Fix the translations of *Tails Upgrader*. ([[!tails_ticket 10221]])
+
+- Fix displaying the details of a circuit in *Onion Circuits* when using
+  Tor bridges. ([[!tails_ticket 11195]])
+
+For more details, read our Changelog.
+
+# Known issues
+
+- The automatic account configuration of *Icedove* freezes when
+  connecting to some email providers. ([[!tails_ticket 11486]])
+
+- In some cases sending an email with Icedove results in the error: "The
+  message could not be sent using Outgoing server (SMTP)
+  mail.riseup.net for an unknown reason." When this happens, simply
+  click "Ok" and try again and it should work. ([[!tails_ticket 10933]])
+
+- The update of the *Mesa* graphical library introduce new problems at
+  least on AMD HD 7770 and Nvidia GT 930M.
+
+- In the PDF Viewer the Download button doesn't work. This can be
+  worked around by right-clicking anywhere in the document and
+  selecting *Save Page As*.
+
+See the list of [[long-standing issues|support/known_issues]].
+
+# Get Tails 2.4
+
+- To install, follow our [[installation instructions|install]].
+
+- To upgrade, an automatic upgrade is available from 2.3 to 2.4.
+
+  If you cannot do an automatic upgrade or if you fail to start after an
+  automatic upgrade, please try to do a [[manual upgrade|doc/upgrade#manual]].
+
+- [[Download Tails 2.4.|install/download]]
+
+# What's coming up?
+
+Tails 2.5 is [[scheduled|contribute/calendar]] for August 2.
+
+
+We need your help and there are many ways to [[contribute to
+Tails|contribute]] (donating is only one of
+them). Come [[talk to us|doc/about/contact#tails-dev]]!

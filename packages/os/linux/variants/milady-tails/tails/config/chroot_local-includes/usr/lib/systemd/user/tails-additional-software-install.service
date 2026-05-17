@@ -1,0 +1,15 @@
+# This user unit triggers installation of additional software packages after
+# the desktop has started by starting the identically named system unit.
+
+[Unit]
+Description=Trigger installation of Additional Software Packages
+Documentation=https://tails.net/contribute/design/persistence/
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+ExecStart=/bin/systemctl --system start tails-additional-software-install.service
+TimeoutStartSec=0
+
+[Install]
+WantedBy=desktop.target

@@ -1,0 +1,139 @@
+# SOME DESCRIPTIVE TITLE
+# Copyright (C) YEAR Free Software Foundation, Inc.
+# This file is distributed under the same license as the PACKAGE package.
+# FIRST AUTHOR <EMAIL@ADDRESS>, YEAR.
+#
+msgid ""
+msgstr ""
+"Project-Id-Version: PACKAGE VERSION\n"
+"POT-Creation-Date: 2023-06-13 14:17+0200\n"
+"PO-Revision-Date: 2024-04-27 08:00+0000\n"
+"Last-Translator: xin <xin@riseup.net>\n"
+"Language-Team: LANGUAGE <LL@li.org>\n"
+"Language: es\n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+"Plural-Forms: nplurals=2; plural=n != 1;\n"
+"X-Generator: Weblate 5.3\n"
+
+#. type: Plain text
+#, no-wrap
+msgid "[[!meta robots=\"noindex\"]]\n"
+msgstr "[[!meta robots=\"noindex\"]]\n"
+
+#. type: Plain text
+#, no-wrap
+msgid ""
+"<style>\n"
+"/* Display \"*Unsafe Browser*\" instead of \"this browser\" in /doc/anonymous_internet/unsafe_browser and /misc/unsafe_browser_warning */\n"
+".doc {\n"
+"  display: inline-block;\n"
+"}\n"
+".warning {\n"
+"  display: none;\n"
+"}\n"
+"</style>\n"
+msgstr ""
+"<style>\n"
+"/* Display \"*Unsafe Browser*\" instead of \"this browser\" in /doc/anonymous_internet/unsafe_browser and /misc/unsafe_browser_warning */\n"
+".doc {\n"
+"  display: inline-block;\n"
+"}\n"
+".warning {\n"
+"  display: none;\n"
+"}\n"
+"</style>\n"
+
+#. type: Plain text
+msgid "To sign in to a network using a captive portal:"
+msgstr "Para iniciar sesión en una red usando un portal cautivo:"
+
+#. type: Bullet: '1. '
+#, fuzzy
+#| msgid ""
+#| "   Choose a website that is common in your location, for example a "
+#| "search\n"
+#| "   engine or news site.\n"
+msgid ""
+"Try visiting an innocent-looking website that is common in your location, "
+"for example, a search engine or news site:"
+msgstr ""
+"   Escoge un sitio web que sea común para tu locación, por ejemplo un motor "
+"de\n"
+"  búsqueda o un sitio de noticias.\n"
+
+#. type: Bullet: '   - '
+msgid "<a href=\"http://google.com/\" target=\"_blank\">Google</a>"
+msgstr "<a href=\"http://google.com/\" target=\"_blank\">Google</a>"
+
+#. type: Bullet: '   - '
+msgid "<a href=\"http://linkedin.com/\" target=\"_blank\">LinkedIn</a>"
+msgstr "<a href=\"http://linkedin.com/\" target=\"_blank\">LinkedIn</a>"
+
+#. type: Bullet: '   - '
+msgid "<a href=\"http://duckduckgo.com/\" target=\"_blank\"/>DuckDuckGo</a>"
+msgstr "<a href=\"http://duckduckgo.com/\" target=\"_blank\"/>DuckDuckGo</a>"
+
+#. type: Bullet: '   - '
+msgid "<a href=\"http://baidu.com/\" target=\"_blank\"/>Baidu</a>"
+msgstr "<a href=\"http://baidu.com/\" target=\"_blank\"/>Baidu</a>"
+
+#. type: Bullet: '1. '
+#, fuzzy
+#| msgid ""
+#| "You should be redirected to the captive portal instead of the website."
+msgid "If you are redirected to a captive portal, sign in to the network."
+msgstr "Deberías ser redireccionado al portal cautivo en vez de al sitio web."
+
+#. type: Plain text
+#, no-wrap
+msgid ""
+"   If you are not redirected to a captive portal and the website loads,\n"
+"   this means that you are already connected to the Internet. Close\n"
+"   <span class=\"warning\">this browser</span>\n"
+"   <span class=\"doc\">the <i>Unsafe Browser</i></span>\n"
+"   and try connecting to the Tor network again.\n"
+msgstr ""
+
+#. type: Bullet: '1. '
+msgid ""
+"After Tails is connected to Tor, close <span class=\"warning\">this browser."
+"</span> <span class=\"doc\">the <i>Unsafe Browser</i>.</span>"
+msgstr ""
+
+#. type: Plain text
+#, no-wrap
+msgid "   <div class=\"caution\">\n"
+msgstr "   <div class=\"caution\">\n"
+
+#. type: Plain text
+#, no-wrap
+msgid ""
+"   <p>It is particularly important that you close the <i>Unsafe Browser</i> if\n"
+"   you use accessibility features like the Screen Keyboard or the Screen Reader.\n"
+"   If you keep the <i>Unsafe Browser</i> open, a very advanced network attacker\n"
+"   might use it to deanonymize you.</p>\n"
+msgstr ""
+
+#. type: Plain text
+#, no-wrap
+msgid "   </div>\n"
+msgstr "   </div>\n"
+
+#. type: Plain text
+#, no-wrap
+msgid "   You can use *Tor Browser* or any other application as usual.\n"
+msgstr ""
+
+#, no-wrap
+#~ msgid "   <!-- Clarify this after #18382 and #5785. -->\n"
+#~ msgstr "   <!-- Clarify this after #18382 and #5785. -->\n"
+
+#~ msgid "Try visiting any website using the *Unsafe Browser*."
+#~ msgstr ""
+#~ "Intenta visitar cualquier sitio web usando el *Navegador No Seguro*."
+
+#~ msgid "After you signed in to the network, Tor should start."
+#~ msgstr ""
+#~ "Después de que hayas iniciado sesión en la red, Tor debería iniciar."

@@ -1,0 +1,13 @@
+[Unit]
+Description=Report errors detected at the Welcome Screen
+Documentation=https://tails.net/doc/first_steps/whisperback/
+ConditionUser=1000
+ConditionPathExists=/var/lib/gdm3/post-greeter-whisperback.json
+
+[Service]
+Type=oneshot
+ExecStart=whisperback /var/lib/gdm3/post-greeter-whisperback.json
+RemainAfterExit=yes
+
+[Install]
+WantedBy=desktop.target

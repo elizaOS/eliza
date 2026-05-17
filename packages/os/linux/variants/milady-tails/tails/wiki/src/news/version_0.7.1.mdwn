@@ -1,0 +1,80 @@
+[[!meta date="Sat, 30 Apr 2011 01:23:45 +0000"]]
+[[!pagetemplate template="news.tmpl"]]
+[[!tag announce]]
+
+The Amnesic Incognito Live System, version 0.7.1, is out.
+
+This is a bugfix-only release mainly aimed at fixing serious security
+issues in bundled software. All users must upgrade as soon as
+possible.
+
+[[!toc levels=1]]
+
+# Changes
+
+Notable user-visible changes include:
+
+* Vidalia: new 0.2.12-2+tails1 custom package.
+
+* Iceweasel
+  - Don't show Foxyproxy's status / icon in FF statusbar to prevent users
+    from accidentally / unconsciously put their anonymity at risk.
+
+* Software
+  - Upgrade Linux kernel to Debian's 2.6.32-33: fixes tons of bugs,
+    including the infamous missing mouse cursor one. Oh, and it closes
+    a few security holes at well.
+  - Install unrar-free.
+  - Do not install pppoeconf (superseded by NetworkManager).
+  - Upgrade macchanger to Debian testing package to ease development of
+    future Tails releases.
+  - Debian security upgrades: x11-xserver-utils (DSA-2213-1), isc-dhcp
+    (DSA-2216-1), libmodplug (DSA-2226-1).
+
+* Protecting against memory recovery
+  - Add Italian translation for tails-kexec. Thanks to Marco A. Calamari.
+  - Make it clear what it may mean if the system does not power off
+    automatically.
+  - Use kexec's --reset-vga option that might fix display corruption issues
+    on some hardware.
+
+* WhisperBack (encrypted bug reporting software) was upgraded to 1.4.1:
+  - localizes the documentation wiki's URL
+  - uses WebKit to display the bug reporting help page
+  - now is usable on really small screens.
+
+* Miscellaneous
+  - Install mobile-broadband-provider-info for better 3G support.
+  - Add back GNOME system icons to menus.
+  - tails-security-check: avoid generating double-slashes in the Atom
+    feeds URL.
+  - Remove "vga=788" boot parameter which breaks the boot on some hardware.
+  - Remove now useless "splash" boot parameter.
+  - Fix a bunch of i386-isms.
+  - Pass the noswap option to the kernel. This does not change actual Tails
+    behaviour but prevents users from unnecessarily worrying because of 
+    the "Activating swap" boot message.
+
+Plus the usual bunch of minor bug reports and improvements.
+
+See the online
+Changelog
+for technical details.
+
+# I want to try it!
+
+[[Download it, seed it!|install]]
+
+# Can I use it on a pre-Intel Mac computer?
+
+Tails images with *i386* in their name work on the Intel x86
+architecture only. However, we've been working towards releasing a
+Tails image suitable for the pre-Intel Macs hardware (PowerPC
+architecture). Stay tuned, it will be prepared and made available
+soonish.
+
+# A glimpse towards the future
+
+Would you want to help? As explained in our [["how to contribute"
+documentation|contribute]], here are many ways **you** can contribute
+to Tails: no need to be a hardcore developer.

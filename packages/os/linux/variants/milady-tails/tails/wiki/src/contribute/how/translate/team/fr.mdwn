@@ -1,0 +1,4 @@
+[[!meta title="Translate Tails into French"]]
+
+The French translation team uses its [[own mailing
+list|https://www.autistici.org/mailman/listinfo/tails-l10n-fr/]].

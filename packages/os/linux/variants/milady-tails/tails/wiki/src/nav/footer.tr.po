@@ -1,0 +1,215 @@
+# SOME DESCRIPTIVE TITLE
+# Copyright (C) YEAR Free Software Foundation, Inc.
+# This file is distributed under the same license as the PACKAGE package.
+# FIRST AUTHOR <EMAIL@ADDRESS>, YEAR.
+#
+#, fuzzy
+msgid ""
+msgstr ""
+"Project-Id-Version: PACKAGE VERSION\n"
+"Report-Msgid-Bugs-To: tails-l10n@boum.org\n"
+"POT-Creation-Date: 2025-09-03 08:20+0000\n"
+"PO-Revision-Date: YEAR-MO-DA HO:MI+ZONE\n"
+"Last-Translator: FULL NAME <EMAIL@ADDRESS>\n"
+"Language-Team: LANGUAGE <LL@li.org>\n"
+"Language: tr\n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+
+#. type: Content of: <div><h5>
+msgid "Tails"
+msgstr ""
+
+#. type: Content of: <div><ul><li>
+msgid "[[Home|index]]"
+msgstr ""
+
+#. type: Content of: <div><ul><li>
+msgid "[[How Tails works|about]]"
+msgstr ""
+
+#. type: Content of: <div><ul><li>
+msgid "[[Install Tails|install]]"
+msgstr ""
+
+#. type: Content of: <div><ul><li>
+msgid "[[Documentation|doc]]"
+msgstr ""
+
+#. type: Content of: <div><ul><li>
+msgid "[[Support|support]]"
+msgstr ""
+
+#. type: Content of: <div><ul><li>
+msgid "[[News|news]]"
+msgstr ""
+
+#. type: Content of: <div><h5>
+msgid "Support"
+msgstr ""
+
+#. type: Content of: <div><ul><li>
+msgid "[[FAQs|support/faq]]"
+msgstr ""
+
+#. type: Content of: <div><ul><li>
+msgid "[[Known issues|support/known_issues]]"
+msgstr ""
+
+#. type: Content of: <div><ul><li>
+msgid "[[Warnings|doc/about/warnings]]"
+msgstr ""
+
+#. type: Content of: <div><ul><li>
+msgid "[[Security advisories|security]]"
+msgstr ""
+
+#. type: Content of: <div><ul><li>
+msgid "[[Accessibility|doc/first_steps/accessibility]]"
+msgstr ""
+
+#. type: Content of: <div><ul><li>
+msgid "[[Upgrade|doc/upgrade]]"
+msgstr ""
+
+#. type: Content of: <div><h5>
+msgid "Contribute"
+msgstr ""
+
+#. type: Content of: <div><ul><li>
+msgid "[[Contribute|contribute]]"
+msgstr ""
+
+#. type: Content of: <div><ul><li>
+msgid "[[Report an error|doc/first_steps/whisperback]]"
+msgstr ""
+
+#. type: Content of: <div><ul><li>
+msgid "[[Translate|contribute/how/translate]]"
+msgstr ""
+
+#. type: Content of: <div><ul><li>
+msgid "[[Source code|contribute/how/code]]"
+msgstr ""
+
+#. type: Content of: <div><ul><li>
+msgid "[[!tails_gitlab tails/tails/-/issues desc=\"GitLab\"]]"
+msgstr ""
+
+#. type: Content of: <div><ul><li>
+msgid "[[Donate|donate]]"
+msgstr ""
+
+#. type: Content of: <div><h5>
+msgid "About us"
+msgstr ""
+
+#. type: Content of: <div><ul><li>
+msgid "[[Contact|doc/about/contact]]"
+msgstr ""
+
+#. type: Content of: <div><ul><li>
+msgid "[[Mission and values|contribute/mission]]"
+msgstr ""
+
+#. type: Content of: <div><ul><li>
+msgid ""
+"[[Social contract|https://community.torproject.org/policies/"
+"social_contract/]]"
+msgstr ""
+
+#. type: Content of: <div><ul><li>
+msgid "[[Supporters|https://www.torproject.org/about/supporters/]]"
+msgstr ""
+
+#. type: Content of: <div><ul><li>
+msgid ""
+"[[Code of conduct|https://community.torproject.org/policies/"
+"code_of_conduct/]]"
+msgstr ""
+
+#. type: Content of: <div><ul><li>
+msgid "[[License|doc/about/license]]"
+msgstr ""
+
+#. type: Content of: <div><ul><li>
+msgid "[[Jobs|jobs]]"
+msgstr ""
+
+#. type: Content of: <div><h5>
+msgid "News"
+msgstr ""
+
+#. type: Content of: <div><p>
+msgid "Subscribe to our [[newsletter|news]]"
+msgstr ""
+
+#. type: Content of: <div><form>
+msgid ""
+"<input aria-label=\"Email\" name=\"email\" value=\"\"/> <button aria-"
+"label=\"Subscribe\" type=\"submit\">Subscribe</button>"
+msgstr ""
+
+#. type: Content of: <div><div><div>
+msgid ""
+"<a target=\"_blank\" href=\"https://forum.torproject.org\"><i class=\"fab fa-"
+"discourse\"></i></a>"
+msgstr ""
+
+#. type: Content of: <div><div><div>
+msgid ""
+"<a target=\"_blank\" href=\"https://www.facebook.com/TorProject/\"><i "
+"class=\"fab fa-facebook\"></i></a>"
+msgstr ""
+
+#. type: Content of: <div><div><div>
+msgid ""
+"<a target=\"_blank\" href=\"https://mastodon.social/@torproject\" "
+"rel=\"me\"><i class=\"fab fa-mastodon\"></i></a>"
+msgstr ""
+
+#. type: Content of: <div><div><div>
+msgid ""
+"<a target=\"_blank\" href=\"https://www.instagram.com/torproject\"><i "
+"class=\"fab fa-instagram\"></i></a>"
+msgstr ""
+
+#. type: Content of: <div><div><div>
+msgid ""
+"<a target=\"_blank\" href=\"https://twitter.com/Tails_live\"><i class=\"fab "
+"fa-twitter\"></i></a>"
+msgstr ""
+
+#. type: Content of: <div><div><div>
+msgid ""
+"<a target=\"_blank\" href=\"https://www.linkedin.com/company/tor-"
+"project\"><i class=\"fab fa-linkedin\"></i></a>"
+msgstr ""
+
+#. type: Content of: <div><div><div>
+msgid ""
+"<a target=\"_blank\" href=\"https://github.com/torproject\"><i class=\"fab "
+"fa-github\"></i></a>"
+msgstr ""
+
+#. type: Content of: <div><div><div>
+msgid ""
+"<a target=\"_blank\" href=\"https://t.me/torproject\"><i class=\"fab fa-"
+"telegram\"></i></a>"
+msgstr ""
+
+#. type: Content of: <div><div><div>
+msgid ""
+"<a target=\"_blank\" href=\"https://gitlab.torproject.org/\"><i class=\"fab "
+"fa-gitlab\"></i></a>"
+msgstr ""
+
+#. type: Content of: <div>
+msgid "[[!img lib/tor-black.png link=\"no\" class=\"svg\" alt=\"\"]]"
+msgstr ""
+
+#. type: Content of: <div><p>
+msgid ""
+"Tails is made by the <a href=\"https://torproject.org/\">Tor Project</a>."
+msgstr ""

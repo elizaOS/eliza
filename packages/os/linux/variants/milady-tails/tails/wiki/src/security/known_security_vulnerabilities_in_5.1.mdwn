@@ -1,0 +1,18 @@
+[[!meta date="Mon, 20 Jun 2022 13:31:52 -0000"]]
+[[!meta title="Known security vulnerabilities in Tails 5.1"]]
+[[!pagetemplate template="news.tmpl"]]
+
+[[!tag security/fixed]]
+
+Tails 5.1.1 fixes known security
+vulnerabilities in 5.1. You should upgrade as soon as possible.
+
+If you are interested in learning more about the security vulnerabilities fixed
+in this release, you can refer to:
+
+- The release notes of *Tor Browser* and other applications linked from
+  the [[release notes of Tails 5.1.1|news/version_5.1.1]].
+
+- The list of recent [Debian security
+  advisories](https://www.debian.org/security/) published since Tails
+  5.1.

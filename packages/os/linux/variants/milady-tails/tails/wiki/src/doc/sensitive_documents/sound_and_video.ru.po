@@ -1,0 +1,176 @@
+# SOME DESCRIPTIVE TITLE
+# Copyright (C) YEAR Free Software Foundation, Inc.
+# This file is distributed under the same license as the PACKAGE package.
+# FIRST AUTHOR <EMAIL@ADDRESS>, YEAR.
+#
+msgid ""
+msgstr ""
+"Project-Id-Version: PACKAGE VERSION\n"
+"Report-Msgid-Bugs-To: tails-l10n@boum.org\n"
+"POT-Creation-Date: 2026-01-06 19:05+0000\n"
+"PO-Revision-Date: 2024-05-16 22:54+0000\n"
+"Last-Translator: xin <xin@riseup.net>\n"
+"Language-Team: LANGUAGE <LL@li.org>\n"
+"Language: ru\n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+"Plural-Forms: nplurals=3; plural=n%10==1 && n%100!=11 ? 0 : n%10>=2 && "
+"n%10<=4 && (n%100<10 || n%100>=20) ? 1 : 2;\n"
+"X-Generator: Weblate 5.3\n"
+
+#. type: Plain text
+#, no-wrap
+msgid "[[!meta title=\"Sound and video\"]]\n"
+msgstr "[[!meta title=\"Звук и видео\"]]\n"
+
+#. type: Plain text
+msgid "Tails includes several sound and video applications:"
+msgstr "В Tails есть несколько приложений для воспроизведения звука и видео."
+
+#. type: Bullet: '  - '
+msgid ""
+"[*Audacity*](https://www.audacityteam.org/), a multi-track audio editor."
+msgstr ""
+
+#. type: Plain text
+#, no-wrap
+msgid "    See the [official documentation](http://manual.audacityteam.org/).\n"
+msgstr ""
+
+#. type: Bullet: '  - '
+msgid ""
+"[*Brasero*](https://wiki.gnome.org/Apps/Brasero), an application to burn, "
+"copy, and erase CDs and DVDs."
+msgstr ""
+
+#. type: Bullet: '  - '
+#, fuzzy
+#| msgid ""
+#| "**<span class=\"application\">[Sound Juicer](https://wiki.gnome.org/Apps/"
+#| "SoundJuicer)</span>** is a CD ripper application."
+msgid ""
+"[*Sound Juicer*](https://wiki.gnome.org/Apps/SoundJuicer), a CD ripper "
+"application."
+msgstr ""
+"**<span class=\"application\">[Sound Juicer](https://wiki.gnome.org/Apps/"
+"Sound Juicer)</span>**. Приложение для извлечения читаемых звуковых файлов "
+"со звуковых компакт-дисков."
+
+#. type: Bullet: '  - '
+msgid ""
+"[*Sound Recorder*](https://wiki.gnome.org/Apps/SoundRecorder), a sound "
+"recorder."
+msgstr ""
+
+#. type: Bullet: '  - '
+msgid "[*Videos*](https://apps.gnome.org/Totem/), an audio and video player."
+msgstr ""
+
+#. type: Plain text
+#, fuzzy
+#| msgid ""
+#| "These applications can be started from the\n"
+#| "<span class=\"menuchoice\">\n"
+#| "  **Applications**&nbsp;▸\n"
+#| "  **Sound & Video**</span> menu.\n"
+msgid ""
+"These applications are available in the **Apps&nbsp;▸ Sound & Video** "
+"submenu."
+msgstr ""
+"Эти приложения можно запустить из меню\n"
+"<span class=\"menuchoice\">\n"
+"  **Приложения**&nbsp;▸\n"
+"  **Аудио и видео**</span>.\n"
+
+#. type: Plain text
+msgid ""
+"You can also install using the [[Additional Software|persistent_storage/"
+"additional_software]] feature:"
+msgstr ""
+
+#. type: Bullet: '- '
+msgid ""
+"[*VLC*](https://www.videolan.org/vlc/), a multimedia player with advanced "
+"features."
+msgstr ""
+
+#. type: Plain text
+#, no-wrap
+msgid "  <div class=\"bug\">\n"
+msgstr ""
+
+#. type: Plain text
+#, no-wrap
+msgid "  <p>Watching [[!wikipedia IPTV]] channels from <i>VLC</i> in Tails doesn't work.</p>\n"
+msgstr ""
+
+#. type: Plain text
+#, no-wrap
+msgid "  </div>\n"
+msgstr "  </div>\n"
+
+#. type: Bullet: '- '
+msgid "[*Pitivi*](https://www.pitivi.org/), a video editor."
+msgstr ""
+
+#. type: Bullet: '- '
+msgid ""
+"[*GNOME Camera*](https://apps.gnome.org/Snapshot/), from the `gnome-"
+"snapshot` package, an application to take pictures and videos from your "
+"webcam."
+msgstr ""
+
+#. type: Plain text
+#, no-wrap
+msgid "[[!inline pages=\"doc/sensitive_documents/persistence\" raw=\"yes\" sort=\"age\"]]\n"
+msgstr "[[!inline pages=\"doc/sensitive_documents/persistence.ru\" raw=\"yes\" sort=\"age\"]]\n"
+
+#. type: Plain text
+#, no-wrap
+msgid "[[!inline pages=\"doc/sensitive_documents/metadata.inline\" raw=\"yes\" sort=\"age\"]]\n"
+msgstr "[[!inline pages=\"doc/sensitive_documents/metadata.inline.ru\" raw=\"yes\" sort=\"age\"]]\n"
+
+#~ msgid ""
+#~ "**<span class=\"application\">[Audacity](https://www.audacityteam.org/)</"
+#~ "span>** is a multi-track audio editor designed for recording, playing and "
+#~ "editing of digital audio.  See the [official documentation](http://"
+#~ "manual.audacityteam.org/)."
+#~ msgstr ""
+#~ "**<span class=\"application\">[Audacity](https://www.audacityteam.org/)</"
+#~ "span>**. Многодорожечный аудиоредактор для записи, воспроизведения и "
+#~ "редактирования цифрового аудио. См. [официальное описание](https://"
+#~ "manual.audacityteam.org/)."
+
+#~ msgid ""
+#~ "**<span class=\"application\">[Brasero](https://wiki.gnome.org/Apps/"
+#~ "Brasero)</span>** is an application to burn, copy, and erase CD and DVD "
+#~ "media: audio, video, or data.  See the [official documentation](https://"
+#~ "help.gnome.org/users/brasero/stable/)."
+#~ msgstr ""
+#~ "**<span class=\"application\">[Brasero](https://wiki.gnome.org/Apps/"
+#~ "Brasero)</span>**. Приложение для записи, копирования и удаления "
+#~ "информации с носителей CD и DVD: аудио, видео и других данных. См. "
+#~ "[официальное описание](https://help.gnome.org/users/brasero/stable/)."
+
+#~ msgid ""
+#~ "***Sound Recorder*** is a simple application to record sound. Sound clips "
+#~ "recorded using <span class=\"application\">Sound Recorder</span> are "
+#~ "saved to the <span class=\"filename\">Recordings</span> folder."
+#~ msgstr ""
+#~ "**<span class =\"application\">Диктофон</span>**. Простое приложение для "
+#~ "записи звука. Аудиофайлы, записанные с помощью <span "
+#~ "class=\"application\">Диктофона</span>, сохраняются в папке <span "
+#~ "class=\"filename\">Записи</span>."
+
+#~ msgid "***Videos*** is an audio and video player."
+#~ msgstr "***Видео***. Аудио- и видеоплеер."
+
+#, no-wrap
+#~ msgid ""
+#~ "    For more advanced features, you can install the\n"
+#~ "    [*VLC* media player](https://www.videolan.org/vlc/)\n"
+#~ "    using the [[Additional Software|doc/first_steps/additional_software]] feature.\n"
+#~ msgstr ""
+#~ "    Нужно больше опций? Установите [плеер *VLC*](https://www.videolan.org/vlc/),\n"
+#~ "    используя опцию [[дополнительного программного обеспечения|doc/first_steps/additional_software]].\n"

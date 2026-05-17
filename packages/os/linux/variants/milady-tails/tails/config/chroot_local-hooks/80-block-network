@@ -1,0 +1,63 @@
+#!/bin/sh
+
+set -e
+
+echo "Generating blocklist for all network devices"
+
+is_allowed() {
+    mod="$(basename "$1" | sed --regexp-extended 's|\.ko(\.xz)?$||')"
+    shift
+    # the heredoc is the allowlist
+    grep -qwF "$mod" <<END
+veth
+END
+}
+
+is_net_module() {
+    # Here we assume that if any of the patterns below are matched, it
+    # is a network driver. This is not comprehensive, but should be
+    # enough for the staging directory (worst case we blocklist some
+    # shitty non-network driver by mistake).
+    /sbin/modinfo "${1}" | \
+        grep -q --extended-regexp \
+             -e "^depends:\s*(cfg|lib|mac)80211" \
+             -e "^parm:\s*ifname:"
+}
+net_module_filter() {
+    local path
+    while read -r path; do
+        if ! is_allowed "${path}" && is_net_module "${path}"; then
+            echo "${path}"
+        fi
+    done
+}
+remove_allowlist_filter() {
+    local path
+    while read -r path; do
+        if ! is_allowed "${path}"; then
+            echo "${path}"
+        fi
+    done
+}
+
+generate_blocking_line() {
+    local name
+    local path
+    while read -r path; do
+        name="$(basename "${path}" | sed --regexp-extended 's|\.ko(\.xz)?$||')"
+        printf "install %s /bin/true\n" "${name}"
+    done
+}
+
+BLOCKLIST=/etc/modprobe.d/all-net-blocklist.conf
+
+(
+    find /lib/modules/*/kernel/drivers/net -name "*.ko" -o -name "*.ko.xz" | \
+        remove_allowlist_filter | \
+        generate_blocking_line && \
+
+    # Let's try to find the network drivers in the staging directory as well
+    find /lib/modules/*/kernel/drivers/staging/ -name "*.ko" -o -name "*.ko.xz" | \
+        net_module_filter | \
+        generate_blocking_line
+) | sort -u > "${BLOCKLIST}"

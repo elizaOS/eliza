@@ -1,0 +1,249 @@
+[[!meta date="Thu, 06 Sep 2012 21:00:16 +0000"]]
+[[!pagetemplate template="news.tmpl"]]
+[[!meta title="Tails report for August, 2012"]]
+
+Here is the report of the many things that happened around Tails in
+August, 2012.
+
+Tails has been started and successfully connected to the Tor network
+around 64.000 times in August. That makes a boot every 41 seconds on
+average. We know this since Tails checks if a new release is available
+once the network is connected each boot.
+
+Releases
+========
+
+Version 0.13 is coming! We have released the first
+release candidate, along with a [[call for testing|test_0.13-rc1]].
+
+Unless something nasty happens, Tails 0.13 should be released on
+September 11th.
+
+Tails summit
+============
+
+Seven mighty Tails developers gathered for a ten-day summit, including a
+day trip to the sea. The meeting was exhausting, inspiring and
+productive. We have tied up some discussions that had a year long
+history, made plans for the future, and worked on a few annoying bug
+fixes and cool hacks.
+
+So, what happened during Tails summit? (Not in any relevant order.)
+
+* Had an 'About us' go-around.
+* Done a 2D barometer about 'Tails in 3 years', with some questions on
+  the future of Tails.
+* Shared knowledge about what has been done on automated testing so far.
+* Tried to use a forked version of memtest86+ to wipe memory.
+* Started a 'wipe_memory' module for GRUB.
+* Decided to go for OSQA to replace the forum.
+* Rewrote the documentation for new translators.
+* Clarified our roadmap, at least until the 1.0 release.
+* Worked on WhisperBack 1.6, which uses an external, dedicated
+  GnuPG keyring.
+* Finalized the hardware configuration of our future server, lizard, and
+  discussed the basics of the sysadmin work.
+* Finalized and merged the `bugfix/remove_ttdnsd_from_the_loop` branch.
+* Merged the `feature/wireless-regulation` branch.
+* Merged the `feature/precompiled-locales` branch.
+* Started a `feature/do-not-build-the-forum` branch and got it merged.
+* Labelled a bunch of tasks and bugs as "broken windows".
+* Designed an amazing release plan.
+* Wrote documentation about "Tails does no boot" and created a "Known
+  issues" page.
+* Pinged Jake about disabling firewire and the likes.
+* Tried to define meaningful/efficient organisation methods.
+* Created an internal private chatroom for emergencies.
+* Finished some ooold work:
+  - `feature/firewall_lockdown`
+  - `feature/assymetric_gpgApplet` (sic!)
+* Killed some bugs:
+  - `todo/hide_FoxyProxy_unreachable_proxy_message`.
+  - the unusable 'TailsData' volume is now hidden in Nautilus.
+* Done some initial work on `todo/persistence_preset_-_NM_connections`.
+* Created an internal document repository for private stuff.
+* More or less defined our target userbase.
+* Prepared a new contract proposal for sponsor Bravo.
+* Thought through our initial strategy with respect to Tor stream isolation.
+* Drafted a plan for VPN support.
+* Calculated statistics on the state of translations on the website.
+* Created a Twitter account.
+* Designed a plan for advertising test images to more people.
+* Decided to use torbrowser, and have rough plan for the next things to do.
+* Crippled a laptop due to coffee.
+* Outlined what Tails needs from a task manager application.
+* Benchmarked several task managers.
+* Handled conspiranoia about our website.
+* Clarified our position and priorities regarding Tails' network fingerprint,
+  both on the "local" side (ISP, local router) and "remote" side (Exit node,
+  web server).
+* Decided to accept Bitcoin donations (stay tuned!) but we still do not
+  have the resources to accept cash or Paypal donations.
+* Tried to send a postcard to jvoisin but missed a postal address,
+  *sigh*.
+* Suffered and went to the dentist and suffered again. Now pending.
+* We had a "food master challenge".
+* We generated new GnuPG keys and signatures.
+* We tried with limited success to use hardware GnuPG cards.
+* We reported bugs in Vidalia.
+* Did not upload any package to Debian.
+* Researched how to properly fix a minor bug in Vidalia's AppArmor policy.
+  Proposed a plan to upstream AppArmor.
+* Published our Puppet modules.
+* Extracted some more package sources from our Git repository
+  for our future APT repositories.
+* Wrote a collaboration proposal to Reporters without Borders.
+* Answered conspiranoiac forum posts.
+* Saw the years-old Metacity bug fixed in Wheezy.
+* No one got hurt.
+* Did not drink that much, thanks to antibiotics (at least for some of us).
+* We agreed on calling our sponsors 'Alpha', 'Bravo' and so on.
+* We have some preliminary fillings for the next round of the grant
+  proposal from sponsor Charlie.
+* We refined how changes were incorporated into Tails.
+* Decided to switch to a time-based release schedule.
+  Some details have to be sorted out, still.
+* Thought of a plan to improve the tails-greeter GUI and user experience.
+* Discussed tools used for user support, how we handle the workload,
+  how we will.
+* Discussed how we can make paid workers and volunteers (who sometimes are
+  the same persons, really) work together happily.
+* Clarified loooads of development processes so that we avoid the need for a
+  project manager, and know better how to get changes into Tails.
+  Expect us to fill the contribute section of the Tails website with that.
+* Designed "Release Managers" and "Welcome and Annoying Nitpicker"
+  roles, and scheduled the first shifts.
+* Discussed possibly moving to the `tails.is` domain.
+* Have a list of people to reach for each existing language team or
+  language requests.
+* Wrote a list of what we have done.
+* Wrote that we wrote a list of what we have done.
+* We eventually shut up and went `$HOME`.
+* After some serious drifts we decided not writing anything anymore on
+  the "done during the summit" list.
+
+Outreach and support
+====================
+
+As we would like to get more people to test our release candidates, we
+decided to experiment with relaying our news on Twitter. You can follow
+the project at <https://twitter.com/Tails_live>.
+
+We acknowledge that Twitter is inferior in terms of freedom to many
+other Internet protocols and tools. But the content is public and will
+be reserved for announcements. It feels like an acceptable trade-off to
+spread our information where people read it.
+
+Again, please note this is not a channel to contact us. We also have no
+intents to spread on other media platforms that are dangerous in terms of
+privacy, control, centralization and censorship. If you want to
+contact us and hope to get a response, please use the proper
+communication channels:
+
+ * the ones for [[public discussions|doc/about/contact#tails-dev]],
+ * the ones for [[private contacts|support/talk]].
+
+We have received 40 reports sent using WhisperBack. Our receiving relay
+was regularly offline this month due to hardware issue.
+
+The forum received 639 new messages, 73 of them signed by "Tails".
+
+Code
+====
+
+The following branches that had pending reviews were merged:
+
+ * Using precompiled locales.
+ * Incremental updates.
+ * Support for live-boot 3.x.
+ * WhisperBack 1.6 (see details below).
+
+Misc fixes and improvements that will show up in 0.13:
+
+ * Fix the System Monitor applet by adding gnome-system-monitor.
+ * Remove unused variables in htpdate.
+ * Remove residual DHCP DNS settings from resolvconf.
+ * Properly handle wireless per-country frequency regulation.
+ * Hide the unusable 'TailsData' volume from Nautilus.
+ * ttdnsd is now out of the default name resolution loop. This
+   should fix hard to track resolution errors.
+ * I2P has been updated to 0.9.1.
+
+The ikiwiki forum is not anymore in the bundled static website. This
+results in an important build speed improvement.
+
+A little more progress has been made on building Tails for the next
+upcoming Debian release (codename Wheezy). See
+wheezy branch.
+
+Started work on including Tor 0.2.3. This is targeted at 0.14. See
+feature/Tor_0.2.3
+branch.
+
+There is a possible fix for the pause during the boot
+process
+that probably appeared with Tails 0.12.
+
+Some more sorting has been made in order to retrofit our custom packages
+in our future APT repositories
+and remove them from our Git repository.
+
+WhisperBack, our encrypted bug reporting application got a lot of improvements:
+
+ * Load help from the config file instead of hardcoding it
+ * Sanitize debugging info
+ * L10n: import translations for Arabic, Czech Spanish, Euskera, French, Dutch,
+   Polish, Portuguese and Russian
+ * Improve UI especially for small screens
+ * Use a dedicated GnuPG keyring
+
+On-going discussions
+====================
+
+Deactivate PCMCIA, ExpressCard and
+Firewire?
+
+How to deal with roadmap and broken
+windows?
+
+Allow to access other systems in the local
+network?
+
+Disabling the 'PC
+speaker'?
+
+Call for review of plans for stream
+isolation
+
+Documentation and website
+=========================
+
+Pages in the 'Documentation' section now link from one page to the next
+inside a same section, thanks to the new trail plugin for Ikiwiki.
+
+Update the Windows documentation to use MD5 Reborned
+Hasher
+instead of the obsolete CheckIt.
+
+[[Many improvements to the guide for translators|contribute/how/translate]].
+
+Clarify some steps in the [[release process|contribute/release_process]].
+Document better how to release Tails custom packages.
+
+Update the roadmap page.
+
+Translations
+============
+
+Some important work was done to translate more of our website to
+Portuguese, 16% more of its strings got translated during this month.
+
+We also received many patches for our custom programs in Russian, Arabic,
+and Farsi.
+
+Funding
+=======
+
+We sent a proposal to sponsor *Bravo* about funding developers for October
+and November to work on our user support channels, documentation and
+hardware support.

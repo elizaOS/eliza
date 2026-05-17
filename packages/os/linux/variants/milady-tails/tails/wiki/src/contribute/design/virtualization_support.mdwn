@@ -1,0 +1,17 @@
+[[!toc levels=2]]
+
+Warn users when running inside a VM
+===================================
+
+We tell users, when running inside a VM, that they are implicitly
+trusting both the VM software *and* the host OS; the warning message
+points to a [[dedicated documentation page|doc/advanced_topics/virtualization]].
+This is needed to avoid creating a false sense of security, which is
+often worse than no security and a clear sense of it.
+
+The detection is done with `systemd-detect-virt`.
+
+- [[!tails_gitweb config/chroot_local-includes/lib/systemd/user/tails-virt-notify-user.service]]
+- [[!tails_gitweb config/chroot_local-includes/usr/local/lib/tails-virt-notify-user]]
+
+A bit more work is [[!tails_ticket 6019 desc="left to do"]].

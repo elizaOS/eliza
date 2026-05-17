@@ -1,0 +1,574 @@
+# SOME DESCRIPTIVE TITLE
+# Copyright (C) YEAR Free Software Foundation, Inc.
+# This file is distributed under the same license as the PACKAGE package.
+# FIRST AUTHOR <EMAIL@ADDRESS>, YEAR.
+#
+msgid ""
+msgstr ""
+"Project-Id-Version: PACKAGE VERSION\n"
+"Report-Msgid-Bugs-To: tails-l10n@boum.org\n"
+"POT-Creation-Date: 2026-04-10 19:22+0000\n"
+"PO-Revision-Date: 2024-06-10 11:53+0000\n"
+"Last-Translator: xin <xin@riseup.net>\n"
+"Language-Team: LANGUAGE <LL@li.org>\n"
+"Language: tr\n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+"Plural-Forms: nplurals=2; plural=n > 1;\n"
+"X-Generator: Weblate 5.3\n"
+
+#. type: Content of: outside any tag (error?)
+msgid "[[!meta robots=\"noindex\"]]"
+msgstr ""
+
+#. type: Content of: <h2>
+msgid "You need"
+msgstr ""
+
+#. type: Content of: <div><div>
+msgid "[[!img install/inc/icons/usb.png link=\"no\" alt=\"\"]]"
+msgstr "[[!img install/inc/icons/usb.png link=\"no\" alt=\"\"]]"
+
+#. type: Content of: <div><div><p>
+msgid "1 USB stick"
+msgstr ""
+
+#. type: Content of: <div><div><p>
+msgid "Only for Tails!"
+msgstr ""
+
+#. type: Content of: <div><div><p>
+msgid "8 GB minimum"
+msgstr ""
+
+#. type: Content of: <div><div><p>
+msgid "Your primary Tails"
+msgstr ""
+
+#. type: Content of: <div><div>
+msgid "[[!img install/inc/icons/intermediary.png link=\"no\" alt=\"\"]]"
+msgstr "[[!img install/inc/icons/intermediary.png link=\"no\" alt=\"\"]]"
+
+#. type: Content of: <div><div><p>
+msgid "All data will be lost!"
+msgstr ""
+
+#. type: Content of: <div><div><p>
+msgid "[[!toggle id=\"why_extra\" text=\"Why?\"]]"
+msgstr ""
+
+#. type: Content of: <div><div><div>
+msgid ""
+"[[!toggleable id=\"why_extra\" text=\"\"\" [[!toggle id=\"why_extra\" "
+"text=\"\"]]"
+msgstr ""
+"[[!toggleable id=\"why_extra\" text=\"\"\" [[!toggle id=\"why_extra\" "
+"text=\"\"]]"
+
+#. type: Content of: <div><div><div><p>
+msgid ""
+"It is currently impossible to manually upgrade a Tails USB stick while "
+"running from itself. This scenario requires creating an intermediary Tails "
+"on another USB stick, from which to upgrade your Tails."
+msgstr ""
+
+#. type: Content of: <div><div><div>
+msgid "\"\"\"]]"
+msgstr ""
+
+#. type: Content of: <div><div>
+msgid "[[!img install/inc/icons/windows.png link=\"no\" alt=\"\"]]"
+msgstr "[[!img install/inc/icons/windows.png link=\"no\" alt=\"\"]]"
+
+#. type: Content of: <div><div><p>
+msgid "Windows 8"
+msgstr ""
+
+#. type: Content of: <div><div><p>
+msgid "or later"
+msgstr ""
+
+#. type: Content of: <div><div>
+msgid "[[!img install/inc/icons/apple.png link=\"no\" alt=\"\"]]"
+msgstr "[[!img install/inc/icons/apple.png link=\"no\" alt=\"\"]]"
+
+#. type: Content of: <div><div><p>
+msgid "macOS 10.10"
+msgstr ""
+
+#. type: Content of: <div><div><p>
+msgid "Yosemite"
+msgstr ""
+
+#. type: Content of: <div><div>
+msgid "[[!img install/inc/icons/linux.png link=\"no\" alt=\"\"]]"
+msgstr "[[!img install/inc/icons/linux.png link=\"no\" alt=\"\"]]"
+
+#. type: Content of: <div><div><p>
+msgid "Linux"
+msgstr ""
+
+#. type: Content of: <div><div><p>
+msgid "any distribution"
+msgstr ""
+
+#. type: Content of: <div><div>
+msgid "[[!img install/inc/icons/debian.png link=\"no\" alt=\"\"]]"
+msgstr "[[!img install/inc/icons/debian.png link=\"no\" alt=\"\"]]"
+
+#. type: Content of: <div><div><p>
+msgid "Debian"
+msgstr ""
+
+#. type: Content of: <div><div><p>
+msgid "Ubuntu"
+msgstr ""
+
+#. type: Content of: <div><div><p>
+msgid "or another derivative"
+msgstr ""
+
+#. type: Content of: <div><div><p>
+msgid "Another Tails"
+msgstr ""
+
+#. type: Content of: <div><div><p>
+msgid "USB stick or DVD"
+msgstr ""
+
+#. type: Content of: <div><div>
+msgid "[[!img install/inc/icons/laptop.png link=\"no\" alt=\"\"]]"
+msgstr "[[!img install/inc/icons/laptop.png link=\"no\" alt=\"\"]]"
+
+#. type: Content of: <div><div><p>
+msgid "2 GB of RAM"
+msgstr ""
+
+#. type: Content of: <div><div><p>
+msgid ""
+"<a href=\"https://support.microsoft.com/en-us/windows/32-bit-and-64-bit-"
+"windows-frequently-asked-questions-c6ca9541-8dce-4d48-0415-94a3faa2e13d\">64-"
+"bit</a>"
+msgstr ""
+
+#. type: Content of: <div><div><p>
+msgid "Intel processor"
+msgstr ""
+
+#. type: Content of: <div><div><p>
+msgid "not Apple processor"
+msgstr ""
+
+#. type: Content of: <div><div><p>
+msgid ""
+"<a href=\"https://www.howtogeek.com/198615/how-to-check-if-your-linux-system-"
+"is-32-bit-or-64-bit/\">64-bit</a>"
+msgstr ""
+
+#. type: Content of: <div><div>
+msgid "[[!img install/inc/icons/phone.png link=\"no\" alt=\"\"]]"
+msgstr "[[!img install/inc/icons/phone.png link=\"no\" alt=\"\"]]"
+
+#. type: Content of: <div><div><p>
+msgid "Smartphone"
+msgstr ""
+
+#. type: Content of: <div><div><p>
+msgid "or printer"
+msgstr ""
+
+#. type: Content of: <div><div><p>
+msgid "to follow the instructions"
+msgstr ""
+
+#. type: Content of: <div><div>
+msgid "[[!img install/inc/icons/clock.png link=\"no\" alt=\"\"]]"
+msgstr "[[!img install/inc/icons/clock.png link=\"no\" alt=\"\"]]"
+
+#. type: Content of: <div><div><p>
+msgid "1 hour in total"
+msgstr ""
+
+#. type: Content of: <div><div><p>
+msgid "½ hour"
+msgstr ""
+
+#. type: Content of: <div><div><p>
+msgid "¼ hour"
+msgstr ""
+
+#. type: Content of: <div><div><p>
+msgid ""
+"[[!inline pages=\"inc/stable_amd64_iso_size\" raw=\"yes\" sort=\"age\"]] to "
+"download"
+msgstr ""
+
+#. type: Content of: <div><div><p>
+msgid "½ hour to install"
+msgstr ""
+
+#. type: Content of: <div><div><p>
+msgid "½ hour to upgrade"
+msgstr ""
+
+#. type: Content of: <div><p>
+msgid ""
+"To learn about the processor in your Mac, choose <b>Apple menu &nbsp;▸ About "
+"This Mac</b> and check the <b>Processor</b> or <b>Chip</b> information."
+msgstr ""
+
+#. type: Content of: <div><p>
+msgid "If your Mac has an Apple chip, Tails won't work."
+msgstr ""
+
+#. type: Content of: <div><p>
+msgid ""
+"Making Tails work on Apple chips represents a massive engineering challenge."
+msgstr ""
+
+#. type: Content of: <div><p>
+msgid ""
+"The <a href=\"https://asahilinux.org/\">Asahi Linux</a> project is working "
+"on support for Apple chips in Linux. Support for <a href=\"https://"
+"wiki.debian.org/InstallingDebianOn/Apple/M1\">Apple chips in Debian</a> is "
+"following along, but it is not complete yet."
+msgstr ""
+
+#. type: Content of: <div><p>
+msgid "You can track our own experiments on [[!tails_ticket 10972]]."
+msgstr ""
+
+#. type: Content of: <p>
+msgid ""
+"[[!toggle id=\"requirements\" text=\"System requirements and recommended USB "
+"sticks\"]]"
+msgstr ""
+
+#. type: Content of: outside any tag (error?)
+msgid ""
+"[[!toggleable id=\"requirements\" text=\"\"\" <span class=\"hide\">[[!toggle "
+"id=\"requirements\" text=\"\"]]</span> [[!inline pages=\"doc/about/"
+"requirements\" raw=\"yes\" sort=\"age\"]] \"\"\"]]"
+msgstr ""
+
+#. type: Content of: <h2>
+msgid "Your steps"
+msgstr ""
+
+#. type: Content of: <div><a>
+#, fuzzy
+msgid ""
+"<a href=\"#download\" class=\"windows linux mac expert\"> [[!img install/inc/"
+"infography/download.png link=\"no\" alt=\"\"]]"
+msgstr ""
+"</a> <a href=\"#tails\" class=\"windows linux mac expert\"> [[!img install/"
+"inc/infography/tails.png link=\"no\" alt=\"\"]]"
+
+#. type: Content of: <div><a><p>
+msgid "Download Tails"
+msgstr ""
+
+#. type: Content of: <div><a>
+#, fuzzy
+msgid ""
+"</a> <a href=\"#download\" class=\"upgrade-os\"> [[!img install/inc/"
+"infography/download-with-intermediary.png link=\"no\" alt=\"\"]]"
+msgstr ""
+"</a> <a href=\"#download\" class=\"upgrade-tails\"> [[!img install/inc/"
+"infography/download-from-tails.png link=\"no\" alt=\"\"]]"
+
+#. type: Content of: <div><a>
+msgid ""
+"</a> <a href=\"#download\" class=\"upgrade-tails\"> [[!img install/inc/"
+"infography/download-from-tails.png link=\"no\" alt=\"\"]]"
+msgstr ""
+"</a> <a href=\"#download\" class=\"upgrade-tails\"> [[!img install/inc/"
+"infography/download-from-tails.png link=\"no\" alt=\"\"]]"
+
+#. type: Content of: <div><a><p>
+msgid "Download the upgrade"
+msgstr ""
+
+#. type: Content of: <div><a>
+#, fuzzy
+msgid ""
+"</a> <a href=\"#verify\" class=\"windows linux mac expert\"> [[!img install/"
+"inc/infography/verify.png link=\"no\" alt=\"\"]]"
+msgstr ""
+"</a> <a href=\"#restart\" class=\"windows linux mac expert\"> [[!img install/"
+"inc/infography/restart.png link=\"no\" alt=\"\"]]"
+
+#. type: Content of: <div><a><p>
+msgid "Verify your download"
+msgstr ""
+
+#. type: Content of: <div><a>
+#, fuzzy
+msgid ""
+"</a> <a href=\"#verify\" class=\"upgrade-os\"> [[!img install/inc/infography/"
+"verify-with-intermediary.png link=\"no\" alt=\"\"]]"
+msgstr ""
+"</a> <a href=\"#intermediary\" class=\"upgrade-os\"> [[!img install/inc/"
+"infography/restart-intermediary.png link=\"no\" alt=\"\"]]"
+
+#. type: Content of: <div><a>
+msgid ""
+"</a> <a href=\"#verify\" class=\"upgrade-tails\"> [[!img install/inc/"
+"infography/verify-from-tails.png link=\"no\" alt=\"\"]]"
+msgstr ""
+"</a> <a href=\"#verify\" class=\"upgrade-tails\"> [[!img install/inc/"
+"infography/verify-from-tails.png link=\"no\" alt=\"\"]]"
+
+#. type: Content of: <div><a>
+msgid ""
+"</a> <a href=\"#other\" class=\"pc-clone mac-clone upgrade-clone\"> [[!img "
+"install/inc/infography/restart-on-other-tails.png link=\"no\" alt=\"\"]]"
+msgstr ""
+"</a> <a href=\"#other\" class=\"pc-clone mac-clone upgrade-clone\"> [[!img "
+"install/inc/infography/restart-on-other-tails.png link=\"no\" alt=\"\"]]"
+
+#. type: Content of: <div><a><p>
+msgid "Restart on the other Tails"
+msgstr ""
+
+#. type: Content of: <div><a>
+#, fuzzy
+msgid ""
+"</a> <a href=\"#rufus\" class=\"windows\"> [[!img install/inc/infography/"
+"install-rufus.png link=\"no\" alt=\"\"]]"
+msgstr ""
+"</a> <a href=\"#install\" class=\"windows linux mac expert\"> [[!img install/"
+"inc/infography/install-tails.png link=\"no\" alt=\"\"]]"
+
+#. type: Content of: <div><a><p>
+msgid "Download <i>Rufus</i>"
+msgstr ""
+
+#. type: Content of: <div><a>
+#, fuzzy
+msgid ""
+"</a> <a href=\"#etcher\" class=\"mac\"> [[!img install/inc/infography/"
+"install-etcher.png link=\"no\" alt=\"\"]]"
+msgstr ""
+"</a> <a href=\"#install\" class=\"windows linux mac expert\"> [[!img install/"
+"inc/infography/install-tails.png link=\"no\" alt=\"\"]]"
+
+#. type: Content of: <div><a><p>
+msgid "Install <i>balenaEtcher</i>"
+msgstr ""
+
+#. type: Content of: <div><a>
+#, fuzzy
+msgid ""
+"</a> <a href=\"#rufus\" class=\"upgrade-windows\"> [[!img install/inc/"
+"infography/install-rufus-with-intermediary.png link=\"no\" alt=\"\"]]"
+msgstr ""
+"</a> <a href=\"#intermediary\" class=\"upgrade-os\"> [[!img install/inc/"
+"infography/restart-intermediary.png link=\"no\" alt=\"\"]]"
+
+#. type: Content of: <div><a>
+#, fuzzy
+msgid ""
+"</a> <a href=\"#etcher\" class=\"upgrade-mac\"> [[!img install/inc/"
+"infography/install-etcher-with-intermediary.png link=\"no\" alt=\"\"]]"
+msgstr ""
+"</a> <a href=\"#intermediary\" class=\"upgrade-os\"> [[!img install/inc/"
+"infography/restart-intermediary.png link=\"no\" alt=\"\"]]"
+
+#. type: Content of: <div><a>
+msgid ""
+"</a> <a href=\"#install\" class=\"windows linux mac expert\"> [[!img install/"
+"inc/infography/install-tails.png link=\"no\" alt=\"\"]]"
+msgstr ""
+"</a> <a href=\"#install\" class=\"windows linux mac expert\"> [[!img install/"
+"inc/infography/install-tails.png link=\"no\" alt=\"\"]]"
+
+#. type: Content of: <div><a><p>
+msgid "Install Tails using <i>Rufus</i>"
+msgstr ""
+
+#. type: Content of: <div><a><p>
+msgid "Install Tails using <i>balenaEtcher</i>"
+msgstr ""
+
+#. type: Content of: <div><a><p>
+msgid "Install Tails using <i>GNOME Disks</i>"
+msgstr ""
+
+#. type: Content of: <div><a><p>
+msgid "Install Tails using <code>dd</code>"
+msgstr ""
+
+#. type: Content of: <div><a>
+#, fuzzy
+msgid ""
+"</a> <a href=\"#install\" class=\"upgrade-windows\"> [[!img install/inc/"
+"infography/install-upgrade-usb-only.png link=\"no\" alt=\"\"]]"
+msgstr ""
+"</a> <a href=\"#install\" class=\"upgrade-linux\"> [[!img install/inc/"
+"infography/install-upgrade-usb-only.png link=\"no\" alt=\"\"]]"
+
+#. type: Content of: <div><a><p>
+msgid "Install intermediary using <i>Rufus</i>"
+msgstr ""
+
+#. type: Content of: <div><a>
+#, fuzzy
+msgid ""
+"</a> <a href=\"#install\" class=\"upgrade-mac\"> [[!img install/inc/"
+"infography/install-upgrade-usb-only.png link=\"no\" alt=\"\"]]"
+msgstr ""
+"</a> <a href=\"#install\" class=\"upgrade-linux\"> [[!img install/inc/"
+"infography/install-upgrade-usb-only.png link=\"no\" alt=\"\"]]"
+
+#. type: Content of: <div><a><p>
+msgid "Install intermediary using <i>balenaEtcher</i>"
+msgstr ""
+
+#. type: Content of: <div><a>
+msgid ""
+"</a> <a href=\"#install\" class=\"upgrade-linux\"> [[!img install/inc/"
+"infography/install-upgrade-usb-only.png link=\"no\" alt=\"\"]]"
+msgstr ""
+"</a> <a href=\"#install\" class=\"upgrade-linux\"> [[!img install/inc/"
+"infography/install-upgrade-usb-only.png link=\"no\" alt=\"\"]]"
+
+#. type: Content of: <div><a><p>
+msgid "Install intermediary using <i>GNOME Disks</i>"
+msgstr ""
+
+#. type: Content of: <div><a>
+msgid ""
+"</a> <a href=\"#install\" class=\"upgrade-tails\"> [[!img install/inc/"
+"infography/install-upgrade-usb.png link=\"no\" alt=\"\"]]"
+msgstr ""
+"</a> <a href=\"#install\" class=\"upgrade-tails\"> [[!img install/inc/"
+"infography/install-upgrade-usb.png link=\"no\" alt=\"\"]]"
+
+#. type: Content of: <div><a>
+msgid ""
+"</a> <a href=\"#restart\" class=\"windows linux mac expert\"> [[!img install/"
+"inc/infography/restart.png link=\"no\" alt=\"\"]]"
+msgstr ""
+"</a> <a href=\"#restart\" class=\"windows linux mac expert\"> [[!img install/"
+"inc/infography/restart.png link=\"no\" alt=\"\"]]"
+
+#. type: Content of: <div><a><p>
+msgid "Restart on your Tails USB stick"
+msgstr ""
+
+#. type: Content of: <div><a>
+#, fuzzy
+msgid ""
+"</a> <a href=\"#intermediary\" class=\"upgrade-os\"> [[!img install/inc/"
+"infography/restart-on-other-tails.png link=\"no\" alt=\"\"]]"
+msgstr ""
+"</a> <a href=\"#intermediary\" class=\"upgrade-os\"> [[!img install/inc/"
+"infography/restart-intermediary.png link=\"no\" alt=\"\"]]"
+
+#. type: Content of: <div><a><p>
+msgid "Restart on intermediary"
+msgstr ""
+
+#. type: Content of: <div><a>
+msgid ""
+"</a> <a href=\"#intermediary\" class=\"upgrade-tails\"> [[!img install/inc/"
+"infography/restart-on-upgrade-usb.png link=\"no\" alt=\"\"]]"
+msgstr ""
+"</a> <a href=\"#intermediary\" class=\"upgrade-tails\"> [[!img install/inc/"
+"infography/restart-on-upgrade-usb.png link=\"no\" alt=\"\"]]"
+
+#. type: Content of: <div><a>
+msgid ""
+"</a> <a href=\"#install\" class=\"pc-clone mac-clone\"> [[!img install/inc/"
+"infography/clone-tails.png link=\"no\" alt=\"\"]]"
+msgstr ""
+"</a> <a href=\"#install\" class=\"pc-clone mac-clone\"> [[!img install/inc/"
+"infography/clone-tails.png link=\"no\" alt=\"\"]]"
+
+#. type: Content of: <div><a><p>
+msgid "Install Tails by cloning"
+msgstr ""
+
+#. type: Content of: <div><a>
+msgid ""
+"</a> <a href=\"#upgrade\" class=\"upgrade-tails upgrade-os upgrade-clone\"> "
+"[[!img install/inc/infography/clone-tails.png link=\"no\" alt=\"\"]]"
+msgstr ""
+
+#. type: Content of: <div><a><p>
+msgid "Upgrade your primary Tails by cloning"
+msgstr ""
+
+#. type: Content of: <div><a>
+msgid ""
+"</a> <a href=\"#restart-new\" class=\"pc-clone mac-clone\"> [[!img install/"
+"inc/infography/restart-on-new-tails.png link=\"no\" alt=\"\"]]"
+msgstr ""
+"</a> <a href=\"#restart-new\" class=\"pc-clone mac-clone\"> [[!img install/"
+"inc/infography/restart-on-new-tails.png link=\"no\" alt=\"\"]]"
+
+#. type: Content of: <div><a><p>
+msgid "Restart on your new Tails"
+msgstr ""
+
+#. type: Content of: <div><a>
+msgid ""
+"</a> <a href=\"#tails\" class=\"windows linux mac expert\"> [[!img install/"
+"inc/infography/tails.png link=\"no\" alt=\"\"]]"
+msgstr ""
+"</a> <a href=\"#tails\" class=\"windows linux mac expert\"> [[!img install/"
+"inc/infography/tails.png link=\"no\" alt=\"\"]]"
+
+#. type: Content of: <div><a><p>
+msgid "Welcome to Tails!"
+msgstr ""
+
+#. type: Content of: <div>
+msgid "</a>"
+msgstr ""
+
+#~ msgid ""
+#~ "</a> <a href=\"#new\" class=\"pc-clone mac-clone\"> [[!img install/inc/"
+#~ "infography/tails.png link=\"no\" alt=\"\"]]"
+#~ msgstr ""
+#~ "</a> <a href=\"#new\" class=\"pc-clone mac-clone\"> [[!img install/inc/"
+#~ "infography/tails.png link=\"no\" alt=\"\"]]"
+
+#~ msgid "[[!img install/inc/icons/tails.png link=\"no\" alt=\"\"]]"
+#~ msgstr "[[!img install/inc/icons/tails.png link=\"no\" alt=\"\"]]"
+
+#, fuzzy
+#~ msgid "[[!img install/inc/icons/usb.png link=\"no\"]]"
+#~ msgstr "[[!img install/inc/icons/1-usb.png link=\"no\" alt=\"\"]]"
+
+#, fuzzy
+#~ msgid ""
+#~ "[[!img install/inc/infography/download.png link=\"no\" alt=\"USB image "
+#~ "downloaded\"]]"
+#~ msgstr "[[!img install/inc/icons/1-dvd.png link=\"no\" alt=\"\"]]"
+
+#, fuzzy
+#~ msgid ""
+#~ "[[!img install/inc/infography/verify.png link=\"no\" alt=\"USB image "
+#~ "verified\"]]"
+#~ msgstr "[[!img install/inc/icons/1-dvd.png link=\"no\" alt=\"\"]]"
+
+#, fuzzy
+#~ msgid ""
+#~ "[[!img install/inc/infography/install-etcher.png link=\"no\" "
+#~ "alt=\"balenaEtcher downloaded\"]]"
+#~ msgstr "[[!img install/inc/icons/1-usb.png link=\"no\" alt=\"\"]]"
+
+#, fuzzy
+#~ msgid ""
+#~ "[[!img install/inc/infography/install-tails.png link=\"no\" alt=\"USB "
+#~ "image installed on USB stick\"]]"
+#~ msgstr "[[!img install/inc/icons/1-usb.png link=\"no\" alt=\"\"]]"
+
+#, fuzzy
+#~ msgid ""
+#~ "[[!img install/inc/infography/clone-tails.png link=\"no\" alt=\"Tails "
+#~ "installed on USB stick on the right\"]]"
+#~ msgstr "[[!img install/inc/icons/clock.png link=\"no\" alt=\"\"]]"

@@ -1,0 +1,142 @@
+[[!meta title="Project manager"]]
+
+[[!meta stylesheet="jobs" rel="stylesheet" title=""]]
+[[!tag job/staff]]
+[[!meta robots="noindex"]]
+
+**This job opening is closed. Applications received after January 26,
+  2022, will not be considered.**
+
+[[!toc levels=1]]
+
+Summary
+=======
+
+Tails, a portable operating system that protects against surveillance and
+censorship, is looking for a project manager to make our organization
+function better.
+
+In the last 12 years, from a tiny volunteer-run Free Software project,
+Tails has grown to a setup in which almost all the work is done by paid workers,
+with a 350k€ yearly budget. This allowed us to increase by several orders of
+magnitude the quality and pace of development of our product.
+
+However, this growth happened faster than the corresponding, necessary increase
+of our organization & social skills and capacity. As a result, lots of the
+organization and social work still relies on the founders of the project.
+
+For our project to thrive sustainably, we want to establish a new role for
+someone who will work with us to develop our organization and manage our
+day-to-day operations, building upon our core values of transparency, autonomy,
+and horizontal decision-making.
+
+About Tails
+===========
+
+[[!inline pages="jobs/about_tails" raw="yes" sort="age"]]
+
+About this position
+===================
+
+## Role description
+
+We are looking for someone who will work with us to make Tails a healthier
+organization & work place, and provide project-wide management, supporting both
+organizational and team-level objectives:
+
+ - Facilitation, community management: facilitate decision-making about
+   collective processes, implement them.
+
+   For example, deciding who is invited to our yearly gathering, setting up
+   a process for responding to Code of Conduct violations.
+
+ - Project-wide management:
+
+    - Help our teams function well and remain aligned with the priorities of the
+      organization. Manage grant projects with deadlines.
+
+    - Negotiate and document expectations. Set up self-evaluation, feedback, and
+      accountability mechanisms.
+
+    - Encourage workers to grow within the organization. Ensure their needs,
+      desires, and problems they're facing are heard and followed-up with.
+
+    - Identify knowledge gaps and recruitment needs: which roles we should hire
+      for and when.
+
+ - Facilitate the flow of useful information through the project, connecting it
+   to the bigger picture as needed.
+
+   For example, our Fundraising team needs to know about the capacity and
+   priorities of our teams, so they can design grant proposals.
+
+Transforming our organization is a substantial project. It will take time and
+multiple iterations. It's OK: we are in it for the long run. You will have
+agency in shaping the role and setting priorities, in collaboration with the
+rest of team, based on which you will organize your work and time autonomously.
+
+You will work remotely. Our team is global and with various degrees of
+involvement, so you will use mostly asynchronous communication channels (email
+and bug tracker), although we also use text-based chat and do plenty of video calls.
+
+During non-pandemic times, some travel is expected, generally 2-4 times per
+year, including the annual gathering of regular Tails contributors.
+
+## Qualifications
+
+- If you are part of a group that is under-represented in tech, we particularly
+  encourage you to apply. We acknowledge that our community is not as diverse
+  and equitable as we would like it to be. We understand that we are part of the
+  problem. We want the Tails project to become more equitable.
+
+- You can commit 25-35 hours per week on a long-term basis.
+  The exact scope of your responsibilities will depend on how much
+  you work within this range.
+
+- You can work comfortably at least 3 hours during the peak of Tails activities:
+  between 10:00 and 17:00 CEST/CET.
+
+- Professional experience organizing team collaboration.
+
+- Experience participating in groups that value transparency, autonomy, and
+  horizontal decision-making.
+
+- Group and inter-individual communication skills demonstrated, for example, by
+  experience facilitating collective processes.
+
+- Conceptual understanding of software development work.
+
+- Enthusiastic about our [[mission and values|contribute/mission]], motivated by social impact.
+
+- Some experience working fully remote, primarily with asynchronous communication.
+
+- Good written and spoken English communication skills.
+
+Additionally, although that's optional, we would love it if you had experience
+participating in Free and Open Source Software communities.
+
+## Compensation and benefits
+
+Pay scale is 40-100 k€ per year, including medical coverage.
+The exact number depends solely on:
+
+ - How much time you work
+ - Your tax situation
+ - Cost of medical coverage
+
+On top of this, Tails pays for:
+
+ - Exceptional health expenses not covered by your policy
+ - Computer equipment
+ - Travel expenses to work events
+
+<a id="apply"></a>
+
+How to apply
+============
+
+<style>
+.apply-portfolio, .apply-contributions { display: none; }
+</style>
+
+[[!inline pages="jobs/apply" raw="yes" sort="age"]]

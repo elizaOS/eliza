@@ -1,0 +1,30 @@
+[[!meta date="Mon, 23 Feb 2015 00:00:00 +0000"]]
+[[!meta title="Numerous security holes in Tails 1.2.3"]]
+[[!pagetemplate template="news.tmpl"]]
+
+[[!tag security/fixed]]
+
+Several security holes that affect Tails 1.2.3 are now fixed in Tails
+1.3.
+
+We **strongly** encourage you to [[upgrade to Tails
+1.3|news/version_1.3]] as soon as possible.
+
+Details
+=======
+
+ - Tor Browser and its bundled NSS: [[!mfsa 2015-11]], [[!mfsa 2015-12]],
+   [[!mfsa 2015-16]]
+ - xdg-utils: [[!debsa2015 3131]], [[!debsa2015 3165]]
+ - jasper: [[!debsa2015 3138]]
+ - eglibc: [[!debsa2015 3142]], [[!debsa2015 3169]]
+ - openjdk-7: [[!debsa2015 3144]]
+ - unzip: [[!debsa2015 3152]]
+ - krb5: [[!debsa2015 3153]]
+ - ruby1.9.1: [[!debsa2015 3157]]
+ - xorg-server: [[!debsa2015 3160]]
+ - dbus: [[!debsa2015 3161]]
+ - bind9: [[!debsa2015 3162]]
+ - libreoffice: [[!debsa2015 3163]]
+ - e2fsprogs: [[!debsa2015 3166]]
+ - sudo: [[!debsa2015 3167]]

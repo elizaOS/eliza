@@ -1,0 +1,51 @@
+# SOME DESCRIPTIVE TITLE
+# Copyright (C) YEAR Free Software Foundation, Inc.
+# This file is distributed under the same license as the PACKAGE package.
+# FIRST AUTHOR <EMAIL@ADDRESS>, YEAR.
+#
+msgid ""
+msgstr ""
+"Project-Id-Version: PACKAGE VERSION\n"
+"Report-Msgid-Bugs-To: tails-l10n@boum.org\n"
+"POT-Creation-Date: 2025-10-14 16:04+0000\n"
+"PO-Revision-Date: 2023-07-03 22:33+0000\n"
+"Last-Translator: xin <xin@riseup.net>\n"
+"Language-Team: Persian <http://weblate.451f.org:8889/projects/tails/news/fa/"
+">\n"
+"Language: fa\n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+"Plural-Forms: nplurals=1; plural=0;\n"
+"X-Generator: Weblate 4.9.1\n"
+
+#. type: Content of: <div>
+msgid "[[!meta title=\"Welcome to Tails!\"]]"
+msgstr ""
+
+#. type: Content of: outside any tag (error?)
+#, fuzzy
+msgid ""
+"[[!meta stylesheet=\"home\" rel=\"stylesheet\" title=\"\"]] [[!meta "
+"robots=\"noindex\"]] [[!meta script=\"home\"]]"
+msgstr ""
+"[[!meta stylesheet=\"home\" rel=\"stylesheet\" title=\"\"]] [[!meta "
+"stylesheet=\"hide-breadcrumbs\" rel=\"stylesheet\" title=\"\"]] [[!meta "
+"stylesheet=\"hide-donate-banner\" rel=\"stylesheet\" title=\"\"]] [[!meta "
+"robots=\"noindex\"]] [[!meta script=\"home\"]] [[!inline pages=\"home/"
+"donate.inline\" raw=\"yes\" sort=\"age\"]]"
+
+#. type: Content of: <div>
+msgid "<a href=\"https://check.torproject.org/\">Tor check</a>"
+msgstr "<a href=\"https://check.torproject.org/?lang=fa\">تست تور</a>"
+
+#. type: Content of: <div>
+msgid "[[!inline pages=\"news\" raw=\"yes\" sort=\"age\"]]"
+msgstr "[[!inline pages=\"news.fa\" raw=\"yes\" sort=\"age\"]]"
+
+#~ msgid "[[!inline pages=\"home/donate.inline\" raw=\"yes\" sort=\"age\"]]"
+#~ msgstr ""
+#~ "[[!inline pages=\"home/donate.inline.fa\" raw=\"yes\" sort=\"age\"]]"
+
+#~ msgid "[[!inline pages=\"home/tor_check\" raw=\"yes\" sort=\"age\"]]"
+#~ msgstr "[[!inline pages=\"home/tor_check.fa\" raw=\"yes\" sort=\"age\"]]"

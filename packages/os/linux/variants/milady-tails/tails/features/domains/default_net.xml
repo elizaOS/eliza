@@ -1,0 +1,14 @@
+<network>
+  <forward mode='nat'/>
+  <bridge name='virbr10' stp='on' delay='0' />
+  <ip family="ipv4" address='10.2.1.1' netmask='255.255.255.0'>
+    <dhcp>
+      <range start='10.2.1.2' end='10.2.1.254' />
+      <host mac="52:54:00:ac:dd:ee" name="amnesia" ip="10.2.1.2" />
+      <host mac="52:54:00:11:22:33" name="amnesia" ip="10.2.1.3" />
+    </dhcp>
+  </ip>
+  <ip family="ipv6" address="fe80::5054:ff:fe00:1"/>
+  <mac address='52:54:00:00:00:01'/>
+</network>
+

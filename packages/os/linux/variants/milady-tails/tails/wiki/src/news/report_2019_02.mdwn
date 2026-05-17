@@ -1,0 +1,178 @@
+[[!meta title="Tails report for February, 2019"]]
+[[!meta date="Sun, 10 Mar 2019 09:00:00 +0000"]]
+[[!pagetemplate template="news.tmpl"]]
+
+Here is a summary of what happened in Tails land in February, 2019.
+
+This month has seen the highest number of Tails boots per day ever:
+27% more than a year ago! This is motivating: it confirms that Tails
+is useful and relevant.
+
+[[!toc ]]
+
+Releases
+========
+
+* [[Tails 3.12.1 was released on February 13|news/version_3.12.1]].
+  A [critical vulnerability](https://www.mozilla.org/en-US/security/advisories/mfsa2019-05/)
+  in the *Skia* library, used by *Firefox* and *Chrome* to render graphics,
+  prompted this emergency release.
+
+* Tails 3.13 is [[scheduled for March 19|contribute/calendar]].
+
+Code
+====
+
+- We have coordinated with the _Tor Browser_ team wrt. the scope and
+  timeline of upcoming big changes that will impact our work.
+
+- We have implemented a potential fix and a mitigation measure for
+  a longstanding bug: `persistence.conf` sometimes becomes empty.
+  [[!tails_ticket 10976]], [[!tails_ticket 16461]]
+
+- We have prepared a number of updates for Tails 3.13:
+  - Debian Stretch 9.8 ([[!tails_ticket 16462]]), merged
+  - Linux 4.19.20 ([[!tails_ticket 16458]]), merged
+  - Tor 0.3.5 ([[!tails_ticket 16348]]), in progress
+
+- We released new versions of the verification extension to fix usability
+  and security issues:
+
+  - Download page is not refreshed when verification extension is
+    installed ([[!tails_ticket #16078]])
+  - Verification extension should not be detectable as per Sjösten, and
+    al. ([[!tails_ticket 14787]])
+  - Updated to Forge 0.8.0.
+
+
+Documentation and website
+=========================
+
+- We improved the known issue about clock going backwards
+  ([[!tails_ticket 15599]]).
+
+
+User experience
+===============
+
+- We published [[3 personas that describe the target audience of
+  Tails|contribute/personas]]. Discover:
+
+  - <img src="https://gitlab.tails.boum.org/tails/ux/-/raw/master/personas/riou-small.jpg"/>
+    <p>[[Riou, The Censorship Evader|contribute/personas/riou]]</p>
+
+  - <img src="https://gitlab.tails.boum.org/tails/ux/-/raw/master/personas/cris-small.jpg"/>
+    <p>[[Cris, The Information Gatherer|contribute/personas/cris]]</p>
+
+  - <img src="https://gitlab.tails.boum.org/tails/ux/-/raw/master/personas/kim-small.jpg"/>
+    <p>[[Kim, The Surveilled at Home|contribute/personas/kim]]</p>
+
+- We contracted visual artists to work on a video to explain how to start Tails
+  (and use the boot menu key). ([[!tails_ticket 10649]])
+
+- We analyzed why some people are wiping their persistence while
+  upgrading with USB images. ([[!tails_ticket 16470]])
+
+- We investigated outgoing network connections initiated by
+  _Etcher_ and researched how to solve the privacy concerns
+  we have with them. [[!tails_ticket 16381]]
+
+Hot topics on our help desk
+===========================
+
+
+
+1. Electrum users are complaining about the fact that it may need to be upgraded. ([[!tails_ticket 16421]])
+
+1. Some people are affected by a regression with some Intel graphics cards (Braswell, Kaby Lake). [[!tails_ticket 16447]]
+
+1. Partially applied automatic upgrades still cause trouble to some users. [[!tails_ticket 14754]]
+
+Infrastructure
+==============
+
+- We took one more step towards making our CI feedback loop shorter:
+  we've ordered sample candidate hardware. Next step is to benchmark it.
+  [[!tails_ticket 15501]]
+- The sysadmin team met a few times to update our plans for next year.
+- We've helped upstream a solution to the dreaded ikiwiki PO vs. inlines bug.
+  [[!tails_ticket 6907]]
+- As part of our effort to migrate to better maintained Puppet modules,
+  we've switched to the puppetlabs/mysql module. [[!tails_ticket 15513]]
+- We fixed the remaining known regressions that were introduced where we
+  migrated our website from _Apache_ to _nginx_: [[!tails_ticket
+  16220]], [[!tails_ticket 16259]].
+- We started discussing our strategy and timeline towards migrating to
+  GitLab. [[!tails_ticket 15878]]
+
+Funding
+=======
+
+- The 2 applications that we submitted to the NLnet [NGI Zero
+  PET](https://nlnet.nl/PET/) project got rejected.
+
+Outreach
+========
+
+Past events
+-----------
+
+- emmapeel and sajolida attended [FOSDEM](https://www.fosdem.org/2019/) in Brussels.
+
+Upcoming events
+---------------
+
+- Estrella Soria will organize a [Tails workshop at the Cyborgrrrls
+  technofeminist gathering](https://twitter.com/tecnochamana/status/1103659283449819137)
+  on Thursday March 14 in MedialabMX, Ciudad de México.
+
+- sajolida and emmapeel will be at the [Internet Freedom
+  Festival](https://internetfreedomfestival.org/) on April 1&ndash;5 in
+  Valencia, Spain.
+
+  sajolida will hold there a workshop on "Creating
+  usable tools from day one with paper
+  prototyping".
+
+Press and testimonials
+======================
+
+- schabenstolz [explains how to hide a Tails USB stick
+  *inside* a ThinkPad X230](https://steempeak.com/blog/@schabenstolz/a-hidden-usb-stick-in-the-laptop-or-how-i-installed-tails-os-internally)
+  and connect it to an invisible switch to start on either the hard disk
+  or the internal Tails USB stick.
+
+Translations
+============
+
+## All the website
+
+  - de: 47% (2634) strings translated, 8% strings fuzzy, 43% words translated
+  - es: 54% (3015) strings translated, 4% strings fuzzy, 45% words translated
+  - fa: 34% (1876) strings translated, 11% strings fuzzy, 35% words translated
+  - fr: 93% (5176) strings translated, 1% strings fuzzy, 93% words translated
+  - it: 35% (1939) strings translated, 6% strings fuzzy, 30% words translated
+  - pt: 27% (1516) strings translated, 8% strings fuzzy, 23% words translated
+
+Total original words: 59517
+
+## [[Core pages of the website|contribute/l10n_tricks/core_po_files.txt]]
+
+  - de: 71% (1248) strings translated, 12% strings fuzzy, 73% words translated
+  - es: 80% (1412) strings translated, 9% strings fuzzy, 81% words translated
+  - fa: 34% (615) strings translated, 13% strings fuzzy, 33% words translated
+  - fr: 98% (1745) strings translated, 1% strings fuzzy, 99% words translated
+  - it: 63% (1107) strings translated, 17% strings fuzzy, 65% words translated
+  - pt: 45% (794) strings translated, 14% strings fuzzy, 48% words translated
+
+Total original words: 16467
+
+Metrics
+=======
+
+* Tails has been started more than 725 034 times this month.
+  This makes 25 894 boots a day on average, which is an all
+  time record :)
+* 10 065 downloads of the OpenPGP signature of a Tails USB image or ISO from our website.
+* 71 bug reports were received through WhisperBack.
+

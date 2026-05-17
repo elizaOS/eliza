@@ -1,0 +1,116 @@
+[[!meta title="Tails $VERSION"]]
+[[!meta date="$DOW, $DOM $MON $YEAR 00:00:00 +0000"]]<!-- TZ=UTC date -R -d YYYY-MM-DD -->
+[[!pagetemplate template="news.tmpl"]]
+[[!tag announce]]
+
+<!--
+
+This release is an emergency release to fix a (critical|important) security
+vulnerability in $APPLICATION.
+
+-->
+
+<h1 id="features">New feature(s)</h1>
+
+## $NEW_FEATURE
+
+<h1 id="changes">Changes and updates</h1>
+
+<-- You can reuse the following subsections if the section gets too big:
+
+## Included software
+
+- Update *Xyz* to [1.2.3].
+
+- Update *Xyz* from 1.0.0 to [1.2.3].
+
+- Update *Tor Browser* to [1.2.3](https://blog.torproject.org/new-release-tor-browser-123/).
+
+<!--
+
+- Update *Tor Browser* to [1.2.3](https://blog.torproject.org/new-release-tor-browser-123),
+  which fixes [[$CODE|$LINK]], a (major|minor) $TYPE vulnerability. Using this
+  vulnerability, an attacked could $IMPACT.
+
+  <div class="attack">
+
+  <p>We are (not) aware of this (attack|vulnerability) being (used|exploited) in practice until now.</p>
+
+  </div>
+
+  To give more details, use an inline that can be reused in /security like we
+  did for TROVE-2023 in version_5.19.1.
+
+-->
+
+- Update the *Tor* client to 0.1.2.3.
+
+- Update *Thunderbird* to [1.2.3](https://www.thunderbird.net/en-US/thunderbird/1.2.3esr/releasenotes/).
+
+- Update (the *Linux* kernel to a.b.c|(some|most) firmware packages). <!-- Only if 'a.b' increased --> This improves support for newer
+  hardware: graphics, Wi-Fi, and so on.
+
+<!--
+
+- Update the *Linux* kernel to a.bc, which fixes [[$CODE|$LINK]],
+  (a vulnerability|multiple vulnerabilities) that could allow an application in
+  Tails to gain administration privileges.
+
+  For example, if an attacker was able to exploit other unknown security
+  vulnerabilities in an application included in Tails, they might then use $CODE
+  to take full control of your Tails and deanonymize you.
+
+  <div class="attack">
+
+  <p>This attack is very unlikely, but could be performed by a strong attacker,
+  such as a government or a hacking firm. We are not aware of this (attack|vulnerability) being
+  used in practice until now.</p>
+
+  </div>
+
+-->
+
+## Hardware support
+
+The following updates make Tails work better on recent hardware (graphics,
+Wi-Fi, etc.):
+
+-->
+
+<h1 id="fixes">Fixed problems</h1>
+
+For more details, read our [[!tails_gitweb debian/changelog desc="changelog"]].
+
+<!--
+
+<h1 id="issues">Known issues</h1>
+
+Copy the known issues from the previous version if they haven't been
+solved or move them to /support/known_issues if more appropriate.
+
+-->
+
+<h1 id="get">Get Tails $VERSION</h1>
+
+## To upgrade your Tails USB stick and keep your Persistent Storage
+
+- Automatic upgrades are available from Tails 7.0 or later to $VERSION.
+
+- If you cannot do an automatic upgrade or if Tails fails to start after an
+  automatic upgrade, please try to do a [[manual upgrade|doc/upgrade/#manual]].
+
+## To install Tails $VERSION on a new USB stick
+
+Follow our [[installation instructions|install]].
+
+<div class="caution"><p>The Persistent Storage on the USB stick will be lost if
+you install instead of upgrading.</p></div>
+
+## To download only
+
+If you don't need installation or upgrade instructions, you can download
+Tails $VERSION directly:
+
+- [[For USB sticks (USB image)|install/download]]
+
+- [[For DVDs and virtual machines (ISO image)|install/download-iso]]

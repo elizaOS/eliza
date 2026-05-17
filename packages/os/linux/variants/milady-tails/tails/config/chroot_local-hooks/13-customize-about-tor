@@ -1,0 +1,30 @@
+#!/bin/sh
+
+set -e
+set -u
+
+echo "Customize the Tor Browser's about:tor page"
+
+TBB_TIMESTAMP="$(date --date='2000-01-01 00:00:00' +%s)"
+
+tmp="$(mktemp -d)"
+(
+    cd "${tmp}"
+    7z x -tzip /usr/local/lib/tor-browser/omni.ja
+    patch --no-backup-if-mismatch -p1 </usr/share/tails/build/custom-about-tor/omni.patch
+    find localization/en-US/toolkit/global/ -exec touch --date="@${TBB_TIMESTAMP}" '{}' \;
+    7z a -mtc=off -tzip -- /usr/local/lib/tor-browser/omni.ja *
+)
+rm -r "${tmp}"
+
+tmp="$(mktemp -d)"
+(
+    cd "${tmp}"
+    7z x -tzip /usr/local/lib/tor-browser/browser/omni.ja
+    patch --no-backup-if-mismatch -p1 </usr/share/tails/build/custom-about-tor/browser-omni.patch
+    find actors/ chrome/browser/content/browser/abouttor/ -exec touch --date="@${TBB_TIMESTAMP}" '{}' \;
+    7z a -mtc=off -tzip -- /usr/local/lib/tor-browser/browser/omni.ja *
+)
+rm -r "${tmp}"
+
+rm -r /usr/share/tails/build/custom-about-tor/

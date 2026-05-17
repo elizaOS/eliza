@@ -1,0 +1,23 @@
+[[!meta date="Thu, 01 Mar 2012 00:00:00 +0000"]]
+[[!meta title="Numerous security holes in Tails 0.10.1"]]
+[[!pagetemplate template="news.tmpl"]]
+
+[[!tag security/fixed]]
+
+The following security holes affect Tails 0.10.1.
+
+We **strongly** urge you to [[upgrade to Tails 0.10.2|news/version_0.10.2]]
+as soon as possible in case you are still using an older version.
+
+Details
+=======
+
+  - icu ([[!debsa2012 2397]])
+  - curl ([[!debsa2012 2398]])
+  - iceweasel ([[!debsa2012 2400]])
+  - libpng ([[!debsa2012 2410]])
+  - libvorbis ([[!debsa2012 2412]])
+  - libarchive ([[!debsa2012 2413]])
+  - libmodplug ([[!debsa2012 2415]])
+  - libxml2 ([[!debsa2012 2417]]) 
+  - file ([[!debsa2012 2422]])

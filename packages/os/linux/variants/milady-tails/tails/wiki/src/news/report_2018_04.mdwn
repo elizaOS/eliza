@@ -1,0 +1,157 @@
+[[!meta title="Tails report for April, 2018"]]
+[[!meta date="Wed, 09 May 2018 01:23:45 +0000"]]
+[[!pagetemplate template="news.tmpl"]]
+
+[[!toc]]
+
+Releases
+========
+
+There have been no releases in April (a big change compared to the three
+releases in March!).
+
+* Tails 3.7 is [[scheduled for May 8|contribute/calendar]].
+
+Code
+====
+
+* We kept working with upstream to be able to [support VeraCrypt in
+  GNOME](https://github.com/storaged-project/udisks/pull/495).
+
+* [MAT2](https://0xacab.org/jvoisin/mat2) is being developed. Lots of
+  improvements, will come with support for new formats (torrents!) and
+  more.
+
+* We worked on the new Additional Software
+  feature, that will be
+  ready for Tails 3.9 and will make programs easy to install each time
+  you start Tails (as long as they are available from
+  [[Debian|support/faq/#software]]).
+
+Documentation and website
+=========================
+
+- We wrote a new page to list [[known issues with graphics
+  cards|support/known_issues/graphics]]. Combined with the better error message
+  when GDM fails to start that we introduced in [[Tails 3.6|news/version_3.6]],
+  it should gradually improve a lot the experience of people who cannot start
+  Tails with their graphics card.
+
+User experience
+===============
+
+- We started designing a quantitative survey of our user
+  base.
+
+  What would be useful for us to know about our users?
+
+- We drafted a fourth persona skeleton.
+
+- We removed the zooming effect on the screenshots in our installation
+  instructions which was annoying. ([[!tails_ticket 14678]])
+
+Hot topics on our help desk
+===========================
+
+1. Users are still affected by a loss of
+   persistence.conf.
+
+1. We received also several reports about keyboard and mouse not
+   working after upgrading.
+
+1. A few users reported the disappearance of a part of their
+   keyring.
+
+1. And some users had trouble with obfs4
+   bridges.
+
+Infrastructure
+==============
+
+- We documented our LimeSurvey
+  installation.
+
+# Funding
+
+- We participated in the DuckDuckGo Privacy Challenge. We raised
+  $9&thinsp;870 in donations and will receive $33&thinsp;000 in prizes
+  from DuckDuckGo.
+
+  Thanks a lot to everybody who participated!
+
+<!-- I'm not reporting on USB images on purpose: let's announce it once it's 100% confirmed. -->
+
+Outreach
+========
+
+Past events
+-----------
+
+- There was a Tails introductory workshop at the
+  Flisol2018
+  conference on April 28, Rancho Electronico, Mexico City
+
+Upcoming events
+---------------
+
+- intrigeri will host a Tails users' meetup in the
+  [Cryptorave](https://cryptorave.org/), May 5th, in  São Paulo, Brazil
+
+Press and testimonials
+======================
+
+- The italian association "Mutuo Soccorso", in their last book "Stop al Panico!
+  Difesa legale, note per una maggiore consapevolezza", "Don't Panic!Legal
+  defense, notes for greater awareness" - Bologna march 2018, suggests use
+  Tails (p 132) for high needs of anonymity, to circumvent the
+  censorships, or to manage in an easy way confidential communications.
+  The writers: <https://mutuosoccorso.noblogs.org/>
+  The distribution of the book: <https://www.openddb.it/libri/stop-al-panico/>
+
+- sajolida did an interview with Simply Secure on our [UX process and formative
+  testing](https://simplysecure.org/blog/formative-testing).
+
+* The FIDH - Worldwide Movement for Human Rights, relayed our
+  call for donation by making it clear that Tails is an important tool
+  for Human Rights Defenders in
+  [French](https://www.fidh.org/fr/themes/defenseurs-des-droits-humains/renforcement-des-mecanismes-de-protection-des-defenseurs/tails-est-un-projet-de-logiciel-libre),
+  [English](https://www.fidh.org/en/issues/human-rights-defenders/reinforcing-mechanisms-for-the-protection-of-human-rights-defenders/tails-is-a-free-software-project-which-preserves-privacy-and-provides)
+  and
+  [Farsi](https://www.fidh.org/fa/%D9%85%D9%88%D8%B6%D9%88%D8%B9%E2%80%8C%D9%87%D8%A7/%D9%85%D8%AF%D8%A7%D9%81%D8%B9%D8%A7%D9%86-%D8%AD%D9%82%D9%88%D9%82-%D8%A8%D8%B4%D8%B1/%D8%AA%D9%82%D9%88%DB%8C%D8%AA-%D8%B3%D8%A7%D8%B2%D9%88%DA%A9%D8%A7%D8%B1%D9%87%D8%A7%DB%8C-%D9%85%D8%AD%D8%A7%D9%81%D8%B8%D8%AA-%D8%A7%D8%B2-%D9%85%D8%AF%D8%A7%D9%81%D8%B9%D8%A7%D9%86/%D9%86%D8%B1%D9%85%E2%80%8C%D8%A7%D9%81%D8%B2%D8%A7%D8%B1-%D8%B1%D8%A7%DB%8C%DA%AF%D8%A7%D9%86-%D8%AA%D9%90%DB%8C%D9%84%D8%B2-%D8%A8%D8%B1%D8%A7%DB%8C-%D9%85%D8%AD%D8%A7%D9%81%D8%B8%D8%AA).
+
+
+Translation
+===========
+
+Timidly, groups are forming to translate Tails to Arabic and Chinese
+(simplified and TW). Contact [[Tails l10n|doc/about/contact/#tails-l10n]]
+if you want to know more.
+
+## All the website
+
+  - de: 53% (3033) strings translated, 7% strings fuzzy, 46% words translated
+  - es: 55% (3104) strings translated, 1% strings fuzzy, 45% words translated
+  - fa: 36% (2054) strings translated, 9% strings fuzzy, 38% words translated
+  - fr: 91% (5172) strings translated, 1% strings fuzzy, 89% words translated
+  - it: 33% (1881) strings translated, 6% strings fuzzy, 29% words translated
+  - pt: 27% (1542) strings translated, 7% strings fuzzy, 24% words translated
+
+Total original words: 59730
+
+## [[Core pages of the website|contribute/l10n_tricks/core_po_files.txt]]
+
+  - de: 76% (1468) strings translated, 13% strings fuzzy, 75% words translated
+  - es: 94% (1827) strings translated, 2% strings fuzzy, 91% words translated
+  - fa: 32% (634) strings translated, 12% strings fuzzy, 32% words translated
+  - fr: 98% (1898) strings translated, 1% strings fuzzy, 96% words translated
+  - it: 67% (1302) strings translated, 15% strings fuzzy, 66% words translated
+  - pt: 44% (854) strings translated, 13% strings fuzzy, 47% words translated
+
+Total original words: 17621
+
+# Metrics
+
+* Tails has been started more than 650&thinsp;000 times this month. This makes 21&thinsp;900 boots a day on average.
+* 9&thinsp;226 downloads of the OpenPGP signature of Tails ISO from our website.
+* 104 bug reports were received through WhisperBack.
+

@@ -1,0 +1,24 @@
+[[!meta date="Fri, 10 Jun 2011 11:12:13 +0000"]]
+[[!meta title="Numerous security holes in Tails 0.7.1"]]
+[[!pagetemplate template="news.tmpl"]]
+
+[[!tag security/fixed]]
+
+The following security holes affect Tails 0.7.1. Some of these allow
+**remote arbitrary code execution with full administrator rights**,
+that can be exploited by any attacker with access to the local
+network.
+
+We **strongly** urge you to [[upgrade to Tails 0.7.2|news/version_0.7.2]]
+as soon as possible in case you are still using an older version.
+
+Details
+=======
+
+These are Debian security announces; details can be found on the
+[Debian security page](http://security.debian.org/):
+
+  - iceweasel (DSA-2228)
+  - linux-2.6 (DSA-2240)
+  - libxml2 (DSA-2255)
+  - tiff (DSA-2256)

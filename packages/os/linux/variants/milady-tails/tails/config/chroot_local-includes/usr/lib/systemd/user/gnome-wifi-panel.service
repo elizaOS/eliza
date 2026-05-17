@@ -1,0 +1,10 @@
+[Unit]
+Description=Wi-Fi panel from GNOME Control Center
+ConditionUser=1000
+
+[Service]
+Type=oneshot
+StandardError=journal
+# we'd love to use "gtk-abspath-launch /usr/share/applications/gnome-wifi-panel", but it doesn't work for some reason
+ExecStart=/usr/bin/gnome-control-center wifi
+

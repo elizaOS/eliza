@@ -1,0 +1,74 @@
+#!/bin/bash
+
+set -eu
+
+usage() {
+    echo "Usage: $0 [options] [UPGRADES.YML...]"
+    echo "Options:"
+    echo "  -h      Show this help"
+    echo "  -u      Automatically sign updated files based on git status"
+    echo
+    echo "When no file is passed as argument, git status is used to"
+    echo "automatically determine which files have been updated and therefore need a signature."
+}
+
+sign() {
+    udf="$1"
+
+    set -x
+    for _ in 1 2 3; do
+        if gpg -u "${TAILS_SIGNATURE_KEY:?}" \
+            --armor \
+            --detach-sign "${udf:?}"; then
+            break
+        fi
+    done
+    mv --force "${udf:?}.asc" "${udf:?}.pgp"
+    "${RELEASE_CHECKOUT:?}/config/chroot_local-includes/usr/src/iuk/bin/tails-iuk-check-upgrade-description-file" "${udf:?}"
+    set +x
+}
+
+signUpdatedFiles=false
+while getopts 'hu' opt; do
+    case "$opt" in
+    h)
+        usage
+        exit 0
+        ;;
+    u)
+        signUpdatedFiles=true
+        ;;
+    *)
+        usage >&2
+        exit 2
+        ;;
+    esac
+done
+shift $((OPTIND - 1))
+
+if $signUpdatedFiles; then
+    if [ "$#" -gt 0 ]; then
+        echo "If you use -u, then you can't also specify which files to sign" >&2
+        exit 2
+    fi
+
+    cd "${RELEASE_CHECKOUT:?}"
+    find "${RELEASE_CHECKOUT:?}/wiki/src/upgrade/" \
+        -type f -name upgrades.yml |
+        while read -r udf; do
+            if [ -n "$(git status --porcelain "${udf:?}")" ]; then
+                sign "${udf:?}" || break
+            fi
+        done
+    exit 0
+fi
+
+if [ "$#" -eq 0 ]; then
+    echo "You must either specify some upgrades.yml file as argument, or use the -u option" >&2
+    exit 2
+fi
+
+for udf in "$@"; do
+    sign "$1" || exit 1
+done
+exit 0

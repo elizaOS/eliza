@@ -1,0 +1,80 @@
+Package: firmware-linux-free
+Pin: release o=Debian,n=sid
+Pin-Priority: 999
+
+Package: src:firmware-nonfree
+Pin: release o=Debian,n=sid
+Pin-Priority: 990
+
+Package: firmware-ath9k-htc
+Pin: release o=Debian,n=sid
+Pin-Priority: 999
+
+Package: firmware-carl9170
+Pin: release o=Debian,n=sid
+Pin-Priority: 999
+
+Package: firmware-sof-signed
+Pin: release o=Debian,n=sid
+Pin-Priority: 999
+
+Package: firmware-zd1211
+Pin: release o=Debian,n=sid
+Pin-Priority: 999
+
+Explanation: #15477
+Package: src:live-boot
+Pin: origin deb.tails.boum.org
+Pin-Priority: 999
+
+Package: webext-ublock-origin-firefox
+Pin: release o=Debian,n=sid
+Pin-Priority: 999
+
+Explanation: Upgrading to more recent version of Electrum allow us to get rid of Qt5 (tails#21085)
+Package: src:electrum
+Pin: release o=Debian,n=trixie-backports
+Pin-Priority: 999
+
+Explanation: Electrum dependencies
+Package: python3-aiorpcx python3-electrum-aionostr python3-electrum-ecc libsecp256k1-6
+Pin: release o=Debian,n=trixie-backports
+Pin-Priority: 999
+
+Explanation: weirdness in chroot_apt install-binary
+Package: *
+Pin: release o=chroot_local-packages
+Pin-Priority: 1010
+
+Explanation: Prevent upgrade of our forked packages to unpatched versions from Debian (tails/tails#21517)
+Package: *
+Pin: origin deb.tails.boum.org
+Pin-Priority: 1000
+
+Package: *
+Pin: release o=Debian,n=trixie
+Pin-Priority: 990
+
+Package: *
+Pin: release o=Debian,n=trixie-updates
+Pin-Priority: 990
+
+Package: *
+Pin: release l=Debian-Security,n=trixie-security
+Pin-Priority: 990
+
+Package: *
+Pin: release o=TorProject,n=trixie
+Pin-Priority: 990
+
+Package: *
+Pin: release o=Debian
+Pin-Priority: -10
+
+Package: *
+Pin: release l=Debian-Security
+Pin-Priority: -10
+
+Package: *
+Pin: release o=TorProject
+Pin-Priority: -10

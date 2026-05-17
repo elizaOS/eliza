@@ -1,0 +1,53 @@
+[[!meta title="Tails 6.9"]]
+[[!meta date="Thu, 31 Oct 2024 00:00:00 +0000"]]
+[[!pagetemplate template="news.tmpl"]]
+[[!tag announce]]
+
+<h1 id="changes">Changes and updates</h1>
+
+- Update *Tor Browser* to [14.0.1](https://blog.torproject.org/new-release-tor-browser-1401/).
+
+- Update the *Tor* client to 0.4.8.13.
+
+- Update *Thunderbird* to [115.16.0](https://www.thunderbird.net/en-US/thunderbird/115.16.0esr/releasenotes/).
+
+<h1 id="fixes">Fixed problems</h1>
+
+- Fix automatic upgrades aborting with the error message "`The upgrade could
+  not be downloaded`" even after a successful download. ([[!tails_ticket
+  20593]])
+
+For more details, read our [[!tails_gitweb debian/changelog desc="changelog"]].
+
+<h1 id="get">Get Tails 6.9</h1>
+
+## To upgrade your Tails USB stick and keep your Persistent Storage
+
+- Automatic upgrades are available from Tails 6.0 or later to 6.9.
+
+- If you cannot do an automatic upgrade or if Tails fails to start after an
+  automatic upgrade, please try to do a [[manual upgrade|doc/upgrade/#manual]].
+
+## To install Tails 6.9 on a new USB stick
+
+Follow our installation instructions:
+
+- [[Install from Windows|install/windows]]
+
+- [[Install from macOS|install/mac]]
+
+- [[Install from Linux|install/linux]]
+
+- [[Install from Debian or Ubuntu using the command line and GnuPG|install/expert]]
+
+<div class="caution"><p>The Persistent Storage on the USB stick will be lost if
+you install instead of upgrading.</p></div>
+
+## To download only
+
+If you don't need installation or upgrade instructions, you can download
+Tails 6.9 directly:
+
+- [[For USB sticks (USB image)|install/download]]
+
+- [[For DVDs and virtual machines (ISO image)|install/download-iso]]

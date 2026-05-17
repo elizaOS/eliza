@@ -1,0 +1,110 @@
+# SOME DESCRIPTIVE TITLE
+# Copyright (C) YEAR Free Software Foundation, Inc.
+# This file is distributed under the same license as the PACKAGE package.
+# FIRST AUTHOR <EMAIL@ADDRESS>, YEAR.
+#
+msgid ""
+msgstr ""
+"Project-Id-Version: PACKAGE VERSION\n"
+"Report-Msgid-Bugs-To: tails-l10n@boum.org\n"
+"POT-Creation-Date: 2025-12-10 00:33+0000\n"
+"PO-Revision-Date: 2015-10-14 17:22+0000\n"
+"Last-Translator: sprint5 <translation5@451f.org>\n"
+"Language-Team: Persian <http://weblate.451f.org:8889/projects/tails/"
+"why_tor_is_slow/fa/>\n"
+"Language: fa\n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+"Plural-Forms: nplurals=1; plural=0;\n"
+"X-Generator: Weblate 2.4-dev\n"
+
+#. type: Plain text
+#, no-wrap
+msgid "[[!meta title=\"Why is Tor slow?\"]]\n"
+msgstr "[[!meta title=\"چرا تور کند است؟\"]]\n"
+
+#. type: Plain text
+#, fuzzy
+msgid ""
+"Users often find that the Tor network is slow. This page describes some "
+"reasons that make Tor slow."
+msgstr ""
+"معمولاً به نظر کاربران شبکهٔ تور کند است. این صفحه بعضی دلایل کند بودن تور را "
+"توضیح می‌دهد. برای توضیحات بیشتر رجوع کنید به  [چرا تور این‌قدر کند است؟]"
+"(https://www.torproject.org/docs/faq.html.en#WhySlow)"
+
+#. type: Title =
+#, no-wrap
+msgid "Tor circuits lengthen the connections"
+msgstr "مدارهای تور ارتباطات را طولانی‌تر می‌کنند"
+
+#. type: Plain text
+#, fuzzy
+msgid ""
+"Tor provides anonymity by building circuits with 3 relays. So, instead of "
+"connecting directly to the destination server, a connection is made between "
+"each relay of the circuit and this takes more time."
+msgstr ""
+"تور با ایجاد مسیرهایی متشکل از سه رله شما را ناشناس می‌کند. بنابراین به جای "
+"اتصال مستقیم به سرور مقصد، ارتباطی بین هر رله از مسیر ایجاد می‌شود که زمان "
+"بیشتری می‌برد."
+
+#. type: Plain text
+msgid ""
+"Furthermore, Tor tries to build circuits with relays in different countries "
+"which make connection travel more and appear slower."
+msgstr ""
+"علاوه بر این تور تلاش می‌کند مدارهایی بسازد که رله‌هایش در کشورهای مختلف هستند "
+"و در نتیجه مسیر طی‌شده طولانی‌تر شده و ارتباط کندتر می‌شود."
+
+#. type: Plain text
+#, no-wrap
+msgid "[[!img tor/tor.png link=\"no\" class=\"svg\" alt=\"A Tor connection goes through 3 relays with the last one establishing the actual connection to the final destination\"]]\n"
+msgstr ""
+
+#. type: Title =
+#, no-wrap
+msgid "Quality of the relays"
+msgstr "کیفیت رله‌ها"
+
+#. type: Plain text
+#, fuzzy
+msgid ""
+"The Tor relays are run by volunteers in a decentralized way. So all relays "
+"are not of the same quality. Some are big and fast, while some others are "
+"smaller and slower. As a whole, the network could be faster if it had more "
+"capacity. To improve the capacity of the Tor network, you can either run a "
+"Tor relay yourself or [help existing relays](https://torservers.net/"
+"members/)."
+msgstr ""
+"رله‌های تور توسط داوطلبان به روشی مرکززدایی‌شده در جریان هستند. بنابراین کیفیت "
+"همهٔ رله‌ها یکی نیست. بعضی رله‌ها بزرگ و سریع هستند و بعضی دیگر کوچک‌تر و کندتر. "
+"اگر کل این شبکه ظرفیت بیشتری داشت می‌توانست سریع‌تر باشد. برای بهبود ظرفیت "
+"شبکهٔ تور می‌توانید یا خود مستقیماً یک رلهٔ تور راه‌اندازی کنید یا  [رله‌های موجود "
+"کمک کنید](https://www.torservers.net/partners.html."
+
+#. type: Title =
+#, no-wrap
+msgid "Misuse of the Tor network"
+msgstr "سوءاستفاده از شبکهٔ تور"
+
+#. type: Plain text
+#, fuzzy, no-wrap
+msgid ""
+"Some people misuse the Tor network, sometimes on purpose or sometimes by\n"
+"lack of knowledge. For instance, Tor is sometimes used to conduct\n"
+"[[!wikipedia Ddos#Distributed_attack desc=\"DDoS attacks\"]]. By\n"
+"doing this, the Tor relays are the ones who actually suffer from the\n"
+"attack, instead of the intended target.  Some people use [[!wikipedia\n"
+"Peer_to_peer desc=\"peer-to-peer software\"]] through Tor which\n"
+"is bad for the network.\n"
+msgstr ""
+"برخی افراد از شبکهٔ تور سوءاستفاده می‌کنند؛ گاهی به عمد و گاهی \n"
+"از روی ناآگاهی. برای مثال از تور گاهی برای حملات \n"
+"[[!wikipedia Ddos#Distributed_attack desc=\"حملات منع سرویس\"]]\n"
+"استفاده می‌شود. با این کار رله‌های تور هستند که از این حملات اسیب می‌بینند و نه مقصد مورد نظر.\n"
+"بعضی افراد با تور از [[!wikipedia\n"
+"Peer_to_peer desc=\"نرم‌افزارهای همتابه‌همتا\"]] استفاده می‌کنند که برای شبکهٔ تور مضر است.\n"
+"اگر می‌خواهید از نرم‌افزارهای همتابه‌همتا استفاده کنید بهتر است\n"
+" [[I2P را به کار ببندید|doc/anonymous_internet/i2p]].\n"

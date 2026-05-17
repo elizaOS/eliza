@@ -1,0 +1,42 @@
+[[!meta date="Mon, 22 Nov 2009 11:20:24 +0000"]]
+[[!meta title="Ineffective firewall-level Tor enforcement"]]
+[[!pagetemplate template="news.tmpl"]]
+
+[[!tag security/fixed]]
+
+The `openntpd` package is not installed anymore since commit
+bf8cc787ce46e9946ab47d5383feb1174da3f22a (20091006). The `ntpd` user
+is then non-existent on built amnesia systems.
+
+This user is however mentioned in `/etc/firewall.conf`.
+`iptables-restore` being apparently picky about imperfect
+configuration files, it refuses to load it, and the firewall-level Tor
+enforcement is therefore not effective.
+
+# Impact
+
+Some applications establish direct connections through the Internet,
+not using the Tor network at all.
+
+Details:
+
+* iceweasel is not affected, thanks to the torbutton extension
+* applications that take into account the relevant environment
+  variables (namely `http_proxy`, `HTTP_PROXY`, `SOCKS_SERVER` and
+  `SOCKS5_SERVER`) are not affected
+* any other application, such as Pidgin or Thunderbird, is probably
+  affected.
+
+# Solution
+
+This problem has been fixed in [[Git|contribute/git]] commit 9c425e8de13e6b4f885.
+
+# Affected versions
+
+No released amnesia version is affected.
+
+Custom images built from Git snapshots equal of after
+bf8cc787ce46e9946ab47d5383feb1174da3f22a (20091006), and before
+9c425e8de13e6b4f885 (excluded), are affected.
+
+

@@ -1,0 +1,30 @@
+[org/gnome/desktop/background]
+picture-uri='file:///usr/share/tails/desktop_wallpaper.png'
+
+[org/gnome/desktop/input-sources]
+# Hide duplicate and obscure keyboard layouts (#17089)
+show-all-sources = false
+
+[org/gnome/desktop/peripherals/touchpad]
+natural-scroll = true
+tap-to-click = true
+two-finger-scrolling-enabled = true
+
+[org/gnome/desktop/session]
+session-name='gdm-tails'
+
+[org/gnome/desktop/sound]
+event-sounds=false
+allow-volume-above-100-percent=true
+
+[org/gnome/mutter]
+center-new-windows = true
+check-alive-timeout = uint32 300000
+
+[org/gnome/settings-daemon/plugins/cursor]
+active = false
+
+[org/gnome/settings-daemon/plugins/power]
+power-button-action = 'nothing'
+lid-close-ac-action = 'blank'
+lid-close-battery-action = 'blank'

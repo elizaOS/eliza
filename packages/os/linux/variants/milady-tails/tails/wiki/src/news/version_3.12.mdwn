@@ -1,0 +1,140 @@
+[[!meta date="Tue, 29 Jan 2019 12:34:56 +0000"]]
+[[!meta title="Tails 3.12 is out"]]
+[[!pagetemplate template="news.tmpl"]]
+[[!tag announce]]
+
+This release fixes [[many security
+vulnerabilities|security/Numerous_security_holes_in_3.11]]. You should upgrade as soon as possible.
+
+[[!toc levels=1]]
+
+# Changes
+
+## New features
+
+<a id="usb-images"></a>
+
+### New installation methods
+
+The biggest news for 3.12 is that we completely changed the installation
+methods for Tails.
+
+In short, instead of downloading an ISO image (a format originally
+designed for CDs), you now download Tails as a **USB image**: an image
+of the data as it needs to be written to the USB stick.
+
+- For macOS, the new method is much simpler
+  as it uses a graphical tool
+  ([*Etcher*](https://www.balena.io/etcher/)) instead of the command
+  line.
+
+- For Windows, the new method is much
+  faster as it doesn't require 2 USB sticks and an intermediary Tails
+  anymore. The resulting USB stick also works better on newer computers
+  with UEFI.
+
+- For Debian and Ubuntu, the new method
+  uses a native application (*GNOME Disks*) and you don't have to
+  install *Tails Installer* anymore.
+
+- For other Linux distributions, the new
+  method is faster as it doesn't require 2 USB sticks and an
+  intermediary Tails anymore.
+
+We are still providing ISO images for people using DVDs or virtual machines.
+
+The methods for upgrading Tails remain the same.
+
+## Upgrades and changes
+
+- Starting Tails should be a bit faster on most machines.
+  ([[!tails_ticket 15915]])
+
+- Tell users to use `sudo` when they try to
+  use `su` on the command line.
+
+### Included software
+
+- Update Linux to 4.19. Update Intel and AMD microcodes and most
+  firmware packages. This should improve the support for newer hardware
+  (graphics, Wi-Fi, etc.).
+
+- Remove *Liferea*, as announced in [[Tails 3.9|news/version_3.9]].
+
+- Update *Tor Browser* to 8.0.5.
+
+- Update *Thunderbird* to
+  [60.4.0](https://www.thunderbird.net/en-US/thunderbird/60.4.0/releasenotes/).
+
+## Fixed problems
+
+- Fix the black screen when starting Tails with some Intel graphics
+  cards. ([[!tails_ticket 16224]])
+
+For more details, read our [[!tails_gitweb debian/changelog desc="changelog"]].
+
+<a id="known-issues"></a>
+
+# Known issues
+
+See also the list of [[long-standing issues|support/known_issues]].
+
+### Tails fails to start a second time on some computers ([[!tails_ticket 16389]])
+
+On some computers, after installing Tails to a USB stick,
+Tails starts a first time but fails to start a second time. In some
+cases, only BIOS (Legacy) was affected and the USB stick was not listed
+in the Boot Menu.
+
+We are still investigating the issue, so if it happens to you, please
+report your findings by email to <tails-testers@boum.org>. Mention the
+model of the computer and the USB stick. This mailing
+list is [archived publicly](https://lists.autistici.org/list/tails-testers.html).
+
+To fix this issue:
+
+1. Reinstall your USB stick using the same installation method.
+
+1. Start Tails for the first time and [[set up an administration
+   password|doc/first_steps/welcome_screen/administration_password]].
+
+1. Choose
+   **Applications&nbsp;▸ System Tools&nbsp;▸ Root Terminal**
+   to open a *Root Terminal*.
+
+1. Execute the following command:
+
+   <p class="pre command">sgdisk --recompute-chs /dev/bilibop</p>
+
+You can also test an experimental image:
+
+1. Download the *.img* file from our development
+   server.
+
+1. Install it using the same installation methods.
+
+   We don't provide any OpenPGP signature or other verification technique
+   for this test image. Please only use it for testing.
+
+# Get Tails 3.12
+
+- To install, follow our [[installation instructions|install]].
+
+- To upgrade, automatic upgrades are available from 3.10, 3.10.1, 3.11, and 3.12~rc1 to 3.12.
+
+  If you cannot do an automatic upgrade or if Tails fails to start after an
+  automatic upgrade, please try to do a [[manual upgrade|doc/upgrade#manual]].
+
+- Download Tails 3.12:
+
+  - [[For USB sticks (USB image)|install/download]]
+  - [[For DVDs and virtual machines (ISO image)|install/download-iso]]
+
+# What's coming up?
+
+Tails 3.13 is [[scheduled|contribute/calendar]] for March 19.
+
+
+We need your help and there are many ways to [[contribute to
+Tails|contribute]] (<a href="https://tails.net/donate/?r=3.12">donating</a> is only one of
+them). Come [[talk to us|doc/about/contact#tails-dev]]!

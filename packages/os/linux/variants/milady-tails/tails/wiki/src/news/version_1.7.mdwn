@@ -1,0 +1,83 @@
+[[!meta date="Tue, 03 Nov 2015 12:34:56 +0000"]]
+[[!pagetemplate template="news.tmpl"]]
+[[!meta title="Tails 1.7 is out"]]
+[[!tag announce]]
+
+This release fixes [[numerous security
+issues|security/Numerous_security_holes_in_1.6]]. All users must
+upgrade as soon as possible.
+
+[[!toc levels=1]]
+
+# Changes
+
+## New features
+
+- You can now start Tails in [[offline mode|doc/first_steps/welcome_screen#additional]]
+  to disable all networking for additional security. Doing so can be
+  useful when working on sensitive documents.
+
+- We added *Icedove*,
+  a rebranded version of the *Mozilla Thunderbird*
+  email client.
+
+  *Icedove* is currently a technology preview. It is safe to use in the
+  context of Tails but it will be better integrated in future versions
+  until we remove *Claws Mail*.
+  Users of *Claws Mail*
+  should refer to our instructions to migrate their data from
+  *Claws Mail* to
+  *Icedove*.
+
+## Upgrades and changes
+
+- Improve the wording of the first screen of
+  *Tails Installer*.
+
+- Restart Tor automatically if connecting to the Tor network takes too
+  long. ([[!tails_ticket 9516 desc="#9516"]])
+
+- Update several firmware packages which might improve hardware
+  compatibility.
+
+- Update the Tails signing key which is now valid until 2017.
+
+- Update *Tor Browser* to 5.0.4.
+
+- Update Tor to 0.2.7.4.
+
+## Fixed problems
+
+- Prevent `wget` from leaking the IP address
+  when using the FTP protocol. ([[!tails_ticket 10364 desc="#10364"]])
+
+- Prevent symlink attack on *~/.xsession-errors*
+  via `tails-debugging-info` which could be
+  used by the amnesia user to bypass read permissions on any file.
+
+- Force synchronization of data on the USB stick at the end of automatic
+  upgrades. This might fix some reliability bugs in automatic upgrades.
+
+- Make the "I2P is ready" notification more reliable.
+
+# Known issues
+
+See the current list of [[known issues|support/known_issues]].
+
+# Download or upgrade
+
+Go to the [[install]] or [[upgrade|doc/upgrade/]] page.
+
+If you have been updating automatically for a while and your Tails does not
+boot after an automatic upgrade, you can [[update your Tails
+manually|doc/upgrade#manual]].
+
+# What's coming up?
+
+The next Tails release is [[scheduled|contribute/calendar]] for
+December 15.
+
+
+We need your help and there are many ways to [[contribute to
+Tails|contribute]] (donating is only one of
+them). Come [[talk to us|doc/about/contact#tails-dev]]!

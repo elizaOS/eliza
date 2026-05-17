@@ -1,0 +1,74 @@
+[[!meta title="Tails 4.6 is out"]]
+[[!meta date="Tue, 05 May 2020 20:00:00 +0000"]]
+[[!pagetemplate template="news.tmpl"]]
+[[!tag announce]]
+
+This release fixes [[many security
+vulnerabilities|security/Numerous_security_holes_in_4.5]]. You should upgrade as soon as possible.
+
+[[!toc levels=1]]
+
+# Changes and updates
+
+- Update *Tor Browser* to [9.0.10](https://blog.torproject.org/new-release-tor-browser-9010).
+
+- Add support for [[!wikipedia Universal 2nd Factor]] USB security keys.
+
+- Update the list of applications in the *Favorites* applications
+  submenu.
+
+  To make it easier for new users to discover some of the core features
+  of Tails, we added *Configure persistent volume*, *Tails
+  documentation*, *WhisperBack Error Reporting*, and *Tails Installer*
+  and removed *Terminal*.
+
+  [[!img favorites.png link="no" alt=""]]
+
+- Change the input method for Japanese from Anthy to Mozc.
+  ([[!tails_ticket 16719]])
+
+  [[!img japanese.png link="no" alt="Keyboard menu&nbsp;▸ Japanese (Mozc)&nbsp;▸ Katakana"]]
+
+<a id="known-issues"></a>
+
+# Known issues
+
+None specific to this release.
+
+See the list of [[long-standing issues|support/known_issues]].
+
+# Get Tails 4.6
+
+## To upgrade your Tails USB stick and keep your Persistent Storage
+
+- Automatic upgrades are available from Tails 4.2 or later to 4.6.
+
+- If you cannot do an automatic upgrade or if Tails fails to start after an
+  automatic upgrade, please try to do a [[manual upgrade|doc/upgrade/#manual]].
+
+## To install Tails on a new USB stick
+
+Follow our installation instructions:
+
+  - [[Install from Windows|install/windows]]
+  - [[Install from macOS|install/mac]]
+  - [[Install from Linux|install/linux]]
+
+<div class="caution"><p>All the data on this USB stick will be lost.</p></div>
+
+## To download only
+
+If you don't need installation or upgrade instructions, you can download
+Tails 4.6 directly:
+
+  - [[For USB sticks (USB image)|install/download]]
+  - [[For DVDs and virtual machines (ISO image)|install/download-iso]]
+
+# What's coming up?
+
+Tails 4.7 is [[scheduled|contribute/calendar]] for June 2.
+
+
+We need your help and there are many ways to [[contribute to
+Tails|contribute]] (<a href="https://tails.net/donate/?r=4.6">donating</a> is only one of
+them). Come [[talk to us|doc/about/contact#tails-dev]]!

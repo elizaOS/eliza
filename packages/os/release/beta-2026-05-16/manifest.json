@@ -1,0 +1,196 @@
+{
+  "schemaVersion": 1,
+  "release": {
+    "id": "elizaos-os-beta-2026.05.16",
+    "channel": "beta",
+    "version": "2.0.0-beta.2-os.20260516",
+    "availableDate": "2026-05-16",
+    "status": "available",
+    "tag": null,
+    "commit": null,
+    "summary": "First public ElizaOS beta manifest covering raw boot images, VM bundles, and Android flashing artifacts.",
+    "knownLimitations": [
+      "Secure Boot is not supported for this beta unless a separately signed shim is published.",
+      "USB key orders are presale only and ship in October 2026.",
+      "Android artifacts are limited to manifest-listed targets and require an unlocked bootloader."
+    ]
+  },
+  "commerce": {
+    "usbKeyPresale": {
+      "enabled": true,
+      "priceUsd": 49,
+      "saleStarts": "2026-05-16",
+      "estimatedShipWindow": {
+        "starts": "2026-10-01",
+        "ends": "2026-10-31"
+      },
+      "sku": "ELIZAOS-USB-BETA-2026-10",
+      "notes": "Presale includes a flashed ElizaOS USB key and does not change the free downloadable image terms."
+    }
+  },
+  "artifacts": [
+    {
+      "id": "raw-linux-x86_64-img-zst",
+      "kind": "raw-image",
+      "target": {
+        "platform": "linux",
+        "architecture": "x86_64",
+        "device": null,
+        "hypervisor": null,
+        "firmware": "uefi"
+      },
+      "filename": "elizaos-beta-2026.05.16-linux-x86_64.raw.img.zst",
+      "downloadUrl": "https://downloads.elizaos.ai/os/beta/2026.05.16/elizaos-beta-2026.05.16-linux-x86_64.raw.img.zst",
+      "status": "candidate",
+      "sizeBytes": null,
+      "sha256": null,
+      "signature": {
+        "status": "pending",
+        "url": null
+      },
+      "validation": {
+        "requiredEvidence": [
+          "sha256-generated",
+          "uefi-usb-boot-smoke",
+          "internal-disk-safety-smoke"
+        ],
+        "evidence": []
+      },
+      "notes": "Primary raw image for USB flashing and direct disk writes."
+    },
+    {
+      "id": "vm-linux-x86_64-qcow2",
+      "kind": "vm-image",
+      "target": {
+        "platform": "linux",
+        "architecture": "x86_64",
+        "device": null,
+        "hypervisor": "qemu-kvm-whpx",
+        "firmware": "uefi"
+      },
+      "filename": "elizaos-beta-2026.05.16-vm-linux-x86_64.qcow2.zst",
+      "downloadUrl": "https://downloads.elizaos.ai/os/beta/2026.05.16/elizaos-beta-2026.05.16-vm-linux-x86_64.qcow2.zst",
+      "status": "candidate",
+      "sizeBytes": null,
+      "sha256": null,
+      "signature": {
+        "status": "not-applicable",
+        "url": null
+      },
+      "validation": {
+        "requiredEvidence": [
+          "sha256-generated",
+          "vm-boot-smoke",
+          "agent-health-smoke",
+          "network-smoke"
+        ],
+        "evidence": []
+      },
+      "notes": "QEMU-compatible VM bundle for Linux hosts and conversion workflows."
+    },
+    {
+      "id": "vm-macos-silicon-utm",
+      "kind": "vm-image",
+      "target": {
+        "platform": "macos",
+        "architecture": "arm64",
+        "device": "apple-silicon",
+        "hypervisor": "utm-apple-virtualization",
+        "firmware": "uefi"
+      },
+      "filename": "elizaos-beta-2026.05.16-vm-macos-silicon.utm.zip",
+      "downloadUrl": "https://downloads.elizaos.ai/os/beta/2026.05.16/elizaos-beta-2026.05.16-vm-macos-silicon.utm.zip",
+      "status": "candidate",
+      "sizeBytes": null,
+      "sha256": null,
+      "signature": {
+        "status": "pending",
+        "url": null
+      },
+      "validation": {
+        "requiredEvidence": [
+          "sha256-generated",
+          "vm-boot-smoke",
+          "agent-health-smoke"
+        ],
+        "evidence": []
+      },
+      "notes": "UTM bundle for Apple Silicon evaluation."
+    },
+    {
+      "id": "android-cuttlefish-x86_64-zip",
+      "kind": "android-image",
+      "target": {
+        "platform": "cuttlefish",
+        "architecture": "x86_64",
+        "device": "cf_x86_64_phone",
+        "hypervisor": "cuttlefish",
+        "firmware": null
+      },
+      "filename": "elizaos-beta-2026.05.16-android-cf_x86_64_phone.zip",
+      "downloadUrl": "https://downloads.elizaos.ai/os/beta/2026.05.16/elizaos-beta-2026.05.16-android-cf_x86_64_phone.zip",
+      "status": "candidate",
+      "sizeBytes": null,
+      "sha256": null,
+      "signature": {
+        "status": "not-applicable",
+        "url": null
+      },
+      "validation": {
+        "requiredEvidence": [
+          "sha256-generated",
+          "cuttlefish-boot-smoke",
+          "assistant-role-validation"
+        ],
+        "evidence": []
+      },
+      "notes": "Cuttlefish image used for Android beta validation."
+    },
+    {
+      "id": "android-pixel-arm64-zip",
+      "kind": "android-image",
+      "target": {
+        "platform": "android",
+        "architecture": "arm64",
+        "device": "pixel-supported",
+        "hypervisor": null,
+        "firmware": null
+      },
+      "filename": "elizaos-beta-2026.05.16-android-pixel-arm64.zip",
+      "downloadUrl": "https://downloads.elizaos.ai/os/beta/2026.05.16/elizaos-beta-2026.05.16-android-pixel-arm64.zip",
+      "status": "candidate",
+      "sizeBytes": null,
+      "sha256": null,
+      "signature": {
+        "status": "not-applicable",
+        "url": null
+      },
+      "validation": {
+        "requiredEvidence": [
+          "sha256-generated",
+          "fastboot-product-guard",
+          "physical-device-boot-smoke",
+          "assistant-role-validation"
+        ],
+        "evidence": []
+      },
+      "notes": "Physical Pixel release bundle; exact supported codenames are declared by android-info.txt inside the archive."
+    }
+  ],
+  "validation": {
+    "evidenceDirectory": "packages/os/release/beta-2026-05-16/evidence",
+    "promotionGates": [
+      "manifest-schema-valid",
+      "checksums-generated-and-verified",
+      "raw-image-usb-boot-smoke",
+      "required-vm-smokes-pass",
+      "android-cuttlefish-smoke-pass",
+      "release-notes-published"
+    ]
+  },
+  "checksumPolicy": {
+    "algorithm": "sha256",
+    "generatedFile": "packages/os/release/beta-2026-05-16/SHA256SUMS",
+    "verificationScript": "packages/os/scripts/verify-release-checksums.mjs"
+  }
+}

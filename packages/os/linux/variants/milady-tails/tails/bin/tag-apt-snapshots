@@ -1,0 +1,59 @@
+#!/bin/sh
+
+# shellcheck disable=SC2029
+
+set -e
+set -u
+
+TIME_BASED_SNAPSHOTS_HOST='apt.lizard'
+TIME_BASED_SNAPSHOTS_USER='reprepro-time-based-snapshots'
+TIME_BASED_SNAPSHOTS_USER_AT_HOST="${TIME_BASED_SNAPSHOTS_USER}@${TIME_BASED_SNAPSHOTS_HOST}"
+
+fail_with_usage() {
+    echo "$(basename "$0") BUILD_MANIFEST TAG" >&2
+}
+
+[ $# -eq 2 ] || fail_with_usage
+
+BUILD_MANIFEST="$1"
+TAG="$2"
+
+[ -r "$BUILD_MANIFEST" ] || fail_with_usage
+[ -n "$TAG" ] || fail_with_usage
+
+echo "I: Preparing a workspace on ${TIME_BASED_SNAPSHOTS_HOST}"
+ssh "$TIME_BASED_SNAPSHOTS_USER_AT_HOST" install -d '$HOME'/tmp
+REMOTE_BUILD_MANIFEST=$(ssh "$TIME_BASED_SNAPSHOTS_USER_AT_HOST" \
+    mktemp --tmpdir='$HOME'/tmp)
+REMOTE_DEST_DIR=$(ssh "$TIME_BASED_SNAPSHOTS_USER_AT_HOST" \
+    mktemp -d --tmpdir='$HOME'/tmp)
+
+echo "I: Sending build manifest to ${TIME_BASED_SNAPSHOTS_HOST}"
+scp "$BUILD_MANIFEST" \
+    "${TIME_BASED_SNAPSHOTS_USER_AT_HOST}:${REMOTE_BUILD_MANIFEST}"
+
+echo "I: Preparing reprepro configuration"
+ssh "$TIME_BASED_SNAPSHOTS_USER_AT_HOST" \
+    tails-prepare-tagged-apt-snapshot-import \
+    "$REMOTE_BUILD_MANIFEST" \
+    "$REMOTE_DEST_DIR"
+
+echo "I: Pulling packages from the time-based snapshots into the tagged ones"
+for archive in $(ssh "$TIME_BASED_SNAPSHOTS_USER_AT_HOST" \
+    ls "$REMOTE_DEST_DIR"); do
+    echo "I: - $archive"
+    ssh "$TIME_BASED_SNAPSHOTS_USER_AT_HOST" \
+        reprepro --basedir "${REMOTE_DEST_DIR}/${archive}" update
+    # Ensure all index files are created, even for empty suites (#20009)
+    ssh "$TIME_BASED_SNAPSHOTS_USER_AT_HOST" \
+        reprepro --basedir "${REMOTE_DEST_DIR}/${archive}" export
+done
+
+echo "I: Publishing the tagged APT snapshot"
+ssh "${TIME_BASED_SNAPSHOTS_USER}@${TIME_BASED_SNAPSHOTS_HOST}" \
+    sudo -n /usr/local/sbin/tails-publish-tagged-apt-snapshot \
+    "$REMOTE_DEST_DIR" "$TAG"
+
+echo "I: Cleaning up"
+ssh "${TIME_BASED_SNAPSHOTS_USER}@${TIME_BASED_SNAPSHOTS_HOST}" \
+    rm "$REMOTE_BUILD_MANIFEST"

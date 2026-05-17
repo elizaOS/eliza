@@ -1,0 +1,231 @@
+[[!meta title="Tails 6.0"]]
+[[!meta date="Tue, 27 Feb 2024 12:34:56 +0000"]]
+[[!pagetemplate template="news.tmpl"]]
+[[!tag announce]]
+
+We are very excited to present you Tails 6.0, the first version of Tails based
+on Debian 12 (Bookworm) and GNOME 43. Tails 6.0 brings new versions of most of
+the software included in Tails as well as several important security and
+usability improvements.
+
+[[!toc levels=2]]
+
+<h1 id="features">New features</h1>
+
+## Error detection on the Persistent Storage
+
+Tails 6.0 warns you about [[errors when reading or writing|ioerror]] from
+your Tails USB stick.
+
+These alerts can help you diagnose hardware failures on your USB stick and
+backup your Persistent Storage before it's too late.
+
+## Mount external devices automatically
+
+When you plug in an external storage device, a USB stick or an external hard
+disk, Tails 6.0 mounts it automatically. If the storage device contains an
+encrypted partition, Tails 6.0 offers you to unlock the encryption
+automatically.
+
+[[!img test_6.0-rc1/unlock.png link="no" class="screenshot" alt="Authentication Required. A
+passphrase is needed to access encrypted data."]]
+
+This feature also simplifies how to unlock [[*VeraCrypt* encrypted
+volumes|doc/encryption_and_privacy/veracrypt]].
+
+## Protection against malicious USB devices
+
+If an attacker manages to plug a [[!wikipedia BadUSB desc="malicious USB
+device"]] in your computer, they could run software that breaks the security
+built in Tails without your knowledge.
+
+To protect from such attacks while you are away from your computer, Tails
+6.0 ignores any USB device that is plugged in while your screen is locked.
+
+You can only use new USB devices if they are plugged in while the screen is
+unlocked.
+
+[[!img test_6.0-rc1/usbguard.png link="no" class="screenshot" alt="Notification: Reconnect
+USB device. New device has been detected while you were away. Please disconnect
+and reconnect the device to start using it."]]
+
+## Dark Mode and Night Light
+
+From the system menu of Tails 6.0, you can now switch between:
+
+- The default *light* mode with colder colors and more brightness
+
+  [[!img doc/first_steps/desktop/light.png link="no" class="screenshot" alt=""]]
+
+- A *dark* mode
+  
+  [[!img doc/first_steps/desktop/dark.png link="no" class="screenshot" alt=""]]
+
+- A *night light* mode with warmer colors and less brightness
+
+  [[!img doc/first_steps/desktop/night.png link="no" class="screenshot" alt=""]]
+
+- A combination of both the *dark* mode and *night light* mode
+
+  [[!img doc/first_steps/desktop/dark_night.png link="no" class="screenshot" alt=""]]
+
+## Easier screenshots and screencasts
+
+GNOME 43 introduces a new [[!img lib/camera-photo.png alt="Take Screenshot"
+class="symbolic" link="no"]] shortcut in the system menu that makes it easier
+to take a screenshot or record a screencast.
+
+[[!img doc/sensitive_documents/screenshot_and_screencast/camera.png link="no" class="screenshot" alt=""]]
+
+## Easier Gmail in Thunderbird
+
+Thanks to changes in both Thunderbird and Gmail, it's much easier to configure
+a Gmail account in Thunderbird in Tails 6.0.
+
+- You don't have to configure anything special in your Gmail account, other
+  than the usual 2-Step Verification.
+
+- You can sign in to your Gmail account directly when configuring it in
+  *Thunderbird*.
+
+[[!img test_6.0-rc1/gmail.png link="no" class="screenshot" alt="Gmail: Sign in to continue
+to Mozilla Thunderbird"]]
+
+## Diceware passphrases in 5 more languages
+
+When creating a Persistent Storage, suggested passphrases are now also
+generated in Catalan, German, Italian, Portuguese, and Spanish.
+
+Thanks to [[!tails_gitlab jawlensky]] who created the word lists for Catalan,
+Italian, and Spanish for Tails, but also made them available to all users of
+`diceware`.
+
+[[!img test_6.0-rc1/diceware.png link="no" class="screenshot" alt=""]]
+
+<h1 id="changes">Changes and updates</h1>
+
+## Included software
+
+Tails 6.0 updates most of the applications included in Tails, among others:
+
+- *Tor Browser* to [13.0.10](https://blog.torproject.org/new-release-tor-browser-13010/).
+
+- *Electrum* from 4.0.9 to 4.3.4
+
+  * Improve support for the Lightning protocol and hardware wallets.
+
+- *KeePassXC* from 2.6.2 to 2.7.4
+
+  * Add entry tags.
+  * Support dark mode.
+  * Redesign history view.
+
+- *Metadata Cleaner* from 1.0.2 to 2.4.0
+
+  * Redesign the whole user interface.
+  * Support dark mode.
+  * Add support for AIFF and HEIC files.
+
+- *Text Editor* from `gedit` to `gnome-text-editor`
+
+  * Support dark mode.
+
+- *Inkscape* from 1.0.2 to 1.2.2
+
+- *Audacity* from 2.4.2 to 3.2.4
+
+- *GIMP* from 2.10.22 to 2.10.34
+
+- *Kleopatra* from 4:20.08 to 4:22.12
+
+## Removed features
+
+- Remove the icons on the desktop.
+
+  The extension of GNOME Shell that we used to provide this feature is not well
+  integrated into GNOME and created other problems. ([[!tails_ticket 19920]])
+
+- Remove the item **Wipe** and **Wipe available disk space** from the shortcut
+  menu of the *Files* browser.
+
+  Secure deletion is not reliable enough on USB sticks and Solid-State Drives
+  (SSDs) for us to keep advertising this feature.
+
+  We updated our documentation on [[secure
+  deletion|doc/encryption_and_privacy/secure_deletion]] to new recommendations:
+  use encrypted volumes, overwrite the entire device, or disintegrate it
+  physically.
+
+- Remove the item **Remove metadata** from the shortcut menu of the *Files*
+  browser.
+
+  The developers of MAT2, the metadata removal library used by *Metadata
+  Cleaner* are not providing this option anymore.
+
+- Remove *GtkHash*
+
+  You can still install *GtkHash* as [[Additional
+  Software|doc/persistent_storage/additional_software]].
+
+<h1 id="fixes">Fixed problems</h1>
+
+- Fix several issues with special characters and non-Latin scripts in the
+  screen keyboard. ([[!tails_ticket 18076]])
+
+For more details, read our [[!tails_gitweb debian/changelog desc="changelog"]].
+
+<h1 id="issues">Known issues</h1>
+
+- *Onion Circuits* incorrectly claims Tor is not connected. ([[!tails_ticket 20233]])
+
+- The Welcome Screen sometimes displays a warning: **"Welcome to Tails!" is not responding**.
+  ([[!tails_ticket 20236]])
+
+  If you see this warning, click on the **Wait** button.
+
+- Playing a video displays an error: **Failed to query: In service
+  'dbus:org.freedesktop.Tracker3.Miner.Files': Unit tracker-miner-fs-3-service
+  is masked.** ([[!tails_ticket 20237]])
+
+  If you see this warning, click on the **OK** button.
+
+- *OnionShare* is still included as version 2.2.
+
+  We tried to include *OnionShare* 2.6 in Tails 6.0, but it has several issues
+  that had security implications. ([[!tails_ticket 20135]] and [[!tails_ticket
+  20140]])
+
+- Mounting external devices automatically interferes with
+  the *Back Up Persistent Storage* utility. ([[!tails_ticket 20143]])
+
+<h1 id="get">Get Tails 6.0</h1>
+
+## To upgrade your Tails USB stick and keep your Persistent Storage
+
+- Automatic upgrades are only available from Tails 6.0~rc1 to 6.0.
+
+  All other users have to do a [[manual upgrade|doc/upgrade#manual]].
+
+## To install Tails 6.0 on a new USB stick
+
+Follow our installation instructions:
+
+- [[Install from Windows|install/windows]]
+
+- [[Install from macOS|install/mac]]
+
+- [[Install from Linux|install/linux]]
+
+- [[Install from Debian or Ubuntu using the command line and GnuPG|install/expert]]
+
+<div class="caution"><p>The Persistent Storage on the USB stick will be lost if
+you install instead of upgrading.</p></div>
+
+## To download only
+
+If you don't need installation or upgrade instructions, you can download
+Tails 6.0 directly:
+
+- [[For USB sticks (USB image)|install/download]]
+
+- [[For DVDs and virtual machines (ISO image)|install/download-iso]]

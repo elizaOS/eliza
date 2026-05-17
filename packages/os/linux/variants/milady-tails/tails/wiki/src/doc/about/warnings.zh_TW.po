@@ -1,0 +1,133 @@
+# SOME DESCRIPTIVE TITLE
+# Copyright (C) YEAR Free Software Foundation, Inc.
+# This file is distributed under the same license as the PACKAGE package.
+# FIRST AUTHOR <EMAIL@ADDRESS>, YEAR.
+#
+msgid ""
+msgstr ""
+"Project-Id-Version: PACKAGE VERSION\n"
+"POT-Creation-Date: 2025-09-17 11:40+0200\n"
+"PO-Revision-Date: 2024-04-26 09:37+0000\n"
+"Last-Translator: xin <xin@riseup.net>\n"
+"Language-Team: LANGUAGE <LL@li.org>\n"
+"Language: zh_TW\n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+"Plural-Forms: nplurals=1; plural=0;\n"
+"X-Generator: Weblate 5.3\n"
+
+#. type: Content of: <div>
+msgid "[[!meta title=\"Warnings: Tails is safe but not magic!\"]]"
+msgstr ""
+
+#. type: Content of: outside any tag (error?)
+msgid ""
+"[[!meta stylesheet=\"doc/about/warnings\" rel=\"stylesheet\" title=\"\"]]"
+msgstr ""
+"[[!meta stylesheet=\"doc/about/warnings\" rel=\"stylesheet\" title=\"\"]]"
+
+#. type: Content of: <div><p>
+msgid ""
+"Tails is safer than any regular operating system. But Tails, or any software "
+"or operating system, cannot protect you from everything—even if they pretend "
+"to."
+msgstr ""
+
+#. type: Content of: <div><p>
+msgid ""
+"The recommendations below will keep you even safer, especially if you are at "
+"high risk."
+msgstr ""
+
+#. type: Content of: <div><div><div><h3>
+msgid "Protecting your identity when using Tails"
+msgstr ""
+
+#. type: Content of: <div><div><div>
+#, fuzzy
+msgid ""
+"[[!img identity.png link=\"no\" class=\"svg\" alt=\"\"]] [[!inline "
+"pages=\"doc/about/warnings/identity.inline\" raw=\"yes\" sort=\"age\"]]"
+msgstr ""
+"[[!img identity.png link=\"no\" class=\"svg\"]] [[!inline pages=\"doc/about/"
+"warnings/identity.inline.zh_TW\" raw=\"yes\" sort=\"age\"]]"
+
+#. type: Content of: <div><div><div>
+msgid "<button id=\"toggle-identity\">Protecting your identity</button>"
+msgstr ""
+
+#. type: Content of: <div><div><div><h3>
+msgid "Limitations of the Tor network"
+msgstr ""
+
+#. type: Content of: <div><div><div>
+#, fuzzy
+msgid ""
+"[[!img tor.png link=\"no\" class=\"svg\" alt=\"\"]] [[!inline pages=\"doc/"
+"about/warnings/tor.inline\" raw=\"yes\" sort=\"age\"]]"
+msgstr ""
+"[[!img tor.png link=\"no\" class=\"svg\"]] [[!inline pages=\"doc/about/"
+"warnings/tor.inline.zh_TW\" raw=\"yes\" sort=\"age\"]]"
+
+#. type: Content of: <div><div><div>
+msgid "<button id=\"toggle-tor\">Limitations of Tor</button>"
+msgstr ""
+
+#. type: Content of: <div><div><div><h3>
+msgid "Reducing risks when using untrusted computers"
+msgstr ""
+
+#. type: Content of: <div><div><div>
+#, fuzzy
+msgid ""
+"[[!img computer.png link=\"no\" class=\"svg\" alt=\"\"]] [[!inline "
+"pages=\"doc/about/warnings/computer.inline\" raw=\"yes\" sort=\"age\"]]"
+msgstr ""
+"[[!img computer.png link=\"no\" class=\"svg\"]] [[!inline pages=\"doc/about/"
+"warnings/computer.inline.zh_TW\" raw=\"yes\" sort=\"age\"]]"
+
+#. type: Content of: <div><div><div>
+msgid "<button id=\"toggle-computer\">Using untrusted computers</button>"
+msgstr ""
+
+#. type: Content of: <div>
+msgid ""
+"<span id=\"hide-identity\" class=\"hide-button\"></span> [[!inline "
+"pages=\"doc/about/warnings/identity\" raw=\"yes\" sort=\"age\"]]"
+msgstr ""
+"<span id=\"hide-identity\" class=\"hide-button\"></span> [[!inline "
+"pages=\"doc/about/warnings/identity.zh_TW\" raw=\"yes\" sort=\"age\"]]"
+
+#. type: Content of: <div>
+msgid ""
+"<span id=\"hide-tor\" class=\"hide-button\"></span> [[!inline pages=\"doc/"
+"about/warnings/tor\" raw=\"yes\" sort=\"age\"]]"
+msgstr ""
+"<span id=\"hide-tor\" class=\"hide-button\"></span> [[!inline pages=\"doc/"
+"about/warnings/tor.zh_TW\" raw=\"yes\" sort=\"age\"]]"
+
+#. type: Content of: <div>
+msgid ""
+"<span id=\"hide-computer\" class=\"hide-button\"></span> [[!inline "
+"pages=\"doc/about/warnings/computer\" raw=\"yes\" sort=\"age\"]]"
+msgstr ""
+"<span id=\"hide-computer\" class=\"hide-button\"></span> [[!inline "
+"pages=\"doc/about/warnings/computer.zh_TW\" raw=\"yes\" sort=\"age\"]]"
+
+#. type: Content of: <div><p>
+msgid ""
+"Because you always have to adapt your digital security practices to your "
+"specific needs and threats, we encourage you to learn more by reading the "
+"following guides:"
+msgstr ""
+
+#. type: Content of: <div><ul><li>
+msgid "<a href=\"https://ssd.eff.org/\">EFF: Surveillance Self-Defense</a>"
+msgstr ""
+
+#. type: Content of: <div><ul><li>
+msgid ""
+"<a href=\"https://securityinabox.org/\">Front Line Defenders: Security-in-a-"
+"Box</a>"
+msgstr ""

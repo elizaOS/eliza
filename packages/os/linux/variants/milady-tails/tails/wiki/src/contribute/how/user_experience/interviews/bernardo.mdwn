@@ -1,0 +1,24 @@
+[[!meta title="Bernardo, May 2017"]]
+
+Bernardo is a 37 years old public administration teacher and social
+science researcher in Brazil. He studies the way social movements use
+Internet communication tools. He discovered Tails after the Snowden
+leaks, via a hackers collective and the homepage of the Tor website.
+
+He uses Debian and GNOME (and has some basic knowledge of the command
+line interface) so he felt comfortable using Tails, and found it easy
+to get started with. He advocates using Tails and started using it
+himself since the coup; he uses it about once a month, primarily to
+release and distribute material against the government.
+
+### What he likes
+
+- everything is torified by default
+- the amnesic property: everything goes away when turning off the
+  computer
+- Windows Camouflage (when it was there…)
+- Pidgin
+
+### What he dislikes
+
+- he had some trouble with the Unsafe Browser

@@ -1,0 +1,245 @@
+# SOME DESCRIPTIVE TITLE
+# Copyright (C) YEAR Free Software Foundation, Inc.
+# This file is distributed under the same license as the PACKAGE package.
+# FIRST AUTHOR <EMAIL@ADDRESS>, YEAR.
+#
+#, fuzzy
+msgid ""
+msgstr ""
+"Project-Id-Version: PACKAGE VERSION\n"
+"Report-Msgid-Bugs-To: tails-l10n@boum.org\n"
+"POT-Creation-Date: 2026-04-01 00:15+0000\n"
+"PO-Revision-Date: YEAR-MO-DA HO:MI+ZONE\n"
+"Last-Translator: FULL NAME <EMAIL@ADDRESS>\n"
+"Language-Team: LANGUAGE <LL@li.org>\n"
+"Language: sr_Latn\n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+
+#. type: Plain text
+#, no-wrap
+msgid "[[!meta robots=\"noindex\"]]\n"
+msgstr ""
+
+#. type: Plain text
+#, no-wrap
+msgid "<h1 id=\"rufus\" class=\"step\">Download <i>Rufus</i></h1>\n"
+msgstr ""
+
+#. type: Plain text
+#, no-wrap
+msgid ""
+"<div class=\"step-image usb\">[[!img inc/infography/install-rufus.png link=\"no\" alt=\"\"]]</div>\n"
+"<div class=\"step-image upgrade\">[[!img inc/infography/install-rufus-with-intermediary.png link=\"no\" alt=\"\"]]</div>\n"
+msgstr ""
+
+#. type: Plain text
+#, no-wrap
+msgid ""
+"<p class=\"upgrade\">In the following steps, you will install an intermediary Tails using the Tails USB\n"
+"image that you downloaded earlier.</p>\n"
+msgstr ""
+
+#. type: Plain text
+#, no-wrap
+msgid "<p><a href=\"https://rufus.ie/\"><i>Rufus</i></a> is the Free Software tool that we recommend to install Tails from Windows.</p>\n"
+msgstr ""
+
+#. type: Bullet: '1. '
+msgid "Click on the following button to download *Rufus*:"
+msgstr ""
+
+#. type: Plain text
+#, no-wrap
+msgid "   <p class=\"button\">[[Download <i>Rufus</i> for Windows|https://tails.net/rufus/rufus-portable.exe]]</p>\n"
+msgstr ""
+
+#. type: Plain text
+#, no-wrap
+msgid "   Save your download to your usual *Downloads* folder and not to the USB stick.\n"
+msgstr ""
+
+#. type: Plain text
+#, no-wrap
+msgid "<div class=\"attack\">\n"
+msgstr ""
+
+#. type: Plain text
+#, no-wrap
+msgid ""
+"<p>We [[stopped recommending|news/rufus]] <i>balenaEtcher</i> to install Tails\n"
+"from Windows in 2025 because <i>balenaEtcher</i> shares [[!tails_ticket 16381\n"
+"desc=\"sensitive information\"]] to the Balena company that allows identifying\n"
+"who is installing Tails.</p>\n"
+msgstr ""
+
+#. type: Plain text
+#, no-wrap
+msgid "</div>\n"
+msgstr ""
+
+#. type: Plain text
+#, no-wrap
+msgid "<h1 id=\"install\" class=\"step\">Install <span class=\"upgrade\">an intermediary</span> Tails using <i>Rufus</i></h1>\n"
+msgstr ""
+
+#. type: Plain text
+#, no-wrap
+msgid ""
+"<div class=\"step-image usb\">[[!img install/inc/infography/install-tails.png link=\"no\" alt=\"\"]]</div>\n"
+"<div class=\"step-image upgrade\">[[!img install/inc/infography/install-upgrade-usb-only.png link=\"no\" alt=\"\"]]</div>\n"
+msgstr ""
+
+#. type: Bullet: '1. '
+msgid "Open the *Rufus* download."
+msgstr ""
+
+#. type: Plain text
+#, no-wrap
+msgid "   At the security warning, confirm that you want to open *Rufus*.\n"
+msgstr ""
+
+#. type: Bullet: '1. '
+msgid "In the update policy dialog, click **No**."
+msgstr ""
+
+#. type: Plain text
+#, no-wrap
+msgid "   [[!img install/inc/screenshots/rufus-update.png class=\"screenshot\" alt=\"\"]]\n"
+msgstr ""
+
+#. type: Plain text
+#, no-wrap
+msgid "   *Rufus* starts.\n"
+msgstr ""
+
+#. type: Plain text
+#, no-wrap
+msgid "   [[!img install/inc/screenshots/rufus.png class=\"screenshot\" alt=\"\"]]\n"
+msgstr ""
+
+#. type: Bullet: '1. '
+msgid ""
+"Plug in the USB stick on which you want to install <span class=\"usb\">Tails."
+"</span> <span class=\"upgrade\">the intermediary Tails.</span>"
+msgstr ""
+
+#. type: Plain text
+#, no-wrap
+msgid "   <div class=\"caution\">\n"
+msgstr ""
+
+#. type: Plain text
+#, no-wrap
+msgid "   <p>All the data on this USB stick will be lost.</p>\n"
+msgstr ""
+
+#. type: Plain text
+#, no-wrap
+msgid "   <p>Some data might still be recovered using advanced forensics tools.</p>\n"
+msgstr ""
+
+#. type: Plain text
+#, no-wrap
+msgid "   </div>\n"
+msgstr ""
+
+#. type: Plain text
+#, no-wrap
+msgid ""
+"   <div class=\"note upgrade\"><p>The Persistent Storage of your Tails USB stick will not be\n"
+"   copied to the temporary Tails.</p></div>\n"
+msgstr ""
+
+#. type: Plain text
+#, no-wrap
+msgid "   Wait a few seconds until *Rufus* detects your USB stick.\n"
+msgstr ""
+
+#. type: Bullet: '1. '
+msgid "Choose your USB stick in the **Device** menu."
+msgstr ""
+
+#. type: Plain text
+#, no-wrap
+msgid ""
+"   If your USB stick doesn't appear in the **Device** menu, make sure that you\n"
+"   saved *Rufus* to your usual *Downloads* folder and not to the USB stick\n"
+"   itself.\n"
+msgstr ""
+
+#. type: Bullet: '1. '
+msgid "Click the **Select** button."
+msgstr ""
+
+#. type: Plain text
+#, no-wrap
+msgid "   Choose the USB image that you downloaded earlier.\n"
+msgstr ""
+
+#. type: Plain text
+#, no-wrap
+msgid ""
+"   <div class=\"note\">\n"
+"   <p>Make sure that the USB image is called <i>[[!inline pages=\"inc/stable_amd64_img_filename\" raw=\"yes\" sort=\"age\"]]</i> and has an\n"
+"   <i>.img</i> file extension.</p>\n"
+msgstr ""
+
+#. type: Plain text
+#, no-wrap
+msgid ""
+"   <p>If the image has an <i>.iso</i> file\n"
+"   extension, it is the wrong image. Please go back to the\n"
+"   <span class=\"windows\">[[download step|windows#download]].</span>\n"
+"   <span class=\"upgrade-windows\">[[download step|doc/upgrade/windows#download]].</span></p>\n"
+"   </div>\n"
+msgstr ""
+
+#. type: Bullet: '1. '
+msgid "Click **Start**."
+msgstr ""
+
+#. type: Plain text
+#, no-wrap
+msgid "   Enter your password if you are asked for it.\n"
+msgstr ""
+
+#. type: Plain text
+#, no-wrap
+msgid "   The installation takes a few minutes.\n"
+msgstr ""
+
+#. type: Bullet: '1. '
+msgid "Close *Rufus*."
+msgstr ""
+
+#. type: Plain text
+#, no-wrap
+msgid "   <div class=\"tip\">\n"
+msgstr ""
+
+#. type: Plain text
+#, no-wrap
+msgid ""
+"   <p>After installing Tails, the USB stick no longer appears in the <i>File\n"
+"   Explorer</i> app of Windows.</p>\n"
+msgstr ""
+
+#. type: Plain text
+#, no-wrap
+msgid ""
+"   <p>You can still see the USB stick in the <i>Settings</i> app. Choose\n"
+"   <b>System&nbsp;▸ Storage&nbsp;▸ Advanced storage settings&nbsp;▸ Disk &\n"
+"   volumes</b>.\n"
+msgstr ""
+
+#. type: Plain text
+#, no-wrap
+msgid "   <p>See also how to [[uninstall Tails from Windows|doc/first_steps/uninstall/windows]].</p>\n"
+msgstr ""
+
+#. type: Plain text
+#, no-wrap
+msgid " </p>\n"
+msgstr ""

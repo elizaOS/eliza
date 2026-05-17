@@ -1,0 +1,87 @@
+#!/usr/bin/python3 -I
+
+"""
+This will only be called when test suite is running.
+
+It will send structured logs to journald with information about stream events which
+are relevant for test suite.
+
+The presence of this script is not a security problem, because it is only enabled by
+default in test suite, see ConditionKernelCommandLine= in the corresponding systemd
+unit.
+"""
+
+import logging
+import os
+import signal
+import syslog
+import time
+from argparse import ArgumentParser
+
+import stem
+import stem.control
+import systemd.daemon
+import systemd.journal
+
+
+class CircuitsLogger:
+    def __init__(self):
+        self.logged_events = set()
+
+    def get_parser(self):
+        p = ArgumentParser()
+        p.add_argument("--control-port", type=int, default=9052)
+        return p
+
+    def on_stream(self, event):
+        # We don't want to send multiple log lines about the same target
+        # because that would just spam the logs for no benefit.
+        if event.target and event.target not in self.logged_events:
+            self.logged_events.add(event.target)
+            systemd.journal.send(
+                f"Stream event for {event.target}",
+                PRIORITY=syslog.LOG_DEBUG,
+                TOR_TARGET=event.target,
+            )
+
+    def update_status_handler(self, controller, state, timestamp):
+        if state == stem.control.State.CLOSED:
+            logging.error("Connection has been closed, shutting down")
+            # a simple sys.exit won't do, because this is run in a thread
+            os.kill(os.getpid(), signal.SIGINT)
+
+    def connect(self):
+        with stem.control.Controller.from_port(
+            port=self.args.control_port,
+        ) as controller:
+            controller.authenticate()
+            controller.add_event_listener(
+                self.on_stream,
+                stem.control.EventType.STREAM,
+            )
+            controller.add_status_listener(self.update_status_handler)
+            systemd.daemon.notify("READY=1")
+            logging.info("Connected!")
+            while True:
+                time.sleep(1)
+
+    def main(self):
+        parser = self.get_parser()
+        self.args = parser.parse_args()
+
+        logging.basicConfig(level=logging.INFO)
+        while True:
+            try:
+                logging.info("Connecting...")
+                self.connect()
+            except Exception as exc:  # noqa: BLE001
+                logging.error("Error connecting (%s), retrying", exc)  # noqa: TRY400
+                time.sleep(1)
+                continue
+            except KeyboardInterrupt:
+                logging.info("SIGINT received, quitting...")
+                break
+
+
+if __name__ == "__main__":
+    CircuitsLogger().main()

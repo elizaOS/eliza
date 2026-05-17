@@ -1,0 +1,13 @@
+#!/bin/bash
+
+# Set the root password to "root"
+
+set -eu -o pipefail
+shopt -s inherit_errexit
+
+# Enable xtrace with timestamp
+export PS4='+ $(date "+%H:%M:%S.%3N") '
+set -x
+
+PW="root"
+usermod -p "$(echo "${PW}" | mkpasswd -s)" root

@@ -1,0 +1,32 @@
+#!/bin/bash
+
+set -eu
+set -x
+
+error () {
+    echo "error: ${*}" >&2
+    exit 1
+}
+
+USAGE="Usage: $(basename "$0") DAYS_FROM_NOW"
+
+[ $# -eq 1 ] || error "$USAGE"
+
+DAYS_FROM_NOW="$1"
+
+for dir in config/APT_snapshots.d vagrant/definitions/tails-builder/config/APT_snapshots.d; do
+    (
+	set -eu
+	set -x
+	cd "${dir}"
+	for ARCHIVE in * ; do
+	    if ! grep -qs '^latest$' "$ARCHIVE"/serial; then
+	        # shellcheck disable=SC2029
+	        ssh reprepro-time-based-snapshots@incoming.deb.tails.boum.org \
+	            tails-bump-apt-snapshot-valid-until \
+	            "$ARCHIVE" "$(cat "$ARCHIVE"/serial)" \
+	            "${DAYS_FROM_NOW:?}"
+	    fi
+	done
+    )
+done

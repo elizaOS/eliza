@@ -1,0 +1,10 @@
+polkit.addRule(function(action, subject) {
+    if (action.id == "org.freedesktop.accounts.user-administration" &&
+        subject.user == "Debian-gdm")
+    {
+        if (subject.active && subject.local) {
+            return polkit.Result.YES;
+        }
+        return polkit.Result.NO;
+    }
+});

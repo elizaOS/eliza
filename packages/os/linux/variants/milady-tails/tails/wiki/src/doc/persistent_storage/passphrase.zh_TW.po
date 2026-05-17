@@ -1,0 +1,90 @@
+# SOME DESCRIPTIVE TITLE
+# Copyright (C) YEAR Free Software Foundation, Inc.
+# This file is distributed under the same license as the PACKAGE package.
+# FIRST AUTHOR <EMAIL@ADDRESS>, YEAR.
+#
+msgid ""
+msgstr ""
+"Project-Id-Version: PACKAGE VERSION\n"
+"Report-Msgid-Bugs-To: tails-l10n@boum.org\n"
+"POT-Creation-Date: 2025-09-17 11:40+0200\n"
+"PO-Revision-Date: 2023-03-11 13:28+0000\n"
+"Last-Translator: xin <xin@riseup.net>\n"
+"Language-Team: LANGUAGE <LL@li.org>\n"
+"Language: zh_TW\n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+"Plural-Forms: nplurals=1; plural=0;\n"
+"X-Generator: Weblate 4.9.1\n"
+
+#. type: Plain text
+#, no-wrap
+msgid "[[!meta title=\"Changing the passphrase of the Persistent Storage\"]]\n"
+msgstr ""
+
+#. type: Plain text
+msgid "To change the passphrase of your Persistent Storage:"
+msgstr ""
+
+#. type: Bullet: '1. '
+msgid ""
+"Choose **Apps&nbsp;▸ Tails&nbsp;▸ Persistent Storage** to open the "
+"Persistent Storage settings."
+msgstr ""
+
+#. type: Bullet: '1. '
+msgid "Click on the **Change Passphrase** button on the left of the title bar."
+msgstr ""
+
+#. type: Bullet: '1. '
+msgid "Enter the current passphrase in the **Current Passphrase** text box."
+msgstr ""
+
+#. type: Bullet: '1. '
+msgid "Enter your new passphrase in the **New Passphrase** text box."
+msgstr ""
+
+#. type: Plain text
+#, no-wrap
+msgid "   <!-- Consider removing after #18736. -->\n"
+msgstr "   <!-- Consider removing after #18736. -->\n"
+
+#. type: Plain text
+#, no-wrap
+msgid ""
+"   <div class=\"caution\">\n"
+"   <p>It is impossible to recover your passphrase if you forget it!</p>\n"
+msgstr ""
+
+#. type: Plain text
+#, no-wrap
+msgid ""
+"   <p>To help you remember your passphrase, you can write it on a piece of\n"
+"   paper, store it in your wallet for a few days, and destroy it once\n"
+"   you know it well.</p>\n"
+"   </div>\n"
+msgstr ""
+
+#. type: Bullet: '1. '
+msgid ""
+"Enter your new passphrase again in the **Confirm New Passphrase** text box."
+msgstr ""
+
+#. type: Bullet: '1. '
+msgid "Click **Change**."
+msgstr ""
+
+#. type: Plain text
+msgid ""
+"You can now restart Tails and try to unlock the Persistent Storage with the "
+"new passphrase."
+msgstr ""
+
+#, no-wrap
+#~ msgid "   <div class=\"tip\">\n"
+#~ msgstr "   <div class=\"tip\">\n"
+
+#, no-wrap
+#~ msgid "   </div>\n"
+#~ msgstr "   </div>\n"

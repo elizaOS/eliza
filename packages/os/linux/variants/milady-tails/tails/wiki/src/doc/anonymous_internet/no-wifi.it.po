@@ -1,0 +1,37 @@
+# SOME DESCRIPTIVE TITLE
+# Copyright (C) YEAR Free Software Foundation, Inc.
+# This file is distributed under the same license as the PACKAGE package.
+# FIRST AUTHOR <EMAIL@ADDRESS>, YEAR.
+#
+msgid ""
+msgstr ""
+"Project-Id-Version: PACKAGE VERSION\n"
+"POT-Creation-Date: 2024-01-31 15:45+0100\n"
+"PO-Revision-Date: 2023-11-21 18:16+0000\n"
+"Last-Translator: victor dargallo <victordargallo@disroot.org>\n"
+"Language-Team: LANGUAGE <LL@li.org>\n"
+"Language: it\n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+"Plural-Forms: nplurals=2; plural=n != 1;\n"
+"X-Generator: Weblate 4.9.1\n"
+
+#. type: Plain text
+#, no-wrap
+msgid "[[!meta title=\"Troubleshooting Wi-Fi not working\"]]\n"
+msgstr "[[!meta title=\"Risoluzione dei problemi il Wi-Fi non funziona\"]]\n"
+
+#. type: Plain text
+#, no-wrap
+msgid "[[!inline pages=\"doc/anonymous_internet/no-wifi.inline\" raw=\"yes\" sort=\"age\"]]\n"
+msgstr "[[!inline pages=\"doc/anonymous_internet/no-wifi.inline.it\" raw=\"yes\" sort=\"age\"]]\n"
+
+#~ msgid ""
+#~ "Check in our list of [[known Wi-Fi issues|support/known_issues#wi-fi-"
+#~ "workarounds]] if there is a workaround to get your Wi-Fi interface to "
+#~ "work in Tails."
+#~ msgstr ""
+#~ "Controlla nella nostra lista di [[known Wi-Fi issues|support/"
+#~ "known_issues#wi-fi-workarounds]] se c'è un modo temporaneo per far "
+#~ "funzionare la tua interfaccia Wi-Fi in Tails."

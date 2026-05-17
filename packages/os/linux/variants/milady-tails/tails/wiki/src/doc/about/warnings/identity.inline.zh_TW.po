@@ -1,0 +1,35 @@
+# SOME DESCRIPTIVE TITLE
+# Copyright (C) YEAR Free Software Foundation, Inc.
+# This file is distributed under the same license as the PACKAGE package.
+# FIRST AUTHOR <EMAIL@ADDRESS>, YEAR.
+#
+#, fuzzy
+msgid ""
+msgstr ""
+"Project-Id-Version: PACKAGE VERSION\n"
+"POT-Creation-Date: 2021-06-11 14:19-0500\n"
+"PO-Revision-Date: YEAR-MO-DA HO:MI+ZONE\n"
+"Last-Translator: FULL NAME <EMAIL@ADDRESS>\n"
+"Language-Team: LANGUAGE <LL@li.org>\n"
+"Language: zh_TW\n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+
+#. type: Content of: <p>
+msgid "Tails is designed to hide your identity."
+msgstr ""
+
+#. type: Content of: <p>
+msgid "But some of your activities could reveal your identity:"
+msgstr ""
+
+#. type: Content of: <ul><li>
+msgid ""
+"Sharing files with metadata, such as date, time, location, and device "
+"information"
+msgstr ""
+
+#. type: Content of: <ul><li>
+msgid "Using Tails for more than one purpose at a time"
+msgstr ""

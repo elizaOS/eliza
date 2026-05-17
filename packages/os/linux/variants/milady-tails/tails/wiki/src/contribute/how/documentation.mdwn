@@ -1,0 +1,57 @@
+[[!meta title="Improve Tails documentation"]]
+
+<div id="intro">
+
+<p>Tails documentation would greatly benefit from your help.</p>
+
+[[!toc levels=2]]
+
+</div>
+
+Good documentation is difficult to keep up-to-date. If you find a typo
+or an error in the documentation please let us know — ideally, by
+submitting a patch with your correction.
+
+# Find a task
+
+The documentation on the website is not freely editable. The way we
+document things has serious security implications. People should be able
+to trust the Tails website as much as they trust Tails itself.
+Furthermore, every change in the documentation possibly breaks the
+translations that were made of the previous version.
+
+But there are still many ways you can start contributing:
+
+  - We maintain a list of
+    [[!tails_gitlab groups/tails/-/issues?label_name%5B%5D=T%3AEnd-user+documentation
+    desc="documentation tasks"]].
+    You can start writing a draft in the corresponding issue and then
+    [[ask us for review|contribute/merge_policy]].
+
+  - Small fixes and enhancements to the current documentation are
+    greatly welcome. This can be done by sending Git patches to
+    [[tails-dev@boum.org|doc/about/contact#tails-dev]] or by sending
+    us a [[Merge Request|contribute/merge_policy#submit]].
+    In general, documentation changes should be based on the `master` branch.
+
+We recommend you to [[build an offline version of the
+documentation|contribute/build/website]] to test your contributions
+before sharing them with us.
+
+# Guidelines and style
+
+- [[Documentation style guide|style_guide]]
+- [[Checklist for writing release notes|release_notes]]
+
+# Related pages
+
+  - [[Configuration of the production website|contribute/how/website/production]]
+  - [[Translating Tails|contribute/how/translate]]
+
+# Talk to us
+
+You can subscribe to [[tails-dev@boum.org|doc/about/contact#tails-dev]],
+our development mailing list.
+
+If you need input and don't know who to ask, mention `@sajolida`
+on the corresponding GitLab issue.

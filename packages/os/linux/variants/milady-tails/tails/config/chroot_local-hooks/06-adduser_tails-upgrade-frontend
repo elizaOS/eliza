@@ -1,0 +1,16 @@
+#!/bin/sh
+
+set -e
+
+# Create the tails-upgrade-frontend user.
+#
+# The tails-upgrade-frontend program may be run as this user.
+# This avoids having to grant the desktop user the right to install
+# any arbitrary IUK.
+
+echo "Creating the tails-upgrade-frontend user"
+
+addgroup --system --quiet --gid 126 tails-upgrade-frontend
+adduser --system --quiet --uid 118 --gid 126 \
+        --home /var/lib/tails-upgrade-frontend \
+        tails-upgrade-frontend

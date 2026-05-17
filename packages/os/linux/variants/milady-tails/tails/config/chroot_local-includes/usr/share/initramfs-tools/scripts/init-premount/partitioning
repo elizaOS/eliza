@@ -1,0 +1,117 @@
+#!/bin/sh
+
+PREREQS="plymouth read-and-update-random-seed-sector"
+
+prereqs() { echo "$PREREQS"; }
+
+case "$1" in
+prereqs)
+    prereqs
+    exit 0
+    ;;
+esac
+
+set -eu
+
+. /scripts/functions
+# shellcheck source=../lib/lib.sh
+. /scripts/lib/lib.sh
+
+# Enable xtrace with timestamp
+export PS4='$(date "+%H:%M:%S.%3N") '
+set -x
+
+if [ -z "${FSUUID:-}" ]; then
+    log "\$FSUUID is unset, probably because the boot medium is an ISO, and not a USB image. Skipping partitioning."
+    exit 0
+fi
+
+# Wait for system partition
+log "Waiting for system partition to become available"
+i=0
+while true; do
+    if [ -b "/dev/disk/by-uuid/${FSUUID}" ]; then
+        SYSTEM_PARTITION="$(readlink -f "/dev/disk/by-uuid/${FSUUID}")"
+        PARENT_PATH="$(udevadm info --query=property --name="${SYSTEM_PARTITION}" |
+            sed -n '/^ID_PATH=/ s/^ID_PATH=// p')"
+        PARENT_DEVICE="$(readlink -f "/dev/disk/by-path/${PARENT_PATH}")"
+        if [ -b "${PARENT_DEVICE}" ]; then
+            break
+        fi
+    fi
+
+    if [ "$i" -ge 300 ]; then
+        log "Failure: Reached timeout waiting for system partition." \
+            "Skipping partitioning."
+        exit 0
+    fi
+
+    sleep 0.2
+    i="$((i + 1))"
+done
+log "System partition is available at ${SYSTEM_PARTITION}"
+
+verify_partition_table() {
+    if ! /scripts/lib/verify_partition_table "${PARENT_DEVICE}"; then
+        log "The partition table is invalid"
+    fi
+}
+
+repair_system_partition() {
+    set +e
+    fsck.fat -a -w -V -v "${SYSTEM_PARTITION}"
+    FSCK_EXIT_CODE=$?
+    set -e
+    case "${FSCK_EXIT_CODE}" in
+    0)
+        log "fsck has detected no recoverable errors"
+        ;;
+    1)
+        log "fsck has fixed errors, deleting fsck recovery files"
+        MOUNTPOINT=$(mktemp -d)
+        mount -t vfat "${SYSTEM_PARTITION}" "${MOUNTPOINT}"
+        find "${MOUNTPOINT}" \
+            -maxdepth 1 -type f -iname 'FSCK*.REC' \
+            -exec rm '{}' \;
+        umount "${MOUNTPOINT}"
+        ;;
+    *)
+        log "fsck usage error. Ignoring and booting anyway."
+        ;;
+    esac
+}
+
+# This section is duplicated in config/chroot_local-includes/usr/local/lib/tails-shell-library/hardware.sh
+# please keep them in sync!
+
+# Check if this is first boot
+GUID=$(sgdisk --print "${PARENT_DEVICE}" |
+    sed -n '/^Disk identifier (GUID)/ s/^Disk identifier (GUID): // p')
+
+if [ "${GUID}" = "17B81DA0-8B1E-4269-9C39-FE5C7B9B58A3" ]; then
+    log "This is the first boot, so repartitioning"
+    PLYMOUTH_MSG="Preparing Tails for first use..."
+    plymouth display-message --text="${PLYMOUTH_MSG}"
+    if ! /scripts/lib/first_boot_repartition "${PARENT_DEVICE}" "${SYSTEM_PARTITION}"; then
+        log "Repartitioning failed"
+    fi
+    verify_partition_table
+    # `plymouth hide-message` doesn't work (#20401)
+    plymouth display-message --text=""
+else
+    if grep -qw -e "test_gpt_corruption" -e "test_partitioning_errors" /proc/cmdline; then
+        MSG="The 'test_gpt_corruption' and 'test_partitioning_errors' options are only effective on the first boot, and it's not the first boot. Press ENTER to shut down."
+        plymouth message --text="${MSG}"
+        plymouth watch-keystroke >/dev/null
+        poweroff -f
+    fi
+
+    verify_partition_table
+
+    log "This is not the first boot, so repairing filesystem"
+    PLYMOUTH_MSG="Checking the Tails system partition for errors..."
+    plymouth display-message --text="${PLYMOUTH_MSG}"
+    repair_system_partition
+    # `plymouth hide-message` doesn't work (#20401)
+    plymouth display-message --text=""
+fi

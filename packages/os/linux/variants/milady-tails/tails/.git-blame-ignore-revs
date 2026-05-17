@@ -1,0 +1,15 @@
+# This configuration, once enabled, makes `git blame` ignore specific commits
+# that would make its output less useful, such as automated code reformatting.
+#
+# To enable this configuration, run in this repository:
+#
+#     git config --local blame.ignoreRevsFile .git-blame-ignore-revs
+#
+# For a longer explanation, see https://michaelheap.com/git-ignore-rev/ :)
+
+# Reformat with Black 23.11.0
+3e14e0d412b1c2335dafccbaafd0d33c040fc5ad
+
+# Deleting all the files by mistake, then bringing them back
+179e0bdabaec0f6f242f05a71cc261be9dff2d32
+fc87cf823ef1e070852226ac1998a381931d0c8c

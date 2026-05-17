@@ -1,0 +1,11 @@
+[Unit]
+Description=Configure the keyboard layout according to settings chosen in Tails Greeter
+Documentation=https://tails.net/contribute/design/
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/lib/tails-configure-keyboard
+RemainAfterExit=yes
+
+[Install]
+WantedBy=gnome-early-initialization.target

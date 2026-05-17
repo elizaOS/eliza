@@ -1,0 +1,203 @@
+# SOME DESCRIPTIVE TITLE
+# Copyright (C) YEAR Free Software Foundation, Inc.
+# This file is distributed under the same license as the PACKAGE package.
+# FIRST AUTHOR <EMAIL@ADDRESS>, YEAR.
+#
+msgid ""
+msgstr ""
+"Project-Id-Version: PACKAGE VERSION\n"
+"Report-Msgid-Bugs-To: tails-l10n@boum.org\n"
+"POT-Creation-Date: 2025-06-26 18:01+0000\n"
+"PO-Revision-Date: 2025-07-11 20:56+0000\n"
+"Last-Translator: xin <xin@riseup.net>\n"
+"Language-Team: LANGUAGE <LL@li.org>\n"
+"Language: fr\n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+"Plural-Forms: nplurals=2; plural=n > 1;\n"
+"X-Generator: Weblate 5.3\n"
+
+#. type: Plain text
+#, markdown-text, no-wrap
+msgid "[[!meta title=\"Editing PDFs\"]]\n"
+msgstr "[[!meta title=\"Édition de PDF\"]]\n"
+
+#. type: Title =
+#, markdown-text, no-wrap
+msgid "Applications included in Tails"
+msgstr "Applications incluses dans Tails"
+
+#. type: Plain text
+#, markdown-text
+msgid ""
+"Several applications included in Tails allow editing PDFs, even when it is "
+"not their primary function:"
+msgstr ""
+"Plusieurs applications incluses dans Tails permettent d'éditer des PDF, même "
+"si ce n'est pas leur fonction première :"
+
+#. type: Bullet: '- '
+#, markdown-text
+msgid "[*LibreOffice Draw*](https://www.libreoffice.org/discover/draw/)"
+msgstr "[*LibreOffice Draw*](https://fr.libreoffice.org/discover/draw/)"
+
+#. type: Plain text
+#, markdown-text, no-wrap
+msgid "  *Draw* is the graphics editor of the *LibreOffice* suite.\n"
+msgstr "  *Draw* est l'éditeur graphique de la suite *LibreOffice*.\n"
+
+#. type: Plain text
+#, markdown-text, no-wrap
+msgid ""
+"  With *Draw*, you can open PDFs, remove pages, and change the order of "
+"pages.\n"
+"  *Draw* is the best option for changing the text of a PDF. You can move "
+"around\n"
+"  and resize the images of a PDF using *Draw*, but you cannot edit them.\n"
+msgstr ""
+"  Avec *Draw*, vous pouvez ouvrir des PDF, enlever des pages et changer "
+"l'ordre des pages.\n"
+"  *Draw* est la meilleure option pour changer le texte d'un PDF. Vous pouvez "
+"déplacer\n"
+"  et redimensionner les images d'un PDF avec *Draw* mais vous ne pouvez pas "
+"les éditer.\n"
+
+#. type: Bullet: '- '
+#, markdown-text
+msgid "[*Inkscape*](https://inkscape.org/)"
+msgstr "[*Inkscape*](https://inkscape.org/fr/)"
+
+#. type: Plain text
+#, markdown-text, no-wrap
+msgid "  *Inkscape* is a vector-based drawing application.\n"
+msgstr "  *Inkscape* est une application de dessin vectoriel.\n"
+
+#. type: Plain text
+#, markdown-text, no-wrap
+msgid ""
+"  *Inkscape* is the best option for modifying the vector-based graphics\n"
+"  included in some PDFs. For example, you can create PDFs with *Inkscape* "
+"and\n"
+"  edit back the vector-based graphics in *Inkscape*. Editing the text of a "
+"PDF\n"
+"  with *Inkscape* is possible but cumbersome.\n"
+msgstr ""
+"  *Inkscape* est la meilleure option pour modifier des images vectorielles\n"
+"  inclues dans certains PDF. Par exemple, vous pouvez créer des PDF avec "
+"*Inkscape* et\n"
+"  éditer à nouveau les images vectorielles dans *Inkscape*. Éditer le texte "
+"d'un PDF\n"
+"  avec *Inkscape* est possible mais pénible.\n"
+
+#. type: Bullet: '- '
+#, markdown-text
+msgid "[*GIMP*](https://www.gimp.org/)"
+msgstr "[*GIMP*](https://www.gimp.org/)"
+
+#. type: Plain text
+#, markdown-text, no-wrap
+msgid "  *GIMP* is an image editor for photos, PNG, and JPG images.\n"
+msgstr ""
+"  *GIMP* est un éditeur d'image pour les photos et les images PNG et JPG.\n"
+
+#. type: Plain text
+#, markdown-text, no-wrap
+msgid ""
+"  When you open a PDF with *GIMP*, each page is converted to a layer of an\n"
+"  image. You cannot edit the text of a PDF, move overlapping objects, or "
+"modify\n"
+"  vector-based graphics with *GIMP*.\n"
+msgstr ""
+"  Lorsque vous ouvrez un PDF avec *GIMP*, chaque page est convertie en un "
+"calque d'une\n"
+"  image. Vous ne pouvez pas éditer le texte d'un PDF, déplacer des objets "
+"qui se chevauchent ou modifier\n"
+"  des images vectorielles avec *GIMP*.\n"
+
+#. type: Bullet: '- '
+#, markdown-text
+msgid "[*BookletImposer*](https://kjo.herbesfolles.org/bookletimposer/)"
+msgstr "[*BookletImposer*](https://kjo.herbesfolles.org/bookletimposer/)"
+
+#. type: Plain text
+#, markdown-text, no-wrap
+msgid "  With *BookletImposer*, you can:\n"
+msgstr "  Avec *BookletImposer*, vous pouvez :\n"
+
+#. type: Bullet: '  * '
+#, markdown-text
+msgid "Reduce the number of pages in a PDF by putting several pages on every sheet."
+msgstr ""
+"Réduire le nombre de pages d'un PDF en mettant plusieurs pages sur chaque "
+"feuille."
+
+#. type: Bullet: '  * '
+#, markdown-text
+msgid "Produce a PDF booklet that can be folded after printing."
+msgstr "Produire une brochure en PDF qui peut être pliée après l'impression."
+
+#. type: Title =
+#, markdown-text, no-wrap
+msgid "Applications not included in Tails by default"
+msgstr "Applications non incluses par défaut dans Tails"
+
+#. type: Plain text
+#, markdown-text
+msgid ""
+"Several other applications can be added to Tails as [[Additional "
+"Software|persistent_storage/additional_software]] to work on untrusted or "
+"very large PDFs:"
+msgstr ""
+"Plusieurs autres applications peuvent être ajoutées à Tails en tant que [["
+"Logiciels supplémentaires|persistent_storage/additional_software]] pour "
+"travailler sur des PDF non fiables ou très volumineux :"
+
+#. type: Bullet: '- '
+#, markdown-text
+msgid ""
+"If you receive untrusted documents, for example, email attachments, "
+"[*Dangerzone*](https://dangerzone.rocks/) allows you to convert them into "
+"safe PDFs before opening."
+msgstr ""
+"Si vous recevez des documents non fiables, par exemple des pièces jointes, "
+"[*Dangerzone*](https://dangerzone.rocks/) vous permet de les convertir en "
+"PDF sûrs avant de les ouvrir."
+
+#. type: Plain text
+#, markdown-text, no-wrap
+msgid ""
+"  *Dangerzone* is particularly useful for journalists who might receive "
+"dangerous\n"
+"  documents from anonymous sources or download them from the Internet.\n"
+msgstr ""
+"  *Dangerzone* est particulièrement utile pour les journalistes susceptibles "
+"de recevoir des documents\n"
+"   dangereux provenant de sources anonymes ou d'en télécharger sur Internet."
+"\n"
+
+#. type: Plain text
+#, markdown-text, no-wrap
+msgid ""
+"  See [[converting dangerous documents to safe PDFs using\n"
+"  Dangerzone|doc/persistent_storage/additional_software/dangerzone]].\n"
+msgstr ""
+"  Voir [[convertir des documents dangereux en PDF sécurisés en utilisant\n"
+"  Dangerzone|doc/persistent_storage/additional_software/dangerzone]].\n"
+
+#. type: Bullet: '- '
+#, markdown-text
+msgid ""
+"To reorganize the pages of very large PDFs or combine pages from several "
+"PDFs, [*PDF Arranger*](https://github.com/pdfarranger/pdfarranger) is faster "
+"and more convenient than *LibreOffice Draw*."
+msgstr ""
+"Pour réorganiser les pages de PDF très volumineux ou pour combiner les pages "
+"de plusieurs PDF, [*PDF Arranger*](https://github.com/pdfarranger/"
+"pdfarranger) est plus rapide et plus pratique que *LibreOffice Draw*."
+
+#. type: Plain text
+#, markdown-text, no-wrap
+msgid "  You cannot modify the content of pages using *PDF Arranger*.\n"
+msgstr ""
+"  Vous ne pouvez pas modifier le contenu des pages avec *PDF Arranger*.\n"

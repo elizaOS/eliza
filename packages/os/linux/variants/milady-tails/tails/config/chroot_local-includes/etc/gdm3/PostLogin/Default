@@ -1,0 +1,216 @@
+#! /bin/bash
+
+# This script is run as root by GDM after user's login.
+# It must return exit code 0, otherwise it totally breaks the logon process.
+
+# Input
+# =====
+#
+# * /etc/live/config.d/username.conf : $LIVE_USERNAME
+# * /var/lib/gdm3/settings/transient/tails.language: $TAILS_LOCALE_NAME
+# * /var/lib/gdm3/settings/persistent/tails.formats: $TAILS_FORMATS
+# * /var/lib/gdm3/settings/transient/tails.keyboard: $TAILS_XKBMODEL,
+#   $TAILS_XKBLAYOUT, $TAILS_XKBVARIANT, $TAILS_XKBOPTIONS
+# * /var/lib/gdm3/settings/persistent/tails.password : $TAILS_USER_PASSWORD
+
+# Overall working of Welcome Screen additional settings
+# =====================================================
+#
+# When you select additional settings in the Welcome Screen, this results in files being created/modified
+# in /var/lib/gdm3/settings/persistent and /var/lib/gdm3/settings/transient
+#
+# This script is run after you press the "Start Tails" button. What it does is to copy the relevant files from
+# /var/lib/gdm3/settings/persistent and /var/lib/gdm3/settings/transient into /var/lib/live/config/
+#
+# Persistent Storage
+# ----------------------
+#
+# The Persistent Storage can persist /var/lib/gdm3/settings/persistent/
+#
+# If, for whatever reasons (see #19410 for an example), a file is in that directory which shouldn't be there
+# at all, this file is ignored: only the files specified below in
+# $GREETER_EXPORTED_PERSISTENT_SETTINGS are copied.
+
+# For whatever reason, /usr/sbin (needed by at least chpasswd)
+# is not in our PATH
+export PATH="/usr/sbin:${PATH}"
+POLKIT=/etc/polkit-1/rules.d/10-greeter.rules
+
+SUDOERS=/etc/sudoers.d/tails-greeter
+NO_PASSWORD_LECTURE=/etc/sudoers.d/tails-greeter-no-password-lecture
+GREETER_EXPORTED_PERSISTENT_SETTINGS="tails.macspoof tails.network tails.unsafe-browser"
+GREETER_EXPORTED_TRANSIENT_SETTINGS=""
+
+log() {
+    echo "$1" >&2
+}
+
+log_n_exit() {
+    log "$1"
+    log "Leaving PostLogin"
+    exit 0
+}
+
+# enforce value $3 for variable $1 in file $2
+force_set() {
+    sed -i -e "s|^$1=.*$|$1=\"$3\"|" "$2"
+}
+
+# check if variable $1 is in file $2, if not - add with value $3 to file $2
+# $4 enforce adding $3 only (without $1= prefix)
+grep_n_set() {
+    FCHK=yes
+    grep -qs "$1" "$2" || FCHK=no
+    if [ -n "$4" ]; then
+        if [ "$FCHK" = "no" ]; then
+            echo "$3" >>"$2"
+        fi
+    else
+        if [ "$FCHK" = "no" ]; then
+            echo "$1=$3" >>"$2"
+        else
+            force_set "$1" "$2" "$3"
+        fi
+    fi
+}
+
+### Let's go
+
+log "Entering PostLogin"
+
+### Export the Greeter settings
+# It's important we export the settings from tails.macspoof before
+# unblocking the network below; doing so will make the user-set MAC
+# spoofing option apply (via the custom udev rule) when loading the
+# modules for the previously blocked network devices.
+for setting in ${GREETER_EXPORTED_PERSISTENT_SETTINGS}; do
+    /usr/bin/install -m 0640 -o root -g root \
+        "/var/lib/gdm3/settings/persistent/$setting" \
+        "/var/lib/live/config/$setting"
+done
+
+# Make the tails.network file world-readable to allow the amnesia user
+# to read the file, so that tca can read it and display an error message
+# if the network is disabled.
+chmod 0644 /var/lib/live/config/tails.network
+
+for setting in ${GREETER_EXPORTED_TRANSIENT_SETTINGS}; do
+    /usr/bin/install -m 0640 -o root -g root \
+        "/var/lib/gdm3/settings/transient/$setting" \
+        "/var/lib/live/config/$setting"
+done
+
+if grep -s -F 'CREATE_PERSISTENT_STORAGE=true' /var/lib/gdm3/settings/transient/tails.create-persistence; then
+    # The other settings are files in which the *content* is relevant: in this case, the *existence* is
+    # relevant.
+    # This style will give better systemd integration, allowing the use of ConditionPathExists=
+    touch /var/lib/live/config/tails.create-persistence
+else
+    # You might wonder why should the file be there at all:
+    # if you are debugging, you might want to run systemctl restart gdm
+    rm -f /var/lib/live/config/tails.create-persistence
+fi
+
+### Gather general configuration
+
+# Import the name of the live user
+. /etc/live/config.d/username.conf || log_n_exit "Username file not found."
+if [ -z "${LIVE_USERNAME}" ]; then
+    log_n_exit "Username variable not found."
+fi
+
+### Localization
+
+# Import locale settings
+. /var/lib/gdm3/settings/transient/tails.language || log_n_exit "Language settings file not found."
+. /var/lib/gdm3/settings/persistent/tails.formats || log_n_exit "Formats settings file not found."
+. /var/lib/gdm3/settings/transient/tails.keyboard || log_n_exit "Keyboard settings file not found."
+if [ -z "${TAILS_LOCALE_NAME}" ]; then
+    log_n_exit "Locale variable not found."
+fi
+
+# Set the system locale and formats
+update-locale \
+    "LANG=${TAILS_LOCALE_NAME}.UTF-8" \
+    "LC_TIME=${TAILS_FORMATS}.UTF-8" \
+    "LC_NUMERIC=${TAILS_FORMATS}.UTF-8" \
+    "LC_MONETARY=${TAILS_FORMATS}.UTF-8" \
+    "LC_MEASUREMENT=${TAILS_FORMATS}.UTF-8" \
+    "LC_PAPER=${TAILS_FORMATS}.UTF-8"
+
+# Export it, so that commands run later on will have the right LANG already
+export \
+    "LANG=${TAILS_LOCALE_NAME}.UTF-8" \
+    "LC_TIME=${TAILS_FORMATS}.UTF-8" \
+    "LC_NUMERIC=${TAILS_FORMATS}.UTF-8" \
+    "LC_MONETARY=${TAILS_FORMATS}.UTF-8" \
+    "LC_MEASUREMENT=${TAILS_FORMATS}.UTF-8" \
+    "LC_PAPER=${TAILS_FORMATS}.UTF-8"
+
+# Ensure the org.freedesktop.locale1 D-Bus interface updates according
+# to the above changes
+systemctl restart systemd-localed.service
+
+# Set the system locale GSetting (#16806)
+cat >/etc/dconf/db/local.d/01_Tails_settings <<EOF
+[system/locale]
+region = '${TAILS_FORMATS}.UTF-8'
+EOF
+dconf update
+
+# Save keyboard settings so that tails-configure-keyboard can set it
+# in the GNOME session.
+cat >/var/lib/tails-user-session/keyboard <<EOF
+XKBMODEL="$TAILS_XKBMODEL"
+XKBLAYOUT="$TAILS_XKBLAYOUT"
+XKBVARIANT="$TAILS_XKBVARIANT"
+XKBOPTIONS="$TAILS_XKBOPTIONS"
+EOF
+
+### Physical security
+log "Running /usr/local/lib/tails-unblock-network..."
+/usr/local/lib/tails-unblock-network
+log "tails-unblock-network has exited (status=$?)."
+
+### Password
+
+# Import password for superuser access
+if [ -e /var/lib/gdm3/settings/persistent/tails.password ]; then
+    . /var/lib/gdm3/settings/persistent/tails.password
+fi
+
+log "Change the menu name of applications"
+/usr/local/lib/change-apps-menu-name
+
+# Check if password is actually set
+if [ -z "${TAILS_USER_PASSWORD}" ]; then
+    rm -f "${POLKIT}" "${SUDOERS}"
+    passwd -d "${LIVE_USERNAME}"
+    install -o root -g root -m 0440 /dev/null "${NO_PASSWORD_LECTURE}"
+    echo "Defaults:amnesia lecture=always" >"${NO_PASSWORD_LECTURE}"
+    echo "Defaults:amnesia lecture_file=/usr/share/tails/greeter/no-password-lecture.txt" >>"${NO_PASSWORD_LECTURE}"
+    echo "Defaults:amnesia badpass_message=\"The administration password is disabled.\"" >>"${NO_PASSWORD_LECTURE}"
+    /usr/local/lib/polkit-policy-change-message --admin-password-set=no
+    log_n_exit "Password variable not found."
+else
+    /usr/local/lib/polkit-policy-change-message --admin-password-set=yes
+fi
+
+# Sets the password
+echo "${LIVE_USERNAME}:${TAILS_USER_PASSWORD}" | chpasswd -e
+
+# Add sudoers entry
+echo "${LIVE_USERNAME} ALL = (ALL) ALL" >>"${SUDOERS}"
+chmod 0440 "${SUDOERS}"
+
+# Add PolKit config
+cat >"${POLKIT}" <<EOF
+polkit.addAdminRule(function(action, subject) {
+    return ["unix-user:$LIVE_USERNAME"];
+});
+EOF
+
+# Configure su-to-root to use sudo
+sudo -u "${LIVE_USERNAME}" sh -c "echo 'SU_TO_ROOT_SU=sudo' >> /home/${LIVE_USERNAME}/.su-to-rootrc"
+
+log "Leaving PostLogin"

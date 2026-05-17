@@ -1,0 +1,29 @@
+# Adding new Persistent Storage features
+
+Take these steps to add a new preset feature to the Persistent Storage:
+
+1. Add a new `Feature` subclass to
+   [[!tails_gitweb config/chroot_local-includes/usr/lib/python3/dist-packages/tps/configuration/features.py]].
+
+2. Add a new `Feature` subclass to
+   [[!tails_gitweb config/chroot_local-includes/usr/lib/python3/dist-packages/tps_frontend/views/features_view.py]].
+
+3. Add a new `HdyActionRow` child to the `GtkListBox` of the
+   corresponding section you want to add the feature to.
+
+
+You might need to add on-activated/on-deactivated hooks:
+
+* [[!tails_gitweb config/chroot_local-includes/usr/local/lib/persistent-storage/on-activated-hooks]]
+
+* [[!tails_gitweb config/chroot_local-includes/usr/local/lib/persistent-storage/on-deactivated-hooks]]
+
+If you do, it's **important** that all privileged accesses of paths which
+are writable by an unprivileged user (e.g. `amnesia`) are done via the
+`/run/nosymfollow` mountpoint to avoid symlink attacks. For more
+information, see the section on symlink attacks in
+[[contribute/design/persistence]].
+
+Note that's is possible that on-activated hooks are run multiple times
+without the on-deactivated hooks being run in between, so they must
+handle that case gracefully.

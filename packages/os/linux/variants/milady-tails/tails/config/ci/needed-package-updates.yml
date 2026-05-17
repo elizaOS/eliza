@@ -1,0 +1,13 @@
+---
+distribution: trixie
+ignore:
+  temporary:
+    open-ath9k-htc-firmware:
+      version: "1.4.0-110-ge888634+dfsg1-0.3"
+      reason: "Irrelevant changes, see #21409"
+    python-electrum-ecc:
+      version: "0.0.7+ds-1~bpo13+1"
+      reason: "Irrelevant changes vs 0.0.6+ds-4~bpo13+1: upstream dependency bump that is already satisfied with Trixie Backports, see https://gitlab.tails.boum.org/tails/tails/-/merge_requests/2852#note_280455"
+  general:
+    - tor
+    - live-boot

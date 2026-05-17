@@ -1,0 +1,4 @@
+[[!meta title="Foundations Team"]]
+[[!meta robots="noindex"]]
+
+See <https://gitlab.tails.boum.org/tails/team/-/wikis/home>.

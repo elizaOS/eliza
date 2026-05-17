@@ -1,0 +1,10 @@
+[Unit]
+Description=Allow access to external TailsData partitions
+Requires=media-amnesia-TailsData.mount
+After=media-amnesia-TailsData.mount
+
+[Service]
+ExecStart=setfacl -m user:amnesia:rx /media/amnesia/TailsData
+
+[Install]
+WantedBy=media-amnesia-TailsData.mount

@@ -1,0 +1,83 @@
+[[!meta date="Wed, 11 Dec 2013 16:00:00 +0000"]]
+[[!pagetemplate template="news.tmpl"]]
+[[!meta title="Tails 0.22 is out"]]
+[[!tag announce]]
+
+Tails, The Amnesic Incognito Live System, version 0.22, is out.
+
+All users must upgrade as soon as possible: this release fixes
+[[numerous security issues|security/Numerous_security_holes_in_0.21]].
+
+[[!toc levels=1]]
+
+# Changes
+
+Notable user-visible changes include:
+
+* Security fixes
+  - Upgrade to Iceweasel 24.2.0esr that fixes a few serious security issues.
+  - Stop migrating persistence configuration and access rights. Instead,
+    disable all persistence configuration files if the mountpoint has wrong
+    access rights.
+  - Upgrade to NSS 3.15.3 that fixes a few serious security issues affecting
+    the browser.
+
+* Major improvements
+  - Switch to Iceweasel 24.2.0esr and Torbutton 1.6.5.
+  - Incremental upgrades are ready for beta-testing.
+
+* Bugfixes
+  - Fix Vidalia startup.
+  - Disable DPMS screen blanking.
+  - Fix checking of the persistent volume's ACL.
+  - Sanitize more IP and MAC addresses in bug reports.
+  - Do not fail USB upgrade when the "tmp" directory exists on the
+    destination device.
+
+* Minor improvements
+  - Clearer warning when deleting the persistent volume.
+  - Use IBus instead of SCIM.
+  - Always list optimal keyboard layout in the greeter.
+  - Fix on-the-fly translation of the greeter in various languages.
+  - Update I2P to 0.9.8.1 and rework its configuration.
+
+See the online
+Changelog
+for technical details.
+
+# Known issues
+
+* The Unsafe Browser cannot connect to the Internet ([[!tails_ticket
+  6479]]). This can be workaround'ed by setting
+  `network.proxy.socks_remote_dns` to `false` on the
+  [about:config](about:config) web page.
+* Keyboard shortcuts use QWERTY mapping instead of AZERTY on French
+  keyboard ([[!tails_ticket 6478]]). This may impact other keyboard
+  layouts as well.
+* TorBrowser takes too long to shutdown ([[!tails_ticket 6480]]).
+* TorBrowser proposes to share the microphone with websites
+  ([[!tails_ticket 6481]]).
+* htpdate uses a different User-Agent than the Tor Browser
+  ([[!tails_ticket 6477]]).
+* The included Linux 3.10-3 (version 3.10.11-1) kernel has a few known
+  security issues.
+* [[Longstanding|support/known_issues]] known issues.
+
+# I want to try it or to upgrade!
+
+Go to the [[install]] page but first, please consider [[testing the
+incremental upgrade|news/test_incremental_upgrades]].
+
+As no software is ever perfect, we maintain a list of [[problems
+that affects the last release of Tails|support/known_issues]].
+
+# What's coming up?
+
+The next Tails release is
+scheduled
+for January 21.
+
+
+Would you want to help? There are many ways [[**you** can
+contribute to Tails|contribute]]. If you want to help, come talk
+to us!

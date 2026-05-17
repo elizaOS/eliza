@@ -1,0 +1,141 @@
+# SOME DESCRIPTIVE TITLE
+# Copyright (C) YEAR Free Software Foundation, Inc.
+# This file is distributed under the same license as the PACKAGE package.
+# FIRST AUTHOR <EMAIL@ADDRESS>, YEAR.
+#
+msgid ""
+msgstr ""
+"Project-Id-Version: PACKAGE VERSION\n"
+"Report-Msgid-Bugs-To: tails-l10n@boum.org\n"
+"POT-Creation-Date: 2024-05-27 21:54+0000\n"
+"PO-Revision-Date: 2024-05-18 15:44+0000\n"
+"Last-Translator: xin <xin@riseup.net>\n"
+"Language-Team: LANGUAGE <LL@li.org>\n"
+"Language: ru\n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+"Plural-Forms: nplurals=3; plural=n%10==1 && n%100!=11 ? 0 : n%10>=2 && "
+"n%10<=4 && (n%100<10 || n%100>=20) ? 1 : 2;\n"
+"X-Generator: Weblate 5.3\n"
+
+#. type: Plain text
+#, no-wrap
+msgid "[[!meta title=\"Protection against cold boot attacks\"]]\n"
+msgstr "[[!meta title=\"Защита от атак холодной перезагрузки\"]]\n"
+
+#. type: Plain text
+msgid ""
+"While using a computer, all the data manipulated is written temporarily in "
+"[[!wikipedia Random-access_memory desc=\"RAM\"]]: texts, saved files, but "
+"also passwords and encryption keys. The more recent the activity, the more "
+"likely it is for the data to still be in RAM."
+msgstr ""
+"При использовании компьютера все обрабатываемые данные временно записываются "
+"в RAM, [[!wikipedia_ru Оперативная_память desc=\"оперативную память\"]]. Это "
+"касается текстов, сохранённых файлов, паролей, ключей шифрования и т.д. Чем "
+"позже действие, тем больше вероятность того, что данные всё ещё в "
+"оперативной памяти."
+
+#. type: Plain text
+#, fuzzy
+#| msgid ""
+#| "After a computer is powered off, the data in RAM disappears rapidly, but "
+#| "it can remain in RAM up to several minutes after shutdown. An attacker "
+#| "having access to a computer before it disappears completely could recover "
+#| "important data from your session."
+msgid ""
+"After a computer is powered off, the data in RAM disappears rapidly, but it "
+"can remain in RAM up to several minutes after shutdown. An attacker having "
+"access to a computer before the data in RAM disappears completely could "
+"recover important data from your session."
+msgstr ""
+"После выключения компьютера данные из оперативной памяти быстро исчезают, но "
+"всё-таки в течение нескольких минут они могут там оставаться. Если у "
+"злоумышленника есть физический доступ к компьютеру, он может в этот момент "
+"восстановить важные данные."
+
+#. type: Plain text
+#, fuzzy
+#| msgid ""
+#| "This can be achieved using a technique called <span\n"
+#| "class=\"definition\">[[!wikipedia Cold_boot_attack desc=\"cold boot\n"
+#| "attack\"]] </span>. To prevent this attack, the data in RAM is\n"
+#| "overwritten by random data when shutting down Tails. This erases all\n"
+#| "traces from your session on that computer.\n"
+msgid ""
+"This can be achieved using a technique called [[!wikipedia cold boot "
+"attack]]. To prevent such attacks, the data in RAM is overwritten by random "
+"data when you shut down Tails."
+msgstr ""
+"Это может быть сделано методом <span\n"
+"class=\"definition\">[[!wikipedia_ru Атака_через_холодную_перезагрузку "
+"desc=\"холодной\n"
+"перезагрузки\"]]</span>. Для предотвращения такой атаки данные в "
+"оперативной\n"
+"памяти при закрытии Tails перезаписывается случайными данными.\n"
+"Все следы вашей сессии на этом компьютере будут стёрты.\n"
+
+#. type: Plain text
+msgid ""
+"Moreover, an attacker having physical access to the computer *while Tails is "
+"running* can recover data from RAM as well. To avoid that, learn the "
+"different methods to [[shutdown Tails|doc/first_steps/shutdown]] rapidly."
+msgstr ""
+"Злоумышленник, у которого есть физический доступ к компьютеру *во время "
+"работы Tails*, также может восстановить данные из оперативной памяти. Чтобы "
+"этого избежать, почитайте, как  [[быстро завершить работу Tails|doc/"
+"first_steps/shutdown]]."
+
+#. type: Plain text
+#, no-wrap
+msgid "<div class=\"attack\">\n"
+msgstr ""
+
+#. type: Plain text
+#, no-wrap
+msgid ""
+"<p>As far as we know, cold boot attacks are not a common procedure for\n"
+"data recovery.</p>\n"
+msgstr ""
+
+#. type: Plain text
+#, no-wrap
+msgid ""
+"<p>In a <a\n"
+"href=\"https://www.forensicfocus.com/stable/wp-content/uploads/2011/08/cold_boot_attack_for_forensiscs1.pdf\">research\n"
+"report from 2011</a>, Defense Research and Development Canada concluded that\n"
+"cold boot attacks can be useful in some cases to acquire data in memory but are\n"
+"not a panacea and have many drawbacks dictated by the laws of physics, which\n"
+"cannot be overcome by the technique. The authors recommend to only use cold\n"
+"boot attacks as a last resort when all other avenues have been exhausted.</p>\n"
+msgstr ""
+
+#. type: Plain text
+#, no-wrap
+msgid "</div>\n"
+msgstr "</div>\n"
+
+#. type: Plain text
+#, no-wrap
+msgid "<div class=\"next\">\n"
+msgstr "<div class=\"next\">\n"
+
+#. type: Plain text
+#, no-wrap
+msgid ""
+"<p>See how we implement this [[memory\n"
+"erasure|contribute/design/memory_erasure]], for example, if you want to\n"
+"implement this feature outside of Tails.</p>\n"
+msgstr ""
+
+#~ msgid ""
+#~ "As far as we know, cold boot attacks are not a common procedure for data "
+#~ "recovery, but it might still be good to be prepared. If no cold boot "
+#~ "attack happens directly after shutdown, the RAM empties itself in "
+#~ "minutes, and all data disappears."
+#~ msgstr ""
+#~ "Насколько мы знаем, атаки методом холодной перезагрузки не очень "
+#~ "популярны, но всё же их стоит иметь в виду. Если атака методом холодной "
+#~ "перезагрузки не происходит сразу после завершения работы, оперативная "
+#~ "память очищается за считанные минуты, и все данные исчезают."

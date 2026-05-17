@@ -1,0 +1,19 @@
+# The systemd user and system instances don't share units. So, we have
+# the *system* tails-wait-until-tor-has-bootstrapped.service create
+# a file upon completion -- and the identically named *user* unit file wait for
+# that file to appear.
+
+[Unit]
+Description=Wait for Tor to Have Bootstrapped
+Documentation=https://tails.net/contribute/design/
+ConditionUser=1000
+
+[Service]
+Type=oneshot
+ExecStart=/bin/sh -c 'while ! [ -e /run/tor-has-bootstrapped/done ] ; do \
+                         /bin/sleep 1                                  ; \
+                      done'
+TimeoutStartSec=0
+
+[Install]
+WantedBy=desktop.target

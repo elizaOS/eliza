@@ -1,0 +1,116 @@
+# SOME DESCRIPTIVE TITLE
+# Copyright (C) YEAR Free Software Foundation, Inc.
+# This file is distributed under the same license as the PACKAGE package.
+# FIRST AUTHOR <EMAIL@ADDRESS>, YEAR.
+#
+msgid ""
+msgstr ""
+"Project-Id-Version: \n"
+"Report-Msgid-Bugs-To: tails-l10n@boum.org\n"
+"POT-Creation-Date: 2026-03-18 09:16+0000\n"
+"PO-Revision-Date: 2026-03-29 14:22+0000\n"
+"Last-Translator: xin <xin@riseup.net>\n"
+"Language-Team: \n"
+"Language: fr\n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+"Plural-Forms: nplurals=2; plural=n != 1;\n"
+"X-Generator: Weblate 5.13.2\n"
+
+#. type: Plain text
+#, no-wrap
+msgid "[[!meta title=\"Download and verify (ISO image)\"]]\n"
+msgstr "[[!meta title=\"Télécharger et vérifier (image ISO)\"]]\n"
+
+#. type: Plain text
+#, no-wrap
+msgid "[[!meta robots=\"noindex\"]]\n"
+msgstr "[[!meta robots=\"noindex\"]]\n"
+
+#. type: Plain text
+#, no-wrap
+msgid "[[!meta stylesheet=\"install/inc/stylesheets/download\" rel=\"stylesheet\" title=\"\"]]\n"
+msgstr "[[!meta stylesheet=\"install/inc/stylesheets/download\" rel=\"stylesheet\" title=\"\"]]\n"
+
+#. type: Plain text
+#, no-wrap
+msgid "[[!meta stylesheet=\"doc/about/warnings\" rel=\"stylesheet\" title=\"\"]]\n"
+msgstr "[[!meta stylesheet=\"doc/about/warnings\" rel=\"stylesheet\" title=\"\"]]\n"
+
+#. type: Plain text
+#, no-wrap
+msgid "[[!meta stylesheet=\"install/inc/stylesheets/steps\" rel=\"stylesheet\" title=\"\"]]\n"
+msgstr "[[!meta stylesheet=\"install/inc/stylesheets/steps\" rel=\"stylesheet\" title=\"\"]]\n"
+
+#. type: Plain text
+#, no-wrap
+msgid "[[!meta stylesheet=\"install/inc/stylesheets/download-only-iso\" rel=\"stylesheet\" title=\"\"]]\n"
+msgstr "[[!meta stylesheet=\"install/inc/stylesheets/download-only-iso\" rel=\"stylesheet\" title=\"\"]]\n"
+
+#. type: Plain text
+#, no-wrap
+msgid "[[!meta script=\"install/inc/js/download\"]]\n"
+msgstr "[[!meta script=\"install/inc/js/download\"]]\n"
+
+#. type: Plain text
+#, no-wrap
+msgid "[[!meta script=\"install/inc/js/forge.min\"]]\n"
+msgstr "[[!meta script=\"install/inc/js/forge.min\"]]\n"
+
+#. type: Plain text
+#, no-wrap
+msgid "[[!inline pages=\"install/inc/steps/download.inline\" raw=\"yes\" sort=\"age\"]]\n"
+msgstr "[[!inline pages=\"install/inc/steps/download.inline.fr\" raw=\"yes\" sort=\"age\"]]\n"
+
+#. type: Plain text
+#, no-wrap
+msgid "[[!inline pages=\"install/inc/steps/verify.inline\" raw=\"yes\" sort=\"age\"]]\n"
+msgstr "[[!inline pages=\"install/inc/steps/verify.inline.fr\" raw=\"yes\" sort=\"age\"]]\n"
+
+#. type: Plain text
+#, no-wrap
+msgid "<h1 class=\"step\">Continue installing or upgrading Tails</h1>\n"
+msgstr "<h1 class=\"step\">Continuer l'installation ou mettre à jour Tails</h1>\n"
+
+#. type: Plain text
+msgid "With this ISO image, you can either:"
+msgstr "Avec l'image ISO, vous pouvez au choix :"
+
+#. type: Bullet: '- '
+msgid "[[Burn a Tails DVD|dvd]]"
+msgstr "[[Graver un DVD Tails|dvd]]"
+
+#. type: Bullet: '- '
+msgid "[[Run Tails in a virtual machine|doc/advanced_topics/virtualization]]"
+msgstr ""
+"[[Lancer Tails dans une machine virtuelle|doc/advanced_topics/"
+"virtualization]]"
+
+#. type: Plain text
+msgid ""
+"To install or upgrade Tails on a USB stick, download our [[USB image|"
+"download]] instead."
+msgstr ""
+"Pour installer ou mettre à jour Tails sur une clé USB, téléchargez notre "
+"[[image USB|download]] à la place."
+
+#. type: Plain text
+#, no-wrap
+msgid "[[!inline pages=\"install/inc/steps/warnings.inline\" raw=\"yes\" sort=\"age\"]]\n"
+msgstr "[[!inline pages=\"install/inc/steps/warnings.inline.fr\" raw=\"yes\" sort=\"age\"]]\n"
+
+#, no-wrap
+#~ msgid "[[!meta robots=\"noindex\"]] <!-- Don't index ISO download to prevent user mistakes. -->\n"
+#~ msgstr "[[!meta robots=\"noindex\"]] <!-- Don't index ISO download to prevent user mistakes. -->\n"
+
+#, no-wrap
+#~ msgid "[[!meta stylesheet=\"install/inc/stylesheets/assistant\" rel=\"stylesheet\" title=\"\"]]\n"
+#~ msgstr "[[!meta stylesheet=\"install/inc/stylesheets/assistant\" rel=\"stylesheet\" title=\"\"]]\n"
+
+#~ msgid ""
+#~ "[[!meta link=\"https://chrome.google.com/webstore/detail/"
+#~ "gaghffbplpialpoeclgjkkbknblfajdl\" rel=\"chrome-webstore-item\"]]\n"
+#~ msgstr ""
+#~ "[[!meta link=\"https://chrome.google.com/webstore/detail/"
+#~ "gaghffbplpialpoeclgjkkbknblfajdl\" rel=\"chrome-webstore-item\"]]\n"

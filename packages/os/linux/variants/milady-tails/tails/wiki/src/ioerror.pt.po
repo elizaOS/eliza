@@ -1,0 +1,112 @@
+# SOME DESCRIPTIVE TITLE
+# Copyright (C) YEAR Free Software Foundation, Inc.
+# This file is distributed under the same license as the PACKAGE package.
+# FIRST AUTHOR <EMAIL@ADDRESS>, YEAR.
+#
+msgid ""
+msgstr ""
+"Project-Id-Version: PACKAGE VERSION\n"
+"Report-Msgid-Bugs-To: tails-l10n@boum.org\n"
+"POT-Creation-Date: 2025-09-17 11:40+0200\n"
+"PO-Revision-Date: 2025-09-18 15:39+0000\n"
+"Last-Translator: xin <xin@riseup.net>\n"
+"Language-Team: LANGUAGE <LL@li.org>\n"
+"Language: pt\n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+"Plural-Forms: nplurals=2; plural=n > 1;\n"
+"X-Generator: Weblate 5.13.2\n"
+
+#. type: Plain text
+#, no-wrap
+msgid "[[!meta title=\"Error Reading Data from Tails USB Stick\"]]\n"
+msgstr "[[!meta title=\"Erro ao ler dados do pendrive USB com Tails\"]]\n"
+
+#. type: Plain text
+msgid "This page applies in 2 situations:"
+msgstr "Esta página se aplica em 2 situações:"
+
+#. type: Bullet: '- '
+#, fuzzy
+#| msgid "- If you get the following error message when starting Tails:"
+msgid "If you get the following error message when starting Tails:"
+msgstr "- Se você receber a seguinte mensagem de erro ao iniciar o Tails:"
+
+#. type: Plain text
+#, no-wrap
+msgid ""
+"      Error reading data from your Tails USB stick.\n"
+"      Please go to https://tails.net/ioerror for troubleshooting.\n"
+msgstr ""
+"      Error reading data from your Tails USB stick.\n"
+"      Please go to https://tails.net/ioerror for troubleshooting.\n"
+
+#. type: Bullet: '- '
+#, fuzzy
+#| msgid "- If you get the following notification while using Tails:"
+msgid "If you get the following notification while using Tails:"
+msgstr "- Se você receber a seguinte notificação durante o uso do Tails:"
+
+#. type: Plain text
+#, no-wrap
+msgid "      Error Reading Data from Tails USB Stick\n"
+msgstr "      Erro ao ler dados do pendrive USB com Tails\n"
+
+#. type: Plain text
+#, no-wrap
+msgid "      The hardware of your USB stick is probably failing.\n"
+msgstr "      O hardware do seu pendrive provavelmente está falhando.\n"
+
+#. type: Plain text
+#, no-wrap
+msgid ""
+"      We recommend that you reinstall Tails on a different USB stick\n"
+"      and recover the data from your Persistent Storage as soon as possible.\n"
+msgstr ""
+"      Recomendamos que você instale o Tails em um pendrive diferente\n"
+"      e recupere os dados do seu Armazenamento Persistente o mais rápido possível.\n"
+
+#. type: Plain text
+msgid ""
+"These alerts are displayed when Tails detects a problem reading or writing "
+"to your USB stick. Most likely, these alerts mean that the hardware of your "
+"USB stick is failing and might completely break soon."
+msgstr ""
+"Esses alertas são exibidos quando o Tails detecta um problema ao ler ou "
+"gravar no seu pendrive USB. Muito provavelmente, esses alertas significam "
+"que o hardware do seu pendrive USB está falhando e pode quebrar "
+"completamente em breve."
+
+#. type: Plain text
+msgid "You should stop using this USB stick for Tails and install a new one."
+msgstr ""
+"Você deve parar de usar este pendrive USB para Tails e instalar um novo."
+
+#. type: Bullet: '- '
+msgid ""
+"If you don't have a Persistent Storage on this USB stick, we recommend that "
+"you [[reinstall Tails|install]] on a new USB stick."
+msgstr ""
+"Se você não tiver um Armazenamento Persistente neste pendrive USB, "
+"recomendamos que você [[reinstale o Tails|install]] em um novo pendrive USB."
+
+#. type: Bullet: '- '
+msgid ""
+"If you have a Persistent Storage on this USB stick, we recommend that you "
+"stop using this Tails immediately, reinstall Tails on a new USB stick, and "
+"recover the data from your Persistent Storage as soon as possible."
+msgstr ""
+"Se você tiver um Armazenamento Persistente neste pendrive USB, recomendamos "
+"que você pare de usar este Tails imediatamente, reinstale o Tails em um novo "
+"pendrive USB, e recupere os dados do seu Armazenamento Persistente o mais "
+"rápido possível."
+
+#. type: Plain text
+#, no-wrap
+msgid ""
+"  To do so, follow our instructions on [[recovering the Persistent Storage from\n"
+"  a broken Tails|doc/persistent_storage/recover]].\n"
+msgstr ""
+"  Para fazer isso, siga nossas instruções sobre [[como recuperar o Armazenamento Persistente de\n"
+"  um Tails quebrado | doc/persistent_storage/recover]].\n"

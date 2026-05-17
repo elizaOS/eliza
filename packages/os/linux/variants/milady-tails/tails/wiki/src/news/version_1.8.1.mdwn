@@ -1,0 +1,63 @@
+[[!meta date="Sat, 19 Dec 2015 16:33:34 +0000"]]
+[[!pagetemplate template="news.tmpl"]]
+[[!meta title="Tails 1.8.1 is out"]]
+[[!tag announce]]
+
+This release fixes [[numerous security
+issues|security/Numerous_security_holes_in_1.8]]. All users must
+upgrade as soon as possible.
+
+[[!toc levels=1]]
+
+# Changes
+
+## Upgrades and changes
+
+- Tor Browser to [5.0.6](https://gitweb.torproject.org/builders/tor-browser-bundle.git/tree/Bundle-Data/Docs/ChangeLog.txt?h=maint-5.0&id=tbb-5.0.6-build1)
+
+## Fixed problems
+
+- Fix time synchronization in bridge mode.
+
+# Known issues
+
+* Automatic upgrades are much slower to apply than before.
+  Expect the upgrade to take around an hour *after* the download is
+  finished. See [[!tails_ticket 10757]] for details.
+
+See the current list of [[known issues|support/known_issues]].
+
+# Download or upgrade
+
+Go to the [[install]] or [[upgrade|doc/upgrade/]] page.
+
+If your Tails does not
+boot after an automatic upgrade, please [[upgrade your Tails
+manually|doc/upgrade#manual]].
+
+# For users of a persistent Electrum Bitcoin client
+
+If you have enabled the **Bitcoin client**
+(*Electrum*) persistence feature and
+have *upgraded* a Tails USB stick installation to Tails 1.8.1, then
+please follow these steps in order to make Electrum able to connect
+to the network:
+
+1. Make sure *Electrum* is not running.
+
+1. Choose **Applications&nbsp;▸
+   Accessories&nbsp;▸
+   Terminal** to open a terminal.
+
+1. Execute the following command to migrate the configuration:
+
+       echo '{"auto_connect": true, "proxy": "socks5:localhost:9050"}' > ~/.electrum/config
+
+# What's coming up?
+
+The next Tails release is [[scheduled|contribute/calendar]] for January 26.
+
+
+We need your help and there are many ways to [[contribute to
+Tails|contribute]] (donating is only one of
+them). Come [[talk to us|doc/about/contact#tails-dev]]!

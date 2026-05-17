@@ -1,0 +1,67 @@
+[[!meta date="Wed, 28 Nov 2012 01:23:45 +0000"]]
+[[!pagetemplate template="news.tmpl"]]
+[[!meta title="Tails 0.15 is out"]]
+[[!tag announce]]
+
+Tails, The Amnesic Incognito Live System, version 0.15, is out.
+
+All users must upgrade as soon as possible.
+
+Thank you, and congrats, to everyone who helped make this happen!
+
+[[!toc levels=1]]
+
+# Changes
+
+Notable user-visible changes include:
+
+* Tor
+  - Upgrade to 0.2.3.25
+
+* Major new features
+  - Persistence for browser bookmarks.
+  - Support for obfsproxy bridges.
+
+* Minor improvements
+  - Add the Hangul (Korean) Input Method Engine for SCIM.
+  - Preliminary support for some OpenPGP SmartCard readers.
+  - Support printers that need HPIJS PPD and/or the IJS driver.
+  - Optimize fonts display for LCD.
+  - Update TrueCrypt to version 7.1a.
+
+* Bugfixes
+  - Fix gpgApplet menu display in Windows camouflage mode.
+  - Fix Tor reaching an inactive state if it's restarted in "bridge mode",
+    e.g. during the time sync' process.
+
+* Iceweasel
+  - Update iceweasel to 10.0.11esr-1+tails1.
+  - Update HTTPS Everywhere to version 3.0.4.
+  - Update NoScript to version 2.6.
+  - Fix bookmark to I2P router console.
+
+* Localization
+  - The Tails USB installer, tails-persistence-setup and tails-greeter
+    are now translated into Bulgarian.
+  - Update Chinese translation for tails-greeter.
+  - Update Euskadi translation for WhisperBack.
+
+Plus the usual bunch of bug reports and minor improvements.
+
+See the online
+Changelog
+for technical details.
+
+# I want to try it / to upgrade!
+
+See the Getting started page.
+
+As no software is ever perfect, we maintain a list of [[problems
+that affects the last release of Tails|support/known_issues]].
+
+# What's coming up?
+
+
+Would you want to help? As explained in our [["how to contribute"
+documentation|contribute]], here are many ways **you** can contribute
+to Tails. If you want to help, come talk to us!

@@ -1,0 +1,113 @@
+# Sample configuration file for Whisperback
+# =========================================
+#
+# This is a python script that will be read at startup. Any python
+# syntax is valid.
+
+########################################################################
+# WhisperBack - Send feedback in an encrypted mail
+# Copyright (C) 2009-2018 Tails developers <amnesia.org>
+#
+# This file is part of WhisperBack
+#
+# WhisperBack is  free software; you can redistribute  it and/or modify
+# it under the  terms of the GNU General Public  License as published by
+# the Free Software Foundation; either  version 3 of the License, or (at
+# your option) any later version.
+#
+# This program  is distributed in the  hope that it will  be useful, but
+# WITHOUT   ANY  WARRANTY;   without  even   the  implied   warranty  of
+# MERCHANTABILITY  or FITNESS  FOR A  PARTICULAR PURPOSE.   See  the GNU
+# General Public License for more details.
+#
+# You should have received a copy of the GNU General Public License
+# along with this program.  If not, see <http://www.gnu.org/licenses/>.
+########################################################################
+
+# IMPORTS
+
+# Do not change this - required to parse path
+import os.path
+
+# DOCUMENTATION
+
+
+# ENCRYPTION
+#
+# This section defines encryption parameters
+
+# The path to the OpenPGP keyring to use. If None, use OpenPGP default
+# keyring.
+gnupg_keyring = None
+
+# RECIPIENT
+#
+# This section defines the recipient parameters
+
+# The address of the recipient
+to_address = "mail@example.org"
+
+# The fingerprint of the recipient's GPG key
+to_fingerprint = "0000000000000000000000000000000000000000"
+
+# SENDER
+#
+# This section defines the sender parameters
+
+# The address of the sender
+from_address = "mail@otherexample.org"
+
+# SMTP
+#
+# This section defines the SMTP server parameters
+#
+# The SMTP server to use to send the mail
+smtp_host = "smtp.example.org"
+# The port to connect to on that SMTP server
+smtp_port = 25
+
+# SOCKS
+#
+# This section defines the SOCKS proxy parameters
+#
+# The SOCKS proxy to use to send the mail
+socks_host = "127.0.0.1"
+# The port to connect to on that SOCKS proxy
+socks_port = 9500
+
+# MESSAGE
+#
+# This section defines the message parameters
+
+# The subject of the email to be sent
+# Please take into account that this will not be encrypted
+mail_subject = "The subject of the mail"
+
+
+def mail_prepended_info():
+    """A callback function to get information to prepend to the mail
+    (this information will be encrypted). This is useful to add
+    software version.
+
+    It should not take any parameter, and should return a string. This string
+    will be sanitized with whisperBack.utils.sanitize_hardware_info and
+    prepended to the email
+    @return a String prepended to the email
+    """
+    return ""
+
+
+def mail_appended_info():
+    """Returns debugging information on the running system
+    A callback function to get information to append to the email
+    (this information will be encrypted). This is useful to add
+    configuration files useful for debugging.
+
+    It should not take any parameter, and should return a string serialized
+    json to be deserialized to append infos to the email. The strings
+    in the json will be sanitized with whisperBack.utils.sanitize_hardware_info
+
+    @return a string containing serialized json with debugging information
+    """
+
+    return ""

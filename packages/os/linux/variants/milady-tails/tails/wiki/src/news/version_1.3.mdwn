@@ -1,0 +1,70 @@
+[[!meta date="Tue, 24 Feb 2015 12:34:56 +0000"]]
+[[!pagetemplate template="news.tmpl"]]
+[[!meta title="Tails 1.3 is out"]]
+[[!tag announce]]
+
+Tails, The Amnesic Incognito Live System, version 1.3, is out.
+
+This release fixes [[numerous security
+issues|security/Numerous_security_holes_in_1.2.3]] and all users must
+[[upgrade|doc/upgrade]] as soon as possible.
+
+[[!toc levels=1]]
+
+# Changes
+
+## New features
+
+  - **[[Electrum|doc/anonymous_internet/electrum]]** is an easy to use bitcoin wallet. You can use the
+    **Bitcoin Client** persistence feature
+    to store your *Electrum* configuration and wallet.
+
+  - The **Tor Browser** has additional operating system and data
+    **security**. This security restricts reads and writes to a limited
+    number of folders. [[Learn how to manipulate files|doc/anonymous_internet/Tor_Browser#confinement]]
+    with the new *Tor Browser*.
+
+  - The **obfs4 pluggable transport** is now available to connect to Tor
+    bridges. Pluggable transports transform the Tor traffic between the
+    client and the bridge to help disguise Tor traffic from censors.
+
+  - **Keyringer** lets you manage
+    and share secrets using *OpenPGP* and *Git* from the command line.
+
+## Upgrades and changes
+
+  - The **Mac and Linux manual installation** processes no longer require the
+    `isohybrid` command. Removing the `isohybrid` command simplifies the
+    installation.
+  - The **tap-to-click** and **two-finger scrolling** trackpad settings
+    are now enabled by default. This should be more intuitive for Mac
+    users.
+  - The **Ibus Vietnamese input method** is now supported.
+  - **Improved support for OpenPGP smartcards** through the installation
+    of *GnuPG* 2.
+
+There are numerous other changes that may not be apparent in the daily
+operation of a typical user. Technical details of all the changes
+are listed in the Changelog.
+
+# Known issues
+
+* The Tor Browser shipped in Tails 1.3 has NoScript version 2.6.9.14
+  instead of version 2.6.9.15, which is the version used in The Tor
+  Project's own Tor Browser 4.0.4 release.
+
+* See the current list of [[known issues|support/known_issues]].
+
+# Download or upgrade
+
+Go to the [[install]] page.
+
+# What's coming up?
+
+The next Tails release is [[scheduled|contribute/calendar]] for
+April 7.
+
+
+Do you want to help? There are many ways [[**you** can
+contribute to Tails|contribute]]. If you want to help, come talk
+to us!

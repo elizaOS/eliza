@@ -1,0 +1,33 @@
+[[!meta date="Sun, 28 Jun 2015 01:02:03 +0000"]]
+[[!meta title="Numerous security holes in Tails 1.4"]]
+[[!pagetemplate template="news.tmpl"]]
+
+[[!tag security/fixed]]
+
+Several security holes that affect Tails 1.4 are now fixed in
+Tails 1.4.1.
+
+We **strongly** encourage you to [[upgrade to
+Tails 1.4.1|news/version_1.4.1]] as soon as possible.
+
+Details
+=======
+
+ - Tor Browser:
+   [[!mfsa 2015-71]],
+   [[!mfsa 2015-70]],
+   [[!mfsa 2015-69]],
+   [[!mfsa 2015-66]],
+   [[!mfsa 2015-65]],
+   [[!mfsa 2015-64]],
+   [[!mfsa 2015-61]],
+   [[!mfsa 2015-59]]
+ - Linux: [[!debsa2015 3290]], [[!cve CVE-2015-3636]]
+ - p7zip: [[!debsa2015 3289]]
+ - OpenSSL: [[!debsa2015 3287]], [[!cve CVE-2014-8176]], [[!cve
+   CVE-2015-1788]], [[!cve CVE-2015-1789]], [[!cve CVE-2015-1790]],
+   [[!cve CVE-2015-1791]], [[!cve CVE-2015-1792]],
+   [[!cve CVE-2015-4000]]
+ - CUPS: [[!debsa2015 3283]], [[!cve CVE-2015-1158]], [[!cve CVE-2015-1159]]
+ - ntfs-3g: [[!debsa2015 3268]], [[!cve CVE-2015-3202]]
+ - FUSE: [[!debsa2015 3266]], [[!cve CVE-2015-3202]]

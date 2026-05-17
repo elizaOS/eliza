@@ -1,0 +1,221 @@
+[[!meta title="Converting dangerous documents to safe PDFs using Dangerzone"]]
+
+When you receive untrusted documents, for example, email attachments,
+*[Dangerzone](https://dangerzone.rocks/)* allows you to convert them into safe
+PDFs before opening.
+
+*Dangerzone* is particularly useful for journalists who might receive dangerous
+documents from anonymous sources or download them from the Internet.
+
+<div class="tip">
+
+<p><i>Dangerzone</i> is created by <a href="https://freedom.press/">Freedom of
+the Press Foundation</a>, a nonprofit that protects public-interest
+journalism. Edward Snowden and Laura Poitras are on its Board of Directors.</p>
+
+</div>
+
+You can install *Dangerzone* in Tails using the [[Additional
+Software|additional_software]] feature.
+
+We are not including *Dangerzone* in Tails only because it would be too big
+(over 1 GB), but we highly recommend it.
+
+Learn more about [how *Dangerzone* works](https://dangerzone.rocks/about/).
+
+[[!toc levels=2]]
+
+Supported formats
+=================
+
+*Dangerzone* works on many file formats, including:
+
+- PDFs
+
+- *Microsoft Office* documents, such as .docx, .xlsx, and .pptx
+
+- *LibreOffice* documents, such as .odt and .ods
+
+- Images, such as .jpg, .gif, .svg, .tiff, and .png
+
+- EPUB ebooks
+
+Differences between *Dangerzone* and *Metadata Cleaner*
+=======================================================
+
+Tails also includes [[*Metadata Cleaner*|doc/sensitive_documents/metadata]] to
+clean files, but the use cases for *Dangerzone* and *Metadata Cleaner* are very
+different.
+
+We recommend that you use:
+
+- *Metadata Cleaner* to [[remove metadata from your files|doc/sensitive_documents/metadata]] before you publish
+  or share them.
+
+- *Dangerzone* to sanitize untrusted documents shared with you by others.
+
+<table>
+<tr><th></th><th class="w30">*Dangerzone*</th><th class="w30">*Metadata Cleaner*</th></tr>
+<tr><td>Safe to use on</td><td>Other people's files</td><td>Your files only</td></tr>
+<tr><td>Clean audio and video files</td><td class="cross">No</td><td class="check">Yes</td></tr>
+<tr><td>Remove malware and trackers</td><td class="check">Yes</td><td class="cross">No</td></tr>
+<tr><td>Remove visual metadata and fingerprints¹</td><td class="cross">No</td><td class="cross">No</td></tr>
+<tr><td>Allow selecting text in generated PDFs</td><td class="check">Yes</td><td class="cross">No</td></tr>
+<tr><td>Speed</td><td class="cross">Slower</td><td class="check">Faster</td></tr>
+<tr><td>Included in Tails by default</td><td class="cross">No</td><td class="check">Yes</td></tr>
+</table>
+
+1. For example [[!wikipedia Machine Identification Code desc="printer tracking
+dots"]], printing imperfections, or intentional misspellings
+
+System requirements
+===================
+
+*Dangerzone* requires a lot of memory in the computer and space in your
+Persistent Storage because it relies on [[!wikipedia Containerization
+(computing) desc="software containers"]] to manipulate dangerous files
+securely.
+
+To install *Dangerzone*, you need at least:
+
+- 8 GB of RAM
+
+- 12 GB available in the Persistent Storage
+
+Installing *Dangerzone*
+=======================
+
+To install *Dangerzone* as additional software in Tails, you have to:
+
+1. [[Configure the *Dangerzone* APT repository|dangerzone#configure]]
+
+1. [[Install the *Dangerzone* package|dangerzone#install]]
+
+1. [[Convert a test document|dangerzone#test]]
+
+<h2 id="configure">Configure the <i>Dangerzone</i> APT repository</h2>
+
+1. When starting Tails, [[set up an administration password|doc/first_steps/welcome_screen/administration_password]].
+
+1. Choose **Apps&nbsp;▸ Tails&nbsp;▸ Persistent Storage** to open the
+   Persistent Storage settings.
+
+   1. Create a Persistent Storage if you don't have one already.
+
+   1. Make sure that the **Additional Software** feature is turned on.
+
+   1. Close the Persistent Storage settings.
+
+1. Choose **Apps&nbsp;▸ System Tools&nbsp;▸ Console**.
+
+1. Execute the following command to open the configuration of your Persistent
+   Storage in the *Text Editor* with administration rights.
+
+       gnome-text-editor admin:/live/persistence/TailsData_unlocked/persistence.conf
+
+   1. Add the following line to store the configuration of third-party APT
+      repositories in your Persistent Storage.
+
+          /etc/apt/sources.list.d	source=apt/sources,link
+
+   1. Add the following line to store *Podman* containers in your Persistent
+      Storage. [*Podman*](https://podman.io/) is the containerization technology
+      used by *Dangerzone*.
+
+          /home/amnesia/.local/share/containers	source=podman
+
+   1. Save your changes and close the *Text Editor*.
+
+1. Execute the following commands to configure the *Dangerzone* repository as
+   additional APT repository.
+
+   <p class="command">sudo mkdir /live/persistence/TailsData_unlocked/apt/sources</p>
+
+   <p class="command">sudo ln -s /usr/share/tails/apt/dangerzone.sources /live/persistence/TailsData_unlocked/apt/sources/</p>
+
+   <div class="caution">
+
+   <p>We include this sources file in Tails for convenience, but installing
+   <i>Dangerzone</i> relies on the APT repository hosted by <a
+   href="https://freedom.press/">Freedom of the Press Foundation</a>.
+   As a consequence:</p>
+
+   <ul>
+   <li>You need to trust the packages from this repository not to break the
+   security of your Tails.</li>
+   <li><i>Dangerzone</i> might stop working in Tails outside of the control of
+   the Tails team.</li>
+   </ul>
+
+   </div>
+
+1. Restart Tails.
+
+<h2 id="install">Install the <i>Dangerzone</i> package</h2>
+
+1. When starting Tails, [[set up an administration password|doc/first_steps/welcome_screen/administration_password]].
+
+1. [[Connect to the Tor network.|doc/anonymous_internet/tor]]
+
+1. Choose **Apps&nbsp;▸ System Tools&nbsp;▸ Console**.
+
+1. Execute the following commands to install the `dangerzone` package and its dependencies.
+
+   <p class="command">sudo apt update</p>
+
+   <p class="command">sudo apt install dangerzone fuse-overlayfs uidmap</p>
+
+1. After the packages are installed, a notification appears to ask if you want
+   to install `dangerzone`, `fuse-overlayfs`, and `uidmap` every time you
+   start Tails in the future.
+
+   Choose to **Install Every Time**.
+
+1. Close the *Console*.
+
+<h2 id="test">Convert a test document</h2>
+
+1. Choose **Apps&nbsp;▸ Office&nbsp;▸ Dangerzone** to open *Dangerzone*.
+
+   When opened for the first time, *Dangerzone* installs its container.
+
+   This operation can take several minutes.
+
+   After the setup finishes, *Dangerzone* opens.
+
+   Click the button **Select suspicious documents**.
+
+   [[!img dangerzone.png class="screenshot" alt=""]]
+
+1. Select a simple document to test the conversion process, like an empty
+   *LibreOffice* document or an image.
+
+   Converting this first document can also take several minutes. After this
+   first document, converting other documents will be faster.
+
+   <div class="bug">
+
+   <p>If converting fails with the error <span class="code">Unknown error code
+   '125'</span>, restart Tails and try again.</p>
+
+   <p><i>Dangerzone</i> needs a lot of available RAM when running for the first
+   time. Restarting Tails frees as much RAM as possible.</p>
+
+   <p><i>Dangerzone</i> requires at least 8 GB of RAM to install.</p>
+
+   </div>
+
+1. After the conversion finishes, the original document is moved to a new
+   *unsafe* folder and the name of the safe document that has been created
+   includes *safe*. For example:
+
+       ├── document-safe.odt
+       └── unsafe
+           └── document.odt
+
+<div class="next">
+
+<p>You can use several applications included in Tails to [[edit the safe
+PDF|sensitive_documents/pdf]] produced by <i>Dangerzone</i>.</p>
+
+</div>

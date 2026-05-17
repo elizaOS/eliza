@@ -1,0 +1,29 @@
+[[!meta date="Sun, 01 Nov 2015 01:02:03 +0000"]]
+[[!meta title="Numerous security holes in Tails 1.6"]]
+[[!pagetemplate template="news.tmpl"]]
+
+[[!tag security/fixed]]
+
+Several security holes that affect Tails 1.6 are now fixed in
+Tails 1.7.
+
+We **strongly** encourage you to [[upgrade to
+Tails 1.7|news/version_1.7]] as soon as possible.
+
+Details
+=======
+
+ - Tor Browser: [[!mfsa 2015-116]], [[!mfsa 2015-122]],
+   [[!mfsa 2015-123]], [[!mfsa 2015-127]], [[!mfsa 2015-128]],
+   [[!mfsa 2015-130]], [[!mfsa 2015-131]], [[!mfsa 2015-132]],
+   [[!mfsa 2015-133]]
+ - wget: [[!cve CVE-2015-7665]]
+ - libfreetype6: [[!debsa2015 3370]]
+ - gdk-pixbuf: [[!debsa2015 3378]]
+ - Linux: [[!debsa2015 3372]]
+ - openjdk-7: [[!debsa2015 3381]]
+ - unzip: [[!debsa2015 3386]]
+ - Prevent a symlink attack on ~/.xsession-errors via
+   tails-debugging-info which could be used by the amnesia user to
+   read the contents of any file, no matter the
+   permissions.

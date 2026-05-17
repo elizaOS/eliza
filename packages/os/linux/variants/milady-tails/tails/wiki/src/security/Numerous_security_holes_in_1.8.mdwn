@@ -1,0 +1,18 @@
+[[!meta date="Thu, 17 Dec 2015 13:24:15 +0000"]]
+[[!meta title="Numerous security holes in Tails 1.8"]]
+[[!pagetemplate template="news.tmpl"]]
+
+[[!tag security/fixed]]
+
+Several security holes that affect Tails 1.8 are now fixed in Tails 1.8.1.
+
+We **strongly** encourage you to [[upgrade to Tails 1.8.1|news/version_1.8.1]] as soon as possible.
+
+Details
+=======
+
+* Tor Browser: [[!mfsa 2015-134]], [[!mfsa 2015-149]]
+* linux: [[!debsa2015 3426]]
+* bind9: [[!debsa2015 3420]]
+* grub2: [[!debsa2015 3421]]
+* gdkpixbuf [[!debsa2015 3337]]

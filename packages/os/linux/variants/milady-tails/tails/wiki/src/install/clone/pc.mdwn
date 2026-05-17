@@ -1,0 +1,17 @@
+[[!meta title="Install by cloning from another Tails on PC"]]
+
+[[!meta stylesheet="inc/stylesheets/overview" rel="stylesheet" title=""]]
+[[!meta stylesheet="inc/stylesheets/steps" rel="stylesheet" title=""]]
+[[!meta stylesheet="inc/stylesheets/pc-clone" rel="stylesheet" title=""]]
+
+[[!inline pages="install/inc/overview" raw="yes" sort="age"]]
+
+[[!inline pages="install/inc/steps/restart_first_time.inline" raw="yes" sort="age"]]
+
+[[!inline pages="install/inc/steps/verify_up-to-date.inline" raw="yes" sort="age"]]
+
+[[!inline pages="install/inc/steps/clone.inline" raw="yes" sort="age"]]
+
+[[!inline pages="install/inc/steps/restart_second_time.inline" raw="yes" sort="age"]]
+
+[[!inline pages="install/inc/steps/welcome.inline" raw="yes" sort="age"]]

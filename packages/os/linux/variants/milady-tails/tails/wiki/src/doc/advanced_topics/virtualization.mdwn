@@ -1,0 +1,136 @@
+[[!meta title="Running Tails in a virtual machine"]]
+
+[[!toc levels=2]]
+
+It is sometimes convenient to be able to run Tails without having to
+restart your computer every time. This is possible using
+[[!wikipedia Virtual_machine desc="virtual machines"]].
+
+With virtual machines, it is possible to run Tails inside a *host*
+operating system. A virtual machine
+emulates a real computer and its operating system, called a *guest*, which
+appears in a window on the *host* operating system.
+
+<div class="bug">
+
+<p>Because, <i>VirtualBox</i> works pretty badly with Tails, we stopped
+advertising solutions for using virtual machines in Windows or macOS.</p>
+
+<p>We only present below 2 solutions for Linux: <i>GNOME Boxes</i> and
+<i>virt-manager</i>.</p>
+
+</div>
+
+When running Tails in a virtual machine, you can use most features of
+Tails from your usual operating system, and you can use both Tails and your usual operating system in parallel,
+without the need to restart the computer.
+
+<div class="note">
+
+<p>We do not currently provide a solution for running a virtual machine
+inside a Tails host.</p>
+
+</div>
+
+This is how Tails looks when run in a virtual machine on a Debian host.
+
+[[!img tails-in-vm.png class="screenshot" alt=""]]
+
+<a id="security"></a>
+
+Security considerations
+=======================
+
+<div class="caution">
+
+<p>Running Tails inside a virtual machine has various security
+implications. Depending on the host operating system and your security
+needs, running Tails in a virtual machine might be dangerous.</p>
+
+</div>
+
+<a id="trustworthy"></a>
+
+  - Both the host operating system and the [[virtualization
+    software|virtualization#software]] are able to monitor what you are
+    doing in Tails.
+
+    If the host operating system is compromised with a software
+    keylogger or other malware, then it can break the security built into
+    Tails.
+
+    <div class="caution">
+    
+    <p>Only run Tails in a virtual machine if both the host operating
+    system and the virtualization software are trustworthy.</p>
+    
+    </div>
+
+    <div class="attack">
+
+    <p>For example, when using virtual machines in Windows, <a
+    href="https://support.microsoft.com/en-us/windows/retrace-your-steps-with-recall-aa03f8a0-a78b-4b3e-b0a1-2eb8ac48701c"><i>Microsoft
+    Recall</i></a> might be taking regular screenshots of your activity.</p>
+
+    </div>
+
+<a id="traces"></a>
+
+  - Traces of your Tails session are likely to be left on the local hard
+    disk. For example, host operating systems usually use swapping (or *paging*) which
+    copies part of the RAM to the hard disk.
+
+    <div class="caution">
+    
+    <p>Only run Tails in a virtual machine if leaving traces on the hard disk
+    is not a concern for you.</p>
+    
+    </div>
+
+This is why Tails warns you when it is running inside a virtual machine.
+
+<div class="note">
+
+<p>The Tails virtual machine does not modify the behavior of the host
+operating system and the network traffic of the host is not anonymized. The MAC
+address of the computer is not modified by the [[MAC address
+anonymization|first_steps/welcome_screen/mac_spoofing]] feature of Tails
+when run in a virtual machine.</p>
+
+</div>
+
+<a id="software"></a>
+
+Virtualization solutions
+========================
+
+To run Tails inside a virtual machine, you need to have
+virtualization software installed on the host operating system.
+Different virtualization software exists for Linux, Windows, and macOS.
+Unfortunately, we only know of virtualization solutions for Linux that work
+well with Tails.
+
+<div class="note">
+
+<p>We only mention Free Software, because we believe that it is a necessary
+condition to be trustworthy. Proprietary virtualization software exist, such as
+<i>VMWare</i>, but is not listed here on purpose.</p>
+
+</div>
+
+  - ***GNOME Boxes*** is only available on
+    Linux. It has a simpler user
+    interface than *virt-manager* but does not allow to use a Persistent Storage.
+
+    See [[running Tails in *GNOME Boxes*|boxes]].
+
+  - ***virt-manager*** is only available on
+    Linux. It has a more
+    complex user interface than *GNOME Boxes* but allows to use a Persistent Storage, either
+    by:
+
+    - Starting Tails from a USB stick.
+    - Creating a virtual USB storage volume saved as a single file on the host
+      operating system.
+
+    See [[running Tails in *virt-manager*|virt-manager]].

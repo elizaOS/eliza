@@ -1,0 +1,689 @@
+# SOME DESCRIPTIVE TITLE
+# Copyright (C) YEAR Free Software Foundation, Inc.
+# This file is distributed under the same license as the PACKAGE package.
+# FIRST AUTHOR <EMAIL@ADDRESS>, YEAR.
+#
+msgid ""
+msgstr ""
+"Project-Id-Version: PACKAGE VERSION\n"
+"Report-Msgid-Bugs-To: tails-l10n@boum.org\n"
+"POT-Creation-Date: 2025-09-17 11:40+0200\n"
+"PO-Revision-Date: 2023-03-11 11:29+0000\n"
+"Last-Translator: xin <xin@riseup.net>\n"
+"Language-Team: LANGUAGE <LL@li.org>\n"
+"Language: zh_TW\n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+"Plural-Forms: nplurals=1; plural=0;\n"
+"X-Generator: Weblate 4.9.1\n"
+
+#. type: Plain text
+#, no-wrap
+msgid "[[!meta title=\"Contact\"]]\n"
+msgstr "[[!meta title=\"聯絡\"]]\n"
+
+#. type: Plain text
+msgid ""
+"There are many ways to contact us, depending on what you want to talk about."
+msgstr "有許多方式可以聯絡我們，視你想要討論什麼樣的內容而定。"
+
+#. type: Plain text
+msgid "All mailing lists are in English unless specified otherwise."
+msgstr "除非有所表明，否則所有的郵件皆是英語為討論。"
+
+#. type: Plain text
+#, no-wrap
+msgid "[[!toc levels=2]]\n"
+msgstr "[[!toc levels=2]]\n"
+
+#. type: Plain text
+#, no-wrap
+msgid "<h1 id=\"public-mailing-lists\">Public mailing lists</h1>\n"
+msgstr ""
+
+#. type: Plain text
+#, no-wrap
+msgid "<div class=\"caution\">\n"
+msgstr "<div class=\"caution\">\n"
+
+#. type: Plain text
+#, fuzzy, no-wrap
+msgid ""
+"<p>These mailing lists are public: subscription is open to anyone. Don't\n"
+"send compromising information. Please respect the\n"
+"<a href=\"https://community.torproject.org/policies/code_of_conduct/\">Tor Project Code of Conduct</a>.</p>\n"
+msgstr ""
+"<p>這些郵件群組皆為公開：任何人都可訂閱。\n"
+"請不要寄送破壞的資訊，請尊重\n"
+"[[行為規範準則|contribute/working_together/code_of_conduct/]]。</p>\n"
+
+#. type: Plain text
+#, no-wrap
+msgid "</div>\n"
+msgstr "</div>\n"
+
+#. type: Plain text
+#, fuzzy, no-wrap
+msgid "<div class=\"block\">\n"
+msgstr "<div class=\"caution\">\n"
+
+#. type: Plain text
+#, fuzzy, no-wrap
+msgid "<h2 id=\"tails-dev\">tails-dev</h2>\n"
+msgstr "<a id=\"tails-dev\"></a>\n"
+
+#. type: Plain text
+#, fuzzy, no-wrap
+msgid ""
+"<p>tails-dev@boum.org is the mailing list where the project is coordinated:\n"
+"technical design questions, upcoming events, monthly reports, and user\n"
+"experience.</p>\n"
+msgstr "tails-project@boum.org 群組上會發佈討論近期活動、每月報告和其它非技術相關的事務。"
+
+#. type: Plain text
+#, fuzzy, no-wrap
+msgid ""
+"<form method=\"POST\" action=\"https://www.autistici.org/mailman/subscribe/tails-dev\">\n"
+"\t<input name=\"email\" value=\"\"/>\n"
+"\t<input type=\"submit\" value=\"Subscribe\"/>\n"
+"</form>\n"
+msgstr ""
+"<form method=\"POST\" action=\"https://mailman.boum.org/subscribe/tails-dev\">\n"
+"\t<input class=\"text\" name=\"email\" value=\"\"/>\n"
+"\t<input class=\"bold\" type=\"submit\" value=\"訂閱\"/>\n"
+"</form>\n"
+
+#. type: Plain text
+#, fuzzy, no-wrap
+msgid "<p>Public archive of tails-dev: <a href=\"https://lists.autistici.org/list/tails-dev.html\">https://lists.autistici.org/list/tails-dev.html</a></p>\n"
+msgstr "tails-dev　郵件群組檔案記錄: <https://mailman.boum.org/pipermail/tails-dev/>."
+
+#. type: Plain text
+#, fuzzy, no-wrap
+msgid ""
+"<form action=\"https://lists.autistici.org/cgi-lurker/keyword.cgi\" accept-charset=\"UTF-8\">\n"
+"    <input type=\"hidden\" name=\"doc-url\" value=\"https://lists.autistici.org\">\n"
+"\t<input type=\"hidden\" name=\"format\" value=\"en.html\">\n"
+"\t<input type=\"text\"   name=\"query\" value=\"\" placeholder=\"ml:tails-dev search terms\" onclick=\"value='ml:tails-dev '\">\n"
+"\t<input type=\"submit\" name=\"submit\" value=\"Search archive\">\n"
+"</form>\n"
+msgstr ""
+"<p>\n"
+"<form action=\"https://lists.autistici.org/cgi-lurker/keyword.cgi\" accept-charset=\"UTF-8\">\n"
+"    <input type=\"hidden\" name=\"doc-url\" value=\"https://lists.autistici.org\">\n"
+"\t<input type=\"hidden\" name=\"format\" value=\"de.html\">\n"
+"\t<input type=\"text\"   name=\"query\" value=\"\" class=\"longtext\" placeholder=\"ml:tails-ux search terms\" onclick=\"value='ml:tails-ux '\">\n"
+"\t<input type=\"submit\" name=\"submit\" value=\"Archiv durchsuchen\">\n"
+"</form>\n"
+"</p>\n"
+
+#. type: Plain text
+#, fuzzy, no-wrap
+msgid "<h2 id=\"tails-testers\">tails-testers</h2>\n"
+msgstr "<a id=\"tails-testers\"></a>\n"
+
+#. type: Plain text
+#, fuzzy, no-wrap
+msgid ""
+"<p>tails-testers@boum.org is the mailing list for people who want to help\n"
+"[[test|contribute/how/testing]] new releases or features.</p>\n"
+msgstr "tails-testers@boum.org 是協助Tails 新版本或功能 [[進行測試|contribute/how/testing]] 的討論郵件群組。"
+
+#. type: Plain text
+#, fuzzy, no-wrap
+msgid ""
+"<form method=\"POST\" action=\"https://www.autistici.org/mailman/subscribe/tails-testers\">\n"
+"\t<input name=\"email\" value=\"\"/>\n"
+"\t<input type=\"submit\" value=\"Subscribe\"/>\n"
+"</form>\n"
+msgstr ""
+"<form method=\"POST\" action=\"https://mailman.boum.org/subscribe/tails-testers\">\n"
+"\t<input class=\"text\" name=\"email\" value=\"\"/>\n"
+"\t<input class=\"bold\" type=\"submit\" value=\"訂閱\"/>\n"
+"</form>\n"
+
+#. type: Plain text
+#, fuzzy, no-wrap
+msgid "<p>Public archive of tails-testers: <a href=\"https://lists.autistici.org/list/tails-testers.html\">https://lists.autistici.org/list/tails-testers.html</a></p>\n"
+msgstr "tails-測試者的公開郵件檔案庫： <https://mailman.boum.org/pipermail/tails-testers/>."
+
+#. type: Plain text
+#, fuzzy, no-wrap
+msgid ""
+"<form action=\"https://lists.autistici.org/cgi-lurker/keyword.cgi\" accept-charset=\"UTF-8\">\n"
+"    <input type=\"hidden\" name=\"doc-url\" value=\"https://lists.autistici.org\">\n"
+"\t<input type=\"hidden\" name=\"format\" value=\"en.html\">\n"
+"\t<input type=\"text\"   name=\"query\" value=\"\" placeholder=\"ml:tails-testers search terms\" onclick=\"value='ml:tails-testers '\">\n"
+"\t<input type=\"submit\" name=\"submit\" value=\"Search archive\">\n"
+"</form>\n"
+msgstr ""
+"<p>\n"
+"<form action=\"https://lists.autistici.org/cgi-lurker/keyword.cgi\" accept-charset=\"UTF-8\">\n"
+"    <input type=\"hidden\" name=\"doc-url\" value=\"https://lists.autistici.org\">\n"
+"\t<input type=\"hidden\" name=\"format\" value=\"de.html\">\n"
+"\t<input type=\"text\"   name=\"query\" value=\"\" class=\"longtext\" placeholder=\"ml:tails-ux search terms\" onclick=\"value='ml:tails-ux '\">\n"
+"\t<input type=\"submit\" name=\"submit\" value=\"Archiv durchsuchen\">\n"
+"</form>\n"
+"</p>\n"
+
+#. type: Plain text
+#, fuzzy, no-wrap
+msgid "<h2 id=\"tails-l10n\">tails-l10n</h2>\n"
+msgstr "<a id=\"tails-l10n\"></a>\n"
+
+#. type: Plain text
+#, no-wrap
+msgid "[[!inline pages=\"contribute/how/translate/tails-l10n.inline\" raw=\"yes\" sort=\"age\"]]\n"
+msgstr "[[!inline pages=\"contribute/how/translate/tails-l10n.inline\" raw=\"yes\" sort=\"age\"]]\n"
+
+#. type: Plain text
+#, no-wrap
+msgid "<h1 id=\"private-email-addresses\">Private email addresses</h1>\n"
+msgstr ""
+
+#. type: Plain text
+#, fuzzy, no-wrap
+msgid "<h2 id=\"support\">Support</h2>\n"
+msgstr "<a id=\"tails\"></a>\n"
+
+#. type: Plain text
+#, fuzzy, no-wrap
+msgid ""
+"<p>You can write encrypted emails to <a href=\"mailto:support@tails.net\">support@tails.net</a> if\n"
+"you need help in private.</p>\n"
+msgstr ""
+"如果你需要私下的協助，可以寄一封加密電郵到：\n"
+"<tails-support-private@boum.org> .\n"
+
+#. type: Plain text
+#, fuzzy, no-wrap
+msgid ""
+"<p>[[OpenPGP key|tails-bugs.key]]\n"
+"([[details|doc/about/openpgp_keys#support]])</p>\n"
+msgstr "[[OpenPGP-密鑰|tails-bugs.key]] ([[詳情|doc/about/openpgp_keys#support]])."
+
+#. type: Plain text
+#, fuzzy, no-wrap
+msgid "<h2 id=\"tails-press\">Press</h2>\n"
+msgstr "<a id=\"tails-press\"></a>\n"
+
+#. type: Plain text
+#, fuzzy, no-wrap
+msgid ""
+"<p>If you are a journalist and want to write about Tails, or if you want to\n"
+"send us links to press articles about Tails, write to\n"
+"<a href=\"mailto:press@tails.net\">press@tails.net</a>.</p>\n"
+msgstr ""
+"如果你是一名記者想要寫關於 Tails　的文章報導或是要\n"
+"提供 Tails [[新聞發佈|press]]的連結 ，請寄信到\n"
+"<tails-press@boum.org>.\n"
+
+#. type: Plain text
+#, fuzzy, no-wrap
+msgid "<h2 id=\"tails-fundraising\">Fundraising</h2>\n"
+msgstr "<a id=\"tails-accounting\"></a>\n"
+
+#. type: Plain text
+#, fuzzy, no-wrap
+msgid "<p>If you want to contact our fundraising team, write to <a href=\"mailto:fundraising@tails.net\">fundraising@tails.net</a>.</p>\n"
+msgstr "如果你想資助 Tails，請來信到： <tails-accounting@boum.org>.\n"
+
+#. type: Plain text
+#, fuzzy, no-wrap
+msgid "<h2 id=\"tails-sysadmins\">Sysadmins</h2>\n"
+msgstr "<a id=\"tails-sysadmins\"></a>\n"
+
+#. type: Plain text
+#, fuzzy, no-wrap
+msgid ""
+"<p>To talk about our infrastructure (servers, test suite, repositories,\n"
+"mirrors, etc.), write to <a href=\"mailto:sysadmins@tails.net\">sysadmins@tails.net</a>.</p>\n"
+msgstr ""
+"討論有關 Tails 基礎設備 (伺服器， 測試套件，資源庫，\n"
+"鏡像網站等等。)，請聯絡 <tails-sysadmins@boum.org>.\n"
+
+#. type: Plain text
+#, fuzzy, no-wrap
+msgid ""
+"<p>[[OpenPGP key|sysadmins-tails-net.key]]\n"
+"([[details|doc/about/openpgp_keys#sysadmins]])</p>\n"
+msgstr "[[OpenPGP-密鑰|tails-sysadmins.key]] ([[詳情|doc/about/openpgp_keys#sysadmins]])."
+
+#. type: Plain text
+#, fuzzy, no-wrap
+msgid "<h2 id=\"tails-foundations\">Tails Team</h2>\n"
+msgstr "<a id=\"tails-accounting\"></a>\n"
+
+#. type: Plain text
+#, fuzzy, no-wrap
+msgid ""
+"<p>To get in touch with the <a href=\"https://gitlab.tails.boum.org/tails/team/-/wikis/home\">Tails Team</a>, write to\n"
+"<a href=\"mailto:foundations@tails.net\">foundations@tails.net</a>.</p>\n"
+msgstr "如果你想資助 Tails，請來信到： <tails-accounting@boum.org>.\n"
+
+#. type: Plain text
+#, fuzzy, no-wrap
+msgid ""
+"<p>[[OpenPGP key|foundations-tails-net.key]]\n"
+"([[details|doc/about/openpgp_keys#foundations]])</p>\n"
+msgstr "[[OpenPGP-密鑰|tails-accounting.key]] ([[詳情|doc/about/openpgp_keys#accounting]])."
+
+#. type: Plain text
+#, fuzzy, no-wrap
+msgid "<h2 id=\"tails-weblate\">Weblate</h2>\n"
+msgstr "<a id=\"tails-testers\"></a>\n"
+
+#. type: Plain text
+#, fuzzy, no-wrap
+msgid "<p>To talk about the [[Tails translation platform|contribute/how/translate/with_translation_platform]], write to <a href=\"mailto:weblate@tails.net\">weblate@tails.net</a>.</p>\n"
+msgstr "如果你希望營運 Tails 鏡像站點，請聯繫 <tails-mirrors@boum.org>.\n"
+
+#. type: Plain text
+#, fuzzy, no-wrap
+msgid ""
+"<p>[[OpenPGP key|weblate-tails-net.key]]\n"
+"([[details|doc/about/openpgp_keys#weblate]])</p>\n"
+msgstr "[[OpenPGP-密鑰|tails-email.key]] ([[詳情|doc/about/openpgp_keys#private]])."
+
+#. type: Plain text
+#, fuzzy, no-wrap
+msgid "<h2 id=\"security\">Security</h2>\n"
+msgstr "<a id=\"tails\"></a>\n"
+
+#. type: Plain text
+#, no-wrap
+msgid ""
+"<p>For vulnerabilities disclosures, email\n"
+"<a href=\"mailto:security@torproject.org\">security@torproject.org</a>.</p>\n"
+msgstr ""
+
+#. type: Plain text
+#, no-wrap
+msgid "<p><a href=\"https://keys.openpgp.org/search?q=security%40torproject.org\">OpenPGP key</a></p>\n"
+msgstr ""
+
+#. type: Plain text
+#, fuzzy, no-wrap
+msgid "<h1 id=\"chat\">Chat rooms</h1>\n"
+msgstr "<a id=\"chat\"></a>\n"
+
+#. type: Plain text
+#, fuzzy, no-wrap
+msgid ""
+"<p>You can join the [[Tor users chat room|support/chat]] and\n"
+"the [[Tails contributors chat room|contribute/chat]]. Only a few Tails\n"
+"developers hang out there, so email is preferred for anything that\n"
+"might be of interest for the larger community.</p>\n"
+msgstr "你可以加入 [[使用者聊天室|support/chat]] 和 [[開發人員聊天室|contribute/chat]]。只有幾名 Tails 開發人員會出沒在那裏，因此最好的方法還是寄送郵件以利於更廣大社群的方便利益。"
+
+#, fuzzy, no-wrap
+#~ msgid "<h2 id=\"amnesia-news\">amnesia-news</h2>\n"
+#~ msgstr "<a id=\"amnesia-news\"></a>\n"
+
+#, fuzzy, no-wrap
+#~ msgid ""
+#~ "<p>amnesia-news@boum.org is the mailing list where we send our [[news]] by\n"
+#~ "email. It has a low traffic and it is the right place to stay\n"
+#~ "up-to-date with the releases and security announcements.</p>\n"
+#~ msgstr "amnesia-news@boum.org 群組是用來寄送 [[最新消息|news]]的郵件。這裏的信件量少，要了解即時的版本發佈和安全通知的消息訂閱它就對了。"
+
+#, fuzzy, no-wrap
+#~ msgid ""
+#~ "<form method=\"POST\" action=\"https://www.autistici.org/mailman/subscribe/amnesia-news\">\n"
+#~ "\t<input name=\"email\" value=\"\"/>\n"
+#~ "\t<input type=\"submit\" value=\"Subscribe\"/>\n"
+#~ "</form>\n"
+#~ msgstr ""
+#~ "<form method=\"POST\" action=\"https://mailman.boum.org/subscribe/amnesia-news\">\n"
+#~ "\t<input class=\"text\" name=\"email\" value=\"\"/>\n"
+#~ "\t<input class=\"bold\" type=\"submit\" value=\"訂閱\"/>\n"
+#~ "</form>\n"
+
+#, fuzzy, no-wrap
+#~ msgid "<p>Public archive of amnesia-news: <a href=\"https://lists.autistici.org/list/amnesia-news.html\">https://lists.autistici.org/list/amnesia-news.html</a></p>\n"
+#~ msgstr "amnesia-news 郵件的公開資料庫： <https://mailman.boum.org/pipermail/amnesia-news/>."
+
+#, fuzzy, no-wrap
+#~ msgid ""
+#~ "<form action=\"https://lists.autistici.org/cgi-lurker/keyword.cgi\" accept-charset=\"UTF-8\">\n"
+#~ "    <input type=\"hidden\" name=\"doc-url\" value=\"https://lists.autistici.org\">\n"
+#~ "\t<input type=\"hidden\" name=\"format\" value=\"en.html\">\n"
+#~ "\t<input type=\"text\"   name=\"query\" value=\"\" placeholder=\"ml:amnesia-news search terms\" onclick=\"value='ml:amnesia-news '\">\n"
+#~ "\t<input type=\"submit\" name=\"submit\" value=\"Search archive\">\n"
+#~ "</form>\n"
+#~ msgstr ""
+#~ "<p>\n"
+#~ "<form action=\"https://lists.autistici.org/cgi-lurker/keyword.cgi\" accept-charset=\"UTF-8\">\n"
+#~ "    <input type=\"hidden\" name=\"doc-url\" value=\"https://lists.autistici.org\">\n"
+#~ "\t<input type=\"hidden\" name=\"format\" value=\"de.html\">\n"
+#~ "\t<input type=\"text\"   name=\"query\" value=\"\" class=\"longtext\" placeholder=\"ml:tails-ux search terms\" onclick=\"value='ml:tails-ux '\">\n"
+#~ "\t<input type=\"submit\" name=\"submit\" value=\"Archiv durchsuchen\">\n"
+#~ "</form>\n"
+#~ "</p>\n"
+
+#, fuzzy, no-wrap
+#~ msgid ""
+#~ "<p>[[OpenPGP key|press-tails-net.key]]\n"
+#~ "([[details|doc/about/openpgp_keys#press]])</p>\n"
+#~ msgstr "[[OpenPGP-密鑰|tails-press.key]] ([[Details|doc/about/openpgp_keys#press]])."
+
+#, fuzzy, no-wrap
+#~ msgid ""
+#~ "<p>[[OpenPGP key|fundraising-tails-net.key]]\n"
+#~ "([[details|doc/about/openpgp_keys#fundraising]])</p>\n"
+#~ msgstr "[[OpenPGP-密鑰|tails-accounting.key]] ([[詳情|doc/about/openpgp_keys#accounting]])."
+
+#, fuzzy, no-wrap
+#~ msgid "<h2 id=\"board\">board</h2>\n"
+#~ msgstr "<a id=\"tails\"></a>\n"
+
+#, fuzzy, no-wrap
+#~ msgid "<p>You can write to the Board at <a href=\"mailto:board@tails.net\">board@tails.net</a>.</p>\n"
+#~ msgstr ""
+#~ "如果你需要私下的協助，可以寄一封加密電郵到：\n"
+#~ "<tails-support-private@boum.org> .\n"
+
+#, fuzzy, no-wrap
+#~ msgid ""
+#~ "<p>[[OpenPGP key|board-tails-net.key]]\n"
+#~ "([[details|doc/about/openpgp_keys#board]])</p>\n"
+#~ msgstr "[[OpenPGP-密鑰|tails-bugs.key]] ([[詳情|doc/about/openpgp_keys#support]])."
+
+#, fuzzy, no-wrap
+#~ msgid "<h2 id=\"tails-accounting\">accounting</h2>\n"
+#~ msgstr "<a id=\"tails-accounting\"></a>\n"
+
+#, fuzzy, no-wrap
+#~ msgid "<p>If you want to contact our accounting team, write to <a href=\"mailto:accounting@tails.net\">accounting@tails.net</a>.</p>\n"
+#~ msgstr "如果你想資助 Tails，請來信到： <tails-accounting@boum.org>.\n"
+
+#, fuzzy, no-wrap
+#~ msgid ""
+#~ "<p>[[OpenPGP key|accounting-tails-net.key]]\n"
+#~ "([[details|doc/about/openpgp_keys#accounting]])</p>\n"
+#~ msgstr "[[OpenPGP-密鑰|tails-accounting.key]] ([[詳情|doc/about/openpgp_keys#accounting]])."
+
+#, fuzzy, no-wrap
+#~ msgid "<h2 id=\"tails\">tails</h2>\n"
+#~ msgstr "<a id=\"tails\"></a>\n"
+
+#, fuzzy, no-wrap
+#~ msgid ""
+#~ "<p>For matters that are listed in none of the above and for\n"
+#~ "vulnerabilities disclosures, you can write encrypted emails to\n"
+#~ "<a href=\"mailto:info@tails.net\">info@tails.net</a>.</p>\n"
+#~ msgstr "如果你的訊息並不適用於上述清單或是要回報弱點缺陷揭露，可以送加密郵件到： <tails@boum.org>。"
+
+#, fuzzy, no-wrap
+#~ msgid ""
+#~ "<p>[[OpenPGP key|info-tails-net.key]]\n"
+#~ "([[details|doc/about/openpgp_keys#private]])</p>\n"
+#~ msgstr "[[OpenPGP-密鑰|tails-email.key]] ([[詳情|doc/about/openpgp_keys#private]])."
+
+#, fuzzy, no-wrap
+#~ msgid "<h2 id=\"tails-support-private\">tails-support-private</h2>\n"
+#~ msgstr "<a id=\"tails-support-private\"></a>\n"
+
+#, fuzzy, no-wrap
+#~ msgid "<p>If you want to contact our fundraising team, write to <a href=\"mailto:tails-fundraising@boum.org\">tails-fundraising@boum.org</a>.</p>\n"
+#~ msgstr "如果你想資助 Tails，請來信到： <tails-accounting@boum.org>.\n"
+
+#, fuzzy, no-wrap
+#~ msgid ""
+#~ "<p>[[OpenPGP key|tails-fundraising.key]]\n"
+#~ "([[details|doc/about/openpgp_keys#fundraising]])</p>\n"
+#~ msgstr "[[OpenPGP-密鑰|tails-accounting.key]] ([[詳情|doc/about/openpgp_keys#accounting]])."
+
+#, fuzzy, no-wrap
+#~ msgid "<h2 id=\"tails-mirrors\">tails-mirrors</h2>\n"
+#~ msgstr "<a id=\"tails-mirrors\"></a>\n"
+
+#, fuzzy, no-wrap
+#~ msgid "<p>If you want to operate a Tails mirror, see [[contribute/how/mirror]].</p>\n"
+#~ msgstr "如果你希望營運 Tails 鏡像站點，請聯繫 <tails-mirrors@boum.org>.\n"
+
+#, fuzzy, no-wrap
+#~ msgid ""
+#~ "<p>To get in touch with the team that manages our pool of mirror,\n"
+#~ "write to <a href=\"mailto:tails-mirrors@boum.org\">tails-mirrors@boum.org</a>.</p>\n"
+#~ msgstr "如果你希望營運 Tails 鏡像站點，請聯繫 <tails-mirrors@boum.org>.\n"
+
+#, fuzzy, no-wrap
+#~ msgid ""
+#~ "<p>[[OpenPGP key|tails-mirrors.key]]\n"
+#~ "([[details|doc/about/openpgp_keys#mirrors]])</p>\n"
+#~ msgstr "[[OpenPGP-密鑰|tails-mirrors.key]] ([[詳情|doc/about/openpgp_keys#mirrors]])."
+
+#, no-wrap
+#~ msgid "<a id=\"tails-support-private\"></a>\n"
+#~ msgstr "<a id=\"tails-support-private\"></a>\n"
+
+#, no-wrap
+#~ msgid "[[!inline pages=\"support/talk/languages.inline\" raw=\"yes\" sort=\"age\"]]\n"
+#~ msgstr "[[!inline pages=\"support/talk/languages.inline.zh_TW\" raw=\"yes\" sort=\"age\"]]\n"
+
+#~ msgid ""
+#~ "<p>\n"
+#~ "<form action=\"https://lists.autistici.org/cgi-lurker/keyword.cgi\" "
+#~ "accept-charset=\"UTF-8\">\n"
+#~ "    <input type=\"hidden\" name=\"doc-url\" value=\"https://lists."
+#~ "autistici.org\">\n"
+#~ "\t<input type=\"hidden\" name=\"format\" value=\"en.html\">\n"
+#~ "\t<input type=\"text\"   name=\"query\" value=\"\" class=\"longtext\" "
+#~ "placeholder=\"ml:tails-project search terms\" onclick=\"value='ml:tails-"
+#~ "project '\">\n"
+#~ "\t<input type=\"submit\" name=\"submit\" value=\"Search archive\">\n"
+#~ "</form>\n"
+#~ "</p>\n"
+#~ msgstr ""
+#~ "<p>\n"
+#~ "<form action=\"https://lists.autistici.org/cgi-lurker/keyword.cgi\" "
+#~ "accept-charset=\"UTF-8\">\n"
+#~ "    <input type=\"hidden\" name=\"doc-url\" value=\"https://lists."
+#~ "autistici.org\">\n"
+#~ "\t<input type=\"hidden\" name=\"format\" value=\"de.html\">\n"
+#~ "\t<input type=\"text\"   name=\"query\" value=\"\" class=\"longtext\" "
+#~ "placeholder=\"ml:tails-project search terms\" onclick=\"value='ml:tails-"
+#~ "project '\">\n"
+#~ "\t<input type=\"submit\" name=\"submit\" value=\"Archiv durchsuchen\">\n"
+#~ "</form>\n"
+#~ "</p>\n"
+
+#~ msgid ""
+#~ "tails-ux@boum.org is the list for matters related to [[user experience "
+#~ "and user interface|contribute/how/user_experience]]."
+#~ msgstr ""
+#~ "tails-ux@boum.org ist die Mailingliste für Belange, die [[Erfahrungswerte "
+#~ "der Benutzung und die Benutzungsoberflächen|contribute/how/"
+#~ "user_experience]] betreffen."
+
+#, fuzzy
+#~ msgid "<h2 id=\"tails-translations\">tails-translations</h2>\n"
+#~ msgstr "<a id=\"tails-accounting\"></a>\n"
+
+#, fuzzy
+#~ msgid ""
+#~ "[[OpenPGP key|tails-translations.key]] ([[details|doc/about/"
+#~ "openpgp_keys#translations]])."
+#~ msgstr ""
+#~ "[[OpenPGP-密鑰|tails-accounting.key]] ([[詳情|doc/about/"
+#~ "openpgp_keys#accounting]])."
+
+#, fuzzy
+#~ msgid "<h2 id=\"tails-project\">tails-project</h2>\n"
+#~ msgstr "<a id=\"tails-project\"></a>\n"
+
+#, fuzzy
+#~ msgid ""
+#~ "<p>\n"
+#~ "<form method=\"POST\" action=\"https://www.autistici.org/mailman/"
+#~ "subscribe/tails-project\">\n"
+#~ "\t<input class=\"text\" name=\"email\" value=\"\"/>\n"
+#~ "\t<input class=\"bold\" type=\"submit\" value=\"Subscribe\"/>\n"
+#~ "</form>\n"
+#~ "</p>\n"
+#~ msgstr ""
+#~ "<form method=\"POST\" action=\"https://mailman.boum.org/subscribe/tails-"
+#~ "project\">\n"
+#~ "\t<input class=\"text\" name=\"email\" value=\"\"/>\n"
+#~ "\t<input class=\"bold\" type=\"submit\" value=\"Abonnieren\"/>\n"
+#~ "</form>\n"
+
+#, fuzzy
+#~ msgid ""
+#~ "Public archive of tails-project: <https://lists.autistici.org/list/tails-"
+#~ "project.html>."
+#~ msgstr ""
+#~ "tails-專案的公開郵件檔案庫: <https://mailman.boum.org/pipermail/tails-"
+#~ "project/>."
+
+#~ msgid ""
+#~ "tails-dev@boum.org is the mailing list where the development work is "
+#~ "coordinated and technical design questions are discussed. Subscribe if "
+#~ "you want to [[contribute code|contribute/how/code]]."
+#~ msgstr ""
+#~ "tails-dev@boum.org ist die Mailingliste, auf der Entwicklungsarbeit "
+#~ "koordiniert und technische Designfragen diskutiert werden. Abonnieren "
+#~ "Sie, wenn Sie [[Code beisteuern|contribute/how/code]] möchten."
+
+#, fuzzy
+#~ msgid "<h2 id=\"tails-ux\">tails-ux</h2>\n"
+#~ msgstr "<a id=\"tails-ux\"></a>\n"
+
+#, fuzzy
+#~ msgid ""
+#~ "<p>\n"
+#~ "<form method=\"POST\" action=\"https://www.autistici.org/mailman/"
+#~ "subscribe/tails-ux\">\n"
+#~ "\t<input class=\"text\" name=\"email\" value=\"\"/>\n"
+#~ "\t<input class=\"bold\" type=\"submit\" value=\"Subscribe\"/>\n"
+#~ "</form>\n"
+#~ "</p>\n"
+#~ msgstr ""
+#~ "<form method=\"POST\" action=\"https://mailman.boum.org/subscribe/tails-"
+#~ "ux\">\n"
+#~ "\t<input class=\"text\" name=\"email\" value=\"\"/>\n"
+#~ "\t<input class=\"bold\" type=\"submit\" value=\"訂閱\"/>\n"
+#~ "</form>\n"
+
+#, fuzzy
+#~ msgid ""
+#~ "Public archive of tails-ux: <https://lists.autistici.org/list/tails-ux."
+#~ "html>."
+#~ msgstr ""
+#~ "tails-ux 的公開郵件檔案庫: <https://mailman.boum.org/pipermail/tails-ux/>."
+
+#, fuzzy
+#~ msgid "Public mailing lists"
+#~ msgstr "公共郵件群組\n"
+
+#, fuzzy
+#~ msgid "amnesia-news"
+#~ msgstr "amnesia-news\n"
+
+#, fuzzy
+#~ msgid "tails-project"
+#~ msgstr "tails-專案\n"
+
+#, fuzzy
+#~ msgid "tails-dev"
+#~ msgstr "tails-dev\n"
+
+#, fuzzy
+#~ msgid "tails-testers"
+#~ msgstr "tails-測試者\n"
+
+#, fuzzy
+#~ msgid "tails-ux"
+#~ msgstr "tails-ux\n"
+
+#, fuzzy
+#~ msgid "tails-l10n"
+#~ msgstr "tails-在地化翻譯\n"
+
+#, fuzzy
+#~ msgid "Private email addresses"
+#~ msgstr "秈密郵件地址\n"
+
+#, fuzzy
+#~ msgid "tails-support-private"
+#~ msgstr "tails-support-private\n"
+
+#, fuzzy
+#~ msgid "tails-press"
+#~ msgstr "tails-press\n"
+
+#, fuzzy
+#~ msgid "tails-accounting"
+#~ msgstr "tails-系統管理\n"
+
+#, fuzzy
+#~ msgid "tails-foundations"
+#~ msgstr "tails-系統管理\n"
+
+#, fuzzy
+#~ msgid "tails-mirrors"
+#~ msgstr "<a id=\"tails-mirrors\"></a>\n"
+
+#, fuzzy
+#~ msgid "tails-sysadmins"
+#~ msgstr "tails-系統管理\n"
+
+#, fuzzy
+#~ msgid "tails-translations"
+#~ msgstr "tails-系統管理\n"
+
+#, fuzzy
+#~ msgid "tails"
+#~ msgstr "tails\n"
+
+#, fuzzy
+#~ msgid "Chat rooms"
+#~ msgstr "聯天室\n"
+
+#~ msgid ""
+#~ "tails-accounting\n"
+#~ "-----------------\n"
+#~ msgstr ""
+#~ "tails-會計\n"
+#~ "-----------------\n"
+
+#~ msgid ""
+#~ "tails-mirrors\n"
+#~ "-----------------\n"
+#~ msgstr ""
+#~ "tails-鏡像站\n"
+#~ "-----------------\n"
+
+#, fuzzy
+#~ msgid "<a id=\"legal\"></a>\n"
+#~ msgstr "<a id=\"tails\"></a>\n"
+
+#, fuzzy
+#~ msgid "Legal representative\n"
+#~ msgstr ""
+#~ "tails-accounting\n"
+#~ "-----------------\n"
+
+#, fuzzy
+#~ msgid "<a id=\"tails-support\"></a>\n"
+#~ msgstr "<a id=\"tails-support-private\"></a>\n"
+
+#, fuzzy
+#~ msgid "tails-support\n"
+#~ msgstr "tails-support-private\n"
+
+#~ msgid ""
+#~ "[[tails-support@boum.org|support/tails-support]] is the mailing list "
+#~ "dedicated to Tails user support."
+#~ msgstr ""
+#~ "[[tails-support@boum.org|support/tails-support]] ist die Mailingliste für "
+#~ "die Unterstützung von Anwenderinnen und Anwendern von Tails."
+
+#, fuzzy
+#~ msgid ""
+#~ "[[!inline pages=\"support/tails-support\" raw=\"yes\" sort=\"age\"]]\n"
+#~ msgstr ""
+#~ "[[!inline pages=\"support/talk/languages.inline.zh_TW\" raw=\"yes\" "
+#~ "sort=\"age\"]]\n"

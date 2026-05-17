@@ -1,0 +1,110 @@
+#!/usr/bin/python3 -I
+
+import argparse
+import os
+import gettext
+from configparser import ConfigParser
+from dataclasses import dataclass, field
+from pathlib import Path
+from typing import Any
+
+translation = gettext.translation("tails", "/usr/share/locale", fallback=True)
+_ = translation.gettext
+
+
+@dataclass
+class Application:
+    desktop_file: Path
+    description: str | None = None
+    extra_keywords: list[str] = field(default_factory=list)
+
+
+REPLACEMENTS = [
+    Application(
+        desktop_file=Path("/usr/share/applications/org.gnome.World.Secrets.desktop"),
+        description=_("Password Manager"),
+        extra_keywords=[_("password"), _("password-manager")],
+    ),
+]
+
+DESKTOP_SECTION = "Desktop Entry"
+
+
+class DesktopLoadError(Exception):
+    pass
+
+
+class Desktop:
+    def __init__(self, values: dict[str, Any]):
+        self.values = values
+
+    @staticmethod
+    def get_configparser() -> ConfigParser:
+        conf = ConfigParser(interpolation=None, strict=False)
+        # otherwise, ConfigParser converts to lowercase
+        conf.optionxform = lambda option: option
+        return conf
+
+    @classmethod
+    def load(cls, fpath: Path) -> "Desktop":
+        conf = cls.get_configparser()
+        conf.read(str(fpath))
+
+        if not conf.has_section(DESKTOP_SECTION):
+            raise DesktopLoadError
+
+        return Desktop(
+            values={key: conf[DESKTOP_SECTION][key] for key in conf[DESKTOP_SECTION]},
+        )
+
+    def __getitem__(self, key):
+        return self.values[key]
+
+    def get_localized(self, key, locale):
+        for tentative_locale in [locale, locale.split(".")[0], locale.split("_")[0]]:
+            localized_key = f"{key}[{tentative_locale}]"
+            if localized_key in self.values:
+                return self.values[localized_key]
+        return self.values[key]
+
+    def __setitem__(self, key, value):
+        self.values[key] = value
+        key_translations = [k for k in self.values if k.startswith(f"{key}[")]
+        for k in key_translations:
+            del self.values[k]
+
+    def dump(self, buf):
+        conf = self.get_configparser()
+        conf[DESKTOP_SECTION] = self.values
+        conf.write(buf, space_around_delimiters=False)
+
+
+class DesktopChangerApplication:
+    def __init__(self):
+        self.parser = self.get_parser()
+
+    def get_parser(self):
+        return argparse.ArgumentParser()
+
+    def main(self):
+        self.args = self.parser.parse_args()
+
+        for app in REPLACEMENTS:
+            d = Desktop.load(app.desktop_file)
+            locale = os.environ["LANG"]
+            name = d.get_localized("Name", locale)
+            keywords = d.get_localized("Keywords", locale)
+            if app.description is not None:
+                description = app.description
+            else:
+                description = d.get_localized("GenericName", locale)
+
+            d["Name"] = f"{name} {description}"
+            d["Keywords"] = f"{';'.join(app.extra_keywords)};{keywords}"
+
+            with app.desktop_file.open("w") as buf:
+                d.dump(buf)
+
+
+if __name__ == "__main__":
+    DesktopChangerApplication().main()

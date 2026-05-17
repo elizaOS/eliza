@@ -1,0 +1,60 @@
+# SOME DESCRIPTIVE TITLE
+# Copyright (C) YEAR Free Software Foundation, Inc.
+# This file is distributed under the same license as the PACKAGE package.
+# FIRST AUTHOR <EMAIL@ADDRESS>, YEAR.
+#
+msgid ""
+msgstr ""
+"Project-Id-Version: PACKAGE VERSION\n"
+"POT-Creation-Date: 2023-07-13 00:13+0000\n"
+"PO-Revision-Date: 2024-09-20 20:40+0000\n"
+"Last-Translator: xin <xin@riseup.net>\n"
+"Language-Team: LANGUAGE <LL@li.org>\n"
+"Language: pt\n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+"Plural-Forms: nplurals=2; plural=n > 1;\n"
+"X-Generator: Weblate 5.3\n"
+
+#. type: Plain text
+#, no-wrap
+msgid "[[!meta title=\"Chatting with Dino and OMEMO\"]]\n"
+msgstr ""
+
+#. type: Plain text
+msgid ""
+"[*Dino*](https://dino.im/) is a modern, open-source Jabber/XMPP chat client. "
+"*Dino* supports end-to-end encryption using [OMEMO](https://conversations.im/"
+"omemo/)."
+msgstr ""
+
+#. type: Plain text
+msgid ""
+"To learn how to install and use *Dino* in Tails, see [this tutorial](https://"
+"t-hinrichs.net/DinoTails/DinoTails_recent.html)."
+msgstr ""
+
+#. type: Plain text
+#, no-wrap
+msgid "<div class=\"bug\">\n"
+msgstr "<div class=\"bug\">\n"
+
+#. type: Plain text
+#, no-wrap
+msgid "<p>The tutorial linked above is outdated since Tails 5.0 (May 2022). See [[!tails_ticket 19104]].</p>\n"
+msgstr ""
+
+#. type: Plain text
+#, no-wrap
+msgid "</div>\n"
+msgstr "</div>\n"
+
+#. type: Plain text
+msgid ""
+"We are considering *Dino* as an option to replace [[*Pidgin*|doc/"
+"anonymous_internet/pidgin]] in Tails."
+msgstr ""
+
+#~ msgid "<tails-testers@boum.org> (public mailing list)"
+#~ msgstr "<tails-testers@boum.org> (lista pública de email)"

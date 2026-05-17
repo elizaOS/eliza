@@ -1,0 +1,12 @@
+[Unit]
+Description=Warn the user if Tails is running inside a virtual machine
+Documentation=https://tails.net/contribute/design/virtualization_support/
+After=tails-wait-until-htpdate-has-succeeded.service
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/lib/tails-virt-notify-user
+RemainAfterExit=yes
+
+[Install]
+WantedBy=desktop.target

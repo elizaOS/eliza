@@ -1,0 +1,82 @@
+[[!meta title="Call for testing: 3.0~alpha1"]]
+
+[[!meta date="Mon, 18 Nov 2016 11:00:00 +0000"]]
+[[!pagetemplate template="news.tmpl"]]
+
+[[!tag announce]]
+
+You can help Tails! The first alpha for the upcoming version 3.0 is
+out. We are very excited and cannot wait to hear what you think about
+it :)
+
+[[!toc levels=1]]
+
+# What's new in 3.0?
+
+Tails 3.0 will be the first version of Tails based on Debian 9
+(Stretch). As such, it upgrades essentially all included software.
+
+It also requires a 64-bit computer, and GNOME Shell is now configured
+to use its default black theme.
+
+Technical details of all the changes are listed in the
+Changelog.
+
+# How to test Tails 3.0~alpha1?
+
+**Keep in mind that this is a test image.** We tested
+that it is not broken in obvious ways, but it might still contain
+undiscovered issues.
+
+But test wildly!
+
+If you find anything that is not working as it should, please report to
+us <tails-testers@boum.org>.
+
+Bonus points if you first check if it is a
+<a href="#known_issues">known issue of this release</a> or a
+[[longstanding known issue|support/known_issues]].
+
+Download and install
+--------------------
+
+Tails 3.0~alpha1 ISO image
+
+<div class="bug">
+
+You cannot install Tails 3.0~alpha1 from Tails 2.x. It is impossible
+as well to upgrade to Tails 3.0~alpha1 from Tails 2.x. So, either
+install or upgrade from a non-Tails system, or start Tails 3.0~alpha1
+from DVD and then clone it to a USB stick.
+
+</div>
+
+To install 3.0~alpha1, follow our usual [[installation instructions|install]],
+skipping the **Download and verify** step.
+
+If you find anything that is not working as it should, please report to
+us on <tails-testers@boum.org>.
+
+Bonus points if you first check if it is a
+<a href="#known_issues">known issue of this release</a> or a
+[[longstanding known issue|support/known_issues]].
+
+<a id="known_issues"></a>
+
+Known issues in 3.0~alpha1
+=========================
+
+* The documentation was not adjusted yet.
+
+* Open tickets for Tails 3.0.
+
+* If you have the GnuPG persistence feature enabled, update files in
+  `/home/amnesia/.gnupg/`:
+  1. Set up an administration password and log in.
+  2. Import `dirmngr.conf` from
+     `/lib/live/mount/rootfs/filesystem.squashfs/etc/skel/.gnupg/dirmngr.conf`.
+  3. Backup the `/home/amnesia/.gnupg/gpg.conf` file, replace it with
+     `/lib/live/mount/rootfs/filesystem.squashfs/etc/skel/.gnupg/gpg.conf`,
+     and re-apply your custom settings on top of the new file.
+
+* [[Longstanding known issues|support/known_issues]]

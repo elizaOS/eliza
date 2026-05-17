@@ -1,0 +1,69 @@
+# SOME DESCRIPTIVE TITLE
+# Copyright (C) YEAR Free Software Foundation, Inc.
+# This file is distributed under the same license as the PACKAGE package.
+# FIRST AUTHOR <EMAIL@ADDRESS>, YEAR.
+#
+msgid ""
+msgstr ""
+"Project-Id-Version: PACKAGE VERSION\n"
+"Report-Msgid-Bugs-To: tails-l10n@boum.org\n"
+"POT-Creation-Date: 2025-09-17 11:40+0200\n"
+"PO-Revision-Date: 2023-03-11 19:29+0000\n"
+"Last-Translator: xin <xin@riseup.net>\n"
+"Language-Team: LANGUAGE <LL@li.org>\n"
+"Language: fa\n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+"Plural-Forms: nplurals=2; plural=n > 1;\n"
+"X-Generator: Weblate 4.9.1\n"
+
+#. type: Plain text
+#, no-wrap
+msgid "[[!meta robots=\"noindex\"]]\n"
+msgstr "[[!meta robots=\"noindex\"]]\n"
+
+#. type: Plain text
+#, no-wrap
+msgid "<h1 id=\"verify-other\" class=\"step\">Verify that the other Tails is up-to-date</h1>\n"
+msgstr ""
+
+#. type: Plain text
+#, no-wrap
+msgid ""
+"To prevent\n"
+"<span class=\"pc-clone mac-clone\">installing</span>\n"
+"<span class=\"upgrade-clone\">upgrading to</span>\n"
+"an outdated version of Tails with known security issues, make sure that the Tails you are\n"
+"<span class=\"pc-clone mac-clone\">installing</span>\n"
+"<span class=\"upgrade-clone\">upgrading</span>\n"
+"from is up-to-date:\n"
+msgstr ""
+
+#. type: Bullet: '1. '
+msgid "Choose **Apps&nbsp;▸ Tails&nbsp;▸ About Tails**."
+msgstr ""
+
+#. type: Bullet: '1. '
+msgid ""
+"Verify that you are running **Tails [[!inline pages=\"inc/"
+"stable_amd64_version\" raw=\"yes\" sort=\"age\"]]** released on [[!inline "
+"pages=\"inc/stable_amd64_date\" raw=\"yes\" sort=\"age\"]]:"
+msgstr ""
+
+#. type: Bullet: '   - '
+msgid ""
+"If you are running Tails [[!inline pages=\"inc/stable_amd64_version\" "
+"raw=\"yes\" sort=\"age\"]], continue with the next step."
+msgstr ""
+
+#. type: Bullet: '   - '
+msgid ""
+"If you are not running Tails [[!inline pages=\"inc/stable_amd64_version\" "
+"raw=\"yes\" sort=\"age\"]], click **Check for Upgrades**."
+msgstr ""
+
+#. type: Plain text
+#, no-wrap
+msgid "     Apply all upgrades as requested.\n"
+msgstr ""

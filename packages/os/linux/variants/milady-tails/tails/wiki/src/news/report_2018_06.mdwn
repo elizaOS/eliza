@@ -1,0 +1,134 @@
+[[!meta title="Tails report for June, 2018"]]
+[[!meta date="Tue, 09 Jul 2018 16:00:00 +0000"]]
+[[!pagetemplate template="news.tmpl"]]
+
+[[!toc]]
+
+Releases
+========
+
+* [[Tails 3.7.1 was released on June 10|news/version_3.7.1]] (emergency release).
+
+* [[Tails 3.8 was released on June 26|news/version_3.8]] (minor release).
+
+* Tails 3.9 is [[scheduled for September 5|contribute/calendar]].
+
+The following changes were introduced in Tails 3.7.1:
+
+- Upgrade *Tor Browser* to 7.5.5.
+
+  This fixes a [[!mfsa 2018-14 desc="critical issue in Firefox"]]
+  announced on June 6.
+
+- Upgrade *Thunderbird* to 52.8.0.
+
+  This partly mitigates the infamous EFAIL attack and fixes importing
+  OpenPGP keys from keyservers with Enigmail.
+
+- Fix setting a screen locker password with non-ASCII characters.
+  ([[!tails_ticket 15636]])
+
+- Rename the *WhisperBack* launcher to "WhisperBack Error Reporting"
+  so that users have a better chance to understand what it does.
+  ([[!tails_ticket 6432]])
+
+The following changes were introduced in Tails 3.8:
+
+- Upgrade *Enigmail* from 1.9.9 to
+  [2.0.7](https://enigmail.net/index.php/en/download/changelog#enig2.0.7) which
+  fixes some of the [EFAIL](https://efail.de/) attacks on OpenPGP.
+
+- Fix importing OpenPGP keys from email attachments. ([[!tails_ticket 15610]])
+
+- Fix the translations of the homepage of the *Unsafe Browser*. ([[!tails_ticket 15461]])
+
+
+Code
+====
+
+- We have worked on improving support for recent graphics cards and in
+  particular those produced by Nvidia. We've sent
+  a call for testing
+  and
+  updated
+  it. If the feedback is good, we will probably include these changes
+  in Tails 3.9.
+
+- We have kept working on fixing the EFAIL attacks against
+  encrypted email ([[!tails_ticket 15602]]). Tails 3.8 fixed most of
+  them and Tails 3.9 should fix the remaining ones.
+
+- We have worked on detecting earlier changes that would break
+  automatic upgrades ([[!tails_ticket 15419]])… and already identified
+  one we need to fix in time for Tails 3.9 ([[!tails_ticket 15695]]).
+
+- Chris Lamb prepared a fix for the most infamous rendering issue (raw PO
+  content being inserted in some page) that affects our website
+  ([[!tails_ticket 6907]]).
+
+User experience
+===============
+
+- We conducted a moderated user testing of the VeraCrypt
+  feature.
+
+
+Hot topics on our help desk
+===========================
+
+1. Surface Pro users reported having trouble with wireless ([[!tails_ticket 15520]]).
+
+1. We still receive emails from several users displayed with the message
+   pointing to https://tails.boum.org/gdm.
+
+
+Outreach
+========
+
+Upcoming events
+---------------
+
+- BitingBird, intrigeri, nodens, and u will be at DebConf18 in Hsinchu,
+  Taiwan from July 29 to August 5.
+
+
+On-going discussions
+====================
+
+- intrigeri called for testing of an updated graphics stack and
+  `nouveau` driver.
+
+
+Translation
+===========
+
+## All the website
+
+  - fr: 89% (5169) strings translated, 1% strings fuzzy, 88% words translated
+  - es: 58% (3356) strings translated, 1% strings fuzzy, 48% words translated
+  - de: 53% (3099) strings translated, 6% strings fuzzy, 47% words translated
+  - fa: 36% (2096) strings translated, 9% strings fuzzy, 38% words translated
+  - it: 32% (1881) strings translated, 6% strings fuzzy, 28% words translated
+  - pt: 28% (1618) strings translated, 7% strings fuzzy, 24% words translated
+
+Total original words: 60692
+
+## [[Core pages of the website|contribute/l10n_tricks/core_po_files.txt]]
+
+  - fr: 98% (1900) strings translated, 0% strings fuzzy, 99% words translated
+  - es: 96% (1862) strings translated, 0% strings fuzzy, 94% words translated
+  - de: 79% (1528) strings translated, 11% strings fuzzy, 79% words translated
+  - it: 67% (1295) strings translated, 15% strings fuzzy, 66% words translated
+  - pt: 45% (879) strings translated, 12% strings fuzzy, 49% words translated
+  - fa: 33% (640) strings translated, 11% strings fuzzy, 33% words translated
+
+Total original words: 17447
+
+
+Metrics
+=======
+
+* Tails has been started more than 666&#8239;921 times this month. This makes 22&#8239;231 boots a day on average.
+* 8&#8239;830 downloads of the OpenPGP signature of Tails ISO from our website.
+* 65 bug reports were received through WhisperBack.
+

@@ -1,0 +1,92 @@
+[[!meta title="How to transition to GitLab"]]
+
+This page is meant for existing Tails contributors, who need to adjust
+their existing setup and habits to GitLab.
+
+[[!toc levels=2]]
+
+Activate your GitLab user account
+=================================
+
+If you have ever done anything on our Redmine, you now have a GitLab
+user account. To activate it:
+
+1. Visit the [[!tails_gitlab users/password/new desc="Reset Password page"]]
+   in a web browser.
+
+2. Enter the email address you were registered with on Redmine.
+
+3. Click _Reset Password_.
+
+4. Follow the instructions in the email you receive.
+
+5. Confirm your email address:
+
+   1. Visit <https://gitlab.tails.boum.org/users/confirmation>
+      in a web browser.
+
+   2. Enter your email address.
+
+   3. Click _Resend_.
+
+   4. Follow the link you got by email.
+
+Update your Git configuration
+=============================
+
+For every repository that's listed in
+[[!tails_gitlab tails/ desc="the `tails` GitLab group"]],
+except `tails/jenkins-jobs` and `tails/puppet-*`:
+if you have a local clone of that repository,
+you need to points its Git remote to GitLab.
+
+Here's how to do that:
+
+1. Find the remote URL with the _Clone_ button on the corresponding
+   GitLab project.
+
+2. Run a command in the directory of your local clone.
+
+   The exact command depends on the remote URL,
+   on the name you gave to that remote,
+   and on whether you want to use HTTPS or SSH.
+
+   For example, you would run:
+
+       git remote set-url origin \
+           https://gitlab.tails.boum.org/tails/tails.git
+
+   or:
+
+       git remote set-url origin \
+           git@gitlab-ssh.tails.boum.org:tails/tails.git
+
+3. Remove any obsolete `insteadOf` configuration you may have in `~/.gitconfig`,
+   `~/.config/git/config`, and in this repository's `.git/config`. These could
+   lead to problems that are hard to debug.
+
+4. Update submodules.
+
+   For example, for `tails.git` you would run:
+
+       rm -rf submodules .git/modules/submodules
+       git submodule sync
+       git submodule update --init
+
+Note: some repositories have not been migrated to GitLab yet ([[!tails_ticket
+17605]]). That's why you need to do this operation on a per-clone basis,
+and not globally.
+
+Use GitLab
+==========
+
+See the corresponding documentation:
+
+ - [[how Tails uses GitLab|contribute/working_together/GitLab]]
+
+ - [[Git repositories|contribute/git]]
+
+Known issues
+============
+
+There is currently no known issue.

@@ -1,0 +1,15 @@
+diff -Naur a/localization/en-US/toolkit/global/tor-browser.ftl b/localization/en-US/toolkit/global/tor-browser.ftl
+--- a/localization/en-US/toolkit/global/tor-browser.ftl	2026-05-07 10:41:23.060530824 +0200
++++ b/localization/en-US/toolkit/global/tor-browser.ftl	2026-05-07 10:41:23.068530769 +0200
+@@ -28,6 +28,11 @@
+ tor-browser-home-message-testing = This is an unstable version of Tor Browser for testing new features. <a data-l10n-name="learn-more-link">Learn more</a>
+ 
+ 
++tails-release-notes = You are running Tails 7.7.3. <a data-l10n-name="tails-release-notes-link">See what’s new</a>
++
++tails-newsletter = Get the latest <a data-l10n-name="tails-newsletter-link">Tails news</a> or <a data-l10n-name="news-link">Tor news</a> straight to your inbox.
++
++
+ home-mode-choice-tor =
+     .label = Tor Browser Home
+ 

@@ -1,0 +1,14 @@
+#!/bin/sh
+
+set -e
+
+# Create the tails-iuk-get-target-file user.
+#
+# The tails-iuk-get-target-file program may be run as this user.
+# This allows us, some day, to allow it to run in the clear,
+# without going through Tor.
+
+echo "Creating the tails-iuk-get-target-file user"
+
+addgroup --system --quiet --gid 125 tails-iuk-get-target-file
+adduser --system --quiet --uid 117 --gid 125 --no-create-home tails-iuk-get-target-file

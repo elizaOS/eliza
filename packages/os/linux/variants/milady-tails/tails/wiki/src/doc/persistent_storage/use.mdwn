@@ -1,0 +1,34 @@
+[[!meta title="Unlocking and using the Persistent Storage"]]
+
+To unlock your Persistent Storage and use the data that is stored in it:
+
+1. When starting Tails, in the **Persistent Storage** section of the [[Welcome
+   Screen|first_steps/welcome_screen]], enter your passphrase and click
+   **Unlock Encryption**.
+
+   [[!img first_steps/welcome_screen/unlock_persistent_storage.png class="screenshot" alt=""]]
+
+1. Start Tails.
+
+1. The data corresponding to each feature of the Persistent Storage that is
+   turned on is automatically available. For example:
+
+   - Your personal files in the *Persistent* folder are accessible from
+     the *Files* browser, if the [[Persistent
+     Folder|configure#persistent_folder]] feature is turned on.
+
+   - Your persistent bookmarks are available in *Tor Browser*, if the [[Tor
+     Browser Bookmarks|configure#bookmarks]] feature is turned on.
+
+   - Your [[Additional Software|additional_software]] packages are automatically
+     installed when starting Tails, if the [[Additional
+     Software|configure#additional_software]] feature is turned on.
+
+<a id="read-only"></a>
+
+<div class="caution">
+
+<p>Tails cannot use a read-only Persistent Storage. If your Tails USB stick has
+a read-only switch, ensure it is in the read-write position.</p>
+
+</div>

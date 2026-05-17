@@ -1,0 +1,16 @@
+[[!meta date="Mon, 11 Feb 2019 12:34:56 +0100"]]
+[[!meta title="Numerous security holes in Tails 3.12"]]
+[[!pagetemplate template="news.tmpl"]]
+
+[[!tag security/fixed]]
+
+Several security holes that affect Tails 3.12 are now fixed in Tails 3.12.1.
+
+We **strongly** encourage you to
+[[upgrade to Tails 3.12.1|news/version_3.12.1]] as soon as possible.
+
+ - Tor Browser: [[!mfsa 2019-05]]
+ - LibreOffice: [[!debsa2019 4381]]
+ - cURL: [[!debsa2019 4386]]
+ - Qt 5: [[!debsa2019 4374]]
+ - OpenSSH: [[!debsa2019 4387]]

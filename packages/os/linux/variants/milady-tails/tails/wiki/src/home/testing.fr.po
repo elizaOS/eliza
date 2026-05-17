@@ -1,0 +1,117 @@
+# SOME DESCRIPTIVE TITLE
+# Copyright (C) YEAR Free Software Foundation, Inc.
+# This file is distributed under the same license as the PACKAGE package.
+# FIRST AUTHOR <EMAIL@ADDRESS>, YEAR.
+#
+msgid ""
+msgstr ""
+"Project-Id-Version: PACKAGE VERSION\n"
+"POT-Creation-Date: 2025-10-14 16:04+0000\n"
+"PO-Revision-Date: 2025-11-02 18:19+0000\n"
+"Last-Translator: xin <xin@riseup.net>\n"
+"Language-Team: LANGUAGE <LL@li.org>\n"
+"Language: fr\n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+"Plural-Forms: nplurals=2; plural=n > 1;\n"
+"X-Generator: Weblate 5.13.2\n"
+
+#. type: Content of: <div>
+msgid "[[!meta title=\"Trying a testing version of Tails\"]]"
+msgstr "[[!meta title=\"Essai d'une version de test de Tails\"]]"
+
+#. type: Content of: outside any tag (error?)
+msgid ""
+"[[!meta stylesheet=\"home\" rel=\"stylesheet\" title=\"\"]] [[!meta "
+"stylesheet=\"hide-breadcrumbs\" rel=\"stylesheet\" title=\"\"]] [[!meta "
+"robots=\"noindex\"]] [[!meta script=\"home\"]]"
+msgstr ""
+"[[!meta stylesheet=\"home\" rel=\"stylesheet\" title=\"\"]] "
+"[[!meta stylesheet=\"hide-breadcrumbs\" rel=\"stylesheet\" title=\"\"]] "
+"[[!meta robots=\"noindex\"]] [[!meta script=\"home\"]]"
+
+#. type: Content of: <div><p>
+msgid "You are running a testing version of Tails. Thanks!"
+msgstr ""
+"Vous êtes en train de faire fonctionner une version de test de Tails. Merci !"
+
+#. type: Content of: <div><ul><li>
+msgid "Release candidates are safe to use but might have other problems."
+msgstr ""
+"Les versions candidates peuvent être utilisées en toute sécurité mais "
+"peuvent présenter d'autres problèmes."
+
+#. type: Content of: <div><ul><li>
+msgid "Beta versions are unsafe to use. Only use beta versions for testing."
+msgstr ""
+"Les versions bêta ne sont pas sûres à utiliser. N'utilisez les versions bêta "
+"qu'à des fins de test."
+
+#. type: Content of: <div><p>
+msgid ""
+"Report any problems to <a href=\"mailto:tails-testers@boum.org\">tails-"
+"testers@boum.org</a>."
+msgstr ""
+"Signalez tout problème à <a href=\"mailto:tails-testers@boum.org\">tails-"
+"testers@boum.org</a>."
+
+#. type: Content of: <h1>
+msgid "Current calls for testing"
+msgstr "Demandes d'essai en cours"
+
+#. type: Content of: <p>
+msgid "None at this moment"
+msgstr "Aucune pour le moment"
+
+#. type: Content of: <h1>
+msgid "Other news"
+msgstr "Autres actualités"
+
+#. type: Content of: <div>
+msgid "<a href=\"https://check.torproject.org/\">Tor check</a>"
+msgstr ""
+"<a href=\"https://check.torproject.org/?lang=fr\">Vérification de Tor</a>"
+
+#. type: Content of: <div>
+msgid "[[!inline pages=\"news\" raw=\"yes\" sort=\"age\"]]"
+msgstr "[[!inline pages=\"news.fr\" raw=\"yes\" sort=\"age\"]]"
+
+#~ msgid ""
+#~ "Our calls for testing include specific testing instructions and known "
+#~ "issues:"
+#~ msgstr ""
+#~ "Nos demandes d'essai incluent des instructions de test spécifiques et des "
+#~ "problèmes connus :"
+
+#~ msgid "[[Call for testing: 7.0~rc2|news/test_7.0-rc2]]"
+#~ msgstr "[[Call for testing: 7.0~rc2|news/test_7.0-rc2]]"
+
+#, fuzzy
+#~| msgid ""
+#~| "<a href=\"https://tails.boum.org/news/test_4.19-rc1/\">Call for testing: "
+#~| "4.19~rc1</a>"
+#~ msgid "<a href=\"/news/test_6.0-rc1\">Call for testing: 6.0~rc1</a>"
+#~ msgstr ""
+#~ "<a href=\"https://tails.boum.org/news/test_4.19-rc1/\">Demande d'essai : "
+#~ "4.19~rc1</a>"
+
+#~ msgid "[[!inline pages=\"home/donate.inline\" raw=\"yes\" sort=\"age\"]]"
+#~ msgstr ""
+#~ "[[!inline pages=\"home/donate.inline.fr\" raw=\"yes\" sort=\"age\"]]"
+
+#~ msgid ""
+#~ "If it's a release candidate or a beta version, it should be safe to use "
+#~ "but it might still be broken in many ways."
+#~ msgstr ""
+#~ "Si c'est une version candidate ou une version bêta, elle devrait être "
+#~ "sûre à utiliser mais elle pourrait être encore cassée de diverses façons."
+
+#~ msgid ""
+#~ "Else, it might be unsafe for regular usage. Use only for testing purposes."
+#~ msgstr ""
+#~ "Sinon, elle pourrait ne pas être sûre pour un usage régulier. Utilisez-là "
+#~ "uniquement pour faire des tests."
+
+#~ msgid "[[!inline pages=\"home/tor_check\" raw=\"yes\" sort=\"age\"]]"
+#~ msgstr "[[!inline pages=\"home/tor_check.fr\" raw=\"yes\" sort=\"age\"]]"

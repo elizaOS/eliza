@@ -1,0 +1,89 @@
+#!/usr/bin/env ruby
+
+require 'libvirt'
+require 'optparse'
+require 'rexml/document'
+begin
+  top_level_dir = `git rev-parse --show-toplevel`.chomp
+  require "#{top_level_dir}/features/support/helpers/remote_shell.rb"
+  require "#{top_level_dir}/features/support/helpers/misc_helpers.rb"
+rescue LoadError
+  raise "This script must be run from within Tails' Git directory."
+end
+$config = {}
+
+VIRTIO_REMOTE_SHELL = 'org.tails.remote_shell.0'.freeze
+
+def debug_log(*args); end
+
+# Implements the subset of the VM class that we need here
+class FakeVM
+  def initialize
+    @domain_xml = ''
+    begin
+      virt = Libvirt.open('qemu:///system')
+      domain = virt.lookup_domain_by_name('TailsToaster')
+      @domain_xml = domain.xml_desc
+    rescue StandardError
+      raise 'There was a problem with the TailsToaster VM (is it running?)'
+    ensure
+      virt.close
+    end
+  end
+
+  def virtio_channel_socket_path(channel)
+    rexml = REXML::Document.new(@domain_xml)
+    rexml.elements.each('domain/devices/channel') do |e|
+      target = e.elements['target']
+      if target.attribute('name').to_s == channel
+        return e.elements['source'].attribute('path').to_s
+      end
+    end
+    raise 'The running TailsToaster has no remote shell channel!'
+  end
+end
+
+cmd_opts = {
+  upload: true,
+  src:    nil,
+  dst:    nil,
+}
+
+opt_parser = OptionParser.new do |opts|
+  opts.banner = 'Usage: features/scripts/vm-file [opts]'
+  opts.separator ''
+  opts.separator 'Copies file to/from VM'
+  opts.separator ''
+  opts.separator 'Options:'
+
+  opts.on_tail('-h', '--help', 'Show this message') do
+    puts opts
+    exit
+  end
+
+  opts.on('--upload=LOCAL', 'Upload file to the VM') do |src|
+    cmd_opts[:upload] = true
+    cmd_opts[:src] = src
+  end
+
+  opts.on('--download=REMOTE', 'Download file from the VM') do |src|
+    cmd_opts[:upload] = false
+    cmd_opts[:src] = src
+  end
+
+  opts.on('--to=DESTINATION', 'File destination') do |dest|
+    cmd_opts[:dst] = dest
+  end
+end
+
+opt_parser.parse!(ARGV)
+
+if cmd_opts[:upload]
+  content = File.read(cmd_opts[:src])
+  f = RemoteShell::File.new(FakeVM.new, cmd_opts[:dst])
+  f.write(content)
+else
+  f = RemoteShell::File.new(FakeVM.new, cmd_opts[:src])
+  File.write(cmd_opts[:dst], f.read)
+end
+exit 0

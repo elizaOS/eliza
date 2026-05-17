@@ -1,0 +1,42 @@
+#! /usr/bin/python3
+
+import jinja2
+import datetime
+from subprocess import check_output
+
+
+def end_date() -> str:
+    when = "tomorrow 10:00 UTC"
+    cmd = ["env", "LC_ALL=C", "TZ=UTC", "date", "-d", when, "+%A %H:%M %Z"]
+    return check_output(cmd).decode("utf8").strip()
+
+
+def call_for_testing_contents(args) -> str:
+    jinja2_env = jinja2.Environment(  # nosec jinja2_autoescape_false
+        loader=jinja2.FileSystemLoader("config/release_management/templates"),
+        autoescape=jinja2.select_autoescape(
+            enabled_extensions=("html", "xml"),
+            default_for_string=False,
+        ),
+    )
+
+    return jinja2_env.get_template("call_for_manual_testers.mdwn").render(
+        release_branch=args.release_branch,
+        dist=args.dist,
+        pad=args.pad,
+        version=args.version,
+        end=end_date(),
+    )
+
+
+if __name__ == "__main__":
+    import argparse
+
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--release-branch", required=True)
+    parser.add_argument("--dist", required=True)
+    parser.add_argument("--version", required=True)
+    parser.add_argument("--pad", required=True)
+    args = parser.parse_args()
+
+    print(call_for_testing_contents(args))

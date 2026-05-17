@@ -1,0 +1,103 @@
+#!/usr/bin/python3 -I
+
+import gettext
+import subprocess
+import sys
+
+import gi
+
+from gi.repository import GLib
+
+gi.require_version("Notify", "0.7")
+from gi.repository import Notify  # NOQA: E402
+
+DONT_ASK_IDENTIFIER = "virt-notify-user"
+
+
+gettext.textdomain("tails")
+_ = gettext.gettext
+
+
+class VirtNotifier:
+    def __init__(self, free_vm=False, show_suppress_button=False):
+        if free_vm:
+            self.title = _("Warning: virtual machine detected!")
+        else:
+            self.title = _("Warning: non-free virtual machine detected!")
+        self.body = _(
+            "Both the host operating system and the virtualization software "
+            "are able to monitor what you are doing in Tails. Only free "
+            "software can be considered trustworthy, for both the host "
+            "operating system and the virtualization software."
+        )
+
+        Notify.init("org.boum.tails.virt-notify-user")
+        # We need to hold a reference to the notification until the callbacks
+        # are called. That's why we use an instance variable.
+        self.notification = Notify.Notification.new(self.title, self.body)
+        self.notification.set_hint("transient", GLib.Variant("u", 1))
+        self.notification.set_timeout(0)
+        if show_suppress_button:
+            self.notification.add_action(
+                "hide", _("Don't Show Again"), self.cb_notification_clicked
+            )
+        self.notification.add_action(
+            "documentation", _("Learn More"), self.cb_notification_clicked
+        )
+        self.notification.connect("closed", lambda *x: sys.exit(0))
+
+        self.notification.show()
+
+    def cb_notification_clicked(self, notification, action, user_data=None):
+        if action == "hide":
+            subprocess.run(
+                [
+                    "/usr/local/bin/tails-ask-again",
+                    "--dont-ask-again",
+                    DONT_ASK_IDENTIFIER,
+                ],
+                check=False,
+            )
+        elif action == "documentation":
+            subprocess.run(
+                [
+                    "/usr/local/lib/run-with-user-env",
+                    "tails-documentation",
+                    "doc/advanced_topics/virtualization",
+                    "security",
+                ],
+                check=False,
+            )
+        sys.exit(0)
+
+
+if __name__ == "__main__":
+    dont_ask_status = (
+        subprocess.check_output(
+            ["/usr/local/bin/tails-ask-again", "--timeout", "30", DONT_ASK_IDENTIFIER]
+        )
+        .decode()
+        .strip()
+    )
+    if dont_ask_status == "hide":
+        sys.exit(0)
+
+    # both 0 and 1 are acceptable exit values:
+    #  - 0 means that we're running in a virtualized environment
+    #  - 1 means that we're not running in a virtualized environment
+    #  - anything else means there is a problem, and we'll exit with
+    #    an exception
+    c = subprocess.run(
+        ["/usr/bin/systemd-detect-virt", "--vm"], check=False, stdout=subprocess.PIPE
+    )
+    if c.returncode == 1:
+        sys.exit(0)
+    vm_name = c.stdout.decode().strip()
+    free_vms = ["bochs", "kvm", "qemu", "uml", "virtualbox", "xen"]
+
+    mainloop = GLib.MainLoop.new(None, False)
+    VirtNotifier(
+        free_vm=(vm_name in free_vms),
+        show_suppress_button=(dont_ask_status != "unavailable"),
+    )
+    mainloop.run()

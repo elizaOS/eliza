@@ -1,0 +1,44 @@
+[[!meta title="Helen, March 2017"]]
+
+Helen is a digital security trainer working in an organization defending
+the right for free speech in North America and working with both large
+news organizations and freelance journalists.
+
+She uses Tails for her work, especially since some of the news
+organizations they work with use *SecureDrop* to exchange files and
+communicate with sources. These news organizations have dedicate
+machines running Tails as their primary OS. She also uses Tails for
+personal use several times a week. For example she always has a Tails
+USB stick when she travels and doesn't want to carry her own equipment.
+It's lighter and for example she can use the computer in the lobby of
+her hotel or plug her Tails on the big TV screen in her room.
+
+Things she likes:
+
+- She likes the feeling of security. Tails allows her to keep her
+  regular computer (Ubuntu, Debian, or Mac depending on the day) — the
+  one where she stores her most important data — clean from phishing.
+  Tails is good for surfing around, gossiping, etc. It feels like the
+  early experience she had on the Internet when she was younger which
+  was free from worries. She actually prefers Tails to *Tor Browser* for
+  that kind of browsing.
+- She uses Tails a lot for note taking (*gedit*, *LibreOffice*).
+- She like *KeePassX* and going on IRC over Tails.
+
+Things she dislikes:
+
+- She doesn't like *Icedove* so much and would prefer using *mutt*.
+- She is frustrated not to be able to save a custom background in Tails.
+  She feels like Tails is one of her computer and she likes to customize
+  her things.
+- She likes the automatic upgrades in general but she always have to go
+  back to the documentation when the upgrade fails. As part of her work,
+  she also sometimes sees infrequent users struggling with accumulated
+  upgrades (for example upgrading from 2.6 to 2.10).
+- <strike>She finds the Installation Assistant inferiorating for expert users
+  like her when she only wants to download the ISO. But she recognizes
+  that it otherwise works really well for new users.</strike>
+- She wants a minesweeper game in Tails.
+- Once she had troubles debugging a firewall from Tails because the
+  router was not giving a DHCP lease and the *Unsafe Browser* wouldn't
+  start without one.

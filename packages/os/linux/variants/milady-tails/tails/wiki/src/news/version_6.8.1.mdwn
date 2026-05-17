@@ -1,0 +1,59 @@
+[[!meta title="Tails 6.8.1"]]
+[[!meta date="Thu, 10 Oct 2024 12:34:56 +0000"]]
+[[!pagetemplate template="news.tmpl"]]
+[[!tag announce]]
+
+This release is an emergency release to fix a critical security
+vulnerability in *Tor Browser*.
+
+<h1 id="changes">Changes and updates</h1>
+
+- Update *Tor Browser* to
+  [13.5.7](https://blog.torproject.org/new-release-tor-browser-1357), which
+  fixes [MFSA 2024-51](https://www.mozilla.org/en-US/security/advisories/mfsa2024-51/),
+  a major use-after-free vulnerability. Using this vulnerability, an attacker
+  could take control of *Tor Browser*, but probably not deanonymize you in
+  Tails.
+
+  <div class="attack">
+
+  <p>Mozilla is aware of this attack being used <a href="https://blog.mozilla.org/security/2024/10/11/behind-the-scenes-fixing-an-in-the-wild-firefox-exploit/">in the wild</a>.</p>
+
+  </div>
+
+<h1 id="fixes">Fixed problems</h1>
+
+For more details, read our [[!tails_gitweb debian/changelog desc="changelog"]].
+
+<h1 id="get">Get Tails 6.8.1</h1>
+
+## To upgrade your Tails USB stick and keep your Persistent Storage
+
+- Automatic upgrades are available from Tails 6.0 or later to 6.8.1.
+
+- If you cannot do an automatic upgrade or if Tails fails to start after an
+  automatic upgrade, please try to do a [[manual upgrade|doc/upgrade/#manual]].
+
+## To install Tails 6.8.1 on a new USB stick
+
+Follow our installation instructions:
+
+- [[Install from Windows|install/windows]]
+
+- [[Install from macOS|install/mac]]
+
+- [[Install from Linux|install/linux]]
+
+- [[Install from Debian or Ubuntu using the command line and GnuPG|install/expert]]
+
+<div class="caution"><p>The Persistent Storage on the USB stick will be lost if
+you install instead of upgrading.</p></div>
+
+## To download only
+
+If you don't need installation or upgrade instructions, you can download
+Tails 6.8.1 directly:
+
+- [[For USB sticks (USB image)|install/download]]
+
+- [[For DVDs and virtual machines (ISO image)|install/download-iso]]

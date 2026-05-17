@@ -1,0 +1,83 @@
+[[!meta title="Call for testing: incremental upgrades"]]
+
+[[!meta date="Mon, 08 Dec 2013 16:00:00 +0000"]]
+[[!pagetemplate template="news.tmpl"]]
+
+You can help Tails! [[Incremental
+upgrades|contribute/design/upgrades]] are ready for
+testing. This feature allows you to upgrade a running Tails without
+downloading an ISO, without burning a DVD, and without a second USB
+stick or SD card. Please try it and see if all works for you.
+
+If you have security auditing skills, you are more than welcome to
+review our [[design|contribute/design/upgrades]] and
+[[code|contribute/design/upgrades#code]].
+
+[[!toc levels=1]]
+
+# How to test incremental upgrades?
+
+These instructions allow you to incrementally upgrade from Tails
+0.22~rc1 or 0.22~rc2 to Tails 0.22 final.
+
+**Keep in mind that this is the first broad call for testing of Tails
+incremental upgrades**. It might have undiscovered issues.
+
+Below, we assume that you have installed [[Tails
+0.22~rc1|news/test_0.22-rc1]] **with *Tails Installer***
+onto a USB stick or SD card.
+
+If you have applied the incremental upgrade to Tails 0.22~rc2, skip to
+[[the instructions for RC2
+users|news/test_incremental_upgrades#from-rc1-or-rc2]]. Else, read on.
+
+## From Tails 0.22~rc1
+
+These steps allow you to incrementally upgrade from Tails 0.22~rc1 to
+Tails 0.22.
+
+1. Start Tails 0.22~rc1 and [[set an administration
+   password|doc/first_steps/welcome_screen/administration_password]].
+
+1. Run this command in a *Root Terminal*
+   to correct the firewall:
+
+       sed -i -e \
+          's/tails-iuk-get-target-file/(tails-iuk-get-target-file tails-upgrade-frontend)/' \
+          /etc/ferm/ferm.conf && \
+       /usr/sbin/ferm /etc/ferm/ferm.conf
+
+1. Follow the [[next
+   steps|news/test_incremental_upgrades#from-rc1-or-rc2]].
+
+<a id="from-rc1-or-rc2">
+
+## From Tails 0.22~rc1 or 0.22~rc2
+
+1. Choose
+   **Applications&nbsp;▸ Tails&nbsp;▸ Tails Upgrader**
+   to start *Tails Upgrader*.
+
+1. Accept *Tails Upgrader*'s proposal
+   to upgrade to Tails 0.22.
+
+1. Wait while the upgrade is downloaded and applied.
+
+1. Restart the system when advised to do so.
+
+1. Once the system is restarted, choose
+   **System&nbsp;▸ About Tails**
+   to confirm that the running system is now Tails 0.22.
+
+If you find anything that is not working as it should, please [[report
+to us|doc/first_steps/whisperback]]! Bonus points if you check that
+it is not a [[known issue of incremental
+upgrades|test_incremental_upgrades#known_issues]] or a [[longstanding
+known issue|support/known_issues]].
+
+<a id="known_issues">
+
+# Known issues
+
+Known issues of incremental upgrades are tracked in
+Redmine.

@@ -1,0 +1,165 @@
+#!/usr/bin/python3 -I
+
+import gettext
+import logging
+
+import additional_software
+from additional_software import (
+    add_additional_packages,
+    get_additional_packages,
+    notify,
+    setup_additional_packages,
+)
+
+from tailslib.locale import apply_selected_locale
+from tailslib.migration import Migration
+from tailslib.persistence import (
+    additional_software_persistence_feature_is_active,
+    has_unlocked_persistence,
+    thunderbird_persistence_feature_is_active,
+)
+from tailslib.thunderbird import (
+    thunderbird_packages,
+)
+
+apply_selected_locale()
+gettext.textdomain("tails")
+_ = gettext.gettext
+
+
+def ask_permission_to_enable_additional_software_for_thunderbird():
+    return notify(
+        title=_("Thunderbird Migration"),
+        body=_(
+            "You should install Thunderbird as additional software. "
+            "Thunderbird will no longer be included by default in "
+            "Tails 7.8 (May 2026) and later.",
+        ),
+        accept_label=_("Install as Additional Software"),
+        documentation_target="doc/anonymous_internet/thunderbird/additional_software",
+        urgent=True,
+    )
+
+
+def handle_thunderbird_migration():
+    if not has_unlocked_persistence():
+        logging.info(
+            "Persistent Storage is not unlocked ⇒ skipping",
+        )
+        return
+
+    migration = Migration("21375-thunderbird-iteration-1")
+
+    if migration.succeeded:
+        logging.info(
+            "Migration 21375-thunderbird-iteration-1 has already succeeded "
+            "⇒ no migration needed",
+        )
+        return
+
+    if migration.not_needed:
+        logging.info(
+            "Migration 21375-thunderbird-iteration-1 was previously identified "
+            "as not needed ⇒ skipping"
+        )
+        return
+
+    if not thunderbird_persistence_feature_is_active():
+        logging.info(
+            "Thunderbird persistent storage feature is not enabled "
+            "⇒ no migration needed",
+        )
+        # We don't record "migration.not_needed = True" here because
+        # we want to apply the migration if the user later enables
+        # the Thunderbird persistent storage feature.
+        return
+
+    if not additional_software_persistence_feature_is_active():
+        logging.info(
+            "Offering the user to enable Additional Software and add Thunderbird to it",
+        )
+        if not ask_permission_to_enable_additional_software_for_thunderbird():
+            logging.info(
+                "The user did not accept our offer to enable Additional Software "
+                "and add Thunderbird to it ⇒ exiting",
+            )
+            return
+        try:
+            setup_additional_packages()
+        except Exception:
+            logging.exception("Failed to enable Additional Software")
+            migration.succeeded = False
+            notify(
+                title=_("Thunderbird Migration"),
+                body=_(
+                    "Tails failed to install Thunderbird as additional software. "
+                    "Thunderbird will no longer be included by default in "
+                    "Tails 7.8 (May 2026) and later.",
+                ),
+                documentation_target="doc/anonymous_internet/thunderbird/additional_software",
+                urgent=True,
+            )
+            raise
+
+    # Sanity check: if we're still running, this feature should be
+    # active
+    if not additional_software_persistence_feature_is_active():
+        logging.warning(
+            "Additional Software persistence feature is unexpectedly not active "
+            "⇒ bailing out",
+        )
+        return
+
+    if "thunderbird" in get_additional_packages():
+        # The user added thunderbird to Additional Software themselves
+        # already, so we avoid applying the migration: it would be
+        # a harmless no-op, except it would record that we applied the
+        # migration successfully, and then the thunderbird wrapper
+        # would tell the user about it, which makes no sense.
+        logging.info(
+            "Thunderbird is already in Additional Software ⇒ no migration needed",
+        )
+        migration.not_needed = True
+        return
+
+    # At this point, either the user already had the Additional
+    # Software and Thunderbird persistent storage features enabled (in
+    # which case we want to automatically add Thunderbird there, and
+    # notify them later), or they only had the Thunderbird persistent
+    # storage feature enabled and they've just opted-in to add
+    # Thunderbird to their Additional Packages. In both cases, we're
+    # good to go!
+    logging.info("Adding Thunderbird to Additional Software")
+    try:
+        add_additional_packages(thunderbird_packages())
+    except Exception:
+        logging.exception("Failed to add additional packages")
+        migration.succeeded = False
+        notify(
+            title=_("Thunderbird Migration"),
+            body=_(
+                "Tails failed to install Thunderbird as additional software. "
+                "Thunderbird will no longer be included by default in "
+                "Tails 7.8 (May 2026) and later.",
+            ),
+            documentation_target="doc/anonymous_internet/thunderbird/additional_software",
+            urgent=True,
+        )
+        raise
+    migration.succeeded = True
+    # We don't notify here: instead we will let the user know if,
+    # and when, they start Thunderbird.
+
+
+def update_additional_software_configuration():
+    logging.info("Starting the update of Additional Software configuration...")
+    handle_thunderbird_migration()
+
+
+def main():
+    additional_software.set_up_logging()
+    update_additional_software_configuration()
+
+
+if __name__ == "__main__":
+    main()

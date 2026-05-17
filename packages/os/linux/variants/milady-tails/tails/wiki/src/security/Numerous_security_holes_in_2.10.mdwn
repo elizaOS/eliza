@@ -1,0 +1,27 @@
+[[!meta date="Sun, 05 Mar 2017 01:02:03 +0000"]]
+[[!meta title="Numerous security holes in Tails 2.10"]]
+[[!pagetemplate template="news.tmpl"]]
+
+[[!tag security/fixed]]
+
+Several security holes that affect Tails 2.10 are now fixed in Tails 2.11.
+
+We **strongly** encourage you to
+[[upgrade to Tails 2.11|news/version_2.11]] as soon as possible.
+
+- Tor Browser: [[!mfsa 2017-06]]
+- linux-image-4.8.0-0.bpo.2-686-unsigned: [[!cve 2017-6074]]
+- bind9: [[!debsa2017 3795]]
+- imagemagick: [[!debsa2017 3799]]
+- libevent-2.0-5: [[!debsa2017 3789]]
+- libgd3: [[!debsa2017 3777]]
+- libjasper1: [[!debsa2017 3785]]
+- liblcms2-2: [[!debsa2017 3774]]
+- libxpm4: [[!debsa2017 3772]]
+- login: [[!debsa2017 3793]]
+- ntfs-3g: [[!debsa2017 3780]]
+- openjdk-7-jre: [[!debsa2017 3782]]
+- openssl: [[!debsa2017 3773]]
+- tcpdump: [[!debsa2017 3775]]
+- vim: [[!debsa2017 3786]]
+- libreoffice: [[!debsa2017 3792]]

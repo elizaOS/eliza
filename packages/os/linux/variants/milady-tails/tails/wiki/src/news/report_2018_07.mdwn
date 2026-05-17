@@ -1,0 +1,149 @@
+[[!meta title="Tails report for July, 2018"]]
+[[!meta date="Tue, 16 Aug 2018 01:23:45 +0000"]]
+[[!pagetemplate template="news.tmpl"]]
+
+[[!toc]]
+
+Releases
+========
+
+* Tails 3.9 is scheduled for September 5. Its release candidate
+  is scheduled for August 17.
+
+Code
+====
+
+We did most of the work needed to upgrade to Tor Browser 8,
+based on Firefox 60ESR.
+
+We continued to work on including VeraCrypt in Tails.
+
+We continued our work on creating a user interface for our Additional
+Software feature to make it easier to use.
+
+We worked on new Debian packages for Torbirdy, Tails Installer and
+OnionShare.
+
+We prepared
+[a fix](https://ikiwiki.info/todo/Re-use_translated_content_instead_of_skipping_if_previously_translated/)
+for a long standing bug in ikiwiki that makes our website render in
+a buggy way regularly.
+
+We worked more on integrating our future web translation platform with
+our infrastructure. This platform is currently not production ready but
+is being tested and used by a few translators.
+
+- We wrote Git hooks for all machines and contributors using Git.
+
+- We wrote and improved several scripts that check the validity of PO
+  files that we carry. We need these scripts to further automate our
+  translation processes, hence all translators, humans and interfaces
+  need to respect certain rules when committing PO files to our
+  repository. This is currently not active and still needs to be tested
+  more extensively.
+
+- We are working on ikiwiki, our website engine, to support adding
+  translation files for non-active languages.
+
+Documentation and website
+=========================
+
+We updated our installation instructions for Debian to:
+
+- Linux Mint 19
+
+- Tails Installer with no splash screen
+
+User experience
+===============
+
+We designed interfaces to:
+
+- Persist the screen locking password ([[!tails_ticket 15641]]).
+
+- Attach screenshots to *WhisperBack* reports ([[!tails_ticket 8660]]).
+
+Hot topics on our help desk
+===========================
+
+
+
+1. Users complained about GDM not starting (most of them with Intel GPU [[!tails_ticket 15700]]).
+1. Some others were unable to use Wi-Fi (non supported USB adapters and [[!tails_ticket 15520]]).
+
+1. Enigmail setup wizard [[!tails_ticket 15693]] generated some requests.
+
+1. And still a few [[!tails_ticket 10976 desc="lost persistence"]] reports. Remember:  we need the debugging info from a session in which the persistence seems to be lost, to be able to fix this.
+
+
+Infrastructure
+==============
+
+We asked [Wikimedia](https://mirrors.wikimedia.org/) to become our
+primary fallback download mirror, and they accepted. We'll implement
+this change in the coming months.  Thank you Wikimedia!
+
+We've updated our web translation platform to a recent version. The
+process went smoothly.
+
+We started looking into the long-term viability of Dogtail,
+one of the key components of our automated testing framework.
+
+Funding
+=======
+
+- We analyzed the results from last year's donation campaign.
+
+  We got more money than in 2016 (101&thinsp;664€, +34%) but from less donations (-43%).
+
+Outreach
+========
+
+Past events
+-----------
+
+- sajolida attended [PETS](https://petsymposium.org).
+
+- Four of us attended [DebConf](https://debconf18.debconf.org) in
+  Hsinchu, Taiwan.
+
+- emmapeel attended a dev sprint with Tactical Tech about investigative journalist tools for Tails in Montenegro.
+
+Upcoming events
+---------------
+
+- sajolida will be at [Tor meeting in Mexico
+  City](https://trac.torproject.org/projects/tor/wiki/org/meetings/2018MexicoCity)
+  from September 29 to October 3 and will present Tails during the open
+  days on October 2.
+
+Translation
+===========
+
+## All the website
+
+  - de: 53% (3093) strings translated, 6% strings fuzzy, 47% words translated
+  - es: 57% (3337) strings translated, 1% strings fuzzy, 48% words translated
+  - fa: 36% (2096) strings translated, 9% strings fuzzy, 38% words translated
+  - fr: 89% (5184) strings translated, 1% strings fuzzy, 88% words translated
+  - it: 32% (1877) strings translated, 6% strings fuzzy, 28% words translated
+  - pt: 28% (1617) strings translated, 7% strings fuzzy, 24% words translated
+
+Total original words: 61156
+
+## [[Core pages of the website|contribute/l10n_tricks/core_po_files.txt]]
+
+  - de: 79% (1527) strings translated, 11% strings fuzzy, 78% words translated
+  - es: 96% (1855) strings translated, 1% strings fuzzy, 94% words translated
+  - fa: 33% (640) strings translated, 11% strings fuzzy, 33% words translated
+  - fr: 98% (1893) strings translated, 0% strings fuzzy, 98% words translated
+  - it: 67% (1294) strings translated, 15% strings fuzzy, 66% words translated
+  - pt: 45% (879) strings translated, 12% strings fuzzy, 49% words translated
+
+Metrics
+=======
+
+* Tails has been started more than 675150 times this month. This makes 21779 boots a day on average.
+* 7372 downloads of the OpenPGP signature of Tails ISO from our website.
+* 57 bug reports were received through WhisperBack.
+

@@ -1,0 +1,451 @@
+# SOME DESCRIPTIVE TITLE
+# Copyright (C) YEAR Free Software Foundation, Inc.
+# This file is distributed under the same license as the PACKAGE package.
+# FIRST AUTHOR <EMAIL@ADDRESS>, YEAR.
+#
+msgid ""
+msgstr ""
+"Project-Id-Version: Tails\n"
+"Report-Msgid-Bugs-To: tails-l10n@boum.org\n"
+"POT-Creation-Date: 2026-03-25 10:45+0100\n"
+"PO-Revision-Date: 2024-10-12 20:09+0000\n"
+"Last-Translator: Benjamin Held <Benjamin.Held@protonmail.com>\n"
+"Language-Team: Tails Translation Team <tails-l10n@boum.org>\n"
+"Language: de\n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+"Plural-Forms: nplurals=2; plural=n != 1;\n"
+"X-Generator: Weblate 5.3\n"
+
+#. type: Plain text
+#, no-wrap
+msgid "[[!meta title=\"Accessibility\"]]\n"
+msgstr "[[!meta title=\"Barrierefreiheit\"]]\n"
+
+#. type: Plain text
+msgid ""
+"Tails and the GNOME desktop include assistive technologies to support users "
+"with various impairments and special needs, and to interact with common "
+"assistive devices."
+msgstr ""
+"Tails und die GNOME-Arbeitsumgebung beinhalten technische Hilfsmittel, um "
+"Benutzende mit verschiedenen Beeinträchtigungen und besonderen Bedürfnissen "
+"zu unterstützen und mit üblichen Hilfsgeräten zu interagieren."
+
+#. type: Plain text
+#, no-wrap
+msgid "<h1 id=\"menu\">Accessibility menu</h1>\n"
+msgstr "<h1 id=\"menu\">Barrierefreiheitsmenü</h1>\n"
+
+#. type: Plain text
+msgid ""
+"You can activate several assistive technologies, like a screen reader or "
+"large text, from the accessibility menu in the top bar, the"
+msgstr ""
+"Sie können mehrere unterstützende Technologien, wie einen Bildschirmleser "
+"oder vergrößerten Text, über das Barrierefreiheitsmenü in der oberen Leiste "
+"aktivieren"
+
+#. type: Plain text
+#, no-wrap
+msgid "[[!img lib/accessibility.png alt=\"\" class=\"symbolic\" link=\"no\"]]\n"
+msgstr "[[!img lib/accessibility.png alt=\"\" class=\"symbolic\" link=\"no\"]]\n"
+
+#. type: Plain text
+msgid "icon that looks like a person."
+msgstr "Symbol, das wie eine Person aussieht."
+
+#. type: Plain text
+#, fuzzy, no-wrap
+#| msgid ""
+#| "[[!img desktop/accessibility.png link=\"no\" class=\"screenshot\"\n"
+#| "alt=\"Accessibility menu with the following options, all disabled\n"
+#| "by default: High Contrast, Zoom, Large Text, Screen Reader, Screen Keyboard,\n"
+#| "Visual Alters, Sticky Keys, Slow Keys, Bounce Keys, and Mouse Keys\"]]\n"
+msgid ""
+"[[!img desktop/accessibility.png class=\"screenshot\"\n"
+"alt=\"Accessibility menu with the following options, all disabled\n"
+"by default: High Contrast, Zoom, Large Text, Screen Reader, Screen Keyboard,\n"
+"Visual Alters, Sticky Keys, Slow Keys, Bounce Keys, and Mouse Keys\"]]\n"
+msgstr ""
+"[[!img desktop/accessibility.png link=\"no\" class=\"screenshot\" \n"
+"alt=\"Barrierefreiheitsmenü mit folgenden Optionen, die standardmäßig \n"
+"alle deaktiviert sind: Hoher Kontrast, Zoom, Großer Text, Bildschirmleser, Bildschirmtastatur, \n"
+"Visuelle Alarme, Einrastfunktion, Verzögerte Tasten, Wackel-Tasten und Maus-Tasten\"]]\n"
+
+#. type: Plain text
+#, fuzzy, no-wrap
+#| msgid "<h1 id=\"menu\">Accessibility menu</h1>\n"
+msgid "<h1 id=\"settings\">Accessibility settings</h1>\n"
+msgstr "<h1 id=\"menu\">Barrierefreiheitsmenü</h1>\n"
+
+#. type: Plain text
+msgid "More accessibility settings are available in the *Settings* utility."
+msgstr ""
+
+#. type: Plain text
+msgid "To configure all possible accessibility settings, you can either:"
+msgstr ""
+
+#. type: Bullet: '- '
+#, fuzzy
+#| msgid ""
+#| "To hear screen elements spoken to you, turn on the **Screen Reader** from "
+#| "the\n"
+#| "accessibility menu ([[!img lib/accessibility.png alt=\"\"\n"
+#| "class=\"symbolic\" link=\"no\"]]).\n"
+msgid ""
+"Choose **Accessibility Settings** in the accessibility menu in the top bar, "
+"the [[!img lib/accessibility.png alt=\"\" class=\"symbolic\" link=\"no\"]] "
+"icon that looks like a person."
+msgstr ""
+"Um sich Bildschirm-Elemente vorlesen zu lassen, aktivieren Sie den "
+"**Bildschirmleser** im Barrierefreiheitsmenü ([[!img lib/accessibility.png "
+"alt=\"\" class=\"symbolic\" link=\"no\"]]).\n"
+
+#. type: Bullet: '- '
+msgid ""
+"Choose **Apps&nbsp;▸ System Tools&nbsp;▸ Settings** and select "
+"**Accessibility** in the sidebar of the *Settings* utility."
+msgstr ""
+
+#. type: Plain text
+#, no-wrap
+msgid "<h1 id=\"shortcuts\">Keyboard shortcuts</h1>\n"
+msgstr "<h1 id=\"shortcuts\">Tastenkombinationen</h1>\n"
+
+#. type: Plain text
+#, fuzzy, no-wrap
+#| msgid ""
+#| "<table>\n"
+#| "<tr><td>Turn screen reader on or off</td><td>Alt+[[!img lib/start.png class=\"symbolic\" link=\"no\" alt=\"Super\"]]+S</td></tr>\n"
+#| "<tr><td>Turn zoom on or off</td><td>Alt+[[!img lib/start.png class=\"symbolic\" link=\"no\" alt=\"Super\"]]+8</td></tr>\n"
+#| "</table>\n"
+msgid ""
+"<table>\n"
+"<tr><td>Turn screen reader on or off</td><td>Alt+[[!img lib/start.png class=\"symbolic\" link=\"no\" alt=\"Super\"]]+S</td></tr>\n"
+"<tr><td>Turn zoom on or off</td><td>Alt+[[!img lib/start.png class=\"symbolic\" link=\"no\" alt=\"Super\"]]+8</td></tr>\n"
+"<tr><td>Zoom in</td><td>Alt+[[!img lib/start.png class=\"symbolic\" link=\"no\" alt=\"Super\"]]+=</td></tr>\n"
+"<tr><td>Zoom out</td><td>Alt+[[!img lib/start.png class=\"symbolic\" link=\"no\" alt=\"Super\"]]+-</td></tr>\n"
+"<tr><td>Window resize menu</td><td>Alt+Space</td></tr>\n"
+"</table>\n"
+msgstr ""
+"<table>\n"
+"<tr><td>Bildschirmleser ein- oder ausschalten</td><td>Alt+[[!img lib/start.png class=\"symbolic\" link=\"no\" alt=\"Super\"]]+S</td></tr>\n"
+"<tr><td>Zoom ein- oder ausschalten</td><td>Alt+[[!img lib/start.png class=\"symbolic\" link=\"no\" alt=\"Super\"]]+8</td></tr>\n"
+"</table>\n"
+
+#. type: Plain text
+msgid ""
+"To learn about all keyboard shortcuts in GNOME visit [GNOME Help: Useful "
+"keyboard shortcuts](https://help.gnome.org/gnome-help/shell-keyboard-"
+"shortcuts.html)  or use the *Settings* utility in Tails:"
+msgstr ""
+
+#. type: Bullet: '1. '
+msgid "Choose **Apps&nbsp;▸ System Tools&nbsp;▸ Settings**."
+msgstr ""
+
+#. type: Bullet: '1. '
+msgid ""
+"In the *Settings* utility, choose **Keyboard&nbsp;▸ Keyboard "
+"Shortcuts&nbsp;▸ View and Customize Shortcuts**."
+msgstr ""
+
+#. type: Plain text
+msgid "To access the accessibility menu using the keyboard:"
+msgstr "Um das Barrierefreiheitsmenü über die Tastatur aufzurufen:"
+
+#. type: Bullet: '1. '
+msgid "Press **Ctrl+Alt+Tab** to move the keyboard focus to the top bar."
+msgstr ""
+"Betätigen Sie **Ctrl+Alt+Tab**, um die Tastaturauswahl in die obere "
+"Bildschirmleiste zu bewegen."
+
+#. type: Bullet: '1. '
+msgid "Use the arrow keys on the keyboard to select the accessibility menu."
+msgstr ""
+"Verwenden Sie die Pfeiltasten auf der Tastatur, um das Barrierefreiheitsmenü "
+"auszuwählen."
+
+#. type: Bullet: '1. '
+msgid "Press **Enter** to open the menu."
+msgstr "Drücken Sie **Enter**, um das Menü zu öffnen."
+
+#. type: Bullet: '1. '
+msgid "Use the up and down arrow keys to select items in the menu."
+msgstr ""
+"Benutzen Sie die Auf- und Ab-Pfeiltasten, um die Einträge des Menüs "
+"auszwählen."
+
+#. type: Bullet: '1. '
+msgid "Press **Space** to toggle the selected item."
+msgstr "Drücken Sie die **Leertaste**, um die Einträge aus- und abzuwählen."
+
+#. type: Bullet: '1. '
+msgid "Press **Esc** to close the menu."
+msgstr "Drücken Sie **Esc**, um das Menü zu schließen."
+
+#. type: Plain text
+#, no-wrap
+msgid "<h1 id=\"reader\">Screen reader</h1>\n"
+msgstr "<h1 id=\"reader\">Bildschirmleser</h1>\n"
+
+#. type: Plain text
+#, no-wrap
+msgid ""
+"To hear screen elements spoken to you, turn on the **Screen Reader** from the\n"
+"accessibility menu ([[!img lib/accessibility.png alt=\"\"\n"
+"class=\"symbolic\" link=\"no\"]]).\n"
+msgstr "Um sich Bildschirm-Elemente vorlesen zu lassen, aktivieren Sie den **Bildschirmleser** im Barrierefreiheitsmenü ([[!img lib/accessibility.png alt=\"\" class=\"symbolic\" link=\"no\"]]).\n"
+
+#. type: Plain text
+#, fuzzy
+#| msgid ""
+#| "[GNOME Help: *Orca* Screen Reader](https://help.gnome.org/users/orca/"
+#| "stable/)"
+msgid "[GNOME Help: *Orca* Screen Reader](https://help.gnome.org/orca/)"
+msgstr ""
+"[GNOME-Hilfe: *Orca* Bildschirmleser](https://help.gnome.org/users/orca/"
+"stable/)"
+
+#. type: Plain text
+#, no-wrap
+msgid "<h1 id=\"keyboard\">Screen keyboard</h1>\n"
+msgstr "<h1 id=\"keyboard\">Bildschirmtastatur</h1>⬤\n"
+
+#. type: Plain text
+#, no-wrap
+msgid ""
+"If you prefer a pointing device over the keyboard, turn on the **Screen\n"
+"Keyboard** from the accessibility menu ([[!img lib/accessibility.png\n"
+"alt=\"\" class=\"symbolic\" link=\"no\"]]).\n"
+msgstr "Wenn Sie ein Zeigegerät anstelle der Tastatur bevorzugen, aktivieren Sie die **Bildschirmtastatur** im Barrierefreiheitsmenü ([[!img lib/accessibility.png alt=\"\" class=\"symbolic\" link=\"no\"]]).\n"
+
+#. type: Plain text
+#, no-wrap
+msgid "<div class=\"tip\">\n"
+msgstr "<div class=\"tip\">\n"
+
+#. type: Plain text
+#, no-wrap
+msgid ""
+"<p>You can also use the screen keyboard to protect against hardware keyloggers\n"
+"by avoiding to use the actual keyboard.</p>\n"
+msgstr "<p>Sie können die Bildschirmtastatur auch verwenden, um sich gegen Hardware-Keylogger zu schützen, indem Sie die tatsächliche Tastatur vermeiden.</p>\n"
+
+#. type: Plain text
+#, no-wrap
+msgid ""
+"<p>If a keylogger has been physically installed on the computer, your\n"
+"passwords, personal information, and other data typed on the keyboard could be\n"
+"stored and accessed by someone else, even if you are using Tails.</p>\n"
+msgstr "<p>Wenn ein Keylogger physisch auf dem Computer installiert wurde, könnten Ihre Passwörter, persönlichen Informationen und andere Daten, die auf der Tastatur eingegeben werden, gespeichert und von jemand anderem abgerufen werden, selbst wenn Sie Tails verwenden.</p>\n"
+
+#. type: Plain text
+#, no-wrap
+msgid ""
+"<p>For an example, see\n"
+"<a href=\"https://www.youtube.com/watch?v=6JJo8qCYE8M\">KeeLog: KeyGrabber\n"
+"forensic keylogger getting started</a>.</p>\n"
+msgstr ""
+"<p>Für ein Beispiel siehe\n"
+"<a href=\"https://www.youtube.com/watch?v=6JJo8qCYE8M\">KeeLog: KeyGrabber Forensischer Keylogger Einführung</a>.</p>\n"
+
+#. type: Plain text
+#, fuzzy, no-wrap
+#| msgid ""
+#| "<p>Keyloggers are more likely on public computers, in internet cafés or\n"
+#| "libraries, and on desktop computers, where a device is easier to hide.</p>\n"
+msgid ""
+"<p>Keyloggers are more likely on public computers, in Internet cafés or\n"
+"libraries, and on desktop computers, where a device is easier to hide.</p>\n"
+msgstr "<p>Keylogger sind wahrscheinlicher auf öffentlichen Computern, in Internetcafés oder Bibliotheken sowie auf Desktop-Computern, wo ein Gerät leichter versteckt werden kann.</p>\n"
+
+#. type: Plain text
+#, no-wrap
+msgid ""
+"<p>[[Reducing risks when using untrusted\n"
+"computers|doc/about/warnings/computer]]</p>\n"
+msgstr "<p>[[Risiken beim Verwenden von untrusted Computern reduzieren|doc/about/warnings/computer]]</p>\n"
+
+#. type: Plain text
+#, no-wrap
+msgid "</div>\n"
+msgstr "</div>\n"
+
+#. type: Plain text
+#, no-wrap
+msgid "<div class=\"bug\">\n"
+msgstr "<div class=\"bug\">\n"
+
+#. type: Plain text
+#, fuzzy, no-wrap
+#| msgid ""
+#| "<p>The screen keyboard doesn't work in <i>Kleopatra</i>, <i>Electrum</i>, and\n"
+#| "<i>KeePassXC</i>. ([[!tails_ticket 19695]])</p>\n"
+msgid ""
+"<p>The screen keyboard doesn't work in <i>Kleopatra</i> and <i>Electrum</i>.\n"
+"([[!tails_ticket 19695]])</p>\n"
+msgstr "<p>Die Bildschirmtastatur funktioniert nicht in <i>Kleopatra</i>, <i>Electrum</i> und <i>KeePassXC</i>. ([[!tails_ticket 19695]])</p>\n"
+
+#. type: Plain text
+#, no-wrap
+msgid ""
+"<p>Instead, you can use the screen keyboard in the <i>Text Editor</i> first,\n"
+"then cut and paste into one of these applications.</p>\n"
+msgstr "<p>Stattdessen können Sie die Bildschirmtastatur zuerst im <i>Texteditor</i> verwenden und dann den Text in eine dieser Anwendungen ausschneiden und einfügen.</p>\n"
+
+#, fuzzy, no-wrap
+#~| msgid ""
+#~| "<p>The screen keyboard doesn't work in a <i>Root Terminal</i>. ([[!tails_ticket\n"
+#~| "18061]])</p>\n"
+#~ msgid ""
+#~ "<p>The screen keyboard doesn't work in a <i>Root Console</i>. ([[!tails_ticket\n"
+#~ "18061]])</p>\n"
+#~ msgstr "<p>Die Bildschirmtastatur funktioniert nicht in einem <i>Root Terminal</i>. ([[!tails_ticket 18061]])</p>\n"
+
+#, no-wrap
+#~ msgid "<p class=\"command\">sudo -i</p>\n"
+#~ msgstr "<p class=\"command\">sudo -i</p>\n"
+
+#, no-wrap
+#~ msgid ""
+#~ "<p>Instead, open a <i>Terminal</i> and execute the following command to log in\n"
+#~ "as root:</p>\n"
+#~ msgstr "<p>Öffnen Sie stattdessen ein <i>Terminal</i> und führen Sie den folgenden Befehl aus, um sich als Root anzumelden:</p>\n"
+
+#~ msgid ""
+#~ "These technologies are documented in more details in [GNOME Help: "
+#~ "Accessibility](https://help.gnome.org/users/gnome-help/stable/a11y.html)."
+#~ msgstr ""
+#~ "Diese Technologien sind ausführlicher in [GNOME-Hilfe: Barrierefreiheit]"
+#~ "(https://help.gnome.org/users/gnome-help/stable/a11y.html) dokumentiert."
+
+#, no-wrap
+#~ msgid "Universal access menu"
+#~ msgstr "Barrierefreiheitsmenü"
+
+#~ msgid ""
+#~ "You can activate most of these technologies from the universal access "
+#~ "menu (the"
+#~ msgstr ""
+#~ "Sie können die meisten dieser Technologien über das Barrierefreiheitsmenü "
+#~ "(das Symbol"
+
+#, no-wrap
+#~ msgid "Keyboard shortcuts"
+#~ msgstr "Tastaturkürzel"
+
+#, no-wrap
+#~ msgid "Screen reader"
+#~ msgstr "Bildschirmleser"
+
+#, no-wrap
+#~ msgid ""
+#~ "To hear screen elements spoken to you, you can activate the\n"
+#~ "**Screen Reader** accessibility feature.\n"
+#~ msgstr ""
+#~ "Um Bildschirmelemente vorgelesen zu bekommen, verwenden Sie die Barrierefreiheitsfunktion <span\n"
+#~ "class=\"guilabel\">Bildschirmleser</span>.\n"
+
+#, no-wrap
+#~ msgid ""
+#~ "For more detailed documentation refer to the official [<span\n"
+#~ "class=\"application\">Orca</span> Screen Reader\n"
+#~ "documentation](https://help.gnome.org/users/orca/stable/).\n"
+#~ msgstr ""
+#~ "Für eine ausführlichere Beschreibung lesen Sie bitte die offizielle [Dokumentation des <span\n"
+#~ "class=\"application\">Orca</span> Bildschirmlesers](https://help.gnome.org/users/orca/stable/index.html.de).\n"
+
+#, no-wrap
+#~ msgid "<p>The screen reader takes around 10 seconds to start.</p>\n"
+#~ msgstr "<p>Der Bildschirmleser braucht etwa 10 Sekunden, um zu starten.</p>\n"
+
+#, no-wrap
+#~ msgid ""
+#~ "<p>The screen reader does not work with the <span class=\"application\">Unsafe\n"
+#~ "Browser</span>.</p>\n"
+#~ msgstr ""
+#~ "<p>Der Bildschirmleser funktioniert nicht mit dem\n"
+#~ "*Unsicheren Browser*.</p>\n"
+
+#, no-wrap
+#~ msgid "Screen keyboard"
+#~ msgstr "Bildschirmtastatur"
+
+#, no-wrap
+#~ msgid ""
+#~ "If you prefer a pointing device over the keyboard, you can activate the\n"
+#~ "**Screen Keyboard** accessibility feature.\n"
+#~ msgstr ""
+#~ "Falls Sie anstelle einer Tastatur ein Zeigegerät bevorzugen, verwenden Sie die Barrierefreiheitsfunktion <span\n"
+#~ "class=\"guilabel\">Bildschirmtastatur</span>.\n"
+
+#, no-wrap
+#~ msgid ""
+#~ "For more detailed documentation refer to the official\n"
+#~ "[*GNOME* Screen Keyboard documentation](https://help.gnome.org/users/gnome-help/stable/keyboard-osk.html.en).\n"
+#~ msgstr ""
+#~ "Für eine ausführlichere Beschreibung lesen Sie bitte die offizielle [Dokumentation der <span\n"
+#~ "class=\"application\">GNOME</span> Bildschirmtastatur](https://help.gnome.org/users/gnome-help/stable/keyboard-osk.html.de).\n"
+
+#, no-wrap
+#~ msgid "*Dasher* graphical text entry application"
+#~ msgstr "Die Anwendung *Dasher* für graphische Texteingabe"
+
+#, no-wrap
+#~ msgid ""
+#~ "If you are operating a computer one-handed (by joystick, touchscreen,\n"
+#~ "or mouse) or zero-handed (by head-mouse or eyetracker), you can use the <span\n"
+#~ "class=\"application\">[Dasher](http://www.inference.phy.cam.ac.uk/dasher/)</span> graphical predictive text\n"
+#~ "entry application.\n"
+#~ msgstr ""
+#~ "Falls Sie den Computer einhändig bedienen (mittels Joystick, Touchscreen\n"
+#~ "oder Maus) oder ohne Hände (mittels Kopf-gesteuerter Maus oder Eyetracker), können Sie die Anwendung <span\n"
+#~ "class=\"application\">[Dasher](http://www.inference.phy.cam.ac.uk/dasher/deutsch/)</span> für graphische,\n"
+#~ "vorausberechnende Texteingabe verwenden.\n"
+
+#, fuzzy, no-wrap
+#~| msgid ""
+#~| "*Dasher* is available from\n"
+#~| "<span class=\"menuchoice\">\n"
+#~| "  **Applications**&nbsp;▸\n"
+#~| "  **Universal Access**&nbsp;▸\n"
+#~| "  **Dasher**</span>.\n"
+#~ msgid ""
+#~ "*Dasher* is available from\n"
+#~ "<span class=\"menuchoice\">\n"
+#~ "  **Applications**&nbsp;▸\n"
+#~ "  **Universal Access**&nbsp;▸\n"
+#~ "  **Dasher**</span>.\n"
+#~ msgstr ""
+#~ "*Dasher* finden Sie unter\n"
+#~ "<span class=\"menuchoice\">\n"
+#~ "  **Anwendungen**&nbsp;▸\n"
+#~ "  **Barrierefreiheit**&nbsp;▸\n"
+#~ "  **Dasher**</span>.\n"
+
+#~ msgid "*Florence* virtual keyboard\n"
+#~ msgstr "Die Bildschirmtastatur *Florence*\n"
+
+#~ msgid ""
+#~ "If you prefer a pointing device over the keyboard, you can open the\n"
+#~ "[[*Florence* virtual\n"
+#~ "keyboard|first_steps/"
+#~ "introduction_to_gnome_and_the_tails_desktop#florence]] from the top bar:\n"
+#~ msgstr ""
+#~ "Falls Sie anstelle einer Tastatur ein Zeigegerät bevorzugen, können Sie "
+#~ "die\n"
+#~ "[[Bildschirmtastatur *Florence*\n"
+#~ "|first_steps/introduction_to_gnome_and_the_tails_desktop#florence]] aus "
+#~ "der oberen Leiste heraus öffnen:\n"
+
+#~ msgid ""
+#~ "[[!img doc/first_steps/introduction_to_gnome_and_the_tails_desktop/"
+#~ "florence.png alt=\"Florence icon in the top bar\" link=\"no\"]]\n"
+#~ msgstr ""
+#~ "[[!img doc/first_steps/introduction_to_gnome_and_the_tails_desktop/"
+#~ "florence.png alt=\"Symbol von Florence in der oberen Leiste\" "
+#~ "link=\"no\"]]\n"

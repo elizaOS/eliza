@@ -1,0 +1,26 @@
+[[!meta date="Mon, 22 Sep 2014 00:00:00 +0000"]]
+[[!meta title="Numerous security holes in Tails 1.1.1"]]
+[[!pagetemplate template="news.tmpl"]]
+
+[[!tag security/fixed]]
+
+Several security holes that affect Tails 1.1.1 are now fixed in Tails 1.1.2.
+
+We **strongly** encourage you to [[upgrade to Tails
+1.1.2|news/version_1.1.2]] as soon as possible.
+
+Details
+=======
+
+ - Iceweasel and its bundled NSS: [[!mfsa 2014-73]]
+ - file: [[!debsa2014 3021]] (CVE-2014-0207,
+   CVE-2014-0237, CVE-2014-0238, CVE-2014-3478, CVE-2014-3479,
+   CVE-2014-3480, CVE-2014-3487, CVE-2014-3538 and CVE-2014-3587)
+ - curl: [[!debsa2014 3022]] (CVE-2014-3613 and CVE-2014-3620)
+ - gnupg: [[!debsa2014 3024]] (CVE-2014-5270)
+ - apt: [[!debsa2014 3025]], [[!debsa2014 3031]] (CVE-2014-0487,
+   CVE-2014-0488, CVE-2014-0489, CVE-2014-0490, and CVE-2014-6273)
+ - dbus: [[!debsa2014 3026]] (CVE-2014-3635, CVE-2014-3636,
+   CVE-2014-3637, CVE-2014-3638 and CVE-2014-3639)
+ - libav: [[!debsa2014 3027]] (CVE-2013-7020)
+ - bash: [[!debsa2014 3032]] (CVE-2014-6271)

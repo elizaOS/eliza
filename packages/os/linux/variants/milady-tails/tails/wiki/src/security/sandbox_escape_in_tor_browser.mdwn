@@ -1,0 +1,17 @@
+[[!meta date="Thu, 20 Jun 2019 12:34:57 +0200"]]
+[[!meta title="Critical security vulnerability in Tails 3.14.1"]]
+[[!pagetemplate template="news.tmpl"]]
+
+[[!tag security/fixed]]
+
+<div class="caution">
+
+<p>Tor Browser in Tails 3.14.1 and earlier is unsafe to use in most cases.</p>
+
+
+<p>We <b>strongly</b> encourage you to
+[[upgrade to Tails 3.14.2|news/version_3.14.2]] as soon as possible.</p>
+
+</div>
+
+[[!inline pages="news/version_3.14.1/sandbox_escape.inline" raw="yes" sort="age"]]

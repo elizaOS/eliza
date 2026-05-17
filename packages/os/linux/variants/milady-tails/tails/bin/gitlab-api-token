@@ -1,0 +1,8 @@
+#!/usr/bin/python3
+
+from gitlab.config import GitlabConfigParser
+import sys
+
+gitlab_id = sys.argv[1]
+
+print(GitlabConfigParser(gitlab_id=gitlab_id).private_token)

@@ -1,0 +1,20 @@
+[[!meta date="Thu, 08 Nov 2012 00:00:00 +0000"]]
+[[!meta title="Numerous security holes in Tails 0.13"]]
+[[!pagetemplate template="news.tmpl"]]
+
+[[!tag security/fixed]]
+
+Several security holes affect Tails 0.13.
+
+We **strongly** urge you to [[upgrade to Tails 0.14|news/version_0.14]]
+as soon as possible in case you are still using an older version.
+
+Details
+=======
+
+ - iceweasel ([[!debsa2012 2565]], [[!debsa2012 2553]])
+ - openoffice.org ([[!debsa2012 2570]])
+ - tiff ([[!debsa2012 2561]], [[!debsa2012 2552]])
+ - libexif ([[!debsa2012 2559]])
+ - libxslt ([[!debsa2012 2555]])
+ - libproxy ([[!debsa2012 2571]])

@@ -1,0 +1,45 @@
+[[!meta date="Mon, 05 Mar 2012 01:23:45 +0000"]]
+[[!pagetemplate template="news.tmpl"]]
+[[!meta title="Tails 0.10.2 is out"]]
+[[!tag announce]]
+
+The Amnesic Incognito Live System, version 0.10.2, is out.
+
+This is a bugfix-only release mainly aimed at fixing serious bugs and
+security issues.
+
+All users must upgrade as soon as possible.
+
+[[!toc levels=1]]
+
+# Changes
+
+Notable user-visible changes include:
+
+* Iceweasel
+  - Update to 10.0.2-1.
+  - Fix FoxyProxy configuration so not all urls containing "i2p" are
+    sent through I2P.
+  - Fix the JavaScript toggles in the local copy of the documentation.
+
+* Software
+  - Upgrade I2P to 0.8.13.
+
+* Hardware support
+  - Upgrade Linux kernel to 3.2.7-1.
+  - Install firmware-libertas.
+    This adds support for wireless network cards with Marvell Libertas
+    8xxx chips supported by the libertas_cs, libertas_sdio, libertas_spi,
+    libertas_tf_usb, mwl8k and usb8xxx drivers.
+
+* Miscellaneous
+  - Grant the default user full access to automounted VirtualBox
+    shared folders.
+
+See the online
+Changelog
+for technical details.
+
+# I want to try it / to upgrade!
+
+See the Getting started page.

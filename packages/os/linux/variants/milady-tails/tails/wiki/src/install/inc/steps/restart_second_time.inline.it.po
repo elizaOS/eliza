@@ -1,0 +1,129 @@
+# SOME DESCRIPTIVE TITLE
+# Copyright (C) YEAR Free Software Foundation, Inc.
+# This file is distributed under the same license as the PACKAGE package.
+# FIRST AUTHOR <EMAIL@ADDRESS>, YEAR.
+#
+msgid ""
+msgstr ""
+"Project-Id-Version: PACKAGE VERSION\n"
+"Report-Msgid-Bugs-To: tails-l10n@boum.org\n"
+"POT-Creation-Date: 2026-03-09 12:03+0000\n"
+"PO-Revision-Date: 2025-12-06 23:29+0000\n"
+"Last-Translator: la_r_go* <largo@tracciabi.li>\n"
+"Language-Team: ita <transitails@inventati.org>\n"
+"Language: it\n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+"Plural-Forms: nplurals=2; plural=n != 1;\n"
+"X-Generator: Weblate 5.13.2\n"
+
+#. type: Plain text
+#, no-wrap
+msgid "[[!meta robots=\"noindex\"]]\n"
+msgstr "[[!meta robots=\"noindex\"]]\n"
+
+#. type: Plain text
+#, no-wrap
+msgid "<h1 id=\"restart-new\" class=\"step\">Restart on your new Tails</h1>\n"
+msgstr "<h1 id=\"restart-new\" class=\"step\">Riavvia sul tuo nuovo Tails</h1>\n"
+
+#. type: Plain text
+#, no-wrap
+msgid "<div class=\"step-image\">[[!img install/inc/infography/restart-on-new-tails.png link=\"no\" alt=\"\"]]</div>\n"
+msgstr "<div class=\"step-image\">[[!img install/inc/infography/restart-on-new-tails.png link=\"no\" alt=\"\"]]</div>\n"
+
+#. type: Bullet: '1. '
+msgid "Shut down the computer."
+msgstr "Spegni il computer."
+
+#. type: Bullet: '1. '
+msgid "Unplug the other USB stick and leave the new USB stick plugged in."
+msgstr ""
+"Disinserisci l'altra chiavetta USB e lascia inserita la nuova chiavetta USB."
+
+#. type: Bullet: '1. '
+msgid "Switch on the computer and start on your new Tails USB stick."
+msgstr "Accendi il computer e avvia la chiavetta USB con il nuovo Tails."
+
+#. type: Bullet: '1. '
+msgid "The Boot Loader appears and Tails starts automatically after 4 seconds."
+msgstr "Appare il Boot Loader e Tails si avvia automaticamente dopo 4 secondi."
+
+#. type: Bullet: '1. '
+msgid "After 30&ndash;60 seconds, the Welcome Screen appears."
+msgstr "Dopo 30&ndash;60 secondi, apparirà la Schermata di Benvenuto."
+
+#. type: Plain text
+#, no-wrap
+msgid "   <div class=\"bug\">\n"
+msgstr "   <div class=\"bug\">\n"
+
+#. type: Plain text
+#, no-wrap
+msgid ""
+"   <p>If the following message about partitioning errors appears in the Welcome\n"
+"   Screen, please start again from step 4: <a href=\"#install\">Install Tails by\n"
+"   cloning</a>.</p>\n"
+msgstr ""
+"   <p>Se nella Schermata di Benvenuto viene visualizzato il seguente messaggio\n"
+"      relativo agli errori di partizionamento ricomincia dal punto 4: <a href=\"#install\">installa Tails per\n"
+"      clonazione</a>.</p>\n"
+
+#. type: Plain text
+#, no-wrap
+msgid "   <p class=\"code\">Errors were detected in the partitioning of your Tails USB stick.</p>\n"
+msgstr "   <p class=\"code\">Sono stati riscontrati errori durante il partizionamento della tua chiavetta USB.</p>\n"
+
+#. type: Plain text
+#, fuzzy, no-wrap
+#| msgid "   <p>If the error persists, reinstall on a new USB stick.</p>\n"
+msgid ""
+"   <p>If the error persists, reinstall Tails on one of our [[recommended USB\n"
+"   sticks|doc/about/requirements]].</p>\n"
+msgstr "   <p>Se l'errore persiste, reinstalla su una nuova chiavetta USB.</p>\n"
+
+#. type: Plain text
+#, no-wrap
+msgid "   </div>\n"
+msgstr "   </div>\n"
+
+#. type: Bullet: '1. '
+msgid ""
+"In the Welcome Screen, select your language and keyboard layout in the "
+"<b>Language and Formats</b> section.  Click <b>Start Tails</b>."
+msgstr ""
+"Nella Schermata di Benvenuto, seleziona la tua lingua e il layout della "
+"tastiera nella sezione <b>Lingua e formati</b>    Clicca su <b>Avvia Tails</"
+"b>."
+
+#. type: Bullet: '1. '
+msgid "After 15&ndash;30 seconds, the Tails desktop appears."
+msgstr "Dopo 15&ndash;30 secondi, appare il desktop di Tails."
+
+#, no-wrap
+#~ msgid ""
+#~ "   <p>If you are in a place where counterfeit electronics are common, we\n"
+#~ "   recommend that you buy your USB stick from an international supermarket\n"
+#~ "   chain, which should have a more reliable supply chain.</p>\n"
+#~ msgstr ""
+#~ "   <p>Se ti trovi in un luogo in cui i prodotti elettronici contraffatti sono comuni, ti\n"
+#~ "      consigliamo di comprare la chiavetta USB in una catena di supermercati \n"
+#~ "      internazionale, che dovrebbe avere fornitori più affidabili.</p>\n"
+
+#~ msgid "Switch on the computer."
+#~ msgstr "Riaccendi il computer."
+
+#~ msgid ""
+#~ "   [[!inline pages=\"install/inc/steps/mac_startup_disks.inline\" "
+#~ "raw=\"yes\" sort=\"age\"]]\n"
+#~ msgstr ""
+#~ "   [[!inline pages=\"install/inc/steps/mac_startup_disks.inline.it\" "
+#~ "raw=\"yes\" sort=\"age\"]]\n"
+
+#~ msgid ""
+#~ "After 30&ndash;60 seconds, <span class=\"application\">Tails Greeter</"
+#~ "span> appears."
+#~ msgstr ""
+#~ "Dopo 30&ndash;60 secondi, <span class=\"application\">Tails Greeter</"
+#~ "span> appare."

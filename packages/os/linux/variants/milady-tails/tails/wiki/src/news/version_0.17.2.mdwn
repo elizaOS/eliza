@@ -1,0 +1,54 @@
+[[!meta date="Tue, 09 Apr 2013 11:23:45 +0000"]]
+[[!pagetemplate template="news.tmpl"]]
+[[!meta title="Tails 0.17.2 is out"]]
+[[!tag announce]]
+
+Tails, The Amnesic Incognito Live System, version 0.17.2, is out.
+
+All users must upgrade as soon as possible.
+
+[[!toc levels=1]]
+
+# Changes
+
+Notable user-visible changes include:
+
+* Iceweasel
+  - Upgrade to Iceweasel 17.0.5esr-0+tails2~bpo60+1.
+  - Stop displaying obsolete context menu entries ("Open Tor URL" and friends).
+
+* Hardware support
+  - Update Linux to 3.2.41-2.
+  - Temporarily drop the Rendition display driver.
+
+* Bugfixes
+  - Use more reliable OpenPGP keyservers.
+  - Keep udisks users (GNOME Disk Utility, tails-persistence-setup, etc.)
+    from resetting the system partition's attributes when manipulating the
+    partition table.
+
+* Minor improvements
+  - Disable NoScript's HTML5 media click-to-play for better user experience.
+
+* Localization
+  - Many updated and new translations all over the place.
+
+See the online
+Changelog
+for technical details.
+
+# I want to try it / to upgrade!
+
+See the Getting started page.
+
+As no software is ever perfect, we maintain a list of [[problems
+that affects the last release of Tails|support/known_issues]].
+
+# What's coming up?
+
+The next Tails release (0.18) is scheduled for May 16.
+
+
+Would you want to help? As explained in our [["how to contribute"
+documentation|contribute]], there are many ways **you** can contribute
+to Tails. If you want to help, come talk to us!

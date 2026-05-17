@@ -1,0 +1,17 @@
+[submodule "submodules/jenkins-tools"]
+	path = submodules/jenkins-tools
+	url = https://gitlab.tails.boum.org/tails/jenkins-tools.git
+[submodule "submodules/chutney"]
+	path = submodules/chutney
+	url = https://gitlab.tails.boum.org/tails/chutney.git
+	branch = feature/tails_test_suite
+[submodule "submodules/tails-workarounds"]
+	path = submodules/tails-workarounds
+	url = https://gitlab.tails.boum.org/tails/workarounds.git
+[submodule "submodules/torbrowser-launcher"]
+	path = submodules/torbrowser-launcher
+	url = https://gitlab.tails.boum.org/tails/torbrowser-launcher.git
+[submodule "submodules/live-build"]
+	path = submodules/live-build
+	url = https://gitlab.tails.boum.org/tails/live-build.git
+	branch = tails/debian-old-2.0

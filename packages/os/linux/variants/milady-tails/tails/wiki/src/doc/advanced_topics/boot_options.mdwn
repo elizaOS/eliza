@@ -1,0 +1,145 @@
+[[!meta title="Modifying the boot options using the Boot Loader"]]
+
+The Boot Loader is the first screen that appears
+when Tails starts.
+
+You can use the Boot Loader to modify the *boot options*. Boot options are
+special parameters used to troubleshoot or work around hardware support problems.
+For example, our [[list of known issues with graphics cards|support/known_issues/graphics]]
+documents boot options for different graphics cards.
+
+Depending on the computer, the Boot Loader might be either *GRUB* or
+*SYSLINUX*.
+
+In both *GRUB* and *SYSLINUX*, the keyboard layout of the Boot Menu is set to
+English (US).
+
+[[!img english_us_keyboard.png alt=""]]
+
+[[!toc levels=1]]
+
+<a id="syslinux"></a>
+
+Using *SYSLINUX*
+================
+
+This is what *SYSLINUX* looks like:
+
+[[!img install/inc/screenshots/syslinux.png class="screenshot" alt="Black screen ('SYSLINUX') with Tails
+logo and 2 options: 'Tails' and 'Tails (Troubleshooting Mode)'."]]
+
+<div class="note">
+
+<p>If your Boot Loader looks different, refer to our instructions below on
+modifying the boot options [[using GRUB|boot_options#grub]].</p>
+
+</div>
+
+To modify the boot options in *SYSLINUX*:
+
+<!-- Keep in sync with install/inc/steps/restart_first_time.inline.mdwn. -->
+
+1. Press **Tab** when *SYSLINUX* appears.
+
+   A command line with a list
+   of boot options appears at the bottom of the screen.
+
+   [[!img syslinux-with-options.png class="screenshot" alt="SYSLINUX with
+   a list of options starting with '/live/vmlinuz' at the bottom"]]
+
+1. Modify the boot options as needed.
+
+   To add a boot option, press **Space** and type the boot option that you
+   want to add.
+
+   If you want to add more than one boot option, type them one after the
+   other and separate them with a **Space**.
+
+1. Press **Enter** to start Tails.
+
+<a id="grub"></a>
+
+Using *GRUB*
+============
+
+This is what *GRUB* looks like:
+
+[[!img install/inc/screenshots/grub.png class="screenshot" alt="Black screen ('GNU GRUB') with Tails
+logo and 3 options: 'Tails' and 'Tails (Troubleshooting Mode)' and 'Tails (External Hard Disk)'."]]
+
+<div class="note">
+
+<p>If your Boot Loader looks different, refer to our instructions on
+modifying the boot options [[using SYSLINUX|boot_options#syslinux]] above.</p>
+
+</div>
+
+To modify the boot options in *GRUB*:
+
+<!-- Keep in sync with install/inc/steps/restart_first_time.inline.mdwn. -->
+
+1. Press **e** when GRUB appears.
+
+   A new screen appears with more options.
+
+   [[!img grub-with-options.png class="screenshot" alt="GRUB with a list of
+   options starting with 'setparams Tails'"]]
+
+1. Modify the boot options as needed.
+
+   To add a boot option, navigate with the arrows of the keyboard to the end of the line that
+   starts with `linux`.
+   Type the boot option that you want to add. The line is most likely
+   wrapped and displayed on several lines but it is a single configuration line.
+
+   If you want to add more than one boot option, type them one after the
+   other and separate them with a **Space**.
+
+1. Press **Ctrl+X**, **F10**, or **Fn+F10** to start Tails.
+
+Modify the boot options on the USB stick
+========================================
+
+To use modified boot options automatically when restarting Tails, you can save
+these changes to your Tails USB stick.
+
+<div class="bug">
+
+<p>These modifications are deleted each time you upgrade Tails. ([[!tails_ticket 18268]])</p>
+
+</div>
+
+To do so:
+
+1. When starting Tails, [[set up an administration password|doc/first_steps/welcome_screen/administration_password]].
+
+1. Open a *Console*.
+
+1. Execute to following command to allow modifying the content of the Tails
+   partition on the USB stick.
+
+   <p class="command">sudo mount -o remount,rw /usr/lib/live/mount/medium/</p>
+
+1. Execute the following command to edit the configuration of the Boot Loader.
+
+   - If your computer uses *SYSLINUX*:
+
+     <p class="command">gnome-text-editor admin:/usr/lib/live/mount/medium/syslinux/live64.cfg</p>
+
+     The section `label live` corresponds to the default boot options.
+
+     The section `label livefailsafe` corresponds to the troubleshooting mode.
+
+   - If your computer uses *GRUB*:
+
+     <p class="command">gnome-text-editor admin:/usr/lib/live/mount/medium/EFI/debian/grub.cfg</p>
+
+     The section `menuentry 'Tails 6.11'` corresponds to the default boot
+     options.
+
+     The section `menuentry 'Tails 6.11 (Troubleshooting Mode)'` corresponds to
+     the troubleshoot mode.
+
+1. Save your changes.
+
+1. Restart to test your changes.

@@ -1,0 +1,53 @@
+#!/bin/bash
+
+# This script applies changes made to config/chroot_local-includes/ to
+# the root filesystem. It compares the current state of the git repo
+# with the commit which the Tails image was built from or the last
+# commit which this script was run with. Any removed files are removed
+# from the root filesystem, any added or modified files are bind mounted
+# to the root filesystem. It also applies any modified patches in
+# config/chroot_local-patches.
+#
+# For some changes this script also makes sure that the changes take
+# effect immediately. For example, it reloads the dconf database if any
+# dconf files were changed.
+
+set -eu -o pipefail
+shopt -s inherit_errexit
+
+# Enable xtrace with timestamp
+export PS4='+ $(date "+%H:%M:%S.%3N") '
+set -x
+
+if [ "${EUID}" -ne 0 ]; then
+  echo >&2 "This script must be run as root"
+  exit 1
+fi
+
+DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+
+# shellcheck source=lib.sh
+. "${DIR}/lib.sh"
+
+# Avoid that git fails due to dubious ownership
+git config --global --add safe.directory "${GIT_REPO}"
+
+# Figure out the commit which we use as the base which we compare HEAD to.
+if [ -z "${COMMIT:-}" ]; then
+  COMMIT=$(patch_base_ref)
+fi
+
+untracked_and_modified_files "${COMMIT}" "${INCLUDES_DIR}" | \
+  while IFS= read -r file; do
+    if [ -z "${file}" ]; then
+      continue
+    fi
+    bind_include "${file}"
+  done
+
+# Re-apply all modified patches
+reapply_patches "${COMMIT}" "${TARGET_ROOT}"
+
+update_patch_base_ref
+
+apply_changes "${COMMIT}"

@@ -1,0 +1,436 @@
+[[!meta title="Known issues"]]
+
+- To learn what you can do with Tails, refer to our [[documentation|doc]].
+
+- For more general questions about Tails, refer to our [[FAQ|support/faq]].
+
+- For issues with graphics cards, see our [[known issues with graphics cards|known_issues/graphics]].
+
+[[!toc levels=2]]
+
+<h1 id="not-at-all">Tails not starting at all</h1>
+
+<h2 id="mac-not-at-all">Mac</h2>
+
+This section lists known problems with specific hardware.
+
+Tails does not start at all on Mac models that use the Apple chips (M1, M2, and so on) and on
+many other Mac models.
+
+Apple does not prioritize collaborating with Free Software projects. Their
+newest hardware is usually very hard for Free Software developers to get
+working with Linux, and thus Tails. PC hardware tends to be more open and work
+better with Linux.
+
+<div class="tip">
+
+<p>See our instructions on [[starting Tails on Mac|doc/first_steps/start/mac]]
+for general troubleshooting tips.</p>
+
+<p>[[Let us know|support/talk]] if you discover a new issue or workaround.</p>
+
+</div>
+
+<h2 id="pc-not-at-all">PC</h2>
+
+This section lists known problems with specific hardware.
+
+<div class="tip">
+
+<p>See our instructions on [[starting Tails on PC|doc/first_steps/start/pc]]
+for general troubleshooting tips.</p>
+
+<p>[[Let us know|support/talk]] if you discover a new issue or workaround.</p>
+
+</div>
+
+<h3 id="dell-latitude-e5250">Dell Latitude E5250</h3>
+
+<!--
+Last updated: 2019-04-05
+-->
+
+Does not start on Tails USB sticks.
+
+<h3 id="dell-latitude-e6430">Dell Latitude E6430 and E6230</h3>
+
+<!--
+Last updated: 2018-06-14 (wb://7653aff4f415e996567233d8c088da08)
+-->
+
+Does not start on USB sticks.
+
+With BIOS versions A03 06/03/2012 (and A09, A11, and A12)
+
+Error message: `Invalid partition table!`
+
+Workaround (at least with BIOS versions A09, A11, and A12): just hit enter
+and it will continue with the boot.
+
+<h3 id="hp-notebook-BCM943142HM">HP Notebook BCM943142HM</h3>
+
+<!--
+Last updated: 2020-12-18
+-->
+
+Does not start Tails 4.13.
+
+<h3 id="system76-oryx-pro">System76 Oryx Pro</h3>
+
+<!--
+Last updated: 2019-05-02
+Specs: https://system76.com/laptops/oryx
+-->
+
+This machine does not start from a Tails USB stick: the Linux kernel
+included in at least Tails 3.11 to 3.13.1, inclusive, does not support
+the hardware USB controller.
+
+<h1 id="not-entirely">Tails not starting entirely</h1>
+
+<h2 id="mac-not-entirely">Mac</h2>
+
+This section lists known problems with specific hardware.
+
+<div class="tip">
+
+<p>See our instructions on [[starting Tails on Mac|doc/first_steps/start/mac#not-entirely]]
+for general troubleshooting tips.</p>
+
+<p>[[Let us know|support/talk]] if you discover a new issue or workaround.</p>
+
+</div>
+
+<!--
+Last updated:
+- MacBook Air Retina 2019: 2019-11-01
+- MacBook Pro 8,3: 2019-11-01
+-->
+
+### MacBook Air Retina 2018 and 2019
+
+To start Tails successfully, [[add the following boot option when
+starting Tails|doc/advanced_topics/boot_options]]:
+
+    modprobe.blacklist=thunderbolt
+
+Still, the trackpad and keyboard might not work. You can use an external
+mouse and keyboard.
+
+<h2 id="pc-not-entirely">PC</h2>
+
+This section lists known problems with specific hardware.
+
+<div class="tip">
+
+<p>See our instructions on [[starting Tails on PC|doc/first_steps/start/pc#not-entirely]]
+for general troubleshooting tips.</p>
+
+<p>[[Let us know|support/talk]] if you discover a new issue or workaround.</p>
+
+</div>
+
+<h3 id="lockup">"Soft lockup" error</h3>
+
+<!--
+Last updated: 2019-05-20
+-->
+
+On some laptops, Tails starts with the following error:
+
+<p class="code">soft lockup - CPU#<span class="command-placeholder">N</span> stuck for <span class="command-placeholder">N</span>s</p>
+
+To start Tails successfully, try to [[add the following boot option when starting
+Tails|doc/advanced_topics/boot_options]]:
+
+    acpi_rev_override=1
+
+<h3 id="microsoft-surface-laptop">Microsoft Surface Laptop 3 and 4</h3>
+
+<!--
+Last updated: 2022-09-12
+-->
+
+The keyboard and mouse do not work on this laptop.
+If you find a workaround, please let us know.
+
+<h2 id="sbat">Shim SBAT verification error</h2>
+
+This section applies if you get the following error message, either when
+starting Tails or when restarting your regular Linux operating system after
+starting Tails.
+
+<p class="code">
+Verifying shim SBAT data failed: Security Policy Violation<br>
+Something has gone seriously wrong: SBAT self-check failed: Security Policy Violation
+</p>
+
+- If you get this error message when starting Tails, then do a [[manual
+  upgrade|doc/upgrade#manual]] of your Tails USB to Tails 6.7 or later.
+
+- If you get this error message when starting your regular Linux operating
+  system, then it means that your Linux operating system is outdated.
+
+  1. Edit your UEFI settings to disable Secure Boot.
+
+     With Secure Boot disabled, your regular Linux operating system should
+     start again.
+
+     To learn how to edit the BIOS or UEFI settings, search for the user manual
+     of the computer on the support website of the manufacturer.
+
+  1. Update your regular Linux operating system.
+
+  1. Try to enable Secure Boot again in your UEFI settings.
+
+     If your regular Linux operating system still doesn't start, then disable
+     Secure Boot again. You can try to enable Secure Boot again in the future.
+
+     It might take several months for your Linux distribution to provide updates
+     before you can enable Secure Boot again.
+
+
+<h1 id="wifi">Networking issues</h1>
+
+<h2 id="problematic-wifi">Problematic Wi-Fi interfaces</h2>
+
+Check in this section
+if there is a workaround to get your Wi-Fi interface work in Tails.
+
+To know the model of your Wi-Fi interface:
+
+1. Open a *Console* and execute the following command.
+
+       lspci -v | grep "Network controller"
+
+<h3 id="88w8897">88W8897 [AVASTAR] 802.11ac Wireless</h3>
+
+<!--
+Last updated: 2018-09-19
+-->
+
+On some computers with a Marvell Avastar 88W8897 Wi-Fi adapter, such
+as some Microsoft Surface Pro models, Tails fails to connect to
+Wi-Fi networks.
+
+If you experience this problem, you can try to [[disable MAC address
+anonymization|doc/first_steps/welcome_screen/mac_spoofing]] that sometimes
+fixes it.
+
+<h3 id="rtl8723be">RTL8723BE PCIe Wireless Network Adapter</h3>
+
+<!--
+Last updated: 2017-12-24
+-->
+
+On some computers with a RTL8723be Wi-Fi adapter, Tails might fail to discover
+Wi-Fi networks, provide unreliable Wi-Fi connections, or have poor Wi-Fi
+performance.
+
+You can try to [[add the following boot options when starting
+Tails|doc/advanced_topics/boot_options]] until you find a
+combination that works for you. The exact combination of options that works
+depends on the computer:
+
+- <span class="command">rtl8723be.fwlps=0 rtl8723be.ips=0</span>
+
+- <span class="command">rtl8723be.ant_sel=1</span>
+
+- <span class="command">rtl8723be.ant_sel=2</span>
+
+- <span class="command">rtl8723be.ant_sel=1 rtl8723be.fwlps=0 rtl8723be.ips=0</span>
+
+- <span class="command">rtl8723be.ant_sel=2 rtl8723be.fwlps=0 rtl8723be.ips=0</span>
+
+<h3 id="broadcom-sta-dkms">Broadcom Wi-Fi network interface needing <code>broadcom-sta-dkms</code></h3>
+
+<!--
+Last updated: 2019-01-29
+-->
+
+Some Broadcom Wi-Fi interfaces require the
+[`wl`](https://wiki.debian.org/wl) driver, provided by the
+`broadcom-sta-dkms` Debian package, to work in Tails.
+
+The `wl` driver is not included in Tails because it is proprietary.
+
+Your device requires the `wl` driver if it is in the list of devices
+supported by the `broadcom-sta-dkms` package on the corresponding
+[Debian wiki page](https://wiki.debian.org/wl). If you find your device
+in the list of supported devices, then it is impossible to use your
+Wi-Fi card in Tails.
+
+<h3 id="broadcom-43602">Authentication issues with Broadcom 43602</h3>
+
+<!--
+Last updated: 2024-03-28
+-->
+
+The Broadcom 43602 Wi-Fi interface asks for the password of Wi-Fi networks in a
+loop when trying to connect.
+
+To fix this, try the following, if you have an iPhone:
+
+1. Start Tails.
+
+1. Set up a personal Wi-Fi hotspot from your iPhone with the **Maximize
+   Compatibility** option turned on.
+
+1. Connect to your personal Wi-Fi hotspot from Tails.
+
+1. Disconnect.
+
+1. Connect to any other Wi-Fi network.
+
+<h3 id="lenovo-legion-y530">Lenovo Legion Y530</h3>
+
+<!--
+Last updated: 2019-05-10
+-->
+
+Wi-Fi adapter does not work.
+
+To fix this issue, [[add the following boot option when
+starting Tails|doc/advanced_topics/boot_options]]:
+
+    modprobe.blacklist=ideapad_laptop
+
+<!--
+
+<h1 id="security-issues">Security issues</h1>
+
+Note: If we enable again this section in the future, we should link to
+it from /doc/anonymous_internet/Tor_Browser#fingerprint.
+
+<a id="fingerprint"></a>
+
+Browser fingerprint
+===================
+
+There are known differences between the fingerprints of
+*Tor Browser* inside and outside of Tails:
+
+For more detail, see our documentation about the [[fingerprint of *Tor Browser*
+in Tails|doc/anonymous_internet/Tor_Browser#fingerprint]].
+
+-->
+
+<h1 id="hardware">Other hardware issues</h1>
+
+<h2 id="touchpad-configurations">Touchpad configurations</h2>
+
+<h3 id="lenovo-ideapad-3-touchpad">Lenovo IdeaPad 3 Touchpad</h3>
+
+<!--
+Last updated: 2021-03-26
+-->
+
+This touchpad does not work by default. To fix this problem, [[add the
+following boot option when starting
+Tails|doc/advanced_topics/boot_options]]:
+
+    pci=nocrs
+
+<h2 id="lenovo-thinkpad-11e">Lenovo ThinkPad 11e</h2>
+
+<!--
+Last updated: 2018-03-22
+Specs: https://www.cnet.com/products/lenovo-thinkpad-11e/specs/
+-->
+
+Tails might be unstable and stop working regularly on some Lenovo
+ThinkPad 11e laptops, such as the 2015 model.
+
+To fix this problem, [[add the following boot option when
+starting Tails|doc/advanced_topics/boot_options]]:
+
+    intel_idle.max_cstate=1
+
+<h2 id="usb-gigabyte">USB devices are not working on some <a href="https://www.gigabyte.com/">GIGABYTE</a> motherboards</h2>
+
+<!--
+Last updated: 2019-06-02
+-->
+
+To workaround this issue, you can try to:
+
+- Use other USB ports. For example, use USB 2 ports instead of USB 3
+  ports and vice versa.
+
+- Enable these 3 options in the BIOS
+
+  - xHCI handoff
+  - EHCI handoff
+  - IOMMU controller
+
+- [[Add the following boot option when
+  starting Tails|doc/advanced_topics/boot_options]]:
+
+      amd_iommu=on iommu=pt
+
+- Disable IOMMU in the BIOS then enable it again.
+
+Some of these workarounds might disable some of the USB ports.
+
+<h2 id="graphics-corruption-tor-browser">Graphics corruption in Tor Browser and Thunderbird</h2>
+
+<!--
+Last updated: 2020-02-22
+-->
+
+On some computers, _Tor Browser_ and _Thunderbird_ are displayed incorrectly:
+
+- The application window is initially empty and white.
+
+- The icons and menus only appear when hovered by the mouse.
+
+- The contents of the window is only displayed in stripes when scrolling.
+
+To workaround this issue, [[add the following boot option when
+starting Tails|doc/advanced_topics/boot_options]]:
+
+    intel_iommu=off
+
+This problem affects at least the following computers:
+
+- MacBookPro11,5
+
+- Other MacBooks with a Radeon R9 graphics adapter
+
+<h2 id="acer-swift-3">Acer Swift 3</h3>
+
+<!--
+Last updated: 2020-05-30
+-->
+
+In order to allow Tails to use all available memory,
+start Tails from the *F2 EFI setup* firmware entry.
+
+<h2 id="dell-xps-15-7590-nvidia">Dell XPS 15 7590 with Nvidia graphics card</h3>
+
+<!--
+Last updated: 2023-07-07
+Debian bug: https://bugs.debian.org/1036530
+-->
+
+When using the Nvidia card of a Dell XPS 15 7590 laptop,
+the system may become unresponsive while using Tails.
+
+To fix this, start Tails with the following [[boot
+option|doc/advanced_topics/boot_options]]:
+
+    pcie_port_pm=off
+
+<h1 id="misc">Other issues</h1>
+
+<h2 id="video-memory">Tails does not erase video memory</h2>
+
+Tails doesn't erase the [[!wikipedia Video_random-access_memory desc="video memory"]].
+
+When you restart your computer after using Tails, it might briefly display the
+last screen that was displayed in Tails.
+
+If you shut down your computer instead of restarting it, the video memory will
+erase itself automatically after some time.
+
+See [[!tails_ticket 5356 desc="Erase video memory on shutdown"]].

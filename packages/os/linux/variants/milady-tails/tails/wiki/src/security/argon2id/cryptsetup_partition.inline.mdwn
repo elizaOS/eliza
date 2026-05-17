@@ -1,0 +1,45 @@
+[[!tag security/fixed]]
+
+   1. When starting Tails, [[set up an administration
+      password|doc/first_steps/welcome_screen/administration_password/]].
+
+   1. Choose **Apps&nbsp;▸ System Tools&nbsp;▸ Root Console**.
+
+   1. Execute the following command:
+
+          lsblk
+
+      The output is a list of the storage devices and partitions on the system.
+      For example:
+
+          NAME                   MAJ:MIN RM  SIZE RO TYPE  MOUNTPOINT
+          loop0                    7:0    0  1.2G  1 loop  /lib/live/mount/rootfs/filesystem.squashfs
+          sda                      8:0    1    7G  0 disk
+          ├─sda1                   8:1    1    4G  0 part  /lib/live/mount/medium
+          └─sda2                   8:2    1    3G  0 part
+            └─TailsData_unlocked 253:0    0    3G  0 crypt /run/nosymfollow/live/persistence/TailsData_un...
+          zram0                  254:0    0  2.8G  0 disk  [SWAP]
+
+   1. Plug in your encrypted volume. Keep the encryption locked.
+
+   1. Execute the same command again:
+
+          lsblk
+
+      Your encrypted volume appears as a new device with a list of partitions.
+      Check that the partition size corresponds to your encrypted volume.
+
+          NAME                   MAJ:MIN RM  SIZE RO TYPE  MOUNTPOINT
+          loop0                    7:0    0  1.2G  1 loop  /lib/live/mount/rootfs/filesystem.squashfs
+          sda                      8:0    1    7G  0 disk
+          ├─sda1                   8:1    1    4G  0 part  /lib/live/mount/medium
+          └─sda2                   8:2    1    3G  0 part
+            └─TailsData_unlocked 253:0    0    3G  0 crypt /run/nosymfollow/live/persistence/TailsData_un...
+          sdb                      8:0    1    7G  0 disk
+          └─sdb1                   8:2    1    7G  0 part
+          zram0                  254:0    0  2.8G  0 disk  [SWAP]
+
+   1. Take note of the *partition name* of your encrypted volume. In this
+      example, the new device in the list is <span class="code">sdb</span>
+      and the encrypted volume is in the partition
+      <span class="code">sdb1</span>. Yours might be different.

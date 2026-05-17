@@ -1,0 +1,69 @@
+[[!meta date="Tue, 02 Sep 2014 12:34:56 +0000"]]
+[[!pagetemplate template="news.tmpl"]]
+[[!meta title="Tails 1.1.1 is out"]]
+[[!tag announce]]
+
+Tails, The Amnesic Incognito Live System, version 1.1.1, is out.
+
+All users must [[upgrade|doc/upgrade]] as soon as possible: this release fixes
+[[numerous security issues|security/Numerous_security_holes_in_1.1]].
+
+[[!toc levels=1]]
+
+# Changes
+
+Notable user-visible changes include:
+
+  * Security fixes
+    - Upgrade the web browser to 24.8.0esr-0+tails1~bpo70+1
+      (Firefox 24.8.0esr + Iceweasel patches + Torbrowser patches).
+    - Add an I2P boot parameter. Without adding "i2p" to the kernel
+      command line, I2P will not be accessible for the Live user. I2P
+      was also upgraded to 0.9.14.1-1~deb7u+1, and stricter firewall
+      rules are applied to it, among other security enhancements.
+    - Upgrade Tor to 0.2.4.23-2~d70.wheezy+1 (fixes CVE-2014-5117).
+    - Upgrade Linux to 3.14.15-2 (fixes CVE-2014-3534, CVE-2014-4667
+      and CVE-2014-4943).
+    - Prevent dhclient from sending the hostname over the network
+      ([[!tails_ticket 7688]]).
+    - Override the hostname provided by the DHCP server ([[!tails_ticket 7769]]).
+
+  * Bugfixes
+    - Don't ship OpenJDK 6: I2P prefers v7, and we don't need both
+      ([[!tails_ticket 7807]]).
+    - Prevent Tails Installer from updating the system partition
+      properties on MBR partitions ([[!tails_ticket 7716]]).
+
+  * Minor improvements
+    - Upgrade to Torbutton 1.6.12.1.
+    - Install gnome-user-guide ([[!tails_ticket 7618]]).
+    - Install cups-pk-helper ([[!tails_ticket 7636]]).
+    - Update the SquashFS sort file, which should speed up boot from
+      DVD ([[!tails_ticket 6372]]).
+    - Compress the SquashFS more aggressively ([[!tails_ticket 7706]]) which
+      should make the Tails ISO image smaller.
+
+See the online
+Changelog
+for technical details.
+
+# Known issues
+
+[[Longstanding|support/known_issues]] known issues.
+
+# I want to try it or to upgrade!
+
+Go to the [[install]] page.
+
+As no software is ever perfect, we maintain a list of [[problems
+that affects the last release of Tails|support/known_issues]].
+
+# What's coming up?
+
+The next Tails release is [[scheduled|contribute/calendar]] for
+October 14.
+
+
+Do you want to help? There are many ways [[**you** can
+contribute to Tails|contribute]]. If you want to help, come talk
+to us!

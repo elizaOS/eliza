@@ -1,0 +1,245 @@
+# SOME DESCRIPTIVE TITLE
+# Copyright (C) YEAR Free Software Foundation, Inc.
+# This file is distributed under the same license as the PACKAGE package.
+# FIRST AUTHOR <EMAIL@ADDRESS>, YEAR.
+#
+msgid ""
+msgstr ""
+"Project-Id-Version: Tails\n"
+"Report-Msgid-Bugs-To: tails-l10n@boum.org\n"
+"POT-Creation-Date: 2026-03-31 22:07+0000\n"
+"PO-Revision-Date: 2026-04-01 22:22+0000\n"
+"Last-Translator: Chre <tor@renaudineau.org>\n"
+"Language-Team: Tails translators <tails@boum.org>\n"
+"Language: fr\n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+"Plural-Forms: nplurals=2; plural=n > 1;\n"
+"X-Generator: Weblate 5.13.2\n"
+
+#. type: Plain text
+#, no-wrap
+msgid "[[!meta title=\"GNOME Boxes\"]]\n"
+msgstr "[[!meta title=\"Machines de GNOME\"]]\n"
+
+#. type: Plain text
+msgid ""
+"[*GNOME Boxes*](https://apps.gnome.org/Boxes/) aims at providing a simple "
+"interface to create and use virtual machines for Linux with GNOME.  *GNOME "
+"Boxes* does not allow the use of a Persistent Storage."
+msgstr ""
+"[*Machines de GNOME*](https://apps.gnome.org/fr/Boxes/) vise à fournir une "
+"interface simple pour créer et utiliser des machines virtuelles pour Linux "
+"avec GNOME.  *Machines de GNOME* ne permet pas l'utilisation du stockage "
+"persistant."
+
+#. type: Plain text
+#, no-wrap
+msgid "[[!inline pages=\"doc/advanced_topics/virtualization.caution\" raw=\"yes\" sort=\"age\"]]\n"
+msgstr "[[!inline pages=\"doc/advanced_topics/virtualization.caution.fr\" raw=\"yes\" sort=\"age\"]]\n"
+
+#. type: Plain text
+#, no-wrap
+msgid "<div class=\"note\">\n"
+msgstr "<div class=\"note\">\n"
+
+#. type: Plain text
+#, no-wrap
+msgid "<p>The following instructions have been tested on Debian 13 (Trixie).</p>\n"
+msgstr ""
+"<p>Les instructions suivantes ont été testées avec Debian 13 (Trixie).</p>\n"
+
+#. type: Plain text
+#, no-wrap
+msgid "</div>\n"
+msgstr "</div>\n"
+
+#. type: Title =
+#, no-wrap
+msgid "Installation"
+msgstr "Installation"
+
+#. type: Plain text
+msgid ""
+"To install *GNOME Boxes* in Debian or Ubuntu, execute the following command:"
+msgstr ""
+"Pour installer *Machines de GNOME* dans Debian ou Ubuntu, exécuter la "
+"commande suivante :"
+
+#. type: Plain text
+#, no-wrap
+msgid "<p class=\"command\">sudo apt install gnome-boxes</p>\n"
+msgstr "<p class=\"command\">sudo apt install gnome-boxes</p>\n"
+
+#. type: Title =
+#, no-wrap
+msgid "Running Tails from an ISO image"
+msgstr "Utiliser Tails depuis une image ISO"
+
+#. type: Bullet: '  1. '
+msgid ""
+"[[Download Tails as an ISO image|install/download-iso]], instead of a USB "
+"image."
+msgstr ""
+"[[Téléchargez une image ISO de Tails|install/download-iso]], au lieu de "
+"l'image USB."
+
+#. type: Bullet: '  1. '
+msgid "Start *GNOME Boxes*."
+msgstr "Démarrez *Machines de GNOME*."
+
+#. type: Bullet: '  1. '
+msgid ""
+"Select the [[!img lib/list-add.png alt=\"New\" class=\"symbolic\" "
+"link=\"no\"]] button in the top-left corner."
+msgstr ""
+"Cliquez sur le bouton [[!img lib/list-add.png alt=\"Nouvelle\" "
+"class=\"symbolic\" link=\"no\"]] dans le coin en haut à gauche."
+
+#. type: Bullet: '  1. '
+msgid ""
+"In the menu **Create new virtual machine**, select **Install from File**."
+msgstr ""
+"Dans le menu **Créer une nouvelle machine virtuelle*, sélectionnez "
+"**Installation depuis un fichier**."
+
+#. type: Bullet: '  1. '
+msgid "Choose the ISO image that you want to start from."
+msgstr "Choisissez l'image ISO que vous voulez démarrer."
+
+#. type: Bullet: '  1. '
+msgid "In the **New Virtual Machine** dialog:"
+msgstr "Dans la fenêtre **Nouvelle machine virtuelle** :"
+
+#. type: Bullet: '     1. '
+msgid "In the field **Name**, enter a name of your choice."
+msgstr "Dans le champ **Nom**, entrez le nom de votre choix."
+
+#. type: Bullet: '     1. '
+msgid "In the field **Operating System**, enter **Debian 13**."
+msgstr "Dans le champ **Système d’exploitation**, entrez **Debian 13**."
+
+#. type: Bullet: '     1. '
+msgid "In the field **Memory**, enter at least 3.0 GB."
+msgstr "Dans le champ **Mémoire**, entrez au moins 3,0 Gio."
+
+#. type: Bullet: '  1. '
+msgid "Select the **Create** button."
+msgstr "Cliquez sur le bouton **Créer**."
+
+#~ msgid ""
+#~ "In the dialog **Create a Virtual Machine**, choose **Create virtual "
+#~ "machine from file** and browse for the ISO image that you want to start "
+#~ "from."
+#~ msgstr ""
+#~ "Dans la fenêtre **Créer une machine virtuelle**, choisissez **Créer une "
+#~ "machine virtuelle depuis un fichier** et naviguez jusqu'à l'image ISO "
+#~ "depuis laquelle vous voulez démarrer."
+
+#~ msgid ""
+#~ "In the **Preparing** dialog, click **Next** to accept the **Unknown OS** "
+#~ "template."
+#~ msgstr ""
+#~ "Dans la fenêtre **Préparation**, cliquez sur **Suivant** pour accepter le "
+#~ "modèle **Système d'exploitation inconnu**."
+
+#~ msgid ""
+#~ "In the **Review and Create** dialog, click on the **Create** button on "
+#~ "the top of the window."
+#~ msgstr ""
+#~ "Dans la fenêtre **Valider et créer**, cliquez sur le bouton **Créer** en "
+#~ "haut de la fenêtre."
+
+#~ msgid "Click on the **New** button on the top of the window."
+#~ msgstr "Cliquer sur le bouton **Nouvelle** en haut de la fenêtre."
+
+#, no-wrap
+#~ msgid "Shared clipboard"
+#~ msgstr "Presse-papier partagé"
+
+#, no-wrap
+#~ msgid "<div class=\"caution\">\n"
+#~ msgstr "<div class=\"caution\">\n"
+
+#, no-wrap
+#~ msgid ""
+#~ "<p>The shared clipboard of *GNOME Boxes*\n"
+#~ "is enabled by default. This can allow sensitive data to be copied by\n"
+#~ "mistake from the virtual machine onto the host operating system or vice\n"
+#~ "versa.</p>\n"
+#~ msgstr ""
+#~ "<p>Le presse-papier partagé de *Machines de GNOME*\n"
+#~ "est activé par défaut. Cela peut permettre la copie par erreur de données sensibles\n"
+#~ "depuis la machine virtuelle vers le système d'exploitation hôte et\n"
+#~ "inversement.</p>\n"
+
+#, no-wrap
+#~ msgid "<p>We recommend you to disable the shared clipboard.</p>\n"
+#~ msgstr "<p>Nous vous recommandons de désactiver le presse-papier partagé.</p>\n"
+
+#~ msgid "To disable the shared clipboard:"
+#~ msgstr "Pour désactiver le presse-papier partagé :"
+
+#, no-wrap
+#~ msgid ""
+#~ "  1. Choose\n"
+#~ "     <span class=\"menuchoice\">\n"
+#~ "       **[[!img lib/open-menu.png alt=\"Menu\" class=\"symbolic\" link=\"no\"]]**&nbsp;▸\n"
+#~ "       **Properties**</span>.\n"
+#~ msgstr ""
+#~ "  1. Choisir\n"
+#~ "     <span class=\"menuchoice\">\n"
+#~ "       **[[!img lib/open-menu.png alt=\"Menu\" class=\"symbolic\" link=\"no\"]]**&nbsp;▸\n"
+#~ "       **Propriétés**</span>.\n"
+
+#~ msgid "Deselect the **Share Clipboard** option."
+#~ msgstr ""
+#~ "Désélectionnez l'option <span class=\"guilabel\">Partager le presse-"
+#~ "papiers</span>."
+
+#~ msgid "Click on the"
+#~ msgstr "Cliquer sur le bouton"
+
+#~ msgid ""
+#~ "     [[!img preferences-system-symbolic.png alt=\"Preferences\" "
+#~ "class=symbolic link=no]]\n"
+#~ msgstr ""
+#~ "     [[!img preferences-system-symbolic.png alt=\"Préférences\" "
+#~ "class=symbolic link=no]]\n"
+
+#~ msgid ""
+#~ "     button on the top-right corner of the window.\n"
+#~ "  2. Select the **Display** screen in the left pane.\n"
+#~ "  3. Deactivate **Share clipboard** in the right pane.\n"
+#~ "  4. Click on the\n"
+#~ msgstr ""
+#~ "     en haut à droite de la fenêtre.\n"
+#~ "  2. Sélectionner l'écran **Affichage** dans la partie gauche.\n"
+#~ "  3. Désactiver **Presse-papier** dans la partie droite.\n"
+#~ "  4. Cliquer sur le bouton\n"
+
+#~ msgid ""
+#~ "     [[!img go-previous-symbolic.png alt=\"Previous\" class=symbolic "
+#~ "link=no]]\n"
+#~ msgstr ""
+#~ "     [[!img go-previous-symbolic.png alt=\"Précédent\" class=symbolic "
+#~ "link=no]]\n"
+
+#~ msgid "     button to go back to the display of the virtual machine.\n"
+#~ msgstr "     pour revenir à l’affichage de la machine virtuelle.\n"
+
+#~ msgid ""
+#~ "<p>In Debian Wheezy, Ubuntu 14.04, and earlier,\n"
+#~ "*GNOME Boxes* allocates only 512 MiB of\n"
+#~ "RAM to new virtual machines by default. This is too little to allow\n"
+#~ "Tails to run smoothly. We recommend you to reconfigure the virtual\n"
+#~ "machine and allocate at least 1 GiB of RAM.</p>\n"
+#~ msgstr ""
+#~ "<p>Dans Debian Wheezy, Ubuntu 14.04, et versions plus anciennes,\n"
+#~ "*GNOME Boxes* alloue seulement 512 MiB de\n"
+#~ "RAM à la nouvelle machine virtuelle par défaut. C'est trop peu pour "
+#~ "permettre à\n"
+#~ "Tails de fonctionner correctement. Nous vous recommandons de "
+#~ "reconfigurer\n"
+#~ "la machine virtuelle et d'allouer 1 GiB de RAM.</p>\n"

@@ -1,0 +1,48 @@
+#!/bin/sh
+
+set -eu
+
+# If this script is run as amnesia, re-run it as the
+# tails-persistent-storage user, which is allowed to connect to the tps
+# D-Bus service on the system bus. We use the `tails-persistent-storage`
+# user instead of root to avoid authentication to D-Bus as root, which
+# would allow accessing all kinds of privileged D-Bus services.
+#
+# Before elevating privileges, we store the current environment in a
+# file, so that we can pass it to the tps-frontend process below without
+# having to configure sudo to preserve the environment when elevating
+# and dropping privileges.
+#
+# See also the corresponding sudoers policies in
+# config/chroot_local-includes/etc/sudoers.d/zzz_tps.
+if [ "$(id -u)" = 1000 ]; then
+  ENVFILE=$(mktemp --suffix -env)
+  export ENVFILE
+  env --null >"${ENVFILE}"
+  exec sudo -u tails-persistent-storage "$0" "$@"
+fi
+
+# Explanation of the following command:
+#
+# 1. `/usr/local/lib/inherit-fd --dbus-system-bus` opens the D-Bus socket and
+#    authenticates to it as the tails-persistent-storage user.
+#
+# 2. `sudo --close-from=4 -u amnesia` drops privileges to the amnesia
+#    user and closes all file descriptors greater than 3, with 3 being
+#    the opened D-Bus socket. This way we should avoid inadvertently
+#    having the unprivileged tps-frontend process inherit any other file
+#    descriptors opened as a privileged user.
+#
+# 3. `/usr/local/lib/run-with-env` reads the environment from
+#    the file we created above and passes the allowed environment
+#    variables to the tps-frontend process (see
+#    config/chroot_local-includes/usr/lib/python3/dist-packages/tailslib/userenv.py
+#    for the list of allowed variables).
+#
+# 4. `/usr/local/lib/tps-frontend` starts the actual tps-frontend app.
+
+exec \
+  /usr/local/lib/inherit-fd --dbus-system-bus -- \
+  sudo --close-from=4 -u amnesia \
+  /usr/local/lib/run-with-env --env-file="${ENVFILE}" --delete -- \
+  /usr/local/lib/tps-frontend "$@"

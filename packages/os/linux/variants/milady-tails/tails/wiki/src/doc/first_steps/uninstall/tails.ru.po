@@ -1,0 +1,67 @@
+# SOME DESCRIPTIVE TITLE
+# Copyright (C) YEAR Free Software Foundation, Inc.
+# This file is distributed under the same license as the PACKAGE package.
+# FIRST AUTHOR <EMAIL@ADDRESS>, YEAR.
+#
+#, fuzzy
+msgid ""
+msgstr ""
+"Project-Id-Version: PACKAGE VERSION\n"
+"POT-Creation-Date: 2026-04-01 00:34+0000\n"
+"PO-Revision-Date: YEAR-MO-DA HO:MI+ZONE\n"
+"Last-Translator: FULL NAME <EMAIL@ADDRESS>\n"
+"Language-Team: LANGUAGE <LL@li.org>\n"
+"Language: \n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+
+#. type: Plain text
+#, markdown-text, no-wrap
+msgid "[[!meta title=\"Uninstalling Tails using Tails itself\"]]\n"
+msgstr ""
+
+#. type: Plain text
+#, markdown-text, no-wrap
+msgid ""
+"[[!inline pages=\"doc/first_steps/uninstall.intro\" raw=\"yes\" "
+"sort=\"age\"]]\n"
+msgstr ""
+
+#. type: Plain text
+#, markdown-text
+msgid ""
+"You can generally uninstall a Tails USB stick while running Tails from that "
+"same USB stick."
+msgstr ""
+
+#. type: Bullet: '1.  '
+#, markdown-text
+msgid "When starting Tails, add the `toram` boot option in the *Boot Loader*."
+msgstr ""
+
+#. type: Plain text
+#, markdown-text, no-wrap
+msgid ""
+"    See [[modifying the boot options using the *Boot "
+"Loader*|advanced_topics/boot_options]].\n"
+msgstr ""
+
+#. type: Bullet: '1.  '
+#, markdown-text
+msgid ""
+"If Tails starts as usual, follow the instructions to [[uninstall Tails using "
+"Linux|linux]]."
+msgstr ""
+
+#. type: Plain text
+#, markdown-text, no-wrap
+msgid ""
+"    If the system fails to start, the computer might not have enough memory "
+"to\n"
+"    use the `toram` boot option. Try with another computer, uninstall "
+"using\n"
+"    [[another operating system|uninstall]], or uninstall while running "
+"Tails\n"
+"    from another USB stick.\n"
+msgstr ""

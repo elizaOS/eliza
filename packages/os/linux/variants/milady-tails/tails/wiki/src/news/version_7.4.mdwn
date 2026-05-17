@@ -1,0 +1,82 @@
+[[!meta title="Tails 7.4"]]
+[[!meta date="Thu, 15 Jan 2026 00:00:00 +0000"]]
+[[!pagetemplate template="news.tmpl"]]
+[[!tag announce]]
+
+<h1 id="features">New feature</h1>
+
+## Persistent language and keyboard layout
+
+You can now save your language and keyboard layout from the *Welcome
+Screen* to the USB stick. These settings will be applied automatically when
+restarting Tails.
+
+If you turn on this option, your language and keyboard layout are saved
+unencrypted on the USB stick to help you type the passphrase of your Persistent
+Storage more easily.
+
+[[!img version_7.4/persistent_language.png class="screenshot" alt=""]]
+
+<h1 id="changes">Changes and updates</h1>
+
+- Update *Tor Browser* to [15.0.4](https://blog.torproject.org/new-release-tor-browser-1504/).
+
+- Update *Thunderbird* to [140.6.0](https://www.thunderbird.net/en-US/thunderbird/140.6.0esr/releasenotes/).
+
+- Update the *Linux* kernel to 6.12.63.
+
+- Drop support for BitTorrent download.
+
+  With the ongoing transition from BitTorrent v1 to v2, the BitTorrent v1 files
+  that we provided until now can become a security concern. We don't think that
+  updating to BitTorrent v2 is [[!tails_ticket 19275 desc="worth the extra
+  migration and maintenance cost"]] for our team.
+
+  Direct download from one of our mirrors is usually faster.
+
+<h1 id="fixes">Fixed problems</h1>
+
+- Fix opening *.gpg* encrypted files in *Kleopatra* when double-clicking or
+  selecting *Open with Kleopatra* from the shortcut menu. ([[!tails_ticket
+  21281]])
+
+- Fix the desktop crashing when unlocking *VeraCrypt* volumes with a wrong
+  password. ([[!tails_ticket 21286]])
+
+- Use 24-hour time format consistently in the top navigation bar and the lock
+  screen. ([[!tails_ticket 21310]])
+
+For more details, read our [[!tails_gitweb debian/changelog desc="changelog"]].
+
+<h1 id="get">Get Tails 7.4</h1>
+
+## To upgrade your Tails USB stick and keep your Persistent Storage
+
+- Automatic upgrades are available from Tails 7.0 or later to 7.4.
+
+- If you cannot do an automatic upgrade or if Tails fails to start after an
+  automatic upgrade, please try to do a [[manual upgrade|doc/upgrade/#manual]].
+
+## To install Tails 7.4 on a new USB stick
+
+Follow our installation instructions:
+
+- [[Install from Windows|install/windows]]
+
+- [[Install from macOS|install/mac]]
+
+- [[Install from Linux|install/linux]]
+
+- [[Install from Debian or Ubuntu using the command line and GnuPG|install/expert]]
+
+<div class="caution"><p>The Persistent Storage on the USB stick will be lost if
+you install instead of upgrading.</p></div>
+
+## To download only
+
+If you don't need installation or upgrade instructions, you can download
+Tails 7.4 directly:
+
+- [[For USB sticks (USB image)|install/download]]
+
+- [[For DVDs and virtual machines (ISO image)|install/download-iso]]

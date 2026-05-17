@@ -1,0 +1,18 @@
+[[!meta date="Tue, 15 Mar 2016 01:02:03 +0000"]]
+[[!meta title="Numerous security holes in Tails 2.2"]]
+[[!pagetemplate template="news.tmpl"]]
+
+[[!tag security/fixed]]
+
+Several security holes that affect Tails 2.2 are now fixed in Tails 2.2.1.
+
+We **strongly** encourage you to [[upgrade to Tails 2.2.1|news/version_2.2.1]] as soon as possible.
+
+Details
+=======
+
+* Tor Browser: MFSA:s to be announced.
+* bind9: [[!debsa2016 3511]]
+* libotr: [[!debsa2016 3512]]
+* samba: [[!debsa2016 3514]]
+* graphite2: [[!debsa2016 3515]]

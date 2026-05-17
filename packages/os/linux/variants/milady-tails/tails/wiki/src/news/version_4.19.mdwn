@@ -1,0 +1,92 @@
+[[!meta title="Tails 4.19 is out"]]
+[[!meta date="Tue, 01 Jun 2021 12:34:56 +0000"]]
+[[!pagetemplate template="news.tmpl"]]
+[[!tag announce]]
+
+We worked very hard last week to get ready to release the work on the
+connection to Tor that we have been showing you in
+[[4.19~beta1|test_4.19-beta1]] and [[4.19~rc1|test_4.19-rc1]]. We made a lot of
+progress but didn't feel confident enough to release it today.
+
+So, we are releasing 4.19 as a regular upgrade and will release this work in
+4.20. We will publish an updated rc2 in the coming days with even more
+improvements on the connection to Tor.
+
+<h1 id="changes">Changes and updates</h1>
+
+- Stop pinning the TLS certificate of our website when doing automatic
+  upgrades.
+
+  We broke automatic upgrades twice recently; once in December in
+  [[4.14|news/version_4.15#broken-upgrades]] and again during a few days on
+  [[!tails_ticket 18324 desc="May 15"]]. These 2 times, it was the consequence
+  of a security feature: the pinning of the TLS certificate of our website when
+  doing automatic upgrades.
+
+  We removed this feature because the recent problems proved us that this
+  feature was not worth it if it makes us break automatic upgrades that often.
+  ([[!tails_ticket 18324]])
+
+  Our upgrades are still as strongly authenticated as they are signed using
+  OpenPGP by our team.
+
+- Add visual feedback when typing an administration password with <span
+  class="code">sudo</span> in a terminal:
+
+      amnesia@amnesia:~$ sudo -i
+      [sudo] password for amnesia: ******** 
+
+- Update *Tor Browser* to [10.0.17](https://blog.torproject.org/new-release-tor-browser-10017).
+
+- Update *Thunderbird* to [78.10.0](https://www.thunderbird.net/en-US/thunderbird/78.10.0/releasenotes/).
+
+For more details, read our [[!tails_gitweb debian/changelog desc="changelog"]].
+
+<h1 id="issues">Known issues</h1>
+
+<!--
+
+Copy the known issues from the previous version if they haven't been
+solved or move them to /support/known_issues if more appropriate.
+
+-->
+
+None specific to this release.
+
+See the list of [[long-standing issues|support/known_issues]].
+
+<h1 id="get">Get Tails 4.19</h1>
+
+## To upgrade your Tails USB stick and keep your Persistent Storage
+
+- Automatic upgrades are broken from Tails 4.14 and earlier. See the
+  <a href="#broken-upgrades">known issue above</a>.
+
+- Automatic upgrades are available from Tails 4.14 or later to 4.19.
+
+- If you cannot do an automatic upgrade or if Tails fails to start after an
+  automatic upgrade, please try to do a [[manual upgrade|doc/upgrade/#manual]].
+
+## To install Tails on a new USB stick
+
+Follow our installation instructions:
+
+  - [[Install from Windows|install/windows]]
+  - [[Install from macOS|install/mac]]
+  - [[Install from Linux|install/linux]]
+
+<div class="caution"><p>The Persistent Storage on the USB stick will be lost if
+you install instead of upgrading.</p></div>
+
+## To download only
+
+If you don't need installation or upgrade instructions, you can download
+Tails 4.19 directly:
+
+  - [[For USB sticks (USB image)|install/download]]
+  - [[For DVDs and virtual machines (ISO image)|install/download-iso]]
+
+<h1 id="next">What's coming up?</h1>
+
+Tails 4.20 is [[scheduled|contribute/calendar]] for July 13.
+

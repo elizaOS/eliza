@@ -1,0 +1,3 @@
+[[!meta title="Advanced topics"]]
+
+[[!inline pages="doc/advanced_topics.index" raw="yes" sort="age"]]

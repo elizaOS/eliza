@@ -1,0 +1,156 @@
+[[!meta title="Call for testing: 2.4~rc1"]]
+
+[[!meta date="Mon, 26 May 2016 18:00:00 +0000"]]
+[[!pagetemplate template="news.tmpl"]]
+
+[[!tag announce]]
+
+You can help Tails! The first release candidate for the upcoming version 2.4 is
+out. Please test it and report any issue. We are in particular interested in
+feedback and problems relating to:
+
+* Icedove's automatic configuration wizard. Using it to set up a new
+  account is (most of the time) as easy as entering your email address
+  (and password), and Icedove will configure your account for you.
+
+* Graphics-related regressions, e.g. if the graphical user interface
+  doesn't seem to start at all (i.e. you cannot reach Tails Greeter).
+
+[[!toc levels=1]]
+
+How to test Tails 2.4~rc1?
+==========================
+
+**Keep in mind that this is a test image.** We tested
+that it is not broken in obvious ways, but it might still contain
+undiscovered issues.
+
+But test wildly!
+
+If you find anything that is not working as it should, please [[report to
+us|doc/first_steps/whisperback]]! Bonus points if you first check if it is a
+<a href="#known_issues">known issue of this release</a> or a
+[[longstanding known issue|support/known_issues]].
+
+Download and install
+--------------------
+
+Tails 2.4~rc1 torrent
+
+Tails 2.4~rc1 ISO image
+
+To install 2.4~rc1, follow our usual [[installation instructions|install]],
+skipping the **Download and verify** step.
+
+Upgrade from 2.3
+------------------
+
+1. Start Tails 2.3 on a USB stick installed using *Tails Installer* and
+   [[set an administration password|doc/first_steps/welcome_screen/administration_password]].
+
+1. Run this command in a *Root Terminal*
+   to select the "alpha" upgrade channel
+   and start the upgrade:
+
+       echo TAILS_CHANNEL=\"alpha\" >> /etc/os-release && \
+            tails-upgrade-frontend-wrapper
+
+1. After the upgrade is installed, restart Tails and choose
+   **Applications&nbsp;▸ Tails&nbsp;▸ About Tails**
+   to verify that you are running Tails 2.4~rc1.
+
+What's new since 2.3?
+=======================
+
+Changes since Tails 2.3 are:
+
+  * Major new features and changes
+    - Upgrade Tor Browser to 6.0 based on Firefox 45.2. (Closes:
+      [[!tails_ticket 11403]]).
+    - Enable Icedove's automatic configuration wizard. We patch the
+      wizard to only use secure protocols when probing, and only
+      accept secure protocols, while keeping the improvements done by
+      TorBirdy in its own non-automatic configuration wizard. (Closes:
+      [[!tails_ticket 6158]], [[!tails_ticket 11204]])
+
+  * Bugfixes
+    - Enable Packetization Layer Path MTU Discovery for IPv4. If any
+      system on the path to the remote host has a MTU smaller than the
+      standard Ethernet one, then Tails will receive an ICMP packet
+      asking it to send smaller packets. Our firewall will drop such
+      ICMP packets to the floor, and then the TCP connection won't
+      work properly. This can happen to any TCP connection, but so far
+      it's been reported as breaking obfs4 for actual users. Thanks to
+      Yawning for the help! (Closes: [[!tails_ticket 9268]])
+    - Make Tails Upgrader ship other locales than English. (Closes:
+      [[!tails_ticket 10221]])
+
+  * Minor improvements
+    - Icedove improvements:
+      * Stop patching in our default into Torbirdy. We've upstreamed
+        some parts, and the rest we set with pref branch overrides in
+        /etc/xul-ext/torbirdy.js. (Closes: [[!tails_ticket 10905]])
+      * Use hkps keyserver in Engimail. (Closes: [[!tails_ticket 10906]])
+      * Default to POP if persistence is enabled, IMAP if
+        not. (Closes: [[!tails_ticket 10574]])
+      * Disable remote email account creation in Icedove. (Closes:
+        [[!tails_ticket 10464]])
+    - Firewall hardening (Closes: [[!tails_ticket 11391]]):
+      * Don't accept RELATED packets. This enables quite a lot of code
+        in the kernel that we don't need. Let's reduce the attack
+        surface a bit.
+      * Restrict debian-tor user to NEW TCP syn packets. It doesn't
+        need to do more, so let's do a little bit of security in
+        depth.
+      * Disable netfilter's nf_conntrack_helper.
+      * Fix disabling of automatic conntrack helper assignment.
+    - Kernel hardening:
+      * Set various kernel boot options: slab_nomerge slub_debug=FZ
+        mce=0 vsyscall=none. (Closes: [[!tails_ticket 11143]])
+      * Remove the kernel .map files. These are only useful for kernel
+        debugging and slightly make things easier for malware, perhaps
+        and otherwise just occupy disk space. Also stop exposing
+        kernel memory addresses through /proc etc. (Closes: [[!tails_ticket 10951]])
+    - Drop zenity hacks to "focus" the negative answer. Jessie's
+      zenity introduced the --default-cancel option, finally!
+      (Closes: [[!tails_ticket 11229]])
+    - Drop useless APT pinning for Linux.
+    - Remove gnome-tweak-tool. (Closes: [[!tails_ticket 11237]])
+    - Install python-dogtail, to enable accessibility technologies in
+      our automated test suite. (Part of: [[!tails_ticket 10721]])
+    - Install libdrm and mesa from jessie-backports. (Closes: [[!tails_ticket 11303]])
+    - Remove hledger. (Closes: [[!tails_ticket 11346]])
+    - Don't pre-configure the #tails chan on the default OFTC account.
+      (Part of: [[!tails_ticket 11306]])
+    - Install onioncircuits from jessie-backports. (Closes: [[!tails_ticket 11443]])
+    - Remove nmh. (Closes: [[!tails_ticket 10477]])
+    - Drop Debian experimental APT source: we don't use it.
+    - Use APT codenames (e.g. "stretch") instead of suites, to be
+      compatible with our tagged APT snapshots.
+    - Drop module-assistant hook and its cleanup. We've not been using
+      it since 2010.
+    - Remove 'Reboot' and 'Power Off' entries from Applications →
+      System Tools. (Closes: [[!tails_ticket 11075]])
+    - Pin our custom APT repo to the same level as Debian ones, and
+      explicitly pin higher the packages we want to pull from our custom
+      APT repo, when needed.
+    - config/chroot_local-hooks/59-libdvd-pkg: verify libdvdcss
+      package installation. (Closes: [[!tails_ticket 11420]])
+    - Make Tails Upgrader use our new mirror pool design. (Closes:
+      [[!tails_ticket 11123]])
+
+For more details, see also our changelog.
+
+<a id="known_issues"></a>
+
+# Known issues in 2.4~rc1
+
+* [[Longstanding known issues|support/known_issues]]
+
+* The new version of `mesa` ([[!tails_ticket 11303]]) improves the
+  situation on some hardware, but introduces regressions at least on:
+  - AMD HD 7770
+  - Nvidia GT 930M
+
+* Icedove's autoconfig wizard stalls when probing some domains
+  ([[!tails_ticket 11486]]) but not all.

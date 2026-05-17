@@ -1,0 +1,575 @@
+# SOME DESCRIPTIVE TITLE
+# Copyright (C) YEAR Free Software Foundation, Inc.
+# This file is distributed under the same license as the PACKAGE package.
+# FIRST AUTHOR <EMAIL@ADDRESS>, YEAR.
+#
+msgid ""
+msgstr ""
+"Project-Id-Version: PACKAGE VERSION\n"
+"Report-Msgid-Bugs-To: tails-l10n@boum.org\n"
+"POT-Creation-Date: 2025-11-12 12:16+0100\n"
+"PO-Revision-Date: 2024-11-02 13:28+0000\n"
+"Last-Translator: xin <xin@riseup.net>\n"
+"Language-Team: LANGUAGE <LL@li.org>\n"
+"Language: tr\n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+"Plural-Forms: nplurals=2; plural=n != 1;\n"
+"X-Generator: Weblate 5.3\n"
+
+#. type: Plain text
+#, no-wrap
+msgid "[[!meta title=\"Making a backup of your Persistent Storage\"]]\n"
+msgstr ""
+
+#. type: Plain text
+#, no-wrap
+msgid "<!-- XXX: These instructions should be kept in sync with recover.mdwn -->\n"
+msgstr ""
+
+#. type: Plain text
+#, no-wrap
+msgid "<div class=\"tip\">\n"
+msgstr "<div class=\"tip\">\n"
+
+#. type: Plain text
+#, no-wrap
+msgid ""
+"<p>If your Tails is broken and you are trying to recover your Persistent Storage,\n"
+"see [[recovering the Persistent Storage of a broken Tails|recover]] instead.</p>\n"
+msgstr ""
+
+#. type: Plain text
+#, no-wrap
+msgid "</div>\n"
+msgstr "</div>\n"
+
+#. type: Plain text
+#, fuzzy, no-wrap
+msgid "<h1 id=\"creating\">Creating a backup Tails USB stick using <i>Tails Cloner</i></h1>\n"
+msgstr "Erstellen Sie einen neuen USB-Stick\n"
+
+#. type: Plain text
+msgid ""
+"We recommend you to create another Tails to store your backup by cloning "
+"from your current Tails. This way, if your Tails is lost or damaged, you can "
+"replace it immediately with your backup Tails."
+msgstr ""
+
+#. type: Bullet: '1. '
+msgid "Start on the Tails USB stick that you want to back up and clone *from*."
+msgstr ""
+
+#. type: Bullet: '1. '
+msgid "When starting Tails, unlock your Persistent Storage."
+msgstr ""
+
+#. type: Bullet: '1. '
+#, fuzzy
+msgid ""
+"Plug in the new USB stick on which you want to create your backup Tails USB "
+"stick and clone *to*."
+msgstr ""
+"Schließen Sie den alten USB-Stick mit Tails an, von welchem Sie Ihre Daten "
+"sichern möchten."
+
+#. type: Bullet: '1. '
+msgid "Choose **Apps&nbsp;▸ Tails&nbsp;▸ Tails Cloner**."
+msgstr ""
+
+#. type: Bullet: '1. '
+msgid ""
+"Turn on the option **Clone the current Persistent Storage** below the option "
+"**Clone the current Tails**."
+msgstr ""
+
+#. type: Plain text
+#, no-wrap
+msgid "   [[!img clone.png class=\"screenshot\" alt=\"\"]]\n"
+msgstr ""
+
+#. type: Bullet: '1. '
+msgid ""
+"Make sure that the new USB stick is selected in the **Target USB stick** "
+"menu."
+msgstr ""
+
+#. type: Bullet: '1. '
+msgid "To start the cloning, click on the **Install** button."
+msgstr ""
+
+#. type: Bullet: '1. '
+msgid "Read the warning message in the confirmation dialog."
+msgstr ""
+
+#. type: Bullet: '1. '
+msgid ""
+"Enter a passphrase for the Persistent Storage on the new USB stick in the "
+"**Passphrase** text box."
+msgstr ""
+
+#. type: Bullet: '1. '
+msgid "Enter the same passphrase again in the **Confirm** text box."
+msgstr ""
+
+#. type: Bullet: '1. '
+msgid "Click **Continue**."
+msgstr ""
+
+#. type: Bullet: '1. '
+msgid "Click **Delete All Data and Install** to confirm."
+msgstr ""
+
+#. type: Plain text
+#, no-wrap
+msgid "   Cloning takes a few minutes.\n"
+msgstr ""
+
+#. type: Plain text
+#, no-wrap
+msgid "   <div class=\"bug\">\n"
+msgstr "   <div class=\"bug\">\n"
+
+#. type: Plain text
+#, no-wrap
+msgid ""
+"   <p>The progress bar usually freezes for some time\n"
+"   while synchronizing data on disk.</p>\n"
+msgstr ""
+
+#. type: Plain text
+#, fuzzy, no-wrap
+msgid "   </div>\n"
+msgstr "</div>\n"
+
+#. type: Plain text
+#, fuzzy, no-wrap
+msgid "<h1 id=\"updating\">Updating your backup Tails using the <i>Back Up Persistent Storage</i> utility</h1>\n"
+msgstr "Erstellen Sie einen neuen USB-Stick\n"
+
+#. type: Bullet: '1. '
+msgid "Start on your current Tails."
+msgstr ""
+
+#. type: Bullet: '1. '
+msgid "Plug in your backup Tails USB stick."
+msgstr ""
+
+#. type: Bullet: '1. '
+#, fuzzy
+msgid "Choose **Apps&nbsp;▸ System Tools&nbsp;▸ Back Up Persistent Storage**."
+msgstr ""
+"1. Wählen Sie in der Titelleiste\n"
+"   <span class=\"menuchoice\">\n"
+"     **[[!img lib/open-menu.png alt=\"Menü\" class=\"symbolic\" "
+"link=\"no\"]]**&nbsp;▸\n"
+"     **[[!img lib/tab-new.png alt=\"Neuer Tab\" class=\"symbolic\" "
+"link=\"no\"]]**\n"
+"   </span>\n"
+"   um einen neuen Reiter zu öffnen.\n"
+
+#. type: Plain text
+#, fuzzy, no-wrap
+msgid "   <div class=\"note\">\n"
+msgstr "<div class=\"note\">\n"
+
+#. type: Plain text
+#, no-wrap
+msgid ""
+"   <p>Each time you update your backup, only the files that have changed\n"
+"   are copied.</p>\n"
+msgstr ""
+
+#. type: Bullet: '1. '
+msgid ""
+"If your backup Tails has an outdated version of Tails, we recommend you "
+"upgrade it by cloning your current Tails using *Tails Cloner*.  For detailed "
+"instructions, see how to [[manually upgrade from another Tails|upgrade/"
+"clone#upgrade]]."
+msgstr ""
+
+#. type: Plain text
+#, fuzzy, no-wrap
+msgid "<h1 id=\"console\">Updating your backup Tails from a <i>Console</i></h1>\n"
+msgstr "Erstellen Sie einen neuen USB-Stick\n"
+
+#. type: Plain text
+#, fuzzy
+msgid "If you prefer updating your backup Tails from a *Console*:"
+msgstr "Erstellen Sie einen neuen USB-Stick\n"
+
+#. type: Bullet: '1. '
+#, fuzzy
+msgid ""
+"When starting Tails, [[set up an administration password|doc/first_steps/"
+"welcome_screen/administration_password]]."
+msgstr ""
+"Starten Sie Tails von dem neuen USB-Stick neu, aktivieren Sie den "
+"beständigen Speicherbereich und [[stellen Sie ein Administrationspasswort "
+"ein|startup_options/administration_password]]."
+
+#. type: Bullet: '1. '
+msgid ""
+"Choose **Apps&nbsp;▸ Accessories&nbsp;▸ Files** to open the *Files* browser."
+msgstr ""
+
+#. type: Plain text
+#, no-wrap
+msgid ""
+"   A new encrypted volume appears in the sidebar of the\n"
+"   *Files* browser. Click on it and enter the\n"
+"   passphrase of your backup Tails to unlock the volume.\n"
+msgstr ""
+
+#. type: Bullet: '1. '
+#, fuzzy
+msgid "Execute the following command in a *Console*."
+msgstr ""
+"Führen Sie folgenden Befehl im Terminal aus, um die Berechtigungen Ihrer "
+"persönlichen Dateien zu reparieren:"
+
+#. type: Plain text
+#, no-wrap
+msgid "   <p class=\"command\">sudo rsync -PaSHAXv --del /live/persistence/TailsData_unlocked/ /media/amnesia/TailsData</p>\n"
+msgstr ""
+
+#. type: Plain text
+#, no-wrap
+msgid ""
+"   When the command finishes, it displays a summary of the data that was\n"
+"   copied. For example:\n"
+msgstr ""
+
+#. type: Plain text
+#, fuzzy, no-wrap
+msgid ""
+"       sent 32.32M bytes  received 1.69K bytes  21.55M bytes/sec\n"
+"       total size is 32.30M  speedup is 1.00\n"
+msgstr ""
+"<pre>\n"
+"sent 32.32M bytes  received 1.69K bytes  21.55M bytes/sec\n"
+"total size is 32.30M  speedup is 1.00\n"
+"</pre>\n"
+
+#~ msgid "<div class=\"caution\">\n"
+#~ msgstr "<div class=\"caution\">\n"
+
+#, fuzzy
+#~ msgid "[[!meta title=\"Make a backup of your persistent volume\"]]\n"
+#~ msgstr ""
+#~ "[[!meta title=\"Beständige Daten händisch auf einen neuen USB-Stick "
+#~ "kopieren\"]]\n"
+
+#~ msgid ""
+#~ "These instructions explain how to manually copy your persistent data to a "
+#~ "new USB stick. Follow them if you have good reasons to think that your "
+#~ "persistence settings are corrupted or if you want to be extra careful."
+#~ msgstr ""
+#~ "Diese Anweisungen erklären, wie Sie Ihre beständig gespeicherten Daten "
+#~ "händisch auf einen neuen USB-Stick kopieren. Befolgen Sie diese, wenn Sie "
+#~ "gute Gründe dafür haben, zu glauben, dass Ihre Einstellungen für den "
+#~ "beständigen Speicherbereich beschädigt sind oder Sie besonders vorsichtig "
+#~ "sein möchten."
+
+#~ msgid ""
+#~ "Install the latest Tails onto a new USB stick using the usual "
+#~ "[[installing instructions|install]]. Do not use the Tails USB stick that "
+#~ "might be corrupted in the process of installing the new one."
+#~ msgstr ""
+#~ "Installieren Sie das aktuellste Tails auf einem neuen USB-Stick, indem "
+#~ "Sie die [[Installationsanleitung|install]] befolgen. Benutzen Sie beim "
+#~ "Vorgang der Installation auf einen neuen USB-Stick nicht den "
+#~ "möglicherweise beschädigten."
+
+#~ msgid ""
+#~ "[[Create a persistent volume|configure]] on this new USB stick. We advise "
+#~ "you to use a different passphrase to protect this new persistent volume."
+#~ msgstr ""
+#~ "[[Erstellen Sie einen neuen beständigen Speicherbereich|configure]] auf "
+#~ "diesem neuen USB-Stick. Wir empfehlen es Ihnen, eine andere Passphrase "
+#~ "zum Schutz dieses neuen beständigen Speicherbereichs zu wählen."
+
+#~ msgid ""
+#~ "Enable again on this new USB stick the persistence features of your "
+#~ "choice."
+#~ msgstr ""
+#~ "Aktivieren Sie auf dem neuen USB-Stick erneut die Funktionen Ihrer Wahl "
+#~ "für den beständigen Speicherbereich."
+
+#~ msgid "Rescue your files from the old Tails USB stick\n"
+#~ msgstr "Sichern Sie Ihre Dateien vom alten USB-Stick mit Tails\n"
+
+#~ msgid "Mount the old persistent volume\n"
+#~ msgstr "Hängen Sie den alten beständigen Speicherbereich ein\n"
+
+#~ msgid ""
+#~ "In the left pane, click on the USB stick corresponding to the old Tails "
+#~ "USB stick."
+#~ msgstr ""
+#~ "Wählen Sie im linken Fensterbereich den USB-Stick aus, welcher dem alten "
+#~ "USB-Stick mit Tails entspricht."
+
+#~ msgid ""
+#~ "In the right pane, click on the partition labeled as <span "
+#~ "class=\"guilabel\">LUKS</span>. The name of the partition must be <span "
+#~ "class=\"guilabel\">TailsData</span>."
+#~ msgstr ""
+#~ "Wählen Sie im rechten Fensterbereich die Partition mit dem Typ <span "
+#~ "class=\"guilabel\">LUKS</span> aus. Der Name der Partition muss <span "
+#~ "class=\"label\">TailsData</span> lauten."
+
+#~ msgid ""
+#~ "Click on the <span class=\"guimenu\">[[!img lib/unlock.png alt=\"Unlock\" "
+#~ "class=\"symbolic\" link=\"no\"]]</span> button to unlock the old "
+#~ "persistent volume.  Enter the passphrase of the old persistent volume and "
+#~ "click **Unlock**."
+#~ msgstr ""
+#~ "Klicken Sie auf die Schaltfläche <span class=\"guimenu\">[[!img lib/"
+#~ "unlock.png alt=\"Entsperren\" class=\"symbolic\" link=\"no\"]]</span>, um "
+#~ "den alten beständigen Speicherbereich zu entsperren. Geben Sie die "
+#~ "Passphrase des alten beständigen Speicherbereichs ein und klicken Sie auf "
+#~ "**Entsperren**."
+
+#~ msgid ""
+#~ "Click on the **TailsData** partition that appears below the **LUKS** "
+#~ "partition."
+#~ msgstr ""
+#~ "Wählen Sie die Partition **TailsData** aus, die unter der **LUKS**-"
+#~ "Partition erscheint."
+
+#~ msgid ""
+#~ "Click on the <span class=\"guimenu\">[[!img lib/media-playback-start.png "
+#~ "alt=\"Mount\" class=\"symbolic\" link=\"no\"]]</span> button. The old "
+#~ "persistent volume is now mounted as <span class=\"filename\">/media/"
+#~ "amnesia/TailsData</span>."
+#~ msgstr ""
+#~ "Klicken Sie auf die Schaltfläche <span class=\"guimenu\">[[!img lib/media-"
+#~ "playback-start.png alt=\"Einhängen\" class=\"symbolic\" link=\"no\"]]</"
+#~ "span>. Der alte beständige Speicherbereich ist nun unter <span "
+#~ "class=\"filename\">/media/amnesia/TailsData</span> eingehängt."
+
+#~ msgid "Copy your old files to the new persistent volume\n"
+#~ msgstr ""
+#~ "Kopieren Sie Ihre alten Dateien in den neuen beständigen Speicherbereich\n"
+
+#~ msgid ""
+#~ "Execute the <span class=\"code\">nautilus</span> command to open the file "
+#~ "browser with administration rights."
+#~ msgstr ""
+#~ "Führen Sie den Befehl <span class=\"code\">nautilus</span> aus, um den "
+#~ "Dateimanager mit Administrationsrechten zu öffnen."
+
+#~ msgid ""
+#~ "In the left pane, click on <span class=\"guilabel\">Other Locations</"
+#~ "span>."
+#~ msgstr ""
+#~ "Klicken Sie im linken Fensterbereich auf <span class=\"guilabel\">Andere "
+#~ "Orte</span>."
+
+#~ msgid ""
+#~ "In the right pane, navigate to <span class=\"guilabel\">Computer</"
+#~ "span>&nbsp;▸ **media**&nbsp;▸ <span class=\"guilabel\">amnesia</"
+#~ "span>&nbsp;▸ <span class=\"guilabel\">TailsData</span> to open the old "
+#~ "persistent volume."
+#~ msgstr ""
+#~ "Navigieren Sie im rechten Fensterbereich nach <span "
+#~ "class=\"guilabel\">Computer</span>&nbsp;▸ <span class=\"guilabel\">media</"
+#~ "span>&nbsp;▸ **amnesia**&nbsp;▸ <span class=\"guilabel\">TailsData</"
+#~ "span>, um den alten beständigen Speicherbereich zu öffnen."
+
+#~ msgid ""
+#~ "1. In the titlebar, choose\n"
+#~ "   <span class=\"menuchoice\">\n"
+#~ "     <span class=\"guimenu\">[[!img lib/open-menu.png alt=\"Menu\" "
+#~ "class=\"symbolic\" link=\"no\"]]</span>&nbsp;▸\n"
+#~ "     <span class=\"guimenuitem\">[[!img lib/tab-new.png alt=\"New tab\" "
+#~ "class=\"symbolic\" link=\"no\"]]</span>\n"
+#~ "   </span>\n"
+#~ "   to open a new tab.\n"
+#~ msgstr ""
+#~ "1. Wählen Sie in der Titelleiste\n"
+#~ "   <span class=\"menuchoice\">\n"
+#~ "     <span class=\"guimenu\">[[!img lib/open-menu.png alt=\"Menü\" "
+#~ "class=\"symbolic\" link=\"no\"]]</span>&nbsp;▸\n"
+#~ "     <span class=\"guimenuitem\">[[!img lib/tab-new.png alt=\"Neuer Tab\" "
+#~ "class=\"symbolic\" link=\"no\"]]</span>\n"
+#~ "   </span>\n"
+#~ "   um einen neuen Reiter zu öffnen.\n"
+
+#~ msgid ""
+#~ "In the right pane, navigate to <span class=\"guilabel\">Computer</"
+#~ "span>&nbsp;▸ **live**&nbsp;▸ <span class=\"guilabel\">persistence</"
+#~ "span>&nbsp;▸ <span class=\"guilabel\">TailsData_unlocked</span> to open "
+#~ "the new persistent volume."
+#~ msgstr ""
+#~ "Navigieren Sie in dem rechten Reiter nach <span "
+#~ "class=\"guilabel\">Computer</span>&nbsp;▸ <span class=\"guilabel\">live</"
+#~ "span>&nbsp;▸ **persistence**&nbsp;▸ <span "
+#~ "class=\"guilabel\">TailsData_unlocked</span>, um den neuen beständigen "
+#~ "Speicherbereich zu öffnen."
+
+#~ msgid ""
+#~ "To copy a folder containing persistent data from the old persistent "
+#~ "volume to the new one, drag and drop that folder from the <span "
+#~ "class=\"guilabel\">TailsData</span> onto the <span "
+#~ "class=\"guilabel\">TailsData_unlocked</span> tab."
+#~ msgstr ""
+#~ "Um einen Ordner, der beständig gespeicherte Daten enthält, vom alten "
+#~ "beständigen Speicherbereich in den neuen zu kopieren, ziehen Sie diesen "
+#~ "Ordner aus dem Reiter **TailsData** und lassen Sie ihn auf  dem Reiter "
+#~ "<span class=\"guilabel\">TailsData_unlocked</span> los."
+
+#~ msgid ""
+#~ "   When copying a folder, select the\n"
+#~ "   ** Apply this action to all files** option and\n"
+#~ "   click **Merge** to apply to all subfolders.\n"
+#~ "   Then you might have to select again the\n"
+#~ "   ** Apply this action to all files** option and\n"
+#~ "   click **Replace** to apply to all files.\n"
+#~ msgstr ""
+#~ "   Wählen Sie beim Kopieren von Ordnern die Option\n"
+#~ "   <span class=\"guilabel\"> Diese Aktion auf alle Dateien anwenden</"
+#~ "span> und klicken\n"
+#~ "   Sie auf **Zusammenführen**, um es auf alle Unterordner anzuwenden.\n"
+#~ "   Anschließend könnte es notwendig sein, die Option\n"
+#~ "   ** Aktion auf alle Dateien anwenden** auszuwählen\n"
+#~ "   und auf **Ersetzen** zu klicken, um sie auf alle Dateien anzuwenden.\n"
+
+#~ msgid "   Do not copy a folder if you do not know what it is used for.\n"
+#~ msgstr ""
+#~ "   Kopieren Sie einen Ordner nicht, sofern Sie nicht wissen, wofür er "
+#~ "verwendet wird.\n"
+
+#~ msgid "   <a id=\"feature_files\"></a>\n"
+#~ msgstr "   <a id=\"feature_files\"></a>\n"
+
+#, fuzzy
+#~ msgid ""
+#~ "The *apt* folder and the <span class=\"filename\">live-additional-"
+#~ "software.conf</span> file correspond to the <span "
+#~ "class=\"guilabel\">[[Additional Software|configure#additional_software]]</"
+#~ "span> persistence feature. But they require administration rights to be "
+#~ "imported and this goes beyond the scope of these instructions.  Note that "
+#~ "this folder does not contain personal data."
+#~ msgstr ""
+#~ "Der *apt*-Ordner entspricht der <span class=\"guilabel\">[[APT Pakete|"
+#~ "configure#apt_packages]]</span> und <span class=\"guilabel\">[[APT Listen|"
+#~ "configure#apt_lists]]</span> Funktion des beständigen Speicherbereichs. "
+#~ "Aber sie benötigen Administrationsrechte, um importiert zu werden und "
+#~ "dies sprengt den Rahmen dieser Dokumentation. Beachten Sie, dass dieser "
+#~ "Ordner keine persönlichen Daten enthält."
+
+#~ msgid ""
+#~ "The *bookmarks* folder corresponds to the <span "
+#~ "class=\"guilabel\">[[Browser Bookmarks|configure#browser_bookmarks]]</"
+#~ "span> persistence feature."
+#~ msgstr ""
+#~ "Der *bookmarks*-Ordner entspricht der Funktion des beständigen "
+#~ "Speicherbereichs für <span class=\"guilabel\">[[Lesezeichen des Browsers|"
+#~ "configure#browser_bookmarks]]</span>."
+
+#~ msgid ""
+#~ "The *cups-configuration* folder corresponds to the **[[Printers|"
+#~ "configure#printers]]** persistence feature."
+#~ msgstr ""
+#~ "Der *cups-configuration*-Ordner entspricht der **[[Drucker|"
+#~ "configure#printers]]**-Funktion des beständigen Speicherbereichs."
+
+#~ msgid ""
+#~ "The *dotfiles* folder corresponds to the **[[Dotfiles|"
+#~ "configure#dotfiles]]** persistence feature."
+#~ msgstr ""
+#~ "Der *dotfiles*-Ordner entspricht der Funktion des beständigen "
+#~ "Speicherbereichs für <span class=\"guilabel\">[[Versteckte "
+#~ "Konfigurationsdateien|configure#dotfiles]]</span>."
+
+#~ msgid ""
+#~ "The *electrum* folder corresponds to the **[[Bitcoin Client|"
+#~ "configure#bitcoin]]** persistence feature."
+#~ msgstr ""
+#~ "Der *electrum*-Ordner entspricht der <span class=\"guilabel\">[[Bitcoin-"
+#~ "Client|configure#bitcoin]]</span>-Funktion des beständigen "
+#~ "Speicherbereichs."
+
+#~ msgid ""
+#~ "The *gnupg* folder corresponds to the <span class=\"guilabel\">[[GnuPG|"
+#~ "configure#gnupg]]</span> persistence feature."
+#~ msgstr ""
+#~ "Der *gnupg*-Ordner entspricht der <span class=\"guilabel\">[[GnuPG|"
+#~ "configure#gnupg]]</span>-Funktion des beständigen Speicherbereichs."
+
+#~ msgid ""
+#~ "The *thunderbird* folder corresponds to the **[[Thunderbird|"
+#~ "configure#thunderbird]]** persistence feature."
+#~ msgstr ""
+#~ "Der *thunderbird*-Ordner entspricht der Funktion des beständigen "
+#~ "Speicherbereichs für <span class=\"guilabel\">[[Thunderbird|"
+#~ "configure#thunderbird]]</span>."
+
+#~ msgid ""
+#~ "The *nm-connections* folder corresponds to the <span "
+#~ "class=\"guilabel\">[[Network Connections|configure#network_connections]]</"
+#~ "span> persistence feature."
+#~ msgstr ""
+#~ "Der *nm-connections*-Ordner entspricht der <span "
+#~ "class=\"guilabel\">[[Netzwerkverbindungen|"
+#~ "configure#network_connections]]</span>-Funktion des beständigen "
+#~ "Speicherbereichs."
+
+#~ msgid ""
+#~ "The *openssh-client* folder corresponds to the **[[SSH Client|"
+#~ "configure#ssh_client]]** persistence feature."
+#~ msgstr ""
+#~ "Der *openssh-client*-Ordner entspricht der **[[SSH Client|"
+#~ "configure#ssh_client]]** Funktion des beständigen Speicherbereichs."
+
+#~ msgid ""
+#~ "The *Persistent* folder corresponds to the **[[Personal Data|"
+#~ "configure#personal_data]]** persistence feature."
+#~ msgstr ""
+#~ "Der *Persistent*-Ordner entspricht der <span "
+#~ "class=\"guilabel\">[[Persönliche Dateien|configure#personal_data]]</span> "
+#~ "Funktion des beständigen Speicherbereichs."
+
+#~ msgid ""
+#~ "The *pidgin* folder corresponds to the **[[Pidgin|configure#pidgin]]** "
+#~ "persistence feature."
+#~ msgstr ""
+#~ "Der *pidgin*-Ordner entspricht der <span class=\"guilabel\">[[Pidgin|"
+#~ "configure#pidgin]]</span>-Funktion des beständigen Speicherbereichs."
+
+#~ msgid "After doing the copy, close the file browser."
+#~ msgstr "Schließen Sie nach dem Durchführen der Kopie den Dateimanager."
+
+#~ msgid ""
+#~ "<style>\n"
+#~ "pre { max-width: 100%; }\n"
+#~ "</style>\n"
+#~ msgstr ""
+#~ "<style>\n"
+#~ "pre { max-width: 100%; }\n"
+#~ "</style>\n"
+
+#~ msgid ""
+#~ "       find /live/persistence/TailsData_unlocked/ -uid 1000 -exec chown "
+#~ "-R 1000:1000 '{}' \\;\n"
+#~ msgstr ""
+#~ "       find /live/persistence/TailsData_unlocked/ -uid 1000 -exec chown "
+#~ "-R 1000:1000 '{}' \\;\n"
+
+#~ msgid ""
+#~ "The *gnome-keyring* folder corresponds to the <span "
+#~ "class=\"guilabel\">[[GNOME Keyring|configure#gnome_keyring]]</span> "
+#~ "persistence feature."
+#~ msgstr ""
+#~ "Der *gnome-keyring*-Ordner entspricht der <span "
+#~ "class=\"guilabel\">[[GNOME Schlüsselbund|configure#gnome_keyring]]</span> "
+#~ "Funktion des beständigen Speicherbereichs."
+
+#~ msgid ""
+#~ "In the file browser, navigate to <span class=\"filename\">/media/amnesia/"
+#~ "TailsData</span> to open the old persistent volume."
+#~ msgstr ""
+#~ "Navigieren Sie im Dateimanager zu <span class=\"filename\">/media/amnesia/"
+#~ "TailsData</span>, um die alte beständige Speicherpartition zu öffnen."

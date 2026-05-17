@@ -1,0 +1,66 @@
+[[!meta title="Glossary for Tails contributors"]]
+
+[[!toc levels=2]]
+
+What you will find here and where else to look at
+=================================================
+
+Below we define some terms that are used in a somewhat or 100% special
+meaning within the Tails community.
+
+For other terms, use [The Jargon Lexicon](http://catb.org/jargon/)
+(`apt install dict-jargon`),
+[V.E.R.A.](http://home.snafu.de/ohei/vera/vera-e.html)
+(`apt install dict-vera`), the
+[Wiktionary](https://en.wiktionary.org/) and
+[Wikipedia](https://en.wikipedia.org/).
+
+Feel free to [[suggest|contribute/how/documentation]] additions or
+improvements to this page.
+
+The words
+=========
+
+* **DSA**: Debian Security Advisory.
+  See <http://security.debian.org> for already issued advisories.
+
+* **freeze**:
+
+  - a late stabilization period of time in the Tails
+    [[contribute/release_schedule]], when no new changes are merged
+    anymore into the [[contribute/Git]] branch used to prepare the
+    next release of Tails but fixes for serious bug and security
+    issues;
+
+  - the beginning of the said phase.
+
+* **Welcome Screen**: the startup menu, aka *tails-greeter*
+
+* **IUK**: Incremental Upgrade Kit, see
+  [[contribute/design/upgrades]]
+
+* **known issues**: issues that we are aware of and don't need being
+  reported again, see [[support/known_issues]]
+
+* **MAT**: see Metadata Anonymisation Toolkit
+
+* **Metadata Anonymisation Toolkit**: tool to clean metadata from
+  plenty of document formats, see
+  [[MAT's website|https://0xacab.org/jvoisin/mat2]]
+
+* **monthly reports**: published in the [[news]] once a month
+
+* **Persistent Storage** (aka **tps** as abbreviation for Tails Persistent Storage):
+  the opt-in feature that allows storing data and configuration across
+  Tails sessions in an encrypted partition, see
+  [[contribute/design/persistence]]
+
+* **Release manager**: see the [[definition of this shifting
+  role|contribute/working_together/roles/release_manager]]
+
+* **RM**: see Release Manager
+
+* **WB**: see WhisperBack.
+
+* **WhisperBack**: see *3.5 Feedback* in the [[contribute/design]]
+  document.

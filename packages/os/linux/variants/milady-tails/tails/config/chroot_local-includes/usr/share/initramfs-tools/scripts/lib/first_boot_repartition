@@ -1,0 +1,194 @@
+#!/bin/sh
+
+PREREQS=""
+
+prereqs() { echo "$PREREQS"; }
+
+case "$1" in
+prereqs)
+    prereqs
+    exit 0
+    ;;
+esac
+
+. /scripts/functions
+. /scripts/lib/lib.sh
+
+set -eu
+set -x
+
+ESP_GUID="C12A7328-F81F-11D2-BA4B-00A0C93EC93B"
+ORIG_DISK_GUID="17B81DA0-8B1E-4269-9C39-FE5C7B9B58A3"
+
+PARENT_DEVICE="$1"
+SYSTEM_PARTITION="$2"
+
+is_cmdline_test_enabled() {
+    parameter="${1}"
+    test="${2}"
+    sed -n "s/.*${parameter}=\([^ ]*\).*/\1/p" /proc/cmdline | grep -qw "${test}"
+}
+
+# We call this after each action that alters the device/partition in any
+# way in an attempt to avoid various races that has caused this script
+# to fail at various points. Examples:
+#  * `partprobe /dev/sda` exiting before /dev/sda1 exists, causing
+#    errors in subsequent commands attempting to use /dev/sda1
+#  * `mlabel` complaining that it "could not read boot sector"
+settle() {
+    sync
+    udevadm settle
+    sync
+}
+
+DEVICE_NAME=$(basename "${PARENT_DEVICE}")
+
+# If we already see evidence of corruption on first boot even before
+# partitioning, then we consider the device corrupt (tails#20797).
+if sgdisk --verify "${PARENT_DEVICE}" 2>&1 | grep -q -e corrupt -e ERROR; then
+    echo "Detected partitioning corruption"
+    set_partition_error_reason 'partitioning-corruption'
+    exit 1
+fi
+
+# Compute the new system partition size
+# in 512 bytes sectors
+DEVICE_SIZE=$(cat "/sys/block/${DEVICE_NAME}/size")
+
+DEVICE_SIZE_IN_GB=$(echo "scale=1; ${DEVICE_SIZE} / 2 / 1000 / 1000" | bc)
+DEVICE_SIZE_IN_MiB=$((DEVICE_SIZE / 2 / 1024))
+DEVICE_TOO_SMALL_ERROR_MESSAGE="Sorry, this USB stick is too small to run Tails (${DEVICE_SIZE_IN_GB} GB). Please use a USB stick of at least 8 GB. Press ENTER to shut down."
+
+if [ "${DEVICE_SIZE_IN_MiB}" -lt 7200 ]; then
+    plymouth message --text="${DEVICE_TOO_SMALL_ERROR_MESSAGE}"
+    plymouth watch-keystroke >/dev/null
+    poweroff -f
+elif [ "${DEVICE_SIZE_IN_MiB}" -lt 14500 ]; then
+    SYSTEM_PARTITION_SIZE=4096M
+else
+    SYSTEM_PARTITION_SIZE=8192M
+fi
+
+# Update partition table. This includes the following operations:
+# * Move GPT backup header to the end of the device
+# * Set a random disk GUID and partition GUID
+# * Delete the old system partition
+# * Create a new system partition of size ${SYSTEM_PARTITION_SIZE}
+# * Set the partition label to "Tails"
+log_begin_msg "Updating partition table"
+if is_cmdline_test_enabled test_partitioning_errors part_resize; then
+    sgdisk \
+        --move-second-header \
+        --randomize-guids \
+        --change-name=1:Tails \
+        "${PARENT_DEVICE}"
+    exit 1
+fi
+sgdisk \
+    --move-second-header \
+    --randomize-guids \
+    --delete=1 \
+    --new=1:0:+"${SYSTEM_PARTITION_SIZE}" \
+    --typecode="1:${ESP_GUID}" \
+    --change-name=1:Tails \
+    "${PARENT_DEVICE}"
+settle
+log_end_msg
+
+# The "last usable block" encoded by sgdisk when it repartitioned
+# above is closer to the beginning of the disk than where libparted
+# thinks it could actually be, which then makes some parted operations
+# fail, or ask confirmation (e.g. fatresize). Let's fix this to avoid
+# such problems. For details,
+# see 01e72edcb47fe3570a182688b42e7157186924d6.
+parted --script --fix "${PARENT_DEVICE}" print free
+settle
+
+if is_cmdline_test_enabled test_partitioning_errors guid; then
+    sgdisk --disk-guid="${ORIG_DISK_GUID}" "${PARENT_DEVICE}"
+fi
+
+if grep -qw "test_gpt_corruption" /proc/cmdline; then
+    # Corrupt the MBR and GPT to test that it is correctly detected and
+    # reported to the user.
+    SECTORS=$(blockdev --getsz "${PARENT_DEVICE}")
+
+    if is_cmdline_test_enabled test_gpt_corruption mbr; then
+        # Corrupt the MBR partition table
+        dd if=/dev/zero of="${PARENT_DEVICE}" bs=1 count=64 seek=446
+    fi
+    if is_cmdline_test_enabled test_gpt_corruption gpt; then
+        # Corrupt the GPT main header
+        dd if=/dev/zero of="${PARENT_DEVICE}" bs=512 count=1 seek=1
+    fi
+    if is_cmdline_test_enabled test_gpt_corruption gpt_table; then
+        # Corrupt the GPT main partition table
+        dd if=/dev/zero of="${PARENT_DEVICE}" bs=512 count=32 seek=2
+    fi
+    if is_cmdline_test_enabled test_gpt_corruption gpt_backup; then
+        # Corrupt the GPT backup header
+        dd if=/dev/zero of="${PARENT_DEVICE}" bs=512 count=1 seek=$((SECTORS - 1))
+    fi
+    if is_cmdline_test_enabled test_gpt_corruption gpt_backup_table; then
+        # Corrupt the GPT backup partition table
+        dd if=/dev/zero of="${PARENT_DEVICE}" bs=512 count=32 seek=$((SECTORS - 33))
+    fi
+fi
+
+# Tell the kernel to reload the partition table
+partprobe "${PARENT_DEVICE}"
+settle
+
+# fatresize overwrites the VBR, so we have to back it up to be able to
+# restore the boot code later
+dd if="${SYSTEM_PARTITION}" of=/tmp/vbr bs=512 count=1
+settle
+
+# Grow the filesystem
+# Note that fatresize resets partition attributes
+# fatresize uses "Mi" for MiB, so we have to append an "i".
+# Also, due to bugs in fatresize (tails/tails#18699) we
+# are limited to grow the filesystem to just below the limit.
+if is_cmdline_test_enabled test_partitioning_errors fs_resize; then
+    exit 1
+fi
+FS_SIZE="$((${SYSTEM_PARTITION_SIZE%M} - 2))"Mi
+fatresize --size="${FS_SIZE}" "${SYSTEM_PARTITION}"
+settle
+
+# Restore boot code overwritten by fatresize
+dd if=/tmp/vbr of="${SYSTEM_PARTITION}" bs=1 skip=90 seek=90 count=414
+settle
+
+# Restore JMP instruction which jumps to the bootcode
+dd if=/tmp/vbr of="${SYSTEM_PARTITION}" bs=3 count=1
+settle
+
+# Set a random filesystem UUID (aka. FAT "Volume ID" / "serial number")
+MTOOLS_SKIP_CHECK=1 mlabel -i "${SYSTEM_PARTITION}" -n ::Tails
+settle
+
+# Recompute CHS values for the hybrid MBR (see #16389),
+# set the partition type again (something has reset it to "Basic data"),
+# and set the following attributes on the system partition
+# (we have to set them after running fatresize, because fatresize
+# resets them):
+#   0: system partition
+#   2: legacy BIOS bootable
+#   60: read-only
+#   62: hidden
+#   63: do not automount
+sgdisk \
+    --attributes=1:set:0 \
+    --attributes=1:set:2 \
+    --attributes=1:set:60 \
+    --attributes=1:set:62 \
+    --attributes=1:set:63 \
+    --typecode="1:${ESP_GUID}" \
+    --recompute-chs \
+    "${PARENT_DEVICE}"
+settle
+
+# Tell the kernel to reload the partition table
+partprobe "${PARENT_DEVICE}"
+settle

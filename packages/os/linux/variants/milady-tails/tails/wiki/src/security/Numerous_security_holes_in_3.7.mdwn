@@ -1,0 +1,22 @@
+[[!meta date="Fri, 08 Jun 2018 17:25:18 +0000"]]
+[[!meta title="Numerous security holes in Tails 3.7"]]
+[[!pagetemplate template="news.tmpl"]]
+
+[[!tag security/fixed]]
+
+Several security holes that affect Tails 3.7 are now fixed in Tails 3.7.1.
+
+We **strongly** encourage you to
+[[upgrade to Tails 3.7.1|news/version_3.7.1]] as soon as possible.
+
+ - Tor Browser: [[!mfsa 2018-14]]
+ - Thunderbird: [[!debsa2018 4209]]
+ - cURL: [[!debsa2018 4202]]
+ - GnuPG (modern): [[!debsa2018 4222]]
+ - GnuPG (legacy): [[!debsa2018 4223]]
+ - Git: [[!debsa2018 4212]]
+ - PackageKit: [[!debsa2018 4207]]
+ - procps: [[!debsa2018 4208]]
+ - wavpack: [[!debsa2018 4197]]
+ - wget: [[!debsa2018 4195]]
+ - xdg-utils: [[!debsa2018 4211]]

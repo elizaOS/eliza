@@ -1,0 +1,3 @@
+[[commands]]
+allowed_user = "amnesia"
+executable = "/usr/local/lib/tails-backup-rsync"

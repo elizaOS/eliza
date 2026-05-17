@@ -1,0 +1,630 @@
+# SOME DESCRIPTIVE TITLE
+# Copyright (C) YEAR Free Software Foundation, Inc.
+# This file is distributed under the same license as the PACKAGE package.
+# FIRST AUTHOR <EMAIL@ADDRESS>, YEAR.
+#
+msgid ""
+msgstr ""
+"Project-Id-Version: PACKAGE VERSION\n"
+"Report-Msgid-Bugs-To: tails-l10n@boum.org\n"
+"POT-Creation-Date: 2026-03-30 09:38+0000\n"
+"PO-Revision-Date: 2026-05-01 15:18+0000\n"
+"Last-Translator: xin <xin@riseup.net>\n"
+"Language-Team: LANGUAGE <LL@li.org>\n"
+"Language: pt\n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+"Plural-Forms: nplurals=2; plural=n != 1;\n"
+"X-Generator: Weblate 5.13.2\n"
+
+#. type: Plain text
+#, no-wrap
+msgid "[[!meta robots=\"noindex\"]]\n"
+msgstr "[[!meta robots=\"noindex\"]]\n"
+
+#. type: Plain text
+#, no-wrap
+msgid "<div class=\"windows linux mac expert\">\n"
+msgstr "<div class=\"windows linux mac expert\">\n"
+
+#. type: Plain text
+#, no-wrap
+msgid "<div class=\"success\">\n"
+msgstr "<div class=\"success\">\n"
+
+#. type: Plain text
+#, no-wrap
+msgid ""
+"<video autoplay loop muted width=\"200\" height=\"200\" poster=\"https://tails.net/install/inc/success/install.png\">\n"
+"  <source src=\"https://tails.net/install/inc/success/install.mp4\" type=\"video/mp4\" />\n"
+"</video>\n"
+msgstr ""
+"<video autoplay loop muted width=\"200\" height=\"200\" poster=\"https://tails.net/install/inc/success/install.png\">\n"
+"  <source src=\"https://tails.net/install/inc/success/install.mp4\" type=\"video/mp4\" />\n"
+"</video>\n"
+
+#. type: Plain text
+#, no-wrap
+msgid ""
+"<div>\n"
+"  <p class=\"big\">Well done!</p>\n"
+msgstr ""
+"<div>\n"
+"  <p class=\"big\">Muito bem!</p>\n"
+
+#. type: Plain text
+#, no-wrap
+msgid "  <p>You have installed Tails on your USB stick.</p>\n"
+msgstr "  <p>Você acaba de instalar Tails no seu pendrive USB.</p>\n"
+
+#. type: Plain text
+#, no-wrap
+msgid "  <p>In the next step, you will make your computer start on this USB stick.</p>\n"
+msgstr "  <p>No próximo passo você fará com que seu computador inicie a partir desse pendrive USB.</p>\n"
+
+#. type: Plain text
+#, no-wrap
+msgid ""
+"  <p>Tails might not work on your computer, so good luck!</p>\n"
+"</div>\n"
+msgstr ""
+"  <p>Pode ser que o Tails não funcione no seu computador, então boa sorte!</p>\n"
+"</div>\n"
+
+#. type: Plain text
+#, no-wrap
+msgid "</div>\n"
+msgstr "</div>\n"
+
+#. type: Plain text
+#, no-wrap
+msgid "<div class=\"note clone\">\n"
+msgstr "<div class=\"note clone\">\n"
+
+#. type: Plain text
+#, no-wrap
+msgid ""
+"<p>If you already started on the other Tails, go directly to step 3:\n"
+"<a href=\"#verify-other\">Verify that the other Tails is up-to-date</a>.</p>\n"
+msgstr ""
+"<p>Se você já estiver no outro Tails, vá diretamente para a etapa 3:\n"
+"<a href=\"#verify-other\">Verifique que o outro Tails está atualizado</a>.</p>\n"
+
+#. type: Plain text
+#, no-wrap
+msgid "<h1 id=\"back\" class=\"step\">Open these instructions on another device</h1>\n"
+msgstr "<h1 id=\"back\" class=\"step\">Abra estas instruções em outro dispositivo</h1>\n"
+
+#. type: Plain text
+#, no-wrap
+msgid "<div class=\"step-image\">[[!img install/inc/infography/switch-context.png link=\"no\" alt=\"\"]]</div>\n"
+msgstr "<div class=\"step-image\">[[!img install/inc/infography/switch-context.png link=\"no\" alt=\"\"]]</div>\n"
+
+#. type: Plain text
+msgid ""
+"In the next step, you will shut down the computer. To be able to follow the "
+"rest of the instructions afterwards, you can either:"
+msgstr ""
+"No próximo passo, você irá desligar o computador. Para que você possa em "
+"seguida acompanhar o resto das instruções, você pode fazer um dos seguintes:"
+
+#. type: Bullet: '   - '
+msgid "Scan this QR code on your smartphone or tablet:"
+msgstr "Escanear este QR code usando seu celular ou tablet:"
+
+#. type: Plain text
+#, no-wrap
+msgid "     [[!img install/inc/qrcodes/tails_net_install_windows_back_1.png class=\"windows\" link=\"no\" alt=\"\"]]\n"
+msgstr "     [[!img install/inc/qrcodes/tails_net_install_windows_back_1.png class=\"windows\" link=\"no\" alt=\"\"]]\n"
+
+#. type: Plain text
+#, no-wrap
+msgid "     [[!img install/inc/qrcodes/tails_net_install_mac_back_1.png class=\"mac\" link=\"no\" alt=\"\"]]\n"
+msgstr "     [[!img install/inc/qrcodes/tails_net_install_mac_back_1.png class=\"mac\" link=\"no\" alt=\"\"]]\n"
+
+#. type: Plain text
+#, no-wrap
+msgid "     [[!img install/inc/qrcodes/tails_net_install_linux_back_1.png class=\"linux\" link=\"no\" alt=\"\"]]\n"
+msgstr "     [[!img install/inc/qrcodes/tails_net_install_linux_back_1.png class=\"linux\" link=\"no\" alt=\"\"]]\n"
+
+#. type: Plain text
+#, no-wrap
+msgid "     [[!img install/inc/qrcodes/tails_net_install_expert_back_1.png class=\"expert\" link=\"no\" alt=\"\"]]\n"
+msgstr "     [[!img install/inc/qrcodes/tails_net_install_expert_back_1.png class=\"expert\" link=\"no\" alt=\"\"]]\n"
+
+#. type: Plain text
+#, no-wrap
+msgid "     [[!img install/inc/qrcodes/tails_net_install_clone_pc_back_1.png class=\"pc-clone\" link=\"no\" alt=\"\"]]\n"
+msgstr "     [[!img install/inc/qrcodes/tails_net_install_clone_pc_back_1.png class=\"pc-clone\" link=\"no\" alt=\"\"]]\n"
+
+#. type: Plain text
+#, no-wrap
+msgid "     [[!img install/inc/qrcodes/tails_net_install_clone_mac_back_1.png class=\"mac-clone\" link=\"no\" alt=\"\"]]\n"
+msgstr "     [[!img install/inc/qrcodes/tails_net_install_clone_mac_back_1.png class=\"mac-clone\" link=\"no\" alt=\"\"]]\n"
+
+#. type: Plain text
+#, no-wrap
+msgid "     [[!img install/inc/qrcodes/tails_net_doc_upgrade_tails_back_1.png class=\"upgrade-tails\" link=\"no\" alt=\"\"]]\n"
+msgstr "     [[!img install/inc/qrcodes/tails_net_doc_upgrade_tails_back_1.png class=\"upgrade-tails\" link=\"no\" alt=\"\"]]\n"
+
+#. type: Plain text
+#, no-wrap
+msgid "     [[!img install/inc/qrcodes/tails_net_doc_upgrade_windows_back_1.png class=\"upgrade-windows\" link=\"no\" alt=\"\"]]\n"
+msgstr "     [[!img install/inc/qrcodes/tails_net_doc_upgrade_windows_back_1.png class=\"upgrade-windows\" link=\"no\" alt=\"\"]]\n"
+
+#. type: Plain text
+#, no-wrap
+msgid "     [[!img install/inc/qrcodes/tails_net_doc_upgrade_mac_back_1.png class=\"upgrade-mac\" link=\"no\" alt=\"\"]]\n"
+msgstr "     [[!img install/inc/qrcodes/tails_net_doc_upgrade_mac_back_1.png class=\"upgrade-mac\" link=\"no\" alt=\"\"]]\n"
+
+#. type: Plain text
+#, no-wrap
+msgid "     [[!img install/inc/qrcodes/tails_net_doc_upgrade_linux_back_1.png class=\"upgrade-linux\" link=\"no\" alt=\"\"]]\n"
+msgstr "     [[!img install/inc/qrcodes/tails_net_doc_upgrade_linux_back_1.png class=\"upgrade-linux\" link=\"no\" alt=\"\"]]\n"
+
+#. type: Plain text
+#, no-wrap
+msgid "     [[!img install/inc/qrcodes/tails_net_doc_upgrade_clone_back_1.png class=\"upgrade-clone\" link=\"no\" alt=\"\"]]\n"
+msgstr "     [[!img install/inc/qrcodes/tails_net_doc_upgrade_clone_back_1.png class=\"upgrade-clone\" link=\"no\" alt=\"\"]]\n"
+
+#. type: Bullet: '   - '
+msgid "Print these instructions on paper."
+msgstr "Imprimir essas instruções em papel."
+
+#. type: Bullet: '   - '
+msgid "Take note of the URL of this page:"
+msgstr "Anotar a URL dessa página:"
+
+#. type: Plain text
+#, no-wrap
+msgid ""
+"     <p class=\"code windows\">https://tails.net/install/windows?back=1</p>\n"
+"     <p class=\"code mac\">https://tails.net/install/mac?back=1</p>\n"
+"     <p class=\"code linux\">https://tails.net/install/linux?back=1</p>\n"
+"     <p class=\"code expert\">https://tails.net/install/expert?back=1</p>\n"
+"     <p class=\"code pc-clone\">https://tails.net/install/clone/pc?back=1</p>\n"
+"     <p class=\"code mac-clone\">https://tails.net/install/clone/mac?back=1</p>\n"
+"     <p class=\"code upgrade-tails\">https://tails.net/doc/upgrade/tails?back=1</p>\n"
+"     <p class=\"code upgrade-windows\">https://tails.net/doc/upgrade/windows?back=1</p>\n"
+"     <p class=\"code upgrade-mac\">https://tails.net/doc/upgrade/mac?back=1</p>\n"
+"     <p class=\"code upgrade-linux\">https://tails.net/doc/upgrade/linux?back=1</p>\n"
+"     <p class=\"code upgrade-clone\">https://tails.net/doc/upgrade/clone?back=1</p>\n"
+msgstr ""
+"     <p class=\"code windows\">https://tails.net/install/windows/index.pt.html?back=1</p>\n"
+"     <p class=\"code mac\">https://tails.net/install/mac/index.pt.html?back=1</p>\n"
+"     <p class=\"code linux\">https://tails.net/install/linux/index.pt.html?back=1</p>\n"
+"     <p class=\"code expert\">https://tails.net/install/expert/index.pt.html?back=1</p>\n"
+"     <p class=\"code pc-clone\">https://tails.net/install/clone/pc/index.pt.html?back=1</p>\n"
+"     <p class=\"code mac-clone\">https://tails.net/install/clone/mac/index.pt.html?back=1</p>\n"
+"     <p class=\"code upgrade-tails\">https://tails.net/doc/upgrade/tails/index.pt.html?back=1</p>\n"
+"     <p class=\"code upgrade-windows\">https://tails.net/doc/upgrade/windows/index.pt.html?back=1</p>\n"
+"     <p class=\"code upgrade-mac\">https://tails.net/doc/upgrade/mac/index.pt.html?back=1</p>\n"
+"     <p class=\"code upgrade-linux\">https://tails.net/doc/upgrade/linux/index.pt.html?back=1</p>\n"
+"     <p class=\"code upgrade-clone\">https://tails.net/doc/upgrade/clone/index.pt.html?back=1</p>\n"
+
+#. type: Plain text
+#, no-wrap
+msgid ""
+"<h1 id=\"intermediary\" class=\"step upgrade-tails upgrade-os\">Restart on the intermediary Tails</h1>\n"
+"<h1 id=\"other\" class=\"step clone\">Restart on the other Tails</h1>\n"
+"<h1 id=\"restart\" class=\"step windows linux mac expert\">Restart on your Tails USB stick</h1>\n"
+msgstr ""
+"<h1 id=\"intermediary\" class=\"step upgrade-tails upgrade-os\">Reinicie no Tails intermediário</h1>\n"
+"<h1 id=\"other\" class=\"step clone\">Reinicie no outro Tails</h1>\n"
+"<h1 id=\"restart\" class=\"step windows linux mac expert\">Reinicie no seu pendrive USB Tails</h1>\n"
+
+#. type: Plain text
+#, no-wrap
+msgid "<div class=\"step-image\">\n"
+msgstr "<div class=\"step-image\">\n"
+
+#. type: Plain text
+#, no-wrap
+msgid "[[!img install/inc/infography/restart-on-tails.png link=\"no\" class=\"windows linux mac expert\" alt=\"\"]]\n"
+msgstr "[[!img install/inc/infography/restart-on-tails.png link=\"no\" class=\"windows linux mac expert\" alt=\"\"]]\n"
+
+#. type: Plain text
+#, no-wrap
+msgid "[[!img install/inc/infography/restart-on-other-tails.png link=\"no\" class=\"clone upgrade-os\" alt=\"\"]]\n"
+msgstr "[[!img install/inc/infography/restart-on-other-tails.png link=\"no\" class=\"clone upgrade-os\" alt=\"\"]]\n"
+
+#. type: Plain text
+#, no-wrap
+msgid "[[!img install/inc/infography/restart-on-upgrade-usb.png link=\"no\" class=\"upgrade-tails\" alt=\"\"]]\n"
+msgstr "[[!img install/inc/infography/restart-on-upgrade-usb.png link=\"no\" class=\"upgrade-tails\" alt=\"\"]]\n"
+
+#. type: Plain text
+#, no-wrap
+msgid "<h2>Make the computer start on the USB stick</h2>\n"
+msgstr "<h2>Faça o computador iniciar no pendrive USB</h2>\n"
+
+#. type: Plain text
+#, no-wrap
+msgid "<div class=\"windows upgrade-windows\">\n"
+msgstr "<div class=\"windows upgrade-windows\">\n"
+
+#. type: Plain text
+#, no-wrap
+msgid "[[!inline pages=\"install/inc/steps/windows_boot_menu.inline\" raw=\"yes\" sort=\"age\"]]\n"
+msgstr "[[!inline pages=\"install/inc/steps/windows_boot_menu.inline.pt\" raw=\"yes\" sort=\"age\"]]\n"
+
+#. type: Plain text
+#, no-wrap
+msgid "<div class=\"linux expert pc-clone upgrade-clone upgrade-tails upgrade-linux\">\n"
+msgstr "<div class=\"linux expert pc-clone upgrade-clone upgrade-tails upgrade-linux\">\n"
+
+#. type: Plain text
+#, no-wrap
+msgid "[[!inline pages=\"install/inc/steps/pc_boot_menu.inline\" raw=\"yes\" sort=\"age\"]]\n"
+msgstr "[[!inline pages=\"install/inc/steps/pc_boot_menu.inline.pt\" raw=\"yes\" sort=\"age\"]]\n"
+
+#. type: Plain text
+#, no-wrap
+msgid "<div class=\"mac mac-clone upgrade-mac\">\n"
+msgstr "<div class=\"mac mac-clone upgrade-mac\">\n"
+
+#. type: Plain text
+#, no-wrap
+msgid "[[!inline pages=\"install/inc/steps/mac_startup_disks.inline\" raw=\"yes\" sort=\"age\"]]\n"
+msgstr "[[!inline pages=\"install/inc/steps/mac_startup_disks.inline.pt\" raw=\"yes\" sort=\"age\"]]\n"
+
+#. type: Plain text
+#, fuzzy, no-wrap
+#| msgid "<h2 id=\"troubleshooting\">Troubleshooting</h2>\n"
+msgid "<h2 id=\"troubleshoot-start\">Troubleshoot Tails not starting</h2>\n"
+msgstr "<h2 id=\"troubleshooting\">Resolução de problemas</h2>\n"
+
+#. type: Plain text
+#, no-wrap
+msgid "<ul>\n"
+msgstr "<ul>\n"
+
+#. type: Plain text
+#, fuzzy, no-wrap
+#| msgid ""
+#| "<li class=\"windows upgrade-windows linux expert pc-clone upgrade-clone upgrade-tails upgrade-linux\">\n"
+#| "<p>If the Boot Menu appears but your USB stick is not listed in the Boot Menu,\n"
+#| "wait a few minutes and try again. Some USB sticks need some rest after installing.</p>\n"
+#| "</li>\n"
+msgid ""
+"<li class=\"windows upgrade-windows\">\n"
+"<p>If the computer doesn't restart on your Tails USB stick:</p>\n"
+"  <ol>\n"
+"    <li><p>Wait 2&ndash;3 minutes and try again. Some USB sticks need some rest after installing.</p></li>\n"
+"    <li><p>Try other options in the <b>Use a device</b> screen, for example <b>USB FDD</b> if available.</p></li>\n"
+"    <li><p>Try all other USB ports on the computer. Some USB ports cannot be used to start from.</p></li>\n"
+"    <li><p>Refer to the [[instructions on starting Tails using the Boot Menu key|doc/first_steps/start/pc#boot-menu-key]].</p></li>\n"
+"  </ol>\n"
+"</li>\n"
+msgstr ""
+"<li class=\"windows upgrade-windows linux expert pc-clone upgrade-clone upgrade-tails upgrade-linux\">\n"
+"<p>Se o Menu de Boot aparece mas seu pendrive USB não é listado no Menu de Boot,\n"
+"aguarde alguns minutos e tente novamente. Alguns pendrives USB precisam descansar um pouco depois da instalação.</p>\n"
+"</li>\n"
+
+#. type: Plain text
+#, no-wrap
+msgid ""
+"<li class=\"linux expert pc-clone upgrade-clone upgrade-tails upgrade-linux\">\n"
+"<p>If none of the possible Boot Menu keys from the previous technique work,\n"
+"refer to the [[troubleshooting instructions about Tails not starting at\n"
+"all|doc/first_steps/start/pc#not-at-all]].</p>\n"
+"</li>\n"
+msgstr ""
+"<li class=\"linux expert pc-clone upgrade-clone upgrade-tails upgrade-linux\">\n"
+"<p>Se nenhuma das possíveis teclas de Menu de Boot da técnica anterior funcionou, consulte as\n"
+"[[instruções de resolução de problemas para quando o Tails não inicia de jeito\n"
+"nenhum|doc/first_steps/start/pc#not-at-all]].</p>\n"
+"</li>\n"
+
+#. type: Plain text
+#, fuzzy, no-wrap
+#| msgid ""
+#| "<li class=\"windows upgrade-windows linux expert pc-clone upgrade-clone upgrade-tails upgrade-linux\">\n"
+#| "<p>If the Boot Menu appears but your USB stick is not listed in the Boot Menu,\n"
+#| "wait a few minutes and try again. Some USB sticks need some rest after installing.</p>\n"
+#| "</li>\n"
+msgid ""
+"<li class=\"linux expert pc-clone upgrade-clone upgrade-tails upgrade-linux\">\n"
+"<p>If the Boot Menu appears, but your USB stick is not listed in the Boot Menu:</p>\n"
+"  <ol>\n"
+"  <li><p>Wait 2&ndash;3 minutes and try again. Some USB sticks need some rest after installing.</p></li>\n"
+"  <li><p>Try all other USB ports on the computer. Some USB ports cannot be used to start from.</p></li>\n"
+"  </ol>\n"
+"</li>\n"
+msgstr ""
+"<li class=\"windows upgrade-windows linux expert pc-clone upgrade-clone upgrade-tails upgrade-linux\">\n"
+"<p>Se o Menu de Boot aparece mas seu pendrive USB não é listado no Menu de Boot,\n"
+"aguarde alguns minutos e tente novamente. Alguns pendrives USB precisam descansar um pouco depois da instalação.</p>\n"
+"</li>\n"
+
+#. type: Plain text
+#, fuzzy, no-wrap
+#| msgid ""
+#| "<li>\n"
+#| "<p class=\"windows upgrade-windows linux expert pc-clone upgrade-clone upgrade-tails upgrade-linux\">If your USB stick is listed in the Boot Menu but the Boot Loader does not appear:</p>\n"
+#| "<p class=\"mac mac-clone upgrade-mac\">If your USB stick appears in the list of startup disks but the Boot Loader does not appear:</p>\n"
+msgid ""
+"<li>\n"
+"<p class=\"windows upgrade-windows\">If the computer restarts on your Tails USB stick, but the Boot Loader doesn't appear:</p>\n"
+"<p class=\"linux expert pc-clone upgrade-clone upgrade-tails upgrade-linux\">If your USB stick is listed in the Boot Menu, but the Boot Loader doesn't appear:</p>\n"
+"<p class=\"mac mac-clone upgrade-mac\">If your USB stick appears in the list of startup disks, but the Boot Loader doesn't appear:</p>\n"
+msgstr ""
+"<li>\n"
+"<p class=\"windows upgrade-windows linux expert pc-clone upgrade-clone upgrade-tails upgrade-linux\">Se o seu pendrive USB está listado no menu de Boot, mas o Boot Loader não aparece:</p>\n"
+"<p class=\"mac mac-clone upgrade-mac\">Se o seu pendrive USB aparece na lista de discos de inicialização, mas o Boot Loader não aparece:</p>\n"
+
+#. type: Plain text
+#, no-wrap
+msgid "[[!inline pages=\"install/inc/steps/basic_troubleshooting.inline\" raw=\"yes\" sort=\"age\"]]\n"
+msgstr "[[!inline pages=\"install/inc/steps/basic_troubleshooting.inline.pt\" raw=\"yes\" sort=\"age\"]]\n"
+
+#. type: Plain text
+#, no-wrap
+msgid ""
+"<p>If your computer still does not display the Boot Loader, it might currently be impossible to start Tails on your computer.</p>\n"
+"</li>\n"
+msgstr ""
+"<p>Se o seu computador continua sem mostrar o Boot Loader, pode ser que atualmente não seja possível iniciar o Tails no seu computador.</p>\n"
+"</li>\n"
+
+#. type: Plain text
+#, fuzzy, no-wrap
+#| msgid ""
+#| "<li>\n"
+#| "<p>If the Boot Loader appears but Tails fails to start after the Boot Loader,\n"
+#| "refer to\n"
+#| "<span class=\"windows upgrade-windows linux expert pc-clone upgrade-clone upgrade-tails upgrade-linux\">[[the troubleshooting section about Tails not starting after the Boot Loader|doc/first_steps/start/pc#not-entirely]].</span>\n"
+#| "<span class=\"mac mac-clone upgrade-mac\">[[the troubleshooting section about Tails not starting after the Boot Loader|doc/first_steps/start/mac#not-entirely]].</span></p>\n"
+#| "</li>\n"
+msgid ""
+"<li>\n"
+"<p>If the Boot Loader appears, but Tails fails to start after the Boot Loader,\n"
+"refer to\n"
+"<span class=\"windows upgrade-windows linux expert pc-clone upgrade-clone upgrade-tails upgrade-linux\">[[the troubleshooting section about Tails not starting after the Boot Loader|doc/first_steps/start/pc#not-entirely]].</span>\n"
+"<span class=\"mac mac-clone upgrade-mac\">[[the troubleshooting section about Tails not starting after the Boot Loader|doc/first_steps/start/mac#not-entirely]].</span></p>\n"
+"</li>\n"
+msgstr ""
+"<li>\n"
+"<p>Se o Boor Loader aparece mas o Tails não consegue iniciar após o boot loader,\n"
+"veja a \n"
+"<span class=\"windows upgrade-windows linux expert pc-clone upgrade-clone upgrade-tails upgrade-linux\">[[seção de resolução de problemas para quando o Tails não iniciar após o Boot Loader|doc/first_steps/start/pc#not-entirely]].</span>\n"
+"<span class=\"mac mac-clone upgrade-mac\">[[seção de resolução de problemas para quando o Tails não iniciar após o Boot Loader|doc/first_steps/start/mac#not-entirely]].</span></p>\n"
+"</li>\n"
+
+#. type: Plain text
+#, no-wrap
+msgid "</ul>\n"
+msgstr "</ul>\n"
+
+#. type: Plain text
+#, no-wrap
+msgid ""
+"<div class=\"tip windows upgrade-windows\">\n"
+"<p>Starting the computer using a Boot Menu key can be faster than\n"
+"starting the computer on Windows first and then on Tails. We\n"
+"recommend you learn how to [[start Tails using the Boot Menu\n"
+"key|doc/first_steps/start/pc#boot-menu-key]] if you use Tails\n"
+"regularly.</p>\n"
+"</div>\n"
+msgstr ""
+"<div class=\"tip windows upgrade-windows\">\n"
+"<p>Iniciar o computador usando uma tecla de Menu de Boot pode ser mais rápido do que\n"
+"iniciar o computador no Windows primeiro e depois no Tails. Nós\n"
+"recomendamos que você aprenda como [[iniciar o Tails usando a tecla de menu de \n"
+"boot|doc/first_steps/start/pc#boot-menu-key]] caso você use Tails\n"
+"com frequência.</p>\n"
+"</div>\n"
+
+#. type: Plain text
+#, no-wrap
+msgid "<div class=\"tip mac upgrade-mac\">\n"
+msgstr "<div class=\"tip mac upgrade-mac\">\n"
+
+#. type: Plain text
+#, no-wrap
+msgid ""
+"<p>Apple does not prioritize collaborating with Free Software projects. Their\n"
+"newest hardware is usually very hard for Free Software developers to get\n"
+"working with Linux, and thus Tails. PC hardware tends to be more open and work\n"
+"better with Linux.</p>\n"
+msgstr ""
+"<p>Apple não prioriza em colaborar com projetos de Software Livre. Seus\n"
+"novos hardwares geralmente são bem difíceis para desenvolvedores de software livre conseguirem\n"
+"fazer Linux e, consequentemente, Tails funcionarem. Hardware de PCs geralmente são mais abertos e \n"
+"funcionam melhor com Linux.</p>\n"
+
+#. type: Plain text
+#, no-wrap
+msgid "<h1 id=\"tails\" class=\"step windows linux mac\">Welcome to Tails!</h1>\n"
+msgstr "<h1 id=\"tails\" class=\"step windows linux mac\">Boas-vindas ao Tails!</h1>\n"
+
+#. type: Plain text
+#, no-wrap
+msgid "<div class=\"step-image windows linux mac\">[[!img install/inc/infography/tails.png link=\"no\" alt=\"\"]]</div>\n"
+msgstr "<div class=\"step-image windows linux mac\">[[!img install/inc/infography/tails.png link=\"no\" alt=\"\"]]</div>\n"
+
+#. type: Plain text
+#, fuzzy, no-wrap
+#| msgid "<h2 class=\"clone upgrade\">Starting Tails</h2>\n"
+msgid "<h2 class=\"upgrade-os upgrade-tails\">Starting the intermediary Tails</h2>\n"
+msgstr "<h2 class=\"clone upgrade\">Iniciando Tails</h2>\n"
+
+#. type: Plain text
+#, fuzzy, no-wrap
+#| msgid "<h2 class=\"clone upgrade\">Starting Tails</h2>\n"
+msgid "<h2 class=\"clone upgrade-clone\">Starting the other Tails</h2>\n"
+msgstr "<h2 class=\"clone upgrade\">Iniciando Tails</h2>\n"
+
+#. type: Bullet: '1. '
+msgid "After the Boot Menu, a loading screen appears."
+msgstr "Após o Menu de Boot, uma tela de carregamento aparecerá."
+
+#. type: Plain text
+#, no-wrap
+msgid "   [[!img inc/screenshots/plymouth.png class=\"screenshot\" alt=\"\"]]\n"
+msgstr "   [[!img inc/screenshots/plymouth.png class=\"screenshot\" alt=\"\"]]\n"
+
+#. type: Bullet: '1. '
+msgid ""
+"One to two minutes after the Boot Loader and the loading screen, the Welcome "
+"Screen appears."
+msgstr ""
+"Um ou dois minutos depois do Boot Loader e da tela de carregamento, a Tela "
+"de Boas-vindas aparecerá."
+
+#. type: Plain text
+#, no-wrap
+msgid "   <div class=\"bug windows linux mac upgrade-tails\">\n"
+msgstr "   <div class=\"bug windows linux mac upgrade-tails\">\n"
+
+#. type: Plain text
+#, no-wrap
+msgid ""
+"   <p>If the following message about partitioning errors appears in the Welcome\n"
+"   Screen, please start again from step 2: <a href=\"#verify\">Verify your\n"
+"   download</a>.</p>\n"
+msgstr ""
+
+#. type: Plain text
+#, no-wrap
+msgid "   <p class=\"code\">Errors were detected in the partitioning of your Tails USB stick.</p>\n"
+msgstr ""
+
+#. type: Plain text
+#, fuzzy, no-wrap
+#| msgid "  <p>You have installed Tails on your USB stick.</p>\n"
+msgid ""
+"   <p>If the error persists, reinstall Tails on one of our [[recommended USB\n"
+"   sticks|doc/about/requirements]].</p>\n"
+msgstr "  <p>Você acaba de instalar Tails no seu pendrive USB.</p>\n"
+
+#. type: Plain text
+#, no-wrap
+msgid "   </div>\n"
+msgstr "   </div>\n"
+
+#. type: Plain text
+#, no-wrap
+msgid "   [[!img doc/first_steps/welcome_screen/welcome_screen.png class=\"screenshot\" alt=\"Welcome to Tails!\"]]\n"
+msgstr "   [[!img doc/first_steps/welcome_screen/welcome_screen.png class=\"screenshot\" alt=\"Bem-vindo ao Tails!\"]]\n"
+
+#. type: Bullet: '1. '
+#, fuzzy
+#| msgid ""
+#| "1. In the Welcome Screen, select your language and\n"
+#| "keyboard layout in the **Language & Region** section.\n"
+#| "Click **Start Tails**.\n"
+msgid ""
+"In the Welcome Screen, select your language and keyboard layout in the "
+"<b>Language and Formats</b> section.  Click <b>Start Tails</b>."
+msgstr ""
+"1. Na Tela de Boas-vindas, escolha seu idioma e\n"
+"o modelo do seu teclado na seção de <span class=\"guilabel\">Language & "
+"Region</span>.\n"
+"Clique em **Inicia Tails**.\n"
+
+#. type: Plain text
+#, no-wrap
+msgid ""
+"   <div class=\"bug mac upgrade-mac\">\n"
+"   <p>If your keyboard or touchpad doesn't work, try using a USB keyboard or mouse.</p>\n"
+"   </div>\n"
+msgstr ""
+"   <div class=\"bug mac upgrade-mac\">\n"
+"   <p>Se o seu teclado ou touchpad não funcionarem, tente usar um teclado ou um mouse USB.</p>\n"
+"   </div>\n"
+
+#. type: Bullet: '1. '
+msgid "After 15&ndash;30 seconds, the Tails desktop appears."
+msgstr "Após 15&ndash;30 segundos, a área de trabalho do Tails aparecerá."
+
+#. type: Plain text
+#, no-wrap
+msgid "   [[!img install/inc/screenshots/desktop.png class=\"screenshot\" alt=\"\"]]\n"
+msgstr "   [[!img install/inc/screenshots/desktop.png class=\"screenshot\" alt=\"\"]]\n"
+
+#, no-wrap
+#~ msgid ""
+#~ "<li class=\"windows upgrade-windows\">\n"
+#~ "<p>If no Boot Menu appears, refer to the [[instructions on starting Tails using\n"
+#~ "the Boot Menu key|doc/first_steps/start/pc#boot-menu-key]].</p>\n"
+#~ "</li>\n"
+#~ msgstr ""
+#~ "<li class=\"windows upgrade-windows\">\n"
+#~ "<p>Se nenhum menu de boot aparecer, consulte as [[Instruções sobre como iniciar o Tails usando a tecla do Menu de\n"
+#~ "Boot|doc/first_steps/start/pc#boot-menu-key]].</p>\n"
+#~ "</li>\n"
+
+#, no-wrap
+#~ msgid "<div class=\"step-image clone upgrade\">[[!img install/inc/infography/tails.png link=\"no\" alt=\"\"]]</div>\n"
+#~ msgstr "<div class=\"step-image clone upgrade\">[[!img install/inc/infography/tails.png link=\"no\" alt=\"\"]]</div>\n"
+
+#, no-wrap
+#~ msgid "<div class=\"state-image\">[[!img install/inc/infography/tails-usb.png link=\"no\" alt=\"Tails USB stick\"]]</div>\n"
+#~ msgstr "<div class=\"state-image\">[[!img install/inc/infography/tails-usb.png link=\"no\" alt=\"Pen drive USB com Tails\"]]</div>\n"
+
+#, no-wrap
+#~ msgid ""
+#~ "   <ul>\n"
+#~ "     <li>Please [[let us know|support/talk]].</li>\n"
+#~ "     <li>Try using an external keyboard and mouse.</li>\n"
+#~ "   </ul>\n"
+#~ "   </div>\n"
+#~ msgstr ""
+#~ "   <ul>\n"
+#~ "     <li>Por favor [[nos informe|support/talk]].</li>\n"
+#~ "     <li>Tente usar um teclado e mouse externos.</li>\n"
+#~ "   </ul>\n"
+#~ "   </div>\n"
+
+#, no-wrap
+#~ msgid ""
+#~ "<p>You will now restart your computer on this USB stick.\n"
+#~ "<span class=\"windows linux expert\">It can be a bit complicated, so good luck!</span>\n"
+#~ "<span class=\"mac\">But it might not work on your Mac model, so good luck!</span>\n"
+#~ "</p>\n"
+#~ msgstr ""
+#~ "<p>Agora, você irá reiniciar o seu computador nesse pendrive USB.\n"
+#~ "<span class=\"windows linux expert\">Talvez seja um pouco complicado, então boa sorte!</span>\n"
+#~ "<span class=\"mac\">Mas pode ser que não funcione no seu modelo de Mac, então boa sorte!</span>\n"
+#~ "</p>\n"
+
+#, no-wrap
+#~ msgid "[[!img install/inc/infography/plug-other-tails.png link=\"no\" class=\"clone\" alt=\"USB stick plugged on the left\"]]\n"
+#~ msgstr "[[!img install/inc/infography/plug-other-tails.png link=\"no\" class=\"clone\" alt=\"Pendrive USB conectado à esquerda\"]]\n"
+
+#, no-wrap
+#~ msgid "[[!img install/inc/infography/restart-on-upgrade-usb.png link=\"no\" class=\"upgrade-tails\" alt=\"USB stick unplugged on the right and computer restarted on USB stick on the left\"]]\n"
+#~ msgstr "[[!img install/inc/infography/restart-on-upgrade-usb.png link=\"no\" class=\"upgrade-tails\" alt=\"Pendrive USB desconectado na direita e computador reiniciado no pendrive USB da esquerda\"]]\n"
+
+#, no-wrap
+#~ msgid "<a id=\"greeter\"></a>\n"
+#~ msgstr "<a id=\"greeter\"></a>\n"
+
+#, no-wrap
+#~ msgid "<h2 id=\"welcome-screen\">Welcome Screen</h2>\n"
+#~ msgstr "<h2 id=\"welcome-screen\">Tela de Boas Vindas</h2>\n"
+
+#~ msgid ""
+#~ "Open this page on your smartphone, tablet, or another computer "
+#~ "(recommended)."
+#~ msgstr ""
+#~ "Abra essa página em seu celular, tablet ou outro computador (recomendado)."
+
+#, no-wrap
+#~ msgid ""
+#~ "<li>\n"
+#~ "<p>If the computer displays the error message\n"
+#~ "<span class=\"guilabel\">Error starting GDM with your graphics\n"
+#~ "card</span>, refer to our [[list of known issues with graphics\n"
+#~ "cards|support/known_issues/graphics]].</p>\n"
+#~ "</li>\n"
+#~ msgstr ""
+#~ "<li>\n"
+#~ "<p>Se o computador mostrar a mensagem de erro\n"
+#~ "<span class=\"guilabel\">Error starting GDM with your graphics\n"
+#~ "card</span>, veja nossa [[lista de problemas conhecidos com placas\n"
+#~ "de vídeo|support/known_issues/graphics]].</p>\n"
+#~ "</li>\n"

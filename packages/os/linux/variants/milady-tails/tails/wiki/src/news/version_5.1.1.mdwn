@@ -1,0 +1,61 @@
+[[!meta title="Tails 5.1.1 is out"]]
+[[!meta date="Thu, 23 Jun 2022 10:00:00 +0000"]]
+[[!pagetemplate template="news.tmpl"]]
+[[!tag announce]]
+
+This release fixes a [high severity security issue in
+tor](https://forum.torproject.net/t/stable-release-0-4-7-8/3679), that affects
+performance and possibly anonymity.
+
+<h1 id="changes">Changes and updates</h1>
+
+## Included software
+
+- Update *tor* to 0.4.7.8.
+
+- Update *Thunderbird* to [91.10](https://www.thunderbird.net/en-US/thunderbird/91.10.0/releasenotes/).
+
+- Update the *Linux* kernel to 5.10.120. This fixes important security issues.
+
+For more details, read our [[!tails_gitweb debian/changelog desc="changelog"]].
+
+<h1 id="issues">Known issues</h1>
+
+None specific to this release.
+
+See the list of [[long-standing issues|support/known_issues]].
+
+<h1 id="get">Get Tails 5.1.1</h1>
+
+## To upgrade your Tails USB stick and keep your Persistent Storage
+
+- Automatic upgrades are available from Tails 5.x.
+
+- If you cannot do an automatic upgrade or if Tails fails to start after an
+  automatic upgrade, please try to do a [[manual upgrade|doc/upgrade/#manual]].
+
+## To install Tails on a new USB stick
+
+Follow our installation instructions:
+
+  - [[Install from Windows|install/windows]]
+  - [[Install from macOS|install/mac]]
+  - [[Install from Linux|install/linux]]
+  - [[Install from Debian or Ubuntu using the command line and GnuPG|install/expert]]
+
+<div class="caution"><p>The Persistent Storage on the USB stick will be lost if
+you install instead of upgrading.</p></div>
+
+## To download only
+
+If you don't need installation or upgrade instructions, you can download
+Tails 5.1.1 directly:
+
+  - [[For USB sticks (USB image)|install/download]]
+  - [[For DVDs and virtual machines (ISO image)|install/download-iso]]
+
+<h1 id="next">What's coming up?</h1>
+
+Tails 5.2 is [[tentatively scheduled|contribute/calendar]] for July 5,
+but it will likely be released later than that.
+

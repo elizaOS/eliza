@@ -1,0 +1,86 @@
+# SOME DESCRIPTIVE TITLE
+# Copyright (C) YEAR Free Software Foundation, Inc.
+# This file is distributed under the same license as the PACKAGE package.
+# FIRST AUTHOR <EMAIL@ADDRESS>, YEAR.
+#
+msgid ""
+msgstr ""
+"Project-Id-Version: \n"
+"Report-Msgid-Bugs-To: tails-l10n@boum.org\n"
+"POT-Creation-Date: 2026-04-01 02:00+0000\n"
+"PO-Revision-Date: 2024-10-09 11:09+0000\n"
+"Last-Translator: Benjamin Held <Benjamin.Held@protonmail.com>\n"
+"Language-Team: \n"
+"Language: bg\n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+"Plural-Forms: nplurals=2; plural=n != 1;\n"
+"X-Generator: Weblate 5.3\n"
+
+#. type: Bullet: '- '
+msgid "[[Starting Tails|first_steps/start]]"
+msgstr ""
+
+#. type: Bullet: '  * '
+msgid "[[Starting Tails on PC|first_steps/start/pc]]"
+msgstr ""
+
+#. type: Bullet: '  * '
+msgid "[[Starting Tails on Mac|first_steps/start/mac]]"
+msgstr ""
+
+#. type: Bullet: '- '
+msgid "[[Accessibility|first_steps/accessibility]]"
+msgstr ""
+
+#. type: Bullet: '- '
+msgid "[[Welcome Screen|first_steps/welcome_screen]]"
+msgstr ""
+
+#. type: Bullet: '  * '
+msgid ""
+"[[Administration password|first_steps/welcome_screen/"
+"administration_password]]"
+msgstr ""
+
+#. type: Bullet: '  * '
+msgid "[[MAC address anonymization|first_steps/welcome_screen/mac_spoofing]]"
+msgstr ""
+
+#. type: Bullet: '- '
+msgid "[[Introduction to GNOME and the Tails desktop|first_steps/desktop]]"
+msgstr ""
+
+#. type: Bullet: '  * '
+msgid "[[Why is the time wrong?|first_steps/desktop/time]]"
+msgstr ""
+
+#. type: Bullet: '- '
+msgid "[[Reporting an error using *WhisperBack*|first_steps/whisperback]]"
+msgstr ""
+
+#. type: Bullet: '- '
+msgid "[[Shutting down Tails|first_steps/shutdown]]"
+msgstr ""
+
+#. type: Bullet: '- '
+msgid "[[Uninstalling Tails|doc/first_steps/uninstall]]"
+msgstr ""
+
+#. type: Bullet: '  - '
+msgid "[[Uninstalling Tails using Windows|doc/first_steps/uninstall/windows]]"
+msgstr ""
+
+#. type: Bullet: '  - '
+msgid "[[Uninstalling Tails using macOS|doc/first_steps/uninstall/mac]]"
+msgstr ""
+
+#. type: Bullet: '  - '
+msgid "[[Uninstalling Tails using Linux|doc/first_steps/uninstall/linux]]"
+msgstr ""
+
+#. type: Bullet: '  - '
+msgid ""
+"[[Uninstalling Tails using Tails itself|doc/first_steps/uninstall/tails]]"
+msgstr ""

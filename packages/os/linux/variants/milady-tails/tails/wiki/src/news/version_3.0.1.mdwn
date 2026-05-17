@@ -1,0 +1,52 @@
+[[!meta date="Wed, 05 Jul 2017 16:34:56 +0000"]]
+[[!pagetemplate template="news.tmpl"]]
+[[!meta title="Tails 3.0.1 is out"]]
+[[!tag announce]]
+
+This release fixes [[many security
+issues|security/Numerous_security_holes_in_3.0]] and users should
+upgrade as soon as possible.
+
+[[!toc levels=1]]
+
+# Changes
+
+## Upgrades and changes
+
+ * Upgrade tor to 0.3.0.9-1~d90.stretch+1. ([[!tails_ticket 13253]])
+ * Upgrade Linux to 4.9.30-2+deb9u2.
+
+## Fixed problems
+
+ * Fix interaction between SSH and GNOME Keyring. ([[!tails_ticket 12481]])
+ * Have Tails Installer stop rejecting valid USB drives,
+   pretending they're not "removable". ([[!tails_ticket 12696]])
+ * Make behavior of the power button and lid close actions in the *Greeter*
+   consistent with the regular GNOME session. ([[!tails_ticket 13000]])
+
+For more details, read our [[!tails_gitweb debian/changelog desc="changelog"]].
+
+<a id="known-issues"></a>
+
+# Known issues
+
+None specific to this release.
+
+See the list of [[long-standing issues|support/known_issues]].
+
+# Get Tails 3.0.1
+
+- To install, follow our [[installation instructions|install]].
+
+- To upgrade, do a [[manual upgrade|doc/upgrade#manual]].
+
+- [[Download Tails 3.0.1.|install/download]]
+
+# What's coming up?
+
+Tails 3.1 is [[scheduled|contribute/calendar]] for August 8.
+
+
+We need your help and there are many ways to [[contribute to
+Tails|contribute]] (<a href="https://tails.net/donate/?r=3.0.1">donating</a> is only one of
+them). Come [[talk to us|doc/about/contact#tails-dev]]!

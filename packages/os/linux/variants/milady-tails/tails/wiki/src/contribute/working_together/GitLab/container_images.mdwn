@@ -1,0 +1,169 @@
+[[!meta title="Container images policy"]]
+
+[[!toc levels=2]]
+
+# Background
+
+Several projects in the Tails development and operations workflows make use of
+container images in GitLab CI jobs to test, build and deploy different kinds of
+resources, and many of these jobs can directly affect the code and
+documentation that is made available to end users. Because of that, we need
+proper security measures and workflows that can prevent malicious injection of
+data that could compromise the security of Tails users, while at the same time
+allowing developers and service admins to do their jobs.
+
+# Policy
+
+## Scope and affected users
+
+This proposal applies to projects in the [Tails GitLab
+instance](https://gitlab.tails.boum.org) whose repositories or CI/CD pipelines
+can directly affect the contents of the Tails OS image or website.
+
+Affected users are members of such projects who have permissions to do at least
+one of the following:
+
+- push images to the project's container registry
+- push to protected branches of the project's repositories
+
+These are project members that have at least Developer privileges.
+
+## Requirements
+
+### Must have
+
+- Sysadmin guidelines for configuring trusted GitLab runners
+- Developer guidelines for building, storing and using container images for
+  projects that deal with sensitive credentials
+- Enough guarantees that only trusted runners have access to sensitive variables
+
+### Non-goals
+
+- Technically restrict the registration of new Runners.
+- Establish a general policy for runners in the Tails GitLab instance.
+
+## Definitions
+
+This section provides definitions for what's considered trusted and sensitive
+in the context of this proposal.
+
+### Trusted software stack
+
+The software stack of a GitLab Runner is considered trusted if all of the
+following apply:
+
+- all software installed and running on the hypervisor and the virtual machine
+  (including operating systems, the GitLab Runner application and the container
+  runtime) are either:
+  - installed from Debian's official APT repositories, or
+  - open source and installed using APT from a repository maintained by upstream
+    which always has the latest security patches applied
+- upgrades are installed automatically
+- the need for manual system reboots and service restarts are periodically
+  notified and acted upon
+
+<a id="trusted-container-images"></a>
+### Trusted container images
+
+A trusted container image is a container image that is:
+
+- either reproducible or based on a reproducible image,
+- stored in the Tails GitLab registry, and
+- peer-reviewed
+
+The Tails sysadmin Team maintains a set of container images in the
+[[!tails_gitlab sysadmin-team/container-images]] project which are trusted and
+meant to either be used directly or serve as the basis for other trusted
+container images.
+
+<a id="trusted-runners"></a>
+### Trusted runners
+
+A trusted GitLab runner is one that:
+
+- runs on systems which only Tails sysadmins have access to,
+- runs on top of trusted software stack, and
+- is restricted to only run trusted container images.
+
+<a id="sensitive-credentials"></a>
+### Sensitive credentials
+
+Sensitive credentials are those that give write access to at least one of the following:
+
+- any project's repository
+- any project's container registry
+- the production website.
+
+Examples of sensitive credentials are:
+
+- GitLab Access Tokens with Developer permissions or higher for [[!tails_gitlab
+  tails/tails]]
+- SSH credentials with write permissions to the production website.
+
+<a id="sensitive-jobs"></a>
+### Sensitive jobs
+
+A sensitive CI job is a GitLab CI job that can directly affect either the
+contents of the Tails OS image or of the website. In general, sensitive jobs
+are one of the following:
+
+- jobs that run for the protected branches of [[!tails_gitlab tails/tails]]
+  (such jobs have access to sensitive credentials)
+- jobs that run with Developer permissions for any branch of [[!tails_gitlab
+  tails/tails]] (such jobs can push container images to the project's container
+  registry)
+- jobs in any other project that have access to any sensitive credential
+
+Compromise of sensitive jobs could cause compromise of the contents of the
+Tails image and documentation, and because of that they should only execute on
+trusted runners.
+
+Examples of sensitive jobs are:
+
+- [`build-website`](https://gitlab.tails.boum.org/tails/tails/-/blob/b3aca174421cc27eb670da1e05192016d7fca2f8/.gitlab-ci.yml#L65):
+  gets an Access Tokens with Maintainer permissions in order to be able to push
+  new commits back to protected branches of the [[!tails_gitlab tails/tails]]
+  repository.
+- [`deploy-website`](https://gitlab.tails.boum.org/tails/tails/-/blob/b3aca174421cc27eb670da1e05192016d7fca2f8/.gitlab-ci.yml#L80):
+  gets SSH credentials so it can push static data to our website mirrors.
+- [`Ensure MR from master into
+  stable`](https://gitlab.tails.boum.org/tails/gitlab-config/-/blob/50aa8d7d105b9a91fb0a20e053a6ac73c5c63e81/.gitlab-ci.yml#L6):
+  gets an Access Tokens with Maintainer permissions in order to be able to create
+  MRs to protected branches of [[!tails_gitlab tails/tails]] that will be merged
+  automatically when the pipeline succeeds.
+
+## Guidelines for developers
+
+Protect [sensitive credentials](#sensitive-credentials):
+
+- [Protect CI/CD variables](https://docs.gitlab.com/ee/ci/variables/#protect-a-cicd-variable) that contain sensitive credentials
+- Only project Maintainers and trusted runners should have access to sensitive credentials
+
+Use [trusted container images](#trusted-container-images) for [sensitive jobs](#sensitive-jobs):
+
+- Request the activation of your project's container registry to Sysadmins
+- Start with [one of the base images](https://gitlab.tails.boum.org/sysadmin-team/container-images/container_registry)
+- Use the Podman image to build and push images ([see examples](https://gitlab.tails.boum.org/sysadmin-team/container-images/-/blob/main/.gitlab-ci.yml))
+- Build and push container images to your project's container registry [using the CI/CD](https://docs.gitlab.com/ee/user/packages/container_registry/build_and_push_images.html)
+- Make sure the images you push to your project's registry are peer-reviewed
+
+Use [trusted runners](#trusted-runners) for [sensitive jobs](#sensitive-jobs):
+
+- Do not add new runners to projects with sensitive jobs (eg. [[!tails_gitlab
+  tails/tails]] and [[!tails_gitlab tails/gitlab-config]])
+- If you need more runner capacity, please ask Sysadmins
+- Note: this is *not* [administratively
+  enforced](https://docs.gitlab.com/ee/administration/settings/continuous_integration.html#restrict-runner-registration-by-all-users-in-an-instance)
+  for now
+
+## Guidelines for sysadmins
+
+- Only install runners on VMs whose hosts we control
+- Install `gitlab-runner` from the upstream APT repository
+- Restrict runners to only use images from the Tails GitLab registry
+
+# References
+
+- [GitLab CI/CD permissions](https://docs.gitlab.com/ee/user/permissions.html#gitlab-cicd-permissions)
+- [Protected variables](https://docs.gitlab.com/ee/ci/variables/#protect-a-cicd-variable)
+- [Build and push container images to the container registry](https://docs.gitlab.com/ee/user/packages/container_registry/build_and_push_images.html)

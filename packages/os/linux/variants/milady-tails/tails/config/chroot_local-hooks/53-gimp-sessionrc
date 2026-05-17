@@ -1,0 +1,9 @@
+#!/bin/sh
+
+set -e
+
+echo 'Updating GIMP configuration'
+
+# This increases the width of the left dock by 5 pixels, in order to fix #16807
+sed -i --regexp-extended 's/^(\s*)\(left-docks-width "188"\)$/\1(left-docks-width "193")/' \
+    /etc/gimp/3.0/sessionrc

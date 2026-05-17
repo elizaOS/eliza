@@ -1,0 +1,76 @@
+# SOME DESCRIPTIVE TITLE
+# Copyright (C) YEAR Free Software Foundation, Inc.
+# This file is distributed under the same license as the PACKAGE package.
+# FIRST AUTHOR <EMAIL@ADDRESS>, YEAR.
+#
+msgid ""
+msgstr ""
+"Project-Id-Version: PACKAGE VERSION\n"
+"POT-Creation-Date: 2024-08-06 18:47+0000\n"
+"PO-Revision-Date: 2024-11-02 13:28+0000\n"
+"Last-Translator: xin <xin@riseup.net>\n"
+"Language-Team: LANGUAGE <LL@li.org>\n"
+"Language: tr\n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+"Plural-Forms: nplurals=2; plural=n != 1;\n"
+"X-Generator: Weblate 5.3\n"
+
+#. type: Plain text
+#, no-wrap
+msgid "[[!meta title=\"Exchanging Monero using Feather\"]]\n"
+msgstr ""
+
+#. type: Plain text
+msgid ""
+"[*Feather*](https://featherwallet.org/) is a Monero wallet with a graphical "
+"interface similar to that of [[*Electrum*|doc/anonymous_internet/electrum]]."
+msgstr ""
+
+#. type: Plain text
+msgid ""
+"To learn how to use *Feather* in Tails, see the [Feather Wallet "
+"Documentation](https://docs.featherwallet.org/)."
+msgstr ""
+
+#. type: Plain text
+#, no-wrap
+msgid "<div class=\"caution\">\n"
+msgstr ""
+
+#. type: Plain text
+#, no-wrap
+msgid ""
+"<p>If you follow the guide linked to above, you will install <i>Feather</i> as an AppImage\n"
+"instead of using the\n"
+"[[Additional Software|persistent_storage/additional_software]] feature. This is\n"
+"because <i>Feather</i> is not included in Debian.</p>\n"
+msgstr ""
+
+#. type: Plain text
+#, no-wrap
+msgid ""
+"<p>Because <i>Feather</i> is not included in Debian, it does not receive the\n"
+"same [[high level of scrutiny|doc/about/trust/#trust_debian]] as software in Debian.\n"
+"This makes it much more likely for a security issue in <i>Feather</i> to go\n"
+"undiscovered.</p>\n"
+msgstr ""
+
+#. type: Plain text
+#, no-wrap
+msgid ""
+"<p>Also, because <i>Feather</i> is not being installed using the Additional\n"
+"Software feature, it will not be automatically updated.</p>\n"
+msgstr ""
+
+#. type: Plain text
+#, no-wrap
+msgid "</div>\n"
+msgstr "</div>\n"
+
+#. type: Plain text
+msgid ""
+"Please report your findings about using *Feather* in Tails on [[!"
+"tails_ticket 17823]]."
+msgstr ""

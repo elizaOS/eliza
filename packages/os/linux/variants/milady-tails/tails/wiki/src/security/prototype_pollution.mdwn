@@ -1,0 +1,41 @@
+[[!meta date="Mon, 24 May 2022 12:34:56 -0000"]]
+[[!meta title="Serious security vulnerability in Tails 5.0"]]
+[[!pagetemplate template="news.tmpl"]]
+[[!tag security/fixed]]
+
+*Tor Browser* in Tails 5.0 and earlier is unsafe to use for sensitive
+information.
+
+**We recommend that you stop using Tails until the release of 5.1 (early June) if
+you use *Tor Browser* for sensitive information (passwords, private messages,
+personal information, etc.).**
+
+A security vulnerability was discovered in the JavaScript engine of *Firefox*
+and *Tor Browser*. See the [Mozilla Foundation Security Advisory
+2022-19](https://www.mozilla.org/en-US/security/advisories/mfsa2022-19/)
+
+This vulnerability allows a malicious website to bypass some of the security
+built in *Tor Browser* and access information from other websites.
+
+For example, after you visit a malicious website, an attacker controlling this
+website might access the password or other sensitive information that you send
+to other websites afterwards during the same Tails session.
+
+This vulnerability doesn't break the anonymity and encryption of Tor
+connections.
+
+For example, it is still safe and anonymous to access websites from Tails if
+you don't share sensitive information with them.
+
+After *Tor Browser* has been compromised, the only reliable solution is to
+restart Tails.
+
+Other applications in Tails are not vulnerable. *Thunderbird* in Tails is not
+vulnerable because JavaScript is disabled.
+
+The *Safest* [[security level of *Tor
+Browser*|doc/anonymous_internet/Tor_Browser#security-level]] is not affected
+because JavaScript is disabled at this security level.
+
+This vulnerability will be fixed in Tails 5.1 (early June), but our team doesn't
+have the capacity to publish an emergency release earlier.

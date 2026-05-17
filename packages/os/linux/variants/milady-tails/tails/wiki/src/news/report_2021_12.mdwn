@@ -1,0 +1,102 @@
+[[!meta title="Tails report for December 2021"]]
+[[!meta date="Mon, 10 Jan 2022 12:34:56 +0000"]]
+[[!pagetemplate template="news.tmpl"]]
+
+[[!toc]]
+
+Releases
+========
+
+[[Tails 4.25 was released on December 2021|news/version_4.25]].
+
+- We added a utility to make a backup of the Persistent Storage to another
+  Tails USB stick.
+
+  [[!img version_4.25/backup.png link="no" alt=""]]
+
+- We added a new entry called **Tails (External Hard Disk)** to the GRUB boot
+  loader.
+
+  [[!img version_4.25/grub.png link="no" alt=""]]
+
+Hiring a Project Manager
+========================
+
+We published a [[job offer for a Project Manager|jobs/project_manager]] and
+reviewed the first 50 applicants.
+
+We were very impressed by the quality of the applicants and this gives us a lot
+of hope for the future of the project.
+
+We selected 6 applicants that we will interview in January.
+
+We are still reviewing new applications! Please pass the word :)
+
+Automatic time synchronization
+==============================
+
+We wrote a prototype to automate the synchronization of the computer's clock
+before connecting to the Tor network. ([[!tails_ticket 18717]])
+
+This will help people living in Eastern Europe and Asia connect to Tor bridges
+from Tails.
+
+When users decide to [[connect to the Tor network
+automatically|doc/anonymous_internet/tor#automatic]], Tails will connect to
+Fedora's captive portal detection *without going through Tor* to automatically
+correct the clock before connecting to Tor.
+
+You can read more about our security
+design
+and [current implementation
+plans](https://gitlab.tails.boum.org/tails/blueprints/-/wikis/robust_time_syncing#current-plan)
+or test the nightly
+build
+of our prototype.
+
+Usability tests of first-time use
+=================================
+
+We did some usability tests of our installation instructions. We recruited 5
+activists with interest in privacy technologies and observed them while they
+downloaded, installed, and started Tails for the first time. We hadn't tested
+this entire flow since 2015 and so many things happened since then.
+
+* 3 of them had a pretty good installation experience of 10-20 minutes,
+  download excluded. This process became much easier since 2015 thanks to the
+  distribution of USB images instead of ISO images.
+
+* 2 of them went a very bad route and took more than 1 hour to install Tails
+  despite us rescuing them along the way. The good news is that we could help
+  these people with only changes to the website.
+
+You can see the detailed findings and the 19 GitLab issues that we created from
+these usability tests in this rainbow
+table
+or read a more [detailed
+report](https://lists.autistici.org/message/20211217.014522.68cdc460.en.html). ([[!tails_ticket 18074]])
+
+We also published our [[policy for the retention of the user research
+data|contribute/how/user_experience/research]] gathered during such activities.
+
+Metrics
+=======
+
+- The Russian translation of our [[documentation about connecting to the Tor
+  network|doc/anonymous_internet/tor]] was the top growing page on our website,
+  according to Google Search.
+
+  This happened while [Russia started blocking
+  Tor](https://ooni.org/post/2021-russia-blocks-tor/) in December.
+
+  We are very proud to have released the Russian translation of our entire user
+  documentation in October and released the [[*Tor Connection* assistant in
+  July|news/version_4.20]] to make it easier for people to circumvent this kind
+  of censorship.
+
+  We estimate that 4 times more people are using bridges from Tails since the
+  release of *Tor Connection*, from the *WhisperBack* reports that we receive
+  from users.
+
+- Tails has been started more than 752&#8239;953 times this month. This makes
+  24&#8239;289 boots a day on average.

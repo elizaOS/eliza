@@ -1,0 +1,2336 @@
+# SOME DESCRIPTIVE TITLE
+# Copyright (C) YEAR Free Software Foundation, Inc.
+# This file is distributed under the same license as the PACKAGE package.
+# FIRST AUTHOR <EMAIL@ADDRESS>, YEAR.
+msgid ""
+msgstr ""
+"Project-Id-Version: Tails\n"
+"Report-Msgid-Bugs-To: tails-l10n@boum.org\n"
+"POT-Creation-Date: 2026-04-07 22:25+0000\n"
+"PO-Revision-Date: 2026-03-14 15:42+0000\n"
+"Last-Translator: xin <xin@riseup.net>\n"
+"Language-Team: Spanish <http://translate.tails.net/projects/tails/"
+"known_issues/es/>\n"
+"Language: es\n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+"Plural-Forms: nplurals=2; plural=n != 1;\n"
+"X-Generator: Weblate 5.13.2\n"
+
+#. type: Plain text
+#, no-wrap
+msgid "[[!meta title=\"Known issues\"]]\n"
+msgstr "[[!meta title=\"Problemas conocidos\"]]\n"
+
+#. type: Bullet: '- '
+msgid ""
+"To learn what you can do with Tails, refer to our [[documentation|doc]]."
+msgstr ""
+
+#. type: Bullet: '- '
+msgid ""
+"For more general questions about Tails, refer to our [[FAQ|support/faq]]."
+msgstr ""
+
+#. type: Bullet: '- '
+msgid ""
+"For issues with graphics cards, see our [[known issues with graphics cards|"
+"known_issues/graphics]]."
+msgstr ""
+
+#. type: Plain text
+#, no-wrap
+msgid "[[!toc levels=2]]\n"
+msgstr "[[!toc levels=2]]\n"
+
+#. type: Plain text
+#, fuzzy, no-wrap
+#| msgid "<h1 id=\"problems-starting-tails\">Problems starting Tails</h1>\n"
+msgid "<h1 id=\"not-at-all\">Tails not starting at all</h1>\n"
+msgstr "<h1 id=\"problems-starting-tails\">Problemas al arrancar Tails</h1>\n"
+
+#. type: Plain text
+#, no-wrap
+msgid "<h2 id=\"mac-not-at-all\">Mac</h2>\n"
+msgstr "<h2 id=\"mac-not-at-all\">Mac</h2>\n"
+
+#. type: Plain text
+msgid "This section lists known problems with specific hardware."
+msgstr ""
+
+#. type: Plain text
+msgid ""
+"Tails does not start at all on Mac models that use the Apple chips (M1, M2, "
+"and so on) and on many other Mac models."
+msgstr ""
+
+#. type: Plain text
+msgid ""
+"Apple does not prioritize collaborating with Free Software projects. Their "
+"newest hardware is usually very hard for Free Software developers to get "
+"working with Linux, and thus Tails. PC hardware tends to be more open and "
+"work better with Linux."
+msgstr ""
+
+#. type: Plain text
+#, no-wrap
+msgid "<div class=\"tip\">\n"
+msgstr "<div class=\"tip\">\n"
+
+#. type: Plain text
+#, no-wrap
+msgid ""
+"<p>See our instructions on [[starting Tails on Mac|doc/first_steps/start/mac]]\n"
+"for general troubleshooting tips.</p>\n"
+msgstr ""
+
+#. type: Plain text
+#, no-wrap
+msgid "<p>[[Let us know|support/talk]] if you discover a new issue or workaround.</p>\n"
+msgstr ""
+
+#. type: Plain text
+#, no-wrap
+msgid "</div>\n"
+msgstr "</div>\n"
+
+#. type: Plain text
+#, no-wrap
+msgid "<h2 id=\"pc-not-at-all\">PC</h2>\n"
+msgstr "<h2 id=\"pc-not-at-all\">PC</h2>\n"
+
+#. type: Plain text
+#, no-wrap
+msgid ""
+"<p>See our instructions on [[starting Tails on PC|doc/first_steps/start/pc]]\n"
+"for general troubleshooting tips.</p>\n"
+msgstr ""
+
+#. type: Plain text
+#, no-wrap
+msgid "<h3 id=\"dell-latitude-e5250\">Dell Latitude E5250</h3>\n"
+msgstr "<h3 id=\"dell-latitude-e5250\">Dell Latitude E5250</h3>\n"
+
+#. type: Plain text
+#, no-wrap
+msgid ""
+"<!--\n"
+"Last updated: 2019-04-05\n"
+"-->\n"
+msgstr ""
+"<!--\n"
+"Last updated: 2019-04-05\n"
+"-->\n"
+
+#. type: Plain text
+msgid "Does not start on Tails USB sticks."
+msgstr "No inicia en memorias USB de Tails."
+
+#. type: Plain text
+#, no-wrap
+msgid "<h3 id=\"dell-latitude-e6430\">Dell Latitude E6430 and E6230</h3>\n"
+msgstr "<h3 id=\"dell-latitude-e6430\">Dell Latitude E6430 y E6230</h3>\n"
+
+#. type: Plain text
+#, no-wrap
+msgid ""
+"<!--\n"
+"Last updated: 2018-06-14 (wb://7653aff4f415e996567233d8c088da08)\n"
+"-->\n"
+msgstr ""
+"<!--\n"
+"Last updated: 2018-06-14 (wb://7653aff4f415e996567233d8c088da08)\n"
+"-->\n"
+
+#. type: Plain text
+msgid "Does not start on USB sticks."
+msgstr "No inicia en memorias USB."
+
+#. type: Plain text
+msgid "With BIOS versions A03 06/03/2012 (and A09, A11, and A12)"
+msgstr "Con versiones de BIOS A03 06/03/2012 (y A09, A11, y A12)"
+
+#. type: Plain text
+msgid "Error message: `Invalid partition table!`"
+msgstr "Mensaje de error: `Invalid partition table!`"
+
+#. type: Plain text
+msgid ""
+"Workaround (at least with BIOS versions A09, A11, and A12): just hit enter "
+"and it will continue with the boot."
+msgstr ""
+"Solución (al menos con las versiones de BIOS A09, A11, y A12): presiona "
+"Enter y continuará con el boot."
+
+#. type: Plain text
+#, no-wrap
+msgid "<h3 id=\"hp-notebook-BCM943142HM\">HP Notebook BCM943142HM</h3>\n"
+msgstr "<h3 id=\"hp-notebook-BCM943142HM\">HP Notebook BCM943142HM</h3>\n"
+
+#. type: Plain text
+#, no-wrap
+msgid ""
+"<!--\n"
+"Last updated: 2020-12-18\n"
+"-->\n"
+msgstr ""
+"<!--\n"
+"Last updated: 2020-12-18\n"
+"-->\n"
+
+#. type: Plain text
+msgid "Does not start Tails 4.13."
+msgstr "No arranca Tails 4.13."
+
+#. type: Plain text
+#, no-wrap
+msgid "<h3 id=\"system76-oryx-pro\">System76 Oryx Pro</h3>\n"
+msgstr "<h3 id=\"system76-oryx-pro\">System76 Oryx Pro</h3>\n"
+
+#. type: Plain text
+#, no-wrap
+msgid ""
+"<!--\n"
+"Last updated: 2019-05-02\n"
+"Specs: https://system76.com/laptops/oryx\n"
+"-->\n"
+msgstr ""
+"<!--\n"
+"Last updated: 2019-05-02\n"
+"Specs: https://system76.com/laptops/oryx\n"
+"-->\n"
+
+#. type: Plain text
+msgid ""
+"This machine does not start from a Tails USB stick: the Linux kernel "
+"included in at least Tails 3.11 to 3.13.1, inclusive, does not support the "
+"hardware USB controller."
+msgstr ""
+
+#. type: Plain text
+#, fuzzy, no-wrap
+#| msgid "<h1 id=\"problems-starting-tails\">Problems starting Tails</h1>\n"
+msgid "<h1 id=\"not-entirely\">Tails not starting entirely</h1>\n"
+msgstr "<h1 id=\"problems-starting-tails\">Problemas al arrancar Tails</h1>\n"
+
+#. type: Plain text
+#, no-wrap
+msgid "<h2 id=\"mac-not-entirely\">Mac</h2>\n"
+msgstr "<h2 id=\"mac-not-entirely\">Mac</h2>\n"
+
+#. type: Plain text
+#, no-wrap
+msgid ""
+"<p>See our instructions on [[starting Tails on Mac|doc/first_steps/start/mac#not-entirely]]\n"
+"for general troubleshooting tips.</p>\n"
+msgstr ""
+
+#. type: Plain text
+#, no-wrap
+msgid ""
+"<!--\n"
+"Last updated:\n"
+"- MacBook Air Retina 2019: 2019-11-01\n"
+"- MacBook Pro 8,3: 2019-11-01\n"
+"-->\n"
+msgstr ""
+"<!--\n"
+"Last updated:\n"
+"- MacBook Air Retina 2019: 2019-11-01\n"
+"- MacBook Pro 8,3: 2019-11-01\n"
+"-->\n"
+
+#. type: Title ###
+#, no-wrap
+msgid "MacBook Air Retina 2018 and 2019"
+msgstr "MacBook Air Retina 2018 y 2019"
+
+#. type: Plain text
+msgid ""
+"To start Tails successfully, [[add the following boot option when starting "
+"Tails|doc/advanced_topics/boot_options]]:"
+msgstr ""
+"Para arrancar Tails, [[añade las siguientes opciones de arranque de Tails|/"
+"doc/advanced_topics/boot_options]]:"
+
+#. type: Plain text
+#, no-wrap
+msgid "    modprobe.blacklist=thunderbolt\n"
+msgstr "    modprobe.blacklist=thunderbolt\n"
+
+#. type: Plain text
+#, fuzzy
+#| msgid ""
+#| "MacBook Pro 2016 and 2017: the keyboard, trackpad and Touch Bar may not "
+#| "work. If they do, please let us know so we can update this page."
+msgid ""
+"Still, the trackpad and keyboard might not work. You can use an external "
+"mouse and keyboard."
+msgstr ""
+"MacBook Pro 2016 y 2017: el teclado, trackpad y barra táctil pueden no "
+"funcionar. Si lo hacen, avísanos así podemos actualizar esta página."
+
+#. type: Plain text
+#, no-wrap
+msgid "<h2 id=\"pc-not-entirely\">PC</h2>\n"
+msgstr "<h2 id=\"pc-not-entirely\">PC</h2>\n"
+
+#. type: Plain text
+#, no-wrap
+msgid ""
+"<p>See our instructions on [[starting Tails on PC|doc/first_steps/start/pc#not-entirely]]\n"
+"for general troubleshooting tips.</p>\n"
+msgstr ""
+
+#. type: Plain text
+#, no-wrap
+msgid "<h3 id=\"lockup\">\"Soft lockup\" error</h3>\n"
+msgstr "<h3 id=\"lockup\">Error de \"Soft lockup\"</h3>\n"
+
+#. type: Plain text
+#, no-wrap
+msgid ""
+"<!--\n"
+"Last updated: 2019-05-20\n"
+"-->\n"
+msgstr ""
+"<!--\n"
+"Last updated: 2019-05-20\n"
+"-->\n"
+
+#. type: Plain text
+msgid "On some laptops, Tails starts with the following error:"
+msgstr "En algunos portátiles Tails arranca con el error siguiente:"
+
+#. type: Plain text
+#, no-wrap
+msgid "<p class=\"code\">soft lockup - CPU#<span class=\"command-placeholder\">N</span> stuck for <span class=\"command-placeholder\">N</span>s</p>\n"
+msgstr "<p class=\"code\">soft lockup - CPU#<span class=\"command-placeholder\">N</span> stuck for <span class=\"command-placeholder\">N</span>s</p>\n"
+
+#. type: Plain text
+msgid ""
+"To start Tails successfully, try to [[add the following boot option when "
+"starting Tails|doc/advanced_topics/boot_options]]:"
+msgstr ""
+"Para arrancar Tails, prueba de [[añadir las siguientes opciones a las "
+"opciones de arranque de Tails|/doc/advanced_topics/boot_options]]:"
+
+#. type: Plain text
+#, no-wrap
+msgid "    acpi_rev_override=1\n"
+msgstr "    acpi_rev_override=1\n"
+
+#. type: Plain text
+#, fuzzy, no-wrap
+#| msgid "<h3 id=\"microsoft-surface-laptop-3\">Microsoft Surface Laptop 3</h3>\n"
+msgid "<h3 id=\"microsoft-surface-laptop\">Microsoft Surface Laptop 3 and 4</h3>\n"
+msgstr "<h3 id=\"microsoft-surface-laptop-3\">Microsoft Surface Laptop 3</h3>\n"
+
+#. type: Plain text
+#, no-wrap
+msgid ""
+"<!--\n"
+"Last updated: 2022-09-12\n"
+"-->\n"
+msgstr ""
+"<!--\n"
+"Last updated: 2022-09-12\n"
+"-->\n"
+
+#. type: Plain text
+msgid ""
+"The keyboard and mouse do not work on this laptop.  If you find a "
+"workaround, please let us know."
+msgstr ""
+"El teclado y el ratón no funcionan en este ordenador. Si encuentras una "
+"solución, cuéntanos."
+
+#. type: Plain text
+#, no-wrap
+msgid "<h2 id=\"sbat\">Shim SBAT verification error</h2>\n"
+msgstr ""
+
+#. type: Plain text
+msgid ""
+"This section applies if you get the following error message, either when "
+"starting Tails or when restarting your regular Linux operating system after "
+"starting Tails."
+msgstr ""
+
+#. type: Plain text
+#, no-wrap
+msgid ""
+"<p class=\"code\">\n"
+"Verifying shim SBAT data failed: Security Policy Violation<br>\n"
+"Something has gone seriously wrong: SBAT self-check failed: Security Policy Violation\n"
+"</p>\n"
+msgstr ""
+
+#. type: Bullet: '- '
+msgid ""
+"If you get this error message when starting Tails, then do a [[manual "
+"upgrade|doc/upgrade#manual]] of your Tails USB to Tails 6.7 or later."
+msgstr ""
+
+#. type: Bullet: '- '
+msgid ""
+"If you get this error message when starting your regular Linux operating "
+"system, then it means that your Linux operating system is outdated."
+msgstr ""
+
+#. type: Bullet: '  1. '
+msgid "Edit your UEFI settings to disable Secure Boot."
+msgstr ""
+
+#. type: Plain text
+#, no-wrap
+msgid ""
+"     With Secure Boot disabled, your regular Linux operating system should\n"
+"     start again.\n"
+msgstr ""
+
+#. type: Plain text
+#, no-wrap
+msgid ""
+"     To learn how to edit the BIOS or UEFI settings, search for the user manual\n"
+"     of the computer on the support website of the manufacturer.\n"
+msgstr ""
+
+#. type: Bullet: '  1. '
+msgid "Update your regular Linux operating system."
+msgstr ""
+
+#. type: Bullet: '  1. '
+msgid "Try to enable Secure Boot again in your UEFI settings."
+msgstr ""
+
+#. type: Plain text
+#, no-wrap
+msgid ""
+"     If your regular Linux operating system still doesn't start, then disable\n"
+"     Secure Boot again. You can try to enable Secure Boot again in the future.\n"
+msgstr ""
+
+#. type: Plain text
+#, no-wrap
+msgid ""
+"     It might take several months for your Linux distribution to provide updates\n"
+"     before you can enable Secure Boot again.\n"
+msgstr ""
+
+#. type: Plain text
+#, fuzzy, no-wrap
+#| msgid "<h1 id=\"wi-fi\">Wi-Fi issues</h1>\n"
+msgid "<h1 id=\"wifi\">Networking issues</h1>\n"
+msgstr "<h1 id=\"wi-fi\">Problemas de Wi-Fi</h1>\n"
+
+#. type: Plain text
+#, fuzzy, no-wrap
+#| msgid "<h2 id=\"problematic-usb-sticks\">Problematic USB sticks</h2>\n"
+msgid "<h2 id=\"problematic-wifi\">Problematic Wi-Fi interfaces</h2>\n"
+msgstr "<h2 id=\"problematic-usb-sticks\">Memorias USB problemáticas</h2>\n"
+
+#. type: Plain text
+#, fuzzy
+#| msgid ""
+#| "Check in the following sections if there is a workaround to get your Wi-"
+#| "Fi interface work in Tails."
+msgid ""
+"Check in this section if there is a workaround to get your Wi-Fi interface "
+"work in Tails."
+msgstr ""
+"Mira en la siguiente lista si hay alguna solución para que tu interfaz Wi-Fi "
+"funcione en Tails."
+
+#. type: Plain text
+msgid "To know the model of your Wi-Fi interface:"
+msgstr ""
+
+#. type: Bullet: '1. '
+#, fuzzy
+#| msgid ""
+#| "Open <span class=\"application\">Terminal</span> and execute the "
+#| "following command:"
+msgid "Open a *Console* and execute the following command."
+msgstr ""
+"Abre la <span class=\"application\">Terminal</span> y ejecuta el siguiente "
+"comando:"
+
+#. type: Plain text
+#, no-wrap
+msgid "       lspci -v | grep \"Network controller\"\n"
+msgstr "       lspci -v | grep \"Network controller\"\n"
+
+#. type: Plain text
+#, no-wrap
+msgid "<h3 id=\"88w8897\">88W8897 [AVASTAR] 802.11ac Wireless</h3>\n"
+msgstr ""
+
+#. type: Plain text
+#, no-wrap
+msgid ""
+"<!--\n"
+"Last updated: 2018-09-19\n"
+"-->\n"
+msgstr ""
+"<!--\n"
+"Last updated: 2018-09-19\n"
+"-->\n"
+
+#. type: Plain text
+msgid ""
+"On some computers with a Marvell Avastar 88W8897 Wi-Fi adapter, such as some "
+"Microsoft Surface Pro models, Tails fails to connect to Wi-Fi networks."
+msgstr ""
+
+#. type: Plain text
+msgid ""
+"If you experience this problem, you can try to [[disable MAC address "
+"anonymization|doc/first_steps/welcome_screen/mac_spoofing]] that sometimes "
+"fixes it."
+msgstr ""
+
+#. type: Plain text
+#, no-wrap
+msgid "<h3 id=\"rtl8723be\">RTL8723BE PCIe Wireless Network Adapter</h3>\n"
+msgstr ""
+
+#. type: Plain text
+#, no-wrap
+msgid ""
+"<!--\n"
+"Last updated: 2017-12-24\n"
+"-->\n"
+msgstr ""
+"<!--\n"
+"Last updated: 2017-12-24\n"
+"-->\n"
+
+#. type: Plain text
+msgid ""
+"On some computers with a RTL8723be Wi-Fi adapter, Tails might fail to "
+"discover Wi-Fi networks, provide unreliable Wi-Fi connections, or have poor "
+"Wi-Fi performance."
+msgstr ""
+"En algunos ordenadores con adaptador Wi-Fi RTL8723be, Tails puede no "
+"encontrar redes, tener conexión inestable, o funcionar mal."
+
+#. type: Plain text
+msgid ""
+"You can try to [[add the following boot options when starting Tails|doc/"
+"advanced_topics/boot_options]] until you find a combination that works for "
+"you. The exact combination of options that works depends on the computer:"
+msgstr ""
+
+#. type: Bullet: '- '
+msgid "<span class=\"command\">rtl8723be.fwlps=0 rtl8723be.ips=0</span>"
+msgstr "<span class=\"command\">rtl8723be.fwlps=0 rtl8723be.ips=0</span>"
+
+#. type: Bullet: '- '
+msgid "<span class=\"command\">rtl8723be.ant_sel=1</span>"
+msgstr "<span class=\"command\">rtl8723be.ant_sel=1</span>"
+
+#. type: Bullet: '- '
+msgid "<span class=\"command\">rtl8723be.ant_sel=2</span>"
+msgstr "<span class=\"command\">rtl8723be.ant_sel=2</span>"
+
+#. type: Bullet: '- '
+msgid ""
+"<span class=\"command\">rtl8723be.ant_sel=1 rtl8723be.fwlps=0 "
+"rtl8723be.ips=0</span>"
+msgstr ""
+"<span class=\"command\">rtl8723be.ant_sel=1 rtl8723be.fwlps=0 "
+"rtl8723be.ips=0</span>"
+
+#. type: Bullet: '- '
+msgid ""
+"<span class=\"command\">rtl8723be.ant_sel=2 rtl8723be.fwlps=0 "
+"rtl8723be.ips=0</span>"
+msgstr ""
+"<span class=\"command\">rtl8723be.ant_sel=2 rtl8723be.fwlps=0 "
+"rtl8723be.ips=0</span>"
+
+#. type: Plain text
+#, no-wrap
+msgid "<h3 id=\"broadcom-sta-dkms\">Broadcom Wi-Fi network interface needing <code>broadcom-sta-dkms</code></h3>\n"
+msgstr ""
+
+#. type: Plain text
+#, no-wrap
+msgid ""
+"<!--\n"
+"Last updated: 2019-01-29\n"
+"-->\n"
+msgstr ""
+"<!--\n"
+"Last updated: 2019-01-29\n"
+"-->\n"
+
+#. type: Plain text
+msgid ""
+"Some Broadcom Wi-Fi interfaces require the [`wl`](https://wiki.debian.org/"
+"wl) driver, provided by the `broadcom-sta-dkms` Debian package, to work in "
+"Tails."
+msgstr ""
+"Para funcionar en Tails, algunas tarjetas de Wi-Fi Broadcom requieren el "
+"driver [`wl`](https://wiki.debian.org/wl), distribuido en el paquete de "
+"Debian `broadcom-sta-dkms`."
+
+#. type: Plain text
+msgid "The `wl` driver is not included in Tails because it is proprietary."
+msgstr "El driver `wl` no se incluye en Tails porque es privativo."
+
+#. type: Plain text
+msgid ""
+"Your device requires the `wl` driver if it is in the list of devices "
+"supported by the `broadcom-sta-dkms` package on the corresponding [Debian "
+"wiki page](https://wiki.debian.org/wl). If you find your device in the list "
+"of supported devices, then it is impossible to use your Wi-Fi card in Tails."
+msgstr ""
+
+#. type: Plain text
+#, no-wrap
+msgid "<h3 id=\"broadcom-43602\">Authentication issues with Broadcom 43602</h3>\n"
+msgstr ""
+
+#. type: Plain text
+#, no-wrap
+msgid ""
+"<!--\n"
+"Last updated: 2024-03-28\n"
+"-->\n"
+msgstr ""
+"<!--\n"
+"Last updated: 2024-03-28\n"
+"-->\n"
+
+#. type: Plain text
+msgid ""
+"The Broadcom 43602 Wi-Fi interface asks for the password of Wi-Fi networks "
+"in a loop when trying to connect."
+msgstr ""
+
+#. type: Plain text
+msgid "To fix this, try the following, if you have an iPhone:"
+msgstr ""
+
+#. type: Bullet: '1. '
+msgid "Start Tails."
+msgstr "Inicia Tails."
+
+#. type: Bullet: '1. '
+msgid ""
+"Set up a personal Wi-Fi hotspot from your iPhone with the **Maximize "
+"Compatibility** option turned on."
+msgstr ""
+
+#. type: Bullet: '1. '
+msgid "Connect to your personal Wi-Fi hotspot from Tails."
+msgstr ""
+
+#. type: Bullet: '1. '
+msgid "Disconnect."
+msgstr ""
+
+#. type: Bullet: '1. '
+msgid "Connect to any other Wi-Fi network."
+msgstr ""
+
+#. type: Plain text
+#, no-wrap
+msgid "<h3 id=\"lenovo-legion-y530\">Lenovo Legion Y530</h3>\n"
+msgstr ""
+
+#. type: Plain text
+#, no-wrap
+msgid ""
+"<!--\n"
+"Last updated: 2019-05-10\n"
+"-->\n"
+msgstr ""
+"<!--\n"
+"Last updated: 2019-05-10\n"
+"-->\n"
+
+#. type: Plain text
+msgid "Wi-Fi adapter does not work."
+msgstr "El adaptador Wi-Fi no funciona."
+
+#. type: Plain text
+msgid ""
+"To fix this issue, [[add the following boot option when starting Tails|doc/"
+"advanced_topics/boot_options]]:"
+msgstr ""
+"Para arreglar este problema debes añadir las siguientes [[opciones de "
+"arranque al arrancar Tails|/doc/advanced_topics/boot_options]]:"
+
+#. type: Plain text
+#, no-wrap
+msgid "    modprobe.blacklist=ideapad_laptop\n"
+msgstr "    modprobe.blacklist=ideapad_laptop\n"
+
+#. type: Plain text
+#, no-wrap
+msgid "<!--\n"
+msgstr "<!--\n"
+
+#. type: Plain text
+#, no-wrap
+msgid "<h1 id=\"security-issues\">Security issues</h1>\n"
+msgstr "<h1 id=\"security-issues\">Problemas de seguridad</h1>\n"
+
+#. type: Plain text
+msgid ""
+"Note: If we enable again this section in the future, we should link to it "
+"from /doc/anonymous_internet/Tor_Browser#fingerprint."
+msgstr ""
+
+#. type: Plain text
+#, no-wrap
+msgid "<a id=\"fingerprint\"></a>\n"
+msgstr "<a id=\"fingerprint\"></a>\n"
+
+#. type: Title =
+#, no-wrap
+msgid "Browser fingerprint"
+msgstr ""
+
+#. type: Plain text
+msgid ""
+"There are known differences between the fingerprints of *Tor Browser* inside "
+"and outside of Tails:"
+msgstr ""
+"Hay diferencias conocidas entre la huella digital del <span "
+"class=\"application\">Navegador Tor</span> dentro y fuera de Tails:"
+
+#. type: Plain text
+msgid ""
+"For more detail, see our documentation about the [[fingerprint of *Tor "
+"Browser* in Tails|doc/anonymous_internet/Tor_Browser#fingerprint]]."
+msgstr ""
+
+#. type: Plain text
+#, no-wrap
+msgid "-->\n"
+msgstr "-->\n"
+
+#. type: Plain text
+#, no-wrap
+msgid "<h1 id=\"hardware\">Other hardware issues</h1>\n"
+msgstr "<h1 id=\"hardware\">Otros problemas de hardware</h1>\n"
+
+#. type: Plain text
+#, no-wrap
+msgid "<h2 id=\"touchpad-configurations\">Touchpad configurations</h2>\n"
+msgstr "<h2 id=\"touchpad-configurations\">Configuración del Touchpad</h2>\n"
+
+#. type: Plain text
+#, no-wrap
+msgid "<h3 id=\"lenovo-ideapad-3-touchpad\">Lenovo IdeaPad 3 Touchpad</h3>\n"
+msgstr ""
+
+#. type: Plain text
+#, no-wrap
+msgid ""
+"<!--\n"
+"Last updated: 2021-03-26\n"
+"-->\n"
+msgstr ""
+"<!--\n"
+"Last updated: 2021-03-26\n"
+"-->\n"
+
+#. type: Plain text
+#, fuzzy
+#| msgid ""
+#| "To fix this problem, add `intel_idle.max_cstate=1` to the [[startup "
+#| "options|/doc/advanced_topics/boot_options]]."
+msgid ""
+"This touchpad does not work by default. To fix this problem, [[add the "
+"following boot option when starting Tails|doc/advanced_topics/boot_options]]:"
+msgstr ""
+"Para corregir este problema añade `intel_idle.max_cstate=1` a las [[opciones "
+"de arranque|/doc/advanced_topics/boot_options]]."
+
+#. type: Plain text
+#, no-wrap
+msgid "    pci=nocrs\n"
+msgstr "    pci=nocrs\n"
+
+#. type: Plain text
+#, no-wrap
+msgid "<h2 id=\"lenovo-thinkpad-11e\">Lenovo ThinkPad 11e</h2>\n"
+msgstr ""
+
+#. type: Plain text
+#, no-wrap
+msgid ""
+"<!--\n"
+"Last updated: 2018-03-22\n"
+"Specs: https://www.cnet.com/products/lenovo-thinkpad-11e/specs/\n"
+"-->\n"
+msgstr ""
+"<!--\n"
+"Last updated: 2018-03-22\n"
+"Specs: https://www.cnet.com/products/lenovo-thinkpad-11e/specs/\n"
+"-->\n"
+
+#. type: Plain text
+msgid ""
+"Tails might be unstable and stop working regularly on some Lenovo ThinkPad "
+"11e laptops, such as the 2015 model."
+msgstr ""
+
+#. type: Plain text
+#, fuzzy
+#| msgid ""
+#| "To fix this problem, add `intel_idle.max_cstate=1` to the [[startup "
+#| "options|/doc/advanced_topics/boot_options]]."
+msgid ""
+"To fix this problem, [[add the following boot option when starting Tails|doc/"
+"advanced_topics/boot_options]]:"
+msgstr ""
+"Para corregir este problema añade `intel_idle.max_cstate=1` a las [[opciones "
+"de arranque|/doc/advanced_topics/boot_options]]."
+
+#. type: Plain text
+#, no-wrap
+msgid "    intel_idle.max_cstate=1\n"
+msgstr "    intel_idle.max_cstate=1\n"
+
+#. type: Plain text
+#, no-wrap
+msgid "<h2 id=\"usb-gigabyte\">USB devices are not working on some <a href=\"https://www.gigabyte.com/\">GIGABYTE</a> motherboards</h2>\n"
+msgstr ""
+
+#. type: Plain text
+#, no-wrap
+msgid ""
+"<!--\n"
+"Last updated: 2019-06-02\n"
+"-->\n"
+msgstr ""
+"<!--\n"
+"Last updated: 2019-06-02\n"
+"-->\n"
+
+#. type: Plain text
+msgid "To workaround this issue, you can try to:"
+msgstr ""
+
+#. type: Bullet: '- '
+msgid ""
+"Use other USB ports. For example, use USB 2 ports instead of USB 3 ports and "
+"vice versa."
+msgstr ""
+
+#. type: Bullet: '- '
+msgid "Enable these 3 options in the BIOS"
+msgstr ""
+
+#. type: Bullet: '  - '
+msgid "xHCI handoff"
+msgstr ""
+
+#. type: Bullet: '  - '
+msgid "EHCI handoff"
+msgstr ""
+
+#. type: Bullet: '  - '
+msgid "IOMMU controller"
+msgstr ""
+
+#. type: Bullet: '- '
+#, fuzzy
+#| msgid ""
+#| "You need to add `nomodeset` to the [[startup options|/doc/first_steps/"
+#| "startup_options/#boot_loader_menu]] to make Tails start successfully."
+msgid ""
+"[[Add the following boot option when starting Tails|doc/advanced_topics/"
+"boot_options]]:"
+msgstr ""
+"Debes añadir `nomodeset` a las [[opciones de arranque|/doc/first_steps/"
+"startup_options/#boot_loader_menu]] para iniciar Tails."
+
+#. type: Plain text
+#, no-wrap
+msgid "      amd_iommu=on iommu=pt\n"
+msgstr "      amd_iommu=on iommu=pt\n"
+
+#. type: Bullet: '- '
+msgid "Disable IOMMU in the BIOS then enable it again."
+msgstr ""
+
+#. type: Plain text
+msgid "Some of these workarounds might disable some of the USB ports."
+msgstr ""
+
+#. type: Plain text
+#, no-wrap
+msgid "<h2 id=\"graphics-corruption-tor-browser\">Graphics corruption in Tor Browser and Thunderbird</h2>\n"
+msgstr ""
+
+#. type: Plain text
+#, no-wrap
+msgid ""
+"<!--\n"
+"Last updated: 2020-02-22\n"
+"-->\n"
+msgstr ""
+"<!--\n"
+"Last updated: 2020-02-22\n"
+"-->\n"
+
+#. type: Plain text
+msgid ""
+"On some computers, _Tor Browser_ and _Thunderbird_ are displayed incorrectly:"
+msgstr ""
+
+#. type: Bullet: '- '
+msgid "The application window is initially empty and white."
+msgstr ""
+
+#. type: Bullet: '- '
+msgid "The icons and menus only appear when hovered by the mouse."
+msgstr ""
+
+#. type: Bullet: '- '
+msgid "The contents of the window is only displayed in stripes when scrolling."
+msgstr ""
+
+#. type: Plain text
+#, fuzzy
+#| msgid ""
+#| "To make Tails start successfully, add the following options to the "
+#| "[[startup options|/doc/advanced_topics/boot_options]]:"
+msgid ""
+"To workaround this issue, [[add the following boot option when starting "
+"Tails|doc/advanced_topics/boot_options]]:"
+msgstr ""
+"Para arrancar Tails debes añadir las siguentes opciones a tus [[opciones de "
+"arranque|/doc/advanced_topics/boot_options]]:"
+
+#. type: Plain text
+#, no-wrap
+msgid "    intel_iommu=off\n"
+msgstr "    intel_iommu=off\n"
+
+#. type: Plain text
+#, fuzzy
+#| msgid "This issue has been reported on the following hardware:"
+msgid "This problem affects at least the following computers:"
+msgstr "Este problema ha sido reportado en el hardware siguiente:"
+
+#. type: Bullet: '- '
+msgid "MacBookPro11,5"
+msgstr ""
+
+#. type: Bullet: '- '
+msgid "Other MacBooks with a Radeon R9 graphics adapter"
+msgstr ""
+
+#. type: Plain text
+#, no-wrap
+msgid "<h2 id=\"acer-swift-3\">Acer Swift 3</h3>\n"
+msgstr ""
+
+#. type: Plain text
+#, no-wrap
+msgid ""
+"<!--\n"
+"Last updated: 2020-05-30\n"
+"-->\n"
+msgstr ""
+"<!--\n"
+"Last updated: 2020-05-30\n"
+"-->\n"
+
+#. type: Plain text
+msgid ""
+"In order to allow Tails to use all available memory, start Tails from the "
+"*F2 EFI setup* firmware entry."
+msgstr ""
+
+#. type: Plain text
+#, no-wrap
+msgid "<h2 id=\"dell-xps-15-7590-nvidia\">Dell XPS 15 7590 with Nvidia graphics card</h3>\n"
+msgstr ""
+
+#. type: Plain text
+#, no-wrap
+msgid ""
+"<!--\n"
+"Last updated: 2023-07-07\n"
+"Debian bug: https://bugs.debian.org/1036530\n"
+"-->\n"
+msgstr ""
+"<!--\n"
+"Last updated: 2023-07-07\n"
+"Debian bug: https://bugs.debian.org/1036530\n"
+"-->\n"
+
+#. type: Plain text
+msgid ""
+"When using the Nvidia card of a Dell XPS 15 7590 laptop, the system may "
+"become unresponsive while using Tails."
+msgstr ""
+
+#. type: Plain text
+msgid ""
+"To fix this, start Tails with the following [[boot option|doc/"
+"advanced_topics/boot_options]]:"
+msgstr ""
+"Para solucionar este problema, inicia Tails con la siguiente [[opción de "
+"arranque|doc/advanced_topics/boot_options]]:"
+
+#. type: Plain text
+#, no-wrap
+msgid "    pcie_port_pm=off\n"
+msgstr "    pcie_port_pm=off\n"
+
+#. type: Plain text
+#, no-wrap
+msgid "<h1 id=\"misc\">Other issues</h1>\n"
+msgstr "<h1 id=\"misc\">Otros problemas</h1>\n"
+
+#. type: Plain text
+#, no-wrap
+msgid "<h2 id=\"video-memory\">Tails does not erase video memory</h2>\n"
+msgstr "<h2 id=\"video-memory\">Tails no borra la memoria de vídeo</h2>\n"
+
+#. type: Plain text
+msgid ""
+"Tails doesn't erase the [[!wikipedia Video_random-access_memory desc=\"video "
+"memory\"]]."
+msgstr ""
+
+#. type: Plain text
+msgid ""
+"When you restart your computer after using Tails, it might briefly display "
+"the last screen that was displayed in Tails."
+msgstr ""
+
+#. type: Plain text
+#, fuzzy
+#| msgid ""
+#| "Shutting down the computer completely, instead of restarting it, might "
+#| "allow the video memory to empty itself."
+msgid ""
+"If you shut down your computer instead of restarting it, the video memory "
+"will erase itself automatically after some time."
+msgstr ""
+"Apagar el ordenador totalmente, en lugar de reiniciarlo, puede ayudar a que "
+"la memoria de video se vacíe."
+
+#. type: Plain text
+msgid "See [[!tails_ticket 5356 desc=\"Erase video memory on shutdown\"]]."
+msgstr "Ver [[!tails_ticket 5356 desc=\"Erase video memory on shutdown\"]]."
+
+#, no-wrap
+#~ msgid "<h3 id=\"hp-compaq-cq60-214dx\">HP Compaq CQ60-214DX</h3>\n"
+#~ msgstr "<h3 id=\"hp-compaq-cq60-214dx\">HP Compaq CQ60-214DX</h3>\n"
+
+#, no-wrap
+#~ msgid ""
+#~ "<!--\n"
+#~ "Last updated: 2018-02-16\n"
+#~ "Specs: https://www.cnet.com/products/hp-compaq-presario-cq60-615dx/specs/\n"
+#~ "-->\n"
+#~ msgstr ""
+#~ "<!--\n"
+#~ "Last updated: 2018-02-16\n"
+#~ "Specs: https://www.cnet.com/products/hp-compaq-presario-cq60-615dx/specs/\n"
+#~ "-->\n"
+
+#~ msgid "Tails 3.3 does not start."
+#~ msgstr "Tails 3.3 no arranca."
+
+#, no-wrap
+#~ msgid "<h3 id=\"hp-pavilion-15-ab277ca\">HP Pavilion 15-ab277ca</h3>\n"
+#~ msgstr "<h3 id=\"hp-pavilion-15-ab277ca\">HP Pavilion 15-ab277ca</h3>\n"
+
+#, no-wrap
+#~ msgid ""
+#~ "<!--\n"
+#~ "Last updated: 2018-01-15\n"
+#~ "Worked in 3.0 (wb://b485a1cfa7f7cc1073a70b31f428097c)\n"
+#~ "-->\n"
+#~ msgstr ""
+#~ "<!--\n"
+#~ "Last updated: 2018-01-15\n"
+#~ "Worked in 3.0 (wb://b485a1cfa7f7cc1073a70b31f428097c)\n"
+#~ "-->\n"
+
+#~ msgid "Tails 3.3 restarts during startup and never starts successfully."
+#~ msgstr "Tails 3.3 se reinicia al arrancar y nunca termina de arrancar bien."
+
+#, no-wrap
+#~ msgid "<h3 id=\"hp-probook\">HP ProBook</h3>\n"
+#~ msgstr "<h3 id=\"hp-probook\">HP ProBook</h3>\n"
+
+#, no-wrap
+#~ msgid ""
+#~ "<!--\n"
+#~ "Last updated: 2016-05-14\n"
+#~ "-->\n"
+#~ msgstr ""
+#~ "<!--\n"
+#~ "Last updated: 2016-05-14\n"
+#~ "-->\n"
+
+#~ msgid ""
+#~ "With UEFI enabled, when choosing a boot device, select `Boot From EFI "
+#~ "File` and then `Filesystem Tails` and `EFI/BOOT/BOOTX64.EFI`."
+#~ msgstr ""
+#~ "Con UEFI habilitado, cuando elijas un dispositivo de boot, selecciona "
+#~ "`Boot From EFI File` y luego `Filesystem Tails` y `EFI/BOOT/BOOTX64.EFI`."
+
+#~ msgid "That workaround applied to, at least, the following HP ProBook:"
+#~ msgstr "Esa solución aplica, al menos, a la siguiente HP ProBook:"
+
+#, fuzzy
+#~| msgid "5330m"
+#~ msgid "- 5330m"
+#~ msgstr "5330m"
+
+#, fuzzy
+#~| msgid "4330s"
+#~ msgid "- 4330s"
+#~ msgstr "4330s"
+
+#, fuzzy
+#~| msgid "6560b"
+#~ msgid "- 6560b"
+#~ msgstr "6560b"
+
+#, no-wrap
+#~ msgid "<h3 id=\"microsoft-surface-laptop-3\">Microsoft Surface Laptop 3</h3>\n"
+#~ msgstr "<h3 id=\"microsoft-surface-laptop-3\">Microsoft Surface Laptop 3</h3>\n"
+
+#, no-wrap
+#~ msgid ""
+#~ "<!--\n"
+#~ "Last updated: 2020-07-03\n"
+#~ "-->\n"
+#~ msgstr ""
+#~ "<!--\n"
+#~ "Last updated: 2020-07-03\n"
+#~ "-->\n"
+
+#, fuzzy, no-wrap
+#~| msgid "<a id=\"wi-fi\"></a>\n"
+#~ msgid "<h2 id=\"no-wifi\">Wi-Fi not working</h2>\n"
+#~ msgstr "<a id=\"wi-fi\"></a>\n"
+
+#, no-wrap
+#~ msgid ""
+#~ "<!--\n"
+#~ "Last updated: 2020-02-21\n"
+#~ "-->\n"
+#~ msgstr ""
+#~ "<!--\n"
+#~ "Last updated: 2020-02-21\n"
+#~ "-->\n"
+
+#~ msgid "The Realtek RTL8821CE Wi-Fi adapter is not supported in Linux yet."
+#~ msgstr ""
+#~ "El adaptador Wi-Fi Realtek RTL8821CE todavía no está soportado en Linux."
+
+#~ msgid "This problem is tracked by [[!debbug 917941]]."
+#~ msgstr "Este problema se está viendo en [[!debbug 917941]]."
+
+#, no-wrap
+#~ msgid "<h3 id=\"acer-c720\">Acer C720 - Cypress APA Touchpad</h3>\n"
+#~ msgstr "<h3 id=\"acer-c720\">Acer C720 - Cypress APA Touchpad</h3>\n"
+
+#, no-wrap
+#~ msgid ""
+#~ "<!--\n"
+#~ "Last updated: 2016-08-20\n"
+#~ "-->\n"
+#~ msgstr ""
+#~ "<!--\n"
+#~ "Last updated: 2016-08-20\n"
+#~ "-->\n"
+
+#, no-wrap
+#~ msgid ""
+#~ "    synclient FingerLow=5;\n"
+#~ "    synclient FingerHigh=5;\n"
+#~ msgstr ""
+#~ "    synclient FingerLow=5;\n"
+#~ "    synclient FingerHigh=5;\n"
+
+#, no-wrap
+#~ msgid "<h2 id=\"bluetooth-devices-dont-work\">Bluetooth devices don't work</h2>\n"
+#~ msgstr "<h2 id=\"bluetooth-devices-dont-work\">No funcionan los dispositivos Bluetooth</h2>\n"
+
+#~ msgid "Bluetooth is not enabled in Tails for security reasons."
+#~ msgstr ""
+#~ "El Bluetooth no está habilitado por defecto en Tails porque es inseguro."
+
+#, no-wrap
+#~ msgid "<h2 id=\"automatic-upgrade-fails\">Tails fails to start or behaves weirdly after an automatic upgrade</h2>\n"
+#~ msgstr "<h2 id=\"automatic-upgrade-fails\">Tails no arranca o funciona raro luego de una actualización automática</h2>\n"
+
+#, no-wrap
+#~ msgid ""
+#~ "<!--\n"
+#~ "Last updated: 2019-07-31\n"
+#~ "-->\n"
+#~ msgstr ""
+#~ "<!--\n"
+#~ "Last updated: 2019-07-31\n"
+#~ "-->\n"
+
+#~ msgid "Sometimes, after an automatic upgrade, your Tails might either:"
+#~ msgstr "A veces después de una actualización automática tu Tails puede:"
+
+#~ msgid "- Fail to start. Often after the message:"
+#~ msgstr "- No arrancar. Muchas veces con el mensaje:"
+
+#, fuzzy, no-wrap
+#~| msgid "  <pre>Loading, please wait...</pre>\n"
+#~ msgid "      Loading, please wait...\n"
+#~ msgstr "  <pre>Loading, please wait...</pre>\n"
+
+#~ msgid ""
+#~ "Behave weirdly. For example, your keyboard does not work or you cannot "
+#~ "connect to a network."
+#~ msgstr ""
+#~ "Actuar raro. Por ejemplo, tu teclado no funciona, o no puedes conectarte "
+#~ "a Internet."
+
+#~ msgid ""
+#~ "To fix this problem, you can [[update your Tails manually|doc/upgrade/"
+#~ "#manual]]."
+#~ msgstr ""
+#~ "Para arreglar este problema puedes [[actualizar tu Tails manualmente|doc/"
+#~ "upgrade/#manual]]."
+
+#, fuzzy
+#~| msgid ""
+#~| "- For issues with graphics cards, see our [[known issues with graphics "
+#~| "cards|known_issues/graphics]].  - To learn what you can do with Tails, "
+#~| "refer to our [[documentation|doc]].  - For more general questions about "
+#~| "Tails, refer to our [[FAQ|support/faq]]."
+#~ msgid ""
+#~ "- To learn what you can do with Tails, refer to our [[documentation|"
+#~ "doc]].  - For more general questions about Tails, refer to our [[FAQ|"
+#~ "support/faq]].  - For issues with graphics cards, see our [[known issues "
+#~ "with graphics cards|known_issues/graphics]]."
+#~ msgstr ""
+#~ "- Para problemas con nuestras tarjetas gráficas, lee nuestros [[problemas "
+#~ "conocidos con tarjetas gráficas|known_issues/graphics]]\n"
+#~ "  - Para aprender qué puedes hacer con Tails lee nuestra [[documentación|"
+#~ "doc]].\n"
+#~ "  -  Para preguntas más generales acerca de qué es Tails, lee nuestras "
+#~ "[[Preguntas Frecuentes|support/faq]]."
+
+#, fuzzy
+#~| msgid ""
+#~| "To fix this problem, add `intel_idle.max_cstate=1` to the [[startup "
+#~| "options|/doc/advanced_topics/boot_options]]."
+#~ msgid ""
+#~ "To prevent this from occurring, [[add the following boot option when "
+#~ "starting Tails|doc/advanced_topics/boot_options]]:"
+#~ msgstr ""
+#~ "Para corregir este problema añade `intel_idle.max_cstate=1` a las "
+#~ "[[opciones de arranque|/doc/advanced_topics/boot_options]]."
+
+#, no-wrap
+#~ msgid "    amdgpu.dpm=0\n"
+#~ msgstr "    amdgpu.dpm=0\n"
+
+#, fuzzy, no-wrap
+#~| msgid "<h2 id=\"problematic-usb-sticks\">Problematic USB sticks</h2>\n"
+#~ msgid "<h1 id=\"problematic-usb-sticks\">Problematic USB sticks</h1>\n"
+#~ msgstr "<h2 id=\"problematic-usb-sticks\">Memorias USB problemáticas</h2>\n"
+
+#, no-wrap
+#~ msgid "<h3 id=\"aegis\">Aegis Secure Key 3.0</h3>\n"
+#~ msgstr "<h3 id=\"aegis\">Aegis Secure Key 3.0</h3>\n"
+
+#, no-wrap
+#~ msgid ""
+#~ "<!--\n"
+#~ "Last updated: 2020-03-27 (wb://561831720a7ca31f4c07700a12b80d1d)\n"
+#~ "-->\n"
+#~ msgstr ""
+#~ "<!--\n"
+#~ "Last updated: 2020-03-27 (wb://561831720a7ca31f4c07700a12b80d1d)\n"
+#~ "-->\n"
+
+#, fuzzy, no-wrap
+#~| msgid "<h3 id=\"datatraveler-2000\">Kingston DataTraveler 2000, Kingston DataTraveler 100 G3</h3>\n"
+#~ msgid "<h3 id=\"datatraveler-2000\">Kingston DataTraveler 2000, Kingston DataTraveler 100 G3, Kingston DataTraveler Max</h3>\n"
+#~ msgstr "<h3 id=\"datatraveler-2000\">Kingston DataTraveler 2000, Kingston DataTraveler 100 G3</h3>\n"
+
+#, no-wrap
+#~ msgid ""
+#~ "<!--\n"
+#~ "Last updated: 2018-09-18\n"
+#~ "Success report received on 2020-01-04\n"
+#~ "-->\n"
+#~ msgstr ""
+#~ "<!--\n"
+#~ "Last updated: 2018-09-18\n"
+#~ "Success report received on 2020-01-04\n"
+#~ "-->\n"
+
+#, fuzzy
+#~| msgid ""
+#~| "Starting Tails from a Kingston DataTraveler 2000 or DataTraveler 100G3 "
+#~| "may not work."
+#~ msgid ""
+#~ "Starting Tails from a Kingston DataTraveler 2000, DataTraveler 100G3, or "
+#~ "Kingston DataTraveler Max might not work."
+#~ msgstr ""
+#~ "Arrancar Tails desde un Kingston DataTraveler 2000 o DataTraveler 100G3 "
+#~ "puede que no funcione."
+
+#, fuzzy, no-wrap
+#~| msgid ""
+#~| "<!--\n"
+#~| "Last updated: 2019-07-31\n"
+#~| "-->\n"
+#~ msgid ""
+#~ "<!--\n"
+#~ "Last updated: 2019-07-31\n"
+#~ msgstr ""
+#~ "<!--\n"
+#~ "Last updated: 2019-07-31\n"
+#~ "-->\n"
+
+#, fuzzy, no-wrap
+#~| msgid ""
+#~| "1. Choose\n"
+#~| "   <span class=\"menuchoice\">\n"
+#~| "     <span class=\"guimenu\">Applications</span>&nbsp;▸\n"
+#~| "     <span class=\"guisubmenu\">Tails</span>&nbsp;▸\n"
+#~| "     <span class=\"guimenuitem\">Configure persistent volume</span></span>.\n"
+#~ msgid ""
+#~ "  1. Choose\n"
+#~ "     <span class=\"menuchoice\">\n"
+#~ "       <span class=\"guimenu\">Applications</span>&nbsp;▸\n"
+#~ "       <span class=\"guisubmenu\">Tails</span>&nbsp;▸\n"
+#~ "       <span class=\"guimenuitem\">Configure persistent volume</span></span>.\n"
+#~ msgstr ""
+#~ "1. Selecciona\n"
+#~ "   <span class=\"menuchoice\">\n"
+#~ "     <span class=\"guimenu\">Aplicaciones</span>&nbsp;▸\n"
+#~ "     <span class=\"guisubmenu\">Tails</span>&nbsp;▸\n"
+#~ "     <span class=\"guimenuitem\">Configurar volumen persistente</span></span>.\n"
+
+#, no-wrap
+#~ msgid "MacBook Pro 8,3 17\" (AMD Radeon HD6770M and Intel HD Graphics 3000)"
+#~ msgstr "MacBook Pro 8,3 17\" (AMD Radeon HD6770M e Intel HD Graphics 3000)"
+
+#, fuzzy
+#~| msgid ""
+#~| "To make Tails start successfully, add the following options to the "
+#~| "[[startup options|/doc/advanced_topics/boot_options]]:"
+#~ msgid ""
+#~ "If Tails fails to start, [[add the following boot option when starting "
+#~ "Tails|doc/advanced_topics/boot_options]]:"
+#~ msgstr ""
+#~ "Para arrancar Tails debes añadir las siguentes opciones a tus [[opciones "
+#~ "de arranque|/doc/advanced_topics/boot_options]]:"
+
+#, no-wrap
+#~ msgid "    radeon.modeset=0\n"
+#~ msgstr "    radeon.modeset=0\n"
+
+#, no-wrap
+#~ msgid "<h3 id=\"dell-chromebook-lulu\">Dell Chromebook LULU</h3>\n"
+#~ msgstr "<h3 id=\"dell-chromebook-lulu\">Dell Chromebook LULU</h3>\n"
+
+#, no-wrap
+#~ msgid ""
+#~ "<!--\n"
+#~ "Last updated: 2018-01-10\n"
+#~ "-->\n"
+#~ msgstr ""
+#~ "<!--\n"
+#~ "Last updated: 2018-01-10\n"
+#~ "-->\n"
+
+#, no-wrap
+#~ msgid "    nomodeset\n"
+#~ msgstr "    nomodeset\n"
+
+#, no-wrap
+#~ msgid "[[!inline pages=\"doc/anonymous_internet/no-wifi.inline\" raw=\"yes\" sort=\"age\"]]\n"
+#~ msgstr "[[!inline pages=\"doc/anonymous_internet/no-wifi.inline.es\" raw=\"yes\" sort=\"age\"]]\n"
+
+#, fuzzy, no-wrap
+#~| msgid ""
+#~| "<!--\n"
+#~| "Last updated:\n"
+#~| "- MacBook Air 3,2: 2014-06-27\n"
+#~| "- MacBook Pro 5,1: 2015-06-19\n"
+#~| "- MacBook Pro 4,1: 2014-08-15\n"
+#~| "- MacBook Air Retina 2019: 2019-11-01\n"
+#~| "- MacBook Pro 8,3: 2019-11-01\n"
+#~| "-->\n"
+#~ msgid ""
+#~ "<!--\n"
+#~ "Last updated:\n"
+#~ "- MacBook Air 3,2: 2014-06-27\n"
+#~ "- MacBook Pro 4,1: 2014-08-15\n"
+#~ "-->\n"
+#~ msgstr ""
+#~ "<!--\n"
+#~ "Last updated:\n"
+#~ "- MacBook Air 3,2: 2014-06-27\n"
+#~ "- MacBook Pro 5,1: 2015-06-19\n"
+#~ "- MacBook Pro 4,1: 2014-08-15\n"
+#~ "- MacBook Air Retina 2019: 2019-11-01\n"
+#~ "- MacBook Pro 8,3: 2019-11-01\n"
+#~ "-->\n"
+
+#, fuzzy, no-wrap
+#~| msgid "MacBook Air 3,2 (A1369 EMC 2392) freezes when booting Tails in UEFI mode."
+#~ msgid "MacBook Air 3,2 (A1369 EMC 2392)"
+#~ msgstr "MacBook Air 3,2 (A1369 EMC 2392) se congela al arrancar Tails en modo UEFI."
+
+#, fuzzy, no-wrap
+#~| msgid "MacBook Air 3,2 (A1369 EMC 2392) freezes when booting Tails in UEFI mode."
+#~ msgid "  Freezes when booting Tails in UEFI mode.\n"
+#~ msgstr "MacBook Air 3,2 (A1369 EMC 2392) se congela al arrancar Tails en modo UEFI."
+
+#, fuzzy, no-wrap
+#~| msgid "Mac Pro Tower and MacBook Pro 4,1 (both from early 2008)  fail to start on Tails."
+#~ msgid "Mac Pro Tower and MacBook Pro 4,1 (both from early 2008)"
+#~ msgstr "Mac Pro Tower y MacBook Pro 4,1 (ambos de principios de 2008)  no arrancan Tails."
+
+#, no-wrap
+#~ msgid "<h3 id=\"sg-black-screen\">Acer Travelmate 8573T-254G50M</h3>\n"
+#~ msgstr "<h3 id=\"sg-black-screen\">Acer Travelmate 8573T-254G50M</h3>\n"
+
+#, no-wrap
+#~ msgid ""
+#~ "<!--\n"
+#~ "Last updated: 2013-08-08\n"
+#~ "-->\n"
+#~ msgstr ""
+#~ "<!--\n"
+#~ "Last updated: 2013-08-08\n"
+#~ "-->\n"
+
+#~ msgid "Booting from DVD works fine, but does not start from USB sticks."
+#~ msgstr ""
+#~ "Arrancar desde un DVD funciona bien, pero no inicia desde memorias USB."
+
+#~ msgid ""
+#~ "This problem might be corrected in Tails 1.1 and newer: please report "
+#~ "your test results back to us."
+#~ msgstr ""
+#~ "Este problema puede estar corregido en Tails 1.1 y versiones mas nuevas: "
+#~ "por favor repórtanos los resultados de tus tests."
+
+#, no-wrap
+#~ msgid "<h3 id=\"aspire-5315-icl50\">Acer Aspire 5315-ICL50</h3>\n"
+#~ msgstr "<h3 id=\"aspire-5315-icl50\">Acer Aspire 5315-ICL50</h3>\n"
+
+#, no-wrap
+#~ msgid ""
+#~ "<!--\n"
+#~ "Last updated: 2015-04-10\n"
+#~ "-->\n"
+#~ msgstr ""
+#~ "<!--\n"
+#~ "Last updated: 2015-04-10\n"
+#~ "-->\n"
+
+#, fuzzy, no-wrap
+#~| msgid "    <h3 id=\"acer-chromebook-c720p\">Acer Chromebook C720P</h3>\n"
+#~ msgid "<h3 id=\"acer-chromebook-c720p\">Acer Chromebook C720P</h3>\n"
+#~ msgstr "    <h3 id=\"acer-chromebook-c720p\">Acer Chromebook C720P</h3>\n"
+
+#, no-wrap
+#~ msgid "<h3 id=\"asus-vivobook-x202e\">ASUS VivoBook X202E</h3>\n"
+#~ msgstr "<h3 id=\"asus-vivobook-x202e\">ASUS VivoBook X202E</h3>\n"
+
+#, no-wrap
+#~ msgid ""
+#~ "<!--\n"
+#~ "Last updated: 2013-07-20\n"
+#~ "-->\n"
+#~ msgstr ""
+#~ "<!--\n"
+#~ "Last updated: 2013-07-20\n"
+#~ "-->\n"
+
+#~ msgid ""
+#~ "Legacy support needs to be enabled in order to start Tails. To enable "
+#~ "legacy boot support, enable 'Launch CSM' under boot (menu)."
+#~ msgstr ""
+#~ "Debes habilitar Legacy support para arrancar Tails. Para habilitar legacy "
+#~ "support, habilita 'Launch CSM' en el menú boot."
+
+#, no-wrap
+#~ msgid "<h3 id=\"dell-xps-l702x\">Dell XPS L702X/03RG89, Samsung RV520, Samsung Series 7 Chronos</h3>\n"
+#~ msgstr "<h3 id=\"dell-xps-l702x\">Dell XPS L702X/03RG89, Samsung RV520, Samsung Series 7 Chronos</h3>\n"
+
+#, no-wrap
+#~ msgid ""
+#~ "<!--\n"
+#~ "Last updated:\n"
+#~ "- Dell XPS L702X/03RG89: 2012-08-22\n"
+#~ "- Samsung RV520: 2012-12-21\n"
+#~ "- Samsung Series 7 Chronos: 2014-02-28\n"
+#~ "-->\n"
+#~ msgstr ""
+#~ "<!--\n"
+#~ "Last updated:\n"
+#~ "- Dell XPS L702X/03RG89: 2012-08-22\n"
+#~ "- Samsung RV520: 2012-12-21\n"
+#~ "- Samsung Series 7 Chronos: 2014-02-28\n"
+#~ "-->\n"
+
+#~ msgid ""
+#~ "We were reported that the legacy BIOS shipped on these systems doesn't "
+#~ "know how to deal with the GPT partition scheme used in Tails."
+#~ msgstr ""
+#~ "Nos han reportado que la legacy BIOS que tienen estos sistemas no sabe "
+#~ "cómo manejar el sistema de particiones GPT usado en Tails."
+
+#~ msgid ""
+#~ "<https://www.dell.com/community/Laptops-General-Read-Only/GPT-Bootable-"
+#~ "Bios-Optimus-Switch-Are-Necessary-For-L502x-L702x/m-p/3699920>"
+#~ msgstr ""
+#~ "<https://www.dell.com/community/Laptops-General-Read-Only/GPT-Bootable-"
+#~ "Bios-Optimus-Switch-Are-Necessary-For-L502x-L702x/m-p/3699920>"
+
+#, no-wrap
+#~ msgid "<h3 id=\"hp-compaq-dc5750\">HP Compaq dc5750 Microtower</h3>\n"
+#~ msgstr "<h3 id=\"hp-compaq-dc5750\">HP Compaq dc5750 Microtower</h3>\n"
+
+#, no-wrap
+#~ msgid ""
+#~ "<!--\n"
+#~ "Last updated: 2015-02-10\n"
+#~ "Specs: https://support.hp.com/us-en/document/c01110206\n"
+#~ "-->\n"
+#~ msgstr ""
+#~ "<!--\n"
+#~ "Last updated: 2015-02-10\n"
+#~ "Specs: https://support.hp.com/us-en/document/c01110206\n"
+#~ "-->\n"
+
+#~ msgid "Does not start Tails 1.2.3."
+#~ msgstr "No arranca Tails 1.2.3."
+
+#, no-wrap
+#~ msgid "<h3 id=\"hp-compaq-615\">HP Compaq 615</h3>\n"
+#~ msgstr "<h3 id=\"hp-compaq-615\">HP Compaq 615</h3>\n"
+
+#, no-wrap
+#~ msgid ""
+#~ "<!--\n"
+#~ "Last updated: 2013-11-05\n"
+#~ "Specs: https://support.hp.com/gb-en/document/c01768616\n"
+#~ "-->\n"
+#~ msgstr ""
+#~ "<!--\n"
+#~ "Last updated: 2013-11-05\n"
+#~ "Specs: https://support.hp.com/gb-en/document/c01768616\n"
+#~ "-->\n"
+
+#~ msgid ""
+#~ "You need to update the firmware to its latest version in order to start "
+#~ "from a USB stick."
+#~ msgstr ""
+#~ "Necesitas actualizar el firmware a su última versión para poder arrancar "
+#~ "con una memoria USB."
+
+#, no-wrap
+#~ msgid "<h3 id=\"lenovo-ideapad-y410p\">Lenovo IdeaPad Y410p</h3>\n"
+#~ msgstr "<h3 id=\"lenovo-ideapad-y410p\">Lenovo IdeaPad Y410p</h3>\n"
+
+#, no-wrap
+#~ msgid ""
+#~ "<!--\n"
+#~ "Last updated: 2014-08-03\n"
+#~ "Specs: https://www.lenovo.com/us/en/laptops/lenovo/y-series/y410p/\n"
+#~ "-->\n"
+#~ msgstr ""
+#~ "<!--\n"
+#~ "Last updated: 2014-08-03\n"
+#~ "Specs: https://www.lenovo.com/us/en/laptops/lenovo/y-series/y410p/\n"
+#~ "-->\n"
+
+#~ msgid "Does not start Tails 1.1 from USB installed manually in Linux."
+#~ msgstr ""
+#~ "No arranca Tails 1.1 desde una memoria USB instalada manualmente en Linux."
+
+#, no-wrap
+#~ msgid "<h3 id=\"lenovo-ideapad-z585\">Lenovo IdeaPad z585</h3>\n"
+#~ msgstr "<h3 id=\"lenovo-ideapad-z585\">Lenovo IdeaPad z585</h3>\n"
+
+#, no-wrap
+#~ msgid ""
+#~ "<!--\n"
+#~ "Last updated: 2014-08-05\n"
+#~ "Specs: https://www.cnet.com/products/lenovo-ideapad-z585-15-6-a8-4500m-6-gb-ram-750-gb-hdd/\n"
+#~ "-->\n"
+#~ msgstr ""
+#~ "<!--\n"
+#~ "Last updated: 2014-08-05\n"
+#~ "Specs: https://www.cnet.com/products/lenovo-ideapad-z585-15-6-a8-4500m-6-gb-ram-750-gb-hdd/\n"
+#~ "-->\n"
+
+#~ msgid "Goes back continuously to Boot Loader on Tails installed on DVD."
+#~ msgstr ""
+#~ "Vuelve continuamente al Gestor de Arranque cuando Tails está instalado en "
+#~ "DVD."
+
+#, fuzzy, no-wrap
+#~| msgid "Clevo W258CU, ThinkPad X121e, T420i, T410, T520, W520, T530, T60, E325, and E530"
+#~ msgid "<h3 id=\"clevo-w258cu\">Clevo W258CU, ThinkPad X121e, T420i, T410, T520, W520, W540, T530, T60, E325, and E530</h3>\n"
+#~ msgstr "Clevo W258CU, ThinkPad X121e, T420i, T410, T520, W520, T530, T60, E325, y E530"
+
+#, no-wrap
+#~ msgid ""
+#~ "<!--\n"
+#~ "Last updated:\n"
+#~ "- Clevo W258CU: 2014-03-29\n"
+#~ "- ThinkPad X121e: 2014-02-10\n"
+#~ "  Specs: https://www.cnet.com/products/lenovo-thinkpad-x121e-3045-11-6-core-i3-2367m-windows-7-pro-64-bit-4-gb-ram-320-gb-hdd-series/\n"
+#~ "- ThinkPad T420i: 2014-06-06\n"
+#~ "  Specs: https://www.cnet.com/products/lenovo-thinkpad-t420i-4178-14-core-i3-2310m-windows-7-pro-64-bit-4-gb-ram-320-gb-hdd-series/\n"
+#~ "- ThinkPad T520: 2012-10-11\n"
+#~ "  Specs: https://www.cnet.com/products/lenovo-thinkpad-t520/\n"
+#~ "- ThinkPad W520: 2014-02-17\n"
+#~ "  Specs: https://www.cnet.com/products/lenovo-thinkpad-w520/\n"
+#~ "- ThinkPad T60: 2018-04-30\n"
+#~ "  Specs: https://www.cnet.com/products/lenovo-thinkpad-t60/specs/\n"
+#~ "- ThinkPad E325: 2013-02-28\n"
+#~ "  Specs: https://www.cnet.com/products/lenovo-thinkpad-edge-e325-1297-13-3-e-350-windows-7-pro-64-bit-4-gb-ram-320-gb-hdd-series/\n"
+#~ "- ThinkPad E530: 2014-03-17\n"
+#~ "  Specs: https://www.cnet.com/products/lenovo-thinkpad-edge-e530/\n"
+#~ "-->\n"
+#~ msgstr ""
+#~ "<!--\n"
+#~ "Last updated:\n"
+#~ "- Clevo W258CU: 2014-03-29\n"
+#~ "- ThinkPad X121e: 2014-02-10\n"
+#~ "  Specs: https://www.cnet.com/products/lenovo-thinkpad-x121e-3045-11-6-core-i3-2367m-windows-7-pro-64-bit-4-gb-ram-320-gb-hdd-series/\n"
+#~ "- ThinkPad T420i: 2014-06-06\n"
+#~ "  Specs: https://www.cnet.com/products/lenovo-thinkpad-t420i-4178-14-core-i3-2310m-windows-7-pro-64-bit-4-gb-ram-320-gb-hdd-series/\n"
+#~ "- ThinkPad T520: 2012-10-11\n"
+#~ "  Specs: https://www.cnet.com/products/lenovo-thinkpad-t520/\n"
+#~ "- ThinkPad W520: 2014-02-17\n"
+#~ "  Specs: https://www.cnet.com/products/lenovo-thinkpad-w520/\n"
+#~ "- ThinkPad T60: 2018-04-30\n"
+#~ "  Specs: https://www.cnet.com/products/lenovo-thinkpad-t60/specs/\n"
+#~ "- ThinkPad E325: 2013-02-28\n"
+#~ "  Specs: https://www.cnet.com/products/lenovo-thinkpad-edge-e325-1297-13-3-e-350-windows-7-pro-64-bit-4-gb-ram-320-gb-hdd-series/\n"
+#~ "- ThinkPad E530: 2014-03-17\n"
+#~ "  Specs: https://www.cnet.com/products/lenovo-thinkpad-edge-e530/\n"
+#~ "-->\n"
+
+#~ msgid ""
+#~ "These machines do not start on USB sticks due to a firmware limitation."
+#~ msgstr ""
+#~ "Estas máquinas no inician Tails desde una memoria USB debido a una "
+#~ "limitación del firmware."
+
+#, no-wrap
+#~ msgid "MacBook Pro 5,1 17\" (Nvidia GeForce 9400M)"
+#~ msgstr "MacBook Pro 5,1 17\" (Nvidia GeForce 9400M)"
+
+#, fuzzy
+#~| msgid ""
+#~| "To make Tails start successfully, add the following options to the "
+#~| "[[startup options|/doc/advanced_topics/boot_options]]:"
+#~ msgid ""
+#~ "To make the display work properly, [[add the following boot option when "
+#~ "starting Tails|doc/advanced_topics/boot_options]]:"
+#~ msgstr ""
+#~ "Para arrancar Tails debes añadir las siguentes opciones a tus [[opciones "
+#~ "de arranque|/doc/advanced_topics/boot_options]]:"
+
+#, fuzzy, no-wrap
+#~| msgid "      nouveau.noaccel=1\n"
+#~ msgid "    nouveau.noaccel=1\n"
+#~ msgstr "      nouveau.noaccel=1\n"
+
+#~ msgid "See [[support/known_issues/graphics#amd-vega]]."
+#~ msgstr "Ver [[support/known_issues/graphics#amd-vega]]."
+
+#, no-wrap
+#~ msgid "<h3 id=\"pny\">PNY</h3>\n"
+#~ msgstr "<h3 id=\"pny\">PNY</h3>\n"
+
+#, no-wrap
+#~ msgid ""
+#~ "<!--\n"
+#~ "Last updated: 2014-08-02\n"
+#~ msgstr ""
+#~ "<!--\n"
+#~ "Last updated: 2014-08-02\n"
+
+#~ msgid "I asked help desk about it."
+#~ msgstr "Le he preguntado al equipo de ayuda sobre esto."
+
+#~ msgid "PNY is quite popular among WB reporters:"
+#~ msgstr "PNY es bastante común en los reportes de WB:"
+
+#, no-wrap
+#~ msgid ""
+#~ "    436 SanDisk\n"
+#~ "    187 Kingston\n"
+#~ "    119 USB\n"
+#~ "     88 Generic\n"
+#~ "     82 Lexar\n"
+#~ "     79 Intenso\n"
+#~ "     57 Verbatim\n"
+#~ "     56 TOSHIBA\n"
+#~ "     50 PNY\n"
+#~ msgstr ""
+#~ "    436 SanDisk\n"
+#~ "    187 Kingston\n"
+#~ "    119 USB\n"
+#~ "     88 Generic\n"
+#~ "     82 Lexar\n"
+#~ "     79 Intenso\n"
+#~ "     57 Verbatim\n"
+#~ "     56 TOSHIBA\n"
+#~ "     50 PNY\n"
+
+#, no-wrap
+#~ msgid ""
+#~ "If it was still problematic on all PNY USB sticks, this issue would\n"
+#~ "still be loud on help desk. Is it?\n"
+#~ "-->\n"
+#~ msgstr ""
+#~ "If it was still problematic on all PNY USB sticks, this issue would\n"
+#~ "still be loud on help desk. Is it?\n"
+#~ "-->\n"
+
+#~ msgid ""
+#~ "When installing Tails, PNY USB sticks have problems with the constant "
+#~ "write load and are prone to failure."
+#~ msgstr ""
+#~ "Al instalar Tails las memorias USB PNY tienen problemas con el peso de la "
+#~ "escritura constante y son dados a fallar."
+
+#~ msgid ""
+#~ "Tails doesn't erase the [[!wikipedia Video_RAM_(dual-ported_DRAM) "
+#~ "desc=\"video memory\"]] yet.  When one uses Tails, then restarts the "
+#~ "computer into another operating system, that other operating system "
+#~ "might, for a moment, display the last screen that was displayed in Tails."
+#~ msgstr ""
+#~ "Tails no borra la  [[!wikipedia_es Memoria_gráfica_de_acceso_aleatorio]]. "
+#~ "Luego de usar Tails y reiniciar el ordenador en otro sistema operativo, "
+#~ "este otro sistema operativo podría llegar a mostrar la última pantalla "
+#~ "que se mostró en la pantalla dentro de Tails."
+
+#, no-wrap
+#~ msgid "<h2 id=\"openpgp-import\">Importing OpenPGP public keys using the <span class=\"application\">Passwords and Keys</span> utility does nothing</h2>\n"
+#~ msgstr "<h2 id=\"openpgp-import\">Importar claves OpenPGP usando la utilidad <span class=\"application\">Contraseñas y claves</span> no hace nada</h2>\n"
+
+#, no-wrap
+#~ msgid "[[!inline pages=\"support/known_issues/import_broken_in_seahorse.inline\" raw=\"yes\" sort=\"age\"]]\n"
+#~ msgstr "[[!inline pages=\"support/known_issues/import_broken_in_seahorse.inline.es\" raw=\"yes\" sort=\"age\"]]\n"
+
+#, no-wrap
+#~ msgid "<h2 id=\"boot-loader-display-issues\">Boot Loader has display issues</h2>\n"
+#~ msgstr "<h2 id=\"boot-loader-display-issues\">El Gestor de Arranque tiene problemas de pantalla</h2>\n"
+
+#, no-wrap
+#~ msgid ""
+#~ "<!--\n"
+#~ "Last updated: 2014-06-27\n"
+#~ msgstr ""
+#~ "<!--\n"
+#~ "Last updated: 2014-06-27\n"
+
+#, no-wrap
+#~ msgid ""
+#~ "I asked some ThinkPad X230 users to confirm.\n"
+#~ "-->\n"
+#~ msgstr ""
+#~ "I asked some ThinkPad X230 users to confirm.\n"
+#~ "-->\n"
+
+#~ msgid ""
+#~ "Since Tails 1.1, on some hardware (ThinkPad X230, MacBook Pro 8,1), the "
+#~ "Boot Loader is not displayed properly. Tails starts fine, though."
+#~ msgstr ""
+#~ "Desde Tails 1.1, en algún hardware (ThinkPad X230, MacBook Pro 8,1) el "
+#~ "Gestor de Arranque no se ve bien. Aunque Tails arranca."
+
+#, no-wrap
+#~ msgid "<h3 id=\"acer-travelmate-b113\">Acer TravelMate B113 - ETPS/2 Elantech Touchpad</h3>\n"
+#~ msgstr "<h3 id=\"acer-travelmate-b113\">Acer TravelMate B113 - ETPS/2 Elantech Touchpad</h3>\n"
+
+#, no-wrap
+#~ msgid ""
+#~ "<!--\n"
+#~ "Last updated: 2013-08-15\n"
+#~ "Specs: https://www.cnet.com/products/acer-travelmate-b113-e-2419-11-6-celeron-1017u-4-gb-ram-320-gb-hdd/\n"
+#~ "-->\n"
+#~ msgstr ""
+#~ "<!--\n"
+#~ "Last updated: 2013-08-15\n"
+#~ "Specs: https://www.cnet.com/products/acer-travelmate-b113-e-2419-11-6-celeron-1017u-4-gb-ram-320-gb-hdd/\n"
+#~ "-->\n"
+
+#, no-wrap
+#~ msgid ""
+#~ "    synclient FingerPress=256;\n"
+#~ "    synclient TapButton3=0;\n"
+#~ "    synclient Clickpad=1;\n"
+#~ "    synclient VertTwoFingerScroll=1;\n"
+#~ "    synclient FingerLow=1;\n"
+#~ "    synclient FingerHigh=1;\n"
+#~ msgstr ""
+#~ "    synclient FingerPress=256;\n"
+#~ "    synclient TapButton3=0;\n"
+#~ "    synclient Clickpad=1;\n"
+#~ "    synclient VertTwoFingerScroll=1;\n"
+#~ "    synclient FingerLow=1;\n"
+#~ "    synclient FingerHigh=1;\n"
+
+#, fuzzy
+#~ msgid "Note that your Persistent Storage will be safely preserved."
+#~ msgstr ""
+#~ "Ten en cuenta que tu Almacenamiento Persistente se mantendrá como está."
+
+#, no-wrap
+#~ msgid "\techo \"no-grab\" >> ~/.gnupg/gpg-agent.conf\n"
+#~ msgstr "\techo \"no-grab\" >> ~/.gnupg/gpg-agent.conf\n"
+
+#~ msgid ""
+#~ "This section lists known problems with specific hardware. To report a "
+#~ "problem with different hardware see our [[report guidelines when Tails "
+#~ "does not start|doc/first_steps/bug_reporting#does-not-start]]."
+#~ msgstr ""
+#~ "Esta sección lista problemas conocidos de seguridad con hardware "
+#~ "específico. Para reportar un problema con otro hardware lee nuestras "
+#~ "[[recomendaciones para reportar cuando Tails no arranca|doc/first_steps/"
+#~ "bug_reporting#does-not-start]]."
+
+#, no-wrap
+#~ msgid ""
+#~ "  To start Tails successfully, [[add the following boot option when\n"
+#~ "  starting Tails|doc/advanced_topics/boot_options]]:\n"
+#~ msgstr "Para iniciar Tails debes añadir las siguentes opciones a tus [[opciones de arranque|/doc/advanced_topics/boot_options]]:\n"
+
+#, fuzzy, no-wrap
+#~| msgid "MacBook Pro 2016 and 2017: the keyboard, trackpad and Touch Bar may not work. If they do, please let us know so we can update this page."
+#~ msgid ""
+#~ "  If the keyboard, trackpad, and Touch Bar do work on your recent MacBook Pro\n"
+#~ "  model, please let us know so that we can update this page accordingly.\n"
+#~ msgstr "MacBook Pro 2016 y 2017: el teclado, trackpad y barra táctil pueden no funcionar. Si lo hacen, avísanos así podemos actualizar esta página."
+
+#, fuzzy
+#~| msgid "Does not start Tails 1.2.3 created using Tails Installer."
+#~ msgid "Does not start Tails 4.13 ([[!tails_ticket 17953]])."
+#~ msgstr "No arranca Tails 1.2.3 creado con Tails Installer."
+
+#~ msgid "Aegis Secure Key USB 2.0"
+#~ msgstr "Aegis Secure Key USB 2.0"
+
+#~ msgid ""
+#~ "During the boot process, USB is briefly powered off, that causes Aegis "
+#~ "hardware-encrypted USB sticks to lock down, and the PIN must be entered "
+#~ "again (fast) in order to complete the boot."
+#~ msgstr ""
+#~ "Durante el proceso de arranque el USB pierde electricidad "
+#~ "momentáneamente, causando que las memorias Aegis cifradas por hardware se "
+#~ "cierren, y el PIN se debe escribir de nuevo (rapidamente) para completar "
+#~ "el proceso de arranque."
+
+#~ msgid "Aegis Secure Key USB 3.0"
+#~ msgstr "Aegis Secure Key USB 3.0"
+
+#~ msgid ""
+#~ "This USB stick doesn't start Tails at all, the USB 2.0 workaround is not "
+#~ "working for that hardware."
+#~ msgstr ""
+#~ "Esta memoria USB no arranca Tails de ninguna manera, la solución de USB "
+#~ "2.0 no funciona para este hardware."
+
+#~ msgid "Problems starting Tails"
+#~ msgstr "Problemas al arrancar Tails"
+
+#~ msgid "Problematic USB sticks"
+#~ msgstr "Memorias USB problemáticas"
+
+#~ msgid "PNY"
+#~ msgstr "PNY"
+
+#, fuzzy
+#~| msgid "Aegis Secure Key USB 2.0"
+#~ msgid "Aegis Secure Key"
+#~ msgstr "Aegis Secure Key USB 2.0"
+
+#~ msgid ""
+#~ "<a id=\"datatraveler-2000\"></a>\n"
+#~ "<a id=\"datatraveler-100-g3\"></a>\n"
+#~ msgstr ""
+#~ "<a id=\"datatraveler-2000\"></a>\n"
+#~ "<a id=\"datatraveler-100-g3\"></a>\n"
+
+#~ msgid "Mac"
+#~ msgstr "Mac"
+
+#~ msgid "<a id=\"pc\">\n"
+#~ msgstr "<a id=\"pc\">\n"
+
+#~ msgid ""
+#~ "PC\n"
+#~ "--\n"
+#~ msgstr ""
+#~ "PC\n"
+#~ "--\n"
+
+#~ msgid "<a id=\"lockup\"></a>\n"
+#~ msgstr "<a id=\"lockup\"></a>\n"
+
+#~ msgid "<a id=\"sg-black-screen\"></a>\n"
+#~ msgstr "<a id=\"sg-black-screen\"></a>\n"
+
+#, fuzzy
+#~| msgid "Acer Aspire 5315-ICL50 and Acer ES-1-331"
+#~ msgid "Acer Aspire 5315-ICL50"
+#~ msgstr "Acer Aspire 5315-ICL50 y Acer ES-1-331"
+
+#~ msgid "ASUS VivoBook X202E"
+#~ msgstr "ASUS VivoBook X202E"
+
+#~ msgid "Dell Chromebook LULU"
+#~ msgstr "Dell Chromebook LULU"
+
+#, fuzzy
+#~| msgid "Dell Latitude E6430 and E6230"
+#~ msgid "Dell Latitude E5250"
+#~ msgstr "Dell Latitude E6430 y E6230"
+
+#~ msgid "HP Compaq 615"
+#~ msgstr "HP Compaq 615"
+
+#~ msgid "HP Compaq CQ60-214DX"
+#~ msgstr "HP Compaq CQ60-214DX"
+
+#~ msgid "HP Pavilion 15-ab277ca"
+#~ msgstr "HP Pavilion 15-ab277ca"
+
+#~ msgid "HP ProBook"
+#~ msgstr "HP ProBook"
+
+#~ msgid "Lenovo IdeaPad Y410p"
+#~ msgstr "Lenovo IdeaPad Y410p"
+
+#~ msgid "Lenovo IdeaPad z585"
+#~ msgstr "Lenovo IdeaPad z585"
+
+#, fuzzy
+#~| msgid "Wi-Fi issues\n"
+#~ msgid "Wi-Fi issues"
+#~ msgstr "Problemas del Wi-Fi\n"
+
+#, fuzzy
+#~| msgid "<a id=\"wi-fi\"></a>\n"
+#~ msgid "<a id=\"wi-fi-workarounds\"></a>\n"
+#~ msgstr "<a id=\"wi-fi\"></a>\n"
+
+#~ msgid "<a id=\"broadcom-sta-dkms\"></a>\n"
+#~ msgstr "<a id=\"broadcom-sta-dkms\"></a>\n"
+
+#, fuzzy
+#~| msgid "Other issues\n"
+#~ msgid "Security issues"
+#~ msgstr "Otros problemas\n"
+
+#~ msgid "<a id=\"video-memory\"></a>\n"
+#~ msgstr "<a id=\"video-memory\"></a>\n"
+
+#, fuzzy
+#~| msgid "Other issues\n"
+#~ msgid "Other issues"
+#~ msgstr "Otros problemas\n"
+
+#, fuzzy
+#~| msgid "<a id=\"aegis\"></a>\n"
+#~ msgid "<a id=\"openpgp-import\"></a>\n"
+#~ msgstr "<a id=\"aegis\"></a>\n"
+
+#, fuzzy
+#~| msgid "<a id=\"datatraveler-2000\"></a>\n"
+#~ msgid ""
+#~ "<a id=\"automatic_upgrade_fails\"></a>\n"
+#~ "<a id=\"partial-upgrade\"></a>\n"
+#~ msgstr "<a id=\"datatraveler-2000\"></a>\n"
+
+#, fuzzy
+#~| msgid "<a id=\"sandisk\"></a>\n"
+#~ msgid "<a id=\"persistence-disappears\"></a>\n"
+#~ msgstr "<a id=\"sandisk\"></a>\n"
+
+#, fuzzy
+#~| msgid "<a id=\"mac\"></a>\n"
+#~ msgid "<a id=\"utc\"></a>\n"
+#~ msgstr "<a id=\"mac\"></a>\n"
+
+#~ msgid "Lenovo ThinkPad 11e"
+#~ msgstr "Lenovo ThinkPad 11e"
+
+#, fuzzy
+#~| msgid "<a id=\"mac\"></a>\n"
+#~ msgid "<a id=\"usb-gigabyte\"></a>\n"
+#~ msgstr "<a id=\"mac\"></a>\n"
+
+#~ msgid ""
+#~ "Mac\n"
+#~ "---\n"
+#~ msgstr ""
+#~ "Mac\n"
+#~ "---\n"
+
+#~ msgid ""
+#~ "[[!inline pages=\"doc/anonymous_internet/electrum/phishing.inline\" "
+#~ "raw=\"yes\" sort=\"age\"]]\n"
+#~ msgstr ""
+#~ "[[!inline pages=\"doc/anonymous_internet/electrum/phishing.inline.es\" "
+#~ "raw=\"yes\" sort=\"age\"]]\n"
+
+#~ msgid "Aegis"
+#~ msgstr "Aegis"
+
+#~ msgid "MacBook Pro 5,5 does not boot with Tails in UEFI mode."
+#~ msgstr "MacBook Pro 5,5  no arranca con Tails en modo UEFI."
+
+#~ msgid ""
+#~ "MacBook Pro 5,1 17\" (Nvidia GeForce 9400M): one must add the "
+#~ "`nouveau.noaccel=1` boot parameter so that the display works properly."
+#~ msgstr ""
+#~ "MacBook Pro 5,1 17\" (Nvidia GeForce 9400M): debes añadir la opción de "
+#~ "arranque `nouveau.noaccel=1` para que la pantalla funcione correctamente."
+
+#~ msgid ""
+#~ "You need to add `nomodeset` to the [[startup options|/doc/first_steps/"
+#~ "startup_options/#boot_loader_menu]] to make Tails start successfully."
+#~ msgstr ""
+#~ "Debes añadir `nomodeset` a las [[opciones de arranque|/doc/first_steps/"
+#~ "startup_options/#boot_loader_menu]] para iniciar Tails."
+
+#~ msgid "Dell Dimension 2400"
+#~ msgstr "Dell Dimension 2400"
+
+#~ msgid ""
+#~ "Does not start neither from USB nor from DVD. System crashes with a blank "
+#~ "screen and locked up keyboard. This problem might be corrected in newer "
+#~ "versions: please report your test results back to us."
+#~ msgstr ""
+#~ "No arranca ni de USB ni de DVD. El sistema se rompe con una pantalla en "
+#~ "blanco y el teclado se bloquea. Este problema puede estar corregido en "
+#~ "nuevas versiones: por favor repórtanos tus resultados."
+
+#~ msgid "Dell Inspiron 8100"
+#~ msgstr "Dell Inspiron 8100"
+
+#~ msgid ""
+#~ "The display panel will have the wrong resolution unless "
+#~ "`video=LVDS-1:1600x1200 nouveau.noaccel=1` is added to the boot command "
+#~ "line. This problem might be corrected in Tails 1.1 and newer: please "
+#~ "report your test results back to us."
+#~ msgstr ""
+#~ "La pantalla tendrá la resolución incorrecta a menos que añadas "
+#~ "`video=LVDS-1:1600x1200 nouveau.noaccel=1` a las opciones de arranque. "
+#~ "Este problema se puede corregir en Tails 1.1 y posteriores: por favor "
+#~ "repórtanos los resultados de tus tests."
+
+#~ msgid "Fujitsu Siemens Amilo A 1667G"
+#~ msgstr "Fujitsu Siemens Amilo A 1667G"
+
+#~ msgid "HP Pavilion dv7"
+#~ msgstr "HP Pavilion dv7"
+
+#, fuzzy
+#~| msgid ""
+#~| "Since Tails 1.3, gets stuck at the Boot Loader Menu, whether Tails is "
+#~| "installed manually or using Tails Installer."
+#~ msgid "Since Tails 1.3, gets stuck at the Boot Loader Menu."
+#~ msgstr ""
+#~ "Desde Tails 1.3 se queda atorado en el menú de arranque Boot, si Tails es "
+#~ "instalado manualmente o usando Tails Installer."
+
+#~ msgid ""
+#~ "A workaround for some of these machines is to use the [[manual "
+#~ "installation process|install/linux/usb]].  Note, however, that this "
+#~ "technique does not allow you to set up a persistent volume."
+#~ msgstr ""
+#~ "Una solución para estas máquinas es utilizar el [[proceso de instalación "
+#~ "manual|install/linux/usb]]. Ten en cuenta, sin embargo, que esta técnica "
+#~ "no te permite configurar un volumen persistente."
+
+#, fuzzy
+#~| msgid ""
+#~| "You need to add `nomodeset` to the [[startup options|/doc/first_steps/"
+#~| "startup_options/#boot_loader_menu]] to make Tails start successfully."
+#~ msgid ""
+#~ "Adding `modprobe.blacklist=ideapad_laptop` to the [[startup options|doc/"
+#~ "first_steps/startup_options#boot_loader_menu]] fixes the issue."
+#~ msgstr ""
+#~ "Debes añadir `nomodeset` a las [[opciones de arranque|/doc/first_steps/"
+#~ "startup_options/#boot_loader_menu]] para iniciar Tails."
+
+#~ msgid "<a id=\"fails-to-shutdown\"></a>\n"
+#~ msgstr "<a id=\"fails-to-shutdown\"></a>\n"
+
+#, fuzzy
+#~| msgid "Tails fails to completely shutdown or restart\n"
+#~ msgid "Tails fails to completely shutdown or restart\n"
+#~ msgstr "Tails falla al apagarse o reiniciar\n"
+
+#~ msgid "This issue has been reported on the following hardware:"
+#~ msgstr "Este problema ha sido reportado en el hardware siguiente:"
+
+#~ msgid "<a id=\"chainloading\"></a>\n"
+#~ msgstr "<a id=\"chainloading\"></a>\n"
+
+#~ msgid ""
+#~ "    set root=(hd1)\n"
+#~ "    chainloader +1\n"
+#~ "    boot\n"
+#~ msgstr ""
+#~ "    set root=(hd1)\n"
+#~ "    chainloader +1\n"
+#~ "    boot\n"
+
+#, fuzzy
+#~| msgid ""
+#~| "To fix this problem, add `intel_idle.max_cstate=1` to the [[startup "
+#~| "options|/doc/advanced_topics/boot_options]]."
+#~ msgid ""
+#~ "If the sound output does not work on an Acer Aspire One laptop, add `snd-"
+#~ "hda-intel.model=acer-aspire` to the [[startup options|/doc/first_steps/"
+#~ "startup_options/#boot_loader_menu]]."
+#~ msgstr ""
+#~ "Para corregir este problema añade `intel_idle.max_cstate=1` a las "
+#~ "[[opciones de arranque|/doc/first_steps/startup_options/"
+#~ "#boot_loader_menu]]."
+
+#~ msgid "<a id=\"sandisk\"></a>\n"
+#~ msgstr "<a id=\"sandisk\"></a>\n"
+
+#~ msgid "SanDisk"
+#~ msgstr "SanDisk"
+
+#, fuzzy
+#~| msgid ""
+#~| "Many SanDisk USB sticks are configured by the manufacturer as a fixed "
+#~| "disk, and not as a removable disk. As a consequence, they require "
+#~| "removing the `live-media=removable` boot parameter. See troubleshooting "
+#~| "section about Tails not starting entirely on [[PC|install/debian/"
+#~| "usb#start-tails]] or [[Mac|install/mac/usb#start-intermediary]]."
+#~ msgid ""
+#~ "Many SanDisk USB sticks are configured by the manufacturer as a fixed "
+#~ "disk, and not as a removable disk. As a consequence, they require "
+#~ "removing the `live-media=removable` boot parameter. See troubleshooting "
+#~ "section about Tails not starting entirely on [[PC|install/win/usb#start-"
+#~ "tails]] or [[Mac|install/mac/usb#start-tails]]."
+#~ msgstr ""
+#~ "Muchas memorias USB SanDisk están configuradas por el fabricante como "
+#~ "discos fijos, y no como discos removibles. Como consecuencia, requieres "
+#~ "remover el parámetro de boot `live-media=removable`. Mira la sección de "
+#~ "solución de problemas cuando Tails no arranca totalmente en  [[PC|install/"
+#~ "debian/usb#start-tails]] o [[Mac|install/mac/usb#start-intermediary]]."
+
+#~ msgid "SanDisk Cruzer Edge 8GB"
+#~ msgstr "SanDisk Cruzer Edge 8GB"
+
+#~ msgid "SanDisk Cruzer Extreme USB 3.0 16GB, 32GB, and 64GB"
+#~ msgstr "SanDisk Cruzer Extreme USB 3.0 16GB, 32GB y 64GB"
+
+#~ msgid "SanDisk Cruzer Fit USB 2.0 8GB, 16GB, and 32G"
+#~ msgstr "SanDisk Cruzer Fit USB 2.0 8GB, 16GB, y 32G"
+
+#~ msgid "SanDisk Cruzer Force 8GB"
+#~ msgstr "SanDisk Cruzer Force 8GB"
+
+#, fuzzy
+#~| msgid "SanDisk Cruzer Blade 4GB, 8GB, and 32GB"
+#~ msgid "SanDisk Cruzer Glide 4GB, 8GB, 16GB, and 32GB"
+#~ msgstr "SanDisk Cruzer Blade 4GB, 8GB, y 32GB"
+
+#, fuzzy
+#~| msgid "SanDisk Cruzer Switch USB 2.0 8GB and 32GB"
+#~ msgid "SanDisk Cruzer Switch USB 2.0 8GB, and 32GB"
+#~ msgstr "SanDisk Cruzer Switch USB 2.0 8GB y 32GB"
+
+#~ msgid "SanDisk Cruzer USB 3.0 64GB"
+#~ msgstr "SanDisk Cruzer USB 3.0 64GB"
+
+#~ msgid "SanDisk Cruzer Blade 4GB, 8GB, and 32GB"
+#~ msgstr "SanDisk Cruzer Blade 4GB, 8GB, y 32GB"
+
+#~ msgid "SanDisk Cruzer Facet"
+#~ msgstr "SanDisk Cruzer Facet"
+
+#~ msgid ""
+#~ "SanDisk Cruzer Orbiter 32GB (hangs at installation time but boots fine "
+#~ "afterwards)"
+#~ msgstr ""
+#~ "SanDisk Cruzer Orbiter 32GB (se cuelga un poco al instalar pero luego "
+#~ "arranca bien)"
+
+#~ msgid "SanDisk Ultra 16GB, 32GB"
+#~ msgstr "SanDisk Ultra 16GB, 32GB"
+
+#~ msgid "See also [[!tails_ticket 6397]]."
+#~ msgstr "Lee también [[!tails_ticket 6397]]."
+
+#~ msgid "Other vendors"
+#~ msgstr "Otros fabricantes"
+
+#~ msgid ""
+#~ "Staples Relay USB 2.0 16GB, suffers from the same problem as [[some "
+#~ "SanDisk USB sticks|known_issues#sandisk]]."
+#~ msgstr ""
+#~ "Staples Relay USB 2.0 16GB sufre de los mismos problemas que [[algunas "
+#~ "memorias USB SanDisk|known_issues#sandisk]]."
+
+#, fuzzy
+#~| msgid "<a id=\"chainloading\"></a>\n"
+#~ msgid "<a id=\"partial-upgrade\"></a>\n"
+#~ msgstr "<a id=\"chainloading\"></a>\n"
+
+#, fuzzy
+#~| msgid "Does not start on USB sticks created using Tails Installer."
+#~ msgid ""
+#~ "Does not start on USB sticks created using Tails Installer nor Etcher."
+#~ msgstr "No inicia en memorias USB creadas usando Tails Installer."
+
+#, fuzzy
+#~| msgid "Wi-Fi issues\n"
+#~ msgid "Graphics issues"
+#~ msgstr "Problemas del Wi-Fi\n"
+
+#~ msgid ""
+#~ "For some models, adding `radeon.modeset=0` to the [[startup options|/doc/"
+#~ "first_steps/startup_options/#boot_loader_menu]] fixes the issue."
+#~ msgstr ""
+#~ "En algunos modelos el problema se arregla añadiendo `radeon.modeset=0` a "
+#~ "las [[opciones de arranque|/doc/first_steps/startup_options/"
+#~ "#boot_loader_menu]]."
+
+#~ msgid "<a id=\"nvidia-maxwell\"></a>\n"
+#~ msgstr "<a id=\"nvidia-maxwell\"></a>\n"
+
+#, fuzzy
+#~| msgid ""
+#~| "You need to add `nomodeset` to the [[startup options|/doc/first_steps/"
+#~| "startup_options/#boot_loader_menu]] to make Tails start successfully."
+#~ msgid ""
+#~ "Add `nouveau.noaccel=1` or `nouveau.modeset=0` to the [[startup options|"
+#~ "doc/first_steps/startup_options#boot_loader_menu]]."
+#~ msgstr ""
+#~ "Debes añadir `nomodeset` a las [[opciones de arranque|/doc/first_steps/"
+#~ "startup_options/#boot_loader_menu]] para iniciar Tails."
+
+#~ msgid "<a id=\"nvidia-pascal\"></a>\n"
+#~ msgstr "<a id=\"nvidia-pascal\"></a>\n"
+
+#, fuzzy
+#~| msgid "Black screen with switchable graphics computers\n"
+#~ msgid "Black screen with switchable graphics computers"
+#~ msgstr "Pantalla negra con ordenadores de gráficos intercambiables\n"
+
+#~ msgid "There are several possible workarounds for this issue:"
+#~ msgstr "Hay varias soluciones posibles para este problema:"
+
+#~ msgid "Expert Linux users can also do the following:"
+#~ msgstr "Usuarios expertos de Linux pueden hacer lo siguiente:"
+
+#~ msgid ""
+#~ "Add the `i915.modeset=0 rootpw=pass` option in the [[Boot Loader Menu|doc/"
+#~ "first_steps/startup_options#boot_loader_menu]]."
+#~ msgstr ""
+#~ "Añade `intel_idle.max_cstate=1` a las [[opciones de arranque|/doc/"
+#~ "first_steps/startup_options/#boot_loader_menu]]."
+
+#~ msgid ""
+#~ "         Section \"Device\"\n"
+#~ "             Identifier \"Device0\"\n"
+#~ "             Driver \"nouveau\"\n"
+#~ "             BusID \"1:0:0\"\n"
+#~ "         EndSection\n"
+#~ msgstr ""
+#~ "         Section \"Device\"\n"
+#~ "             Identifier \"Device0\"\n"
+#~ "             Driver \"nouveau\"\n"
+#~ "             BusID \"1:0:0\"\n"
+#~ "         EndSection\n"
+
+#~ msgid "Restart X with the command:"
+#~ msgstr "Reinicia X con el comando:"
+
+#~ msgid "         service gdm3 restart\n"
+#~ msgstr "         service gdm3 restart\n"
+
+#~ msgid "         sudo passwd\n"
+#~ msgstr "         sudo passwd\n"
+
+#, fuzzy
+#~| msgid "Black screen with switchable graphics computers\n"
+#~ msgid "Cannot start GNOME session with switchable graphics computers"
+#~ msgstr "Pantalla negra con ordenadores de gráficos intercambiables\n"
+
+#, fuzzy
+#~| msgid ""
+#~| "To fix this problem, add `intel_idle.max_cstate=1` to the [[startup "
+#~| "options|/doc/advanced_topics/boot_options]]."
+#~ msgid ""
+#~ "Starting in **Troubleshooting Mode** works, as well as adding the "
+#~ "`modprobe.blacklist=nouveau` to the [[startup options|doc/first_steps/"
+#~ "startup_options#boot_loader_menu]]."
+#~ msgstr ""
+#~ "Para corregir este problema añade `intel_idle.max_cstate=1` a las "
+#~ "[[opciones de arranque|/doc/first_steps/startup_options/"
+#~ "#boot_loader_menu]]."
+
+#, fuzzy
+#~| msgid "<a id=\"aegis\"></a>\n"
+#~ msgid "<a id=\"xorg-driver\"></a>\n"
+#~ msgstr "<a id=\"aegis\"></a>\n"
+
+#, fuzzy
+#~| msgid ""
+#~| "To fix this problem, add `intel_idle.max_cstate=1` to the [[startup "
+#~| "options|/doc/advanced_topics/boot_options]]."
+#~ msgid ""
+#~ "Add the `xorg-driver=intel` option in the [[boot menu|doc/first_steps/"
+#~ "startup_options#boot_menu]]."
+#~ msgstr ""
+#~ "Para corregir este problema añade `intel_idle.max_cstate=1` a las "
+#~ "[[opciones de arranque|/doc/first_steps/startup_options/"
+#~ "#boot_loader_menu]]."
+
+#, fuzzy
+#~| msgid "Virtual machines with *VMware*\n"
+#~ msgid "Virtual machines with *VMware*"
+#~ msgstr "Maquinas virtuales con *VMware*\n"
+
+#~ msgid ""
+#~ "To improve support of Tails running inside a virtual machine with "
+#~ "*VMware*, [[install|doc/first_steps/additional_software]] the `open-vm-"
+#~ "tools-desktop` software package in Tails."
+#~ msgstr ""
+#~ "Para mejorar el soporte de Tails ejecutado en una máquina virtual con "
+#~ "*VMware*, [[instala|doc/first_steps/additional_software]] en Tails el "
+#~ "paquete de software `open-vm-tools-desktop'."
+
+#, fuzzy
+#~| msgid "See also [[!tails_ticket 6397]]."
+#~ msgid "See [[!tails_ticket 15168]] for more details."
+#~ msgstr "Lee también [[!tails_ticket 6397]]."
+
+#~ msgid "SanDisk Cruzer Glide 4GB, 8GB and 16GB"
+#~ msgstr "SanDisk Cruzer Glide 4GB, 8GB y 16GB"

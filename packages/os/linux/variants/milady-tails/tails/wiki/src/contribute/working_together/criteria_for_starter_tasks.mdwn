@@ -1,0 +1,99 @@
+[[!meta title="Marking a task as Starter"]]
+
+We think that having issues labeled *Starter* on GitLab is a great tool
+to help new contributors getting into Tails. Here are a few criteria to
+help us determine which issues to put in this category.
+
+We want to allow people with very different skills to contribute to
+Tails for the first time. Programmers, web designers, documentation writers, or
+translators should be able to find tasks that they can complete without
+having to acquire a deep knowledge of Tails or to learn how to use tools
+that are outside of their field of expertise.
+
+Creating a *Starter* task
+=========================
+
+When creating an *Starter* task, try to write a description that is as helpful as
+possible to someone who is new to the project:
+
+  - Describe precisely what to achieve and the skills needed.
+  - Explicitly link to useful resources (eg. code), information (eg. threads),
+    etc.
+
+General
+=======
+
+- Not *Starter*:
+  - Is blocked by other issues.
+  - Needs to be split to be actionable.
+
+Audit & Research
+================
+
+- Not *Starter*:
+  - Interacts with several subsystems of Tails.
+
+Code
+====
+
+- *Starter*:
+  - Write a patch that doesn't need to rebuild Tails.
+- Not *Starter*:
+  - The first solution that comes to your mind is not the right one.
+  - Interact with several subsystems of Tails.
+  - Rework on a first attempt to code that failed because things were
+    more difficult that they seemed at first glance.
+  - Have specific hardware for the task.
+
+Discuss
+=======
+
+- Not applicable.
+
+Documentation
+=============
+
+- *Starter*:
+  - Write user documentation.
+- Not *Starter*:
+  - Use Git or send patches.
+
+Promote
+=======
+
+- *Starter*:
+  - Explain how to use Tails as described in the documentation.
+- Not *Starter*:
+  - Explain how Tails work based on the design document.
+  - Speak on behalf of Tails.
+
+Sysadmin
+========
+
+- Not *Starter*:
+  - Have privileges on Tails infrastructure.
+- *Starter*:
+  - Work that can be tested locally, for example using a virtual
+    machine.
+  - Work on programs that achieve one-time goals.
+  - Write Puppet patches.
+
+Test
+====
+
+- *Starter*:
+  - Test behaviour of Tails using the GUI.
+- Not *Starter*:
+  - Code or build a dedicated testing infrastructure.
+
+Translate & Website
+===================
+
+- Not *Starter*:
+  - Use Git or send patches.
+
+Wait & Communicate
+==================
+
+- *Starter*:
+  - Send nice emails to ask for updates.

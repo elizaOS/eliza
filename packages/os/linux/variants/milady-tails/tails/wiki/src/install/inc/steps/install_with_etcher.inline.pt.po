@@ -1,0 +1,760 @@
+# SOME DESCRIPTIVE TITLE
+# Copyright (C) YEAR Free Software Foundation, Inc.
+# This file is distributed under the same license as the PACKAGE package.
+# FIRST AUTHOR <EMAIL@ADDRESS>, YEAR.
+#
+msgid ""
+msgstr ""
+"Project-Id-Version: PACKAGE VERSION\n"
+"POT-Creation-Date: 2026-04-01 00:15+0000\n"
+"PO-Revision-Date: 2025-12-08 11:29+0000\n"
+"Last-Translator: xin <xin@riseup.net>\n"
+"Language-Team: LANGUAGE <LL@li.org>\n"
+"Language: pt\n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+"Plural-Forms: nplurals=2; plural=n > 1;\n"
+"X-Generator: Weblate 5.13.2\n"
+
+#. type: Plain text
+#, no-wrap
+msgid "[[!meta robots=\"noindex\"]]\n"
+msgstr "[[!meta robots=\"noindex\"]]\n"
+
+#. type: Plain text
+#, no-wrap
+msgid "<h1 id=\"etcher\" class=\"step\">Install <em>balenaEtcher</em></h1>\n"
+msgstr "<h1 id=\"etcher\" class=\"step\">Instalar <em>balenaEtcher</em></h1>\n"
+
+#. type: Plain text
+#, no-wrap
+msgid ""
+"<div class=\"step-image usb\">[[!img inc/infography/install-etcher.png link=\"no\" alt=\"\"]]</div>\n"
+"<div class=\"step-image upgrade\">[[!img inc/infography/install-etcher-with-intermediary.png link=\"no\" alt=\"\"]]</div>\n"
+msgstr ""
+"<div class=\"step-image usb\">[[!img inc/infography/install-etcher.png link=\"no\" alt=\"\"]]</div>\n"
+"<div class=\"step-image upgrade\">[[!img inc/infography/install-etcher-with-intermediary.png link=\"no\" alt=\"\"]]</div>\n"
+
+#. type: Plain text
+#, no-wrap
+msgid ""
+"<p class=\"upgrade\">In the following steps, you will install an intermediary Tails using the Tails USB\n"
+"image that you downloaded earlier.</p>\n"
+msgstr ""
+"<p class=\"upgrade\">Nessas próximas etapas você irá instalar um Tails intermediário usando a imagem \n"
+"Tails USB que você baixou anteriormente.</p>\n"
+
+#. type: Plain text
+#, no-wrap
+msgid "<p><a href=\"https://etcher.balena.io/\"><i>balenaEtcher</i></a> is the Free Software tool that we recommend to install Tails from macOS.</p>\n"
+msgstr ""
+
+#. type: Plain text
+#, no-wrap
+msgid "<div class=\"attack\">\n"
+msgstr "<div class=\"attack\">\n"
+
+#. type: Plain text
+#, no-wrap
+msgid ""
+"<p>We [[stopped recommending|news/rufus]] <i>balenaEtcher</i> to install Tails\n"
+"from Windows in 2025 because <i>balenaEtcher</i> shares [[!tails_ticket 16381\n"
+"desc=\"sensitive information\"]] to the Balena company that allows identifying\n"
+"who is installing Tails.</p>\n"
+msgstr ""
+
+#. type: Plain text
+#, no-wrap
+msgid "<p>We have not updated our installation instructions for macOS yet.</p>\n"
+msgstr ""
+
+#. type: Plain text
+#, no-wrap
+msgid "<p>If you are worried about being identified as a Tails user, you can instead:</p>\n"
+msgstr ""
+
+#. type: Plain text
+#, no-wrap
+msgid ""
+"<ul>\n"
+"  <li>[[!toggle id=\"dd\" text=\"Install Tails using `dd` on the command line\"]].</li>\n"
+"  <li>Install Tails using <a href=\"https://www.raspberrypi.com/software/\"><i>Raspberry Pi Imager</i></a>.</li>\n"
+"</ul>\n"
+msgstr ""
+
+#. type: Plain text
+#, no-wrap
+msgid "</div>\n"
+msgstr "</div>\n"
+
+#. type: Plain text
+#, no-wrap
+msgid "[[!toggleable id=\"dd\" text=\"\"\"\n"
+msgstr "[[!toggleable id=\"dd\" text=\"\"\"\n"
+
+#. type: Plain text
+#, no-wrap
+msgid "[[!toggle id=\"dd\" text=\"\"\"<span class=\"hide-button\"></span>\"\"\"]]\n"
+msgstr "[[!toggle id=\"dd\" text=\"\"\"<span class=\"hide-button\"></span>\"\"\"]]\n"
+
+#. type: Bullet: '1. '
+msgid "Make sure that your USB stick is unplugged."
+msgstr "Certifique-se de que o seu pendrive USB esteja desconectado."
+
+#. type: Bullet: '1. '
+msgid "Open the **Terminal** utility from **Applications&nbsp;▸ Utilities**."
+msgstr ""
+
+#. type: Bullet: '1. '
+msgid "Execute the following command."
+msgstr "Execute o seguinte comando."
+
+#. type: Plain text
+#, no-wrap
+msgid "   <p class=\"command\">diskutil list</p>\n"
+msgstr "   <p class=\"command\">diskutil list</p>\n"
+
+#. type: Plain text
+#, no-wrap
+msgid "   It returns a list of the storage devices on the system. For example:\n"
+msgstr "   Ele retorna uma lista dos dispositivos de armazenamento no sistema. Por exemplo:\n"
+
+#. type: Plain text
+#, no-wrap
+msgid ""
+"       /dev/disk0\n"
+"        #:                     TYPE NAME         SIZE      IDENTIFIER\n"
+"        0:    GUID_partition_scheme             *500.1 GB  disk0\n"
+"        1:                      EFI              209.7 MB  disk0s1\n"
+"        2:                Apple_HFS MacDrive     250.0 GB  disk0s2\n"
+"        3:                      EFI              134.1 GB  disk0s3\n"
+"        4:     Microsoft Basic Data BOOTCAMP     115.5 GB  disk0s4\n"
+msgstr ""
+"       /dev/disk0\n"
+"        #:                     TYPE NAME         SIZE      IDENTIFIER\n"
+"        0:    GUID_partition_scheme             *500.1 GB  disk0\n"
+"        1:                      EFI              209.7 MB  disk0s1\n"
+"        2:                Apple_HFS MacDrive     250.0 GB  disk0s2\n"
+"        3:                      EFI              134.1 GB  disk0s3\n"
+"        4:     Microsoft Basic Data BOOTCAMP     115.5 GB  disk0s4\n"
+
+#. type: Bullet: '1. '
+msgid "Plug your USB stick into the computer."
+msgstr "Conecte o seu pendrive USB ao computador."
+
+#. type: Bullet: '1. '
+msgid "Execute again the same command."
+msgstr "Execute novamente o mesmo comando."
+
+#. type: Plain text
+#, no-wrap
+msgid ""
+"   Your USB stick appears as a new device in the list. Check\n"
+"   that its size corresponds to the size of your USB stick.\n"
+msgstr ""
+"   O seu pendrive USB aparece como um novo dispositivo na lista. Confirme\n"
+"   se o tamanho que aparece corresponde ao tamanho do seu pendrive USB.\n"
+
+#. type: Plain text
+#, no-wrap
+msgid ""
+"       /dev/disk1\n"
+"        #:                     TYPE NAME         SIZE      IDENTIFIER\n"
+"        0:   FDisk_partition_scheme             *8.0 GB    disk1\n"
+"        1:                Apple_HFS Untitled 1   8.0 GB    disk1s1\n"
+msgstr ""
+"       /dev/disk1\n"
+"        #:                     TYPE NAME         SIZE      IDENTIFIER\n"
+"        0:   FDisk_partition_scheme             *8.0 GB    disk1\n"
+"        1:                Apple_HFS Untitled 1   8.0 GB    disk1s1\n"
+
+#. type: Bullet: '1. '
+msgid "Take note of the device name of your USB stick."
+msgstr ""
+
+#. type: Plain text
+#, fuzzy, no-wrap
+#| msgid "Take note of the *device name* of your USB stick.  In this example, the USB stick is 8.0 GB and its device name is <span class=\"code\">/dev/disk1</span>.  Yours might be different."
+msgid ""
+"   In this example, the USB stick is 8.0 GB and its device name is <span class=\"command-placeholder\">/dev/disk1</span>.\n"
+"   Yours might be different.\n"
+msgstr "Anote o *nome do dispositivo* do seu pendrive USB. Neste exemplo, o pendrive USB tem 8.0 GB e o seu nome de dispositivo é <span class=\"code\">/dev/disk1</span>. Pode ser que o seu seja diferente."
+
+#. type: Plain text
+#, no-wrap
+msgid "   <div class=\"caution\">\n"
+msgstr "   <div class=\"caution\">\n"
+
+#. type: Plain text
+#, no-wrap
+msgid "   <p>You might overwrite any hard disk on the computer.</p>\n"
+msgstr ""
+
+#. type: Plain text
+#, no-wrap
+msgid "   <p>If you are not sure about the device, stop proceeding.</p>\n"
+msgstr ""
+
+#. type: Plain text
+#, no-wrap
+msgid "   </div>\n"
+msgstr "   </div>\n"
+
+#. type: Bullet: '1. '
+#, fuzzy
+#| msgid ""
+#| "<span class=\"command-placeholder\">device</span> with the device name "
+#| "found in step 6"
+msgid ""
+"Execute the following command to safely eject the USB stick. Replace <span "
+"class=\"command-placeholder\">device</span> with the device name found in "
+"step 6."
+msgstr ""
+"<span class=\"command-placeholder\">device</span> com o nome do dispositivo "
+"encontrado na etapa 6"
+
+#. type: Plain text
+#, fuzzy, no-wrap
+#| msgid "   <p class=\"pre command\">diskutil unmountDisk <span class=\"command-placeholder\">device</span></p>\n"
+msgid "   <p class=\"command-template\">diskutil unmountDisk <span class=\"command-placeholder\">device</span></p>\n"
+msgstr "   <p class=\"pre command\">diskutil unmountDisk <span class=\"command-placeholder\">device</span></p>\n"
+
+#. type: Bullet: '1. '
+#, fuzzy
+#| msgid ""
+#| "Execute the following commands to copy the USB image that you downloaded "
+#| "earlier to the USB stick."
+msgid ""
+"Execute the following commands to copy the USB image that you downloaded "
+"earlier to the USB stick. Replace:"
+msgstr ""
+"Execute os seguintes comandos para copiar a imagem USB que você baixou "
+"anteriormente para o pendrive USB."
+
+#. type: Bullet: '   - '
+msgid ""
+"<span class=\"command-placeholder\">tails.img</span> with the path to the "
+"USB image"
+msgstr ""
+"<span class=\"command-placeholder\">tails.img</span> com o caminho para a "
+"imagem USB"
+
+#. type: Plain text
+#, no-wrap
+msgid ""
+"     <div class=\"tip\">\n"
+"     <p>If you are unsure about the path to the USB image, you can insert the\n"
+"     correct path by dragging and dropping the icon of the USB image from\n"
+"     <i>Finder</i> onto <i>Terminal</i>.</p>\n"
+"     </div>\n"
+msgstr ""
+"     <div class=\"tip\">\n"
+"     <p>Se você não tiver certeza sobre o caminho para a imagem USB, você pode inserir o\n"
+"     caminho correto arrastando o ícone da imagem USB do\n"
+"     <i>Finder</i> até o <i>Terminal</i>.</p>\n"
+"     </div>\n"
+
+#. type: Bullet: '   - '
+msgid ""
+"<span class=\"command-placeholder\">device</span> with the device name found "
+"in step 6"
+msgstr ""
+"<span class=\"command-placeholder\">device</span> com o nome do dispositivo "
+"encontrado na etapa 6"
+
+#. type: Plain text
+#, no-wrap
+msgid ""
+"     <div class=\"tip\">\n"
+"     <p>You can try adding <code>r</code> before <code>disk</code> to make the installation faster.</p>\n"
+"     </div>\n"
+msgstr ""
+"     <div class=\"tip\">\n"
+"     <p>Você pode tentar adicionar <code>r</code> antes de <code>disk</code> para fazer a instalação ser mais rápida.</p>\n"
+"     </div>\n"
+
+#. type: Plain text
+#, fuzzy, no-wrap
+#| msgid "   <p class=\"pre command\">dd if=<span class=\"command-placeholder\">tails.img</span> of=<span class=\"command-placeholder\">device</span> bs=16m && sync</p>\n"
+msgid "   <p class=\"command-template\">dd if=<span class=\"command-placeholder\">tails.img</span> of=<span class=\"command-placeholder\">device</span> bs=16m && sync</p>\n"
+msgstr "   <p class=\"pre command\">dd if=<span class=\"command-placeholder\">tails.img</span> of=<span class=\"command-placeholder\">device</span> bs=16m && sync</p>\n"
+
+#. type: Plain text
+#, no-wrap
+msgid "   You should get something like this:\n"
+msgstr "   Você deve ver algo como:\n"
+
+#. type: Plain text
+#, no-wrap
+msgid "   <p class=\"command-template\">dd if=/Users/me/tails-amd64-3.12.img of=/dev/rdisk9 bs=16m && sync</p>\n"
+msgstr "   <p class=\"command-template\">dd if=/Users/me/tails-amd64-3.12.img of=/dev/rdisk9 bs=16m && sync</p>\n"
+
+#. type: Plain text
+#, no-wrap
+msgid ""
+"   If no error message is returned, Tails is being copied on the USB\n"
+"   stick. The copy takes some time, generally a few minutes.\n"
+msgstr ""
+"   Se nenhuma mensagem de erro aparecer, Tails estará sendo copiado para o\n"
+"   pendrive USB. A cópia demora algum tempo, geralmente alguns minutos.\n"
+
+#. type: Plain text
+#, fuzzy, no-wrap
+#| msgid ""
+#| "   <div class=\"note\">\n"
+#| "   <p>If you get a <span class=\"guilabel\">Permission denied</span> error, try\n"
+#| "   adding <code>sudo</code> at the beginning of the command:</p>\n"
+msgid ""
+"   <div class=\"note\">\n"
+"   <p>If you get a <code>Permission denied</code> error, try\n"
+"   adding <code>sudo</code> at the beginning of the command:</p>\n"
+msgstr ""
+"   <div class=\"note\">\n"
+"   <p>Se você receber um erro <span class=\"guilabel\">Permission denied</span>, tente\n"
+"   adicionar <code>sudo</code> no inicio do comando:</p>\n"
+
+#. type: Plain text
+#, fuzzy, no-wrap
+#| msgid "   <p class=\"pre command\">sudo dd if=<span class=\"command-placeholder\">tails.img</span> of=<span class=\"command-placeholder\">device</span> bs=16m && sync</p>\n"
+msgid "   <p class=\"command-template\">sudo dd if=<span class=\"command-placeholder\">tails.img</span> of=<span class=\"command-placeholder\">device</span> bs=16m && sync</p>\n"
+msgstr "   <p class=\"pre command\">sudo dd if=<span class=\"command-placeholder\">tails.img</span> of=<span class=\"command-placeholder\">device</span> bs=16m && sync</p>\n"
+
+#. type: Plain text
+#, fuzzy, no-wrap
+#| msgid ""
+#| "   <p>If you get an <span class=\"guilabel\">invalid number ‘16m’</span> error, try\n"
+#| "   using <code>16M</code> instead:</p>\n"
+msgid ""
+"   <p>If you get an <code>invalid number ‘16m’</code> error, try\n"
+"   using <code>16M</code> instead:</p>\n"
+msgstr ""
+"   <p>Se você receber um erro <span class=\"guilabel\">invalid number ‘16m’</span>, tente\n"
+"   usar <code>16M</code>:</p>\n"
+
+#. type: Plain text
+#, fuzzy, no-wrap
+#| msgid "   <p class=\"pre command\">dd if=<span class=\"command-placeholder\">tails.img</span> of=<span class=\"command-placeholder\">device</span> bs=16M && sync</p>\n"
+msgid "   <p class=\"command-template\">dd if=<span class=\"command-placeholder\">tails.img</span> of=<span class=\"command-placeholder\">device</span> bs=16M && sync</p>\n"
+msgstr "   <p class=\"pre command\">dd if=<span class=\"command-placeholder\">tails.img</span> of=<span class=\"command-placeholder\">device</span> bs=16M && sync</p>\n"
+
+#. type: Plain text
+#, fuzzy, no-wrap
+#| msgid "   The installation is complete once the command prompt reappeared.\n"
+msgid "   The installation is complete when the command prompt reappears.\n"
+msgstr "   A instalação estará completa quando o prompt de comando reaparecer.\n"
+
+#. type: Bullet: '1. '
+msgid "Click on the following button to download <em>balenaEtcher</em>:"
+msgstr "Clique no botão abaixo para baixar <em>balenaEtcher</em>:"
+
+#. type: Plain text
+#, no-wrap
+msgid "   <p class=\"button\">[[Download <i>balenaEtcher</i> for macOS|https://tails.net/etcher/balenaEtcher.dmg]]</p>\n"
+msgstr ""
+
+#. type: Plain text
+#, no-wrap
+msgid "   Save your download to your usual *Downloads* folder and not to the USB stick.\n"
+msgstr ""
+
+#. type: Bullet: '1. '
+#, fuzzy
+#| msgid ""
+#| "Open the <span class=\"application\">balenaEtcher</span> download (DMG "
+#| "disk image)."
+msgid "Open the *balenaEtcher* download (DMG disk image)."
+msgstr ""
+"Abra o <span class=\"application\">balenaEtcher</span> baixado (no formato "
+"DMG disk image)."
+
+#. type: Plain text
+#, no-wrap
+msgid "   [[!img install/inc/screenshots/install_etcher_in_mac.png class=\"screenshot\" alt=\"\"]]\n"
+msgstr "   [[!img install/inc/screenshots/install_etcher_in_mac.png class=\"screenshot\" alt=\"\"]]\n"
+
+#. type: Bullet: '1. '
+msgid ""
+"To install *balenaEtcher*, drag the *balenaEtcher* icon onto the "
+"**Applications** icon."
+msgstr ""
+"Para instalar <span class=\"application\">balenaEtcher</span>, arraste o "
+"ícone do <span class=\"application\">balenaEtcher</span> até o ícone de "
+"<span class=\"guilabel\">Aplicativos</span>."
+
+#. type: Bullet: '1. '
+#, fuzzy
+#| msgid ""
+#| "Close the installation window of <span "
+#| "class=\"application\">balenaEtcher</span>."
+msgid "Close the installation window of *balenaEtcher*."
+msgstr ""
+"Feche a janela de instalação do <span class=\"application\">balenaEtcher</"
+"span>."
+
+#. type: Plain text
+#, fuzzy, no-wrap
+#| msgid ""
+#| "   Optionally, eject the <span class=\"application\">balenaEtcher</span> disk image\n"
+#| "   from the desktop.\n"
+msgid "   Optionally, eject the disk image of *balenaEtcher* from the sidebar of *Finder*.\n"
+msgstr ""
+"   Opcionalmente, ejete a imagem de disco do <span class=\"application\">balenaEtcher</span> \n"
+"   da área de trabalho.\n"
+
+#. type: Plain text
+#, no-wrap
+msgid "<h1 id=\"install\" class=\"step\">Install <span class=\"upgrade\">an intermediary</span> Tails using <em>balenaEtcher</em></h1>\n"
+msgstr "<h1 id=\"install\" class=\"step\">Instale um Tails <span class=\"upgrade\">intermediário</span> usando <em>balenaEtcher</em></h1>\n"
+
+#. type: Plain text
+#, no-wrap
+msgid ""
+"<div class=\"step-image usb\">[[!img install/inc/infography/install-tails.png link=\"no\" alt=\"\"]]</div>\n"
+"<div class=\"step-image upgrade\">[[!img install/inc/infography/install-upgrade-usb-only.png link=\"no\" alt=\"\"]]</div>\n"
+msgstr ""
+"<div class=\"step-image usb\">[[!img install/inc/infography/install-tails.png link=\"no\" alt=\"\"]]</div>\n"
+"<div class=\"step-image upgrade\">[[!img install/inc/infography/install-upgrade-usb-only.png link=\"no\" alt=\"\"]]</div>\n"
+
+#. type: Bullet: '1. '
+msgid ""
+"<p class=\"mac upgrade-mac\"> Open <i>Finder</i> and choose <i>balenaEtcher</"
+"i> in <b>Applications</b>.  </p>"
+msgstr ""
+"<p class=\"mac upgrade-mac\">Abra o <span class=\"application\">Finder</"
+"span> e escolha <span class=\"application\">balenaEtcher</span> nos <span "
+"class=\"guilabel\">Aplicativos</span>.</p>"
+
+#. type: Plain text
+#, no-wrap
+msgid ""
+"   At the security warning, confirm that you want to open\n"
+"   *balenaEtcher*.\n"
+msgstr ""
+"   No aviso de segurança, confirme que você quer abrir o\n"
+"   <span class=\"application\">balenaEtcher</span>.\n"
+
+#. type: Plain text
+#, no-wrap
+msgid "   *balenaEtcher* starts.\n"
+msgstr ""
+
+#. type: Plain text
+#, no-wrap
+msgid "   [[!img install/inc/screenshots/etcher_in_mac.png class=\"mac upgrade-mac screenshot\" alt=\"\"]]\n"
+msgstr "   [[!img install/inc/screenshots/etcher_in_mac.png class=\"mac upgrade-mac screenshot\" alt=\"\"]]\n"
+
+#. type: Bullet: '1. '
+msgid ""
+"Plug in the USB stick on which you want to install <span class=\"usb\">Tails."
+"</span> <span class=\"upgrade\">the intermediary Tails.</span>"
+msgstr ""
+"Insira o pendrive USB no qual você deseja instalar <span class=\"usb\">Tails."
+"</span> <span class=\"upgrade\">o Tails intermediário.</span>"
+
+#. type: Plain text
+#, fuzzy, no-wrap
+#| msgid "   <div class=\"caution\"><p>All the data on this USB stick will be lost.</p></div>\n"
+msgid "   <p>All the data on this USB stick will be lost.</p>\n"
+msgstr "   <div class=\"caution\"><p>Todos os dados nesse pendrive USB serão perdidos.</p></div>\n"
+
+#. type: Plain text
+#, no-wrap
+msgid "   <p>Some data might still be recovered using advanced forensics tools.</p>\n"
+msgstr ""
+
+#. type: Plain text
+#, no-wrap
+msgid ""
+"   <div class=\"note upgrade\"><p>The Persistent Storage of your Tails USB stick will not be\n"
+"   copied to the temporary Tails.</p></div>\n"
+msgstr ""
+"   <div class=\"note upgrade\"><p>O Armazenamento Persistente do seu pendrive USB com Tails não será\n"
+"   copiado para o Tails temporário.</p></div>\n"
+
+#. type: Bullet: '1. '
+msgid "Click the **Flash from file** button."
+msgstr ""
+"Clique no botão **Flash from file** (gravar à partir de arquivo, em inglês)."
+
+#. type: Plain text
+#, no-wrap
+msgid "   Choose the USB image that you downloaded earlier.\n"
+msgstr "   Escolha a imagem USB que você baixou anteriormente.\n"
+
+#. type: Plain text
+#, fuzzy, no-wrap
+#| msgid ""
+#| "   <div class=\"note\">\n"
+#| "   <p>Make sure that the USB image has an\n"
+#| "   <span class=\"filename\">.img</span> file extension.</p>\n"
+msgid ""
+"   <div class=\"note\">\n"
+"   <p>Make sure that the USB image is called <i>[[!inline pages=\"inc/stable_amd64_img_filename\" raw=\"yes\" sort=\"age\"]]</i> and has an\n"
+"   <i>.img</i> file extension.</p>\n"
+msgstr ""
+"   <div class=\"note\">\n"
+"   <p>Tenha certeza de que a imagem USB possui a extensão\n"
+"   <span class=\"filename\">.img</span>.</p>\n"
+
+#. type: Plain text
+#, fuzzy, no-wrap
+#| msgid ""
+#| "   <p>If the image has an <i>.iso</i> file\n"
+#| "   extension, it is not the correct image. Please go back to the\n"
+#| "   <span class=\"windows\">[[download step|windows#download]].</span>\n"
+#| "   <span class=\"mac\">[[download step|mac#download]].</span>\n"
+#| "   <span class=\"upgrade-windows\">[[download step|upgrade/windows#download]].</span>\n"
+#| "   <span class=\"upgrade-mac\">[[download step|upgrade/mac#download]].</span></p>\n"
+#| "   </div>\n"
+msgid ""
+"   <p>If the image has an <i>.iso</i> file\n"
+"   extension, it is the wrong image. Please go back to the\n"
+"   <span class=\"mac\">[[download step|mac#download]].</span>\n"
+"   <span class=\"upgrade-mac\">[[download step|doc/upgrade/mac#download]].</span></p>\n"
+"   </div>\n"
+msgstr ""
+"   <p>Se a imagem tiver uma extensão <i>.iso</i>,\n"
+"   ela não é a imagem correta. Por favor volte para a\n"
+"   <span class=\"windows\">[[etapa de download|windows#download]].</span>\n"
+"   <span class=\"mac\">[[etapa de download|mac#download]].</span>\n"
+"   <span class=\"upgrade-windows\">[[etapa de download|upgrade/windows#download]].</span>\n"
+"   <span class=\"upgrade-mac\">[[etapa de download|upgrade/mac#download]].</span></p>\n"
+"   </div>\n"
+
+#. type: Bullet: '1. '
+msgid "Click the **Select target** button to select your USB stick."
+msgstr ""
+"Clique no botão **Select target** (escolher alvo, em inglês) para escolher o "
+"seu pendrive USB."
+
+#. type: Bullet: '1. '
+#, fuzzy
+#| msgid "Click the **Flash from file** button."
+msgid "Click **Flash**."
+msgstr ""
+"Clique no botão **Flash from file** (gravar à partir de arquivo, em inglês)."
+
+#. type: Plain text
+#, no-wrap
+msgid "   Enter your password if you are asked for it.\n"
+msgstr "   Insira sua senha caso seja solicitado.\n"
+
+#. type: Plain text
+#, no-wrap
+msgid "   The installation takes a few minutes.\n"
+msgstr "   A instalação demora alguns minutos.\n"
+
+#. type: Plain text
+#, no-wrap
+msgid ""
+"   After installing Tails, *balenaEtcher* verifies the\n"
+"   installation.\n"
+msgstr ""
+"   Após instalar Tails, o <span class=\"application\">balenaEtcher</span> verificará a\n"
+"   instalação.\n"
+
+#. type: Plain text
+#, no-wrap
+msgid ""
+"   <div class=\"bug\">\n"
+"   <p>If the verification of <i>balenaEtcher</i>\n"
+"   fails, try to install again or try using a different USB\n"
+"   stick.</p>\n"
+"   </div>\n"
+msgstr ""
+"   <div class=\"bug\">\n"
+"   <p>Se a verificação do <span class=\"application\">balenaEtcher</span>\n"
+"   falhar, tente instalar novamente, ou tente usar outro pendrive\n"
+"   USB.</p>\n"
+"   </div>\n"
+
+#. type: Bullet: '1. '
+#, fuzzy
+msgid "Close *balenaEtcher*."
+msgstr "Instalação do Etcher"
+
+#. type: Plain text
+#, no-wrap
+msgid ""
+"   <p class=\"mac upgrade-mac\">\n"
+"   If a notification about the USB stick not being readable appears,\n"
+"   click <b>Eject</b> to eject the USB stick.\n"
+"   </p>\n"
+msgstr ""
+"   <p class=\"mac upgrade-mac\">\n"
+"   Caso apareça uma notificação sobre o pendrive USB não ser legível,\n"
+"   clique em <span class=\"bold\">Ejetar</span> para ejetar o pendrive USB.\n"
+"   </p>\n"
+
+#, no-wrap
+#~ msgid ""
+#~ "   <div class=\"caution\">\n"
+#~ "   <p>If you are unsure about the device name, you should stop proceeding or\n"
+#~ "   <strong>you risk overwriting any hard disk on the system</strong>.</p>\n"
+#~ "   </div>\n"
+#~ msgstr ""
+#~ "   <div class=\"caution\">\n"
+#~ "   <p>Se você não tiver certeza sobre o nome do seu dispositivo, você deverá parar o procedimento ou\n"
+#~ "   <strong>estará correndo o risco de sobrescrever algum disco rígido do sistema</strong>.</p>\n"
+#~ "   </div>\n"
+
+#, no-wrap
+#~ msgid "   Replace:\n"
+#~ msgstr "   Substitua:\n"
+
+#, no-wrap
+#~ msgid "   <span class=\"application\">balenaEtcher</span> starts.\n"
+#~ msgstr "   <span class=\"application\">balenaEtcher</span> iniciará.\n"
+
+#~ msgid "Click <span class=\"bold\">Flash</span>."
+#~ msgstr "Clique em <span class=\"bold\">Flash</span>."
+
+#~ msgid "Close <span class=\"application\">balenaEtcher</span>."
+#~ msgstr "Feche o <span class=\"application\">balenaEtcher</span>."
+
+#, no-wrap
+#~ msgid ""
+#~ "   <p class=\"windows upgrade-windows\">\n"
+#~ "   Open the <span class=\"application\">balenaEtcher</span> download.\n"
+#~ "   </p>\n"
+#~ msgstr ""
+#~ "   <p class=\"windows upgrade-windows\">\n"
+#~ "   Abra o download do <span class=\"application\">balenaEtcher</span>.\n"
+#~ "   </p>\n"
+
+#, no-wrap
+#~ msgid ""
+#~ "   <div class=\"bug windows upgrade-windows\">\n"
+#~ "   <p>If <i>balenaEtcher</i> does not start, restart Windows and try again.</p>\n"
+#~ "   </div>\n"
+#~ msgstr ""
+#~ "   <div class=\"bug windows upgrade-windows\">\n"
+#~ "   <p>Caso o <i>balenaEtcher</i> não inicie, reinicie o Windows e tente novamente.</p>\n"
+#~ "   </div>\n"
+
+#, no-wrap
+#~ msgid "   [[!img install/inc/screenshots/etcher_in_windows.png class=\"windows upgrade-windows\" link=\"no\" alt=\"\"]]\n"
+#~ msgstr "   [[!img install/inc/screenshots/etcher_in_windows.png class=\"windows upgrade-windows\" link=\"no\" alt=\"\"]]\n"
+
+#, fuzzy, no-wrap
+#~| msgid ""
+#~| "Instead of installing <span class=\"application\">balenaEtcher</span>, you can\n"
+#~| "also [[!toggle id=\"dd\" text=\"install Tails using `dd` on the command\n"
+#~| "line\"]].\n"
+#~ msgid ""
+#~ "Instead of using <span class=\"application\">balenaEtcher</span>, you can\n"
+#~ "also [[!toggle id=\"dd\" text=\"install Tails using `dd` on the command\n"
+#~ "line\"]].\n"
+#~ msgstr ""
+#~ "Em vez de instalar o <span class=\"application\">balenaEtcher</span>, você também\n"
+#~ "pode [[!toggle id=\"dd\" text=\"instalar o Tails usando `dd` na linha de\n"
+#~ "comando\"]].\n"
+
+#, no-wrap
+#~ msgid ""
+#~ "1. Open <span class=\"application\">Terminal</span> from\n"
+#~ "   <span class=\"menuchoice\">\n"
+#~ "     <span class=\"guimenu\">Applications</span>&nbsp;▸\n"
+#~ "     <span class=\"guisubmenu\">Utilities</span>&nbsp;▸\n"
+#~ "     <span class=\"guimenuitem\">Terminal.app</span></span>.\n"
+#~ msgstr ""
+#~ "1. Abra o <span class=\"application\">Terminal</span> a partir de\n"
+#~ "   <span class=\"menuchoice\">\n"
+#~ "     <span class=\"guimenu\">Aplicativos</span>&nbsp;▸\n"
+#~ "     <span class=\"guisubmenu\">Utilitários</span>&nbsp;▸\n"
+#~ "     <span class=\"guimenuitem\">Terminal.app</span></span>.\n"
+
+#, fuzzy, no-wrap
+#~| msgid ""
+#~| "   <p class=\"pre command-output\">/dev/disk0\n"
+#~| "    #:                     TYPE NAME         SIZE      IDENTIFIER\n"
+#~| "    0:    GUID_partition_scheme             &lowast;500.1 GB  disk0\n"
+#~| "    1:                      EFI              209.7 MB  disk0s1\n"
+#~| "    2:                Apple_HFS MacDrive     250.0 GB  disk0s2\n"
+#~| "    3:                      EFI              134.1 GB  disk0s3\n"
+#~| "    4:     Microsoft Basic Data BOOTCAMP     115.5 GB  disk0s4\n"
+#~| "  /dev/disk1\n"
+#~| "    #:                     TYPE NAME         SIZE      IDENTIFIER\n"
+#~| "    0:   FDisk_partition_scheme             *8.0 GB    disk1\n"
+#~| "    1:                Apple_HFS Untitled 1   8.0 GB    disk1s1</p>\n"
+#~ msgid ""
+#~ "       /dev/disk0\n"
+#~ "        #:                     TYPE NAME         SIZE      IDENTIFIER\n"
+#~ "        0:    GUID_partition_scheme             &lowast;500.1 GB  disk0\n"
+#~ "        1:                      EFI              209.7 MB  disk0s1\n"
+#~ "        2:                Apple_HFS MacDrive     250.0 GB  disk0s2\n"
+#~ "        3:                      EFI              134.1 GB  disk0s3\n"
+#~ "        4:     Microsoft Basic Data BOOTCAMP     115.5 GB  disk0s4\n"
+#~ "      /dev/disk1\n"
+#~ "        #:                     TYPE NAME         SIZE      IDENTIFIER\n"
+#~ "        0:   FDisk_partition_scheme             *8.0 GB    disk1\n"
+#~ "        1:                Apple_HFS Untitled 1   8.0 GB    disk1s1\n"
+#~ msgstr ""
+#~ "   <p class=\"pre command-output\">/dev/disk0\n"
+#~ "    #:                     TYPE NAME         SIZE      IDENTIFIER\n"
+#~ "    0:    GUID_partition_scheme             &lowast;500.1 GB  disk0\n"
+#~ "    1:                      EFI              209.7 MB  disk0s1\n"
+#~ "    2:                Apple_HFS MacDrive     250.0 GB  disk0s2\n"
+#~ "    3:                      EFI              134.1 GB  disk0s3\n"
+#~ "    4:     Microsoft Basic Data BOOTCAMP     115.5 GB  disk0s4\n"
+#~ "  /dev/disk1\n"
+#~ "    #:                     TYPE NAME         SIZE      IDENTIFIER\n"
+#~ "    0:   FDisk_partition_scheme             *8.0 GB    disk1\n"
+#~ "    1:                Apple_HFS Untitled 1   8.0 GB    disk1s1</p>\n"
+
+#, no-wrap
+#~ msgid "   <a href=\"https://tails.net/etcher/balenaEtcher.dmg\" class=\"button\">Download balenaEtcher for macOS</a>\n"
+#~ msgstr "   <a href=\"https://tails.net/etcher/balenaEtcher.dmg\" class=\"button\">Baixar balenaEtcher para macOS</a>\n"
+
+#, no-wrap
+#~ msgid "   [[!img install/inc/screenshots/eject_etcher_dmg.png link=\"no\" alt=\"\"]]\n"
+#~ msgstr "   [[!img install/inc/screenshots/eject_etcher_dmg.png link=\"no\" alt=\"\"]]\n"
+
+#, no-wrap
+#~ msgid "<div class=\"hidden-step-1\"></div>\n"
+#~ msgstr "<div class=\"hidden-step-1\"></div>\n"
+
+#~ msgid "These instructions require:"
+#~ msgstr "Essas instruções requerem:"
+
+#~ msgid "macOS 10.10 (Yosemite) or later"
+#~ msgstr "macOS 10.10 (Yosemite) ou versões posteriores"
+
+#, no-wrap
+#~ msgid "<p class=\"start\">Start in macOS.</p>\n"
+#~ msgstr "<p class=\"start\">Iniciar no macOS.</p>\n"
+
+#~ msgid ""
+#~ "[[!meta stylesheet=\"bootstrap.min\" rel=\"stylesheet\" title=\"\"]]\n"
+#~ msgstr ""
+#~ "[[!meta stylesheet=\"bootstrap.min\" rel=\"stylesheet\" title=\"\"]]\n"
+
+#~ msgid ""
+#~ "[[!meta stylesheet=\"inc/stylesheets/assistant\" rel=\"stylesheet\" "
+#~ "title=\"\"]]\n"
+#~ msgstr ""
+#~ "[[!meta stylesheet=\"inc/stylesheets/assistant\" rel=\"stylesheet\" "
+#~ "title=\"\"]]\n"
+
+#~ msgid ""
+#~ "[[!meta stylesheet=\"inc/stylesheets/steps\" rel=\"stylesheet\" "
+#~ "title=\"\"]]\n"
+#~ msgstr ""
+#~ "[[!meta stylesheet=\"inc/stylesheets/steps\" rel=\"stylesheet\" "
+#~ "title=\"\"]]\n"
+
+#, fuzzy
+#~ msgid ""
+#~ "[[!inline pages=\"install/inc/steps/install_with_etcher.inline\" "
+#~ "raw=\"yes\" sort=\"age\"]]\n"
+#~ msgstr ""
+#~ "[[!inline pages=\"install/inc/steps/clone.inline.pt\" raw=\"yes\" "
+#~ "sort=\"age\"]]\n"
+
+#~ msgid ""
+#~ "[[!inline pages=\"install/inc/steps/restart_first_time.inline\" "
+#~ "raw=\"yes\" sort=\"age\"]]\n"
+#~ msgstr ""
+#~ "[[!inline pages=\"install/inc/steps/restart_first_time.inline.pt\" "
+#~ "raw=\"yes\" sort=\"age\"]]\n"

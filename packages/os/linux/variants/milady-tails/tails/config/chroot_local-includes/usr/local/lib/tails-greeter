@@ -1,0 +1,33 @@
+#!/bin/bash
+export LANG="en_US.UTF-8"
+
+if grep -qw "autotest_never_use_this_option" /proc/cmdline; then
+    # Store the environment for usage by tails-autotest-remote-shell
+    env >"/tmp/gdm-env"
+fi
+
+if grep -qw "debug=greeter" /proc/cmdline && [ -z "${DEBUG_GREETER:-}" ]; then
+    # Export DEBUG_GREETER=1 so that when this file is executed again
+    # from Console we actually start the greeter and not another
+    # instance of Console.
+    export DEBUG_GREETER=1
+
+    text="To start the greeter, run:
+
+  /usr/local/lib/tails-greeter
+
+To start the greeter with GtkInspector, run:
+
+  GTK_DEBUG=interactive /usr/local/lib/tails-greeter
+
+To spawn more consoles, run:
+
+  kgx -- /bin/bash
+"
+
+    /usr/bin/kgx -- /bin/bash -c "echo '${text}'; /bin/bash"
+else
+    cd /usr/share/tails/greeter/
+    /usr/share/tails/greeter/set-cursor.py watch
+    ./tails-greeter.py "$@"
+fi

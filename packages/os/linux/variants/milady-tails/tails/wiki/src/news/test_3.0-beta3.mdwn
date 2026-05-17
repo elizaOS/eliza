@@ -1,0 +1,91 @@
+[[!meta title="Call for testing: 3.0~beta3"]]
+
+[[!meta date="Mon, 19 Mar 2017 20:00:00 +0000"]]
+[[!pagetemplate template="news.tmpl"]]
+
+[[!tag announce]]
+
+You can help Tails! The third beta for the upcoming version 3.0 is
+out. We are very excited and cannot wait to hear what you think about
+it :)
+
+[[!toc levels=1]]
+
+# What's new in 3.0~beta3?
+
+Tails 3.0 will be the first version of Tails based on Debian 9
+(Stretch). As such, it upgrades essentially all included software.
+
+Other changes since Tails 3.0~beta2 include:
+
+ * Important security fixes!
+
+ * Upgrade to current Debian 9 (Stretch).
+
+ * Tails Greeter:
+   - Make the "Formats" settings in Tails Greeter take effect (it was
+     introduced in Tails 3.0~alpha1 but has been broken since then).
+   - Add keyboard shortcuts:
+     * Alt key for accelerators in the main window
+     * Ctrl+Shift+A for setting an administrator password
+     * Ctrl+Shift+M for MAC spoofing settings
+     * Ctrl+Shift+N for Tor network settings
+
+ * Remove I2P. (This will happen in Tails 2.12 as well.)
+
+ * Reintroduce the X11 guest utilities for VirtualBox (clipboard
+   sharing and shared folders should work again).
+
+ * Upgrade X.Org server and the modesetting driver in hope it will fix
+   crashes when using some Intel graphics cards.
+
+ * Automate the migration from KeePassX databases generated on
+   Tails 2.x to the format required by KeePassX 2.0.x.
+
+Technical details of all the changes are listed in the
+Changelog.
+
+# How to test Tails 3.0~beta3?
+
+**We will provide security updates for Tails 3.0~beta3**, just like we do
+for stable versions of Tails.
+
+But **keep in mind that this is a test image**. We tested that it is
+not broken in obvious ways, but it might still contain
+undiscovered issues.
+
+But test wildly!
+
+If you find anything that is not working as it should, please report to
+us on <tails-testers@boum.org>.
+
+Bonus points if you first check if it is a
+<a href="#known_issues">known issue of this release</a> or a
+[[longstanding known issue|support/known_issues]].
+
+Get Tails 3.0~beta3
+-------------------
+
+To upgrade, an automatic upgrade is available from 3.0~beta2 to
+3.0~beta3.
+
+If you cannot do an automatic upgrade, you can install 3.0~beta3 by
+following our usual [[installation instructions|install]], skipping
+the **Download and verify** step.
+
+Tails 3.0~beta3 ISO image
+
+<a id="known_issues"></a>
+
+Known issues in 3.0~beta3
+=========================
+
+* The documentation has only been partially updated so far.
+
+* There is no **Read-Only** feature for the
+  persistent volume anymore; it is not clear yet whether it will be
+  re-introduced in time for Tails 3.0 final ([[!tails_ticket 12093]]).
+
+* Open tickets for Tails 3.0
+
+* [[Longstanding known issues|support/known_issues]]

@@ -1,0 +1,236 @@
+#!/usr/bin/python3 -I
+# On success, prints the value of the date header in ISO 8601 format.
+import argparse
+# On supported failures, print the type of failure to stdout,
+# and exit with a well-defined return code.
+
+import email.utils
+import logging
+import pycurl
+import sys
+from pathlib import Path
+from typing import Dict, Optional
+import datetime
+
+from tailslib.release import get_release_date
+from tailslib.logutils import configure_logging
+
+from tca.timeutils import GET_NETWORK_TIME_RETURN_CODE
+
+LOG_FORMAT = "%(asctime)-15s %(levelname)s %(message)s"
+log = logging.getLogger()
+
+CONFIG_FILE = Path("/etc/tails-get-network-time.conf")
+
+# From nm-connectivity.c
+HEADER_STATUS_ONLINE = {"name": "X-NetworkManager-Status", "value": "online"}
+
+# From 20-connectivity-fedora.conf, valid for
+# https://fedoraproject.org/static/hotspot.txt
+EXPECTED_RESPONSE = b"OK"
+
+
+def fail(error: str):
+    print(error)
+    sys.exit(GET_NETWORK_TIME_RETURN_CODE[error])
+
+
+def parse_config_file() -> Dict[str, str]:
+    def str_to_bool(s: str) -> bool:
+        return s.lower() in ("true", "yes", "1")
+
+    res = {}
+    if not CONFIG_FILE.exists():
+        return res
+
+    text = CONFIG_FILE.read_text()
+    for line in text.splitlines():
+        if line.startswith("#"):
+            continue
+        key, value = line.split("=", 1)
+        key = key.strip().lower()
+        value = value.strip()
+        if key in ("url", "log-target"):
+            res[key] = value
+        elif key == "debug":
+            res[key] = str_to_bool(value)
+        elif key == "timeout":
+            res[key] = int(value)
+        else:
+            fail("invalid-config")
+
+    return res
+
+
+class NMishCurlClient:
+    """Wrapper around a curl client to emulate the fingerprintable
+    network behavior of NetworkManager's connectivity check"""
+
+    def __init__(self, url: str, timeout: int = 10, debug: bool = False):
+        self.headers: Dict[str, str] = {}
+        self.body = b''
+        self.url = url
+
+        c = pycurl.Curl()
+        c.setopt(c.URL, url)
+        c.setopt(c.WRITEFUNCTION, self.write_cb)
+        c.setopt(c.HEADERFUNCTION, self.header_cb)
+        c.setopt(c.HTTPHEADER, ["Connection: close"])
+        c.setopt(c.IPRESOLVE, c.IPRESOLVE_V4)
+        c.setopt(c.TIMEOUT, timeout)
+        c.setopt(c.USERAGENT, '')
+
+        if debug:
+            c.setopt(c.VERBOSE, True)
+
+        self.client = c
+
+        self.connectivity: bool = False
+        self.detected_error: Optional[str] = None
+
+    def perform(self):
+        log.info("Performing request to %s", self.url)
+        return self.client.perform()
+
+    def header_cb(self, header_line) -> Optional[int]:
+        # HTTP standard specifies that headers are encoded in iso-8859-1.
+        header_line = header_line.decode("iso-8859-1")
+
+        if ":" not in header_line:
+            return None
+
+        name, value = header_line.split(":", 1)
+        name = name.strip()
+        value = value.strip()
+        name = name.lower()
+        self.headers[name] = value
+
+        if (
+            name == HEADER_STATUS_ONLINE["name"].lower()
+            and value.lower() == HEADER_STATUS_ONLINE["value"].lower()
+        ):
+            log.debug("Received status online header")
+            self.connectivity = True
+            # NetworkManager would abort the connection at this point.
+            # However, we have to wait until we've also received the date
+            # header.
+
+        # Abort the connection once we have the status and date headers,
+        # to mimic NetworkManager's behavior as closely as possible.
+        if self.connectivity and "date" in self.headers:
+            log.debug("Received both status online and date headers")
+            return 0
+
+        return None
+
+    def write_cb(self, data: bytes) -> Optional[int]:
+        """Like NetworkManager, we abort the connection as soon as
+        we have enough information to draw conclusions."""
+
+        if len(data) == 0:
+            # From nm-connectivity.c: no data. That can happen, it's fine.
+            return None
+
+        self.body += data
+
+        if len(self.body) >= len(EXPECTED_RESPONSE):
+            if self.body.startswith(EXPECTED_RESPONSE):
+                self.connectivity = True
+                log.info(
+                    "Received the expected body ⇒ assuming no captive portal"
+                )
+                return 0
+            else:
+                log.info("Received unexpected body ⇒ assuming captive portal")
+                self.detected_error = "captive-portal"
+                return 0
+
+        else:  # len(self.body) < len(EXPECTED_RESPONSE):
+            if EXPECTED_RESPONSE.startswith(self.body):
+                # Keep receiving data
+                return None
+            else:
+                log.info("Received unexpected body ⇒ assuming captive portal")
+                self.detected_error = "captive-portal"
+                return 0
+
+    def response_code(self):
+        return self.client.getinfo(self.client.RESPONSE_CODE)
+
+    def close(self):
+        return self.client.close()
+
+
+
+def on_date_found(dt: datetime.datetime):
+    '''
+    Called when our NMishCurlClient has found a possible date.
+
+    It deals with additional sanity checks, sending to stdout in the appropriate format
+    '''
+    if (get_release_date() - datetime.timedelta(days=1)) > dt:
+        fail("date-in-past")
+    print(dt.isoformat(sep='T', timespec='seconds'))
+
+
+def main():
+    config = parse_config_file()
+    parser = argparse.ArgumentParser()
+    parser.set_defaults(**config)
+    parser.add_argument(
+        "--url",
+        type=str,
+        action="store",
+    )
+    parser.add_argument("--timeout", type=int, default=10)
+
+    parser.add_argument("--debug", action="store_true", help="debug output")
+    parser.add_argument(
+        "--log-target",
+        default="auto",
+        choices=["auto", "stderr", "syslog"],
+        help="Where to send log to; 'auto' will pick syslog IF stderr is not a tty",
+    )
+    args = parser.parse_args()
+
+    if not args.url:
+        fail("missing-url")
+
+    configure_logging(hint=args.log_target, ident='tails-get-network-time', format=LOG_FORMAT,
+            level=logging.DEBUG if args.debug else logging.INFO)
+
+    c = NMishCurlClient(url=args.url, timeout=args.timeout, debug=args.debug)
+
+    try:
+        c.perform()
+    except pycurl.error:
+        # curl can be in error condition when we aborted
+        # the connection ourselves from one of our callbacks
+        pass
+
+    code = c.response_code()
+    log.debug("code: %s", code)
+
+    if c.connectivity:
+        try:
+            date = c.headers["date"]
+        except KeyError:
+            fail("missing-date-header")
+        try:
+            dt = email.utils.parsedate_to_datetime(date)
+        except Exception:
+            fail("malformed-date-header")
+        on_date_found(dt)
+        sys.exit(0)
+    elif c.detected_error:
+        fail(c.detected_error)
+    elif code == 0:
+        log.error("Time out")
+        fail("timeout")
+    else:
+        log.debug("Didn't receive enough data to compare to expected response ⇒ assuming captive portal")
+        fail("captive-portal")
+
+
+if __name__ == "__main__":
+    main()

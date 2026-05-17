@@ -1,0 +1,4 @@
+[[!meta title="Translate Tails into Farsi"]]
+
+The Farsi translation team uses its [[own mailing
+list|https://www.autistici.org/mailman/listinfo/tails-l10n-fa/]].

@@ -1,0 +1,29 @@
+[[!meta title="Berliners, come test new features with us and get a T-shirt!"]]
+[[!meta date="Tue, 23 Nov 2017 12:34:56 +0000"]]
+[[!pagetemplate template="news.tmpl"]]
+[[!tag announce]]
+
+We are working on making it much easier to use VeraCrypt in Tails.
+
+We want to test our design with users to make sure that it is really
+easy to use. We are looking for users of either VeraCrypt, Tails, or
+both.
+
+Don't be shy! It will be a great opportunity to contribute to world-class
+privacy software like Tails, even if you have little or no knowledge of Tails
+or VeraCrypt.
+
+The tests will take place in Berlin (Wedding) on Friday 8, Saturday 9, and
+Sunday 10 of December in the afternoon. Plan to stay with us for 1 hour.
+
+We will give you a Tails T-shirt as a token of our thanks.
+
+[[!img 33c3/t-shirt.jpg link="no"]]
+
+Please, take this survey so we can organize our schedule:
+
+<strike>https://survey.tails.boum.org/</strike> (We have
+enough people already!)
+
+And if you can't come, maybe you can forward this to 2-3 other people in
+Berlin?

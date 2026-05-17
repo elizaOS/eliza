@@ -1,0 +1,210 @@
+# SOME DESCRIPTIVE TITLE
+# Copyright (C) YEAR Free Software Foundation, Inc.
+# This file is distributed under the same license as the PACKAGE package.
+# FIRST AUTHOR <EMAIL@ADDRESS>, YEAR.
+msgid ""
+msgstr ""
+"Project-Id-Version: Tails\n"
+"Report-Msgid-Bugs-To: tails-l10n@boum.org\n"
+"POT-Creation-Date: 2025-09-17 11:40+0200\n"
+"PO-Revision-Date: 2024-02-22 18:36+0000\n"
+"Last-Translator: cacukin <cacukin@cryptolab.net>\n"
+"Language-Team: Spanish <http://translate.tails.net/projects/tails/"
+"first_steps_persiatence_passphrase/es/>\n"
+"Language: es\n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+"Plural-Forms: nplurals=2; plural=n != 1;\n"
+"X-Generator: Weblate 5.3\n"
+
+#. type: Plain text
+#, no-wrap
+msgid "[[!meta title=\"Changing the passphrase of the Persistent Storage\"]]\n"
+msgstr "[[!meta title=\"Cambiar la contraseña del Almacenamiento Persistente\"]]\n"
+
+#. type: Plain text
+msgid "To change the passphrase of your Persistent Storage:"
+msgstr "Para cambiar la contraseña de tu Almacenamiento Persistente:"
+
+#. type: Bullet: '1. '
+msgid ""
+"Choose **Apps&nbsp;▸ Tails&nbsp;▸ Persistent Storage** to open the "
+"Persistent Storage settings."
+msgstr ""
+
+#. type: Bullet: '1. '
+msgid "Click on the **Change Passphrase** button on the left of the title bar."
+msgstr ""
+"Haz clic en el botón **Cambiar frase de contraseña** situado a la izquierda "
+"de la barra de título."
+
+#. type: Bullet: '1. '
+msgid "Enter the current passphrase in the **Current Passphrase** text box."
+msgstr ""
+"Introduce la frase de contraseña actual en el cuadro de texto **Contraseña "
+"actual**."
+
+#. type: Bullet: '1. '
+msgid "Enter your new passphrase in the **New Passphrase** text box."
+msgstr ""
+"Introduce tu nueva contraseña en el cuadro de texto **Nueva contraseña**."
+
+#. type: Plain text
+#, no-wrap
+msgid "   <!-- Consider removing after #18736. -->\n"
+msgstr "   <!-- Consider removing after #18736. -->\n"
+
+#. type: Plain text
+#, no-wrap
+msgid ""
+"   <div class=\"caution\">\n"
+"   <p>It is impossible to recover your passphrase if you forget it!</p>\n"
+msgstr ""
+
+#. type: Plain text
+#, no-wrap
+msgid ""
+"   <p>To help you remember your passphrase, you can write it on a piece of\n"
+"   paper, store it in your wallet for a few days, and destroy it once\n"
+"   you know it well.</p>\n"
+"   </div>\n"
+msgstr ""
+
+#. type: Bullet: '1. '
+msgid ""
+"Enter your new passphrase again in the **Confirm New Passphrase** text box."
+msgstr ""
+"Vuelve a introducir tu nueva contraseña en el cuadro de texto **Confirmar "
+"nueva contraseña**."
+
+#. type: Bullet: '1. '
+msgid "Click **Change**."
+msgstr "Pulsa **Cambiar**."
+
+#. type: Plain text
+#, fuzzy
+#| msgid ""
+#| "You now can restart Tails and try to enable the persistent volume with "
+#| "its new passphrase."
+msgid ""
+"You can now restart Tails and try to unlock the Persistent Storage with the "
+"new passphrase."
+msgstr ""
+"Ahora puedes reiniciar Tails y tratar de habilitar el volumen persistente "
+"con su nueva contraseña."
+
+#, no-wrap
+#~ msgid "   <div class=\"tip\">\n"
+#~ msgstr "   <div class=\"tip\">\n"
+
+#, no-wrap
+#~ msgid "   </div>\n"
+#~ msgstr "   </div>\n"
+
+#~ msgid ""
+#~ "Start Tails and [[set up an administration password |doc/first_steps/"
+#~ "welcome_screen/administration_password]]."
+#~ msgstr ""
+#~ "Arranca Tails [[configurando una contraseña de administrador|doc/"
+#~ "first_steps/welcome_screen/administration_password]]."
+
+#, no-wrap
+#~ msgid "     In the Welcome Screen, keep the Persistent Storage locked.\n"
+#~ msgstr "     En la Pantalla de Bienvenida, mantén el Almacenamiento Persistente cerrado.\n"
+
+#, fuzzy, no-wrap
+#~| msgid ""
+#~| "  1. Open *Disks* from the menu\n"
+#~| "     <span class=\"menuchoice\">\n"
+#~| "       **Applications**&nbsp;▸\n"
+#~| "       **Utilities**&nbsp;▸\n"
+#~| "       **Disks**</span>.\n"
+#~ msgid ""
+#~ "  1. Open *Disks* from the menu\n"
+#~ "     <span class=\"menuchoice\">\n"
+#~ "       **Applications**&nbsp;▸\n"
+#~ "       **Utilities**&nbsp;▸\n"
+#~ "       **Disks**</span>.\n"
+#~ msgstr ""
+#~ "  1. Abre *Discos* desde el menú\n"
+#~ "     <span class=\"menuchoice\">\n"
+#~ "       **Aplicaciones**&nbsp;▸\n"
+#~ "       **Utilidades**&nbsp;▸\n"
+#~ "       **Discos**</span>.\n"
+
+#, no-wrap
+#~ msgid ""
+#~ "     *Disks* lists all the current storage\n"
+#~ "     devices in the left pane of the window. When you select one of these devices,\n"
+#~ "     detailed information about it is displayed in the right pane: its partitions,\n"
+#~ "     its brand, its size, etc.\n"
+#~ msgstr ""
+#~ "     *Discos* lista todos los dispositivos de almacenamiento\n"
+#~ "     en el panel izquierdo de la ventana. Al seleccionar uno de estos dispositivos\n"
+#~ "     se despliega información más detallada en el panel de la derecha: sus particiones,\n"
+#~ "     su marca, su capacidad, etc.\n"
+
+#, fuzzy
+#~| msgid ""
+#~| "Find which device contains the persistent volume. It should have two "
+#~| "partitions, one labeled **Tails**, and another one labeled **TailsData** "
+#~| "which corresponds to the persistent volume."
+#~ msgid ""
+#~ "Find which device is your Tails USB stick. It should have 2 partitions: "
+#~ "one labeled **Tails** and another one labeled **TailsData**, which "
+#~ "corresponds to the Persistent Storage."
+#~ msgstr ""
+#~ "Encuentra el dispositivo que tiene el volumen persistente. Debería tener "
+#~ "dos particiones: una etiquetada como <span class=\"guilabel\">Tails</"
+#~ "span>, y otra como **TailsData**, que es la que corresponde al volumen "
+#~ "persistente."
+
+#, fuzzy
+#~| msgid ""
+#~| "In the right pane, click on the persistent volume partition, labeled "
+#~| "**TailsData**."
+#~ msgid ""
+#~ "In the right pane, click on the Persistent Storage partition, labeled "
+#~ "**TailsData**."
+#~ msgstr ""
+#~ "En el panel derecho, haz click en la partición del volumen persistente, "
+#~ "etiquetada **TailsData**."
+
+#, fuzzy
+#~| msgid ""
+#~| "Click on <span class=\"guimenu\">[[!img lib/system-run.png alt=\"Disks "
+#~| "context menu\" class=\"symbolic\" link=\"no\"]]</span> and choose <span "
+#~| "class=\"guilabel\">Change Passphrase…</span>."
+#~ msgid ""
+#~ "Click on <span class=\"guimenu\">[[!img lib/system-run.png alt=\"Disks "
+#~ "context menu\" class=\"symbolic\" link=\"no\"]]</span> and choose <span "
+#~ "class=\"guilabel\">Change Passphrase…</span>."
+#~ msgstr ""
+#~ "Haz click en <span class=\"guimenu\">[[!img lib/system-run.png alt=\"Menú "
+#~ "contextual de Discos\" class=\"symbolic\" link=\"no\"]]</span> y elige "
+#~ "**Cambiar contraseña…**."
+
+#~ msgid "Type your current passphrase and then type twice a new one."
+#~ msgstr "Escribe tu contraseña actual y luego escribe dos veces la nueva."
+
+#~ msgid "Finally confirm by clicking **Change**."
+#~ msgstr ""
+#~ "Finalmente confirma dando click en <span class=\"guilabel\">Cambiar</"
+#~ "span>."
+
+#~ msgid ""
+#~ "In the confirmation dialog, enter your administration password and click "
+#~ "**Authenticate**."
+#~ msgstr ""
+#~ "En el diálogo de confirmación, entra tu contraseña de administrador y haz "
+#~ "click en **Autenticar**."
+
+#, fuzzy
+#~| msgid ""
+#~| "     Do not enable the persistent volume in <span "
+#~| "class=\"application\">Tails Greeter</span>.\n"
+#~ msgid "     Do not enable the persistent volume in the Welcome Screen.\n"
+#~ msgstr ""
+#~ "     No configures el volumen persistente en el <span "
+#~ "class=\"application\">Tails Greeter</span>.\n"

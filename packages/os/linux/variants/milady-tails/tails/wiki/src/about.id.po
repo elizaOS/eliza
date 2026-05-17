@@ -1,0 +1,507 @@
+# SOME DESCRIPTIVE TITLE
+# Copyright (C) YEAR Free Software Foundation, Inc.
+# This file is distributed under the same license as the PACKAGE package.
+# FIRST AUTHOR <EMAIL@ADDRESS>, YEAR.
+#
+#, fuzzy
+msgid ""
+msgstr ""
+"Project-Id-Version: PACKAGE VERSION\n"
+"Report-Msgid-Bugs-To: tails-l10n@boum.org\n"
+"POT-Creation-Date: 2026-03-27 10:22+0000\n"
+"PO-Revision-Date: YEAR-MO-DA HO:MI+ZONE\n"
+"Last-Translator: FULL NAME <EMAIL@ADDRESS>\n"
+"Language-Team: LANGUAGE <LL@li.org>\n"
+"Language: id\n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+
+#. type: Content of: <div>
+msgid "[[!meta title=\"How Tails works\"]]"
+msgstr ""
+
+#. type: Content of: outside any tag (error?)
+msgid "[[!meta stylesheet=\"about\" rel=\"stylesheet\" title=\"\"]]"
+msgstr ""
+
+#. type: Content of: <h1>
+msgid "Leave no trace on the computer"
+msgstr ""
+
+#. type: Content of: <section><div>
+msgid "[[!img anywhere.png link=\"no\" class=\"svg\" alt=\"\"]]"
+msgstr ""
+
+#. type: Content of: <section><div><p>
+msgid ""
+"<i class=\"metaphor\">Like a tent, you can carry Tails with you and use it "
+"anywhere.</i>"
+msgstr ""
+
+#. type: Content of: <section><div><h2>
+msgid "Your secure computer anywhere"
+msgstr ""
+
+#. type: Content of: <section><div><p>
+msgid ""
+"To use Tails, shut down the computer and start on your Tails USB stick "
+"instead of starting on Windows, macOS, or Linux."
+msgstr ""
+
+#
+#
+#. type: Content of: <section><div><p>
+msgid ""
+"You can temporarily <strong>turn your own computer into a secure machine</"
+"strong>. You can also <strong>stay safe while using the computer of somebody "
+"else</strong>."
+msgstr ""
+
+#. type: Content of: <section><div><p>
+msgid ""
+"Tails is a [[!inline pages=\"inc/stable_amd64_iso_size\" raw=\"yes\" "
+"sort=\"age\"]] download and takes ½ hour to install. Tails can be installed "
+"on any USB stick of 8 GB minimum.  Tails works on most computers less than "
+"10 years old.  You can start again on the other operating system after you "
+"shut down Tails."
+msgstr ""
+
+#. type: Content of: <section><div><p>
+msgid ""
+"You don't have to worry about the computer having viruses because Tails runs "
+"independently from the other operating system and never uses the hard disk.  "
+"But, Tails cannot always protect you if you install it from a computer with "
+"viruses or if you use it on a computer with malicious hardware, like "
+"keyloggers."
+msgstr ""
+
+#. type: Content of: <section><div><div><p>
+msgid "See also:"
+msgstr ""
+
+#. type: Content of: <section><div><div><ul><li>
+msgid "[[Warnings: Tails is safe but not magic!|doc/about/warnings]]"
+msgstr ""
+
+#. type: Content of: <section><div><div><ul><li>
+msgid "[[Download and install Tails|install]]"
+msgstr ""
+
+#. type: Content of: <section><div><div><ul><li>
+msgid "[[System requirements and recommended hardware|doc/about/requirements]]"
+msgstr ""
+
+#
+#
+#
+#. type: Content of: <section><div>
+msgid ""
+"[[!img amnesia.png link=\"no\" class=\"svg\" alt=\"\"]] <i "
+"class=\"metaphor\">Like a tent, Tails is amnesic: it always starts empty and "
+"leaves no trace when you leave.</i>"
+msgstr ""
+
+#. type: Content of: <section><div><h2>
+msgid "Amnesia"
+msgstr ""
+
+#. type: Content of: <section><div><p>
+msgid ""
+"Tails always starts from the same clean state and <strong>everything you do "
+"disappears</strong> automatically when you shut down Tails."
+msgstr ""
+
+#. type: Content of: <section><div><p>
+msgid ""
+"Without Tails, almost everything you do can leave traces on the computer:"
+msgstr ""
+
+#. type: Content of: <section><div><ul><li>
+msgid "Websites that you visited, even in private mode"
+msgstr ""
+
+#. type: Content of: <section><div><ul><li>
+msgid "Files that you opened, even if you deleted them"
+msgstr ""
+
+#. type: Content of: <section><div><ul><li>
+msgid "Passwords, even if you use a password manager"
+msgstr ""
+
+#. type: Content of: <section><div><ul><li>
+msgid "All the devices and Wi-Fi networks that you used"
+msgstr ""
+
+#. type: Content of: <section><div><p>
+msgid ""
+"On the contrary, Tails never writes anything to the hard disk and only runs "
+"from the memory of the computer. The memory is entirely deleted when you "
+"shutdown Tails, erasing all possible traces."
+msgstr ""
+
+#
+#
+#
+#. type: Content of: <section><div>
+msgid ""
+"[[!img persistent-storage.png link=\"no\" class=\"svg\" alt=\"\"]] <i "
+"class=\"metaphor\">Like a backpack, you can store your personal things in "
+"your Persistent Storage and use them in your tent.</i>"
+msgstr ""
+
+#. type: Content of: <section><div><h2>
+msgid "Persistent Storage"
+msgstr ""
+
+#. type: Content of: <section><div><p>
+msgid ""
+"You can <strong>save some of your files and configuration</strong> in an "
+"encrypted Persistent Storage on the USB stick: your documents, your browser "
+"bookmarks, your emails, and even some additional software."
+msgstr ""
+
+#. type: Content of: <section><div><p>
+msgid ""
+"The Persistent Storage is optional and you always decide what is "
+"<i>persistent</i>. Everything else is <i>amnesic</i>."
+msgstr ""
+
+#. type: Content of: <section><div><div><ul><li>
+msgid "[[Persistent Storage|doc/persistent_storage]]"
+msgstr ""
+
+#. type: Content of: <section><div><div><ul><li>
+msgid ""
+"[[Installing additional software|doc/persistent_storage/additional_software]]"
+msgstr ""
+
+#. type: Content of: <section><div>
+msgid "[[!img toolbox.png link=\"no\" class=\"svg\" alt=\"\"]]"
+msgstr ""
+
+#. type: Content of: <section><div><h2>
+msgid "Digital security toolbox"
+msgstr ""
+
+#. type: Content of: <section><div><p>
+msgid ""
+"Tails includes a selection of applications to <strong>work on sensitive "
+"documents</strong> and <strong>communicate securely</strong>."
+msgstr ""
+
+#. type: Content of: <section><div><p>
+msgid ""
+"All the applications are ready-to-use and are configured with safe defaults "
+"to <strong>prevent mistakes</strong>."
+msgstr ""
+
+#. type: Content of: <section><div><p>
+msgid "Tails includes:"
+msgstr ""
+
+#. type: Content of: <section><div><ul><li>
+msgid ""
+"<i>Tor Browser</i> with <i>uBlock</i>, a secure browser and an ad-blocker"
+msgstr ""
+
+#. type: Content of: <section><div><ul><li>
+msgid "<i>Thunderbird</i>, for encrypted emails"
+msgstr ""
+
+#. type: Content of: <section><div><ul><li>
+msgid "<i>GNOME Secrets</i>, to create and store strong passwords"
+msgstr ""
+
+#. type: Content of: <section><div><ul><li>
+msgid "<i>LibreOffice</i>, an office suite"
+msgstr ""
+
+#. type: Content of: <section><div><ul><li>
+msgid "<i>OnionShare</i>, to share files, websites, and chat rooms over Tor"
+msgstr ""
+
+#. type: Content of: <section><div><ul><li>
+msgid "<i>Metadata Cleaner</i>, to remove metadata from files"
+msgstr ""
+
+#. type: Content of: <section><div><ul><li>
+msgid "and many more!"
+msgstr ""
+
+#. type: Content of: <section><div><p>
+msgid "To prevent mistakes:"
+msgstr ""
+
+#. type: Content of: <section><div><ul><li>
+msgid ""
+"Applications are blocked automatically if they try to connect to the "
+"Internet without Tor."
+msgstr ""
+
+#. type: Content of: <section><div><ul><li>
+msgid "Everything in the Persistent Storage is encrypted automatically."
+msgstr ""
+
+#. type: Content of: <section><div><ul><li>
+msgid ""
+"Tails does not write anything to the hard disk. All the memory is deleted "
+"when shutting down."
+msgstr ""
+
+#. type: Content of: <section><div><div><ul><li>
+msgid "[[Features and included software|doc/about/features]]"
+msgstr ""
+
+#. type: Content of: <section><div><div><ul><li>
+msgid "[[Documentation|doc]]"
+msgstr ""
+
+#. type: Content of: <h1>
+msgid "Leave no trace on the Internet"
+msgstr ""
+
+#
+#
+#. type: Content of: <section><div>
+msgid "[[!img relays.png link=\"no\" class=\"svg\" alt=\"\"]]"
+msgstr ""
+
+#. type: Content of: <section><div><h2>
+msgid "Tor for everything"
+msgstr ""
+
+#. type: Content of: <section><div><p>
+msgid ""
+"Everything you do on the Internet from Tails goes through the Tor network. "
+"Tor encrypts and anonymizes your connection by <strong>passing it through 3 "
+"relays</strong>. <i>Relays</i> are servers operated by different people and "
+"organizations around the world."
+msgstr ""
+
+#. type: Content of: <section><div><p>
+msgid ""
+"A single relay never knows both where the encrypted connection is coming "
+"from and where it is going to:"
+msgstr ""
+
+#. type: Content of: <section><div><ul><li>
+msgid ""
+"The 1st relay only knows where you are coming from but not where you are "
+"going to."
+msgstr ""
+
+#. type: Content of: <section><div><ul><li>
+msgid ""
+"This 3rd relay only knows where you are going to but not where you are "
+"coming from."
+msgstr ""
+
+#. type: Content of: <section><div><ul><li>
+msgid ""
+"The connection to the final destination is encrypted whenever possible to "
+"prevent the 3rd relay from reading its content."
+msgstr ""
+
+#. type: Content of: <section><div><p>
+msgid ""
+"This way, Tor is <strong>secure by design</strong> even if a few relays are "
+"malicious."
+msgstr ""
+
+#. type: Content of: <section><div><p>
+msgid ""
+"The Tor network has more than 6&#8239;000 relays. Organizations running Tor "
+"relays include universities like the MIT, activist groups like Riseup, "
+"nonprofits like Derechos Digitales, Internet hosting companies like Private "
+"Internet Access, and so on. The huge diversity of people and organizations "
+"running Tor relays makes it more secure and more sustainable."
+msgstr ""
+
+#. type: Content of: <section><div><div><ul><li>
+msgid "[[Connecting to the Tor network|doc/anonymous_internet/tor]]"
+msgstr ""
+
+#. type: Content of: <section><div><div><ul><li>
+msgid "[[Why does Tails use Tor?|doc/anonymous_internet/tor/why]]"
+msgstr ""
+
+#
+#
+#. type: Content of: <section><div>
+msgid "[[!img walkie-talkie.png link=\"no\" class=\"svg\" alt=\"\"]]"
+msgstr ""
+
+#. type: Content of: <section><div><h2>
+msgid "Avoid online surveillance and censorship"
+msgstr ""
+
+#. type: Content of: <section><div><p>
+msgid ""
+"Tor prevents someone watching your Internet connection from learning "
+"<strong><i>what</i> you are doing on the Internet</strong>."
+msgstr ""
+
+#. type: Content of: <section><div><p>
+msgid ""
+"You can avoid censorship because it is <strong>impossible for a censor to "
+"know</strong> which websites you are visiting."
+msgstr ""
+
+#. type: Content of: <section><div><p>
+msgid ""
+"If connecting to Tor is blocked or dangerous to use from where you are, for "
+"example in some countries with heavy censorship, you can use <i>bridges</i> "
+"to hide that you are connected to the Tor network."
+msgstr ""
+
+#. type: Content of: <section><div>
+msgid "[[!img footprints.png link=\"no\" class=\"svg\" alt=\"\"]]"
+msgstr ""
+
+#. type: Content of: <section><div><h2>
+msgid "Avoid tracking and change identity"
+msgstr ""
+
+#. type: Content of: <section><div><p>
+msgid ""
+"Tor also prevents the websites that you are visiting from learning "
+"<strong><i>where</i> and <i>who</i> you are</strong>, unless you tell them. "
+"You can visit websites <strong>anonymously or change your identity</strong>."
+msgstr ""
+
+#. type: Content of: <section><div><p>
+msgid ""
+"Online trackers and advertisers won't be able to follow you around from one "
+"website to another anymore."
+msgstr ""
+
+#. type: Content of: <section><div><p>
+msgid ""
+"You can publish a blog or manage an email account entirely from Tails. If "
+"you only access it from Tails, it cannot be related to you. You can store "
+"documents and images related to this different identity in your Persistent "
+"Storage, keep your passwords in the <i>Secrets</i> password manager, have a "
+"dedicated email account in <i>Thunderbird</i>, etc."
+msgstr ""
+
+#. type: Content of: <h1>
+msgid "Software for freedom"
+msgstr ""
+
+#
+#
+#. type: Content of: <section><div>
+msgid "[[!img blueprint.png link=\"no\" class=\"svg\" alt=\"\"]]"
+msgstr ""
+
+#. type: Content of: <section><div><h2>
+msgid "Transparency to build trust"
+msgstr ""
+
+#. type: Content of: <section><div><p>
+msgid ""
+"All the code of our software is public to allow independent security "
+"researchers to verify that Tails really works the way it should."
+msgstr ""
+
+#. type: Content of: <section><div><div><ul><li>
+msgid "[[Trusting Tails|doc/about/trust]]"
+msgstr ""
+
+#. type: Content of: <section><div><div><ul><li>
+msgid "[[License and source code distribution|doc/about/license]]"
+msgstr ""
+
+#. type: Content of: <section><div><div><ul><li>
+msgid "[[Design documents|contribute/design]]"
+msgstr ""
+
+#
+#
+#. type: Content of: <section><div>
+msgid "[[!img fire.png link=\"no\" class=\"svg\" alt=\"\"]]"
+msgstr ""
+
+#. type: Content of: <section><div><h2>
+msgid "Top security for free"
+msgstr ""
+
+#. type: Content of: <section><div><p>
+msgid ""
+"Nobody should have to pay to be safe while using a computer.  That is why we "
+"are giving out Tails for free and want to make it easy to use by anybody."
+msgstr ""
+
+#. type: Content of: <section><div><p>
+msgid ""
+"Tails is made by the <a href=\"https://torproject.org/\">Tor Project</a>, a "
+"global nonprofit developing tools for online privacy and anonymity."
+msgstr ""
+
+#. type: Content of: <section><div><p>
+msgid ""
+"Our work is funded by donations from people like you and organizations that "
+"support Internet freedom: Mozilla, DuckDuckGo, Open Tech Fund, Craig Newmark "
+"Philanthropies, etc."
+msgstr ""
+
+#. type: Content of: <section><div><div><ul><li>
+msgid "[[Donate|donate]]"
+msgstr ""
+
+#. type: Content of: <section><div><div><ul><li>
+msgid "[[Supporters|https://www.torproject.org/about/supporters/]]"
+msgstr ""
+
+#. type: Content of: <section><div><div><ul><li>
+msgid ""
+"[[Social contract|https://community.torproject.org/policies/"
+"social_contract/]]"
+msgstr ""
+
+#
+#
+#. type: Content of: <section><div>
+msgid "[[!img roots.png link=\"no\" class=\"svg\" alt=\"\"]]"
+msgstr ""
+
+#. type: Content of: <section><div><h2>
+msgid "Sharing to be stronger"
+msgstr ""
+
+#. type: Content of: <section><div><p>
+msgid ""
+"Tails is built on solid foundations: the Tor network, the Debian operating "
+"system, the GNOME desktop environment, and all the tools included in Tails."
+msgstr ""
+
+#. type: Content of: <section><div><p>
+msgid ""
+"We share back our improvements so that many more people can benefit from our "
+"work."
+msgstr ""
+
+#. type: Content of: <section><div><div><ul><li>
+msgid "[[Relationship with upstream|contribute/relationship_with_upstream]]"
+msgstr ""
+
+#. type: Content of: <section><div><div><ul><li>
+msgid "<a href=\"https://www.torproject.org/\">The Tor Project</a>"
+msgstr ""
+
+#. type: Content of: <section><div><div><ul><li>
+msgid "<a href=\"https://debian.org/\">Debian GNU/Linux</a>"
+msgstr ""
+
+#. type: Content of: <section><div><div><ul><li>
+msgid "<a href=\"https://www.gnome.org/\">GNOME</a>"
+msgstr ""
+
+#. type: Content of: <section><div><div><ul><li>
+msgid "[[Contact|doc/about/contact]]"
+msgstr ""
+
+#. type: Content of: <div>
+msgid "[[Install Tails|install]]"
+msgstr ""

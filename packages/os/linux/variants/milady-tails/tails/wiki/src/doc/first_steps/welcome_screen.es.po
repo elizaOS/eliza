@@ -1,0 +1,694 @@
+# SOME DESCRIPTIVE TITLE
+# Copyright (C) YEAR Free Software Foundation, Inc.
+# This file is distributed under the same license as the PACKAGE package.
+# FIRST AUTHOR <EMAIL@ADDRESS>, YEAR.
+msgid ""
+msgstr ""
+"Project-Id-Version: Tails\n"
+"Report-Msgid-Bugs-To: tails-l10n@boum.org\n"
+"POT-Creation-Date: 2025-09-17 11:40+0200\n"
+"PO-Revision-Date: 2026-03-26 15:22+0000\n"
+"Last-Translator: xin <xin@riseup.net>\n"
+"Language-Team: Spanish <http://translate.tails.net/projects/tails/"
+"welcome_screen/es/>\n"
+"Language: es\n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+"Plural-Forms: nplurals=2; plural=n != 1;\n"
+"X-Generator: Weblate 5.13.2\n"
+
+#. type: Plain text
+#, no-wrap
+msgid "[[!meta title=\"Welcome Screen\"]]\n"
+msgstr "[[!meta title=\"Pantalla de Bienvenida\"]]\n"
+
+#. type: Plain text
+msgid ""
+"The Welcome Screen appears after the Boot Loader, but before the GNOME "
+"Desktop."
+msgstr ""
+"La Pantalla de Bienvenida aparece después del Gestor de Arranque, pero antes "
+"del Escritorio GNOME."
+
+#. type: Plain text
+msgid ""
+"You can use the Welcome Screen to specify startup options that alter some of "
+"the basic functioning of Tails."
+msgstr ""
+"Puedes usar la Pantalla de Bienvenida para especificar opciones de arranque "
+"que cambien algunas de las funcionalidades básicas de Tails."
+
+#. type: Plain text
+#, no-wrap
+msgid "[[!img welcome_screen.png class=\"screenshot\" alt=\"Welcome to Tails!\"]]\n"
+msgstr "[[!img welcome_screen.png class=\"screenshot\" alt=\"¡Bienvenido a Tails!\"]]\n"
+
+#. type: Plain text
+#, fuzzy
+msgid "To start Tails without options, click on the **Start Tails** button."
+msgstr ""
+"Para iniciar Tails sin opciones, haz clic en el\n"
+"botón de <span class=\"bold\">Iniciar Tails</span>.\n"
+
+#. type: Plain text
+#, no-wrap
+msgid "<div class=\"note\">\n"
+msgstr "<div class=\"note\">\n"
+
+#. type: Plain text
+#, no-wrap
+msgid ""
+"<p>To store the settings of the Welcome Screen across different Tails sessions,\n"
+"turn on the [[Welcome Screen|persistent_storage/configure#welcome_screen]]\n"
+"feature of the Persistent Storage.</p>\n"
+msgstr ""
+"<p>Para mantener la configuración de la Pantalla de Bienvenida en las "
+"próximas sesiones de Tails,\n"
+"activa la "
+"[[Pantalla de Bienvenida|persistent_storage/configure#welcome_screen]]\n"
+"en el Almacenamiento Persistente.</p>\n"
+
+#. type: Plain text
+#, no-wrap
+msgid ""
+"<p>With this feature turned on, unlock your Persistent Storage to\n"
+"restore your settings in the Welcome Screen.</p>\n"
+msgstr ""
+"<p>Con esta función activada, desbloquea tu Almacenamiento Persistente\n"
+"para restaurar tu configuración en la Pantalla de Bienvenida.</p>\n"
+
+#. type: Plain text
+#, no-wrap
+msgid "</div>\n"
+msgstr "</div>\n"
+
+#. type: Plain text
+#, no-wrap
+msgid "[[!toc levels=2]]\n"
+msgstr "[[!toc levels=2]]\n"
+
+#. type: Plain text
+#, no-wrap
+msgid "<a id=\"accessibility\"></a>\n"
+msgstr "<a id=\"accessibility\"></a>\n"
+
+#. type: Title =
+#, no-wrap
+msgid "Assistive technologies"
+msgstr "Tecnologías de asistencia"
+
+#. type: Plain text
+msgid ""
+"You can activate several assistive technologies, like a screen reader or "
+"large text, from the accessibility menu in the top bar, the"
+msgstr ""
+"Puedes activar varias tecnologías de asistencia, como un lector de pantalla "
+"o texto grande, desde el menú de accesibilidad de la barra superior, el icono"
+
+#. type: Plain text
+#, no-wrap
+msgid "[[!img lib/accessibility.png alt=\"accessibility menu\" class=\"symbolic\" link=\"no\"]]\n"
+msgstr ""
+"[[!img lib/accessibility.png alt=\"menú de accesibilidad\" class=\"symbolic\""
+" link=\"no\"]]\n"
+
+#. type: Plain text
+msgid "icon that looks like a person."
+msgstr "que se asemeja a una persona."
+
+#. type: Plain text
+#, no-wrap
+msgid "<a id=\"locale\"></a>\n"
+msgstr "<a id=\"locale\"></a>\n"
+
+#. type: Title =
+#, no-wrap
+msgid "Language and formats"
+msgstr "Idioma y formatos"
+
+#. type: Plain text
+msgid ""
+"You can configure Tails depending on your language and location from the "
+"Welcome Screen."
+msgstr ""
+"Puedes configurar Tails para tu idioma o lugar desde la Pantalla de "
+"Bienvenida."
+
+#. type: Plain text
+#, no-wrap
+msgid "[[!img locale.png class=\"screenshot\" alt=\"\"]]\n"
+msgstr "[[!img locale.png class=\"screenshot\" alt=\"\"]]\n"
+
+#. type: Bullet: '* '
+msgid ""
+"The **Language** option allows you to change the main language of the "
+"interface."
+msgstr ""
+"La opción <span class=\"guilabel\">Idioma</span> te permite cambiar el "
+"idioma principal de la interfaz."
+
+#. type: Plain text
+#, no-wrap
+msgid ""
+"  Text that is not translated yet will appear in English. You can [[help\n"
+"  to translate more text|contribute/how/translate]].\n"
+msgstr ""
+"  El texto que todavía no está traducido aparecerá en inglés. Puedes [[ayudar\n"
+"  a traducir más|contribute/how/translate]].\n"
+
+#. type: Bullet: '* '
+msgid ""
+"The **Keyboard Layout** option allows you to change the layout of the "
+"keyboard. For example to switch to an *AZERTY* keyboard which is common in "
+"France."
+msgstr ""
+"La opción de <span class=\"guilabel\">Configuración de teclado </span> te "
+"permite cambiar la configuración del teclado. Por ejemplo para cambiar a un "
+"teclado *AZERTY* común en Francia."
+
+#. type: Plain text
+#, no-wrap
+msgid ""
+"  You will still be able to switch between different keyboard layouts from the\n"
+"  desktop after starting Tails.\n"
+msgstr ""
+"  Siempre tendrás la posiblidad de alternar entre distintos mapas de teclado desde\n"
+"  el escritorio después de haber arrancado Tails.\n"
+
+#. type: Plain text
+#, fuzzy, no-wrap
+msgid "  [[!img desktop/keyboard.png class=\"screenshot\" alt=\"Keyboard Menu\"]]\n"
+msgstr "  [[!img desktop/keyboard.png link=\"no\" alt=\"Menú de teclado\"]]\n"
+
+#. type: Bullet: '* '
+msgid ""
+"The **Formats** option allows you to change the date and time format, first "
+"day of the week, measurement units, and default paper size according to the "
+"standards in use in a country."
+msgstr ""
+"La opción <span class=\"guilabel\">Formatos</span> te permite cambiar el "
+"formato de fecha y hora, el primer día de la semana, las unidades de medida, "
+"y el formato de papel por defecto según los estandares de cada país."
+
+#. type: Plain text
+#, no-wrap
+msgid ""
+"  For example, the USA and the United Kingdom, two English-speaking countries,\n"
+"  have different standards:\n"
+msgstr ""
+"  Por ejemplo, Estados-Unidos y el Reino Unido, dos países angloparlantes,\n"
+"  tienen estándares distintos.\n"
+
+#. type: Plain text
+#, no-wrap
+msgid ""
+"  <table>\n"
+"  <tr><th></th><th>USA</th><th>United Kingdom</th></tr>\n"
+"  <tr><td>Date & time</td><td>3/17/2017 3:56 PM</td><td>17/03/2017 15:56</td></tr>\n"
+"  <tr><td>First day of the week</td><td>Sunday</td><td>Monday</td></tr>\n"
+"  <tr><td>Unit system</td><td>Imperial</td><td>Metric</td></tr>\n"
+"  <tr><td>Paper size</td><td>Letter</td><td>A4</td></tr>\n"
+"  </table>\n"
+msgstr ""
+"  <table>\n"
+"  <tr><th></th><th>Estados-Unidos</th><th>Reino Unido</th></tr>\n"
+"  <tr><td>Fecha y hora</td><td>3/17/2017 3:56 PM</td><td>17/03/2017 15:56</td></tr>\n"
+"  <tr><td>Primer día de la semana</td><td>Domingo</td><td>Lunes</td></tr>\n"
+"  <tr><td>Unidad de medida</td><td>Imperial</td><td>Métrica</td></tr>\n"
+"  <tr><td>Formato de papel</td><td>Carta</td><td>A4</td></tr>\n"
+"  </table>\n"
+
+#. type: Plain text
+#, no-wrap
+msgid ""
+"  With this option you can also display the calendar in a different language\n"
+"  than the main language. For example, to display a US calendar, with weeks\n"
+"  starting on Sunday, when the main language is Russian.\n"
+msgstr ""
+"  Con esta opción también puedes visualizar el calendario en idiomas distintos\n"
+"  al idioma principal. Por ejemplo, para visualizar un calendario de Estados-Unidos, con semanas\n"
+" que empiezan el Domingo, cuando el idioma principal sea ruso.\n"
+
+#. type: Plain text
+#, no-wrap
+msgid "<a id=\"persistent_storage\"></a>\n"
+msgstr "<a id=\"persistent_storage\"></a>\n"
+
+#. type: Title =
+#, no-wrap
+msgid "Persistent Storage"
+msgstr "Almacenamiento Persistente"
+
+#. type: Plain text
+msgid ""
+"You can save some of your files and configuration in an encrypted "
+"[[Persistent Storage|persistent_storage]] on your Tails USB stick."
+msgstr ""
+
+#. type: Bullet: '- '
+msgid ""
+"If no Persistent Storage is detected on the USB stick, you can click the "
+"**Create Persistent Storage** button to automatically start the Persistent "
+"Storage settings after you start Tails and the desktop appears."
+msgstr ""
+
+#. type: Plain text
+#, no-wrap
+msgid "  [[!img create_persistent_storage.png class=\"screenshot\" alt=\"\"]]\n"
+msgstr "  [[!img create_persistent_storage.png class=\"screenshot\" alt=\"\"]]\n"
+
+#. type: Bullet: '- '
+msgid ""
+"If a Persistent Storage is detected on the USB stick, enter your passphrase "
+"and click **Unlock Encryption** to unlock and activate your Persistent "
+"Storage."
+msgstr ""
+
+#. type: Plain text
+#, no-wrap
+msgid "  [[!img unlock_persistent_storage.png class=\"screenshot\" alt=\"\"]]\n"
+msgstr "  [[!img unlock_persistent_storage.png class=\"screenshot\" alt=\"\"]]\n"
+
+#. type: Plain text
+#, fuzzy
+msgid ""
+"See also our [[documentation on the Persistent Storage|persistent_storage]]."
+msgstr ""
+"Para aprender más sobre el Almacenamiento Persistente y crear uno, mira "
+"nuestra [[documentación sobre el Almacenamiento Persistente|persistence]]."
+
+#. type: Plain text
+#, no-wrap
+msgid "<a id=\"additional\"></a>\n"
+msgstr "<a id=\"additional\"></a>\n"
+
+#. type: Title =
+#, no-wrap
+msgid "Additional settings"
+msgstr "Configuraciones adicionales"
+
+#. type: Plain text
+msgid ""
+"Tails is configured with care to be as safe as possible by default. But, "
+"depending on your situation, you can change one of the following settings "
+"from the Welcome Screen."
+msgstr ""
+"Tails esta configurado con cuidado para ser lo más seguro posible por "
+"defecto. Pero, dependiendo de tu situación,  puedes cambiar algunas de las "
+"configuraciones desde la Pantalla de Bienvenida."
+
+#. type: Plain text
+#, no-wrap
+msgid "[[!img additional.png class=\"screenshot\" alt=\"\"]]\n"
+msgstr "[[!img additional.png class=\"screenshot\" alt=\"\"]]\n"
+
+#. type: Title -
+#, no-wrap
+msgid "Administration Password"
+msgstr "Contraseña de administración"
+
+#. type: Plain text
+msgid ""
+"Set an **Administration Password** to be able to perform administrative "
+"tasks like installing additional software or accessing the internal hard "
+"disks of the computer."
+msgstr ""
+"Define una <span class=\"guilabel\">Contraseña de administración</span> para "
+"poder ejecutar tareas administrativas como instalar un programa adicional o "
+"acceder al disco duro interno del computador."
+
+#. type: Plain text
+msgid ""
+"See our documentation about [[the administration password and its security "
+"implications|administration_password]]."
+msgstr ""
+"Lee nuestra documentación acerca de la [[contraseña de administración y sus "
+"implicaciones de seguridad|administration_password]]."
+
+#. type: Title -
+#, no-wrap
+msgid "MAC Address Anonymization"
+msgstr "Anonimización de dirección MAC"
+
+#. type: Plain text
+msgid ""
+"Disable **MAC Address Anonymization** to prevent connectivity problems with "
+"your network interfaces."
+msgstr ""
+"Desactiva la <span class=\"guilabel\">Anonimización de la dirección MAC</"
+"span> para evitar problemas de conexión con la interfaz de red."
+
+#. type: Plain text
+msgid "See our documentation about [[MAC address anonymization|mac_spoofing]]."
+msgstr ""
+"Lee nuestra documentación sobre la [[Anonimización de dirección MAC|"
+"mac_spoofing]]."
+
+#. type: Title -
+#, no-wrap
+msgid "Offline Mode"
+msgstr "Modo sin conexión"
+
+#. type: Plain text
+msgid ""
+"Turn on the **Offline Mode** if you want to work completely offline for "
+"increased security."
+msgstr ""
+"Activa el **Modo sin conexión** si quieres trabajar totalmente desconectado "
+"para mayor seguridad."
+
+#. type: Title -
+#, no-wrap
+msgid "Unsafe Browser"
+msgstr "Navegador No Seguro"
+
+#. type: Plain text
+msgid "Disable the ** *Unsafe Browser* **."
+msgstr ""
+
+#. type: Plain text
+msgid ""
+"See our documentation about [[the *Unsafe Browser* and its security "
+"implications|anonymous_internet/unsafe_browser]]."
+msgstr ""
+"Consulta nuestra documentación sobre [[el *Navegador No Seguro* y sus "
+"implicaciones de seguridad|anonymous_internet/unsafe_browser]]."
+
+#. type: Title =
+#, no-wrap
+msgid "Keyboard shortcuts"
+msgstr "Atajos de teclado"
+
+#. type: Plain text
+#, no-wrap
+msgid ""
+"<table>\n"
+"<tr><td><b>Alt+L</b></td><td><b>Language</b></td></tr>\n"
+"<tr><td><b>Alt+K</b></td><td><b>Keyboard Layout</b></td></tr>\n"
+"<tr><td><b>Alt+F</b></td><td><b>Formats</b></td></tr>\n"
+"<tr><td><b>Alt+P</b></td><td><b>Persistent Storage</b></td></tr>\n"
+"<tr><td><b>Alt+A</b></td><td><b>Additional Settings</b></td></tr>\n"
+"<tr><td><b>Ctrl+Shift+A</b></td><td><b>Administration Password</b></td></tr>\n"
+"<tr><td><b>Ctrl+Shift+M</b></td><td><b>MAC Address Anonymization</b></td></tr>\n"
+"<tr><td><b>Alt+S</b></td><td><b>Start Tails</b></td></tr>\n"
+"</table>\n"
+msgstr ""
+"<table>\n"
+"<tr><td><span class=\"keycap\">Alt+L</span></td><td><span class=\"guilabel\">Idioma</td></tr>\n"
+"<tr><td><span class=\"keycap\">Alt+K</span></td><td><span class=\"guilabel\">Distribución de Teclado</td></tr>\n"
+"<tr><td><span class=\"keycap\">Alt+F</span></td><td><span class=\"guilabel\">Formatos</td></tr>\n"
+"<tr><td><span class=\"keycap\">Alt+P</span></td><td><span class=\"guilabel\">Almacenamiento Persistente </td></tr>\n"
+"<tr><td><span class=\"keycap\">Alt+A</span></td><td><span class=\"guilabel\">Configuraciones adicionales</td></tr>\n"
+"<tr><td><span class=\"keycap\">Ctrl+Shift+A</span></td><td><span class=\"guilabel\">Contraseña de administración</td></tr>\n"
+"<tr><td><span class=\"keycap\">Ctrl+Shift+M</span></td><td><span class=\"guilabel\">Anonimización de la dirección MAC</td></tr>\n"
+"<tr><td><span class=\"keycap\">Alt+T</td><td><span class=\"guilabel\">Iniciar Tails</td></tr>\n"
+"</table>\n"
+
+#, no-wrap
+#~ msgid "Language & region"
+#~ msgstr "Idioma y región"
+
+#, no-wrap
+#~ msgid "  [[!img US_calendar_in_Russian.png link=\"no\" alt=\"\"]]\n"
+#~ msgstr "  [[!img US_calendar_in_Russian.png link=\"no\" alt=\"\"]]\n"
+
+#, fuzzy
+#~ msgid ""
+#~ "If a [[Persistent Storage|persistent_storage]] is detected on the USB "
+#~ "stick, an additional section appears in the Welcome Screen below the "
+#~ "**Language & Region** section:"
+#~ msgstr ""
+#~ "Si se detecta un [[Almacenamiento Persistente|first_steps/persistence]] "
+#~ "en la memoria USB, una sección adicional aparecerá en la Pantalla de "
+#~ "Bienvenida debajo de **Idioma y región**:"
+
+#~ msgid ""
+#~ "To unlock the Persistent Storage, enter your passphrase and click "
+#~ "**Unlock**."
+#~ msgstr ""
+#~ "Para desbloquear el Almacenamiento Persistente, ingresa tu contraseña y "
+#~ "haz clic en **Desbloquear**."
+
+#~ msgid ""
+#~ "Enable the ** *Unsafe Browser* ** to sign in to a network using a captive "
+#~ "portal before starting Tor."
+#~ msgstr ""
+#~ "Habilita el ** *Navegador No Seguro* ** para iniciar sesión a una red "
+#~ "usando un portal cautivo antes de iniciar Tor."
+
+#, fuzzy
+#~ msgid "Network Connection"
+#~ msgstr "Configuración de la Red"
+
+#, fuzzy
+#~ msgid ""
+#~ "Change the <span class=\"guilabel\">Network Connection</span> to either:\n"
+#~ msgstr ""
+#~ "Cambia la <span class=\"guilabel\">Configuración de red</span> para:\n"
+
+#~ msgid "- Connect directly to the Tor network (default)."
+#~ msgstr "- Conectar directamente a la red Tor (default)."
+
+#~ msgid "- Configure a Tor bridge or local proxy:"
+#~ msgstr "- Configurar un puente Tor o un proxy local:"
+
+#~ msgid ""
+#~ "If you want to use Tor bridges because your Internet connection is "
+#~ "censored or you want to hide the fact that you are using Tor."
+#~ msgstr ""
+#~ "Si quieres utilizar puentes Tor porque tu conexión internet está "
+#~ "censurada o si quieres esconder el hecho que estás usando Tor."
+
+#~ msgid "If you need to use a local proxy to access the Internet."
+#~ msgstr "Si necesitas utilizar un proxy local para acceder a Internet."
+
+#~ msgid ""
+#~ "  After starting Tails and connecting to a network, an assistant will\n"
+#~ "  guide you through the configuration of Tor.\n"
+#~ msgstr ""
+#~ "  Después de arrancar Tails y conectarse a la red, un asistente \n"
+#~ "  te guiará en la configuración de Tor.\n"
+
+#~ msgid "  See our documentation about [[Tor bridges|bridge_mode]].\n"
+#~ msgstr "  Ver nuestra documentación sobre [[puentes Tor|bridge_mode]].\n"
+
+#~ msgid "<!-- Remove this note once #17136 is closed. -->\n"
+#~ msgstr "<!-- Remove this note once #17136 is closed. -->\n"
+
+#~ msgid ""
+#~ "<p><strong>Beta</strong>: In Tails 4.8, only the additional setting to\n"
+#~ "enable the Unsafe Browser is made persistent.</p>\n"
+#~ msgstr ""
+#~ "<p><strong>Beta</strong>: En Tails 4.8, sólo se hace persistente la "
+#~ "configuración adicional para\n"
+#~ "habilitar el Navegador No Seguro.</p>\n"
+
+#, fuzzy
+#~ msgid ""
+#~ "[[!img locale.png link=\"no\" alt=\"Language & Region section of the "
+#~ "Welcome Screen\"]]\n"
+#~ msgstr ""
+#~ "[[!img locale.png link=\"no\" alt=\"Sección Idioma y Región del Tails "
+#~ "Greeter\"]]\n"
+
+#, fuzzy
+#~ msgid ""
+#~ "[[!img additional.png link=\"no\" alt=\"Additional settings of the "
+#~ "Welcome Screen\"]]\n"
+#~ msgstr ""
+#~ "[[!img additional.png link=\"no\" alt=\"Configuraciones adicionales del "
+#~ "Tails Greeter\"]]\n"
+
+#~ msgid ""
+#~ "<a id=\"boot_loader_menu\"></a>\n"
+#~ "<a id=\"boot_menu\"></a> <!-- for backward compatibility -->\n"
+#~ msgstr ""
+#~ "<a id=\"boot_loader_menu\"></a>\n"
+#~ "<a id=\"boot_menu\"></a> <!-- compatibilidad con versiones anteriores --"
+#~ ">\n"
+
+#~ msgid "Language & region\n"
+#~ msgstr "Idioma y región\n"
+
+#~ msgid "Encrypted persistence storage\n"
+#~ msgstr "Almacenamiento cifrado persistente \n"
+
+#, fuzzy
+#~ msgid ""
+#~ "If an [[encrypted persistence storage|first_steps/persistence]] is "
+#~ "detected on the USB stick, an additional section appears in the Welcome "
+#~ "Screen below the **Language & Region** section:"
+#~ msgstr ""
+#~ "Si un [[almacenamiento cifrado persistente|first_steps/persistence]] se "
+#~ "detecta en la memoria USB, una\n"
+#~ "sección adicional parecerá en el <span class=\"application\">Tails\n"
+#~ "Greeter</span> debajo de la sección <span class=\"guilabel\">Idioma y "
+#~ "región</span>\n"
+#~ ":\n"
+
+#~ msgid "Additional settings\n"
+#~ msgstr "Configuraciones adicionales\n"
+
+#~ msgid "Keyboard shortcuts\n"
+#~ msgstr "Atajos de teclado\n"
+
+#~ msgid ""
+#~ "<table>\n"
+#~ "<tr><td><span class=\"keycap\">Alt+L</span></td><td><span "
+#~ "class=\"guilabel\">Language</td></tr>\n"
+#~ "<tr><td><span class=\"keycap\">Alt+K</span></td><td><span "
+#~ "class=\"guilabel\">Keyboard Layout</td></tr>\n"
+#~ "<tr><td><span class=\"keycap\">Alt+F</span></td><td><span "
+#~ "class=\"guilabel\">Formats</td></tr>\n"
+#~ "<tr><td><span class=\"keycap\">Alt+P</span></td><td><span "
+#~ "class=\"guilabel\">Encrypted Persistent Storage</td></tr>\n"
+#~ "<tr><td><span class=\"keycap\">Alt+A</span></td><td><span "
+#~ "class=\"guilabel\">Additional Settings</td></tr>\n"
+#~ "<tr><td><span class=\"keycap\">Ctrl+Shift+A</span></td><td><span "
+#~ "class=\"guilabel\">Administration Password</td></tr>\n"
+#~ "<tr><td><span class=\"keycap\">Ctrl+Shift+M</span></td><td><span "
+#~ "class=\"guilabel\">MAC Address Spoofing</td></tr>\n"
+#~ "<tr><td><span class=\"keycap\">Ctrl+Shift+N</span></td><td><span "
+#~ "class=\"guilabel\">Network Configuration</td></tr>\n"
+#~ "<tr><td><span class=\"keycap\">Alt+S</td><td><span "
+#~ "class=\"guilabel\">Start Tails</td></tr>\n"
+#~ "</table>\n"
+#~ msgstr ""
+#~ "<table>\n"
+#~ "<tr><td><span class=\"keycap\">Alt+L</span></td><td><span "
+#~ "class=\"guilabel\">Idioma</td></tr>\n"
+#~ "<tr><td><span class=\"keycap\">Alt+K</span></td><td><span "
+#~ "class=\"guilabel\">Plano de Teclado</td></tr>\n"
+#~ "<tr><td><span class=\"keycap\">Alt+F</span></td><td><span "
+#~ "class=\"guilabel\">Formatos</td></tr>\n"
+#~ "<tr><td><span class=\"keycap\">Alt+P</span></td><td><span "
+#~ "class=\"guilabel\">Almacenamiento cifrado persistente </td></tr>\n"
+#~ "<tr><td><span class=\"keycap\">Alt+A</span></td><td><span "
+#~ "class=\"guilabel\">Configuraciones adicionales</td></tr>\n"
+#~ "<tr><td><span class=\"keycap\">Ctrl+Shift+A</span></td><td><span "
+#~ "class=\"guilabel\">Contraseña de administración</td></tr>\n"
+#~ "<tr><td><span class=\"keycap\">Ctrl+Shift+M</span></td><td><span "
+#~ "class=\"guilabel\">Falsificación de la dirección MAC</td></tr>\n"
+#~ "<tr><td><span class=\"keycap\">Ctrl+Shift+N</span></td><td><span "
+#~ "class=\"guilabel\">Configuración de red</td></tr>\n"
+#~ "<tr><td><span class=\"keycap\">Alt+S</td><td><span "
+#~ "class=\"guilabel\">Lanzar Tails</td></tr>\n"
+#~ "</table>\n"
+
+#~ msgid "Using the <span class=\"application\">Boot Loader Menu</span>\n"
+#~ msgstr ""
+#~ "Utilizar el <span class=\"application\">Menú de gestor de arranque</"
+#~ "span>\n"
+
+#~ msgid ""
+#~ "The <span class=\"application\">Boot Loader Menu</span> is the first "
+#~ "screen to appear\n"
+#~ "when Tails starts.\n"
+#~ msgstr ""
+#~ "El <span class=\"application\">Menú de gestor de arranque</span> es la "
+#~ "primer pantalla en aparecer\n"
+#~ "cuando Tails inicia.\n"
+
+#~ msgid ""
+#~ "<p>The <span class=\"guilabel\">Troubleshooting Mode</span> disables some "
+#~ "features of the\n"
+#~ "Linux kernel and might work better on some computers. You can try this "
+#~ "option if you\n"
+#~ "think you are experiencing errors related to hardware compatibility "
+#~ "while\n"
+#~ "starting Tails.</p>\n"
+#~ msgstr ""
+#~ "<p>El <span class=\"guilabel\">Troubleshooting Mode</span> deshabilita "
+#~ "algunas funcionalidades del\n"
+#~ "kernel de Linux y podría funcionar mejor en algunas computadoras. Puedes "
+#~ "utilizar esta opción si crees\n"
+#~ "que estás experimentando errores relacionados con la compatibilidad del "
+#~ "hardware mientras\n"
+#~ "inicias Tails.</p>\n"
+
+#~ msgid ""
+#~ "To add a boot option, press <span class=\"keycap\">Tab</span> when the "
+#~ "<span class=\"application\">Boot Loader Menu</span> appears. A list of "
+#~ "boot options appears at the bottom of the screen."
+#~ msgstr ""
+#~ "Para agregar una opción de arranque, presiona <span class=\"keycap\">Tab</"
+#~ "span> cuando el <span class=\"application\">Menú de Gestor de Arranque</"
+#~ "span> aparece. Una lista de opciones de arranque aparecerá en la parte "
+#~ "inferior de la pantalla."
+
+#~ msgid ""
+#~ "[[!img boot-menu-with-options.png link=no alt=\"Black screen with Tails\n"
+#~ "artwork. Boot Loader Menu with two options 'Tails' and 'Tails "
+#~ "(Troubleshooting Mode)'.\n"
+#~ "At the bottom, a list of options ending with 'vsyscall=none quiet_'\"]]\n"
+#~ msgstr ""
+#~ "[[!img boot-menu-with-options.png link=no alt=\"Pantalla negra con arte "
+#~ "sobre\n"
+#~ "Tails. El menú de gestor de arranque con dos opciones 'Tails' and 'Tails "
+#~ "(Troubleshooting mode)'.\n"
+#~ "En la parte inferior, una lista de opciones que terminan con "
+#~ "'vsyscall=none quiet_'\"]]\n"
+
+#~ msgid ""
+#~ "Press <span class=\"keycap\">Space</span>, and type the boot option that "
+#~ "you want to add."
+#~ msgstr ""
+#~ "Presiona <span class=\"keycap\">Espacio</span>, y escribe la opción de "
+#~ "arranque que deseas agregar."
+
+#~ msgid ""
+#~ "If you want to add more than one boot option, type them one after the "
+#~ "other, and separate them by a <span class=\"keycap\">Space</span>."
+#~ msgstr ""
+#~ "Si quieres agregar más de una opción de arranque, escríbelas una luego de "
+#~ "la otra, y sepáralas con un <span class=\"keycap\">Espacio</span>."
+
+#~ msgid "Then press <span class=\"keycap\">Enter</span> to start Tails."
+#~ msgstr ""
+#~ "Luego presiona <span class=\"keycap\">Enter</span> para iniciar Tails."
+
+#~ msgid ""
+#~ "<a id=\"greeter\"></a>\n"
+#~ "<a id=\"tails_greeter\"></a>\n"
+#~ msgstr ""
+#~ "<a id=\"greeter\"></a>\n"
+#~ "<a id=\"tails_greeter\"></a>\n"
+
+#~ msgid "Using <span class=\"application\">Tails Greeter</span>\n"
+#~ msgstr "Usando el <span class=\"application\">Tails Greeter</span>\n"
+
+#~ msgid ""
+#~ "<span class=\"application\">Tails Greeter</span>\n"
+#~ "appears after the <span class=\"application\">Boot Loader Menu</span>, "
+#~ "but before the\n"
+#~ "<span class=\"application\">GNOME Desktop</span>:\n"
+#~ msgstr ""
+#~ "<span class=\"application\">Tails Greeter</span> aparece después del  "
+#~ "<span class=\"application\">Menú de arranque</span>, pero antes del\n"
+#~ "<span class=\"application\">Escritorio GNOME</span>:\n"
+
+#~ msgid ""
+#~ "Here is a list of options that you can add to the <span "
+#~ "class=\"application\">Boot\n"
+#~ "Loader Menu</span>:\n"
+#~ msgstr ""
+#~ "Aquí hay una lista de opciones que puedes agregar al <span "
+#~ "class=\"application\">Menú\n"
+#~ "de Gestor de Arranque</span>:\n"
+
+#~ msgid ""
+#~ "<span class=\"command\">i2p</span>, to enable [[I2P|anonymous_internet/"
+#~ "I2P]]"
+#~ msgstr ""
+#~ "<span class=\"command\">i2p</span>, para habilitar [[I2P|"
+#~ "anonymous_internet/I2P]]"
+
+#~ msgid ""
+#~ "**To set more options**, click on the <span class=\"bold\">Yes</span> "
+#~ "button.\n"
+#~ "Then click on the <span class=\"bold\">Forward</span> button.\n"
+#~ msgstr ""
+#~ "**Para definir más opciones**, haz click en el botón <span "
+#~ "class=\"bold\">Sí</span>.\n"
+#~ "Luego haz click en el botón <span class=\"bold\">Avanzar</span>.\n"

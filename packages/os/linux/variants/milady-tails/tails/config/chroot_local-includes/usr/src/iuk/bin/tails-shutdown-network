@@ -1,0 +1,27 @@
+#!/bin/sh
+
+systemctl stop tor
+systemctl stop networking
+systemctl stop NetworkManager
+
+# Do *not* 'set -e' earlier:
+# as long as network access is blocked with the following iptables commands,
+# we should be fine => let's treat potential previous errors as non-fatal,
+# as a way to make incremental upgrades generally more robust against
+# potentially misbehaving service management.
+set -e
+
+iptables -P INPUT   DROP
+iptables -P FORWARD DROP
+iptables -P OUTPUT  DROP
+
+iptables -t nat -P PREROUTING  ACCEPT
+iptables -t nat -P INPUT       ACCEPT
+iptables -t nat -P OUTPUT      ACCEPT
+iptables -t nat -P POSTROUTING ACCEPT
+
+iptables -F
+iptables -X
+
+iptables -t nat -F
+iptables -t nat -X

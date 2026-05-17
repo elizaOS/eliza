@@ -1,0 +1,152 @@
+[[!meta title="Call for testing: 1.5~rc1"]]
+
+[[!meta date="Mon, 06 Aug 2015 12:00:00 +0000"]]
+[[!pagetemplate template="news.tmpl"]]
+
+You can help Tails! The first release candidate for the upcoming version 1.5 is
+out. Please test it and see if it works for you.
+
+[[!toc levels=1]]
+
+How to test Tails 1.5~rc1?
+==========================
+
+<div class="caution">
+A <strong>critical security hole</strong> affects the version of Tor
+Browser included in Tails 1.5~rc1. See the list of <a
+href="#known_issues">known issues of this release</a> for
+more information.
+</div>
+
+1. **Keep in mind that this is a test image.** We have made sure
+   that it is not broken in an obvious way, but it might still contain
+   undiscovered issues.
+
+1. Either try the <a href="#automatic_upgrade">automatic upgrade</a>, or
+   download the ISO image and its signature:
+
+   Tails 1.5~rc1 ISO image
+
+   Tails 1.5~rc1 signature
+
+1. Verify the ISO image.
+
+1. Have a look at the list of <a href="#known_issues">known issues of
+   this release</a> and the list of
+   [[longstanding known issues|support/known_issues]].
+
+1. Test wildly!
+
+If you find anything that is not working as it should, please [[report to
+us|doc/first_steps/whisperback]]! Bonus points if you first check if it is a
+<a href="#known_issues">known issue of this release</a> or a
+[[longstanding known issue|support/known_issues]].
+
+<div id="automatic_upgrade"></a>
+
+How to automatically upgrade from 1.4.1?
+========================================
+
+These steps allow you to automatically upgrade a device installed with
+*Tails Installer* from Tails 1.4.1 to Tails 1.5~rc1.
+
+1. Start Tails 1.4.1 from a USB stick or SD card (installed by the
+   Tails Installer), and
+   [[set an administration password|doc/first_steps/welcome_screen/administration_password]].
+
+1. Run this command in a *Root Terminal*
+   to select the "alpha" upgrade channel
+   and start the upgrade:
+
+       echo TAILS_CHANNEL=\"alpha\" >> /etc/os-release && \
+            tails-upgrade-frontend-wrapper
+
+1. Once the upgrade has been installed, restart Tails and look at
+   **Applications&nbsp;▸ Tails&nbsp;▸ About Tails**
+   to confirm that the running system is Tails 1.5~rc1.
+
+What's new since 1.4.1?
+=======================
+
+Changes since Tails 1.4.1 are:
+
+  * Major new features
+    - Move LAN web browsing from Tor Browser to the Unsafe Browser,
+      and forbid access to the LAN from the former.
+    - Install a 32-bit GRUB EFI boot loader. This at least works
+      on some Intel Baytrail systems.
+    - Upgrade Tor Browser to 5.0a4-build3.
+
+  * Security fixes
+    - Fix panic mode on MAC spoofing failure.
+    - Deny Tor Browser access to global tmp directories with AppArmor.
+    - Tails Installer: don't use a predictable file name for the subprocess
+      error log.
+    - Pidgin AppArmor profile: disable the launchpad-integration abstraction.
+    - Use aliases so that our AppArmor policy applies to
+      `/lib/live/mount/overlay/` and `/lib/live/mount/rootfs/*.squashfs/` as well as
+      it applies to `/`.
+    - Upgrade Linux to 3.16.7-ckt11-1+deb8u2.
+    - Upgrade bind9-host, dnsutils and friends to 1:9.8.4.dfsg.P1-6+nmu2+deb7u6.
+    - Upgrade cups-filters to 1.0.18-2.1+deb7u2.
+    - Upgrade ghostscript to 9.05~dfsg-6.3+deb7u2.
+    - Upgrade libexpat1 to 2.1.0-1+deb7u2.
+    - Upgrade libicu48 to 4.8.1.1-12+deb7u3.
+    - Upgrade libwmf0.2-7 to 0.2.8.4-10.3+deb7u1.
+    - Upgrade openjdk-7 to 7u79-2.5.6-1~deb7u1.
+
+  * Bugfixes
+    - Upgrade Tor to 0.2.6.10-1~d70.wheezy+1+tails1.
+
+  * Minor improvements
+    - Tails Installer: let the user know when it has rejected a candidate
+      destination device because it is too small.
+    - Tails Installer: prevent users from trying to "upgrade" a device
+      that contains no Tails, or that was not installed with Tails Installer.
+    - Install libotr5 and pidgin-otr 4.x from wheezy-backports. This adds
+      support for the OTRv3 protocol and for multiple concurrent connections
+      to the same account.
+    - Skip warning dialog when starting Tor Browser while being offline,
+      in case it is already running. Thanks to Austin English for the patch!
+    - Install the apparmor-profiles package, but don't ship
+      a bunch of AppArmor profiles we don't use, to avoid increasing
+      boot time.
+    - Ship a `/etc/apparmor.d/tunables/home.d/tails` snippet, instead
+      of patching `/etc/apparmor.d/tunables/home`.
+    - live-boot: don't mount tmpfs twice on `/live/overlay`, so that the one which
+      is actually used as the read-write branch of the root filesystem's union
+      mount, is visible.
+
+There are numerous other changes that might not be apparent in the
+daily operation of a typical user. Technical details of all the
+changes are listed in the
+Changelog.
+
+<a id="known_issues"></a>
+
+# Known issues in 1.5~rc1
+
+* A **critical security hole** affects the version of Tor Browser
+  included in Tails 1.5~rc1.<br />
+  To workaround this problem:
+
+  1. Type `about:config` in the Tor Browser address bar
+  2. Search for the `pdfjs.disabled` entry
+  3. Set the `pdfjs.disabled` entry to True
+  4. Repeat steps 1 to 3 for each other web browser you want to use in
+     Tails 1.5~rc1: Unsafe Browser, I2P Browser.
+
+  <div class="note">
+  <ul>
+    <li>This workaround is not persistent: you have to apply it again
+    every time you start Tails 1.5~rc1.</li>
+    <li>The version of Tor Browser included in Tails 1.4.1 is not
+    affected.</li>
+    <li>This security hole will be corrected in the final Tails 1.5
+    release.</li>
+    <li>For technical details, see [[!mfsa 2015-78]].</li>
+  </ul>
+  </div>
+* At least **2 GB of RAM** is now needed for Tails to work smoothly.
+
+* [[Longstanding known issues|support/known_issues]]

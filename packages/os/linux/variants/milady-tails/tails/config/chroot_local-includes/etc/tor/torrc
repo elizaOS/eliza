@@ -1,0 +1,45 @@
+## Default SocksPort
+SocksPort 127.0.0.1:9050 IsolateDestAddr IsolateDestPort
+## SocksPort for other Tails-specific applications
+SocksPort 127.0.0.1:9062 IsolateDestAddr IsolateDestPort
+## SocksPort used by the Upgrader to download IUKs with
+## tails-iuk-get-target-file
+# We disable isolation flags so there's at least a chance that the
+# circuit used to connect to Mirrorbits is reused for the actual
+# download, thus benefiting from the fact Mirrorbits uses GeoIP to
+# select the mirror.
+SocksPort 127.0.0.1:9063 NoIsolateDestAddr NoIsolateDestPort NoIsolateClientProtocol
+## SocksPort for the default web browser (address is defined in tails-create-netns)
+SocksPort 10.200.1.1:9050 IsolateSOCKSAuth KeepAliveIsolateSOCKSAuth ExtendedErrors
+
+## The port on which Tor will listen for local connections from Tor
+## controller applications, as documented in control-spec.txt.
+ControlPort 127.0.0.1:9052
+
+## Torified DNS
+DNSPort 5353
+AutomapHostsOnResolve 1
+AutomapHostsSuffixes .exit,.onion
+
+## Transparent proxy
+TransPort 127.0.0.1:9040
+
+## Enable the Seccomp sandbox. It will disabled later (by the
+## tor-pt-configuration-helper) if we configure any pluggable transport
+## in TCA; note that old-school "simple" bridges will still
+## have the sandbox enabled.
+Sandbox 1
+
+## Misc
+AvoidDiskWrites 1
+
+## Disable default warnings on StartTLS for email. Let's not train our
+## users to click through security warnings.
+WarnPlaintextPorts 23,109
+
+## Log to the systemd Journal
+Log notice syslog
+
+## Tor Launcher will enable the network access for Tor once the user
+## has provided the configuration they desire.
+DisableNetwork 1

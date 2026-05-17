@@ -1,0 +1,35 @@
+#!/bin/sh
+
+Boot_profile ()
+{
+	# Only start profiler when "profile" appears on kernel command line
+	grep -qw "profile" /proc/cmdline || return 0
+
+	echo -n " boot-profile"
+
+	Start_boot_profile
+}
+
+Start_boot_profile ()
+{
+
+	# Schedule stop script
+	mkdir -p /etc/skel/.config/autostart
+	cat <<EOF >"/etc/skel/.config/autostart/end-profile.desktop"
+[Desktop Entry]
+Version=1.0
+Name=EndProfile
+GenericName=EndProfile
+Exec=/usr/local/lib/end-profile
+Terminal=false
+Type=Application
+EOF
+
+	echo 32768 >/proc/sys/fs/inotify/max_user_watches
+	/usr/local/lib/boot-profile /var/log/boot-profile
+
+	# Creating state file
+	touch /var/lib/live/config/boot-profile
+}
+
+Boot_profile

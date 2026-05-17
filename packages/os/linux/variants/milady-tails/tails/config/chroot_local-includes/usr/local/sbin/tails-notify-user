@@ -1,0 +1,15 @@
+#!/bin/sh
+
+set -e
+
+if [ $# -ne 2 ] && [ $# -ne 3 ]; then
+    echo "Usage: $0 SUMMARY BODY [TIMEOUT]" >&2
+    exit 16
+fi
+
+# Notify the desktop user
+summary="$1"
+body="$2"
+
+exec /usr/local/lib/run-with-user-env \
+     notify-send ${3:+"--expire-time=$3"} -- "${summary}" "${body}"

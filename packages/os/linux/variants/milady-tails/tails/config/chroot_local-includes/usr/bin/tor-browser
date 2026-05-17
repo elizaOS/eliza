@@ -1,0 +1,49 @@
+#!/bin/sh
+
+# AppArmor Ux rules don't sanitize $PATH, which can lead to an
+# exploited application (that's allowed to run this script unconfined)
+# having this script run arbitrary code, violating that application's
+# confinement. Let's prevent that by setting PATH to a list of
+# directories where only root can write.
+export PATH='/usr/local/bin:/usr/bin:/bin'
+
+set -e
+set -u
+
+PROFILE="${HOME}/.tor-browser/profile.default"
+
+# Import exec_firefox()
+# shellcheck source=../local/lib/tails-shell-library/tor-browser.sh
+. /usr/local/lib/tails-shell-library/tor-browser.sh
+
+# Allow Tor Browser access to the control port filter (for new identity).
+# Setting a password is required, otherwise Tor Browser attempts to
+# read the authentication cookie file instead, which fails.
+export TOR_CONTROL_HOST='127.0.0.1'
+export TOR_CONTROL_PORT='951'
+export TOR_CONTROL_PASSWD='passwd'
+
+# Enabling Wayland support to make (among other things, presumably)
+# the GNOME on-screen keyboard work.
+export MOZ_ENABLE_WAYLAND=1
+
+# Tor Browser uses those environment variables
+export TOR_SOCKS_HOST='127.0.0.1'
+export TOR_SOCKS_PORT='9050'
+
+# The default location enforced by our caller `flatpak run` is
+# ~/.var/app/org.boum.tails.TorBrowser/cache/, which is not great as
+# some users make their ~/.var/app/ persistent, so they can have
+# persistent Flatpak apps and configuration. Therefore we use
+# a different cache directory located on the tmpfs of the
+# Flatpak sandbox (tails/tails#21220).
+export XDG_CACHE_HOME=/home/amnesia/.cache/tor-browser
+
+if ! [ -f /.flatpak-info ]; then
+    echo >&2 "Error: Must be run in flatpak"
+    exit 1
+fi
+
+exec_firefox -allow-remote \
+    -profile "${PROFILE}" \
+    "${@}"

@@ -1,0 +1,115 @@
+[[!meta date="Tue, 12 May 2015 12:34:56 +0000"]]
+[[!pagetemplate template="news.tmpl"]]
+[[!meta title="Tails 1.4 is out"]]
+[[!tag announce]]
+
+Tails, The Amnesic Incognito Live System, version 1.4, is out.
+
+This release fixes [[numerous security
+issues|security/Numerous_security_holes_in_1.3.2]] and all users must
+[[upgrade|doc/upgrade]] as soon as possible.
+
+[[!toc levels=1]]
+
+# Changes
+
+## New features
+
+  - *Tor Browser* 4.5 now has a **[[security slider|doc/anonymous_internet/Tor_Browser#security-level]]** that you can use to
+    disable browser features, such as JavaScript, as a trade-off between
+    security and usability. The security slider is set to *low* by
+    default to provide the same level of security as previous versions
+    and the most usable experience.
+
+    [[We disabled in Tails the new circuit view of *Tor Browser* 4.5|doc/anonymous_internet/Tor_Browser#circuitview]] for
+    security reasons. You can still use the network map of *Vidalia* to
+    inspect your circuits.
+
+  - *OpenPGP Applet* now has a **shortcut to the *gedit* text
+    editor**, thanks to Ivan Bliminse.
+
+  - ***Paperkey*** lets you print a
+    backup of your OpenPGP secret keys on paper.
+
+## Upgrades and changes
+
+  - *Tor Browser* 4.5 protects better against **third-party tracking**. Often
+    when visiting a website, many connections are created to transfer
+    both the content of the main website (its page, images, and so on)
+    and third-party content from other websites (advertisements, *Like*
+    buttons, and so on). In *Tor Browser* 4.5, all such content, from
+    the main website as well as the third-party websites, goes through
+    the same Tor circuits. And these circuits are not reused when
+    visiting a different website. This prevents third-party websites
+    from correlating your visits to different websites.
+
+  - *Tor Browser* 4.5 now keeps using the **same Tor circuit** while you are visiting a
+    website. This prevents the website from suddenly changing language,
+    behavior, or logging you out.
+
+  - ***[Disconnect](https://search.disconnect.me/)*** is the new
+    **default search engine**. *Disconnect* provides Google search
+    results to Tor users without captchas or bans.
+
+  - Better support for **Vietnamese** in *LibreOffice* through the
+    installation of `fonts-linuxlibertine`.
+
+  - Disable security warnings when connecting to POP3 and IMAP ports
+    that are mostly used for StartTLS nowadays.
+
+  - Support for **more printers** through the installation of
+    `printer-driver-gutenprint`.
+
+  - Upgrade **Tor** to 0.2.6.7.
+
+  - Upgrade ***I2P*** to [0.9.19](https://geti2p.net/en/blog/post/2015/04/12/0.9.19-Release)
+    that has several fixes and improvements for floodfill
+    performance.
+
+  - Remove the obsolete **#i2p-help IRC channel** from *Pidgin*.
+
+  - Remove the command line email client **`mutt`** and **`msmtp`**.
+
+There are numerous other changes that might not be apparent in the daily
+operation of a typical user. Technical details of all the changes
+are listed in the Changelog.
+
+## Fixed problems
+
+  - Make the browser theme of the Windows 8 camouflage compatible with
+    the *Unsafe Browser* and the *I2P Browser*.
+
+  - Remove the **Tor Network Settings...** from the *Torbutton* menu.
+
+  - Better support for Chromebook C720-2800 through the upgrade of
+    `syslinux`.
+
+  - Fix the localization of *Tails Upgrader*.
+
+  - Fix the OpenPGP key servers configured in *Seahorse*.
+
+  - Prevent *Tor Browser* from crashing when *Orca* is enabled.
+
+# Known issues
+
+  - Claws Mail stores plaintext copies of all emails on the remote IMAP
+    server, including those that are meant to be encrypted.
+    If you send OpenPGP encrypted emails using *Claws Mail* and IMAP,
+    make sure to apply one of the workarounds documented in our
+    [[security announcement|security/claws_mail_leaks_plaintext_to_imap]].
+
+  - See the current list of [[known issues|support/known_issues]].
+
+# Download or upgrade
+
+Go to the [[install]] page.
+
+# What's coming up?
+
+The next Tails release is [[scheduled|contribute/calendar]] for
+June 30.
+
+
+Do you want to help? There are many ways [[**you** can
+contribute to Tails|contribute]]. If you want to help, come talk
+to us!

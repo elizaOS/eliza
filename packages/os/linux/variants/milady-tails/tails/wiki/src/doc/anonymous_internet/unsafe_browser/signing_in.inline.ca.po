@@ -1,0 +1,134 @@
+# SOME DESCRIPTIVE TITLE
+# Copyright (C) YEAR Free Software Foundation, Inc.
+# This file is distributed under the same license as the PACKAGE package.
+# FIRST AUTHOR <EMAIL@ADDRESS>, YEAR.
+#
+msgid ""
+msgstr ""
+"Project-Id-Version: PACKAGE VERSION\n"
+"POT-Creation-Date: 2023-06-13 14:17+0200\n"
+"PO-Revision-Date: 2025-06-27 17:01+0000\n"
+"Last-Translator: victor dargallo <victordargallo@disroot.org>\n"
+"Language-Team: LANGUAGE <LL@li.org>\n"
+"Language: ca\n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+"Plural-Forms: nplurals=2; plural=n != 1;\n"
+"X-Generator: Weblate 5.3\n"
+
+#. type: Plain text
+#, no-wrap
+msgid "[[!meta robots=\"noindex\"]]\n"
+msgstr "[[!meta robots=\"noindex\"]]\n"
+
+#. type: Plain text
+#, no-wrap
+msgid ""
+"<style>\n"
+"/* Display \"*Unsafe Browser*\" instead of \"this browser\" in /doc/anonymous_internet/unsafe_browser and /misc/unsafe_browser_warning */\n"
+".doc {\n"
+"  display: inline-block;\n"
+"}\n"
+".warning {\n"
+"  display: none;\n"
+"}\n"
+"</style>\n"
+msgstr ""
+"<style>\n"
+"/* Mostra \"*Navegador Insegur*\" en comptes de \"aquest navegador\" en /doc/"
+"anonymous_internet/unsafe_browser i /misc/unsafe_browser_warning */\n"
+".doc {\n"
+"  display: inline-block;\n"
+"}\n"
+".warning {\n"
+"  display: none;\n"
+"}\n"
+"</style>\n"
+
+#. type: Plain text
+msgid "To sign in to a network using a captive portal:"
+msgstr "Per iniciar sessió a una xarxa mitjançant un portal captiu:"
+
+#. type: Bullet: '1. '
+msgid ""
+"Try visiting an innocent-looking website that is common in your location, "
+"for example, a search engine or news site:"
+msgstr ""
+"Proveu a visitar un lloc web d'aspecte innocent que sigui habitual a la "
+"vostra ubicació, per exemple, un motor de cerca o un lloc web de notícies:"
+
+#. type: Bullet: '   - '
+msgid "<a href=\"http://google.com/\" target=\"_blank\">Google</a>"
+msgstr "<a href=\"http://google.com/\" target=\"_blank\">Google</a>"
+
+#. type: Bullet: '   - '
+msgid "<a href=\"http://linkedin.com/\" target=\"_blank\">LinkedIn</a>"
+msgstr "<a href=\"http://linkedin.com/\" target=\"_blank\">LinkedIn</a>"
+
+#. type: Bullet: '   - '
+msgid "<a href=\"http://duckduckgo.com/\" target=\"_blank\"/>DuckDuckGo</a>"
+msgstr "<a href=\"http://duckduckgo.com/\" target=\"_blank\"/>DuckDuckGo</a>"
+
+#. type: Bullet: '   - '
+msgid "<a href=\"http://baidu.com/\" target=\"_blank\"/>Baidu</a>"
+msgstr "<a href=\"http://baidu.com/\" target=\"_blank\"/>Baidu</a>"
+
+#. type: Bullet: '1. '
+msgid "If you are redirected to a captive portal, sign in to the network."
+msgstr "Si se us redirigeix a un portal captiu, inicieu sessió a la xarxa."
+
+#. type: Plain text
+#, no-wrap
+msgid ""
+"   If you are not redirected to a captive portal and the website loads,\n"
+"   this means that you are already connected to the Internet. Close\n"
+"   <span class=\"warning\">this browser</span>\n"
+"   <span class=\"doc\">the <i>Unsafe Browser</i></span>\n"
+"   and try connecting to the Tor network again.\n"
+msgstr ""
+"   Si no se us redirigeix a un portal captiu i el lloc web es carrega,\n"
+"   això vol dir que ja esteu connectat a Internet. Tanqueu\n"
+"   <span class=\"warning\">aquest navegador</span>\n"
+"   <span class=\"doc\">el <i>Navegador Insegur</i></span>\n"
+"   i torneu a provar de connectar-vos a la xarxa Tor.\n"
+
+#. type: Bullet: '1. '
+msgid ""
+"After Tails is connected to Tor, close <span class=\"warning\">this browser."
+"</span> <span class=\"doc\">the <i>Unsafe Browser</i>.</span>"
+msgstr ""
+"Quan Tails estigui connectat a Tor, tanqueu <span class=\"warning\">aquest "
+"navegador.</span> <span class=\"doc\">el <i>Navegador Insegur</i>.</span>"
+
+#. type: Plain text
+#, no-wrap
+msgid "   <div class=\"caution\">\n"
+msgstr "   <div class=\"caution\">\n"
+
+#. type: Plain text
+#, no-wrap
+msgid ""
+"   <p>It is particularly important that you close the <i>Unsafe Browser</i> if\n"
+"   you use accessibility features like the Screen Keyboard or the Screen Reader.\n"
+"   If you keep the <i>Unsafe Browser</i> open, a very advanced network attacker\n"
+"   might use it to deanonymize you.</p>\n"
+msgstr ""
+"   <p>És especialment important que tanqueu el <i>Navegador Insegur</i> si\n"
+"   utilitzeu funcions d'accessibilitat com el teclat de pantalla o el lector "
+"de pantalla.\n"
+"   Si manteniu el <i>Navegador Insegur</i> obert, un atacant de xarxa molt "
+"avançat\n"
+"   podria utilitzar-lo per desanonimitzar-vos.</p>\n"
+
+#. type: Plain text
+#, no-wrap
+msgid "   </div>\n"
+msgstr "   </div>\n"
+
+#. type: Plain text
+#, no-wrap
+msgid "   You can use *Tor Browser* or any other application as usual.\n"
+msgstr ""
+"   Podeu utilitzar el *Navegador Tor* o qualsevol altra aplicació com de "
+"costum.\n"

@@ -1,0 +1,72 @@
+#!/usr/bin/python3 -I
+
+########################################################################
+# WhisperBack - Send a feedback in an encrypted mail
+# Copyright (C) 2009-2018 Tails developers <foundations@tails.net>
+#
+# This program is  free software; you can redistribute  it and/or modify
+# it under the  terms of the GNU General Public  License as published by
+# the Free Software Foundation; either  version 3 of the License, or (at
+# your option) any later version.
+#
+# This program  is distributed in the  hope that it will  be useful, but
+# WITHOUT   ANY  WARRANTY;   without  even   the  implied   warranty  of
+# MERCHANTABILITY  or FITNESS  FOR A  PARTICULAR PURPOSE.   See  the GNU
+# General Public License for more details.
+#
+# You should have received a copy of the GNU General Public License
+# along with this program.  If not, see <http://www.gnu.org/licenses/>.
+########################################################################
+
+"""WhisperBack launcher script
+
+"""
+
+import gettext
+import gi
+import json
+import logging
+import logging.config
+import os
+import sys
+import whisperBack
+
+gi.require_version("Gtk", "3.0")
+from gi.repository import Gtk  # NOQA: E402
+
+from tailslib import LIVE_USER_UID  # NOQA: E402
+
+if os.getuid() != LIVE_USER_UID:
+    print("Not running as amnesia, aborting", file=sys.stderr)
+    sys.exit(1)
+
+if len(sys.argv) > 2:
+    print("Too many arguments", file=sys.stderr)
+    sys.exit(2)
+if len(sys.argv) > 1:
+    prefill = json.load(open(sys.argv[1]))
+    try:
+        os.unlink(sys.argv[1])
+    except PermissionError:
+        try:
+            with open(sys.argv[1], "w") as f:
+                f.truncate(0)
+        except PermissionError:
+            print(
+                f"Warning: failed to remove input file '{sys.argv[1]}'", file=sys.stderr
+            )
+
+else:
+    prefill = None
+
+logging.config.fileConfig("/usr/share/whisperback/logging.conf")
+# Set loglevel if debug is found in kernel command line
+with open("/proc/cmdline") as cmdline_fd:
+    CMDLINE = cmdline_fd.read()
+if "debug" in CMDLINE.split():
+    logging.getLogger().setLevel(logging.DEBUG)
+
+debugging_info = sys.stdin.read()
+
+ui = whisperBack.WhisperBackUI(debugging_info=debugging_info, prefill=prefill)
+Gtk.main()

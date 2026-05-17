@@ -1,0 +1,149 @@
+[[!meta title="Verifying a Tails image for reproducibility"]]
+
+[[!toc levels=3]]
+
+What are reproducible builds?
+=============================
+
+> Reproducible builds are a set of software development practices that
+> create a verifiable path from human readable source code to the binary
+> code used by computers.
+>
+> Most aspects of software verification are done on source code, as that
+> is what humans can reasonably understand. But most of the time,
+> computers require software to be first built into a long string of
+> numbers to be used. With reproducible builds, multiple parties can redo
+> this process independently and ensure they all get exactly the same
+> result. We can thus gain confidence that a distributed binary code is
+> indeed coming from a given source code.
+
+(Quoted from <https://reproducible-builds.org>)
+
+Tails ISO and USB images should be reproducible: everybody who
+builds one of them should be able to obtain the exact same resulting
+image from a given Git tag.
+
+Why is it important?
+====================
+
+Reproducibility increases confidence in the value of our continuous
+quality assurance processes as well as the trust that users, and anyone
+interested can put into our released build products (such as ISO and USB
+images) and our development and release process.
+
+Reproducible builds help [detect
+bugs](https://reproducible-builds.org/docs/buy-in/) and ensure that
+there is no bit flip that makes us waste precious hours during a release
+process.
+
+Most important, a reproducible build allows for independent verification
+that a build product matches what the source intended to produce. This
+helps to better resist [attacks against build machines and
+developers](https://reproducible-builds.org/docs/buy-in/), improves
+users' security, and allows developers to sleep better at night (as the
+incentive for an attacker to compromise developers' systems, or to
+compromise developers themselves, is lowered). In turn, this avoids the
+need to trust people (or software) who build the ISO and USB images we
+release, which in turn allows more people to get involved in release
+management work.
+
+Release managers do not have to upload the ISO and USB images anymore when they
+do a release: they can  instead build it both on our infrastructure
+(Jenkins) and locally and compare the outputs: if they match, one can
+publish the ISO and USB images built by Jenkins. Uploading the ISO and USB
+images can take many hours
+with some commonly found means of accessing the Internet, so removing
+the need to go through this step decreases our time to remediation for
+fixing security issues, and makes it easier for developers with poor
+access to the Internet to take care of a release.
+
+Build and compare Tails ISO and USB images
+==========================================
+
+Build Tails ISO and USB images
+------------------------------
+
+See the [[build instructions|contribute/build]].
+
+<a id="verify-iso"></a>
+How do I verify the image I have built against the official one?
+----------------------------------------------------------------
+
+You can verify that the image you have built is identical to the
+official one we published either with OpenPGP or with a checksum.
+
+### Verify with OpenPGP
+
+When you reproducibly build our image you should obtain a file that is
+exactly the same as the official Tails image, thus, *our* signature
+should be able to verify *your* image for you.
+
+Download and verify our OpenPGP signature
+against your own ISO or USB image:
+
+- [[OpenPGP signing key|tails-signing.key]]
+
+- <a href="[[!inline pages="inc/stable_amd64_img_sig_url" raw="yes" sort="age"]]">OpenPGP signature (USB image)</a>
+
+- <a href="[[!inline pages="inc/stable_amd64_iso_sig_url" raw="yes" sort="age"]]">OpenPGP signature (ISO image)</a>
+
+### Verify with a checksum
+
+To verify that the ISO or USB image you have built is identical as the
+official one:
+
+1. Compute the checksum of your image by executing one of the following
+   commands on it:
+
+        sha256sum yourimage.iso
+        sha256sum yourimage.img
+
+2. Compare the SHA-256 checksum of your images with the ones found
+   in the official [image description file](https://tails.net/install/v2/Tails/amd64/stable/latest.json).
+
+Build and compare a Tails upgrade (IUK)
+=======================================
+
+Build a Tails IUK
+-----------------
+
+See
+[[Build the Incremental Upgrade Kits|contribute/release_process#prepare-iuk]]
+section in our Release process documentation.
+
+Verify IUKs
+-----------
+
+You can get the SHA-256 of any IUK by setting the `SOURCE` and
+`TARGET` variables appropriately, for example:
+
+    # For Tails_amd64_3.0_to_3.1.iuk
+    SOURCE=3.0
+    TARGET=3.1
+
+and then run:
+
+    UDF="wiki/src/upgrade/v2/Tails/${SOURCE}/amd64/stable/upgrades.yml"
+    if gpg --verify ${UDF}.pgp ${UDF}; then
+      python3 <<EOF
+    import yaml
+    with open('${UDF}') as f:
+      data = yaml.load(f)
+    upgrade = next(x for x in data['upgrades']
+                   if x['version'] == '${TARGET}')
+    incremental = next(x for x in upgrade['upgrade-paths']
+                       if x['type'] == 'incremental')
+    iuk = next(x for x in incremental['target-files']
+               if x['url'].endswith('Tails_amd64_${SOURCE}_to_${TARGET}.iuk'))
+    print('SHA-256:', iuk['sha256'])
+    EOF
+    else
+      echo 'OpenPGP verification of the UDF failed. Are you sure you have ' \
+           'Tails signing key imported into you keyring?' >&2
+    fi
+
+Related information
+===================
+
+More detailed information can be found on our [[!tails_blueprint reproducible_builds desc="blueprint about
+Reproducible Builds"]].

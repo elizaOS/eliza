@@ -1,0 +1,1050 @@
+#!/usr/bin/python3 -Iu
+
+# This filter proxy allows fine-grained access allowlists of commands
+# (and their argunents) and events on a per-application basis, stored
+# in:
+#
+#     /etc/onion-grater.d/
+#
+# that are pretty self-explanatory as long as you understand the Tor
+# ControlPort language. The format is expressed in YAML where the
+# top-level is supposed to be a list, where each element is a
+# dictionary looking something like this:
+#
+#     - name: blabla
+#       apparmor-profiles:
+#         - path_to_executable_if_that_is_the_name_of_the_apparmor_profile
+#         # or
+#         - explicit_apparmor_profile_name
+#         ...
+#       users:
+#         - user
+#         ...
+#       hosts:
+#         - host
+#         ...
+#       commands:
+#         command:
+#           - command_arg_rule
+#           ...
+#         ...
+#       confs:
+#         conf:
+#           - conf_arg_rule
+#           ...
+#         ...
+#       events:
+#         event:
+#           event_option: event_option_value
+#           ...
+#         ...
+#
+# `name` (optional) is a string which gives an internal name, useful
+# for debugging. When not given, filters will default to the name of
+# the file (excluding extension) they were read from (so there can be
+# duplicates!). It is advisable to define one filter per file, and
+# give helpful filenames instead of using this field.
+#
+# A filter is matched if for each of the relevant qualifiers at
+# least one of the elements match the client. For local (loopback)
+# clients the following qualifiers are relevant:
+#
+# * `apparmor-profiles`: a list of strings, each being the name
+#   of the AppArmor profile applied to the binary or script of the client,
+#   with `*` matching anything. While this matcher always works for binaries,
+#   it only works for scripts with an enabled AppArmor profile (not
+#   necessarily enforced, complain mode is good enough).
+#
+# * `users`: a list of strings, each describing the user of the
+#   client with `*` matching anything.
+#
+# For remote (non-local) clients, the following qualifiers are
+# relevant:
+#
+# * hosts: a list of strings, each describing the IPv4 address
+#   of the client with `*` matching anything.
+#
+# A filter can serve both local and remote clients by having
+# qualifiers of both types.
+#
+# `commands` (optional) is a list where each item is a dictionary with
+# the obligatory `pattern` key, which is a regular expression that is
+# matched against the full argument part of the command. The default
+# behavior is to just proxy the line through if matched, but it can be
+# altered with these keys:
+#
+# * `replacement`: this rewrites the arguments. The value is a Python
+#   format string (str.format()) which will be given the match groups
+#   from the match of `pattern`. The rewritten command is then proxied
+#   without the need to match any rule. There are also some special
+#   patterns that will be replaced as follows:
+#
+#   - {client-address}: the client's IP address
+#   - {client-port}: the client's port
+#   - {server-address}: the server's IP address
+#   - {server-port}: the server's (listening) port
+#
+# * `response`: a list of dictionaries, where the `pattern` and
+#   `replacement` keys work exactly as for commands arguments, but now
+#   for the response. Note that this means that the response is left
+#   intact if `pattern` doesn't match it, and if many `pattern`:s
+#   match, only the first one (in the order listed) will trigger a
+#   replacement.
+#
+# If a simple regex (as string) is given, it is assumed to be the
+# `pattern` which allows a short-hand for this common type of rule.
+#
+# Note that to allow a command to be run without arguments, the empty
+# string must be explicitly given as a `pattern`. Hence, an empty
+# argument list does not allow any use of the command.
+#
+# `confs` (optional) is a dictionary, and it's just syntactic sugar to
+# generate GETCONF/SETCONF rules. If a key exists, GETCONF of the
+# keyname is allowed, and if it has a non-empty list as value, those
+# values are allowed to be set. The empty string means that resetting
+# it is allowed. This is very useful for applications that like to
+# SETCONF on multiple configurations at the same time.
+#
+# `events` (optional) is a dictionary where the key represents the
+# event. If a key exists the event is allowed. The value is another
+# dictionary of options:
+#
+# * `suppress`: a boolean determining whether we should just fool the
+#   client that it has subscribed to the event (i.e. the client
+#   request is not filtered) while we suppress them.
+#
+# * `response`: a dictionary, where the `pattern` and `replacement`
+#   keys work exactly as for `response` for commands, but now for the
+#   events.
+#
+# `tor-browser-mode` (optional) is a boolean, and should only ever be
+# set if the client is Tor Browser since it is highly dependent on its
+# particular implementation of control port communication and
+# stream/circuit tracking. The purpose of this option is to prevent
+# Tor Browser from learning anything about circuits or streams used by
+# other processes using Tor, so it only has that information about its
+# "own" circuits and streams (which is sufficient for its purposes,
+# e.g. the circuit view). To achieve this we do the following:
+#
+# * STREAM events: when one is received it is only accepted if its
+#   source address is the same as the client's, in which case we
+#   consider that stream to be "owned" by Tor Browser, otherwise it is
+#   dropped. We keep track of the id:s of these streams and drop them
+#   once we see the stream close.
+#
+# * CIRC events: we drop all such events with one exception (below)
+#   which makes Tor Browser fall back to polling with `getinfo
+#   circuit-status` (i.e. how it worked before Tor Browser 13). The
+#   reason we do this is very technical, and is detailed here:
+#
+#   - https://gitlab.torproject.org/tpo/applications/tor-browser/-/issues/42132
+#
+#   The exception mentioned above is that we allow all CIRC CLOSED
+#   events through after stripping all information except their ID (so
+#   we don't leak which nodes were used etc). This is required for Tor
+#   Browser to clear its internal tracking of circuits, otherwise it
+#   would keep outdated info indefinitely (which nodes the circuit
+#   consists of) and incorrectly reuse it in the future if the same
+#   circuit id is reused. (Implementation detail: this is much simpler
+#   than the ideal solution where we only let through CIRC CLOSED
+#   events for circuits Tor Browser owns, which would require tracking
+#   circuits like we do streams and also handling several racy
+#   situations. Since we strip information the only leak that remains
+#   is the timing of when circuits close.)
+#
+# * getinfo circuit-status: in the response we only include circuits
+#   that are used by the streams "owned" by Tor Browser.
+#
+# Below we describe in detail how all this comes together:
+#
+# 1. Tor Browser subscribes to both CIRC and STREAM events, filtered
+#    by onion-grater
+# 2. Let's say circuit n is built, so a "CIRC n BUILT" event is
+#    intercepted by onion-grater on its way to Tor Browser and dropped
+#    since it is not a "CIRC CLOSED" event
+# 3. Later Tor Browser makes some network request so tor opens a
+#    stream, which happens to be attached to circuit n, and a STREAM
+#    event is sent
+# 4. onion-grater determines that Tor Browser "owns" the STREAM event,
+#    so it forwards it to Tor Browser
+# 5. Tor Browser notices that circuit n which is referenced in the
+#    STREAM event is unknown, so it polls with `getinfo
+#    circuit-status`
+# 6. onion-grater intercepts `getinfo circuit-status` but will include
+#    circuit n since it is used by a stream owned by Tor Browser
+#    (which we learned in step 4)
+# 7. Tor Browser gets the response and now knows about circuit n so it
+#    accepts the STREAM event, and now it can display the circuit view
+#    for the corresponding browser tab
+# 8. Eventually, after Tor Browser is done with the stream and tor
+#    decides to close circuit n, a "CIRC n CLOSED" is issued,
+#    onion-grater forwards it to Tor Browser after dropping all
+#    identifying information from it, and Tor Browser stops tracking
+#    circuit n
+
+import argparse
+import contextlib
+import fcntl
+import glob
+import ipaddress
+import os.path
+import re
+import socket
+import socketserver
+import struct
+import sys
+import textwrap
+import time
+
+import psutil
+import stem
+import stem.connection
+import stem.control
+import yaml
+
+DEFAULT_LISTEN_ADDRESS = "localhost"
+DEFAULT_LISTEN_PORT = 951
+DEFAULT_COOKIE_PATH = "/run/tor/control.authcookie"
+# How often (in seconds) we check whether we've lost the tor
+# controller connection.
+TOR_CONTROLLER_PING_INTERVAL = 1.0
+LOCAL_VETH_NETWORK = "10.200.1.0/24"
+
+
+class NoRewriteMatch(RuntimeError):
+    """
+    Error when no matching rewrite rule was found but one was expected.
+    """
+
+
+def log(msg):
+    print(msg, file=sys.stderr)
+    sys.stderr.flush()
+
+
+def pid_of_laddr(address):
+    try:
+        return next(
+            conn for conn in psutil.net_connections() if conn.laddr == address
+        ).pid
+    except StopIteration:
+        return None
+
+
+def apparmor_profile_of_pid(pid):
+    # Here we leverage AppArmor's in-kernel solution for determining
+    # the exact executable invoked. Looking at /proc/pid/exe when an
+    # interpreted script is running will just point to the
+    # interpreter's binary, which is not fine-grained enough, but
+    # AppArmor will be aware of which script is running for processes
+    # using one of its profiles. However, we fallback to /proc/pid/exe
+    # in case there is no AppArmor profile, so the only unsupported
+    # mode here is unconfined scripts.
+    enabled_aa_profile_re = r"^(.+) \((?:complain|enforce)\)$"
+    with open(f"/proc/{pid}/attr/current", "rb") as fh:
+        aa_profile_status = str(fh.read().strip(), "UTF-8")
+        apparmor_profile_match = re.match(
+            enabled_aa_profile_re,
+            aa_profile_status,
+        )
+        if apparmor_profile_match:
+            return apparmor_profile_match.group(1)
+        return psutil.Process(pid).exe()
+
+
+def get_ip_address(ifname):
+    s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+    return socket.inet_ntoa(
+        fcntl.ioctl(
+            s.fileno(),
+            0x8915,  # SIOCGIFADDR
+            struct.pack("256s", bytes(ifname[:15], "utf-8")),
+        )[20:24]
+    )
+
+
+class FilteredControlPortProxySession:
+    """
+    Class used to deal with a single session, delegated from the handler
+    (FilteredControlPortProxyHandler). Its main job is proxying the traffic
+    between the client and the real control port, blocking or rewriting
+    it as dictated by the filter rule set.
+    """
+
+    # Limit the length of a line, to prevent DoS attacks trying to
+    # crash this filter proxy by sending infinitely long lines.
+    MAX_LINESIZE = 10 * 1024
+
+    def __init__(self, handler):
+        self.allowed_commands = handler.allowed_commands
+        self.allowed_events = handler.allowed_events
+        self.client_address: tuple[str, int] = handler.client_address
+        self.client_pid: int | None = handler.client_pid
+        self.controller = handler.controller
+        self.debug_log = handler.debug_log
+        self.filter_name = handler.filter_name
+        self.reconnect_controller = handler.connect_to_real_control_port
+        self.tor_browser_mode = handler.tor_browser_mode
+        self.request = handler.request
+        self.server_address = handler.server_address
+        self.wfile = handler.wfile
+        self.client_streams = set()
+        self.subscribed_event_listeners = []
+
+    def debug_log_send(self, line):
+        if GLOBAL_ARGS.print_responses:
+            self.debug_log(line, format_multiline=True, sep=": <- ")
+
+    def debug_log_recv(self, line):
+        if GLOBAL_ARGS.print_requests:
+            self.debug_log(line, format_multiline=True, sep=": -> ")
+
+    def debug_log_rewrite(self, kind, old, new):
+        if (
+            kind not in ["command", "received event", "response"]
+            or (kind == "command" and not GLOBAL_ARGS.print_responses)
+            or (
+                kind in ["received event", "response"]
+                and not GLOBAL_ARGS.print_requests
+            )
+        ):
+            return
+        if new != old:
+            old = textwrap.indent(old.strip(), " " * 4)
+            new = textwrap.indent(new.strip(), " " * 4)
+            self.debug_log(
+                f"rewrote {kind}:\n{old}\nto:\n{new}", format_multiline=False
+            )
+
+    def respond(self, line, raw=False):
+        if line.isspace():
+            return
+        self.debug_log_send(line)
+        if not raw:
+            line += "\r\n"
+        self.wfile.write(bytes(line, "ascii"))
+        self.wfile.flush()
+
+    def get_rule(self, cmd, arg_str):
+        allowed_args = self.allowed_commands.get(cmd, [])
+        return next(
+            (rule for rule in allowed_args if re.match(rule["pattern"] + "$", arg_str)),
+            None,
+        )
+
+    def proxy_line(self, line, args_rewriter=None, response_rewriter=None, retry=False):
+        if args_rewriter:
+            new_line = args_rewriter(line)
+            self.debug_log_rewrite("command", line, new_line)
+            line = new_line
+        try:
+            response = self.controller.msg(line.strip()).raw_content()
+        except (stem.SocketClosed, stem.SocketError):
+            if retry:
+                raise
+            self.recover_controller()
+            self.proxy_line(line, args_rewriter, response_rewriter, retry=True)
+            return
+        if response_rewriter:
+            new_response = response_rewriter(response)
+            self.debug_log_rewrite("response", response, new_response)
+            response = new_response
+        self.respond(response, raw=True)
+
+    def filter_line(self, line):
+        self.debug_log(f"command filtered: {line}")
+        self.respond("510 Command filtered")
+
+    def rewrite_line(self, replacers, line):
+        builtin_replacers = {
+            "client-address": self.client_address[0],
+            "client-port": str(self.client_address[1]),
+            "server-address": self.server_address[0],
+            "server-port": str(self.server_address[1]),
+        }
+        terminator = ""
+        if line[-2:] == "\r\n":
+            terminator = "\r\n"
+            line = line[:-2]
+        for r in replacers:
+            match = re.match(r["pattern"] + "$", line)
+            if match:
+                return (
+                    r["replacement"].format(
+                        *match.groups(),
+                        **builtin_replacers,
+                    )
+                    + terminator
+                )
+        raise NoRewriteMatch()
+
+    def rewrite_matched_line(self, replacers, line):
+        try:
+            return self.rewrite_line(replacers, line)
+        except NoRewriteMatch:
+            return line
+
+    def rewrite_matched_lines(self, replacers, lines):
+        split_lines = lines.strip().split("\r\n")
+        return (
+            "\r\n".join(
+                [self.rewrite_matched_line(replacers, line) for line in split_lines]
+            )
+            + "\r\n"
+        )
+
+    def is_my_stream(self, stream: stem.response.events.StreamEvent) -> bool:
+        if self.client_pid is not None:
+            # PID-based matching is racy and inherently insecure,
+            # so we don't allow tor-browser-modex
+            return False
+        if self.client_address[0] == stream.source_address:
+            return True
+        return False
+
+    def my_streams(self):
+        # One could be tempted to implement this by just filtering out
+        # the results from get_stream() with is_my_stream(), but the
+        # streams in get_stream() only contain the info we need
+        # (e.g. source address) when its status is NEW or NEWRESOLVE,
+        # so we can only keep track of this by monitoring stream
+        # events, as we do in event_cb().
+        return [s for s in self.controller.get_streams() if s.id in self.client_streams]
+
+    def my_circuits(self):
+        # We de-duplicate the circuit IDs because get_circuit(id) will
+        # return a new object each call.
+        my_circuit_ids = {s.circ_id for s in self.my_streams() if s.circ_id is not None}
+        my_circuits = []
+        for i in my_circuit_ids:
+            try:
+                my_circuits.append(self.controller.get_circuit(i))
+            except ValueError:
+                # There is a race: after calling my_streams() one of
+                # the streams could have its circuit close, so when we
+                # call get_circuit() on its ID stem raises this
+                # exception, since the circuit doesn't exist any more.
+                pass
+        return my_circuits
+
+    def event_cb(self, event, event_rewriter=None):
+        if self.tor_browser_mode and not GLOBAL_ARGS.disable_filtering:
+            if isinstance(event, stem.response.events.StreamEvent):
+                if event.id not in self.client_streams:
+                    if event.status not in [
+                        stem.StreamStatus.NEW,
+                        stem.StreamStatus.NEWRESOLVE,
+                    ]:
+                        return
+                    if self.is_my_stream(event):
+                        self.client_streams.add(event.id)
+                    else:
+                        if GLOBAL_ARGS.debug:
+                            self.debug_log(
+                                "dropped restricted stream event: "
+                                + event.raw_content()
+                            )
+                        return
+                elif event.status in [
+                    stem.StreamStatus.FAILED,
+                    stem.StreamStatus.CLOSED,
+                ]:
+                    self.client_streams.remove(event.id)
+            elif isinstance(event, stem.response.events.CircuitEvent):
+                if event.status == stem.CircStatus.CLOSED:
+                    old_event_raw_content = event.raw_content()
+                    # We let all CIRC CLOSED events through so Tor
+                    # Browser's internal circuit tracking can clear its
+                    # info about this circuit, but we strip all
+                    # information to prevent potential leaks.
+                    event = stem.response.events.CircuitEvent.from_str(
+                        f"650 CIRC {event.id} {stem.CircStatus.CLOSED}\r\n",
+                    )
+                    self.debug_log_rewrite(
+                        "received event", old_event_raw_content, event.raw_content()
+                    )
+                else:
+                    if GLOBAL_ARGS.debug:
+                        self.debug_log(
+                            "dropped restricted circuit event: " + event.raw_content()
+                        )
+                    return
+
+        raw_event_content = event.raw_content()
+        if event_rewriter:
+            new_raw_event_content = event_rewriter(raw_event_content)
+            self.debug_log_rewrite(
+                "received event",
+                raw_event_content,
+                new_raw_event_content,
+            )
+            raw_event_content = new_raw_event_content
+            if raw_event_content.strip() == "":
+                return
+        self.respond(raw_event_content, raw=True)
+
+    def update_event_subscriptions(self, events):
+        for listener, event in self.subscribed_event_listeners:
+            if event not in events:
+                self.subscribed_event_listeners.remove((listener, event))
+                if GLOBAL_ARGS.print_responses:
+                    self.debug_log(f"unsubscribed from event '{event}'")
+                try:
+                    self.controller.remove_event_listener(listener)
+                except (stem.SocketClosed, stem.SocketError):
+                    # When recovering the controller we'll also
+                    # recover the subscriptions recorded in
+                    # self.subscribed_event_listeners, so since we
+                    # already have dropped event from there, the
+                    # failed unsubscription we're dealing with will be
+                    # successfully unsubscribed.
+                    self.recover_controller()
+        for event in events:
+            if any(event == event_ for _, event_ in self.subscribed_event_listeners):
+                if GLOBAL_ARGS.print_responses:
+                    self.debug_log(f"already subscribed to event '{event}'")
+                continue
+            rule = self.allowed_events.get(event, {}) or {}
+            if not rule.get("suppress", False) or GLOBAL_ARGS.disable_filtering:
+                event_rewriter = None
+                if "response" in rule:
+                    replacers = rule["response"]
+
+                    def _event_rewriter(line, replacers=replacers):
+                        return self.rewrite_matched_line(replacers, line)
+
+                    event_rewriter = _event_rewriter
+
+                def _event_cb(event, event_rewriter=event_rewriter):
+                    self.event_cb(event, event_rewriter=event_rewriter)
+
+                self.subscribed_event_listeners.append((_event_cb, event))
+                if GLOBAL_ARGS.print_responses:
+                    self.debug_log(f"subscribed to event '{event}'")
+                try:
+                    self.controller.add_event_listener(
+                        _event_cb,
+                        getattr(stem.control.EventType, event),
+                    )
+                except (stem.SocketClosed, stem.SocketError):
+                    # See comment above for failed unsubscriptions.
+                    self.recover_controller()
+            else:
+                if GLOBAL_ARGS.print_responses:
+                    self.debug_log(f"suppressed subscription to event '{event}'")
+
+    def recover_controller(self):
+        self.debug_log("lost connection to tor, reconnecting...")
+        self.controller = self.reconnect_controller()
+        self.debug_log("successfully recovered a tor connection!")
+        # The only state we carry is about event subscriptions, so we
+        # have to set them up again for the new controller
+        event_subs = [e for _, e in self.subscribed_event_listeners]
+        self.subscribed_event_listeners = []
+        self.client_streams = set()
+        self.update_event_subscriptions(event_subs)
+
+    def get_client_request(self):
+        while True:
+            try:
+                # Some clients (e.g. Tor Browser) write their requests
+                # byte-by-byte, so we peek ahead and make sure we only
+                # read a single, full request.
+                peek_ahead = self.request.recv(self.MAX_LINESIZE, socket.MSG_PEEK)
+                if peek_ahead == b"":
+                    # The client disconnected
+                    return peek_ahead
+                request_length = peek_ahead.find(b"\n")
+                if request_length == -1:
+                    continue
+                return self.request.recv(request_length + 1)
+            except socket.timeout:
+                if not self.controller.is_alive():
+                    self.recover_controller()
+                continue
+
+    def handle(self):
+        while True:
+            binary_line = self.get_client_request()
+            if binary_line == b"":
+                # Deal with clients that close the socket without a QUIT.
+                break
+            line = str(binary_line, "ascii")
+            if line.isspace():
+                self.debug_log("ignoring received empty (or whitespace-only) line")
+                continue
+            match = re.match(
+                r"(?P<cmd>\S+)(?P<cmd_arg_sep>\s*)(?P<arg_str>[^\r\n]*)\r?\n$",
+                line,
+            )
+            if not match:
+                self.debug_log(
+                    "received bad line (escapes made explicit): " + repr(line)
+                )
+                # Hopefully the next line is ok...
+                continue
+            self.debug_log_recv(line)
+            cmd = match.group("cmd")
+            cmd_arg_sep = match.group("cmd_arg_sep")
+            arg_str = match.group("arg_str")
+            args = arg_str.split()
+            cmd = cmd.upper()
+
+            if cmd == "PROTOCOLINFO":
+                # Stem calls PROTOCOLINFO before authenticating. Tell the
+                # client that there is no authentication.
+                self.respond("250-PROTOCOLINFO 1")
+                self.respond("250-AUTH METHODS=NULL")
+                self.respond(
+                    f'250-VERSION Tor="{self.controller.get_version()}"',
+                )
+                self.respond("250 OK")
+
+            elif cmd == "AUTHENTICATE":
+                # We have already authenticated, and the filtered port is
+                # access-restricted according to our filter instead.
+                self.respond("250 OK")
+
+            elif cmd == "QUIT":
+                self.respond("250 closing connection")
+                break
+
+            elif cmd == "SETEVENTS":
+                # The control language doesn't care about case for
+                # the event type.
+                events = [event.upper() for event in args]
+                if not GLOBAL_ARGS.disable_filtering and any(
+                    event not in self.allowed_events for event in events
+                ):
+                    self.filter_line(line)
+                else:
+                    self.update_event_subscriptions(events)
+                    self.respond("250 OK")
+
+            else:
+                rule = self.get_rule(cmd, arg_str)
+                if rule is None and GLOBAL_ARGS.disable_filtering:
+                    rule = {}
+                if rule is not None:
+                    args_rewriter = None
+                    response_rewriter = None
+
+                    if "response" in rule:
+
+                        def _response_rewriter(lines, rule=rule):
+                            return self.rewrite_matched_lines(rule["response"], lines)
+
+                        response_rewriter = _response_rewriter
+
+                    if "replacement" in rule:
+
+                        def _args_rewriter(
+                            line, cmd=cmd, rule=rule, cmd_arg_sep=cmd_arg_sep
+                        ):
+                            # We also want to match the command in `line`
+                            # and add it back to the replacement string.
+                            # We make sure to keep the exact white spaces
+                            # separating the command and arguments, to not
+                            # rewrite the line unnecessarily.
+                            prefix = cmd + cmd_arg_sep
+                            replacer = {
+                                "pattern": prefix + rule["pattern"],
+                                "replacement": prefix + rule["replacement"],
+                            }
+                            return self.rewrite_line([replacer], line)
+
+                        args_rewriter = _args_rewriter
+
+                    if (
+                        self.tor_browser_mode
+                        and cmd == "GETINFO"
+                        and arg_str == "circuit-status"
+                    ):
+                        old_response_rewriter = response_rewriter
+
+                        def _response_rewriter(
+                            ignored, old_response_rewriter=old_response_rewriter
+                        ):
+                            new_lines = ""
+                            circuits = self.my_circuits()
+                            # The _raw_content is the last raw CIRC
+                            # event received for each circuit id, so
+                            # we just have to remove the event-related
+                            # prefix to have it in circuit-status'
+                            # format. They are already \r\n-terminated.
+                            for c in circuits:
+                                new_lines += str(c._raw_content, "ascii").removeprefix(  # noqa: SLF001
+                                    "650 CIRC ",
+                                )
+                            # Multi-line responses are terminated with
+                            # a dot (.), but an empty answer is
+                            # considered a single-line response which
+                            # need no such termination.
+                            if len(circuits) > 0:
+                                new_lines = (
+                                    "250+circuit-status=\r\n" + new_lines + ".\r\n"
+                                )
+                            else:
+                                new_lines = "250-circuit-status=\r\n"
+                            new_lines += "250 OK\r\n"
+                            if old_response_rewriter:
+                                new_lines = old_response_rewriter(new_lines)
+                            return new_lines
+
+                        response_rewriter = _response_rewriter
+
+                    self.proxy_line(
+                        line,
+                        args_rewriter=args_rewriter,
+                        response_rewriter=response_rewriter,
+                    )
+                else:
+                    self.filter_line(line)
+
+
+class FilteredControlPortProxyHandler(socketserver.StreamRequestHandler):
+    """
+    Class handing each control port connection and collecting information
+    about the origin and using it to find a matching filter rule set. It
+    then delegates the session handling (the actual filtering) to a
+    FilteredControlPortProxySession object.
+    """
+
+    def debug_log(self, line, format_multiline=False, sep=": "):
+        line = line.strip()
+        if format_multiline and "\n" in line:
+            sep += "(multi-line)\n"
+            line = textwrap.indent(line, " " * 4)
+        log(self.client_desc + sep + line)
+
+    def setup(self):
+        super(type(self), self).setup()
+        # We don't want to block forever when waiting for client
+        # requests, because the tor controller connection might have
+        # broken (e.g. if tor restarted) which we need to monitor in
+        # between socket timeouts.
+        self.request.settimeout(TOR_CONTROLLER_PING_INTERVAL)
+
+        self.allowed_commands = {}
+        self.allowed_events = {}
+        self.client_desc = None
+        self.client_pid = None
+        self.client_streams = set()
+        self.controller = None
+        self.filter_name = None
+        self.filters = []
+        self.tor_browser_mode = False
+        self.server_address = self.server.server_address
+        self.subscribed_event_listeners = []
+        for filter_file in glob.glob("/etc/onion-grater.d/*.yml"):
+            try:
+                with open(filter_file, "rb") as fh:
+                    filters = yaml.safe_load(fh.read())
+                    name = re.sub(r"\.yml$", "", os.path.basename(filter_file))
+                    for filter_ in filters:
+                        if name not in filter_:
+                            filter_["name"] = name
+                    self.filters += filters
+            except (yaml.parser.ParserError, yaml.scanner.ScannerError) as err:
+                log(f"filter '{filter_file}' has bad YAML and was not loaded: {err!s}")
+
+    def add_allowed_commands(self, commands):
+        for cmd in commands:
+            allowed_args = commands[cmd]
+            # An empty argument list allows nothing, but will
+            # make some code below easier than if it can be
+            # None as well.
+            if allowed_args is None:
+                allowed_args = []
+            for i in range(len(allowed_args)):
+                if isinstance(allowed_args[i], str):
+                    allowed_args[i] = {"pattern": allowed_args[i]}
+            self.allowed_commands[cmd.upper()] = allowed_args
+
+    def case_insensitive_regex(self, s):
+        return "".join(["[" + c.upper() + c.lower() + "]" for c in s])
+
+    def add_allowed_confs_commands(self, confs):
+        combined_getconf_rule = {
+            "pattern": "("
+            + "|".join([self.case_insensitive_regex(key) for key in confs])
+            + ")"
+        }
+        setconf_reset_part = r"\s*|\s*".join(
+            [
+                self.case_insensitive_regex(key)
+                for key in confs
+                if isinstance(confs[key], list) and "" in confs[key]
+            ],
+        )
+        setconf_assignment_part = r"\s*|\s*".join(
+            [
+                "{}=({})".format(
+                    self.case_insensitive_regex(key),
+                    "|".join(confs[key]),
+                )
+                for key in confs
+                if isinstance(confs[key], list) and len(confs[key]) > 0
+            ]
+        )
+        setconf_parts = []
+        for part in [setconf_reset_part, setconf_assignment_part]:
+            if part and part != "":
+                setconf_parts.append(part)
+        combined_setconf_rule = {
+            "pattern": "({})+".format(r"\s*|\s*".join(setconf_parts)),
+        }
+        for cmd, rule in [
+            ("GETCONF", combined_getconf_rule),
+            ("SETCONF", combined_setconf_rule),
+        ]:
+            if rule["pattern"] != "()+":
+                if cmd not in self.allowed_commands:
+                    self.allowed_commands[cmd] = []
+                self.allowed_commands[cmd].append(rule)
+
+    def add_allowed_events(self, events):
+        for event in events:
+            opts = events[event]
+            # Same as for the `commands` argument list, let's
+            # add an empty dict to simplify later code.
+            if opts is None:
+                opts = {}
+            self.allowed_events[event.upper()] = opts
+
+    def match_and_parse_filter(self, matchers):
+        matched_filters = [
+            filter_
+            for filter_ in self.filters
+            if all(
+                any(val == expected_val or val == "*" for val in filter_.get(key, []))
+                for key, expected_val in matchers
+            )
+        ]
+        if len(matched_filters) == 0:
+            return
+        elif len(matched_filters) > 1:
+            raise RuntimeError(
+                "multiple filters matched: " + ", ".join(matched_filters)
+            )
+        matched_filter = matched_filters[0]
+        self.filter_name = matched_filter["name"]
+        commands = matched_filter.get("commands", {}) or {}
+        self.add_allowed_commands(commands)
+        confs = matched_filter.get("confs", {}) or {}
+        self.add_allowed_confs_commands(confs)
+        events = matched_filter.get("events", {}) or {}
+        self.add_allowed_events(events)
+        self.tor_browser_mode = bool(
+            matched_filter.get(
+                "tor-browser-mode",
+                False,
+            )
+        )
+
+    def connect_to_real_control_port(self):
+        controller = None
+        tries = 0
+        # If tor isn't running this would just loop endlessly as fast
+        # as possible, so let's rate limit it so it at least cannot
+        # become a performance issue.
+        while not controller:
+            if tries >= 3:
+                time.sleep(1)
+            # We would prefer to use the control socket but use the
+            # TCP control port as a workaround for this Tor bug:
+            # https://gitlab.torproject.org/tpo/core/tor/-/issues/25173
+            # This workaround was added while working on the "Always
+            # start Tor Launcher" feature. It remains a mystery why we
+            # don't hit this bug when running a Tails without this
+            # feature but enabling "bridge mode", which should reach
+            # the same state as this feature.
+            # Make sure to revert the commit adding this comment once
+            # the Tor bug is fixed and we want to revert back to using
+            # the control socket.
+            # Also, we would like to use Controller.from_port() here
+            # since it does not attempt fallback on failure, but at
+            # least for Tor Launcher that makes its second connection
+            # that handles events not receive any events breaking e.g.
+            # the progress bar and tor error handling.
+            # It remains to see if Controller.from_socket() is also
+            # affected.
+            controller = stem.connection.connect(
+                control_port=("127.0.0.1", "9052"),
+                control_socket=None,
+            )
+            tries += 1
+        stem.connection.authenticate_cookie(
+            controller, cookie_path=GLOBAL_ARGS.control_cookie_path
+        )
+        return controller
+
+    def handle(self):
+        client_host = self.client_address[0]
+        pid_based_connection = ipaddress.ip_address(client_host).is_loopback
+        if pid_based_connection:
+            self.client_pid = pid_of_laddr(self.client_address)
+            # Deal with the race between looking up the PID, and the
+            # client being killed before we find the PID.
+            if not self.client_pid:
+                return
+            client_apparmor_profile = apparmor_profile_of_pid(self.client_pid)
+            client_user = psutil.Process(self.client_pid).username()
+            matchers = [
+                ("apparmor-profiles", client_apparmor_profile),
+                ("users", client_user),
+            ]
+        else:
+            self.client_pid = None
+            matchers = [
+                ("hosts", client_host),
+            ]
+        self.match_and_parse_filter(matchers)
+        if pid_based_connection:
+            self.client_desc = (
+                "{aa_profile} (pid: {pid}, user: {user}, "
+                "port: {port}, filter: {filter_name})".format(
+                    aa_profile=client_apparmor_profile,
+                    pid=self.client_pid,
+                    user=client_user,
+                    port=self.client_address[1],
+                    filter_name=self.filter_name,
+                )
+            )
+        else:
+            self.client_desc = "{1}:{2} (filter: {0})".format(
+                self.filter_name,
+                *self.client_address,
+            )
+        remote_connection = not pid_based_connection and ipaddress.ip_address(
+            client_host,
+        ) not in ipaddress.ip_network(LOCAL_VETH_NETWORK)
+        if self.tor_browser_mode and remote_connection:
+            self.debug_log(
+                f"filter '{self.filter_name}' has `tor-browser-mode` set "
+                "and we are remote so the option was disabled",
+            )
+            self.tor_browser_mode = False
+
+        if len(self.filters) == 0:
+            status = "no matching filter found, using an empty one"
+        else:
+            status = f"loaded filter: {self.filter_name}"
+        log(f"{self.client_desc} connected: {status}")
+        if GLOBAL_ARGS.debug:
+            log("Final rules:")
+            log(
+                yaml.dump(
+                    {
+                        "commands": self.allowed_commands,
+                        "events": self.allowed_events,
+                        "tor-browser-mode": self.tor_browser_mode,
+                    }
+                )
+            )
+        disconnect_reason = "client quit"
+        try:
+            self.controller = self.connect_to_real_control_port()
+            session = FilteredControlPortProxySession(self)
+            session.handle()
+        except (ConnectionResetError, BrokenPipeError) as err:
+            # Handle clients disconnecting abruptly
+            disconnect_reason = str(err)
+        finally:
+            if self.controller:
+                self.controller.close()
+            log(f"{self.client_desc} disconnected: {disconnect_reason}")
+
+
+class FilteredControlPortProxy(socketserver.ThreadingTCPServer):
+    """
+    Simple subclass just setting some defaults differently.
+    """
+
+    # So we can restart when the listening port if in TIME_WAIT state
+    # after an abrupt shutdown.
+    allow_reuse_address = True
+    # So all server threads immediately quit when the main thread
+    # quits.
+    daemon_threads = True
+
+
+def main():
+    parser = argparse.ArgumentParser()
+    parser.add_argument(
+        "--listen-address",
+        type=str,
+        metavar="ADDR",
+        default=DEFAULT_LISTEN_ADDRESS,
+        help=(
+            "specifies the address on which the server listens "
+            f"(default: {DEFAULT_LISTEN_ADDRESS})"
+        ),
+    )
+    parser.add_argument(
+        "--listen-port",
+        type=int,
+        metavar="PORT",
+        default=DEFAULT_LISTEN_PORT,
+        help=(
+            "specifies the port on which the server listens "
+            f"(default: {DEFAULT_LISTEN_PORT})"
+        ),
+    )
+    parser.add_argument(
+        "--listen-interface",
+        type=str,
+        metavar="INTERFACE",
+        help="specifies the interface on which the server listens (default: NULL)",
+    )
+    parser.add_argument(
+        "--control-cookie-path",
+        type=str,
+        metavar="PATH",
+        default=DEFAULT_COOKIE_PATH,
+        help=(
+            "specifies the path to Tor's control authentication cookie "
+            f"(default: {DEFAULT_COOKIE_PATH})"
+        ),
+    )
+    parser.add_argument(
+        "--complain",
+        action="store_true",
+        default=False,
+        help=("disables all filtering and just prints the commands sent by the client"),
+    )
+    parser.add_argument(
+        "--debug",
+        action="store_true",
+        default="debug" in open("/proc/cmdline").read().split(),
+        help="prints all requests and responses",
+    )
+    # We put the argparse results in the global scope since it's
+    # awkward to extend socketserver so additional data can be sent to
+    # the request handler, where we need access to the arguments.
+    global GLOBAL_ARGS  # noqa: PLW0603
+    GLOBAL_ARGS = parser.parse_args()
+    # Deal with overlapping functionality between arguments
+    GLOBAL_ARGS.__dict__["disable_filtering"] = GLOBAL_ARGS.complain
+    GLOBAL_ARGS.__dict__["print_requests"] = GLOBAL_ARGS.complain or GLOBAL_ARGS.debug
+    GLOBAL_ARGS.__dict__["print_responses"] = GLOBAL_ARGS.debug
+    if GLOBAL_ARGS.listen_interface:
+        ip_address = get_ip_address(GLOBAL_ARGS.listen_interface)
+        if GLOBAL_ARGS.debug:
+            log(
+                f"IP address for interface {GLOBAL_ARGS.listen_interface} : "
+                + ip_address
+            )
+    else:
+        ip_address = GLOBAL_ARGS.listen_address
+    address = (ip_address, GLOBAL_ARGS.listen_port)
+    server = FilteredControlPortProxy(address, FilteredControlPortProxyHandler)
+    log("Tor control port filter started, listening on {}:{}".format(*address))
+    if GLOBAL_ARGS.debug:
+        log("debug on")
+    with contextlib.suppress(KeyboardInterrupt):
+        server.serve_forever()
+
+
+if __name__ == "__main__":
+    main()

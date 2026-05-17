@@ -1,0 +1,137 @@
+[[!meta title="Tails report for July, 2015"]]
+[[!meta date="Tue, 11 Aug 2015 14:35:33 +0000"]]
+[[!pagetemplate template="news.tmpl"]]
+
+July started frenetically, with the postponed release on the 3rd. Then we had a Tails contributors meeting, and it was lots of fun and hard work. We decided broad directions for the incoming years, that you'll see in our draft roadmap for 2016-2017. We also reevaluated our processes and tools, and had a dance party. Tails contributors are ready to go on doing amazing work :)
+
+[[!toc]]
+
+Releases
+========
+
+* [[Tails 1.4.1 was released on July 3rd, 2015|news/version_1.4.1]] (minor release).
+
+* The next release (1.5) is planned for August 11.
+
+Code
+====
+
+## Upgrades and changes
+
+- Upgrade *Tor Browser* to 4.5.3, based on Firefox 31.8.0 ESR.
+
+- Upgrade *Tor* to 0.2.6.9-1~d70.wheezy+1+tails2.
+
+- Upgrade *Linux* to 3.16.7-ckt11-1.
+
+## Fixed problems
+
+- Have AppArmor deny *Tor Browser* access to the list of recently used files.
+
+- Fix automatic upgrades in Windows Camouflage mode.
+
+Documentation and website
+=========================
+
+* We documented how to reset a USB stick or SD card using Mac OS X.
+
+* [[FAQ: Should I manually update add-ons included in Tor Browser?|support/faq#update-add-ons]]
+
+* Adapted the documentation because [[the LAN is now only accessible from the Unsafe Browser|doc/advanced_topics/lan]].
+
+User experience
+===============
+
+* We rediscussed the terminology around installation media and decided
+  to only advertise SD cards as a corner case.
+
+* Clarified the thread model of the automatic ISO verification extension
+  regarding attacks inside the browser.
+
+* There was some work on the Greeter.
+
+Infrastructure
+==============
+
+* Our test suite covers 185 scenarios, 3 more that in April.
+
+* All active development branches [[!tails_ticket 5324 desc="are now
+  built"]] automatically with Jenkins. This is the first stage towards
+  integrating our automated test suite at the core of our software
+  development process, and to run it continuously on our development
+  versions while they are being developed.
+
+* We started a discussion about having a CRM to handle our user support requests.
+
+* We made progress on the automated tests
+  specification,
+  and started working on the corresponding underlying infrastructure,
+  starting with extending the storage capacity on our main server and
+  creating a bunch of new virtual machines.
+
+* We are almost done [[!tails_ticket 9262 desc="porting our ISO build
+  system to Debian Jessie"]].
+
+Outreach
+========
+
+Upcoming events
+---------------
+
+* Andres Gomez, intrigeri and others will present a technical overview of Tails at [[DebConf15|http://debconf15.debconf.org/]] in Heidelberg, Germany, on August 15th.
+
+* Some Tails contributors will be at the [[Chaos Communication Camp|https://events.ccc.de/camp/2015/wiki/Main_Page]] in Mildenberg, Germany, August 13&ndash;17th.
+
+On-going discussions
+====================
+
+* intrigeri issued a call for help.
+
+* KillYourTV shared his Opensearch plugins for Mozilla-based browsers - they might be interesting for Tails contributors and curious :)
+
+* Reuben Abrams informed us of his project of a safe distribution for ARM-based Chromebooks.
+
+Press and testimonials
+======================
+
+* 2015-07-29: [Gut geschützt im Internetcafé](http://www.zeit.de/digital/datenschutz/2015-07/urlaub-internetcafe-mail-facebook) by Johannes Wendt in Zeit (in German).
+
+* 2015-07-27: מדריך: כך תתגוננו מפני מעקב ברשת (in Hebrew).
+
+* 2015-07-25: 'Tails' Bantu Amankan Aktivis Daring in Pikiran Rakyat (in Indonesian).
+
+* 2015-07-23: [Digital Solution Helps Shield Online Activists](http://www.voanews.com/content/digital-solution-helps-shield-online-activists/2873529.html) by Doug Bernard in Voice of America.
+
+* 2015-07-14: Chatting in Secret While We're All Being Watched by Micah Lee in The Intercept.
+
+Translation
+===========
+
+All website PO files
+--------------------
+
+  - de: 19% (1274) strings translated, 0% strings fuzzy, 17% words translated
+  - fr: 46% (3120) strings translated, 2% strings fuzzy, 43% words translated
+  - pt: 27% (1863) strings translated, 3% strings fuzzy, 26% words translated
+
+Total original words: 76959
+
+[[Core PO files|contribute/l10n_tricks/core_po_files.txt]]
+--------------------------------------
+
+  - de: 60% (803) strings translated, 0% strings fuzzy, 68% words translated
+  - fr: 92% (1214) strings translated, 3% strings fuzzy, 92% words translated
+  - pt: 84% (1119) strings translated, 8% strings fuzzy, 87% words translated
+
+Total original words: 14258
+
+Metrics
+=======
+
+* Tails has been started more than 429.889 times this month. This makes 13.867 boots a day on average.
+
+* 24.256 downloads of the OpenPGP signature of Tails ISO from our website.
+
+* 89 bug reports were received through WhisperBack.
+
+-- Report by BitingBird for Tails folks

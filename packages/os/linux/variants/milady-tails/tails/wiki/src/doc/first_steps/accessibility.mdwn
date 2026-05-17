@@ -1,0 +1,113 @@
+[[!meta title="Accessibility"]]
+
+Tails and the GNOME desktop include assistive technologies to support users
+with various impairments and special needs, and to interact with common
+assistive devices.
+
+[[!toc]]
+
+<h1 id="menu">Accessibility menu</h1>
+
+You can activate several assistive technologies, like a screen reader or large
+text, from the accessibility menu in the top bar, the
+[[!img lib/accessibility.png alt="" class="symbolic" link="no"]]
+icon that looks like a person.
+
+[[!img desktop/accessibility.png class="screenshot"
+alt="Accessibility menu with the following options, all disabled
+by default: High Contrast, Zoom, Large Text, Screen Reader, Screen Keyboard,
+Visual Alters, Sticky Keys, Slow Keys, Bounce Keys, and Mouse Keys"]]
+
+<h1 id="settings">Accessibility settings</h1>
+
+More accessibility settings are available in the *Settings* utility.
+
+To configure all possible accessibility settings, you can either:
+
+- Choose **Accessibility Settings** in the accessibility menu in the top bar,
+  the [[!img lib/accessibility.png alt="" class="symbolic" link="no"]] icon
+  that looks like a person.
+
+- Choose **Apps&nbsp;▸ System Tools&nbsp;▸ Settings** and select
+  **Accessibility** in the sidebar of the *Settings* utility.
+
+<h1 id="shortcuts">Keyboard shortcuts</h1>
+
+<table>
+<tr><td>Turn screen reader on or off</td><td>Alt+[[!img lib/start.png class="symbolic" link="no" alt="Super"]]+S</td></tr>
+<tr><td>Turn zoom on or off</td><td>Alt+[[!img lib/start.png class="symbolic" link="no" alt="Super"]]+8</td></tr>
+<tr><td>Zoom in</td><td>Alt+[[!img lib/start.png class="symbolic" link="no" alt="Super"]]+=</td></tr>
+<tr><td>Zoom out</td><td>Alt+[[!img lib/start.png class="symbolic" link="no" alt="Super"]]+-</td></tr>
+<tr><td>Window resize menu</td><td>Alt+Space</td></tr>
+</table>
+
+To learn about all keyboard shortcuts in GNOME visit [GNOME Help: Useful
+keyboard shortcuts](https://help.gnome.org/gnome-help/shell-keyboard-shortcuts.html)
+or use the *Settings* utility in Tails:
+
+1. Choose **Apps&nbsp;▸ System Tools&nbsp;▸ Settings**.
+
+1. In the *Settings* utility, choose **Keyboard&nbsp;▸ Keyboard
+   Shortcuts&nbsp;▸ View and Customize Shortcuts**.
+
+To access the accessibility menu using the keyboard:
+
+1. Press **Ctrl+Alt+Tab** to move the keyboard
+   focus to the top bar.
+
+1. Use the arrow keys on the keyboard to select the accessibility menu.
+
+1. Press **Enter** to open the menu.
+
+1. Use the up and down arrow keys to select items in
+   the menu.
+
+1. Press **Space** to toggle the selected
+   item.
+
+1. Press **Esc** to close the menu.
+
+<h1 id="reader">Screen reader</h1>
+
+To hear screen elements spoken to you, turn on the **Screen Reader** from the
+accessibility menu ([[!img lib/accessibility.png alt=""
+class="symbolic" link="no"]]).
+
+[GNOME Help: *Orca* Screen Reader](https://help.gnome.org/orca/)
+
+<h1 id="keyboard">Screen keyboard</h1>
+
+If you prefer a pointing device over the keyboard, turn on the **Screen
+Keyboard** from the accessibility menu ([[!img lib/accessibility.png
+alt="" class="symbolic" link="no"]]).
+
+<div class="tip">
+
+<p>You can also use the screen keyboard to protect against hardware keyloggers
+by avoiding to use the actual keyboard.</p>
+
+<p>If a keylogger has been physically installed on the computer, your
+passwords, personal information, and other data typed on the keyboard could be
+stored and accessed by someone else, even if you are using Tails.</p>
+
+<p>For an example, see
+<a href="https://www.youtube.com/watch?v=6JJo8qCYE8M">KeeLog: KeyGrabber
+forensic keylogger getting started</a>.</p>
+
+<p>Keyloggers are more likely on public computers, in Internet cafés or
+libraries, and on desktop computers, where a device is easier to hide.</p>
+
+<p>[[Reducing risks when using untrusted
+computers|doc/about/warnings/computer]]</p>
+
+</div>
+
+<div class="bug">
+
+<p>The screen keyboard doesn't work in <i>Kleopatra</i> and <i>Electrum</i>.
+([[!tails_ticket 19695]])</p>
+
+<p>Instead, you can use the screen keyboard in the <i>Text Editor</i> first,
+then cut and paste into one of these applications.</p>
+
+</div>

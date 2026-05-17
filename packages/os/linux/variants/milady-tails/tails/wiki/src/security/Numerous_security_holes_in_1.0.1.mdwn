@@ -1,0 +1,23 @@
+[[!meta date="Sun, 20 Jul 2014 00:00:00 +0000"]]
+[[!meta title="Numerous security holes in Tails 1.0.1"]]
+[[!pagetemplate template="news.tmpl"]]
+
+[[!tag security/fixed]]
+
+Several security holes affect Tails 1.0.1.
+
+We **strongly** encourage you to [[upgrade to Tails
+1.1|news/version_1.1]] as soon as possible.
+
+Details
+=======
+
+ - Iceweasel and its bundled NSS: [[!mfsa 2014-56]], [[!mfsa 2014-59]],
+   [[!mfsa 2014-61]], [[!mfsa 2014-62]], [[!mfsa 2014-63]],
+   [[!mfsa 2014-64]]
+ - libxml2: [[!debsa2014 2978]]
+ - dbus: [[!debsa2014 2971]]
+ - linux: [[!debsa2014 2972]]
+ - gnupg: [[!debsa2014 2967]]
+ - tiff: [[!debsa2014 2965]]
+ - apt: [[!debsa2014 2958]]

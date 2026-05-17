@@ -1,0 +1,584 @@
+#!/usr/bin/python3 -I
+"""
+This service listens on a unix domain socket and provides a simple interface to
+run privileged actions.
+
+It is meant to be run as root: in fact, some of the functionalities it is
+exposing require root privileges. Some others are not (see UserCommand), so in
+theory we could split this portal into a privileged one and an unprivileged
+one. However, that wouldn't reduce the attack surface much, if at all.
+"""
+import logging
+import multiprocessing
+import os
+import re
+import signal
+import socket
+import socketserver
+import stat
+import sys
+import time
+import uuid
+from argparse import ArgumentDefaultsHelpFormatter, ArgumentParser
+from logging import getLogger
+from pathlib import Path
+from subprocess import PIPE, Popen
+from typing import ClassVar
+
+import systemd.daemon
+
+from tails_jsonrpc import (
+    InvalidMessageError,
+    Protocol,
+    ErrorResponse,
+    Response,
+    Request,
+)
+
+from tailslib import CLEARNET_USERNAME, PERSISTENT_STORAGE_USERNAME
+from tailslib.logutils import configure_logging
+from tca.config import CONFIG_FILE as TCA_CONFIG_FILE
+
+TPS_TOR_CONFIG_FEATURE_NAME = "TorConfiguration"
+BOOTSTRAP_LOCK_FILE = "/var/lib/tca/bootstrapping.lock"
+
+log = getLogger("tca-portal")
+
+
+# notes about the process model of tca-portal:
+# - tca-portal runs a dedicated process for each incoming connection, thanks to ForkingUnixServer
+# - each Handler spawns a dedicated process to read incoming data
+# - if incoming data is valid, it will spawn a process to manage the actual command process. That's
+#   Handler.run. This method will spawn a Popen. This is the process that the user is actually interested in.
+#   Handler.run will wait for Popen to complete, get results, push data to a queue where Handler.handle will pick it up and send the response
+#
+# tca-portal
+#  + Handler1
+#    …
+#  + Handler2
+#  |-- reader
+#  |-- + run
+#  |   `-- Popen (the actual command that the user wants to run)
+#  `-- + run
+#      `-- Popen (the actual command that the user wants to run)
+
+
+class FDUnixStreamServer(socketserver.UnixStreamServer):
+    """
+    This server can *both* use a previously activated fd, or bind a new one.
+
+    To make it use a previously activated fd, just pass it as `fd` keyword parameter to the constructor.
+    """
+
+    def __init__(self, *args, **kwargs):
+        self.fd: int = kwargs.pop("fd", None)
+        if self.fd is not None:
+            # Invoke base but omit bind/listen steps
+            kwargs["bind_and_activate"] = False
+        socketserver.UnixStreamServer.__init__(self, *args, **kwargs)
+        if self.fd is not None:
+            self.socket = socket.fromfd(self.fd, self.address_family, self.socket_type)
+
+
+class ForkingUnixServer(socketserver.ForkingMixIn, FDUnixStreamServer):
+    allow_reuse_address = True
+    timeout = None
+
+
+class InvalidArgsError(InvalidMessageError):
+    pass
+
+
+class BaseCommand:
+    def __init__(self, cmd: tuple[str, ...], arguments: bool):
+        self.cmd = cmd
+        self.arguments = arguments
+        # See WriteFileCommand.run for an example of how to use this
+        # in a child class.
+        self.stdin = None
+
+    def validate_request(self, request: Request) -> None:
+        """
+        Raise if it's not valid.
+        """
+        self.full_command(request)
+
+    def validate_args(self, args: tuple) -> tuple:
+        """
+        Validate and update the command arguments.
+
+        Raise an InvalidMessageError if the arguments are not valid.
+
+        This method is meant to be overridden, so that you can easily add validation to your Command.
+        """
+        if not self.arguments and args:
+            raise InvalidArgsError("Arguments are not accepted for this command")
+        return args
+
+    def full_command(self, request: Request) -> tuple:
+        cmd = (*self.cmd, *self.validate_args(request.args))
+        return cmd
+
+    def run(self, request: Request):
+        cmd = self.full_command(request)
+        log.debug("Running %s", cmd)
+        return Popen(cmd, stdin=PIPE, stdout=PIPE, universal_newlines=True)
+
+    def create_response(self, returncode: int, stdout, stderr) -> tuple[bool, dict]:
+        """
+        First returnvalue is False iff it's an error
+
+        Second returnvalue is a dictionary to be sent to the client
+        """
+        if returncode == 0:
+            return True, {"result": {"returncode": returncode, "stdout": stdout}}
+        else:
+            return False, {
+                "error": "Command failed with returncode %d" % returncode,
+                "code": 1,
+                "data": {"returncode": returncode},
+            }
+
+
+class RootCommand(BaseCommand):
+    pass
+
+
+class UserCommand(BaseCommand):
+    def full_command(self, request: Request) -> tuple:
+        args = ("/usr/local/lib/run-with-user-env", *(super().full_command(request)))
+        return args
+
+
+class UserCommandTransientSystemdScope(BaseCommand):
+    def full_command(self, request: Request) -> tuple:
+        unit_name = "tca-portal-UserCommand-" + str(uuid.uuid4())
+        args = (
+            "/usr/local/lib/run-with-user-env",
+            "--transient-systemd-scope",
+            unit_name,
+            *(super().full_command(request)),
+        )
+        return args
+
+
+class PersistentStorageCommand(BaseCommand):
+    def full_command(self, request: Request) -> tuple:
+        drop = ("/sbin/runuser", "-u", PERSISTENT_STORAGE_USERNAME)
+        args = (*drop, "--", *(super().full_command(request)))
+        return args
+
+
+class TorCommand(BaseCommand):
+    def full_command(self, request: Request) -> tuple:
+        drop = ("/sbin/runuser", "-u", "debian-tor")
+        args = (*drop, "--", *(super().full_command(request)))
+        return args
+
+
+class GetNetworkTimeCommand(BaseCommand):
+    def __init__(self):
+        super().__init__(
+            ("/usr/local/lib/tails-get-network-time", "--log-target=syslog"),
+            False,
+        )
+
+    def full_command(self, request: Request) -> tuple:
+        drop = ("runuser", "-u", CLEARNET_USERNAME)
+        args = (*drop, "--", *(super().full_command(request)))
+        return args
+
+    def create_response(self, returncode: int, stdout, stderr) -> tuple[bool, dict]:
+        """
+        The returncode is important to know the reason of the failure
+        """
+        ok, data = super().create_response(returncode, stdout, stderr)
+        if not ok:
+            data["code"] = returncode
+
+        return ok, data
+
+
+class SetTimeCommand(RootCommand):
+    """
+    >>> c = SetTimeCommand()
+
+    >>> c.validate_args(('2021-08-06T17:38:12+00:00',))
+    ('2021-08-06T17:38:12+00:00',)
+
+    Empty time is refused before even trying to check the exact format:
+    >>> c.validate_args(('',))
+    Traceback (most recent call last):
+        ...
+    InvalidArgsError: Datestring too short
+
+    Format mismatch is refused, even if tails-set-date itself would accept it:
+    >>> c.validate_args(('2021-08-06 -123456seconds',))
+    Traceback (most recent call last):
+        ...
+    InvalidArgsError: Datestring has invalid format
+
+    """
+
+    def __init__(self):
+        super().__init__(("/usr/local/lib/tails-set-date",), True)
+        # we know our argument is an ISO8601 date whose separator is a T,
+        # and with no microseconds
+        # example: 2021-08-06T17:38:49+00:00
+        regexp = (
+            # date
+            r"^\d{4}-\d\d-\d\d"
+            # time
+            r"T\d\d:\d\d:\d\d"
+            # timezone offset
+            r"[+-]\d\d:\d\d$"
+        )
+        self.re = re.compile(regexp)
+
+    def validate_args(self, args: tuple) -> tuple:
+        if len(args) != 1:
+            raise InvalidArgsError("Invalid number of arguments")
+        datestring = args[0]
+        max_len = 25
+        min_len = 25
+        if len(datestring) > max_len:
+            raise InvalidArgsError("Datestring too long")
+        if len(datestring) < min_len:
+            raise InvalidArgsError("Datestring too short")
+        if not self.re.fullmatch(datestring):
+            raise InvalidArgsError("Datestring has invalid format")
+        return args
+
+
+class WriteFileCommand(RootCommand):
+    def __init__(self, dest_file: str):
+        super().__init__(("/bin/dd", "status=none", f"of={dest_file}"), True)
+
+    def validate_args(self, args: tuple) -> tuple:
+        if len(args) != 1:
+            raise InvalidArgsError("Invalid number of arguments")
+        config_str = args[0]
+        max_len = 4096
+        if len(config_str) > max_len:
+            raise InvalidArgsError("Configuration string is too long")
+        return args
+
+    def full_command(self, request: Request) -> tuple:
+        cmd = (*self.cmd,)
+        return cmd
+
+    def run(self, request: Request):
+        self.stdin = self.validate_args(request.args)[0]
+        return super().run(request)
+
+
+class Handler(socketserver.StreamRequestHandler):
+    """
+    This class implements the JSON-RPC line-protocol + some glue code to call relevant actions.
+
+    The protocol is basically JSON-RPC with some more restrictions:
+     - requests are in a single line
+     - responses are in a single line
+
+    This is not supported at the moment, but could:
+     - server-initiated messages (ie: signals)
+    """
+
+    MAX_LINESIZE = 4096
+
+    spawn_commands: ClassVar = {  # some commands just mean "run this specified commands as LIVE_USERNAME, please"
+        "scan-qrcode": UserCommand(("/usr/bin/zbarcam", "--raw", "--oneshot"), False),
+        "open-unsafebrowser": UserCommand(
+            (
+                "/usr/local/bin/gtk-abspath-launch",
+                "/usr/share/applications/unsafe-browser.desktop",
+            ),
+            False,
+        ),
+        "open-tbb": UserCommandTransientSystemdScope(
+            (
+                "/usr/local/bin/gtk-abspath-launch",
+                "/usr/share/applications/org.boum.tails.TorBrowser.desktop",
+            ),
+            False,
+        ),
+        "open-onioncircuits": UserCommandTransientSystemdScope(
+            (
+                "/usr/local/bin/gtk-abspath-launch",
+                "/usr/share/applications/onioncircuits.desktop",
+            ),
+            False,
+        ),
+        "open-documentation": UserCommandTransientSystemdScope(
+            ("/usr/local/bin/tails-documentation",),
+            True,
+        ),
+        "open-text-editor": UserCommandTransientSystemdScope(
+            ("/usr/bin/gnome-text-editor",),
+            True,
+        ),
+        "open-wifi-config": UserCommand(
+            ("/bin/systemctl", "--user", "start", "gnome-wifi-panel"),
+            False,
+        ),
+        "set-tor-sandbox": RootCommand(
+            ("/usr/local/lib/tor-pt-configuration-helper",),
+            True,
+        ),
+        # It would be nicer to do this in Python without calling out
+        # to external processes, but it would require either implementing
+        # the Popen interface that the portal assumes, or refactoring
+        # the Handler.run and Command.run code a fair bit:
+        # https://gitlab.tails.boum.org/tails/tails/-/merge_requests/544#note_174919
+        "is-tor-configuration-persistent?": UserCommand(
+            ("/usr/local/lib/tpscli", "is-active", TPS_TOR_CONFIG_FEATURE_NAME),
+            False,
+        ),
+        "ensure-tor-configuration-is-persistent": PersistentStorageCommand(
+            ("/usr/local/lib/tpscli", "ensure-is-active", TPS_TOR_CONFIG_FEATURE_NAME),
+            False,
+        ),
+        "ensure-tor-configuration-is-not-persistent": PersistentStorageCommand(
+            (
+                "/usr/local/lib/tpscli",
+                "ensure-is-inactive",
+                TPS_TOR_CONFIG_FEATURE_NAME,
+            ),
+            False,
+        ),
+        "get-network-time": GetNetworkTimeCommand(),
+        "set-system-time": SetTimeCommand(),
+        "read-tca-config": RootCommand(("/bin/cat", TCA_CONFIG_FILE), False),
+        "write-tca-config": WriteFileCommand(TCA_CONFIG_FILE),
+        "lock-bootstrap": RootCommand(("/usr/bin/touch", BOOTSTRAP_LOCK_FILE), False),
+        "unlock-bootstrap": RootCommand(("/usr/bin/rm", BOOTSTRAP_LOCK_FILE), False),
+        # The user running tails-circumvention-settings must be
+        # allowed to run obfs4proxy with unfiltered access to the
+        # Internet, and be allowed to connect to the local port opened
+        # by obfs4proxy. The debian-tor user satisfies those criteria.
+        "get-bridge-settings": TorCommand(
+            ("/usr/local/lib/tails-circumvention-settings",),
+            True,
+        ),
+    }
+    valid_commands: ClassVar = set(spawn_commands.keys())
+
+    protocol = Protocol()
+
+    def handle_line(self, line: bytes) -> Response | None:
+        """
+        This will handle bytes that we believe might form a valid request (i.e.: a not-too-long sequence of
+        bytes with no newline in between; see Handler.reader) and check if they actually do.
+        If the bytes do not form a syntactically valid request, a Response is returned.
+
+        If `line` is indeed a syntactically valid request, job is passed to Handler.handle_request, which will
+        perform additional validation and spawn a dedicated process to handle the request.
+
+        If every validation passes, None is returned.
+        """
+        try:
+            req = self.protocol.parse_request(line)
+        except InvalidMessageError as exc:
+            return ErrorResponse(error=exc)
+
+        try:
+            return self.handle_request(req)
+        except InvalidArgsError:
+            log.error("Invalid arguments: %s", str(req.args))
+            return req.error_respond(error="Invalid arguments")
+        except InvalidMessageError:
+            return req.error_respond(error="Invalid request")
+        except Exception:
+            log.exception("Error processing request %s", req)
+            return req.error_respond(error="Server error")
+
+    def handle_request(self, req: Request) -> Response | None:
+        """
+        This will handle a request from the client.
+
+        It will perform high-level validation: check that the request refers to a valid command, and validate
+        the arguments to that command.
+        If the validation fails, a Response will be returned.
+
+        After that, a process will be spawned; the outcome of it will be pushed to outgoing_q
+        """
+        if req.method not in self.valid_commands:
+            return req.error_respond(error="Invalid method")
+        if req.method not in self.spawn_commands:
+            return req.error_respond(error="Method not implemented")
+
+        log = getLogger(self.__class__.__name__)
+        log.info("Received valid request '%s'", req.method)
+        cmd = self.spawn_commands[req.method]
+        cmd.validate_request(req)
+        p = multiprocessing.Process(target=self.run, args=(cmd, req))
+        p.start()
+        return None
+
+    def run(self, cmd, req):
+        """
+        Spawn the intended cmd, then wait for it and put the appropriate response in the outgoing_q.
+
+        This method is intended to be run in a dedicated Process.
+
+        Reset the SIGCHLD signal handler to default. Ignoring signals would be inherited by spawned
+        processes and we do not want to manipulate their way of signal processing.
+        """
+        signal.signal(signal.SIGCHLD, signal.SIG_DFL)
+        process = cmd.run(req)
+        # stdout and stderr from the process
+        stdout, _ = process.communicate(cmd.stdin)
+        ok, data = cmd.create_response(process.returncode, stdout, None)
+
+        if ok:
+            response = req.respond(**data)
+        else:
+            assert data["error"] is not None
+            response = req.error_respond(**data)
+        self.outgoing_q.put(response)
+
+    def send(self, response: Response):
+        log = getLogger("traffic")
+        output = response.serialize()
+        log.debug("-> %s", output)
+        output += "\n"
+        self.request.send(output.encode("utf8"))
+
+    def reader(self):
+        """
+        Read from the socket. This method is intended to be run as a dedicated process.
+
+        It reads from the socket, processes the data accordingly, and passes it to handle_line
+        (which will deal with parsing, validating, and spawning dedicated processes for it).
+
+        Ignore SIGCHLD signals to avoid creation of zombie processes. Spawned processes are not
+        waited for and their status is not important.
+        """
+        log = getLogger("traffic")
+        signal.signal(signal.SIGCHLD, signal.SIG_IGN)
+        try:
+            while True:
+                peek_ahead = self.request.recv(self.MAX_LINESIZE, socket.MSG_PEEK)
+                if not peek_ahead:
+                    return
+                if b"\n" not in peek_ahead:
+                    time.sleep(0.1)
+                    continue
+                request_length = peek_ahead.find(b"\n")
+                line_in = (
+                    self.request.recv(request_length + 1).rstrip(b"\n").decode("utf8")
+                )
+                if not line_in:
+                    continue
+                log.debug("<- %s", line_in)
+                response = self.handle_line(line_in.lstrip())
+                if response is not None:
+                    self.outgoing_q.put(response)
+        except ConnectionResetError:
+            log.error("Connection reset by peer")
+        finally:
+            self.outgoing_q.put(None)
+
+    def handle(self):
+        self.pid = os.getpid()
+        self.outgoing_q = multiprocessing.Queue()
+
+        self.reader_process = multiprocessing.Process(target=self.reader)
+        self.reader_process.start()
+
+        while True:
+            response = self.outgoing_q.get()
+            if response is None:
+                break
+            self.send(response)
+
+        self.reader_process.join()
+
+
+def main():
+    if os.getuid() != 0:
+        print("%s must be run as root" % sys.argv[0], file=sys.stderr)
+        sys.exit(1)
+
+    # Unset LANG (which is set to en_US.UTF-8 when running as a systemd
+    # system service) to avoid overwriting the language dumped to the
+    # user env file when using run-with-user-env.
+    os.unsetenv("LANG")
+
+    p = ArgumentParser(formatter_class=ArgumentDefaultsHelpFormatter)
+    socket_parser = p.add_mutually_exclusive_group(required=False)
+    socket_parser.add_argument(
+        "--systemd-socket",
+        action="store_true",
+        default=False,
+        help="use systemd-activated socket; "
+        "you **MUST** set it in production. Not doing so is considered insecure!",
+    )
+    socket_parser.add_argument(
+        "--listen",
+        metavar="SOCKET-PATH",
+        default="/run/tca-portal.sock",
+        help="Ignored if --systemd-socket is used",
+    )
+    p.add_argument(
+        "--log-level",
+        metavar="LEVEL",
+        choices=("DEBUG", "INFO", "WARNING", "CRITICAL"),
+    )
+    p.add_argument(
+        "--doctest-only",
+        action="store_true",
+        default=False,
+    )
+
+    args = p.parse_args()
+
+    if args.log_level:
+        level = args.log_level
+    elif os.getenv("DEBUG") or "debug" in Path("/proc/cmdline").read_text().split():
+        level = logging.DEBUG
+    else:
+        level = logging.INFO
+
+    log_conf = {"level": level}
+
+    configure_logging(hint="syslog", ident="tca-portal", **log_conf)
+
+    if args.doctest_only:
+        import doctest
+
+        failures, tests = doctest.testmod(verbose=(args.log_level == "DEBUG"))
+        sys.exit(1 if failures > 0 else 0)
+
+    if not args.systemd_socket:
+        # Yes, this is probably unsafe, because TOCTOU. However:
+        #  - this code path is just there for development. We always use --systemd-socket in practice
+        #  - the default path, /run/tca-portal.sock, is in a directory which is only writable by root
+        #  - even if an attacker manages to put a file they own in args.listen, this will lead to
+        #    ForkingUnixServer failing later, i.e.: a denial of service.
+        if os.path.exists(args.listen) and stat.S_ISSOCK(os.stat(args.listen).st_mode):
+            os.remove(args.listen)
+    if args.systemd_socket:
+        available_fds = systemd.daemon.listen_fds()
+        log.debug("Available fds: %s" % str(available_fds))
+        if not available_fds:
+            print("Error: no systemd-activated socket found", file=sys.stderr)
+            sys.exit(1)
+        elif len(available_fds) != 1:
+            print("Error: number of FDs received is incorrect")
+            sys.exit(1)
+        listen_fd = available_fds[0]
+    else:
+        listen_fd = None
+    with ForkingUnixServer(args.listen, Handler, fd=listen_fd) as server:
+        if not args.systemd_socket:
+            os.chmod(args.listen, 0o600)
+            log.info("Listening on %s", args.listen)
+        else:
+            log.info("Serving on a systemd-activated socket")
+        systemd.daemon.notify("READY=1")
+        server.serve_forever()
+
+
+if __name__ == "__main__":
+    main()

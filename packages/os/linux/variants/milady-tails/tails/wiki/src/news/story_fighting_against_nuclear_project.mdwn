@@ -1,0 +1,25 @@
+[[!meta title="Fighting against a nuclear project in France"]]
+[[!meta date="Mon, 12 May 2025 23:19:23 +0000"]]
+[[!pagetemplate template="news.tmpl"]]
+[[!tag announce]]
+
+[[!img contribute/how/user_experience/interviews/robin.jpg link="no" alt="Stop sign in front of a nuclear power plant"]]
+
+Robin is an activist in struggle against a nuclear project in France. He has
+been using Tails as his default operating system for all his activism since 5
+years, creating a clear separation between his activism (using Tails) and
+personal life (using encrypted Debian).
+
+At his place, many nomadic activists use Tails USB sticks instead of having
+personal computers, allowing them to maintain privacy while using shared
+devices.
+
+After facing repression, encrypting all their data became a baseline practice
+in his group. He prefers training others on Tails because it's easier to
+implement than teaching full computer encryption.
+
+> *Because Tails is easy to share, even people with low technical abilities are
+> able to use it. For the security of a group, what matters is the lowest
+> security level within that group.*
+
+[[Read our full interview with Robin.|contribute/how/user_experience/interviews/robin]]

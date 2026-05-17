@@ -1,0 +1,12 @@
+[Unit]
+Description=Report possible errors about disk partitioning
+Documentation=https://tails.net/install
+ConditionUser=1000
+ConditionPathExists=/var/lib/live/config/tails.disk-partitioning-errors
+
+[Service]
+ExecStart=/usr/local/lib/tails-report-disk-partitioning-errors
+RemainAfterExit=yes
+
+[Install]
+WantedBy=desktop.target

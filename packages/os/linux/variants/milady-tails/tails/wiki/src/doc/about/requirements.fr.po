@@ -1,0 +1,582 @@
+# SOME DESCRIPTIVE TITLE
+# Copyright (C) YEAR Free Software Foundation, Inc.
+# This file is distributed under the same license as the PACKAGE package.
+# FIRST AUTHOR <EMAIL@ADDRESS>, YEAR.
+#
+msgid ""
+msgstr ""
+"Project-Id-Version: Tails\n"
+"Report-Msgid-Bugs-To: tails-l10n@boum.org\n"
+"POT-Creation-Date: 2026-03-27 10:22+0000\n"
+"PO-Revision-Date: 2026-04-03 19:05+0000\n"
+"Last-Translator: Chre <tor@renaudineau.org>\n"
+"Language-Team: Tails translators <tails@boum.org>\n"
+"Language: fr\n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+"Plural-Forms: nplurals=2; plural=n > 1;\n"
+"X-Generator: Weblate 5.13.2\n"
+
+#. type: Plain text
+#, no-wrap
+msgid "[[!meta title=\"System requirements and recommended USB sticks\"]]\n"
+msgstr "[[!meta title=\"Configuration requise et clés USB recommandées\"]]\n"
+
+#. type: Plain text
+#, no-wrap
+msgid "[[!toc startlevel=2 levels=2]]\n"
+msgstr "[[!toc startlevel=2 levels=2]]\n"
+
+#. type: Plain text
+#, no-wrap
+msgid "<h2 id=\"computer\">System requirements</h2>\n"
+msgstr "<h2 id=\"computer\">Configuration requise</h2>\n"
+
+#. type: Plain text
+msgid "Tails works on most PC computers that are less than 10 years old."
+msgstr ""
+"Tails fonctionne sur la plupart des ordinateurs PC qui ont moins de 10 ans."
+
+#. type: Plain text
+msgid "Tails does not work on:"
+msgstr "Tails ne fonctionne pas sur :"
+
+#. type: Bullet: '- '
+msgid "Mac computers with an Apple processor (M1, M2, and so on)"
+msgstr "Les ordinateurs Mac équipés d'un processeur Apple (M1, M2 et suivants)"
+
+#. type: Bullet: '- '
+msgid "Smartphones or tablets"
+msgstr "Les smartphones et les tablettes"
+
+#. type: Bullet: '- '
+msgid "Raspberry Pi"
+msgstr "Raspberry Pi"
+
+#. type: Plain text
+msgid ""
+"Tails might not work on some PC computers, for example, if their [[graphics "
+"card is incompatible with Linux|support/known_issues/graphics]]. Nvidia or "
+"AMD Radeon cards often do not work in Tails."
+msgstr ""
+"Tails pourrait ne pas fonctionner sur certains ordinateurs PC récents, par "
+"exemple, si leur ["
+"[carte graphique est incompatible avec Linux|support/known_issues/graphics]]"
+". Souvent les cartes Nvidia ou AMD Radeon ne fonctionnent pas dans Tails."
+
+#. type: Plain text
+#, no-wrap
+msgid ""
+"<p>See our [[list of known hardware compatibility\n"
+"issues|support/known_issues]].</p>\n"
+msgstr ""
+"<p>Voir notre [[liste des problèmes de compatibilité matérielle\n"
+"connus|support/known_issues]].</p>\n"
+
+#. type: Title ###
+#, no-wrap
+msgid "Detailed hardware requirements"
+msgstr "Besoins matériels détaillés"
+
+#. type: Bullet: '- '
+msgid "3 GB of RAM to work smoothly."
+msgstr "3 Go de RAM pour une utilisation confortable."
+
+#. type: Plain text
+#, no-wrap
+msgid ""
+"  Tails can work with less than 3 GB RAM but might experience reduced\n"
+"  performance, instability, or crashes.\n"
+msgstr ""
+"  Tails peut fonctionner avec moins de 3 Go de RAM mais pourrait rencontrer\n"
+"  une baisse des performances, de l'instabilité ou des plantages.\n"
+
+#. type: Bullet: '- '
+msgid "The ability to start from a USB stick or a DVD reader."
+msgstr ""
+"La possibilité de démarrer à partir d'une clé USB ou d'un lecteur de DVD."
+
+#. type: Bullet: '- '
+msgid ""
+"A 64-bit [[!wikipedia x86-64]] [[!wikipedia IBM PC compatible]] processor."
+msgstr ""
+"Un processeur [[!wikipedia_fr Compatible_PC desc=\"compatible IBM PC\"]] 64 "
+"bits [[!wikipedia_fr x64 desc=\"x86-64\"]]."
+
+#. type: Bullet: '  * '
+msgid ""
+"Tails does not works on [[!wikipedia ARM_architecture desc=\"ARM\"]] or [[!"
+"wikipedia PowerPC]] processors."
+msgstr ""
+"Tails ne fonctionne pas sur les processeurs [[!wikipedia_fr Architecture_ARM "
+"desc=\"ARM\"]] ou [[!wikipedia_fr PowerPC]]."
+
+#. type: Bullet: '  * '
+msgid ""
+"Tails does not work on 32-bit computers since [[Tails 3.0|news/"
+"Tails_3.0_will_require_a_64-bit_processor]] (June 2017)."
+msgstr ""
+"Tails ne fonctionne pas sur les ordinateurs 32 bits depuis [[Tails 3.0|news/"
+"Tails_3.0_will_require_a_64-bit_processor]] (juin 2017)."
+
+#. type: Title ###
+#, no-wrap
+msgid "Recommended laptops"
+msgstr "Ordinateurs portables recommandés"
+
+#. type: Plain text
+msgid ""
+"Laptop models evolve too rapidly for us to be able to provide an up-to-date "
+"list of recommended hardware. Below are some guidelines if you, or your "
+"organization, are considering acquiring a laptop dedicated to running Tails."
+msgstr ""
+"Les modèles d'ordinateurs portables évoluent trop rapidement pour nous "
+"permettre de fournir une liste à jour du matériel recommandé. Ci-dessous se "
+"trouvent quelques consignes si vous, ou votre organisation, envisagez "
+"d'acquérir un ordinateur portable dédié à faire tourner Tails."
+
+#. type: Title ####
+#, no-wrap
+msgid "For PC"
+msgstr "Pour PC"
+
+#. type: Bullet: '- '
+msgid "Avoid \"gaming\" models with Nvidia or AMD Radeon graphics cards."
+msgstr ""
+"Évitez les modèles dédiés au jeu vidéo (« gaming ») avec des cartes "
+"graphiques Nvidia ou AMD Radeon."
+
+#. type: Bullet: '- '
+msgid ""
+"Consider buying a refurbished laptop from a high-end (professional) series.  "
+"These are cheaper and will last longer than new but lower-quality laptops."
+msgstr ""
+"Réfléchissez à acheter un ordinateur portable reconditionné de séries haut "
+"de gamme (professionnelles).  Ils sont moins chers et dureront plus "
+"longtemps que des ordinateurs portables récents mais de moins bonne qualité."
+
+#. type: Bullet: '  * '
+msgid ""
+"For example, the Lenovo ThinkPad series work well with Tails, including the "
+"X250, X1 Carbon, T440, T480, and T490 models."
+msgstr ""
+"Par exemple, les séries de Lenovo ThinkPad fonctionnent bien avec Tails, "
+"notamment les modèles X250, X1 Carbon, T440, T480 et T490."
+
+#. type: Bullet: '  * '
+msgid ""
+"If you live in a part of the world where buying refurbished laptops is "
+"uncommon, look on eBay and Amazon. Amazon offers a 90-day [Amazon Renewed "
+"Guarantee](https://www.amazon.com/gp/help/customer/display.html?"
+"nodeId=G4ZAA22U35N373NX)."
+msgstr ""
+"Si vous vivez dans une partie du monde où acheter des ordinateurs portables "
+"reconditionnés est inhabituel, regardez sur eBay et Amazon. Amazon offre une "
+"[garantie Amazon Renewed](https://www.amazon.com/gp/help/customer/"
+"display.html?nodeId=G4ZAA22U35N373NX) de 90 jours."
+
+#. type: Bullet: '- '
+msgid ""
+"Consider buying a new laptop from vendors who guarantee the compatibility "
+"with Linux and Tails like [ThinkPenguin](https://www.thinkpenguin.com/)."
+msgstr ""
+"Réfléchissez à acheter un nouvel ordinateur portable chez un marchand "
+"garantissant la compatibilité avec Linux et Tails comme [ThinkPenguin]"
+"(https://www.thinkpenguin.com/)."
+
+#. type: Title ####
+#, no-wrap
+msgid "For Mac"
+msgstr "Pour Mac"
+
+#. type: Plain text
+msgid "Tails still works on some older Mac computers with an Intel processor."
+msgstr ""
+"Tails fonctionne toujours sur certains anciens ordinateurs Mac équipés d'un "
+"processeur Intel."
+
+#. type: Plain text
+msgid ""
+"Unfortunately, we don't know of any Mac model that works well in Tails and "
+"can run the latest macOS version."
+msgstr ""
+"Malheureusement, nous ne connaissons pas de modèle de Mac qui fonctionne "
+"bien avec Tails et qui peut faire tourner la dernière version de macOS."
+
+#. type: Plain text
+#, no-wrap
+msgid "<!--\n"
+msgstr "<!--\n"
+
+#. type: Plain text
+msgid "To update the list of Mac computer:"
+msgstr "To update the list of Mac computer:"
+
+#. type: Bullet: '1. '
+msgid ""
+"Store an archive of WhisperBack reports from the last 6 months in a folder."
+msgstr ""
+"Store an archive of WhisperBack reports from the last 6 months in a folder."
+
+#. type: Bullet: '2. '
+msgid "Decrypt all the reports:"
+msgstr "Decrypt all the reports:"
+
+#. type: Plain text
+#, no-wrap
+msgid "   ~/Tails/blueprints/stats/whisperback_scripts/decrypt.rb\n"
+msgstr "   ~/Tails/blueprints/stats/whisperback_scripts/decrypt.rb\n"
+
+#. type: Bullet: '3. '
+msgid "Extract the list of computer models:"
+msgstr "Extract the list of computer models:"
+
+#. type: Plain text
+#, no-wrap
+msgid "   ~/Tails/blueprints/stats/whisperback_scripts/content_of.rb \"/usr/sbin/dmidecode -s system-product-name\" > machines\n"
+msgstr "   ~/Tails/blueprints/stats/whisperback_scripts/content_of.rb \"/usr/sbin/dmidecode -s system-product-name\" > machines\n"
+
+#. type: Bullet: '4. '
+msgid "Sort and count identical models:"
+msgstr "Sort and count identical models:"
+
+#. type: Plain text
+#, no-wrap
+msgid "   grep -v Bug_report machines | sort | uniq -c | sort -rhk 1 > top\n"
+msgstr "   grep -v Bug_report machines | sort | uniq -c | sort -rhk 1 > top\n"
+
+#. type: Bullet: '5. '
+msgid ""
+"Share WhisperBack reports number with the Tails team and ask them to "
+"evaluate hardware compatibility hints in those reports."
+msgstr ""
+"Share WhisperBack reports number with the Tails team and ask them to "
+"evaluate hardware compatibility hints in those reports."
+
+#. type: Plain text
+#, no-wrap
+msgid "   While analyzing the reports corresponding from each model, FT should:\n"
+msgstr "   While analyzing the reports corresponding from each model, FT should:\n"
+
+#. type: Bullet: '   - '
+msgid "Check whether they were sent from the same email address, if any"
+msgstr "Check whether they were sent from the same email address, if any"
+
+#. type: Bullet: '   - '
+msgid "Check whether the wlan0 interface was the same hardware device"
+msgstr "Check whether the wlan0 interface was the same hardware device"
+
+#. type: Bullet: '   - '
+msgid "Check whether the report was about hardware compatibility issues"
+msgstr "Check whether the report was about hardware compatibility issues"
+
+#. type: Bullet: '6. '
+msgid ""
+"Check whether these Mac models still support the latest version of macOS."
+msgstr ""
+"Check whether these Mac models still support the latest version of macOS."
+
+#. type: Plain text
+msgid "To update the list of PC computers:"
+msgstr "To update the list of PC computers:"
+
+#. type: Bullet: '- '
+msgid "Check what's commonly available with refurbishing companies."
+msgstr "Check what's commonly available with refurbishing companies."
+
+#. type: Bullet: '- '
+msgid "Ask assembly@ for models."
+msgstr "Ask assembly@ for models."
+
+#. type: Plain text
+#, no-wrap
+msgid "-->\n"
+msgstr "-->\n"
+
+#. type: Plain text
+#, no-wrap
+msgid "<h2 id=\"usb\">Recommended USB sticks</h2>\n"
+msgstr "<h2 id=\"usb\">Clés USB recommandées</h2>\n"
+
+#. type: Plain text
+msgid "You need a USB stick of 8 GB minimum to use Tails."
+msgstr "Vous avez besoin d'une clé USB de 8 Go minimum pour utiliser Tails."
+
+#. type: Plain text
+msgid "All the data on this USB stick is lost when installing Tails."
+msgstr ""
+"Toutes les données présentes sur la clé USB sont perdues lors de "
+"l'installation de Tails."
+
+#. type: Plain text
+msgid ""
+"The quality of your USB stick is crucial when using Tails. A bad USB stick "
+"will be slower and more likely to corrupt the files in your [[Persistent "
+"Storage|doc/persistent_storage]]."
+msgstr ""
+"La qualité de votre clé USB est cruciale pour l'utilisation de Tails. Une "
+"clé USB de mauvaise qualité sera plus lente et plus susceptible de corrompre "
+"les fichiers dans votre [[stockage persistant|doc/persistent_storage]]."
+
+#. type: Plain text
+msgid "We recommend that you:"
+msgstr "Nous vous recommandons de :"
+
+#. type: Bullet: '- '
+msgid "**Buy new USB sticks.**"
+msgstr "**Acheter des clés USB neuves.**"
+
+#. type: Plain text
+#, no-wrap
+msgid ""
+"  USB sticks become slower and less reliable over the years. Older USB sticks\n"
+"  were also built with slower technology.\n"
+msgstr ""
+"  Les clés USB deviennent plus lentes et moins fiables au fil des ans. Les "
+"anciennes clés USB\n"
+"  sont également fabriquées avec des technologies moins performantes.\n"
+
+#. type: Bullet: '- '
+msgid ""
+"**Buy USB sticks from well-known brands, such as [[Kingston|https://"
+"www.kingston.com/en/usb-flash-drives]], [[Samsung|https://www.samsung.com/us/"
+"computing/memory-storage/usb-flash-drives/]], and [[SanDisk|https://"
+"www.sandisk.com/product-portfolio/usb-flash-drives]].**"
+msgstr ""
+"**Acheter des clés USB de marques connues, comme "
+"[[Kingston|https://www.kingston.com/fr/usb-flash-drives]], "
+"[[Samsung|https://www.samsung.com/fr/memory-storage/usb-flash-drive/]] et "
+"[[SanDisk|https://www.sandisk.com/fr-fr/product-portfolio/usb-flash-drives]"
+"].**"
+
+#. type: Plain text
+#, no-wrap
+msgid "  Generic brands are more likely to be slower and less reliable.\n"
+msgstr ""
+"  Les marques génériques sont généralement plus lentes et moins fiables.\n"
+
+#. type: Plain text
+#, no-wrap
+msgid ""
+"  Any modern USB stick from a well-known brand is fast enough to use Tails\n"
+"  comfortably.\n"
+msgstr ""
+"  N'importe quelle clé USB récente d'une marque connue est assez rapide pour "
+"utiliser Tails\n"
+"  confortablement.\n"
+
+#. type: Bullet: '- '
+msgid "**Buy your USB sticks from a reputable local store.**"
+msgstr "**Acheter vos clés USB dans une boutique digne de confiance.**"
+
+#. type: Plain text
+#, no-wrap
+msgid ""
+"  If you are in a place where counterfeit electronics are common, buy your USB\n"
+"  stick from an international supermarket chain, which should have a more\n"
+"  reliable supply chain.\n"
+msgstr ""
+
+#. type: Plain text
+#, no-wrap
+msgid ""
+"  Avoid buying USB sticks online or using USB sticks that were given to you,\n"
+"  because they could contain malware.\n"
+msgstr ""
+"  Évitez d'acheter des clés USB en ligne ou d'utiliser des clés USB qui vous "
+"ont été données,\n"
+"  parce qu'elles pourraient contenir un logiciel malveillant.\n"
+
+#. type: Plain text
+#, no-wrap
+msgid "  <div class=\"attack\">\n"
+msgstr "  <div class=\"attack\">\n"
+
+#. type: Plain text
+#, no-wrap
+msgid ""
+"  <p>In 2020, the [[FBI warned US companies to avoid USB sticks\n"
+"  received by\n"
+"  mail|https://www.cybereason.com/blog/fbi-warns-us-companies-to-avoid-malicious-usb-devices]]\n"
+"  because some of them contained malicious software, such as [[!wikipedia\n"
+"  BadUSB]].</p>\n"
+msgstr ""
+"  <p>En 2020, le [[FBI a conseillé aux entreprises états-uniennes d'éviter "
+"les clés USB\n"
+"  reçues par\n"
+"  courrier|https://www.cybereason.com/blog/fbi-warns-us-companies-to-avoid-"
+"malicious-usb-devices]]\n"
+"  parce que certaines d'entre elles contenaient une logiciel malveillant, "
+"comme [[!wikipedia\n"
+"  BadUSB]].</p>\n"
+
+#. type: Plain text
+#, no-wrap
+msgid "  </div>\n"
+msgstr "  </div>\n"
+
+#. type: Bullet: '- '
+msgid ""
+"**Consider buying faster USB sticks that support USB version 3.0 or later.**"
+msgstr ""
+"**Envisagez d'acheter des clés USB rapides qui supportent USB version 3.0 ou "
+"plus récent.**"
+
+#. type: Plain text
+#, no-wrap
+msgid ""
+"  Check the specifications of your computer to determine whether your USB ports\n"
+"  support USB 3.0 or later. USB 3.0 ports are sometimes blue.\n"
+msgstr ""
+"  Vérifiez les caractéristiques de votre ordinateur pour déterminer si vos "
+"ports USB\n"
+"  sont compatibles USB 3.0 ou plus récent. Les ports USB 3.0 sont parfois "
+"bleus.\n"
+
+#. type: Plain text
+#, no-wrap
+msgid ""
+"  USB 3.0 can be up to 10 times faster than USB 2.0. USB 2.0 has a maximum read\n"
+"  speed of around 50 MB/s on USB sticks, while USB 3.0 has a maximum read speed\n"
+"  of around 500 MB/s.\n"
+msgstr ""
+
+#. type: Plain text
+#, no-wrap
+msgid ""
+"  Most quality USB sticks nowadays have read speeds of at least 100 MB/s and\n"
+"  are faster when used on USB 3.0 ports. Some USB sticks advertised for USB 3.0\n"
+"  have even greater speeds.\n"
+msgstr ""
+
+#. type: Plain text
+#, no-wrap
+msgid ""
+"  You can test the write speed of your different USB sticks by comparing the\n"
+"  time it takes to [[clone Tails|install/clone/pc]], for example.\n"
+msgstr ""
+
+#. type: Title ###
+#, no-wrap
+msgid "How many USB sticks should I buy?"
+msgstr "Combien de clés USB dois-je acheter ?"
+
+#. type: Plain text
+msgid ""
+"If you want to store personal files and configuration in an encrypted "
+"[[Persistent Storage|doc/persistent_storage]], we recommend that you buy 2 "
+"USB sticks, ideally 3:"
+msgstr ""
+
+#. type: Bullet: '- '
+msgid "1 USB stick to be your **primary Tails**."
+msgstr ""
+
+#. type: Bullet: '- '
+msgid ""
+"1 USB stick of the same size to be your **backup Tails**, if you use the "
+"Persistent Storage."
+msgstr ""
+
+#. type: Plain text
+#, no-wrap
+msgid ""
+"  We recommend that you [[create a backup Tails|doc/persistent_storage/backup]]\n"
+"  by cloning your primary Tails, including its Persistent Storage.\n"
+msgstr ""
+
+#. type: Bullet: '- '
+msgid ""
+"1 USB stick to do [[manual upgrades|doc/upgrade]] on a few occasions when "
+"automatic upgrades are not available."
+msgstr ""
+
+#. type: Plain text
+#, no-wrap
+msgid "  This USB stick can be of a smaller size and worse quality.\n"
+msgstr ""
+
+#. type: Plain text
+#, no-wrap
+msgid "  <!-- Fixing #16906 would remove the need for this 3rd USB stick. -->\n"
+msgstr "  <!-- Fixing #16906 would remove the need for this 3rd USB stick. -->\n"
+
+#, no-wrap
+#~ msgid "Summary"
+#~ msgstr "Résumé"
+
+#~ msgid "Tails works on:"
+#~ msgstr "Tails fonctionne sur :"
+
+#~ msgid "Some older Mac computers with an Intel processor"
+#~ msgstr "Certains vieux ordinateurs Mac avec un processeur Intel"
+
+#~ msgid "Tails might not work on:"
+#~ msgstr "Tails pourrait ne pas marcher sur :"
+
+#~ msgid "Some older computers, for example, if they don't have 3 GB of RAM."
+#~ msgstr ""
+#~ "Certains vieux ordinateurs, s'ils n'ont pas 3 Go de RAM par exemple."
+
+#~ msgid ""
+#~ "<span class=\"definition\">[[!wikipedia IBM_PC_compatible]]</span> but "
+#~ "not <span class=\"definition\">[[!wikipedia PowerPC]]</span> nor <span "
+#~ "class=\"definition\">[[!wikipedia ARM_architecture desc=\"ARM\"]]</span>."
+#~ msgstr ""
+#~ "<span class=\"definition\">[[!wikipedia_fr \"Compatible_PC\"]]</span> "
+#~ "mais pas <span class=\"definition\">[[!wikipedia_fr PowerPC]]</span> ni\n"
+#~ "<span class=\"definition\">[[!wikipedia_fr Architecture_ARM "
+#~ "desc=\"ARM\"]]</span>."
+
+#, fuzzy
+#~ msgid ""
+#~ "Tails does not work on newer Mac computers with an [[!wikipedia "
+#~ "Apple_silicon#M_series desc=\"Apple processor\"]] (M1 or M2)."
+#~ msgstr ""
+#~ "Tails ne fonctionne pas avec les modèles de Mac qui utilisent les puces "
+#~ "[[!wikipedia_fr Apple_Silicon#Série_M desc=\"Apple M1 ou M2\"]]."
+
+#, fuzzy
+#~ msgid "Tails does not work on phone or tablets."
+#~ msgstr ""
+#~ "Tails ne fonctionne pas sur la plupart des tablettes et des téléphones."
+
+#~ msgid "Most Mac computers are IBM PC compatible since 2006."
+#~ msgstr ""
+#~ "La plupart des ordinateurs Mac sont compatibles avec IBM PC depuis 2006."
+
+#, no-wrap
+#~ msgid ""
+#~ "- A 64-bit <span class=\"definition\">[[!wikipedia x86-64]]</span>\n"
+#~ "  compatible processor:\n"
+#~ "  - <span class=\"definition\">[[!wikipedia IBM_PC_compatible]]</span> but not\n"
+#~ "    <span class=\"definition\">[[!wikipedia PowerPC]]</span> nor\n"
+#~ "    <span class=\"definition\">[[!wikipedia ARM_architecture desc=\"ARM\"]]</span>.\n"
+#~ "  - Most Mac computers are IBM PC compatible since 2006.\n"
+#~ "  - Tails does not work with Mac models that use the [[!wikipedia Apple M1]] chip.\n"
+#~ "  - Tails does not work on 32-bit computers since [[Tails 3.0|news/Tails_3.0_will_require_a_64-bit_processor]] (June 2017).\n"
+#~ "  - Tails does not work on most tablets and phones.\n"
+#~ msgstr ""
+#~ "- Un processeur compatible 64 bits <span class=\"definition\">[[!wikipedia_fr X64 desc=\"x86-64\"]]</span> :\n"
+#~ "  - <span class=\"definition\">[[!wikipedia_fr Compatible_PC]]</span> mais pas\n"
+#~ "    <span class=\"definition\">[[!wikipedia_fr PowerPC]]</span> ni\n"
+#~ "    <span class=\"definition\">[[!wikipedia_fr Architecture_ARM desc=\"ARM\"]]</span>.\n"
+#~ "  - La plupart des ordinateurs Mac sont compatibles PC depuis 2006.\n"
+#~ "  - Tails ne fonctionne pas sur les ordinateurs Mac qui utilisent la puce [[!wikipedia Apple M1]].\n"
+#~ "  - Tails ne fonctionne pas sur les ordinateurs 32 bits depuis [[Tails 3.0|news/Tails_3.0_will_require_a_64-bit_processor]] (juin 2017).\n"
+#~ "  - Tails ne fonctionne pas sur la plupart des tablettes et téléphones.\n"
+
+#~ msgid ""
+#~ "Tails works on most reasonably recent computers, say manufactured after "
+#~ "2008.  Here is a detailed list of requirements:"
+#~ msgstr ""
+#~ "Tails marche sur la plupart des ordinateurs relativement récents, disons "
+#~ "produits après 2008. Voici en détails la configuration requise :"
+
+#~ msgid ""
+#~ "Either **an internal or external DVD reader** or the possibility to "
+#~ "**boot from a USB stick**."
+#~ msgstr ""
+#~ "Soit **un lecteur de DVD interne ou externe** soit la possibilité de "
+#~ "**démarrer sur une clé USB**."

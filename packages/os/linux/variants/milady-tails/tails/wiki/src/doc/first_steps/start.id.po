@@ -1,0 +1,40 @@
+# SOME DESCRIPTIVE TITLE
+# Copyright (C) YEAR Free Software Foundation, Inc.
+# This file is distributed under the same license as the PACKAGE package.
+# FIRST AUTHOR <EMAIL@ADDRESS>, YEAR.
+#
+msgid ""
+msgstr ""
+"Project-Id-Version: Tails Translation\n"
+"Report-Msgid-Bugs-To: tails-l10n@boum.org\n"
+"POT-Creation-Date: 2025-06-10 12:51+0200\n"
+"PO-Revision-Date: 2016-05-28 12:07-0000\n"
+"Last-Translator: Tails translators <tails@boum.org>\n"
+"Language-Team: LANGUAGE <tails-l10n@boum.org>\n"
+"Language: id\n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+"X-Generator: Poedit 1.6.10\n"
+
+#. type: Plain text
+#, no-wrap
+msgid "[[!meta title=\"Starting Tails\"]]\n"
+msgstr ""
+
+#. type: Plain text
+msgid "To learn how to start Tails, refer to our installation instructions on:"
+msgstr ""
+
+#. type: Bullet: '- '
+#, fuzzy
+msgid "[[Starting Tails on PC|pc]]"
+msgstr "[[Starten von DVD mit einem Mac|install/mac/dvd#start-dvd]]"
+
+#. type: Bullet: '- '
+#, fuzzy
+msgid "[[Starting Tails on Mac|mac]]"
+msgstr "[[Starten von DVD mit einem Mac|install/mac/dvd#start-dvd]]"
+
+#~ msgid "[[Starting a Mac on a DVD|install/mac/dvd#start-dvd]]"
+#~ msgstr "[[Starten von DVD mit einem Mac|install/mac/dvd#start-dvd]]"

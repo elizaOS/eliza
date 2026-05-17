@@ -1,0 +1,13 @@
+[Desktop Entry]
+Encoding=UTF-8
+_Name=Unsafe Browser
+_Comment=Browse the World Wide Web without anonymity
+_GenericName=Unsafe Web Browser
+_Keywords=web;captive;portal
+X-GNOME-FullName=Unsafe Web Browser
+Exec=sudo unsafe-browser
+Terminal=false
+Type=Application
+Icon=/usr/share/icons/unsafe-browser.svg
+Categories=Network;WebBrowser;
+StartupNotify=true

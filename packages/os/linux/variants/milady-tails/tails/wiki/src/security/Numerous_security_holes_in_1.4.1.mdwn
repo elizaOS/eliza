@@ -1,0 +1,52 @@
+[[!meta date="Sun, 09 Aug 2015 01:02:03 +0000"]]
+[[!meta title="Numerous security holes in Tails 1.4.1"]]
+[[!pagetemplate template="news.tmpl"]]
+
+[[!tag security/fixed]]
+
+Several security holes that affect Tails 1.4.1 are now fixed in
+Tails 1.5.
+
+We **strongly** encourage you to [[upgrade to
+Tails 1.5|news/version_1.5]] as soon as possible.
+
+Details
+=======
+
+ - Tor Browser: [[!mfsa 2015-79]], [[!mfsa 2015-80]], [[!mfsa 2015-82]],
+   [[!mfsa 2015-83]], [[!mfsa 2015-85]], [[!mfsa 2015-87]],
+   [[!mfsa 2015-88]], [[!mfsa 2015-89]], [[!mfsa 2015-90]],
+   [[!mfsa 2015-92]]
+ - Linux: [[!debsa2015 3313]], [[!cve CVE-2015-3290]],
+   [[!cve CVE-2015-3291]], [[!cve CVE-2015-4167]],
+   [[!cve CVE-2015-5157]], [[!cve CVE-2015-5364]],
+   [[!cve CVE-2015-5366]], [[!debsa2015 3329]],
+   [[!cve CVE-2015-1333]], [[!cve CVE-2015-3212]],
+   [[!cve CVE-2015-4692]], [[!cve CVE-2015-4700]],
+   [[!cve CVE-2015-5364]], [[!cve CVE-2015-5366]],
+   [[!cve CVE-2015-5697]], [[!cve CVE-2015-5706]],
+   [[!cve CVE-2015-5707]]
+ - ghostscript: [[!debsa2015 3326]] [[!cve CVE-2015-3228]]
+ - bind9-host: [[!debsa2015 3319]], [[!cve CVE-2015-5477]]
+   [[!debsa2015 3304]], [[!cve CVE-2015-4620]]
+ - expat: [[!debsa2015 3318]], [[!cve CVE-2015-1283]]
+ - cups-filters: [[!debsa2015 3303]], [[!cve CVE-2015-3258]],
+   [[!cve CVE-2015-3279]]
+ - icu: [[!debsa2015 3323]], [[!cve CVE-2014-6585]],
+   [[!cve CVE-2014-8146]], [[!cve CVE-2014-8147]],
+   [[!cve CVE-2015-4760]]
+ - wmf: [[!debsa2015 3302]], [[!cve CVE-2015-0848]],
+   [[!cve CVE-2015-4588]], [[!cve CVE-2015-4695]],
+   [[!cve CVE-2015-4696]]
+ - openjdk-7: [[!debsa2015 3316]], [[!cve CVE-2014-8873]],
+   [[!cve CVE-2015-0460]], [[!cve CVE-2015-0469]],
+   [[!cve CVE-2015-0470]], [[!cve CVE-2015-0477]],
+   [[!cve CVE-2015-0478]], [[!cve CVE-2015-0480]],
+   [[!cve CVE-2015-0488]], [[!cve CVE-2015-2590]],
+   [[!cve CVE-2015-2601]], [[!cve CVE-2015-2613]],
+   [[!cve CVE-2015-2621]], [[!cve CVE-2015-2625]],
+   [[!cve CVE-2015-2628]], [[!cve CVE-2015-2632]],
+   [[!cve CVE-2015-2808]], [[!cve CVE-2015-4000]],
+   [[!cve CVE-2015-4731]], [[!cve CVE-2015-4732]],
+   [[!cve CVE-2015-4733]], [[!cve CVE-2015-4748]],
+   [[!cve CVE-2015-4749]], [[!cve CVE-2015-4760]]

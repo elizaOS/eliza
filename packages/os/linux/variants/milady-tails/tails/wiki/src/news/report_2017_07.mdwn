@@ -1,0 +1,101 @@
+[[!meta title="Tails report for July, 2017"]]
+[[!meta date="Wed, 16 Aug 2017 12:34:56 +0000"]]
+[[!pagetemplate template="news.tmpl"]]
+
+[[!toc ]]
+
+Releases
+========
+
+* Tails 3.2 is [[scheduled for October 3|contribute/calendar]].
+
+Documentation and website
+=========================
+
+- We improved our installation instructions for
+  Ubuntu to configure the PPA through
+  **Software & Updates** instead of the command line.
+
+- We published instructions on [[how to repair a Tails
+  3.0.1|news/rescue_3.0.1]] broken by the automatic upgrade.
+
+- We documented that Tails fails to start on [[computers with Nvidia
+  Maxwell graphics|support/known_issues#nvidia-maxwell]].
+
+- We updated the terminology on our website to stop mentioning SD cards
+  and always talk about *Tails USB stick* instead of *Tails device*.
+  [[!tails_ticket 9965]]
+
+- We made it clearer in the system requirements that Tails doesn't work
+  on handheld devices.
+
+- We improved the link and QR code to get back to the same step when
+  switching device during installation. [[!tails_ticket 12319]]
+
+- We updated our command line instructions to use `apt` instead of
+  `apt-get`.
+
+- We renamed *Mac OS X* as *macOS*, its new name.
+
+- We improved the inlining mechanism that links to release notes during
+  upgrades. [[!tails_ticket 13341]]
+
+Funding
+=======
+
+- We received a donation from *ExpressVPN*.
+
+- Our OTF proposal was accepted and we will help us do great work
+  between 2017Q4 and 2018Q3:
+  - **TrueCrypt support in GNOME**: graphical utilities to mount
+    TrueCrypt volumes ([[!tails_ticket 11684]], [[!tails_ticket 6337]])
+  - **Graphical interface for the Additional Packages persistent
+    feature**: allow users to customize which applications are available
+    in their Tails ([[!tails_ticket 5996]] [[!tails_ticket 9059]])
+
+- We started using [CCT, the Center for the Cultivation of
+  Technology](https://techcultivation.org/) as our European fiscal
+  sponsor for real and are very happy about it. On the long run they
+  will help us spend less time doing administrative work and more time
+  improving Tails!
+
+- *Next INpact* started a donation campaign
+  to support Tails, Tor and VeraCrypt using 33% of total donations.
+
+Outreach
+========
+
+Past events
+-----------
+
+- Alan attended [GUADEC 2017](https://2017.guadec.org/) in Manchester.
+
+Translation
+===========
+
+## All the website
+
+  - de: 56% (2809) strings translated, 7% strings fuzzy, 49% words translated
+  - fa: 42% (2094) strings translated, 10% strings fuzzy, 44% words translated
+  - fr: 87% (4354) strings translated, 2% strings fuzzy, 84% words translated
+  - it: 30% (1500) strings translated, 5% strings fuzzy, 26% words translated
+  - pt: 25% (1268) strings translated, 10% strings fuzzy, 22% words translated
+
+Total original words: 53070
+
+## [[Core pages of the website|contribute/l10n_tricks/core_po_files.txt]]
+
+  - de: 77% (1456) strings translated, 13% strings fuzzy, 77% words translated
+  - fa: 34% (648) strings translated, 12% strings fuzzy, 35% words translated
+  - fr: 95% (1812) strings translated, 4% strings fuzzy, 95% words translated
+  - it: 73% (1386) strings translated, 14% strings fuzzy, 72% words translated
+  - pt: 44% (842) strings translated, 16% strings fuzzy, 45% words translated
+
+Total original words: 17252
+
+Metrics
+=======
+
+* Tails has been started more than 690564 times this month. This makes 22276 boots a day on average.
+* 15501 downloads of the OpenPGP signature of Tails ISO from our website.
+* 160 bug reports were received through WhisperBack.

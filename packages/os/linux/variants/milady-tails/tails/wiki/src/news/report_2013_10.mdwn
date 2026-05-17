@@ -1,0 +1,174 @@
+[[!meta title="Tails report for October, 2013"]]
+[[!meta date="Fri, 08 Nov 2013 21:48:13 +0000"]]
+[[!pagetemplate template="news.tmpl"]]
+
+Releases
+========
+
+Tails 0.21 [[was released|news/version_0.21]] on October 29.
+
+Tails 0.22 is
+scheduled
+for December 11.
+
+Metrics
+=======
+
+- Tails has been started more than 189 979 times in October.
+  This makes a boot every 14 seconds on average.
+- 15 226 downloads of the OpenPGP signature of Tails ISO.
+- 86 reports were received through WhisperBack.
+
+Code
+====
+
+- Andres Gomez Ramirez proposed an
+  initial patch
+  to warn when caps-lock in on in the Greeter ([[!tails_ticket 5917]]).
+- We had a low-hanging fruits session on October 12,
+  and malaparte couldn't stop in the end :)
+- Some issues were fixed for the migration to
+  Tails Wheezy ([[!tails_ticket 6015]]).
+- The branch for SD cards support wired via
+  SDIO was merged ([[!tails_ticket 6324]]).
+- Some initial
+  work to build Tails with vagrant-libvirt was done
+  ([[!tails_ticket 6212]]).
+- A
+  branch to use stronger ciphers in GnuPG was prepared
+  and merged.
+- Kevin C. Krinke is working
+  on a clock applet that
+  allows displays local time, while keeping UTC as the
+  system timezone.
+- test/fix-detection-of-used-display
+  was merged.
+- feature/Debian-proposed-updates was merged,
+  and reverted after the Squeeze point-release was out.
+- Tails now uses the
+  same custom Startpage
+  URL as the TBB.
+- The ikiwiki setup was
+  simplified.
+- Some
+  fixes to the persistent printers feature were prepared
+  and merged.
+- A web browser resizing bug was partially
+  fixed
+  ([[!tails_ticket 6377]]).
+- Now installing Linux 3.10.x
+  from Debian testing.
+- The
+  branch to run Vidalia as its own user was polished and
+  merged. Too bad nobody detected at RC stage the regression it
+  brought, that made its way into Tails 0.21. Did we mention you
+  should test our release candidates?
+- The branch
+  to have a consistent path to the persistent volume
+  mountpoint was polished and merged ([[!tails_ticket 5854]]).
+- The work towards MAC spoofing
+  went on.
+- Various regressions detected in 0.21~rc1 were fixed in time for the
+  0.21 final release. Not all, unfortunately.
+- Some initial work was
+  done towards the migration to Torbutton 1.6.x ([[!tails_ticket
+  6371]]) and Firefox 24 ([[!tails_ticket 6370]]).
+- A [[!debbug 725779 desc="plan"]] was proposed to fix OTR protocol
+  downgrade in Debian Squeeze and Wheezy.
+- Some build-dependencies for Tails software were uploaded to Debian,
+  and accepted:
+  [[!debpts libdist-zilla-plugin-test-notabs-perl]],
+  [[!debpts libdist-zilla-plugin-test-perl-critic-perl]] and
+  [[!debpts libdist-zilla-plugin-installguide-perl]].
+- An initscript for Tahoe-LAFS has been [[!debbug 652003 desc="written"]].
+- killyourtv volunteered to maintain I2P in Tails.
+- Incremental updates were worked on.
+- [[!debpts bilibop]] 0.4.17, 0.4.17~bpo70+1, 0.4.18 and 0.4.19 were
+  uploaded to Debian.
+- [[!debpts mat]] 0.4-1 and 0.4.2-1 were uploaded to Debian.
+- A few patches for AppArmor profiles were submitted upstream.
+
+Documentation and website
+=========================
+
+- The [[contribute]] section was significantly improved.
+  [[!tails_ticket 6165 desc="More"]] is coming.
+- The bug reporting workflow
+  was improved.
+- The first round of cleaning the forum is over!
+- The Front Desk role was documented.
+- Public meetings notes are now online.
+- Drafts were proposed to:
+  * point to newbie-friendly Git
+    documentation.
+- Documentation was added to explain:
+  * that (almost any) additional software cannot connect without Tor";
+  * why Tor is slow"
+    ([[!tails_ticket 5641]]);
+  * how to make Claws Mail persistence cover email retrieved over POP3";
+  * that OpenPGP keyring can be made persistent
+    in the OpenPGP applet documentation ([[!tails_ticket 6332]]);
+  * how to use a virtual keyboard.
+- Some [[!tails_ticket 5797 desc="logo proposals"]] were sent by
+  Andrew Pilkington from Picasso Fish.
+- A new team proposed to maintain the translation in
+  German.
+
+Infrastructure
+==============
+
+- A pbuilder chroot to build Iceweasel 24 was prepared.
+- A donation of UEFI hardware was proposed by
+  [ThinkPenguin.com](https://www.thinkpenguin.com/) and should be
+  finalized soon. Thank you!
+- We now have a bot on IRC that displays the description of mentioned
+  tickets. Thank you, weasel!
+- All our tickets were looked at and triaged.
+
+On-going discussions
+====================
+
+- Adding a clock
+  applet
+- MAC address spoofing
+- Installing caff or monkeysign
+  ([[!tails_ticket 6338]])
+- The future of TrueCrypt implementations in Tails
+  ([[!tails_ticket 5373]])
+- Bitcoin in Tails
+- uVirtus design
+- Making the system partition bigger
+- Timing of the move to FF24
+- Tor Launcher in Tails?
+- Using version instead of release in APT preferences?
+- Roles description for contribute section
+
+Outreach
+========
+
+- A talk about Tails was
+  held
+  in Paris. Thanks to Stefano Zacchiroli for organizing it, and to
+  IRILL for hosting it!
+
+Funding
+=======
+
+- We have sent proposals to sponsors Echo and Hotel.
+- We have been approached for a funding proposal by sponsor Golf.
+- We read a lot and got in touch with various people to gather enough
+  information to decide if we're going to create a dedicated
+  nonprofit organization for Tails, or use another existing one as
+  our fiscal sponsor.
+
+Press and testimonials
+======================
+
+* 2013-10-15: [CRYPTO-GRAM, October 15,
+  2013](http://www.schneier.com/crypto-gram-1310.html) —
+  Bruce Schneier: "One thing I didn't do, although it's worth considering, is
+  use a stateless operating system like Tails. You can configure Tails with a
+  persistent volume to save your data, but no operating system changes are ever
+  saved. Booting Tails from a read-only DVD -- you can keep your data on an
+  encrypted USB stick -- is even more secure. Of course, this is not foolproof,
+  but it greatly reduces the potential avenues for attack."

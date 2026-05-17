@@ -1,0 +1,54 @@
+This is the SandBox.
+
+
+----
+
+*emphasized* text.
+
+# GitLab syntax
+
+- MR: !123
+
+- issue: #18079
+
+# Header
+
+> This is a blockquote.
+>
+> This is the first level of quoting.
+>
+> > This is nested blockquote.
+>
+> Back to the first level.
+
+Numbered list:
+
+1. First item.
+
+1. Another.
+
+  - nesting them
+
+  - more nests
+
+1. And another..
+
+Bulleted list:
+
+* *item*
+
+* item
+
+  - 1st item in nested list
+
+  - 2nd item in nested list
+
+  - 3rd item in nested list
+
+## Heading level 2
+
+Another test!!!!
+
+### Level 3
+
+hey.

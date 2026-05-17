@@ -1,0 +1,22 @@
+[[!meta date="Sun, 24 Jan 2016 12:34:56 +0000"]]
+[[!meta title="Numerous security holes in Tails 1.8.2"]]
+[[!pagetemplate template="news.tmpl"]]
+
+[[!tag security/fixed]]
+
+Several security holes that affect Tails 1.8.2 are now fixed in Tails 2.0.
+
+We **strongly** encourage you to [[upgrade to Tails 2.0|news/version_2.0]] as soon as possible.
+
+Details
+=======
+
+* Tor Browser: [[!mfsa 2016-01]], [[!mfsa 2016-03]]
+* sudo: [[!debsa2016 3440]]
+* perl: [[!debsa2016 3441]]
+* isc-dhcp: [[!debsa2016 3442]]
+* libpng: [[!debsa2016 3443]]
+* openssh: [[!debsa2016 3446]]
+* linux: [[!debsa2016 3448]]
+* bind9: [[!debsa2016 3449]]
+* fuse: [[!debsa2016 3451]]

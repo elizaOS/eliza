@@ -1,0 +1,8 @@
+# We want GNOME's auto-mounting feature to exclude Tails persistent
+# partitions since the GNOME unlocking prompt appearing at various
+# points can confuse users (#20154). For instance, if you plug another
+# Tails with the intention to upgrade it but it has a persistent
+# partition then GNOME's prompt might make you think entering the
+# passphrase is required to upgrade Tails, which it is not.
+
+SUBSYSTEM=="block", ACTION=="add", SUBSYSTEMS=="usb|mmc", ENV{ID_PART_ENTRY_NAME}=="TailsData", ENV{UDISKS_AUTO}="0"

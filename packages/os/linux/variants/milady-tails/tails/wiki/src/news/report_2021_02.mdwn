@@ -1,0 +1,114 @@
+[[!meta title="Tails report for February, 2021"]]
+[[!meta date="Tue, 09 Mar 2021 07:21:15 +0000"]]
+[[!pagetemplate template="news.tmpl"]]
+
+[[!toc ]]
+
+Releases
+========
+
+[[Tails 4.16 was released on February 22|news/version_4.16]].
+
+Tails 4.17 is [[scheduled for March 23|contribute/calendar]].
+
+Code
+====
+ - We started the redesign [[network connection
+   configuration|https://gitlab.tails.boum.org/tails/blueprints/-/wikis/network_connection#ux-design]]:
+    - Usability testing of paper prototypes for the network connection
+      configuration.
+    - Display Tor Launcher to all users by default ([[!tails_ticket 17330]]).
+    - Write a replacement of Tor Launcher ([[!tails_ticket 17215]]).
+- We are rewriting the Persistent Storage settings in Python ([[!tails_ticket 17803]]).
+- We improved Help Desk standard replies ([[!tails_ticket 18070]]).
+
+Documentation and website
+=========================
+- Started a sprint to rewrite our warnings page ([[!tails_ticket 8845]]). We'll strip it down to 3 main warnings:
+    - Untrusted computers
+    - Limitations of Tor
+    - Identity management
+
+  And embed them directly on the download page. ([[!tails_ticket 9386]]).
+- Documented that [[Tails does not work with Apple M1 chip|/doc/about/requirements/]] ([[!tails_ticket 18066]]).
+- Documented [[how to start Tails from an external hard disk|/doc/about/requirements/]] ([[!tails_ticket 18113]]).
+- Explained what "[[Your browser is being managed by your organization|/doc/anonymous_internet/Tor_Browser/#security-level]]" means ([[!tails_ticket 18029]]).
+- Avoid pointing people to [[empty security advisories from our release
+  notes|https://gitlab.tails.boum.org/tails/tails/-/blob/stable/config/release_management/templates/security_advisory.mdwn]]
+  ([[!tails_ticket 18221]]).
+- Documented better [[what to do when the Persistent Storage
+  disappears|/support/known_issues/#persistence-disappears]]
+  ([[!tails_ticket 17116]]).
+
+User experience
+===============
+
+Big redesigns
+-------------
+
+- We did a design sprint and usability tests in January to [[redesign
+  the Persistent Storage|https://gitlab.tails.boum.org/tails/blueprints/-/wikis/Persistent-Storage-redesign]].
+- Started a [[!tails_ticket 5501 desc="discussion on how we should save
+  language and keyboard layout from the Welcome Screen"]].
+- Did another design sprint and usability tests on the [[process of connecting
+  to Tor from Tails|https://gitlab.tails.boum.org/tails/blueprints/-/wikis/network_connection#ux-design]].
+
+Hot topics on our help desk
+===========================
+
+- Users reported problems with [[!tails_ticket 18184 desc="automatic upgrades,
+  caused by a change on the CA"]].
+- Still some users write to us about problems importing GPG keys with
+  Seahorse.
+- We also got the usual '[[javascript is enabled|/support/faq/#javascript]]'
+  emails. We kindly ask for platforms or websites that include Tails on their
+  workflow to update their documentation.
+
+Funding
+=======
+
+We have finished analyzing [[last year's donation campaign
+results|/news/donations_2020/]], thanks to everybody that contributed to the
+development of Tails.
+
+If you missed the end of the year donation campaign, do not worry, you can
+still donate to sustain our work!
+
+On-going discussions
+====================
+
+- We discussed about the [[future of monthly reports|https://lists.autistici.org/message/20210203.211000.742fee24.en.html]]
+  (as in this very report you are reading now).
+
+Translations
+============
+
+## All the website
+
+  - de: 26% (1862) strings translated, 14% strings fuzzy
+  - es: 52% (3648) strings translated, 4% strings fuzzy
+  - fa: 19% (1377) strings translated, 12% strings fuzzy
+  - fr: 79% (5518) strings translated, 6% strings fuzzy
+  - it: 31% (2187) strings translated, 8% strings fuzzy
+  - pt: 18% (1285) strings translated, 9% strings fuzzy
+
+## [[Core pages of the website|contribute/l10n_tricks/core_po_files.txt]]
+
+  - de: 44% (939) strings translated, 23% strings fuzzy
+  - es: 90% (1900) strings translated, 4% strings fuzzy
+  - fa: 19% (417) strings translated, 15% strings fuzzy
+  - fr: 81% (1711) strings translated, 8% strings fuzzy
+  - it: 60% (1262) strings translated, 17% strings fuzzy
+  - pt: 39% (829) strings translated, 14% strings fuzzy
+
+## Core pages of the website for languages not activated on the website yet
+
+  - ar: 7% (162) strings translated, 8% strings fuzzy
+  - ca: 7% (163) strings translated, 7% strings fuzzy
+  - id: 6% (133) strings translated, 4% strings fuzzy
+  - pl: 7% (165) strings translated, 6% strings fuzzy
+  - ru: 8% (177) strings translated, 7% strings fuzzy
+  - sr_Latn: 5% (109) strings translated, 4% strings fuzzy
+  - tr: 8% (174) strings translated, 6% strings fuzzy
+  - zh: 11% (234) strings translated, 7% strings fuzzy
+  - zh_TW: 22% (464) strings translated, 13% strings fuzzy

@@ -1,0 +1,159 @@
+# SOME DESCRIPTIVE TITLE
+# Copyright (C) YEAR Free Software Foundation, Inc.
+# This file is distributed under the same license as the PACKAGE package.
+# FIRST AUTHOR <EMAIL@ADDRESS>, YEAR.
+#
+msgid ""
+msgstr ""
+"Project-Id-Version: PACKAGE VERSION\n"
+"Report-Msgid-Bugs-To: tails-l10n@boum.org\n"
+"POT-Creation-Date: 2026-03-18 09:16+0000\n"
+"PO-Revision-Date: 2022-06-09 12:39+0000\n"
+"Last-Translator: drebs <drebs@riseup.net>\n"
+"Language-Team: LANGUAGE <LL@li.org>\n"
+"Language: pt\n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+"Plural-Forms: nplurals=2; plural=n != 1;\n"
+"X-Generator: Weblate 4.9.1\n"
+
+#. type: Plain text
+#, no-wrap
+msgid "[[!meta title=\"Install Tails from macOS\"]]\n"
+msgstr "[[!meta title=\"Instale Tails a partir de um macOS\"]]\n"
+
+#. type: Plain text
+#, no-wrap
+msgid "[[!meta stylesheet=\"inc/stylesheets/overview\" rel=\"stylesheet\" title=\"\"]]\n"
+msgstr "[[!meta stylesheet=\"inc/stylesheets/overview\" rel=\"stylesheet\" title=\"\"]]\n"
+
+#. type: Plain text
+#, no-wrap
+msgid "[[!meta stylesheet=\"inc/stylesheets/download\" rel=\"stylesheet\" title=\"\"]]\n"
+msgstr "[[!meta stylesheet=\"inc/stylesheets/download\" rel=\"stylesheet\" title=\"\"]]\n"
+
+#. type: Plain text
+#, no-wrap
+msgid "[[!meta stylesheet=\"doc/about/warnings\" rel=\"stylesheet\" title=\"\"]]\n"
+msgstr "[[!meta stylesheet=\"doc/about/warnings\" rel=\"stylesheet\" title=\"\"]]\n"
+
+#. type: Plain text
+#, no-wrap
+msgid "[[!meta stylesheet=\"inc/stylesheets/steps\" rel=\"stylesheet\" title=\"\"]]\n"
+msgstr "[[!meta stylesheet=\"inc/stylesheets/steps\" rel=\"stylesheet\" title=\"\"]]\n"
+
+#. type: Plain text
+#, no-wrap
+msgid "[[!meta stylesheet=\"inc/stylesheets/mac\" rel=\"stylesheet\" title=\"\"]]\n"
+msgstr "[[!meta stylesheet=\"inc/stylesheets/mac\" rel=\"stylesheet\" title=\"\"]]\n"
+
+#. type: Plain text
+#, no-wrap
+msgid "[[!meta script=\"install/inc/js/download\"]]\n"
+msgstr "[[!meta script=\"install/inc/js/download\"]]\n"
+
+#. type: Plain text
+#, fuzzy, no-wrap
+#| msgid "[[!meta script=\"install/inc/js/forge.sha256.min\"]]\n"
+msgid "[[!meta script=\"install/inc/js/forge.min\"]]\n"
+msgstr "[[!meta script=\"install/inc/js/forge.sha256.min\"]]\n"
+
+#. type: Plain text
+#, no-wrap
+msgid "[[!inline pages=\"install/inc/overview\" raw=\"yes\" sort=\"age\"]]\n"
+msgstr "[[!inline pages=\"install/inc/overview.pt\" raw=\"yes\" sort=\"age\"]]\n"
+
+#. type: Plain text
+#, no-wrap
+msgid "[[!inline pages=\"install/inc/steps/warnings.inline\" raw=\"yes\" sort=\"age\"]]\n"
+msgstr "[[!inline pages=\"install/inc/steps/warnings.inline.pt\" raw=\"yes\" sort=\"age\"]]\n"
+
+#. type: Plain text
+#, no-wrap
+msgid "[[!inline pages=\"install/inc/steps/download.inline\" raw=\"yes\" sort=\"age\"]]\n"
+msgstr "[[!inline pages=\"install/inc/steps/download.inline.pt\" raw=\"yes\" sort=\"age\"]]\n"
+
+#. type: Plain text
+#, no-wrap
+msgid "[[!inline pages=\"install/inc/steps/verify.inline\" raw=\"yes\" sort=\"age\"]]\n"
+msgstr "[[!inline pages=\"install/inc/steps/verify.inline.pt\" raw=\"yes\" sort=\"age\"]]\n"
+
+#. type: Plain text
+#, no-wrap
+msgid "[[!inline pages=\"install/inc/steps/install_with_etcher.inline\" raw=\"yes\" sort=\"age\"]]\n"
+msgstr "[[!inline pages=\"install/inc/steps/install_with_etcher.inline.pt\" raw=\"yes\" sort=\"age\"]]\n"
+
+#. type: Plain text
+#, no-wrap
+msgid "[[!inline pages=\"install/inc/steps/restart_first_time.inline\" raw=\"yes\" sort=\"age\"]]\n"
+msgstr "[[!inline pages=\"install/inc/steps/restart_first_time.inline.pt\" raw=\"yes\" sort=\"age\"]]\n"
+
+#. type: Plain text
+#, no-wrap
+msgid "[[!inline pages=\"install/inc/steps/welcome.inline\" raw=\"yes\" sort=\"age\"]]\n"
+msgstr "[[!inline pages=\"install/inc/steps/welcome.inline.pt\" raw=\"yes\" sort=\"age\"]]\n"
+
+#, no-wrap
+#~ msgid "[[!inline pages=\"install/inc/steps/install_etcher_in_mac.inline\" raw=\"yes\" sort=\"age\"]]\n"
+#~ msgstr "[[!inline pages=\"install/inc/steps/install_etcher_in_mac.inline.pt\" raw=\"yes\" sort=\"age\"]]\n"
+
+#~ msgid ""
+#~ "[[!meta robots=\"noindex\"]] [[!meta stylesheet=\"bootstrap.min\" "
+#~ "rel=\"stylesheet\" title=\"\"]] [[!meta stylesheet=\"inc/stylesheets/"
+#~ "assistant\" rel=\"stylesheet\" title=\"\"]]"
+#~ msgstr ""
+#~ "[[!meta robots=\"noindex\"]] [[!meta stylesheet=\"bootstrap.min\" "
+#~ "rel=\"stylesheet\" title=\"\"]] [[!meta stylesheet=\"inc/stylesheets/"
+#~ "assistant\" rel=\"stylesheet\" title=\"\"]]"
+
+#~ msgid "Install from another Tails"
+#~ msgstr "Instale a partir de outro Tails"
+
+#~ msgid "Download and install"
+#~ msgstr "Baixe e instale"
+
+#~ msgid "You need:"
+#~ msgstr "Você precisa de:"
+
+#~ msgid "1 USB stick <small>(at least 8 GB)</small>"
+#~ msgstr "1 pendrive USB <small>(com pelo menos 8 GB)</small>"
+
+#~ msgid ""
+#~ "1 hour to download Tails (<small class=\"remove-extra-space\">[[!inline "
+#~ "pages=\"inc/stable_amd64_iso_size\" raw=\"yes\" sort=\"age\"]]</small>)"
+#~ msgstr ""
+#~ "1 hora para baixar o Tails (<small class=\"remove-extra-space\">[[!inline "
+#~ "pages=\"inc/stable_amd64_iso_size\" raw=\"yes\" sort=\"age\"]]</small>)"
+
+#~ msgid "½ hour to install"
+#~ msgstr "½ hora para instalar"
+
+#~ msgid "[["
+#~ msgstr "[["
+
+#~ msgid "Install from macOS"
+#~ msgstr "Instale a partir do macOS"
+
+#~ msgid "You can also:"
+#~ msgstr "Você também pode:"
+
+#~ msgid "[[Burn Tails on a DVD|dvd-download]]"
+#~ msgstr "[[Gravar Tails num DVD|dvd-download]]"
+
+#~ msgid "[[Run Tails in a virtual machine|vm-download]]"
+#~ msgstr "[[Rodar Tails numa máquina virtual|vm-download]]"
+
+#~ msgid ""
+#~ "It is a [[known issue|support/known_issues#mac]] that with recent MacBook "
+#~ "Pro models, the keyboard, trackpad, and Touch Bar might not work."
+#~ msgstr ""
+#~ "É um [[problema conhecido|support/known_issues#mac]] que com modelos "
+#~ "recentes do MacBook Pro, o teclado e a barra de toque não funcionem."
+
+#~ msgid "As a workaround, you can use an external keyboard and mouse."
+#~ msgstr ""
+#~ "Como uma solução alternativa, você pode usar um teclado e mouse externos."
+
+#~ msgid "For more information about this bug, see [[!tails_ticket 13576]]."
+#~ msgstr "para mais informações sobre esse bug, veja [[!tails_ticket 13576]]."

@@ -1,0 +1,71 @@
+#!/bin/sh
+
+# AppArmor Ux rules don't sanitize $PATH, which can lead to an
+# exploited application (that's allowed to run this script unconfined)
+# having this script run arbitrary code, violating that application's
+# confinement. Let's prevent that by setting PATH to a list of
+# directories where only root can write.
+export PATH='/usr/local/bin:/usr/bin:/bin'
+
+set -e
+set -u
+
+. gettext.sh
+TEXTDOMAIN="tails"
+export TEXTDOMAIN
+
+PROFILE="${HOME}/.tor-browser/profile.default"
+
+# Import configure_best_tor_browser_locale()
+# shellcheck source=tails-shell-library/tor-browser.sh
+. /usr/local/lib/tails-shell-library/tor-browser.sh
+
+# Get LIVE_USERNAME
+# shellcheck source=../../../etc/live/config.d/username.conf
+. /etc/live/config.d/username.conf
+
+# Import tor_has_bootstrapped()
+# shellcheck source=tails-shell-library/systemd.sh
+. /usr/local/lib/tails-shell-library/systemd.sh
+
+ask_for_confirmation() {
+    if [ "${TOR_BROWSER_SKIP_OFFLINE_WARNING:-}" = 'yes' ] ||
+        pgrep -u "${LIVE_USERNAME}" -f "${TBB_INSTALL}/firefox.real"; then
+        return
+    fi
+
+    local dialog_title dialog_text dialog_start dialog_cancel
+    dialog_title=$(gettext "Tor is not ready")
+    dialog_text=$(gettext "Tor is not ready. Start Tor Browser anyway?")
+    dialog_start=$(gettext "Start Tor Browser Offline")
+    dialog_cancel=$(gettext "Open Tor Connection")
+    zenity --question --title "$dialog_title" --text="$dialog_text" \
+        --default-cancel --ok-label "$dialog_start" --cancel-label "$dialog_cancel"
+}
+
+start_browser() {
+    if [ ! -d "${PROFILE}" ]; then
+        /usr/local/lib/generate-tor-browser-profile
+    fi
+
+    TMPDIR="${PROFILE}/tmp"
+    if [ ! -d "$TMPDIR" ]; then
+        mkdir --mode=0700 "$TMPDIR"
+    fi
+    export TMPDIR
+
+    configure_tor_browser_memory_usage "${PROFILE}"
+
+    # We need to set general.useragent.locale properly to get
+    # localized search plugins (and perhaps other things too). It is
+    # not enough to simply set intl.locale.matchOS to true.
+    configure_best_tor_browser_locale "${PROFILE}"
+
+    exec /usr/local/lib/tails-run-tor-browser-in-flatpak "${@}"
+}
+
+if tor_has_bootstrapped || ask_for_confirmation; then
+    start_browser "${@}"
+else
+    /usr/local/bin/gtk-abspath-launch /usr/share/applications/tca.desktop
+fi

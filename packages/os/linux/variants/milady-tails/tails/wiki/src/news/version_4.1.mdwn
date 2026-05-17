@@ -1,0 +1,101 @@
+[[!meta title="Tails 4.1 is out"]]
+[[!meta date="Tue, 03 Dec 2019 12:34:56 +0000"]]
+[[!pagetemplate template="news.tmpl"]]
+[[!tag announce]]
+
+This release fixes [[many security
+vulnerabilities|security/Numerous_security_holes_in_4.0]]. You should upgrade as soon as possible.
+
+[[!toc levels=1]]
+
+# Changes and upgrades
+
+- Use <https://keys.openpgp.org/>, also available on
+  http://zkaan2xfbuxia2wpf7ofnkbz6r5zdbbvxbunvp5g2iebopbfc4iqmbad.onion/,
+  as the default OpenPGP keyserver.
+
+  <div class="caution">
+
+  <p>If you have GnuPG keys stored in Persistence since before Tails
+  4.1, you should update your OpenPGP keyserver
+  configuration and adapt
+  your Tails to this change.</p>
+
+  </div>
+
+- Update *Tor Browser* to 9.0.2.
+
+- Update *Thunderbird* to from 60.9.0 to 68.2.2.
+
+- Replace the [[*TorBirdy*
+  extension|doc/anonymous_internet/thunderbird#torbirdy]] with custom
+  settings and patches in *Thunderbird* that provide equivalent privacy.
+
+- Update *Enigmail* to [2.1.3](https://enigmail.net/index.php/en/download/changelog),
+  which has a simplified setup wizard that automatically creates an
+  OpenPGP key for new email accounts.
+
+- Update *Linux* to 5.3.9. This should improve the support for newer
+  hardware (graphics, Wi-Fi, etc.).
+
+# Fixed problems
+
+- Add back the **Show Passphrase** check box in *Tails Greeter*.
+  ([[!tails_ticket 17177]])
+
+- Fix the display of the troubleshooting error when GDM fails to start.
+  ([[!tails_ticket 17200]])
+
+  [[!img support/known_issues/graphics/error.png link="no" alt=""]]
+
+- Add back the option to **Open in Terminal** when doing right-click (on
+  Mac, click with two fingers) in a folder in the *Files* browser.
+  ([[!tails_ticket 17186]])
+
+- Make the installation of additional software more reliable. ([[!tails_ticket 17203]])
+
+For more details, read our [[!tails_gitweb debian/changelog desc="changelog"]].
+
+<a id="known-issues"></a>
+
+# Known issues
+
+None specific to this release.
+
+See the list of [[long-standing issues|support/known_issues]].
+
+# Get Tails 4.1
+
+## To upgrade your Tails USB stick and keep your Persistent Storage
+
+- Automatic upgrades are available from 4.0 to 4.1.
+
+- If you cannot do an automatic upgrade or if Tails fails to start after an
+  automatic upgrade, please try to do a [[manual upgrade|doc/upgrade/#manual]].
+
+## To install Tails on a new USB stick
+
+Follow our installation instructions:
+
+  - [[Install from Windows|install/windows]]
+  - [[Install from macOS|install/mac]]
+  - [[Install from Linux|install/linux]]
+
+<div class="caution"><p>All the data on this USB stick will be lost.</p></div>
+
+## To download only
+
+If you don't need installation or upgrade instructions, you can directly download
+Tails 4.1:
+
+  - [[For USB sticks (USB image)|install/download]]
+  - [[For DVDs and virtual machines (ISO image)|install/download-iso]]
+
+# What's coming up?
+
+Tails 4.2 is [[scheduled|contribute/calendar]] for January 7.
+
+
+We need your help and there are many ways to [[contribute to
+Tails|contribute]] (<a href="https://tails.net/donate/?r=4.1">donating</a> is only one of
+them). Come [[talk to us|doc/about/contact#tails-dev]]!

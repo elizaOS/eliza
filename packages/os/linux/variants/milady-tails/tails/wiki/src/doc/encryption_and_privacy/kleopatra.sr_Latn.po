@@ -1,0 +1,228 @@
+# SOME DESCRIPTIVE TITLE
+# Copyright (C) YEAR Free Software Foundation, Inc.
+# This file is distributed under the same license as the PACKAGE package.
+# FIRST AUTHOR <EMAIL@ADDRESS>, YEAR.
+#
+msgid ""
+msgstr ""
+"Project-Id-Version: PACKAGE VERSION\n"
+"Report-Msgid-Bugs-To: tails-l10n@boum.org\n"
+"POT-Creation-Date: 2025-09-17 11:40+0200\n"
+"PO-Revision-Date: 2024-05-20 18:01+0000\n"
+"Last-Translator: xin <xin@riseup.net>\n"
+"Language-Team: LANGUAGE <LL@li.org>\n"
+"Language: sr_Latn\n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+"Plural-Forms: nplurals=3; plural=n%10==1 && n%100!=11 ? 0 : n%10>=2 && "
+"n%10<=4 && (n%100<10 || n%100>=20) ? 1 : 2;\n"
+"X-Generator: Weblate 5.3\n"
+
+#. type: Plain text
+#, no-wrap
+msgid "[[!meta title=\"Encrypting text and files using GnuPG and Kleopatra\"]]\n"
+msgstr ""
+
+#. type: Plain text
+#, no-wrap
+msgid ""
+"<!-- Not linking to the handbook because it's so bad: https://docs.kde.org/stable5/en/kleopatra/kleopatra/ -->\n"
+"<!-- Not more heading because of layout. -->\n"
+msgstr ""
+
+#. type: Plain text
+msgid ""
+"[*Kleopatra*](https://apps.kde.org/kleopatra/) is a graphical interface to "
+"[*GnuPG*](https://www.gnupg.org/), a tool to encrypt and authenticate text "
+"and files using the OpenPGP standard."
+msgstr ""
+
+#. type: Plain text
+msgid "With *Kleopatra* you can:"
+msgstr ""
+
+#. type: Bullet: '- '
+msgid "Create new OpenPGP keys for yourself"
+msgstr ""
+
+#. type: Bullet: '- '
+msgid "Manage your OpenPGP private keys and the public keys of others"
+msgstr ""
+
+#. type: Bullet: '- '
+msgid "Encrypt text with a public key or a passphrase"
+msgstr ""
+
+#. type: Bullet: '- '
+msgid "Sign text with a private key"
+msgstr ""
+
+#. type: Bullet: '- '
+msgid "Decrypt and verify text"
+msgstr ""
+
+#. type: Plain text
+#, no-wrap
+msgid "<div class=\"next\">\n"
+msgstr ""
+
+#. type: Plain text
+#, no-wrap
+msgid ""
+"<p>The [[<i>Thunderbird</i>|anonymous_internet/thunderbird]] email client\n"
+"allows you to work with OpenPGP encrypted emails. Consider using\n"
+"<i>Thunderbird</i> instead of <i>Kleopatra</i> if you want to exchange encrypted emails.</p>\n"
+msgstr ""
+
+#. type: Plain text
+#, no-wrap
+msgid ""
+"<p>The OpenPGP keys stored in <i>Thunderbird</i> are separate from the keys\n"
+"stored in <i>GnuPG</i> and visible in <i>Kleopatra</i>.</p>\n"
+msgstr ""
+
+#. type: Plain text
+#, no-wrap
+msgid "</div>\n"
+msgstr "</div>\n"
+
+#. type: Plain text
+#, no-wrap
+msgid "<div class=\"tip\">\n"
+msgstr "<div class=\"tip\">\n"
+
+#. type: Plain text
+#, no-wrap
+msgid ""
+"<p>To store your GnuPG keys and configuration across different working sessions,\n"
+"you can turn on the [[GnuPG|persistent_storage/configure#gnupg]]\n"
+"feature of the Persistent Storage.</p>\n"
+msgstr ""
+
+#. type: Title #
+#, no-wrap
+msgid "Working with encrypted files"
+msgstr ""
+
+#. type: Plain text
+msgid "To encrypt a file:"
+msgstr ""
+
+#. type: Bullet: '1. '
+msgid "Choose **Sign/Encrypt** from the main window."
+msgstr ""
+
+#. type: Bullet: '1. '
+msgid "Select the file that you want to encrypt."
+msgstr ""
+
+#. type: Bullet: '1. '
+msgid "In the **Sign/Encrypt Files** dialog, either:"
+msgstr ""
+
+#. type: Bullet: '   - '
+msgid "Specify which OpenPGP keys you want to encrypt the file to."
+msgstr ""
+
+#. type: Bullet: '   - '
+msgid "Choose **Encrypt with password**."
+msgstr ""
+
+#. type: Plain text
+msgid "To decrypt a file:"
+msgstr ""
+
+#. type: Bullet: '1. '
+msgid "Choose **Decrypt/Verify** from the main window."
+msgstr ""
+
+#. type: Bullet: '1. '
+msgid "Select the file that you want to decrypt."
+msgstr ""
+
+#. type: Title #
+#, no-wrap
+msgid "Working with encrypted text"
+msgstr ""
+
+#. type: Plain text
+#, no-wrap
+msgid "<div class=\"caution\">\n"
+msgstr ""
+
+#. type: Plain text
+#, no-wrap
+msgid ""
+"<p>It is unsafe to write confidential text in a web browser since JavaScript\n"
+"attacks can access it from inside the browser. You should rather write and\n"
+"encrypt your text directly in the notepad of <i>Kleopatra</i> and only paste\n"
+"the encrypted text in your browser.</p>\n"
+msgstr ""
+
+#. type: Plain text
+msgid "To encrypt text:"
+msgstr ""
+
+#. type: Bullet: '1. '
+msgid "Choose **Notepad** from the main window."
+msgstr ""
+
+#. type: Bullet: '1. '
+msgid "Type your text in the left pane."
+msgstr ""
+
+#. type: Bullet: '1. '
+msgid "In the right pane, either:"
+msgstr ""
+
+#. type: Bullet: '   - '
+msgid "Specify which OpenPGP keys you want to encrypt the text to."
+msgstr ""
+
+#. type: Bullet: '1. '
+msgid "Select the **Encrypt Notepad** button."
+msgstr ""
+
+#. type: Plain text
+#, no-wrap
+msgid ""
+"   This button is labeled **Sign / Encrypt Notepad** if you select the **Sign\n"
+"   as** option.\n"
+msgstr ""
+
+#. type: Plain text
+msgid "To decrypt text:"
+msgstr ""
+
+#. type: Bullet: '1. '
+msgid "Paste the encrypted text in left pane."
+msgstr ""
+
+#. type: Bullet: '1. '
+msgid "Select the **Decrypt / Verify Notepad** button."
+msgstr ""
+
+#. type: Plain text
+#, no-wrap
+msgid "<div class=\"bug\">\n"
+msgstr "<div class=\"bug\">\n"
+
+#. type: Plain text
+#, no-wrap
+msgid ""
+"<p>When using <i>Kleopatra</i> to encrypt emails, non-ASCII characters (for\n"
+"example non-Latin characters or characters with accents) might not display\n"
+"correctly to the recipients of the email.</p>\n"
+msgstr ""
+
+#. type: Plain text
+#, no-wrap
+msgid ""
+"<p>If you often encrypt emails, we recommend you set up OpenPGP in\n"
+"[[<i>Thunderbird</i>|doc/anonymous_internet/thunderbird]] instead.</p>\n"
+msgstr ""
+
+#, no-wrap
+#~ msgid "<div class=\"note\">\n"
+#~ msgstr "<div class=\"note\">\n"

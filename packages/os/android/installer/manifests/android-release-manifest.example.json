@@ -1,0 +1,56 @@
+{
+  "schemaVersion": 1,
+  "releaseId": "elizaos-android-example-2026.05.0",
+  "generatedAt": "2026-05-15T00:00:00Z",
+  "buildFingerprint": "elizaos/caiman/caiman:16/example:userdebug/test-keys",
+  "buildType": "userdebug",
+  "supportedDevices": [
+    {
+      "codename": "caiman",
+      "marketingName": "Pixel 9 Pro",
+      "tier": "candidate",
+      "slots": ["a", "b"],
+      "dynamicPartitions": true,
+      "rollbackSupported": true,
+      "notes": "Example only. Promote after a real lab flash and validation pass."
+    }
+  ],
+  "artifacts": [
+    {
+      "partition": "boot",
+      "filename": "boot.img",
+      "sha256": "0000000000000000000000000000000000000000000000000000000000000000",
+      "sizeBytes": 1,
+      "required": true,
+      "fastbootMode": "bootloader"
+    },
+    {
+      "partition": "vendor_boot",
+      "filename": "vendor_boot.img",
+      "sha256": "1111111111111111111111111111111111111111111111111111111111111111",
+      "sizeBytes": 1,
+      "required": true,
+      "fastbootMode": "bootloader"
+    },
+    {
+      "partition": "super",
+      "filename": "super.img",
+      "sha256": "2222222222222222222222222222222222222222222222222222222222222222",
+      "sizeBytes": 1,
+      "required": true,
+      "fastbootMode": "fastbootd"
+    }
+  ],
+  "validation": {
+    "bootTimeoutSeconds": 300,
+    "expectedFingerprintPrefix": "elizaos/caiman/caiman:",
+    "properties": {
+      "ro.product.device": "caiman",
+      "sys.boot_completed": "1"
+    }
+  },
+  "rollback": {
+    "previousReleaseId": "stock-or-previous-known-good",
+    "notes": "Keep previous known-good artifacts available before flashing."
+  }
+}

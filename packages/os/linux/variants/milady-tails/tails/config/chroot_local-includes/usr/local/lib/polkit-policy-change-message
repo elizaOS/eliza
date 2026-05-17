@@ -1,0 +1,83 @@
+#!/usr/bin/python3 -I
+
+"""
+This script will change multiple policy files in order to explain better what
+administration password they are being asked for.
+"""
+
+import argparse
+import gettext
+from dataclasses import dataclass
+from pathlib import Path
+from xml.dom import minidom
+
+translation = gettext.translation("tails", "/usr/share/locale", fallback=True)
+_ = translation.gettext
+
+
+def replace_message(fpath: Path, localized_message: str):
+    with fpath.open() as buf:
+        policy_xml = minidom.parse(buf)  # noqa: S318  we assume policies are trusted
+    policyconfig = policy_xml.getElementsByTagName("policyconfig")[0]
+    for action in policyconfig.getElementsByTagName("action"):
+        for message in action.getElementsByTagName("message"):
+            if message.attributes and "xml:lang" in message.attributes:
+                action.removeChild(message)
+            else:
+                text = message.childNodes[0]
+                text.data = localized_message
+
+    with fpath.open("w") as buf:
+        buf.write(policy_xml.toxml())
+
+
+def yesno(value: str) -> bool:
+    if value == "yes":
+        return True
+    if value == "no":
+        return False
+    raise ValueError(f"Not a yes/no value: {value!r}")
+
+
+@dataclass
+class PolicyFile:
+    path: Path
+    prompt: str | None = None
+
+
+def main():
+    p = argparse.ArgumentParser()
+    p.add_argument(
+        "--admin-password-set",
+        type=yesno,
+        help="Specify if there is an administration password available",
+        required=True,
+    )
+    args = p.parse_args()
+
+    policies = {
+        "synaptic": PolicyFile(
+            path=Path("/usr/share/polkit-1/actions/com.ubuntu.pkexec.synaptic.policy"),
+        ),
+    }
+    if args.admin_password_set:
+        policies["synaptic"].prompt = _(
+            "Authentication is required to run the Synaptic Package Manager. "
+            "Enter the administration password that you set up in the Welcome Screen.",
+        )
+
+    else:
+        policies["synaptic"].prompt = _(
+            "For better security, no administration password is set up in Tails "
+            "by default. "
+            "To run the Synaptic Package Manager, restart Tails "
+            "and set up an administration password in the Welcome Screen.",
+        )
+
+    for policy in policies.values():
+        if policy.prompt:
+            replace_message(policy.path, policy.prompt)
+
+
+if __name__ == "__main__":
+    main()

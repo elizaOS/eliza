@@ -1,0 +1,87 @@
+# SOME DESCRIPTIVE TITLE
+# Copyright (C) YEAR Free Software Foundation, Inc.
+# This file is distributed under the same license as the PACKAGE package.
+# FIRST AUTHOR <EMAIL@ADDRESS>, YEAR.
+#
+#, fuzzy
+msgid ""
+msgstr ""
+"Project-Id-Version: PACKAGE VERSION\n"
+"Report-Msgid-Bugs-To: tails-l10n@boum.org\n"
+"POT-Creation-Date: 2025-06-10 12:51+0200\n"
+"PO-Revision-Date: YEAR-MO-DA HO:MI+ZONE\n"
+"Last-Translator: FULL NAME <EMAIL@ADDRESS>\n"
+"Language-Team: LANGUAGE <LL@li.org>\n"
+"Language: sr_Latn\n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+
+#. type: Title ##
+#, no-wrap
+msgid "Connecting to the Internet and Tor"
+msgstr ""
+
+#. type: Bullet: '- '
+msgid "[[Connecting to a local network|anonymous_internet/networkmanager]]"
+msgstr ""
+
+#. type: Bullet: '  * '
+msgid "[[Troubleshooting Wi-Fi not working|anonymous_internet/no-wifi]]"
+msgstr ""
+
+#. type: Bullet: '  * '
+msgid ""
+"[[Signing in to a network using a captive portal|anonymous_internet/"
+"unsafe_browser]]"
+msgstr ""
+
+#. type: Bullet: '- '
+msgid "[[Connecting to the Tor network|anonymous_internet/tor]]"
+msgstr ""
+
+#. type: Bullet: '  * '
+msgid ""
+"[[Troubleshooting connecting to Tor|anonymous_internet/tor/troubleshoot]]"
+msgstr ""
+
+#. type: Bullet: '  * '
+msgid "[[Why does Tails use Tor?|anonymous_internet/tor/why]]"
+msgstr ""
+
+#. type: Bullet: '  * '
+msgid "[[Why is Tor slow?|anonymous_internet/tor/slow]]"
+msgstr ""
+
+#. type: Bullet: '  * '
+msgid "[[Managing the circuits of Tor|anonymous_internet/tor/circuits]]"
+msgstr ""
+
+#. type: Title ##
+#, no-wrap
+msgid "Internet applications"
+msgstr ""
+
+#. type: Bullet: '- '
+msgid "[[Browsing the web with *Tor Browser*|anonymous_internet/tor_browser]]"
+msgstr ""
+
+#. type: Bullet: '- '
+msgid ""
+"[[Sharing files, websites, and chat rooms using *OnionShare*|"
+"anonymous_internet/onionshare]]"
+msgstr ""
+
+#. type: Bullet: '- '
+msgid ""
+"[[Emailing and reading news with *Thunderbird*|anonymous_internet/"
+"thunderbird]]"
+msgstr ""
+
+#. type: Bullet: '- '
+msgid "[[Exchanging bitcoins using *Electrum*|anonymous_internet/electrum]]"
+msgstr ""
+
+#. type: Bullet: '- '
+msgid "[[Chatting with *Pidgin* and OTR|anonymous_internet/pidgin]]"
+msgstr ""

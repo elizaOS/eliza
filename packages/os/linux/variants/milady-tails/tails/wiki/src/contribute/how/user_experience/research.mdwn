@@ -1,0 +1,172 @@
+[[!meta title="Policy for the processing of user research data"]]
+
+Designers and developers need to learn about how people use their tools in order
+to make their tools more useful and easier to use. Usually, software
+companies rely on invasive data collection techniques that don't respect their
+users.
+
+At Tails, we are transparent about what data we collect from our users and we
+manipulate this data with maximum care to respect our users' privacy and
+not put them in danger.
+
+[[!toc]]
+
+<h1 id="survey">Surveys</h1>
+
+If you are answering one of our surveys about your use of Tails, here is how
+your data is processed and stored.
+
+### Full survey responses
+
+- The survey infrastructure is hosted on one of our dedicated servers and
+  stored on encrypted disks.
+
+- Only members of our team have access to the full survey responses.
+
+- We delete the full responses from our servers after at most
+  12 months.
+
+- Only the researchers who are analyzing a survey are allowed to download the
+  full responses on their computer, always stored on encrypted disks.
+
+- The researchers delete the full responses from their computer after at most
+  12 months.
+
+### Survey report
+
+We only publish aggregated or anonymous data from surveys in reports, for
+example:
+
+- Aggregated statistics, like how many users use OnionShare or would like to be
+  able to persist a custom background.
+
+- Quotes from open-ended questions after redacting them and removing any
+  personal information.
+
+- Personal information or email addresses are never published.
+
+As an example, see our report on our [survey about OpenPGP and
+Pidgin](https://gitlab.tails.boum.org/tails/blueprints/-/wikis/user_survey/openpgp_and_pidgin)
+from 2020.
+
+<h1 id="test">Usability tests</h1>
+
+If you participate in usability tests with researchers from Tails, here is how
+your data is processed and stored.
+
+### Public reports
+
+- We publish anonymized reports from the usability tests to summarize our
+  findings, for example:
+
+  * A list of [usability issues and possible solutions](https://gitlab.tails.boum.org/tails/ux/-/raw/master/first-time/rainbow_table_installation_2021_08_Mexico.fods?inline=false)
+  * A summary of the [most important findings](https://lists.autistici.org/message/20211217.014522.68cdc460.en.html)
+
+- Your name or any personal information that could identify you directly is
+  never published in any report from the research. If we need to refer to your
+  session in particular, we will use your participant number.
+
+- We might publish quotes from what you said during the usability tests after
+  redacting them and removing any personal information.
+
+### Recordings
+
+- If you give us your permission to record, the researcher will store the full
+  recording on their computer, always on encrypted disks, and for no more than
+  12 months.
+
+- For usability tests done online, we use a video call application that is
+  hosted by [meet.coop](https://www.meet.coop/). The recording is
+  downloaded to the researchers' computer right after the video call and deleted from
+  the server.
+
+- If you give your consent to share the recording with other people from Tails,
+  we might extract video clips from the full recording and share them with the
+  rest of the team, but never on public communication channels. The video clips
+  are as short as needed and never contain personal information.
+
+- If you give your consent to share the recording publicly, we might extract
+  short video clips from the full recording and publish them online, on
+  communication channels of the Tails project or other projects.
+
+  For example, we might use video clips to demonstrate usability problems in
+  other applications that are included in Tails,
+  like this [usability issue that we reported to
+  *balenaEtcher*](https://github.com/balena-io/etcher/issues/3662).
+
+<h1 id="interview">Interviews</h1>
+
+If you are interviewed about your use of Tails by researchers from Tails, here
+is how your data is processed and stored.
+
+### Recordings
+
+- The researchers store the full recording on their computer, always on
+  encrypted disks, and for no more than the time needed to transcribe the
+  interview.
+
+- For interviews done online, we use a video call application that is
+  hosted by [meet.coop](https://www.meet.coop/). The recording is
+  downloaded as soon as possible to the researchers' computers and deleted from
+  the server.
+
+### Interview transcripts
+
+- We transcribe the interview, edit the transcript, and share it with you over
+  email.
+
+- We only mention personal details, like your name and location, in the
+  transcript, if you give us your consent. You can ask us to remove
+  anything you want from the transcript.
+
+- After you review the transcript, we might publish it on our website if
+  you give us your consent.
+
+  As an example, see our interview with [[Roberto in October
+  2019|interviews/roberto]].
+
+<h1 id="log">Automatic connections to our website</h1>
+
+If you use Tails and connect to the Tor network, here is how the minimal and
+anonymous data that we collect about your use of Tails is stored and processed.
+
+After connecting to the Tor network, your Tails automatically downloads 2 pages
+from our website over Tor:
+
+1. A security check, to know if your Tails has known security vulnerabilities.
+
+   If you use Tails in one of the languages available on our website, your
+   Tails downloads the page in this language.
+
+1. A list of available updates, to know if your Tails needs to be updated.
+
+   Your Tails downloads the list of updates corresponding to your *base
+   version* of Tails—the version that you first installed or to which you last
+   did a manual upgrade.
+
+We count these downloads to know how many times Tails was started each month.
+
+Here is the information stored in our server logs about these downloads:
+
+    - [03/Dec/2020:06:25:24 +0000]  "GET /security/index.de.atom HTTP/2.0" 200 20871 "-" "-"
+    - [03/Dec/2020:06:25:25 +0000]  "GET /upgrade/v2/Tails/4.10/amd64/stable/upgrades.yml.pgp HTTP/2.0" 200 1081 "-" "-"
+
+They contain:
+
+- The date and time (without any time zone information)
+- The URL of the page
+- The language of your Tails session (here `de` for German)
+- The HTTP status code (here `200` for `OK`)
+- The *base version* of your Tails (here `4.10`)
+- The size of the download (here `20871` and `1081`, which is the
+same for all users)
+
+The pages are downloaded over Tor and we don't store any IP addresses.
+
+Our website is hosted on one of our dedicated servers and the logs are stored
+on encrypted disks.
+
+<h1 id="contact">Contact</h1>
+
+If you have any questions regarding our retention of user research data,
+contact <sajolida@pimienta.org>.

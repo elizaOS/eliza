@@ -1,0 +1,31 @@
+---
+- hosts:
+    - '10.200.1.10'
+  commands:
+    SAVECONF:
+      - ''
+    GETINFO:
+      - 'status/bootstrap-phase'
+      - 'status/circuit-established'
+      - 'version'
+  confs:
+    UseBridges: ['', '.*']
+    Bridge: ['', '.*']
+    Sandbox:
+    Socks4Proxy: ['', '.*']
+    Socks5Proxy: ['', '.*']
+    HttpsProxy: ['', '.*']
+    Socks5ProxyUsername: ['', '.*']
+    Socks5ProxyPassword: ['', '.*']
+    HttpsProxyAuthenticator: ['', '.*']
+    DisableNetwork: ['"0"', '"1"']
+    # stem
+    __owningcontrollerprocess:
+  events:
+    # stem
+    STATUS_SERVER:
+      suppress: true
+    # stem
+    SIGNAL:
+      suppress: true
+    CONF_CHANGED:

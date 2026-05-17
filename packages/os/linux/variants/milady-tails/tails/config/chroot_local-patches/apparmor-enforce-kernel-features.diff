@@ -1,0 +1,10 @@
+--- a/etc/apparmor/parser.conf	2022-04-20 15:53:54.601595011 +0000
++++ b/etc/apparmor/parser.conf	2022-04-20 15:54:05.085649348 +0000
+@@ -81,3 +81,7 @@
+ ## Pin feature set (avoid regressions when policy is lagging behind
+ ## the kernel)
+ policy-features=/usr/share/apparmor-features/features
++
++## Pin kernel feature set
++kernel-features=/usr/share/apparmor-features/features
++

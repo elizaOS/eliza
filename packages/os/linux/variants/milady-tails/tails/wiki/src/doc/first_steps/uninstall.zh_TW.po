@@ -1,0 +1,59 @@
+# SOME DESCRIPTIVE TITLE
+# Copyright (C) YEAR Free Software Foundation, Inc.
+# This file is distributed under the same license as the PACKAGE package.
+# FIRST AUTHOR <EMAIL@ADDRESS>, YEAR.
+#
+msgid ""
+msgstr ""
+"Project-Id-Version: PACKAGE VERSION\n"
+"Report-Msgid-Bugs-To: tails-l10n@boum.org\n"
+"POT-Creation-Date: 2026-04-01 01:19+0000\n"
+"PO-Revision-Date: 2024-05-12 13:25+0000\n"
+"Last-Translator: victor dargallo <victordargallo@disroot.org>\n"
+"Language-Team: LANGUAGE <LL@li.org>\n"
+"Language: zh_TW\n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+"Plural-Forms: nplurals=1; plural=0;\n"
+"X-Generator: Weblate 5.3\n"
+
+#. type: Plain text
+#, no-wrap
+msgid "[[!meta title=\"Uninstalling Tails\"]]\n"
+msgstr ""
+
+#. type: Plain text
+#, fuzzy, no-wrap
+msgid "[[!inline pages=\"doc/uninstall.intro\" raw=\"yes\" sort=\"age\"]]\n"
+msgstr "[[!inline pages=\"doc/reset.intro.zh_TW\" raw=\"yes\" sort=\"age\"]]\n"
+
+#. type: Bullet: '- '
+#, fuzzy
+msgid "[[Uninstalling Tails using Windows|uninstall/windows]]"
+msgstr "[[Windows指示文件|reset/windows]]指示文件"
+
+#. type: Bullet: '- '
+msgid "[[Uninstalling Tails using macOS|uninstall/mac]]"
+msgstr ""
+
+#. type: Bullet: '- '
+msgid "[[Uninstalling Tails using Linux|uninstall/linux]]"
+msgstr ""
+
+#. type: Bullet: '- '
+#, fuzzy
+msgid "[[Uninstalling Tails using Tails itself|uninstall/tails]]"
+msgstr "[[Windows指示文件|reset/windows]]指示文件"
+
+#, fuzzy
+#~ msgid ""
+#~ "[[Instructions for Linux with GNOME: Ubuntu, Debian, Tails, etc.|reset/"
+#~ "linux]]"
+#~ msgstr ""
+#~ "[[Linux  使用 GNOME: Ubuntu, Debian, Tails, 等等的指示|reset/linux]]指示文"
+#~ "件"
+
+#, fuzzy
+#~ msgid "[[Instructions for macOS|reset/mac]]"
+#~ msgstr "[[Windows指示文件|reset/windows]]指示文件"

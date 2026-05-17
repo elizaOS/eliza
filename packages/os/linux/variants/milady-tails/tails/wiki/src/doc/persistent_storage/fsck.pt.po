@@ -1,0 +1,1133 @@
+# SOME DESCRIPTIVE TITLE
+# Copyright (C) YEAR Free Software Foundation, Inc.
+# This file is distributed under the same license as the PACKAGE package.
+# FIRST AUTHOR <EMAIL@ADDRESS>, YEAR.
+#
+msgid ""
+msgstr ""
+"Project-Id-Version: PACKAGE VERSION\n"
+"Report-Msgid-Bugs-To: tails-l10n@boum.org\n"
+"POT-Creation-Date: 2025-09-17 11:40+0200\n"
+"PO-Revision-Date: 2025-09-18 17:21+0000\n"
+"Last-Translator: xin <xin@riseup.net>\n"
+"Language-Team: LANGUAGE <LL@li.org>\n"
+"Language: pt\n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+"Plural-Forms: nplurals=2; plural=n > 1;\n"
+"X-Generator: Weblate 5.13.2\n"
+
+#. type: Plain text
+#, no-wrap
+msgid "[[!meta title=\"Recovering data from the Persistent Storage when it has file system errors\"]]\n"
+msgstr "[[!meta title=\"Recuperando dados do Armazenamento Persistente quando há erros no sistema de arquivos\"]]\n"
+
+#. type: Plain text
+#, no-wrap
+msgid "<!--\n"
+msgstr "<!--\n"
+
+#. type: Plain text
+msgid "To test this doc:"
+msgstr "To test this doc:"
+
+#. type: Bullet: '1. '
+msgid ""
+"Add in a file *config/chroot_local-includes/usr/local/sbin/e2fsck.slow*:"
+msgstr ""
+"Add in a file *config/chroot_local-includes/usr/local/sbin/e2fsck.slow*:"
+
+#. type: Plain text
+#, no-wrap
+msgid "       #!/bin/sh\n"
+msgstr "       #!/bin/sh\n"
+
+#. type: Plain text
+#, no-wrap
+msgid ""
+"       if echo \"${*}\" | grep -w -- \"-p\"; then\n"
+"           # only runs for automatic fsck\n"
+"           sleep 10\n"
+"           exit 4  # File system errors left uncorrected\n"
+"       elif echo \"${*}\" | grep -w -- \"-y\"; then\n"
+"           # only runs for manual fsck\n"
+"           sleep 30\n"
+"           exit 1  # Error corrected\n"
+"       fi\n"
+msgstr ""
+"       if echo \"${*}\" | grep -w -- \"-p\"; then\n"
+"           # only runs for automatic fsck\n"
+"           sleep 10\n"
+"           exit 4  # File system errors left uncorrected\n"
+"       elif echo \"${*}\" | grep -w -- \"-y\"; then\n"
+"           # only runs for manual fsck\n"
+"           sleep 30\n"
+"           exit 1  # Error corrected\n"
+"       fi\n"
+
+#. type: Plain text
+#, no-wrap
+msgid "       exec /usr/sbin/e2fsck \"${@}\"\n"
+msgstr "       exec /usr/sbin/e2fsck \"${@}\"\n"
+
+#. type: Bullet: '1. '
+msgid "Add in a *hook* file at the root of your Git repo:"
+msgstr "Add in a *hook* file at the root of your Git repo:"
+
+#. type: Plain text
+#, no-wrap
+msgid "       root=\"${1}\"\n"
+msgstr "       root=\"${1}\"\n"
+
+#. type: Plain text
+#, no-wrap
+msgid ""
+"       mount -o bind \\\n"
+"             \"${root}/mnt/config/chroot_local-includes/usr/lib/python3/dist-packages/tps/\" \\\n"
+"             \"${root}/usr/lib/python3/dist-packages/tps/\"\n"
+"       cp \"${root}/mnt/config/chroot_local-includes/usr/local/sbin/e2fsck.slow\" \"${root}/usr/local/sbin/\"\n"
+msgstr ""
+"       mount -o bind \\\n"
+"             \"${root}/mnt/config/chroot_local-includes/usr/lib/python3/dist-packages/tps/\" \\\n"
+"             \"${root}/usr/lib/python3/dist-packages/tps/\"\n"
+"       cp \"${root}/mnt/config/chroot_local-includes/usr/local/sbin/e2fsck.slow\" \"${root}/usr/local/sbin/\"\n"
+
+#. type: Bullet: '1. '
+msgid ""
+"Edit *config/chroot_local-includes/usr/lib/python3/dist-packages/tps/"
+"device.py*"
+msgstr ""
+"Edit *config/chroot_local-includes/usr/lib/python3/dist-packages/tps/"
+"device.py*"
+
+#. type: Plain text
+#, no-wrap
+msgid ""
+"       diff --git a/config/chroot_local-includes/usr/lib/python3/dist-packages/tps/device.py b/config/chroot_local-includes/usr/lib/python3/dist-packages/tps/device.py\n"
+"       index adad9d2c6e9..e6559c26f89 100644\n"
+"       --- a/config/chroot_local-includes/usr/lib/python3/dist-packages/tps/device.py\n"
+"       +++ b/config/chroot_local-includes/usr/lib/python3/dist-packages/tps/device.py\n"
+"       @@ -777,7 +777,7 @@ class CleartextDevice:\n"
+msgstr ""
+"       diff --git a/config/chroot_local-includes/usr/lib/python3/dist-packages/tps/device.py b/config/chroot_local-includes/usr/lib/python3/dist-packages/tps/device.py\n"
+"       index adad9d2c6e9..e6559c26f89 100644\n"
+"       --- a/config/chroot_local-includes/usr/lib/python3/dist-packages/tps/device.py\n"
+"       +++ b/config/chroot_local-includes/usr/lib/python3/dist-packages/tps/device.py\n"
+"       @@ -777,7 +777,7 @@ class CleartextDevice:\n"
+
+#. type: Plain text
+#, no-wrap
+msgid ""
+"                try:\n"
+"                    cmd = [\n"
+"       -                \"e2fsck\",\n"
+"       +                \"e2fsck.slow\",\n"
+msgstr ""
+"                try:\n"
+"                    cmd = [\n"
+"       -                \"e2fsck\",\n"
+"       +                \"e2fsck.slow\",\n"
+
+#. type: Bullet: '1. '
+msgid ""
+"When starting Tails, add the [[`early_patch`|contribute/build/early-patch]] "
+"boot option."
+msgstr ""
+"When starting Tails, add the [[`early_patch`|contribute/build/early-patch]] "
+"boot option."
+
+#. type: Plain text
+#, no-wrap
+msgid "-->\n"
+msgstr "-->\n"
+
+#. type: Plain text
+#, no-wrap
+msgid "<div class=\"next\">\n"
+msgstr "<div class=\"next\">\n"
+
+#. type: Plain text
+#, no-wrap
+msgid ""
+"<p>If instead, your Tails USB stick doesn't start, refer to our instructions on\n"
+"[[recovering data from the Persistent Storage when Tails doesn't\n"
+"start|recover]].</p>\n"
+msgstr ""
+
+#. type: Plain text
+#, no-wrap
+msgid "</div>\n"
+msgstr "</div>\n"
+
+#. type: Plain text
+#, fuzzy, no-wrap
+#| msgid "   [[!img repairing.png link=\"no\" class=\"screenshot\" alt=\"\"]]\n"
+msgid "[[!img repair.png class=\"screenshot\" alt=\"File System Errors dialog in Welcome Screen\"]]\n"
+msgstr "   [[!img repairing.png link=\"no\" class=\"screenshot\" alt=\"\"]]\n"
+
+#. type: Plain text
+msgid ""
+"Tails can try to fix these errors, but this might erase some of your data "
+"and take a long time."
+msgstr ""
+
+#. type: Plain text
+msgid ""
+"That is why, if you cannot restore from a recent [[backup]], we recommend "
+"that you create a *partition image* of your Persistent Storage *before* "
+"attempting to repair the file system of your Persistent Storage from the "
+"Welcome Screen."
+msgstr ""
+
+#. type: Plain text
+msgid ""
+"Most of the time, repairing the file system will work fine and will be "
+"enough to fix your Persistent Storage."
+msgstr ""
+
+#. type: Plain text
+msgid ""
+"In the rare cases when repairing the file system will not work, you might be "
+"able to recover some or most of your data from this partition image using "
+"advanced forensics tools. This recovery process is very technical and you "
+"might need help from someone experienced with data recovery."
+msgstr ""
+
+#. type: Plain text
+#, no-wrap
+msgid "[[!toc levels=3]]\n"
+msgstr "[[!toc levels=3]]\n"
+
+#. type: Plain text
+#, no-wrap
+msgid "<h1 id=\"image\">Creating a partition image of your Persistent Storage</h1>\n"
+msgstr ""
+
+#. type: Plain text
+msgid ""
+"A partition image is a copy of your entire Persistent Storage in a single "
+"file that you can save to an external hard disk from Tails."
+msgstr ""
+
+#. type: Plain text
+msgid ""
+"To save the partition image outside of Tails, you need an external hard disk "
+"with as much free space as the size of your Persistent Storage, usually "
+"8&nbsp;GB less than your Tails USB stick. You can also use another USB stick "
+"of the same size as your Tails USB stick, but writing to a USB stick is "
+"usually much slower than writing to a hard disk."
+msgstr ""
+
+#. type: Plain text
+#, no-wrap
+msgid "<div class=\"caution\">\n"
+msgstr "<div class=\"caution\">\n"
+
+#. type: Plain text
+#, no-wrap
+msgid ""
+"<p>The partition image contains a <i>decrypted</i> version of your\n"
+"Persistent Storage.</p>\n"
+msgstr ""
+
+#. type: Plain text
+#, no-wrap
+msgid ""
+"<p>We recommend that you save the partition image to an [[encrypted hard\n"
+"disk|encryption_and_privacy/encrypted_volumes]].</p>\n"
+msgstr ""
+
+#. type: Plain text
+msgid ""
+"We are presenting here 2 different techniques to create a partition image of "
+"your Persistent Storage."
+msgstr ""
+
+#. type: Bullet: '1. '
+msgid "[[Create a partition image using the *Disks* utility|fsck#disks]]"
+msgstr ""
+
+#. type: Plain text
+#, no-wrap
+msgid "   Try this technique first if the hardware of your USB stick is not failing.\n"
+msgstr ""
+
+#. type: Bullet: '1. '
+msgid ""
+"[[Create a partition image using `ddrescue` on the command line|"
+"fsck#ddrescue]]"
+msgstr ""
+
+#. type: Plain text
+#, no-wrap
+msgid "   Try this technique first if the hardware of your USB stick is failing.\n"
+msgstr ""
+
+#. type: Plain text
+#, no-wrap
+msgid ""
+"   Using `ddrescue` is more difficult but is better than the *Disks* utility to\n"
+"   recover data if the hardware of your USB stick is failing.\n"
+msgstr ""
+
+#. type: Plain text
+#, no-wrap
+msgid "<h2 id=\"disks\">Creating a partition image using the <i>Disks</i> utility</h2>\n"
+msgstr ""
+
+#. type: Plain text
+msgid ""
+"When the hardware of your USB stick is not failing, using the *Disks* "
+"utility is the simplest way of creating a partition image of your Persistent "
+"Storage."
+msgstr ""
+
+#. type: Plain text
+#, no-wrap
+msgid "<h3 id=\"external\">Preparing the external hard disk</h3>\n"
+msgstr ""
+
+#. type: Bullet: '1. '
+msgid "Start Tails."
+msgstr "Inicie o Tails."
+
+#. type: Bullet: '1. '
+msgid "In the Welcome Screen:"
+msgstr ""
+
+#. type: Bullet: '   1. '
+msgid ""
+"[[Set up an administration password|doc/first_steps/welcome_screen/"
+"administration_password]]."
+msgstr ""
+
+#. type: Bullet: '   2. '
+msgid "Choose to start without unlocking your Persistent Storage."
+msgstr ""
+
+#. type: Bullet: '1. '
+msgid ""
+"Choose **Apps&nbsp;▸ Accessories&nbsp;▸ Files** to open the *Files* browser."
+msgstr ""
+
+#. type: Bullet: '1. '
+msgid ""
+"Plug in the hard disk on which you want to save the partition image of your "
+"Persistent Storage. You need as much free space as the size of your "
+"Persistent Storage, usually 8&nbsp;GB less than your Tails USB stick."
+msgstr ""
+
+#. type: Plain text
+#, no-wrap
+msgid "   A new volume appears in the sidebar of the *Files* browser.\n"
+msgstr ""
+
+#. type: Bullet: '1. '
+msgid ""
+"Right-click (on Mac, click with two fingers) on the new volume that appeared "
+"in the sidebar of the *Files* browser and choose *Properties* in the "
+"shortcut menu."
+msgstr ""
+
+#. type: Plain text
+#, no-wrap
+msgid "   Take note of the free space in the volume.\n"
+msgstr ""
+
+#. type: Plain text
+#, no-wrap
+msgid "<h3 id=\"identify\">Identifying your Persistent Storage in the <i>Disks</i> utility</h3>\n"
+msgstr ""
+
+#. type: Bullet: '1. '
+msgid ""
+"Choose **Apps&nbsp;▸ Utilities&nbsp;▸ Disks** to open the *Disks* utility."
+msgstr ""
+
+#. type: Bullet: '1. '
+msgid ""
+"In the left pane of the *Disks* utility, identify your Tails USB stick in "
+"the list of storage devices."
+msgstr ""
+
+#. type: Plain text
+#, no-wrap
+msgid "   Verify its brand and size.\n"
+msgstr ""
+
+#. type: Bullet: '1. '
+msgid ""
+"In the left pane, click on the storage device that corresponds to your Tails "
+"USB stick."
+msgstr ""
+
+#. type: Bullet: '1. '
+msgid ""
+"In the right pane, this storage device should have 2 volumes, corresponding "
+"to 2 partitions on the USB stick."
+msgstr ""
+
+#. type: Bullet: '   - '
+msgid "1 volume with a **Tails** label and **FAT** content."
+msgstr ""
+
+#. type: Plain text
+#, no-wrap
+msgid "     This volume corresponds to the system partition of your Tails.\n"
+msgstr ""
+
+#. type: Bullet: '   - '
+msgid "1 volume with a **TailsData** label and **LUKS** content."
+msgstr ""
+
+#. type: Plain text
+#, no-wrap
+msgid "     This volume corresponds to the encrypted version of your Persistent Storage.\n"
+msgstr ""
+
+#. type: Plain text
+#, no-wrap
+msgid "   [[!img disks.png class=\"screenshot\" alt=\"\"]]\n"
+msgstr "   [[!img disks.png class=\"screenshot\" alt=\"\"]]\n"
+
+#. type: Bullet: '1. '
+msgid ""
+"In the right pane, click on the volume that corresponds to your Persistent "
+"Storage."
+msgstr ""
+
+#. type: Plain text
+#, no-wrap
+msgid "   Verify that the content of the volume is of type **LUKS Encryption**.\n"
+msgstr ""
+
+#. type: Plain text
+#, no-wrap
+msgid "<h3 id=\"unlock\">Unlocking your Persistent Storage in the <i>Disks</i> utility</h3>\n"
+msgstr ""
+
+#. type: Plain text
+msgid ""
+"Before creating the partition image, unlock the encryption to access the "
+"decrypted version of your Persistent Storage. To do so:"
+msgstr ""
+
+#. type: Bullet: '1. '
+msgid ""
+"Click [[!img lib/unlock.png link=\"no\" class=\"symbolic\" alt=\"Unlock "
+"selected encrypted partition\"]]."
+msgstr ""
+
+#. type: Bullet: '1. '
+msgid ""
+"In the **Enter passphrase to unlock** dialog, enter the passphrase of your "
+"Persistent Storage."
+msgstr ""
+
+#. type: Bullet: '1. '
+msgid "Click **Unlock**."
+msgstr ""
+
+#. type: Bullet: '1. '
+msgid ""
+"In the **Authentication Required** dialog, enter your administration "
+"password."
+msgstr ""
+
+#. type: Plain text
+#, no-wrap
+msgid "   <div class=\"bug\">\n"
+msgstr "   <div class=\"bug\">\n"
+
+#. type: Plain text
+#, no-wrap
+msgid ""
+"   <p>If unlocking fails at this step, your Persistent Storage is so damaged\n"
+"   that decryption is impossible, making all your data completely\n"
+"   unrecoverable.</p>\n"
+msgstr ""
+
+#. type: Plain text
+#, no-wrap
+msgid "   </div>\n"
+msgstr "   </div>\n"
+
+#. type: Bullet: '1. '
+msgid ""
+"In the right pane, click on the new volume that appears below the **LUKS** "
+"volume."
+msgstr ""
+
+#. type: Plain text
+#, no-wrap
+msgid "   Verify that the content of the new volume is of type **Ext4**.\n"
+msgstr ""
+
+#. type: Plain text
+#, no-wrap
+msgid "   This volume corresponds to the decrypted version of your Persistent Storage.\n"
+msgstr ""
+
+#. type: Bullet: '1. '
+msgid ""
+"Verify that the size of your decrypted Persistent Storage is smaller than "
+"the available free space in the external hard disk."
+msgstr ""
+
+#. type: Bullet: '1. '
+msgid "Take note of the device name of your Persistent Storage."
+msgstr ""
+
+#. type: Plain text
+#, no-wrap
+msgid "   The device name is composed of `/dev/mapper/luks`, followed by letters and numbers.\n"
+msgstr ""
+
+#. type: Plain text
+#, no-wrap
+msgid "<h3 id=\"create\">Creating the partition image</h3>\n"
+msgstr ""
+
+#. type: Bullet: '1. '
+msgid ""
+"Choose **[[!img lib/system-run.png link=\"no\" class=\"symbolic\" "
+"alt=\"Additional partition options\"]]&nbsp;▸ Create Partition Image**."
+msgstr ""
+
+#. type: Bullet: '1. '
+msgid "In the **Create Disk Image** dialog:"
+msgstr ""
+
+#. type: Bullet: '   - '
+msgid "In the **Name** field, specify *persistent-storage.img*."
+msgstr ""
+
+#. type: Bullet: '   - '
+msgid ""
+"In the **Save in Folder** menu, choose the external hard disk to which you "
+"want to save the partition image."
+msgstr ""
+
+#. type: Plain text
+#, no-wrap
+msgid "   Click the **Start Creating** button.\n"
+msgstr ""
+
+#. type: Bullet: '1. '
+msgid "After the creation of the partition image finishes:"
+msgstr ""
+
+#. type: Bullet: '   - '
+msgid "If the creation succeeded, shutdown Tails."
+msgstr ""
+
+#. type: Plain text
+#, no-wrap
+msgid ""
+"     You can now safely start [[recovering data from the Persistent\n"
+"     Storage|fsck#welcome]].\n"
+msgstr ""
+
+#. type: Bullet: '   - '
+msgid ""
+"If the creation failed, try the second technique described below to [[create "
+"a partition image using `ddrescue` on the command line|fsck#ddrescue]] "
+"instead."
+msgstr ""
+
+#. type: Plain text
+#, no-wrap
+msgid "<h2 id=\"ddrescue\">Creating a partition image using <span class=\"code\">ddrescue</span> on the command line</h2>\n"
+msgstr ""
+
+#. type: Plain text
+msgid ""
+"If creating a partition image using the *Disks* utility fails, you can try "
+"this second technique using `ddrescue`, which can be more resilient to "
+"hardware failures."
+msgstr ""
+
+#. type: Plain text
+msgid ""
+"The `ddrescue` utility tries to copy first the parts of the Persistent "
+"Storage that are not failing and skips over the parts that are failing. "
+"After that, you can run `ddrescue` again to try to copy the parts that "
+"failed the first time."
+msgstr ""
+
+#. type: Bullet: '1. '
+msgid ""
+"In the *Files* browser, navigate to the folder of the external hard disk "
+"where you want to save the partition image of your Persistent Storage."
+msgstr ""
+
+#. type: Bullet: '1. '
+msgid ""
+"Right-click in the empty space of the right pane and choose **Open in "
+"Console** in the shortcut menu."
+msgstr ""
+
+#. type: Plain text
+#, no-wrap
+msgid "   Doing so opens a console that is configured to operate in this folder.\n"
+msgstr ""
+
+#. type: Bullet: '1. '
+msgid ""
+"In the console, execute the following command. Replace <span class=\"command-"
+"placeholder\">/dev/mapper/luks-xyz</span> with the device name found when "
+"[[identifying your *Persistent Storage* in the *Disks* utility|"
+"fsck#identify]]."
+msgstr ""
+
+#. type: Plain text
+#, fuzzy, no-wrap
+#| msgid "   <p class=\"command-template\">ddrescue <span class=\"command-placeholder\">/dev/mapper/luks-xyz</span> persistent-storage.img ddrescue.log</p>\n"
+msgid "   <p class=\"command-template\">sudo ddrescue <span class=\"command-placeholder\">/dev/mapper/luks-xyz</span> persistent-storage.img ddrescue.log</p>\n"
+msgstr "   <p class=\"command-template\">ddrescue <span class=\"command-placeholder\">/dev/mapper/luks-xyz</span> persistent-storage.img ddrescue.log</p>\n"
+
+#. type: Plain text
+#, no-wrap
+msgid "   The output of `ddrescue` looks like this:\n"
+msgstr ""
+
+#. type: Plain text
+#, fuzzy, no-wrap
+#| msgid ""
+#| "       GNU ddrescue 1.27\n"
+#| "       Press Ctrl-C to interrupt\n"
+#| "            ipos:  749404 kB, non-trimmed:        0 B,  current rate:  34996 kB/s\n"
+#| "            ipos:    1446 MB, non-trimmed:        0 B,  current rate:  24772 kB/s\n"
+#| "            opos:    1446 MB, non-scraped:        0 B,  average rate:  33629 kB/s\n"
+#| "       non-tried:    9290 MB,  bad-sector:        0 B,    error rate:       0 B/s\n"
+#| "         rescued:    1446 MB,   bad areas:        0,        run time:         43s\n"
+#| "       pct rescued:   13.46%, read errors:        0,  remaining time:      1m 31s\n"
+#| "                                     time since last successful read:          0s\n"
+#| "       Copying non-tried blocks... Pass 1 (forwards)\n"
+msgid ""
+"       GNU ddrescue 1.29\n"
+"       Press Ctrl-C to interrupt\n"
+"            ipos:  749404 kB, non-trimmed:        0 B,  current rate:  34996 kB/s\n"
+"            ipos:    1446 MB, non-trimmed:        0 B,  current rate:  24772 kB/s\n"
+"            opos:    1446 MB, non-scraped:        0 B,  average rate:  33629 kB/s\n"
+"       non-tried:    9290 MB,  bad-sector:        0 B,    error rate:       0 B/s\n"
+"         rescued:    1446 MB,   bad areas:        0,        run time:         43s\n"
+"       pct rescued:   13.46%, read errors:        0,  remaining time:      1m 31s\n"
+"                                     time since last successful read:          0s\n"
+"       Copying non-tried blocks... Pass 1 (forwards)\n"
+msgstr ""
+"       GNU ddrescue 1.27\n"
+"       Press Ctrl-C to interrupt\n"
+"            ipos:  749404 kB, non-trimmed:        0 B,  current rate:  34996 kB/s\n"
+"            ipos:    1446 MB, non-trimmed:        0 B,  current rate:  24772 kB/s\n"
+"            opos:    1446 MB, non-scraped:        0 B,  average rate:  33629 kB/s\n"
+"       non-tried:    9290 MB,  bad-sector:        0 B,    error rate:       0 B/s\n"
+"         rescued:    1446 MB,   bad areas:        0,        run time:         43s\n"
+"       pct rescued:   13.46%, read errors:        0,  remaining time:      1m 31s\n"
+"                                     time since last successful read:          0s\n"
+"       Copying non-tried blocks... Pass 1 (forwards)\n"
+
+#. type: Plain text
+#, no-wrap
+msgid ""
+"   The section about **bad areas** refers to errors reading the data of your\n"
+"   Persistent Storage, most likely because of hardware failures.\n"
+msgstr ""
+
+#. type: Bullet: '1. '
+msgid "After `ddrescue` finishes:"
+msgstr ""
+
+#. type: Bullet: '   - '
+msgid ""
+"If bad areas were reported, try leaving your USB stick to rest for some "
+"minutes and executing the same `ddrescue` command again to copy more data."
+msgstr ""
+
+#. type: Plain text
+#, no-wrap
+msgid ""
+"     We recommend that you replace your USB stick and [[copy the partition image\n"
+"     to a new USB stick|fsck#copy]] after you execute `ddrescue` several times.\n"
+msgstr ""
+
+#. type: Bullet: '   - '
+msgid ""
+"If no bad areas were reported or if the same bad areas were reported after "
+"several executions of the `ddrescue` command, it means that all the data "
+"that could be rescued was copied to the partition image."
+msgstr ""
+
+#. type: Bullet: '1. '
+msgid "Shut down Tails."
+msgstr ""
+
+#. type: Plain text
+#, no-wrap
+msgid ""
+"   You can now safely start [[recovering data from the Persistent\n"
+"   Storage|fsck#welcome]].\n"
+msgstr ""
+
+#. type: Plain text
+#, no-wrap
+msgid "<h1 id=\"recover\">Recovering data from the Persistent Storage</h1>\n"
+msgstr ""
+
+#. type: Plain text
+msgid ""
+"After [[creating a partition image|fsck#image]], you can safely try to "
+"recover data from your Persistent Storage without risking erasing more data."
+msgstr ""
+
+#. type: Plain text
+msgid ""
+"We are presenting here 3 recovery techniques that work in different cases. "
+"We recommend that you try the 3 techniques one after the other."
+msgstr ""
+
+#. type: Bullet: '1. '
+msgid "[[Repairing the file system from the Welcome Screen|fsck#welcome]]"
+msgstr ""
+
+#. type: Plain text
+#, no-wrap
+msgid ""
+"   If the hardware of your USB stick is not failing, repairing the file system\n"
+"   from the Welcome Screen is likely the easiest technique.\n"
+msgstr ""
+
+#. type: Bullet: '1. '
+msgid "[[Copying the partition image to a new USB stick|fsck#copy]]"
+msgstr ""
+
+#. type: Plain text
+#, no-wrap
+msgid ""
+"   If the hardware of your USB stick is failing, you might still be able to\n"
+"   repair the file system of your Persistent Storage after copying the\n"
+"   partition image to a new USB stick.\n"
+msgstr ""
+
+#. type: Bullet: '1. '
+msgid "[[Analyzing the partition image using *Autopsy*|fsck#autopsy]]"
+msgstr ""
+
+#. type: Plain text
+#, no-wrap
+msgid ""
+"   [*Autopsy*](https://www.autopsy.com/) is an advanced digital forensics tool\n"
+"   that allows recovering files, even from broken file systems.\n"
+msgstr ""
+
+#. type: Plain text
+#, no-wrap
+msgid "<h2 id=\"welcome\">Repairing the file system from the Welcome Screen</h2>\n"
+msgstr ""
+
+#. type: Plain text
+msgid ""
+"If the hardware of your USB stick is not failing, repairing the file system "
+"from the Welcome Screen is likely the easiest technique."
+msgstr ""
+
+#. type: Bullet: '1. '
+msgid "Start on the Tails USB stick that has file system errors."
+msgstr ""
+
+#. type: Bullet: '1. '
+msgid "In the Welcome Screen, try to unlock the Persistent Storage."
+msgstr ""
+
+#. type: Bullet: '1. '
+msgid ""
+"When the error message about file system errors appears, click on the "
+"**Repair File System** button."
+msgstr ""
+
+#. type: Plain text
+#, fuzzy, no-wrap
+#| msgid "   [[!img repairing.png link=\"no\" class=\"screenshot\" alt=\"\"]]\n"
+msgid "   [[!img repair.png class=\"screenshot\" alt=\"File System Errors dialog in Welcome Screen\"]]\n"
+msgstr "   [[!img repairing.png link=\"no\" class=\"screenshot\" alt=\"\"]]\n"
+
+#. type: Bullet: '1. '
+msgid "The repair of the file system starts."
+msgstr ""
+
+#. type: Plain text
+#, no-wrap
+msgid "   The repair can take a long time, from a few seconds to several hours.\n"
+msgstr ""
+
+#. type: Plain text
+#, no-wrap
+msgid ""
+"   If the repair takes more than a day, shutdown Tails and try [[analyzing the\n"
+"   partition image using *Autopsy*|fsck#autopsy]] instead.\n"
+msgstr ""
+
+#. type: Plain text
+#, no-wrap
+msgid "   [[!img repairing.png class=\"screenshot\" alt=\"\"]]\n"
+msgstr "   [[!img repairing.png class=\"screenshot\" alt=\"\"]]\n"
+
+#. type: Bullet: '1. '
+msgid "After the repair finishes:"
+msgstr ""
+
+#. type: Bullet: '   - '
+msgid ""
+"If the repair succeeded, start Tails and verify the content of your "
+"Persistent Storage."
+msgstr ""
+
+#. type: Plain text
+#, no-wrap
+msgid "     <div class=\"tip\">\n"
+msgstr "     <div class=\"tip\">\n"
+
+#. type: Plain text
+#, no-wrap
+msgid "     <p>We recommend that you keep the partition image for some time.</p>\n"
+msgstr ""
+
+#. type: Plain text
+#, no-wrap
+msgid ""
+"     <p>If you realize later on that some files are missing or damaged, you\n"
+"     might be able to recover them by [[analyzing the partition image using\n"
+"     <i>Autopsy</i>|fsck#autopsy]].</p>\n"
+msgstr ""
+
+#. type: Plain text
+#, no-wrap
+msgid "     </div>\n"
+msgstr "     </div>\n"
+
+#. type: Bullet: '   - '
+msgid ""
+"If the repair failed, try to [[copy the partition image to a new USB stick|"
+"fsck#copy]] as described below."
+msgstr ""
+
+#. type: Plain text
+#, no-wrap
+msgid "<h2 id=\"copy\">Copying the partition image to a new USB stick</h2>\n"
+msgstr ""
+
+#. type: Plain text
+msgid ""
+"If the hardware of your USB stick is failing, you might still be able to "
+"repair the file system of your Persistent Storage after copying the "
+"partition image to a new USB stick."
+msgstr ""
+
+#. type: Plain text
+#, no-wrap
+msgid "<h3 id=\"install\">Creating a new Tails USB stick with Persistent Storage</h3>\n"
+msgstr ""
+
+#. type: Bullet: '1. '
+msgid "[[Install Tails|install]] on a new USB stick."
+msgstr ""
+
+#. type: Plain text
+#, no-wrap
+msgid "   The new USB stick must be at least as large as your current Tails USB stick.\n"
+msgstr ""
+
+#. type: Bullet: '1. '
+msgid "Start on the new Tails."
+msgstr ""
+
+#. type: Bullet: '1. '
+msgid ""
+"When starting Tails, [[set up an administration password|doc/first_steps/"
+"welcome_screen/administration_password]]."
+msgstr ""
+
+#. type: Bullet: '1. '
+msgid "Create a Persistent Storage on the new Tails."
+msgstr ""
+
+#. type: Bullet: '1. '
+msgid ""
+"Close the Persistent Storage settings after creation, when the list of "
+"features is displayed."
+msgstr ""
+
+#. type: Plain text
+#, no-wrap
+msgid ""
+"   The process described below overwrites the contents and configuration of the new Persistent\n"
+"   Storage. So, it does not matter which features you turn on after creating\n"
+"   the Persistent Storage.\n"
+msgstr ""
+
+#. type: Plain text
+#, no-wrap
+msgid "<h3 id=\"restore\">Copying the partition image onto the new USB stick</h3>\n"
+msgstr ""
+
+#. type: Bullet: '1. '
+msgid ""
+"In the left pane of the *Disks* utility, identify your new Tails USB stick "
+"in the list of storage devices."
+msgstr ""
+
+#. type: Bullet: '1. '
+msgid ""
+"In the left pane, click on the storage device that corresponds to your new "
+"Tails USB stick."
+msgstr ""
+
+#. type: Bullet: '1. '
+msgid "In the right pane, this storage device should have 3 volumes."
+msgstr ""
+
+#. type: Bullet: '   - '
+msgid "1 volume with a **TailsData** label and **Ext4** content."
+msgstr ""
+
+#. type: Plain text
+#, no-wrap
+msgid "     This volume corresponds to the decrypted version of your Persistent Storage.\n"
+msgstr ""
+
+#. type: Bullet: '1. '
+msgid ""
+"In the right pane, click on the **Ext4** volume, which is the one that "
+"corresponds to the decrypted version of your Persistent Storage."
+msgstr ""
+
+#. type: Plain text
+#, no-wrap
+msgid ""
+"   In the attributes below the volume, verify that its device is\n"
+"   */dev/mapper/TailsData_unlocked*.\n"
+msgstr ""
+
+#. type: Bullet: '1. '
+msgid ""
+"Click on the [[!img lib/media-playback-stop.png link=\"no\" "
+"class=\"symbolic\" alt=\"Unmount selected partition\"]] button to unmount "
+"the Persistent Storage."
+msgstr ""
+
+#. type: Bullet: '1. '
+msgid ""
+"Plug in the hard disk on which you saved the partition image of your "
+"Persistent Storage."
+msgstr ""
+
+#. type: Bullet: '1. '
+msgid ""
+"Choose **[[!img lib/system-run.png link=\"no\" class=\"symbolic\" "
+"alt=\"Additional partition options\"]]&nbsp;▸ Restore Partition Image**."
+msgstr ""
+
+#. type: Bullet: '1. '
+msgid ""
+"In the **Restore Disk Image** dialog, browse for the partition image on the "
+"hard disk that you plugged in."
+msgstr ""
+
+#. type: Bullet: '1. '
+msgid "Click on the **Start Restoring** button."
+msgstr ""
+
+#. type: Bullet: '1. '
+msgid "After the restoration finishes, restart on the new Tails USB stick."
+msgstr ""
+
+#. type: Plain text
+#, no-wrap
+msgid "<h3 id=\"fix\">Fixing the file system errors on the new USB stick</h3>\n"
+msgstr ""
+
+#. type: Bullet: '1. '
+msgid ""
+"If an error message about file system errors appears, click on the **Repair "
+"File System** button."
+msgstr ""
+
+#. type: Bullet: '   - '
+msgid ""
+"If the repair failed, try to [[analyze the partition image using *Autopsy*|"
+"fsck#copy]] as described below."
+msgstr ""
+
+#. type: Plain text
+#, no-wrap
+msgid "<h2 id=\"autopsy\">Analyzing the partition image using <i>Autopsy</i></h2>\n"
+msgstr ""
+
+#. type: Plain text
+msgid ""
+"[*Autopsy*](https://www.autopsy.com/) is an advanced digital forensics tool "
+"that allows recovering files, even from broken file systems."
+msgstr ""
+
+#. type: Plain text
+#, no-wrap
+msgid "*Autopsy* is open source and available for free on Windows, macOS, and Linux.\n"
+msgstr ""
+
+#. type: Plain text
+msgid ""
+"To avoid leaving traces of the content of your Persistent Storage on the "
+"operating system where *Autopsy* is used, we recommend that you use "
+"*Autopsy* in Tails. But, *Autopsy* is easier to install in Windows than in "
+"Tails."
+msgstr ""
+
+#. type: Plain text
+msgid ""
+"We are not providing step-by-step instructions on how to install and use "
+"*Autopsy*."
+msgstr ""
+
+#. type: Plain text
+msgid ""
+"If you don't feel confident installing and using *Autopsy* on your own, we "
+"recommend that you get help from someone with more experience with Linux and "
+"data recovery."
+msgstr ""
+
+#. type: Plain text
+msgid ""
+"You can also read the [Autopsy User Documentation](http://sleuthkit.org/"
+"autopsy/docs/user-docs/latest)."
+msgstr ""
+
+#. type: Title ###
+#, no-wrap
+msgid "Installing *Autopsy* in Tails"
+msgstr ""
+
+#. type: Plain text
+msgid "The general steps are:"
+msgstr ""
+
+#. type: Bullet: '1. '
+msgid ""
+"From the [download page](https://www.autopsy.com/download/), download the 2 "
+"binaries needed to run *Autopsy*:"
+msgstr ""
+
+#. type: Bullet: '   - '
+msgid "The DEB file of *The Sleuth Kit*."
+msgstr ""
+
+#. type: Bullet: '   - '
+msgid "The ZIP file of *Autopsy*."
+msgstr ""
+
+#. type: Bullet: '1. '
+msgid ""
+"From the [installation instructions of *Autopsy* for Linux](https://"
+"github.com/sleuthkit/autopsy/blob/develop/Running_Linux_OSX.md), download "
+"the 2 scripts needed for the installation:"
+msgstr ""
+
+#. type: Bullet: '   - '
+msgid "`install_prereqs_ubuntu.sh`"
+msgstr "`install_prereqs_ubuntu.sh`"
+
+#. type: Bullet: '   - '
+msgid "`install_application.sh`"
+msgstr "`install_application.sh`"
+
+#. type: Bullet: '1. '
+msgid ""
+"Execute the following commands in a *Console*. Replace <span class=\"command-"
+"placeholder\">version</span> with the version number of *The Sleuth Kit* and "
+"*Autopsy* that you downloaded."
+msgstr ""
+
+#. type: Plain text
+#, no-wrap
+msgid "   <!-- The packages openjdk-17-jdk/unstable and openjdk-17-jre/unstable are needed in Debian 13 (Trixie). -->\n"
+msgstr ""
+"   <!-- The packages openjdk-17-jdk/unstable and openjdk-17-jre/unstable are "
+"needed in Debian 13 (Trixie). -->\n"
+
+#. type: Plain text
+#, no-wrap
+msgid "   <p class=\"command\">sudo apt install libsqlite3-dev libc3p0-java unzip openjdk-17-jdk/unstable openjdk-17-jre/unstable</p>\n"
+msgstr ""
+"   <p class=\"command\">sudo apt install libsqlite3-dev libc3p0-java unzip "
+"openjdk-17-jdk/unstable openjdk-17-jre/unstable</p>\n"
+
+#. type: Plain text
+#, no-wrap
+msgid "   <p class=\"command\">sudo bash install_prereqs_ubuntu.sh</p>\n"
+msgstr "   <p class=\"command\">sudo bash install_prereqs_ubuntu.sh</p>\n"
+
+#. type: Plain text
+#, fuzzy, no-wrap
+#| msgid "   <p class=\"command\">sudo dpkg -i sleuthkit-java_4.12.1-1_amd64.deb</p>\n"
+msgid "   <p class=\"command\">sudo dpkg -i sleuthkit-java_<span class=\"command-placeholder\">version</span>_amd64.deb</p>\n"
+msgstr "   <p class=\"command\">sudo dpkg -i sleuthkit-java_4.12.1-1_amd64.deb</p>\n"
+
+#. type: Plain text
+#, fuzzy, no-wrap
+#| msgid "   <p class=\"command\">bash install_application.sh -z autopsy-4.21.0.zip -i ~/Persistent/autopsy -j /usr/lib/jvm/java-17-openjdk-amd64</p>\n"
+msgid "   <p class=\"command\">bash install_application.sh -z autopsy-<span class=\"command-placeholder\">version</span>.zip -i ~/Persistent/autopsy -j /usr/lib/jvm/java-17-openjdk-amd64</p>\n"
+msgstr "   <p class=\"command\">bash install_application.sh -z autopsy-4.21.0.zip -i ~/Persistent/autopsy -j /usr/lib/jvm/java-17-openjdk-amd64</p>\n"
+
+#. type: Plain text
+#, fuzzy, no-wrap
+#| msgid "   <p class=\"command\">/home/amnesia/Persistent/autopsy/autopsy-4.21.0/bin/autopsy</p>\n"
+msgid "   <p class=\"command\">/home/amnesia/Persistent/autopsy/autopsy-<span class=\"command-placeholder\">version</span>/bin/autopsy</p>\n"
+msgstr "   <p class=\"command\">/home/amnesia/Persistent/autopsy/autopsy-4.21.0/bin/autopsy</p>\n"
+
+#. type: Bullet: '1. '
+msgid ""
+"When starting for the first time, *Autopsy* freezes on **Starting modules**."
+msgstr ""
+
+#. type: Plain text
+#, no-wrap
+msgid "   Press **Enter** to continue.\n"
+msgstr ""
+
+#. type: Title ###
+#, no-wrap
+msgid "Using *Autopsy* to analyze the partition image"
+msgstr ""
+
+#. type: Bullet: '1. '
+msgid "Start *Autopsy*."
+msgstr ""
+
+#. type: Bullet: '1. '
+msgid "Open a new case."
+msgstr ""
+
+#. type: Bullet: '1. '
+msgid "Add the partition image of the Persistent Storage as a data source."
+msgstr ""
+
+#. type: Bullet: '1. '
+msgid "*Autopsy* analyzes the data source."
+msgstr ""
+
+#. type: Plain text
+#, no-wrap
+msgid ""
+"   After the analysis finishes, the files that were recovered are listed in\n"
+"   different ways in the left sidebar, for example, both as a file system tree\n"
+"   and by type of files.\n"
+msgstr ""
+
+#. type: Plain text
+#, no-wrap
+msgid "   [[!img autopsy.png class=\"screenshot\" alt=\"Autopsy in Tails showing files recovered from the partition image of a Persistent Storage\"]]\n"
+msgstr ""
+
+#. type: Bullet: '1. '
+msgid "Extract the files that you want to recover to the case folder."
+msgstr ""

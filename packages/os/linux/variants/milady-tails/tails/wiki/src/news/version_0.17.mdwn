@@ -1,0 +1,88 @@
+[[!meta date="Mon, 25 Feb 2013 16:23:45 +0000"]]
+[[!pagetemplate template="news.tmpl"]]
+[[!meta title="Tails 0.17 is out"]]
+[[!tag announce]]
+
+Tails, The Amnesic Incognito Live System, version 0.17, is out.
+
+All users must upgrade as soon as possible.
+
+[[!toc levels=1]]
+
+# Changes
+
+Notable user-visible changes include:
+
+* New features
+  - Install the KeePassX password manager, with a configuration and
+    [[documentation|doc/encryption_and_privacy/manage_passwords]] that
+    makes it easy to persist the password database.
+
+* Iceweasel
+  - Upgrade to Iceweasel 17.0.3esr-1+tails1~bpo60+1.
+  - Do not allow listing all available fonts.
+  - Improve default spellchecker dictionary selection.
+  - Disable the add-ons automatic update feature.
+  - Remove NoScript click-to-play confirmation.
+  - Sync some prefs set by Torbutton, to be ready when it stops setting these.
+  - Disable navigation timing.
+  - Disable SPDY.
+  - More aggressive iceweasel HTTP pipelining settings.
+  - Enable WebGL (as click-to-play only).
+  - Disable network.http.connection-retry-timeout.
+  - Disable full path information for plugins.
+  - Remove NoScript blocks of WebFonts.
+
+* Minor improvements
+  - Upgrade to live-boot 3.0~b11-1 and live-config 3.0.12-1.
+  - Don't add "quiet" to the kernel command-line ourselves.
+  - Upgrade I2P to 0.9.4.
+
+* Bugfixes
+  - Many bugfixes brought by the Debian Squeeze 6.0.7 point-release.
+  - Use the regular GnuPG agent + pinentry-gtk2 instead of Seahorse
+    as a GnuPG agent. This fixes usage of OpenPGP in Claws Mail,
+    and brings support for OpenPGP smartcards.
+  - Enable I2P hidden mode.
+    Else, killing I2P ungracefully is bad for the I2P network.
+  - Add shutdown and reboot launchers to the menu.
+    This workarounds the lack of a shutdown helper applet in camouflage mode.
+  - Remove Pidgin's MXit and Sametime support to workaround security flaws.
+
+* Hardware support
+  - Install recent Intel and AMD microcode.
+  - Install firmware loader for Qualcomm Gobi USB chipsets.
+  - Upgrade barry to 0.18.3-5~bpo60+1.
+
+* Localization
+  - Tails USB Installer: update translations for Arabic, Czech,
+    German, Hebrew, Polish and Spanish.
+  - tails-greeter: update Spanish and French translations, new
+    Polish translation.
+  - tails-persistence-setup: update translations for Arabic,
+    Bulgarian, Spanish, French, Dutch, Polish and Chinese.
+  - WhisperBack: update Spanish and Korean translations, import new
+    Polish translation.
+
+Plus the usual bunch of bug reports and minor improvements.
+
+See the online
+Changelog
+for technical details.
+
+# I want to try it / to upgrade!
+
+See the Getting started page.
+
+As no software is ever perfect, we maintain a list of [[problems
+that affects the last release of Tails|support/known_issues]].
+
+# What's coming up?
+
+The next Tails release is scheduled for April 9. It will probably be
+a minor, bugfix only one.
+
+
+Would you want to help? As explained in our [["how to contribute"
+documentation|contribute]], there are many ways **you** can contribute
+to Tails. If you want to help, come talk to us!

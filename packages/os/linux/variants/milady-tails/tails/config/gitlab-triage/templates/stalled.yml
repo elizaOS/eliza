@@ -1,0 +1,225 @@
+resource_rules:
+
+  issues:
+    summaries:
+      - name: Stalled WIP
+        actions:
+          summarize:
+            destination: tails/tails
+            title: "Triage stalled work-in-progress: #{Time.now.strftime('%Y-%m-%d')}"
+            summary: |
+              Thanks for having started to work on a Tails issue! This is an
+              automated triaging system that intends to avoid situations where
+              inaccurate metadata ends up causing delays in completion
+              of issues.
+
+              There is at least one issue in a 'Doing' state assigned to you
+              that has not been updated since more than 3 months. Please, make
+              sure to update such issues in order to:
+
+              - better reflect your plans regarding current and further work in
+                each issue
+              - avoid an unsustainable level of work-in-progress for yourself
+              - encourage team work and increase the chances
+                that someone finishes the work
+
+              Below, there's a section titled with your GitLab username, that
+              lists the issues assigned to you, in 'Doing' state, that were not
+              updated since more than 3 months.
+
+              For each such issue, you have a few options, such as:
+
+              - Unassign yourself. That's fine. If it really matters, someone
+                else, possibly you, may pick it up later.
+
+                Then, if the issue is relevant for a Tails team, bring it to
+                their attention; else, forget it and take care of yourself :)
+
+
+              - If you think you can realistically come back to it and finish
+                the work in the next months, say so on the issue, for example
+                by commenting about your planned time frame, replacing the
+                "Doing" label with "To Do", and setting a suitable milestone.
+
+                This will communicate your plans to the rest of the project and
+                ensure the task pops up on your radar at a suitable time.
+
+                Of course, you can still realize later that it is not going to
+                work as planned, and revisit today's choice.
+
+              Cheers,  
+              the robot that avoids a human doing ticket triaging
+              and asking you the above questions on each such issue
+
+              {{items}}
+
+              /assign @zen
+              /label ~"T:Communicate"
+              /label ~"To Do"
+        rules:
+          [[% for username in usernames %]]
+          - name: "Stalled WIP: [[username]]"
+            conditions:
+              state: opened
+              labels:
+                - Doing
+              date:
+                attribute: updated_at
+                condition: older_than
+                interval_type: months
+                interval: 3
+              ruby: |
+                !resource[:assignee].nil? && resource[:assignee][:username] == "[[username]]"
+            actions:
+              summarize:
+                item: "- [ ] {{full_reference}}+"
+                summary: |
+                  @[[username]]
+                  =========
+
+                  {{items}}
+          [[% endfor %]]
+      - name: Stalled validation
+        actions:
+          summarize:
+            destination: tails/tails
+            title: "Triage stalled validation: #{Time.now.strftime('%Y-%m-%d')}"
+            summary: |
+              Thanks for having started to work on a Tails issue! This is an
+              automated triaging system that intends to avoid situations where
+              inaccurate metadata ends up causing delays in completion
+              of issues.
+
+              There is at least one issue in a 'Needs Validation' state assigned
+              to you that has not been updated since more than 45 days. Please,
+              make sure to update such issues in order to:
+
+              - better reflect your plans regarding current and further work in
+                each issue
+              - avoid an unsustainable level of work-in-progress for yourself
+              - encourage team work and increase the chances
+                that someone finishes the work
+
+              Below, there's a section titled with your GitLab username, that
+              lists the issues assigned to you, in "Needs Validation" state,
+              that were not updated since more than 45 days.
+
+              For each such issue, you have a few options, such as:
+
+              - If you are the author of the work that needs validation: try to
+                find someone who can complete the review in a timely manner.
+              - Else, if you are the reviewer, then you are currently the one
+                person responsible for the work of someone else becoming
+                effective or not. Because of that, please either:
+                - unassign yourself to make it clear that someone else can
+                  handle it, or
+                - coordinate with the author of the work and organize yourself
+                  to commit with a certain time frame for handling the review.
+
+              Cheers,  
+              the robot that avoids a human doing ticket triaging
+              and asking you the above questions on each such issue
+
+              {{items}}
+
+              /assign @zen
+              /label ~"T:Communicate"
+              /label ~"To Do"
+        rules:
+          [[% for username in usernames %]]
+          - name: "Stalled validation: [[username]]"
+            conditions:
+              state: opened
+              labels:
+                - Needs Validation
+              date:
+                attribute: updated_at
+                condition: older_than
+                interval_type: days
+                interval: 45
+              ruby: |
+                !resource[:assignee].nil? && resource[:assignee][:username] == "[[username]]"
+            actions:
+              summarize:
+                item: "- [ ] {{full_reference}}+"
+                summary: |
+                  @[[username]]
+                  =========
+
+                  {{items}}
+          [[% endfor %]]
+
+  merge_requests:
+    summaries:
+      - name: Stalled MRs
+        actions:
+          summarize:
+            destination: tails/tails
+            title: "Triage stalled merge requests: #{Time.now.strftime('%Y-%m-%d')}"
+            summary: |
+              Thanks for having started to work on a Tails MR! This is an
+              automated triaging system that intends to avoid situations where
+              inaccurate metadata ends up causing delays in completion
+              of issues.
+
+              There is at least one MR assigned to you that has not been updated
+              since more than 45 days. Please, make sure to update such issues
+              in order to:
+
+              - better reflect your plans regarding current and further work in
+                each MR
+              - avoid an unsustainable level of work-in-progress for yourself
+              - encourage team work and increase the chances
+                that someone finishes the work
+
+              Below, there's a section titled with your GitLab username, that
+              lists the MRs assigned to you, that were not updated since more
+              than 45 days.
+
+              For each such MR, you have a few options, such as:
+
+              - If you are the author of the work:
+                - Unassign yourself. That's fine. If it really matters, someone
+                  else, possibly you, may pick it up later.
+
+                  Then, if the issue is relevant for a Tails team, bring it to
+                  their attention; else, forget it and take care of yourself :)
+
+              - Else, if you are the reviewer, then you are currently the one
+                person responsible for the work of someone else becoming
+                effective or not. Because of that, please either:
+                - unassign yourself to make it clear that someone else can
+                  handle it, or
+                - coordinate with the author of the work and organize yourself
+                  to commit with a certain time frame for handling the review.
+
+              Cheers,  
+              the robot that avoids a human doing ticket triaging
+              and asking you the above questions on each such MR
+
+              {{items}}
+
+              /assign @zen
+              /label ~"T:Communicate"
+              /label ~"To Do"
+        rules:
+          [[% for username in usernames %]]
+          - name: "Stalled MRs: [[username]]"
+            conditions:
+              state: opened
+              date:
+                attribute: updated_at
+                condition: older_than
+                interval_type: days
+                interval: 45
+              ruby: |
+                !resource[:assignee].nil? && resource[:assignee][:username] == "[[username]]"
+            actions:
+              summarize:
+                item: "- [ ] {{full_reference}}+"
+                summary: |
+                  @[[username]]
+                  =========
+
+                  {{items}}
+          [[% endfor %]]

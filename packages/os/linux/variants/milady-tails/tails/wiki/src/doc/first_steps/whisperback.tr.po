@@ -1,0 +1,365 @@
+# SOME DESCRIPTIVE TITLE
+# Copyright (C) YEAR Free Software Foundation, Inc.
+# This file is distributed under the same license as the PACKAGE package.
+# FIRST AUTHOR <EMAIL@ADDRESS>, YEAR.
+#
+msgid ""
+msgstr ""
+"Project-Id-Version: PACKAGE VERSION\n"
+"Report-Msgid-Bugs-To: tails-l10n@boum.org\n"
+"POT-Creation-Date: 2026-03-12 10:28+0000\n"
+"PO-Revision-Date: 2023-03-13 17:30+0000\n"
+"Last-Translator: xin <xin@riseup.net>\n"
+"Language-Team: LANGUAGE <LL@li.org>\n"
+"Language: tr\n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+"Plural-Forms: nplurals=2; plural=n > 1;\n"
+"X-Generator: Weblate 4.9.1\n"
+
+#. type: Plain text
+#, no-wrap
+msgid "[[!meta title=\"Reporting an error using WhisperBack\"]]\n"
+msgstr ""
+
+#. type: Plain text
+#, no-wrap
+msgid ""
+"*WhisperBack* allows you to report errors anonymously from inside Tails. Reports\n"
+"are sent to us encrypted and over the Tor network.\n"
+msgstr ""
+
+#. type: Plain text
+msgid ""
+"Reporting errors is a great way of helping us improve Tails. Even if we are "
+"not able to reply to every report, we analyze all reports."
+msgstr ""
+
+#. type: Plain text
+msgid ""
+"The more effectively you report an error, the more likely we are to fix it."
+msgstr ""
+
+#. type: Plain text
+#, no-wrap
+msgid "[[!toc levels=2]]\n"
+msgstr "[[!toc levels=2]]\n"
+
+#. type: Plain text
+#, no-wrap
+msgid "<h1 id=\"known\">Check if the error is already known</h1>\n"
+msgstr ""
+
+#. type: Plain text
+msgid "You might already find help on our [[support pages|support]]."
+msgstr ""
+
+#. type: Plain text
+#, no-wrap
+msgid "<h1 id=\"whisperback\">Reporting an error using <i>WhisperBack</i></h1>\n"
+msgstr ""
+
+#. type: Plain text
+#, no-wrap
+msgid "<div class=\"note\">\n"
+msgstr ""
+
+#. type: Plain text
+#, no-wrap
+msgid ""
+"<p>If you are not connected to the Tor network yet, your cannot send us your\n"
+"report from Tails.</p>\n"
+msgstr ""
+
+#. type: Plain text
+#, no-wrap
+msgid ""
+"<p>Either, send your report after you connected to Tor or [[save your\n"
+"report|whisperback#offline]] and [[contact us outside of\n"
+"Tails|support/talk]].</p>\n"
+msgstr ""
+
+#. type: Plain text
+#, no-wrap
+msgid "</div>\n"
+msgstr "</div>\n"
+
+#. type: Bullet: '1. '
+msgid ""
+"Choose **Apps&nbsp;▸ System Tools&nbsp;▸ WhisperBack Error Reporting** to "
+"open *WhisperBack*."
+msgstr ""
+
+#. type: Bullet: '1. '
+msgid "*WhisperBack* helps you write a useful error report."
+msgstr ""
+
+#. type: Bullet: '   - '
+msgid "**Tell us exactly how to make the error happen again.**"
+msgstr ""
+
+#. type: Plain text
+#, no-wrap
+msgid ""
+"     Our team needs to be able to reproduce the error to know whether we really\n"
+"     fixed it.\n"
+msgstr ""
+
+#. type: Bullet: '   - '
+msgid "**Describe the error in detail.**"
+msgstr ""
+
+#. type: Plain text
+#, no-wrap
+msgid "     Write down the exact error messages.\n"
+msgstr ""
+
+#. type: Bullet: '   - '
+msgid "**Write clearly and precisely.**"
+msgstr ""
+
+#. type: Bullet: '1. '
+msgid "You can also enter an email address."
+msgstr ""
+
+#. type: Plain text
+#, no-wrap
+msgid ""
+"   Giving us an email address allows us to ask you for more information if we\n"
+"   need it. This is the case for the vast majority of reports.\n"
+msgstr ""
+
+#. type: Plain text
+#, no-wrap
+msgid ""
+"   But giving us your email address also makes it possible for your email\n"
+"   provider to know that you are using Tails, if we write back to you.\n"
+msgstr ""
+
+#. type: Bullet: '1. '
+msgid ""
+"Optionally, enter your OpenPGP public key, if you want us to write back to "
+"you in an encrypted email."
+msgstr ""
+
+#. type: Plain text
+#, no-wrap
+msgid "   You can specify either:\n"
+msgstr ""
+
+#. type: Bullet: '   - '
+msgid "A **key ID**, if your key is available on <https://keys.openpgp.org/>"
+msgstr ""
+
+#. type: Bullet: '   - '
+msgid "A **link to the key**, if your key is available elsewhere on the web"
+msgstr ""
+
+#. type: Bullet: '   - '
+msgid "A **public key block**, if your key is not publicly available"
+msgstr ""
+
+#. type: Bullet: '1. '
+msgid ""
+"You can have a look at the **Technical Details** that are included in your "
+"report. They give us information about your hardware, your version of Tails, "
+"and all the errors that happened since you started Tails."
+msgstr ""
+
+#. type: Bullet: '1. '
+msgid "Click **Send** to send your report."
+msgstr ""
+
+#. type: Plain text
+#, no-wrap
+msgid "<h1 id=\"offline\">Saving your <i>WhisperBack</i> report</h1>\n"
+msgstr ""
+
+#. type: Plain text
+msgid ""
+"To save your *WhisperBack* report and share it with us outside of Tails, for "
+"example by email:"
+msgstr ""
+
+#. type: Bullet: '1. '
+msgid ""
+"Plug in another USB stick to be able to open your report outside of Tails."
+msgstr ""
+
+#. type: Bullet: '1. '
+msgid ""
+"To open *WhisperBack*, choose **Apps&nbsp;▸ System Tools&nbsp;▸ WhisperBack "
+"Error Reporting**."
+msgstr ""
+
+#. type: Bullet: '1. '
+msgid ""
+"In parallel, choose **Apps&nbsp;▸ Accessories&nbsp;▸ Text Editor** to open "
+"the *Text Editor*."
+msgstr ""
+
+#. type: Bullet: '1. '
+msgid ""
+"In the **Technical Details** tab, copy everything from the **Headers** "
+"section and paste it into the *Text Editor*."
+msgstr ""
+
+#. type: Bullet: '1. '
+msgid ""
+"In the **Technical Details** tab, copy everything from the **Debugging "
+"Information** section and paste it into the *Text Editor*."
+msgstr ""
+
+#. type: Bullet: '1. '
+msgid "Save your report from the *Text Editor* to the other USB stick."
+msgstr ""
+
+#. type: Bullet: '1. '
+msgid "Check the [[other ways of contacting us|support/talk]]."
+msgstr ""
+
+#. type: Plain text
+#, no-wrap
+msgid "<h1 id=\"debian\">Reproducing the error in Debian (for advanced users)</h1>\n"
+msgstr ""
+
+#. type: Plain text
+msgid ""
+"It is very useful for us to know if your error only affects Tails or also "
+"affects Debian, on which Tails is based."
+msgstr ""
+
+#. type: Plain text
+msgid ""
+"Doing so takes much more time so, in doubt, report your error as instructed "
+"earlier and wait for guidance from us."
+msgstr ""
+
+#. type: Bullet: '- '
+msgid ""
+"If your error also affects Debian *stable*, then the problem must be fixed "
+"in Debian directly and not in Tails."
+msgstr ""
+
+#. type: Bullet: '- '
+msgid ""
+"If your error affects Debian *stable* but not Debian *testing*, then the "
+"problem might have been solved already in Debian."
+msgstr ""
+
+#. type: Plain text
+msgid ""
+"Debian also distributes *live* images that you can install on a USB stick "
+"using the same installation procedure as for installing Tails."
+msgstr ""
+
+#. type: Title -
+#, no-wrap
+msgid "Debian stable"
+msgstr ""
+
+#. type: Plain text
+msgid ""
+"Live images for Debian stable, on which Tails is based, are available on:"
+msgstr ""
+
+#. type: Plain text
+msgid ""
+"<https://cdimage.debian.org/images/release/current-live/amd64/iso-hybrid/>"
+msgstr ""
+
+#. type: Plain text
+msgid ""
+"Download the file that ends with *amd64-gnome.iso* to have the GNOME desktop."
+msgstr ""
+
+#. type: Title -
+#, no-wrap
+msgid "Debian testing"
+msgstr ""
+
+#. type: Plain text
+msgid "Live images for the testing version of Debian are available on:"
+msgstr ""
+
+#. type: Plain text
+msgid ""
+"<https://cdimage.debian.org/images/weekly-live-builds/amd64/iso-hybrid/>"
+msgstr ""
+
+#, fuzzy, no-wrap
+#~ msgid "<h2 id=\"screenshot\">Take a screenshot</h2>\n"
+#~ msgstr "<a id=\"already_known\"></a>\n"
+
+#, fuzzy, no-wrap
+#~ msgid "<h2 id=\"does-not-start\">Tails does not start</h2>\n"
+#~ msgstr "<a id=\"already_known\"></a>\n"
+
+#, fuzzy
+#~ msgid "- [[Starting a PC on a USB stick|doc/first_steps/start/pc]]"
+#~ msgstr "[[Starten von DVD mit einem Mac|install/mac/dvd#start-dvd]]"
+
+#, fuzzy
+#~ msgid "- [[Starting a Mac on a USB stick|doc/first_steps/start/mac]]"
+#~ msgstr "[[Starten von DVD mit einem Mac|install/mac/dvd#start-dvd]]"
+
+#, fuzzy, no-wrap
+#~ msgid "[[!inline pages=\"support/talk/no_reply_every_request.inline\" raw=\"yes\"]]\n"
+#~ msgstr "[[!inline pages=\"support/talk/languages.inline.tr\" raw=\"yes\" sort=\"age\"]]\n"
+
+#, no-wrap
+#~ msgid "[[!inline pages=\"support/talk/languages.inline\" raw=\"yes\" sort=\"age\"]]\n"
+#~ msgstr "[[!inline pages=\"support/talk/languages.inline.tr\" raw=\"yes\" sort=\"age\"]]\n"
+
+#, fuzzy
+#~| msgid ""
+#~| "the [list of things that will be fixed or improved in the next release]"
+#~| "(https://redmine.tails.boum.org/code/projects/tails/issues?query_id=111)"
+#~ msgid ""
+#~ "the [list of things that will be fixed or improved in the next release]"
+#~ "(https://redmine.tails.boum.org/code/projects/tails/issues?query_id=327)"
+#~ msgstr ""
+#~ "die [Liste an Dingen, die in der nächsten Version repariert oder "
+#~ "verbessert werden](https://redmine.tails.boum.org/code/projects/tails/"
+#~ "issues?query_id=111)"
+
+#~ msgid "<a id=\"already_known\"></a>\n"
+#~ msgstr "<a id=\"already_known\"></a>\n"
+
+#, fuzzy
+#~ msgid "<a id=\"special_cases\"></a>\n"
+#~ msgstr "<a id=\"already_known\"></a>\n"
+
+#, fuzzy
+#~ msgid "Tails does not start"
+#~ msgstr "Lesen Sie [[Tails startet nicht|Tails_does_not_start]]."
+
+#, fuzzy
+#~ msgid "<a id=\"debian\"></a>\n"
+#~ msgstr "<a id=\"already_known\"></a>\n"
+
+#~ msgid ""
+#~ "Debian also distributes images (*Debian live*) that you can install on a\n"
+#~ "USB stick, like Tails. To do so, you can follow our instructions to\n"
+#~ "[[Install an intermediary Tails|install/linux/usb#install-intermediary]]\n"
+#~ "from Linux using *GNOME Disks*.\n"
+#~ msgstr ""
+#~ "Debian stellt auch Images (*Debian live*) zur Verfügung, die Sie auf "
+#~ "einen USB-Stick, genauso wie Tails, installieren können.\n"
+#~ "Um dies zu tun, können Sie unsere Anweisungen zum [[Installieren eines "
+#~ "zwischenzeitlichen Tails|install/linux/usb#install-intermediary]]\n"
+#~ "von Linux aus unter der Nutzung von <span class=\"application\">GNOME "
+#~ "Disks</span> befolgen.\n"
+
+#~ msgid "[[Starting a Mac on a DVD|install/mac/dvd#start-dvd]]"
+#~ msgstr "[[Starten von DVD mit einem Mac|install/mac/dvd#start-dvd]]"
+
+#~ msgid "the [[!tails_redmine desc=\"list of things to do\"]]"
+#~ msgstr "die [[!tails_redmine desc=\"Todo-Liste\"]]"
+
+#~ msgid "Special cases\n"
+#~ msgstr "Spezialfälle\n"
+
+#~ msgid "See [[Tails_does_not_start]]."
+#~ msgstr "Lesen Sie [[Tails startet nicht|Tails_does_not_start]]."

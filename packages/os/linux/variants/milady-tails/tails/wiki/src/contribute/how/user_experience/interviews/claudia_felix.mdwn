@@ -1,0 +1,106 @@
+[[!meta title="Claudia and Felix, January 2018"]]
+
+Claudia and Felix are reporters working in a journalists organization in
+Latin America. They investigate and report on issues such as
+human-rights violations, enforced disappearances, drug trafficking but
+always with a focus on the social impacts.
+
+Their organization has been collaborating with others on a shared
+whistleblowing platform for some years.
+
+Claudia has been designated by her organization to be the person in
+charge of the whistleblowing platform. She has an OpenPGP key to
+communicate with other organization on the platform but she only uses it
+for that. Actually, right now it's expired.
+
+Felix is a sociologist but he "likes machines" so people call him
+whenever a computer issue pops up in the office as they don't have a
+dedicated computer person.
+
+Most journalists in their office use Mac but their administrative staff
+run Windows.
+
+### Whistleblowing platform
+
+The whistleblowing platform was set up by a tech organization from
+abroad. They gave each organization some training on the platform and a
+dedicated laptop to access it only from Tails. The training was focused
+on the platform, so they didn't receive a proper training on Tails
+itself. In general, little technical support was provided after the
+platform was installed.
+
+Though the dedicated laptop seemed to be new, Tails takes 2-3 minutes to
+start.  Maybe it's because of the computer but they don't really know
+because they didn't try it on another computer. All organizations
+collaborating on the whistleblowing platform received the same machine
+and some gave up on using it.  They probably got the worse computer in
+the world!
+
+It was not clear to them whether it was safe against malware to start
+Tails from their personal computer instead of the dedicated computer.
+
+When working on leaked documents, they download them from Tails but do
+the real work from their own computers.
+
+The first year Tails worked very well. But then they started having more
+problems when the upgrades started.
+
+### They know they should do more for their digital security
+
+Their organization is aware that the stories that they are investigating
+require more digital security but they are struggling with switching to
+new tools. It costs a lot to change people's habit, especially with
+older journalists who are not going to change their investigation
+techniques.
+
+Their administrative staff have their Windows encrypted using BitLocker
+but the journalists on Mac are reluctant to encrypt their computer
+because it would make them slower to start.
+
+The organization is looking into switching their emails to a trusted
+provider but they are not there yet. They tried to get people to switch
+from GMail to Thunderbird but it was not adopted because people are
+really used to GMail and found Thunderbird slow in comparison,
+especially on bad Internet connections.  So they tired to make people
+use OpenPGP on GMail with Mailvelope but this failed as well.
+
+The same happens with Signal, which is not as fast and reliable.
+
+But they managed to get people to use Mumble, hosted by a trusted
+provider, for their internal meetings.
+
+In general, even after learning from the recent [malware infection of
+journalists in
+Mexico](https://citizenlab.ca/2017/06/reckless-exploit-mexico-nso/).
+It's very hard for people in Latin America to know whether they have
+been infected because they lack local people who can do computer
+forensics. How can you know whether you are being spied? Not to get
+paralyzed, people stay blind to these issues and keep on doing their
+work as usual.
+
+### What they dislike
+
+- Upgrades!
+
+  Several time, their Tails stopped working because of an upgrade. In
+  such cases they would get help from another organization collaborating
+  with the whistleblowing platform which has more technical staff. Right
+  now for example, their Tails has been broken since December and is
+  being fixed by them.
+
+  One of their Tails was so old that it was impossible to upgrade it.
+  Felix installed a new Tails and copied the cryptographic key to the
+  whistleblowing platform manually.
+
+- Some months ago, they had troubles with their local keyboard
+  configuration that was not always applied.
+
+- They once lost the configuration of their persistence and struggled
+  importing their keys back to the new persistence.
+
+  When configuring Tails, some options are shown but it's hard to
+  understand what they correspond to if you are not an expert.
+
+- They have lots of trouble connecting to Tor. It can take up to 15
+  minutes and Felix tried on different networks (in the office and at
+  home).

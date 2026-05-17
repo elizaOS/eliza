@@ -1,0 +1,57 @@
+[[!meta title="Tails report for April 2024"]]
+[[!meta date="Thu, 30 May 2024 11:50:46 +0000"]]
+[[!pagetemplate template="news.tmpl"]]
+
+[[!toc]]
+
+Highlights
+==========
+
+- Spoiler alert! We are working on friendlier ways to back up _Persistent
+  Storage_. We are working on a new flow that adapts _Tails Cloner_ to the
+  different stages of making backups (setting up, reminding, and updating) and
+  integrating it with the _Persistent Storage_ settings. 
+
+- We continued investing in making our infrastructure and services more robust,
+  usable, and secure:
+
+    - We continued making the development at Tails more pleasurable. Our test
+      suite is much kinder to Tails developers now.
+
+    - We fixed all the broken links on our website (hundreds!). We have now
+      implemented a monthly automated check for new broken links.
+
+    - Our new server is now breaking into a sweat! We deployed new internal
+      services and made good progress in creating redundancies of our website
+      and email systems.
+    
+- We have a new sponsors: Start Small Foundation! The generous (our
+  largest ever, too) donation significantly prolongs our financial runway in
+  the short to medium-term. We plan to use this platform to keep improving our
+  infrastructure, and build on this platform to bring exciting, new functionality
+  to Tails!
+
+Releases
+========
+
+📢 [[We put Tails 6.2 out in the world|news/version_6.2]]! 
+
+Tails 6.2 carries:
+    
+- support for 21 new languages on the Welcome Screen!
+- the final set of improvements for better detection of hardware failures on Tails USB sticks
+- updates to _Tor Browser_ and _Tor_ client
+
+To know more, check out the Tails 6.2 [[release notes|news/version_6.2]] and
+the
+[changelog](https://gitlab.tails.boum.org/tails/tails/-/blob/master/debian/changelog).
+
+Also, we're always looking for volunteers to help increase Tails's language
+diversity. If that sounds like it could be you, do consider contributing to the
+[Tor Project Weblate](https://hosted.weblate.org/projects/tor/tails-gui/).
+
+Metrics
+=======
+
+Tails was started more than 821,380 times this month. That's a daily average of
+over 27,379 boots - the highest this year.

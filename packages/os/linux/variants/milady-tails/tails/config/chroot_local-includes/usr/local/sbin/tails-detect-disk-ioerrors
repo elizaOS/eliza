@@ -1,0 +1,99 @@
+#!/usr/bin/python3 -Iu
+
+"""
+Detect SquashFS and other I/O errors in the journal and create the file
+"/var/lib/live/tails.disk.ioerrors" if any error is detected. Creating
+that file automatically activates the tails-report-disk-ioerrors.service
+user service, which will display a notification to the user.
+"""
+import argparse
+
+from tailslib.utils import get_boot_device
+
+import pathlib
+
+import systemd.daemon
+import systemd.journal
+
+# File that indicates SquashFS and other I/O errors
+DISK_IOERRORS = pathlib.Path("/var/lib/live/tails.disk.ioerrors")
+
+
+def boot_device_name():
+    device_path = get_boot_device()
+    return device_path.split("/")[-1]
+
+
+class IOErrorPatterns:
+    def __init__(self):
+        device = boot_device_name()
+        print(f"boot device: {device}")
+        self.patterns = [
+            "SQUASHFS error:",
+            f"I/O error, dev {device}, sector",
+            f"critical target error, dev {device}, sector",
+        ]
+
+    def match_message(self, msg: str) -> bool:
+        """Check if the message matches any of the patterns."""
+        for start in self.patterns:
+            if msg.startswith(start):
+                return True
+        return False
+
+
+def process_entries(journal: systemd.journal.Reader, ioerror_patterns: IOErrorPatterns):
+    """Process all journal entries returned by the Reader and check for
+    I/O errors."""
+    for e in journal:
+        msg = e["MESSAGE"]
+        matched = ioerror_patterns.match_message(msg)
+
+        if matched:
+            # Log which message matched the error patterns
+            print(f"I/O error detected: {msg}")
+            DISK_IOERRORS.touch(exist_ok=True)
+
+
+def main():
+    parser = argparse.ArgumentParser()
+    parser.add_argument(
+        "--oneshot", action="store_true", help="Process all existing messages and exit"
+    )
+    args = parser.parse_args()
+
+    ioerror_patterns = IOErrorPatterns()
+
+    flags = systemd.journal.SYSTEM_ONLY | systemd.journal.LOCAL_ONLY
+    j = systemd.journal.Reader(flags)
+    j.this_boot()
+    j.this_machine()
+    j.log_level(systemd.journal.LOG_ERR)
+    j.add_match(SYSLOG_IDENTIFIER="kernel")
+
+    systemd.daemon.notify("STATUS=Processing existing messages...\n")
+    print("Processing existing messages...")
+    process_entries(j, ioerror_patterns)
+
+    if args.oneshot:
+        return
+
+    # Notify systemd that we're ready
+    systemd.daemon.notify("READY=1")
+    systemd.daemon.notify("STATUS=Continuously processing new messages...\n")
+    print("Continuously processing new messages...")
+
+    # Wait for new messages to be appended to the journal
+    while True:
+        # Note that systemd.journal.Reader.wait() returns each time the
+        # journal is changed, even if no messages that match our filters
+        # are added. The Reader only returns new messages that match our
+        # filters though, so we can just call process_entries() each
+        # time wait() returns.
+        state_change = j.wait()
+        if state_change == systemd.journal.APPEND:
+            process_entries(j, ioerror_patterns)
+
+
+if __name__ == "__main__":
+    main()

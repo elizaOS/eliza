@@ -1,0 +1,15 @@
+---
+build-target: amd64
+channel: alpha
+initial-install-version: '6.3'
+product-name: Tails
+upgrades:
+- details-url: https://tails.net/news/test_7.0-rc2/
+  type: major
+  upgrade-paths:
+  - target-files:
+    - sha256: 6647b5939edb609b821c283b501f31bc719af7b85c77aadf820b6e8fe765f589
+      size: 1768435712
+      url: https://download.tails.net/tails/alpha/tails-amd64-7.0~rc2/tails-amd64-7.0~rc2.iso
+    type: full
+  version: 7.0~rc2

@@ -1,0 +1,84 @@
+[[!meta title="Call for testing: simplified installation method"]]
+[[!meta date="Mon, 7 Jan 2019 12:34:56 +0000"]]
+[[!pagetemplate template="news.tmpl"]]
+[[!tag announce]]
+
+USB images instead of ISO images
+================================
+
+We need your help to test the simplified installation methods of Tails
+that we will release with 3.12 on January 29.
+
+The method will be much simpler and faster, especially for macOS users,
+but for Windows users as well. Debian and Ubuntu users won't have to
+install a specific program anymore and the process will also be faster
+for other Linux users.
+
+In short, instead of downloading an ISO image (a format originally
+designed for CDs) you will download a **USB image** that is already an
+image of the data as written to your USB stick by *Tails Installer*. So
+no need for *Tails Installer* anymore and no need for an *intermediary*
+Tails nor a second USB stick when installing from Windows or macOS.
+
+You should be able to create a persistent volume right away.
+
+The methods for upgrading Tails will remain the same.
+
+Testing the beta
+================
+
+Download the USB image
+----------------------
+
+Tails beta USB image
+
+We don't provide any OpenPGP signature or other verification technique
+for this test image. Please only use it for testing.
+
+Installation instructions
+-------------------------
+
+As the new instructions are not yet available on our website, please
+refer to the following PDFs:
+
+- **For Windows**
+
+  Download PDF instructions for Windows
+
+  At the beginning, you will have to download a program called *Etcher*:
+
+  Download Etcher (portable) for Windows
+
+- **For macOS**
+
+  Download PDF instructions for macOS
+
+  At the beginning, you will have to download a program called *Etcher*:
+
+  Download Etcher for macOS
+
+- **For Linux (all distributions)**
+
+  Download PDF instructions for Linux
+
+Reporting about your tests
+--------------------------
+
+Note that the USB image doesn't make Tails work on more hardware but it
+might work more reliably on recent hardware than the *intermediary*
+Tails (currently created using *Universal USB Installer* on Windows and
+`dd` on macOS).
+
+Make sure to specify:
+
+* The OS you installed from.
+
+* The model of the computer you started from.
+
+Report your findings by email to <tails-testers@boum.org>. This mailing
+list is [archived publicly](https://lists.autistici.org/list/tails-testers.html).
+
+Known issues
+============
+
+None yet.

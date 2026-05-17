@@ -1,0 +1,622 @@
+# SOME DESCRIPTIVE TITLE
+# Copyright (C) YEAR Free Software Foundation, Inc.
+# This file is distributed under the same license as the PACKAGE package.
+# FIRST AUTHOR <EMAIL@ADDRESS>, YEAR.
+#
+msgid ""
+msgstr ""
+"Project-Id-Version: PACKAGE VERSION\n"
+"Report-Msgid-Bugs-To: tails-l10n@boum.org\n"
+"POT-Creation-Date: 2026-03-31 22:07+0000\n"
+"PO-Revision-Date: 2024-05-20 17:55+0000\n"
+"Last-Translator: xin <xin@riseup.net>\n"
+"Language-Team: LANGUAGE <LL@li.org>\n"
+"Language: pl\n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+"Plural-Forms: nplurals=3; plural=n==1 ? 0 : n%10>=2 && n%10<=4 && (n%100<10 "
+"|| n%100>=20) ? 1 : 2;\n"
+"X-Generator: Weblate 5.3\n"
+
+#. type: Plain text
+#, no-wrap
+msgid "[[!meta title=\"virt-manager\"]]\n"
+msgstr ""
+
+#. type: Plain text
+msgid ""
+"[*virt-manager*](http://virt-manager.org/) is a Free Software virtualization "
+"solution for Linux. *virt-manager* has a more complex interface than *GNOME "
+"Boxes* but it also has a more complete set of features."
+msgstr ""
+
+#. type: Plain text
+#, no-wrap
+msgid "[[!inline pages=\"doc/advanced_topics/virtualization.caution\" raw=\"yes\" sort=\"age\"]]\n"
+msgstr "[[!inline pages=\"doc/advanced_topics/virtualization.caution.pl\" raw=\"yes\" sort=\"age\"]]\n"
+
+#. type: Plain text
+#, no-wrap
+msgid "<div class=\"tip\">\n"
+msgstr "<div class=\"tip\">\n"
+
+#. type: Plain text
+#, no-wrap
+msgid ""
+"<p><i>virt-manager</i> is the only virtualization\n"
+"solution that allows to use a Persistent\n"
+"Storage. See [[running Tails from a USB\n"
+"image|virt-manager#usb_image]].</p>\n"
+msgstr ""
+
+#. type: Plain text
+#, no-wrap
+msgid "</div>\n"
+msgstr "</div>\n"
+
+#. type: Plain text
+#, no-wrap
+msgid "<div class=\"note\">\n"
+msgstr "<div class=\"note\">\n"
+
+#. type: Plain text
+#, no-wrap
+msgid "<p>The following instructions have been tested on Debian 13 (Trixie).</p>\n"
+msgstr ""
+
+#. type: Title =
+#, no-wrap
+msgid "Terminology"
+msgstr ""
+
+#. type: Plain text
+#, no-wrap
+msgid ""
+"*virt-manager* is based on a set of lower level virtualization tools,\n"
+"going from the user interface to the hardware interactions with the\n"
+"processor. This terminology is a bit confusing and other documentation\n"
+"might mention the following tools:\n"
+msgstr ""
+
+#. type: Bullet: '- '
+msgid ""
+"*KVM* is the module of the Linux kernel that interacts with the "
+"virtualization features of the processor."
+msgstr ""
+
+#. type: Bullet: '- '
+msgid ""
+"*QEMU* is the virtualization software that emulates virtual processors and "
+"peripherals based on *KVM* and that starts and stops virtual machines."
+msgstr ""
+
+#. type: Bullet: '- '
+msgid ""
+"*libvirt* is a library that allows *virt-manager* to interact with the "
+"virtualization capabilities provided by *QEMU*."
+msgstr ""
+
+#. type: Bullet: '- '
+msgid ""
+"*SPICE* is a protocol that allows to visualize the desktop of virtual "
+"machines."
+msgstr ""
+
+#. type: Bullet: '- '
+msgid ""
+"*virt-manager* is the graphical interface that allows to create, configure, "
+"and run virtual machines."
+msgstr ""
+
+#. type: Plain text
+#, no-wrap
+msgid "<a id=\"iso\"></a>\n"
+msgstr ""
+
+#. type: Title =
+#, no-wrap
+msgid "Installation"
+msgstr ""
+
+#. type: Plain text
+msgid ""
+"To install *virt-manager* in Debian or Ubuntu, execute the following command:"
+msgstr ""
+
+#. type: Plain text
+#, no-wrap
+msgid "<p class=\"command\">sudo apt install virt-manager libvirt-daemon-system</p>\n"
+msgstr ""
+
+#. type: Title =
+#, no-wrap
+msgid "Running Tails from an ISO image"
+msgstr ""
+
+#. type: Bullet: '1. '
+msgid ""
+"[[Download Tails as an ISO image|install/download-iso]], instead of a USB "
+"image."
+msgstr ""
+
+#. type: Bullet: '1. '
+msgid "Start *virt-manager*."
+msgstr ""
+
+#. type: Bullet: '1. '
+msgid ""
+"Double-click on **QEMU/KVM - Not Connected** to connect to the *QEMU* system "
+"of your host."
+msgstr ""
+
+#. type: Bullet: '1. '
+msgid ""
+"To create a new virtual machine, choose <b>File&nbsp;▸ New Virtual Machine</"
+"b>."
+msgstr ""
+
+#. type: Bullet: '1. '
+msgid "In *step 1*, choose **Local install media (ISO image or CDROM)**."
+msgstr ""
+
+#. type: Bullet: '1. '
+msgid "In *step 2*:"
+msgstr ""
+
+#. type: Bullet: '   1. '
+msgid ""
+"Select the **Browse** button and then the **Browse Local** button to choose "
+"the ISO image that you want to start from."
+msgstr ""
+
+#. type: Bullet: '   2. '
+msgid ""
+"Unselect **Automatically detected from the installation media / source**."
+msgstr ""
+
+#. type: Bullet: '   3. '
+msgid ""
+"Enter **Debian 13** in the field **Choose the operating system you are "
+"installing**."
+msgstr ""
+
+#. type: Bullet: '1. '
+msgid "In *step 3*, allocate at least 3072 MB of memory."
+msgstr ""
+
+#. type: Bullet: '1. '
+msgid "In *step 4*, unselect **Enable storage for this virtual machine**."
+msgstr ""
+
+#. type: Bullet: '1. '
+msgid "In *step 5*:"
+msgstr ""
+
+#. type: Bullet: '   1. '
+msgid "Type a name of your choice for the new virtual machine."
+msgstr ""
+
+#. type: Bullet: '   - '
+msgid "Click **Finish** to start the virtual machine."
+msgstr ""
+
+#. type: Plain text
+#, no-wrap
+msgid ""
+"If you get the error message\n"
+"\"<b>Error starting domain: Requested operation is not valid: network 'default' is not active</b>\",\n"
+"then try to start the default virtual network:\n"
+msgstr ""
+
+#. type: Plain text
+#, no-wrap
+msgid ""
+"<ol>\n"
+"<li>Click on <b>QEMU/KVM - Not Connected</b>.</li>\n"
+"<li>Choose <b>Edit&nbsp;▸ Connection details</b>\n"
+"    to administer the connection to your local\n"
+"    <i>QEMU</i> system.</li>\n"
+"<li>Click on <b>Virtual Networks</b> tab, then\n"
+"    select the <b>default</b> virtual network in\n"
+"    the left pane.</li>\n"
+"<li>Click on the [[!img lib/media-playback-start.png alt=\"Start Network\"\n"
+"    link=\"no\" class=\"symbolic\"]] icon on the bottom of the left pane to\n"
+"    start the default virtual network.</li>\n"
+"</ol>\n"
+msgstr ""
+
+#. type: Plain text
+#, no-wrap
+msgid "<a id=\"usb_image\"></a>\n"
+msgstr ""
+
+#. type: Title =
+#, no-wrap
+msgid "Running Tails from a USB image"
+msgstr ""
+
+#. type: Plain text
+msgid ""
+"Running Tails from a USB image is the only virtualization solution that "
+"allows you to use a Persistent Storage in a virtual machine."
+msgstr ""
+
+#. type: Bullet: '1. '
+msgid ""
+"[[Download Tails as a USB image|install/download]], instead of an ISO image."
+msgstr ""
+
+#. type: Bullet: '1. '
+msgid ""
+"Increase the size of the USB image to be at least 8 GB. This creates space "
+"for automatic upgrades and the Persistent Storage."
+msgstr ""
+
+#. type: Plain text
+#, no-wrap
+msgid ""
+"   <p class=\"command-template\">truncate -s\n"
+"   <span class=\"command-placeholder\">size</span>\n"
+"   <span class=\"command-placeholder\">tails.img</span></p>\n"
+msgstr ""
+
+#. type: Bullet: '   - '
+msgid ""
+"<span class=\"command-placeholder\">size</span> has to be at least `7200M`."
+msgstr ""
+
+#. type: Bullet: '   - '
+msgid ""
+"<span class=\"command-placeholder\">tails.img</span> is the file name of the "
+"USB image that you want to resize."
+msgstr ""
+
+#. type: Bullet: '1. '
+msgid "In *step 1*, choose **Import existing disk image**."
+msgstr ""
+
+#. type: Bullet: '   1. '
+msgid ""
+"Select the **Browse** button and then the **Browse Local** button to choose "
+"the USB image that you want to start from."
+msgstr ""
+
+#. type: Bullet: '   1. '
+msgid ""
+"Specify **Debian 13** in the field **Choose the operating system you are "
+"installing**."
+msgstr ""
+
+#. type: Bullet: '1. '
+msgid "In *step 3*, allocate at least 3072 MB of RAM."
+msgstr ""
+
+#. type: Bullet: '1. '
+msgid "In *step 4*:"
+msgstr ""
+
+#. type: Bullet: '   1. '
+msgid "Choose **Customize configuration before install**."
+msgstr ""
+
+#. type: Bullet: '   1. '
+msgid "Click **Finish** to open the configuration view."
+msgstr ""
+
+#. type: Bullet: '1. '
+msgid "In the configuration view, choose **VirtIO Disk 1** or **IDE Disk 1**"
+msgstr ""
+
+#. type: Bullet: '   1. '
+msgid "Set **Disk bus** to **USB**."
+msgstr ""
+
+#. type: Bullet: '     1. '
+msgid "Click **Apply**."
+msgstr ""
+
+#. type: Bullet: '   1. '
+msgid "Expand the **Advanced options**."
+msgstr ""
+
+#. type: Bullet: '   1. '
+msgid "Select **Removable**."
+msgstr ""
+
+#. type: Bullet: '   1. '
+msgid "Click **Apply** again."
+msgstr ""
+
+#. type: Bullet: '   1. '
+msgid ""
+"Click **Begin Installation** in the top left corner to start the virtual "
+"machine."
+msgstr ""
+
+#. type: Plain text
+#, fuzzy
+msgid ""
+"After you start on the USB image, you can [[create a Persistent Storage|"
+"persistent_storage]] on it."
+msgstr ""
+"Sobald Sie von dem USB-Gerät gestartet haben, können Sie darauf einen "
+"[[beständigen Speicherbereich einrichten|first_steps/persistence/configure]]."
+
+#. type: Plain text
+#, no-wrap
+msgid "<a id=\"usb\"></a>\n"
+msgstr ""
+
+#. type: Title =
+#, no-wrap
+msgid "Running Tails from a USB stick"
+msgstr ""
+
+#. type: Plain text
+msgid ""
+"To run Tails from a USB stick using *virt-manager*, first create a virtual "
+"machine running from an ISO image as described [[above|virt-manager#iso]]."
+msgstr ""
+
+#. type: Plain text
+msgid "Then do the following:"
+msgstr ""
+
+#. type: Bullet: '  1. '
+msgid ""
+"From the virtual machine window, choose **Virtual Machine**&nbsp;▸ **Shut "
+"Down**&nbsp;▸ **Force Off** to shut down the virtual machine."
+msgstr ""
+
+#. type: Bullet: '  1. '
+msgid "Plug in the USB stick from which you want to run Tails."
+msgstr ""
+
+#. type: Bullet: '  1. '
+msgid ""
+"Choose **View**&nbsp;▸ **Details** to edit the configuration of the virtual "
+"machine."
+msgstr ""
+
+#. type: Bullet: '  1. '
+msgid "Click on the **Add Hardware** button on the bottom of the left pane."
+msgstr ""
+
+#. type: Bullet: '  1. '
+msgid "Select **USB Host Device** in the left pane."
+msgstr ""
+
+#. type: Bullet: '  1. '
+msgid ""
+"In the right pane, click on the device from which you want to run Tails, and "
+"click **Finish**."
+msgstr ""
+
+#. type: Plain text
+msgid ""
+"You can keep the original ISO image connected as a virtual DVD to install "
+"Tails onto the USB stick if needed."
+msgstr ""
+
+#. type: Plain text
+#, no-wrap
+msgid "<a id=\"disconnect\"></a>\n"
+msgstr ""
+
+#. type: Plain text
+#, fuzzy
+msgid ""
+"You can also remove the original ISO image and start directly from the USB "
+"stick once Tails is already installed on it. To do so:"
+msgstr ""
+"Anschließend können Sie das ursprüngliche ISO-Image trennen und direkt, "
+"[[wie im vorangegangen Abschnitt beschrieben|virt-manager#disconnect]], von "
+"dem virtuellen USB-Stick starten."
+
+#. type: Bullet: '  1. '
+msgid "Shut down the virtual machine."
+msgstr ""
+
+#. type: Bullet: '  1. '
+msgid ""
+"In the configuration of the virtual machine, click on **SATA CDROM 1** in "
+"the left pane."
+msgstr ""
+
+#. type: Bullet: '  1. '
+#, fuzzy
+msgid "Select **Remove** in the right pane."
+msgstr "Wählen Sie im linken Fensterbereich **Storage** aus."
+
+#. type: Bullet: '  1. '
+msgid "To enable the USB stick as a boot option:"
+msgstr ""
+
+#. type: Bullet: '     1. '
+#, fuzzy
+msgid "Click on **Boot Options** in the left pane."
+msgstr "Wählen Sie im linken Fensterbereich **USB Disk 1** aus."
+
+#. type: Bullet: '     1. '
+msgid "Select the **USB** boot option corresponding to your USB device."
+msgstr ""
+
+#. type: Bullet: '  1. '
+msgid ""
+"To start the virtual machine choose **View**&nbsp;▸ **Console** and then "
+"**Virtual Machine**&nbsp;▸ **Run**."
+msgstr ""
+
+#. type: Plain text
+#, fuzzy
+msgid ""
+"After you start on the USB device, you can [[create a Persistent Storage|"
+"persistent_storage]] on it."
+msgstr ""
+"Sobald Sie von dem USB-Gerät gestartet haben, können Sie darauf einen "
+"[[beständigen Speicherbereich einrichten|first_steps/persistence/configure]]."
+
+#. type: Title #
+#, no-wrap
+msgid "Troubleshooting"
+msgstr ""
+
+#. type: Plain text
+#, no-wrap
+msgid "<a id=\"graphics-issues\"></a>\n"
+msgstr ""
+
+#. type: Title ##
+#, no-wrap
+msgid "Graphics issues"
+msgstr ""
+
+#. type: Plain text
+msgid ""
+"Issues with graphics support in Tails running inside a virtual machine with "
+"*virt-manager* are common. The best solution can vary depending on the "
+"version of the virtualization software and on the virtual machine "
+"configuration. For example:"
+msgstr ""
+
+#. type: Bullet: '- '
+msgid ""
+"The *Auto resize VM with window* feature does not work in all configurations."
+msgstr ""
+
+#. type: Bullet: '- '
+msgid ""
+"The video device that provides optimal graphics performance can be different "
+"depending on the version of the host operating system."
+msgstr ""
+
+#. type: Plain text
+msgid "To troubleshoot such issues:"
+msgstr ""
+
+#. type: Bullet: '1. '
+msgid ""
+"Ensure the virtual machine has a *Spice* display and a *Spice* channel "
+"configured, as opposed to *VNC* ones."
+msgstr ""
+
+#. type: Bullet: '2. '
+msgid "Try various virtual video device models."
+msgstr ""
+
+#. type: Plain text
+#, no-wrap
+msgid ""
+"   Start with *Virtio* and *QXL* video devices: they generally give\n"
+"   the best results. If they don't perform well for you, try every\n"
+"   other video device model.\n"
+msgstr ""
+
+#. type: Bullet: '3. '
+msgid ""
+"Try enabling or disabling the OpenGL and 3D acceleration options of the "
+"display and video device."
+msgstr ""
+
+#, fuzzy
+#~ msgid "Click on the **Disconnect** button in the right pane."
+#~ msgstr "Wählen Sie im linken Fensterbereich **USB Disk 1** aus."
+
+#~ msgid ""
+#~ "  1. Double-click on **localhost (QEMU)** to connect to the *QEMU*\n"
+#~ "     system of your host.\n"
+#~ "  1. To create a new virtual machine, choose\n"
+#~ "     <span class=\"menuchoice\"> <span\n"
+#~ "     class=\"guimenu\">File</span>&nbsp;▸ <span\n"
+#~ "     class=\"guimenuitem\">New Virtual Machine</span></span>.\n"
+#~ "  1. In *step 1*, choose **Local install media (ISO image or CDROM)**.\n"
+#~ "  1. In *step 2*, choose:\n"
+#~ "     - **Use ISO image**, then **Browse...**, and **Browse Local** to\n"
+#~ "       browse for the ISO image that you want to start from.\n"
+#~ "     - **OS type**: **Linux**.\n"
+#~ "     - **Version**: **Debian Stretch**.\n"
+#~ "  1. In *step 3*, allocate at least 2048 MB of RAM.\n"
+#~ "  1. In *step 4*, disable storage for this virtual machine.\n"
+#~ "  1. In *step 5*:\n"
+#~ "     - Type a name for the new virtual machine.\n"
+#~ "     - Click **Finish** to start the virtual machine.\n"
+#~ msgstr ""
+#~ "  1. Doppelklicken Sie auf **localhost (QEMU)**, um sich mit dem\n"
+#~ "     *QEMU*-System Ihres Hosts zu verbinden.\n"
+#~ "  1. Um eine neue virtuelle Maschine zu erstellen, wählen Sie\n"
+#~ "     <span class=\"menuchoice\"> <span\n"
+#~ "     class=\"guimenu\">Datei</span>&nbsp;▸ <span\n"
+#~ "     class=\"guimenuitem\">Neue virtuelle Maschine</span></span>.\n"
+#~ "  1. Wählen Sie in *Schritt 1*  **Lokales Installationsmedium (ISO-Abbild "
+#~ "oder CDROM)**.\n"
+#~ "  1. Wählen Sie in *Schritt 2*:\n"
+#~ "     - **ISO-Abbild benutzen**, danach **Auswählen...** und **Lokal "
+#~ "durchsuchen**, um\n"
+#~ "       das ISO-Image auszuwählen, von dem Sie starten möchten.\n"
+#~ "     - **Betriebssystemtyp**: **Linux**.\n"
+#~ "     - **Version**: **Debian Stretch**.\n"
+#~ "  1. Weisen Sie in *Schritt 3* mindestens 2048 MB Speicher (RAM) zu.\n"
+#~ "  1. Deaktivieren Sie in *Schritt 4* den Speicherplatz für diese "
+#~ "virtuelle Maschine.\n"
+#~ "  1. In *Schritt 5*:\n"
+#~ "     - Geben Sie einen Namen für die neue virtuelle Maschine an.\n"
+#~ "     - Klicken Sie auf **Abschließen**, um die virtuelle Maschine zu "
+#~ "starten.\n"
+
+#~ msgid "<a id=\"virtual_usb\"></a>\n"
+#~ msgstr "<a id=\"virtual_usb\"></a>\n"
+
+#~ msgid "Running Tails from a virtual USB storage\n"
+#~ msgstr "Tails von einem virtuellen USB-Speicher aus benutzen\n"
+
+#~ msgid ""
+#~ "You can also run Tails from a virtual USB storage, saved as a single file "
+#~ "on the host operating system."
+#~ msgstr ""
+#~ "Sie können Tails auch von einem virtuellen USB-Speicher, der als einzelne "
+#~ "Datei auf dem Hostbetriebssystem gespeichert ist, aus benutzen."
+
+#~ msgid ""
+#~ "To run Tails from a virtual USB device using *virt-manager*, first create "
+#~ "a virtual machine running from an ISO image as described [[above|virt-"
+#~ "manager#iso]]."
+#~ msgstr ""
+#~ "Erstellen Sie zunächst wie [[oben|virt-manager#iso]] beschrieben eine "
+#~ "virtuelle Maschine, die von einem ISO-Image läuft, um Tails mit *virt-"
+#~ "manager* von einem virtuellen USB-Speicher zu benutzen."
+
+#~ msgid "Then do the following to create a virtual USB storage:"
+#~ msgstr ""
+#~ "Tun Sie anschließend folgendes, um einen virtuellen USB-Speicher zu "
+#~ "erstellen:"
+
+#~ msgid ""
+#~ "In the right pane, change the **Bus type** to USB and click **Finish**."
+#~ msgstr ""
+#~ "Ändern Sie im rechten Fensterbereich den **Gerätetyp** auf USB-Medium und "
+#~ "klicken Sie auf **Abschließen**."
+
+#~ msgid ""
+#~ "In the right pane, select the **Removable** option and click **Apply**."
+#~ msgstr ""
+#~ "Wählen Sie im rechten Fensterbereich die Option **Freigebbar** aus und "
+#~ "klicken Sie auf **Anwenden**."
+
+#, fuzzy
+#~ msgid ""
+#~ "Then start the virtual machine from the virtual DVD to install Tails onto "
+#~ "the virtual USB storage using *Tails Installer*. The virtual USB storage "
+#~ "appears in *Tails Installer* as **QEMU HARDDISK**."
+#~ msgstr ""
+#~ "Starten Sie anschließend die virtuelle Maschine von der virtuellen DVD, "
+#~ "um Tails auf den virtuellen USB-Speicher zu installieren. Der virtuelle "
+#~ "USB-Speicher erscheint im *Tails Installer* als **QEMU HARDDISK**."
+
+#~ msgid ""
+#~ "Once you started from the virtual USB device you can [[create a "
+#~ "persistent volume|first_steps/persistence/configure]] on it."
+#~ msgstr ""
+#~ "Sobald Sie von dem virtuellen USB-Gerät gestartet haben, können Sie "
+#~ "darauf [[einen beständigen Speicherbereich einrichten|first_steps/"
+#~ "persistence/configure]]."

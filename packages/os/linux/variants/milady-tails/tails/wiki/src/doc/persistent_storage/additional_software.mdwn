@@ -1,0 +1,359 @@
+[[!meta title="Installing additional software"]]
+
+[[!toc levels=2]]
+
+Which additional software can I install in Tails?
+=================================================
+
+Tails includes a [[limited set of applications|doc/about/features]] but
+you can install more software.
+
+This software is distributed in packages that are made available from the Debian repositories,
+which are similar to an app store.
+
+To know which packages are available in Debian:
+
+- Browse locally with
+  the *Synaptic Package Manager*:
+
+  1. When starting Tails, [[set up an administration password|doc/first_steps/welcome_screen/administration_password]].
+
+  1. Choose **Apps&nbsp;▸ System Tools&nbsp;▸ Synaptic Package Manager**.
+
+  1. Wait until *Synaptic* finishes downloading new package information
+     from the Debian servers.
+
+  1. You can:
+
+     - Browse the packages by sections from the left sidebar.
+
+     - Search on titles and descriptions of packages with the **Search** button.
+
+- Search the Internet for alternatives to other software.
+
+  For example: "*debian alternatives to photoshop*".
+
+- Ask a friend who is knowledgeable about Linux.
+
+- Search the [Debian website](https://www.debian.org/distrib/packages#search_packages).
+
+<a id="warning"></a>
+
+Be careful about what you install
+---------------------------------
+
+<div class="caution">
+
+<p>The packages included in Tails are carefully tested for security.
+Installing additional packages might break the security built into Tails. For
+example, installing OpenVPN might modify the firewall rules that Tails uses to
+force network traffic to go through Tor.</p>
+
+</div>
+
+If you are unsure:
+
+- Packages that use the network need to be configured to go through
+  Tor. They are otherwise blocked from accessing the network.
+
+- Some software might, for example, modify the firewall and break the security
+  built into Tails. But other software like games or office tools are probably fine.
+
+- Software not [[officially included in Tails|doc/about/features]] might have not been tested for security.
+  We also cannot provide support or documentation for it.
+
+- Only applications that are packaged for Debian can be installed and they are
+  under [[public scrutiny|doc/about/trust#trust_debian]].
+
+Examples of additional useful software
+======================================
+
+- [*VLC*](https://www.videolan.org/vlc/), a multimedia player with advanced
+  features.
+
+- [*Pitivi*](https://www.pitivi.org/), a video editor.
+
+- [*Scribus*](https://www.scribus.net/), a page layout application.
+
+- [*GNOME Camera*](https://apps.gnome.org/Snapshot/), from the `gnome-snapshot` package, an application
+  to take pictures and videos from your webcam.
+
+- [*Mumble*](https://www.mumble.info/), a voice chat application.
+
+- [*Calibre*](https://calibre-ebook.com/), an EPUB reader and library manager.
+
+- [*GtkHash*](https://gtkhash.org/), a utility to calculate the checksum of files.
+
+<a id="language-packages"></a>
+
+Language packages and dictionaries
+----------------------------------
+
+Replace <span class="command-placeholder">lang</span> with the code for your
+language. For example, `vi` for Vietnamese.
+
+Tails already includes language packages and dictionaries for Arabic,
+German, Spanish, Farsi, French, Hindi, Bahasa Indonesia, Italian,
+Portuguese, Russian, Turkish, and Simplified Chinese.
+
+- *LibreOffice* language package: <code>libreoffice-l10n-<span class="command-placeholder">lang</span></code>
+
+  [List of available *LibreOffice* language packages](https://packages.debian.org/search?keywords=libreoffice-l10n&searchon=names&suite=stable&section=all)
+
+- *Thunderbird* language package: <code>thunderbird-l10n-<span class="command-placeholder">lang</span></code>
+
+  [List of available *Thunderbird* language packages](https://packages.debian.org/search?keywords=thunderbird-l10n&searchon=names&suite=stable&section=all)
+
+- *Hunspell* dictionary: <code>hunspell-<span class="command-placeholder">lang</span></code>
+
+  The *Hunspell* dictionaries are used for spell-checking by *Tor Browser*,
+  *LibreOffice*, *Thunderbird*, and many other applications.
+
+  [List of available *Hunspell* dictionaries](https://packages.debian.org/search?keywords=hunspell&searchon=names&suite=stable&section=all)
+
+Installing additional software
+==============================
+
+To install a package using *Synaptic*:
+
+1. When starting Tails, [[set up an administration password|doc/first_steps/welcome_screen/administration_password]].
+
+1. Choose **Apps&nbsp;▸ System Tools&nbsp;▸ Synaptic Package Manager**.
+
+1. Click **Search** and search for the name of the package.
+
+1. Right-click (on Mac, click with two fingers) on the name of the package in the search results and
+   choose **Mark for Installation**.
+
+1. *Synaptic* calculates the additional changes for your package to work. Click **Mark** to confirm those changes.
+
+1. Click **Apply** to download, install, and
+   configure the package.
+
+<div class="tip">
+
+<p>If you are comfortable with the command line, you can use <code>apt</code> instead.</p>
+
+</div>
+
+Installing additional software automatically when starting Tails
+----------------------------------------------------------------
+
+To install an additional package automatically when starting Tails:
+
+1. Turn on the [[Additional
+   Software|persistent_storage/configure#additional_software]] feature of the
+   Persistent Storage.
+
+1. Install the package using *Synaptic* or
+   the `apt` command.
+
+1. After the package is installed,
+   a notification appears to ask if you want to install this package
+   every time you start Tails in the future.
+
+   [[!img add.png class="screenshot" alt=""]]
+
+   - If you choose **Install Every Time**,
+     the package is saved in the Persistent Storage and will be reinstalled
+     automatically every time you start Tails.
+
+     The package will also be updated automatically when you connect to the
+     Internet.
+
+   - If you choose **Install Only Once**, the
+     package is also saved in the Persistent Storage but won't be
+     reinstalled automatically every time you start Tails.
+
+The same package can be reinstalled faster for some time because you
+won't have to download it again.
+
+Using additional software
+=========================
+
+Once installed, applications that don't use the network usually work
+out of the box.
+However, Tails has some differences in terms of
+additional configuration and network access.
+
+Additional configuration
+------------------------
+
+To save the configuration of additional software across different Tails
+sessions, you can use the [[Dotfiles|persistent_storage/configure#dotfiles]]
+feature of the Persistent Storage.
+
+Each application handles its configuration very differently, so we cannot give
+general instructions on which files have to be saved using the Dotfiles
+features.
+
+Network access
+--------------
+
+Tails only allows connections to the Tor network. Additional software that uses
+the Internet must be configured to go through the Tor network otherwise, their
+connections are blocked by default for security.
+
+To make an application use the Tor network, you can either:
+
+- Configure the application to use Tor as a proxy with the following parameters:
+
+  * Type: SOCKS5
+  * Host: 127.0.0.1
+  * Port: 9050
+
+  For example, to use *Mumble* in Tails, you can configure Tor as proxy in the
+  network configuration of *Mumble*:
+
+  [[!img mumble.png class="screenshot" alt="Network configuration of Mumble with proxy settings"]]
+
+- Open the application using `torsocks` on the command line.
+
+  Execute the following command in a *Console*. Replace
+  <span class="command-placeholder">application</span> with the command line
+  of the application that you want to open.
+
+  <p class="command-template">torsocks <span class="command-placeholder">application</span></p>
+
+  For example, to use *Mumble* in Tails, you can also execute the following
+  command:
+
+  <p class="command">torsocks mumble</p>
+
+### Technical networking considerations
+
+- Only TCP connections can go through the Tor network.
+
+- UDP connections, for example in many VoIP applications, and ICMP connections,
+  for example in the `ping` utility, cannot go through the Tor network and are
+  blocked in Tails.
+
+- DNS requests go through the Tor network if the application uses the system
+  configuration otherwise, DNS requests will fail to resolve.
+
+- IPv6 connections are blocked in Tails.
+
+- The default Tor port in Tails (9050) forces the use of different Tor circuits
+  for each different destination IP and port, also called "*stream isolation*".
+
+Checking your list of additional software
+=========================================
+
+To see which packages are installed automatically every time you start Tails,
+choose **Apps&nbsp;▸ System Tools&nbsp;▸ Additional Software**.
+
+Click the **[[!img lib/window-close.png class="symbolic" link="no" alt=""]]**
+button to remove a package from the list.
+
+The same list is also available from the Persistent Storage settings, by clicking on the
+[[!img lib/emblem-system.png class="symbolic" link="no"]] button of the **Additional Software** feature.
+
+Removing additional software
+============================
+
+When you installed the package, if you chose:
+
+- **Install Only Once**, you can remove it by restarting Tails.
+
+- **Install Every Time**, you can remove it either:
+
+  - Using *Additional Software*:
+
+    1. Choose **Apps&nbsp;▸ System Tools&nbsp;▸ Additional Software**.
+
+    1. Click the **[[!img lib/window-close.png class="symbolic" link="no" alt=""]]**
+       to the right of the name of the package.
+
+  - Using *Synaptic*:
+
+    1. When starting Tails, [[set up an administration password|doc/first_steps/welcome_screen/administration_password]].
+
+    1. Choose **Apps&nbsp;▸ System Tools&nbsp;▸ Synaptic Package Manager**.
+
+    1. Click **Search** and search for the name of the package.
+
+    1. Right-click (on Mac, click with two fingers) on the name of the package in the search results and choose
+       **Mark for Removal**.
+
+    1. Click **Apply** to remove the package.
+
+  - From the command line using `apt`.
+
+  After the package is removed, a notification appears to ask if you want to
+  remove this package from your list of additional software.
+
+  [[!img remove.png class="screenshot" alt=""]]
+
+Freeing space in your Persistent Storage
+----------------------------------------
+
+After you installed many packages that you are not using anymore, you can free some space in your Persistent Storage:
+
+1. When starting Tails, [[set up an administration password|doc/first_steps/welcome_screen/administration_password]].
+
+1. Choose **Apps&nbsp;▸ System Tools&nbsp;▸ Console**.
+
+1. Execute the following command.
+
+   <p class="command">sudo apt clean</p>
+
+Configuring additional APT repositories  (for advanced users)
+=============================================================
+
+<div class="caution">
+
+<p>The packages available in Debian are
+submitted to public scrutiny.</p>
+
+<p>Configuring additional APT repositories might break the security built into
+Tails and might install software that has not even been approved by Debian. Be even more careful
+with what you install.</p>
+
+<p>This step is usually not needed to install additional software and might be necessary
+only in very rare occasions.</p>
+
+</div>
+
+Sometimes, you might need to configure additional APT repositories. For
+example, to install packages from the `non-free` section of Debian. To do so:
+
+1. When starting Tails, [[set up an administration password|doc/first_steps/welcome_screen/administration_password]].
+
+1. Create an *apt-sources.list.d* folder in your
+   Persistent Storage:
+
+   <p class="command">sudo install -d -m 755 /live/persistence/TailsData_unlocked/apt-sources.list.d</p>
+
+1. As root, edit */live/persistence/TailsData_unlocked/persistence.conf*,
+   the configuration of the Persistent Storage, and add the
+   *apt-sources.list.d* folder as a
+   feature of type `link`:
+
+       /etc/apt/sources.list.d	source=apt-sources.list.d,link
+
+1. Write your additional `sources.list` files in the
+   *apt-sources.list.d* folder.
+
+   For example, to add
+   the `non-free` sections of Debian 13 (Trixie), backports, and security
+   updates, you can create a file named
+   */live/persistence/TailsData_unlocked/apt-sources.list.d/non-free.list*
+   with the following content:
+
+       deb tor+http://ftp.us.debian.org/debian/ trixie non-free
+       deb tor+http://security.debian.org/ trixie-security non-free
+       deb tor+http://ftp.us.debian.org/debian/ trixie-updates non-free
+       deb tor+http://ftp.us.debian.org/debian/ trixie-backports non-free
+
+   File names must end with *.list* and must only contain the following
+   characters: letters, digits, underscore, hyphen, and period.
+
+1. Correct the ownership and permissions of your additional `sources.list`
+   files to be owned by `root` and only readable by others. For
+   example, execute the following commands.
+
+   <p class="command">sudo chown root:root /live/persistence/TailsData_unlocked/apt-sources.list.d/non-free.list</p>
+
+   <p class="command">sudo chmod 644 /live/persistence/TailsData_unlocked/apt-sources.list.d/non-free.list</p>
+
+1. Restart Tails to apply the changes.

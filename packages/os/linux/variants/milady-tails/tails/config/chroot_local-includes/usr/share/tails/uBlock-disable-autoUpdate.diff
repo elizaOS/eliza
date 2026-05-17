@@ -1,0 +1,11 @@
+--- /usr/share/mozilla/extensions/{ec8030f7-c20a-464f-9b0e-13a3a9e97384}/uBlock0@raymondhill.net/js/background.js	2025-02-09 19:20:16.000000000 +0100
++++ /usr/share/mozilla/extensions/{ec8030f7-c20a-464f-9b0e-13a3a9e97384}/uBlock0@raymondhill.net/js/background.js	2025-02-10 10:45:37.921787667 +0100
+@@ -100,7 +100,7 @@
+ const userSettingsDefault = {
+     advancedUserEnabled: false,
+     alwaysDetachLogger: true,
+-    autoUpdate: true,
++    autoUpdate: false,
+     cloudStorageEnabled: false,
+     cnameUncloakEnabled: true,
+     collapseBlocked: true,

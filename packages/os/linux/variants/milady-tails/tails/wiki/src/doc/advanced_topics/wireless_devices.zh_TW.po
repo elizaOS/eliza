@@ -1,0 +1,226 @@
+# SOME DESCRIPTIVE TITLE
+# Copyright (C) YEAR Free Software Foundation, Inc.
+# This file is distributed under the same license as the PACKAGE package.
+# FIRST AUTHOR <EMAIL@ADDRESS>, YEAR.
+msgid ""
+msgstr ""
+"Project-Id-Version: Tails l10n\n"
+"Report-Msgid-Bugs-To: tails-l10n@boum.org\n"
+"POT-Creation-Date: 2025-11-12 12:16+0100\n"
+"PO-Revision-Date: 2023-03-12 00:33+0000\n"
+"Last-Translator: xin <xin@riseup.net>\n"
+"Language-Team: Tails Chinese translators <jxt@twngo.xyz>\n"
+"Language: zh_TW\n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+"Plural-Forms: nplurals=1; plural=0;\n"
+"X-Generator: Weblate 4.9.1\n"
+
+#. type: Plain text
+#, fuzzy, no-wrap
+msgid "[[!meta title=\"Enabling a wireless device\"]]\n"
+msgstr "[[!meta title=\"啟用無綿網路設備\"]]\n"
+
+#. type: Plain text
+msgid "When Tails starts, Wi-Fi, WWAN, and WiMAX devices are enabled."
+msgstr "Tails 啟動後， Wi-Fi、 WWAN 與 WiMAX 設備也會跟著啟動。"
+
+#. type: Plain text
+msgid ""
+"But all other kinds of wireless devices such as Bluetooth, GPS and FM "
+"devices are disabled by default. If you want to use such a device, you need "
+"to enable it first."
+msgstr ""
+
+#. type: Plain text
+#, no-wrap
+msgid "<div class=\"next\">\n"
+msgstr "<div class=\"next\">\n"
+
+#. type: Plain text
+#, no-wrap
+msgid ""
+"<p>If Wi-Fi is not working, see\n"
+"[[troubleshooting Wi-Fi that is not working|doc/anonymous_internet/no-wifi]].</p>\n"
+msgstr ""
+
+#. type: Plain text
+#, no-wrap
+msgid "</div>\n"
+msgstr "</div>\n"
+
+#. type: Title -
+#, fuzzy, no-wrap
+msgid "Enable a wireless device"
+msgstr "開啟無線設備\n"
+
+#. type: Plain text
+msgid "This technique uses the command line."
+msgstr "這個技巧是使用命令列指令。"
+
+#. type: Bullet: '1. '
+msgid ""
+"When starting Tails, [[set up an administration password|doc/first_steps/"
+"welcome_screen/administration_password]]."
+msgstr ""
+"Tails 啟動時， [[設定一個管理員密碼|doc/first_steps/welcome_screen/"
+"administration_password]]."
+
+#. type: Bullet: '1. '
+msgid "Choose **Apps&nbsp;▸ System Tools&nbsp;▸ Console**."
+msgstr ""
+
+#. type: Bullet: '1. '
+msgid "Execute the following command to open a root console."
+msgstr ""
+
+#. type: Plain text
+#, no-wrap
+msgid "   <p class=\"command\">sudo -i</p>\n"
+msgstr ""
+
+#. type: Bullet: '1. '
+#, fuzzy
+msgid ""
+"To find out the index of the wireless device that you want to enable, "
+"execute the following command:"
+msgstr ""
+"欲找出要啟動的無線設備目錄索引，請利用[[root terminal|doc/first_steps/"
+"welcome_screen/administration_password#open_root_terminal]]，並執行以下指令："
+
+#. type: Plain text
+#, no-wrap
+msgid "   <p class=\"command-root\">rfkill list</p>\n"
+msgstr ""
+
+#. type: Plain text
+#, no-wrap
+msgid "   For example, the command could return the following:\n"
+msgstr "   指令可能會傳回以下的結果：\n"
+
+#. type: Plain text
+#, no-wrap
+msgid ""
+"       0: phy0: Wireless LAN\n"
+"               Soft blocked: no\n"
+"               Hard blocked: no\n"
+"       1: hci0: Bluetooth\n"
+"               Soft blocked: yes\n"
+"               Hard blocked: no\n"
+"       2: gps0: GPS\n"
+"               Soft blocked: yes\n"
+"               Hard blocked: no\n"
+msgstr ""
+
+#. type: Plain text
+#, no-wrap
+msgid ""
+"   The device index is the number that appears at the beginning of the\n"
+"   three lines describing each device. In this example, the index of the Bluetooth\n"
+"   device is 1, while the index of the GPS device is 2. Yours are\n"
+"   probably different.\n"
+msgstr ""
+"   設備代號是出現在描述每個設備\n"
+"  開頭前三行的數字。本例中，藍牙設備的\n"
+"  編號是 1，而 GPS 設備的編號是 2。當然每個人\n"
+"  的情況可能稍有不同。\n"
+
+#. type: Bullet: '1. '
+#, fuzzy
+msgid ""
+"To enable the wireless device, execute the following command. Replace <span "
+"class=\"command-placeholder\">index</span> with the index found at step 2:"
+msgstr ""
+"啟動無線設備，請在根管理員終端機中執行以下指令，但請記得把 `[index]`替換為在"
+"步驟 2 所查出的代號："
+
+#. type: Plain text
+#, no-wrap
+msgid "   <p class=\"command-root-template\">rfkill unblock <span class=\"command-placeholder\">index</span></p>\n"
+msgstr ""
+
+#. type: Plain text
+#, no-wrap
+msgid ""
+"   Here is an example of the command to execute. Yours is probably\n"
+"   different:\n"
+msgstr ""
+"   以下是一些指令執行的例案，每個人的情況 \n"
+"   或有不同差異：\n"
+
+#. type: Plain text
+#, no-wrap
+msgid "   <p class=\"command-root-template\">rfkill unblock 2</p>\n"
+msgstr ""
+
+#. type: Bullet: '1. '
+#, fuzzy
+msgid ""
+"To verify that the wireless device is enabled, execute the following command "
+"again:"
+msgstr "檢查無線設備是否已啟動，請在根管理員終端機再次執行以下指令："
+
+#. type: Plain text
+#, no-wrap
+msgid ""
+"   This output should be very similar to the one of step 2, but\n"
+"   the device enabled at step 3 should not be soft\n"
+"   blocked anymore.\n"
+msgstr ""
+"   這個結果應該和步驟 2 之一有點類似，但\n"
+"   在步驟 3 啟動的設備應該\n"
+"   不會再遭軟封鎖。\n"
+
+#. type: Plain text
+#, no-wrap
+msgid ""
+"       0: phy0: Wireless LAN\n"
+"               Soft blocked: no\n"
+"               Hard blocked: no\n"
+"       1: hci0: Bluetooth\n"
+"               Soft blocked: yes\n"
+"               Hard blocked: no\n"
+"       2: gps0: GPS\n"
+"               Soft blocked: no\n"
+"               Hard blocked: no\n"
+msgstr ""
+
+#, no-wrap
+#~ msgid "<!--\n"
+#~ msgstr "<!--\n"
+
+#, fuzzy, no-wrap
+#~ msgid "Enable Bluetooth"
+#~ msgstr "啟動藍牙\n"
+
+#~ msgid ""
+#~ "Bluetooth is not enabled by default in Tails because it is insecure when "
+#~ "trying to protect from a local adversary."
+#~ msgstr ""
+#~ "Tails 系統並未把藍牙放入預設啟動，因它本身在防備本地區域中的敵手上並不安"
+#~ "全。"
+
+#~ msgid ""
+#~ "To use Bluetooth in Tails nonetheless, you have to [[set up an "
+#~ "administration password at boot time|doc/first_steps/welcome_screen/"
+#~ "administration_password]] and install the `gnome-bluetooth` package."
+#~ msgstr ""
+#~ "在 Tails 使用藍牙，必須 [[在開機時設定管理員密碼|doc/first_steps/"
+#~ "welcome_screen/administration_password]]並安裝 `gnome-bluetooth` 套件包。"
+
+#, no-wrap
+#~ msgid "-->\n"
+#~ msgstr "-->\n"
+
+#, no-wrap
+#~ msgid "       rfkill list\n"
+#~ msgstr "       rfkill list\n"
+
+#, no-wrap
+#~ msgid "       rfkill unblock [index]\n"
+#~ msgstr "       rfkill unblock [index]\n"
+
+#, no-wrap
+#~ msgid "       rfkill unblock 2\n"
+#~ msgstr "       rfkill unblock 2\n"

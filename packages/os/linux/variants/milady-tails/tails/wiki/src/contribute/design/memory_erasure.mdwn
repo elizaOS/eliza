@@ -1,0 +1,141 @@
+[[!meta title="Memory erasure"]]
+
+In order to protect against memory recovery such as cold boot attack,
+most of the system RAM is overwritten when Tails is being shutdown or when the
+boot medium is physically removed. Also, memory allocated to processes
+is erased upon process termination.
+
+#### The big picture
+
+Tails now relies on the Linux kernel's freed memory poisoning feature.
+
+But memory poisoning only works when memory is actually freed,
+and a regular shutdown would not free the memory used by the overlayfs
+read-write branch. So we use the `systemd-shutdown` ability to return
+to the initramfs, to ensure the root filesystem is unmounted.
+
+The initramfs is unpacked in `/run/initramfs` at boot time:
+
+ * [[!tails_gitweb config/chroot_local-includes/lib/systemd/system/initramfs-shutdown.service]]
+ * [[!tails_gitweb config/chroot_local-includes/usr/local/lib/initramfs-restore]]
+ * [[!tails_gitweb config/chroot_local-includes/usr/local/lib/udev-watchdog-wrapper]]
+
+… so that the copy of `systemd-shutdown` that runs in the real,
+non-initramfs system can switch root into `/run/initramfs`, and run
+another copy of `systemd-shutdown` that's
+[[!tails_gitweb config/chroot_local-includes/usr/share/initramfs-tools/hooks/shutdown desc="included"]]
+in the initramfs. That one will unmount all filesystems, run
+[[!tails_gitweb config/chroot_local-includes/usr/local/lib/initramfs-pre-shutdown-hook desc="a custom hook"]]
+that helps us automatically test this behavior, and finally perform
+the requested poweroff/reboot action.
+
+To make this work, a dedicated `tmpfs` filesystem is [[!tails_gitweb
+config/chroot_local-includes/lib/systemd/system/run-initramfs.mount
+desc="mounted"]] on `/run/initramfs`: `/run` is mounted with the
+`noexec` option and while our attempts to remount it with `exec`
+worked for clean shutdown, they failed for emergency shutdown, i.e.
+when the boot medium is physically removed.
+
+For details about the underlying systemd mechanisms, see:
+
+ - `bootup(7)`
+ - `systemd-shutdown(8)`
+ - <https://www.freedesktop.org/wiki/Software/systemd/InitrdInterface/>
+
+In our experience, jumping back to the initramfs to unmount the remaining
+filesystems, as described above, was necessary but not sufficient to free the
+memory used by the overlayfs read-write branch. That's why additionally, we
+manually delete the content of that branch via [[!tails_gitweb
+config/chroot_local-includes/lib/systemd/system/tails-remove-overlayfs-dirs.service
+desc="a systemd service"]] late in the shutdown process, before we jump back to
+the initramfs. It's unclear to us why this works when the boot medium
+is physically removed: in that case, `systemctl --force poweroff`
+is _not_ supposed to stop `tails-remove-overlayfs-dirs.service`, and thus
+this additional clean up step should be skipped; it could be that in this
+emergency shutdown situation, `systemd-shutdown` somehow manages to clean
+things up by itself and there's no need for `tails-remove-overlayfs-dirs.service`.
+
+#### Triggers
+
+Different kinds of events trigger the memory erasure process. All lead
+to run the shutdown process that erases memory.
+
+**First, most memory is erased at the end of a normal shutdown/reboot
+sequence.** This is implemented by the [[Linux kernel's freed memory
+poisoning feature|design/kernel_hardening]], more specifically
+`init_on_free=1`.
+
+[[!tails_gitweb features/erase_memory.feature desc="Automated tests"]]
+ensure that the most important parts of memory are erased this way.
+
+**Second, the memory erasure process is triggered when the boot medium
+is physically removed during runtime (USB boot medium is unplugged or
+boot DVD is ejected).** This is implemented by a custom `udev-watchdog`
+program monitors the boot medium; it's run by a wrapper, started at
+boot time, that brutally invokes the memory erasure process, bypassing
+other system shutdown scripts, when this medium happens to be
+physically removed.
+
+Note that the `udev-watchdog` is disabled while the system is suspended to RAM,
+in order to avoid a race condition when resuming from suspend, which used to
+occasionally trigger the emergency shutdown (see [[!tails_ticket 11729]]).
+This means that the memory erasure process is not triggered if the boot
+medium is removed while the system is suspended.
+
+- [[!tails_gitweb config/chroot_local-includes/usr/local/lib/udev-watchdog-wrapper]]
+- [[!tails_gitweb config/chroot_local-includes/usr/src/udev-watchdog.c]]
+- [[!tails_gitweb config/chroot_local-hooks/52-udev-watchdog]]
+- [[!tails_gitweb config/chroot_local-includes/lib/systemd/system/tails-shutdown-on-media-removal.service]]
+- [[!tails_gitweb config/chroot_local-hooks/52-update-systemd-units]]
+- [[!tails_gitweb config/chroot_local-includes/lib/systemd/system/gdm.service.d/restart.conf]]
+- [[!tails_gitweb config/chroot_local-includes/lib/systemd/system-sleep/toggle-tails-shutdown-on-media-removal.sh]]
+
+#### Making sure needed files are available
+
+The `memlockd` daemon, appropriately configured, ensures every file
+needed by the memory erasure process is locked into memory from boot
+to memory erasure time.
+
+- [[!debpts memlockd]]
+- [[!tails_gitweb config/chroot_local-includes/etc/memlockd.cfg]]
+- [[!tails_gitweb config/chroot_local-patches/keep_memlockd_on_shutdown.diff]]
+- [[!tails_gitweb config/chroot_local-includes/lib/systemd/system/memlockd.service.d/oom.conf]]
+
+#### Limitations
+
+As discussed in
+an email thread
+with the authors of `PAX_MEMORY_SANITIZE`, kernel memory poisoning
+does not clear _all_ kinds of memory once it's freed:
+
+ * we enable free poisoning for the buddy allocator, the slub/slab
+   ones, and heap memory, but there may be other ways the Linux kernel allocates
+   memory, that are not subject to poisoning;
+
+ * on shutdown all process memory is freed (and thus erased), but some
+   kernel memory is not erased on shutdown, and is currently
+   not erased.
+
+It's not obvious that our previous approaches (see below) did any
+better, and this one is much more reliable, so we think this trade-off
+is the most sensible one with the resources and skills currently
+available for Tails.
+
+#### Obsolete approaches
+
+The initial implementation of the Tails memory erasure feature
+suffered from flaws that were demonstrated by [external
+audit](https://www.blackhat.com/html/bh-dc-11/bh-dc-11-archives.html#Case). In short, it
+only erased free memory and let data in the union filesystem read-write branch in
+recoverable state.
+
+Then, in order to erase the biggest possible part of the system memory,
+a new implementation, shipped from Tails 0.7 to 2.12, runs in a
+fresh environment provided by a newly started Linux kernel. This way,
+a given part of the memory either is *used* by the memory erasure
+process itself or it is considered as free and thus *erased* by this
+process; in any case, it is at least overwritten once.
+
+Sadly, this approach suffered from severe usability and reliability
+problems (e.g. [[!tails_ticket 12354]], [[!tails_ticket 11786]]).
+So it was removed in Tails 3.0.

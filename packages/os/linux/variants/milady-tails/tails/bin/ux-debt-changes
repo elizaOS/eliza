@@ -1,0 +1,244 @@
+#! /usr/bin/python3
+
+# Documentation: https://tails.net/contribute/working_together/GitLab/#api
+
+import functools
+import sys
+import logging
+import os
+import datetime
+
+try:
+    import dateutil.parser
+except ImportError:
+    sys.exit("You need to install python3-dateutil to use this program.")
+
+try:
+    import requests
+except ImportError:
+    sys.exit("You need to install python3-requests to use this program.")
+
+try:
+    from cachecontrol import CacheControlAdapter  # type: ignore
+    from cachecontrol.heuristics import OneDayCache  # type: ignore
+except ImportError:
+    sys.exit("You need to install python3-cachecontrol to use this program.")
+
+try:
+    import gitlab  # type: ignore
+except ImportError:
+    sys.exit("You need to install python3-gitlab to use this program.")
+
+from pathlib import Path
+
+PYTHON_GITLAB_CONFIG_FILE = os.getenv('PYTHON_GITLAB_CONFIG_FILE',
+                                      default=Path.home() /
+                                      '.python-gitlab.cfg')
+
+PYTHON_GITLAB_NAME = os.getenv('GITLAB_NAME', default='Tails')
+
+GROUP_NAME = 'tails'
+PROJECT_NAME = GROUP_NAME + '/' + 'tails'
+
+LABEL = 'UX:debt'
+
+ALL_REPORTS = ['added', 'removed', 'solved', 'rejected']
+
+LOG_FORMAT = "%(asctime)-15s %(levelname)s %(message)s"
+log = logging.getLogger()
+
+
+class GitLabWrapper(gitlab.Gitlab):
+    @classmethod
+    def from_config(cls, gitlab_name, config_files):
+        # adapter = CacheControlAdapter(heuristic=ExpiresAfter(days=1))
+        adapter = CacheControlAdapter(heuristic=OneDayCache())
+        session = requests.Session()
+        session.mount('https://', adapter)
+
+        config = gitlab.config.GitlabConfigParser(gitlab_id=gitlab_name,
+                                                  config_files=config_files)
+
+        return cls(config.url,
+                   private_token=config.private_token,
+                   oauth_token=config.oauth_token,
+                   job_token=config.job_token,
+                   ssl_verify=config.ssl_verify,
+                   timeout=config.timeout,
+                   http_username=config.http_username,
+                   http_password=config.http_password,
+                   api_version=config.api_version,
+                   per_page=config.per_page,
+                   pagination=config.pagination,
+                   order_by=config.order_by,
+                   session=session)
+
+    @functools.lru_cache(maxsize=None)
+    def project(self, project_id):
+        return self.projects.get(project_id)
+
+    @functools.lru_cache(maxsize=None)
+    def project_from_name(self, project_name):
+        project = [
+            p for p in self.projects.list(all=True)
+            # Disambiguate between projects whose names share a common prefix
+            if p.path_with_namespace == project_name
+        ][0]
+        assert isinstance(project, gitlab.v4.objects.Project)
+        return project
+
+
+class UxDebtChangesGenerator(object):
+    def __init__(self, gl, group, project_name: str, after: datetime.datetime):
+        self.gl = gl
+        self.group = group
+        self.project = self.gl.project_from_name(project_name)
+        self.after = datetime.datetime(after.year,
+                                       after.month,
+                                       after.day,
+                                       tzinfo=datetime.timezone.utc)
+
+    def closed_issues(self, reason: str) -> list:
+        closed_issues = []
+        closed_issues_events = self.project.events.list(as_list=False,
+                                                        target_type='issue',
+                                                        action='closed',
+                                                        after=self.after)
+
+        gl_closed_issues_with_duplicates = [
+            event.target_iid for event in closed_issues_events
+        ]
+        gl_closed_issues = []
+        for issue in gl_closed_issues_with_duplicates:
+            if issue not in gl_closed_issues:
+                gl_closed_issues.append(issue)
+
+        for issue in gl_closed_issues:
+            issue = self.project.issues.get(issue)
+            # Ignore issues that have been reopened since
+            if issue.state != 'closed':
+                continue
+            if LABEL not in issue.labels:
+                continue
+            if reason == 'resolved':
+                if 'Rejected' in issue.labels:
+                    continue
+            elif reason == 'rejected':
+                if 'Rejected' not in issue.labels:
+                    continue
+            else:
+                raise NotImplementedError("Unsupported reason %s" % reason)
+            closed_issues.append({
+                "title": issue.title,
+                "web_url": issue.web_url,
+            })
+
+        return closed_issues
+
+    def label_added(self):
+        issues = []
+        for issue in self.project.issues.list(state='opened', labels=[LABEL]):
+            if LABEL not in issue.labels:
+                continue
+            events = issue.resourcelabelevents.list()
+            for event in events:
+                if event.action != 'add' or event.label['name'] != 'UX:debt' or event.label != None:
+                    continue
+                event_created_at = dateutil.parser.isoparse(event.created_at)
+                if event_created_at < self.after:
+                    continue
+                issues.append({
+                    "title": issue.title,
+                    "web_url": issue.web_url,
+                })
+        return issues
+
+    def label_removed(self):
+        issues = []
+        for issue in self.project.issues.list(state='opened'):
+            if LABEL in issue.labels:
+                continue
+            events = issue.resourcelabelevents.list()
+            for event in events:
+                if event.action != 'remove' or event.label['name'] != 'UX:debt':
+                    continue
+                event_created_at = dateutil.parser.isoparse(event.created_at)
+                if event_created_at < self.after:
+                    continue
+                issues.append({
+                    "title": issue.title,
+                    "web_url": issue.web_url,
+                })
+        return issues
+
+
+if __name__ == '__main__':
+    import argparse
+    parser = argparse.ArgumentParser()
+    parser.add_argument(
+        '--since',
+        type=datetime.date.fromisoformat,
+        required=True,
+        help="Consider changes after this date, in the format YYYY-MM-DD")
+    parser.add_argument(
+        "--report",
+        dest='reports',
+        action='append',
+        help="Only run the specified report (among %s)\n" % ALL_REPORTS +
+        "Can be specified multiple times to run several reports.")
+    parser.add_argument("--debug", action="store_true", help="debug output")
+    args = parser.parse_args()
+
+    if args.debug:
+        logging.basicConfig(level=logging.DEBUG, format=LOG_FORMAT)
+    else:
+        logging.basicConfig(level=logging.INFO, format=LOG_FORMAT)
+
+    gl = GitLabWrapper.from_config(PYTHON_GITLAB_NAME,
+                                   config_files=[PYTHON_GITLAB_CONFIG_FILE])
+    gl.auth()
+
+    group = gl.groups.list(search=GROUP_NAME)[0]
+    assert isinstance(group, gitlab.v4.objects.Group)
+
+    reports = args.reports or ALL_REPORTS
+    log.debug("Preparing these reports: %s", reports)
+
+    changes_generator = UxDebtChangesGenerator(gl, group, PROJECT_NAME,
+                                               args.since)
+
+    if 'added' in reports:
+        print("Issues that had the UX:debt label added")
+        print("=======================================")
+        print()
+        for issue in changes_generator.label_added():
+            print(f'- {issue["title"]}')
+            print(f'  {issue["web_url"]}')
+            print()
+
+    if 'removed' in reports:
+        print("Issues that had the UX:debt label removed")
+        print("=========================================")
+        print()
+        for issue in changes_generator.label_removed():
+            print(f'- {issue["title"]}')
+            print(f'  {issue["web_url"]}')
+            print()
+
+    if 'solved' in reports:
+        print("Solved issues")
+        print("=============")
+        print()
+        for closed_issue in changes_generator.closed_issues(reason='resolved'):
+            print(f'- {closed_issue["title"]}')
+            print(f'  {closed_issue["web_url"]}')
+            print()
+
+    if 'rejected' in reports:
+        print("Rejected issues")
+        print("===============")
+        print()
+        for closed_issue in changes_generator.closed_issues(reason='rejected'):
+            print(f'- {closed_issue["title"]}')
+            print(f'  {closed_issue["web_url"]}')
+            print()

@@ -1,0 +1,10 @@
+# This is used by:
+#   - /usr/libexec/gdm-x-session.tails
+#   - our gdm-wayland-session wrapper
+# ... to kill the GDM service
+# The security aspects should be negligible: clearly Debian-gdm can DoS
+# the GDM session.
+[[commands]]
+executable = "/bin/systemctl"
+args = ["kill", "--signal=9", "gdm"]
+allowed_user = "Debian-gdm"

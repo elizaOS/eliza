@@ -1,0 +1,29 @@
+[[!meta title="Tails report for February 2022"]]
+[[!meta date="Thu, 10 Mar 2022 11:32:43 +0000"]]
+[[!pagetemplate template="news.tmpl"]]
+
+[[!toc]]
+
+We have refactored our [installation](/install/) documentation!
+This is one of the results of user research we are doing ([[!tails_ticket 18074]]).
+We believe this will make installation easier, encourage more people to verify Tails image, and improve the
+SEO of it. You can read all the details on [[!tails_ticket 16808]].
+
+We're actively working on releasing Tails 5, based on Debian Bullseye, soon.
+
+We published calls for online training and user research [in
+Mexico](/news/ciclo_de_autodefensa_digital_mexico/) and [in
+Brazil](/news/ciclo_de_autodefensa_digital_brasil/).
+
+Releases
+========
+
+[[Tails 4.28 was released on March 08|news/version_4.28]]:
+
+This was mostly a bugfix release, with upgrades to the Linux kernel, Tor Browser and tor
+
+
+Metrics
+=======
+
+Tails has been started more than 717702 times this month. This makes 25632 boots a day on average.

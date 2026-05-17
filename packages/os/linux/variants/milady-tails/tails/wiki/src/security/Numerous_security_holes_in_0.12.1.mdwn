@@ -1,0 +1,35 @@
+[[!meta date="Sun, 16 Sep 2012 00:00:00 +0000"]]
+[[!meta title="Numerous security holes in Tails 0.12.1"]]
+[[!pagetemplate template="news.tmpl"]]
+
+[[!tag security/fixed]]
+
+Several security holes affect Tails 0.12.1.
+
+We **strongly** urge you to [[upgrade to Tails 0.13|news/version_0.13]]
+as soon as possible in case you are still using an older version.
+
+Details
+=======
+
+ - openjdk ([[!debsa2012 2507]])
+ - pidgin ([[!debsa2012 2509]])
+ - iceweasel ([[!debsa2012 2514]],
+   [MSFA 2012-57](https://www.mozilla.org/security/announce/2012/mfsa2012-57.html),
+   [MSFA 2012-58](https://www.mozilla.org/security/announce/2012/mfsa2012-58.html),
+   [MSFA 2012-61](https://www.mozilla.org/security/announce/2012/mfsa2012-61.html),
+   [MSFA 2012-62](https://www.mozilla.org/security/announce/2012/mfsa2012-62.html),
+   [MSFA 2012-63](https://www.mozilla.org/security/announce/2012/mfsa2012-63.html),
+   [MSFA 2012-65](https://www.mozilla.org/security/announce/2012/mfsa2012-65.html),
+   [MSFA 2012-67](https://www.mozilla.org/security/announce/2012/mfsa2012-67.html),
+   [MSFA 2012-69](https://www.mozilla.org/security/announce/2012/mfsa2012-69.html),
+   [MSFA 2012-70](https://www.mozilla.org/security/announce/2012/mfsa2012-70.html),
+   [MSFA 2012-72](https://www.mozilla.org/security/announce/2012/mfsa2012-72.html)
+ - isc-dhcp ([[!debsa2012 2516]], [[!debsa2012 2519]])
+ - bind9 ([[!debsa2012 2517]], [[!debsa2012 2547]])
+ - krb5 ([[!debsa2012 2518]])
+ - openoffice.org ([[!debsa2012 2520]])
+ - libxml2 ([[!debsa2012 2521]])
+ - expat ([[!debsa2012 2525]])
+ - libotr ([[!debsa2012 2526]])
+ - tor ([[!debsa2012 2548]])

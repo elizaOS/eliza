@@ -1,0 +1,418 @@
+#!/bin/bash
+
+set -e
+set -u
+set -o pipefail
+
+NAME=$(basename "${0}")
+
+GENERAL_DEPENDENCIES="
+cucumber
+dbus-x11
+devscripts
+dnsmasq-base
+ffmpeg
+gawk
+git
+imagemagick
+libcap2-bin
+libvirt-clients
+libvirt-daemon-system
+libvirt-dev
+libvirt0
+obfs4proxy
+openssh-server
+ovmf
+pry
+python3-opencv
+python3-paramiko
+python3-pil
+python3-pydantic
+python3-slixmpp
+python3-tomli-w
+qemu-system-x86
+qrencode
+ruby-bindex
+ruby-binding-of-caller
+ruby-guestfs
+ruby-json
+ruby-libvirt
+ruby-net-dns
+ruby-packetfu
+ruby-rb-inotify
+ruby-rspec
+ruby-test-unit
+seabios
+tcpdump
+tcplay
+tesseract-ocr
+tesseract-ocr-eng
+tor
+unclutter
+virt-viewer
+xdotool
+xfwm4
+xvfb
+"
+
+# Recent tor client require a Chutney network with tor >= 0.4.4.6 (#18190)
+MINIMUM_TOR_VERSION=0.4.4.6
+
+usage() {
+    echo "Usage: $NAME [OPTION]... [--] [CUCUMBER_ARGS]...
+Sets up an appropriate environment and invokes cucumber. Note that this script
+must be run from the Tails source directory root.
+
+Options for '@product' features:
+  --allow-non-root   Normally the test suite must be run as root, but if you
+                     really know what you are doing this option allows any
+                     user to run it.
+  --artifacts-base-uri URI
+                     Pretend that the artifact is located at URI when printing
+                     its location during a scenario failure. This is useful if
+                     you intend to serve the artifacts via the web, for
+                     instance.
+  --capture          Captures failed scenarios into videos stored in the
+                     temporary directory (see --tmpdir below) using x264
+                     encoding. Requires x264.
+  --capture-all      Keep videos for all scenarios, including those that
+                     succeed (implies --capture).
+  --collect-always   Keep artifacts (logs, videos) even for successful scenarios
+  --extra-boot-options OPTIONS
+                     Add OPTIONS to the kernel cmdline
+  --interactive-debugging
+                     On failure, pause test suite until pressing Enter. Also
+                     offer the option to open an interactive Ruby shell (pry)
+                     in the Cucumber world's context.
+  --image-bumping-mode
+                     When any image matching fails, enter an interactive mode
+                     that allows to update the image. If run from a graphical
+                     environment, any found candidate image will be displayed
+                     in a pop-up.
+  --keep-chutney     Don't ever clean Chutney data directory.
+                     This can be a big time saver when debugging steps
+                     when --keep-snapshots is not an option.
+  --keep-snapshots   Don't ever delete any snapshots (including ones marked as
+                     temporary). This can be a big time saver when debugging new
+                     features. Implies --keep-chutney.
+  --disable-chutney  EXPERIMENTAL: All tests will be run using the real Tor
+                     network, not a simulated one.
+                     Expect this to break many test cases.
+  --late-patch
+  --late-patch=FILE
+                     Copies files into the VM before running the test suite,
+                     which often can avoid a rebuild.
+                     FILE is a text file where each line contains tab-separated
+                     source and destination. If only a source is given, it is
+                     assumed to be a file inside config/chroot_local-includes,
+                     and the corresponding destination is inferred. Lines with
+                     a leading \"#\" are ignored.
+                     FILE is optional, and if not given we copy in all files in
+                     config/chroot_local-includes that have changed since the
+                     commit the system under testing was built from, including
+                     untracked files.
+  --early-patch      Boots the system with the \"early_patch=umount\" cmdline option,
+                     so all changes since the commit the system under testing was
+                     built from are copied in, including untracked, unstaged, and
+                     uncommitted changes.
+                     See wiki/src/contribute/build/early-patch.mdwn for details.
+  --all-tests        Don't skip tests which have a @fragile or @skip_by_default tag.
+  --tmpdir           Directory where various temporary files are written
+                     during a test, e.g. VM snapshots and memory dumps,
+                     failure screenshots, pcap files and disk images
+                     (default is TMPDIR in the environment, and if unset,
+                     /tmp/TailsToaster).
+  --(no-)view        Shows the test session in a windows. Requires x11vnc
+                     and tigervnc-viewer.
+  --view-interact    The test session can be \"touched\". For debugging purposes
+                     only.
+  --vnc-server-only  Starts a VNC server for the test session. Requires x11vnc.
+  --iso IMAGE        Test '@product' features using IMAGE.
+  --old-iso IMAGE    For some '@product' features (e.g. usb_install) we need
+                     an older version of Tails, which this options sets to
+                     IMAGE. If none is given, it defaults to the same IMAGE
+                     given by --iso, which will be good enough for most testing
+                     purposes.
+
+Note that '@source' features has no relevant options.
+
+CUCUMBER_ARGS can be used to specify which features to be run, but also any
+cucumber option, although then you must pass \`--\` first to let this wrapper
+script know that we're done with *its* options. For debugging purposes, a
+'debug' formatter has been added so pretty debugging can be enabled with
+\`--format debug\`. You could even combine the default (pretty) formatter with
+pretty debugging printed to a file with \`--format pretty --format debug
+--out debug.log\`.
+"
+}
+
+error() {
+    echo "${NAME}: error: ${*}" >&2
+    exit 1
+}
+
+package_installed() {
+    local ret
+    set +o pipefail
+    if dpkg -s "${1}" 2>/dev/null | grep -q "^Status:.*installed"; then
+        ret=0
+    else
+        ret=1
+    fi
+    set -o pipefail
+    return ${ret}
+}
+
+check_dependencies() {
+    while [ -n "${1:-}" ]; do
+        if ! command -v "${1}" >/dev/null && ! package_installed "${1}"; then
+            error "'${1}' is missing, please install it and run again."
+        fi
+        shift
+    done
+}
+
+check_tor_version() {
+    local tor_version
+    tor_version=$(tor --version | grep -Po '^Tor version \K.*' | sed --regexp-extended 's,[.]$,,')
+    echo "tor version: $tor_version"
+    if dpkg --compare-versions "$tor_version" lt "$MINIMUM_TOR_VERSION"; then
+        error "Please upgrade to tor ${MINIMUM_TOR_VERSION} or newer."
+    fi
+}
+
+display_in_use() {
+    [ -e "/tmp/.X${1#:}-lock" ] || [ -e "/tmp/.X11-unix/X${1#:}" ]
+}
+
+next_free_display() {
+    display_nr=0
+    while display_in_use ":${display_nr}"; do
+        display_nr=$((display_nr + 1))
+    done
+    echo ":${display_nr}"
+}
+
+test_suite_cleanup() {
+    if [ -n "${XVFB_PID:-}" ]; then
+        (kill -0 "${XVFB_PID}" 2>/dev/null && kill "${XVFB_PID}") || /bin/true
+    fi
+    return $?
+}
+
+start_xvfb() {
+    Xvfb "$TARGET_DISPLAY" -screen 0 1024x768x24+32 -noreset >/dev/null 2>&1 &
+    XVFB_PID=$!
+    # Wait for Xvfb to run on TARGET_DISPLAY
+    until display_in_use "$TARGET_DISPLAY"; do
+        sleep 1
+    done
+    echo "Virtual X framebuffer started on display ${TARGET_DISPLAY}"
+    # Start an X11 Window Manager to get a more standard environment
+    # compared to a WM-less one. Some tools don't work without a WM
+    # (e.g. wmctrl) and some misbehave (e.g. virt-viewer 10.0-11.0
+    # doesn't hide the header bar in full-screen mode).
+    if [ -n "${SUDO_COMMAND:-}" ]; then
+        # When this script is started with sudo then xfwm4 fails to
+        # start, complaining about "Xfconf could not be initialized"
+        # and "Missing data from default files", which is avoided if
+        # started like this:
+        XFWM4_WRAPPER="sudo --user=$USER --login --"
+    else
+        XFWM4_WRAPPER=""
+    fi
+    if [ -z "${DBUS_SESSION_BUS_ADDRESS:-}" ]; then
+        XFWM4_WRAPPER="${XFWM4_WRAPPER} dbus-launch --"
+    fi
+    ${XFWM4_WRAPPER} xfwm4 --display="$TARGET_DISPLAY" 2>/dev/null &
+    # Hide the mouse cursor so it won't be in the way when we are
+    # trying to match images.
+    unclutter -display "$TARGET_DISPLAY" -root -idle 0.1 >/dev/null 2>&1 &
+}
+
+start_vnc_server() {
+    check_dependencies x11vnc
+    # shellcheck disable=SC2086
+    VNC_SERVER_PORT="$(env -u WAYLAND_DISPLAY x11vnc \
+        -listen localhost -display "${TARGET_DISPLAY}" \
+        -bg -nopw -forever ${TAILS_X11VNC_OPTS:-} 2>&1 |
+        grep -m 1 "^PORT=[0-9]\+" | sed 's/^PORT=//')"
+    echo "VNC server running on: localhost:${VNC_SERVER_PORT}"
+}
+
+start_vnc_viewer() {
+    opts=
+    if [[ "${VNC_VIEWER_VIEWONLY}" = yes ]]; then
+        opts=-viewonly
+    fi
+    check_dependencies tigervnc-viewer
+    xtigervncviewer \
+        -nojpeg $opts \
+        -RemoteResize=0 \
+        -AcceptClipboard=0 \
+        -SendClipboard=0 \
+        -SetPrimary=0 \
+        -SendPrimary=0 \
+        "localhost:${VNC_SERVER_PORT}" 1>/dev/null 2>&1 &
+}
+
+# main script
+
+# Set default values of environment variables used by this script to
+# pass options to cucumber (unless they are already set).
+ALLOW_NON_ROOT=${ALLOW_NON_ROOT-}
+ARTIFACTS_BASE_URI=${ARTIFACTS_BASE_URI-}
+CAPTURE=${CAPTURE-}
+CAPTURE_ALL=${CAPTURE_ALL-}
+COLLECT_ALWAYS=${COLLECT_ALWAYS-}
+ALWAYS_SAVE_JOURNAL=${ALWAYS_SAVE_JOURNAL-}
+VNC_VIEWER=${VNC_VIEWER-}
+VNC_VIEWER_VIEWONLY=${VNC_VIEWER_VIEWONLY-yes}
+VNC_SERVER=${VNC_SERVER-}
+INTERACTIVE_DEBUGGING=${INTERACTIVE_DEBUGGING-}
+IMAGE_BUMPING_MODE=${IMAGE_BUMPING_MODE-}
+KEEP_CHUTNEY=${KEEP_CHUTNEY-}
+KEEP_SNAPSHOTS=${KEEP_SNAPSHOTS-}
+TAILS_ISO=${TAILS_ISO-}
+OLD_TAILS_ISO=${OLD_TAILS_ISO-}
+EARLY_PATCH=${EARLY_PATCH-}
+EXTRA_BOOT_OPTIONS=${EXTRA_BOOT_OPTIONS-}
+ALL_TESTS=${ALL_TESTS-}
+
+LONGOPTS="allow-non-root,artifacts-base-uri:,view,no-view,view-interact,vnc-server-only,capture,capture-all,collect-always,help,tmpdir:,keep-chutney,keep-snapshots,disable-chutney,late-patch::,early-patch,extra-boot-options:,all-tests,iso:,old-iso:,interactive-debugging,image-bumping-mode"
+OPTS=$(getopt -o "" --longoptions $LONGOPTS -n "${NAME}" -- "$@")
+eval set -- "$OPTS"
+while [ $# -gt 0 ]; do
+    case $1 in
+    --allow-non-root)
+        if ! /sbin/getcap /usr/bin/tcpdump | grep -q 'cap_net_raw=eip'; then
+            error "/usr/bin/tcpdump lacks cap_net_raw=eip"
+        fi
+        ALLOW_NON_ROOT="yes"
+        ;;
+    --artifacts-base-uri)
+        shift
+        export ARTIFACTS_BASE_URI="${1}"
+        ;;
+    --view)
+        VNC_VIEWER=yes
+        VNC_VIEWER_VIEWONLY=yes
+        VNC_SERVER=yes
+        ;;
+    --no-view)
+        VNC_VIEWER=
+        VNC_VIEWER_VIEWONLY=
+        VNC_SERVER=
+        ;;
+    --view-interact)
+        VNC_VIEWER=yes
+        VNC_VIEWER_VIEWONLY=
+        VNC_SERVER=yes
+        ;;
+    --vnc-server-only)
+        VNC_VIEWER=
+        VNC_SERVER=yes
+        ;;
+    --capture)
+        check_dependencies x264
+        export CAPTURE="yes"
+        ;;
+    --capture-all)
+        check_dependencies x264
+        export CAPTURE="yes"
+        export CAPTURE_ALL="yes"
+        ;;
+    --collect-always)
+        export COLLECT_ALWAYS="yes"
+        ;;
+    --interactive-debugging)
+        export INTERACTIVE_DEBUGGING="yes"
+        ;;
+    --image-bumping-mode)
+        export IMAGE_BUMPING_MODE="yes"
+        ;;
+    --keep-chutney)
+        export KEEP_CHUTNEY="yes"
+        ;;
+    --keep-snapshots)
+        export KEEP_CHUTNEY="yes"
+        export KEEP_SNAPSHOTS="yes"
+        ;;
+    --disable-chutney)
+        export DISABLE_CHUTNEY="yes"
+        ;;
+    --late-patch)
+        shift
+        if [ -n "${1:-}" ]; then
+            LATE_PATCH="$(realpath -s "$1")"
+            if [ ! -e "$LATE_PATCH" ]; then
+                error "--late-patch: FILE doesn't exist"
+            fi
+        else
+            LATE_PATCH=''
+        fi
+        export LATE_PATCH
+        ;;
+    --early-patch)
+        export EARLY_PATCH="yes"
+        ;;
+    --extra-boot-options)
+        shift
+        export EXTRA_BOOT_OPTIONS="$1"
+        ;;
+    --all-tests)
+        export ALL_TESTS="yes"
+        ;;
+    --tmpdir)
+        shift
+        TMPDIR="$(readlink -f "$1")"
+        export TMPDIR
+        ;;
+    --iso)
+        shift
+        TAILS_ISO="$(realpath -s "$1")"
+        export TAILS_ISO
+        ;;
+    --old-iso)
+        shift
+        OLD_TAILS_ISO="$(realpath -s "$1")"
+        export OLD_TAILS_ISO
+        ;;
+    --help)
+        usage
+        exit 0
+        ;;
+    --)
+        shift
+        break
+        ;;
+    esac
+    shift
+done
+
+trap "test_suite_cleanup" EXIT HUP INT QUIT TERM
+
+if [ "${EUID}" -ne 0 ] && [ -z "${ALLOW_NON_ROOT}" ]; then
+    error "you are not running as root; if you really know what you are" \
+        "doing, see the --allow-non-root option"
+fi
+
+# shellcheck disable=SC2086
+check_dependencies ${GENERAL_DEPENDENCIES}
+check_tor_version
+
+TARGET_DISPLAY=$(next_free_display)
+
+start_xvfb
+
+if [ -n "${VNC_SERVER:-}" ]; then
+    start_vnc_server
+fi
+if [ -n "${VNC_VIEWER:-}" ]; then
+    start_vnc_viewer
+fi
+
+export USER_DISPLAY="${DISPLAY:-}"
+export DISPLAY=${TARGET_DISPLAY}
+
+./bin/ci-configuration run-test -- "$@"

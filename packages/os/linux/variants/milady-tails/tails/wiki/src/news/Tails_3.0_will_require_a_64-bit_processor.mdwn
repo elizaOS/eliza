@@ -1,0 +1,84 @@
+[[!meta date="Wed, 01 Feb 2017 10:23:56 +0000"]]
+[[!pagetemplate template="news.tmpl"]]
+[[!meta title="Tails 3.0 will require a 64-bit processor"]]
+[[!tag announce]]
+
+Tails 3.0 will require a 64-bit <span
+class="definition">[[!wikipedia x86-64]]</span> compatible processor.
+As opposed to older versions of Tails, it will not work on
+32-bit processors.
+
+We have waited for years until we felt it was the right time to do
+this switch. Still, this was a hard decision for us to make. Today, we
+want to explain why we eventually made this decision, how it will
+affect users, and when.
+
+[[!toc]]
+
+# When will this transition happen?
+
+Our current goal is to release Tails 3.0, and stop supporting
+computers with a 32-bit processor, on **June 13, 2017**.
+
+# Will Tails still work on this computer?
+
+Here is the quickest way to find out:
+
+1. Start Tails.
+1. Choose **Applications&nbsp;▸
+   Utilities&nbsp;▸
+   Terminal** to open a terminal.
+1. Execute the following command to display system information:
+
+           uname -m
+
+1. Then, there are two possible cases:
+
+   * If you see `x86_64`, then you're good: Tails 3.0 should work fine
+     on this computer. But the best way to be 100% sure is to try one
+     of the test versions of Tails 3.0. One was released last
+     November, and a new one should be published later this week, so:
+     stay tuned!
+
+   * Else, if you see `i686`, then we have bad news: Tails 3.0 will
+     *not* work on this computer. You now have four and a half months
+     to find a computer with a 64-bit processor. Sorry, and good luck
+     with that!
+
+# Why this change?
+
+It's no surprise that over the last years, the number of people who
+use Tails on a 32-bit computer
+[[!tails_ticket 8183 desc="has dropped"]]: most 32-bit computers are
+at least ten years old, and one after the other their hardware stops
+working. As a result, in the beginning of 2016,
+[[!toggle id="stats" text="only 4%"]] of Tails users
+were still using a 32-bit computer.
+
+[[!toggleable id="stats" text="""These statistics are gathered from bug reports we have received from [[WhisperBack|doc/first_steps/whisperback#whisperback]]."""]]
+
+Of course, some of these computers
+will keep working for a while. But once the number had fallen this
+low, the benefits of switching Tails to 64-bit outweighed the reasons
+we had to keep supporting 32-bit computers.
+
+We had two main reasons to switch Tails to 64-bit:
+
+* **We want Tails users to be safer**: software built for 64-bit
+  processors can benefit from several improvements that make it harder
+  for attackers to exploit security vulnerabilities (improved
+  [[!wikipedia Address space layout randomization]],
+  compulsory support for the [[!wikipedia NX bit]]).
+
+* **We want to our project to be (more) sustainable**: Tails has been
+  using a 64-bit Linux kernel for a while on machines that support it.
+  But all other programs included in Tails so far were built for
+  32-bit processors, and compatibility issues kept arising. In the
+  last few years, the developers who maintain Tails have spent lots of
+  time addressing such issues. We would rather see them spend their
+  time in ways that benefit our users on the long term, and not on
+  problems that will vanish when Tails switches to 64-bit eventually.
+
+Thanks for your attention, and sorry for the inconvenience it may
+cause to you.
+

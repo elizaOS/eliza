@@ -1,0 +1,199 @@
+#! /usr/bin/perl
+
+use strict;
+use warnings FATAL => 'all';
+use 5.10.1;
+
+#man{{{
+
+=head1 NAME
+
+tails-security-check
+
+=cut
+
+
+=head1 DESCRIPTION
+
+=head1 SYNOPSIS
+
+tails-security-check [ ATOM_FEED_BASE_URL ]
+
+  ATOM_FEED_BASE_URL will be appended /index.XX.atom,
+  for XX in (current locale's language code, 'en'),
+  until success is reported by the HTTP layer.
+
+=head1 AUTHOR
+
+Tails developers <foundations@tails.net>
+See https://tails.net/.
+
+=cut
+
+#}}}
+
+use Carp;
+use Carp::Assert::More;
+use Fatal qw{open close};
+use Locale::TextDomain 'tails';
+use POSIX;
+use Tails::Download::HTTPS;
+use Try::Tiny;
+use XML::Atom;
+use XML::Atom::Feed;
+
+### configuration
+
+my $default_base_url = 'https://tails.net/security/';
+
+=head1 FUNCTIONS
+
+=head2 current_lang
+
+Returns the two-letters language code of the current session.
+
+=cut
+sub current_lang {
+    my ($code) = ($ENV{LANG} =~ m/([a-z]{2}).*/);
+
+    return $code;
+}
+
+=head2 atom_str
+
+Argument: an Atom feed URL
+
+Returns the Atom's feed content on success, undef on failure.
+
+=cut
+sub atom_str {
+    my $url = shift;
+    assert_defined($url);
+
+    my $downloader = Tails::Download::HTTPS->new(
+        max_download_size => 256 * 2**10,
+    );
+    my $content;
+    try { $content = $downloader->get_url($url); };
+    defined $content ? return $content : return undef;
+}
+
+=head2 get_entries
+
+Arguments: the Atom feed URL.
+
+Returns the list of XML::Atom::Entry objects from the feed.
+
+We use this manual Accept-Language algorithm as the website
+layout does not allow us to use content negotiation.
+
+=cut
+sub get_entries {
+    my $base_url = shift;
+    assert_defined($base_url);
+    assert_nonblank($base_url);
+
+    my $separator = '';
+    $separator = '/' unless $base_url =~ m{/\z}xms;
+
+    my @try_urls = (
+        $base_url . $separator . 'index.' . current_lang() . '.atom',
+        $base_url . $separator . 'index.en.atom',
+    );
+
+    my $feed_str;
+    foreach my $url (@try_urls) {
+        last if ($feed_str = atom_str($url));
+    }
+    assert_defined($feed_str);
+
+    return XML::Atom::Feed->new(\$feed_str)->entries();
+}
+
+=head2 notify_user
+
+Notify the user about the Atom entries passed as arguments.
+
+=cut
+sub notify_user {
+    my @entries = @_;
+
+    my $body = __('This version of Tails has known security issues:') . "\n";
+
+    for (@entries) {
+        $body .= '• ' . '<a href="' . $_->id . '">' . $_->title . '</a>' . "\n";
+    }
+
+    say $body;
+
+    exec(
+        qw{/usr/bin/zenity --warning},
+        q{--title}, __('Known security issues'),
+        q{--text},  $body,
+    );
+}
+
+=head2 categories
+
+Return the list of categories of the input XML::Atom::Entry object.
+
+=cut
+sub categories {
+    my $entry = shift;
+    my $ns = XML::Atom::Namespace->new(
+        dc => 'http://purl.org/dc/elements/1.1/'
+    );
+    my @category = ($entry->can('categories'))
+        ? $entry->categories
+        : $entry->category;
+    @category
+        ? (map { $_->label || $_->term } @category)
+        : $entry->getlist($ns, 'subject');
+}
+
+=head2 is_not_fixed
+
+Returns true iff. the input XML::Atom::Entry object hasn't the
+security/fixed tag.
+
+=cut
+sub is_not_fixed {
+    my $entry = shift;
+    assert_isa($entry, 'XML::Atom::Entry');
+
+    ! grep { $_ eq 'security/fixed' } categories($entry);
+}
+
+=head2 unfixed_entries
+
+Filter the input list of XML::Atom::Entry objects to only keep entries
+that are not marked as fixed yet.
+
+=cut
+sub unfixed_entries {
+    my @entries = @_;
+
+    grep { is_not_fixed($_) } @entries;
+}
+
+
+=head1 MAIN
+
+=head2 parse command line args
+
+=cut
+my $base_url  = shift || $default_base_url;
+my $opt_since = shift;
+
+
+=head2 do the work
+
+=cut
+my @unfixed_entries = unfixed_entries(get_entries($base_url));
+
+if (! @unfixed_entries) {
+    exit 0;
+}
+else {
+    notify_user(@unfixed_entries);
+}

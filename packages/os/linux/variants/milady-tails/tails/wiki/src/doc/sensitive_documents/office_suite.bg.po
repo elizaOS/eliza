@@ -1,0 +1,91 @@
+# SOME DESCRIPTIVE TITLE
+# Copyright (C) YEAR Free Software Foundation, Inc.
+# This file is distributed under the same license as the PACKAGE package.
+# FIRST AUTHOR <EMAIL@ADDRESS>, YEAR.
+#
+msgid ""
+msgstr ""
+"Project-Id-Version: Tails\n"
+"Report-Msgid-Bugs-To: tails-l10n@boum.org\n"
+"POT-Creation-Date: 2025-09-17 11:40+0200\n"
+"PO-Revision-Date: 2024-10-02 12:09+0000\n"
+"Last-Translator: Benjamin Held <Benjamin.Held@protonmail.com>\n"
+"Language-Team: Tails translators <tails@boum.org>\n"
+"Language: bg\n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+"Plural-Forms: nplurals=2; plural=n != 1;\n"
+"X-Generator: Weblate 5.3\n"
+
+#. type: Plain text
+#, no-wrap
+msgid "[[!meta title=\"Office suite\"]]\n"
+msgstr ""
+
+#. type: Plain text
+msgid ""
+"Tails includes *[LibreOffice](https://www.libreoffice.org/)*, a powerful "
+"office suite which embeds several tools:"
+msgstr ""
+
+#. type: Bullet: '- '
+msgid "*Writer*, a word processor"
+msgstr ""
+
+#. type: Bullet: '- '
+msgid "*Calc*, a spreadsheet application"
+msgstr ""
+
+#. type: Bullet: '- '
+msgid "*Impress*, a presentation engine"
+msgstr ""
+
+#. type: Bullet: '- '
+msgid "*Draw*, a drawing and flowcharting application"
+msgstr ""
+
+#. type: Plain text
+msgid ""
+"To open *LibreOffice*, choose **Apps&nbsp;▸ Office&nbsp;▸ LibreOffice**."
+msgstr ""
+
+#. type: Plain text
+msgid ""
+"The *LibreOffice* website provides complete [user guides](https://wiki."
+"documentfoundation.org/Documentation/Publications) for each of these tools, "
+"translated into several languages."
+msgstr ""
+
+#. type: Plain text
+#, no-wrap
+msgid ""
+"To use *LibreOffice* in your language, you can\n"
+"install the <code>libreoffice-l10n-<span class=\"command-placeholder\">lang</span></code>\n"
+"package using the [[Additional Software|persistent_storage/additional_software]]\n"
+"feature. Replace <span class=\"command-placeholder\">lang</span> with the code\n"
+"for your language. For example, `vi` for Vietnamese.\n"
+msgstr ""
+
+#. type: Plain text
+msgid ""
+"Tails already includes language packages for Arabic, German, Spanish, Farsi, "
+"French, Hindi, Bahasa Indonesia, Italian, Portuguese, Russian, Turkish, and "
+"Simplified Chinese."
+msgstr ""
+
+#. type: Plain text
+msgid ""
+"[List of available *LibreOffice* language packages](https://packages.debian."
+"org/search?keywords=libreoffice-l10n&searchon=names&suite=stable&section=all)"
+msgstr ""
+
+#. type: Plain text
+#, no-wrap
+msgid "[[!inline pages=\"doc/sensitive_documents/persistence\" raw=\"yes\" sort=\"age\"]]\n"
+msgstr ""
+
+#. type: Plain text
+#, no-wrap
+msgid "[[!inline pages=\"doc/sensitive_documents/metadata.inline\" raw=\"yes\" sort=\"age\"]]\n"
+msgstr ""

@@ -1,0 +1,87 @@
+[[!meta date="Fri, 10 Mar 2014 01:23:45 +0000"]]
+[[!pagetemplate template="news.tmpl"]]
+[[!meta title="Tails launches a logo contest"]]
+[[!tag announce]]
+
+On the 29th of April, we will release Tails 1.0. This will be an important
+symbolic milestone about 5 years after our [[first public
+releases|news/version_0.2]].
+
+We want to have a great logo by then to give Tails the visual impact it
+deserves. The image and
+banner we have been using so far don't really do the job anymore...
+
+<img src="https://gitlab.tails.boum.org/tails/blueprints/-/wikis/logo/tails-logo-round.png" width="250"/>
+
+So we're starting a contest for designers to create a logo for Tails.
+We have already brainstormed on the idea, and received some great
+proposals [[!tails_ticket 5797 desc="in the past"]]. Still, we had
+a hard time making our collective mind on a single proposal, and
+wanted to give more people a chance.
+
+[[!toc levels=1]]
+
+Requirements
+============
+
+  - Free licence, compatible with GPL3+.
+  - Source in SVG format.
+  - An image with an approximate 1:1 ratio, like the [onion
+    logo](https://media.torproject.org/image/www-images/onion.jpg).
+  - Plus the same image along with the "Tails" word either:
+    - merged with the image as in the [Tor
+      logo](https://media.torproject.org/image/www-images/tor-logo.jpg);
+    - on the side of the image.
+  - The "Tails" name must be spelled with an uppercase "T" only, and
+    lowercase "ails".
+  - The image should convey the ideas behind Tails: secrecy, privacy,
+    anonymity, mystery, simplicity (Tails is ready-to-use).
+  - The logo has to be a bit serious, but not sad.
+  - Until now we reuse the colors from Tor (green and purple), but this can be
+    changed.
+  - We cannot reuse directly the Tor or Debian logo, but evoking it is ok (use
+    Tor colors, or evoking the Debian swirl).
+  - The image should be suited to print on nice stickers that people
+    want to have on their computers, and on t-shirts that people are
+    happy to wear.
+  - Make sure that the fonts that you use are compatible with GPL3+. To be on
+    the safe side, use fonts available in Debian
+    main,
+    otherwise we will ask you to prove their compatibility with GPL3+.
+
+Complementary materials
+=======================
+
+As the logo will be used in quite different places, we encourage you to submit
+complementary materials. These are not strict requirements but will help us
+evaluate your proposal better. Besides, if your logo is chosen, we
+will need them anyway before we are able to put it to use publicly.
+
+These complementary materials are:
+
+  - A banner for the website. The current one is 986x60px, but the new one could
+    be higher, maybe up to 150px.
+  - A splash screen for
+    boot. Must be
+    640x480px with a black background, 8-bit/RGBA. It has to be
+    distinguishable by the user
+    as Tails, but discrete enough not to attract too much attention from other
+    people around.
+  - A color palette for the website, if it needs to be adapted to
+    match the logo.
+  - Fonts to be used to create other material matching the logo.
+  - A CSS patch for
+    colors and fonts on the website, if you are into CSS.
+  - A grayscale version of the logo.
+
+Calendar
+========
+
+  - **31st of March**: Deadline for sending proposals to
+    <tails-dev@boum.org>. No attachments to the email, but link to
+    a public place where we can find your work.
+  - **9th of April**: The winner is announced.
+  - **15th of April**: All the complementary materials have to be ready so we have
+    time to include them in Tails 1.0. The designer of the winning logo is
+    strongly encouraged to do this work, before or after the deadline for
+    proposals.

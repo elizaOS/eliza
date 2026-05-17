@@ -1,0 +1,148 @@
+[[!meta title="MAC address anonymization"]]
+
+[[!toc]]
+
+<a id="what-is-mac-address"></a>
+
+What is a MAC address?
+======================
+
+Every network interface — wired or Wi-Fi — has a [[!wikipedia MAC address]], which is
+a serial number assigned to each interface at the factory by the vendor. MAC addresses
+are used on the local network to identify the communications of each network
+interface.
+
+While your IP address identifies where you are on the Internet, your MAC address
+identifies which device you are using on the local network. MAC addresses are
+only useful on the local network and are not sent over the Internet.
+
+Having such a unique identifier used on the local network can harm your privacy.
+Here are two examples:
+
+1. If you use your laptop to connect to several Wi-Fi networks, the
+same MAC address of your Wi-Fi interface is used on all those local networks. Someone
+observing those networks can recognize your MAC address and **track your
+geographical location**.
+
+1. Unless you choose to [[hide that you are connecting to the Tor
+network|anonymous_internet/tor]], someone who monitors your Internet
+connection can know that. In this case, your MAC address can **reveal that you are
+a Tor user**.
+
+What is MAC address anonymization?
+==================================
+
+When MAC address anonymization is enabled, Tails temporarily changes the MAC addresses of your network interfaces to random
+values for the time of your Tails session.
+MAC address anonymization hides the serial number of your network interface,
+and so, to some extent, who you are, from the local network.
+
+MAC address anonymization is enabled by default in Tails because it is usually
+beneficial. But in some situations it might also lead to connectivity problems
+or make your network activity look suspicious. This documentation explains
+whether to use MAC address anonymization or not, depending on your situation.
+
+<div class="tip">
+
+<p>To learn how Tails implements MAC address anonymization, see our
+[[design documentation about MAC address anonymization|contribute/design/MAC_address]].</p>
+
+</div>
+
+When to keep MAC address anonymization enabled
+==============================================
+
+**MAC address anonymization is enabled by default for all network interfaces.** This is
+usually beneficial, even if you don't want to hide your geographical location.
+
+Here are a few examples:
+
+* **Using your own computer on an public network without registration**, for
+  example a free Wi-Fi service in a restaurant where you don't need to register with your
+  identity. In this case, MAC address anonymization hides the fact that your computer
+  is connected to this network.
+
+* **Using your own computer on a network that you use frequently**, for example
+  at a friend's place, at work, at university, etc. You already have a strong
+  relationship with this place but MAC address anonymization hides the fact that your
+  computer is connected to this network *at a particular time*. It also hides
+  the fact that *you* are connecting to the Tor network on this network.
+
+When to disable MAC address anonymization
+=========================================
+
+In some situations MAC address anonymization is not useful but can instead be
+problematic. In such cases, you might want to disable MAC address
+anonymization as instructed below.
+
+Note that even if MAC address anonymization is disabled, your anonymity on the Internet is
+preserved:
+
+- An adversary on the local network can only see encrypted connections to the
+  Tor network.
+
+- Your MAC address is not sent over the Internet to the websites that you are
+  visiting.
+
+However, as [[discussed above|doc/first_steps/welcome_screen/mac_spoofing#what-is-mac-address]], disabling MAC address anonymization makes it possible
+for someone to track your geographical location. If this is problematic, consider
+using a different network interface, like a [[USB Wi-Fi adapter|doc/anonymous_internet/no-wifi#wifi-adapters]], or moving to another network.
+
+Here are a few examples:
+
+- **Using a public computer**, for example in an Internet café or a library.
+  This computer is regularly used on this local network, and its MAC address is
+  not associated with your identity. In this case, MAC address anonymization can make
+  it impossible to connect. It can even **look suspicious** to the network
+  administrators to see an unknown MAC address being used on that network.
+
+- On some network interfaces, **MAC address anonymization is impossible** due to
+  limitations in the hardware or in Linux. Tails temporarily disables such
+  network interfaces. You might disable MAC address anonymization to be able to use them.
+
+- Some networks **only allow connections from a list of authorized MAC
+  addresses**. In this case, MAC address anonymization makes it impossible to connect
+  to such networks. If you were granted access to such network in the past, then
+  MAC address anonymization might prevent you from connecting.
+
+- **Using your own computer at home**. Your identity and the MAC address of your
+  computer are already associated to this local network, so MAC address anonymization
+  is probably useless. But if access to your local network is restricted based
+  on MAC addresses it might be impossible to connect with an anonymized MAC address.
+
+<a id="disable"></a>
+
+Disable MAC address anonymization
+=================================
+
+You can disable MAC address anonymization from the [[Welcome
+Screen|welcome_screen]]:
+
+1. When the Welcome Screen appears, click on the
+   **[[!img lib/list-add.png alt="Add Additional Setting" class="symbolic" link="no"]]** button.
+
+   [[!img additional.png class="screenshot" alt=""]]
+
+2. Choose **MAC Address Anonymization** in the **Additional Settings** dialog.
+
+3. Select the **Don't anonymize MAC addresses** option.
+
+Other considerations
+====================
+
+- Other means of surveillance can reveal your geographical location: video
+  surveillance, mobile phone activity, credit card transactions, social
+  interactions, etc.
+
+- While using Wi-Fi, anybody within range of your Wi-Fi interface can
+  see your MAC address, even without being connected to the same Wi-Fi
+  access point.
+
+- When using mobile phone connectivity, such as 3G or GSM, the identifier of
+  your SIM card (IMSI) and the serial number of your phone (IMEI) are always
+  revealed to the mobile phone operator.
+
+- Some [[!wikipedia captive portals]] might send your MAC address over the
+  Internet to their authentication servers. This should not affect your decision
+  regarding MAC address anonymization. If you decide to disable MAC address anonymization
+  your computer can already be identified by your ISP.

@@ -1,0 +1,20 @@
+{
+  "bundle_id": "usbeliza-vm",
+  "can_generate_without_images": true,
+  "generated_at": "2026-05-16T05:27:06Z",
+  "image_files": [],
+  "manifest": "manifest.json",
+  "metadata_files": [
+    "manifest.json",
+    "package-metadata.json",
+    "README.md",
+    "quickstarts/qemu.md",
+    "quickstarts/utm.md",
+    "quickstarts/virtualbox.md"
+  ],
+  "missing_image_files": [
+    "disk-base.qcow2"
+  ],
+  "schema_version": 1,
+  "version": "dev"
+}

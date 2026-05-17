@@ -1,0 +1,73 @@
+[[!meta date="Sat, 22 Dec 2018 19:00:00 +0000"]]
+[[!meta title="Our plans for 2019"]]
+[[!pagetemplate template="news.tmpl"]]
+[[!tag announce]]
+
+Mid-October, we started our donation campaign by explaining [[why we need
+donations|news/2018-fundraiser]]. We then described [[the achievements of
+2018|news/achievements_in_2018]] made possible by your donations. Today, we're
+unveiling our plans for 2019. If you like them, please take the time to
+donate.
+
+So far this year many more people have been donating (+61%) but we have
+raised less money overall (-51%) because we are missing bigger
+donations, especially in bitcoins.
+
+Having many more donors this year is an excellent sign that Tails is
+important for more people and that we are doing a good job at helping
+them.
+
+We are extremely grateful to all of you who not only want to improve
+your safety online, but also understand that we need your help to
+sustain Tails. Being backed by a large number of people making smaller
+but steadily donations is the best we can dream of. So, thank you!
+
+New features
+============
+
+We will focus on **improving installation and upgrade**, as we know that
+they still cause major difficulties for new users:
+
+- In January, we will release a **brand new installation mechanism** to
+  finally make it easy to install Tails on macOS (and also easier on
+  Windows and Linux).
+
+- We will add support for **Secure Boot**.
+
+- We will **remove the need for manual upgrades** and make it possible to always
+  do automatic upgrades (except for major upgrades, like Tails 3.0 to 4.0). We will also research lighter and more robust
+  upgrade mechanisms.
+
+Adoption
+========
+
+- We will redesign our homepage to **explain better what is Tails** to
+  new users and why they should use it.
+
+- We will make it much easier to translate our website and train new
+  translators, hopefully leading to offering more languages available on
+  our website.
+
+Under the hood
+==============
+
+- We will upgrade Tails to Debian 10 (Buster), planned for mid 2019.
+
+- As always, most of the day-to-day work that we do is invisible to our
+  users and we will tackle many technical migrations in our code and
+  infrastructure (Debian 10, Tor Launcher as Web Extension, Jenkins 2,
+  Gitolite 3, Java 11, etc.).
+
+- We will contribute the security improvements that we wrote for the
+  *Thunderbird* autoconfiguration with *Thunderbird* upstream.
+
+- Thanks to your generous donations, we will finally have a budget
+  dedicated to do many more smaller usability improvements everywhere in
+  Tails.
+
+In 2019, we will put a lot of efforts on making Tails **easier to understand
+and install**. More and more people will get to know and use Tails to protect
+themselves. We all want this, and you, by donating at your level, can help to
+**make this happen**.
+
+[Donate](https://tails.net/donate/)

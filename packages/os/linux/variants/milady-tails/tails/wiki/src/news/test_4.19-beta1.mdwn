@@ -1,0 +1,119 @@
+[[!meta title="Call for testing 4.19~beta1"]]
+[[!meta date="Tue, 27 Apr 2021 12:00:00 +0000"]]
+[[!pagetemplate template="news.tmpl"]]
+[[!tag announce]]
+
+Contribute to Tails by testing our beta for Tails 4.19!
+
+We are very excited about it and cannot wait to hear your feedback :)
+
+[[!toc levels=1]]
+
+<h1 id="new">What's new in 4.19~beta1?</h1>
+
+Tails 4.19, scheduled for June 1, will completely change how to connect to the
+Tor network from Tails. We would like as many people as possible to test this
+beta version to be able to fix as many problems as possible before we release
+4.19 to all users.
+
+[[!img tor-connection.png link="no" alt=""]]
+
+Over the years, we have identified many issues in how to connect to the Tor
+network from Tails, thanks to your feedback. With this beta, we are trying to
+solve the most important and pressing of these issues:
+
+- The lack of feedback while connecting to the Tor network.
+
+- The option to use Tor bridges has to be turned on in the Welcome Screen and
+  cannot be changed afterwards.
+
+- The lack of default Tor bridges.
+
+- The previous configuration screen for Tor bridges wasn't accessible to people
+  who use the screen reader.
+
+- The lack of guidance when Tails is not connected to a local network yet.
+
+<h1 id="download">Download Tails 4.19~beta1</h1>
+
+<div class="caution">
+
+<p>Tails 4.19~beta1 has not been tested at all, as we usually do for new
+versions of Tails. <strong>Only use Tails 4.19~beta1 for testing!</strong></p>
+
+</div>
+
+Download and install Tails 4.19~beta1 as usually.
+
+<div class="caution">
+
+<p>All the data on this USB stick will be lost. Don't install Tails 4.19~beta1
+on any USB stick that already has a Persistent Storage.</p>
+
+</div>
+
+### Direct download
+
+  - For USB sticks (USB image)<br/>
+    <small>OpenPGP signature<br/>SHA256SUM: b2b2639b90cea642f203826678c685a1f5b09e2e34f3ccc563864b1b10fa9d5e</small>
+
+  - For DVDs and virtual machines (ISO image)<br/>
+    <small>OpenPGP signature<br/>SHA256SUM: 5f390031a5b33e579a1c60bc06936366663ce7a27ce7bc50398d7074b1013b42</small>
+
+### BitTorrent download
+
+  - For USB sticks (USB image)
+
+  - For DVDs and virtual machines (ISO image)
+
+<h1 id="how-to-test">What to test in Tails 4.19~beta1?</h1>
+
+We know that Tails 4.19~beta11 still has many rough edges. But we still need
+your help to identify as many new problems as possible!
+
+We're particularly interested in you testing diverse and rare network
+configurations:
+
+- When connecting to Tor without bridges fails.
+
+- When Tails is not connected to a local network yet.
+
+- When disconnecting from a Wi-Fi network with Internet connectivity and then
+  reconnecting to a different Wi-Fi network without Internet connectivity.
+
+- When disconnecting from Wi-Fi network that don't require Tor bridges and the
+  reconnecting to different Wi-Fi network that requires Tor bridges.
+
+- When connecting to a Tor bridge that works at first but then stops working.
+
+- When connecting to the Internet using a proxy.
+
+Tell us if anything is unclear, confusing, or not working as you would expect.
+
+Please, send your feedback to <tails-testers@boum.org> (public mailing list).
+
+If you are comfortable with the command line, check our [hacking
+tips](https://gitlab.tails.boum.org/tails/tails/-/blob/devel/config/chroot_local-includes/usr/share/doc/tails/tca/HACKING.md).
+They contain firewall rules that can be used to block access to the Tor network
+without bridges or simulate a broken bridge.
+
+<!--
+
+<h1 id="known-issues">Known issues in 4.19~beta1</h1>
+
+-->
+
+<h1 id="next">What's coming next?</h1>
+
+Tails 4.19 will be the first release of a series of improvements to connect to
+Tor. Next, we will work on:
+
+- Saving Tor bridges to the Persistent Storage ([[!tails_ticket 5461]])
+- Detecting better when the computer has no supported Wi-Fi hardware ([[!tails_ticket 14534]])
+- Detecting captive portals ([[!tails_ticket 5785]])
+- Helping people fixing their clock when failing to connect to `obfs4` bridges ([[!tails_ticket 15548]])
+
+The learn more about our plans, read our [[!tails_blueprint network_connection
+desc="blueprint on network connection"]].
+
+Happy testing!

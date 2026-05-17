@@ -1,0 +1,39 @@
+#!/bin/sh
+#
+# This script fully disables the iptables firewall, and thus the
+# transparent forwarding thru Tor of all non-local network
+# connections... which defeats the whole purpose of this OS, hence
+# this script's name.
+
+IPT=/usr/sbin/iptables
+IP6T=/usr/sbin/ip6tables
+
+[ -x "$IPT" ]  || exit 67
+[ -x "$IP6T" ] || exit 68
+
+$IPT -P INPUT ACCEPT
+$IPT -P FORWARD ACCEPT
+$IPT -P OUTPUT ACCEPT
+
+$IPT -t nat -P PREROUTING ACCEPT
+$IPT -t nat -P POSTROUTING ACCEPT
+$IPT -t nat -P OUTPUT ACCEPT
+
+$IPT -t mangle -P PREROUTING ACCEPT
+$IPT -t mangle -P INPUT ACCEPT
+$IPT -t mangle -P FORWARD ACCEPT
+$IPT -t mangle -P OUTPUT ACCEPT
+$IPT -t mangle -P POSTROUTING ACCEPT
+    
+$IPT -F
+$IPT -t nat -F
+$IPT -t mangle -F
+
+$IPT -X
+$IPT -t nat -X
+$IPT -t mangle -X
+
+$IP6T -F
+$IP6T -P INPUT ACCEPT
+$IP6T -P FORWARD ACCEPT
+$IP6T -P OUTPUT ACCEPT

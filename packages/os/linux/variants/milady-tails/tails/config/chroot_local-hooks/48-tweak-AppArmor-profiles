@@ -1,0 +1,20 @@
+#!/bin/sh
+
+set -e
+
+echo "Tweaking AppArmor profiles"
+
+# Pass all profiles the attach_disconnected flag,
+# that's needed for compatibility with overlayfs (#9045)
+find /etc/apparmor.d/ /etc/apparmor.d/abstractions -maxdepth 1 -type f \
+     -exec perl -pi -E 's,([a-z]+\s+)[{],$1flags=(attach_disconnected) {,' '{}' \;
+
+find /etc/apparmor.d/ -maxdepth 1 -type f \
+     -exec perl -pi -E 's|flags=[(]complain[)]\s+[{]|flags=(complain,attach_disconnected) {|' '{}' \;
+
+# Also pass the attach_disconnected flag to the Thunderbird and browser
+# profiles, because the above regexps don't match these ones.
+perl -pi -E 's,(profile.*[}]\s+)[{],$1flags=(attach_disconnected) {,' \
+     /etc/apparmor.d/torbrowser.Browser.firefox \
+     /etc/apparmor.d/unsafe-browser \
+     /etc/apparmor.d/usr.bin.thunderbird

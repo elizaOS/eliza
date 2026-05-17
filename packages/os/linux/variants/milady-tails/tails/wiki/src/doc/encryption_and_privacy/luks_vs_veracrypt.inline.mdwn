@@ -1,0 +1,30 @@
+[[!meta robots="noindex"]]
+
+We recommend that you use:
+
+- *VeraCrypt* to share encrypted files across different operating systems.
+
+- *LUKS* to encrypt files for Tails and Linux.
+
+<table>
+<tr><th></th><th class="w30"><i>LUKS</i></th><th class="w30"><i>VeraCrypt</i></th></tr>
+<tr><td>Compatibility</td><td>Linux</td><td>Windows + macOS + Linux</td></tr>
+<tr><td>Create new volumes</td><td class="check"><span class="check">Yes</span></td><td class="cross">Outside of Tails</td></tr>
+<tr><td>Open and modify existing volumes</td><td class="check">Yes</td><td class="check">Yes</td></tr>
+<tr><td>Encrypted partitions (or entire disks)¹</td><td class="check">Yes</td><td class="check">Yes</td></tr>
+<tr><td>Encrypted file containers¹</td><td class="cross">Complicated </td><td class="check">Easy</td></tr>
+<tr><td>Plausible deniability²</td><td class="cross">No</td><td class="check">Yes</td></tr>
+<tr><td>Ease of use</td><td class="check">Easier</td><td class="cross">More complicated</td></tr>
+<tr><td>Speed</td><td class="check">Faster</td><td class="cross">Slower</td></tr>
+</table>
+
+1. See the [[difference between *file containers* and *partitions*|veracrypt#container-vs-partition]].
+
+2. *Plausible deniability*: in some cases (for example, with
+   *VeraCrypt* hidden volumes), it is
+   impossible for an adversary to technically prove the existence of an
+   encrypted volume.
+
+   Still, [[!wikipedia Deniable_encryption desc="deniable encryption"]] might not protect you if
+   you are forced to reveal the existence of the encrypted volume. See
+   [VeraCrypt: Plausible Deniability](https://www.veracrypt.fr/en/Plausible%20Deniability.html).

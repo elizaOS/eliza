@@ -1,0 +1,114 @@
+[[!meta title="Relationship with upstream"]]
+
+[[!toc levels=2]]
+
+# Why this document?
+
+The Debian Derivatives Guidelines ([[!debwiki Derivatives/Guidelines]])
+encourages "derivative distributions to
+mention and define their relationship with Debian". Because this seems
+like a great idea to us, we wrote this statement that not only covers
+Tails' relationship with Debian, but also Tails' relationship with any
+one of its upstream projects.
+
+# Summary
+
+For various reasons Tails tries to diverge by the smallest possible
+amount from its upstream projects, and especially from Debian:
+
+- We want to share our work with the rest of the Free Software
+  community.
+
+- We value maintainability very much: we believe our users are best
+  served if we keep the amount of work needed to maintain Tails the
+  smallest possible.
+
+# How
+
+## Upstream software
+
+We try to push our changes upstream when we need to modify software we
+ship. This often requires us to write code in a generic way, rather
+than implementing ad-hoc hacks to fit our specific needs: e.g. we
+often need to make the stuff we need opt-in and add configuration
+options.
+
+## Debian packaging
+
+Debian offers great amounts of flexibility to derivative developers,
+so we seldom need to modify Debian-specific parts of the software we
+ship. In the rare cases we need to:
+
+- we at least inform the relevant Debian maintainers, so that they
+  have a chance to enhance their packages to fit our needs;
+
+- in many cases, we write and propose patches that would allow us to
+  install unmodified Debian packages in Tails.
+
+We also encourage potential contributors to [[improve Tails by working
+on Debian|contribute/how/debian]].
+
+<a id="debian-bts"></a>
+
+### Debian Bug tracking system
+
+We file and contribute to RFP and WNPP bugs so that software we need
+lands in Debian. More generally, we heavily use the Debian
+infrastructure such as the [BTS](https://bugs.debian.org/).
+
+We use usertags ([documentation](https://wiki.debian.org/bugs.debian.org/usertags),
+[reporting](https://www.debian.org/Bugs/Reporting)) to track bugs we
+are interested in on the Debian BTS.
+
+See the full and up-to-date list of bugs:
+
+* [sorted by usertag](https://udd.debian.org/cgi-bin/bts-usertags.cgi?user=tails-dev@boum.org);
+
+* [sorted by severity](https://bugs.debian.org/cgi-bin/pkgreport.cgi?users=tails-dev@boum.org).
+
+**Warning**: do **not** use tags that are already [defined
+globally](https://www.debian.org/Bugs/Developer#tags) on the BTS.
+
+<a id="gnome"></a>
+<a id="gnome-bts"></a>
+
+## GNOME
+
+See the
+[[!tails_blueprint GNOME_bugs_that_affect_Tails desc="issues that affect Tails in the GNOME bug tracker"]].
+
+# Exceptions
+
+A number of Tails features are not available in Debian. For example:
+
+ * In order to prevent cold boot attacks and various memory forensics, Tails
+   erases most memory on shutdown.
+
+ * Tails changes the MAC address of network interfaces to random
+   values.
+
+Most of the time, we did not contribute these features upstream due to the
+combination of these factors:
+
+* The feature is meant to provide certain security guarantees. Users should be
+  able to rely on this feature to make security decisions.
+
+* The feature requires deep integration into several layers of the operating
+  system. For example, Tails' MAC address spoofing feature plugs into udev,
+  NetworkManager, GDM, and more.
+
+  The set of Tails systems is very homogeneous, while Debian systems are highly
+  diverse: multiple init systems, desktop environments, network interface
+  management software, firewall configuration tools, etc.
+
+  In the context of Tails, most of these parameters are constants we can rely
+  upon. Our automated tests can verify that the feature works in Tails.
+
+  While in the context of Debian, these parameters are variables, which leads to
+  combinatorial explosion. So, sometimes, ensuring a security feature works
+  reliably in all possible Debian setups, is simply impossible: there are simply
+  too many cases to consider, reason about, and do quality assurance for.
+
+  Additionally, even if we could ensure that a given feature provides
+  the expected security benefits today in all such combinations,
+  any package update tomorrow could break it.

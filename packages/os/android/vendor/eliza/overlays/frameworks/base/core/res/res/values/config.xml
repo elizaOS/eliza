@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!--
+      Role defaults read by PermissionController on first boot. RoleManager
+      assigns these roles to the listed package automatically; otherwise
+      the user gets a chooser dialog (or the role goes unowned, breaking
+      intent resolution for VIEW http, SET_ALARM, ASSIST, etc.).
+
+      Reference: packages/modules/Permission/PermissionController/res/xml/roles.xml
+    -->
+    <string name="config_defaultDialer" translatable="false">ai.elizaos.app</string>
+    <string name="config_defaultSms" translatable="false">ai.elizaos.app</string>
+    <string name="config_defaultAssistant" translatable="false">ai.elizaos.app</string>
+    <string name="config_defaultBrowser" translatable="false">ai.elizaos.app</string>
+</resources>

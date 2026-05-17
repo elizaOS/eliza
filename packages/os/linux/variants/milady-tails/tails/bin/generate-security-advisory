@@ -1,0 +1,39 @@
+#! /usr/bin/python3
+
+import email.utils
+import subprocess
+
+from datetime import datetime, timedelta
+import jinja2
+
+
+def advisory_date() -> datetime:
+    changelog_entry_timestamp = subprocess.run(
+        ["dpkg-parsechangelog", "--show-field", "Timestamp"],
+        stdout=subprocess.PIPE,
+        universal_newlines=True,
+        check=True).stdout.rstrip()
+    return datetime.fromtimestamp(
+        float(changelog_entry_timestamp)) - timedelta(days=2)
+
+
+def security_advisory_contents(args) -> str:
+    jinja2_env = jinja2.Environment(  # nosec jinja2_autoescape_false
+        loader=jinja2.FileSystemLoader('config/release_management/templates'))
+
+    return (jinja2_env.get_template('security_advisory.mdwn').render(
+        date=email.utils.format_datetime(advisory_date()),
+        previous_version=args.previous_version,
+        version=args.version,
+        tag=args.tag))
+
+
+if __name__ == '__main__':
+    import argparse
+    parser = argparse.ArgumentParser()
+    parser.add_argument('--previous-version', required=True)
+    parser.add_argument('--version', required=True)
+    parser.add_argument('--tag', required=True)
+    args = parser.parse_args()
+
+    print(security_advisory_contents(args))

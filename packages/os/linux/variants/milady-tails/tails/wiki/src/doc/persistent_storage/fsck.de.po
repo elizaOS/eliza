@@ -1,0 +1,1417 @@
+# SOME DESCRIPTIVE TITLE
+# Copyright (C) YEAR Free Software Foundation, Inc.
+# This file is distributed under the same license as the PACKAGE package.
+# FIRST AUTHOR <EMAIL@ADDRESS>, YEAR.
+#
+msgid ""
+msgstr ""
+"Project-Id-Version: PACKAGE VERSION\n"
+"Report-Msgid-Bugs-To: tails-l10n@boum.org\n"
+"POT-Creation-Date: 2025-09-17 11:40+0200\n"
+"PO-Revision-Date: 2026-05-01 15:18+0000\n"
+"Last-Translator: xin <xin@riseup.net>\n"
+"Language-Team: LANGUAGE <LL@li.org>\n"
+"Language: de\n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+"Plural-Forms: nplurals=2; plural=n != 1;\n"
+"X-Generator: Weblate 5.13.2\n"
+
+#. type: Plain text
+#, no-wrap
+msgid "[[!meta title=\"Recovering data from the Persistent Storage when it has file system errors\"]]\n"
+msgstr "[[!meta title=“Wiederherstellung von Daten aus dem beständigen Datenspeicher bei Dateisystemfehlern”]]\n"
+
+#. type: Plain text
+#, no-wrap
+msgid "<!--\n"
+msgstr "<!--\n"
+
+#. type: Plain text
+msgid "To test this doc:"
+msgstr "Um dieses Dokument zu testen:"
+
+#. type: Bullet: '1. '
+msgid ""
+"Add in a file *config/chroot_local-includes/usr/local/sbin/e2fsck.slow*:"
+msgstr ""
+"Fügen Sie in eine Datei *config/chroot_local-includes/usr/local/sbin/"
+"e2fsck.slow* ein:"
+
+#. type: Plain text
+#, no-wrap
+msgid "       #!/bin/sh\n"
+msgstr "       #!/bin/sh\n"
+
+#. type: Plain text
+#, no-wrap
+msgid ""
+"       if echo \"${*}\" | grep -w -- \"-p\"; then\n"
+"           # only runs for automatic fsck\n"
+"           sleep 10\n"
+"           exit 4  # File system errors left uncorrected\n"
+"       elif echo \"${*}\" | grep -w -- \"-y\"; then\n"
+"           # only runs for manual fsck\n"
+"           sleep 30\n"
+"           exit 1  # Error corrected\n"
+"       fi\n"
+msgstr ""
+"       if echo \"${*}\" | grep -w -- \"-p\"; then\n"
+"           # only runs for automatic fsck\n"
+"           sleep 10\n"
+"           exit 4  # File system errors left uncorrected\n"
+"       elif echo \"${*}\" | grep -w -- \"-y\"; then\n"
+"           # only runs for manual fsck\n"
+"           sleep 30\n"
+"           exit 1  # Error corrected\n"
+"       fi\n"
+
+#. type: Plain text
+#, no-wrap
+msgid "       exec /usr/sbin/e2fsck \"${@}\"\n"
+msgstr "       exec /usr/sbin/e2fsck \"${@}\"\n"
+
+#. type: Bullet: '1. '
+msgid "Add in a *hook* file at the root of your Git repo:"
+msgstr "Fügen Sie eine *hook*-Datei im Root-Verzeichnis Ihres Git-Repos hinzu:"
+
+#. type: Plain text
+#, no-wrap
+msgid "       root=\"${1}\"\n"
+msgstr "       root=\"${1}\"\n"
+
+#. type: Plain text
+#, no-wrap
+msgid ""
+"       mount -o bind \\\n"
+"             \"${root}/mnt/config/chroot_local-includes/usr/lib/python3/dist-packages/tps/\" \\\n"
+"             \"${root}/usr/lib/python3/dist-packages/tps/\"\n"
+"       cp \"${root}/mnt/config/chroot_local-includes/usr/local/sbin/e2fsck.slow\" \"${root}/usr/local/sbin/\"\n"
+msgstr ""
+"       mount -o bind \\\n"
+"             \"${root}/mnt/config/chroot_local-includes/usr/lib/python3/dist-packages/tps/\" \\\n"
+"             \"${root}/usr/lib/python3/dist-packages/tps/\"\n"
+"       cp \"${root}/mnt/config/chroot_local-includes/usr/local/sbin/e2fsck.slow\" \"${root}/usr/local/sbin/\"\n"
+
+#. type: Bullet: '1. '
+msgid ""
+"Edit *config/chroot_local-includes/usr/lib/python3/dist-packages/tps/"
+"device.py*"
+msgstr ""
+"Bearbeite *config/chroot_local-includes/usr/lib/python3/dist-packages/tps/"
+"device.py*"
+
+#. type: Plain text
+#, no-wrap
+msgid ""
+"       diff --git a/config/chroot_local-includes/usr/lib/python3/dist-packages/tps/device.py b/config/chroot_local-includes/usr/lib/python3/dist-packages/tps/device.py\n"
+"       index adad9d2c6e9..e6559c26f89 100644\n"
+"       --- a/config/chroot_local-includes/usr/lib/python3/dist-packages/tps/device.py\n"
+"       +++ b/config/chroot_local-includes/usr/lib/python3/dist-packages/tps/device.py\n"
+"       @@ -777,7 +777,7 @@ class CleartextDevice:\n"
+msgstr ""
+"       diff --git a/config/chroot_local-includes/usr/lib/python3/dist-packages/tps/device.py b/config/chroot_local-includes/usr/lib/python3/dist-packages/tps/device.py\n"
+"       index adad9d2c6e9..e6559c26f89 100644\n"
+"       --- a/config/chroot_local-includes/usr/lib/python3/dist-packages/tps/device.py\n"
+"       +++ b/config/chroot_local-includes/usr/lib/python3/dist-packages/tps/device.py\n"
+"       @@ -777,7 +777,7 @@ class CleartextDevice:\n"
+
+#. type: Plain text
+#, no-wrap
+msgid ""
+"                try:\n"
+"                    cmd = [\n"
+"       -                \"e2fsck\",\n"
+"       +                \"e2fsck.slow\",\n"
+msgstr ""
+"                try:\n"
+"                    cmd = [\n"
+"       -                \"e2fsck\",\n"
+"       +                \"e2fsck.slow\",\n"
+
+#. type: Bullet: '1. '
+msgid ""
+"When starting Tails, add the [[`early_patch`|contribute/build/early-patch]] "
+"boot option."
+msgstr ""
+"Fügen Sie beim Starten von Tails die Boot-Option [[`early_patch`|contribute/"
+"build/early-patch]] hinzu."
+
+#. type: Plain text
+#, no-wrap
+msgid "-->\n"
+msgstr "-->\n"
+
+#. type: Plain text
+#, no-wrap
+msgid "<div class=\"next\">\n"
+msgstr "<div class=\"next\">\n"
+
+#. type: Plain text
+#, no-wrap
+msgid ""
+"<p>If instead, your Tails USB stick doesn't start, refer to our instructions on\n"
+"[[recovering data from the Persistent Storage when Tails doesn't\n"
+"start|recover]].</p>\n"
+msgstr ""
+"<p>Falls Ihr Tails-USB-Stick stattdessen nicht startet, beachten Sie bitte unsere Anweisungen zum \n"
+"[[Wiederherstellen von Daten aus dem beständigen Datenspeicher, wenn Tails nicht \n"
+"startet|recover]].</p>\n"
+
+#. type: Plain text
+#, no-wrap
+msgid "</div>\n"
+msgstr "</div>\n"
+
+#. type: Plain text
+#, fuzzy, no-wrap
+#| msgid "[[!img repair.png link=\"no\" class=\"screenshot\" alt=\"File System Errors dialog in Welcome Screen\"]]\n"
+msgid "[[!img repair.png class=\"screenshot\" alt=\"File System Errors dialog in Welcome Screen\"]]\n"
+msgstr "[[!img repair.png link=\"no\" class=\"screenshot\" alt=\"Dialog zu Dateisystemfehlern im Willkommensbildschirm\"]]\n"
+
+#. type: Plain text
+msgid ""
+"Tails can try to fix these errors, but this might erase some of your data "
+"and take a long time."
+msgstr ""
+"Tails kann versuchen, diese Fehler zu beheben, aber dies könnte einige Ihrer "
+"Daten löschen und lange dauern."
+
+#. type: Plain text
+msgid ""
+"That is why, if you cannot restore from a recent [[backup]], we recommend "
+"that you create a *partition image* of your Persistent Storage *before* "
+"attempting to repair the file system of your Persistent Storage from the "
+"Welcome Screen."
+msgstr ""
+"Deshalb empfehlen wir, dass Sie ein *Partitionsimage* Ihres beständigen "
+"Datenspeichers *erstellen*, wenn Sie nicht von einem aktuellen [[Backup]] "
+"wiederherstellen können, bevor Sie versuchen, das Dateisystem Ihres "
+"beständigen Datenspeichers über den Willkommensbildschirm zu reparieren."
+
+#. type: Plain text
+msgid ""
+"Most of the time, repairing the file system will work fine and will be "
+"enough to fix your Persistent Storage."
+msgstr ""
+"In den meisten Fällen funktioniert die Reparatur des Dateisystems "
+"einwandfrei und reicht aus, um Ihren beständigen Datenspeicher zu reparieren."
+
+#. type: Plain text
+msgid ""
+"In the rare cases when repairing the file system will not work, you might be "
+"able to recover some or most of your data from this partition image using "
+"advanced forensics tools. This recovery process is very technical and you "
+"might need help from someone experienced with data recovery."
+msgstr ""
+"In den seltenen Fällen, in denen die Reparatur des Dateisystems nicht "
+"funktioniert, könnten Sie in der Lage sein, einige oder die meisten Ihrer "
+"Daten aus diesem Partition-Image mithilfe fortschrittlicher forensischer "
+"Werkzeuge wiederherzustellen. Dieser Wiederherstellungsprozess ist sehr "
+"technisch, und Sie benötigen möglicherweise Hilfe von jemandem, der "
+"Erfahrung mit Datenrettung hat."
+
+#. type: Plain text
+#, no-wrap
+msgid "[[!toc levels=3]]\n"
+msgstr "[[!toc levels=3]]\n"
+
+#. type: Plain text
+#, no-wrap
+msgid "<h1 id=\"image\">Creating a partition image of your Persistent Storage</h1>\n"
+msgstr "<h1 id=\"image\">Erstellung eines Partitionsimages Ihres beständigen Datenspeichers</h1>\n"
+
+#. type: Plain text
+msgid ""
+"A partition image is a copy of your entire Persistent Storage in a single "
+"file that you can save to an external hard disk from Tails."
+msgstr ""
+"Ein Partitionsimage ist eine Kopie Ihres gesamten beständigen Datenspeichers "
+"in einer einzigen Datei, die Sie von Tails auf eine externe Festplatte "
+"speichern können."
+
+#. type: Plain text
+msgid ""
+"To save the partition image outside of Tails, you need an external hard disk "
+"with as much free space as the size of your Persistent Storage, usually "
+"8&nbsp;GB less than your Tails USB stick. You can also use another USB stick "
+"of the same size as your Tails USB stick, but writing to a USB stick is "
+"usually much slower than writing to a hard disk."
+msgstr ""
+"Um das Partitionsimage außerhalb von Tails zu speichern, benötigen Sie eine "
+"externe Festplatte mit so viel freiem Speicherplatz wie die Größe Ihres "
+"beständigen Datenspeichers, in der Regel 8&nbsp;GB weniger als Ihr Tails-USB-"
+"Stick. Sie können auch einen anderen USB-Stick in der gleichen Größe wie "
+"Ihren Tails-USB-Stick verwenden, aber das Schreiben auf einen USB-Stick ist "
+"normalerweise viel langsamer als das Schreiben auf eine Festplatte."
+
+#. type: Plain text
+#, no-wrap
+msgid "<div class=\"caution\">\n"
+msgstr "<div class=\"caution\">\n"
+
+#. type: Plain text
+#, no-wrap
+msgid ""
+"<p>The partition image contains a <i>decrypted</i> version of your\n"
+"Persistent Storage.</p>\n"
+msgstr ""
+"<p>Das Partitionsimage enthält eine <i>entschlüsselte</i> Version Ihres\n"
+"beständigen Datenspeichers.</p>\n"
+
+#. type: Plain text
+#, no-wrap
+msgid ""
+"<p>We recommend that you save the partition image to an [[encrypted hard\n"
+"disk|encryption_and_privacy/encrypted_volumes]].</p>\n"
+msgstr "<p>Wir empfehlen, das Partitionsimage auf einer [[verschlüsselten Festplatte|encryption_and_privacy/encrypted_volumes]] zu speichern.</p>\n"
+
+#. type: Plain text
+msgid ""
+"We are presenting here 2 different techniques to create a partition image of "
+"your Persistent Storage."
+msgstr ""
+"Hier präsentieren wir zwei verschiedene Techniken, um ein Partitionsimage "
+"Ihres beständigen Datenspeichers zu erstellen."
+
+#. type: Bullet: '1. '
+msgid "[[Create a partition image using the *Disks* utility|fsck#disks]]"
+msgstr ""
+"[[Erstellung eines Partitionsimage mit dem *Disks*-Dienstprogramm|"
+"fsck#disks]]"
+
+#. type: Plain text
+#, no-wrap
+msgid "   Try this technique first if the hardware of your USB stick is not failing.\n"
+msgstr "   Versuchen Sie zunächst diese Technik, wenn die Hardware Ihres USB-Sticks nicht fehlerhaft ist.\n"
+
+#. type: Bullet: '1. '
+msgid ""
+"[[Create a partition image using `ddrescue` on the command line|"
+"fsck#ddrescue]]"
+msgstr ""
+"[[Erstellung eines Partitionsimage mit `ddrescue` über die Kommandozeile|"
+"fsck#ddrescue]]"
+
+#. type: Plain text
+#, no-wrap
+msgid "   Try this technique first if the hardware of your USB stick is failing.\n"
+msgstr "   Versuchen Sie zunächst diese Technik, wenn die Hardware Ihres USB-Sticks fehlerhaft ist.\n"
+
+#. type: Plain text
+#, no-wrap
+msgid ""
+"   Using `ddrescue` is more difficult but is better than the *Disks* utility to\n"
+"   recover data if the hardware of your USB stick is failing.\n"
+msgstr ""
+"   UDie Verwendung von `ddrescue` ist schwieriger, aber besser als das *Disks*-Dienstprogramm,\n"
+"   um Daten wiederherzustellen, wenn die Hardware Ihres USB-Sticks fehlerhaft ist.\n"
+
+#. type: Plain text
+#, no-wrap
+msgid "<h2 id=\"disks\">Creating a partition image using the <i>Disks</i> utility</h2>\n"
+msgstr "<h2 id=\"disks\">Erstellen eines Partitionsimages mit dem <i>Disks</i>-Dienstprogramm</h2>\n"
+
+#. type: Plain text
+msgid ""
+"When the hardware of your USB stick is not failing, using the *Disks* "
+"utility is the simplest way of creating a partition image of your Persistent "
+"Storage."
+msgstr ""
+"Wenn die Hardware Ihres USB-Sticks nicht fehlerhaft ist, ist die Verwendung "
+"des *Disks*-Dienstprogramms der einfachste Weg, um ein Partitionsimage Ihres "
+"beständigen Datenspeichers zu erstellen."
+
+#. type: Plain text
+#, no-wrap
+msgid "<h3 id=\"external\">Preparing the external hard disk</h3>\n"
+msgstr "<h3 id=\"external\">Vorbereitung der externen Festplatte</h3>\n"
+
+#. type: Bullet: '1. '
+msgid "Start Tails."
+msgstr "Starte Tails."
+
+#. type: Bullet: '1. '
+msgid "In the Welcome Screen:"
+msgstr "Im Willkommensbildschirm:"
+
+#. type: Bullet: '   1. '
+msgid ""
+"[[Set up an administration password|doc/first_steps/welcome_screen/"
+"administration_password]]."
+msgstr ""
+"[[Einrichtung eines Administrationspassworts|doc/first_steps/welcome_screen/"
+"administration_password]]."
+
+#. type: Bullet: '   2. '
+msgid "Choose to start without unlocking your Persistent Storage."
+msgstr ""
+"Wählen Sie, um ohne Entsperren Ihres beständigen Datenspeichers zu starten."
+
+#. type: Bullet: '1. '
+#, fuzzy
+#| msgid "Choose **Applications&nbsp;▸ Files** to open the *Files* utility."
+msgid ""
+"Choose **Apps&nbsp;▸ Accessories&nbsp;▸ Files** to open the *Files* browser."
+msgstr ""
+"Wählen Sie **Anwendungen&nbsp;▸ Dateien**, um das *Dateien*-Dienstprogramm "
+"zu öffnen."
+
+#. type: Bullet: '1. '
+msgid ""
+"Plug in the hard disk on which you want to save the partition image of your "
+"Persistent Storage. You need as much free space as the size of your "
+"Persistent Storage, usually 8&nbsp;GB less than your Tails USB stick."
+msgstr ""
+"Schließen Sie die Festplatte an, auf der Sie das Partition-Image Ihres "
+"beständigen Datenspeichers speichern möchten. Sie benötigen so viel freien "
+"Speicherplatz wie die Größe Ihres beständigen Datenspeichers, in der Regel "
+"8&nbsp;GB weniger als Ihr Tails-USB-Stick."
+
+#. type: Plain text
+#, fuzzy, no-wrap
+#| msgid "   A new disk appears in the sidebar of the *Files* utility.\n"
+msgid "   A new volume appears in the sidebar of the *Files* browser.\n"
+msgstr "   Eine neue Festplatte erscheint in der Seitenleiste des *Dateien*-Dienstprogramms.\n"
+
+#. type: Bullet: '1. '
+#, fuzzy
+#| msgid ""
+#| "Right-click (on Mac, click with two fingers) on the new volume that "
+#| "appeared in the sidebar of the *Files* utility and choose *Properties* in "
+#| "the shortcut menu."
+msgid ""
+"Right-click (on Mac, click with two fingers) on the new volume that appeared "
+"in the sidebar of the *Files* browser and choose *Properties* in the "
+"shortcut menu."
+msgstr ""
+"Klicken Sie mit der rechten Maustaste (bei Mac gleichzeitig mit zwei "
+"Fingern) auf das neue Volume, das in der Seitenleiste des *Dateien*-"
+"Dienstprogramms erschienen ist, und wählen Sie *Eigenschaften* im "
+"Kontextmenü aus."
+
+#. type: Plain text
+#, fuzzy, no-wrap
+#| msgid "   Take note of the free space in the disk.\n"
+msgid "   Take note of the free space in the volume.\n"
+msgstr "   Achten Sie auf den freien Speicherplatz auf der Festplatte.\n"
+
+#. type: Plain text
+#, no-wrap
+msgid "<h3 id=\"identify\">Identifying your Persistent Storage in the <i>Disks</i> utility</h3>\n"
+msgstr "<h3 id=\"identify\">Identifizierung Ihres beständigen Datenspeichers im <i>Festplatten</i>-Dienstprogramm</h3>\n"
+
+#. type: Bullet: '1. '
+#, fuzzy
+#| msgid ""
+#| "Choose **Applications&nbsp;▸ Utilities&nbsp;▸ Disks** to open the *Disks* "
+#| "utility."
+msgid ""
+"Choose **Apps&nbsp;▸ Utilities&nbsp;▸ Disks** to open the *Disks* utility."
+msgstr ""
+"Wählen Sie **Anwendungen&nbsp;▸ Dienstprogramme&nbsp;▸ Festplatten**, um das "
+"*Festplatten*-Dienstprogramm zu öffnen."
+
+#. type: Bullet: '1. '
+msgid ""
+"In the left pane of the *Disks* utility, identify your Tails USB stick in "
+"the list of storage devices."
+msgstr ""
+"Identifizieren Sie im linken Bereich des *Festplatten*-Dienstprogramms Ihren "
+"Tails-USB-Stick in der Liste der Speichermedien."
+
+#. type: Plain text
+#, no-wrap
+msgid "   Verify its brand and size.\n"
+msgstr "   Überprüfen Sie die Marke und die Größe.\n"
+
+#. type: Bullet: '1. '
+msgid ""
+"In the left pane, click on the storage device that corresponds to your Tails "
+"USB stick."
+msgstr ""
+"Klicken Sie im linken Bereich auf das Speichermedium, das Ihrem Tails-USB-"
+"Stick entspricht."
+
+#. type: Bullet: '1. '
+msgid ""
+"In the right pane, this storage device should have 2 volumes, corresponding "
+"to 2 partitions on the USB stick."
+msgstr ""
+"Im rechten Bereich sollte dieses Speichermedium 2 Volumes aufweisen, die den "
+"2 Partitionen auf dem USB-Stick entsprechen."
+
+#. type: Bullet: '   - '
+#, fuzzy
+#| msgid "1 volume with a **TAILS** label and **FAT** content."
+msgid "1 volume with a **Tails** label and **FAT** content."
+msgstr "1 Volume mit einem **TAILS**-Label und **FAT**-Inhalt."
+
+#. type: Plain text
+#, no-wrap
+msgid "     This volume corresponds to the system partition of your Tails.\n"
+msgstr "     Dieses Volume entspricht der Systempartition Ihres Tails.\n"
+
+#. type: Bullet: '   - '
+msgid "1 volume with a **TailsData** label and **LUKS** content."
+msgstr "1 Volume mit einem **TailsData**-Label und **LUKS**-Inhalt."
+
+#. type: Plain text
+#, no-wrap
+msgid "     This volume corresponds to the encrypted version of your Persistent Storage.\n"
+msgstr "     Dieses Volume entspricht der verschlüsselten Version Ihres beständigen Datenspeichers.\n"
+
+#. type: Plain text
+#, no-wrap
+msgid "   [[!img disks.png class=\"screenshot\" alt=\"\"]]\n"
+msgstr "   [[!img disks.png class=\"screenshot\" alt=\"\"]]\n"
+
+#. type: Bullet: '1. '
+msgid ""
+"In the right pane, click on the volume that corresponds to your Persistent "
+"Storage."
+msgstr ""
+"Klicken Sie im rechten Bereich auf das Volume, das Ihrem beständigen "
+"Datenspeicher entspricht."
+
+#. type: Plain text
+#, no-wrap
+msgid "   Verify that the content of the volume is of type **LUKS Encryption**.\n"
+msgstr "   Überprüfen Sie, dass der Inhalt des Volumes vom Typ **LUKS-Verschlüsselung** ist.\n"
+
+#. type: Plain text
+#, no-wrap
+msgid "<h3 id=\"unlock\">Unlocking your Persistent Storage in the <i>Disks</i> utility</h3>\n"
+msgstr "<h3 id=\"unlock\">Entsperrung Ihres beständigen Datenspeichers im <i>Festplatten</i>-Dienstprogramm</h3>\n"
+
+#. type: Plain text
+msgid ""
+"Before creating the partition image, unlock the encryption to access the "
+"decrypted version of your Persistent Storage. To do so:"
+msgstr ""
+"Bevor Sie das Partition-Image erstellen, entsperren Sie die Verschlüsselung, "
+"um auf die entschlüsselte Version Ihres beständigen Datenspeichers "
+"zuzugreifen. Gehen Sie dazu folgendermaßen vor:"
+
+#. type: Bullet: '1. '
+msgid ""
+"Click [[!img lib/unlock.png link=\"no\" class=\"symbolic\" alt=\"Unlock "
+"selected encrypted partition\"]]."
+msgstr ""
+"Klicken Sie [[!img lib/unlock.png link=\"no\" class=\"symbolic\" "
+"alt=\"Ausgewählte verschlüsselte Partition entsperren\"]]."
+
+#. type: Bullet: '1. '
+msgid ""
+"In the **Enter passphrase to unlock** dialog, enter the passphrase of your "
+"Persistent Storage."
+msgstr ""
+"Geben Sie im Dialogfeld **Passphrase eingeben, um zu entsperren** die "
+"Passphrase Ihres beständigen Datenspeichers ein."
+
+#. type: Bullet: '1. '
+msgid "Click **Unlock**."
+msgstr "Klicken Sie auf **Entsperren**."
+
+#. type: Bullet: '1. '
+msgid ""
+"In the **Authentication Required** dialog, enter your administration "
+"password."
+msgstr ""
+"Geben Sie im Dialogfeld **Authentifizierung erforderlich** Ihr "
+"Administrationspasswort ein."
+
+#. type: Plain text
+#, no-wrap
+msgid "   <div class=\"bug\">\n"
+msgstr "   <div class=\"bug\">\n"
+
+#. type: Plain text
+#, no-wrap
+msgid ""
+"   <p>If unlocking fails at this step, your Persistent Storage is so damaged\n"
+"   that decryption is impossible, making all your data completely\n"
+"   unrecoverable.</p>\n"
+msgstr ""
+"   <p>Wenn das Entsperren an dieser Stelle fehlschlägt, ist Ihr beständiger Datenspeicher so beschädigt,\n"
+"   dass eine Dekryption unmöglich ist, wodurch alle Ihre Daten vollständig\n"
+"   unwiederherstellbar sind.</p>\n"
+
+#. type: Plain text
+#, no-wrap
+msgid "   </div>\n"
+msgstr "   </div>\n"
+
+#. type: Bullet: '1. '
+msgid ""
+"In the right pane, click on the new volume that appears below the **LUKS** "
+"volume."
+msgstr ""
+"Klicken Sie im rechten Bereich auf das neue Volume, das unter dem **LUKS**-"
+"Volume erscheint."
+
+#. type: Plain text
+#, no-wrap
+msgid "   Verify that the content of the new volume is of type **Ext4**.\n"
+msgstr "   Überprüfen Sie, dass der Inhalt des neuen Volumes vom Typ **Ext4** ist.\n"
+
+#. type: Plain text
+#, no-wrap
+msgid "   This volume corresponds to the decrypted version of your Persistent Storage.\n"
+msgstr "   Dieses Volume entspricht der entschlüsselten Version Ihres beständigen Datenspeichers.\n"
+
+#. type: Bullet: '1. '
+msgid ""
+"Verify that the size of your decrypted Persistent Storage is smaller than "
+"the available free space in the external hard disk."
+msgstr ""
+"Überprüfen Sie, dass die Größe Ihres entschlüsselten beständigen "
+"Datenspeichers kleiner ist als der verfügbare freie Speicherplatz auf der "
+"externen Festplatte."
+
+#. type: Bullet: '1. '
+msgid "Take note of the device name of your Persistent Storage."
+msgstr "Notieren Sie sich den Gerätenamen Ihres beständigen Datenspeichers."
+
+#. type: Plain text
+#, no-wrap
+msgid "   The device name is composed of `/dev/mapper/luks`, followed by letters and numbers.\n"
+msgstr "   Der Gerätename setzt sich aus `/dev/mapper/luks` zusammen, gefolgt von Buchstaben und Zahlen.\n"
+
+#. type: Plain text
+#, no-wrap
+msgid "<h3 id=\"create\">Creating the partition image</h3>\n"
+msgstr "<h3 id=\"create\">Erstellen des Partition-Images</h3>\n"
+
+#. type: Bullet: '1. '
+#, fuzzy
+#| msgid ""
+#| "Choose **[[!img lib/system-run.png link=\"no\" class=\"symbolic\" "
+#| "alt=\"Additional partition options\"]]&nbsp;▸ Restore Partition Image**."
+msgid ""
+"Choose **[[!img lib/system-run.png link=\"no\" class=\"symbolic\" "
+"alt=\"Additional partition options\"]]&nbsp;▸ Create Partition Image**."
+msgstr ""
+"Wählen Sie **[[!img lib/system-run.png link=\"no\" class=\"symbolic\" "
+"alt=\"Zusätzliche Partition-Optionen\"]]&nbsp;▸ Partition-Image "
+"wiederherstellen**."
+
+#. type: Bullet: '1. '
+msgid "In the **Create Disk Image** dialog:"
+msgstr "Im Dialogfeld **Disk-Image erstellen**:"
+
+#. type: Bullet: '   - '
+msgid "In the **Name** field, specify *persistent-storage.img*."
+msgstr "Geben Sie im Feld **Name** *persistent-storage.img* an."
+
+#. type: Bullet: '   - '
+#, fuzzy
+#| msgid ""
+#| "In the **Save in Folder** menu, choose the external disk to which you "
+#| "want to save the partition image."
+msgid ""
+"In the **Save in Folder** menu, choose the external hard disk to which you "
+"want to save the partition image."
+msgstr ""
+"Wählen Sie im Menü **In Ordner speichern** die externe Festplatte aus, auf "
+"der Sie das Partition-Image speichern möchten."
+
+#. type: Plain text
+#, no-wrap
+msgid "   Click the **Start Creating** button.\n"
+msgstr "   Klicken Sie auf die Schaltfläche **Erstellen starten**.\n"
+
+#. type: Bullet: '1. '
+msgid "After the creation of the partition image finishes:"
+msgstr "Nachdem die Erstellung des Partition-Images abgeschlossen ist:"
+
+#. type: Bullet: '   - '
+msgid "If the creation succeeded, shutdown Tails."
+msgstr "Wenn die Erstellung erfolgreich war, fahren Sie Tails herunter."
+
+#. type: Plain text
+#, no-wrap
+msgid ""
+"     You can now safely start [[recovering data from the Persistent\n"
+"     Storage|fsck#welcome]].\n"
+msgstr ""
+"     Sie können jetzt sicher [[Daten aus dem beständigen\n"
+"     Datenspeicher wiederherstellen|fsck#welcome]].\n"
+
+#. type: Bullet: '   - '
+msgid ""
+"If the creation failed, try the second technique described below to [[create "
+"a partition image using `ddrescue` on the command line|fsck#ddrescue]] "
+"instead."
+msgstr ""
+"Wenn die Erstellung fehlschlug, versuchen Sie die zweite Technik, die unten "
+"beschrieben ist, um ein Partition-Image mit `ddrescue` in der Befehlszeile "
+"zu [[erstellen|fsck#ddrescue]]."
+
+#. type: Plain text
+#, no-wrap
+msgid "<h2 id=\"ddrescue\">Creating a partition image using <span class=\"code\">ddrescue</span> on the command line</h2>\n"
+msgstr "<h2 id=\"ddrescue\">Erstellen eines Partition-Images mit <span class=\"code\">ddrescue</span> in der Befehlszeile</h2>\n"
+
+#. type: Plain text
+msgid ""
+"If creating a partition image using the *Disks* utility fails, you can try "
+"this second technique using `ddrescue`, which can be more resilient to "
+"hardware failures."
+msgstr ""
+"Wenn das Erstellen eines Partition-Images mit dem *Festplatten*-"
+"Dienstprogramm fehlschlägt, können Sie diese zweite Technik mit `ddrescue` "
+"ausprobieren, die widerstandsfähiger gegenüber Hardwarefehlern sein kann."
+
+#. type: Plain text
+msgid ""
+"The `ddrescue` utility tries to copy first the parts of the Persistent "
+"Storage that are not failing and skips over the parts that are failing. "
+"After that, you can run `ddrescue` again to try to copy the parts that "
+"failed the first time."
+msgstr ""
+"Das Dienstprogramm `ddrescue` versucht, zunächst die Teile des beständigen "
+"Datenspeichers zu kopieren, die nicht fehlerhaft sind, und überspringt die "
+"Teile, die fehlerhaft sind. Danach können Sie `ddrescue` erneut ausführen, "
+"um zu versuchen, die Teile zu kopieren, die beim ersten Mal fehlgeschlagen "
+"sind."
+
+#. type: Bullet: '1. '
+#, fuzzy
+#| msgid ""
+#| "In the *Files* utility, navigate to the folder of the external hard where "
+#| "you want to save the partition image of your Persistent Storage."
+msgid ""
+"In the *Files* browser, navigate to the folder of the external hard disk "
+"where you want to save the partition image of your Persistent Storage."
+msgstr ""
+"Navigieren Sie im *Dateien*-Dienstprogramm zu dem Ordner der externen "
+"Festplatte, auf der Sie das Partition-Image Ihres beständigen Datenspeichers "
+"speichern möchten."
+
+#. type: Bullet: '1. '
+#, fuzzy
+#| msgid ""
+#| "Right-click in the empty space of the right pane and choose **Open in "
+#| "Terminal** in the shortcut menu."
+msgid ""
+"Right-click in the empty space of the right pane and choose **Open in "
+"Console** in the shortcut menu."
+msgstr ""
+"Klicken Sie mit der rechten Maustaste in den leeren Bereich des rechten "
+"Fensters und wählen Sie im Kontextmenü **Im Terminal öffnen**."
+
+#. type: Plain text
+#, fuzzy, no-wrap
+#| msgid "   Doing so opens a terminal that is configured to operate in this folder.\n"
+msgid "   Doing so opens a console that is configured to operate in this folder.\n"
+msgstr "   Dadurch wird ein Terminal geöffnet, das so konfiguriert ist, dass es in diesem Ordner arbeitet.\n"
+
+#. type: Bullet: '1. '
+#, fuzzy
+#| msgid ""
+#| "In the terminal, execute the following command. Replace <span "
+#| "class=\"command-placeholder\">/dev/mapper/luks-xyz</span> with the device "
+#| "name found when [[identifying your *Persistent Storage* in the *Disks* "
+#| "utility|fsck#identify]]."
+msgid ""
+"In the console, execute the following command. Replace <span class=\"command-"
+"placeholder\">/dev/mapper/luks-xyz</span> with the device name found when "
+"[[identifying your *Persistent Storage* in the *Disks* utility|"
+"fsck#identify]]."
+msgstr ""
+"Führen Sie im Terminal den folgenden Befehl aus. Ersetzen Sie <span "
+"class=\"command-placeholder\">/dev/mapper/luks-xyz</span> durch den "
+"Gerätenamen, den Sie beim [[Identifizieren Ihres *Beständigen "
+"Datenspeichers* im *Festplatten*-Dienstprogramm|fsck#identify]] gefunden "
+"haben."
+
+#. type: Plain text
+#, fuzzy, no-wrap
+#| msgid "   <p class=\"command-template\">ddrescue <span class=\"command-placeholder\">/dev/mapper/luks-xyz</span> persistent-storage.img ddrescue.log</p>\n"
+msgid "   <p class=\"command-template\">sudo ddrescue <span class=\"command-placeholder\">/dev/mapper/luks-xyz</span> persistent-storage.img ddrescue.log</p>\n"
+msgstr "   <p class=\"command-template\">ddrescue <span class=\"command-placeholder\">/dev/mapper/luks-xyz</span> persistent-storage.img ddrescue.log</p>\n"
+
+#. type: Plain text
+#, no-wrap
+msgid "   The output of `ddrescue` looks like this:\n"
+msgstr "   Die Ausgabe von `ddrescue` sieht wie folgt aus:\n"
+
+#. type: Plain text
+#, fuzzy, no-wrap
+#| msgid ""
+#| "       GNU ddrescue 1.27\n"
+#| "       Press Ctrl-C to interrupt\n"
+#| "            ipos:  749404 kB, non-trimmed:        0 B,  current rate:  34996 kB/s\n"
+#| "            ipos:    1446 MB, non-trimmed:        0 B,  current rate:  24772 kB/s\n"
+#| "            opos:    1446 MB, non-scraped:        0 B,  average rate:  33629 kB/s\n"
+#| "       non-tried:    9290 MB,  bad-sector:        0 B,    error rate:       0 B/s\n"
+#| "         rescued:    1446 MB,   bad areas:        0,        run time:         43s\n"
+#| "       pct rescued:   13.46%, read errors:        0,  remaining time:      1m 31s\n"
+#| "                                     time since last successful read:          0s\n"
+#| "       Copying non-tried blocks... Pass 1 (forwards)\n"
+msgid ""
+"       GNU ddrescue 1.29\n"
+"       Press Ctrl-C to interrupt\n"
+"            ipos:  749404 kB, non-trimmed:        0 B,  current rate:  34996 kB/s\n"
+"            ipos:    1446 MB, non-trimmed:        0 B,  current rate:  24772 kB/s\n"
+"            opos:    1446 MB, non-scraped:        0 B,  average rate:  33629 kB/s\n"
+"       non-tried:    9290 MB,  bad-sector:        0 B,    error rate:       0 B/s\n"
+"         rescued:    1446 MB,   bad areas:        0,        run time:         43s\n"
+"       pct rescued:   13.46%, read errors:        0,  remaining time:      1m 31s\n"
+"                                     time since last successful read:          0s\n"
+"       Copying non-tried blocks... Pass 1 (forwards)\n"
+msgstr ""
+"       GNU ddrescue 1.27\n"
+"       Press Ctrl-C to interrupt\n"
+"            ipos:  749404 kB, non-trimmed:        0 B,  current rate:  34996 kB/s\n"
+"            ipos:    1446 MB, non-trimmed:        0 B,  current rate:  24772 kB/s\n"
+"            opos:    1446 MB, non-scraped:        0 B,  average rate:  33629 kB/s\n"
+"       non-tried:    9290 MB,  bad-sector:        0 B,    error rate:       0 B/s\n"
+"         rescued:    1446 MB,   bad areas:        0,        run time:         43s\n"
+"       pct rescued:   13.46%, read errors:        0,  remaining time:      1m 31s\n"
+"                                     time since last successful read:          0s\n"
+"       Copying non-tried blocks... Pass 1 (forwards)\n"
+
+#. type: Plain text
+#, no-wrap
+msgid ""
+"   The section about **bad areas** refers to errors reading the data of your\n"
+"   Persistent Storage, most likely because of hardware failures.\n"
+msgstr ""
+"   Der Abschnitt über **schadhafte Bereiche** bezieht sich auf Fehler beim Lesen der Daten Ihres\n"
+"   beständigen Datenspeichers, wahrscheinlich aufgrund von Hardwarefehlern.\n"
+
+#. type: Bullet: '1. '
+msgid "After `ddrescue` finishes:"
+msgstr "Nachdem `ddrescue` abgeschlossen ist:"
+
+#. type: Bullet: '   - '
+msgid ""
+"If bad areas were reported, try leaving your USB stick to rest for some "
+"minutes and executing the same `ddrescue` command again to copy more data."
+msgstr ""
+"Wenn schadhafte Bereiche gemeldet wurden, versuchen Sie, Ihren USB-Stick "
+"einige Minuten ruhen zu lassen und den gleichen `ddrescue`-Befehl erneut "
+"auszuführen, um weitere Daten zu kopieren."
+
+#. type: Plain text
+#, no-wrap
+msgid ""
+"     We recommend that you replace your USB stick and [[copy the partition image\n"
+"     to a new USB stick|fsck#copy]] after you execute `ddrescue` several times.\n"
+msgstr ""
+"     Wir empfehlen, Ihren USB-Stick zu ersetzen und [[das Partition-Image auf\n"
+"     einen neuen USB-Stick zu kopieren|fsck#copy]], nachdem Sie `ddrescue` mehrere Male ausgeführt haben.\n"
+
+#. type: Bullet: '   - '
+msgid ""
+"If no bad areas were reported or if the same bad areas were reported after "
+"several executions of the `ddrescue` command, it means that all the data "
+"that could be rescued was copied to the partition image."
+msgstr ""
+"Wenn keine schadhaften Bereiche gemeldet wurden oder wenn nach mehreren "
+"Ausführungen des `ddrescue`-Befehls die gleichen schadhaften Bereiche "
+"gemeldet wurden, bedeutet dies, dass alle Daten, die gerettet werden "
+"konnten, in das Partition-Image kopiert wurden."
+
+#. type: Bullet: '1. '
+msgid "Shut down Tails."
+msgstr "Fahren Sie Tails herunter."
+
+#. type: Plain text
+#, no-wrap
+msgid ""
+"   You can now safely start [[recovering data from the Persistent\n"
+"   Storage|fsck#welcome]].\n"
+msgstr ""
+"   Sie können jetzt sicher [[Daten aus dem beständigen\n"
+"   Datenspeicher wiederherstellen|fsck#welcome]].\n"
+
+#. type: Plain text
+#, no-wrap
+msgid "<h1 id=\"recover\">Recovering data from the Persistent Storage</h1>\n"
+msgstr "<h1 id=\"recover\">Wiederherstellung von Daten aus dem beständigen Datenspeicher</h1>\n"
+
+#. type: Plain text
+msgid ""
+"After [[creating a partition image|fsck#image]], you can safely try to "
+"recover data from your Persistent Storage without risking erasing more data."
+msgstr ""
+"Nachdem Sie [[ein Partition-Image erstellt haben|fsck#image]], können Sie "
+"sicher versuchen, Daten aus Ihrem beständigen Datenspeicher "
+"wiederherzustellen, ohne das Risiko einzugehen, weitere Daten zu löschen."
+
+#. type: Plain text
+msgid ""
+"We are presenting here 3 recovery techniques that work in different cases. "
+"We recommend that you try the 3 techniques one after the other."
+msgstr ""
+"Hier präsentieren wir 3 Wiederherstellungstechniken, die in verschiedenen "
+"Fällen funktionieren. Wir empfehlen, die 3 Techniken nacheinander "
+"auszuprobieren."
+
+#. type: Bullet: '1. '
+msgid "[[Repairing the file system from the Welcome Screen|fsck#welcome]]"
+msgstr "[[Reparieren des Dateisystems vom Willkommensbildschirm|fsck#welcome]]"
+
+#. type: Plain text
+#, no-wrap
+msgid ""
+"   If the hardware of your USB stick is not failing, repairing the file system\n"
+"   from the Welcome Screen is likely the easiest technique.\n"
+msgstr ""
+"   Wenn die Hardware Ihres USB-Sticks nicht ausfällt, ist das Reparieren des Dateisystems\n"
+"   vom Willkommensbildschirm wahrscheinlich die einfachste Technik.\n"
+
+#. type: Bullet: '1. '
+msgid "[[Copying the partition image to a new USB stick|fsck#copy]]"
+msgstr "[[Kopieren des Partition-Images auf einen neuen USB-Stick|fsck#copy]]"
+
+#. type: Plain text
+#, no-wrap
+msgid ""
+"   If the hardware of your USB stick is failing, you might still be able to\n"
+"   repair the file system of your Persistent Storage after copying the\n"
+"   partition image to a new USB stick.\n"
+msgstr ""
+"   Wenn die Hardware Ihres USB-Sticks ausfällt, könnten Sie möglicherweise \n"
+"   das Dateisystem Ihres beständigen Datenspeichers reparieren, nachdem\n"
+"   Sie das Partition-Image auf einen neuen USB-Stick kopiert haben.\n"
+
+#. type: Bullet: '1. '
+msgid "[[Analyzing the partition image using *Autopsy*|fsck#autopsy]]"
+msgstr "[[Analysieren des Partition-Images mit *Autopsy*|fsck#autopsy]]"
+
+#. type: Plain text
+#, no-wrap
+msgid ""
+"   [*Autopsy*](https://www.autopsy.com/) is an advanced digital forensics tool\n"
+"   that allows recovering files, even from broken file systems.\n"
+msgstr ""
+"   [*Autopsy*](https://www.autopsy.com/) ist ein fortgeschrittenes digitales forensisches Tool,\n"
+"    das die Wiederherstellung von Dateien ermöglicht, selbst aus beschädigten Dateisystemen.\n"
+
+#. type: Plain text
+#, no-wrap
+msgid "<h2 id=\"welcome\">Repairing the file system from the Welcome Screen</h2>\n"
+msgstr "<h2 id=\"welcome\">Reparieren des Dateisystems vom Willkommensbildschirm</h2>\n"
+
+#. type: Plain text
+msgid ""
+"If the hardware of your USB stick is not failing, repairing the file system "
+"from the Welcome Screen is likely the easiest technique."
+msgstr ""
+"Wenn die Hardware Ihres USB-Sticks nicht ausfällt, ist das Reparieren des "
+"Dateisystems vom Willkommensbildschirm wahrscheinlich die einfachste Technik."
+
+#. type: Bullet: '1. '
+msgid "Start on the Tails USB stick that has file system errors."
+msgstr "Starten Sie mit dem Tails-USB-Stick, der Dateisystemfehler aufweist."
+
+#. type: Bullet: '1. '
+msgid "In the Welcome Screen, try to unlock the Persistent Storage."
+msgstr ""
+"Versuchen Sie im Willkommensbildschirm, den beständigen Datenspeicher zu "
+"entsperren."
+
+#. type: Bullet: '1. '
+msgid ""
+"When the error message about file system errors appears, click on the "
+"**Repair File System** button."
+msgstr ""
+"Wenn die Fehlermeldung über Dateisystemfehler erscheint, klicken Sie auf die "
+"Schaltfläche **Dateisystem reparieren**."
+
+#. type: Plain text
+#, fuzzy, no-wrap
+#| msgid "   [[!img repair.png link=\"no\" class=\"screenshot\" alt=\"File System Errors dialog in Welcome Screen\"]]\n"
+msgid "   [[!img repair.png class=\"screenshot\" alt=\"File System Errors dialog in Welcome Screen\"]]\n"
+msgstr "   [[!img repair.png link=\"no\" class=\"screenshot\" alt=\"Dialog für Dateisystemfehler im Willkommensbildschirm\"]]\n"
+
+#. type: Bullet: '1. '
+msgid "The repair of the file system starts."
+msgstr "Die Reparatur des Dateisystems beginnt."
+
+#. type: Plain text
+#, no-wrap
+msgid "   The repair can take a long time, from a few seconds to several hours.\n"
+msgstr "   Die Reparatur kann lange dauern, von wenigen Sekunden bis zu mehreren Stunden.\n"
+
+#. type: Plain text
+#, no-wrap
+msgid ""
+"   If the repair takes more than a day, shutdown Tails and try [[analyzing the\n"
+"   partition image using *Autopsy*|fsck#autopsy]] instead.\n"
+msgstr ""
+"   Wenn die Reparatur mehr als einen Tag dauert, fahren Sie Tails herunter und versuchen Sie\n"
+"   stattdessen [[das Partition-Image mit *Autopsy* zu analysieren|fsck#autopsy]].\n"
+
+#. type: Plain text
+#, no-wrap
+msgid "   [[!img repairing.png class=\"screenshot\" alt=\"\"]]\n"
+msgstr "   [[!img repairing.png class=\"screenshot\" alt=\"\"]]\n"
+
+#. type: Bullet: '1. '
+msgid "After the repair finishes:"
+msgstr "Nachdem die Reparatur abgeschlossen ist:"
+
+#. type: Bullet: '   - '
+msgid ""
+"If the repair succeeded, start Tails and verify the content of your "
+"Persistent Storage."
+msgstr ""
+"Wenn die Reparatur erfolgreich war, starten Sie Tails und überprüfen Sie den "
+"Inhalt Ihres beständigen Datenspeichers."
+
+#. type: Plain text
+#, no-wrap
+msgid "     <div class=\"tip\">\n"
+msgstr "     <div class=\"tip\">\n"
+
+#. type: Plain text
+#, no-wrap
+msgid "     <p>We recommend that you keep the partition image for some time.</p>\n"
+msgstr "     <p>Wir empfehlen, das Partition-Image für einige Zeit aufzubewahren.</p>\n"
+
+#. type: Plain text
+#, no-wrap
+msgid ""
+"     <p>If you realize later on that some files are missing or damaged, you\n"
+"     might be able to recover them by [[analyzing the partition image using\n"
+"     <i>Autopsy</i>|fsck#autopsy]].</p>\n"
+msgstr ""
+"     <p>Wenn Sie später feststellen, dass einige Dateien fehlen oder beschädigt sind,\n"
+"     können Sie möglicherweise versuchen, diese durch [[Analysieren des Partition-Images\n"
+"     mit <i>Autopsy</i>|fsck#autopsy]] wiederherzustellen.</p>\n"
+
+#. type: Plain text
+#, no-wrap
+msgid "     </div>\n"
+msgstr "     </div>\n"
+
+#. type: Bullet: '   - '
+msgid ""
+"If the repair failed, try to [[copy the partition image to a new USB stick|"
+"fsck#copy]] as described below."
+msgstr ""
+"Wenn die Reparatur fehlgeschlagen ist, versuchen Sie, [[das Partition-Image "
+"auf einen neuen USB-Stick zu kopieren|fsck#copy]], wie unten beschrieben."
+
+#. type: Plain text
+#, no-wrap
+msgid "<h2 id=\"copy\">Copying the partition image to a new USB stick</h2>\n"
+msgstr "<h2 id=\"copy\">Kopieren des Partition-Images auf einen neuen USB-Stick</h2>\n"
+
+#. type: Plain text
+msgid ""
+"If the hardware of your USB stick is failing, you might still be able to "
+"repair the file system of your Persistent Storage after copying the "
+"partition image to a new USB stick."
+msgstr ""
+"Wenn die Hardware Ihres USB-Sticks ausfällt, könnten Sie möglicherweise das "
+"Dateisystem Ihres beständigen Datenspeichers reparieren, nachdem Sie das "
+"Partition-Image auf einen neuen USB-Stick kopiert haben."
+
+#. type: Plain text
+#, no-wrap
+msgid "<h3 id=\"install\">Creating a new Tails USB stick with Persistent Storage</h3>\n"
+msgstr "<h3 id=\"install\">Erstellen eines neuen Tails-USB-Sticks mit beständigem Datenspeicher</h3>\n"
+
+#. type: Bullet: '1. '
+msgid "[[Install Tails|install]] on a new USB stick."
+msgstr "[[Installieren Sie Tails|install]] auf einem neuen USB-Stick."
+
+#. type: Plain text
+#, no-wrap
+msgid "   The new USB stick must be at least as large as your current Tails USB stick.\n"
+msgstr "   Der neue USB-Stick muss mindestens so groß sein wie Ihr aktueller Tails-USB-Stick.\n"
+
+#. type: Bullet: '1. '
+msgid "Start on the new Tails."
+msgstr "Starten Sie mit dem neuen Tails."
+
+#. type: Bullet: '1. '
+msgid ""
+"When starting Tails, [[set up an administration password|doc/first_steps/"
+"welcome_screen/administration_password]]."
+msgstr ""
+"Beim Starten von Tails [[richten Sie ein Administrationspasswort ein|doc/"
+"first_steps/welcome_screen/administration_password]]."
+
+#. type: Bullet: '1. '
+msgid "Create a Persistent Storage on the new Tails."
+msgstr "Erstellen Sie einen beständigen Datenspeicher auf dem neuen Tails."
+
+#. type: Bullet: '1. '
+msgid ""
+"Close the Persistent Storage settings after creation, when the list of "
+"features is displayed."
+msgstr ""
+"Schließen Sie die Einstellungen für den beständigen Datenspeicher nach der "
+"Erstellung, wenn die Liste der Funktionen angezeigt wird."
+
+#. type: Plain text
+#, no-wrap
+msgid ""
+"   The process described below overwrites the contents and configuration of the new Persistent\n"
+"   Storage. So, it does not matter which features you turn on after creating\n"
+"   the Persistent Storage.\n"
+msgstr ""
+"   Der nachfolgend beschriebene Prozess überschreibt den Inhalt und die Konfiguration des neuen\n"
+"   beständigen Datenspeichers. Daher ist es irrelevant, welche Funktionen Sie nach der Erstellung des\n"
+" beständigen Datenspeichers aktivieren.\n"
+
+#. type: Plain text
+#, no-wrap
+msgid "<h3 id=\"restore\">Copying the partition image onto the new USB stick</h3>\n"
+msgstr "<h3 id=\"restore\">Kopieren des Partition-Images auf den neuen USB-Stick</h3>\n"
+
+#. type: Bullet: '1. '
+msgid ""
+"In the left pane of the *Disks* utility, identify your new Tails USB stick "
+"in the list of storage devices."
+msgstr ""
+"Identifizieren Sie im linken Bereich des *Festplatten*-Dienstprogramms Ihren "
+"neuen Tails-USB-Stick in der Liste der Speichermedien."
+
+#. type: Bullet: '1. '
+msgid ""
+"In the left pane, click on the storage device that corresponds to your new "
+"Tails USB stick."
+msgstr ""
+"Klicken Sie im linken Bereich auf das Speichermedium, das Ihrem neuen Tails-"
+"USB-Stick entspricht."
+
+#. type: Bullet: '1. '
+msgid "In the right pane, this storage device should have 3 volumes."
+msgstr "Im rechten Bereich sollte dieses Speichermedium 3 Volumes aufweisen."
+
+#. type: Bullet: '   - '
+msgid "1 volume with a **TailsData** label and **Ext4** content."
+msgstr "1 Volume mit einem **TailsData**-Label und **Ext4**-Inhalt."
+
+#. type: Plain text
+#, no-wrap
+msgid "     This volume corresponds to the decrypted version of your Persistent Storage.\n"
+msgstr "     Dieses Volume entspricht der entschlüsselten Version Ihres beständigen Datenspeichers.\n"
+
+#. type: Bullet: '1. '
+msgid ""
+"In the right pane, click on the **Ext4** volume, which is the one that "
+"corresponds to the decrypted version of your Persistent Storage."
+msgstr ""
+"Klicken Sie im rechten Bereich auf das **Ext4**-Volume, das der "
+"entschlüsselten Version Ihres beständigen Datenspeichers entspricht."
+
+#. type: Plain text
+#, fuzzy, no-wrap
+#| msgid ""
+#| "   In the attributes listed below the volume, verify that the content of the\n"
+#| "   volume is mounted at */home/amnesia/Persistent*.\n"
+msgid ""
+"   In the attributes below the volume, verify that its device is\n"
+"   */dev/mapper/TailsData_unlocked*.\n"
+msgstr ""
+"   Überprüfen Sie in den unten aufgeführten Attributen, dass der Inhalt des Volumes\n"
+"   unter */home/amnesia/Persistent* gemountet ist.\n"
+
+#. type: Bullet: '1. '
+msgid ""
+"Click on the [[!img lib/media-playback-stop.png link=\"no\" "
+"class=\"symbolic\" alt=\"Unmount selected partition\"]] button to unmount "
+"the Persistent Storage."
+msgstr ""
+"Klicken Sie auf die Schaltfläche [[!img lib/media-playback-stop.png "
+"link=\"no\" class=\"symbolic\" alt=\"Ausgewählte Partition aushängen\"]], um "
+"den beständigen Datenspeicher auszuhängen."
+
+#. type: Bullet: '1. '
+msgid ""
+"Plug in the hard disk on which you saved the partition image of your "
+"Persistent Storage."
+msgstr ""
+"Schließen Sie die Festplatte an, auf der Sie das Partition-Image Ihres "
+"beständigen Datenspeichers gespeichert haben."
+
+#. type: Bullet: '1. '
+msgid ""
+"Choose **[[!img lib/system-run.png link=\"no\" class=\"symbolic\" "
+"alt=\"Additional partition options\"]]&nbsp;▸ Restore Partition Image**."
+msgstr ""
+"Wählen Sie **[[!img lib/system-run.png link=\"no\" class=\"symbolic\" "
+"alt=\"Zusätzliche Partition-Optionen\"]]&nbsp;▸ Partition-Image "
+"wiederherstellen**."
+
+#. type: Bullet: '1. '
+msgid ""
+"In the **Restore Disk Image** dialog, browse for the partition image on the "
+"hard disk that you plugged in."
+msgstr ""
+"Durchsuchen Sie im Dialogfeld **Disk-Image wiederherstellen** die "
+"Festplatte, die Sie angeschlossen haben, nach dem Partition-Image."
+
+#. type: Bullet: '1. '
+msgid "Click on the **Start Restoring** button."
+msgstr "Klicken Sie auf die Schaltfläche **Wiederherstellung starten**."
+
+#. type: Bullet: '1. '
+msgid "After the restoration finishes, restart on the new Tails USB stick."
+msgstr ""
+"Nachdem die Wiederherstellung abgeschlossen ist, starten Sie mit dem neuen "
+"Tails-USB-Stick."
+
+#. type: Plain text
+#, no-wrap
+msgid "<h3 id=\"fix\">Fixing the file system errors on the new USB stick</h3>\n"
+msgstr "<h3 id=\"fix\">Beheben der Dateisystemfehler auf dem neuen USB-Stick</h3>\n"
+
+#. type: Bullet: '1. '
+msgid ""
+"If an error message about file system errors appears, click on the **Repair "
+"File System** button."
+msgstr ""
+"Wenn eine Fehlermeldung über Dateisystemfehler erscheint, klicken Sie auf "
+"die Schaltfläche **Dateisystem reparieren**."
+
+#. type: Bullet: '   - '
+msgid ""
+"If the repair failed, try to [[analyze the partition image using *Autopsy*|"
+"fsck#copy]] as described below."
+msgstr ""
+"Wenn die Reparatur fehlgeschlagen ist, versuchen Sie, [[das Partition-Image "
+"mit *Autopsy* zu analysieren|fsck#copy]], wie unten beschrieben."
+
+#. type: Plain text
+#, no-wrap
+msgid "<h2 id=\"autopsy\">Analyzing the partition image using <i>Autopsy</i></h2>\n"
+msgstr "<h2 id=\"autopsy\">Analysieren des Partition-Images mit <i>Autopsy</i></h2>\n"
+
+#. type: Plain text
+msgid ""
+"[*Autopsy*](https://www.autopsy.com/) is an advanced digital forensics tool "
+"that allows recovering files, even from broken file systems."
+msgstr ""
+"[*Autopsy*](https://www.autopsy.com/) ist ein fortgeschrittenes digitales "
+"forensisches Tool, das die Wiederherstellung von Dateien ermöglicht, selbst "
+"aus beschädigten Dateisystemen."
+
+#. type: Plain text
+#, no-wrap
+msgid "*Autopsy* is open source and available for free on Windows, macOS, and Linux.\n"
+msgstr "*Autopsy* ist Open Source und kostenlos für Windows, macOS und Linux verfügbar.\n"
+
+#. type: Plain text
+msgid ""
+"To avoid leaving traces of the content of your Persistent Storage on the "
+"operating system where *Autopsy* is used, we recommend that you use "
+"*Autopsy* in Tails. But, *Autopsy* is easier to install in Windows than in "
+"Tails."
+msgstr ""
+"Um zu vermeiden, dass Spuren des Inhalts Ihres beständigen Datenspeichers im "
+"Betriebssystem, auf dem *Autopsy* verwendet wird, zurückbleiben, empfehlen "
+"wir, *Autopsy* in Tails zu verwenden. Allerdings ist *Autopsy* in Windows "
+"einfacher zu installieren als in Tails."
+
+#. type: Plain text
+msgid ""
+"We are not providing step-by-step instructions on how to install and use "
+"*Autopsy*."
+msgstr ""
+"Wir geben keine Schritt-für-Schritt-Anleitungen zur Installation und "
+"Verwendung von *Autopsy*."
+
+#. type: Plain text
+msgid ""
+"If you don't feel confident installing and using *Autopsy* on your own, we "
+"recommend that you get help from someone with more experience with Linux and "
+"data recovery."
+msgstr ""
+"Wenn Sie sich unsicher sind, *Autopsy* selbst zu installieren und zu "
+"verwenden, empfehlen wir, sich Hilfe von jemandem zu holen, der mehr "
+"Erfahrung mit Linux und Datenwiederherstellung hat."
+
+#. type: Plain text
+msgid ""
+"You can also read the [Autopsy User Documentation](http://sleuthkit.org/"
+"autopsy/docs/user-docs/latest)."
+msgstr ""
+"Sie können auch die [Autopsy-Benutzerdokumentation](http://sleuthkit.org/"
+"autopsy/docs/user-docs/latest) lesen."
+
+#. type: Title ###
+#, no-wrap
+msgid "Installing *Autopsy* in Tails"
+msgstr "Installation von *Autopsy* in Tails"
+
+#. type: Plain text
+msgid "The general steps are:"
+msgstr "Die allgemeinen Schritte sind:"
+
+#. type: Bullet: '1. '
+msgid ""
+"From the [download page](https://www.autopsy.com/download/), download the 2 "
+"binaries needed to run *Autopsy*:"
+msgstr ""
+"Laden Sie von der [Download-Seite](https://www.autopsy.com/download/) die 2 "
+"benötigten Binärdateien herunter, um *Autopsy* auszuführen:"
+
+#. type: Bullet: '   - '
+msgid "The DEB file of *The Sleuth Kit*."
+msgstr "Die DEB-Datei von *The Sleuth Kit*."
+
+#. type: Bullet: '   - '
+msgid "The ZIP file of *Autopsy*."
+msgstr "Die ZIP-Datei von *Autopsy*."
+
+#. type: Bullet: '1. '
+msgid ""
+"From the [installation instructions of *Autopsy* for Linux](https://"
+"github.com/sleuthkit/autopsy/blob/develop/Running_Linux_OSX.md), download "
+"the 2 scripts needed for the installation:"
+msgstr ""
+"Laden Sie von den [Installationsanweisungen von *Autopsy* für Linux](https://"
+"github.com/sleuthkit/autopsy/blob/develop/Running_Linux_OSX.md) die 2 "
+"Skripte herunter, die für die Installation benötigt werden:"
+
+#. type: Bullet: '   - '
+msgid "`install_prereqs_ubuntu.sh`"
+msgstr "`install_prereqs_ubuntu.sh`"
+
+#. type: Bullet: '   - '
+msgid "`install_application.sh`"
+msgstr "`install_application.sh`"
+
+#. type: Bullet: '1. '
+#, fuzzy
+#| msgid ""
+#| "In the terminal, execute the following command. Replace <span "
+#| "class=\"command-placeholder\">/dev/mapper/luks-xyz</span> with the device "
+#| "name found when [[identifying your *Persistent Storage* in the *Disks* "
+#| "utility|fsck#identify]]."
+msgid ""
+"Execute the following commands in a *Console*. Replace <span class=\"command-"
+"placeholder\">version</span> with the version number of *The Sleuth Kit* and "
+"*Autopsy* that you downloaded."
+msgstr ""
+"Führen Sie im Terminal den folgenden Befehl aus. Ersetzen Sie <span "
+"class=\"command-placeholder\">/dev/mapper/luks-xyz</span> durch den "
+"Gerätenamen, den Sie beim [[Identifizieren Ihres *Beständigen "
+"Datenspeichers* im *Festplatten*-Dienstprogramm|fsck#identify]] gefunden "
+"haben."
+
+#. type: Plain text
+#, no-wrap
+msgid "   <!-- The packages openjdk-17-jdk/unstable and openjdk-17-jre/unstable are needed in Debian 13 (Trixie). -->\n"
+msgstr ""
+"   <!-- The packages openjdk-17-jdk/unstable and openjdk-17-jre/unstable are "
+"needed in Debian 13 (Trixie). -->\n"
+
+#. type: Plain text
+#, no-wrap
+msgid "   <p class=\"command\">sudo apt install libsqlite3-dev libc3p0-java unzip openjdk-17-jdk/unstable openjdk-17-jre/unstable</p>\n"
+msgstr ""
+"   <p class=\"command\">sudo apt install libsqlite3-dev libc3p0-java unzip "
+"openjdk-17-jdk/unstable openjdk-17-jre/unstable</p>\n"
+
+#. type: Plain text
+#, no-wrap
+msgid "   <p class=\"command\">sudo bash install_prereqs_ubuntu.sh</p>\n"
+msgstr "   <p class=\"command\">sudo bash install_prereqs_ubuntu.sh</p>\n"
+
+#. type: Plain text
+#, fuzzy, no-wrap
+#| msgid "   <p class=\"command\">sudo dpkg -i sleuthkit-java_4.12.1-1_amd64.deb</p>\n"
+msgid "   <p class=\"command\">sudo dpkg -i sleuthkit-java_<span class=\"command-placeholder\">version</span>_amd64.deb</p>\n"
+msgstr "   <p class=\"command\">sudo dpkg -i sleuthkit-java_4.12.1-1_amd64.deb</p>\n"
+
+#. type: Plain text
+#, fuzzy, no-wrap
+#| msgid "   <p class=\"command\">bash install_application.sh -z autopsy-4.21.0.zip -i ~/Persistent/autopsy -j /usr/lib/jvm/java-17-openjdk-amd64</p>\n"
+msgid "   <p class=\"command\">bash install_application.sh -z autopsy-<span class=\"command-placeholder\">version</span>.zip -i ~/Persistent/autopsy -j /usr/lib/jvm/java-17-openjdk-amd64</p>\n"
+msgstr "   <p class=\"command\">bash install_application.sh -z autopsy-4.21.0.zip -i ~/Persistent/autopsy -j /usr/lib/jvm/java-17-openjdk-amd64</p>\n"
+
+#. type: Plain text
+#, fuzzy, no-wrap
+#| msgid "   <p class=\"command\">/home/amnesia/Persistent/autopsy/autopsy-4.21.0/bin/autopsy</p>\n"
+msgid "   <p class=\"command\">/home/amnesia/Persistent/autopsy/autopsy-<span class=\"command-placeholder\">version</span>/bin/autopsy</p>\n"
+msgstr "   <p class=\"command\">/home/amnesia/Persistent/autopsy/autopsy-4.21.0/bin/autopsy</p>\n"
+
+#. type: Bullet: '1. '
+msgid ""
+"When starting for the first time, *Autopsy* freezes on **Starting modules**."
+msgstr ""
+"Beim ersten Start von *Autopsy* bleibt das Programm bei **Module werden "
+"gestartet** hängen."
+
+#. type: Plain text
+#, no-wrap
+msgid "   Press **Enter** to continue.\n"
+msgstr "   Drücken Sie **Enter**, um fortzufahren.\n"
+
+#. type: Title ###
+#, no-wrap
+msgid "Using *Autopsy* to analyze the partition image"
+msgstr "*Autopsy* verwenden, um das Partition-Image zu analysieren"
+
+#. type: Bullet: '1. '
+msgid "Start *Autopsy*."
+msgstr "Starten Sie *Autopsy*."
+
+#. type: Bullet: '1. '
+msgid "Open a new case."
+msgstr "Öffnen Sie einen neuen Fall."
+
+#. type: Bullet: '1. '
+msgid "Add the partition image of the Persistent Storage as a data source."
+msgstr ""
+"Fügen Sie das Partition-Image des beständigen Datenspeichers als Datenquelle "
+"hinzu."
+
+#. type: Bullet: '1. '
+msgid "*Autopsy* analyzes the data source."
+msgstr "*Autopsy* analysiert die Datenquelle."
+
+#. type: Plain text
+#, no-wrap
+msgid ""
+"   After the analysis finishes, the files that were recovered are listed in\n"
+"   different ways in the left sidebar, for example, both as a file system tree\n"
+"   and by type of files.\n"
+msgstr ""
+"   Nachdem die Analyse abgeschlossen ist, werden die wiederhergestellten Dateien\n"
+"   in verschiedenen Ansichten in der linken Seitenleiste angezeigt, zum Beispiel sowohl\n"
+"   als Dateisystembaum als auch nach Dateitypen.\n"
+
+#. type: Plain text
+#, fuzzy, no-wrap
+#| msgid "   [[!img autopsy.png link=\"no\" class=\"screenshot\" alt=\"Autopsy in Tails showing files recovered from the partition image of a Persistent Storage\"]]\n"
+msgid "   [[!img autopsy.png class=\"screenshot\" alt=\"Autopsy in Tails showing files recovered from the partition image of a Persistent Storage\"]]\n"
+msgstr "   [[!img autopsy.png link=\"no\" class=\"screenshot\" alt=\"Autopsy in Tails zeigt die aus dem Partition-Image eines beständigen Datenspeichers wiederhergestellten Dateien\"]]\n"
+
+#. type: Bullet: '1. '
+msgid "Extract the files that you want to recover to the case folder."
+msgstr ""
+"Extrahieren Sie die Dateien, die Sie wiederherstellen möchten, in den "
+"Fallordner."
+
+#~ msgid ""
+#~ "Choose **[[!img lib/system-run.png alt=\"Additional partition options\" "
+#~ "class=symbolic link=\"no\"]]&nbsp;▸ Create Partition Image**."
+#~ msgstr ""
+#~ "Wählen Sie **[[!img lib/system-run.png alt=\"Zusätzliche Partition-"
+#~ "Optionen\" class=symbolic link=\"no\"]]&nbsp;▸ Partition-Image "
+#~ "erstellen**."
+
+#~ msgid ""
+#~ "Execute the following commands in a *Terminal*. You might have to adjust "
+#~ "to newer versions of *Autopsy*."
+#~ msgstr ""
+#~ "Führen Sie die folgenden Befehle in einem *Terminal* aus. Möglicherweise "
+#~ "müssen Sie die Befehle an neuere Versionen von *Autopsy* anpassen."
+
+#~ msgid "Choose **Applications&nbsp;▸ Files** to open the *Files* utility."
+#~ msgstr ""
+#~ "Wählen Sie **Anwendungen&nbsp;▸ Dateien**, um das *Dateien*-"
+#~ "Dienstprogramm zu öffnen."

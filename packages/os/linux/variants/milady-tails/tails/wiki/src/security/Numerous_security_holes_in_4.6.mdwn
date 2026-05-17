@@ -1,0 +1,15 @@
+[[!meta date="Sun, 31 May 2020 13:54:35 +0200"]]
+[[!meta title="Numerous security holes in Tails 4.6"]]
+[[!pagetemplate template="news.tmpl"]]
+
+[[!tag security/fixed]]
+
+[[Tails_4.7|news/version_4.7]] fixes many security issues that affect
+Tails 4.6. You should [[upgrade to Tails 4.7|news/version_4.7]] as
+soon as possible.
+
+ - Tor Browser: [[!mfsa 2020-21]]
+ - Thunderbird: [[!mfsa 2020-18]]
+ - APT: [[!debsa2020 4685]]
+ - BIND: [[!debsa2020 4689]]
+ - WebKitGTK: [[!debsa2020 4681]]

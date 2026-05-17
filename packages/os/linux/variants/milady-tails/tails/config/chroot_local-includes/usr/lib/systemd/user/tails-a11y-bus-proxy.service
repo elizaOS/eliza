@@ -1,0 +1,14 @@
+[Unit]
+Description=Proxy the accessibility services bus
+After=at-spi-dbus-bus.service
+Requires=at-spi-dbus-bus.service
+StopWhenUnneeded=true
+ConditionUser=1000
+
+[Service]
+Type=forking
+ExecStart=/usr/local/lib/tails-a11y-bus-proxy
+PIDFile=/run/user/1000/.dbus-proxy/a11y-bus-proxy.pid
+
+[Install]
+WantedBy=desktop.target

@@ -1,0 +1,16 @@
+# Checkout of the git.tails.net:isos.git git-annex repository
+isos_git: FIXME
+# The directory where one stores `tails-amd64-*` sub-directories during the release process
+isos: FIXME
+# The directory where IUKs built during the release will land.
+# If you are asked to add this configuration as per #21293, you can set this to $ISOS/iuks/v2
+iuks_dir: FIXME
+# The directory where build artifacts (e.g. the `.packages` file) land.
+artifacts: FIXME
+# A checkout of the `master` branch of the main Tails Git repository.
+master_checkout: FIXME
+# The checkout of the branch of the main Tails Git repository
+# used to prepare the release (`stable` or `testing`).
+release_checkout: FIXME
+# A checkout of https://gitlab.torproject.org/tpo/web/blog
+tor_blog_checkout: FIXME

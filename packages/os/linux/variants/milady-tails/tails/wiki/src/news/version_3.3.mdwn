@@ -1,0 +1,75 @@
+[[!meta date="Tue, 14 Nov 2017 12:34:56 +0000"]]
+[[!pagetemplate template="news.tmpl"]]
+[[!meta title="Tails 3.3 is out"]]
+[[!tag announce]]
+
+This release fixes [[many security
+issues|security/Numerous_security_holes_in_3.2]] and users should
+upgrade as soon as possible.
+
+[[!toc levels=1]]
+
+# Changes
+
+## Upgrades and changes
+
+- Update *Tor* to 0.3.1.8 which saves bandwidth when starting.
+
+- Update *Tor Browser* to 7.0.10.
+
+- Update *Thunderbird* to [52.4.0](https://www.mozilla.org/en-US/thunderbird/52.4.0/releasenotes/).
+
+- Update *Linux* to 4.13.0.
+
+## Fixed problems
+
+- Fix UEFI support for USB sticks installed using *Universal USB
+  Installer*. ([[!tails_ticket 8992]])
+
+- Fix errors on file system creation in *Tails Installer* when the
+  target USB stick is plugged before starting *Tails Installer*.
+  ([[!tails_ticket 14755]]).
+
+- Fix *Tails Installer* on Debian sid and recent versions of *udisks2*. ([[!tails_ticket 14809]])
+
+- Fix the screen reader and screen keyboard in *Tor Browser* and
+  *Thunderbird*. ([[!tails_ticket 14752]], [[!tails_ticket 9260]])
+
+- Make the configuration of the keyboard layout more robust when
+  starting a session. ([[!tails_ticket 12543]])
+
+For more details, read our [[!tails_gitweb debian/changelog desc="changelog"]].
+
+<a id="known-issues"></a>
+
+# Known issues
+
+- Due to [an issue in *Tor
+  Browser*](https://trac.torproject.org/projects/tor/ticket/24243), the
+  documentation shipped in Tails doesn't open in *Tor Browser* anymore
+  and lacks our sidebar. The warning page of the
+  *Unsafe Browser* also lacks graphical design. ([[!tails_ticket 14962]])
+- Starting Tails 3.3 from DVD takes more than twice as long as earlier
+  releases. ([[!tails_ticket 14964]])
+
+See the list of [[long-standing issues|support/known_issues]].
+
+# Get Tails 3.3
+
+- To install, follow our [[installation instructions|install]].
+
+- To upgrade, automatic upgrades are available from 3.1 and 3.2 to 3.3.
+
+  If you cannot do an automatic upgrade or if you fail to start after an
+  automatic upgrade, please try to do a [[manual upgrade|doc/upgrade#manual]].
+
+- [[Download Tails 3.3.|install/download]]
+
+# What's coming up?
+
+Tails 3.5 is [[scheduled|contribute/calendar]] for January 16.
+
+
+We need your help and there are many ways to [[contribute to
+Tails|contribute]] (<a href="https://tails.net/donate/?r=3.3">donating</a> is only one of
+them). Come [[talk to us|doc/about/contact#tails-dev]]!

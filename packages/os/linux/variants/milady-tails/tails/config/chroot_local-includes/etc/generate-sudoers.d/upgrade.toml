@@ -1,0 +1,50 @@
+[[commands]]
+allowed_user = "amnesia"
+run_as_user = "tails-upgrade-frontend"
+executable = "/usr/local/bin/tails-upgrade-frontend"
+
+[[commands]]
+allowed_user = "amnesia"
+run_as_user = "tails-upgrade-frontend"
+executable = "/usr/local/bin/tails-upgrade-frontend"
+args = ["--report-no-upgrade"]
+
+[[commands]]
+allowed_user = "tails-upgrade-frontend"
+executable = "/usr/local/bin/tails-shutdown-network"
+
+[[commands]]
+allowed_user = "tails-upgrade-frontend"
+run_as_user = "tails-install-iuk"
+executable = "/usr/local/bin/tails-install-iuk"
+[commands.arbitrary_arguments]
+value = true
+reason = "FIXME: next time you have the problem space in mind, e.g. if you edit this file, explain why this is needed *and* safe. For details, see tails/tails#20863."
+
+[[commands]]
+executable = "/usr/local/bin/tails-iuk-get-target-file"
+allowed_user = "tails-upgrade-frontend"
+run_as_user = "tails-iuk-get-target-file"
+[commands.arbitrary_arguments]
+value = true
+reason = "FIXME: next time you have the problem space in mind, e.g. if you edit this file, explain why this is needed *and* safe. For details, see tails/tails#20863."
+
+[[commands]]
+executable = "/usr/local/bin/tails-iuk-mktemp-get-target-file"
+allowed_user = "tails-upgrade-frontend"
+run_as_user = "tails-iuk-get-target-file"
+
+[[commands]]
+allowed_user = "tails-upgrade-frontend"
+executable = "/sbin/reboot"
+
+[[commands]]
+allowed_user = "tails-upgrade-frontend"
+executable = "/usr/local/bin/tails-iuk-cancel-download"
+
+[[commands]]
+allowed_user = "tails-install-iuk"
+executable = "ALL"
+[commands.arbitrary_arguments]
+value = true
+reason = "We are installing IUKs, so while we could enumerate specific commands, we are obviously root"

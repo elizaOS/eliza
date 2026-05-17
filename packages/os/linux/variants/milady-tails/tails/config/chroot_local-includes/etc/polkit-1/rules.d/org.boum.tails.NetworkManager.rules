@@ -1,0 +1,14 @@
+polkit.addRule(function(action, subject) {
+    if (action.id == "org.freedesktop.NetworkManager.wifi.share.protected" &&
+        subject.user == "amnesia")
+    {
+        return polkit.Result.NO;
+    }
+});
+polkit.addRule(function(action, subject) {
+    if (action.id == "org.freedesktop.NetworkManager.wifi.share.open" &&
+        subject.user == "amnesia")
+    {
+        return polkit.Result.NO;
+    }
+});

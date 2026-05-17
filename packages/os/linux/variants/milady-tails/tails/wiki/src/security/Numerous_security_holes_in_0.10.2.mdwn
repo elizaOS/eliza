@@ -1,0 +1,23 @@
+[[!meta date="Sun, 22 Apr 2012 00:00:00 +0000"]]
+[[!meta title="Numerous security holes in Tails 0.10.2"]]
+[[!pagetemplate template="news.tmpl"]]
+
+[[!tag security/fixed]]
+
+The following security holes affect Tails 0.10.2.
+
+We **strongly** urge you to [[upgrade to Tails 0.11|news/version_0.11]]
+as soon as possible in case you are still using an older version.
+
+Details
+=======
+
+  - iceweasel ([[!debsa2012 2457]], [[!debsa2012 2433]])
+  - openssl ([[!debsa2012 2454]])
+  - gimp ([[!debsa2012 2426]])
+  - imagemagick ([[!debsa2012 2427]])
+  - freetype ([[!debsa2012 2428]])
+  - libpng ([[!debsa2012 2439]], [[!debsa2012 2446]])
+  - libtasn1-3 ([[!debsa2012 2440]])
+  - gnutls26 ([[!debsa2012 2441]])
+  - tiff ([[!debsa2012 2447]])

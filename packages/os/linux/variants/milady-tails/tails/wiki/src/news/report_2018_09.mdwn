@@ -1,0 +1,220 @@
+[[!meta title="Tails report for September, 2018"]]
+[[!meta date="Tue, 09 Oct 2018 17:42:12 +0000"]]
+[[!pagetemplate template="news.tmpl"]]
+
+[[!toc]]
+
+Releases
+========
+
+* [[Tails 3.9 was released on September 5|news/version_3.9]] (major release).
+
+* Tails 3.10 is [[scheduled for October 23|contribute/calendar]].
+
+The following changes were introduced in Tails 3.9:
+
+### Additional Software
+
+You can now install additional software automatically when starting Tails.
+
+When installing an additional Debian package from Tails, you can decide to
+install it automatically every time.
+
+To check your list of additional software packages, choose
+**Applications**&nbsp;▸ **System Tool**&nbsp;▸ **Additional Software**.
+
+### VeraCrypt integration
+
+To unlock *VeraCrypt* volume in Tails, choose **Applications**&nbsp;▸ **System
+Tool**&nbsp;▸ **Unlock VeraCrypt Volumes**.
+
+The integration of *VeraCrypt* in the *Files* and *Disks* utilities was done
+upstream in GNOME and will be available outside of Tails in Debian 10 (Buster)
+and Ubuntu 18.10 (Cosmic Cuttlefish).
+
+[[Read our documentation on using *VeraCrypt* volumes.|doc/encryption_and_privacy/veracrypt]]
+
+### News reading in *Thunderbird*
+
+*Thunderbird* is now the official RSS and Atom news feed reader in Tails.
+
+*Liferea* will be removed from Tails in version 3.12, early 2019.
+
+### Other changes
+
+- Improve the configuration of the persistent storage to make it easier
+  to scroll and consistent with the GNOME guidelines.
+
+### Included software
+
+- Update *Tor Browser* to 8.0, based on *Firefox* 60 ESR.
+
+  - Based on [*Firefox Quantum*](https://blog.mozilla.org/blog/2017/11/14/introducing-firefox-quantum/).
+
+  - New Tor circuit view
+
+- Update *Thunderbird* from 52 to [60](https://www.thunderbird.net/en-US/thunderbird/60.0/releasenotes/).
+
+- Update *Tor* to 0.3.4.7-rc.
+
+- Update *Electrum* to from 3.0.6 to [3.1.3](https://github.com/spesmilo/electrum/blob/master/RELEASE-NOTES).
+
+### Hardware support
+
+The following updates make Tails work better on recent hardware (graphics,
+Wi-Fi, etc.):
+
+- Update *Linux* to 4.17 which also fixes the
+  [Foreshadow](https://foreshadowattack.eu/) attack.
+
+- Update the *DRM* and *Mesa* libraries to improve support for some graphics
+  cards.
+
+- Update the Intel and AMD microcodes and most firmware packages.
+
+### Fixed problems
+
+- Stop displaying the *Enigmail* setup wizard every time Tails is restarted.
+  ([[!tails_ticket 15693]] and [[!tails_ticket 15746]])
+
+- Show a spinner while starting *Tor Browser*, *Tails documentation*, and
+  *WhisperBack*. ([[!tails_ticket 15101]])
+
+- Use *Tor Browser* again for browsing the documentation offline.
+  ([[!tails_ticket 15720]])
+
+- Show *Synaptic* and *Root Terminal* even when no administration
+  password is set. ([[!tails_ticket 11013]])
+
+- *Tails Installer*
+
+  - Link to upgrade documentation when upgrading. ([[!tails_ticket 7904]])
+  - Hide the **Reinstall** option when the USB stick is too small. ([[!tails_ticket 14810]])
+  - Correct the size of the USB stick in the confirmation dialog when reinstalling. ([[!tails_ticket 15590]])
+
+Code
+====
+
+- We successfully collaborated with the _Tor Browser_ team to fix
+  a severe issue with _Tor Browser_ 8.0 in Tails, that was discovered
+  shortly before the Tails 3.9 release. Thanks a lot to everyone
+  who helped!
+
+- We fixed a number of regressions that were introduced in Tails 3.9, such as:
+  - Fix the update of *Additional Software*. ([[!tails_ticket 15978]])
+  - Fix opening VeraCrypt file containers using the **Open With Unlock VeraCrypt
+    Volumes** of *GNOME Files*. ([[!tails_ticket 15954]])
+  - Fix the display of the **General** tab in the preferences of *Tor Browser*.
+    ([[!tails_ticket 15917]])
+  - Fix displaying the help of *GNOME Videos*. ([[!tails_ticket 15841]])
+
+Documentation and website
+=========================
+
+- We updated our [[documentation on *Tor
+  Browser*|doc/anonymous_internet/Tor_Browser]] to *Tor Browser* 8.
+
+- We added [Nothing2Hide](https://nothing2hide.org/) as an organization
+  providing Tails training.
+
+User experience
+===============
+
+- We did some stats on the amount of RAM on computers sending us *WhisperBack*
+  reports.
+
+  Between 5&ndash;10% of our users seem to have less than 3 GiB of RAM.
+
+Infrastructure
+==============
+
+- We started planning the migration of our Redmine to [[!tails_ticket
+  15918 desc="a different hostname"]] and [[!tails_ticket 15919
+  desc="a new VM"]].
+
+- We wrote a number of automated tests to ensure we notice important
+  regressions in the _VeraCrypt_ support introduced in Tails 3.9.
+
+- We completed our [[!tails_ticket 14585 desc="investigation"]] of
+  Dogtail's long-term viability. Our conclusion is that we can keep
+  using it, should start contributing to the maintenance of the
+  package in Debian, but invest as little as possible into Dogtail
+  for now as our long-term concerns are not fully addressed.
+
+- We investigated what prevented us from giving more Tails developers
+  access to our Jenkins CI platform so far. We've identified
+  a [[!tails_ticket 11344 desc="few"]] [[!tails_ticket 15981
+  desc="blockers"]], resolved them, and started giving such access
+  more liberally. This should make Tails development work more
+  pleasurable and efficient for a few more people.
+
+- The Tails sysadmin team discussed hiring a new team member, the
+  profile of the person we will be looking for, and how we could share
+  our work with them.
+
+- We made great progress towards [[!tails_ticket 14588 desc="hosting
+  our website on our own infrastructure"]]. The final steps and migration
+  should happen by the end of the year.
+
+Funding
+=======
+
+- We published our finances for 2017.
+
+- We prepared our end-of-year donation campaign and will launch it in the
+  coming weeks.
+
+- We added the postal address of RiseupLabs to our donation page as a way of
+  receiving US checks.
+
+- We removed Flattr as a donation method because it is not worth it
+  (raised ~200€ in 3 years).
+
+Outreach
+========
+
+Past events
+-----------
+
+- emmapeel, intrigeri, and sajolida attended the Tor meeting in Mexico City.
+
+- sajolida gave a talk about Tails, user research, and free software
+  culture at the colloquium [Mecanismos de Privacidad y Anonimato en
+  Redes](https://priv-anon.unam.mx/) of UNAM, Mexico.
+  ([slides](https://un.poivron.org/~sajolida/unam.pdf))
+
+Translation
+===========
+
+- Someone started translating our website in
+  Catalan.
+
+## All the website
+
+  - de: 55% (3192) strings translated, 6% strings fuzzy, 48% words translated
+  - es: 57% (3331) strings translated, 1% strings fuzzy, 47% words translated
+  - fa: 36% (2094) strings translated, 9% strings fuzzy, 38% words translated
+  - fr: 91% (5296) strings translated, 1% strings fuzzy, 89% words translated
+  - it: 32% (1874) strings translated, 6% strings fuzzy, 28% words translated
+  - pt: 27% (1614) strings translated, 7% strings fuzzy, 24% words translated
+
+Total original words: 61424
+
+## [[Core pages of the website|contribute/l10n_tricks/core_po_files.txt]]
+
+  - de: 81% (1562) strings translated, 9% strings fuzzy, 81% words translated
+  - es: 96% (1850) strings translated, 1% strings fuzzy, 93% words translated
+  - fa: 33% (639) strings translated, 11% strings fuzzy, 33% words translated
+  - fr: 98% (1894) strings translated, 0% strings fuzzy, 98% words translated
+  - it: 67% (1291) strings translated, 15% strings fuzzy, 66% words translated
+  - pt: 45% (877) strings translated, 12% strings fuzzy, 49% words translated
+
+Total original words: 17456
+
+Metrics
+=======
+
+* Tails has been started more than 697&thinsp;294 times this month. This makes 23&thinsp;243 boots a day on average.
+* 9964 downloads of the OpenPGP signature of Tails ISO from our website.
+* 131 bug reports were received through WhisperBack.
+

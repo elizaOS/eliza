@@ -1,0 +1,91 @@
+# SOME DESCRIPTIVE TITLE
+# Copyright (C) YEAR Free Software Foundation, Inc.
+# This file is distributed under the same license as the PACKAGE package.
+# FIRST AUTHOR <EMAIL@ADDRESS>, YEAR.
+#
+msgid ""
+msgstr ""
+"Project-Id-Version: PACKAGE VERSION\n"
+"POT-Creation-Date: 2024-04-11 14:09+0000\n"
+"PO-Revision-Date: 2024-04-11 16:36+0000\n"
+"Last-Translator: victor dargallo <victordargallo@disroot.org>\n"
+"Language-Team: LANGUAGE <LL@li.org>\n"
+"Language: es\n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+"Plural-Forms: nplurals=2; plural=n != 1;\n"
+"X-Generator: Weblate 5.3\n"
+
+#. type: Plain text
+#, no-wrap
+msgid "[[!meta robots=\"noindex\"]]\n"
+msgstr "[[!meta robots=\"noindex\"]]\n"
+
+#. type: Plain text
+msgid ""
+"A captive portal is a web page that is often displayed before you can access "
+"the Internet on public networks in airports, hotels, libraries, and other "
+"places."
+msgstr ""
+"Un portal cautivo es una página web que a menudo se muestra antes de que "
+"puedas acceder a Internet en redes públicas de aeropuertos, hoteles, "
+"bibliotecas y otros lugares."
+
+#. type: Plain text
+#, no-wrap
+msgid "[[!img captive_portal.png link=\"no\" class=\"svg\" alt=\"Train station Wi-Fi. Click here for 60 minutes of free Wi-Fi\" title=\"Example of a captive portal\"]]\n"
+msgstr ""
+"[[!img captive_portal.png link=\"no\" class=\"svg\" alt=\"Wi-Fi de una "
+"estación de tren. Haga clic aquí para disfrutar de 60 minutos de Wi-Fi "
+"gratis\" title=\"Ejemplo de portal cautivo\"]].\n"
+
+#. type: Plain text
+msgid ""
+"Tails cannot connect to the Tor network when the Internet connection is "
+"initially blocked by a captive portal."
+msgstr ""
+"Tails no puede conectarse a la red Tor cuando la conexión a Internet está "
+"inicialmente bloqueada por un portal cautivo."
+
+#~ msgid ""
+#~ "Many publicly accessible Internet connections (usually available through "
+#~ "a wireless network connection) require users to sign in to the network "
+#~ "using a *captive portal* in order to access the Internet."
+#~ msgstr ""
+#~ "Muchas conexiones a Internet de acceso público (generalmente disponibles "
+#~ "a través de una conexión de red inalámbrica) requieren que los usuarios "
+#~ "inicien sesión en la red mediante un *portal cautivo* para acceder a "
+#~ "Internet."
+
+#, fuzzy
+#~| msgid ""
+#~| "A captive portal is a web page that is displayed to the user before the "
+#~| "user can access the Internet. Captive portals usually require the user "
+#~| "to log in to the network or enter information such as an email address. "
+#~| "Captive portals are commonly encountered at Internet cafés, libraries, "
+#~| "airports, hotels, and universities."
+#~ msgid ""
+#~ "A captive portal is a web page that is displayed to the user before the "
+#~ "user can access the Internet. Captive portals usually require the user to "
+#~ "log in to the network or enter information such as an email address. "
+#~ "Captive portals are commonly encountered at Internet cafés, libraries, "
+#~ "airports, hotels, and universities."
+#~ msgstr ""
+#~ "Un portal cautivo es una página web que se muestra al usuario antes de "
+#~ "que pueda acceder a Internet. Los portales cautivos generalmente "
+#~ "requieren que el usuario inicie sesión en la red o ingrese información "
+#~ "como una dirección de correo electrónico. Los portales cautivos se "
+#~ "encuentran comúnmente en cibercafés, bibliotecas, aeropuertos, hoteles y "
+#~ "universidades."
+
+#~ msgid ""
+#~ "This is an example of a captive portal (by [AlexEng](https://commons."
+#~ "wikimedia.org/wiki/File:Captive_Portal.png)):"
+#~ msgstr ""
+#~ "Este es un ejemplo de portal cautivo (de [AlexEng](https://commons."
+#~ "wikimedia.org/wiki/File:Captive_Portal.png)):"
+
+#, no-wrap
+#~ msgid "[[!img captive-portal.png link=\"no\" alt=\"Welcome! Please enter your credentials to connect.\"]]\n"
+#~ msgstr "[[!img captive-portal.png link=\"no\" alt=\"¡Bienvenido! Por favor ingresa tus credenciales para conectarte.\"]]\n"

@@ -1,0 +1,112 @@
+[[!meta title="Call for testing: 0.21~rc1"]]
+
+[[!meta date="Mon, 20 Oct 2013 13:00:00 +0000"]]
+[[!pagetemplate template="news.tmpl"]]
+
+<p>You can help Tails! The first (and hopefully only) release candidate for the
+upcoming version 0.21 is out. Please test it and see if all works for you.</p>
+
+[[!toc levels=1]]
+
+<h1>How to test Tails 0.21~rc1?</h1>
+
+<ol>
+  <li>
+    <p>
+      <strong>Keep in mind that this is a test image.</strong> We have made sure
+      that it is not broken in an obvious way, but it might still contain
+      undiscovered issues.
+    </p>
+  </li>
+  <li>
+    <p>Download the ISO image and its signature:</p>
+    <p>
+      Tails 0.21~rc1 ISO image
+    </p>
+    <p>
+      Tails 0.21~rc1 signature
+    </p>
+  </li>
+  <li>
+    <p>
+      Verify the ISO image.
+    </p>
+  </li>
+  <li>
+    <p>
+      Have a look at the list of <a href="#known_issues">known issues
+      of this release</a> and the list of [[longstanding known
+      issues|support/known_issues]].
+    </p>
+  </li>
+  <li>
+    <p>
+      Test wildly!
+    </p>
+  </li>
+</ol>
+
+<p>If you find anything that is not working as it should, please [[report to
+us|doc/first_steps/whisperback]]! Bonus points if you check that it is not a
+<a href="#known_issues">known issue of this release</a> or a
+[[longstanding known issue|support/known_issues]].</p>
+
+<h1>What's new since 0.20.1?</h1>
+
+<ul>
+
+<li>Security fixes</li>
+<ul>
+	<li>
+	<p>Don't grant access to the Tor control port for the desktop user. Else,
+	an attacker able to run arbitrary code as this user could obtain the
+	public IP with a <code>get_info</code> command.</p>
+	</li>
+	<li>
+	<p>Don't allow the desktop user to directly change persistence settings.
+	Else, an attacker able to run arbitrary code as this user could leverage
+	this feature to gain persistent root access, as long as persistence
+	is enabled.</p>
+	</li>
+</ul>
+
+<li>New features</li>
+<ul>
+	<li><p>Add a persistence preset for printing settings.</p></li>
+	<li><p>Support SD card connected through a SDIO host adapter.</p></li>
+</ul>
+
+<li><p>Minor improvements</p></li>
+<ul>
+	<li><p>Add a KeePassX launcher to the top GNOME panel.</p></li>
+	<li><p>Exclude the version string in GnuPG's ASCII armored output.</p></li>
+	<li><p>Prefer stronger ciphers (AES256,AES192,AES,CAST5) when encrypting
+	data with GnuPG.</p></li>
+	<li><p>Use the same custom Startpage search URL than the TBB.
+	This apparently disables the new broken "family" filter.</p></li>
+</ul>
+
+</ul>
+
+<h1><a id="known_issues"></a>Known issues in 0.21~rc1</h1>
+
+<ul>
+  <li>
+    Regarding the persistence settings migration: only rough notes for the
+    documentation are included. A much better draft
+    can
+    be read online.
+  </li>
+  <li>
+    Vidalia is not translated.
+  </li>
+  <li>
+    Web browser windows are not resized as expected ([[!tails_ticket 6367]]).
+  </li>
+  <li>
+    The Persistent Volume Assistant does not error out as it should when asked
+    to delete an active persistent volume ([[!tails_ticket 6374]]).
+  </li>
+</ul>
+
+<p>All these issues have fixed pending in Git and should be fixed in Tails 0.21.</p>

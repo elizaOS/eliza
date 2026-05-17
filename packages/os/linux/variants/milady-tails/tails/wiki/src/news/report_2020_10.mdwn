@@ -1,0 +1,174 @@
+[[!meta title="Tails report for October, 2020"]]
+[[!meta date="Tue, 10 Nov 2020 21:44:16 +0000"]]
+[[!pagetemplate template="news.tmpl"]]
+
+[[!toc]]
+
+Releases
+========
+
+* [[Tails 4.12 was released on October 20|news/version_4.12]].
+
+* Tails 4.13 is [[scheduled for November 17|contribute/calendar]].
+
+The following changes were introduced in Tails 4.12:
+
+- Add a button to cancel an automated upgrade while downloading. ([[!tails_ticket 17310]])
+
+- Fix several internationalization issues in *Electrum*, *Tails Installer*, and
+  *Tails Upgrader*. ([[!tails_ticket 17958]], [[!tails_ticket 17758]], and
+  [[!tails_ticket 17961]])
+
+- Anonymize URLs in the technical details provided by *WhisperBack*.
+  ([[!tails_ticket 17147]])
+
+Code
+====
+
+- Good progress on the upgrade to Thunderbird 78
+  ([[!tails_ticket 17148]], [[!tails_ticket 17147]])
+
+- Worked together with our Help Desk to improve our collaboration and focus on
+  issues that will make a difference for many Tails users.
+
+- Resumed work on automating our manual release quality assurance.
+
+- Re-enabled TCP timestamps
+  ([[!tails_ticket 17491]])
+
+- Added buttons to restart Tails at the end of creating the Persistent Storage
+  ([[!tails_ticket 16384]])
+
+- Dropped obsolete code for read-only persistence
+  ([[!tails_ticket 17972]])
+
+- Fixed tails-installer failing to operate in Turkish
+  ([[!tails_ticket 17576]])
+
+- Anti-Test for ICMP dropping on tor_enforcement fails
+  ([[!tails_ticket 17848]])
+
+- Document --keep-snapshots in our test doc
+  ([[!tails_ticket 17802]])
+
+- Avoid mirrors and rsync.lizard running out of disk space during the release process when upgrades to a beta/RC are present
+  ([[!tails_ticket 17944]])
+
+- Migrate deb.tails.boum.org APT source to v3 onion
+  ([[!tails_ticket 17937]])
+
+- Regression with Intel Corporation [8086:22b0] and [8086:22b1] GPU since 4.9
+  ([[!tails_ticket 17953]])
+
+- Evaluate Debian packages maintenance setup
+  ([[!tails_ticket 17765]])
+
+- Tor Browser displays an "Update Failed" pop-up
+  ([[!tails_ticket 17159]])
+
+- All branches FTBFS since Thunderbird 78 reached the Buster security repo
+  ([[!tails_ticket 17962]])
+
+- Move custom software to our main Git repository
+  ([[!tails_ticket 7036]])
+
+- Move WhisperBack source to our main Git repository
+  ([[!tails_ticket 16936]])
+
+Hot topics on our help desk
+===========================
+
+- A lot of people reached the helpdesk at the start of the month worried about JavaScript not being disabled when Tor Browser is in safest mode: [NoScript is doing that job now](https://gitlab.torproject.org/tpo/applications/tor-browser/-/issues/40082), [as intended](https://gitlab.torproject.org/tpo/applications/tor-browser/-/issues/33613). ([[!tails_ticket 17963]])
+
+- Keyboard and touchpad are not working anymore on some Acer and Asus laptops. ([[!tails_ticket 17955]])
+
+- Tails cannot start with some new Intel cards. ([[!tails_ticket 17953]])
+
+- Tails Installer does not allow upgrade in languages that have a translation for the 'Clone the current Tails' string. ([[!tails_ticket 17982]])
+
+Infrastructure
+==============
+
+- We started experimenting with GitLab CI
+  ([[!tails_gitlab tails/sysadmin/-/issues/17740]])
+
+- We upgraded to Debian 10 ("Buster") the nodes that run automated tests on
+  Tails images in our CI ([[!tails_gitlab tails/sysadmin/-/issues/17731]])
+
+Funding
+=======
+
+### Grants
+
+- Our application to [RIPE NCC](https://www.ripe.net/publications/news/announcements/ripe-ncc-community-project-fund-2020-recipients-announced)
+  on improving Tails for censorship circumvention was approved.
+
+- Our applications to Prototype Fund in March and Code Lutins were rejected.
+
+### Donation process
+
+- We analyzed the results of the A/B testing on the new display of "one- time"
+  and "monthly".
+
+  The new version leads to more donation attempts AND less cancellations in the
+  attempt. The new version is live on the website for everybody now.
+
+### Donation campaign
+
+- We launched the donation campaign!
+
+- We started a database of problems reported by donors, as a way of
+  gathering data whenever we will want to improve on the most pressing
+  issues.
+
+- The only metrics that we can gather right now is donations in
+  cryptocurrencies.
+
+  So far we've had +62% donations in Bitcoin (266, 6.9k€) and +205%
+  donations in Monero (156, 2.2k€).
+
+Translations
+============
+
+- We improved the staging website build process.
+
+- We changed the maintainers email contact from tails-translations@boum.org to
+  tails-weblate@boum.org, to prevent confusion on matters related to
+  translations. ([[!tails_ticket 17734]]
+
+## All the website
+
+  - fr: 78% (5159) strings translated, 9% strings fuzzy
+  - es: 49% (3300) strings translated, 6% strings fuzzy
+  - de: 28% (1899) strings translated, 14% strings fuzzy
+  - it: 28% (1863) strings translated, 10% strings fuzzy
+  - fa: 21% (1396) strings translated, 13% strings fuzzy
+  - pt: 19% (1299) strings translated, 9% strings fuzzy
+
+## [[Core pages of the website|contribute/l10n_tricks/core_po_files.txt]]
+
+  - es: 83% (1791) strings translated, 6% strings fuzzy
+  - fr: 75% (1603) strings translated, 13% strings fuzzy
+  - it: 49% (1059) strings translated, 21% strings fuzzy
+  - de: 45% (972) strings translated, 23% strings fuzzy
+  - pt: 38% (821) strings translated, 15% strings fuzzy
+  - fa: 19% (425) strings translated, 15% strings fuzzy
+
+## Core pages of the website for languages not activated on the website yet
+
+  - zh_TW: 21% (461) strings translated, 13% strings fuzzy
+  - zh: 10% (222) strings translated, 8% strings fuzzy
+  - ru: 8% (181) strings translated, 7% strings fuzzy
+  - ca: 8% (174) strings translated, 7% strings fuzzy
+  - tr: 7% (171) strings translated, 7% strings fuzzy
+  - ar: 7% (164) strings translated, 8% strings fuzzy
+  - pl: 7% (165) strings translated, 7% strings fuzzy
+  - id: 6% (139) strings translated, 5% strings fuzzy
+  - sr_Latn: 5% (114) strings translated, 4% strings fuzzy
+
+Metrics
+=======
+
+* Tails has been started more than 947&#8239;750 times this month. This makes
+  30&#8239;572 boots a day on average.
+

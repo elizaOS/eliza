@@ -1,0 +1,317 @@
+# SOME DESCRIPTIVE TITLE
+# Copyright (C) YEAR Free Software Foundation, Inc.
+# This file is distributed under the same license as the PACKAGE package.
+# FIRST AUTHOR <EMAIL@ADDRESS>, YEAR.
+#
+msgid ""
+msgstr ""
+"Project-Id-Version: PACKAGE VERSION\n"
+"Report-Msgid-Bugs-To: tails-l10n@boum.org\n"
+"POT-Creation-Date: 2025-09-17 11:40+0200\n"
+"PO-Revision-Date: 2025-10-10 13:19+0000\n"
+"Last-Translator: xin <xin@riseup.net>\n"
+"Language-Team: ita <transitails@inventati.org>\n"
+"Language: it\n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+"Plural-Forms: nplurals=2; plural=n != 1;\n"
+"X-Generator: Weblate 5.13.2\n"
+
+#. type: Content of: outside any tag (error?)
+msgid "[[!meta robots=\"noindex\"]]"
+msgstr "[[!meta robots=\"noindex\"]]"
+
+#. type: Content of: <ol><li><p>
+msgid "Make sure that you have installed Tails using either:"
+msgstr "Assicurati di aver installato Tails usando o:"
+
+#. type: Content of: <ol><li><ul><li>
+msgid "[[<i>balenaEtcher</i> from macOS|install/mac#etcher]]"
+msgstr "[[<i>balenaEtcher</i> da macOS|install/mac#etcher]]"
+
+#. type: Content of: <ol><li><ul><li>
+msgid "[[<i>Rufus</i> from Windows|install/windows#rufus]]"
+msgstr "[[<i>Rufus</i> da Windows|install/windows#rufus]]"
+
+#. type: Content of: <ol><li><ul><li>
+msgid "[[<i>GNOME Disks</i> from Linux|install/linux#install]]"
+msgstr "[[<i>GNOME Disks</i> da Linux|install/linux#install]]"
+
+#. type: Content of: <ol><li><ul><li>
+msgid "[[the Linux command line|install/expert#install]]"
+msgstr "[[linea di comando di Linux|install/expert#install]]"
+
+#. type: Content of: <ol><li><p>
+msgid "Shut down the computer."
+msgstr "Spegni il computer."
+
+#. type: Content of: <ol><li><p>
+msgid "Shut down the computer while leaving the USB stick plugged in."
+msgstr "Spegni il computer lasciando inserita la chiavetta USB."
+
+#. type: Content of: <ol><li><p>
+msgid "Plug in the other Tails USB stick that you want to install from."
+msgstr ""
+"Inserisci l'altra chiavetta USB Tails dalla quale vuoi eseguire "
+"l'installazione."
+
+#. type: Content of: <ol><li><p>
+msgid "Plug in your Tails USB stick."
+msgstr "Inserisci la tua chiavetta USB con Tails."
+
+#. type: Content of: <ol><li><p>
+msgid "Switch on the computer."
+msgstr "Riaccendi il computer."
+
+#. type: Content of: <ol><li><p>
+msgid ""
+"Immediately press-and-hold the <b>Option</b> key (<b>⌥</b> or <b>Alt</b> "
+"key) when the startup sound is played."
+msgstr ""
+"Accendi il computer e immediatamente premi e mantieni premuto il tasto "
+"<b>Option</b>(<b>⌥</b> o tasto <b>Alt</b> ) quando viene riprodotto il suono "
+"di avvio."
+
+#. type: Content of: <ol><li><p>
+msgid "Hold the key pressed until a list of possible startup disks appears."
+msgstr ""
+"Tieni premuto il tasto finché non appare un elenco di possibili dischi di "
+"avvio."
+
+#. type: Content of: <ol><li><p>
+msgid ""
+"[[!img install/inc/screenshots/mac_option_key.png link=\"no\" alt=\"'Option' "
+"or 'alt' key in the bottom left of Mac keyboard\"]]"
+msgstr ""
+"[[!img install/inc/screenshots/mac_option_key.png link=\"no\" alt=\"Tasto "
+"'option' o 'alt' in basso a sinistra nella tastiera Mac\"]]"
+
+#. type: Content of: <ol><li><p>
+msgid ""
+"Choose the USB stick and press <b>Enter</b>. The USB stick appears as an "
+"external hard disk and might be labeled <b>EFI Boot</b> or <b>Windows</b> "
+"like in the following screenshot:"
+msgstr ""
+"Seleziona la chiavetta USB e premi <b>Invio</b>. La chiavetta USB appare "
+"come un disco rigido esterno e può avere l'etichetta <b>EFI Boot</b> o "
+"<b>Windows</b> come nella seguente immagine da schermo:"
+
+#. type: Content of: <ol><li><p>
+msgid ""
+"[[!img install/inc/screenshots/mac_startup_usb.png class=\"screenshot\" "
+"alt=\"Screen with the logo of an internal hard disk labeled 'Macintosh HD' "
+"and an external hard disk labelled 'Windows' (selected)\"]]"
+msgstr ""
+"[[!img install/inc/screenshots/mac_startup_usb.png class=\"screenshot\" alt="
+"\"Schermo con il logo di un disco rigido interno etichettato 'Macintosh HD' "
+"e un disco rigido esterno etichettato 'Windows' (selezionato)\"]]"
+
+#. type: Content of: <ol><li><div><p>
+msgid "If the USB stick does not appear in the list of startup disks:"
+msgstr "Se la chiavetta USB non compare nell'elenco dei dischi di avvio:"
+
+#. type: Content of: <ol><li><div>
+msgid ""
+"[[!inline pages=\"install/inc/steps/basic_troubleshooting.inline\" "
+"raw=\"yes\" sort=\"age\"]]"
+msgstr ""
+"[[!inline pages=\"install/inc/steps/basic_troubleshooting.inline.it\" "
+"raw=\"yes\" sort=\"age\"]]"
+
+#. type: Content of: <ol><li><div><p>
+msgid ""
+"If your computer still does not display the Boot Loader, it might currently "
+"be impossible to start Tails on your computer."
+msgstr ""
+"Se il computer non visualizza ancora il Boot Loader, potrebbe essere "
+"impossibile avviare Tails sul tuo computer."
+
+#. type: Content of: <ol><li><p>
+msgid "If your Mac displays the following error:"
+msgstr "Se il tuo Mac visualizza l'errore seguente:"
+
+#. type: Content of: <ol><li><p>
+msgid ""
+"Security settings do not allow this Mac to use an external startup disk."
+msgstr ""
+"Le impostazioni di sicurezza non consentono a questo Mac di utilizzare un "
+"disco di avvio esterno."
+
+#. type: Content of: <ol><li><p>
+msgid ""
+"Then you have to change the settings of the <em>Startup Security Utility</"
+"em> of your Mac to authorize starting from Tails."
+msgstr ""
+"Quindi devi modificare le impostazioni dell'<em>Utilità di sicurezza "
+"all'avvio</em> del tuo Mac per autorizzare l'avvio di Tails."
+
+#. type: Content of: <ol><li><p>
+msgid "To open <em>Startup Security Utility</em>:"
+msgstr "Per aprire l'<em>Utilità di sicurezza all'avvio</em>:"
+
+#. type: Content of: <ol><li><ol><li><p>
+msgid ""
+"Turn on your Mac, then press and hold <strong>Command(⌘)+R</strong> "
+"immediately after you see the Apple logo. Your Mac starts up from <a "
+"href=\"https://support.apple.com/kb/HT201314\">macOS Recovery</a>."
+msgstr ""
+"Accendi il Mac, quindi tieni premuto <strong>Comando(⌘)+R</strong> subito "
+"dopo aver visto il logo Apple. Il Mac si avvia da <a href=\"https://"
+"support.apple.com/kb/HT201314\">Ripristino macOS</a>."
+
+#. type: Content of: <ol><li><ol><li><p>
+msgid ""
+"When you see the macOS <em>Utilities</em> window, choose "
+"<strong>Utilities&nbsp;▸ Startup Security Utility</strong> from the menu bar."
+msgstr ""
+"Quando viene visualizzata la finestra <em>Utilità</em> di macOS, scegli "
+"<strong>Utility&nbsp;▸ Utilità di sicurezza all'avvio</strong> dalla barra "
+"del menu."
+
+#. type: Content of: <ol><li><ol><li><p>
+msgid ""
+"When you are asked to authenticate, click <strong>Enter macOS Password</"
+"strong>, then choose an administrator account and enter its password."
+msgstr ""
+"Quando ti viene richiesto di autenticarti, clicca <strong>Inserisci password "
+"macOS</strong>, quindi scegli un account di amministratore e inserisci la "
+"relativa password."
+
+#. type: Content of: <ol><li><p>
+msgid ""
+"[[!img install/inc/screenshots/startup-security-utility.png "
+"class=\"screenshot\" alt=\"Startup Security Utility\"]]"
+msgstr ""
+"[[!img install/inc/screenshots/startup-security-utility.png alt="
+"\"Avvio dell'utilità di sicurezza\"]]"
+
+#. type: Content of: <ol><li><p>
+msgid "In the <em>Startup Security Utility</em>:"
+msgstr "A l' <em>Avvio dell'utilità di sicurezza</em>:"
+
+#. type: Content of: <ol><li><ul><li><p>
+msgid ""
+"Choose <strong>No Security</strong> in the <strong>Secure Boot</strong> "
+"section."
+msgstr ""
+"Scegli <strong>Nessuna Sicurezza</strong> nella sezione <strong>Avvio "
+"Sicuro</strong>."
+
+#. type: Content of: <ol><li><ul><li><p>
+msgid ""
+"Choose <strong>Allow booting from external media</strong> in the "
+"<strong>External Boot</strong>."
+msgstr ""
+"Scegli <strong>Consenti l'avvio da supporti esterni</strong> in "
+"<strong>Avvio Esterno</strong>."
+
+#. type: Content of: <ol><li><div><p>
+msgid ""
+"To still protect your Mac from starting on untrusted external media, you can "
+"set a firmware password, available on macOS Mountain Lion or later. A "
+"firmware password prevents users who do not have the password from starting "
+"up from any media other than the designated startup disk."
+msgstr ""
+"Per proteggere ancora il tuo Mac dall'avvio da supporti esterni non "
+"affidabili, è possibile impostare una password del firmware, disponibile su "
+"macOS Mountain Lion o versioni successive. La password del firmware "
+"impedisce agli utenti che non ne sono in possesso di avviare il Mac da un "
+"supporto diverso dal disco di avvio designato."
+
+#. type: Content of: <ol><li><div><p>
+msgid ""
+"<strong>If you forget your firmware password you will require an in-person "
+"service appointment with an Apple Store or Apple Authorized Service Provider."
+"</strong>"
+msgstr ""
+"<strong>Se dimentichi la password del firmware, è necessario un appuntamento "
+"di persona con un Apple Store o un fornitore di servizi autorizzato Apple.</"
+"strong>"
+
+#. type: Content of: <ol><li><p>
+msgid "Read more on Apple Support about:"
+msgstr "Ulteriori informazioni su Supporto Apple:"
+
+#. type: Content of: <ol><li><ul><li>
+msgid ""
+"<a href=\"https://support.apple.com/en-us/HT208198\">Startup Security "
+"Utility</a>"
+msgstr ""
+"<a href=\"https://support.apple.com/en-us/HT208198\">Avvio dell'utilità di "
+"sicurezza</a>"
+
+#. type: Content of: <ol><li><ul><li>
+msgid ""
+"<a href=\"https://support.apple.com/en-us/HT204455\">How to set a firmware "
+"password on your Mac</a>"
+msgstr ""
+"<a href=\"https://support.apple.com/en-us/HT204455\">Come impostare una "
+"password del firmware sul Mac</a>"
+
+#. type: Content of: <ol><li><p>
+msgid ""
+"If the computer starts on Tails, the Boot Loader appears and Tails starts "
+"automatically after 4 seconds."
+msgstr ""
+"Se il computer si avvia con Tails, appare il Boot Loader e Tails si avvia "
+"automaticamente dopo 4 secondi."
+
+#. type: Content of: <ol><li><p>
+msgid ""
+"[[!img install/inc/screenshots/grub.png class=\"screenshot\" alt=\"Black "
+"screen ('GNU GRUB') with Tails logo and 3 options: 'Tails' and 'Tails "
+"(Troubleshooting Mode)' and 'Tails (External Hard Disk)'.\"]]"
+msgstr ""
+"[[!img install/inc/screenshots/grub.png class=\"screenshot\" alt=\"Schermo "
+"nero ('GNU GRUB') con il logo Tails e 3 opzioni: 'Tails' e 'Tails ("
+"Troubleshooting Mode)' e 'Tails (External Hard Disk)'.\"]]"
+
+#. type: Content of: <ol><li><ul><li><p>
+msgid ""
+"The <b>Troubleshooting Mode</b> entry disables some features of the Linux "
+"kernel and might work better on some computers. You can try this option if "
+"you think you are experiencing hardware compatibility errors while starting "
+"Tails."
+msgstr ""
+"La voce <b>Troubleshooting Mode</b> disabilita alcune funzionalità del "
+"kernel Linux e potrebbe funzionare meglio su alcuni computer. Puoi provare "
+"questa opzione se ritieni che si verifichino errori di compatibilità "
+"hardware durante l'avvio di Tails."
+
+#. type: Content of: <ol><li><ul><li><p>
+msgid ""
+"The <b>External Hard Disk</b> entry makes it possible to [[start from an "
+"external hard disk|doc/advanced_topics/external_hard_disk]] and some "
+"[[problematic USB sticks|support/known_issues#problematic-usb-stick]]."
+msgstr ""
+"La voce <b>External Hard Disk</b> permette di ["
+"[avviare da un disco rigido esterno|doc/advanced_topics/external_hard_disk]] "
+"e alcune "
+"[[chiavette USB problematiche|support/known_issues#problematic-usb-stick]]."
+
+#, fuzzy
+#~| msgid ""
+#~| "[[!toggleable id=\"report-toggle-1\" text=\"\"\" <span class=\"hide\">[[!"
+#~| "toggle id=\"report-toggle-1\" text=\"\"]]</span> [[!inline "
+#~| "pages=\"install/inc/steps/reporting.inline\" raw=\"yes\"]] \"\"\"]]"
+#~ msgid ""
+#~ "[[!toggleable id=\"report-toggle-1\" text=\"\"\" <span class=\"hide\">[[!"
+#~ "toggle id=\"report-toggle-1\" text=\"\"]]</span>"
+#~ msgstr ""
+#~ "[[!toggleable id=\"report-toggle-1\" text=\"\"\" <span class=\"hide\">[[!"
+#~ "toggle id=\"report-toggle-1\" text=\"\"]]</span> [[!inline "
+#~ "pages=\"install/inc/steps/reporting.inline.it\" raw=\"yes\"]] \"\"\"]]"
+
+#, fuzzy
+#~| msgid ""
+#~| "[[!toggleable id=\"report-toggle\" text=\"\"\" <span class=\"hide\">[[!"
+#~| "toggle id=\"report-toggle\" text=\"\"]]</span> [[!inline pages=\"install/"
+#~| "inc/steps/reporting.inline\" raw=\"yes\"]] \"\"\"]]"
+#~ msgid ""
+#~ "[[!toggleable id=\"report-toggle\" text=\"\"\" <span class=\"hide\">[[!"
+#~ "toggle id=\"report-toggle\" text=\"\"]]</span>"
+#~ msgstr ""
+#~ "[[!toggleable id=\"report-toggle\" text=\"\"\" <span class=\"hide\">[[!"
+#~ "toggle id=\"report-toggle\" text=\"\"]]</span> [[!inline pages=\"install/"
+#~ "inc/steps/reporting.inline.it\" raw=\"yes\"]] \"\"\"]]"

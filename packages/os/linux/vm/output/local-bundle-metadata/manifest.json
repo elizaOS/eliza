@@ -1,0 +1,63 @@
+{
+  "artifacts": [
+    {
+      "architecture": "x86_64",
+      "boot_mode": "bios",
+      "exists": false,
+      "format": "qcow2",
+      "name": "qemu",
+      "path": "disk-base.qcow2",
+      "sha256": null,
+      "size_bytes": null
+    }
+  ],
+  "bundle_id": "usbeliza-vm",
+  "generated_at": "2026-05-16T05:27:06Z",
+  "hardware_requirements": {
+    "qemu": {
+      "notes": "The scripted harness in scripts/boot.sh requires Linux KVM. Metadata generation does not.",
+      "recommended": [
+        "KVM on Linux or HVF on Intel macOS"
+      ],
+      "requires": [
+        "x86_64 CPU",
+        "QEMU"
+      ]
+    },
+    "utm": {
+      "notes": "Apple Silicon can emulate this x86_64 image, but that is slower and not the CI path.",
+      "recommended": [
+        "Intel Mac for x86_64 virtualization"
+      ],
+      "requires": [
+        "macOS",
+        "UTM"
+      ]
+    },
+    "virtualbox": {
+      "notes": "This x86_64 appliance is not a native Apple Silicon VirtualBox target.",
+      "recommended": [
+        "Intel/AMD Linux, Windows, or macOS host"
+      ],
+      "requires": [
+        "VirtualBox",
+        "x86_64 host CPU with VT-x or AMD-V"
+      ]
+    }
+  },
+  "host": {
+    "machine": "arm64",
+    "system": "Darwin"
+  },
+  "quickstarts": {
+    "qemu": "quickstarts/qemu.md",
+    "utm": "quickstarts/utm.md",
+    "virtualbox": "quickstarts/virtualbox.md"
+  },
+  "schema_version": 1,
+  "source": {
+    "git_revision": "6cee511d9a7d2f9763f60ed5306fde6efeaf189e",
+    "repository_path": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/os/linux/vm"
+  },
+  "version": "dev"
+}

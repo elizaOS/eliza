@@ -1,0 +1,59 @@
+#!/bin/bash
+
+set -eu
+set -o pipefail
+
+usage() {
+    echo "Usage:"
+    echo "  Check the entire codebase:"
+    echo "   $0"
+    echo "  Check Python files changed since REF"
+    echo "   $0 REF [CMD]"
+    echo "  Pass additional options to ruff:"
+    echo "   $0 REF [CMD] --output-format=junit"
+    echo "CMD is optional, and can be check,format,fix (default: check)"
+}
+
+conf="$(dirname "$0")/ruff.toml"
+
+if [ "$#" -eq 0 ]; then
+    ruff "--config=$conf" check .
+    exit $?
+elif [ "$#" -lt 1 ]; then
+    echo "Unsupported usage" >&2
+    usage >&2
+    exit 2
+fi
+
+REF="$(git rev-parse "$1")"
+shift 1
+
+if [ "${1:-}" = "check" ] || [ "${1:-}" = "format" ]; then
+    RUFF_CMD=("$1")
+    shift 1
+elif [ "${1:-}" = "fix" ]; then
+    RUFF_CMD=("check" "--fix")
+    shift 1
+else
+    RUFF_CMD=("check")
+fi
+
+all_files() {
+    # changed_files
+    git diff --name-only "${REF}"...
+    # uncommitted_files
+    git diff HEAD --name-only
+    # untracked_files
+    git ls-files --others --exclude-standard
+}
+
+files_to_check=$(all_files | "$(dirname "$0")/is-file-type" filter python)
+
+# Remove the trailing newline (if any)
+files_to_check="${files_to_check%$'\n'}"
+
+if [ -z "${files_to_check}" ]; then
+    exit 0
+fi
+
+echo "${files_to_check}" | xargs -d '\n' ruff "${RUFF_CMD[@]}" "--config=$conf" "$@"

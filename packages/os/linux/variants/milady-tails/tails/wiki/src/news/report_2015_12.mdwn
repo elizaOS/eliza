@@ -1,0 +1,114 @@
+[[!meta title="Tails report from September to December 2015"]]
+[[!meta date="Sat, 13 Feb 2016 20:05:22 +0000"]]
+[[!pagetemplate template="news.tmpl"]]
+
+The last report about august has been published a short while ago and now we present to you the combined reports from September to December 2015. We were quite busy and didn't find the time to write separate reports since August 2015.
+This report covers the last third of 2015.
+
+Releases
+========
+
+* [[Tails 1.6 was released on September 22, 2015.|news/version_1.6]] (major release)
+
+* [[Tails 1.7 was released on November 3, 2015.|news/version_1.7]] (major release)
+
+* [[Tails 1.8 was released on December 15, 2015.|news/version_1.8]] (major release)
+
+* [[Tails 1.8.1 was released on December 19, 2015.|news/version_1.8.1]] (minor release)
+
+Code
+====
+
+For details, see each release announcement. Notable changes include:
+
+* 1.7: You can now start Tails in [[offline mode|doc/first_steps/welcome_screen#additional]]
+       to disable all networking for additional security. Doing so can be
+       useful when working on sensitive documents.
+
+* 1.8: *Icedove*, a
+       rebranded version of *Mozilla Thunderbird*, is
+       now the official email client in Tails, replacing
+       *Claws Mail*.
+       As with Claws, Icedove allows you to encrypt and decrypt emails easily and sends all
+       traffic through the Tor network.
+
+Infrastructure
+==============
+
+  - We were able to deploy automated tests of ISO images built
+    automatically for our main release branches in the beginning of
+    October.
+
+  - The new snapshot system improved robustness of our test suite
+    noticeably, and reduced the amount of time needed for a full run
+    with at least 30%.
+
+User experience
+===============
+
+  - Alan wrote a prototype for a new version of Tails Greeter and we
+    conducted user testing.
+
+  - Lunar started a discussion on redesigning the process to connect to a
+    network and configure Tor.
+
+  - sajolida proposed some improvements to WhisperBack regarding language
+    flagging and OpenPGP keys.
+
+Documentation and website
+=========================
+
+- We published our [[Installation Assistant|install]] to make it easier
+  to get started with Tails.
+
+- Giorgio Maone wrote a Firefox add-on
+  to verify the Tails ISO image automatically.
+
+- We published a statement [[about creating Tails derivatives|contribute/derivatives]].
+
+Website
+=======
+
+* The Tails website is now available in Farsi. Thanks to all Farsi translators and the [LocalizationLab](http://localizationlab.org).
+
+Outreach
+========
+
+* Syl held a Tails Workshop at Bazar du Libre on November 22 in Toulouse, France.
+
+* We had a table at 32C3, in Hamburg, Germany.
+
+Press and Testimonials
+======================
+
+* 2015-09-24: Open Source Privacy: Tails OS Issues Security Fixes and New Release by Christopher Tozzi on The VAR Guy.
+
+* 2015-10-05: Be completely anonymous online by Kim Komando in The Post and Courier.
+
+Metrics
+=======
+
+In September 2015:
+
+* Tails has been started more than 473,295 times in September. This makes 15,268 boots a day on average.
+* 29,135 downloads of the OpenPGP signature of Tails ISO from our website.
+* 90 bug reports were received through WhisperBack.
+
+In October 2015:
+
+* Tails has been started more than 500,551 times in October. This makes 16,147 boots a day on average.
+* 25,790 downloads of the OpenPGP signature of Tails ISO from our website.
+* 71 bug reports were received through WhisperBack.
+
+In November 2015:
+
+* Tails has been started more than 540,362 times in November. This makes 18,012 boots a day on average.
+* 34,881 downloads of the OpenPGP signature of Tails ISO from our website.
+* 95 bug reports were received through WhisperBack.
+
+In December 2015:
+
+* Tails has been started more than 546,366 times in December. This makes 17,6245 boots a day on average.
+* 35,853 downloads of the OpenPGP signature of Tails ISO from our website.
+* 109 bug reports were received through WhisperBack.
+* sajolida published statistics on the time before upgrade

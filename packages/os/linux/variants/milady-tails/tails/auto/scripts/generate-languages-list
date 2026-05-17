@@ -1,0 +1,23 @@
+#! /bin/sh
+
+set -e
+set -u
+set -o pipefail
+
+echo "Generating list of supported languages"
+
+OUTFILE="config/chroot_local-includes/usr/share/tails/greeter/supported_languages"
+
+# Add our tier-1 supported languages
+#
+# This list has to be kept in sync' with our list of tier-1 languages:
+# https://tails.net/contribute/how/translate/#tier-1-languages
+LANG_CODES="ar de en es fa fr hi it pt ru tr zh"
+
+# Add the languages which have translations in Tails
+TRANSLATED="$(find po -name "*.po" -exec basename {} \; |
+    sed -e "s/\.po//" -e "s/\(.*\)_.*/\1/g")"
+LANG_CODES="${LANG_CODES} ${TRANSLATED}"
+
+# Write the list to the output file
+echo "${LANG_CODES}" | tr " " "\n" | sort | uniq | tr "\n" " " >"${OUTFILE}"

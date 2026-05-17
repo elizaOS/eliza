@@ -1,0 +1,215 @@
+[[!meta title="Tails report for December, 2020"]]
+[[!meta date="Fri, 08 Jan 2021 12:34:56 +0000"]]
+[[!pagetemplate template="news.tmpl"]]
+
+[[!toc]]
+
+In memoriam of Karsten Loesing
+==============================
+
+We join the Tor project in [mourning Karsten
+Loesing](https://blog.torproject.org/in-memoriam-of-karsten-loesing).
+Our sincere condolences to Karsten's family and colleagues.
+
+Those of us who were lucky enough to cross Karsten's path
+remember him as a very kind, thoughtful, and smart person.
+
+Rest in peace, Karsten.
+
+Releases
+========
+
+* [[Tails 4.14 was released on December 15|news/version_4.14]].
+
+* Tails 4.15 is [[scheduled for January 26|contribute/calendar]].
+
+The following changes were introduced in Tails 4.15:
+
+- Add support for the Ledger hardware wallets in *Electrum*.
+  ([[!tails_ticket 15353]])
+
+- Remove the *Unifont* font. ([[!tails_mr 263]])
+
+- Fix Additional Software by updating the APT key for
+  `deb.torproject.org`. ([[!tails_ticket 18042]])
+
+- Fix changing the administration password stored in the Persistent
+  Storage. ([[!tails_ticket 18018]])
+
+- Fix opening the Persistent Storage of another Tails USB stick in
+  the *Files* browser. ([[!tails_ticket 18050]])
+
+- Restore automatically a *GnuPG* public keyring from its backup when it
+  gets corrupt. ([[!tails_ticket 17807]])
+
+🎉 New core developer 🎂
+========================
+
+Today, we celebrate the arrival in our Foundations
+Team of a new member:
+boyska. His skills and experience in operating systems, software development,
+and collective projects will:
+
+ - Accelerate development of new features, user experience improvements, and
+   bug fixes.
+
+ - Make our day-to-day maintenance work more sustainable.
+
+   This work has no visible impact most of the time, except that Tails is still
+   alive after more than a decade, and here to stay!
+
+ - Decrease our reliance on a tiny number of key persons.
+
+   This is one important step we're taking, among others, towards making Tails
+   a healthier project.
+
+> I'm boyska, a fellow who always loved computers. When I realized the
+> profound social implications of technology, I tried to make my part:
+> that's how I got involved with free software, security and hacking in
+> general.
+> A post-it note in my brain remembers me that computing should be fun,
+> not scary.
+
+
+Additionally, we would like to thank:
+
+ - the thousands of people whose donation allowed us to fund this new position
+
+   Please consider donating today to fight surveillance and censorship.
+
+ - the dozens of people who applied to this [[job offer|jobs/Linux_generalist]]
+
+   It's been truly heart-warming to see so many great applicants
+   interested in working with us.
+
+Welcome, boyska! :)
+
+Code
+====
+
+- We implemented a mechanism for adding a "Don't Show Again" button to some
+  notifications. We'll try it out in Tails 4.15 for the warning displayed when
+  starting Tails in a virtual machine; then we'll iterate from there.
+
+- We finished porting our Python code to Python 3. Yeah!
+
+- We made plans for rewriting _Persistent Storage_ in Python, making it
+  compatible with Wayland, and redesigning its UX from scratch.
+
+Documentation and website
+=========================
+
+- Started rewriting /doc/about/warning:
+
+  * Samuel DiBella rewrote the section about contextual identities
+    ([[!tails_ticket 17882]])
+
+  * We rewrote the sections about confirmation attacks and global
+    adversaries ([[!tails_ticket 17869]])
+
+- Added an FAQ about "[[Is it safe to use an older version of
+  Tails?|support/faq#older-version]]" ([[!tails_ticket 18001]])
+
+- Improved our [[security|security]] page and replaced "hole" by "vulnerability" everywhere
+  on our website, as per our style guide. ([[!tails_ticket 18032]])
+
+User experience
+===============
+
+- Started analyzing the search queries on our website,
+  following a [methodology by Susan Farrell](https://www.nngroup.com/articles/search-log-analysis/).
+  ([[!tails_ticket 11649]])
+
+- Started preparing the redesign of the Persistent Storage that we'll work on
+  in January. ([[!tails_ticket 15572]])
+
+- Investigated what it would take to stop distributing ISO images:
+
+  * [[!tails_ticket 18047]]: Users unintentionally install ISO to USB instead of the .img
+  * [[!tails_ticket 18054]]: Distribute USB images by default for all virtual machines
+  * [[!tails_ticket 18055]]: Stop distributing ISO images
+
+- Added some depth to the buttons on our website. ([[!tails_ticket 15111]])
+
+Funding
+=======
+
+Grants
+------
+
+- Our proposal to the UXFund to work on a replacement for Tor Launcher
+  was approved buy scaled down by 20%.
+
+Donations
+---------
+
+- Received 57.8k€ from 88 donations at CCT since the beginning of the
+  campaign.
+
+  It's 70% more donations, that's the important part, and 599%
+  more money thanks to a 50k€ donation from some crypto trading company, that's
+  the big cherry on top of the cake!
+
+- Blogged about our [[achievements in 2020|news/achievements_in_2020]].
+
+Sponsors
+--------
+
+- Renamed "partners" as "sponsors" after DeepOnion listed Tails as their
+  partner on their website.
+
+  The word "partners" implies reciprocity and a deeper relationship,
+  while the word "sponsor" doesn't and is more accurate, honest, and
+  common.
+
+- Got invited to the [Lifetime Raffle](https://proton.me/blog/lifetime-account-auction-2020)
+  of ProtonMail.
+
+Outreach
+========
+
+Past events
+-----------
+
+* Tails and Tor were presented (among other tools) to journalism students at
+  [Sciences Po Rennes](http://www.sciencespo-rennes.fr/en/) (Rennes, France) as
+  part of their digital safety lessons.
+
+Translations
+============
+
+## All the website
+
+  - fr: 79% (5378) strings translated, 7% strings fuzzy
+  - es: 48% (3273) strings translated, 6% strings fuzzy
+  - it: 28% (1945) strings translated, 9% strings fuzzy
+  - de: 27% (1829) strings translated, 14% strings fuzzy
+  - fa: 20% (1359) strings translated, 12% strings fuzzy
+  - pt: 18% (1266) strings translated, 9% strings fuzzy
+
+## [[Core pages of the website|contribute/l10n_tricks/core_po_files.txt]]
+
+  - es: 82% (1741) strings translated, 6% strings fuzzy
+  - fr: 79% (1676) strings translated, 10% strings fuzzy
+  - it: 54% (1151) strings translated, 20% strings fuzzy
+  - de: 44% (935) strings translated, 24% strings fuzzy
+  - pt: 38% (818) strings translated, 14% strings fuzzy
+  - fa: 19% (407) strings translated, 15% strings fuzzy
+
+## Core pages of the website for languages not activated on the website yet
+
+  - zh_TW: 21% (451) strings translated, 14% strings fuzzy
+  - zh: 10% (218) strings translated, 8% strings fuzzy
+  - tr: 7% (155) strings translated, 7% strings fuzzy
+  - ca: 7% (153) strings translated, 8% strings fuzzy
+  - ru: 7% (152) strings translated, 7% strings fuzzy
+  - pl: 7% (150) strings translated, 6% strings fuzzy
+  - ar: 7% (146) strings translated, 8% strings fuzzy
+  - id: 5% (115) strings translated, 5% strings fuzzy
+  - sr_Latn: 4% (93) strings translated, 4% strings fuzzy
+
+Metrics
+=======
+
+* Tails has been started more than 978&#8239;192 times this month. This makes 31&#8239;554 boots a day on average.
+

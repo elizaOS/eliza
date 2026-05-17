@@ -1,0 +1,20 @@
+#!/bin/sh
+
+set -e
+
+echo "Deleting unused AppArmor profiles"
+
+(
+   cd /etc/apparmor.d
+   rm \
+       apache2.d/phpsysinfo     \
+       sbin.klogd               \
+       sbin.syslogd             \
+       sbin.syslog-ng           \
+       usr.sbin.dnsmasq         \
+       usr.sbin.identd          \
+       usr.sbin.mdnsd           \
+       usr.sbin.nmbd            \
+       usr.sbin.nscd            \
+       usr.sbin.smb*
+)

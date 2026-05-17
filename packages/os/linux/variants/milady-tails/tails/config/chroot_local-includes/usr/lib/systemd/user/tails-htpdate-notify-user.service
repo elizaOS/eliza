@@ -1,0 +1,11 @@
+[Unit]
+Description=Notify the user if htpdate failed
+Documentation=https://tails.net/contribute/design/Time_syncing/
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/lib/tails-htp-notify-user
+RemainAfterExit=yes
+
+[Install]
+WantedBy=desktop.target

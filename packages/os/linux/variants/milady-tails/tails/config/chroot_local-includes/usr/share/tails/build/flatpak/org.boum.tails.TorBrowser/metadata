@@ -1,0 +1,28 @@
+[Application]
+name=org.boum.tails.TorBrowser
+runtime=org.boum.tails.Platform/x86_64/stable
+sdk=org.boum.tails.Platform/x86_64/stable
+command=/usr/bin/tor-browser
+
+[Context]
+shared=network;ipc;
+sockets=x11;wayland;pulseaudio;fallback-x11;
+devices=dri;
+filesystems=xdg-config/kdeglobals:ro;
+
+[Session Bus Policy]
+com.canonical.AppMenu.Registrar=talk
+org.kde.kconfig.notify=talk
+org.kde.KGlobalSettings=talk
+org.a11y.Bus=talk
+
+[Environment]
+GTK_USE_PORTAL=1
+
+[Extension org.torproject.torbrowser_launcher.Debug]
+directory=lib/debug
+autodelete=true
+no-autodownload=true
+
+[Build]
+built-extensions=org.torproject.torbrowser_launcher.Debug;org.torproject.torbrowser_launcher.Sources;

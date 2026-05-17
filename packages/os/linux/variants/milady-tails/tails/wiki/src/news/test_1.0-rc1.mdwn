@@ -1,0 +1,83 @@
+[[!meta title="Call for testing: 1.0~rc1"]]
+
+[[!meta date="Mon, 18 Apr 2014 12:00:00 +0000"]]
+[[!pagetemplate template="news.tmpl"]]
+
+You can help Tails! The first release candidate for the upcoming version
+1.0 is out. Please test it and see if it works for you.
+
+[[!toc levels=1]]
+
+How to test Tails 1.0~rc1?
+=============================
+
+1. **Keep in mind that this is a test image.** We have made sure
+   that it is not broken in an obvious way, but it might still contain
+   undiscovered issues.
+
+2. Either try the <a href="#automatic_upgrade">automatic upgrade</a>, or
+   download the ISO image and its signature:
+
+   <a class="download-file" href="" >Tails 1.0~rc1 ISO image</a>
+
+   Tails 1.0~rc1 signature
+
+1. Verify the ISO image.
+
+1. Have a look at the list of [[longstanding known
+   issues|support/known_issues]].
+
+1. Test wildly!
+
+If you find anything that is not working as it should, please [[report to
+us|doc/first_steps/whisperback]]! Bonus points if you check if it is a
+[[longstanding known issue|support/known_issues]].
+
+<div id="automatic_upgrade"></a>
+
+How to automatically upgrade from 0.23?
+=======================================
+
+These steps allow you to automatically upgrade a device installed with
+*Tails Installer* from Tails 0.23 to Tails 1.0~rc1.
+
+1. Start Tails 0.23 and [[set an administration
+   password|doc/first_steps/welcome_screen/administration_password]].
+
+1. Run this command in a *Root Terminal*
+   to select the "alpha" upgrade channel
+   and start the upgrade:
+
+       echo TAILS_CHANNEL=\"alpha\" >> /etc/os-release && \
+            tails-upgrade-frontend-wrapper
+
+1. Once the upgrade has been installed, restart Tails and choose
+   **System&nbsp;&#x25B8; About Tails**
+   to confirm that the running system is Tails 1.0~rc1.
+
+What's new since 0.23?
+======================
+
+* Bugfixes
+  - Disable inbound I2P connections. Tails already restricts incoming
+    connections, but this change tells I2P about it.
+  - Fix link to the system requirements documentation page in the Tails
+    Upgrader error shown when too little RAM is available.
+
+* Minor improvements
+  - Upgrade I2P to 0.9.12-2~deb6u+1.
+  - Import TorBrowser profile. This was forgotten in Tails 0.23 and even
+    though we didn't explicitly set those preferences in that release
+    they defaulted to the same values. This future-proofs us in case the
+    defaults would ever change.
+  - Import new custom version of Tor Launcher:
+    * Based on upstream Tor Launcher 0.2.5.3.
+    * Improve how Tor Launcher handles incomplete translation.  (Tor
+      bug [[!tor_bug 11483]]; more future-proof fix for Tails bug
+      [[!tails_ticket 6885]])
+    * Remove the bridge settings prompt. (Tor bug [[!tor_bug 11482]];
+      closes Tails bug [[!tails_ticket 6934]])
+    * Always show bridge help button. (Tor bug [[!tor_bug 11484]])
+
+See the online
+Changelog for technical details.

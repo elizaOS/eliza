@@ -1,0 +1,134 @@
+#!/usr/bin/python3 -IXgil=1
+
+# The "Xgil=1" part of the shebang enforces the GIL. Below in
+# locale_change_handler() we change the environment via os.environ,
+# which ends up calling setenv(3), which is not thread-safe, which is
+# concerning since we execute it from a thread. Our understanding is
+# that since the os module is written in python the GIL makes setting
+# the environment via os.environ safe, which is the reason why we
+# enforce it.
+
+import argparse
+import gettext
+import logging
+import os
+import sys
+from pathlib import Path
+from typing import Optional
+
+from gi.repository import Gio, GLib
+
+import tps
+import tps.logging
+from tps import DBUS_SERVICE_NAME
+from tps.service import Service
+
+gettext.textdomain("tails")
+
+logger = tps.logging.get_logger(__name__)
+
+mainloop = GLib.MainLoop()
+service = None  # type: Optional[Service]
+
+
+def on_bus_acquired(connection: Gio.DBusConnection, name: str) -> None:
+    logger.info("Connected to the system bus")
+    # Start the service
+    global service  # noqa: PLW0603
+    service = Service(connection, mainloop)
+    service.start()
+
+
+def on_name_acquired(connection: Gio.DBusConnection, name: str) -> None:
+    logger.info(f"Acquired name {name} on the system bus")
+
+
+def on_name_lost(connection: Gio.DBusConnection, name: str) -> None:
+    if not service:
+        logger.error(f"Failed to acquire name {name} on the system bus")
+    else:
+        logger.info(f"Lost name {name} on the system bus, terminating...")
+    # Quit the main loop, which causes our main thread to exit
+    mainloop.quit()
+
+
+def main():
+    # Parse arguments
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--debug", action="store_true")
+    parser.add_argument(
+        "--profiling",
+        action="store_true",
+        help="Produce performance profiles in /run/tails-persistent-storage/profiles",
+    )
+    args = parser.parse_args()
+
+    tps.PROFILING = (
+        args.profiling
+        or os.getenv("TPS_PROFILING")
+        or "tps-profiling" in Path("/proc/cmdline").read_text().split()
+    )
+    if tps.PROFILING:
+        Path(tps.PROFILES_DIR).mkdir(mode=0o700, parents=True, exist_ok=True)
+
+    # Set up logging
+    debug = (
+        args.debug
+        or os.getenv("DEBUG")
+        or "debug" in Path("/proc/cmdline").read_text().split()
+    )
+    log_level = logging.DEBUG if debug else logging.INFO
+    log_format = "%(levelname)s:%(filename)s:%(lineno)d: %(message)s"
+    logging.basicConfig(level=log_level, format=log_format)
+
+    bus_id = Gio.bus_own_name(
+        Gio.BusType.SYSTEM,
+        DBUS_SERVICE_NAME,
+        Gio.BusNameOwnerFlags.ALLOW_REPLACEMENT | Gio.BusNameOwnerFlags.REPLACE,
+        on_bus_acquired,
+        on_name_acquired,
+        on_name_lost,
+    )
+
+    locale1 = Gio.DBusProxy.new_for_bus_sync(
+        bus_type=Gio.BusType.SYSTEM,
+        flags=Gio.DBusProxyFlags.NONE,
+        info=None,
+        name="org.freedesktop.locale1",
+        object_path="/org/freedesktop/locale1",
+        interface_name="org.freedesktop.locale1",
+        cancellable=None,
+    )  # type: Gio.DBusProxy
+
+    def locale_change_handler(_proxy, changed, _removed):
+        # This is only thread-safe when the GIL is enabled
+        assert sys._is_gil_enabled()  # noqa: SLF001
+        old_locale = os.environ["LANG"]
+        try:
+            for setting in changed["Locale"]:
+                if setting.startswith("LANG="):
+                    _, val = setting.split("=", 1)
+                    os.environ["LANG"] = val
+                    break
+        except (KeyError, ValueError):
+            pass
+        if old_locale != os.environ["LANG"]:
+            logger.info(f"Changed locale: {old_locale} → {os.environ['LANG']}")
+
+    locale1.connect("g-properties-changed", locale_change_handler)
+
+    # Run the mainloop until it gets terminated or we get a keyboard
+    # interrupt
+    try:
+        logger.debug("Entering main event loop")
+        mainloop.run()
+    except KeyboardInterrupt:
+        logger.info("Received SIGINT, exiting main event loop")
+        mainloop.quit()
+
+    if bus_id:
+        Gio.bus_unown_name(bus_id)
+
+
+if __name__ == "__main__":
+    main()

@@ -1,0 +1,22 @@
+polkit.addRule(function(action, subject) {
+    if (action.id == "org.freedesktop.udisks2.open-device" &&
+        subject.user == "amnesia")
+    {
+        if (subject.active && subject.local) {
+            return polkit.Result.YES;
+        }
+
+    }
+});
+
+// Allow amnesia to start gnome-session.target;
+// fall back to implicit authorization otherwise.
+polkit.addRule(function(action, subject) {
+    if (action.id == "org.freedesktop.systemd1.manage-units" &&
+        action.lookup("unit") == "gnome-session.target" &&
+        action.lookup("verb") == "start" &&
+        subject.user == "amnesia") {
+        return polkit.Result.YES;
+    }
+});
+

@@ -1,0 +1,55 @@
+[[!meta title="Tails report for November 2023"]]
+[[!meta date="Mon, 11 Dec 2023 19:10:10 +0000"]]
+[[!pagetemplate template="news.tmpl"]]
+
+[[!toc]]
+
+Highlights
+==========
+
+- We had asked [Radically Open
+  Security](https://www.radicallyopensecurity.com/) to audit Tails. The
+  [[results of the audit|/news/audit_by_ROS/]] reinforced Tails credentials as a
+  "solid" operating system for preserving anonymity. 
+
+  We were super proactive with addressing the reported vulnerabilities, fixing
+  them all within 3 weeks of being reported. This is a reminder that as good as
+  Tails is, it needs to be updated regularly!
+
+* We undertook a bunch of home improvement projects for [[our new
+  address|/news/new_domain]]. Highlights:
+  * the language switcher on the website is more prominent, and also in the website footer,
+  * warning buttons display warnings better - in a new colour, and with wrapped text,
+  * [[our redesigned security page|/security/]] better showcases the history of our security advisories.
+
+- We have a new sponsor: [igaming.com](https://www.igaming.com/) joined our
+  mission! Our donors also received the quarterly newsletter with early
+  insights into upcoming Tails features. You, too, could subscribe while making
+  your next donation. Help make our [[ongoing
+  fundraiser|/news/gift_of_privacy/]] a success!
+
+Releases
+========
+
+November featured 2 new versions of Tails: 5.19.1 and 5.20.
+
+[[5.19.1|/news/version_5.19.1/]] was an emergency release. We updated the Tor
+client to bring the fix to the [[TROVE-2023-006
+vulnerability|https://gitlab.torproject.org/tpo/core/team/-/wikis/NetworkTeam/TROVE]]
+to Tails users.
+
+And in [[5.20|/news/version_5.20]], we:
+
+- brought the usual, latest updates to Tor Browser and Thunderbird, 
+
+- fixed a security vulnerability in uBlock Origin to protect Tails users from
+  advanced browser fingerprinting techniques, and
+
+- continued making Persistent Storage more usable, and made it even easier to
+  report issues when it doesn't work through improvements to WhisperBack.
+
+Metrics
+=======
+
+Tails was started more than 825,741 times this month. That's a daily average of
+over 27,520 boots.

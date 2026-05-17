@@ -1,0 +1,82 @@
+#!/bin/bash
+
+set -e
+set -u
+set -o pipefail
+
+list_origins() {
+    find config/APT_snapshots.d/ -mindepth 1 -maxdepth 1 \
+        -name '.placeholder' -o -printf '%f\n'
+}
+
+print_tagged_snapshots_pool_url() {
+    origin="$1"
+    version="$2"
+    printf \
+        'http://tagged.snapshots.deb.tails.boum.org/%s/%s/pool/\n' \
+        "$version" "$origin"
+}
+
+conf=/etc/apt-cacher-ng/tails-snapshots.conf
+for origin in $(list_origins); do
+    [ "$origin" != .placeholder ] || continue
+    origin_without_dashes="${origin//-/}"
+    echo "Remap-tailssnapshots${origin_without_dashes}pool: file:tails-time-based-snapshots-$origin-pool.list file:tails-tagged-snapshots-$origin-pool.list"
+done >"$conf"
+chmod 644 "$conf"
+
+# Generate .list files for time-based snapshots
+for origin in $(list_origins); do
+    list="/etc/apt-cacher-ng/tails-time-based-snapshots-$origin-pool.list"
+    current_year=$(date '+%Y')
+    for year in $(seq $((current_year - 1)) $((current_year + 1))); do
+        for month in $(seq 1 12); do
+            # We need the config file to contain _at least_ everything
+            # that can possibly exists, and we don't care if it has some extra
+            # lines, so to simplify we do as if each month had 31 days.
+            for day in $(seq 1 31); do
+                for n in $(seq 1 4); do
+                    printf 'http://time-based.snapshots.deb.tails.boum.org/%s/%04u%02u%02u%02u/pool/\n' \
+                        "$origin" "$year" "$month" "$day" "$n"
+                done
+            done
+        done
+    done \
+        >"$list"
+    chmod 644 "$list"
+done
+
+# Generate .list files for tagged snapshots
+for origin in $(list_origins); do
+    list="/etc/apt-cacher-ng/tails-tagged-snapshots-$origin-pool.list"
+    # We need the config file to contain _at least_ everything
+    # that can possibly exists, and we don't care if it has some extra
+    # lines, so here we try to build the smallest possible superset of
+    # all realistic Tails version numbers; it could certainly be a tiny
+    # bit smaller, at the cost of more assumptions (=> more risk of not
+    # including some version number we'll end up using) or of more
+    # code complexity (=> higher maintenance cost).
+    #
+    # XXX: Forky: bump the end of the range of major versions
+    for major in $(seq 3 8); do
+        for minor in $(seq 0 32); do
+            for suffix in "" alpha beta rc; do
+                for suffix_n in "" $(seq 1 8); do
+                    if [ -z "$suffix" ]; then
+                        version="${major}.${minor}"
+                    elif [ -z "$suffix_n" ]; then
+                        version="${major}.${minor}-${suffix}"
+                    else
+                        version="${major}.${minor}-${suffix}${suffix_n}"
+                    fi
+                    print_tagged_snapshots_pool_url "$origin" "$version"
+                done
+            done
+            for emergency in $(seq 1 4); do
+                version="${major}.${minor}.${emergency}"
+                print_tagged_snapshots_pool_url "$origin" "$version"
+            done
+        done
+    done >"$list"
+    chmod 644 "$list"
+done

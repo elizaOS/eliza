@@ -1,0 +1,93 @@
+[[!meta title="Chatting with Pidgin and OTR"]]
+
+For chatting and instant messaging, Tails includes the
+*[Pidgin Instant Messenger](https://pidgin.im/)*.
+
+<div class="note">
+
+<p><a href="https://dino.im/"><i>Dino</i></a> is
+being considered as an option to replace <i>Pidgin</i>
+in Tails.</p>
+
+<p>You can already try using <i>Dino</i> in Tails. See our
+documentation on [[chatting with <i>Dino</i> and OMEMO|doc/advanced_topics/dino]].</p>
+
+</div>
+
+You can use *Pidgin* to connect to [[!wikipedia Internet_Relay_Chat desc="IRC"]] or [[!wikipedia XMPP]]
+(also known as Jabber) servers. You can have several accounts connected at
+the same time.
+
+Even though *Pidgin* supports other protocols, it is only possible to use IRC
+and XMPP with *Pidgin* in Tails for security reasons.
+
+To open *Pidgin*, choose **Apps&nbsp;▸ Internet&nbsp;▸ Pidgin**.
+
+For more documentation, visit the official [*Pidgin*
+FAQ](https://developer.pidgin.im/wiki/Using%20Pidgin).
+
+[[!toc]]
+
+<h1 id="otr">OTR encryption</h1>
+
+[OTR (Off-the-Record)](https://otr.cypherpunks.ca/) encryption allows you to
+have private conversations over instant messaging by providing:
+
+- **Encryption**
+
+  No one else can read your instant messages.
+
+- **Authentication**
+
+  You are assured the correspondent is who you think it is.
+
+- **Deniability**
+
+  The messages you send do not have digital signatures
+  that are checkable by a third party. Anyone can forge messages after
+  a conversation to make them look like they came from you.
+  However, during a conversation, your correspondent is assured
+  the messages are authentic and unmodified.
+
+- **Perfect forward secrecy**
+
+  If you lose control of your private keys, no previous conversation is compromised.
+
+<div class="caution">
+
+<p>OTR is deactivated by default, and your conversations are
+not private.</p>
+
+</div>
+
+<div class="caution">
+
+<p>File transfers are not encrypted by OTR. OTR only encrypts conversations.</p>
+
+</div>
+
+<div class="tip">
+
+<p>To store your OTR keys and <i>Pidgin</i> settings across different Tails sessions,
+you can turn on the [[Pidgin Internet Messenger|persistent_storage/configure#pidgin]]
+feature of the Persistent Storage.</p>
+
+</div>
+
+<div class="caution">
+
+<p>In a private OTR conversation over IRC, a message sent using the
+<code>/me</code> command is not encrypted. The person receiving
+the message is notified by a warning.</p>
+
+</div>
+
+IRC servers blocking Tor
+========================
+
+Some IRC servers block connections from Tor because
+Tor is sometimes used to send spam.
+
+- [OFTC and Tor](https://www.oftc.net/Tor/)
+
+- [List of IRC/chat networks that block or support Tor](https://gitlab.torproject.org/legacy/trac/-/wikis/doc/BlockingIrc)

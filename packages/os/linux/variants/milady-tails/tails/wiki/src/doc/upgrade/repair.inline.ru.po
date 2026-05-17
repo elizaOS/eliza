@@ -1,0 +1,71 @@
+# SOME DESCRIPTIVE TITLE
+# Copyright (C) YEAR Free Software Foundation, Inc.
+# This file is distributed under the same license as the PACKAGE package.
+# FIRST AUTHOR <EMAIL@ADDRESS>, YEAR.
+#
+msgid ""
+msgstr ""
+"Project-Id-Version: PACKAGE VERSION\n"
+"POT-Creation-Date: 2025-06-10 12:51+0200\n"
+"PO-Revision-Date: 2021-12-22 13:15+0000\n"
+"Last-Translator: dedmoroz <cj75300@gmail.com>\n"
+"Language-Team: LANGUAGE <LL@li.org>\n"
+"Language: ru\n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+"Plural-Forms: nplurals=3; plural=n%10==1 && n%100!=11 ? 0 : n%10>=2 && "
+"n%10<=4 && (n%100<10 || n%100>=20) ? 1 : 2;\n"
+"X-Generator: Weblate 3.11.3\n"
+
+#. type: Plain text
+#, no-wrap
+msgid "[[!meta robots=\"noindex\"]]\n"
+msgstr "[[!meta robots=\"noindex\"]]\n"
+
+#. type: Plain text
+msgid ""
+"Sometimes, after an automatic upgrade, your Tails USB stick might either:"
+msgstr ""
+"Иногда после автоматического обновления флешка Tails не работает как надо."
+
+#. type: Bullet: '- '
+#, fuzzy
+#| msgid "- Fail to start, often after the message:"
+msgid "Fail to start, often after the message:"
+msgstr "- Не запускается Tails. Часто можно видеть сообщение:"
+
+#. type: Plain text
+#, no-wrap
+msgid "  <pre>Loading, please wait...</pre>\n"
+msgstr "  <pre>Loading, please wait...</pre>\n"
+
+#. type: Bullet: '- '
+msgid ""
+"Behave weirdly. For example, your keyboard does not work or you cannot "
+"connect to a network."
+msgstr ""
+"Система ведёт себя странно. Например, не работает клавиатура, нет "
+"подключения к сети."
+
+#. type: Plain text
+msgid ""
+"To fix this problem, please try to do a [[manual upgrade|upgrade#manual]]."
+msgstr ""
+"Для решения проблемы, пожалуйста, попробуйте выполнить [[обновление вручную|"
+"pgrade#manual]]."
+
+#. type: Plain text
+#, no-wrap
+msgid "<div class=\"note\">\n"
+msgstr "<div class=\"note\">\n"
+
+#. type: Plain text
+#, no-wrap
+msgid "<p>The Persistent Storage on the USB stick will be preserved.</p>\n"
+msgstr "<p>Постоянное хранилище на флешке сохранится.</p>\n"
+
+#. type: Plain text
+#, no-wrap
+msgid "</div>\n"
+msgstr "</div>\n"

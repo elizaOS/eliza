@@ -1,0 +1,88 @@
+[[!meta date="Tue, 24 Jan 2017 12:34:56 +0000"]]
+[[!pagetemplate template="news.tmpl"]]
+[[!meta title="Tails 2.10 is out"]]
+[[!tag announce]]
+
+This release fixes [[many security
+issues|security/Numerous_security_holes_in_2.9.1]] and users should
+upgrade as soon as possible.
+
+[[!toc levels=1]]
+
+# Changes
+
+## New features
+
+  - We installed [[*OnionShare*|doc/anonymous_internet/onionshare]],
+    a tool for anonymous file sharing.
+
+    [[!img version_2.10/onionshare.png link="no"]]
+
+  - We enabled the
+    [[circuit view|doc/anonymous_internet/Tor_Browser#circuit-view]]
+    in *Tor Browser*.
+
+    [[!img doc/anonymous_internet/Tor_Browser/circuit-view.png link="no"]]
+
+## Upgrades and changes
+
+  - Upgrade *Tor* to 0.2.9.9.
+
+  - Upgrade *Tor Browser* to 6.5.
+
+  - Upgrade *Linux* to 4.8. This should improve the support for newer
+    hardware (graphics, Wi-Fi, etc.)
+
+  - Upgrade *Icedove* to 45.6.0.
+
+  - Replace *AdBlock Plus* with *uBlock Origin*.
+
+  - Configure the *APT* package manage to use Debian's Onion services.
+
+  - Install the *AMDGPU* display driver. This should improve the
+    support for newer AMD graphics adapters.
+
+  - Renamed the *Boot Loader Menu* entries from "Live" to "Tails", and
+    replaced the confusing "failsafe" wording with "Troubleshooting
+    Mode".
+
+  - Add support for [[!wikipedia exFAT]].
+
+  - Remove *Nyx* (previously called *arm*).
+
+  - Rewrite *Tor control port filter* entirely. Now Tails can safely
+    support *OnionShare*, the circuit view of *Tor Browser*, and
+    similar. This also enabled Whonix to replace their own similar
+    piece of software with this one.
+
+## Fixed problems
+
+  - Made *OnionCircuits* compatible with the *Orca* screen reader.
+
+For more details, read our [[!tails_gitweb debian/changelog desc="changelog"]].
+
+# Known issues
+
+None specific to this release.
+
+See the list of [[long-standing issues|support/known_issues]].
+
+# Get Tails 2.10
+
+- To install, follow our [[installation instructions|install]].
+
+- To upgrade, an automatic upgrade is available from 2.7 and 2.9.1 to 2.10.
+
+  If you cannot do an automatic upgrade or if you fail to start after an
+  automatic upgrade, please try to do a [[manual upgrade|doc/upgrade#manual]].
+
+- [[Download Tails 2.10.|install/download]]
+
+# What's coming up?
+
+Tails 2.11 is [[scheduled|contribute/calendar]] for March 3rd.
+
+
+We need your help and there are many ways to [[contribute to
+Tails|contribute]] (<a href="https://tails.net/donate/?r=2.10">donating</a> is only one of
+them). Come [[talk to us|doc/about/contact#tails-dev]]!

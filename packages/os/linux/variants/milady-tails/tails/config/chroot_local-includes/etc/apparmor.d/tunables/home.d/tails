@@ -1,0 +1,3 @@
+@{HOMEDIRS}+=/lib/live/mount/overlay/rw/home/
+@{HOMEDIRS}+=/usr/lib/live/mount/overlay/rw/home/
+@{HOMEDIRS}+=/rw/home/

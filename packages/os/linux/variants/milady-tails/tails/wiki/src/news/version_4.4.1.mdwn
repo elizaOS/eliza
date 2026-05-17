@@ -1,0 +1,70 @@
+[[!meta title="Tails 4.4.1 is out"]]
+[[!meta date="Mon, 23 Mar 2020 20:00:00 +0000"]]
+[[!pagetemplate template="news.tmpl"]]
+[[!tag announce]]
+
+This release is an emergency release to fix security vulnerabilities in *Tor
+Browser* and *Tor*.
+
+You should upgrade as soon as possible.
+
+[[!toc levels=1]]
+
+## Included software
+
+- Update *Tor Browser* to [9.0.7](https://blog.torproject.org/new-release-tor-browser-907), which 
+  prevents [[JavaScript from sometimes being enabled in the *Safest* security
+  level of Tor Browser|news/javascript_sometimes_enabled_in_safest]].
+
+- Update *Tor* to [0.4.2.7](https://blog.torproject.org/new-releases-03510-0419-0427),
+  which fixes TROVE-2020-002, a major denial-of-service vulnerability that
+  affects both Tor relays and clients. Using this vulnerability, an attacker
+  could cause Tor to consume a huge amount of CPU, disrupting its operations
+  for several seconds or minutes, and create patterns that could aid in traffic
+  analysis.
+
+- Update *Thunderbird* to [68.6.0](https://www.thunderbird.net/en-US/thunderbird/68.6.0/releasenotes/).
+
+<a id="known-issues"></a>
+
+# Known issues
+
+None specific to this release.
+
+See the list of [[long-standing issues|support/known_issues]].
+
+# Get Tails 4.4.1
+
+## To upgrade your Tails USB stick and keep your Persistent Storage
+
+- Automatic upgrades are available from 4.2, 4.2.2, 4.3, and 4.4 to 4.4.1.
+
+- If you cannot do an automatic upgrade or if Tails fails to start after an
+  automatic upgrade, please try to do a [[manual upgrade|doc/upgrade/#manual]].
+
+## To install Tails on a new USB stick
+
+Follow our installation instructions:
+
+  - [[Install from Windows|install/windows]]
+  - [[Install from macOS|install/mac]]
+  - [[Install from Linux|install/linux]]
+
+<div class="caution"><p>All the data on this USB stick will be lost.</p></div>
+
+## To download only
+
+If you don't need installation or upgrade instructions, you can download
+Tails 4.4.1 directly:
+
+  - [[For USB sticks (USB image)|install/download]]
+  - [[For DVDs and virtual machines (ISO image)|install/download-iso]]
+
+# What's coming up?
+
+Tails 4.5 is [[scheduled|contribute/calendar]] for April 7.
+
+
+We need your help and there are many ways to [[contribute to
+Tails|contribute]] (<a href="https://tails.net/donate/?r=4.4.1">donating</a> is only one of
+them). Come [[talk to us|doc/about/contact#tails-dev]]!

@@ -1,0 +1,190 @@
+#!/usr/bin/python3 -I
+
+import argparse
+import json
+import os
+import subprocess
+import tempfile
+import urllib.parse
+from contextlib import contextmanager
+
+import requests
+import urllib3.util.retry
+
+MOAT_SERVICE_URL = "https://bridges.torproject.org/moat"
+MOAT_SERVICE_SETTINGS_URL = f"{MOAT_SERVICE_URL}/circumvention/settings"
+MOAT_SERVICE_DEFAULTS_URL = f"{MOAT_SERVICE_URL}/circumvention/defaults"
+MOAT_TARGETS = "https://1723079976.rsc.cdn77.org|cdn.zk.mk+www.cdn77.com,https://bespoke-strudel-c243cc.netlify.app|vuejs.org+netlify.com"
+
+
+class LyrebirdError(Exception):
+    pass
+
+
+def meek_credentials():
+    targets = f"targets={MOAT_TARGETS}"
+    # According the specification [0] we should be able to fit the
+    # targets line in just the username part of the SOCKS
+    # authentication credentials and set the password to null but due
+    # to a bug in PySocks [1] it can only handle usernames/password up
+    # to 127 characters long (ours is 129 characters long). So we
+    # avoid the bug as best we can by splitting the targets line in
+    # the middle over the username and password so that they become as
+    # short as possible.  We can stop doing this (and support targets
+    # lines longer than 254 characters) once urllib3 switches away
+    # from PySocks [2].
+    # [0] https://gitlab.torproject.org/tpo/core/torspec/-/blob/main/spec/pt-spec/per-connection-args.md
+    # [1] https://github.com/Anorov/PySocks/issues/177
+    # [2] https://github.com/urllib3/urllib3/issues/2206
+    if len(targets) > 254:
+        raise ValueError("the meek credentials don't fit into the SOCKS credentials")
+    middle = len(targets) // 2
+    user, passwd = (targets[0:middle], targets[middle:])
+    # Since these will be used in a URL we percent-encode it to avoid
+    # issues with e.g. : which is used to separate username and
+    # password in the URL.
+    return (urllib.parse.quote(user, safe=""), urllib.parse.quote(passwd, safe=""))
+
+
+@contextmanager
+def meek_request(proxy=None):
+    # This implements
+    # https://gitlab.torproject.org/tpo/anti-censorship/team/-/wikis/Moat#using-lyrebird
+    # and uses TorBrowser's implementation as a reference
+    # https://gitlab.torproject.org/tpo/applications/tor-browser/-/blob/tor-browser-148.0a1-16.0-2/toolkit/modules/DomainFrontedRequests.sys.mjs?ref_type=heads#L159
+    with tempfile.TemporaryDirectory() as tmpdir:
+        env = os.environ.copy()
+        env.update(
+            {
+                "TOR_PT_CLIENT_TRANSPORTS": "meek_lite",
+                "TOR_PT_MANAGED_TRANSPORT_VER": "1",
+                "TOR_PT_STATE_LOCATION": tmpdir,
+            },
+        )
+        if proxy:
+            env["TOR_PT_PROXY"] = proxy
+        address = None
+        p = None
+        try:
+            p = subprocess.Popen(
+                # We use a timeout to avoid an endless loop below. We
+                # do up to three attempts for each fronted_fetch()
+                # with a 10 second timeout, and we do up to two
+                # fronted_fetch()es in total (with
+                # `--defaults-fallback`) so the worst case is that
+                # this takes 3*2*10 = 60 seconds. Let's add 5 seconds
+                # for overhead and we settle on 65 seconds.
+                ["/usr/bin/timeout", "65", "/usr/bin/obfs4proxy"],
+                env=env,
+                stdout=subprocess.PIPE,
+            )
+            while True:
+                line = p.stdout.readline()
+                if not line:
+                    raise LyrebirdError("meek request failed")
+                line = line.decode("utf-8").rstrip()
+                if line.startswith("CMETHOD "):
+                    _, pt, proto, _address = line.split()
+                    if pt in ("meek", "meek_lite") and proto == "socks5":
+                        address = _address
+                elif line == "CMETHODS DONE":
+                    if address is None:
+                        raise LyrebirdError("got no lyrebird CMETHOD address")
+                    yield address
+                    break
+        finally:
+            if p is not None:
+                p.kill()
+                if p.returncode == 124:
+                    # The command timed out, see timeout(1)
+                    raise LyrebirdError("timed out in lyrebird read loop")
+
+
+def fronted_fetch(meek_address, moat_address, region=None, transports=None) -> dict:
+    """
+    Performs a request through the meek_address (as returned by lyrebird).
+
+    Returns a response from the API as-is; no validation is performed, except parsing JSON
+    """
+    post_options = {}
+    proxy_user, proxy_password = meek_credentials()
+    post_options["proxies"] = {
+        "https": f"socks5h://{proxy_user}:{proxy_password}@{meek_address}",
+    }
+    data = {}
+    if region:
+        data["country"] = region
+    if transports:
+        data["transports"] = transports
+    if data:
+        post_options["data"] = json.dumps(data)
+    session = requests.Session()
+    # Do up to 3 attempts, to work around transient errors
+    retries = urllib3.util.retry.Retry(total=2, allowed_methods=["POST"])
+    session.mount(moat_address, requests.adapters.HTTPAdapter(max_retries=retries))
+    response = session.post(moat_address, timeout=10, **post_options)
+    return json.loads(response.content)
+
+
+def get_settings(fallback=False, proxy=None, region=None, transports=None) -> dict:
+    """
+    Returns a response from the API as-is.
+    """
+    with meek_request(proxy=proxy) as meek_address:
+        response = {}
+        try:
+            response = fronted_fetch(
+                meek_address,
+                MOAT_SERVICE_SETTINGS_URL,
+                region=region,
+                transports=transports,
+            )
+        except (requests.RequestException, json.JSONDecodeError):
+            if not fallback:
+                raise
+
+        if fallback and not response.get("settings", []):
+            response = fronted_fetch(
+                meek_address,
+                MOAT_SERVICE_DEFAULTS_URL,
+                transports=transports,
+            )
+
+    return response
+
+
+def run(args) -> dict:
+    """
+    This is what the consumer of the output of this whole program will need to parse.
+
+    Return type is either an API response (untouched), or an {"internal-error": …} dict.
+    The latter is used when we want to signal an error which prevents us to reach the Circumvention Settings API at all.
+    """
+    try:
+        return get_settings(
+            fallback=args.fallback,
+            proxy=args.proxy,
+            region=args.region,
+            transports=args.transports,
+        )
+    except Exception as e:
+        return {"internal-error": f"{type(e).__name__}: {e}"}
+
+
+def main() -> dict:
+    p = argparse.ArgumentParser()
+    p.add_argument("--proxy", metavar="PROXY", dest="proxy")
+    p.add_argument("--region", metavar="CODE", dest="region")
+    p.add_argument("--defaults-fallback", action="store_true", dest="fallback")
+    p.add_argument(
+        "--transport",
+        metavar="TRANSPORT",
+        action="append",
+        dest="transports",
+    )
+    args = p.parse_args()
+    print(json.dumps(run(args)))
+
+
+if __name__ == "__main__":
+    main()

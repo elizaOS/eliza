@@ -1,0 +1,62 @@
+[[!meta title="Editing PDFs"]]
+
+Applications included in Tails
+==============================
+
+Several applications included in Tails allow editing PDFs, even when it is not
+their primary function:
+
+- [*LibreOffice Draw*](https://www.libreoffice.org/discover/draw/)
+
+  *Draw* is the graphics editor of the *LibreOffice* suite.
+
+  With *Draw*, you can open PDFs, remove pages, and change the order of pages.
+  *Draw* is the best option for changing the text of a PDF. You can move around
+  and resize the images of a PDF using *Draw*, but you cannot edit them.
+
+- [*Inkscape*](https://inkscape.org/)
+
+  *Inkscape* is a vector-based drawing application.
+
+  *Inkscape* is the best option for modifying the vector-based graphics
+  included in some PDFs. For example, you can create PDFs with *Inkscape* and
+  edit back the vector-based graphics in *Inkscape*. Editing the text of a PDF
+  with *Inkscape* is possible but cumbersome.
+
+- [*GIMP*](https://www.gimp.org/)
+
+  *GIMP* is an image editor for photos, PNG, and JPG images.
+
+  When you open a PDF with *GIMP*, each page is converted to a layer of an
+  image. You cannot edit the text of a PDF, move overlapping objects, or modify
+  vector-based graphics with *GIMP*.
+
+- [*BookletImposer*](https://kjo.herbesfolles.org/bookletimposer/)
+
+  With *BookletImposer*, you can:
+
+  * Reduce the number of pages in a PDF by putting several pages on every sheet.
+  * Produce a PDF booklet that can be folded after printing.
+
+Applications not included in Tails by default
+=============================================
+
+Several other applications can be added to Tails as [[Additional
+Software|persistent_storage/additional_software]] to work on untrusted or very
+large PDFs:
+
+- If you receive untrusted documents, for example, email attachments,
+  [*Dangerzone*](https://dangerzone.rocks/) allows you to convert them into safe
+  PDFs before opening.
+
+  *Dangerzone* is particularly useful for journalists who might receive dangerous
+  documents from anonymous sources or download them from the Internet.
+
+  See [[converting dangerous documents to safe PDFs using
+  Dangerzone|doc/persistent_storage/additional_software/dangerzone]].
+
+- To reorganize the pages of very large PDFs or combine pages from several
+  PDFs, [*PDF Arranger*](https://github.com/pdfarranger/pdfarranger) is faster
+  and more convenient than *LibreOffice Draw*.
+
+  You cannot modify the content of pages using *PDF Arranger*.

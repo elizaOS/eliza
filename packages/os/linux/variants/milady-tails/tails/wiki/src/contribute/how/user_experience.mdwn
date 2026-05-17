@@ -1,0 +1,36 @@
+[[!meta title="UX design"]]
+
+[[!toc levels=1]]
+
+Artefacts
+=========
+
+  - [[Personas|contribute/personas]]
+  - [[User interviews|interviews]]
+
+Resources for Tails UX design
+=============================
+
+  - [[Customizing `about:tor`|user_experience/abouttor]]
+
+<a id="resources"></a>
+
+Resources for user research
+===========================
+
+  - [[Policy for the retention of user research data|user_experience/research]]
+  - [[Paper prototyping and *WireframeSketcher*|user_experience/paper_prototyping]]
+  - [[Recording usability testing|user_experience/recording]]
+  - Consent form and research information sheet (adapted from Bernard Tyers):
+    - [Consent form ODT](https://gitlab.tails.boum.org/tails/ux/-/raw/master/tools/consent_form.odt) ([Spanish](https://gitlab.tails.boum.org/tails/ux/-/raw/master/tools/consent_form_spanish.odt))
+    - [Research information sheet ODT (for usability tests)](https://gitlab.tails.boum.org/tails/ux/-/raw/master/tools/research_information_sheet_for_tests.odt) ([Spanish](https://gitlab.tails.boum.org/tails/ux/-/raw/master/tools/research_information_sheet_for_tests_spanish.odt))
+    - [Research information sheet ODT (for user interviews)](https://gitlab.tails.boum.org/tails/ux/-/raw/master/tools/research_information_sheet_for_interviews.odt)
+  - Checklist to organize usability tests on GitLab:
+    - [Checklist](https://gitlab.tails.boum.org/tails/ux/-/raw/master/tools/GitLab_checklist.md)
+  - Checklist to run usability tests:
+    - [English ODT](https://gitlab.tails.boum.org/tails/ux/-/raw/master/tools/usability_testing_checklist.odt)
+  - Rainbow table:
+    - [Template ODS](https://gitlab.tails.boum.org/tails/ux/-/raw/master/tools/rainbow_table.ods)
+  - Spreadsheet to select participants from a LimeSurvey screener:
+    - [Template ODS](https://gitlab.tails.boum.org/tails/ux/-/raw/master/tools/participants_screener.ods)
+    - [[Email templates|user_experience/screening]]

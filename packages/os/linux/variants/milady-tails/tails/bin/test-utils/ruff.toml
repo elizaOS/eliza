@@ -1,0 +1,89 @@
+# This configuration file is only used in the context of ./bin/test-utils/ruff.toml,
+# which is only used for CI. See pyproject.toml for an explanation of why we have
+# multiple configurations and how to keep them up-to-date
+
+
+target-version = "py312"
+
+extend-exclude = [
+    "submodules/chutney",
+    "submodules/live-build",
+    "submodules/torbrowser-launcher",
+    "tmp",
+    "wiki/src",
+]
+extend-select = [
+    # Derived from the flake8-builtins linter
+    "A",
+    # Derived from the flake8-async linter
+    "ASYNC",
+    # Derived from the flake8-bugbear linter
+    "B",
+    # Derived from the eradicate linter (commented-out-code)
+    "ERA",
+    # Derived from the flake8-executable linter
+    "EXE",
+    # Derived from the flynt linter,
+    "FLY",
+    # Derived from the flake8-import-conventions linter
+    "ICN",
+    # Derived from the flake8-gettext linter
+    "INT",
+    # Derived from the flake8-implicit-str-concat linter
+    "ISC",
+    # Derived from the flake8-pie linter
+    "PIE",
+    # Derived from the pygrep-hooks linter
+    "PGH",
+    # Derived from the Pylint linter
+    "PLC",
+    "PLE",
+    "PLW",
+    # Derived from the flake8-pytest-style linter
+    "PT",
+    # Derived from the flake8-pyi linter
+    "PYI",
+    # Derived from the flake8-raise linter
+    "RSE",
+    # Derived from the Ruff-specific rules linter
+    "RUF",
+    # Derived from the flake8-bandit linter (security)
+    "S",
+    # Derived from the flake8-self linter
+    "SLF",
+    # Derived from the flake8-debugger linter
+    "T100",
+    # Derived from the flake8-type-checking linter
+    "TCH",
+    # Derived from the flake8-tidy-imports linter
+    "TID",
+    # Derived from the pyupgrade linter
+    "UP",
+    # Derived from the flake8-2020 linter
+    "YTT",
+]
+
+extend-ignore = [
+    # Accept shared, mostly innocuous habit
+    "RET505",
+    # Error-prone
+    "RSE102",
+    # Allow noqa directives that may be useful with other linters
+    "RUF100",
+    # We don't compile Python code so our `assert`s won't be optimized out
+    "S101",
+    # Prone to false positives (see https://github.com/astral-sh/ruff/issues/4045)
+    "S603",
+    # We don't record the author of a TODO, for better or worse
+    "TD002",
+    # Accept commonly used "TODO:Trixie"
+    "TD007",
+    # We use os.exec*() instead of subprocess to replace the current process
+    "S606",
+
+    # Now, things we don't like but that we don't consider serious enough for CI to fail
+
+    "ERA001", # commented-out code
+    "F401",  # imported but unused
+    "E501",   # line too long
+]

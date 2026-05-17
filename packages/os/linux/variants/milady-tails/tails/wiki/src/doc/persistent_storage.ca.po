@@ -1,0 +1,245 @@
+# SOME DESCRIPTIVE TITLE
+# Copyright (C) YEAR Free Software Foundation, Inc.
+# This file is distributed under the same license as the PACKAGE package.
+# FIRST AUTHOR <EMAIL@ADDRESS>, YEAR.
+#
+msgid ""
+msgstr ""
+"Project-Id-Version: PACKAGE VERSION\n"
+"Report-Msgid-Bugs-To: tails-l10n@boum.org\n"
+"POT-Creation-Date: 2025-06-10 12:51+0200\n"
+"PO-Revision-Date: 2026-01-23 15:29+0000\n"
+"Last-Translator: xin <xin@riseup.net>\n"
+"Language-Team: LANGUAGE <LL@li.org>\n"
+"Language: ca\n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+"Plural-Forms: nplurals=2; plural=n != 1;\n"
+"X-Generator: Weblate 5.13.2\n"
+
+#. type: Plain text
+#, no-wrap
+msgid "[[!meta title=\"Persistent Storage\"]]\n"
+msgstr "[[!meta title=\"Emmagatzematge Persistent\"]]\n"
+
+#. type: Plain text
+msgid "Everything you do disappears automatically when you shut down Tails."
+msgstr "Tot el que feu desapareix automàticament quan tanqueu Tails."
+
+#. type: Plain text
+msgid ""
+"But you can save some of your files and configuration in an encrypted "
+"Persistent Storage on your Tails USB stick, for example:"
+msgstr ""
+"Però podeu desar alguns dels vostres fitxers i configuració en un "
+"Emmagatzematge Persistent encriptat al vostre llapis USB de Tails, per "
+"exemple:"
+
+#. type: Bullet: '- '
+msgid "Your documents"
+msgstr "Els vostres documents"
+
+#. type: Bullet: '- '
+msgid "Your Wi-Fi passwords"
+msgstr "Les vostres contrasenyes de Wi-Fi"
+
+#. type: Bullet: '- '
+msgid "Your browser bookmarks"
+msgstr "Les adreces d'interès del vostre navegador"
+
+#. type: Bullet: '- '
+msgid "..."
+msgstr "…"
+
+#. type: Plain text
+msgid ""
+"The Persistent Storage is an encrypted partition protected by a passphrase "
+"that occupies all the free space left on the USB stick."
+msgstr ""
+"L'Emmagatzematge Persistent és una partició encriptada protegida per una "
+"contrasenya que ocupa tot l'espai lliure que queda al llapis USB."
+
+#. type: Plain text
+msgid "Everything in the Persistent Storage is encrypted automatically."
+msgstr "Tot l'Emmagatzematge Persistent s'encripta automàticament."
+
+#. type: Plain text
+msgid ""
+"You can choose to unlock your Persistent Storage or not each time you start "
+"Tails."
+msgstr ""
+"Podeu triar desbloquejar el vostre Emmagatzematge Persistent o no cada "
+"vegada que inicieu Tails."
+
+#. type: Plain text
+#, no-wrap
+msgid "<div class=\"caution\">\n"
+msgstr "<div class=\"caution\">\n"
+
+#. type: Plain text
+#, no-wrap
+msgid ""
+"<p>The Persistent Storage is not hidden. An attacker in possession of your USB\n"
+"stick can know that there is a Persistent Storage. Take into consideration that\n"
+"you could be forced or tricked to give out its passphrase.</p>\n"
+msgstr ""
+"<p>L'Emmagatzematge Persistent no està amagat. Un atacant en possessió del vostre\n"
+"llapis USB pot saber que hi ha un Emmagatzematge Persistent. Tingueu-ho en compte\n"
+"podríeu ser obligat o enganyat a donar la contrasenya.</p>\n"
+
+#. type: Plain text
+#, no-wrap
+msgid "</div>\n"
+msgstr "</div>\n"
+
+#. type: Plain text
+#, no-wrap
+msgid "[[!inline pages=\"doc/persistent_storage.index\" raw=\"yes\" sort=\"age\"]]\n"
+msgstr "[[!inline pages=\"doc/persistent_storage.index.ca\" raw=\"yes\" sort=\"age\"]]\n"
+
+#. type: Plain text
+#, no-wrap
+msgid "<h2 id=\"luks\">How strong is the encryption of the Persistent Storage?</h2>\n"
+msgstr "<h2 id=\"luks\">Com de fort és l'encriptatge de l'Emmagatzematge Persistent?</h2>\n"
+
+#. type: Plain text
+msgid "The encryption of the Persistent Storage uses LUKS and DMCrypt."
+msgstr "L'encriptatge de l'Emmagatzematge Persistent utilitza LUKS i DMCrypt."
+
+#. type: Plain text
+msgid ""
+"[LUKS](https://gitlab.com/cryptsetup/cryptsetup/) and [DMCrypt](https://"
+"gitlab.com/cryptsetup/cryptsetup/-/wikis/DMCrypt) are the standard system "
+"for disk encryption in Linux. Tails uses their default encryption "
+"parameters, which are considered highly secure. This is the same technique "
+"as we recommend for [[creating and using encrypted volumes|doc/"
+"encryption_and_privacy/encrypted_volumes]] in general."
+msgstr ""
+"[LUKS](https://gitlab.com/cryptsetup/cryptsetup/) i [DMCrypt](https://"
+"gitlab.com/cryptsetup/cryptsetup/-/wikis/DMCrypt) són el sistema estàndard "
+"per l'encriptatge de disc a Linux. Tails utilitza els seus paràmetres "
+"d'encriptatge predeterminats, que es consideren altament segurs. Aquesta és "
+"la mateixa tècnica que recomanem per a [[crear i utilitzar volums encriptats|"
+"doc/encryption_and_privacy/encrypted_volumes]] en general."
+
+#. type: Plain text
+#, no-wrap
+msgid "<div class=\"attack\">\n"
+msgstr "<div class=\"attack\">\n"
+
+#. type: Plain text
+#, no-wrap
+msgid "<!-- Consider removing after #18148. -->\n"
+msgstr "<!-- Consider removing after #18148. -->\n"
+
+#. type: Plain text
+#, no-wrap
+msgid ""
+"<p>The weakest point of such encryption is often the passphrase chosen by\n"
+"the user.</p>\n"
+msgstr ""
+"<p>El punt més feble d'aquest encriptatge és sovint la contrasenya escollida per\n"
+"l'usuari.</p>\n"
+
+#. type: Plain text
+#, no-wrap
+msgid ""
+"   <p>We recommend choosing a long passphrase made of 5 to 7 random words.\n"
+"   <a href=\"https://theintercept.com/2015/03/26/passphrases-can-memorize-attackers-cant-guess/\">Learn\n"
+"   about the maths behind memorizable and secure passphrases.</a></p>\n"
+msgstr ""
+"   <p>Recomanem que escolliu una contrasenya llarga de 5 a 7 paraules aleatòries.\n"
+"   <a href=\"https://theintercept.com/2015/03/26/passphrases-can-memorize-attackers-cant-guess/\">Apreneu\n"
+"   sobre les matemàtiques darrere de les contrasenyes fàcils de memoritzar i segures.</a></p>\n"
+
+#. type: Plain text
+#, no-wrap
+msgid "<!-- Spaces added for translators. -->\n"
+msgstr "<!-- Spaces added for translators. -->\n"
+
+#. type: Plain text
+#, no-wrap
+msgid "<div class=\"tip\">\n"
+msgstr "<div class=\"tip\">\n"
+
+#. type: Plain text
+#, no-wrap
+msgid ""
+"<p>To learn more about how the Persistent Storage is implemented, see our\n"
+"[[design documentation|contribute/design/persistence]].</p>\n"
+msgstr ""
+"<p>Per obtenir més informació sobre com s'implementa l'Emmagatzematge Persistent, consulteu la nostra\n"
+"[[documentació de disseny|contribute/design/persistence]].</p>\n"
+
+#~ msgid ""
+#~ "- Your documents - Your Wi-Fi passwords - Your brower bookmarks - ..."
+#~ msgstr ""
+#~ "- Els vostres documents\n"
+#~ "- Les vostres contrasenyes de Wi-Fi\n"
+#~ "- Les adreces d'interès del vostre navegador\n"
+#~ "- ..."
+
+#, no-wrap
+#~ msgid "<div class=\"note\">\n"
+#~ msgstr "<div class=\"note\">\n"
+
+#, fuzzy, no-wrap
+#~ msgid "<div class=\"bug\">\n"
+#~ msgstr "<div class=\"note\">\n"
+
+#, fuzzy, no-wrap
+#~ msgid "<div class=\"bug\" id=\"deselect\">\n"
+#~ msgstr "<div class=\"note\">\n"
+
+#, no-wrap
+#~ msgid "<div class=\"icon\">\n"
+#~ msgstr "<div class=\"icon\">\n"
+
+#, fuzzy, no-wrap
+#~ msgid "Save the configuration of your displays"
+#~ msgstr "Die Einstellungen der Programme, die Sie nutzen"
+
+#~ msgid ""
+#~ "How to use the persistent volume\n"
+#~ "=================================\n"
+#~ msgstr ""
+#~ "Wie wird der beständige Speicherbereich benutzt?\n"
+#~ "=================================\n"
+
+#~ msgid ""
+#~ "[[Change the passphrase of the persistent volume|first_steps/persistence/"
+#~ "change_passphrase]]"
+#~ msgstr ""
+#~ "[[Die Passphrase des beständigen Speicherbereichs ändern|first_steps/"
+#~ "persistence/change_passphrase]]"
+
+#~ msgid ""
+#~ "[[Check the file system of the persistent volume|first_steps/persistence/"
+#~ "check_file_system]]"
+#~ msgstr ""
+#~ "[[Das Dateisystem des beständigen Speicherbereiches überprüfen|"
+#~ "first_steps/persistence/check_file_system]]"
+
+#~ msgid ""
+#~ "<p>It is only possible to create a persistent volume if the USB stick\n"
+#~ "was installed using *Tails Installer*.</"
+#~ "p>\n"
+#~ msgstr ""
+#~ "<p>Es ist nur möglich, einen beständigen Speicherbereich zu erstellen, "
+#~ "wenn der\n"
+#~ "USB-Stick mit dem *Tails Installer* "
+#~ "erstellt wurde.</p>\n"
+
+#~ msgid ""
+#~ "<p>This requires a USB stick of <strong>at least 8 GB</strong>.</p>\n"
+#~ msgstr ""
+#~ "<p>Voraussetzung ist ein USB-Stick mit <strong>mindestens 8 GB</strong>.</"
+#~ "p>\n"
+
+#~ msgid "your personal files and working documents"
+#~ msgstr "Ihre persönlichen Dateien und Arbeitsdokumente"
+
+#~ msgid "the software packages that you download and install in Tails"
+#~ msgstr ""
+#~ "Die Softwarepakete, die Sie in Tails heruntergeladen und installiert haben"

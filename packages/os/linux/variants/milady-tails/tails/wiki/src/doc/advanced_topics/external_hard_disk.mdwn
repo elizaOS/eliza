@@ -1,0 +1,24 @@
+[[!meta title="Starting Tails from an external hard disk or problematic USB stick"]]
+
+When starting Tails from an external hard disk or problematic USB stick,
+Tails might return the following error message:
+
+<p class="code">Unable to find a medium containing a live file system</p>
+
+In such cases, choose the **External Hard Disk** entry if it appears in
+the Boot Loader.
+
+If the **External Hard Disk** entry does not appear in the Boot Loader,
+then remove the `live-media=removable`
+boot option. To do so, see our instructions on [[modifying the boot options using
+the Boot Loader|doc/advanced_topics/boot_options]].
+
+<div class="caution">
+
+<p>Choosing the <b>External Hard Disk</b> entry in the Boot Loader or removing
+the <code>live-media=removable</code> boot
+option might be dangerous. If an adversary had access to the computer
+and installed a malicious Tails on the internal hard disk, the computer
+might start on the malicious Tails instead of on the USB stick.</p>
+
+</div>

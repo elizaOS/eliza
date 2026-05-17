@@ -1,0 +1,134 @@
+# SOME DESCRIPTIVE TITLE
+# Copyright (C) YEAR Free Software Foundation, Inc.
+# This file is distributed under the same license as the PACKAGE package.
+# FIRST AUTHOR <EMAIL@ADDRESS>, YEAR.
+#
+msgid ""
+msgstr ""
+"Project-Id-Version: \n"
+"Report-Msgid-Bugs-To: tails-l10n@boum.org\n"
+"POT-Creation-Date: 2026-03-09 12:03+0000\n"
+"PO-Revision-Date: 2024-11-27 10:18+0000\n"
+"Last-Translator: jade time <jade4time@proton.me>\n"
+"Language-Team: \n"
+"Language: bg\n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+"Plural-Forms: nplurals=2; plural=n != 1;\n"
+"X-Generator: Weblate 5.3\n"
+
+#. type: Content of: <div>
+msgid "[[!meta title=\"Install Tails\"]]"
+msgstr ""
+
+#. type: Content of: outside any tag (error?)
+msgid "[[!meta stylesheet=\"install\" rel=\"stylesheet\" title=\"\"]]"
+msgstr ""
+
+#. type: Content of: <div><div><div>
+msgid ""
+"[[ [[!img install/inc/icons/windows.png link=\"no\" class=\"svg\" alt=\"\"]]"
+msgstr ""
+
+#. type: Content of: <div><div><div><p>
+msgid "Windows"
+msgstr ""
+
+#. type: Content of: <div><div><div>
+msgid "|install/windows]]"
+msgstr ""
+
+#. type: Content of: <div><div><div>
+msgid ""
+"[[ [[!img install/inc/icons/apple.png link=\"no\" class=\"svg\" alt=\"\"]]"
+msgstr ""
+
+#. type: Content of: <div><div><div><p>
+msgid "macOS"
+msgstr ""
+
+#. type: Content of: <div><div><div>
+msgid "|install/mac]]"
+msgstr ""
+
+#. type: Content of: <div><div><div>
+msgid ""
+"[[ [[!img install/inc/icons/linux.png link=\"no\" class=\"svg\" alt=\"\"]]"
+msgstr ""
+
+#. type: Content of: <div><div><div><p>
+msgid "Linux"
+msgstr ""
+
+#. type: Content of: <div><div><div>
+msgid "|install/linux]]"
+msgstr ""
+
+#. type: Content of: <div><div><div>
+msgid ""
+"[[ [[!img install/inc/icons/expert.png link=\"no\" class=\"svg\" alt=\"\"]]"
+msgstr ""
+
+#. type: Content of: <div><div><div><p>
+msgid "Console"
+msgstr ""
+
+#. type: Content of: <div><div><div><p>
+msgid "Debian or Ubuntu using the command line and GnuPG"
+msgstr ""
+
+#. type: Content of: <div><div><div>
+msgid "|install/expert]]"
+msgstr ""
+
+#. type: Content of: <div><p>
+msgid "[[Download Tails only (for USB sticks)|install/download]]"
+msgstr ""
+
+#. type: Content of: <div><p>
+msgid ""
+"Latest version: [[Tails [[!inline pages=\"inc/stable_amd64_version\" "
+"raw=\"yes\" sort=\"age\"]] from [[!inline pages=\"inc/stable_amd64_date\" "
+"raw=\"yes\" sort=\"age\"]]|latest]]"
+msgstr ""
+
+#. type: Content of: <div><p>
+msgid ""
+"If you know someone you trust who uses Tails already, you can install your "
+"Tails by cloning their Tails:"
+msgstr ""
+
+#. type: Content of: <div><ul><li>
+msgid "[[Install by cloning from another Tails on PC|install/clone/pc]]"
+msgstr ""
+
+#. type: Content of: <div><ul><li>
+msgid "[[Install by cloning from another Tails on Mac|install/clone/mac]]"
+msgstr ""
+
+#. type: Content of: <div><p>
+msgid ""
+"<strong>Tails doesn't work on smartphones or tablets.</strong> The hardware "
+"of smartphones and tablets is very different from the hardware of "
+"computers.  For now, it's impossible to make smartphone and tablet hardware "
+"work with Linux distributions like Tails."
+msgstr ""
+
+#. type: Content of: outside any tag (error?)
+msgid ""
+"[[System requirements and recommended USB sticks|doc/about/requirements]]"
+msgstr ""
+
+#. type: Content of: <h1>
+msgid "Other options"
+msgstr ""
+
+#. type: Content of: <ul><li>
+msgid "[[Burning a Tails DVD|install/dvd]]"
+msgstr ""
+
+#. type: Content of: <ul><li>
+msgid ""
+"[[Running Tails in a virtual machine|doc/advanced_topics/virtualization]]"
+msgstr ""

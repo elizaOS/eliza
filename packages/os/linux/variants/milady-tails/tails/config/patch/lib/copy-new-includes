@@ -1,0 +1,41 @@
+#!/bin/bash
+
+set -eu -o pipefail
+shopt -s inherit_errexit
+
+# Enable xtrace with timestamp
+export PS4='+ $(date "+%H:%M:%S.%3N") '
+set -x
+
+if [ "${EUID}" -ne 0 ]; then
+  echo >&2 "This script must be run as root"
+  exit 1
+fi
+
+DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+
+# shellcheck source=lib.sh
+. "${DIR}/lib.sh"
+
+# Avoid that git fails due to dubious ownership
+git config --global --add safe.directory "${GIT_REPO}"
+
+# Figure out the commit which we use as the base which we compare HEAD to.
+if [ -z "${COMMIT:-}" ]; then
+  COMMIT=$(patch_base_ref)
+fi
+
+untracked_and_modified_files "${COMMIT}" "${INCLUDES_DIR}" | \
+  while IFS= read -r file; do
+    if [ -z "${file}" ]; then
+      continue
+    fi
+    copy_include "${file}"
+  done
+
+# Re-apply all modified patches
+reapply_patches "${COMMIT}" "${TARGET_ROOT}"
+
+update_patch_base_ref
+
+apply_changes "${COMMIT}"

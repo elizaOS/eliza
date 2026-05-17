@@ -1,0 +1,94 @@
+# SOME DESCRIPTIVE TITLE
+# Copyright (C) YEAR Free Software Foundation, Inc.
+# This file is distributed under the same license as the PACKAGE package.
+# FIRST AUTHOR <EMAIL@ADDRESS>, YEAR.
+#
+msgid ""
+msgstr ""
+"Project-Id-Version: PACKAGE VERSION\n"
+"Report-Msgid-Bugs-To: tails-l10n@boum.org\n"
+"POT-Creation-Date: 2025-04-17 17:36-0600\n"
+"PO-Revision-Date: 2024-09-30 13:09+0000\n"
+"Last-Translator: Benjamin Held <Benjamin.Held@protonmail.com>\n"
+"Language-Team: LANGUAGE <LL@li.org>\n"
+"Language: bg\n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+"Plural-Forms: nplurals=2; plural=n != 1;\n"
+"X-Generator: Weblate 5.3\n"
+
+#. type: Plain text
+#, no-wrap
+msgid "[[!meta title=\"Sign in to the network\"]]\n"
+msgstr ""
+
+#. type: Plain text
+#, no-wrap
+msgid "[[!meta stylesheet=\"unsafe_browser_warning\" rel=\"stylesheet\"]]\n"
+msgstr ""
+
+#. type: Plain text
+#, no-wrap
+msgid "[[!meta robots=\"noindex\"]]\n"
+msgstr ""
+
+#. type: Plain text
+#, no-wrap
+msgid ""
+"<style>\n"
+"/* Display \"this browser\" instead of \"*Unsafe Browser*\" in /misc/captive_portal_warning */\n"
+".doc {\n"
+"  display: none !important;\n"
+"}\n"
+".warning {\n"
+"  display: inline-block !important;\n"
+"}\n"
+"</style>\n"
+msgstr ""
+
+#. type: Plain text
+msgid ""
+"You might have to sign in to this network before you can connect to the Tor "
+"network."
+msgstr ""
+
+#. type: Plain text
+#, no-wrap
+msgid "<div id=\"unsafe\">\n"
+msgstr ""
+
+#. type: Plain text
+#, no-wrap
+msgid "<p class=\"big\">This browser is not anonymous.</p>\n"
+msgstr ""
+
+#. type: Plain text
+#, no-wrap
+msgid "<p class=\"small\">Only use this browser to sign in to the network, then close it.</p>\n"
+msgstr ""
+
+#. type: Plain text
+#, no-wrap
+msgid "</div>\n"
+msgstr ""
+
+#. type: Plain text
+#, no-wrap
+msgid "<div id=\"eyes\">[[!img unsafe.jpg link=\"no\" alt=\"\"]]</div>\n"
+msgstr ""
+
+#. type: Title =
+#, no-wrap
+msgid "Signing in to a network using a captive portal"
+msgstr ""
+
+#. type: Plain text
+#, no-wrap
+msgid "[[!inline pages=\"doc/anonymous_internet/unsafe_browser/captive_portal.inline\" raw=\"yes\" sort=\"age\"]]\n"
+msgstr ""
+
+#. type: Plain text
+#, no-wrap
+msgid "[[!inline pages=\"doc/anonymous_internet/unsafe_browser/signing_in.inline\" raw=\"yes\" sort=\"age\"]]\n"
+msgstr ""

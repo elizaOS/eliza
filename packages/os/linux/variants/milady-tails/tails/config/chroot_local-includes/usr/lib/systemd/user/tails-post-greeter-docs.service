@@ -1,0 +1,13 @@
+[Unit]
+Description=Open documentation requested at the Welcome Screen
+Documentation=https://tails.net/doc/first_steps/welcome_screen/
+ConditionUser=1000
+ConditionPathExists=/var/lib/gdm3/post-greeter-docs.url
+
+[Service]
+Type=oneshot
+ExecStart=sh -c "tails-documentation $(cat /var/lib/gdm3/post-greeter-docs.url)"
+RemainAfterExit=yes
+
+[Install]
+WantedBy=desktop.target

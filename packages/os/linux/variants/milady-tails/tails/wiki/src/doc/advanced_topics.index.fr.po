@@ -1,0 +1,139 @@
+# SOME DESCRIPTIVE TITLE
+# Copyright (C) YEAR Free Software Foundation, Inc.
+# This file is distributed under the same license as the PACKAGE package.
+# FIRST AUTHOR <EMAIL@ADDRESS>, YEAR.
+#
+msgid ""
+msgstr ""
+"Project-Id-Version: Tails\n"
+"Report-Msgid-Bugs-To: tails-l10n@boum.org\n"
+"POT-Creation-Date: 2025-06-10 12:51+0200\n"
+"PO-Revision-Date: 2025-07-11 18:41+0000\n"
+"Last-Translator: Chre <tor@renaudineau.org>\n"
+"Language-Team: Tails translators <tails@boum.org>\n"
+"Language: fr\n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+"Plural-Forms: nplurals=2; plural=n > 1;\n"
+"X-Generator: Weblate 5.3\n"
+
+#. type: Bullet: '- '
+msgid "[[Running Tails in a virtual machine|advanced_topics/virtualization]]"
+msgstr ""
+"[[Utiliser Tails dans une machine virtuelle|advanced_topics/virtualization]]"
+
+#. type: Bullet: '  * '
+msgid "[[*GNOME Boxes*|advanced_topics/virtualization/boxes]]"
+msgstr "[[*Machines de GNOME*|advanced_topics/virtualization/boxes]]"
+
+#. type: Bullet: '  * '
+msgid "[[*virt-manager*|advanced_topics/virtualization/virt-manager]]"
+msgstr "[[*virt-manager*|advanced_topics/virtualization/virt-manager]]"
+
+#. type: Bullet: '- '
+msgid ""
+"[[Modifying the boot options using the Boot Loader|advanced_topics/"
+"boot_options]]"
+msgstr ""
+"[[Modifier les options de démarrage à l'aide du chargeur d'amorçage|"
+"advanced_topics/boot_options]]"
+
+#. type: Bullet: '- '
+msgid ""
+"[[Starting Tails from an external hard disk or problematic USB stick|"
+"advanced_topics/external_hard_disk]]"
+msgstr ""
+"[[Démarrer Tails depuis un disque dur externe ou une clé USB à problèmes|"
+"advanced_topics/external_hard_disk]]"
+
+#. type: Bullet: '- '
+msgid "[[Accessing the internal hard disk|advanced_topics/internal_hard_disk]]"
+msgstr "[[Accéder au disque dur interne|advanced_topics/internal_hard_disk]]"
+
+#. type: Bullet: '- '
+msgid ""
+"[[Protection against cold boot attacks|advanced_topics/cold_boot_attacks]]"
+msgstr ""
+"[[Protection contre les attaques par démarrage à froid|advanced_topics/"
+"cold_boot_attacks]]"
+
+#. type: Bullet: '- '
+msgid "[[Accessing resources on the local network|advanced_topics/lan]]"
+msgstr "[[Accéder à des ressources sur le réseau local|advanced_topics/lan]]"
+
+#. type: Bullet: '- '
+msgid "[[Enabling a wireless device|advanced_topics/wireless_devices]]"
+msgstr "[[Activer un périphérique sans-fil|advanced_topics/wireless_devices]]"
+
+#. type: Bullet: '- '
+msgid "[[Chatting with *Dino* and OMEMO|advanced_topics/dino]]"
+msgstr "[[Discuter avec *Dino* et OMEMO|advanced_topics/dino]]"
+
+#. type: Bullet: '- '
+msgid "[[Exchanging Monero with *Feather*|advanced_topics/feather]]"
+msgstr "[[Échanger du Monero avec *Feather*|advanced_topics/feather]]"
+
+#~ msgid "[[*VirtualBox*|advanced_topics/virtualization/virtualbox]]"
+#~ msgstr "[[*VirtualBox*|advanced_topics/virtualization/virtualbox]]"
+
+#~ msgid "Persistent Storage"
+#~ msgstr "Stockage persistant"
+
+#~ msgid ""
+#~ "[[!traillink Checking_the_file_system_of_the_Persistent_Storage|"
+#~ "advanced_topics/persistence/check_file_system]]"
+#~ msgstr ""
+#~ "[[!traillink Vérifier_le_système_de_fichiers_du_stockage_persistant|"
+#~ "advanced_topics/persistence/check_file_system]]"
+
+#~ msgid ""
+#~ "[[!traillink Changing_the_passphrase_of_the_Persistent_Storage|"
+#~ "advanced_topics/persistence/change_passphrase]]"
+#~ msgstr ""
+#~ "[[!traillink Changer_la_phrase_de_passe_du_stockage_persistant|"
+#~ "advanced_topics/persistence/change_passphrase]]"
+
+#, fuzzy, no-wrap
+#~| msgid ""
+#~| "  - [[!traillink Running_Tails_in_a_virtual_machine|advanced_topics/virtualization]]\n"
+#~| "    - [[!traillink <span_class=\"application\">VirtualBox</span>|advanced_topics/virtualization/virtualbox]]\n"
+#~| "    - [[!traillink <span_class=\"application\">GNOME_Boxes</span>|advanced_topics/virtualization/boxes]]\n"
+#~| "    - [[!traillink <span_class=\"application\">virt-manager</span>|advanced_topics/virtualization/virt-manager]]\n"
+#~| "  - [[!traillink Starting_Tails_from_an_external_hard_disk|advanced_topics/external_hard_disk]]\n"
+#~| "  - Persistent Storage\n"
+#~| "    - [[!traillink Changing_the_passphrase_of_the_Persistent_Storage|advanced_topics/persistence/change_passphrase]]\n"
+#~| "    - [[!traillink Checking_the_file_system_of_the_Persistent_Storage|advanced_topics/persistence/check_file_system]]\n"
+#~| "  - [[!traillink Accessing_resources_on_the_local_network|advanced_topics/lan]]\n"
+#~| "  - [[!traillink Enabling_a_wireless_device|advanced_topics/wireless_devices]]\n"
+#~| "  - [[!traillink Chatting_with_*Dino*_and_OMEMO|advanced_topics/dino]]\n"
+#~| "  - [[!traillink Exchanging_Monero_with_*Feather*|advanced_topics/feather]]\n"
+#~ msgid ""
+#~ "  - [[!traillink Running_Tails_in_a_virtual_machine|advanced_topics/virtualization]]\n"
+#~ "    - [[!traillink <span_class=\"application\">VirtualBox</span>|advanced_topics/virtualization/virtualbox]]\n"
+#~ "    - [[!traillink <span_class=\"application\">GNOME_Boxes</span>|advanced_topics/virtualization/boxes]]\n"
+#~ "    - [[!traillink <span_class=\"application\">virt-manager</span>|advanced_topics/virtualization/virt-manager]]\n"
+#~ "  - [[!traillink Modifying_the_boot_options_using_the_Boot_Loader|advanced_topics/boot_options]]\n"
+#~ "  - [[!traillink Starting_Tails_from_an_external_hard_disk|advanced_topics/external_hard_disk]]\n"
+#~ "  - [[!traillink Accessing_the_internal_hard_disk|advanced_topics/internal_hard_disk]]\n"
+#~ "  - Persistent Storage\n"
+#~ "    - [[!traillink Changing_the_passphrase_of_the_Persistent_Storage|advanced_topics/persistence/change_passphrase]]\n"
+#~ "    - [[!traillink Checking_the_file_system_of_the_Persistent_Storage|advanced_topics/persistence/check_file_system]]\n"
+#~ "  - [[!traillink Protection_against_cold_boot_attacks|advanced_topics/cold_boot_attacks]]\n"
+#~ "  - [[!traillink Accessing_resources_on_the_local_network|advanced_topics/lan]]\n"
+#~ "  - [[!traillink Enabling_a_wireless_device|advanced_topics/wireless_devices]]\n"
+#~ "  - [[!traillink Chatting_with_*Dino*_and_OMEMO|advanced_topics/dino]]\n"
+#~ "  - [[!traillink Exchanging_Monero_with_*Feather*|advanced_topics/feather]]\n"
+#~ msgstr ""
+#~ "  - [[!traillink Utiliser_Tails_dans_une_machine_virtuelle|advanced_topics/virtualization]]\n"
+#~ "    - [[!traillink <span_class=\"application\">VirtualBox</span>|advanced_topics/virtualization/virtualbox]]\n"
+#~ "    - [[!traillink <span_class=\"application\">GNOME_Boxes</span>|advanced_topics/virtualization/boxes]]\n"
+#~ "    - [[!traillink <span_class=\"application\">virt-manager</span>|advanced_topics/virtualization/virt-manager]]\n"
+#~ "  - [[!traillink Démarrer_Tails_à_partir_d'un_disque_dur_externe|advanced_topics/external_hard_disk]]\n"
+#~ "- Stockage persistant\n"
+#~ "    - [[!traillink Changer_la_phrase_de_passe_du_stockage_persistant|advanced_topics/persistence/change_passphrase]]\n"
+#~ "    - [[!traillink Vérifier_le_système_de_fichiers_du_stockage_persistant|advanced_topics/persistence/check_file_system]]\n"
+#~ " - [[!traillink Accéder_à_des_ressources_sur_le_réseau_local|advanced_topics/lan]]\n"
+#~ " - [[!traillink Activer_un_périphérique_sans-fil|advanced_topics/wireless_devices]]\n"
+#~ "  - [[!traillink Discuter_avec_*Dino*_et_OMEMO|advanced_topics/dino]]\n"
+#~ "  - [[!traillink Échanger_du_Monero_à_l'aide_de_*Feather*|advanced_topics/feather]]\n"

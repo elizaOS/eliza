@@ -1,0 +1,25 @@
+[[!meta date="Sun, 01 Jan 2012 00:00:00 +0000"]]
+[[!meta title="Numerous security holes in Tails 0.9"]]
+[[!pagetemplate template="news.tmpl"]]
+
+[[!tag security/fixed]]
+
+The following security holes affect Tails 0.9.
+
+We **strongly** urge you to [[upgrade to Tails 0.10|news/version_0.10]]
+as soon as possible in case you are still using an older version.
+
+Details
+=======
+
+These are Debian security announces; details can be found on the
+[Debian security page](http://security.debian.org/):
+
+  - jasper ([DSA-2371](http://www.debian.org/security/2011/dsa-2371))
+  - libsoup2.4 ([DSA-2369](http://www.debian.org/security/2011/dsa-2369))
+  - xorg ([DSA-2364](http://www.debian.org/security/2011/dsa-2364))
+  - tor ([DSA-2363](http://www.debian.org/security/2011/dsa-2363))
+  - openjdk-6 ([DSA-2358](http://www.debian.org/security/2011/dsa-2358))
+  - evince ([DSA-2357](http://www.debian.org/security/2011/dsa-2357))
+  - cups ([DSA-2354](http://www.debian.org/security/2011/dsa-2354))
+  - freetype ([DSA-2350](http://www.debian.org/security/2011/dsa-2350))

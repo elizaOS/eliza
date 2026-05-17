@@ -1,0 +1,9 @@
+This directory allows to put binary packages that will be installed in the
+live system.
+
+It is only meant for quick tests, and contributors who don't have write access
+to the official Git repository. Packages should not be committed to the
+official Git repository. Experience has shown that it does not scale.
+
+See <https://tails.net/contribute/APT_repository/> for information on
+how to use Tails APT repository.

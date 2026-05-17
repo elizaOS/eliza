@@ -1,0 +1,99 @@
+# SOME DESCRIPTIVE TITLE
+# Copyright (C) YEAR Free Software Foundation, Inc.
+# This file is distributed under the same license as the PACKAGE package.
+# FIRST AUTHOR <EMAIL@ADDRESS>, YEAR.
+#
+msgid ""
+msgstr ""
+"Project-Id-Version: PACKAGE VERSION\n"
+"Report-Msgid-Bugs-To: tails-l10n@boum.org\n"
+"POT-Creation-Date: 2024-02-26 12:26+0100\n"
+"PO-Revision-Date: 2024-09-30 17:10+0000\n"
+"Last-Translator: Benjamin Held <Benjamin.Held@protonmail.com>\n"
+"Language-Team: LANGUAGE <LL@li.org>\n"
+"Language: de\n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+"Plural-Forms: nplurals=2; plural=n != 1;\n"
+"X-Generator: Weblate 5.3\n"
+
+#. type: Plain text
+#, no-wrap
+msgid "[[!meta title=\"Opening your Persistent Storage from another operating system\"]]\n"
+msgstr "[[!meta title=\"Persistenten Speicher von einem anderen Betriebssystem aus öffnen\"]]\n"
+
+#. type: Plain text
+msgid ""
+"Opening your Persistent Storage from another operating system can compromise "
+"your security. For example, the other operating system might create "
+"thumbnails of images or automatically index the content of the files in the "
+"Persistent Storage."
+msgstr ""
+"Das Öffnen Ihres beständigen Speichers von einem anderen Betriebssystem aus "
+"kann Ihre Sicherheit gefährden. Das andere Betriebssystem könnte zum "
+"Beispiel Miniaturansichten von Bildern erstellen oder den Inhalt der Dateien "
+"im beständigen Storage automatisch indizieren."
+
+#. type: Plain text
+msgid ""
+"There are currently no easy tools to open a Persistent Storage from Windows "
+"or macOS anyway, so there is no risk of doing so by mistake."
+msgstr ""
+"Es gibt derzeit keine einfachen Tools, um einen persistenten Speicher von "
+"Windows oder macOS aus zu öffnen, so dass keine Gefahr besteht, dies aus "
+"Versehen zu tun."
+
+#. type: Plain text
+msgid ""
+"If you plug your Tails USB stick into another Linux, you will probably be "
+"asked to enter the passphrase of your Persistent Storage automatically, for "
+"example in Debian or Ubuntu. Linux distributions generally include utilities "
+"to open and create LUKS encrypted volumes, like the Persistent Storage, by "
+"default."
+msgstr ""
+"Wenn Sie Ihren Tails-USB-Stick in ein anderes Linux einstecken, werden Sie "
+"wahrscheinlich automatisch aufgefordert, die Passphrase Ihres persistenten "
+"Speichers einzugeben, zum Beispiel in Debian oder Ubuntu. Linux-"
+"Distributionen enthalten in der Regel standardmäßig Dienstprogramme zum "
+"Öffnen und Erstellen von LUKS-verschlüsselten Volumes, wie dem persistenten "
+"Speicher."
+
+#. type: Plain text
+msgid ""
+"To exchange files between your Persistent Storage and another operating "
+"system, store these files instead on a separate USB stick or external hard "
+"disk. You can:"
+msgstr ""
+"Um Dateien zwischen Ihrem persistenten Speicher und einem anderen "
+"Betriebssystem auszutauschen, speichern Sie diese Dateien stattdessen auf "
+"einem separaten USB-Stick oder einer externen Festplatte. Das können Sie:"
+
+#. type: Bullet: '* '
+msgid ""
+"[[Create an encrypted volume using *VeraCrypt*|encryption_and_privacy/"
+"veracrypt]] to store multiple files in a kind of encrypted folder or "
+"partition. *VeraCrypt* works on Windows, macOS, and Linux."
+msgstr ""
+"[[Erstellen Sie ein verschlüsseltes Volume mit *VeraCrypt*|"
+"encryption_and_privacy/veracrypt]], um mehrere Dateien in einer Art "
+"verschlüsseltem Ordner oder Partition zu speichern. *VeraCrypt* funktioniert "
+"unter Windows, macOS und Linux."
+
+#. type: Bullet: '* '
+msgid ""
+"[[Create an encrypted partition using LUKS|doc/encryption_and_privacy/"
+"encrypted_volumes]] to use an encrypted USB stick between Tails and another "
+"Linux system."
+msgstr ""
+"[[Erstellen Sie eine verschlüsselte Partition mit LUKS|doc/"
+"encryption_and_privacy/encrypted_volumes]], um einen verschlüsselten USB-"
+"Stick zwischen Tails und einem anderen Linux-System zu verwenden."
+
+#. type: Bullet: '* '
+msgid ""
+"[[Encrypt files using *Kleopatra*|encryption_and_privacy/kleopatra]].  "
+"*Kleopatra* works on Windows and Linux, but not macOS."
+msgstr ""
+"[[Dateien mit *Kleopatra* verschlüsseln|encryption_and_privacy/kleopatra]]"
+".   *Kleopatra* funktioniert unter Windows und Linux, aber nicht unter macOS."

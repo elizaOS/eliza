@@ -1,0 +1,134 @@
+# SOME DESCRIPTIVE TITLE
+# Copyright (C) YEAR Free Software Foundation, Inc.
+# This file is distributed under the same license as the PACKAGE package.
+# FIRST AUTHOR <EMAIL@ADDRESS>, YEAR.
+#
+msgid ""
+msgstr ""
+"Project-Id-Version: PACKAGE VERSION\n"
+"POT-Creation-Date: 2025-06-10 12:51+0200\n"
+"PO-Revision-Date: 2023-05-15 09:20+0000\n"
+"Last-Translator: drebs <drebs@riseup.net>\n"
+"Language-Team: LANGUAGE <LL@li.org>\n"
+"Language: pt\n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+"Plural-Forms: nplurals=2; plural=n > 1;\n"
+"X-Generator: Weblate 4.9.1\n"
+
+#. type: Plain text
+#, no-wrap
+msgid "[[!meta robots=\"noindex\"]]\n"
+msgstr "[[!meta robots=\"noindex\"]]\n"
+
+#. type: Plain text
+msgid ""
+"The *Unsafe Browser* does not use Tor. The websites that you visit can see "
+"your real IP address."
+msgstr ""
+"O *Navegador não-confiável* não usa a rede Tor. Ao usá-lo, os sites que você "
+"visita podem ver o seu endereço IP verdadeiro."
+
+#. type: Plain text
+msgid "This is why we recommend that you:"
+msgstr "É por isso que te recomendamos:"
+
+#. type: Bullet: '- '
+msgid ""
+"Only use the *Unsafe Browser* to sign in to a network using a captive portal "
+"or [[browse trusted web pages on the local network|advanced_topics/"
+"lan#browser]]."
+msgstr ""
+"Use o *Navegador Inseguro* somente para logar em uma rede que use portal "
+"cativo ou então para [[navegar em páginas web confiáveis na rede local|"
+"advanced_topics/lan#browser]]."
+
+#. type: Bullet: '- '
+#, fuzzy
+#| msgid "- Close the *Unsafe Browser* after signing in to the network."
+msgid "Close the *Unsafe Browser* after signing in to the network."
+msgstr "- Feche o *Navegador Inseguro* após fazer login na rede."
+
+#, no-wrap
+#~ msgid ""
+#~ "  <p>It is particularly important that you close the <i>Unsafe Browser</i> if\n"
+#~ "  you use accessibility features like the Screen Keyboard or the Screen Reader.\n"
+#~ "  If you keep the <i>Unsafe Browser</i> open, a very advanced network attacker\n"
+#~ "  might use it to deanonymize you.</p>\n"
+#~ msgstr ""
+#~ "  <p>É especialmente imporante que você feche o <i>Navegador Inseguro</i> caso\n"
+#~ "  você use funcionalidades de acessibilidade tais como o Teclado na Tela ou o Leitor de Tela.\n"
+#~ "  Se você mantiver o <i>Navegador Inseguro</i> aberto, um atacante muito avançado na rede\n"
+#~ "  pode usá-lo para de desanonimizar.</p>\n"
+
+#~ msgid "- **The *Unsafe Browser* is not anonymous.**"
+#~ msgstr "- **O *Navegador não-confiável* não é anônimo.**"
+
+#~ msgid ""
+#~ "Close the *Unsafe Browser* after signing in to the network.  Not only you "
+#~ "can use it by mistake, but keeping it open could actually allow an "
+#~ "advanced attacker to deanonymize you."
+#~ msgstr ""
+#~ "Feche o *Navegador Inseguro* após logar na rede. Mantê-lo aberto abre a "
+#~ "possibilidade de que você faça uso dele por engano e de que alguns "
+#~ "ataques avançados acabem te desanonimizando."
+
+#~ msgid "- **The *Unsafe Browser* can be used to deanonymize you.**"
+#~ msgstr ""
+#~ "-**O *Navegador não-confiável* pode ser usado para acabar com seu "
+#~ "anonimato.**"
+
+#, no-wrap
+#~ msgid ""
+#~ "  An attacker could exploit a security vulnerability in another\n"
+#~ "  application in Tails to start the *Unsafe Browser* and reveal\n"
+#~ "  your IP address, even if you are not using the *Unsafe Browser*.\n"
+#~ msgstr ""
+#~ "  Um atacante poderia explorar uma falha de segurança em outra\n"
+#~ "  aplicação no Tails para iniciar o *Navegador não-confiável* invisível e revelar\n"
+#~ "  seu endereço IP verdadeiro, mesmo que você não esteja usando o *Navegador não-confiável*.\n"
+
+#, no-wrap
+#~ msgid ""
+#~ "  For example, an attacker could exploit a security vulnerability in\n"
+#~ "  *Thunderbird* by sending you a [phishing\n"
+#~ "  email](https://ssd.eff.org/en/module/how-avoid-phishing-attacks) that\n"
+#~ "  starts the *Unsafe Browser* and reveals your IP\n"
+#~ "  address to the attacker.\n"
+#~ msgstr ""
+#~ "  Um atacante poderia, por exemplo, explorar uma falha de segurança no\n"
+#~ "  *Thunderbird* ao enviar para você um [email de\n"
+#~ "  phishing](https://ssd.eff.org/en/module/how-avoid-phishing-attacks) que\n"
+#~ "  poderia então iniciar o *Navegador Inseguro* e assim revelar,\n"
+#~ "  para o atacante, o seu endereço IP verdadeiro.\n"
+
+#, no-wrap
+#~ msgid ""
+#~ "  Such an attack is very unlikely but could be performed by a strong\n"
+#~ "  attacker, such as a government or a hacking firm.\n"
+#~ msgstr ""
+#~ "  Um ataque desse tipo é bem improvável, mas pode ser realizado por um atacante\n"
+#~ "  forte, tais como um governo ou uma empresa de hacking.\n"
+
+#~ msgid ""
+#~ "Only open the *Unsafe Browser* if you need to sign to a network using a "
+#~ "captive portal, and close it when you are done."
+#~ msgstr ""
+#~ "Somente abra o *Navegador Inseguro* caso você precise logar em uma rede "
+#~ "usando um portal cativo, e feche-o depois que tiver feito login."
+
+#~ msgid ""
+#~ "Always upgrade to the latest version of Tails to fix known "
+#~ "vulnerabilities as soon as possible."
+#~ msgstr ""
+#~ "Sempre atualize para a última versão do Tails para consertar "
+#~ "vulnerabilidades conhecidas o quanto antes."
+
+#, no-wrap
+#~ msgid ""
+#~ "  We have plans to fix the root cause of this problem but it requires\n"
+#~ "  [[!tails_ticket 12213 desc=\"important engineering work\"]].\n"
+#~ msgstr ""
+#~ "  Temos planos para consertar a raiz desse problema, mas isso requer um\n"
+#~ "  [[!tails_ticket 12213 desc=\"trabalho importante de engenharia\"]].\n"

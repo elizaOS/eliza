@@ -1,0 +1,4 @@
+[[!meta title="Archive of all news"]]
+[[!meta  date="Sat, 20 Jun 2009 00:00:00 +0000"]]
+
+[[!inline pages="page(news/*) and !news/archive and !news/*/* and !news/discussion" show="0" feeds="no" archive="yes" sort="-meta(date) age -path"]]

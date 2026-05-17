@@ -1,0 +1,39 @@
+[[!meta title="Tails report for September, 2021"]]
+[[!meta date="Wed, 13 Oct 2021 14:46:53 +0200"]]
+[[!pagetemplate template="news.tmpl"]]
+
+[[!toc ]]
+
+Releases
+========
+
+In September, we released [[4.22|news/version_4.22]] with updates for Tor
+Browser and Thunderbird, improvements to the Tor Connection
+Assistant, and several fixes.
+
+Tails 4.23 is [[scheduled for October 5|contribute/calendar]].
+
+Highlights of the month
+=======================
+
+ - We got several reports about folks being unable to download Tails images
+   using Google Chrome, Chromium or Chromium-based browsers, and fixed
+   it. ([[!tails_ticket 18616]])
+
+ - We also received reports about a new problem with the Additional Software
+   feature (`Splitting of clearsigned file` errors), and we're working on it! ([[!tails_ticket 18620]])
+
+ - We improved our documentation on [[Connecting to the Tor
+   network|doc/anonymous_internet/tor]] and added a new nice
+   diagram.
+
+   [[!img doc/anonymous_internet/tor/tor.svg link="no" alt="A Tor connection goes through 3 relays with the last one establishing the actual connection to the final destination"]]
+
+ - The [[documentation style guide|contribute/how/documentation/style_guide]]
+   is now the single place where we describe how we write our documentation.
+
+Metrics
+=======
+
+* Tails has been started more than 668&#8239;017 times this month. This makes 22&#8239;267 boots a day on average.
+

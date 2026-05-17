@@ -1,0 +1,297 @@
+# SOME DESCRIPTIVE TITLE
+# Copyright (C) YEAR Free Software Foundation, Inc.
+# This file is distributed under the same license as the PACKAGE package.
+# FIRST AUTHOR <EMAIL@ADDRESS>, YEAR.
+#
+msgid ""
+msgstr ""
+"Project-Id-Version: \n"
+"Report-Msgid-Bugs-To: tails-l10n@boum.org\n"
+"POT-Creation-Date: 2026-03-12 10:28+0000\n"
+"PO-Revision-Date: 2026-03-14 05:41+0000\n"
+"Last-Translator: xin <xin@riseup.net>\n"
+"Language-Team: Portuguese <http://translate.tails.net/projects/tails/support/"
+"pt/>\n"
+"Language: pt\n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+"Plural-Forms: nplurals=2; plural=n != 1;\n"
+"X-Generator: Weblate 5.13.2\n"
+
+#. type: Plain text
+#, no-wrap
+msgid "[[!meta title=\"Support\"]]\n"
+msgstr "[[!meta title=\"Suporte\"]]\n"
+
+#. type: Title =
+#, no-wrap
+msgid "Search the documentation"
+msgstr "Busque na documentação"
+
+#. type: Plain text
+#, fuzzy
+#| msgid ""
+#| "Our comprehensive [[documentation|doc]] might already answer your "
+#| "question:"
+msgid ""
+"Our comprehensive [[documentation|doc]] might already answer your question."
+msgstr "Nossa ampla [[documentação|doc]] talvez já responda sua questão:"
+
+#. type: Plain text
+#, no-wrap
+msgid ""
+"<form method=\"get\" action=\"https://duckduckgo.com/\" target=\"_blank\">\n"
+"  <input aria-label=\"Search\" type=\"search\" name=\"q\" value=\"\" size=\"32\" placeholder=\"Using DuckDuckGo&hellip;\" />\n"
+"  <input type=\"hidden\" name=\"sites\" value=\"tails.net\"/>\n"
+"  <button aria-label=\"Search\" class=\"button\" type=\"submit\">Search</button>\n"
+"</form>\n"
+msgstr ""
+"<form method=\"get\" action=\"https://duckduckgo.com/\" target=\"_blank\">\n"
+"  <input aria-label=\"Search\" type=\"search\" name=\"q\" value=\"\" size=\"32\" placeholder=\"Usando DuckDuckGo&hellip;\" />\n"
+"  <input type=\"hidden\" name=\"sites\" value=\"tails.net\"/>\n"
+"  <button aria-label=\"Search\" class=\"button\" type=\"submit\">Buscar</button>\n"
+"</form>\n"
+
+#. type: Title =
+#, no-wrap
+msgid "Frequently asked questions"
+msgstr "Perguntas frequentes"
+
+#. type: Plain text
+msgid "Search our list of [[frequently asked questions|faq]]."
+msgstr "Busque em nossa lista de [[perguntas frequentes|faq]]."
+
+#. type: Title =
+#, no-wrap
+msgid "Upgrade"
+msgstr "Atualize"
+
+#. type: Plain text
+msgid ""
+"Make sure you are using the latest version, as [[upgrading|doc/upgrade]] "
+"might solve your problem."
+msgstr ""
+"Tenha certeza de estar usando a última versão, pois [[atualizar|doc/"
+"upgrade]] pode resolver o seu problema."
+
+#. type: Title =
+#, no-wrap
+msgid "Check if the problem is already known"
+msgstr "Verifique se seu problema já é conhecido"
+
+#. type: Plain text
+msgid "You can have a look at:"
+msgstr "Você pode dar uma olhada nas seguintes páginas:"
+
+#. type: Bullet: '- '
+#, fuzzy
+#| msgid "- The [[list of known issues|support/known_issues]]"
+msgid "The [[list of known issues|support/known_issues]]"
+msgstr "- [[Lista de problemas conhecidos|support/known_issues]]"
+
+#. type: Bullet: '- '
+#, fuzzy
+#| msgid ""
+#| "- The [[list of known issues with graphics cards|support/known_issues/"
+#| "graphics]]"
+msgid ""
+"The [[list of known issues with graphics cards|support/known_issues/"
+"graphics]]"
+msgstr ""
+"- [[Lista de problemas conhecidos com placas de vídeo|support/known_issues/"
+"graphics]]"
+
+#. type: Bullet: '- '
+msgid ""
+"The [[!tails_gitlab groups/tails/-/milestones desc=\"list of things that "
+"will be fixed or improved in the next release\"]]"
+msgstr ""
+"[[!tails_gitlab groups/tails/-/milestones desc=\"Lista de correções ou "
+"melhoras que serão feitas na próxima versão\"]]"
+
+#. type: Bullet: '- '
+#, fuzzy
+#| msgid ""
+#| "- The [[!tails_ticket \"\" desc=\"rest of our open issues on GitLab\"]]"
+msgid "The [[!tails_ticket \"\" desc=\"rest of our open issues on GitLab\"]]"
+msgstr "- [[!tails_ticket \"\" desc=\"Nossos tickets abertos no GitLab\"]]"
+
+#. type: Plain text
+#, no-wrap
+msgid "[[!inline pages=\"support/talk\" raw=\"yes\" sort=\"age\"]]\n"
+msgstr "[[!inline pages=\"support/talk.pt\" raw=\"yes\" sort=\"age\"]]\n"
+
+#, no-wrap
+#~ msgid "<!--\n"
+#~ msgstr "<!--\n"
+
+#, no-wrap
+#~ msgid "<div class=\"blocks\">\n"
+#~ msgstr "<div class=\"blocks\">\n"
+
+#, no-wrap
+#~ msgid "<div class=\"block block-half\">\n"
+#~ msgstr "<div class=\"block block-half\">\n"
+
+#, no-wrap
+#~ msgid "-->\n"
+#~ msgstr "-->\n"
+
+#, no-wrap
+#~ msgid "  <h1>Report an error</h1>\n"
+#~ msgstr "  <h1>Relate um erro</h1>\n"
+
+#, fuzzy, no-wrap
+#~| msgid ""
+#~| "  <p>[[Report an error using\n"
+#~| "  <i>WhisperBack</i>|doc/first_steps/whisperback]]</p>\n"
+#~ msgid ""
+#~ "  <p>Report an error anonymously from Tails using\n"
+#~ "  [[<i>WhisperBack</i>|doc/first_steps/whisperback]].</p>\n"
+#~ msgstr ""
+#~ "  <p>[[Reporte um erro usando o\n"
+#~ "  <i>WhisperBack</i>|doc/first_steps/whisperback]]</p>\n"
+
+#, no-wrap
+#~ msgid "</div>\n"
+#~ msgstr "</div>\n"
+
+#, no-wrap
+#~ msgid "  <h1>Request a feature</h1>\n"
+#~ msgstr "  <h1>Peça uma funcionalidade</h1>\n"
+
+#, no-wrap
+#~ msgid ""
+#~ "  <p>Search the [[!tails_ticket \"\" desc=\"open issues in GitLab\"]] and create a\n"
+#~ "  new issue if no existing one matches your needs.</p>\n"
+#~ msgstr ""
+#~ "  <p>Faça uma busca nos [[!tails_ticket \"\" desc=\"tíquetes abertos no GitLab\"]]\n"
+#~ "  e crie um tíquete novo se já não houver um que satisfaça suas necessidades.</p>\n"
+
+#, no-wrap
+#~ msgid "<div id=\"talk\" class=\"block block-full\">\n"
+#~ msgstr "<div id=\"talk\" class=\"block block-full\">\n"
+
+#, fuzzy, no-wrap
+#~| msgid "  <h1>Report an error</h1>\n"
+#~ msgid "  <h1>Other support channels</h1>\n"
+#~ msgstr "  <h1>Relate um erro</h1>\n"
+
+#, no-wrap
+#~ msgid "  <h1>Contact us</h1>\n"
+#~ msgstr "  <h1>Entre em contato</h1>\n"
+
+#, no-wrap
+#~ msgid "  <h1>Write to our help desk</h1>\n"
+#~ msgstr "  <h1>Escreva para a nossa central de ajuda</h1>\n"
+
+#, no-wrap
+#~ msgid ""
+#~ "  <p>If you are facing an error in Tails, please follow the [[bug reporting\n"
+#~ "  guidelines|doc/first_steps/bug_reporting]].</p>\n"
+#~ msgstr ""
+#~ "  <p>Se você encontrou um erro no Tails, por favor siga as [[instruções para\n"
+#~ "  relatar bugs|doc/first_steps/bug_reporting]].</p>\n"
+
+#, no-wrap
+#~ msgid ""
+#~ "  <p>If Tails does not start, please see our specific\n"
+#~ "  [[reporting guidelines|doc/first_steps/bug_reporting#does-not-start]].</p>\n"
+#~ msgstr ""
+#~ "  <p>Se o Tails não estiver iniciando, por favor veja nossa página com \n"
+#~ "  [[instruções específicas para relatar esses casos|doc/first_steps/bug_reporting#does-not-start]].</p>\n"
+
+#, no-wrap
+#~ msgid "<div id=\"wishlist\" class=\"blocks two-blocks\">\n"
+#~ msgstr "<div id=\"wishlist\" class=\"blocks two-blocks\">\n"
+
+#, no-wrap
+#~ msgid "</div> <!-- #wishlist -->\n"
+#~ msgstr "</div> <!-- #wishlist -->\n"
+
+#, no-wrap
+#~ msgid "<div id=\"talk\">\n"
+#~ msgstr "<div id=\"talk\">\n"
+
+#, no-wrap
+#~ msgid "[[!meta stylesheet=\"hide-breadcrumbs\" rel=\"stylesheet\" title=\"\"]]\n"
+#~ msgstr "[[!meta stylesheet=\"hide-breadcrumbs\" rel=\"stylesheet\" title=\"\"]]\n"
+
+#~ msgid ""
+#~ "Read the [[official documentation|doc]] to learn more about how Tails "
+#~ "works and maybe start answering your questions. It contains:"
+#~ msgstr ""
+#~ "Leia a [[documentação oficial|doc]] para saber mais sobre como o Tails "
+#~ "funciona e talvez começar ter suas perguntas respondidads. Ela contém:"
+
+#~ msgid "General information about what Tails is"
+#~ msgstr "Informações gerais sobre o que é o Tails"
+
+#~ msgid ""
+#~ "Information to understand how it can help you and what its limitations are"
+#~ msgstr ""
+#~ "Informações para você saber de que formas o Tails pode te ajudar e quais "
+#~ "são as limitações do sistema"
+
+#~ msgid "Guides covering typical uses of Tails"
+#~ msgstr "Guias que explicam os usos típicos do Tails"
+
+#~ msgid "[[Visit Tails documentation|doc]]"
+#~ msgstr "[[Visite a documentação|doc]]"
+
+#~ msgid "Learn how to use Tails"
+#~ msgstr "Aprenda como usar o Tails"
+
+#~ msgid ""
+#~ "[[!inline pages=\"support/learn/intro.inline\" raw=\"yes\" "
+#~ "sort=\"age\"]]\n"
+#~ msgstr ""
+#~ "[[!inline pages=\"support/learn/intro.inline.pt\" raw=\"yes\" "
+#~ "sort=\"age\"]]\n"
+
+#, fuzzy
+#~| msgid ""
+#~| "The [list of things that will be in the next release](https://"
+#~| "redmine.tails.boum.org/code/projects/tails/issues?query_id=111)"
+#~ msgid ""
+#~ "The [list of things that will be in the next release](https://"
+#~ "redmine.tails.boum.org/code/projects/tails/issues?query_id=327)"
+#~ msgstr ""
+#~ "Na [lista de coisas que serão incluídas na próxima versão](https://"
+#~ "labs.riseup.net/code/projects/tails/issues?query_id=111)"
+
+#~ msgid "<div id=\"page-found_a_problem\">\n"
+#~ msgstr "<div id=\"page-found_a_problem\">\n"
+
+#~ msgid "<div id=\"bugs\">\n"
+#~ msgstr "<div id=\"bugs\">\n"
+
+#~ msgid "</div> <!-- #bugs -->\n"
+#~ msgstr "</div> <!-- #bugs -->\n"
+
+#~ msgid "</div> <!-- #page-found_a_problem -->\n"
+#~ msgstr "</div> <!-- #page-found_a_problem -->\n"
+
+#~ msgid "</div> <!-- #talk -->\n"
+#~ msgstr "</div> <!-- #talk -->\n"
+
+#, fuzzy
+#~| msgid ""
+#~| "The [list of things that will be in the next release](https://"
+#~| "labs.riseup.net/code/projects/tails/issues?query_id=111)"
+#~ msgid ""
+#~ "The [rest of our open tickets on Redmine](https://redmine.tails.boum.org/"
+#~ "code/projects/tails/issues?set_filter=1)"
+#~ msgstr ""
+#~ "Na [lista de coisas que serão incluídas na próxima versão](https://"
+#~ "labs.riseup.net/code/projects/tails/issues?query_id=111)"
+
+#~ msgid "The [[list of things to do|todo]]"
+#~ msgstr "Na [[lista de coisas a fazer|todo]]"
+
+#~ msgid "How-tos on getting Tails to work"
+#~ msgstr "How-tos sobre como fazer o Tails funcionar"
+
+#~ msgid "It contains:"
+#~ msgstr "Conteúdo:"

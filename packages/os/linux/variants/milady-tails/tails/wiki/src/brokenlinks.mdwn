@@ -1,0 +1,17 @@
+In English
+==========
+
+[[!brokenlinks pages="* and lang(EN)"]]
+
+In all languages
+================
+
+The PO plugin of ikiwiki reports broken links in:
+
+  - `#~ msgid` from removed strings
+  - `#~| msgid` from fuzzy strings
+
+We should fix them when easy (delete removed strings, remove links from fuzzy
+strings) and otherwise ignore them.
+
+[[!brokenlinks pages="*"]]

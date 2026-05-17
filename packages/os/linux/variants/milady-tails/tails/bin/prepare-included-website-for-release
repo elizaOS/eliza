@@ -1,0 +1,50 @@
+#!/bin/bash
+
+set -eu
+set -x
+
+# For git_current_branch
+. "$(dirname "$0")"/../auto/scripts/utils.sh
+
+### Sanity checks
+
+[ "$(git_current_branch)" = "${RELEASE_BRANCH:?}" ] ||
+    error "Not on branch '$RELEASE_BRANCH'"
+
+### Merge `master` into the branch used for the release
+
+git fetch origin && git merge origin/master
+
+if [ "$DIST" = stable ]; then # preparing a final release
+    echo "${VERSION:?}" >wiki/src/inc/stable_amd64_version.html
+    echo -n "${RELEASE_DATE:?}" >wiki/src/inc/stable_amd64_date.html
+    for type in img iso; do
+        basename="tails-amd64-${VERSION:?}"
+        filename="${basename:?}.${type:?}"
+        echo "${filename:?}" \
+            >wiki/src/inc/stable_amd64_${type:?}_filename.html
+        echo "TZ=UTC gpg --no-options --keyid-format long --verify ${filename:?}.sig ${filename:?}" \
+            >wiki/src/inc/stable_amd64_${type:?}_gpg_verify.html
+        echo "https://download.tails.net/tails/stable/${basename:?}/${filename:?}" \
+            >wiki/src/inc/stable_amd64_${type:?}_url.html
+        echo "https://mirrors.wikimedia.org/tails/stable/${basename:?}/${filename:?}" \
+            >wiki/src/inc/stable_amd64_${type:?}_url_https.html
+        echo "https://tails.net/torrents/files/${filename:?}.sig" \
+            >wiki/src/inc/stable_amd64_${type:?}_sig_url.html
+    done
+    git commit wiki/src/inc/ -m "Update version and date for ${VERSION:?}."
+fi
+
+### Signing key downloaded by the Upgrader
+
+./bin/prepare-minimal-signing-key
+
+### Translations
+
+./build-website --rebuild
+git add wiki/src
+git commit -m 'Update website PO files.'
+
+### Push
+
+git push origin "${RELEASE_BRANCH:?}:${RELEASE_BRANCH:?}"

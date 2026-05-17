@@ -1,0 +1,207 @@
+[[!meta title="Random numbers"]]
+
+As [[mentioned in the PELD spec|contribute/design#spec-entropy]], it
+is not so easy to get good pseudo-random numbers in the context of
+a Live system. This document describes how Tails behaves in this area,
+and the work that is left to be done.
+
+[[!toc levels=2]]
+
+# Entropy sources
+
+In addition to the Linux kernel's own entropy gathering facilities,
+Tails uses auxiliary entropy sources, that we describe below.
+
+<a id="haveged"></a>
+
+## haveged
+
+Tails ships [HAVEGE](https://issihosts.com/haveged/), that
+fills `/dev/random` whenever the supply of random bits in
+`/dev/random` falls below the low water mark of the device.
+Quoting its homepage, HAVEGE "exploits [these] modifications of the
+internal volatile hardware states as a source of uncertainty".
+
+The default configuration shipped with the
+[[!debpts haveged desc="Debian package"]] passes `-w 1024` to the
+`haveged` daemon. That is, it sets
+`/proc/sys/kernel/random/write_wakeup_threshold` to 1024.
+We [[!tails_gitweb config/chroot_local-hooks/62-haveged desc="modify that"]]
+to use the same watermark as rngd, i.e. 2048 bits. The goal here is to
+avoid the situation when rngd starts first and always keeps the
+entropy pool between 1024 and 2048 bits, thus dominating the
+entropy pool.
+
+<a id="rngd"></a>
+
+## rngd
+
+`rngd` gets entropy from a hardware RNG, if available. Otherwise, it
+does not start.
+
+`rngd` fills up the pool using an `ioctl` on `/dev/random` to add
+entropy. It does that unless `fill-watermark` bits are available.
+The `fill-watermark` defaults to 50% of the size of the entropy pool,
+which itself defaults to 4096 bits on Linux 3.14, so basically `rngd`
+feeds the entropy pool unless there are already 2048 bits in it.
+The [[!debpts rng-tools desc="Debian package"]] does not override this
+default configuration, and neither does Tails.
+
+Note: `rngd` (2-unofficial-mt.14-1) does not modify any parameter in
+`/proc/sys/kernel/random/`.
+
+# Entropy pool initialization
+
+The Linux kernel initializes its RNG with various sources, including:
+
+* Hardware RNGs (if available)
+* CPU instructions like RDSEED, RDRAND, or RDTSC
+* interrupt timings, including input events (keyboard, mouse, etc.)
+
+If the entropy pool is not initialized the first time random numbers
+are requested, the kernel will block and generate entropy from cycle 
+counter jitter (that's not supported on all architectures, but it is on
+x86), which takes about a second. There was some scepticism about the
+quality of this jitter entropy in the past (for example [by Theodore Ts'o](https://lkml.org/lkml/2013/10/28/598) 
+and [Linus Torvalds](https://lkml.org/lkml/2019/9/19/854)) but there 
+hasn't been much discussion about it since it was introduced in 
+Linux 5.4 ([a publication by the German Federal Office for Information Security](https://www.bsi.bund.de/SharedDocs/Downloads/EN/BSI/Publications/Studies/LinuxRNG/LinuxRNG_EN_V5_0.pdf)
+validates the jitter entropy as a good source of entropy).
+
+Some sources, like interrupt timings, are continuously mixed into the 
+entropy pool, which is used to periodically reseed the kernel's RNG.
+[This reseeding is done more often during boot](https://git.kernel.org/pub/scm/linux/kernel/git/crng/random.git/commit/?id=7a7ff644aeaf), 
+because it's unclear how good the entropy sources are during early boot,
+and mixing in more entropy is a good way to ensure that the entropy pool
+is well-seeded.
+
+The userland can also mix in some entropy by [writing to
+`/dev/urandom` or `/dev/random`](https://github.com/torvalds/linux/blob/a93289b830ce783955b22fbe5d1274a464c05acf/drivers/char/random.c#L1352-L1353). 
+In Debian, [`systemd-random-seed.service`](https://www.freedesktop.org/software/systemd/man/latest/systemd-random-seed.service.html)
+is used to write a random seed to `/var/lib/systemd/random-seed` during
+shutdown and load it into the kernel entropy pool during boot.
+
+That doesn't work in Tails, because of the read-only root filesystem.
+Instead of `systemd-random-seed.service`, Tails uses custom scripts
+executed in the initramfs during boot and before shutdown. The random
+seed is not stored on the filesystem, but in an otherwise unused sector
+on the device, at logical block address (LBA) 34 (that's the first
+sector after the [GPT](https://en.wikipedia.org/wiki/GUID_Partition_Table#Partition_entries_(LBA_2-33))).
+
+This solves the problem that the root filesystem is read-only in Tails
+and has multiple advantages:
+
+* The filesystem is not changed, therefore easier to verify.
+* It doesn't require persistence to be set up.
+* The entropy pool is seeded earlier during the boot process (in the
+  initramfs `init-top` stage).
+
+The scripts do basically the same `systemd-random-seed.service` does
+([see the source code](https://github.com/systemd/systemd/blob/56932080194c8489ada31e7191b1fa391603aa63/src/random-seed/random-seed.c#L398)).
+
+During boot:
+
+* Read the seed from the location it was stored at.
+* Write the seed to /dev/urandom, which causes it to be mixed in with
+  the existing bytes in the entropy pool.
+* Update the seed with random bytes from /dev/urandom to ensure that
+  some entropy is saved for the next boot, even if the system is not
+  shutting down properly.
+
+During shutdown:
+
+* Update the seed with random bytes from /dev/urandom to save the
+  entropy gathered during the session.
+
+Sources to learn more about the Linux kernel's RNG and its recent
+changes:
+
+* All articles in [this LWN kernel index entry](https://lwn.net/Kernel/Index/#Random_numbers),
+  especially:
+  * [The article on the jitter entropy introduced in Linux 5.4](https://lwn.net/Articles/802360/).
+  * [The article on uniting /dev/random and /dev/urandom](https://lwn.net/Articles/884875/).
+* [A summary of recent changes to the kernel's RNG by co-maintainer Jason A. Donenfeld](https://www.zx2c4.com/projects/linux-rng-5.17-5.18/).
+* [An analysis of the Linux RNG by the German Federal Office for Information Security](https://www.bsi.bund.de/SharedDocs/Downloads/EN/BSI/Publications/Studies/LinuxRNG/LinuxRNG_EN_V5_0.pdf).
+* The section headers of the [kernel's random.c](https://github.com/torvalds/linux/blob/master/drivers/char/random.c).
+
+## Initialization during installation
+
+When creating a new Tails device, Tails Cloner writes a random seed to 
+LBA 34 to initialize the seed for the first boot.
+
+## Possible disadvantages
+
+On [[!tails_ticket 11897]], the concern was raised that writing to the
+Tails device on each boot might allow a sophisticated attacker with
+physical access to the device to determine how many times it has been
+booted due to the wear leveling of the flash memory.
+
+We try to mitigate this by writing the random seed a random number of
+times (1 to 500) during first boot. This should make it harder to
+determine the number of boots by looking at the wear leveling of the
+flash memory. Concerns that this might not be enough if the device uses
+static wear leveling have been raised on [[!tails_ticket 11897]].
+
+# Remaining concerns
+
+## HAVEGE reliability
+
+haveged relies on the RDTSC instruction, that apparently is useless in
+some virtualized environments. Also, the quality of random numbers
+output by HAVEGE is unclear, and the topic of many discussions.
+
+Further research on this topic is [[!tails_ticket 7102 desc="left to
+be done"]].
+
+This is why Tails also ships `rngd`. Still, it is not clear how these
+two daemons [[act together|contribute/design/random#race]].
+
+## Hardware RNG trustworthiness and availability
+
+It is not clear how much one can trust a hardware RNG, that is hard,
+if not impossible, to audit. Also, not all computers include
+a hardware RNG.
+
+This is why Tails also ships HAVEGE. Still, it is not clear how these
+two daemons [[act together|contribute/design/random#race]].
+
+<a id="race"></a>
+
+## Interaction between haveged and rngd
+
+This discussion only makes sense whenever a hardware RNG supported by
+`rngd` is available. Otherwise, only `haveged` is used.
+
+The way it is configured in Debian, haveged sets
+`/proc/sys/kernel/random/write_wakeup_threshold` to 2048, so that
+processes that are waiting to write to `/dev/random` are woken up
+whenever less than 2048 bits of entropy is available. In practice,
+this probably means that Linux wakes up both `haveged` and `rngd` more
+or less at the same time.
+
+In such a case, `haveged` tries to write as many bytes as needed to
+fill the pool via a single `ioctl`, while `rngd` tries to write 512
+bits (the default value of `random_step` being 64 bytes) at a time,
+until the pool contains 2048 bits (default value of the pool water
+mark). It's unclear which one wins the race. Let's discuss the
+possible cases:
+
+* If `haveged` always wins the case, then it is actually useless to
+  run `rngd` at all.
+
+* If `rngd` always wins the race, then it dominates the entropy pool,
+  but shipping `haveged` is still useful when no hardware RNG
+  is available.
+
+* If the one that wins the race may change depending on the context, then it's
+  still useful to ship both `rngd` and `haveged`: it achieves our goal
+  of not relying purely on either one.
+
+## Interaction between haveged and rngd
+
+This area is left to be researched.
+
+## Early boot time
+
+One should audit random numbers availability at early boot time:
+[[!tails_ticket 6116]].

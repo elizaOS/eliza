@@ -1,0 +1,8 @@
+#!/bin/sh
+
+set -e
+set -u
+
+DOTFILES_SOURCE_DIR='/live/persistence/TailsData_unlocked/dotfiles'
+sudo -u amnesia /usr/local/lib/add-GNOME-bookmark \
+     "$DOTFILES_SOURCE_DIR" "Dotfiles"

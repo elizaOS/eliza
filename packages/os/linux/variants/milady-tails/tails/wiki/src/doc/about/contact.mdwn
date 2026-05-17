@@ -1,0 +1,162 @@
+[[!meta title="Contact"]]
+
+There are many ways to contact us, depending on what you want
+to talk about.
+
+All mailing lists are in English unless specified otherwise.
+
+[[!toc levels=2]]
+
+<h1 id="public-mailing-lists">Public mailing lists</h1>
+
+<div class="caution">
+
+<p>These mailing lists are public: subscription is open to anyone. Don't
+send compromising information. Please respect the
+<a href="https://community.torproject.org/policies/code_of_conduct/">Tor Project Code of Conduct</a>.</p>
+
+</div>
+
+<div class="block">
+
+<h2 id="tails-dev">tails-dev</h2>
+
+<p>tails-dev@boum.org is the mailing list where the project is coordinated:
+technical design questions, upcoming events, monthly reports, and user
+experience.</p>
+
+<form method="POST" action="https://www.autistici.org/mailman/subscribe/tails-dev">
+	<input name="email" value=""/>
+	<input type="submit" value="Subscribe"/>
+</form>
+
+<p>Public archive of tails-dev: <a href="https://lists.autistici.org/list/tails-dev.html">https://lists.autistici.org/list/tails-dev.html</a></p>
+
+<form action="https://lists.autistici.org/cgi-lurker/keyword.cgi" accept-charset="UTF-8">
+    <input type="hidden" name="doc-url" value="https://lists.autistici.org">
+	<input type="hidden" name="format" value="en.html">
+	<input type="text"   name="query" value="" placeholder="ml:tails-dev search terms" onclick="value='ml:tails-dev '">
+	<input type="submit" name="submit" value="Search archive">
+</form>
+
+</div>
+
+<div class="block">
+
+<h2 id="tails-testers">tails-testers</h2>
+
+<p>tails-testers@boum.org is the mailing list for people who want to help
+[[test|contribute/how/testing]] new releases or features.</p>
+
+<form method="POST" action="https://www.autistici.org/mailman/subscribe/tails-testers">
+	<input name="email" value=""/>
+	<input type="submit" value="Subscribe"/>
+</form>
+
+<p>Public archive of tails-testers: <a href="https://lists.autistici.org/list/tails-testers.html">https://lists.autistici.org/list/tails-testers.html</a></p>
+
+<form action="https://lists.autistici.org/cgi-lurker/keyword.cgi" accept-charset="UTF-8">
+    <input type="hidden" name="doc-url" value="https://lists.autistici.org">
+	<input type="hidden" name="format" value="en.html">
+	<input type="text"   name="query" value="" placeholder="ml:tails-testers search terms" onclick="value='ml:tails-testers '">
+	<input type="submit" name="submit" value="Search archive">
+</form>
+
+</div>
+
+<div class="block">
+
+<h2 id="tails-l10n">tails-l10n</h2>
+
+[[!inline pages="contribute/how/translate/tails-l10n.inline" raw="yes" sort="age"]]
+
+</div>
+
+<h1 id="private-email-addresses">Private email addresses</h1>
+
+<div class="block">
+
+<h2 id="support">Support</h2>
+
+<p>You can write encrypted emails to <a href="mailto:support@tails.net">support@tails.net</a> if
+you need help in private.</p>
+
+<p>[[OpenPGP key|tails-bugs.key]]
+([[details|doc/about/openpgp_keys#support]])</p>
+
+</div>
+
+<div class="block">
+
+<h2 id="tails-press">Press</h2>
+
+<p>If you are a journalist and want to write about Tails, or if you want to
+send us links to press articles about Tails, write to
+<a href="mailto:press@tails.net">press@tails.net</a>.</p>
+
+</div>
+
+<div class="block">
+
+<h2 id="tails-fundraising">Fundraising</h2>
+
+<p>If you want to contact our fundraising team, write to <a href="mailto:fundraising@tails.net">fundraising@tails.net</a>.</p>
+
+</div>
+
+<div class="block">
+
+<h2 id="tails-sysadmins">Sysadmins</h2>
+
+<p>To talk about our infrastructure (servers, test suite, repositories,
+mirrors, etc.), write to <a href="mailto:sysadmins@tails.net">sysadmins@tails.net</a>.</p>
+
+<p>[[OpenPGP key|sysadmins-tails-net.key]]
+([[details|doc/about/openpgp_keys#sysadmins]])</p>
+
+</div>
+
+<div class="block">
+
+<h2 id="tails-foundations">Tails Team</h2>
+
+<p>To get in touch with the <a href="https://gitlab.tails.boum.org/tails/team/-/wikis/home">Tails Team</a>, write to
+<a href="mailto:foundations@tails.net">foundations@tails.net</a>.</p>
+
+<p>[[OpenPGP key|foundations-tails-net.key]]
+([[details|doc/about/openpgp_keys#foundations]])</p>
+
+</div>
+
+<div class="block">
+
+<h2 id="tails-weblate">Weblate</h2>
+
+<p>To talk about the [[Tails translation platform|contribute/how/translate/with_translation_platform]], write to <a href="mailto:weblate@tails.net">weblate@tails.net</a>.</p>
+
+<p>[[OpenPGP key|weblate-tails-net.key]]
+([[details|doc/about/openpgp_keys#weblate]])</p>
+
+</div>
+
+<div class="block">
+
+<h2 id="security">Security</h2>
+
+<p>For vulnerabilities disclosures, email
+<a href="mailto:security@torproject.org">security@torproject.org</a>.</p>
+
+<p><a href="https://keys.openpgp.org/search?q=security%40torproject.org">OpenPGP key</a></p>
+
+</div>
+
+<div class="block">
+
+<h1 id="chat">Chat rooms</h1>
+
+<p>You can join the [[Tor users chat room|support/chat]] and
+the [[Tails contributors chat room|contribute/chat]]. Only a few Tails
+developers hang out there, so email is preferred for anything that
+might be of interest for the larger community.</p>
+
+</div>

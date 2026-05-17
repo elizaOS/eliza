@@ -1,0 +1,29 @@
+[[!meta date="Mon, 18 May 2014 12:34:56 +0200"]]
+[[!pagetemplate template="news.tmpl"]]
+[[!meta title="Usability testing session in Paris"]]
+
+Sur une proposition de NUMA Paris, Tails co-organise un
+premier atelier
+UX
+(expérience utilisateur) avec sa communauté d'utilisateurs.
+
+Elle aura lieu le 28 mai 2014 de 18:15 à 20:30 à NUMA.
+
+Cette démarche part du sentiment que les projets libres mettent souvent peu
+l'accent sur l'expérience utilisateur. Leur utilisabilité pas terrible peut
+rebuter les débutants. NUMA Experiment (l'équipe UX de NUMA) se propose de jouer
+le rôle de pont entre designers, graphistes, experts d'interfaces utilisateur
+d'un côté et le monde du logiciel libre de l'autre.
+
+Dans les semaines qui viennent, d'autres rendez-vous auront lieu pour continuer
+et faire évoluer cette expérimentation.
+
+Pour la première session **nous recherchons une dizaine de personnes** déjà
+familiarisées avec Tails et qui aient envie de participer à des tests et
+discuter de leur expérience d'usage de Tails.
+
+**Merci de vous inscrire sur le site de NUMA.**
+
+On partagera aussi un verre à la fin de l'atelier :)
+
+S'il vous plaît, venez avec votre ordinateur!

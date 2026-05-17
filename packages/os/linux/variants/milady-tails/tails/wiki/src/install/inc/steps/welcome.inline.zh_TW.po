@@ -1,0 +1,480 @@
+# SOME DESCRIPTIVE TITLE
+# Copyright (C) YEAR Free Software Foundation, Inc.
+# This file is distributed under the same license as the PACKAGE package.
+# FIRST AUTHOR <EMAIL@ADDRESS>, YEAR.
+#
+msgid ""
+msgstr ""
+"Project-Id-Version: PACKAGE VERSION\n"
+"Report-Msgid-Bugs-To: tails-l10n@boum.org\n"
+"POT-Creation-Date: 2025-09-17 11:40+0200\n"
+"PO-Revision-Date: 2024-05-12 13:25+0000\n"
+"Last-Translator: xin <xin@riseup.net>\n"
+"Language-Team: LANGUAGE <LL@li.org>\n"
+"Language: zh_TW\n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+"Plural-Forms: nplurals=1; plural=0;\n"
+"X-Generator: Weblate 5.3\n"
+
+#. type: Plain text
+#, no-wrap
+msgid "[[!meta robots=\"noindex\"]]\n"
+msgstr "[[!meta robots=\"noindex\"]]\n"
+
+#. type: Plain text
+#, no-wrap
+msgid "<h1 id=\"new\" class=\"pc-clone mac-clone\">Welcome to your new Tails!</h1>\n"
+msgstr ""
+
+#. type: Plain text
+#, no-wrap
+msgid "<div class=\"step-image pc-clone mac-clone\">[[!img install/inc/infography/tails.png link=\"no\" alt=\"\"]]</div>\n"
+msgstr "<div class=\"step-image pc-clone mac-clone\">[[!img install/inc/infography/tails.png link=\"no\" alt=\"\"]]</div>\n"
+
+#. type: Plain text
+#, no-wrap
+msgid "<div class=\"success\">\n"
+msgstr "<div class=\"success\">\n"
+
+#. type: Plain text
+#, no-wrap
+msgid ""
+"<video autoplay loop muted width=\"200\" height=\"200\" poster=\"https://tails.net/install/inc/success/start.png\">\n"
+"  <source src=\"https://tails.net/install/inc/success/start.mp4\" type=\"video/mp4\" />\n"
+"</video>\n"
+msgstr ""
+
+#. type: Plain text
+#, no-wrap
+msgid ""
+"<div>\n"
+"  <p class=\"big\">You made it!</p>\n"
+msgstr ""
+
+#. type: Plain text
+#, no-wrap
+msgid "  <p>You managed to start <span class=\"pc-clone mac-clone\">your new</span> Tails on your computer!</p>\n"
+msgstr ""
+
+#. type: Plain text
+#, no-wrap
+msgid "  <p>Congratulations on staying safe :)</p>\n"
+msgstr ""
+
+#. type: Plain text
+#, no-wrap
+msgid "  <p>To continue discovering Tails, read our [[documentation|doc]].</p>\n"
+msgstr ""
+
+#. type: Plain text
+#, no-wrap
+msgid "</div>\n"
+msgstr "</div>\n"
+
+#. type: Plain text
+#, no-wrap
+msgid "<h1 id=\"wi-fi\" class=\"step\">Test your Wi-Fi</h1>\n"
+msgstr ""
+
+#. type: Plain text
+msgid ""
+"Problems with Wi-Fi are unfortunately quite common in Tails and Linux in "
+"general. To test if your Wi-Fi interface works in Tails:"
+msgstr ""
+
+#. type: Bullet: '1. '
+msgid "Open the system menu in the top-right corner:"
+msgstr ""
+
+#. type: Plain text
+#, fuzzy, no-wrap
+msgid "   [[!img doc/first_steps/desktop/system-with-wifi-only.png class=\"screenshot\" alt=\"\"]]\n"
+msgstr "   [[!img doc/first_steps/desktop/system.png link=\"no\"]]\n"
+
+#. type: Bullet: '1. '
+msgid ""
+"Click [[!img lib/go-next.png link=\"no\" class=\"symbolic\" alt=\"\"]] on "
+"the right of the **Wi-Fi** button."
+msgstr ""
+
+#. type: Plain text
+#, no-wrap
+msgid "   A list of available Wi-Fi networks appears below the **Wi-Fi** button.\n"
+msgstr ""
+
+#. type: Bullet: '1. '
+msgid ""
+"After establishing a connection to a local network, the *Tor Connection* "
+"assistant appears to help you connect to the Tor network."
+msgstr ""
+
+#. type: Plain text
+#, fuzzy, no-wrap
+msgid "   [[!img doc/anonymous_internet/tor/tor-connection.png class=\"screenshot\" alt=\"\"]]\n"
+msgstr "   [[!img doc/first_steps/desktop/system.png link=\"no\"]]\n"
+
+#. type: Plain text
+#, fuzzy, no-wrap
+msgid "   <div class=\"next\">\n"
+msgstr "<div class=\"attack\">\n"
+
+#. type: Plain text
+#, no-wrap
+msgid ""
+"   <p>To learn more about the Tor network, go to [[Connecting to the Tor\n"
+"   network|doc/anonymous_internet/tor]].</p>\n"
+msgstr ""
+
+#. type: Plain text
+#, fuzzy, no-wrap
+msgid "   </div>\n"
+msgstr "  </div>\n"
+
+#. type: Title -
+#, no-wrap
+msgid "Troubleshooting Wi-Fi not working"
+msgstr ""
+
+#. type: Plain text
+#, no-wrap
+msgid "[[!inline pages=\"doc/anonymous_internet/no-wifi.inline\" raw=\"yes\" sort=\"age\"]]\n"
+msgstr "[[!inline pages=\"doc/anonymous_internet/no-wifi.inline.zh_TW\" raw=\"yes\" sort=\"age\"]]\n"
+
+#, no-wrap
+#~ msgid "   [[!img doc/first_steps/desktop/system.png link=\"no\"]]\n"
+#~ msgstr "   [[!img doc/first_steps/desktop/system.png link=\"no\"]]\n"
+
+#, fuzzy, no-wrap
+#~ msgid "<h1 id=\"create-persistence\" class=\"step\">Create a Persistent Storage (optional)</h1>\n"
+#~ msgstr "<h1 id=\"create-persistence\">建立一個加密的永久儲存磁區 (可選的)</h1>\n"
+
+#, no-wrap
+#~ msgid "<div class=\"step-image\">[[!img install/inc/infography/create-persistence.png link=\"no\" alt=\"\"]]</div>\n"
+#~ msgstr "<div class=\"step-image\">[[!img install/inc/infography/create-persistence.png link=\"no\" alt=\"\"]]</div>\n"
+
+#, fuzzy, no-wrap
+#~ msgid ""
+#~ "You can optionally create an encrypted Persistent Storage in the\n"
+#~ "remaining free space on your\n"
+#~ "<span class=\"clone\">new</span>\n"
+#~ "Tails USB stick to store any of the following:\n"
+#~ msgstr ""
+#~ "可以選擇是否在<span class=\"windows linux mac-usb\">最後</span>\n"
+#~ "<span class=\"clone\">新的</span>\n"
+#~ "Tails USB 隨身碟的剩餘空間上。\n"
+#~ "建立一個 *加密的永久磁區* \n"
+#~ "，以儲存以下資料：\n"
+
+#, fuzzy
+#~ msgid "The data in the Persistent Storage:"
+#~ msgstr "在加密永久儲存磁區的資料："
+
+#~ msgid "Remains available across separate working sessions."
+#~ msgstr "在分別的工作期間仍然可以使用。"
+
+#~ msgid "Is encrypted using a passphrase of your choice."
+#~ msgstr "挑選一個自己的密語進行加密。"
+
+#, fuzzy, no-wrap
+#~ msgid ""
+#~ "<p>The Persistent Storage is not hidden. An attacker in possession of\n"
+#~ "your USB stick can know that there is a Persistent Storage on it. Take into consideration\n"
+#~ "that you can be forced or tricked to give out its passphrase.</p>\n"
+#~ msgstr ""
+#~ "<p>這個加密的永久磁區未被隱藏。其它攻擊人士若取得\n"
+#~ "這支 USB 隨身碟可以知道它是否有加密的永久磁區。請考慮\n"
+#~ "你可能會被迫或被騙地交出了它的密語。</p>\n"
+
+#, no-wrap
+#~ msgid "<div class=\"caution\">\n"
+#~ msgstr "<div class=\"caution\">\n"
+
+#, fuzzy, no-wrap
+#~ msgid "Create the Persistent Storage"
+#~ msgstr "建立永久儲存區\n"
+
+#, fuzzy, no-wrap
+#~ msgid ""
+#~ "1. Choose\n"
+#~ "   <span class=\"menuchoice\">\n"
+#~ "     **Applications**&nbsp;▸\n"
+#~ "     **Tails**&nbsp;▸\n"
+#~ "     **Configure persistent volume**</span>.\n"
+#~ msgstr ""
+#~ "1. 選取\n"
+#~ "   <span class=\"menuchoice\">\n"
+#~ "     **Applications**&nbsp;▸\n"
+#~ "     **Tails**&nbsp;▸\n"
+#~ "     **Configure persistent volume**</span>.\n"
+
+#, no-wrap
+#~ msgid ""
+#~ "1. Specify a passphrase of your choice in both the\n"
+#~ "**Passphrase** and <span class=\"guilabel\">Verify\n"
+#~ "Passphrase</span> text boxes.\n"
+#~ msgstr ""
+#~ "1. S同時在\n"
+#~ "**Passphrase** 與<span class=\"guilabel\">Verify\n"
+#~ "Passphrase</span> 欄位中指定所挑選的密語。\n"
+
+#, fuzzy, no-wrap
+#~ msgid ""
+#~ "   <div class=\"tip\">\n"
+#~ "   <p>We recommend choosing a long passphrase made of five to seven random words.\n"
+#~ "   <a href=\"https://theintercept.com/2015/03/26/passphrases-can-memorize-attackers-cant-guess/\">See this article about memorizable and secure passphrases.</a></p>\n"
+#~ "   </div>\n"
+#~ msgstr ""
+#~ "   <div class=\"tip\">\n"
+#~ "   <p>建議挑選一個5~7個字隨機組織成的密語。\n"
+#~ "   <a href=\"https://theintercept.com/2015/03/26/passphrases-can-memorize-attackers-cant-guess/\">進一步了解</a></p>\n"
+#~ "   </div>\n"
+
+#~ msgid "Click on the **Create** button."
+#~ msgstr "點擊**創建**按鈕。"
+
+#~ msgid "Wait for the creation to finish."
+#~ msgstr "等待此創建完成。"
+
+#, fuzzy
+#~ msgid ""
+#~ "The list of features of the Persistent Storage appears. Each feature "
+#~ "corresponds to a set of files or settings that can be saved in the "
+#~ "Persistent Storage."
+#~ msgstr ""
+#~ "助手會顯示一個可能永久功能的清單，每一個功能都因應著一組存放在加密永久磁區"
+#~ "的檔案或設定。 　"
+
+#, fuzzy, no-wrap
+#~ msgid ""
+#~ "   We recommend you to only turn on the Personal\n"
+#~ "   Data feature for the time being. You\n"
+#~ "   can turn on more features later on according to your needs.\n"
+#~ msgstr ""
+#~ "   建議此刻僅激活<span class=\"guilabel\">個人資料\n"
+#~ "   </span> 持久功能。稍後還是可以\n"
+#~ "   依需要激活更多的功能。\n"
+
+#~ msgid "Click **Save**."
+#~ msgstr "點擊**儲存**。"
+
+#, fuzzy, no-wrap
+#~ msgid "Restart and unlock the Persistent Storage"
+#~ msgstr "重啟與激活永久儲存區\n"
+
+#, fuzzy
+#~ msgid ""
+#~ "Shut down the computer and restart on your <span class=\"clone\">new</"
+#~ "span> Tails USB stick."
+#~ msgstr ""
+#~ "關閉電腦並利用<span class=\"windows linux mac-usb\">最後</span> <span "
+#~ "class=\"clone\">新的</span> Tails USB 隨身碟重啟電腦。"
+
+#~ msgid ""
+#~ "Select your language and keyboard layout in the <span "
+#~ "class=\"guilabel\">Language & Region</span> section."
+#~ msgstr "在**Language & Region** 底下選擇使用的語言和鍵盤設置。"
+
+#, fuzzy
+#~ msgid ""
+#~ "In the **Encrypted Persistent Storage** section, enter your passphrase "
+#~ "and click **Unlock** to unlock the Persistent Storage for the current "
+#~ "working session."
+#~ msgstr ""
+#~ "在**Encrypted Persistent Storage** 部份，請輸入密語並點擊**Unlock** 以激活"
+#~ "加密永久儲存磁區在目前工作期間運行。"
+
+#~ msgid "Click **Start Tails**."
+#~ msgstr "點擊 **啟動 Tails**."
+
+#, fuzzy, no-wrap
+#~ msgid ""
+#~ "1. You can now save your personal files and working documents in the\n"
+#~ "**Persistent** folder. To open the\n"
+#~ "**Persistent** folder choose\n"
+#~ "<span class=\"menuchoice\">\n"
+#~ "  **Places**&nbsp;▸\n"
+#~ "  **Persistent**</span>.\n"
+#~ msgstr ""
+#~ "1. 現在可以將個人檔案和工作文件存放在\n"
+#~ "**永久** 目錄下。 要打開\n"
+#~ "**永久** 資料夾，請選\n"
+#~ "<span class=\"menuchoice\">\n"
+#~ "  **Places**&nbsp;▸\n"
+#~ "  **Persistent**</span>.\n"
+
+#, no-wrap
+#~ msgid "<div class=\"trophy\">\n"
+#~ msgstr "<div class=\"trophy\">\n"
+
+#, fuzzy, no-wrap
+#~ msgid ""
+#~ "<p>If you want to save some of your documents\n"
+#~ "and configuration in an encrypted storage on your <span class=\"clone\">new</span> Tails USB stick, follow\n"
+#~ "our instructions until the end. Otherwise, have a look at our\n"
+#~ "<span class=\"windows\">[[final recommendations|windows#recommendations]].</span>\n"
+#~ "<span class=\"mac\">[[final recommendations|mac#recommendations]].</span>\n"
+#~ "<span class=\"linux\">[[final recommendations|linux#recommendations]].</span>\n"
+#~ "<span class=\"expert\">[[final recommendations|expert#recommendations]].</span>\n"
+#~ "<span class=\"pc-clone\">[[final recommendations|clone#recommendations]].</span>\n"
+#~ "<span class=\"mac-clone\">[[final recommendations|clone/mac#recommendations]].</span>\n"
+#~ "</p>\n"
+#~ msgstr ""
+#~ "<p>如果要在<span class=\"usb\">最後</span><span class=\"clone\">新的</span> Tails USB 隨身碟上\n"
+#~ "儲存某些文件或是設定到加密的永久磁區，\n"
+#~ "請依照我們的指示一一執行。不然就請看\n"
+#~ "<span class=\"install-clone\">[[最後建議|clone#recommendations]].</span>\n"
+#~ "<span class=\"expert\">[[最後建議|expert/usb#recommendations]].</span>\n"
+#~ "<span class=\"debian\">[[最後建議|debian/usb#recommendations]].</span>\n"
+#~ "<span class=\"windows\">[[最後建議|win/usb#recommendations]].</span>\n"
+#~ "<span class=\"mac-usb\">[[最後建議|mac/usb#recommendations]].</span>\n"
+#~ "<span class=\"mac-clone\">[[最後建議|mac/clone#recommendations]].</span>\n"
+#~ "<span class=\"mac-dvd\">[[最後建議|mac/dvd#recommendations]].</span>\n"
+#~ "<span class=\"linux\">[[最後建議|linux/usb#recommendations]].</span>\n"
+#~ "</p>\n"
+
+#, no-wrap
+#~ msgid "<div class=\"trophy\" id=\"recommendations\">\n"
+#~ msgstr "<div class=\"trophy\" id=\"recommendations\">\n"
+
+#, fuzzy, no-wrap
+#~ msgid "<div class=\"state-image\">[[!img install/inc/infography/tails-usb-with-persistence.png link=\"no\" alt=\"Tails USB stick with Persistent Storage\"]]</div>\n"
+#~ msgstr "<div class=\"step-image\">[[!img install/inc/infography/create-persistence.png link=\"no\" alt=\"\"]]</div>\n"
+
+#, fuzzy, no-wrap
+#~ msgid "<p>You now have a complete Tails, congrats!</p>\n"
+#~ msgstr "<p>如果現在 Tails　可運作了，要向你說聲恭喜！</p>\n"
+
+#, no-wrap
+#~ msgid "<h3>Final recommendations</h3>\n"
+#~ msgstr "<h3>最後建議</h3>\n"
+
+#, no-wrap
+#~ msgid "<p>We hope you enjoy using Tails :)</p>\n"
+#~ msgstr "<p>希望你喜愛使用 Tails :)</p>\n"
+
+#, no-wrap
+#~ msgid "  <div class=\"col-md-6\">\n"
+#~ msgstr "  <div class=\"col-md-6\">\n"
+
+#, no-wrap
+#~ msgid "    [[!img lib/dialog-warning.png link=\"no\" alt=\"\" class=\"float-left\"]]\n"
+#~ msgstr "    [[!img lib/dialog-warning.png link=\"no\" alt=\"\" class=\"float-left\"]]\n"
+
+#, fuzzy, no-wrap
+#~ msgid ""
+#~ "    <p>Tails does not protect you from everything! Have a look at our\n"
+#~ "    [[warnings|doc/about/warnings]].</p>\n"
+#~ msgstr ""
+#~ "    <p>Tails 無法事事都保護！ 請參考我們的\n"
+#~ "    [[警告提醒文件|doc/about/warning]].</p>\n"
+
+#, fuzzy, no-wrap
+#~ msgid "    [[!img lib/apps/help-browser.png link=\"no\" alt=\"\" class=\"float-left\"]]\n"
+#~ msgstr "    [[!img lib/dialog-warning.png link=\"no\" alt=\"\" class=\"float-left\"]]\n"
+
+#~ msgid ""
+#~ "    <p>If you face any problem, use the <span class=\"guilabel\">Report "
+#~ "an\n"
+#~ "    error</span> launcher on the Tails desktop or visit our [[support\n"
+#~ "    pages|support]].</p>\n"
+#~ msgstr ""
+#~ "    <p>如果遇到任何問題，利用 Tails 桌面的<span class=\"guilabel\">錯誤回"
+#~ "報\n"
+#~ "    </span>啟動器或是造訪我們的 [[支援\n"
+#~ "    網頁|support]].</p>\n"
+
+#, fuzzy
+#~ msgid ""
+#~ "<h1 id=\"create-persistence\">Create an encrypted persistent storage "
+#~ "(optional)</h1>\n"
+#~ msgstr ""
+#~ "<h1 id=\"create-persistence\">建立一個加密的永久儲存磁區 (可選的)</h1>\n"
+
+#, fuzzy
+#~ msgid ""
+#~ "You can optionally create an *encrypted persistent storage* in the\n"
+#~ "remaining free space on your\n"
+#~ "<span class=\"clone\">new</span>\n"
+#~ "Tails USB stick to store any of the following:\n"
+#~ msgstr ""
+#~ "可以選擇是否在<span class=\"windows linux mac-usb\">最後</span>\n"
+#~ "<span class=\"clone\">新的</span>\n"
+#~ "Tails USB 隨身碟的剩餘空間上。\n"
+#~ "建立一個 *加密的永久磁區* \n"
+#~ "，以儲存以下資料：\n"
+
+#, fuzzy
+#~ msgid "The data in the encrypted persistent storage:"
+#~ msgstr "在加密永久儲存磁區的資料："
+
+#, fuzzy
+#~ msgid ""
+#~ "<p>The encrypted persistent storage is not hidden. An attacker in "
+#~ "possession of\n"
+#~ "the USB stick can know whether it has an encrypted persistent storage. "
+#~ "Take into consideration\n"
+#~ "that you can be forced or tricked to give out its passphrase.</p>\n"
+#~ msgstr ""
+#~ "<p>這個加密的永久磁區未被隱藏。其它攻擊人士若取得\n"
+#~ "這支 USB 隨身碟可以知道它是否有加密的永久磁區。請考慮\n"
+#~ "你可能會被迫或被騙地交出了它的密語。</p>\n"
+
+#, fuzzy
+#~ msgid ""
+#~ "<p>It is possible to\n"
+#~ "open the encrypted persistent storage from other operating systems. But, "
+#~ "doing\n"
+#~ "so might compromise the security provided by Tails.</p>\n"
+#~ msgstr ""
+#~ "<p>Es ist möglich, den verschlüsselten beständigen Speicherbereich\n"
+#~ "von einem anderen Betriebssystem aus zu öffnen, dies könnte jedoch\n"
+#~ "Ihre Sicherheit gefährden.\n"
+#~ "Anderen Betriebssystemen sollte nicht vertraut werden, mit sensiblen\n"
+#~ "Informationen umzugehen oder keine Spuren zu hinterlassen.</p>\n"
+
+#, fuzzy
+#~ msgid "Create the persistent storage\n"
+#~ msgstr "建立永久儲存區\n"
+
+#~ msgid ""
+#~ "The assistant shows a list of the possible persistence features. Each "
+#~ "feature corresponds to a set of files or settings to be saved in the "
+#~ "encrypted persistent storage."
+#~ msgstr ""
+#~ "助手會顯示一個可能永久功能的清單，每一個功能都因應著一組存放在加密永久磁區"
+#~ "的檔案或設定。 　"
+
+#~ msgid ""
+#~ "   We recommend you to only activate the <span "
+#~ "class=\"guilabel\">Personal\n"
+#~ "   Data</span> persistence feature for the time being. You\n"
+#~ "   can activate more features later on according to your needs.\n"
+#~ msgstr ""
+#~ "   建議此刻僅激活<span class=\"guilabel\">個人資料\n"
+#~ "   </span> 持久功能。稍後還是可以\n"
+#~ "   依需要激活更多的功能。\n"
+
+#~ msgid "Restart and activate the persistent storage\n"
+#~ msgstr "重啟與激活永久儲存區\n"
+
+#~ msgid ""
+#~ "In the **Encrypted Persistent Storage** section, enter your passphrase "
+#~ "and click <span class=\"bold\">Unlock</span> to activate the encrypted "
+#~ "persistent storage for the current working session."
+#~ msgstr ""
+#~ "在**Encrypted Persistent Storage** 部份，請輸入密語並點擊**Unlock** 以激活"
+#~ "加密永久儲存磁區在目前工作期間運行。"
+
+#, fuzzy
+#~ msgid ""
+#~ "<div class=\"state-image\">[[!img install/inc/infography/tails-usb-with-"
+#~ "persistence.png link=\"no\" alt=\"Tails USB stick with persistent "
+#~ "storage\"]]</div>\n"
+#~ msgstr ""
+#~ "<div class=\"step-image\">[[!img install/inc/infography/create-"
+#~ "persistence.png link=\"no\" alt=\"\"]]</div>\n"
+
+#~ msgid "In *Tails Greeter*:"
+#~ msgstr "在*Tails Greeter*:"

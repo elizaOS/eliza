@@ -1,0 +1,34 @@
+[[!meta date="Sun, 17 Oct 2010 11:12:13 +0000"]]
+[[!meta title="Numerous security holes in T(A)ILS 0.5"]]
+[[!pagetemplate template="news.tmpl"]]
+
+[[!tag security/fixed]]
+
+The following security holes affect T(A)ILS 0.5.
+
+We **strongly** urge you to [[upgrade to T(A)ILS
+0.6|news/version_0.6]] in case you are still using an older version.
+
+  - avahi: DSA-2086-1
+  - bzip2: DSA-2112-1
+  - freetype: DSA-2105-1, DSA-2070-1, DSA-2116-1
+  - git-core: DSA-2114-1
+  - glibc, eglibc: DSA-2058-1
+  - ghostscript: DSA-2093-1, DSA-2080-1
+  - lvm2: DSA-2095-1
+  - libpng: DSA-2072-1
+  - linux-2.6: DSA-2110-1, DSA-2094-1, DSA-2053-1
+  - openoffice.org: DSA-2099-1, DSA-2055-1
+  - openssl: DSA-2100-1
+  - pcsc-lite: DSA-2059-1
+  - pmount: DSA-2063-1
+  - poppler: DSA-2119-1
+  - smbind: DSA-2103-1
+  - sudo: DSA-2062-1
+  - libtheora: DSA-2045-1
+  - tiff: DSA-2084-1
+  - wget: DSA-2088-1
+  - xulrunner: DSA-2106-1, DSA-2075-1, DSA-2064-1
+
+These are Debian security announces; details can be found on
+<http://security.debian.org/>.

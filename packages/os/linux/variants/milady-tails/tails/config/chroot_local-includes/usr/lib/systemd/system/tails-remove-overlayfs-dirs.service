@@ -1,0 +1,29 @@
+[Unit]
+# We have to empty the tmpfs where the upperdir and
+# workdir of the overlayfs are residing on, else
+# the memory will not be cleaned.
+Description=Remove the overlayfs directories
+Documentation=https://tails.net/contribute/design/memory_erasure/
+# We want to remove the overlayfs directories late in the
+# shutdown process. Because at shutdown, units with an
+# ordering dependency are stopped in reverse order, we
+# want this service to be started very early
+# during boot, i.e. before the sysinit.target.
+Before=sysinit.target shutdown.target
+Conflicts=shutdown.target
+DefaultDependencies=no
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+ExecStop=/bin/rm -rf /lib/live/mount/overlay/rw /lib/live/mount/overlay/work
+# Tails sets a very small DefaultTimeoutStopSec= value, that this
+# service inherits. There's a risk that this default timeout is too
+# short for our ExecStop= step to complete successfully. Were this to
+# happen, the impact would be incomplete erasing of memory on
+# shutdown, which is not great. So let's reset this timeout to the
+# default systemd one for this service.
+TimeoutStopSec=90s
+
+[Install]
+WantedBy=multi-user.target

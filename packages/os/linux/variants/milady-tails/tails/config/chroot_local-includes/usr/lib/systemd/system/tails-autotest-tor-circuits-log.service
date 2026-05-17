@@ -1,0 +1,16 @@
+[Unit]
+Description=Log information about tor circuits, for Tails test suite
+Documentation=https://tails.net/contribute/release_process/test/automated_tests/
+ConditionKernelCommandLine=autotest_never_use_this_option
+
+[Service]
+Type=notify
+ExecStart=/usr/local/lib/tor-circuits-log
+OOMScoreAdjust=-1000
+Restart=always
+# The main reason for restarting we expect is when an established connection gets closed
+# Let's restart after 1 second
+RestartSec=1s
+
+[Install]
+WantedBy=multi-user.target

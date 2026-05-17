@@ -1,0 +1,66 @@
+# SOME DESCRIPTIVE TITLE
+# Copyright (C) YEAR Free Software Foundation, Inc.
+# This file is distributed under the same license as the PACKAGE package.
+# FIRST AUTHOR <EMAIL@ADDRESS>, YEAR.
+#
+msgid ""
+msgstr ""
+"Project-Id-Version: \n"
+"Report-Msgid-Bugs-To: tails-l10n@boum.org\n"
+"POT-Creation-Date: 2025-06-26 18:01+0000\n"
+"PO-Revision-Date: 2024-09-26 12:10+0000\n"
+"Last-Translator: Benjamin Held <Benjamin.Held@protonmail.com>\n"
+"Language-Team: \n"
+"Language: de\n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+"Plural-Forms: nplurals=2; plural=n != 1;\n"
+"X-Generator: Weblate 5.3\n"
+
+#. type: Bullet: '- '
+#, fuzzy
+#| msgid "- [[Removing metadata from files|sensitive_documents/metadata]]"
+msgid "[[Removing metadata from files|sensitive_documents/metadata]]"
+msgstr "- [[Metadaten aus Dateien entfernen|sensitive_documents/metadata]]"
+
+#. type: Bullet: '- '
+#, fuzzy
+#| msgid "- [[Office suite|sensitive_documents/office_suite]]"
+msgid "[[Office suite|sensitive_documents/office_suite]]"
+msgstr "- [[Office Suite|sensitive_documents/office_suite]]"
+
+#. type: Bullet: '- '
+#, fuzzy
+#| msgid "- [[Graphics|sensitive_documents/graphics]]"
+msgid "[[Graphics|sensitive_documents/graphics]]"
+msgstr "- [[Graphik|sensitive_documents/graphics]]"
+
+#. type: Bullet: '- '
+#, fuzzy
+#| msgid "- [[Sound and video|sensitive_documents/sound_and_video]]"
+msgid "[[Sound and video|sensitive_documents/sound_and_video]]"
+msgstr "- [[Multimedia|sensitive_documents/sound_and_video]]"
+
+#. type: Bullet: '- '
+#, fuzzy
+#| msgid "- [[Graphics|sensitive_documents/graphics]]"
+msgid "[[Editing PDFs|sensitive_documents/pdf]]"
+msgstr "- [[Graphik|sensitive_documents/graphics]]"
+
+#. type: Bullet: '- '
+#, fuzzy
+#| msgid ""
+#| "- [[Printing and scanning|sensitive_documents/printing_and_scanning]]"
+msgid "[[Printing and scanning|sensitive_documents/printing_and_scanning]]"
+msgstr "- [[Drucken und Scannen|sensitive_documents/printing_and_scanning]]"
+
+#. type: Bullet: '- '
+#, fuzzy
+#| msgid ""
+#| "- [[Screenshot and screencast|sensitive_documents/"
+#| "screenshot_and_screencast]]"
+msgid ""
+"[[Screenshot and screencast|sensitive_documents/screenshot_and_screencast]]"
+msgstr ""
+"- [[Screenshot und Screencast|sensitive_documents/screenshot_and_screencast]]"

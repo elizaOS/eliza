@@ -1,0 +1,517 @@
+[[!meta title="Upgrading the Tor Browser"]]
+
+[[!toc levels=2]]
+
+The big picture
+===============
+
+The Tails build system [[!tails_gitweb
+config/chroot_local-hooks/10-tbb desc="downloads"]] a set of Tor
+Browser tarballs from a location specified in [[!tails_gitweb
+config/chroot_local-includes/usr/share/tails/tbb-dist-url.txt]], and
+compares their hash with previously verified ones found in
+[[!tails_gitweb
+config/chroot_local-includes/usr/share/tails/tbb-sha256sums.txt]].
+
+Once released officially, Tor Browser tarballs can be found in
+a [permanent
+location](https://archive.torproject.org/tor-package-archive/torbrowser/).
+However, when upgrading Tor Browser for an imminent Tails release, we
+generally have to use Tor Browser tarballs that are under QA and not
+officially released yet. So, we have to retrieve them from another,
+temporary location, such as
+<http://people.torproject.org/~mikeperry/builds/>. If we hard-coded
+this temporary URL in `tbb-dist-url.txt`, then our release tag would
+only be buildable for as long the tarballs stay in that place, which
+at best is a few months.
+
+To solve this, we host ourselves the Tor Browser tarballs we need, and
+point to [this permanent
+location](https://torbrowser-archive.tails.net/) for anything that
+we tag.
+
+Still, one can set an arbitrary download location in
+`tbb-dist-url.txt`, which should provide all the flexibility needed
+for development purposes, e.g. when importing an alpha version with no intention
+to include it in a tagged Tails release, in which case a stable URL is
+not needed and we can point directly to the upstream URL.
+
+Occasionally, the new Tor Browser requires adjustments to the corresponding
+AppArmor profile: [[tor-browser/AppArmor_policy]].
+
+Upgrade Tor Browser in Tails
+============================
+
+Communicate
+-----------
+
+Early on release-week-Monday, on the Tor Browser dev IRC channel, announce that
+this week you're the person in charge of monitoring when a new
+just-trustworthy-enough Tor Browser tarball is ready, of importing it into
+Tails, and of running it through our QA.
+
+Rationale: establish a rapport so that the Applications team members who are
+working on the Tor Browser release process have our needs in mind, and match
+these needs with an individual IRC nick they can keep up-to-date. This increases
+the chances you'll be kept in the loop at whatever time is relevant to this
+release process. This also provides context for any question you might need to
+ask later on, especially in terms of timing & availability of a tarball that's
+good enough for us to import.
+
+Wait
+----
+
+To check if the desired version is available:
+
+1. Set `TBB_VERSION` to the version of Tor Browser you are waiting for, e.g. 42.0.12.
+
+2. Run this script:
+
+        (
+            set -eu
+            typeset -a tbbUrls
+            tbbUrls=( 'https://archive.torproject.org/tor-package-archive/torbrowser/?C=M;O=D' 'https://www.torproject.org/dist/torbrowser/?C=M;O=D' 'https://people.torproject.org/~'{boklm,ma1,morgan,pierov}'/builds/?C=M;O=D' )
+            for i in $(seq --equal-width 1 20); do
+                buildserver="tb-build-${i}.torproject.org"
+                if host "$buildserver" &> /dev/null; then
+                    tbbUrls+=("https://${buildserver}/~"{boklm,ma1,morgan,pierov}'/builds/torbrowser/release/unsigned/')
+                fi
+            done
+            echo "Scanning ${tbbUrls[@]}"
+            while true
+            do
+                if (for u in "${tbbUrls[@]}"; do
+                        echo "query ${u}" >&2
+                    elinks -no-numbering  -dump "$u" | sed -e "s+^+[${u//+/ }]+" ; done
+                    ) | grep -F -e "${TBB_VERSION?}" -e "$(date +%F)"  -e "$(date +%F -d yesterday)" --color=always
+                then
+                    echo FOUND
+                    notify-send "Release dir" 'found'
+                fi
+                sleep 10m
+            done
+        )
+
+Verify
+------
+
+Set `TBB_DIST_URL` to the chosen URL, and set `TBB_VERSION` to the desired Tor
+Browser version, for example:
+
+    TBB_DIST_URL=https://people.torproject.org/~mikeperry/builds/4.5-build5/
+    TBB_VERSION="$(basename "${TBB_DIST_URL:?}")"
+
+<div class="caution">
+Ensure you include the "-buildN" part. Add it if it's missing.
+</div>
+
+Set `TBB_TAILS_TICKET` to the number of the ticket about updating Tor
+Browser, and `TBB_IMPORT_BRANCH` to the branch we'll work on:
+
+    TBB_TAILS_TICKET=123456
+    TBB_IMPORT_BRANCH=${TBB_TAILS_TICKET:?}-tor-browser-${TBB_VERSION%%-*}
+
+If `$TBB_IMPORT_BRANCH` already exists, fetch it and check it out:
+
+    git checkout -b ${TBB_IMPORT_BRANCH:?} origin/${TBB_IMPORT_BRANCH:?}
+
+Else, create it and check it out:
+
+    git checkout -b ${TBB_IMPORT_BRANCH:?} origin/stable
+
+Configure CI to run all tests:
+
+    echo -e "[test]\nforce_all_tests = true" > "config/ci/per_branch/${TBB_IMPORT_BRANCH:?}.toml"
+    git add "config/ci/per_branch/${TBB_IMPORT_BRANCH:?}.toml"
+    git commit -m "CI: run all tests for ${TBB_IMPORT_BRANCH:?}"
+
+Set `TBB_SIGNER_SUFFIX` to the nickname of the Tor Browser developer who signed
+the `sha256sums-unsigned-build.txt` file, preceded by a dash; the detached
+signature at `$TBB_DIST_URL` is named
+`sha256sums-unsigned-build.txt.asc${TBB_SIGNER_SUFFIX}`:
+
+    TBB_SIGNER_SUFFIX='-boklm'
+
+Note: Nowadays it's quite common that the detached signature is called `sha256sums-unsigned-build.txt.asc`, with no suffix.
+If that's the case, just set it to an empty string:
+
+    TBB_SIGNER_SUFFIX=''
+
+Fetch the version's hash file and its detached signature, verify
+with GnuPG, build the list of tarballs we want and their hashes,
+(so this information is available at build time,
+when the tarballs are fetched):
+
+    (
+        set -e
+        gpg --refresh-keys EF6E286DDA85EA2A4BA7DE684E2C6E8793298290
+        for f in sha256sums-unsigned-build.txt{.asc${TBB_SIGNER_SUFFIX?},}; do
+            wget "${TBB_DIST_URL:?}/$f" -O "$f"
+        done
+        gpg --verify sha256sums-unsigned-build.txt{.asc${TBB_SIGNER_SUFFIX?},}
+        grep --color=never -E \
+            "\stor-browser-linux-x86_64-${TBB_VERSION%-build*}\.tar\.xz$" \
+            sha256sums-unsigned-build.txt \
+            > config/chroot_local-includes/usr/share/tails/tbb-sha256sums.txt
+    )
+
+Set download url and commit
+---------------------------
+
+Update the URL to the one chosen above:
+
+    (
+      set -e
+      echo "${TBB_DIST_URL:?}" > \
+         config/chroot_local-includes/usr/share/tails/tbb-dist-url.txt
+      files=(config/chroot_local-includes/usr/share/tails/tbb-dist-url.txt config/chroot_local-includes/usr/share/tails/tbb-sha256sums.txt)
+      for file in "${files[@]}"; do
+          if git diff --quiet $file; then
+             echo "Error: file $file not changed" >&2
+             exit 2
+          fi
+      done
+      git commit "${files[@]}" \
+        -m "Upgrade Tor Browser to ${TBB_VERSION:?} (refs: tails#${TBB_TAILS_TICKET})" && \
+      git show
+    )
+
+Finally:
+
+1. [[Sync with the upstream wrapper scripts|tor-browser#sync-wrapper-scripts]]
+
+2. If this new Tor Browser is meant to be included in a Tails release,
+   follow the instructions in the
+   [[Self-hosted Tor Browser tarballs archive|tor-browser#self-host]]
+   section.
+
+3. [[Update the Tor Browser Flatpak metadata|tor-browser#update-flatpak-metadata]]
+
+<a id="refresh-about-tor-patches"></a>
+
+Refresh custom about:tor patches
+================================
+
+## Prepare your tails.git clone
+
+If you're doing this as part of the bigger "Upgrade Tor Browser in Tails"
+process: you're already good.
+
+Else, create and checkout a branch for the "Upgrade to Tor Browser XXX based on
+ESR YYY" process that you, or a team mate, will soon go take care of.
+
+## Rebase the tor-browser.git branch
+
+First, let's set some inputs in the environment:
+
+    TAILS_GIT_REPO="$HOME/tails/git"
+    # If you don't have a local checkout of tor-browser.git, see below
+    TOR_BROWSER_GIT_REPO=/path/to/your/tor-browser.git
+    # Set TAILS_VERSION to the version of Tails this Tor Browser release will
+    # end up in
+    TAILS_VERSION=7.2
+
+As an initial setup that you only have to do once, get yourself a
+local checkout of `tor-browser.git`, add intrigeri's remote, and get a
+checkout of the development branch for the about:tor patches:
+
+    (
+    set -eu
+    git clone git@gitlab.torproject.org:tpo/applications/tor-browser.git
+    cd tor-browser
+    TOR_BROWSER_GIT_REPO=$(pwd)
+    git remote add intrigeri git@gitlab.torproject.org:intrigeri/tor-browser.git
+    git fetch intrigeri
+    git checkout -b 44201-allow-tails-to-customize-about-tor \
+        intrigeri/44201-allow-tails-to-customize-about-tor
+    )
+
+Make `tor-browser.git` your working directory:
+
+    cd "${TOR_BROWSER_GIT_REPO:?}"
+
+Make sure we're up-to-date:
+
+    (
+    set -eu
+    git fetch origin
+    git fetch intrigeri
+    git checkout 44201-allow-tails-to-customize-about-tor
+    git reset --hard intrigeri/44201-allow-tails-to-customize-about-tor
+    )
+
+Choose which branch or tag you want to refresh the patches against.
+If a tag was created already, use it:
+
+    ONTO=tor-browser-140.5.0esr-15.0-1-build2
+
+Else, if the rebased Tor Browser branch has already been pushed but not tagged,
+use the branch:
+
+    ONTO=origin/tor-browser-140.7.0esr-15.0-1
+
+Rebase and resolve conflicts:
+
+    git rebase --onto="${ONTO:?}" "$(git describe --tags --abbrev=0)"
+
+Bump Tails version number:
+
+    "${TAILS_GIT_REPO:?}"/bin/bump-tails-version-in-about-tor "${TAILS_VERSION:?}"
+
+Push updated branch:
+
+    git push --force-with-lease intrigeri HEAD
+
+## Generate patches for tails.git
+
+Generate refreshed patches and commit them to `tails.git`:
+
+    cd "${TAILS_GIT_REPO:?}"
+    bin/generate-about-tor-patches "${TOR_BROWSER_GIT_REPO:?}" "${ONTO:?}"
+
+## Share your results
+
+If you're doing this as part of the bigger "Upgrade Tor Browser in Tails"
+process: skip this section.
+
+Else:
+
+1. Push the `tails.git` branch you've just committed to, creating a draft MR.
+2. Make the draft MR close the relevant "Upgrade to Tor Browser XXX based on ESR YYY"
+   and "Refresh about:tor patches for Tails N.M" issues.
+3. Assign the draft MR to the person who is committed to "Upgrade to Tor Browser
+   XXX based on ESR YYY"
+4. Move the "Refresh about:tor patches for Tails N.M" issue to `~"Needs Validation"`.
+
+<a id="sync-wrapper-scripts">
+
+Sync with the upstream wrapper scripts
+======================================
+
+Adapt our `config/chroot_local-includes/usr/local/bin/tor-browser`
+and/or
+`config/chroot_local-includes/usr/local/lib/tails-shell-library/tor-browser.sh`
+for recent changes made in the Tor Browser build Git repo
+(`git clone https://gitlab.torproject.org/tpo/applications/tor-browser-build.git`),
+on the `maint-X.Y-desktop` branch (if it does not exist, fall back to `maint-X.Y`):
+
+    git log -p \
+        projects/firefox/abicheck.cc \
+        projects/firefox/start-firefox \
+        projects/browser/RelativeLink/start-browser
+
+Then apply any relevant change, e.g. to:
+
+ - environment variables;
+
+ - commandline options passed to the `firefox` executable;
+
+ - required libstdc++6 version bumps; if there's been any change upstream,
+   look for `abicheck` in `config/chroot_local-hooks/10-tbb` and adjust
+   that hook as needed.
+
+We also document (as code comments that includes the analysis, in
+`config/chroot_local-includes/usr/local/lib/tails-shell-library/tor-browser.sh`)
+each such environment variable (and similar) that we consider
+irrelevant and skip, both to avoid others duplicating the analysis and
+to make it explicit during the review so it can be validated.
+
+<a id="self-host">
+
+Self-hosted Tor Browser tarballs archive
+========================================
+
+Skip this if `$TBB_DIST_URL` is below
+<https://archive.torproject.org/tor-package-archive/torbrowser/>: it is stable
+and long-term enough for our needs.
+
+Initial setup
+-------------
+
+First, install [[!debpts git-annex]].
+
+Then, make sure you have an entry for `git.tails.net` in
+your `~/.ssh/config`. For details, see `ISO_history.mdwn`
+in [[!tails_gitlab tails/rm]].
+
+Then, clone the metadata repository and initialize git-annex:
+
+	git clone gitolite@git.tails.net:torbrowser-archive.git && \
+	cd torbrowser-archive && \
+	git annex init
+
+You now have a lot of (dangling) symlinks in place of the files that are
+available in this git-annex repo.
+
+Update
+------
+
+To synchronize your local git-annex metadata with the remote, run:
+
+	git annex sync --no-content
+
+Set up environment variables
+----------------------------
+
+1. Make sure you still have the environment variables defined in the
+   previous section set.
+
+2. Make `TAILS_GIT_REPO` point to the main Tails Git repository
+   checkout where `tbb-dist-url.txt` is being worked on, for example:
+
+        TAILS_GIT_REPO="$HOME/tails/git"
+
+3. Make `TBB_ARCHIVE` point to your local git annex working
+   copy of our Tor Browser archive, for example:
+
+        TBB_ARCHIVE="$HOME/tails/torbrowser-archive"
+
+Import a new set of Tor Browser tarballs
+----------------------------------------
+
+1. Download, verify and import all the tarballs we need:
+
+        export TAILS_GIT_REPO TBB_ARCHIVE TBB_IMPORT_BRANCH TBB_VERSION
+        export DL_DIR=$(mktemp --tmpdir -d "tor-browser-${TBB_VERSION}.XXXXXXXXXX")
+        ./bin/import-tbb-tarball
+
+Commit and push your changes
+----------------------------
+
+    (
+	cd "${TBB_ARCHIVE:?}" && \
+	git commit -m "Add Tor Browser ${TBB_VERSION:?}" && \
+	git annex sync --no-content && \
+	git annex copy --to origin -- "${TBB_VERSION:?}" && \
+	git annex sync --no-content
+    )
+
+Adjust the URL in the main Git repository
+-----------------------------------------
+
+    (
+    cd "${TAILS_GIT_REPO:?}" && \
+    git checkout "${TBB_IMPORT_BRANCH:?}"
+    current_branch=$(git branch | awk '/^\* / { print $2 }')
+    for branch in "${current_branch:?}" ; do
+       git checkout "${branch:?}" && \
+       echo "https://torbrowser-archive.tails.net/${TBB_VERSION:?}/" > \
+            config/chroot_local-includes/usr/share/tails/tbb-dist-url.txt && \
+       git commit config/chroot_local-includes/usr/share/tails/tbb-dist-url.txt \
+           -m "Fetch Tor Browser from our own archive" && \
+       git show
+    done
+    )
+
+Wait for the synchronization
+----------------------------
+
+Before you can build Tails using Tor Browser from our own archive,
+you need to wait for the tarballs to appear on
+<https://torbrowser-archive.tails.net/?C=M&O=D>. This can take up to
+10 minutes:
+
+    (
+    url="$(cat config/chroot_local-includes/usr/share/tails/tbb-dist-url.txt)"
+    while [ -z "$(elinks -dump -no-references -no-numbering "$url"   | grep 'tor-browser-linux-x86_64.*MiB')" ]
+    do
+        sleep 5
+    done
+    )
+
+
+Push the updated branch
+-----------------------
+
+	git push -o merge_request.create -o merge_request.draft --set-upstream \
+	   origin "${TBB_IMPORT_BRANCH:?}"
+
+Clean up
+--------
+
+    (
+	cd "${TBB_ARCHIVE:?}" && \
+	git annex drop -- "${TBB_VERSION:?}" && \
+    git annex sync --no-content && \
+    rm -rf "$DL_DIR" && \
+    cd "${TAILS_GIT_REPO:?}" && \
+    rm -f sha256sums-unsigned-build.txt{,.asc${TBB_SIGNER_SUFFIX}}
+    )
+
+<a id="update-flatpak-metadata">
+
+Update the Tor Browser Flatpak metadata
+=======================================
+
+We should regularly update the Tor Browser Flatpak metadata by
+importing relevant changes from the upstream version of the Tor
+Browser Launcher Flatpak and Mozilla's official Firefox Flatpak. An
+appropriate time to do this is when we are migrating to new Tor
+Browser major versions, especially those that bump the Firefox ESR
+since that is more likely to introduce new functionality that is
+relevant for the Flatpak.
+
+Here are some general guidelines for what to look for when importing
+changes from either upstream:
+
+* `[Applications]` section: leave it as-is unless you know what you're
+  doing.
+* `[Build]` section: since we do not build a real Flatpak anything in
+  this section is irrelevant but we still should import changes there
+  just to keep those changes out from future comparisons.
+* `[Context]` section: this is about access/permissions of system
+  resources, which we already heavily override. Changes here are most
+  likely due to Flatpak introducing permissions for a new resource, of
+  Firefox starting to use a new resource.
+* `[Environment]`, `[Session Bus Policy]` and `[System Bus Policy]`
+  sections: these sections are the most likely to be interesting to
+  us, and can be about enabling new features introduced by (primarily)
+  Firefox.
+* `[Extension NAME]` sections: due to our pseudo-flatpak approach we
+  are very unlikely to use Flatpak extensions; since our runtime is
+  the full Tails filesystem so whatever is in the extension is likely
+  available already.
+
+Note that we document why we skip some of the settings in
+`config/chroot_local-includes/var/lib/flatpak/overrides/org.boum.tails.TorBrowser`.
+
+### Import changes from the Tor Browser Launcher Flatpak
+
+1. Update the Tor Browser Launcher Flatpak app:
+
+        cd "${TAILS_GIT_REPO:?}" && \
+        ./config/chroot_local-includes/usr/share/tails/build/flatpak/org.boum.tails.TorBrowser/update-manifest
+
+2. Check if the commit that was created by the previous step added any
+   new permissions and consider each of them: those that make sense
+   for Tails we keep by doing nothing, but for those we don't want we
+   need to add suitable rules in the override config file at
+   `config/chroot_local-includes/var/lib/flatpak/overrides/org.boum.tails.TorBrowser`.
+
+3. Commit the changes and push the updated branch.
+
+### Import changes from the official Mozilla Firefox Flatpak
+
+It is at least as important to check for changes in the
+`org.mozilla.firefox` flatpak, given that upstream Firefox
+improvements land there first and might not trickle down to the Tor
+Browser flatpak. Since Tor Browser is based on the ESR releases some
+changes might need to wait until Tor Browser is rebased on a more
+recent version of Firefox.
+
+To see what has changed, either install the flatpak and have a look
+in:
+
+    /var/lib/flatpak/app/org.mozilla.firefox/current/active/metadata
+
+or look at the [revision
+history](https://hg.mozilla.org/mozilla-central/log/tip/taskcluster/docker/firefox-flatpak/runme.sh)
+(see the arguments passed to `flatpak build-finish build`).
+
+For changes that also makes sense for the
+[org.torproject.torbrowser-launcher flathub
+upstream](https://github.com/flathub/org.torproject.torbrowser-launcher/)
+we should submit a PR, but to get the changes into Tails quickly we
+can use the override as described above. Once we upstream something we
+can drop it from our overrides and thus decrease our delta, which is
+nice.

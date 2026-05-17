@@ -1,0 +1,268 @@
+# SOME DESCRIPTIVE TITLE
+# Copyright (C) YEAR Free Software Foundation, Inc.
+# This file is distributed under the same license as the PACKAGE package.
+# FIRST AUTHOR <EMAIL@ADDRESS>, YEAR.
+#
+msgid ""
+msgstr ""
+"Project-Id-Version: PACKAGE VERSION\n"
+"Report-Msgid-Bugs-To: tails-l10n@boum.org\n"
+"POT-Creation-Date: 2025-11-05 08:59+0000\n"
+"PO-Revision-Date: 2021-12-24 09:10+0000\n"
+"Last-Translator: dedmoroz <cj75300@gmail.com>\n"
+"Language-Team: LANGUAGE <LL@li.org>\n"
+"Language: ru\n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+"Plural-Forms: nplurals=3; plural=n%10==1 && n%100!=11 ? 0 : n%10>=2 && "
+"n%10<=4 && (n%100<10 || n%100>=20) ? 1 : 2;\n"
+"X-Generator: Weblate 3.11.3\n"
+
+#. type: Plain text
+#, fuzzy, no-wrap
+#| msgid "[[!meta title=\"Viewing the circuits of Tor\"]]\n"
+msgid "[[!meta title=\"Managing the circuits of Tor\"]]\n"
+msgstr "[[!meta title=\"Просмотр цепочек Tor\"]]\n"
+
+#. type: Plain text
+#, no-wrap
+msgid ""
+"*Onion Circuits* displays information about\n"
+"the current Tor circuits and connections.\n"
+msgstr "Информацию о текущем подключении и цепочке Tor можно увидеть в приложении *Onion Circuits*.\n"
+
+#. type: Plain text
+#, no-wrap
+msgid ""
+"To open **Onion Circuits**, click on the\n"
+"Tor status icon ([[!img lib/symbolic/tor-disconnected.png alt=\"Tor status menu\" link=\"no\" class=\"symbolic\"]]\n"
+"or [[!img lib/symbolic/tor-connected.png alt=\"Tor status menu\" link=\"no\"\n"
+"class=\"symbolic\"]]) in the top-right corner and choose **View Tor Circuits**.\n"
+msgstr ""
+
+#. type: Plain text
+#, no-wrap
+msgid "<h1 id=\"view\">Understanding Tor circuits</h1>\n"
+msgstr ""
+
+#. type: Plain text
+msgid ""
+"If Tails is already [[connected to the Tor network|doc/anonymous_internet/"
+"tor]], a list of Tor circuits appears in the left pane of *Onion Circuits*."
+msgstr ""
+
+#. type: Plain text
+#, fuzzy, no-wrap
+#| msgid ""
+#| "<!-- Note for translators: the entry guard in use when you take the screenshot\n"
+#| "onion-circuits.png is in a position to identify you. You might prefer to leave it\n"
+#| "untranslated.-->\n"
+msgid ""
+"<!-- Note for translators: the entry guards in use when you take the screenshot\n"
+"onion-circuits.png is in a position to identify you. You might prefer to leave it\n"
+"untranslated. -->\n"
+msgstr ""
+"<!-- Note for translators: the entry guard in use when you take the screenshot\n"
+"onion-circuits.png is in a position to identify you. You might prefer to leave it\n"
+"untranslated.-->\n"
+
+#. type: Plain text
+msgid ""
+"When you connect to a destination server, for example, when visiting a "
+"website, the connection appears in the list below the circuit it uses."
+msgstr ""
+"Когда вы подключаетесь к желаемому серверу, например, если заходите на веб-"
+"сайт, это подключение отображается в списке под соответствующей цепочкой."
+
+#. type: Plain text
+#, fuzzy
+#| msgid ""
+#| "If you click on a circuit, technical details about the relays of the "
+#| "circuit appear in the right pane."
+msgid ""
+"Click on a circuit to display the technical details about each relay in the "
+"right pane."
+msgstr ""
+"Если щёлкнуть по схеме, технические детали об узлах появятся в правой панели."
+
+#. type: Plain text
+#, fuzzy, no-wrap
+#| msgid "[[!img onion-circuits.png link=no]]\n"
+msgid "[[!img onion-circuits.png class=\"screenshot\" alt=\"\"]]\n"
+msgstr "[[!img onion-circuits.png link=no]]\n"
+
+#. type: Plain text
+msgid ""
+"Each Tor circuit is made of 3 Tor relays. In the example above, the "
+"connection to **tails.net** goes through the 3 relays **drk**, **kicka**, "
+"and **Quetzalcoatl**."
+msgstr ""
+
+#. type: Bullet: '1. '
+msgid "The first relay, here **drk**, is called the *entry guard*."
+msgstr ""
+
+#. type: Plain text
+#, no-wrap
+msgid "   If you use a Tor bridge:\n"
+msgstr ""
+
+#. type: Bullet: '   - '
+#, fuzzy
+#| msgid ""
+#| "The first relay or *entry guard*. If you configured Tor bridges, one of "
+#| "your bridges is the first relay."
+msgid "Tor uses the bridge as your entry guard."
+msgstr ""
+"Первый узел (входной или *сторожевой*). Если вы подключались к Tor через "
+"мост, он и станет первым узлом."
+
+#. type: Plain text
+#, no-wrap
+msgid "   If you don't use a Tor bridge:\n"
+msgstr ""
+
+#. type: Bullet: '   - '
+msgid ""
+"Tor uses only 2 different relays as your entry guards, as a way of "
+"[protecting against *end-to-end correlation* attacks](https://"
+"support.torproject.org/about-tor/how-tor-works/entry-guards/)."
+msgstr ""
+
+#. type: Bullet: '   - '
+msgid "Your entry guards change every time you restart Tails."
+msgstr ""
+
+#. type: Plain text
+#, no-wrap
+msgid ""
+"     To keep the same entry guard across different Tails sessions, use a\n"
+"     Tor bridge instead.\n"
+msgstr ""
+
+#. type: Bullet: '2. '
+#, fuzzy
+#| msgid "The second relay or *middle node*."
+msgid "The second relay, here **kicka**, is called the *middle relay*."
+msgstr "Второй узел — промежуточный, *средний*."
+
+#. type: Bullet: '3. '
+msgid "The third relay, here **Quetzalcoatl**, is called the *exit node*."
+msgstr ""
+
+#. type: Plain text
+#, fuzzy, no-wrap
+#| msgid "[[!img doc/anonymous_internet/tor/tor.svg link=\"no\" alt=\"Schematics of a connection to Tor with the client, the 3 relays, and the destination server.\"]]\n"
+msgid "[[!img doc/anonymous_internet/tor/tor.png link=\"no\" class=\"svg\" alt=\"Schematics of a connection to Tor with the client, the 3 relays, and the destination server.\"]]\n"
+msgstr "[[!img doc/anonymous_internet/tor/tor.svg link=\"no\" alt=\"Схемы подключения к Tor с клиентом, тремя узлами и искомым сервером\"]]\n"
+
+#. type: Plain text
+#, no-wrap
+msgid "<h1 id=\"change\">Closing and replacing a Tor circuit</h1>\n"
+msgstr ""
+
+#. type: Plain text
+msgid ""
+"You can close a given Tor circuit to help replace a particularly slow Tor "
+"circuit or troubleshoot issues on the Tor network. To do so:"
+msgstr ""
+
+#. type: Bullet: '1. '
+msgid ""
+"Right-click (on Mac, click with two fingers) on the circuit that you want to "
+"close."
+msgstr ""
+
+#. type: Bullet: '1. '
+msgid "Choose **Close this circuit** in the shortcut menu."
+msgstr ""
+
+#. type: Plain text
+#, no-wrap
+msgid ""
+"   When you close a circuit that is being used by an application, your\n"
+"   application gets disconnected from this destination service.\n"
+msgstr ""
+
+#. type: Plain text
+#, no-wrap
+msgid ""
+"   For example, when you close a circuit while <i>Tor Browser</i> is\n"
+"   downloading a file, the download fails.\n"
+msgstr ""
+
+#. type: Bullet: '1. '
+#, fuzzy
+#| msgid ""
+#| "When you connect to a destination server, for example, when visiting a "
+#| "website, the connection appears in the list below the circuit it uses."
+msgid ""
+"If you connect to the same destination server again, Tor uses a different "
+"circuit to replace the circuit that you closed."
+msgstr ""
+"Когда вы подключаетесь к желаемому серверу, например, если заходите на веб-"
+"сайт, это подключение отображается в списке под соответствующей цепочкой."
+
+#. type: Plain text
+#, no-wrap
+msgid "   For example, if you download the same file again, Tor uses a new circuit.\n"
+msgstr ""
+
+#. type: Plain text
+#, no-wrap
+msgid "<h1 id=\"restart\">Closing and replacing all Tor circuits</h1>\n"
+msgstr ""
+
+#. type: Plain text
+msgid ""
+"Tails restarts Tor and all circuits are replaced if you disconnect and "
+"reconnect from your local network, for example, by turning the Wi-Fi off and "
+"on again."
+msgstr ""
+
+#, no-wrap
+#~ msgid ""
+#~ "To open *Onion Circuits*, click on the\n"
+#~ "Tor status icon in the top-right corner and choose <span class=\"guimenuitem\">Open Onion\n"
+#~ "Circuits</span>.\n"
+#~ msgstr ""
+#~ "Чтобы открыть *Onion Circuits*, нажмите на\n"
+#~ "значок Tor в правом верхнем углу и выберите <span class=\"guimenuitem\">Open Onion\n"
+#~ "Circuits</span>.\n"
+
+#~ msgid ""
+#~ "The circuits established by Tor are listed in the left pane. A Tor "
+#~ "circuit is made of three relays:"
+#~ msgstr ""
+#~ "В левой части окна показаны цепочки Tor. Цепочка Tor состоит из трёх "
+#~ "узлов:"
+
+#~ msgid "The exit node."
+#~ msgstr "Выходной узел."
+
+#, no-wrap
+#~ msgid ""
+#~ "In the example above, the connection to\n"
+#~ "<span class=\"code\">check.torproject.org</span> goes through the relays\n"
+#~ "**tor7kryptonit**,\n"
+#~ "**Casper03**, and the exit node\n"
+#~ "**blackfish**.\n"
+#~ msgstr ""
+#~ "В примере выше соединение с\n"
+#~ "<span class=\"code\">check.torproject.org</span> проходит через узлы\n"
+#~ "**tor7kryptonit**,\n"
+#~ "**Casper03** и выходной узел\n"
+#~ "**blackfish**.\n"
+
+#~ msgid "[[!toc levels=1]]\n"
+#~ msgstr "[[!toc levels=1]]\n"
+
+#~ msgid "[[!img doc/first_steps/desktop/tor-status.png link=\"no\"]]\n"
+#~ msgstr "[[!img doc/first_steps/desktop/tor-status.png link=\"no\"]]\n"
+
+#~ msgid "<div class=\"tip\">\n"
+#~ msgstr "<div class=\"tip\">\n"
+
+#~ msgid "</div>\n"
+#~ msgstr "</div>\n"

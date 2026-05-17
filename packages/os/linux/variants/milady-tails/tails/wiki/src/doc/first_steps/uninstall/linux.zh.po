@@ -1,0 +1,195 @@
+# SOME DESCRIPTIVE TITLE
+# Copyright (C) YEAR Free Software Foundation, Inc.
+# This file is distributed under the same license as the PACKAGE package.
+# FIRST AUTHOR <EMAIL@ADDRESS>, YEAR.
+#
+msgid ""
+msgstr ""
+"Project-Id-Version: PACKAGE VERSION\n"
+"Report-Msgid-Bugs-To: tails-l10n@boum.org\n"
+"POT-Creation-Date: 2026-04-01 01:19+0000\n"
+"PO-Revision-Date: 2024-05-20 17:56+0000\n"
+"Last-Translator: xin <xin@riseup.net>\n"
+"Language-Team: LANGUAGE <LL@li.org>\n"
+"Language: zh\n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+"Plural-Forms: nplurals=1; plural=0;\n"
+"X-Generator: Weblate 5.3\n"
+
+#. type: Plain text
+#, fuzzy, no-wrap
+msgid "[[!meta title=\"Uninstalling Tails using Linux\"]]\n"
+msgstr "[[!meta title=\"使用 Linux 重置 USB 记忆棒\"]]\n"
+
+#. type: Plain text
+#, fuzzy, no-wrap
+msgid "[[!inline pages=\"doc/first_steps/uninstall.intro\" raw=\"yes\" sort=\"age\"]]\n"
+msgstr "[[!inline pages=\"doc/reset.intro.zh\" raw=\"yes\" sort=\"age\"]]\n"
+
+#. type: Bullet: '1. '
+msgid "Start on Linux or Tails."
+msgstr ""
+
+#. type: Plain text
+#, fuzzy, no-wrap
+msgid "   <div class=\"tip\">\n"
+msgstr "     <div class=\"caution\">\n"
+
+#. type: Plain text
+#, no-wrap
+msgid ""
+"   <p>To uninstall a Tails USB stick while running Tails from that same USB\n"
+"   stick, add the <code>toram</code> boot option in the <i>Boot Loader</i>. See\n"
+"   [[uninstalling Tails using Tails itself|tails]].</p>\n"
+msgstr ""
+
+#. type: Plain text
+#, fuzzy, no-wrap
+msgid "   </div>\n"
+msgstr "</div>\n"
+
+#. type: Bullet: '1. '
+#, fuzzy
+msgid "Install *GNOME Disks*."
+msgstr "Using *GNOME 磁盘*\n"
+
+#. type: Bullet: '   - '
+msgid ""
+"If you are using the GNOME desktop environment, *GNOME Disks* should be "
+"installed by default."
+msgstr ""
+
+#. type: Bullet: '   - '
+msgid ""
+"Otherwise, install the `gnome-disk-utility` package using the usual "
+"installation method for your distribution."
+msgstr ""
+
+#. type: Bullet: '1. '
+#, fuzzy
+msgid "Make sure that the USB stick that you want to uninstall is unplugged."
+msgstr "确保您想要重置的 USB 记忆棒还未插入计算机中。"
+
+#. type: Bullet: '1. '
+msgid "Open *GNOME Disks* (also called *Disks*)."
+msgstr ""
+
+#. type: Plain text
+#, no-wrap
+msgid ""
+"   <div>\n"
+"     For example, you can press the <b>Super</b> ([[!img lib/start.png class=\"symbolic\" link=\"no\" alt=\"\"]]) key,\n"
+"     then enter <code>disks</code> and select <b>Disks</b>.\n"
+"   </div>\n"
+msgstr ""
+
+#. type: Plain text
+#, fuzzy, no-wrap
+msgid "   The storage devices in the computer are listed in the left pane.\n"
+msgstr "    计算机上所有存储设备将会显示在窗口左侧栏目的列表中。\n"
+
+#. type: Plain text
+#, no-wrap
+msgid "   [[!img install/inc/icons/gnome-disks.png link=\"no\" alt=\"\"]]\n"
+msgstr ""
+
+#. type: Bullet: '1. '
+#, fuzzy
+msgid "Plug in the USB stick that you want to uninstall."
+msgstr "插入您需要重置的 USB 记忆棒。"
+
+#. type: Plain text
+#, fuzzy, no-wrap
+msgid "   A new device appears in the list of storage devices. Select it.\n"
+msgstr ""
+"    存储设备列表中将会出现您刚刚插入的 USB 记忆棒。\n"
+"    点击它。\n"
+
+#. type: Bullet: '1. '
+msgid ""
+"In the right pane of the window, verify that the device corresponds to the "
+"USB stick that you want to uninstall, its brand, its size, etc."
+msgstr ""
+
+#. type: Plain text
+#, fuzzy, no-wrap
+msgid "   <div class=\"caution\">\n"
+msgstr "     <div class=\"caution\">\n"
+
+#. type: Plain text
+#, fuzzy, no-wrap
+msgid "   <p>You might overwrite any hard disk on the computer.</p>\n"
+msgstr "<p><b>您有可能会覆盖计算机上的磁盘。</b></p>\n"
+
+#. type: Plain text
+#, fuzzy, no-wrap
+msgid "   <p>If you are not sure about the device, stop proceeding.</p>\n"
+msgstr "<p>如果您在任何时候不确定选择的设备，请勿继续。</p>\n"
+
+#. type: Bullet: '1. '
+msgid ""
+"To format the USB stick, select the [[!img lib/view-more.png alt=\"Drive "
+"Options\" class=\"symbolic\" link=\"no\"]] button in the title bar and "
+"choose **Format Disk** to erase all the existing partitions on the device."
+msgstr ""
+
+#. type: Bullet: '1. '
+msgid "In the **Format Disk** dialog:"
+msgstr ""
+
+#. type: Bullet: '   - '
+msgid ""
+"If you want to overwrite all data on the device, choose **Overwrite existing "
+"data with zeroes** in the **Erase** menu."
+msgstr ""
+
+#. type: Bullet: '   - '
+msgid ""
+"Choose **Compatible with all systems and devices (MBR/DOS)** in the "
+"**Partitioning** menu."
+msgstr ""
+
+#. type: Bullet: '1. '
+msgid "Click **Format**."
+msgstr ""
+
+#. type: Bullet: '1. '
+msgid "In the confirmation dialog, click **Format** to confirm."
+msgstr ""
+
+#. type: Bullet: '1. '
+msgid ""
+"To make sure that all the changes are written to the USB stick, select the"
+msgstr ""
+
+#. type: Plain text
+#, no-wrap
+msgid "   [[!img lib/system-shutdown.png alt=\"Power Off this Disk\" class=\"symbolic\" link=\"no\"]]\n"
+msgstr ""
+
+#. type: Plain text
+#, no-wrap
+msgid "   button in the title bar.\n"
+msgstr ""
+
+#, fuzzy, no-wrap
+#~ msgid "[[!toc startlevel=2]]\n"
+#~ msgstr "[[!toc levels=1]]\n"
+
+#, no-wrap
+#~ msgid "<a id=\"disks\"></a>\n"
+#~ msgstr "<a id=\"disks\"></a>\n"
+
+#, fuzzy, no-wrap
+#~ msgid "Using *GNOME Disks*"
+#~ msgstr "Using *GNOME 磁盘*\n"
+
+#, no-wrap
+#~ msgid "<div class=\"caution\">\n"
+#~ msgstr "<div class=\"caution\">\n"
+
+#, no-wrap
+#~ msgid "</div>\n"
+#~ msgstr "</div>\n"

@@ -1,0 +1,114 @@
+[[!meta robots="noindex"]]
+
+<div id="tails-version">[[!inline pages="inc/stable_amd64_version" raw="yes" sort="age"]]</div>
+
+<h1 id="verify" class="step">Verify your download</h1>
+
+<div class="step-image usb">[[!img inc/infography/verify.png link="no" alt=""]]</div>
+<div class="step-image upgrade-os">[[!img inc/infography/verify-with-intermediary.png link="no" alt=""]]</div>
+<div class="step-image upgrade-tails">[[!img inc/infography/verify-from-tails.png link="no" alt=""]]</div>
+
+<div id="javascript-verification-tip" class="display-as-block">
+  <p>Verify your download to make sure that it is safe and was not corrupted during download.</p>
+</div>
+
+<div id="verification" class="display-as-block">
+  <div class="no-js">
+    <p>You seem to have JavaScript disabled. To verify your download,
+       you can either:</p>
+    <ul>
+      <li><p>Enable JavaScript and reload this page.</p></li>
+      <li><p>Compare manually the checksum of your download with [[the
+          checksum of our images|install/v2/Tails/amd64/stable/latest.json]].
+          In Tails, you can install <a href="https://gtkhash.org/"><i>GtkHash</i></a>
+          as [[Additional Software|doc/persistent_storage/additional_software]]</p></li>
+      <li><p>Verify your download using our [[OpenPGP signing key|tails-signing.key]] and
+        <span class="usb upgrade download-only-img"><a href="[[!inline pages="inc/stable_amd64_img_sig_url" raw="yes" sort="age"]]">OpenPGP signature</a>.</span>
+        <span class="dvd download-only-iso"><a href="[[!inline pages="inc/stable_amd64_iso_sig_url" raw="yes" sort="age"]]">OpenPGP signature</a>.</span><br/>
+        We don't provide instructions to verify downloads with OpenPGP anymore.
+      </p></li>
+    <p>[[See our security analysis of the different verification techniques.|contribute/design/download_verification]]</p>
+    </ul>
+  </div>
+  <div id="ie">
+    <p>You seem to be using <em>Internet Explorer</em>. To verify your download,
+       please use a different browser.</p>
+  </div>
+  <div id="verify-button" class="display-as-block">
+    <label class="button">
+      Select your download to verify&hellip;
+      <input id="verify-file" type="file"/>
+    </label>
+    <p id="verify-minor">or verify using the [[!toggle id="openpgp-verification" text="OpenPGP signature"]]</p>
+    <div id="openpgp-verification" class="floating-toggleable">
+    [[!toggleable id="openpgp-verification" text="""
+    [[!toggle id="openpgp-verification" text=""]]
+
+    <p>
+      <a class="usb upgrade download-only-img" href="[[!inline pages="inc/stable_amd64_img_sig_url" raw="yes" sort="age"]]">OpenPGP signature </a>
+      <a class="dvd download-only-iso" href="[[!inline pages="inc/stable_amd64_iso_sig_url" raw="yes" sort="age"]]">OpenPGP signature</a>
+    </p>
+
+    <p>If you don't know how to use the OpenPGP signature, select instead
+    the button <b>Select your download</b> to verify your download
+    with JavaScript.</p>
+
+    <p>[[OpenPGP signing key|tails-signing.key]]</p>
+
+    <p>[[Security analysis of the different verification techniques|contribute/design/download_verification]]</p>
+
+    """]]
+    </div>
+  </div>
+  <div id="verifying-download" class="display-as-block">
+    <p>Verifying <em><span class="verify-filename">$FILENAME</span></em>&hellip;</p>
+    <div class="progress">
+      <div id="progress-bar" class="progress-bar" role="progressbar" style="width: 0%" aria-valuenow="0" aria-valuemin="0" aria-valuemax="100"></div>
+    </div>
+  </div>
+  <div id="verification-successful" class="display-as-block">
+    <p>[[!img lib/check.png class="icon" link="no" alt=""]]<b>Verification successful!</b> (<em><span class="verify-filename">$FILENAME</span></em>)</p>
+  </div>
+  <div id="verification-failed" class="display-as-block">
+    <p>[[!img lib/cross.png class="icon" link="no" alt=""]]<b>Verification failed!</b> (<em><span class="verify-filename">$FILENAME</span></em>)</p>
+    <p class="why-failed-link">[[!toggle id="why-failed" text="Why?"]]</p>
+    <div id="why-failed" class="floating-toggleable">
+    [[!toggleable id="why-failed" text="""
+    [[!toggle id="why-failed" text=""]]
+    <p>Most likely, the verification failed because of an error
+    or interruption during the download.</p>
+
+    <p>The verification also fails if you try to verify a different
+    download than the latest version, Tails [[!inline pages="inc/stable_amd64_version" raw="yes" sort="age"]].</p>
+
+    <p>Less likely, the verification might have failed because
+    of a malicious download from our download mirrors or due to
+    a network attack in your country or local network.</p>
+
+    <p>Downloading again is usually enough to fix this
+    problem. Otherwise, please try downloading from a different place or a
+    different computer.</p>
+
+    <p>[[How does the verification work?|contribute/design/download_verification]]</p>
+    """]]
+    </div>
+    <p class="usb upgrade download-only-img"><a href="[[!inline pages="inc/stable_amd64_img_url" raw="yes" sort="age"]]" id="download-img-again">Please try to download again&hellip;</a></p>
+    <p class="dvd download-only-iso"><a href="[[!inline pages="inc/stable_amd64_iso_url" raw="yes" sort="age"]]" id="download-iso-again">Please try to download again&hellip;</a></p>
+  </div>
+  <div id="verification-error-file" class="display-as-block">
+    <p>[[!img lib/cross.png class="icon" link="no" alt=""]]<b>Error selecting image.</b></p>
+    <p class="usb upgrade download-only-img">Make sure that you select a USB image that is readable by your browser.</p>
+    <p class="dvd download-only-iso">Make sure that you select an ISO image that is readable by your browser.</p>
+    <p><a id="retry-json">Retry&hellip;</a></p>
+  </div>
+  <div id="verification-error-json" class="display-as-block">
+    <p>[[!img lib/cross.png class="icon" link="no" alt=""]]<b>Error downloading <a id="checksum-file" href="">checksum file</a> from our website.</b></p>
+    <p>Make sure that your browser is connected to the Internet.</p>
+    <p><a id="retry-json">Retry&hellip;</a></p>
+  </div>
+  <div id="verification-error-image" class="display-as-block">
+    <p>[[!img lib/cross.png class="icon" link="no" alt=""]]<b>Error reading image <em><span class="verify-filename">$FILENAME</span></em>.</b></p>
+    <p>Make sure that <em><span class="verify-filename">$FILENAME</span></em> is readable by your browser.</p>
+    <p><a id="retry-image">Retry&hellip;</a></p>
+  </div>
+</div>

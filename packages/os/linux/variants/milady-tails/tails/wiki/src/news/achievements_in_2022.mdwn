@@ -1,0 +1,227 @@
+[[!meta title="What we achieved together in 2022"]]
+[[!meta date="Thu, 23 Nov 2022 12:34:56 +0000"]]
+[[!pagetemplate template="news.tmpl"]]
+[[!tag announce]]
+
+**If a tool is hard to use, it is less secure.**
+
+When digital security tools are too complicated to use, people make mistakes
+that compromise their security or simply give up and fall back on more
+dangerous practices.
+
+Because journalists and whistleblowers use Tails to expose abuse of power and
+activists use Tails to defend human rights and our planet, the more people use
+Tails, the better we are all protected.
+
+In 2022, we focused on making it easier to install Tails and improving many
+existing features, instead of adding new features. Here are some highlights.
+
+Our work is only possible thanks to the donations of our many supporters. In
+2020&ndash;2022, donations from passionate people like you
+represented 76% of our income. This is the best proof of the value of our work
+and our biggest motivation.
+
+Thanks!
+
+[[!toc levels=2]]
+
+# Better tools
+
+## *Persistent Storage*
+
+The biggest change is still to come as we will release a complete redesign of
+the Persistent Storage in Tails 5.8 (December 20). You can already test the new
+Persistent Storage in [[Tails 5.8~beta1|test_5.8-beta1]].
+
+The Persistent Storage hadn't changed much since its first release in 2012
+because the code was hard to modify and improve. But, we learned from users
+that the Persistent Storage could do a lot more for you if it had more features
+and was easier to use.
+
+The new Persistent Storage won't require restarting after creating it or each
+time you activate a new feature.
+
+It will also make it easier for us to persist more settings in the future.
+
+And finally, it looks so much better!
+
+[[!img test_5.8-beta1/create.png link="no" alt=""]]
+
+[[!img test_5.8-beta1/features.png link="no" alt=""]]
+
+## PGP tools
+
+We know that lots of our users depend on PGP tools to protect their
+communications. But, we also know that PGP tools are notoriously hard to use.
+
+We made 2 big changes to PGP tools in Tails:
+
+- We added [[*Kleopatra*|doc/encryption_and_privacy/kleopatra]], a swiss army
+  knife for all things PGP.
+
+  *Kleopatra* replaced the *OpenPGP Applet* and the *Password and Keys*
+  utility, also known as *Seahorse*, which were not actively developed anymore
+  and had many issues.
+
+  [[!img version_5.0/kleopatra.png alt="" link="no"]]
+
+- We updated *Thunderbird* to 102, which includes major usability improvements
+  to the OpenPGP feature.
+
+  When composing an email, you can now see whether it will be encrypted or not.
+  If encryption is impossible, a key assistant helps you solve key issues.
+
+  [[!img version_5.5/thunderbird_102.png link="no" alt="Thunderbird composer
+  window with encryption turned on and notification about a missing key and how
+  to resolve the issue."]]
+
+## *Tor Connection* assistant
+
+We conducted usability tests of the *Tor Connection* assistant in France and
+Brazil with people who were new to Tails to identify issues in complicated
+cases: when connecting to Tor is blocked by censorship or a captive portal.
+
+We fixed [28 usability issues](https://gitlab.tails.boum.org/tails/tails/-/issues/?sort=closed_desc&state=closed&label_name%5B%5D=C%3ATor%20Connection&first_page_size=20)
+identified during these tests. For example:
+
+- The *Tor Connection* assistant now automatically fixes the computer clock if
+  you choose to connect to Tor automatically. This makes it much easier for
+  people in Asia to circumvent censorship.
+
+- We made it easier to open the *Unsafe Browser* to sign in to a network. This
+  makes it much easier to use Tails on public networks in airports, libraries,
+  and so on.
+
+- In Tails 5.8 (December 20), you will be able to scan a QR code from your
+  phone to enter a Tor bridge:
+
+  [[!img test_5.8-beta1/qr_code.png link="no" alt=""]]
+
+## *Unsafe Browser* and Wayland
+
+Tails 5.8 will also make the *Unsafe Browser* both safer and easier to use by
+migrating it to the Wayland display technology.
+
+Wayland brings more security in-depth to Tails by making it harder for a
+compromised application in Tails to compromise or misuse another application.
+
+Wayland also fixes other features that were not working yet in the *Unsafe
+Browser*:
+
+- Sound
+- Uploads and downloads
+- Alternative input methods for Chinese and other non-Latin languages
+- Accessibility features like the screen reader and virtual keyboard
+
+## Metadata cleaning
+
+We added *Metadata Cleaner*, a new tool to clean metadata from your files.
+
+[[!img version_5.7/metadata_cleaner.png link="no" alt=""]]
+
+When we switched to *MAT* 0.8.0 in Tails 4.0, *MAT* lost its graphical
+interface and was only accessible from the contextual menu of the *Files*
+browser. It became especially hard for new users to learn how to clean their
+files. *Metadata Cleaner* fixes this by providing a simple and easily
+discoverable graphic interface to remove metadata.
+
+*Metadata Cleaner* works on the same file formats and is as secure as *MAT*
+because *Metadata Cleaner* also uses *MAT* in the background to do the actual
+cleaning.
+
+## Backups
+
+We added a utility to make a backup of the Persistent Storage to another Tails
+USB stick.
+
+[[!img version_4.25/backup.png link="no" alt=""]]
+
+It's pretty basic. We still want to do something better in [[!tails_ticket
+7049]], but we didn't want to wait more because we know that backups are a big
+issue for our users.
+
+# Easier installation
+
+## Installation instructions
+
+During usability tests in Mexico and Brazil, we realized that our installation
+process was already pretty easy to follow, but that some people were getting
+lost while navigating between the different pages.
+
+We simplified our instructions by making them into a [[single
+page|install/windows]].
+
+We added animations and more exciting visuals.
+
+<video autoplay loop muted width="200" height="200" poster="https://tails.net/install/inc/success/install.png">
+  <source src="https://tails.net/install/inc/success/install.mp4" type="video/mp4" />
+</video>
+
+Finally, we fixed no less than [30 other smaller usability issues](https://gitlab.tails.boum.org/tails/tails/-/issues/?sort=closed_desc&state=closed&label_name%5B%5D=C%3AInstallation&first_page_size=20) in the instructions!
+
+## Tails.net and more reliable downloads
+
+After 13 years of relying on the domain name of our historical hosting
+provider, *boum.org*, we finally acquired a simple, beautiful, and trustworthy
+domain name of our own:
+
+🎉 ✨ ***tails.net*** ✨ 🎉 
+
+It will take us some time to migrate all our services to this new name.
+
+As a start, we deployed <https://download.tails.net/>. This new service uses
+[Mirrorbits](https://github.com/etix/mirrorbits), a more reliable way of
+redirecting downloads to one of our mirrors. It prevents many broken downloads
+and automates some tedious work.
+
+# Team life
+
+## New team members
+
+Our team grew and welcomed 2 new full-time workers:
+
+- [@disoj](https://gitlab.tails.boum.org/disoj) joined us as our Project
+  Manager in April.
+
+  She will help our team grow, mature, and ultimately serve our users better.
+  It's the first time that we hired for a managerial position, so it's a very
+  big and positive change.
+
+- [@groente](https://gitlab.tails.boum.org/groente), a long-term Sysadmin
+  consultant, joined us full-time in July.
+
+  He will help us deploy better infrastructure to make our work more efficient
+  while keeping all our machines (and thus your Tails) secure.
+
+## Organizational redesign
+
+Behind the curtains, Tails operates as a small team that values transparency,
+autonomy, and horizontal decision-making. We have always worked fully remotely
+and now have team members in 10 different countries.
+
+All this can be challenging sometimes :)
+
+This year, we redesigned, clarified, and documented our internal organizing a
+lot. In particular, it is now clearer who is responsible, and legitimate, to
+make which decisions. This will make Tails a more pleasant and efficient
+working place, so we can focus more of our energy on improving our tools.
+
+# We never let you down!
+
+To always keep you safe, a significant part of our work consists in releasing
+Tails every 4 weeks, updating to new version of *Tor Browser* and the *Tor*
+client, migrating to new technologies in GNOME or Debian, etc.
+
+We released:
+
+- 14 releases, never skipping a single update of *Tor Browser*.
+
+- Tails 5.0 based on Debian Bullseye, with important technical migrations.
+
+- 2 emergency releases to fix critical vulnerabilities in the *Tor* client and
+  the *Linux* kernel.
+
+All this work has been made possible by donations from users like you. If you
+like these changes and want more, donate now to fund our work in 2023.
+
+[Donate](https://tails.net/donate/)

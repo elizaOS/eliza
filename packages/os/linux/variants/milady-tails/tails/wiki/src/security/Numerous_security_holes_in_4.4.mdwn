@@ -1,0 +1,15 @@
+[[!meta date="Sat, 21 Mar 2020 22:34:38 +0100"]]
+[[!meta title="Numerous security holes in Tails 4.4"]]
+[[!pagetemplate template="news.tmpl"]]
+
+[[!tag security/fixed]]
+
+[[Tails_4.4.1|news/version_4.4.1]] fixes many security issues that affect
+Tails 4.4. You should [[upgrade to Tails 4.4.1|news/version_4.4.1]] as
+soon as possible.
+
+ - Tor Browser: [9.0.7 release announcement](https://blog.torproject.org/new-release-tor-browser-907)
+ - Tor: TROVE-2020-002 ([[!tor_bug 33120]], [[!cve CVE-2020-10592]]),
+   TROVE-2020-003 ([[!tor_bug 33137]]), TROVE-2020-004 ([[!tor_bug 33619]], [[!cve CVE-2020-10593]])
+ - Thunderbird: [[!mfsa 2020-10]], [[!debsa2020 4642]]
+ - WebKitGTK: [[!debsa2020 4641]]

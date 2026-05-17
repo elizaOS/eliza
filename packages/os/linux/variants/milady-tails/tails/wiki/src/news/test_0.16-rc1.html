@@ -1,0 +1,109 @@
+[[!meta date="Mon, 14 Dec 2012 23:45:00 +0200"]]
+[[!pagetemplate template="news.tmpl"]]
+[[!meta title="Call for testing: 0.16~rc1"]]
+
+<p>You can help Tails! The <em>first</em> release candidate for the upcoming
+version 0.16 is out. Please test it and see if all works for you.</p>
+
+[[!toc levels=1]]
+
+<h1>How to test Tails 0.16~rc1?</h1>
+
+<ol>
+  <li>
+    <p>
+      <strong>Keep in mind that this is a test image.</strong> We have made sure
+      that it is not broken in an obvious way, but it might still contain
+      undiscovered issues.
+    </p>
+  </li>
+  <li>
+    <p>Download the ISO image and its signature:</p>
+    <p>
+      <a class="download-file"
+         href=""
+      >Tails 0.16~rc1 ISO image</a>
+    </p>
+    <p>
+      <a class="download-signature"
+         href=""
+      >Tails 0.16~rc1 signature</a>
+    </p>
+  </li>
+  <li>
+    <p>
+      Verify the ISO image.
+    </p>
+  </li>
+  <li>
+    <p>
+      Have a look at the list of <a href="#known_issues">known issues
+      of this release</a> and the list of [[longstanding known
+      issues|support/known_issues]].
+    </p>
+  </li>
+  <li>
+    <p>
+      Test wildly!
+    </p>
+  </li>
+</ol>
+
+<p>If you find anything that is not working as it should, please [[report to
+us|doc/first_steps/whisperback]]! Bonus points if you check that it is not a
+<a href="#known_issues">known issue of this release</a> or a
+[[longstanding known issue|support/known_issues]].</p>
+
+<h1>What's new since 0.15?</h1>
+
+<ul>
+  <li>Minor improvements
+     <ul>
+	<li>Replace the too-easy-to-misclick shutdown button with a better
+	  "Shutdown Helper" Gnome applet.</li>
+	<li>Display <code>~/Persistent</code> in GNOME Places and GtkFileChooser
+	if it is mounted.</li>
+	<li>Set Unsafe Browser's window title to "Unsafe Browser".</li>
+	<li>Install ekeyd to support the EntropyKey.</li>
+	<li>Install font for Sinhala.</li>
+	<li>Update Poedit to 1.5.4.</li>
+	<li>Kill Vidalia when restarting Tor.</li>
+	<li>Hide the persistence setup launchers in kiosk mode.</li>
+    </ul>
+  </li>
+  <li>Bugfixes
+    <ul>
+	<li>Disable IPv6 on all network interfaces.</li>
+	<li>Don't look for persistence volume on internal disks.</li>
+	<li>Fix SCIM in the autostarted web browser</li>
+	<li>Talk of DVD, not of CD, in the shutdown messages.</li>
+	<li>Make tordate work in bridge mode with an incorrect clock.</li>
+    </ul>
+  </li>
+  <li>iceweasel
+    <ul>
+	<li>Set iceweasel homepage to the news section on the Tails
+	website.</li>
+	<li>Hide the iceweasel add-on bar by default.</li>
+	<li>Don't hide the AdBlock-Plus button in the add-on bar anymore.</li>
+	<li>Do not install a placeholder (fake) FireGPG iceweasel extension
+	anymore.</li>
+	<li>Don't install xul-ext-monkeysphere anymore.</li>
+    </ul>
+  </li>
+  <li>Build system
+    <ul>
+	<li>Install the "standard" task with tasksel regardless of the build
+	system being used.</li>
+	<li>Install p7zip-full explicitly.</li>
+	<li>Remove useless pinning of libvpx0.</li>
+	<li>Remove <code>config/chroot_local-packages/</code> from
+	<code>.gitignore</code>.</li>
+	<li>Make it clearer what can and cannot be done in terms of local packages.</li>
+    </ul>
+  </li>
+</ul>
+
+<h1><a id="known_issues"></a>Known issues in 0.16~rc1</h1>
+
+<p>None.</p>

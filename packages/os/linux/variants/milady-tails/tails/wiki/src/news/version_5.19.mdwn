@@ -1,0 +1,98 @@
+[[!meta title="Tails 5.19"]]
+[[!meta date="Tue, 31 Oct 2023 12:34:56 +0000"]]
+[[!pagetemplate template="news.tmpl"]]
+[[!tag announce]]
+
+<h1 id="features">New features</h1>
+
+<h2>Closing a Tor circuit from <i>Onion Circuits</i></h2>
+
+You can now close a given Tor circuit from the *Onion Circuits* interface. This
+can help replace a particularly slow Tor circuit or troubleshoot issues on the
+Tor network.
+
+[[!img close_circuit.png link="no" alt=""]]
+
+To close a Tor circuit:
+
+1. [[Connect to the Tor network.|doc/anonymous_internet/tor]]
+
+1. Choose [[!img lib/symbolic/tor-connected.png alt="Tor status menu"
+   link="no" class="symbolic"]]&nbsp;▸ **Open Onion Circuits** in the top
+   navigation bar.
+
+1. Right-click (on Mac, click with two fingers) on the circuit that you want
+   to close.
+
+1. Choose **Close this circuit** in the shortcut menu.
+
+   When you close a circuit that is being used by an application, your
+   application gets disconnected from this destination service.
+
+   For example, when you close a circuit while <i>Tor Browser</i> is
+   downloading a file, the download fails.
+
+1. If you connect to the same destination server again, Tor uses a different
+   circuit to replace the circuit that you closed.
+
+   For example, if you download the same file again, Tor uses a new circuit.
+
+<h2>Addition of <span class="code">sq-keyring-linter</span></h2>
+
+At the request of people who use [SecureDrop](https://securedrop.org/) to
+provide secure whistleblowing platforms across the world, we added the
+[`sq-keyring-linter`](https://tracker.debian.org/pkg/rust-sequoia-keyring-linter)
+package. `sq-keyring-linter` improves the cryptographic parameters of PGP keys
+stored in their airgapped machines.
+
+<h1 id="changes">Changes and updates</h1>
+
+- Update *Tor Browser* to [13.0.1](https://blog.torproject.org/new-release-tor-browser-1301).
+
+- Update the *Tor* client to 0.4.8.7.
+
+- Update *Thunderbird* to [115.4.1](https://www.thunderbird.net/en-US/thunderbird/115.4.1/releasenotes/).
+
+- Update the *Linux* kernel to 6.1.55.
+
+<h1 id="fixes">Fixed problems</h1>
+
+For more details, read our [[!tails_gitweb debian/changelog desc="changelog"]].
+
+<h1 id="issues">Known issues</h1>
+
+None specific to this release.
+
+See the list of [[long-standing issues|support/known_issues]].
+
+<h1 id="get">Get Tails 5.19</h1>
+
+## To upgrade your Tails USB stick and keep your Persistent Storage
+
+- Automatic upgrades are available from Tails 5.0 or later to 5.19.
+
+  You can [[reduce the size of the download|doc/upgrade#reduce]] of future
+  automatic upgrades by doing a manual upgrade to the latest version.
+
+- If you cannot do an automatic upgrade or if Tails fails to start after an
+  automatic upgrade, please try to do a [[manual upgrade|doc/upgrade/#manual]].
+
+## To install Tails on a new USB stick
+
+Follow our installation instructions:
+
+  - [[Install from Windows|install/windows]]
+  - [[Install from macOS|install/mac]]
+  - [[Install from Linux|install/linux]]
+  - [[Install from Debian or Ubuntu using the command line and GnuPG|install/expert]]
+
+<div class="caution"><p>The Persistent Storage on the USB stick will be lost if
+you install instead of upgrading.</p></div>
+
+## To download only
+
+If you don't need installation or upgrade instructions, you can download
+Tails 5.19 directly:
+
+  - [[For USB sticks (USB image)|install/download]]
+  - [[For DVDs and virtual machines (ISO image)|install/download-iso]]

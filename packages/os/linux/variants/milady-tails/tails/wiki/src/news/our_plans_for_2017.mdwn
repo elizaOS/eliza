@@ -1,0 +1,61 @@
+[[!meta date="Sat, 26 Nov 2016 12:34:56 +0000"]]
+[[!pagetemplate template="news.tmpl"]]
+[[!meta title="Our plans for the coming years"]]
+[[!tag announce]]
+
+As part of our ongoing donation campaign, we already explained you [[why
+we needed donations|why_we_need_donations]] and [[how we use these donations|what_we_do_with_your_money]]. Today we are
+sharing with you our plans for the next years:
+
+  - **Easier adoption**
+    - **Revamp Tails Greeter**: make it easier to configure Tails when starting ([[!tails_ticket 5464]])
+    - **Rethink the installation and upgrade process**: take a step back and reflect
+      on the future of Tails Installer, the installation on Windows and
+      Mac, and automatic upgrades ([[!tails_ticket 11679]])
+    - **Graphical installation method for macOS**: what would it take
+      to document tools other than Tails Installer to do a graphical
+      installation from macOS? ([[!tails_ticket 11682]])
+    - **Explain better what Tails is** and what makes it so awesome ([[!tails_ticket 9814]])
+
+  - **Security hardening**
+    - **Reproducible build of the ISO image**: protect users and
+      developers from a malicious build of our ISO image ([[!tails_ticket 5630]])
+    - **Persistent Tor state**: have persistent entry guards ([[!tails_ticket 5462]])
+    - **HTTPS mirrors**: serve our downloads over HTTPS only ([[!tails_ticket 9796]])
+    - **Persistent seed for random number generator**: have better entropy and stronger crypto ([[!tails_ticket 7675]])
+    - **Browser fingerprint**: compare and reevaluate the web fingerprint of Tor Browser inside and outside Tails ([[!tails_ticket 5362]])
+
+  - **Community**
+    - **Web platform for translators**: make it easier to translate our website ([[!tails_ticket 10034]])
+    - **Social contract**: guiding principles that reflects the commitment to our ideals ([[!tails_ticket 11669]])
+    - **Personas**: study and describe our user base to take better design decisions ([[!tails_ticket 11162]])
+    - **Improvements to WhisperBack**: make it easier and faster to answer support requests ([[!tails_ticket 9799]], [[!tails_ticket 9800]])
+
+  - **Sustainability**
+    - **Tails based on Debian Stretch** (Tails 3.0)
+    - **Better server infrastructure**: to handle our growing needs on continuous integration and have a backup server ([[!tails_ticket 11680]], [[!tails_ticket 6185]])
+    - **Test Tails on ARM**: starting with a few Chromebooks supported by Debian ([[!tails_ticket 11677]])
+    - **Tails on tablets**: specify what upstream projects (GNOME, Debian, etc.) should work on to help porting Tails to tablets and smartphones ([[!tails_ticket 10039]])
+
+  - **Fundraising**
+    - **Have more reliable and steady sources of income**
+    - **Depend less on grants from governments**
+
+  - **New applications and features**
+    - **Graphical interface for the Additional Packages persistent feature**: allow users to customize which applications are available in their Tails ([[!tails_ticket 5996]] [[!tails_ticket 9059]])
+    - **Backups**: provide a graphical tool to backup the persistent volume ([[!tails_ticket 5301]])
+    - **Screen locker**: allow users to lock their session with a password ([[!tails_ticket 5684]])
+    - **Tails Server**: run onion services from Tails (VoIP chat rooms, collaboration tools, web servers, messaging servers, etc.) ([[!tails_ticket 5688]])
+    - **Tails Verifier**: allow verifying whether a Tails installation has been corrupted ([[!tails_ticket 7496]])
+    - **TrueCrypt support in GNOME**: graphical utilities to mount TrueCrypt volumes ([[!tails_ticket 11684]], [[!tails_ticket 6337]])
+
+These are all items that we find important and want to prioritize. But making
+them a reality will require lots of work, time, and money; on top of all the
+day-to-day work that we do to simply keep Tails alive.
+
+If you want us to get there faster, please take one minute to make a donation.
+
+If your organization is interested in funding one of these tasks in
+particular, please contact us.
+
+[Donate](https://tails.net/donate/)

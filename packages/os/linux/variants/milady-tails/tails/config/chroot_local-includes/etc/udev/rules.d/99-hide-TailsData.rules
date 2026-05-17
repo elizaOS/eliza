@@ -1,0 +1,4 @@
+# We set UDISKS_IGNORE on the TailsData partition of the live boot
+# device to hide it in GNOME apps. This prevents spurious notifications
+# being shown when setting up persistence.
+ENV{ID_FS_LABEL}=="TailsData", PROGRAM="/usr/libexec/bilibop/test $devnode", ENV{UDISKS_IGNORE}="1"

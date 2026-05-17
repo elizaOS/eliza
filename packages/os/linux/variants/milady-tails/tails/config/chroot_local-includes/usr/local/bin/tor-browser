@@ -1,0 +1,66 @@
+#!/usr/bin/python3 -I
+
+import contextlib
+import os
+import sys
+
+from tailslib.website import (
+    DocumentationPageNotFound,
+    is_local_page,
+    resolve_if_tails_website,
+)
+
+
+def main():
+    args = sys.argv[1:]
+    skip_offline = False
+    target_index = None
+    if len(args) == 1:
+        target_index = 0
+    elif len(args) == 3 and args[0] == "@@u" and args[2] == "@@":
+        # For an explanation of the purpose of "@@u ... @@", see the
+        # description for --file-forwarding in flapak-run(1).
+        target_index = 1
+    if target_index:
+        with contextlib.suppress(DocumentationPageNotFound):
+            # There are 4 cases about what happens now:
+            #  1. args[target_index] is not an http(s) URI, but a local file. In this case, resolved == args[target_index]
+            #  2. args[target_index] is a link to a website which is not tails.net. In this case, resolved == args[target_index]
+            #  3. args[target_index] is a link to tails.net website and we're online. In this case, resolved will be an https:// URL pointing to the localized version of args[target_index]
+            #  4. args[target_index] is a link to tails.net website and we're offline. In this case, resolved will be the path of a file in WEBSITE_LOCAL_PATH
+            # The first 2 cases would be handled just fine without modifying args
+            # Case 1 is the only case which requires @@u … @@ to be preserved
+            # Case 4 is the only case in which we need to drop @@u … @@ (see below)
+            resolved = resolve_if_tails_website(args[target_index])
+            skip_offline = is_local_page(resolved)
+            if resolved.removeprefix("file://").startswith("/usr/"):
+                # The doc portal is not at all suitable for our
+                # documentation, which lives under /usr and is fully
+                # accessible even in the Flatpak context (so the
+                # portal isn't needed in the first place), since it
+                # only shares single files, and our documentation
+                # relies heavily on links to other documents, images,
+                # css, etc. However, even with the @@u ... @@ magic
+                # present, `flatpak run` normally avoids the doc
+                # portal if it detects that the files are accessible
+                # but flatpak makes an exception specifically for
+                # /usr, forcing the doc portal to be used for all
+                # files under it. Therefore we explicitly drop the @@u
+                # ... @@ part to forcefully avoid the doc portal for
+                # paths under /usr since it mostly causes trouble.
+                args = [resolved]
+            else:
+                # Even if resolved is not a local path, it might still have changed.
+                # As an example, if the target is https://tails.net/about, then resolved
+                # will point to a localized version of that link
+                args[target_index] = resolved
+
+    if skip_offline:
+        os.environ["TOR_BROWSER_SKIP_OFFLINE_WARNING"] = "yes"
+
+    cmdline = ["/usr/local/lib/launch-tor-browser", *args]
+    os.execv(cmdline[0], cmdline)
+
+
+if __name__ == "__main__":
+    main()
