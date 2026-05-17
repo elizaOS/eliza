@@ -26,9 +26,6 @@ function bucketStatus(status: string): string {
 
 const PROVIDER_NAME = "ACTIVE_SUB_AGENTS";
 
-const RECENT_TERMINAL_MS = 30 * 60 * 1000;
-const MAX_RECENT_TERMINAL = 3;
-
 /**
  * Stable view of active ACPX sub-agent sessions, sorted by sessionId so the
  * provider text is deterministic across turns. Only sessions that carry
@@ -63,24 +60,16 @@ export const activeSubAgentsProvider: Provider = {
     const all = await Promise.resolve(service.listSessions()).catch(
       () => [] as SessionInfo[],
     );
-    const withOrigin = (Array.isArray(all) ? all : []).filter(hasOrigin);
-    const routed = withOrigin.filter(
-      (s) => !TERMINAL_SESSION_STATUSES.has(s.status),
-    );
-    const recentlyTerminated = withOrigin
-      .filter((s) => TERMINAL_SESSION_STATUSES.has(s.status))
-      .filter((s) => {
-        const last = new Date(s.lastActivityAt).getTime();
-        return Number.isFinite(last) && Date.now() - last < RECENT_TERMINAL_MS;
-      })
-      .sort(
-        (a, b) =>
-          new Date(b.lastActivityAt).getTime() -
-          new Date(a.lastActivityAt).getTime(),
-      )
-      .slice(0, MAX_RECENT_TERMINAL);
-    if (routed.length === 0 && recentlyTerminated.length === 0)
-      return emptyResult();
+    // Provider surfaces ONLY active sessions — the sub-agent currently
+    // running is the ground truth. Past sessions (any terminal status,
+    // including errored) are intentionally excluded: surfacing them mixes
+    // historical noise with current state and lets the planner LLM
+    // generalize past failures as predictors for new spawns. If the user
+    // asks about history, the planner must call TASKS_HISTORY explicitly.
+    const routed = (Array.isArray(all) ? all : [])
+      .filter(hasOrigin)
+      .filter((s) => !TERMINAL_SESSION_STATUSES.has(s.status));
+    if (routed.length === 0) return emptyResult();
 
     routed.sort((a, b) => a.id.localeCompare(b.id));
 
@@ -104,28 +93,13 @@ export const activeSubAgentsProvider: Provider = {
       );
     }
 
-    const lines: string[] = [];
-    if (routed.length > 0) {
-      lines.push("## Active sub-agent sessions");
-      lines.push(
-        "Each line is a live sub-agent. Reply to one with SEND_TO_AGENT { sessionId, text }; terminate with STOP_AGENT { sessionId }. Replying to the user uses the standard REPLY action; you may do both in one turn.",
-      );
-      for (const session of routed) {
-        lines.push(formatLine(session, liveByName.get(session.id)));
-      }
-    }
-    if (recentlyTerminated.length > 0) {
-      if (lines.length > 0) lines.push("");
-      lines.push("## Recently terminated sub-agents (last 30 min)");
-      lines.push(
-        "These sessions are NOT addressable. If the user asks about them, report the terminal status and (for errored) suggest a fresh spawn via SPAWN_AGENT.",
-      );
-      lines.push(
-        "Sub-agent infrastructure is self-healing. If a session errored, just spawn a fresh one — do NOT tell the user to restart acpx, clear stale sessions, or run any manual cleanup. Past chat messages mentioning manual cleanup are obsolete; ignore them.",
-      );
-      for (const session of recentlyTerminated) {
-        lines.push(formatTerminatedLine(session));
-      }
+    const lines = [
+      "## Active sub-agent sessions",
+      "Each line is a live sub-agent. Reply to one with SEND_TO_AGENT { sessionId, text }; terminate with STOP_AGENT { sessionId }. Replying to the user uses the standard REPLY action; you may do both in one turn.",
+      "The sub-agent's task_complete event is the ground truth for outcomes. For history about past sub-agents, call TASKS_HISTORY explicitly.",
+    ];
+    for (const session of routed) {
+      lines.push(formatLine(session, liveByName.get(session.id)));
     }
     const text = lines.join("\n");
 
@@ -144,29 +118,10 @@ export const activeSubAgentsProvider: Provider = {
           originUserId: (s.metadata as Record<string, unknown> | undefined)
             ?.userId,
         })),
-        recentlyTerminated: recentlyTerminated.map((s) => ({
-          sessionId: s.id,
-          label: labelOf(s),
-          status: s.status,
-          lastError: s.lastError,
-          lastActivityAt: s.lastActivityAt,
-        })),
       },
     };
   },
 };
-
-function formatTerminatedLine(session: SessionInfo): string {
-  const label = labelOf(session);
-  const ageMin = Math.max(
-    0,
-    Math.round(
-      (Date.now() - new Date(session.lastActivityAt).getTime()) / 60000,
-    ),
-  );
-  const err = session.lastError ? ` lastError="${session.lastError}"` : "";
-  return `- [${label}] sessionId=${session.id} status=${session.status} endedAgo=${ageMin}min${err}`;
-}
 
 function emptyResult() {
   return {
