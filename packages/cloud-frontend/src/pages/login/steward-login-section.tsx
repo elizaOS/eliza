@@ -1,8 +1,5 @@
 import { resolveBrowserStewardApiUrl } from "@elizaos/cloud-shared/lib/steward-url";
-import {
-  writeStoredStewardRefreshToken,
-  writeStoredStewardToken,
-} from "@elizaos/steward-session-client";
+import { writeStoredStewardToken } from "@elizaos/steward-session-client";
 import { Alert, AlertDescription, DiscordIcon } from "@elizaos/ui";
 import type { StewardProviders } from "@stwd/sdk";
 import { StewardAuth } from "@stwd/sdk";
@@ -202,9 +199,10 @@ export default function StewardLoginSection() {
     if (!token) return;
 
     writeStoredStewardToken(token);
-    if (refreshToken) {
-      writeStoredStewardRefreshToken(refreshToken);
-    }
+    // Refresh token is forwarded to the server only so it can be set as the
+    // HttpOnly steward-refresh-token cookie — it is NOT persisted in
+    // localStorage (XSS-reachable). After first login the HttpOnly cookie
+    // is the only persistence; refresh is via /api/auth/steward-refresh.
 
     syncStewardSessionCookie(token, refreshToken)
       .then(() => {

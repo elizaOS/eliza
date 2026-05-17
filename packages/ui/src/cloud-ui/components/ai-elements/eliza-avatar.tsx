@@ -68,12 +68,12 @@ const CLOUD_AGENT_AVATARS = [
 const ALL_AVATARS = [
   ...CLOUD_AGENT_AVATARS,
   "/avatars/eliza.png",
-  "/avatars/amara.png",
-  "/avatars/luna.png",
-  "/avatars/prof_ada.png",
-  "/avatars/voiceai.png",
-  "/avatars/wellnesscoach.png",
-  "/avatars/edad.png",
+  "/avatars/amara.webp",
+  "/avatars/luna.webp",
+  "/avatars/prof_ada.webp",
+  "/avatars/voiceai.webp",
+  "/avatars/wellnesscoach.webp",
+  "/avatars/edad.webp",
 ];
 
 function simpleHash(str: string): number {

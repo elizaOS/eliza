@@ -1,6 +1,6 @@
 import {
-  readStoredStewardRefreshToken,
   STEWARD_NONCE_EXCHANGE_ENDPOINT,
+  STEWARD_REFRESH_ENDPOINT,
   STEWARD_SESSION_ENDPOINT,
   type StewardNonceExchangeResponse,
   StewardSessionError,
@@ -20,15 +20,16 @@ export async function syncStewardSessionCookie(
   token: string,
   refreshToken?: string | null,
 ): Promise<void> {
+  // Refresh tokens now live only in the HttpOnly `steward-refresh-token`
+  // cookie. Forward whatever the caller passes (so first-login can seed the
+  // cookie from the legacy URL-fragment flow during rollout), but do NOT
+  // read it back from localStorage — that path is gone.
   const response = await apiFetch(STEWARD_SESSION_ENDPOINT, {
     method: "POST",
     skipAuth: true,
     json: {
       token,
-      refreshToken:
-        refreshToken === undefined
-          ? readStoredStewardRefreshToken()
-          : refreshToken,
+      ...(refreshToken ? { refreshToken } : {}),
     },
   });
 
@@ -151,4 +152,23 @@ export async function exchangeStewardCodeViaApi(
   }
 
   return (await response.json()) as StewardNonceExchangeResponse;
+}
+
+/**
+ * Cookie-only session refresh. Sends an empty POST to the cloud-api
+ * `steward-refresh` route with `credentials: "include"`; the HttpOnly
+ * `steward-refresh-token` cookie travels automatically. The server
+ * exchanges it with Steward, sets fresh HttpOnly cookies, and returns
+ * `{ ok, expiresAt }`. No tokens enter JS.
+ *
+ * Returns `true` on success, `false` when the server rejected the refresh
+ * (cookie missing / revoked / Steward 401 — the server has already cleared
+ * the stale cookies in that case).
+ */
+export async function refreshStewardSessionViaCookie(): Promise<boolean> {
+  const response = await apiFetch(STEWARD_REFRESH_ENDPOINT, {
+    method: "POST",
+    skipAuth: true,
+  });
+  return response.ok;
 }

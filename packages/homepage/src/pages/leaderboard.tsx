@@ -724,16 +724,18 @@ export default function Leaderboard() {
   );
 
   return (
-    <div {...bind()} className="min-h-screen" style={{ touchAction: "pan-y" }}>
-      <ShaderBackground />
-      <div
-        className="fixed inset-0 pointer-events-none mix-blend-overlay"
-        style={{
-          backgroundImage: `url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.7' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E")`,
-          backgroundRepeat: "repeat",
-          backgroundSize: "256px 256px",
-        }}
-      />
+    <div
+      {...bind()}
+      className="theme-app min-h-screen"
+      style={{
+        touchAction: "pan-y",
+        background: SHADER_BACKGROUND_OPT_IN
+          ? undefined
+          : PLATFORM_BACKGROUND[platform],
+        transition: "background-color 240ms ease, background 240ms ease",
+      }}
+    >
+      {SHADER_BACKGROUND_OPT_IN && <ShaderBackground />}
       <ModelB
         ref={modelRef}
         tryActive={platform === "try"}
@@ -788,7 +790,7 @@ export default function Leaderboard() {
               style={{ gap: tryAppearSpring.tryGap }}
             >
               <AnimatedDiv
-                className="absolute z-1 h-12 bg-white/30 backdrop-blur-sm border border-white/60 rounded-full"
+                className="absolute z-1 h-12 bg-white border border-black rounded-sm"
                 style={{
                   ...indicatorSpring,
                   top: 7,
@@ -803,11 +805,11 @@ export default function Leaderboard() {
                 }}
               />
               <AnimatedDiv
-                className="relative flex items-center gap-1 rounded-full py-1.5 border border-transparent"
+                className="relative flex items-center gap-1 rounded-sm py-1.5 border border-transparent"
                 style={barSpring}
               >
                 <AnimatedDiv
-                  className="absolute inset-0 rounded-full bg-white/30 backdrop-blur border border-white/60"
+                  className="absolute inset-0 rounded-sm bg-black"
                   style={{
                     WebkitMaskImage: tabBarBgSpring.reveal.to(
                       (v) =>
@@ -854,7 +856,7 @@ export default function Leaderboard() {
                 }}
               >
                 <AnimatedDiv
-                  className="absolute right-0 top-0 rounded-full border border-white/60 bg-white/30 backdrop-blur"
+                  className="absolute right-0 top-0 rounded-sm border border-black bg-white"
                   style={{
                     width: trySpring.width,
                     height: trySpring.height,
@@ -870,7 +872,7 @@ export default function Leaderboard() {
                 />
                 <AnimatedButton
                   onClick={() => navigate("/get-started")}
-                  className="relative z-2 flex items-center justify-center h-full w-full rounded-full text-neutral-900 font-semibold text-base whitespace-nowrap cursor-pointer"
+                  className="relative z-2 flex items-center justify-center h-full w-full rounded-sm text-black font-semibold text-base whitespace-nowrap cursor-pointer"
                   style={{ opacity: tryAppearSpring.tryOpacity }}
                 >
                   Try Now
@@ -881,7 +883,7 @@ export default function Leaderboard() {
         </div>
       </div>
       <AnimatedDiv
-        className={`fixed bottom-0 left-1/2 -translate-x-1/2 z-20 w-full  ${tryPlatform === "telegram" ? "px-2 pt-3 pb-3 bg-white" : tryPlatform === "discord" ? "px-2 pt-3 pb-3 bg-[#36393f] border-t border-[#202225]" : "px-5 pt-20 pb-6  bg-linear-to-b from-neutral-200/0 to-neutral-200/80"}`}
+        className={`fixed bottom-0 left-1/2 -translate-x-1/2 z-20 w-full  ${tryPlatform === "telegram" ? "px-2 pt-3 pb-3 bg-white" : tryPlatform === "discord" ? "px-2 pt-3 pb-3 bg-[#36393f] border-t border-[#202225]" : "px-5 pt-20 pb-6"}`}
         style={{
           maxWidth: loginMaxW + 12,
           opacity: inputBarSpring.opacity,
@@ -989,7 +991,7 @@ export default function Leaderboard() {
           </div>
         ) : (
           <AnimatedDiv
-            className="flex items-end gap-3 bg-white/80 backdrop-blur border-2 border-white rounded-[26px] pl-5 pr-1.5 py-1.5"
+            className="flex items-end gap-3 bg-white border border-black rounded-sm pl-5 pr-1.5 py-1.5"
             style={{
               transform: inputBarSpring.y.to((y) => `translateY(${y}px)`),
             }}
@@ -1034,7 +1036,7 @@ export default function Leaderboard() {
               aria-label={
                 tryInput.trim() ? "Send message" : "Start voice input"
               }
-              className={`shrink-0 flex items-center justify-center rounded-full mb-0.5 cursor-pointer ${tryInput.trim() ? (waiting ? "w-12 h-9 bg-neutral-300 text-white" : "w-12 h-9 bg-blue-500 text-white") : listening ? "w-12 h-9 bg-blue-500 text-white" : "w-9 h-9 text-black/40"}`}
+              className={`shrink-0 flex items-center justify-center rounded-sm mb-0.5 cursor-pointer ${tryInput.trim() ? (waiting ? "w-12 h-9 bg-neutral-300 text-white" : "w-12 h-9 bg-[var(--brand-blue)] text-white") : listening ? "w-12 h-9 bg-[var(--brand-blue)] text-white" : "w-9 h-9 text-black/40"}`}
             >
               {tryInput.trim() ? (
                 <svg
@@ -1164,7 +1166,7 @@ export default function Leaderboard() {
           }}
           className={`w-full rounded-sm py-4 text-[17px] font-semibold transition-colors ${
             phoneDigits.length === country.placeholder.replace(/\D/g, "").length
-              ? "bg-black text-white hover:bg-[#FF5800] hover:text-black cursor-pointer"
+              ? "bg-black text-white hover:bg-[var(--brand-orange)] hover:text-black cursor-pointer"
               : "bg-white/60 text-black/40 cursor-not-allowed"
           }`}
         >
@@ -1230,7 +1232,7 @@ export default function Leaderboard() {
                   const focusIdx = Math.min(i + pasted.length, 5);
                   verifyInputsRef.current[focusIdx]?.focus();
                 }}
-                className="flex-1 min-w-0 aspect-square bg-white border border-black rounded-sm text-center text-3xl font-semibold text-black outline-none focus:ring-2 focus:ring-[#FF5800]"
+                className="flex-1 min-w-0 aspect-square bg-white border border-black rounded-sm text-center text-3xl font-semibold text-black outline-none focus:ring-2 focus:ring-[var(--brand-orange)]"
               />
             );
           })}
@@ -1240,7 +1242,7 @@ export default function Leaderboard() {
           disabled={verifyCode.some((d) => !d)}
           className={`w-full rounded-sm py-4 text-[17px] font-semibold transition-colors ${
             verifyCode.every((d) => d)
-              ? "bg-black text-white hover:bg-[#FF5800] hover:text-black cursor-pointer"
+              ? "bg-black text-white hover:bg-[var(--brand-orange)] hover:text-black cursor-pointer"
               : "bg-white/60 text-black/40 cursor-not-allowed"
           }`}
         >

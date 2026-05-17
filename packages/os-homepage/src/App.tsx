@@ -20,7 +20,6 @@ import {
   STEWARD_SESSION_ENDPOINT,
   STEWARD_TENANT_ID,
   syncStewardSession,
-  writeStoredStewardRefreshToken,
   writeStoredStewardToken,
 } from "@elizaos/steward-session-client";
 import { CloudVideoBackground } from "@elizaos/ui";
@@ -530,9 +529,10 @@ function CheckoutPage() {
 
     setStatus("syncing");
     writeStoredStewardToken(token);
-    if (refreshToken) {
-      writeStoredStewardRefreshToken(refreshToken);
-    }
+    // Refresh token is forwarded to the server only so it can be set as the
+    // HttpOnly steward-refresh-token cookie — it is NOT persisted in
+    // localStorage (XSS-reachable). The HttpOnly cookie is the only
+    // persistence after first login.
 
     syncStewardSession(token, refreshToken ?? null, {
       endpoint: stewardSessionEndpoint,
