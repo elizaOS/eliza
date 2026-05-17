@@ -161,32 +161,27 @@ provision() {
 sync_repo() {
   : "${ELIZA_DFLASH_SMOKE_MODEL:?must set ELIZA_DFLASH_SMOKE_MODEL to a local GGUF}"
   local target; target="$(ssh_target)"
-  echo "[nebius_h200] syncing checkout to $target:$NEBIUS_REMOTE_DIR"
+  echo "[nebius_h200] syncing focused checkout to $target:$NEBIUS_REMOTE_DIR"
   ssh -o StrictHostKeyChecking=no "$target" \
-    "sudo mkdir -p '$NEBIUS_REMOTE_DIR'; sudo chown -R '$NEBIUS_SSH_USER:$NEBIUS_SSH_USER' '$NEBIUS_REMOTE_DIR'"
-  rsync -az --delete \
-    --exclude .git/ \
-    --exclude .claude/ \
-    --exclude .cache/ \
-    --exclude .codex/ \
-    --exclude .eliza/ \
-    --exclude .swarm/ \
-    --exclude node_modules/ \
-    --exclude .turbo/ \
-    --exclude .next/ \
-    --exclude coverage/ \
-    --exclude dist/ \
-    --exclude build/ \
-    --exclude out/ \
-    --exclude packages/training/checkpoints/ \
-    --exclude packages/training/out/ \
-    --exclude artifacts/ \
-    --exclude benchmark_results/ \
-    --exclude docker_vm_data/ \
-    --exclude reports/ \
-    --exclude test_output/ \
-    --exclude trajectories-eliza-cerebras/ \
-    "$REPO_ROOT/" "$target:$NEBIUS_REMOTE_DIR/"
+    "sudo rm -rf '$NEBIUS_REMOTE_DIR'; sudo mkdir -p '$NEBIUS_REMOTE_DIR'; sudo chown -R '$NEBIUS_SSH_USER:$NEBIUS_SSH_USER' '$NEBIUS_REMOTE_DIR'"
+
+  rsync -az --ignore-missing-args \
+    "$REPO_ROOT/package.json" \
+    "$REPO_ROOT/bun.lock" \
+    "$REPO_ROOT/tsconfig.json" \
+    "$REPO_ROOT/AGENTS.md" \
+    "$target:$NEBIUS_REMOTE_DIR/"
+
+  ssh -o StrictHostKeyChecking=no "$target" \
+    "mkdir -p '$NEBIUS_REMOTE_DIR/packages/app-core' '$NEBIUS_REMOTE_DIR/packages/native-plugins' '$NEBIUS_REMOTE_DIR/plugins/plugin-local-inference/native'"
+  rsync -az --delete "$REPO_ROOT/packages/app-core/scripts/" "$target:$NEBIUS_REMOTE_DIR/packages/app-core/scripts/"
+  rsync -az --delete "$REPO_ROOT/packages/native-plugins/qjl-cpu/" "$target:$NEBIUS_REMOTE_DIR/packages/native-plugins/qjl-cpu/"
+  rsync -az --delete "$REPO_ROOT/packages/native-plugins/polarquant-cpu/" "$target:$NEBIUS_REMOTE_DIR/packages/native-plugins/polarquant-cpu/"
+  rsync -az --delete "$REPO_ROOT/plugins/plugin-local-inference/native/cuda/" "$target:$NEBIUS_REMOTE_DIR/plugins/plugin-local-inference/native/cuda/"
+  rsync -az --delete "$REPO_ROOT/plugins/plugin-local-inference/native/dflash/" "$target:$NEBIUS_REMOTE_DIR/plugins/plugin-local-inference/native/dflash/"
+  rsync -az --delete "$REPO_ROOT/plugins/plugin-local-inference/native/include/" "$target:$NEBIUS_REMOTE_DIR/plugins/plugin-local-inference/native/include/"
+  rsync -az --delete "$REPO_ROOT/plugins/plugin-local-inference/native/reference/" "$target:$NEBIUS_REMOTE_DIR/plugins/plugin-local-inference/native/reference/"
+  rsync -az --delete "$REPO_ROOT/plugins/plugin-local-inference/native/verify/" "$target:$NEBIUS_REMOTE_DIR/plugins/plugin-local-inference/native/verify/"
   echo "[nebius_h200] syncing smoke model to $target:$NEBIUS_REMOTE_MODEL"
   ssh -o StrictHostKeyChecking=no "$target" "sudo mkdir -p $(dirname "$NEBIUS_REMOTE_MODEL"); sudo chown -R $NEBIUS_SSH_USER:$NEBIUS_SSH_USER $(dirname "$NEBIUS_REMOTE_MODEL")"
   rsync -az "$ELIZA_DFLASH_SMOKE_MODEL" "$target:$NEBIUS_REMOTE_MODEL"

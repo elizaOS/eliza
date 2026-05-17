@@ -598,6 +598,12 @@ function findGlslc(ndk, { preferNdk = false } = {}) {
     if (out) return out;
     return "glslc";
   }
+  if (
+    !preferNdk &&
+    process.env.ELIZA_DFLASH_ALLOW_NDK_GLSLC_FOR_DESKTOP !== "1"
+  ) {
+    return null;
+  }
   return ndkGlslc;
 }
 
