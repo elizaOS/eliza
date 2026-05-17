@@ -199,7 +199,8 @@ export const spawnSync = makeStub("spawnSync");
 export class EventEmitter {
   private _listeners: Record<string, Array<(...args: unknown[]) => void>> = {};
   on(event: string, fn: (...args: unknown[]) => void) {
-    (this._listeners[event] ||= []).push(fn);
+    if (!this._listeners[event]) this._listeners[event] = [];
+    this._listeners[event].push(fn);
     return this;
   }
   off(event: string, fn: (...args: unknown[]) => void) {
