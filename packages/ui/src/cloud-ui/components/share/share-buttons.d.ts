@@ -7,13 +7,10 @@
  * @param props.description - Optional description for sharing
  */
 interface ShareButtonsProps {
-  url: string;
-  title: string;
-  description?: string;
+    url: string;
+    title: string;
+    description?: string;
 }
-export declare function ShareButtons({
-  url,
-  title,
-  description,
-}: ShareButtonsProps): import("react/jsx-runtime").JSX.Element;
+export declare function ShareButtons({ url, title, description }: ShareButtonsProps): import("react/jsx-runtime").JSX.Element;
+export {};
 //# sourceMappingURL=share-buttons.d.ts.map

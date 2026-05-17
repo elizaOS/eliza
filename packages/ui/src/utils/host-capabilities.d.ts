@@ -12,14 +12,14 @@
  * across engine-emitted errors and UI banners.
  */
 export interface UiHostCapabilities {
-  /** Host process stays alive across schedule firings. */
-  longRunning: boolean;
-  /** True when running inside a Capacitor (iOS/Android) shell. */
-  isMobile: boolean;
-  /** True for a pure browser tab (no Capacitor, no Node). */
-  isBrowser: boolean;
-  /** Human-readable host label for banners and warnings. */
-  label: string;
+    /** Host process stays alive across schedule firings. */
+    longRunning: boolean;
+    /** True when running inside a Capacitor (iOS/Android) shell. */
+    isMobile: boolean;
+    /** True for a pure browser tab (no Capacitor, no Node). */
+    isBrowser: boolean;
+    /** Human-readable host label for banners and warnings. */
+    label: string;
 }
 export declare function detectUiHostCapabilities(): UiHostCapabilities;
 /**
@@ -30,13 +30,10 @@ export declare function detectUiHostCapabilities(): UiHostCapabilities;
  */
 export declare const SHORT_INTERVAL_THRESHOLD_MS: number;
 export interface IntervalHostWarning {
-  /** Translation-ready message body. */
-  message: string;
-  /** Whether to surface the warning at all. */
-  show: boolean;
+    /** Translation-ready message body. */
+    message: string;
+    /** Whether to surface the warning at all. */
+    show: boolean;
 }
-export declare function intervalHostWarning(
-  host: UiHostCapabilities,
-  intervalMs: number,
-): IntervalHostWarning;
+export declare function intervalHostWarning(host: UiHostCapabilities, intervalMs: number): IntervalHostWarning;
 //# sourceMappingURL=host-capabilities.d.ts.map

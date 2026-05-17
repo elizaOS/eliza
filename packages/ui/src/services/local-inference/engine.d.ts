@@ -16,50 +16,44 @@
  * instead of crashing the process.
  */
 import type { LocalInferenceLoadArgs } from "./load-args";
-
 type ResolvedGpuLayers = number | "max" | "auto";
-export declare function gpuLayersForKvOffload(
-  mode: NonNullable<LocalInferenceLoadArgs["kvOffload"]>,
-): ResolvedGpuLayers;
-export declare function resolveGpuLayersForLoad(
-  resolved?: LocalInferenceLoadArgs,
-): ResolvedGpuLayers;
-export declare function getDflashTargetMetaBlockReason(
-  input: unknown,
-): string | null;
+export declare function gpuLayersForKvOffload(mode: NonNullable<LocalInferenceLoadArgs["kvOffload"]>): ResolvedGpuLayers;
+export declare function resolveGpuLayersForLoad(resolved?: LocalInferenceLoadArgs): ResolvedGpuLayers;
+export declare function getDflashTargetMetaBlockReason(input: unknown): string | null;
 export interface GenerateArgs {
-  prompt: string;
-  stopSequences?: string[];
-  /** Upper bound on output tokens; defaults to 2048. */
-  maxTokens?: number;
-  /** 0..1; 0.7 default. */
-  temperature?: number;
-  /** nucleus sampling; defaults to 0.9. */
-  topP?: number;
+    prompt: string;
+    stopSequences?: string[];
+    /** Upper bound on output tokens; defaults to 2048. */
+    maxTokens?: number;
+    /** 0..1; 0.7 default. */
+    temperature?: number;
+    /** nucleus sampling; defaults to 0.9. */
+    topP?: number;
 }
 export declare class LocalInferenceEngine {
-  private llama;
-  private loadedModel;
-  private loadedContext;
-  private loadedSession;
-  private loadedPath;
-  private bindingChecked;
-  private bindingModule;
-  /** Serialises generate calls so concurrent requests don't corrupt session state. */
-  private generationQueue;
-  available(): Promise<boolean>;
-  currentModelPath(): string | null;
-  hasLoadedModel(): boolean;
-  unload(): Promise<void>;
-  load(modelPath: string, resolved?: LocalInferenceLoadArgs): Promise<void>;
-  /**
-   * Generate text from the loaded model. Serialised — a new call waits for
-   * any in-flight generation to finish so the chat session's internal state
-   * stays consistent.
-   */
-  generate(args: GenerateArgs): Promise<string>;
-  private loadBinding;
-  private resolveDflashPlan;
+    private llama;
+    private loadedModel;
+    private loadedContext;
+    private loadedSession;
+    private loadedPath;
+    private bindingChecked;
+    private bindingModule;
+    /** Serialises generate calls so concurrent requests don't corrupt session state. */
+    private generationQueue;
+    available(): Promise<boolean>;
+    currentModelPath(): string | null;
+    hasLoadedModel(): boolean;
+    unload(): Promise<void>;
+    load(modelPath: string, resolved?: LocalInferenceLoadArgs): Promise<void>;
+    /**
+     * Generate text from the loaded model. Serialised — a new call waits for
+     * any in-flight generation to finish so the chat session's internal state
+     * stays consistent.
+     */
+    generate(args: GenerateArgs): Promise<string>;
+    private loadBinding;
+    private resolveDflashPlan;
 }
 export declare const localInferenceEngine: LocalInferenceEngine;
+export {};
 //# sourceMappingURL=engine.d.ts.map

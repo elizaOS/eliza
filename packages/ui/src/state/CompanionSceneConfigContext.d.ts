@@ -11,19 +11,16 @@
  */
 import type { Tab } from "../navigation";
 import type { UiTheme } from "./persistence";
-import type {
-  CompanionHalfFramerateMode,
-  CompanionVrmPowerMode,
-} from "./types";
+import type { CompanionHalfFramerateMode, CompanionVrmPowerMode } from "./types";
 export interface CompanionSceneConfig {
-  selectedVrmIndex: number;
-  customVrmUrl: string;
-  customWorldUrl: string;
-  uiTheme: UiTheme;
-  tab: Tab;
-  companionVrmPowerMode: CompanionVrmPowerMode;
-  companionHalfFramerateMode: CompanionHalfFramerateMode;
-  companionAnimateWhenHidden: boolean;
+    selectedVrmIndex: number;
+    customVrmUrl: string;
+    customWorldUrl: string;
+    uiTheme: UiTheme;
+    tab: Tab;
+    companionVrmPowerMode: CompanionVrmPowerMode;
+    companionHalfFramerateMode: CompanionHalfFramerateMode;
+    companionAnimateWhenHidden: boolean;
 }
 export declare const CompanionSceneConfigCtx: import("react").Context<CompanionSceneConfig | null>;
 export declare function useCompanionSceneConfig(): CompanionSceneConfig;

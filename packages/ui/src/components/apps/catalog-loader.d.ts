@@ -1,9 +1,7 @@
 import { type RegistryAppInfo } from "../../api";
-
 interface LoadMergedCatalogAppsOptions {
-  includeHiddenApps?: boolean;
+    includeHiddenApps?: boolean;
 }
-export declare function loadMergedCatalogApps({
-  includeHiddenApps,
-}?: LoadMergedCatalogAppsOptions): Promise<RegistryAppInfo[]>;
+export declare function loadMergedCatalogApps({ includeHiddenApps, }?: LoadMergedCatalogAppsOptions): Promise<RegistryAppInfo[]>;
+export {};
 //# sourceMappingURL=catalog-loader.d.ts.map

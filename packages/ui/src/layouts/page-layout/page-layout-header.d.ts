@@ -1,43 +1,20 @@
 import type { HTMLAttributes } from "react";
 import * as React from "react";
-export interface PageLayoutHeaderProps extends HTMLAttributes<HTMLDivElement> {}
-export declare function PageLayoutHeader({
-  className,
-  ...props
-}: PageLayoutHeaderProps): React.DetailedReactHTMLElement<
-  {
+export interface PageLayoutHeaderProps extends HTMLAttributes<HTMLDivElement> {
+}
+export declare function PageLayoutHeader({ className, ...props }: PageLayoutHeaderProps): React.DetailedReactHTMLElement<{
     defaultChecked?: boolean | undefined;
     defaultValue?: string | number | readonly string[] | undefined;
     suppressContentEditableWarning?: boolean | undefined;
     suppressHydrationWarning?: boolean | undefined;
     accessKey?: string | undefined;
-    autoCapitalize?:
-      | "off"
-      | "none"
-      | "on"
-      | "sentences"
-      | "words"
-      | "characters"
-      | undefined
-      | (string & {});
+    autoCapitalize?: "off" | "none" | "on" | "sentences" | "words" | "characters" | undefined | (string & {});
     autoFocus?: boolean | undefined;
-    contentEditable?:
-      | (boolean | "true" | "false")
-      | "inherit"
-      | "plaintext-only"
-      | undefined;
+    contentEditable?: (boolean | "true" | "false") | "inherit" | "plaintext-only" | undefined;
     contextMenu?: string | undefined;
     dir?: string | undefined;
     draggable?: (boolean | "true" | "false") | undefined;
-    enterKeyHint?:
-      | "enter"
-      | "done"
-      | "go"
-      | "next"
-      | "previous"
-      | "search"
-      | "send"
-      | undefined;
+    enterKeyHint?: "enter" | "done" | "go" | "next" | "previous" | "search" | "send" | undefined;
     hidden?: boolean | undefined;
     id?: string | undefined;
     lang?: string | undefined;
@@ -76,16 +53,7 @@ export declare function PageLayoutHeader({
     popoverTargetAction?: "toggle" | "show" | "hide" | undefined;
     popoverTarget?: string | undefined;
     inert?: boolean | undefined;
-    inputMode?:
-      | "none"
-      | "text"
-      | "tel"
-      | "url"
-      | "email"
-      | "numeric"
-      | "decimal"
-      | "search"
-      | undefined;
+    inputMode?: "none" | "text" | "tel" | "url" | "email" | "numeric" | "decimal" | "search" | undefined;
     is?: string | undefined;
     exportparts?: string | undefined;
     part?: string | undefined;
@@ -101,50 +69,19 @@ export declare function PageLayoutHeader({
     "aria-colindextext"?: string | undefined;
     "aria-colspan"?: number | undefined;
     "aria-controls"?: string | undefined;
-    "aria-current"?:
-      | boolean
-      | "false"
-      | "true"
-      | "page"
-      | "step"
-      | "location"
-      | "date"
-      | "time"
-      | undefined;
+    "aria-current"?: boolean | "false" | "true" | "page" | "step" | "location" | "date" | "time" | undefined;
     "aria-describedby"?: string | undefined;
     "aria-description"?: string | undefined;
     "aria-details"?: string | undefined;
     "aria-disabled"?: (boolean | "true" | "false") | undefined;
-    "aria-dropeffect"?:
-      | "none"
-      | "copy"
-      | "execute"
-      | "link"
-      | "move"
-      | "popup"
-      | undefined;
+    "aria-dropeffect"?: "none" | "copy" | "execute" | "link" | "move" | "popup" | undefined;
     "aria-errormessage"?: string | undefined;
     "aria-expanded"?: (boolean | "true" | "false") | undefined;
     "aria-flowto"?: string | undefined;
     "aria-grabbed"?: (boolean | "true" | "false") | undefined;
-    "aria-haspopup"?:
-      | boolean
-      | "false"
-      | "true"
-      | "menu"
-      | "listbox"
-      | "tree"
-      | "grid"
-      | "dialog"
-      | undefined;
+    "aria-haspopup"?: boolean | "false" | "true" | "menu" | "listbox" | "tree" | "grid" | "dialog" | undefined;
     "aria-hidden"?: (boolean | "true" | "false") | undefined;
-    "aria-invalid"?:
-      | boolean
-      | "false"
-      | "true"
-      | "grammar"
-      | "spelling"
-      | undefined;
+    "aria-invalid"?: boolean | "false" | "true" | "grammar" | "spelling" | undefined;
     "aria-keyshortcuts"?: string | undefined;
     "aria-label"?: string | undefined;
     "aria-labelledby"?: string | undefined;
@@ -159,18 +96,7 @@ export declare function PageLayoutHeader({
     "aria-posinset"?: number | undefined;
     "aria-pressed"?: boolean | "false" | "mixed" | "true" | undefined;
     "aria-readonly"?: (boolean | "true" | "false") | undefined;
-    "aria-relevant"?:
-      | "additions"
-      | "additions removals"
-      | "additions text"
-      | "all"
-      | "removals"
-      | "removals additions"
-      | "removals text"
-      | "text"
-      | "text additions"
-      | "text removals"
-      | undefined;
+    "aria-relevant"?: "additions" | "additions removals" | "additions text" | "all" | "removals" | "removals additions" | "removals text" | "text" | "text additions" | "text removals" | undefined;
     "aria-required"?: (boolean | "true" | "false") | undefined;
     "aria-roledescription"?: string | undefined;
     "aria-rowcount"?: number | undefined;
@@ -185,43 +111,27 @@ export declare function PageLayoutHeader({
     "aria-valuenow"?: number | undefined;
     "aria-valuetext"?: string | undefined;
     children?: React.ReactNode | undefined;
-    dangerouslySetInnerHTML?:
-      | {
-          __html: string | TrustedHTML;
-        }
-      | undefined;
+    dangerouslySetInnerHTML?: {
+        __html: string | TrustedHTML;
+    } | undefined;
     onCopy?: React.ClipboardEventHandler<HTMLDivElement> | undefined;
     onCopyCapture?: React.ClipboardEventHandler<HTMLDivElement> | undefined;
     onCut?: React.ClipboardEventHandler<HTMLDivElement> | undefined;
     onCutCapture?: React.ClipboardEventHandler<HTMLDivElement> | undefined;
     onPaste?: React.ClipboardEventHandler<HTMLDivElement> | undefined;
     onPasteCapture?: React.ClipboardEventHandler<HTMLDivElement> | undefined;
-    onCompositionEnd?:
-      | React.CompositionEventHandler<HTMLDivElement>
-      | undefined;
-    onCompositionEndCapture?:
-      | React.CompositionEventHandler<HTMLDivElement>
-      | undefined;
-    onCompositionStart?:
-      | React.CompositionEventHandler<HTMLDivElement>
-      | undefined;
-    onCompositionStartCapture?:
-      | React.CompositionEventHandler<HTMLDivElement>
-      | undefined;
-    onCompositionUpdate?:
-      | React.CompositionEventHandler<HTMLDivElement>
-      | undefined;
-    onCompositionUpdateCapture?:
-      | React.CompositionEventHandler<HTMLDivElement>
-      | undefined;
+    onCompositionEnd?: React.CompositionEventHandler<HTMLDivElement> | undefined;
+    onCompositionEndCapture?: React.CompositionEventHandler<HTMLDivElement> | undefined;
+    onCompositionStart?: React.CompositionEventHandler<HTMLDivElement> | undefined;
+    onCompositionStartCapture?: React.CompositionEventHandler<HTMLDivElement> | undefined;
+    onCompositionUpdate?: React.CompositionEventHandler<HTMLDivElement> | undefined;
+    onCompositionUpdateCapture?: React.CompositionEventHandler<HTMLDivElement> | undefined;
     onFocus?: React.FocusEventHandler<HTMLDivElement> | undefined;
     onFocusCapture?: React.FocusEventHandler<HTMLDivElement> | undefined;
     onBlur?: React.FocusEventHandler<HTMLDivElement> | undefined;
     onBlurCapture?: React.FocusEventHandler<HTMLDivElement> | undefined;
     onChange?: React.ChangeEventHandler<HTMLDivElement, Element> | undefined;
-    onChangeCapture?:
-      | React.ChangeEventHandler<HTMLDivElement, Element>
-      | undefined;
+    onChangeCapture?: React.ChangeEventHandler<HTMLDivElement, Element> | undefined;
     onBeforeInput?: React.InputEventHandler<HTMLDivElement> | undefined;
     onBeforeInputCapture?: React.InputEventHandler<HTMLDivElement> | undefined;
     onInput?: React.InputEventHandler<HTMLDivElement> | undefined;
@@ -247,13 +157,9 @@ export declare function PageLayoutHeader({
     onCanPlay?: React.ReactEventHandler<HTMLDivElement> | undefined;
     onCanPlayCapture?: React.ReactEventHandler<HTMLDivElement> | undefined;
     onCanPlayThrough?: React.ReactEventHandler<HTMLDivElement> | undefined;
-    onCanPlayThroughCapture?:
-      | React.ReactEventHandler<HTMLDivElement>
-      | undefined;
+    onCanPlayThroughCapture?: React.ReactEventHandler<HTMLDivElement> | undefined;
     onDurationChange?: React.ReactEventHandler<HTMLDivElement> | undefined;
-    onDurationChangeCapture?:
-      | React.ReactEventHandler<HTMLDivElement>
-      | undefined;
+    onDurationChangeCapture?: React.ReactEventHandler<HTMLDivElement> | undefined;
     onEmptied?: React.ReactEventHandler<HTMLDivElement> | undefined;
     onEmptiedCapture?: React.ReactEventHandler<HTMLDivElement> | undefined;
     onEncrypted?: React.ReactEventHandler<HTMLDivElement> | undefined;
@@ -263,9 +169,7 @@ export declare function PageLayoutHeader({
     onLoadedData?: React.ReactEventHandler<HTMLDivElement> | undefined;
     onLoadedDataCapture?: React.ReactEventHandler<HTMLDivElement> | undefined;
     onLoadedMetadata?: React.ReactEventHandler<HTMLDivElement> | undefined;
-    onLoadedMetadataCapture?:
-      | React.ReactEventHandler<HTMLDivElement>
-      | undefined;
+    onLoadedMetadataCapture?: React.ReactEventHandler<HTMLDivElement> | undefined;
     onLoadStart?: React.ReactEventHandler<HTMLDivElement> | undefined;
     onLoadStartCapture?: React.ReactEventHandler<HTMLDivElement> | undefined;
     onPause?: React.ReactEventHandler<HTMLDivElement> | undefined;
@@ -339,37 +243,23 @@ export declare function PageLayoutHeader({
     onTouchStart?: React.TouchEventHandler<HTMLDivElement> | undefined;
     onTouchStartCapture?: React.TouchEventHandler<HTMLDivElement> | undefined;
     onPointerDown?: React.PointerEventHandler<HTMLDivElement> | undefined;
-    onPointerDownCapture?:
-      | React.PointerEventHandler<HTMLDivElement>
-      | undefined;
+    onPointerDownCapture?: React.PointerEventHandler<HTMLDivElement> | undefined;
     onPointerMove?: React.PointerEventHandler<HTMLDivElement> | undefined;
-    onPointerMoveCapture?:
-      | React.PointerEventHandler<HTMLDivElement>
-      | undefined;
+    onPointerMoveCapture?: React.PointerEventHandler<HTMLDivElement> | undefined;
     onPointerUp?: React.PointerEventHandler<HTMLDivElement> | undefined;
     onPointerUpCapture?: React.PointerEventHandler<HTMLDivElement> | undefined;
     onPointerCancel?: React.PointerEventHandler<HTMLDivElement> | undefined;
-    onPointerCancelCapture?:
-      | React.PointerEventHandler<HTMLDivElement>
-      | undefined;
+    onPointerCancelCapture?: React.PointerEventHandler<HTMLDivElement> | undefined;
     onPointerEnter?: React.PointerEventHandler<HTMLDivElement> | undefined;
     onPointerLeave?: React.PointerEventHandler<HTMLDivElement> | undefined;
     onPointerOver?: React.PointerEventHandler<HTMLDivElement> | undefined;
-    onPointerOverCapture?:
-      | React.PointerEventHandler<HTMLDivElement>
-      | undefined;
+    onPointerOverCapture?: React.PointerEventHandler<HTMLDivElement> | undefined;
     onPointerOut?: React.PointerEventHandler<HTMLDivElement> | undefined;
     onPointerOutCapture?: React.PointerEventHandler<HTMLDivElement> | undefined;
     onGotPointerCapture?: React.PointerEventHandler<HTMLDivElement> | undefined;
-    onGotPointerCaptureCapture?:
-      | React.PointerEventHandler<HTMLDivElement>
-      | undefined;
-    onLostPointerCapture?:
-      | React.PointerEventHandler<HTMLDivElement>
-      | undefined;
-    onLostPointerCaptureCapture?:
-      | React.PointerEventHandler<HTMLDivElement>
-      | undefined;
+    onGotPointerCaptureCapture?: React.PointerEventHandler<HTMLDivElement> | undefined;
+    onLostPointerCapture?: React.PointerEventHandler<HTMLDivElement> | undefined;
+    onLostPointerCaptureCapture?: React.PointerEventHandler<HTMLDivElement> | undefined;
     onScroll?: React.UIEventHandler<HTMLDivElement> | undefined;
     onScrollCapture?: React.UIEventHandler<HTMLDivElement> | undefined;
     onScrollEnd?: React.UIEventHandler<HTMLDivElement> | undefined;
@@ -377,43 +267,21 @@ export declare function PageLayoutHeader({
     onWheel?: React.WheelEventHandler<HTMLDivElement> | undefined;
     onWheelCapture?: React.WheelEventHandler<HTMLDivElement> | undefined;
     onAnimationStart?: React.AnimationEventHandler<HTMLDivElement> | undefined;
-    onAnimationStartCapture?:
-      | React.AnimationEventHandler<HTMLDivElement>
-      | undefined;
+    onAnimationStartCapture?: React.AnimationEventHandler<HTMLDivElement> | undefined;
     onAnimationEnd?: React.AnimationEventHandler<HTMLDivElement> | undefined;
-    onAnimationEndCapture?:
-      | React.AnimationEventHandler<HTMLDivElement>
-      | undefined;
-    onAnimationIteration?:
-      | React.AnimationEventHandler<HTMLDivElement>
-      | undefined;
-    onAnimationIterationCapture?:
-      | React.AnimationEventHandler<HTMLDivElement>
-      | undefined;
+    onAnimationEndCapture?: React.AnimationEventHandler<HTMLDivElement> | undefined;
+    onAnimationIteration?: React.AnimationEventHandler<HTMLDivElement> | undefined;
+    onAnimationIterationCapture?: React.AnimationEventHandler<HTMLDivElement> | undefined;
     onToggle?: React.ToggleEventHandler<HTMLDivElement> | undefined;
     onBeforeToggle?: React.ToggleEventHandler<HTMLDivElement> | undefined;
-    onTransitionCancel?:
-      | React.TransitionEventHandler<HTMLDivElement>
-      | undefined;
-    onTransitionCancelCapture?:
-      | React.TransitionEventHandler<HTMLDivElement>
-      | undefined;
+    onTransitionCancel?: React.TransitionEventHandler<HTMLDivElement> | undefined;
+    onTransitionCancelCapture?: React.TransitionEventHandler<HTMLDivElement> | undefined;
     onTransitionEnd?: React.TransitionEventHandler<HTMLDivElement> | undefined;
-    onTransitionEndCapture?:
-      | React.TransitionEventHandler<HTMLDivElement>
-      | undefined;
+    onTransitionEndCapture?: React.TransitionEventHandler<HTMLDivElement> | undefined;
     onTransitionRun?: React.TransitionEventHandler<HTMLDivElement> | undefined;
-    onTransitionRunCapture?:
-      | React.TransitionEventHandler<HTMLDivElement>
-      | undefined;
-    onTransitionStart?:
-      | React.TransitionEventHandler<HTMLDivElement>
-      | undefined;
-    onTransitionStartCapture?:
-      | React.TransitionEventHandler<HTMLDivElement>
-      | undefined;
+    onTransitionRunCapture?: React.TransitionEventHandler<HTMLDivElement> | undefined;
+    onTransitionStart?: React.TransitionEventHandler<HTMLDivElement> | undefined;
+    onTransitionStartCapture?: React.TransitionEventHandler<HTMLDivElement> | undefined;
     className: string;
-  },
-  HTMLElement
->;
+}, HTMLElement>;
 //# sourceMappingURL=page-layout-header.d.ts.map

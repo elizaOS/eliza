@@ -14,145 +14,106 @@
  * - Same machine for desktop, web, and mobile — only policy differs
  */
 import type { StartupErrorReason } from "./types";
-export type RuntimeTarget =
-  | "embedded-local"
-  | "remote-backend"
-  | "cloud-managed";
+export type RuntimeTarget = "embedded-local" | "remote-backend" | "cloud-managed";
 export interface PlatformPolicy {
-  /** Can this platform run a local embedded agent? */
-  supportsLocalRuntime: boolean;
-  /** Backend poll timeout (ms) — desktop gets longer */
-  backendTimeoutMs: number;
-  /** Agent ready timeout (ms) — initial, before sliding extensions */
-  agentReadyTimeoutMs: number;
-  /** Should we probe for an existing local install on startup? */
-  probeForExistingInstall: boolean;
-  /** Default runtime target when nothing is persisted */
-  defaultTarget: RuntimeTarget | null;
+    /** Can this platform run a local embedded agent? */
+    supportsLocalRuntime: boolean;
+    /** Backend poll timeout (ms) — desktop gets longer */
+    backendTimeoutMs: number;
+    /** Agent ready timeout (ms) — initial, before sliding extensions */
+    agentReadyTimeoutMs: number;
+    /** Should we probe for an existing local install on startup? */
+    probeForExistingInstall: boolean;
+    /** Default runtime target when nothing is persisted */
+    defaultTarget: RuntimeTarget | null;
 }
-export type StartupState =
-  | {
-      phase: "splash";
-      loaded: boolean;
-    }
-  | {
-      phase: "restoring-session";
-    }
-  | {
-      phase: "resolving-target";
-      target: RuntimeTarget;
-    }
-  | {
-      phase: "polling-backend";
-      target: RuntimeTarget;
-      attempts: number;
-    }
-  | {
-      phase: "pairing-required";
-    }
-  | {
-      phase: "onboarding-required";
-      /** true = server reachable, fetch options from it. false = first-run, use static options. */
-      serverReachable: boolean;
-    }
-  | {
-      phase: "starting-runtime";
-      attempts: number;
-    }
-  | {
-      phase: "hydrating";
-    }
-  | {
-      phase: "ready";
-    }
-  | {
-      phase: "error";
-      reason: StartupErrorReason;
-      message: string;
-      timedOut: boolean;
-    };
+export type StartupState = {
+    phase: "splash";
+    loaded: boolean;
+} | {
+    phase: "restoring-session";
+} | {
+    phase: "resolving-target";
+    target: RuntimeTarget;
+} | {
+    phase: "polling-backend";
+    target: RuntimeTarget;
+    attempts: number;
+} | {
+    phase: "pairing-required";
+} | {
+    phase: "onboarding-required";
+    /** true = server reachable, fetch options from it. false = first-run, use static options. */
+    serverReachable: boolean;
+} | {
+    phase: "starting-runtime";
+    attempts: number;
+} | {
+    phase: "hydrating";
+} | {
+    phase: "ready";
+} | {
+    phase: "error";
+    reason: StartupErrorReason;
+    message: string;
+    timedOut: boolean;
+};
 export type { StartupErrorReason };
 export type StartupPhaseValue = StartupState["phase"];
-export type StartupEvent =
-  | {
-      type: "SESSION_RESTORED";
-      target: RuntimeTarget;
-    }
-  | {
-      type: "NO_SESSION";
-      hadPriorOnboarding: boolean;
-    }
-  | {
-      type: "EXISTING_INSTALL_DETECTED";
-      target: RuntimeTarget;
-    }
-  | {
-      type: "BACKEND_REACHED";
-      onboardingComplete: boolean;
-    }
-  | {
-      type: "BACKEND_AUTH_REQUIRED";
-    }
-  | {
-      type: "BACKEND_NOT_FOUND";
-    }
-  | {
-      type: "BACKEND_TIMEOUT";
-    }
-  | {
-      type: "BACKEND_POLL_RETRY";
-    }
-  | {
-      type: "ONBOARDING_OPTIONS_LOADED";
-    }
-  | {
-      type: "ONBOARDING_COMPLETE";
-    }
-  | {
-      type: "AGENT_RUNNING";
-    }
-  | {
-      type: "AGENT_STARTING";
-    }
-  | {
-      type: "AGENT_ERROR";
-      message: string;
-    }
-  | {
-      type: "AGENT_TIMEOUT";
-    }
-  | {
-      type: "AGENT_POLL_RETRY";
-    }
-  | {
-      type: "HYDRATION_COMPLETE";
-    }
-  | {
-      type: "RETRY";
-    }
-  | {
-      type: "RESET";
-    }
-  | {
-      type: "PAIRING_SUCCESS";
-    }
-  | {
-      type: "SPLASH_CONTINUE";
-    }
-  | {
-      type: "SPLASH_LOADED";
-    }
-  | {
-      type: "SPLASH_CLOUD_SKIP";
-    }
-  | {
-      type: "SWITCH_AGENT";
-      target: RuntimeTarget;
-    };
-export declare function startupReducer(
-  state: StartupState,
-  event: StartupEvent,
-): StartupState;
+export type StartupEvent = {
+    type: "SESSION_RESTORED";
+    target: RuntimeTarget;
+} | {
+    type: "NO_SESSION";
+    hadPriorOnboarding: boolean;
+} | {
+    type: "EXISTING_INSTALL_DETECTED";
+    target: RuntimeTarget;
+} | {
+    type: "BACKEND_REACHED";
+    onboardingComplete: boolean;
+} | {
+    type: "BACKEND_AUTH_REQUIRED";
+} | {
+    type: "BACKEND_NOT_FOUND";
+} | {
+    type: "BACKEND_TIMEOUT";
+} | {
+    type: "BACKEND_POLL_RETRY";
+} | {
+    type: "ONBOARDING_OPTIONS_LOADED";
+} | {
+    type: "ONBOARDING_COMPLETE";
+} | {
+    type: "AGENT_RUNNING";
+} | {
+    type: "AGENT_STARTING";
+} | {
+    type: "AGENT_ERROR";
+    message: string;
+} | {
+    type: "AGENT_TIMEOUT";
+} | {
+    type: "AGENT_POLL_RETRY";
+} | {
+    type: "HYDRATION_COMPLETE";
+} | {
+    type: "RETRY";
+} | {
+    type: "RESET";
+} | {
+    type: "PAIRING_SUCCESS";
+} | {
+    type: "SPLASH_CONTINUE";
+} | {
+    type: "SPLASH_LOADED";
+} | {
+    type: "SPLASH_CLOUD_SKIP";
+} | {
+    type: "SWITCH_AGENT";
+    target: RuntimeTarget;
+};
+export declare function startupReducer(state: StartupState, event: StartupEvent): StartupState;
 export declare const INITIAL_STARTUP_STATE: StartupState;
 export declare function createDesktopPolicy(): PlatformPolicy;
 export declare function createWebPolicy(): PlatformPolicy;
@@ -186,9 +147,7 @@ export declare function createAndroidPolicy(): PlatformPolicy;
  */
 export declare function createElizaOSPolicy(): PlatformPolicy;
 /** Map a restored server-target hint to a RuntimeTarget. */
-export declare function connectionModeToTarget(
-  runMode: string | undefined,
-): RuntimeTarget;
+export declare function connectionModeToTarget(runMode: string | undefined): RuntimeTarget;
 /** True when the coordinator is in a phase where the UI should show loading. */
 export declare function isStartupLoading(state: StartupState): boolean;
 /** True when the coordinator has reached a terminal phase (ready or error). */
@@ -202,7 +161,5 @@ export declare function isStartupTerminal(state: StartupState): boolean;
  * phases BEFORE the legacy startupPhase/startupStatus rendering logic runs.
  * The legacy "ready" value is a no-op passthrough that never renders.
  */
-export declare function toLegacyStartupPhase(
-  state: StartupState,
-): "starting-backend" | "initializing-agent" | "ready";
+export declare function toLegacyStartupPhase(state: StartupState): "starting-backend" | "initializing-agent" | "ready";
 //# sourceMappingURL=startup-coordinator.d.ts.map

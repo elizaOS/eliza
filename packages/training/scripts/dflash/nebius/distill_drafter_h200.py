@@ -284,14 +284,30 @@ def load_drafter_model(args: argparse.Namespace, target_tok: Any | None = None) 
     args.student_vocab_size = actual_vocab
     log.info("Student tokenizer vocab size: %d", actual_vocab)
 
-    model = AutoModelForCausalLM.from_pretrained(
-        student_base,
-        torch_dtype=torch.bfloat16,
-        attn_implementation="flash_attention_2",
-    )
+    model = _load_causal_lm_for_h200(student_base, AutoModelForCausalLM, torch)
     model.gradient_checkpointing_enable()
     model.train()
     return model, tok
+
+
+def _load_causal_lm_for_h200(checkpoint: str, model_cls: Any, torch_mod: Any) -> Any:
+    try:
+        return model_cls.from_pretrained(
+            checkpoint,
+            torch_dtype=torch_mod.bfloat16,
+            attn_implementation="flash_attention_2",
+        )
+    except Exception as exc:
+        log.warning(
+            "flash_attention_2 load failed for %s (%s); falling back to SDPA",
+            checkpoint,
+            exc,
+        )
+        return model_cls.from_pretrained(
+            checkpoint,
+            torch_dtype=torch_mod.bfloat16,
+            attn_implementation="sdpa",
+        )
 
 
 def load_target_model(args: argparse.Namespace) -> Any:
@@ -304,11 +320,7 @@ def load_target_model(args: argparse.Namespace) -> Any:
     tok = AutoTokenizer.from_pretrained(checkpoint)
     args.target_vocab_size = _tokenizer_vocab_size(tok)
     log.info("Target tokenizer vocab size: %d", args.target_vocab_size)
-    model = AutoModelForCausalLM.from_pretrained(
-        checkpoint,
-        torch_dtype=torch.bfloat16,
-        attn_implementation="flash_attention_2",
-    )
+    model = _load_causal_lm_for_h200(checkpoint, AutoModelForCausalLM, torch)
     model.eval()
     for p in model.parameters():
         p.requires_grad_(False)
@@ -318,6 +330,37 @@ def load_target_model(args: argparse.Namespace) -> Any:
 def load_dataset(args: argparse.Namespace) -> list[str]:
     """Load the distillation JSONL corpus."""
     import json  # noqa: PLC0415
+
+    def response_to_assistant(response: dict[str, Any]) -> dict[str, Any]:
+        assistant: dict[str, Any] = {"role": "assistant", "content": ""}
+        text = response.get("text")
+        if isinstance(text, str):
+            assistant["content"] = text
+        tool_calls = response.get("toolCalls") or response.get("tool_calls")
+        if isinstance(tool_calls, list) and tool_calls:
+            normalized_tool_calls: list[dict[str, Any]] = []
+            for call in tool_calls:
+                if not isinstance(call, dict):
+                    continue
+                function = call.get("function")
+                if isinstance(function, dict):
+                    normalized_tool_calls.append(call)
+                    continue
+                name = call.get("toolName") or call.get("name")
+                arguments = call.get("input") if "input" in call else call.get("arguments", {})
+                normalized_tool_calls.append(
+                    {
+                        "id": call.get("toolCallId") or call.get("id") or f"call_{len(normalized_tool_calls)}",
+                        "type": "function",
+                        "function": {
+                            "name": str(name or "tool"),
+                            "arguments": json.dumps(arguments, sort_keys=True),
+                        },
+                    }
+                )
+            if normalized_tool_calls:
+                assistant["tool_calls"] = normalized_tool_calls
+        return assistant
 
     def append_record(rec: dict[str, Any]) -> None:
         if "text" in rec and isinstance(rec["text"], str):
@@ -351,15 +394,18 @@ def load_dataset(args: argparse.Namespace) -> list[str]:
                     except json.JSONDecodeError:
                         response = {}
                     if isinstance(response, dict):
-                        text = response.get("text")
-                        tool_calls = response.get("toolCalls") or response.get("tool_calls")
-                        assistant: dict[str, Any] = {"role": "assistant"}
-                        if isinstance(text, str):
-                            assistant["content"] = text
-                        if tool_calls:
-                            assistant["tool_calls"] = tool_calls
-                        messages = [*messages, assistant]
+                        messages = [*messages, response_to_assistant(response)]
                 examples.append(json.dumps(messages))
+                return
+        request = rec.get("request")
+        response = rec.get("response")
+        if isinstance(request, dict):
+            messages = request.get("messages")
+            if isinstance(messages, list):
+                if isinstance(response, dict):
+                    messages = [*messages, response_to_assistant(response)]
+                examples.append(json.dumps(messages))
+                return
 
     dataset_path = Path(args.dataset_path)
     if not dataset_path.exists():

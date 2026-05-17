@@ -5,11 +5,8 @@
  */
 export type FeedFilter = "all" | "tasks" | "workflows" | "active" | "inactive";
 export interface FeedRowSummary {
-  kind: "task" | "workflow";
-  active: boolean;
+    kind: "task" | "workflow";
+    active: boolean;
 }
-export declare function passesFilter(
-  row: FeedRowSummary,
-  filter: FeedFilter,
-): boolean;
+export declare function passesFilter(row: FeedRowSummary, filter: FeedFilter): boolean;
 //# sourceMappingURL=automation-feed-filter.d.ts.map

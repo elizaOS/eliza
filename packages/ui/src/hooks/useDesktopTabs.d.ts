@@ -7,18 +7,18 @@
  */
 import type { ViewRegistryEntry } from "./useAvailableViews";
 export interface DesktopTab {
-  viewId: string;
-  label: string;
-  path: string;
-  icon?: string;
-  /** Pinned tabs persist to localStorage and survive restarts. */
-  pinned: boolean;
+    viewId: string;
+    label: string;
+    path: string;
+    icon?: string;
+    /** Pinned tabs persist to localStorage and survive restarts. */
+    pinned: boolean;
 }
 export interface UseDesktopTabsResult {
-  tabs: DesktopTab[];
-  openTab(view: ViewRegistryEntry): void;
-  closeTab(viewId: string): void;
-  pinTab(viewId: string): void;
+    tabs: DesktopTab[];
+    openTab(view: ViewRegistryEntry): void;
+    closeTab(viewId: string): void;
+    pinTab(viewId: string): void;
 }
 export declare function useDesktopTabs(): UseDesktopTabsResult;
 //# sourceMappingURL=useDesktopTabs.d.ts.map

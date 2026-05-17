@@ -7,22 +7,16 @@
  */
 export declare function persistPairedToken(token: string): void;
 export declare function usePairingState(): {
-  state: {
-    pairingEnabled: boolean;
-    pairingExpiresAt: number | null;
-    pairingCodeInput: string;
-    pairingError: string | null;
-    pairingBusy: boolean;
-  };
-  setPairingEnabled: import("react").Dispatch<
-    import("react").SetStateAction<boolean>
-  >;
-  setPairingExpiresAt: import("react").Dispatch<
-    import("react").SetStateAction<number | null>
-  >;
-  setPairingCodeInput: import("react").Dispatch<
-    import("react").SetStateAction<string>
-  >;
-  handlePairingSubmit: () => Promise<void>;
+    state: {
+        pairingEnabled: boolean;
+        pairingExpiresAt: number | null;
+        pairingCodeInput: string;
+        pairingError: string | null;
+        pairingBusy: boolean;
+    };
+    setPairingEnabled: import("react").Dispatch<import("react").SetStateAction<boolean>>;
+    setPairingExpiresAt: import("react").Dispatch<import("react").SetStateAction<number | null>>;
+    setPairingCodeInput: import("react").Dispatch<import("react").SetStateAction<string>>;
+    handlePairingSubmit: () => Promise<void>;
 };
 //# sourceMappingURL=usePairingState.d.ts.map

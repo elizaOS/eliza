@@ -9,64 +9,33 @@
  * `setActionNotice` so the parent settings panel can surface them.
  */
 import type { LinkedAccountProviderId } from "@elizaos/shared";
-import type {
-  AccountStrategy,
-  AccountsListResponse,
-  AccountTestResult,
-} from "../api/client-agent";
-
+import type { AccountStrategy, AccountsListResponse, AccountTestResult } from "../api/client-agent";
 type ActionTone = "info" | "success" | "error";
-type ActionNoticeFn = (
-  text: string,
-  tone?: ActionTone,
-  ttlMs?: number,
-  once?: boolean,
-  busy?: boolean,
-) => void;
+type ActionNoticeFn = (text: string, tone?: ActionTone, ttlMs?: number, once?: boolean, busy?: boolean) => void;
 export interface UseAccountsOptions {
-  setActionNotice?: ActionNoticeFn;
-  /** How often to refetch the full list. Defaults to 30s. */
-  pollMs?: number;
+    setActionNotice?: ActionNoticeFn;
+    /** How often to refetch the full list. Defaults to 30s. */
+    pollMs?: number;
 }
 export interface UseAccountsResult {
-  data: AccountsListResponse | null;
-  loading: boolean;
-  saving: Set<string>;
-  refresh: () => Promise<void>;
-  createApiKey: (
-    providerId: LinkedAccountProviderId,
-    body: {
-      label: string;
-      apiKey: string;
-    },
-  ) => Promise<void>;
-  patch: (
-    providerId: LinkedAccountProviderId,
-    accountId: string,
-    body: Partial<{
-      label: string;
-      enabled: boolean;
-      priority: number;
-    }>,
-  ) => Promise<void>;
-  remove: (
-    providerId: LinkedAccountProviderId,
-    accountId: string,
-  ) => Promise<void>;
-  test: (
-    providerId: LinkedAccountProviderId,
-    accountId: string,
-  ) => Promise<AccountTestResult>;
-  refreshUsage: (
-    providerId: LinkedAccountProviderId,
-    accountId: string,
-  ) => Promise<void>;
-  setStrategy: (
-    providerId: LinkedAccountProviderId,
-    strategy: AccountStrategy,
-  ) => Promise<void>;
+    data: AccountsListResponse | null;
+    loading: boolean;
+    saving: Set<string>;
+    refresh: () => Promise<void>;
+    createApiKey: (providerId: LinkedAccountProviderId, body: {
+        label: string;
+        apiKey: string;
+    }) => Promise<void>;
+    patch: (providerId: LinkedAccountProviderId, accountId: string, body: Partial<{
+        label: string;
+        enabled: boolean;
+        priority: number;
+    }>) => Promise<void>;
+    remove: (providerId: LinkedAccountProviderId, accountId: string) => Promise<void>;
+    test: (providerId: LinkedAccountProviderId, accountId: string) => Promise<AccountTestResult>;
+    refreshUsage: (providerId: LinkedAccountProviderId, accountId: string) => Promise<void>;
+    setStrategy: (providerId: LinkedAccountProviderId, strategy: AccountStrategy) => Promise<void>;
 }
-export declare function useAccounts(
-  opts?: UseAccountsOptions,
-): UseAccountsResult;
+export declare function useAccounts(opts?: UseAccountsOptions): UseAccountsResult;
+export {};
 //# sourceMappingURL=useAccounts.d.ts.map

@@ -14,53 +14,47 @@
  */
 import { AgentRuntime, type IAgentRuntime } from "@elizaos/core";
 export interface HandlerRegistration {
-  modelType: string;
-  provider: string;
-  priority: number;
-  registeredAt: string;
-  /**
-   * The original handler function. Captured so the router-handler can
-   * dispatch to it directly, bypassing `runtime.useModel` which would
-   * re-enter the router itself.
-   */
-  handler: (
-    runtime: IAgentRuntime,
-    params: Record<string, unknown>,
-  ) => Promise<unknown>;
+    modelType: string;
+    provider: string;
+    priority: number;
+    registeredAt: string;
+    /**
+     * The original handler function. Captured so the router-handler can
+     * dispatch to it directly, bypassing `runtime.useModel` which would
+     * re-enter the router itself.
+     */
+    handler: (runtime: IAgentRuntime, params: Record<string, unknown>) => Promise<unknown>;
 }
 type Listener = (registrations: HandlerRegistration[]) => void;
 declare class HandlerRegistry {
-  private readonly registrations;
-  private readonly listeners;
-  private installedOn;
-  /**
-   * Snapshot of all registrations grouped by model type, sorted by
-   * priority descending inside each group (matches core's selection
-   * order). Callers must not mutate the returned array.
-   */
-  getAll(): HandlerRegistration[];
-  /** All registrations for a given model type, sorted by priority desc. */
-  getForType(modelType: string): HandlerRegistration[];
-  /**
-   * Registrations excluding a specific provider. Used by the router-handler
-   * to find "all providers except me" when dispatching.
-   */
-  getForTypeExcluding(
-    modelType: string,
-    excludeProvider: string,
-  ): HandlerRegistration[];
-  subscribe(listener: Listener): () => void;
-  private emit;
-  private record;
-  /**
-   * Install the interception on a runtime. Idempotent per runtime instance.
-   * For most boot paths the prototype-level patch below already covers the
-   * runtime before any plugin registers; this method is the belt-and-braces
-   * fallback for runtimes constructed before the patch ran.
-   */
-  installOn(runtime: AgentRuntime): void;
-  /** Exposed so the prototype patch can record through the singleton. */
-  recordFromPrototype(reg: HandlerRegistration): void;
+    private readonly registrations;
+    private readonly listeners;
+    private installedOn;
+    /**
+     * Snapshot of all registrations grouped by model type, sorted by
+     * priority descending inside each group (matches core's selection
+     * order). Callers must not mutate the returned array.
+     */
+    getAll(): HandlerRegistration[];
+    /** All registrations for a given model type, sorted by priority desc. */
+    getForType(modelType: string): HandlerRegistration[];
+    /**
+     * Registrations excluding a specific provider. Used by the router-handler
+     * to find "all providers except me" when dispatching.
+     */
+    getForTypeExcluding(modelType: string, excludeProvider: string): HandlerRegistration[];
+    subscribe(listener: Listener): () => void;
+    private emit;
+    private record;
+    /**
+     * Install the interception on a runtime. Idempotent per runtime instance.
+     * For most boot paths the prototype-level patch below already covers the
+     * runtime before any plugin registers; this method is the belt-and-braces
+     * fallback for runtimes constructed before the patch ran.
+     */
+    installOn(runtime: AgentRuntime): void;
+    /** Exposed so the prototype patch can record through the singleton. */
+    recordFromPrototype(reg: HandlerRegistration): void;
 }
 export declare const handlerRegistry: HandlerRegistry;
 /**
@@ -68,12 +62,11 @@ export declare const handlerRegistry: HandlerRegistry;
  * serialisation and to prevent UI code from accidentally calling it.
  */
 export interface PublicRegistration {
-  modelType: string;
-  provider: string;
-  priority: number;
-  registeredAt: string;
+    modelType: string;
+    provider: string;
+    priority: number;
+    registeredAt: string;
 }
-export declare function toPublicRegistration(
-  reg: HandlerRegistration,
-): PublicRegistration;
+export declare function toPublicRegistration(reg: HandlerRegistration): PublicRegistration;
+export {};
 //# sourceMappingURL=handler-registry.d.ts.map

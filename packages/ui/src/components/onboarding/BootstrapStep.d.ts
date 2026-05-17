@@ -20,19 +20,16 @@
  */
 import type { BootstrapExchangeResult } from "../../api/client-agent";
 export interface BootstrapStepProps {
-  /**
-   * Called after a successful exchange. The caller is responsible for
-   * advancing the wizard.
-   */
-  onAdvance: () => void;
-  /**
-   * Injected exchange function — defaults to the real API client call but
-   * can be swapped in tests.
-   */
-  exchangeFn?: (token: string) => Promise<BootstrapExchangeResult>;
+    /**
+     * Called after a successful exchange. The caller is responsible for
+     * advancing the wizard.
+     */
+    onAdvance: () => void;
+    /**
+     * Injected exchange function — defaults to the real API client call but
+     * can be swapped in tests.
+     */
+    exchangeFn?: (token: string) => Promise<BootstrapExchangeResult>;
 }
-export declare function BootstrapStep({
-  onAdvance,
-  exchangeFn,
-}: BootstrapStepProps): import("react/jsx-runtime").JSX.Element;
+export declare function BootstrapStep({ onAdvance, exchangeFn }: BootstrapStepProps): import("react/jsx-runtime").JSX.Element;
 //# sourceMappingURL=BootstrapStep.d.ts.map
