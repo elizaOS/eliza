@@ -322,6 +322,9 @@ async function initializeRuntime(
 }
 
 function resolveInitPromise(runtime: AgentRuntime): void {
+  // initResolver is a private internal property of AgentRuntime — not in the
+  // public type. TypeScript rejects intersection with the private field, so we
+  // must go through unknown to access it.
   const runtimeAny = runtime as unknown as { initResolver?: () => void };
   if (typeof runtimeAny.initResolver === "function") {
     runtimeAny.initResolver();

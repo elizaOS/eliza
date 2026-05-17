@@ -626,6 +626,8 @@ export class CacheClient {
     this.nativeRedisReady = false;
     this.nativeRedisConnectPromise = import("wadis")
       .then(({ Wadis }) => {
+        // Wadis's exported types don't exactly match WadisClientLike (the local
+        // structural interface we use). The runtime shape is compatible.
         this.redis = new WadisRedisAdapter(new Wadis() as unknown as WadisClientLike);
         this.nativeRedisReady = true;
         logger.info("[Cache] ✓ Cache client initialized with Wadis Wasm Redis");

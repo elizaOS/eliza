@@ -648,6 +648,8 @@ export class Pipeline {
   }
 
   async exec<T extends unknown[] = unknown[]>(): Promise<T> {
+    // TypeScript requires the double-cast here: [] has type never[] which is
+    // not directly assignable to the generic T (constrained to unknown[]).
     if (this.commands.length === 0) return [] as unknown as T;
     const replies = await this.conn.send(this.commands);
     return replies.map((r) => unwrap(r)) as T;
