@@ -20,7 +20,6 @@ export {
   type CalloutType,
   Cards,
   Steps,
-  Tabs,
 } from "./mdx-components";
 export type { OpenApiViewerProps } from "./openapi-viewer";
 export { OpenApiViewer } from "./openapi-viewer";

@@ -212,6 +212,7 @@ export function ElizaAgentLogsViewer({
           "If the agent is starting up, give it a moment and refresh again.",
       }}
       filteredEmptyState={{ title: "No logs match your filter" }}
+      isFilteredEmpty={logsState.lines.length > 0 && filteredLines.length === 0}
       lines={filteredLines}
       lineClassName={getLineClass}
       heightClassName="h-[420px]"

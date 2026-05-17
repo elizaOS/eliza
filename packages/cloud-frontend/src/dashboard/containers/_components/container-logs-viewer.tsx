@@ -407,6 +407,9 @@ export function ContainerLogsViewer({
           </BrandButton>
         ),
       }}
+      isFilteredEmpty={
+        logsState.logs.length > 0 && filteredEntries.length === 0
+      }
       entries={filteredEntries}
       onCopyEntry={(entry) => {
         const log = filteredLogs.find(

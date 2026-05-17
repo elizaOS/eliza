@@ -148,6 +148,7 @@ export function DockerLogsViewer({
       onRetry={fetchLogs}
       emptyState={{ title: "No logs available" }}
       filteredEmptyState={{ title: "No logs match your filter" }}
+      isFilteredEmpty={logsState.lines.length > 0 && filteredLines.length === 0}
       lines={filteredLines}
       lineClassName={getLineClass}
       contentRef={scrollRef}

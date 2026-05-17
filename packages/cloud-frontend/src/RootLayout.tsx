@@ -7,7 +7,7 @@ import { NavigationProgress, ThemeProvider } from "@elizaos/ui";
 import { Helmet } from "react-helmet-async";
 import { Outlet } from "react-router-dom";
 import { Toaster } from "sonner";
-import { StewardWalletProviders } from "@/pages/login/steward-wallet-providers";
+import { ConditionalWalletProviders } from "@/providers/ConditionalWalletProviders";
 import { CreditsProvider } from "@/providers/CreditsProvider";
 import { StewardAuthProvider } from "@/providers/StewardProvider";
 
@@ -81,7 +81,7 @@ export default function RootLayout() {
        * ThemeProvider — client-only. Reads user preference from localStorage + OS
        * and sets the "dark" / "light" class on <html> for Tailwind dark-mode.
        */}
-      <StewardWalletProviders>
+      <ConditionalWalletProviders>
         <StewardAuthProvider>
           <CreditsProvider>
             <ThemeProvider
@@ -115,7 +115,7 @@ export default function RootLayout() {
             </ThemeProvider>
           </CreditsProvider>
         </StewardAuthProvider>
-      </StewardWalletProviders>
+      </ConditionalWalletProviders>
     </>
   );
 }

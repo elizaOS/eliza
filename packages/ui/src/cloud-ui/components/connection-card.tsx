@@ -106,7 +106,12 @@ function ConnectionIdentityPanel({
   actions,
 }: ConnectionIdentityPanelProps) {
   return (
-    <div className={cn("flex items-center gap-4 p-4 bg-muted rounded-lg", className)}>
+    <div
+      className={cn(
+        "flex items-center gap-4 p-4 bg-muted rounded-lg",
+        className,
+      )}
+    >
       <div
         className={cn(
           "h-12 w-12 rounded-full flex items-center justify-center shrink-0",
@@ -135,9 +140,13 @@ interface ConnectionCalloutProps {
   className?: string;
 }
 
-const calloutToneClassName: Record<NonNullable<ConnectionCalloutProps["tone"]>, string> = {
+const calloutToneClassName: Record<
+  NonNullable<ConnectionCalloutProps["tone"]>,
+  string
+> = {
   blue: "bg-blue-500/10 border-blue-500/30 text-blue-700 dark:text-blue-400",
-  green: "bg-green-500/10 border-green-500/30 text-green-700 dark:text-green-400",
+  green:
+    "bg-green-500/10 border-green-500/30 text-green-700 dark:text-green-400",
   red: "bg-red-500/10 border-red-500/30 text-red-700 dark:text-red-400",
   yellow:
     "bg-yellow-500/10 border-yellow-500/30 text-yellow-700 dark:text-yellow-400",
@@ -194,7 +203,10 @@ function ConnectionInstructions({
       <CollapsibleTrigger asChild>
         <Button
           variant="ghost"
-          className={cn("w-full justify-between p-4 h-auto bg-muted", triggerClassName)}
+          className={cn(
+            "w-full justify-between p-4 h-auto bg-muted",
+            triggerClassName,
+          )}
         >
           <span className="font-medium">{title}</span>
           <ChevronDown
@@ -280,7 +292,7 @@ function ConnectionDisconnectAction({
           {isDisconnecting ? (
             <Loader2 className="h-4 w-4 animate-spin mr-1" />
           ) : (
-            triggerIcon ?? <XCircle className="h-4 w-4 mr-1" />
+            (triggerIcon ?? <XCircle className="h-4 w-4 mr-1" />)
           )}
           {buttonLabel}
         </Button>
@@ -314,7 +326,12 @@ function ConnectionFooterActions({
   className?: string;
 }) {
   return (
-    <div className={cn("flex items-center justify-between pt-2 border-t", className)}>
+    <div
+      className={cn(
+        "flex items-center justify-between pt-2 border-t",
+        className,
+      )}
+    >
       {note && <div className="text-sm text-muted-foreground">{note}</div>}
       {children}
     </div>

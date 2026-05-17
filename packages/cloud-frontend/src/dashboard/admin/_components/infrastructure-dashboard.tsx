@@ -1496,9 +1496,11 @@ export function InfrastructureDashboard() {
           const hasMore = infraSnapshot.incidents.length > COLLAPSED_LIMIT;
 
           return (
-            <div
-              className="flex items-start gap-3 rounded-lg border border-orange-500/30 bg-orange-500/5 px-4 py-2.5 cursor-pointer"
+            <button
+              type="button"
+              className="flex items-start gap-3 rounded-lg border border-orange-500/30 bg-orange-500/5 px-4 py-2.5 cursor-pointer w-full text-left bg-transparent"
               onClick={() => setIncidentsExpanded(!incidentsExpanded)}
+              onKeyDown={(e) => e.key === "Enter" && setIncidentsExpanded(!incidentsExpanded)}
             >
               <AlertTriangle className="h-4 w-4 text-orange-500 mt-0.5 shrink-0" />
               <div className="flex-1 min-w-0">
@@ -1561,7 +1563,7 @@ export function InfrastructureDashboard() {
                   </div>
                 )}
               </div>
-            </div>
+            </button>
           );
         })()}
 

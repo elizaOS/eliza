@@ -1,0 +1,25 @@
+# Railway deploy config for gateway-webhook.
+#
+# Multi-platform webhook gateway (Telegram, Blooio, Twilio, WhatsApp). Stateless
+# Hono HTTP handler on port 3000 (PORT env overrides).
+#
+# Required env vars / secrets:
+#   GATEWAY_INTERNAL_SECRET     Shared secret for internal routes from cloud-api.
+#   AGENT_SERVER_SHARED_SECRET  Shared secret for forwards to agent-server.
+#   REDIS_URL                   Upstash Redis REST URL (or KV_REST_API_URL).
+#   KV_REST_API_TOKEN           Upstash Redis REST token.
+#
+# Optional:
+#   TWILIO_PUBLIC_URL                  Public URL Twilio status callbacks point at.
+#   TWILIO_SMS_COST_PER_SEGMENT_USD    Override default SMS cost accounting.
+#   KEDA_COOLDOWN_SECONDS              Graceful-shutdown delay before exit.
+
+[build]
+builder = "DOCKERFILE"
+dockerfilePath = "Dockerfile"
+
+[deploy]
+healthcheckPath = "/health"
+healthcheckTimeout = 30
+restartPolicyType = "ON_FAILURE"
+restartPolicyMaxRetries = 10

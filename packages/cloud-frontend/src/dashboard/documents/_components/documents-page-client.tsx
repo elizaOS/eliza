@@ -207,7 +207,7 @@ export function DocumentsPageClient({
       <Tabs
         id="documents-tabs"
         value={pageState.activeTab}
-        onValueChange={(v) => updatePageState({ activeTab: v })}
+        onValueChange={(v: string) => updatePageState({ activeTab: v })}
         className="w-full"
       >
         {/* Mobile Dropdown */}

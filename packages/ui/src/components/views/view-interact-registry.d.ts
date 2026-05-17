@@ -6,22 +6,12 @@
  * `dispatchViewInteract` when it receives a `view:interact` message from the
  * server, which routes it to the correct handler and sends the result back.
  */
-type InteractHandler = (
-  capability: string,
-  params: Record<string, unknown> | undefined,
-) => Promise<unknown>;
-export declare function registerViewInteractHandler(
-  viewId: string,
-  handler: InteractHandler,
-): () => void;
+type InteractHandler = (capability: string, params: Record<string, unknown> | undefined) => Promise<unknown>;
+export declare function registerViewInteractHandler(viewId: string, handler: InteractHandler): () => void;
 /**
  * Called by the startup-phase WS listener when a `view:interact` message
  * arrives.  Routes to the correct handler and sends the result back via WS.
  */
-export declare function dispatchViewInteract(
-  viewId: string,
-  capability: string,
-  params: Record<string, unknown> | undefined,
-  requestId: string,
-): Promise<void>;
+export declare function dispatchViewInteract(viewId: string, capability: string, params: Record<string, unknown> | undefined, requestId: string): Promise<void>;
+export {};
 //# sourceMappingURL=view-interact-registry.d.ts.map

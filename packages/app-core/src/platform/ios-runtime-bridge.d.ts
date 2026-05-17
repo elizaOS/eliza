@@ -1,11 +1,9 @@
-export declare const IOS_FULL_BUN_SMOKE_REQUEST_KEY =
-  "eliza:ios-full-bun-smoke:request";
-export declare const IOS_FULL_BUN_SMOKE_RESULT_KEY =
-  "eliza:ios-full-bun-smoke:result";
+export declare const IOS_FULL_BUN_SMOKE_REQUEST_KEY = "eliza:ios-full-bun-smoke:request";
+export declare const IOS_FULL_BUN_SMOKE_RESULT_KEY = "eliza:ios-full-bun-smoke:result";
 declare global {
-  interface Window {
-    __ELIZA_IOS_LOCAL_AGENT_DEBUG__?: (event: Record<string, unknown>) => void;
-  }
+    interface Window {
+        __ELIZA_IOS_LOCAL_AGENT_DEBUG__?: (event: Record<string, unknown>) => void;
+    }
 }
 /**
  * If the host has requested the iOS full-Bun smoke (via localStorage or

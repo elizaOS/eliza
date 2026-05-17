@@ -374,7 +374,9 @@ export function ElizaChatInterface({
   useEffect(() => {
     if (messageAudioUrls.current.size > 0) {
       // Revoke all object URLs to prevent memory leaks
-      messageAudioUrls.current.forEach((url) => URL.revokeObjectURL(url));
+      messageAudioUrls.current.forEach((url) => {
+        URL.revokeObjectURL(url);
+      });
       messageAudioUrls.current.clear();
     }
   }, []);
@@ -393,7 +395,9 @@ export function ElizaChatInterface({
       clearAllStreaming();
       renderedMessages.clear();
       // Revoke all audio URLs on unmount
-      audioUrls.forEach((url) => URL.revokeObjectURL(url));
+      audioUrls.forEach((url) => {
+        URL.revokeObjectURL(url);
+      });
       audioUrls.clear();
     };
   }, [clearAllStreaming]);
@@ -1830,6 +1834,7 @@ export function ElizaChatInterface({
                           fill="none"
                           viewBox="0 0 24 24"
                           stroke="currentColor"
+                          aria-hidden="true"
                         >
                           <path
                             strokeLinecap="round"

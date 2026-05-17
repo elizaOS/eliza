@@ -17,11 +17,9 @@ export declare const RUNTIME_PICKER_QUERY_NAME = "runtime";
 export declare const RUNTIME_PICKER_QUERY_VALUE = "picker";
 export declare const RUNTIME_PICKER_TARGET_QUERY_NAME = "runtimeTarget";
 export type RuntimePickerTarget = "cloud" | "local" | "remote";
-export declare function reloadIntoRuntimePicker(
-  target?: RuntimePickerTarget,
-): void;
+export declare function reloadIntoRuntimePicker(target?: RuntimePickerTarget): void;
 export declare const __TEST_ONLY__: {
-  ACTIVE_SERVER_STORAGE_KEY: string;
-  MOBILE_RUNTIME_MODE_STORAGE_KEY: string;
+    ACTIVE_SERVER_STORAGE_KEY: string;
+    MOBILE_RUNTIME_MODE_STORAGE_KEY: string;
 };
 //# sourceMappingURL=reload-into-runtime-picker.d.ts.map

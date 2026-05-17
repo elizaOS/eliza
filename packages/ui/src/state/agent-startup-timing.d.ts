@@ -7,9 +7,9 @@ export declare const AGENT_STARTING_SLIDE_MS = 180000;
  */
 export declare function getAgentReadyTimeoutMs(): number;
 export declare function computeAgentDeadlineExtensions(options: {
-  agentWaitStartedAt: number;
-  agentDeadlineAt: number;
-  state: string | undefined;
-  now?: number;
+    agentWaitStartedAt: number;
+    agentDeadlineAt: number;
+    state: string | undefined;
+    now?: number;
 }): number;
 //# sourceMappingURL=agent-startup-timing.d.ts.map

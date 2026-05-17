@@ -1,10 +1,4 @@
-import type {
-  ApprovedAddressesConfig,
-  AutoApproveConfig,
-  RateLimitConfig,
-  SpendingLimitConfig,
-  TimeWindowConfig,
-} from "./types";
+import type { ApprovedAddressesConfig, AutoApproveConfig, RateLimitConfig, SpendingLimitConfig, TimeWindowConfig } from "./types";
 /** All monetary values are in USD for cross-chain compatibility. */
 export declare const DEFAULT_SPENDING: SpendingLimitConfig;
 export declare const DEFAULT_APPROVED_ADDRESSES: ApprovedAddressesConfig;

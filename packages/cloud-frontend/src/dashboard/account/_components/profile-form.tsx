@@ -482,7 +482,10 @@ export function ProfileForm({ user }: ProfileFormProps) {
 
             <div className="flex-1 space-y-3">
               <div>
-                <label className="text-xs font-medium text-white/70 uppercase tracking-wide">
+                <label
+                  htmlFor="avatar-upload"
+                  className="text-xs font-medium text-white/70 uppercase tracking-wide"
+                >
                   Profile Picture
                 </label>
                 <p className="text-xs text-white/74 mt-1">
@@ -550,17 +553,13 @@ export function ProfileForm({ user }: ProfileFormProps) {
                 </div>
               ) : (
                 // Normal mode: Show upload dropzone
-                <div
-                  role="button"
-                  tabIndex={0}
+                <button
+                  type="button"
                   onClick={() => fileInputRef.current?.click()}
-                  onKeyDown={(e) =>
-                    e.key === "Enter" && fileInputRef.current?.click()
-                  }
                   onDragOver={handleDragOver}
                   onDragLeave={handleDragLeave}
                   onDrop={handleDrop}
-                  className={`flex items-center justify-center gap-3 p-4 rounded-lg border-2 border-dashed transition-all cursor-pointer ${
+                  className={`flex items-center justify-center gap-3 p-4 rounded-lg border-2 border-dashed transition-all cursor-pointer w-full bg-transparent ${
                     isDragging
                       ? "border-[#FF5800] bg-[#FF5800]/10"
                       : "border-white/20 hover:border-[#FF5800]/50 hover:bg-[#FF5800]/5"
@@ -581,7 +580,7 @@ export function ProfileForm({ user }: ProfileFormProps) {
                       </span>
                     </>
                   )}
-                </div>
+                </button>
               )}
             </div>
           </div>
@@ -610,11 +609,15 @@ export function ProfileForm({ user }: ProfileFormProps) {
 
             {user.wallet_address && (
               <div className="space-y-2">
-                <label className="text-xs font-medium text-white/70 uppercase tracking-wide flex items-center gap-2">
+                <label
+                  htmlFor="wallet-address"
+                  className="text-xs font-medium text-white/70 uppercase tracking-wide flex items-center gap-2"
+                >
                   <User className="h-4 w-4" />
                   Wallet Address
                 </label>
                 <Input
+                  id="wallet-address"
                   type="text"
                   value={user.wallet_address}
                   disabled
@@ -650,11 +653,15 @@ export function ProfileForm({ user }: ProfileFormProps) {
             </div>
 
             <div className="space-y-2">
-              <label className="text-xs font-medium text-white/70 uppercase tracking-wide flex items-center gap-2">
+              <label
+                htmlFor="user-role"
+                className="text-xs font-medium text-white/70 uppercase tracking-wide flex items-center gap-2"
+              >
                 <Shield className="h-4 w-4" />
                 Role
               </label>
               <Input
+                id="user-role"
                 type="text"
                 value={user.role}
                 disabled

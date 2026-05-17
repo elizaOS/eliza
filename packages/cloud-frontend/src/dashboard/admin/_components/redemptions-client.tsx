@@ -420,6 +420,7 @@ export function AdminRedemptionsClient() {
                   </TableCell>
                   <TableCell>
                     <button
+                      type="button"
                       onClick={() => copyToClipboard(r.user_id)}
                       className="text-white/80 text-xs hover:text-[#FF5800] flex items-center gap-1"
                     >
@@ -442,6 +443,7 @@ export function AdminRedemptionsClient() {
                   </TableCell>
                   <TableCell>
                     <button
+                      type="button"
                       onClick={() => copyToClipboard(r.payout_address)}
                       className="text-white/80 text-xs hover:text-[#FF5800] flex items-center gap-1"
                     >

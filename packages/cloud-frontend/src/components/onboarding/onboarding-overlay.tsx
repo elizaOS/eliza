@@ -178,12 +178,17 @@ export function OnboardingOverlay() {
         className="absolute inset-0 bg-black/70 pointer-events-auto transition-all duration-300"
         style={{ clipPath }}
         onClick={skipTour}
+        onKeyDown={(e) => e.key === "Escape" && skipTour()}
+        role="button"
+        tabIndex={0}
+        aria-label="Skip tour"
       />
 
       {/* Clickable highlight area - clicking advances the tour */}
       {targetRect && (
-        <div
-          className="pointer-events-auto absolute cursor-pointer rounded-lg border-2 border-accent transition-all duration-300 hover:bg-accent/10"
+        <button
+          type="button"
+          className="pointer-events-auto absolute cursor-pointer rounded-lg border-2 border-accent transition-all duration-300 hover:bg-accent/10 bg-transparent"
           style={{
             top: targetRect.top,
             left: targetRect.left,
@@ -196,6 +201,7 @@ export function OnboardingOverlay() {
             nextStep();
           }}
           title="Click to continue"
+          aria-label="Click to continue tour"
         />
       )}
 
@@ -216,6 +222,7 @@ export function OnboardingOverlay() {
               <h3 className="font-medium text-txt">{currentStep.title}</h3>
             </div>
             <button
+              type="button"
               onClick={skipTour}
               className="text-muted transition-colors hover:text-txt"
               aria-label="Skip tour"
@@ -235,15 +242,19 @@ export function OnboardingOverlay() {
           <div className="flex items-center justify-between border-t border-border p-4">
             {/* Progress indicator */}
             <div className="flex items-center gap-1.5">
-              {Array.from({ length: totalSteps }).map((_, i) => (
-                <div
-                  key={i}
-                  className={cn(
-                    "h-2 w-2 rounded-full transition-colors",
-                    i === currentStepIndex ? "bg-accent" : "bg-muted/30",
-                  )}
-                />
-              ))}
+              {Array.from({ length: totalSteps }, (_, i) => i).map(
+                (stepIndex) => (
+                  <div
+                    key={`step-dot-${stepIndex}`}
+                    className={cn(
+                      "h-2 w-2 rounded-full transition-colors",
+                      stepIndex === currentStepIndex
+                        ? "bg-accent"
+                        : "bg-muted/30",
+                    )}
+                  />
+                ),
+              )}
               <span className="ml-2 text-xs text-muted">
                 {currentStepIndex + 1} of {totalSteps}
               </span>

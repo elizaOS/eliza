@@ -1,6 +1,6 @@
 "use client";
 
-import { BrandButton, BrandCard, CornerBrackets } from "@elizaos/ui";
+import { Button, Card, CardContent, CardHeader, CardTitle } from "@elizaos/ui";
 import { ConnectButton } from "@rainbow-me/rainbowkit";
 import {
   createAssociatedTokenAccountInstruction,
@@ -26,6 +26,7 @@ interface DirectCryptoCreditCardProps {
   status: CryptoStatusResponse | null;
   accountWalletAddress: string | null;
   onSuccess: () => Promise<void> | void;
+  surface?: "default" | "cloud";
 }
 
 type DirectNetworkConfig = NonNullable<
@@ -93,6 +94,7 @@ export function DirectCryptoCreditCard({
   status,
   accountWalletAddress,
   onSuccess,
+  surface = "default",
 }: DirectCryptoCreditCardProps) {
   const [network, setNetwork] = useState<DirectNetwork>(
     promoCode === "bsc" ? "bsc" : "base",
@@ -240,38 +242,83 @@ export function DirectCryptoCreditCard({
     }
   }
 
+  const isCloudSurface = surface === "cloud";
+  const cardClassName = isCloudSurface
+    ? "border-white/12 bg-black/78 text-white shadow-2xl backdrop-blur-xl"
+    : "border-border bg-card text-card-fg";
+  const mutedTextClassName = isCloudSurface ? "text-white/60" : "text-muted";
+  const titleClassName = isCloudSurface ? "text-white" : "text-txt-strong";
+  const dividerClassName = isCloudSurface
+    ? "border-t border-white/10"
+    : "border-t border-border/60";
+  const iconBoxClassName = isCloudSurface
+    ? "border-white/12 bg-white/[0.06] text-[#FF5800]"
+    : "border-accent/20 bg-accent-subtle text-accent";
+  const segmentClassName = isCloudSurface
+    ? "border-white/10 bg-white/[0.04]"
+    : "border-border bg-bg-muted";
+  const selectedSegmentClassName = isCloudSurface
+    ? "bg-[#FF5800] text-black"
+    : "bg-accent text-accent-foreground";
+  const unselectedSegmentClassName = isCloudSurface
+    ? "text-white/58 hover:bg-white/[0.06] hover:text-white"
+    : "text-muted-foreground hover:bg-bg-hover hover:text-txt";
+  const infoTileClassName = isCloudSurface
+    ? "border-white/10 bg-white/[0.05]"
+    : "border-border bg-bg-muted";
+  const infoValueClassName = isCloudSurface ? "text-white" : "text-txt-strong";
+  const promoClassName = isCloudSurface
+    ? "border-[#FF5800]/30 bg-[#FF5800]/12 text-[#FFB087]"
+    : "border-warn/25 bg-warn-subtle text-warn";
+  const surfaceButtonClassName = isCloudSurface
+    ? "border-white/14 bg-white/[0.06] text-white hover:bg-white/10"
+    : undefined;
+  const payButtonClassName = isCloudSurface
+    ? "min-w-[172px] bg-[#FF5800] text-black hover:bg-white"
+    : "min-w-[172px]";
+
   if (!status?.directWallet?.enabled) {
     return (
-      <BrandCard className="relative border-white/10">
-        <CornerBrackets size="sm" className="opacity-40" />
-        <p className="relative z-10 text-sm font-mono text-white/60">
-          Direct wallet payments are not configured yet.
-        </p>
-      </BrandCard>
+      <Card className={cardClassName}>
+        <CardContent className="p-5">
+          <p className={`text-sm ${mutedTextClassName}`}>
+            Direct wallet payments are not configured yet.
+          </p>
+        </CardContent>
+      </Card>
     );
   }
 
   return (
-    <BrandCard className="relative">
-      <CornerBrackets size="sm" className="opacity-50" />
-      <div className="relative z-10 space-y-4">
-        <div className="flex items-center gap-2">
-          <Wallet className="h-4 w-4 text-accent" />
-          <h4 className="text-sm font-semibold uppercase text-txt-strong">
-            Wallet payment
-          </h4>
+    <Card className={cardClassName}>
+      <CardHeader className="flex-row items-center gap-3 space-y-0 p-5 pb-4">
+        <div
+          className={`flex size-9 shrink-0 items-center justify-center border ${iconBoxClassName}`}
+        >
+          <Wallet className="h-4 w-4" />
         </div>
-
-        <div className="flex flex-wrap gap-2">
+        <div>
+          <CardTitle className={`text-base ${titleClassName}`}>
+            Wallet payment
+          </CardTitle>
+          <p className={`mt-1 text-sm ${mutedTextClassName}`}>
+            Pay from the wallet attached to your account.
+          </p>
+        </div>
+      </CardHeader>
+      <CardContent className={`space-y-4 p-5 ${dividerClassName}`}>
+        <div
+          className={`grid grid-cols-3 gap-2 rounded-sm border p-1 text-xs sm:gap-3 ${segmentClassName}`}
+        >
           {enabledNetworks.map((item) => (
             <button
               key={item.network}
               type="button"
               onClick={() => setNetwork(item.network)}
-              className={`rounded-sm border px-3 py-2 text-xs font-medium uppercase transition-colors ${
+              className={`min-h-10 rounded-sm px-3 py-2 font-medium transition-colors ${
                 selected?.network === item.network
-                  ? "border-accent bg-accent text-accent-foreground"
-                  : "border-border bg-bg-elevated text-muted-foreground hover:border-border-strong hover:text-txt"
+                  ? selectedSegmentClassName
+                  : unselectedSegmentClassName
               }`}
             >
               {NETWORK_LABELS[item.network]}
@@ -279,36 +326,40 @@ export function DirectCryptoCreditCard({
           ))}
         </div>
 
-        <div className="grid grid-cols-3 gap-2 text-xs text-muted-foreground sm:gap-3">
-          <div className="rounded-sm border border-border bg-bg-muted p-3">
-            <div className="uppercase">Token</div>
-            <div className="mt-1 text-txt-strong">
+        <div
+          className={`grid grid-cols-1 gap-2 text-xs sm:grid-cols-3 sm:gap-3 ${mutedTextClassName}`}
+        >
+          <div className={`border p-3 ${infoTileClassName}`}>
+            <div>Token</div>
+            <div className={`mt-1 ${infoValueClassName}`}>
               {selected?.tokenSymbol ?? "-"}
             </div>
           </div>
-          <div className="rounded-sm border border-border bg-bg-muted p-3">
-            <div className="uppercase">Wallet</div>
-            <div className="mt-1 text-txt-strong">
+          <div className={`border p-3 ${infoTileClassName}`}>
+            <div>Wallet</div>
+            <div className={`mt-1 truncate ${infoValueClassName}`}>
               {formatAddress(connectedAddress) || "Not connected"}
             </div>
           </div>
-          <div className="rounded-sm border border-border bg-bg-muted p-3">
-            <div className="uppercase">Cloud credit</div>
-            <div className="mt-1 text-txt-strong">
+          <div className={`border p-3 ${infoTileClassName}`}>
+            <div>Cloud credit</div>
+            <div className={`mt-1 ${infoValueClassName}`}>
               ${expectedCredits.toFixed(2)}
             </div>
           </div>
         </div>
 
         {bscPromo && (
-          <div className="flex items-center gap-2 rounded-sm border border-warn/25 bg-warn-subtle px-3 py-2 text-xs font-medium text-warn">
+          <div
+            className={`flex items-center gap-2 border px-3 py-2 text-xs font-medium ${promoClassName}`}
+          >
             <Coins className="h-4 w-4" />
             BSC promotion applied: +$5 cloud credit
           </div>
         )}
 
         {!walletMatches && connectedAddress && accountWalletAddress && (
-          <div className="rounded-sm border border-warn/25 bg-warn-subtle px-3 py-2 text-xs text-warn">
+          <div className={`border px-3 py-2 text-xs ${promoClassName}`}>
             Connected wallet must match your account wallet (
             {formatAddress(accountWalletAddress)}).
           </div>
@@ -316,13 +367,14 @@ export function DirectCryptoCreditCard({
 
         <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
           {selected?.network === "solana" ? (
-            <button
+            <Button
               type="button"
+              variant="surface"
               onClick={() => setSolanaModalVisible(true)}
-              className="rounded-sm border border-border bg-bg-elevated px-4 py-2 text-sm font-medium text-txt hover:border-border-strong hover:bg-bg-hover"
+              className={surfaceButtonClassName}
             >
               {solana.publicKey ? "Solana connected" : "Connect Solana"}
-            </button>
+            </Button>
           ) : (
             <ConnectButton
               showBalance={false}
@@ -330,11 +382,11 @@ export function DirectCryptoCreditCard({
               accountStatus="address"
             />
           )}
-          <BrandButton
+          <Button
             type="button"
             onClick={handlePay}
             disabled={!canPay || busy}
-            className="min-w-[172px]"
+            className={payButtonClassName}
           >
             {busy ? (
               <Loader2 className="h-4 w-4 animate-spin" />
@@ -342,9 +394,9 @@ export function DirectCryptoCreditCard({
               <ShieldCheck className="h-4 w-4" />
             )}
             Pay and add credits
-          </BrandButton>
+          </Button>
         </div>
-      </div>
-    </BrandCard>
+      </CardContent>
+    </Card>
   );
 }

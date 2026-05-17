@@ -5,8 +5,8 @@ import type { TabCommittedDetail } from "./types";
  * updates without racing batched `setTab` calls.
  */
 export declare class NavigationEventHub {
-  private listeners;
-  subscribe(listener: (detail: TabCommittedDetail) => void): () => void;
-  emit(detail: TabCommittedDetail): void;
+    private listeners;
+    subscribe(listener: (detail: TabCommittedDetail) => void): () => void;
+    emit(detail: TabCommittedDetail): void;
 }
 //# sourceMappingURL=navigation-events.d.ts.map

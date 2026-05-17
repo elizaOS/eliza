@@ -19,14 +19,12 @@
  * The bookmark field is macOS-only.
  */
 export interface StoredWorkspaceFolder {
-  path: string;
-  bookmark: string | null;
-  updatedAt: string;
+    path: string;
+    bookmark: string | null;
+    updatedAt: string;
 }
 export declare function readStoredWorkspaceFolder(): StoredWorkspaceFolder | null;
-export declare function persistStoredWorkspaceFolder(
-  value: Omit<StoredWorkspaceFolder, "updatedAt">,
-): StoredWorkspaceFolder;
+export declare function persistStoredWorkspaceFolder(value: Omit<StoredWorkspaceFolder, "updatedAt">): StoredWorkspaceFolder;
 export declare function clearStoredWorkspaceFolder(): void;
 export declare const WORKSPACE_FOLDER_STORAGE_KEY = "eliza.workspace-folder";
 //# sourceMappingURL=workspace-folder.d.ts.map

@@ -12,12 +12,9 @@
 
 import {
   BrandButton,
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuLabel,
-  DropdownMenuSeparator,
-  DropdownMenuTrigger,
+  DashboardDataListDesktop,
+  DashboardDataListMobile,
+  ListActionMenu,
   StatusBadge,
   Table,
   TableBody,
@@ -29,7 +26,6 @@ import {
 import {
   CalendarClock,
   Copy,
-  MoreHorizontal,
   RefreshCw,
   ShieldOff,
   Trash2,
@@ -93,7 +89,7 @@ export function ApiKeysTable({
 
   return (
     <>
-      <div className="space-y-3 md:hidden">
+      <DashboardDataListMobile className="space-y-3">
         {keys.map((key) => (
           <div
             key={key.id}
@@ -116,42 +112,34 @@ export function ApiKeysTable({
                   </p>
                 ) : null}
               </div>
-              <DropdownMenu>
-                <DropdownMenuTrigger asChild>
-                  <BrandButton
-                    variant="ghost"
-                    size="icon"
-                    className="h-8 w-8 shrink-0"
-                  >
-                    <MoreHorizontal className="h-4 w-4" />
-                    <span className="sr-only">Open actions</span>
-                  </BrandButton>
-                </DropdownMenuTrigger>
-                <DropdownMenuContent align="end" className="w-44">
-                  <DropdownMenuLabel>Manage key</DropdownMenuLabel>
-                  <DropdownMenuSeparator />
-                  <DropdownMenuItem onClick={() => onCopyKey?.(key.id)}>
-                    <Copy className="mr-2 h-4 w-4" />
-                    Copy key
-                  </DropdownMenuItem>
-                  <DropdownMenuItem onClick={() => onRegenerateKey?.(key.id)}>
-                    <RefreshCw className="mr-2 h-4 w-4" />
-                    Regenerate key
-                  </DropdownMenuItem>
-                  <DropdownMenuSeparator />
-                  <DropdownMenuItem onClick={() => onDisableKey?.(key.id)}>
-                    <ShieldOff className="mr-2 h-4 w-4" />
-                    {key.status === "active" ? "Disable key" : "Enable key"}
-                  </DropdownMenuItem>
-                  <DropdownMenuItem
-                    className="text-destructive focus:text-destructive"
-                    onClick={() => onDeleteKey?.(key.id)}
-                  >
-                    <Trash2 className="mr-2 h-4 w-4" />
-                    Delete key
-                  </DropdownMenuItem>
-                </DropdownMenuContent>
-              </DropdownMenu>
+              <ListActionMenu
+                label="Manage key"
+                items={[
+                  {
+                    label: "Copy key",
+                    icon: Copy,
+                    onSelect: () => onCopyKey?.(key.id),
+                  },
+                  {
+                    label: "Regenerate key",
+                    icon: RefreshCw,
+                    onSelect: () => onRegenerateKey?.(key.id),
+                  },
+                  { type: "separator" },
+                  {
+                    label:
+                      key.status === "active" ? "Disable key" : "Enable key",
+                    icon: ShieldOff,
+                    onSelect: () => onDisableKey?.(key.id),
+                  },
+                  {
+                    label: "Delete key",
+                    icon: Trash2,
+                    destructive: true,
+                    onSelect: () => onDeleteKey?.(key.id),
+                  },
+                ]}
+              />
             </div>
 
             <div className="flex min-w-0 flex-wrap items-center gap-2 text-xs text-white/60">
@@ -222,9 +210,9 @@ export function ApiKeysTable({
             </div>
           </div>
         ))}
-      </div>
+      </DashboardDataListMobile>
 
-      <div className="hidden md:block">
+      <DashboardDataListDesktop className="border-0">
         <Table>
           <TableHeader>
             <TableRow>
@@ -335,50 +323,43 @@ export function ApiKeysTable({
                 </TableCell>
 
                 <TableCell className="text-right">
-                  <DropdownMenu>
-                    <DropdownMenuTrigger asChild>
-                      <BrandButton
-                        variant="ghost"
-                        size="icon"
-                        className="h-9 w-9"
-                      >
-                        <MoreHorizontal className="h-4 w-4" />
-                        <span className="sr-only">Open actions</span>
-                      </BrandButton>
-                    </DropdownMenuTrigger>
-                    <DropdownMenuContent align="end" className="w-44">
-                      <DropdownMenuLabel>Manage key</DropdownMenuLabel>
-                      <DropdownMenuSeparator />
-                      <DropdownMenuItem onClick={() => onCopyKey?.(key.id)}>
-                        <Copy className="mr-2 h-4 w-4" />
-                        Copy key
-                      </DropdownMenuItem>
-                      <DropdownMenuItem
-                        onClick={() => onRegenerateKey?.(key.id)}
-                      >
-                        <RefreshCw className="mr-2 h-4 w-4" />
-                        Regenerate key
-                      </DropdownMenuItem>
-                      <DropdownMenuSeparator />
-                      <DropdownMenuItem onClick={() => onDisableKey?.(key.id)}>
-                        <ShieldOff className="mr-2 h-4 w-4" />
-                        {key.status === "active" ? "Disable key" : "Enable key"}
-                      </DropdownMenuItem>
-                      <DropdownMenuItem
-                        className="text-destructive focus:text-destructive"
-                        onClick={() => onDeleteKey?.(key.id)}
-                      >
-                        <Trash2 className="mr-2 h-4 w-4" />
-                        Delete key
-                      </DropdownMenuItem>
-                    </DropdownMenuContent>
-                  </DropdownMenu>
+                  <ListActionMenu
+                    label="Manage key"
+                    triggerClassName="h-9 w-9"
+                    items={[
+                      {
+                        label: "Copy key",
+                        icon: Copy,
+                        onSelect: () => onCopyKey?.(key.id),
+                      },
+                      {
+                        label: "Regenerate key",
+                        icon: RefreshCw,
+                        onSelect: () => onRegenerateKey?.(key.id),
+                      },
+                      { type: "separator" },
+                      {
+                        label:
+                          key.status === "active"
+                            ? "Disable key"
+                            : "Enable key",
+                        icon: ShieldOff,
+                        onSelect: () => onDisableKey?.(key.id),
+                      },
+                      {
+                        label: "Delete key",
+                        icon: Trash2,
+                        destructive: true,
+                        onSelect: () => onDeleteKey?.(key.id),
+                      },
+                    ]}
+                  />
                 </TableCell>
               </TableRow>
             ))}
           </TableBody>
         </Table>
-      </div>
+      </DashboardDataListDesktop>
     </>
   );
 }

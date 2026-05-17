@@ -1,8 +1,9 @@
 "use client";
 
-import { DashboardHeader, usePageHeader } from "@elizaos/ui";
+import { BrandButton, DashboardHeader, usePageHeader } from "@elizaos/ui";
+import { LogIn } from "lucide-react";
 import { memo, type ReactNode } from "react";
-import { useLocation } from "react-router-dom";
+import { Link, useLocation } from "react-router-dom";
 import { HeaderInviteButton } from "./header-invite-button";
 import UserMenu from "./user-menu";
 
@@ -31,6 +32,18 @@ function HeaderComponent({
       pageInfo={pageInfo}
       isAnonymous={isAnonymous}
       loginHref={loginUrl}
+      anonymousCta={
+        <Link to={loginUrl}>
+          <BrandButton
+            variant="primary"
+            className="h-8 gap-2 px-3 md:h-10 md:px-4"
+          >
+            <LogIn className="h-4 w-4" />
+            <span className="hidden md:inline">Sign Up Free</span>
+            <span className="md:hidden">Sign Up</span>
+          </BrandButton>
+        </Link>
+      }
       rightContent={
         <div className="flex min-w-0 flex-row items-center gap-2 md:gap-4">
           {!authGraceActive ? <HeaderInviteButton /> : null}

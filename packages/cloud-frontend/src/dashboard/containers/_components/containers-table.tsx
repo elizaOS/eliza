@@ -15,6 +15,10 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
   Badge,
+  DashboardDataList,
+  DashboardDataListDesktop,
+  DashboardDataListFilteredCount,
+  DashboardDataListMobile,
   Input,
   Select,
   SelectContent,
@@ -216,7 +220,7 @@ export function ContainersTable({ containers }: ContainersTableProps) {
 
   return (
     <TooltipProvider>
-      <div className="space-y-4">
+      <DashboardDataList>
         {/* Search and Filters */}
         <div className="flex flex-col sm:flex-row gap-3">
           <div className="relative flex-1">
@@ -256,14 +260,16 @@ export function ContainersTable({ containers }: ContainersTableProps) {
 
         {/* Results Count */}
         {(filters.searchQuery || filters.statusFilter !== "all") && (
-          <p className="text-sm text-neutral-500">
-            Showing {filteredAndSortedContainers.length} of {containers.length}{" "}
-            containers
-          </p>
+          <DashboardDataListFilteredCount
+            filtered={filteredAndSortedContainers.length}
+            total={containers.length}
+            label="containers"
+            className="text-sm normal-case tracking-normal text-neutral-500"
+          />
         )}
 
         {/* Desktop table */}
-        <div className="hidden overflow-hidden rounded-lg border border-white/10 md:block">
+        <DashboardDataListDesktop className="rounded-lg">
           <Table>
             <TableHeader>
               <TableRow className="bg-black/40 border-b border-white/10">
@@ -453,10 +459,10 @@ export function ContainersTable({ containers }: ContainersTableProps) {
               )}
             </TableBody>
           </Table>
-        </div>
+        </DashboardDataListDesktop>
 
         {/* Mobile cards */}
-        <div className="space-y-2 md:hidden">
+        <DashboardDataListMobile>
           {filteredAndSortedContainers.length === 0 ? (
             <div className="flex min-h-32 flex-col items-center justify-center rounded-lg border border-white/10 bg-black/40 p-6 text-center text-neutral-500">
               <Boxes className="mb-2 h-8 w-8" />
@@ -556,8 +562,8 @@ export function ContainersTable({ containers }: ContainersTableProps) {
               </div>
             ))
           )}
-        </div>
-      </div>
+        </DashboardDataListMobile>
+      </DashboardDataList>
 
       <AlertDialog
         open={deleteId !== null}
