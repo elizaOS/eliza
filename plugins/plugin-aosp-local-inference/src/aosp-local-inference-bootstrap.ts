@@ -71,6 +71,7 @@ const SERVICE_NAME = "localInferenceLoader";
 const PROVIDER = "eliza-aosp-llama";
 const registeredRuntimes = new WeakSet<AgentRuntime>();
 const AOSP_ACTIVE_MODEL_STATE_FILE = "aosp-active.json";
+let routeActivationLoader: AospLoader | null = null;
 
 /**
  * Same priority band as cloud / direct provider plugins. Routing-policy
@@ -147,7 +148,23 @@ function writeAospActiveModelState(
   }
 }
 
-interface AospLoadModelArgs {
+function clearAospActiveModelState(): void {
+  try {
+    const activeStatePath = path.join(
+      resolveStateDir(),
+      "local-inference",
+      AOSP_ACTIVE_MODEL_STATE_FILE,
+    );
+    if (existsSync(activeStatePath)) unlinkSync(activeStatePath);
+  } catch (err) {
+    logger.warn(
+      "[aosp-local-inference] Failed to clear active model state:",
+      err instanceof Error ? err.message : String(err),
+    );
+  }
+}
+
+export interface AospLoadModelArgs {
   modelPath: string;
   contextSize?: number;
   maxThreads?: number;
@@ -161,6 +178,77 @@ interface AospLoadModelArgs {
     k?: "f16" | "tbq3_0" | "tbq4_0" | "qjl1_256" | "q4_polar";
     v?: "f16" | "tbq3_0" | "tbq4_0" | "qjl1_256" | "q4_polar";
   };
+}
+
+export interface AospRouteActivationSnapshot {
+  modelId: string | null;
+  loadedAt: string | null;
+  status: "idle" | "ready" | "error";
+  error?: string;
+  loadedContextSize?: number | null;
+  loadedCacheTypeK?: string | null;
+  loadedCacheTypeV?: string | null;
+  loadedGpuLayers?: number | null;
+}
+
+function activeSnapshotFromLoadArgs(
+  modelId: string,
+  loadedAt: string,
+  loadArgs: AospLoadModelArgs,
+): AospRouteActivationSnapshot {
+  return {
+    modelId,
+    loadedAt,
+    status: "ready",
+    loadedContextSize: loadArgs.contextSize ?? null,
+    loadedCacheTypeK: loadArgs.kvCacheType?.k ?? null,
+    loadedCacheTypeV: loadArgs.kvCacheType?.v ?? null,
+    loadedGpuLayers:
+      typeof loadArgs.gpuLayers === "number" ? loadArgs.gpuLayers : null,
+  };
+}
+
+export async function activateAospLocalInferenceModel(args: {
+  modelId: string;
+  modelPath: string;
+  loadArgs: AospLoadModelArgs;
+}): Promise<AospRouteActivationSnapshot> {
+  if (!routeActivationLoader) {
+    throw new Error(
+      "[aosp-local-inference] Native localInferenceLoader is not ready yet.",
+    );
+  }
+  try {
+    await routeActivationLoader.unloadModel();
+    await routeActivationLoader.loadModel(args.loadArgs);
+    const loadedAt = new Date().toISOString();
+    writeAospActiveModelState({
+      status: "ready",
+      role: "chat",
+      provider: PROVIDER,
+      path: args.modelPath,
+      loadedAt,
+    });
+    return activeSnapshotFromLoadArgs(args.modelId, loadedAt, args.loadArgs);
+  } catch (err) {
+    writeAospActiveModelState({
+      status: "error",
+      role: "chat",
+      provider: PROVIDER,
+      path: args.modelPath,
+      error: err instanceof Error ? err.message : String(err),
+      updatedAt: new Date().toISOString(),
+    });
+    throw err;
+  }
+}
+
+export async function clearAospLocalInferenceModel(): Promise<AospRouteActivationSnapshot> {
+  if (routeActivationLoader) {
+    await routeActivationLoader.unloadModel();
+  }
+  clearAospActiveModelState();
+  return { modelId: null, loadedAt: null, status: "idle" };
 }
 
 type GenerateTextHandler = (
@@ -1976,6 +2064,7 @@ export async function ensureAospLocalInferenceHandlers(
     );
     return false;
   }
+  routeActivationLoader = loader;
 
   const lifecycle = makeLoaderLifecycle(loader);
   // TEXT_EMBEDDING is wired unconditionally now that the adapter resets
