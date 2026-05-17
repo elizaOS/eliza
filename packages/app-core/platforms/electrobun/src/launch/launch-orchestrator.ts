@@ -1,4 +1,8 @@
 import type { JsonValue } from "@elizaos/electrobun-carrots";
+import {
+  createUnknownDatabaseSnapshot,
+  type DatabaseSnapshot,
+} from "../database";
 import type { DynamicViewRegistry } from "../dynamic-views/registry";
 import type { DynamicViewSessionManager } from "../dynamic-views/session-manager";
 import type {
@@ -7,7 +11,10 @@ import type {
   EmbeddedAgentStatus,
   OnboardingStatusSnapshot,
 } from "../rpc-schema";
-import { createLaunchDiagnosticsViewManifest, LAUNCH_DIAGNOSTICS_VIEW_ID } from "./launch-dynamic-view";
+import {
+  createLaunchDiagnosticsViewManifest,
+  LAUNCH_DIAGNOSTICS_VIEW_ID,
+} from "./launch-dynamic-view";
 import { LaunchStore } from "./launch-store";
 import type {
   LaunchBugReportBundleInfo,
@@ -46,8 +53,11 @@ export interface LaunchOrchestratorOptions {
   agent: LaunchAgentAdapter;
   readBootProgress: () => Promise<BootProgressSnapshot>;
   readAuthStatus: (port: number) => Promise<AuthStatusSnapshot | null>;
-  readOnboardingStatus: (port: number) => Promise<OnboardingStatusSnapshot | null>;
+  readOnboardingStatus: (
+    port: number,
+  ) => Promise<OnboardingStatusSnapshot | null>;
   readDiagnostics: () => LaunchDiagnosticsSnapshot;
+  readDatabaseStatus?: () => DatabaseSnapshot;
   readDiagnosticLogTail: (maxChars?: number) => string;
   listSatelliteStatuses: () => SatelliteStatus[];
   createBugReportBundle: (options: {
@@ -86,11 +96,16 @@ function classifyPhase(params: {
   onboardingError: string | null;
 }): LaunchPhase {
   if (params.agent.state === "error") return "error";
-  if (params.agent.state === "not_started" || params.agent.state === "stopped") {
+  if (
+    params.agent.state === "not_started" ||
+    params.agent.state === "stopped"
+  ) {
     return "static-shell";
   }
   if (params.agent.state === "starting") {
-    return params.agent.port === null ? "agent-process-starting" : "agent-api-waiting";
+    return params.agent.port === null
+      ? "agent-process-starting"
+      : "agent-api-waiting";
   }
   if (params.boot?.phase && params.boot.phase !== "running") {
     return "agent-api-ready";
@@ -99,7 +114,8 @@ function classifyPhase(params: {
   if (params.auth?.required === true && params.auth.pairingEnabled === true) {
     return "pairing-required";
   }
-  if (params.auth?.bootstrapRequired === true) return "cloud-bootstrap-required";
+  if (params.auth?.bootstrapRequired === true)
+    return "cloud-bootstrap-required";
   if (params.onboarding === null && params.onboardingError === null) {
     return "onboarding-checking";
   }
@@ -111,7 +127,19 @@ function classifyPhase(params: {
   return "ready";
 }
 
-function satelliteSnapshot(statuses: SatelliteStatus[]): LaunchSnapshot["satellites"] {
+function databaseBlocksLaunch(database: DatabaseSnapshot): boolean {
+  return (
+    database.status === "migration-failed" ||
+    database.status === "corrupt" ||
+    database.status === "permission-error" ||
+    database.status === "path-error" ||
+    database.status === "locked"
+  );
+}
+
+function satelliteSnapshot(
+  statuses: SatelliteStatus[],
+): LaunchSnapshot["satellites"] {
   const required = statuses.filter((status) => status.required);
   return {
     seeded: statuses.length > 0,
@@ -128,14 +156,60 @@ function satelliteSnapshot(statuses: SatelliteStatus[]): LaunchSnapshot["satelli
 }
 
 function suggestedAction(snapshot: LaunchSnapshot): string | undefined {
-  if (snapshot.phase === "error") return "Open launch diagnostics or retry startup.";
-  if (snapshot.phase === "pairing-required") return "Complete pairing in the startup gate.";
-  if (snapshot.phase === "runtime-gate-required") return "Choose Cloud, Local, or Remote in RuntimeGate.";
-  if (snapshot.phase === "cloud-bootstrap-required") return "Complete cloud bootstrap before entering chat.";
+  if (
+    snapshot.database.status === "migration-failed" ||
+    snapshot.database.status === "corrupt" ||
+    snapshot.database.status === "permission-error" ||
+    snapshot.database.status === "path-error" ||
+    snapshot.database.status === "locked"
+  ) {
+    return "Open launch diagnostics and use database recovery.";
+  }
+  if (snapshot.phase === "error")
+    return "Open launch diagnostics or retry startup.";
+  if (snapshot.phase === "pairing-required")
+    return "Complete pairing in the startup gate.";
+  if (snapshot.phase === "runtime-gate-required")
+    return "Choose Cloud, Local, or Remote in RuntimeGate.";
+  if (snapshot.phase === "cloud-bootstrap-required")
+    return "Complete cloud bootstrap before entering chat.";
   if (!snapshot.satellites.requiredStarted) {
     return "Runtime can continue while Satellite readiness is inspected.";
   }
   return undefined;
+}
+
+function databaseSnapshotJson(
+  database: DatabaseSnapshot,
+): Record<string, JsonValue> {
+  return {
+    mode: database.mode,
+    status: database.status,
+    postgresUrlSet: database.postgresUrlSet,
+    databaseUrlMapped: database.databaseUrlMapped,
+    pgliteDataDir: database.pgliteDataDir,
+    effectiveTarget: database.effectiveTarget,
+    migrationStatus: database.migrationStatus
+      ? {
+          running: database.migrationStatus.running,
+          completed: database.migrationStatus.completed,
+          failed: database.migrationStatus.failed,
+          failedPlugin: database.migrationStatus.failedPlugin ?? null,
+          error: database.migrationStatus.error ?? null,
+        }
+      : null,
+    lock: database.lock
+      ? {
+          held: database.lock.held,
+          stale: database.lock.stale ?? null,
+          ownerPid: database.lock.ownerPid ?? null,
+        }
+      : null,
+    error: database.error ?? null,
+    warnings: database.warnings,
+    recoveryActions: database.recoveryActions,
+    updatedAt: database.updatedAt,
+  };
 }
 
 function snapshotJson(snapshot: LaunchSnapshot): Record<string, JsonValue> {
@@ -143,6 +217,7 @@ function snapshotJson(snapshot: LaunchSnapshot): Record<string, JsonValue> {
     phase: snapshot.phase,
     agent: snapshot.agent,
     boot: snapshot.boot,
+    database: databaseSnapshotJson(snapshot.database),
     auth: snapshot.auth,
     onboarding: snapshot.onboarding,
     satellites: snapshot.satellites,
@@ -156,9 +231,14 @@ function snapshotJson(snapshot: LaunchSnapshot): Record<string, JsonValue> {
 export class LaunchOrchestrator {
   private readonly agent: LaunchAgentAdapter;
   private readonly readBootProgress: () => Promise<BootProgressSnapshot>;
-  private readonly readAuthStatus: (port: number) => Promise<AuthStatusSnapshot | null>;
-  private readonly readOnboardingStatus: (port: number) => Promise<OnboardingStatusSnapshot | null>;
+  private readonly readAuthStatus: (
+    port: number,
+  ) => Promise<AuthStatusSnapshot | null>;
+  private readonly readOnboardingStatus: (
+    port: number,
+  ) => Promise<OnboardingStatusSnapshot | null>;
   private readonly readDiagnostics: () => LaunchDiagnosticsSnapshot;
+  private readonly readDatabaseStatus: () => DatabaseSnapshot;
   private readonly readDiagnosticLogTail: (maxChars?: number) => string;
   private readonly listSatelliteStatuses: () => SatelliteStatus[];
   private readonly createBugReportBundle: LaunchOrchestratorOptions["createBugReportBundle"];
@@ -173,6 +253,8 @@ export class LaunchOrchestrator {
     this.readAuthStatus = options.readAuthStatus;
     this.readOnboardingStatus = options.readOnboardingStatus;
     this.readDiagnostics = options.readDiagnostics;
+    this.readDatabaseStatus =
+      options.readDatabaseStatus ?? (() => createUnknownDatabaseSnapshot());
     this.readDiagnosticLogTail = options.readDiagnosticLogTail;
     this.listSatelliteStatuses = options.listSatelliteStatuses;
     this.createBugReportBundle = options.createBugReportBundle;
@@ -185,6 +267,7 @@ export class LaunchOrchestrator {
   async getProgress(): Promise<LaunchSnapshot> {
     const agent = this.agent.getStatus();
     const diagnostics = this.readDiagnostics();
+    const database = this.readDatabaseStatus();
     let boot: BootProgressSnapshot | null = null;
     let auth: AuthStatusSnapshot | null = null;
     let authError: string | null = null;
@@ -207,19 +290,22 @@ export class LaunchOrchestrator {
       try {
         onboarding = await this.readOnboardingStatus(port);
       } catch (error) {
-        onboardingError = error instanceof Error ? error.message : String(error);
+        onboardingError =
+          error instanceof Error ? error.message : String(error);
       }
     }
 
     const satellites = satelliteSnapshot(this.listSatelliteStatuses());
-    const phase = classifyPhase({
-      agent,
-      boot,
-      auth,
-      authError,
-      onboarding,
-      onboardingError,
-    });
+    const phase = databaseBlocksLaunch(database)
+      ? "error"
+      : classifyPhase({
+          agent,
+          boot,
+          auth,
+          authError,
+          onboarding,
+          onboardingError,
+        });
     const snapshot: LaunchSnapshot = {
       phase,
       agent: {
@@ -235,6 +321,7 @@ export class LaunchOrchestrator {
         pluginsFailed: boot?.pluginsFailed ?? null,
         database: boot?.database ?? null,
       },
+      database,
       auth: {
         checked: auth !== null,
         required: auth?.required ?? null,
@@ -275,9 +362,13 @@ export class LaunchOrchestrator {
 
   async retry(): Promise<LaunchSnapshot> {
     const status = this.agent.getStatus();
-    this.store.recordEvent("launch.retry.requested", this.store.getSnapshot().phase, {
-      state: status.state,
-    });
+    this.store.recordEvent(
+      "launch.retry.requested",
+      this.store.getSnapshot().phase,
+      {
+        state: status.state,
+      },
+    );
     if (status.state === "starting") return this.getProgress();
     if (status.state === "not_started" || status.state === "stopped") {
       await this.agent.start();
@@ -327,6 +418,7 @@ export class LaunchOrchestrator {
       `Phase: ${snapshot.phase}`,
       `Agent state: ${snapshot.agent.state}`,
       `Runtime phase: ${snapshot.boot.runtimePhase ?? "unknown"}`,
+      `Database: ${snapshot.database.mode} / ${snapshot.database.status}`,
       `Suggested action: ${snapshot.recovery.suggestedAction ?? "none"}`,
       "",
     ].join("\n");

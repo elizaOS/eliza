@@ -336,6 +336,7 @@ export function buildBunRpcHandlers({
     readAuthStatus: readAuthStatusViaHttp,
     readOnboardingStatus: readOnboardingStatusViaHttp,
     readDiagnostics: getStartupDiagnosticsSnapshot,
+    readDatabaseStatus: () => agent.getDatabaseSnapshot(),
     readDiagnosticLogTail: getStartupDiagnosticLogTail,
     listSatelliteStatuses: () =>
       getFirstPartySatelliteDefinitions({ includeDev: true }).map(
@@ -455,6 +456,10 @@ export function buildBunRpcHandlers({
       launchOrchestrator.openDiagnosticsView(),
     launchCreateBugReportBundle: async () =>
       launchOrchestrator.createBugReport(),
+    databaseStatus: async () => agent.getDatabaseSnapshot(),
+    databaseRecoveryPreview: async () => agent.previewDatabaseRecovery(),
+    databaseBackupPglite: async () => agent.backupPgliteDatabase(),
+    databaseResetPglite: async (params) => agent.resetPgliteDatabase(params),
     /**
      * Typed counterpart to renderer `client.getOnboardingStatus()` —
      * the polling-backend startup phase calls this. See
@@ -916,7 +921,8 @@ export function buildBunRpcHandlers({
     voiceInjectTranscript: async (params) =>
       voiceService.injectTranscript(params),
     voiceSpeak: async (params) => voiceService.speak(params),
-    voiceTranscribeAudio: async (params) => voiceService.transcribeAudio(params),
+    voiceTranscribeAudio: async (params) =>
+      voiceService.transcribeAudio(params),
     voiceSynthesizeSpeech: async (params) =>
       voiceService.synthesizeSpeech(params),
     voiceLatency: async () => voiceService.latency(),

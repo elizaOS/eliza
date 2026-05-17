@@ -43,7 +43,7 @@
       }
       .grid {
         display: grid;
-        grid-template-columns: repeat(3, minmax(0, 1fr));
+        grid-template-columns: repeat(4, minmax(0, 1fr));
         gap: 1px;
         background: #2b323d;
         border-bottom: 1px solid #2b323d;
@@ -126,6 +126,7 @@
     <div class="grid">
       <div><span>Agent</span><strong id="agent">unknown</strong></div>
       <div><span>Runtime</span><strong id="runtime">unknown</strong></div>
+      <div><span>Database</span><strong id="database">unknown</strong></div>
       <div><span>Recovery</span><strong id="recovery">none</strong></div>
     </div>
     <main>
@@ -146,6 +147,7 @@
       const phase = document.getElementById("phase");
       const agent = document.getElementById("agent");
       const runtime = document.getElementById("runtime");
+      const database = document.getElementById("database");
       const recovery = document.getElementById("recovery");
       const snapshot = document.getElementById("snapshot");
       const events = document.getElementById("events");
@@ -169,6 +171,9 @@
           ? `${snap.agent.state || "unknown"} ${snap.agent.apiBase || ""}`.trim()
           : "unknown";
         runtime.textContent = snap.boot?.runtimePhase || "unknown";
+        database.textContent = snap.database
+          ? `${snap.database.mode || "unknown"} ${snap.database.status || ""}`.trim()
+          : "unknown";
         recovery.textContent = snap.recovery?.suggestedAction || "none";
         snapshot.textContent = JSON.stringify(snap, null, 2);
         log.textContent = snap.diagnostics?.logTail || "";

@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 import { DynamicViewRegistry } from "../dynamic-views/registry";
 import { DynamicViewSessionManager } from "../dynamic-views/session-manager";
+import { createDatabaseSnapshot } from "../database";
 import { LaunchOrchestrator } from "./launch-orchestrator";
 import type { LaunchBugReportBundleInfo } from "./types";
 import type { JsonValue } from "@elizaos/electrobun-carrots";
@@ -22,7 +23,9 @@ class FakeCanvas {
   }
 }
 
-function createAgent(state: "not_started" | "starting" | "running" | "stopped" | "error") {
+function createAgent(
+  state: "not_started" | "starting" | "running" | "stopped" | "error",
+) {
   return {
     getStatus: vi.fn(() => ({
       state,
@@ -54,6 +57,7 @@ function createOrchestrator(options?: {
   onboardingComplete?: boolean;
   cloudProvisioned?: boolean;
   withViews?: boolean;
+  databaseFailed?: boolean;
 }) {
   const agent = createAgent(options?.state ?? "running");
   const canvas = new FakeCanvas();
@@ -106,6 +110,23 @@ function createOrchestrator(options?: {
       logPath: "/tmp/startup.log",
       statusPath: "/tmp/startup-status.json",
     }),
+    readDatabaseStatus: () =>
+      options?.databaseFailed === true
+        ? createDatabaseSnapshot({
+            mode: "pglite-persistent",
+            status: "migration-failed",
+            postgresUrlSet: false,
+            pgliteDataDir: "/tmp/pglite",
+            effectiveTarget: "/tmp/pglite",
+            error: "migration failed",
+          })
+        : createDatabaseSnapshot({
+            mode: "pglite-persistent",
+            status: "ready",
+            postgresUrlSet: false,
+            pgliteDataDir: "/tmp/pglite",
+            effectiveTarget: "/tmp/pglite",
+          }),
     readDiagnosticLogTail: () => "tail",
     listSatelliteStatuses: () => [
       {
@@ -151,6 +172,16 @@ describe("LaunchOrchestrator", () => {
     expect(pairing.phase).toBe("pairing-required");
     expect(onboarding.phase).toBe("runtime-gate-required");
     expect(cloud.phase).toBe("cloud-bootstrap-required");
+  });
+
+  it("treats database failure as launch failure before onboarding", async () => {
+    const snapshot = await createOrchestrator({
+      onboardingComplete: false,
+      databaseFailed: true,
+    }).orchestrator.getProgress();
+
+    expect(snapshot.phase).toBe("error");
+    expect(snapshot.recovery.suggestedAction).toContain("database recovery");
   });
 
   it("retry starts stopped agents and does not double-spawn starting agents", async () => {

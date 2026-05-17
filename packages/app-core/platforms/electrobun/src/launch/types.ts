@@ -1,4 +1,5 @@
 import type { JsonValue } from "@elizaos/electrobun-carrots";
+import type { DatabaseSnapshot } from "../database";
 
 export type LaunchPhase =
   | "static-shell"
@@ -37,6 +38,7 @@ export interface LaunchSnapshot {
     pluginsFailed: number | null;
     database: "ok" | "unknown" | "error" | null;
   };
+  database: DatabaseSnapshot;
   auth: {
     checked: boolean;
     required: boolean | null;

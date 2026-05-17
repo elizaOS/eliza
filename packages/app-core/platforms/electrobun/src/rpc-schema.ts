@@ -30,6 +30,11 @@ import type {
   DynamicViewUnregisterParams,
 } from "./dynamic-views/types";
 import type {
+  DatabaseBackupResult,
+  DatabaseResetResult,
+  DatabaseSnapshot,
+} from "./database";
+import type {
   LaunchBugReportBundleInfo,
   LaunchEventsTailParams,
   LaunchEventsTailResult,
@@ -859,12 +864,22 @@ export interface DesktopStartupDiagnostics {
   configDir: string;
   logPath: string;
   statusPath: string;
+  database: DatabaseSnapshot;
   logTail: string;
   appVersion?: string;
   appRuntime?: string;
   packaged?: boolean;
   locale?: string;
 }
+
+export interface DatabaseRecoveryPreview {
+  snapshot: DatabaseSnapshot;
+  actions: DatabaseSnapshot["recoveryActions"];
+}
+
+export type DatabaseResetPgliteResult = DatabaseResetResult & {
+  restarted: boolean;
+};
 
 export interface DesktopBugReportBundleInfo {
   directory: string;
@@ -1302,6 +1317,22 @@ export type ElizaDesktopRPCSchema = {
       launchCreateBugReportBundle: {
         params: undefined;
         response: LaunchBugReportBundleInfo;
+      };
+      databaseStatus: {
+        params: undefined;
+        response: DatabaseSnapshot;
+      };
+      databaseRecoveryPreview: {
+        params: undefined;
+        response: DatabaseRecoveryPreview;
+      };
+      databaseBackupPglite: {
+        params: undefined;
+        response: DatabaseBackupResult;
+      };
+      databaseResetPglite: {
+        params: { restart?: boolean } | undefined;
+        response: DatabaseResetPgliteResult;
       };
       /**
        * Typed counterpart to `client.getOnboardingStatus()` — the
@@ -2453,6 +2484,10 @@ export const CHANNEL_TO_RPC_METHOD: Record<string, string> = {
   "launch:retry": "launchRetry",
   "launch:openDiagnosticsView": "launchOpenDiagnosticsView",
   "launch:createBugReportBundle": "launchCreateBugReportBundle",
+  "database:status": "databaseStatus",
+  "database:recoveryPreview": "databaseRecoveryPreview",
+  "database:backupPglite": "databaseBackupPglite",
+  "database:resetPglite": "databaseResetPglite",
   "desktop:getRuntimeMode": "desktopGetRuntimeMode",
   "desktop:openLogsFolder": "desktopOpenLogsFolder",
   "desktop:createBugReportBundle": "desktopCreateBugReportBundle",

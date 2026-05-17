@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { createDatabaseSnapshot } from "../database";
 import { LaunchStore } from "./launch-store";
 import type { LaunchSnapshot } from "./types";
 
@@ -18,6 +19,14 @@ function snapshot(phase: LaunchSnapshot["phase"]): LaunchSnapshot {
       pluginsFailed: 0,
       database: "ok",
     },
+    database: createDatabaseSnapshot({
+      mode: "pglite-persistent",
+      status: "ready",
+      postgresUrlSet: false,
+      pgliteDataDir: "/tmp/pglite",
+      effectiveTarget: "/tmp/pglite",
+      updatedAt: "2026-05-17T00:00:00.000Z",
+    }),
     auth: {
       checked: true,
       required: false,

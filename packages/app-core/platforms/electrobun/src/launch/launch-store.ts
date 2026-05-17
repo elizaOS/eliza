@@ -5,6 +5,7 @@ import type {
   LaunchSnapshot,
 } from "./types";
 import type { JsonValue } from "@elizaos/electrobun-carrots";
+import { createUnknownDatabaseSnapshot } from "../database";
 
 const DEFAULT_MAX_EVENTS = 500;
 
@@ -24,6 +25,7 @@ function emptySnapshot(now: () => Date): LaunchSnapshot {
       pluginsFailed: null,
       database: null,
     },
+    database: createUnknownDatabaseSnapshot(now().toISOString()),
     auth: {
       checked: false,
       required: null,
@@ -76,7 +78,10 @@ export class LaunchStore {
     return structuredClone(this.snapshot);
   }
 
-  update(snapshot: LaunchSnapshot, event?: { name: string; payload?: JsonValue }): LaunchSnapshot {
+  update(
+    snapshot: LaunchSnapshot,
+    event?: { name: string; payload?: JsonValue },
+  ): LaunchSnapshot {
     const previousPhase = this.snapshot.phase;
     this.snapshot = structuredClone(snapshot);
     if (event) {

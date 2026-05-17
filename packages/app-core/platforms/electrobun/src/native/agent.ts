@@ -38,6 +38,21 @@ import { Utils } from "electrobun/bun";
 import { resolveDesktopRuntimeMode } from "../api-base";
 import { getBrandConfig } from "../brand-config";
 import { DEFAULT_API_PORT } from "../constants";
+import {
+  acquireDatabaseStartupLock,
+  applyDatabaseResolutionToEnv,
+  backupPgliteDirectory,
+  classifyDatabaseError,
+  createDatabaseSnapshot,
+  createUnknownDatabaseSnapshot,
+  ensurePgliteDataDir,
+  redactDatabaseTarget,
+  resetPgliteDirectory,
+  resolveDatabaseMode,
+  updateDatabaseSnapshotStatus,
+  type DatabaseSnapshot,
+  type DatabaseStartupLock,
+} from "../database";
 import { logger } from "../logger";
 import { recordStartupPhase, resolveStartupBundlePath } from "../startup-trace";
 import type { SendToWebview } from "../types.js";
@@ -68,6 +83,7 @@ export interface StartupDiagnosticsSnapshot {
   configDir: string;
   logPath: string;
   statusPath: string;
+  database: DatabaseSnapshot;
 }
 
 export interface BugReportBundleResult {
@@ -576,6 +592,7 @@ export function getStartupDiagnosticsSnapshot(): StartupDiagnosticsSnapshot {
     configDir: parsed?.configDir ?? resolveConfigDir(),
     logPath: parsed?.logPath ?? getDiagnosticLogPath(),
     statusPath: parsed?.statusPath ?? getStartupStatusPath(),
+    database: parsed?.database ?? createUnknownDatabaseSnapshot(),
   };
 }
 
@@ -1112,40 +1129,19 @@ async function maybeReclaimPortWithSigkill(port: number): Promise<void> {
   }
 }
 
-function resolvePgliteDataDir(): string {
-  return joinPortable(
-    os.homedir(),
-    `.${getBrandConfig().namespace}`,
-    "workspace",
-    ".eliza",
-    ".elizadb",
-  );
+function resolveDatabaseAppStateDir(): string {
+  return Utils.paths.userData || resolveConfigDir();
 }
 
-/**
- * Removes only the PGLite database folder (agent memory / conversations).
- * GGUF embedding weights live under `MODELS_DIR` / `~/.eliza/models` by default — never deleted here.
- */
-function deletePgliteDataDir(): void {
-  const dir = resolvePgliteDataDir();
-  if (path.basename(dir) !== ".elizadb") {
-    diagnosticLog(
-      `[Agent] deletePgliteDataDir: refused — basename must be .elizadb, got: ${dir}`,
-    );
-    return;
-  }
-  try {
-    if (fs.existsSync(dir)) {
-      fs.rmSync(dir, { recursive: true, force: true });
-      diagnosticLog(
-        `[Agent] Deleted PGLite data dir (GGUF model cache elsewhere): ${dir}`,
-      );
-    }
-  } catch (err) {
-    diagnosticLog(
-      `[Agent] Failed to delete PGLite data dir: ${err instanceof Error ? err.message : String(err)}`,
-    );
-  }
+function resolveManagedPgliteDataDir(): string | null {
+  const resolution = resolveDatabaseMode({
+    env: process.env as Record<string, string | undefined>,
+    packagedDesktop: isPackagedDesktopRuntime(),
+    appStateDir: resolveDatabaseAppStateDir(),
+  });
+  return resolution.mode === "pglite-persistent"
+    ? (resolution.pgliteDataDir ?? null)
+    : null;
 }
 
 // ---------------------------------------------------------------------------
@@ -1169,6 +1165,8 @@ export class AgentManager {
   private hasPgliteError = false;
   private pgliteRecoveryDone = false;
   private startupPhase = "not_started";
+  private databaseSnapshot: DatabaseSnapshot = createUnknownDatabaseSnapshot();
+  private databaseStartupLock: DatabaseStartupLock | null = null;
 
   constructor() {
     this.persistStartupDiagnostics();
@@ -1369,16 +1367,109 @@ export class AgentManager {
       delete childEnv.ELIZA_PORT;
       delete childEnv.NODE_PATH;
 
+      const databaseResolution = resolveDatabaseMode({
+        env: childEnv,
+        packagedDesktop: packagedRuntime,
+        appStateDir: resolveDatabaseAppStateDir(),
+        cwd: runtimeDistPath,
+      });
+      applyDatabaseResolutionToEnv(childEnv, databaseResolution);
+      const effectiveTarget =
+        databaseResolution.mode === "postgres"
+          ? redactDatabaseTarget(databaseResolution.postgresUrl)
+          : (databaseResolution.pgliteDataDir ?? null);
+      this.databaseSnapshot = createDatabaseSnapshot({
+        mode: databaseResolution.mode,
+        status: "resolving",
+        postgresUrlSet: databaseResolution.mode === "postgres",
+        databaseUrlMapped: databaseResolution.databaseUrlMapped,
+        pgliteDataDir: databaseResolution.pgliteDataDir ?? null,
+        effectiveTarget,
+        warnings: databaseResolution.warnings,
+      });
+      this.persistStartupDiagnostics();
+      diagnosticLog(
+        `[Agent] Database mode: ${databaseResolution.mode} source=${databaseResolution.source} target=${effectiveTarget ?? "runtime-default"}`,
+      );
+      recordStartupPhase("database_mode_resolved", {
+        port: apiPort,
+      });
+      if (
+        databaseResolution.mode === "pglite-persistent" &&
+        databaseResolution.pgliteDataDir
+      ) {
+        try {
+          ensurePgliteDataDir(databaseResolution.pgliteDataDir);
+          const lockResult = acquireDatabaseStartupLock(
+            databaseResolution.pgliteDataDir,
+          );
+          if (!lockResult.ok) {
+            const errMsg = lockResult.error;
+            this.databaseSnapshot = updateDatabaseSnapshotStatus(
+              this.databaseSnapshot,
+              "locked",
+              {
+                error: errMsg,
+                lock: lockResult.snapshot,
+              },
+            );
+            this.persistStartupDiagnostics(errMsg);
+            this.status = {
+              state: "error",
+              agentName: null,
+              port: apiPort,
+              startedAt: null,
+              error: errMsg,
+            };
+            this.emitStatus();
+            return this.status;
+          }
+          this.databaseStartupLock = lockResult.lock;
+          this.databaseSnapshot = updateDatabaseSnapshotStatus(
+            this.databaseSnapshot,
+            "starting",
+            {
+              lock: lockResult.lock.snapshot,
+            },
+          );
+          this.persistStartupDiagnostics();
+        } catch (error) {
+          const message =
+            error instanceof Error ? error.message : String(error);
+          const status = classifyDatabaseError(message);
+          this.databaseSnapshot = updateDatabaseSnapshotStatus(
+            this.databaseSnapshot,
+            status,
+            {
+              error: message,
+            },
+          );
+          this.persistStartupDiagnostics(message);
+          this.status = {
+            state: "error",
+            agentName: null,
+            port: apiPort,
+            startedAt: null,
+            error: message,
+          };
+          this.emitStatus();
+          return this.status;
+        }
+      } else if (
+        databaseResolution.mode === "postgres" ||
+        databaseResolution.mode === "pglite-memory"
+      ) {
+        this.databaseSnapshot = updateDatabaseSnapshotStatus(
+          this.databaseSnapshot,
+          "starting",
+        );
+        this.persistStartupDiagnostics();
+      }
+
       // node-llama-cpp crashes Bun on Windows during packaged startup.
       // Disable local embeddings until upstream fix lands.
       if (process.platform === "win32") {
         childEnv.ELIZA_DISABLE_LOCAL_EMBEDDINGS = "1";
-      }
-
-      // Propagate PGlite data dir from parent env so CI/smoke test overrides
-      // (e.g. a short Windows path avoiding MAX_PATH issues) reach the runtime.
-      if (process.env.PGLITE_DATA_DIR) {
-        childEnv.PGLITE_DATA_DIR = process.env.PGLITE_DATA_DIR;
       }
 
       if (nodePaths.length > 0) {
@@ -1479,6 +1570,7 @@ export class AgentManager {
       this.hasPgliteError = false;
       if (proc.stderr) {
         drainStderrToLog(proc.stderr, signal, (line) => {
+          this.updateDatabaseSnapshotFromRuntimeLog(line);
           if (shouldAutoRecoverPgliteFailure(line)) {
             this.hasPgliteError = true;
           }
@@ -1529,6 +1621,7 @@ export class AgentManager {
             error: errMsg,
             exit_code: proc.exitCode,
           });
+          this.releaseDatabaseStartupLock();
           this.emitStatus();
           return this.status;
         }
@@ -1555,6 +1648,7 @@ export class AgentManager {
           child_pid: proc.pid,
           error: errMsg,
         });
+        this.releaseDatabaseStartupLock();
         this.emitStatus();
         return this.status;
       }
@@ -1562,6 +1656,24 @@ export class AgentManager {
         port: apiPort,
         child_pid: proc.pid,
       });
+      this.databaseSnapshot = updateDatabaseSnapshotStatus(
+        this.databaseSnapshot,
+        "ready",
+        {
+          migrationStatus:
+            this.databaseSnapshot.migrationStatus?.failed === true
+              ? this.databaseSnapshot.migrationStatus
+              : {
+                  running: false,
+                  completed: true,
+                  failed: false,
+                },
+          lock: {
+            held: false,
+          },
+        },
+      );
+      this.releaseDatabaseStartupLock();
 
       this.setStartupPhase("fetching_agent_metadata");
       const startedAt = Date.now();
@@ -1598,6 +1710,7 @@ export class AgentManager {
       if (this.childProcess) {
         await this.killChildProcess();
       }
+      this.releaseDatabaseStartupLock();
 
       this.status = {
         state: "error",
@@ -1628,6 +1741,7 @@ export class AgentManager {
     }
 
     await this.killChildProcess();
+    this.releaseDatabaseStartupLock();
 
     this.status = {
       state: "stopped",
@@ -1675,13 +1789,34 @@ export class AgentManager {
       return this.getStatus();
     }
 
+    const dataDir = resolveManagedPgliteDataDir();
+    if (!dataDir) {
+      const message =
+        "Local PGlite reset is unavailable for the active database mode.";
+      diagnosticLog(`[Agent] restartClearingLocalDb skipped — ${message}`);
+      this.databaseSnapshot = updateDatabaseSnapshotStatus(
+        this.databaseSnapshot,
+        "error",
+        { error: message },
+      );
+      return this.getStatus();
+    }
+
     diagnosticLog(
-      `[Agent] restartClearingLocalDb: local mode — stop → rm PGLite (${resolvePgliteDataDir()}) → start`,
+      `[Agent] restartClearingLocalDb: local mode — stop → backup/reset PGLite (${dataDir}) → start`,
     );
     await this.stop();
     this.hasPgliteError = false;
     this.pgliteRecoveryDone = false;
-    deletePgliteDataDir();
+    const reset = resetPgliteDirectory(dataDir);
+    diagnosticLog(
+      `[Agent] PGLite backup/reset completed backup=${reset.backup.backupDir ?? "none"} removed=${reset.removed}`,
+    );
+    this.databaseSnapshot = updateDatabaseSnapshotStatus(
+      this.databaseSnapshot,
+      "starting",
+      { error: null },
+    );
     const next = await this.start();
     diagnosticLog(
       `[Agent] restartClearingLocalDb: start() finished state=${next.state} port=${next.port ?? "null"}`,
@@ -1691,6 +1826,55 @@ export class AgentManager {
 
   getStatus(): AgentStatus {
     return { ...this.status };
+  }
+
+  getDatabaseSnapshot(): DatabaseSnapshot {
+    return this.databaseSnapshot;
+  }
+
+  previewDatabaseRecovery(): {
+    snapshot: DatabaseSnapshot;
+    actions: DatabaseSnapshot["recoveryActions"];
+  } {
+    return {
+      snapshot: this.databaseSnapshot,
+      actions: this.databaseSnapshot.recoveryActions,
+    };
+  }
+
+  backupPgliteDatabase(): ReturnType<typeof backupPgliteDirectory> {
+    const dataDir =
+      this.databaseSnapshot.pgliteDataDir ?? resolveManagedPgliteDataDir();
+    if (!dataDir) {
+      throw new Error("No persistent PGlite data directory is active.");
+    }
+    const result = backupPgliteDirectory(dataDir);
+    diagnosticLog(
+      `[Agent] PGLite backup created: ${result.backupDir ?? "none"} reason=${result.reason ?? "created"}`,
+    );
+    return result;
+  }
+
+  async resetPgliteDatabase(params?: {
+    restart?: boolean;
+  }): Promise<
+    ReturnType<typeof resetPgliteDirectory> & { restarted: boolean }
+  > {
+    const dataDir =
+      this.databaseSnapshot.pgliteDataDir ?? resolveManagedPgliteDataDir();
+    if (!dataDir) {
+      throw new Error("No persistent PGlite data directory is active.");
+    }
+    await this.stop();
+    const result = resetPgliteDirectory(dataDir);
+    diagnosticLog(
+      `[Agent] PGLite reset completed backup=${result.backup.backupDir ?? "none"} removed=${result.removed}`,
+    );
+    if (params?.restart === true) {
+      await this.start();
+      return { ...result, restarted: true };
+    }
+    return { ...result, restarted: false };
   }
 
   inspectExistingInstall(): ExistingElizaInstallInfo {
@@ -1713,6 +1897,7 @@ export class AgentManager {
     }
     try {
       await this.killChildProcess();
+      this.releaseDatabaseStartupLock();
     } catch (err) {
       logger.warn(
         `[Agent] dispose error: ${err instanceof Error ? err.message : String(err)}`,
@@ -1790,7 +1975,90 @@ export class AgentManager {
       configDir: resolveConfigDir(),
       logPath: getDiagnosticLogPath(),
       statusPath: getStartupStatusPath(),
+      database: this.databaseSnapshot,
     });
+  }
+
+  private releaseDatabaseStartupLock(): void {
+    if (!this.databaseStartupLock) return;
+    this.databaseStartupLock.release();
+    this.databaseStartupLock = null;
+  }
+
+  private updateDatabaseSnapshotFromRuntimeLog(line: string): void {
+    const lower = line.toLowerCase();
+    if (lower.includes("starting migrations")) {
+      this.databaseSnapshot = updateDatabaseSnapshotStatus(
+        this.databaseSnapshot,
+        "migrating",
+        {
+          migrationStatus: {
+            running: true,
+            completed: false,
+            failed: false,
+          },
+        },
+      );
+      this.persistStartupDiagnostics();
+      recordStartupPhase("database_migration_started", {
+        port: this.status.port,
+      });
+      return;
+    }
+    if (lower.includes("all migrations completed successfully")) {
+      this.databaseSnapshot = updateDatabaseSnapshotStatus(
+        this.databaseSnapshot,
+        "starting",
+        {
+          migrationStatus: {
+            running: false,
+            completed: true,
+            failed: false,
+          },
+        },
+      );
+      this.persistStartupDiagnostics();
+      recordStartupPhase("database_migration_completed", {
+        port: this.status.port,
+      });
+      return;
+    }
+    if (
+      lower.includes("migration failed") ||
+      lower.includes("migration(s) failed")
+    ) {
+      const pluginMatch = line.match(/pluginName[":=\s]+["']?([^"',\s}]+)/);
+      const error = redactSensitiveDiagnostics(line);
+      this.databaseSnapshot = updateDatabaseSnapshotStatus(
+        this.databaseSnapshot,
+        "migration-failed",
+        {
+          error,
+          migrationStatus: {
+            running: false,
+            completed: false,
+            failed: true,
+            failedPlugin: pluginMatch?.[1],
+            error,
+          },
+        },
+      );
+      this.persistStartupDiagnostics(error);
+      recordStartupPhase("database_migration_failed", {
+        port: this.status.port,
+        error,
+      });
+      return;
+    }
+    const status = classifyDatabaseError(line);
+    if (status === "error") return;
+    const error = redactSensitiveDiagnostics(line);
+    this.databaseSnapshot = updateDatabaseSnapshotStatus(
+      this.databaseSnapshot,
+      status,
+      { error },
+    );
+    this.persistStartupDiagnostics(error);
   }
 
   /**
@@ -1818,25 +2086,16 @@ export class AgentManager {
           });
           this.childProcess = null;
 
-          // Auto-recover from PGLite migration failures by deleting the DB
-          // and spawning a fresh process (new process = fresh WASM state).
           if (this.hasPgliteError && !this.pgliteRecoveryDone) {
             this.pgliteRecoveryDone = true;
-            diagnosticLog(
-              "[Agent] PGLite migration error detected — deleting DB and retrying with fresh process",
+            const error =
+              "PGLite startup or migration failed. Use database recovery to backup/reset local data or switch to Postgres.";
+            diagnosticLog(`[Agent] ${error}`);
+            this.databaseSnapshot = updateDatabaseSnapshotStatus(
+              this.databaseSnapshot,
+              classifyDatabaseError(error),
+              { error },
             );
-            deletePgliteDataDir();
-            this.status = {
-              state: "not_started",
-              agentName: null,
-              port: null,
-              startedAt: null,
-              error: null,
-            };
-            this.setStartupPhase("recovering_pglite");
-            // Delay slightly so OS releases file handles before respawn
-            setTimeout(() => void this.start(), 500);
-            return;
           }
 
           this.status = {
@@ -1850,10 +2109,12 @@ export class AgentManager {
             "process_exited_unexpectedly",
             `Process exited unexpectedly with code ${exitCode}`,
           );
+          this.releaseDatabaseStartupLock();
           this.emitStatus();
         } else {
           // Expected exit (we called stop)
           this.childProcess = null;
+          this.releaseDatabaseStartupLock();
         }
       })
       .catch((err: unknown) => {
@@ -1867,6 +2128,7 @@ export class AgentManager {
           error: err instanceof Error ? err.message : String(err),
         });
         this.childProcess = null;
+        this.releaseDatabaseStartupLock();
         if (
           this.status.state === "running" ||
           this.status.state === "starting"
