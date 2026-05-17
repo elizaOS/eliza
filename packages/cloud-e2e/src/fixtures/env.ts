@@ -21,6 +21,7 @@ export function buildSharedEnv(
   return {
     ...process.env,
     NODE_ENV: "test",
+    CLOUD_E2E: "1",
     // Mocks
     MOCK_REDIS: "1",
     MOCK_HETZNER_LATENCY: "0",

@@ -9,6 +9,7 @@
 
 "use client";
 
+import { STEWARD_SESSION_ENDPOINT } from "@elizaos/steward-session-client";
 import { BrandCard, CornerBrackets } from "@elizaos/ui";
 import { ArrowUpRight, Copy } from "lucide-react";
 import { useEffect, useState } from "react";
@@ -78,7 +79,7 @@ export function AccountTab({ user, onTabChange }: AccountTabProps) {
 
     if (stewardAuthenticated) {
       stewardSignOut();
-      await fetch("/api/auth/steward-session", {
+      await fetch(STEWARD_SESSION_ENDPOINT, {
         method: "DELETE",
       }).catch(() => {});
     }
