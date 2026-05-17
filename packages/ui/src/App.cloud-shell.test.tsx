@@ -56,7 +56,8 @@ describe("App pre-agent cloud wiring", () => {
     expect(APP_TSX).toMatch(/basePath="\/clouds"/);
     expect(APP_TSX).toMatch(/animated=\{false\}/);
     expect(APP_TSX).toMatch(/scrim=\{0\.05\}/);
-    expect(APP_TSX).toMatch(/text-black/);
+    // text-txt is the theme-aware class for black text on the cloud background.
+    expect(APP_TSX).toMatch(/text-txt/);
   });
 
   it("CloudVideoBackground renders a <video> with cloud sources", () => {

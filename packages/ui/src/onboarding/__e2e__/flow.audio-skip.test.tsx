@@ -49,7 +49,7 @@ describe("onboarding flow — audio skip", () => {
     );
 
     await expectState("hello");
-    clickButton(/tap to begin/i);
+    clickButton(/^begin$/i);
     await expectState("setup");
     clickButton(/^continue$/i);
     await expectState("cloud-login");
@@ -74,7 +74,7 @@ describe("onboarding flow — audio skip", () => {
     );
 
     await expectState("hello");
-    clickButton(/tap to begin/i);
+    clickButton(/^begin$/i);
     await expectState("setup");
     clickButton(/^continue$/i);
     await expectState("cloud-login");
