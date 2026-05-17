@@ -53,6 +53,7 @@ import { FineTuningView } from "@elizaos/ui/components/training/injected";
 import { useBootConfig } from "@elizaos/ui/config/boot-config-react";
 import { useApp } from "@elizaos/ui/state/useApp";
 import { openExternalUrl } from "@elizaos/ui/utils";
+import { formatError } from "@elizaos/shared";
 import {
   type JSX,
   Suspense,
@@ -299,7 +300,7 @@ function RegistryAppWindowView({ slug }: { slug: string }): JSX.Element {
           status: "error",
           run: null,
           launchUrl: null,
-          message: err instanceof Error ? err.message : String(err),
+          message: formatError(err),
         });
       }
     })();

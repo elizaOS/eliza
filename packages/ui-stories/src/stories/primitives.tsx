@@ -864,7 +864,7 @@ export const primitiveStories: StoryDefinition[] = [
     render: () => (
       <div className="gallery-row">
         <CopyButton value="bun install @elizaos/ui" />
-        <CopyButton value="claude-opus-4-7" label="Copy model" />
+        <CopyButton value="claude-opus-4-7" copyLabel="Copy model" />
       </div>
     ),
   },

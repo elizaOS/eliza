@@ -67,7 +67,22 @@ interface OAuthRate {
   total_users: number;
   connected_users: number;
   rate: number;
+  ratePercent: number;
   byService: Record<string, number>;
+}
+
+interface PlatformDistributionEntry {
+  key: string;
+  count: number;
+  percent: number;
+}
+
+interface RetentionRatePoint {
+  cohortDate: string;
+  cohortSize: number;
+  d1: number | null;
+  d7: number | null;
+  d30: number | null;
 }
 
 interface MetricsOverview {
@@ -78,9 +93,11 @@ interface MetricsOverview {
   newSignups7d: number;
   avgMessagesPerUser: number;
   platformBreakdown: Record<string, number>;
+  platformDistribution: PlatformDistributionEntry[];
   oauthRate: OAuthRate;
   dailyTrend: DailyMetricRow[];
   retentionCohorts: RetentionCohortRow[];
+  retentionRates: RetentionRatePoint[];
 }
 
 // ---------------------------------------------------------------------------
@@ -213,20 +230,18 @@ export function AdminMetricsClient() {
 
   const retentionData = useMemo(() => {
     if (!overview) return [];
+    // `retentionRates` mirrors `retentionCohorts` 1:1 with server-computed
+    // percent values, so use index lookup to keep the platform filter.
     return overview.retentionCohorts
-      .filter((c) => c.platform === null && c.cohort_size > 0)
+      .map((cohort, index) => ({ cohort, rates: overview.retentionRates[index] }))
+      .filter(({ cohort }) => cohort.platform === null && cohort.cohort_size > 0)
       .slice(-30)
-      .map((c) => ({
-        date: formatDateUTC(c.cohort_date),
-        cohortSize: c.cohort_size,
-        d1:
-          c.d1_retained != null ? (c.d1_retained / c.cohort_size) * 100 : null,
-        d7:
-          c.d7_retained != null ? (c.d7_retained / c.cohort_size) * 100 : null,
-        d30:
-          c.d30_retained != null
-            ? (c.d30_retained / c.cohort_size) * 100
-            : null,
+      .map(({ cohort, rates }) => ({
+        date: formatDateUTC(cohort.cohort_date),
+        cohortSize: cohort.cohort_size,
+        d1: rates?.d1 ?? null,
+        d7: rates?.d7 ?? null,
+        d30: rates?.d30 ?? null,
       }));
   }, [overview]);
 
@@ -630,37 +645,32 @@ export function AdminMetricsClient() {
                   </div>
                 ) : (
                   <div className="space-y-4">
+                    {overview?.platformDistribution.map(
+                      ({ key: platform, count, percent }) => (
+                        <div key={platform} className="space-y-1">
+                          <div className="flex items-center justify-between text-sm">
+                            <span className="font-mono text-white">
+                              {PLATFORM_LABELS[platform] || platform}
+                            </span>
+                            <span className="font-mono text-white/60">
+                              {count.toLocaleString()} ({percent.toFixed(1)}%)
+                            </span>
+                          </div>
+                          <div className="h-2 w-full overflow-hidden bg-white/10">
+                            <div
+                              className="h-full transition-all"
+                              style={{
+                                width: `${Math.max(1, percent)}%`,
+                                backgroundColor:
+                                  PLATFORM_COLORS[platform] || "#888",
+                              }}
+                            />
+                          </div>
+                        </div>
+                      ),
+                    )}
                     {overview &&
-                      Object.entries(overview.platformBreakdown)
-                        .sort(([, a], [, b]) => b - a)
-                        .map(([platform, count]) => {
-                          const total = overview.dau || 1;
-                          const pct = ((count / total) * 100).toFixed(1);
-                          return (
-                            <div key={platform} className="space-y-1">
-                              <div className="flex items-center justify-between text-sm">
-                                <span className="font-mono text-white">
-                                  {PLATFORM_LABELS[platform] || platform}
-                                </span>
-                                <span className="font-mono text-white/60">
-                                  {count.toLocaleString()} ({pct}%)
-                                </span>
-                              </div>
-                              <div className="h-2 w-full overflow-hidden bg-white/10">
-                                <div
-                                  className="h-full transition-all"
-                                  style={{
-                                    width: `${Math.max(1, (count / total) * 100)}%`,
-                                    backgroundColor:
-                                      PLATFORM_COLORS[platform] || "#888",
-                                  }}
-                                />
-                              </div>
-                            </div>
-                          );
-                        })}
-                    {overview &&
-                      Object.keys(overview.platformBreakdown).length === 0 && (
+                      overview.platformDistribution.length === 0 && (
                         <p className="text-center text-sm font-mono text-white/40">
                           No platform data yet
                         </p>

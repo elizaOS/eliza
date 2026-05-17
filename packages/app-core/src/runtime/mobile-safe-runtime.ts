@@ -834,7 +834,7 @@ export function createMobileSafeCapabilityBroker(
           ok: false,
           error: {
             code: "MOBILE_SAFE_CAPABILITY_FAILED",
-            message: error instanceof Error ? error.message : String(error),
+            message: formatError(error),
             retryable: false,
           },
         };
@@ -1934,7 +1934,7 @@ function providerFailure(
     ok: false,
     error: {
       code: "MOBILE_SAFE_RUNTIME_EXECUTE_FAILED",
-      message: error instanceof Error ? error.message : String(error),
+      message: formatError(error),
       provider,
     },
   };

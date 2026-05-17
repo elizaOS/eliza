@@ -360,9 +360,14 @@ class UserMetricsService {
       newSignups7d: signups7d.total,
       avgMessagesPerUser: Math.round(avgMessagesPerUser * 100) / 100,
       platformBreakdown: dauResult.byPlatform,
-      oauthRate,
+      platformDistribution: toDistribution(dauResult.byPlatform),
+      oauthRate: {
+        ...oauthRate,
+        ratePercent: Math.round(oauthRate.rate * 1000) / 10,
+      },
       dailyTrend,
       retentionCohorts: retention,
+      retentionRates: toRetentionRates(retention),
     };
   }
 

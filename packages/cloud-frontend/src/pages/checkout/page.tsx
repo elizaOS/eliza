@@ -3,11 +3,7 @@ import {
   HARDWARE_PRODUCTS,
   type Product as HardwareProduct,
 } from "@elizaos/hardware-catalog";
-import {
-  BRAND_COLORS,
-  BRAND_PATHS,
-  LOGO_FILES,
-} from "@elizaos/shared-brand";
+import { BRAND_COLORS, BRAND_PATHS, LOGO_FILES } from "@elizaos/shared-brand";
 import { CloudVideoBackground } from "@elizaos/ui";
 import {
   ArrowRight,
