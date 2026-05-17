@@ -226,9 +226,18 @@ jobs:
           const nextVersion = process.argv[2];
           const root = process.cwd();
           const lernaPath = path.join(root, "lerna.json");
-          const lerna = JSON.parse(fs.readFileSync(lernaPath, "utf8"));
+          const lernaSource = fs.readFileSync(lernaPath, "utf8");
+          const lerna = JSON.parse(lernaSource);
           const packagePatterns = lerna.packages || [];
           const packageJsonPaths = new Set();
+
+          function detectIndent(source) {
+            const match = source.match(/\{\n([ \t]+)"/);
+            if (!match) {
+              return 2;
+            }
+            return match[1].includes("\t") ? "\t" : match[1].length;
+          }
 
           function addPackageJson(packageDir) {
             const packageJsonPath = path.join(root, packageDir, "package.json");
@@ -258,17 +267,18 @@ jobs:
           }
 
           lerna.version = nextVersion;
-          fs.writeFileSync(lernaPath, `${JSON.stringify(lerna, null, 2)}\n`);
+          fs.writeFileSync(lernaPath, `${JSON.stringify(lerna, null, detectIndent(lernaSource))}\n`);
 
           let updated = 0;
           for (const packageJsonPath of [...packageJsonPaths].sort()) {
-            const pkg = JSON.parse(fs.readFileSync(packageJsonPath, "utf8"));
+            const source = fs.readFileSync(packageJsonPath, "utf8");
+            const pkg = JSON.parse(source);
             if (pkg.private === true) {
               continue;
             }
             const oldVersion = pkg.version;
             pkg.version = nextVersion;
-            fs.writeFileSync(packageJsonPath, `${JSON.stringify(pkg, null, 2)}\n`);
+            fs.writeFileSync(packageJsonPath, `${JSON.stringify(pkg, null, detectIndent(source))}\n`);
             updated += 1;
             console.log(`${path.relative(root, packageJsonPath)}: ${oldVersion} => ${nextVersion}`);
           }
