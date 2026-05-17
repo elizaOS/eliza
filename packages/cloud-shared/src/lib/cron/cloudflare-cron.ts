@@ -32,9 +32,11 @@ export const CRON_FANOUT: Record<string, string[]> = {
     "/api/cron/sample-eliza-price",
     "/api/cron/process-redemptions",
     "/api/cron/cleanup-stuck-provisioning",
-    "/api/v1/cron/node-autoscale",
-    "/api/v1/cron/agent-hot-pool",
-    "/api/v1/cron/pool-drain-idle",
+    // node-autoscale, agent-hot-pool, pool-drain-idle moved to the
+    // provisioning-worker daemon's infra-maintenance cycle so the
+    // orchestrator host owns docker_nodes truth. The control-plane still
+    // serves these paths for compat but the CF cron no longer fans out
+    // to it — see packages/scripts/cloud/admin/daemons/provisioning-worker.ts.
   ],
   "*/2 * * * *": ["/api/v1/cron/pool-health-check"],
   "*/10 * * * *": ["/api/cron/cleanup-expired-crypto-payments", "/api/v1/cron/pool-image-rollout"],
