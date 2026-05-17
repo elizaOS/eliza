@@ -119,6 +119,7 @@ jobs:
           # maps `@elizaos/contracts` to `../contracts/dist/index.d.ts` and the
           # declarations tsc step fails with TS2307 if that file is missing.
           (cd packages/contracts && bun run build)
+          node packages/shared/scripts/generate-keywords.mjs --target ts
           (cd packages/core && bun run build.ts --node-only)
           for pkg in packages/shared packages/cloud-sdk packages/cloud-routing packages/skills packages/ui; do
             if [[ -f "$pkg/package.json" ]] && jq -e '.scripts.build' "$pkg/package.json" >/dev/null; then

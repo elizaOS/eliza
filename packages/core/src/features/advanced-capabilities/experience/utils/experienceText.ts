@@ -139,7 +139,7 @@ export function extractExperienceKeywords(
 }
 
 export async function findDuplicateExperienceByLearning(
-	experienceService: ExperienceService,
+	experienceService: ExperienceServiceLike,
 	learning: string,
 ): Promise<Experience | null> {
 	const similar = await experienceService.findSimilarExperiences(

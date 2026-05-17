@@ -316,16 +316,6 @@ interface ConnectorOAuthDatabaseRecord {
 	consumedBy?: string | null;
 }
 
-export interface ConnectorAccountPolicy {
-	provider: string;
-	roles?: ConnectorAccountRole[];
-	purposes?: ConnectorAccountPurpose[];
-	accessGates?: ConnectorAccountAccessGate[];
-	statuses?: ConnectorAccountStatus[];
-	accountIdParam?: string;
-	required?: boolean;
-}
-
 export interface ConnectorAccountPolicyContext {
 	message?: Memory;
 	parameters?: ActionParameters | Record<string, unknown>;
