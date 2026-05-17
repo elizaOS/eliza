@@ -167,10 +167,8 @@ type DiscordAccountServiceFacade = IDiscordService &
     getAllowedChannels(): string[];
   };
 
-// Forward arbitrary metadata from outgoing Content to the persisted Memory
-// (e.g. `transient: true` for orchestrator status posts that the
-// recentMessages provider must filter out before serving to the planner).
-// Validates it is a plain object so we never copy arrays / class instances.
+// Forward Content.metadata onto the persisted Memory (e.g. `transient: true`
+// for orchestrator status posts). Plain-object guard so arrays/instances don't leak through.
 function extractContentMetadata(
   content: Content | undefined,
 ): Record<string, unknown> {
@@ -1538,9 +1536,6 @@ export class DiscordService extends Service implements IDiscordService {
                   type: MemoryType.MESSAGE,
                   accountId,
                   platformMessageId: sentMsg.id,
-                  // Forward arbitrary metadata from outgoing Content (e.g.
-                  // `transient: true` for orchestrator status posts) so the
-                  // recentMessages provider can filter them out downstream.
                   ...extractContentMetadata(content),
                 },
                 createdAt: sentMsg.createdTimestamp || Date.now(),

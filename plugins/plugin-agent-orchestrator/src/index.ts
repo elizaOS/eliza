@@ -54,8 +54,18 @@ import {
   TERMINAL_SESSION_STATUSES,
 } from "./services/types.js";
 import { SubAgentRouter } from "./services/sub-agent-router.js";
+import { requireTaskAgentAccess } from "./services/task-policy.js";
 import { detectOrchestratorTerminalSupport } from "./services/terminal-capabilities.js";
 import { CodingWorkspaceService } from "./services/workspace-service.js";
+
+// Skip forwarding our own posts back into `acp.sendPrompt` — would echo-loop.
+// `entityId === runtime.agentId` is not enough: the router uses a synthetic
+// sub-agent UUID, so we also filter by Content.source.
+const INTERNAL_FORWARD_SKIP_SOURCES = new Set([
+  "sub_agent",
+  "sub_agent_progress",
+  "sub_agent_complete",
+]);
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return (
@@ -142,27 +152,14 @@ export function createAgentOrchestratorPlugin(): Plugin {
       ]
     : [];
 
-  // Track the TASK_AUDIT listener we register in init so dispose can
-  // unregister it. Without this the handler closure leaks across plugin
-  // reload cycles and accumulates duplicate audit writes on every hot
-  // reload (each reload registers a fresh listener but never drops the
-  // previous one).
+  // Captured so dispose() can unregister on hot-reload (otherwise listeners
+  // stack and fan out to N orphaned closures per reload).
   let taskAuditHandler:
     | ((
         payload: TaskAuditPayload & { runtime: IAgentRuntime },
       ) => Promise<void>)
     | undefined;
-  // Cleanup callback returned by registerProgressHook. Captured here so
-  // dispose() can drop the session-event listener and restore the
-  // sendMessageToTarget middleware. Without this, every plugin reload
-  // stacks another onSessionEvent listener on the AcpService — events
-  // would fan out to N orphaned closures (each with its own thread cache,
-  // progressBySession) and the channel would receive N duplicates per
-  // sub-agent narration chunk.
   let disposeProgressHook: (() => void) | undefined;
-  // Forwarding listener for MESSAGE_RECEIVED → in-flight sub-agent.
-  // Captured here so dispose() can unregister it; otherwise hot-reloads
-  // stack duplicate listeners that each forward to acpx independently.
   let activeSessionForwardHandler:
     | ((payload: { message: Memory }) => Promise<void>)
     | undefined;
@@ -212,17 +209,44 @@ export function createAgentOrchestratorPlugin(): Plugin {
         TASK_AUDIT_EVENT,
         taskAuditHandler,
       );
-      // Forward user messages to an in-flight sub-agent when the channel
-      // already has one running for this (source, roomId). The sub-agent
-      // ingests the new prompt mid-task — claude-agent-acp queues it for
-      // the next planner turn so it stays mid-flight without restarting.
-      // Cross-platform: no thread dependency. Discord/Slack thread replies
-      // and plain WhatsApp/SMS follow-ups both work via the same code path
-      // because the bind is on (source, roomId) of the live SessionStore
-      // entry, not on a Discord thread id.
+      // Forward mid-task user messages to the live sub-agent for this roomId.
+      // Bind is on (source, roomId) — no Discord-thread dependency, so plain
+      // SMS/WhatsApp follow-ups work too.
       activeSessionForwardHandler = async ({ message }) => {
         try {
           if (!message?.entityId || message.entityId === runtime.agentId)
+            return;
+          // Skip orchestrator/sub-agent-router internal posts. The router
+          // emits MESSAGE_RECEIVED with a synthetic `entityId` (not
+          // `runtime.agentId`) for narration/status fan-out, so the
+          // entityId check above does not filter them out. Without the
+          // source filter the router's sub-agent narration would be fed
+          // straight back into `acp.sendPrompt` for the same session →
+          // echo loop on every sub-agent message.
+          const contentRecord = (message.content ?? {}) as Record<
+            string,
+            unknown
+          >;
+          const contentSource =
+            typeof contentRecord.source === "string"
+              ? contentRecord.source
+              : undefined;
+          if (contentSource && INTERNAL_FORWARD_SKIP_SOURCES.has(contentSource))
+            return;
+          // Skip transient status posts. These are persisted by the
+          // orchestrator's own progress hook (sub_agent_progress /
+          // sub_agent_complete) and by the discord plugin via
+          // `extraMetadata`. They can carry the agent's own entityId (so
+          // the agent-id check covers most), but defending against both
+          // top-level Memory.metadata.transient and nested
+          // content.metadata.transient matches the recentMessages
+          // provider's isTransientStatusMessage contract.
+          const topMeta = (message.metadata ?? {}) as Record<string, unknown>;
+          const nestedMeta = (contentRecord.metadata ?? {}) as Record<
+            string,
+            unknown
+          >;
+          if (topMeta.transient === true || nestedMeta.transient === true)
             return;
           const acp = runtime.getService<AcpService>(AcpService.serviceType);
           if (!acp || typeof acp.listSessions !== "function") return;
@@ -238,12 +262,33 @@ export function createAgentOrchestratorPlugin(): Plugin {
             );
           });
           if (!active) return;
+          // Skip sessions already running a prompt. acp.sendPrompt tracks
+          // the spawned subprocess via `activeProcesses.set(sessionId, ...)`
+          // — a concurrent call OVERWRITES that record, so the first
+          // subprocess silently runs untracked. Skipping the forward when
+          // the session is `busy` avoids a double-spawn race and keeps the
+          // user's text deliverable on the next planner turn (the planner
+          // pipeline runs alongside this listener and can still route via
+          // TASKS_SEND_TO_AGENT once the in-flight turn settles).
+          if (active.status === "busy") return;
           const text =
             typeof (message.content as { text?: unknown })?.text === "string"
               ? ((message.content as { text: string }).text ?? "").trim()
               : "";
           if (!text) return;
           if (typeof acp.sendPrompt !== "function") return;
+          // ACL: forwarding user text mid-flight is functionally identical
+          // to the TASKS_SEND_TO_AGENT action — bypassing this check would
+          // let any user with channel write access inject prompts into a
+          // sub-agent another user spawned ("scope drift"). The default
+          // policy requires ADMIN for `interact`; GUEST-allowed deployments
+          // pass through here too.
+          const access = await requireTaskAgentAccess(
+            runtime,
+            message,
+            "interact",
+          );
+          if (!access.allowed) return;
           await acp.sendPrompt(active.id, text).catch((err: unknown) =>
             runtime.logger?.warn?.(
               {

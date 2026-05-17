@@ -435,15 +435,9 @@ export async function runPlannerLoop(
 
     const latestResult = trajectory.steps[trajectory.steps.length - 1]?.result;
     if (latestResult?.continueChain === false) {
-      // Honor `data.suppressPlannerReply: true` from terminal actions.
-      // Used by sub-agent spawn paths (TASKS_SPAWN_AGENT) where the
-      // orchestrator's 🚀 ack / thread narration / ✅ summary already
-      // own user-facing comm. Without this, an LLM-hallucinated
-      // `messageToUser` from the same planner turn can leak to the
-      // channel via callers that read trajectory step data — the
-      // transient-memory filter would mask it on the *next* turn but
-      // not this one. Forcing finalMessage = "" prevents the visible
-      // duplicate altogether.
+      // `suppressPlannerReply` from terminal actions blanks finalMessage so a
+      // same-turn hallucinated `messageToUser` cannot leak past the transient
+      // filter (which only masks it on the *next* turn).
       const suppressReply =
         (latestResult.data as { suppressPlannerReply?: unknown } | undefined)
           ?.suppressPlannerReply === true;
