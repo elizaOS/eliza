@@ -375,6 +375,51 @@ describe("BackendDispatcher", () => {
 		}
 	});
 
+	it("throws when ELIZA_INFERENCE_BACKEND=ffi is set but no ffi backend is wired", async () => {
+		const prev = process.env.ELIZA_INFERENCE_BACKEND;
+		process.env.ELIZA_INFERENCE_BACKEND = "ffi";
+		try {
+			const node = new FakeBackend("node-llama-cpp");
+			const server = new FakeBackend("llama-server");
+			// No ffi backend / probe wired (the production state today).
+			const d = new BackendDispatcher(
+				node,
+				server,
+				() => true,
+				() => false,
+			);
+			await expect(
+				d.load({ modelPath: "/m.gguf", catalog: BASE_CATALOG }),
+			).rejects.toThrow(/ELIZA_INFERENCE_BACKEND=ffi was requested/);
+			expect(server.loaded).toBe(false);
+		} finally {
+			if (prev === undefined) delete process.env.ELIZA_INFERENCE_BACKEND;
+			else process.env.ELIZA_INFERENCE_BACKEND = prev;
+		}
+	});
+
+	it("does NOT throw when ELIZA_INFERENCE_BACKEND=http is set and no ffi backend is wired", async () => {
+		// http is the documented opt-out — must keep the subprocess path
+		// working even when the FFI wiring is absent.
+		const prev = process.env.ELIZA_INFERENCE_BACKEND;
+		process.env.ELIZA_INFERENCE_BACKEND = "http";
+		try {
+			const node = new FakeBackend("node-llama-cpp");
+			const server = new FakeBackend("llama-server");
+			const d = new BackendDispatcher(
+				node,
+				server,
+				() => true,
+				() => false,
+			);
+			await d.load({ modelPath: "/m.gguf", catalog: BASE_CATALOG });
+			expect(server.loaded).toBe(true);
+		} finally {
+			if (prev === undefined) delete process.env.ELIZA_INFERENCE_BACKEND;
+			else process.env.ELIZA_INFERENCE_BACKEND = prev;
+		}
+	});
+
 	it("unloads ffi backend when switching to subprocess on a later load", async () => {
 		const node = new FakeBackend("node-llama-cpp");
 		const server = new FakeBackend("llama-server");

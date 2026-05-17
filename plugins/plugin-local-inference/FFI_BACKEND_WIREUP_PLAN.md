@@ -128,13 +128,74 @@ Steps in dependency order. Each step is independently mergeable and reversible.
 
 ### Step B — build the `FfiBackendRuntime` provider
 
-The hardest step. Needs:
-- A decision on FFI context ownership (#2 above).
-- A tokenizer wired through `llmTokenize` (#3).
-- A capability probe for slot persistence (#4).
+The hardest step. **Updated path forward** based on the native-source audit
+(2026-05-15):
 
-This is real architectural work. ~1–2 days of careful integration. Best done
-as its own focused PR.
+**`libelizainference` doesn't exist as buildable native code in this repo.**
+The headers at `packages/app-core/scripts/ffi-stub/{ffi.h, ffi-streaming-llm.h}`
+declare the aspirational ABI, but only a stub `libelizainference_stub.so` is
+built. The TypeScript binding in `voice/ffi-bindings.ts` is mirroring an
+interface no production implementation backs yet.
+
+**Use the desktop libllama dylib path instead.** The real production path on
+desktop is:
+- [`packages/app-core/scripts/build-llama-cpp-desktop-dylib.mjs`](../app-core/scripts/build-llama-cpp-desktop-dylib.mjs)
+  builds `libllama.{dylib,so,dll}` + `libeliza-llama-shim.{dylib,so,dll}` to
+  `$ELIZA_STATE_DIR/local-inference/bin/dflash/<platform>-<arch>-<backend>/`.
+- AOSP already uses this exact shape via
+  [`plugins/plugin-aosp-local-inference/src/aosp-llama-adapter.ts`](../plugin-aosp-local-inference/src/aosp-llama-adapter.ts)
+  (2689 lines). It binds `llama_tokenize` directly from `libllama.so` and
+  uses pointer-style shim wrappers for everything llama.cpp exposes as
+  struct-by-value (which bun:ffi can't pass directly).
+
+**The concrete deliverable for Step B**: a desktop sibling of
+`aosp-llama-adapter.ts` — `services/desktop-llama-adapter.ts` — that:
+- Resolves `libllama.{dylib,so,dll}` + `libeliza-llama-shim.{dylib,so,dll}`
+  from `$ELIZA_STATE_DIR/local-inference/bin/dflash/<platform>-<arch>-…/`
+  instead of the AOSP per-ABI asset dir.
+- Reuses the AOSP symbol-binding tables verbatim. Same `LlamaSymbols`,
+  `ShimSymbols`, same `dlopenLlama` / `dlopenShim` shape. The only deltas
+  are path resolution and platform-specific dylib extension.
+- Exposes a `tokenize(prompt: string): Int32Array` function that wraps
+  `llama_tokenize` with the AOSP encoding pattern (`encodeCString` →
+  `ffi.ptr` → `llama_tokenize` → slice).
+- Implements `FfiBackendRuntime` from `ffi-streaming-backend.ts` by
+  creating an `FfiStreamingRunner` against the loaded model context and
+  returning it from `acquire(plan)`.
+
+**Estimate**: 1–2 days for a working text-only desktop adapter. The line
+count target is ~1500 — most of which is direct copy from AOSP with path
+substitution. The verified bun:ffi struct-by-value shim pattern in AOSP
+gets the tricky parts right; mirroring buys correctness for free.
+
+**Feature parity gaps that remain after Step B**:
+- Vision describe (mmproj). Requires extending `eliza-llama-shim` with
+  `llava_eval_image_embed` / mtmd-equivalent wrappers, OR routing vision
+  through the subprocess only (current behavior — see Step C).
+- Slot save/restore. The streaming-LLM ABI has `llmStreamSaveSlot` declared
+  but no backing implementation; this is multi-day native work even after
+  `libelizainference` lands. Until then, slot persistence stays subprocess-
+  only.
+- Prewarm (`prewarmConversation`). Equivalent: tokenize+decode a recent
+  conversation prefix into a fresh slot. Solvable in JS once the desktop
+  adapter exposes decode.
+- Resize parallel. The subprocess's `--parallel N` rebuilds the slot pool;
+  the FFI runner has no equivalent because it has only one context.
+  Either implement multi-context pooling at the adapter level OR accept
+  that FFI mode is 1-slot.
+
+**Honest position**: A complete FFI parity story including all four features
+is multi-week native + JS work. The pragmatic ship-it path is:
+1. Step B delivers text-only FFI desktop (the highest-value case).
+2. Vision/slot/prewarm/resize stay subprocess until each is added
+   incrementally to the shim.
+3. `selectBackend()` returns `"ffi-streaming"` only for loads that don't
+   need the missing features; vision-bundle loads continue to use the
+   subprocess path even with FFI enabled.
+
+This split — partial FFI for what's covered, subprocess for the rest — is
+the responsible default. The "retire dflash-server entirely" goal is a
+multi-month roadmap, not a single-PR change.
 
 ### Step C — guard the direct `dflashLlamaServer.*` engine calls
 

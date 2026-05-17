@@ -1,6 +1,42 @@
 /**
  * Out-of-process llama-server backend for DFlash speculative decoding.
  *
+ * DEPRECATION NOTICE (2026-05-15)
+ * ==============================
+ *
+ * This file is the SUBPROCESS+HTTP fallback path. The architectural
+ * direction documented in `plugins/plugin-local-inference/FFI_BACKEND_WIREUP_PLAN.md`
+ * is to route desktop local-inference through the in-process FFI streaming
+ * runner instead. The polarity flip in `backend-selector.ts` already
+ * defaults desktop to `"ffi-streaming"` when `ffiSupported`; setting
+ * `ELIZA_INFERENCE_BACKEND=http` is the explicit opt-out that keeps you
+ * on this path.
+ *
+ * Do NOT add new features here. New work that touches the local-inference
+ * surface should go through `services/ffi-streaming-backend.ts` and the
+ * `BackendDispatcher`'s `ffiStreaming` slot (see the wire-up plan).
+ *
+ * This file remains because:
+ *   1. The FFI desktop adapter is not yet wired in production (Step B in
+ *      the plan — `services/desktop-llama-adapter.ts` to mirror the AOSP
+ *      adapter pattern).
+ *   2. Vision describe (`describeImage`), slot save/restore
+ *      (`persistConversationKv` / `restoreConversationKv`), conversation
+ *      prewarm (`prewarmConversation`), and parallel-slot resize
+ *      (`resizeParallel`) have NO FFI equivalents yet. They are called
+ *      directly from `engine.ts` on the module-level `dflashLlamaServer`
+ *      singleton, bypassing the dispatcher. Until those features are
+ *      added to the eliza-llama-shim (multi-day native work each), this
+ *      file is the only path that supports them.
+ *
+ * Retirement plan: see `FFI_BACKEND_WIREUP_PLAN.md` Steps B–F. Step F is
+ * the final deletion and is gated on text-only FFI soaking in production
+ * and full feature parity landing for vision/slot/prewarm/resize.
+ *
+ * ---
+ *
+ * Implementation note:
+ *
  * DFlash needs llama-server flags (`-md`, `--spec-type dflash`) that the
  * in-process node-llama-cpp API does not expose. This backend is deliberately
  * small: spawn a compatible llama-server, wait for health, and use the
