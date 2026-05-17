@@ -2,9 +2,10 @@ import { expect, test } from "playwright/test";
 
 const heroCopy = [
   "The agentic operating system.",
+  "For devices that run themselves.",
   "Local first",
-  "Open source",
-  "Runs on your phone",
+  "Runs on your device",
+  "No account required",
 ];
 
 const installerCopy = [
