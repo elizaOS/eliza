@@ -40,6 +40,13 @@ interface Character {
   name: string;
 }
 
+interface DiscordConnectionPatch {
+  characterId: string | null;
+  isActive: boolean;
+  metadata: { responseMode: "always" | "mention" | "keyword" };
+  botToken?: string;
+}
+
 interface DiscordGatewayConnection {
   id: string;
   applicationId: string;
@@ -256,7 +263,7 @@ export function DiscordGatewayConnection() {
     setSavingId(connId);
 
     try {
-      const payload: Record<string, unknown> = {
+      const payload: DiscordConnectionPatch = {
         characterId: edit.characterId || null,
         isActive: edit.isActive,
         metadata: {

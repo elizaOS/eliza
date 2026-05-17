@@ -385,6 +385,7 @@ export function MCPsSection({ servers, className }: MCPsSectionProps) {
                         {selectedServer.endpoint}
                       </div>
                       <button
+                        type="button"
                         onClick={() =>
                           copyEndpoint(
                             selectedServer.endpoint,
