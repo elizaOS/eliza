@@ -128,7 +128,7 @@ jobs:
 
             cd /opt/eliza
             for attempt in 1 2 3; do
-              if bun install --frozen-lockfile --ignore-scripts; then
+              if bun install --no-save --ignore-scripts; then
                 break
               fi
               if [ "$attempt" -eq 3 ]; then exit 1; fi
