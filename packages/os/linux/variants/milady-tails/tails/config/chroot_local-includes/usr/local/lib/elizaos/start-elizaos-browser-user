@@ -27,7 +27,7 @@ fi
 
 user_env_file="${XDG_RUNTIME_DIR}/user-env"
 url="http://127.0.0.1:${ELIZAOS_RENDERER_PORT}/?apiBase=http%3A%2F%2F127.0.0.1%3A${ELIZA_API_PORT}"
-export ELIZAOS_SHELL_URL="${ELIZAOS_SHELL_URL:-${url}}"
+export ELIZAOS_SHELL_URL="${url}"
 
 has_display_env() {
     [ -e "${user_env_file}" ] || return 1
