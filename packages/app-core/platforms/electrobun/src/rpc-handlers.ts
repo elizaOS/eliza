@@ -66,6 +66,7 @@ import {
   readInboxSourcesViaHttp,
 } from "./inbox-rpc";
 import { logger } from "./logger";
+import { setFirstPartySatelliteDisabled } from "./first-party-satellites";
 import { getAgentManager } from "./native/agent";
 import { getBrowserWorkspaceManager } from "./native/browser-workspace";
 import { getCameraManager } from "./native/camera";
@@ -788,10 +789,14 @@ export function buildBunRpcHandlers({
       carrots.installFromDirectory(params),
     carrotUninstall: async (params: { id: string }) =>
       carrots.uninstall(params.id),
-    carrotStartWorker: async (params: { id: string }) =>
-      carrots.startWorker(params.id),
-    carrotStopWorker: async (params: { id: string }) =>
-      carrots.stopWorker(params.id),
+    carrotStartWorker: async (params: { id: string }) => {
+      setFirstPartySatelliteDisabled(params.id, false, carrots);
+      return carrots.startWorker(params.id);
+    },
+    carrotStopWorker: async (params: { id: string }) => {
+      setFirstPartySatelliteDisabled(params.id, true, carrots);
+      return carrots.stopWorker(params.id);
+    },
     carrotGetWorkerStatus: async (params: { id: string }) =>
       carrots.getWorkerStatus(params.id),
     carrotListWorkerStatuses: async () => ({
@@ -799,6 +804,8 @@ export function buildBunRpcHandlers({
     }),
     carrotGetLogs: async (params) =>
       carrots.getLogs(params.id, params.maxBytes),
+    carrotInvokeWorker: async (params) => carrots.invokeWorker(params),
+    carrotTailWorkerEvents: async (params) => carrots.tailWorkerEvents(params),
 
     // ---- Browser Workspace ----
     browserWorkspaceGetSnapshot: async () => ({

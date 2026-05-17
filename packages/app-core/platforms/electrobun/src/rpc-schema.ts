@@ -17,6 +17,7 @@ import type {
   CarrotPermissionGrant,
   CarrotStoreSnapshot,
   InstalledCarrotSnapshot,
+  JsonValue,
 } from "@elizaos/electrobun-carrots";
 import type { RPCSchema } from "electrobun/bun";
 
@@ -762,6 +763,7 @@ export interface CarrotInstallFromDirectoryRequest {
   sourceDir: string;
   devMode?: boolean;
   permissionsGranted?: CarrotPermissionGrant;
+  currentHash?: string | null;
 }
 
 export interface CarrotUninstallResult {
@@ -774,6 +776,34 @@ export interface CarrotLogsSnapshot {
   path: string;
   text: string;
   truncated: boolean;
+}
+
+export interface CarrotInvokeWorkerRequest {
+  id: string;
+  method: string;
+  params?: JsonValue;
+  windowId?: string;
+}
+
+export interface CarrotTailWorkerEventsRequest {
+  id: string;
+  afterSequence?: number;
+  limit?: number;
+}
+
+export interface CarrotWorkerEventRecord {
+  carrotId: string;
+  satelliteId: string;
+  sequence: number;
+  name: string;
+  payload: JsonValue | null;
+  timestamp: string;
+}
+
+export interface CarrotWorkerEventsTailSnapshot {
+  id: string;
+  events: CarrotWorkerEventRecord[];
+  nextSequence: number;
 }
 
 export interface DesktopStartupDiagnostics {
@@ -1078,6 +1108,14 @@ export type ElizaDesktopRPCSchema = {
       carrotGetLogs: {
         params: { id: string; maxBytes?: number };
         response: CarrotLogsSnapshot;
+      };
+      carrotInvokeWorker: {
+        params: CarrotInvokeWorkerRequest;
+        response: JsonValue | null;
+      };
+      carrotTailWorkerEvents: {
+        params: CarrotTailWorkerEventsRequest;
+        response: CarrotWorkerEventsTailSnapshot;
       };
       /**
        * Aggregated boot/startup snapshot. Combines `agentStatus` with the
@@ -2258,6 +2296,8 @@ export const CHANNEL_TO_RPC_METHOD: Record<string, string> = {
   "carrot:getWorkerStatus": "carrotGetWorkerStatus",
   "carrot:listWorkerStatuses": "carrotListWorkerStatuses",
   "carrot:getLogs": "carrotGetLogs",
+  "carrot:invokeWorker": "carrotInvokeWorker",
+  "carrot:tailWorkerEvents": "carrotTailWorkerEvents",
 
   // Browser Workspace
   "browser-workspace:getSnapshot": "browserWorkspaceGetSnapshot",

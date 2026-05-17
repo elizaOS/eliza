@@ -1,0 +1,12 @@
+{
+  "name": "@elizalaunch/git-satellite",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "bun build src/bun/worker.ts src/dev/phase7-smoke.ts --outdir dist --target bun",
+    "smoke": "bun run src/dev/phase7-smoke.ts",
+    "smoke:phase7": "bun run src/dev/phase7-smoke.ts",
+    "typecheck": "tsc --ignoreConfig --noEmit --target ES2022 --module ESNext --moduleResolution Bundler --lib ES2022,DOM --types bun-types --allowImportingTsExtensions src/bun/protocol.ts src/bun/errors.ts src/bun/operation-history.ts src/bun/git-command.ts src/bun/git-service.ts src/bun/worker.ts src/dev/phase7-smoke.ts"
+  }
+}

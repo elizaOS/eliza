@@ -228,6 +228,9 @@ const runtimeBundleNodeModulesPath = path.join(
 	runtimeBundleSourcePath,
 	"node_modules",
 );
+const useMacIconsetBuild = isTruthyEnv(
+	process.env.ELIZA_ELECTROBUN_USE_ICONSET,
+);
 const repoPluginsJsonPath = path.relative(
 	electrobunDir,
 	path.join(repoRoot, "plugins.json"),
@@ -516,7 +519,7 @@ export function createElectrobunConfig(): ElectrobunConfig {
 					process.env.ELECTROBUN_SKIP_CODESIGN !== "1" &&
 					process.env.ELIZA_ELECTROBUN_NOTARIZE !== "0",
 				defaultRenderer: "native",
-				icons: "assets/appIcon.iconset",
+				...(useMacIconsetBuild ? { icons: "assets/appIcon.iconset" } : {}),
 				// Entitlements are selected by the ELIZA_BUILD_VARIANT axis:
 				// - "store": parsed from entitlements/mas.entitlements; turns on
 				//   com.apple.security.app-sandbox for Mac App Store distribution.

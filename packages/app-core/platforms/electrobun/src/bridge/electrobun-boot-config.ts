@@ -1,4 +1,7 @@
-const BOOT_CONFIG_STORE_KEY = Symbol.for("elizaos.app.boot-config");
+export const ELECTROBUN_BOOT_CONFIG_STORE_KEY = Symbol.for(
+  "elizaos.app.boot-config",
+);
+const BOOT_CONFIG_STORE_KEY = ELECTROBUN_BOOT_CONFIG_STORE_KEY;
 const BOOT_CONFIG_WINDOW_KEY = "__ELIZAOS_APP_BOOT_CONFIG__";
 const LEGACY_BOOT_CONFIG_WINDOW_KEY = "__ELIZA_APP_BOOT_CONFIG__";
 

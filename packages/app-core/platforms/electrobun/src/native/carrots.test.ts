@@ -495,6 +495,129 @@ describe("CarrotManager", () => {
       });
     }));
 
+  it("invokes a running worker directly from the host", async () =>
+    withTempDir(async (dir) => {
+      const worker = new FakeWorkerHandle();
+      const manager = new CarrotManager({
+        storeRoot: join(dir, "store"),
+        workerRunner: { start: () => worker },
+        now: () => 1700000000000,
+      });
+      manager.installFromDirectory({ sourceDir: writePayload(dir) });
+      manager.startWorker("bunny.search");
+
+      const resultPromise = manager.invokeWorker({
+        id: "bunny.search",
+        method: "lookup",
+        params: { query: "eliza" },
+      });
+      const forwarded = worker.messages.find((m) => m.type === "request");
+      expect(forwarded).toMatchObject({
+        type: "request",
+        method: "lookup",
+        params: { query: "eliza" },
+      });
+
+      worker.emit({
+        type: "response",
+        requestId: (forwarded as { requestId: number }).requestId,
+        success: true,
+        payload: { ok: true },
+      });
+
+      await expect(resultPromise).resolves.toEqual({ ok: true });
+    }));
+
+  it("tails worker events with sequence cursors and bounded limits", () =>
+    withTempDir((dir) => {
+      const worker = new FakeWorkerHandle();
+      let tick = 0;
+      const manager = new CarrotManager({
+        storeRoot: join(dir, "store"),
+        workerRunner: { start: () => worker },
+        now: () => 1700000000000 + tick++,
+      });
+      manager.installFromDirectory({ sourceDir: writePayload(dir) });
+      manager.startWorker("bunny.search");
+
+      worker.emit({
+        type: "event",
+        name: "first",
+        payload: { count: 1 },
+      });
+      worker.emit({
+        type: "event",
+        name: "second",
+        payload: { count: 2 },
+      });
+
+      const initial = manager.tailWorkerEvents({ id: "bunny.search" });
+      expect(initial).toMatchObject({
+        id: "bunny.search",
+        nextSequence: 2,
+        events: [
+          {
+            carrotId: "bunny.search",
+            satelliteId: "bunny.search",
+            sequence: 1,
+            name: "first",
+            payload: { count: 1 },
+          },
+          {
+            sequence: 2,
+            name: "second",
+            payload: { count: 2 },
+          },
+        ],
+      });
+
+      worker.emit({
+        type: "event",
+        name: "third",
+        payload: { count: 3 },
+      });
+      expect(
+        manager.tailWorkerEvents({
+          id: "bunny.search",
+          afterSequence: initial.nextSequence,
+        }).events,
+      ).toMatchObject([
+        {
+          sequence: 3,
+          name: "third",
+          payload: { count: 3 },
+        },
+      ]);
+
+      for (let index = 0; index < 510; index += 1) {
+        worker.emit({
+          type: "event",
+          name: "many",
+          payload: { index },
+        });
+      }
+      const capped = manager.tailWorkerEvents({
+        id: "bunny.search",
+        afterSequence: 0,
+        limit: 1_000,
+      });
+      expect(capped.events).toHaveLength(500);
+      expect(capped.nextSequence).toBe(500);
+    }));
+
+  it("rejects event tailing when the worker is not running", () =>
+    withTempDir((dir) => {
+      const manager = new CarrotManager({
+        storeRoot: join(dir, "store"),
+        now: () => 1700000000000,
+      });
+      manager.installFromDirectory({ sourceDir: writePayload(dir) });
+
+      expect(() => manager.tailWorkerEvents({ id: "bunny.search" })).toThrow(
+        "not running",
+      );
+    }));
+
   it("invoke-carrot returns error when target isn't running", () =>
     withTempDir((dir) => {
       const workerA = new FakeWorkerHandle();

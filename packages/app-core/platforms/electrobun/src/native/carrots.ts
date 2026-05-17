@@ -21,6 +21,7 @@ import type {
   InstalledCarrotSnapshot,
   JsonValue,
   WorkerInitMessage,
+  WorkerEventMessage,
   WorkerResponseMessage,
 } from "@elizaos/electrobun-carrots";
 import {
@@ -39,6 +40,7 @@ import { resolveApiToken } from "@elizaos/shared";
 import { BrowserView, BrowserWindow, Utils } from "electrobun/bun";
 import { logger } from "../logger.js";
 import type { SendToWebview } from "../types.js";
+import { getAgentManager, getDiagnosticLogPath } from "./agent";
 
 type CarrotWindowInstance = InstanceType<typeof BrowserWindow>;
 
@@ -56,6 +58,7 @@ export interface CarrotInstallFromDirectoryOptions {
   sourceDir: string;
   devMode?: boolean;
   permissionsGranted?: CarrotPermissionGrant;
+  currentHash?: string | null;
 }
 
 export interface CarrotUninstallResult {
@@ -68,6 +71,21 @@ export interface CarrotLogsSnapshot {
   path: string;
   text: string;
   truncated: boolean;
+}
+
+export interface CarrotWorkerEventRecord {
+  carrotId: string;
+  satelliteId: string;
+  sequence: number;
+  name: string;
+  payload: JsonValue | null;
+  timestamp: string;
+}
+
+export interface CarrotWorkerEventsTailSnapshot {
+  id: string;
+  events: CarrotWorkerEventRecord[];
+  nextSequence: number;
 }
 
 export interface CarrotWorkerHandle {
@@ -226,21 +244,65 @@ interface PendingInvoke {
   timeout: ReturnType<typeof setTimeout>;
 }
 
+interface PendingDirectInvoke {
+  targetId: string;
+  resolve: (payload: JsonValue | null) => void;
+  reject: (error: Error) => void;
+  timeout: ReturnType<typeof setTimeout>;
+}
+
 const INVOKE_TIMEOUT_MS = 30_000;
+const DEFAULT_WORKER_EVENT_BUFFER_LIMIT = 1_000;
+const DEFAULT_WORKER_EVENT_TAIL_LIMIT = 100;
+const MAX_WORKER_EVENT_TAIL_LIMIT = 500;
+
+function resolveWorkerEventBufferLimit(
+  env: NodeJS.ProcessEnv = process.env,
+): number {
+  const raw = env.ELIZA_CARROT_MAX_WORKER_EVENTS;
+  if (raw === undefined || raw.trim().length === 0) {
+    return DEFAULT_WORKER_EVENT_BUFFER_LIMIT;
+  }
+  const value = Number(raw);
+  if (!Number.isFinite(value) || value < 1) {
+    throw new Error("ELIZA_CARROT_MAX_WORKER_EVENTS must be positive.");
+  }
+  return Math.floor(value);
+}
+
+function cloneEventPayload(payload: JsonValue | undefined): JsonValue | null {
+  if (payload === undefined) return null;
+  try {
+    return JSON.parse(JSON.stringify(payload)) as JsonValue;
+  } catch (error) {
+    return {
+      error: "EVENT_PAYLOAD_UNSERIALIZABLE",
+      message: error instanceof Error ? error.message : String(error),
+    };
+  }
+}
 
 export class CarrotManager {
   private readonly storeRoot: string;
   private readonly workerRunner: CarrotWorkerRunner;
   private readonly now: () => number;
+  private readonly maxWorkerEvents: number;
   private events: CarrotManagerEvents;
   private readonly workers = new Map<string, CarrotWorkerRecord>();
+  private readonly workerEvents = new Map<string, CarrotWorkerEventRecord[]>();
+  private readonly workerEventSequences = new Map<string, number>();
   private readonly pendingInvokes = new Map<number, PendingInvoke>();
+  private readonly pendingDirectInvokes = new Map<
+    number,
+    PendingDirectInvoke
+  >();
   private nextInvokeId = 1;
 
   constructor(options: CarrotManagerOptions = {}) {
     this.storeRoot = options.storeRoot ?? resolveCarrotStoreRoot();
     this.workerRunner = options.workerRunner ?? new BrowserCarrotWorkerRunner();
     this.now = options.now ?? Date.now;
+    this.maxWorkerEvents = resolveWorkerEventBufferLimit();
     this.events = options.events ?? {};
   }
 
@@ -272,6 +334,7 @@ export class CarrotManager {
     const carrot = installPrebuiltCarrot(this.storeRoot, sourceDir, {
       devMode: options.devMode === true,
       permissionsGranted: options.permissionsGranted,
+      currentHash: options.currentHash,
       source: { kind: "local", path: sourceDir },
       now: this.now,
     });
@@ -288,6 +351,8 @@ export class CarrotManager {
     const record = uninstallInstalledCarrot(this.storeRoot, id);
     if (record) {
       this.workers.delete(id);
+      this.workerEvents.delete(id);
+      this.workerEventSequences.delete(id);
       this.emitStoreChanged();
     }
     return { removed: record !== null, carrot: entry };
@@ -329,6 +394,8 @@ export class CarrotManager {
       window: null,
     };
     this.workers.set(id, record);
+    this.workerEvents.set(id, []);
+    this.workerEventSequences.set(id, 0);
     this.emitWorkerChanged(status);
 
     try {
@@ -459,6 +526,8 @@ export class CarrotManager {
       context: record.context,
       window: null,
     });
+    this.workerEvents.delete(id);
+    this.workerEventSequences.delete(id);
     this.emitWorkerChanged(status);
     return status;
   }
@@ -521,6 +590,82 @@ export class CarrotManager {
     };
   }
 
+  invokeWorker(options: {
+    id: string;
+    method: string;
+    params?: JsonValue;
+    windowId?: string;
+  }): Promise<JsonValue | null> {
+    if (options.id.length === 0) {
+      throw new Error("carrot invoke: invalid id.");
+    }
+    if (options.method.length === 0) {
+      throw new Error("carrot invoke: invalid method.");
+    }
+    const target = this.workers.get(options.id);
+    if (!target?.handle || target.status.state !== "running") {
+      throw new Error(`carrot invoke: target ${options.id} is not running.`);
+    }
+    const requestId = ++this.nextInvokeId;
+    const timeout = setTimeout(() => {
+      const pending = this.pendingDirectInvokes.get(requestId);
+      if (!pending) return;
+      this.pendingDirectInvokes.delete(requestId);
+      pending.reject(
+        new Error(
+          `carrot invoke: target ${options.id} did not respond within ${INVOKE_TIMEOUT_MS}ms`,
+        ),
+      );
+    }, INVOKE_TIMEOUT_MS);
+
+    const promise = new Promise<JsonValue | null>((resolve, reject) => {
+      this.pendingDirectInvokes.set(requestId, {
+        targetId: options.id,
+        resolve,
+        reject,
+        timeout,
+      });
+    });
+    target.handle.postMessage({
+      type: "request",
+      requestId,
+      method: options.method,
+      ...(options.params === undefined ? {} : { params: options.params }),
+      ...(typeof options.windowId === "string"
+        ? { windowId: options.windowId }
+        : {}),
+    });
+    return promise;
+  }
+
+  tailWorkerEvents(options: {
+    id: string;
+    afterSequence?: number;
+    limit?: number;
+  }): CarrotWorkerEventsTailSnapshot {
+    const record = this.workers.get(options.id);
+    if (!record?.handle || record.status.state !== "running") {
+      throw new Error(`carrot events: target ${options.id} is not running.`);
+    }
+    const limit = this.normalizeEventTailLimit(options.limit);
+    const events = this.workerEvents.get(options.id) ?? [];
+    const afterSequence = options.afterSequence;
+    const filtered =
+      typeof afterSequence === "number"
+        ? events.filter((event) => event.sequence > afterSequence)
+        : events.slice(-limit);
+    const selected = filtered.slice(0, limit);
+    const currentSequence = this.workerEventSequences.get(options.id) ?? 0;
+    return {
+      id: options.id,
+      events: selected,
+      nextSequence:
+        selected.length > 0
+          ? selected[selected.length - 1].sequence
+          : afterSequence ?? currentSequence,
+    };
+  }
+
   dispose(): void {
     for (const id of this.workers.keys()) {
       this.stopWorker(id);
@@ -550,6 +695,11 @@ export class CarrotManager {
 
     if (message.type === "response") {
       this.handleWorkerResponse(id, handle, message);
+      return;
+    }
+
+    if (message.type === "event") {
+      this.recordWorkerEvent(id, message);
       return;
     }
 
@@ -593,6 +743,33 @@ export class CarrotManager {
       name,
       ...(payload.payload === undefined ? {} : { payload: payload.payload }),
     });
+  }
+
+  private recordWorkerEvent(id: string, message: WorkerEventMessage): void {
+    const sequence = (this.workerEventSequences.get(id) ?? 0) + 1;
+    this.workerEventSequences.set(id, sequence);
+    const event: CarrotWorkerEventRecord = {
+      carrotId: id,
+      satelliteId: id,
+      sequence,
+      name: message.name,
+      payload: cloneEventPayload(message.payload),
+      timestamp: new Date(this.now()).toISOString(),
+    };
+    const events = this.workerEvents.get(id) ?? [];
+    events.push(event);
+    if (events.length > this.maxWorkerEvents) {
+      events.splice(0, events.length - this.maxWorkerEvents);
+    }
+    this.workerEvents.set(id, events);
+  }
+
+  private normalizeEventTailLimit(limit: number | undefined): number {
+    if (limit === undefined) return DEFAULT_WORKER_EVENT_TAIL_LIMIT;
+    if (!Number.isFinite(limit) || limit < 1) {
+      throw new Error("carrot events: limit must be positive.");
+    }
+    return Math.min(Math.floor(limit), MAX_WORKER_EVENT_TAIL_LIMIT);
   }
 
   private handleHostRequest(
@@ -699,7 +876,10 @@ export class CarrotManager {
     const record = this.workers.get(id);
     if (record?.handle !== handle) return;
     const pending = this.pendingInvokes.get(response.requestId);
-    if (!pending) return;
+    if (!pending) {
+      this.handleDirectWorkerResponse(response);
+      return;
+    }
     this.pendingInvokes.delete(response.requestId);
     clearTimeout(pending.timeout);
     this.postHostResponse(pending.callerHandle, {
@@ -714,6 +894,20 @@ export class CarrotManager {
             error: response.error ?? "invoke-carrot: target returned failure",
           }),
     });
+  }
+
+  private handleDirectWorkerResponse(response: WorkerResponseMessage): void {
+    const pending = this.pendingDirectInvokes.get(response.requestId);
+    if (!pending) return;
+    this.pendingDirectInvokes.delete(response.requestId);
+    clearTimeout(pending.timeout);
+    if (response.success) {
+      pending.resolve(response.payload ?? null);
+    } else {
+      pending.reject(
+        new Error(response.error ?? "carrot invoke: target returned failure"),
+      );
+    }
   }
 
   private rejectPendingInvokesForWorker(id: string): void {
@@ -731,6 +925,14 @@ export class CarrotManager {
         this.pendingInvokes.delete(invokeId);
         clearTimeout(pending.timeout);
       }
+    }
+    for (const [invokeId, pending] of this.pendingDirectInvokes) {
+      if (pending.targetId !== id) continue;
+      this.pendingDirectInvokes.delete(invokeId);
+      clearTimeout(pending.timeout);
+      pending.reject(
+        new Error(`carrot invoke: target ${id} stopped before responding`),
+      );
     }
   }
 
@@ -784,6 +986,26 @@ export class CarrotManager {
         this.stopWorker(targetId);
         return { ok: true };
       }
+      case "agent-manager-start":
+        this.requireManageCarrots(callerId, "agent-manager-start");
+        return (await getAgentManager().start()) as unknown as JsonValue;
+      case "agent-manager-stop": {
+        this.requireManageCarrots(callerId, "agent-manager-stop");
+        await getAgentManager().stop();
+        return getAgentManager().getStatus() as unknown as JsonValue;
+      }
+      case "agent-manager-restart":
+        this.requireManageCarrots(callerId, "agent-manager-restart");
+        return (await getAgentManager().restart()) as unknown as JsonValue;
+      case "agent-manager-status":
+        this.requireManageCarrots(callerId, "agent-manager-status");
+        return getAgentManager().getStatus() as unknown as JsonValue;
+      case "agent-manager-health":
+        this.requireManageCarrots(callerId, "agent-manager-health");
+        return this.readAgentManagerHealth();
+      case "agent-manager-logs-tail":
+        this.requireManageCarrots(callerId, "agent-manager-logs-tail");
+        return this.readAgentManagerLogsTail(params);
       case "get-auth-token": {
         const record = this.workers.get(callerId);
         if (!record?.context) {
@@ -818,6 +1040,80 @@ export class CarrotManager {
           `Host request method not implemented: ${method} (caller=${callerId})`,
         );
     }
+  }
+
+  private async readAgentManagerHealth(): Promise<JsonValue> {
+    const status = getAgentManager().getStatus();
+    if (status.port === null) {
+      return {
+        ok: false,
+        apiBase: null,
+        path: "/api/health",
+        status: null,
+        error: "AgentManager has no active API port.",
+        agentStatus: status as unknown as JsonValue,
+      };
+    }
+    const apiBase = `http://127.0.0.1:${status.port}`;
+    try {
+      const response = await fetch(`${apiBase}/api/health`, {
+        signal: AbortSignal.timeout(1500),
+      });
+      return {
+        ok: response.ok,
+        apiBase,
+        path: "/api/health",
+        status: response.status,
+        body: await response.text(),
+        agentStatus: status as unknown as JsonValue,
+      };
+    } catch (error) {
+      return {
+        ok: false,
+        apiBase,
+        path: "/api/health",
+        status: null,
+        error: error instanceof Error ? error.message : String(error),
+        agentStatus: status as unknown as JsonValue,
+      };
+    }
+  }
+
+  private readAgentManagerLogsTail(params: JsonValue | undefined): JsonValue {
+    const maxBytes = this.readLogMaxBytes(params);
+    const logPath = getDiagnosticLogPath();
+    if (!fs.existsSync(logPath)) {
+      return { path: logPath, text: "", truncated: false };
+    }
+    const stat = fs.statSync(logPath);
+    const size = Math.max(0, stat.size);
+    const start = Math.max(0, size - maxBytes);
+    const length = size - start;
+    const buffer = Buffer.alloc(length);
+    const fd = fs.openSync(logPath, "r");
+    try {
+      fs.readSync(fd, buffer, 0, length, start);
+    } finally {
+      fs.closeSync(fd);
+    }
+    return {
+      path: logPath,
+      text: buffer.toString("utf8"),
+      truncated: start > 0,
+    };
+  }
+
+  private readLogMaxBytes(params: JsonValue | undefined): number {
+    if (params === undefined) return 64 * 1024;
+    if (!isRecord(params)) {
+      throw new Error("agent-manager-logs-tail: params must be an object.");
+    }
+    const value = params.maxBytes;
+    if (value === undefined) return 64 * 1024;
+    if (typeof value !== "number" || !Number.isFinite(value) || value < 1) {
+      throw new Error("agent-manager-logs-tail: maxBytes must be positive.");
+    }
+    return Math.floor(value);
   }
 
   private markWorkerError(

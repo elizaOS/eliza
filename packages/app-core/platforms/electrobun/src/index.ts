@@ -33,6 +33,7 @@ import { startDesktopTestBridgeServer } from "./desktop-test-bridge-server";
 import { shouldCreateDesktopTray } from "./desktop-tray-config";
 import { scheduleDevtoolsLayoutRefresh } from "./devtools-layout";
 import { createElectrobunBrowserWindow } from "./electrobun-window-options";
+import { seedFirstPartySatellitesForStartup } from "./first-party-satellites";
 import { getFloatingChatManager } from "./floating-chat-window";
 import * as apiBaseOwner from "./lifecycle/api-base-owner";
 import {
@@ -2138,6 +2139,7 @@ async function main(): Promise<void> {
   recordStartupPhase("window_ready", {
     pid: process.pid,
   });
+  seedFirstPartySatellitesForStartup();
 
   // Configure the floating chat manager now that the renderer URL is resolved.
   // This must run after createMainWindow() so rendererUrlPromise is already set.

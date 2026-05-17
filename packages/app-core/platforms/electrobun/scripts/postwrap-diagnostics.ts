@@ -11,6 +11,8 @@ import {
 	signLocalAppBundle,
 } from "./local-adhoc-sign-macos";
 
+const scriptDir = path.dirname(fileURLToPath(import.meta.url));
+
 type BinaryReport = {
 	exists: boolean;
 	name: string;
@@ -298,6 +300,20 @@ export function ensureMacPermissionUsageDescriptions(
 	return inserted;
 }
 
+export function ensureMacAppIcon(
+	resourcesDir: string,
+	osName: string,
+): boolean {
+	if (osName !== "macos") return false;
+	const sourcePath = path.resolve(scriptDir, "..", "assets", "appIcon.icns");
+	if (!fs.existsSync(sourcePath)) return false;
+
+	const destinationPath = joinPortable(resourcesDir, "AppIcon.icns");
+	fs.mkdirSync(dirnamePortable(destinationPath), { recursive: true });
+	fs.copyFileSync(sourcePath, destinationPath);
+	return true;
+}
+
 export function resolveDiagnosticsOutputPath(
 	bundlePath: string,
 	env: NodeJS.ProcessEnv = process.env,
@@ -418,6 +434,10 @@ export function main(
 		console.log(
 			`[postwrap-diagnostics] added Info.plist privacy strings: ${insertedUsageDescriptions.join(", ")}`,
 		);
+	}
+
+	if (ensureMacAppIcon(resourcesDir, osName)) {
+		console.log("[postwrap-diagnostics] installed wrapper AppIcon.icns");
 	}
 
 	if (shouldApplyLocalAdhocSigning(env)) {
