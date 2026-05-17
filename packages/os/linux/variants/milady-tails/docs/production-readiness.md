@@ -68,9 +68,12 @@ strict mode:
 ELIZAOS_SECURITY_STRICT=1 scripts/security-smoke.sh
 ```
 
-Strict mode treats inherited broad sudoers, missing production update keyring,
-and missing SBOM/provenance artifacts as blockers. The USB writer has a
-signature-verification path, but production still needs a real release keyring.
+Strict mode treats unexpected broad sudoers, missing production update keyring,
+and missing SBOM/provenance artifacts as blockers. The inherited Tails broad
+sudoers rules are explicitly reviewed in
+[`inherited-tails-sudoers-review.md`](./inherited-tails-sudoers-review.md) and
+must not grow silently. The USB writer has a signature-verification path, but
+production still needs a real release keyring.
 
 ## Root Capability Boundary
 
@@ -97,9 +100,11 @@ Current checked policy:
 - package installation, service mutation, network mutation, disk writes, and
   arbitrary command execution are not broker capabilities
 
-Known production finding: inherited Tails sudoers for Persistent Storage and
-IUK updates contains broad internal authority. elizaOS does not add to it, but
-enterprise release needs an explicit accept/mitigate decision.
+Known production finding: inherited Tails sudoers for Persistent Storage,
+Greeter, Tor Browser, IUK updates, and WhisperBack contains broad internal
+authority. elizaOS does not add to it; the current accept/mitigate decision is
+documented in the inherited sudoers review. Enterprise release still needs an
+external audit of that inherited trust boundary.
 
 ## Persistence and Update Boundaries
 
