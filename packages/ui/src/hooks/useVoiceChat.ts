@@ -29,6 +29,7 @@ import {
 import {
   getTalkModePlugin,
   type TalkModeErrorEvent,
+  type TalkModePlaybackStartEvent,
   type TalkModeStateEvent,
   type TalkModeTranscriptEvent,
 } from "../bridge/native-plugins";
@@ -983,6 +984,13 @@ export function useVoiceChat(options: VoiceChatOptions): VoiceChatState {
     // Browser TTS
     synthRef.current?.cancel();
     utteranceRef.current = null;
+    if (Capacitor.isNativePlatform()) {
+      void getTalkModePlugin()
+        .stopSpeaking()
+        .catch(() => {
+          /* native plugin may not be registered in web/unit tests */
+        });
+    }
 
     // ElevenLabs audio
     if (audioSourceRef.current) {
@@ -1304,6 +1312,63 @@ export function useVoiceChat(options: VoiceChatOptions): VoiceChatState {
 
   const speakLocalInference = useCallback(
     async (text: string, task: SpeakTask, generation: number) => {
+      if (Capacitor.isNativePlatform()) {
+        if (generation !== generationRef.current) return;
+        const talkMode = getTalkModePlugin();
+        let playbackStarted = false;
+        let playbackHandle: PluginListenerHandle | null = null;
+        try {
+          playbackHandle = await talkMode.addListener(
+            "playbackStart",
+            (event: TalkModePlaybackStartEvent) => {
+              if (
+                playbackStarted ||
+                generation !== generationRef.current ||
+                event.provider !== "local-inference"
+              ) {
+                return;
+              }
+              playbackStarted = true;
+              emitPlaybackStart({
+                text,
+                segment: task.segment,
+                provider: "local-inference",
+                cached: false,
+                startedAtMs: performance.now(),
+                ...task.telemetry,
+              });
+            },
+          );
+        } catch {
+          playbackHandle = null;
+        }
+        ttsDebug("play:talkmode:local-inference:dispatch", {
+          segment: task.segment,
+          append: task.append,
+          textChars: text.length,
+          preview: ttsDebugTextPreview(text),
+          engine: "native-talkmode-local-inference",
+        });
+        try {
+          const result = await talkMode.speak({
+            text,
+            useLocalInferenceTts: true,
+          });
+          if (generation === generationRef.current) {
+            if (!result.completed && !result.interrupted) {
+              throw new Error(
+                result.error || "Native local inference TTS failed",
+              );
+            }
+          }
+        } finally {
+          await playbackHandle?.remove().catch(() => {
+            /* ignore */
+          });
+        }
+        return;
+      }
+
       let ctx = sharedAudioCtx;
       if (!ctx) {
         ctx = new AudioContext();

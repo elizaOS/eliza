@@ -27,6 +27,7 @@ import com.getcapacitor.annotation.Permission
 import com.getcapacitor.annotation.PermissionCallback
 import kotlinx.coroutines.*
 import java.io.BufferedInputStream
+import java.io.File
 import java.net.HttpURLConnection
 import java.net.URL
 import java.util.Locale
@@ -46,6 +47,7 @@ class TalkModePlugin : Plugin() {
         private const val TAG = "TalkMode"
         private const val DEFAULT_MODEL_ID = "eleven_flash_v2_5"
         private const val DEFAULT_OUTPUT_FORMAT = "pcm_24000"
+        private const val LOCAL_INFERENCE_TTS_URL = "http://127.0.0.1:31337/api/tts/local-inference"
     }
 
     private val mainHandler = Handler(Looper.getMainLooper())
@@ -80,6 +82,7 @@ class TalkModePlugin : Plugin() {
     private var lastSpokenText: String? = null
     private var speakStartTimeMs: Long = 0
     private var lastInterruptedAtSeconds: Double? = null
+    @Volatile private var activePcmConnection: HttpURLConnection? = null
 
     // Audio focus
     private var audioManager: AudioManager? = null
@@ -365,16 +368,18 @@ class TalkModePlugin : Plugin() {
         }
 
         val useSystemTts = call.getBoolean("useSystemTts", false) ?: false
+        val useLocalInferenceTts = call.getBoolean("useLocalInferenceTts", false) ?: false
         val directive = call.getObject("directive")
 
         speakingJob = scope.launch {
-            speakInternal(text, useSystemTts, directive, call)
+            speakInternal(text, useSystemTts, useLocalInferenceTts, directive, call)
         }
     }
 
     @PluginMethod
     fun stopSpeaking(call: PluginCall) {
         val interruptedAt = computeInterruptedAt()
+        lastInterruptedAtSeconds = interruptedAt
         stopSpeakingInternal()
         call.resolve(JSObject().apply {
             if (interruptedAt != null) {
@@ -532,8 +537,8 @@ class TalkModePlugin : Plugin() {
         if (isSpeaking && interruptOnSpeech) {
             if (shouldInterrupt(transcript)) {
                 val interruptedAt = computeInterruptedAt()
-                stopSpeakingInternal()
                 lastInterruptedAtSeconds = interruptedAt
+                stopSpeakingInternal()
             }
             return
         }
@@ -589,6 +594,7 @@ class TalkModePlugin : Plugin() {
     private suspend fun speakInternal(
         text: String,
         forceSystemTts: Boolean,
+        useLocalInferenceTts: Boolean,
         directive: JSObject?,
         call: PluginCall
     ) {
@@ -597,6 +603,7 @@ class TalkModePlugin : Plugin() {
         lastSpokenText = text
         speakStartTimeMs = SystemClock.elapsedRealtime()
         pcmStopRequested.set(false)
+        lastInterruptedAtSeconds = null
         setState("speaking", "Speaking")
 
         val effectiveVoiceId = directive.stringOrNull("voiceId")?.let(::resolveVoiceAlias) ?: voiceId
@@ -604,7 +611,11 @@ class TalkModePlugin : Plugin() {
 
         notifyListeners("speaking", JSObject().apply {
             put("text", text)
-            put("isSystemTts", forceSystemTts || effectiveApiKey.isNullOrEmpty() || effectiveVoiceId.isNullOrEmpty())
+            put(
+                "isSystemTts",
+                !useLocalInferenceTts &&
+                    (forceSystemTts || effectiveApiKey.isNullOrEmpty() || effectiveVoiceId.isNullOrEmpty())
+            )
         })
 
         // Stop listening during speech (we keep recognizer for interrupt detection)
@@ -615,16 +626,53 @@ class TalkModePlugin : Plugin() {
         requestAudioFocus()
 
         try {
-            val canUseElevenLabs = !forceSystemTts &&
+            val canUseLocalInference = useLocalInferenceTts && !forceSystemTts
+            val canUseElevenLabs = !canUseLocalInference &&
+                !forceSystemTts &&
                 !effectiveApiKey.isNullOrEmpty() &&
                 !effectiveVoiceId.isNullOrEmpty()
 
-            if (canUseElevenLabs) {
+            if (canUseLocalInference) {
+                try {
+                    streamAndPlayLocalInferenceTts(text, directive)
+
+                    if (!pcmStopRequested.get()) {
+                        call.resolve(JSObject().apply {
+                            put("completed", true)
+                            put("interrupted", false)
+                            put("usedSystemTts", false)
+                        })
+                    } else {
+                        call.resolve(JSObject().apply {
+                            put("completed", false)
+                            put("interrupted", true)
+                            put("usedSystemTts", false)
+                            lastInterruptedAtSeconds?.let { put("interruptedAt", it) }
+                        })
+                    }
+                } catch (e: Exception) {
+                    if (pcmStopRequested.get()) {
+                        call.resolve(JSObject().apply {
+                            put("completed", false)
+                            put("interrupted", true)
+                            put("usedSystemTts", false)
+                        })
+                    } else {
+                        Log.e(TAG, "Local inference TTS failed", e)
+                        call.resolve(JSObject().apply {
+                            put("completed", false)
+                            put("interrupted", false)
+                            put("usedSystemTts", false)
+                            put("error", e.message ?: "Local inference TTS failed")
+                        })
+                    }
+                }
+            } else if (canUseElevenLabs) {
                 try {
                     val request = buildElevenLabsRequest(text, directive)
                     streamAndPlayPcm(
-                        voiceId = effectiveVoiceId!!,
-                        apiKey = effectiveApiKey!!,
+                        voiceId = effectiveVoiceId,
+                        apiKey = effectiveApiKey,
                         request = request
                     )
 
@@ -666,13 +714,17 @@ class TalkModePlugin : Plugin() {
                 put("error", e.message ?: "Speak failed")
             })
         } finally {
+            val wasInterrupted = pcmStopRequested.get()
+            val interruptedAt = lastInterruptedAtSeconds
             isSpeaking = false
             pcmStopRequested.set(false)
             abandonAudioFocus()
 
             notifyListeners("speakComplete", JSObject().apply {
-                put("completed", !pcmStopRequested.get())
-                lastInterruptedAtSeconds?.let { put("interruptedAt", it) }
+                put("completed", !wasInterrupted)
+                if (wasInterrupted) {
+                    interruptedAt?.let { put("interruptedAt", it) }
+                }
             })
 
             if (enabled) {
@@ -754,6 +806,278 @@ class TalkModePlugin : Plugin() {
         return if (value == null || value === JSONObject.NULL) null else value.toString()
     }
 
+    private data class PcmStreamFormat(
+        val sampleRate: Int,
+        val channels: Int,
+        val bitsPerSample: Int,
+        val dataBytes: Int
+    )
+
+    /**
+     * Stream local-inference TTS from the embedded agent and play it natively.
+     *
+     * The agent currently returns a buffered WAV, but keeping playback in
+     * AudioTrack means this path is ready for a chunked PCM/WAV response without
+     * going back through WebView decodeAudioData.
+     */
+    private suspend fun streamAndPlayLocalInferenceTts(
+        text: String,
+        directive: JSObject?
+    ) = withContext(Dispatchers.IO) {
+        pcmStopRequested.set(false)
+        val conn = openLocalInferenceTtsConnection()
+        activePcmConnection = conn
+        try {
+            val payload = buildLocalInferenceTtsPayload(text, directive)
+            conn.outputStream.use { it.write(payload.toByteArray(Charsets.UTF_8)) }
+
+            val code = conn.responseCode
+            if (code >= 400) {
+                val errBody = conn.errorStream?.readBytes()?.toString(Charsets.UTF_8) ?: ""
+                throw IllegalStateException("Local inference TTS error: $code $errBody")
+            }
+
+            BufferedInputStream(conn.inputStream).use { input ->
+                val format = readWavPcmFormat(input)
+                val track = createPcmAudioTrack(format)
+                pcmTrack = track
+                track.play()
+
+                Log.d(
+                    TAG,
+                    "Local inference PCM play start sampleRate=${format.sampleRate} channels=${format.channels}"
+                )
+                notifyListeners("playbackStart", JSObject().apply {
+                    put("provider", "local-inference")
+                    put("sampleRate", format.sampleRate)
+                    put("channels", format.channels)
+                })
+                val framesWritten = writePcmStreamToTrack(input, track, format)
+                drainPcmTrack(track, framesWritten, format.sampleRate)
+                if (!pcmStopRequested.get()) {
+                    track.stop()
+                }
+                Log.d(TAG, "Local inference PCM play done frames=$framesWritten")
+            }
+        } finally {
+            cleanupPcmTrack()
+            if (activePcmConnection === conn) {
+                activePcmConnection = null
+            }
+            conn.disconnect()
+        }
+    }
+
+    private fun openLocalInferenceTtsConnection(): HttpURLConnection {
+        val tokenFile = File(context.filesDir, "auth/local-agent-token")
+        val token = tokenFile.takeIf { it.isFile }?.readText()?.trim().orEmpty()
+        if (token.isEmpty()) {
+            throw IllegalStateException("Local agent auth token is missing")
+        }
+
+        val conn = URL(LOCAL_INFERENCE_TTS_URL).openConnection() as HttpURLConnection
+        conn.requestMethod = "POST"
+        conn.connectTimeout = 30_000
+        conn.readTimeout = 180_000
+        conn.setRequestProperty("Authorization", "Bearer $token")
+        conn.setRequestProperty("Content-Type", "application/json")
+        conn.setRequestProperty("Accept", "audio/wav, audio/pcm;q=0.9")
+        conn.doOutput = true
+        return conn
+    }
+
+    private fun buildLocalInferenceTtsPayload(text: String, directive: JSObject?): String {
+        val payload = JSONObject()
+        payload.put("text", text)
+        directive.stringOrNull("voiceId")?.let { payload.put("voiceId", it) }
+        directive.stringOrNull("voice")?.let { payload.put("voice", it) }
+        directive.stringOrNull("modelId")?.let { payload.put("modelId", it) }
+        directive.stringOrNull("model")?.let { payload.put("model", it) }
+        val speed = directive?.optDouble("speed", Double.NaN)
+        if (speed != null && speed.isFinite() && speed > 0.0) {
+            payload.put("speed", speed)
+        }
+        return payload.toString()
+    }
+
+    private fun readExactly(input: BufferedInputStream, size: Int): ByteArray {
+        val bytes = ByteArray(size)
+        var offset = 0
+        while (offset < size) {
+            val read = input.read(bytes, offset, size - offset)
+            if (read < 0) {
+                throw IllegalStateException("Unexpected end of WAV stream")
+            }
+            offset += read
+        }
+        return bytes
+    }
+
+    private fun skipFully(input: BufferedInputStream, count: Int) {
+        var remaining = count
+        while (remaining > 0) {
+            val skipped = input.skip(remaining.toLong()).toInt()
+            if (skipped > 0) {
+                remaining -= skipped
+                continue
+            }
+            if (input.read() < 0) {
+                throw IllegalStateException("Unexpected end of WAV stream")
+            }
+            remaining -= 1
+        }
+    }
+
+    private fun littleEndianShort(bytes: ByteArray, offset: Int): Int {
+        return (bytes[offset].toInt() and 0xff) or
+            ((bytes[offset + 1].toInt() and 0xff) shl 8)
+    }
+
+    private fun littleEndianInt(bytes: ByteArray, offset: Int): Int {
+        return (bytes[offset].toInt() and 0xff) or
+            ((bytes[offset + 1].toInt() and 0xff) shl 8) or
+            ((bytes[offset + 2].toInt() and 0xff) shl 16) or
+            ((bytes[offset + 3].toInt() and 0xff) shl 24)
+    }
+
+    private fun chunkId(bytes: ByteArray): String {
+        return String(bytes, 0, 4, Charsets.US_ASCII)
+    }
+
+    private fun readWavPcmFormat(input: BufferedInputStream): PcmStreamFormat {
+        val riff = readExactly(input, 12)
+        if (
+            String(riff, 0, 4, Charsets.US_ASCII) != "RIFF" ||
+            String(riff, 8, 4, Charsets.US_ASCII) != "WAVE"
+        ) {
+            throw IllegalStateException("Local inference TTS returned non-WAV audio")
+        }
+
+        var format: PcmStreamFormat? = null
+        while (true) {
+            val header = readExactly(input, 8)
+            val id = chunkId(header)
+            val size = littleEndianInt(header, 4)
+            if (size < 0) {
+                throw IllegalStateException("Invalid WAV chunk size for $id")
+            }
+
+            if (id == "fmt ") {
+                val fmt = readExactly(input, size)
+                if (fmt.size < 16) {
+                    throw IllegalStateException("Invalid WAV fmt chunk")
+                }
+                val audioFormat = littleEndianShort(fmt, 0)
+                val channels = littleEndianShort(fmt, 2)
+                val sampleRate = littleEndianInt(fmt, 4)
+                val bitsPerSample = littleEndianShort(fmt, 14)
+                if (audioFormat != 1) {
+                    throw IllegalStateException("Only PCM WAV is supported, got format=$audioFormat")
+                }
+                if (bitsPerSample != 16) {
+                    throw IllegalStateException("Only 16-bit PCM WAV is supported, got bits=$bitsPerSample")
+                }
+                if (channels !in 1..2 || sampleRate <= 0) {
+                    throw IllegalStateException("Invalid WAV format sampleRate=$sampleRate channels=$channels")
+                }
+                format = PcmStreamFormat(sampleRate, channels, bitsPerSample, 0)
+                if (size % 2 == 1) skipFully(input, 1)
+                continue
+            }
+
+            if (id == "data") {
+                val parsed = format ?: throw IllegalStateException("WAV data arrived before fmt chunk")
+                return parsed.copy(dataBytes = size)
+            }
+
+            skipFully(input, size)
+            if (size % 2 == 1) skipFully(input, 1)
+        }
+    }
+
+    private fun createPcmAudioTrack(format: PcmStreamFormat): AudioTrack {
+        val channelMask = when (format.channels) {
+            1 -> AudioFormat.CHANNEL_OUT_MONO
+            2 -> AudioFormat.CHANNEL_OUT_STEREO
+            else -> throw IllegalStateException("Unsupported PCM channel count ${format.channels}")
+        }
+        val minBuffer = AudioTrack.getMinBufferSize(
+            format.sampleRate,
+            channelMask,
+            AudioFormat.ENCODING_PCM_16BIT
+        )
+        if (minBuffer <= 0) {
+            throw IllegalStateException("AudioTrack buffer size invalid: $minBuffer")
+        }
+        val bufferSize = max(minBuffer * 2, 8 * 1024)
+        val track = AudioTrack.Builder()
+            .setAudioAttributes(
+                AudioAttributes.Builder()
+                    .setUsage(AudioAttributes.USAGE_ASSISTANT)
+                    .setContentType(AudioAttributes.CONTENT_TYPE_SPEECH)
+                    .build()
+            )
+            .setAudioFormat(
+                AudioFormat.Builder()
+                    .setEncoding(AudioFormat.ENCODING_PCM_16BIT)
+                    .setSampleRate(format.sampleRate)
+                    .setChannelMask(channelMask)
+                    .build()
+            )
+            .setBufferSizeInBytes(bufferSize)
+            .setTransferMode(AudioTrack.MODE_STREAM)
+            .build()
+
+        if (track.state != AudioTrack.STATE_INITIALIZED) {
+            track.release()
+            throw IllegalStateException("AudioTrack init failed")
+        }
+        return track
+    }
+
+    private fun writePcmStreamToTrack(
+        input: BufferedInputStream,
+        track: AudioTrack,
+        format: PcmStreamFormat
+    ): Long {
+        val bytesPerFrame = format.channels * (format.bitsPerSample / 8)
+        var bytesWrittenTotal = 0L
+        var remainingBytes = format.dataBytes
+        val buffer = ByteArray(8 * 1024)
+        while (remainingBytes > 0) {
+            if (pcmStopRequested.get()) break
+            val requestBytes = if (remainingBytes < buffer.size) remainingBytes else buffer.size
+            val bytesRead = input.read(buffer, 0, requestBytes)
+            if (bytesRead <= 0) break
+            remainingBytes -= bytesRead
+
+            var offset = 0
+            while (offset < bytesRead) {
+                if (pcmStopRequested.get()) break
+                val wrote = track.write(buffer, offset, bytesRead - offset)
+                if (wrote <= 0) {
+                    throw IllegalStateException("AudioTrack write failed: $wrote")
+                }
+                offset += wrote
+                bytesWrittenTotal += wrote.toLong()
+            }
+        }
+        return if (bytesPerFrame > 0) bytesWrittenTotal / bytesPerFrame else 0L
+    }
+
+    private fun drainPcmTrack(track: AudioTrack, framesWritten: Long, sampleRate: Int) {
+        if (framesWritten <= 0L || sampleRate <= 0) return
+        val maxDrainMs = ((framesWritten * 1000L) / sampleRate).coerceAtMost(30_000L) + 1_000L
+        val deadline = SystemClock.elapsedRealtime() + maxDrainMs
+        while (
+            !pcmStopRequested.get() &&
+            track.playbackHeadPosition.toLong() < framesWritten &&
+            SystemClock.elapsedRealtime() < deadline
+        ) {
+            SystemClock.sleep(20)
+        }
+    }
+
     /**
      * Stream PCM audio from ElevenLabs and play via AudioTrack.
      * Ported from classic TalkModeManager with proper offset-based writes.
@@ -803,6 +1127,7 @@ class TalkModePlugin : Plugin() {
 
         Log.d(TAG, "PCM play start sampleRate=$sampleRate bufferSize=$bufferSize")
         val conn = openTtsConnection(voiceId, apiKey, request)
+        activePcmConnection = conn
         try {
             val payload = buildRequestPayload(request)
             conn.outputStream.use { it.write(payload.toByteArray()) }
@@ -846,6 +1171,9 @@ class TalkModePlugin : Plugin() {
             Log.d(TAG, "PCM play done")
         } finally {
             cleanupPcmTrack()
+            if (activePcmConnection === conn) {
+                activePcmConnection = null
+            }
             conn.disconnect()
         }
     }
@@ -1008,6 +1336,9 @@ class TalkModePlugin : Plugin() {
 
     private fun stopSpeakingInternal() {
         pcmStopRequested.set(true)
+        val conn = activePcmConnection
+        activePcmConnection = null
+        conn?.disconnect()
         cleanupPcmTrack()
         systemTts?.stop()
         systemTtsPending?.cancel()
