@@ -9,13 +9,11 @@
 import type { OnboardingOptions } from "../../api";
 import type { JsonSchemaObject } from "../../config/config-catalog";
 import type { ConfigUiHint } from "../../types";
-export declare const DEFAULT_RESPONSE_HANDLER_MODEL =
-  "__DEFAULT_RESPONSE_HANDLER__";
-export declare const DEFAULT_ACTION_PLANNER_MODEL =
-  "__DEFAULT_ACTION_PLANNER__";
+export declare const DEFAULT_RESPONSE_HANDLER_MODEL = "__DEFAULT_RESPONSE_HANDLER__";
+export declare const DEFAULT_ACTION_PLANNER_MODEL = "__DEFAULT_ACTION_PLANNER__";
 export interface CloudModelSchema {
-  schema: JsonSchemaObject;
-  hints: Record<string, ConfigUiHint>;
+    schema: JsonSchemaObject;
+    hints: Record<string, ConfigUiHint>;
 }
 /**
  * Build the JSONSchema + UI hints for the cloud model tier grid.
@@ -24,7 +22,5 @@ export interface CloudModelSchema {
  * the override selectors (responseHandler, actionPlanner) which accept any
  * model.
  */
-export declare function buildCloudModelSchema(
-  options: OnboardingOptions["models"],
-): CloudModelSchema;
+export declare function buildCloudModelSchema(options: OnboardingOptions["models"]): CloudModelSchema;
 //# sourceMappingURL=cloud-model-schema.d.ts.map

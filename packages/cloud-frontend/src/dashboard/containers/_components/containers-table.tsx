@@ -15,6 +15,10 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
   Badge,
+  DashboardDataList,
+  DashboardDataListDesktop,
+  DashboardDataListFilteredCount,
+  DashboardDataListMobile,
   Input,
   Select,
   SelectContent,
@@ -210,13 +214,17 @@ export function ContainersTable({ containers }: ContainersTableProps) {
     return deployDate.toLocaleDateString();
   };
 
+  const openContainerUrl = (url: string) => {
+    window.open(url, "_blank");
+  };
+
   if (containers.length === 0) {
     return null;
   }
 
   return (
     <TooltipProvider>
-      <div className="space-y-4">
+      <DashboardDataList>
         {/* Search and Filters */}
         <div className="flex flex-col sm:flex-row gap-3">
           <div className="relative flex-1">
@@ -230,7 +238,7 @@ export function ContainersTable({ containers }: ContainersTableProps) {
                   searchQuery: e.target.value,
                 }))
               }
-              className="pl-9 h-10 rounded-lg border-white/10 bg-black/40 text-white placeholder:text-neutral-500 focus-visible:ring-[#FF5800]/50"
+              className="pl-9 h-10 rounded-sm border-white/10 bg-black/40 text-white placeholder:text-neutral-500 focus-visible:ring-[#FF5800]/50"
             />
           </div>
           <Select
@@ -239,10 +247,10 @@ export function ContainersTable({ containers }: ContainersTableProps) {
               setFilters((prev) => ({ ...prev, statusFilter: value }))
             }
           >
-            <SelectTrigger className="w-full sm:w-[160px] h-10 rounded-lg border-white/10 bg-black/40">
+            <SelectTrigger className="w-full sm:w-[160px] h-10 rounded-sm border-white/10 bg-black/40">
               <SelectValue placeholder="All statuses" />
             </SelectTrigger>
-            <SelectContent className="rounded-lg border-white/10 bg-neutral-900">
+            <SelectContent className="rounded-sm border-white/10 bg-neutral-900">
               <SelectItem value="all">All Statuses</SelectItem>
               <SelectItem value="running">Running</SelectItem>
               <SelectItem value="pending">Pending</SelectItem>
@@ -256,19 +264,22 @@ export function ContainersTable({ containers }: ContainersTableProps) {
 
         {/* Results Count */}
         {(filters.searchQuery || filters.statusFilter !== "all") && (
-          <p className="text-sm text-neutral-500">
-            Showing {filteredAndSortedContainers.length} of {containers.length}{" "}
-            containers
-          </p>
+          <DashboardDataListFilteredCount
+            filtered={filteredAndSortedContainers.length}
+            total={containers.length}
+            label="containers"
+            className="text-sm normal-case tracking-normal text-neutral-500"
+          />
         )}
 
         {/* Desktop table */}
-        <div className="hidden overflow-hidden rounded-lg border border-white/10 md:block">
+        <DashboardDataListDesktop className="rounded-sm">
           <Table>
             <TableHeader>
               <TableRow className="bg-black/40 border-b border-white/10">
                 <TableHead>
                   <button
+                    type="button"
                     onClick={() => handleSort("name")}
                     className="flex items-center gap-1 text-xs font-medium text-neutral-400 hover:text-white transition-colors"
                   >
@@ -278,6 +289,7 @@ export function ContainersTable({ containers }: ContainersTableProps) {
                 </TableHead>
                 <TableHead>
                   <button
+                    type="button"
                     onClick={() => handleSort("status")}
                     className="flex items-center gap-1 text-xs font-medium text-neutral-400 hover:text-white transition-colors"
                   >
@@ -287,6 +299,7 @@ export function ContainersTable({ containers }: ContainersTableProps) {
                 </TableHead>
                 <TableHead>
                   <button
+                    type="button"
                     onClick={() => handleSort("cpu")}
                     className="flex items-center gap-1 text-xs font-medium text-neutral-400 hover:text-white transition-colors"
                   >
@@ -299,6 +312,7 @@ export function ContainersTable({ containers }: ContainersTableProps) {
                 </TableHead>
                 <TableHead>
                   <button
+                    type="button"
                     onClick={() => handleSort("deployed")}
                     className="flex items-center gap-1 text-xs font-medium text-neutral-400 hover:text-white transition-colors"
                   >
@@ -349,7 +363,7 @@ export function ContainersTable({ containers }: ContainersTableProps) {
                       <div className="flex flex-col gap-2">
                         <Badge
                           variant="outline"
-                          className={`${getStatusColor(container.status)} text-white border-none w-fit rounded-md text-xs`}
+                          className={`${getStatusColor(container.status)} text-white border-none w-fit rounded-sm text-xs`}
                         >
                           {container.status}
                         </Badge>
@@ -401,7 +415,10 @@ export function ContainersTable({ containers }: ContainersTableProps) {
                         <Tooltip>
                           <TooltipTrigger asChild>
                             <Link to={`/dashboard/containers/${container.id}`}>
-                              <button className="p-2 text-neutral-400 hover:text-white hover:bg-white/5 rounded-lg transition-colors">
+                              <button
+                                type="button"
+                                className="p-2 text-neutral-400 hover:text-white hover:bg-white/5 rounded-sm transition-colors"
+                              >
                                 <FileText className="h-4 w-4" />
                               </button>
                             </Link>
@@ -415,13 +432,15 @@ export function ContainersTable({ containers }: ContainersTableProps) {
                           <Tooltip>
                             <TooltipTrigger asChild>
                               <button
-                                onClick={() =>
-                                  window.open(
-                                    container.load_balancer_url!,
-                                    "_blank",
-                                  )
-                                }
-                                className="p-2 text-neutral-400 hover:text-white hover:bg-white/5 rounded-lg transition-colors"
+                                type="button"
+                                onClick={() => {
+                                  if (container.load_balancer_url) {
+                                    openContainerUrl(
+                                      container.load_balancer_url,
+                                    );
+                                  }
+                                }}
+                                className="p-2 text-neutral-400 hover:text-white hover:bg-white/5 rounded-sm transition-colors"
                               >
                                 <ExternalLink className="h-4 w-4" />
                               </button>
@@ -435,9 +454,10 @@ export function ContainersTable({ containers }: ContainersTableProps) {
                         <Tooltip>
                           <TooltipTrigger asChild>
                             <button
+                              type="button"
                               onClick={() => setDeleteId(container.id)}
                               disabled={isDeleting}
-                              className="p-2 text-neutral-400 hover:text-red-500 hover:bg-red-500/10 rounded-lg transition-colors disabled:opacity-50"
+                              className="p-2 text-neutral-400 hover:text-red-500 hover:bg-red-500/10 rounded-sm transition-colors disabled:opacity-50"
                             >
                               <Trash2 className="h-4 w-4" />
                             </button>
@@ -453,12 +473,12 @@ export function ContainersTable({ containers }: ContainersTableProps) {
               )}
             </TableBody>
           </Table>
-        </div>
+        </DashboardDataListDesktop>
 
         {/* Mobile cards */}
-        <div className="space-y-2 md:hidden">
+        <DashboardDataListMobile>
           {filteredAndSortedContainers.length === 0 ? (
-            <div className="flex min-h-32 flex-col items-center justify-center rounded-lg border border-white/10 bg-black/40 p-6 text-center text-neutral-500">
+            <div className="flex min-h-32 flex-col items-center justify-center rounded-sm border border-white/10 bg-black/40 p-6 text-center text-neutral-500">
               <Boxes className="mb-2 h-8 w-8" />
               <p>No containers match your filters</p>
             </div>
@@ -466,7 +486,7 @@ export function ContainersTable({ containers }: ContainersTableProps) {
             filteredAndSortedContainers.map((container) => (
               <div
                 key={container.id}
-                className="space-y-3 rounded-lg border border-white/10 bg-black/40 p-4"
+                className="space-y-3 rounded-sm border border-white/10 bg-black/40 p-4"
               >
                 <div className="flex min-w-0 items-start justify-between gap-3">
                   <div className="min-w-0 space-y-1">
@@ -487,7 +507,7 @@ export function ContainersTable({ containers }: ContainersTableProps) {
                   </div>
                   <Badge
                     variant="outline"
-                    className={`${getStatusColor(container.status)} w-fit shrink-0 rounded-md border-none text-xs text-white`}
+                    className={`${getStatusColor(container.status)} w-fit shrink-0 rounded-sm border-none text-xs text-white`}
                   >
                     {container.status}
                   </Badge>
@@ -524,7 +544,7 @@ export function ContainersTable({ containers }: ContainersTableProps) {
                 <div className="flex items-center gap-2 border-t border-white/5 pt-3">
                   <Link
                     to={`/dashboard/containers/${container.id}`}
-                    className="flex flex-1 items-center justify-center gap-1.5 rounded-lg border border-white/10 py-2 text-xs text-neutral-300 transition-colors hover:bg-white/5 hover:text-white"
+                    className="flex flex-1 items-center justify-center gap-1.5 rounded-sm border border-white/10 py-2 text-xs text-neutral-300 transition-colors hover:bg-white/5 hover:text-white"
                   >
                     <FileText className="h-3.5 w-3.5" />
                     Details
@@ -533,10 +553,12 @@ export function ContainersTable({ containers }: ContainersTableProps) {
                   {container.load_balancer_url && (
                     <button
                       type="button"
-                      onClick={() =>
-                        window.open(container.load_balancer_url!, "_blank")
-                      }
-                      className="flex flex-1 items-center justify-center gap-1.5 rounded-lg border border-white/10 py-2 text-xs text-neutral-300 transition-colors hover:bg-white/5 hover:text-white"
+                      onClick={() => {
+                        if (container.load_balancer_url) {
+                          openContainerUrl(container.load_balancer_url);
+                        }
+                      }}
+                      className="flex flex-1 items-center justify-center gap-1.5 rounded-sm border border-white/10 py-2 text-xs text-neutral-300 transition-colors hover:bg-white/5 hover:text-white"
                     >
                       <ExternalLink className="h-3.5 w-3.5" />
                       Open
@@ -547,7 +569,7 @@ export function ContainersTable({ containers }: ContainersTableProps) {
                     type="button"
                     onClick={() => setDeleteId(container.id)}
                     disabled={isDeleting}
-                    className="rounded-lg border border-white/10 px-3 py-2 text-neutral-400 transition-colors hover:bg-red-500/10 hover:text-red-500 disabled:opacity-50"
+                    className="rounded-sm border border-white/10 px-3 py-2 text-neutral-400 transition-colors hover:bg-red-500/10 hover:text-red-500 disabled:opacity-50"
                     aria-label={`Delete ${container.name}`}
                   >
                     <Trash2 className="h-3.5 w-3.5" />
@@ -556,8 +578,8 @@ export function ContainersTable({ containers }: ContainersTableProps) {
               </div>
             ))
           )}
-        </div>
-      </div>
+        </DashboardDataListMobile>
+      </DashboardDataList>
 
       <AlertDialog
         open={deleteId !== null}

@@ -9,11 +9,8 @@ import type { ReactNode } from "react";
  * drop the chat fallback without leaving the user staring at a blank
  * panel.
  */
-export declare function HomePlaceholderView({
-  contentHeader,
-  inModal,
-}?: {
-  contentHeader?: ReactNode;
-  inModal?: boolean;
+export declare function HomePlaceholderView({ contentHeader, inModal, }?: {
+    contentHeader?: ReactNode;
+    inModal?: boolean;
 }): import("react/jsx-runtime").JSX.Element;
 //# sourceMappingURL=HomePlaceholderView.d.ts.map

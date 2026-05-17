@@ -73,7 +73,7 @@ export function AppDetailsTabs({ app, showApiKey }: AppDetailsTabsProps) {
   return (
     <div className="space-y-3 sm:space-y-6">
       {/* Tabs */}
-      <div className="grid grid-cols-2 gap-1 rounded-lg border border-border bg-bg-accent p-1 sm:grid-cols-4 xl:grid-cols-8">
+      <div className="grid grid-cols-2 gap-1 rounded-sm border border-border bg-bg-accent p-1 sm:grid-cols-4 xl:grid-cols-8">
         {tabs.map((tab) => {
           const Icon = tab.icon;
           return (
@@ -81,7 +81,7 @@ export function AppDetailsTabs({ app, showApiKey }: AppDetailsTabsProps) {
               key={tab.value}
               onClick={() => handleTabChange(tab.value)}
               className={cn(
-                "flex min-w-0 items-center justify-center gap-1.5 rounded-md px-2 py-1.5 text-xs font-medium transition-colors sm:text-sm",
+                "flex min-w-0 items-center justify-center gap-1.5 rounded-sm px-2 py-1.5 text-xs font-medium transition-colors sm:text-sm",
                 activeTab === tab.value
                   ? "bg-card text-txt shadow-sm"
                   : "text-muted hover:bg-bg-hover hover:text-txt",

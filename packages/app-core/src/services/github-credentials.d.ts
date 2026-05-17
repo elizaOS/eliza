@@ -18,18 +18,18 @@
  * the dedicated OAuth flow. This module is the local-first surface only.
  */
 export interface GitHubCredentials {
-  /** The PAT itself. Never sent back to the UI after save. */
-  token: string;
-  /** The GitHub `login` returned by `GET api.github.com/user` at save time. */
-  username: string;
-  /**
-   * Token scopes returned by GitHub's `X-OAuth-Scopes` response header at
-   * save time. Recorded so the UI can show what the token is allowed to
-   * do without round-tripping back to GitHub on every render.
-   */
-  scopes: string[];
-  /** Wall-clock ms when the credential was saved. */
-  savedAt: number;
+    /** The PAT itself. Never sent back to the UI after save. */
+    token: string;
+    /** The GitHub `login` returned by `GET api.github.com/user` at save time. */
+    username: string;
+    /**
+     * Token scopes returned by GitHub's `X-OAuth-Scopes` response header at
+     * save time. Recorded so the UI can show what the token is allowed to
+     * do without round-tripping back to GitHub on every render.
+     */
+    scopes: string[];
+    /** Wall-clock ms when the credential was saved. */
+    savedAt: number;
 }
 /** Subset of {@link GitHubCredentials} that is safe to send to the UI. */
 export type GitHubCredentialMetadata = Omit<GitHubCredentials, "token">;
@@ -50,9 +50,7 @@ export declare function loadMetadata(): Promise<GitHubCredentialMetadata | null>
  * parent directory if needed. Overwrites any existing record for the
  * single-user/single-token storage model.
  */
-export declare function saveCredentials(
-  creds: GitHubCredentials,
-): Promise<void>;
+export declare function saveCredentials(creds: GitHubCredentials): Promise<void>;
 /**
  * Remove the credential file. Idempotent — succeeds silently when nothing
  * is saved. Any other FS error propagates so callers can surface it.
@@ -63,14 +61,9 @@ export declare function clearCredentials(): Promise<void>;
  * tiny and pure so the route handler can call it without pulling in any
  * I/O surface. The route is responsible for the actual `fetch`.
  */
-export declare function buildCredentialsFromUserResponse(
-  token: string,
-  user: {
+export declare function buildCredentialsFromUserResponse(token: string, user: {
     login: string;
-  },
-  scopes: string[],
-  now?: number,
-): GitHubCredentials;
+}, scopes: string[], now?: number): GitHubCredentials;
 /**
  * Resolve the canonical state-dir-respecting path for tests that need to
  * assert against the on-disk location without re-implementing the
@@ -78,15 +71,15 @@ export declare function buildCredentialsFromUserResponse(
  */
 export declare function _resolveStateDirForTests(): string;
 export interface ApplySavedTokenResult {
-  /** True when a saved token was found and copied into process.env. */
-  applied: boolean;
-  /**
-   * True when `process.env.GITHUB_TOKEN` was already set before this call.
-   * The existing value is left untouched — explicit env always wins.
-   */
-  envAlreadySet: boolean;
-  /** Username from the saved record, surfaced for boot logging. */
-  username?: string;
+    /** True when a saved token was found and copied into process.env. */
+    applied: boolean;
+    /**
+     * True when `process.env.GITHUB_TOKEN` was already set before this call.
+     * The existing value is left untouched — explicit env always wins.
+     */
+    envAlreadySet: boolean;
+    /** Username from the saved record, surfaced for boot logging. */
+    username?: string;
 }
 /**
  * Read the saved credential and copy the token into `process.env.GITHUB_TOKEN`

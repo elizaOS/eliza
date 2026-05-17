@@ -61,14 +61,14 @@ export function AccountDetails({ user }: AccountDetailsProps) {
                   {user.email_verified ? (
                     <>
                       <CheckCircle2 className="h-4 w-4 text-green-400" />
-                      <span className="rounded-none border border-green-500/40 bg-green-500/10 px-2 py-0.5 text-xs text-green-400">
+                      <span className="rounded-sm border border-green-500/40 bg-green-500/10 px-2 py-0.5 text-xs text-green-400">
                         Verified
                       </span>
                     </>
                   ) : (
                     <>
                       <XCircle className="h-4 w-4 text-orange-400" />
-                      <span className="rounded-none border border-orange-500/40 bg-orange-500/10 px-2 py-0.5 text-xs text-orange-300">
+                      <span className="rounded-sm border border-orange-500/40 bg-orange-500/10 px-2 py-0.5 text-xs text-orange-300">
                         Not Verified
                       </span>
                     </>
@@ -87,14 +87,14 @@ export function AccountDetails({ user }: AccountDetailsProps) {
                   {user.wallet_verified ? (
                     <>
                       <CheckCircle2 className="h-4 w-4 text-green-400" />
-                      <span className="rounded-none border border-green-500/40 bg-green-500/10 px-2 py-0.5 text-xs text-green-400">
+                      <span className="rounded-sm border border-green-500/40 bg-green-500/10 px-2 py-0.5 text-xs text-green-400">
                         Verified
                       </span>
                     </>
                   ) : (
                     <>
                       <XCircle className="h-4 w-4 text-orange-400" />
-                      <span className="rounded-none border border-orange-500/40 bg-orange-500/10 px-2 py-0.5 text-xs text-orange-300">
+                      <span className="rounded-sm border border-orange-500/40 bg-orange-500/10 px-2 py-0.5 text-xs text-orange-300">
                         Not Verified
                       </span>
                     </>
@@ -108,7 +108,7 @@ export function AccountDetails({ user }: AccountDetailsProps) {
                 Account Status
               </p>
               <span
-                className={`rounded-none px-2 py-1 text-xs font-bold uppercase tracking-wide border ${user.is_active ? "bg-green-500/20 text-green-400 border-green-500/40" : "bg-red-500/20 text-red-400 border-red-500/40"}`}
+                className={`rounded-sm px-2 py-1 text-xs font-bold uppercase tracking-wide border ${user.is_active ? "bg-green-500/20 text-green-400 border-green-500/40" : "bg-red-500/20 text-red-400 border-red-500/40"}`}
               >
                 {user.is_active ? "Active" : "Inactive"}
               </span>
@@ -118,7 +118,7 @@ export function AccountDetails({ user }: AccountDetailsProps) {
               <p className="text-xs text-white/50 uppercase tracking-wide">
                 Role
               </p>
-              <span className="rounded-none bg-white/10 px-2 py-1 text-xs text-white capitalize">
+              <span className="rounded-sm bg-white/10 px-2 py-1 text-xs text-white capitalize">
                 {user.role}
               </span>
             </div>
@@ -155,7 +155,7 @@ export function AccountDetails({ user }: AccountDetailsProps) {
                   {user.wallet_address}
                 </p>
                 {user.wallet_chain_type && (
-                  <span className="rounded-none bg-white/10 px-2 py-0.5 text-xs text-white capitalize">
+                  <span className="rounded-sm bg-white/10 px-2 py-0.5 text-xs text-white capitalize">
                     {user.wallet_chain_type}
                   </span>
                 )}

@@ -22,13 +22,12 @@
  */
 export type AndroidRuntimeMode = "cloud" | "local";
 type RuntimeEnv = Record<string, string | boolean | undefined>;
-export declare function resolveAndroidRuntimeMode(
-  env: RuntimeEnv,
-): AndroidRuntimeMode;
+export declare function resolveAndroidRuntimeMode(env: RuntimeEnv): AndroidRuntimeMode;
 /**
  * Returns true when the active Android build is the Play-Store-compliant
  * cloud-locked variant. Always false on iOS, desktop, and the default
  * sideload Android build.
  */
 export declare function isAndroidCloudBuild(): boolean;
+export {};
 //# sourceMappingURL=android-runtime.d.ts.map

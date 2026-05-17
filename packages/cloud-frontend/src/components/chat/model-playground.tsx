@@ -312,7 +312,10 @@ export function ModelPlayground() {
             </div>
 
             <div className="mt-4 space-y-2">
-              <label className="text-xs uppercase tracking-[0.22em] text-white/40">
+              <label
+                htmlFor="model-select"
+                className="text-xs uppercase tracking-[0.22em] text-white/40"
+              >
                 Model
               </label>
               <Select
@@ -320,7 +323,7 @@ export function ModelPlayground() {
                 onValueChange={setSelectedModelId}
                 disabled={isLoading || models.length === 0 || isSending}
               >
-                <SelectTrigger className="w-full">
+                <SelectTrigger id="model-select" className="w-full">
                   <SelectValue
                     placeholder={
                       isLoading ? "Loading models..." : "Select a model"

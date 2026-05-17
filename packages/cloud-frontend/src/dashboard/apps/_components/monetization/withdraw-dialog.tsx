@@ -172,7 +172,7 @@ export function WithdrawDialog({
 
             <div className="space-y-4 py-4">
               {/* Balance display */}
-              <div className="flex items-center justify-between p-3 bg-black/30 rounded-lg border border-white/10">
+              <div className="flex items-center justify-between p-3 bg-black/30 rounded-sm border border-white/10">
                 <span className="text-sm text-neutral-400">
                   Available Balance
                 </span>
@@ -272,7 +272,7 @@ export function WithdrawDialog({
             <p className="text-xs text-neutral-500 mb-4">
               Visit your Earnings page to redeem as elizaOS tokens
             </p>
-            <div className="inline-block p-3 bg-black/30 rounded-lg border border-white/10">
+            <div className="inline-block p-3 bg-black/30 rounded-sm border border-white/10">
               <span className="text-xs text-neutral-500">
                 Remaining App Balance
               </span>

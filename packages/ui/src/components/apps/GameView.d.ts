@@ -9,14 +9,10 @@
  */
 import { type AppSessionState } from "../../api";
 import type { DesktopClickAuditItem } from "../../utils/desktop-workspace";
-export declare function buildDisconnectedSessionState(
-  session: AppSessionState | null,
-): AppSessionState | null;
+export declare function buildDisconnectedSessionState(session: AppSessionState | null): AppSessionState | null;
 export declare const DESKTOP_GAME_CLICK_AUDIT: readonly DesktopClickAuditItem[];
-export declare function DesktopGameWindowControls({
-  gameWindowId,
-}: {
-  gameWindowId: string | null;
+export declare function DesktopGameWindowControls({ gameWindowId, }: {
+    gameWindowId: string | null;
 }): import("react/jsx-runtime").JSX.Element;
 export declare function GameView(): import("react/jsx-runtime").JSX.Element;
 //# sourceMappingURL=GameView.d.ts.map

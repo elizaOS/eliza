@@ -13,7 +13,8 @@ const archNames: Record<string, string> = {
 };
 
 const envName = process.env.ELECTROBUN_ENV?.trim() || "dev";
-const osName = process.env.ELECTROBUN_OS?.trim() || platformNames[process.platform];
+const osName =
+	process.env.ELECTROBUN_OS?.trim() || platformNames[process.platform];
 const archName = process.env.ELECTROBUN_ARCH?.trim() || archNames[process.arch];
 
 if (!osName || !archName) {

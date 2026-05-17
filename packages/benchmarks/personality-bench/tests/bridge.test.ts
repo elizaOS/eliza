@@ -1,6 +1,6 @@
 /**
  * @fileoverview Tests for the W3-2 → W3-3 personality-bench bridge in
- * `scripts/personality-bench-bridge.mjs`.
+ * `src/bridge.ts`.
  *
  * The bridge translates scenario-side `judgeKwargs` (with `styleKey` /
  * `traitKey` / `direction` / `variantKey` enums plus 0-indexed user-turn
@@ -22,7 +22,7 @@ import {
   type PersonalityScenarioLike,
   STYLE_KEY_TO_STYLE,
   TRAIT_KEY_TO_OPTIONS,
-} from "../../../../scripts/personality-bench-bridge.mjs";
+} from "../src/bridge";
 
 type TestScenario = PersonalityScenarioLike;
 

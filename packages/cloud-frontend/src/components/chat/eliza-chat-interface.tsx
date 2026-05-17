@@ -12,12 +12,16 @@
 
 import {
   Button,
+  ElizaAvatar,
+  MemoizedChatMessage,
   ScrollArea,
   Select,
   SelectContent,
   SelectItem,
   SelectTrigger,
   SelectValue,
+  useAudioPlayer,
+  useAudioRecorder,
   useRenderGuard,
 } from "@elizaos/ui";
 import {
@@ -50,11 +54,7 @@ import { useThrottledStreamingUpdate } from "@/lib/hooks/use-throttled-streaming
 import { useChatStore } from "@/lib/stores/chat-store";
 import { cn } from "@/lib/utils";
 import { ensureAudioFormat } from "@/lib/utils/audio";
-import { ElizaAvatar } from "./eliza-avatar";
-import { useAudioPlayer } from "./hooks/use-audio-player";
-import { useAudioRecorder } from "./hooks/use-audio-recorder";
 import { useModelTier } from "./hooks/use-model-tier";
-import { MemoizedChatMessage } from "./memoized-chat-message";
 import "highlight.js/styles/github-dark.css";
 import type { Voice as CustomVoice } from "@elizaos/ui";
 import {
@@ -374,7 +374,9 @@ export function ElizaChatInterface({
   useEffect(() => {
     if (messageAudioUrls.current.size > 0) {
       // Revoke all object URLs to prevent memory leaks
-      messageAudioUrls.current.forEach((url) => URL.revokeObjectURL(url));
+      messageAudioUrls.current.forEach((url) => {
+        URL.revokeObjectURL(url);
+      });
       messageAudioUrls.current.clear();
     }
   }, []);
@@ -393,7 +395,9 @@ export function ElizaChatInterface({
       clearAllStreaming();
       renderedMessages.clear();
       // Revoke all audio URLs on unmount
-      audioUrls.forEach((url) => URL.revokeObjectURL(url));
+      audioUrls.forEach((url) => {
+        URL.revokeObjectURL(url);
+      });
       audioUrls.clear();
     };
   }, [clearAllStreaming]);
@@ -1830,6 +1834,7 @@ export function ElizaChatInterface({
                           fill="none"
                           viewBox="0 0 24 24"
                           stroke="currentColor"
+                          aria-hidden="true"
                         >
                           <path
                             strokeLinecap="round"

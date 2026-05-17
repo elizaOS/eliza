@@ -85,7 +85,6 @@ export function ElizaPageClient({
   initialRoomId,
   initialCharacterId,
   sharedCharacter,
-  isOwnerOfSelectedCharacter,
   accessError,
 }: ElizaPageClientProps) {
   useRenderGuard("ElizaPageClient");

@@ -194,15 +194,23 @@ function resolveRuntimeBundleSourcePath(rootDir: string): string {
 		return runtimeDistPath;
 	}
 
-	const sanitizedDistPath = path.join(electrobunDir, ".generated", "runtime-dist");
+	const sanitizedDistPath = path.join(
+		electrobunDir,
+		".generated",
+		"runtime-dist",
+	);
 	fs.rmSync(sanitizedDistPath, { recursive: true, force: true });
 	fs.mkdirSync(sanitizedDistPath, { recursive: true });
 	for (const entry of fs.readdirSync(runtimeDistPath)) {
 		if (entry === "node_modules") continue;
-		fs.cpSync(path.join(runtimeDistPath, entry), path.join(sanitizedDistPath, entry), {
-			recursive: true,
-			dereference: false,
-		});
+		fs.cpSync(
+			path.join(runtimeDistPath, entry),
+			path.join(sanitizedDistPath, entry),
+			{
+				recursive: true,
+				dereference: false,
+			},
+		);
 	}
 	return sanitizedDistPath;
 }

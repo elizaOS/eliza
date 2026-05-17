@@ -14,15 +14,7 @@
  * Keep this list strict. Adding entries forces every consumer to
  * re-evaluate its mapping table — not a free change.
  */
-export declare const EMOTIONS: readonly [
-  "neutral",
-  "happy",
-  "sad",
-  "angry",
-  "surprised",
-  "fearful",
-  "disgusted",
-];
+export declare const EMOTIONS: readonly ["neutral", "happy", "sad", "angry", "surprised", "fearful", "disgusted"];
 export type Emotion = (typeof EMOTIONS)[number];
 export declare const DEFAULT_EMOTION: Emotion;
 /**
@@ -47,7 +39,5 @@ export declare function emotionFromText(text: string): Emotion;
  * understands. Returns `undefined` for `neutral` so callers can skip
  * appending the keyword to the instruct string.
  */
-export declare function emotionToOmnivoiceKeyword(
-  emotion: Emotion,
-): string | undefined;
+export declare function emotionToOmnivoiceKeyword(emotion: Emotion): string | undefined;
 //# sourceMappingURL=emotion.d.ts.map

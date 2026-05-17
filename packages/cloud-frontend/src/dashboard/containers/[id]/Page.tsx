@@ -84,7 +84,7 @@ export default function ContainerDetailsPage() {
             className="group flex items-center gap-2 text-sm text-white/70 hover:text-white transition-all duration-200"
             style={{ fontFamily: "var(--font-roboto-mono)" }}
           >
-            <div className="flex items-center justify-center w-8 h-8 rounded-none border border-white/10 bg-black/40 group-hover:bg-white/5 group-hover:border-[#FF5800]/50 transition-all duration-200">
+            <div className="flex items-center justify-center w-8 h-8 rounded-sm border border-white/10 bg-black/40 group-hover:bg-white/5 group-hover:border-[#FF5800]/50 transition-all duration-200">
               <ArrowLeft className="h-4 w-4" />
             </div>
             <span className="font-medium">Back to Containers</span>
@@ -110,7 +110,7 @@ export default function ContainerDetailsPage() {
         >
           <div className="relative z-10">
             <div className="flex items-center gap-4">
-              <div className="flex items-center justify-center w-14 h-14 rounded-none border border-[#FF5800]/30 bg-[#FF5800]/10">
+              <div className="flex items-center justify-center w-14 h-14 rounded-sm border border-[#FF5800]/30 bg-[#FF5800]/10">
                 <Server className="h-7 w-7 text-[#FF5800]" />
               </div>
               <div className="flex-1 min-w-0">
@@ -143,10 +143,10 @@ export default function ContainerDetailsPage() {
           >
             <div className="relative z-10">
               <div className="flex items-center justify-between mb-4">
-                <div className="p-2 rounded-none bg-blue-500/10 border border-blue-500/20">
+                <div className="p-2 rounded-sm bg-blue-500/10 border border-blue-500/20">
                   <Server className="h-5 w-5 text-blue-500" />
                 </div>
-                <Badge className={`${statusColor} text-white rounded-none`}>
+                <Badge className={`${statusColor} text-white rounded-sm`}>
                   {container.status}
                 </Badge>
               </div>
@@ -171,7 +171,7 @@ export default function ContainerDetailsPage() {
           >
             <div className="relative z-10">
               <div className="flex items-center justify-between mb-4">
-                <div className="p-2 rounded-none bg-purple-500/10 border border-purple-500/20">
+                <div className="p-2 rounded-sm bg-purple-500/10 border border-purple-500/20">
                   <Cpu className="h-5 w-5 text-purple-500" />
                 </div>
               </div>
@@ -197,7 +197,7 @@ export default function ContainerDetailsPage() {
           >
             <div className="relative z-10">
               <div className="flex items-center justify-between mb-4">
-                <div className="p-2 rounded-none bg-green-500/10 border border-green-500/20">
+                <div className="p-2 rounded-sm bg-green-500/10 border border-green-500/20">
                   <HardDrive className="h-5 w-5 text-green-500" />
                 </div>
               </div>
@@ -223,7 +223,7 @@ export default function ContainerDetailsPage() {
           >
             <div className="relative z-10">
               <div className="flex items-center justify-between mb-4">
-                <div className="p-2 rounded-none bg-orange-500/10 border border-orange-500/20">
+                <div className="p-2 rounded-sm bg-orange-500/10 border border-orange-500/20">
                   <Clock className="h-5 w-5 text-orange-500" />
                 </div>
               </div>
@@ -267,7 +267,7 @@ export default function ContainerDetailsPage() {
             </div>
 
             <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-              <div className="flex items-center gap-3 p-4 rounded-none border border-white/10 bg-black/20">
+              <div className="flex items-center gap-3 p-4 rounded-sm border border-white/10 bg-black/20">
                 <Server className="h-5 w-5 text-white/60" />
                 <div>
                   <p
@@ -284,7 +284,7 @@ export default function ContainerDetailsPage() {
                   </p>
                 </div>
               </div>
-              <div className="flex items-center gap-3 p-4 rounded-none border border-white/10 bg-black/20">
+              <div className="flex items-center gap-3 p-4 rounded-sm border border-white/10 bg-black/20">
                 <Server className="h-5 w-5 text-white/60" />
                 <div>
                   <p
@@ -301,7 +301,7 @@ export default function ContainerDetailsPage() {
                   </p>
                 </div>
               </div>
-              <div className="flex items-center gap-3 p-4 rounded-none border border-white/10 bg-black/20">
+              <div className="flex items-center gap-3 p-4 rounded-sm border border-white/10 bg-black/20">
                 <Clock className="h-5 w-5 text-white/60" />
                 <div>
                   <p
@@ -321,9 +321,9 @@ export default function ContainerDetailsPage() {
             </div>
 
             {container.error_message && (
-              <div className="p-4 bg-red-950/30 border border-red-500/30 rounded-none">
+              <div className="p-4 bg-red-950/30 border border-red-500/30 rounded-sm">
                 <div className="flex items-start gap-3">
-                  <div className="p-1 bg-red-500/10 rounded-none border border-red-500/20">
+                  <div className="p-1 bg-red-500/10 rounded-sm border border-red-500/20">
                     <AlertCircle className="h-5 w-5 text-red-500" />
                   </div>
                   <div className="flex-1">
@@ -350,7 +350,7 @@ export default function ContainerDetailsPage() {
                   >
                     Node
                   </p>
-                  <code className="text-xs bg-black/60 border border-white/10 px-3 py-1.5 rounded-none font-mono flex-1 text-white/80">
+                  <code className="text-xs bg-black/60 border border-white/10 px-3 py-1.5 rounded-sm font-mono flex-1 text-white/80">
                     {container.node_id}
                   </code>
                 </div>

@@ -1,6 +1,6 @@
 "use client";
 
-import { useSetPageHeader } from "@elizaos/ui";
+import { DashboardRoutePage } from "@elizaos/ui";
 import type { ReactNode } from "react";
 
 interface ContainersPageWrapperProps {
@@ -10,6 +10,5 @@ interface ContainersPageWrapperProps {
 export function ContainersPageWrapper({
   children,
 }: ContainersPageWrapperProps): ReactNode {
-  useSetPageHeader({ title: "Containers" }, []);
-  return children;
+  return <DashboardRoutePage title="Containers">{children}</DashboardRoutePage>;
 }

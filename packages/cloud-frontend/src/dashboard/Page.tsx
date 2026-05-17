@@ -68,7 +68,6 @@ export default function DashboardPage() {
       </>
     );
 
-  const userName = dashboard.data?.user.name?.split(" ")[0] || "User";
   const agents = dashboard.data?.agents ?? [];
   const creditBalance =
     typeof credits.data?.balance === "number" ? credits.data.balance : null;
@@ -76,7 +75,7 @@ export default function DashboardPage() {
   return (
     <>
       {head}
-      <DashboardPageWrapper userName={userName}>
+      <DashboardPageWrapper>
         <DashboardPageContainer>
           <DashboardPageStack className="pt-4 md:pt-6">
             <section className="flex flex-col gap-3 md:flex-row md:items-end md:justify-between">

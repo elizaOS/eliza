@@ -1,42 +1,40 @@
 export type IntegrationBoundary = "cloud" | "wallet" | "marketplace" | "mcp";
 export type IntegrationOutcome = "success" | "failure";
 export interface IntegrationObservabilityEvent {
-  schema: "integration_boundary_v1";
-  boundary: IntegrationBoundary;
-  operation: string;
-  outcome: IntegrationOutcome;
-  durationMs: number;
-  timeoutMs?: number;
-  statusCode?: number;
-  errorKind?: string;
+    schema: "integration_boundary_v1";
+    boundary: IntegrationBoundary;
+    operation: string;
+    outcome: IntegrationOutcome;
+    durationMs: number;
+    timeoutMs?: number;
+    statusCode?: number;
+    errorKind?: string;
 }
 interface IntegrationLogger {
-  info: (message: string) => void;
-  warn: (message: string) => void;
+    info: (message: string) => void;
+    warn: (message: string) => void;
 }
 interface IntegrationSpanMeta {
-  boundary: IntegrationBoundary;
-  operation: string;
-  timeoutMs?: number;
+    boundary: IntegrationBoundary;
+    operation: string;
+    timeoutMs?: number;
 }
 interface IntegrationSpanSuccessArgs {
-  statusCode?: number;
+    statusCode?: number;
 }
 interface IntegrationSpanFailureArgs {
-  statusCode?: number;
-  error?: unknown;
-  errorKind?: string;
+    statusCode?: number;
+    error?: unknown;
+    errorKind?: string;
 }
 interface CreateSpanOptions {
-  now?: () => number;
-  sink?: IntegrationLogger;
+    now?: () => number;
+    sink?: IntegrationLogger;
 }
 export interface IntegrationTelemetrySpan {
-  success: (args?: IntegrationSpanSuccessArgs) => void;
-  failure: (args?: IntegrationSpanFailureArgs) => void;
+    success: (args?: IntegrationSpanSuccessArgs) => void;
+    failure: (args?: IntegrationSpanFailureArgs) => void;
 }
-export declare function createIntegrationTelemetrySpan(
-  meta: IntegrationSpanMeta,
-  options?: CreateSpanOptions,
-): IntegrationTelemetrySpan;
+export declare function createIntegrationTelemetrySpan(meta: IntegrationSpanMeta, options?: CreateSpanOptions): IntegrationTelemetrySpan;
+export {};
 //# sourceMappingURL=integration-observability.d.ts.map

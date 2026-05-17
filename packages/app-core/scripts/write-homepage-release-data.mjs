@@ -255,8 +255,7 @@ function buildRelease(release) {
           !/arm64/i.test(asset.name) &&
           /\.dmg$/i.test(asset.name),
         (asset) =>
-          /macos-x64/i.test(asset.name) &&
-          /\.app\.tar\.gz$/i.test(asset.name),
+          /macos-x64/i.test(asset.name) && /\.app\.tar\.gz$/i.test(asset.name),
         (asset) =>
           /mac/i.test(asset.name) &&
           !/arm64/i.test(asset.name) &&
@@ -366,7 +365,9 @@ function manifestPlatformToArtifactPlatform(target) {
 }
 
 function buildOsArtifactsFromManifest(manifest, channel, version) {
-  const artifacts = Array.isArray(manifest?.artifacts) ? manifest.artifacts : [];
+  const artifacts = Array.isArray(manifest?.artifacts)
+    ? manifest.artifacts
+    : [];
   return artifacts.map((artifact) => ({
     id: artifact.id,
     label: artifact.filename.replace(/\.zst$|\.zip$/, ""),

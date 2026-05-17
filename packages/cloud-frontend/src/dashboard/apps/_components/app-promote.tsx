@@ -108,7 +108,7 @@ export function AppPromote({ app }: AppPromoteProps) {
         <Button
           onClick={() => setShowPromoteDialog(true)}
           size="sm"
-          className="bg-[#FF5800] hover:bg-[#FF5800]/80 text-white rounded-lg"
+          className="bg-[#FF5800] hover:bg-[#FF5800]/80 text-white rounded-sm"
         >
           <Megaphone className="h-4 w-4 mr-1.5" />
           Launch Promotion
@@ -119,7 +119,7 @@ export function AppPromote({ app }: AppPromoteProps) {
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
         <div className="bg-neutral-900 rounded-sm p-4">
           <div className="flex items-center gap-3">
-            <div className="p-2 rounded-lg bg-blue-500/10">
+            <div className="p-2 rounded-sm bg-blue-500/10">
               <Share2 className="h-5 w-5 text-blue-400" />
             </div>
             <div>
@@ -131,7 +131,7 @@ export function AppPromote({ app }: AppPromoteProps) {
 
         <div className="bg-neutral-900 rounded-sm p-4">
           <div className="flex items-center gap-3">
-            <div className="p-2 rounded-lg bg-green-500/10">
+            <div className="p-2 rounded-sm bg-green-500/10">
               <Search className="h-5 w-5 text-green-400" />
             </div>
             <div>
@@ -143,7 +143,7 @@ export function AppPromote({ app }: AppPromoteProps) {
 
         <div className="bg-neutral-900 rounded-sm p-4">
           <div className="flex items-center gap-3">
-            <div className="p-2 rounded-lg bg-purple-500/10">
+            <div className="p-2 rounded-sm bg-purple-500/10">
               <TrendingUp className="h-5 w-5 text-purple-400" />
             </div>
             <div>
@@ -171,7 +171,7 @@ export function AppPromote({ app }: AppPromoteProps) {
             size="sm"
             onClick={handleGenerateAssets}
             disabled={isGeneratingAssets}
-            className="border-white/10 hover:bg-white/10 rounded-lg"
+            className="border-white/10 hover:bg-white/10 rounded-sm"
           >
             {isGeneratingAssets ? (
               <>
@@ -188,19 +188,19 @@ export function AppPromote({ app }: AppPromoteProps) {
         </div>
 
         <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-          <div className="aspect-square rounded-lg border-2 border-dashed border-white/10 flex flex-col items-center justify-center text-neutral-500 hover:border-white/20 transition-colors cursor-pointer">
+          <div className="aspect-square rounded-sm border-2 border-dashed border-white/10 flex flex-col items-center justify-center text-neutral-500 hover:border-white/20 transition-colors cursor-pointer">
             <ImageIcon className="h-6 w-6 mb-1.5" />
             <span className="text-xs">Social Card</span>
           </div>
-          <div className="aspect-square rounded-lg border-2 border-dashed border-white/10 flex flex-col items-center justify-center text-neutral-500 hover:border-white/20 transition-colors cursor-pointer">
+          <div className="aspect-square rounded-sm border-2 border-dashed border-white/10 flex flex-col items-center justify-center text-neutral-500 hover:border-white/20 transition-colors cursor-pointer">
             <ImageIcon className="h-6 w-6 mb-1.5" />
             <span className="text-xs">Banner</span>
           </div>
-          <div className="aspect-square rounded-lg border-2 border-dashed border-white/10 flex flex-col items-center justify-center text-neutral-500 hover:border-white/20 transition-colors cursor-pointer">
+          <div className="aspect-square rounded-sm border-2 border-dashed border-white/10 flex flex-col items-center justify-center text-neutral-500 hover:border-white/20 transition-colors cursor-pointer">
             <Video className="h-6 w-6 mb-1.5" />
             <span className="text-xs">Video</span>
           </div>
-          <div className="aspect-square rounded-lg border-2 border-dashed border-white/10 flex flex-col items-center justify-center text-neutral-500 hover:border-white/20 transition-colors cursor-pointer">
+          <div className="aspect-square rounded-sm border-2 border-dashed border-white/10 flex flex-col items-center justify-center text-neutral-500 hover:border-white/20 transition-colors cursor-pointer">
             <Plus className="h-6 w-6 mb-1.5" />
             <span className="text-xs">Upload</span>
           </div>
@@ -246,7 +246,7 @@ export function AppPromote({ app }: AppPromoteProps) {
             variant="outline"
             size="sm"
             asChild
-            className="border-white/10 hover:bg-white/10 rounded-lg"
+            className="border-white/10 hover:bg-white/10 rounded-sm"
           >
             <Link to="/dashboard/settings?tab=connections">
               <Plus className="h-4 w-4 mr-1.5" />
@@ -268,7 +268,7 @@ export function AppPromote({ app }: AppPromoteProps) {
             {adAccounts.map((account) => (
               <div
                 key={account.id}
-                className="flex items-center justify-between p-3 rounded-lg bg-black/30 border border-white/5"
+                className="flex items-center justify-between p-3 rounded-sm bg-black/30 border border-white/5"
               >
                 <div className="flex items-center gap-2">
                   <Badge
@@ -284,7 +284,7 @@ export function AppPromote({ app }: AppPromoteProps) {
                 <Button
                   variant="ghost"
                   size="sm"
-                  className="h-8 w-8 p-0 rounded-lg"
+                  className="h-8 w-8 p-0 rounded-sm"
                 >
                   <ExternalLink className="h-4 w-4" />
                 </Button>

@@ -12,21 +12,19 @@
  * `className` vs `tone`) — only the detection and the tooltip are shared.
  */
 export interface ProvenanceSource {
-  thirdParty?: boolean;
-  builtIn?: boolean;
-  firstParty?: boolean;
-  origin?: string;
-  support?: string;
+    thirdParty?: boolean;
+    builtIn?: boolean;
+    firstParty?: boolean;
+    origin?: string;
+    support?: string;
 }
 export interface ProvenanceFlags {
-  isThirdParty: boolean;
-  isBuiltIn: boolean;
-  isFirstParty: boolean;
-  isCommunity: boolean;
+    isThirdParty: boolean;
+    isBuiltIn: boolean;
+    isFirstParty: boolean;
+    isCommunity: boolean;
 }
-export declare function getProvenanceFlags(
-  source: ProvenanceSource,
-): ProvenanceFlags;
+export declare function getProvenanceFlags(source: ProvenanceSource): ProvenanceFlags;
 /**
  * Tooltip text shown on provenance badges.
  *
@@ -34,8 +32,5 @@ export declare function getProvenanceFlags(
  * copy used by the plugin/connector surfaces ("package"). Both surfaces have
  * always shown subtly different wording — preserved here intentionally.
  */
-export declare function getProvenanceTitle(
-  flags: ProvenanceFlags,
-  noun: "app" | "package",
-): string | undefined;
+export declare function getProvenanceTitle(flags: ProvenanceFlags, noun: "app" | "package"): string | undefined;
 //# sourceMappingURL=provenance.d.ts.map

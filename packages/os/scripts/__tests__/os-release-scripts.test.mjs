@@ -29,6 +29,30 @@ test("beta manifest carries required beta dates, presale terms, and artifact cla
   assert.ok(manifest.artifacts.some((artifact) => artifact.kind === "android-image"));
 });
 
+test("all-zero sha256 placeholders are rejected even outside strict mode", async () => {
+  const manifest = await readJson(defaultManifestPath);
+  const poisoned = {
+    ...manifest,
+    artifacts: manifest.artifacts.map((artifact, index) =>
+      index === 0
+        ? { ...artifact, sha256: "0".repeat(64), sizeBytes: 1 }
+        : artifact,
+    ),
+  };
+
+  const lenient = validateManifest(poisoned);
+  assert.equal(lenient.ok, false);
+  assert.ok(
+    lenient.errors.some((error) => error.includes("all-zero placeholder")),
+    `expected all-zero rejection, got: ${lenient.errors.join("\n")}`,
+  );
+
+  const strict = validateManifest(poisoned, { requirePublishableChecksums: true });
+  assert.equal(strict.ok, false);
+  assert.ok(strict.errors.some((error) => error.includes("all-zero placeholder")));
+  assert.ok(strict.errors.some((error) => error.includes("sha256 is required")));
+});
+
 test("publishable validation requires concrete checksums and sizes", async () => {
   const manifest = await readJson(defaultManifestPath);
   const result = validateManifest(manifest, { requirePublishableChecksums: true });

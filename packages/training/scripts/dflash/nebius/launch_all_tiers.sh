@@ -50,8 +50,8 @@ TRAINING_SCRIPT="${SCRIPT_DIR}/distill_drafter_h200.py"
 # Canonical tier list + drafter sizes (matches ELIZA_1_GGUF_READINESS.md).
 # Format: TIER:DRAFTER_SIZE_B:EPOCHS:BATCH_SIZE:GRAD_ACCUM:LR
 ALL_TIERS=(
-  "0_8b:0.5:2:16:2:2e-4"
-  "2b:0.5:3:16:2:2e-4"
+  "0_8b:0.1:4:32:2:3e-4"
+  "2b:0.3:4:24:2:2.5e-4"
   "4b:1.5:3:8:4:2e-4"
   "9b:1.5:5:8:4:1.5e-4"
   "27b:3.0:5:8:4:1e-4"

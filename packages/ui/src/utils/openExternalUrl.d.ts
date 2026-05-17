@@ -18,8 +18,5 @@ export declare function preOpenWindow(): Window | null;
  * Navigate a pre-opened window to the real URL, or fall back to
  * `openExternalUrl` if the pre-open was blocked / we're on desktop.
  */
-export declare function navigatePreOpenedWindow(
-  popup: Window | null,
-  url: string,
-): void;
+export declare function navigatePreOpenedWindow(popup: Window | null, url: string): void;
 //# sourceMappingURL=openExternalUrl.d.ts.map

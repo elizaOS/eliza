@@ -56,7 +56,7 @@ export function CreditBalanceDisplay(_props: CreditBalanceDisplayProps) {
 
   if (loading) {
     return (
-      <div className="rounded-lg border bg-muted/50 p-4">
+      <div className="rounded-sm border bg-muted/50 p-4">
         <div className="text-sm text-muted-foreground">Current Balance</div>
         <div className="flex items-center justify-center py-2">
           <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
@@ -67,7 +67,7 @@ export function CreditBalanceDisplay(_props: CreditBalanceDisplayProps) {
 
   if (error || creditBalance === null) {
     return (
-      <div className="rounded-lg border border-red-500/40 bg-red-500/10 p-4">
+      <div className="rounded-sm border border-red-500/40 bg-red-500/10 p-4">
         <div className="flex items-center gap-2 text-sm text-red-400">
           <AlertCircle className="h-4 w-4" />
           Could not load balance{error ? `: ${error}` : ""}
@@ -85,7 +85,7 @@ export function CreditBalanceDisplay(_props: CreditBalanceDisplayProps) {
   }
 
   return (
-    <div className="rounded-lg border bg-muted/50 p-4">
+    <div className="rounded-sm border bg-muted/50 p-4">
       <div className="text-sm text-muted-foreground">Current Balance</div>
       <div className="text-3xl font-bold mt-1">${creditBalance.toFixed(2)}</div>
       <div className="text-sm text-muted-foreground">USD</div>

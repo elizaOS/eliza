@@ -13,39 +13,37 @@
  */
 export declare const ELIZA_DEV_STACK_SCHEMA: "elizaos.dev.stack/v1";
 export type DevStackPayload = {
-  schema: typeof ELIZA_DEV_STACK_SCHEMA;
-  api: {
-    /** Intended listen port (from ELIZA_API_PORT / ELIZA_PORT). */
-    listenPort: number;
-    baseUrl: string;
-  };
-  desktop: {
-    /** Vite or static renderer URL when desktop dev set ELIZA_RENDERER_URL. */
-    rendererUrl: string | null;
-    /** Dashboard UI port when ELIZA_PORT is set (desktop / Vite). */
-    uiPort: number | null;
-    /** Same base the Electrobun shell uses for API calls, when set. */
-    desktopApiBase: string | null;
-  };
-  /**
-   * When desktop dev enables ELIZA_DESKTOP_SCREENSHOT_SERVER, the API proxies
-   * a PNG from Electrobun (`GET …/api/dev/cursor-screenshot`, loopback only).
-   */
-  cursorScreenshot: {
-    available: boolean;
-    path: string | null;
-  };
-  /** Aggregated desktop dev child logs when dev-platform writes ELIZA_DESKTOP_DEV_LOG_PATH. */
-  desktopDevLog: {
-    filePath: string | null;
-    apiTailPath: string | null;
-  };
-  hints: string[];
+    schema: typeof ELIZA_DEV_STACK_SCHEMA;
+    api: {
+        /** Intended listen port (from ELIZA_API_PORT / ELIZA_PORT). */
+        listenPort: number;
+        baseUrl: string;
+    };
+    desktop: {
+        /** Vite or static renderer URL when desktop dev set ELIZA_RENDERER_URL. */
+        rendererUrl: string | null;
+        /** Dashboard UI port when ELIZA_PORT is set (desktop / Vite). */
+        uiPort: number | null;
+        /** Same base the Electrobun shell uses for API calls, when set. */
+        desktopApiBase: string | null;
+    };
+    /**
+     * When desktop dev enables ELIZA_DESKTOP_SCREENSHOT_SERVER, the API proxies
+     * a PNG from Electrobun (`GET …/api/dev/cursor-screenshot`, loopback only).
+     */
+    cursorScreenshot: {
+        available: boolean;
+        path: string | null;
+    };
+    /** Aggregated desktop dev child logs when dev-platform writes ELIZA_DESKTOP_DEV_LOG_PATH. */
+    desktopDevLog: {
+        filePath: string | null;
+        apiTailPath: string | null;
+    };
+    hints: string[];
 };
 /**
  * Build the JSON body for `GET /api/dev/stack`.
  */
-export declare function resolveDevStackFromEnv(
-  env?: NodeJS.ProcessEnv,
-): DevStackPayload;
+export declare function resolveDevStackFromEnv(env?: NodeJS.ProcessEnv): DevStackPayload;
 //# sourceMappingURL=dev-stack.d.ts.map

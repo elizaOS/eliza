@@ -16,8 +16,5 @@ export declare function formatWeiForDisplay(weiDecimalString: string): string;
  */
 export declare function decodeSignableMessage(message: string): string;
 export declare function decodeBase64ForPreview(base64: string): string;
-export declare function truncateMessageForDisplay(
-  message: string,
-  max?: number,
-): string;
+export declare function truncateMessageForDisplay(message: string, max?: number): string;
 //# sourceMappingURL=browser-wallet-consent-format.d.ts.map

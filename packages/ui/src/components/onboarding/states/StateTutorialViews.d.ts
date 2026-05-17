@@ -1,7 +1,5 @@
 export interface StateTutorialViewsProps {
-  onContinue: () => void;
+    onContinue: () => void;
 }
-export declare function StateTutorialViews(
-  props: StateTutorialViewsProps,
-): React.JSX.Element;
+export declare function StateTutorialViews(props: StateTutorialViewsProps): React.JSX.Element;
 //# sourceMappingURL=StateTutorialViews.d.ts.map

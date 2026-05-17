@@ -1,3 +1,4 @@
+import type { ChildProcess } from "node:child_process";
 import { execFile, spawn } from "node:child_process";
 import { createHash } from "node:crypto";
 import { promises as fs } from "node:fs";
@@ -279,7 +280,42 @@ export async function findPrivilegeEscalator(
   );
 }
 
+export interface ExecFileResult {
+  stdout: string;
+  stderr: string;
+}
+
+export interface LinuxBackendDeps {
+  /** Override the privilege escalator probe (defaults to `findPrivilegeEscalator`). */
+  findEscalator?: () => Promise<PrivilegeEscalator>;
+  /** Override `execFile` for lsblk/umount/sync calls. */
+  execFile?: (
+    command: string,
+    args: readonly string[],
+  ) => Promise<ExecFileResult>;
+  /** Override `spawn` for the dd subprocess. Must return a ChildProcess-like with stderr emitter and on('close'|'error') support. */
+  spawn?: (command: string, args: readonly string[]) => ChildProcess;
+  /** Override the resolve-image step (download/access check). Default: real fs+http. */
+  resolveImage?: (
+    image: ElizaOsImage,
+    imagePath: string,
+    onProgress: (pct: number) => void,
+  ) => Promise<void>;
+  /** Override the checksum step. Default: sha256 of the file. */
+  verifyChecksum?: (image: ElizaOsImage, imagePath: string) => Promise<void>;
+  /** Heartbeat interval for dd stalls. Default 1000ms. */
+  heartbeatIntervalMs?: number;
+  /** Heartbeat stall threshold. Default 5000ms. */
+  heartbeatStallMs?: number;
+}
+
 export class LinuxUsbInstallerBackend implements UsbInstallerBackend {
+  private readonly deps: LinuxBackendDeps;
+
+  constructor(deps: LinuxBackendDeps = {}) {
+    this.deps = deps;
+  }
+
   async listRemovableDrives(): Promise<RemovableDrive[]> {
     const { stdout } = await execFileAsync("lsblk", [
       "--json",
@@ -396,39 +432,65 @@ export class LinuxUsbInstallerBackend implements UsbInstallerBackend {
     const { image, drive } = plan;
     const imagePath = path.join(INSTALLER_TMP_DIR, `${image.id}.iso`);
 
+    const execFileFn =
+      this.deps.execFile ??
+      (async (cmd: string, args: readonly string[]) => {
+        const r = await execFileAsync(cmd, [...args]);
+        return { stdout: r.stdout.toString(), stderr: r.stderr.toString() };
+      });
+    const spawnFn = this.deps.spawn ?? spawn;
+    const findEscalatorFn = this.deps.findEscalator ?? findPrivilegeEscalator;
+    const heartbeatInterval = this.deps.heartbeatIntervalMs ?? 1_000;
+    const heartbeatStall = this.deps.heartbeatStallMs ?? 5_000;
+
+    // Probe for a privilege escalator BEFORE any side effects (download,
+    // checksum, umount). Failing late would leave the device in a partially
+    // unmounted state with no path to recover.
+    const escalator = await findEscalatorFn();
+
     // Step: resolve-image
     onProgress("resolve-image", 0);
-    let needsDownload = false;
-    try {
-      await fs.access(imagePath);
-    } catch {
-      needsDownload = true;
-    }
+    if (this.deps.resolveImage) {
+      await this.deps.resolveImage(image, imagePath, (pct) =>
+        onProgress("resolve-image", pct),
+      );
+    } else {
+      let needsDownload = false;
+      try {
+        await fs.access(imagePath);
+      } catch {
+        needsDownload = true;
+      }
 
-    if (needsDownload) {
-      await downloadFile(image.url, imagePath, (received, total) => {
-        const pct = total > 0 ? received / total : 0;
-        onProgress("resolve-image", pct);
-      });
+      if (needsDownload) {
+        await downloadFile(image.url, imagePath, (received, total) => {
+          const pct = total > 0 ? received / total : 0;
+          onProgress("resolve-image", pct);
+        });
+      }
     }
     onProgress("resolve-image", 1);
 
     // Step: checksum
     onProgress("checksum", 0);
-    const ZEROED_CHECKSUM = "0".repeat(64);
-    if (image.checksumSha256 !== ZEROED_CHECKSUM) {
-      const actual = await sha256File(imagePath);
-      if (actual !== image.checksumSha256) {
-        throw new Error(
-          `Checksum mismatch: expected ${image.checksumSha256}, got ${actual}`,
-        );
+    if (this.deps.verifyChecksum) {
+      await this.deps.verifyChecksum(image, imagePath);
+    } else {
+      const ZEROED_CHECKSUM = "0".repeat(64);
+      if (image.checksumSha256 !== ZEROED_CHECKSUM) {
+        const actual = await sha256File(imagePath);
+        if (actual !== image.checksumSha256) {
+          throw new Error(
+            `Checksum mismatch: expected ${image.checksumSha256}, got ${actual}`,
+          );
+        }
       }
     }
     onProgress("checksum", 1);
 
     // Unmount all mounted partitions of the target disk. A busy/failed
     // unmount must abort the write — dd into a mounted FS corrupts data.
-    const { stdout: childStdout } = await execFileAsync("lsblk", [
+    const { stdout: childStdout } = await execFileFn("lsblk", [
       "--json",
       "--output",
       "NAME,MOUNTPOINT",
@@ -454,7 +516,7 @@ export class LinuxUsbInstallerBackend implements UsbInstallerBackend {
         if (!child.mountpoint) continue;
         const partPath = `/dev/${child.name}`;
         try {
-          await execFileAsync("umount", [partPath]);
+          await execFileFn("umount", [partPath]);
         } catch (err) {
           const e = err as { code?: number; stderr?: string };
           const stderr = e.stderr ?? "";
@@ -471,7 +533,6 @@ export class LinuxUsbInstallerBackend implements UsbInstallerBackend {
 
     // Step: write using a privilege escalator + dd with progress
     onProgress("write", 0);
-    const escalator = await findPrivilegeEscalator();
     let finalBytesWritten = 0;
     await new Promise<void>((resolve, reject) => {
       const ddArgs = [
@@ -482,25 +543,25 @@ export class LinuxUsbInstallerBackend implements UsbInstallerBackend {
         "status=progress",
         "conv=fsync",
       ];
-      const proc = spawn(escalator.command, [
+      const proc = spawnFn(escalator.command, [
         ...escalator.argsPrefix,
         ...ddArgs,
       ]);
 
       let lastProgress = 0;
       let lastProgressAt = Date.now();
-      // Heartbeat: if dd output is buffered and no update arrives for >5s,
+      // Heartbeat: if dd output is buffered and no update arrives for >stall,
       // re-emit the last known progress so the UI knows we are still alive.
       const heartbeat = setInterval(() => {
-        if (Date.now() - lastProgressAt >= 5_000) {
+        if (Date.now() - lastProgressAt >= heartbeatStall) {
           onProgress("write", lastProgress);
           lastProgressAt = Date.now();
         }
-      }, 1_000);
+      }, heartbeatInterval);
 
       let stderrBuf = "";
       let stderrAll = "";
-      proc.stderr.on("data", (chunk: Buffer) => {
+      proc.stderr?.on("data", (chunk: Buffer) => {
         const text = chunk.toString();
         stderrAll += text;
         stderrBuf += text;
@@ -550,7 +611,7 @@ export class LinuxUsbInstallerBackend implements UsbInstallerBackend {
 
     // Step: verify (sync)
     onProgress("verify", 0);
-    await execFileAsync("sync");
+    await execFileFn("sync", []);
     onProgress("verify", 1);
 
     // Step: complete

@@ -45,7 +45,7 @@ export function DeployFromCLI() {
         )}
       >
         <div className="px-4 pb-4">
-          <div className="flex min-w-0 items-center gap-3 rounded-lg border border-white/10 bg-black/40 px-4 py-3">
+          <div className="flex min-w-0 items-center gap-3 rounded-sm border border-white/10 bg-black/40 px-4 py-3">
             <span className="text-neutral-600 select-none">$</span>
             <code className="min-w-0 flex-1 truncate font-mono text-sm text-neutral-300">
               {command}

@@ -390,7 +390,7 @@ export function AdminRedemptionsClient() {
         {loading ? (
           <div className="space-y-3">
             {[1, 2, 3, 4, 5].map((i) => (
-              <Skeleton key={i} className="h-16 rounded-lg" />
+              <Skeleton key={i} className="h-16 rounded-sm" />
             ))}
           </div>
         ) : redemptions.length === 0 ? (
@@ -420,6 +420,7 @@ export function AdminRedemptionsClient() {
                   </TableCell>
                   <TableCell>
                     <button
+                      type="button"
                       onClick={() => copyToClipboard(r.user_id)}
                       className="text-white/80 text-xs hover:text-[#FF5800] flex items-center gap-1"
                     >
@@ -442,6 +443,7 @@ export function AdminRedemptionsClient() {
                   </TableCell>
                   <TableCell>
                     <button
+                      type="button"
                       onClick={() => copyToClipboard(r.payout_address)}
                       className="text-white/80 text-xs hover:text-[#FF5800] flex items-center gap-1"
                     >
@@ -598,7 +600,7 @@ export function AdminRedemptionsClient() {
                 </div>
               )}
               {selectedRedemption.failure_reason && (
-                <div className="p-3 rounded-lg bg-red-500/10 border border-red-500/30">
+                <div className="p-3 rounded-sm bg-red-500/10 border border-red-500/30">
                   <p className="text-xs text-red-400 mb-1">Failure Reason</p>
                   <p className="text-sm text-red-400">
                     {selectedRedemption.failure_reason}
@@ -606,7 +608,7 @@ export function AdminRedemptionsClient() {
                 </div>
               )}
               {selectedRedemption.rejection_reason && (
-                <div className="p-3 rounded-lg bg-red-500/10 border border-red-500/30">
+                <div className="p-3 rounded-sm bg-red-500/10 border border-red-500/30">
                   <p className="text-xs text-red-400 mb-1">Rejection Reason</p>
                   <p className="text-sm text-red-400">
                     {selectedRedemption.rejection_reason}

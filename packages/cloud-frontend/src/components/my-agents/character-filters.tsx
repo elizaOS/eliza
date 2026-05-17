@@ -78,7 +78,7 @@ export function CharacterFilters({
           <SelectTrigger className="h-9 w-full rounded-full border-white/42 bg-white/58 text-sm text-[#06131f]/72 focus:ring-1 focus:ring-accent/50 sm:w-[160px] md:h-10">
             <SelectValue />
           </SelectTrigger>
-          <SelectContent className="rounded-lg">
+          <SelectContent className="rounded-sm">
             <SelectItem value="modified">Last Updated</SelectItem>
             <SelectItem value="created">Created Date</SelectItem>
             <SelectItem value="name">Name (A-Z)</SelectItem>
@@ -91,7 +91,7 @@ export function CharacterFilters({
           <button
             type="button"
             onClick={() => onViewModeChange("grid")}
-            className={`flex items-center justify-center w-8 md:w-9 rounded-md transition-colors ${
+            className={`flex items-center justify-center w-8 md:w-9 rounded-sm transition-colors ${
               viewMode === "grid"
                 ? "bg-white text-[#0c4f8d] shadow-sm"
                 : "text-[#06131f]/50 hover:text-[#06131f]"
@@ -102,7 +102,7 @@ export function CharacterFilters({
           <button
             type="button"
             onClick={() => onViewModeChange("list")}
-            className={`flex items-center justify-center w-8 md:w-9 rounded-md transition-colors ${
+            className={`flex items-center justify-center w-8 md:w-9 rounded-sm transition-colors ${
               viewMode === "list"
                 ? "bg-white text-[#0c4f8d] shadow-sm"
                 : "text-[#06131f]/50 hover:text-[#06131f]"

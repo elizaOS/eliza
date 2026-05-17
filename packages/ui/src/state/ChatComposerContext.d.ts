@@ -10,11 +10,11 @@
 import { type Dispatch, type RefObject, type SetStateAction } from "react";
 import type { ImageAttachment } from "../api";
 export interface ChatComposerValue {
-  chatInput: string;
-  chatSending: boolean;
-  chatPendingImages: ImageAttachment[];
-  setChatInput: (v: string) => void;
-  setChatPendingImages: Dispatch<SetStateAction<ImageAttachment[]>>;
+    chatInput: string;
+    chatSending: boolean;
+    chatPendingImages: ImageAttachment[];
+    setChatInput: (v: string) => void;
+    setChatPendingImages: Dispatch<SetStateAction<ImageAttachment[]>>;
 }
 export declare const ChatComposerCtx: import("react").Context<ChatComposerValue>;
 /**
@@ -30,14 +30,9 @@ export declare const CHAT_DRAFT_STORAGE_PREFIX = "eliza:chat:draft:";
 /** Build the localStorage key for a given conversation's draft. */
 export declare function chatDraftStorageKey(conversationId: string): string;
 /** Read a saved draft for the given conversation, or `null` if absent. */
-export declare function readChatDraft(
-  conversationId: string | null,
-): string | null;
+export declare function readChatDraft(conversationId: string | null): string | null;
 /** Persist (or clear) the current draft for the given conversation. */
-export declare function writeChatDraft(
-  conversationId: string | null,
-  draft: string,
-): void;
+export declare function writeChatDraft(conversationId: string | null, draft: string): void;
 /** Remove the saved draft for a single conversation. */
 export declare function clearChatDraft(conversationId: string | null): void;
 /**
@@ -53,13 +48,9 @@ export declare function clearAllChatDrafts(): void;
  * send success path) and {@link clearAllChatDrafts} (call on account
  * switch).
  */
-export declare function useChatComposerDraftPersistence({
-  activeConversationId,
-  chatInput,
-  setChatInput,
-}: {
-  activeConversationId: string | null;
-  chatInput: string;
-  setChatInput: (next: string) => void;
+export declare function useChatComposerDraftPersistence({ activeConversationId, chatInput, setChatInput, }: {
+    activeConversationId: string | null;
+    chatInput: string;
+    setChatInput: (next: string) => void;
 }): void;
 //# sourceMappingURL=ChatComposerContext.d.ts.map

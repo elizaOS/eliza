@@ -175,7 +175,7 @@ export function AppMonetizationSettings({
           <div className="flex items-start gap-3">
             <div
               className={cn(
-                "p-2 rounded-lg mt-0.5",
+                "p-2 rounded-sm mt-0.5",
                 settings.monetizationEnabled ? "bg-green-500/10" : "bg-white/5",
               )}
             >
@@ -269,7 +269,7 @@ export function AppMonetizationSettings({
                   <button
                     key={preset}
                     className={cn(
-                      "px-2.5 py-1 text-xs rounded-lg transition-colors",
+                      "px-2.5 py-1 text-xs rounded-sm transition-colors",
                       settings.inferenceMarkupPercentage === preset
                         ? "bg-purple-500/20 text-purple-400 border border-purple-500/30"
                         : "bg-white/5 text-neutral-400 hover:bg-white/10 border border-transparent",
@@ -322,7 +322,7 @@ export function AppMonetizationSettings({
                   <button
                     key={preset}
                     className={cn(
-                      "px-2.5 py-1 text-xs rounded-lg transition-colors",
+                      "px-2.5 py-1 text-xs rounded-sm transition-colors",
                       settings.purchaseSharePercentage === preset
                         ? "bg-orange-500/20 text-orange-400 border border-orange-500/30"
                         : "bg-white/5 text-neutral-400 hover:bg-white/10 border border-transparent",
@@ -420,7 +420,7 @@ function SelfHostCTA() {
   return (
     <div className="border border-[#FF5800]/30 bg-[#FF5800]/10 p-5">
       <div className="flex items-start gap-4">
-        <div className="hidden sm:flex items-center justify-center w-10 h-10 rounded-none border border-[#FF5800]/40 bg-[#FF5800]/10 shrink-0">
+        <div className="hidden sm:flex items-center justify-center w-10 h-10 rounded-sm border border-[#FF5800]/40 bg-[#FF5800]/10 shrink-0">
           <Server className="h-5 w-5 text-[#FF5800]" />
         </div>
         <div className="flex-1 min-w-0">

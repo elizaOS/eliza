@@ -9,9 +9,13 @@
  * stack stays green.
  */
 
+import { execFile } from "node:child_process";
+import { promisify } from "node:util";
 import { expect, test } from "@playwright/test";
 import bs58 from "bs58";
 import nacl from "tweetnacl";
+
+const execFileAsync = promisify(execFile);
 
 const apiBaseUrl =
   process.env.TEST_API_BASE_URL?.trim() ||
@@ -252,5 +256,141 @@ test.describe("SIWS (Solana) wallet flow", () => {
     if (provisionRes.status === 202) {
       expect(provisionBody.data?.jobId, "jobId on 202").toBeTruthy();
     }
+  });
+
+  /**
+   * Full pipeline: SIWS auth → agent create → provision → wait for the
+   * LocalDockerSandboxProvider to actually boot a Docker container → curl the
+   * container's `/bridge` JSON-RPC endpoint and assert the echo reply.
+   *
+   * Gated by E2E_FULL_PROVISION=1 because it requires:
+   *   - Local Docker daemon running
+   *   - The `eliza-cloud-agent:local` image built from
+   *     packages/app-core/deploy/Dockerfile.cloud-agent
+   *   - The container-control-plane Bun service running on :8791
+   *   - cloud-api dev launched with MILADY_LOCAL_DOCKER_PROVIDER=1
+   *
+   * If those aren't set up, this test is skipped.
+   */
+  test("full provision: live container + chat via /bridge", async () => {
+    test.skip(
+      process.env.E2E_FULL_PROVISION !== "1",
+      "E2E_FULL_PROVISION=1 not set — skipping live-container test",
+    );
+
+    const { apiKey } = await signInWithFreshSolanaKey();
+
+    // Create
+    const createRes = await fetch(`${apiBaseUrl}/api/v1/eliza/agents`, {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${apiKey}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({ agentName: `siws-full-${Date.now()}` }),
+      signal: AbortSignal.timeout(20_000),
+    });
+    expect(createRes.status).toBe(201);
+    const { data: created } = (await createRes.json()) as {
+      data: { id: string };
+    };
+    const agentId = created.id;
+    const containerName = `agent-${agentId}`;
+
+    // Kick the job. Cloud-api's triggerImmediate fires-and-forgets to the
+    // control-plane, which calls provisioningJobService.processPendingJobs()
+    // in-process. That calls elizaSandboxService.provision() → our
+    // LocalDockerSandboxProvider → `docker run`.
+    const provRes = await fetch(
+      `${apiBaseUrl}/api/v1/eliza/agents/${agentId}/provision`,
+      {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${apiKey}`,
+          "Content-Type": "application/json",
+        },
+      },
+    );
+    expect([200, 202]).toContain(provRes.status);
+
+    // Wait up to 90s for a healthy container.
+    const deadline = Date.now() + 90_000;
+    let lastStatus = "";
+    while (Date.now() < deadline) {
+      try {
+        const { stdout } = await execFileAsync("docker", [
+          "inspect",
+          "--format",
+          "{{.State.Status}} {{.State.Health.Status}}",
+          containerName,
+        ]);
+        lastStatus = stdout.trim();
+        if (
+          lastStatus.includes("healthy") ||
+          lastStatus.startsWith("running")
+        ) {
+          break;
+        }
+      } catch {
+        // Container not yet created — keep polling.
+      }
+      await new Promise((r) => setTimeout(r, 2000));
+    }
+    expect(
+      lastStatus,
+      `container ${containerName} never became running`,
+    ).toMatch(/^running/);
+
+    // Read the published bridge port + secret directly from docker so the test
+    // doesn't depend on a cloud-api endpoint exposing them.
+    const portInspect = await execFileAsync("docker", [
+      "inspect",
+      "--format",
+      '{{(index (index .NetworkSettings.Ports "18790/tcp") 0).HostPort}}',
+      containerName,
+    ]);
+    const bridgePort = Number.parseInt(portInspect.stdout.trim(), 10);
+    expect(Number.isFinite(bridgePort), "bridge host port discovered").toBe(
+      true,
+    );
+
+    const envInspect = await execFileAsync("docker", [
+      "inspect",
+      "--format",
+      "{{range .Config.Env}}{{println .}}{{end}}",
+      containerName,
+    ]);
+    const envLine = envInspect.stdout
+      .split("\n")
+      .find((l) => l.startsWith("BRIDGE_SECRET="));
+    expect(envLine, "BRIDGE_SECRET set on container").toBeTruthy();
+    const bridgeSecret = envLine?.slice("BRIDGE_SECRET=".length) ?? "";
+
+    // Chat — the echo-mode image responds with "[echo] <text>".
+    const chatRes = await fetch(`http://127.0.0.1:${bridgePort}/bridge`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${bridgeSecret}`,
+      },
+      body: JSON.stringify({
+        jsonrpc: "2.0",
+        id: 1,
+        method: "message.send",
+        params: { text: "hello from playwright" },
+      }),
+      signal: AbortSignal.timeout(15_000),
+    });
+    expect(chatRes.status, "chat status").toBe(200);
+    const chatBody = (await chatRes.json()) as {
+      jsonrpc: string;
+      id: number;
+      result?: { text?: string };
+      error?: unknown;
+    };
+    expect(chatBody.error, "no JSON-RPC error").toBeUndefined();
+    expect(chatBody.result?.text, "echo reply text").toContain(
+      "hello from playwright",
+    );
   });
 });
