@@ -1,8 +1,16 @@
 import { serve } from "bun";
 import { AdbFlasherBackend } from "./src/backend/adb-backend";
 import { SideloaderIosBackend } from "./src/backend/ios-backend";
-import type { FlashPlan, FlashStepId, FlashStepStatus } from "./src/backend/types";
-import type { IosInstallPlan, IosInstallStepId, IosInstallStepStatus } from "./src/backend/ios-types";
+import type {
+  IosInstallPlan,
+  IosInstallStepId,
+  IosInstallStepStatus,
+} from "./src/backend/ios-types";
+import type {
+  FlashPlan,
+  FlashStepId,
+  FlashStepStatus,
+} from "./src/backend/types";
 import { DependencyManager } from "./src/dependencies/dep-manager";
 import type { DependencyId } from "./src/dependencies/types";
 
@@ -54,7 +62,10 @@ serve({
     ) {
       const id = parseDepId(url.pathname, "");
       if (!id) {
-        return new Response("Unknown dependency", { status: 400, headers: cors });
+        return new Response("Unknown dependency", {
+          status: 400,
+          headers: cors,
+        });
       }
       const result = await depManager.checkOne(id);
       return Response.json(result, { headers: cors });
@@ -68,7 +79,10 @@ serve({
     ) {
       const id = parseDepId(url.pathname, "/install");
       if (!id) {
-        return new Response("Unknown dependency", { status: 400, headers: cors });
+        return new Response("Unknown dependency", {
+          status: 400,
+          headers: cors,
+        });
       }
       const result = await depManager.autoInstall(id);
       return Response.json(result, { headers: cors });
@@ -83,7 +97,10 @@ serve({
     ) {
       const id = parseDepId(url.pathname, "");
       if (!id) {
-        return new Response("Unknown dependency", { status: 400, headers: cors });
+        return new Response("Unknown dependency", {
+          status: 400,
+          headers: cors,
+        });
       }
       const result = await depManager.autoInstall(id);
       return Response.json(result, { headers: cors });
@@ -122,7 +139,11 @@ serve({
           try {
             await backend.executeFlashPlan(
               body.plan,
-              (stepId: FlashStepId, status: FlashStepStatus, detail: string) => {
+              (
+                stepId: FlashStepId,
+                status: FlashStepStatus,
+                detail: string,
+              ) => {
                 const data = JSON.stringify({ stepId, status, detail });
                 controller.enqueue(encoder.encode(`data: ${data}\n\n`));
               },
@@ -181,7 +202,9 @@ serve({
     }
 
     if (url.pathname === "/ios/plan" && req.method === "POST") {
-      const request = (await req.json()) as Parameters<typeof iosBackend.createInstallPlan>[0];
+      const request = (await req.json()) as Parameters<
+        typeof iosBackend.createInstallPlan
+      >[0];
       const plan = await iosBackend.createInstallPlan(request);
       return Response.json(plan, { headers: cors });
     }
@@ -195,7 +218,11 @@ serve({
           try {
             await iosBackend.executeInstallPlan(
               body.plan,
-              (stepId: IosInstallStepId, status: IosInstallStepStatus, detail?: string) => {
+              (
+                stepId: IosInstallStepId,
+                status: IosInstallStepStatus,
+                detail?: string,
+              ) => {
                 const data = JSON.stringify({ stepId, status, detail });
                 controller.enqueue(encoder.encode(`data: ${data}\n\n`));
               },
@@ -205,7 +232,9 @@ serve({
             );
           } catch (err) {
             controller.enqueue(
-              encoder.encode(`data: ${JSON.stringify({ error: String(err) })}\n\n`),
+              encoder.encode(
+                `data: ${JSON.stringify({ error: String(err) })}\n\n`,
+              ),
             );
           } finally {
             controller.close();
@@ -232,6 +261,4 @@ console.log("Run: adb devices   to verify your device is connected");
 // Emit the bound URL so the dev orchestrator / Electrobun main process can
 // pick it up and inject `window.__ELIZA_SERVER_URL__` into the renderer
 // before the React app mounts.
-console.log(
-  `[elizaos-setup] ELIZA_SETUP_SERVER_URL=http://127.0.0.1:${PORT}`,
-);
+console.log(`[elizaos-setup] ELIZA_SETUP_SERVER_URL=http://127.0.0.1:${PORT}`);

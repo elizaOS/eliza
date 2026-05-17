@@ -417,12 +417,7 @@ async function runLinuxInstall(
   const spec = getLinuxInstallSpec(depKey);
   if (!spec) return false;
   // Try with sudo non-interactive first; package managers usually need root.
-  const argv = [
-    "sudo",
-    "-n",
-    ...spec.installCommand,
-    ...spec.packages,
-  ];
+  const argv = ["sudo", "-n", ...spec.installCommand, ...spec.packages];
   if (await runInstallCommand(argv)) return true;
   // Fall back to running unprivileged (works only if invoking process is root
   // or the package manager is configured to need no escalation).

@@ -415,7 +415,12 @@ export function DependencyGate({ onReady }: Props) {
                   : styles.continueBtnDisabled
             }
             onClick={handleContinue}
-            disabled={!requiredFound && bypassConfirmCount < 2 && bypassWarning && bypassConfirmCount < 1}
+            disabled={
+              !requiredFound &&
+              bypassConfirmCount < 2 &&
+              bypassWarning &&
+              bypassConfirmCount < 1
+            }
           >
             {requiredFound
               ? "Continue"

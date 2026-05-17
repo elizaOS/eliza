@@ -1,3 +1,7 @@
+import { createHash } from "node:crypto";
+import { mkdtemp, readFile, rm } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { describe, expect, it, vi } from "vitest";
 import {
   downloadAndVerifyArtifacts,
@@ -7,6 +11,7 @@ import {
   IosAuthNotReadyError,
   SideloaderIosBackend,
 } from "../backend/ios-backend";
+import type { IosInstallPlan } from "../backend/ios-types";
 import type {
   AndroidReleaseManifest,
   FlashPlan,
@@ -14,11 +19,6 @@ import type {
   FlashStepId,
   FlashStepStatus,
 } from "../backend/types";
-import type { IosInstallPlan } from "../backend/ios-types";
-import { createHash } from "node:crypto";
-import { mkdtemp, readFile, rm } from "node:fs/promises";
-import { tmpdir } from "node:os";
-import { join } from "node:path";
 
 // ---------------------------------------------------------------------------
 // wipeData plumbing
