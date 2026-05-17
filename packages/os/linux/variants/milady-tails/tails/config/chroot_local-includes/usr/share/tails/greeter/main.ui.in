@@ -434,7 +434,7 @@
                     <property name="can-focus">True</property>
                     <property name="receives-default">True</property>
                     <property name="relief">none</property>
-                    <property name="uri">doc/persistent_storage/use.en.html</property>
+                    <property name="uri">doc.en.html#storage</property>
                     <signal name="activate-link" handler="cb_linkbutton_help_activate" swapped="no"/>
                     <child>
                       <object class="GtkImage" id="image_storage_help">

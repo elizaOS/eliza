@@ -6,8 +6,9 @@ like stock Tails. Same features either way, only speed differs.
 
 Paths are relative to `TAILS = packages/os/linux/variants/milady-tails/tails`.
 
-Status as of 2026-05-16: this overlay is implemented in source and is part
-of the current rebuild/test pass. The implementation uses
+Status as of 2026-05-17: this overlay is implemented in source. The
+normal QEMU app path has passed on a prior artifact, but Privacy Mode still
+needs current-HEAD network/app validation. The implementation uses
 `elizaos_privacy=1` in the bootloader entries, while the live-config hook
 also accepts `elizaos.privacy=on` for compatibility.
 
@@ -53,7 +54,7 @@ also accepts `elizaos.privacy=on` for compatibility.
 Lives in the Milady agent (not Tails code) — wired in Phase 6. The only Tails-side contract Phase 3 owns: **`/etc/elizaos/privacy-mode` is the single source of truth** that the firewall, Tor, resolv.conf, and the chat action all read. Do not invent a second status file.
 
 ## Also in scope (doc, not code)
-Update `docs/privacy-mode-v1-gap.md` with implementation evidence: Phase 3 closes the *routing* gap (agent/system traffic), but the Chromium WebView leak remains (nothing here injects `--proxy-server` into Electrobun) — deferred to v1.1.
+Update `docs/privacy-mode-v1-gap.md` with implementation evidence: Phase 3 closes the live-OS routing gap, but embedded browser/OAuth surfaces still need explicit proxy proof — deferred to v1.1.
 
 ## Ordered implementation checklist
 1. Add `lib/live/config/0001-elizaos-privacy-mode`.

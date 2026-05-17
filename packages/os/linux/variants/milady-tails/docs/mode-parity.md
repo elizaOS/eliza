@@ -9,14 +9,16 @@ The product requirement is that the same capabilities are available in all
 four combinations. Mode changes can affect speed, persistence, and trace
 footprint, but they must not silently remove features.
 
-Status as of 2026-05-17: the Phase 3-7 overlays are present in source and
-a full rebuild/test pass is in progress. Treat the table below as the
-target acceptance matrix until Phase 8 produces evidence from the rebuilt
-ISO.
+Status as of 2026-05-17: Phase 3-7 overlays are present in source, and a
+prior ISO passed the normal QEMU greeter/desktop/app-service path. Current
+HEAD needs rebuild and repeat validation. Treat the table below as the
+target acceptance matrix until Phase 8 produces evidence from QEMU and real
+USB across all four modes.
 
 Evidence rule: mark a row as production-ready only after it is exercised
 in QEMU and on a real USB boot. Until then, "Yes" means required product
-behavior, not completed validation.
+behavior, not completed validation. Persistence rows are especially pending
+until real USB create/unlock/delete behavior is proven.
 
 ## Matrix
 

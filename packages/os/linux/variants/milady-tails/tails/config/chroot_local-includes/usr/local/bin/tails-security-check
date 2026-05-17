@@ -118,7 +118,7 @@ Notify the user about the Atom entries passed as arguments.
 sub notify_user {
     my @entries = @_;
 
-    my $body = __('This version of Tails has known security issues:') . "\n";
+    my $body = __('This version of elizaOS has known security issues:') . "\n";
 
     for (@entries) {
         $body .= '• ' . '<a href="' . $_->id . '">' . $_->title . '</a>' . "\n";

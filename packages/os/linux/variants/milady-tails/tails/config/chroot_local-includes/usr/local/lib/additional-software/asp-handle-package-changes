@@ -59,7 +59,7 @@ def handle_installed_packages(packages: set[str]):
             ),
             _(
                 "To install it automatically from your persistent "
-                "storage when starting Tails."
+                "storage when starting elizaOS."
             ),
             _("Install Every Time"),
             _("Install Only Once"),
@@ -96,7 +96,7 @@ def handle_installed_packages(packages: set[str]):
                 packages=_format_iterable(packages)
             ),
             _(
-                "To install it automatically when starting Tails, you "
+                "To install it automatically when starting elizaOS, you "
                 "can create a Persistent Storage and activate the "
                 "<b>Additional Software</b> feature."
             ),
@@ -121,9 +121,9 @@ def handle_installed_packages(packages: set[str]):
             # will be replaced.
             notify(
                 _(
-                    "You could install {packages} automatically when starting Tails"
+                    "You could install {packages} automatically when starting elizaOS"
                 ).format(packages=_format_iterable(packages)),
-                _("To do so, you need to run Tails from a USB stick."),
+                _("To do so, you need to run elizaOS from a USB stick."),
                 documentation_target="install/clone",
                 urgent=True,
             )

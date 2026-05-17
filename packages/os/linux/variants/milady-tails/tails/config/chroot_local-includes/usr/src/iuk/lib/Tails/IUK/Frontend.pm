@@ -294,7 +294,7 @@ method refresh_signing_key () {
         __(
             q{<b>An error occurred while updating the signing key.</b>\n\n}.
             q{<b>This prevents determining whether an upgrade is available from our website.</b>\n\n}.
-            q{Check your network connection and restart Tails.\n\n}.
+            q{Check your network connection and restart elizaOS.\n\n}.
             q{If the problem persists, try doing a manual upgrade.},
         );
     try {
@@ -342,7 +342,7 @@ method get_upgrade_description () {
         error_title => __(q{Error while checking for upgrades}),
         error_msg   => __(
             "<b>Could not determine whether an upgrade is available from our website.</b>\n\n".
-            "Check your network connection and restart Tails.\n\n".
+            "Check your network connection and restart elizaOS.\n\n".
             "If the problem persists, try doing a manual upgrade.",
     ));
 
@@ -362,7 +362,7 @@ method no_incremental_explanation (Str $no_incremental_reason) {
     }
     elsif ($no_incremental_reason eq 'not-installed-with-tails-installer') {
         $explanation = __(
-            q{your device was not created using a USB image or Tails Cloner}
+            q{your device was not created using a USB image or elizaOS USB Cloner}
         );
     }
     elsif ($no_incremental_reason eq 'non-writable-device') {
@@ -408,16 +408,16 @@ method run () {
           $self->info(__("The system is up-to-date"));
           $self->dialog(
               __(
-                  "You are currently running the latest version. There is no upgrade available.\n"
+                  "You are currently running the latest elizaOS base version. There is no upgrade available.\n"
               ),
               type     => 'info',
-              title    => __(q{Tails is up to date}),
+              title    => __(q{elizaOS is up to date}),
           ) if $self->report_no_upgrade ;
           exit(0);
         }
 
         $self->info(__(
-                        'This version of Tails is outdated, and may have security issues.'
+                        'This version of elizaOS is outdated, and may have security issues.'
         ));
 
         if ($self->running_system->started_from_writable_device) {
@@ -527,12 +527,12 @@ method run () {
                 "<b>You should do a manual upgrade to the latest version of {name}.</b>\n\n".
                 "For more information about this new version, go to {details_url}\n\n".
                 "It is impossible to do an automatic upgrade of ".
-                "your Tails to this new version: {explanation}.\n\n".
+                "elizaOS to this new version: {explanation}.\n\n".
                 "To learn how to do a manual upgrade, go to {manual_upgrade_url}",
-                details_url        => q{https://tails.net/latest},
+                details_url        => q{https://elizaos.ai/},
                 name               => $upgrade_description->product_name,
                 explanation        => $self->no_incremental_explanation($no_incremental_reason),
-                manual_upgrade_url => 'https://tails.net/doc/upgrade/#manual',
+                manual_upgrade_url => 'https://elizaos.ai/',
             ),
             title => __(q{New version available}),
             type  => 'info',
@@ -709,7 +709,7 @@ method get_target_files (HashRef $upgrade_path, AbsDir $destdir) {
         $success and defined $exit_code and $exit_code == 0 or $self->fatal(
             __(
                 q{<b>The upgrade could not be downloaded.</b>\n\n}.
-                q{Check your network connection, and restart Tails to try upgrading again.}
+                q{Check your network connection, and restart elizaOS to try upgrading again.}
             ),
             title => __(q{Error while downloading the upgrade}),
             debugging_info => $self->encoding->decode(errf(
@@ -765,12 +765,12 @@ method do_incremental_upgrade (HashRef $upgrade_path) {
 
     $self->dialog(
         __(
-            "<b>Your Tails device was successfully upgraded.</b>\n\n".
+            "<b>Your elizaOS device was successfully upgraded.</b>\n\n".
             "Some security features were temporarily disabled.\n".
-            "You should restart Tails on the new version as soon as possible.\n\n".
+            "You should restart elizaOS on the new version as soon as possible.\n\n".
             "Do you want to restart now?"
         ),
-        title          => __(q{Restart Tails}),
+        title          => __(q{Restart elizaOS}),
         ok_label       => __(q{Restart now}),
         cancel_label   => __(q{Restart later}),
         default_cancel => 1,
@@ -817,7 +817,7 @@ method cancel_download () {
 method install_iuk (HashRef $upgrade_path, AbsDir $target_files_tempdir) {
     my $title = __("Upgrading the system");
     my $info = __(
-        "<b>Your Tails device is being upgraded...</b>\n\n".
+        "<b>Your elizaOS device is being upgraded...</b>\n\n".
         "For security reasons, the network connection is now disabled."
     );
     $self->info($info);
@@ -853,9 +853,9 @@ method install_iuk (HashRef $upgrade_path, AbsDir $target_files_tempdir) {
     $success or $self->fatal(
         $self->encoding->decode(__(
             q{<b>An error occurred while installing the upgrade.</b>\n\n}.
-            q{Your Tails device needs to be repaired and might be unable to restart.\n\n}.
+            q{Your elizaOS device needs to be repaired and might be unable to restart.\n\n}.
             q{Please follow the instructions at }.
-            q{file:///usr/share/doc/tails/website/doc/upgrade/error/install.en.html}
+            q{file:///usr/share/doc/elizaos/website/doc.en.html}
         )),
         title => __(q{Error while installing the upgrade}),
         debugging_info => $self->encoding->decode(errf(

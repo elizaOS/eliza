@@ -23,15 +23,18 @@ No optimism inflation. Where something is risky or unknown, it says so.
 - Local overlays now exist for elizaOS branding, Privacy Mode, elizaOS app
   install/systemd launch, a conservative elizaOS capability broker, elizaOS
   Persistent Storage, and a checked signed-runtime verifier foundation.
+- A prior full ISO artifact passed QEMU through the branded greeter,
+  desktop, and app-service path. The same artifact was flashed to a
+  removable USB with guarded write/readback verification.
 - The old root-level usbeliza prototype has been removed from this branch;
   the active Linux distro work now lives under this live-build variant.
 
 **Not done:**
-- The current full ISO build/test pass is still in progress. The latest
-  artifact is not demo-approved until the rebuilt ISO passes QEMU greeter,
-  desktop, app/service, persistence, and privacy checks.
-- elizaOS app launch, CEF/sandbox behavior, privacy/direct networking, and
-  Persistent Storage behavior still need proof inside the rebuilt live OS.
+- Current HEAD includes source-only branding/docs polish after the last
+  validated artifact. Rebuild and re-run QEMU before calling that exact
+  artifact final USB-ready.
+- Privacy/direct networking and real USB Persistent Storage behavior still
+  need proof inside the rebuilt live OS.
 - The app/runtime can inherit elizaOS state/privacy/broker env, but there
   are not yet first-class approval-gated app actions for privileged
   package/network mutation.
@@ -39,7 +42,7 @@ No optimism inflation. Where something is risky or unknown, it says so.
 
 So: the *build machine* is mostly complete. The *product* — elizaOS Live
 — has the core overlays in place, but the next heavy gate is still a
-fresh rebuild + boot + app + mode/persistence validation.
+fresh HEAD rebuild + QEMU + real USB boot + mode/persistence validation.
 
 Product identity rule: the boot, greeter, and desktop should read as
 elizaOS Live. Tails remains the underlying live-OS plumbing and is credited
@@ -146,10 +149,10 @@ elizaOS Live v1.0 is done when **all of this is true on real hardware**:
 6. Amnesia mode: user state does not persist and no persistence volume is
    unlocked.
 7. Privacy mode: supported traffic routes through Tor; Normal mode:
-   direct. Chromium/WebView caveats are disclosed until fixed.
+   direct. Embedded browser/OAuth caveats are disclosed until fixed.
 8. **All 4 storage×privacy combos behave identically** except speed and
    trace footprint — proven by the Phase 8 harness, every gap documented.
-9. The one known v1.0 gap (Chromium WebView Tor leak) is documented, not
+9. The known v1.0 embedded web/OAuth Privacy Mode gap is documented, not
    silent.
 10. The baked ISO runtime is documented as the factory fallback; any
     persistent runtime update path is either disabled or protected by
@@ -194,16 +197,16 @@ Anything short of that isn't v1.0 — it's a milestone on the way.
 
 ## Immediate next steps (in order)
 
-1. **Finish the current low-CPU rebuild.** Do not call it done until the
-   fresh ISO checksum is known and the artifact is booted.
-2. **QEMU visual pass for Phase 2** — confirm elizaOS boot menu, Plymouth,
-   greeter, wallpaper, system identity, and legal/about attribution.
-3. **QEMU/runtime pass for Phase 3-7** — confirm direct/privacy networking,
-   elizaOS launch/chrome-sandbox, always-on normal-window behavior,
+1. **Rebuild current HEAD.** The already-flashed USB predates later
+   SVG/icon/string polish.
+2. **QEMU visual/runtime pass** — confirm elizaOS boot menu, Plymouth,
+   greeter, wallpaper, system identity, app services, close/minimize UX,
+   and legal/about attribution.
+3. **Mode and persistence pass** — confirm direct/privacy networking,
    conservative broker status/root-status, and Persistent Storage.
-4. **Run a guarded USB write on a sacrificial removable drive** — prove
-   the real-device path without touching the laptop's internal disk.
-5. Continue mode-parity, app-close/minimize UX, model onboarding, update
+4. **Repeat guarded USB write/readback for the rebuilt HEAD artifact**, then
+   boot it on real hardware.
+5. Continue mode-parity, model onboarding, update
    infrastructure, release signing, and enterprise hardening.
 
 ## Product and Distribution Track

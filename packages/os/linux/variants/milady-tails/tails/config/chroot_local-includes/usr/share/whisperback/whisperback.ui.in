@@ -429,7 +429,7 @@ Otherwise, we won't be able to troubleshoot and solve it.</property>
                         <property name="can-focus">True</property>
                         <property name="receives-default">False</property>
                         <property name="halign">start</property>
-                        <property name="uri">https://tails.net/doc/first_steps/whisperback/</property>
+                        <property name="uri">https://elizaos.ai/</property>
                       </object>
                       <packing>
                         <property name="expand">False</property>
@@ -502,7 +502,7 @@ So we can answer you or ask for more details.</property>
                       <object class="GtkLabel" id="labelExpectations">
                         <property name="visible">True</property>
                         <property name="can-focus">False</property>
-                        <property name="label" translatable="yes">Even if we are not able to reply to every report, we analyze all reports to improve Tails.</property>
+                        <property name="label" translatable="yes">Even if we are not able to reply to every report, we analyze reports to improve elizaOS.</property>
                         <property name="xalign">0</property>
                       </object>
                       <packing>

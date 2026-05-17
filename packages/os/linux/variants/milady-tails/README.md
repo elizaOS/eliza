@@ -37,7 +37,7 @@ storage modes at boot, optionally combine with Tor privacy mode**.
 |  | What user gets | What survives reboot |
 |---|---|---|
 | **Amnesia** (default) | RAM-only user state; no persistence unlocked | Nothing — fresh every time |
-| **Persistent USB** (opt-in) | LUKS-encrypted partition on the same USB stick, bind-mounted to `~/.eliza/` and friends | Chat history, built apps, model downloads, Wi-Fi, API keys |
+| **Persistent USB** (opt-in) | LUKS-encrypted partition on the same USB stick, bind-mounted to `~/.eliza/` and friends | Intended to preserve chat history, built apps, model downloads, Wi-Fi, API keys; real USB persistence validation is still pending |
 
 A returning user can pick a different mode per-boot. The greeter
 shows the same window every time; the persistence row either offers
@@ -50,12 +50,13 @@ sealed.
 |  | What user gets |
 |---|---|
 | **Normal** (default) | Direct internet. Fast cloud APIs, fast model downloads. |
-| **Privacy Mode** (opt-in) | Tor-routed networking. Slow but anonymous where supported. Same product surface, with the current WebView caveat below. |
+| **Privacy Mode** (opt-in) | Tor-routed networking. Slow but anonymous where supported. Same product surface, with the current embedded web/OAuth caveat below. |
 
 The target contract is that all four combinations work with the same
-feature surface, except for speed and persistence. The source overlays are
-implemented, but the rebuilt ISO still needs QEMU and real-USB validation
-before those rows can be treated as proven behavior. See
+feature surface, except for speed and persistence. QEMU has proven the
+normal branded greeter/desktop/app path on a prior artifact, but the
+current HEAD still needs rebuild, QEMU, real-USB, persistence, and privacy
+validation before those rows can be treated as production evidence. See
 [`docs/user-experience.md`](./docs/user-experience.md) for the boot-time
 walkthrough and [`docs/mode-parity.md`](./docs/mode-parity.md) for the
 acceptance matrix.
@@ -66,8 +67,9 @@ acceptance matrix.
   design refuses this for forensic reasons; we're considering it carefully.
   See `PLAN.md § Deferred`.
 - **Runtime privacy toggle** — switching modes requires reboot in v1.0.
-- **Closing the Chromium WebView Tor-leak gap** — known v1.0 gap,
-  targeted for v1.1.
+- **Claiming embedded web/OAuth Privacy Mode parity** — known v1.0 gap.
+  The live OS routing is present, but embedded browser and OAuth surfaces
+  need explicit proxy proof before we market them as Tor-safe.
 - **Production update infrastructure** — current demo builds still require
   a new ISO for OS/base changes. The production plan is signed app/runtime
   updates in encrypted persistence, signed model downloads, and signed OS
@@ -111,22 +113,25 @@ Apache-2.0 where possible, dual-licensed under both where required.
 
 ## Status: Demo Branch Versus Production
 
-**Current branch status, 2026-05-17:** the elizaOS Live source tree is
-ready for a full build/test pass. The old usbeliza prototype has been
-removed from the PR branch, and a low-CPU full ISO build is running
-separately from this docs worktree. Do not call the image demo-complete
-until static smoke, the full ISO build, and the resulting QEMU greeter +
-desktop + app checks all pass.
+**Current branch status, 2026-05-17:** the elizaOS Live source tree has
+passed a full ISO build, QEMU greeter/desktop/app-service validation, and
+guarded USB flash/readback on a prior artifact. Current HEAD includes
+additional source-only branding and docs polish, so it must be rebuilt and
+revalidated before that exact image is called final USB-ready. Real
+hardware USB boot and real USB Persistent Storage behavior remain pending.
+See [`docs/current-status.md`](./docs/current-status.md) for the exact
+validation state.
 
 **Phase 1 — done.** The containerized build pipeline produced a bootable
 base ISO, and Tails' normal live-OS boot path was verified through QEMU
 using `-cdrom`.
 
-**Phases 2–7 — implemented in source, final proof pending.** Branding,
-Privacy Mode plumbing, bundled elizaOS app install/autostart, the
-conservative elizaOS capability broker, and elizaOS Persistent Storage
-rows/hooks are in the tree. The current gate is the rebuilt ISO plus QEMU
-and USB validation.
+**Phases 2–7 — implemented in source, QEMU demo path proven on a prior
+artifact.** Branding, Privacy Mode plumbing, bundled elizaOS app
+install/autostart, the conservative elizaOS capability broker, and elizaOS
+Persistent Storage rows/hooks are in the tree. The current gate is a fresh
+HEAD rebuild plus QEMU, USB flash/readback, real hardware boot, privacy,
+and persistence validation.
 
 **Phases 8–9 — spec/backlog.** Mode-parity harness and customization
 actions are planned but not production-complete. Production also still
@@ -159,6 +164,8 @@ offline docs in a cool build.
 ## Docs
 
 - [`PLAN.md`](./PLAN.md) — phase map with success criteria and status
+- [`docs/current-status.md`](./docs/current-status.md) — exact proven
+  evidence, current HEAD caveat, and remaining validation gates
 - [`ROADMAP.md`](./ROADMAP.md) — the honest road from here to a real demo
   and to v1.0
 - [`docs/build-infrastructure.md`](./docs/build-infrastructure.md) — the
@@ -170,11 +177,11 @@ offline docs in a cool build.
 - [`docs/mode-parity.md`](./docs/mode-parity.md) — feature behavior
   across storage/privacy combinations
 - [`docs/privacy-mode-v1-gap.md`](./docs/privacy-mode-v1-gap.md) —
-  known Chromium WebView privacy-mode caveat
+  known embedded browser/OAuth Privacy Mode caveat
 - [`docs/production-readiness.md`](./docs/production-readiness.md) —
   what is clean, what is demo glue, and what must harden before release
 - [`docs/runtime-packaging.md`](./docs/runtime-packaging.md) — how the
-  bundled Milady/eliza app is staged, installed, validated, and what replaces
+  bundled elizaOS app/runtime is staged, installed, validated, and what replaces
   the current demo packaging path for production
 - [`docs/security-model.md`](./docs/security-model.md) — root/user,
   persistence, update, service, and release-security boundaries

@@ -2,49 +2,47 @@
 
 Phase 2 makes the Tails system *look* like elizaOS while every Tails
 subsystem keeps working. It is **branding-only**: no behavior changes, no
-Tor/AppArmor/persistence touches, and no change to the later Milady app
-payload. All changes are additive overlays inside the `tails/` tree. Paths
-below are relative to:
+Tor/AppArmor/persistence touches. All changes are additive overlays inside
+the `tails/` tree. Paths below are relative to:
 
 ```
 TAILS = packages/os/linux/variants/milady-tails/tails
 ```
 
-## Canonical elizaOS brand assets (real source paths)
+## Canonical elizaOS brand assets (current implementation)
 
-The OS brand is elizaOS. The Milady app can still be baked in later, but
-system-level boot, greeter, wallpaper, About, and identity strings must say
-elizaOS. Real in-repo sources:
+The OS brand is elizaOS. System-level boot, greeter, wallpaper, About,
+Persistent Storage, help, and identity strings must say elizaOS. Current
+source paths:
 
 | Asset | Source path |
 |---|---|
-| elizaOS icon (1000×1000) | `packages/app/public/logos/elizaos-icon.png` |
-| elizaOS docs wordmark | `packages/docs/logo/dark.png`, `packages/docs/logo/light.png` |
-| elizaOS docs background | `packages/docs/images/eliza-og.png` |
-| Package/home metadata | root `README.md`, `package.json`, native plugin podspecs |
-| Dark palette tokens | `packages/ui/src/styles/base.css` (`.dark` block) |
+| Official SVG logo sources | `assets/logo_white_bluebg.svg`, `assets/logo_blue_nobg.svg` |
+| System SVG app icon | `TAILS/config/chroot_local-includes/usr/share/icons/hicolor/scalable/apps/elizaos.svg` |
+| Pixmap SVG/PNG app icon | `TAILS/config/chroot_local-includes/usr/share/pixmaps/elizaos.svg`, `elizaos.png` |
+| Generated boot icon | `TAILS/config/chroot_local-includes/usr/share/tails/bootx64.png` |
+| Generated wallpaper/splash/greeter assets | `scripts/generate-elizaos-brand-assets.sh` outputs under `TAILS/config/*` |
 
-**elizaOS dark palette:** bg `#050506` / `#0d0d10` / `#121214`, text
-`#eaecef` (strong `#ffffff`, muted `#8a8a94`), border `#232329` /
-`#313136`, **accent blue `#1238ff`** (hover `#3152ff`, fg `#ffffff`).
+**Current palette:** blue `#0B35F1`, white/soft grey surfaces, and black
+text where needed for contrast. Avoid the earlier black/red/orange theme on
+core visible surfaces.
 
-Derived raster assets (greeter logo, about logo, Plymouth wordmark,
-wallpaper, screensaver bg) are generated from those sources with
-ImageMagick and committed under `TAILS/config/chroot_local-includes`.
+Derived raster assets are generated from the official SVGs with ImageMagick
+and committed under `TAILS/config/chroot_local-includes`.
 
 ## A. The elizaOS greeter
 
-The greeter is a GTK3 Python app. Its UI is text-title-only today — no
-logo image, no footer — so Phase 2 both retitles and *adds* a logo + a
-"powered by Tails" footer.
+The greeter is a GTK3 Python app. Phase 2 retitles it, adds elizaOS logo
+art, applies the Poppins/blue-white visual treatment, and routes help to
+local elizaOS docs.
 
 - **A1. Window/application title** — `TAILS/config/chroot_local-includes/usr/lib/python3/dist-packages/tailsgreeter/__init__.py` line 25: `APPLICATION_TITLE = "Welcome to Tails!"` → `"Welcome to elizaOS!"`. This one constant feeds every window-title surface.
 - **A2. Header label** — `TAILS/config/chroot_local-includes/usr/share/tails/greeter/main.ui.in` line ~98 `label_header_title` → `Welcome to elizaOS!`. Edit the `.in` template, not the generated `main.ui`. Keep `translatable="yes"`.
 - **A3. Header logo** — add a `GtkImage id="image_header_logo"` before the label in `box_header` in `main.ui.in`. New file: `TAILS/config/chroot_local-includes/usr/share/tails/greeter/icons/elizaos-logo.png` (~96–128px from `elizaos-icon.png`).
-- **A4. Greeter CSS** — `TAILS/config/chroot_local-includes/usr/share/tails/greeter/greeter.css` (currently 3 lines): *extend* (don't replace) with elizaOS dark theming — dark window bg `#050506`/`#121214`, light text `#eaecef`, blue `#1238ff` on `.suggested-action` buttons. Keep selectors scoped to greeter widgets.
-- **A5. Greeter footer — "powered by Tails" (REQUIRED credit)** — add a final `GtkBox` to `box_inner` in `main.ui.in` with a `translatable` "powered by Tails" label (dim/italic) and optionally an "about" link. Matches the `docs/user-experience.md` mock-up.
+- **A4. Greeter CSS** — `TAILS/config/chroot_local-includes/usr/share/tails/greeter/greeter.css`: use Poppins and the blue/white/soft-grey elizaOS palette. Keep selectors GTK-compatible; `scripts/static-smoke.sh` parses this CSS to prevent the previous GTK `:root` regression.
+- **A5. Greeter attribution** — keep Tails attribution in About/legal/CREDITS, not as the primary greeter product identity.
 - **A6. `.desktop` entry** — `TAILS/config/chroot_local-includes/usr/share/applications/tails-greeter.desktop`: change `Name=` to `elizaOS Greeter` **only**. Do NOT change `Exec`, `X-GNOME-Provides=tails-greeter`, or the filename — they're wired into the GNOME session (`31-gdm-tails`).
-- **A7. (Do NOT touch)** the help-doc URIs in `main_window.py` / `main.ui.in` point at `/usr/share/doc/tails/website/...` — leave as `tails`.
+- **A7. Greeter help** — route help links to `/usr/share/doc/elizaos/website/doc.en.html`; keep inherited filenames/module names only where required.
 
 ## B. Boot menu title "Tails" → "elizaOS"
 
@@ -60,9 +58,12 @@ Tails uses the Plymouth `text` theme. Switch to a small elizaOS graphical theme:
 2. Edit `TAILS/config/chroot_local-includes/usr/share/tails/build/plymouth-theme.diff` — patched value `Theme=text` → `Theme=elizaos`.
 3. Edit `TAILS/config/chroot_local-hooks/22-plymouth` — after the `patch` line, add `plymouth-set-default-theme -R elizaos`.
 
-## D. GNOME default GTK theme → dark elizaOS
+## D. GNOME default GTK theme → light elizaOS
 
-Tails sets no explicit GTK theme. Add to the existing `TAILS/config/chroot_local-includes/etc/dconf/db/local.d/00_Tails_defaults`, `[org/gnome/desktop/interface]` stanza: `color-scheme='prefer-dark'`, `gtk-theme='Adwaita-dark'`. Also add `color-scheme='prefer-dark'` to `TAILS/config/chroot_local-includes/usr/share/gdm/dconf/50-tails`. A full bespoke GTK theme is out of v1.0 scope — dark + the elizaOS accent satisfies "dark elizaOS theme".
+The current implementation uses Poppins and a light blue/white elizaOS look
+rather than the earlier dark mock. Keep this aligned with
+`scripts/generate-elizaos-brand-assets.sh`, `greeter.css`, and
+`00_Tails_defaults`.
 
 ## E. Default wallpaper → elizaOS
 
@@ -97,10 +98,10 @@ Tails ships no custom `/etc/issue`. New file: `TAILS/config/chroot_local-include
 2. Greeter: `tailsgreeter/__init__.py`, `main.ui.in` (header label + logo + footer), `greeter.css`, `tails-greeter.desktop`.
 3. Boot menus: `10-syslinux_customize`, `grub.cfg`.
 4. Plymouth: `elizaos` theme dir, `plymouth-theme.diff`, `22-plymouth` hook.
-5. GNOME dark theme: `00_Tails_defaults`, `gdm/dconf/50-tails`.
+5. GNOME light elizaOS theme: `00_Tails_defaults`, `gdm/dconf/50-tails`.
 6. Wallpaper: overwrite `desktop_wallpaper.png` + `screensaver_background.png`; add `picture-uri-dark`.
 7. `os-release`: the `auto/config` heredoc.
 8. `/etc/issue` overlay.
 9. Tails credit: `usr/share/doc/elizaos-tails/CREDITS`, `tails-about` + `.desktop.in`.
 10. Verify the diff renames nothing on the DO-NOT-TOUCH list.
-11. `just build` (or `just binary`) → `just boot`: elizaOS boot menu → elizaOS Plymouth → "Welcome to elizaOS!" greeter with logo + dark theme + "powered by Tails" footer → dark GNOME + elizaOS wallpaper; `cat /etc/os-release` / `/etc/issue` show elizaOS; `tails-about` shows the credit line. `just nspawn` pre-checks the non-GUI files in seconds.
+11. `just build` (or `just binary`) → `just boot`: elizaOS boot menu → elizaOS Plymouth → "Welcome to elizaOS!" greeter with logo + light Poppins theme → GNOME + elizaOS wallpaper; `cat /etc/os-release` / `/etc/issue` show elizaOS; `tails-about` shows the credit line. `just nspawn` pre-checks the non-GUI files in seconds.

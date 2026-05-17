@@ -68,9 +68,9 @@ def main():
 
     else:
         policies["synaptic"].prompt = _(
-            "For better security, no administration password is set up in Tails "
+            "For better security, no administration password is set up in elizaOS "
             "by default. "
-            "To run the Synaptic Package Manager, restart Tails "
+            "To run the Synaptic Package Manager, restart elizaOS "
             "and set up an administration password in the Welcome Screen.",
         )
 
