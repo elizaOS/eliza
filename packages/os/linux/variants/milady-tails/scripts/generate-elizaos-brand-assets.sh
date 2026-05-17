@@ -95,6 +95,10 @@ convert -background none "${ICON_BLUEBG_SVG}" -resize 112x112 \
     -background none -gravity center -extent 128x128 \
     "${ROOT}/tails/config/chroot_local-includes/usr/share/tails/greeter/icons/elizaos-logo.png"
 
+convert -background none "${ICON_BLUEBG_SVG}" -resize 112x112 \
+    -background none -gravity center -extent 128x128 \
+    "${ROOT}/tails/config/chroot_local-includes/usr/share/tails/bootx64.png"
+
 render_svg "${BLUE_WORDMARK_SVG}" 214 "${TMP}/wordmark-header.png"
 convert -size 269x45 "xc:${WHITE}" \
     -fill "rgba(11,53,241,0.055)" -draw "polygon -20,34 289,22 289,45 -20,45" \

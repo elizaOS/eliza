@@ -99,6 +99,34 @@ require_fixed 'exec sudo -n "${self}" "$@"' "${broker}" \
     "capability-runner must recurse through the exact sudo allowlist"
 
 echo "==> broad sudoers inventory"
+sudoers_review=docs/inherited-tails-sudoers-review.md
+require_file "${sudoers_review}"
+reviewed_inherited_sudoers=(
+    tails/config/chroot_local-includes/etc/generate-sudoers.d/tails-greeter-cryptsetup.toml
+    tails/config/chroot_local-includes/etc/generate-sudoers.d/tails-greeter-umount.toml
+    tails/config/chroot_local-includes/etc/generate-sudoers.d/tbb.toml
+    tails/config/chroot_local-includes/etc/generate-sudoers.d/tps.toml
+    tails/config/chroot_local-includes/etc/generate-sudoers.d/upgrade.toml
+    tails/config/chroot_local-includes/etc/generate-sudoers.d/whisperback.toml
+)
+
+is_reviewed_inherited_sudoers() {
+    local candidate="$1"
+    local reviewed
+    for reviewed in "${reviewed_inherited_sudoers[@]}"; do
+        if [ "${candidate}" = "${reviewed}" ]; then
+            return 0
+        fi
+    done
+    return 1
+}
+
+for reviewed in "${reviewed_inherited_sudoers[@]}"; do
+    require_file "${reviewed}"
+    require_fixed "$(basename "${reviewed}")" "${sudoers_review}" \
+        "inherited sudoers review missing entry"
+done
+
 while IFS= read -r file; do
     [ -n "${file}" ] || continue
     case "${file}" in
@@ -106,13 +134,42 @@ while IFS= read -r file; do
             fail "unexpected broad elizaOS sudoers rule: ${file}"
             ;;
         *)
-            strict_or_warn "inherited Tails broad sudoers requires production review: ${file}"
+            if ! is_reviewed_inherited_sudoers "${file}"; then
+                strict_or_warn "unreviewed inherited Tails broad sudoers rule: ${file}"
+            fi
             ;;
     esac
 done < <(
     rg -l 'executable = "ALL"|NOPASSWD: ALL|arbitrary_arguments]' \
         tails/config/chroot_local-includes/etc/generate-sudoers.d || true
 )
+
+echo "==> runtime packaging boundary"
+require_file docs/runtime-packaging.md
+require_file scripts/prepare-milady-app-overlay.mjs
+require_file scripts/validate-runtime-overlay.mjs
+require_file tails/config/chroot_local-hooks/9100-install-milady
+require_fixed 'not a post-boot injection path' docs/runtime-packaging.md \
+    "runtime packaging docs must reject post-boot injection"
+require_fixed 'Resources/app/elizaos-live-overlay-manifest.json' docs/runtime-packaging.md \
+    "runtime packaging docs must require the live overlay manifest"
+require_fixed 'Production replacement:' docs/runtime-packaging.md \
+    "runtime packaging docs must name the production replacement path"
+require_fixed 'elizaos-live-overlay-manifest.json' scripts/prepare-milady-app-overlay.mjs \
+    "runtime prepare step must write an overlay manifest"
+require_fixed 'manifest package inventory does not match staged node_modules' \
+    scripts/validate-runtime-overlay.mjs \
+    "runtime validator must compare package inventory"
+require_grep '^src=/usr/share/elizaos/milady-app$' \
+    tails/config/chroot_local-hooks/9100-install-milady \
+    "runtime install hook must use the staged live-build app root"
+require_grep '^dst=/opt/milady$' \
+    tails/config/chroot_local-hooks/9100-install-milady \
+    "runtime install hook must install to the immutable factory runtime root"
+if grep -Eq 'curl |wget |git clone|npm install|bun install|pnpm install|yarn install' \
+    tails/config/chroot_local-hooks/9100-install-milady; then
+    fail "runtime install hook must not fetch or resolve dependencies during image build"
+fi
 
 echo "==> persistence boundary"
 python3 - <<'PY'

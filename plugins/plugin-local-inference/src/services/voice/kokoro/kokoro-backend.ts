@@ -202,6 +202,7 @@ export class KokoroTtsBackend implements OmniVoiceBackend, StreamingTtsBackend {
 	private async ensurePhonemizer(): Promise<KokoroPhonemizer> {
 		if (this.phonemizer) return this.phonemizer;
 		this.phonemizer = await resolvePhonemizer(this.phonemizerOverride);
+		console.info(`[kokoro] using phonemizer=${this.phonemizer.id}`);
 		return this.phonemizer;
 	}
 }

@@ -25,6 +25,7 @@ import {
 import type { BootProgressSnapshot, EmbeddedAgentStatus } from "./rpc-schema";
 
 const healthyReader: AgentHealthReader = async () => ({
+  agentState: "running",
   phase: "running",
   lastError: null,
   pluginsLoaded: 16,
@@ -67,6 +68,25 @@ describe("bootProgress typed RPC contract", () => {
     expect(snap.startedAt).toBe(1700000000000);
     expect(snap.lastError).toBeNull();
     expect(snap.updatedAt).toBe("2026-05-11T11:39:00.000Z");
+  });
+
+  it("uses live health agentState when an external dev API is already running", async () => {
+    const status: EmbeddedAgentStatus = {
+      state: "not_started",
+      agentName: null,
+      port: 31337,
+      startedAt: null,
+      error: null,
+    };
+    const snap = await composeBootProgressSnapshot(
+      status,
+      healthyReader,
+      FIXED_NOW,
+    );
+
+    expect(snap.state).toBe("running");
+    expect(snap.phase).toBe("running");
+    expect(snap.port).toBe(31337);
   });
 
   it("falls back to null placeholders when the agent has no port yet", async () => {
@@ -145,6 +165,7 @@ describe("bootProgress typed RPC contract", () => {
       error: "old agent-level error",
     };
     const healthWithError: AgentHealthReader = async () => ({
+      agentState: "error",
       phase: "runtime-error",
       lastError: "newer runtime error from /api/health",
       pluginsLoaded: 0,

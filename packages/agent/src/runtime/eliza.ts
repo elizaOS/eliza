@@ -259,6 +259,20 @@ async function loadRequiredPluginSql(): Promise<
   }
 }
 
+function resolveWorkspacePluginSourceEntry(packageName: string): string | null {
+  if (!packageName.startsWith("@elizaos/plugin-")) return null;
+  const shortName = packageName.slice("@elizaos/".length);
+  let dir = path.dirname(fileURLToPath(import.meta.url));
+  for (let depth = 0; depth < 14; depth += 1) {
+    const candidate = path.join(dir, "plugins", shortName, "src", "index.ts");
+    if (existsSync(candidate)) return candidate;
+    const parent = path.dirname(dir);
+    if (parent === dir) break;
+    dir = parent;
+  }
+  return null;
+}
+
 // Agent orchestrator ships as the standalone @elizaos/plugin-agent-orchestrator package.
 const loadOptionalPlugin = async (packageName: string): Promise<unknown> => {
   try {
@@ -297,6 +311,18 @@ const loadOptionalPlugin = async (packageName: string): Promise<unknown> => {
     }
     return await import(packageName);
   } catch {
+    const sourceEntry = resolveWorkspacePluginSourceEntry(packageName);
+    if (sourceEntry) {
+      try {
+        logger.debug(
+          `[eliza] Loading ${packageName} from workspace source at ${sourceEntry}`,
+        );
+        return await import(pathToFileURL(sourceEntry).href);
+      } catch {
+        // Fall through to the existing optional-plugin behavior: missing or
+        // unbuildable optional plugins are omitted from STATIC_ELIZA_PLUGINS.
+      }
+    }
     return null;
   }
 };
@@ -392,6 +418,7 @@ export async function ensureCoreStaticPluginsRegistered(): Promise<void> {
       pluginMlx,
       pluginAnthropic,
       pluginOpenai,
+      pluginGoogle,
     ] = await Promise.all([
       getPluginSql(),
       getPluginLocalEmbedding(),
@@ -406,6 +433,7 @@ export async function ensureCoreStaticPluginsRegistered(): Promise<void> {
       getOptionalPlugin("@elizaos/plugin-mlx"),
       getOptionalPlugin("@elizaos/plugin-anthropic"),
       getOptionalPlugin("@elizaos/plugin-openai"),
+      getOptionalPlugin("@elizaos/plugin-google"),
     ]);
 
     Object.assign(STATIC_ELIZA_PLUGINS, {
@@ -428,6 +456,7 @@ export async function ensureCoreStaticPluginsRegistered(): Promise<void> {
         ? { "@elizaos/plugin-background-runner": pluginBackgroundRunner }
         : {}),
       ...(pluginOpenai ? { "@elizaos/plugin-openai": pluginOpenai } : {}),
+      ...(pluginGoogle ? { "@elizaos/plugin-google": pluginGoogle } : {}),
       ...(pluginAnthropic
         ? { "@elizaos/plugin-anthropic": pluginAnthropic }
         : {}),
@@ -3594,17 +3623,17 @@ export async function startEliza(
     );
   }
 
-  // 7d. Pre-register plugin-local-embedding so its TEXT_EMBEDDING handler
-  //     (priority 10) is available before runtime.initialize() starts all
-  //     plugins in parallel.  Without this, the basic-capabilities plugin's services
-  //     (ActionFilterService, EmbeddingGenerationService) race ahead and use
-  //     the cloud plugin's TEXT_EMBEDDING handler — which hits a paid API —
-  //     because local-embedding's heavier init hasn't completed yet.
+  // 7d. Pre-register plugin-local-inference so its non-embedding local model
+  //     handlers/actions are available before runtime.initialize() starts all
+  //     plugins in parallel. TEXT_EMBEDDING is intentionally deferred to
+  //     ensureLocalInferenceHandler() after the runtime is initialized: desktop
+  //     local embeddings require an active Eliza-1 bundle, and startup probes
+  //     must not abort the app before the user can activate one.
   if (localEmbeddingPlugin) {
     configureLocalEmbeddingPlugin(localEmbeddingPlugin.plugin, config);
     await runtime.registerPlugin(localEmbeddingPlugin.plugin);
     logger.info(
-      "[eliza] plugin-local-embedding pre-registered (TEXT_EMBEDDING ready)",
+      "[eliza] plugin-local-inference pre-registered (TEXT_EMBEDDING deferred until a local backend is active)",
     );
   } else {
     logger.warn(
@@ -4133,8 +4162,9 @@ export async function startEliza(
           });
           installRuntimeMethodBindings(newRuntime);
 
-          // Pre-register plugin-sql + local-embedding before initialize()
-          // to avoid the same race condition as the initial startup.
+          // Pre-register plugin-sql + static local-inference handlers before
+          // initialize(). TEXT_EMBEDDING is wired by runtime hooks after init
+          // so hot-reload matches initial startup.
           // Re-derive from freshly resolved plugins (not outer closure) so
           // hot-reload picks up any plugin updates.
           const freshSqlPlugin = resolvedPlugins.find(

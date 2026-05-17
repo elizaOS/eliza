@@ -10,3 +10,4 @@ Categories=Application;System;
 Terminal=false
 StartupNotify=true
 StartupWMClass=whisperback
+NoDisplay=true

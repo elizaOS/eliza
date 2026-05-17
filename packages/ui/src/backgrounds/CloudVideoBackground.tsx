@@ -5,6 +5,8 @@ export type CloudVideoBackgroundProps = {
   basePath?: string;
   /** Playback speed variant. Slower variants are perceived as more cinematic. */
   speed?: "1x" | "4x" | "8x";
+  /** When false, render the poster as a static background instead of decoding video. */
+  animated?: boolean;
   /** Static image shown before the video can play. */
   poster?: string;
   /** Optional dark/light overlay scrim over the video (0–1). */
@@ -58,6 +60,7 @@ const SOURCE_SETS = {
 export function CloudVideoBackground({
   basePath = "/clouds",
   speed = "4x",
+  animated = true,
   poster,
   scrim = 0,
   scrimColor = "rgba(0, 0, 0, 1)",
@@ -70,7 +73,7 @@ export function CloudVideoBackground({
 
   useEffect(() => {
     const v = videoRef.current;
-    if (!v) return;
+    if (!animated || !v) return;
     const reduced = window.matchMedia("(prefers-reduced-motion: reduce)");
     const apply = () => {
       if (reduced.matches) {
@@ -87,7 +90,7 @@ export function CloudVideoBackground({
     apply();
     reduced.addEventListener("change", apply);
     return () => reduced.removeEventListener("change", apply);
-  }, []);
+  }, [animated]);
 
   const sources = SOURCE_SETS[speed];
   const base = basePath.replace(/\/$/, "");
@@ -102,38 +105,54 @@ export function CloudVideoBackground({
         ...style,
       }}
     >
-      <video
-        ref={videoRef}
-        autoPlay
-        loop
-        muted
-        playsInline
-        preload="metadata"
-        poster={poster}
-        disableRemotePlayback
-        disablePictureInPicture
-        style={{
-          position: "absolute",
-          inset: 0,
-          width: "100%",
-          height: "100%",
-          objectFit: "cover",
-          zIndex: 0,
-        }}
-      >
-        {sources.map((s) => (
-          <source
-            key={`${s.src}-${s.type}`}
-            src={`${base}/${s.src}`}
-            type={s.type}
-            media={
-              "minWidth" in s
-                ? `(min-width: ${(s as { minWidth: number }).minWidth}px)`
-                : undefined
-            }
-          />
-        ))}
-      </video>
+      {animated ? (
+        <video
+          ref={videoRef}
+          autoPlay
+          loop
+          muted
+          playsInline
+          preload="metadata"
+          poster={poster}
+          disableRemotePlayback
+          disablePictureInPicture
+          style={{
+            position: "absolute",
+            inset: 0,
+            width: "100%",
+            height: "100%",
+            objectFit: "cover",
+            zIndex: 0,
+          }}
+        >
+          {sources.map((s) => (
+            <source
+              key={`${s.src}-${s.type}`}
+              src={`${base}/${s.src}`}
+              type={s.type}
+              media={
+                "minWidth" in s
+                  ? `(min-width: ${(s as { minWidth: number }).minWidth}px)`
+                  : undefined
+              }
+            />
+          ))}
+        </video>
+      ) : poster ? (
+        <img
+          src={poster}
+          alt=""
+          aria-hidden="true"
+          style={{
+            position: "absolute",
+            inset: 0,
+            width: "100%",
+            height: "100%",
+            objectFit: "cover",
+            zIndex: 0,
+          }}
+        />
+      ) : null}
       {scrim > 0 ? (
         <div
           aria-hidden="true"

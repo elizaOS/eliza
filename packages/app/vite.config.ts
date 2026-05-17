@@ -1123,7 +1123,7 @@ export default defineConfig({
       // @elizaos/app-core sources directly.
       {
         find: /^@elizaos\/ui$/,
-        replacement: path.join(uiPkgRoot, "src/index.ts"),
+        replacement: path.join(uiPkgRoot, "src/browser.ts"),
       },
       {
         find: /^@elizaos\/ui\/styles$/,
@@ -1224,7 +1224,7 @@ export default defineConfig({
           ...generatedAliases,
           {
             find: /^@elizaos\/ui$/,
-            replacement: path.join(uiSource, "index.ts"),
+            replacement: path.join(uiSource, "browser.ts"),
           },
           {
             find: /^@elizaos\/ui\/(.+)$/,
@@ -1496,7 +1496,17 @@ export default defineConfig({
       // Electrobun postBuild copies renderer HTML/assets into electrobun/build/.
       // Watching those paths triggers full reloads while deps are still optimizing,
       // which breaks with "chunk-*.js does not exist" in node_modules/.vite/deps.
-      ignored: ["**/electrobun/build/**", "**/electrobun/artifacts/**"],
+      // Benchmark packages are large offline fixture trees; the desktop renderer
+      // does not import them, and watching them can exhaust the kernel watcher
+      // limit before the desktop renderer is interactive.
+      // OS image trees contain distro fixture files/symlinks that can fail
+      // fs.watch on Linux/Bun and are also not renderer inputs.
+      ignored: [
+        "**/electrobun/build/**",
+        "**/electrobun/artifacts/**",
+        "**/packages/benchmarks/**",
+        "**/packages/os/**",
+      ],
     },
   },
 });

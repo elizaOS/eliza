@@ -53,10 +53,11 @@ Production policy:
 - broker logs must not include prompts, secrets, tokens, model inputs, or file
   contents
 
-Inherited Tails sudoers rules are not owned by this branch. They remain a
-production review item because the upstream Tails updater and Persistent
-Storage stack include broad internal rules. elizaOS policy must not add new
-broad rules on top of them.
+Inherited Tails sudoers rules are reviewed in
+[`inherited-tails-sudoers-review.md`](./inherited-tails-sudoers-review.md).
+They are accepted only as inherited Tails feature plumbing for Greeter,
+Persistent Storage, Tor Browser, Tails Upgrader, and WhisperBack. elizaOS
+policy must not add new broad rules on top of them.
 
 ## Persistence Boundary
 
@@ -106,6 +107,11 @@ activation requires:
   product, wrong hash, partial download, failed migration, or missing rollback
 - no execution from user-writable staging paths; verified app runtimes must be
   materialized into a root-owned store first
+
+Current audit caveat: the verifier foundation exists, but the materialization
+path still needs hardened no-follow copy semantics or a root-owned quarantine
+before production use. Treat signed app/runtime updates as architecture in
+progress until that is fixed and tested.
 
 The Tails IUK stack already contains signed upgrade-description and target-file
 checks. elizaOS must not bypass that path for OS deltas. App/runtime manifests

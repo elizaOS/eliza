@@ -10,12 +10,11 @@ import { getStylePresets, ONBOARDING_PROVIDER_CATALOG } from "@elizaos/shared";
 import { client, type OnboardingOptions } from "../api";
 import {
   getBackendStartupTimeoutMs,
-  getDesktopRuntimeMode,
-  inspectExistingElizaInstall,
-  invokeDesktopBridgeRequest,
+  invokeDesktopBridgeRequestWithTimeout,
   isElectrobunRuntime,
   scanProviderCredentials,
 } from "../bridge";
+import type { ExistingElizaInstallInfo } from "../types";
 import type { UiLanguage } from "../i18n";
 import {
   ANDROID_LOCAL_AGENT_IPC_BASE,
@@ -44,6 +43,7 @@ import type { StartupEvent } from "./startup-coordinator";
 // persisted cloud active-server. Mirrors DEFAULT_DIRECT_CLOUD_API_BASE_URL
 // in api/client-cloud.ts; kept inline because that constant is module-private.
 const DIRECT_CLOUD_API_BASE = "https://api.elizacloud.ai";
+const DESKTOP_RESTORE_RPC_TIMEOUT_MS = 5_000;
 
 /**
  * If the restored cloud active-server has no apiBase (a broken state from
@@ -193,6 +193,37 @@ function restoredLocalApiBase(): string | null {
   return getElizaApiBase() ?? null;
 }
 
+async function inspectExistingElizaInstallForStartup(): Promise<ExistingElizaInstallInfo | null> {
+  const result =
+    await invokeDesktopBridgeRequestWithTimeout<ExistingElizaInstallInfo>({
+      rpcMethod: "agentInspectExistingInstall",
+      ipcChannel: "agent:inspectExistingInstall",
+      timeoutMs: DESKTOP_RESTORE_RPC_TIMEOUT_MS,
+    });
+  return result.status === "ok" ? result.value : null;
+}
+
+async function getDesktopRuntimeModeForStartup(): Promise<{
+  mode?: string;
+} | null> {
+  const result = await invokeDesktopBridgeRequestWithTimeout<{ mode?: string }>(
+    {
+      rpcMethod: "desktopGetRuntimeMode",
+      ipcChannel: "desktop:getRuntimeMode",
+      timeoutMs: DESKTOP_RESTORE_RPC_TIMEOUT_MS,
+    },
+  );
+  return result.status === "ok" ? result.value : null;
+}
+
+async function requestDesktopAgentStartForStartup(): Promise<void> {
+  await invokeDesktopBridgeRequestWithTimeout({
+    rpcMethod: "agentStart",
+    ipcChannel: "agent:start",
+    timeoutMs: DESKTOP_RESTORE_RPC_TIMEOUT_MS,
+  });
+}
+
 export async function applyRestoredConnection(args: {
   restoredActiveServer: PersistedActiveServer;
   clientRef: Pick<typeof client, "setBaseUrl" | "setToken">;
@@ -313,7 +344,7 @@ export async function runRestoringSession(
 
   const desktopInstall =
     !forceFreshOnboarding && !persistedActiveServer && isElectrobunRuntime()
-      ? await inspectExistingElizaInstall().catch(() => null)
+      ? await inspectExistingElizaInstallForStartup().catch(() => null)
       : null;
   if (cancelled.current) return;
 
@@ -428,14 +459,13 @@ export async function runRestoringSession(
     clientRef: client,
     startLocalRuntime: async () => {
       try {
-        const runtimeMode = await getDesktopRuntimeMode().catch(() => null);
+        const runtimeMode = await getDesktopRuntimeModeForStartup().catch(
+          () => null,
+        );
         if (runtimeMode && runtimeMode.mode !== "local") {
           return;
         }
-        await invokeDesktopBridgeRequest({
-          rpcMethod: "agentStart",
-          ipcChannel: "agent:start",
-        });
+        await requestDesktopAgentStartForStartup();
       } catch (err) {
         logger.warn(
           `[startup-phase-restore] desktop agent bridge request failed: ${err instanceof Error ? err.message : String(err)}`,

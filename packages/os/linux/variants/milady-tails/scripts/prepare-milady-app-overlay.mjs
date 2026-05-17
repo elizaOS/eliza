@@ -42,7 +42,7 @@ const defaultStage = path.join(
   "tails/config/chroot_local-includes/usr/share/elizaos/milady-app",
 );
 const stage =
-  stageArg ?? process.env.ELIZAOS_MILADY_APP_STAGE ?? defaultStage;
+  path.resolve(stageArg ?? process.env.ELIZAOS_MILADY_APP_STAGE ?? defaultStage);
 const buildJsonPath = path.join(stage, "Resources/build.json");
 const versionJsonPath = path.join(stage, "Resources/version.json");
 const infoPlistPath = path.join(stage, "Info.plist");
@@ -675,6 +675,8 @@ function syncWorkspaceRuntimePackages({ checkOnly }) {
   for (const [packageName, relativeSource] of [
     ["@elizaos/plugin-calendly", "plugins/plugin-calendly"],
     ["@elizaos/plugin-health", "plugins/plugin-health"],
+    ["@elizaos/plugin-app-manager", "plugins/plugin-app-manager"],
+    ["@elizaos/plugin-registry", "plugins/plugin-registry"],
   ]) {
     const packageSource = workspacePackagePath(relativeSource);
     if (!packageSource || !fs.existsSync(packageSource)) continue;
@@ -1705,19 +1707,31 @@ const chromeSandboxModeStale =
   chromeSandboxMode !== null && chromeSandboxMode !== 0o755;
 
 if (check) {
-  if (
-    before !== after ||
-    versionBefore !== versionAfter ||
-    brandBefore !== brandAfter ||
-    infoPlist !== nextInfoPlist ||
-    agentBefore !== agentAfter ||
-    missingDependencyLinks.length > 0 ||
-    workspacePackagesStale ||
-    staleRuntimePatchWrites.length > 0 ||
-    staleRendererWallpaperTargets.length > 0 ||
-    chromeSandboxModeStale
-  ) {
+  const staleReasons = [];
+  if (before !== after) staleReasons.push("Resources/build.json");
+  if (versionBefore !== versionAfter) staleReasons.push("Resources/version.json");
+  if (brandBefore !== brandAfter) staleReasons.push("Resources/app/brand-config.json");
+  if (infoPlist !== nextInfoPlist) staleReasons.push("Info.plist");
+  if (agentBefore !== agentAfter) {
+    staleReasons.push("Resources/app/eliza-dist/node_modules/@elizaos/agent/package.json");
+  }
+  for (const { linkPath } of missingDependencyLinks) {
+    staleReasons.push(path.relative(stage, linkPath));
+  }
+  if (workspacePackagesStale) staleReasons.push("workspace runtime packages");
+  for (const { filePath } of staleRuntimePatchWrites) {
+    staleReasons.push(path.relative(stage, filePath));
+  }
+  for (const filePath of staleRendererWallpaperTargets) {
+    staleReasons.push(path.relative(stage, filePath));
+  }
+  if (chromeSandboxModeStale) staleReasons.push("bin/chrome-sandbox mode");
+
+  if (staleReasons.length > 0) {
     console.error(`${buildJsonPath} is not prepared for elizaOS Live`);
+    for (const reason of staleReasons) {
+      console.error(`  stale: ${reason}`);
+    }
     process.exit(1);
   }
   console.log("Milady app overlay already prepared for elizaOS Live");

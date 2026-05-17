@@ -71,6 +71,39 @@ describe("handleTtsRoutes local-inference", () => {
     expect(res.body.subarray(0, 4).toString("ascii")).toBe("RIFF");
   });
 
+  it("forwards local voice, model, speed, sample rate, and format hints", async () => {
+    const useModel = vi.fn(async (_modelType, params, provider) => {
+      expect(_modelType).toBe(ModelType.TEXT_TO_SPEECH);
+      expect(provider).toBe("eliza-local-inference");
+      expect(params).toEqual({
+        text: "hello",
+        voice: "af_bella",
+        modelId: "kokoro-q4",
+        speed: 1.1,
+        sampleRate: 24000,
+        format: "wav",
+      });
+      return riffWav();
+    });
+    const ctx = makeContext({
+      state: { config: {}, runtime: { useModel } as never },
+      readJsonBody: vi.fn(async () => ({
+        text: "hello",
+        voice: "ignored",
+        voiceId: "af_bella",
+        modelId: "kokoro-q4",
+        speed: 1.1,
+        sampleRate: 24000,
+        format: "wav",
+      })),
+    });
+
+    await expect(handleTtsRoutes(ctx)).resolves.toBe(true);
+
+    const res = ctx.res as unknown as ReturnType<typeof makeRes>;
+    expect(res.status).toBe(200);
+  });
+
   it("fails closed when no local provider is registered", async () => {
     const useModel = vi.fn(async () => {
       throw new Error("No handler found for delegate type: TEXT_TO_SPEECH");

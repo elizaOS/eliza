@@ -1476,7 +1476,17 @@ function injectBrandUserAgentMarkers(javaSource, markers) {
   return javaSource.replace(arrayRe, `$1\n${lines.join("\n")}\n    $3`);
 }
 
-function ensureElizaOsActivityFilters(xml) {
+function removeElizaOsHomeActivityFilter(xml) {
+  return xml.replace(
+    /\n\s*<intent-filter>\s*<action\s+android:name="android\.intent\.action\.MAIN"\s*\/>\s*<category\s+android:name="android\.intent\.category\.HOME"\s*\/>\s*<category\s+android:name="android\.intent\.category\.DEFAULT"\s*\/>\s*<\/intent-filter>\s*/g,
+    "\n",
+  );
+}
+
+function ensureElizaOsActivityFilters(xml, { enabled = true } = {}) {
+  if (!enabled) {
+    return removeElizaOsHomeActivityFilter(xml);
+  }
   if (xml.includes("android.intent.category.HOME")) {
     return xml;
   }
@@ -1490,6 +1500,21 @@ function ensureElizaOsActivityFilters(xml) {
             </intent-filter>
 `;
   return xml.replace(mainActivityRe, `$1${homeFilter}$2`);
+}
+
+export function androidAospRoleLauncherIntentFilter({
+  enabled = false,
+  category = null,
+} = {}) {
+  if (!enabled) return "";
+  const extraCategory = category
+    ? `\n                <category android:name="${category}" />`
+    : "";
+  return `
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />${extraCategory}
+            </intent-filter>`;
 }
 
 function ensureAndroidMainActivityUrlSchemeFilter(xml) {
@@ -1818,7 +1843,7 @@ function restoreAndroidManifestFromPlatformTemplateIfMissing() {
   return true;
 }
 
-function overlayAndroid() {
+function overlayAndroid({ includeAospRoleLaunchers = false } = {}) {
   const srcJava = path.join(
     platformsDir,
     "android",
@@ -1966,7 +1991,9 @@ function overlayAndroid() {
       "android.hardware.telephony",
       '    <uses-feature android:name="android.hardware.telephony" android:required="false" />',
     );
-    const withElizaOsActivityFilters = ensureElizaOsActivityFilters(xml);
+    const withElizaOsActivityFilters = ensureElizaOsActivityFilters(xml, {
+      enabled: includeAospRoleLaunchers,
+    });
     if (withElizaOsActivityFilters !== xml) {
       xml = withElizaOsActivityFilters;
       dirty = true;
@@ -2275,12 +2302,10 @@ function overlayAndroid() {
             android:name="${androidPackage}.ElizaContactsActivity"
             android:exported="true"
             android:label="Contacts"
-            android:theme="@style/AppTheme.NoActionBar">
-            <intent-filter>
-                <action android:name="android.intent.action.MAIN" />
-                <category android:name="android.intent.category.LAUNCHER" />
-                <category android:name="android.intent.category.APP_CONTACTS" />
-            </intent-filter>
+            android:theme="@style/AppTheme.NoActionBar">${androidAospRoleLauncherIntentFilter({
+              enabled: includeAospRoleLaunchers,
+              category: "android.intent.category.APP_CONTACTS",
+            })}
             <intent-filter>
                 <action android:name="android.intent.action.VIEW" />
                 <category android:name="android.intent.category.DEFAULT" />
@@ -2304,11 +2329,9 @@ function overlayAndroid() {
             android:name="${androidPackage}.ElizaCameraActivity"
             android:exported="true"
             android:label="Camera"
-            android:theme="@style/AppTheme.NoActionBar">
-            <intent-filter>
-                <action android:name="android.intent.action.MAIN" />
-                <category android:name="android.intent.category.LAUNCHER" />
-            </intent-filter>
+            android:theme="@style/AppTheme.NoActionBar">${androidAospRoleLauncherIntentFilter({
+              enabled: includeAospRoleLaunchers,
+            })}
             <intent-filter>
                 <action android:name="android.media.action.STILL_IMAGE_CAMERA" />
                 <category android:name="android.intent.category.DEFAULT" />
@@ -2332,11 +2355,9 @@ function overlayAndroid() {
             android:name="${androidPackage}.ElizaClockActivity"
             android:exported="true"
             android:label="Clock"
-            android:theme="@style/AppTheme.NoActionBar">
-            <intent-filter>
-                <action android:name="android.intent.action.MAIN" />
-                <category android:name="android.intent.category.LAUNCHER" />
-            </intent-filter>
+            android:theme="@style/AppTheme.NoActionBar">${androidAospRoleLauncherIntentFilter({
+              enabled: includeAospRoleLaunchers,
+            })}
             <intent-filter>
                 <action android:name="android.intent.action.SET_ALARM" />
                 <category android:name="android.intent.category.DEFAULT" />
@@ -2368,12 +2389,10 @@ function overlayAndroid() {
             android:name="${androidPackage}.ElizaCalendarActivity"
             android:exported="true"
             android:label="Calendar"
-            android:theme="@style/AppTheme.NoActionBar">
-            <intent-filter>
-                <action android:name="android.intent.action.MAIN" />
-                <category android:name="android.intent.category.LAUNCHER" />
-                <category android:name="android.intent.category.APP_CALENDAR" />
-            </intent-filter>
+            android:theme="@style/AppTheme.NoActionBar">${androidAospRoleLauncherIntentFilter({
+              enabled: includeAospRoleLaunchers,
+              category: "android.intent.category.APP_CALENDAR",
+            })}
             <intent-filter>
                 <action android:name="android.intent.action.VIEW" />
                 <category android:name="android.intent.category.DEFAULT" />
@@ -4029,12 +4048,15 @@ function ensureIosFullBunEngineArtifact({ buildTarget = null } = {}) {
 
 // ── Android cloud (Play-Store) strip set ────────────────────────────────
 //
-// The default Android target injects an on-device agent runtime, default
-// roles (dialer, SMS, browser, contacts, camera, calendar, clock,
-// assistant, in-call), a boot receiver, and the privileged appop /
-// usage-stats / full-control permissions that AOSP needs but Play Store
-// rejects. The `android-cloud` target produces a thin Capacitor client
-// backed by Eliza Cloud and must not ship any of those components.
+// The local Android targets can inject an on-device agent runtime,
+// role-resolver activities (dialer, SMS, browser, contacts, camera,
+// calendar, clock, assistant, in-call), a boot receiver, and the privileged
+// appop / usage-stats / full-control permissions that AOSP needs but Play
+// Store rejects. Only the `android-system` target exposes those role
+// activities as launcher/home surfaces; the stock sideload APK keeps a
+// single app-drawer entry. The `android-cloud` target produces a thin
+// Capacitor client backed by Eliza Cloud and must not ship any of those
+// components.
 //
 // Components deleted from the manifest (and from app/src/main/java/...):
 export const ANDROID_CLOUD_STRIPPED_COMPONENTS = [
@@ -4988,7 +5010,7 @@ async function buildAndroid() {
 
   patchAndroidGradle();
   await generateAndroidBrandAssets();
-  overlayAndroid();
+  overlayAndroid({ includeAospRoleLaunchers: false });
   sanitizeAndroidManifestWhenPlatformTemplatesMissing();
   auditAndroidSystemSource("pre-gradle", { requireCapabilityManifest: false });
   writeAndroidCleartextPolicy({
@@ -5129,7 +5151,7 @@ async function buildAndroidCloud({ debug = false } = {}) {
 
   patchAndroidGradle();
   await generateAndroidBrandAssets();
-  overlayAndroid();
+  overlayAndroid({ includeAospRoleLaunchers: false });
   sanitizeAndroidManifestWhenPlatformTemplatesMissing();
   writeAndroidCleartextPolicy({
     allowCleartext: false,
@@ -5257,7 +5279,7 @@ async function buildAndroidSystem() {
 
   patchAndroidGradle();
   await generateAndroidBrandAssets();
-  overlayAndroid();
+  overlayAndroid({ includeAospRoleLaunchers: true });
   sanitizeAndroidManifestWhenPlatformTemplatesMissing();
   writeAndroidCleartextPolicy({
     allowCleartext: true,

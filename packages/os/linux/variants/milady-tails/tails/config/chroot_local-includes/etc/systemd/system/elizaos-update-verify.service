@@ -15,7 +15,7 @@ NoNewPrivileges=yes
 PrivateTmp=yes
 ProtectHome=read-only
 ProtectSystem=strict
-ReadWritePaths=/run/elizaos /live/persistence/TailsData_unlocked/elizaos-system
+ReadWritePaths=/run/elizaos -/live/persistence/TailsData_unlocked/elizaos-system
 
 [Install]
 WantedBy=multi-user.target

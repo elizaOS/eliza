@@ -90,6 +90,7 @@ export const CORE_PLUGINS: readonly string[] = [
   "@elizaos/plugin-coding-tools", // native FILE/SHELL/WORKTREE coding tools (desktop-only
   "@elizaos/plugin-agent-skills", // skill execution and marketplace runtime
   "@elizaos/plugin-commands", // slash command handling (skills auto-register as /commands)
+  "@elizaos/plugin-google", // Google Workspace connector service required by LifeOps
   "@elizaos/plugin-lifeops", // LifeOps: personal ops — tasks, goals, calendar, inbox, website blocking
   "@elizaos/plugin-browser", // Browser workspace and Chrome/Safari companion bridge.
   "@elizaos/plugin-video", // Video download / transcription (managed yt-dlp + ffmpeg with auto-update on extractor failure)

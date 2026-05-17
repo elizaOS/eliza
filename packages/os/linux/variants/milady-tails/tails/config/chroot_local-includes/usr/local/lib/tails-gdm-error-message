@@ -127,7 +127,7 @@ def format_gpus(gpus: list) -> str:
         header = "Error starting GDM with your graphics card:\n"
     else:
         header = "Error starting GDM with your %d graphics cards:\n" % len(gpus)
-    footer = "\nPlease take note of this error and visit https://tails.net/gdm for troubleshooting."
+    footer = "\nPlease take note of this error and visit https://elizaos.ai/ for troubleshooting."
     msg = msg[: MAX_LENGTH - len(header) - len(footer)]
     msg = header + msg + footer
     return msg
@@ -144,7 +144,7 @@ def main():
     args = p.parse_args()
 
     if DISK_IOERRORS.exists():
-        msg = "Error reading data from your elizaOS USB stick.\nPlease visit https://tails.net/ioerror for troubleshooting."
+        msg = "Error reading data from your elizaOS USB stick.\nPlease visit https://elizaos.ai/ for troubleshooting."
     else:
         output = run_lspci(["-d::0300", "-nn"])
         gpus = parse_lspci(output)

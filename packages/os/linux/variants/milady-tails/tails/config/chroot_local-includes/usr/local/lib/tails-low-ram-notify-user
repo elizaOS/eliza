@@ -25,7 +25,7 @@ class LowRamNotifier:
         required_ram_gb = round(required_ram / 2**30, 1)
         self.title = _("Insufficient Memory Detected")
         self.body = _(
-            "Tails requires {required_ram_gb} GB of RAM, but this computer only "
+            "elizaOS requires {required_ram_gb} GB of RAM, but this computer only "
             "has {installed_ram_gb} GB. You might experience reduced performance, "
             "instability, or crashes."
         ).format(required_ram_gb=required_ram_gb, installed_ram_gb=installed_ram_gb)
@@ -72,7 +72,7 @@ class LowRamNotifier:
 if __name__ == "__main__":
     installed_ram = psutil.virtual_memory().total
     required_ram = 3 * 2**30
-    # Tails requires 3 GB of RAM, however, we allow some slack since
+    # elizaOS requires 3 GB of RAM, however, we allow some slack since
     # all RAM often isn't fully available (e.g. due to being used as
     # video memory for integrated graphics).
     if required_ram - 256 * 2**20 <= installed_ram:

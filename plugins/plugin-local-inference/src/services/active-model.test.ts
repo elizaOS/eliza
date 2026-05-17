@@ -1,3 +1,6 @@
+import { mkdirSync, mkdtempSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join as pathJoin } from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
 	ActiveModelCoordinator,
@@ -37,6 +40,41 @@ describe("resolveLocalInferenceLoadArgs", () => {
 		const target = makeInstalledModel("eliza-1-9b", "/tmp/eliza-1-9b.gguf");
 		const args = await resolveLocalInferenceLoadArgs(target);
 		expect(args.contextSize).toBe(131072);
+	});
+
+	it("uses the installed bundle text ctx when a legacy staged bundle is below the catalog ceiling", async () => {
+		const root = mkdtempSync(pathJoin(tmpdir(), "eliza-active-model-"));
+		const textDir = pathJoin(root, "text");
+		mkdirSync(textDir, { recursive: true });
+		const modelPath = pathJoin(textDir, "eliza-1-0_8b-32k.gguf");
+		const manifestPath = pathJoin(root, "eliza-1.manifest.json");
+		writeFileSync(modelPath, "GGUF", "utf8");
+		writeFileSync(
+			manifestPath,
+			JSON.stringify({
+				id: "eliza-1-0_8b",
+				version: "1.0.0-weights-staged.2",
+				defaultEligible: false,
+				files: {
+					text: [
+						{
+							path: "text/eliza-1-0_8b-32k.gguf",
+							sha256: "a".repeat(64),
+							ctx: 32768,
+						},
+					],
+				},
+			}),
+			"utf8",
+		);
+		const target: InstalledModel = {
+			...makeInstalledModel("eliza-1-0_8b", modelPath),
+			bundleRoot: root,
+			manifestPath,
+			bundleVersion: "1.0.0-weights-staged.2",
+		};
+		const args = await resolveLocalInferenceLoadArgs(target);
+		expect(args.contextSize).toBe(32768);
 	});
 
 	it("per-load contextSize override beats catalog contextLength default", async () => {

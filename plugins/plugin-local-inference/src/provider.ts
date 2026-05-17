@@ -971,13 +971,24 @@ export function createLocalInferenceModelHandlers(): NonNullable<
 	};
 }
 
+function createStaticPluginModelHandlers(): NonNullable<Plugin["models"]> {
+	const { [ModelType.TEXT_EMBEDDING]: _embedding, ...handlers } =
+		createLocalInferenceModelHandlers();
+	return handlers;
+}
+
 export const localInferencePlugin: Plugin = {
 	name: LOCAL_INFERENCE_PROVIDER_ID,
 	description:
 		"Eliza-1 local provider for text, embeddings, text-to-speech, and transcription.",
 	priority: LOCAL_INFERENCE_PRIORITY,
 	actions: [generateMediaAction],
-	models: createLocalInferenceModelHandlers(),
+	// TEXT_EMBEDDING is wired by ensureLocalInferenceHandler(), not the static
+	// plugin object. Runtime bootstrap probes embeddings before the user has
+	// activated an Eliza-1 bundle; registering the static handler there claims a
+	// provider that cannot embed yet and aborts startup instead of letting the
+	// app come online.
+	models: createStaticPluginModelHandlers(),
 	async init(_config: unknown, runtime: IAgentRuntime) {
 		const service = serviceFromRuntime(runtime);
 		if (!service) {

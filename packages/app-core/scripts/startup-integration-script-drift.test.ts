@@ -10,6 +10,12 @@ const packageJson = JSON.parse(
 ) as {
   scripts?: Record<string, string>;
 };
+const appCoreScriptsRoot = path.join(
+  repoRoot,
+  "packages",
+  "app-core",
+  "scripts",
+);
 
 function expectScript(scriptName: string) {
   const command = packageJson.scripts?.[scriptName];
@@ -31,6 +37,50 @@ const hasWorkflows = (paths: string[]) =>
   paths.every((p) => fs.existsSync(path.join(repoRoot, p)));
 
 describe("startup integration script drift", () => {
+  it("keeps desktop dev Electrobun packaging aligned with the orchestrated root", () => {
+    const devPlatform = fs.readFileSync(
+      path.join(appCoreScriptsRoot, "dev-platform.mjs"),
+      "utf8",
+    );
+
+    expect(devPlatform).toContain("ELIZA_ELECTROBUN_REPO_ROOT: bundleRoot");
+    expect(devPlatform).toMatch(
+      /skipApi\s*\?\s*\{\s*ELIZA_DESKTOP_SKIP_EMBEDDED_AGENT:\s*"1"\s*\}/,
+    );
+  });
+
+  it("syncs shared public assets before desktop renderer staleness checks", () => {
+    const devPlatform = fs.readFileSync(
+      path.join(appCoreScriptsRoot, "dev-platform.mjs"),
+      "utf8",
+    );
+
+    const syncIndex = devPlatform.indexOf("syncRendererPublicAssets();");
+    const staleIndex = devPlatform.indexOf(
+      "viteRendererBuildNeeded(appDir, bundleRoot)",
+    );
+
+    expect(devPlatform).toContain("sync-to-public.mjs");
+    expect(devPlatform).toContain('"--clouds"');
+    expect(syncIndex).toBeGreaterThanOrEqual(0);
+    expect(staleIndex).toBeGreaterThan(syncIndex);
+  });
+
+  it("keeps desktop API watch mode opt-in", () => {
+    const devPlatform = fs.readFileSync(
+      path.join(appCoreScriptsRoot, "dev-platform.mjs"),
+      "utf8",
+    );
+
+    expect(devPlatform).toContain(
+      'const apiWatchEnabled = envFlagEnabled("ELIZA_DESKTOP_API_WATCH");',
+    );
+    expect(devPlatform).toContain("set ELIZA_DESKTOP_API_WATCH=1 to enable");
+    expect(devPlatform).not.toContain(
+      'const apiWatchEnabled = !envFlagDisabled("ELIZA_DESKTOP_API_WATCH");',
+    );
+  });
+
   it.skipIf(!selfControlScriptsExpected)(
     "keeps the website blocker smoke scripts wired to real files",
     () => {

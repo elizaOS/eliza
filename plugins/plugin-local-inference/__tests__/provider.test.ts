@@ -19,12 +19,14 @@ function runtimeWithService(service: Record<string, unknown>) {
 }
 
 describe("local inference provider", () => {
-	it("exports one provider for text, embedding, TTS, and transcription", () => {
+	it("exports one provider for text, media, TTS, and transcription", () => {
 		expect(localInferencePlugin.name).toBe(LOCAL_INFERENCE_PROVIDER_ID);
 		expect(localInferencePlugin.priority).toBe(LOCAL_INFERENCE_PRIORITY);
 		for (const modelType of LOCAL_INFERENCE_MODEL_TYPES) {
+			if (modelType === ModelType.TEXT_EMBEDDING) continue;
 			expect(localInferencePlugin.models?.[modelType]).toBeTypeOf("function");
 		}
+		expect(localInferencePlugin.models?.[ModelType.TEXT_EMBEDDING]).toBeUndefined();
 	});
 
 	it("delegates text generation to the runtime local inference service", async () => {

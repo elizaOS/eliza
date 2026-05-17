@@ -25,4 +25,7 @@ Use the variant docs as the source of truth:
 - [`variants/milady-tails/PLAN.md`](./variants/milady-tails/PLAN.md)
 - [`variants/milady-tails/ROADMAP.md`](./variants/milady-tails/ROADMAP.md)
 - [`variants/milady-tails/docs/production-readiness.md`](./variants/milady-tails/docs/production-readiness.md)
+- [`variants/milady-tails/docs/security-model.md`](./variants/milady-tails/docs/security-model.md)
+- [`variants/milady-tails/docs/runtime-packaging.md`](./variants/milady-tails/docs/runtime-packaging.md)
+- [`variants/milady-tails/docs/inherited-tails-sudoers-review.md`](./variants/milady-tails/docs/inherited-tails-sudoers-review.md)
 - [`variants/milady-tails/docs/distribution-and-updates.md`](./variants/milady-tails/docs/distribution-and-updates.md)

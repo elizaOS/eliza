@@ -8,4 +8,4 @@ Icon=elizaos
 Terminal=false
 Categories=Utility;
 StartupNotify=true
-StartupWMClass=Milady
+StartupWMClass=elizaOS

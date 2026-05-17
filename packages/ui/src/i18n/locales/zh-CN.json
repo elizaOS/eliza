@@ -2853,6 +2853,7 @@
   "startupshell.ScanningNetwork": "正在扫描你的网络...",
   "startupshell.SignInElizaCloud": "使用 Eliza Cloud 登录",
   "startupshell.SplashTagline": "你的本地优先 AI 助手",
+  "startupshell.Starting": "启动中…",
   "startupshell.WaitingForAuth": "等待认证...",
   "startupshell.YourCloudAgents": "你的云代理",
   "statusbar.GoLive": "上线",
