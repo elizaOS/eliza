@@ -1,8 +1,7 @@
-import assert from "node:assert/strict";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import test from "node:test";
+import { expect, test } from "vitest";
 
 import {
   writeCapabilities,
@@ -98,12 +97,11 @@ test("linux CUDA capabilities require target-matching runtime dispatch evidence 
       binaries: ["llama-server"],
     });
 
-    assert.equal(capabilities.publishable, true);
-    assert.equal(capabilities.eliza1DefaultEligible, true);
-    assert.deepEqual(capabilities.missingRequiredKernels, []);
-    assert.equal(capabilities.runtimeDispatch.evidenceTargetLoaded, true);
-    assert.equal(
-      capabilities.runtimeDispatch.kernels.qjl_full.status,
+    expect(capabilities.publishable).toBe(true);
+    expect(capabilities.eliza1DefaultEligible).toBe(true);
+    expect(capabilities.missingRequiredKernels).toEqual([]);
+    expect(capabilities.runtimeDispatch.evidenceTargetLoaded).toBe(true);
+    expect(capabilities.runtimeDispatch.kernels.qjl_full.status).toBe(
       "runtime-ready",
     );
   } finally {
@@ -136,20 +134,19 @@ test("CUDA object/source scans fail closed when runtime evidence does not match 
         }),
     );
 
-    assert.equal(capabilities.publishable, false);
-    assert.equal(capabilities.eliza1DefaultEligible, false);
-    assert.equal(capabilities.runtimeDispatch.evidenceTargetLoaded, false);
-    assert.deepEqual(capabilities.missingRequiredKernels.sort(), [
+    expect(capabilities.publishable).toBe(false);
+    expect(capabilities.eliza1DefaultEligible).toBe(false);
+    expect(capabilities.runtimeDispatch.evidenceTargetLoaded).toBe(false);
+    expect(capabilities.missingRequiredKernels.sort()).toEqual([
       "polarquant",
       "qjl_full",
       "turbo3",
       "turbo3_tcq",
       "turbo4",
     ]);
-    assert.match(
+    expect(
       capabilities.runtimeDispatch.kernels.turbo3.requiredSmoke,
-      /cuda_runner\.sh --report <path>/,
-    );
+    ).toMatch(/cuda_runner\.sh --report <path>/);
   } finally {
     fs.rmSync(root, { recursive: true, force: true });
   }

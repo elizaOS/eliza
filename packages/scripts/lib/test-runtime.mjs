@@ -57,6 +57,14 @@ function readNvmrc(repoRoot) {
   }
 }
 
+function nodeOptionsWithHeapLimit(value) {
+  const current = String(value || "").trim();
+  if (/(^|\s)--max-old-space-size=/.test(current)) {
+    return current;
+  }
+  return [current, "--max-old-space-size=8192"].filter(Boolean).join(" ");
+}
+
 function nvmNodeCandidates(homeDir, repoRoot) {
   const versionsDir = path.join(homeDir, ".nvm", "versions", "node");
   const candidates = [];
@@ -140,6 +148,7 @@ export function buildTestRuntimeEnv(baseEnv = process.env, options = {}) {
   return {
     ...baseEnv,
     PATH: [...pathPrefix, ...splitPath(baseEnv.PATH)].join(path.delimiter),
+    NODE_OPTIONS: nodeOptionsWithHeapLimit(baseEnv.NODE_OPTIONS),
     ...(codexNode && externalNode ? { ELIZA_TEST_NODE: externalNode } : {}),
   };
 }
