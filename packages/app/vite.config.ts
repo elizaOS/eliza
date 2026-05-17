@@ -1238,6 +1238,13 @@ export default defineConfig({
             ),
           },
           {
+            find: /^@elizaos\/app-core\/api\/ios-local-agent-transport$/,
+            replacement: path.join(
+              appCoreSrcRoot,
+              "api/ios-local-agent-transport.ts",
+            ),
+          },
+          {
             find: /^@elizaos\/agent$/,
             replacement: path.join(
               appCoreSrcRoot,

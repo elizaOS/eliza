@@ -35,7 +35,7 @@
 //   files at parent-of-bundle on the device.
 
 import { spawnSync } from "node:child_process";
-import { existsSync, readdirSync, realpathSync } from "node:fs";
+import { existsSync, readdirSync, readFileSync, realpathSync } from "node:fs";
 import {
   copyFile,
   mkdir,
@@ -793,6 +793,159 @@ if (!viemPackageRoot) {
   process.exit(1);
 }
 
+function readJsonFile(filePath) {
+  try {
+    return JSON.parse(readFileSync(filePath, "utf8"));
+  } catch {
+    return null;
+  }
+}
+
+function encodeBunPackageName(packageName) {
+  return packageName.startsWith("@")
+    ? packageName.replace("/", "+")
+    : packageName;
+}
+
+function versionSatisfiesRange(version, range) {
+  if (!range || range === "*" || range === "latest") {
+    return true;
+  }
+  const normalized = range.trim();
+  if (/^\d+\.\d+\.\d+$/.test(normalized)) {
+    return version === normalized;
+  }
+  if (normalized.startsWith("~")) {
+    const [, major, minor, patch] =
+      /^~(\d+)\.(\d+)\.(\d+)/.exec(normalized) ?? [];
+    if (!major) return true;
+    const [vMajor, vMinor, vPatch] = version.split(".").map(Number);
+    return (
+      vMajor === Number(major) &&
+      vMinor === Number(minor) &&
+      vPatch >= Number(patch)
+    );
+  }
+  if (normalized.startsWith("^")) {
+    const [, major, minor, patch] =
+      /^\^(\d+)\.(\d+)\.(\d+)/.exec(normalized) ?? [];
+    if (!major) return true;
+    const [vMajor, vMinor, vPatch] = version.split(".").map(Number);
+    if (Number(major) > 0) {
+      return vMajor === Number(major);
+    }
+    if (Number(minor) > 0) {
+      return vMajor === 0 && vMinor === Number(minor);
+    }
+    return vMajor === 0 && vMinor === 0 && vPatch >= Number(patch);
+  }
+  return true;
+}
+
+function findInstalledPackageRoot(packageName, versionRange) {
+  const pathSegments = packageName.split("/");
+  const candidates = [
+    path.resolve(repoRoot, "node_modules", ...pathSegments),
+    path.resolve(agentRoot, "node_modules", ...pathSegments),
+  ];
+  const encodedName = encodeBunPackageName(packageName);
+  const bunDirs = [
+    path.resolve(repoRoot, "node_modules", ".bun"),
+    path.resolve(agentRoot, "node_modules", ".bun"),
+  ];
+
+  for (const bunDir of bunDirs) {
+    for (const entry of readdirSyncSafe(bunDir)) {
+      if (!entry.startsWith(`${encodedName}@`)) continue;
+      candidates.push(
+        path.join(bunDir, entry, "node_modules", ...pathSegments),
+      );
+    }
+  }
+
+  const found = candidates.find((candidate) => {
+    const packageJson = readJsonFile(path.join(candidate, "package.json"));
+    return (
+      packageJson?.name === packageName &&
+      typeof packageJson.version === "string" &&
+      versionSatisfiesRange(packageJson.version, versionRange)
+    );
+  });
+  return found ? realpathSync(found) : null;
+}
+
+function resolveConditionalExport(exportValue) {
+  if (typeof exportValue === "string") {
+    return exportValue;
+  }
+  if (!exportValue || typeof exportValue !== "object") {
+    return null;
+  }
+  return (
+    resolveConditionalExport(exportValue.require) ??
+    resolveConditionalExport(exportValue.default) ??
+    resolveConditionalExport(exportValue.node) ??
+    null
+  );
+}
+
+function resolveInstalledPackageEntry(packageName, subpath, versionRange) {
+  const packageRoot = findInstalledPackageRoot(packageName, versionRange);
+  if (!packageRoot) {
+    return null;
+  }
+  const packageJson = readJsonFile(path.join(packageRoot, "package.json"));
+  const cleanedSubpath = subpath.replace(/^\//, "");
+  const exportKey = cleanedSubpath ? `./${cleanedSubpath}` : ".";
+  const exportKeyWithoutJs = exportKey.replace(/\.js$/, "");
+  const exportValue =
+    packageJson?.exports?.[exportKey] ??
+    packageJson?.exports?.[exportKeyWithoutJs] ??
+    null;
+  const exportedPath =
+    resolveConditionalExport(exportValue) ??
+    (!cleanedSubpath ? packageJson?.main : null);
+
+  const candidates = exportedPath
+    ? [exportedPath]
+    : cleanedSubpath
+      ? [
+          `${cleanedSubpath}.js`,
+          path.join(cleanedSubpath, "index.js"),
+          cleanedSubpath,
+        ]
+      : ["index.js"];
+
+  for (const candidate of candidates) {
+    const resolved = path.join(packageRoot, candidate);
+    if (existsSync(resolved)) {
+      return realpathSync(resolved);
+    }
+  }
+  return null;
+}
+
+const viemPackageJson = readJsonFile(
+  path.join(viemPackageRoot, "package.json"),
+);
+const viemCjsDependencyRanges = new Map(
+  Object.entries(viemPackageJson?.dependencies ?? {}),
+);
+for (const viemDependency of ["@scure/bip32", "@scure/bip39"]) {
+  const packageRoot = findInstalledPackageRoot(
+    viemDependency,
+    viemCjsDependencyRanges.get(viemDependency),
+  );
+  const packageJson = packageRoot
+    ? readJsonFile(path.join(packageRoot, "package.json"))
+    : null;
+  for (const [name, range] of Object.entries(packageJson?.dependencies ?? {})) {
+    if (!viemCjsDependencyRanges.has(name)) {
+      viemCjsDependencyRanges.set(name, range);
+    }
+  }
+}
+
 // Bun.build can lower named ESM re-exports from viem/chains to undeclared
 // identifiers (`base2` in AerodromeLpService). Use viem's CJS entrypoints so
 // chain constants stay behind normal namespace properties in the mobile bundle.
@@ -813,6 +966,30 @@ const viemCjsResolverPlugin = {
       path: targets[args.path],
       namespace: "file",
     }));
+    build.onResolve(
+      {
+        filter:
+          /^(?:@scure\/(?:base|bip32|bip39)|@noble\/(?:curves|hashes)|abitype|ox|isows|ws)(?:\/.*)?$/,
+      },
+      (args) => {
+        const segments = args.path.split("/");
+        const packageName = args.path.startsWith("@")
+          ? `${segments[0]}/${segments[1]}`
+          : segments[0];
+        const subpath = args.path.startsWith("@")
+          ? segments.slice(2).join("/")
+          : segments.slice(1).join("/");
+        const target = resolveInstalledPackageEntry(
+          packageName,
+          subpath,
+          viemCjsDependencyRanges.get(packageName),
+        );
+        if (!target) {
+          return undefined;
+        }
+        return { path: target, namespace: "file" };
+      },
+    );
   },
 };
 

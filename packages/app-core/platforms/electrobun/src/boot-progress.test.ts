@@ -69,6 +69,30 @@ describe("bootProgress typed RPC contract", () => {
     expect(snap.updatedAt).toBe("2026-05-11T11:39:00.000Z");
   });
 
+  it("uses the API child state when the native wrapper status is stale", async () => {
+    const status: EmbeddedAgentStatus = {
+      state: "not_started",
+      agentName: null,
+      port: 31337,
+      startedAt: null,
+      error: null,
+    };
+    const reader: AgentHealthReader = async () => ({
+      agentState: "running",
+      phase: "running",
+      lastError: null,
+      pluginsLoaded: 23,
+      pluginsFailed: 0,
+      database: "ok",
+    });
+
+    const snap = await composeBootProgressSnapshot(status, reader, FIXED_NOW);
+
+    expect(snap.state).toBe("running");
+    expect(snap.phase).toBe("running");
+    expect(snap.port).toBe(31337);
+  });
+
   it("falls back to null placeholders when the agent has no port yet", async () => {
     const status: EmbeddedAgentStatus = {
       state: "starting",
