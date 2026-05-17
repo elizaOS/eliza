@@ -55,6 +55,7 @@ export function StateSetup(props: StateSetupProps): React.JSX.Element {
           {copy.recommendation}
         </span>
       </div>
+      <h2 className="eliza-ob-runtime-prompt">Where should Eliza run?</h2>
       <div
         className="eliza-ob-choice-list"
         role="radiogroup"
