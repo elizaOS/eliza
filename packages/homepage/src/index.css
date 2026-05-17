@@ -1094,6 +1094,7 @@ body {
     width: auto;
     justify-content: flex-end;
     padding: 0;
+    overflow-x: auto;
   }
 
   .app-nav a {
@@ -1101,10 +1102,6 @@ body {
     min-height: 2.25rem;
     padding: 0 0.65rem;
     font-size: 0.78rem;
-  }
-
-  .app-nav a:not(.app-nav-download) {
-    display: none;
   }
 
   .brand-section--cloud {
