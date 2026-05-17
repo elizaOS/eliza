@@ -266,6 +266,16 @@ export default defineConfig(({ mode }) => {
         // `process.browser`, or call `process.nextTick(...)`. The empty stub
         // throws on access, breaking module init for those libs.
         { find: /^(node:)?process$/, replacement: r("./src/shims/process.ts") },
+        // We do not use Wagmi's Tempo helpers in cloud-frontend. Wagmi 3.6.x
+        // can still expose that tree through package metadata, and the bundled
+        // @wagmi/core Tempo wallet helpers reference `viem/tempo` exports that
+        // are absent in the paired viem version. Resolve the unused Tempo
+        // surface to a local inert module so Rolldown does not walk it and emit
+        // false-positive IMPORT_IS_UNDEFINED warnings.
+        {
+          find: /^(@wagmi\/core|wagmi)\/tempo$/,
+          replacement: r("./src/shims/wagmi-tempo.ts"),
+        },
         // Stub Node built-ins that legacy server-side modules import. The SPA
         // never executes those code paths at runtime (any function that needs
         // them is gated behind `typeof window === "undefined"` or only called
@@ -400,6 +410,44 @@ export default defineConfig(({ mode }) => {
       // Keep the build warning budget explicit so import and resolver warnings
       // still stand out in CI output.
       chunkSizeWarningLimit: 3000,
+      rolldownOptions: {
+        output: {
+          codeSplitting: {
+            minSize: 20 * 1024,
+            groups: [
+              {
+                name: "vendor-react",
+                test: /node_modules[\\/](react|react-dom|react-router|react-router-dom|scheduler|use-sync-external-store)[\\/]/,
+                priority: 50,
+              },
+              {
+                name: "vendor-wallet",
+                test: /node_modules[\\/](@rainbow-me|@solana|@walletconnect|@wagmi|wagmi|viem|ethers|ox|abitype|@noble|@scure|bs58|base-x|buffer|eventemitter3)[\\/]/,
+                priority: 40,
+                maxSize: 450 * 1024,
+              },
+              {
+                name: "vendor-charts",
+                test: /node_modules[\\/](recharts|victory|d3-|d3|@visx)[\\/]/,
+                priority: 35,
+                maxSize: 450 * 1024,
+              },
+              {
+                name: "vendor-docs",
+                test: /node_modules[\\/](mermaid|highlight.js|react-syntax-highlighter|hast-|mdast-|micromark|unified|remark-|rehype-)[\\/]/,
+                priority: 30,
+                maxSize: 450 * 1024,
+              },
+              {
+                name: "vendor-core",
+                test: /node_modules[\\/]/,
+                priority: 10,
+                maxSize: 450 * 1024,
+              },
+            ],
+          },
+        },
+      },
     },
     // The SSR build (`vite build --ssr src/entry-server.tsx`) needs to bundle
     // the workspace `@elizaos/ui` + `@/lib/*` graph rather than treat
