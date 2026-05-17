@@ -1,0 +1,16 @@
+diff --git a/android/build.gradle b/android/build.gradle
+index 4e5e22ca45285da9d45827472a09dd1d40434027..9726db1afa375c82b54c5dfae7a47685cd03f5ae 100644
+--- a/android/build.gradle
++++ b/android/build.gradle
+@@ -22,7 +22,10 @@ buildscript {
+ }
+ 
+ apply plugin: 'com.android.library'
+-apply plugin: 'kotlin-android'
++// `kotlin-android` is dropped — AGP 9.0+ ships built-in Kotlin support and the
++// legacy plugin fails to apply against the workspace's `com.android.tools.build:gradle:9.2.0`.
++// See: https://kotl.in/gradle/agp-built-in-kotlin
++// apply plugin: 'kotlin-android'
+ 
+ android {
+     namespace = "com.capacitorjs.barcodescanner"

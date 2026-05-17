@@ -1,0 +1,13 @@
+diff --git a/package.json b/package.json
+index 17f4611b4887d2754a661152c99a83c33eff14dc..b80804db25b276d344d9eb7897e5da8bd09373ef 100644
+--- a/package.json
++++ b/package.json
+@@ -66,7 +66,7 @@
+     "@solana/offchain-messages": "5.5.1"
+   },
+   "peerDependencies": {
+-    "typescript": "^5.0.0"
++    "typescript": ">=5.0.0"
+   },
+   "peerDependenciesMeta": {
+     "typescript": {

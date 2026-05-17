@@ -1,0 +1,13 @@
+diff --git a/package.json b/package.json
+index 8ddd2051b09ac50a5fa53eb3a6075cba9ca9f36e..c1063f88f4d5c960fac52cc1ce8643bf14fc3516 100644
+--- a/package.json
++++ b/package.json
+@@ -45,7 +45,7 @@
+   },
+   "license": "MIT",
+   "peerDependencies": {
+-    "typescript": "5.8.3"
++    "typescript": ">=5.8.3"
+   },
+   "devDependencies": {
+     "esbuild": "^0.25.5",

@@ -1,0 +1,475 @@
+[
+  {
+    "name": "dashboard",
+    "route": "/dashboard",
+    "finalUrl": "http://127.0.0.1:4523/dashboard",
+    "status": 200,
+    "navError": null,
+    "title": "Eliza Cloud Console",
+    "textSample": "Skip to content\nelizacloud\nDashboard\nMy Agent\nRuntime Dashboard\nAPI Explorer\nAPI Keys\nDocs\nInstances\nMCPs\nContainers\nAccount\nSettings\nAccount\nMonetization\nMy Apps\nEarnings\nNEW\nAffiliates\nBilling\nAnalytics\nDashboard\nInvite\nLO\n\nELIZAOS PLATFORM / ELIZA CLOUD\n\nRun your Eliza agent on the hosted runtime\nMy Agent\nAPI Access\nKeys\nDocs\nExplorer\n—\nBilling\nInstances\nApps & Monetization\nMy Agent\n(0)\nNo cloud agent yet\nLaunch Instance",
+    "textLength": 427,
+    "hasSomethingWentWrong": false,
+    "hasNotFound": false,
+    "hasAccessDenied": false,
+    "overflowX": false,
+    "consoleErrors": [
+      "[CreditsProvider] Failed to fetch balance {error: Error: Credit balance endpoint returned text/html\n    at hMe (http://127.0.0.1:4523/assets/index-D8…}"
+    ],
+    "pageErrors": []
+  },
+  {
+    "name": "account",
+    "route": "/dashboard/account",
+    "finalUrl": "http://127.0.0.1:4523/dashboard/account",
+    "status": 200,
+    "navError": null,
+    "title": "Account Settings",
+    "textSample": "Skip to content\nelizacloud\nDashboard\nMy Agent\nRuntime Dashboard\nAPI Explorer\nAPI Keys\nDocs\nInstances\nMCPs\nContainers\nAccount\nSettings\nAccount\nMonetization\nMy Apps\nEarnings\nNEW\nAffiliates\nBilling\nAnalytics\nInvite\nLO\nSomething went wrong\n\nCannot read properties of undefined (reading 'created_at')",
+    "textLength": 295,
+    "hasSomethingWentWrong": true,
+    "hasNotFound": false,
+    "hasAccessDenied": false,
+    "overflowX": false,
+    "consoleErrors": [
+      "[CreditsProvider] Failed to fetch balance {error: Error: Credit balance endpoint returned text/html\n    at hMe (http://127.0.0.1:4523/assets/index-D8…}"
+    ],
+    "pageErrors": []
+  },
+  {
+    "name": "settings",
+    "route": "/dashboard/settings",
+    "finalUrl": "http://127.0.0.1:4523/dashboard/settings",
+    "status": 200,
+    "navError": null,
+    "title": "Settings",
+    "textSample": "Skip to content\nelizacloud\nDashboard\nMy Agent\nRuntime Dashboard\nAPI Explorer\nAPI Keys\nDocs\nInstances\nMCPs\nContainers\nAccount\nSettings\nAccount\nMonetization\nMy Apps\nEarnings\nNEW\nAffiliates\nBilling\nAnalytics\nInvite\nLO",
+    "textLength": 214,
+    "hasSomethingWentWrong": false,
+    "hasNotFound": false,
+    "hasAccessDenied": false,
+    "overflowX": false,
+    "consoleErrors": [
+      "[CreditsProvider] Failed to fetch balance {error: Error: Credit balance endpoint returned text/html\n    at hMe (http://127.0.0.1:4523/assets/index-D8…}"
+    ],
+    "pageErrors": []
+  },
+  {
+    "name": "billing",
+    "route": "/dashboard/billing",
+    "finalUrl": "http://127.0.0.1:4523/dashboard/billing",
+    "status": 200,
+    "navError": null,
+    "title": "Billing",
+    "textSample": "Skip to content\nelizacloud\nDashboard\nMy Agent\nRuntime Dashboard\nAPI Explorer\nAPI Keys\nDocs\nInstances\nMCPs\nContainers\nAccount\nSettings\nAccount\nMonetization\nMy Apps\nEarnings\nNEW\nAffiliates\nBilling\nAnalytics\nInvite\nLO\nSomething went wrong\n\nCannot read properties of undefined (reading 'created_at')",
+    "textLength": 295,
+    "hasSomethingWentWrong": true,
+    "hasNotFound": false,
+    "hasAccessDenied": false,
+    "overflowX": false,
+    "consoleErrors": [
+      "[CreditsProvider] Failed to fetch balance {error: Error: Credit balance endpoint returned text/html\n    at hMe (http://127.0.0.1:4523/assets/index-D8…}"
+    ],
+    "pageErrors": []
+  },
+  {
+    "name": "billing-success",
+    "route": "/dashboard/billing/success",
+    "finalUrl": "http://127.0.0.1:4523/dashboard/billing/success",
+    "status": 200,
+    "navError": null,
+    "title": "Purchase Successful",
+    "textSample": "Skip to content\nelizacloud\nDashboard\nMy Agent\nRuntime Dashboard\nAPI Explorer\nAPI Keys\nDocs\nInstances\nMCPs\nContainers\nAccount\nSettings\nAccount\nMonetization\nMy Apps\nEarnings\nNEW\nAffiliates\nBilling\nAnalytics\nInvite\nLO\nPurchase Successful!\n\nYour credits have been added to your account\n\nCould not load balance: Unexpected token '<', \"<!doctype \"... is not valid JSON\nRefresh balance\n\nYou can now use your credits for text generation, image creation, and video rendering.\n\nView Billing\nGo to Dashboard",
+    "textLength": 496,
+    "hasSomethingWentWrong": false,
+    "hasNotFound": false,
+    "hasAccessDenied": false,
+    "overflowX": false,
+    "consoleErrors": [
+      "[CreditsProvider] Failed to fetch balance {error: Error: Credit balance endpoint returned text/html\n    at hMe (http://127.0.0.1:4523/assets/index-D8…}"
+    ],
+    "pageErrors": []
+  },
+  {
+    "name": "agents",
+    "route": "/dashboard/agents",
+    "finalUrl": "http://127.0.0.1:4523/dashboard/agents",
+    "status": 200,
+    "navError": null,
+    "title": "Instances",
+    "textSample": "Skip to content\nelizacloud\nDashboard\nMy Agent\nRuntime Dashboard\nAPI Explorer\nAPI Keys\nDocs\nInstances\nMCPs\nContainers\nAccount\nSettings\nAccount\nMonetization\nMy Apps\nEarnings\nNEW\nAffiliates\nBilling\nAnalytics\nInstances\nInvite\nLO\n\nINSTANCES\n\nInstances\n\nUsage & Rates\n\nRUNNING\n\n$0.01/hr\n\n~$7.20/mo\n\nIDLE\n\n$0.00/hr\n\n~$1.80/mo\n\nYOUR COST\n\n—\n\nNo agents\n\nREMAINING\n\n—\n\nBalance: —\n\nMin. $0.10 · Suspends at $2.00\n\nNo agents yet\n\nDeploy your first agent to get started.\n\nNew Agent",
+    "textLength": 468,
+    "hasSomethingWentWrong": false,
+    "hasNotFound": false,
+    "hasAccessDenied": false,
+    "overflowX": false,
+    "consoleErrors": [
+      "[CreditsProvider] Failed to fetch balance {error: Error: Credit balance endpoint returned text/html\n    at hMe (http://127.0.0.1:4523/assets/index-D8…}"
+    ],
+    "pageErrors": []
+  },
+  {
+    "name": "agent-detail",
+    "route": "/dashboard/agents/test-agent",
+    "finalUrl": "http://127.0.0.1:4523/dashboard/agents/test-agent",
+    "status": 200,
+    "navError": null,
+    "title": "Eliza Cloud - Launch Eliza",
+    "textSample": "Skip to content\nelizacloud\nDashboard\nMy Agent\nRuntime Dashboard\nAPI Explorer\nAPI Keys\nDocs\nInstances\nMCPs\nContainers\nAccount\nSettings\nAccount\nMonetization\nMy Apps\nEarnings\nNEW\nAffiliates\nBilling\nAnalytics\nInvite\nLO\nSomething went wrong\n\n[\"agent\",\"agent\",\"test-agent\",\"auth\",\"22222222-2222-4222-8222-222222222222\"] data is undefined",
+    "textLength": 331,
+    "hasSomethingWentWrong": true,
+    "hasNotFound": false,
+    "hasAccessDenied": false,
+    "overflowX": false,
+    "consoleErrors": [
+      "[CreditsProvider] Failed to fetch balance {error: Error: Credit balance endpoint returned text/html\n    at hMe (http://127.0.0.1:4523/assets/index-D8…}"
+    ],
+    "pageErrors": []
+  },
+  {
+    "name": "agent-chat",
+    "route": "/dashboard/agents/test-agent/chat",
+    "finalUrl": "http://127.0.0.1:4523/dashboard/agents/test-agent/chat",
+    "status": 200,
+    "navError": null,
+    "title": "Eliza Cloud - Launch Eliza",
+    "textSample": "Skip to content\nelizacloud\nDashboard\nMy Agent\nRuntime Dashboard\nAPI Explorer\nAPI Keys\nDocs\nInstances\nMCPs\nContainers\nAccount\nSettings\nAccount\nMonetization\nMy Apps\nEarnings\nNEW\nAffiliates\nBilling\nAnalytics\nInvite\nLO\nSomething went wrong\n\n[\"agent\",\"agent\",\"test-agent\",\"auth\",\"22222222-2222-4222-8222-222222222222\"] data is undefined",
+    "textLength": 331,
+    "hasSomethingWentWrong": true,
+    "hasNotFound": false,
+    "hasAccessDenied": false,
+    "overflowX": false,
+    "consoleErrors": [
+      "[CreditsProvider] Failed to fetch balance {error: Error: Credit balance endpoint returned text/html\n    at hMe (http://127.0.0.1:4523/assets/index-D8…}"
+    ],
+    "pageErrors": []
+  },
+  {
+    "name": "my-agents",
+    "route": "/dashboard/my-agents",
+    "finalUrl": "http://127.0.0.1:4523/dashboard/my-agents",
+    "status": 200,
+    "navError": null,
+    "title": "My Agent",
+    "textSample": "Skip to content\nelizacloud\nDashboard\nMy Agent\nRuntime Dashboard\nAPI Explorer\nAPI Keys\nDocs\nInstances\nMCPs\nContainers\nAccount\nSettings\nAccount\nMonetization\nMy Apps\nEarnings\nNEW\nAffiliates\nBilling\nAnalytics\nMy Agent\nInvite\nLO\n\nAGENT CONSOLE\n\nAdminister and enter your running agent\n\nUse this page as the control room for your hosted Eliza agent: open the live chat, inspect runtime state, manage API access, connect app devices, and keep billing in view.\n\nGo to my agent\nRuntime admin\n\nOWNED AGENTS\n\n0\n",
+    "textLength": 940,
+    "hasSomethingWentWrong": false,
+    "hasNotFound": false,
+    "hasAccessDenied": false,
+    "overflowX": false,
+    "consoleErrors": [
+      "[CreditsProvider] Failed to fetch balance {error: Error: Credit balance endpoint returned text/html\n    at hMe (http://127.0.0.1:4523/assets/index-D8…}",
+      "[MyAgents] Failed to fetch characters: SyntaxError: Unexpected token '<', \"<!doctype \"... is not valid JSON",
+      "[MyAgents] Failed to claim affiliate characters: SyntaxError: Unexpected token '<', \"<!doctype \"... is not valid JSON"
+    ],
+    "pageErrors": []
+  },
+  {
+    "name": "apps",
+    "route": "/dashboard/apps",
+    "finalUrl": "http://127.0.0.1:4523/dashboard/apps",
+    "status": 200,
+    "navError": null,
+    "title": "Apps",
+    "textSample": "Skip to content\nelizacloud\nDashboard\nMy Agent\nRuntime Dashboard\nAPI Explorer\nAPI Keys\nDocs\nInstances\nMCPs\nContainers\nAccount\nSettings\nAccount\nMonetization\nMy Apps\nEarnings\nNEW\nAffiliates\nBilling\nAnalytics\nMy Apps\nInvite\nLO\nAdvanced\n\nTOTAL APPS\n\n0\n\nACTIVE APPS\n\n0\n\nTOTAL USERS\n\n0\n\nTOTAL REQUESTS\n\n0\n\nSomething went wrong\n\n[\"apps\",\"auth\",\"22222222-2222-4222-8222-222222222222\"] data is undefined\n\nApps Overview\n\nTrack your apps' performance at a glance. See total apps, active apps, users, and API requ",
+    "textLength": 518,
+    "hasSomethingWentWrong": true,
+    "hasNotFound": false,
+    "hasAccessDenied": false,
+    "overflowX": false,
+    "consoleErrors": [
+      "[CreditsProvider] Failed to fetch balance {error: Error: Credit balance endpoint returned text/html\n    at hMe (http://127.0.0.1:4523/assets/index-D8…}"
+    ],
+    "pageErrors": []
+  },
+  {
+    "name": "app-detail",
+    "route": "/dashboard/apps/test-app",
+    "finalUrl": "http://127.0.0.1:4523/dashboard/apps",
+    "status": 200,
+    "navError": null,
+    "title": "Apps",
+    "textSample": "Skip to content\nelizacloud\nDashboard\nMy Agent\nRuntime Dashboard\nAPI Explorer\nAPI Keys\nDocs\nInstances\nMCPs\nContainers\nAccount\nSettings\nAccount\nMonetization\nMy Apps\nEarnings\nNEW\nAffiliates\nBilling\nAnalytics\nMy Apps\nInvite\nLO\nAdvanced\n\nTOTAL APPS\n\n0\n\nACTIVE APPS\n\n0\n\nTOTAL USERS\n\n0\n\nTOTAL REQUESTS\n\n0\n\nSomething went wrong\n\n[\"apps\",\"auth\",\"22222222-2222-4222-8222-222222222222\"] data is undefined\n\nApps Overview\n\nTrack your apps' performance at a glance. See total apps, active apps, users, and API requ",
+    "textLength": 518,
+    "hasSomethingWentWrong": true,
+    "hasNotFound": false,
+    "hasAccessDenied": false,
+    "overflowX": false,
+    "consoleErrors": [
+      "[CreditsProvider] Failed to fetch balance {error: Error: Credit balance endpoint returned text/html\n    at hMe (http://127.0.0.1:4523/assets/index-D8…}"
+    ],
+    "pageErrors": []
+  },
+  {
+    "name": "analytics",
+    "route": "/dashboard/analytics",
+    "finalUrl": "http://127.0.0.1:4523/dashboard/analytics",
+    "status": 200,
+    "navError": null,
+    "title": "Analytics",
+    "textSample": "Skip to content\nelizacloud\nDashboard\nMy Agent\nRuntime Dashboard\nAPI Explorer\nAPI Keys\nDocs\nInstances\nMCPs\nContainers\nAccount\nSettings\nAccount\nMonetization\nMy Apps\nEarnings\nNEW\nAffiliates\nBilling\nAnalytics\nInvite\nLO\nSomething went wrong\n\n[\"analytics\",\"breakdown\",\"weekly\",\"auth\",\"22222222-2222-4222-8222-222222222222\"] data is undefined",
+    "textLength": 335,
+    "hasSomethingWentWrong": true,
+    "hasNotFound": false,
+    "hasAccessDenied": false,
+    "overflowX": false,
+    "consoleErrors": [
+      "[CreditsProvider] Failed to fetch balance {error: Error: Credit balance endpoint returned text/html\n    at hMe (http://127.0.0.1:4523/assets/index-D8…}"
+    ],
+    "pageErrors": []
+  },
+  {
+    "name": "api-explorer",
+    "route": "/dashboard/api-explorer",
+    "finalUrl": "http://127.0.0.1:4523/dashboard/api-explorer",
+    "status": 200,
+    "navError": null,
+    "title": "API Explorer",
+    "textSample": "Skip to content\nelizacloud\nDashboard\nMy Agent\nRuntime Dashboard\nAPI Explorer\nAPI Keys\nDocs\nInstances\nMCPs\nContainers\nAccount\nSettings\nAccount\nMonetization\nMy Apps\nEarnings\nNEW\nAffiliates\nBilling\nAnalytics\nAPI Explorer\nInvite\nLO\nEndpoints\nAuth\nOpenAPI\nAll\n20\nAI Completions\n2\nAPI Keys\n5\nGallery\n1\nImage Generation\n1\nModels\n1\nUser Management\n2\nVideo Generation\n1\nVoice Cloning\n4\nVoice Generation\n3\nAll Endpoints(20)\n\nExplore the complete set of API endpoints available in the Eliza platform.\n\nTest\nGene",
+    "textLength": 4248,
+    "hasSomethingWentWrong": false,
+    "hasNotFound": false,
+    "hasAccessDenied": false,
+    "overflowX": false,
+    "consoleErrors": [
+      "[CreditsProvider] Failed to fetch balance {error: Error: Credit balance endpoint returned text/html\n    at hMe (http://127.0.0.1:4523/assets/index-D8…}",
+      "Failed to fetch explorer key: SyntaxError: Unexpected token '<', \"<!doctype \"... is not valid JSON"
+    ],
+    "pageErrors": []
+  },
+  {
+    "name": "api-keys",
+    "route": "/dashboard/api-keys",
+    "finalUrl": "http://127.0.0.1:4523/dashboard/api-keys",
+    "status": 200,
+    "navError": null,
+    "title": "API Keys",
+    "textSample": "Skip to content\nelizacloud\nDashboard\nMy Agent\nRuntime Dashboard\nAPI Explorer\nAPI Keys\nDocs\nInstances\nMCPs\nContainers\nAccount\nSettings\nAccount\nMonetization\nMy Apps\nEarnings\nNEW\nAffiliates\nBilling\nAnalytics\nInvite\nLO\nSomething went wrong\n\n[\"api-keys\",\"auth\",\"22222222-2222-4222-8222-222222222222\"] data is undefined",
+    "textLength": 313,
+    "hasSomethingWentWrong": true,
+    "hasNotFound": false,
+    "hasAccessDenied": false,
+    "overflowX": false,
+    "consoleErrors": [
+      "[CreditsProvider] Failed to fetch balance {error: Error: Credit balance endpoint returned text/html\n    at hMe (http://127.0.0.1:4523/assets/index-D8…}"
+    ],
+    "pageErrors": []
+  },
+  {
+    "name": "containers",
+    "route": "/dashboard/containers",
+    "finalUrl": "http://127.0.0.1:4523/dashboard/containers",
+    "status": 200,
+    "navError": null,
+    "title": "Containers",
+    "textSample": "Skip to content\nelizacloud\nDashboard\nMy Agent\nRuntime Dashboard\nAPI Explorer\nAPI Keys\nDocs\nInstances\nMCPs\nContainers\nAccount\nSettings\nAccount\nMonetization\nMy Apps\nEarnings\nNEW\nAffiliates\nBilling\nAnalytics\nContainers\nInvite\nLO\nSomething went wrong\n\n[\"containers\",\"auth\",\"22222222-2222-4222-8222-222222222222\"] data is undefined",
+    "textLength": 326,
+    "hasSomethingWentWrong": true,
+    "hasNotFound": false,
+    "hasAccessDenied": false,
+    "overflowX": false,
+    "consoleErrors": [
+      "[CreditsProvider] Failed to fetch balance {error: Error: Credit balance endpoint returned text/html\n    at hMe (http://127.0.0.1:4523/assets/index-D8…}"
+    ],
+    "pageErrors": []
+  },
+  {
+    "name": "container-detail",
+    "route": "/dashboard/containers/test-container",
+    "finalUrl": "http://127.0.0.1:4523/dashboard/containers/test-container",
+    "status": 200,
+    "navError": null,
+    "title": "Eliza Cloud - Launch Eliza",
+    "textSample": "Skip to content\nelizacloud\nDashboard\nMy Agent\nRuntime Dashboard\nAPI Explorer\nAPI Keys\nDocs\nInstances\nMCPs\nContainers\nAccount\nSettings\nAccount\nMonetization\nMy Apps\nEarnings\nNEW\nAffiliates\nBilling\nAnalytics\nInvite\nLO\nSomething went wrong\n\n[\"container\",\"test-container\",\"auth\",\"22222222-2222-4222-8222-222222222222\"] data is undefined",
+    "textLength": 331,
+    "hasSomethingWentWrong": true,
+    "hasNotFound": false,
+    "hasAccessDenied": false,
+    "overflowX": false,
+    "consoleErrors": [
+      "[CreditsProvider] Failed to fetch balance {error: Error: Credit balance endpoint returned text/html\n    at hMe (http://127.0.0.1:4523/assets/index-D8…}"
+    ],
+    "pageErrors": []
+  },
+  {
+    "name": "container-agent-detail",
+    "route": "/dashboard/containers/agents/test-agent",
+    "finalUrl": "http://127.0.0.1:4523/dashboard/containers/agents/test-agent",
+    "status": 200,
+    "navError": null,
+    "title": "Eliza Cloud - Launch Eliza",
+    "textSample": "Skip to content\nelizacloud\nDashboard\nMy Agent\nRuntime Dashboard\nAPI Explorer\nAPI Keys\nDocs\nInstances\nMCPs\nContainers\nAccount\nSettings\nAccount\nMonetization\nMy Apps\nEarnings\nNEW\nAffiliates\nBilling\nAnalytics\nInvite\nLO\nSomething went wrong\n\n[\"agent\",\"agent\",\"test-agent\",\"auth\",\"22222222-2222-4222-8222-222222222222\"] data is undefined",
+    "textLength": 331,
+    "hasSomethingWentWrong": true,
+    "hasNotFound": false,
+    "hasAccessDenied": false,
+    "overflowX": false,
+    "consoleErrors": [
+      "[CreditsProvider] Failed to fetch balance {error: Error: Credit balance endpoint returned text/html\n    at hMe (http://127.0.0.1:4523/assets/index-D8…}"
+    ],
+    "pageErrors": []
+  },
+  {
+    "name": "documents",
+    "route": "/dashboard/documents",
+    "finalUrl": "http://127.0.0.1:4523/dashboard/documents",
+    "status": 200,
+    "navError": null,
+    "title": "Knowledge",
+    "textSample": "Skip to content\nelizacloud\nDashboard\nMy Agent\nRuntime Dashboard\nAPI Explorer\nAPI Keys\nDocs\nInstances\nMCPs\nContainers\nAccount\nSettings\nAccount\nMonetization\nMy Apps\nEarnings\nNEW\nAffiliates\nBilling\nAnalytics\nInvite\nLO",
+    "textLength": 214,
+    "hasSomethingWentWrong": false,
+    "hasNotFound": false,
+    "hasAccessDenied": false,
+    "overflowX": false,
+    "consoleErrors": [
+      "[CreditsProvider] Failed to fetch balance {error: Error: Credit balance endpoint returned text/html\n    at hMe (http://127.0.0.1:4523/assets/index-D8…}"
+    ],
+    "pageErrors": []
+  },
+  {
+    "name": "earnings",
+    "route": "/dashboard/earnings",
+    "finalUrl": "http://127.0.0.1:4523/dashboard/earnings",
+    "status": 200,
+    "navError": null,
+    "title": "Earnings & Redemptions",
+    "textSample": "Skip to content\nelizacloud\nDashboard\nMy Agent\nRuntime Dashboard\nAPI Explorer\nAPI Keys\nDocs\nInstances\nMCPs\nContainers\nAccount\nSettings\nAccount\nMonetization\nMy Apps\nEarnings\nNEW\nAffiliates\nBilling\nAnalytics\nEarnings & Redemptions\nInvite\nLO",
+    "textLength": 237,
+    "hasSomethingWentWrong": false,
+    "hasNotFound": false,
+    "hasAccessDenied": false,
+    "overflowX": false,
+    "consoleErrors": [
+      "[CreditsProvider] Failed to fetch balance {error: Error: Credit balance endpoint returned text/html\n    at hMe (http://127.0.0.1:4523/assets/index-D8…}"
+    ],
+    "pageErrors": [
+      "Unexpected token '<', \"<!doctype \"... is not valid JSON"
+    ]
+  },
+  {
+    "name": "invoice-detail",
+    "route": "/dashboard/invoices/test-invoice",
+    "finalUrl": "http://127.0.0.1:4523/dashboard/invoices/test-invoice",
+    "status": 200,
+    "navError": null,
+    "title": "Eliza Cloud - Launch Eliza",
+    "textSample": "Skip to content\nelizacloud\nDashboard\nMy Agent\nRuntime Dashboard\nAPI Explorer\nAPI Keys\nDocs\nInstances\nMCPs\nContainers\nAccount\nSettings\nAccount\nMonetization\nMy Apps\nEarnings\nNEW\nAffiliates\nBilling\nAnalytics\nInvite\nLO",
+    "textLength": 214,
+    "hasSomethingWentWrong": false,
+    "hasNotFound": false,
+    "hasAccessDenied": false,
+    "overflowX": false,
+    "consoleErrors": [
+      "[CreditsProvider] Failed to fetch balance {error: Error: Credit balance endpoint returned text/html\n    at hMe (http://127.0.0.1:4523/assets/index-D8…}"
+    ],
+    "pageErrors": []
+  },
+  {
+    "name": "mcps",
+    "route": "/dashboard/mcps",
+    "finalUrl": "http://127.0.0.1:4523/dashboard/mcps",
+    "status": 200,
+    "navError": null,
+    "title": "MCP Servers",
+    "textSample": "Skip to content\nelizacloud\nDashboard\nMy Agent\nRuntime Dashboard\nAPI Explorer\nAPI Keys\nDocs\nInstances\nMCPs\nContainers\nAccount\nSettings\nAccount\nMonetization\nMy Apps\nEarnings\nNEW\nAffiliates\nBilling\nAnalytics\nMCP Servers\nInvite\nLO\nWhat is MCP?\n\nThe Model Context Protocol (MCP) is an open standard that enables AI assistants to securely connect with data sources and tools. These MCP servers provide ready-to-use tools for your AI agents.\n\nServerless & Scalable\nx402 Micropayments\nSSE & HTTP Transport\nMC",
+    "textLength": 1413,
+    "hasSomethingWentWrong": false,
+    "hasNotFound": false,
+    "hasAccessDenied": false,
+    "overflowX": false,
+    "consoleErrors": [
+      "[CreditsProvider] Failed to fetch balance {error: Error: Credit balance endpoint returned text/html\n    at hMe (http://127.0.0.1:4523/assets/index-D8…}"
+    ],
+    "pageErrors": []
+  },
+  {
+    "name": "affiliates",
+    "route": "/dashboard/affiliates",
+    "finalUrl": "http://127.0.0.1:4523/dashboard/affiliates",
+    "status": 200,
+    "navError": null,
+    "title": "Affiliates",
+    "textSample": "Skip to content\nelizacloud\nDashboard\nMy Agent\nRuntime Dashboard\nAPI Explorer\nAPI Keys\nDocs\nInstances\nMCPs\nContainers\nAccount\nSettings\nAccount\nMonetization\nMy Apps\nEarnings\nNEW\nAffiliates\nBilling\nAnalytics\nAffiliates & Referrals\nInvite\nLO\nAffiliate Program\n\nShare your customized affiliate link with your users and partners to earn a percentage of their marked-up top-ups and MCP usage.\n\nWhen a user signs up using your link, you get a direct cut (your markup percentage) of their activity forever. Yo",
+    "textLength": 2002,
+    "hasSomethingWentWrong": false,
+    "hasNotFound": false,
+    "hasAccessDenied": false,
+    "overflowX": false,
+    "consoleErrors": [
+      "[CreditsProvider] Failed to fetch balance {error: Error: Credit balance endpoint returned text/html\n    at hMe (http://127.0.0.1:4523/assets/index-D8…}"
+    ],
+    "pageErrors": []
+  },
+  {
+    "name": "admin",
+    "route": "/dashboard/admin",
+    "finalUrl": "http://127.0.0.1:4523/dashboard/admin",
+    "status": 200,
+    "navError": null,
+    "title": "Eliza Cloud - Launch Eliza",
+    "textSample": "Skip to content\nelizacloud\nDashboard\nMy Agent\nRuntime Dashboard\nAPI Explorer\nAPI Keys\nDocs\nInstances\nMCPs\nContainers\nAccount\nSettings\nAccount\nMonetization\nMy Apps\nEarnings\nNEW\nAffiliates\nBilling\nAnalytics\nInvite\nLO\nAccess Denied\n\nYou don't have admin privileges.",
+    "textLength": 262,
+    "hasSomethingWentWrong": false,
+    "hasNotFound": false,
+    "hasAccessDenied": true,
+    "overflowX": false,
+    "consoleErrors": [
+      "[CreditsProvider] Failed to fetch balance {error: Error: Credit balance endpoint returned text/html\n    at hMe (http://127.0.0.1:4523/assets/index-D8…}"
+    ],
+    "pageErrors": []
+  },
+  {
+    "name": "admin-infrastructure",
+    "route": "/dashboard/admin/infrastructure",
+    "finalUrl": "http://127.0.0.1:4523/dashboard/admin/infrastructure",
+    "status": 200,
+    "navError": null,
+    "title": "Eliza Cloud - Launch Eliza",
+    "textSample": "Skip to content\nelizacloud\nDashboard\nMy Agent\nRuntime Dashboard\nAPI Explorer\nAPI Keys\nDocs\nInstances\nMCPs\nContainers\nAccount\nSettings\nAccount\nMonetization\nMy Apps\nEarnings\nNEW\nAffiliates\nBilling\nAnalytics\nInvite\nLO\nAccess Denied\n\nYou don't have admin privileges.",
+    "textLength": 262,
+    "hasSomethingWentWrong": false,
+    "hasNotFound": false,
+    "hasAccessDenied": true,
+    "overflowX": false,
+    "consoleErrors": [
+      "[CreditsProvider] Failed to fetch balance {error: Error: Credit balance endpoint returned text/html\n    at hMe (http://127.0.0.1:4523/assets/index-D8…}"
+    ],
+    "pageErrors": []
+  },
+  {
+    "name": "admin-metrics",
+    "route": "/dashboard/admin/metrics",
+    "finalUrl": "http://127.0.0.1:4523/dashboard/admin/metrics",
+    "status": 200,
+    "navError": null,
+    "title": "Eliza Cloud - Launch Eliza",
+    "textSample": "Skip to content\nelizacloud\nDashboard\nMy Agent\nRuntime Dashboard\nAPI Explorer\nAPI Keys\nDocs\nInstances\nMCPs\nContainers\nAccount\nSettings\nAccount\nMonetization\nMy Apps\nEarnings\nNEW\nAffiliates\nBilling\nAnalytics\nInvite\nLO\nAccess Denied\n\nYou don't have admin privileges.",
+    "textLength": 262,
+    "hasSomethingWentWrong": false,
+    "hasNotFound": false,
+    "hasAccessDenied": true,
+    "overflowX": false,
+    "consoleErrors": [
+      "[CreditsProvider] Failed to fetch balance {error: Error: Credit balance endpoint returned text/html\n    at hMe (http://127.0.0.1:4523/assets/index-D8…}"
+    ],
+    "pageErrors": []
+  },
+  {
+    "name": "admin-redemptions",
+    "route": "/dashboard/admin/redemptions",
+    "finalUrl": "http://127.0.0.1:4523/dashboard/admin/redemptions",
+    "status": 200,
+    "navError": null,
+    "title": "Eliza Cloud - Launch Eliza",
+    "textSample": "Skip to content\nelizacloud\nDashboard\nMy Agent\nRuntime Dashboard\nAPI Explorer\nAPI Keys\nDocs\nInstances\nMCPs\nContainers\nAccount\nSettings\nAccount\nMonetization\nMy Apps\nEarnings\nNEW\nAffiliates\nBilling\nAnalytics\nInvite\nLO\nAccess Denied\n\nYou don't have admin privileges.",
+    "textLength": 262,
+    "hasSomethingWentWrong": false,
+    "hasNotFound": false,
+    "hasAccessDenied": true,
+    "overflowX": false,
+    "consoleErrors": [
+      "[CreditsProvider] Failed to fetch balance {error: Error: Credit balance endpoint returned text/html\n    at hMe (http://127.0.0.1:4523/assets/index-D8…}"
+    ],
+    "pageErrors": []
+  }
+]
