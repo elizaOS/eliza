@@ -1,0 +1,63 @@
+// Top-level build file where you can add configuration options common to all sub-projects/modules.
+import org.gradle.api.logging.LogLevel
+import org.gradle.jvm.toolchain.JavaLanguageVersion
+
+def elizaosMavenCentralMirrorUrl = 'https://maven-central.storage-download.googleapis.com/maven2/'
+
+buildscript {
+    repositories {
+        // Prefer Google's Maven Central mirror first; GitHub runners
+        // intermittently get 403s from repo.maven.apache.org.
+        google()
+        maven {
+            url = uri('https://maven-central.storage-download.googleapis.com/maven2/')
+        }
+        mavenCentral()
+    }
+    dependencies {
+        classpath 'com.android.tools.build:gradle:9.2.0'
+        classpath 'org.jetbrains.kotlin:kotlin-gradle-plugin:2.3.21'
+
+        // NOTE: Do not place your application dependencies here; they belong
+        // in the individual module build.gradle files
+    }
+}
+
+ext {
+    androidGradlePluginVersion = '8.13.0'
+    kotlinVersion = '1.9.25'
+    mavenCentralMirrorUrl = elizaosMavenCentralMirrorUrl
+}
+
+apply from: "variables.gradle"
+
+allprojects {
+    repositories {
+        // Keep the mirror ahead of Maven Central so transient central
+        // failures do not take down Android CI.
+        google()
+        maven {
+            url = uri(rootProject.ext.mavenCentralMirrorUrl)
+        }
+        mavenCentral()
+    }
+}
+
+subprojects { subproject ->
+    subproject.afterEvaluate {
+        subproject.tasks.withType(JavaCompile).configureEach { task ->
+            task.javaCompiler = subproject.javaToolchains.compilerFor {
+                languageVersion = JavaLanguageVersion.of(21)
+            }
+            if (subproject.path == ':capacitor-android') {
+                task.options.warnings = false
+                task.options.compilerArgs += ['-Xlint:none', '-nowarn']
+                task.logging.captureStandardError(LogLevel.INFO)
+            }
+        }
+    }
+}
+
+task clean(type: Delete) {
+    delete rootProject.buildDir
+}

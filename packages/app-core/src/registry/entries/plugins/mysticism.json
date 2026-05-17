@@ -1,0 +1,48 @@
+{
+  "id": "mysticism",
+  "name": "Mysticism",
+  "description": "Mystical divination engines for ElizaOS — Tarot, I Ching, and Astrology readings",
+  "npmName": "@elizaos/plugin-mysticism",
+  "version": "2.0.0-beta.0",
+  "source": "bundled",
+  "tags": ["mysticism", "tarot", "iching", "astrology", "divination"],
+  "config": {
+    "MYSTICISM_PRICE_TAROT": {
+      "type": "number",
+      "required": false,
+      "sensitive": false,
+      "label": "Price Tarot",
+      "help": "Price in SOL for this reading type",
+      "advanced": false
+    },
+    "MYSTICISM_PRICE_ICHING": {
+      "type": "number",
+      "required": false,
+      "sensitive": false,
+      "label": "Price Iching",
+      "help": "Price in SOL for this reading type",
+      "advanced": false
+    },
+    "MYSTICISM_PRICE_ASTROLOGY": {
+      "type": "number",
+      "required": false,
+      "sensitive": false,
+      "label": "Price Astrology",
+      "help": "Price in SOL for this reading type",
+      "advanced": false
+    }
+  },
+  "render": {
+    "visible": true,
+    "pinTo": [],
+    "style": "card",
+    "icon": "Sparkle",
+    "group": "gaming",
+    "groupOrder": 11,
+    "actions": ["enable", "configure"]
+  },
+  "resources": {},
+  "dependsOn": [],
+  "kind": "plugin",
+  "subtype": "gaming"
+}

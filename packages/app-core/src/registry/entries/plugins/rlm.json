@@ -1,0 +1,26 @@
+{
+  "id": "rlm",
+  "name": "Rlm",
+  "description": "RLM (Recursive Language Model) plugin for elizaOS - enables processing of arbitrarily long contexts",
+  "npmName": "@elizaos/plugin-rlm",
+  "version": "2.0.0-beta.0",
+  "source": "bundled",
+  "tags": ["rlm", "recursive-language-model", "llm", "agent", "long-context"],
+  "config": {},
+  "render": {
+    "visible": true,
+    "pinTo": [],
+    "style": "card",
+    "icon": "RefreshCw",
+    "group": "documents",
+    "groupOrder": 6,
+    "actions": ["enable", "configure"]
+  },
+  "resources": {
+    "homepage": "https://github.com/elizaos/eliza#readme",
+    "repository": "https://github.com/elizaos/eliza"
+  },
+  "dependsOn": [],
+  "kind": "plugin",
+  "subtype": "documents"
+}

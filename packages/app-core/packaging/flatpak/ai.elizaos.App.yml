@@ -1,0 +1,142 @@
+# Flatpak manifest — DIRECT (power-user) variant for elizaOS App.
+#
+# This is the unrestricted build that mirrors the AppImage / .deb / .rpm
+# distribution: full $HOME access, host shell reach via xdg-run, host Ollama
+# and docker discoverable, EXECUTE_CODE permitted. It is intended for
+# self-hosted Flatpak repos and side-loaded bundles, NOT for Flathub.
+#
+# For Flathub submission use `ai.elizaos.App.store.yml`, which removes
+# `--filesystem=home` and other host-escape sockets that Flathub reviewers
+# will reject.
+#
+# Build (direct):
+#   flatpak-builder --repo=repo --force-clean build-dir ai.elizaos.App.yml
+# Install:
+#   flatpak --user install repo ai.elizaos.App
+# Bundle:
+#   flatpak build-bundle repo elizaos-app.flatpak ai.elizaos.App
+#
+# See ./README.md for the difference between store and direct variants.
+
+app-id: ai.elizaos.App
+runtime: org.freedesktop.Platform
+runtime-version: '24.08'
+sdk: org.freedesktop.Sdk
+command: elizaos-app
+
+finish-args:
+  # Network access (required for AI provider APIs, plugin downloads, web dashboard)
+  - --share=network
+  # IPC namespace (required for localhost web dashboard binding)
+  - --share=ipc
+  # Home directory access (config, workspace, plugins, local models)
+  - --filesystem=home
+  # XDG config for .config/elizaos-app persistence
+  - --filesystem=xdg-config/elizaos-app:create
+  # D-Bus access for desktop notifications
+  - --talk-name=org.freedesktop.Notifications
+  # D-Bus access for system tray / status notifier
+  - --talk-name=org.kde.StatusNotifierWatcher
+
+build-options:
+  no-debuginfo: true
+  # Allow network access during the build phase so `npm install -g
+  # elizaos` (and any transitive Node.js downloads) can reach the
+  # registry. By default flatpak-builder sandboxes away network access
+  # during `build`, which caused our CI to fail with:
+  #   npm error request to https://registry.npmjs.org/elizaos failed,
+  #   reason: getaddrinfo EAI_AGAIN registry.npmjs.org
+  # Flathub's own submission pipeline does NOT allow this — see the
+  # long-form comment on the `elizaos-app` module below for the switch to
+  # offline sources (flatpak-node-generator) before attempting a
+  # Flathub submission. Local and self-hosted CI builds use the
+  # network flag.
+  build-args:
+    - --share=network
+
+modules:
+  # ── Node.js 22 LTS ───────────────────────────────────────────────────
+  - name: nodejs
+    buildsystem: simple
+    build-commands:
+      # Copy `lib` and `include` FIRST so the npm/npx symlinks in `bin`
+      # point at files that actually exist under /app when they're
+      # copied preserving symlink semantics.
+      - cp -r lib /app/lib
+      - cp -r include /app/include
+      # `bin/node` is a real file; use `install` so it's executable
+      # and placed with explicit permissions.
+      - install -Dm755 bin/node /app/bin/node
+      # `bin/npm` and `bin/npx` in the nodejs tarball are relative
+      # symlinks pointing at `../lib/node_modules/npm/bin/npm-cli.js`
+      # and `../lib/node_modules/npm/bin/npx-cli.js`. Using
+      # `install -Dm755` DEREFERENCES the symlink and writes the
+      # target JS file as `/app/bin/npm`, which then fails at runtime
+      # with `Cannot find module '../lib/cli.js'` because the relative
+      # require no longer resolves from `/app/bin/`. Use `cp -P` (POSIX
+      # "don't follow symbolic links") to preserve the symlink so
+      # /app/bin/npm → /app/lib/node_modules/npm/bin/npm-cli.js resolves
+      # the same way it does in the upstream tarball.
+      - cp -P bin/npm /app/bin/npm
+      - cp -P bin/npx /app/bin/npx
+    sources:
+      - type: archive
+        url: https://nodejs.org/dist/v22.12.0/node-v22.12.0-linux-x64.tar.xz
+        sha256: 22982235e1b71fa8850f82edd09cdae7e3f32df1764a9ec298c72d25ef2c164f
+        only-arches:
+          - x86_64
+      - type: archive
+        url: https://nodejs.org/dist/v22.12.0/node-v22.12.0-linux-arm64.tar.xz
+        sha256: 8cfd5a8b9afae5a2e0bd86b0148ca31d2589c0ea669c2d0b11c132e35d90ed68
+        only-arches:
+          - aarch64
+
+  # ── elizaOS App CLI ──────────────────────────────────────────────────
+  # NOTE: For Flathub submission, replace the npm-install build with an
+  # offline approach using flatpak-node-generator or a vendored tarball.
+  # The current approach (npm install -g) requires network at build time
+  # and works for self-hosted builds and CI bundles, but Flathub's build
+  # infrastructure does not allow network access during the build phase.
+  #
+  # To generate offline sources for Flathub:
+  #   flatpak-node-generator npm package-lock.json -o npm-sources.json
+  # Then add: sources: [type: file, path: npm-sources.json]
+  - name: elizaos-app
+    buildsystem: simple
+    build-options:
+      env:
+        npm_config_nodedir: /app
+    build-commands:
+      # Install elizaos-app globally from npm. Disable transitive npm scripts:
+      # optional plugins may run host installer hooks during postinstall, but
+      # Flatpak image assembly only needs the CLI files and wrapper smoke tests.
+      - /app/bin/npm install -g elizaos --prefix=/app --ignore-scripts
+
+      # Install wrapper script from source
+      - install -Dm755 elizaos-app-wrapper.sh /app/bin/elizaos-app
+
+      # Install desktop entry and AppStream metadata
+      - install -Dm644 ai.elizaos.App.desktop /app/share/applications/ai.elizaos.App.desktop
+      - install -Dm644 ai.elizaos.App.metainfo.xml /app/share/metainfo/ai.elizaos.App.metainfo.xml
+
+      # Install icons at standard hicolor sizes
+      - install -Dm644 icons/128x128/ai.elizaos.App.png /app/share/icons/hicolor/128x128/apps/ai.elizaos.App.png
+      - install -Dm644 icons/256x256/ai.elizaos.App.png /app/share/icons/hicolor/256x256/apps/ai.elizaos.App.png
+      - install -Dm644 icons/512x512/ai.elizaos.App.png /app/share/icons/hicolor/512x512/apps/ai.elizaos.App.png
+
+    sources:
+      - type: file
+        path: ai.elizaos.App.desktop
+      - type: file
+        path: ai.elizaos.App.metainfo.xml
+      - type: file
+        path: elizaos-app-wrapper.sh
+      # Flatpak's `type: dir` source copies the *contents* of `path`
+      # into the build working directory, not the directory itself. So
+      # without `dest: icons`, the files would land at `128x128/...`
+      # and the `install icons/128x128/...` commands above would fail
+      # with "No such file or directory". Preserve the `icons/`
+      # subdirectory so the install paths match.
+      - type: dir
+        path: icons
+        dest: icons

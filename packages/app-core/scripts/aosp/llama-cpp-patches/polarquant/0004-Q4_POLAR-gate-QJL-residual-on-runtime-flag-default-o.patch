@@ -1,0 +1,97 @@
+From 2ad444881c1e723c1b7efe02a0aeb447cc07f0be Mon Sep 17 00:00:00 2001
+From: lalalune <shawmakesmagic@gmail.com>
+Date: Sat, 9 May 2026 03:03:20 -0700
+Subject: [PATCH 4/4] Q4_POLAR: gate QJL residual on runtime flag (default off)
+
+The 1-bit QJL residual sign is computed via a deterministic xorshift32
+sign vector on the C side, but the polarquant_apply.py sidecar that
+populates the GGUF emits the bit using torch.randint(seed=42), which
+is not portable across torch versions and is a different sequence
+from xorshift32. Until the converter and the C decoder agree on a
+single sign vector, the C decoder ignores the on-disk QJL byte and
+treats every block as use_qjl=false (4.125 bpw effective).
+
+ggml_q4_polar_set_use_qjl(true) lets the loader opt back in once it
+has verified polarquant.qjl_seed in the GGUF header matches
+POLAR_QJL_SEED and that the sidecar producer used the C xorshift32
+sign vector. Expected next step: extend polarquant_to_gguf.py to
+embed the canonical sign vector as polarquant.qjl_signs metadata
+(16 bytes packed) and gate the runtime flag on its presence.
+---
+ ggml/src/ggml-quants.c | 27 +++++++++++++++++++++------
+ ggml/src/ggml-quants.h | 14 ++++++++++++++
+ 2 files changed, 35 insertions(+), 6 deletions(-)
+
+diff --git a/ggml/src/ggml-quants.c b/ggml/src/ggml-quants.c
+index 3650cfa1..d39ae662 100644
+--- a/ggml/src/ggml-quants.c
++++ b/ggml/src/ggml-quants.c
+@@ -2640,6 +2640,17 @@ void dequantize_row_tbq4_0(const block_tbq4_0 * GGML_RESTRICT x, float * GGML_RE
+ }
+ 
+ // ====================== PolarQuant Q4 (Q4_POLAR) reference kernels
++
++#include <stdbool.h>
++
++// Runtime toggle, see ggml-quants.h. Default false: dequantize ignores
++// the on-disk QJL byte until the loader has verified PRNG parity with
++// the sidecar that produced it.
++static bool s_q4_polar_use_qjl = false;
++
++void ggml_q4_polar_set_use_qjl(bool use_qjl) { s_q4_polar_use_qjl = use_qjl; }
++bool ggml_q4_polar_get_use_qjl(void) { return s_q4_polar_use_qjl; }
++
+ //
+ // Mechanically ported from
+ //   packages/native-plugins/polarquant-cpu/src/polar_{quantize,dequantize}_ref.c
+@@ -2734,12 +2745,16 @@ void dequantize_row_q4_polar(const block_q4_polar * GGML_RESTRICT x, float * GGM
+             buf[2 * i + 1] = POLAR_Q4_CENTROIDS[hi];
+         }
+ 
+-        // 3. QJL residual correction along the deterministic sign vector
+-        const uint8_t bit = (uint8_t)(src->qjl[0] & 1u);
+-        const float sign  = bit ? 1.0f : -1.0f;
+-        const float mag   = POLAR_QJL_CORRECTION_MAGNITUDE / sqrtf((float)QK_POLAR);
+-        for (int i = 0; i < QK_POLAR; i++) {
+-            buf[i] += sign * mag * qjl_signs[i];
++        // 3. Optional QJL residual correction. Gated on the runtime flag
++        //    because the sign-vector PRNG isn't portable across encoder
++        //    implementations (see ggml_q4_polar_set_use_qjl docs).
++        if (s_q4_polar_use_qjl) {
++            const uint8_t bit = (uint8_t)(src->qjl[0] & 1u);
++            const float sign  = bit ? 1.0f : -1.0f;
++            const float mag   = POLAR_QJL_CORRECTION_MAGNITUDE / sqrtf((float)QK_POLAR);
++            for (int i = 0; i < QK_POLAR; i++) {
++                buf[i] += sign * mag * qjl_signs[i];
++            }
+         }
+ 
+         // 4. Inverse Hadamard + 1/QK_POLAR compensation for the butterfly's scale
+diff --git a/ggml/src/ggml-quants.h b/ggml/src/ggml-quants.h
+index 939a7146..4de00ee7 100644
+--- a/ggml/src/ggml-quants.h
++++ b/ggml/src/ggml-quants.h
+@@ -69,6 +69,20 @@ GGML_API void dequantize_row_tbq3_0(const block_tbq3_0 * GGML_RESTRICT x, float
+ GGML_API void dequantize_row_tbq4_0(const block_tbq4_0 * GGML_RESTRICT x, float * GGML_RESTRICT y, int64_t k);
+ GGML_API void dequantize_row_q4_polar(const block_q4_polar * GGML_RESTRICT x, float * GGML_RESTRICT y, int64_t k);
+ 
++// Q4_POLAR runtime QJL toggle.
++//
++// The on-disk block always reserves QJL_RESIDUAL_BYTES for the 1-bit
++// residual, but the sign vector that the residual is projected onto
++// is not portable across PRNG implementations (torch.randint vs C
++// xorshift32). Until that parity is sorted, the decoder defaults to
++// ignoring the QJL byte. Loaders that have verified the sidecar was
++// produced with the same xorshift32 sign vector this build uses can
++// opt back in by calling ggml_q4_polar_set_use_qjl(true). The loader
++// is expected to mirror the value of polarquant.use_qjl in the GGUF
++// metadata after verifying polarquant.qjl_seed matches POLAR_QJL_SEED.
++GGML_API void ggml_q4_polar_set_use_qjl(bool use_qjl);
++GGML_API bool ggml_q4_polar_get_use_qjl(void);
++
+ GGML_API void dequantize_row_iq2_xxs(const block_iq2_xxs * GGML_RESTRICT x, float * GGML_RESTRICT y, int64_t k);
+ GGML_API void dequantize_row_iq2_xs (const block_iq2_xs  * GGML_RESTRICT x, float * GGML_RESTRICT y, int64_t k);
+ GGML_API void dequantize_row_iq2_s  (const block_iq2_s   * GGML_RESTRICT x, float * GGML_RESTRICT y, int64_t k);
+-- 
+2.43.0
+

@@ -1,0 +1,121 @@
+<?xml version="1.0" encoding="utf-8"?>
+<shortcuts xmlns:android="http://schemas.android.com/apk/res/android">
+    <capability android:name="actions.intent.OPEN_APP_FEATURE">
+        <intent android:action="android.intent.action.VIEW">
+            <url-template android:value="eliza://feature/open?source=android-app-actions{&amp;feature}" />
+            <parameter
+                android:name="feature"
+                android:key="feature"
+                android:required="true" />
+        </intent>
+        <intent android:action="android.intent.action.VIEW">
+            <url-template android:value="eliza://chat?source=android-app-actions&amp;action=chat" />
+        </intent>
+    </capability>
+
+    <capability android:name="actions.intent.CREATE_MESSAGE">
+        <intent android:action="android.intent.action.VIEW">
+            <url-template android:value="eliza://chat?source=android-app-actions&amp;action=ask{&amp;text}" />
+            <parameter
+                android:name="message.text"
+                android:key="text"
+                android:required="true" />
+        </intent>
+        <intent android:action="android.intent.action.VIEW">
+            <url-template android:value="eliza://chat?source=android-app-actions&amp;action=chat" />
+        </intent>
+    </capability>
+
+    <capability android:name="actions.intent.GET_THING">
+        <intent android:action="android.intent.action.VIEW">
+            <url-template android:value="eliza://chat?source=android-app-actions&amp;action=ask{&amp;query}" />
+            <parameter
+                android:name="thing.name"
+                android:key="query"
+                android:required="true" />
+        </intent>
+        <intent android:action="android.intent.action.VIEW">
+            <url-template android:value="eliza://chat?source=android-app-actions&amp;action=ask" />
+        </intent>
+    </capability>
+
+    <shortcut
+        android:shortcutId="eliza_app_action_chat"
+        android:shortcutShortLabel="@string/app_action_chat_short"
+        android:shortcutLongLabel="@string/app_action_chat_long">
+        <intent
+            android:action="android.intent.action.VIEW"
+            android:targetPackage="app.eliza"
+            android:targetClass="app.eliza.MainActivity"
+            android:data="eliza://chat?source=android-static-shortcut" />
+        <capability-binding android:key="actions.intent.OPEN_APP_FEATURE">
+            <parameter-binding
+                android:key="feature"
+                android:value="@array/app_action_chat_features" />
+        </capability-binding>
+    </shortcut>
+
+    <shortcut
+        android:shortcutId="eliza_app_action_voice"
+        android:shortcutShortLabel="@string/app_action_voice_short"
+        android:shortcutLongLabel="@string/app_action_voice_long">
+        <intent
+            android:action="android.intent.action.VIEW"
+            android:targetPackage="app.eliza"
+            android:targetClass="app.eliza.MainActivity"
+            android:data="eliza://voice?source=android-static-shortcut" />
+        <capability-binding android:key="actions.intent.OPEN_APP_FEATURE">
+            <parameter-binding
+                android:key="feature"
+                android:value="@array/app_action_voice_features" />
+        </capability-binding>
+    </shortcut>
+
+    <shortcut
+        android:shortcutId="eliza_app_action_daily_brief"
+        android:shortcutShortLabel="@string/app_action_daily_brief_short"
+        android:shortcutLongLabel="@string/app_action_daily_brief_long">
+        <intent
+            android:action="android.intent.action.VIEW"
+            android:targetPackage="app.eliza"
+            android:targetClass="app.eliza.MainActivity"
+            android:data="eliza://lifeops/daily-brief?source=android-static-shortcut" />
+        <capability-binding android:key="actions.intent.OPEN_APP_FEATURE">
+            <parameter-binding
+                android:key="feature"
+                android:value="@array/app_action_daily_brief_features" />
+        </capability-binding>
+    </shortcut>
+
+    <shortcut
+        android:shortcutId="eliza_app_action_new_task"
+        android:shortcutShortLabel="@string/app_action_new_task_short"
+        android:shortcutLongLabel="@string/app_action_new_task_long">
+        <intent
+            android:action="android.intent.action.VIEW"
+            android:targetPackage="app.eliza"
+            android:targetClass="app.eliza.MainActivity"
+            android:data="eliza://lifeops/task/new?source=android-static-shortcut" />
+        <capability-binding android:key="actions.intent.OPEN_APP_FEATURE">
+            <parameter-binding
+                android:key="feature"
+                android:value="@array/app_action_new_task_features" />
+        </capability-binding>
+    </shortcut>
+
+    <shortcut
+        android:shortcutId="eliza_app_action_tasks"
+        android:shortcutShortLabel="@string/app_action_tasks_short"
+        android:shortcutLongLabel="@string/app_action_tasks_long">
+        <intent
+            android:action="android.intent.action.VIEW"
+            android:targetPackage="app.eliza"
+            android:targetClass="app.eliza.MainActivity"
+            android:data="eliza://lifeops/tasks?source=android-static-shortcut" />
+        <capability-binding android:key="actions.intent.OPEN_APP_FEATURE">
+            <parameter-binding
+                android:key="feature"
+                android:value="@array/app_action_tasks_features" />
+        </capability-binding>
+    </shortcut>
+</shortcuts>

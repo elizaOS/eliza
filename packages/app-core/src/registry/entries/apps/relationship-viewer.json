@@ -1,0 +1,27 @@
+{
+  "id": "relationship-viewer",
+  "name": "Relationship Viewer",
+  "description": "Explore cross-channel people, identities, and relationship graphs.",
+  "npmName": "@elizaos/app-relationship-viewer",
+  "source": "bundled",
+  "tags": ["relationships", "graph", "viewer"],
+  "config": {},
+  "render": {
+    "visible": true,
+    "pinTo": [],
+    "style": "card",
+    "icon": "Link",
+    "group": "Apps",
+    "groupOrder": 4,
+    "actions": ["launch"]
+  },
+  "resources": {},
+  "dependsOn": [],
+  "kind": "app",
+  "subtype": "tool",
+  "launch": {
+    "type": "internal-tab",
+    "target": "relationships",
+    "capabilities": ["relationships", "graph", "viewer"]
+  }
+}

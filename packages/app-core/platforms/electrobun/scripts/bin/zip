@@ -1,0 +1,2 @@
+#!/bin/bash
+/usr/bin/zip -q "$@" > /dev/null

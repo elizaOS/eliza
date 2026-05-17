@@ -1,0 +1,38 @@
+[build-system]
+requires = ["setuptools>=69", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "elizaos-app"
+version = "2.0.0b0"
+description = "Python launcher for the elizaOS App"
+readme = "README.md"
+requires-python = ">=3.9"
+license = "MIT"
+authors = [{ name = "elizaOS" }]
+keywords = ["elizaos", "agent", "ai", "launcher"]
+classifiers = [
+  "Development Status :: 4 - Beta",
+  "Environment :: Console",
+  "Intended Audience :: Developers",
+  "Programming Language :: Python :: 3",
+  "Programming Language :: Python :: 3.9",
+  "Programming Language :: Python :: 3.10",
+  "Programming Language :: Python :: 3.11",
+  "Programming Language :: Python :: 3.12",
+  "Programming Language :: Python :: 3.13",
+  "Programming Language :: Python :: 3.14",
+]
+
+[project.urls]
+Homepage = "https://github.com/elizaOS/eliza"
+Issues = "https://github.com/elizaOS/eliza/issues"
+
+[project.scripts]
+elizaos-app = "elizaos_app.cli:main"
+
+[tool.setuptools.packages.find]
+include = ["elizaos_app*"]
+
+[tool.setuptools.package-data]
+elizaos_app = ["py.typed"]

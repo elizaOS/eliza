@@ -1,0 +1,14 @@
+#!/bin/sh
+set -e
+
+case "$1" in
+    remove|upgrade)
+        # Stop and disable user service if running
+        systemctl --user stop elizaos-app 2>/dev/null || true
+        systemctl --user disable elizaos-app 2>/dev/null || true
+        ;;
+esac
+
+#DEBHELPER#
+
+exit 0

@@ -1,0 +1,93 @@
+{
+  "id": "github",
+  "name": "Github",
+  "description": "Comprehensive GitHub integration plugin for ElizaOS with repository management, issue tracking, and PR workflows",
+  "npmName": "@elizaos/plugin-github",
+  "version": "2.0.0-beta.0",
+  "source": "bundled",
+  "tags": ["github"],
+  "config": {
+    "GITHUB_REPO": {
+      "type": "string",
+      "required": false,
+      "sensitive": false,
+      "label": "Repo",
+      "help": "Default GitHub repository name",
+      "advanced": false
+    },
+    "GITHUB_OWNER": {
+      "type": "string",
+      "required": false,
+      "sensitive": false,
+      "label": "Owner",
+      "help": "Default GitHub repository owner (username or organization)",
+      "advanced": false
+    },
+    "GITHUB_APP_ID": {
+      "type": "string",
+      "required": false,
+      "sensitive": false,
+      "label": "App Id",
+      "help": "GitHub App ID for app-based authentication",
+      "advanced": false
+    },
+    "GITHUB_BRANCH": {
+      "type": "string",
+      "required": false,
+      "sensitive": false,
+      "default": "main",
+      "label": "Branch",
+      "help": "Default branch name (defaults to main)",
+      "advanced": false
+    },
+    "GITHUB_API_TOKEN": {
+      "type": "secret",
+      "required": true,
+      "sensitive": true,
+      "label": "Api Token",
+      "help": "GitHub personal access token for API authentication",
+      "advanced": false
+    },
+    "GITHUB_WEBHOOK_SECRET": {
+      "type": "secret",
+      "required": false,
+      "sensitive": true,
+      "label": "Webhook Secret",
+      "help": "Secret for validating GitHub webhook payloads",
+      "advanced": false
+    },
+    "GITHUB_APP_PRIVATE_KEY": {
+      "type": "secret",
+      "required": false,
+      "sensitive": true,
+      "label": "App Private Key",
+      "help": "GitHub App private key for app-based authentication",
+      "advanced": false
+    },
+    "GITHUB_INSTALLATION_ID": {
+      "type": "string",
+      "required": false,
+      "sensitive": false,
+      "label": "Installation Id",
+      "help": "GitHub App installation ID",
+      "advanced": false
+    }
+  },
+  "render": {
+    "visible": true,
+    "pinTo": [],
+    "style": "card",
+    "icon": "GitBranch",
+    "group": "devtools",
+    "groupOrder": 5,
+    "actions": ["enable", "configure"]
+  },
+  "resources": {
+    "homepage": "https://github.com/elizaos-plugins/plugin-github#readme",
+    "repository": "https://github.com/elizaos-plugins/plugin-github",
+    "setupGuideUrl": "https://docs.eliza.ai/plugin-setup-guide#github"
+  },
+  "dependsOn": [],
+  "kind": "plugin",
+  "subtype": "devtools"
+}

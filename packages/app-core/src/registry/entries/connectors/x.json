@@ -1,0 +1,217 @@
+{
+  "id": "x",
+  "name": "X (Twitter)",
+  "description": "X (formerly Twitter) connector for posts, mentions, replies, DMs, and timeline interactions through the elizaOS plugin-x runtime.",
+  "npmName": "@elizaos/plugin-x",
+  "version": "2.0.0-beta.0",
+  "source": "bundled",
+  "tags": ["connector", "social", "social-chat", "twitter", "x", "dm"],
+  "config": {
+    "TWITTER_AUTH_MODE": {
+      "type": "select",
+      "required": false,
+      "sensitive": false,
+      "default": "broker",
+      "label": "Auth Mode",
+      "help": "How the connector authenticates with X. Use 'broker' to log in via Eliza Cloud OAuth, 'oauth' to do OAuth2 PKCE locally, or 'env' to provide developer API keys directly.",
+      "advanced": false,
+      "options": [
+        {
+          "value": "broker",
+          "label": "Eliza Cloud (recommended)"
+        },
+        {
+          "value": "oauth",
+          "label": "OAuth2 PKCE (self-hosted)"
+        },
+        {
+          "value": "env",
+          "label": "Developer tokens"
+        }
+      ]
+    },
+    "TWITTER_CLIENT_ID": {
+      "type": "string",
+      "required": false,
+      "sensitive": false,
+      "label": "OAuth Client ID",
+      "help": "X/Twitter OAuth2 client ID for TWITTER_AUTH_MODE=oauth.",
+      "advanced": false,
+      "visible": {
+        "key": "TWITTER_AUTH_MODE",
+        "equals": "oauth"
+      }
+    },
+    "TWITTER_REDIRECT_URI": {
+      "type": "url",
+      "required": false,
+      "sensitive": false,
+      "label": "Redirect URI",
+      "help": "OAuth2 redirect URI for TWITTER_AUTH_MODE=oauth. A loopback URL is recommended for local auth.",
+      "advanced": false,
+      "visible": {
+        "key": "TWITTER_AUTH_MODE",
+        "equals": "oauth"
+      }
+    },
+    "TWITTER_SCOPES": {
+      "type": "string",
+      "required": false,
+      "sensitive": false,
+      "default": "tweet.read tweet.write users.read offline.access",
+      "label": "OAuth Scopes",
+      "help": "Space-separated OAuth2 scopes requested by plugin-twitter.",
+      "advanced": true,
+      "visible": {
+        "key": "TWITTER_AUTH_MODE",
+        "equals": "oauth"
+      }
+    },
+    "TWITTER_API_KEY": {
+      "type": "secret",
+      "required": false,
+      "sensitive": true,
+      "label": "API Key",
+      "help": "X/Twitter API key for TWITTER_AUTH_MODE=env.",
+      "advanced": false,
+      "visible": {
+        "key": "TWITTER_AUTH_MODE",
+        "equals": "env"
+      }
+    },
+    "TWITTER_API_SECRET_KEY": {
+      "type": "secret",
+      "required": false,
+      "sensitive": true,
+      "label": "API Secret",
+      "help": "X/Twitter API secret key for TWITTER_AUTH_MODE=env.",
+      "advanced": false,
+      "visible": {
+        "key": "TWITTER_AUTH_MODE",
+        "equals": "env"
+      }
+    },
+    "TWITTER_ACCESS_TOKEN": {
+      "type": "secret",
+      "required": false,
+      "sensitive": true,
+      "label": "Access Token",
+      "help": "OAuth 1.0a access token for TWITTER_AUTH_MODE=env.",
+      "advanced": false,
+      "visible": {
+        "key": "TWITTER_AUTH_MODE",
+        "equals": "env"
+      }
+    },
+    "TWITTER_ACCESS_TOKEN_SECRET": {
+      "type": "secret",
+      "required": false,
+      "sensitive": true,
+      "label": "Access Token Secret",
+      "help": "OAuth 1.0a access token secret for TWITTER_AUTH_MODE=env.",
+      "advanced": false,
+      "visible": {
+        "key": "TWITTER_AUTH_MODE",
+        "equals": "env"
+      }
+    },
+    "TWITTER_BROKER_URL": {
+      "type": "url",
+      "required": false,
+      "sensitive": false,
+      "default": "https://www.elizacloud.ai/api/v1/twitter",
+      "label": "Broker URL",
+      "help": "Eliza Cloud X (Twitter) broker base URL. Override only to point at a self-hosted broker; otherwise leave the default.",
+      "advanced": true,
+      "visible": {
+        "key": "TWITTER_AUTH_MODE",
+        "equals": "broker"
+      }
+    },
+    "TWITTER_BROKER_TOKEN": {
+      "type": "secret",
+      "required": false,
+      "sensitive": true,
+      "label": "Broker Token (optional)",
+      "help": "Cloud auth token used to identify this agent to the broker. Defaults to ELIZAOS_CLOUD_API_KEY when unset, so most users can leave this blank.",
+      "advanced": true,
+      "visible": {
+        "key": "TWITTER_AUTH_MODE",
+        "equals": "broker"
+      }
+    },
+    "TWITTER_ENABLE_POST": {
+      "type": "boolean",
+      "required": false,
+      "sensitive": false,
+      "default": false,
+      "label": "Enable Posting",
+      "help": "Allow the connector to publish posts.",
+      "advanced": false
+    },
+    "TWITTER_ENABLE_REPLIES": {
+      "type": "boolean",
+      "required": false,
+      "sensitive": false,
+      "default": true,
+      "label": "Enable Replies",
+      "help": "Allow the connector to reply to mentions and conversations.",
+      "advanced": false
+    },
+    "TWITTER_ENABLE_ACTIONS": {
+      "type": "boolean",
+      "required": false,
+      "sensitive": false,
+      "default": false,
+      "label": "Enable Likes/Reposts",
+      "help": "Allow engagement actions such as likes, reposts, and quote posts.",
+      "advanced": false
+    },
+    "TWITTER_TARGET_USERS": {
+      "type": "string",
+      "required": false,
+      "sensitive": false,
+      "label": "Target Users",
+      "help": "Comma-separated usernames to interact with. Leave empty to use the plugin defaults.",
+      "advanced": true
+    },
+    "TWITTER_DRY_RUN": {
+      "type": "boolean",
+      "required": false,
+      "sensitive": false,
+      "default": false,
+      "label": "Dry Run",
+      "help": "Log intended X/Twitter actions without publishing them.",
+      "advanced": true
+    }
+  },
+  "render": {
+    "visible": true,
+    "pinTo": [],
+    "style": "setup-panel",
+    "icon": "Twitter",
+    "group": "connector",
+    "groupOrder": 1,
+    "actions": ["enable", "configure", "setup-guide"]
+  },
+  "resources": {
+    "homepage": "https://github.com/elizaos-plugins/plugin-x#readme",
+    "repository": "https://github.com/elizaos-plugins/plugin-x",
+    "setupGuideUrl": "https://github.com/elizaos-plugins/plugin-x#readme"
+  },
+  "dependsOn": [],
+  "kind": "connector",
+  "subtype": "social",
+  "auth": {
+    "kind": "oauth",
+    "credentialKeys": [
+      "TWITTER_AUTH_MODE",
+      "TWITTER_CLIENT_ID",
+      "TWITTER_REDIRECT_URI",
+      "TWITTER_API_KEY",
+      "TWITTER_ACCESS_TOKEN",
+      "TWITTER_BROKER_URL",
+      "TWITTER_BROKER_TOKEN"
+    ]
+  }
+}

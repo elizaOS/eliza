@@ -1,0 +1,449 @@
+.eliza-ob {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+  height: 100%;
+  min-height: 100vh;
+  overflow: hidden;
+  color: #ffffff;
+  background: #1d91e8;
+  font-family: "Open Sans", Arial, sans-serif;
+}
+
+.eliza-ob-screen {
+  position: relative;
+  z-index: 1;
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  padding: 58px 22px 22px;
+  min-height: 100vh;
+  box-sizing: border-box;
+}
+
+.eliza-ob-screen.centered {
+  justify-content: center;
+}
+
+.eliza-ob h1,
+.eliza-ob h2 {
+  margin: 0;
+  font-weight: 700;
+}
+
+.eliza-ob h1 {
+  font-size: 33px;
+  line-height: 1.08;
+  color: #ffffff;
+  text-shadow: 0 2px 18px rgba(4, 49, 93, 0.34);
+}
+
+.eliza-ob p {
+  margin: 9px 0 0;
+  color: rgba(255, 255, 255, 0.78);
+  font-size: 13px;
+  line-height: 1.45;
+}
+
+.eliza-ob-hello {
+  display: grid;
+  place-items: center;
+  gap: 22px;
+  text-align: center;
+}
+
+.eliza-ob-hello-word {
+  font-size: clamp(58px, 18vw, 104px);
+  line-height: 0.96;
+  color: #ffffff;
+  text-shadow: 0 10px 36px rgba(5, 48, 88, 0.3);
+  font-weight: 700;
+}
+
+.eliza-ob-tap-hint {
+  color: rgba(255, 255, 255, 0.76);
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.eliza-ob-runtime-intro,
+.eliza-ob-tutorial-card,
+.eliza-ob-download-card,
+.eliza-ob-oauth-grid {
+  border-radius: 22px;
+  background: rgba(6, 19, 31, 0.18);
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.2);
+  backdrop-filter: blur(18px);
+}
+
+.eliza-ob-runtime-intro {
+  display: grid;
+  gap: 10px;
+  margin-top: 18px;
+  padding: 15px;
+}
+
+.eliza-ob-runtime-intro strong {
+  color: #ffffff;
+  font-size: 15px;
+}
+
+.eliza-ob-runtime-intro span,
+.eliza-ob-recommendation-copy {
+  color: rgba(255, 255, 255, 0.82);
+  font-size: 12px;
+  line-height: 1.45;
+}
+
+.eliza-ob-choice-list {
+  display: grid;
+  gap: 12px;
+  margin-top: 26px;
+}
+
+.eliza-ob-choice {
+  display: grid;
+  gap: 4px;
+  padding: 15px 16px;
+  border-radius: 18px;
+  background: rgba(255, 255, 255, 0.18);
+  color: #ffffff;
+  text-align: left;
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.22);
+  border: 0;
+  cursor: pointer;
+  font-family: inherit;
+  transition:
+    background 0.16s ease,
+    color 0.16s ease,
+    transform 0.16s ease;
+}
+
+.eliza-ob-choice:hover {
+  transform: translateY(-1px);
+  background: rgba(255, 255, 255, 0.3);
+}
+
+.eliza-ob-choice.selected {
+  background: rgba(255, 255, 255, 0.92);
+  color: #06131f;
+}
+
+.eliza-ob-choice-top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.eliza-ob-choice strong {
+  font-size: 17px;
+}
+
+.eliza-ob-choice span {
+  font-size: 12px;
+  opacity: 0.72;
+  line-height: 1.4;
+}
+
+.eliza-ob-chip {
+  border-radius: 999px;
+  padding: 4px 8px;
+  background: #ff8a24;
+  color: #ffffff;
+  font-size: 10px;
+  font-weight: 700;
+}
+
+.eliza-ob-footer {
+  display: flex;
+  gap: 10px;
+  margin-top: 18px;
+  justify-content: flex-end;
+}
+
+.eliza-ob-footer.vertical {
+  align-items: stretch;
+  flex-direction: column;
+}
+
+.eliza-ob-language {
+  position: absolute;
+  top: 58px;
+  right: 22px;
+  width: 148px;
+  z-index: 6;
+}
+
+.eliza-ob-language select {
+  width: 100%;
+  min-width: 0;
+  height: 40px;
+  border: 0;
+  border-radius: 999px;
+  padding: 0 12px;
+  background: rgba(255, 255, 255, 0.9);
+  color: #06131f;
+  outline: none;
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.22);
+  font-family: inherit;
+}
+
+.eliza-ob-form {
+  display: grid;
+  gap: 10px;
+  margin-top: 22px;
+}
+
+.eliza-ob-input {
+  width: 100%;
+  height: 48px;
+  border: 0;
+  border-radius: 999px;
+  padding: 0 16px;
+  background: rgba(255, 255, 255, 0.92);
+  color: #06131f;
+  outline: none;
+  font-family: inherit;
+  box-sizing: border-box;
+}
+
+.eliza-ob-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  min-height: 44px;
+  padding: 0 16px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.92);
+  color: #06131f;
+  font-size: 13px;
+  font-weight: 700;
+  border: 0;
+  cursor: pointer;
+  font-family: inherit;
+  transition:
+    opacity 0.15s ease,
+    transform 0.15s ease;
+}
+
+.eliza-ob-btn:hover {
+  opacity: 0.86;
+}
+
+.eliza-ob-btn:active {
+  transform: scale(0.98);
+}
+
+.eliza-ob-btn:disabled {
+  cursor: not-allowed;
+  opacity: 0.58;
+}
+
+.eliza-ob-btn.secondary {
+  background: rgba(6, 19, 31, 0.18);
+  color: rgba(255, 255, 255, 0.92);
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.22);
+}
+
+.eliza-ob-btn.orange {
+  background: #ff8a24;
+  color: #fff7ee;
+}
+
+.eliza-ob-btn.text-only {
+  min-height: 36px;
+  background: transparent;
+  color: #ffffff;
+  box-shadow: none;
+}
+
+.eliza-ob-oauth-grid {
+  display: grid;
+  gap: 10px;
+  margin-top: 22px;
+  padding: 12px;
+}
+
+.eliza-ob-oauth-button {
+  justify-content: flex-start;
+  border-radius: 16px;
+  background: rgba(255, 255, 255, 0.92);
+  padding: 12px 14px;
+}
+
+.eliza-ob-oauth-mark {
+  display: grid;
+  place-items: center;
+  width: 26px;
+  height: 26px;
+  border-radius: 50%;
+  background: rgba(29, 145, 232, 0.12);
+  color: #0c5f9e;
+  font-weight: 800;
+  margin-right: 10px;
+  font-size: 13px;
+}
+
+.eliza-ob-download-card {
+  display: grid;
+  gap: 12px;
+  margin-top: 24px;
+  padding: 16px;
+}
+
+.eliza-ob-progress-track {
+  height: 10px;
+  overflow: hidden;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.24);
+}
+
+.eliza-ob-progress-fill {
+  height: 100%;
+  border-radius: inherit;
+  background: #ffffff;
+  transition: width 0.45s ease;
+}
+
+.eliza-ob-download-meta {
+  color: rgba(255, 255, 255, 0.72);
+  font-size: 11px;
+}
+
+.eliza-ob-tutorial-card {
+  display: grid;
+  gap: 12px;
+  margin-top: 22px;
+  padding: 16px;
+}
+
+.eliza-ob-mini-screen {
+  display: grid;
+  gap: 8px;
+  border-radius: 18px;
+  padding: 12px;
+  background: rgba(255, 255, 255, 0.9);
+  color: #06131f;
+}
+
+.eliza-ob-mini-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  min-height: 34px;
+  border-radius: 12px;
+  padding: 0 10px;
+  background: rgba(29, 145, 232, 0.08);
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.eliza-ob-mini-pill {
+  border-radius: 999px;
+  padding: 4px 8px;
+  background: #ff8a24;
+  color: #ffffff;
+  font-size: 10px;
+}
+
+.eliza-ob-agent {
+  display: grid;
+  place-items: center;
+  gap: 18px;
+  margin-top: 58px;
+}
+
+.eliza-ob-agent-canvas {
+  width: min(270px, 78vw);
+  height: 112px;
+}
+
+.eliza-ob-transcript {
+  min-height: 28px;
+  color: rgba(255, 255, 255, 0.9);
+  font-size: 20px;
+  font-weight: 600;
+  text-align: center;
+  text-shadow: 0 1px 12px rgba(6, 19, 31, 0.16);
+}
+
+.eliza-ob-mic-wave-wrap {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 110px;
+  overflow: hidden;
+}
+
+.eliza-ob-mic-wave-canvas {
+  width: 100%;
+  height: 100px;
+}
+
+.eliza-ob-mic-controls {
+  display: grid;
+  gap: 10px;
+  margin-top: auto;
+}
+
+.eliza-ob-select {
+  width: 100%;
+  height: 44px;
+  padding: 0 14px;
+  border-radius: 999px;
+  border: 0;
+  color: #06131f;
+  background: rgba(255, 255, 255, 0.92);
+  outline: none;
+  font-family: inherit;
+}
+
+.eliza-ob-audio-actions {
+  display: flex;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.eliza-ob-skip-row {
+  display: flex;
+  justify-content: flex-end;
+}
+
+.eliza-ob-skip-link {
+  min-height: 30px;
+  padding: 0 10px;
+  background: transparent;
+  color: rgba(255, 255, 255, 0.72);
+  font-size: 11px;
+  font-weight: 700;
+  box-shadow: none;
+  border: 0;
+  cursor: pointer;
+  font-family: inherit;
+}
+
+.eliza-ob-icon-btn {
+  display: grid;
+  place-items: center;
+  width: 38px;
+  height: 38px;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.16);
+  color: rgba(255, 255, 255, 0.9);
+  border: 0;
+  cursor: pointer;
+}
+
+.eliza-ob-icon-btn svg {
+  width: 19px;
+  height: 19px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 2;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}

@@ -1,0 +1,64 @@
+{
+  "id": "rss",
+  "name": "Rss",
+  "description": "news and feed support",
+  "npmName": "@elizaos/plugin-rss",
+  "version": "2.0.0-beta.0",
+  "source": "bundled",
+  "tags": ["rss", "atom", "feed", "news", "syndication"],
+  "config": {
+    "RSS_FEEDS": {
+      "type": "json",
+      "required": false,
+      "sensitive": false,
+      "label": "Feeds",
+      "help": "JSON array or comma-separated list of feed URLs to auto-subscribe",
+      "advanced": false
+    },
+    "RSS_FEED_FORMAT": {
+      "type": "string",
+      "required": false,
+      "sensitive": false,
+      "default": "csv",
+      "label": "Feed Format",
+      "help": "Output format for feed items: 'csv' (compact) or 'markdown' (readable)",
+      "advanced": false
+    },
+    "RSS_DISABLE_ACTIONS": {
+      "type": "boolean",
+      "required": false,
+      "sensitive": false,
+      "default": "False",
+      "label": "Disable Actions",
+      "help": "Set to true to disable subscription management actions",
+      "advanced": false
+    },
+    "RSS_CHECK_INTERVAL_MINUTES": {
+      "type": "number",
+      "required": false,
+      "sensitive": false,
+      "default": "15",
+      "label": "Check Interval Minutes",
+      "help": "Interval in minutes between feed checks",
+      "advanced": false,
+      "min": 0,
+      "unit": "ms"
+    }
+  },
+  "render": {
+    "visible": true,
+    "pinTo": [],
+    "style": "card",
+    "icon": "Rss",
+    "group": "media",
+    "groupOrder": 8,
+    "actions": ["enable", "configure"]
+  },
+  "resources": {
+    "homepage": "https://elizaos.ai",
+    "repository": "https://github.com/elizaos/eliza"
+  },
+  "dependsOn": [],
+  "kind": "plugin",
+  "subtype": "media"
+}

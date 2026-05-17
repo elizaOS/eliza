@@ -1,0 +1,36 @@
+{
+  "id": "local-storage",
+  "name": "Local Storage",
+  "description": "Local filesystem attachment storage. Default fallback when Eliza Cloud storage is not connected.",
+  "npmName": "@elizaos/plugin-local-storage",
+  "version": "2.0.0-beta.0",
+  "source": "bundled",
+  "tags": ["storage", "files", "local"],
+  "config": {
+    "LOCAL_STORAGE_PATH": {
+      "type": "file-path",
+      "required": false,
+      "sensitive": false,
+      "label": "Storage Path",
+      "help": "Filesystem root for attachment storage. Defaults to ${ELIZA_STATE_DIR ?? ~/.eliza}/attachments.",
+      "advanced": false
+    }
+  },
+  "render": {
+    "visible": true,
+    "pinTo": [],
+    "style": "card",
+    "icon": "FolderOpen",
+    "group": "storage",
+    "groupOrder": 10,
+    "actions": ["enable", "configure"]
+  },
+  "resources": {
+    "homepage": "https://github.com/elizaos/eliza",
+    "repository": "https://github.com/elizaos/eliza"
+  },
+  "dependsOn": [],
+  "kind": "plugin",
+  "subtype": "storage",
+  "cloudBacked": false
+}

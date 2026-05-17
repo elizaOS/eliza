@@ -1,0 +1,33 @@
+{
+  "id": "agent-orchestrator",
+  "name": "Agent Orchestrator",
+  "description": "Task-agent orchestration plugin - spawn and manage open-ended CLI task agents via PTY",
+  "npmName": "@elizaos/core",
+  "version": "2.0.0-beta.0",
+  "source": "bundled",
+  "tags": [
+    "orchestrator",
+    "agents",
+    "tasks",
+    "orchestration",
+    "agent-orchestrator",
+    "agent"
+  ],
+  "config": {},
+  "render": {
+    "visible": true,
+    "pinTo": [],
+    "style": "card",
+    "icon": "Target",
+    "group": "agents",
+    "groupOrder": 7,
+    "actions": ["enable", "configure"]
+  },
+  "resources": {
+    "homepage": "https://github.com/elizaos/eliza#readme",
+    "repository": "https://github.com/elizaos/eliza"
+  },
+  "dependsOn": [],
+  "kind": "plugin",
+  "subtype": "agents"
+}

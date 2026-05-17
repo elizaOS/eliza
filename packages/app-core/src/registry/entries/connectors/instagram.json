@@ -1,0 +1,64 @@
+{
+  "id": "instagram",
+  "name": "Instagram",
+  "description": "Enables Instagram integration with support for media posting, comment handling, and interaction management.",
+  "npmName": "@elizaos/plugin-instagram",
+  "version": "2.0.0-beta.0",
+  "source": "bundled",
+  "tags": ["connector", "social", "social-feed", "instagram"],
+  "config": {
+    "INSTAGRAM_PROXY": {
+      "type": "string",
+      "required": false,
+      "sensitive": false,
+      "label": "Proxy",
+      "help": "Proxy URL for Instagram API requests",
+      "advanced": false
+    },
+    "INSTAGRAM_PASSWORD": {
+      "type": "secret",
+      "required": true,
+      "sensitive": true,
+      "label": "Password",
+      "help": "Instagram password for authentication",
+      "advanced": false
+    },
+    "INSTAGRAM_USERNAME": {
+      "type": "string",
+      "required": true,
+      "sensitive": false,
+      "label": "Username",
+      "help": "Instagram username for authentication",
+      "advanced": false
+    },
+    "INSTAGRAM_VERIFICATION_CODE": {
+      "type": "secret",
+      "required": false,
+      "sensitive": true,
+      "label": "Verification Code",
+      "help": "Two-factor authentication verification code",
+      "advanced": false
+    }
+  },
+  "render": {
+    "visible": true,
+    "pinTo": [],
+    "style": "setup-panel",
+    "icon": "Video",
+    "group": "connector",
+    "groupOrder": 1,
+    "actions": ["enable", "configure", "setup-guide"]
+  },
+  "resources": {
+    "homepage": "https://github.com/elizaos/eliza#readme",
+    "repository": "https://github.com/elizaos/eliza",
+    "setupGuideUrl": "https://docs.eliza.ai/plugin-setup-guide#instagram"
+  },
+  "dependsOn": [],
+  "kind": "connector",
+  "subtype": "messaging",
+  "auth": {
+    "kind": "token",
+    "credentialKeys": []
+  }
+}

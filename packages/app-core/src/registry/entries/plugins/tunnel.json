@@ -1,0 +1,45 @@
+{
+  "id": "tunnel",
+  "name": "Tunnel",
+  "description": "Local Tailscale-CLI tunnel backend (serve / funnel). Implements the canonical tunnel-service contract; coexists with plugin-tailscale, plugin-ngrok, and the Eliza Cloud headscale backend via first-active-wins.",
+  "npmName": "@elizaos/plugin-tunnel",
+  "version": "0.1.0",
+  "source": "bundled",
+  "tags": ["tunnel", "tailscale", "networking"],
+  "config": {
+    "TUNNEL_DEFAULT_PORT": {
+      "type": "number",
+      "required": false,
+      "sensitive": false,
+      "default": "3000",
+      "label": "Default Port",
+      "help": "Used when no port is extracted from the user message.",
+      "advanced": false
+    },
+    "TUNNEL_USE_FUNNEL": {
+      "type": "boolean",
+      "required": false,
+      "sensitive": false,
+      "default": "False",
+      "label": "Use Funnel",
+      "help": "When true, use 'tailscale funnel' to expose to the public Internet. When false, use 'tailscale serve' (tailnet-internal only).",
+      "advanced": false
+    }
+  },
+  "render": {
+    "visible": true,
+    "pinTo": [],
+    "style": "card",
+    "icon": "Network",
+    "group": "devtools",
+    "groupOrder": 7,
+    "actions": ["enable", "configure"]
+  },
+  "resources": {
+    "homepage": "https://github.com/eliza-ai/eliza/tree/develop/plugins/plugin-tunnel#readme",
+    "repository": "https://github.com/eliza-ai/eliza"
+  },
+  "dependsOn": [],
+  "kind": "plugin",
+  "subtype": "devtools"
+}

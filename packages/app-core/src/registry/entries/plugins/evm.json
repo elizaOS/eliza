@@ -1,0 +1,134 @@
+{
+  "id": "evm",
+  "name": "Evm",
+  "description": "This plugin enables interaction with EVM-compatible chains, supporting token transfers, cross-chain bridging, and swaps via LiFi integration.",
+  "npmName": "@elizaos/plugin-wallet",
+  "version": "2.0.0-beta.0",
+  "source": "bundled",
+  "tags": ["crypto", "evm"],
+  "config": {
+    "EVM_PRIVATE_KEY": {
+      "type": "secret",
+      "required": true,
+      "sensitive": true,
+      "label": "Private Key",
+      "help": "Hex-encoded private key (starting with 0x) used by the WalletProvider to sign transactions.",
+      "advanced": false
+    },
+    "EVM_RPC_PROVIDER": {
+      "type": "string",
+      "required": false,
+      "sensitive": false,
+      "label": "Rpc Provider",
+      "help": "Preferred RPC provider: 'alchemy', 'infura', 'ankr', or 'elizacloud'. If set, this provider is used first for all chains it supports, with fallback to others.",
+      "advanced": false
+    },
+    "ALCHEMY_API_KEY": {
+      "type": "secret",
+      "required": false,
+      "sensitive": true,
+      "label": "Api Key",
+      "help": "Alchemy API key for RPC access. Supports Ethereum, Polygon, Arbitrum, Optimism, Base, Avalanche, BSC, and many more chains.",
+      "advanced": false
+    },
+    "INFURA_API_KEY": {
+      "type": "secret",
+      "required": false,
+      "sensitive": true,
+      "label": "Api Key",
+      "help": "Infura API key for RPC access. Supports Ethereum, Polygon, Arbitrum, Optimism, Base, Avalanche, Linea, and more.",
+      "advanced": false
+    },
+    "ANKR_API_KEY": {
+      "type": "secret",
+      "required": false,
+      "sensitive": true,
+      "label": "Api Key",
+      "help": "Ankr premium API key for RPC access. Supports the broadest range of EVM chains.",
+      "advanced": false
+    },
+    "ETHEREUM_PROVIDER_ETHEREUM": {
+      "type": "string",
+      "required": false,
+      "sensitive": false,
+      "label": "Provider Ethereum",
+      "help": "Custom RPC URL for Ethereum mainnet (overrides provider-based RPC). For other chains, set ETHEREUM_PROVIDER_<CHAINNAME> (or EVM_PROVIDER_<CHAINNAME>) in your .env.",
+      "advanced": false
+    },
+    "ETHEREUM_PROVIDER_BASE": {
+      "type": "string",
+      "required": false,
+      "sensitive": false,
+      "label": "Provider Base",
+      "help": "Custom RPC URL for Base mainnet (overrides provider-based RPC).",
+      "advanced": false
+    },
+    "ETHEREUM_PROVIDER_ARBITRUM": {
+      "type": "string",
+      "required": false,
+      "sensitive": false,
+      "label": "Provider Arbitrum",
+      "help": "Custom RPC URL for Arbitrum One (overrides provider-based RPC).",
+      "advanced": false
+    },
+    "ETHEREUM_PROVIDER_OPTIMISM": {
+      "type": "string",
+      "required": false,
+      "sensitive": false,
+      "label": "Provider Optimism",
+      "help": "Custom RPC URL for Optimism mainnet (overrides provider-based RPC).",
+      "advanced": false
+    },
+    "TEE_MODE": {
+      "type": "string",
+      "required": false,
+      "sensitive": false,
+      "default": "OFF",
+      "label": "Mode",
+      "help": "Controls whether Trusted Execution Environment (TEE) mode is enabled.",
+      "advanced": false
+    },
+    "WALLET_SECRET_SALT": {
+      "type": "secret",
+      "required": false,
+      "sensitive": true,
+      "label": "Secret Salt",
+      "help": "Salt value for TEE-derived wallet keypair.",
+      "advanced": false
+    },
+    "SEPOLIA_RPC_URL": {
+      "type": "url",
+      "required": false,
+      "sensitive": false,
+      "default": "https://ethereum-sepolia-rpc.publicnode.com",
+      "label": "Rpc Url",
+      "help": "RPC endpoint URL for Sepolia testnet.",
+      "advanced": false
+    },
+    "BASE_SEPOLIA_RPC_URL": {
+      "type": "url",
+      "required": false,
+      "sensitive": false,
+      "default": "https://sepolia.base.org",
+      "label": "Sepolia Rpc Url",
+      "help": "RPC endpoint URL for Base Sepolia testnet.",
+      "advanced": false
+    }
+  },
+  "render": {
+    "visible": true,
+    "pinTo": [],
+    "style": "card",
+    "icon": "Link",
+    "group": "blockchain",
+    "groupOrder": 4,
+    "actions": ["enable", "configure"]
+  },
+  "resources": {
+    "homepage": "https://github.com/elizaOS/eliza/tree/develop/plugins/plugin-wallet#readme",
+    "repository": "https://github.com/elizaOS/eliza"
+  },
+  "dependsOn": [],
+  "kind": "plugin",
+  "subtype": "blockchain"
+}

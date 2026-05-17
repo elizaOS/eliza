@@ -1,0 +1,91 @@
+{
+  "id": "s3-storage",
+  "name": "S3 Storage",
+  "description": "S3-compatible object storage plugin for saving files, media, and generated artifacts.",
+  "npmName": "@elizaos/plugin-s3-storage",
+  "version": "2.0.0-beta.0",
+  "source": "bundled",
+  "tags": ["storage", "files", "s3", "s3-storage"],
+  "config": {
+    "AWS_REGION": {
+      "type": "string",
+      "required": true,
+      "sensitive": false,
+      "label": "Region",
+      "help": "AWS region in which the S3 bucket resides.",
+      "advanced": false
+    },
+    "AWS_S3_BUCKET": {
+      "type": "string",
+      "required": true,
+      "sensitive": false,
+      "label": "S3 Bucket",
+      "help": "Name of the AWS S3 bucket used for file uploads and downloads.",
+      "advanced": false
+    },
+    "AWS_S3_ENDPOINT": {
+      "type": "url",
+      "required": false,
+      "sensitive": false,
+      "label": "S3 Endpoint",
+      "help": "Custom S3-compatible endpoint (e.g., for non-AWS providers).",
+      "advanced": false
+    },
+    "AWS_ACCESS_KEY_ID": {
+      "type": "secret",
+      "required": true,
+      "sensitive": true,
+      "label": "Access Key Id",
+      "help": "AWS access key ID used for authenticating requests to AWS S3.",
+      "advanced": false
+    },
+    "AWS_S3_SSL_ENABLED": {
+      "type": "boolean",
+      "required": false,
+      "sensitive": false,
+      "label": "S3 Ssl Enabled",
+      "help": "Flag indicating whether SSL should be enabled for the custom S3 endpoint.",
+      "advanced": false
+    },
+    "AWS_S3_UPLOAD_PATH": {
+      "type": "file-path",
+      "required": false,
+      "sensitive": false,
+      "label": "S3 Upload Path",
+      "help": "Default path or prefix inside the S3 bucket where files will be uploaded.",
+      "advanced": false
+    },
+    "AWS_SECRET_ACCESS_KEY": {
+      "type": "secret",
+      "required": true,
+      "sensitive": true,
+      "label": "Secret Access Key",
+      "help": "AWS secret access key used for authenticating requests to AWS S3.",
+      "advanced": false
+    },
+    "AWS_S3_FORCE_PATH_STYLE": {
+      "type": "boolean",
+      "required": false,
+      "sensitive": false,
+      "label": "S3 Force Path Style",
+      "help": "Flag to force path-style addressing when connecting to the S3 endpoint.",
+      "advanced": false
+    }
+  },
+  "render": {
+    "visible": true,
+    "pinTo": [],
+    "style": "card",
+    "icon": "Server",
+    "group": "storage",
+    "groupOrder": 10,
+    "actions": ["enable", "configure"]
+  },
+  "resources": {
+    "homepage": "https://github.com/elizaos-plugins/plugin-storage-s3#readme",
+    "repository": "https://github.com/elizaos-plugins/plugin-storage-s3"
+  },
+  "dependsOn": [],
+  "kind": "plugin",
+  "subtype": "storage"
+}

@@ -1,0 +1,104 @@
+{
+  "id": "discord",
+  "name": "Discord",
+  "description": "Discord connector for elizaOS servers, voice, and message management with Eliza Cloud OAuth gateway or local bot-token setup.",
+  "npmName": "@elizaos/plugin-discord",
+  "version": "2.0.0-beta.0",
+  "source": "bundled",
+  "tags": ["connector", "social", "social-chat", "messaging", "discord"],
+  "config": {
+    "DISCORD_API_TOKEN": {
+      "type": "secret",
+      "required": true,
+      "sensitive": true,
+      "label": "Api Token",
+      "help": "Discord API token used to authenticate and log in the Discord client/service.",
+      "advanced": false
+    },
+    "DISCORD_APPLICATION_ID": {
+      "type": "string",
+      "required": false,
+      "sensitive": false,
+      "label": "Application Id",
+      "help": "Discord application ID for the bot (auto-resolved from bot token if omitted)",
+      "advanced": false
+    },
+    "CHANNEL_IDS": {
+      "type": "string",
+      "required": false,
+      "sensitive": false,
+      "label": "Ids",
+      "help": "Comma-separated list of Discord channel IDs that will be parsed into an array if provided.",
+      "advanced": false
+    },
+    "DISCORD_TEST_CHANNEL_ID": {
+      "type": "string",
+      "required": false,
+      "sensitive": false,
+      "label": "Test Channel Id",
+      "help": "Discord channel ID used during test suite to locate the test channel for sending messages, voice interactions, and other test operations.",
+      "advanced": false
+    },
+    "DISCORD_VOICE_CHANNEL_ID": {
+      "type": "string",
+      "required": false,
+      "sensitive": false,
+      "label": "Voice Channel Id",
+      "help": "ID of the Discord voice channel the bot should join when scanning a guild. If not supplied, the bot selects a channel based on member activity.",
+      "advanced": false
+    },
+    "DISCORD_SHOULD_IGNORE_BOT_MESSAGES": {
+      "type": "boolean",
+      "required": false,
+      "sensitive": false,
+      "label": "Should Ignore Bot Messages",
+      "help": "If true, the bot will ignore messages from other bots. Can be overridden by character settings.",
+      "advanced": false
+    },
+    "DISCORD_SHOULD_IGNORE_DIRECT_MESSAGES": {
+      "type": "boolean",
+      "required": false,
+      "sensitive": false,
+      "label": "Should Ignore Direct Messages",
+      "help": "If true, the bot will ignore direct messages. Can be overridden by character settings.",
+      "advanced": false
+    },
+    "DISCORD_SHOULD_RESPOND_ONLY_TO_MENTIONS": {
+      "type": "boolean",
+      "required": false,
+      "sensitive": false,
+      "label": "Should Respond Only To Mentions",
+      "help": "If true, the bot will only respond when explicitly mentioned. Can be overridden by character settings.",
+      "advanced": false
+    },
+    "DISCORD_LISTEN_CHANNEL_IDS": {
+      "type": "string",
+      "required": false,
+      "sensitive": false,
+      "label": "Listen Channel Ids",
+      "help": "Comma-separated list of Discord channel IDs where the bot will only listen (not respond).",
+      "advanced": false
+    }
+  },
+  "render": {
+    "visible": true,
+    "pinTo": [],
+    "style": "setup-panel",
+    "icon": "MessageCircle",
+    "group": "connector",
+    "groupOrder": 1,
+    "actions": ["enable", "configure", "setup-guide"]
+  },
+  "resources": {
+    "homepage": "https://github.com/elizaos-plugins/plugin-discord#readme",
+    "repository": "https://github.com/elizaos-plugins/plugin-discord",
+    "setupGuideUrl": "https://docs.eliza.ai/plugin-setup-guide#discord"
+  },
+  "dependsOn": [],
+  "kind": "connector",
+  "subtype": "messaging",
+  "auth": {
+    "kind": "oauth",
+    "credentialKeys": ["DISCORD_API_TOKEN"]
+  }
+}

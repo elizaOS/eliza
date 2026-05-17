@@ -1,0 +1,94 @@
+{
+  "id": "shell",
+  "name": "Shell",
+  "description": "A shell plugin for ElizaOS. USE AT YOUR OWN RISK. THIS GIVES AI FULL ACCESS TO THE HOST MACHINE",
+  "npmName": "@elizaos/plugin-shell",
+  "version": "2.0.0-beta.0",
+  "source": "bundled",
+  "tags": ["shell", "terminal", "command", "history"],
+  "config": {
+    "SHELL_ALLOWED_DIRECTORY": {
+      "type": "file-path",
+      "required": true,
+      "sensitive": false,
+      "label": "Allowed Directory",
+      "help": "The directory that shell commands are restricted to. Commands cannot execute outside this directory.",
+      "advanced": false
+    },
+    "SHELL_TIMEOUT": {
+      "type": "number",
+      "required": false,
+      "sensitive": false,
+      "default": "30000",
+      "label": "Timeout",
+      "help": "Maximum command execution timeout in milliseconds",
+      "advanced": false,
+      "min": 0,
+      "unit": "ms"
+    },
+    "SHELL_FORBIDDEN_COMMANDS": {
+      "type": "string",
+      "required": false,
+      "sensitive": false,
+      "label": "Forbidden Commands",
+      "help": "Comma-separated list of additional forbidden commands",
+      "advanced": false
+    },
+    "SHELL_MAX_OUTPUT_CHARS": {
+      "type": "number",
+      "required": false,
+      "sensitive": false,
+      "default": "200000",
+      "label": "Max Output Chars",
+      "help": "Maximum output characters to capture from commands",
+      "advanced": false
+    },
+    "SHELL_BACKGROUND_MS": {
+      "type": "number",
+      "required": false,
+      "sensitive": false,
+      "default": "10000",
+      "label": "Background Ms",
+      "help": "Default milliseconds to wait before backgrounding commands",
+      "advanced": false,
+      "min": 0,
+      "unit": "ms"
+    },
+    "SHELL_ALLOW_BACKGROUND": {
+      "type": "boolean",
+      "required": false,
+      "sensitive": false,
+      "default": "True",
+      "label": "Allow Background",
+      "help": "Whether to allow background command execution",
+      "advanced": false
+    },
+    "SHELL_JOB_TTL_MS": {
+      "type": "number",
+      "required": false,
+      "sensitive": false,
+      "default": "1800000",
+      "label": "Job Ttl Ms",
+      "help": "Time-to-live for finished session records in milliseconds",
+      "advanced": false,
+      "min": 0,
+      "unit": "ms"
+    }
+  },
+  "render": {
+    "visible": true,
+    "pinTo": [],
+    "style": "card",
+    "icon": "Shell",
+    "group": "devtools",
+    "groupOrder": 5,
+    "actions": ["enable", "configure"]
+  },
+  "resources": {
+    "homepage": "https://github.com/elizaos/eliza#readme",
+    "repository": "https://github.com/elizaos/eliza"
+  },
+  "dependsOn": [],
+  "kind": "plugin",
+  "subtype": "devtools"
+}

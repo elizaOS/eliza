@@ -1,0 +1,131 @@
+PODS:
+  - Capacitor (8.3.1):
+    - CapacitorCordova
+  - CapacitorApp (8.1.0):
+    - Capacitor
+  - CapacitorBarcodeScanner (3.0.2):
+    - Capacitor
+    - OSBarcodeLib (= 2.0.1)
+  - CapacitorCordova (8.3.1)
+  - CapacitorHaptics (8.0.2):
+    - Capacitor
+  - CapacitorKeyboard (8.0.3):
+    - Capacitor
+  - CapacitorPreferences (8.0.1):
+    - Capacitor
+  - CapacitorPushNotifications (8.0.3):
+    - Capacitor
+  - ElizaosCapacitorAgent (1.0.0):
+    - Capacitor
+  - ElizaosCapacitorCamera (1.0.0):
+    - Capacitor
+  - ElizaosCapacitorCanvas (1.0.0):
+    - Capacitor
+  - ElizaosCapacitorGateway (1.0.0):
+    - Capacitor
+  - ElizaosCapacitorLocation (1.0.0):
+    - Capacitor
+  - ElizaosCapacitorMobileSignals (1.0.0):
+    - Capacitor
+  - ElizaosCapacitorScreencapture (1.0.0):
+    - Capacitor
+  - ElizaosCapacitorSwabble (1.0.0):
+    - Capacitor
+  - ElizaosCapacitorTalkmode (1.0.0):
+    - Capacitor
+  - ElizaosCapacitorWebsiteblocker (1.0.0):
+    - Capacitor
+  - LlamaCppCapacitor (0.1.5):
+    - Capacitor
+  - OSBarcodeLib (2.0.1)
+
+DEPENDENCIES:
+  - "Capacitor (from `../../../../app/node_modules/@capacitor/ios`)"
+  - "CapacitorApp (from `../../../../app/node_modules/@capacitor/app`)"
+  - "CapacitorBarcodeScanner (from `../../../../app/node_modules/@capacitor/barcode-scanner`)"
+  - "CapacitorCordova (from `../../../../app/node_modules/@capacitor/ios`)"
+  - "CapacitorHaptics (from `../../../../app/node_modules/@capacitor/haptics`)"
+  - "CapacitorKeyboard (from `../../../../app/node_modules/@capacitor/keyboard`)"
+  - "CapacitorPreferences (from `../../../../app/node_modules/@capacitor/preferences`)"
+  - "CapacitorPushNotifications (from `../../../../app/node_modules/@capacitor/push-notifications`)"
+  - ElizaosCapacitorAgent (from `../../../../native-plugins/agent`)
+  - ElizaosCapacitorCamera (from `../../../../native-plugins/camera`)
+  - ElizaosCapacitorCanvas (from `../../../../native-plugins/canvas`)
+  - ElizaosCapacitorGateway (from `../../../../native-plugins/gateway`)
+  - ElizaosCapacitorLocation (from `../../../../native-plugins/location`)
+  - ElizaosCapacitorMobileSignals (from `../../../../native-plugins/mobile-signals`)
+  - ElizaosCapacitorScreencapture (from `../../../../native-plugins/screencapture`)
+  - ElizaosCapacitorSwabble (from `../../../../native-plugins/swabble`)
+  - ElizaosCapacitorTalkmode (from `../../../../native-plugins/talkmode`)
+  - ElizaosCapacitorWebsiteblocker (from `../../../../native-plugins/websiteblocker`)
+  - LlamaCppCapacitor (from `../../../../app/node_modules/llama-cpp-capacitor`)
+
+SPEC REPOS:
+  trunk:
+    - OSBarcodeLib
+
+EXTERNAL SOURCES:
+  Capacitor:
+    :path: "../../../../app/node_modules/@capacitor/ios"
+  CapacitorApp:
+    :path: "../../../../app/node_modules/@capacitor/app"
+  CapacitorBarcodeScanner:
+    :path: "../../../../app/node_modules/@capacitor/barcode-scanner"
+  CapacitorCordova:
+    :path: "../../../../app/node_modules/@capacitor/ios"
+  CapacitorHaptics:
+    :path: "../../../../app/node_modules/@capacitor/haptics"
+  CapacitorKeyboard:
+    :path: "../../../../app/node_modules/@capacitor/keyboard"
+  CapacitorPreferences:
+    :path: "../../../../app/node_modules/@capacitor/preferences"
+  CapacitorPushNotifications:
+    :path: "../../../../app/node_modules/@capacitor/push-notifications"
+  ElizaosCapacitorAgent:
+    :path: "../../../../native-plugins/agent"
+  ElizaosCapacitorCamera:
+    :path: "../../../../native-plugins/camera"
+  ElizaosCapacitorCanvas:
+    :path: "../../../../native-plugins/canvas"
+  ElizaosCapacitorGateway:
+    :path: "../../../../native-plugins/gateway"
+  ElizaosCapacitorLocation:
+    :path: "../../../../native-plugins/location"
+  ElizaosCapacitorMobileSignals:
+    :path: "../../../../native-plugins/mobile-signals"
+  ElizaosCapacitorScreencapture:
+    :path: "../../../../native-plugins/screencapture"
+  ElizaosCapacitorSwabble:
+    :path: "../../../../native-plugins/swabble"
+  ElizaosCapacitorTalkmode:
+    :path: "../../../../native-plugins/talkmode"
+  ElizaosCapacitorWebsiteblocker:
+    :path: "../../../../native-plugins/websiteblocker"
+  LlamaCppCapacitor:
+    :path: "../../../../app/node_modules/llama-cpp-capacitor"
+
+SPEC CHECKSUMS:
+  Capacitor: 46dbaa89c1d1cd121b9fc2dc839c1f39cc49e326
+  CapacitorApp: 449ffe26375e96f8aaaee625ac6e01e5c57c8650
+  CapacitorBarcodeScanner: 421aa419ac63eeb18c7cb94ce280fa22d34e8b0b
+  CapacitorCordova: 9010447fe25e869705fcf525e5f490facde87608
+  CapacitorHaptics: 296f771ecd89c7a1bd92a7b6826a7d268e2e70f5
+  CapacitorKeyboard: 31c8285d92c9d1410071d52449f16d2c6673b6f4
+  CapacitorPreferences: cca2021f386efb75947c850334447d9ff22b14f1
+  CapacitorPushNotifications: e4437b4ec1b2070685bf032c210f346432214c5f
+  ElizaosCapacitorAgent: 18082ed252b67baf1c12a3ce096ac089112dac64
+  ElizaosCapacitorCamera: 93b6a57123b1df92aec10ad1b8360ffd38f5012c
+  ElizaosCapacitorCanvas: 50a1ab95e2689dbfe7859f4ee6e0fea11f928c0a
+  ElizaosCapacitorGateway: 3e28f3d74f02bcbb83bb88bace761c3fcb8fefc1
+  ElizaosCapacitorLocation: 5ce72aaa6576537db58907409b8edcd2825cda3d
+  ElizaosCapacitorMobileSignals: 83ba34a7b4aeee0bde265c771bd7160911a54101
+  ElizaosCapacitorScreencapture: 1b4883054f65ea3b67ef2671f7dc1060852cbf77
+  ElizaosCapacitorSwabble: a19f2003d1a6530dc445804adf92f7dd7f952b7c
+  ElizaosCapacitorTalkmode: 16251b137c9faffa6d11c694992014105ef2bcd5
+  ElizaosCapacitorWebsiteblocker: 537f9c3334cfcd52c490e4a8f61bd048d8276826
+  LlamaCppCapacitor: e41b57d32700bbe6b61a8f3d051c6edc09152036
+  OSBarcodeLib: 57987d2eb1f916f701f4554e20e349b3cb83f023
+
+PODFILE CHECKSUM: 70eacb37933c3f62ad5a76a531e67f54f5c5722b
+
+COCOAPODS: 1.16.2

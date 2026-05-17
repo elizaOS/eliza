@@ -1,0 +1,75 @@
+{
+  "id": "xai",
+  "name": "xAI (Grok)",
+  "description": "xAI Grok models for text generation and embeddings.",
+  "npmName": "@elizaos/plugin-xai",
+  "version": "2.0.0-beta.0",
+  "source": "bundled",
+  "tags": ["ai-provider", "llm", "xai", "grok"],
+  "config": {
+    "XAI_API_KEY": {
+      "type": "secret",
+      "required": true,
+      "sensitive": true,
+      "label": "API Key",
+      "help": "xAI API key for Grok model access.",
+      "advanced": false
+    },
+    "XAI_MODEL": {
+      "type": "string",
+      "required": false,
+      "sensitive": false,
+      "default": "grok-3",
+      "label": "Model",
+      "help": "xAI Grok model for large/default text generation (e.g. grok-3).",
+      "placeholder": "e.g., grok-3",
+      "advanced": false
+    },
+    "XAI_SMALL_MODEL": {
+      "type": "string",
+      "required": false,
+      "sensitive": false,
+      "default": "grok-3-mini",
+      "label": "Small Model",
+      "help": "xAI Grok model for faster/smaller tasks.",
+      "placeholder": "e.g., grok-3-mini",
+      "advanced": false
+    },
+    "XAI_EMBEDDING_MODEL": {
+      "type": "string",
+      "required": false,
+      "sensitive": false,
+      "default": "grok-embedding",
+      "label": "Embedding Model",
+      "help": "xAI model for text embeddings.",
+      "placeholder": "e.g., grok-embedding",
+      "advanced": true
+    },
+    "XAI_BASE_URL": {
+      "type": "url",
+      "required": false,
+      "sensitive": false,
+      "default": "https://api.x.ai/v1",
+      "label": "Base URL",
+      "help": "xAI API base URL.",
+      "advanced": true
+    }
+  },
+  "render": {
+    "visible": true,
+    "pinTo": [],
+    "style": "card",
+    "icon": "Hash",
+    "group": "ai-provider",
+    "groupOrder": 0,
+    "actions": ["enable", "configure"]
+  },
+  "resources": {
+    "homepage": "https://github.com/elizaos-plugins/plugin-xai#readme",
+    "repository": "https://github.com/elizaos-plugins/plugin-xai",
+    "setupGuideUrl": "https://docs.eliza.ai/plugin-setup-guide#xai-grok"
+  },
+  "dependsOn": [],
+  "kind": "plugin",
+  "subtype": "ai-provider"
+}

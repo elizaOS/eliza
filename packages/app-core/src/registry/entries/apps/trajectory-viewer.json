@@ -1,0 +1,27 @@
+{
+  "id": "trajectory-viewer",
+  "name": "Trajectory Viewer",
+  "description": "Inspect LLM call history, prompts, and execution traces.",
+  "npmName": "@elizaos/app-trajectory-viewer",
+  "source": "bundled",
+  "tags": ["trajectories", "debug", "viewer"],
+  "config": {},
+  "render": {
+    "visible": true,
+    "pinTo": [],
+    "style": "card",
+    "icon": "TrendingDown",
+    "group": "Apps",
+    "groupOrder": 3,
+    "actions": ["launch"]
+  },
+  "resources": {},
+  "dependsOn": [],
+  "kind": "app",
+  "subtype": "tool",
+  "launch": {
+    "type": "internal-tab",
+    "target": "trajectories",
+    "capabilities": ["trajectories", "debug", "viewer"]
+  }
+}

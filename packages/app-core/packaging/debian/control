@@ -1,0 +1,26 @@
+Source: elizaos-app
+Section: misc
+Priority: optional
+Maintainer: elizaos <dev@app.elizaos.ai>
+Build-Depends: debhelper-compat (= 13), nodejs (>= 22.12.0), npm
+Standards-Version: 4.6.2
+Homepage: https://app.elizaos.ai
+Vcs-Git: https://github.com/elizaos/elizaos-app.git
+Vcs-Browser: https://github.com/elizaos/elizaos-app
+Rules-Requires-Root: no
+
+Package: elizaos-app
+Architecture: all
+Depends: nodejs (>= 22.12.0), ${misc:Depends}
+Recommends: npm, systemd
+Description: Personal AI assistant built on elizaOS
+ elizaOS App is a personal AI assistant you run on your own devices, built
+ on elizaOS. It provides zero-config onboarding, multi-provider AI
+ support, a web dashboard, and a plugin system.
+ .
+ Features:
+  - Interactive setup on first run
+  - Support for Anthropic, OpenAI, Google, Ollama, and more
+  - Web dashboard at http://localhost:18789
+  - Plugin system for extensibility
+  - Web3 wallet integration (EVM + Solana)

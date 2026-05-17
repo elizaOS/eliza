@@ -1,0 +1,168 @@
+{
+  "id": "twilio",
+  "name": "Twilio",
+  "description": "A Twilio plugin for ElizaOS that enables SMS and voice call capabilities.",
+  "npmName": "@elizaos/plugin-twilio",
+  "version": "2.0.0-beta.0",
+  "source": "bundled",
+  "tags": ["llm", "twilio", "sms", "voice"],
+  "config": {
+    "TWILIO_AUTH_TOKEN": {
+      "type": "secret",
+      "required": true,
+      "sensitive": true,
+      "label": "Auth Token",
+      "help": "Auth token for Twilio",
+      "advanced": false
+    },
+    "TWILIO_ACCOUNT_SID": {
+      "type": "secret",
+      "required": true,
+      "sensitive": true,
+      "label": "Account Sid",
+      "help": "Account SID for Twilio",
+      "advanced": false
+    },
+    "TWILIO_WEBHOOK_URL": {
+      "type": "url",
+      "required": false,
+      "sensitive": false,
+      "label": "Webhook Url",
+      "help": "Webhook URL",
+      "advanced": false
+    },
+    "VOICE_CALL_ENABLED": {
+      "type": "boolean",
+      "required": false,
+      "sensitive": false,
+      "label": "Call Enabled",
+      "help": "Enable or disable this feature",
+      "advanced": false
+    },
+    "TWILIO_PHONE_NUMBER": {
+      "type": "string",
+      "required": false,
+      "sensitive": false,
+      "label": "Phone Number",
+      "help": "Phone number",
+      "advanced": false
+    },
+    "TWILIO_WEBHOOK_PORT": {
+      "type": "number",
+      "required": false,
+      "sensitive": false,
+      "label": "Webhook Port",
+      "help": "Port number",
+      "advanced": false,
+      "min": 1,
+      "max": 65535
+    },
+    "VOICE_CALL_PROVIDER": {
+      "type": "string",
+      "required": false,
+      "sensitive": false,
+      "label": "Call Provider",
+      "help": "Provider selection",
+      "advanced": false
+    },
+    "VOICE_CALL_TO_NUMBER": {
+      "type": "string",
+      "required": false,
+      "sensitive": false,
+      "label": "Call To Number",
+      "help": "Phone number",
+      "advanced": false
+    },
+    "VOICE_CALL_ALLOW_FROM": {
+      "type": "string",
+      "required": false,
+      "sensitive": false,
+      "label": "Call Allow From",
+      "help": "Comma-separated allowed user list",
+      "advanced": false
+    },
+    "VOICE_CALL_PUBLIC_URL": {
+      "type": "url",
+      "required": false,
+      "sensitive": false,
+      "label": "Call Public Url",
+      "help": "Public URL",
+      "advanced": false
+    },
+    "VOICE_CALL_FROM_NUMBER": {
+      "type": "string",
+      "required": false,
+      "sensitive": false,
+      "label": "Call From Number",
+      "help": "Phone number",
+      "advanced": false
+    },
+    "VOICE_CALL_WEBHOOK_PATH": {
+      "type": "file-path",
+      "required": false,
+      "sensitive": false,
+      "label": "Call Webhook Path",
+      "help": "Webhook path",
+      "advanced": false
+    },
+    "VOICE_CALL_WEBHOOK_PORT": {
+      "type": "number",
+      "required": false,
+      "sensitive": false,
+      "label": "Call Webhook Port",
+      "help": "Port number",
+      "advanced": false,
+      "min": 1,
+      "max": 65535
+    },
+    "VOICE_CALL_INBOUND_POLICY": {
+      "type": "string",
+      "required": false,
+      "sensitive": false,
+      "label": "Call Inbound Policy",
+      "help": "Inbound message/call policy",
+      "advanced": false
+    },
+    "VOICE_CALL_INBOUND_GREETING": {
+      "type": "textarea",
+      "required": false,
+      "sensitive": false,
+      "label": "Call Inbound Greeting",
+      "help": "Greeting message for inbound connections",
+      "advanced": false
+    },
+    "VOICE_CALL_MAX_CONCURRENT_CALLS": {
+      "type": "number",
+      "required": false,
+      "sensitive": false,
+      "label": "Call Max Concurrent Calls",
+      "help": "Maximum concurrent calls",
+      "advanced": false
+    },
+    "VOICE_CALL_MAX_DURATION_SECONDS": {
+      "type": "number",
+      "required": false,
+      "sensitive": false,
+      "label": "Call Max Duration Seconds",
+      "help": "Maximum duration in seconds",
+      "advanced": false
+    }
+  },
+  "render": {
+    "visible": true,
+    "pinTo": [],
+    "style": "card",
+    "icon": "Phone",
+    "group": "feature-other",
+    "groupOrder": 12,
+    "actions": ["enable", "configure"]
+  },
+  "resources": {
+    "homepage": "https://github.com/elizaos/eliza#readme",
+    "repository": "https://github.com/elizaos/eliza",
+    "setupGuideUrl": "https://docs.eliza.ai/plugin-setup-guide#twilio-sms--voice"
+  },
+  "dependsOn": [],
+  "kind": "plugin",
+  "subtype": "other"
+}

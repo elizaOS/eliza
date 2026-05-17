@@ -1,0 +1,94 @@
+{
+  "id": "tlon",
+  "name": "Tlon",
+  "description": "Tlon connector for Urbit chat and social interactions.",
+  "npmName": "@elizaos/plugin-tlon",
+  "version": "2.0.0-beta.0",
+  "source": "bundled",
+  "tags": [
+    "connector",
+    "social",
+    "urbit",
+    "chat",
+    "social-chat",
+    "messaging",
+    "tlon"
+  ],
+  "config": {
+    "TLON_URL": {
+      "type": "url",
+      "required": false,
+      "sensitive": false,
+      "label": "Url",
+      "help": "URL for Tlon",
+      "advanced": false
+    },
+    "TLON_CODE": {
+      "type": "string",
+      "required": false,
+      "sensitive": false,
+      "label": "Code",
+      "help": "Authentication/access code",
+      "advanced": false
+    },
+    "TLON_SHIP": {
+      "type": "string",
+      "required": false,
+      "sensitive": false,
+      "label": "Ship",
+      "help": "Ship/node identifier",
+      "advanced": false
+    },
+    "TLON_ENABLED": {
+      "type": "boolean",
+      "required": false,
+      "sensitive": false,
+      "label": "Enabled",
+      "help": "Enable or disable this feature",
+      "advanced": false
+    },
+    "TLON_DM_ALLOWLIST": {
+      "type": "string",
+      "required": false,
+      "sensitive": false,
+      "label": "Dm Allowlist",
+      "help": "Comma-separated allowed user list",
+      "advanced": false
+    },
+    "TLON_GROUP_CHANNELS": {
+      "type": "string",
+      "required": false,
+      "sensitive": false,
+      "label": "Group Channels",
+      "help": "Comma-separated room/channel list",
+      "advanced": false
+    },
+    "TLON_AUTO_DISCOVER_CHANNELS": {
+      "type": "boolean",
+      "required": false,
+      "sensitive": false,
+      "label": "Auto Discover Channels",
+      "help": "Comma-separated room/channel list",
+      "advanced": false
+    }
+  },
+  "render": {
+    "visible": false,
+    "pinTo": [],
+    "style": "setup-panel",
+    "icon": "Tornado",
+    "group": "connector",
+    "groupOrder": 1,
+    "actions": ["enable", "configure", "setup-guide"]
+  },
+  "resources": {
+    "setupGuideUrl": "https://docs.eliza.ai/plugin-setup-guide#tlon-urbit"
+  },
+  "dependsOn": [],
+  "kind": "connector",
+  "subtype": "messaging",
+  "auth": {
+    "kind": "token",
+    "credentialKeys": []
+  }
+}

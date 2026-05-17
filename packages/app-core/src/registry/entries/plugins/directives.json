@@ -1,0 +1,63 @@
+{
+  "id": "directives",
+  "name": "Directives",
+  "description": "Inline directive parsing for Eliza agents (@think, @model, @verbose, etc.)",
+  "npmName": "@elizaos/plugin-directives",
+  "version": "2.0.0-beta.0",
+  "source": "bundled",
+  "tags": ["directives"],
+  "config": {
+    "ALLOW_EXEC": {
+      "type": "boolean",
+      "required": false,
+      "sensitive": false,
+      "default": "false",
+      "label": "Exec",
+      "help": "Allow exec directive for shell configuration",
+      "advanced": false
+    },
+    "ALLOW_ELEVATED": {
+      "type": "boolean",
+      "required": false,
+      "sensitive": false,
+      "default": "true",
+      "label": "Elevated",
+      "help": "Allow elevated permission directives",
+      "advanced": false
+    },
+    "DEFAULT_VERBOSE": {
+      "type": "string",
+      "required": false,
+      "sensitive": false,
+      "default": "off",
+      "label": "Verbose",
+      "help": "Default verbose level (off, on, full)",
+      "advanced": true
+    },
+    "DEFAULT_THINKING": {
+      "type": "string",
+      "required": false,
+      "sensitive": false,
+      "default": "low",
+      "label": "Thinking",
+      "help": "Default thinking level (off, minimal, low, medium, high)",
+      "advanced": false
+    }
+  },
+  "render": {
+    "visible": true,
+    "pinTo": [],
+    "style": "card",
+    "icon": "ClipboardList",
+    "group": "agents",
+    "groupOrder": 7,
+    "actions": ["enable", "configure"]
+  },
+  "resources": {
+    "homepage": "https://github.com/elizaos/eliza#readme",
+    "repository": "https://github.com/elizaos/eliza"
+  },
+  "dependsOn": [],
+  "kind": "plugin",
+  "subtype": "agents"
+}

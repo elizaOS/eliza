@@ -1,0 +1,33 @@
+{
+  "id": "trajectory-logger",
+  "name": "Trajectory Logger",
+  "description": "Trajectory logging plugin for ElizaOS - capture agent interaction trajectories for RL training",
+  "npmName": "@elizaos/plugin-trajectory-logger",
+  "version": "2.0.0-beta.0",
+  "source": "bundled",
+  "tags": [
+    "trajectory",
+    "rl",
+    "training",
+    "logging",
+    "trajectory-logger",
+    "logger"
+  ],
+  "config": {},
+  "render": {
+    "visible": true,
+    "pinTo": [],
+    "style": "card",
+    "icon": "TrendingDown",
+    "group": "storage",
+    "groupOrder": 10,
+    "actions": ["enable", "configure"]
+  },
+  "resources": {
+    "homepage": "https://elizaos.ai",
+    "repository": "https://github.com/elizaos/elizaos"
+  },
+  "dependsOn": [],
+  "kind": "plugin",
+  "subtype": "storage"
+}

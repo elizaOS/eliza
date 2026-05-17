@@ -1,0 +1,69 @@
+{
+  "id": "ngrok",
+  "name": "Ngrok",
+  "description": "Ngrok tunnel backend. Implements the @elizaos/plugin-tunnel ITunnelService contract; coexists with plugin-tunnel, plugin-tailscale, and Eliza Cloud headscale via first-active-wins.",
+  "npmName": "@elizaos/plugin-ngrok",
+  "version": "0.1.0",
+  "source": "bundled",
+  "tags": ["tunnel", "ngrok", "networking"],
+  "config": {
+    "NGROK_AUTH_TOKEN": {
+      "type": "secret",
+      "required": false,
+      "sensitive": true,
+      "label": "Auth Token",
+      "help": "Ngrok auth token. Required for stable tunnels and custom domains. Get one from https://dashboard.ngrok.com/get-started/your-authtoken",
+      "advanced": false
+    },
+    "NGROK_REGION": {
+      "type": "string",
+      "required": false,
+      "sensitive": false,
+      "default": "us",
+      "label": "Region",
+      "help": "Ngrok edge region (us, eu, ap, au, sa, jp, in).",
+      "advanced": true
+    },
+    "NGROK_DOMAIN": {
+      "type": "string",
+      "required": false,
+      "sensitive": false,
+      "label": "Custom Domain",
+      "help": "Reserved ngrok domain (paid feature). Leave blank for an auto-generated *.ngrok.io URL.",
+      "advanced": true
+    },
+    "NGROK_SUBDOMAIN": {
+      "type": "string",
+      "required": false,
+      "sensitive": false,
+      "label": "Subdomain",
+      "help": "Reserved subdomain (paid feature, alternative to NGROK_DOMAIN).",
+      "advanced": true
+    },
+    "NGROK_DEFAULT_PORT": {
+      "type": "number",
+      "required": false,
+      "sensitive": false,
+      "default": "3000",
+      "label": "Default Port",
+      "help": "Local port to tunnel when none is given in the prompt.",
+      "advanced": false
+    }
+  },
+  "render": {
+    "visible": true,
+    "pinTo": [],
+    "style": "card",
+    "icon": "Network",
+    "group": "devtools",
+    "groupOrder": 8,
+    "actions": ["enable", "configure"]
+  },
+  "resources": {
+    "homepage": "https://github.com/eliza-ai/eliza/tree/develop/plugins/plugin-ngrok#readme",
+    "repository": "https://github.com/eliza-ai/eliza"
+  },
+  "dependsOn": [],
+  "kind": "plugin",
+  "subtype": "devtools"
+}

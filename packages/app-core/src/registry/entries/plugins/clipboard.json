@@ -1,0 +1,44 @@
+{
+  "id": "clipboard",
+  "name": "Clipboard",
+  "description": "File-based memory storage plugin for ElizaOS - persistent notes and clipboard",
+  "npmName": "@elizaos/plugin-clipboard",
+  "version": "2.0.0-beta.0",
+  "source": "bundled",
+  "tags": ["clipboard", "memory", "notes", "storage"],
+  "config": {
+    "CLIPBOARD_BASE_PATH": {
+      "type": "file-path",
+      "required": false,
+      "sensitive": false,
+      "label": "Base Path",
+      "help": "Base directory for clipboard files (default: ~/.eliza/clipboard)",
+      "advanced": false
+    },
+    "CLIPBOARD_MAX_FILE_SIZE": {
+      "type": "number",
+      "required": false,
+      "sensitive": false,
+      "default": "1048576",
+      "label": "Max File Size",
+      "help": "Maximum file size in bytes (default: 1MB)",
+      "advanced": false
+    }
+  },
+  "render": {
+    "visible": true,
+    "pinTo": [],
+    "style": "card",
+    "icon": "StickyNote",
+    "group": "documents",
+    "groupOrder": 6,
+    "actions": ["enable", "configure"]
+  },
+  "resources": {
+    "homepage": "https://github.com/elizaos-plugins/plugin-clipboard#readme",
+    "repository": "https://github.com/elizaos-plugins/plugin-clipboard"
+  },
+  "dependsOn": [],
+  "kind": "plugin",
+  "subtype": "documents"
+}

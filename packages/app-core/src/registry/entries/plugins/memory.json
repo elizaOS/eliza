@@ -1,0 +1,124 @@
+{
+  "id": "memory",
+  "name": "Memory",
+  "description": "Agent memory",
+  "npmName": "@elizaos/plugin-memory",
+  "version": "2.0.1",
+  "source": "bundled",
+  "tags": ["memory", "summarization"],
+  "config": {
+    "MEMORY_ENABLE_BM25": {
+      "type": "boolean",
+      "required": false,
+      "sensitive": false,
+      "default": "true",
+      "label": "Enable Bm25",
+      "help": "Enable keyword-based search with stemming for exact term matching.",
+      "advanced": false
+    },
+    "MEMORY_TOKEN_BUDGET": {
+      "type": "secret",
+      "required": false,
+      "sensitive": true,
+      "default": "1000",
+      "label": "Token Budget",
+      "help": "Maximum tokens to use for memory context in prompts.",
+      "advanced": false
+    },
+    "MEMORY_MIN_CONFIDENCE": {
+      "type": "number",
+      "required": false,
+      "sensitive": false,
+      "default": "0.7",
+      "label": "Min Confidence",
+      "help": "Minimum confidence score (0-1) required to store extracted facts.",
+      "advanced": false
+    },
+    "MEMORY_RETRIEVAL_LIMIT": {
+      "type": "number",
+      "required": false,
+      "sensitive": false,
+      "default": "5",
+      "label": "Retrieval Limit",
+      "help": "Maximum number of memories to retrieve per query.",
+      "advanced": false,
+      "min": 0
+    },
+    "MEMORY_SUMMARY_ENABLED": {
+      "type": "boolean",
+      "required": false,
+      "sensitive": false,
+      "default": "true",
+      "label": "Summary Enabled",
+      "help": "Enable hierarchical conversation summarization to reduce token usage.",
+      "advanced": false
+    },
+    "MEMORY_SUMMARY_MAX_DEPTH": {
+      "type": "number",
+      "required": false,
+      "sensitive": false,
+      "default": "3",
+      "label": "Summary Max Depth",
+      "help": "Maximum depth of the summary hierarchy (1=direct summaries, 2=summaries of summaries, etc).",
+      "advanced": false
+    },
+    "MEMORY_SUMMARIES_PER_LEVEL": {
+      "type": "number",
+      "required": false,
+      "sensitive": false,
+      "default": "5",
+      "label": "Summaries Per Level",
+      "help": "How many summaries to accumulate before creating the next level.",
+      "advanced": false
+    },
+    "MEMORY_ENABLE_VECTOR_SEARCH": {
+      "type": "boolean",
+      "required": false,
+      "sensitive": false,
+      "default": "true",
+      "label": "Enable Vector Search",
+      "help": "Enable semantic similarity search using embeddings.",
+      "advanced": false
+    },
+    "MEMORY_MESSAGES_PER_SUMMARY": {
+      "type": "number",
+      "required": false,
+      "sensitive": false,
+      "default": "15",
+      "label": "Messages Per Summary",
+      "help": "How many messages to include in each Level 1 summary.",
+      "advanced": false
+    },
+    "MEMORY_SUMMARY_TOKEN_BUDGET": {
+      "type": "secret",
+      "required": false,
+      "sensitive": true,
+      "default": "500",
+      "label": "Summary Token Budget",
+      "help": "Maximum tokens to use for conversation summaries in context.",
+      "advanced": false
+    },
+    "MEMORY_CONSOLIDATION_THRESHOLD": {
+      "type": "number",
+      "required": false,
+      "sensitive": false,
+      "default": "10",
+      "label": "Consolidation Threshold",
+      "help": "Number of messages to buffer before triggering memory consolidation.",
+      "advanced": false
+    }
+  },
+  "render": {
+    "visible": true,
+    "pinTo": [],
+    "style": "card",
+    "icon": "Dna",
+    "group": "documents",
+    "groupOrder": 6,
+    "actions": ["enable", "configure"]
+  },
+  "resources": {},
+  "dependsOn": [],
+  "kind": "plugin",
+  "subtype": "documents"
+}

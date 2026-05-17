@@ -1,0 +1,96 @@
+{
+  "id": "imessage",
+  "name": "iMessage",
+  "description": "iMessage connector for Mac-based conversations and message automation.",
+  "npmName": "@elizaos/plugin-imessage",
+  "version": "2.0.0-beta.0",
+  "source": "bundled",
+  "tags": [
+    "connector",
+    "messaging",
+    "imessage",
+    "apple",
+    "macos",
+    "social",
+    "social-chat"
+  ],
+  "config": {
+    "IMESSAGE_DB_PATH": {
+      "type": "file-path",
+      "required": false,
+      "sensitive": false,
+      "label": "Db Path",
+      "help": "Path to database file",
+      "advanced": false
+    },
+    "IMESSAGE_ENABLED": {
+      "type": "boolean",
+      "required": false,
+      "sensitive": false,
+      "label": "Enabled",
+      "help": "Enable or disable this feature",
+      "advanced": false
+    },
+    "IMESSAGE_CLI_PATH": {
+      "type": "file-path",
+      "required": false,
+      "sensitive": false,
+      "label": "Cli Path",
+      "help": "Path to CLI binary",
+      "advanced": false
+    },
+    "IMESSAGE_DM_POLICY": {
+      "type": "string",
+      "required": false,
+      "sensitive": false,
+      "label": "Dm Policy",
+      "help": "DM policy (e.g. allow, deny, allowlist)",
+      "advanced": false
+    },
+    "IMESSAGE_ALLOW_FROM": {
+      "type": "string",
+      "required": false,
+      "sensitive": false,
+      "label": "Allow From",
+      "help": "Comma-separated allowed sender list",
+      "advanced": false
+    },
+    "IMESSAGE_GROUP_POLICY": {
+      "type": "string",
+      "required": false,
+      "sensitive": false,
+      "label": "Group Policy",
+      "help": "Group message policy",
+      "advanced": false
+    },
+    "IMESSAGE_POLL_INTERVAL_MS": {
+      "type": "number",
+      "required": false,
+      "sensitive": false,
+      "label": "Poll Interval Ms",
+      "help": "Polling interval in milliseconds",
+      "advanced": false,
+      "min": 0,
+      "unit": "ms"
+    }
+  },
+  "render": {
+    "visible": true,
+    "pinTo": [],
+    "style": "setup-panel",
+    "icon": "MessageSquare",
+    "group": "connector",
+    "groupOrder": 1,
+    "actions": ["enable", "configure", "setup-guide"]
+  },
+  "resources": {
+    "setupGuideUrl": "https://docs.eliza.ai/plugin-setup-guide#imessage-macos-only"
+  },
+  "dependsOn": [],
+  "kind": "connector",
+  "subtype": "messaging",
+  "auth": {
+    "kind": "token",
+    "credentialKeys": []
+  }
+}

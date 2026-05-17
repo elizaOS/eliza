@@ -1,0 +1,71 @@
+{
+  "id": "tts",
+  "name": "Tts",
+  "description": "A plugin for generating text-to-speech using FAL.ai API within the ElizaOS ecosystem, featuring automatic language detection and voice selection.",
+  "npmName": "@elizaos/plugin-tts",
+  "version": "2.0.0-beta.0",
+  "source": "bundled",
+  "tags": ["llm", "text-to-speech"],
+  "config": {
+    "TTS_AUTO_MODE": {
+      "type": "string",
+      "required": false,
+      "sensitive": false,
+      "default": "off",
+      "label": "Auto Mode",
+      "help": "When to automatically apply TTS (off, always, inbound, tagged)",
+      "advanced": false
+    },
+    "TTS_SUMMARIZE": {
+      "type": "boolean",
+      "required": false,
+      "sensitive": false,
+      "default": "true",
+      "label": "Summarize",
+      "help": "Summarize long text instead of truncating",
+      "advanced": false
+    },
+    "TTS_MAX_LENGTH": {
+      "type": "number",
+      "required": false,
+      "sensitive": false,
+      "default": "1500",
+      "label": "Max Length",
+      "help": "Maximum text length for TTS synthesis",
+      "advanced": false
+    },
+    "TTS_DEFAULT_VOICE": {
+      "type": "string",
+      "required": false,
+      "sensitive": false,
+      "label": "Default Voice",
+      "help": "Default voice ID for synthesis",
+      "advanced": false
+    },
+    "TTS_DEFAULT_PROVIDER": {
+      "type": "string",
+      "required": false,
+      "sensitive": false,
+      "default": "auto",
+      "label": "Default Provider",
+      "help": "Default TTS provider (auto, elevenlabs, openai, edge)",
+      "advanced": false
+    }
+  },
+  "render": {
+    "visible": true,
+    "pinTo": [],
+    "style": "card",
+    "icon": "Volume2",
+    "group": "voice",
+    "groupOrder": 3,
+    "actions": ["enable", "configure"]
+  },
+  "resources": {
+    "homepage": "https://github.com/elizaos/eliza#readme",
+    "repository": "https://github.com/elizaos/eliza"
+  },
+  "dependsOn": [],
+  "kind": "plugin",
+  "subtype": "voice"
+}

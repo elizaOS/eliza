@@ -1,0 +1,174 @@
+{
+  "id": "farcaster",
+  "name": "Farcaster",
+  "description": "Farcaster connector for publishing casts and responding to social conversations.",
+  "npmName": "@elizaos/plugin-farcaster",
+  "version": "2.0.0-beta.0",
+  "source": "bundled",
+  "tags": ["connector", "social", "farcaster", "messaging", "social-feed"],
+  "config": {
+    "ENABLE_CAST": {
+      "type": "boolean",
+      "required": false,
+      "sensitive": false,
+      "default": "True",
+      "label": "Cast",
+      "help": "Enables or disables the ability to post casts to Farcaster.",
+      "advanced": false
+    },
+    "FARCASTER_FID": {
+      "type": "number",
+      "required": true,
+      "sensitive": false,
+      "default": "123",
+      "label": "Fid",
+      "help": "The Farcaster FID (user identifier) used to publish or manage casts for a specific account.",
+      "advanced": false
+    },
+    "FARCASTER_MODE": {
+      "type": "string",
+      "required": false,
+      "sensitive": false,
+      "default": "polling",
+      "label": "Mode",
+      "help": "Operation mode for Farcaster: 'polling' or 'webhook'.",
+      "advanced": false
+    },
+    "ACTION_INTERVAL": {
+      "type": "number",
+      "required": false,
+      "sensitive": false,
+      "default": "5",
+      "label": "Interval",
+      "help": "Interval in minutes between action-processing cycles.",
+      "advanced": false,
+      "min": 0,
+      "unit": "ms"
+    },
+    "MAX_CAST_LENGTH": {
+      "type": "number",
+      "required": false,
+      "sensitive": false,
+      "default": "320",
+      "label": "Cast Length",
+      "help": "Maximum number of characters allowed in a Farcaster cast.",
+      "advanced": false,
+      "min": 0
+    },
+    "CAST_IMMEDIATELY": {
+      "type": "boolean",
+      "required": false,
+      "sensitive": false,
+      "default": "False",
+      "label": "Immediately",
+      "help": "If true, posts are published immediately instead of waiting for a schedule.",
+      "advanced": false
+    },
+    "CAST_INTERVAL_MAX": {
+      "type": "number",
+      "required": false,
+      "sensitive": false,
+      "default": "180",
+      "label": "Interval Max",
+      "help": "Maximum interval in minutes between automated posts.",
+      "advanced": false,
+      "min": 0,
+      "unit": "ms"
+    },
+    "CAST_INTERVAL_MIN": {
+      "type": "number",
+      "required": false,
+      "sensitive": false,
+      "default": "90",
+      "label": "Interval Min",
+      "help": "Minimum interval in minutes between automated posts.",
+      "advanced": false,
+      "min": 0,
+      "unit": "ms"
+    },
+    "FARCASTER_DRY_RUN": {
+      "type": "boolean",
+      "required": false,
+      "sensitive": false,
+      "label": "Dry Run",
+      "help": "Enables or disables dry run mode when interacting with Farcaster; when true, operations are simulated but not executed.",
+      "advanced": false
+    },
+    "FARCASTER_HUB_URL": {
+      "type": "url",
+      "required": false,
+      "sensitive": false,
+      "default": "hub.pinata.cloud",
+      "label": "Hub Url",
+      "help": "Base URL for the Farcaster hub the client should communicate with.",
+      "advanced": false
+    },
+    "FARCASTER_SIGNER_UUID": {
+      "type": "string",
+      "required": true,
+      "sensitive": false,
+      "label": "Signer Uuid",
+      "help": "UUID of the Neynar signer associated with the Farcaster account, required to sign casts.",
+      "advanced": false
+    },
+    "MAX_ACTIONS_PROCESSING": {
+      "type": "number",
+      "required": false,
+      "sensitive": false,
+      "default": "1",
+      "label": "Actions Processing",
+      "help": "Maximum number of Farcaster actions to process in a single batch.",
+      "advanced": false,
+      "min": 0
+    },
+    "FARCASTER_POLL_INTERVAL": {
+      "type": "number",
+      "required": false,
+      "sensitive": false,
+      "default": "120",
+      "label": "Poll Interval",
+      "help": "Polling interval in seconds for Farcaster operations such as fetching new casts.",
+      "advanced": false,
+      "min": 0,
+      "unit": "ms"
+    },
+    "ENABLE_ACTION_PROCESSING": {
+      "type": "boolean",
+      "required": false,
+      "sensitive": false,
+      "default": "False",
+      "label": "Action Processing",
+      "help": "Turns on or off automated action processing for Farcaster events.",
+      "advanced": false
+    },
+    "FARCASTER_NEYNAR_API_KEY": {
+      "type": "secret",
+      "required": true,
+      "sensitive": true,
+      "label": "Neynar Api Key",
+      "help": "API key used to authenticate with the Neynar Farcaster API.",
+      "advanced": false
+    }
+  },
+  "render": {
+    "visible": false,
+    "pinTo": [],
+    "style": "setup-panel",
+    "icon": "Circle",
+    "group": "connector",
+    "groupOrder": 1,
+    "actions": ["enable", "configure", "setup-guide"]
+  },
+  "resources": {
+    "homepage": "https://github.com/elizaos-plugins/plugin-farcaster#readme",
+    "repository": "https://github.com/elizaos-plugins/plugin-farcaster",
+    "setupGuideUrl": "https://docs.eliza.ai/plugin-setup-guide#farcaster"
+  },
+  "dependsOn": [],
+  "kind": "connector",
+  "subtype": "messaging",
+  "auth": {
+    "kind": "token",
+    "credentialKeys": ["FARCASTER_NEYNAR_API_KEY"]
+  }
+}
