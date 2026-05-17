@@ -2,7 +2,15 @@
   <img src="packages/shared-brand/assets/banners/elizaos_banner.svg" alt="elizaOS" width="100%" />
 </div>
 
-**elizaOS** is an agentic operating system built on Linux and Android Open Source Project (AOSP).
+# elizaOS
+
+**elizaOS** is an agentic operating system built on Linux and Android Open Source Project (AOSP). Also available as an app for Mac, Windows, Linux, iOS and Android.
+
+## See it live
+
+- elizaos.ai
+- elizacloud.ai
+- eliza.app
 
 ## Quickstart
 
