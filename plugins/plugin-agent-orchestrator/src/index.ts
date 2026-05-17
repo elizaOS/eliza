@@ -1189,12 +1189,23 @@ function registerProgressHook(runtime: IAgentRuntime): () => void {
           // record. capability-gated — connectors without react/edit just
           // skip these signals.
           if (evName === "task_complete") {
-            const summary =
+            // Strip acpx tool-output envelopes ([tool output: …], [/tool
+            // output], [sub-agent: …]) from the raw response, then pick the
+            // LAST non-empty narrative line as the summary. The first line
+            // is often a tool header (the sub-agent typically narrates
+            // then concludes); the last line is the conclusion / final URL.
+            const rawResponse =
               typeof (data as { response?: unknown })?.response === "string"
-                ? (
-                    (data as { response: string }).response.split("\n")[0] ?? ""
-                  ).slice(0, 200)
-                : "done";
+                ? (data as { response: string }).response
+                : "";
+            const cleaned = stripToolTranscripts(rawResponse);
+            const lastLine =
+              cleaned
+                .split("\n")
+                .map((l) => l.trim())
+                .reverse()
+                .find((l) => l.length > 0) ?? "";
+            const summary = lastLine ? lastLine.slice(0, 200) : "done";
             // await so the state lookup happens BEFORE progressBySession.delete
             // below — otherwise the helper races against the cleanup and finds
             // no state to attach the ✅ to.
