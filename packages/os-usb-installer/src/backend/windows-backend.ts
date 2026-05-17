@@ -1,7 +1,6 @@
 import { execFile, spawn } from "node:child_process";
 import { createHash } from "node:crypto";
-import { createWriteStream, existsSync } from "node:fs";
-import { promises as fs } from "node:fs";
+import { createWriteStream, existsSync, promises as fs } from "node:fs";
 import * as http from "node:http";
 import * as https from "node:https";
 import * as os from "node:os";
@@ -9,8 +8,8 @@ import * as path from "node:path";
 import { promisify } from "node:util";
 import { DEFAULT_ELIZAOS_IMAGES } from "./dry-run-backend";
 import {
-  InvalidDiskNumberError,
   InvalidDevicePathError,
+  InvalidDiskNumberError,
   InvalidImagePathError,
   InvalidScriptPathError,
   PowerShellExecutionError,
@@ -88,7 +87,10 @@ export function assertValidImagePath(imagePath: string): void {
   }
 }
 
-export function assertValidScriptPath(scriptPath: string, tmpRoot: string): void {
+export function assertValidScriptPath(
+  scriptPath: string,
+  tmpRoot: string,
+): void {
   if (!WINDOWS_ABS_PATH_RE.test(scriptPath)) {
     throw new InvalidScriptPathError(
       `Script path ${scriptPath} is not an absolute Windows path.`,
@@ -190,7 +192,9 @@ export function classifyDiskSafety(disk: ClassifiedDisk): {
   }
   const sysDrive = (disk.systemDrive ?? "C:").toUpperCase();
   if (
-    disk.driveLetters.some((letter) => letter.toUpperCase().startsWith(sysDrive))
+    disk.driveLetters.some((letter) =>
+      letter.toUpperCase().startsWith(sysDrive),
+    )
   ) {
     return {
       safety: "blocked-system",
@@ -690,10 +694,7 @@ $result | ConvertTo-Json -Depth 4 -Compress
         await spawnPowerShell(nativeScript, (chunk) => {
           const m = chunk.match(/PROGRESS:\s+(\d+)/);
           if (m?.[1] && image.sizeBytes > 0) {
-            onProgress(
-              "write",
-              Math.min(Number(m[1]) / image.sizeBytes, 0.99),
-            );
+            onProgress("write", Math.min(Number(m[1]) / image.sizeBytes, 0.99));
           }
         });
       } else {

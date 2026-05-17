@@ -51,16 +51,18 @@ describe("assertValidDiskNumber", () => {
       InvalidDiskNumberError,
     );
     expect(() => assertValidDiskNumber(1.5)).toThrow(InvalidDiskNumberError);
-    expect(() => assertValidDiskNumber(10_000)).toThrow(
-      InvalidDiskNumberError,
-    );
+    expect(() => assertValidDiskNumber(10_000)).toThrow(InvalidDiskNumberError);
   });
 });
 
 describe("assertValidPhysicalDrive", () => {
   it("accepts canonical \\.\\PhysicalDriveN", () => {
-    expect(() => assertValidPhysicalDrive("\\\\.\\PhysicalDrive0")).not.toThrow();
-    expect(() => assertValidPhysicalDrive("\\\\.\\PhysicalDrive12")).not.toThrow();
+    expect(() =>
+      assertValidPhysicalDrive("\\\\.\\PhysicalDrive0"),
+    ).not.toThrow();
+    expect(() =>
+      assertValidPhysicalDrive("\\\\.\\PhysicalDrive12"),
+    ).not.toThrow();
   });
 
   it("rejects mangled or injected device paths", () => {
@@ -118,9 +120,9 @@ describe("assertValidScriptPath", () => {
 
   it("rejects non-Windows-absolute paths on Windows", () => {
     if (process.platform !== "win32") return;
-    expect(() => assertValidScriptPath("/tmp/elizaos-foo.txt", tmpRoot)).toThrow(
-      InvalidScriptPathError,
-    );
+    expect(() =>
+      assertValidScriptPath("/tmp/elizaos-foo.txt", tmpRoot),
+    ).toThrow(InvalidScriptPathError);
   });
 });
 

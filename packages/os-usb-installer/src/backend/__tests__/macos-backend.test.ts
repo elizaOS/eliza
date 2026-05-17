@@ -2,10 +2,7 @@ import { promises as fs } from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import {
-  InvalidDevicePathError,
-  InvalidImagePathError,
-} from "../errors";
+import { InvalidDevicePathError, InvalidImagePathError } from "../errors";
 import {
   appleScriptStringEscape,
   deriveRawDisk,
@@ -24,7 +21,9 @@ describe("macos-backend path validation", () => {
     });
 
     it("rejects partition paths like /dev/disk0s1", () => {
-      expect(() => deriveRawDisk("/dev/disk0s1")).toThrow(InvalidDevicePathError);
+      expect(() => deriveRawDisk("/dev/disk0s1")).toThrow(
+        InvalidDevicePathError,
+      );
     });
 
     it("rejects non-disk devices like /dev/nand0", () => {
@@ -32,7 +31,9 @@ describe("macos-backend path validation", () => {
     });
 
     it("rejects already-raw paths", () => {
-      expect(() => deriveRawDisk("/dev/rdisk3")).toThrow(InvalidDevicePathError);
+      expect(() => deriveRawDisk("/dev/rdisk3")).toThrow(
+        InvalidDevicePathError,
+      );
     });
 
     it("rejects shell injection attempts", () => {
@@ -92,9 +93,7 @@ describe("shell escaping helpers", () => {
   });
 
   it("appleScriptStringEscape escapes backslash and double-quote", () => {
-    expect(appleScriptStringEscape('he said "hi"')).toBe(
-      'he said \\"hi\\"',
-    );
+    expect(appleScriptStringEscape('he said "hi"')).toBe('he said \\"hi\\"');
     expect(appleScriptStringEscape("a\\b")).toBe("a\\\\b");
   });
 });
@@ -103,7 +102,9 @@ describe("partial-file cleanup", () => {
   let tmpDir: string;
 
   beforeEach(async () => {
-    tmpDir = await fs.mkdtemp(path.join(os.tmpdir(), "elizaos-installer-test-"));
+    tmpDir = await fs.mkdtemp(
+      path.join(os.tmpdir(), "elizaos-installer-test-"),
+    );
   });
 
   afterEach(async () => {

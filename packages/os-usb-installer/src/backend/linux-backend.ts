@@ -460,7 +460,10 @@ export class LinuxUsbInstallerBackend implements UsbInstallerBackend {
           const stderr = e.stderr ?? "";
           // Exit code 32 / "not mounted" is acceptable (race vs. lsblk).
           if (e.code !== 32 && !/not mounted/i.test(stderr)) {
-            throw new UnmountFailedError(partPath, stderr.trim() || "unknown error");
+            throw new UnmountFailedError(
+              partPath,
+              stderr.trim() || "unknown error",
+            );
           }
         }
       }

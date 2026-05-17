@@ -1,6 +1,7 @@
 import { StrictMode } from "react";
 import { createRoot } from "react-dom/client";
 import { HttpUsbInstallerBackend } from "./backend/http-backend";
+import type { UsbInstallerBackend } from "./backend/types";
 import { InstallerApp } from "./components/InstallerApp";
 import "./styles.css";
 
@@ -17,7 +18,7 @@ const isElectrobun =
   typeof (globalThis as Record<string, unknown>).electrobun !== "undefined";
 
 async function main() {
-  let backend;
+  let backend: UsbInstallerBackend;
   if (isElectrobun) {
     const { createPlatformBackend } = await import("./backend/index");
     backend = createPlatformBackend();
@@ -25,7 +26,7 @@ async function main() {
     backend = new HttpUsbInstallerBackend();
   }
 
-  createRoot(root!).render(
+  createRoot(root).render(
     <StrictMode>
       <InstallerApp backend={backend} />
     </StrictMode>,
