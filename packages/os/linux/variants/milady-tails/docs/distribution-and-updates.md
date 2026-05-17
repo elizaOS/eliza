@@ -151,14 +151,15 @@ Activation flow:
 5. On the next launch or reboot, the boot-time selector re-verifies the
    signed manifest, complete file inventory, materialized copy, and rollback
    state before choosing it.
-6. If launch fails repeatedly, a future health checker should mark the
-   candidate rejected and relaunch the ISO fallback runtime.
+6. The root-owned health checker promotes a candidate after local agent and
+   renderer health checks pass. Timeout leaves the candidate unpromoted by
+   default; explicit rollback marking is gated by health-check policy.
 
 This architecture preserves a factory runtime in the ISO while allowing fast
 app/runtime updates from persistence. The current branch implements the
 verifier/selector foundation, but not the downloader, production keyring,
-revocation metadata, model downloader, health promotion, or release-hosting
-service.
+revocation metadata, model downloader, production health UX, or
+release-hosting service.
 
 ## Model Catalog and Downloads
 
@@ -300,15 +301,17 @@ should not depend on it. The production flasher should be signed:
 These are explicit demo debts, not production claims:
 
 - no production release keys or key custody process
-- no production update keyring or signing ceremony
+- no production update keyring or signing ceremony; only a development
+  signing helper exists
 - no downloader/revocation service for app/runtime updates
 - prototype signed manifest verifier exists, but it still needs release-key
   infrastructure and real Persistent Storage integration tests
-- no signed model catalog or model downloader
+- model catalog schema/validator exists, but no signed model downloader
 - no enterprise mirror layout or policy bundle
 - no tested OS delta/update-kit path
 - no GUI flasher
-- no automated SBOM/license/provenance gate
+- release evidence generator exists, but no full automated
+  SBOM/license/provenance gate
 - no tested rollback or recovery flow
 - no hardware compatibility matrix for stable release
 - no completed security review for capability broker, sudoers, polkit,
