@@ -142,6 +142,10 @@ export type VoiceTestMode = (typeof VOICE_TEST_MODES)[number];
 
 export type VoiceStartParams = {
   mode?: VoiceTestMode;
+  asrProvider?: string;
+  ttsProvider?: string;
+  vadProvider?: string;
+  voiceId?: string;
   trace?: boolean;
   autoOpenTraceView?: boolean;
   metadata?: Record<string, JsonValue>;
@@ -165,4 +169,113 @@ export type VoiceSpeakParams = {
 
 export type VoiceInterruptParams = {
   reason?: string;
+};
+
+export type VoiceRuntimeStatus = {
+  mode: VoiceTestMode;
+  listening: boolean;
+  asrPartialSupport: boolean;
+  ttsStreamingSupport: boolean;
+  playbackSupport: boolean;
+  vadSupport: boolean;
+  turnSupport: boolean;
+  error?: string;
+  raw?: JsonValue;
+};
+
+export type VoiceLiveStartParams = VoiceStartParams & {
+  mode: "local-runtime" | "live-audio";
+};
+
+export type VoiceVadEvent = {
+  active: boolean;
+  score?: number;
+  timestamp?: string;
+  metadata?: Record<string, JsonValue>;
+};
+
+export type VoiceTurnEvent = {
+  status: "started" | "ended" | "cancelled" | "error";
+  timestamp?: string;
+  reason?: string;
+  metadata?: Record<string, JsonValue>;
+};
+
+export type VoiceAsrPartialEvent = {
+  text: string;
+  timestamp?: string;
+  synthetic?: boolean;
+  metadata?: Record<string, JsonValue>;
+};
+
+export type VoiceAsrFinalEvent = {
+  text: string;
+  timestamp?: string;
+  metadata?: Record<string, JsonValue>;
+};
+
+export type VoiceTtsChunkEvent = {
+  audioBase64: string;
+  mimeType: string;
+  byteLength: number;
+  timestamp?: string;
+  metadata?: Record<string, JsonValue>;
+};
+
+export type VoicePlaybackEvent = {
+  started: boolean;
+  timestamp?: string;
+  metadata?: Record<string, JsonValue>;
+};
+
+export type VoiceRuntimeErrorEvent = {
+  code?: string;
+  message: string;
+  timestamp?: string;
+  metadata?: Record<string, JsonValue>;
+};
+
+export type VoiceTranscribeAudioParams = {
+  audioBase64: string;
+  mimeType?: string;
+  trace?: boolean;
+  metadata?: Record<string, JsonValue>;
+};
+
+export type VoiceSynthesizeSpeechParams = {
+  text: string;
+  voiceId?: string;
+  trace?: boolean;
+  metadata?: Record<string, JsonValue>;
+};
+
+export type VoiceSynthesisResult = {
+  audioBase64: string;
+  mimeType: string;
+  byteLength: number;
+  provider?: string;
+  voiceId?: string;
+  raw?: JsonValue;
+};
+
+export type VoicePlayAudioParams = {
+  audioBase64: string;
+  mimeType: string;
+  trace?: boolean;
+  metadata?: Record<string, JsonValue>;
+};
+
+export type VoiceRuntimeHandoffParams = {
+  text: string;
+  trace?: boolean;
+  metadata?: Record<string, JsonValue>;
+};
+
+export type VoiceRuntimeHandoffResult = {
+  firstTokenText?: string;
+  responseText?: string;
+  conversationId?: string;
+  messageId?: string;
+  streamId?: string;
+  raw?: JsonValue;
 };

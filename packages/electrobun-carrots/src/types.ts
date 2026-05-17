@@ -233,6 +233,8 @@ export type HostRequestMethod =
   | "voice-interrupt"
   | "voice-inject-transcript"
   | "voice-speak"
+  | "voice-transcribe-audio"
+  | "voice-synthesize-speech"
   | "voice-latency"
   | "voice-recent-turns"
   | "get-auth-token"

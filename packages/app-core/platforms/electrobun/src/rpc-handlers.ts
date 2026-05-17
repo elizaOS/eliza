@@ -872,6 +872,9 @@ export function buildBunRpcHandlers({
     voiceInjectTranscript: async (params) =>
       voiceService.injectTranscript(params),
     voiceSpeak: async (params) => voiceService.speak(params),
+    voiceTranscribeAudio: async (params) => voiceService.transcribeAudio(params),
+    voiceSynthesizeSpeech: async (params) =>
+      voiceService.synthesizeSpeech(params),
     voiceLatency: async () => voiceService.latency(),
     voiceRecentTurns: async (params) => ({
       turns: await voiceService.recentTurns(params ?? {}),

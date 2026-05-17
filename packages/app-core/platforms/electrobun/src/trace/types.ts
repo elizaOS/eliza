@@ -69,6 +69,7 @@ export type TraceEventKind =
   | "subagent.completed"
   | "subagent.error"
   | "voice.vad"
+  | "voice.turn.started"
   | "voice.asr.partial"
   | "voice.asr.final"
   | "voice.tts.started"
@@ -111,6 +112,7 @@ export const TRACE_EVENT_KINDS: readonly TraceEventKind[] = [
   "subagent.completed",
   "subagent.error",
   "voice.vad",
+  "voice.turn.started",
   "voice.asr.partial",
   "voice.asr.final",
   "voice.tts.started",

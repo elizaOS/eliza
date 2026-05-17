@@ -11,6 +11,11 @@ export {
 } from "./voice-pipeline";
 export { VoiceService } from "./voice-service";
 export {
+  RuntimeHttpVoiceAdapter,
+  type VoiceRuntimeAdapter,
+  type VoiceRuntimeAdapterOptions,
+} from "./voice-runtime-adapter";
+export {
   recordVoiceTraceStage,
   startVoiceTraceSession,
   voiceTraceAutoOpen,
@@ -30,8 +35,11 @@ export type {
   VoiceStage,
   VoiceStartParams,
   VoiceStopParams,
+  VoiceSynthesisResult,
+  VoiceSynthesizeSpeechParams,
   VoiceTestMode,
   VoiceTurn,
   VoiceTurnId,
   VoiceTurnStatus,
+  VoiceTranscribeAudioParams,
 } from "./types";

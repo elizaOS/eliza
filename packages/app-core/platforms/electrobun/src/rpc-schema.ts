@@ -49,7 +49,10 @@ import type {
   VoiceSpeakParams,
   VoiceStartParams,
   VoiceStopParams,
+  VoiceSynthesisResult,
+  VoiceSynthesizeSpeechParams,
   VoiceTurn,
+  VoiceTranscribeAudioParams,
 } from "./voice/types";
 
 // ============================================================================
@@ -1255,6 +1258,14 @@ export type ElizaDesktopRPCSchema = {
       voiceSpeak: {
         params: VoiceSpeakParams;
         response: VoiceTurn;
+      };
+      voiceTranscribeAudio: {
+        params: VoiceTranscribeAudioParams;
+        response: VoiceTurn;
+      };
+      voiceSynthesizeSpeech: {
+        params: VoiceSynthesizeSpeechParams;
+        response: VoiceSynthesisResult;
       };
       voiceLatency: {
         params: undefined;
@@ -2470,6 +2481,8 @@ export const CHANNEL_TO_RPC_METHOD: Record<string, string> = {
   "voice:interrupt": "voiceInterrupt",
   "voice:injectTranscript": "voiceInjectTranscript",
   "voice:speak": "voiceSpeak",
+  "voice:transcribeAudio": "voiceTranscribeAudio",
+  "voice:synthesizeSpeech": "voiceSynthesizeSpeech",
   "voice:latency": "voiceLatency",
   "voice:recentTurns": "voiceRecentTurns",
 

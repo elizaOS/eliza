@@ -1119,6 +1119,12 @@ export class CarrotManager {
       case "voice-speak":
         this.requireManageCarrots(callerId, "voice-speak");
         return this.requireVoiceHost(method).speak(params);
+      case "voice-transcribe-audio":
+        this.requireManageCarrots(callerId, "voice-transcribe-audio");
+        return this.requireVoiceHost(method).transcribeAudio(params);
+      case "voice-synthesize-speech":
+        this.requireManageCarrots(callerId, "voice-synthesize-speech");
+        return this.requireVoiceHost(method).synthesizeSpeech(params);
       case "voice-latency":
         this.requireManageCarrots(callerId, "voice-latency");
         return this.requireVoiceHost(method).latency();

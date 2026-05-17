@@ -41,16 +41,34 @@ Trace integration is opt-in:
 Live voice work is deliberately guarded:
 
 - `ELIZA_VOICE_LIVE_RUNTIME=1` allows local runtime API probing
-- `ELIZA_VOICE_LIVE_AUDIO=1` is reserved for microphone/playback validation
+- `ELIZA_VOICE_LIVE_AUDIO=1` allows live listening adapters to start
+- `ELIZA_VOICE_LIVE_ASR=1` allows adapter-backed ASR calls
+- `ELIZA_VOICE_LIVE_TTS=1` allows adapter-backed TTS calls
+
+The live adapter reuses existing runtime and local-inference routes when they
+are available:
+
+- `/api/local-inference/voice-models` for voice model/component snapshots
+- `/api/asr/local-inference` for final ASR transcripts
+- `/api/tts/local-inference` for local TTS audio
+- existing conversation message routes for runtime/Eliza-1 handoff
+
+ASR partials, VAD, and turn events are consumed through adapter callbacks when
+the underlying TalkMode or local-inference service exposes them. The current
+HTTP ASR route only proves final transcript flow, so partial support remains
+adapter/runtime dependent.
 
 Current limitations:
 
 - default tests do not exercise real microphone capture
 - default tests do not run native ASR/TTS
-- live VAD/ASR/TTS wiring remains the next phase
+- host playback for local TTS bytes is not wired yet; adapter playback returns
+  `VOICE_AUDIO_OUTPUT_UNAVAILABLE` unless a concrete playback implementation is
+  injected
 - narrower host permissions should replace temporary trusted host request reuse
 
-Phase 15 should wire the real local path:
+The real local path is wired behind flags:
 
-VAD / turn detection -> ASR partials -> Eliza-1/runtime -> Kokoro or OmniVoice
-TTS -> playback, with every latency mark streamed into trace.
+VAD / turn detection -> ASR partials/final -> Eliza-1/runtime -> Kokoro or
+OmniVoice TTS -> playback acknowledgement, with every latency mark streamed
+into trace.

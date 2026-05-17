@@ -8,7 +8,9 @@ import {
   type VoiceSpeakParams,
   type VoiceStartParams,
   type VoiceStopParams,
+  type VoiceSynthesizeSpeechParams,
   type VoiceTestMode,
+  type VoiceTranscribeAudioParams,
 } from "./types";
 
 type JsonRecord = { readonly [key: string]: JsonValue };
@@ -21,6 +23,8 @@ export interface VoiceHost {
   interrupt(params: JsonValue | undefined): Promise<JsonValue>;
   injectTranscript(params: JsonValue | undefined): Promise<JsonValue>;
   speak(params: JsonValue | undefined): Promise<JsonValue>;
+  transcribeAudio(params: JsonValue | undefined): Promise<JsonValue>;
+  synthesizeSpeech(params: JsonValue | undefined): Promise<JsonValue>;
   latency(): Promise<JsonValue>;
   recentTurns(params: JsonValue | undefined): Promise<JsonValue>;
 }
@@ -147,6 +151,10 @@ function readStartParams(params: JsonValue | undefined): VoiceStartParams {
   const record = optionalRecord(params, "voice-start");
   return {
     mode: readMode(record, "voice-start"),
+    asrProvider: readOptionalString(record, "asrProvider", "voice-start"),
+    ttsProvider: readOptionalString(record, "ttsProvider", "voice-start"),
+    vadProvider: readOptionalString(record, "vadProvider", "voice-start"),
+    voiceId: readOptionalString(record, "voiceId", "voice-start"),
     trace: readOptionalBoolean(record, "trace"),
     autoOpenTraceView: readOptionalBoolean(record, "autoOpenTraceView"),
     metadata: readMetadata(record, "metadata", "voice-start"),
@@ -189,6 +197,30 @@ function readSpeakParams(params: JsonValue | undefined): VoiceSpeakParams {
   };
 }
 
+function readTranscribeAudioParams(
+  params: JsonValue | undefined,
+): VoiceTranscribeAudioParams {
+  const record = requireRecord(params, "voice-transcribe-audio");
+  return {
+    audioBase64: readString(record, "audioBase64", "voice-transcribe-audio"),
+    mimeType: readOptionalString(record, "mimeType", "voice-transcribe-audio"),
+    trace: readOptionalBoolean(record, "trace"),
+    metadata: readMetadata(record, "metadata", "voice-transcribe-audio"),
+  };
+}
+
+function readSynthesizeSpeechParams(
+  params: JsonValue | undefined,
+): VoiceSynthesizeSpeechParams {
+  const record = requireRecord(params, "voice-synthesize-speech");
+  return {
+    text: readString(record, "text", "voice-synthesize-speech"),
+    voiceId: readOptionalString(record, "voiceId", "voice-synthesize-speech"),
+    trace: readOptionalBoolean(record, "trace"),
+    metadata: readMetadata(record, "metadata", "voice-synthesize-speech"),
+  };
+}
+
 export function createVoiceHost(service: VoiceService): VoiceHost {
   return {
     status: async () => service.status() as Promise<JsonValue>,
@@ -202,6 +234,10 @@ export function createVoiceHost(service: VoiceService): VoiceHost {
       service.injectTranscript(readInjectParams(params)) as Promise<JsonValue>,
     speak: async (params) =>
       service.speak(readSpeakParams(params)) as Promise<JsonValue>,
+    transcribeAudio: async (params) =>
+      service.transcribeAudio(readTranscribeAudioParams(params)) as Promise<JsonValue>,
+    synthesizeSpeech: async (params) =>
+      service.synthesizeSpeech(readSynthesizeSpeechParams(params)) as Promise<JsonValue>,
     latency: async () => service.latency() as Promise<JsonValue>,
     recentTurns: async (params) => {
       const record = optionalRecord(params, "voice-recent-turns");

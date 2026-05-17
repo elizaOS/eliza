@@ -5,7 +5,23 @@ import { DynamicViewSessionManager } from "../dynamic-views/session-manager";
 import { TraceService } from "../trace/trace-service";
 import { TraceStore } from "../trace/trace-store";
 import { VoiceError } from "./errors";
+import type { VoiceRuntimeAdapter } from "./voice-runtime-adapter";
 import { VoiceService } from "./voice-service";
+import type {
+  VoiceAsrFinalEvent,
+  VoiceAsrPartialEvent,
+  VoiceComponentSnapshot,
+  VoicePlaybackEvent,
+  VoiceRuntimeErrorEvent,
+  VoiceRuntimeHandoffParams,
+  VoiceRuntimeHandoffResult,
+  VoiceRuntimeStatus,
+  VoiceSynthesisResult,
+  VoiceSynthesizeSpeechParams,
+  VoiceTranscribeAudioParams,
+  VoiceTurnEvent,
+  VoiceVadEvent,
+} from "./types";
 
 class FakeCanvas {
   readonly windows: Array<{ id: string; url?: string; title?: string }> = [];
@@ -33,10 +49,169 @@ class FakeWorkerStatusProvider {
   }
 }
 
+class MockVoiceRuntimeAdapter implements VoiceRuntimeAdapter {
+  started = false;
+  stopped = false;
+  interrupted = false;
+  transcribed = false;
+  synthesized = false;
+  played = false;
+  runtimeHandedOff = false;
+  playbackAvailable = true;
+  asrAvailable = true;
+  ttsAvailable = true;
+  readonly vadHandlers = new Set<(event: VoiceVadEvent) => void>();
+  readonly turnHandlers = new Set<(event: VoiceTurnEvent) => void>();
+  readonly asrPartialHandlers = new Set<
+    (event: VoiceAsrPartialEvent) => void
+  >();
+  readonly asrFinalHandlers = new Set<(event: VoiceAsrFinalEvent) => void>();
+  readonly playbackHandlers = new Set<(event: VoicePlaybackEvent) => void>();
+  readonly errorHandlers = new Set<(event: VoiceRuntimeErrorEvent) => void>();
+
+  async status(): Promise<VoiceRuntimeStatus> {
+    return {
+      mode: "local-runtime",
+      listening: this.started && !this.stopped,
+      asrPartialSupport: true,
+      ttsStreamingSupport: false,
+      playbackSupport: this.playbackAvailable,
+      vadSupport: true,
+      turnSupport: true,
+    };
+  }
+
+  async components(): Promise<VoiceComponentSnapshot[]> {
+    return [
+      {
+        id: "mock-asr",
+        name: "Mock ASR",
+        role: "asr",
+        status: "ready",
+      },
+    ];
+  }
+
+  async startListening(): Promise<VoiceRuntimeStatus> {
+    this.started = true;
+    return this.status();
+  }
+
+  async stopListening(): Promise<VoiceRuntimeStatus> {
+    this.stopped = true;
+    return this.status();
+  }
+
+  async interrupt(): Promise<VoiceRuntimeStatus> {
+    this.interrupted = true;
+    return this.status();
+  }
+
+  onVad(handler: (event: VoiceVadEvent) => void): () => void {
+    return this.register(this.vadHandlers, handler);
+  }
+
+  onTurn(handler: (event: VoiceTurnEvent) => void): () => void {
+    return this.register(this.turnHandlers, handler);
+  }
+
+  onAsrPartial(handler: (event: VoiceAsrPartialEvent) => void): () => void {
+    return this.register(this.asrPartialHandlers, handler);
+  }
+
+  onAsrFinal(handler: (event: VoiceAsrFinalEvent) => void): () => void {
+    return this.register(this.asrFinalHandlers, handler);
+  }
+
+  onPlayback(handler: (event: VoicePlaybackEvent) => void): () => void {
+    return this.register(this.playbackHandlers, handler);
+  }
+
+  onError(handler: (event: VoiceRuntimeErrorEvent) => void): () => void {
+    return this.register(this.errorHandlers, handler);
+  }
+
+  async transcribeAudio(
+    params: VoiceTranscribeAudioParams,
+  ): Promise<VoiceAsrFinalEvent> {
+    if (!this.asrAvailable) {
+      throw new VoiceError("VOICE_ASR_UNAVAILABLE", "Mock ASR unavailable.");
+    }
+    this.transcribed = true;
+    return {
+      text: params.audioBase64,
+      metadata: params.metadata,
+    };
+  }
+
+  async synthesizeSpeech(
+    params: VoiceSynthesizeSpeechParams,
+  ): Promise<VoiceSynthesisResult> {
+    if (!this.ttsAvailable) {
+      throw new VoiceError("VOICE_TTS_UNAVAILABLE", "Mock TTS unavailable.");
+    }
+    this.synthesized = true;
+    return {
+      audioBase64: Buffer.from(params.text).toString("base64"),
+      mimeType: "audio/wav",
+      byteLength: params.text.length,
+      provider: "mock",
+      voiceId: params.voiceId,
+    };
+  }
+
+  async playAudio(): Promise<VoicePlaybackEvent> {
+    if (!this.playbackAvailable) {
+      throw new VoiceError(
+        "VOICE_AUDIO_OUTPUT_UNAVAILABLE",
+        "Mock playback unavailable.",
+      );
+    }
+    this.played = true;
+    return { started: true, metadata: { provider: "mock" } };
+  }
+
+  async sendRuntimeMessage(
+    params: VoiceRuntimeHandoffParams,
+  ): Promise<VoiceRuntimeHandoffResult> {
+    this.runtimeHandedOff = true;
+    return {
+      firstTokenText: "ok",
+      responseText: `response:${params.text}`,
+      conversationId: "conv-1",
+      messageId: "message-1",
+    };
+  }
+
+  emitVad(event: VoiceVadEvent): void {
+    for (const handler of this.vadHandlers) handler(event);
+  }
+
+  emitAsrPartial(event: VoiceAsrPartialEvent): void {
+    for (const handler of this.asrPartialHandlers) handler(event);
+  }
+
+  emitAsrFinal(event: VoiceAsrFinalEvent): void {
+    for (const handler of this.asrFinalHandlers) handler(event);
+  }
+
+  private register<T>(set: Set<(event: T) => void>, handler: (event: T) => void): () => void {
+    set.add(handler);
+    return () => {
+      set.delete(handler);
+    };
+  }
+}
+
+function flushVoiceEvents(): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, 10));
+}
+
 function harness(env: Record<string, string | undefined> = {}): {
   voice: VoiceService;
   trace: TraceService;
   canvas: FakeCanvas;
+  adapter: MockVoiceRuntimeAdapter;
 } {
   let tick = 0;
   let traceSession = 0;
@@ -62,6 +237,7 @@ function harness(env: Record<string, string | undefined> = {}): {
     dynamicViewSessions,
     env,
   });
+  const adapter = new MockVoiceRuntimeAdapter();
   return {
     voice: new VoiceService({
       traceService: trace,
@@ -69,9 +245,11 @@ function harness(env: Record<string, string | undefined> = {}): {
       now,
       pipelineIdFactory: () => "voice-pipeline-1",
       turnIdFactory: () => `voice-turn-${traceSession + 1}`,
+      runtimeAdapter: adapter,
     }),
     trace,
     canvas,
+    adapter,
   };
 }
 
@@ -169,5 +347,143 @@ describe("VoiceService", () => {
       status: "interrupted",
       error: "barge-in",
     });
+  });
+
+  it("keeps live modes disabled unless explicit flags are set", async () => {
+    const { voice } = harness();
+
+    await expect(voice.start({ mode: "local-runtime" })).rejects.toMatchObject({
+      code: "VOICE_LOCAL_INFERENCE_UNAVAILABLE",
+    });
+  });
+
+  it("starts local runtime mode and records adapter VAD and ASR events", async () => {
+    const { voice, trace, adapter } = harness({
+      ELIZA_VOICE_LIVE_RUNTIME: "1",
+    });
+
+    await voice.start({ mode: "local-runtime", trace: true });
+    adapter.emitVad({ active: true, score: 0.9 });
+    adapter.emitAsrPartial({ text: "hello" });
+    adapter.emitAsrFinal({ text: "hello world" });
+    await flushVoiceEvents();
+
+    const turn = (await voice.status()).currentTurn;
+    expect(adapter.started).toBe(true);
+    expect(adapter.runtimeHandedOff).toBe(true);
+    expect(turn).toMatchObject({
+      transcriptPartial: "hello",
+      transcriptFinal: "hello world",
+      responseText: "response:hello world",
+      status: "model_first_token",
+    });
+
+    const events = await trace.searchEvents({ runId: turn?.id });
+    expect(events.map((event) => event.kind)).toEqual(
+      expect.arrayContaining([
+        "voice.vad",
+        "voice.asr.partial",
+        "voice.asr.final",
+        "model.request.started",
+        "model.first_token",
+      ]),
+    );
+  });
+
+  it("starts live audio mode with a mocked adapter", async () => {
+    const { voice, adapter } = harness({
+      ELIZA_VOICE_LIVE_AUDIO: "1",
+    });
+
+    const snapshot = await voice.start({ mode: "live-audio" });
+
+    expect(snapshot.status).toBe("listening");
+    expect(adapter.started).toBe(true);
+  });
+
+  it("transcribes audio through the live adapter and triggers runtime handoff", async () => {
+    const { voice, adapter } = harness({
+      ELIZA_VOICE_LIVE_RUNTIME: "1",
+      ELIZA_VOICE_LIVE_ASR: "1",
+    });
+
+    await voice.start({ mode: "local-runtime" });
+    const turn = await voice.transcribeAudio({
+      audioBase64: "audio transcript",
+    });
+
+    expect(adapter.transcribed).toBe(true);
+    expect(adapter.runtimeHandedOff).toBe(true);
+    expect(turn).toMatchObject({
+      transcriptFinal: "audio transcript",
+      status: "model_first_token",
+    });
+  });
+
+  it("synthesizes speech and records playback when the adapter supports it", async () => {
+    const { voice, adapter } = harness({
+      ELIZA_VOICE_LIVE_RUNTIME: "1",
+      ELIZA_VOICE_LIVE_TTS: "1",
+    });
+
+    await voice.start({ mode: "local-runtime" });
+    const result = await voice.synthesizeSpeech({
+      text: "hello",
+      voiceId: "kokoro",
+    });
+
+    expect(result).toMatchObject({
+      mimeType: "audio/wav",
+      provider: "mock",
+      voiceId: "kokoro",
+    });
+    expect(adapter.synthesized).toBe(true);
+    expect(adapter.played).toBe(true);
+    await expect(voice.recentTurns()).resolves.toMatchObject([
+      {
+        responseText: "hello",
+        status: "completed",
+      },
+    ]);
+  });
+
+  it("returns structured errors for missing ASR, TTS, and playback", async () => {
+    const { voice, adapter } = harness({
+      ELIZA_VOICE_LIVE_RUNTIME: "1",
+      ELIZA_VOICE_LIVE_ASR: "1",
+      ELIZA_VOICE_LIVE_TTS: "1",
+    });
+
+    await voice.start({ mode: "local-runtime" });
+    adapter.asrAvailable = false;
+    await expect(
+      voice.transcribeAudio({ audioBase64: "audio" }),
+    ).rejects.toMatchObject({ code: "VOICE_ASR_UNAVAILABLE" });
+
+    adapter.asrAvailable = true;
+    adapter.ttsAvailable = false;
+    await expect(
+      voice.synthesizeSpeech({ text: "hello" }),
+    ).rejects.toMatchObject({ code: "VOICE_TTS_UNAVAILABLE" });
+
+    adapter.ttsAvailable = true;
+    adapter.playbackAvailable = false;
+    await expect(
+      voice.synthesizeSpeech({ text: "hello" }),
+    ).rejects.toMatchObject({ code: "VOICE_AUDIO_OUTPUT_UNAVAILABLE" });
+  });
+
+  it("stops live mode and removes adapter subscriptions", async () => {
+    const { voice, adapter } = harness({
+      ELIZA_VOICE_LIVE_RUNTIME: "1",
+    });
+
+    await voice.start({ mode: "local-runtime" });
+    await voice.stop({ reason: "done" });
+
+    expect(adapter.stopped).toBe(true);
+    expect(adapter.vadHandlers.size).toBe(0);
+    expect(adapter.asrPartialHandlers.size).toBe(0);
+    expect(adapter.asrFinalHandlers.size).toBe(0);
   });
 });

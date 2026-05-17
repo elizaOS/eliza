@@ -24,11 +24,18 @@ import type {
   VoiceSpeakParams,
   VoiceStartParams,
   VoiceStopParams,
+  VoiceSynthesisResult,
+  VoiceSynthesizeSpeechParams,
   VoiceTestMode,
   VoiceTurn,
   VoiceTurnId,
   VoiceTurnStatus,
+  VoiceTranscribeAudioParams,
 } from "./types";
+import {
+  RuntimeHttpVoiceAdapter,
+  type VoiceRuntimeAdapter,
+} from "./voice-runtime-adapter";
 
 type VoiceServiceOptions = {
   traceService?: TraceService;
@@ -38,11 +45,7 @@ type VoiceServiceOptions = {
   turnIdFactory?: () => VoiceTurnId;
   apiBase?: string;
   token?: string | null;
-};
-
-type RuntimeVoiceSnapshot = {
-  components: VoiceComponentSnapshot[];
-  raw: JsonValue[];
+  runtimeAdapter?: VoiceRuntimeAdapter;
 };
 
 function defaultPipelineId(): VoicePipelineId {
@@ -90,6 +93,7 @@ export class VoiceService {
   private readonly turnIdFactory: () => VoiceTurnId;
   private readonly apiBase: string;
   private readonly token: string | null;
+  private readonly runtimeAdapter: VoiceRuntimeAdapter;
   private readonly pipelineId: VoicePipelineId;
   private statusValue: VoicePipelineStatus = "idle";
   private mode: VoiceTestMode = "mock";
@@ -99,6 +103,8 @@ export class VoiceService {
   private autoOpenTraceView = false;
   private metadata: Record<string, JsonValue> | undefined;
   private error: string | undefined;
+  private traceSessionReady: Promise<void> | null = null;
+  private readonly unsubscriptions: Array<() => void> = [];
 
   constructor(options: VoiceServiceOptions = {}) {
     this.traceService = options.traceService ?? null;
@@ -116,6 +122,13 @@ export class VoiceService {
       this.env.ELIZA_RUNTIME_API_TOKEN ??
       this.env.MILADY_API_TOKEN ??
       null;
+    this.runtimeAdapter =
+      options.runtimeAdapter ??
+      new RuntimeHttpVoiceAdapter({
+        env: this.env,
+        apiBase: this.apiBase,
+        token: this.token,
+      });
     this.pipelineId = this.pipelineIdFactory();
   }
 
@@ -124,15 +137,13 @@ export class VoiceService {
   }
 
   async components(): Promise<VoiceComponentSnapshot[]> {
-    const staticComponents = discoverStaticVoiceComponents();
     if (
       !isTruthy(this.env.ELIZA_VOICE_LIVE_RUNTIME) &&
       !isTruthy(this.env.ELIZA_VOICE_LIVE_AUDIO)
     ) {
-      return staticComponents;
+      return discoverStaticVoiceComponents();
     }
-    const runtime = await this.runtimeVoiceSnapshot();
-    return mergeComponents(staticComponents, runtime.components);
+    return this.runtimeAdapter.components();
   }
 
   async start(params: VoiceStartParams = {}): Promise<VoicePipelineSnapshot> {
@@ -143,11 +154,25 @@ export class VoiceService {
       params.autoOpenTraceView === true || voiceTraceAutoOpen(this.env);
     this.metadata = params.metadata;
     this.error = undefined;
+    if (this.mode === "local-runtime" || this.mode === "live-audio") {
+      this.assertLiveModeEnabled(this.mode);
+      this.statusValue = "listening";
+      this.bindRuntimeAdapter();
+      await this.runtimeAdapter.startListening({
+        ...params,
+        mode: this.mode,
+      });
+      return this.status();
+    }
     this.statusValue = "listening";
     return this.status();
   }
 
   async stop(params: VoiceStopParams = {}): Promise<VoicePipelineSnapshot> {
+    if (this.mode === "local-runtime" || this.mode === "live-audio") {
+      await this.runtimeAdapter.stopListening(params);
+      this.unbindRuntimeAdapter();
+    }
     if (this.activeTurn && this.activeTurn.status !== "completed") {
       await this.finishTurn("interrupted", params.reason ?? "stopped");
     }
@@ -159,6 +184,9 @@ export class VoiceService {
     params: VoiceInterruptParams = {},
   ): Promise<VoicePipelineSnapshot> {
     this.requireRunning();
+    if (this.mode === "local-runtime" || this.mode === "live-audio") {
+      await this.runtimeAdapter.interrupt(params);
+    }
     if (this.activeTurn) {
       await this.finishTurn("interrupted", params.reason ?? "interrupted");
     }
@@ -176,35 +204,7 @@ export class VoiceService {
       metadata: { mode: this.mode },
     });
     if (params.final === true) {
-      turn.transcriptFinal = text;
-      await this.updateTurn("asr_final");
-      const asrMark = await this.mark("asr", "final", { text });
-      await this.trace("asr-final", "ASR final", turn.transcriptFinal, asrMark, {
-        text,
-      });
-      this.statusValue = "thinking";
-      await this.updateTurn("runtime_started");
-      const runtimeMark = await this.mark("runtime", "runtime.started", {
-        text,
-      });
-      await this.trace(
-        "runtime-started",
-        "Runtime handoff",
-        turn.transcriptFinal,
-        runtimeMark,
-        { text },
-      );
-      await this.updateTurn("model_first_token");
-      const modelMark = await this.mark("model", "first_token", {
-        text: "mock",
-      });
-      await this.trace(
-        "model-first-token",
-        "Model first token",
-        "mock",
-        modelMark,
-        { token: "mock" },
-      );
+      await this.handleAsrFinal({ text }, params.trace === true);
       return cloneVoiceTurn(turn);
     }
 
@@ -219,6 +219,13 @@ export class VoiceService {
   async speak(params: VoiceSpeakParams): Promise<VoiceTurn> {
     this.requireRunning();
     const text = requireNonEmpty(params.text, "text");
+    if (
+      (this.mode === "local-runtime" || this.mode === "live-audio") &&
+      this.runtimeAdapter.synthesizeSpeech
+    ) {
+      await this.synthesizeSpeech(params);
+      return cloneVoiceTurn(this.recent[0] ?? this.requireActiveTurn());
+    }
     const turn = await this.ensureTurn({
       trace: params.trace === true,
       metadata: params.voiceId ? { voiceId: params.voiceId } : undefined,
@@ -266,15 +273,50 @@ export class VoiceService {
     return this.recent.slice(0, limit).map(cloneVoiceTurn);
   }
 
+  async transcribeAudio(
+    params: VoiceTranscribeAudioParams,
+  ): Promise<VoiceTurn> {
+    this.requireRunning();
+    if (!this.runtimeAdapter.transcribeAudio) {
+      throw new VoiceError(
+        "VOICE_ASR_UNAVAILABLE",
+        "The active voice runtime does not expose ASR transcription.",
+      );
+    }
+    const event = await this.runtimeAdapter.transcribeAudio(params);
+    await this.handleAsrFinal(event, params.trace === true);
+    return cloneVoiceTurn(this.requireActiveTurn());
+  }
+
+  async synthesizeSpeech(
+    params: VoiceSynthesizeSpeechParams,
+  ): Promise<VoiceSynthesisResult> {
+    this.requireRunning();
+    if (!this.runtimeAdapter.synthesizeSpeech) {
+      throw new VoiceError(
+        "VOICE_TTS_UNAVAILABLE",
+        "The active voice runtime does not expose speech synthesis.",
+      );
+    }
+    const result = await this.runtimeAdapter.synthesizeSpeech(params);
+    await this.handleTtsResult(params, result);
+    return result;
+  }
+
   private async ensureTurn(params: {
     trace: boolean;
     metadata?: Record<string, JsonValue>;
+    initialDetection?: boolean;
   }): Promise<VoiceTurn> {
     if (this.activeTurn) {
       this.activeTurn.metadata = mergeMetadata(
         this.activeTurn.metadata,
         params.metadata,
       );
+      const shouldTrace = this.traceEnabled || params.trace || this.autoOpenTraceView;
+      if (shouldTrace) {
+        await this.ensureTraceSession(this.activeTurn);
+      }
       return this.activeTurn;
     }
     const createdAt = this.timestamp();
@@ -289,29 +331,26 @@ export class VoiceService {
     };
     this.activeTurn = turn;
     const shouldTrace = this.traceEnabled || params.trace || this.autoOpenTraceView;
-    if (shouldTrace && this.traceService) {
-      const session = await startVoiceTraceSession({
-        traceService: this.traceService,
-        title: "Voice Turn",
-        turnId: turn.id,
-        pipelineId: this.pipelineId,
-        openView: this.autoOpenTraceView,
-        metadata: turn.metadata,
-      });
-      turn.traceSessionId = session.id;
+    if (shouldTrace) {
+      await this.ensureTraceSession(turn);
     }
-    this.statusValue = "detecting";
-    const input = await this.mark("input", "audio.input", {
-      mode: this.mode,
-    });
-    const vad = await this.mark("vad", "speech.detected", {
-      mode: this.mode,
-    });
-    await this.trace("vad", "Voice activity detected", undefined, vad, {
-      inputOffsetMs: input.offsetMs ?? null,
-      mode: this.mode,
-    });
-    await this.mark("turn", "started", { mode: this.mode });
+    if (params.initialDetection !== false) {
+      this.statusValue = "detecting";
+      const input = await this.mark("input", "audio.input", {
+        mode: this.mode,
+      });
+      const vad = await this.mark("vad", "speech.detected", {
+        mode: this.mode,
+      });
+      await this.trace("vad", "Voice activity detected", undefined, vad, {
+        inputOffsetMs: input.offsetMs ?? null,
+        mode: this.mode,
+      });
+      const turnMark = await this.mark("turn", "started", { mode: this.mode });
+      await this.trace("turn-started", "Voice turn started", undefined, turnMark, {
+        mode: this.mode,
+      });
+    }
     return turn;
   }
 
@@ -384,6 +423,22 @@ export class VoiceService {
     this.recent.unshift(cloneVoiceTurn(turn));
     this.recent.splice(20);
     this.activeTurn = null;
+    this.traceSessionReady = null;
+  }
+
+  private async ensureTraceSession(turn: VoiceTurn): Promise<void> {
+    if (!this.traceService || turn.traceSessionId) return;
+    this.traceSessionReady ??= startVoiceTraceSession({
+      traceService: this.traceService,
+      title: "Voice Turn",
+      turnId: turn.id,
+      pipelineId: this.pipelineId,
+      openView: this.autoOpenTraceView,
+      metadata: turn.metadata,
+    }).then((session) => {
+      turn.traceSessionId = session.id;
+    });
+    await this.traceSessionReady;
   }
 
   private async trace(
@@ -404,6 +459,298 @@ export class VoiceService {
       mark,
       payload,
     });
+  }
+
+  private assertLiveModeEnabled(mode: VoiceTestMode): void {
+    if (mode === "local-runtime" && !isTruthy(this.env.ELIZA_VOICE_LIVE_RUNTIME)) {
+      throw new VoiceError(
+        "VOICE_LOCAL_INFERENCE_UNAVAILABLE",
+        "Local runtime voice mode is disabled. Set ELIZA_VOICE_LIVE_RUNTIME=1 to enable it.",
+      );
+    }
+    if (mode === "live-audio" && !isTruthy(this.env.ELIZA_VOICE_LIVE_AUDIO)) {
+      throw new VoiceError(
+        "VOICE_AUDIO_INPUT_UNAVAILABLE",
+        "Live audio is disabled. Set ELIZA_VOICE_LIVE_AUDIO=1 to enable it.",
+      );
+    }
+  }
+
+  private bindRuntimeAdapter(): void {
+    if (this.unsubscriptions.length > 0) return;
+    this.unsubscriptions.push(
+      this.runtimeAdapter.onVad((event) => {
+        void this.handleVad(event);
+      }),
+      this.runtimeAdapter.onTurn((event) => {
+        void this.handleTurn(event);
+      }),
+      this.runtimeAdapter.onAsrPartial((event) => {
+        void this.handleAsrPartial(event);
+      }),
+      this.runtimeAdapter.onAsrFinal((event) => {
+        void this.handleAsrFinal(event, this.traceEnabled);
+      }),
+      this.runtimeAdapter.onPlayback((event) => {
+        void this.handlePlayback(event);
+      }),
+      this.runtimeAdapter.onError((event) => {
+        void this.handleRuntimeError(event);
+      }),
+    );
+    if (this.runtimeAdapter.onTtsChunk) {
+      this.unsubscriptions.push(
+        this.runtimeAdapter.onTtsChunk((event) => {
+          void this.handleTtsChunk(event);
+        }),
+      );
+    }
+  }
+
+  private unbindRuntimeAdapter(): void {
+    while (this.unsubscriptions.length > 0) {
+      this.unsubscriptions.pop()?.();
+    }
+  }
+
+  private async handleVad(event: {
+    active: boolean;
+    score?: number;
+    metadata?: Record<string, JsonValue>;
+  }): Promise<void> {
+    if (!event.active) return;
+    const turn = await this.ensureTurn({
+      trace: this.traceEnabled,
+      metadata: event.metadata,
+      initialDetection: false,
+    });
+    this.statusValue = "detecting";
+    if (!turn.marks.some((mark) => mark.stage === "input")) {
+      await this.mark("input", "audio.input", { mode: this.mode });
+    }
+    const mark = await this.mark("vad", "speech.detected", {
+      score: event.score ?? null,
+      mode: this.mode,
+    });
+    await this.trace("vad", "Voice activity detected", undefined, mark, {
+      score: event.score ?? null,
+      mode: this.mode,
+    });
+  }
+
+  private async handleTurn(event: {
+    status: "started" | "ended" | "cancelled" | "error";
+    reason?: string;
+    metadata?: Record<string, JsonValue>;
+  }): Promise<void> {
+    if (event.status === "started") {
+      await this.ensureTurn({
+        trace: this.traceEnabled,
+        metadata: event.metadata,
+        initialDetection: false,
+      });
+      if (!this.requireActiveTurn().marks.some((mark) => mark.stage === "turn")) {
+        const mark = await this.mark("turn", "started", { mode: this.mode });
+        await this.trace("turn-started", "Voice turn started", undefined, mark, {
+          mode: this.mode,
+        });
+      }
+      return;
+    }
+    if (!this.activeTurn) return;
+    if (event.status === "cancelled") {
+      await this.finishTurn("interrupted", event.reason ?? "cancelled");
+      return;
+    }
+    if (event.status === "error") {
+      await this.finishTurn("error", event.reason ?? "Voice turn failed.");
+    }
+  }
+
+  private async handleAsrPartial(event: {
+    text: string;
+    synthetic?: boolean;
+    metadata?: Record<string, JsonValue>;
+  }): Promise<void> {
+    const text = requireNonEmpty(event.text, "text");
+    const turn = await this.ensureTurn({
+      trace: this.traceEnabled,
+      metadata: event.metadata,
+      initialDetection: false,
+    });
+    turn.transcriptPartial = text;
+    this.statusValue = "transcribing";
+    await this.updateTurn("asr_partial");
+    const mark = await this.mark("asr", "partial", {
+      text,
+      synthetic: event.synthetic === true,
+    });
+    await this.trace("asr-partial", "ASR partial", text, mark, {
+      text,
+      synthetic: event.synthetic === true,
+    });
+  }
+
+  private async handleAsrFinal(
+    event: { text: string; metadata?: Record<string, JsonValue> },
+    trace: boolean,
+  ): Promise<void> {
+    const text = requireNonEmpty(event.text, "text");
+    const turn = await this.ensureTurn({
+      trace,
+      metadata: event.metadata,
+      initialDetection: false,
+    });
+    turn.transcriptFinal = text;
+    await this.updateTurn("asr_final");
+    const asrMark = await this.mark("asr", "final", { text });
+    await this.trace("asr-final", "ASR final", turn.transcriptFinal, asrMark, {
+      text,
+    });
+    await this.handoffToRuntime(text);
+  }
+
+  private async handoffToRuntime(text: string): Promise<void> {
+    this.statusValue = "thinking";
+    await this.updateTurn("runtime_started");
+    const runtimeMark = await this.mark("runtime", "runtime.started", {
+      text,
+    });
+    await this.trace("runtime-started", "Runtime handoff", text, runtimeMark, {
+      text,
+    });
+    let firstTokenText = "mock";
+    let responseText: string | undefined;
+    let raw: JsonValue | undefined;
+    if (
+      (this.mode === "local-runtime" || this.mode === "live-audio") &&
+      this.runtimeAdapter.sendRuntimeMessage
+    ) {
+      const result = await this.runtimeAdapter.sendRuntimeMessage({ text });
+      firstTokenText = result.firstTokenText ?? result.responseText ?? "";
+      responseText = result.responseText;
+      raw = result.raw;
+    }
+    await this.updateTurn("model_first_token");
+    const modelMark = await this.mark("model", "first_token", {
+      text: firstTokenText,
+    });
+    await this.trace(
+      "model-first-token",
+      "Model first token",
+      firstTokenText,
+      modelMark,
+      { token: firstTokenText, raw: raw ?? null },
+    );
+    if (responseText) this.requireActiveTurn().responseText = responseText;
+  }
+
+  private async handleTtsResult(
+    params: VoiceSynthesizeSpeechParams,
+    result: VoiceSynthesisResult,
+  ): Promise<void> {
+    const turn = await this.ensureTurn({
+      trace: params.trace === true,
+      metadata: mergeMetadata(params.metadata, {
+        voiceId: params.voiceId ?? result.voiceId ?? null,
+      }),
+      initialDetection: false,
+    });
+    turn.responseText = params.text;
+    this.statusValue = "speaking";
+    await this.updateTurn("tts_started");
+    const started = await this.mark("tts", "started", {
+      text: params.text,
+      voiceId: params.voiceId ?? result.voiceId ?? null,
+      provider: result.provider ?? null,
+    });
+    await this.trace("tts-started", "TTS started", params.text, started, {
+      text: params.text,
+      voiceId: params.voiceId ?? result.voiceId ?? null,
+      provider: result.provider ?? null,
+    });
+    await this.updateTurn("tts_first_audio");
+    const firstAudio = await this.mark("tts", "first_audio", {
+      byteLength: result.byteLength,
+      mimeType: result.mimeType,
+    });
+    await this.trace(
+      "tts-first-audio",
+      "TTS first audio",
+      params.text,
+      firstAudio,
+      {
+        byteLength: result.byteLength,
+        mimeType: result.mimeType,
+      },
+    );
+    if (!this.runtimeAdapter.playAudio) {
+      await this.finishTurn("error", "Voice playback is unavailable.");
+      throw new VoiceError(
+        "VOICE_AUDIO_OUTPUT_UNAVAILABLE",
+        "The active voice runtime does not expose audio playback.",
+      );
+    }
+    try {
+      const playback = await this.runtimeAdapter.playAudio({
+        audioBase64: result.audioBase64,
+        mimeType: result.mimeType,
+        trace: params.trace,
+        metadata: params.metadata,
+      });
+      await this.handlePlayback(playback);
+    } catch (error) {
+      const message =
+        error instanceof Error ? error.message : "Voice playback failed.";
+      await this.finishTurn("error", message);
+      throw error;
+    }
+  }
+
+  private async handleTtsChunk(event: {
+    audioBase64: string;
+    mimeType: string;
+    byteLength: number;
+    metadata?: Record<string, JsonValue>;
+  }): Promise<void> {
+    await this.handleTtsResult(
+      { text: this.activeTurn?.responseText ?? "", metadata: event.metadata },
+      {
+        audioBase64: event.audioBase64,
+        mimeType: event.mimeType,
+        byteLength: event.byteLength,
+      },
+    );
+  }
+
+  private async handlePlayback(event: {
+    started: boolean;
+    metadata?: Record<string, JsonValue>;
+  }): Promise<void> {
+    if (!event.started || !this.activeTurn) return;
+    await this.updateTurn("playback_started");
+    const playback = await this.mark("playback", "started", event.metadata);
+    await this.trace(
+      "playback-started",
+      "Playback started",
+      this.activeTurn.responseText,
+      playback,
+      event.metadata ?? {},
+    );
+    await this.finishTurn("completed");
+    this.statusValue = "listening";
+  }
+
+  private async handleRuntimeError(event: {
+    code?: string;
+    message: string;
+    metadata?: Record<string, JsonValue>;
+  }): Promise<void> {
+    this.error = event.message;
+    this.statusValue = "error";
+    if (this.activeTurn) {
+      await this.finishTurn("error", event.message);
+    }
   }
 
   private requireRunning(): void {
@@ -442,100 +789,9 @@ export class VoiceService {
     return this.now().toISOString();
   }
 
-  private async runtimeVoiceSnapshot(): Promise<RuntimeVoiceSnapshot> {
-    const raw: JsonValue[] = [];
-    const components: VoiceComponentSnapshot[] = [];
-    const voiceModels = await this.fetchJson("/api/local-inference/voice-models");
-    raw.push({ route: "/api/local-inference/voice-models", payload: voiceModels });
-    if (isRecord(voiceModels) && Array.isArray(voiceModels.installations)) {
-      for (const installation of voiceModels.installations) {
-        if (!isRecord(installation)) continue;
-        const id = stringOrNull(installation.id);
-        if (!id) continue;
-        const installedVersion = stringOrNull(installation.installedVersion);
-        components.push({
-          id,
-          name: id,
-          role: idToRole(id),
-          provider: id === "kokoro" || id === "omnivoice" ? id : "local-inference",
-          status: installedVersion ? "available" : "missing",
-          modelId: installedVersion ? `${id}@${installedVersion}` : undefined,
-          error: stringOrNull(installation.lastError) ?? undefined,
-          raw: installation,
-        });
-      }
-    }
-    return { components, raw };
-  }
-
-  private async fetchJson(path: string): Promise<JsonValue> {
-    const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), 2_000);
-    try {
-      const response = await fetch(
-        `${this.apiBase.replace(/\/+$/, "")}${path}`,
-        {
-          method: "GET",
-          headers: {
-            Accept: "application/json",
-            ...(this.token ? { Authorization: `Bearer ${this.token}` } : {}),
-          },
-          signal: controller.signal,
-        },
-      );
-      const text = await response.text();
-      const parsed = parseJsonValue(text);
-      if (!response.ok) {
-        throw new VoiceError(
-          "VOICE_LOCAL_INFERENCE_UNAVAILABLE",
-          `Voice runtime route failed: ${path}`,
-          { status: response.status, payload: parsed },
-        );
-      }
-      return parsed;
-    } finally {
-      clearTimeout(timeout);
-    }
-  }
-}
-
-function mergeComponents(
-  staticComponents: VoiceComponentSnapshot[],
-  runtimeComponents: VoiceComponentSnapshot[],
-): VoiceComponentSnapshot[] {
-  const merged = new Map<string, VoiceComponentSnapshot>();
-  for (const component of staticComponents) merged.set(component.id, component);
-  for (const component of runtimeComponents) {
-    const current = merged.get(component.id);
-    merged.set(component.id, current ? { ...current, ...component } : component);
-  }
-  return Array.from(merged.values()).sort((a, b) => a.id.localeCompare(b.id));
 }
 
 function clampLimit(value: number, min: number, max: number): number {
   if (!Number.isFinite(value)) return min;
   return Math.max(min, Math.min(max, Math.floor(value)));
-}
-
-function isRecord(value: JsonValue): value is Record<string, JsonValue> {
-  return value !== null && typeof value === "object" && !Array.isArray(value);
-}
-
-function stringOrNull(value: JsonValue): string | null {
-  return typeof value === "string" && value.trim() ? value.trim() : null;
-}
-
-function idToRole(id: string): VoiceComponentSnapshot["role"] {
-  if (id === "vad") return "vad";
-  if (id === "asr") return "asr";
-  if (id === "kokoro" || id === "omnivoice") return "tts";
-  if (id.includes("turn")) return "turn-detection";
-  if (id.includes("emotion")) return "emotion";
-  return "voice";
-}
-
-function parseJsonValue(text: string): JsonValue {
-  if (!text.trim()) return null;
-  const parsed = JSON.parse(text) as JsonValue;
-  return parsed;
 }

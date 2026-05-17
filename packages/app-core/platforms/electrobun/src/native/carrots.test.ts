@@ -395,6 +395,7 @@ describe("CarrotManager", () => {
     withTempDir((dir) => {
       const worker = new FakeWorkerHandle();
       const spoken: JsonValue[] = [];
+      const synthesized: JsonValue[] = [];
       const voiceHost: VoiceHost = {
         status: async () => ({ id: "voice-1", status: "listening" }),
         components: async () => ({ components: [] }),
@@ -405,6 +406,15 @@ describe("CarrotManager", () => {
         speak: async (params) => {
           spoken.push(params ?? null);
           return { id: "turn-1", status: "completed" };
+        },
+        transcribeAudio: async () => ({ id: "turn-1", status: "asr_final" }),
+        synthesizeSpeech: async (params) => {
+          synthesized.push(params ?? null);
+          return {
+            audioBase64: "AAAA",
+            mimeType: "audio/wav",
+            byteLength: 3,
+          };
         },
         latency: async () => ({ totalToPlaybackMs: 50 }),
         recentTurns: async () => ({ turns: [] }),
@@ -424,6 +434,12 @@ describe("CarrotManager", () => {
         method: "voice-speak",
         params: { text: "hello" },
       });
+      worker.emit({
+        type: "host-request",
+        requestId: 17,
+        method: "voice-synthesize-speech",
+        params: { text: "hello" },
+      });
 
       return new Promise<void>((resolve, reject) => {
         setTimeout(() => {
@@ -431,12 +447,22 @@ describe("CarrotManager", () => {
             const response = worker.messages.find(
               (m) => m.type === "host-response" && m.requestId === 16,
             );
+            const synthResponse = worker.messages.find(
+              (m) => m.type === "host-response" && m.requestId === 17,
+            );
             expect(spoken).toEqual([{ text: "hello" }]);
+            expect(synthesized).toEqual([{ text: "hello" }]);
             expect(response).toMatchObject({
               type: "host-response",
               requestId: 16,
               success: true,
               payload: { id: "turn-1", status: "completed" },
+            });
+            expect(synthResponse).toMatchObject({
+              type: "host-response",
+              requestId: 17,
+              success: true,
+              payload: { audioBase64: "AAAA", mimeType: "audio/wav" },
             });
             resolve();
           } catch (error) {

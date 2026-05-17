@@ -5,6 +5,7 @@ import type { VoiceLatencyMark, VoiceTurn } from "./types";
 
 export type VoiceTraceStage =
   | "vad"
+  | "turn-started"
   | "asr-partial"
   | "asr-final"
   | "runtime-started"
@@ -16,6 +17,7 @@ export type VoiceTraceStage =
 
 const TRACE_KIND_BY_STAGE: Readonly<Record<VoiceTraceStage, TraceEventKind>> = {
   vad: "voice.vad",
+  "turn-started": "voice.turn.started",
   "asr-partial": "voice.asr.partial",
   "asr-final": "voice.asr.final",
   "runtime-started": "model.request.started",
