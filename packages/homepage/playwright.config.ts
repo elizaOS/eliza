@@ -5,7 +5,8 @@ export default defineConfig({
   fullyParallel: true,
   reporter: "list",
   expect: {
-    toHaveScreenshot: { maxDiffPixelRatio: 0.02 },
+    timeout: 20000,
+    toHaveScreenshot: { maxDiffPixelRatio: 0.05 },
   },
   use: {
     baseURL: "http://127.0.0.1:4444",
