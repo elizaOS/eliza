@@ -166,12 +166,26 @@ sync_repo() {
     "sudo mkdir -p '$NEBIUS_REMOTE_DIR'; sudo chown -R '$NEBIUS_SSH_USER:$NEBIUS_SSH_USER' '$NEBIUS_REMOTE_DIR'"
   rsync -az --delete \
     --exclude .git/ \
+    --exclude .claude/ \
+    --exclude .cache/ \
+    --exclude .codex/ \
+    --exclude .eliza/ \
+    --exclude .swarm/ \
     --exclude node_modules/ \
     --exclude .turbo/ \
     --exclude .next/ \
+    --exclude coverage/ \
+    --exclude dist/ \
+    --exclude build/ \
+    --exclude out/ \
     --exclude packages/training/checkpoints/ \
     --exclude packages/training/out/ \
     --exclude artifacts/ \
+    --exclude benchmark_results/ \
+    --exclude docker_vm_data/ \
+    --exclude reports/ \
+    --exclude test_output/ \
+    --exclude trajectories-eliza-cerebras/ \
     "$REPO_ROOT/" "$target:$NEBIUS_REMOTE_DIR/"
   echo "[nebius_h200] syncing smoke model to $target:$NEBIUS_REMOTE_MODEL"
   ssh -o StrictHostKeyChecking=no "$target" "sudo mkdir -p $(dirname "$NEBIUS_REMOTE_MODEL"); sudo chown -R $NEBIUS_SSH_USER:$NEBIUS_SSH_USER $(dirname "$NEBIUS_REMOTE_MODEL")"
