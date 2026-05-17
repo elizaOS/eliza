@@ -91,6 +91,7 @@ function CopyButton({ text }: { text: string }) {
           viewBox="0 0 24 24"
           stroke="currentColor"
           strokeWidth={2}
+          aria-hidden="true"
         >
           <path
             strokeLinecap="round"
@@ -105,6 +106,7 @@ function CopyButton({ text }: { text: string }) {
           viewBox="0 0 24 24"
           stroke="currentColor"
           strokeWidth={2}
+          aria-hidden="true"
         >
           <path
             strokeLinecap="round"
@@ -338,9 +340,9 @@ export function ElizaWalletSection({ agentId }: ElizaWalletSectionProps) {
                       )}
                     </div>
                   </div>
-                  {chain.tokens?.map((token, i) => (
+                  {chain.tokens?.map((token) => (
                     <div
-                      key={i}
+                      key={token.symbol}
                       className="px-4 py-2.5 flex items-center justify-between"
                     >
                       <span className="font-mono text-xs text-white/60">

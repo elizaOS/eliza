@@ -218,6 +218,8 @@ export function DocumentUpload({
             <div
               onDragOver={handleDragOver}
               onDrop={handleDrop}
+              role="region"
+              aria-label="File upload drop zone"
               className="relative border-2 border-dashed border-border rounded-sm hover:border-primary/50 transition-colors"
             >
               <Input
@@ -236,13 +238,9 @@ export function DocumentUpload({
                 disabled={uploading}
                 className="hidden"
               />
-              <div
-                onClick={() => {
-                  if (!uploading) {
-                    document.getElementById("file-input")?.click();
-                  }
-                }}
-                className={`p-8 text-center cursor-pointer ${uploading ? "opacity-50" : ""}`}
+              <label
+                htmlFor="file-input"
+                className={`p-8 text-center cursor-pointer block ${uploading ? "opacity-50" : ""}`}
               >
                 {uploading ? (
                   <div className="flex flex-col items-center gap-3">
@@ -267,7 +265,7 @@ export function DocumentUpload({
                     </div>
                   </div>
                 )}
-              </div>
+              </label>
             </div>
 
             {selectedFiles.length > 0 && (
@@ -275,9 +273,9 @@ export function DocumentUpload({
                 <p className="text-sm font-medium">
                   Uploading {selectedFiles.length} file(s)...
                 </p>
-                {selectedFiles.map((file, index) => (
+                {selectedFiles.map((file) => (
                   <div
-                    key={index}
+                    key={file.name}
                     className="flex items-center gap-2 p-3 bg-muted rounded-sm"
                   >
                     <FileText className="h-5 w-5 text-muted-foreground" />

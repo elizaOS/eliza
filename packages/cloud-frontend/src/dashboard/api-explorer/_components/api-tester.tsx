@@ -846,7 +846,7 @@ export function ApiTester({
                       </div>
 
                       <div className="space-y-2">
-                        {uploadedFiles.map((file) => (
+                        {uploadedFiles.map((file, index) => (
                           <div
                             key={file.name}
                             className="flex items-center justify-between p-3 bg-muted/50 rounded-sm border border-border/40"
