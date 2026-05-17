@@ -8,7 +8,7 @@
 import {
   iosInProcessAgentTransportForUrl,
   isIosInProcessLocalAgentBase,
-} from "@elizaos/app-core/api/ios-local-agent-transport";
+} from "./ios-local-agent-transport";
 import {
   extractAssistantReplyText,
   stripAssistantStageDirections,

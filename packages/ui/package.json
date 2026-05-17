@@ -226,7 +226,6 @@
     "@elizaos/capacitor-bun-runtime": "workspace:*"
   },
   "dependencies": {
-    "@elizaos/app-core": "workspace:*",
     "@elizaos/core": "workspace:*",
     "@elizaos/shared": "workspace:*",
     "@elizaos/shared-brand": "workspace:*",

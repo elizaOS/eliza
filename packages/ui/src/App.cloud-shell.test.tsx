@@ -51,12 +51,12 @@ describe("App pre-agent cloud wiring", () => {
     expect(APP_TSX).toMatch(
       /<CloudVideoBackground[\s\S]*<StartupShell[\s\S]*<\/CloudVideoBackground>/,
     );
-    // Brand rules: 8x speed, /clouds basePath, light scrim, black text.
+    // Brand rules: 8x speed, /clouds basePath, light scrim, themed text.
     expect(APP_TSX).toMatch(/speed="8x"/);
     expect(APP_TSX).toMatch(/basePath="\/clouds"/);
     expect(APP_TSX).toMatch(/animated=\{false\}/);
     expect(APP_TSX).toMatch(/scrim=\{0\.05\}/);
-    expect(APP_TSX).toMatch(/text-black/);
+    expect(APP_TSX).toMatch(/text-txt/);
   });
 
   it("CloudVideoBackground renders a <video> with cloud sources", () => {

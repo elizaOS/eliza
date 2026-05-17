@@ -5,7 +5,7 @@
  * desktop notifications, and full-reset flows.
  */
 
-import { isIosInProcessLocalAgentBase } from "@elizaos/app-core/api/ios-local-agent-transport";
+import { isIosInProcessLocalAgentBase } from "../api/ios-local-agent-transport";
 import { logger } from "@elizaos/core";
 import { getDefaultStylePreset } from "@elizaos/shared";
 import { type MutableRefObject, useCallback, useEffect, useRef } from "react";

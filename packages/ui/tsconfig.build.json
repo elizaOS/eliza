@@ -15,7 +15,6 @@
       "@elizaos/core": ["../core/dist/index.d.ts"],
       "@elizaos/shared": ["../shared/dist/index.d.ts"],
       "@elizaos/agent": ["../agent/dist/packages/agent/src/index.d.ts"],
-      "@elizaos/app-core": ["../app-core/dist/index.d.ts"],
       "@elizaos/plugin-coding-tools": [
         "../../plugins/plugin-coding-tools/dist/index.d.ts"
       ],

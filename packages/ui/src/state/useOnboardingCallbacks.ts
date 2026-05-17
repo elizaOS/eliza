@@ -65,7 +65,7 @@ async function startNativeAgentIfAvailable(): Promise<void> {
   }
 }
 
-import { buildOnboardingRuntimeConfig } from "@elizaos/app-core/onboarding/onboarding-config";
+import { buildOnboardingRuntimeConfig } from "../onboarding/onboarding-config";
 import {
   getDesktopRuntimeMode,
   invokeDesktopBridgeRequest,

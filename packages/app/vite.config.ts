@@ -1463,6 +1463,7 @@ export default defineConfig({
     rolldownOptions: {
       checks: {
         eval: false,
+        pluginTimings: false,
       },
       onLog(level, log, defaultHandler) {
         if (level === "warn" && isKnownToleratedBuildWarning(log)) {

@@ -167,6 +167,7 @@ describe("VoicePrefixSteps", () => {
         profilesClient={makeClient()}
       />,
     );
+    fireEvent.click(screen.getByTestId("voice-prefix-welcome-request-mic"));
     fireEvent.click(screen.getByTestId("voice-prefix-continue"));
     expect(onAdvance).toHaveBeenCalledWith("tier");
   });

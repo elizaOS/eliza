@@ -36,7 +36,7 @@ export type {
 } from "./api";
 export * from "./api";
 export * from "./api/android-native-agent-transport";
-// === Phase 5C: ./api/ios-local-agent-transport moved to @elizaos/app-core/api/ios-local-agent-transport ===
+export * from "./api/ios-local-agent-transport";
 export * from "./app-shell-components";
 export * from "./app-shell-registry";
 export { registerAppShellPage } from "./app-shell-registry";
@@ -418,8 +418,8 @@ export {
   routeOnboardingDeepLink,
 } from "./onboarding/deep-link-handler";
 export * from "./onboarding/mobile-runtime-mode";
+export * from "./onboarding/onboarding-config";
 export * from "./onboarding/pre-seed-local-runtime";
-// === Phase 5C: ./onboarding-config moved to @elizaos/app-core/onboarding/onboarding-config ===
 export * from "./platform/index";
 export * from "./providers/index";
 export * from "./shell-params";
