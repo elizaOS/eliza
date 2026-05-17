@@ -4,6 +4,7 @@ import type {
   IAgentRuntime,
   Memory,
   State,
+  StateValue,
 } from "@elizaos/core";
 import type {
   AcpJsonRpcMessage,
@@ -300,14 +301,14 @@ export function setCurrentSession(
   state: State | undefined,
   session: SpawnResult | SessionInfo,
 ): void {
-  if (state) (state as { codingSession?: unknown }).codingSession = session;
+  if (state) state.codingSession = session as StateValue;
 }
 
 export function setCurrentSessions(
   state: State | undefined,
   sessions: SpawnResult[],
 ): void {
-  if (state) (state as { codingSessions?: unknown }).codingSessions = sessions;
+  if (state) state.codingSessions = sessions as StateValue;
 }
 
 export function emitSessionEvent(

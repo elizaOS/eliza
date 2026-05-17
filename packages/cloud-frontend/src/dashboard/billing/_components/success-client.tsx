@@ -87,9 +87,7 @@ export function CreditBalanceDisplay(_props: CreditBalanceDisplayProps) {
   return (
     <div className="rounded-lg border bg-muted/50 p-4">
       <div className="text-sm text-muted-foreground">Current Balance</div>
-      <div className="text-3xl font-bold mt-1">
-        ${creditBalance.toFixed(2)}
-      </div>
+      <div className="text-3xl font-bold mt-1">${creditBalance.toFixed(2)}</div>
       <div className="text-sm text-muted-foreground">USD</div>
     </div>
   );

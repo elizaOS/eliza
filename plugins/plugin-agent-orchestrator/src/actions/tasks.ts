@@ -33,6 +33,7 @@ import type {
   IAgentRuntime,
   Memory,
   State,
+  StateValue,
 } from "@elizaos/core";
 import { logger as coreLogger } from "@elizaos/core";
 import {
@@ -276,7 +277,7 @@ function buildSwarmRoomMetadata(
     pickRoutingString(params, content, metadata, "coordinationRoomId");
   const roomMap = new Map<string, { roomId: string; roles: string[] }>();
   const add = (roomId: string | undefined, role: string) => {
-    if (!roomId || !roomId.trim()) return;
+    if (!roomId?.trim()) return;
     const key = roomId.trim();
     const current = roomMap.get(key) ?? { roomId: key, roles: [] };
     if (!current.roles.includes(role)) current.roles.push(role);
@@ -866,14 +867,8 @@ async function runStopAgent(
       await Promise.all(
         sessions.map((session) => service.stopSession(session.id)),
       );
-      if (state)
-        (
-          state as {
-            codingSession?: unknown;
-            codingSessions?: unknown;
-          }
-        ).codingSession = undefined;
-      if (state) (state as { codingSessions?: unknown }).codingSessions = [];
+      if (state) state["codingSession"] = undefined;
+      if (state) state["codingSessions"] = [] as StateValue;
       const text = `Stopped ${sessions.length} sessions`;
       await callbackText(callback, text);
       return { success: true, text, data: { stoppedCount: sessions.length } };

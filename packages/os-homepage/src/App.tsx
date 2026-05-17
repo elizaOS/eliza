@@ -1,6 +1,6 @@
 import {
-  startStripeCheckout,
   StripeCheckoutError,
+  startStripeCheckout,
 } from "@elizaos/checkout-shared";
 import {
   HARDWARE_PRODUCTS as hardwareProducts,
@@ -90,113 +90,16 @@ const releaseFallback: ReleaseManifest = {
   ],
 };
 
-type Product = {
-  slug: string;
-  sku: string;
-  name: string;
-  price?: string;
-  ships?: string;
-  image: string;
-  imageAlt: string;
-  summary: string;
-  detail: string;
-  colors: string[];
-};
-
-const hardwareProducts: Product[] = [
-  {
-    slug: "usb",
-    sku: "elizaos-usb",
-    name: "ElizaOS USB",
-    price: "$49",
-    ships: "Ships October 2026",
-    image: CONCEPT_PRODUCT_IMAGES.usbDrive,
-    imageAlt: "Blue ElizaOS USB drive concept",
-    summary: "Boot elizaOS from your pocket.",
-    detail: "Live image on a stick. Plug into any UEFI PC and run.",
-    colors: ["Orange", "Blue", "White", "Black"],
-  },
-  {
-    slug: "case",
-    sku: "elizaos-raspberry-pi-case",
-    name: "Raspberry Pi case",
-    price: "$49",
-    ships: "Ships October 2026",
-    image: "/assets/elizaos-box-concept.avif",
-    imageAlt: "ElizaOS Raspberry Pi case concept",
-    summary: "A shell for a local agent.",
-    detail: "Bring your own Pi. We ship the enclosure.",
-    colors: ["Orange", "Blue", "White", "Black"],
-  },
-  {
-    slug: "raspberry-pi",
-    sku: "elizaos-custom-raspberry-pi-case",
-    name: "Custom Raspberry Pi + case",
-    price: "$149",
-    ships: "Ships October 2026",
-    image: "/assets/elizaos-box-concept.avif",
-    imageAlt: "ElizaOS Raspberry Pi kit concept",
-    summary: "Plug in, boot, run local.",
-    detail: "Pi, case, SD card pre-imaged. One box, one cable.",
-    colors: ["Orange", "Blue", "White", "Black"],
-  },
-  {
-    slug: "mini-pc",
-    sku: "elizaos-mini-pc",
-    name: "ElizaOS mini PC",
-    price: "$1999",
-    ships: "Ships October 2026",
-    image: CONCEPT_PRODUCT_IMAGES.miniPc,
-    imageAlt: "ElizaOS mini PC concept",
-    summary: "Always-on compute for agents.",
-    detail: "Desktop-class inference at home. Quiet, owned, yours.",
-    colors: ["Orange", "Blue", "White", "Black"],
-  },
-  {
-    slug: "phone",
-    sku: "elizaos-phone",
-    name: "ElizaOS Phone",
-    ships: "Pre-order",
-    image: CONCEPT_PRODUCT_IMAGES.phone,
-    imageAlt: "Eliza Phone concept",
-    summary: "The runtime in your hand.",
-    detail: "AOSP build with elizaOS as the shell.",
-    colors: ["Orange", "Blue", "White", "Blue glass"],
-  },
-  {
-    slug: "box",
-    sku: "elizaos-box",
-    name: "ElizaOS Box",
-    ships: "Pre-order",
-    image: "/assets/elizaos-box-concept.avif",
-    imageAlt: "ElizaOS box hardware concept",
-    summary: "A household agent appliance.",
-    detail: "Sits on the shelf. Runs the home.",
-    colors: ["Orange", "Blue", "White", "Black"],
-  },
-  {
-    slug: "chibi-usb",
-    sku: "elizaos-usb-chibi",
-    name: "Chibi USB key",
-    price: "$49",
-    ships: "Ships October 2026",
-    image: CONCEPT_PRODUCT_IMAGES.chibiUsb,
-    imageAlt: "Chibi ElizaOS USB key concept",
-    summary: "Same boot key. Smaller mascot shell.",
-    detail: "ElizaOS USB in a collector enclosure.",
-    colors: ["Orange"],
-  },
-];
-
 function productCheckoutUrl(sku: string) {
   return `${checkoutBaseUrl}?sku=${sku}`;
 }
 
 function getDefaultProduct(): Product {
-  return (
+  const fallback =
     hardwareProducts.find((product) => product.sku === "elizaos-usb") ??
-    hardwareProducts[0]
-  );
+    hardwareProducts[0];
+  if (!fallback) throw new Error("Hardware catalog is empty");
+  return fallback;
 }
 
 function getCheckoutProduct(): Product {
@@ -571,7 +474,7 @@ function CheckoutPage() {
     try {
       await startStripeCheckout(
         {
-          hardwareColor: selectedColor,
+          hardwareColor: selectedColor.name,
           hardwareSku: product.sku,
           returnUrl: "billing",
         },
@@ -651,24 +554,24 @@ function CheckoutPage() {
                 {product.colors.map((color) => (
                   <button
                     type="button"
-                    key={color}
+                    key={color.id}
                     className={
-                      selectedColor === color
+                      selectedColor.id === color.id
                         ? "color-swatch color-swatch-active"
                         : "color-swatch"
                     }
                     style={{
                       backgroundColor:
-                        color === "Orange"
+                        color.name === "Orange"
                           ? BRAND_COLORS.orange
-                          : color.startsWith("Blue")
+                          : color.name.startsWith("Blue")
                             ? BRAND_COLORS.blue
-                            : color === "Black"
+                            : color.name === "Black"
                               ? BRAND_COLORS.black
                               : BRAND_COLORS.white,
                     }}
                     onClick={() => setSelectedColor(color)}
-                    aria-label={`Select ${color}`}
+                    aria-label={`Select ${color.name}`}
                   />
                 ))}
               </fieldset>

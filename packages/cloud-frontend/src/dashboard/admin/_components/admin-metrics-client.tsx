@@ -348,7 +348,9 @@ export function AdminMetricsClient() {
           icon={UserPlus}
           loading={loading}
           value={overview?.newSignups7d.toLocaleString() ?? "0"}
-          helper={`${overview?.newSignupsToday ?? 0} today`}
+          helper={
+            overview ? `${overview.newSignupsToday} today` : "— today"
+          }
           className="border border-brand-surface border-t-0 border-l-0 lg:border-t"
         />
       </div>
@@ -787,10 +789,9 @@ export function AdminMetricsClient() {
                       %
                     </div>
                     <p className="text-sm font-mono text-white/60">
-                      {overview?.oauthRate.connected_users.toLocaleString() ??
-                        0}{" "}
-                      of {overview?.oauthRate.total_users.toLocaleString() ?? 0}{" "}
-                      users
+                      {overview
+                        ? `${overview.oauthRate.connected_users.toLocaleString()} of ${overview.oauthRate.total_users.toLocaleString()} users`
+                        : "— of — users"}
                     </p>
                   </div>
                 )}

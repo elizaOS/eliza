@@ -50,12 +50,171 @@ export interface Job {
   finishedAt?: Date;
 }
 
+export type ContainerStatus =
+  | "pending"
+  | "running"
+  | "restarting"
+  | "deleting"
+  | "deleted"
+  | "error";
+
+export interface Container {
+  id: string;
+  name: string;
+  projectName: string;
+  organizationId: string;
+  userId: string;
+  image: string;
+  port: number;
+  desiredCount: number;
+  cpu: number;
+  memoryMb: number;
+  healthCheckPath: string;
+  environmentVars: Record<string, string>;
+  status: ContainerStatus;
+  errorReason?: string;
+  /** ms when the pending action completes (delete/restart) — used by tick. */
+  pendingActionAt?: number;
+  /** What the pending action will produce when it fires. */
+  pendingAction?: "running" | "deleted";
+  workspaceSyncs: number;
+  createdAt: Date;
+  updatedAt: Date;
+}
+
+export interface WarmSandbox {
+  id: string;
+  image: string;
+  createdAt: Date;
+}
+
 export class ControlPlaneStore {
   private readonly jobs = new Map<string, Job>();
   private readonly sandboxes = new Map<string, Sandbox>();
+  private readonly containers = new Map<string, Container>();
+  private readonly warmPool = new Map<string, WarmSandbox>();
+  private readonly cronCounters = new Map<string, number>();
+  private hotPoolTarget = 0;
   private idSeq = 0;
 
   constructor(private readonly nowFn: () => Date = () => new Date()) {}
+
+  // ── Cron counters ─────────────────────────────────────────────────────
+  incrementCron(name: string): number {
+    const next = (this.cronCounters.get(name) ?? 0) + 1;
+    this.cronCounters.set(name, next);
+    return next;
+  }
+  getCronCount(name: string): number {
+    return this.cronCounters.get(name) ?? 0;
+  }
+
+  // ── Hot pool ──────────────────────────────────────────────────────────
+  setHotPoolTarget(n: number): void {
+    this.hotPoolTarget = Math.max(0, Math.floor(n));
+  }
+  getHotPoolTarget(): number {
+    return this.hotPoolTarget;
+  }
+  warmPoolSnapshot(): WarmSandbox[] {
+    return [...this.warmPool.values()];
+  }
+  /** Bring the warm pool up to `targetSize`, returning how many were added. */
+  replenishWarmPool(image: string, targetSize: number): number {
+    let added = 0;
+    while (this.warmPool.size < targetSize) {
+      const id = this.nextId("warm");
+      this.warmPool.set(id, { id, image, createdAt: this.now() });
+      added += 1;
+    }
+    return added;
+  }
+
+  // ── Containers ────────────────────────────────────────────────────────
+  createContainer(input: {
+    name: string;
+    projectName: string;
+    organizationId: string;
+    userId: string;
+    image: string;
+    port?: number;
+    desiredCount?: number;
+    cpu?: number;
+    memoryMb?: number;
+    healthCheckPath?: string;
+    environmentVars?: Record<string, string>;
+    actionMs: number;
+  }): Container {
+    const now = this.now();
+    const container: Container = {
+      id: this.nextId("ctr"),
+      name: input.name,
+      projectName: input.projectName,
+      organizationId: input.organizationId,
+      userId: input.userId,
+      image: input.image,
+      port: input.port ?? 3000,
+      desiredCount: input.desiredCount ?? 1,
+      cpu: input.cpu ?? 256,
+      memoryMb: input.memoryMb ?? 512,
+      healthCheckPath: input.healthCheckPath ?? "/health",
+      environmentVars: input.environmentVars ?? {},
+      status: "pending",
+      pendingActionAt: now.getTime() + input.actionMs,
+      pendingAction: "running",
+      workspaceSyncs: 0,
+      createdAt: now,
+      updatedAt: now,
+    };
+    this.containers.set(container.id, container);
+    return container;
+  }
+
+  getContainer(id: string): Container | undefined {
+    return this.containers.get(id);
+  }
+
+  updateContainer(id: string, patch: Partial<Container>): Container {
+    const existing = this.containers.get(id);
+    if (!existing) throw new Error(`container '${id}' not found`);
+    const next: Container = { ...existing, ...patch, id, updatedAt: this.now() };
+    this.containers.set(id, next);
+    return next;
+  }
+
+  removeContainer(id: string): void {
+    this.containers.delete(id);
+  }
+
+  allContainers(): Container[] {
+    return [...this.containers.values()];
+  }
+
+  /** Advance any containers whose pending action time has elapsed. */
+  resolveContainerActions(): { resolved: number } {
+    const now = this.now().getTime();
+    let resolved = 0;
+    for (const container of [...this.containers.values()]) {
+      if (
+        container.pendingActionAt !== undefined &&
+        container.pendingAction !== undefined &&
+        container.pendingActionAt <= now
+      ) {
+        const action = container.pendingAction;
+        if (action === "deleted") {
+          this.containers.delete(container.id);
+        } else {
+          this.updateContainer(container.id, {
+            status: action,
+            pendingActionAt: undefined,
+            pendingAction: undefined,
+          });
+        }
+        resolved += 1;
+      }
+    }
+    return { resolved };
+  }
 
   now(): Date {
     return this.nowFn();

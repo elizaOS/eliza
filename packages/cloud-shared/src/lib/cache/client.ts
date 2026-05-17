@@ -649,6 +649,18 @@ export class CacheClient {
     const env = getCloudAwareEnv();
     this.enabled = env.CACHE_ENABLED !== "false";
 
+    // MOCK_REDIS=1 is an explicit opt-in for tests/CI. It forces the in-memory
+    // adapter regardless of any other configuration, but never activates
+    // silently when unset — real creds are still honored when MOCK_REDIS is
+    // not "1".
+    if (this.enabled && process.env.MOCK_REDIS === "1") {
+      this.nativeRedisConnectPromise = null;
+      this.nativeRedisReady = true;
+      this.redis = new MemoryCacheAdapter();
+      logger.info("[Cache] ✓ Cache client initialized with in-memory mock (MOCK_REDIS=1)");
+      return;
+    }
+
     if (!this.enabled) {
       // CACHE_DISABLE_REASON acknowledges an intentional disable
       // (e.g. CF Workers cross-request I/O isolation incompatibility while

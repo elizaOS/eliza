@@ -20,6 +20,7 @@
   },
   "dependencies": {
     "@elizaos/checkout-shared": "workspace:*",
+    "@elizaos/hardware-catalog": "workspace:*",
     "@elizaos/shared-brand": "workspace:*",
     "@elizaos/ui": "workspace:*",
     "@fontsource-variable/open-sans": "^5.2.7",

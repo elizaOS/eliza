@@ -70,7 +70,8 @@ export default function DashboardPage() {
 
   const userName = dashboard.data?.user.name?.split(" ")[0] || "User";
   const agents = dashboard.data?.agents ?? [];
-  const creditBalance = credits.data?.balance ?? 0;
+  const creditBalance =
+    typeof credits.data?.balance === "number" ? credits.data.balance : null;
 
   return (
     <>

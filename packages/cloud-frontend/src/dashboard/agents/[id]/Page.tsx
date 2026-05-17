@@ -305,7 +305,7 @@ export default function AgentDetailPage() {
                   <span className="text-[11px] uppercase tracking-widest text-white/35 shrink-0">
                     Web UI
                   </span>
-                  <span className="text-white/50 font-mono text-xs break-all">
+                  <span className="text-white/74 font-mono text-xs break-all">
                     {adminDetails.webUiUrl}
                   </span>
                 </div>

@@ -1,4 +1,5 @@
 import { type Context, Hono } from "hono";
+import { streamSSE } from "hono/streaming";
 import { ControlPlaneStore, type Job, type Sandbox } from "./store";
 
 export interface ControlPlaneMockOptions {
@@ -16,6 +17,18 @@ export interface ControlPlaneMockOptions {
   hetznerActionPollTimeoutMs?: number;
   /** Stuck-provisioning cutoff in ms (default 10 minutes). */
   stuckProvisioningMs?: number;
+  /** Default warm-pool target size; `agent-hot-pool` cron drives toward this. */
+  hotPoolSize?: number;
+  /** Default agent image used by hot-pool cron. */
+  defaultAgentImage?: string;
+  /** Stub log lines returned by GET /containers/:id/logs. */
+  containerLogLines?: string[];
+  /** Bearer token required on `/api/v1/admin/*` endpoints. */
+  adminToken?: string;
+  /** ms until container create/delete/restart actions resolve. Default 30. */
+  containerActionMs?: number;
+  /** ms between SSE events on the bridge stream. Default 5. */
+  bridgeStreamIntervalMs?: number;
 }
 
 interface HetznerActionResponse {
@@ -40,6 +53,17 @@ export function buildControlPlaneApp(options: ControlPlaneMockOptions): {
   const store = options.store ?? new ControlPlaneStore(now);
   const actionPollTimeoutMs = options.hetznerActionPollTimeoutMs ?? 5000;
   const stuckProvisioningMs = options.stuckProvisioningMs ?? 10 * 60 * 1000;
+  const hotPoolSize = options.hotPoolSize ?? 0;
+  const defaultAgentImage = options.defaultAgentImage ?? "elizaos/agent:latest";
+  const containerLogLines = options.containerLogLines ?? [
+    "[mock] container started",
+    "[mock] health check passed",
+  ];
+  const adminToken = options.adminToken ?? "test-admin-token";
+  const containerActionMs = options.containerActionMs ?? 30;
+  const bridgeStreamIntervalMs = options.bridgeStreamIntervalMs ?? 5;
+
+  store.setHotPoolTarget(hotPoolSize);
 
   const app = new Hono();
 

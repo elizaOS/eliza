@@ -36,7 +36,7 @@ export default function Footer() {
                 href={EXTERNAL_URLS.app}
                 className="text-base text-white transition-colors hover:text-[#FF5800]"
               >
-                Get App
+                Download the app
               </a>
               <a
                 href={EXTERNAL_URLS.os}
