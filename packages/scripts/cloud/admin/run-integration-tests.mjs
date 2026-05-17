@@ -9,6 +9,7 @@ const here = path.dirname(fileURLToPath(import.meta.url));
 const repoRoot = path.resolve(here, "../../../..");
 const cloudApiRoot = path.join(repoRoot, "packages/cloud-api");
 const integrationRoot = path.join(repoRoot, "packages/cloud-api/test/e2e");
+const testCwd = path.join(repoRoot, ".tmp/cloud-integration-bun");
 const bun = process.env.BUN || process.env.npm_execpath || "bun";
 
 const preloadPath = path.join(integrationRoot, "preload.ts");
@@ -38,6 +39,12 @@ const integrationEnv = {
 const isolatedServerFiles = new Set(["packages/cloud-api/test/e2e/agent-token-flow.test.ts"]);
 const isolatedDbFiles = new Set([]);
 
+fs.mkdirSync(testCwd, { recursive: true });
+fs.writeFileSync(
+  path.join(testCwd, "bunfig.toml"),
+  '[test]\ntimeout = 60000\ncoverage = false\n',
+);
+
 function walk(dir) {
   const entries = fs.readdirSync(dir, { withFileTypes: true });
   const files = [];
@@ -66,9 +73,17 @@ function run(label, preload, files) {
   );
   const result = spawnSync(
     bun,
-    ["test", "--max-concurrency=1", "--preload", preload, ...files, "--timeout", timeoutMs],
+    [
+      "test",
+      "--max-concurrency=1",
+      "--preload",
+      preload,
+      ...files.map((file) => path.join(repoRoot, file)),
+      "--timeout",
+      timeoutMs,
+    ],
     {
-      cwd: repoRoot,
+      cwd: testCwd,
       env: integrationEnv,
       stdio: "inherit",
     },
