@@ -1,7 +1,14 @@
 import * as fs from "node:fs/promises";
 import * as os from "node:os";
 import * as path from "node:path";
-import type { IAgentRuntime, Memory, UUID } from "@elizaos/core";
+import {
+  CAPABILITY_ROUTER_SERVICE_TYPE,
+  CapabilityError,
+  type ElizaCapabilityRouter,
+  type IAgentRuntime,
+  type Memory,
+  type UUID,
+} from "@elizaos/core";
 import { describe, expect, it, vi } from "vitest";
 
 import { SandboxService, SessionCwdService } from "../services/index.js";
@@ -13,6 +20,7 @@ interface RuntimeOptions {
   shellTimeoutMs?: number;
   shellHistoryCommands?: string[];
   withShellHistoryService?: boolean;
+  capabilityRouter?: ElizaCapabilityRouter;
 }
 
 async function makeRuntime(opts: RuntimeOptions = {}): Promise<{
@@ -55,8 +63,62 @@ async function makeRuntime(opts: RuntimeOptions = {}): Promise<{
   if (shellHistoryService) {
     services.set("shell", shellHistoryService);
   }
+  if (opts.capabilityRouter) {
+    services.set(CAPABILITY_ROUTER_SERVICE_TYPE, opts.capabilityRouter);
+  }
 
   return { runtime, sandbox, session, shellHistoryService };
+}
+
+function unavailableCapability(
+  capability: "fs" | "pty" | "git" | "model" | "computer",
+  method: string,
+): never {
+  throw new CapabilityError({
+    code: "CAPABILITY_UNAVAILABLE",
+    message: `${capability} unavailable`,
+    capability,
+    method,
+  });
+}
+
+function makeShellRouter(
+  runCommand: ElizaCapabilityRouter["pty"]["runCommand"],
+): ElizaCapabilityRouter {
+  return {
+    environment: "desktop",
+    availability: async () => ({
+      environment: "desktop",
+      available: true,
+      capabilities: {
+        fs: false,
+        pty: true,
+        git: false,
+        model: false,
+        computer: false,
+      },
+    }),
+    fs: {
+      readText: async () => unavailableCapability("fs", "fs.readText"),
+    },
+    pty: { runCommand },
+    git: {
+      status: async () => unavailableCapability("git", "git.status"),
+      diff: async () => unavailableCapability("git", "git.diff"),
+    },
+    model: {
+      status: async () => unavailableCapability("model", "model.status"),
+    },
+    computer: {
+      status: async () => unavailableCapability("computer", "computer.status"),
+      permissions: async () =>
+        unavailableCapability("computer", "computer.permissions"),
+      displays: async () =>
+        unavailableCapability("computer", "computer.displays"),
+      screenshot: async () =>
+        unavailableCapability("computer", "computer.screenshot"),
+    },
+  };
 }
 
 function makeMessage(roomId = "11111111-aaaa-bbbb-cccc-222222222222"): Memory {
@@ -71,6 +133,32 @@ function makeMessage(roomId = "11111111-aaaa-bbbb-cccc-222222222222"): Memory {
 }
 
 describe("shellAction", () => {
+  it("prefers capability router for command execution when available", async () => {
+    const calls: Array<{ command: string; cwd?: string; timeoutMs?: number }> =
+      [];
+    const router = makeShellRouter(async (params) => {
+      calls.push(params);
+      return {
+        output: "routed shell output\n",
+        exitCode: 0,
+        timedOut: false,
+      };
+    });
+    const { runtime } = await makeRuntime({ capabilityRouter: router });
+    const result = await shellAction.handler?.(
+      runtime,
+      makeMessage(),
+      undefined,
+      { command: "echo local shell output" },
+    );
+
+    expect(result.success).toBe(true);
+    expect(result.text).toContain("routed shell output");
+    expect(result.text).not.toContain("--- stdout ---\nlocal shell output");
+    expect(calls).toHaveLength(1);
+    expect(calls[0]?.command).toBe("echo local shell output");
+  });
+
   it("runs a simple foreground command (echo hello)", async () => {
     const { runtime } = await makeRuntime();
     const result = await shellAction.handler?.(
