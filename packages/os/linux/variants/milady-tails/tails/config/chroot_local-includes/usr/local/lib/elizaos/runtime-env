@@ -23,9 +23,9 @@ ELIZAOS_UPDATE_MANIFEST_SHA256=
 
 is_group_or_world_writable() {
     mode="${1}"
-    other="${mode#${mode%?}}"
+    other="${mode#"${mode%?}"}"
     group="${mode%?}"
-    group="${group#${group%?}}"
+    group="${group#"${group%?}"}"
     case "${group}${other}" in
         *2*|*3*|*6*|*7*)
             return 0
@@ -44,6 +44,27 @@ is_safe_env_file() {
         return 1
     fi
     return 0
+}
+
+runtime_env_value() {
+    case "$1" in
+        ELIZAOS_RUNTIME_TRUST) printf '%s' "${ELIZAOS_RUNTIME_TRUST}" ;;
+        ELIZAOS_RUNTIME_STATUS) printf '%s' "${ELIZAOS_RUNTIME_STATUS}" ;;
+        ELIZAOS_RUNTIME_REASON) printf '%s' "${ELIZAOS_RUNTIME_REASON}" ;;
+        ELIZAOS_UPDATE_CHANNEL) printf '%s' "${ELIZAOS_UPDATE_CHANNEL}" ;;
+        ELIZAOS_RUNTIME_DIR) printf '%s' "${ELIZAOS_RUNTIME_DIR}" ;;
+        ELIZAOS_RUNTIME_ROOT) printf '%s' "${ELIZAOS_RUNTIME_ROOT}" ;;
+        ELIZAOS_RUNTIME_BIN_DIR) printf '%s' "${ELIZAOS_RUNTIME_BIN_DIR}" ;;
+        ELIZAOS_BUN) printf '%s' "${ELIZAOS_BUN}" ;;
+        ELIZAOS_LAUNCHER) printf '%s' "${ELIZAOS_LAUNCHER}" ;;
+        ELIZAOS_AGENT_ENTRY) printf '%s' "${ELIZAOS_AGENT_ENTRY}" ;;
+        ELIZAOS_NODE_PATH) printf '%s' "${ELIZAOS_NODE_PATH}" ;;
+        ELIZAOS_MODEL_CATALOG) printf '%s' "${ELIZAOS_MODEL_CATALOG}" ;;
+        ELIZAOS_UPDATE_MANIFEST) printf '%s' "${ELIZAOS_UPDATE_MANIFEST}" ;;
+        ELIZAOS_UPDATE_SEQUENCE) printf '%s' "${ELIZAOS_UPDATE_SEQUENCE}" ;;
+        ELIZAOS_UPDATE_MANIFEST_SHA256) printf '%s' "${ELIZAOS_UPDATE_MANIFEST_SHA256}" ;;
+        *) return 1 ;;
+    esac
 }
 
 if is_safe_env_file; then
@@ -85,7 +106,7 @@ print_env() {
         ELIZAOS_UPDATE_SEQUENCE \
         ELIZAOS_UPDATE_MANIFEST_SHA256
     do
-        eval "value=\${${name}}"
+        value="$(runtime_env_value "${name}")"
         printf '%s=%s\n' "${name}" "$(printf '%s' "${value}" | sed "s/'/'\\\\''/g; s/^/'/; s/$/'/")"
     done
 }
