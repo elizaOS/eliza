@@ -71,6 +71,34 @@ export type FileReadTextResult = {
 	truncated: boolean;
 };
 
+export type FileEntryKind = "file" | "directory" | "symlink" | "other";
+
+export type FileStat = {
+	path: string;
+	name: string;
+	kind: FileEntryKind;
+	size: number;
+	modifiedAt?: string;
+	isText?: boolean;
+};
+
+export type FileListParams = {
+	path?: string;
+	rootId?: string;
+	limit?: number;
+	includeHidden?: boolean;
+	ignore?: string[];
+	traceSessionId?: string;
+};
+
+export type FileListResult = {
+	root: JsonObject;
+	path: string;
+	entries: FileStat[];
+	truncated: boolean;
+	totalAfterIgnore: number;
+};
+
 export type FileWriteTextParams = {
 	path: string;
 	text: string;
@@ -158,6 +186,7 @@ export type LocalModelStatusResult = {
 };
 
 export interface FileCapability {
+	list(params?: FileListParams): Promise<FileListResult>;
 	readText(params: FileReadTextParams): Promise<FileReadTextResult>;
 	writeText(params: FileWriteTextParams): Promise<FileWriteTextResult>;
 }
@@ -186,6 +215,7 @@ export interface ElizaCapabilityRouter {
 }
 
 export type RuntimeBrokerCapabilityMethod =
+	| "fs.list"
 	| "fs.readText"
 	| "fs.writeText"
 	| "pty.command.run"
@@ -215,6 +245,8 @@ export class UnavailableCapabilityRouter implements ElizaCapabilityRouter {
 		private readonly reason = "Capability router is not available.",
 	) {
 		this.fs = {
+			list: (params) =>
+				this.unavailable("fs", "fs.list", paramsToDetails(params)),
 			readText: (params) =>
 				this.unavailable("fs", "fs.readText", { path: params.path }),
 			writeText: (params) =>
@@ -285,6 +317,7 @@ export class RuntimeBrokerCapabilityRouter implements ElizaCapabilityRouter {
 		this.environment = options.environment ?? "desktop";
 		this.invokeRuntime = options.invokeRuntime;
 		this.fs = {
+			list: (params) => this.list(params),
 			readText: (params) => this.readText(params),
 			writeText: (params) => this.writeText(params),
 		};
@@ -311,6 +344,29 @@ export class RuntimeBrokerCapabilityRouter implements ElizaCapabilityRouter {
 				git: true,
 				model: true,
 			},
+		};
+	}
+
+	private async list(params: FileListParams = {}): Promise<FileListResult> {
+		const result = await this.request("fs", "fs.list", {
+			...(params.path === undefined ? {} : { path: params.path }),
+			...(params.rootId === undefined ? {} : { rootId: params.rootId }),
+			...(params.limit === undefined ? {} : { limit: params.limit }),
+			...(params.includeHidden === undefined
+				? {}
+				: { includeHidden: params.includeHidden }),
+			...(params.ignore === undefined ? {} : { ignore: params.ignore }),
+			...(params.traceSessionId === undefined
+				? {}
+				: { traceSessionId: params.traceSessionId }),
+		});
+		const object = requireObject(result, "fs.list");
+		return {
+			root: requireObject(object.root, "fs.list.root"),
+			path: requireString(object, "path", "fs.list"),
+			entries: requireFileStatArray(object, "entries", "fs.list"),
+			truncated: requireBoolean(object, "truncated", "fs.list"),
+			totalAfterIgnore: requireNumber(object, "totalAfterIgnore", "fs.list"),
 		};
 	}
 
@@ -491,6 +547,7 @@ function isFileCapability(value: unknown): value is FileCapability {
 	if (typeof value !== "object" || value === null) return false;
 	const candidate = value as Partial<FileCapability>;
 	return (
+		typeof candidate.list === "function" &&
 		typeof candidate.readText === "function" &&
 		typeof candidate.writeText === "function"
 	);
@@ -591,6 +648,41 @@ function requireObjectArray(
 	throw decodeError(method, `${key} must be an object array.`);
 }
 
+function requireFileStatArray(
+	object: JsonObject,
+	key: string,
+	method: string,
+): FileStat[] {
+	const value = object[key];
+	if (!Array.isArray(value)) {
+		throw decodeError(method, `${key} must be an array.`);
+	}
+	return value.map((entry) => requireFileStat(entry, `${method}.${key}`));
+}
+
+function requireFileStat(value: JsonValue, method: string): FileStat {
+	const object = requireObject(value, method);
+	const kind = requireString(object, "kind", method);
+	if (
+		kind !== "file" &&
+		kind !== "directory" &&
+		kind !== "symlink" &&
+		kind !== "other"
+	) {
+		throw decodeError(method, "kind must be a valid file entry kind.");
+	}
+	const modifiedAt = optionalString(object, "modifiedAt", method);
+	const isText = optionalBoolean(object, "isText", method);
+	return {
+		path: requireString(object, "path", method),
+		name: requireString(object, "name", method),
+		kind,
+		size: requireNumber(object, "size", method),
+		...(modifiedAt === undefined ? {} : { modifiedAt }),
+		...(isText === undefined ? {} : { isText }),
+	};
+}
+
 function requireStringArray(
 	object: JsonObject,
 	key: string,
@@ -648,6 +740,17 @@ function requireBoolean(
 	throw decodeError(method, `${key} must be a boolean.`);
 }
 
+function optionalBoolean(
+	object: JsonObject,
+	key: string,
+	method: string,
+): boolean | undefined {
+	const value = object[key];
+	if (value === undefined) return undefined;
+	if (typeof value === "boolean") return value;
+	throw decodeError(method, `${key} must be a boolean when present.`);
+}
+
 function requireGitOperation(
 	value: JsonValue | undefined,
 	method: string,
@@ -683,4 +786,17 @@ function decodeError(method: string, message: string): CapabilityError {
 		message,
 		method,
 	});
+}
+
+function paramsToDetails(params: FileListParams | undefined): JsonObject {
+	if (!params) return {};
+	return {
+		...(params.path === undefined ? {} : { path: params.path }),
+		...(params.rootId === undefined ? {} : { rootId: params.rootId }),
+		...(params.limit === undefined ? {} : { limit: params.limit }),
+		...(params.includeHidden === undefined
+			? {}
+			: { includeHidden: params.includeHidden }),
+		...(params.ignore === undefined ? {} : { ignore: params.ignore }),
+	};
 }

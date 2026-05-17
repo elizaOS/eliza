@@ -116,6 +116,13 @@ function parseListParams(params?: JsonValue): FileListParams {
 		...(typeof params.includeHidden === "boolean"
 			? { includeHidden: params.includeHidden }
 			: {}),
+		...(Array.isArray(params.ignore)
+			? {
+					ignore: params.ignore.filter(
+						(entry): entry is string => typeof entry === "string",
+					),
+				}
+			: {}),
 	};
 }
 

@@ -39,6 +39,7 @@ function makeWriteRouter(
       },
     }),
     fs: {
+      list: async () => unavailableCapability("fs", "fs.list"),
       readText: async () => unavailableCapability("fs", "fs.readText"),
       writeText,
     },

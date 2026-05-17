@@ -64,6 +64,9 @@ export class FileSatelliteService {
 			this.limits.maxDirectoryEntries,
 			this.limits.maxDirectoryEntries,
 		);
+		const ignoreMatchers = (params.ignore ?? [])
+			.filter((entry) => entry.length > 0)
+			.map((entry) => globToRegExp(entry));
 		const guarded = await this.pathGuard.resolvePath({
 			path: params.path,
 			rootId: params.rootId,
@@ -80,10 +83,11 @@ export class FileSatelliteService {
 
 		const entries = await readdir(guarded.realPath, { withFileTypes: true });
 		const result: FileStat[] = [];
+		let totalAfterIgnore = 0;
 		for (const entry of entries.sort((left, right) =>
 			left.name.localeCompare(right.name),
 		)) {
-			if (result.length >= limit) break;
+			if (ignoreMatchers.some((matcher) => matcher.test(entry.name))) continue;
 			const entryPath = path.join(guarded.realPath, entry.name);
 			let entryGuarded: GuardedPath;
 			try {
@@ -95,7 +99,9 @@ export class FileSatelliteService {
 				continue;
 			}
 			try {
-				result.push(await this.toFileStat(entryGuarded));
+				const stat = await this.toFileStat(entryGuarded);
+				totalAfterIgnore += 1;
+				if (result.length < limit) result.push(stat);
 			} catch {
 				continue;
 			}
@@ -105,6 +111,8 @@ export class FileSatelliteService {
 			root: guarded.root,
 			path: guarded.realPath,
 			entries: result,
+			truncated: totalAfterIgnore > result.length,
+			totalAfterIgnore,
 		};
 	}
 
@@ -331,6 +339,42 @@ function isLikelyBinaryBuffer(buffer: Buffer): boolean {
 		if (byte < 7 || (byte > 14 && byte < 32)) suspicious += 1;
 	}
 	return suspicious / buffer.length > 0.1;
+}
+
+function globToRegExp(pattern: string): RegExp {
+	let regex = "";
+	let index = 0;
+	while (index < pattern.length) {
+		const character = pattern[index];
+		if (character === "*") {
+			if (pattern[index + 1] === "*") {
+				const after = pattern[index + 2];
+				if (after === "/") {
+					regex += "(?:.*/)?";
+					index += 3;
+				} else {
+					regex += ".*";
+					index += 2;
+				}
+			} else {
+				regex += "[^/]*";
+				index += 1;
+			}
+		} else if (character === "?") {
+			regex += "[^/]";
+			index += 1;
+		} else if (character === ".") {
+			regex += "\\.";
+			index += 1;
+		} else if ("+^$()|[]{}\\".includes(character ?? "")) {
+			regex += `\\${character}`;
+			index += 1;
+		} else {
+			regex += character;
+			index += 1;
+		}
+	}
+	return new RegExp(`^${regex}$`);
 }
 
 function clampLimit(

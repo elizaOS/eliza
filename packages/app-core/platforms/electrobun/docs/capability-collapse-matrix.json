@@ -1,15 +1,15 @@
 {
   "version": 1,
   "expertDecision": {
-    "nextAction": "finish plugin-coding-tools edit/search/list parity decisions before adding packages/ui trace renderers",
+    "nextAction": "finish plugin-coding-tools grep/glob parity decisions, then first-class edit/patch parity, before adding packages/ui trace renderers",
     "rationale": "Capability routing is already partially implemented for plugin-coding-tools. The remaining direct local filesystem mechanics are a permission, trace, and behavior-drift risk. Reusable trace components should follow once execution boundaries are coherent."
   },
   "pluginCodingToolsFsParity": [
     {
       "operation": "ls",
       "currentPluginBehavior": "Session cwd fallback, sandbox path validation, ignore globs, directory-first ordering, file/dir/symlink display, and a 1000-entry cap.",
-      "currentSatelliteParity": "fs.list has root guard, hidden/generated exclusions, limits, and typed FileStat entries, but no plugin ignore-glob input and different ordering/output semantics.",
-      "decision": "Route after router and Satellite params preserve ignore patterns and plugin formatting can be rebuilt from FileStat."
+      "currentSatelliteParity": "fs.list has root guard, hidden/generated exclusions, limits, typed FileStat entries, ignore patterns, and truncation metadata.",
+      "decision": "Routed through capability-router.fs.list with plugin-owned cwd fallback, sandbox validation, directory-first formatting, and local fallback when the router is absent or explicitly unavailable."
     },
     {
       "operation": "grep",
@@ -42,7 +42,7 @@
       "nonDesktopBehavior": "existing-plugin-fallback",
       "firstRoutingCandidate": true,
       "risk": "low",
-      "notes": "FILE read/write/edit/list/search remains the coding tool semantic surface. Desktop file content reads and writes prefer the capability router and fall back to the existing sandboxed path when no router is registered or FS is explicitly unavailable."
+      "notes": "FILE list/read/write/edit/search remains the coding tool semantic surface. Desktop file listing, content reads, and writes prefer the capability router and fall back to the existing sandboxed path when no router is registered or FS is explicitly unavailable."
     },
     {
       "pluginId": "plugin-coding-tools",

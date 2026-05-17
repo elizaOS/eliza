@@ -103,6 +103,14 @@ describe("READ", () => {
         },
       }),
       fs: {
+        list: async () => {
+          throw new CapabilityError({
+            code: "CAPABILITY_UNAVAILABLE",
+            message: "fs unavailable",
+            capability: "fs",
+            method: "fs.list",
+          });
+        },
         readText: async (params) => {
           calls.push(params.path);
           return {

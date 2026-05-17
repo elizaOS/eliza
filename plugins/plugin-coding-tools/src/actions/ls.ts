@@ -3,6 +3,9 @@ import * as path from "node:path";
 
 import {
   type ActionResult,
+  CapabilityError,
+  type FileStat as CapabilityFileStat,
+  getCapabilityRouter,
   logger as coreLogger,
   type HandlerCallback,
   type IAgentRuntime,
@@ -33,6 +36,12 @@ interface LsEntry {
   type: EntryType;
   size?: number;
 }
+
+type ListPayload = {
+  entries: LsEntry[];
+  truncated: boolean;
+  totalAfterIgnore: number;
+};
 
 function globToRegExp(pattern: string): RegExp {
   let regex = "";
@@ -68,6 +77,85 @@ function globToRegExp(pattern: string): RegExp {
     }
   }
   return new RegExp(`^${regex}$`);
+}
+
+function toLsEntry(stat: CapabilityFileStat): LsEntry {
+  const type: EntryType =
+    stat.kind === "directory"
+      ? "dir"
+      : stat.kind === "symlink"
+        ? "symlink"
+        : "file";
+  return type === "file" && stat.size !== undefined
+    ? { name: stat.name, type, size: stat.size }
+    : { name: stat.name, type };
+}
+
+function sortLsEntries(entries: LsEntry[]): LsEntry[] {
+  const dirEntries = entries
+    .filter((entry) => entry.type === "dir")
+    .sort((left, right) => left.name.localeCompare(right.name));
+  const fileEntries = entries
+    .filter((entry) => entry.type !== "dir")
+    .sort((left, right) => left.name.localeCompare(right.name));
+  return [...dirEntries, ...fileEntries];
+}
+
+function formatLsText(params: {
+  dir: string;
+  sorted: LsEntry[];
+  truncated: boolean;
+  totalAfterIgnore: number;
+}): string {
+  const lines = [
+    `Directory: ${params.dir}`,
+    ...params.sorted.map((entry) =>
+      entry.type === "dir" ? `${entry.name}/` : entry.name,
+    ),
+  ];
+  if (params.truncated) {
+    lines.push(
+      `…[truncated, listed ${params.sorted.length} of ${params.totalAfterIgnore} entries]`,
+    );
+  }
+  return lines.join("\n");
+}
+
+async function listWithCapabilityRouter(params: {
+  runtime: IAgentRuntime;
+  dir: string;
+  ignore: string[];
+}): Promise<
+  | { ok: true; payload: ListPayload }
+  | { ok: false; reason: "unavailable" | "failed"; message: string }
+> {
+  const router = getCapabilityRouter(params.runtime);
+  if (!router) return { ok: false, reason: "unavailable", message: "" };
+  try {
+    const result = await router.fs.list({
+      path: params.dir,
+      limit: ENTRY_LIMIT,
+      includeHidden: true,
+      ...(params.ignore.length === 0 ? {} : { ignore: params.ignore }),
+    });
+    return {
+      ok: true,
+      payload: {
+        entries: result.entries.map(toLsEntry),
+        truncated: result.truncated,
+        totalAfterIgnore: result.totalAfterIgnore,
+      },
+    };
+  } catch (error) {
+    if (
+      error instanceof CapabilityError &&
+      error.code === "CAPABILITY_UNAVAILABLE"
+    ) {
+      return { ok: false, reason: "unavailable", message: error.message };
+    }
+    const message = error instanceof Error ? error.message : String(error);
+    return { ok: false, reason: "failed", message };
+  }
 }
 
 export async function lsHandler(
@@ -118,6 +206,40 @@ export async function lsHandler(
       (entry): entry is string => typeof entry === "string" && entry.length > 0,
     )
     .map((entry) => globToRegExp(entry));
+  const ignore = ignoreRaw?.filter(
+    (entry): entry is string => typeof entry === "string" && entry.length > 0,
+  ) ?? [];
+
+  const routed = await listWithCapabilityRouter({
+    runtime,
+    dir,
+    ignore,
+  });
+  if (routed.ok) {
+    const sorted = sortLsEntries(routed.payload.entries);
+    const text = formatLsText({
+      dir,
+      sorted,
+      truncated: routed.payload.truncated,
+      totalAfterIgnore: routed.payload.totalAfterIgnore,
+    });
+    coreLogger.debug(
+      `${CODING_TOOLS_LOG_PREFIX} LS dir=${dir} count=${sorted.length} truncated=${routed.payload.truncated}`,
+    );
+
+    if (callback) await callback({ text, source: "coding-tools" });
+
+    return successActionResult(text, {
+      entries: sorted,
+      truncated: routed.payload.truncated,
+    });
+  }
+  if (routed.reason === "failed") {
+    return failureToActionResult({
+      reason: "io_error",
+      message: `readdir failed: ${routed.message}`,
+    });
+  }
 
   let names: string[];
   try {
@@ -159,24 +281,8 @@ export async function lsHandler(
     enriched.push(size === undefined ? { name, type } : { name, type, size });
   }
 
-  const dirEntries = enriched
-    .filter((e) => e.type === "dir")
-    .sort((a, b) => a.name.localeCompare(b.name));
-  const fileEntries = enriched
-    .filter((e) => e.type !== "dir")
-    .sort((a, b) => a.name.localeCompare(b.name));
-  const sorted: LsEntry[] = [...dirEntries, ...fileEntries];
-
-  const lines = [
-    `Directory: ${dir}`,
-    ...sorted.map((e) => (e.type === "dir" ? `${e.name}/` : e.name)),
-  ];
-  if (truncated) {
-    lines.push(
-      `…[truncated, listed ${ENTRY_LIMIT} of ${totalAfterIgnore} entries]`,
-    );
-  }
-  const text = lines.join("\n");
+  const sorted = sortLsEntries(enriched);
+  const text = formatLsText({ dir, sorted, truncated, totalAfterIgnore });
 
   coreLogger.debug(
     `${CODING_TOOLS_LOG_PREFIX} LS dir=${dir} count=${sorted.length} truncated=${truncated}`,

@@ -8,13 +8,13 @@ Plugins remain the elizaOS runtime extension layer. They own agent-facing action
 
 Satellites own desktop/system implementation behind the Electrobun host boundary. A plugin should use a shared capability router when it needs local filesystem, terminal, local Git, or local model host coordination in the desktop shell. The router targets `eliza.runtime`, and `eliza.runtime` brokers to the concrete Satellite.
 
-The first implemented routes are narrow `plugin-coding-tools` paths: FILE read/write prefers `eliza.fs`, SHELL command execution prefers `eliza.pty`, and WORKTREE local Git helpers prefer `eliza.git` through the shared capability router. If the router is absent or explicitly unavailable, the existing local implementation remains the fallback.
+The first implemented routes are narrow `plugin-coding-tools` paths: FILE ls/read/write prefers `eliza.fs`, SHELL command execution prefers `eliza.pty`, and WORKTREE local Git helpers prefer `eliza.git` through the shared capability router. If the router is absent or explicitly unavailable, the existing local implementation remains the fallback.
 
 ## Collapse Immediately Candidates
 
 | Plugin | Capability | Route | Mode | Risk |
 | --- | --- | --- | --- | --- |
-| `plugin-coding-tools` | filesystem read/write | `eliza.fs` | facade-over-satellite | low |
+| `plugin-coding-tools` | filesystem list/read/write | `eliza.fs` | facade-over-satellite | low |
 | `plugin-coding-tools` | terminal | `eliza.pty` | facade-over-satellite | medium |
 | `plugin-coding-tools` | local Git | `eliza.git` | facade-over-satellite | medium |
 
@@ -78,10 +78,10 @@ These are not Phase 19 implementation targets. They need overlap review before a
 The routed paths are:
 
 ```text
-plugin-coding-tools FILE read/write
+plugin-coding-tools FILE ls/read/write
   -> runtime.getService("capability-router")
-  -> router.fs.readText() / router.fs.writeText()
-  -> eliza.runtime fs.readText / fs.writeText
+  -> router.fs.list() / router.fs.readText() / router.fs.writeText()
+  -> eliza.runtime fs.list / fs.readText / fs.writeText
   -> eliza.fs
 
 plugin-coding-tools SHELL
@@ -105,26 +105,25 @@ The shared fallback router returns structured `CAPABILITY_UNAVAILABLE` errors. P
 
 ## Remaining Conflicts
 
-- `plugin-coding-tools` still has direct local edit/search/list paths that need per-operation Satellite parity before routing.
+- `plugin-coding-tools` still has direct local edit/search paths that need per-operation Satellite parity before routing.
 - `plugin-browser` and `plugin-computeruse` overlap with possible future `eliza.computer` scope.
 - `plugin-local-inference` must keep provider ownership while `eliza.local-model` controls desktop status/routing.
 - `plugin-native-system` needs owner review before any implementation collapse.
 
 ## plugin-coding-tools FS Parity Decision
 
-Do not route the remaining edit/search/list paths through `eliza.fs` as a batch. Route them only after explicit per-method parity is in place.
+Do not route the remaining edit/search paths through `eliza.fs` as a batch. Route them only after explicit per-method parity is in place.
 
 | Path | Current plugin behavior | Current `eliza.fs` parity | Decision |
 | --- | --- | --- | --- |
-| `FILE action=ls` | Session cwd fallback, absolute path validation, ignore globs, directory-first ordering, file/dir/symlink display, 1000-entry cap. | `fs.list` has root guard, hidden/generated exclusions, limits, and typed stats, but no plugin ignore-glob input and different ordering/output semantics. | Route after router exposes list params that preserve ignore patterns and plugin formatting can be rebuilt from typed `FileStat`. |
+| `FILE action=ls` | Session cwd fallback, absolute path validation, ignore globs, directory-first ordering, file/dir/symlink display, 1000-entry cap. | `fs.list` has root guard, hidden/generated exclusions, limits, typed stats, ignore patterns, and truncation metadata. `plugin-coding-tools` still owns cwd fallback, sandbox validation, and output formatting. | Routed through `capability-router.fs.list()` with local fallback when the router is absent or explicitly unavailable. |
 | `FILE action=grep` | Ripgrep-backed regex search with output modes, glob/type filters, context flags, case-insensitive and multiline options, head limit, VCS excludes. | `fs.search` is literal case-insensitive substring search with path/root/limit/includeHidden only. | Do not route yet. Add a search method with ripgrep-equivalent options or keep plugin-owned search until parity exists. |
 | `FILE action=glob` | File globbing with VCS/generated excludes, recent-file ordering by mtime, 100-result cap. | No direct glob/list-recursive method with pattern semantics. | Do not route yet. Add explicit glob/find parity before routing. |
 | `FILE action=edit` | Must-read-first/stale-read gate, exact substring replacement, optional replace-all, ambiguity protection, secret detection, line reporting. | `fs.writeText` overwrites full text only and has no compare-and-swap, old-string match, patch, secret gate, or read-state contract. | Do not route through generic write. Add an explicit edit/patch method or keep local implementation. |
 
 Safe routing order:
 
-1. `ls`, once ignore/filter semantics are represented in router/Satellite params.
-2. `grep` and `glob`, only after search/glob semantics are explicit rather than approximated.
-3. `edit`, only after the Satellite has a first-class edit/patch operation with stale-read or expected-content protection.
+1. `grep` and `glob`, only after search/glob semantics are explicit rather than approximated.
+2. `edit`, only after the Satellite has a first-class edit/patch operation with stale-read or expected-content protection.
 
 The review boundary stays small: each method should land as its own commit with focused tests.

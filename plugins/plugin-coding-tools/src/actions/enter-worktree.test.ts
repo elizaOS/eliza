@@ -118,6 +118,9 @@ function makeGitRouter(
       },
     }),
     fs: {
+      list: async () => {
+        throw new Error("fs unavailable");
+      },
       readText: async () => {
         throw new Error("fs unavailable");
       },

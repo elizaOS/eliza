@@ -98,6 +98,7 @@ function makeShellRouter(
       },
     }),
     fs: {
+      list: async () => unavailableCapability("fs", "fs.list"),
       readText: async () => unavailableCapability("fs", "fs.readText"),
       writeText: async () => unavailableCapability("fs", "fs.writeText"),
     },

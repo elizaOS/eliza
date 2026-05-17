@@ -62,6 +62,66 @@ describe("capability router", () => {
 		]);
 	});
 
+	it("routes desktop directory listings through the runtime broker", async () => {
+		const calls: Array<{ method: string; params?: object }> = [];
+		const router = new RuntimeBrokerCapabilityRouter({
+			invokeRuntime: async (method, params) => {
+				calls.push({ method, params });
+				return {
+					root: { id: "workspace", path: "/repo" },
+					path: "/repo/src",
+					entries: [
+						{
+							path: "/repo/src/index.ts",
+							name: "index.ts",
+							kind: "file",
+							size: 42,
+							modifiedAt: "2026-05-17T00:00:00.000Z",
+							isText: true,
+						},
+					],
+					truncated: false,
+					totalAfterIgnore: 1,
+				};
+			},
+		});
+
+		await expect(
+			router.fs.list({
+				path: "/repo/src",
+				limit: 100,
+				includeHidden: true,
+				ignore: ["*.log"],
+			}),
+		).resolves.toEqual({
+			root: { id: "workspace", path: "/repo" },
+			path: "/repo/src",
+			entries: [
+				{
+					path: "/repo/src/index.ts",
+					name: "index.ts",
+					kind: "file",
+					size: 42,
+					modifiedAt: "2026-05-17T00:00:00.000Z",
+					isText: true,
+				},
+			],
+			truncated: false,
+			totalAfterIgnore: 1,
+		});
+		expect(calls).toEqual([
+			{
+				method: "fs.list",
+				params: {
+					path: "/repo/src",
+					limit: 100,
+					includeHidden: true,
+					ignore: ["*.log"],
+				},
+			},
+		]);
+	});
+
 	it("routes desktop file writes through the runtime broker", async () => {
 		const calls: Array<{ method: string; params?: object }> = [];
 		const router = new RuntimeBrokerCapabilityRouter({

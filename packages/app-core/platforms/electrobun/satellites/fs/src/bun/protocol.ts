@@ -40,12 +40,15 @@ export type FileListParams = {
 	rootId?: string;
 	limit?: number;
 	includeHidden?: boolean;
+	ignore?: string[];
 };
 
 export type FileListResult = {
 	root: FileRoot;
 	path: string;
 	entries: FileStat[];
+	truncated: boolean;
+	totalAfterIgnore: number;
 };
 
 export type FileReadTextParams = {
