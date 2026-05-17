@@ -4,6 +4,18 @@
 // imports to statically resolve. Every export here is an inert stub.
 
 const noop = () => undefined;
+const noopProxyHandler: ProxyHandler<typeof noop> = {
+  get: (_target, key) => (key === "prototype" ? noop.prototype : noop),
+  apply: () => undefined,
+  ownKeys: (target) => Reflect.ownKeys(target),
+  getOwnPropertyDescriptor: (target, key) =>
+    Reflect.getOwnPropertyDescriptor(target, key) ?? {
+      configurable: true,
+      enumerable: false,
+      value: noop,
+      writable: true,
+    },
+};
 
 // Sync void / secret / URL resolvers — server-only, nothing to resolve or
 // mutate in a renderer.
@@ -49,4 +61,4 @@ export const isCloudProvisionedContainer = (): boolean => false;
 // Cloud client — server-only; the renderer never opens a cloud connection.
 export class ElizaCloudClient {}
 
-export default new Proxy(noop, { get: () => noop, apply: () => undefined });
+export default new Proxy(noop, noopProxyHandler);
