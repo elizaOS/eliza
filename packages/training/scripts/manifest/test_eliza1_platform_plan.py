@@ -55,16 +55,30 @@ def test_dflash_required_files_match_bundle_layout() -> None:
     assert "dflash/target-meta.json" in tier_plan.required_files
     assert "dflash/eliza-1-drafter-4b.gguf" not in tier_plan.required_files
     small_plan = build_plan()["0_8b"]
-    assert "dflash/drafter-0_8b.gguf" not in small_plan.required_files
+    assert "dflash/drafter-0_8b.gguf" in small_plan.required_files
     assert "dflash/target-meta.json" in small_plan.required_files
     assert "licenses/LICENSE.dflash" in small_plan.required_files
 
 
-def test_text_contexts_use_128k_floor() -> None:
+def test_text_contexts_ship_half_and_native_contexts() -> None:
     plan = build_plan()
     for tier in ("0_8b", "2b", "4b", "9b", "27b"):
-        assert plan[tier].contexts == ("128k",)
+        assert plan[tier].contexts == ("128k", "256k")
         assert f"text/eliza-1-{tier}-128k.gguf" in plan[tier].required_files
+        assert f"text/eliza-1-{tier}-256k.gguf" in plan[tier].required_files
+    assert plan["27b-256k"].contexts == ("128k", "256k")
+    assert "text/eliza-1-27b-128k.gguf" in plan["27b-256k"].required_files
+    assert "text/eliza-1-27b-256k.gguf" in plan["27b-256k"].required_files
+
+
+def test_imagegen_required_files_match_tier_defaults() -> None:
+    plan = build_plan()
+    for tier in ("0_8b", "2b", "4b"):
+        assert "imagegen/sd-1.5-Q5_0.gguf" in plan[tier].required_files
+        assert "imagegen/z-image-turbo-Q4_K_M.gguf" not in plan[tier].required_files
+    for tier in ("9b", "27b", "27b-256k"):
+        assert "imagegen/z-image-turbo-Q4_K_M.gguf" in plan[tier].required_files
+        assert "imagegen/sd-1.5-Q5_0.gguf" not in plan[tier].required_files
 
 
 def test_voice_artifacts_follow_kokoro_omnivoice_boundary() -> None:

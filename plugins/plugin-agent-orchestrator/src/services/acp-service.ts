@@ -577,7 +577,7 @@ export class AcpService extends Service {
     return new Promise((resolveRun) => {
       const proc = spawn(this.cliPath, opts.args, {
         cwd: opts.workdir,
-        env: this.buildEnv(opts.env),
+        env: this.buildEnv(opts.env, undefined, undefined, opts.agentType),
         stdio: ["pipe", "pipe", "pipe"],
       });
       const record: ProcessRecord = {
@@ -923,7 +923,13 @@ export class AcpService extends Service {
     for (const [key, value] of Object.entries(extra ?? {})) {
       if (typeof value === "string") env[key] = value;
     }
-    if (model) {
+    if (agentType === "elizaos") {
+      delete env.ANTHROPIC_MODEL;
+      delete env.OPENCODE_CONFIG_CONTENT;
+      delete env.OPENCODE_MODEL;
+      delete env.OPENAI_MODEL;
+    }
+    if (model && agentType !== "elizaos") {
       env.OPENAI_MODEL = model;
       if (agentType === "claude") env.ANTHROPIC_MODEL = model;
       if (agentType === "opencode") env.OPENCODE_MODEL = model;
@@ -1050,6 +1056,7 @@ function shouldForwardEnv(key: string): boolean {
       "CEREBRAS_API_KEY",
       "CEREBRAS_BASE_URL",
       "CEREBRAS_MODEL",
+      "OPENAI_BASE_URL",
       "OPENAI_MODEL",
       "ANTHROPIC_MODEL",
       "OPENCODE_MODEL",

@@ -12,8 +12,10 @@
 
 import fs from "node:fs";
 import os from "node:os";
+import { execFileSync } from "node:child_process";
 import type { Eliza1Backend, Eliza1DeviceCaps } from "./manifest";
 import type {
+	CpuFeatureProbe,
 	HardwareProbe,
 	ModelBucket,
 	OpenVinoDeviceKind,
@@ -47,6 +49,106 @@ function recommendBucket(
 	if (effective >= 18) return "large";
 	if (effective >= 9) return "mid";
 	return "small";
+}
+
+interface CpuFeatureDetectionHost {
+	platform?: NodeJS.Platform;
+	arch?: NodeJS.Architecture;
+	readFileSync?: (path: string, encoding: BufferEncoding) => string;
+	execFileSync?: (
+		file: string,
+		args: readonly string[],
+		options: { encoding: BufferEncoding; stdio: "pipe" },
+	) => string;
+}
+
+const DARWIN_ARM_FEATURE_SYSCTLS: Readonly<
+	Array<[keyof CpuFeatureProbe, string]>
+> = [
+	["dotprod", "hw.optional.arm.FEAT_DotProd"],
+	["i8mm", "hw.optional.arm.FEAT_I8MM"],
+	["sve", "hw.optional.arm.FEAT_SVE"],
+	["sve2", "hw.optional.arm.FEAT_SVE2"],
+];
+
+function emptyCpuFeatures(): CpuFeatureProbe {
+	return {
+		neon: false,
+		dotprod: false,
+		i8mm: false,
+		sve: false,
+		sve2: false,
+	};
+}
+
+function linuxArmFeatureTokens(cpuinfo: string): Set<string> {
+	const tokens = new Set<string>();
+	for (const line of cpuinfo.split(/\r?\n/)) {
+		const [rawKey, rawValue] = line.split(":", 2);
+		if (!rawKey || !rawValue) continue;
+		const key = rawKey.trim().toLowerCase();
+		if (key !== "features" && key !== "flags") continue;
+		for (const token of rawValue.trim().toLowerCase().split(/\s+/)) {
+			if (token) tokens.add(token);
+		}
+	}
+	return tokens;
+}
+
+export function detectCpuFeatures(
+	host: CpuFeatureDetectionHost = {},
+): CpuFeatureProbe | undefined {
+	const platform = host.platform ?? process.platform;
+	const arch = host.arch ?? process.arch;
+	if (arch !== "arm64" && arch !== "arm") return undefined;
+
+	if (platform === "linux" || platform === "android") {
+		const readFileSync = host.readFileSync ?? fs.readFileSync;
+		try {
+			const tokens = linuxArmFeatureTokens(
+				readFileSync("/proc/cpuinfo", "utf8"),
+			);
+			const features = emptyCpuFeatures();
+			features.neon = tokens.has("asimd") || tokens.has("neon");
+			features.dotprod = tokens.has("asimddp") || tokens.has("dotprod");
+			features.i8mm = tokens.has("i8mm") || tokens.has("asimdi8mm");
+			features.sve = tokens.has("sve");
+			features.sve2 = tokens.has("sve2");
+			return features;
+		} catch {
+			return undefined;
+		}
+	}
+
+	if (platform === "darwin") {
+		const run = host.execFileSync ?? execFileSync;
+		const features = emptyCpuFeatures();
+		// Arm64 Darwin requires Advanced SIMD/NEON. Some macOS releases do not
+		// expose a stable sysctl for it, so use the ABI guarantee for baseline.
+		features.neon = true;
+		for (const [feature, key] of DARWIN_ARM_FEATURE_SYSCTLS) {
+			try {
+				const value = run("sysctl", ["-n", key], {
+					encoding: "utf8",
+					stdio: "pipe",
+				});
+				const normalizedValue =
+					typeof value === "string" ? value.trim() : value.toString().trim();
+				features[feature] =
+					normalizedValue === "1" || normalizedValue.toLowerCase() === "true";
+			} catch {
+				features[feature] = false;
+			}
+		}
+		return features;
+	}
+
+	return undefined;
+}
+
+export function hasUsableArmCpuBackend(probe: HardwareProbe): boolean {
+	if (probe.arch !== "arm64" && probe.arch !== "arm") return true;
+	return probe.cpuFeatures?.neon === true;
 }
 
 type LlamaBindingGpu = "cuda" | "metal" | "vulkan" | false;
@@ -224,6 +326,7 @@ export async function probeHardware(): Promise<HardwareProbe> {
 	const arch = process.arch;
 	const appleSilicon = platform === "darwin" && arch === "arm64";
 	const openvino = detectOpenVinoDevices();
+	const cpuFeatures = detectCpuFeatures({ platform, arch });
 
 	const binding = await loadLlamaBinding();
 
@@ -237,6 +340,7 @@ export async function probeHardware(): Promise<HardwareProbe> {
 			freeRamGb: bytesToGb(freeRamBytes),
 			gpu: null,
 			cpuCores,
+			cpuFeatures,
 			platform,
 			arch,
 			appleSilicon,
@@ -266,6 +370,7 @@ export async function probeHardware(): Promise<HardwareProbe> {
 			freeRamGb: bytesToGb(freeRamBytes),
 			gpu: null,
 			cpuCores,
+			cpuFeatures,
 			platform,
 			arch,
 			appleSilicon,
@@ -283,6 +388,7 @@ export async function probeHardware(): Promise<HardwareProbe> {
 			freeRamGb,
 			gpu: null,
 			cpuCores,
+			cpuFeatures,
 			platform,
 			arch,
 			appleSilicon,
@@ -305,6 +411,7 @@ export async function probeHardware(): Promise<HardwareProbe> {
 			freeVramGb,
 		},
 		cpuCores,
+		cpuFeatures,
 		platform,
 		arch,
 		appleSilicon,
@@ -331,7 +438,9 @@ export async function probeHardware(): Promise<HardwareProbe> {
  * is a system-RAM floor in every manifest.
  */
 export function deviceCapsFromProbe(probe: HardwareProbe): Eliza1DeviceCaps {
-	const backends: Eliza1Backend[] = ["cpu"];
+	const backends: Eliza1Backend[] = hasUsableArmCpuBackend(probe)
+		? ["cpu"]
+		: [];
 	const gpuBackend = probe.gpu?.backend;
 	if (
 		gpuBackend === "metal" ||
@@ -343,6 +452,7 @@ export function deviceCapsFromProbe(probe: HardwareProbe): Eliza1DeviceCaps {
 	return {
 		availableBackends: backends,
 		ramMb: Math.round(probe.totalRamGb * 1024),
+		cpuFeatures: probe.cpuFeatures,
 	};
 }
 

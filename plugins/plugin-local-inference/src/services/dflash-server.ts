@@ -46,6 +46,11 @@ import {
 	type DflashVerifyStats,
 	parseDflashVerifyEventsFromSseChunk,
 } from "./dflash-verify-event";
+import {
+	selectGpuConfig,
+	type SelectedGpuConfig,
+} from "./gpu-autotune";
+import { detectGpu } from "./gpu-detect";
 import { probeHardware } from "./hardware";
 import { inferenceTelemetry } from "./inference-telemetry";
 import {
@@ -144,6 +149,8 @@ export interface DflashServerPlan {
 	disabledDrafterReason?: string;
 	/** Absolute path to a multimodal projector GGUF passed to llama-server as --mmproj. */
 	mmprojPath?: string;
+	/** Catalog bundle id used to narrow GPU autotune recommendations. */
+	bundleId?: string;
 }
 
 export interface DflashRuntimeLoadConfig {
@@ -2764,6 +2771,37 @@ export function applyGpuProfile(args: string[], profile: GpuProfile): string[] {
 	return args;
 }
 
+function selectCudaGpuAutotune(
+	bundleId?: string,
+): SelectedGpuConfig | null {
+	const detected = detectGpu();
+	if (!detected.nvidiaPresent || !detected.gpu || !detected.profile) {
+		return null;
+	}
+	const selected = selectGpuConfig(detected.gpu, { bundleId });
+	return selected?.source === "match" ? selected : null;
+}
+
+function mergeGpuAutotuneOptimizations(
+	optimizations: LocalRuntimeOptimizations | null | undefined,
+	selected: SelectedGpuConfig | null,
+): LocalRuntimeOptimizations | null {
+	if (!selected) return optimizations ?? null;
+	const flags = selected.flags;
+	return {
+		...(optimizations ?? {}),
+		parallel: optimizations?.parallel ?? flags.n_parallel,
+		batchSize: optimizations?.batchSize ?? flags.batch_size,
+		ubatchSize: optimizations?.ubatchSize ?? flags.ubatch_size,
+		ctxCheckpoints: optimizations?.ctxCheckpoints ?? flags.ctx_checkpoints,
+		ctxCheckpointInterval:
+			optimizations?.ctxCheckpointInterval ?? flags.ctx_checkpoint_interval,
+		flashAttention: optimizations?.flashAttention ?? flags.flash_attn,
+		mlock: optimizations?.mlock ?? flags.mlock,
+		noMmap: optimizations?.noMmap ?? flags.no_mmap,
+	};
+}
+
 /**
  * Default eviction sweep interval. Set to 5 minutes to match the short
  * TTL — a slot file at most one short-TTL window stale before it's
@@ -3287,6 +3325,7 @@ export class DflashLlamaServer implements LocalInferenceBackend {
 				kvSpillPlan,
 				params: catalog?.params,
 				mmprojPath: overrides?.mmprojPath,
+				bundleId: catalog?.id,
 			},
 			optimizations,
 		);
@@ -3364,10 +3403,19 @@ export class DflashLlamaServer implements LocalInferenceBackend {
 
 		const port = await resolvePort();
 		const host = process.env.ELIZA_DFLASH_HOST?.trim() || DEFAULT_HOST;
+		const gpuAutotune = selectCudaGpuAutotune(effectivePlan.bundleId);
+		const tunedOptimizations = mergeGpuAutotuneOptimizations(
+			optimizations ?? null,
+			gpuAutotune,
+		);
 		const requestedCacheTypeK =
-			process.env.ELIZA_DFLASH_CACHE_TYPE_K?.trim() || effectivePlan.cacheTypeK;
+			process.env.ELIZA_DFLASH_CACHE_TYPE_K?.trim() ||
+			effectivePlan.cacheTypeK ||
+			gpuAutotune?.flags.cache_type_k;
 		const requestedCacheTypeV =
-			process.env.ELIZA_DFLASH_CACHE_TYPE_V?.trim() || effectivePlan.cacheTypeV;
+			process.env.ELIZA_DFLASH_CACHE_TYPE_V?.trim() ||
+			effectivePlan.cacheTypeV ||
+			gpuAutotune?.flags.cache_type_v;
 		const runtimeCacheTypes = resolveRuntimeCacheTypes({
 			binaryPath: status.binaryPath,
 			targetModelPath: effectivePlan.targetModelPath,
@@ -3379,7 +3427,7 @@ export class DflashLlamaServer implements LocalInferenceBackend {
 		const usableRamMb =
 			Math.round(os.totalmem() / BYTES_PER_MB_DFLASH) - ramHeadroomReserveMb();
 		const parallel = resolveParallel(
-			optimizations?.parallel,
+			tunedOptimizations?.parallel,
 			effectivePlan.params
 				? {
 						contextSize: effectivePlan.contextSize,
@@ -3389,8 +3437,12 @@ export class DflashLlamaServer implements LocalInferenceBackend {
 				: undefined,
 			effectivePlan.parallelOverride,
 		);
-		this.lastOptimizations = optimizations ?? null;
-		const kvOffload = effectivePlan.kvOffload ?? resolveDflashKvOffload(null);
+		this.lastOptimizations = tunedOptimizations;
+		const envKvOffload = resolveDflashKvOffload(null);
+		const kvOffload =
+			effectivePlan.kvOffload ??
+			envKvOffload ??
+			(gpuAutotune?.flags.no_kv_offload ? "cpu" : null);
 		const modelHash = buildModelHash({
 			targetModelPath: effectivePlan.targetModelPath,
 			drafterModelPath,
@@ -3472,10 +3524,18 @@ export class DflashLlamaServer implements LocalInferenceBackend {
 		}
 		const cacheTypeKSource = process.env.ELIZA_DFLASH_CACHE_TYPE_K?.trim()
 			? "ELIZA_DFLASH_CACHE_TYPE_K"
-			: "runtime.kvCache.typeK";
+			: effectivePlan.cacheTypeK
+				? "runtime.kvCache.typeK"
+				: gpuAutotune
+					? `gpu profile ${gpuAutotune.config.id}`
+					: "runtime.kvCache.typeK";
 		const cacheTypeVSource = process.env.ELIZA_DFLASH_CACHE_TYPE_V?.trim()
 			? "ELIZA_DFLASH_CACHE_TYPE_V"
-			: "runtime.kvCache.typeV";
+			: effectivePlan.cacheTypeV
+				? "runtime.kvCache.typeV"
+				: gpuAutotune
+					? `gpu profile ${gpuAutotune.config.id}`
+					: "runtime.kvCache.typeV";
 		if (cacheTypeK) {
 			assertCacheTypeSupportedOnBackend(
 				cacheTypeKSource,
@@ -3494,7 +3554,7 @@ export class DflashLlamaServer implements LocalInferenceBackend {
 		}
 
 		appendKvOffloadFlags(args, kvOffload);
-		appendOptimizationFlags(args, optimizations ?? null);
+		appendOptimizationFlags(args, tunedOptimizations);
 		if (effectivePlan.mmprojPath && !process.env.ELIZA_LOCAL_MMPROJ?.trim()) {
 			args.push("--mmproj", effectivePlan.mmprojPath);
 		}
@@ -3510,7 +3570,7 @@ export class DflashLlamaServer implements LocalInferenceBackend {
 		// `appendCtxCheckpointFlags` + `probeCtxCheckpointsSupported`. The voice
 		// optimistic-rollback path (`OptimisticRollbackController`) reads these
 		// snapshots over `/slots/<id>/save` + `/restore`.
-		appendCtxCheckpointFlags(args, optimizations ?? null, status.binaryPath);
+		appendCtxCheckpointFlags(args, tunedOptimizations, status.binaryPath);
 		appendBackendSafeStartupFlags(args, status.binaryPath);
 
 		// TTS does not ride the spawned llama-server. OmniVoice synthesis

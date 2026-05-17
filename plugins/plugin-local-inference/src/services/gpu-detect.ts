@@ -14,7 +14,7 @@
  * laptop dock — unusual but possible).
  */
 
-import { spawnSync } from "node:child_process";
+import { spawnSync, type SpawnSyncReturns } from "node:child_process";
 import {
 	GPU_PROFILES,
 	type GpuProfile,
@@ -47,6 +47,13 @@ const EMPTY_RESULT: GpuDetectionResult = {
 };
 
 let cached: GpuDetectionResult | null = null;
+let spawnSyncForTests:
+	| ((
+			command: string,
+			args: string[],
+			options: Parameters<typeof spawnSync>[2],
+	  ) => SpawnSyncReturns<string>)
+	| null = null;
 
 /**
  * Detect the primary NVIDIA GPU and resolve it to a profile. Returns
@@ -65,10 +72,25 @@ export function detectGpu(opts: { force?: boolean } = {}): GpuDetectionResult {
 /** Clear the cached detection result. Used by tests. */
 export function __resetGpuDetectionCacheForTests(): void {
 	cached = null;
+	spawnSyncForTests = null;
+}
+
+/** Override the nvidia-smi runner. Used by tests without mutating ESM exports. */
+export function __setGpuDetectionSpawnSyncForTests(
+	runner:
+		| ((
+				command: string,
+				args: string[],
+				options: Parameters<typeof spawnSync>[2],
+		  ) => SpawnSyncReturns<string>)
+		| null,
+): void {
+	spawnSyncForTests = runner;
 }
 
 function probe(): GpuDetectionResult {
-	const result = spawnSync(
+	const run = spawnSyncForTests ?? spawnSync;
+	const result = run(
 		"nvidia-smi",
 		["--query-gpu=name,memory.total", "--format=csv,noheader,nounits"],
 		{
@@ -80,11 +102,17 @@ function probe(): GpuDetectionResult {
 	if (result.error || result.status !== 0) {
 		return EMPTY_RESULT;
 	}
-	const firstLine = result.stdout.split(/\r?\n/).find((l) => l.trim() !== "");
+	const stdout =
+		typeof result.stdout === "string"
+			? result.stdout
+			: String(result.stdout ?? "");
+	const firstLine = stdout
+		.split(/\r?\n/)
+		.find((line: string) => line.trim() !== "");
 	if (!firstLine) return EMPTY_RESULT;
 
 	// Format: "NVIDIA H200, 141248"
-	const parts = firstLine.split(",").map((p) => p.trim());
+	const parts = firstLine.split(",").map((part: string) => part.trim());
 	if (parts.length < 2) return EMPTY_RESULT;
 	const name = parts[0] ?? "";
 	const memMiBRaw = Number.parseInt(parts[1] ?? "", 10);

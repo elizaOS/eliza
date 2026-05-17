@@ -6,7 +6,7 @@ End-to-end fine-tuning pipeline for the
 
 1. A fine-tuned PyTorch checkpoint.
 2. A **voice-style embedding `.bin`** that the runtime's Kokoro inference
-   backend (`packages/app-core/src/services/local-inference/voice/kokoro/`)
+   backend (`packages/shared/src/local-inference/kokoro/`)
    can load directly.
 3. An **ONNX export** matching the layout used by
    [`onnx-community/Kokoro-82M-v1.0-ONNX`](https://huggingface.co/onnx-community/Kokoro-82M-v1.0-ONNX),
@@ -56,7 +56,7 @@ file is consumable both by:
 
 - the upstream Kokoro inference path (`np.fromfile(..., dtype=np.float32).reshape(-1, 1, 256)`),
 - the Milady runtime's voice preset format (see
-  `packages/app-core/src/services/local-inference/voice/voice-preset-format.ts`),
+  `packages/shared/src/local-inference/kokoro/types.ts`),
   via a thin wrapper that wraps the 256-dim vector inside the ELZ1
   preset envelope. `package_voice_for_release.py` is the wrapper.
 
@@ -113,7 +113,7 @@ LJSpeech-format directory:
 - `<run-dir>/processed/` — normalized audio + phonemized manifest
 - `<run-dir>/checkpoints/` — fine-tuned PyTorch weights (+ LoRA deltas)
 - `<run-dir>/voice.bin` — 256-dim ref_s voice-style table
-- `<run-dir>/kokoro.onnx` — ONNX-exported fine-tune
+- `<run-dir>/kokoro.onnx` — optional ONNX-exported fine-tune sidecar
 - `<run-dir>/eval.json` — UTMOS / WER / speaker-similarity / RTF
 - `<run-dir>/manifest-fragment.json` — staged catalog entry
 
@@ -161,7 +161,7 @@ The pipeline computes four numbers per checkpoint:
 4. **RTF** on the recording machine — ≥ 5× faster-than-real-time on a 4090.
 
 `eval_kokoro.py` emits `eval.json` with all four. The publish step refuses
-to stage a manifest fragment if any gate fails (override with
+to upload to `elizaos/eliza-1:voice/kokoro/voices/<voice>.bin` if any gate fails (override with
 `--allow-gate-fail` and a written justification, mirroring the Eliza-1
 publish protocol).
 

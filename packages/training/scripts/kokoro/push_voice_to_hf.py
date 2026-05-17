@@ -4,13 +4,15 @@
 Sibling to `publish_custom_kokoro_voice.sh` (which stages a release-dir into
 a per-tier Eliza-1 bundle on local disk). This script handles the OTHER half
 of the publish path: uploading the same release-dir to a HuggingFace repo
-under the unified `elizaos/eliza-1` repo at `voice/kokoro/voices/<voice>/`.
+under the unified `elizaos/eliza-1` repo. The canonical runtime asset is
+`voice/kokoro/voices/<voice>.bin`; metadata and optional model sidecars live
+under `voice/kokoro/voices/<voice>/`.
 
 The release-dir is the output of `package_voice_for_release.py`:
 
     <release-dir>/<voice_name>/
     ├── voice.bin
-    ├── kokoro.onnx
+    ├── kokoro.onnx              # optional, only for model fine-tune exports
     ├── voice-preset.json
     ├── eval.json                # gate report + optional `comparison` block
     ├── manifest-fragment.json
@@ -61,15 +63,14 @@ from typing import Any
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
 log = logging.getLogger("kokoro.push_voice_to_hf")
 
-# Files `package_voice_for_release.py` is expected to emit. Match the layout
-# documented in that script's docstring (and verified by its tests).
+# Files `package_voice_for_release.py` must emit for a publishable voice pack.
 REQUIRED_ARTIFACTS: tuple[str, ...] = (
     "voice.bin",
-    "kokoro.onnx",
     "voice-preset.json",
     "manifest-fragment.json",
     "eval.json",
 )
+OPTIONAL_ARTIFACTS: tuple[str, ...] = ("kokoro.onnx",)
 
 
 def _sha256_file(path: Path, chunk: int = 1 << 20) -> str:
@@ -242,10 +243,11 @@ def _model_card(
             "",
             "## Runtime integration",
             "",
-            "1. Place `voice.bin` at `<bundle>/tts/kokoro/voices/<voice>.bin` in any",
-            "   Eliza-1 per-tier bundle.",
+            f"1. Publish `voice.bin` as `voice/kokoro/voices/{voice_name}.bin` in",
+            "   `elizaos/eliza-1` and stage it into bundle-local",
+            "   `tts/kokoro/voices/<voice>.bin` during release assembly.",
             f"2. Register `{voice_name}` in",
-            "   `plugins/plugin-local-inference/src/services/voice/kokoro/voice-presets.ts`",
+            "   `packages/shared/src/local-inference/kokoro/voice-presets.ts`",
             "   using the fields in `voice-preset.json`.",
             "3. Optional: set `ELIZA_KOKORO_DEFAULT_VOICE_ID` to make this the default",
             "   voice on a bundle.",
@@ -255,14 +257,34 @@ def _model_card(
     return "\n".join(lines) + "\n"
 
 
-def _build_upload_plan(release_dir: Path) -> list[dict[str, Any]]:
+def _build_upload_plan(release_dir: Path, *, voice_name: str, path_prefix: str) -> list[dict[str, Any]]:
+    path_prefix = path_prefix.strip("/")
+
+    def metadata_remote(name: str) -> str:
+        return f"{path_prefix}/{voice_name}/{name}" if path_prefix else f"{voice_name}/{name}"
+
     plan = []
     for name in REQUIRED_ARTIFACTS:
         path = release_dir / name
+        remote = f"{path_prefix}/{voice_name}.bin" if name == "voice.bin" and path_prefix else (
+            f"{voice_name}.bin" if name == "voice.bin" else metadata_remote(name)
+        )
         plan.append(
             {
                 "path": str(path),
-                "remote": name,
+                "remote": remote,
+                "sizeBytes": path.stat().st_size,
+                "sha256": _sha256_file(path),
+            }
+        )
+    for name in OPTIONAL_ARTIFACTS:
+        path = release_dir / name
+        if not path.is_file():
+            continue
+        plan.append(
+            {
+                "path": str(path),
+                "remote": metadata_remote(name),
                 "sizeBytes": path.stat().st_size,
                 "sha256": _sha256_file(path),
             }
@@ -280,17 +302,17 @@ def _push(
     dry_run: bool,
 ) -> dict[str, Any]:
     """Drive the HF API. In dry-run mode, return a plan without calling the API."""
-    plan = _build_upload_plan(release_dir)
+    voice_name = release_dir.name
     path_prefix = path_prefix.strip("/")
-    def remote_path(name: str) -> str:
-        return f"{path_prefix}/{name}" if path_prefix else name
+    plan = _build_upload_plan(release_dir, voice_name=voice_name, path_prefix=path_prefix)
 
-    for item in plan:
-        item["remote"] = remote_path(str(item["remote"]))
+    def metadata_remote(name: str) -> str:
+        return f"{path_prefix}/{voice_name}/{name}" if path_prefix else f"{voice_name}/{name}"
+
     plan.append(
         {
             "path": "<rendered>",
-            "remote": remote_path("README.md"),
+            "remote": metadata_remote("README.md"),
             "sizeBytes": len(model_card.encode("utf-8")),
             "sha256": hashlib.sha256(model_card.encode("utf-8")).hexdigest(),
         }
@@ -330,14 +352,16 @@ def _push(
     try:
         api.upload_file(
             path_or_fileobj=str(rendered),
-            path_in_repo=remote_path("README.md"),
+            path_in_repo=metadata_remote("README.md"),
             repo_id=hf_repo,
             repo_type="model",
         )
-        for name in REQUIRED_ARTIFACTS:
+        for item in plan:
+            if item["path"] == "<rendered>":
+                continue
             api.upload_file(
-                path_or_fileobj=str(release_dir / name),
-                path_in_repo=remote_path(name),
+                path_or_fileobj=item["path"],
+                path_in_repo=item["remote"],
                 repo_id=hf_repo,
                 repo_type="model",
             )
@@ -421,7 +445,7 @@ def main(argv: list[str] | None = None) -> int:
     receipt = _push(
         release_dir=release_dir,
         hf_repo=args.hf_repo,
-        path_prefix=f"{args.path_prefix.rstrip('/')}/{release_dir.name}",
+        path_prefix=args.path_prefix,
         private=not args.public,
         model_card=model_card,
         dry_run=args.dry_run,

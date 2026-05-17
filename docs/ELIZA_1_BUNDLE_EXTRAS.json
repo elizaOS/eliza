@@ -5,14 +5,12 @@
 				"default": {
 					"id": "imagegen-sd-1_5-q5_0",
 					"file": "imagegen/sd-1.5-Q5_0.gguf",
-					"estimatedSizeBytes": 2200000000,
+					"url": "https://huggingface.co/elizaos/eliza-1/resolve/main/bundles/0_8b/imagegen/sd-1.5-Q5_0.gguf",
+					"sha256": "5d0dce31ee69e5c2e8f0e63f42e6da2ab932ce3b7c8799e3dd85c86c7337dff1",
+					"estimatedSizeBytes": 1615967904,
 					"license": "CreativeML Open RAIL-M",
-					"staged": true,
-					"buildPlan": {
-						"tool": "stable-diffusion.cpp",
-						"source": "https://huggingface.co/runwayml/stable-diffusion-v1-5",
-						"command": "Build sd-1.5-Q5_0.gguf with the repository quantization pipeline before publishing."
-					}
+					"source": "https://huggingface.co/second-state/stable-diffusion-v1-5-GGUF/blob/main/stable-diffusion-v1-5-pruned-emaonly-Q5_0.gguf",
+					"staged": false
 				},
 				"optional": []
 			},
@@ -20,14 +18,12 @@
 				"default": {
 					"id": "imagegen-sd-1_5-q5_0",
 					"file": "imagegen/sd-1.5-Q5_0.gguf",
-					"estimatedSizeBytes": 2200000000,
+					"url": "https://huggingface.co/elizaos/eliza-1/resolve/main/bundles/2b/imagegen/sd-1.5-Q5_0.gguf",
+					"sha256": "5d0dce31ee69e5c2e8f0e63f42e6da2ab932ce3b7c8799e3dd85c86c7337dff1",
+					"estimatedSizeBytes": 1615967904,
 					"license": "CreativeML Open RAIL-M",
-					"staged": true,
-					"buildPlan": {
-						"tool": "stable-diffusion.cpp",
-						"source": "https://huggingface.co/runwayml/stable-diffusion-v1-5",
-						"command": "Build sd-1.5-Q5_0.gguf with the repository quantization pipeline before publishing."
-					}
+					"source": "https://huggingface.co/second-state/stable-diffusion-v1-5-GGUF/blob/main/stable-diffusion-v1-5-pruned-emaonly-Q5_0.gguf",
+					"staged": false
 				},
 				"optional": []
 			},
@@ -35,14 +31,12 @@
 				"default": {
 					"id": "imagegen-sd-1_5-q5_0",
 					"file": "imagegen/sd-1.5-Q5_0.gguf",
-					"estimatedSizeBytes": 2200000000,
+					"url": "https://huggingface.co/elizaos/eliza-1/resolve/main/bundles/4b/imagegen/sd-1.5-Q5_0.gguf",
+					"sha256": "5d0dce31ee69e5c2e8f0e63f42e6da2ab932ce3b7c8799e3dd85c86c7337dff1",
+					"estimatedSizeBytes": 1615967904,
 					"license": "CreativeML Open RAIL-M",
-					"staged": true,
-					"buildPlan": {
-						"tool": "stable-diffusion.cpp",
-						"source": "https://huggingface.co/runwayml/stable-diffusion-v1-5",
-						"command": "Build sd-1.5-Q5_0.gguf with the repository quantization pipeline before publishing."
-					}
+					"source": "https://huggingface.co/second-state/stable-diffusion-v1-5-GGUF/blob/main/stable-diffusion-v1-5-pruned-emaonly-Q5_0.gguf",
+					"staged": false
 				},
 				"optional": []
 			},
@@ -50,14 +44,12 @@
 				"default": {
 					"id": "imagegen-z-image-turbo-q4_k_m",
 					"file": "imagegen/z-image-turbo-Q4_K_M.gguf",
-					"estimatedSizeBytes": 6200000000,
+					"url": "https://huggingface.co/elizaos/eliza-1/resolve/main/bundles/9b/imagegen/z-image-turbo-Q4_K_M.gguf",
+					"sha256": "e6494f87de6abaf6a561924f50317a5f271fc34bb4222aabbd801197df8f7daa",
+					"estimatedSizeBytes": 5017613376,
 					"license": "Apache-2.0",
-					"staged": true,
-					"buildPlan": {
-						"tool": "stable-diffusion.cpp",
-						"source": "https://huggingface.co/THUDM/Z-Image-Turbo",
-						"command": "Build z-image-turbo-Q4_K_M.gguf with the repository quantization pipeline before publishing."
-					}
+					"source": "https://huggingface.co/unsloth/Z-Image-Turbo-GGUF/blob/main/z-image-turbo-Q4_K_M.gguf",
+					"staged": false
 				},
 				"optional": []
 			},
@@ -65,14 +57,12 @@
 				"default": {
 					"id": "imagegen-z-image-turbo-q4_k_m",
 					"file": "imagegen/z-image-turbo-Q4_K_M.gguf",
-					"estimatedSizeBytes": 6200000000,
+					"url": "https://huggingface.co/elizaos/eliza-1/resolve/main/bundles/27b/imagegen/z-image-turbo-Q4_K_M.gguf",
+					"sha256": "e6494f87de6abaf6a561924f50317a5f271fc34bb4222aabbd801197df8f7daa",
+					"estimatedSizeBytes": 5017613376,
 					"license": "Apache-2.0",
-					"staged": true,
-					"buildPlan": {
-						"tool": "stable-diffusion.cpp",
-						"source": "https://huggingface.co/THUDM/Z-Image-Turbo",
-						"command": "Build z-image-turbo-Q4_K_M.gguf with the repository quantization pipeline before publishing."
-					}
+					"source": "https://huggingface.co/unsloth/Z-Image-Turbo-GGUF/blob/main/z-image-turbo-Q4_K_M.gguf",
+					"staged": false
 				},
 				"optional": []
 			},
@@ -80,14 +70,12 @@
 				"default": {
 					"id": "imagegen-z-image-turbo-q4_k_m",
 					"file": "imagegen/z-image-turbo-Q4_K_M.gguf",
-					"estimatedSizeBytes": 6200000000,
+					"url": "https://huggingface.co/elizaos/eliza-1/resolve/main/bundles/27b-256k/imagegen/z-image-turbo-Q4_K_M.gguf",
+					"sha256": "e6494f87de6abaf6a561924f50317a5f271fc34bb4222aabbd801197df8f7daa",
+					"estimatedSizeBytes": 5017613376,
 					"license": "Apache-2.0",
-					"staged": true,
-					"buildPlan": {
-						"tool": "stable-diffusion.cpp",
-						"source": "https://huggingface.co/THUDM/Z-Image-Turbo",
-						"command": "Build z-image-turbo-Q4_K_M.gguf with the repository quantization pipeline before publishing."
-					}
+					"source": "https://huggingface.co/unsloth/Z-Image-Turbo-GGUF/blob/main/z-image-turbo-Q4_K_M.gguf",
+					"staged": false
 				},
 				"optional": []
 			}

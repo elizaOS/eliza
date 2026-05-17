@@ -13,12 +13,13 @@
 # isn't packaged in the cloud submodule).
 #
 # Required template env vars:
-#   MODEL_REPO              — HuggingFace repo id (e.g. elizaos/eliza-1-27b-fp8;
-#                             TODO: that per-quant repo does not yet exist on
-#                             HF — Wave 3+ will publish it or migrate this
-#                             vLLM path to a GGUF-served lane).
-#                             OR set ELIZA_VAST_MANIFEST=eliza-1-{2b,9b,27b}.json
-#                             and the script extracts MODEL_REPO + all flags
+#   MODEL_REPO              — HuggingFace repo id for a vLLM-compatible
+#                             safetensors checkpoint. The canonical GGUF repo
+#                             is elizaos/eliza-1 and is served by onstart.sh.
+#                             Use the default onstart.sh path for the canonical
+#                             GGUF bundle repo elizaos/eliza-1. For vLLM,
+#                             set ELIZA_VAST_MANIFEST to a custom safetensors
+#                             manifest and the script extracts MODEL_REPO + flags
 #                             from the manifest.
 #
 # Optional (defaults match training/cloud/vast-pyworker/eliza-1-27b.json):

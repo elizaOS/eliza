@@ -97,6 +97,7 @@ export {
   type CatalogQuantizationId,
   type CatalogQuantizationMatrix,
   type CatalogQuantizationVariant,
+  type CpuFeatureProbe,
   type DownloadEvent,
   type DownloadJob,
   type DownloadState,

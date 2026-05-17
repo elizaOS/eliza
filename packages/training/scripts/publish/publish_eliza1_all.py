@@ -9,10 +9,11 @@ do publish (the privacy-filtered SFT datasets, the eval/bench results, the
 honest pending-status cards on the bundle repos) and prints a single summary.
 
 Publishable today (no fork build / no held-out-quality gate needed):
-  - dataset ``elizaos/eliza-1-training``  (the broader SFT corpus — refreshed
-    only if ``data/final/{train,val,test}.jsonl`` exists locally; evals,
-    kernel-verify evidence, gates, throughput snapshots, and pipeline source
-    also live in this repo under ``evals/`` and ``pipeline/``)
+  - dataset ``elizaos/eliza-1-training``  (the consolidated SFT corpus —
+    refreshed only if ``data/final/{train,val,test}.jsonl`` exists locally;
+    scambench, synthesized fillers, packaged SFT subsets, evals, kernel-verify
+    evidence, gates, throughput snapshots, and pipeline source also live in
+    this repo under scoped paths)
 
 Gated (this script reports the blocker, never bypasses it):
   - the active device bundles ``elizaos/eliza-1/bundles/<tier>`` — gated on the
@@ -111,7 +112,7 @@ def _upload_dataset_folder(
 def _publish_datasets(api, dry_run: bool) -> list[Outcome]:
     out: list[Outcome] = []
 
-    # 1) eliza-1-training — the broader SFT corpus (only if the full final split
+    # 1) eliza-1-training — consolidated data repo (only if the full final split
     #    + its manifest exist locally; otherwise it is already populated on HF).
     final = TRAINING_ROOT / "data" / "final"
     have_train = (final / "train.jsonl").exists() or (
@@ -132,7 +133,7 @@ def _publish_datasets(api, dry_run: bool) -> list[Outcome]:
             sys.executable,
             str(TRAINING_ROOT / "scripts" / "publish_dataset_to_hf.py"),
             "--dataset",
-            "training",
+            "combined",
             "--repo-id",
             repo,
         ]
@@ -144,7 +145,7 @@ def _publish_datasets(api, dry_run: bool) -> list[Outcome]:
                 repo,
                 "dataset",
                 "pending" if dry_run else ("published" if rc == 0 else "skipped"),
-                f"publish_dataset_to_hf.py --dataset training (rc={rc})",
+                f"publish_dataset_to_hf.py --dataset combined (rc={rc})",
             )
         )
     else:

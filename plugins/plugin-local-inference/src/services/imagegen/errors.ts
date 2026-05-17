@@ -10,6 +10,8 @@ export class ImageGenBackendUnavailableError extends Error {
 		readonly reason:
 			| "binary_missing"
 			| "binary_version_mismatch"
+			| "cuda_binary_missing"
+			| "cuda_unavailable"
 			| "model_missing"
 			| "binding_unavailable"
 			| "unsupported_runtime"

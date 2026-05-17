@@ -4,6 +4,7 @@
 // recommendation, and downloader interfaces that only read manifests.
 
 import type { z } from "zod";
+import type { CpuFeatureProbe } from "../types";
 import type {
 	ELIZA_1_PROVENANCE_SLOTS,
 	ELIZA_1_RELEASE_CHANNELS,
@@ -50,4 +51,5 @@ export type Eliza1Manifest = z.infer<typeof Eliza1ManifestSchema>;
 export interface Eliza1DeviceCaps {
 	availableBackends: ReadonlyArray<Eliza1Backend>;
 	ramMb: number;
+	cpuFeatures?: CpuFeatureProbe;
 }

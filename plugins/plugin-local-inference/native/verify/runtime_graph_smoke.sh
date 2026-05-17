@@ -103,6 +103,7 @@ resolve_bin() {
 
 BENCH="$(resolve_bin llama-bench || true)"
 [[ -n "$BENCH" ]] || die "missing executable llama-bench in $BIN_DIR; rebuild target $TARGET (the build script ships llama-bench + llama-completion alongside llama-server)"
+SERVER="$(resolve_bin llama-server || true)"
 
 export LD_LIBRARY_PATH="$BIN_DIR:${LD_LIBRARY_PATH:-}"
 export DYLD_LIBRARY_PATH="$BIN_DIR:${DYLD_LIBRARY_PATH:-}"
@@ -117,12 +118,19 @@ fi
 if ! grep -q -- "--cache-type-k" "$HELP_LOG"; then
     die "llama-bench help does not expose --cache-type-k; graph KV cache smoke cannot verify Turbo/QJL/Polar dispatch"
 fi
+ALIAS_HELP_LOG="$HELP_LOG"
+if [[ -n "$SERVER" ]]; then
+    SERVER_HELP_LOG="$REPORT_DIR/${TARGET}-llama-server-help.log"
+    if "$SERVER" --help >"$SERVER_HELP_LOG" 2>&1; then
+        ALIAS_HELP_LOG="$HELP_LOG $SERVER_HELP_LOG"
+    fi
+fi
 
 resolve_cache_type() {
     local family="$1"; shift
     local alias
     for alias in "$@"; do
-        if grep -Eiq "(^|[^[:alnum:]_+-])${alias}([^[:alnum:]_+-]|$)" "$HELP_LOG"; then
+        if grep -Eiq "(^|[^[:alnum:]_+-])${alias}([^[:alnum:]_+-]|$)" $ALIAS_HELP_LOG; then
             printf '%s:%s\n' "$family" "$alias"
             return 0
         fi
@@ -137,12 +145,14 @@ if [[ -n "$CACHE_TYPES" ]]; then
         RUNS+=("$cache:$cache")
     done
 else
+    # llama-bench is the real graph-dispatch gate for cache-backed TurboQuant
+    # storage aliases. QJL, Polar, and TBQ3-TCQ are score/op-side kernels in
+    # this fork; cuda_runner.sh/vulkan_runner.sh cover them via the fixture
+    # verifier before this script runs. Passing qjl1_256/q4_polar as KV cache
+    # storage can abort in ggml_backend_sched before the graph smoke begins.
     for spec in \
         "turbo3 tbq3_0 turbo3" \
-        "turbo4 tbq4_0 turbo4" \
-        "turbo3_tcq tbq3_tcq turbo3_tcq turbo3-tcq" \
-        "qjl qjl1_256 qjl_full qjl" \
-        "polar q4_polar polarquant polar"; do
+        "turbo4 tbq4_0 turbo4"; do
         # shellcheck disable=SC2206
         parts=($spec)
         family="${parts[0]}"

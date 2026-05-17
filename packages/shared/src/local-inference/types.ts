@@ -488,6 +488,19 @@ export interface MobileHardwareProbe {
   source?: "native" | "adapter-fallback";
 }
 
+export interface CpuFeatureProbe {
+  /** Arm NEON/Advanced SIMD (`asimd` in Linux cpuinfo). */
+  neon?: boolean;
+  /** Arm dot-product instructions (`asimddp`/`dotprod`). */
+  dotprod?: boolean;
+  /** Arm int8 matrix multiply instructions. */
+  i8mm?: boolean;
+  /** Arm Scalable Vector Extension. */
+  sve?: boolean;
+  /** Arm Scalable Vector Extension v2. */
+  sve2?: boolean;
+}
+
 export interface HardwareProbe {
   totalRamGb: number;
   freeRamGb: number;
@@ -498,6 +511,8 @@ export interface HardwareProbe {
     freeVramGb: number;
   } | null;
   cpuCores: number;
+  /** Optional CPU ISA features detected from the host OS. */
+  cpuFeatures?: CpuFeatureProbe;
   platform: NodeJS.Platform;
   arch: NodeJS.Architecture;
   /** True on Apple Silicon (shared memory — large models are viable on 16GB+). */

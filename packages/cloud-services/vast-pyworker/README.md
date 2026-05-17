@@ -146,7 +146,7 @@ The worker also disables thinking mode with
 not trained on think-wrapped text and acceptance/throughput collapse when it is
 left on.
 
-## vLLM Manifests
+## Vast Manifests
 
 Set `VAST_RUNTIME=vllm` to make `upsert-template.ts` inline
 `onstart-vllm.sh` instead of the GGUF `llama-server` script. The script embeds
@@ -161,14 +161,19 @@ PYWORKER_REF=<commit-sha> \
 bun cloud/scripts/vast/upsert-template.ts
 ```
 
-The committed manifests cover the catalog references:
+The committed GGUF manifests cover the catalog references:
 
-- `eliza-1-2b.json`: vLLM 2B debug tier, AWQ-Marlin field present, KV cache left
-  on `auto`.
-- `eliza-1-9b.json`: `elizaos/eliza-1-9b-polarquant` with AWQ-Marlin and the
-  TurboQuant quality KV preset.
-- `eliza-1-27b.json`: `elizaos/eliza-1-27b-fp8` with FP8 weights and the
-  TurboQuant quality KV preset.
+- `eliza-1-2b.json`: `elizaos/eliza-1` with
+  `bundles/2b/text/eliza-1-2b-128k.gguf`.
+- `eliza-1-9b.json`: `elizaos/eliza-1` with
+  `bundles/9b/text/eliza-1-9b-128k.gguf`.
+- `eliza-1-27b.json`: `elizaos/eliza-1` with
+  `bundles/27b/text/eliza-1-27b-128k.gguf`.
+
+The `vllm` runtime path is retained for explicit safetensors deployments, but
+the default manifests now point at the consolidated `elizaos/eliza-1` GGUF repo
+and are served by the llama.cpp image. Do not add new per-tier Hugging Face
+repos.
 
 TurboQuant is opt-in by env when a manifest does not set it:
 `VLLM_ENABLE_TURBOQUANT=1` uses `VLLM_TURBOQUANT_PRESET=quality`, which maps to

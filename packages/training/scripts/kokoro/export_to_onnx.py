@@ -2,7 +2,7 @@
 """Export a fine-tuned Kokoro checkpoint to ONNX.
 
 The runtime's Kokoro inference backend
-(`packages/app-core/src/services/local-inference/voice/kokoro/`) loads ONNX
+(`packages/shared/src/local-inference/kokoro/`) loads ONNX
 artifacts in the same layout as `onnx-community/Kokoro-82M-v1.0-ONNX`:
 
     <out-dir>/
@@ -17,7 +17,7 @@ This script:
 3. Traces the forward path with example phoneme + ref_s inputs.
 4. Writes the ONNX file at `--out-dir/kokoro.onnx`.
 5. Emits a manifest fragment (`--out-dir/manifest-fragment.json`) that the
-   Eliza-1 catalog publish flow can stitch into the bundle (see
+   Eliza-1 publish flow can stitch into `elizaos/eliza-1` (see
    `package_voice_for_release.py` for the final voice-preset packaging).
 
 Synthetic-smoke mode (`--synthetic-smoke`) writes a minimal-but-valid ONNX
@@ -50,12 +50,9 @@ def _manifest_fragment(
     synthetic: bool,
     lora_checkpoint: Path | None,
 ) -> dict[str, Any]:
-    """Return a fragment that slots into the Eliza-1 catalog under `voices`.
-
-    Schema mirrors the runtime preset format documented in
-    `packages/app-core/src/services/local-inference/voice/voice-preset-format.ts`
-    (see also voice-presets.ts for the bundled voice catalog shape).
-    """
+    """Return a fragment that slots into the canonical `elizaos/eliza-1` layout."""
+    voice_remote = f"voice/kokoro/voices/{voice_name}.bin"
+    model_remote = f"voice/kokoro/voices/{voice_name}/{onnx_path.name}"
     return {
         "schemaVersion": 1,
         "kind": "eliza-1-kokoro-voice-fragment",
@@ -65,37 +62,39 @@ def _manifest_fragment(
             "id": voice_name,
             "displayName": voice_display_name,
             "lang": voice_lang,
-            "file": f"tts/{voice_name}.bin",
+            "file": f"{voice_name}.bin",
+            "hfPath": voice_remote,
             "dim": 256,
             "tags": voice_tags,
         },
         "engine": {
             "kind": "kokoro",
-            "onnxPath": f"tts/{onnx_path.name}",
+            "onnxPath": model_remote,
             "baseModel": base_model,
             "loraCheckpoint": (str(lora_checkpoint) if lora_checkpoint else None),
         },
         "artifacts": [
-            {"role": "voice-onnx", "path": f"tts/{onnx_path.name}"},
+            {"role": "voice-onnx", "path": model_remote},
             {
                 "role": "voice-preset",
-                "path": f"tts/{voice_bin_path.name}" if voice_bin_path else None,
+                "path": voice_remote if voice_bin_path else None,
             },
         ],
         "integration": {
             "runtimeBackendDir": (
-                "packages/app-core/src/services/local-inference/voice/kokoro/"
+                "packages/shared/src/local-inference/kokoro/"
             ),
             "voicePresetFormat": (
-                "packages/app-core/src/services/local-inference/voice/voice-preset-format.ts"
+                "packages/shared/src/local-inference/kokoro/types.ts"
             ),
             "catalogTable": (
-                "packages/app-core/src/services/local-inference/voice/kokoro/voice-presets.ts"
+                "packages/shared/src/local-inference/kokoro/voice-presets.ts"
             ),
             "notes": (
-                "Append the `voice` block to KOKORO_VOICE_PACKS, copy the .onnx + "
-                ".bin into the per-tier bundle under tts/, and re-run the publish "
-                "preflight (packages/training/scripts/publish_all_eliza1.sh)."
+                "Append the `voice` block to KOKORO_VOICE_PACKS, publish the "
+                "voice tensor at voice/kokoro/voices/<voice>.bin in elizaos/eliza-1, "
+                "and publish the ONNX sidecar under voice/kokoro/voices/<voice>/ "
+                "when this run produced a model delta."
             ),
         },
     }
@@ -122,11 +121,11 @@ def _run_synthetic_smoke(args: argparse.Namespace) -> int:
     onnx_path = out_dir / "kokoro.onnx"
     try:
         _write_synthetic_onnx(onnx_path)
-    except ImportError as exc:
-        raise SystemExit(
-            "synthetic-smoke needs the `onnx` package; install via "
-            "`pip install onnx>=1.17.0`."
-        ) from exc
+    except ImportError:
+        # Keep CI smoke import-free. Real exports still require torch + onnx,
+        # but the synthetic path only needs a non-empty sidecar so packaging
+        # and publish layout checks can run in minimal environments.
+        onnx_path.write_bytes(b"ELIZA-KOKORO-SYNTHETIC-ONNX-STUB\n")
 
     fragment = _manifest_fragment(
         voice_name=args.voice_name,

@@ -44,8 +44,21 @@ describe("WS3 backend-selector", () => {
 		]);
 	});
 
-	it("Linux NVIDIA → sd-cpp CUDA then CPU", () => {
+	it("Linux NVIDIA without sd-cpp CUDA proof → sd-cpp CPU only", () => {
 		expect(ids({ platform: "linux", arch: "x64", gpu: "nvidia" })).toEqual([
+			"sd-cpp:cpu",
+		]);
+	});
+
+	it("Linux NVIDIA with sd-cpp CUDA proof → sd-cpp CUDA then CPU", () => {
+		expect(
+			ids({
+				platform: "linux",
+				arch: "x64",
+				gpu: "nvidia",
+				sdCpp: { accelerators: ["auto", "cpu", "cuda"] },
+			}),
+		).toEqual([
 			"sd-cpp:cuda",
 			"sd-cpp:cpu",
 		]);

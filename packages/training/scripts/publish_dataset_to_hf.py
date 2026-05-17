@@ -1,23 +1,25 @@
 """Publish eliza-1 training datasets to HuggingFace Hub.
 
-Four named bundles, each maps to its own HF dataset repo:
+Named bundles, published into the consolidated HF dataset repo:
 
-  - ``training``      -> the active SFT split (train_final.jsonl + val + test)
+  - ``training``      -> the active SFT split (train.jsonl + val + test)
   - ``scambench``     -> adversarial scam benchmark
   - ``synthesized``   -> small Claude-teacher synthesis sets
   - ``abliteration``  -> harmless-prompt set used by abliterate.py
                          (points at upstream `mlabonne/harmless_alpaca` —
                          we do not republish someone else's data)
+  - ``combined``      -> training + scambench + synthesized + packaged SFT
+                         datasets in one repo layout
 
 Usage::
 
     # Dry-run (no auth required, prints planned uploads + total bytes).
     uv run python scripts/publish_dataset_to_hf.py \\
-        --dataset training --repo-id elizaos/eliza-1-training --dry-run
+        --dataset combined --repo-id elizaos/eliza-1-training --dry-run
 
     # Real upload (creates the repo private if missing).
     HF_TOKEN=hf_xxx uv run python scripts/publish_dataset_to_hf.py \\
-        --dataset training --repo-id elizaos/eliza-1-training
+        --dataset combined --repo-id elizaos/eliza-1-training
 
 The publisher refuses to upload any file outside the explicit per-dataset
 allowlist below — this is the safety rail that keeps the historical WIP
@@ -37,6 +39,15 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
 DATA = ROOT / "data"
+DATASETS = ROOT / "datasets"
+
+_SYNTHESIZED_SUBDIRS = (
+    "action_examples",
+    "action_pairs",
+    "core_prompts",
+    "evaluators",
+    "phase3",
+)
 
 logging.basicConfig(
     level=logging.INFO,
@@ -76,17 +87,17 @@ def _spec_training_from_dir(source_dir: Path | None = None) -> DatasetSpec:
     # The canonical SFT train file is train.jsonl. Older runs of the pipeline
     # produced train_final.jsonl as a temporary name; if it still exists locally
     # we honor it for backwards compat, but train.jsonl is the source of truth.
-    train_src = final / "train_final.jsonl"
+    train_src = final / "train.jsonl"
     if not train_src.exists():
-        train_src = final / "train.jsonl"
+        train_src = final / "train_final.jsonl"
     val_src = final / "val.jsonl"
     if not val_src.exists():
         val_src = final / "validation.jsonl"
     manifest_src = source_dir / "manifest.json"
     if not manifest_src.exists():
-        manifest_src = final / "manifest_final.json"
-    if not manifest_src.exists():
         manifest_src = final / "manifest.json"
+    if not manifest_src.exists():
+        manifest_src = final / "manifest_final.json"
     files = (
         train_src,
         val_src,
@@ -143,7 +154,7 @@ def _spec_synthesized() -> DatasetSpec:
     base = DATA / "synthesized"
     files: list[Path] = []
     path_in_repo: dict[Path, str] = {}
-    for sub in ("action_examples", "action_pairs", "core_prompts"):
+    for sub in _SYNTHESIZED_SUBDIRS:
         d = base / sub
         if not d.exists():
             continue
@@ -180,21 +191,17 @@ def _spec_combined() -> DatasetSpec:
       synthesized/action_examples/*.jsonl                 (action-trajectory examples)
       synthesized/action_pairs/*.jsonl                    (paired action examples)
       synthesized/core_prompts/*.jsonl                    (small core prompt sets)
+      synthesized/evaluators/*.jsonl                      (Phase-4 evaluator fillers)
+      synthesized/phase3/*.jsonl                          (Phase-3 runtime fillers)
+      sft/0_6b/{README,manifest,UPLOAD_MANIFEST,train,val,test}
     """
     files: list[Path] = []
     path_in_repo: dict[Path, str] = {}
 
     # Active SFT split (mirror _spec_training).
-    final = DATA / "final"
-    train_src = final / "train_final.jsonl"
-    if not train_src.exists():
-        train_src = final / "train.jsonl"
-    for src, dst in (
-        (train_src, "train.jsonl"),
-        (final / "val.jsonl", "val.jsonl"),
-        (final / "test.jsonl", "test.jsonl"),
-        (final / "manifest_final.json", "manifest.json"),
-    ):
+    training = _spec_training()
+    for src in training.files:
+        dst = training.path_in_repo[src]
         files.append(src)
         path_in_repo[src] = dst
 
@@ -217,19 +224,26 @@ def _spec_combined() -> DatasetSpec:
     # Phase-3 fillers added in 2026-05 to close the runtime-phase coverage
     # gap (see docs/dataset/COVERAGE_AUDIT.md, EVALUATOR_SYNTHESIS.md).
     synth_base = DATA / "synthesized"
-    for sub in (
-        "action_examples",
-        "action_pairs",
-        "core_prompts",
-        "evaluators",
-        "phase3",
-    ):
+    for sub in _SYNTHESIZED_SUBDIRS:
         d = synth_base / sub
         if not d.exists():
             continue
         for p in sorted(d.glob("*.jsonl")):
             files.append(p)
             path_in_repo[p] = f"synthesized/{sub}/{p.name}"
+
+    packaged = DATASETS / "eliza1-sft-0_6b"
+    if packaged.exists():
+        for name in ("README.md", "manifest.json", "UPLOAD_MANIFEST.json"):
+            p = packaged / name
+            if p.exists():
+                files.append(p)
+                path_in_repo[p] = f"sft/0_6b/{name}"
+        for name in ("train.jsonl", "val.jsonl", "test.jsonl"):
+            p = packaged / name
+            if p.exists():
+                files.append(p)
+                path_in_repo[p] = f"sft/0_6b/{name}"
 
     return DatasetSpec(
         name="combined",
@@ -416,6 +430,10 @@ def _card_synthesized() -> str:
         "  plugin-prompts).\n"
         "- `core_prompts/*.jsonl` — eliza core-prompt completions\n"
         "  (add_contact, choose_option, extract_secrets, etc.).\n"
+        "- `evaluators/*.jsonl` — evaluator, summarization, relationship,\n"
+        "  skill, and fact extraction fillers.\n"
+        "- `phase3/*.jsonl` — Phase-3 runtime fillers for reply,\n"
+        "  post/action decisions, contact removal, and secret extraction.\n"
         "\n"
         "## Provenance\n"
         "\n"
@@ -508,6 +526,12 @@ def _card_combined() -> str:
         "  action_examples/*.jsonl   # action-trajectory examples per surface\n"
         "  action_pairs/*.jsonl      # paired action examples for routing\n"
         "  core_prompts/*.jsonl      # small core prompt / routing sets\n"
+        "  evaluators/*.jsonl        # evaluator and extraction fillers\n"
+        "  phase3/*.jsonl            # Phase-3 runtime fillers\n"
+        "\n"
+        "sft/0_6b/\n"
+        "  train.jsonl, val.jsonl, test.jsonl, manifest.json\n"
+        "                            # small curated ChatML SFT set\n"
         "```\n"
         "\n"
         "## Schema\n"

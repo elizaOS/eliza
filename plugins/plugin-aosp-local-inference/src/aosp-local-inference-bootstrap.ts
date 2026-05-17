@@ -904,7 +904,7 @@ const AOSP_RECOMMENDED_MODELS: Record<
   embedding: {
     id: "eliza-1-embedding",
     hfRepo: "elizaos/eliza-1",
-    ggufFile: "bundles/2b/embedding/eliza-1-embedding.gguf",
+    ggufFile: "bundles/4b/embedding/eliza-1-embedding.gguf",
   },
 };
 

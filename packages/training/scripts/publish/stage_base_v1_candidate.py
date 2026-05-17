@@ -2,7 +2,7 @@
 
 Unlike `scripts/publish/orchestrator.py` (which refuses to push unless every
 release-blocking gate is green), this stages a *candidate* bundle: a real
-fine-tuned text GGUF + the frozen `elizaos/eliza-1-assets` voice/ASR/VAD bytes
+fine-tuned text GGUF + the frozen `elizaos/eliza-1` voice/ASR/VAD bytes
 + an honestly-labelled drafter, with the eval suite run and folded in. The
 resulting bundle is installable on a device whose backend the manifest verified
 `pass` (post-commit `ae7c9e5fcd` to the runtime validator) but is NOT
@@ -77,9 +77,8 @@ DRAFTER_SOURCE_BY_TIER = {
     "27b": "spiritbuun/Qwen3.6-27B-DFlash-GGUF",
 }
 
-# Frozen eliza-1-assets bytes (tier-agnostic voice/ASR/VAD/cache) from
-# evidence/bundle-assets.json on elizaos/eliza-1-assets.
-ASSETS_REPO = "elizaos/eliza-1-assets"
+# Frozen tier-agnostic voice/ASR/VAD/cache bytes live in the canonical model repo.
+ASSETS_REPO = "elizaos/eliza-1"
 ASSETS_TIER = "2b"
 
 

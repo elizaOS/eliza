@@ -26,7 +26,9 @@
  *   ios-arm64-metal, ios-arm64-simulator-metal  (macOS + Xcode host)
  *   windows-x64-cpu, windows-x64-cuda, windows-x64-vulkan
  *   windows-arm64-cpu, windows-arm64-vulkan  (Snapdragon X / Copilot+ PC; native MSVC arm64 or LLVM aarch64 mingw)
- *   ...plus the *-fused variants (omnivoice text+TTS source fusion).
+ *   ...plus the desktop/server *-fused variants (omnivoice text+TTS source
+ *   fusion). Android/iOS fused FFI targets are intentionally not advertised
+ *   until their build flags and post-build verifier path are wired.
  *
  * Backend selection (legacy single-target mode, when --target is omitted):
  *   macOS           -> Metal
@@ -176,6 +178,9 @@ const METAL_RUNTIME_DISPATCH_EVIDENCE = runtimeDispatchEvidencePath(
 const VULKAN_RUNTIME_DISPATCH_EVIDENCE = runtimeDispatchEvidencePath(
   "vulkan-runtime-dispatch-evidence.json",
 );
+const CUDA_RUNTIME_DISPATCH_EVIDENCE = runtimeDispatchEvidencePath(
+  "cuda-runtime-dispatch-evidence.json",
+);
 
 const SUPPORTED_TARGETS = [
   "linux-x64-cpu",
@@ -260,6 +265,7 @@ const SUPPORTED_TARGETS = [
   "linux-x64-cpu-fused",
   "linux-x64-cuda-fused",
   "linux-x64-vulkan-fused",
+  "linux-aarch64-cuda-fused",
   "darwin-arm64-metal-fused",
   "windows-x64-cuda-fused",
 ];
@@ -271,8 +277,39 @@ const FUSED_TARGETS = new Set([
   "linux-x64-cpu-fused",
   "linux-x64-cuda-fused",
   "linux-x64-vulkan-fused",
+  "linux-aarch64-cuda-fused",
   "darwin-arm64-metal-fused",
   "windows-x64-cuda-fused",
+]);
+
+// Known target spellings that operators reasonably try, but that this script
+// must not silently advertise. Keep these out of SUPPORTED_TARGETS and fail
+// closed with an explicit reason during argument parsing.
+const UNSUPPORTED_FUSED_TARGET_REASONS = new Map([
+  [
+    "android-arm64-cpu-fused",
+    "Android fused FFI is not wired in build-llama-cpp-dflash.mjs; use android-arm64-cpu here or packages/app-core/scripts/aosp/compile-libllama.mjs for Android system-agent fused artifacts.",
+  ],
+  [
+    "android-arm64-vulkan-fused",
+    "Android fused FFI is not wired in build-llama-cpp-dflash.mjs; use android-arm64-vulkan here or packages/app-core/scripts/aosp/compile-libllama.mjs for Android system-agent fused artifacts.",
+  ],
+  [
+    "android-x86_64-cpu-fused",
+    "Android x86_64 fused FFI is not a dflash target in this script; packages/app-core/scripts/aosp/compile-libllama.mjs owns emulator/system-agent fused artifacts.",
+  ],
+  [
+    "android-x86_64-vulkan-fused",
+    "Android x86_64 fused FFI is not a dflash target in this script; packages/app-core/scripts/aosp/compile-libllama.mjs owns emulator/system-agent fused artifacts.",
+  ],
+  [
+    "ios-arm64-metal-fused",
+    "iOS fused FFI is not wired or verifier-covered in build-llama-cpp-dflash.mjs; use ios-arm64-metal until libelizainference static-archive packaging is implemented.",
+  ],
+  [
+    "ios-arm64-simulator-metal-fused",
+    "iOS simulator fused FFI is not wired or verifier-covered in build-llama-cpp-dflash.mjs; use ios-arm64-simulator-metal until libelizainference static-archive packaging is implemented.",
+  ],
 ]);
 
 // Strip the "-fused" suffix when one is present, returning the base
@@ -1920,6 +1957,13 @@ function parseArgs(argv) {
     else if (arg === "--backend") args.backend = next();
     else if (arg === "--target") {
       const value = next();
+      const unsupportedFusedReason =
+        UNSUPPORTED_FUSED_TARGET_REASONS.get(value);
+      if (unsupportedFusedReason) {
+        throw new Error(
+          `Unsupported --target ${value}: ${unsupportedFusedReason}`,
+        );
+      }
       if (!SUPPORTED_TARGETS.includes(value)) {
         throw new Error(
           `Unsupported --target ${value}. Supported: ${SUPPORTED_TARGETS.join(", ")}`,
@@ -2509,9 +2553,13 @@ function legacyDflashDrafterBinDir() {
 }
 
 function hasLegacyDflashDrafterBinaries(binDir) {
-  return ["llama-server", "llama-cli", "llama-speculative-simple"].every(
-    (name) => fs.existsSync(path.join(binDir, name)),
-  );
+  return [
+    "llama-server",
+    "llama-cli",
+    "llama-speculative-simple",
+    "llama-bench",
+    "llama-completion",
+  ].every((name) => fs.existsSync(path.join(binDir, name)));
 }
 
 function sourceContainsDflashDraft(root) {
@@ -2662,6 +2710,8 @@ function buildLegacyDflashDrafterRuntime({ args }) {
       "llama-server",
       "llama-cli",
       "llama-speculative-simple",
+      "llama-bench",
+      "llama-completion",
       "-j",
       String(args.jobs),
     ],
@@ -2671,7 +2721,7 @@ function buildLegacyDflashDrafterRuntime({ args }) {
   if (!binDir) {
     throw new Error(
       `[dflash-build] legacy DFlash drafter runtime build did not produce ` +
-        `llama-server, llama-cli, and llama-speculative-simple under ${buildDir}`,
+        `llama-server, llama-cli, llama-speculative-simple, llama-bench, and llama-completion under ${buildDir}`,
     );
   }
   return {
@@ -2953,13 +3003,14 @@ function probeKernels(target, buildDir, outDir, cacheDir = null) {
     }
   }
 
-  // Honesty gate: Metal/Vulkan standalone shaders can compile and be present
+  // Honesty gate: Metal/Vulkan/CUDA standalone shaders can compile and be present
   // as symbols/pipelines while still being unreachable or semantically wrong
   // through generic llama.cpp ops. Do not let symbol presence satisfy
   // AGENTS.md §3. Metal runtime capabilities require both a shipped symbol and
   // packages/inference/verify/metal-runtime-dispatch-evidence.json evidence
-  // from a numeric built-fork graph smoke. Any capability whose evidence is
-  // absent or blocked remains false.
+  // from a numeric built-fork graph smoke. Vulkan and CUDA follow the same
+  // target-scoped evidence rule. Any capability whose evidence is absent or
+  // blocked remains false.
   if (backend === "metal") {
     const shipped = probeMetalShippedKernelSymbols(buildDir, outDir).symbols;
     const evidence = readMetalRuntimeDispatchEvidence();
@@ -3012,6 +3063,43 @@ function probeKernels(target, buildDir, outDir, cacheDir = null) {
       target,
     );
     kernels.polarquant = vulkanCapabilityRuntimeReady(
+      "polarquant",
+      shipped,
+      evidence,
+      target,
+    );
+  } else if (backend === "cuda") {
+    const shipped = probeCudaShippedKernelSymbols(
+      buildDir,
+      outDir,
+      cacheDir,
+    ).symbols;
+    const evidence = readCudaRuntimeDispatchEvidence();
+    kernels.turbo3 = cudaCapabilityRuntimeReady(
+      "turbo3",
+      shipped,
+      evidence,
+      target,
+    );
+    kernels.turbo4 = cudaCapabilityRuntimeReady(
+      "turbo4",
+      shipped,
+      evidence,
+      target,
+    );
+    kernels.turbo3_tcq = cudaCapabilityRuntimeReady(
+      "turbo3_tcq",
+      shipped,
+      evidence,
+      target,
+    );
+    kernels.qjl_full = cudaCapabilityRuntimeReady(
+      "qjl_full",
+      shipped,
+      evidence,
+      target,
+    );
+    kernels.polarquant = cudaCapabilityRuntimeReady(
       "polarquant",
       shipped,
       evidence,
@@ -3517,6 +3605,217 @@ function vulkanRuntimeDispatchStatus(shippedKernels, target) {
   };
 }
 
+function readCudaRuntimeDispatchEvidence() {
+  try {
+    const data = JSON.parse(
+      fs.readFileSync(CUDA_RUNTIME_DISPATCH_EVIDENCE, "utf8"),
+    );
+    return { path: CUDA_RUNTIME_DISPATCH_EVIDENCE, data };
+  } catch (err) {
+    return {
+      path: CUDA_RUNTIME_DISPATCH_EVIDENCE,
+      data: null,
+      error: err instanceof Error ? err.message : String(err),
+    };
+  }
+}
+
+function cudaEvidenceTargetCandidates(target) {
+  if (!target) return [];
+  return [...new Set([target, baseTargetTriple(target)])];
+}
+
+function cudaEvidencePayloadForTarget(evidence, target) {
+  const data = evidence?.data;
+  if (!data || typeof data !== "object") return null;
+  const targetCandidates = cudaEvidenceTargetCandidates(target);
+  if (
+    targetCandidates.length > 0 &&
+    data.targets &&
+    typeof data.targets === "object"
+  ) {
+    for (const candidate of targetCandidates) {
+      const targetPayload = data.targets[candidate];
+      if (targetPayload && typeof targetPayload === "object") {
+        return targetPayload;
+      }
+    }
+  }
+  if (
+    targetCandidates.length === 0 ||
+    !data.target ||
+    targetCandidates.includes(data.target)
+  ) {
+    return data;
+  }
+  return null;
+}
+
+function cudaEvidenceAvailableTargets(evidence) {
+  const data = evidence?.data;
+  if (!data || typeof data !== "object") return [];
+  const targets = [];
+  if (data.target) targets.push(data.target);
+  if (data.targets && typeof data.targets === "object") {
+    targets.push(...Object.keys(data.targets));
+  }
+  return [...new Set(targets)].sort();
+}
+
+function cudaEvidenceForCapability(capabilityKey, evidence, target) {
+  const payload = cudaEvidencePayloadForTarget(evidence, target);
+  const kernels = payload?.kernels;
+  if (!kernels || typeof kernels !== "object") return null;
+  return (
+    Object.values(kernels).find(
+      (entry) =>
+        entry &&
+        typeof entry === "object" &&
+        entry.runtimeCapabilityKey === capabilityKey,
+    ) ?? null
+  );
+}
+
+function cudaEvidenceRuntimeReady(capabilityKey, evidence, target) {
+  const entry = cudaEvidenceForCapability(capabilityKey, evidence, target);
+  return Boolean(
+    entry?.runtimeReady === true && entry?.status === "runtime-ready",
+  );
+}
+
+function cudaCapabilityRuntimeReady(capabilityKey, shipped, evidence, target) {
+  return Boolean(
+    shipped?.[capabilityKey] &&
+      cudaEvidenceRuntimeReady(capabilityKey, evidence, target),
+  );
+}
+
+function cudaRuntimeDispatchKernelStatus(
+  capabilityKey,
+  shipped,
+  sourceFiles,
+  evidence,
+  requiredSmoke,
+  target,
+) {
+  const entry = cudaEvidenceForCapability(capabilityKey, evidence, target);
+  const symbolShipped = Boolean(shipped?.[capabilityKey]);
+  const runtimeReady = cudaCapabilityRuntimeReady(
+    capabilityKey,
+    shipped,
+    evidence,
+    target,
+  );
+  const status = runtimeReady
+    ? "runtime-ready"
+    : symbolShipped
+      ? (entry?.status ?? "source-patched-pending-smoke")
+      : "missing-symbol";
+  const detail = {
+    status,
+    runtimeReady,
+    sourceStaged: Boolean(sourceFiles?.[capabilityKey]),
+    requiredSmoke,
+  };
+  if (entry?.graphOp) detail.graphOp = entry.graphOp;
+  if (entry?.smokeTarget) detail.smokeTarget = entry.smokeTarget;
+  if (entry?.smokeCommand) detail.smokeCommand = entry.smokeCommand;
+  if (typeof entry?.maxDiff === "number") detail.maxDiff = entry.maxDiff;
+  if (entry?.evidenceDate) detail.evidenceDate = entry.evidenceDate;
+  if (entry?.blocker) detail.blocker = entry.blocker;
+  if (entry?.notes) detail.notes = entry.notes;
+  if (Array.isArray(entry?.graphRoutes)) detail.graphRoutes = entry.graphRoutes;
+  return detail;
+}
+
+function probeCudaShippedKernelSymbols(buildDir, outDir, cacheDir) {
+  const sourceNames = {
+    turbo3: ["turboquant.cuh", "convert.cu", "cpy.cu"],
+    turbo4: ["turboquant.cuh", "convert.cu", "cpy.cu"],
+    turbo3_tcq: ["turbo-tcq.cu", "turbo-tcq.cuh"],
+    qjl_full: ["qjl.cu", "qjl.cuh"],
+    polarquant: ["polarquant.cu", "polarquant.cuh"],
+  };
+  const sourceDir = cacheDir
+    ? path.join(cacheDir, "ggml", "src", "ggml-cuda")
+    : null;
+  const sourceFiles = {};
+  for (const [capability, names] of Object.entries(sourceNames)) {
+    sourceFiles[capability] = Boolean(
+      sourceDir &&
+        names.some((name) => fs.existsSync(path.join(sourceDir, name))),
+    );
+  }
+
+  const artifactFiles = [
+    ...collectFilesUnder(buildDir, /\.(cu\.o|o|obj|a|so|dylib|dll)$/),
+    ...collectFilesUnder(outDir, /\.(cu\.o|o|obj|a|so|dylib|dll)$/),
+  ];
+  const artifactNames = artifactFiles
+    .map((file) => path.basename(file).toLowerCase())
+    .join("\n");
+  const symbols = {
+    turbo3:
+      sourceFiles.turbo3 ||
+      /turboquant|convert|cpy|tbq3/.test(artifactNames),
+    turbo4:
+      sourceFiles.turbo4 ||
+      /turboquant|convert|cpy|tbq4/.test(artifactNames),
+    turbo3_tcq:
+      sourceFiles.turbo3_tcq ||
+      /turbo[-_]?tcq|tbq3[-_]?tcq/.test(artifactNames),
+    qjl_full: sourceFiles.qjl_full || /qjl/.test(artifactNames),
+    polarquant:
+      sourceFiles.polarquant ||
+      /polar(?:quant)?|q4[-_]?polar/.test(artifactNames),
+  };
+  return {
+    sourceDir,
+    sourceFiles,
+    artifactFiles: artifactFiles.map((file) => path.relative(buildDir, file)),
+    symbols,
+  };
+}
+
+function cudaRuntimeDispatchStatus(shippedKernels, target) {
+  const shipped = shippedKernels?.symbols ?? {};
+  const sourceFiles = shippedKernels?.sourceFiles ?? {};
+  const evidence = readCudaRuntimeDispatchEvidence();
+  const mk = (key, route) =>
+    cudaRuntimeDispatchKernelStatus(
+      key,
+      shipped,
+      sourceFiles,
+      evidence,
+      `verify/cuda_runner.sh --report <path> must prove ${route} on the target CUDA runtime; help text and object files are diagnostic only`,
+      target,
+    );
+  const selectedEvidence = cudaEvidencePayloadForTarget(evidence, target);
+  return {
+    sourceOfTruth:
+      "dispatch-ready requires target-matching CUDA runtime-dispatch evidence from verify/cuda_runner.sh; help text, object files, and exported symbols are not publishable evidence",
+    evidencePath: evidence.path,
+    evidenceLoaded: Boolean(evidence.data),
+    evidenceTarget: target,
+    evidenceTargetLoaded: Boolean(selectedEvidence),
+    evidenceAvailableTargets: cudaEvidenceAvailableTargets(evidence),
+    evidenceError: evidence.error ?? null,
+    smokeTargets: {
+      cudaHardware:
+        "ELIZA_DFLASH_SMOKE_MODEL=/models/eliza-1-smoke.gguf plugins/plugin-local-inference/native/verify/cuda_runner.sh --report <path>",
+      fixtureParity:
+        "make -C plugins/plugin-local-inference/native/verify cuda-verify",
+    },
+    kernels: {
+      turbo3: mk("turbo3", "GGML_OP_ATTN_SCORE_TBQ/turbo3"),
+      turbo4: mk("turbo4", "GGML_OP_ATTN_SCORE_TBQ/turbo4"),
+      turbo3_tcq: mk("turbo3_tcq", "GGML_OP_ATTN_SCORE_TBQ/turbo3_tcq"),
+      qjl_full: mk("qjl_full", "GGML_OP_ATTN_SCORE_QJL"),
+      polarquant: mk("polarquant", "GGML_OP_ATTN_SCORE_POLAR"),
+    },
+  };
+}
+
 function writeCapabilities({
   outDir,
   target,
@@ -3539,13 +3838,17 @@ function writeCapabilities({
       ? probeMetalShippedKernelSymbols(buildDir, outDir)
       : backend === "vulkan"
         ? probeVulkanShippedKernelSymbols(buildDir, outDir, cacheDir)
-        : null;
+        : backend === "cuda"
+          ? probeCudaShippedKernelSymbols(buildDir, outDir, cacheDir)
+          : null;
   const runtimeDispatch =
     backend === "metal"
       ? metalRuntimeDispatchStatus(shippedKernels)
       : backend === "vulkan"
         ? vulkanRuntimeDispatchStatus(shippedKernels, target)
-        : null;
+        : backend === "cuda"
+          ? cudaRuntimeDispatchStatus(shippedKernels, target)
+          : null;
   const allowSmokeIncompleteBuild =
     process.env.ELIZA_DFLASH_ALLOW_INCOMPLETE_KERNELS_FOR_SMOKE === "1";
   const allowReducedKernelBuild =
@@ -3631,6 +3934,8 @@ function cmakeBuildTargetsFor(target) {
           "llama-cli",
           "llama-speculative-simple",
           "llama-mtmd-cli",
+          "llama-bench",
+          "llama-completion",
         ];
 
   // The non-EMBED Metal CMakeLists creates an `add_custom_target(ggml-metal-lib
@@ -3798,6 +4103,8 @@ function buildTarget({ target, args, ctx }) {
       "llama-cli",
       "llama-speculative-simple",
       "llama-mtmd-cli",
+      "llama-bench",
+      "llama-completion",
       // Stub fused server emitted only when target is in FUSED_TARGETS.
       // Adding it unconditionally is harmless: the install loop only
       // copies a binary when it actually exists in binDir.
@@ -4051,17 +4358,27 @@ function build(args) {
   }
 }
 
-try {
-  build(parseArgs(process.argv.slice(2)));
-} catch (err) {
-  const detail =
-    process.env.ELIZA_DFLASH_DEBUG_STACK === "1" &&
-    err instanceof Error &&
-    err.stack
-      ? err.stack
-      : err instanceof Error
-        ? err.message
-        : String(err);
-  console.error(`[dflash-build] ${detail}`);
-  process.exit(1);
+if (process.argv[1] && path.resolve(process.argv[1]) === __filename) {
+  try {
+    build(parseArgs(process.argv.slice(2)));
+  } catch (err) {
+    const detail =
+      process.env.ELIZA_DFLASH_DEBUG_STACK === "1" &&
+      err instanceof Error &&
+      err.stack
+        ? err.stack
+        : err instanceof Error
+          ? err.message
+          : String(err);
+    console.error(`[dflash-build] ${detail}`);
+    process.exit(1);
+  }
 }
+
+export {
+  cudaCapabilityRuntimeReady,
+  cudaRuntimeDispatchStatus,
+  probeCudaShippedKernelSymbols,
+  readCudaRuntimeDispatchEvidence,
+  writeCapabilities,
+};

@@ -850,7 +850,7 @@ async function tryAutoDownloadVad(_bundleRoot) {
     if (existsSync(dest)) return dest;
     const url =
       process.env.ELIZA_SILERO_VAD_URL?.trim() ||
-      "https://huggingface.co/elizalabs/eliza-1/resolve/main/voice/vad/silero-vad-v5.gguf?download=true";
+      "https://huggingface.co/elizaos/eliza-1/resolve/main/voice/vad/silero-vad-v5.1.2.ggml.bin?download=true";
     tag("setup", "blue", `downloading Silero VAD GGUF → ${dest}`);
     const res = await fetch(url);
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
