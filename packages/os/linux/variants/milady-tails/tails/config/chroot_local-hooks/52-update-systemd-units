@@ -10,6 +10,8 @@ set -u
 for path in \
     /etc/systemd/system/milady.path \
     /etc/systemd/system/milady.service \
+    /etc/systemd/system/elizaos-update-health-check.service \
+    /etc/systemd/system/elizaos-update-verify.service \
     /etc/systemd/user/elizaos-agent.service \
     /etc/systemd/user/elizaos-renderer.service \
     /etc/systemd/user/milady.service \
@@ -27,6 +29,8 @@ if [ -d /usr/local/lib/elizaos ]; then
     chmod 755 /usr/local/lib/elizaos/* 2>/dev/null || true
 fi
 chmod 644 /etc/systemd/system/milady.path /etc/systemd/system/milady.service \
+    /etc/systemd/system/elizaos-update-health-check.service \
+    /etc/systemd/system/elizaos-update-verify.service \
     /etc/systemd/user/elizaos-agent.service /etc/systemd/user/elizaos-renderer.service \
     /etc/systemd/user/milady.service 2>/dev/null || true
 chmod 755 /usr/local/bin/milady 2>/dev/null || true
@@ -56,6 +60,7 @@ systemctl enable tails-tor-has-bootstrapped-flag-file.service
 systemctl enable tca-portal.socket
 systemctl enable run-initramfs.mount
 systemctl enable var-tmp.mount
+systemctl enable elizaos-update-verify.service
 systemctl enable milady.path
 
 # Debian's GDM unit lives under /usr/lib/systemd/system in this Tails base,
