@@ -545,6 +545,16 @@ grep -q 'configure_pill_window' \
     tails/config/chroot_local-includes/usr/local/lib/elizaos/elizaos-webkit-shell
 grep -q 'set_keep_above(True)' \
     tails/config/chroot_local-includes/usr/local/lib/elizaos/elizaos-webkit-shell
+grep -q 'def pick_pill_monitor' \
+    tails/config/chroot_local-includes/usr/local/lib/elizaos/elizaos-webkit-shell
+grep -q 'monitors-changed' \
+    tails/config/chroot_local-includes/usr/local/lib/elizaos/elizaos-webkit-shell
+grep -Eq 'XDG_SESSION_TYPE|GtkLayerShell' \
+    tails/config/chroot_local-includes/usr/local/lib/elizaos/elizaos-webkit-shell
+grep -q 'ELIZAOS_PILL_MONITOR' \
+    tails/config/chroot_local-includes/usr/local/lib/elizaos/elizaos-webkit-shell
+grep -q 'Gdk.Device.get_position\|device.get_position' \
+    tails/config/chroot_local-includes/usr/local/lib/elizaos/elizaos-webkit-shell
 grep -q 'ELIZAOS_SHELL_MODE=pill' \
     tails/config/chroot_local-includes/usr/local/lib/elizaos/start-elizaos-pill-user
 grep -q 'shell=pill' \
