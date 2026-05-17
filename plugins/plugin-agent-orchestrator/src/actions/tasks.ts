@@ -581,6 +581,12 @@ async function runSpawnAgent(
         label,
         deferredUserReply: deferUserReply,
         suppressActionResultClipboard: true,
+        // Defensive flag for planner-loop: even if the planner emitted a
+        // `messageToUser` on the same turn as this spawn (LLM hallucination
+        // from polluted memory), the orchestrator's 🚀/✅/❌ flow already
+        // owns user-facing comm. Honored at planner-loop's continueChain
+        // exit to force finalMessage = "" regardless of planner output.
+        suppressPlannerReply: true,
       },
     };
   } catch (error) {
