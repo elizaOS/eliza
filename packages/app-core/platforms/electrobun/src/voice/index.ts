@@ -37,6 +37,13 @@ export {
   type VoiceLatencyBudgetStage,
 } from "./voice-latency-budget";
 export {
+  runVoiceLiveValidation,
+  type VoiceLiveValidationArtifact,
+  type VoiceLiveValidationCheck,
+  type VoiceLiveValidationMode,
+  type VoiceLiveValidationReport,
+} from "./voice-live-validation";
+export {
   cloneVoiceTurn,
   discoverStaticVoiceComponents,
   summarizeVoiceLatency,

@@ -101,6 +101,70 @@ the underlying TalkMode or local-inference service exposes them. The current
 HTTP ASR route only proves final transcript flow, so partial support remains
 adapter/runtime dependent.
 
+## Controlled Live Validation
+
+The opt-in live validation harness runs controlled checks without joining the
+default test suite:
+
+```bash
+bun run --cwd packages/app-core/platforms/electrobun voice:validate:dry
+```
+
+Dry-run mode does not require a running runtime, microphone, downloaded model,
+ASR, TTS, or playback device. It reports static component discovery, configured
+latency budgets, and skipped live checks.
+
+Runtime-only validation:
+
+```bash
+ELIZA_VOICE_LIVE_RUNTIME=1 \
+ELIZA_RUNTIME_API_BASE=http://127.0.0.1:31337 \
+bun run --cwd packages/app-core/platforms/electrobun voice:validate:live
+```
+
+TTS validation without playback:
+
+```bash
+ELIZA_VOICE_LIVE_TTS=1 \
+ELIZA_VOICE_VALIDATION_TEXT="Eliza voice validation." \
+ELIZA_VOICE_VALIDATION_OUTPUT_DIR=/tmp/eliza-voice-validation \
+bun run --cwd packages/app-core/platforms/electrobun voice:validate:live
+```
+
+ASR validation requires an explicit audio fixture:
+
+```bash
+ELIZA_VOICE_LIVE_ASR=1 \
+ELIZA_VOICE_VALIDATION_AUDIO_PATH=/tmp/eliza-voice-validation/input.wav \
+bun run --cwd packages/app-core/platforms/electrobun voice:validate:live
+```
+
+Full validation is enabled only by explicit flags:
+
+```bash
+ELIZA_VOICE_LIVE_RUNTIME=1 \
+ELIZA_VOICE_LIVE_ASR=1 \
+ELIZA_VOICE_LIVE_TTS=1 \
+ELIZA_VOICE_LIVE_PLAYBACK=1 \
+ELIZA_VOICE_VALIDATION_AUDIO_PATH=/tmp/eliza-voice-validation/input.wav \
+ELIZA_RUNTIME_API_BASE=http://127.0.0.1:31337 \
+bun run --cwd packages/app-core/platforms/electrobun voice:validate:live
+```
+
+The report includes structured checks, discovered components, latency summary,
+budget pass/fail results, trace session ID when a turn runs, output artifacts,
+and recommendations. Missing live components are reported as unavailable checks
+instead of crashing.
+
+The validation harness never downloads or activates models unless
+`ELIZA_VOICE_ALLOW_MODEL_ACTIVATION=1` is set. That flag only permits activation
+by a live adapter that already implements it; the dry-run harness does not
+perform activation.
+
+Budget misses are recommendations by default. Set
+`ELIZA_VOICE_FAIL_ON_BUDGET_MISS=1` to make measured budget misses fail the
+validation command.
+
 Current limitations:
 
 - default tests do not exercise real microphone capture
