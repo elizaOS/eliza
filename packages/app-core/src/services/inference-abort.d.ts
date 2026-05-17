@@ -26,7 +26,10 @@ import type { IAgentRuntime } from "@elizaos/core";
  * Returns a disposer that removes the controller from the set; callers
  * MUST invoke it in the finally block so completed calls are GC'd.
  */
-export declare function trackInflight(runtime: IAgentRuntime, controller: AbortController): () => void;
+export declare function trackInflight(
+  runtime: IAgentRuntime,
+  controller: AbortController,
+): () => void;
 /**
  * Abort every in-flight inference controller for the runtime. Called by
  * the UI on `APP_PAUSE_EVENT` and by other shutdown paths (account
@@ -37,18 +40,22 @@ export declare function trackInflight(runtime: IAgentRuntime, controller: AbortC
  * `{aborted: 0}` and does nothing.
  */
 export declare function abortInflightInference(runtime: IAgentRuntime): {
-    aborted: number;
+  aborted: number;
 };
 /**
  * Inspect the current in-flight count without aborting. Used by
  * diagnostics endpoints (e.g. `/api/health` extension) and tests.
  */
-export declare function getInflightInferenceCount(runtime: IAgentRuntime): number;
+export declare function getInflightInferenceCount(
+  runtime: IAgentRuntime,
+): number;
 /**
  * Test-only reset. Wipes the runtime's tracker entirely. Do NOT call
  * from production code.
  *
  * @internal
  */
-export declare function __resetInflightInferenceForTests(runtime: IAgentRuntime): void;
+export declare function __resetInflightInferenceForTests(
+  runtime: IAgentRuntime,
+): void;
 //# sourceMappingURL=inference-abort.d.ts.map

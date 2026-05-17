@@ -17,31 +17,46 @@
  */
 import { type DeploymentTargetConfig } from "@elizaos/shared";
 import { z } from "zod";
-export declare const RUNTIME_MODES: readonly ["local", "local-only", "cloud", "remote"];
+export declare const RUNTIME_MODES: readonly [
+  "local",
+  "local-only",
+  "cloud",
+  "remote",
+];
 export type RuntimeMode = (typeof RUNTIME_MODES)[number];
 export interface RuntimeModeSnapshot {
-    mode: RuntimeMode;
-    deploymentTarget: DeploymentTargetConfig | null;
-    /** Present iff `mode === "remote"`. The local-instance HTTP base the
-     *  controller proxies to. Cloud/public bases are rejected here too so
-     *  stale or hand-edited config cannot turn remote mode into cloud mode. */
-    remoteApiBase: string | null;
-    /** Populated when a remote target was configured but rejected. */
-    remoteApiBaseError: string | null;
-    remoteAccessToken: string | null;
+  mode: RuntimeMode;
+  deploymentTarget: DeploymentTargetConfig | null;
+  /** Present iff `mode === "remote"`. The local-instance HTTP base the
+   *  controller proxies to. Cloud/public bases are rejected here too so
+   *  stale or hand-edited config cannot turn remote mode into cloud mode. */
+  remoteApiBase: string | null;
+  /** Populated when a remote target was configured but rejected. */
+  remoteApiBaseError: string | null;
+  remoteAccessToken: string | null;
 }
-declare const RuntimeModeConfigSchema: z.ZodObject<{
+declare const RuntimeModeConfigSchema: z.ZodObject<
+  {
     deploymentTarget: z.ZodOptional<z.ZodUnknown>;
-    cloud: z.ZodOptional<z.ZodObject<{
-        enabled: z.ZodOptional<z.ZodBoolean>;
-    }, z.core.$strip>>;
-}, z.core.$loose>;
+    cloud: z.ZodOptional<
+      z.ZodObject<
+        {
+          enabled: z.ZodOptional<z.ZodBoolean>;
+        },
+        z.core.$strip
+      >
+    >;
+  },
+  z.core.$loose
+>;
 type RuntimeModeConfigShape = z.infer<typeof RuntimeModeConfigSchema>;
 /**
  * Pure resolver — no I/O. Use this when you already hold the config object
  * (route handlers usually do) so the caller picks the load strategy.
  */
-export declare function resolveRuntimeMode(config: RuntimeModeConfigShape | null | undefined): RuntimeModeSnapshot;
+export declare function resolveRuntimeMode(
+  config: RuntimeModeConfigShape | null | undefined,
+): RuntimeModeSnapshot;
 /**
  * Disk-backed resolver. Reads `eliza.json` from the canonical config path.
  * Use this from request handlers — `loadElizaConfig` is already memoised
@@ -53,20 +68,23 @@ export declare function getRuntimeModeSnapshot(): RuntimeModeSnapshot;
 /** True for both `local` and `local-only`. */
 export declare function isLocalRuntime(mode: RuntimeMode): boolean;
 export interface RemoteApiBaseValidationOk {
-    ok: true;
-    href: string;
+  ok: true;
+  href: string;
 }
 export interface RemoteApiBaseValidationErr {
-    ok: false;
-    error: string;
+  ok: false;
+  error: string;
 }
-export type RemoteApiBaseValidation = RemoteApiBaseValidationOk | RemoteApiBaseValidationErr;
+export type RemoteApiBaseValidation =
+  | RemoteApiBaseValidationOk
+  | RemoteApiBaseValidationErr;
 /**
  * Remote mode is a thin controller for another local/private Eliza instance,
  * never for Eliza Cloud or a public model API. Accept loopback, private
  * RFC1918/CGNAT/link-local hosts, and .local mDNS names.
  */
-export declare function validateRemoteApiBase(value: string | null | undefined): RemoteApiBaseValidation;
+export declare function validateRemoteApiBase(
+  value: string | null | undefined,
+): RemoteApiBaseValidation;
 export declare function isLocalRemoteHost(hostname: string): boolean;
-export {};
 //# sourceMappingURL=runtime-mode.d.ts.map

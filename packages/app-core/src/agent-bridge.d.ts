@@ -21,7 +21,11 @@
  */
 export { getBuildVariant, isStoreBuild } from "./runtime/build-variant";
 export { hydrateWalletKeysFromNodePlatformSecureStore } from "./security/hydrate-wallet-keys-from-platform-store";
-export { applyAccountPoolApiCredentials, getDefaultAccountPool, startAccountPoolKeepAlive, } from "./services/account-pool";
+export {
+  applyAccountPoolApiCredentials,
+  getDefaultAccountPool,
+  startAccountPoolKeepAlive,
+} from "./services/account-pool";
 export { runVaultBootstrap } from "./services/vault-bootstrap";
 export { sharedVault } from "./services/vault-mirror";
 //# sourceMappingURL=agent-bridge.d.ts.map

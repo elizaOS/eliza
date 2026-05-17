@@ -9,9 +9,11 @@
  * The renderer never mounts the main shell (sidebars, header, chat panes).
  */
 import { type JSX } from "react";
+
 interface AppWindowRendererProps {
-    slug: string;
+  slug: string;
 }
-export declare function AppWindowRenderer({ slug, }: AppWindowRendererProps): JSX.Element;
-export {};
+export declare function AppWindowRenderer({
+  slug,
+}: AppWindowRendererProps): JSX.Element;
 //# sourceMappingURL=AppWindowRenderer.d.ts.map

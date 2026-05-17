@@ -21,5 +21,9 @@ export declare const BROWSER_SESSION_TTL_MS: number;
  * Failure: 401 / 403 / 429 with `{ error, reason }`. Reason is one of the
  * `VerifyBootstrapFailureReason` values plus `rate_limited` and `db_unavailable`.
  */
-export declare function handleAuthBootstrapRoutes(req: http.IncomingMessage, res: http.ServerResponse, state: CompatRuntimeState): Promise<boolean>;
+export declare function handleAuthBootstrapRoutes(
+  req: http.IncomingMessage,
+  res: http.ServerResponse,
+  state: CompatRuntimeState,
+): Promise<boolean>;
 //# sourceMappingURL=auth-bootstrap-routes.d.ts.map

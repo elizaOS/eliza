@@ -26,5 +26,9 @@ export declare function invalidateCorsAllowedPorts(): void;
  *   - a Capacitor / Ionic WebView origin (mobile app builds),
  *   - or an explicit operator-allowed remote origin.
  */
-export declare function isAllowedOrigin(urlStr: string, allowedPorts?: Set<string>, allowedRemoteOrigins?: Set<string>): boolean;
+export declare function isAllowedOrigin(
+  urlStr: string,
+  allowedPorts?: Set<string>,
+  allowedRemoteOrigins?: Set<string>,
+): boolean;
 //# sourceMappingURL=server-cors.d.ts.map

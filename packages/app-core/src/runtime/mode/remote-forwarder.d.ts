@@ -14,7 +14,10 @@
  * 502 surface to the caller, not a silent log-and-continue.
  */
 import type http from "node:http";
-export declare function shouldForwardToRemoteTarget(pathname: string, method: string): boolean;
+export declare function shouldForwardToRemoteTarget(
+  pathname: string,
+  method: string,
+): boolean;
 /**
  * Build the outbound `Headers` for the target. Visible for testing.
  *
@@ -24,12 +27,19 @@ export declare function shouldForwardToRemoteTarget(pathname: string, method: st
  * we forward every value via `headers.append(name, v)` instead of
  * silently dropping the array (the previous behavior).
  */
-export declare function buildForwardHeaders(incoming: http.IncomingHttpHeaders, targetHost: string, remoteAccessToken: string | null): Headers;
+export declare function buildForwardHeaders(
+  incoming: http.IncomingHttpHeaders,
+  targetHost: string,
+  remoteAccessToken: string | null,
+): Headers;
 /**
  * Returns true when the controller forwarded the request to the target
  * (and wrote the response). Returns false when not in remote mode or the
  * route is not in the forwarded list, in which case the caller continues
  * dispatch.
  */
-export declare function forwardRemoteCloudMutation(req: http.IncomingMessage, res: http.ServerResponse): Promise<boolean>;
+export declare function forwardRemoteCloudMutation(
+  req: http.IncomingMessage,
+  res: http.ServerResponse,
+): Promise<boolean>;
 //# sourceMappingURL=remote-forwarder.d.ts.map

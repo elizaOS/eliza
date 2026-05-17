@@ -21,26 +21,30 @@ export declare const AUDIT_LOG_ROTATE_FILENAME = "audit.log.1";
 export declare const AUDIT_LOG_MAX_BYTES: number;
 export declare const AUDIT_REDACTION_RE: RegExp;
 export interface AuditEventInput {
-    actorIdentityId: string | null;
-    ip: string | null;
-    userAgent: string | null;
-    action: string;
-    outcome: "success" | "failure";
-    metadata?: Record<string, string | number | boolean>;
+  actorIdentityId: string | null;
+  ip: string | null;
+  userAgent: string | null;
+  action: string;
+  outcome: "success" | "failure";
+  metadata?: Record<string, string | number | boolean>;
 }
 export interface AuditEmitterOptions {
-    store: AuthStore;
-    env?: RuntimeEnvRecord;
-    now?: () => number;
+  store: AuthStore;
+  env?: RuntimeEnvRecord;
+  now?: () => number;
 }
 /**
  * Replace token-shaped runs in `metadata` with the literal `<redacted>` string.
  *
  * Only string values are scanned; numbers and booleans pass through unchanged.
  */
-export declare function redactMetadata(metadata: Record<string, string | number | boolean>): Record<string, string | number | boolean>;
+export declare function redactMetadata(
+  metadata: Record<string, string | number | boolean>,
+): Record<string, string | number | boolean>;
 export declare function resolveAuditLogPath(env?: RuntimeEnvRecord): string;
-export declare function resolveAuditLogRotatedPath(env?: RuntimeEnvRecord): string;
+export declare function resolveAuditLogRotatedPath(
+  env?: RuntimeEnvRecord,
+): string;
 /**
  * Append an audit event to the database AND the JSONL log.
  *
@@ -48,5 +52,8 @@ export declare function resolveAuditLogRotatedPath(env?: RuntimeEnvRecord): stri
  * an audit-write failure is a real problem and should surface, not be
  * swallowed.
  */
-export declare function appendAuditEvent(input: AuditEventInput, options: AuditEmitterOptions): Promise<void>;
+export declare function appendAuditEvent(
+  input: AuditEventInput,
+  options: AuditEmitterOptions,
+): Promise<void>;
 //# sourceMappingURL=audit.d.ts.map
