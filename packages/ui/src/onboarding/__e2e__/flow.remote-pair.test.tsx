@@ -44,10 +44,10 @@ describe("onboarding flow — remote pairing", () => {
     render(<OnboardingRoot onComplete={(state) => completed.push(state)} />);
 
     await expectState("hello");
-    clickButton(/tap to begin/i);
+    clickButton(/^begin$/i);
 
     await expectState("setup");
-    clickButton(/connect to remote instance/i);
+    clickButton(/connect to a remote instance/i);
 
     await expectState("remote-pair");
     fireEvent.change(screen.getByPlaceholderText(/agent url/i), {

@@ -26,8 +26,17 @@ async function expectState(state: string): Promise<void> {
 }
 
 function clickButton(name: string | RegExp): void {
-  const button = screen.queryByRole("button", { name });
-  fireEvent.click(button ?? screen.getByRole("radio", { name }));
+  const matches = screen.queryAllByRole("button", { name });
+  if (matches.length > 0) {
+    fireEvent.click(matches[0]);
+    return;
+  }
+  const radios = screen.queryAllByRole("radio", { name });
+  if (radios.length > 0) {
+    fireEvent.click(radios[0]);
+    return;
+  }
+  fireEvent.click(screen.getByRole("button", { name }));
 }
 
 function renderOnboarding(
@@ -39,7 +48,7 @@ function renderOnboarding(
 
 async function beginSetup(): Promise<void> {
   await expectState("hello");
-  clickButton(/begin/i);
+  clickButton(/^begin$/i);
   await expectState("setup");
 }
 
