@@ -58,4 +58,17 @@ describe("HomePill", () => {
     rerender(<HomePill phase="responding" onOpen={() => {}} onClose={() => {}} />);
     expect(screen.getByRole("button").getAttribute("aria-pressed")).toBe("true");
   });
+
+  it("is disabled while booting", () => {
+    render(<HomePill phase="booting" onOpen={() => {}} onClose={() => {}} />);
+    const btn = screen.getByRole("button") as HTMLButtonElement;
+    expect(btn.disabled).toBe(true);
+  });
+
+  it("does not call onOpen when clicked during booting", () => {
+    const onOpen = vi.fn();
+    render(<HomePill phase="booting" onOpen={onOpen} onClose={() => {}} />);
+    fireEvent.click(screen.getByRole("button"));
+    expect(onOpen).not.toHaveBeenCalled();
+  });
 });

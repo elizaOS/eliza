@@ -15,6 +15,9 @@ export interface HomePillProps {
  *
  * Pure visual + click handler — does not own state. Consumers wire `phase`
  * and the open/close handlers.
+ *
+ * During the booting phase the button is `disabled` so a click does not
+ * silently fire onOpen() against a reducer that would ignore it.
  */
 export function HomePill({
   phase,
@@ -23,6 +26,7 @@ export function HomePill({
 }: HomePillProps): React.JSX.Element {
   const isOpen =
     phase === "summoned" || phase === "listening" || phase === "responding";
+  const isInteractive = phase !== "booting";
 
   const handleClick = React.useCallback(() => {
     if (isOpen) onClose();
@@ -32,6 +36,7 @@ export function HomePill({
   return (
     <button
       type="button"
+      disabled={!isInteractive}
       aria-label={isOpen ? "Close Eliza" : "Open Eliza"}
       aria-pressed={isOpen}
       data-phase={phase}
@@ -47,14 +52,14 @@ export function HomePill({
         "border border-border/40",
         // Focus ring
         "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-bg",
-        // Booting: dim
-        phase === "booting" && "opacity-60",
-        // Listening: red pulse + accent ring
+        // Booting: dim, non-interactive
+        phase === "booting" && "opacity-60 cursor-not-allowed",
+        // Listening: red pulse + accent ring using the brand orange token
         phase === "listening" &&
-          "bg-warn/30 border-warn/60 shadow-[0_0_24px_rgba(255,138,36,0.55)] animate-pulse",
-        // Responding: ambient glow
+          "bg-warn/30 border-warn/60 shadow-[0_0_24px_rgba(var(--accent-rgb),0.55)] animate-pulse",
+        // Responding: ambient glow on brand orange
         phase === "responding" &&
-          "shadow-[0_0_18px_rgba(255,138,36,0.35)]",
+          "shadow-[0_0_18px_rgba(var(--accent-rgb),0.35)]",
         // Summoned: faint glow
         phase === "summoned" &&
           "shadow-[0_0_10px_rgba(255,255,255,0.15)]",
