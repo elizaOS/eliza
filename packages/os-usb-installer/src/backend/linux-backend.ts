@@ -6,6 +6,12 @@ import * as https from "node:https";
 import * as path from "node:path";
 import { promisify } from "node:util";
 import { DEFAULT_ELIZAOS_IMAGES } from "./dry-run-backend";
+import {
+  LsblkParseError,
+  NoPrivilegeEscalatorError,
+  UnmountFailedError,
+  WriteIncompleteError,
+} from "./errors";
 import type {
   ElizaOsImage,
   InstallerStep,
@@ -192,9 +198,70 @@ function pendingSteps(): InstallerStep[] {
 
 // Parse dd stderr progress lines: "1234567890 bytes (1.2 GB, 1.1 GiB) copied, ..."
 function parseDdBytesWritten(line: string): number | null {
-  const match = line.match(/^(\d+)\s+bytes/);
+  const match = line.match(/(\d+)\s+bytes/);
   if (match?.[1]) return Number(match[1]);
   return null;
+}
+
+export interface PrivilegeEscalator {
+  command: string;
+  argsPrefix: string[];
+}
+
+async function commandExists(command: string): Promise<boolean> {
+  try {
+    await execFileAsync("command", ["-v", command]);
+    return true;
+  } catch {
+    try {
+      await execFileAsync("which", [command]);
+      return true;
+    } catch {
+      return false;
+    }
+  }
+}
+
+export async function findPrivilegeEscalator(
+  env: NodeJS.ProcessEnv = process.env,
+): Promise<PrivilegeEscalator> {
+  // 1. pkexec — GUI prompt on GNOME/polkit
+  if (await commandExists("pkexec")) {
+    return { command: "pkexec", argsPrefix: [] };
+  }
+
+  // 2. sudo -n — only works if credentials are cached, no prompt
+  if (await commandExists("sudo")) {
+    try {
+      await execFileAsync("sudo", ["-n", "true"]);
+      return { command: "sudo", argsPrefix: ["-n"] };
+    } catch {
+      // Not cached; only allow interactive sudo if explicitly opted-in.
+      if (env.MILADY_USB_ALLOW_SUDO === "1") {
+        return { command: "sudo", argsPrefix: [] };
+      }
+    }
+  }
+
+  // 3. kdesu — KDE GUI prompt
+  if (await commandExists("kdesu")) {
+    return { command: "kdesu", argsPrefix: ["-c"] };
+  }
+
+  // 4. doas — minimal BSD-style escalation
+  if (await commandExists("doas")) {
+    return { command: "doas", argsPrefix: [] };
+  }
+
+  throw new NoPrivilegeEscalatorError(
+    [
+      "No privilege escalator found. Install one of:",
+      "  - pkexec (GNOME):   sudo apt install policykit-1   |   sudo dnf install polkit",
+      "  - kdesu  (KDE):     sudo apt install kde-cli-tools |   sudo dnf install kde-cli-tools",
+      "  - doas:             sudo apt install doas          |   sudo pacman -S opendoas",
+      "  - sudo (cached):    run `sudo -v` first, or set MILADY_USB_ALLOW_SUDO=1",
+    ].join("\n"),
+  );
 }
 
 export class LinuxUsbInstallerBackend implements UsbInstallerBackend {
@@ -206,7 +273,12 @@ export class LinuxUsbInstallerBackend implements UsbInstallerBackend {
       "--bytes",
     ]);
 
-    const parsed = JSON.parse(stdout) as LsblkOutput;
+    let parsed: LsblkOutput;
+    try {
+      parsed = JSON.parse(stdout) as LsblkOutput;
+    } catch (error) {
+      throw new LsblkParseError(stdout.slice(0, 500), error);
+    }
     const drives: RemovableDrive[] = [];
 
     for (const device of parsed.blockdevices) {
@@ -336,68 +408,121 @@ export class LinuxUsbInstallerBackend implements UsbInstallerBackend {
     }
     onProgress("checksum", 1);
 
-    // Unmount all partitions of the target disk
+    // Unmount all mounted partitions of the target disk. A busy/failed
+    // unmount must abort the write — dd into a mounted FS corrupts data.
+    const { stdout: childStdout } = await execFileAsync("lsblk", [
+      "--json",
+      "--output",
+      "NAME,MOUNTPOINT",
+      drive.devicePath,
+    ]);
+    let childData: {
+      blockdevices: Array<{
+        name: string;
+        children?: Array<{ name: string; mountpoint?: string | null }>;
+      }>;
+    };
     try {
-      const { stdout } = await execFileAsync("lsblk", [
-        "--json",
-        "--output",
-        "NAME,MOUNTPOINT",
-        drive.devicePath,
-      ]);
-      const lsblkData = JSON.parse(stdout) as {
-        blockdevices: Array<{
-          name: string;
-          children?: Array<{ name: string; mountpoint?: string }>;
-        }>;
-      };
-      const device = lsblkData.blockdevices[0];
-      if (device?.children) {
-        for (const child of device.children) {
-          if (child.mountpoint) {
-            await execFileAsync("umount", [`/dev/${child.name}`]).catch(
-              () => undefined,
-            );
+      childData = JSON.parse(childStdout);
+    } catch (error) {
+      throw new LsblkParseError(childStdout.slice(0, 500), error);
+    }
+    const targetDevice = childData.blockdevices[0];
+    if (targetDevice?.children) {
+      for (const child of targetDevice.children) {
+        if (!child.mountpoint) continue;
+        const partPath = `/dev/${child.name}`;
+        try {
+          await execFileAsync("umount", [partPath]);
+        } catch (err) {
+          const e = err as { code?: number; stderr?: string };
+          const stderr = e.stderr ?? "";
+          // Exit code 32 / "not mounted" is acceptable (race vs. lsblk).
+          if (e.code !== 32 && !/not mounted/i.test(stderr)) {
+            throw new UnmountFailedError(partPath, stderr);
           }
         }
       }
-    } catch {
-      // best effort
     }
 
-    // Step: write using pkexec dd with progress
+    // Step: write using a privilege escalator + dd with progress
     onProgress("write", 0);
+    const escalator = await findPrivilegeEscalator();
+    let finalBytesWritten = 0;
     await new Promise<void>((resolve, reject) => {
-      const proc = spawn("pkexec", [
+      const ddArgs = [
         "dd",
         `if=${imagePath}`,
         `of=${drive.devicePath}`,
         "bs=4M",
         "status=progress",
+        "conv=fsync",
+      ];
+      const proc = spawn(escalator.command, [
+        ...escalator.argsPrefix,
+        ...ddArgs,
       ]);
 
-      // dd writes progress to stderr
+      let lastProgress = 0;
+      let lastProgressAt = Date.now();
+      // Heartbeat: if dd output is buffered and no update arrives for >5s,
+      // re-emit the last known progress so the UI knows we are still alive.
+      const heartbeat = setInterval(() => {
+        if (Date.now() - lastProgressAt >= 5_000) {
+          onProgress("write", lastProgress);
+          lastProgressAt = Date.now();
+        }
+      }, 1_000);
+
       let stderrBuf = "";
+      let stderrAll = "";
       proc.stderr.on("data", (chunk: Buffer) => {
-        stderrBuf += chunk.toString();
-        // dd emits lines like: "1234567 bytes (1.2 MB, 1.1 MiB) copied, 1 s, 1.2 MB/s"
-        const lines = stderrBuf.split("\r");
-        const lastLine = lines[lines.length - 1] ?? "";
-        const bytesWritten = parseDdBytesWritten(lastLine);
-        if (bytesWritten !== null && image.sizeBytes > 0) {
-          onProgress("write", Math.min(bytesWritten / image.sizeBytes, 0.99));
+        const text = chunk.toString();
+        stderrAll += text;
+        stderrBuf += text;
+        const segments = stderrBuf.split(/[\r\n]/);
+        stderrBuf = segments.pop() ?? "";
+        for (const seg of segments) {
+          const bytes = parseDdBytesWritten(seg);
+          if (bytes !== null) {
+            finalBytesWritten = bytes;
+            if (image.sizeBytes > 0) {
+              const pct = Math.min(bytes / image.sizeBytes, 0.99);
+              lastProgress = pct;
+              lastProgressAt = Date.now();
+              onProgress("write", pct);
+            }
+          }
         }
       });
 
       proc.on("close", (code) => {
+        clearInterval(heartbeat);
+        // Final dd summary line lives in stderrBuf or stderrAll.
+        const tailBytes =
+          parseDdBytesWritten(stderrBuf) ?? parseDdBytesWritten(stderrAll);
+        if (tailBytes !== null) {
+          finalBytesWritten = tailBytes;
+        }
         if (code === 0) {
-          onProgress("write", 1);
           resolve();
         } else {
           reject(new Error(`dd exited with code ${code ?? "?"}`));
         }
       });
-      proc.on("error", reject);
+      proc.on("error", (err) => {
+        clearInterval(heartbeat);
+        reject(err);
+      });
     });
+
+    if (image.sizeBytes > 0) {
+      const drift = Math.abs(finalBytesWritten - image.sizeBytes);
+      if (drift > 1024 * 1024) {
+        throw new WriteIncompleteError(image.sizeBytes, finalBytesWritten);
+      }
+    }
+    onProgress("write", 1);
 
     // Step: verify (sync)
     onProgress("verify", 0);

@@ -272,6 +272,16 @@ export function errorResult(error: string, text?: string): ActionResult {
   return { success: false, error, ...(text ? { text } : {}) };
 }
 
+/** Read the session id stored in state by setCurrentSession / setCurrentSessions. */
+export function stateSessionId(state: State | undefined): string | undefined {
+  const session = state?.["codingSession"];
+  if (session !== null && typeof session === "object" && "id" in session) {
+    const { id } = session as { id?: string };
+    return typeof id === "string" ? id : undefined;
+  }
+  return undefined;
+}
+
 export async function resolveSession(
   service: AcpActionService,
   sessionId: string | undefined,
@@ -281,9 +291,7 @@ export async function resolveSession(
   missingId?: string;
   sessions: SessionInfo[];
 }> {
-  const stateSession = (
-    state as { codingSession?: { id?: string } } | undefined
-  )?.codingSession?.id;
+  const stateSession = stateSessionId(state);
   const targetId = sessionId ?? stateSession;
   if (targetId) {
     const found = await Promise.resolve(service.getSession(targetId));
