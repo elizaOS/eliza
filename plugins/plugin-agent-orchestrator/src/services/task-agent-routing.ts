@@ -111,6 +111,13 @@ export function resolveSpawnWorkdir(
   }
   const route = resolveWorkdirRoute(runtime, task, userRequest);
   if (route) return { workdir: route.workdir, route };
+  // Auto-detect: when `TASK_AGENT_WORKDIR_ROOTS` is set (one or more
+  // colon-separated base dirs, default `~/Projects`), look for an
+  // immediate subdir whose name appears in the user request / task. This
+  // is convention-over-configuration — no per-project route entry needed
+  // as long as the project directory is named like the user refers to it.
+  const detected = resolveWorkdirByConvention(runtime, task, userRequest);
+  if (detected) return { workdir: detected };
   if (expandedExplicit && fs.existsSync(expandedExplicit)) {
     return { workdir: expandedExplicit };
   }
@@ -120,6 +127,67 @@ export function resolveSpawnWorkdir(
     );
   }
   return { workdir: process.cwd() };
+}
+
+function resolveWorkdirByConvention(
+  runtime: IAgentRuntime | undefined,
+  task: string,
+  userRequest: string,
+): string | undefined {
+  const rootsRaw =
+    (typeof runtime?.getSetting === "function"
+      ? (runtime.getSetting("TASK_AGENT_WORKDIR_ROOTS") as string | undefined)
+      : undefined) ??
+    readConfigEnvKey("TASK_AGENT_WORKDIR_ROOTS") ??
+    process.env.TASK_AGENT_WORKDIR_ROOTS ??
+    "~/Projects";
+  const roots = rootsRaw
+    .split(":")
+    .map((r) => r.trim())
+    .filter(Boolean)
+    .map(expandHomePath);
+  const haystack = `${userRequest}\n${task}`.toLowerCase();
+  const matches: string[] = [];
+  for (const root of roots) {
+    let entries: string[];
+    try {
+      entries = fs
+        .readdirSync(root, { withFileTypes: true })
+        .filter((e) => e.isDirectory() && !e.name.startsWith("."))
+        .map((e) => e.name);
+    } catch {
+      continue;
+    }
+    for (const name of entries) {
+      // Match the directory name as a contiguous phrase. Hyphens and
+      // spaces are interchangeable so `camping-car-europe` matches
+      // "camping car europe" and vice versa.
+      const variants = new Set([
+        name.toLowerCase(),
+        name.toLowerCase().replace(/-/g, " "),
+        name.toLowerCase().replace(/\s+/g, "-"),
+      ]);
+      for (const variant of variants) {
+        if (variant.length < 4) continue; // skip generic tokens like "app"
+        if (haystack.includes(variant)) {
+          matches.push(path.join(root, name));
+          break;
+        }
+      }
+    }
+  }
+  if (matches.length === 1) {
+    logger.info(
+      `[workdir-routes] Auto-detected workdir by convention: ${matches[0]}`,
+    );
+    return matches[0];
+  }
+  if (matches.length > 1) {
+    logger.warn(
+      `[workdir-routes] Auto-detect ambiguous (${matches.length} matches): ${matches.join(", ")} — falling back`,
+    );
+  }
+  return undefined;
 }
 
 export function resolveWorkdirRoute(
