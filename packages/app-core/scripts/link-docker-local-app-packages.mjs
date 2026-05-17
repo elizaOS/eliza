@@ -182,16 +182,9 @@ function removePath(filePath) {
 
 function resolveDependencyPackageDir(packageName, baseDirs = [repoRoot]) {
   const packageSegments = packageName.split("/");
-  // Always return the realpath: when a previous iteration of this loop has
-  // already linked the dep (e.g. app-core's per-package node_modules pointing
-  // at the root install), a later call must surface the real directory, not
-  // the symlink chain — otherwise `linkDependencyPackage`'s equality check
-  // can't detect that source and target refer to the same place, and we end
-  // up replacing the real npm-installed package with a circular symlink that
-  // points back at itself. This was the root cause of the prod `:develop`
-  // sandbox hang where `import 'jose'` from plugin-elizacloud failed with
-  // ERR_MODULE_NOT_FOUND because /app/node_modules/jose pointed to
-  // /app/packages/app-core/node_modules/jose pointed to /app/node_modules/jose.
+  // Return the realpath so `linkDependencyPackage`'s `packageDir === target`
+  // check works when a previous loop iteration already symlinked the dep
+  // (avoids circular symlinks like jose → app-core/jose → root jose).
   const realIfExists = (dir) => {
     if (!fs.existsSync(path.join(dir, "package.json"))) return null;
     try {
