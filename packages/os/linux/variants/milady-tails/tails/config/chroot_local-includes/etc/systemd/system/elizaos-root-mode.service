@@ -2,7 +2,7 @@
 Description=Restore traversable elizaOS live root permissions
 DefaultDependencies=no
 Requires=run-nosymfollow.mount
-After=run-nosymfollow.mount
+After=run-nosymfollow.mount systemd-tmpfiles-setup.service
 Before=sysinit.target basic.target dbus.service polkit.service gdm.service tails-persistent-storage.service
 ConditionPathIsMountPoint=/run/nosymfollow
 
