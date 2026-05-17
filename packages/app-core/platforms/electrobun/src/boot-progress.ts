@@ -19,7 +19,9 @@ import type { BootProgressSnapshot, EmbeddedAgentStatus } from "./rpc-schema";
 export type AgentHealthSnapshot = Pick<
 	BootProgressSnapshot,
 	"phase" | "lastError" | "pluginsLoaded" | "pluginsFailed" | "database"
->;
+> & {
+	agentState: BootProgressSnapshot["state"] | null;
+};
 
 export type AgentHealthReader = (
 	port: number,
@@ -36,16 +38,19 @@ export const readAgentHealthSnapshotViaHttp: AgentHealthReader = async (
 		});
 		if (!response.ok) return null;
 		const raw = (await response.json()) as {
+			agentState?: unknown;
 			database?: unknown;
 			plugins?: { loaded?: unknown; failed?: unknown };
 			startup?: { phase?: unknown; lastError?: unknown };
 		};
+		const agentStateRaw = raw.agentState;
 		const phaseRaw = raw.startup?.phase;
 		const lastErrorRaw = raw.startup?.lastError;
 		const loadedRaw = raw.plugins?.loaded;
 		const failedRaw = raw.plugins?.failed;
 		const databaseRaw = raw.database;
 		return {
+			agentState: isBootProgressState(agentStateRaw) ? agentStateRaw : null,
 			phase: typeof phaseRaw === "string" ? phaseRaw : null,
 			lastError: typeof lastErrorRaw === "string" ? lastErrorRaw : null,
 			pluginsLoaded: typeof loadedRaw === "number" ? loadedRaw : null,
@@ -63,6 +68,31 @@ export const readAgentHealthSnapshotViaHttp: AgentHealthReader = async (
 	}
 };
 
+const BOOT_PROGRESS_STATES = new Set<BootProgressSnapshot["state"]>([
+	"not_started",
+	"starting",
+	"running",
+	"stopped",
+	"error",
+]);
+
+function isBootProgressState(
+	value: unknown,
+): value is BootProgressSnapshot["state"] {
+	return (
+		typeof value === "string" &&
+		BOOT_PROGRESS_STATES.has(value as BootProgressSnapshot["state"])
+	);
+}
+
+function resolveBootProgressState(
+	embeddedState: BootProgressSnapshot["state"],
+	healthState: BootProgressSnapshot["state"] | null | undefined,
+): BootProgressSnapshot["state"] {
+	if (embeddedState === "error") return embeddedState;
+	return healthState ?? embeddedState;
+}
+
 /**
  * Compose the typed BootProgressSnapshot from the agent's lifecycle
  * status plus an injected health reader. Pure — no module singletons,
@@ -76,7 +106,7 @@ export async function composeBootProgressSnapshot(
 	const port = status.port;
 	const health = port !== null ? await readHealth(port) : null;
 	return {
-		state: status.state,
+		state: resolveBootProgressState(status.state, health?.agentState),
 		phase: health?.phase ?? null,
 		lastError: health?.lastError ?? status.error ?? null,
 		pluginsLoaded: health?.pluginsLoaded ?? null,
