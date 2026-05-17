@@ -53,9 +53,7 @@ export interface BridgeServiceDeps {
     >,
     path: string,
   ): Promise<string>;
-  getAgentJsonHeaders(
-    rec: Pick<AgentSandbox, "id" | "environment_vars">,
-  ): Record<string, string>;
+  getAgentJsonHeaders(rec: Pick<AgentSandbox, "id" | "environment_vars">): Record<string, string>;
   listRuntimeAgents(
     rec: Pick<
       AgentSandbox,
@@ -146,11 +144,7 @@ export class ElizaSandboxBridgeService {
     }
   }
 
-  async bridgeStream(
-    agentId: string,
-    orgId: string,
-    rpc: BridgeRequest,
-  ): Promise<Response | null> {
+  async bridgeStream(agentId: string, orgId: string, rpc: BridgeRequest): Promise<Response | null> {
     const rec = await agentSandboxesRepository.findRunningSandbox(agentId, orgId);
     if (!rec?.bridge_url) {
       logger.warn("[agent-sandbox] Bridge stream to non-running sandbox", {
@@ -790,10 +784,7 @@ export class ElizaSandboxBridgeService {
       : null;
   }
 
-  private isBridgeAgentMessage(
-    message: Record<string, unknown>,
-    runtimeAgentId?: string,
-  ): boolean {
+  private isBridgeAgentMessage(message: Record<string, unknown>, runtimeAgentId?: string): boolean {
     if (message.isAgent === true || message.fromAgent === true || message.isBot === true) {
       return true;
     }
