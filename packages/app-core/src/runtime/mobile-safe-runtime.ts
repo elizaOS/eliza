@@ -1,3 +1,5 @@
+import { formatError } from "@elizaos/shared";
+
 export type MobileSafeRuntimePlatform = "ios" | "android" | "web" | "unknown";
 
 export type MobileSafeRuntimeProviderKind =

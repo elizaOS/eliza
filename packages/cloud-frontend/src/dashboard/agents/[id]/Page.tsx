@@ -4,6 +4,7 @@ import {
   ArrowLeft,
   Cloud,
   ExternalLink,
+  MessageCircle,
   Server,
   Terminal,
 } from "lucide-react";
@@ -117,7 +118,18 @@ export default function AgentDetailPage() {
             <span>Instances</span>
           </Link>
 
-          {showConnect && <ElizaConnectButton agentId={agent.id} />}
+          <div className="flex items-center gap-2">
+            {agent.status === "running" && (
+              <Link
+                to={`/dashboard/agents/${agent.id}/chat`}
+                className="inline-flex items-center gap-1.5 h-8 px-3 text-sm font-medium border border-[#FF5800] bg-[#FF5800] text-black hover:bg-[#FF5800]/90 transition-colors"
+              >
+                <MessageCircle className="h-3.5 w-3.5" />
+                Chat
+              </Link>
+            )}
+            {showConnect && <ElizaConnectButton agentId={agent.id} />}
+          </div>
         </div>
 
         <div className="space-y-4">

@@ -820,6 +820,162 @@ export const primitiveStories: StoryDefinition[] = [
     ),
   },
   {
+    id: "p-banner",
+    name: "Banner",
+    importPath: 'import { Banner } from "@elizaos/ui/components/ui/banner"',
+    render: () => (
+      <div className="gallery-stack">
+        <Banner variant="info">Local inference is online.</Banner>
+        <Banner variant="warning" dismissible>
+          Cloud quota near limit.
+        </Banner>
+        <Banner
+          variant="error"
+          action={<Button size="sm">Retry</Button>}
+        >
+          Failed to load eliza-1.
+        </Banner>
+      </div>
+    ),
+  },
+  {
+    id: "p-collapsible",
+    name: "Collapsible",
+    importPath:
+      'import { Collapsible, CollapsibleTrigger, CollapsibleContent } from "@elizaos/ui/components/ui/collapsible"',
+    render: () => (
+      <Collapsible style={{ width: 240 }}>
+        <CollapsibleTrigger asChild>
+          <Button variant="outline">Toggle details</Button>
+        </CollapsibleTrigger>
+        <CollapsibleContent>
+          <div style={{ paddingTop: 8, fontSize: 13 }}>
+            Local-first by default. No cloud required.
+          </div>
+        </CollapsibleContent>
+      </Collapsible>
+    ),
+  },
+  {
+    id: "p-copy-button",
+    name: "CopyButton",
+    importPath:
+      'import { CopyButton } from "@elizaos/ui/components/ui/copy-button"',
+    render: () => (
+      <div className="gallery-row">
+        <CopyButton value="bun install @elizaos/ui" />
+        <CopyButton value="claude-opus-4-7" label="Copy model" />
+      </div>
+    ),
+  },
+  {
+    id: "p-empty-state",
+    name: "EmptyState",
+    importPath:
+      'import { EmptyState } from "@elizaos/ui/components/ui/empty-state"',
+    render: () => (
+      <div style={{ width: "100%" }}>
+        <EmptyState
+          variant="dashed"
+          icon={<Inbox />}
+          title="No agents yet"
+          description="Spawn your first local agent to get started."
+          action={<Button size="sm">Create agent</Button>}
+        />
+      </div>
+    ),
+  },
+  {
+    id: "p-input-group",
+    name: "InputGroup",
+    importPath:
+      'import { InputGroup, InputGroupInput, InputGroupAddon, InputGroupText } from "@elizaos/ui/components/ui/input-group"',
+    render: () => (
+      <InputGroup style={{ width: 260 }}>
+        <InputGroupAddon>
+          <Search />
+        </InputGroupAddon>
+        <InputGroupInput placeholder="Search models..." />
+        <InputGroupAddon align="inline-end">
+          <InputGroupText>cmd+K</InputGroupText>
+        </InputGroupAddon>
+      </InputGroup>
+    ),
+  },
+  {
+    id: "p-pagination",
+    name: "Pagination",
+    importPath:
+      'import { Pagination, PaginationContent, PaginationItem, PaginationLink, PaginationNext, PaginationPrevious, PaginationEllipsis } from "@elizaos/ui/components/ui/pagination"',
+    render: () => <ControlledPagination />,
+  },
+  {
+    id: "p-segmented-control",
+    name: "SegmentedControl",
+    importPath:
+      'import { SegmentedControl } from "@elizaos/ui/components/ui/segmented-control"',
+    render: () => <ControlledSegmented />,
+  },
+  {
+    id: "p-table",
+    name: "Table",
+    importPath:
+      'import { Table, TableHeader, TableBody, TableRow, TableHead, TableCell, TableCaption } from "@elizaos/ui/components/ui/table"',
+    render: () => (
+      <Table style={{ width: 360 }}>
+        <TableCaption>Active local models.</TableCaption>
+        <TableHeader>
+          <TableRow>
+            <TableHead>Model</TableHead>
+            <TableHead>Tok/s</TableHead>
+            <TableHead>State</TableHead>
+          </TableRow>
+        </TableHeader>
+        <TableBody>
+          <TableRow>
+            <TableCell>eliza-1</TableCell>
+            <TableCell>1.2k</TableCell>
+            <TableCell>ready</TableCell>
+          </TableRow>
+          <TableRow>
+            <TableCell>claude-opus-4-7</TableCell>
+            <TableCell>—</TableCell>
+            <TableCell>cloud</TableCell>
+          </TableRow>
+        </TableBody>
+      </Table>
+    ),
+  },
+  {
+    id: "p-tag-editor",
+    name: "TagEditor",
+    importPath:
+      'import { TagEditor } from "@elizaos/ui/components/ui/tag-editor"',
+    render: () => (
+      <div style={{ width: 280 }}>
+        <ControlledTagEditor />
+      </div>
+    ),
+  },
+  {
+    id: "p-toggle",
+    name: "Toggle",
+    importPath: 'import { Toggle } from "@elizaos/ui/components/ui/toggle"',
+    render: () => (
+      <div className="gallery-row">
+        <Toggle aria-label="Bold">
+          <Bold />
+        </Toggle>
+        <Toggle aria-label="Italic" defaultPressed>
+          <Italic />
+        </Toggle>
+        <Toggle aria-label="Underline">
+          <Underline />
+        </Toggle>
+      </div>
+    ),
+  },
+  {
     id: "p-typography",
     name: "Typography (Heading + Text)",
     importPath:

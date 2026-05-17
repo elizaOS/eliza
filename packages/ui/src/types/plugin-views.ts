@@ -16,6 +16,4 @@ export interface PluginViewRegistration {
 
 export interface ElizaPluginViews {
   views?: PluginViewRegistration[];
-  /** @deprecated use `views` */
-  apps?: PluginViewRegistration[];
 }

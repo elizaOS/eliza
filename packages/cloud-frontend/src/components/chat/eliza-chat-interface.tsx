@@ -1461,7 +1461,7 @@ export function ElizaChatInterface({
             <ScrollArea className="h-full py-6" ref={scrollAreaRef}>
               <div className="max-w-4xl mx-auto px-2 space-y-6">
                 {error && (
-                  <div className="rounded-lg border border-destructive bg-destructive/10 p-3">
+                  <div className="rounded-sm border border-destructive bg-destructive/10 p-3">
                     <p className="text-sm text-destructive">{error}</p>
                   </div>
                 )}
@@ -1638,7 +1638,7 @@ export function ElizaChatInterface({
                         type="button"
                         variant="ghost"
                         size="icon"
-                        className="h-8 w-8 rounded-lg hover:bg-white/[0.06] transition-colors"
+                        className="h-8 w-8 rounded-sm hover:bg-white/[0.06] transition-colors"
                       >
                         <Plus className="h-4 w-4 text-neutral-400" />
                       </Button>
@@ -1650,7 +1650,7 @@ export function ElizaChatInterface({
                       sideOffset={8}
                     >
                       <DropdownMenuItem
-                        className="flex items-center gap-3 px-3 py-2.5 rounded-lg cursor-pointer data-[highlighted]:bg-white/5 focus:bg-white/5"
+                        className="flex items-center gap-3 px-3 py-2.5 rounded-sm cursor-pointer data-[highlighted]:bg-white/5 focus:bg-white/5"
                         disabled={isUploadingFiles || loadingState.isSending}
                         onSelect={() => {
                           document.getElementById("chat-file-upload")?.click();
@@ -1665,7 +1665,7 @@ export function ElizaChatInterface({
                       </DropdownMenuItem>
 
                       <DropdownMenuItem
-                        className="flex items-center justify-between px-3 py-2.5 rounded-lg cursor-pointer data-[highlighted]:bg-white/5 focus:bg-white/5"
+                        className="flex items-center justify-between px-3 py-2.5 rounded-sm cursor-pointer data-[highlighted]:bg-white/5 focus:bg-white/5"
                         onSelect={(e) => {
                           e.preventDefault();
                           setCreateImageEnabled(!createImageEnabled);
@@ -1683,7 +1683,7 @@ export function ElizaChatInterface({
                       </DropdownMenuItem>
 
                       <DropdownMenuItem
-                        className="flex items-center justify-between px-3 py-2.5 rounded-lg cursor-pointer data-[highlighted]:bg-white/5 focus:bg-white/5"
+                        className="flex items-center justify-between px-3 py-2.5 rounded-sm cursor-pointer data-[highlighted]:bg-white/5 focus:bg-white/5"
                         onSelect={(e) => {
                           e.preventDefault();
                           setWebSearchEnabled(!webSearchEnabled);
@@ -1701,7 +1701,7 @@ export function ElizaChatInterface({
                       </DropdownMenuItem>
 
                       <DropdownMenuItem
-                        className="flex items-center justify-between px-3 py-2.5 rounded-lg cursor-pointer data-[highlighted]:bg-white/5 focus:bg-white/5"
+                        className="flex items-center justify-between px-3 py-2.5 rounded-sm cursor-pointer data-[highlighted]:bg-white/5 focus:bg-white/5"
                         onSelect={(e) => {
                           e.preventDefault();
                           setAudioState((prev) => ({
@@ -1752,10 +1752,10 @@ export function ElizaChatInterface({
                               toast.success(`Voice: ${voiceName}`);
                             }}
                           >
-                            <SelectTrigger className="w-full h-8 rounded-lg border-white/10 bg-white/5 text-sm">
+                            <SelectTrigger className="w-full h-8 rounded-sm border-white/10 bg-white/5 text-sm">
                               <SelectValue placeholder="Select voice" />
                             </SelectTrigger>
-                            <SelectContent className="rounded-lg border-white/10 bg-neutral-800/60">
+                            <SelectContent className="rounded-sm border-white/10 bg-neutral-800/60">
                               <SelectItem value="default">
                                 Default Voice
                               </SelectItem>
@@ -1781,7 +1781,7 @@ export function ElizaChatInterface({
                     size="icon"
                     disabled={loadingState.isSending}
                     onClick={handleVoiceInput}
-                    className={`h-8 w-8 rounded-lg transition-colors ${
+                    className={`h-8 w-8 rounded-sm transition-colors ${
                       isRecording
                         ? "bg-red-500/10 hover:bg-red-500/20"
                         : "hover:bg-white/[0.06]"
@@ -1799,7 +1799,7 @@ export function ElizaChatInterface({
                     <button
                       type="button"
                       onClick={() => setCreateImageEnabled(false)}
-                      className="flex items-center gap-1 h-7 px-3 rounded-lg bg-transparent hover:bg-[#FF5800]/10 text-[#FF5800] text-sm transition-colors"
+                      className="flex items-center gap-1 h-7 px-3 rounded-sm bg-transparent hover:bg-[#FF5800]/10 text-[#FF5800] text-sm transition-colors"
                     >
                       <span>{selectedImageModel.name}</span>
                       <X className="h-3.5 w-3.5" />
@@ -1816,7 +1816,7 @@ export function ElizaChatInterface({
                         type="button"
                         variant="ghost"
                         disabled={isLoadingModels}
-                        className="h-8 gap-1.5 px-2.5 rounded-lg hover:bg-white/[0.06] transition-colors"
+                        className="h-8 gap-1.5 px-2.5 rounded-sm hover:bg-white/[0.06] transition-colors"
                       >
                         <span className="flex items-center gap-1.5 text-sm text-white/50">
                           {!customModel && tierIcons[selectedTier]}
@@ -1847,7 +1847,7 @@ export function ElizaChatInterface({
                       sideOffset={8}
                     >
                       {/* Tab switcher */}
-                      <div className="relative inline-flex items-center gap-0.5 p-1 mb-2 rounded-lg bg-white/5 border border-white/10 w-full">
+                      <div className="relative inline-flex items-center gap-0.5 p-1 mb-2 rounded-sm bg-white/5 border border-white/10 w-full">
                         {/* Animated indicator */}
                         <div
                           className="absolute top-1 bottom-1 rounded-md bg-white transition-all duration-300 ease-out"
@@ -1890,7 +1890,7 @@ export function ElizaChatInterface({
                           {tiers.map((tier) => (
                             <DropdownMenuItem
                               key={tier.id}
-                              className="flex items-center justify-between px-3 py-2.5 rounded-lg cursor-pointer data-[highlighted]:bg-white/5 focus:bg-white/5"
+                              className="flex items-center justify-between px-3 py-2.5 rounded-sm cursor-pointer data-[highlighted]:bg-white/5 focus:bg-white/5"
                               onSelect={() => {
                                 setTier(tier.id as "fast" | "pro" | "ultra");
                                 setCustomModel(null);
@@ -1927,7 +1927,7 @@ export function ElizaChatInterface({
 
                           {/* More models submenu */}
                           <DropdownMenuSub>
-                            <DropdownMenuSubTrigger className="flex items-center justify-between px-3 py-2.5 rounded-lg cursor-pointer text-[14px] text-white/70 data-[highlighted]:bg-white/5 focus:bg-white/5">
+                            <DropdownMenuSubTrigger className="flex items-center justify-between px-3 py-2.5 rounded-sm cursor-pointer text-[14px] text-white/70 data-[highlighted]:bg-white/5 focus:bg-white/5">
                               More models
                             </DropdownMenuSubTrigger>
                             <DropdownMenuSubContent
@@ -1953,7 +1953,7 @@ export function ElizaChatInterface({
                                   {moreTextModels.map((model) => (
                                     <DropdownMenuItem
                                       key={model.id}
-                                      className="flex items-center justify-between px-3 py-2.5 rounded-lg cursor-pointer data-[highlighted]:bg-white/5 focus:bg-white/5"
+                                      className="flex items-center justify-between px-3 py-2.5 rounded-sm cursor-pointer data-[highlighted]:bg-white/5 focus:bg-white/5"
                                       onSelect={() => {
                                         setCustomModel({
                                           id: model.id,
@@ -2015,7 +2015,7 @@ export function ElizaChatInterface({
                               <DropdownMenuItem
                                 key={tier.id}
                                 className={cn(
-                                  "flex items-center justify-between px-3 py-2.5 rounded-lg cursor-pointer data-[highlighted]:bg-white/5 focus:bg-white/5",
+                                  "flex items-center justify-between px-3 py-2.5 rounded-sm cursor-pointer data-[highlighted]:bg-white/5 focus:bg-white/5",
                                   !isAvailable && "opacity-60",
                                 )}
                                 onSelect={() => {
@@ -2084,7 +2084,7 @@ export function ElizaChatInterface({
 
                           {/* More image models submenu */}
                           <DropdownMenuSub>
-                            <DropdownMenuSubTrigger className="flex items-center justify-between px-3 py-2.5 rounded-lg cursor-pointer text-[14px] text-white/70 data-[highlighted]:bg-white/5 focus:bg-white/5">
+                            <DropdownMenuSubTrigger className="flex items-center justify-between px-3 py-2.5 rounded-sm cursor-pointer text-[14px] text-white/70 data-[highlighted]:bg-white/5 focus:bg-white/5">
                               More models
                             </DropdownMenuSubTrigger>
                             <DropdownMenuSubContent
@@ -2101,7 +2101,7 @@ export function ElizaChatInterface({
                                   <DropdownMenuItem
                                     key={model.id}
                                     className={cn(
-                                      "flex items-center justify-between px-3 py-2.5 rounded-lg cursor-pointer data-[highlighted]:bg-white/5 focus:bg-white/5",
+                                      "flex items-center justify-between px-3 py-2.5 rounded-sm cursor-pointer data-[highlighted]:bg-white/5 focus:bg-white/5",
                                       !isAvailable && "opacity-60",
                                     )}
                                     onSelect={() => {
