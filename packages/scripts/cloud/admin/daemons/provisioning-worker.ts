@@ -26,11 +26,23 @@ type WorkerService =
   typeof import("@elizaos/cloud-shared/lib/services/provisioning-jobs").provisioningJobService;
 type WorkerNodeManager =
   typeof import("@elizaos/cloud-shared/lib/services/docker-node-manager").dockerNodeManager;
+type WorkerNodeAutoscaler =
+  typeof import("@elizaos/cloud-shared/lib/services/containers/node-autoscaler").getNodeAutoscaler;
+type WorkerWarmPoolManager =
+  typeof import("@elizaos/cloud-shared/lib/services/containers/warm-pool-manager").WarmPoolManager;
+type WorkerContainersEnv =
+  typeof import("@elizaos/cloud-shared/lib/config/containers-env").containersEnv;
+type WorkerWarmPoolCreator =
+  typeof import("@elizaos/cloud-shared/lib/services/containers/agent-warm-pool-creator").getHetznerPoolContainerCreator;
 
 interface WorkerDeps {
   logger: WorkerLogger;
   provisioningJobService: WorkerService;
   dockerNodeManager: WorkerNodeManager;
+  getNodeAutoscaler: WorkerNodeAutoscaler;
+  WarmPoolManager: WorkerWarmPoolManager;
+  getHetznerPoolContainerCreator: WorkerWarmPoolCreator;
+  containersEnv: WorkerContainersEnv;
 }
 
 export interface ProvisioningWorkerConfig {
@@ -85,13 +97,46 @@ async function loadDeps(): Promise<WorkerDeps> {
       import("@elizaos/cloud-shared/lib/services/provisioning-jobs"),
       import("@elizaos/cloud-shared/lib/utils/logger"),
       import("@elizaos/cloud-shared/lib/services/docker-node-manager"),
-    ]).then(([jobsModule, loggerModule, nodeMgrModule]) => ({
-      provisioningJobService: jobsModule.provisioningJobService,
-      logger: loggerModule.logger,
-      dockerNodeManager: nodeMgrModule.dockerNodeManager,
-    }));
+      import("@elizaos/cloud-shared/lib/services/containers/node-autoscaler"),
+      import("@elizaos/cloud-shared/lib/services/containers/agent-warm-pool"),
+      import("@elizaos/cloud-shared/lib/services/containers/agent-warm-pool-creator"),
+      import("@elizaos/cloud-shared/lib/config/containers-env"),
+    ]).then(
+      ([
+        jobsModule,
+        loggerModule,
+        nodeMgrModule,
+        autoscalerModule,
+        warmPoolModule,
+        warmPoolCreatorModule,
+        containersEnvModule,
+      ]) => ({
+        provisioningJobService: jobsModule.provisioningJobService,
+        logger: loggerModule.logger,
+        dockerNodeManager: nodeMgrModule.dockerNodeManager,
+        getNodeAutoscaler: autoscalerModule.getNodeAutoscaler,
+        WarmPoolManager: warmPoolModule.WarmPoolManager,
+        getHetznerPoolContainerCreator:
+          warmPoolCreatorModule.getHetznerPoolContainerCreator,
+        containersEnv: containersEnvModule.containersEnv,
+      }),
+    );
   }
   return depsPromise;
+}
+
+let cachedWarmPoolManagerInstance:
+  | InstanceType<WorkerWarmPoolManager>
+  | null = null;
+async function getWarmPoolManager(): Promise<
+  InstanceType<WorkerWarmPoolManager>
+> {
+  if (cachedWarmPoolManagerInstance) return cachedWarmPoolManagerInstance;
+  const { WarmPoolManager, getHetznerPoolContainerCreator } = await loadDeps();
+  cachedWarmPoolManagerInstance = new WarmPoolManager(
+    getHetznerPoolContainerCreator(),
+  );
+  return cachedWarmPoolManagerInstance;
 }
 
 function resultContext(result: ProcessingResult): Record<string, unknown> {
@@ -123,6 +168,20 @@ interface NodeHealthSummary {
   unhealthy: number;
 }
 
+interface PrePullImagesSummary {
+  attempted: number;
+  failed: number;
+}
+
+interface NodeAutoscaleSummary {
+  action: "noop" | "scale_up" | "scale_down" | "scale_up_skipped" | "scale_up_failed" | "drain_failed";
+  detail?: string;
+}
+
+interface PoolDrainSummary {
+  drained: number;
+}
+
 /**
  * Health-checks every enabled `docker_nodes` row (SSH + `docker info`) and
  * persists the resulting status. Runs on the orchestrator host that already
@@ -144,8 +203,107 @@ async function processNodeHealthCheckCycle(): Promise<NodeHealthSummary> {
   return { total: result.size, healthy, unhealthy };
 }
 
+/**
+ * Reconcile the `allocated_count` column on each `docker_nodes` row against
+ * the real number of provisioned sandboxes referencing the node. Previously
+ * fired by `agent-hot-pool` cron forwarded to the mystery control-plane
+ * host; folded here so the orchestrator owns the truth.
+ */
+async function processSyncAllocatedCountsCycle(): Promise<number> {
+  const { dockerNodeManager } = await loadDeps();
+  const changes = await dockerNodeManager.syncAllocatedCounts();
+  return changes.size;
+}
+
+/**
+ * Pre-pull the current agent image on every healthy node with spare
+ * capacity. Keeps the warm pool / cold-start path fast. Gated by
+ * `ELIZA_AGENT_HOT_POOL_PREPULL` (default on).
+ */
+async function processPrePullImagesCycle(): Promise<PrePullImagesSummary | null> {
+  if (process.env.ELIZA_AGENT_HOT_POOL_PREPULL === "false") return null;
+  const { dockerNodeManager, containersEnv } = await loadDeps();
+  const image = containersEnv.defaultAgentImage();
+  const result = await dockerNodeManager.prePullAgentImageOnAvailableNodes(image);
+  const failed = result.filter((n) => n.status === "failed").length;
+  return { attempted: result.length, failed };
+}
+
+/**
+ * Evaluate capacity and scale Hetzner-cloud autoscaled nodes up or down.
+ * Was forwarded to control-plane via `node-autoscale` cron; folded here.
+ *
+ * Requires `HCLOUD_TOKEN` + `CONTAINERS_AUTOSCALE_PUBLIC_SSH_KEY` on the
+ * daemon host for scale-up to succeed. Without those, the cycle still
+ * runs (decision + drain) but reports `scale_up_skipped`.
+ */
+async function processNodeAutoscaleCycle(): Promise<NodeAutoscaleSummary> {
+  const { getNodeAutoscaler } = await loadDeps();
+  const autoscaler = getNodeAutoscaler();
+  const decision = await autoscaler.evaluateCapacity();
+
+  if (!decision.shouldScaleUp && decision.shouldScaleDownNodeIds.length === 0) {
+    return { action: "noop" };
+  }
+
+  if (decision.shouldScaleUp) {
+    const publicKey = process.env.CONTAINERS_AUTOSCALE_PUBLIC_SSH_KEY?.trim();
+    if (!publicKey) {
+      return {
+        action: "scale_up_skipped",
+        detail: "CONTAINERS_AUTOSCALE_PUBLIC_SSH_KEY not set on daemon host",
+      };
+    }
+    try {
+      const provisioned = await autoscaler.provisionNode(
+        {},
+        {
+          controlPlanePublicKey: publicKey,
+          registrationUrl: process.env.CONTAINERS_BOOTSTRAP_CALLBACK_URL,
+          registrationSecret: process.env.CONTAINERS_BOOTSTRAP_SECRET,
+        },
+      );
+      return {
+        action: "scale_up",
+        detail: `${provisioned.nodeId} (${provisioned.hostname})`,
+      };
+    } catch (error) {
+      return {
+        action: "scale_up_failed",
+        detail: error instanceof Error ? error.message : String(error),
+      };
+    }
+  }
+
+  // Scale down path. Drain only the first candidate per cycle to avoid
+  // draining the whole pool on a single cron tick if multiple nodes show
+  // up as idle simultaneously.
+  const target = decision.shouldScaleDownNodeIds[0]!;
+  try {
+    await autoscaler.drainNode(target, { deprovision: true });
+    return { action: "scale_down", detail: target };
+  } catch (error) {
+    return {
+      action: "drain_failed",
+      detail: `${target}: ${error instanceof Error ? error.message : String(error)}`,
+    };
+  }
+}
+
+/**
+ * Drain warm-pool sandboxes that have been idle past their TTL. Replaces the
+ * `pool-drain-idle` cron path.
+ */
+async function processPoolDrainIdleCycle(): Promise<PoolDrainSummary> {
+  const { containersEnv } = await loadDeps();
+  const image = containersEnv.defaultAgentImage();
+  const pool = await getWarmPoolManager();
+  const result = await pool.drainIdle(image);
+  return { drained: result.drained.length };
+}
+
 let running = true;
-let lastNodeHealthCheckAt = 0;
+let lastInfraMaintenanceAt = 0;
 
 async function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
@@ -184,26 +342,92 @@ async function pollCycle(
     });
   }
 
-  // Node health checks run on a longer interval than the heartbeat cycle:
-  // SSH + `docker info` per node is expensive (~MAX_RETRIES * 10s per offline
-  // node) and only feeds capacity decisions that tolerate stale data.
-  // `lastNodeHealthCheckAt` initializes to 0 so the first poll always runs
-  // a check — we want a fresh node-status snapshot at worker startup.
+  // Infra maintenance cycle runs on a longer interval than the heartbeat
+  // (SSH + Docker probes per node are expensive). Bundles every job that
+  // used to be forwarded from CF crons to the now-deprecated control-plane:
+  //   - node health check  (was: /api/v1/cron/agent-hot-pool — healthCheckAll)
+  //   - alloc reconciliation (was: agent-hot-pool — syncAllocatedCounts)
+  //   - pre-pull warm image (was: agent-hot-pool — prePullAgentImageOnAvailableNodes)
+  //   - node autoscale     (was: /api/v1/cron/node-autoscale)
+  //   - warm pool drain    (was: /api/v1/cron/pool-drain-idle)
+  // Folding them together avoids 3 parallel writers fighting over the same
+  // docker_nodes rows and means there's exactly one host that owns the
+  // truth: the orchestrator (this daemon). `lastInfraMaintenanceAt`
+  // initializes to 0 so the first poll always runs — we want a fresh
+  // node-status snapshot at worker startup.
   const now = Date.now();
-  if (now - lastNodeHealthCheckAt >= config.nodeHealthIntervalMs) {
-    lastNodeHealthCheckAt = now;
-    try {
-      const summary = await processNodeHealthCheckCycle();
-      logger.info("[provisioning-worker] node health check cycle complete", {
-        total: summary.total,
-        healthy: summary.healthy,
-        unhealthy: summary.unhealthy,
-      });
-    } catch (error) {
-      logger.error("[provisioning-worker] node health check cycle failed", {
-        error: error instanceof Error ? error.message : String(error),
+  if (now - lastInfraMaintenanceAt >= config.nodeHealthIntervalMs) {
+    lastInfraMaintenanceAt = now;
+    await runInfraMaintenanceCycle(logger);
+  }
+}
+
+async function runInfraMaintenanceCycle(logger: WorkerLogger): Promise<void> {
+  try {
+    const summary = await processNodeHealthCheckCycle();
+    logger.info("[provisioning-worker] node health check cycle complete", {
+      total: summary.total,
+      healthy: summary.healthy,
+      unhealthy: summary.unhealthy,
+    });
+  } catch (error) {
+    logger.error("[provisioning-worker] node health check cycle failed", {
+      error: error instanceof Error ? error.message : String(error),
+    });
+  }
+
+  try {
+    const changes = await processSyncAllocatedCountsCycle();
+    if (changes > 0) {
+      logger.info("[provisioning-worker] alloc reconcile cycle complete", {
+        changed: changes,
       });
     }
+  } catch (error) {
+    logger.error("[provisioning-worker] alloc reconcile cycle failed", {
+      error: error instanceof Error ? error.message : String(error),
+    });
+  }
+
+  try {
+    const summary = await processPrePullImagesCycle();
+    if (summary) {
+      logger.info("[provisioning-worker] pre-pull images cycle complete", {
+        attempted: summary.attempted,
+        failed: summary.failed,
+      });
+    }
+  } catch (error) {
+    logger.error("[provisioning-worker] pre-pull images cycle failed", {
+      error: error instanceof Error ? error.message : String(error),
+    });
+  }
+
+  try {
+    const decision = await processNodeAutoscaleCycle();
+    if (decision.action !== "noop") {
+      logger.info("[provisioning-worker] node autoscale cycle complete", {
+        action: decision.action,
+        detail: decision.detail,
+      });
+    }
+  } catch (error) {
+    logger.error("[provisioning-worker] node autoscale cycle failed", {
+      error: error instanceof Error ? error.message : String(error),
+    });
+  }
+
+  try {
+    const result = await processPoolDrainIdleCycle();
+    if (result.drained > 0) {
+      logger.info("[provisioning-worker] warm pool drain cycle complete", {
+        drained: result.drained,
+      });
+    }
+  } catch (error) {
+    logger.error("[provisioning-worker] warm pool drain cycle failed", {
+      error: error instanceof Error ? error.message : String(error),
+    });
   }
 }
 
