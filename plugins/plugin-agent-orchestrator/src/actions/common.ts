@@ -35,6 +35,10 @@ export interface AcpActionService {
   getSession(
     sessionId: string,
   ): SessionInfo | undefined | Promise<SessionInfo | null | undefined>;
+  findResumableSessionByLabel?(
+    label: string,
+    workdir: string,
+  ): Promise<SessionInfo | undefined>;
   resolveAgentType?(
     selection?: Record<string, unknown>,
   ): Promise<string> | string;

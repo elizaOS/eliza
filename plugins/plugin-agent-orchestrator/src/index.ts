@@ -15,8 +15,10 @@ import type {
   ServiceClass,
   TargetInfo,
   ThreadHandle,
+  UUID,
 } from "@elizaos/core";
 import {
+  createUniqueUuid,
   EventType,
   isLocalCodeExecutionAllowed,
   ModelType,
@@ -257,9 +259,21 @@ export function createAgentOrchestratorPlugin(): Plugin {
           const active = sessions.find((s) => {
             if (TERMINAL_SESSION_STATUSES.has(s.status)) return false;
             const meta = s.metadata as Record<string, unknown> | undefined;
-            return (
-              typeof meta?.roomId === "string" && meta.roomId === message.roomId
-            );
+            const roomId =
+              typeof meta?.roomId === "string" ? meta.roomId : undefined;
+            // threadRoomId is set by emitProgress when the orchestrator
+            // creates a per-label thread. Without checking it, a user reply
+            // posted INSIDE that thread (roomId derived from threadId)
+            // would not match the session's parent-channel roomId and the
+            // listener would silently drop the forward — the planner would
+            // re-spawn a fresh sub-agent instead of continuing the live
+            // conversation. Aligns with moltbot's sessionKey-includes-thread
+            // routing.
+            const threadRoomId =
+              typeof meta?.threadRoomId === "string"
+                ? meta.threadRoomId
+                : undefined;
+            return roomId === message.roomId || threadRoomId === message.roomId;
           });
           if (!active) return;
           // Skip sessions already running a prompt. acp.sendPrompt tracks
@@ -1028,6 +1042,29 @@ function registerProgressHook(runtime: IAgentRuntime): () => void {
           }
           if (thread) {
             newState.thread = thread;
+            // Bind the session to the thread's elizaOS roomId. plugin-discord
+            // (and the other connectors) derive `roomId = createUniqueUuid
+            // (runtime, channelId)` for incoming messages; for a thread the
+            // `channelId` IS the thread id. Without persisting this, replies
+            // posted INSIDE the thread arrive with a roomId that doesn't
+            // match the session's parent-channel roomId, so the
+            // active-session forward listener drops them.
+            const threadRoomId = createUniqueUuid(
+              runtime,
+              thread.threadId,
+            ) as UUID;
+            await acp
+              ?.updateSessionMetadata(sessionId, { threadRoomId })
+              .catch((err: unknown) =>
+                runtime.logger?.warn?.(
+                  {
+                    src: "@elizaos/plugin-agent-orchestrator",
+                    sessionId,
+                    err: err instanceof Error ? err.message : String(err),
+                  },
+                  "updateSessionMetadata(threadRoomId) failed",
+                ),
+              );
             if (
               text !== initialText &&
               typeof runtime.postToThreadOnTarget === "function"

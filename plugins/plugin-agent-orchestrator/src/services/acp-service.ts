@@ -657,6 +657,59 @@ export class AcpService extends Service {
     return session ?? undefined;
   }
 
+  async updateSessionMetadata(
+    sessionId: string,
+    patch: Record<string, unknown>,
+  ): Promise<void> {
+    const session = await this.store.get(sessionId);
+    if (!session) return;
+    await this.store.update(sessionId, {
+      metadata: { ...(session.metadata ?? {}), ...patch },
+    });
+  }
+
+  // Returns a session whose label + workdir match the caller AND whose acpx
+  // state ndjson + on-disk workdir are still intact. The next `sendPrompt`
+  // against this id resumes the conversation in claude-agent-sdk (acpx
+  // invokes `prompt -s <name>` which reloads the persisted stream).
+  async findResumableSessionByLabel(
+    label: string,
+    workdir: string,
+  ): Promise<SessionInfo | undefined> {
+    const trimmedLabel = label.trim();
+    const resolvedWorkdir = resolve(workdir);
+    if (!trimmedLabel || !resolvedWorkdir) return undefined;
+    const sessions = await this.listSessions();
+    const candidates = sessions
+      .filter((s) => {
+        const meta = s.metadata as Record<string, unknown> | undefined;
+        return (
+          typeof meta?.label === "string" &&
+          meta.label === trimmedLabel &&
+          s.workdir === resolvedWorkdir &&
+          typeof s.acpxSessionId === "string" &&
+          s.status !== "errored" &&
+          s.status !== "cancelled" &&
+          s.status !== "busy"
+        );
+      })
+      .sort(
+        (a, b) =>
+          (b.lastActivityAt?.getTime() ?? 0) -
+          (a.lastActivityAt?.getTime() ?? 0),
+      );
+    for (const session of candidates) {
+      if (!session.acpxSessionId) continue;
+      const stateOk = await this.hasAcpxSessionState(session.acpxSessionId);
+      if (!stateOk) continue;
+      const workdirOk = await stat(session.workdir)
+        .then((s) => s.isDirectory())
+        .catch(() => false);
+      if (workdirOk) return session;
+    }
+    return undefined;
+  }
+
   onSessionEvent(handler: SessionEventCallback): () => void {
     this.sessionCallbacks.push(handler);
     return () => {

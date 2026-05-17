@@ -492,6 +492,70 @@ async function runSpawnAgent(
         ? inboundOriginSource
         : content.source;
 
+    // Resume: if a non-terminal session already exists for this exact
+    // (label, workdir) with an intact acpx state ndjson, forward the new
+    // task as a follow-up prompt instead of spawning a fresh subprocess.
+    // acpx's `prompt -s <name>` reloads the persisted stream → claude-agent-
+    // sdk resumes the conversation with full context (workdir, file edits,
+    // recent tool calls). Aligns with moltbot's resumeSessionId behavior.
+    const resumable = service.findResumableSessionByLabel
+      ? await service
+          .findResumableSessionByLabel(label, workdir)
+          .catch(() => undefined)
+      : undefined;
+    const resumeSendPrompt = service.sendPrompt;
+    if (resumable && resumeSendPrompt) {
+      setCurrentSession(state, resumable);
+      logger(runtime).info?.(
+        `Resuming acpx task agent: ${JSON.stringify({
+          sessionId: resumable.id,
+          label,
+          workdir: resumable.workdir,
+        })}`,
+      );
+      void resumeSendPrompt(resumable.id, taskWithRouteHints).catch(
+        (err: unknown) => {
+          logger(runtime).warn?.(
+            {
+              src: "@elizaos/plugin-agent-orchestrator",
+              sessionId: resumable.id,
+              err: err instanceof Error ? err.message : String(err),
+            },
+            "resume sendPrompt failed",
+          );
+        },
+      );
+      await emitTaskAudit(runtime, {
+        action: "spawn_agent",
+        outcome: "allowed",
+        reason: "resumed",
+        entityId: message.entityId,
+        sessionId: resumable.id,
+        agentType: resumable.agentType,
+        workdir: resumable.workdir,
+        source:
+          typeof resolvedSpawnSource === "string"
+            ? resolvedSpawnSource
+            : undefined,
+      });
+      return {
+        success: true,
+        text: "",
+        continueChain: false,
+        data: {
+          sessionId: resumable.id,
+          agentType: resumable.agentType,
+          workdir: resumable.workdir,
+          status: resumable.status,
+          label,
+          resumed: true,
+          deferredUserReply: deferUserReply,
+          suppressActionResultClipboard: true,
+          suppressPlannerReply: true,
+        },
+      };
+    }
+
     // Concurrency gate: serialise spawns past a small ceiling so parallel
     // coding sub-agents don't stampede the model provider into rate-limited,
     // tool-call-skipping degradation. See waitForSpawnSlot.
