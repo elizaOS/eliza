@@ -215,10 +215,9 @@ export function DocumentUpload({
 
         <TabsContent value="file" className="space-y-4">
           <div className="space-y-4">
-            <div
+            <section
               onDragOver={handleDragOver}
               onDrop={handleDrop}
-              role="region"
               aria-label="File upload drop zone"
               className="relative border-2 border-dashed border-border rounded-sm hover:border-primary/50 transition-colors"
             >
@@ -266,7 +265,7 @@ export function DocumentUpload({
                   </div>
                 )}
               </label>
-            </div>
+            </section>
 
             {selectedFiles.length > 0 && (
               <div className="space-y-2">
