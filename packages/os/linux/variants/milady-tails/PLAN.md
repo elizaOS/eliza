@@ -440,9 +440,9 @@ chat with elizaOS orchestrating Linux underneath.
 — most substrate already exists (`INSTALL_PACKAGE` + its confirmation
 flow, `OPEN_TERMINAL`, `SET_WALLPAPER`).
 
-- [ ] `SHELL` action — a thin gating layer over the existing apt infra +
-  build-time polkit `.rules` / sudoers `.toml` overlays for passwordless
-  privileged ops
+- [ ] `SHELL` action — a thin gating layer over existing install intent plus
+  the elizaOS capability broker. Passwordless apt sudoers/polkit overlays are
+  not accepted in the current security model.
 - [ ] `SET_DESKTOP`, `THEME`, `NOTIFICATIONS` actions (compose the existing
   install flow)
 - [ ] Shared `customization.ts` persistence-awareness helper
