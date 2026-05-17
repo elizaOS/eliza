@@ -52,9 +52,15 @@ export function StateSetup(props: StateSetupProps): React.JSX.Element {
           {copy.recommendation}
         </span>
       </div>
-      <div className="eliza-ob-choice-list">
+      <div
+        className="eliza-ob-choice-list"
+        role="radiogroup"
+        aria-label="Where Eliza should run"
+      >
         <button
           type="button"
+          role="radio"
+          aria-checked={selected === "cloud"}
           className={`eliza-ob-choice${selected === "cloud" ? " selected" : ""}`}
           onClick={() => onChooseRuntime("cloud")}
         >
@@ -66,6 +72,8 @@ export function StateSetup(props: StateSetupProps): React.JSX.Element {
         </button>
         <button
           type="button"
+          role="radio"
+          aria-checked={selected === "device"}
           className={`eliza-ob-choice${selected === "device" ? " selected" : ""}`}
           onClick={() => onChooseRuntime("device")}
         >

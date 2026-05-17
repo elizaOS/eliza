@@ -168,18 +168,22 @@ export function VoicePrefixSteps(
       </main>
 
       <footer className="flex items-center justify-between">
-        <Button
-          variant="ghost"
-          size="sm"
-          onClick={() => {
-            const prev = previousVoicePrefixStep(props.step, tier);
-            if (prev) props.onAdvance(prev);
-            else props.onBack();
-          }}
-          data-testid="voice-prefix-back"
-        >
-          Back
-        </Button>
+        {previousVoicePrefixStep(props.step, tier) ? (
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={() => {
+              const prev = previousVoicePrefixStep(props.step, tier);
+              if (prev) props.onAdvance(prev);
+              else props.onBack();
+            }}
+            data-testid="voice-prefix-back"
+          >
+            Back
+          </Button>
+        ) : (
+          <span aria-hidden="true" />
+        )}
         <div className="flex items-center gap-2">
           {stepMeta.optional ? (
             <Button
@@ -483,12 +487,20 @@ function UserSpeaksStep(props: VoicePrefixStepsProps): React.ReactElement {
   return (
     <div className="flex flex-col gap-3" data-testid="voice-prefix-user-speaks">
       {state.error ? (
-        <p
-          className="text-xs text-warn"
+        <div
+          role="alert"
+          aria-live="assertive"
+          className="rounded-md border border-warn/30 bg-warn/10 p-2 text-xs"
           data-testid="voice-prefix-user-speaks-error"
         >
-          {state.error}
-        </p>
+          <p className="font-medium text-warn">
+            We couldn't reach the voice service. Try again in a moment, or skip
+            this step and come back to it from Settings.
+          </p>
+          <p className="mt-1 text-[10px] text-muted">
+            <span className="font-mono">{state.error}</span>
+          </p>
+        </div>
       ) : null}
       {state.session === null ? (
         <p
