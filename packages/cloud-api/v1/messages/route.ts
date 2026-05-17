@@ -1086,7 +1086,7 @@ async function handleStream(
 
         controller.enqueue(sse("ping", { type: "ping" }));
 
-        for await (const part of result.fullStream as AsyncIterable<any>) {
+        for await (const part of result.fullStream) {
           switch (part.type) {
             case "text-start": {
               ensureTextBlock(part.id);

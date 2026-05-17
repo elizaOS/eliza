@@ -2,18 +2,15 @@
 // Public symbol names must remain stable — consumers import directly from this
 // module path.
 
-export type { FlatOperationCost, TokenCostBreakdown } from "./ai-pricing/types";
+export {
+  chooseBestCandidatePricingEntry,
+  expandPricingCatalogModelCandidates,
+} from "./ai-pricing/candidate-selection";
 export {
   buildDimensionKey,
   normalizePricingDimensions,
   providerForPricingCandidate,
 } from "./ai-pricing/dimensions";
-export { stripVersionedSnapshotSuffix } from "./ai-pricing/suffix-stripping";
-export {
-  chooseBestCandidatePricingEntry,
-  expandPricingCatalogModelCandidates,
-} from "./ai-pricing/candidate-selection";
-export { buildOpenRouterPreparedEntries } from "./ai-pricing/providers/openrouter";
 export {
   calculateImageGenerationCostFromCatalog,
   calculateMusicGenerationCostFromCatalog,
@@ -26,4 +23,7 @@ export {
   listPersistedPricingEntries,
   listRecentPricingRefreshRuns,
 } from "./ai-pricing/lookup";
+export { buildOpenRouterPreparedEntries } from "./ai-pricing/providers/openrouter";
 export { refreshPricingCatalog } from "./ai-pricing/refresh";
+export { stripVersionedSnapshotSuffix } from "./ai-pricing/suffix-stripping";
+export type { FlatOperationCost, TokenCostBreakdown } from "./ai-pricing/types";

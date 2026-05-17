@@ -36,33 +36,22 @@ const SCRIPT = path.join(REPO_ROOT, "scripts/cloud/mock-stack-up.mjs");
 
 function runOrchestrator(args, { collectMs = 0 } = {}) {
   return new Promise((resolve) => {
-    const proc = spawn("node", [SCRIPT, ...args], {
+    const tmp = mkdtempSync(path.join(os.tmpdir(), "mock-stack-orch-"));
+    const outFile = path.join(tmp, "out.log");
+    const errFile = path.join(tmp, "err.log");
+    const cmd = `exec node ${JSON.stringify(SCRIPT)} ${args.map((a) => JSON.stringify(a)).join(" ")} >${JSON.stringify(outFile)} 2>${JSON.stringify(errFile)}`;
+    const proc = spawn("sh", ["-c", cmd], {
       env: { ...process.env, NODE_ENV: "test" },
     });
-    let stdout = "";
-    let stderr = "";
-    proc.stdout.setEncoding("utf8");
-    proc.stderr.setEncoding("utf8");
-    proc.stdout.on("data", (c) => (stdout += c));
-    proc.stderr.on("data", (c) => (stderr += c));
-
-    let exitInfo = null;
-    let closed = 0;
-    const maybeFinish = () => {
-      if (exitInfo && closed >= 2) {
-        resolve({ code: exitInfo.code, signal: exitInfo.signal, stdout, stderr, proc });
-      }
-    };
-    proc.stdout.on("end", () => { closed++; maybeFinish(); });
-    proc.stderr.on("end", () => { closed++; maybeFinish(); });
-
     if (collectMs > 0) {
-      // Let it boot, then SIGINT and wait for clean exit.
       setTimeout(() => proc.kill("SIGINT"), collectMs);
     }
     proc.on("exit", (code, signal) => {
-      exitInfo = { code, signal };
-      maybeFinish();
+      let stdout = "";
+      let stderr = "";
+      try { stdout = readFileSync(outFile, "utf8"); } catch {}
+      try { stderr = readFileSync(errFile, "utf8"); } catch {}
+      resolve({ code, signal, stdout, stderr });
     });
   });
 }

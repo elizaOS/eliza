@@ -1,5 +1,6 @@
 "use client";
 
+import { toRatePercent } from "@elizaos/cloud-shared/lib/services/analytics-derived";
 import {
   Badge,
   Button,
@@ -75,7 +76,6 @@ import {
   useState,
 } from "react";
 import { toast } from "sonner";
-import { toRatePercent } from "@elizaos/cloud-shared/lib/services/analytics-derived";
 import { WarmPoolPanel } from "./warm-pool-panel";
 
 // Error boundary for tab content

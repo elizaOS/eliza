@@ -1165,7 +1165,7 @@ async function handleStreamingRequest(
       let finishReason = "stop";
 
       try {
-        for await (const part of result.fullStream as AsyncIterable<any>) {
+        for await (const part of result.fullStream) {
           if (part.type === "text-delta") {
             const chunk = {
               id: responseId,
