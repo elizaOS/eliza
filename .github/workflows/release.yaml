@@ -312,7 +312,7 @@ jobs:
               CURRENT_NUM=$(echo "$CURRENT_VERSION" | grep -o '[0-9]*$')
 
               if [[ "$CURRENT_NUM" -gt "$HIGHEST_NUM" ]]; then
-                NEXT_VERSION=$(node -p "require('semver').inc(require('./lerna.json').version, 'prerelease', 'beta')")
+                NEXT_VERSION="${BASE_VERSION}-beta.$((CURRENT_NUM + 1))"
                 echo "lerna.json (${CURRENT_VERSION}) is ahead of highest tag (${HIGHEST_VERSION}); bumping to ${NEXT_VERSION}"
               else
                 NEXT_VERSION="${BASE_VERSION}-beta.$((HIGHEST_NUM + 1))"
@@ -346,7 +346,10 @@ jobs:
               # Check if this version already exists on npm
               if npm view "@elizaos/core@${VERSION}" version >/dev/null 2>&1; then
                 echo "⚠️ Version ${VERSION} already exists on npm — bumping again (attempt ${i}/${MAX_RETRIES})"
-                NEXT_VERSION=$(node -p "require('semver').inc(require('./lerna.json').version, 'prerelease', '${RELEASE_TYPE}')")
+                CURRENT_VERSION=$(node -p "require('./lerna.json').version")
+                CURRENT_BASE=$(get_base_version "$CURRENT_VERSION")
+                CURRENT_NUM=$(echo "$CURRENT_VERSION" | grep -o '[0-9]*$')
+                NEXT_VERSION="${CURRENT_BASE}-${RELEASE_TYPE}.$((CURRENT_NUM + 1))"
                 version_packages "${NEXT_VERSION}"
                 VERSION=$(node -p "require('./lerna.json').version")
                 sleep 1  # Brief delay for npm registry consistency
