@@ -1455,10 +1455,8 @@ export async function handleLocalInferenceRoutes(
 				status: "loading",
 			};
 			if (shouldUseAospLocalInference()) {
-				const {
-					activateAospLocalInferenceModel,
-					buildAospLoadModelArgs,
-				} = await getAospLocalInferenceApi();
+				const { activateAospLocalInferenceModel, buildAospLoadModelArgs } =
+					await getAospLocalInferenceApi();
 				activeModelState = await activateAospLocalInferenceModel({
 					modelId: installed.id,
 					modelPath: installed.path,
