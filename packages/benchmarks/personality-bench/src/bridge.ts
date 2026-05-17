@@ -151,8 +151,7 @@ export function bridgePersonalityExpect(
       checkTurns = numberArray(kw.probeTurnIndices).map(assistantTurnFor);
       const steps = numberArray(kw.escalationStepTurnIndices);
       directiveTurn = userTurnTo1IndexedTrajectory(steps[0] ?? 0);
-      const directionKey =
-        typeof kw.direction === "string" ? kw.direction : "";
+      const directionKey = typeof kw.direction === "string" ? kw.direction : "";
       const mapped = DIRECTION_KEY_TO_OPTION[directionKey];
       if (mapped) options.direction = mapped;
       break;
@@ -162,8 +161,7 @@ export function bridgePersonalityExpect(
         ...numberArray(kw.adminProbeTurnIndices),
         ...numberArray(kw.userProbeTurnIndices),
       ].map(assistantTurnFor);
-      const variantKey =
-        typeof kw.variantKey === "string" ? kw.variantKey : "";
+      const variantKey = typeof kw.variantKey === "string" ? kw.variantKey : "";
       const mode = SCOPE_VARIANT_TO_MODE[variantKey];
       if (mode) options.mode = mode;
       if (kw.forbidGlobalChangeFromUser === true) {
