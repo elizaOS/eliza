@@ -192,37 +192,14 @@ async function handleSatelliteHttpRequest(
     authorization: request.headers.get("authorization"),
     body,
   });
-  const authorization = request.headers.get("authorization");
-  if (
-    authorization !== "Bearer token" &&
-    authorization !== "Bearer cloud-key" &&
-    !authorization?.startsWith("Bearer ")
-  ) {
+  if (!isAuthorizedSatelliteRequest(request)) {
     return jsonResponse(401, { error: "unauthorized" });
   }
   if (request.method === "GET" && url.pathname === "/v1/health") {
     return jsonResponse(200, { ok: true });
   }
   if (request.method === "GET" && url.pathname === "/v1/fs/entries") {
-    const path = url.searchParams.get("path") ?? "/workspace";
-    return jsonResponse(200, {
-      entries: [
-        {
-          path: `${path}/src`,
-          name: "src",
-          kind: "directory",
-          size: 0,
-          modifiedAt: "2026-01-01T00:00:00.000Z",
-        },
-        {
-          path: `${path}/README.md`,
-          name: "README.md",
-          kind: "file",
-          size: 12,
-          modifiedAt: "2026-01-01T00:00:00.000Z",
-        },
-      ],
-    });
+    return satelliteEntriesResponse(url);
   }
   if (request.method === "GET" && url.pathname === "/v1/fs/file") {
     return new Response(`text:${url.searchParams.get("path") ?? ""}`, {
@@ -239,18 +216,53 @@ async function handleSatelliteHttpRequest(
     });
   }
   if (request.method === "POST" && url.pathname === "/v1/processes/run") {
-    const payload = isRecord(body) ? body : {};
-    const args = Array.isArray(payload.args)
-      ? payload.args.map((item) => String(item)).join(" ")
-      : "";
-    const cwd = typeof payload.cwd === "string" ? payload.cwd : "";
-    return jsonResponse(200, {
-      output: `ran ${String(payload.command ?? "")} ${args} cwd=${cwd}\n`,
-      exitCode: 0,
-      timedOut: false,
-    });
+    return satelliteProcessRunResponse(body);
   }
   return jsonResponse(404, { error: "not found" });
+}
+
+function isAuthorizedSatelliteRequest(request: Request): boolean {
+  const authorization = request.headers.get("authorization");
+  return (
+    authorization === "Bearer token" ||
+    authorization === "Bearer cloud-key" ||
+    Boolean(authorization?.startsWith("Bearer "))
+  );
+}
+
+function satelliteEntriesResponse(url: URL): Response {
+  const path = url.searchParams.get("path") ?? "/workspace";
+  return jsonResponse(200, {
+    entries: [
+      {
+        path: `${path}/src`,
+        name: "src",
+        kind: "directory",
+        size: 0,
+        modifiedAt: "2026-01-01T00:00:00.000Z",
+      },
+      {
+        path: `${path}/README.md`,
+        name: "README.md",
+        kind: "file",
+        size: 12,
+        modifiedAt: "2026-01-01T00:00:00.000Z",
+      },
+    ],
+  });
+}
+
+function satelliteProcessRunResponse(body: unknown): Response {
+  const payload = isRecord(body) ? body : {};
+  const args = Array.isArray(payload.args)
+    ? payload.args.map((item) => String(item)).join(" ")
+    : "";
+  const cwd = typeof payload.cwd === "string" ? payload.cwd : "";
+  return jsonResponse(200, {
+    output: `ran ${String(payload.command ?? "")} ${args} cwd=${cwd}\n`,
+    exitCode: 0,
+    timedOut: false,
+  });
 }
 
 function methodMayHaveBody(method?: string): boolean {

@@ -67,6 +67,16 @@ export interface BuildOnboardingRuntimeConfigResult {
   featureSetup: OnboardingFeatureSetup | undefined;
 }
 
+type OnboardingModelConfig = {
+  nanoModel: string | undefined;
+  smallModel: string | undefined;
+  mediumModel: string | undefined;
+  largeModel: string | undefined;
+  megaModel: string | undefined;
+  responseHandlerModel: string | undefined;
+  actionPlannerModel: string | undefined;
+};
+
 function trimToUndefined(value: unknown): string | undefined {
   if (typeof value !== "string") {
     return undefined;
@@ -173,15 +183,7 @@ function buildOnboardingLlmRoute(args: {
   serverTarget: OnboardingServerTarget;
   persistRuntimeOnConnectedRemote: boolean;
   shouldConfigureRuntimeProvider: boolean;
-  models: {
-    nanoModel: string | undefined;
-    smallModel: string | undefined;
-    mediumModel: string | undefined;
-    largeModel: string | undefined;
-    megaModel: string | undefined;
-    responseHandlerModel: string | undefined;
-    actionPlannerModel: string | undefined;
-  };
+  models: OnboardingModelConfig;
 }): ServiceRouteConfig | undefined {
   if (
     args.source.onboardingProvider === "elizacloud" &&
@@ -203,6 +205,107 @@ function buildOnboardingLlmRoute(args: {
     onboardingRemoteApiBase: args.source.onboardingRemoteApiBase,
     primaryModel,
   });
+}
+
+function buildOnboardingModelConfig(
+  args: BuildOnboardingConnectionArgs,
+): OnboardingModelConfig {
+  return {
+    nanoModel: trimToUndefined(args.onboardingNanoModel),
+    smallModel: trimToUndefined(args.onboardingSmallModel),
+    mediumModel: trimToUndefined(args.onboardingMediumModel),
+    largeModel: trimToUndefined(args.onboardingLargeModel),
+    megaModel: trimToUndefined(args.onboardingMegaModel),
+    responseHandlerModel: trimToUndefined(
+      args.onboardingResponseHandlerModel ?? "",
+    ),
+    actionPlannerModel: trimToUndefined(
+      args.onboardingActionPlannerModel ?? "",
+    ),
+  };
+}
+
+function shouldUseCloudDefaults(args: {
+  onboardingProvider: string;
+  deploymentTarget: DeploymentTargetConfig;
+}): boolean {
+  return (
+    args.onboardingProvider === "elizacloud" ||
+    (args.deploymentTarget.runtime === "cloud" &&
+      args.deploymentTarget.provider === "elizacloud")
+  );
+}
+
+function buildOnboardingServiceRouting(args: {
+  source: BuildOnboardingConnectionArgs;
+  localProviderId: OnboardingLocalProviderId | null;
+  serverTarget: OnboardingServerTarget;
+  persistRuntimeOnConnectedRemote: boolean;
+  shouldConfigureRuntimeProvider: boolean;
+  deploymentTarget: DeploymentTargetConfig;
+  models: OnboardingModelConfig;
+}): ServiceRoutingConfig {
+  const serviceRouting: ServiceRoutingConfig = {};
+  const llmTextRoute = buildOnboardingLlmRoute({
+    source: args.source,
+    localProviderId: args.localProviderId,
+    serverTarget: args.serverTarget,
+    persistRuntimeOnConnectedRemote: args.persistRuntimeOnConnectedRemote,
+    shouldConfigureRuntimeProvider: args.shouldConfigureRuntimeProvider,
+    models: args.models,
+  });
+
+  if (llmTextRoute) {
+    serviceRouting.llmText = llmTextRoute;
+  }
+
+  if (
+    shouldUseCloudDefaults({
+      onboardingProvider: args.source.onboardingProvider,
+      deploymentTarget: args.deploymentTarget,
+    })
+  ) {
+    Object.assign(
+      serviceRouting,
+      buildDefaultElizaCloudServiceRouting({
+        base: serviceRouting,
+        includeInference:
+          args.shouldConfigureRuntimeProvider &&
+          args.source.onboardingProvider === "elizacloud",
+        excludeServices: args.source.onboardingUseLocalEmbeddings
+          ? ["embeddings"]
+          : undefined,
+        ...args.models,
+      }),
+    );
+  }
+
+  return serviceRouting;
+}
+
+function buildOnboardingCredentialInputs(args: {
+  source: BuildOnboardingConnectionArgs;
+  llmTextRoute: ServiceRouteConfig | undefined;
+}): OnboardingCredentialInputs {
+  const credentialInputs: OnboardingCredentialInputs = {};
+  const cloudApiKey = trimToUndefined(args.source.onboardingCloudApiKey);
+  if (cloudApiKey) {
+    credentialInputs.cloudApiKey = cloudApiKey;
+  }
+
+  const llmApiKey = trimToUndefined(args.source.onboardingApiKey);
+  if (
+    llmApiKey &&
+    args.llmTextRoute?.backend &&
+    args.llmTextRoute.backend !== "elizacloud"
+  ) {
+    credentialInputs.llmApiKey = llmApiKey;
+  }
+  return credentialInputs;
+}
+
+function emptyToUndefined<T extends object>(value: T): T | undefined {
+  return Object.keys(value).length > 0 ? value : undefined;
 }
 
 function buildOnboardingFeatureSetup(
@@ -237,22 +340,9 @@ export function buildOnboardingRuntimeConfig(
   const persistRuntimeOnConnectedRemote =
     serverTarget === "remote" && args.onboardingRemoteConnected;
   const useElizaCloudRuntime = isElizaCloudOnboardingTarget(serverTarget);
-  const nanoModel = trimToUndefined(args.onboardingNanoModel);
-  const smallModel = trimToUndefined(args.onboardingSmallModel);
-  const mediumModel = trimToUndefined(args.onboardingMediumModel);
-  const largeModel = trimToUndefined(args.onboardingLargeModel);
-  const megaModel = trimToUndefined(args.onboardingMegaModel);
-  const responseHandlerModel = trimToUndefined(
-    args.onboardingResponseHandlerModel ?? "",
-  );
-  const actionPlannerModel = trimToUndefined(
-    args.onboardingActionPlannerModel ?? "",
-  );
-  const cloudApiKey = trimToUndefined(args.onboardingCloudApiKey);
-
+  const models = buildOnboardingModelConfig(args);
   const localProviderId = resolveLocalProviderId(args.onboardingProvider);
   const linkedAccounts = buildOnboardingLinkedAccounts(args);
-
   const deploymentTarget = buildDeploymentTarget({
     serverTarget,
     persistRuntimeOnConnectedRemote,
@@ -261,84 +351,29 @@ export function buildOnboardingRuntimeConfig(
     onboardingRemoteConnected: args.onboardingRemoteConnected,
     onboardingRemoteToken: args.onboardingRemoteToken,
   });
-
-  const serviceRouting: ServiceRoutingConfig = {};
   const shouldConfigureRuntimeProvider =
     !args.omitRuntimeProvider &&
     !requiresAdditionalRuntimeProvider(args.onboardingProvider);
-
-  const llmTextRoute = buildOnboardingLlmRoute({
+  const serviceRouting = buildOnboardingServiceRouting({
     source: args,
     localProviderId,
     serverTarget,
     persistRuntimeOnConnectedRemote,
     shouldConfigureRuntimeProvider,
-    models: {
-      nanoModel,
-      smallModel,
-      mediumModel,
-      largeModel,
-      megaModel,
-      responseHandlerModel,
-      actionPlannerModel,
-    },
+    deploymentTarget,
+    models,
   });
-
-  if (llmTextRoute) {
-    serviceRouting.llmText = llmTextRoute;
-  }
-
-  const cloudDefaultsSelected =
-    args.onboardingProvider === "elizacloud" ||
-    (deploymentTarget.runtime === "cloud" &&
-      deploymentTarget.provider === "elizacloud");
-  if (cloudDefaultsSelected) {
-    Object.assign(
-      serviceRouting,
-      buildDefaultElizaCloudServiceRouting({
-        base: serviceRouting,
-        includeInference:
-          shouldConfigureRuntimeProvider &&
-          args.onboardingProvider === "elizacloud",
-        excludeServices: args.onboardingUseLocalEmbeddings
-          ? ["embeddings"]
-          : undefined,
-        nanoModel,
-        smallModel,
-        mediumModel,
-        largeModel,
-        megaModel,
-        responseHandlerModel,
-        actionPlannerModel,
-      }),
-    );
-  }
-
-  const hasLinkedAccounts = Object.keys(linkedAccounts).length > 0;
-  const hasServiceRouting = Object.keys(serviceRouting).length > 0;
-  const credentialInputs: OnboardingCredentialInputs = {};
-
-  if (cloudApiKey) {
-    credentialInputs.cloudApiKey = cloudApiKey;
-  }
-
-  const llmApiKey = trimToUndefined(args.onboardingApiKey);
-  if (
-    llmApiKey &&
-    llmTextRoute?.backend &&
-    llmTextRoute.backend !== "elizacloud"
-  ) {
-    credentialInputs.llmApiKey = llmApiKey;
-  }
-
-  const hasCredentialInputs = Object.keys(credentialInputs).length > 0;
+  const credentialInputs = buildOnboardingCredentialInputs({
+    source: args,
+    llmTextRoute: serviceRouting.llmText,
+  });
   const featureSetup = buildOnboardingFeatureSetup(args);
 
   return {
     deploymentTarget,
-    linkedAccounts: hasLinkedAccounts ? linkedAccounts : undefined,
-    serviceRouting: hasServiceRouting ? serviceRouting : undefined,
-    credentialInputs: hasCredentialInputs ? credentialInputs : undefined,
+    linkedAccounts: emptyToUndefined(linkedAccounts),
+    serviceRouting: emptyToUndefined(serviceRouting),
+    credentialInputs: emptyToUndefined(credentialInputs),
     needsProviderSetup: !serviceRouting.llmText,
     featureSetup,
   };

@@ -20,8 +20,16 @@ type RelayStatus = {
   reason?: string;
 };
 
-export function CloudInstancePanel() {
-  const { copyToClipboard, setActionNotice, t, elizaCloudConnected } = useApp();
+type RelayDetails = {
+  isActive: boolean;
+  isRegistered: boolean;
+  accessUrl: string | null;
+  sshTunnel: NonNullable<RelayStatus["ssh"]> | null;
+};
+
+type AppT = ReturnType<typeof useApp>["t"];
+
+function useRelayStatus() {
   const [relayStatus, setRelayStatus] = useState<RelayStatus | null>(null);
   const [loading, setLoading] = useState(true);
 
@@ -47,20 +55,32 @@ export function CloudInstancePanel() {
     return () => clearInterval(interval);
   }, [refresh]);
 
-  const isActive = relayStatus?.available && relayStatus?.status === "polling";
-  const isRegistered =
-    relayStatus?.available && relayStatus?.status === "registered";
-  const accessUrl =
-    relayStatus?.available && relayStatus.accessUrl
-      ? relayStatus.accessUrl
-      : null;
-  const sshTunnel =
-    relayStatus?.available && relayStatus.ssh ? relayStatus.ssh : null;
+  return { relayStatus, loading, refresh };
+}
 
+function getRelayDetails(relayStatus: RelayStatus | null): RelayDetails {
+  return {
+    isActive: Boolean(
+      relayStatus?.available && relayStatus?.status === "polling",
+    ),
+    isRegistered: Boolean(
+      relayStatus?.available && relayStatus?.status === "registered",
+    ),
+    accessUrl:
+      relayStatus?.available && relayStatus.accessUrl
+        ? relayStatus.accessUrl
+        : null,
+    sshTunnel:
+      relayStatus?.available && relayStatus.ssh ? relayStatus.ssh : null,
+  };
+}
+
+function useHomeAccessCopyActions(details: RelayDetails) {
+  const { copyToClipboard, setActionNotice, t } = useApp();
   const copyAccessUrl = useCallback(async () => {
-    if (!accessUrl) return;
+    if (!details.accessUrl) return;
     try {
-      await copyToClipboard(accessUrl);
+      await copyToClipboard(details.accessUrl);
       setActionNotice(
         t("settings.instanceRoutingAccessUrlCopied", {
           defaultValue: "Home access URL copied.",
@@ -77,12 +97,12 @@ export function CloudInstancePanel() {
         3200,
       );
     }
-  }, [accessUrl, copyToClipboard, setActionNotice, t]);
+  }, [copyToClipboard, details.accessUrl, setActionNotice, t]);
 
   const copySshCommand = useCallback(async () => {
-    if (!sshTunnel) return;
+    if (!details.sshTunnel) return;
     try {
-      await copyToClipboard(sshTunnel.command);
+      await copyToClipboard(details.sshTunnel.command);
       setActionNotice(
         t("settings.instanceRoutingSshCommandCopied", {
           defaultValue: "SSH tunnel command copied.",
@@ -99,11 +119,27 @@ export function CloudInstancePanel() {
         3200,
       );
     }
-  }, [copyToClipboard, setActionNotice, sshTunnel, t]);
+  }, [copyToClipboard, details.sshTunnel, setActionNotice, t]);
+
+  return { copyAccessUrl, copySshCommand };
+}
+
+export function CloudInstancePanel() {
+  const { t, elizaCloudConnected } = useApp();
+  const { relayStatus, loading, refresh } = useRelayStatus();
+  const relayDetails = getRelayDetails(relayStatus);
+  const { copyAccessUrl, copySshCommand } =
+    useHomeAccessCopyActions(relayDetails);
 
   return (
     <PagePanel.Notice
-      tone={isActive ? "accent" : elizaCloudConnected ? "default" : "warning"}
+      tone={
+        relayDetails.isActive
+          ? "accent"
+          : elizaCloudConnected
+            ? "default"
+            : "warning"
+      }
       className="mt-4"
       actions={
         <Button
@@ -128,71 +164,176 @@ export function CloudInstancePanel() {
           })}
         </div>
 
-        {!elizaCloudConnected ? (
-          <div className="text-muted">
-            {t("settings.instanceRoutingNotConnected", {
-              defaultValue:
-                "Connect to Eliza Cloud above to enable instance routing. This lets messages from any platform reach your local instance through the cloud gateway.",
-            })}
-          </div>
-        ) : isActive ? (
-          <div className="space-y-1">
-            <div className="text-accent">
-              {t("settings.instanceRoutingActive", {
-                defaultValue:
-                  "This instance is registered and receiving messages via Eliza Cloud gateway relay.",
-              })}
-            </div>
-            {relayStatus?.agentName && (
-              <div className="text-muted">
-                Agent: <span className="text-txt">{relayStatus.agentName}</span>
-              </div>
-            )}
-            {relayStatus?.lastSeenAt && (
-              <div className="text-muted">
-                Last heartbeat:{" "}
-                <span className="text-txt">
-                  {new Date(relayStatus.lastSeenAt).toLocaleTimeString()}
-                </span>
-              </div>
-            )}
-            {accessUrl || sshTunnel ? (
-              <HomeAccessDetails
-                accessUrl={accessUrl}
-                sshTunnel={sshTunnel}
-                onCopyAccessUrl={copyAccessUrl}
-                onCopySshCommand={copySshCommand}
-              />
-            ) : null}
-          </div>
-        ) : isRegistered ? (
-          <div className="space-y-2">
-            <div className="text-muted">
-              {t("settings.instanceRoutingRegistered", {
-                defaultValue:
-                  "Instance registered with cloud but not actively polling. It will start receiving messages shortly.",
-              })}
-            </div>
-            {accessUrl || sshTunnel ? (
-              <HomeAccessDetails
-                accessUrl={accessUrl}
-                sshTunnel={sshTunnel}
-                onCopyAccessUrl={copyAccessUrl}
-                onCopySshCommand={copySshCommand}
-              />
-            ) : null}
-          </div>
-        ) : (
-          <div className="text-muted">
-            {relayStatus?.reason ??
-              t("settings.instanceRoutingInactive", {
-                defaultValue:
-                  "Cloud connected but gateway relay not active. The relay starts automatically when the elizacloud plugin loads.",
-              })}
-          </div>
-        )}
+        <CloudInstanceStatus
+          connected={elizaCloudConnected}
+          relayStatus={relayStatus}
+          relayDetails={relayDetails}
+          onCopyAccessUrl={copyAccessUrl}
+          onCopySshCommand={copySshCommand}
+          t={t}
+        />
       </div>
     </PagePanel.Notice>
+  );
+}
+
+function CloudInstanceStatus({
+  connected,
+  relayStatus,
+  relayDetails,
+  onCopyAccessUrl,
+  onCopySshCommand,
+  t,
+}: {
+  connected: boolean;
+  relayStatus: RelayStatus | null;
+  relayDetails: RelayDetails;
+  onCopyAccessUrl: () => Promise<void>;
+  onCopySshCommand: () => Promise<void>;
+  t: AppT;
+}) {
+  if (!connected) return <CloudInstanceDisconnected t={t} />;
+  if (relayDetails.isActive) {
+    return (
+      <CloudInstanceActive
+        relayStatus={relayStatus}
+        relayDetails={relayDetails}
+        onCopyAccessUrl={onCopyAccessUrl}
+        onCopySshCommand={onCopySshCommand}
+        t={t}
+      />
+    );
+  }
+  if (relayDetails.isRegistered) {
+    return (
+      <CloudInstanceRegistered
+        relayDetails={relayDetails}
+        onCopyAccessUrl={onCopyAccessUrl}
+        onCopySshCommand={onCopySshCommand}
+        t={t}
+      />
+    );
+  }
+  return <CloudInstanceInactive relayStatus={relayStatus} t={t} />;
+}
+
+function CloudInstanceDisconnected({ t }: { t: AppT }) {
+  return (
+    <div className="text-muted">
+      {t("settings.instanceRoutingNotConnected", {
+        defaultValue:
+          "Connect to Eliza Cloud above to enable instance routing. This lets messages from any platform reach your local instance through the cloud gateway.",
+      })}
+    </div>
+  );
+}
+
+function CloudInstanceActive({
+  relayStatus,
+  relayDetails,
+  onCopyAccessUrl,
+  onCopySshCommand,
+  t,
+}: {
+  relayStatus: RelayStatus | null;
+  relayDetails: RelayDetails;
+  onCopyAccessUrl: () => Promise<void>;
+  onCopySshCommand: () => Promise<void>;
+  t: AppT;
+}) {
+  return (
+    <div className="space-y-1">
+      <div className="text-accent">
+        {t("settings.instanceRoutingActive", {
+          defaultValue:
+            "This instance is registered and receiving messages via Eliza Cloud gateway relay.",
+        })}
+      </div>
+      {relayStatus?.agentName && (
+        <div className="text-muted">
+          Agent: <span className="text-txt">{relayStatus.agentName}</span>
+        </div>
+      )}
+      {relayStatus?.lastSeenAt && (
+        <div className="text-muted">
+          Last heartbeat:{" "}
+          <span className="text-txt">
+            {new Date(relayStatus.lastSeenAt).toLocaleTimeString()}
+          </span>
+        </div>
+      )}
+      <HomeAccessDetailsIfPresent
+        relayDetails={relayDetails}
+        onCopyAccessUrl={onCopyAccessUrl}
+        onCopySshCommand={onCopySshCommand}
+      />
+    </div>
+  );
+}
+
+function CloudInstanceRegistered({
+  relayDetails,
+  onCopyAccessUrl,
+  onCopySshCommand,
+  t,
+}: {
+  relayDetails: RelayDetails;
+  onCopyAccessUrl: () => Promise<void>;
+  onCopySshCommand: () => Promise<void>;
+  t: AppT;
+}) {
+  return (
+    <div className="space-y-2">
+      <div className="text-muted">
+        {t("settings.instanceRoutingRegistered", {
+          defaultValue:
+            "Instance registered with cloud but not actively polling. It will start receiving messages shortly.",
+        })}
+      </div>
+      <HomeAccessDetailsIfPresent
+        relayDetails={relayDetails}
+        onCopyAccessUrl={onCopyAccessUrl}
+        onCopySshCommand={onCopySshCommand}
+      />
+    </div>
+  );
+}
+
+function CloudInstanceInactive({
+  relayStatus,
+  t,
+}: {
+  relayStatus: RelayStatus | null;
+  t: AppT;
+}) {
+  return (
+    <div className="text-muted">
+      {relayStatus?.reason ??
+        t("settings.instanceRoutingInactive", {
+          defaultValue:
+            "Cloud connected but gateway relay not active. The relay starts automatically when the elizacloud plugin loads.",
+        })}
+    </div>
+  );
+}
+
+function HomeAccessDetailsIfPresent({
+  relayDetails,
+  onCopyAccessUrl,
+  onCopySshCommand,
+}: {
+  relayDetails: RelayDetails;
+  onCopyAccessUrl: () => Promise<void>;
+  onCopySshCommand: () => Promise<void>;
+}) {
+  if (!relayDetails.accessUrl && !relayDetails.sshTunnel) return null;
+  return (
+    <HomeAccessDetails
+      accessUrl={relayDetails.accessUrl}
+      sshTunnel={relayDetails.sshTunnel}
+      onCopyAccessUrl={onCopyAccessUrl}
+      onCopySshCommand={onCopySshCommand}
+    />
   );
 }
 

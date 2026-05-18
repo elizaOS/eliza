@@ -93,53 +93,72 @@ export function createHandler(
 ): (request: Request) => Promise<Response> {
   return async (request) => {
     const url = new URL(request.url);
-
-    if (request.method === "GET" && url.pathname === "/health") {
-      return jsonResponse(200, {
-        ok: true,
-        workspaceRoot: config.workspaceRoot,
-        authConfigured: Boolean(config.token),
-      });
-    }
-
-    const authError = authorize(request, config);
-    if (authError) return authError;
-
     try {
-      if (request.method === "GET" && url.pathname === "/v1/health") {
-        return jsonResponse(200, {
-          ok: true,
-          id: "eliza.coding-satellite",
-          workspaceRoot: config.workspaceRoot,
-          capabilities: ["fs.list", "fs.read", "fs.write", "process.run"],
-        });
-      }
-      if (request.method === "GET" && url.pathname === "/v1/fs/entries") {
-        return await listEntries(url, config);
-      }
-      if (request.method === "GET" && url.pathname === "/v1/fs/file") {
-        return await readFileResponse(url, config);
-      }
-      if (request.method === "PUT" && url.pathname === "/v1/fs/file") {
-        return await writeFileResponse(request, url, config);
-      }
-      if (request.method === "POST" && url.pathname === "/v1/processes/run") {
-        return await runProcessResponse(request, config);
-      }
-      return jsonResponse(404, { error: "not found" });
+      return await routeRequest(request, url, config);
     } catch (error) {
-      const status = error instanceof HttpError ? error.status : 500;
-      const message = error instanceof Error ? error.message : String(error);
-      if (status >= 500) {
-        log("error", "[CodingSatellite] request failed", {
-          path: url.pathname,
-          status,
-          error: message,
-        });
-      }
-      return jsonResponse(status, { error: message });
+      return errorResponse(error, url);
     }
   };
+}
+
+async function routeRequest(
+  request: Request,
+  url: URL,
+  config: RunnerConfig,
+): Promise<Response> {
+  if (request.method === "GET" && url.pathname === "/health") {
+    return publicHealthResponse(config);
+  }
+
+  const authError = authorize(request, config);
+  if (authError) return authError;
+
+  if (request.method === "GET" && url.pathname === "/v1/health") {
+    return privateHealthResponse(config);
+  }
+  if (request.method === "GET" && url.pathname === "/v1/fs/entries") {
+    return await listEntries(url, config);
+  }
+  if (request.method === "GET" && url.pathname === "/v1/fs/file") {
+    return await readFileResponse(url, config);
+  }
+  if (request.method === "PUT" && url.pathname === "/v1/fs/file") {
+    return await writeFileResponse(request, url, config);
+  }
+  if (request.method === "POST" && url.pathname === "/v1/processes/run") {
+    return await runProcessResponse(request, config);
+  }
+  return jsonResponse(404, { error: "not found" });
+}
+
+function publicHealthResponse(config: RunnerConfig): Response {
+  return jsonResponse(200, {
+    ok: true,
+    workspaceRoot: config.workspaceRoot,
+    authConfigured: Boolean(config.token),
+  });
+}
+
+function privateHealthResponse(config: RunnerConfig): Response {
+  return jsonResponse(200, {
+    ok: true,
+    id: "eliza.coding-satellite",
+    workspaceRoot: config.workspaceRoot,
+    capabilities: ["fs.list", "fs.read", "fs.write", "process.run"],
+  });
+}
+
+function errorResponse(error: unknown, url: URL): Response {
+  const status = error instanceof HttpError ? error.status : 500;
+  const message = error instanceof Error ? error.message : String(error);
+  if (status >= 500) {
+    log("error", "[CodingSatellite] request failed", {
+      path: url.pathname,
+      status,
+      error: message,
+    });
+  }
+  return jsonResponse(status, { error: message });
 }
 
 async function listEntries(url: URL, config: RunnerConfig): Promise<Response> {

@@ -2188,6 +2188,15 @@ interface RuntimeWithActionAliases extends Omit<AgentRuntime, "actions"> {
   actions?: Array<{ name?: string; similes?: string[] }>;
 }
 
+type CreateEntitiesFn = (entities: Entity[]) => Promise<UUID[] | boolean>;
+type GetEntitiesByIdsFn = (entityIds: UUID[]) => Promise<Entity[]>;
+type EnsureEntityExistsFn = (entity: Entity) => Promise<boolean>;
+type RuntimeWithEntityWrites = AgentRuntime & {
+  createEntities?: CreateEntitiesFn;
+  getEntitiesByIds?: GetEntitiesByIdsFn;
+  ensureEntityExists?: EnsureEntityExistsFn;
+};
+
 type DbErrorLike = {
   name?: unknown;
   message?: unknown;
@@ -2264,6 +2273,89 @@ async function withEntityCreateMutex<T>(
   } finally {
     release();
   }
+}
+
+function uniqueEntitiesById(entities: Entity[]): Entity[] {
+  const uniqueById = new Map<UUID, Entity>();
+  for (const entity of entities) {
+    if (entity?.id) uniqueById.set(entity.id as UUID, entity);
+  }
+  return Array.from(uniqueById.values());
+}
+
+async function findMissingEntities(
+  runtimeWithEntityWrites: RuntimeWithEntityWrites,
+  deduped: Entity[],
+): Promise<Entity[]> {
+  if (typeof runtimeWithEntityWrites.getEntitiesByIds !== "function") {
+    return deduped;
+  }
+  try {
+    const existing =
+      (await runtimeWithEntityWrites.getEntitiesByIds(
+        deduped.map((entity) => entity.id as UUID),
+      )) ?? [];
+    const existingIds = new Set<UUID>();
+    for (const entity of existing) {
+      if (entity?.id) existingIds.add(entity.id as UUID);
+    }
+    return deduped.filter((entity) => !existingIds.has(entity.id as UUID));
+  } catch (err) {
+    logger.warn(
+      `[eliza] createEntities precheck failed; proceeding with guarded insert: ${formatError(err)}`,
+    );
+    return deduped;
+  }
+}
+
+async function recoverMissingEntities(
+  runtimeWithEntityWrites: RuntimeWithEntityWrites,
+  missing: Entity[],
+): Promise<boolean> {
+  if (typeof runtimeWithEntityWrites.ensureEntityExists !== "function") {
+    return false;
+  }
+  let allRecovered = true;
+  for (const entity of missing) {
+    try {
+      const ensured = await runtimeWithEntityWrites.ensureEntityExists(entity);
+      allRecovered = allRecovered && ensured;
+    } catch (err) {
+      allRecovered = false;
+      logger.warn(
+        `[eliza] ensureEntityExists recovery failed for ${String(entity.id)}: ${formatError(err)}`,
+      );
+    }
+  }
+  return allRecovered;
+}
+
+async function createEntitiesWithGuard(args: {
+  entities: Entity[];
+  runtimeWithEntityWrites: RuntimeWithEntityWrites;
+  originalCreateEntities: CreateEntitiesFn;
+}): Promise<UUID[]> {
+  const deduped = uniqueEntitiesById(args.entities);
+  const dedupedIds = deduped.map((entity) => entity.id as UUID);
+  if (deduped.length === 0) return dedupedIds;
+
+  const missing = await findMissingEntities(
+    args.runtimeWithEntityWrites,
+    deduped,
+  );
+  if (missing.length === 0) return dedupedIds;
+
+  const result = await args.originalCreateEntities(missing);
+  if (Array.isArray(result) ? result.length > 0 : result) return dedupedIds;
+
+  if (await recoverMissingEntities(args.runtimeWithEntityWrites, missing)) {
+    return dedupedIds;
+  }
+
+  logger.warn(
+    `[eliza] createEntities unresolved after guarded retries (requested=${args.entities.length}, deduped=${deduped.length}, missing=${missing.length})`,
+  );
+  return [];
 }
 
 function summarizeComponentWrite(input: unknown): Record<string, unknown> {
@@ -2444,77 +2536,19 @@ export function installRuntimeMethodBindings(runtime: AgentRuntime): void {
   // to create the same entity in rapid succession; plugin-sql's batch insert is
   // non-idempotent and can fail entire writes on duplicate/conflicting rows.
   if (!runtimeWithBindings.__elizaEntityWriteDiagnosticsInstalled) {
-    type CreateEntitiesFn = (entities: Entity[]) => Promise<UUID[] | boolean>;
-    type GetEntitiesByIdsFn = (entityIds: UUID[]) => Promise<Entity[]>;
-    type EnsureEntityExistsFn = (entity: Entity) => Promise<boolean>;
-    const runtimeWithEntityWrites = runtime as AgentRuntime & {
-      createEntities?: CreateEntitiesFn;
-      getEntitiesByIds?: GetEntitiesByIdsFn;
-      ensureEntityExists?: EnsureEntityExistsFn;
-    };
+    const runtimeWithEntityWrites = runtime as RuntimeWithEntityWrites;
 
     if (typeof runtimeWithEntityWrites.createEntities === "function") {
       const originalCreateEntities =
         runtimeWithEntityWrites.createEntities.bind(runtime);
       runtimeWithEntityWrites.createEntities = async (entities: Entity[]) => {
-        return withEntityCreateMutex(runtimeWithBindings, async () => {
-          const uniqueById = new Map<UUID, Entity>();
-          for (const entity of entities) {
-            if (entity?.id) uniqueById.set(entity.id as UUID, entity);
-          }
-          const deduped = Array.from(uniqueById.values());
-          if (deduped.length === 0) return deduped.map((e) => e.id as UUID);
-
-          let missing = deduped;
-          if (typeof runtimeWithEntityWrites.getEntitiesByIds === "function") {
-            try {
-              const existing =
-                (await runtimeWithEntityWrites.getEntitiesByIds(
-                  deduped.map((e) => e.id as UUID),
-                )) ?? [];
-              const existingIds = new Set<UUID>();
-              for (const entity of existing) {
-                if (entity?.id) existingIds.add(entity.id as UUID);
-              }
-              missing = deduped.filter(
-                (entity) => !existingIds.has(entity.id as UUID),
-              );
-            } catch (err) {
-              logger.warn(
-                `[eliza] createEntities precheck failed; proceeding with guarded insert: ${formatError(err)}`,
-              );
-            }
-          }
-          if (missing.length === 0) return deduped.map((e) => e.id as UUID);
-
-          const result = await originalCreateEntities(missing);
-          if (Array.isArray(result) ? result.length > 0 : result)
-            return deduped.map((e) => e.id as UUID);
-
-          if (
-            typeof runtimeWithEntityWrites.ensureEntityExists === "function"
-          ) {
-            let allRecovered = true;
-            for (const entity of missing) {
-              try {
-                const ensured =
-                  await runtimeWithEntityWrites.ensureEntityExists(entity);
-                allRecovered = allRecovered && ensured;
-              } catch (err) {
-                allRecovered = false;
-                logger.warn(
-                  `[eliza] ensureEntityExists recovery failed for ${String(entity.id)}: ${formatError(err)}`,
-                );
-              }
-            }
-            if (allRecovered) return deduped.map((e) => e.id as UUID);
-          }
-
-          logger.warn(
-            `[eliza] createEntities unresolved after guarded retries (requested=${entities.length}, deduped=${deduped.length}, missing=${missing.length})`,
-          );
-          return [];
-        });
+        return withEntityCreateMutex(runtimeWithBindings, () =>
+          createEntitiesWithGuard({
+            entities,
+            runtimeWithEntityWrites,
+            originalCreateEntities,
+          }),
+        );
       };
     }
 
@@ -3784,16 +3818,16 @@ export async function startEliza(
     }
   };
 
-  const initializeRuntimeServices = async (): Promise<void> => {
+  const runStewardEvmPreBoot = async (): Promise<void> => {
     try {
       const { stewardEvmPreBoot } = await loadStewardEvmBridgeModule();
       await stewardEvmPreBoot?.(runtime);
     } catch (err) {
       logger.debug(`[eliza] Steward EVM pre-boot skipped: ${formatError(err)}`);
     }
+  };
 
-    // 7f. Pre-register ConnectorSetupService so connector plugins can access
-    //     shared config/escalation/owner-contact helpers via runtime.getService().
+  const registerConnectorSetupService = async (): Promise<void> => {
     try {
       const { ConnectorSetupService } = await import(
         "../services/connector-setup-service.ts"
@@ -3804,24 +3838,26 @@ export async function startEliza(
         `[eliza] ConnectorSetupService registration skipped: ${formatError(err)}`,
       );
     }
+  };
 
-    if (!isBundledMobileRuntime()) {
-      try {
-        const { registerE2BSatelliteCapabilityRouterIfEnabled } =
-          await loadE2BCapabilityRouterModule();
-        const result =
-          await registerE2BSatelliteCapabilityRouterIfEnabled(runtime);
-        if (result.registered) {
-          logger.info("[eliza] Cloud sandbox runner registered");
-        }
-      } catch (err) {
-        logger.warn(
-          `[eliza] Cloud sandbox runner registration failed: ${formatError(err)}`,
-        );
+  const registerCloudSandboxRunner = async (): Promise<void> => {
+    if (isBundledMobileRuntime()) return;
+    try {
+      const { registerE2BSatelliteCapabilityRouterIfEnabled } =
+        await loadE2BCapabilityRouterModule();
+      const result =
+        await registerE2BSatelliteCapabilityRouterIfEnabled(runtime);
+      if (result.registered) {
+        logger.info("[eliza] Cloud sandbox runner registered");
       }
+    } catch (err) {
+      logger.warn(
+        `[eliza] Cloud sandbox runner registration failed: ${formatError(err)}`,
+      );
     }
+  };
 
-    // 8. Initialize the runtime (registers remaining plugins, starts services)
+  const initializeCoreRuntime = async (): Promise<void> => {
     assertPersistentDatabaseRequired(runtime);
     await runtime.initialize();
     await prepareRuntimeForTrajectoryCapture(
@@ -3829,8 +3865,9 @@ export async function startEliza(
       "runtime.initialize()",
       config,
     );
+  };
 
-    // 8a. Apply legacy role redaction to protected plugin providers.
+  const applyPluginRoleGatingIfAvailable = async (): Promise<void> => {
     try {
       const { applyPluginRoleGating } = await import("./plugin-role-gating.ts");
       applyPluginRoleGating(runtime.plugins ?? []);
@@ -3839,10 +3876,9 @@ export async function startEliza(
         `[eliza] Plugin provider role gating skipped: ${formatError(err)}`,
       );
     }
+  };
 
-    // 8b. Register conversation-proximity provider for post-turn evaluators.
-    // This is read-only context; relationship writes are handled by the
-    // evaluator service from model-extracted relationship updates.
+  const registerConversationProximityProvider = async (): Promise<void> => {
     try {
       const { conversationProximityProvider } = await import(
         "../providers/conversation-proximity.ts"
@@ -3859,7 +3895,9 @@ export async function startEliza(
         `[eliza] Conversation-proximity provider skipped: ${formatError(err)}`,
       );
     }
+  };
 
+  const seedBundledDocumentsIfEnabled = async (): Promise<void> => {
     try {
       if (runtimeDocumentsEnabled(runtime)) {
         await seedBundledDocuments(runtime);
@@ -3873,7 +3911,9 @@ export async function startEliza(
         `[eliza] Failed to seed bundled documents: ${formatError(err)}`,
       );
     }
+  };
 
+  const runStewardEvmPostBoot = async (): Promise<void> => {
     try {
       const { stewardEvmPostBoot } = await loadStewardEvmBridgeModule();
       await stewardEvmPostBoot?.(runtime);
@@ -3882,7 +3922,9 @@ export async function startEliza(
         `[eliza] Steward EVM post-boot skipped: ${formatError(err)}`,
       );
     }
+  };
 
+  const installAnthropicWebSearchIfAvailable = async (): Promise<void> => {
     try {
       const { installAnthropicWebSearch } = await import(
         "./web-search-tools.ts"
@@ -3893,14 +3935,14 @@ export async function startEliza(
         `[eliza] Anthropic web search setup skipped: ${formatError(err)}`,
       );
     }
+  };
 
-    // 8b. Ensure AutonomyService is available for trigger dispatch.
-    // registers this service) from loading, so we start it explicitly.
-    // Respect ENABLE_AUTONOMY env var — cloud-provisioned containers may
-    // disable this to prevent runaway autonomous actions.
-    const autonomyEnabled =
-      (process.env.ENABLE_AUTONOMY ?? "true").toLowerCase() !== "false";
+  const isAutonomyEnabled = (): boolean =>
+    (process.env.ENABLE_AUTONOMY ?? "true").toLowerCase() !== "false";
 
+  const startAutonomyServiceIfEnabled = async (
+    autonomyEnabled: boolean,
+  ): Promise<void> => {
     if (autonomyEnabled && !runtime.getService("AUTONOMY")) {
       try {
         await startAndRegisterAutonomyService(runtime);
@@ -3913,30 +3955,46 @@ export async function startEliza(
     } else if (!autonomyEnabled) {
       logger.info("[eliza] AutonomyService skipped — ENABLE_AUTONOMY=false");
     }
+  };
 
-    // Enable the autonomy loop so memories injected into the autonomy
-    // room (e.g. by workflow nodes that post into autonomy) are actually
-    // processed by the agent's autonomous reasoning.
-    if (autonomyEnabled) {
-      const autonomySvc = getAutonomyService(runtime);
-      if (autonomySvc) {
-        try {
-          await autonomySvc.enableAutonomy();
-          logger.info(
-            "[eliza] AutonomyService enabled — trigger instructions will be processed",
-          );
-        } catch (err) {
-          logger.warn(
-            `[eliza] Failed to enable autonomy loop: ${formatError(err)}`,
-          );
-        }
-      }
+  const enableAutonomyLoopIfAvailable = async (
+    autonomyEnabled: boolean,
+  ): Promise<void> => {
+    if (!autonomyEnabled) return;
+    const autonomySvc = getAutonomyService(runtime);
+    if (!autonomySvc) return;
+    try {
+      await autonomySvc.enableAutonomy();
+      logger.info(
+        "[eliza] AutonomyService enabled — trigger instructions will be processed",
+      );
+    } catch (err) {
+      logger.warn(
+        `[eliza] Failed to enable autonomy loop: ${formatError(err)}`,
+      );
     }
+  };
 
-    // Do not block runtime startup on skills warm-up.
+  const startAgentSkillsWarmup = (): void => {
     void warmAgentSkillsService().catch((err) => {
       logger.warn(`[eliza] Skills warm-up failed: ${formatError(err)}`);
     });
+  };
+
+  const initializeRuntimeServices = async (): Promise<void> => {
+    await runStewardEvmPreBoot();
+    await registerConnectorSetupService();
+    await registerCloudSandboxRunner();
+    await initializeCoreRuntime();
+    await applyPluginRoleGatingIfAvailable();
+    await registerConversationProximityProvider();
+    await seedBundledDocumentsIfEnabled();
+    await runStewardEvmPostBoot();
+    await installAnthropicWebSearchIfAvailable();
+    const autonomyEnabled = isAutonomyEnabled();
+    await startAutonomyServiceIfEnabled(autonomyEnabled);
+    await enableAutonomyLoopIfAvailable(autonomyEnabled);
+    startAgentSkillsWarmup();
   };
 
   try {
