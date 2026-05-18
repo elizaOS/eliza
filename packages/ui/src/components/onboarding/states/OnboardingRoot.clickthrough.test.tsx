@@ -26,6 +26,16 @@ async function expectState(state: string): Promise<void> {
 }
 
 function clickButton(name: string | RegExp): void {
+  const matches = screen.queryAllByRole("button", { name });
+  if (matches.length > 0) {
+    fireEvent.click(matches[0]);
+    return;
+  }
+  const radios = screen.queryAllByRole("radio", { name });
+  if (radios.length > 0) {
+    fireEvent.click(radios[0]);
+    return;
+  }
   fireEvent.click(screen.getByRole("button", { name }));
 }
 
@@ -38,7 +48,7 @@ function renderOnboarding(
 
 async function beginSetup(): Promise<void> {
   await expectState("hello");
-  clickButton(/tap to begin/i);
+  clickButton(/^begin$/i);
   await expectState("setup");
 }
 
@@ -132,7 +142,7 @@ describe("OnboardingRoot clickthrough flows", () => {
     renderOnboarding((state) => completedStates.push(state));
 
     await beginSetup();
-    clickButton(/connect to remote instance/i);
+    clickButton(/connect to a remote instance/i);
     await expectState("remote-pair");
 
     fireEvent.change(screen.getByPlaceholderText(/agent url/i), {

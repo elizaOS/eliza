@@ -13,13 +13,52 @@ const bunRuntimeSrc = resolve(
   "plugins/plugin-native-bun-runtime/src/index.ts",
 );
 
-// Resolve react/react-dom tolerating bun workspace hoisting (deps may live in
-// the monorepo root node_modules rather than the package-local node_modules).
+// Resolve react/react-dom using the same version that lucide-react (or any
+// other UI dep) natively resolves.  In a bun workspace the peer-hash variant
+// of each dep carries its own react symlink — we discover that path so the
+// Vite alias always points to the *same* physical copy that CJS-requiring
+// packages see at runtime, eliminating "Invalid hook call" errors.
+//
+// Strategy:
+//  1. Resolve lucide-react from packages/ui (its bun-cache variant carries
+//     the authoritative peer-react symlink).
+//  2. From lucide-react's location, resolve "react" — that is the canonical
+//     react instance for this workspace/environment.
+//  3. Fall back to the standard createRequire resolution if lucide-react is
+//     absent (e.g., stripped build environments).
 const _require = createRequire(import.meta.url);
-const reactPath = dirname(_require.resolve("react/package.json"));
-const reactDomPath = dirname(_require.resolve("react-dom/package.json"));
+let reactPath: string;
+let reactDomPath: string;
+try {
+  const lucidePath = _require.resolve("lucide-react");
+  const lucideReq = createRequire(lucidePath);
+  reactPath = dirname(lucideReq.resolve("react/package.json"));
+  reactDomPath = dirname(lucideReq.resolve("react-dom/package.json"));
+} catch {
+  reactPath = dirname(_require.resolve("react/package.json"));
+  reactDomPath = dirname(_require.resolve("react-dom/package.json"));
+}
 
 export default defineConfig({
+  plugins: [
+    {
+      name: "ui-test-react-dedupe",
+      enforce: "pre" as const,
+      resolveId(id: string) {
+        if (id === "react" || id === "react/index.js")
+          return resolve(reactPath, "index.js");
+        if (id === "react/jsx-runtime" || id === "react/jsx-runtime.js")
+          return resolve(reactPath, "jsx-runtime.js");
+        if (id === "react/jsx-dev-runtime" || id === "react/jsx-dev-runtime.js")
+          return resolve(reactPath, "jsx-dev-runtime.js");
+        if (id === "react-dom" || id === "react-dom/index.js")
+          return resolve(reactDomPath, "index.js");
+        if (id === "react-dom/client" || id === "react-dom/client.js")
+          return resolve(reactDomPath, "client.js");
+        return null;
+      },
+    },
+  ],
   resolve: {
     dedupe: ["react", "react-dom"],
     alias: [
@@ -136,6 +175,36 @@ export default defineConfig({
   },
   test: {
     setupFiles: ["./vitest.setup.ts"],
+    pool: "forks",
+    server: {
+      deps: {
+        // Inline packages that use React through Vite's transform pipeline so
+        // the react/react-dom resolve.alias rules apply and all callers end up
+        // with exactly one React module instance.  We list the known consumers
+        // rather than using `inline: true` because fully-inline mode breaks
+        // jsdom's internal CJS `require("@exodus/bytes")` chain.
+        inline: [
+          /react/,
+          /react-dom/,
+          /@testing-library/,
+          /lucide-react/,
+          /motion/,
+          /@radix-ui/,
+          /vaul/,
+          /sonner/,
+          /embla/,
+          /recharts/,
+          /@xyflow/,
+          /streamdown/,
+          /tokenlens/,
+          // @exodus\/bytes ships pure-ESM exports; CJS-requiring code (e.g.,
+          // html-encoding-sniffer inside jsdom) cannot `require()` it without
+          // Vite's transform wrapping it as a virtual CJS module.
+          /@exodus\/bytes/,
+          /html-encoding-sniffer/,
+        ],
+      },
+    },
     environment: "node",
     environmentOptions: {
       // jsdom 29 throws `SecurityError: localStorage is not available for
@@ -143,15 +212,6 @@ export default defineConfig({
       // declare `// @vitest-environment jsdom` need this to access
       // window.localStorage / window.sessionStorage.
       jsdom: { url: "http://localhost/" },
-    },
-    server: {
-      deps: {
-        inline: [
-          /^react(?:\/.*)?$/,
-          /^react-dom(?:\/.*)?$/,
-          /@testing-library\/react/,
-        ],
-      },
     },
     include: [
       "__tests__/**/*.test.ts",

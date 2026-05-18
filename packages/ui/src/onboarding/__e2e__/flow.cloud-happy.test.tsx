@@ -57,7 +57,7 @@ describe("onboarding flow — cloud happy path", () => {
     );
 
     await expectState("hello");
-    clickButton(/tap to begin/i);
+    clickButton(/^begin$/i);
 
     await expectState("setup");
     // iOS default profile has Cloud preselected; click Continue.
@@ -118,7 +118,7 @@ describe("onboarding flow — cloud happy path", () => {
       />,
     );
     await expectState("hello");
-    clickButton(/tap to begin/i);
+    clickButton(/^begin$/i);
     await expectState("setup");
     clickButton(/^continue$/i);
     await expectState("cloud-login");
