@@ -10,7 +10,7 @@
 import pc from "picocolors";
 import type { DeployOptions } from "../types.js";
 
-const DOMAIN_REGEX = /^([a-z0-9]([a-z0-9-]*[a-z0-9])?\.)+[a-z]{2,}$/i;
+const DOMAIN_REGEX = /^([a-z0-9]([a-z0-9-]*[a-z0-9])?\.)+[a-z]{2,}$/;
 
 interface PlannedStep {
   label: string;
@@ -78,7 +78,7 @@ function printPlan(plan: PlannedStep[]): void {
   console.log();
   console.log(
     pc.dim(
-      "See packages/elizaos/src/commands/DEPLOY_DESIGN.md for the full design.",
+      "See https://github.com/elizaOS/eliza/blob/develop/packages/elizaos/src/commands/DEPLOY_DESIGN.md for the full design.",
     ),
   );
   console.log();
@@ -109,7 +109,7 @@ export function deploy(options: DeployOptions): void {
 
   console.error(
     pc.yellow(
-      "Real deploy not yet implemented — see DEPLOY_DESIGN.md. Pass --dry-run to preview.",
+      "Real deploy not yet implemented — see https://github.com/elizaOS/eliza/blob/develop/packages/elizaos/src/commands/DEPLOY_DESIGN.md. Pass --dry-run to preview.",
     ),
   );
   process.exit(1);
