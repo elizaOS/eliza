@@ -3057,7 +3057,18 @@ export async function startEliza(
 
   // 2f. Install the multi-account pool shims and apply selected direct API
   //     accounts before plugin resolution snapshots process.env.
-  try {
+  //
+  // Skipped in cloud containers (ELIZA_CLOUD_PROVISIONED=1): the multi-account
+  // pool is a desktop feature for users juggling several accounts per provider
+  // (work / personal / throwaway). Cloud sandboxes get one set of credentials
+  // injected by the daemon as env vars, so there's nothing to multiplex. The
+  // dynamic `importAppCoreRuntime()` here also pulls in
+  // `app-core/services/account-pool`, which statically imports from
+  // `@elizaos/agent` — completing a circular import that deadlocks Node ESM
+  // module evaluation in the cloud Docker boot path. Manifests as a silent
+  // hang at this await call after the node:sqlite experimental warning; PID 1
+  // sits in `ep_poll`, no listen, 180s health timeout.
+  if (process.env.ELIZA_CLOUD_PROVISIONED !== "1") try {
     const accountPool = await importAppCoreRuntime();
     accountPool.getDefaultAccountPool();
     await accountPool.applyAccountPoolApiCredentials({
