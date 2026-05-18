@@ -103,5 +103,8 @@ jobs:
       - name: Install dependencies
         run: bun install --ignore-scripts
 
+      - name: Generate keyword data
+        run: bun run generate:action-search-keywords
+
       - name: Run sandbox live smoke
         run: bun run --cwd packages/agent test:sandbox-live -- --target="$TARGET" $STRICT_ARG

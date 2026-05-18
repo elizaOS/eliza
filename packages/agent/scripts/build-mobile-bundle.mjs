@@ -534,6 +534,17 @@ const exactMobileStubPlugin = {
   },
 };
 
+const capabilityRouterStubPlugin = {
+  name: "eliza-mobile-capability-router-stubs",
+  setup(build) {
+    const e2bRouterStub = path.join(stubsDir, "e2b-capability-router.cjs");
+    build.onResolve({ filter: /e2b-capability-router\.ts$/ }, () => ({
+      path: e2bRouterStub,
+      namespace: "file",
+    }));
+  },
+};
+
 const iosFsSandboxPlugin = {
   name: "eliza-ios-fs-sandbox-proxy",
   setup(build) {
@@ -1357,6 +1368,7 @@ const buildResult = await Bun.build({
     dedupePlugin,
     nativeCapacitorPlugin,
     exactMobileStubPlugin,
+    capabilityRouterStubPlugin,
     workspaceSrcFallbackPlugin,
     stripStaleJsArtifactsPlugin,
     stubResolverPlugin,
