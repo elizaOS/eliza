@@ -53,6 +53,14 @@ async function runTarget(target: SmokeTarget): Promise<SmokeOutcome> {
 async function runSandboxProviderSmoke(
   provider: SandboxRunnerProvider,
 ): Promise<SmokeOutcome> {
+  if (provider === "eliza-cloud" && !hasElizaCloudRunnerTarget()) {
+    return {
+      target: provider,
+      status: "skipped",
+      message:
+        "Eliza Cloud runner requires ELIZA_CLOUD_CODING_SATELLITE_IMAGE or a direct runner URL.",
+    };
+  }
   const runtime = makeRuntime({ ELIZA_CODING_SATELLITE_RUNNER: provider });
   const service = new E2BSatelliteCapabilityRouterService(runtime);
   const availability = await service.availability();
@@ -278,6 +286,22 @@ function readArg(name: string): string | undefined {
 
 function hasArg(name: string): boolean {
   return process.argv.slice(2).includes(`--${name}`);
+}
+
+function hasElizaCloudRunnerTarget(): boolean {
+  return Boolean(
+    readEnv("ELIZA_CLOUD_SANDBOX_BASE_URL") ||
+      readEnv("ELIZA_CLOUD_SATELLITE_RUNNER_URL") ||
+      readEnv("ELIZA_CLOUD_RUNNER_URL") ||
+      readEnv("ELIZA_CLOUD_SANDBOX_IMAGE") ||
+      readEnv("ELIZA_CLOUD_CODING_SATELLITE_IMAGE") ||
+      readEnv("ELIZA_CODING_SATELLITE_IMAGE"),
+  );
+}
+
+function readEnv(key: string): string | undefined {
+  const value = process.env[key];
+  return typeof value === "string" && value.trim() ? value.trim() : undefined;
 }
 
 async function commandAvailable(command: string): Promise<boolean> {
