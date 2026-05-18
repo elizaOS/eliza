@@ -33,6 +33,14 @@
  */
 
 import { findCatalogModel } from "./catalog";
+// NOTE: `import type` is erased at runtime — backend.ts and dflash-server.ts
+// can reference each other's *types* without creating a runtime circular.
+// dflash-server.ts already imports types from here (`LocalInferenceBackend`,
+// `BackendPlan`, etc); this is the symmetric type-only edge.
+import type {
+	DflashGenerateResult,
+	DflashRuntimeLoadConfig,
+} from "./dflash-server";
 import type { StructuredGenerateParams } from "./structured-output";
 import type { CatalogModel, LocalRuntimeKernel } from "./types";
 import type { VerifierStreamEvent } from "./voice/types";
@@ -172,6 +180,96 @@ export interface LocalInferenceBackend {
 	embed?(args: EmbedArgs): Promise<EmbedResult>;
 	hasLoadedModel(): boolean;
 	currentModelPath(): string | null;
+
+	// === Optional methods — backends that don't implement them are surfaced
+	// === via `dispatcher.X?.()` calls in `engine.ts`, with safe fallback
+	// === values for query methods and actionable throws for required ops.
+	// ===
+	// === These exist so engine.ts can drive every llama-server-specific
+	// === feature through the dispatcher instead of importing the
+	// === `dflashLlamaServer` singleton directly. Eventual deletion of
+	// === `dflash-server.ts` (the file) requires (a) every engine call site
+	// === to use these dispatcher methods and (b) a replacement
+	// === implementation of each method on the FFI backend. See
+	// === `plugins/plugin-local-inference/FFI_BACKEND_WIREUP_PLAN.md`.
+
+	/**
+	 * Usage-instrumented variant of `generate`. Returns Anthropic-shape
+	 * usage block + per-turn DFlash speculative stats. Required on the
+	 * llama-server backend; FFI backends will need parity before any
+	 * caller switches to FFI for slot-aware generation.
+	 */
+	generateWithUsage?(
+		args: GenerateArgs & { slotId?: number },
+	): Promise<DflashGenerateResult>;
+
+	/** Vision describe via mmproj. Requires an mmproj-loaded backend. */
+	describeImage?(args: {
+		bytes: Uint8Array;
+		mimeType?: string;
+		prompt?: string;
+		maxTokens?: number;
+		temperature?: number;
+		signal?: AbortSignal;
+	}): Promise<{
+		text: string;
+		projectorMs?: number;
+		decodeMs?: number;
+	}>;
+
+	/** Persist a slot's KV cache to disk under the conversation directory. */
+	persistConversationKv?(
+		conversationId: string,
+		slotId: number,
+	): Promise<void>;
+
+	/** Restore a slot's KV cache from disk into the running backend. */
+	restoreConversationKv?(
+		conversationId: string,
+		slotId: number,
+	): Promise<void>;
+
+	/**
+	 * Pre-decode `promptPrefix` into the named slot/cache key so the next
+	 * `generate` against the same key skips re-prefill. Returns false when
+	 * no warmup happened (already cached, no model loaded, etc).
+	 */
+	prewarmConversation?(
+		promptPrefix: string,
+		opts: { slotId: number; cacheKey: string },
+	): Promise<boolean>;
+
+	/**
+	 * Resize the backend's parallel slot pool. llama-server-specific —
+	 * the FFI runner has a single-slot lifecycle today. Returns true on
+	 * a real restart, false on no-op (target ≤ current, etc).
+	 */
+	resizeParallel?(target: number): Promise<boolean>;
+
+	/**
+	 * Eviction-style restart that drops the DFlash drafter (`-md`) and
+	 * frees its memory. Returns true when a restart happened.
+	 */
+	restartWithoutDrafter?(): Promise<boolean>;
+
+	/** Active parallel slot count. Default `1` on backends without pooling. */
+	parallelSlots?(): number;
+
+	/** True when speculative decoding is wired against a loaded drafter. */
+	drafterEnabled?(): boolean;
+
+	/** Absolute path to the loaded drafter GGUF, or null. */
+	loadedDrafterModelPath?(): string | null;
+
+	/** Absolute path to the loaded mmproj (vision) GGUF, or null. */
+	currentMmprojPath?(): string | null;
+
+	/**
+	 * Snapshot of the backend's current load configuration (ctx, cache
+	 * types, parallel, binary path). Used by engine introspection +
+	 * /api/local-inference/active.
+	 */
+	currentRuntimeLoadConfig?(): DflashRuntimeLoadConfig | null;
 }
 
 export type BackendOverride = "auto" | "node-llama-cpp" | "llama-server";
@@ -568,5 +666,107 @@ export class BackendDispatcher implements LocalInferenceBackend {
 			);
 		}
 		return this.active.embed(args);
+	}
+
+	// === Forwarders for the optional methods on LocalInferenceBackend.
+	// === Required ops (generate / describe / persist / restore / prewarm /
+	// === resize / restart) throw an actionable error when the active
+	// === backend doesn't implement them, pointing at the FFI parity gap.
+	// === Query getters return safe defaults that match the engine's
+	// === existing guard expectations.
+
+	async generateWithUsage(
+		args: GenerateArgs & { slotId?: number },
+	): Promise<DflashGenerateResult> {
+		this.ensureLoaded();
+		if (!this.active!.generateWithUsage) {
+			throw this.notSupported("generateWithUsage");
+		}
+		return this.active!.generateWithUsage(args);
+	}
+
+	async describeImage(
+		args: Parameters<NonNullable<LocalInferenceBackend["describeImage"]>>[0],
+	): ReturnType<NonNullable<LocalInferenceBackend["describeImage"]>> {
+		this.ensureLoaded();
+		if (!this.active!.describeImage) {
+			throw this.notSupported(
+				"describeImage",
+				"vision describe requires an mmproj-loaded llama-server. Load an Eliza-1 bundle, or wait for FFI mmproj parity.",
+			);
+		}
+		return this.active!.describeImage(args);
+	}
+
+	async persistConversationKv(
+		conversationId: string,
+		slotId: number,
+	): Promise<void> {
+		this.ensureLoaded();
+		if (!this.active!.persistConversationKv) return;
+		await this.active!.persistConversationKv(conversationId, slotId);
+	}
+
+	async restoreConversationKv(
+		conversationId: string,
+		slotId: number,
+	): Promise<void> {
+		this.ensureLoaded();
+		if (!this.active!.restoreConversationKv) return;
+		await this.active!.restoreConversationKv(conversationId, slotId);
+	}
+
+	async prewarmConversation(
+		promptPrefix: string,
+		opts: { slotId: number; cacheKey: string },
+	): Promise<boolean> {
+		this.ensureLoaded();
+		if (!this.active!.prewarmConversation) return false;
+		return this.active!.prewarmConversation(promptPrefix, opts);
+	}
+
+	async resizeParallel(target: number): Promise<boolean> {
+		this.ensureLoaded();
+		if (!this.active!.resizeParallel) return false;
+		return this.active!.resizeParallel(target);
+	}
+
+	async restartWithoutDrafter(): Promise<boolean> {
+		this.ensureLoaded();
+		if (!this.active!.restartWithoutDrafter) return false;
+		return this.active!.restartWithoutDrafter();
+	}
+
+	parallelSlots(): number {
+		return this.active?.parallelSlots?.() ?? 1;
+	}
+
+	drafterEnabled(): boolean {
+		return this.active?.drafterEnabled?.() ?? false;
+	}
+
+	loadedDrafterModelPath(): string | null {
+		return this.active?.loadedDrafterModelPath?.() ?? null;
+	}
+
+	currentMmprojPath(): string | null {
+		return this.active?.currentMmprojPath?.() ?? null;
+	}
+
+	currentRuntimeLoadConfig(): DflashRuntimeLoadConfig | null {
+		return this.active?.currentRuntimeLoadConfig?.() ?? null;
+	}
+
+	private ensureLoaded(): void {
+		if (!this.active) {
+			throw new Error(
+				"[local-inference] No backend loaded. Call load() first.",
+			);
+		}
+	}
+
+	private notSupported(method: string, detail?: string): Error {
+		const base = `[local-inference] Active backend (${this.active?.id ?? "<none>"}) does not implement ${method}.`;
+		return new Error(detail ? `${base} ${detail}` : base);
 	}
 }
