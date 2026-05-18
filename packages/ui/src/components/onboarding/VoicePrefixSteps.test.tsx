@@ -158,8 +158,6 @@ describe("VoicePrefixSteps", () => {
   });
 
   it("Continue button calls onAdvance with the next step in the graph", () => {
-    // Use the "tier" step (not "welcome") because the welcome step gates the
-    // Continue button behind mic-permission state which requires async setup.
     const onAdvance = vi.fn();
     render(
       <VoicePrefixSteps
@@ -169,9 +167,7 @@ describe("VoicePrefixSteps", () => {
         profilesClient={makeClient()}
       />,
     );
-    fireEvent.click(screen.getByTestId("voice-prefix-welcome-request-mic"));
     fireEvent.click(screen.getByTestId("voice-prefix-continue"));
-    // From "tier" the next step is "greeting" (GOOD or EXCELLENT tier default).
     expect(onAdvance).toHaveBeenCalled();
   });
 

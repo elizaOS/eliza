@@ -398,7 +398,9 @@ export class RuntimeBrokerCapabilityRouter implements ElizaCapabilityRouter {
 			...(params.createDirectories === undefined
 				? {}
 				: { createDirectories: params.createDirectories }),
-			...(params.overwrite === undefined ? {} : { overwrite: params.overwrite }),
+			...(params.overwrite === undefined
+				? {}
+				: { overwrite: params.overwrite }),
 			...(params.traceSessionId === undefined
 				? {}
 				: { traceSessionId: params.traceSessionId }),
@@ -689,7 +691,10 @@ function requireStringArray(
 	method: string,
 ): string[] {
 	const value = object[key];
-	if (Array.isArray(value) && value.every((entry) => typeof entry === "string")) {
+	if (
+		Array.isArray(value) &&
+		value.every((entry) => typeof entry === "string")
+	) {
 		return value;
 	}
 	throw decodeError(method, `${key} must be a string array.`);
@@ -715,7 +720,10 @@ function optionalNullableNumber(
 	if (value === undefined) return undefined;
 	if (value === null) return null;
 	if (typeof value === "number" && Number.isFinite(value)) return value;
-	throw decodeError(method, `${key} must be a finite number or null when present.`);
+	throw decodeError(
+		method,
+		`${key} must be a finite number or null when present.`,
+	);
 }
 
 function optionalNullableString(

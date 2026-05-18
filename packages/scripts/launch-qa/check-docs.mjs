@@ -4,7 +4,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 
 const here = path.dirname(fileURLToPath(import.meta.url));
-const defaultRepoRoot = path.resolve(here, "../..");
+const defaultRepoRoot = path.resolve(here, "../../..");
 const MARKDOWN_LINK_RE = /!?\[([^\]\n]*)\]\(([^)\s]+)(?:\s+"[^"]*")?\)/g;
 const HTML_LINK_RE = /<(?:a|img)\b[^>]*(?:href|src)=["']([^"']+)["'][^>]*>/gi;
 const BUN_RUN_RE =
@@ -71,7 +71,10 @@ function walkMarkdownFiles(dir) {
     const fullPath = path.join(dir, entry.name);
     if (entry.isDirectory()) {
       files.push(...walkMarkdownFiles(fullPath));
-    } else if (entry.isFile() && entry.name.endsWith(".md")) {
+    } else if (
+      entry.isFile() &&
+      (entry.name.endsWith(".md") || entry.name.endsWith(".mdx"))
+    ) {
       files.push(fullPath);
     }
   }
@@ -125,6 +128,7 @@ function collectDocs(repoRoot, scope = "all") {
       ? [
           "packages/docs/docs/launchdocs",
           "packages/docs/launchdocs",
+          "packages/docs/launch-resources",
           "launchdocs",
         ]
       : scope === "docs"
