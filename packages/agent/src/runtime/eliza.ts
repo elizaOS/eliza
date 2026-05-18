@@ -2861,19 +2861,25 @@ export async function startEliza(
   // Boot-time vault hydration: migrate plaintext sensitive values into the
   // OS-keychain vault and resolve vault://KEY sentinels in config.env.
   //
-  // Skipped on mobile. `hydrateWalletKeysFromNodePlatformSecureStore` and
-  // `runVaultBootstrap` both reach for the OS keychain through
-  // `defaultMasterKey().load()` (packages/vault/src/master-key.ts:217)
-  // and open a second PGlite worker at `<stateDir>/.vault-pglite/`. Neither
-  // is meaningful on Android: there is no D-Bus session for the libsecret
-  // backend (vault falls back to an ELIZA_VAULT_PASSPHRASE-derived key,
-  // which `ElizaAgentService` already sets per-install from ANDROID_ID),
-  // the spawned bun process has no sensitive secrets to migrate (those
-  // arrive through the service env — per-boot bearer token, llama config),
-  // and the second PGlite worker just doubles disk + RAM pressure on a
-  // 4 GB device. Mirrors the `if (!isMobilePlatform()) { ... }` guard at
-  // line ~2888 around the `applyCloudConfigToEnv` block.
-  if (!isMobilePlatform()) {
+  // Skipped on mobile AND in cloud-provisioned containers. The vault flow
+  // (`hydrateWalletKeysFromNodePlatformSecureStore` + `runVaultBootstrap`)
+  // reaches for the OS keychain through `defaultMasterKey().load()`
+  // (packages/vault/src/master-key.ts:217) and opens a second PGlite worker
+  // at `<stateDir>/.vault-pglite/`. Both target environments where it's
+  // pointless or actively harmful:
+  //   - Android: no D-Bus for libsecret (vault falls back to an
+  //     ELIZA_VAULT_PASSPHRASE-derived key, which `ElizaAgentService` already
+  //     sets per-install from ANDROID_ID), the spawned bun process has no
+  //     plaintext secrets to migrate (env arrives from the service), and the
+  //     second PGlite worker doubles disk + RAM pressure on a 4 GB device.
+  //   - Cloud sandbox (Docker, ELIZA_CLOUD_PROVISIONED=1): the daemon already
+  //     injects every secret as a real env var (ELIZA_API_TOKEN,
+  //     ELIZAOS_CLOUD_API_KEY, OPENAI_API_KEY, …), libsecret isn't installed
+  //     in the slim image, and the second PGlite worker has been observed to
+  //     hang vault-pglite init silently — blocking the HTTP listen and
+  //     tripping the 180s health check on every fresh provision.
+  const isCloudProvisioned = process.env.ELIZA_CLOUD_PROVISIONED === "1";
+  if (!isMobilePlatform() && !isCloudProvisioned) {
     try {
       const { hydrateWalletKeysFromNodePlatformSecureStore } =
         await importAppCoreRuntime();
