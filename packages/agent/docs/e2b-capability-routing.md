@@ -1,111 +1,313 @@
-# E2B Satellite Runner
+# Cloud Sandbox Capability Router
 
-The E2B path is the first cloud Satellite runner for coding execution. A Satellite is the portable Bun capability worker contract: manifest, typed methods, and event stream. Electrobun is one local runner for that contract; E2B is a cloud runner for the same filesystem, terminal, and Git surface.
-
-Plugins stay semantic:
+This router lets semantic plugins use filesystem, terminal, and local Git
+capabilities without owning the execution substrate.
 
 ```text
 plugin-coding-tools
   -> capability-router runtime service
-  -> E2B Satellite runner
-  -> sandbox filesystem / commands / git
+  -> sandbox provider
+  -> fs / pty / git execution
 ```
 
-This keeps TypeScript plugins portable across desktop, cloud, server, and mobile clients. A phone can ask the same Eliza agent to run coding tools without needing Electrobun, local JIT, or host shell access. The route changes by provider, not by plugin semantics:
+Active providers:
 
-```text
-desktop/native
-  plugin-coding-tools -> capability-router -> eliza.runtime -> eliza.pty/eliza.fs/eliza.git
+| Provider | Runner | Use |
+| --- | --- | --- |
+| `e2b` | E2B SDK sandbox | Hosted coding sandbox when E2B credentials are configured. |
+| `eliza-cloud` | Eliza Cloud Satellite HTTP runner | Managed cloud runner and coding-agent container path. |
+| `home` | Home Satellite HTTP runner | User-owned machine reachable directly, through Eliza Cloud routing, or through SSH tunnel. |
 
-cloud/E2B
-  plugin-coding-tools -> capability-router -> E2B Satellite runner -> sandbox pty/fs/git
-```
+Direct `vercel`, `cloudflare`, and `rivet` providers are intentionally disabled
+until they are exposed through Eliza Cloud or another reviewed product option.
 
 ## Activation
 
-Register the E2B Satellite runner with one of:
+Select the provider:
 
 ```text
 ELIZA_CODING_SATELLITE_RUNNER=e2b
-ELIZA_SATELLITE_RUNNER=e2b
+ELIZA_CODING_SATELLITE_RUNNER=eliza-cloud
+ELIZA_CODING_SATELLITE_RUNNER=home
+```
+
+`ELIZA_SATELLITE_RUNNER` is also accepted. E2B additionally accepts the legacy
+flag:
+
+```text
 ELIZA_E2B_SATELLITE_RUNNER=1
 ```
 
-Authentication uses:
+If no provider is selected, the router auto-selects `eliza-cloud` when a direct
+cloud runner URL is present, `home` when home runner settings are present, and
+otherwise stays disabled unless E2B is explicitly enabled.
+
+## E2B
 
 ```text
 E2B_API_KEY
 E2B_ACCESS_TOKEN
+E2B_DOMAIN
+E2B_SANDBOX_ID
+E2B_TEMPLATE
+ELIZA_E2B_WORKDIR
+ELIZA_E2B_HOST_WORKSPACE_ROOT
+ELIZA_E2B_BOOTSTRAP_GIT_URL
+ELIZA_E2B_BOOTSTRAP_GIT_REF
+ELIZA_E2B_KEEP_ALIVE=1
+ELIZA_E2B_TIMEOUT_MS
+ELIZA_E2B_REQUEST_TIMEOUT_MS
 ```
 
-Optional sandbox settings:
+## Eliza Cloud
 
 ```text
-E2B_SANDBOX_ID                  connect to an existing sandbox
-E2B_TEMPLATE                    create from a specific template
-ELIZA_E2B_WORKDIR               sandbox workspace, default /workspace
-ELIZA_E2B_HOST_WORKSPACE_ROOT   host path mapped to the sandbox workdir
-ELIZA_E2B_BOOTSTRAP_GIT_URL     clone a repo into the sandbox workdir
-ELIZA_E2B_BOOTSTRAP_GIT_REF     checkout a branch, tag, or commit
-ELIZA_E2B_KEEP_ALIVE=1          keep created sandbox alive on service stop
-ELIZA_E2B_TIMEOUT_MS            sandbox and command timeout
-ELIZA_E2B_REQUEST_TIMEOUT_MS    SDK request timeout
+ELIZA_CLOUD_SANDBOX_API_BASE_URL
+ELIZA_CLOUD_SANDBOX_BASE_URL
+ELIZA_CLOUD_SATELLITE_RUNNER_URL
+ELIZA_CLOUD_RUNNER_URL
+ELIZA_CLOUD_SANDBOX_TOKEN
+ELIZA_CLOUD_API_KEY
+ELIZA_CLOUD_AUTH_TOKEN
+ELIZAOS_CLOUD_API_KEY
+ELIZACLOUD_API_KEY
+ELIZA_CLOUD_SANDBOX_ACCESS_URL
+ELIZA_CLOUD_SANDBOX_IMAGE
+ELIZA_CLOUD_SATELLITE_IMAGE
+ELIZA_CLOUD_CODING_SATELLITE_IMAGE
+ELIZA_CLOUD_SANDBOX_WORKDIR
+ELIZA_CLOUD_SANDBOX_HOST_WORKSPACE_ROOT
+ELIZA_CLOUD_SANDBOX_BOOTSTRAP_GIT_URL
+ELIZA_CLOUD_SANDBOX_BOOTSTRAP_GIT_REF
+ELIZA_CLOUD_SANDBOX_TIMEOUT_MS
+ELIZA_CLOUD_SANDBOX_REQUEST_TIMEOUT_MS
 ```
 
-## Routing
+`ELIZA_CLOUD_SANDBOX_BASE_URL`, `ELIZA_CLOUD_SATELLITE_RUNNER_URL`, and
+`ELIZA_CLOUD_RUNNER_URL` are direct Satellite HTTP URLs and must expose
+`/v1/health`, `/v1/fs/entries`, `/v1/fs/file`, and `/v1/processes/run`.
 
-Mapped capabilities:
+If no direct Satellite URL is set, `eliza-cloud` uses the Cloud API at
+`ELIZA_CLOUD_SANDBOX_API_BASE_URL` or the default
+`https://api.elizacloud.ai/api/v1`, then posts to
+`/coding-containers` with `ELIZA_CLOUD_SANDBOX_TOKEN`, `ELIZA_CLOUD_API_KEY`,
+`ELIZAOS_CLOUD_API_KEY`, or `ELIZACLOUD_API_KEY`. The returned container URL is
+then treated as the Satellite HTTP runner URL.
+
+The Cloud control plane should use the coding Satellite image from
+`packages/cloud-services/coding-satellite`. Publish it and set:
+
+```text
+ELIZA_CLOUD_CODING_SATELLITE_IMAGE=ghcr.io/elizaos/coding-satellite:<tag>
+```
+
+## Home
+
+```text
+ELIZA_HOME_SATELLITE_URL
+ELIZA_HOME_RUNNER_URL
+ELIZA_HOME_SATELLITE_TOKEN
+ELIZA_HOME_SATELLITE_ACCESS_URL
+ELIZA_HOME_ACCESS_URL
+ELIZA_HOME_SATELLITE_WORKDIR
+ELIZA_HOME_SATELLITE_HOST_WORKSPACE_ROOT
+ELIZA_HOME_SATELLITE_BOOTSTRAP_GIT_URL
+ELIZA_HOME_SATELLITE_BOOTSTRAP_GIT_REF
+ELIZA_HOME_SATELLITE_TIMEOUT_MS
+ELIZA_HOME_SATELLITE_REQUEST_TIMEOUT_MS
+```
+
+Optional SSH tunnel metadata for Settings:
+
+```text
+ELIZA_HOME_SATELLITE_SSH_TARGET=user@home.example
+ELIZA_HOME_SSH_TARGET=user@home.example
+ELIZA_HOME_SATELLITE_SSH_IDENTITY=/path/to/key
+ELIZA_HOME_SSH_IDENTITY=/path/to/key
+ELIZA_HOME_SATELLITE_SSH_LOCAL_PORT=32468
+```
+
+The app only renders a copyable SSH tunnel command. It does not spawn or manage
+SSH.
+
+## Agent Runners
+
+Eliza Cloud and Home default to:
+
+```text
+codex,claude-code,opencode
+```
+
+Override with:
+
+```text
+ELIZA_SANDBOX_AGENT_RUNNERS=codex,claude-code,opencode
+SANDBOX_AGENT_RUNNERS=codex,claude-code,opencode
+```
+
+`claude` is normalized to `claude-code`; `open-code` is normalized to
+`opencode`.
+
+These are coding-agent runners, not model providers. The sandbox provider
+starts the runner in the workspace; Codex, Claude Code, and opencode each use
+their own configured auth/model settings inside that runner.
+
+### Codex server mode
+
+For one-shot jobs, a sandbox can run:
+
+```text
+codex exec --cd /workspace "..."
+```
+
+For streamed, resumable, cross-device coding sessions, prefer Codex app-server
+inside the same sandbox workspace:
+
+```text
+codex app-server --listen stdio://
+codex app-server --listen ws://127.0.0.1:4500
+```
+
+The Codex app-server protocol is JSON-RPC 2.0 without the `jsonrpc` wire field.
+It supports threads, turns, streamed item events, `command/exec`, model listing,
+auth state, and filesystem methods. Loopback WebSocket listeners expose
+`/readyz` and `/healthz` probes. If a WebSocket listener is forwarded outside
+the sandbox, require WebSocket auth:
+
+```text
+codex app-server --listen ws://127.0.0.1:4500 --ws-auth capability-token --ws-token-file /run/secrets/codex-ws-token
+```
+
+Use `CODEX_BIN` when the binary is not on `PATH`. Use
+`CODEX_APP_SERVER_LISTEN`, `CODEX_APP_SERVER_WS_TOKEN_FILE`, and
+`CODEX_APP_SERVER_WS_SHARED_SECRET_FILE` for runner images that manage a
+long-lived app-server process. `codex` remains the runner id; the runner mode is
+`exec` or `app-server`.
+
+### opencode server mode
+
+An opencode-backed sandbox should run opencode as a headless server inside the
+same sandbox workspace:
+
+```text
+opencode serve --hostname 127.0.0.1 --port 4096
+```
+
+Use `OPENCODE_SERVER_PASSWORD` to require HTTP Basic auth. The default username
+is `opencode`; set `OPENCODE_SERVER_USERNAME` only when a runner needs a
+different account name.
+
+The opencode server provides:
+
+| Path | Purpose |
+| --- | --- |
+| `/global/health` | Server health and version. |
+| `/event` | Server-sent event stream. |
+| `/doc` | OpenAPI 3.1 spec. |
+| `/session` and `/session/:id/message` | Programmatic coding-agent sessions. |
+| `/find`, `/find/file`, `/file`, `/file/content`, `/file/status` | Workspace search and file reads. |
+| `/vcs` and `/session/:id/diff` | VCS status and session diff. |
+
+The Satellite HTTP runner remains the outer capability boundary. opencode is an
+agent runner inside E2B, Eliza Cloud, or Home, not a fourth sandbox provider.
+
+## Satellite HTTP Contract
+
+Eliza Cloud and Home use the same HTTP runner shape:
+
+| Method | Path | Purpose |
+| --- | --- | --- |
+| `GET` | `/v1/health` | Runner readiness. |
+| `GET` | `/v1/fs/entries?path=/workspace` | List files. |
+| `GET` | `/v1/fs/file?path=/workspace/file.ts` | Read a file. |
+| `PUT` | `/v1/fs/file?path=/workspace/file.ts` | Write a file. |
+| `POST` | `/v1/processes/run` | Run a command. |
+
+The command request body is:
+
+```json
+{
+  "command": "sh",
+  "args": ["-lc", "git status --short"],
+  "cwd": "/workspace",
+  "env": {},
+  "timeoutMs": 60000
+}
+```
+
+The command response may use either:
+
+```json
+{ "exitCode": 0, "stdout": "ok", "stderr": "" }
+```
+
+or the terminal-style shape:
+
+```json
+{ "exitCode": 0, "output": "ok", "timedOut": false }
+```
+
+## Routed Capabilities
 
 | Capability | Route |
 | --- | --- |
-| `fs.list` | E2B `sandbox.files.list()` |
-| `fs.readText` | E2B `sandbox.files.read()` |
-| `fs.writeText` | E2B `sandbox.files.write()` |
-| `pty.command.run` | E2B `sandbox.commands.run()` |
-| `git.status` | `git status --porcelain=v1 --branch` in sandbox |
-| `git.diff` | `git diff` in sandbox |
-| `git.command.run` | `git ...args` in sandbox |
+| `fs.list` | Provider file listing. |
+| `fs.readText` | Provider file read. |
+| `fs.writeText` | Provider file write. |
+| `pty.command.run` | Provider command execution. |
+| `git.status` | `git status --porcelain=v1 --branch` in provider workspace. |
+| `git.diff` | `git diff` in provider workspace. |
+| `git.command.run` | `git ...args` in provider workspace. |
 
-`model.status` remains unavailable because local model control belongs to local-model providers, not the coding Satellite runner.
+`model.status` remains unavailable because local model control belongs to model
+providers and `eliza.local-model`, not the coding sandbox runner.
 
 ## Workspace Mapping
 
-Absolute host paths under `ELIZA_E2B_HOST_WORKSPACE_ROOT` map into `ELIZA_E2B_WORKDIR`.
+Absolute host paths under the configured host workspace root map into the
+provider workdir.
 
 Example:
 
 ```text
-ELIZA_E2B_HOST_WORKSPACE_ROOT=/Users/me/eliza
-ELIZA_E2B_WORKDIR=/workspace
+ELIZA_SANDBOX_HOST_WORKSPACE_ROOT=/Users/me/eliza
+ELIZA_SANDBOX_WORKDIR=/workspace
 
 /Users/me/eliza/packages/agent -> /workspace/packages/agent
 ```
 
-Paths outside the mapped root fail with `CAPABILITY_UNAVAILABLE`. This prevents a cloud sandbox from pretending it can reach arbitrary host paths.
+Paths outside the mapped root fail with `CAPABILITY_UNAVAILABLE`.
 
 ## Mobile And Cross-Device
 
-The mobile app does not run Electrobun. It talks to the same Eliza agent runtime. When coding tools need filesystem, terminal, or Git execution, the runtime service can route to a reachable Satellite provider:
+Mobile does not need Electrobun. It talks to the same Eliza agent runtime, and
+the runtime routes coding capabilities to a reachable provider:
 
-- native desktop provider when the user has a paired desktop host
-- E2B cloud provider when the user needs sandboxed build/run capacity
-- future bare Bun or Docker provider when those are registered
+- E2B for hosted sandbox execution.
+- Eliza Cloud for managed cloud Satellite execution.
+- Home for a user-owned machine reachable by direct URL, cloud routing, or SSH tunnel.
 
-Results stream back through normal chat, trace, or dynamic-view channels.
+Results return through normal chat, trace, and dynamic-view channels.
 
-## Review Boundary
+## Live Smoke Tests
 
-This is the first E2B slice:
+Run the live smoke harness from the repo root:
 
-- E2B SDK installed in `packages/agent`.
-- Agent runtime can register an E2B Satellite runner as the `capability-router` service.
-- `plugin-coding-tools` SHELL no longer blocks cloud mode before the router can run.
-- Existing plugin fallback behavior remains when no router is registered or when E2B is unavailable.
+```text
+bun run --cwd packages/agent test:sandbox-live
+```
 
-Not included yet:
+Without provider credentials, E2B, Eliza Cloud, and Home are reported as
+skipped. Codex app-server is always tested locally when `codex` is available.
 
-- browser preview proxying from sandbox ports into dynamic views
-- workspace upload/sync beyond optional Git bootstrap
-- artifact publishing
-- long-lived per-user sandbox registry
-- permission UI
+To require a configured provider:
+
+```text
+bun run --cwd packages/agent test:sandbox-live -- --target=e2b --strict
+bun run --cwd packages/agent test:sandbox-live -- --target=eliza-cloud --strict
+bun run --cwd packages/agent test:sandbox-live -- --target=home --strict
+```
+
+The provider smoke writes a temporary file, reads it back, lists the workspace,
+runs a shell command, and runs `git --version` through the configured sandbox
+route.

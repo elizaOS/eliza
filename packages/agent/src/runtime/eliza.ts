@@ -139,6 +139,13 @@ async function importAppCoreRuntime(): Promise<AppCoreRuntimeModule> {
   ) as Promise<AppCoreRuntimeModule>;
 }
 
+function isBundledMobileRuntime(): boolean {
+  return (
+    (globalThis as { __ELIZA_MOBILE_BUNDLE__?: unknown })
+      .__ELIZA_MOBILE_BUNDLE__ === true
+  );
+}
+
 import { buildCharacterFromConfig } from "./build-character-config.ts";
 import {
   resolvePreferredProviderId,
@@ -3788,18 +3795,21 @@ export async function startEliza(
       );
     }
 
-    try {
-      const { registerE2BSatelliteCapabilityRouterIfEnabled } = await import(
-        "../services/e2b-capability-router.ts"
-      );
-      const result = await registerE2BSatelliteCapabilityRouterIfEnabled(runtime);
-      if (result.registered) {
-        logger.info("[eliza] E2B Satellite runner registered");
+    if (!isBundledMobileRuntime()) {
+      try {
+        const { registerE2BSatelliteCapabilityRouterIfEnabled } = await import(
+          "../services/e2b-capability-router.ts"
+        );
+        const result =
+          await registerE2BSatelliteCapabilityRouterIfEnabled(runtime);
+        if (result.registered) {
+          logger.info("[eliza] Cloud sandbox runner registered");
+        }
+      } catch (err) {
+        logger.warn(
+          `[eliza] Cloud sandbox runner registration failed: ${formatError(err)}`,
+        );
       }
-    } catch (err) {
-      logger.warn(
-        `[eliza] E2B Satellite runner registration failed: ${formatError(err)}`,
-      );
     }
 
     // 8. Initialize the runtime (registers remaining plugins, starts services)
@@ -4239,13 +4249,14 @@ export async function startEliza(
           } catch {
             // non-fatal
           }
-          try {
-            const { registerE2BSatelliteCapabilityRouterIfEnabled } = await import(
-              "../services/e2b-capability-router.ts"
-            );
-            await registerE2BSatelliteCapabilityRouterIfEnabled(newRuntime);
-          } catch {
-            // non-fatal
+          if (!isBundledMobileRuntime()) {
+            try {
+              const { registerE2BSatelliteCapabilityRouterIfEnabled } =
+                await import("../services/e2b-capability-router.ts");
+              await registerE2BSatelliteCapabilityRouterIfEnabled(newRuntime);
+            } catch {
+              // non-fatal
+            }
           }
           try {
             const { stewardEvmPreBoot: preBootHR } =

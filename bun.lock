@@ -718,6 +718,15 @@
         "typescript": "^6.0.3",
       },
     },
+    "packages/cloud-services/coding-satellite": {
+      "name": "@elizaos/coding-satellite",
+      "version": "0.1.0",
+      "devDependencies": {
+        "@types/node": "22.19.17",
+        "bun-types": "1.3.13",
+        "typescript": "^6.0.3",
+      },
+    },
     "packages/cloud-services/container-control-plane": {
       "name": "@elizaos/container-control-plane",
       "version": "1.0.0",
@@ -4979,6 +4988,8 @@
     "@elizaos/cloud-shared": ["@elizaos/cloud-shared@workspace:packages/cloud-shared"],
 
     "@elizaos/cloud-test-mocks": ["@elizaos/cloud-test-mocks@workspace:packages/cloud-test-mocks"],
+
+    "@elizaos/coding-satellite": ["@elizaos/coding-satellite@workspace:packages/cloud-services/coding-satellite"],
 
     "@elizaos/config": ["@elizaos/config@1.7.2", "", {}, "sha512-faNs1IcEecGivEmzcr/dKAgfoK//Z1jo+X8Mj9d3qpgx9xBoGII2EZSaRc5qatTQVuZsrJjZL0qxFFJ6ztCWbQ=="],
 
@@ -11709,6 +11720,8 @@
     "@elizaos/cloud-frontend/lucide-react": ["lucide-react@0.577.0", "", { "peerDependencies": { "react": "^16.5.1 || ^17.0.0 || ^18.0.0 || ^19.0.0" } }, "sha512-4LjoFv2eEPwYDPg/CUdBJQSDfPyzXCRrVW1X7jrx/trgxnxkHFjnVZINbzvzxjN70dxychOfg+FTYwBiS3pQ5A=="],
 
     "@elizaos/cloud-services-common/bun-types": ["bun-types@1.3.13", "", { "dependencies": { "@types/node": "*" } }, "sha512-QXKeHLlOLqQX9LgYaHJfzdBaV21T63HhFJnvuRCcjZiaUDpbs5ED1MgxbMra71CsryN/1dAoXuJJJwIv/2drVA=="],
+
+    "@elizaos/coding-satellite/bun-types": ["bun-types@1.3.13", "", { "dependencies": { "@types/node": "*" } }, "sha512-QXKeHLlOLqQX9LgYaHJfzdBaV21T63HhFJnvuRCcjZiaUDpbs5ED1MgxbMra71CsryN/1dAoXuJJJwIv/2drVA=="],
 
     "@elizaos/container-control-plane/bun-types": ["bun-types@1.3.13", "", { "dependencies": { "@types/node": "*" } }, "sha512-QXKeHLlOLqQX9LgYaHJfzdBaV21T63HhFJnvuRCcjZiaUDpbs5ED1MgxbMra71CsryN/1dAoXuJJJwIv/2drVA=="],
 

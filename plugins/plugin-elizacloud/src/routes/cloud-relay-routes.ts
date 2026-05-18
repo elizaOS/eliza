@@ -14,6 +14,10 @@
 
 import type http from "node:http";
 import type { RouteHelpers } from "@elizaos/core";
+import {
+  buildHomeSatelliteAccessUrl,
+  buildHomeSatelliteSshTunnel,
+} from "./home-satellite-access-url";
 
 interface RelayServiceLike {
   getSessionInfo(): {
@@ -30,6 +34,7 @@ interface RelayServiceLike {
 export interface CloudRelayRouteState {
   runtime?: {
     getService(type: string): unknown;
+    getSetting?: (key: string) => string | boolean | number | null;
   };
 }
 
@@ -76,6 +81,37 @@ export async function handleCloudRelayRoute(
     helpers.json(res, {
       available: true,
       ...info,
+      accessUrl: buildHomeSatelliteAccessUrl({
+        sessionId: info.sessionId,
+      }),
+      ssh: buildHomeSatelliteSshTunnel({
+        satelliteBaseUrl:
+          readRuntimeSetting(state.runtime, "ELIZA_HOME_SATELLITE_URL") ??
+          process.env.ELIZA_HOME_SATELLITE_URL ??
+          readRuntimeSetting(state.runtime, "ELIZA_HOME_RUNNER_URL") ??
+          process.env.ELIZA_HOME_RUNNER_URL,
+        sshTarget:
+          readRuntimeSetting(
+            state.runtime,
+            "ELIZA_HOME_SATELLITE_SSH_TARGET",
+          ) ??
+          process.env.ELIZA_HOME_SATELLITE_SSH_TARGET ??
+          readRuntimeSetting(state.runtime, "ELIZA_HOME_SSH_TARGET") ??
+          process.env.ELIZA_HOME_SSH_TARGET,
+        sshIdentity:
+          readRuntimeSetting(
+            state.runtime,
+            "ELIZA_HOME_SATELLITE_SSH_IDENTITY",
+          ) ??
+          process.env.ELIZA_HOME_SATELLITE_SSH_IDENTITY ??
+          readRuntimeSetting(state.runtime, "ELIZA_HOME_SSH_IDENTITY") ??
+          process.env.ELIZA_HOME_SSH_IDENTITY,
+        localPort:
+          readRuntimeSetting(
+            state.runtime,
+            "ELIZA_HOME_SATELLITE_SSH_LOCAL_PORT",
+          ) ?? process.env.ELIZA_HOME_SATELLITE_SSH_LOCAL_PORT,
+      }),
     });
   } catch (err) {
     helpers.json(res, {
@@ -86,4 +122,14 @@ export async function handleCloudRelayRoute(
   }
 
   return true;
+}
+
+function readRuntimeSetting(
+  runtime: CloudRelayRouteState["runtime"],
+  key: string,
+): string | null {
+  const value = runtime?.getSetting?.(key);
+  if (typeof value !== "string") return null;
+  const trimmed = value.trim();
+  return trimmed ? trimmed : null;
 }

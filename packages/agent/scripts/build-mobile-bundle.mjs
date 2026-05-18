@@ -523,9 +523,10 @@ const exactMobileStubPlugin = {
         "@elizaos/plugin-local-inference",
         path.join(stubsDir, "null-plugin.cjs"),
       ],
+      ["e2b", path.join(stubsDir, "null-plugin.cjs")],
     ]);
     build.onResolve(
-      { filter: /^@elizaos\/plugin-local-inference$/ },
+      { filter: /^(?:@elizaos\/plugin-local-inference|e2b)$/ },
       (args) => {
         return { path: exactStubs.get(args.path), namespace: "file" };
       },

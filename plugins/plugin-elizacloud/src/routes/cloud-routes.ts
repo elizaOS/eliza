@@ -4,6 +4,10 @@ import {
   migrateLegacyRuntimeConfig,
 } from "@elizaos/core";
 import { type CloudRouteState as AutonomousCloudRouteState, handleCloudRoute as handleAutonomousCloudRoute, } from "./cloud-routes-autonomous.js";
+import {
+  buildHomeSatelliteAccessUrl,
+  buildHomeSatelliteSshTunnel,
+} from "./home-satellite-access-url";
 import { normalizeCloudSiteUrl } from "../cloud/base-url.js";
 import type { CloudManager } from "../cloud/cloud-manager.js";
 import { validateCloudBaseUrl } from "../cloud/validate-url.js";
@@ -321,6 +325,16 @@ function getCloudRouteServices(state: CloudRouteState): CloudRouteServices {
   };
 }
 
+function readRuntimeSetting(
+  runtime: AgentRuntime | null,
+  key: string,
+): string | null {
+  const value = runtime?.getSetting(key);
+  if (typeof value !== "string") return null;
+  const trimmed = value.trim();
+  return trimmed ? trimmed : null;
+}
+
 function toAutonomousState(
   state: CloudRouteState,
   services: CloudRouteServices,
@@ -372,9 +386,44 @@ export async function handleCloudRoute(
     }
 
     try {
+      const info = relayService.getSessionInfo();
       sendJson(res, {
         available: true,
-        ...relayService.getSessionInfo(),
+        ...info,
+        accessUrl: buildHomeSatelliteAccessUrl({
+          cloudBaseUrl: services.normalizeCloudSiteUrl(
+            state.config.cloud?.baseUrl,
+          ),
+          sessionId: info.sessionId,
+        }),
+        ssh: buildHomeSatelliteSshTunnel({
+          satelliteBaseUrl:
+            readRuntimeSetting(state.runtime, "ELIZA_HOME_SATELLITE_URL") ??
+            process.env.ELIZA_HOME_SATELLITE_URL ??
+            readRuntimeSetting(state.runtime, "ELIZA_HOME_RUNNER_URL") ??
+            process.env.ELIZA_HOME_RUNNER_URL,
+          sshTarget:
+            readRuntimeSetting(
+              state.runtime,
+              "ELIZA_HOME_SATELLITE_SSH_TARGET",
+            ) ??
+            process.env.ELIZA_HOME_SATELLITE_SSH_TARGET ??
+            readRuntimeSetting(state.runtime, "ELIZA_HOME_SSH_TARGET") ??
+            process.env.ELIZA_HOME_SSH_TARGET,
+          sshIdentity:
+            readRuntimeSetting(
+              state.runtime,
+              "ELIZA_HOME_SATELLITE_SSH_IDENTITY",
+            ) ??
+            process.env.ELIZA_HOME_SATELLITE_SSH_IDENTITY ??
+            readRuntimeSetting(state.runtime, "ELIZA_HOME_SSH_IDENTITY") ??
+            process.env.ELIZA_HOME_SSH_IDENTITY,
+          localPort:
+            readRuntimeSetting(
+              state.runtime,
+              "ELIZA_HOME_SATELLITE_SSH_LOCAL_PORT",
+            ) ?? process.env.ELIZA_HOME_SATELLITE_SSH_LOCAL_PORT,
+        }),
       });
     } catch (error) {
       sendJson(res, {

@@ -2,10 +2,8 @@ import { randomUUID } from "node:crypto";
 import nodePath from "node:path";
 import {
   CAPABILITY_ROUTER_SERVICE_TYPE,
-  CapabilityError,
-  logger,
-  Service,
   type CapabilityAvailability,
+  CapabilityError,
   type CapabilityName,
   type ElizaCapabilityRouter,
   type FileListParams,
@@ -19,37 +17,56 @@ import {
   type GitCommandRunResult,
   type GitDiffParams,
   type GitDiffResult,
-  type GitOperation,
   type GitStatusParams,
   type GitStatusResult,
   type IAgentRuntime,
   type JsonObject,
   type LocalModelStatusResult,
+  logger,
+  Service,
   type TerminalRunParams,
   type TerminalRunResult,
 } from "@elizaos/core";
-import type {
-  CommandResult,
-  CommandStartOpts,
-  EntryInfo,
-  SandboxConnectOpts,
-  SandboxOpts,
-} from "e2b";
+import type { SandboxConnectOpts, SandboxOpts } from "e2b";
 
-const LOG_CONTEXT = { src: "service:e2b_satellite_runner" } as const;
-const DEFAULT_WORKDIR = "/workspace";
+const LOG_CONTEXT = { src: "service:cloud_sandbox_runner" } as const;
+const DEFAULT_E2B_WORKDIR = "/home/user";
+const DEFAULT_SATELLITE_WORKDIR = "/workspace";
 const DEFAULT_TIMEOUT_MS = 30 * 60 * 1000;
 const DEFAULT_REQUEST_TIMEOUT_MS = 60 * 1000;
 const MAX_READ_BYTES = 5 * 1024 * 1024;
 const MAX_LIST_LIMIT = 1000;
+const DEFAULT_ELIZA_CLOUD_API_BASE_URL = "https://api.elizacloud.ai/api/v1";
+
+export type CodingAgentRunner = "claude-code" | "codex" | "opencode";
+
+export type SandboxRunnerProvider = "e2b" | "eliza-cloud" | "home";
+
+// Third-party sandbox backends should sit behind Eliza Cloud until we expose
+// them as reviewed product options instead of direct user-facing providers.
+type DisabledSandboxRunnerProvider = "cloudflare" | "rivet" | "vercel";
+
+const DEFAULT_SANDBOX_AGENT_RUNNERS: CodingAgentRunner[] = [
+  "codex",
+  "claude-code",
+  "opencode",
+];
 
 export interface E2BSatelliteRunnerConfig {
   enabled: boolean;
+  provider: SandboxRunnerProvider;
   apiKey?: string;
   accessToken?: string;
   domain?: string;
   sandboxId?: string;
   template?: string;
+  cloudApiBaseUrl?: string;
+  cloudApiToken?: string;
+  cloudContainerImage?: string;
+  satelliteHttpBaseUrl?: string;
+  satelliteHttpToken?: string;
+  satelliteAccessUrl?: string;
+  agentRunners: CodingAgentRunner[];
   workdir: string;
   hostWorkspaceRoot: string;
   timeoutMs: number;
@@ -66,21 +83,45 @@ export interface E2BSandboxFactory {
   create(config: E2BSatelliteRunnerConfig): Promise<E2BSandboxClient>;
 }
 
+export interface SandboxEntryInfo {
+  path: string;
+  name: string;
+  type: "file" | "dir" | "symlink" | "other" | (string & {});
+  size: number;
+  mode?: number;
+  permissions?: string;
+  owner?: string;
+  group?: string;
+  modifiedTime?: Date;
+  symlinkTarget?: string;
+}
+
+export interface SandboxCommandRunOptions {
+  cwd?: string;
+  timeoutMs?: number;
+  requestTimeoutMs?: number;
+  envs?: Record<string, string>;
+  background?: false;
+}
+
+export interface SandboxCommandResult {
+  exitCode: number;
+  stdout: string;
+  stderr: string;
+  error?: string;
+}
+
 export interface E2BSandboxClient {
   readonly sandboxId: string;
   readonly files: {
     list(
       path: string,
       opts?: { depth?: number; requestTimeoutMs?: number },
-    ): Promise<EntryInfo[]>;
+    ): Promise<SandboxEntryInfo[]>;
     read(
       path: string,
-      opts?: { format?: "text"; requestTimeoutMs?: number },
-    ): Promise<string>;
-    read(
-      path: string,
-      opts: { format: "bytes"; requestTimeoutMs?: number },
-    ): Promise<Uint8Array>;
+      opts?: { format?: "text" | "bytes"; requestTimeoutMs?: number },
+    ): Promise<string | Uint8Array>;
     write(
       path: string,
       data: string,
@@ -90,8 +131,8 @@ export interface E2BSandboxClient {
   readonly commands: {
     run(
       cmd: string,
-      opts?: CommandStartOpts & { background?: false },
-    ): Promise<CommandResult>;
+      opts?: SandboxCommandRunOptions,
+    ): Promise<SandboxCommandResult>;
   };
   kill(opts?: { requestTimeoutMs?: number }): Promise<void>;
 }
@@ -100,12 +141,408 @@ class DefaultE2BSandboxFactory implements E2BSandboxFactory {
   async create(config: E2BSatelliteRunnerConfig): Promise<E2BSandboxClient> {
     const { Sandbox } = await import("e2b");
     if (config.sandboxId) {
-      return Sandbox.connect(config.sandboxId, connectOptions(config));
+      return new E2BSandboxSdkClient(
+        await Sandbox.connect(config.sandboxId, connectOptions(config)),
+      );
     }
     if (config.template) {
-      return Sandbox.create(config.template, createOptions(config));
+      return new E2BSandboxSdkClient(
+        await Sandbox.create(config.template, createOptions(config)),
+      );
     }
-    return Sandbox.create(createOptions(config));
+    return new E2BSandboxSdkClient(await Sandbox.create(createOptions(config)));
+  }
+}
+
+type E2BSdkEntryInfo = {
+  path: string;
+  name: string;
+  type?: string;
+  size?: number;
+  mode?: number;
+  permissions?: string;
+  owner?: string;
+  group?: string;
+  modifiedTime?: Date;
+  symlinkTarget?: string;
+};
+
+type E2BSdkSandbox = {
+  readonly sandboxId: string;
+  readonly files: {
+    list(
+      path: string,
+      opts?: { depth?: number; requestTimeoutMs?: number },
+    ): Promise<E2BSdkEntryInfo[]>;
+    read(
+      path: string,
+      opts?: { format?: "text" | "bytes"; requestTimeoutMs?: number },
+    ): Promise<string | Uint8Array>;
+    write(
+      path: string,
+      data: string,
+      opts?: { requestTimeoutMs?: number },
+    ): Promise<{ path: string; name: string }>;
+  };
+  readonly commands: {
+    run(
+      cmd: string,
+      opts?: SandboxCommandRunOptions,
+    ): Promise<SandboxCommandResult>;
+  };
+  kill(opts?: { requestTimeoutMs?: number }): Promise<void>;
+};
+
+class E2BSandboxSdkClient implements E2BSandboxClient {
+  readonly files = {
+    list: (
+      path: string,
+      opts?: { depth?: number; requestTimeoutMs?: number },
+    ) => this.list(path, opts),
+    read: (
+      path: string,
+      opts?: { format?: "text" | "bytes"; requestTimeoutMs?: number },
+    ) => this.sandbox.files.read(path, opts),
+    write: (path: string, data: string, opts?: { requestTimeoutMs?: number }) =>
+      this.sandbox.files.write(path, data, opts),
+  };
+  readonly commands = {
+    run: (cmd: string, opts?: SandboxCommandRunOptions) =>
+      this.sandbox.commands.run(cmd, opts),
+  };
+
+  constructor(private readonly sandbox: E2BSdkSandbox) {}
+
+  get sandboxId(): string {
+    return this.sandbox.sandboxId;
+  }
+
+  kill(opts?: { requestTimeoutMs?: number }): Promise<void> {
+    return this.sandbox.kill(opts);
+  }
+
+  private async list(
+    path: string,
+    opts?: { depth?: number; requestTimeoutMs?: number },
+  ): Promise<SandboxEntryInfo[]> {
+    const entries = await this.sandbox.files.list(path, opts);
+    return entries.map((entry) => ({
+      path: entry.path,
+      name: entry.name,
+      type: normalizeEntryType(entry.type),
+      size: entry.size ?? 0,
+      ...(entry.mode === undefined ? {} : { mode: entry.mode }),
+      ...(entry.permissions === undefined
+        ? {}
+        : { permissions: entry.permissions }),
+      ...(entry.owner === undefined ? {} : { owner: entry.owner }),
+      ...(entry.group === undefined ? {} : { group: entry.group }),
+      ...(entry.modifiedTime === undefined
+        ? {}
+        : { modifiedTime: entry.modifiedTime }),
+      ...(entry.symlinkTarget === undefined
+        ? {}
+        : { symlinkTarget: entry.symlinkTarget }),
+    }));
+  }
+}
+
+class DefaultSandboxFactory implements E2BSandboxFactory {
+  private readonly e2bFactory = new DefaultE2BSandboxFactory();
+  private readonly satelliteHttpFactory = new SatelliteHttpFactory();
+  private readonly cloudFactory = new ElizaCloudCodingContainerFactory(
+    this.satelliteHttpFactory,
+  );
+
+  async create(config: E2BSatelliteRunnerConfig): Promise<E2BSandboxClient> {
+    if (config.provider === "eliza-cloud") {
+      if (config.satelliteHttpBaseUrl) {
+        return this.satelliteHttpFactory.create(config);
+      }
+      return this.cloudFactory.create(config);
+    }
+    if (config.provider === "home") {
+      return this.satelliteHttpFactory.create(config);
+    }
+    return this.e2bFactory.create(config);
+  }
+}
+
+class SatelliteHttpFactory implements E2BSandboxFactory {
+  async create(config: E2BSatelliteRunnerConfig): Promise<E2BSandboxClient> {
+    if (!config.satelliteHttpBaseUrl) {
+      throw new Error(`${config.provider} runner requires a Satellite URL.`);
+    }
+    const apiBase = config.satelliteHttpBaseUrl.replace(/\/+$/, "");
+    const headers = authHeaders(config.satelliteHttpToken);
+    const response = await fetch(`${apiBase}/v1/health`, { headers });
+    if (!response.ok) throw new Error(await response.text());
+    return new SatelliteHttpClient(config.provider, apiBase, headers);
+  }
+}
+
+class SatelliteHttpClient implements E2BSandboxClient {
+  readonly files = {
+    list: (path: string) => this.list(path),
+    read: (
+      path: string,
+      opts?: { format?: "text" | "bytes"; requestTimeoutMs?: number },
+    ) => this.read(path, opts),
+    write: (path: string, data: string) => this.write(path, data),
+  };
+  readonly commands = {
+    run: (cmd: string, opts?: SandboxCommandRunOptions) =>
+      this.runCommand(cmd, opts),
+  };
+
+  constructor(
+    readonly sandboxId: string,
+    private readonly apiBase: string,
+    private readonly headers: Record<string, string>,
+  ) {}
+
+  async kill(): Promise<void> {}
+
+  private async list(path: string): Promise<SandboxEntryInfo[]> {
+    const url = new URL(`${this.apiBase}/v1/fs/entries`);
+    url.searchParams.set("path", path);
+    const response = await fetch(url, { headers: this.headers });
+    if (!response.ok) throw new Error(await response.text());
+    const payload = await response.json();
+    const entries = Array.isArray(payload)
+      ? payload
+      : isObject(payload) && Array.isArray(payload.entries)
+        ? payload.entries
+        : null;
+    if (!entries) {
+      throw new Error("Satellite fs entries response was not an array.");
+    }
+    return entries.map((entry) => {
+      if (!isObject(entry)) {
+        throw new Error("Satellite fs entry was not an object.");
+      }
+      const pathValue = String(entry.path ?? "");
+      const stat: SandboxEntryInfo = {
+        path: pathValue,
+        name: String(entry.name ?? nodePath.posix.basename(pathValue)),
+        type: satelliteEntryType(entry),
+        size: typeof entry.size === "number" ? entry.size : 0,
+      };
+      const modified =
+        typeof entry.modifiedAt === "string"
+          ? entry.modifiedAt
+          : typeof entry.modified === "string"
+            ? entry.modified
+            : null;
+      if (modified) {
+        stat.modifiedTime = new Date(modified);
+      }
+      return stat;
+    });
+  }
+
+  private async read(
+    path: string,
+    opts?: { format?: "text" | "bytes"; requestTimeoutMs?: number },
+  ): Promise<string | Uint8Array> {
+    const timeout = timeoutSignal(opts?.requestTimeoutMs);
+    try {
+      const url = new URL(`${this.apiBase}/v1/fs/file`);
+      url.searchParams.set("path", path);
+      const response = await fetch(url, {
+        headers: this.headers,
+        signal: timeout.signal,
+      });
+      if (response.status === 404) {
+        const error = new Error(`File not found: ${path}`);
+        error.name = "FileNotFoundError";
+        throw error;
+      }
+      if (!response.ok) throw new Error(await response.text());
+      const bytes = new Uint8Array(await response.arrayBuffer());
+      return opts?.format === "bytes"
+        ? bytes
+        : Buffer.from(bytes).toString("utf8");
+    } finally {
+      timeout.dispose();
+    }
+  }
+
+  private async write(
+    path: string,
+    data: string,
+  ): Promise<{ path: string; name: string }> {
+    const url = new URL(`${this.apiBase}/v1/fs/file`);
+    url.searchParams.set("path", path);
+    const response = await fetch(url, {
+      method: "PUT",
+      headers: {
+        ...this.headers,
+        "content-type": "text/plain",
+      },
+      body: data,
+    });
+    if (!response.ok) throw new Error(await response.text());
+    return { path, name: nodePath.posix.basename(path) };
+  }
+
+  private async runCommand(
+    cmd: string,
+    opts: SandboxCommandRunOptions = {},
+  ): Promise<SandboxCommandResult> {
+    const timeout = timeoutSignal(opts.timeoutMs ?? opts.requestTimeoutMs);
+    try {
+      const response = await fetch(`${this.apiBase}/v1/processes/run`, {
+        method: "POST",
+        headers: {
+          ...this.headers,
+          "content-type": "application/json",
+        },
+        body: JSON.stringify({
+          command: "sh",
+          args: ["-lc", cmd],
+          cwd: opts.cwd,
+          env: opts.envs,
+          timeoutMs: opts.timeoutMs,
+        }),
+        signal: timeout.signal,
+      });
+      if (!response.ok) throw new Error(await response.text());
+      const payload = await response.json();
+      if (!isObject(payload)) {
+        throw new Error("Satellite process response was not an object.");
+      }
+      const exitCode =
+        typeof payload.exitCode === "number"
+          ? payload.exitCode
+          : payload.timedOut === true
+            ? 124
+            : 0;
+      const stdout =
+        typeof payload.stdout === "string"
+          ? payload.stdout
+          : typeof payload.output === "string"
+            ? payload.output
+            : "";
+      return {
+        exitCode,
+        stdout,
+        stderr: typeof payload.stderr === "string" ? payload.stderr : "",
+      };
+    } finally {
+      timeout.dispose();
+    }
+  }
+}
+
+type CloudCodingAgent = "claude" | "codex" | "opencode";
+
+type CloudCodingContainerSession = {
+  containerId: string;
+  status?: string;
+  url?: string | null;
+};
+
+type CloudEnvelope = {
+  data?: unknown;
+  polling?: unknown;
+};
+
+class ElizaCloudCodingContainerFactory implements E2BSandboxFactory {
+  constructor(private readonly satelliteHttpFactory: SatelliteHttpFactory) {}
+
+  async create(config: E2BSatelliteRunnerConfig): Promise<E2BSandboxClient> {
+    if (!config.cloudApiBaseUrl || !config.cloudApiToken) {
+      throw new Error(
+        "Eliza Cloud runner requires a Cloud API base URL and API key.",
+      );
+    }
+    const satelliteToken = randomUUID();
+    const session = await this.requestCodingContainer(config, satelliteToken);
+    if (!session.url) {
+      throw new Error(
+        `Eliza Cloud coding container ${session.containerId} did not return a Satellite URL.`,
+      );
+    }
+    return this.satelliteHttpFactory.create({
+      ...config,
+      satelliteHttpBaseUrl: session.url,
+      satelliteHttpToken: satelliteToken,
+    });
+  }
+
+  private async requestCodingContainer(
+    config: E2BSatelliteRunnerConfig,
+    satelliteToken: string,
+  ): Promise<CloudCodingContainerSession> {
+    const response = await fetch(
+      `${config.cloudApiBaseUrl}/coding-containers`,
+      {
+        method: "POST",
+        headers: {
+          authorization: `Bearer ${config.cloudApiToken}`,
+          "content-type": "application/json",
+        },
+        body: JSON.stringify({
+          agent: toCloudCodingAgent(config.agentRunners[0] ?? "codex"),
+          workspacePath: config.workdir,
+          container: {
+            ...(config.cloudContainerImage
+              ? { image: config.cloudContainerImage }
+              : {}),
+            environmentVars: {
+              ELIZA_SATELLITE_HTTP_TOKEN: satelliteToken,
+              SATELLITE_HTTP_TOKEN: satelliteToken,
+              ELIZA_CODING_WORKSPACE: config.workdir,
+              ELIZA_SANDBOX_AGENT_RUNNERS: config.agentRunners.join(","),
+              ...config.envs,
+            },
+          },
+          metadata: config.metadata,
+        }),
+      },
+    );
+    const payload = await readCloudEnvelope(response);
+    if (!response.ok) {
+      throw new Error(cloudErrorMessage(payload, response.statusText));
+    }
+    const session = parseCloudCodingContainerSession(payload);
+    return session.url
+      ? session
+      : await this.pollCodingContainer(config, session);
+  }
+
+  private async pollCodingContainer(
+    config: E2BSatelliteRunnerConfig,
+    session: CloudCodingContainerSession,
+  ): Promise<CloudCodingContainerSession> {
+    const deadline = Date.now() + Math.min(config.timeoutMs, 120_000);
+    let current = session;
+    while (!current.url && Date.now() < deadline) {
+      await sleep(5000);
+      const response = await fetch(
+        `${config.cloudApiBaseUrl}/containers/${encodeURIComponent(current.containerId)}`,
+        {
+          headers: { authorization: `Bearer ${config.cloudApiToken}` },
+        },
+      );
+      const payload = await readCloudEnvelope(response);
+      if (!response.ok) {
+        throw new Error(cloudErrorMessage(payload, response.statusText));
+      }
+      current = parseCloudCodingContainerSession(payload);
+      if (current.status === "failed" || current.status === "stopped") {
+        throw new Error(
+          `Eliza Cloud coding container ${current.containerId} reached status ${current.status}.`,
+        );
+      }
+    }
+    if (!current.url) {
+      throw new Error(
+        `Eliza Cloud coding container ${current.containerId} did not become reachable before timeout.`,
+      );
+    }
+    return current;
   }
 }
 
@@ -115,7 +552,7 @@ export class E2BSatelliteCapabilityRouterService
 {
   static serviceType = CAPABILITY_ROUTER_SERVICE_TYPE;
   capabilityDescription =
-    "Routes filesystem, terminal, and local Git capabilities to an E2B Satellite runner.";
+    "Routes filesystem, terminal, and local Git capabilities to a cloud Satellite runner.";
 
   readonly environment = "server";
   readonly fs = {
@@ -143,7 +580,7 @@ export class E2BSatelliteCapabilityRouterService
   constructor(
     runtime?: IAgentRuntime,
     routerConfig?: E2BSatelliteRunnerConfig,
-    private readonly factory: E2BSandboxFactory = new DefaultE2BSandboxFactory(),
+    private readonly factory: E2BSandboxFactory = new DefaultSandboxFactory(),
   ) {
     if (!runtime) {
       throw new Error(
@@ -161,12 +598,14 @@ export class E2BSatelliteCapabilityRouterService
     logger.info(
       {
         ...LOG_CONTEXT,
+        provider: config.provider,
         workdir: config.workdir,
         template: config.template ?? null,
         hasSandboxId: Boolean(config.sandboxId),
         hasBootstrapGitUrl: Boolean(config.bootstrapGitUrl),
+        agentRunners: config.agentRunners,
       },
-      "[E2BSatelliteCapabilityRouter] Service started",
+      "[CloudSandboxCapabilityRouter] Service started",
     );
     return service;
   }
@@ -182,7 +621,7 @@ export class E2BSatelliteCapabilityRouterService
   }
 
   async availability(): Promise<CapabilityAvailability> {
-    const available = hasE2BCredentials(this.routerConfig);
+    const available = hasRunnerCredentials(this.routerConfig);
     return {
       environment: this.environment,
       available,
@@ -195,8 +634,7 @@ export class E2BSatelliteCapabilityRouterService
       ...(available
         ? {}
         : {
-            reason:
-              "E2B Satellite runner requires E2B_API_KEY, E2B_ACCESS_TOKEN, or matching runtime setting.",
+            reason: runnerUnavailableReason(this.routerConfig),
           }),
     };
   }
@@ -234,10 +672,14 @@ export class E2BSatelliteCapabilityRouterService
     await this.requireAvailable("fs", "fs.readText");
     const sandbox = await this.getSandbox();
     const target = this.mapPath(params.path);
-    const text = await sandbox.files.read(target, {
+    const content = await sandbox.files.read(target, {
       format: "text",
       requestTimeoutMs: this.routerConfig.requestTimeoutMs,
     });
+    const text =
+      typeof content === "string"
+        ? content
+        : Buffer.from(content).toString("utf8");
     const maxBytes = Math.max(0, params.maxBytes ?? MAX_READ_BYTES);
     const bytes = Buffer.byteLength(text, "utf8");
     if (maxBytes > 0 && bytes > maxBytes) {
@@ -282,7 +724,7 @@ export class E2BSatelliteCapabilityRouterService
     const sandbox = await this.getSandbox();
     const command = commandLine(params.command, params.args ?? []);
     const cwd = this.mapPath(params.cwd ?? this.routerConfig.workdir);
-    const opts: CommandStartOpts & { background?: false } = {
+    const opts: SandboxCommandRunOptions = {
       cwd,
       timeoutMs: params.timeoutMs ?? this.routerConfig.timeoutMs,
       requestTimeoutMs: params.timeoutMs ?? this.routerConfig.requestTimeoutMs,
@@ -388,7 +830,7 @@ export class E2BSatelliteCapabilityRouterService
       code: "CAPABILITY_UNAVAILABLE",
       capability: "model",
       method: "model.status",
-      message: "E2B Satellite runner does not own local model control.",
+      message: "Cloud sandbox runner does not own local model control.",
     });
   }
 
@@ -435,7 +877,7 @@ export class E2BSatelliteCapabilityRouterService
       code: "CAPABILITY_UNAVAILABLE",
       capability,
       method,
-      message: availability.reason ?? "E2B Satellite runner is unavailable.",
+      message: availability.reason ?? "Cloud sandbox runner is unavailable.",
     });
   }
 
@@ -495,7 +937,7 @@ export class E2BSatelliteCapabilityRouterService
   private mapPath(input: string): string {
     const trimmed = input.trim();
     if (trimmed.length === 0) return this.routerConfig.workdir;
-    if (trimmed.startsWith("e2b://")) {
+    if (isSandboxUri(trimmed)) {
       const parsed = new URL(trimmed);
       return normalizeSandboxPath(parsed.pathname || this.routerConfig.workdir);
     }
@@ -519,7 +961,7 @@ export class E2BSatelliteCapabilityRouterService
       code: "CAPABILITY_UNAVAILABLE",
       capability: "fs",
       method: "path.map",
-      message: `Path is outside the E2B mapped workspace: ${input}`,
+      message: `Path is outside the ${this.routerConfig.provider} mapped workspace: ${input}`,
       details: {
         hostWorkspaceRoot: this.routerConfig.hostWorkspaceRoot,
         workdir: this.routerConfig.workdir,
@@ -529,11 +971,12 @@ export class E2BSatelliteCapabilityRouterService
 
   private rootObject(path: string): JsonObject {
     return {
-      id: "e2b",
-      provider: "satellite:e2b",
+      id: this.routerConfig.provider,
+      provider: `satellite:${this.routerConfig.provider}`,
       path,
       hostWorkspaceRoot: this.routerConfig.hostWorkspaceRoot,
       sandboxId: this.routerConfig.sandboxId ?? null,
+      agentRunners: this.routerConfig.agentRunners,
     };
   }
 }
@@ -557,55 +1000,82 @@ export async function registerE2BSatelliteCapabilityRouterIfEnabled(
 export function resolveE2BSatelliteRunnerConfig(
   runtime: IAgentRuntime,
 ): E2BSatelliteRunnerConfig {
-  const codingRunner = readSetting(
-    runtime,
-    "ELIZA_CODING_SATELLITE_RUNNER",
-  )?.toLowerCase();
-  const runner = readSetting(runtime, "ELIZA_SATELLITE_RUNNER")?.toLowerCase();
+  const codingRunner = normalizeRunnerSetting(
+    readSetting(runtime, "ELIZA_CODING_SATELLITE_RUNNER"),
+  );
+  const runner = normalizeRunnerSetting(
+    readSetting(runtime, "ELIZA_SATELLITE_RUNNER"),
+  );
   const direct = readSetting(runtime, "ELIZA_E2B_SATELLITE_RUNNER");
+  const provider = resolveRunnerProvider(runtime, codingRunner ?? runner);
   const enabled =
-    codingRunner === "e2b" || runner === "e2b" || isTruthy(direct);
+    provider === "eliza-cloud" || provider === "home"
+      ? true
+      : codingRunner === "e2b" || runner === "e2b" || isTruthy(direct);
   const workdir = normalizeSandboxPath(
-    readSetting(runtime, "ELIZA_E2B_WORKDIR") ?? DEFAULT_WORKDIR,
+    readSetting(runtime, "ELIZA_SANDBOX_WORKDIR") ??
+      readSetting(runtime, providerSettingKey(provider, "WORKDIR")) ??
+      defaultWorkdir(provider),
   );
   const agentId = String(runtime.agentId);
   const agentName = runtime.character?.name ?? "eliza";
+  const hostWorkspaceRoot =
+    readSetting(runtime, "ELIZA_SANDBOX_HOST_WORKSPACE_ROOT") ??
+    readSetting(runtime, providerSettingKey(provider, "HOST_WORKSPACE_ROOT")) ??
+    process.cwd();
   return {
     enabled,
+    provider,
     apiKey: readSetting(runtime, "E2B_API_KEY"),
     accessToken: readSetting(runtime, "E2B_ACCESS_TOKEN"),
     domain: readSetting(runtime, "E2B_DOMAIN"),
-    sandboxId: readSetting(runtime, "E2B_SANDBOX_ID"),
+    sandboxId:
+      provider === "eliza-cloud"
+        ? readSetting(runtime, "ELIZA_CLOUD_SANDBOX_ID")
+        : provider === "home"
+          ? readSetting(runtime, "ELIZA_HOME_SATELLITE_ID")
+          : readSetting(runtime, "E2B_SANDBOX_ID"),
     template:
       readSetting(runtime, "E2B_TEMPLATE") ??
       readSetting(runtime, "ELIZA_E2B_TEMPLATE"),
+    cloudApiBaseUrl: cloudApiBaseUrl(runtime, provider),
+    cloudApiToken: cloudApiToken(runtime, provider),
+    cloudContainerImage: cloudContainerImage(runtime, provider),
+    satelliteHttpBaseUrl: satelliteHttpBaseUrl(runtime, provider),
+    satelliteHttpToken: satelliteHttpToken(runtime, provider),
+    satelliteAccessUrl: satelliteAccessUrl(runtime, provider),
+    agentRunners: agentRunnersSetting(runtime, provider),
     workdir,
-    hostWorkspaceRoot: nodePath.resolve(
-      readSetting(runtime, "ELIZA_E2B_HOST_WORKSPACE_ROOT") ?? process.cwd(),
-    ),
+    hostWorkspaceRoot: nodePath.resolve(hostWorkspaceRoot),
     timeoutMs: positiveIntSetting(
       runtime,
-      "ELIZA_E2B_TIMEOUT_MS",
+      providerSettingKey(provider, "TIMEOUT_MS"),
       DEFAULT_TIMEOUT_MS,
     ),
     requestTimeoutMs: positiveIntSetting(
       runtime,
-      "ELIZA_E2B_REQUEST_TIMEOUT_MS",
+      providerSettingKey(provider, "REQUEST_TIMEOUT_MS"),
       DEFAULT_REQUEST_TIMEOUT_MS,
     ),
-    keepAlive: isTruthy(readSetting(runtime, "ELIZA_E2B_KEEP_ALIVE")),
-    allowInternetAccess: !isFalsey(
-      readSetting(runtime, "ELIZA_E2B_ALLOW_INTERNET"),
+    keepAlive: isTruthy(
+      readSetting(runtime, providerSettingKey(provider, "KEEP_ALIVE")),
     ),
-    bootstrapGitUrl: readSetting(runtime, "ELIZA_E2B_BOOTSTRAP_GIT_URL"),
-    bootstrapGitRef: readSetting(runtime, "ELIZA_E2B_BOOTSTRAP_GIT_REF"),
+    allowInternetAccess: !isFalsey(
+      readSetting(runtime, providerSettingKey(provider, "ALLOW_INTERNET")),
+    ),
+    bootstrapGitUrl:
+      readSetting(runtime, "ELIZA_SANDBOX_BOOTSTRAP_GIT_URL") ??
+      readSetting(runtime, providerSettingKey(provider, "BOOTSTRAP_GIT_URL")),
+    bootstrapGitRef:
+      readSetting(runtime, "ELIZA_SANDBOX_BOOTSTRAP_GIT_REF") ??
+      readSetting(runtime, providerSettingKey(provider, "BOOTSTRAP_GIT_REF")),
     envs: {
       ELIZA_AGENT_ID: agentId,
       ELIZA_AGENT_NAME: agentName,
     },
     metadata: {
       app: "elizaos",
-      provider: "satellite:e2b",
+      provider: `satellite:${provider}`,
       agentId,
       agentName,
     },
@@ -636,8 +1106,132 @@ function connectOptions(config: E2BSatelliteRunnerConfig): SandboxConnectOpts {
   };
 }
 
-function hasE2BCredentials(config: E2BSatelliteRunnerConfig): boolean {
+function hasRunnerCredentials(config: E2BSatelliteRunnerConfig): boolean {
+  if (config.provider === "eliza-cloud") {
+    return Boolean(
+      config.satelliteHttpBaseUrl ||
+        (config.cloudApiBaseUrl && config.cloudApiToken),
+    );
+  }
+  if (config.provider === "home") {
+    return Boolean(config.satelliteHttpBaseUrl);
+  }
   return Boolean(config.apiKey || config.accessToken);
+}
+
+function runnerUnavailableReason(config: E2BSatelliteRunnerConfig): string {
+  if (config.provider === "eliza-cloud") {
+    return "Eliza Cloud runner requires a direct Satellite URL or ELIZA_CLOUD_API_KEY/ELIZACLOUD_API_KEY for coding-container provisioning.";
+  }
+  if (config.provider === "home") {
+    return "Home runner requires ELIZA_HOME_SATELLITE_URL.";
+  }
+  return "E2B Satellite runner requires E2B_API_KEY, E2B_ACCESS_TOKEN, or matching runtime setting.";
+}
+
+function authHeaders(apiKey: string | undefined): Record<string, string> {
+  if (!apiKey) return {};
+  return { authorization: `Bearer ${apiKey}` };
+}
+
+function normalizeEntryType(
+  type: string | undefined,
+): SandboxEntryInfo["type"] {
+  if (type === "dir" || type === "directory") return "dir";
+  if (type === "file") return "file";
+  if (type === "symlink") return "symlink";
+  return "other";
+}
+
+function satelliteEntryType(entry: JsonObject): SandboxEntryInfo["type"] {
+  const value =
+    typeof entry.type === "string"
+      ? entry.type
+      : typeof entry.entryType === "string"
+        ? entry.entryType
+        : typeof entry.kind === "string"
+          ? entry.kind
+          : undefined;
+  return normalizeEntryType(value);
+}
+
+function timeoutSignal(ms: number | undefined): {
+  signal: AbortSignal | undefined;
+  dispose(): void;
+} {
+  if (!ms) return { signal: undefined, dispose: () => {} };
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), ms);
+  return {
+    signal: controller.signal,
+    dispose: () => clearTimeout(timer),
+  };
+}
+
+function isObject(value: unknown): value is JsonObject {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+async function readCloudEnvelope(response: Response): Promise<CloudEnvelope> {
+  const text = await response.text();
+  if (!text.trim()) return {};
+  try {
+    const parsed = JSON.parse(text) as unknown;
+    return isObject(parsed) ? parsed : {};
+  } catch {
+    return { data: { error: text } };
+  }
+}
+
+function cloudErrorMessage(payload: CloudEnvelope, fallback: string): string {
+  const body: JsonObject = isObject(payload.data)
+    ? payload.data
+    : (payload as JsonObject);
+  const error = body.error ?? body.message;
+  return typeof error === "string" && error.trim() ? error.trim() : fallback;
+}
+
+function parseCloudCodingContainerSession(
+  payload: CloudEnvelope,
+): CloudCodingContainerSession {
+  const data: JsonObject = isObject(payload.data)
+    ? payload.data
+    : (payload as JsonObject);
+  const containerId = stringValue(data, ["containerId", "id"]);
+  if (!containerId) {
+    throw new Error(
+      "Eliza Cloud coding-container response omitted container id.",
+    );
+  }
+  return {
+    containerId,
+    status: stringValue(data, ["status"]),
+    url: stringValue(data, [
+      "url",
+      "publicUrl",
+      "load_balancer_url",
+      "bridge_url",
+    ]),
+  };
+}
+
+function stringValue(
+  record: JsonObject,
+  keys: readonly string[],
+): string | undefined {
+  for (const key of keys) {
+    const value = record[key];
+    if (typeof value === "string" && value.trim()) return value.trim();
+  }
+  return undefined;
+}
+
+function toCloudCodingAgent(value: CodingAgentRunner): CloudCodingAgent {
+  return value === "claude-code" ? "claude" : value;
+}
+
+function sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
 function readSetting(runtime: IAgentRuntime, key: string): string | undefined {
@@ -652,6 +1246,173 @@ function readSetting(runtime: IAgentRuntime, key: string): string | undefined {
   return undefined;
 }
 
+function normalizeRunnerSetting(
+  value: string | undefined,
+): SandboxRunnerProvider | DisabledSandboxRunnerProvider | undefined {
+  if (!value) return undefined;
+  const normalized = value.trim().toLowerCase();
+  if (normalized === "e2b") return "e2b";
+  if (normalized === "eliza-cloud" || normalized === "elizacloud") {
+    return "eliza-cloud";
+  }
+  if (normalized === "home" || normalized === "home-machine") return "home";
+  if (normalized === "cloudflare") return "cloudflare";
+  if (normalized === "sandbox-agent" || normalized === "rivet") return "rivet";
+  if (normalized === "vercel") return "vercel";
+  throw new Error(`Unsupported cloud sandbox runner: ${value}`);
+}
+
+function resolveRunnerProvider(
+  runtime: IAgentRuntime,
+  requested: SandboxRunnerProvider | DisabledSandboxRunnerProvider | undefined,
+): SandboxRunnerProvider {
+  if (
+    requested === "cloudflare" ||
+    requested === "rivet" ||
+    requested === "vercel"
+  ) {
+    throw new Error(
+      `${requested} runner is disabled; use eliza-cloud, home, or e2b.`,
+    );
+  }
+  if (requested) return requested;
+  if (
+    hasAnySetting(runtime, [
+      "ELIZA_CLOUD_SANDBOX_BASE_URL",
+      "ELIZA_CLOUD_SATELLITE_RUNNER_URL",
+      "ELIZA_CLOUD_RUNNER_URL",
+    ])
+  ) {
+    return "eliza-cloud";
+  }
+  if (
+    hasAnySetting(runtime, [
+      "ELIZA_HOME_SATELLITE_URL",
+      "ELIZA_HOME_RUNNER_URL",
+    ])
+  ) {
+    return "home";
+  }
+  return "e2b";
+}
+
+function hasAnySetting(runtime: IAgentRuntime, keys: string[]): boolean {
+  return keys.some((key) => readSetting(runtime, key) !== undefined);
+}
+
+function providerSettingKey(
+  provider: SandboxRunnerProvider,
+  suffix: string,
+): string {
+  if (provider === "eliza-cloud") return `ELIZA_CLOUD_SANDBOX_${suffix}`;
+  if (provider === "home") return `ELIZA_HOME_SATELLITE_${suffix}`;
+  return `ELIZA_E2B_${suffix}`;
+}
+
+function defaultWorkdir(provider: SandboxRunnerProvider): string {
+  return provider === "e2b" ? DEFAULT_E2B_WORKDIR : DEFAULT_SATELLITE_WORKDIR;
+}
+
+function satelliteHttpBaseUrl(
+  runtime: IAgentRuntime,
+  provider: SandboxRunnerProvider,
+): string | undefined {
+  if (provider === "eliza-cloud") {
+    return (
+      readSetting(runtime, "ELIZA_CLOUD_SANDBOX_BASE_URL") ??
+      readSetting(runtime, "ELIZA_CLOUD_SATELLITE_RUNNER_URL") ??
+      readSetting(runtime, "ELIZA_CLOUD_RUNNER_URL")
+    );
+  }
+  if (provider === "home") {
+    return (
+      readSetting(runtime, "ELIZA_HOME_SATELLITE_URL") ??
+      readSetting(runtime, "ELIZA_HOME_RUNNER_URL")
+    );
+  }
+  return undefined;
+}
+
+function cloudApiBaseUrl(
+  runtime: IAgentRuntime,
+  provider: SandboxRunnerProvider,
+): string | undefined {
+  if (provider !== "eliza-cloud") return undefined;
+  return normalizeCloudApiBaseUrl(
+    readSetting(runtime, "ELIZA_CLOUD_SANDBOX_API_BASE_URL") ??
+      readSetting(runtime, "ELIZA_CLOUD_API_BASE_URL") ??
+      readSetting(runtime, "ELIZAOS_CLOUD_BASE_URL") ??
+      readSetting(runtime, "ELIZA_CLOUD_BASE_URL") ??
+      DEFAULT_ELIZA_CLOUD_API_BASE_URL,
+  );
+}
+
+function cloudApiToken(
+  runtime: IAgentRuntime,
+  provider: SandboxRunnerProvider,
+): string | undefined {
+  if (provider !== "eliza-cloud") return undefined;
+  return (
+    readSetting(runtime, "ELIZA_CLOUD_SANDBOX_TOKEN") ??
+    readSetting(runtime, "ELIZA_CLOUD_API_KEY") ??
+    readSetting(runtime, "ELIZA_CLOUD_AUTH_TOKEN") ??
+    readSetting(runtime, "ELIZAOS_CLOUD_API_KEY") ??
+    readSetting(runtime, "ELIZACLOUD_API_KEY")
+  );
+}
+
+function cloudContainerImage(
+  runtime: IAgentRuntime,
+  provider: SandboxRunnerProvider,
+): string | undefined {
+  if (provider !== "eliza-cloud") return undefined;
+  return (
+    readSetting(runtime, "ELIZA_CLOUD_SANDBOX_IMAGE") ??
+    readSetting(runtime, "ELIZA_CLOUD_CODING_SATELLITE_IMAGE") ??
+    readSetting(runtime, "ELIZA_CODING_SATELLITE_IMAGE") ??
+    readSetting(runtime, "ELIZA_CLOUD_SATELLITE_IMAGE")
+  );
+}
+
+function satelliteHttpToken(
+  runtime: IAgentRuntime,
+  provider: SandboxRunnerProvider,
+): string | undefined {
+  if (provider === "eliza-cloud") {
+    return (
+      readSetting(runtime, "ELIZA_CLOUD_SANDBOX_TOKEN") ??
+      readSetting(runtime, "ELIZA_CLOUD_API_KEY") ??
+      readSetting(runtime, "ELIZA_CLOUD_AUTH_TOKEN")
+    );
+  }
+  if (provider === "home") {
+    return readSetting(runtime, "ELIZA_HOME_SATELLITE_TOKEN");
+  }
+  return undefined;
+}
+
+function normalizeCloudApiBaseUrl(value: string): string {
+  const trimmed = value.trim().replace(/\/+$/, "");
+  if (trimmed.endsWith("/api/v1")) return trimmed;
+  return `${trimmed}/api/v1`;
+}
+
+function satelliteAccessUrl(
+  runtime: IAgentRuntime,
+  provider: SandboxRunnerProvider,
+): string | undefined {
+  if (provider === "eliza-cloud") {
+    return readSetting(runtime, "ELIZA_CLOUD_SANDBOX_ACCESS_URL");
+  }
+  if (provider === "home") {
+    return (
+      readSetting(runtime, "ELIZA_HOME_SATELLITE_ACCESS_URL") ??
+      readSetting(runtime, "ELIZA_HOME_ACCESS_URL")
+    );
+  }
+  return undefined;
+}
+
 function positiveIntSetting(
   runtime: IAgentRuntime,
   key: string,
@@ -662,6 +1423,32 @@ function positiveIntSetting(
   const parsed = Number(value);
   if (Number.isInteger(parsed) && parsed > 0) return parsed;
   throw new Error(`${key} must be a positive integer.`);
+}
+
+function agentRunnersSetting(
+  runtime: IAgentRuntime,
+  provider: SandboxRunnerProvider,
+): CodingAgentRunner[] {
+  const value =
+    readSetting(runtime, "ELIZA_SANDBOX_AGENT_RUNNERS") ??
+    readSetting(runtime, "SANDBOX_AGENT_RUNNERS");
+  if (value === undefined) {
+    return provider === "eliza-cloud" || provider === "home"
+      ? DEFAULT_SANDBOX_AGENT_RUNNERS
+      : [];
+  }
+  return value
+    .split(",")
+    .map((item) => item.trim().toLowerCase())
+    .filter((item) => item.length > 0)
+    .map(toCodingAgentRunner);
+}
+
+function toCodingAgentRunner(value: string): CodingAgentRunner {
+  if (value === "codex") return "codex";
+  if (value === "claude" || value === "claude-code") return "claude-code";
+  if (value === "opencode" || value === "open-code") return "opencode";
+  throw new Error(`Unsupported sandbox agent runner: ${value}`);
 }
 
 function isTruthy(value: string | undefined): boolean {
@@ -684,7 +1471,7 @@ function shellQuote(value: string): string {
 }
 
 function commandRunResult(
-  result: CommandResult,
+  result: SandboxCommandResult,
   timedOut: boolean,
 ): TerminalRunResult {
   const stderr = result.stderr.length > 0 ? `\n${result.stderr}` : "";
@@ -695,8 +1482,8 @@ function commandRunResult(
   };
 }
 
-function commandResultFromError(error: Error): CommandResult | null {
-  const candidate = error as Partial<CommandResult>;
+function commandResultFromError(error: Error): SandboxCommandResult | null {
+  const candidate = error as Partial<SandboxCommandResult>;
   if (
     typeof candidate.exitCode === "number" &&
     typeof candidate.stdout === "string" &&
@@ -725,6 +1512,10 @@ function normalizeSandboxPath(input: string): string {
   return normalized.startsWith("/") ? normalized : `/${normalized}`;
 }
 
+function isSandboxUri(value: string): boolean {
+  return /^(e2b|eliza-cloud|home|sandbox):\/\//.test(value);
+}
+
 function posixJoin(...parts: string[]): string {
   return nodePath.posix.normalize(nodePath.posix.join(...parts));
 }
@@ -748,7 +1539,10 @@ function isWithinHostPath(candidate: string, root: string): boolean {
   );
 }
 
-function filterEntries(entries: EntryInfo[], ignore: string[]): EntryInfo[] {
+function filterEntries(
+  entries: SandboxEntryInfo[],
+  ignore: string[],
+): SandboxEntryInfo[] {
   if (ignore.length === 0) return entries;
   const matchers = ignore.map(globToRegExp);
   return entries.filter(
@@ -786,7 +1580,7 @@ function globToRegExp(pattern: string): RegExp {
   return new RegExp(`^${regex}$`);
 }
 
-function toFileStat(entry: EntryInfo): FileStat {
+function toFileStat(entry: SandboxEntryInfo): FileStat {
   const kind = entry.symlinkTarget
     ? "symlink"
     : entry.type === "dir"

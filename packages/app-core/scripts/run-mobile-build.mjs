@@ -227,29 +227,33 @@ function resolveNodeExecutable() {
   return process.env.NODE?.trim() || "node";
 }
 
-function runCapacitor(args) {
-  return run(
-    resolveNodeExecutable(),
-    [
-      path.join(
-        appDir,
-        "node_modules",
-        "@capacitor",
-        "cli",
-        "bin",
-        "capacitor",
-      ),
-      ...args,
-    ],
-    { cwd: appDir },
-  );
-}
-
 function firstExisting(paths) {
   for (const p of paths) {
     if (p && fs.existsSync(p)) return p;
   }
   return null;
+}
+
+function resolveCapacitorCli() {
+  const cli = firstExisting([
+    path.join(appDir, "node_modules", "@capacitor", "cli", "bin", "capacitor"),
+    path.join(
+      repoRoot,
+      "node_modules",
+      "@capacitor",
+      "cli",
+      "bin",
+      "capacitor",
+    ),
+  ]);
+  if (cli) return cli;
+  throw new Error("Could not find @capacitor/cli/bin/capacitor");
+}
+
+function runCapacitor(args) {
+  return run(resolveNodeExecutable(), [resolveCapacitorCli(), ...args], {
+    cwd: appDir,
+  });
 }
 
 function walkFiles(root, visitor) {
