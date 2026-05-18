@@ -1,4 +1,5 @@
 export { create } from "./create.js";
+export { deploy } from "./deploy.js";
 export { info } from "./info.js";
 export { registerPluginsCommand, submitPluginToRegistry } from "./plugins.js";
 export { upgrade } from "./upgrade.js";
