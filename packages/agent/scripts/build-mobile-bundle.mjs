@@ -1463,6 +1463,50 @@ if (!existsSync(bundlePath)) {
 //      now-bound original where one exists. No-op when the original
 //      isn't there either.
 const bundleSrc = await Bun.file(bundlePath).text();
+
+function initSourceComment(src, initName, searchOffset) {
+  const initOffset = src.find(`var ${initName} = __esm`, searchOffset);
+  if (initOffset === -1) return "(definition not found)";
+  const commentOffset = src.lastIndexOf("// ", initOffset);
+  if (commentOffset === -1) return "(source not found)";
+  const endOffset = src.indexOf("\n", commentOffset);
+  return src.slice(
+    commentOffset + 3,
+    endOffset === -1 ? initOffset : endOffset,
+  );
+}
+
+function reportInitElizaShape(src) {
+  const match =
+    /var init_eliza = __esm\((async )?\(\) => \{([\s\S]*?)\n\}\);/.exec(src);
+  if (!match) {
+    console.warn("[build-mobile] init_eliza initializer not found");
+    return;
+  }
+  const asyncInit = Boolean(match[1]);
+  console.log(
+    `[build-mobile] init_eliza initializer: ${asyncInit ? "async" : "sync"}`,
+  );
+  if (!asyncInit) return;
+  const body = match[2];
+  const seen = new Set();
+  for (const call of body.matchAll(
+    /\b(await\s+)?(init_[A-Za-z0-9_$]+)\(\);/g,
+  )) {
+    const initName = call[2];
+    if (seen.has(initName)) continue;
+    seen.add(initName);
+    const definitionOffset = src.find(`var ${initName} = __esm`);
+    const definition = src.slice(definitionOffset, definitionOffset + 80);
+    const kind = definition.includes("__esm(async") ? "async" : "sync";
+    console.error(
+      `[build-mobile] init_eliza dependency ${kind}: ${initName} (${initSourceComment(src, initName, definitionOffset)})`,
+    );
+  }
+}
+
+reportInitElizaShape(bundleSrc);
+
 // `AutonomyService2` is the dedup'd consumer-side alias for the
 // autonomy Service class. The class itself (`class AutonomyService
 // extends Service { static async start(runtime) {...} }`) lives in a
