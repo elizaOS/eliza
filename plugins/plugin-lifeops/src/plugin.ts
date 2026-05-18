@@ -116,6 +116,7 @@ import {
   registerActivitySignalBus,
 } from "./lifeops/signals/bus.js";
 import { threadOpsFieldEvaluator } from "./lifeops/work-threads/field-evaluator-thread-ops.js";
+import { isDarwin } from "./platform/host.js";
 import { browserBridgeProvider } from "./provider.js";
 // Activity-profile (proactive agent: GM/GN/nudges)
 import { activityProfileProvider } from "./providers/activity-profile.js";
@@ -574,6 +575,12 @@ async function recordTaskInitFailure(
  * runtime cache at LIFEOPS_TASK_INIT_FAILURE_CACHE_KEY for observability and
  * via logger.error so ops tooling can alert on it.
  */
+// Darwin-only action surface: the native activity tracker, the only
+// SCREEN_TIME data source the planner can reason about end-to-end, is
+// macOS-only — hide the owner-screentime umbrella on other hosts so the
+// planner never picks it.
+const platformGatedActionUmbrellas = isDarwin() ? [ownerScreenTimeAction] : [];
+
 function scheduleTaskEnsureAfterRuntimeInit(args: {
   runtime: IAgentRuntime;
   prefix: string;
@@ -627,7 +634,9 @@ const rawAppLifeOpsPlugin: Plugin = {
     ...promoteSubactionsToActions(ownerTodosAction),
     ...promoteSubactionsToActions(ownerRoutinesAction),
     ...promoteSubactionsToActions(ownerHealthAction),
-    ...promoteSubactionsToActions(ownerScreenTimeAction),
+    ...platformGatedActionUmbrellas.flatMap((action) =>
+      promoteSubactionsToActions(action),
+    ),
     ...promoteSubactionsToActions(personalAssistantAction),
     entityAction,
     ...promoteSubactionsToActions(ownerDocumentsAction),
