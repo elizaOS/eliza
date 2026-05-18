@@ -650,12 +650,6 @@ export class NodeLlamaCppBackend implements LocalInferenceBackend {
 		if (dflashLlamaServer.hasLoadedModel()) {
 			return dflashLlamaServer.generate(args);
 		}
-		// MLX routing was previously gated on `mlxLocalServer.hasLoadedModel()`,
-		// which is permanently `false` now that the spawn+HTTP transport has
-		// been removed (local inference must stay in-process — see
-		// `services/mlx-server.ts` and `plugins/plugin-local-inference/MLX_IN_PROCESS_PLAN.md`).
-		// No production callsite ever invoked `mlxLocalServer.load()`, so this
-		// fallthrough is dead and the branch is intentionally absent.
 		const pool = this.sessionPool;
 		if (!pool) {
 			throw new Error(

@@ -140,12 +140,6 @@ export {
 	nodeOsPressureSource,
 } from "./memory-pressure";
 export {
-	MLX_BACKEND_ID,
-	MlxLocalServer,
-	mlxBackendEligible,
-	mlxLocalServer,
-} from "./mlx-server";
-export {
 	buildPlanActionsSkeleton,
 	buildPlannerGuidedDecode,
 	type PlannerAction,
