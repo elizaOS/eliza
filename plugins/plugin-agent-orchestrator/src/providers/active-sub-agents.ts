@@ -84,6 +84,7 @@ export const activeSubAgentsProvider: Provider = {
         routed.map(async (session) => {
           try {
             const raw = await service.getSessionOutput?.(session.id, 20);
+            if (typeof raw !== "string") return;
             const tail = summarizeOutputTail(raw);
             if (tail) liveByName.set(session.id, tail);
           } catch {
