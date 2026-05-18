@@ -37,34 +37,41 @@ function isTruthy(value: string | undefined): boolean {
   );
 }
 
+function nullable<T extends JsonValue>(value: T | undefined): T | null {
+  return value ?? null;
+}
+
+function traceTimingToJson(event: TraceEvent): JsonValue {
+  if (!event.timing) return null;
+  return {
+    startedAt: nullable(event.timing.startedAt),
+    completedAt: nullable(event.timing.completedAt),
+    durationMs: nullable(event.timing.durationMs),
+  };
+}
+
 export function traceEventToJson(event: TraceEvent): JsonValue {
   return {
     id: event.id,
     sessionId: event.sessionId,
     sequence: event.sequence,
     kind: event.kind,
-    title: event.title ?? null,
-    text: event.text ?? null,
-    source: event.source ?? null,
-    parentEventId: event.parentEventId ?? null,
-    runId: event.runId ?? null,
-    agentId: event.agentId ?? null,
-    conversationId: event.conversationId ?? null,
-    messageId: event.messageId ?? null,
-    streamId: event.streamId ?? null,
-    toolName: event.toolName ?? null,
-    capabilityId: event.capabilityId ?? null,
-    modelId: event.modelId ?? null,
-    dynamicViewSessionId: event.dynamicViewSessionId ?? null,
-    timing: event.timing
-      ? {
-          startedAt: event.timing.startedAt ?? null,
-          completedAt: event.timing.completedAt ?? null,
-          durationMs: event.timing.durationMs ?? null,
-        }
-      : null,
-    payload: event.payload ?? null,
-    raw: event.raw ?? null,
+    title: nullable(event.title),
+    text: nullable(event.text),
+    source: nullable(event.source),
+    parentEventId: nullable(event.parentEventId),
+    runId: nullable(event.runId),
+    agentId: nullable(event.agentId),
+    conversationId: nullable(event.conversationId),
+    messageId: nullable(event.messageId),
+    streamId: nullable(event.streamId),
+    toolName: nullable(event.toolName),
+    capabilityId: nullable(event.capabilityId),
+    modelId: nullable(event.modelId),
+    dynamicViewSessionId: nullable(event.dynamicViewSessionId),
+    timing: traceTimingToJson(event),
+    payload: nullable(event.payload),
+    raw: nullable(event.raw),
     timestamp: event.timestamp,
   };
 }

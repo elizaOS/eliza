@@ -623,6 +623,103 @@ async function validateFullPath(params: {
   }
 }
 
+function createValidationChecks(
+  env: Record<string, string | undefined>,
+  mode: VoiceLiveValidationMode,
+): VoiceLiveValidationCheck[] {
+  return [
+    {
+      name: "validation.mode",
+      ok: true,
+      required: true,
+      status: mode,
+      details: {
+        apiBase: apiBase(env),
+        allowModelActivation: isTruthy(env.ELIZA_VOICE_ALLOW_MODEL_ACTIVATION),
+        streamAsrPartials: isTruthy(env.ELIZA_VOICE_STREAM_ASR_PARTIALS),
+      },
+    },
+    {
+      name: "model.activation",
+      ok: true,
+      required: false,
+      status: isTruthy(env.ELIZA_VOICE_ALLOW_MODEL_ACTIVATION)
+        ? "allowed"
+        : "disabled",
+    },
+  ];
+}
+
+async function validateRuntimeStatus(params: {
+  adapter: VoiceRuntimeAdapter;
+  checks: VoiceLiveValidationCheck[];
+  mode: VoiceLiveValidationMode;
+}): Promise<VoiceRuntimeStatus | null> {
+  try {
+    const runtimeStatus = await params.adapter.status();
+    params.checks.push({
+      name: "runtime.status",
+      ok: true,
+      required: params.mode !== "dry-run",
+      status: runtimeStatus.mode,
+      details: {
+        listening: runtimeStatus.listening,
+        asrPartialSupport: runtimeStatus.asrPartialSupport,
+        ttsStreamingSupport: runtimeStatus.ttsStreamingSupport,
+        playbackSupport: runtimeStatus.playbackSupport,
+        playbackAckSupport: runtimeStatus.playbackAckSupport,
+        runtimeDraftSupport: runtimeStatus.runtimeDraftSupport === true,
+      },
+    });
+    return runtimeStatus;
+  } catch (error) {
+    params.checks.push({
+      name: "runtime.status",
+      ok: false,
+      required: params.mode !== "dry-run",
+      error: jsonError(error),
+    });
+    return null;
+  }
+}
+
+function collectValidationArtifacts(params: {
+  ttsResult: Awaited<ReturnType<typeof validateTts>>;
+  traceSessionId?: string;
+}): VoiceLiveValidationReport["artifacts"] {
+  const artifacts = [
+    ...(params.ttsResult?.artifact ? [params.ttsResult.artifact] : []),
+    ...(params.traceSessionId
+      ? [
+          {
+            kind: "trace" as const,
+            description: `Trace session ${params.traceSessionId}`,
+          },
+        ]
+      : []),
+  ];
+  return artifacts.length > 0 ? artifacts : undefined;
+}
+
+function collectValidationRecommendations(params: {
+  checks: VoiceLiveValidationCheck[];
+  budgetResults: VoiceLatencyBudgetResult[];
+  runtimeStatus: VoiceRuntimeStatus | null;
+  env: Record<string, string | undefined>;
+}): string[] {
+  const recommendations = [
+    ...checkRecommendations(params.checks),
+    ...budgetRecommendations(params.budgetResults),
+    ...(params.runtimeStatus?.playbackAckSupport === false &&
+    isTruthy(params.env.ELIZA_VOICE_LIVE_PLAYBACK)
+      ? [
+          "Wire host playback acknowledgement before marking live playback started.",
+        ]
+      : []),
+  ];
+  return Array.from(new Set(recommendations));
+}
+
 export async function runVoiceLiveValidation(
   options: VoiceLiveValidationOptions = {},
 ): Promise<VoiceLiveValidationReport> {
@@ -645,52 +742,8 @@ export async function runVoiceLiveValidation(
       traceService: createTraceService(env, now),
       now,
     });
-  const checks: VoiceLiveValidationCheck[] = [
-    {
-      name: "validation.mode",
-      ok: true,
-      required: true,
-      status: mode,
-      details: {
-        apiBase: apiBase(env),
-        allowModelActivation: isTruthy(env.ELIZA_VOICE_ALLOW_MODEL_ACTIVATION),
-        streamAsrPartials: isTruthy(env.ELIZA_VOICE_STREAM_ASR_PARTIALS),
-      },
-    },
-    {
-      name: "model.activation",
-      ok: true,
-      required: false,
-      status: isTruthy(env.ELIZA_VOICE_ALLOW_MODEL_ACTIVATION)
-        ? "allowed"
-        : "disabled",
-    },
-  ];
-  let runtimeStatus: VoiceRuntimeStatus | null = null;
-  try {
-    runtimeStatus = await adapter.status();
-    checks.push({
-      name: "runtime.status",
-      ok: true,
-      required: mode !== "dry-run",
-      status: runtimeStatus.mode,
-      details: {
-        listening: runtimeStatus.listening,
-        asrPartialSupport: runtimeStatus.asrPartialSupport,
-        ttsStreamingSupport: runtimeStatus.ttsStreamingSupport,
-        playbackSupport: runtimeStatus.playbackSupport,
-        playbackAckSupport: runtimeStatus.playbackAckSupport,
-        runtimeDraftSupport: runtimeStatus.runtimeDraftSupport === true,
-      },
-    });
-  } catch (error) {
-    checks.push({
-      name: "runtime.status",
-      ok: false,
-      required: mode !== "dry-run",
-      error: jsonError(error),
-    });
-  }
+  const checks = createValidationChecks(env, mode);
+  const runtimeStatus = await validateRuntimeStatus({ adapter, checks, mode });
   if (mode !== "dry-run") {
     checks.push(await probeRuntime(env, fetchImpl));
   }
@@ -729,27 +782,6 @@ export async function runVoiceLiveValidation(
   const budgetResults =
     latency.budgetResults ??
     evaluateVoiceLatencyBudget(latency, getVoiceLatencyBudgetFromEnv(env));
-  const artifacts = [
-    ...(ttsResult?.artifact ? [ttsResult.artifact] : []),
-    ...(full.traceSessionId
-      ? [
-          {
-            kind: "trace" as const,
-            description: `Trace session ${full.traceSessionId}`,
-          },
-        ]
-      : []),
-  ];
-  const recommendations = [
-    ...checkRecommendations(checks),
-    ...budgetRecommendations(budgetResults),
-    ...(runtimeStatus?.playbackAckSupport === false &&
-    isTruthy(env.ELIZA_VOICE_LIVE_PLAYBACK)
-      ? [
-          "Wire host playback acknowledgement before marking live playback started.",
-        ]
-      : []),
-  ];
   return {
     mode,
     startedAt,
@@ -759,8 +791,16 @@ export async function runVoiceLiveValidation(
     latency: Object.keys(latency).length > 0 ? latency : undefined,
     budgetResults,
     traceSessionId: full.traceSessionId,
-    artifacts: artifacts.length > 0 ? artifacts : undefined,
-    recommendations: Array.from(new Set(recommendations)),
+    artifacts: collectValidationArtifacts({
+      ttsResult,
+      traceSessionId: full.traceSessionId,
+    }),
+    recommendations: collectValidationRecommendations({
+      checks,
+      budgetResults,
+      runtimeStatus,
+      env,
+    }),
   };
 }
 

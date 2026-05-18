@@ -158,6 +158,119 @@ async function listWithCapabilityRouter(params: {
   }
 }
 
+function conversationIdFromMessage(message: Memory): string | undefined {
+  return message.roomId !== undefined && message.roomId !== null
+    ? String(message.roomId)
+    : undefined;
+}
+
+function codingServices(runtime: IAgentRuntime): {
+  sandbox: InstanceType<typeof SandboxService>;
+  session: InstanceType<typeof SessionCwdService>;
+} | null {
+  const sandbox = runtime.getService(SANDBOX_SERVICE) as InstanceType<
+    typeof SandboxService
+  > | null;
+  const session = runtime.getService(SESSION_CWD_SERVICE) as InstanceType<
+    typeof SessionCwdService
+  > | null;
+  return sandbox && session ? { sandbox, session } : null;
+}
+
+function ignoreParams(options: unknown): {
+  ignore: string[];
+  matchers: RegExp[];
+} {
+  const ignoreRaw = readArrayParam(options, "ignore");
+  const ignore =
+    ignoreRaw?.filter(
+      (entry): entry is string => typeof entry === "string" && entry.length > 0,
+    ) ?? [];
+  return {
+    ignore,
+    matchers: ignore.map((entry) => globToRegExp(entry)),
+  };
+}
+
+async function listWithNodeFs(params: {
+  dir: string;
+  ignoreMatchers: RegExp[];
+}): Promise<
+  | {
+      ok: true;
+      entries: LsEntry[];
+      truncated: boolean;
+      totalAfterIgnore: number;
+    }
+  | { ok: false; message: string }
+> {
+  let names: string[];
+  try {
+    names = await fs.readdir(params.dir);
+  } catch (err) {
+    return {
+      ok: false,
+      message: err instanceof Error ? err.message : String(err),
+    };
+  }
+  const filteredNames = names.filter(
+    (name) => !params.ignoreMatchers.some((re) => re.test(name)),
+  );
+  const totalAfterIgnore = filteredNames.length;
+  const truncated = totalAfterIgnore > ENTRY_LIMIT;
+  const entries = await enrichEntries({
+    dir: params.dir,
+    names: filteredNames.slice(0, ENTRY_LIMIT),
+  });
+  return { ok: true, entries, truncated, totalAfterIgnore };
+}
+
+async function enrichEntries(params: {
+  dir: string;
+  names: string[];
+}): Promise<LsEntry[]> {
+  const enriched: LsEntry[] = [];
+  for (const name of params.names) {
+    const joined = path.join(params.dir, name);
+    let type: EntryType = "file";
+    let size: number | undefined;
+    try {
+      const st = await fs.lstat(joined);
+      if (st.isDirectory()) type = "dir";
+      if (st.isSymbolicLink()) type = "symlink";
+      if (st.isFile()) size = st.size;
+    } catch {
+      type = "file";
+    }
+    enriched.push(size === undefined ? { name, type } : { name, type, size });
+  }
+  return enriched;
+}
+
+async function returnLsResult(params: {
+  dir: string;
+  entries: LsEntry[];
+  truncated: boolean;
+  totalAfterIgnore: number;
+  callback?: HandlerCallback;
+}): Promise<ActionResult> {
+  const sorted = sortLsEntries(params.entries);
+  const text = formatLsText({
+    dir: params.dir,
+    sorted,
+    truncated: params.truncated,
+    totalAfterIgnore: params.totalAfterIgnore,
+  });
+  coreLogger.debug(
+    `${CODING_TOOLS_LOG_PREFIX} LS dir=${params.dir} count=${sorted.length} truncated=${params.truncated}`,
+  );
+  if (params.callback) await params.callback({ text, source: "coding-tools" });
+  return successActionResult(text, {
+    entries: sorted,
+    truncated: params.truncated,
+  });
+}
+
 export async function lsHandler(
   runtime: IAgentRuntime,
   message: Memory,
@@ -165,10 +278,7 @@ export async function lsHandler(
   options: unknown,
   callback?: HandlerCallback,
 ): Promise<ActionResult> {
-  const conversationId =
-    message.roomId !== undefined && message.roomId !== null
-      ? String(message.roomId)
-      : undefined;
+  const conversationId = conversationIdFromMessage(message);
   if (!conversationId) {
     return failureToActionResult({
       reason: "missing_param",
@@ -176,13 +286,8 @@ export async function lsHandler(
     });
   }
 
-  const sandbox = runtime.getService(SANDBOX_SERVICE) as InstanceType<
-    typeof SandboxService
-  > | null;
-  const session = runtime.getService(SESSION_CWD_SERVICE) as InstanceType<
-    typeof SessionCwdService
-  > | null;
-  if (!sandbox || !session) {
+  const services = codingServices(runtime);
+  if (!services) {
     return failureToActionResult({
       reason: "internal",
       message: "coding-tools services unavailable",
@@ -190,9 +295,12 @@ export async function lsHandler(
   }
 
   const requestedPath = readStringParam(options, "path");
-  const targetPath = requestedPath ?? session.getCwd(conversationId);
+  const targetPath = requestedPath ?? services.session.getCwd(conversationId);
 
-  const validation = await sandbox.validatePath(conversationId, targetPath);
+  const validation = await services.sandbox.validatePath(
+    conversationId,
+    targetPath,
+  );
   if (validation.ok === false) {
     const reason =
       validation.reason === "blocked" ? "path_blocked" : "invalid_param";
@@ -200,38 +308,19 @@ export async function lsHandler(
   }
   const dir = validation.resolved;
 
-  const ignoreRaw = readArrayParam(options, "ignore");
-  const ignoreMatchers: RegExp[] = (ignoreRaw ?? [])
-    .filter(
-      (entry): entry is string => typeof entry === "string" && entry.length > 0,
-    )
-    .map((entry) => globToRegExp(entry));
-  const ignore = ignoreRaw?.filter(
-    (entry): entry is string => typeof entry === "string" && entry.length > 0,
-  ) ?? [];
-
+  const { ignore, matchers } = ignoreParams(options);
   const routed = await listWithCapabilityRouter({
     runtime,
     dir,
     ignore,
   });
   if (routed.ok) {
-    const sorted = sortLsEntries(routed.payload.entries);
-    const text = formatLsText({
+    return returnLsResult({
       dir,
-      sorted,
+      entries: routed.payload.entries,
       truncated: routed.payload.truncated,
       totalAfterIgnore: routed.payload.totalAfterIgnore,
-    });
-    coreLogger.debug(
-      `${CODING_TOOLS_LOG_PREFIX} LS dir=${dir} count=${sorted.length} truncated=${routed.payload.truncated}`,
-    );
-
-    if (callback) await callback({ text, source: "coding-tools" });
-
-    return successActionResult(text, {
-      entries: sorted,
-      truncated: routed.payload.truncated,
+      callback,
     });
   }
   if (routed.reason === "failed") {
@@ -241,57 +330,18 @@ export async function lsHandler(
     });
   }
 
-  let names: string[];
-  try {
-    names = await fs.readdir(dir);
-  } catch (err) {
-    const msg = err instanceof Error ? err.message : String(err);
+  const local = await listWithNodeFs({ dir, ignoreMatchers: matchers });
+  if (!local.ok) {
     return failureToActionResult({
       reason: "io_error",
-      message: `readdir failed: ${msg}`,
+      message: `readdir failed: ${local.message}`,
     });
   }
-
-  const filteredNames = names.filter(
-    (name) => !ignoreMatchers.some((re) => re.test(name)),
-  );
-
-  const totalAfterIgnore = filteredNames.length;
-  const truncated = totalAfterIgnore > ENTRY_LIMIT;
-  const limited = filteredNames.slice(0, ENTRY_LIMIT);
-
-  const enriched: LsEntry[] = [];
-  for (const name of limited) {
-    const joined = path.join(dir, name);
-    let type: EntryType = "file";
-    let size: number | undefined;
-    try {
-      const st = await fs.lstat(joined);
-      if (st.isDirectory()) {
-        type = "dir";
-      } else if (st.isSymbolicLink()) {
-        type = "symlink";
-      } else if (st.isFile()) {
-        type = "file";
-        size = st.size;
-      }
-    } catch {
-      // unreadable entry — fall through with default type
-    }
-    enriched.push(size === undefined ? { name, type } : { name, type, size });
-  }
-
-  const sorted = sortLsEntries(enriched);
-  const text = formatLsText({ dir, sorted, truncated, totalAfterIgnore });
-
-  coreLogger.debug(
-    `${CODING_TOOLS_LOG_PREFIX} LS dir=${dir} count=${sorted.length} truncated=${truncated}`,
-  );
-
-  if (callback) await callback({ text, source: "coding-tools" });
-
-  return successActionResult(text, {
-    entries: sorted,
-    truncated,
+  return returnLsResult({
+    dir,
+    entries: local.entries,
+    truncated: local.truncated,
+    totalAfterIgnore: local.totalAfterIgnore,
+    callback,
   });
 }

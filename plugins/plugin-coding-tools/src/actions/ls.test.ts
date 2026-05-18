@@ -200,7 +200,9 @@ describe("LS", () => {
       },
     ]);
     const data = result.data as Record<string, unknown> | undefined;
-    const entries = data?.entries as { name: string; type: string }[] | undefined;
+    const entries = data?.entries as
+      | { name: string; type: string }[]
+      | undefined;
     expect(entries).toEqual([
       { name: "foo", type: "dir" },
       { name: "routed.ts", type: "file", size: 12 },

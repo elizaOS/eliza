@@ -27,6 +27,13 @@ const UNSAFE_FIELD_NAMES = new Set([
   "onKeyDown",
 ]);
 
+type NormalizedValidationOptions = {
+  maxComponents: number;
+  maxJsonBytes: number;
+  allowedActionPrefixes: readonly string[];
+  allowedActionNames: readonly string[];
+};
+
 function asRecord(value: unknown): Record<string, unknown> | null {
   if (!value || typeof value !== "object" || Array.isArray(value)) {
     return null;
@@ -239,12 +246,10 @@ function validateComponent(
   return true;
 }
 
-export function validateElizaGenUiSpec(
-  value: unknown,
-  validationOptions: ElizaGenUiValidationOptions = {},
-): ElizaGenUiValidationResult {
-  const issues: ElizaGenUiValidationIssue[] = [];
-  const options = {
+function normalizeValidationOptions(
+  validationOptions: ElizaGenUiValidationOptions,
+): NormalizedValidationOptions {
+  return {
     maxComponents: validationOptions.maxComponents ?? DEFAULT_MAX_COMPONENTS,
     maxJsonBytes: validationOptions.maxJsonBytes ?? DEFAULT_MAX_JSON_BYTES,
     allowedActionPrefixes:
@@ -252,22 +257,26 @@ export function validateElizaGenUiSpec(
       ELIZA_GENUI_ALLOWED_ACTION_PREFIXES,
     allowedActionNames: validationOptions.allowedActionNames ?? [],
   };
+}
+
+function validateJsonSize(
+  value: unknown,
+  issues: ElizaGenUiValidationIssue[],
+  options: NormalizedValidationOptions,
+): boolean {
   const byteLength = jsonByteLength(value);
-  if (byteLength === null || byteLength > options.maxJsonBytes) {
-    addIssue(issues, {
-      code: "too_large",
-      message: `Generated UI JSON must be serializable and at most ${options.maxJsonBytes} bytes.`,
-    });
-    return { ok: false, errors: issues };
-  }
-  const record = asRecord(value);
-  if (!record) {
-    addIssue(issues, {
-      code: "invalid_spec",
-      message: "Generated UI spec must be an object.",
-    });
-    return { ok: false, errors: issues };
-  }
+  if (byteLength !== null && byteLength <= options.maxJsonBytes) return true;
+  addIssue(issues, {
+    code: "too_large",
+    message: `Generated UI JSON must be serializable and at most ${options.maxJsonBytes} bytes.`,
+  });
+  return false;
+}
+
+function validateSpecHeader(
+  record: Record<string, unknown>,
+  issues: ElizaGenUiValidationIssue[],
+): void {
   if (record.version !== "0.1") {
     addIssue(issues, {
       code: "invalid_version",
@@ -289,13 +298,20 @@ export function validateElizaGenUiSpec(
       path: "root",
     });
   }
+}
+
+function validateComponentsArray(
+  record: Record<string, unknown>,
+  issues: ElizaGenUiValidationIssue[],
+  options: NormalizedValidationOptions,
+): unknown[] | null {
   if (!Array.isArray(record.components)) {
     addIssue(issues, {
       code: "invalid_spec",
       message: "Generated UI spec must include a components array.",
       path: "components",
     });
-    return { ok: false, errors: issues };
+    return null;
   }
   if (record.components.length > options.maxComponents) {
     addIssue(issues, {
@@ -304,13 +320,28 @@ export function validateElizaGenUiSpec(
       path: "components",
     });
   }
-  validateUnsafeFields(record.data, issues, "data");
-  validateUnsafeFields(record.metadata, issues, "metadata");
+  return record.components;
+}
+
+function validateComponents(
+  components: unknown[],
+  issues: ElizaGenUiValidationIssue[],
+  options: NormalizedValidationOptions,
+): { ids: Set<string>; childRefs: string[] } {
   const ids = new Set<string>();
   const childRefs: string[] = [];
-  record.components.forEach((component, index) => {
+  components.forEach((component, index) => {
     validateComponent(component, index, ids, childRefs, issues, options);
   });
+  return { ids, childRefs };
+}
+
+function validateReferences(
+  record: Record<string, unknown>,
+  ids: Set<string>,
+  childRefs: string[],
+  issues: ElizaGenUiValidationIssue[],
+): void {
   if (typeof record.root === "string" && !ids.has(record.root)) {
     addIssue(issues, {
       code: "invalid_root",
@@ -326,6 +357,31 @@ export function validateElizaGenUiSpec(
       });
     }
   }
+}
+
+export function validateElizaGenUiSpec(
+  value: unknown,
+  validationOptions: ElizaGenUiValidationOptions = {},
+): ElizaGenUiValidationResult {
+  const issues: ElizaGenUiValidationIssue[] = [];
+  const options = normalizeValidationOptions(validationOptions);
+  if (!validateJsonSize(value, issues, options))
+    return { ok: false, errors: issues };
+  const record = asRecord(value);
+  if (!record) {
+    addIssue(issues, {
+      code: "invalid_spec",
+      message: "Generated UI spec must be an object.",
+    });
+    return { ok: false, errors: issues };
+  }
+  validateSpecHeader(record, issues);
+  const components = validateComponentsArray(record, issues, options);
+  if (components === null) return { ok: false, errors: issues };
+  validateUnsafeFields(record.data, issues, "data");
+  validateUnsafeFields(record.metadata, issues, "metadata");
+  const refs = validateComponents(components, issues, options);
+  validateReferences(record, refs.ids, refs.childRefs, issues);
   if (issues.length > 0) {
     return { ok: false, errors: issues };
   }

@@ -99,6 +99,137 @@ function resolveOnboardingPrimaryModel(args: {
   return trimToUndefined(args.onboardingPrimaryModel);
 }
 
+function buildOnboardingLinkedAccounts(
+  args: BuildOnboardingConnectionArgs,
+): LinkedAccountFlagsConfig {
+  const linkedAccounts: LinkedAccountFlagsConfig = {};
+  const cloudApiKey = trimToUndefined(args.onboardingCloudApiKey);
+  if (cloudApiKey) {
+    linkedAccounts.elizacloud = { status: "linked", source: "api-key" };
+  }
+  const localProviderId = resolveLocalProviderId(args.onboardingProvider);
+  if (
+    localProviderId === "anthropic-subscription" ||
+    localProviderId === "openai-subscription"
+  ) {
+    linkedAccounts[localProviderId] = {
+      status: "linked",
+      source: "subscription",
+    };
+  }
+  return linkedAccounts;
+}
+
+function buildDeploymentTarget(args: {
+  serverTarget: OnboardingServerTarget;
+  persistRuntimeOnConnectedRemote: boolean;
+  useElizaCloudRuntime: boolean;
+  onboardingRemoteApiBase: string;
+  onboardingRemoteConnected: boolean;
+  onboardingRemoteToken: string;
+}): DeploymentTargetConfig {
+  if (args.persistRuntimeOnConnectedRemote) return { runtime: "local" };
+  if (args.serverTarget === "remote") {
+    return {
+      runtime: "remote",
+      provider: "remote",
+      remoteApiBase: trimToUndefined(args.onboardingRemoteApiBase) ?? "",
+      ...(trimToUndefined(args.onboardingRemoteToken)
+        ? { remoteAccessToken: trimToUndefined(args.onboardingRemoteToken) }
+        : {}),
+    };
+  }
+  if (args.useElizaCloudRuntime && !args.onboardingRemoteConnected) {
+    return { runtime: "cloud", provider: "elizacloud" };
+  }
+  return { runtime: "local" };
+}
+
+function buildLocalServiceRoute(args: {
+  localProviderId: OnboardingLocalProviderId;
+  serverTarget: OnboardingServerTarget;
+  persistRuntimeOnConnectedRemote: boolean;
+  onboardingRemoteApiBase: string;
+  primaryModel: string | undefined;
+}): ServiceRouteConfig {
+  if (args.serverTarget === "remote" && !args.persistRuntimeOnConnectedRemote) {
+    return {
+      backend: args.localProviderId,
+      transport: "remote",
+      remoteApiBase: trimToUndefined(args.onboardingRemoteApiBase) ?? "",
+      ...(args.primaryModel ? { primaryModel: args.primaryModel } : {}),
+    };
+  }
+  return {
+    backend: args.localProviderId,
+    transport: "direct",
+    ...(args.primaryModel ? { primaryModel: args.primaryModel } : {}),
+  };
+}
+
+function buildOnboardingLlmRoute(args: {
+  source: BuildOnboardingConnectionArgs;
+  localProviderId: OnboardingLocalProviderId | null;
+  serverTarget: OnboardingServerTarget;
+  persistRuntimeOnConnectedRemote: boolean;
+  shouldConfigureRuntimeProvider: boolean;
+  models: {
+    nanoModel: string | undefined;
+    smallModel: string | undefined;
+    mediumModel: string | undefined;
+    largeModel: string | undefined;
+    megaModel: string | undefined;
+    responseHandlerModel: string | undefined;
+    actionPlannerModel: string | undefined;
+  };
+}): ServiceRouteConfig | undefined {
+  if (
+    args.source.onboardingProvider === "elizacloud" &&
+    args.shouldConfigureRuntimeProvider
+  ) {
+    return buildElizaCloudServiceRoute(args.models);
+  }
+  if (!args.shouldConfigureRuntimeProvider || !args.localProviderId)
+    return undefined;
+  const primaryModel = resolveOnboardingPrimaryModel({
+    providerId: args.localProviderId,
+    onboardingPrimaryModel: args.source.onboardingPrimaryModel,
+    onboardingOpenRouterModel: args.source.onboardingOpenRouterModel,
+  });
+  return buildLocalServiceRoute({
+    localProviderId: args.localProviderId,
+    serverTarget: args.serverTarget,
+    persistRuntimeOnConnectedRemote: args.persistRuntimeOnConnectedRemote,
+    onboardingRemoteApiBase: args.source.onboardingRemoteApiBase,
+    primaryModel,
+  });
+}
+
+function buildOnboardingFeatureSetup(
+  args: BuildOnboardingConnectionArgs,
+): OnboardingFeatureSetup | undefined {
+  const hasFeatures =
+    args.onboardingFeatureTelegram ||
+    args.onboardingFeatureDiscord ||
+    args.onboardingFeatureCrypto ||
+    args.onboardingFeatureBrowser ||
+    args.onboardingFeatureComputerUse;
+  if (!hasFeatures) return undefined;
+  return {
+    connectors: {
+      ...(args.onboardingFeatureTelegram
+        ? { telegram: { managed: true } }
+        : {}),
+      ...(args.onboardingFeatureDiscord ? { discord: { managed: true } } : {}),
+    },
+    capabilities: {
+      ...(args.onboardingFeatureCrypto ? { crypto: true } : {}),
+      ...(args.onboardingFeatureBrowser ? { browser: true } : {}),
+      ...(args.onboardingFeatureComputerUse ? { computeruse: true } : {}),
+    },
+  };
+}
+
 export function buildOnboardingRuntimeConfig(
   args: BuildOnboardingConnectionArgs,
 ): BuildOnboardingRuntimeConfigResult {
@@ -117,60 +248,32 @@ export function buildOnboardingRuntimeConfig(
   const actionPlannerModel = trimToUndefined(
     args.onboardingActionPlannerModel ?? "",
   );
-  const linkedAccounts: LinkedAccountFlagsConfig = {};
   const cloudApiKey = trimToUndefined(args.onboardingCloudApiKey);
-  if (cloudApiKey) {
-    linkedAccounts.elizacloud = {
-      status: "linked",
-      source: "api-key",
-    };
-  }
 
   const localProviderId = resolveLocalProviderId(args.onboardingProvider);
-  if (
-    localProviderId === "anthropic-subscription" ||
-    localProviderId === "openai-subscription"
-  ) {
-    linkedAccounts[localProviderId] = {
-      status: "linked",
-      source: "subscription",
-    };
-  }
+  const linkedAccounts = buildOnboardingLinkedAccounts(args);
 
-  const deploymentTarget: DeploymentTargetConfig =
-    persistRuntimeOnConnectedRemote
-      ? { runtime: "local" }
-      : serverTarget === "remote"
-        ? {
-            runtime: "remote",
-            provider: "remote",
-            remoteApiBase: trimToUndefined(args.onboardingRemoteApiBase) ?? "",
-            ...(trimToUndefined(args.onboardingRemoteToken)
-              ? {
-                  remoteAccessToken: trimToUndefined(
-                    args.onboardingRemoteToken,
-                  ),
-                }
-              : {}),
-          }
-        : useElizaCloudRuntime && !args.onboardingRemoteConnected
-          ? {
-              runtime: "cloud",
-              provider: "elizacloud",
-            }
-          : { runtime: "local" };
+  const deploymentTarget = buildDeploymentTarget({
+    serverTarget,
+    persistRuntimeOnConnectedRemote,
+    useElizaCloudRuntime,
+    onboardingRemoteApiBase: args.onboardingRemoteApiBase,
+    onboardingRemoteConnected: args.onboardingRemoteConnected,
+    onboardingRemoteToken: args.onboardingRemoteToken,
+  });
 
   const serviceRouting: ServiceRoutingConfig = {};
-  let llmTextRoute: ServiceRouteConfig | undefined;
   const shouldConfigureRuntimeProvider =
     !args.omitRuntimeProvider &&
     !requiresAdditionalRuntimeProvider(args.onboardingProvider);
 
-  if (
-    args.onboardingProvider === "elizacloud" &&
-    shouldConfigureRuntimeProvider
-  ) {
-    llmTextRoute = buildElizaCloudServiceRoute({
+  const llmTextRoute = buildOnboardingLlmRoute({
+    source: args,
+    localProviderId,
+    serverTarget,
+    persistRuntimeOnConnectedRemote,
+    shouldConfigureRuntimeProvider,
+    models: {
       nanoModel,
       smallModel,
       mediumModel,
@@ -178,27 +281,8 @@ export function buildOnboardingRuntimeConfig(
       megaModel,
       responseHandlerModel,
       actionPlannerModel,
-    });
-  } else if (shouldConfigureRuntimeProvider && localProviderId) {
-    const primaryModel = resolveOnboardingPrimaryModel({
-      providerId: localProviderId,
-      onboardingPrimaryModel: args.onboardingPrimaryModel,
-      onboardingOpenRouterModel: args.onboardingOpenRouterModel,
-    });
-    llmTextRoute =
-      serverTarget === "remote" && !persistRuntimeOnConnectedRemote
-        ? {
-            backend: localProviderId,
-            transport: "remote",
-            remoteApiBase: trimToUndefined(args.onboardingRemoteApiBase) ?? "",
-            ...(primaryModel ? { primaryModel } : {}),
-          }
-        : {
-            backend: localProviderId,
-            transport: "direct",
-            ...(primaryModel ? { primaryModel } : {}),
-          };
-  }
+    },
+  });
 
   if (llmTextRoute) {
     serviceRouting.llmText = llmTextRoute;
@@ -248,32 +332,7 @@ export function buildOnboardingRuntimeConfig(
   }
 
   const hasCredentialInputs = Object.keys(credentialInputs).length > 0;
-
-  // Build feature setup from onboarding feature toggles
-  const hasFeatures =
-    args.onboardingFeatureTelegram ||
-    args.onboardingFeatureDiscord ||
-    args.onboardingFeatureCrypto ||
-    args.onboardingFeatureBrowser ||
-    args.onboardingFeatureComputerUse;
-
-  const featureSetup: OnboardingFeatureSetup | undefined = hasFeatures
-    ? {
-        connectors: {
-          ...(args.onboardingFeatureTelegram
-            ? { telegram: { managed: true } }
-            : {}),
-          ...(args.onboardingFeatureDiscord
-            ? { discord: { managed: true } }
-            : {}),
-        },
-        capabilities: {
-          ...(args.onboardingFeatureCrypto ? { crypto: true } : {}),
-          ...(args.onboardingFeatureBrowser ? { browser: true } : {}),
-          ...(args.onboardingFeatureComputerUse ? { computeruse: true } : {}),
-        },
-      }
-    : undefined;
+  const featureSetup = buildOnboardingFeatureSetup(args);
 
   return {
     deploymentTarget,

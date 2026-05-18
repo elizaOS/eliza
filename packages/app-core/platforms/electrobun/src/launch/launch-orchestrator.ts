@@ -87,6 +87,42 @@ function requiredGate(
   return null;
 }
 
+function classifyAgentPhase(agent: EmbeddedAgentStatus): LaunchPhase | null {
+  if (agent.state === "error") return "error";
+  if (agent.state === "not_started" || agent.state === "stopped") {
+    return "static-shell";
+  }
+  if (agent.state !== "starting") return null;
+  return agent.port === null ? "agent-process-starting" : "agent-api-waiting";
+}
+
+function classifyAuthPhase(params: {
+  auth: AuthStatusSnapshot | null;
+  authError: string | null;
+}): LaunchPhase | null {
+  if (params.auth === null && params.authError === null) return "auth-checking";
+  if (params.auth?.required === true && params.auth.pairingEnabled === true) {
+    return "pairing-required";
+  }
+  if (params.auth?.bootstrapRequired === true) {
+    return "cloud-bootstrap-required";
+  }
+  return null;
+}
+
+function classifyOnboardingPhase(params: {
+  onboarding: OnboardingStatusSnapshot | null;
+  onboardingError: string | null;
+}): LaunchPhase | null {
+  if (params.onboarding === null && params.onboardingError === null) {
+    return "onboarding-checking";
+  }
+  if (params.onboarding?.complete !== false) return null;
+  return params.onboarding.cloudProvisioned === true
+    ? "cloud-bootstrap-required"
+    : "runtime-gate-required";
+}
+
 function classifyPhase(params: {
   agent: EmbeddedAgentStatus;
   boot: BootProgressSnapshot | null;
@@ -95,35 +131,15 @@ function classifyPhase(params: {
   onboarding: OnboardingStatusSnapshot | null;
   onboardingError: string | null;
 }): LaunchPhase {
-  if (params.agent.state === "error") return "error";
-  if (
-    params.agent.state === "not_started" ||
-    params.agent.state === "stopped"
-  ) {
-    return "static-shell";
-  }
-  if (params.agent.state === "starting") {
-    return params.agent.port === null
-      ? "agent-process-starting"
-      : "agent-api-waiting";
-  }
+  const agentPhase = classifyAgentPhase(params.agent);
+  if (agentPhase !== null) return agentPhase;
   if (params.boot?.phase && params.boot.phase !== "running") {
     return "agent-api-ready";
   }
-  if (params.auth === null && params.authError === null) return "auth-checking";
-  if (params.auth?.required === true && params.auth.pairingEnabled === true) {
-    return "pairing-required";
-  }
-  if (params.auth?.bootstrapRequired === true)
-    return "cloud-bootstrap-required";
-  if (params.onboarding === null && params.onboardingError === null) {
-    return "onboarding-checking";
-  }
-  if (params.onboarding?.complete === false) {
-    return params.onboarding.cloudProvisioned === true
-      ? "cloud-bootstrap-required"
-      : "runtime-gate-required";
-  }
+  const authPhase = classifyAuthPhase(params);
+  if (authPhase !== null) return authPhase;
+  const onboardingPhase = classifyOnboardingPhase(params);
+  if (onboardingPhase !== null) return onboardingPhase;
   return "ready";
 }
 

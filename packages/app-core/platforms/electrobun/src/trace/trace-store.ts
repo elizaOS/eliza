@@ -16,6 +16,26 @@ import type {
   TraceTailResult,
 } from "./types";
 
+type TraceEventStringField =
+  | "title"
+  | "text"
+  | "parentEventId"
+  | "runId"
+  | "agentId"
+  | "conversationId"
+  | "messageId"
+  | "streamId"
+  | "toolName"
+  | "capabilityId"
+  | "modelId"
+  | "dynamicViewSessionId";
+
+type TraceEventStringAssignment = {
+  field: TraceEventStringField;
+  value: string | undefined;
+  label: string;
+};
+
 export interface TraceStoreOptions {
   maxSessions?: number;
   maxEventsPerSession?: number;
@@ -260,78 +280,52 @@ export class TraceStore {
       kind: params.kind,
       timestamp,
     };
-    const title = this.optionalString(params.title, "title");
-    const text = this.optionalString(params.text, "text");
-    const source = params.source;
-    const parentEventId = this.optionalString(
-      params.parentEventId,
-      "parentEventId",
-    );
-    const eventRunId = this.optionalString(
-      params.runId ?? session.runId,
-      "runId",
-    );
-    const eventAgentId = this.optionalString(
-      params.agentId ?? session.agentId,
-      "agentId",
-    );
-    const eventConversationId = this.optionalString(
-      params.conversationId ?? session.conversationId,
-      "conversationId",
-    );
-    const eventMessageId = this.optionalString(
-      params.messageId ?? session.messageId,
-      "messageId",
-    );
-    const eventStreamId = this.optionalString(
-      params.streamId ?? session.streamId,
-      "streamId",
-    );
-    const toolName = this.optionalString(params.toolName, "toolName");
-    const capabilityId = this.optionalString(
-      params.capabilityId,
-      "capabilityId",
-    );
-    const modelId = this.optionalString(params.modelId, "modelId");
-    const dynamicViewSessionId = this.optionalString(
-      params.dynamicViewSessionId ?? session.dynamicViewSessionId,
-      "dynamicViewSessionId",
-    );
-    if (title !== undefined) event.title = title;
-    if (text !== undefined) event.text = text;
-    if (source !== undefined) event.source = source;
-    if (parentEventId !== undefined) event.parentEventId = parentEventId;
-    if (eventRunId !== undefined) event.runId = eventRunId;
-    if (eventAgentId !== undefined) event.agentId = eventAgentId;
-    if (eventConversationId !== undefined) {
-      event.conversationId = eventConversationId;
-    }
-    if (eventMessageId !== undefined) event.messageId = eventMessageId;
-    if (eventStreamId !== undefined) event.streamId = eventStreamId;
-    if (toolName !== undefined) event.toolName = toolName;
-    if (capabilityId !== undefined) event.capabilityId = capabilityId;
-    if (modelId !== undefined) event.modelId = modelId;
-    if (dynamicViewSessionId !== undefined) {
-      event.dynamicViewSessionId = dynamicViewSessionId;
-    }
+    this.assignEventStrings(event, [
+      { field: "title", value: params.title, label: "title" },
+      { field: "text", value: params.text, label: "text" },
+      {
+        field: "parentEventId",
+        value: params.parentEventId,
+        label: "parentEventId",
+      },
+      { field: "runId", value: params.runId ?? session.runId, label: "runId" },
+      {
+        field: "agentId",
+        value: params.agentId ?? session.agentId,
+        label: "agentId",
+      },
+      {
+        field: "conversationId",
+        value: params.conversationId ?? session.conversationId,
+        label: "conversationId",
+      },
+      {
+        field: "messageId",
+        value: params.messageId ?? session.messageId,
+        label: "messageId",
+      },
+      {
+        field: "streamId",
+        value: params.streamId ?? session.streamId,
+        label: "streamId",
+      },
+      { field: "toolName", value: params.toolName, label: "toolName" },
+      {
+        field: "capabilityId",
+        value: params.capabilityId,
+        label: "capabilityId",
+      },
+      { field: "modelId", value: params.modelId, label: "modelId" },
+      {
+        field: "dynamicViewSessionId",
+        value: params.dynamicViewSessionId ?? session.dynamicViewSessionId,
+        label: "dynamicViewSessionId",
+      },
+    ]);
+    if (params.source !== undefined) event.source = params.source;
     if (params.timing !== undefined) event.timing = { ...params.timing };
-    const payload = safeJsonValue(params.payload, this.maxEventPayloadBytes);
-    const raw = safeJsonValue(params.raw, this.maxEventPayloadBytes);
-    if (payload !== undefined) event.payload = payload;
-    if (raw !== undefined) event.raw = raw;
-
-    const sessionEvents = this.events.get(session.id);
-    if (!sessionEvents) {
-      throw new TraceError(
-        "TRACE_SESSION_NOT_FOUND",
-        `Trace session events not found: ${session.id}`,
-      );
-    }
-    sessionEvents.push(event);
-    while (sessionEvents.length > this.maxEventsPerSession) {
-      sessionEvents.shift();
-    }
-    session.updatedAt = timestamp;
+    this.assignEventPayloads(event, params);
+    this.pushEvent(session, event, timestamp);
     return cloneEvent(event);
   }
 
@@ -501,6 +495,45 @@ export class TraceStore {
       );
     }
     return value;
+  }
+
+  private assignEventStrings(
+    event: TraceEvent,
+    fields: TraceEventStringAssignment[],
+  ): void {
+    for (const field of fields) {
+      const value = this.optionalString(field.value, field.label);
+      if (value !== undefined) event[field.field] = value;
+    }
+  }
+
+  private assignEventPayloads(
+    event: TraceEvent,
+    params: Pick<TraceRecordEventParams, "payload" | "raw">,
+  ): void {
+    const payload = safeJsonValue(params.payload, this.maxEventPayloadBytes);
+    const raw = safeJsonValue(params.raw, this.maxEventPayloadBytes);
+    if (payload !== undefined) event.payload = payload;
+    if (raw !== undefined) event.raw = raw;
+  }
+
+  private pushEvent(
+    session: TraceSession,
+    event: TraceEvent,
+    timestamp: string,
+  ): void {
+    const sessionEvents = this.events.get(session.id);
+    if (!sessionEvents) {
+      throw new TraceError(
+        "TRACE_SESSION_NOT_FOUND",
+        `Trace session events not found: ${session.id}`,
+      );
+    }
+    sessionEvents.push(event);
+    while (sessionEvents.length > this.maxEventsPerSession) {
+      sessionEvents.shift();
+    }
+    session.updatedAt = timestamp;
   }
 
   private pruneSessions(): void {
