@@ -4,6 +4,7 @@ import * as clack from "@clack/prompts";
 import { Command } from "commander";
 import {
   create,
+  deploy,
   info,
   registerPluginsCommand,
   submitPluginToRegistry,
@@ -88,6 +89,17 @@ program
   .option("--dry-run", "Preview the upgrade without writing files")
   .option("--skip-upstream", "Skip updating the upstream eliza checkout")
   .action(upgrade);
+
+program
+  .command("deploy")
+  .description(
+    "Deploy the current elizaOS project to Eliza Cloud (experimental — keel only)",
+  )
+  .option("--app-id <id>", "Eliza Cloud app UUID to deploy")
+  .option("--domain <host>", "Custom domain to attach after deploy")
+  .option("--dry-run", "Print the planned deploy sequence without running it")
+  .option("--verbose", "Echo backend requests to stderr")
+  .action(deploy);
 
 registerPluginsCommand(program);
 
