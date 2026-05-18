@@ -31,7 +31,6 @@ import json
 import logging
 import os
 import shutil
-import subprocess
 import sys
 import time
 from dataclasses import asdict, dataclass, field
@@ -123,7 +122,12 @@ async def _git(*args: str, cwd: str | None = None, timeout: int = 120) -> tuple[
         stdout=asyncio.subprocess.PIPE,
         stderr=asyncio.subprocess.PIPE,
     )
-    stdout, stderr = await asyncio.wait_for(proc.communicate(), timeout=timeout)
+    try:
+        stdout, stderr = await asyncio.wait_for(proc.communicate(), timeout=timeout)
+    except asyncio.TimeoutError:
+        proc.kill()
+        await proc.wait()
+        raise
     return proc.returncode or 0, stdout.decode("utf-8", "replace"), stderr.decode("utf-8", "replace")
 
 
@@ -186,6 +190,7 @@ async def _run_path_b_instance(
         await asyncio.wait_for(proc.communicate(), timeout=opencode_timeout_s)
     except asyncio.TimeoutError:
         proc.kill()
+        await proc.wait()
         return PathResult(
             path="opencode",
             status="error",
