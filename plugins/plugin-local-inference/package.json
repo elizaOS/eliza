@@ -26,6 +26,16 @@
 			"import": "./dist/runtime/index.js",
 			"default": "./dist/runtime/index.js"
 		},
+		"./runtime/embedding-presets": {
+			"types": "./src/runtime/embedding-presets.ts",
+			"eliza-source": {
+				"types": "./src/runtime/embedding-presets.ts",
+				"import": "./src/runtime/embedding-presets.ts",
+				"default": "./src/runtime/embedding-presets.ts"
+			},
+			"import": "./dist/runtime/index.js",
+			"default": "./dist/runtime/index.js"
+		},
 		"./routes": {
 			"types": "./src/routes/index.ts",
 			"eliza-source": {

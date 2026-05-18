@@ -188,7 +188,7 @@ async function loadE2BCapabilityRouterModule(): Promise<E2BCapabilityRouterModul
   )) as E2BCapabilityRouterModule;
 }
 
-import { detectEmbeddingPreset } from "@elizaos/plugin-local-inference/runtime";
+import { detectEmbeddingPreset } from "@elizaos/plugin-local-inference/runtime/embedding-presets";
 import {
   debugLogResolvedContext,
   validateRuntimeContext,
