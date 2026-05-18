@@ -79,7 +79,7 @@ async function buildRuntime(
   };
   const stub = {
     getSetting: (key: string) => settings[key],
-    getService: <T>(_type: string): T | null => null,
+    getService: <T>(): T | null => null,
   } as IAgentRuntime;
 
   const sandbox = await SandboxService.start(stub);

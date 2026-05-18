@@ -2,21 +2,14 @@ import { describe, expect, it } from "vitest";
 import { VoiceError } from "./errors";
 import type {
   VoiceAsrFinalEvent,
-  VoiceAsrPartialEvent,
   VoiceComponentSnapshot,
-  VoiceLiveStartParams,
-  VoicePlayAudioParams,
   VoicePlaybackEvent,
-  VoiceRuntimeErrorEvent,
   VoiceRuntimeHandoffParams,
   VoiceRuntimeHandoffResult,
   VoiceRuntimeStatus,
   VoiceSynthesisResult,
   VoiceSynthesizeSpeechParams,
   VoiceTranscribeAudioParams,
-  VoiceTtsChunkEvent,
-  VoiceTurnEvent,
-  VoiceVadEvent,
 } from "./types";
 import {
   runVoiceLiveValidation,
@@ -61,9 +54,7 @@ class ValidationMockAdapter implements VoiceRuntimeAdapter {
     return this.componentsValue;
   }
 
-  async startListening(
-    _params: VoiceLiveStartParams,
-  ): Promise<VoiceRuntimeStatus> {
+  async startListening(): Promise<VoiceRuntimeStatus> {
     return this.status();
   }
 
@@ -75,31 +66,31 @@ class ValidationMockAdapter implements VoiceRuntimeAdapter {
     return this.status();
   }
 
-  onVad(_handler: (event: VoiceVadEvent) => void): () => void {
+  onVad(): () => void {
     return () => {};
   }
 
-  onTurn(_handler: (event: VoiceTurnEvent) => void): () => void {
+  onTurn(): () => void {
     return () => {};
   }
 
-  onAsrPartial(_handler: (event: VoiceAsrPartialEvent) => void): () => void {
+  onAsrPartial(): () => void {
     return () => {};
   }
 
-  onAsrFinal(_handler: (event: VoiceAsrFinalEvent) => void): () => void {
+  onAsrFinal(): () => void {
     return () => {};
   }
 
-  onTtsChunk(_handler: (event: VoiceTtsChunkEvent) => void): () => void {
+  onTtsChunk(): () => void {
     return () => {};
   }
 
-  onPlayback(_handler: (event: VoicePlaybackEvent) => void): () => void {
+  onPlayback(): () => void {
     return () => {};
   }
 
-  onError(_handler: (event: VoiceRuntimeErrorEvent) => void): () => void {
+  onError(): () => void {
     return () => {};
   }
 
@@ -124,7 +115,7 @@ class ValidationMockAdapter implements VoiceRuntimeAdapter {
     };
   }
 
-  async playAudio(_params: VoicePlayAudioParams): Promise<VoicePlaybackEvent> {
+  async playAudio(): Promise<VoicePlaybackEvent> {
     if (!this.playbackAvailable) {
       throw new VoiceError(
         "VOICE_AUDIO_OUTPUT_UNAVAILABLE",
