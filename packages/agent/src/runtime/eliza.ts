@@ -166,6 +166,9 @@ type StewardEvmBridgeModule = {
   stewardEvmPostBoot?: (runtime: AgentRuntime) => Promise<void> | void;
 };
 
+type E2BCapabilityRouterModule =
+  typeof import("../services/e2b-capability-router.ts");
+
 async function loadElizaMakerModule(): Promise<ElizaMakerModule> {
   return (await import(
     /* @vite-ignore */ ELIZAMAKER_MODULE
@@ -176,6 +179,13 @@ async function loadStewardEvmBridgeModule(): Promise<StewardEvmBridgeModule> {
   return (await import(
     /* @vite-ignore */ STEWARD_EVM_BRIDGE_MODULE
   )) as StewardEvmBridgeModule;
+}
+
+async function loadE2BCapabilityRouterModule(): Promise<E2BCapabilityRouterModule> {
+  const moduleId = "../services/e2b-capability-router.ts";
+  return (await import(
+    /* @vite-ignore */ moduleId
+  )) as E2BCapabilityRouterModule;
 }
 
 import { detectEmbeddingPreset } from "@elizaos/plugin-local-inference/runtime";
@@ -3797,9 +3807,8 @@ export async function startEliza(
 
     if (!isBundledMobileRuntime()) {
       try {
-        const { registerE2BSatelliteCapabilityRouterIfEnabled } = await import(
-          "../services/e2b-capability-router.ts"
-        );
+        const { registerE2BSatelliteCapabilityRouterIfEnabled } =
+          await loadE2BCapabilityRouterModule();
         const result =
           await registerE2BSatelliteCapabilityRouterIfEnabled(runtime);
         if (result.registered) {
@@ -4252,7 +4261,7 @@ export async function startEliza(
           if (!isBundledMobileRuntime()) {
             try {
               const { registerE2BSatelliteCapabilityRouterIfEnabled } =
-                await import("../services/e2b-capability-router.ts");
+                await loadE2BCapabilityRouterModule();
               await registerE2BSatelliteCapabilityRouterIfEnabled(newRuntime);
             } catch {
               // non-fatal
