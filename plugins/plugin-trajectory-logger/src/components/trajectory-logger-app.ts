@@ -3,7 +3,6 @@
  */
 
 import { type OverlayApp, registerOverlayApp } from "@elizaos/ui";
-import { TrajectoryLoggerView } from "./TrajectoryLoggerView";
 
 export const TRAJECTORY_LOGGER_APP_NAME = "@elizaos/plugin-trajectory-logger";
 
@@ -14,7 +13,10 @@ export const trajectoryLoggerApp: OverlayApp = {
     "Realtime view of the agent's last and pending turns — HANDLE / PLAN / ACTION / EVALUATE.",
   category: "developer",
   icon: null,
-  Component: TrajectoryLoggerView,
+  loader: () =>
+    import("./TrajectoryLoggerView").then((m) => ({
+      default: m.TrajectoryLoggerView,
+    })),
 };
 
 let registered = false;

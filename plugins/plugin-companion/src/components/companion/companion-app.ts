@@ -1,5 +1,4 @@
 import { type OverlayApp, registerOverlayApp } from "@elizaos/ui";
-import { CompanionAppView } from "./CompanionAppView";
 
 export const COMPANION_APP_NAME = "@elizaos/plugin-companion";
 
@@ -9,7 +8,8 @@ export const companionApp: OverlayApp = {
   description: "3D companion with VRM avatar and chat",
   category: "game",
   icon: null,
-  Component: CompanionAppView,
+  loader: () =>
+    import("./CompanionAppView").then((m) => ({ default: m.CompanionAppView })),
 };
 
 /** Register the companion app with the overlay app registry. */

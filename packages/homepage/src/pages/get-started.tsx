@@ -1,3 +1,4 @@
+import { BRAND_COLORS } from "@elizaos/shared-brand";
 import { Button } from "@elizaos/ui/button";
 import {
   AppleMessagesIcon,
@@ -183,7 +184,7 @@ function ProvisioningChatStep({ onContinue }: { onContinue: () => void }) {
                   msg.role === "user" ? "none" : "1px solid rgba(0,0,0,0.08)",
                 fontSize: 13,
                 lineHeight: 1.5,
-                color: msg.role === "user" ? "#ffffff" : "#1a1a1a",
+                color: msg.role === "user" ? BRAND_COLORS.white : "#1a1a1a",
               }}
             >
               {msg.content}

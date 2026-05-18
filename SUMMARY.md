@@ -1,6 +1,6 @@
 # Eliza brand redesign — SUMMARY
 
-A nine-round multi-agent pass against the Eliza brand. Source of truth for follow-ups is `BRAND-TODO.md`; this document is the narrative.
+A ten-round multi-agent pass against the Eliza brand. Source of truth for follow-ups is `BRAND-TODO.md`; this document is the narrative.
 
 ## Brand at a glance
 
@@ -53,28 +53,41 @@ A nine-round multi-agent pass against the Eliza brand. Source of truth for follo
 ### Round 9 final follow-ups
 
 - **cloud-frontend Steward nonce-exchange mirror** — 4 files updated; `index.html` got pre-init script + referrer meta; tsc clean.
-- **Steward cleanup PR filed** — https://github.com/Steward-Fi/steward/pull/46 (DO NOT MERGE prefix; blocked on Steward #45 plus a 1-release window).
+- **Steward cleanup PR filed** — https://github.com/Steward-Fi/keep/pull/46 (DO NOT MERGE prefix; blocked on Steward #45 plus a 1-release window).
 - **PNG → WebP rollout** — 15 files, 22.41 MB / 90.8% reclaimed; per-consumer `shared-brand` sync flags reclaimed ~142 MB across consumers.
 - **`leaderboard.tsx` brand pass** — `ShaderBackground` is now opt-in via `?shader=1`; flat brand-color per platform.
 - **Tooling verification** — bun install + Playwright dedup confirmed single canonical version; vitest run isolated 2 pre-existing cloud-frontend failures + 10 ui onboarding failures as fixture drift.
 - **Bundle visualizer dive** — `packages/app/dist/stats.html` produced; top-5 recommendations (zod dedup, i18n lazy, luxon trim, apps subtree route-split, onboarding-presets lazy) tracked as the bundle perf rollout item.
 
+### Round 10 final cleanup
+
+- **Bundle perf wins #1–4 landed** — zod dedup, i18n lazy-load with 6 locale chunks split, onboarding-presets already split upstream, cron-parser already mitigated. **Main chunk: 1.36 MB → 928 KB gzip (-32%).**
+- **`RuntimeGate` `borderRadius: 0` regression fixed** — 9 sites repointed to `var(--radius-xs, 3px)` so chat bubbles regain their xs-rounding.
+- **Biome lint cleaned** — 13 errors → 0; 11 files auto-fixed. 2 unsafe-suggested variable-shadow warnings deferred.
+- **Hex tokenization sweep** — workspace literals 373 → 177. `className` literals tokenized in the 4 highest-impact files plus the top 20 dashboard files. Remaining 177 are JS-context inline-style literals carried as an open item.
+- **Open Sans cleanup (partial)** — 2 CSS `@import` lines and 6 package.json font dependencies removed. ~38 source-level usages remain in canvas-rendered fonts (`renderChatToCanvas.ts` etc.) and a handful of components; carried forward as a smaller follow-up.
+- **`ensureLanguageLoaded` re-export fix** in `packages/ui/src/i18n/index.ts` (unblocks lazy locale loading).
+- **Steward cleanup PR #46 ready** — https://github.com/Steward-Fi/keep/pull/46 (DO NOT MERGE prefix; blocked on Steward #45 plus a 1-release window).
+
 ## What's intentionally left
 
 The residual set is small and well-scoped:
 
-- **Bundle perf rollout** (sibling in flight) — apply the round-9 visualizer recommendations.
+- **Bundle perf win #5** — `apps/` subtree route-split via React.lazy (the last of the round-9 visualizer recommendations).
+- **JS-context hex literal migration** — ~177 inline-style literals remain after the round-10 className sweep.
+- **Open Sans source-level cleanup** — ~38 usages remain after the round-10 CSS/package pass.
 - **Native PNG regeneration** (~51 files; sibling in flight) — designer pass per `packages/app/DESIGNER-ASSETS.md`.
 - **Test fixture drift** (sibling in flight) — cloud-frontend mocks + ui onboarding labels.
-- **SSO security follow-ups** — URL-query token leak, missing CSRF check on `/api/auth/steward-session`, Steward `redirect_uri` audit, 3rd-party-cookie sync, desktop Steward integration.
+- **SSO security follow-ups** — URL-query token leak, missing CSRF check on `/api/auth/steward-session`, Steward `redirect_uri` audit, 3rd-party-cookie sync (structural), desktop Steward integration.
 - **3 pre-existing tsc errors** blocking clean typecheck (unrelated to brand work).
+- **2 biome variable-shadow warnings** (unsafe-suggested) pending manual review.
 - **Product gaps:** character-pick step in `CreateElizaAgentDialog`; replace `/dashboard/chat` redirect; resolve the `theme-app` onboarding-marketing TODO in `packages/app/src/main.tsx:309` (blocked on `@elizaos/ui`).
 - **Out-of-scope packages:** `<CloudVideoBackground>` inside `@elizaos/ui` `App.tsx`; Electrobun window chrome.
 - **Mintlify deep customization** — `!important` overrides in `docs/style.css` tracked against upstream.
 
 ## BRAND-TODO snapshot
 
-- **Open:** 24
-- **Done:** rounds 1–3 foundation block, rounds 4–7 polish block, round 8 auth hardening, round 9 final follow-ups (6 items).
+- **Open:** 22
+- **Done:** rounds 1–3 foundation block, rounds 4–7 polish block, round 8 auth hardening, round 9 final follow-ups (6 items), round 10 final cleanup (7 items).
 
 See `BRAND-TODO.md` for the live list with file paths, sizing, and owners.

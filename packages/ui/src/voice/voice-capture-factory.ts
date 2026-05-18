@@ -19,13 +19,12 @@
  */
 
 import type { AsrProvider } from "../api/client-types-config";
-import { fetchWithCsrf } from "../api/csrf-client";
-import { resolveApiUrl } from "../utils";
 import {
   isLocalAsrCaptureSupported,
   type LocalAsrRecorder,
   startLocalAsrRecorder,
 } from "./local-asr-capture";
+import { transcribeLocalInferenceWav } from "./local-asr-transcribe";
 import {
   getSpeechRecognitionCtor,
   type SpeechRecognitionInstance,
@@ -125,31 +124,6 @@ function resolveBackend(
   // server-side today; until that changes, browser API is the only sane
   // client-side fallback.
   return { kind: "browser" };
-}
-
-async function transcribeWav(audio: Uint8Array): Promise<string> {
-  const audioBody = new ArrayBuffer(audio.byteLength);
-  new Uint8Array(audioBody).set(audio);
-  const res = await fetchWithCsrf(resolveApiUrl("/api/asr/local-inference"), {
-    method: "POST",
-    headers: {
-      "Content-Type": "audio/wav",
-      Accept: "application/json",
-    },
-    body: audioBody,
-  });
-  if (!res.ok) {
-    const body = await res.text().catch(() => "");
-    throw new Error(`Local inference ASR ${res.status}: ${body.slice(0, 200)}`);
-  }
-  const parsed = (await res.json().catch(() => null)) as {
-    text?: unknown;
-  } | null;
-  const text = typeof parsed?.text === "string" ? parsed.text.trim() : "";
-  if (!text) {
-    throw new Error("Local inference ASR returned an empty transcript");
-  }
-  return text;
 }
 
 export function createVoiceCapture(
@@ -258,7 +232,7 @@ export function createVoiceCapture(
       }
       try {
         const wav = await current.stop();
-        const text = await transcribeWav(wav);
+        const { text } = await transcribeLocalInferenceWav(wav);
         onTranscript({ text, final: true, backend: "local-inference" });
         setState("stopped");
       } catch (err) {

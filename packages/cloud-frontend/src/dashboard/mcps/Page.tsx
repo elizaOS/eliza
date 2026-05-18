@@ -1,3 +1,4 @@
+import { BRAND_COLORS } from "@elizaos/shared-brand";
 import {
   DashboardLoadingState,
   DashboardPageContainer,
@@ -25,7 +26,7 @@ const demoMcpServers = [
     x402Enabled: false,
     toolCount: 20,
     icon: "puzzle",
-    color: "#FF5800",
+    color: BRAND_COLORS.orange,
     features: [
       "Credit Management",
       "AI Text Generation",

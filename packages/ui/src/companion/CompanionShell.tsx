@@ -43,7 +43,7 @@ export function CompanionShell(props: CompanionShellProps): React.JSX.Element {
         overflow: "hidden",
         background: "#1d91e8",
         color: "#ffffff",
-        fontFamily: "'Open Sans', Arial, sans-serif",
+        fontFamily: "'Poppins', Arial, sans-serif",
       }}
     >
       <BackgroundHost />

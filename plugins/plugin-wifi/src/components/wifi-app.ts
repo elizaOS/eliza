@@ -7,7 +7,6 @@
  */
 
 import { type OverlayApp, registerOverlayApp } from "@elizaos/ui";
-import { WifiAppView } from "./WifiAppView";
 
 export const WIFI_APP_NAME = "@elizaos/plugin-wifi";
 
@@ -18,7 +17,8 @@ export const wifiApp: OverlayApp = {
   category: "system",
   icon: null,
   androidOnly: true,
-  Component: WifiAppView,
+  loader: () =>
+    import("./WifiAppView").then((m) => ({ default: m.WifiAppView })),
 };
 
 /** Register the WiFi app with the overlay app registry. */

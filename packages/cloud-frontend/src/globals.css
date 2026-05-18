@@ -25,10 +25,10 @@
 @custom-variant dark (&:is(.dark *));
 
 :root {
-  --font-open-sans: "Poppins", Arial, system-ui, sans-serif;
-  --font-dm-mono: var(--font-open-sans);
-  --font-inter: var(--font-open-sans);
-  --font-roboto-mono: var(--font-open-sans);
+  --font-poppins: "Poppins", Arial, system-ui, sans-serif;
+  --font-dm-mono: var(--font-poppins);
+  --font-inter: var(--font-poppins);
+  --font-roboto-mono: var(--font-poppins);
   --radius-xs: 3px;
   --radius-sm: var(--radius-xs);
   --radius-md: var(--radius-xs);

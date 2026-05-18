@@ -25,14 +25,7 @@
       "@elizaos/ui": ["../../packages/ui/src/index.ts"],
       "@elizaos/ui/*": ["../../packages/ui/src/*"],
       "@elizaos/app-core": ["../../packages/app-core/src/index.ts"],
-      "@elizaos/app-core/*": ["../../packages/app-core/src/*"],
-      "react": ["../../packages/app-core/node_modules/@types/react/index.d.ts"],
-      "react/jsx-runtime": [
-        "../../packages/app-core/node_modules/@types/react/jsx-runtime.d.ts"
-      ],
-      "react/jsx-dev-runtime": [
-        "../../packages/app-core/node_modules/@types/react/jsx-dev-runtime.d.ts"
-      ]
+      "@elizaos/app-core/*": ["../../packages/app-core/src/*"]
     }
   },
   "include": ["src"]

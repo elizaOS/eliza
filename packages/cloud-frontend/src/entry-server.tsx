@@ -22,6 +22,7 @@
  * client during the first paint.
  */
 
+import { BRAND_COLORS } from "@elizaos/shared-brand";
 import { Buffer } from "buffer";
 
 if (typeof globalThis !== "undefined" && !("Buffer" in globalThis)) {
@@ -51,9 +52,9 @@ const TOASTER_PROPS = {
   position: "top-right" as const,
   toastOptions: {
     style: {
-      background: "#000000",
+      background: BRAND_COLORS.black,
       border: "1px solid rgba(255, 255, 255, 0.14)",
-      color: "#FFFFFF",
+      color: BRAND_COLORS.white,
       borderRadius: "2px",
     },
     className: "font-poppins",

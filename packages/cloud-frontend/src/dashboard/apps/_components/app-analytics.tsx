@@ -1,6 +1,7 @@
 "use client";
 
 import { toRatePercent } from "@elizaos/cloud-shared/lib/services/analytics-derived";
+import { BRAND_COLORS } from "@elizaos/shared-brand";
 import {
   Button,
   DashboardStatCard,
@@ -87,7 +88,7 @@ interface Visitor {
 }
 
 const SOURCE_COLORS: Record<string, string> = {
-  api_key: "#FF5800",
+  api_key: BRAND_COLORS.orange,
   sandbox_preview: "#8b5cf6",
   embed: "#3b82f6",
 };
@@ -100,7 +101,7 @@ const SOURCE_LABELS: Record<string, string> = {
 
 const TYPE_COLORS: Record<string, string> = {
   pageview: "#10b981",
-  chat: "#FF5800",
+  chat: BRAND_COLORS.orange,
   image: "#8b5cf6",
   video: "#3b82f6",
   voice: "#f59e0b",
@@ -406,9 +407,9 @@ export function AppAnalytics({ appId }: AppAnalyticsProps) {
                   <Line
                     type="monotone"
                     dataKey="requests"
-                    stroke="#FF5800"
+                    stroke={BRAND_COLORS.orange}
                     strokeWidth={2}
-                    dot={{ fill: "#FF5800", r: 3 }}
+                    dot={{ fill: BRAND_COLORS.orange, r: 3 }}
                   />
                 </LineChart>
               </ResponsiveContainer>
@@ -579,7 +580,7 @@ export function AppAnalytics({ appId }: AppAnalyticsProps) {
                                   style={{
                                     width: `${toRatePercent(count, requestStats.totalRequests)}%`,
                                     backgroundColor:
-                                      TYPE_COLORS[type] || "#FF5800",
+                                      TYPE_COLORS[type] || BRAND_COLORS.orange,
                                   }}
                                 />
                               </div>

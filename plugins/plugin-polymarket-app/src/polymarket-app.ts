@@ -1,6 +1,5 @@
 import type { OverlayApp } from "@elizaos/app-core";
 import { registerOverlayApp } from "@elizaos/app-core";
-import { PolymarketAppView } from "./PolymarketAppView";
 
 export const POLYMARKET_APP_NAME = "@elizaos/plugin-polymarket-app";
 
@@ -10,7 +9,10 @@ export const polymarketApp: OverlayApp = {
   description: "Browse Polymarket markets and inspect native trading readiness",
   category: "trading",
   icon: null,
-  Component: PolymarketAppView,
+  loader: () =>
+    import("./PolymarketAppView").then((m) => ({
+      default: m.PolymarketAppView,
+    })),
 };
 
 registerOverlayApp(polymarketApp);

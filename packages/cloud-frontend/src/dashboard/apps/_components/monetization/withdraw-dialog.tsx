@@ -5,6 +5,7 @@
 
 "use client";
 
+import { BRAND_COLORS } from "@elizaos/shared-brand";
 import {
   Button,
   Dialog,
@@ -74,7 +75,7 @@ export function WithdrawDialog({
       spread: 26,
       startVelocity: 55,
       origin: { x: 0.2, y: 0.7 },
-      colors: ["#FF5800", "#FF8C00", "#FFD700"],
+      colors: [BRAND_COLORS.orange, "#FF8C00", "#FFD700"],
     });
 
     // Right side burst
@@ -82,7 +83,7 @@ export function WithdrawDialog({
       spread: 26,
       startVelocity: 55,
       origin: { x: 0.8, y: 0.7 },
-      colors: ["#FF5800", "#FF8C00", "#FFD700"],
+      colors: [BRAND_COLORS.orange, "#FF8C00", "#FFD700"],
     });
 
     // Center burst
@@ -91,7 +92,7 @@ export function WithdrawDialog({
       decay: 0.91,
       scalar: 0.8,
       origin: { x: 0.5, y: 0.6 },
-      colors: ["#FF5800", "#FF8C00", "#FFD700", "#FFFFFF"],
+      colors: [BRAND_COLORS.orange, "#FF8C00", "#FFD700", BRAND_COLORS.white],
     });
 
     // Smaller follow-up burst
@@ -102,7 +103,7 @@ export function WithdrawDialog({
         decay: 0.92,
         scalar: 1.2,
         origin: { x: 0.5, y: 0.5 },
-        colors: ["#FF5800", "#22C55E"],
+        colors: [BRAND_COLORS.orange, "#22C55E"],
       });
     }, 200);
   }, []);

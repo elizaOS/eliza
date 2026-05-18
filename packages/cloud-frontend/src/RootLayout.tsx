@@ -1,4 +1,5 @@
 import {
+  BRAND_COLORS,
   BRAND_FAVICONS,
   BRAND_PATHS,
   OG_EMBED_FILES,
@@ -104,9 +105,9 @@ export default function RootLayout() {
                 position="top-right"
                 toastOptions={{
                   style: {
-                    background: "#000000",
+                    background: BRAND_COLORS.black,
                     border: "1px solid rgba(255, 255, 255, 0.14)",
-                    color: "#FFFFFF",
+                    color: BRAND_COLORS.white,
                     borderRadius: "2px",
                   },
                   className: "font-poppins",

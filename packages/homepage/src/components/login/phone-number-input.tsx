@@ -1,3 +1,4 @@
+import { BRAND_COLORS } from "@elizaos/shared-brand";
 import { Input } from "@elizaos/ui/input";
 import { getCountries, getCountryCallingCode } from "libphonenumber-js";
 import { ChevronDown } from "lucide-react";
@@ -118,7 +119,7 @@ export function PhoneNumberInput({
               key={opt.code}
               value={opt.code}
               className="bg-white text-neutral-900 dark:bg-neutral-800 dark:text-white"
-              style={{ backgroundColor: "#1a1a1c", color: "#ffffff" }}
+              style={{ backgroundColor: "#1a1a1c", color: BRAND_COLORS.white }}
             >
               {opt.name} (+{opt.dialCode})
             </option>

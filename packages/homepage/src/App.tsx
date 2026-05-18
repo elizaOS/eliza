@@ -1,3 +1,4 @@
+import { BRAND_COLORS } from "@elizaos/shared-brand";
 import { lazy, Suspense } from "react";
 import { BrowserRouter, Route, Routes } from "react-router-dom";
 import { QueryProvider } from "@/components/providers/query-provider";
@@ -14,8 +15,8 @@ function RouteFallback() {
     <main
       className="theme-app min-h-screen flex flex-col items-center justify-center px-4"
       style={{
-        background: "#000000",
-        color: "#FFFFFF",
+        background: BRAND_COLORS.black,
+        color: BRAND_COLORS.white,
         fontFamily: "Poppins",
       }}
     >

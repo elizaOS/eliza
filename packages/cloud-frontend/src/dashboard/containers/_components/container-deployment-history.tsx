@@ -9,6 +9,7 @@
 
 "use client";
 
+import { BRAND_COLORS } from "@elizaos/shared-brand";
 import { Badge, BrandCard, Skeleton } from "@elizaos/ui";
 import {
   CheckCircle2,
@@ -85,7 +86,7 @@ export function ContainerDeploymentHistory({
           <div className="flex items-center gap-2 pb-4 border-b border-white/10">
             <span
               className="inline-block w-2 h-2 rounded-full"
-              style={{ backgroundColor: "#FF5800" }}
+              style={{ backgroundColor: BRAND_COLORS.orange }}
             />
             <h2
               className="text-xl font-normal text-white"
@@ -111,7 +112,7 @@ export function ContainerDeploymentHistory({
           <div className="flex items-center gap-2 pb-4 border-b border-white/10">
             <span
               className="inline-block w-2 h-2 rounded-full"
-              style={{ backgroundColor: "#FF5800" }}
+              style={{ backgroundColor: BRAND_COLORS.orange }}
             />
             <h2
               className="text-xl font-normal text-white"
@@ -161,7 +162,7 @@ export function ContainerDeploymentHistory({
             <div className="flex items-center gap-2 mb-2">
               <span
                 className="inline-block w-2 h-2 rounded-full"
-                style={{ backgroundColor: "#FF5800" }}
+                style={{ backgroundColor: BRAND_COLORS.orange }}
               />
               <h2
                 className="text-xl font-normal text-white"

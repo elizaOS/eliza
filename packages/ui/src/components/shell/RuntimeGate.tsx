@@ -78,7 +78,7 @@ import { Spinner } from "../ui/spinner";
 import { TooltipHint } from "../ui/tooltip";
 import { ProvisioningChatView } from "./ProvisioningChatView";
 
-const MONO_FONT = "'Open Sans', Arial, system-ui, sans-serif";
+const MONO_FONT = "'Poppins', Arial, system-ui, sans-serif";
 
 const DEFAULT_AUTO_AGENT_NAME = "My Agent";
 

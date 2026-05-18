@@ -31,6 +31,7 @@ import {
   invokeDesktopBridgeRequest,
   subscribeDesktopBridgeEvent,
 } from "./bridge/electrobun-rpc";
+import { getOverlayAppLazyComponent } from "./components/apps/AppWindowRenderer";
 import { GameViewOverlay } from "./components/apps/GameViewOverlay";
 import { getOverlayApp } from "./components/apps/overlay-app-registry";
 import { LoginView } from "./components/auth/LoginView";
@@ -1532,16 +1533,25 @@ export function App() {
         {shellContent}
       </div>
       {/* Full-screen overlay app — renders whichever overlay app is active */}
-      {resolvedOverlayApp && (
-        <resolvedOverlayApp.Component
-          exitToApps={() => {
+      {resolvedOverlayApp &&
+        (() => {
+          const exitToApps = () => {
             setState("activeOverlayApp", null);
             setTab("apps");
-          }}
-          uiTheme={uiTheme === "dark" ? "dark" : "light"}
-          t={t}
-        />
-      )}
+          };
+          const theme = uiTheme === "dark" ? "dark" : "light";
+          const LazyOverlay = getOverlayAppLazyComponent(resolvedOverlayApp);
+          if (LazyOverlay) {
+            return (
+              <Suspense fallback={null}>
+                <LazyOverlay exitToApps={exitToApps} uiTheme={theme} t={t} />
+              </Suspense>
+            );
+          }
+          const Component = resolvedOverlayApp.Component;
+          if (!Component) return null;
+          return <Component exitToApps={exitToApps} uiTheme={theme} t={t} />;
+        })()}
 
       {/* Persistent game overlay — stays visible across all tabs */}
       {activeGameViewerUrl &&
