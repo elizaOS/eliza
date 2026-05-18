@@ -171,7 +171,7 @@ async function loadStewardEvmBridgeModule(): Promise<StewardEvmBridgeModule> {
   )) as StewardEvmBridgeModule;
 }
 
-import { detectEmbeddingPreset } from "@elizaos/plugin-local-inference";
+import { detectEmbeddingPreset } from "@elizaos/plugin-local-inference/runtime/embedding-presets";
 import {
   debugLogResolvedContext,
   validateRuntimeContext,

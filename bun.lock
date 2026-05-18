@@ -1891,6 +1891,7 @@
       "name": "@elizaos/ui",
       "version": "2.0.0-beta.5",
       "dependencies": {
+        "@elizaos/cloud-sdk": "workspace:*",
         "@elizaos/core": "workspace:*",
         "@elizaos/shared": "workspace:*",
         "@elizaos/shared-brand": "workspace:*",
