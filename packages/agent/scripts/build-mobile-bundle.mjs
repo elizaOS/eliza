@@ -1376,9 +1376,9 @@ const buildResult = await Bun.build({
     nativeCapacitorPlugin,
     exactMobileStubPlugin,
     capabilityRouterStubPlugin,
+    stubResolverPlugin,
     workspaceSrcFallbackPlugin,
     stripStaleJsArtifactsPlugin,
-    stubResolverPlugin,
     // ios-jsc: actively mark Node built-ins as external via onResolve so
     // Bun.build's browser target stops substituting its incomplete browser
     // polyfills (e.g. node:url without pathToFileURL). The polyfill prefix
