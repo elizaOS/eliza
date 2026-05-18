@@ -1465,7 +1465,7 @@ if (!existsSync(bundlePath)) {
 const bundleSrc = await Bun.file(bundlePath).text();
 
 function initSourceComment(src, initName, searchOffset) {
-  const initOffset = src.find(`var ${initName} = __esm`, searchOffset);
+  const initOffset = src.indexOf(`var ${initName} = __esm`, searchOffset);
   if (initOffset === -1) return "(definition not found)";
   const commentOffset = src.lastIndexOf("// ", initOffset);
   if (commentOffset === -1) return "(source not found)";
