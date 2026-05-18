@@ -1497,7 +1497,7 @@ function reportInitElizaShape(src) {
     const initName = call[2];
     if (seen.has(initName)) continue;
     seen.add(initName);
-    const definitionOffset = source.find(`var ${initName} = __esm`);
+    const definitionOffset = source.indexOf(`var ${initName} = __esm`);
     const definition = source.slice(definitionOffset, definitionOffset + 80);
     const kind = definition.includes("__esm(async") ? "async" : "sync";
     console.error(
