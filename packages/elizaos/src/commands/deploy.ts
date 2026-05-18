@@ -84,14 +84,14 @@ function printPlan(plan: PlannedStep[]): void {
   console.log();
 }
 
-export function deploy(options: DeployOptions): void {
+export function runDeploy(options: DeployOptions): number {
   if (options.domain && !DOMAIN_REGEX.test(options.domain)) {
     console.error(
       pc.red(
         `Invalid --domain "${options.domain}". Expected a valid hostname (e.g. app.example.com).`,
       ),
     );
-    process.exit(1);
+    return 1;
   }
 
   const cwd = process.cwd();
@@ -104,7 +104,7 @@ export function deploy(options: DeployOptions): void {
 
   if (options.dryRun) {
     printPlan(plan);
-    process.exit(0);
+    return 0;
   }
 
   console.error(
@@ -112,5 +112,9 @@ export function deploy(options: DeployOptions): void {
       "Real deploy not yet implemented — see https://github.com/elizaOS/eliza/blob/develop/packages/elizaos/src/commands/DEPLOY_DESIGN.md. Pass --dry-run to preview.",
     ),
   );
-  process.exit(1);
+  return 1;
+}
+
+export function deploy(options: DeployOptions): void {
+  process.exit(runDeploy(options));
 }
