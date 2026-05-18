@@ -1,6 +1,6 @@
 import os from "node:os";
 import path from "node:path";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 // Stub @elizaos/core so loading apple-reminders/website-blocker does not pull
 // in the full runtime logger transitive (adze, etc.) — these tests only
@@ -29,6 +29,14 @@ function restorePlatform(): void {
     value: ORIGINAL_PLATFORM,
   });
 }
+
+// Reset the module registry before every test so that any guard which captures
+// `process.platform` at module-init time (instead of at call time) still sees
+// the per-test platform stub. Today `isDarwin()` reads the value lazily, but
+// this future-proofs the suite against that refactor.
+beforeEach(() => {
+  vi.resetModules();
+});
 
 describe("platform/host helper", () => {
   afterEach(() => {

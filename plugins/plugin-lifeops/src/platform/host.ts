@@ -12,10 +12,6 @@ export function isDarwin(): boolean {
   return process.platform === "darwin";
 }
 
-export function isAppleSpecificPlatform(): boolean {
-  return isDarwin();
-}
-
 export function darwinUnavailableActionResult(args: {
   actionName: string;
   connector?: string;
