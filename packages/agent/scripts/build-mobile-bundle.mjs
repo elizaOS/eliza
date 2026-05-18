@@ -1477,8 +1477,9 @@ function initSourceComment(src, initName, searchOffset) {
 }
 
 function reportInitElizaShape(src) {
+  const source = String(src);
   const match =
-    /var init_eliza = __esm\((async )?\(\) => \{([\s\S]*?)\n\}\);/.exec(src);
+    /var init_eliza = __esm\((async )?\(\) => \{([\s\S]*?)\n\}\);/.exec(source);
   if (!match) {
     console.warn("[build-mobile] init_eliza initializer not found");
     return;
@@ -1496,11 +1497,11 @@ function reportInitElizaShape(src) {
     const initName = call[2];
     if (seen.has(initName)) continue;
     seen.add(initName);
-    const definitionOffset = src.find(`var ${initName} = __esm`);
-    const definition = src.slice(definitionOffset, definitionOffset + 80);
+    const definitionOffset = source.find(`var ${initName} = __esm`);
+    const definition = source.slice(definitionOffset, definitionOffset + 80);
     const kind = definition.includes("__esm(async") ? "async" : "sync";
     console.error(
-      `[build-mobile] init_eliza dependency ${kind}: ${initName} (${initSourceComment(src, initName, definitionOffset)})`,
+      `[build-mobile] init_eliza dependency ${kind}: ${initName} (${initSourceComment(source, initName, definitionOffset)})`,
     );
   }
 }
