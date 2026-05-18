@@ -185,7 +185,7 @@ function isGuildTextBasedChannel(
     isTextBased?: () => boolean;
     guild?: unknown;
   };
-  return candidate.isTextBased() === true && Boolean(candidate.guild);
+  return candidate.isTextBased?.() === true && Boolean(candidate.guild);
 }
 
 type ConnectorFetchMessagesParams = {

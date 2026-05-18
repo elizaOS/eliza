@@ -511,7 +511,7 @@ async function runSpawnAgent(
             return undefined;
           })
       : undefined;
-    const resumeSendPrompt = service.sendPrompt;
+    const resumeSendPrompt = service.sendPrompt?.bind(service);
     if (resumable && resumeSendPrompt) {
       setCurrentSession(state, resumable);
       logger(runtime).info?.(
