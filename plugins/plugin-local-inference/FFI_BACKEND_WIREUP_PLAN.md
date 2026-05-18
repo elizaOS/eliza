@@ -17,17 +17,33 @@ This doc describes the safe, incremental path to close that gap.
 
 - `backend-selector.ts` returns `"ffi-streaming"` on desktop when
   `ffiSupported` is true, with `ELIZA_INFERENCE_BACKEND=http` as opt-out.
-- `ffi-streaming-runner.ts` is fully implemented but unused outside tests.
+- `ffi-streaming-runner.ts` is fully implemented. Its constructor now
+  takes a **narrow `LlmStreamingBinding`** (services/llm-streaming-binding.ts)
+  instead of the full `ElizaInferenceFfi`, so both libelizainference (via
+  `wrapElizaInferenceFfi`) and a future desktop libllama+shim adapter can
+  drive it.
 - `runtime-dispatcher.ts` exposes `dispatchGenerate()` that already speaks the
   `selectBackend()` return type — also unused outside tests.
+- `mlx-server.ts` has been **deleted outright** (commit on this branch).
+  The 4 stub exports had zero non-self importers.
 - The `dflash-server.ts` subprocess+HTTP path no longer carries the OmniVoice
-  TTS routes (P2 consolidation work) and the `mlx_lm.server` subprocess+HTTP
-  path is stubbed to a throw (P1).
+  TTS routes (P2 consolidation work). Its file header now carries a
+  DEPRECATION NOTICE.
+- **Engine.ts dispatcher refactor done.** All 16 direct
+  `dflashLlamaServer.X(...)` call sites in engine.ts now route through
+  `this.dispatcher.X(...)`. The `LocalInferenceBackend` interface gained
+  10 optional methods (generateWithUsage, describeImage, persistConversationKv,
+  restoreConversationKv, prewarmConversation, resizeParallel,
+  restartWithoutDrafter, parallelSlots, drafterEnabled,
+  loadedDrafterModelPath, currentMmprojPath, currentRuntimeLoadConfig).
+  `BackendDispatcher` adds matching forwarders that throw actionable
+  errors when the active backend doesn't implement them. After this
+  refactor, the only production reference to `dflashLlamaServer` in
+  engine.ts is the dispatcher constructor.
 - `plugins/plugin-local-inference/src/services/ffi-streaming-backend.ts` —
   scaffolding class implementing `LocalInferenceBackend`, takes a
   `FfiBackendRuntime` constructor dependency. **Not yet constructed from
-  `engine.ts`** (the `FfiBackendRuntime` provider doesn't exist in production
-  yet).
+  `engine.ts`** (the desktop adapter hasn't been written yet).
 - `BackendDispatcher` accepts optional `ffiStreaming` + `probeFfiActive`
   constructor params — when both are supplied, the dispatcher routes the
   `"llama-server"` decision through the FFI backend instead of the subprocess.

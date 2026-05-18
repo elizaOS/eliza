@@ -9,12 +9,15 @@
  * driven by the v2 verifier-callback registration so callers don't see a
  * different event stream when they swap backends.
  *
- * This file deliberately does not own the FFI context — the
- * `ElizaInferenceFfi` handle and its `ElizaInferenceContextHandle` live
- * in the voice lifecycle service. The runner takes both as constructor
- * arguments so it can be unit-tested with a mocked FFI surface and so a
- * single FFI context can host concurrent generation sessions (one per
- * pinned slot).
+ * This file deliberately does not own the FFI context or the binding
+ * itself. It takes a narrow `LlmStreamingBinding` (see
+ * `services/llm-streaming-binding.ts`) + an opaque `LlmCtxHandle` as
+ * constructor arguments — that way it can be driven by libelizainference
+ * (via `wrapElizaInferenceFfi`) OR a future desktop libllama+shim
+ * adapter (Step B of FFI_BACKEND_WIREUP_PLAN.md) without dragging in
+ * TTS/ASR surfaces. A single context can host concurrent generation
+ * sessions (one per pinned slot); the runner serialises with
+ * `slotInFlight`.
  *
  * Single-flight: same lock pattern as the HTTP server (`slotInFlight`
  * map keyed by slot id, slot id `-1` unlocked). Two concurrent generates
@@ -25,8 +28,10 @@
 import { performance } from "node:perf_hooks";
 
 import type {
-	ElizaInferenceContextHandle,
-	ElizaInferenceFfi,
+	LlmCtxHandle,
+	LlmStreamingBinding,
+} from "./llm-streaming-binding";
+import type {
 	LlmStreamHandle,
 	LlmStreamStep,
 } from "./voice/ffi-bindings";
@@ -77,9 +82,15 @@ const DEFAULT_MAX_TEXT_BYTES = 1024;
 export class FfiStreamingRunner {
 	private readonly slotInFlight = new Map<number, Promise<void>>();
 
+	/**
+	 * Constructor takes the narrow `LlmStreamingBinding` (see
+	 * `services/llm-streaming-binding.ts`) so both libelizainference (via
+	 * `wrapElizaInferenceFfi`) and a future desktop libllama adapter can
+	 * satisfy it. The runner never touches TTS/ASR/mmap surfaces.
+	 */
 	constructor(
-		private readonly ffi: ElizaInferenceFfi,
-		private readonly ctx: ElizaInferenceContextHandle,
+		private readonly ffi: LlmStreamingBinding,
+		private readonly ctx: LlmCtxHandle,
 	) {}
 
 	/**

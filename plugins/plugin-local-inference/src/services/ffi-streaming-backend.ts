@@ -35,32 +35,34 @@
  */
 
 import type {
+	LlmCtxHandle,
+	LlmStreamingBinding,
+} from "./llm-streaming-binding";
+import type {
 	BackendPlan,
 	GenerateArgs,
 	GenerateResult,
 	LocalInferenceBackend,
 } from "./backend";
 import type { FfiStreamingRunner } from "./ffi-streaming-runner";
-import type {
-	ElizaInferenceContextHandle,
-	ElizaInferenceFfi,
-} from "./voice/ffi-bindings";
 
 /**
- * Constructor-injected adapter that resolves the FFI context, runner, and
+ * Constructor-injected adapter that resolves the FFI binding, context, and
  * tokenizer for a given load. Two responsibilities:
  *
  *   1. Decide whether the FFI path is viable on the current binding
- *      (`supported()`). Mirror of `llmStreamSupported()` plus any
- *      higher-level constraints (e.g. the loaded `libelizainference`
- *      version exports the required symbols).
+ *      (`supported()`). Mirrors `LlmStreamingBinding.llmStreamSupported()`
+ *      plus any higher-level constraints (e.g. dylib path exists, build
+ *      target matches the bundle's required kernels).
  *   2. Lifecycle: `acquire(plan)` returns the FFI runner ready for
  *      `generate()` against the requested model, plus a tokenizer that
  *      matches that model's vocab. `release()` tears everything down.
  *
- * Whether the runtime owns its own FFI context or borrows the voice
- * lifecycle's is an open question — see the wire-up plan, section "FFI
- * context ownership". Either implementation satisfies this interface.
+ * Two production implementations are expected:
+ *   - libelizainference path → wraps `ElizaInferenceFfi` via
+ *     `wrapElizaInferenceFfi()` from `services/llm-streaming-binding.ts`.
+ *   - desktop libllama+shim path → mirrors the AOSP adapter pattern.
+ *     Pending — see `FFI_BACKEND_WIREUP_PLAN.md` Step B.
  */
 export interface FfiBackendRuntime {
 	supported(): boolean;
@@ -73,8 +75,8 @@ export interface FfiBackendRuntime {
  * specific loaded model.
  */
 export interface FfiBackendSession {
-	readonly ffi: ElizaInferenceFfi;
-	readonly ctx: ElizaInferenceContextHandle;
+	readonly binding: LlmStreamingBinding;
+	readonly ctx: LlmCtxHandle;
 	readonly runner: FfiStreamingRunner;
 	/**
 	 * Tokenize a prompt string into model token ids using the loaded model's
@@ -85,8 +87,8 @@ export interface FfiBackendSession {
 	readonly tokenize: (prompt: string) => Int32Array;
 	/**
 	 * Drafter GGUF path for speculative decoding, when the bundle ships one
-	 * and the loaded `libelizainference` supports DFlash. `null` disables
-	 * speculative decoding for this session.
+	 * and the loaded binding supports DFlash. `null` disables speculative
+	 * decoding for this session.
 	 */
 	readonly drafterPath: string | null;
 }

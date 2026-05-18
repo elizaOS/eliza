@@ -15,11 +15,10 @@ import {
 	type InferenceStreamEvent,
 } from "../runtime-dispatcher";
 import type {
-	ElizaInferenceContextHandle,
-	ElizaInferenceFfi,
-	LlmStreamHandle,
-	LlmStreamStep,
-} from "../voice/ffi-bindings";
+	LlmCtxHandle,
+	LlmStreamingBinding,
+} from "../llm-streaming-binding";
+import type { LlmStreamHandle, LlmStreamStep } from "../voice/ffi-bindings";
 
 const FFI_STEPS: LlmStreamStep[] = [
 	{
@@ -48,17 +47,7 @@ function makeFfiRunner(steps: LlmStreamStep[]): FfiStreamingRunner {
 		idx += 1;
 		return step;
 	};
-	const ffi = {
-		libraryPath: "/fake",
-		libraryAbiVersion: "3",
-		create: vi.fn(),
-		destroy: vi.fn(),
-		mmapAcquire: vi.fn(),
-		mmapEvict: vi.fn(),
-		ttsSynthesize: vi.fn().mockReturnValue(0),
-		asrTranscribe: vi.fn().mockReturnValue(""),
-		ttsStreamSupported: () => false,
-		ttsSynthesizeStream: vi.fn(),
+	const ffi: LlmStreamingBinding = {
 		llmStreamSupported: () => true,
 		llmStreamOpen: vi.fn().mockReturnValue(1n as LlmStreamHandle),
 		llmStreamPrefill: vi.fn(),
@@ -67,9 +56,8 @@ function makeFfiRunner(steps: LlmStreamStep[]): FfiStreamingRunner {
 		llmStreamSaveSlot: vi.fn(),
 		llmStreamRestoreSlot: vi.fn(),
 		llmStreamClose: vi.fn(),
-		close: vi.fn(),
-	} as unknown as ElizaInferenceFfi;
-	const ctx: ElizaInferenceContextHandle = 1n;
+	};
+	const ctx: LlmCtxHandle = 1n;
 	return new FfiStreamingRunner(ffi, ctx);
 }
 
