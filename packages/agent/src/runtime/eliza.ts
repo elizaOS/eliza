@@ -3788,6 +3788,20 @@ export async function startEliza(
       );
     }
 
+    try {
+      const { registerE2BSatelliteCapabilityRouterIfEnabled } = await import(
+        "../services/e2b-capability-router.ts"
+      );
+      const result = await registerE2BSatelliteCapabilityRouterIfEnabled(runtime);
+      if (result.registered) {
+        logger.info("[eliza] E2B Satellite runner registered");
+      }
+    } catch (err) {
+      logger.warn(
+        `[eliza] E2B Satellite runner registration failed: ${formatError(err)}`,
+      );
+    }
+
     // 8. Initialize the runtime (registers remaining plugins, starts services)
     assertPersistentDatabaseRequired(runtime);
     await runtime.initialize();
@@ -4222,6 +4236,14 @@ export async function startEliza(
               "../services/connector-setup-service.ts"
             );
             await newRuntime.registerService(CSSReload);
+          } catch {
+            // non-fatal
+          }
+          try {
+            const { registerE2BSatelliteCapabilityRouterIfEnabled } = await import(
+              "../services/e2b-capability-router.ts"
+            );
+            await registerE2BSatelliteCapabilityRouterIfEnabled(newRuntime);
           } catch {
             // non-fatal
           }

@@ -25,6 +25,7 @@ import {
 
 export type ShellSandboxBackend =
   | "host"
+  | "capability-router"
   | "docker"
   | "apple-container"
   | "wsl2"
@@ -220,7 +221,7 @@ async function runThroughCapabilityRouter(
       stderr: "",
       durationMs: Date.now() - start,
       timedOut: result.timedOut,
-      sandbox: "host",
+      sandbox: "capability-router",
     };
   } catch (error) {
     if (
@@ -252,6 +253,9 @@ export async function runShell(
 ): Promise<ShellResult> {
   const mode = resolveRuntimeExecutionMode(runtime);
 
+  const routed = await runThroughCapabilityRouter(runtime, opts);
+  if (routed) return routed;
+
   if (mode === "cloud") {
     throw new Error("Local shell execution disabled in cloud mode.");
   }
@@ -267,9 +271,6 @@ export async function runShell(
   if (missingTool) {
     throw new Error(missingToolMessage(missingTool));
   }
-
-  const routed = await runThroughCapabilityRouter(runtime, opts);
-  if (routed) return routed;
 
   if (mode === "local-safe") {
     if (process.platform === "win32") {
