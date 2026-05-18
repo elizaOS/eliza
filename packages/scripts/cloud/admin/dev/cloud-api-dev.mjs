@@ -145,7 +145,9 @@ async function main() {
   );
 
   const wranglerArgs =
-    args.length > 0 ? args : ["dev", "--port", apiPort, "--local"];
+    args.length > 0
+      ? args
+      : ["dev", "--ip", "127.0.0.1", "--port", apiPort, "--local"];
 
   // Cloud-e2e harness (NODE_ENV=test + CLOUD_E2E=1) runs wrangler under Node
   // to avoid bun-runtime incompatibilities (wrangler's InspectorProxyWorker

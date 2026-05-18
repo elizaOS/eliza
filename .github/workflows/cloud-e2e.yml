@@ -79,3 +79,4 @@ jobs:
             packages/cloud-e2e/.logs
           retention-days: 7
           if-no-files-found: ignore
+          include-hidden-files: true
