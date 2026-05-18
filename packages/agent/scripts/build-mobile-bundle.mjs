@@ -523,10 +523,17 @@ const exactMobileStubPlugin = {
         "@elizaos/plugin-local-inference",
         path.join(stubsDir, "null-plugin.cjs"),
       ],
+      [
+        "@elizaos/plugin-local-inference/runtime/embedding-presets",
+        path.join(stubsDir, "embedding-presets.cjs"),
+      ],
       ["e2b", path.join(stubsDir, "null-plugin.cjs")],
     ]);
     build.onResolve(
-      { filter: /^(?:@elizaos\/plugin-local-inference|e2b)$/ },
+      {
+        filter:
+          /^(?:@elizaos\/plugin-local-inference(?:\/runtime\/embedding-presets)?|e2b)$/,
+      },
       (args) => {
         return { path: exactStubs.get(args.path), namespace: "file" };
       },
