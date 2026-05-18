@@ -39,9 +39,12 @@ jobs:
       # in a Flathub submission. Non-fatal for now — the manifest still
       # uses `npm install -g` over the build-time network share.
       - name: Install flatpak-node-generator
+        id: install-fng
+        continue-on-error: true
         run: pipx install flatpak-node-generator || pip install --user flatpak-node-generator
 
       - name: Generate offline node sources
+        if: steps.install-fng.outcome == 'success'
         id: gen-sources
         continue-on-error: true
         working-directory: packages/app-core/packaging/flatpak
