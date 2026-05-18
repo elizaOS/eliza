@@ -4,6 +4,7 @@
 	"compilerOptions": {
 		"outDir": "./dist",
 		"rootDir": "../../",
+		"ignoreDeprecations": "5.0",
 		"sourceMap": false,
 		"inlineSourceMap": false,
 		"typeRoots": [
