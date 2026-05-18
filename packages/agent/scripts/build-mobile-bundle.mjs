@@ -515,6 +515,24 @@ const stubResolverPlugin = {
   },
 };
 
+const exactMobileStubPlugin = {
+  name: "eliza-mobile-exact-stubs",
+  setup(build) {
+    const exactStubs = new Map([
+      [
+        "@elizaos/plugin-local-inference",
+        path.join(stubsDir, "null-plugin.cjs"),
+      ],
+    ]);
+    build.onResolve(
+      { filter: /^@elizaos\/plugin-local-inference$/ },
+      (args) => {
+        return { path: exactStubs.get(args.path), namespace: "file" };
+      },
+    );
+  },
+};
+
 const iosFsSandboxPlugin = {
   name: "eliza-ios-fs-sandbox-proxy",
   setup(build) {
@@ -1337,6 +1355,7 @@ const buildResult = await Bun.build({
     stubCssPlugin,
     dedupePlugin,
     nativeCapacitorPlugin,
+    exactMobileStubPlugin,
     workspaceSrcFallbackPlugin,
     stripStaleJsArtifactsPlugin,
     stubResolverPlugin,
