@@ -218,3 +218,207 @@ describe("AcpService.findResumableSessionByLabel", () => {
     });
   });
 });
+
+describe("AcpService.resumeOrphanedBusySessions", () => {
+  async function withSessionState(
+    fn: (acpxStateRoot: string) => Promise<void>,
+  ) {
+    const root = await mkdtemp(join(tmpdir(), "acpx-test-"));
+    await mkdir(join(root, "sessions"), { recursive: true });
+    await fn(root);
+  }
+  async function writeStateFile(root: string, acpxSessionId: string) {
+    await writeFile(
+      join(root, "sessions", `${acpxSessionId}.stream.ndjson`),
+      "",
+    );
+  }
+  function pointStateRootAt(service: AcpService, root: string) {
+    Object.defineProperty(service, "acpxStateRoot", {
+      value: () => root,
+      writable: true,
+      configurable: true,
+    });
+  }
+  function stubSendPrompt(service: AcpService) {
+    const calls: Array<{ sessionId: string; text: string }> = [];
+    const stub = vi.fn(async (sessionId: string, text: string) => {
+      calls.push({ sessionId, text });
+      return {
+        sessionId,
+        response: "",
+        finalText: "",
+        stopReason: "end_turn" as const,
+        durationMs: 0,
+        exitCode: 0,
+      };
+    });
+    Object.defineProperty(service, "sendPrompt", {
+      value: stub,
+      writable: true,
+      configurable: true,
+    });
+    return calls;
+  }
+
+  it("resumes sessions in busy/tool_running/running with intact state", async () => {
+    await withSessionState(async (root) => {
+      const service = new AcpService(runtime());
+      pointStateRootAt(service, root);
+      const calls = stubSendPrompt(service);
+      const store = getStore(service);
+      await writeStateFile(root, "acpx-busy");
+      await writeStateFile(root, "acpx-tool");
+      await writeStateFile(root, "acpx-run");
+      await store.create(
+        baseSession({
+          id: "s-busy",
+          status: "busy",
+          acpxSessionId: "acpx-busy",
+        }),
+      );
+      await store.create(
+        baseSession({
+          id: "s-tool",
+          status: "tool_running",
+          acpxSessionId: "acpx-tool",
+        }),
+      );
+      await store.create(
+        baseSession({
+          id: "s-run",
+          status: "running",
+          acpxSessionId: "acpx-run",
+        }),
+      );
+
+      const result = await service.resumeOrphanedBusySessions();
+      expect(result.resumed).toBe(3);
+      expect(result.skipped).toBe(0);
+      expect(calls.map((c) => c.sessionId).sort()).toEqual([
+        "s-busy",
+        "s-run",
+        "s-tool",
+      ]);
+      expect(calls[0]?.text).toMatch(/previous turn was interrupted/);
+    });
+  });
+
+  it("skips idle sessions (ready/blocked/authenticating)", async () => {
+    await withSessionState(async (root) => {
+      const service = new AcpService(runtime());
+      pointStateRootAt(service, root);
+      const calls = stubSendPrompt(service);
+      const store = getStore(service);
+      await writeStateFile(root, "acpx-ready");
+      await writeStateFile(root, "acpx-blocked");
+      await writeStateFile(root, "acpx-auth");
+      await store.create(
+        baseSession({
+          id: "s-ready",
+          status: "ready",
+          acpxSessionId: "acpx-ready",
+        }),
+      );
+      await store.create(
+        baseSession({
+          id: "s-blocked",
+          status: "blocked",
+          acpxSessionId: "acpx-blocked",
+        }),
+      );
+      await store.create(
+        baseSession({
+          id: "s-auth",
+          status: "authenticating",
+          acpxSessionId: "acpx-auth",
+        }),
+      );
+
+      const result = await service.resumeOrphanedBusySessions();
+      expect(result.resumed).toBe(0);
+      expect(calls).toHaveLength(0);
+    });
+  });
+
+  it("skips terminal sessions (stopped/errored/cancelled/completed)", async () => {
+    await withSessionState(async (root) => {
+      const service = new AcpService(runtime());
+      pointStateRootAt(service, root);
+      const calls = stubSendPrompt(service);
+      const store = getStore(service);
+      await writeStateFile(root, "acpx-stopped");
+      await writeStateFile(root, "acpx-errored");
+      await store.create(
+        baseSession({
+          id: "s-stopped",
+          status: "stopped",
+          acpxSessionId: "acpx-stopped",
+        }),
+      );
+      await store.create(
+        baseSession({
+          id: "s-errored",
+          status: "errored",
+          acpxSessionId: "acpx-errored",
+        }),
+      );
+
+      const result = await service.resumeOrphanedBusySessions();
+      expect(result.resumed).toBe(0);
+      expect(calls).toHaveLength(0);
+    });
+  });
+
+  it("skips busy sessions missing acpxSessionId", async () => {
+    await withSessionState(async (root) => {
+      const service = new AcpService(runtime());
+      pointStateRootAt(service, root);
+      const calls = stubSendPrompt(service);
+      const store = getStore(service);
+      const noAcpxId = baseSession({
+        id: "s-no-acpx",
+        status: "busy",
+      });
+      delete (noAcpxId as Partial<SessionInfo>).acpxSessionId;
+      await store.create(noAcpxId);
+
+      const result = await service.resumeOrphanedBusySessions();
+      expect(result.resumed).toBe(0);
+      expect(result.skipped).toBe(1);
+      expect(calls).toHaveLength(0);
+    });
+  });
+
+  it("skips busy sessions whose acpx state file is missing", async () => {
+    await withSessionState(async (root) => {
+      const service = new AcpService(runtime());
+      pointStateRootAt(service, root);
+      const calls = stubSendPrompt(service);
+      const store = getStore(service);
+      await store.create(
+        baseSession({
+          id: "s-no-state",
+          status: "busy",
+          acpxSessionId: "acpx-missing",
+        }),
+      );
+
+      const result = await service.resumeOrphanedBusySessions();
+      expect(result.resumed).toBe(0);
+      expect(result.skipped).toBe(1);
+      expect(calls).toHaveLength(0);
+    });
+  });
+
+  it("returns zeros when there are no sessions at all", async () => {
+    await withSessionState(async (root) => {
+      const service = new AcpService(runtime());
+      pointStateRootAt(service, root);
+      stubSendPrompt(service);
+
+      const result = await service.resumeOrphanedBusySessions();
+      expect(result).toEqual({ resumed: 0, skipped: 0 });
+    });
+  });
+});

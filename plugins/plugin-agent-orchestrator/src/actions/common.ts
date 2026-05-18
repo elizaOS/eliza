@@ -39,6 +39,10 @@ export interface AcpActionService {
     label: string,
     workdir: string,
   ): Promise<SessionInfo | undefined>;
+  resumeOrphanedBusySessions?(): Promise<{
+    resumed: number;
+    skipped: number;
+  }>;
   resolveAgentType?(
     selection?: Record<string, unknown>,
   ): Promise<string> | string;

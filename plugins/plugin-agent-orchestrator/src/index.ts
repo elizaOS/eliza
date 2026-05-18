@@ -358,6 +358,19 @@ export function createAgentOrchestratorPlugin(): Plugin {
           ),
         ).then(() => {
           disposeProgressHook = registerProgressHook(runtime);
+          // Orphan recovery runs AFTER the progress hook so resumed-session
+          // events (tool_running / task_complete / heartbeat) flow into the
+          // hook's listener instead of being dropped on the floor.
+          const acp = runtime.getService<AcpService>(AcpService.serviceType);
+          void acp?.resumeOrphanedBusySessions?.().catch((err: unknown) =>
+            runtime.logger?.warn?.(
+              {
+                src: "@elizaos/plugin-agent-orchestrator",
+                err: err instanceof Error ? err.message : String(err),
+              },
+              "resumeOrphanedBusySessions failed",
+            ),
+          );
         });
       }, 0);
     },

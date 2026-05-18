@@ -92,6 +92,17 @@ const ACP_REVERSE_ORPHAN_MAX_AGE_MS = 24 * 60 * 60_000;
 // to errored. 90s covers tsx hot-reload latency + acpx subprocess flush
 // cadence; well below normal sub-agent silence stretches.
 const RECONCILE_LIVE_WINDOW_MS = 90_000;
+// Statuses where the sub-agent was actively working when the restart hit —
+// these are the resume candidates. Idle states (`ready`, `blocked`,
+// `authenticating`) mean the subprocess was waiting for input, not running,
+// so there's nothing to resume.
+const ORPHAN_RESUME_STATUSES: ReadonlySet<string> = new Set([
+  "busy",
+  "tool_running",
+  "running",
+]);
+const ORPHAN_RESUME_PROMPT =
+  "[System] Your previous turn was interrupted by a runtime restart. Continue where you left off on the original task and report results as usual.";
 const DEFAULT_AGENTS: AgentType[] = ["codex", "claude", "opencode"];
 const DENY_ENV_PATTERNS = [
   /DISCORD.*TOKEN/i,
@@ -666,6 +677,56 @@ export class AcpService extends Service {
     await this.store.update(sessionId, {
       metadata: { ...(session.metadata ?? {}), ...patch },
     });
+  }
+
+  // Proactive orphan recovery. Sessions whose status was `busy` /
+  // `tool_running` / `running` when the runtime restarted retained that
+  // status in the store but lost their subprocess. Fire a synthetic resume
+  // prompt at each one (background) so claude-agent-sdk reloads its stream
+  // and picks the work back up without waiting for new user input. Mirrors
+  // moltbot's recoverOrphanedSubagentSessions pattern.
+  async resumeOrphanedBusySessions(): Promise<{
+    resumed: number;
+    skipped: number;
+  }> {
+    if (typeof this.sendPrompt !== "function") {
+      return { resumed: 0, skipped: 0 };
+    }
+    const sessions = await this.store.list().catch(() => [] as SessionInfo[]);
+    let resumed = 0;
+    let skipped = 0;
+    for (const session of sessions) {
+      if (!ORPHAN_RESUME_STATUSES.has(session.status)) continue;
+      if (!session.acpxSessionId) {
+        skipped += 1;
+        continue;
+      }
+      const stateOk = await this.hasAcpxSessionState(session.acpxSessionId);
+      if (!stateOk) {
+        skipped += 1;
+        continue;
+      }
+      this.log("info", "resuming orphaned sub-agent after restart", {
+        sessionId: session.id.slice(0, 8),
+        status: session.status,
+        label:
+          typeof session.metadata?.label === "string"
+            ? session.metadata.label
+            : undefined,
+      });
+      void this.sendPrompt(session.id, ORPHAN_RESUME_PROMPT).catch(
+        (err: unknown) =>
+          this.log("warn", "orphan resume sendPrompt failed", {
+            sessionId: session.id.slice(0, 8),
+            err: err instanceof Error ? err.message : String(err),
+          }),
+      );
+      resumed += 1;
+    }
+    if (resumed > 0 || skipped > 0) {
+      this.log("info", "orphan resume scan complete", { resumed, skipped });
+    }
+    return { resumed, skipped };
   }
 
   // Returns a session whose label + workdir match the caller AND whose acpx
