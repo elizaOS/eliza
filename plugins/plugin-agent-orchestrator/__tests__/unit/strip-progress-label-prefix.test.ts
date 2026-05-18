@@ -18,9 +18,7 @@ describe("stripProgressLabelPrefix", () => {
     // Earlier revisions used `[💬⏳⚠️⏸️…]` which only matches the first
     // codepoint (U+26A0), leaving U+FE0F + the bracket behind. The regex
     // MUST use alternation so the full grapheme is consumed.
-    expect(stripProgressLabelPrefix("⚠️ [foo] auth error")).toBe(
-      "⚠️ auth error",
-    );
+    expect(stripProgressLabelPrefix("⚠️ [foo] auth error")).toBe("⚠️ auth error");
   });
 
   it("strips ⏸️ (variation-selector composite)", () => {
