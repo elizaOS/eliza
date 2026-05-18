@@ -3171,8 +3171,13 @@ export async function startEliza(
   // routing layer, then write the resolved value into process.env so
   // the synchronous runtime.getSetting fast path picks it up. Idempotent;
   // safe to run multiple times. Opt-out via
-  // ELIZA_DISABLE_VAULT_PROFILE_RESOLVER=1.
-  if (process.env.ELIZA_DISABLE_VAULT_PROFILE_RESOLVER !== "1") {
+  // ELIZA_DISABLE_VAULT_PROFILE_RESOLVER=1. Auto-disabled in cloud containers
+  // (ELIZA_CLOUD_PROVISIONED=1) — vault PGlite init hangs in the slim Docker
+  // image; see the boot-time vault hydration block earlier in this function.
+  if (
+    process.env.ELIZA_DISABLE_VAULT_PROFILE_RESOLVER !== "1" &&
+    process.env.ELIZA_CLOUD_PROVISIONED !== "1"
+  ) {
     try {
       const { sharedVault } = await importAppCoreRuntime();
       const { applyVaultProfilesForAgent } = await import(
@@ -3191,7 +3196,12 @@ export async function startEliza(
   // the *user* wallet; per-agent wallets live inside the encrypted vault and
   // are surfaced separately in the in-app browser. Idempotent — existing
   // wallets are preserved. Opt-out via ELIZA_DISABLE_AGENT_WALLET_BOOTSTRAP=1.
-  if (process.env.ELIZA_DISABLE_AGENT_WALLET_BOOTSTRAP !== "1") {
+  // Auto-disabled in cloud containers (ELIZA_CLOUD_PROVISIONED=1) — same
+  // PGlite vault init hang as the earlier vault hydration block.
+  if (
+    process.env.ELIZA_DISABLE_AGENT_WALLET_BOOTSTRAP !== "1" &&
+    process.env.ELIZA_CLOUD_PROVISIONED !== "1"
+  ) {
     try {
       const { sharedVault } = await importAppCoreRuntime();
       const { ensureAgentWallets } = await import("./agent-wallets.ts");
