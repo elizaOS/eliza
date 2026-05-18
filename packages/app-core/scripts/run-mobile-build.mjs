@@ -1345,6 +1345,55 @@ function patchLlamaCppCapacitorGradle() {
   );
 }
 
+export function injectAndroidBackgroundRunnerAarFlatDir(content) {
+  if (/flatDir\s*\{[\s\S]*?dirs[\s\S]*?['"]libs['"][\s\S]*?\}/.test(content)) {
+    return content;
+  }
+  if (/flatDir\s*\{\s*\n\s*dirs\s+/.test(content)) {
+    return content.replace(
+      /(flatDir\s*\{\s*\n\s*dirs\s+)/,
+      "$1'libs',\n             ",
+    );
+  }
+  return content.replace(
+    /\nrepositories\s*\{\s*\n/,
+    "\nrepositories {\n    flatDir { dirs 'libs' }\n",
+  );
+}
+
+function stageBackgroundRunnerAndroidJsEngineAar() {
+  const settingsPath = path.join(androidDir, "capacitor.settings.gradle");
+  if (!fs.existsSync(settingsPath)) return;
+  const settings = fs.readFileSync(settingsPath, "utf8");
+  if (!settings.includes(":capacitor-background-runner")) return;
+
+  const aarName = "android-js-engine-release.aar";
+  const source = [
+    "@capacitor/background-runner",
+    "@capacitor-community/background-runner",
+  ]
+    .map((pkgName) => resolvePackageAbsolutePath(pkgName))
+    .filter(Boolean)
+    .map((pkgRoot) =>
+      path.join(pkgRoot, "android", "src", "main", "libs", aarName),
+    )
+    .find((candidate) => fs.existsSync(candidate));
+
+  if (!source) {
+    throw new Error(
+      `[mobile-build] ${aarName} not found in @capacitor/background-runner; reinstall dependencies or check the package tarball.`,
+    );
+  }
+
+  const targetDir = path.join(androidDir, "app", "libs");
+  const target = path.join(targetDir, aarName);
+  fs.mkdirSync(targetDir, { recursive: true });
+  fs.copyFileSync(source, target);
+  console.log(
+    `[mobile-build] Staged Background Runner JS engine AAR: ${path.relative(repoRoot, target)}`,
+  );
+}
+
 function patchGradleFileForAgp9(filePath, label) {
   if (!fs.existsSync(filePath)) return;
   const current = fs.readFileSync(filePath, "utf8");
@@ -3097,6 +3146,7 @@ function patchAndroidGradle() {
     patched = injectNativeLibLegacyPackaging(patched);
     patched = injectAospAssetThinning(patched);
     patched = injectCopyForkLlamaLibTask(patched);
+    patched = injectAndroidBackgroundRunnerAarFlatDir(patched);
     if (patched !== current) {
       fs.writeFileSync(appGradlePath, patched, "utf8");
       console.log(
@@ -3108,6 +3158,7 @@ function patchAndroidGradle() {
   patchOfficialCapacitorGradleForAgp9();
   patchLlamaCppCapacitorGradle();
   patchNativePluginGradleForAgp9();
+  stageBackgroundRunnerAndroidJsEngineAar();
 
   const stringsPath = path.join(
     androidDir,
