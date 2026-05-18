@@ -123,7 +123,7 @@ export default function AgentDetailPage() {
             to="/dashboard/containers"
             className="group flex items-center gap-2 text-sm text-white/50 hover:text-white transition-colors"
           >
-            <div className="flex items-center justify-center w-7 h-7 border border-white/10 bg-black/40 group-hover:border-[#FF5800]/40 transition-colors">
+            <div className="flex items-center justify-center w-7 h-7 border border-white/10 bg-black/40 group-hover:border-[var(--brand-orange)]/40 transition-colors">
               <ArrowLeft className="h-3.5 w-3.5" />
             </div>
             <span>Containers</span>
@@ -136,8 +136,8 @@ export default function AgentDetailPage() {
 
         <div className="space-y-4">
           <div className="flex items-start gap-4">
-            <div className="flex items-center justify-center w-12 h-12 border border-[#FF5800]/25 bg-[#FF5800]/10 shrink-0">
-              <Cloud className="h-6 w-6 text-[#FF5800]" />
+            <div className="flex items-center justify-center w-12 h-12 border border-[var(--brand-orange)]/25 bg-[var(--brand-orange)]/10 shrink-0">
+              <Cloud className="h-6 w-6 text-[var(--brand-orange)]" />
             </div>
             <div className="min-w-0 space-y-1.5">
               <div className="flex flex-wrap items-center gap-2.5">
@@ -241,7 +241,7 @@ export default function AgentDetailPage() {
         {adminDetails && isDockerBacked && (
           <section className="space-y-3">
             <div className="flex items-center gap-2">
-              <span className="inline-block size-2 bg-[#FF5800]" />
+              <span className="inline-block size-2 bg-[var(--brand-orange)]" />
               <p className="font-mono text-[11px] uppercase tracking-[0.32em] text-white/60">
                 Infrastructure
               </p>
@@ -299,7 +299,7 @@ export default function AgentDetailPage() {
         {adminDetails?.sshCommand && (
           <section className="space-y-3">
             <div className="flex items-center gap-2">
-              <span className="inline-block size-2 bg-[#FF5800]" />
+              <span className="inline-block size-2 bg-[var(--brand-orange)]" />
               <p className="font-mono text-[11px] uppercase tracking-[0.32em] text-white/60">
                 SSH Access
               </p>
@@ -333,7 +333,7 @@ export default function AgentDetailPage() {
         {adminDetails && !isDockerBacked && agent.bridgeUrl && (
           <section className="space-y-3">
             <div className="flex items-center gap-2">
-              <span className="inline-block size-2 bg-[#FF5800]" />
+              <span className="inline-block size-2 bg-[var(--brand-orange)]" />
               <p className="font-mono text-[11px] uppercase tracking-[0.32em] text-white/60">
                 Sandbox Connection
               </p>
@@ -347,7 +347,7 @@ export default function AgentDetailPage() {
                 href={agent.bridgeUrl}
                 target="_blank"
                 rel="noopener noreferrer"
-                className="text-sm text-[#FF5800] hover:text-[#FF5800]/70 flex items-center gap-1 transition-colors font-mono break-all"
+                className="text-sm text-[var(--brand-orange)] hover:text-[var(--brand-orange)]/70 flex items-center gap-1 transition-colors font-mono break-all"
               >
                 {agent.bridgeUrl}
                 <ExternalLink className="h-3 w-3 shrink-0" />

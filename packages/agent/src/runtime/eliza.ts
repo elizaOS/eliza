@@ -3068,26 +3068,29 @@ export async function startEliza(
   // module evaluation in the cloud Docker boot path. Manifests as a silent
   // hang at this await call after the node:sqlite experimental warning; PID 1
   // sits in `ep_poll`, no listen, 180s health timeout.
-  if (process.env.ELIZA_CLOUD_PROVISIONED !== "1") try {
-    const accountPool = await importAppCoreRuntime();
-    accountPool.getDefaultAccountPool();
-    await accountPool.applyAccountPoolApiCredentials({
-      activeBackend: resolveServiceRoutingInConfig(
-        config as Record<string, unknown>,
-      )?.llmText?.backend,
-      accountStrategies: (
-        config as Record<string, unknown> & {
-          accountStrategies?: Record<string, unknown>;
-        }
-      ).accountStrategies,
-      serviceRouting: resolveServiceRoutingInConfig(
-        config as Record<string, unknown>,
-      ),
-    });
-    accountPool.startAccountPoolKeepAlive();
-  } catch (err) {
-    logger.debug(`[eliza] Account pool bootstrap skipped: ${formatError(err)}`);
-  }
+  if (process.env.ELIZA_CLOUD_PROVISIONED !== "1")
+    try {
+      const accountPool = await importAppCoreRuntime();
+      accountPool.getDefaultAccountPool();
+      await accountPool.applyAccountPoolApiCredentials({
+        activeBackend: resolveServiceRoutingInConfig(
+          config as Record<string, unknown>,
+        )?.llmText?.backend,
+        accountStrategies: (
+          config as Record<string, unknown> & {
+            accountStrategies?: Record<string, unknown>;
+          }
+        ).accountStrategies,
+        serviceRouting: resolveServiceRoutingInConfig(
+          config as Record<string, unknown>,
+        ),
+      });
+      accountPool.startAccountPoolKeepAlive();
+    } catch (err) {
+      logger.debug(
+        `[eliza] Account pool bootstrap skipped: ${formatError(err)}`,
+      );
+    }
 
   // 2g. Apply subscription-based credentials (Claude Max, Codex Max).
   //     Failure is non-fatal — the agent can still start with other providers.

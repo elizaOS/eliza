@@ -84,7 +84,7 @@ export default function ContainerDetailsPage() {
             className="group flex items-center gap-2 text-sm text-white/70 hover:text-white transition-all duration-200"
             style={{ fontFamily: "var(--font-roboto-mono)" }}
           >
-            <div className="flex items-center justify-center w-8 h-8 rounded-sm border border-white/10 bg-black/40 group-hover:bg-white/5 group-hover:border-[#FF5800]/50 transition-all duration-200">
+            <div className="flex items-center justify-center w-8 h-8 rounded-sm border border-white/10 bg-black/40 group-hover:bg-white/5 group-hover:border-[var(--brand-orange)]/50 transition-all duration-200">
               <ArrowLeft className="h-4 w-4" />
             </div>
             <span className="font-medium">Back to Containers</span>
@@ -110,14 +110,14 @@ export default function ContainerDetailsPage() {
         >
           <div className="relative z-10">
             <div className="flex items-center gap-4">
-              <div className="flex items-center justify-center w-14 h-14 rounded-sm border border-[#FF5800]/30 bg-[#FF5800]/10">
-                <Server className="h-7 w-7 text-[#FF5800]" />
+              <div className="flex items-center justify-center w-14 h-14 rounded-sm border border-[var(--brand-orange)]/30 bg-[var(--brand-orange)]/10">
+                <Server className="h-7 w-7 text-[var(--brand-orange)]" />
               </div>
               <div className="flex-1 min-w-0">
                 <div className="flex items-center gap-2 mb-1">
                   <span
                     className="inline-block w-2 h-2 rounded-full"
-                    style={{ backgroundColor: "#FF5800" }}
+                    style={{ backgroundColor: "var(--brand-orange)" }}
                   />
                   <h1
                     className="text-3xl font-normal tracking-tight text-white truncate"
@@ -256,7 +256,7 @@ export default function ContainerDetailsPage() {
             <div className="flex items-center gap-2 pb-4 border-b border-white/10">
               <span
                 className="inline-block w-2 h-2 rounded-full"
-                style={{ backgroundColor: "#FF5800" }}
+                style={{ backgroundColor: "var(--brand-orange)" }}
               />
               <h2
                 className="text-xl font-normal text-white"
@@ -366,7 +366,7 @@ export default function ContainerDetailsPage() {
                       href={container.load_balancer_url}
                       target="_blank"
                       rel="noopener noreferrer"
-                      className="text-sm text-[#FF5800] hover:text-[#FF5800]/80 flex items-center gap-1 flex-1 transition-colors"
+                      className="text-sm text-[var(--brand-orange)] hover:text-[var(--brand-orange)]/80 flex items-center gap-1 flex-1 transition-colors"
                       style={{ fontFamily: "var(--font-roboto-mono)" }}
                     >
                       {container.load_balancer_url}

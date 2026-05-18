@@ -11,5 +11,7 @@
       "default": "./src/index.ts"
     }
   },
-  "files": ["src"]
+  "files": [
+    "src"
+  ]
 }

@@ -340,7 +340,7 @@ export function ProfileForm({ user }: ProfileFormProps) {
       <div className="relative z-10 space-y-6">
         <div>
           <div className="flex items-center gap-2 mb-2">
-            <User className="h-5 w-5 text-[#FF5800]" />
+            <User className="h-5 w-5 text-[var(--brand-orange)]" />
             <h3 className="text-lg font-bold text-white">
               Profile Information
             </h3>
@@ -445,7 +445,7 @@ export function ProfileForm({ user }: ProfileFormProps) {
               {/* Show preview if pending, otherwise show current avatar */}
               {previewUrl ? (
                 <div className="relative">
-                  <div className="h-24 w-24 rounded-full overflow-hidden ring-2 ring-[#FF5800] ring-offset-2 ring-offset-black/50">
+                  <div className="h-24 w-24 rounded-full overflow-hidden ring-2 ring-[var(--brand-orange)] ring-offset-2 ring-offset-black/50">
                     <Image
                       src={previewUrl}
                       alt="Preview"
@@ -461,7 +461,7 @@ export function ProfileForm({ user }: ProfileFormProps) {
                   </div>
                 </div>
               ) : (
-                <Avatar className="h-24 w-24 ring-2 ring-[#FF5800] ring-offset-2 ring-offset-black/50">
+                <Avatar className="h-24 w-24 ring-2 ring-[var(--brand-orange)] ring-offset-2 ring-offset-black/50">
                   <AvatarImage
                     src={user.avatar || undefined}
                     alt={
@@ -472,7 +472,7 @@ export function ProfileForm({ user }: ProfileFormProps) {
                         : "User")
                     }
                   />
-                  <AvatarFallback className="text-xl bg-[#FF5800]/15">
+                  <AvatarFallback className="text-xl bg-[var(--brand-orange)]/15">
                     {getInitials(user.name, user.email, user.wallet_address)}
                   </AvatarFallback>
                 </Avatar>
@@ -507,7 +507,7 @@ export function ProfileForm({ user }: ProfileFormProps) {
               {previewUrl && pendingFile ? (
                 // Preview mode: Show Save and Cancel buttons
                 <div className="space-y-3">
-                  <div className="flex items-center gap-2 p-3 rounded-sm border border-[#FF5800]/30 bg-[#FF5800]/5">
+                  <div className="flex items-center gap-2 p-3 rounded-sm border border-[var(--brand-orange)]/30 bg-[var(--brand-orange)]/5">
                     <div className="flex-1">
                       <p className="text-sm text-white font-medium truncate">
                         {pendingFile.name}
@@ -560,14 +560,14 @@ export function ProfileForm({ user }: ProfileFormProps) {
                   onDrop={handleDrop}
                   className={`flex items-center justify-center gap-3 p-4 rounded-sm border-2 border-dashed transition-all cursor-pointer w-full bg-transparent ${
                     isDragging
-                      ? "border-[#FF5800] bg-[#FF5800]/10"
-                      : "border-white/20 hover:border-[#FF5800]/50 hover:bg-[#FF5800]/5"
+                      ? "border-[var(--brand-orange)] bg-[var(--brand-orange)]/10"
+                      : "border-white/20 hover:border-[var(--brand-orange)]/50 hover:bg-[var(--brand-orange)]/5"
                   }`}
                 >
                   {isDragging ? (
                     <>
-                      <ImagePlus className="h-5 w-5 text-[#FF5800]" />
-                      <span className="text-sm font-medium text-[#FF5800]">
+                      <ImagePlus className="h-5 w-5 text-[var(--brand-orange)]" />
+                      <span className="text-sm font-medium text-[var(--brand-orange)]">
                         Drop your image here
                       </span>
                     </>
@@ -602,7 +602,7 @@ export function ProfileForm({ user }: ProfileFormProps) {
                 required
                 maxLength={100}
                 disabled={isPending}
-                className="rounded-sm border-white/10 bg-black/40 text-white placeholder:text-white/40 focus:ring-1 focus:ring-[#FF5800] focus:border-[#FF5800]"
+                className="rounded-sm border-white/10 bg-black/40 text-white placeholder:text-white/40 focus:ring-1 focus:ring-[var(--brand-orange)] focus:border-[var(--brand-orange)]"
               />
             </div>
 
@@ -644,7 +644,7 @@ export function ProfileForm({ user }: ProfileFormProps) {
                 defaultValue={user.avatar || ""}
                 placeholder="https://example.com/avatar.jpg"
                 disabled={isPending}
-                className="rounded-sm border-white/10 bg-black/40 text-white placeholder:text-white/40 focus:ring-1 focus:ring-[#FF5800] focus:border-[#FF5800]"
+                className="rounded-sm border-white/10 bg-black/40 text-white placeholder:text-white/40 focus:ring-1 focus:ring-[var(--brand-orange)] focus:border-[var(--brand-orange)]"
               />
               <p className="text-xs text-white/74">
                 Or use the upload button above to add a profile picture.

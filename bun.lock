@@ -234,7 +234,6 @@
         "@elizaos/shared": "workspace:*",
         "@elizaos/shared-brand": "workspace:*",
         "@elizaos/ui": "workspace:*",
-        "@fontsource-variable/open-sans": "^5.2.7",
         "@fontsource/poppins": "^5.2.7",
         "@pixiv/three-vrm": "^3.4.5",
         "llama-cpp-capacitor": "^0.1.5",
@@ -544,7 +543,6 @@
         "@elizaos/steward-session-client": "workspace:*",
         "@elizaos/ui": "workspace:*",
         "@fontsource-variable/inter": "^5.2.8",
-        "@fontsource-variable/open-sans": "^5.2.7",
         "@fontsource/dm-mono": "^5.2.7",
         "@fontsource/poppins": "^5.2.7",
         "@mdx-js/rollup": "^3.1.0",
@@ -1679,7 +1677,6 @@
       "dependencies": {
         "@elizaos/shared-brand": "workspace:*",
         "@elizaos/ui": "workspace:*",
-        "@fontsource-variable/open-sans": "^5.2.7",
         "@fontsource/poppins": "^5.2.7",
         "@radix-ui/react-dropdown-menu": "^2.1.16",
         "@radix-ui/react-slot": "^1.2.4",
@@ -1733,7 +1730,6 @@
         "@elizaos/shared-brand": "workspace:*",
         "@elizaos/steward-session-client": "workspace:*",
         "@elizaos/ui": "workspace:*",
-        "@fontsource-variable/open-sans": "^5.2.7",
         "@fontsource/poppins": "^5.2.7",
         "@stwd/sdk": "^0.8.1",
         "@tailwindcss/vite": "^4",
@@ -1759,7 +1755,6 @@
       "version": "0.1.0",
       "dependencies": {
         "@elizaos/shared-brand": "workspace:*",
-        "@fontsource-variable/open-sans": "^5.2.7",
         "vite": "^8.0.0",
       },
       "devDependencies": {
@@ -1858,7 +1853,6 @@
         "@elizaos/core": "workspace:*",
         "@elizaos/shared": "workspace:*",
         "@elizaos/shared-brand": "workspace:*",
-        "@fontsource-variable/open-sans": "^5.2.7",
         "@fontsource/poppins": "^5.2.7",
         "@radix-ui/react-accordion": "^1.2.12",
         "@radix-ui/react-alert-dialog": "^1.1.15",
@@ -5495,8 +5489,6 @@
     "@floating-ui/utils": ["@floating-ui/utils@0.2.11", "", {}, "sha512-RiB/yIh78pcIxl6lLMG0CgBXAZ2Y0eVHqMPYugu+9U0AeT6YBeiJpf7lbdJNIugFP5SIjwNRgo4DhR1Qxi26Gg=="],
 
     "@fontsource-variable/inter": ["@fontsource-variable/inter@5.2.8", "", {}, "sha512-kOfP2D+ykbcX/P3IFnokOhVRNoTozo5/JxhAIVYLpea/UBmCQ/YWPBfWIDuBImXX/15KH+eKh4xpEUyS2sQQGQ=="],
-
-    "@fontsource-variable/open-sans": ["@fontsource-variable/open-sans@5.2.7", "", {}, "sha512-wzCLm2STuekK9Fz58DiuBnk4GgJpvvVtAU85a4b06ACNG/UsVjQcCvkUd6R/ETlHfsaykCUZamLRvSXg4KtWuA=="],
 
     "@fontsource/dm-mono": ["@fontsource/dm-mono@5.2.7", "", {}, "sha512-Ma1az2atTVgQWuOWwjuxx26p/6A6CU9HBNKq1CFV6YKpKhpswnf9ry9Ql4+T6bTZzkdtSfS6tjJvqZOljVzIFQ=="],
 

@@ -1,8 +1,8 @@
 import { Story, type StoryGroup } from "./Story.tsx";
-import { primitiveStories } from "./stories/primitives.tsx";
+import { analyticsStories } from "./stories/analytics.tsx";
 import { brandStories } from "./stories/brand.tsx";
 import { cloudDashboardStories } from "./stories/cloud-dashboard.tsx";
-import { analyticsStories } from "./stories/analytics.tsx";
+import { primitiveStories } from "./stories/primitives.tsx";
 import { shellFoundationStories } from "./stories/shell-foundation.tsx";
 
 const groups: StoryGroup[] = [
@@ -56,8 +56,9 @@ export function App() {
           <h1>elizaOS UI Catalog</h1>
           <p>
             Brand reference: clouds + Poppins + xs rounding + flat color. xs
-            radius = 4 px max. No glass. Every primitive is rendered three times,
-            once under each theme class so you can spot drift at a glance.
+            radius = 4 px max. No glass. Every primitive is rendered three
+            times, once under each theme class so you can spot drift at a
+            glance.
           </p>
           <div className="gallery-hero-chips">
             <span className="gallery-chip">

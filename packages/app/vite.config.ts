@@ -991,7 +991,13 @@ export default defineConfig({
     react(),
     desktopCorsPlugin(),
     appDevSettingsBannerPlugin(),
-    visualizer({ filename: "dist/stats.html", template: "treemap", gzipSize: true, brotliSize: true, emitFile: false }) as Plugin,
+    visualizer({
+      filename: "dist/stats.html",
+      template: "treemap",
+      gzipSize: true,
+      brotliSize: true,
+      emitFile: false,
+    }) as Plugin,
   ],
   oxc: {
     // Override tsconfig target so generated workspace configs cannot push the

@@ -264,7 +264,7 @@ export function AppAnalytics({ appId }: AppAnalyticsProps) {
   if (isLoading) {
     return (
       <div className="flex items-center justify-center py-12">
-        <Loader2 className="h-8 w-8 animate-spin text-[#FF5800]" />
+        <Loader2 className="h-8 w-8 animate-spin text-[var(--brand-orange)]" />
       </div>
     );
   }
@@ -375,7 +375,7 @@ export function AppAnalytics({ appId }: AppAnalyticsProps) {
 
           <div className="bg-neutral-900 rounded-sm p-4">
             <h3 className="text-sm font-medium text-white mb-4 flex items-center gap-2">
-              <BarChart3 className="h-4 w-4 text-[#FF5800]" />
+              <BarChart3 className="h-4 w-4 text-[var(--brand-orange)]" />
               Requests Over Time
             </h3>
             {chartData.length > 0 ? (
@@ -464,7 +464,7 @@ export function AppAnalytics({ appId }: AppAnalyticsProps) {
         <div className="space-y-4">
           {isLoadingStats ? (
             <div className="flex items-center justify-center py-12">
-              <Loader2 className="h-8 w-8 animate-spin text-[#FF5800]" />
+              <Loader2 className="h-8 w-8 animate-spin text-[var(--brand-orange)]" />
             </div>
           ) : requestStats ? (
             <>
@@ -480,7 +480,7 @@ export function AppAnalytics({ appId }: AppAnalyticsProps) {
                     requestStats.totalRequests -
                     (requestStats.byType?.pageview || 0)
                   ).toLocaleString()}
-                  color="text-[#FF5800]"
+                  color="text-[var(--brand-orange)]"
                 />
                 <MiniStatCard
                   label="Unique Visitors"
@@ -612,7 +612,7 @@ export function AppAnalytics({ appId }: AppAnalyticsProps) {
         <div className="space-y-4">
           {isLoadingStats ? (
             <div className="flex items-center justify-center py-12">
-              <Loader2 className="h-8 w-8 animate-spin text-[#FF5800]" />
+              <Loader2 className="h-8 w-8 animate-spin text-[var(--brand-orange)]" />
             </div>
           ) : (
             <>
@@ -621,7 +621,7 @@ export function AppAnalytics({ appId }: AppAnalyticsProps) {
                   <DashboardStatCard
                     label="Unique IPs"
                     value={requestStats.uniqueIps.toLocaleString()}
-                    icon={<Globe className="h-5 w-5 text-[#FF5800]" />}
+                    icon={<Globe className="h-5 w-5 text-[var(--brand-orange)]" />}
                   />
                   <DashboardStatCard
                     label="Unique Users"
@@ -740,7 +740,7 @@ export function AppAnalytics({ appId }: AppAnalyticsProps) {
 
           {isLoadingLogs ? (
             <div className="flex items-center justify-center py-12">
-              <Loader2 className="h-8 w-8 animate-spin text-[#FF5800]" />
+              <Loader2 className="h-8 w-8 animate-spin text-[var(--brand-orange)]" />
             </div>
           ) : requestLogs.length > 0 ? (
             <>

@@ -50,14 +50,14 @@ import {
   TASK_AUDIT_EVENT,
   type TaskAuditPayload,
 } from "./services/audit.js";
+import { SubAgentRouter } from "./services/sub-agent-router.js";
+import { requireTaskAgentAccess } from "./services/task-policy.js";
+import { detectOrchestratorTerminalSupport } from "./services/terminal-capabilities.js";
 import {
   type AcpToolCall,
   type SessionInfo,
   TERMINAL_SESSION_STATUSES,
 } from "./services/types.js";
-import { SubAgentRouter } from "./services/sub-agent-router.js";
-import { requireTaskAgentAccess } from "./services/task-policy.js";
-import { detectOrchestratorTerminalSupport } from "./services/terminal-capabilities.js";
 import { CodingWorkspaceService } from "./services/workspace-service.js";
 
 // Skip forwarding our own posts back into `acp.sendPrompt` — would echo-loop.

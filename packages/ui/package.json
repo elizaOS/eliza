@@ -225,7 +225,6 @@
     "@elizaos/core": "workspace:*",
     "@elizaos/shared": "workspace:*",
     "@elizaos/shared-brand": "workspace:*",
-    "@fontsource-variable/open-sans": "^5.2.7",
     "@fontsource/poppins": "^5.2.7",
     "@radix-ui/react-accordion": "^1.2.12",
     "@radix-ui/react-alert-dialog": "^1.1.15",

@@ -129,13 +129,13 @@ import {
   TableHeader,
   TableRow,
 } from "@ui-src/components/ui/table.tsx";
-import { TagEditor } from "@ui-src/components/ui/tag-editor.tsx";
 import {
   Tabs,
   TabsContent,
   TabsList,
   TabsTrigger,
 } from "@ui-src/components/ui/tabs.tsx";
+import { TagEditor } from "@ui-src/components/ui/tag-editor.tsx";
 import { Textarea } from "@ui-src/components/ui/textarea.tsx";
 import { Toggle } from "@ui-src/components/ui/toggle.tsx";
 import {
@@ -829,10 +829,7 @@ export const primitiveStories: StoryDefinition[] = [
         <Banner variant="warning" dismissible>
           Cloud quota near limit.
         </Banner>
-        <Banner
-          variant="error"
-          action={<Button size="sm">Retry</Button>}
-        >
+        <Banner variant="error" action={<Button size="sm">Retry</Button>}>
           Failed to load eliza-1.
         </Banner>
       </div>

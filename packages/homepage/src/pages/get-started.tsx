@@ -262,7 +262,7 @@ function ProvisioningChatStep({ onContinue }: { onContinue: () => void }) {
       {isReady && (
         <Button
           onClick={onContinue}
-          className="w-full h-[52px] rounded-sm bg-black text-white font-medium hover:bg-[#FF5800] hover:text-black transition-colors mt-4"
+          className="w-full h-[52px] rounded-sm bg-black text-white font-medium hover:bg-[var(--brand-orange)] hover:text-black transition-colors mt-4"
         >
           <Check className="size-4 mr-2" />
           Continue to dashboard
@@ -862,7 +862,7 @@ export default function GetStartedPage() {
               <div className="w-full flex flex-col gap-3">
                 <animated.button
                   onClick={() => handleMethodSelect("telegram")}
-                  className="w-full h-[72px] bg-white hover:bg-[#FF5800] text-black rounded-sm border border-black transition-colors flex items-center gap-4 px-5 cursor-pointer"
+                  className="w-full h-[72px] bg-white hover:bg-[var(--brand-orange)] text-black rounded-sm border border-black transition-colors flex items-center gap-4 px-5 cursor-pointer"
                   style={cardTrail[0]}
                 >
                   <div className="w-12 h-12 rounded-sm bg-[#229ED9]/20 flex items-center justify-center shrink-0">
@@ -875,7 +875,7 @@ export default function GetStartedPage() {
 
                 <animated.button
                   onClick={() => handleMethodSelect("imessage")}
-                  className="w-full h-[72px] bg-white hover:bg-[#FF5800] text-black rounded-sm border border-black transition-colors flex items-center gap-4 px-5 cursor-pointer"
+                  className="w-full h-[72px] bg-white hover:bg-[var(--brand-orange)] text-black rounded-sm border border-black transition-colors flex items-center gap-4 px-5 cursor-pointer"
                   style={cardTrail[1]}
                 >
                   <div className="w-12 h-12 shrink-0 flex items-center justify-center">
@@ -888,7 +888,7 @@ export default function GetStartedPage() {
 
                 <animated.button
                   onClick={() => handleMethodSelect("whatsapp")}
-                  className="w-full h-[72px] bg-white hover:bg-[#FF5800] text-black rounded-sm border border-black transition-colors flex items-center gap-4 px-5 cursor-pointer"
+                  className="w-full h-[72px] bg-white hover:bg-[var(--brand-orange)] text-black rounded-sm border border-black transition-colors flex items-center gap-4 px-5 cursor-pointer"
                   style={cardTrail[2]}
                 >
                   <div className="w-12 h-12 rounded-sm bg-[#25D366]/20 flex items-center justify-center shrink-0">
@@ -901,7 +901,7 @@ export default function GetStartedPage() {
 
                 <animated.button
                   onClick={() => handleMethodSelect("discord")}
-                  className="w-full h-[72px] bg-white hover:bg-[#FF5800] text-black rounded-sm border border-black transition-colors flex items-center gap-4 px-5 cursor-pointer"
+                  className="w-full h-[72px] bg-white hover:bg-[var(--brand-orange)] text-black rounded-sm border border-black transition-colors flex items-center gap-4 px-5 cursor-pointer"
                   style={cardTrail[3]}
                 >
                   <div className="w-12 h-12 rounded-sm bg-[#5865F2]/20 flex items-center justify-center shrink-0">

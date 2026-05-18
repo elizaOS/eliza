@@ -336,19 +336,19 @@ export function EarningsPageClient() {
           <div className="flex items-start justify-between">
             <div>
               <p className="text-sm text-white/60 mb-1">Available to Redeem</p>
-              <p className="text-3xl font-bold text-[#FF5800]">
+              <p className="text-3xl font-bold text-[var(--brand-orange)]">
                 {formatCurrency(balance?.balance.availableBalance || 0)}
               </p>
               <p className="text-xs text-white/40 mt-1">
                 ≈ elizaOS tokens at current price
               </p>
             </div>
-            <div className="p-2 rounded-sm bg-[#FF5800]/20">
-              <Wallet className="h-6 w-6 text-[#FF5800]" />
+            <div className="p-2 rounded-sm bg-[var(--brand-orange)]/20">
+              <Wallet className="h-6 w-6 text-[var(--brand-orange)]" />
             </div>
           </div>
           <Button
-            className="w-full mt-4 bg-[#FF5800] hover:bg-[#FF5800]/90"
+            className="w-full mt-4 bg-[var(--brand-orange)] hover:bg-[var(--brand-orange)]/90"
             disabled={!balance?.eligibility.canRedeem}
             onClick={() => setShowRedeemDialog(true)}
           >
@@ -433,7 +433,7 @@ export function EarningsPageClient() {
       {/* How it Works */}
       <BrandCard className="relative" corners={false}>
         <div className="flex items-start gap-3">
-          <Info className="h-4 w-4 text-[#FF5800] mt-0.5 shrink-0" />
+          <Info className="h-4 w-4 text-[var(--brand-orange)] mt-0.5 shrink-0" />
           <div>
             <h4 className="font-semibold text-white mb-1">
               How Token Redemption Works
@@ -564,7 +564,7 @@ export function EarningsPageClient() {
                         href={getExplorerUrl(r.network, r.tx_hash)}
                         target="_blank"
                         rel="noopener noreferrer"
-                        className="text-[#FF5800] hover:underline flex items-center gap-1"
+                        className="text-[var(--brand-orange)] hover:underline flex items-center gap-1"
                       >
                         View <ExternalLink className="h-3 w-3" />
                       </a>
@@ -708,7 +708,7 @@ export function EarningsPageClient() {
                     </div>
                     <div className="flex justify-between">
                       <span className="text-white/60">You receive</span>
-                      <span className="text-[#FF5800] font-semibold">
+                      <span className="text-[var(--brand-orange)] font-semibold">
                         {parseFloat(quote.quote.elizaAmount).toFixed(4)} elizaOS
                       </span>
                     </div>
@@ -754,7 +754,7 @@ export function EarningsPageClient() {
                 submitting ||
                 !balance?.eligibility.canRedeem
               }
-              className="bg-[#FF5800] hover:bg-[#FF5800]/90"
+              className="bg-[var(--brand-orange)] hover:bg-[var(--brand-orange)]/90"
             >
               {submitting ? (
                 <>

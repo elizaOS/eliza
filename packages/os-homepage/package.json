@@ -25,7 +25,6 @@
     "@elizaos/shared-brand": "workspace:*",
     "@elizaos/steward-session-client": "workspace:*",
     "@elizaos/ui": "workspace:*",
-    "@fontsource-variable/open-sans": "^5.2.7",
     "@fontsource/poppins": "^5.2.7",
     "@stwd/sdk": "^0.8.1",
     "@tailwindcss/vite": "^4",

@@ -19,9 +19,11 @@ describe("Electrobun boot config bridge", () => {
     });
     expect(globalObject.__ELIZAOS_APP_BOOT_CONFIG__).toBe(nextConfig);
     expect(globalObject.__ELIZA_APP_BOOT_CONFIG__).toBe(nextConfig);
-    expect((globalObject as Record<symbol, { current: unknown } | undefined>)[Symbol.for("elizaos.app.boot-config")]?.current).toBe(
-      nextConfig,
-    );
+    expect(
+      (globalObject as Record<symbol, { current: unknown } | undefined>)[
+        Symbol.for("elizaos.app.boot-config")
+      ]?.current,
+    ).toBe(nextConfig);
   });
 
   it("prefers the current key while preserving existing fields", () => {

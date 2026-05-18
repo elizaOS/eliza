@@ -119,18 +119,13 @@ export const shellFoundationStories: StoryDefinition[] = [
   {
     id: "shell-overlay-open",
     name: "AssistantOverlay — open with chat",
-    importPath:
-      'import { AssistantOverlay, ChatSurface } from "@elizaos/ui"',
+    importPath: 'import { AssistantOverlay, ChatSurface } from "@elizaos/ui"',
     description:
       "AssistantOverlay is a fixed dialog container. Inside the catalog tile we render it relative-positioned so it sits within the surface card.",
     render: () => (
       <div className="relative h-[60vh] w-full overflow-hidden rounded-2xl border border-border/40 bg-card/40">
         <AssistantOverlay phase="summoned" onClose={noop}>
-          <ChatSurface
-            messages={sampleMessages}
-            onSend={noop}
-            canSend={true}
-          />
+          <ChatSurface messages={sampleMessages} onSend={noop} canSend={true} />
         </AssistantOverlay>
       </div>
     ),

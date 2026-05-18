@@ -2,12 +2,12 @@ import { mkdir, open, readFile, rename, rm, writeFile } from "node:fs/promises";
 import { homedir } from "node:os";
 import { dirname, join } from "node:path";
 import {
-  TERMINAL_SESSION_STATUSES,
   type SessionFilter,
   type SessionInfo,
   type SessionStatus,
   type SessionStore,
   type SessionStoreRuntime,
+  TERMINAL_SESSION_STATUSES,
 } from "./types.js";
 
 export type SessionStoreBackend = "runtime-db" | "file" | "memory";

@@ -17,8 +17,9 @@
  * underlying primitives ({@link startLocalAsrRecorder} + browser
  * `SpeechRecognition`). This factory adds nothing on top besides routing.
  */
-import { fetchWithCsrf } from "../api/csrf-client";
+
 import type { AsrProvider } from "../api/client-types-config";
+import { fetchWithCsrf } from "../api/csrf-client";
 import { resolveApiUrl } from "../utils";
 import {
   isLocalAsrCaptureSupported,
@@ -139,9 +140,7 @@ async function transcribeWav(audio: Uint8Array): Promise<string> {
   });
   if (!res.ok) {
     const body = await res.text().catch(() => "");
-    throw new Error(
-      `Local inference ASR ${res.status}: ${body.slice(0, 200)}`,
-    );
+    throw new Error(`Local inference ASR ${res.status}: ${body.slice(0, 200)}`);
   }
   const parsed = (await res.json().catch(() => null)) as {
     text?: unknown;
@@ -193,7 +192,11 @@ export function createVoiceCapture(
     instance.lang = lang;
 
     instance.onresult = (event: SpeechRecognitionResultEvent) => {
-      for (let index = event.resultIndex; index < event.results.length; index += 1) {
+      for (
+        let index = event.resultIndex;
+        index < event.results.length;
+        index += 1
+      ) {
         const result = event.results[index];
         if (!result) continue;
         const text = result[0]?.transcript?.trim() ?? "";

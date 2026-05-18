@@ -67,6 +67,7 @@ export function TranslationProvider({
   const [, setLocaleRevision] = useState(0);
 
   // Eagerly load the persisted locale (other than `en`) on mount.
+  // biome-ignore lint/correctness/useExhaustiveDependencies: mount-only effect; language changes flow through setUiLanguage
   useEffect(() => {
     if (uiLanguage === "en") return;
     let cancelled = false;

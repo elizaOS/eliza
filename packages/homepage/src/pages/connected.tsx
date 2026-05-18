@@ -290,7 +290,7 @@ export default function ConnectedPage() {
             Connected.
           </h1>
           <div className="inline-flex items-center gap-2 px-3 py-1.5 bg-black text-white border border-black">
-            <span className="w-2 h-2 bg-[#FF5800] animate-pulse" />
+            <span className="w-2 h-2 bg-[var(--brand-orange)] animate-pulse" />
             <span className="text-xs font-semibold">Awake</span>
           </div>
         </div>
@@ -418,7 +418,7 @@ export default function ConnectedPage() {
                       type="button"
                       onClick={handleLinkPhone}
                       disabled={!phoneValue.trim() || isLinkingPhone}
-                      className="flex-1 h-10 bg-[#FF5800] hover:bg-[#FF5800]/90 text-black text-sm font-semibold disabled:opacity-50"
+                      className="flex-1 h-10 bg-[var(--brand-orange)] hover:bg-[var(--brand-orange)]/90 text-black text-sm font-semibold disabled:opacity-50"
                     >
                       {isLinkingPhone ? "Linking..." : "Link Phone"}
                     </Button>

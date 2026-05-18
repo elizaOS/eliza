@@ -31,7 +31,6 @@
   },
   "dependencies": {
     "@elizaos/shared-brand": "workspace:*",
-    "@fontsource-variable/open-sans": "^5.2.7",
     "vite": "^8.0.0"
   },
   "peerDependencies": {

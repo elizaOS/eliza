@@ -35,12 +35,12 @@ import type {
   State,
 } from "@elizaos/core";
 import { logger as coreLogger } from "@elizaos/core";
+import { emitTaskAudit } from "../services/audit.js";
 import {
   type ResolvedWorkdirRoute,
   resolvePinnedAdapter,
   resolveSpawnWorkdir,
 } from "../services/task-agent-routing.js";
-import { emitTaskAudit } from "../services/audit.js";
 import { requireTaskAgentAccess } from "../services/task-policy.js";
 import type { AgentType, SpawnResult } from "../services/types.js";
 import type {
@@ -58,12 +58,10 @@ import {
   getAcpService,
   getTimeoutMs,
   type HandlerOptionsLike,
-  hasExplicitPayload,
   isAuthError,
   labelFor,
   listSessionsWithin,
   logger,
-  looksLikeTaskAgentRequest,
   messageText,
   newestSession,
   paramsRecord,
@@ -192,7 +190,7 @@ function taskWithResolvedRoute(
   ].join("\n");
 }
 
-function looksLikePersonalLifeOpsTask(text: string): boolean {
+function _looksLikePersonalLifeOpsTask(text: string): boolean {
   return /\b(?:add|create|make|open|save|set)\s+(?:an?\s+)?(?:to-?do|task|reminder|note)\b/i.test(
     text,
   );

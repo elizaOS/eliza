@@ -4,7 +4,7 @@
 // NOTE: This package does not yet have Playwright wired up — see VISUAL-REGRESSION.md
 // for the setup steps required before this spec can run.
 
-import { expect, test, type Page } from "@playwright/test";
+import { expect, type Page, test } from "@playwright/test";
 
 const ROUTES = [{ path: "/", name: "landing" }] as const;
 

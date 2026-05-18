@@ -140,7 +140,7 @@ export function UsageTab({ user, onTabChange }: UsageTabProps) {
           <div className="flex flex-col gap-3 md:gap-2 w-full">
             <div className="flex flex-col gap-2">
               <div className="flex items-center gap-2">
-                <div className="w-2 h-2 rounded-full bg-[#FF5800]" />
+                <div className="w-2 h-2 rounded-full bg-[var(--brand-orange)]" />
                 <h3 className="text-sm md:text-base font-mono text-[#e1e1e1] uppercase">
                   Build, deploy, and monitor your ai agents
                 </h3>
@@ -168,9 +168,9 @@ export function UsageTab({ user, onTabChange }: UsageTabProps) {
                   Credits Remaining
                 </p>
                 {loading ? (
-                  <Loader2 className="h-4 w-4 animate-spin text-[#FF5800]" />
+                  <Loader2 className="h-4 w-4 animate-spin text-[var(--brand-orange)]" />
                 ) : (
-                  <p className="text-xs text-[#FF5800]">
+                  <p className="text-xs text-[var(--brand-orange)]">
                     ${dailyBurn.toFixed(2)} daily burn
                   </p>
                 )}
@@ -179,7 +179,7 @@ export function UsageTab({ user, onTabChange }: UsageTabProps) {
               <div className="space-y-1">
                 <div className="flex items-center gap-2">
                   <div className="bg-[rgba(255,88,0,0.25)] flex items-center justify-center size-7">
-                    <DollarSign className="h-[13px] w-[13px] text-[#FF5800]" />
+                    <DollarSign className="h-[13px] w-[13px] text-[var(--brand-orange)]" />
                   </div>
                   <p className="text-2xl font-mono text-white tracking-tight">
                     ${creditsRemaining.toFixed(2)}
@@ -198,7 +198,7 @@ export function UsageTab({ user, onTabChange }: UsageTabProps) {
                   Current Session
                 </p>
                 {sessionLoading && !sessionStats ? (
-                  <Loader2 className="h-4 w-4 animate-spin text-[#FF5800]" />
+                  <Loader2 className="h-4 w-4 animate-spin text-[var(--brand-orange)]" />
                 ) : (
                   <p className="text-xs text-[#848484]">
                     Updates every 30 seconds
@@ -248,7 +248,7 @@ export function UsageTab({ user, onTabChange }: UsageTabProps) {
           <div className="flex flex-col gap-3 md:gap-2 w-full">
             <div className="flex flex-col gap-2">
               <div className="flex items-center gap-2">
-                <div className="w-2 h-2 rounded-full bg-[#FF5800]" />
+                <div className="w-2 h-2 rounded-full bg-[var(--brand-orange)]" />
                 <h3 className="text-sm md:text-base font-mono text-[#e1e1e1] uppercase">
                   Weekly limits
                 </h3>
@@ -261,7 +261,7 @@ export function UsageTab({ user, onTabChange }: UsageTabProps) {
 
             <div className="flex items-center gap-2">
               {quotaLoading && !quotaUsage ? (
-                <Loader2 className="h-4 w-4 animate-spin text-[#FF5800]" />
+                <Loader2 className="h-4 w-4 animate-spin text-[var(--brand-orange)]" />
               ) : (
                 <>
                   <Info className="h-4 w-4 text-[#848484] flex-shrink-0" />
@@ -285,7 +285,7 @@ export function UsageTab({ user, onTabChange }: UsageTabProps) {
                 <div className="flex flex-col sm:flex-row items-start sm:items-center gap-2 w-full">
                   <div className="flex-1 w-full relative h-[21px] border border-[#e1e1e1] border-[0.5px]">
                     <div
-                      className="absolute inset-0 bg-[#FF5800]/20"
+                      className="absolute inset-0 bg-[var(--brand-orange)]/20"
                       style={{
                         width: quotaUsage?.global.limit
                           ? `${quotaUsage.global.usedPercentClamped}%`
@@ -320,14 +320,14 @@ export function UsageTab({ user, onTabChange }: UsageTabProps) {
                       <p className="text-sm md:text-base font-mono text-white capitalize">
                         {modelName}
                       </p>
-                      <Info className="h-4 w-4 text-[#FF5800]/60 flex-shrink-0" />
+                      <Info className="h-4 w-4 text-[var(--brand-orange)]/60 flex-shrink-0" />
                     </div>
 
                     <div className="space-y-1">
                       <div className="flex flex-col sm:flex-row items-start sm:items-center gap-2 w-full">
                         <div className="flex-1 w-full relative h-[21px] border border-[#e1e1e1] border-[0.5px]">
                           <div
-                            className="absolute inset-0 bg-[#FF5800]/20"
+                            className="absolute inset-0 bg-[var(--brand-orange)]/20"
                             style={{
                               width: `${modelQuota.usedPercentClamped}%`,
                             }}
@@ -367,7 +367,7 @@ export function UsageTab({ user, onTabChange }: UsageTabProps) {
           <div className="flex items-start justify-between w-full">
             <div className="flex flex-col gap-2 flex-1">
               <div className="flex items-center gap-2 w-full">
-                <div className="w-2 h-2 rounded-full bg-[#FF5800]" />
+                <div className="w-2 h-2 rounded-full bg-[var(--brand-orange)]" />
                 <h3 className="text-sm md:text-base font-mono text-[#e1e1e1] uppercase flex-1">
                   Usage Signals
                 </h3>
@@ -388,7 +388,7 @@ export function UsageTab({ user, onTabChange }: UsageTabProps) {
                   : "Low credit balance"}
               </p>
               <Info
-                className={`h-4 w-4 flex-shrink-0 ${creditsRemaining > 10 ? "text-[#FF5800]" : "text-yellow-500"}`}
+                className={`h-4 w-4 flex-shrink-0 ${creditsRemaining > 10 ? "text-[var(--brand-orange)]" : "text-yellow-500"}`}
               />
             </div>
 

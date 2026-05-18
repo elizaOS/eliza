@@ -153,8 +153,7 @@ export const HARDWARE_PRODUCTS = [
     kind: "box",
     colors: COLOR_SET_FULL("kit"),
     stripeName: "ElizaOS Raspberry Pi + case preorder",
-    stripeDescription:
-      "Reserve the custom Raspberry Pi and ElizaOS case kit.",
+    stripeDescription: "Reserve the custom Raspberry Pi and ElizaOS case kit.",
   },
   {
     slug: "mini-pc",

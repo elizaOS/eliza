@@ -161,7 +161,7 @@ export function WithdrawDialog({
           <>
             <DialogHeader>
               <DialogTitle className="flex items-center gap-2 text-white">
-                <Wallet className="h-5 w-5 text-[#FF5800]" />
+                <Wallet className="h-5 w-5 text-[var(--brand-orange)]" />
                 Withdraw Earnings
               </DialogTitle>
               <DialogDescription className="text-neutral-400">
@@ -198,7 +198,7 @@ export function WithdrawDialog({
                     type="number"
                     value={amount}
                     onChange={(e) => setAmount(e.target.value)}
-                    className="pl-7 bg-black/40 border-white/10 text-white font-mono focus:border-[#FF5800]/50"
+                    className="pl-7 bg-black/40 border-white/10 text-white font-mono focus:border-[var(--brand-orange)]/50"
                     min={payoutThreshold}
                     max={withdrawableBalance}
                     step="0.01"
@@ -211,7 +211,7 @@ export function WithdrawDialog({
                   <button
                     type="button"
                     onClick={() => setAmount(withdrawableBalance.toFixed(2))}
-                    className="text-[#FF5800] hover:text-[#FF5800]/80 transition-colors"
+                    className="text-[var(--brand-orange)] hover:text-[var(--brand-orange)]/80 transition-colors"
                   >
                     Withdraw All
                   </button>
@@ -240,7 +240,7 @@ export function WithdrawDialog({
               <Button
                 onClick={handleWithdraw}
                 disabled={!isValidAmount}
-                className="bg-[#FF5800] hover:bg-[#FF5800]/80 text-white disabled:opacity-50"
+                className="bg-[var(--brand-orange)] hover:bg-[var(--brand-orange)]/80 text-white disabled:opacity-50"
               >
                 <ArrowRight className="h-4 w-4 mr-2" />
                 Withdraw ${parsedAmount.toFixed(2)}
@@ -252,7 +252,7 @@ export function WithdrawDialog({
         {state === "processing" && (
           <div className="py-12 text-center">
             <div className="mx-auto w-16 h-16 mb-4 flex items-center justify-center">
-              <Loader2 className="h-8 w-8 text-[#FF5800] animate-spin" />
+              <Loader2 className="h-8 w-8 text-[var(--brand-orange)] animate-spin" />
             </div>
             <h3 className="text-lg font-medium text-white mb-2">
               Processing Withdrawal
@@ -294,7 +294,7 @@ export function WithdrawDialog({
             <DialogFooter className="mt-6">
               <Button
                 onClick={handleClose}
-                className="w-full bg-[#FF5800] hover:bg-[#FF5800]/80 text-white"
+                className="w-full bg-[var(--brand-orange)] hover:bg-[var(--brand-orange)]/80 text-white"
               >
                 Done
               </Button>

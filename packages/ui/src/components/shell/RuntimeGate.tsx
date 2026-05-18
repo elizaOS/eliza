@@ -1541,7 +1541,7 @@ export function RuntimeGate() {
               variant="default"
               className="min-h-12 justify-center border-2 border-black bg-[#ffe600] px-6 py-4 text-sm font-black uppercase tracking-[0.16em] text-black shadow-[5px_5px_0_rgba(0,0,0,0.72)] transition-transform duration-150 hover:-translate-y-0.5 hover:bg-white active:translate-y-0"
               style={{
-                borderRadius: 0,
+                borderRadius: "var(--radius-xs, 3px)",
                 clipPath:
                   "polygon(10px 0,100% 0,100% calc(100% - 10px),calc(100% - 10px) 100%,0 100%,0 10px)",
                 fontFamily: MONO_FONT,
@@ -1718,7 +1718,7 @@ export function RuntimeGate() {
               {localProviderCatalog.length === 0 ? (
                 <Card
                   className="border-2 border-[#f0b90b]/40 bg-black/58 text-white shadow-[4px_4px_0_rgba(0,0,0,0.52)]"
-                  style={{ borderRadius: 0 }}
+                  style={{ borderRadius: "var(--radius-xs, 3px)" }}
                 >
                   <CardContent className="px-3 py-3">
                     <p className="text-sm font-semibold text-white/90">
@@ -1733,7 +1733,7 @@ export function RuntimeGate() {
                   <Card
                     key={provider.id}
                     className="border-2 border-[#f0b90b]/40 bg-black/58 text-white shadow-[4px_4px_0_rgba(0,0,0,0.52)]"
-                    style={{ borderRadius: 0 }}
+                    style={{ borderRadius: "var(--radius-xs, 3px)" }}
                   >
                     <CardContent className="flex items-center justify-between gap-3 px-3 py-3">
                       <div className="min-w-0">
@@ -1765,7 +1765,7 @@ export function RuntimeGate() {
             <div className="flex flex-col gap-3">
               <Card
                 className="border-2 border-[#f0b90b]/40 bg-black/58 text-white shadow-[4px_4px_0_rgba(0,0,0,0.52)]"
-                style={{ borderRadius: 0 }}
+                style={{ borderRadius: "var(--radius-xs, 3px)" }}
               >
                 <CardContent className="flex flex-col gap-1 px-3 py-3">
                   <p className="text-sm font-semibold text-white/95">
@@ -1867,7 +1867,7 @@ export function RuntimeGate() {
               <Card
                 key={gateway.stableId}
                 className="border-2 border-[#f0b90b]/45 bg-black/65 text-white shadow-[4px_4px_0_rgba(0,0,0,0.62)]"
-                style={{ borderRadius: 0 }}
+                style={{ borderRadius: "var(--radius-xs, 3px)" }}
               >
                 <CardContent className="flex items-center justify-between gap-3 px-3 py-3">
                   <div className="min-w-0">
@@ -1960,7 +1960,7 @@ export function RuntimeGate() {
           variant="default"
           className="min-h-12 justify-center border-2 border-black bg-[#ffe600] px-6 py-4 text-sm font-black uppercase tracking-[0.16em] text-black shadow-[5px_5px_0_rgba(0,0,0,0.72)] transition-transform duration-150 hover:-translate-y-0.5 hover:bg-white active:translate-y-0 disabled:opacity-50 disabled:cursor-not-allowed"
           style={{
-            borderRadius: 0,
+            borderRadius: "var(--radius-xs, 3px)",
             clipPath:
               "polygon(10px 0,100% 0,100% calc(100% - 10px),calc(100% - 10px) 100%,0 100%,0 10px)",
             fontFamily: MONO_FONT,
@@ -2035,7 +2035,7 @@ function GateShell({
         <div
           className="flex max-h-full min-h-0 w-full max-w-[64rem] flex-col items-center gap-3 overflow-y-auto border-2 border-black px-3 py-4 shadow-[9px_9px_0_rgba(0,0,0,0.62)]  sm:gap-4 sm:px-6 sm:py-5 md:px-8 md:py-6"
           style={{
-            borderRadius: 0,
+            borderRadius: "var(--radius-xs, 3px)",
             clipPath:
               "polygon(16px 0,100% 0,100% calc(100% - 16px),calc(100% - 16px) 100%,0 100%,0 16px)",
             // Dark zine panel for both modes — white text reads consistently
@@ -2185,7 +2185,7 @@ function WelcomeChooser({
         variant="default"
         className="min-h-14 w-full max-w-sm border-2 border-black bg-[#ffe600] px-10 py-4 text-base font-black uppercase tracking-[0.18em] text-black shadow-[6px_6px_0_rgba(0,0,0,0.72)] transition-transform duration-150 hover:-translate-y-0.5 hover:bg-white active:translate-y-0"
         style={{
-          borderRadius: 0,
+          borderRadius: "var(--radius-xs, 3px)",
           clipPath:
             "polygon(12px 0,100% 0,100% calc(100% - 12px),calc(100% - 12px) 100%,0 100%,0 12px)",
           fontFamily: MONO_FONT,
@@ -2283,7 +2283,7 @@ function PowerUserCard({
       onClick={onClick}
       className="group flex w-full flex-col items-start gap-2 border-2 border-[#f0b90b]/45 bg-black/65 p-4 text-left shadow-[5px_5px_0_rgba(0,0,0,0.72)] transition-[border-color,background-color,transform] duration-150 hover:-translate-y-0.5 hover:border-[#ffe600] hover:bg-black/80 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#ffe600] focus-visible:ring-offset-2 focus-visible:ring-offset-black"
       style={{
-        borderRadius: 0,
+        borderRadius: "var(--radius-xs, 3px)",
         clipPath:
           "polygon(10px 0,100% 0,100% calc(100% - 10px),calc(100% - 10px) 100%,0 100%,0 10px)",
       }}

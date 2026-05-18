@@ -1,3 +1,4 @@
+import { BrandButton } from "@ui-src/cloud-ui/components/brand/brand-button.tsx";
 import {
   AppsEmptyState,
   AppsSkeleton,
@@ -6,7 +7,6 @@ import {
   DashboardActionCards,
   DashboardActionCardsSkeleton,
 } from "@ui-src/cloud-ui/components/dashboard/cloud-dashboard-components.tsx";
-import { BrandButton } from "@ui-src/cloud-ui/components/brand/brand-button.tsx";
 import { Plus } from "lucide-react";
 import type { StoryDefinition } from "../Story.tsx";
 

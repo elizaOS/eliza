@@ -1,8 +1,8 @@
 import type { IAgentRuntime, Memory, Provider, State } from "@elizaos/core";
 import { getAcpService } from "../actions/common.js";
 import {
-  TERMINAL_SESSION_STATUSES,
   type SessionInfo,
+  TERMINAL_SESSION_STATUSES,
 } from "../services/types.js";
 
 // Transient statuses that bucket together as "active" for the planner-visible
@@ -83,7 +83,7 @@ export const activeSubAgentsProvider: Provider = {
       await Promise.all(
         routed.map(async (session) => {
           try {
-            const raw = await service.getSessionOutput!(session.id, 20);
+            const raw = await service.getSessionOutput?.(session.id, 20);
             const tail = summarizeOutputTail(raw);
             if (tail) liveByName.set(session.id, tail);
           } catch {

@@ -112,7 +112,7 @@ export function AnalyticsTab({ user: _user }: AnalyticsTabProps) {
           <div className="flex items-start justify-between w-full">
             <div className="flex flex-col gap-2 max-w-[500px]">
               <div className="flex items-center gap-2">
-                <div className="w-2 h-2 rounded-full bg-[#FF5800]" />
+                <div className="w-2 h-2 rounded-full bg-[var(--brand-orange)]" />
                 <h3 className="text-sm md:text-base font-mono text-[#e1e1e1] uppercase">
                   Controls
                 </h3>
@@ -196,7 +196,7 @@ export function AnalyticsTab({ user: _user }: AnalyticsTabProps) {
             <Activity className="h-3 md:h-4 w-3 md:w-4 text-[#A2A2A2] flex-shrink-0" />
           </div>
           {loading ? (
-            <Loader2 className="h-5 md:h-6 w-5 md:w-6 animate-spin text-[#FF5800] my-2" />
+            <Loader2 className="h-5 md:h-6 w-5 md:w-6 animate-spin text-[var(--brand-orange)] my-2" />
           ) : (
             <>
               <p className="text-xl md:text-2xl font-mono text-white tracking-tight">
@@ -225,7 +225,7 @@ export function AnalyticsTab({ user: _user }: AnalyticsTabProps) {
             <Coins className="h-3 md:h-4 w-3 md:w-4 text-[#A2A2A2] flex-shrink-0" />
           </div>
           {loading ? (
-            <Loader2 className="h-5 md:h-6 w-5 md:w-6 animate-spin text-[#FF5800] my-2" />
+            <Loader2 className="h-5 md:h-6 w-5 md:w-6 animate-spin text-[var(--brand-orange)] my-2" />
           ) : (
             <>
               <p className="text-xl md:text-2xl font-mono text-white tracking-tight">
@@ -254,7 +254,7 @@ export function AnalyticsTab({ user: _user }: AnalyticsTabProps) {
             <Shield className="h-3 md:h-4 w-3 md:w-4 text-[#A2A2A2] flex-shrink-0" />
           </div>
           {loading ? (
-            <Loader2 className="h-5 md:h-6 w-5 md:w-6 animate-spin text-[#FF5800] my-2" />
+            <Loader2 className="h-5 md:h-6 w-5 md:w-6 animate-spin text-[var(--brand-orange)] my-2" />
           ) : (
             <>
               <p className="text-xl md:text-2xl font-mono text-white tracking-tight">
@@ -280,7 +280,7 @@ export function AnalyticsTab({ user: _user }: AnalyticsTabProps) {
             <BarChart className="h-3 md:h-4 w-3 md:w-4 text-[#A2A2A2] flex-shrink-0" />
           </div>
           {loading ? (
-            <Loader2 className="h-5 md:h-6 w-5 md:w-6 animate-spin text-[#FF5800] my-2" />
+            <Loader2 className="h-5 md:h-6 w-5 md:w-6 animate-spin text-[var(--brand-orange)] my-2" />
           ) : (
             <>
               <p className="text-xl md:text-2xl font-mono text-white tracking-tight">
@@ -310,7 +310,7 @@ export function AnalyticsTab({ user: _user }: AnalyticsTabProps) {
             {/* Header */}
             <div className="flex flex-col gap-2">
               <div className="flex items-center gap-2">
-                <div className="w-2 h-2 rounded-full bg-[#FF5800]" />
+                <div className="w-2 h-2 rounded-full bg-[var(--brand-orange)]" />
                 <h3 className="text-sm md:text-base font-mono text-[#e1e1e1] uppercase">
                   Usage Visibility
                 </h3>
@@ -325,7 +325,7 @@ export function AnalyticsTab({ user: _user }: AnalyticsTabProps) {
             <div className="space-y-3 md:space-y-4">
               <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
                 <div className="flex items-center gap-2">
-                  <div className="h-px w-4 bg-[#FF5800]" />
+                  <div className="h-px w-4 bg-[var(--brand-orange)]" />
                   <p className="text-sm md:text-base font-mono text-white tracking-tight">
                     Latest data point
                   </p>
@@ -337,7 +337,7 @@ export function AnalyticsTab({ user: _user }: AnalyticsTabProps) {
                     onClick={() => setFocusMetric("requests")}
                     className={`
                       relative px-2 md:px-3 py-2 transition-colors text-xs font-mono font-medium flex-1 sm:flex-initial
-                      ${focusMetric === "requests" ? "bg-[rgba(255,88,0,0.24)] text-[#FF5800]" : "bg-neutral-950 border border-brand-surface border-r-0 text-[#e1e1e1]"}
+                      ${focusMetric === "requests" ? "bg-[rgba(255,88,0,0.24)] text-[var(--brand-orange)]" : "bg-neutral-950 border border-brand-surface border-r-0 text-[#e1e1e1]"}
                     `}
                   >
                     {focusMetric === "requests" && (
@@ -358,7 +358,7 @@ export function AnalyticsTab({ user: _user }: AnalyticsTabProps) {
                     onClick={() => setFocusMetric("costs")}
                     className={`
                       px-2 md:px-3 py-2 transition-colors text-xs font-mono font-medium border-t border-b border-brand-surface flex-1 sm:flex-initial
-                      ${focusMetric === "costs" ? "bg-[rgba(255,88,0,0.24)] text-[#FF5800]" : "bg-neutral-950 text-[#e1e1e1]"}
+                      ${focusMetric === "costs" ? "bg-[rgba(255,88,0,0.24)] text-[var(--brand-orange)]" : "bg-neutral-950 text-[#e1e1e1]"}
                     `}
                   >
                     Costs
@@ -369,7 +369,7 @@ export function AnalyticsTab({ user: _user }: AnalyticsTabProps) {
                     onClick={() => setFocusMetric("success-rate")}
                     className={`
                       px-2 md:px-3 py-2 transition-colors text-xs font-mono font-medium border border-brand-surface flex-1 sm:flex-initial
-                      ${focusMetric === "success-rate" ? "bg-[rgba(255,88,0,0.24)] text-[#FF5800]" : "bg-neutral-950 text-[#e1e1e1]"}
+                      ${focusMetric === "success-rate" ? "bg-[rgba(255,88,0,0.24)] text-[var(--brand-orange)]" : "bg-neutral-950 text-[#e1e1e1]"}
                     `}
                   >
                     Success %
@@ -392,12 +392,12 @@ export function AnalyticsTab({ user: _user }: AnalyticsTabProps) {
             {/* Header */}
             <div className="flex flex-col gap-2">
               <div className="flex items-center gap-2 flex-wrap">
-                <div className="w-2 h-2 rounded-full bg-[#FF5800]" />
+                <div className="w-2 h-2 rounded-full bg-[var(--brand-orange)]" />
                 <h3 className="text-sm md:text-base font-mono text-[#e1e1e1] uppercase">
                   Cost outlook
                 </h3>
                 <div className="bg-[rgba(255,88,0,0.25)] px-2 py-1">
-                  <p className="text-xs font-mono text-[#FF5800]">Burn Rate</p>
+                  <p className="text-xs font-mono text-[var(--brand-orange)]">Burn Rate</p>
                 </div>
               </div>
               <p className="text-xs font-mono text-[#858585] tracking-tight">
@@ -414,7 +414,7 @@ export function AnalyticsTab({ user: _user }: AnalyticsTabProps) {
                   Daily Burn (24h)
                 </p>
                 {loading ? (
-                  <Loader2 className="h-5 w-5 animate-spin text-[#FF5800]" />
+                  <Loader2 className="h-5 w-5 animate-spin text-[var(--brand-orange)]" />
                 ) : (
                   <>
                     <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2">
@@ -426,7 +426,7 @@ export function AnalyticsTab({ user: _user }: AnalyticsTabProps) {
                         credits
                       </p>
                       <div className="bg-[rgba(255,88,0,0.25)] px-2 py-1">
-                        <p className="text-xs font-mono text-[#FF5800]">
+                        <p className="text-xs font-mono text-[var(--brand-orange)]">
                           {analyticsData && analyticsData.dailyBurn > 0
                             ? "Active"
                             : "Idle"}
@@ -446,7 +446,7 @@ export function AnalyticsTab({ user: _user }: AnalyticsTabProps) {
                   Weekly Projection
                 </p>
                 {loading ? (
-                  <Loader2 className="h-5 w-5 animate-spin text-[#FF5800]" />
+                  <Loader2 className="h-5 w-5 animate-spin text-[var(--brand-orange)]" />
                 ) : (
                   <>
                     <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2">
@@ -458,7 +458,7 @@ export function AnalyticsTab({ user: _user }: AnalyticsTabProps) {
                         credits
                       </p>
                       <div className="bg-[rgba(255,88,0,0.25)] px-2 py-1">
-                        <p className="text-xs font-mono text-[#FF5800]">Est.</p>
+                        <p className="text-xs font-mono text-[var(--brand-orange)]">Est.</p>
                       </div>
                     </div>
                     <p className="text-xs md:text-sm text-white/60">

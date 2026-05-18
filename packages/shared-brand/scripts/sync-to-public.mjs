@@ -68,7 +68,9 @@ function copyDirClean(src, dest, shouldCopy = () => true) {
 }
 
 const args = process.argv.slice(2);
-const cloudsArg = args.find((a) => a === "--clouds" || a.startsWith("--clouds="));
+const cloudsArg = args.find(
+  (a) => a === "--clouds" || a.startsWith("--clouds="),
+);
 const includeClouds = Boolean(cloudsArg);
 const includeBackgroundVideos = args.includes("--background-videos");
 const selectedCloudSpeeds =
@@ -91,9 +93,18 @@ if (!target) {
   process.exit(1);
 }
 
-const flags = new Set(args.filter((a) => a.startsWith("--")).map((a) => a.split("=")[0]));
+const flags = new Set(
+  args.filter((a) => a.startsWith("--")).map((a) => a.split("=")[0]),
+);
 // Default: logos + favicons when no category flags are passed.
-const categoryFlags = ["--logos", "--favicons", "--ogembeds", "--banners", "--concepts", "--background"];
+const categoryFlags = [
+  "--logos",
+  "--favicons",
+  "--ogembeds",
+  "--banners",
+  "--concepts",
+  "--background",
+];
 const noCategorySpecified = !categoryFlags.some((f) => flags.has(f));
 const include = {
   logos: noCategorySpecified || flags.has("--logos"),
@@ -112,19 +123,31 @@ if (include.logos) {
   synced.push("logos");
 }
 if (include.favicons) {
-  copyDir(join(ASSETS_ROOT, "favicons"), join(resolvedTarget, "brand", "favicons"));
+  copyDir(
+    join(ASSETS_ROOT, "favicons"),
+    join(resolvedTarget, "brand", "favicons"),
+  );
   synced.push("favicons");
 }
 if (include.ogembeds) {
-  copyDir(join(ASSETS_ROOT, "ogembeds"), join(resolvedTarget, "brand", "ogembeds"));
+  copyDir(
+    join(ASSETS_ROOT, "ogembeds"),
+    join(resolvedTarget, "brand", "ogembeds"),
+  );
   synced.push("ogembeds");
 }
 if (include.banners) {
-  copyDir(join(ASSETS_ROOT, "banners"), join(resolvedTarget, "brand", "banners"));
+  copyDir(
+    join(ASSETS_ROOT, "banners"),
+    join(resolvedTarget, "brand", "banners"),
+  );
   synced.push("banners");
 }
 if (include.concepts) {
-  copyDir(join(ASSETS_ROOT, "concepts"), join(resolvedTarget, "brand", "concepts"));
+  copyDir(
+    join(ASSETS_ROOT, "concepts"),
+    join(resolvedTarget, "brand", "concepts"),
+  );
   synced.push("concepts");
 }
 if (include.background) {
@@ -151,8 +174,12 @@ if (includeClouds) {
     },
   );
   synced.push(
-    selectedCloudSpeeds ? `clouds(${[...selectedCloudSpeeds].join(",")})` : "clouds",
+    selectedCloudSpeeds
+      ? `clouds(${[...selectedCloudSpeeds].join(",")})`
+      : "clouds",
   );
 }
 
-console.log(`[shared-brand] synced into ${resolvedTarget}: ${synced.join(", ") || "(nothing)"}`);
+console.log(
+  `[shared-brand] synced into ${resolvedTarget}: ${synced.join(", ") || "(nothing)"}`,
+);

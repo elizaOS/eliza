@@ -58,7 +58,7 @@ export function InvoiceDetailClient({ invoice }: InvoiceDetailClientProps) {
           className="group flex items-center gap-2 text-sm text-white/70 hover:text-white transition-all duration-200"
           style={{ fontFamily: "var(--font-roboto-mono)" }}
         >
-          <div className="flex items-center justify-center w-8 h-8 rounded-sm border border-white/10 bg-black/40 group-hover:bg-white/5 group-hover:border-[#FF5800]/50 transition-all duration-200">
+          <div className="flex items-center justify-center w-8 h-8 rounded-sm border border-white/10 bg-black/40 group-hover:bg-white/5 group-hover:border-[var(--brand-orange)]/50 transition-all duration-200">
             <ArrowLeft className="h-4 w-4" />
           </div>
           <span className="font-medium">Back to Billing</span>
@@ -72,7 +72,7 @@ export function InvoiceDetailClient({ invoice }: InvoiceDetailClientProps) {
         <div className="relative z-10 space-y-6">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-3">
-              <div className="w-2 h-2 rounded-full bg-[#FF5800]" />
+              <div className="w-2 h-2 rounded-full bg-[var(--brand-orange)]" />
               <h1 className="text-2xl font-mono text-[#e1e1e1] uppercase">
                 Invoice Details
               </h1>
@@ -139,7 +139,7 @@ export function InvoiceDetailClient({ invoice }: InvoiceDetailClientProps) {
 
         <div className="relative z-10 space-y-6">
           <div className="flex items-center gap-2">
-            <div className="w-2 h-2 rounded-full bg-[#FF5800]" />
+            <div className="w-2 h-2 rounded-full bg-[var(--brand-orange)]" />
             <h2 className="text-base font-mono text-[#e1e1e1] uppercase">
               Transaction Summary
             </h2>
@@ -184,7 +184,7 @@ export function InvoiceDetailClient({ invoice }: InvoiceDetailClientProps) {
                   </p>
                 </div>
                 <div className="bg-[rgba(10,10,10,0.75)] border-r border-b border-brand-surface flex-1 p-4">
-                  <p className="text-base font-mono text-[#FF5800]">
+                  <p className="text-base font-mono text-[var(--brand-orange)]">
                     +${Number(invoice.credits_added).toFixed(2)}
                   </p>
                 </div>
@@ -211,7 +211,7 @@ export function InvoiceDetailClient({ invoice }: InvoiceDetailClientProps) {
 
         <div className="relative z-10 space-y-6">
           <div className="flex items-center gap-2">
-            <div className="w-2 h-2 rounded-full bg-[#FF5800]" />
+            <div className="w-2 h-2 rounded-full bg-[var(--brand-orange)]" />
             <h2 className="text-base font-mono text-[#e1e1e1] uppercase">
               Payment Information
             </h2>
@@ -230,7 +230,7 @@ export function InvoiceDetailClient({ invoice }: InvoiceDetailClientProps) {
               <p className="text-sm font-mono text-white/60 uppercase">
                 Amount Paid
               </p>
-              <p className="text-base font-mono text-[#FF5800]">
+              <p className="text-base font-mono text-[var(--brand-orange)]">
                 ${Number(invoice.amount_paid).toFixed(2)}
               </p>
             </div>
