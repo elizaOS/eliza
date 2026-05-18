@@ -99,7 +99,7 @@ jobs:
         # minimal config that doesn't have the exclude.
         working-directory: packages/app-core
         run: |
-          bunx vitest run --config vitest.node-sqlite.config.ts
+          node ../../node_modules/vitest/vitest.mjs run --config vitest.node-sqlite.config.ts
 
   client-tests:
     name: Client Tests
