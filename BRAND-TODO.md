@@ -1,17 +1,16 @@
 # BRAND-TODO
 
-Canonical follow-up list for the multi-round Eliza brand redesign. Consolidates every deferred item from prior agents (designer asset lists, in-code `TODO(brand)` comments, accessibility audit, product-flow walk, hardware-preorder review, checkpoint commits, and rounds 4–7 follow-ups).
+Canonical follow-up list for the multi-round Eliza brand redesign. Consolidates every deferred item from prior agents (designer asset lists, in-code `TODO(brand)` comments, accessibility audit, product-flow walk, hardware-preorder review, checkpoint commits, and rounds 4–9 follow-ups).
 
 ## Where the redesign stands
 
-Five primary surfaces have been redesigned end-to-end against the Eliza brand (white logo on `#FF5800`, Poppins, sharp corners on marketing / xs-rounding inside chat, dark in-product chrome). Three brand themes are wired (`theme-app` orange marketing, dark in-product, light dashboard transitional). The `<CloudVideoBackground>` clouds-as-background treatment is live on the primary surfaces, and a `@elizaos/shared-brand` package now centralises tokens, OG embed SVGs, and the logo. Rounds 4–7 closed the in-app chat loop, deduplicated the hardware catalog into `@elizaos/hardware-catalog`, extracted `@elizaos/checkout-shared`, finished the a11y polish for primary surfaces, and tokenized CSS literals across the homepage / os-homepage / docs / tails greeter. Remaining work splits into: a long tail of binary PNG assets only a designer can regenerate, a newly-discovered SSO/security audit list, a build-performance audit, and the always-deferred sibling-agent surfaces.
+Nine rounds in. Five primary surfaces have been redesigned end-to-end against the Eliza brand (white logo on `#FF5800`, Poppins, sharp corners on marketing / xs-rounding inside chat, dark in-product chrome). Three brand themes are wired (`theme-app` orange marketing, dark in-product, light dashboard transitional). The `<CloudVideoBackground>` clouds-as-background treatment is live on the primary surfaces, and a `@elizaos/shared-brand` package centralises tokens, OG embed SVGs, and the logo. Rounds 4–7 closed the in-app chat loop, deduplicated the hardware catalog, extracted `@elizaos/checkout-shared`, finished the a11y polish, and tokenized CSS literals. Round 8 hardened the SSO handoff (server-side nonce exchange + per-consumer brand sync flags). Round 9 finished the cookie-based refresh-token migration, completed the PNG→WebP rollout, brand-passed `leaderboard.tsx`, deduped the Playwright install, and produced an actionable bundle visualizer report. What remains is a smaller residual set: the bundle perf rollout, a native PNG regen pass, test fixture drift, plus the long-known designer-asset and out-of-scope surfaces.
 
 ---
 
-## Security (SSO / auth — new from this round)
+## Security (SSO / auth)
 
 - [ ] **Refresh tokens passed via URL query.** `elizaos.ai/checkout?token=...&refreshToken=...` leaks tokens to referer headers, browser history, and any in-page analytics. Move to `#fragment` minimum, or do a server-side nonce exchange. — `cloud-frontend` checkout entry + Steward redirect — **M** — backend + frontend
-- [x] **Refresh tokens in localStorage.** ~~XSS-reachable; defeats the HttpOnly cookie protection elsewhere in the system.~~ **Mitigated.** Refresh tokens are no longer written to localStorage on any login path (`os-homepage` + `cloud-frontend`). The HttpOnly `steward-refresh-token` cookie (set by `/api/auth/steward-session` and `/api/auth/steward-nonce-exchange` on `.elizacloud.ai`) is the only persistence. Session rotation now goes through a new `POST /api/auth/steward-refresh` route that reads the cookie server-side and mints new HttpOnly cookies; no token ever appears in the response body. `read/writeStoredStewardRefreshToken()` helpers are marked `@deprecated` with a console warning on call and `writeStoredStewardRefreshToken()` is now a no-op — the localStorage key constant is retained for one release window so legacy tabs can still be cleaned up via `clearStoredStewardToken()`, then both can be deleted.
 - [ ] **No origin/referer check on `POST /api/auth/steward-session`.** CSRF surface — any origin can POST. Add origin allow-list + double-submit token or SameSite=strict cookie. — `cloud-api/src/routes/auth/steward-session/*` — **M** — backend
 - [ ] **`redirect_uri` allow-list on Steward side unverified.** Potential open-redirect / token-handoff to attacker-controlled domain. Audit and enforce strict allow-list on Steward. — Steward repo — **M** — backend
 - [ ] **Cross-site cookie sync broken under 3rd-party-cookie blocking.** Sync between `elizaos.ai` and `elizacloud.ai` relies on 3rd-party cookies that Safari ITP and Chrome's upcoming default block. Move to a first-party redirect flow with short-lived signed handoff token. — backend + frontend — **L** — backend
@@ -19,12 +18,12 @@ Five primary surfaces have been redesigned end-to-end against the Eliza brand (w
 
 ---
 
-## Performance (build audit — new from this round)
+## Performance (build / bundle)
 
+- [ ] **Bundle perf rollout** — apply the round-9 visualizer recommendations: zod dedup, i18n lazy-load, luxon trim, `apps/` subtree route-split, onboarding-presets lazy. Sibling agent in flight. — `packages/app/vite.config.ts`, `cloud-frontend/vite.config.ts`, callsites — **M** — frontend
 - [ ] **`packages/app` main chunk 7.26 MB.** 9 `INEFFECTIVE_DYNAMIC_IMPORT` rollup warnings point at exact split sites; follow them. — `packages/app/vite.config.ts` + dynamic-import callsites — **M** — frontend
 - [ ] **`vendor-three-*.js` 1.53 MB in every entry.** Babylon/Three should be lazy-loaded only on 3D routes. — `packages/app`, `cloud-frontend` — **M** — frontend
 - [ ] **`cloud-frontend index-*.js` 2.6 MB.** wagmi + viem in the entry chunk; route-split web3-only pages. — `cloud-frontend/vite.config.ts` — **M** — frontend
-- [ ] **Oversized agent/avatar PNGs.** Several files in `cloud-frontend/dist/agents/` and `dist/avatars/` are 2–3.5 MB. Convert to WebP/AVIF, generate `srcset`. — `cloud-frontend/public/agents/*`, `cloud-frontend/public/avatars/*` — **S** — frontend
 - [ ] **viem version drift in @wagmi/core.** `IMPORT_IS_UNDEFINED wallet` warning during build. Pin matching viem version. — root `package.json` / `cloud-frontend/package.json` — **S** — frontend
 - [ ] **Duplicate cloud video shipped twice.** `cloud-frontend/dist/clouds/clouds_8x_1080p.mp4` AND `dist/brand/background/optimized/clouds_8x_1080p.mp4` — dedup the source paths. — `cloud-frontend/public/*` — **S** — frontend
 - [ ] **`bun run build` wrapper returns exit 0 without running vite when piped to non-TTY stdout.** Bun-CLI quirk; breaks CI when build output is redirected. File upstream issue + workaround in the wrapper script. — `scripts/build.mjs` (or equivalent) — **S** — devex
@@ -38,11 +37,12 @@ Five primary surfaces have been redesigned end-to-end against the Eliza brand (w
   - `cloud-shared/src/lib/events/credit-events-redis.ts` — Redis union type
   - chat-redirect module — type resolution failure
   — **S** each — backend + frontend
+- [ ] **Test fixture drift.** Cloud-frontend mock fixtures + ui onboarding label fixtures are out of sync with current copy (2 vitest failures in cloud-frontend, 10 in ui onboarding). Sibling agent in flight. — `cloud-frontend/src/**/__tests__/*`, `packages/ui/src/onboarding/**/*.test.tsx` — **S** — frontend
 - [ ] **Verify `eliza-chat-interface.tsx` xs-rounding pass landed cleanly.** The in-app-chat agent did the pass over 26 `rounded-lg/xl` instances; spot-check the resulting bubbles match the chat-bubble radius spec. — `cloud-frontend/src/components/chat/eliza-chat-interface.tsx` — **S** — frontend
 
 ---
 
-## Product gaps (remaining)
+## Product gaps
 
 - [ ] **Add a character-pick step to `CreateElizaAgentDialog`.** Currently asks for name + flavor only. If "pick a character" is part of the product vision, adding it would give the created agent a `username` and make `/chat/@username` resolve as an alternative to the new agent-id chat route. — `cloud-frontend/src/components/agents/create-eliza-agent-dialog.tsx` — **M** — Shaw (product call) → frontend
 - [ ] **Replace `/dashboard/chat` redirect.** It currently `Navigate`s to `/dashboard/my-agents`, which is no longer a chat surface. Either route to a real chat surface (`/dashboard/agents/[id]/chat`?) or remove the dead route. — `cloud-frontend/src/pages/dashboard/chat.tsx` — **S** — frontend
@@ -54,19 +54,12 @@ Five primary surfaces have been redesigned end-to-end against the Eliza brand (w
 
 All from `/brand/logos/logo_white_orangebg.svg` — white Eliza logo, centered, on a solid `#FF5800` field, square unless noted. Full spec with ImageMagick command templates is at `packages/app/DESIGNER-ASSETS.md` (51 PNGs enumerated). The text-level theme config and storyboard backdrops are on brand; only these PNGs (and one foreground drawable) carry stale visual content.
 
-### iOS
-
+- [ ] **Native PNG regeneration (~51 files).** Sibling agent in flight; covers all iOS/Android/web PNGs listed below in one pass. — **L** — designer / scriptable export
 - [ ] **iOS Splash imageset (3 PNGs).** `packages/app/ios/App/App/Assets.xcassets/Splash.imageset/splash-2732x2732.png`, `…-1.png`, `…-2.png`. — **S** — designer
 - [ ] **iOS AppIcon imageset (~18 PNGs).** `packages/app/ios/App/App/Assets.xcassets/AppIcon.appiconset/*`. `AppIcon-ios-marketing-1024.png` is the master; the rest scale down. — **M** — designer
 - [ ] **iOS public web icons.** `apple-touch-icon.png`, `android-chrome-192x192.png`, `android-chrome-512x512.png`, `favicon-16x16.png`, `favicon.ico`, `og-image.png` (1200×630) under `packages/app/ios/App/App/public/`. — **S** — designer
-
-### Android
-
 - [ ] **Android splash PNGs (~11 files).** All densities, portrait + landscape, under `packages/app/android/app/src/main/res/drawable*`. — **M** — designer
 - [ ] **Android adaptive launcher foregrounds + legacy icons (~5 densities).** `mipmap-*/ic_launcher_foreground.png`, `mipmap-*/ic_launcher.png`, `mipmap-*/ic_launcher_round.png`. `drawable/ic_launcher_background.xml` already encodes `#FF5800`; foregrounds need a white Eliza glyph that fits the adaptive-icon safe-area (66dp of 108dp). — **M** — designer
-
-### Web / shared
-
 - [ ] **Root `packages/app/public/og-image.png` — 1200×630 white logo on orange.** — **S** — designer
 - [ ] **Per-site OG PNGs.** Currently SVG only in `shared-brand` OG embeds. Twitter/X accepts SVG; LinkedIn and Facebook prefer PNG. Generate 1200×630 PNGs from each site's OG embed SVG. — `packages/shared-brand/og/*` — **S** — designer or scriptable export
 
@@ -76,7 +69,6 @@ All from `/brand/logos/logo_white_orangebg.svg` — white Eliza logo, centered, 
 
 - [ ] **Wire `<CloudVideoBackground>` inside `@elizaos/ui` `App.tsx`.** The actual first-rendered React surface ("home screen" before an agent is connected) lives in `packages/ui/src/App.tsx` and the `AppProvider` / `AppWorkspaceChrome` orchestration around it. Sibling agent on it. — `packages/ui/src/App.tsx`, `packages/ui/src/backgrounds/CloudVideoBackground.tsx`, also touches `@elizaos/app-core` — **M** — frontend
 - [ ] **Electrobun window background.** Brand the native window chrome. Out of scope of the redesign; lives in `packages/app-core/platforms/electrobun/`. — **S** — frontend
-- [ ] **`homepage/src/pages/leaderboard.tsx` (1613 LOC).** Misnamed onboarding flow. Replace its `ShaderBackground` with a flat brand color per step without breaking the state machine. Sibling agent on it. — `apps/homepage/src/pages/leaderboard.tsx` — **L** — frontend
 
 ---
 
@@ -96,7 +88,7 @@ So the next person doesn't redo work:
 - Three brand themes wired: `theme-app` (orange marketing), in-product dark, transitional light dashboard.
 - `<CloudVideoBackground>` clouds-as-background component built and deployed on the five primary surfaces.
 - Five primary surfaces redesigned end-to-end: marketing homepage, cloud-frontend top-level dashboards, checkout page, sensitive-requests page, agent-list dashboard chrome.
-- A11y pass completed for the primary surfaces (residual items closed in round 4–7).
+- A11y pass completed for the primary surfaces (residual items closed in rounds 4–7).
 - Hardware-preorder homepage tiles rebranded.
 - Android `drawable/ic_launcher_background.xml` already encodes `#FF5800` — foregrounds are the only piece left for Android icons.
 - `packages/app/BRAND-TODO.md` was the designer-asset source list; this document supersedes it (kept in place for designer convenience).
@@ -116,3 +108,18 @@ So the next person doesn't redo work:
 - **CTA verb consistency:** "Launch Eliza" (Cloud) / "Download the app" (App) / "Install elizaOS" (OS) enforced.
 - **Mintlify docs:** Tip + first paragraph + headings + cards repainted with AIOS framing.
 - **Tails `greeter.css`:** 6 `#0B35F1` literals tokenized with a new `:root` block.
+
+### Round 8
+
+- **Refresh tokens migrated off localStorage.** No login path writes refresh tokens to localStorage anymore (`os-homepage` + `cloud-frontend`). HttpOnly `steward-refresh-token` cookie set by `/api/auth/steward-session` and `/api/auth/steward-nonce-exchange` is the only persistence.
+- **`POST /api/auth/steward-refresh` route.** Reads the HttpOnly cookie server-side and mints new HttpOnly cookies; no token ever appears in the response body.
+- **Deprecation shim:** `read/writeStoredStewardRefreshToken()` helpers marked `@deprecated` with a console warning; `writeStoredStewardRefreshToken()` is a no-op; localStorage key constant retained one release for legacy-tab cleanup.
+
+### Round 9 final follow-ups
+
+- **cloud-frontend Steward nonce-exchange mirror** — 4 files updated; `index.html` got pre-init script + referrer meta; tsc clean.
+- **Steward cleanup PR filed** — https://github.com/Steward-Fi/steward/pull/46 (DO NOT MERGE prefix; blocked on #45 + 1-release window).
+- **PNG → WebP rollout** — 15 files, 22.41 MB / 90.8% reclaimed; per-consumer shared-brand sync flags reclaimed ~142 MB across consumers.
+- **`leaderboard.tsx` brand pass** — `ShaderBackground` opt-in via `?shader=1`; flat brand-color per platform.
+- **bun install + Playwright dedup verified** — single canonical version. Vitest verified: only 2 pre-existing failures in cloud-frontend + 10 in ui onboarding remain (both tracked as fixture-drift open item).
+- **Bundle visualizer dive** — `packages/app/dist/stats.html` produced with top-5 actionable recommendations (tracked as bundle perf rollout open item).

@@ -1005,6 +1005,7 @@ export default defineConfig({
       "three",
       "@capacitor/core",
       "@elizaos/app-core",
+      "zod",
     ],
     alias: [
       // Bare Node built-in polyfills for browser — pathe provides ESM path,
