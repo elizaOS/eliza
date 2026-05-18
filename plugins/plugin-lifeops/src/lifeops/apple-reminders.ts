@@ -6,6 +6,7 @@ import {
 import type { IAgentRuntime } from "@elizaos/core";
 import { logger } from "@elizaos/core";
 import type { FeatureResult, IPermissionsRegistry } from "@elizaos/shared";
+import { isDarwin } from "../platform/host.js";
 
 export const NATIVE_APPLE_REMINDER_METADATA_KEY = "nativeAppleReminder";
 const PERMISSIONS_REGISTRY_SERVICE = "eliza_permissions_registry";
@@ -321,7 +322,7 @@ export async function createNativeAppleReminderLikeItem(args: {
   originalIntent?: string | null;
   runtime?: IAgentRuntime | null;
 }): Promise<FeatureResult<NativeAppleReminderSuccess>> {
-  if (process.platform !== "darwin") {
+  if (!isDarwin()) {
     return {
       ok: false,
       reason: "not_supported",
@@ -392,7 +393,7 @@ export async function updateNativeAppleReminderLikeItem(args: {
   originalIntent?: string | null;
   runtime?: IAgentRuntime | null;
 }): Promise<FeatureResult<NativeAppleReminderSuccess>> {
-  if (process.platform !== "darwin") {
+  if (!isDarwin()) {
     return {
       ok: false,
       reason: "not_supported",
@@ -468,7 +469,7 @@ export async function deleteNativeAppleReminderLikeItem(
   reminderId: string,
   options?: { runtime?: IAgentRuntime | null },
 ): Promise<FeatureResult<NativeAppleReminderDeleteSuccess>> {
-  if (process.platform !== "darwin") {
+  if (!isDarwin()) {
     return {
       ok: false,
       reason: "not_supported",
