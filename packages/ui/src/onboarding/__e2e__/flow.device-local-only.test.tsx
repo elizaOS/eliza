@@ -55,7 +55,7 @@ describe("onboarding flow — on-device + local-only", () => {
     );
 
     await expectState("hello");
-    clickButton(/tap to begin/i);
+    clickButton(/^begin$/i);
 
     await expectState("setup");
     clickButton(/^on-device/i);

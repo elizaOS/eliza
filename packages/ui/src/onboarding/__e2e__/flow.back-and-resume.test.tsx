@@ -47,7 +47,7 @@ describe("onboarding flow — back navigation and resume", () => {
     render(<OnboardingRoot />);
 
     await expectState("hello");
-    clickButton(/tap to begin/i);
+    clickButton(/^begin$/i);
     await expectState("setup");
     clickButton(/^on-device/i);
     clickButton(/^continue$/i);
@@ -68,7 +68,7 @@ describe("onboarding flow — back navigation and resume", () => {
     render(<OnboardingRoot />);
 
     await expectState("hello");
-    clickButton(/tap to begin/i);
+    clickButton(/^begin$/i);
     await expectState("setup");
     clickButton(/^continue$/i);
     await expectState("cloud-login");
@@ -83,7 +83,7 @@ describe("onboarding flow — back navigation and resume", () => {
     const { unmount } = render(<OnboardingRoot />);
 
     await expectState("hello");
-    clickButton(/tap to begin/i);
+    clickButton(/^begin$/i);
     await expectState("setup");
     clickButton(/^on-device/i);
     clickButton(/^continue$/i);

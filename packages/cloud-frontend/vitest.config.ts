@@ -1,8 +1,16 @@
+import { createRequire } from "node:module";
 import { existsSync, statSync } from "node:fs";
+import { dirname, resolve as resolvePath } from "node:path";
 import { fileURLToPath, URL } from "node:url";
 import { defineConfig } from "vitest/config";
 
 const r = (p: string) => fileURLToPath(new URL(p, import.meta.url));
+
+// Resolve react/react-dom tolerating bun workspace hoisting (deps may live in
+// the monorepo root node_modules rather than the package-local node_modules).
+const _require = createRequire(import.meta.url);
+const reactPath = dirname(_require.resolve("react/package.json"));
+const reactDomPath = dirname(_require.resolve("react-dom/package.json"));
 
 // Mirrors the local-first / cloud-shared-fallback semantics from vite.config.ts.
 function resolveLocalFirst(
@@ -99,19 +107,24 @@ export default defineConfig({
     },
   ],
   resolve: {
+    dedupe: ["react", "react-dom"],
     alias: [
-      { find: /^react$/, replacement: r("./node_modules/react/index.js") },
+      { find: /^react$/, replacement: resolvePath(reactPath, "index.js") },
       {
         find: /^react\/jsx-runtime$/,
-        replacement: r("./node_modules/react/jsx-runtime.js"),
+        replacement: resolvePath(reactPath, "jsx-runtime.js"),
+      },
+      {
+        find: /^react\/jsx-dev-runtime$/,
+        replacement: resolvePath(reactPath, "jsx-dev-runtime.js"),
       },
       {
         find: /^react-dom$/,
-        replacement: r("./node_modules/react-dom/index.js"),
+        replacement: resolvePath(reactDomPath, "index.js"),
       },
       {
         find: /^react-dom\/client$/,
-        replacement: r("./node_modules/react-dom/client.js"),
+        replacement: resolvePath(reactDomPath, "client.js"),
       },
       { find: /^@elizaos\/ui$/, replacement: r("../ui/src/cloud-ui/index.ts") },
       {
