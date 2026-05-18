@@ -75,6 +75,7 @@ export function createTranslator(
 
 export {
   DEFAULT_UI_LANGUAGE,
+  ensureLanguageLoaded,
   MESSAGES,
   type MessageDict,
   UI_LANGUAGES,
