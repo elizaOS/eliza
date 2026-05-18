@@ -275,3 +275,151 @@ describe("message and post connector registries", () => {
 		});
 	});
 });
+
+describe("connector progress-UX helpers", () => {
+	it("editMessageOnTarget dispatches to the connector editHandler with target + messageId + content", async () => {
+		const runtime = makeRuntime();
+		const editedMemory = {
+			id: "00000000-0000-0000-0000-000000000201",
+			entityId: "00000000-0000-0000-0000-000000000202",
+			roomId: "00000000-0000-0000-0000-000000000203",
+			content: { text: "edited" },
+		} as Memory;
+		const editHandler = vi.fn(async () => editedMemory);
+		runtime.registerMessageConnector({
+			source: "chat",
+			label: "Chat",
+			editHandler,
+			capabilities: ["edit_message"],
+			supportedTargetKinds: ["room"],
+		});
+
+		const target = makeTarget("chat");
+		const content: Content = { text: "new" };
+		await expect(
+			runtime.editMessageOnTarget(target, "msg-123", content),
+		).resolves.toBe(editedMemory);
+		expect(editHandler).toHaveBeenCalledWith(runtime, {
+			target,
+			messageId: "msg-123",
+			content,
+		});
+	});
+
+	it("editMessageOnTarget throws when the connector lacks edit_message capability", async () => {
+		const runtime = makeRuntime();
+		runtime.registerMessageConnector({
+			source: "basic",
+			label: "Basic",
+			capabilities: ["send_message"],
+		});
+		await expect(
+			runtime.editMessageOnTarget(makeTarget("basic"), "msg-1", {
+				text: "x",
+			}),
+		).rejects.toThrow(/does not support edit_message/);
+	});
+
+	it("sendTypingOnTarget and stopTypingOnTarget call the right handlers", async () => {
+		const runtime = makeRuntime();
+		const typingHandler = vi.fn(async () => undefined);
+		const stopTypingHandler = vi.fn(async () => undefined);
+		runtime.registerMessageConnector({
+			source: "chat",
+			label: "Chat",
+			typingHandler,
+			stopTypingHandler,
+			capabilities: ["typing_indicator"],
+		});
+		const target = makeTarget("chat");
+		await runtime.sendTypingOnTarget(target);
+		await runtime.stopTypingOnTarget(target);
+		expect(typingHandler).toHaveBeenCalledWith(runtime, { target });
+		expect(stopTypingHandler).toHaveBeenCalledWith(runtime, { target });
+	});
+
+	it("stopTypingOnTarget throws when the connector omits stopTypingHandler (symmetric with sendTypingOnTarget)", async () => {
+		const runtime = makeRuntime();
+		runtime.registerMessageConnector({
+			source: "chat",
+			label: "Chat",
+			typingHandler: async () => undefined,
+			capabilities: ["typing_indicator"],
+		});
+		await expect(
+			runtime.stopTypingOnTarget(makeTarget("chat")),
+		).rejects.toThrow(/does not support typing_indicator/);
+	});
+
+	it("createThreadOnTarget returns the ThreadHandle from the connector", async () => {
+		const runtime = makeRuntime();
+		const handle = {
+			threadId: "thread-1",
+			parentChannelId: "channel-1",
+		};
+		const createThreadHandler = vi.fn(async () => handle);
+		runtime.registerMessageConnector({
+			source: "chat",
+			label: "Chat",
+			createThreadHandler,
+			capabilities: ["create_thread"],
+		});
+		const target = makeTarget("chat");
+		await expect(
+			runtime.createThreadOnTarget(target, { name: "sub-agent" }),
+		).resolves.toBe(handle);
+		expect(createThreadHandler).toHaveBeenCalledWith(runtime, {
+			target,
+			name: "sub-agent",
+		});
+	});
+
+	it("postToThreadOnTarget passes thread + content + identity through to the handler", async () => {
+		const runtime = makeRuntime();
+		const sent = {
+			id: "00000000-0000-0000-0000-000000000301",
+			entityId: "00000000-0000-0000-0000-000000000302",
+			roomId: "00000000-0000-0000-0000-000000000303",
+			content: { text: "thread post" },
+		} as Memory;
+		const postToThreadHandler = vi.fn(async () => sent);
+		runtime.registerMessageConnector({
+			source: "chat",
+			label: "Chat",
+			postToThreadHandler,
+			capabilities: ["post_to_thread"],
+		});
+		const target = makeTarget("chat");
+		const thread = { threadId: "thread-1" };
+		const content: Content = { text: "narration" };
+		const identity = { name: "boseti-site-redesign" };
+		await expect(
+			runtime.postToThreadOnTarget(target, thread, content, identity),
+		).resolves.toBe(sent);
+		expect(postToThreadHandler).toHaveBeenCalledWith(runtime, {
+			target,
+			thread,
+			content,
+			identity,
+		});
+	});
+
+	it("editMessageOnTarget falls back from accountId-specific to source-only connector", async () => {
+		const runtime = makeRuntime();
+		const editHandler = vi.fn(async () => undefined);
+		runtime.registerMessageConnector({
+			source: "chat",
+			label: "Chat default",
+			editHandler,
+			capabilities: ["edit_message"],
+		});
+
+		const target: TargetInfo = {
+			source: "chat",
+			accountId: "no-such-account",
+			roomId: "00000000-0000-0000-0000-00000000000c" as TargetInfo["roomId"],
+		};
+		await runtime.editMessageOnTarget(target, "msg-1", { text: "hi" });
+		expect(editHandler).toHaveBeenCalled();
+	});
+});

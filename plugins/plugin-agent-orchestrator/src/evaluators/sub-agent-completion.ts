@@ -7,7 +7,13 @@ import {
 } from "@elizaos/core";
 
 const SUB_AGENT_SOURCE = "sub_agent";
-const GENERAL_CONTEXT_ID = "general" as AgentContext;
+// When the evaluator routes back to TASKS_SEND_TO_AGENT or TASKS_SPAWN_AGENT,
+// the active context must satisfy their contextGate. TASKS declares
+// `contexts: ["tasks","code","automation","agent_internal","connectors"]`,
+// so we set `automation` — picking a context outside that set causes
+// `executePlannedToolCall` to reject with "Action TASKS_* is not allowed
+// in the current context".
+const ORCHESTRATOR_CONTEXT_ID = "automation" as AgentContext;
 const URL_IN_TEXT_RE = /https?:\/\/[^\s<>"'`)\]*]+/g;
 const TOOL_OUTPUT_END_MARKER = "[/tool output]";
 
@@ -79,12 +85,19 @@ function hasUserFacingUrl(text: string): boolean {
   return false;
 }
 
+// Match absolute Unix paths under a well-known top-level directory. The
+// anchored TLD set avoids false matches on URL paths (`/admin`), regex
+// literals (`/^foo$/`), and bullets starting with `/` while still catching
+// path leaks from Read/Bash/Edit tool transcripts.
+const RAW_TOOL_PATH_RE =
+  /^\/(?:Users|home|root|var|tmp|opt|etc|usr|private|mnt|srv)\/[^\s]+/m;
+
 function looksLikeRawToolTranscript(text: string): boolean {
   return (
     text.includes("[tool output:") ||
     text.includes("[/tool output]") ||
     text.includes("Full output saved to:") ||
-    /^\/[^\s]+/m.test(text)
+    RAW_TOOL_PATH_RE.test(text)
   );
 }
 
@@ -195,7 +208,7 @@ function verifiedUrlsFromMetadata(message: Memory): string[] {
   return stringArrayOf(metadataRecord(message)?.subAgentVerifiedUrls);
 }
 
-function isSubAgentTaskComplete(message: Memory): boolean {
+function isSuccessfulSubAgentCompletion(message: Memory): boolean {
   const content = contentRecord(message);
   const metadata = metadataRecord(message);
   if (!content || !metadata) return false;
@@ -203,33 +216,7 @@ function isSubAgentTaskComplete(message: Memory): boolean {
   if (source !== SUB_AGENT_SOURCE && metadata.subAgent !== true) return false;
   if (textOf(metadata.subAgentEvent) !== "task_complete") return false;
   if (metadata.subAgentCapExceeded === true) return false;
-  return true;
-}
-
-function isSuccessfulSubAgentCompletion(message: Memory): boolean {
-  if (!isSubAgentTaskComplete(message)) return false;
-  return !completionHasVerificationFailure(
-    textOf(contentRecord(message)?.text),
-  );
-}
-
-function verificationFailureReply(text: string): string {
-  const lines = text.replace(/\r\n/g, "\n").split("\n");
-  const verificationIndex = lines.findIndex((line) =>
-    line.startsWith("[verification:"),
-  );
-  const detailLines =
-    verificationIndex >= 0
-      ? lines
-          .slice(verificationIndex + 1)
-          .map((line) => line.trim())
-          .filter(Boolean)
-          .slice(0, 8)
-      : [];
-  return [
-    "The sub-agent reported completion, but verification failed, so I am not treating the app as live yet.",
-    ...(detailLines.length > 0 ? ["Unreachable URL(s):", ...detailLines] : []),
-  ].join("\n");
+  return !completionHasVerificationFailure(textOf(content.text));
 }
 
 function replyPatchFromCompletion(
@@ -283,12 +270,10 @@ export const subAgentCompletionResponseEvaluator: ResponseHandlerEvaluator = {
     "Routes verified sub-agent task_complete messages to direct replies unless Stage 1 requested a concrete follow-up action.",
   priority: 10,
   shouldRun: ({ message, messageHandler }) => {
-    if (!isSubAgentTaskComplete(message)) return false;
-    if (messageHandler.processMessage === "STOP") return false;
-    const completionText = textOf(contentRecord(message)?.text);
-    if (completionHasVerificationFailure(completionText)) return true;
     if (!isSuccessfulSubAgentCompletion(message)) return false;
+    if (messageHandler.processMessage === "STOP") return false;
     const currentReply = textOf(messageHandler.plan.reply);
+    const completionText = textOf(contentRecord(message)?.text);
     const verifiedUrls = verifiedUrlsFromMetadata(message);
     if (hasVerifiedCompletionReply(currentReply, completionText, verifiedUrls))
       return true;
@@ -305,19 +290,6 @@ export const subAgentCompletionResponseEvaluator: ResponseHandlerEvaluator = {
     const currentReply = textOf(messageHandler.plan.reply);
     const completionText = textOf(contentRecord(message)?.text);
     const verifiedUrls = verifiedUrlsFromMetadata(message);
-    if (completionHasVerificationFailure(completionText)) {
-      return {
-        ...respondIfNeeded(messageHandler),
-        requiresTool: false,
-        setContexts: [SIMPLE_CONTEXT_ID],
-        clearCandidateActions: true,
-        clearParentActionHints: true,
-        reply: verificationFailureReply(completionText),
-        debug: [
-          "sub-agent completion failed verification; surfacing failure without re-dispatch",
-        ],
-      };
-    }
     const reply = replyPatchFromCompletion(
       currentReply,
       completionText,
@@ -341,12 +313,36 @@ export const subAgentCompletionResponseEvaluator: ResponseHandlerEvaluator = {
       return {
         ...respondIfNeeded(messageHandler),
         requiresTool: true,
-        setContexts: [GENERAL_CONTEXT_ID],
+        setContexts: [ORCHESTRATOR_CONTEXT_ID],
         clearReply: true,
         addCandidateActions: ["TASKS_SEND_TO_AGENT"],
         addParentActionHints: ["TASKS"],
         debug: [
           "verified sub-agent completion only contains captured tool output; routing back through TASKS for follow-up",
+        ],
+      };
+    }
+    // Prose-and-tool-output mixed: looksLikeCapturedToolOutput requires the
+    // body to start with `[tool output:` but real sub-agents intersperse
+    // tool blocks with prose ("Site located at X. Now reading...
+    // [tool output: ...] ..."). Check `looksLikeRawToolTranscript` against
+    // the user-facing body (tool output blocks stripped) — if that still
+    // contains raw transcript markers (e.g. "Full output saved to:" line
+    // or an absolute path leak outside any tool block), route through
+    // TASKS_SEND_TO_AGENT for a clean summary. When the stripped body is
+    // clean prose, the final block of the previous `if` falls through to
+    // the direct-reply branch below.
+    const userFacingBody = userFacingCompletionBody(completionText);
+    if (looksLikeRawToolTranscript(userFacingBody)) {
+      return {
+        ...respondIfNeeded(messageHandler),
+        requiresTool: true,
+        setContexts: [ORCHESTRATOR_CONTEXT_ID],
+        clearReply: true,
+        addCandidateActions: ["TASKS_SEND_TO_AGENT"],
+        addParentActionHints: ["TASKS"],
+        debug: [
+          "verified sub-agent completion contains raw tool transcript markers; routing back through TASKS for summarization",
         ],
       };
     }

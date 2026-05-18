@@ -1,10 +1,12 @@
+import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
-import { describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import {
   normalizeTaskAgentAdapter,
   resolvePinnedAdapter,
   resolveSpawnWorkdir,
+  resolveWorkdirByConvention,
 } from "../../src/services/task-agent-routing.js";
 
 // `task` / `userRequest` are deliberately chosen so they match no configured
@@ -53,6 +55,61 @@ describe("resolveSpawnWorkdir — explicit workdir fallback", () => {
         lockWorkdir: true,
       }),
     ).toEqual({ workdir: process.cwd() });
+  });
+});
+
+describe("resolveWorkdirByConvention", () => {
+  // Each test gets a fresh isolated root so parallel runs and leftover state
+  // from prior runs cannot contaminate the directory scan.
+  let root: string;
+  const previousRoots = process.env.TASK_AGENT_WORKDIR_ROOTS;
+
+  beforeEach(() => {
+    root = fs.mkdtempSync(path.join(os.tmpdir(), "workdir-convention-"));
+    process.env.TASK_AGENT_WORKDIR_ROOTS = root;
+  });
+
+  afterEach(() => {
+    if (previousRoots === undefined)
+      delete process.env.TASK_AGENT_WORKDIR_ROOTS;
+    else process.env.TASK_AGENT_WORKDIR_ROOTS = previousRoots;
+    fs.rmSync(root, { recursive: true, force: true });
+  });
+
+  it("returns the matching project dir when its name appears in the user request", () => {
+    fs.mkdirSync(path.join(root, "camping-car-europe"));
+    fs.mkdirSync(path.join(root, "unrelated-project"));
+    expect(
+      resolveWorkdirByConvention(
+        undefined,
+        "build a thing",
+        "let's ship camping car europe today",
+      ),
+    ).toBe(path.join(root, "camping-car-europe"));
+  });
+
+  it("returns undefined when no project dir name appears in the request", () => {
+    fs.mkdirSync(path.join(root, "boseti"));
+    fs.mkdirSync(path.join(root, "soulmates"));
+    expect(
+      resolveWorkdirByConvention(
+        undefined,
+        "build a thing",
+        "do something generic",
+      ),
+    ).toBeUndefined();
+  });
+
+  it("falls back to undefined when multiple project dirs match (ambiguous)", () => {
+    fs.mkdirSync(path.join(root, "boseti"));
+    fs.mkdirSync(path.join(root, "soulmates"));
+    expect(
+      resolveWorkdirByConvention(
+        undefined,
+        "ship boseti and soulmates together",
+        "ship boseti and soulmates together",
+      ),
+    ).toBeUndefined();
   });
 });
 
