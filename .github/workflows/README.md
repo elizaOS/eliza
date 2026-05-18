@@ -14,7 +14,7 @@ This directory contains GitHub Actions workflows for the elizaOS project (v2.0.0
 | `claude-security-review.yml` | PR opened | Security-focused review |
 | `codeql.yml` | Push/PR to main, Weekly | Static security analysis |
 | `docs-ci.yml` | PR (docs paths), Manual | Documentation quality checks |
-| `image.yaml` | Release, Manual | Docker image builds |
+| `build-agent-image.yml` | Push develop/main, Release, Manual | Docker image builds (`:develop`, `:stable`, `:latest`, release tags) |
 | `tee-build-deploy.yml` | Push to main, Manual | TEE deployment to Phala Cloud |
 | `weekly-maintenance.yml` | Weekly, Manual | Dependency/security audits |
 | `jsdoc-automation.yml` | Manual | JSDoc generation |
