@@ -187,7 +187,12 @@ async def _run_path_b_instance(
         env={**os.environ, "OPENCODE_DISABLE_AUTOUPDATE": "1"},
     )
     try:
-        await asyncio.wait_for(proc.communicate(), timeout=opencode_timeout_s)
+        _stdout, stderr_bytes = await asyncio.wait_for(
+            proc.communicate(), timeout=opencode_timeout_s
+        )
+        if proc.returncode != 0:
+            tail = stderr_bytes.decode("utf-8", "replace").strip().splitlines()[-20:]
+            logger.debug("[comparison] opencode rc=%s stderr tail: %s", proc.returncode, "\n".join(tail))
     except asyncio.TimeoutError:
         proc.kill()
         await proc.wait()
@@ -234,7 +239,15 @@ async def _run_path_a(
     client: object,
 ) -> PathResult:
     started = time.time()
-    result = await run_path_a_instance(client, instance, evaluator, provider_label="elizaos")
+    try:
+        result = await run_path_a_instance(client, instance, evaluator, provider_label="elizaos")
+    except Exception as exc:  # noqa: BLE001 — surface elizaos failure as a record
+        return PathResult(
+            path="elizaos",
+            status="error",
+            error=f"elizaos run failed: {exc}",
+            time_s=time.time() - started,
+        )
     return PathResult(
         path="elizaos",
         status="resolved" if result.success else ("no_patch" if result.patch_status == PatchStatus.NOT_GENERATED else "failed"),
@@ -316,8 +329,10 @@ async def _run(args: argparse.Namespace) -> int:
     eliza_server = ElizaServerManager()
     eliza_server.start()
     client = eliza_server.client
+    records: list[ComparisonRecord] = []
+    timestamp = datetime.now(UTC).strftime("%Y%m%d_%H%M%S")
+    out_path = out_dir / f"comparison_{timestamp}.json"
     try:
-        records: list[ComparisonRecord] = []
         for idx, inst in enumerate(instances):
             logger.info("[comparison] %d/%d %s", idx + 1, len(instances), inst.instance_id)
             a = await _run_path_a(inst, evaluator, client)
@@ -336,11 +351,10 @@ async def _run(args: argparse.Namespace) -> int:
             )
     finally:
         eliza_server.stop()
+        # Persist whatever we have, even on KeyboardInterrupt / unhandled errors.
+        out_path.write_text(json.dumps(_to_payload(records), indent=2))
 
     payload = _to_payload(records)
-    timestamp = datetime.now(UTC).strftime("%Y%m%d_%H%M%S")
-    out_path = out_dir / f"comparison_{timestamp}.json"
-    out_path.write_text(json.dumps(payload, indent=2))
     print(json.dumps(payload["totals"], indent=2))
     print(f"\nReport: {out_path}")
     return 0
