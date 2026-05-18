@@ -190,7 +190,7 @@ function resolveDependencyPackageDir(packageName, baseDirs = [repoRoot]) {
     try {
       return fs.realpathSync(dir);
     } catch {
-      return dir;
+      return null;
     }
   };
   for (const baseDir of baseDirs) {
