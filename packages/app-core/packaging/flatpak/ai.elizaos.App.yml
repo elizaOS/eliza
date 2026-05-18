@@ -93,14 +93,28 @@ modules:
 
   # ── elizaOS App CLI ──────────────────────────────────────────────────
   # NOTE: For Flathub submission, replace the npm-install build with an
-  # offline approach using flatpak-node-generator or a vendored tarball.
-  # The current approach (npm install -g) requires network at build time
-  # and works for self-hosted builds and CI bundles, but Flathub's build
-  # infrastructure does not allow network access during the build phase.
+  # offline approach using flatpak-node-generator. The current approach
+  # (npm install -g) requires network at build time and works for
+  # self-hosted builds and CI bundles, but Flathub's build infrastructure
+  # does not allow network access during the build phase.
   #
-  # To generate offline sources for Flathub:
-  #   flatpak-node-generator npm package-lock.json -o npm-sources.json
-  # Then add: sources: [type: file, path: npm-sources.json]
+  # Offline-mode prep (Flathub submission path):
+  #   1. Run `./generate-sources.sh` from this directory on Linux. It
+  #      resolves the latest published `elizaos` CLI dependency graph and
+  #      writes `node-sources.json` next to this manifest.
+  #   2. Add the generated file to the `sources:` block below:
+  #          - type: file
+  #            path: node-sources.json
+  #   3. Replace the `npm install -g elizaos` build command with
+  #      `npm install -g --offline --prefix=/app elizaos` and drop the
+  #      `--share=network` build-arg above. The CI workflow
+  #      `.github/workflows/test-flatpak.yml` regenerates
+  #      node-sources.json on every run so the offline manifest stays in
+  #      sync with the published CLI.
+  #
+  # Until node-sources.json is committed AND the build command flipped
+  # to --offline, this manifest remains self-hosted/CI-only and is not
+  # Flathub-submittable.
   - name: elizaos-app
     buildsystem: simple
     build-options:

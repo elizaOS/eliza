@@ -25,9 +25,15 @@ jobs:
         include:
           - arch: amd64
             runner: ubuntu-24.04
-          # arm64 builds can be enabled when arm runners are available
-          # - arch: arm64
-          #   runner: ubuntu-24.04-arm
+            experimental: false
+          # Linux arm64 hosted runners are in public preview for public
+          # repositories (free, but queue-prone). Mark this matrix entry
+          # experimental so a flaky ARM run doesn't block amd64 PRs.
+          # Promote `experimental: false` once ARM is GA and stable.
+          - arch: arm64
+            runner: ubuntu-24.04-arm
+            experimental: true
+    continue-on-error: ${{ matrix.experimental }}
 
     steps:
       - name: Free disk space on runner

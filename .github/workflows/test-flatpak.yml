@@ -34,6 +34,30 @@ jobs:
       - name: Validate desktop entry
         run: desktop-file-validate packages/app-core/packaging/flatpak/ai.elizaos.App.desktop
 
+      # Offline-mode prep: generate node-sources.json on every PR so we
+      # catch regressions in the generator pipeline before they show up
+      # in a Flathub submission. Non-fatal for now — the manifest still
+      # uses `npm install -g` over the build-time network share.
+      - name: Install flatpak-node-generator
+        run: pipx install flatpak-node-generator || pip install --user flatpak-node-generator
+
+      - name: Generate offline node sources
+        id: gen-sources
+        continue-on-error: true
+        working-directory: packages/app-core/packaging/flatpak
+        run: |
+          chmod +x generate-sources.sh
+          ./generate-sources.sh
+          test -s node-sources.json
+
+      - name: Upload node-sources.json
+        if: steps.gen-sources.outcome == 'success'
+        uses: actions/upload-artifact@v7
+        with:
+          name: flatpak-node-sources
+          path: packages/app-core/packaging/flatpak/node-sources.json
+          retention-days: 30
+
       - name: Build Flatpak
         working-directory: packages/app-core/packaging/flatpak
         run: |
