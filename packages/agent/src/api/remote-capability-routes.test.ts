@@ -516,6 +516,32 @@ describe("handleRemoteCapabilityRoutes", () => {
     expect(json).not.toHaveBeenCalled();
   });
 
+  it("rejects cloud requests with duplicate allowlist sources", async () => {
+    const connectCloudSandbox = vi.fn();
+    const { ctx, error, json } = makeCtx(
+      {
+        allowedModuleIds: ["top-level-plugin"],
+        cloud: {
+          cloudApiBase: "https://api.elizacloud.ai",
+          authToken: "cloud-auth",
+          name: "Cloud Tools",
+          allowedModuleIds: ["nested-plugin"],
+        },
+      },
+      { connectCloudSandbox },
+    );
+
+    await expect(handleRemoteCapabilityRoutes(ctx)).resolves.toBe(true);
+
+    expect(error).toHaveBeenCalledWith(
+      ctx.res,
+      "Cloud requests must set allowedModuleIds either at the top level or inside 'cloud', not both.",
+      400,
+    );
+    expect(connectCloudSandbox).not.toHaveBeenCalled();
+    expect(json).not.toHaveBeenCalled();
+  });
+
   it("rejects invalid endpoint URLs", async () => {
     const { ctx, error, json } = makeCtx({
       endpoint: { baseUrl: "file:///tmp/capability" },

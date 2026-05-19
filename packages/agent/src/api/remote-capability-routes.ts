@@ -184,6 +184,17 @@ export async function handleRemoteCapabilityRoutes(
 
     if (body.cloud !== undefined) {
       const cloud = parseCloudOptions(body.cloud);
+      if (
+        allowedModuleIds !== undefined &&
+        cloud.allowedModuleIds !== undefined
+      ) {
+        error(
+          res,
+          "Cloud requests must set allowedModuleIds either at the top level or inside 'cloud', not both.",
+          400,
+        );
+        return true;
+      }
       const cloudAllowedModuleIds = allowedModuleIds ?? cloud.allowedModuleIds;
       const connectCloudSandbox =
         ctx.connectCloudSandbox ?? connectCloudCapabilitySandbox;
