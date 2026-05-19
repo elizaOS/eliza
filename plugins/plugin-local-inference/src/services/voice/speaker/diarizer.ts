@@ -9,6 +9,9 @@
  * callers don't need simultaneous updates.
  */
 
+import { existsSync } from "node:fs";
+import { DiarizerGgml, DiarizerGgmlUnavailableError } from "./diarizer-ggml";
+
 export const PYANNOTE_SEGMENTATION_3_INT8_MODEL_ID =
 	"pyannote-segmentation-3.0-int8" as const;
 export const PYANNOTE_SEGMENTATION_3_FP32_MODEL_ID =
@@ -86,6 +89,69 @@ export interface Diarizer {
 	/** Process one ~5 s window of PCM. */
 	diarizeWindow(pcm: Float32Array): Promise<DiarizerOutput>;
 	dispose(): Promise<void>;
+}
+
+/**
+ * Backward-compatible pyannote facade. The ONNX implementation has been
+ * replaced by the GGML binding, but several callers still import
+ * `PyannoteDiarizer` from this module.
+ */
+export class PyannoteDiarizer implements Diarizer {
+	readonly sampleRate = PYANNOTE_SAMPLE_RATE;
+	private readonly impl: DiarizerGgml;
+
+	private constructor(
+		ggufPath: string,
+		readonly modelId: PyannoteDiarizerModelId,
+	) {
+		this.impl = new DiarizerGgml({ ggufPath });
+	}
+
+	static async load(
+		ggufPath: string,
+		modelId: PyannoteDiarizerModelId = PYANNOTE_SEGMENTATION_3_INT8_MODEL_ID,
+	): Promise<PyannoteDiarizer> {
+		if (!existsSync(ggufPath)) {
+			throw new DiarizerUnavailableError(
+				"model-load-failed",
+				`[pyannote] GGUF not found at ${ggufPath}`,
+			);
+		}
+		return new PyannoteDiarizer(ggufPath, modelId);
+	}
+
+	async diarizeWindow(pcm: Float32Array): Promise<DiarizerOutput> {
+		try {
+			const out = await this.impl.segment(pcm);
+			const probs = new Float32Array(out.labels.length * PYANNOTE_CLASS_COUNT);
+			for (let frame = 0; frame < out.labels.length; frame += 1) {
+				const label = out.labels[frame];
+				if (label < 0 || label >= PYANNOTE_CLASS_COUNT) {
+					throw new DiarizerUnavailableError(
+						"model-load-failed",
+						`[pyannote] GGML emitted invalid class ${label} at frame ${frame}`,
+					);
+				}
+				probs[frame * PYANNOTE_CLASS_COUNT + label] = 1;
+			}
+			return classifyFramesToSegments(
+				probs,
+				out.labels.length,
+				PYANNOTE_CLASS_COUNT,
+				0,
+				PYANNOTE_FRAME_STRIDE_MS,
+			);
+		} catch (err) {
+			if (err instanceof DiarizerGgmlUnavailableError) {
+				throw new DiarizerUnavailableError(err.code, err.message);
+			}
+			throw err;
+		}
+	}
+
+	async dispose(): Promise<void> {
+		await this.impl.dispose();
+	}
 }
 
 /** Numerically-stable softmax over the last axis. */

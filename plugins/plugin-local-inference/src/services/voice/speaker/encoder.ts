@@ -9,6 +9,7 @@
  * New callers should import from `./encoder-ggml` directly.
  */
 
+import { existsSync } from "node:fs";
 import { normalizeVoiceEmbedding } from "../speaker-imprint";
 import {
 	SPEAKER_GGML_EMBEDDING_DIM,
@@ -95,6 +96,12 @@ export class WespeakerEncoder implements SpeakerEncoder {
 		ggufPath: string,
 		_modelId: WespeakerModelId = WESPEAKER_RESNET34_LM_INT8_MODEL_ID,
 	): Promise<WespeakerEncoder> {
+		if (!existsSync(ggufPath)) {
+			throw new SpeakerEncoderUnavailableError(
+				"model-missing",
+				`[wespeaker] GGUF not found at ${ggufPath}`,
+			);
+		}
 		return new WespeakerEncoder(ggufPath);
 	}
 
