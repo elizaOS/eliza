@@ -14,6 +14,7 @@ sys.path.insert(0, str(ROOT))
 from compiler.runtime.e1_npu_scale_model import (  # noqa: E402
     MIN_REAL_V1,
     OPEN_2028_FIRST,
+    OPEN_2028_SOTA,
     OPEN_2028_STRETCH,
     NpuScaleConfig,
     estimate_attention_qk_s8,
@@ -25,6 +26,7 @@ CONFIGS = {
     MIN_REAL_V1.name: MIN_REAL_V1,
     OPEN_2028_FIRST.name: OPEN_2028_FIRST,
     OPEN_2028_STRETCH.name: OPEN_2028_STRETCH,
+    OPEN_2028_SOTA.name: OPEN_2028_SOTA,
 }
 MODEL = ROOT / "benchmarks/models/mobile_smoke.tflite"
 PROCESS_EFFECTS = ROOT / "docs/spec-db/process-14a-effects.yaml"

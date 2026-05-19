@@ -140,12 +140,61 @@ def test_14a_cpu_ap_model_exports_process_power_thermal_metrics() -> None:
         raise AssertionError("modeled process corners must remain prohibited for release use")
 
 
+def test_14a_sota_cpu_ap_model_improves_modeled_ipc_without_release_claim() -> None:
+    with tempfile.TemporaryDirectory() as td:
+        root = Path(td)
+        baseline = root / "baseline.json"
+        sota = root / "sota.json"
+        baseline_result = run_generator(
+            root / "unused-qemu.log",
+            baseline,
+            "--mode",
+            "model-14a-cpu-ap",
+        )
+        if baseline_result.returncode != 0:
+            raise AssertionError(baseline_result.stdout)
+        sota_result = run_generator(
+            root / "unused-qemu.log",
+            sota,
+            "--mode",
+            "model-14a-cpu-ap",
+            "--profile",
+            "sota_2core",
+            "--base-frequency-hz",
+            "3800000000",
+            "--base-power-w",
+            "3.1",
+            "--ipc-scale",
+            "1.35",
+            "--mpki-scale",
+            "0.62",
+        )
+        if sota_result.returncode != 0:
+            raise AssertionError(sota_result.stdout)
+        baseline_data = json.loads(baseline.read_text(encoding="utf-8"))
+        sota_data = json.loads(sota.read_text(encoding="utf-8"))
+
+    if sota_data.get("config", {}).get("profile") != "sota_2core":
+        raise AssertionError("SOTA model must record its CPU profile")
+    if float(sota_data.get("ipc", 0.0)) <= float(baseline_data.get("ipc", 0.0)):
+        raise AssertionError("SOTA CPU model must improve modeled IPC")
+    if int(sota_data.get("simulated_frequency_hz", 0)) <= int(
+        baseline_data.get("simulated_frequency_hz", 0)
+    ):
+        raise AssertionError("SOTA CPU model must improve modeled frequency")
+    if "not_pdk" not in json.dumps(sota_data.get("process_corners", [])):
+        raise AssertionError("SOTA CPU process corners must keep PDK signoff blocked")
+    if "phone_score" in sota_data:
+        raise AssertionError("SOTA CPU model must not emit phone-comparable score fields")
+
+
 def main() -> int:
     for test in (
         test_missing_qemu_log_fails,
         test_wrong_banner_fails,
         test_liveness_metrics_are_not_performance_evidence,
         test_14a_cpu_ap_model_exports_process_power_thermal_metrics,
+        test_14a_sota_cpu_ap_model_improves_modeled_ipc_without_release_claim,
     ):
         test()
         print(f"PASS {test.__name__}")

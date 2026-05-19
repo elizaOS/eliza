@@ -10,6 +10,7 @@ sys.path.insert(0, str(ROOT))
 from compiler.runtime.e1_npu_scale_model import (  # noqa: E402
     MIN_REAL_V1,
     OPEN_2028_FIRST,
+    OPEN_2028_SOTA,
     OPEN_2028_STRETCH,
     estimate_attention_qk_s8,
     estimate_conv2d_s8,
@@ -71,6 +72,34 @@ def main() -> int:
         f"2028 stretch open target must land in 50-100 TOPS, got {OPEN_2028_STRETCH.dense_int8_peak_tops:.2f}",
         errors,
     )
+    sota_precision = {
+        entry["precision"]: entry["state"] for entry in OPEN_2028_SOTA.precision_matrix()
+    }
+    require(
+        OPEN_2028_SOTA.dense_int8_peak_tops >= 160.0,
+        f"2028 SOTA target must reach >=160 dense INT8 TOPS, got {OPEN_2028_SOTA.dense_int8_peak_tops:.2f}",
+        errors,
+    )
+    require(
+        OPEN_2028_SOTA.sparse_int4_peak_tops >= 512.0,
+        f"2028 SOTA target must reach >=512 sparse INT4 TOPS, got {OPEN_2028_SOTA.sparse_int4_peak_tops:.2f}",
+        errors,
+    )
+    require(
+        OPEN_2028_SOTA.scratchpad_kib >= 64 * 1024,
+        "2028 SOTA target must model >=64 MiB aggregate local SRAM",
+        errors,
+    )
+    require(
+        OPEN_2028_SOTA.dma_queue_depth >= 4096,
+        "2028 SOTA target must model a >=4096-deep descriptor queue",
+        errors,
+    )
+    require(
+        sota_precision.get("FP8") == "projected",
+        "2028 SOTA target must project FP8 support while remaining modeled-only",
+        errors,
+    )
     require(
         OPEN_2028_FIRST.dma_queue_depth >= 1024,
         "2028 first open target must model a 1024-deep descriptor queue",
@@ -108,7 +137,8 @@ def main() -> int:
         "NPU open scale model passed: "
         f"min_v1={MIN_REAL_V1.int8_macs_per_cycle} MAC/cycle, "
         f"first={OPEN_2028_FIRST.dense_int8_peak_tops:.2f} TOPS, "
-        f"stretch={OPEN_2028_STRETCH.dense_int8_peak_tops:.2f} TOPS"
+        f"stretch={OPEN_2028_STRETCH.dense_int8_peak_tops:.2f} TOPS, "
+        f"sota={OPEN_2028_SOTA.dense_int8_peak_tops:.2f} TOPS"
     )
     return 0
 

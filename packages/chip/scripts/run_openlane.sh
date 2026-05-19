@@ -74,8 +74,8 @@ active_openlane_containers() {
         return 0
     fi
     docker ps \
-        --filter "label=eliza.openlane=1" \
-        --filter "label=eliza.repo=$REPO_DIR" \
+        --filter "label=openagent.openlane=1" \
+        --filter "label=openagent.repo=$REPO_DIR" \
         --format '{{.ID}} {{.Status}} {{.Names}}' 2>/dev/null || true
 }
 
@@ -182,8 +182,8 @@ else
     echo "OpenLane wrapper command: docker run --rm -v $REPO_DIR:/work -w /work -e PDK_ROOT=$pdk_root_container $IMAGE openlane --pdk-root $pdk_root_container $CONFIG"
     run_and_diagnose docker run --rm \
         --cidfile "$DOCKER_CID_FILE" \
-        --label "eliza.openlane=1" \
-        --label "eliza.repo=$REPO_DIR" \
+        --label "openagent.openlane=1" \
+        --label "openagent.repo=$REPO_DIR" \
         -v "$REPO_DIR:/work" \
         -w /work \
         -e "PDK_ROOT=$pdk_root_container" \

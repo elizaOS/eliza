@@ -120,6 +120,20 @@ OPEN_2028_STRETCH = NpuScaleConfig(
     structured_sparsity_factor=2,
 )
 
+OPEN_2028_SOTA = NpuScaleConfig(
+    name="open_2028_sota_160tops",
+    tiles=16,
+    int8_macs_per_tile_per_cycle=4096,
+    clock_hz=1_250_000_000,
+    scratchpad_kib=4096 * 16,
+    dma_queue_depth=4096,
+    dma_bytes_per_cycle=4096,
+    supports_bf16=True,
+    supports_fp16=True,
+    supports_fp8=True,
+    structured_sparsity_factor=2,
+)
+
 
 def _require_positive(**values: int) -> None:
     for name, value in values.items():

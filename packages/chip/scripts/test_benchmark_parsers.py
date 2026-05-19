@@ -124,6 +124,86 @@ def test_simulator_parser_accepts_calibrated_counter_export_shape() -> None:
     assert_equal(metrics["benchmark_success_allowed"], True, "simulator success flag")
 
 
+def test_simulator_benchmark_runs_without_measured_target_metadata() -> None:
+    temp_parent = ROOT / "benchmarks/results/test-temp"
+    temp_parent.mkdir(parents=True, exist_ok=True)
+    with tempfile.TemporaryDirectory(dir=temp_parent) as td:
+        temp_root = Path(td)
+        metrics = temp_root / "simulator-arch-metrics.json"
+        metrics.write_text(
+            json.dumps(
+                {
+                    "schema": "eliza.simulator_arch_metrics.v1",
+                    "evidence_class": "deterministic_14a_cpu_ap_arch_model",
+                    "claim_boundary": (
+                        "modeled_architecture_metrics_only_not_pdk_rtl_silicon_or_phone_score_evidence"
+                    ),
+                    "benchmark_success_allowed": True,
+                    "target_cycles": 1000,
+                    "simulated_frequency_hz": 3_200_000_000,
+                    "ipc": 1.8,
+                    "process_corner_count": 4,
+                }
+            )
+            + "\n",
+            encoding="utf-8",
+        )
+        config = temp_root / "benchmark_plan_simulator_only.json"
+        config.write_text(
+            json.dumps(
+                {
+                    "version": "test",
+                    "benchmarks": [
+                        {
+                            "name": "simulator_arch_metrics",
+                            "suite": "Eliza simulator metrics",
+                            "version": "test",
+                            "command": ["cat", str(metrics)],
+                            "requires": ["cat"],
+                            "input_dataset": "simulator metrics JSON",
+                            "primary_metric": "target_cycles",
+                            "units": "cycles",
+                            "parser": "simulator_metrics_v1",
+                            "provenance": "simulator",
+                            "required_metrics": [
+                                "target_cycles",
+                                "simulated_frequency_hz",
+                                "ipc",
+                                "process_corner_count",
+                            ],
+                        }
+                    ],
+                },
+                indent=2,
+            )
+            + "\n",
+            encoding="utf-8",
+        )
+        out_dir = temp_root / "out"
+        result = run_runner(
+            [
+                "run",
+                "--config",
+                str(config),
+                "--out-dir",
+                str(out_dir),
+                "--report-id",
+                "simulator-only",
+            ]
+        )
+        report = json.loads((out_dir / "simulator-only/report.json").read_text(encoding="utf-8"))
+
+    if result.returncode != 0:
+        raise AssertionError(result.stdout)
+    row = report["results"][0]
+    assert_equal(row["status"], "passed", "simulator-only status")
+    assert_equal(row["provenance"], "simulator", "simulator-only provenance")
+    assert_equal(row["run_metadata"]["required_metadata"], [], "simulator required metadata")
+    for section in ("software", "clocks", "memory", "thermal", "power", "process", "calibration"):
+        if section in report:
+            raise AssertionError(f"simulator-only report unexpectedly required {section}")
+
+
 def test_npu_scale_parser_preserves_process_corner_metrics() -> None:
     result = subprocess.run(
         [
@@ -386,6 +466,7 @@ def main() -> int:
         test_suite_parsers_accept_real_formats,
         test_parsers_reject_incomplete_or_comparable_metrics,
         test_simulator_parser_accepts_calibrated_counter_export_shape,
+        test_simulator_benchmark_runs_without_measured_target_metadata,
         test_npu_scale_parser_preserves_process_corner_metrics,
         test_strict_missing_exits_two_and_preserves_blockers,
         test_blocked_metadata_template_covers_config_assets,

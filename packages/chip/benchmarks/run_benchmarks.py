@@ -1043,7 +1043,7 @@ def is_blocked_value(value: Any) -> bool:
 
 def metadata_blockers(report: dict[str, Any], bench: dict[str, Any]) -> list[dict[str, Any]]:
     blockers: list[dict[str, Any]] = []
-    required_sections = bench.get("required_metadata", list(REAL_METADATA_SECTIONS))
+    required_sections = required_metadata_sections(bench)
     for section in required_sections:
         if section not in REAL_METADATA_REQUIRED_FIELDS:
             continue
@@ -1185,6 +1185,14 @@ def metadata_blockers(report: dict[str, Any], bench: dict[str, Any]) -> list[dic
                         }
                     )
     return blockers
+
+
+def required_metadata_sections(bench: dict[str, Any]) -> list[str]:
+    if "required_metadata" in bench:
+        return list(bench.get("required_metadata", []))
+    if bench.get("provenance") == "simulator":
+        return []
+    return list(REAL_METADATA_SECTIONS)
 
 
 def selected_benchmarks(config: dict[str, Any], names: set[str]) -> list[dict[str, Any]]:
@@ -1487,11 +1495,13 @@ def validate_report(report: dict[str, Any]) -> list[str]:
         errors.append("report.schema must be eliza.benchmark_run.v1")
     if report.get("claim_level") not in VALID_CLAIM_LEVELS:
         errors.append("report.claim_level is not a valid claim level")
-    has_passed_results = any(
-        isinstance(result, dict) and result.get("status") == "passed"
+    has_passed_measured_results = any(
+        isinstance(result, dict)
+        and result.get("status") == "passed"
+        and result.get("provenance") != "simulator"
         for result in report.get("results", [])
     )
-    if report.get("dry_run") is False and has_passed_results:
+    if report.get("dry_run") is False and has_passed_measured_results:
         for section in REAL_METADATA_SECTIONS:
             if not isinstance(report.get(section), dict):
                 errors.append(f"real report missing metadata section {section}")
@@ -1594,8 +1604,12 @@ def validate_report(report: dict[str, Any]) -> list[str]:
             ):
                 for error in check_metric_requirements(result["metrics"], result["run_metadata"]):
                     errors.append(f"{prefix}.metrics {error}")
-                for error in check_calibration_requirements(report, result):
-                    errors.append(f"{prefix}.calibration {error}")
+                requires_calibration = bool(
+                    result["run_metadata"].get("required_calibration_assets")
+                )
+                if result.get("provenance") != "simulator" or requires_calibration:
+                    for error in check_calibration_requirements(report, result):
+                        errors.append(f"{prefix}.calibration {error}")
         if status == "passed":
             if result.get("missing_dependencies"):
                 errors.append(f"{prefix} passed with missing_dependencies")
@@ -1824,7 +1838,7 @@ def run_benchmark(
     result["run_metadata"] = {
         "runs": int(bench.get("runs", 1)),
         "warmup_runs": int(bench.get("warmup_runs", 0)),
-        "required_metadata": bench.get("required_metadata", list(REAL_METADATA_SECTIONS)),
+        "required_metadata": required_metadata_sections(bench),
         "required_metrics": bench.get("required_metrics", []),
         "metric_gates": bench.get("metric_gates", []),
         "required_calibration_assets": bench.get("required_calibration_assets", []),

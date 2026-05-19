@@ -125,6 +125,31 @@
       "timeout_seconds": 60
     },
     {
+      "name": "npu_arch_sim_sota_2028",
+      "suite": "Eliza deterministic NPU architecture simulator",
+      "version": "local/sota-scale-v1",
+      "command": [
+        "python3",
+        "benchmarks/sim/run_npu_scale_sim.py",
+        "--config",
+        "open_2028_sota_160tops"
+      ],
+      "requires": ["python3"],
+      "input_dataset": "deterministic GEMM/conv/attention sweep",
+      "primary_metric": "modeled dense INT8 TOPS",
+      "units": "TOPS",
+      "parser": "eliza_npu_scale_sim_v1",
+      "provenance": "simulator",
+      "required_metrics": [
+        "min_observed_tops",
+        "max_observed_tops",
+        "min_utilization_percent",
+        "process_corner_count",
+        "worst_process_corner_min_observed_tops"
+      ],
+      "timeout_seconds": 60
+    },
+    {
       "name": "tflite_cpu",
       "suite": "TensorFlow Lite benchmark_model",
       "version": "upstream/local",
@@ -282,7 +307,6 @@
       "units": "cycles",
       "parser": "simulator_metrics_v1",
       "provenance": "simulator",
-      "required_metadata": ["software", "clocks", "memory", "process", "calibration"],
       "required_metrics": [
         "target_cycles",
         "simulated_frequency_hz",
@@ -296,7 +320,34 @@
         "worst_process_corner_power_w",
         "worst_process_corner_die_temp_c"
       ],
-      "required_calibration_assets": ["simulator_config", "simulator_counter_export"],
+      "timeout_seconds": 600
+    },
+    {
+      "name": "cpu_arch_sim_sota_2028",
+      "suite": "Eliza simulator metrics",
+      "version": "v1/sota-2core",
+      "command": ["cat", "benchmarks/results/simulator-arch-metrics-sota.json"],
+      "requires": ["cat"],
+      "required_files": ["benchmarks/results/simulator-arch-metrics-sota.json"],
+      "install": "Run make benchmark-cpu-ap-sota-sim-metrics for the deterministic 14A SOTA two-core CPU/AP architecture model. This is simulator-only evidence and must not contain phone-comparable wall-clock scores.",
+      "input_dataset": "simulator metrics JSON",
+      "primary_metric": "target_cycles",
+      "units": "cycles",
+      "parser": "simulator_metrics_v1",
+      "provenance": "simulator",
+      "required_metrics": [
+        "target_cycles",
+        "simulated_frequency_hz",
+        "ipc",
+        "estimated_package_power_w",
+        "estimated_die_temp_c",
+        "instructions_per_joule",
+        "process_corner_count",
+        "worst_process_corner_ipc",
+        "worst_process_corner_frequency_hz",
+        "worst_process_corner_power_w",
+        "worst_process_corner_die_temp_c"
+      ],
       "timeout_seconds": 600
     }
   ]

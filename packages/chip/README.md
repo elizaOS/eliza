@@ -6,6 +6,8 @@ The e1 chip is not the final phone SoC. It is the smallest end-to-end system use
 
 ## Repository Layout
 
+- `AGENTS.md`, `CLAUDE.md`: package-local contributor rules for production-grade,
+  publishable changes.
 - `rtl/`: SystemVerilog RTL for the e1 chip, NPU, DMA, display, interconnect, interrupt, memory, and CPU/AP stubs.
 - `verify/`: cocotb tests, formal properties, and verification status artifacts.
 - `compiler/runtime/`: Python runtime and simulator-facing NPU contract checks.
@@ -105,6 +107,14 @@ make mvp-status                    report subsystem PASS/BLOCK/FAIL status
 make product-check                 run product/evidence gates
 make clean                         remove generated local build outputs
 ```
+
+## Toolchain Surface
+
+- Python package tooling: Python 3.11+, `ruff`, `mypy`, `pytest`, `pyyaml`, `yamllint`, and `types-PyYAML`.
+- RTL and verification: SystemVerilog, cocotb, Verilator, Yosys, SymbiYosys, and C++ smoke tests.
+- Simulation and BSP flows: QEMU, Renode, Buildroot, OpenSBI, U-Boot, Linux, AOSP/Cuttlefish scaffolds, and RISC-V cross compilers.
+- Physical design and package flows: OpenLane, OpenROAD, KLayout/DRC evidence, SDC constraints, padframe manifests, KiCad artifacts, and FPGA build flows.
+- Benchmarking and evidence: CoreMark, STREAM, lmbench, fio, TensorFlow Lite benchmark tooling, deterministic architecture models, and power/thermal evidence gates.
 
 ## External Flow Notes
 

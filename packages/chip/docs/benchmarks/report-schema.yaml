@@ -85,6 +85,7 @@ required_fields:
           - fio_json_v3
           - tflite_benchmark_model
           - simulator_metrics_v1
+          - eliza_npu_scale_sim_v1
       provenance:
         enum:
           - dry_run

@@ -8,12 +8,21 @@ from pathlib import Path
 from typing import Any
 
 import yaml
+from chip_utils import load_json_object, load_yaml_object, require
 
 ROOT = Path(__file__).resolve().parents[1]
 SCORECARD = ROOT / "docs/architecture-optimization/cpu-npu-2028-readiness-scorecard.yaml"
 OPTIMIZER_REPORT = ROOT / "benchmarks/results/soc-optimized-operating-point.json"
+MODELED_EVAL = ROOT / "benchmarks/results/cpu-npu-2028-modeled-eval.json"
+BURST_SUSTAINED_POLICY = ROOT / "benchmarks/results/cpu-npu-2028-burst-sustained-policy.json"
+BURST_THERMAL_TRANSIENT = ROOT / "benchmarks/results/cpu-npu-2028-burst-thermal-transient.json"
+AOSP_GOVERNOR_TRACE = ROOT / "benchmarks/results/cpu-npu-2028-aosp-governor-trace.json"
 OPTIMIZER_CHECK = ROOT / "scripts/check_soc_optimization.py"
 WORK_ORDER_CHECK = ROOT / "scripts/check_soc_optimized_work_order.py"
+MODELED_EVAL_CHECK = ROOT / "scripts/check_cpu_npu_modeled_benchmark_eval.py"
+BURST_SUSTAINED_POLICY_CHECK = ROOT / "scripts/check_cpu_npu_burst_sustained_policy.py"
+BURST_THERMAL_TRANSIENT_CHECK = ROOT / "scripts/check_cpu_npu_burst_thermal_transient.py"
+AOSP_GOVERNOR_TRACE_CHECK = ROOT / "scripts/check_cpu_npu_aosp_governor_trace.py"
 BENCHMARK_PLAN = ROOT / "benchmarks/configs/benchmark_plan.json"
 MAKEFILE = ROOT / "Makefile"
 
@@ -35,27 +44,10 @@ REQUIRED_BENCHMARKS = {
     "tflite_cpu",
     "tflite_e1_npu",
     "npu_arch_sim_open_2028",
+    "npu_arch_sim_sota_2028",
     "simulator_arch_metrics",
+    "cpu_arch_sim_sota_2028",
 }
-
-
-def require(condition: bool, message: str, errors: list[str]) -> None:
-    if not condition:
-        errors.append(message)
-
-
-def load_yaml(path: Path) -> dict[str, Any]:
-    data = yaml.safe_load(path.read_text(encoding="utf-8"))
-    if not isinstance(data, dict):
-        raise ValueError(f"{path} must be a YAML mapping")
-    return data
-
-
-def load_json(path: Path) -> dict[str, Any]:
-    data = json.loads(path.read_text(encoding="utf-8"))
-    if not isinstance(data, dict):
-        raise ValueError(f"{path} must be a JSON object")
-    return data
 
 
 def run_required_check(command: list[str], errors: list[str]) -> None:
@@ -232,11 +224,258 @@ def check_benchmarks(scorecard: dict[str, Any], errors: list[str]) -> None:
     missing = sorted(REQUIRED_BENCHMARKS - set(entries))
     if missing:
         errors.append("required_benchmark_plan_entries missing: " + ", ".join(missing))
-    plan = load_json(BENCHMARK_PLAN)
+    plan = load_json_object(BENCHMARK_PLAN)
     names = {bench.get("name") for bench in plan.get("benchmarks", []) if isinstance(bench, dict)}
     plan_missing = sorted(set(entries) - names)
     if plan_missing:
         errors.append("benchmark plan missing scorecard entries: " + ", ".join(plan_missing))
+
+
+def check_modeled_eval(scorecard: dict[str, Any], errors: list[str]) -> None:
+    source_artifacts = scorecard.get("source_artifacts")
+    if not isinstance(source_artifacts, dict):
+        errors.append("source_artifacts must be a mapping")
+        return
+    require(
+        source_artifacts.get("modeled_benchmark_eval")
+        == "benchmarks/results/cpu-npu-2028-modeled-eval.json",
+        "scorecard must point at modeled benchmark evaluation report",
+        errors,
+    )
+    require(
+        source_artifacts.get("modeled_benchmark_eval_command")
+        == "make cpu-npu-modeled-benchmark-eval",
+        "scorecard must list modeled benchmark evaluation command",
+        errors,
+    )
+    if not MODELED_EVAL.exists():
+        run_required_check([sys.executable, str(MODELED_EVAL_CHECK)], errors)
+    if not MODELED_EVAL.exists():
+        errors.append("modeled benchmark evaluation report missing")
+        return
+    try:
+        data = load_json_object(MODELED_EVAL)
+    except (OSError, ValueError, json.JSONDecodeError) as exc:
+        errors.append(str(exc))
+        return
+    require(
+        data.get("schema") == "eliza.cpu_npu_2028_modeled_benchmark_eval.v1",
+        "modeled benchmark evaluation schema mismatch",
+        errors,
+    )
+    require(
+        data.get("status") == "modeled_eval_release_blocked",
+        "modeled benchmark evaluation must remain release-blocked",
+        errors,
+    )
+    checks = data.get("checks")
+    if not isinstance(checks, list):
+        errors.append("modeled benchmark evaluation missing checks list")
+        return
+    by_id = {item.get("id"): item for item in checks if isinstance(item, dict)}
+    for row_id in (
+        "npu_sota_dense_peak_target_pass",
+        "npu_sota_sparse_int4_target_pass",
+        "memory_model_target_pass",
+        "robust_power_thermal_model_pass",
+    ):
+        require(
+            by_id.get(row_id, {}).get("status") == "pass",
+            f"modeled benchmark evaluation {row_id} must pass",
+            errors,
+        )
+    require(
+        by_id.get("npu_sota_sustained_model_gap", {}).get("status") == "blocked",
+        "sustained SOTA NPU check must remain blocked until measured evidence exists",
+        errors,
+    )
+
+
+def check_burst_sustained_policy(scorecard: dict[str, Any], errors: list[str]) -> None:
+    source_artifacts = scorecard.get("source_artifacts")
+    if not isinstance(source_artifacts, dict):
+        errors.append("source_artifacts must be a mapping")
+        return
+    require(
+        source_artifacts.get("burst_sustained_policy")
+        == "benchmarks/results/cpu-npu-2028-burst-sustained-policy.json",
+        "scorecard must point at burst/sustained policy report",
+        errors,
+    )
+    require(
+        source_artifacts.get("burst_sustained_policy_command")
+        == "make cpu-npu-burst-sustained-policy",
+        "scorecard must list burst/sustained policy command",
+        errors,
+    )
+    if not BURST_SUSTAINED_POLICY.exists():
+        run_required_check([sys.executable, str(BURST_SUSTAINED_POLICY_CHECK)], errors)
+    if not BURST_SUSTAINED_POLICY.exists():
+        errors.append("burst/sustained policy report missing")
+        return
+    try:
+        data = load_json_object(BURST_SUSTAINED_POLICY)
+    except (OSError, ValueError, json.JSONDecodeError) as exc:
+        errors.append(str(exc))
+        return
+    require(
+        data.get("schema") == "eliza.cpu_npu_2028_burst_sustained_policy.v1",
+        "burst/sustained policy schema mismatch",
+        errors,
+    )
+    require(
+        data.get("status") == "modeled_policy_release_blocked",
+        "burst/sustained policy must remain release-blocked",
+        errors,
+    )
+    checks = data.get("checks")
+    if not isinstance(checks, list):
+        errors.append("burst/sustained policy missing checks")
+        return
+    by_id = {item.get("id"): item for item in checks if isinstance(item, dict)}
+    for row_id in ("sustained_no_throttle_policy_pass", "burst_peak_policy_pass"):
+        require(by_id.get(row_id, {}).get("status") == "pass", f"{row_id} must pass", errors)
+    for row_id in ("sustained_npu_target_release_blocked", "burst_power_duration_release_blocked"):
+        require(
+            by_id.get(row_id, {}).get("status") == "blocked",
+            f"{row_id} must remain blocked",
+            errors,
+        )
+
+
+def check_burst_thermal_transient(scorecard: dict[str, Any], errors: list[str]) -> None:
+    source_artifacts = scorecard.get("source_artifacts")
+    if not isinstance(source_artifacts, dict):
+        errors.append("source_artifacts must be a mapping")
+        return
+    require(
+        source_artifacts.get("burst_thermal_transient")
+        == "benchmarks/results/cpu-npu-2028-burst-thermal-transient.json",
+        "scorecard must point at burst thermal transient report",
+        errors,
+    )
+    require(
+        source_artifacts.get("burst_thermal_transient_command")
+        == "make cpu-npu-burst-thermal-transient",
+        "scorecard must list burst thermal transient command",
+        errors,
+    )
+    if not BURST_THERMAL_TRANSIENT.exists():
+        run_required_check([sys.executable, str(BURST_THERMAL_TRANSIENT_CHECK)], errors)
+    if not BURST_THERMAL_TRANSIENT.exists():
+        errors.append("burst thermal transient report missing")
+        return
+    try:
+        data = load_json_object(BURST_THERMAL_TRANSIENT)
+    except (OSError, ValueError, json.JSONDecodeError) as exc:
+        errors.append(str(exc))
+        return
+    require(
+        data.get("schema") == "eliza.cpu_npu_2028_burst_thermal_transient.v1",
+        "burst thermal transient schema mismatch",
+        errors,
+    )
+    require(
+        data.get("status") == "modeled_transient_release_blocked",
+        "burst thermal transient must remain release-blocked",
+        errors,
+    )
+    recommended = data.get("recommended")
+    if not isinstance(recommended, dict):
+        errors.append("burst thermal transient missing recommended section")
+        return
+    duration = recommended.get("modeled_recommended_burst_duration_s")
+    worst = recommended.get("worst_case_time_to_95c_s")
+    require(
+        isinstance(duration, int | float) and not isinstance(duration, bool) and duration > 0.0,
+        "modeled recommended burst duration must be positive",
+        errors,
+    )
+    require(
+        isinstance(worst, int | float)
+        and not isinstance(worst, bool)
+        and isinstance(duration, int | float)
+        and duration <= worst,
+        "modeled recommended burst duration must stay within worst-case limit",
+        errors,
+    )
+    checks = data.get("checks")
+    if not isinstance(checks, list):
+        errors.append("burst thermal transient missing checks")
+        return
+    by_id = {item.get("id"): item for item in checks if isinstance(item, dict)}
+    for row_id in ("transient_model_inputs_pass", "modeled_burst_window_pass"):
+        require(by_id.get(row_id, {}).get("status") == "pass", f"{row_id} must pass", errors)
+    require(
+        by_id.get("release_duration_claim_blocked", {}).get("status") == "blocked",
+        "release_duration_claim_blocked must remain blocked",
+        errors,
+    )
+
+
+def check_aosp_governor_trace(scorecard: dict[str, Any], errors: list[str]) -> None:
+    source_artifacts = scorecard.get("source_artifacts")
+    if not isinstance(source_artifacts, dict):
+        errors.append("source_artifacts must be a mapping")
+        return
+    require(
+        source_artifacts.get("aosp_governor_trace")
+        == "benchmarks/results/cpu-npu-2028-aosp-governor-trace.json",
+        "scorecard must point at modeled AOSP governor trace",
+        errors,
+    )
+    require(
+        source_artifacts.get("aosp_governor_trace_command") == "make cpu-npu-aosp-governor-trace",
+        "scorecard must list modeled AOSP governor trace command",
+        errors,
+    )
+    if not AOSP_GOVERNOR_TRACE.exists():
+        run_required_check([sys.executable, str(AOSP_GOVERNOR_TRACE_CHECK)], errors)
+    if not AOSP_GOVERNOR_TRACE.exists():
+        errors.append("modeled AOSP governor trace report missing")
+        return
+    try:
+        data = load_json_object(AOSP_GOVERNOR_TRACE)
+    except (OSError, ValueError, json.JSONDecodeError) as exc:
+        errors.append(str(exc))
+        return
+    require(
+        data.get("schema") == "eliza.cpu_npu_2028_aosp_governor_trace.v1",
+        "modeled AOSP governor trace schema mismatch",
+        errors,
+    )
+    require(
+        data.get("status") == "modeled_aosp_trace_release_blocked",
+        "modeled AOSP governor trace must remain release-blocked",
+        errors,
+    )
+    summary = data.get("summary")
+    if not isinstance(summary, dict):
+        errors.append("modeled AOSP governor trace missing summary")
+        return
+    require(
+        isinstance(summary.get("repeat_burst_denied"), bool)
+        and summary["repeat_burst_denied"] is True,
+        "modeled AOSP governor trace must deny repeat burst during cooldown",
+        errors,
+    )
+    checks = data.get("checks")
+    if not isinstance(checks, list):
+        errors.append("modeled AOSP governor trace missing checks")
+        return
+    by_id = {item.get("id"): item for item in checks if isinstance(item, dict)}
+    for row_id in (
+        "aosp_mapping_inputs_pass",
+        "scheduler_selects_sustained_and_burst_pass",
+        "thermal_hysteresis_blocks_repeat_burst_pass",
+        "modeled_trace_stays_below_die_limit_pass",
+    ):
+        require(by_id.get(row_id, {}).get("status") == "pass", f"{row_id} must pass", errors)
+    require(
+        by_id.get("local_aosp_simulator_evidence_blocked", {}).get("status") == "blocked",
+        "local_aosp_simulator_evidence_blocked must remain blocked",
+        errors,
+    )
 
 
 def check_scorecard(scorecard: dict[str, Any], optimizer: dict[str, Any]) -> list[str]:
@@ -259,6 +498,10 @@ def check_scorecard(scorecard: dict[str, Any], optimizer: dict[str, Any]) -> lis
     check_modeled_values(scorecard, optimizer, errors)
     check_domains(scorecard, errors)
     check_benchmarks(scorecard, errors)
+    check_modeled_eval(scorecard, errors)
+    check_burst_sustained_policy(scorecard, errors)
+    check_burst_thermal_transient(scorecard, errors)
+    check_aosp_governor_trace(scorecard, errors)
     blockers = "\n".join(str(item) for item in scorecard.get("release_claim_forbidden_until", []))
     for domain in REQUIRED_DOMAINS:
         require(domain in blockers, f"release blockers missing {domain}", errors)
@@ -270,7 +513,9 @@ def main() -> int:
     run_required_check([sys.executable, str(OPTIMIZER_CHECK)], errors)
     run_required_check([sys.executable, str(WORK_ORDER_CHECK)], errors)
     try:
-        errors.extend(check_scorecard(load_yaml(SCORECARD), load_json(OPTIMIZER_REPORT)))
+        errors.extend(
+            check_scorecard(load_yaml_object(SCORECARD), load_json_object(OPTIMIZER_REPORT))
+        )
     except (OSError, ValueError, json.JSONDecodeError, yaml.YAMLError) as exc:
         errors.append(str(exc))
     if errors:

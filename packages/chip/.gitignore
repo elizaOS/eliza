@@ -1,6 +1,8 @@
 /build/
 .venv/
 .claude/
+.mypy_cache/
+.ruff_cache/
 .openlane-run.lock/
 sim_build/
 results.xml

@@ -8,7 +8,17 @@ claim_boundary: >
 source_artifacts:
   optimized_work_order: docs/architecture-optimization/soc-optimized-operating-point.yaml
   optimizer_report: benchmarks/results/soc-optimized-operating-point.json
+  modeled_benchmark_report: benchmarks/results/modeled-cpu-npu-2028-local/report.json
+  modeled_benchmark_eval: benchmarks/results/cpu-npu-2028-modeled-eval.json
+  burst_sustained_policy: benchmarks/results/cpu-npu-2028-burst-sustained-policy.json
+  burst_thermal_transient: benchmarks/results/cpu-npu-2028-burst-thermal-transient.json
+  aosp_governor_trace: benchmarks/results/cpu-npu-2028-aosp-governor-trace.json
   optimizer_command: make soc-optimization
+  modeled_benchmark_command: make benchmark-modeled-cpu-npu
+  modeled_benchmark_eval_command: make cpu-npu-modeled-benchmark-eval
+  burst_sustained_policy_command: make cpu-npu-burst-sustained-policy
+  burst_thermal_transient_command: make cpu-npu-burst-thermal-transient
+  aosp_governor_trace_command: make cpu-npu-aosp-governor-trace
   work_order_check_command: make soc-optimization-work-order
   scorecard_check_command: make cpu-npu-2028-readiness-scorecard
 modeled_operating_point:
@@ -102,7 +112,9 @@ required_benchmark_plan_entries:
   - tflite_cpu
   - tflite_e1_npu
   - npu_arch_sim_open_2028
+  - npu_arch_sim_sota_2028
   - simulator_arch_metrics
+  - cpu_arch_sim_sota_2028
 release_claim_forbidden_until:
   - cpu_ap has real generated AP boot and benchmark transcripts.
   - npu_nnapi has real e1-npu accelerator selection with zero CPU fallback.

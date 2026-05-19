@@ -127,6 +127,13 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--cores", type=int, default=2)
     parser.add_argument("--base-frequency-hz", type=int, default=3_200_000_000)
     parser.add_argument("--base-power-w", type=float, default=3.2)
+    parser.add_argument("--ipc-scale", type=float, default=1.0)
+    parser.add_argument("--mpki-scale", type=float, default=1.0)
+    parser.add_argument(
+        "--profile",
+        choices=("efficient_2core", "sota_2core"),
+        default="efficient_2core",
+    )
     parser.add_argument("--ambient-c", type=float, default=25.0)
     return parser.parse_args()
 
@@ -159,6 +166,8 @@ def modeled_workload_entries(
     cores: int,
     frequency_hz: int,
     power_w: float,
+    ipc_scale: float,
+    mpki_scale: float,
     corner: CpuProcessCorner,
 ) -> list[dict[str, float | int | str]]:
     effective_frequency_hz = int(frequency_hz * corner.frequency_derate)
@@ -176,7 +185,7 @@ def modeled_workload_entries(
             raise TypeError("workload mpki must be numeric")
         if not isinstance(activity_value, int | float):
             raise TypeError("workload activity must be numeric")
-        ipc = float(base_ipc_value) * corner.ipc_derate
+        ipc = float(base_ipc_value) * ipc_scale * corner.ipc_derate
         target_cycles = int(instructions_value / (ipc * cores))
         elapsed_s = target_cycles / effective_frequency_hz
         dynamic_power_w = power_w * float(activity_value) * corner.dynamic_power_scale
@@ -189,7 +198,7 @@ def modeled_workload_entries(
                 "target_cycles": target_cycles,
                 "simulated_frequency_hz": effective_frequency_hz,
                 "ipc": ipc,
-                "mpki": float(mpki_value) / corner.ipc_derate,
+                "mpki": float(mpki_value) * mpki_scale / corner.ipc_derate,
                 "elapsed_seconds_modeled": elapsed_s,
                 "estimated_package_power_w": estimated_power_w,
                 "energy_j": estimated_power_w * elapsed_s,
@@ -205,6 +214,10 @@ def modeled_14a_cpu_ap(args: argparse.Namespace) -> dict:
         raise SystemExit("--base-frequency-hz must be positive")
     if args.base_power_w <= 0:
         raise SystemExit("--base-power-w must be positive")
+    if args.ipc_scale <= 0:
+        raise SystemExit("--ipc-scale must be positive")
+    if args.mpki_scale <= 0:
+        raise SystemExit("--mpki-scale must be positive")
     if not PROCESS_EFFECTS.is_file():
         raise SystemExit(f"missing process effects contract: {PROCESS_EFFECTS.relative_to(ROOT)}")
 
@@ -215,6 +228,8 @@ def modeled_14a_cpu_ap(args: argparse.Namespace) -> dict:
             cores=args.cores,
             frequency_hz=args.base_frequency_hz,
             power_w=args.base_power_w,
+            ipc_scale=args.ipc_scale,
+            mpki_scale=args.mpki_scale,
             corner=corner,
         )
         total_instructions = sum(int(workload["instructions"]) for workload in workloads)
@@ -262,9 +277,12 @@ def modeled_14a_cpu_ap(args: argparse.Namespace) -> dict:
         "benchmark_success_allowed": True,
         "config": {
             "cores": args.cores,
+            "profile": args.profile,
             "isa": "rv64gc_planned_linux_ap_profile",
             "base_frequency_hz": args.base_frequency_hz,
             "base_power_w": args.base_power_w,
+            "ipc_scale": args.ipc_scale,
+            "mpki_scale": args.mpki_scale,
             "ambient_c": args.ambient_c,
             "model_boundary": "two-core scalable AP model; not RTL performance signoff",
         },
