@@ -1208,7 +1208,8 @@ describe("capability router", () => {
 		).rejects.toMatchObject({
 			code: "CAPABILITY_DECODE_FAILED",
 			method: "plugin.action.invoke",
-			message: "moduleId must use letters, numbers, dots, underscores, or hyphens.",
+			message:
+				"moduleId must use letters, numbers, dots, underscores, or hyphens.",
 		});
 		expect(calls).toEqual([]);
 	});
