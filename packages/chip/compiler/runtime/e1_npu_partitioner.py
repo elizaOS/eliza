@@ -943,6 +943,42 @@ class PartitionReport:
             descriptor_command_buffer_image=image,
         )
 
+    def prepared_descriptor_execution_batch(
+        self, arena_base: int, descriptor_base: int, *, execution_batch_index: int
+    ) -> RuntimePreparedDescriptorBatch:
+        staging_plan = self.descriptor_staging_plan
+        matches = tuple(
+            batch
+            for batch in staging_plan.descriptor_execution_batches
+            if batch.execution_batch_index == execution_batch_index
+        )
+        if not matches:
+            raise ValueError(f"no descriptor execution batch {execution_batch_index}")
+        execution_batch = matches[0]
+        image = staging_plan.execution_command_buffer_image(
+            arena_base=arena_base,
+            descriptor_base=descriptor_base,
+            execution_batch_index=execution_batch_index,
+        )
+        ops_by_name = {op.op_name: op for op in staging_plan.ops}
+        arena = self.tensor_arena_plan
+        return RuntimePreparedDescriptorBatch(
+            batch_index=execution_batch.batch_index,
+            arena_base=arena_base,
+            descriptor_base=descriptor_base,
+            arena_total_bytes=arena.total_bytes,
+            arena_alignment_bytes=arena.alignment_bytes,
+            op_mmio_preamble=tuple(
+                {
+                    "op_name": op_name,
+                    "runtime_api": ops_by_name[op_name].runtime_api,
+                    "mmio_preamble": execution_batch.shared_mmio_preamble,
+                }
+                for op_name in execution_batch.op_names
+            ),
+            descriptor_command_buffer_image=image,
+        )
+
     def as_dict(self) -> dict[str, Any]:
         return {
             "schema": SCHEMA,

@@ -747,6 +747,49 @@ def test_partition_report_prepares_descriptor_batch_with_mmio_preamble() -> None
     }
 
 
+def test_partition_report_prepares_descriptor_execution_batch() -> None:
+    report = partition_module(parse_module(_mismatched_dot_batch_payload()))
+
+    prepared = report.prepared_descriptor_execution_batch(
+        arena_base=0x8000_0000,
+        descriptor_base=0x2100,
+        execution_batch_index=1,
+    ).as_dict()
+
+    assert prepared["schema"] == "eliza.e1_npu_prepared_descriptor_batch.v1"
+    assert prepared["batch_index"] == 0
+    assert prepared["descriptor_command_buffer_image"]["execution_batch_index"] == 1
+    assert prepared["descriptor_command_buffer_image"]["op_names"] == ["dot1"]
+    assert prepared["descriptor_command_buffer_image"]["descriptor_words"] == [
+        [0xCC000108, 0x8000_0038, 0x8000_0020, 0]
+    ]
+    assert prepared["op_mmio_preamble"] == [
+        {
+            "op_name": "dot1",
+            "runtime_api": "lower_matmul_smoke",
+            "mmio_preamble": {
+                "GEMM_CFG": 0x0002_0302,
+                "GEMM_BASE": 0x000C_0400,
+                "GEMM_STRIDE": 0x000C_0302,
+            },
+        }
+    ]
+    assert prepared["host_runtime_sequence"]["mmio_preamble_writes"] == [
+        {
+            "op_name": "dot1",
+            "writes": [
+                {"register": "GEMM_CFG", "address": "0x10020020", "value": 0x0002_0302},
+                {"register": "GEMM_BASE", "address": "0x10020024", "value": 0x000C_0400},
+                {
+                    "register": "GEMM_STRIDE",
+                    "address": "0x10020028",
+                    "value": 0x000C_0302,
+                },
+            ],
+        }
+    ]
+
+
 def test_partition_report_prepared_descriptor_batch_is_fail_closed() -> None:
     mixed_report = partition_module(parse_module(_dot_add_payload()))
     ready_report = partition_module(parse_module(_dot_payload("int8")))
@@ -767,6 +810,12 @@ def test_partition_report_prepared_descriptor_batch_is_fail_closed() -> None:
             arena_base=0x8000_0000,
             descriptor_base=0x2000,
             batch_index=1,
+        )
+    with pytest.raises(ValueError, match="no descriptor execution batch"):
+        ready_report.prepared_descriptor_execution_batch(
+            arena_base=0x8000_0000,
+            descriptor_base=0x2000,
+            execution_batch_index=7,
         )
 
 
