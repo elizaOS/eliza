@@ -14,6 +14,12 @@ const uiSmokeLiveStack = path.join(
 const uiSmokeApiPort = Number(process.env.ELIZA_UI_SMOKE_API_PORT || "31337");
 const uiSmokePort = Number(process.env.ELIZA_UI_SMOKE_PORT || "2138");
 const reuseExistingServer = process.env.ELIZA_UI_SMOKE_REUSE_SERVER === "1";
+const chromiumExecutablePath =
+  process.env.ELIZA_UI_SMOKE_CHROMIUM_EXECUTABLE?.trim();
+const videoMode =
+  process.env.ELIZA_UI_SMOKE_DISABLE_VIDEO === "1"
+    ? "off"
+    : "retain-on-failure";
 
 // Keep the app's API port env aligned with the live stack when the suite runs
 // on non-default ports.
@@ -34,13 +40,18 @@ export default defineConfig({
   use: {
     baseURL: `http://127.0.0.1:${uiSmokePort}`,
     trace: "retain-on-failure",
-    video: "retain-on-failure",
+    video: videoMode,
     screenshot: "only-on-failure",
   },
   projects: [
     {
       name: "chromium",
-      use: { ...devices["Desktop Chrome"] },
+      use: {
+        ...devices["Desktop Chrome"],
+        ...(chromiumExecutablePath
+          ? { launchOptions: { executablePath: chromiumExecutablePath } }
+          : {}),
+      },
     },
     {
       name: "mobile-chromium",
