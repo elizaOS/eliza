@@ -1,0 +1,60 @@
+schema: eliza.cpu_ap_integration_work_order.v1
+as_of: 2026-05-17
+status: fail_closed_no_linux_capable_ap
+purpose: >
+  Define the local work needed to replace the tiny CPU contract scaffold with a
+  Linux-capable RV64 application processor candidate without claiming Android or
+  silicon support before evidence exists.
+candidate_paths:
+  - id: cva6
+    source: https://github.com/openhwgroup/cva6
+    rationale: Open-source application-class RISC-V core family with Linux-capable configurations.
+    local_work:
+      - Add external checkout/import script that records upstream commit, license, and config.
+      - Build a wrapper around reset vector, AXI/AHB interface, interrupts, timer, UART, DRAM, and MMIO map.
+      - Add simulation smoke that reaches firmware entry and records an artifact under build/evidence/cpu_ap.
+    blocked_until:
+      - External source checkout is pinned.
+      - Upstream tests pass locally.
+      - Wrapper timing and bus semantics are verified.
+      - OpenSBI and Linux boot logs are archived.
+  - id: chipyard_rocket
+    source: https://chipyard.readthedocs.io/
+    rationale: Mature open-source RISC-V SoC generator path with Rocket/BOOM ecosystem and FireSim trajectory.
+    local_work:
+      - Define a minimal Rocket-based config matching the Eliza memory map.
+      - Export generated Verilog and platform metadata into an isolated generated-artifact path.
+      - Compare generated DTS/interrupt/memory map against sw/platform/e1_platform_contract.json.
+    blocked_until:
+      - Toolchain install is pinned.
+      - Generated RTL provenance is archived.
+      - Firmware and Linux boot evidence exists.
+  - id: keep_tiny_cpu_contract_only
+    source: repo-local rtl/cpu/e1_cpu_subsystem_stub.sv
+    rationale: Useful for local bus, trap-negative, and scaffold checks while AP work remains blocked.
+    local_work:
+      - Expand unsupported instruction tests.
+      - Keep has_cpu false in release evidence until a production AP wrapper exists.
+      - Prevent Linux/Android claims from using tiny CPU tests as boot evidence.
+    blocked_until:
+      - Never sufficient for Linux/Android AP claims.
+required_evidence:
+  - path: build/evidence/cpu_ap/eliza_e1_opensbi_boot.log
+    required_markers:
+      - OpenSBI
+      - Eliza
+      - platform timer
+  - path: build/evidence/cpu_ap/eliza_e1_linux_boot.log
+    required_markers:
+      - Linux version
+      - Freeing unused kernel memory
+      - e1-mmio-smoke PASS
+  - path: build/evidence/cpu_ap/eliza_e1_trap_timer_irq.log
+    required_markers:
+      - machine timer interrupt
+      - external interrupt
+      - illegal instruction trap
+claim_gate:
+  scaffold_command: make cpu-ap-scaffold-check
+  release_command: make cpu-ap-evidence-check
+  release_policy: release_command must fail until all required_evidence files exist with required markers.

@@ -1,0 +1,144 @@
+schema: eliza.board_package_scaling_assessment.v1
+assessment: board_package_2028_scaling_implications
+status: non_release_assessment
+release_use: prohibited
+target_class: 2028_level_product_target
+owner: product_physical_closure
+source_manifest: docs/manufacturing/board-package-evidence.yaml
+scope:
+  - package_pin_budget
+  - cpu_scaling_power
+  - npu_scaling_power
+  - external_lpddr_phy
+  - board_power_thermal
+  - board_bringup
+policy:
+  preflight: Capture local scaling implications and required evidence without claiming package, board, vendor, or fab readiness.
+  release: Replace this assessment with measured/package-vendor/fab/board-house evidence before any release claim.
+forbidden_claims:
+  - package_ready
+  - board_fabrication_ready
+  - lpddr_routing_closed
+  - thermal_solution_validated
+  - npu_power_validated
+  - 2028_product_ready
+assumptions:
+  - Placeholder QFN64 package is not viable evidence for a high-memory, multi-core CPU/NPU product target.
+  - External LPDDR requires a selected controller, PHY, package escape, stackup, SI/PI, timing, training, and power evidence.
+  - CPU and NPU scaling require measured or signoff-derived rail current, thermal, and transient load evidence before board release.
+readiness_matrix:
+  - id: lpddr
+    status: blocked
+    product_implication: Phone-class RAM requires external LPDDR controller, PHY, package escape, routing, training, and validation evidence.
+    package_implication: Package must budget LPDDR signal pins, reference pins, power/ground pins, escape routing, and high-speed return paths.
+    board_implication: Board stackup, impedance, length matching, DQS/DQ timing, command/address timing, VREF, reset, clocks, and training logs are required.
+    required_evidence:
+      - Selected LPDDR part, controller, PHY, width, speed grade, voltage rails, and training sequence.
+      - Package pinout and escape review for LPDDR pins and adjacent power/ground returns.
+      - Board SI/PI and timing report for LPDDR nets.
+    blocks_release_gate: board_fabrication_release
+  - id: power_rails
+    status: blocked
+    product_implication: CPU/NPU/RAM scaling adds peak, average, and transient rail-current requirements beyond the e1-demo placeholder rails.
+    package_implication: Package must define rail count, current capacity, bump/pin allocation, decoupling strategy, and return-current paths.
+    board_implication: Board regulators, sequencing, decoupling, current sensing, fault handling, and first-article current limits are required.
+    required_evidence:
+      - Rail list with voltage, current, sequencing, tolerance, and transient requirements.
+      - Regulator and decoupling design review tied to package and board revisions.
+      - Bench current-limit and fault-response plan for bring-up.
+    blocks_release_gate: board_fabrication_release
+  - id: thermal
+    status: blocked
+    product_implication: 2028-level CPU/NPU workloads require sustained and burst thermal envelopes, throttling policy, and enclosure assumptions.
+    package_implication: Package must document thermal resistance, heat-spreader attach constraints, die hot-spot assumptions, and sensor placement.
+    board_implication: Board thermal stack, copper spreading, sensor access, test points, and first-article temperature limits are required.
+    required_evidence:
+      - CPU/NPU/RAM power-to-temperature model with ambient and enclosure assumptions.
+      - Package thermal model or vendor thermal data.
+      - Board thermal review and lab measurement procedure.
+    blocks_release_gate: board_fabrication_release
+  - id: package_pins
+    status: blocked
+    product_implication: E1 QFN64 planning pinout is insufficient evidence for phone-class memory bandwidth, debug, power, test, and high-speed interfaces.
+    package_implication: Real package must allocate LPDDR, clocks, reset, debug, boot, power, ground, thermal, test, and no-connect pins with pin-1 orientation.
+    board_implication: Board symbol, footprint, fanout, DFM, assembly, and cross-probe must derive from package-vendor data.
+    required_evidence:
+      - Package-vendor drawing and pin map with immutable revision or checksum.
+      - Bond or bump map tied to padframe and board net names.
+      - Package-to-board cross-probe report.
+    blocks_release_gate: board_fabrication_release
+  - id: si_pi
+    status: blocked
+    product_implication: High-speed memory and burst CPU/NPU loads require signal-integrity, power-integrity, and return-path closure before board release.
+    package_implication: Package parasitics, power/ground inductance, and model provenance are required for credible SI/PI analysis.
+    board_implication: Board stackup, impedance, decoupling, rail impedance, crosstalk, and timing margins must be reviewed.
+    required_evidence:
+      - Package model or vendor parasitic data.
+      - Board SI report for LPDDR, clocks, reset, debug, and critical interfaces.
+      - Board PI report for CPU/NPU/RAM rails and transient loads.
+    blocks_release_gate: board_fabrication_release
+  - id: vendor_fab_evidence
+    status: blocked
+    product_implication: Phone-class scaling cannot be released from local planning files; package vendor, board house, assembly, and fabrication evidence must replace placeholders.
+    package_implication: Package drawing, material constraints, pin-1 orientation, thermal data, electrical model provenance, and bond or bump map must come from vendor-controlled sources.
+    board_implication: KiCad outputs, stackup, DFM, fabrication notes, assembly constraints, and first-article records must be tied to immutable vendor/fab revisions and checksums.
+    required_evidence:
+      - Package vendor drawing, bond or bump map, thermal data, and package model with immutable revision or checksum.
+      - Board-house stackup, DFM review, Gerber/drill/BOM/PnP acceptance, and assembly constraints.
+      - First-article bring-up records linking measured rails, thermal limits, SI/PI disposition, and manufacturing lot identifiers.
+    blocks_release_gate: board_fabrication_release
+checklist:
+  - id: package_pin_budget
+    status: blocked
+    owner: package_closure
+    implication: More CPU/NPU memory bandwidth and external LPDDR interfaces increase signal, power, ground, reference, test, and no-connect pin pressure beyond the placeholder package.
+    required_evidence:
+      - Real package pin-count budget and pin assignment.
+      - Power/ground ratio and return-path review for high-speed memory and NPU rails.
+      - Package escape and assembly constraints from vendor documentation.
+    blocks_release_gate: board_fabrication_release
+  - id: external_lpddr_phy
+    status: blocked
+    owner: memory_platform_closure
+    implication: External LPDDR adds PHY, training, impedance, length-match, crosstalk, reference voltage, termination, and boot sequencing requirements.
+    required_evidence:
+      - Selected LPDDR generation, width, speed bin, device, controller, and PHY.
+      - Board stackup and length/timing constraints for command/address, clock, DQS, DQ, reset, and power rails.
+      - SI/PI simulation or vendor-reviewed routing report.
+    blocks_release_gate: board_fabrication_release
+  - id: cpu_scaling_power
+    status: blocked
+    owner: cpu_platform_closure
+    implication: Higher CPU core count/frequency changes VDDCORE peak current, regulator transient response, PDN impedance, and thermal density.
+    required_evidence:
+      - CPU workload power envelope and current transient model.
+      - Regulator, decoupling, IR-drop, and thermal margin review.
+      - Bring-up current limits and safe boot profiles.
+    blocks_release_gate: board_fabrication_release
+  - id: npu_scaling_power
+    status: blocked
+    owner: npu_platform_closure
+    implication: Larger NPU arrays create burst current, local heat flux, memory bandwidth pressure, and package/board PDN stress.
+    required_evidence:
+      - NPU workload power envelope, utilization profile, and peak current estimate.
+      - Thermal throttling, sensor, and shutdown policy.
+      - Board rail current-limit and measurement plan for first article.
+    blocks_release_gate: board_fabrication_release
+  - id: board_power_thermal
+    status: blocked
+    owner: board_closure
+    implication: Product-class RAM/CPU/NPU scaling requires board-level thermal path, rail sequencing, decoupling, and lab measurement evidence.
+    required_evidence:
+      - Thermal stack, heat spreader, enclosure assumption, and sensor placement review.
+      - Rail sequencing and regulator enable/default-state review.
+      - Bench current, temperature, and stop-condition plan.
+    blocks_release_gate: board_fabrication_release
+  - id: board_bringup
+    status: blocked
+    owner: manufacturing_closure
+    implication: Bring-up must isolate CPU, NPU, LPDDR, clocks, reset, debug, rails, and thermal behavior before full-product workloads.
+    required_evidence:
+      - First-article staged power-on checklist.
+      - LPDDR training and memory test transcript requirements.
+      - CPU/NPU smoke, thermal soak, and fault-handling test records.
+    blocks_release_gate: board_fabrication_release

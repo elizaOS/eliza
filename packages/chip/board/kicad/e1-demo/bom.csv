@@ -1,0 +1,53 @@
+Reference,Value,Footprint,Qty,Manufacturer,MPN,Description
+U1,e1_chip_v0,Package_DFN_QFN:QFN-64-1EP_9x9mm_P0.5mm_EP6.5x6.5mm,1,Eliza,E1-CHIP-V0,RISC-V SoC QFN64 placeholder footprint - derive from vendor pkg drawing before fab
+U2,TPS62150RGTR,Package_SON:VQFN-15-1EP_2.5x3.5mm_P0.5mm_EP1.7x2.7mm,1,Texas Instruments,TPS62150RGTR,Buck converter 0.8V/3A adjustable COT 2.25MHz
+U3,TLV74033PDBVR,Package_TO_SOT_SMD:SOT-23-5,1,Texas Instruments,TLV74033PDBVR,LDO 3.3V 300mA fixed SOT-23-5
+U4,TLV74018PDBVR,Package_TO_SOT_SMD:SOT-23-5,1,Texas Instruments,TLV74018PDBVR,LDO 1.8V 300mA fixed SOT-23-5
+U5,MAX823LEUR+T,Package_TO_SOT_SMD:SOT-23-5,1,Maxim (Analog Devices),MAX823LEUR+T,Reset supervisor 3.08V threshold active-low push-pull SOT-23-5
+Y1,SiT8924B-11-18E-24.000,Oscillator:Oscillator_SMD_SiTime_SiT8924_4-SMD_3.2x2.5mm,1,SiTime,SiT8924B-11-18E-24.000,24MHz MEMS oscillator 1.8V CMOS 3.2x2.5mm 4-pad SMD ±25ppm
+J1,FTSH-105-01-F-DV-K,Connector_Samtec_FTSH:Samtec_FTSH-105-01-F-DV-K_2x05_P1.27mm_Vertical,1,Samtec,FTSH-105-01-F-DV-K,Debug header 10-pin 1.27mm dual-row SMD ARM Cortex / RISC-V JTAG
+J2,PinHeader_1x04_2.54mm,Connector_PinHeader_2.54mm:PinHeader_1x04_P2.54mm_Vertical,1,Wurth Elektronik,61300411121,UART header 4-pin 2.54mm pitch through-hole
+J3,USB4135-GF-A,Connector_USB:GCT_USB4135-GF-A_Vertical,1,GCT,USB4135-GF-A,USB Type-C receptacle power-only vertical SMD
+L1,1uH 3A,Inductor_SMD:L_Bourns_SRR4018,1,Bourns,SRR4018-1R0Y,Inductor 1uH ISAT=3A DCR<=50mΩ SRR4018 (buck output inductor)
+F1,0.5A PTC,Fuse:Fuse_0805_2012Metric,1,Bourns,MF-MSMF050-2,PTC resettable fuse 0.5A hold 1A trip VBUS protection
+SW1,PTS645SM43SMTR92,Button_Switch_SMD:SW_Push_1P1T_NO_6x6mm_H9.5mm,1,C&K,PTS645SM43SMTR92LFS,Tactile reset button 6x6mm SMD momentary NO
+MH1,MountingHole_M3,MountingHole:MountingHole_3.2mm_M3,1,,, M3 mounting hole top-left corner
+MH2,MountingHole_M3,MountingHole:MountingHole_3.2mm_M3,1,,, M3 mounting hole top-right corner
+MH3,MountingHole_M3,MountingHole:MountingHole_3.2mm_M3,1,,, M3 mounting hole bottom-left corner
+MH4,MountingHole_M3,MountingHole:MountingHole_3.2mm_M3,1,,, M3 mounting hole bottom-right corner
+C1,100nF 25V X7R 0402,Capacitor_SMD:C_0402_1005Metric,1,,, Bypass cap U2 VIN
+C2,10uF 25V X7R 0805,Capacitor_SMD:C_0805_2012Metric,1,Murata,GRM21BR72E106KAC4L,Bulk cap U2 VIN
+C3,47uF 6.3V X5R 0805,Capacitor_SMD:C_0805_2012Metric,1,Murata,GRM21BR60J476ME15L,Output cap U2 VDDCORE #1
+C4,47uF 6.3V X5R 0805,Capacitor_SMD:C_0805_2012Metric,1,Murata,GRM21BR60J476ME15L,Output cap U2 VDDCORE #2
+C5,100nF X7R 0402,Capacitor_SMD:C_0402_1005Metric,1,,, U2 SS/TR soft-start cap
+C6,1uF 10V X5R 0402,Capacitor_SMD:C_0402_1005Metric,1,,, U3 TLV74033 input cap
+C7,1uF 10V X5R 0402,Capacitor_SMD:C_0402_1005Metric,1,,, U3 TLV74033 output cap
+C8,10uF 10V X5R 0603,Capacitor_SMD:C_0603_1608Metric,1,,, U3 TLV74033 output bulk cap
+C9,1uF 10V X5R 0402,Capacitor_SMD:C_0402_1005Metric,1,,, U4 TLV74018 input cap
+C10,1uF 10V X5R 0402,Capacitor_SMD:C_0402_1005Metric,1,,, U4 TLV74018 output cap
+C11,10uF 6.3V X5R 0603,Capacitor_SMD:C_0603_1608Metric,1,,, U4 TLV74018 output bulk cap
+C12,100nF X7R 0402,Capacitor_SMD:C_0402_1005Metric,1,,, Y1 oscillator VDD bypass
+C13,100nF X7R 0402,Capacitor_SMD:C_0402_1005Metric,1,,, U5 MAX823 VCC bypass
+C14,100nF NP0 0402,Capacitor_SMD:C_0402_1005Metric,1,,, U5 MAX823 MR debounce cap
+C15,470uF 6.3V,Capacitor_THT:CP_Radial_D6.3mm_P2.50mm,1,Panasonic,EEE-FK1J471P,Bulk electrolytic cap VDDCORE rail
+C16,470uF 6.3V,Capacitor_THT:CP_Radial_D6.3mm_P2.50mm,1,Panasonic,EEE-FK1J471P,Bulk electrolytic cap VDD_3V3 rail
+C17,470uF 6.3V,Capacitor_THT:CP_Radial_D6.3mm_P2.50mm,1,Panasonic,EEE-FK1J471P,Bulk electrolytic cap VDD_1V8 rail
+R1,100k 1% 0402,Resistor_SMD:R_0402_1005Metric,1,,, FB divider top (U2 Vout programming)
+R2,549k 1% 0402,Resistor_SMD:R_0402_1005Metric,1,,, FB divider bottom (U2 Vout programming)
+R3,100k 0402,Resistor_SMD:R_0402_1005Metric,1,,, U2 EN pin pull-up to VIN_5V
+R10,100k 0402,Resistor_SMD:R_0402_1005Metric,1,,, Y1 OE pull-up to VDD_1V8
+R20,100R 0402,Resistor_SMD:R_0402_1005Metric,1,,, J1 VTref series resistor (VDD_1V8 to pin 1)
+R21,10k 0402,Resistor_SMD:R_0402_1005Metric,1,,, J1 SWDIO/TMS pull-up to VDD_1V8
+R22,10k 0402,Resistor_SMD:R_0402_1005Metric,1,,, J1 SWDCLK/TCK pull-down to GND
+R23,10k 0402,Resistor_SMD:R_0402_1005Metric,1,,, J1 TDI pull-up to VDD_1V8
+R24,100R 0402,Resistor_SMD:R_0402_1005Metric,1,,, J1 nRESET series resistor (open-drain probe safe)
+R30,5.1k 0402,Resistor_SMD:R_0402_1005Metric,1,,, J3 CC1 pull-down to GND (UFP sink mode)
+R31,5.1k 0402,Resistor_SMD:R_0402_1005Metric,1,,, J3 CC2 pull-down to GND (UFP sink mode)
+TP1,GPIO0,TestPoint:TestPoint_THTPad_1.0x1.0mm_Drill0.5mm,1,,, Test point GPIO[0] 1.8V CMOS
+TP2,GPIO1,TestPoint:TestPoint_THTPad_1.0x1.0mm_Drill0.5mm,1,,, Test point GPIO[1] 1.8V CMOS
+TP3,GPIO2,TestPoint:TestPoint_THTPad_1.0x1.0mm_Drill0.5mm,1,,, Test point GPIO[2] 1.8V CMOS
+TP4,GPIO3,TestPoint:TestPoint_THTPad_1.0x1.0mm_Drill0.5mm,1,,, Test point GPIO[3] 1.8V CMOS
+TP5,IRQ_TIMER,TestPoint:TestPoint_THTPad_1.0x1.0mm_Drill0.5mm,1,,, Test point IRQ_TIMER 1.8V CMOS
+TP6,IRQ_DMA,TestPoint:TestPoint_THTPad_1.0x1.0mm_Drill0.5mm,1,,, Test point IRQ_DMA 1.8V CMOS
+TP7,BOOT_SEL,TestPoint:TestPoint_THTPad_1.0x1.0mm_Drill0.5mm,1,,, Test point BOOT_SEL 1.8V CMOS pulled-down 10k
+TP8,CLK_24M,TestPoint:TestPoint_THTPad_1.0x1.0mm_Drill0.5mm,1,,, Test point CLK_24M 1.8V CMOS T-tap 1nF AC-block

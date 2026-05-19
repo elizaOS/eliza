@@ -567,6 +567,34 @@ async function runSpawnAgent(
     // tool-call-skipping degradation. See waitForSpawnSlot.
     await waitForSpawnSlot(runtime, service);
 
+    // Swarm-room routing: explicit task / worktree room ids from the
+    // caller (planner content, scaffold caller metadata) become the
+    // session's anchor rooms so SubAgentRouter can fan completions and
+    // narration back into them. Same task+worktree room collapses to a
+    // single deduped swarmRooms entry holding both roles.
+    const explicitTaskRoomId =
+      pickString(params, content, "taskRoomId") ??
+      pickString(params, content, "originRoomId");
+    const explicitWorktreeRoomId = pickString(
+      params,
+      content,
+      "worktreeRoomId",
+    );
+    const taskRoomId = explicitTaskRoomId ?? message.roomId;
+    const worktreeRoomId = explicitWorktreeRoomId;
+    const swarmRooms: Array<{ roomId: string; roles: string[] }> = [];
+    if (taskRoomId) {
+      const sameRoom =
+        worktreeRoomId !== undefined && worktreeRoomId === taskRoomId;
+      swarmRooms.push({
+        roomId: taskRoomId,
+        roles: sameRoom ? ["task", "worktree"] : ["task"],
+      });
+      if (worktreeRoomId !== undefined && !sameRoom) {
+        swarmRooms.push({ roomId: worktreeRoomId, roles: ["worktree"] });
+      }
+    }
+
     const session = await service.spawnSession({
       agentType,
       workdir,
@@ -576,7 +604,11 @@ async function runSpawnAgent(
       metadata: {
         requestedType: explicitAgentType ?? agentType,
         messageId: message.id,
-        roomId: message.roomId,
+        roomId: taskRoomId ?? message.roomId,
+        originRoomId: message.roomId,
+        ...(taskRoomId ? { taskRoomId } : {}),
+        ...(worktreeRoomId ? { worktreeRoomId } : {}),
+        ...(swarmRooms.length > 0 ? { swarmRooms } : {}),
         worldId: message.worldId,
         userId: message.entityId,
         label,
@@ -2218,17 +2250,6 @@ export const tasksAction: Action & {
       description: "Working directory for action=create / action=spawn_agent.",
       required: false,
       schema: { type: "string" as const },
-    },
-    {
-      name: "lockWorkdir",
-      description:
-        "When true, the supplied `workdir` is used verbatim and operator " +
-        "workdir routes (TASK_AGENT_WORKDIR_ROUTES) are NOT consulted. Set " +
-        "this only from scaffold-aware callers that have already created " +
-        "the exact target directory (e.g. APP_CREATE). Leave unset for " +
-        "normal planner spawns so routes can correct guessed paths.",
-      required: false,
-      schema: { type: "boolean" as const },
     },
     {
       name: "memoryContent",

@@ -1243,21 +1243,35 @@ function liveEmbeddingFallbackVector(): number[] {
 }
 `,
     );
-    content = content.replace(
-      `export function shouldWarmupLocalEmbeddingModel(): boolean {
+    // Accept both the inline `ELIZA_DISABLE_LOCAL_EMBEDDINGS` check (older
+    // shape) and the post-refactor `isLocalEmbeddingDisabledByEnv()` call.
+    const inlineCheck = `export function shouldWarmupLocalEmbeddingModel(): boolean {
 \tif (isTruthyEnv("ELIZA_DISABLE_LOCAL_EMBEDDINGS")) {
 \t\treturn false;
 \t}
-`,
-      `export function shouldWarmupLocalEmbeddingModel(): boolean {
-\tif (isTruthyEnv("ELIZA_DISABLE_LOCAL_EMBEDDINGS")) {
+`;
+    const helperCheck = `export function shouldWarmupLocalEmbeddingModel(): boolean {
+\tif (isLocalEmbeddingDisabledByEnv()) {
 \t\treturn false;
 \t}
-\tif (isTruthyEnv("ELIZAOS_LIVE_EMBEDDING_FALLBACK")) {
+`;
+    if (content.includes(inlineCheck)) {
+      content = content.replace(
+        inlineCheck,
+        `${inlineCheck}\tif (isTruthyEnv("ELIZAOS_LIVE_EMBEDDING_FALLBACK")) {
 \t\treturn false;
 \t}
 `,
-    );
+      );
+    } else if (content.includes(helperCheck)) {
+      content = content.replace(
+        helperCheck,
+        `${helperCheck}\tif (isTruthyEnv("ELIZAOS_LIVE_EMBEDDING_FALLBACK")) {
+\t\treturn false;
+\t}
+`,
+      );
+    }
     content = content.replace(
       `\t\tconst service = requireService(runtime, ModelType.TEXT_EMBEDDING);
 \t\tif (typeof service.embed !== "function") {

@@ -28,6 +28,7 @@ import {
 const ShaderBackground = lazy(
   () => import("@/components/ShaderBackground/ShaderBackground"),
 );
+
 import {
   buildElizaSmsHref,
   ELIZA_PHONE_FORMATTED,

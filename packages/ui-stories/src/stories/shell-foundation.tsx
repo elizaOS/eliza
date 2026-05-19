@@ -1,10 +1,10 @@
-import {
-  AssistantOverlay,
-  ChatSurface,
-  HomePill,
-  type ShellMessage,
-  type ShellPhase,
-} from "@elizaos/ui";
+import { AssistantOverlay } from "@ui-src/components/shell/AssistantOverlay.tsx";
+import { ChatSurface } from "@ui-src/components/shell/ChatSurface.tsx";
+import { HomePill } from "@ui-src/components/shell/HomePill.tsx";
+import type {
+  ShellMessage,
+  ShellPhase,
+} from "@ui-src/components/shell/shell-state.ts";
 
 import type { StoryDefinition } from "../Story.tsx";
 

@@ -1,0 +1,14 @@
+[options]
+mode bmc
+depth 12
+
+[engines]
+smtbmc z3
+
+[script]
+read -formal e1_dma.sv e1_dma_formal.sv
+prep -top e1_dma_formal
+
+[files]
+rtl/dma/e1_dma.sv
+verify/formal/e1_dma_formal.sv

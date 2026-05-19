@@ -37,8 +37,9 @@
  *   checks rely on.
  *
  * Output:
- *   <androidAssetsDir>/arm64-v8a/libllama.so   (real phones)
+ *   <androidAssetsDir>/arm64-v8a/libllama.so   (real phones, ARM64)
  *   <androidAssetsDir>/x86_64/libllama.so      (cuttlefish + emulators)
+ *   <androidAssetsDir>/riscv64/libllama.so     (OpenAgent E1 RISC-V SoC)
  *
  * Idempotent: cached clone + cached build dirs skip rework. Bumping
  * the pinned tag in LLAMA_CPP_TAG / LLAMA_CPP_COMMIT busts the cache.
@@ -75,6 +76,21 @@ export const ABI_TARGETS = [
     androidAbi: "x86_64",
     zigTarget: "x86_64-linux-musl",
     cmakeProcessor: "x86_64",
+  },
+  // riscv64 is the Android ABI name used by AOSP for the OpenAgent E1
+  // RISC-V SoC fusion (`eliza_openagent_ai_soc_phone`). Zig 0.13.0+
+  // can target `riscv64-linux-musl` with its bundled musl libc and
+  // libc++, matching the bun-on-Android runtime ABI on riscv64.
+  // KNOWN LIMITATION: llama.cpp's upstream riscv64 cross-compile via
+  // zig has not been fully smoke-tested in this repo's CI; if the
+  // configure or link step fails for an unrelated llama.cpp riscv64
+  // gap, treat it as a toolchain readiness blocker rather than a
+  // script regression. See docs/evidence/android/cuttlefish_riscv64_smoke.log
+  // in the chip evidence manifest for the parallel virtual-device gate.
+  {
+    androidAbi: "riscv64",
+    zigTarget: "riscv64-linux-musl",
+    cmakeProcessor: "riscv64",
   },
 ];
 
@@ -168,7 +184,7 @@ export function parseSubArgs(argv, brand) {
     } else if (arg === "-h" || arg === "--help") {
       console.log(
         "Usage: node packages/scripts/distro-android/compile-libllama.mjs [--brand-config <PATH>] " +
-          "[--assets-dir <PATH>] [--cache-dir <PATH>] [--abi <arm64-v8a|x86_64>] " +
+          "[--assets-dir <PATH>] [--cache-dir <PATH>] [--abi <arm64-v8a|x86_64|riscv64>] " +
           "[--jobs <N>] [--skip-if-present]\n" +
           "  --target is intentionally unsupported here; Vulkan/fused targets must fail closed.",
       );

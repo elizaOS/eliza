@@ -1,0 +1,3 @@
+reason: hello-mmio-smoke userspace tool has not been run on a booted image
+required: boot the Buildroot rootfs with the openphone hello kernel and capture `/usr/bin/hello-mmio-smoke 2>&1 | tee docs/evidence/buildroot/hello-mmio-smoke.log`
+audit: docs/android/bsp-critical-gap-audit-2026-05-17.md

@@ -7,7 +7,7 @@
  *   CI_SSH_PUBLIC_KEY_ID       - Numeric Hetzner SSH key id (one-time uploaded)
  *   GITHUB_RUN_ID              - run id, embedded in labels
  *   HETZNER_E2E_LOCATION       - default fsn1
- *   HETZNER_E2E_SERVER_TYPE    - default cpx11
+ *   HETZNER_E2E_SERVER_TYPE    - default cx22 (cpx11 was deprecated)
  *   HETZNER_E2E_IMAGE          - default ubuntu-24.04
  *
  * On success: prints `{id, ip}` JSON to stdout AND writes the server id
@@ -27,6 +27,80 @@ function requireEnv(name: string): string {
   return value;
 }
 
+// Hetzner periodically removes types / restricts new servers to specific
+// locations. When the requested (serverType, location) pair returns
+// `unsupported_location_for_server_type` (or the older `invalid_input`
+// equivalent), retry with these fallbacks in order before giving up. Each
+// fallback should be a cheap shared-cpu type available in at least one
+// public location at the time this list was last reviewed.
+const SERVER_TYPE_FALLBACKS: ReadonlyArray<{
+  serverType: string;
+  location: string;
+}> = [
+  { serverType: "cx22", location: "fsn1" }, // newer x86 shared
+  { serverType: "cax11", location: "fsn1" }, // ARM shared
+  { serverType: "cax11", location: "hel1" },
+  { serverType: "cx22", location: "nbg1" },
+  { serverType: "cax11", location: "nbg1" },
+];
+
+// Conditions under which we should try the next fallback combo. Covers
+// Hetzner's "this server type can't be created here" and "this server
+// type is going away" responses — both render the requested combo
+// unusable and a different shared-cpu type / location is the natural
+// remediation. Auth / quota / billing failures (HTTP 401/402/403) are
+// NOT in this list — those are surfaced unchanged so the operator
+// fixes the underlying account issue.
+function isRetryableCombo(err: unknown): boolean {
+  const message = err instanceof Error ? err.message.toLowerCase() : "";
+  return (
+    message.includes("unsupported_server_type_for_location") ||
+    message.includes("unsupported location for server type") ||
+    message.includes("unsupported_location_for_server_type") ||
+    message.includes("is deprecated") ||
+    message.includes("server_type_deprecated") ||
+    message.includes("resource_unavailable") ||
+    message.includes("not_found") // Hetzner returns 404 when a deprecated type is fully removed
+  );
+}
+
+// Pre-provision reap: delete any prior CI servers older than this. Stops a
+// chain of failed runs (which leak servers because teardown only fires when
+// provision succeeds) from blocking new runs with "server limit reached".
+// 20min is well above the ~10min healthy E2E budget; anything older is
+// guaranteed dead. The half-hourly reaper workflow handles the >60min case;
+// this is the fast lane.
+const PRE_REAP_AGE_MS = 20 * 60 * 1000;
+
+async function preReapOldServers(
+  client: InstanceType<typeof HetznerCloudClient>,
+): Promise<void> {
+  const servers = await client
+    .listServers({ ci: "true", workflow: "hetzner-e2e" })
+    .catch((err: unknown) => {
+      console.warn(
+        `[hetzner-e2e-provision] pre-reap listServers failed: ${err instanceof Error ? err.message : String(err)}`,
+      );
+      return [] as Awaited<ReturnType<typeof client.listServers>>;
+    });
+  const now = Date.now();
+  for (const server of servers) {
+    const created = Date.parse(server.created);
+    if (!Number.isFinite(created)) continue;
+    if (now - created < PRE_REAP_AGE_MS) continue;
+    console.error(
+      `[hetzner-e2e-provision] pre-reap deleting ${server.id} (${server.name}) age=${Math.round((now - created) / 60000)}min`,
+    );
+    try {
+      await client.deleteServer(server.id);
+    } catch (err) {
+      console.warn(
+        `[hetzner-e2e-provision] pre-reap delete ${server.id} failed: ${err instanceof Error ? err.message : String(err)}`,
+      );
+    }
+  }
+}
+
 async function main(): Promise<void> {
   const token = requireEnv("HCLOUD_TOKEN_CI");
   const sshKeyId = Number.parseInt(requireEnv("CI_SSH_PUBLIC_KEY_ID"), 10);
@@ -35,8 +109,11 @@ async function main(): Promise<void> {
   }
 
   const runId = process.env.GITHUB_RUN_ID ?? `local-${Date.now()}`;
-  const location = process.env.HETZNER_E2E_LOCATION ?? "fsn1";
-  const serverType = process.env.HETZNER_E2E_SERVER_TYPE ?? "cpx11";
+  const requestedLocation = process.env.HETZNER_E2E_LOCATION ?? "fsn1";
+  // cpx11 was deprecated in 2026Q2; cx22 is the current shared-cpu x86
+  // successor (similar 2 vCPU / 4 GB footprint, same fsn1/hel1/nbg1
+  // availability). Operators can still pin a specific type via env.
+  const requestedServerType = process.env.HETZNER_E2E_SERVER_TYPE ?? "cx22";
   const image = process.env.HETZNER_E2E_IMAGE ?? "ubuntu-24.04";
   const createdAt = new Date().toISOString();
 
@@ -54,21 +131,66 @@ async function main(): Promise<void> {
   ].join("\n");
 
   const client = HetznerCloudClient.withToken(token);
-  const { server } = await client.createServer({
-    name: `ci-hetzner-e2e-${runId}`,
-    serverType,
-    location,
-    image,
-    userData,
-    sshKeyIds: [sshKeyId],
-    labels: {
-      ci: "true",
-      workflow: "hetzner-e2e",
-      run: String(runId),
-      // Hetzner label values reject ":" — use a safe ISO variant.
-      created: createdAt.replace(/[:.]/g, "-"),
-    },
-  });
+  await preReapOldServers(client);
+  const attempts: Array<{ serverType: string; location: string }> = [
+    { serverType: requestedServerType, location: requestedLocation },
+    ...SERVER_TYPE_FALLBACKS.filter(
+      (combo) =>
+        !(
+          combo.serverType === requestedServerType &&
+          combo.location === requestedLocation
+        ),
+    ),
+  ];
+
+  let server: Awaited<ReturnType<typeof client.createServer>>["server"] | null =
+    null;
+  let lastError: unknown;
+  let serverType = requestedServerType;
+  let location = requestedLocation;
+  for (const attempt of attempts) {
+    try {
+      const created = await client.createServer({
+        name: `ci-hetzner-e2e-${runId}`,
+        serverType: attempt.serverType,
+        location: attempt.location,
+        image,
+        userData,
+        sshKeyIds: [sshKeyId],
+        labels: {
+          ci: "true",
+          workflow: "hetzner-e2e",
+          run: String(runId),
+          // Hetzner label values reject ":" — use a safe ISO variant.
+          created: createdAt.replace(/[:.]/g, "-"),
+        },
+      });
+      server = created.server;
+      serverType = attempt.serverType;
+      location = attempt.location;
+      if (
+        attempt.serverType !== requestedServerType ||
+        attempt.location !== requestedLocation
+      ) {
+        console.error(
+          `[hetzner-e2e-provision] requested ${requestedServerType}@${requestedLocation} was unavailable; succeeded with ${attempt.serverType}@${attempt.location}`,
+        );
+      }
+      break;
+    } catch (err) {
+      lastError = err;
+      if (!isRetryableCombo(err)) throw err;
+      const reason = err instanceof Error ? err.message : String(err);
+      console.error(
+        `[hetzner-e2e-provision] ${attempt.serverType}@${attempt.location} unavailable (${reason}); trying next fallback`,
+      );
+    }
+  }
+  if (!server) {
+    throw lastError instanceof Error
+      ? lastError
+      : new Error("Hetzner provisioning failed across all fallback combos");
+  }
 
   const ip = server.public_net.ipv4?.ip ?? "";
 

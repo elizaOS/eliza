@@ -464,14 +464,13 @@ describe("AcpService", () => {
     expect(result.response).not.toContain('"metadata"');
     expect(taskCompletePayloads[0]?.response).toBe(result.response);
     expect(result.stopReason).toBe("end_turn");
+    // A clean exit with captured output emits exactly one terminal event
+    // (`task_complete`); the redundant `stopped` was dropped to avoid
+    // double-processing downstream.
     expect(events).toEqual(
-      expect.arrayContaining([
-        "message",
-        "tool_running",
-        "task_complete",
-        "stopped",
-      ]),
+      expect.arrayContaining(["message", "tool_running", "task_complete"]),
     );
+    expect(events).not.toContain("stopped");
     expect(events.indexOf("message")).toBeLessThan(
       events.indexOf("task_complete"),
     );

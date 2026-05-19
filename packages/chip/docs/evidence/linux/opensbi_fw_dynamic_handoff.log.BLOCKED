@@ -1,0 +1,3 @@
+reason: no real OpenSBI fw_dynamic handoff transcript has been captured for the OpenPhone hello Linux-capable AP path.
+required: capture OpenSBI UART output showing fw_dynamic handoff, Next Address, next-mode, DTB address, command line, and PASS provenance markers.
+producer: OPENPHONE_OPENSBI_HANDOFF_CMD='/exact boot command' sw/opensbi/capture-opensbi-evidence.sh /path/to/opensbi handoff

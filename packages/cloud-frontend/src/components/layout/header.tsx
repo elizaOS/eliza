@@ -1,9 +1,11 @@
 "use client";
 
 import { BrandButton, DashboardHeader, usePageHeader } from "@elizaos/ui";
+import { LanguageDropdown } from "@elizaos/ui/components/shared/LanguageDropdown";
 import { LogIn } from "lucide-react";
 import { memo, type ReactNode } from "react";
 import { Link, useLocation } from "react-router-dom";
+import { useI18n } from "@/providers/I18nProvider";
 import { HeaderInviteButton } from "./header-invite-button";
 import UserMenu from "./user-menu";
 
@@ -25,6 +27,7 @@ function HeaderComponent({
   const fullUrl =
     pathname + (typeof window !== "undefined" ? window.location.search : "");
   const loginUrl = `/login?returnTo=${encodeURIComponent(fullUrl)}`;
+  const { lang, setLang } = useI18n();
 
   return (
     <DashboardHeader
@@ -46,6 +49,11 @@ function HeaderComponent({
       }
       rightContent={
         <div className="flex min-w-0 flex-row items-center gap-2 md:gap-4">
+          <LanguageDropdown
+            uiLanguage={lang}
+            setUiLanguage={setLang}
+            variant="titlebar"
+          />
           {!authGraceActive ? <HeaderInviteButton /> : null}
           <UserMenu preserveWhileUnauthed={authGraceActive} />
         </div>
