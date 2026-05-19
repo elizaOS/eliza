@@ -4,6 +4,7 @@ depth 12
 
 [engines]
 smtbmc z3
+smtbmc bitwuzla
 
 [script]
 read -formal bpu_pkg.sv ftq.sv ftq_tb.sv ftq_formal.sv

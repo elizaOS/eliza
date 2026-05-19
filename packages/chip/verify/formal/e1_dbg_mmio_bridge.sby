@@ -4,6 +4,7 @@ depth 16
 
 [engines]
 smtbmc z3
+smtbmc bitwuzla
 
 [script]
 read -formal -sv e1_dbg_mmio_bridge.sv e1_dbg_mmio_bridge_formal.sv

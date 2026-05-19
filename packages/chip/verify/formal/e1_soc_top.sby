@@ -4,6 +4,7 @@ depth 4
 
 [engines]
 smtbmc z3
+smtbmc bitwuzla
 
 [script]
 read -formal e1_bootrom.sv

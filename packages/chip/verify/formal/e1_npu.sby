@@ -4,6 +4,7 @@ depth 8
 
 [engines]
 smtbmc z3
+smtbmc bitwuzla
 
 [script]
 read -formal e1_npu.sv e1_npu_formal.sv
