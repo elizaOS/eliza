@@ -104,19 +104,36 @@ implementation plan is preserved at the bottom for archival.
 
 ---
 
-## Vision describe (mmproj) — wired, opt-in build flag
+## Vision describe (mmproj/mtmd) — wired against mtmd ABI, opt-in build flag
 
-The shim now exposes `eliza_clip_load` / `eliza_clip_free` /
-`eliza_llava_image_embed_{load,free,eval}` (gated by
-`#ifdef ELIZA_ENABLE_VISION` in `eliza_llama_shim.c`). The desktop dylib
-build script flips `LLAMA_BUILD_EXAMPLES=ON` and adds the llava + clip
-static libs to the shim link line when `ELIZA_ENABLE_VISION=1` is set
-in the build env. The TS adapter has `bindVision()` that returns null
-when the shim was compiled without the flag, and `DesktopLlamaAdapter.
-describeImage(...)` runs the full mmproj load → image embed → KV inject →
-constrained generate loop.
+**Status**: wired against the mtmd ABI; requires `ELIZA_ENABLE_VISION=1`
+build flag + image decoding via `sharp` on the JS side; needs runtime
+smoke test before flipping default-on.
 
-**Default builds skip vision entirely.** No examples target, no shim
+The shim now exposes the mtmd pointer-style wrappers (`eliza_mtmd_init`,
+`eliza_mtmd_free`, `eliza_mtmd_bitmap_init_rgb`,
+`eliza_mtmd_input_chunks_init`, `eliza_mtmd_tokenize`,
+`eliza_mtmd_input_chunks_{size,get}`, `eliza_mtmd_input_chunk_{type,n_tokens}`,
+`eliza_mtmd_encode_chunk`, `eliza_mtmd_output_embd`, plus the matching
+`*_free` symbols), gated by `#ifdef ELIZA_ENABLE_VISION` in
+`eliza_llama_shim.c`. Upstream llama.cpp HEAD removed the historical
+`examples/llava/` path and consolidated multimodal under `tools/mtmd/`;
+the shim targets that ABI exclusively.
+
+The desktop dylib build script enables `LLAMA_BUILD_MTMD=ON` (in addition
+to `BUILD_SHARED_LIBS=ON`) when `ELIZA_ENABLE_VISION=1` is set in the
+build env, builds the `mtmd` cmake target, stages `libmtmd.<ext>` next to
+`libllama.<ext>` in the output dir, and links the shim with `-lmtmd`. The
+shim's rpath (`@loader_path` on darwin, `$ORIGIN` on linux) resolves
+`libmtmd` at load time.
+
+The TS adapter (`desktop-llama-adapter.ts`) has `bindVision()` that
+returns null when the shim was compiled without the flag.
+`DesktopLlamaAdapter.loadMmproj(mmprojPath)` calls `mtmd_init_from_file`
+against the loaded text model. `describeImage(...)` is currently a stub
+that throws an actionable error — see "Remaining work" below.
+
+**Default builds skip vision entirely.** No mtmd target, no shim
 vision wrappers, `bindVision()` returns null, `describeImage` throws an
 actionable "vision build flag not set" error. The subprocess
 `dflash-server` keeps the historical vision path for users who haven't
@@ -129,15 +146,32 @@ ELIZA_ENABLE_VISION=1 bun run --cwd packages/app-core \
   scripts/build-llama-cpp-desktop-dylib.mjs --host
 ```
 
-The script then builds llava / clip alongside libllama (it probes
-`llava_static`, `llava`, then `mtmd` cmake targets for compatibility
-with older + newer llama.cpp checkouts) and links them into
-`libeliza-llama-shim.{dylib,so,dll}`.
-
 **Runtime contract**: the engine must pass `overrides.mmprojPath` on
 `BackendPlan` when activating a vision-capable bundle. The runtime
 records it on `FfiBackendSession.mmprojPath`; `describeImage` reads it
-back and feeds the clip ctx with it lazily on first call.
+back and feeds the mtmd ctx with it lazily on first call.
+
+**Remaining work to land the full describeImage path**:
+
+1. JS-side image decode. `args.imageBytes` (PNG/JPEG/WebP) must be
+   decoded to a raw RGB buffer before `eliza_mtmd_bitmap_init_rgb`.
+   `sharp` is in `packages/app-core/package.json` but NOT in
+   `plugins/plugin-local-inference/package.json`. Either add `sharp`
+   as a direct plugin dep or move the decode step into a shared
+   adapter that lives in app-core.
+2. Embedding-batch shim wrapper. After `mtmd_encode_chunk` the
+   adapter needs to drive `llama_decode` with the resulting embedding
+   buffer (`mtmd_get_output_embd`). The current
+   `eliza_llama_batch_get_one` only wraps the *token* variant of
+   `llama_batch`; add a sibling like
+   `eliza_llama_batch_get_one_embd(float*, n_tokens, n_embd)` to
+   `eliza_llama_shim.{c,h}` and bind it in `ShimSymbols`.
+
+Once both gaps are closed, replace the stub body of `describeImage`
+with the documented flow (init mtmd → bitmap_init → input_chunks_init →
+tokenize → encode_chunk per image-chunk → fetch embeddings → drive
+llama_decode → generate loop) and run a runtime smoke test against a
+known mmproj GGUF.
 
 ## What's still on the subprocess `dflash-server` fallback
 

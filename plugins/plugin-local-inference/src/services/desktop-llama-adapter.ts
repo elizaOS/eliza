@@ -61,6 +61,7 @@ type FFITypeEnum = {
 	i32: number;
 	u32: number;
 	i64: number;
+	u64: number;
 	f32: number;
 	ptr: number;
 	cstring: number;
@@ -230,27 +231,47 @@ interface ShimSymbols {
 }
 
 /**
- * Vision (mmproj) shim symbols. Present only when the shim was built with
- * `-DELIZA_ENABLE_VISION=1`. Bound separately in a try/catch so the absence
- * of these symbols on a non-vision shim degrades gracefully to
+ * Vision (mmproj/mtmd) shim symbols. Present only when the shim was built
+ * with `-DELIZA_ENABLE_VISION=1`. Bound separately in a try/catch so the
+ * absence of these symbols on a non-vision shim degrades gracefully to
  * `describeImage` throwing "vision build flag not set".
+ *
+ * Target ABI is the consolidated `tools/mtmd/mtmd.h` surface in llama.cpp
+ * HEAD (the older `examples/llava/` path has been removed upstream).
  */
 interface VisionShimSymbols {
-	eliza_clip_load: (path: Pointer) => Pointer;
-	eliza_clip_free: (ctx_clip: Pointer) => void;
-	eliza_llava_image_embed_load: (
-		ctx_clip: Pointer,
+	eliza_mtmd_init: (
+		mmproj_path: Pointer,
+		text_model: Pointer,
+		use_gpu: boolean,
 		n_threads: number,
-		image_bytes: Pointer,
-		image_bytes_length: number,
 	) => Pointer;
-	eliza_llava_image_embed_free: (embed: Pointer) => void;
-	eliza_llava_image_embed_eval: (
-		ctx_llama: Pointer,
-		embed: Pointer,
-		n_batch: number,
-		n_past: Pointer,
+	eliza_mtmd_free: (ctx: Pointer) => void;
+	eliza_mtmd_bitmap_init_rgb: (
+		nx: number,
+		ny: number,
+		rgb: Pointer,
+	) => Pointer;
+	eliza_mtmd_bitmap_free: (bm: Pointer) => void;
+	eliza_mtmd_input_chunks_init: () => Pointer;
+	eliza_mtmd_input_chunks_free: (c: Pointer) => void;
+	eliza_mtmd_tokenize: (
+		ctx: Pointer,
+		out_chunks: Pointer,
+		text: Pointer,
+		add_special: boolean,
+		parse_special: boolean,
+		bitmaps: Pointer,
+		// size_t (u64) on the C side — bun:ffi marshals u64 as bigint.
+		n_bitmaps: bigint,
 	) => number;
+	// size_t returns / args — bun:ffi marshals u64 as bigint.
+	eliza_mtmd_input_chunks_size: (c: Pointer) => bigint;
+	eliza_mtmd_input_chunks_get: (c: Pointer, i: bigint) => Pointer;
+	eliza_mtmd_input_chunk_type: (ch: Pointer) => number;
+	eliza_mtmd_input_chunk_n_tokens: (ch: Pointer) => bigint;
+	eliza_mtmd_encode_chunk: (ctx: Pointer, chunk: Pointer) => number;
+	eliza_mtmd_output_embd: (ctx: Pointer) => Pointer;
 }
 
 // === Path resolution =======================================================
@@ -506,17 +527,34 @@ function bindVision(
 	const T = ffi.FFIType;
 	try {
 		const handle = ffi.dlopen<VisionShimSymbols>(libPath, {
-			eliza_clip_load: { args: [T.ptr], returns: T.ptr },
-			eliza_clip_free: { args: [T.ptr], returns: T.void },
-			eliza_llava_image_embed_load: {
-				args: [T.ptr, T.i32, T.ptr, T.i32],
+			eliza_mtmd_init: {
+				args: [T.ptr, T.ptr, T.bool, T.i32],
 				returns: T.ptr,
 			},
-			eliza_llava_image_embed_free: { args: [T.ptr], returns: T.void },
-			eliza_llava_image_embed_eval: {
-				args: [T.ptr, T.ptr, T.i32, T.ptr],
+			eliza_mtmd_free: { args: [T.ptr], returns: T.void },
+			eliza_mtmd_bitmap_init_rgb: {
+				args: [T.u32, T.u32, T.ptr],
+				returns: T.ptr,
+			},
+			eliza_mtmd_bitmap_free: { args: [T.ptr], returns: T.void },
+			eliza_mtmd_input_chunks_init: { args: [], returns: T.ptr },
+			eliza_mtmd_input_chunks_free: { args: [T.ptr], returns: T.void },
+			eliza_mtmd_tokenize: {
+				args: [T.ptr, T.ptr, T.ptr, T.bool, T.bool, T.ptr, T.u64],
 				returns: T.i32,
 			},
+			eliza_mtmd_input_chunks_size: { args: [T.ptr], returns: T.u64 },
+			eliza_mtmd_input_chunks_get: {
+				args: [T.ptr, T.u64],
+				returns: T.ptr,
+			},
+			eliza_mtmd_input_chunk_type: { args: [T.ptr], returns: T.i32 },
+			eliza_mtmd_input_chunk_n_tokens: { args: [T.ptr], returns: T.u64 },
+			eliza_mtmd_encode_chunk: {
+				args: [T.ptr, T.ptr],
+				returns: T.i32,
+			},
+			eliza_mtmd_output_embd: { args: [T.ptr], returns: T.ptr },
 		});
 		return handle.symbols;
 	} catch {
@@ -629,9 +667,9 @@ export class DesktopLlamaAdapter {
 	 */
 	private loadOpts: DesktopLlamaLoadOptions | null = null;
 
-	/** Loaded clip context for the active mmproj GGUF, or null when unset. */
-	private clipCtxPtr: Pointer | null = null;
-	private clipMmprojPath: string | null = null;
+	/** Loaded mtmd context for the active mmproj GGUF, or null when unset. */
+	private mtmdCtxPtr: Pointer | null = null;
+	private mtmdMmprojPath: string | null = null;
 
 	constructor(
 		private readonly ffi: BunFFIModule,
@@ -650,13 +688,13 @@ export class DesktopLlamaAdapter {
 	}
 
 	currentMmprojPath(): string | null {
-		return this.clipMmprojPath;
+		return this.mtmdMmprojPath;
 	}
 
 	/**
-	 * Lazily load a clip / mmproj GGUF. Idempotent on the same path —
-	 * repeated calls with the same `mmprojPath` are no-ops. Switching
-	 * paths frees the old clip ctx and loads the new one.
+	 * Lazily load an mmproj GGUF via the mtmd ABI. Idempotent on the same
+	 * path — repeated calls with the same `mmprojPath` are no-ops. Switching
+	 * paths frees the old mtmd ctx and loads the new one.
 	 */
 	loadMmproj(mmprojPath: string): void {
 		if (!this.vision) {
@@ -666,28 +704,54 @@ export class DesktopLlamaAdapter {
 					"`ELIZA_ENABLE_VISION=1 bun run --cwd packages/app-core scripts/build-llama-cpp-desktop-dylib.mjs`.",
 			);
 		}
-		if (this.clipMmprojPath === mmprojPath && this.clipCtxPtr !== null) {
+		if (this.mtmdMmprojPath === mmprojPath && this.mtmdCtxPtr !== null) {
 			return;
 		}
-		if (this.clipCtxPtr !== null) {
-			this.vision.eliza_clip_free(this.clipCtxPtr);
-			this.clipCtxPtr = null;
-			this.clipMmprojPath = null;
+		if (this.mtmdCtxPtr !== null) {
+			this.vision.eliza_mtmd_free(this.mtmdCtxPtr);
+			this.mtmdCtxPtr = null;
+			this.mtmdMmprojPath = null;
+		}
+		if (!this.modelPtr) {
+			throw new Error("[desktop-llama] loadMmproj before loadModel");
 		}
 		const pathBuf = encodeCString(mmprojPath);
-		const clipPtr = this.vision.eliza_clip_load(this.ffi.ptr(pathBuf));
-		if (!clipPtr) {
+		const threads = this.loadOpts?.threads ?? defaultThreads();
+		// `use_gpu=true` matches subprocess `dflash-server` behaviour
+		// (mtmd offloads the projector to whichever backend is active —
+		// Metal on darwin, Vulkan/CUDA on linux/windows).
+		const ctxPtr = this.vision.eliza_mtmd_init(
+			this.ffi.ptr(pathBuf),
+			this.modelPtr,
+			true,
+			threads,
+		);
+		if (!ctxPtr) {
 			throw new Error(
-				`[desktop-llama] eliza_clip_load failed for ${mmprojPath}`,
+				`[desktop-llama] eliza_mtmd_init failed for ${mmprojPath}`,
 			);
 		}
-		this.clipCtxPtr = clipPtr;
-		this.clipMmprojPath = mmprojPath;
+		this.mtmdCtxPtr = ctxPtr;
+		this.mtmdMmprojPath = mmprojPath;
 	}
 
 	/**
-	 * Describe an image. Loads the mmproj if needed, embeds the image
-	 * into the primary ctx's KV state, then generates a description.
+	 * Describe an image via the mtmd (multimodal) ABI.
+	 *
+	 * Flow:
+	 *   1. Init an mtmd ctx against the loaded text model + mmproj GGUF.
+	 *   2. Decode `args.imageBytes` to raw RGB on the JS side. This step
+	 *      requires an image-decoding library (sharp / jimp). `sharp` is
+	 *      present in `packages/app-core` but NOT in this plugin's deps.
+	 *      Until that's resolved this method throws an actionable error.
+	 *   3. mtmd_bitmap_init_rgb → input_chunks_init → mtmd_tokenize.
+	 *   4. mtmd_encode_chunk per image-chunk; pipe the resulting embedding
+	 *      vector through llama_decode (requires an `embd`-flavour
+	 *      llama_batch — the shim's current `eliza_llama_batch_get_one`
+	 *      only wraps the *token* variant, so a new shim function
+	 *      `eliza_llama_batch_get_one_embd(float*, n, n_embd)` will be
+	 *      needed for the full path).
+	 *   5. Standard generate loop with the user's prompt prefix.
 	 *
 	 * `args.imageBytes` is the raw image (PNG/JPEG/WebP). `args.mmprojPath`
 	 * is the path to the multimodal projector GGUF (e.g. mmproj-eliza-1.gguf).
@@ -711,8 +775,8 @@ export class DesktopLlamaAdapter {
 			throw new Error("[desktop-llama] describeImage before model load");
 		}
 		this.loadMmproj(args.mmprojPath);
-		if (!this.clipCtxPtr) {
-			throw new Error("[desktop-llama] clip ctx unexpectedly null");
+		if (!this.mtmdCtxPtr) {
+			throw new Error("[desktop-llama] mtmd ctx unexpectedly null");
 		}
 
 		// Clear KV between image-describe turns so each call starts fresh.
@@ -721,131 +785,34 @@ export class DesktopLlamaAdapter {
 			this.llama.llama_memory_clear(mem, true);
 		}
 
-		// 1) Embed the image via clip + llava.
-		const projectorStart = performance.now();
-		const imageHeap = new Uint8Array(args.imageBytes.length);
-		imageHeap.set(args.imageBytes);
-		const threads = this.loadOpts?.threads ?? defaultThreads();
-		const embedPtr = this.vision.eliza_llava_image_embed_load(
-			this.clipCtxPtr,
-			threads,
-			this.ffi.ptr(imageHeap),
-			imageHeap.length,
+		// Reference args explicitly so unused-warnings stay quiet on the
+		// stub. Once the JS-side RGB decode + embedding-batch shim wrapper
+		// land, this method should consume `imageBytes`, `prompt`,
+		// `maxTokens`, `temperature`, and `signal` end-to-end.
+		void args.imageBytes;
+		void args.prompt;
+		void args.maxTokens;
+		void args.temperature;
+		void args.signal;
+
+		// TODO(vision/mtmd): full describe path. Two missing pieces:
+		//   1. JS-side image-bytes → RGB decode. `sharp` exists in
+		//      `packages/app-core/package.json` but NOT in
+		//      `plugins/plugin-local-inference/package.json`. Add it as
+		//      a direct dep (or move the decode into a shared adapter
+		//      that lives in app-core) before wiring this up.
+		//   2. Shim wrapper for the embeddings-batch variant of
+		//      `llama_batch` (`llama_batch_get_one` only handles tokens).
+		//      Add e.g. `eliza_llama_batch_get_one_embd(float*, n, n_embd)`
+		//      to `eliza_llama_shim.{c,h}` and bind it in `ShimSymbols`.
+		throw new Error(
+			"[desktop-llama] describeImage (mtmd path) not yet implemented. " +
+				"Required: (a) image bytes → RGB decode (add `sharp` to " +
+				"plugin-local-inference deps; it is already in app-core) and " +
+				"(b) an embeddings-batch shim wrapper around llama_batch_get_one. " +
+				"Until both land, callers fall through to the subprocess " +
+				"`dflash-server` vision path.",
 		);
-		const projectorMs = performance.now() - projectorStart;
-		if (!embedPtr) {
-			throw new Error(
-				"[desktop-llama] llava_image_embed_make_with_bytes failed",
-			);
-		}
-
-		try {
-			// 2) Feed the image embed into ctx KV. n_past tracks position.
-			const nPastBuf = new Int32Array(1);
-			nPastBuf[0] = 0;
-			const nBatch = this.loadOpts?.nBatch ?? 256;
-			const evalRc = this.vision.eliza_llava_image_embed_eval(
-				ctx,
-				embedPtr,
-				nBatch,
-				this.ffi.ptr(nPastBuf),
-			);
-			if (evalRc !== 0) {
-				throw new Error(
-					`[desktop-llama] eliza_llava_image_embed_eval rc=${evalRc}`,
-				);
-			}
-			this.hasDecodedFlags[0] = true;
-
-			// 3) Prefill the text prompt-prefix (the user's question about
-			// the image), then run a constrained generate loop.
-			const promptText = args.prompt?.trim() || "Describe this image.";
-			const promptTokens = this.tokenize(promptText);
-			if (promptTokens.length > 0) {
-				const owned = new Int32Array(promptTokens.length);
-				owned.set(promptTokens);
-				const batch = this.shim.eliza_llama_batch_get_one(
-					this.ffi.ptr(owned),
-					owned.length,
-				);
-				try {
-					const rc = this.shim.eliza_llama_decode(ctx, batch);
-					if (rc !== 0) {
-						throw new Error(`[desktop-llama] describe prefill rc=${rc}`);
-					}
-				} finally {
-					this.shim.eliza_llama_batch_free(batch);
-				}
-			}
-
-			// 4) Greedy generate (vision describe doesn't benefit from
-			// temperature sampling) until EOS or maxTokens.
-			const decodeStart = performance.now();
-			const sp = this.shim.eliza_llama_sampler_chain_params_default();
-			let sampler: Pointer;
-			try {
-				sampler = this.shim.eliza_llama_sampler_chain_init(sp);
-			} finally {
-				this.shim.eliza_llama_sampler_chain_params_free(sp);
-			}
-			if ((args.temperature ?? 0) > 0) {
-				this.llama.llama_sampler_chain_add(
-					sampler,
-					this.llama.llama_sampler_init_temp(args.temperature ?? 0.2),
-				);
-				this.llama.llama_sampler_chain_add(
-					sampler,
-					this.llama.llama_sampler_init_dist(0xdeadbeef),
-				);
-			} else {
-				this.llama.llama_sampler_chain_add(
-					sampler,
-					this.llama.llama_sampler_init_greedy(),
-				);
-			}
-			let text = "";
-			const tokenBuf = new Int32Array(1);
-			const pieceBuf = new Uint8Array(256);
-			const maxTokens = args.maxTokens ?? 256;
-			try {
-				for (let i = 0; i < maxTokens; i++) {
-					if (args.signal?.aborted) break;
-					const tok = this.llama.llama_sampler_sample(sampler, ctx, -1);
-					if (this.llama.llama_vocab_is_eog(this.vocabPtr, tok)) break;
-					this.llama.llama_sampler_accept(sampler, tok);
-					const wrote = this.llama.llama_token_to_piece(
-						this.vocabPtr,
-						tok,
-						this.ffi.ptr(pieceBuf),
-						pieceBuf.length,
-						0,
-						false,
-					);
-					if (wrote > 0) {
-						text += decodeCStringBytes(pieceBuf.subarray(0, wrote));
-					}
-					tokenBuf[0] = tok;
-					const batch = this.shim.eliza_llama_batch_get_one(
-						this.ffi.ptr(tokenBuf),
-						1,
-					);
-					try {
-						const rc = this.shim.eliza_llama_decode(ctx, batch);
-						if (rc !== 0) {
-							throw new Error(`[desktop-llama] describe decode rc=${rc}`);
-						}
-					} finally {
-						this.shim.eliza_llama_batch_free(batch);
-					}
-				}
-			} finally {
-				this.llama.llama_sampler_free(sampler);
-			}
-			const decodeMs = performance.now() - decodeStart;
-			return { text, projectorMs, decodeMs };
-		} finally {
-			this.vision.eliza_llava_image_embed_free(embedPtr);
-		}
 	}
 
 	/**
@@ -1077,12 +1044,13 @@ export class DesktopLlamaAdapter {
 			this.llama.llama_sampler_free(sess.sampler);
 		}
 		this.sessions.clear();
-		// Free clip ctx (vision) before the main ctx — llava embeds hold
-		// pointers into the clip context.
-		if (this.clipCtxPtr !== null && this.vision) {
-			this.vision.eliza_clip_free(this.clipCtxPtr);
-			this.clipCtxPtr = null;
-			this.clipMmprojPath = null;
+		// Free mtmd ctx (vision) before the main ctx — the mtmd context is
+		// bound to the text model and must outlive neither the model nor
+		// the active llama ctx.
+		if (this.mtmdCtxPtr !== null && this.vision) {
+			this.vision.eliza_mtmd_free(this.mtmdCtxPtr);
+			this.mtmdCtxPtr = null;
+			this.mtmdMmprojPath = null;
 		}
 		// Detach + free the drafter BEFORE freeing any main ctx — the
 		// drafter is borrowed via the primary ctx's shim slot. `llama_free`
