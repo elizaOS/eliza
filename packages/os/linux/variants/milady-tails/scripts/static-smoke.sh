@@ -67,6 +67,9 @@ node --check scripts/generate-release-evidence.mjs
 node --check scripts/validate-model-catalog.mjs
 node --check scripts/validate-runtime-overlay.mjs
 node --check tails/config/chroot_local-includes/usr/local/lib/elizaos/renderer-server.mjs
+grep -q 'ELIZAOS_MILADY_APP_ARTIFACT' Justfile
+grep -q 'ensure_plugin_runtime_dist "plugins/plugin-health" package-js' Justfile
+grep -q 'ensure_plugin_runtime_dist "plugins/plugin-calendly" tsup-index' Justfile
 python3 -m json.tool schemas/update-manifest.schema.json >/dev/null
 python3 -m json.tool schemas/model-catalog.schema.json >/dev/null
 python3 - \
