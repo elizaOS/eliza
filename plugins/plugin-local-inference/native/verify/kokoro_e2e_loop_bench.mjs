@@ -1006,7 +1006,14 @@ async function startTextServer(engine, files, args, log) {
     logText += chunk.toString();
     if (logText.length > 20000) logText = logText.slice(-20000);
   });
-  await waitHealthy(port, args.startTimeoutS, child);
+  try {
+    await waitHealthy(port, args.startTimeoutS, child);
+  } catch (err) {
+    err.serverLog = logText;
+    err.serverExitCode = child.exitCode ?? null;
+    await stopChild(child);
+    throw err;
+  }
   return { child, port, drafterReady, getLog: () => logText };
 }
 
@@ -1670,8 +1677,11 @@ async function run() {
         status: statusFromError(err),
         reason: err instanceof Error ? err.message : String(err),
         e2eLoopOk: false,
-        serverExitCode: textServer?.child?.exitCode ?? null,
-        serverLog: textServer?.getLog ? textServer.getLog().split("\n").slice(-100).join("\n") : null,
+        serverExitCode: err?.serverExitCode ?? textServer?.child?.exitCode ?? null,
+        serverLog: (err?.serverLog ?? (textServer?.getLog ? textServer.getLog() : null))
+          ?.split("\n")
+          .slice(-100)
+          .join("\n") ?? null,
       },
       args,
     );

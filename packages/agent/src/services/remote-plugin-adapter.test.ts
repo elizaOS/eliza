@@ -2683,6 +2683,8 @@ process.on("SIGTERM", () => server.close(() => process.exit(0)));
 
       const viewSource = join(srcDir, "docker-view.ts");
       const builtBundlePath = join(distDir, "docker-view.js");
+      const toolsViewSource = join(srcDir, "docker-tools-view.ts");
+      const builtToolsBundlePath = join(distDir, "docker-tools-view.js");
       await writeFile(
         viewSource,
         [
@@ -2692,9 +2694,19 @@ process.on("SIGTERM", () => server.close(() => process.exit(0)));
         ].join("\n"),
         "utf8",
       );
+      await writeFile(
+        toolsViewSource,
+        [
+          "export const marker = 'docker-tools-built-remote-view';",
+          "export const isolation = 'docker';",
+          "export const module = 'tools';",
+          "",
+        ].join("\n"),
+        "utf8",
+      );
       const buildResult = await esbuild({
-        entryPoints: [viewSource],
-        outfile: builtBundlePath,
+        entryPoints: [viewSource, toolsViewSource],
+        outdir: distDir,
         target: "es2022",
         platform: "browser",
         format: "esm",
