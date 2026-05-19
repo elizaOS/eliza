@@ -50,6 +50,16 @@ export default defineConfig({
     ],
     alias: [
       { find: "@", replacement: path.resolve(__dirname, "./src") },
+      // Icon-only subpath MUST come before the cloud-ui barrel alias —
+      // the homepage onboarding pages import only icons here to avoid
+      // pulling the full barrel (which drags in hast + framer-motion).
+      {
+        find: "@elizaos/ui/cloud-ui/components/icons",
+        replacement: path.resolve(
+          __dirname,
+          "../ui/src/cloud-ui/components/icons.tsx",
+        ),
+      },
       {
         find: "@elizaos/ui/cloud-ui",
         replacement: path.resolve(__dirname, "../ui/src/cloud-ui/index.ts"),

@@ -5,7 +5,7 @@ import {
   DiscordIcon,
   TelegramIcon,
   WhatsAppIcon,
-} from "@elizaos/ui/cloud-ui";
+} from "@elizaos/ui/cloud-ui/components/icons";
 import { animated, useSpring, useTrail } from "@react-spring/web";
 import { ArrowLeft, Check, Copy, ExternalLink, Info, Send } from "lucide-react";
 import { lazy, Suspense, useCallback, useEffect, useRef, useState } from "react";

@@ -942,6 +942,20 @@ function isManualResetPgliteError(err: unknown): boolean {
       return true;
     }
 
+    // PGlite is an Emscripten/WASM build of Postgres. When the embedded
+    // postmaster hits an unrecoverable internal state — most commonly a
+    // corrupt on-disk pgdata directory from a previous crash, an
+    // unsupported syscall, or pg_logical/WAL replay failure — Emscripten
+    // calls `abort()` and surfaces it as an Error whose message starts
+    // with `Aborted(). Build with -sASSERTIONS for more info.` That bare
+    // string carries no PGlite-specific marker, so the older heuristics
+    // above never matched and the dev-server retried forever against the
+    // same poisoned data dir. Treat it as a recoverable corruption signal:
+    // the auto-reset path quarantines the .elizadb dir and retries once.
+    if (normalized.includes("aborted()")) {
+      return true;
+    }
+
     return false;
   });
 }

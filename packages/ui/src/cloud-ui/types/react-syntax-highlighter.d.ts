@@ -19,6 +19,24 @@ declare module "react-syntax-highlighter" {
   export const Prism: ComponentType<SyntaxHighlighterProps>;
 }
 
+declare module "react-syntax-highlighter/dist/esm/prism-light" {
+  import type { ComponentType } from "react";
+  import type { SyntaxHighlighterProps } from "react-syntax-highlighter";
+
+  type PrismLight = ComponentType<SyntaxHighlighterProps> & {
+    registerLanguage: (name: string, language: unknown) => void;
+    alias: (name: string, aliases: string | string[]) => void;
+  };
+
+  const PrismLight: PrismLight;
+  export default PrismLight;
+}
+
+declare module "refractor/lang/*" {
+  const lang: unknown;
+  export default lang;
+}
+
 declare module "react-syntax-highlighter/dist/esm/styles/prism/index.js" {
   import type { SyntaxHighlighterStyle } from "react-syntax-highlighter";
 

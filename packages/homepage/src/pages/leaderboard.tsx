@@ -15,7 +15,11 @@
  *   input/login/verify slide-up, intro logo scale+swap, l/i/e/a letter morph,
  *   chrome filter, z-shape wipe. We touch colors only -- never timings.
  */
-import { DiscordIcon, IMessageIcon, TelegramIcon } from "@elizaos/ui/cloud-ui";
+import {
+  DiscordIcon,
+  IMessageIcon,
+  TelegramIcon,
+} from "@elizaos/ui/cloud-ui/components/icons";
 import {
   animated,
   to,

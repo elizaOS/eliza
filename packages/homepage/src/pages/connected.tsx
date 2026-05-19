@@ -4,7 +4,7 @@ import {
   DiscordIcon,
   TelegramIcon,
   WhatsAppIcon,
-} from "@elizaos/ui/cloud-ui";
+} from "@elizaos/ui/cloud-ui/components/icons";
 import {
   DropdownMenu,
   DropdownMenuContent,
