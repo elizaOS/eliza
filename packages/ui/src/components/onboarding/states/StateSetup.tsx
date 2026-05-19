@@ -18,9 +18,13 @@ export interface StateSetupProps {
 // excludes huge user populations and is a standard i18n anti-pattern.
 const LANGUAGES: ReadonlyArray<{ value: string; label: string }> = [
   { value: "en-US", label: "English" },
+  { value: "zh-CN", label: "中文" },
   { value: "es-ES", label: "Español" },
   { value: "ja-JP", label: "日本語" },
   { value: "ko-KR", label: "한국어" },
+  { value: "pt-BR", label: "Português" },
+  { value: "tl-PH", label: "Tagalog" },
+  { value: "vi-VN", label: "Tiếng Việt" },
 ];
 
 export function StateSetup(props: StateSetupProps): React.JSX.Element {
