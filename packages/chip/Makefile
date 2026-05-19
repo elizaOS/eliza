@@ -293,6 +293,8 @@ cpu-ap-evidence-test:
 cpu-ap-completion-gate:
 	@$(PYTHON) scripts/check_cpu_ap_completion_gate.py
 
+.PHONY: core-selection-check core-selection-check-strict xiangshan-generator-check cva6-generator-check boom-generator-check ascalon-license-check linux-smoke linux-boot-check linux-boot-check-strict coremark embench jetstream spec-skeleton cocotb-cpu-extended pmu-event-alignment-check cpu-lint-check
+
 core-selection-check:
 	@$(PYTHON) scripts/check_core_selection.py
 
@@ -338,6 +340,13 @@ cocotb-cpu-extended:
 	@$(PYTHON) verify/cocotb/cpu/test_zihpm_event_table.py
 	@$(PYTHON) verify/cocotb/cpu/test_csr_trap.py
 	@$(PYTHON) verify/cocotb/cpu/test_mmu_sv39.py
+	@$(PYTHON) scripts/check_pmu_event_alignment.py
+
+pmu-event-alignment-check:
+	@$(PYTHON) scripts/check_pmu_event_alignment.py
+
+cpu-lint-check:
+	@scripts/run_cpu_lint.sh
 
 no-hardware-action-check:
 	@$(PYTHON) scripts/check_no_hardware_action_matrix.py
@@ -397,6 +406,9 @@ memory-2028-target-check:
 
 security-2028-target-check:
 	@$(PYTHON) scripts/check_security_2028_target.py
+
+pd-util-check:
+	@$(PYTHON) scripts/check_pd_utilization.py
 
 npu-runtime-contract-check:
 	@$(PYTHON) scripts/check_e1_npu_runtime_contract.py
@@ -642,6 +654,118 @@ branch-prediction-check:
 
 mpki-eval:
 	@$(PYTHON) benchmarks/cpu/branch/run_mpki.py
+
+.PHONY: cache-hierarchy-claim-gate cocotb-cache cocotb-cache-coherence \
+	cocotb-cache-l1d cocotb-cache-l1i cocotb-cache-drrip \
+	cocotb-cache-stride cocotb-cache-bdi cocotb-cache-bdi-roundtrip \
+	cocotb-cache-berti cocotb-cache-ipcp cocotb-cache-spp \
+	cocotb-cache-best-offset cocotb-cache-fdip cocotb-cache-hawkeye \
+	cocotb-cache-mockingjay cocotb-cache-coherence-vectors \
+	formal-cache champsim-prefetch-sweep mockingjay-vs-lru-sweep \
+	lmbench-cache-curve stream-cache-bench pointer-chase-cache-bench
+
+cache-hierarchy-claim-gate:
+	@$(PYTHON) scripts/check_cache_hierarchy.py
+
+cocotb-cache: cocotb-cache-l1d cocotb-cache-l1i cocotb-cache-drrip \
+	cocotb-cache-stride cocotb-cache-bdi cocotb-cache-bdi-roundtrip \
+	cocotb-cache-berti cocotb-cache-ipcp cocotb-cache-spp \
+	cocotb-cache-best-offset cocotb-cache-fdip cocotb-cache-hawkeye \
+	cocotb-cache-mockingjay cocotb-cache-coherence-vectors
+
+cocotb-cache-coherence: cocotb-cache-coherence-vectors
+
+cocotb-cache-l1d:
+	@PYTHON=$(COCOTB_PYTHON) COCOTB_DIR=verify/cocotb/cache \
+	  COCOTB_MODULE=test_l1d_basic COCOTB_TOPLEVEL=e1_l1d_cache \
+	  scripts/run_cocotb_cache.sh
+
+cocotb-cache-l1i:
+	@PYTHON=$(COCOTB_PYTHON) COCOTB_DIR=verify/cocotb/cache \
+	  COCOTB_MODULE=test_l1i_basic COCOTB_TOPLEVEL=e1_l1i_cache \
+	  scripts/run_cocotb_cache.sh
+
+cocotb-cache-drrip:
+	@PYTHON=$(COCOTB_PYTHON) COCOTB_DIR=verify/cocotb/cache \
+	  COCOTB_MODULE=test_drrip COCOTB_TOPLEVEL=e1_drrip \
+	  scripts/run_cocotb_cache.sh
+
+cocotb-cache-stride:
+	@PYTHON=$(COCOTB_PYTHON) COCOTB_DIR=verify/cocotb/cache \
+	  COCOTB_MODULE=test_stride_prefetcher COCOTB_TOPLEVEL=e1_stride_prefetcher \
+	  scripts/run_cocotb_cache.sh
+
+cocotb-cache-bdi:
+	@PYTHON=$(COCOTB_PYTHON) COCOTB_DIR=verify/cocotb/cache \
+	  COCOTB_MODULE=test_bdi_compression COCOTB_TOPLEVEL=e1_bdi_compress \
+	  scripts/run_cocotb_cache.sh
+
+cocotb-cache-bdi-roundtrip:
+	@PYTHON=$(COCOTB_PYTHON) COCOTB_DIR=verify/cocotb/cache \
+	  COCOTB_MODULE=test_bdi_roundtrip COCOTB_TOPLEVEL=e1_bdi_decompress \
+	  scripts/run_cocotb_cache.sh
+
+cocotb-cache-berti:
+	@PYTHON=$(COCOTB_PYTHON) COCOTB_DIR=verify/cocotb/cache \
+	  COCOTB_MODULE=test_berti_prefetcher COCOTB_TOPLEVEL=e1_berti_prefetcher \
+	  scripts/run_cocotb_cache.sh
+
+cocotb-cache-ipcp:
+	@PYTHON=$(COCOTB_PYTHON) COCOTB_DIR=verify/cocotb/cache \
+	  COCOTB_MODULE=test_ipcp_prefetcher COCOTB_TOPLEVEL=e1_ipcp_prefetcher \
+	  scripts/run_cocotb_cache.sh
+
+cocotb-cache-spp:
+	@PYTHON=$(COCOTB_PYTHON) COCOTB_DIR=verify/cocotb/cache \
+	  COCOTB_MODULE=test_spp_prefetcher COCOTB_TOPLEVEL=e1_spp_prefetcher \
+	  scripts/run_cocotb_cache.sh
+
+cocotb-cache-best-offset:
+	@PYTHON=$(COCOTB_PYTHON) COCOTB_DIR=verify/cocotb/cache \
+	  COCOTB_MODULE=test_best_offset_prefetcher \
+	  COCOTB_TOPLEVEL=e1_best_offset_prefetcher \
+	  scripts/run_cocotb_cache.sh
+
+cocotb-cache-fdip:
+	@PYTHON=$(COCOTB_PYTHON) COCOTB_DIR=verify/cocotb/cache \
+	  COCOTB_MODULE=test_fdip_prefetcher \
+	  COCOTB_TOPLEVEL=e1_fdip_l1i_prefetcher \
+	  scripts/run_cocotb_cache.sh
+
+cocotb-cache-hawkeye:
+	@PYTHON=$(COCOTB_PYTHON) COCOTB_DIR=verify/cocotb/cache \
+	  COCOTB_MODULE=test_hawkeye COCOTB_TOPLEVEL=e1_hawkeye \
+	  scripts/run_cocotb_cache.sh
+
+cocotb-cache-mockingjay:
+	@PYTHON=$(COCOTB_PYTHON) COCOTB_DIR=verify/cocotb/cache \
+	  COCOTB_MODULE=test_mockingjay COCOTB_TOPLEVEL=e1_mockingjay \
+	  scripts/run_cocotb_cache.sh
+
+cocotb-cache-coherence-vectors:
+	@PYTHON=$(COCOTB_PYTHON) COCOTB_DIR=verify/cocotb/cache \
+	  COCOTB_MODULE=test_coherence_vectors COCOTB_TOPLEVEL=e1_l1d_cache \
+	  scripts/run_cocotb_cache.sh
+
+formal-cache:
+	@scripts/run_formal_cache.sh
+
+champsim-prefetch-sweep:
+	@$(PYTHON) scripts/champsim_sweep.py --mode prefetch || \
+	  ($(PYTHON) scripts/champsim_sweep.py --mode prefetch --blocked-evidence)
+
+mockingjay-vs-lru-sweep:
+	@$(PYTHON) scripts/champsim_sweep.py --mode mockingjay-vs-lru || \
+	  ($(PYTHON) scripts/champsim_sweep.py --mode mockingjay-vs-lru --blocked-evidence)
+
+lmbench-cache-curve:
+	@$(PYTHON) benchmarks/cpu/cache/lmbench_cache_curve.py --allow-missing-tool
+
+stream-cache-bench:
+	@$(PYTHON) benchmarks/cpu/cache/stream_cache_bench.py --allow-missing-tool
+
+pointer-chase-cache-bench:
+	@$(PYTHON) benchmarks/cpu/cache/pointer_chase_bench.py --emit-stub
 
 verilator:
 	@scripts/run_verilator.sh

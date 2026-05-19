@@ -27,6 +27,22 @@ internal STA engine) once per corner. Outputs:
 - `{corner}.rpt` four-line digest (setup/hold WNS + TNS).
 - `multi_corner_sta.json` aggregate summary.
 
+OpenSTA is not installed natively on every developer host. The
+container-friendly invocation is:
+
+```sh
+docker run --rm -v "$PWD":/work -w /work \
+    -e PDK_ROOT=/work/external/pdks \
+    ghcr.io/efabless/openlane2:2.4.0.dev1 \
+    python3 scripts/run_multi_corner_sta.py \
+        --run-dir pd/openlane/runs/<RUN_TAG> \
+        --out-dir build/pd/multi_corner_sta/<RUN_TAG> \
+        --pdk-root /work/external/pdks/volare/sky130/versions/0fe599b2afb6708d281543108caf8310912f54af
+```
+
+This image ships OpenSTA at `/nix/store/.../opensta/bin/sta` which is on
+PATH inside the container.
+
 Acceptance (Stage 1):
 
 - All 6 corners run to completion.

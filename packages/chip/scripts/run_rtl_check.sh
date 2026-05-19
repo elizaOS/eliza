@@ -25,6 +25,7 @@ rtl/cpu/e1_cpu_axi_bridge.sv
 rtl/cpu/e1_cpu_subsystem_stub.sv
 rtl/interconnect/e1_axi_lite_interconnect.sv
 rtl/memory/e1_axi_lite_dram.sv
+rtl/memory/e1_weight_buffer_sram.sv
 rtl/interrupts/e1_interrupt_controller.sv
 rtl/interconnect/e1_linux_soc_contract.sv
 "
@@ -42,6 +43,30 @@ rtl/iommu/e1_riscv_iommu_pkg.sv
 rtl/iommu/e1_riscv_iommu.sv
 "
 
+cache_pkg_sources="
+rtl/cache/cache_pkg.sv
+rtl/cache/ftq_to_l1i_pkg.sv
+rtl/cache/lsu_to_l1d_pkg.sv
+"
+
+cache_unit_sources="
+rtl/cache/prefetch/e1_berti_prefetcher.sv
+rtl/cache/prefetch/e1_fdip_l1i_prefetcher.sv
+rtl/cache/prefetch/e1_stride_prefetcher.sv
+rtl/cache/prefetch/e1_best_offset_prefetcher.sv
+rtl/cache/prefetch/e1_spp_prefetcher.sv
+rtl/cache/prefetch/e1_ipcp_prefetcher.sv
+rtl/cache/prefetch/e1_pythia_stub.sv
+rtl/cache/replacement/e1_drrip.sv
+rtl/cache/replacement/e1_hawkeye.sv
+rtl/cache/replacement/e1_mockingjay.sv
+rtl/cache/compression/e1_bdi_compress.sv
+rtl/cache/compression/e1_bdi_decompress.sv
+rtl/cache/coherence/tl_c_to_chi_bridge.sv
+"
+
+cache_lint_waivers="-Wno-UNUSEDSIGNAL -Wno-UNUSEDPARAM -Wno-WIDTHEXPAND -Wno-WIDTHTRUNC -Wno-IMPLICITSTATIC -Wno-CASEINCOMPLETE -Wno-UNOPTFLAT -Wno-ASCRANGE -Wno-DECLFILENAME -Wno-VARHIDDEN -Wno-LATCH -Wno-MULTIDRIVEN"
+
 if command -v verilator >/dev/null 2>&1; then
     # shellcheck disable=SC2086
     verilator --lint-only -Wall -Wno-UNUSEDSIGNAL --top-module e1_chip_top $rtl_sources
@@ -53,6 +78,34 @@ if command -v verilator >/dev/null 2>&1; then
     # shellcheck disable=SC2086
     verilator --lint-only -Wall -Wno-UNUSEDSIGNAL -Wno-UNUSEDPARAM -Wno-WIDTHEXPAND -Wno-WIDTHTRUNC -Wno-IMPLICITSTATIC -Wno-CASEINCOMPLETE -Wno-UNOPTFLAT \
         --top-module e1_riscv_iommu rtl/interconnect/axi4/e1_axi4_pkg.sv $iommu_sources
+    # Cache hierarchy. Each top-level cache module is lint-checked
+    # individually so module-local issues surface cleanly.
+    # shellcheck disable=SC2086
+    verilator --lint-only -Wall $cache_lint_waivers \
+        --top-module e1_l1i_cache $cache_pkg_sources rtl/cache/l1i/e1_l1i_cache.sv
+    # shellcheck disable=SC2086
+    verilator --lint-only -Wall $cache_lint_waivers \
+        --top-module e1_l1d_cache $cache_pkg_sources rtl/cache/l1d/e1_l1d_cache.sv
+    # shellcheck disable=SC2086
+    verilator --lint-only -Wall $cache_lint_waivers \
+        --top-module e1_l2_cache $cache_pkg_sources rtl/cache/l2/e1_l2_cache.sv
+    # shellcheck disable=SC2086
+    verilator --lint-only -Wall $cache_lint_waivers \
+        --top-module e1_l3_cache $cache_pkg_sources rtl/cache/l3/e1_l3_cache.sv
+    # shellcheck disable=SC2086
+    verilator --lint-only -Wall $cache_lint_waivers \
+        --top-module e1_slc $cache_pkg_sources \
+        rtl/cache/compression/e1_bdi_compress.sv \
+        rtl/cache/compression/e1_bdi_decompress.sv \
+        rtl/cache/slc/e1_slc.sv
+    for m in e1_berti_prefetcher e1_fdip_l1i_prefetcher e1_stride_prefetcher \
+             e1_best_offset_prefetcher e1_spp_prefetcher e1_ipcp_prefetcher \
+             e1_pythia_stub e1_drrip e1_hawkeye e1_mockingjay \
+             e1_bdi_compress e1_bdi_decompress tl_c_to_chi_bridge; do
+        # shellcheck disable=SC2086
+        verilator --lint-only -Wall $cache_lint_waivers \
+            --top-module "$m" $cache_pkg_sources $cache_unit_sources
+    done
 elif command -v iverilog >/dev/null 2>&1; then
     # shellcheck disable=SC2086
     iverilog -g2012 -tnull -s e1_chip_top $rtl_sources
@@ -60,6 +113,24 @@ elif command -v iverilog >/dev/null 2>&1; then
     iverilog -g2012 -tnull -s e1_axi4_interconnect $axi4_sources
     # shellcheck disable=SC2086
     iverilog -g2012 -tnull -s e1_riscv_iommu rtl/interconnect/axi4/e1_axi4_pkg.sv $iommu_sources
+    # Cache hierarchy via iverilog as a coarse-grained syntax check
+    # shellcheck disable=SC2086
+    iverilog -g2012 -tnull -s e1_l1d_cache $cache_pkg_sources \
+        rtl/cache/l1d/e1_l1d_cache.sv
+    # shellcheck disable=SC2086
+    iverilog -g2012 -tnull -s e1_l1i_cache $cache_pkg_sources \
+        rtl/cache/l1i/e1_l1i_cache.sv
+    # shellcheck disable=SC2086
+    iverilog -g2012 -tnull -s e1_l2_cache $cache_pkg_sources \
+        rtl/cache/l2/e1_l2_cache.sv
+    # shellcheck disable=SC2086
+    iverilog -g2012 -tnull -s e1_l3_cache $cache_pkg_sources \
+        rtl/cache/l3/e1_l3_cache.sv
+    # shellcheck disable=SC2086
+    iverilog -g2012 -tnull -s e1_slc $cache_pkg_sources \
+        rtl/cache/compression/e1_bdi_compress.sv \
+        rtl/cache/compression/e1_bdi_decompress.sv \
+        rtl/cache/slc/e1_slc.sv
 else
     echo "STATUS: BLOCKED rtl.check - No local RTL checker found. Install Verilator or Icarus Verilog, or use the Docker/Nix shell."
     if [ "${REQUIRE_RTL_CHECK:-0}" = "1" ]; then

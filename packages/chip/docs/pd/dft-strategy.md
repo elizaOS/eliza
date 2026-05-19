@@ -9,17 +9,25 @@ human-readable companion to `docs/evidence/pd/dft-evidence.yaml`.
 
 ## Scan insertion (random logic)
 
-- **Tool:** Yosys `scanchain` pass invoked from the OpenLane synthesis hook.
-- **Configuration:** Single scan chain with `scan_in` / `scan_en` /
-  `scan_out` top-level ports. See `pd/dft/scan_insertion.tcl` for the exact
-  invocation.
+- **Tool:** Fault DFT pass + Yosys `dfflibmap`+`dff2dffe`-based scan-flop
+  retargeting. Upstream Yosys does NOT ship a `scanchain` macro pass; the
+  earlier draft of `pd/dft/scan_insertion.tcl` that referenced a
+  `scanchain` command is therefore BLOCKED and the gate fails closed.
+  The real open-source path is:
+  1. `yosys -p "synth_sky130 -top <mod>"` to map to scan-capable FFs in the
+     Sky130 high-density library (`sky130_fd_sc_hd__sdfxxx`).
+  2. `fault.py dft -top <mod>` (https://github.com/AUCOHL/Fault) to thread the
+     scan chain, expose `scan_in`/`scan_en`/`scan_out` ports, and emit the
+     STIL/VCD harness.
+- **Configuration:** Single scan chain. Top-level scan ports route to the
+  pad ring through the JTAG TAP `IEEE 1149.1` USERCODE-style instruction.
 - **Fault model:** stuck-at + transition-delay.
 - **Coverage target:** 95 % stuck-at, 85 % transition-delay (academic
   open-source ATPG baseline).
 
 A single chain is intentional at this stage: balanced multi-chain insertion
 needs a commercial DFT compiler. A single long chain is enough for Fault
-(academic ATPG) to ingest.
+to ingest.
 
 ## MBIST (SRAM macros)
 

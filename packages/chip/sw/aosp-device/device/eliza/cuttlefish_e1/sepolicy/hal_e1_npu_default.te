@@ -1,0 +1,10 @@
+# SELinux policy for the Cuttlefish e1_npu sim overlay.
+#
+# The hal_e1_npu_default domain and dev_type are defined in
+# device/eliza/eliza_ai_soc/sepolicy/e1_npu.te. We do NOT redefine
+# them here. The sim binary does not touch /dev/e1-npu (no kernel
+# node under Cuttlefish), so the sim path requires no additional
+# rules beyond what the base policy already grants for binder/log.
+#
+# This file exists so BOARD_VENDOR_SEPOLICY_DIRS resolves to a real
+# directory at build time.

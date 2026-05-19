@@ -119,11 +119,109 @@ Verification is at `verify/cocotb/cpu/test_fusion_table.py`.
 
 | Agent | Interface owned by | Owned by this agent |
 |---|---|---|
-| BPU | `rtl/cpu/bpu/bpu_pkg.sv` (FTQ structs, PMU events) | Consumes FTQ. Re-exports BPU PMU events into Zihpm. |
+| BPU | `rtl/cpu/bpu/bpu_pkg.sv` (FTQ structs, PMU events) | Consumes FTQ. Re-exports BPU PMU events into Zihpm via `bpu_to_zihpm_remap`. |
 | Cache | per-core AXI4 master ports + L1I/L1D port packages | Provides per-core AXI4 master ports + TLB resolve feeds. |
 | Memory | IOMMU/AXI4 downstream | Provides top-level master AXI4 port; trusts memory agent for SMMU / LPDDR5X. |
 | Power | DVFS table, retention voltages, power islands | Provides power-island enable + retention pin per core. |
 | Compiler | `march` / `mabi` strings, LLVM scheduling model | Consumes the compiler agent's pinned LLVM; provides the canonical extension matrix. |
+
+### Cross-domain interface contracts (cluster boundary)
+
+Each contract is enumerated in a single SystemVerilog package and the
+cluster wrapper `e1_cluster_top.sv` imports them. The package owner is
+the one that drives wire semantics; the OoO domain is the consumer (or
+producer) named in the third column.
+
+| Package | Owner | Used by OoO cluster for |
+|---|---|---|
+| `rtl/cache/ftq_to_l1i_pkg.sv` | cache | Per-core FTQ → L1I prefetch request stream. The BPU agent populates the producer, but the cluster boundary aggregates per-core. |
+| `rtl/cache/lsu_to_l1d_pkg.sv` | cache | Per-core 2×128 b LSU → L1D request/response. Two read + two write ports per cycle, banked 8 ways. Bank conflicts surface as `replay`. |
+| `rtl/interconnect/axi4/e1_axi4_pkg.sv` | memory | AxBURST / AxSIZE / AxCACHE / AxPROT / AxQoS encodings on the per-core master ports. The cluster forwards `QOS_CPU_LATENCY = 11` unless overridden via `cluster_qos_class_i`. |
+| `rtl/cpu/bpu/bpu_pkg.sv` | BPU | `pmu_event_e` strobes (20 entries, 5-bit IDs starting at 0). Translated into the Zihpm event bus by `rtl/cpu/csr/bpu_to_zihpm_remap.sv`. |
+| `rtl/cpu/csr/zihpm.sv` | OoO (this) | `hpm_event_e` (8-bit IDs). Branch block 1..20 mirrors BPU enum after the +1 shift; cache 32..47, MMU 48..63, OoO 64..95 own the rest of the partition. |
+| `rtl/cpu/csr/ztso_ctrl.sv` | OoO (this) | Ztso PTE-bit (Sv39 RSW bit 8) and CSR `0x7C0` global/per-core overrides. The LSU consumes `lsu_op_is_tso_o` and the coherent bus uses it to gate store-buffer drain and load-ordering enforcement. |
+| `rtl/cpu/fusion/fusion_pkg.sv` | OoO (this) | 19 macro-op fusion kinds. The dispatch stage walks the lead/follow pair, the cluster does not present them outside the core. |
+
+### BPU → Zihpm PMU event remap
+
+The BPU PMU bundle uses raw 5-bit IDs 0..19. The Zihpm event bus places
+`EVT_NONE = 0` and runs the BPU events at IDs 1..20. Because the BPU enum
+ordering and the Zihpm enum ordering have historically drifted (notably:
+BPU id 1 is `PMU_BR_MISP`, Zihpm id 1 is `EVT_BR_PRED`), the BPU strobes
+*must not* be wired directly to `zihpm.event_bus_i`. Use the
+`bpu_to_zihpm_remap` adapter under `rtl/cpu/csr/`. The adapter is purely
+combinational and renames by *name*, not by raw ID. The mapping is
+audited by `scripts/check_pmu_event_alignment.py`, which emits
+`docs/evidence/cpu_ap/pmu-event-alignment.json` and fails closed if either
+side adds an event without updating the other.
+
+The canonical (Zihpm-side) naming for the FTB miss event is
+`EVT_BTB_MISS`; the BPU enum spells it `PMU_FTB_MISS`. The remap
+explicitly aliases the two — RVA23 published profile uses `BTB_MISS` so
+the Zihpm-side name is preserved in the CSR contract.
+
+### FTQ → L1I prefetch path
+
+Producer: BPU agent (`bpu_top.sv`). Consumer: cache agent (`l1i_*.sv`).
+The cluster exposes one channel per core (`ftq_l1i_req_o`,
+`ftq_l1i_valid_o`, `ftq_l1i_ready_i`, `ftq_l1i_flush_o`). The semantics
+documented in `rtl/cache/ftq_to_l1i_pkg.sv`:
+
+  - 40-bit physical address, 64-byte L1I line aligned.
+  - 3-bit confidence (0 weakest, 7 strongest taken-branch confidence).
+  - `branch_target` hint: 1 if the request originates from a branch
+    target, 0 if sequential or BTB-miss recovery.
+  - Single-cycle valid+ready handshake.
+  - On `flush` the L1I drops any in-flight prefetch but does not abort
+    L2 fills already started for the dropped request.
+
+### LSU → L1D path
+
+Producer: OoO domain (this). Consumer: cache agent (`l1d_*.sv`). Per
+`rtl/cache/lsu_to_l1d_pkg.sv` the contract is:
+
+  - 2 × 128 b read ports + 2 × 128 b write ports per core.
+  - 4-cycle load-use latency target.
+  - 40-bit physical address (post-TLB), 8-byte tag.
+  - `size` field: 0..3 = sub-double, 4 = quad-128 b.
+  - `ack` strobe completes a request; `replay` strobe re-issues on bank
+    conflict or MSHR pressure; `ecc_uncorrectable` propagates SECDED
+    double-bit errors to the LSU for trap entry.
+
+### AXI4 per-core master ports
+
+Per `rtl/interconnect/axi4/e1_axi4_pkg.sv` constants:
+
+  - `BURST_INCR` is the default; `BURST_FIXED` reserved for MMIO devices.
+  - `SIZE_16B` matches the 128 b data bus (the e1 cluster default).
+  - `CACHE_WRITE_BACK_RW = 4'b1111` on cached lines; device MMIO uses
+    `CACHE_DEVICE_NON_BUFFERABLE = 4'b0000`.
+  - `PROT_INSN_NS_PRIV = 3'b111` on I-fills; `PROT_DATA_NS_PRIV = 3'b011`
+    on supervisor/M-mode data; `PROT_DATA_NS_UNPRIV = 3'b010` on user.
+  - `QOS_CPU_LATENCY = 4'd11` default. The cluster wrapper accepts an
+    override on `cluster_qos_class_i` so the power agent can demote
+    cores during heavy display / camera scanout.
+  - The max burst length is `MAX_BURST_LEN_INCR = 256` beats, but cache
+    line refills cap at the line-size / data-width quotient
+    (`64 B / 16 B = 4` beats for a 128 b data bus).
+
+### Ztso PTE bit plumbing
+
+The OoO domain owns the Ztso control surface:
+
+  - `rtl/cpu/csr/ztso_ctrl.sv` exposes CSR `0x7C0` (bit 0 = global Ztso
+    permission, bit 1 = whole-core TSO override).
+  - The TLB feeds back `tlb_page_ztso_bit_i` from PTE bit 8 (Sv39 RSW).
+  - The LSU consumes `lsu_op_is_tso_o` to decide whether to (a) drain
+    the store queue at store-issue time, (b) inhibit load reordering
+    past a TSO load.
+  - The coherent bus respects the TSO flag end-to-end: an L1D
+    write-back triggered by a TSO store must observe the
+    write-acknowledge ordering before any subsequent load departs.
+
+Until the LSU lands, `lsu_op_is_tso_o` is exposed to the cluster
+boundary but unconsumed; the gate at
+`docs/evidence/cpu_ap/csr-trap-evidence.yaml` tracks this as BLOCKED.
 
 ## Schedule
 

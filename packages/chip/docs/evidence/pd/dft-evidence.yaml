@@ -3,9 +3,10 @@ status: draft_local_evidence
 release_use: prohibited_until_external_review
 scope: scan_insertion_plus_mbist_plus_jtag_boundary_scan
 description: |
-  DFT evidence gate. Requires scan insertion (Yosys scanchain), per-SRAM
-  MBIST controllers (tied to pd/macros/manifest.yaml), and JTAG boundary
-  scan for all pads. Fault (academic) or commercial ATPG must produce
+  DFT evidence gate. Requires scan-flop mapping (Yosys dfflibmap onto
+  sky130_fd_sc_hd scan-capable cells), Fault-driven scan chain stitching,
+  per-SRAM MBIST controllers (tied to pd/macros/manifest.yaml), and JTAG
+  boundary scan for all pads. Fault or commercial ATPG must produce
   coverage.json >= 95 % stuck-at before this gate unblocks.
 source_artifacts:
   - pd/dft/scan_insertion.tcl
@@ -16,10 +17,18 @@ source_artifacts:
   - pd/macros/manifest.yaml
 local_findings:
   scan_insertion:
-    status: ready_but_not_wired_into_openlane
+    status: validated_on_leaf_module
     evidence_boundary: |
-      pd/dft/scan_insertion.tcl is a Yosys scanchain pass. It is not yet
-      hooked into the OpenLane release config via SYNTH_EXTRA_SCRIPT.
+      pd/dft/scan_insertion.tcl runs cleanly on rtl/bootrom/e1_bootrom.sv
+      through Yosys 0.64 with the Sky130 sky130_fd_sc_hd typical Liberty,
+      producing build/dft/e1_bootrom.scan_ready.v. dfflibmap was the active
+      pass (not the non-existent `scanchain`). Full-design scan stitching
+      still requires Fault (https://github.com/AUCOHL/Fault), which is not
+      vendored under external/. Not yet hooked into the OpenLane release
+      config via SYNTH_EXTRA_SCRIPT.
+    validation_command: |
+      LIB_TYPICAL_FAST_LIBERTY=$PWD/external/pdks/volare/sky130/versions/0fe599b2afb6708d281543108caf8310912f54af/sky130A/libs.ref/sky130_fd_sc_hd/lib/sky130_fd_sc_hd__tt_025C_1v80.lib
+      yosys -c pd/dft/run_e1_bootrom_scan_prep.tcl
   mbist:
     status: blocked
     evidence_boundary: |

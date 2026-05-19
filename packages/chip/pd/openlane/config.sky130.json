@@ -18,12 +18,32 @@
     "dir::../../rtl/interrupts/e1_interrupt_controller.sv",
     "dir::../../rtl/interconnect/e1_axi_lite_interconnect.sv",
     "dir::../../rtl/interconnect/e1_linux_soc_contract.sv",
-    "dir::../../rtl/memory/e1_axi_lite_dram.sv"
+    "dir::../../rtl/memory/e1_axi_lite_dram.sv",
+    "dir::../../rtl/memory/e1_weight_buffer_sram.sv"
   ],
+  "EXTRA_LEFS": [
+    "dir::../../external/pdks/volare/sky130/versions/0fe599b2afb6708d281543108caf8310912f54af/sky130A/libs.ref/sky130_sram_macros/lef/sky130_sram_2kbyte_1rw1r_32x512_8.lef"
+  ],
+  "EXTRA_LIBS": [
+    "dir::../../external/pdks/volare/sky130/versions/0fe599b2afb6708d281543108caf8310912f54af/sky130A/libs.ref/sky130_sram_macros/lib/sky130_sram_2kbyte_1rw1r_32x512_8_TT_1p8V_25C.lib"
+  ],
+  "EXTRA_GDS_FILES": [
+    "dir::../../external/pdks/volare/sky130/versions/0fe599b2afb6708d281543108caf8310912f54af/sky130A/libs.ref/sky130_sram_macros/gds/sky130_sram_2kbyte_1rw1r_32x512_8.gds"
+  ],
+  "EXTRA_VERILOG_MODELS": [
+    "dir::../../external/pdks/volare/sky130/versions/0fe599b2afb6708d281543108caf8310912f54af/sky130A/libs.ref/sky130_sram_macros/verilog/sky130_sram_2kbyte_1rw1r_32x512_8.v"
+  ],
+  "MACROS": {
+    "u_soc.u_weight_buffer.u_sram": {
+      "instance_name": "u_soc/u_weight_buffer/u_sram",
+      "module": "sky130_sram_2kbyte_1rw1r_32x512_8"
+    }
+  },
   "CLOCK_PORT": "CLK_IN",
   "CLOCK_PERIOD": 100,
   "VERILOG_DEFINES": [
-    "E1_PD_SMALL_DRAM"
+    "E1_PD_SMALL_DRAM",
+    "E1_HAVE_HARD_SRAM"
   ],
   "PNR_SDC_FILE": "dir::../constraints/e1_soc.sdc",
   "SIGNOFF_SDC_FILE": "dir::../constraints/e1_soc.sdc",
@@ -32,20 +52,20 @@
   "DIE_AREA": "0 0 2500 2500",
   "CORE_AREA": "100 100 2400 2400",
   "FP_CORE_UTIL": 20,
-  "PL_TARGET_DENSITY": 0.42,
+  "PL_TARGET_DENSITY": 0.3,
   "STA_THREADS": 1,
   "RT_MAX_LAYER": "met5",
   "GRT_OVERFLOW_ITERS": 50,
   "SYNTH_STRATEGY": "DELAY 0",
   "SYNTH_BUFFERING": 1,
   "SYNTH_SIZING": 1,
-  "MAX_FANOUT_CONSTRAINT": 8,
+  "MAX_FANOUT_CONSTRAINT": 12,
   "MAX_TRANSITION_CONSTRAINT": 0.75,
   "RUN_POST_GRT_DESIGN_REPAIR": true,
   "RUN_POST_GRT_RESIZER_TIMING": true,
-  "DESIGN_REPAIR_MAX_WIRE_LENGTH": 300,
-  "DESIGN_REPAIR_MAX_SLEW_PCT": 0,
-  "DESIGN_REPAIR_MAX_CAP_PCT": 0,
+  "DESIGN_REPAIR_MAX_WIRE_LENGTH": 0,
+  "DESIGN_REPAIR_MAX_SLEW_PCT": 20,
+  "DESIGN_REPAIR_MAX_CAP_PCT": 20,
   "GRT_ANTENNA_ITERS": 40,
   "GRT_ANT_ITERS": 40,
   "GRT_ANTENNA_MARGIN": 80,

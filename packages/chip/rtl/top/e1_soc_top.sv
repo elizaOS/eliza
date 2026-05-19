@@ -107,6 +107,7 @@ module e1_soc_top (
     logic periph_sel;
     logic dram_sel;
     logic clint_sel;
+    logic wbuf_sel;
     logic word_aligned;
     logic implemented_window;
     logic [31:0] dram_mem [0:DRAM_WORDS-1];
@@ -139,6 +140,7 @@ module e1_soc_top (
     assign dma_sel     = implemented_window && mmio_addr[31:12] == 20'h1001_0;
     assign npu_sel     = implemented_window && mmio_addr[31:12] == 20'h1002_0;
     assign display_sel = implemented_window && mmio_addr[31:12] == 20'h1003_0;
+    assign wbuf_sel    = word_aligned && mmio_addr[31:12] == 20'h1004_0;
     assign clint_sel   = word_aligned && mmio_addr[31:16] == 16'h0200 &&
                          mmio_addr[15:14] != 2'b11;
     assign dram_sel    = word_aligned && mmio_addr[31:12] == 20'h8000_0;
@@ -621,6 +623,31 @@ module e1_soc_top (
         .fb_read_ready(display_fb_read_ready)
     );
 
+    // NPU weight-staging SRAM. This is the first hard macro on the e1 SoC
+    // floorplan; it carries the AlphaChip / DREAMPlace / OpenROAD macro-
+    // placement evidence loop. Address window 0x1004_0000–0x1004_07FF
+    // (2 KB, 512 x 32). Behavioral model in simulation, Sky130 OpenRAM
+    // pre-built macro at signoff via E1_HAVE_HARD_SRAM.
+    logic [31:0] wbuf_rdata;
+    logic [3:0]  wbuf_wmask;
+    /* verilator lint_off UNUSEDSIGNAL */
+    logic [31:0] wbuf_p1_dout_unused;
+    /* verilator lint_on UNUSEDSIGNAL */
+    assign wbuf_wmask = {4{mmio_write}};
+    e1_weight_buffer_sram u_weight_buffer (
+        .clk     (clk),
+        .rst_n   (rst_n),
+        .p0_csb  (~(mmio_valid && wbuf_sel)),
+        .p0_web  (~mmio_write),
+        .p0_wmask(wbuf_wmask),
+        .p0_addr (mmio_addr[10:2]),
+        .p0_din  (mmio_wdata),
+        .p0_dout (wbuf_rdata),
+        .p1_csb  (1'b1),
+        .p1_addr (9'h0),
+        .p1_dout (wbuf_p1_dout_unused)
+    );
+
     always_comb begin
         mmio_ready = mmio_valid;
         unique case (1'b1)
@@ -629,6 +656,7 @@ module e1_soc_top (
             dma_sel:      mmio_rdata = dma_rdata;
             npu_sel:      mmio_rdata = npu_rdata;
             display_sel:  mmio_rdata = display_rdata;
+            wbuf_sel:     mmio_rdata = wbuf_rdata;
             clint_sel:    mmio_rdata = clint_rdata;
             dram_sel:     mmio_rdata = dram_mem[mmio_dram_word];
             default:      mmio_rdata = 32'hDEAD_BEEF;
