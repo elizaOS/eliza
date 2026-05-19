@@ -362,6 +362,27 @@ test("Android app template resolves BackgroundRunner AARs from hoisted workspace
   );
 });
 
+test("Android app styles use framework status bar attrs only", () => {
+  const styles = fs.readFileSync(
+    path.join(
+      import.meta.dirname,
+      "..",
+      "platforms",
+      "android",
+      "app",
+      "src",
+      "main",
+      "res",
+      "values",
+      "styles.xml",
+    ),
+    "utf8",
+  );
+
+  assert.match(styles, /name="android:statusBarColor"/);
+  assert.doesNotMatch(styles, /name="statusBarColor"/);
+});
+
 test("iOS background runner pod resolves through the official package", () => {
   assert.equal(
     IOS_OFFICIAL_PODS.find(
