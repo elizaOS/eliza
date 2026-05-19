@@ -52,6 +52,7 @@ class E1NpuMmioSim:
 
     def __init__(self):
         self.runtime = E1NpuRuntime(self.read32, self.write32)
+        self.memory: dict[int, int] = {}
         self.regs: dict[int, int] = {
             self.runtime.CTRL_STATUS: 0,
             self.runtime.PERF_UNSUPPORTED_OPS: 0,
@@ -92,6 +93,11 @@ class E1NpuMmioSim:
         self.regs[addr] = value
         if addr == self.runtime.CTRL_STATUS and value & 1:
             self._execute()
+
+    def write_mem32(self, addr: int, value: int) -> None:
+        if addr < 0 or addr & 0x3:
+            raise ValueError("sim memory writes must be non-negative and 32-bit aligned")
+        self.memory[addr] = value & 0xFFFF_FFFF
 
     def _scratch_read_s8(self, offset: int) -> int:
         word = self.regs[self.runtime.SCRATCH + (offset & ~3)]
@@ -146,6 +152,8 @@ class E1NpuMmioSim:
                     self.runtime.DESC_STATUS_EMPTY | self.runtime.DESC_STATUS_ERROR
                 )
                 self.regs[self.runtime.CTRL_STATUS] = 0x6
+                return
+            if self._execute_memory_backed_descriptors(head, queued):
                 return
             self.regs[self.runtime.DESC_BYTES_READ] += queued * 16
             self.regs[self.runtime.DESC_BYTES_WRITTEN] += 0
@@ -315,6 +323,79 @@ class E1NpuMmioSim:
         self.regs[self.runtime.PERF_CYCLES] += macs
         self.regs[self.runtime.PERF_MACS] += macs
         self.regs[self.runtime.CTRL_STATUS] = 0x2
+
+    def _execute_memory_backed_descriptors(self, head: int, queued: int) -> bool:
+        desc_base = self.regs.get(self.runtime.DESC_BASE, 0)
+        addresses = [
+            desc_base + ((head + index) & (self.runtime.DESC_RING_ENTRIES - 1)) * 16 + word * 4
+            for index in range(queued)
+            for word in range(4)
+        ]
+        if not all(address in self.memory for address in addresses):
+            return False
+
+        bytes_read = queued * 16
+        read_beats = queued
+        bytes_written = 0
+        write_beats = 0
+        completed_index = head
+        for index in range(queued):
+            slot = (head + index) & (self.runtime.DESC_RING_ENTRIES - 1)
+            base = desc_base + slot * 16
+            word0 = self.memory[base]
+            word1 = self.memory[base + 4]
+            word2 = self.memory[base + 8]
+            opcode = word0 & 0xF
+            byte_count = (word0 >> 24) & 0x3F
+            stream_to_scratch = bool(word0 & self.runtime.DESC_FLAG_STREAM_TO_SCRATCH)
+            writeback_request = bool(word0 & self.runtime.DESC_FLAG_WRITEBACK_REQUEST)
+            completed_index = slot
+
+            if not word0 & self.runtime.DESC_FLAG_VALID_OWNER:
+                self._descriptor_error(self.runtime.DESC_STATUS_OWNER_ERROR, slot)
+                return True
+            if stream_to_scratch:
+                if byte_count == 0 or byte_count & 0x3:
+                    self._descriptor_error(self.runtime.DESC_STATUS_STREAM_ERROR, slot)
+                    return True
+                bytes_read += byte_count
+                read_beats += byte_count // 4
+            if writeback_request:
+                if opcode not in (self.runtime.OP_GEMM_S8, self.runtime.OP_GEMM_S4) or word2 & 0x3:
+                    self._descriptor_error(self.runtime.DESC_STATUS_WRITEBACK_UNSUPPORTED, slot)
+                    return True
+                cfg = self.regs.get(self.runtime.GEMM_CFG, 0)
+                writeback_bytes = (cfg & 0x3) * ((cfg >> 8) & 0x3) * 4
+                if writeback_bytes == 0:
+                    self._descriptor_error(self.runtime.DESC_STATUS_WRITEBACK_UNSUPPORTED, slot)
+                    return True
+                bytes_written += writeback_bytes
+                write_beats += writeback_bytes // 4
+                for offset in range(0, writeback_bytes, 4):
+                    self.memory[word2 + offset] = self.regs.get(self.runtime.SCRATCH + offset, 0)
+            if not stream_to_scratch:
+                self.regs[self.runtime.OP_A] = word1
+                self.regs[self.runtime.OP_B] = word2
+                self.regs[self.runtime.ACC] = self.memory[base + 12]
+            self.regs[self.runtime.OPCODE] = opcode
+
+        self.regs[self.runtime.DESC_BYTES_READ] += bytes_read
+        self.regs[self.runtime.DESC_BYTES_WRITTEN] += bytes_written
+        self.regs[self.runtime.DESC_READ_BEATS] += read_beats
+        self.regs[self.runtime.DESC_WRITE_BEATS] += write_beats
+        self.regs[self.runtime.DESC_HEAD] = self.regs.get(self.runtime.DESC_TAIL, 0)
+        self.regs[self.runtime.DESC_STATUS] = self.runtime.DESC_STATUS_DONE | (
+            (completed_index & 0x7) << 9
+        )
+        self.regs[self.runtime.CTRL_STATUS] = 0x2
+        return True
+
+    def _descriptor_error(self, status: int, index: int) -> None:
+        self.regs[self.runtime.DESC_STATUS] = (
+            self.runtime.DESC_STATUS_ERROR | status | ((index & 0x7) << 9)
+        )
+        self.regs[self.runtime.PERF_ERRORS] += 1
+        self.regs[self.runtime.CTRL_STATUS] = 0x6
 
 
 class E1NpuRuntimeSimTest(unittest.TestCase):
