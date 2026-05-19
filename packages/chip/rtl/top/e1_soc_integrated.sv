@@ -69,6 +69,7 @@ module e1_soc_integrated
     import e1_axi4_pkg::*;
     import e1_ftq_to_l1i_pkg::*;
     import e1_lsu_to_l1d_pkg::*;
+    import e1_cache_pkg::*;
     import bpu_pkg::*;
     import zihpm_pkg::*;
     import power_pkg::*;
@@ -142,7 +143,6 @@ module e1_soc_integrated
     localparam int unsigned AXI_ID_W         = 4;
     localparam int unsigned AXI_USER_W       = 8;
     localparam int unsigned BURST_LEN_W      = 8;
-    localparam int unsigned DRAM_BYTES       = 4096;
     localparam int unsigned NUM_CPU_CORES    = 8;
     // Fabric masters:
     //   0..0 : CHI->AXI4 bridge (CPU-side cache miss south boundary)
@@ -176,6 +176,9 @@ module e1_soc_integrated
     logic [31:0] clint_rdata;
     logic [31:0] pmc_mbox_rdata;
     logic [31:0] wbuf_rdata;
+    logic [31:0] iommu_aper_rdata;
+    logic [31:0] iommu_dma_rdata;
+    logic [31:0] slc_aper_rdata;
 
     // DMA → MMIO DRAM master (AXI-Lite)
     logic        dma_m_awvalid;
@@ -238,6 +241,19 @@ module e1_soc_integrated
     logic clint_sel;
     logic wbuf_sel;
     logic pmc_sel;
+    // IOMMU MMIO register window @ 0x1006_0000 (4 KiB, 64-bit registers
+    // mirrored at consecutive 32-bit MMIO words).  Documented in
+    // docs/arch/soc-integration.md.
+    logic iommu_sel;
+    // IOMMU DMA fixture trigger @ 0x1007_0000 (256 B).  A small set of
+    // registers that drive a single AXI4 master into the IOMMU upstream
+    // port[0], so the cocotb integration test can exercise the
+    // unauthorised-IOVA fault path.
+    logic iommu_dma_sel;
+    // SLC fixture trigger @ 0x1008_0000 (256 B).  Drives a single SLC
+    // client request through the line shim and CHI bridge so the cocotb
+    // integration test can exercise the CHI→AXI4 path.
+    logic slc_sel;
     logic word_aligned;
     logic implemented_window;
 
@@ -279,6 +295,9 @@ module e1_soc_integrated
     // PMC mailbox window: 0x1005_0000 (4 KiB, AHB-Lite-equivalent).
     // Documented in docs/arch/soc-integration.md.
     assign pmc_sel     = word_aligned && mmio_addr[31:12] == 20'h1005_0;
+    assign iommu_sel   = word_aligned && mmio_addr[31:12] == 20'h1006_0;
+    assign iommu_dma_sel = implemented_window && mmio_addr[31:12] == 20'h1007_0;
+    assign slc_sel     = implemented_window && mmio_addr[31:12] == 20'h1008_0;
     assign clint_sel   = word_aligned && mmio_addr[31:16] == 16'h0200 &&
                          mmio_addr[15:14] != 2'b11;
     assign dram_sel    = word_aligned && mmio_addr[31:12] == 20'h8000_0;
@@ -697,29 +716,239 @@ module e1_soc_integrated
     logic [5:0]            chi_wc_id;
     logic [1:0]            chi_wc_resp;
 
-    // Tie off the CHI request side — the cache RTL is not in this top.
-    assign chi_req_valid        = 1'b0;
-    assign chi_req_is_write     = 1'b0;
-    assign chi_req_is_exclusive = 1'b0;
-    assign chi_req_stash        = 1'b0;
-    assign chi_req_addr         = '0;
-    assign chi_req_id           = '0;
-    assign chi_req_user         = '0;
-    assign chi_wd_valid         = 1'b0;
-    assign chi_wd_data          = '0;
-    assign chi_wd_strb          = '0;
-    assign chi_wd_last          = 1'b0;
-    assign chi_rd_ready         = 1'b1;
-    assign chi_wc_ready         = 1'b1;
+    // ----------------------------------------------------------------------
+    // SLC slice + line-to-CHI shim.  One small SLC bank (64 KB / 4-way /
+    // 1 bank) absorbs requests from a tiny MMIO-controlled fixture and
+    // drives `dram_acq_*` line transactions to the line shim, which in
+    // turn drives the `chi_to_axi4_bridge` request side.  This advances
+    // the chi_to_axi4_bridge edge from TIED_OFF to WIRED so a cocotb
+    // request flows: SLC client → SLC bank → line shim → CHI bridge →
+    // fabric m[0] → DRAM controller → DRAM model.
+    //
+    // The SLC bank dimensions match `e1_cache_pkg::SLC_LINE_BYTES` (64);
+    // we only shrink SIZE_BYTES / WAYS / BANKS to keep elaboration time
+    // bounded inside the integration top.  Production SLC is exercised
+    // under `verify/cocotb/cache/`.
+    // ----------------------------------------------------------------------
+    localparam int unsigned SLC_INT_SIZE  = 64 * 1024;
+    localparam int unsigned SLC_INT_WAYS  = 4;
+    localparam int unsigned SLC_INT_LINE  = 64;
+    // SLC parameter logic relies on `$clog2(BANKS) >= 1` and
+    // `$clog2(NUM_CLIENTS) >= 1`; honour those floors here so the
+    // generated bit ranges stay positive under Verilator.
+    localparam int unsigned SLC_INT_BANKS = 2;
+    localparam int unsigned SLC_INT_NUM_CLIENTS = 2;
+
+    // SLC client fixture (MMIO 0x1008_0000): one outstanding line read or
+    // write into the SLC.  Programmer registers:
+    //   0x00  PADDR_LINE_LO  : low 32 bits of the line-aligned address
+    //   0x04  PADDR_LINE_HI  : high 8 bits (40-bit PADDR)
+    //   0x08  CTRL           : bit0=trigger_read, bit1=trigger_write
+    //   0x0C  STATUS         : bit0=req_busy, bit1=grant_seen
+    //   0x10  GRANT_LO       : low 32 bits of the most recent grant data
+    //
+    // The fixture issues exactly one acq beat then waits for the grant
+    // pulse; cocotb polls STATUS to confirm the SLC→CHI path traversed.
+    logic [PADDR_W_DEFAULT-1:0] slc_fix_paddr;
+    logic                       slc_fix_busy;
+    logic                       slc_fix_is_write;
+    logic                       slc_fix_grant_seen;
+    logic [31:0]                slc_fix_grant_lo;
+
+    logic                       slc_req_valid;
+    logic                       slc_req_ready;
+    logic                       slc_req_is_write;
+    logic                       slc_resp_valid;
+    logic                       slc_resp_ready;
+    logic [PADDR_W_DEFAULT-1:0] slc_resp_paddr_line;
+    logic [8*SLC_INT_LINE-1:0]  slc_resp_data;
+
+    always_ff @(posedge clk or negedge rst_n) begin
+        if (!rst_n) begin
+            slc_fix_paddr      <= '0;
+            slc_fix_busy       <= 1'b0;
+            slc_fix_is_write   <= 1'b0;
+            slc_fix_grant_seen <= 1'b0;
+            slc_fix_grant_lo   <= 32'h0;
+        end else begin
+            if (mmio_valid && mmio_write && slc_sel) begin
+                unique case (mmio_addr[7:2])
+                    6'h00: slc_fix_paddr[31:0]                 <= mmio_wdata;
+                    6'h01: slc_fix_paddr[PADDR_W_DEFAULT-1:32] <=
+                              mmio_wdata[PADDR_W_DEFAULT-32-1:0];
+                    6'h02: begin
+                        if (!slc_fix_busy) begin
+                            if (mmio_wdata[0]) begin
+                                slc_fix_busy       <= 1'b1;
+                                slc_fix_is_write   <= 1'b0;
+                                slc_fix_grant_seen <= 1'b0;
+                            end else if (mmio_wdata[1]) begin
+                                slc_fix_busy       <= 1'b1;
+                                slc_fix_is_write   <= 1'b1;
+                                slc_fix_grant_seen <= 1'b0;
+                            end
+                        end
+                    end
+                    6'h03: begin
+                        // W1C status flags.
+                        if (mmio_wdata[0]) slc_fix_busy       <= 1'b0;
+                        if (mmio_wdata[1]) slc_fix_grant_seen <= 1'b0;
+                    end
+                    default: begin end
+                endcase
+            end
+            // Clear req_busy once the SLC accepts the line request.
+            if (slc_req_valid && slc_req_ready) begin
+                slc_fix_busy <= 1'b0;
+            end
+            // Latch grant data when the SLC responds.
+            if (slc_resp_valid && slc_resp_ready) begin
+                slc_fix_grant_seen <= 1'b1;
+                slc_fix_grant_lo   <= slc_resp_data[31:0];
+            end
+        end
+    end
+
+    assign slc_req_valid    = slc_fix_busy;
+    assign slc_req_is_write = slc_fix_is_write;
+    assign slc_resp_ready   = 1'b1;
+
+    always_comb begin
+        unique case (mmio_addr[7:2])
+            6'h00:   slc_aper_rdata = slc_fix_paddr[31:0];
+            6'h01:   slc_aper_rdata = {{(64-PADDR_W_DEFAULT){1'b0}},
+                                        slc_fix_paddr[PADDR_W_DEFAULT-1:32]};
+            6'h02:   slc_aper_rdata = 32'h0;
+            6'h03:   slc_aper_rdata = {30'h0, slc_fix_grant_seen, slc_fix_busy};
+            6'h04:   slc_aper_rdata = slc_fix_grant_lo;
+            default: slc_aper_rdata = 32'h0;
+        endcase
+    end
+
+    // SLC bank, way-mask configuration drives all-ways-enabled and
+    // all-classes-allocate-all-ways (no isolation in the integration top).
+    logic [SLC_INT_WAYS-1:0] slc_way_enable [SLC_INT_BANKS];
+    logic [SLC_INT_WAYS-1:0] slc_way_alloc  [8];
+    /* verilator lint_off UNUSEDSIGNAL */
+    logic                    slc_hpm_access;
+    logic                    slc_hpm_miss;
+    logic                    slc_hpm_display_hold;
+    logic                    slc_hpm_bdi;
+    /* verilator lint_on UNUSEDSIGNAL */
+
+    for (genvar gb = 0; gb < SLC_INT_BANKS; gb++) begin : g_slc_way_enable
+        assign slc_way_enable[gb] = {SLC_INT_WAYS{1'b1}};
+    end
+    for (genvar gq = 0; gq < 8; gq++) begin : g_slc_way_alloc
+        assign slc_way_alloc[gq] = {SLC_INT_WAYS{1'b1}};
+    end
+
+    // SLC→line-shim nets (declared up front so both the SLC and the shim
+    // can reference them).
+    logic                       slc_to_shim_acq_valid;
+    logic                       slc_to_shim_acq_ready;
+    logic [PADDR_W_DEFAULT-1:0] slc_to_shim_acq_paddr;
+    logic                       slc_to_shim_acq_is_write;
+    logic [8*SLC_INT_LINE-1:0]  slc_to_shim_acq_wb_data;
+    logic                       slc_to_shim_grant_valid;
+    logic                       slc_to_shim_grant_ready;
+    logic [PADDR_W_DEFAULT-1:0] slc_to_shim_grant_paddr;
+    logic [8*SLC_INT_LINE-1:0]  slc_to_shim_grant_data;
 
     /* verilator lint_off UNUSEDSIGNAL */
-    logic unused_chi_resp;
-    assign unused_chi_resp = ^{
-        chi_req_ready, chi_wd_ready,
-        chi_rd_valid, chi_rd_last, chi_rd_data, chi_rd_id, chi_rd_resp,
-        chi_wc_valid, chi_wc_id, chi_wc_resp
-    };
+    logic [PADDR_W_DEFAULT-1:0] slc_to_shim_grant_paddr_unused;
+    assign slc_to_shim_grant_paddr_unused = slc_to_shim_grant_paddr;
     /* verilator lint_on UNUSEDSIGNAL */
+
+    e1_slc #(
+        .SIZE_BYTES (SLC_INT_SIZE),
+        .WAYS       (SLC_INT_WAYS),
+        .LINE_BYTES (SLC_INT_LINE),
+        .BANKS      (SLC_INT_BANKS),
+        .PADDR_W    (PADDR_W_DEFAULT),
+        .NUM_CLIENTS(SLC_INT_NUM_CLIENTS)
+    ) u_slc (
+        .clk                   (clk),
+        .rst_n                 (rst_n),
+        .req_valid             (slc_req_valid),
+        .req_ready             (slc_req_ready),
+        .req_paddr_line        (slc_fix_paddr),
+        .req_is_write          (slc_req_is_write),
+        .req_qos               (QOS_CPU_FG),
+        .req_client_id         ('0),
+        .req_wb_data           ('0),
+        .resp_valid            (slc_resp_valid),
+        .resp_ready            (slc_resp_ready),
+        .resp_paddr_line       (slc_resp_paddr_line),
+        .resp_data             (slc_resp_data),
+        .resp_client_id        (),
+        .dram_acq_valid        (slc_to_shim_acq_valid),
+        .dram_acq_ready        (slc_to_shim_acq_ready),
+        .dram_acq_paddr_line   (slc_to_shim_acq_paddr),
+        .dram_acq_is_write     (slc_to_shim_acq_is_write),
+        .dram_acq_wb_data      (slc_to_shim_acq_wb_data),
+        .dram_grant_valid      (slc_to_shim_grant_valid),
+        .dram_grant_ready      (slc_to_shim_grant_ready),
+        .dram_grant_paddr_line (slc_to_shim_grant_paddr),
+        .dram_grant_data       (slc_to_shim_grant_data),
+        .way_enable_mask       (slc_way_enable),
+        .way_alloc_mask        (slc_way_alloc),
+        .display_window_cycles (8'd32),
+        .hpm_slc_access        (slc_hpm_access),
+        .hpm_slc_miss          (slc_hpm_miss),
+        .hpm_slc_display_hold  (slc_hpm_display_hold),
+        .hpm_slc_bdi_compress  (slc_hpm_bdi)
+    );
+
+    /* verilator lint_off UNUSEDSIGNAL */
+    logic [PADDR_W_DEFAULT-1:0] slc_resp_paddr_line_unused;
+    assign slc_resp_paddr_line_unused = slc_resp_paddr_line;
+    /* verilator lint_on UNUSEDSIGNAL */
+
+    // Line shim: 512-bit SLC line ↔ 4×128-bit AXI4 beats over CHI.
+    e1_slc_to_chi_line_shim #(
+        .PADDR_W    (PADDR_W_DEFAULT),
+        .LINE_BYTES (SLC_INT_LINE),
+        .DATA_WIDTH (AXI_DATA_W),
+        .ID_WIDTH   (6),
+        .USER_WIDTH (AXI_USER_W),
+        .REQ_ID     (6'h05)
+    ) u_slc_chi_shim (
+        .clk   (clk),
+        .rst_n (rst_n),
+        .slc_acq_valid        (slc_to_shim_acq_valid),
+        .slc_acq_ready        (slc_to_shim_acq_ready),
+        .slc_acq_paddr_line   (slc_to_shim_acq_paddr),
+        .slc_acq_is_write     (slc_to_shim_acq_is_write),
+        .slc_acq_wb_data      (slc_to_shim_acq_wb_data),
+        .slc_grant_valid      (slc_to_shim_grant_valid),
+        .slc_grant_ready      (slc_to_shim_grant_ready),
+        .slc_grant_paddr_line (slc_to_shim_grant_paddr),
+        .slc_grant_data       (slc_to_shim_grant_data),
+        .chi_req_valid        (chi_req_valid),
+        .chi_req_ready        (chi_req_ready),
+        .chi_req_is_write     (chi_req_is_write),
+        .chi_req_is_exclusive (chi_req_is_exclusive),
+        .chi_req_stash        (chi_req_stash),
+        .chi_req_addr         (chi_req_addr),
+        .chi_req_id           (chi_req_id),
+        .chi_req_user         (chi_req_user),
+        .chi_wd_valid         (chi_wd_valid),
+        .chi_wd_ready         (chi_wd_ready),
+        .chi_wd_data          (chi_wd_data),
+        .chi_wd_strb          (chi_wd_strb),
+        .chi_wd_last          (chi_wd_last),
+        .chi_rd_valid         (chi_rd_valid),
+        .chi_rd_ready         (chi_rd_ready),
+        .chi_rd_data          (chi_rd_data),
+        .chi_rd_id            (chi_rd_id),
+        .chi_rd_last          (chi_rd_last),
+        .chi_rd_resp          (chi_rd_resp),
+        .chi_wc_valid         (chi_wc_valid),
+        .chi_wc_ready         (chi_wc_ready),
+        .chi_wc_id            (chi_wc_id),
+        .chi_wc_resp          (chi_wc_resp)
+    );
 
     // CHI bridge → fabric master[0].  Note: the bridge declares 6-bit IDs;
     // the fabric uses 4-bit IDs.  Width drift is absorbed by an adapter:
@@ -888,36 +1117,138 @@ module e1_soc_integrated
     logic [IOMMU_NUM_MASTERS-1:0][AXI_DATA_W-1:0] iom_rdata;
     logic [IOMMU_NUM_MASTERS-1:0][1:0]            iom_rresp;
 
-    assign iom_awvalid     = '0;
-    assign iom_awid        = '0;
-    assign iom_awaddr      = '0;
-    assign iom_awlen       = '0;
-    assign iom_awsize      = '0;
-    assign iom_awburst     = '0;
-    assign iom_awcache     = '0;
-    assign iom_awprot      = '0;
-    assign iom_awqos       = '0;
-    assign iom_awuser      = '0;
-    assign iom_aw_devid    = '0;
-    assign iom_aw_pasid    = '0;
-    assign iom_wvalid      = '0;
-    assign iom_wdata       = '0;
-    assign iom_wstrb       = '0;
-    assign iom_wlast       = '0;
-    assign iom_bready      = '1;
-    assign iom_arvalid     = '0;
-    assign iom_arid        = '0;
-    assign iom_araddr      = '0;
-    assign iom_arlen       = '0;
-    assign iom_arsize      = '0;
-    assign iom_arburst     = '0;
-    assign iom_arcache     = '0;
-    assign iom_arprot      = '0;
-    assign iom_arqos       = '0;
-    assign iom_aruser      = '0;
-    assign iom_ar_devid    = '0;
-    assign iom_ar_pasid    = '0;
-    assign iom_rready      = '1;
+    // ----------------------------------------------------------------------
+    // IOMMU DMA fixture (one upstream master).  A small MMIO-controlled
+    // master driving a single AXI4 transaction so the cocotb integration
+    // test can exercise the IOMMU translation / fault path without
+    // requiring a real DMA / NPU engine.  Programmer registers (relative
+    // to 0x1007_0000):
+    //
+    //   0x00  IOVA       : 32-bit transaction address
+    //   0x04  CTRL       : bit0=trigger_write, bit1=trigger_read
+    //   0x08  STATUS     : bit0=busy, bit2:1=last_bresp, bit4:3=last_rresp
+    //                       (write-1-to-clear bit0)
+    //   0x0C  DEV_ID     : 24-bit device-id passed in u_a*_devid
+    //
+    // The fixture issues exactly one beat (axlen=0); B / R responses are
+    // captured to STATUS and the unit returns to idle.  When the IOMMU is
+    // not BARE and DEV_ID is not in the allowlist, this generates a fault
+    // record observable via the IOMMU MMIO bridge.
+    // ----------------------------------------------------------------------
+    logic [31:0] dma_fix_iova;
+    logic [23:0] dma_fix_dev_id;
+    logic        dma_fix_busy;
+    logic        dma_fix_is_write;
+    logic        dma_fix_aw_done;
+    logic        dma_fix_w_done;
+    logic        dma_fix_ar_done;
+    logic [1:0]  dma_fix_last_bresp;
+    logic [1:0]  dma_fix_last_rresp;
+
+    always_ff @(posedge clk or negedge rst_n) begin
+        if (!rst_n) begin
+            dma_fix_iova        <= 32'h0;
+            dma_fix_dev_id      <= 24'h0;
+            dma_fix_busy        <= 1'b0;
+            dma_fix_is_write    <= 1'b0;
+            dma_fix_aw_done     <= 1'b0;
+            dma_fix_w_done      <= 1'b0;
+            dma_fix_ar_done     <= 1'b0;
+            dma_fix_last_bresp  <= 2'b00;
+            dma_fix_last_rresp  <= 2'b00;
+        end else begin
+            if (mmio_valid && mmio_write && iommu_dma_sel) begin
+                unique case (mmio_addr[7:2])
+                    6'h00: dma_fix_iova   <= mmio_wdata;
+                    6'h01: begin
+                        if (!dma_fix_busy) begin
+                            if (mmio_wdata[0]) begin
+                                dma_fix_busy     <= 1'b1;
+                                dma_fix_is_write <= 1'b1;
+                                dma_fix_aw_done  <= 1'b0;
+                                dma_fix_w_done   <= 1'b0;
+                            end else if (mmio_wdata[1]) begin
+                                dma_fix_busy     <= 1'b1;
+                                dma_fix_is_write <= 1'b0;
+                                dma_fix_ar_done  <= 1'b0;
+                            end
+                        end
+                    end
+                    6'h02: begin
+                        // W1C status[0] to clear busy after completion (in
+                        // case the fixture stalls).  Real systems poll the
+                        // status; cocotb uses it as an explicit ack.
+                        if (mmio_wdata[0]) begin
+                            dma_fix_busy <= 1'b0;
+                        end
+                    end
+                    6'h03: dma_fix_dev_id <= mmio_wdata[23:0];
+                    default: begin end
+                endcase
+            end
+            // Track AW / W / AR fires.
+            if (dma_fix_busy && dma_fix_is_write) begin
+                if (iom_awvalid[0] && iom_awready[0]) dma_fix_aw_done <= 1'b1;
+                if (iom_wvalid[0]  && iom_wready[0])  dma_fix_w_done  <= 1'b1;
+                if (iom_bvalid[0]  && iom_bready[0]) begin
+                    dma_fix_busy       <= 1'b0;
+                    dma_fix_last_bresp <= iom_bresp[0];
+                end
+            end
+            if (dma_fix_busy && !dma_fix_is_write) begin
+                if (iom_arvalid[0] && iom_arready[0]) dma_fix_ar_done <= 1'b1;
+                if (iom_rvalid[0]  && iom_rready[0] && iom_rlast[0]) begin
+                    dma_fix_busy       <= 1'b0;
+                    dma_fix_last_rresp <= iom_rresp[0];
+                end
+            end
+        end
+    end
+
+    // Drive the IOMMU's upstream master[0] from the fixture.  The fixture
+    // emits a single-beat transaction with axlen=0.
+    assign iom_awvalid[0]  = dma_fix_busy && dma_fix_is_write && !dma_fix_aw_done;
+    assign iom_awid[0]     = 4'h1;
+    assign iom_awaddr[0]   = {{(AXI_ADDR_W-32){1'b0}}, dma_fix_iova};
+    assign iom_awlen[0]    = '0;
+    assign iom_awsize[0]   = 3'd4;       // 16 bytes per beat (matches DATA_WIDTH/8)
+    assign iom_awburst[0]  = 2'b01;      // INCR
+    assign iom_awcache[0]  = 4'h0;
+    assign iom_awprot[0]   = 3'b001;     // privileged
+    assign iom_awqos[0]    = 4'h0;
+    assign iom_awuser[0]   = '0;
+    assign iom_aw_devid[0] = dma_fix_dev_id;
+    assign iom_aw_pasid[0] = '0;
+    assign iom_wvalid[0]   = dma_fix_busy && dma_fix_is_write && !dma_fix_w_done;
+    assign iom_wdata[0]    = {AXI_DATA_W{1'b0}} | 128'hDEAD_BEEF_F00D_CAFE_DEAD_BEEF_F00D_CAFE;
+    assign iom_wstrb[0]    = '1;
+    assign iom_wlast[0]    = 1'b1;
+    assign iom_bready[0]   = dma_fix_busy && dma_fix_is_write;
+    assign iom_arvalid[0]  = dma_fix_busy && !dma_fix_is_write && !dma_fix_ar_done;
+    assign iom_arid[0]     = 4'h1;
+    assign iom_araddr[0]   = {{(AXI_ADDR_W-32){1'b0}}, dma_fix_iova};
+    assign iom_arlen[0]    = '0;
+    assign iom_arsize[0]   = 3'd4;
+    assign iom_arburst[0]  = 2'b01;
+    assign iom_arcache[0]  = 4'h0;
+    assign iom_arprot[0]   = 3'b001;
+    assign iom_arqos[0]    = 4'h0;
+    assign iom_aruser[0]   = '0;
+    assign iom_ar_devid[0] = dma_fix_dev_id;
+    assign iom_ar_pasid[0] = '0;
+    assign iom_rready[0]   = dma_fix_busy && !dma_fix_is_write;
+
+    // 32-bit readback of the fixture state.
+    always_comb begin
+        unique case (mmio_addr[7:2])
+            6'h00:   iommu_dma_rdata = dma_fix_iova;
+            6'h01:   iommu_dma_rdata = 32'h0;
+            6'h02:   iommu_dma_rdata = {26'h0, dma_fix_last_rresp,
+                                        dma_fix_last_bresp, dma_fix_busy};
+            6'h03:   iommu_dma_rdata = {8'h0, dma_fix_dev_id};
+            default: iommu_dma_rdata = 32'h0;
+        endcase
+    end
 
     /* verilator lint_off UNUSEDSIGNAL */
     logic unused_iom_upstream;
@@ -959,9 +1290,22 @@ module e1_soc_integrated
     logic [AXI_DATA_W-1:0] iom_d_rdata;
     logic [1:0]            iom_d_rresp;
 
-    // IOMMU MMIO (AXI-Lite-style 12-bit window).  Tied to the v0 MMIO
-    // bridge via a small adapter — only a single write to the IOMMU
-    // command queue is needed to trigger the fault path.
+    // IOMMU MMIO (AXI-Lite-style 12-bit window) bridged onto the v0 32-bit
+    // debug aperture at 0x1006_0000.  The IOMMU's slave is 64-bit-data
+    // wide but accepts 4-byte-aligned addressing.  Programming model:
+    //
+    //  - Write low half  (mmio_addr[2]==0): stash the 32-bit data.  No
+    //    AXI-Lite cycle is launched; the bridge holds the value.
+    //  - Write high half (mmio_addr[2]==1): launch an AXI-Lite write with
+    //    address `{mmio_addr[11:3], 3'h0}` (the 8-byte-aligned register
+    //    base) and `wdata = {mmio_wdata, stash_low}`.  This is the
+    //    canonical path for 64-bit IOMMU registers (DDTP, CQB, FQB, ...).
+    //  - Read at any 4-byte boundary: launch an AXI-Lite read with
+    //    `araddr = mmio_addr[11:0]` and latch the 64-bit response in
+    //    `iommu_mmio_latched_rdata`.  The MMIO read returns the latched
+    //    low or high half depending on `mmio_addr[2]`.  This handles
+    //    32-bit registers (FQT/FQH/CQH/...) directly via their own
+    //    4-byte offset.
     logic        iommu_mmio_awvalid;
     logic        iommu_mmio_awready;
     logic [11:0] iommu_mmio_awaddr;
@@ -980,22 +1324,83 @@ module e1_soc_integrated
     logic [63:0] iommu_mmio_rdata;
     logic [1:0]  iommu_mmio_rresp;
 
-    assign iommu_mmio_awvalid = 1'b0;
-    assign iommu_mmio_awaddr  = '0;
-    assign iommu_mmio_wvalid  = 1'b0;
-    assign iommu_mmio_wdata   = '0;
-    assign iommu_mmio_wstrb   = '0;
+    logic [31:0] iommu_mmio_stash_lo;
+    logic [63:0] iommu_mmio_latched_rdata;
+    logic        iommu_mmio_aw_pending;
+    logic        iommu_mmio_w_pending;
+    logic        iommu_mmio_ar_pending;
+    logic [11:0] iommu_mmio_pending_addr;
+    logic [63:0] iommu_mmio_pending_wdata;
+
+    always_ff @(posedge clk or negedge rst_n) begin
+        if (!rst_n) begin
+            iommu_mmio_stash_lo       <= 32'h0;
+            iommu_mmio_latched_rdata  <= 64'h0;
+            iommu_mmio_aw_pending     <= 1'b0;
+            iommu_mmio_w_pending      <= 1'b0;
+            iommu_mmio_ar_pending     <= 1'b0;
+            iommu_mmio_pending_addr   <= 12'h0;
+            iommu_mmio_pending_wdata  <= 64'h0;
+        end else begin
+            // Latch the IOMMU's AXI-Lite read response.
+            if (iommu_mmio_rvalid) begin
+                iommu_mmio_latched_rdata <= iommu_mmio_rdata;
+            end
+            // Lower the AW pending flag once the IOMMU accepts it.
+            if (iommu_mmio_aw_pending && iommu_mmio_awready) begin
+                iommu_mmio_aw_pending <= 1'b0;
+            end
+            if (iommu_mmio_w_pending && iommu_mmio_wready) begin
+                iommu_mmio_w_pending <= 1'b0;
+            end
+            if (iommu_mmio_ar_pending && iommu_mmio_arready) begin
+                iommu_mmio_ar_pending <= 1'b0;
+            end
+            // CPU-side MMIO write to the IOMMU window.
+            if (mmio_valid && mmio_write && iommu_sel) begin
+                if (mmio_addr[2] == 1'b0) begin
+                    iommu_mmio_stash_lo <= mmio_wdata;
+                end else begin
+                    iommu_mmio_aw_pending    <= 1'b1;
+                    iommu_mmio_w_pending     <= 1'b1;
+                    iommu_mmio_pending_addr  <= {mmio_addr[11:3], 3'h0};
+                    iommu_mmio_pending_wdata <= {mmio_wdata, iommu_mmio_stash_lo};
+                end
+            end
+            // CPU-side MMIO read issues an AR with the full 4-byte aligned
+            // offset.  Only re-arm the AR when none is already in flight
+            // so a back-to-back read sequence (trigger / fetch) doesn't
+            // overwrite the in-flight pending address.
+            if (mmio_valid && !mmio_write && iommu_sel
+                && !iommu_mmio_ar_pending) begin
+                iommu_mmio_ar_pending   <= 1'b1;
+                iommu_mmio_pending_addr <= mmio_addr[11:0];
+            end
+        end
+    end
+
+    assign iommu_mmio_awvalid = iommu_mmio_aw_pending;
+    assign iommu_mmio_awaddr  = iommu_mmio_pending_addr;
+    assign iommu_mmio_wvalid  = iommu_mmio_w_pending;
+    assign iommu_mmio_wdata   = iommu_mmio_pending_wdata;
+    assign iommu_mmio_wstrb   = 8'hFF;
     assign iommu_mmio_bready  = 1'b1;
-    assign iommu_mmio_arvalid = 1'b0;
-    assign iommu_mmio_araddr  = '0;
+    assign iommu_mmio_arvalid = iommu_mmio_ar_pending;
+    assign iommu_mmio_araddr  = iommu_mmio_pending_addr;
     assign iommu_mmio_rready  = 1'b1;
+
+    // 32-bit read-back to the v0 aperture: the IOMMU's AXI-Lite slave
+    // always packs the 32-bit register value into the low half of its
+    // 64-bit response (see e1_riscv_iommu.sv, e.g. `64'(reg_fqt)`).  We
+    // return that low half here regardless of `mmio_addr[2]`.  The bridge
+    // re-arms the AR on every read so each 4-byte MMIO read fetches a
+    // fresh response at the matching IOMMU offset.
+    assign iommu_aper_rdata = iommu_mmio_latched_rdata[31:0];
 
     /* verilator lint_off UNUSEDSIGNAL */
     logic unused_iommu_mmio_resp;
     assign unused_iommu_mmio_resp = ^{
-        iommu_mmio_awready, iommu_mmio_wready, iommu_mmio_bvalid,
-        iommu_mmio_bresp, iommu_mmio_arready, iommu_mmio_rvalid,
-        iommu_mmio_rdata, iommu_mmio_rresp
+        iommu_mmio_bvalid, iommu_mmio_bresp, iommu_mmio_rresp
     };
     /* verilator lint_on UNUSEDSIGNAL */
 
@@ -1415,31 +1820,69 @@ module e1_soc_integrated
         .s_rlast   (fab_s_rlast),
         .decode_err_irq        (fab_decode_err_irq),
         .exclusive_fail_irq    (fab_exclusive_fail_irq),
-        .outstanding_count_dbg (fab_outstanding_count)
+        .outstanding_count_dbg (fab_outstanding_count),
+        // The SoC integrator does not yet route an MMIO W1C writer
+        // through the fabric; firmware clears the IRQ status via the
+        // PLIC ack path until the dedicated MMR slave lands.
+        .irq_status_clear_we               (1'b0),
+        .irq_status_decode_err_clear_mask  ('0),
+        .irq_status_excl_fail_clear_mask   ('0)
     );
 
     // ----------------------------------------------------------------------
-    // DRAM controller + behavioural model.  The fabric s[0] slave port
-    // attaches to the controller; the controller is currently a wrapper
-    // that forwards AXI4 to the behavioural model.  When the real DFI 5.0
-    // path lands, the model is replaced; the fabric attachment is unchanged.
-    //
-    // The behavioural model accepts the wide-ID coming out of the fabric;
-    // the controller does not so we route the fabric slave straight to the
-    // model.  See docs/arch/soc-integration.md for the planned controller
-    // wrapper once the controller exposes a `WIDE_ID_W` parameter.
+    // DRAM controller wrapping the behavioural model.  The fabric s[0]
+    // slave port attaches to `e1_dram_ctrl`, which runs the refresh / ZQ /
+    // ECC schedulers and internally instantiates `e1_axi4_dram_model` as
+    // the storage backing.  This exercises the DFI 5.0 north contract:
+    // any transaction that reaches s[0] flows through the controller
+    // scheduler before the behavioural read/write.  The DFI 5.0 south
+    // boundary is held in safe-idle pending the closed-IP LPDDR PHY (see
+    // `docs/evidence/memory/lpddr-phy-procurement.yaml`).
     // ----------------------------------------------------------------------
-    e1_axi4_dram_model #(
-        .ID_WIDTH    (WIDE_ID_W),
-        .ADDR_WIDTH  (AXI_ADDR_W),
-        .DATA_WIDTH  (AXI_DATA_W),
-        .USER_WIDTH  (AXI_USER_W),
-        .BURST_LEN_W (BURST_LEN_W),
-        .DEPTH_BYTES (DRAM_BYTES),
-        .CMD_LATENCY (2),
-        .DATA_LATENCY(1)
-    ) u_dram_model (
-        .clk (clk),
+    /* verilator lint_off UNUSEDSIGNAL */
+    logic [AXI_ADDR_W-1:0]    dram_dfi_addr;
+    logic [3:0]               dram_dfi_bank;
+    logic                     dram_dfi_cs_n;
+    logic                     dram_dfi_act_n;
+    logic                     dram_dfi_ras_n;
+    logic                     dram_dfi_cas_n;
+    logic                     dram_dfi_we_n;
+    logic                     dram_dfi_reset_n;
+    logic                     dram_dfi_cke;
+    logic                     dram_dfi_odt;
+    logic [AXI_DATA_W-1:0]    dram_dfi_wrdata;
+    logic [AXI_DATA_W/8-1:0]  dram_dfi_wrdata_mask;
+    logic                     dram_dfi_wrdata_en;
+    logic                     dram_dfi_rddata_en;
+    logic                     dram_dfi_init_start;
+    logic                     dram_dfi_ctrlupd_req;
+    logic                     dram_dfi_dram_clk_disable;
+    logic                     dram_refresh_active;
+    logic                     dram_zqcs_active;
+    logic                     dram_zqcl_active;
+    logic [31:0]              dram_odecc_corrected_count;
+    logic [31:0]              dram_odecc_uncorrected_count;
+    logic [31:0]              dram_linkecc_corrected_count;
+    logic [31:0]              dram_linkecc_uncorrected_count;
+    logic                     dram_ecc_uncorrected_irq;
+    /* verilator lint_on UNUSEDSIGNAL */
+
+    e1_dram_ctrl #(
+        .ID_WIDTH       (WIDE_ID_W),
+        .ADDR_WIDTH     (AXI_ADDR_W),
+        .DATA_WIDTH     (AXI_DATA_W),
+        .USER_WIDTH     (AXI_USER_W),
+        .BURST_LEN_W    (BURST_LEN_W),
+        // Compress the refresh / ZQ horizons for cocotb so scheduler edges
+        // appear inside the integration test window.  Production timing
+        // lives in `docs/spec-db/dram-ctrl-timing.yaml`.
+        .TREFI_CYCLES   (256),
+        .TRFCAB_CYCLES  (16),
+        .TRFCPB_CYCLES  (8),
+        .ZQCS_INTERVAL  (1024),
+        .ZQCL_INTERVAL  (8192)
+    ) u_dram_ctrl (
+        .clk   (clk),
         .rst_n (rst_n),
         .s_awvalid (fab_s_awvalid[0]),
         .s_awready (fab_s_awready[0]),
@@ -1479,8 +1922,53 @@ module e1_soc_integrated
         .s_rid     (fab_s_rid[0]),
         .s_rdata   (fab_s_rdata[0]),
         .s_rresp   (fab_s_rresp[0]),
-        .s_rlast   (fab_s_rlast[0])
+        .s_rlast   (fab_s_rlast[0]),
+        .dfi_addr         (dram_dfi_addr),
+        .dfi_bank         (dram_dfi_bank),
+        .dfi_cs_n         (dram_dfi_cs_n),
+        .dfi_act_n        (dram_dfi_act_n),
+        .dfi_ras_n        (dram_dfi_ras_n),
+        .dfi_cas_n        (dram_dfi_cas_n),
+        .dfi_we_n         (dram_dfi_we_n),
+        .dfi_reset_n      (dram_dfi_reset_n),
+        .dfi_cke          (dram_dfi_cke),
+        .dfi_odt          (dram_dfi_odt),
+        .dfi_wrdata       (dram_dfi_wrdata),
+        .dfi_wrdata_mask  (dram_dfi_wrdata_mask),
+        .dfi_wrdata_en    (dram_dfi_wrdata_en),
+        .dfi_rddata       ('0),
+        .dfi_rddata_valid (1'b0),
+        .dfi_rddata_en    (dram_dfi_rddata_en),
+        .dfi_init_start   (dram_dfi_init_start),
+        .dfi_init_complete(1'b1),
+        .dfi_ctrlupd_req  (dram_dfi_ctrlupd_req),
+        .dfi_ctrlupd_ack  (1'b1),
+        .dfi_dram_clk_disable     (dram_dfi_dram_clk_disable),
+        .refresh_active           (dram_refresh_active),
+        .zqcs_active              (dram_zqcs_active),
+        .zqcl_active              (dram_zqcl_active),
+        .odecc_corrected_count    (dram_odecc_corrected_count),
+        .odecc_uncorrected_count  (dram_odecc_uncorrected_count),
+        .linkecc_corrected_count  (dram_linkecc_corrected_count),
+        .linkecc_uncorrected_count(dram_linkecc_uncorrected_count),
+        .ecc_uncorrected_irq      (dram_ecc_uncorrected_irq)
     );
+
+    /* verilator lint_off UNUSEDSIGNAL */
+    logic unused_dram_dfi;
+    assign unused_dram_dfi = ^{
+        dram_dfi_addr, dram_dfi_bank,
+        dram_dfi_cs_n, dram_dfi_act_n, dram_dfi_ras_n, dram_dfi_cas_n,
+        dram_dfi_we_n, dram_dfi_reset_n, dram_dfi_cke, dram_dfi_odt,
+        dram_dfi_wrdata, dram_dfi_wrdata_mask, dram_dfi_wrdata_en,
+        dram_dfi_rddata_en, dram_dfi_init_start, dram_dfi_ctrlupd_req,
+        dram_dfi_dram_clk_disable,
+        dram_refresh_active, dram_zqcs_active, dram_zqcl_active,
+        dram_odecc_corrected_count, dram_odecc_uncorrected_count,
+        dram_linkecc_corrected_count, dram_linkecc_uncorrected_count,
+        dram_ecc_uncorrected_irq
+    };
+    /* verilator lint_on UNUSEDSIGNAL */
 
     // s[1..3] UNMAP slaves: never decoded, but the interconnect must see
     // safe idle on every port.  Reject everything with SLVERR.
@@ -1688,6 +2176,9 @@ module e1_soc_integrated
             display_sel:  mmio_rdata = display_rdata;
             wbuf_sel:     mmio_rdata = wbuf_rdata;
             pmc_sel:      mmio_rdata = pmc_mbox_rdata;
+            iommu_sel:    mmio_rdata = iommu_aper_rdata;
+            iommu_dma_sel:mmio_rdata = iommu_dma_rdata;
+            slc_sel:      mmio_rdata = slc_aper_rdata;
             clint_sel:    mmio_rdata = clint_rdata;
             dram_sel:     mmio_rdata = dram_mem[mmio_dram_word];
             default:      mmio_rdata = 32'hDEAD_BEEF;

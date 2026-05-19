@@ -25,6 +25,10 @@
 `timescale 1ns/1ps
 
 module e1_soc_top (
+`ifdef USE_POWER_PINS
+    inout  wire         VPWR,
+    inout  wire         VGND,
+`endif
     input  logic        clk,
     input  logic        rst_n,
     input  logic        mmio_valid,
@@ -635,6 +639,10 @@ module e1_soc_top (
     /* verilator lint_on UNUSEDSIGNAL */
     assign wbuf_wmask = {4{mmio_write}};
     e1_weight_buffer_sram u_weight_buffer (
+`ifdef USE_POWER_PINS
+        .VPWR    (VPWR),
+        .VGND    (VGND),
+`endif
         .clk     (clk),
         .rst_n   (rst_n),
         .p0_csb  (~(mmio_valid && wbuf_sel)),

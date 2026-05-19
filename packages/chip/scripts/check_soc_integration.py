@@ -20,8 +20,6 @@ behavior mirrors the existing fail-closed evidence-gate pattern under
 
 from __future__ import annotations
 
-import json
-import os
 import re
 import shutil
 import subprocess
@@ -113,7 +111,9 @@ def verilator_lint() -> int:
         "rtl/interconnect/axi4/e1_axi4_interconnect.sv",
         "rtl/interconnect/chi_bridge/e1_chi_to_axi4_bridge.sv",
         "rtl/iommu/e1_riscv_iommu.sv",
+        "rtl/cache/slc/e1_slc.sv",
         "rtl/memory/dram_ctrl/e1_axi4_dram_model.sv",
+        "rtl/memory/dram_ctrl/e1_dram_ctrl.sv",
         "rtl/power/pmc_top.sv",
         "rtl/memory/e1_weight_buffer_sram.sv",
         "rtl/bootrom/e1_bootrom.sv",
@@ -121,6 +121,7 @@ def verilator_lint() -> int:
         "rtl/dma/e1_dma.sv",
         "rtl/npu/e1_npu.sv",
         "rtl/display/e1_display.sv",
+        "rtl/top/adapters/e1_slc_to_chi_line_shim.sv",
         "rtl/top/e1_soc_integrated.sv",
         "verify/cocotb/integration/e1_soc_integrated_tb.sv",
     ]
@@ -148,8 +149,7 @@ def verilator_lint() -> int:
         print(proc.stdout)
         print(proc.stderr, file=sys.stderr)
         return fail(
-            "Verilator lint of e1_soc_integrated_tb returned non-zero.  See "
-            "stderr for details."
+            "Verilator lint of e1_soc_integrated_tb returned non-zero.  See stderr for details."
         )
     return 0
 
@@ -223,7 +223,8 @@ def parse_yaml_lite(path: Path) -> dict:
     Anything more elaborate goes through PyYAML when available.
     """
     try:
-        import yaml  # type: ignore
+        import yaml
+
         return yaml.safe_load(path.read_text())
     except Exception:
         pass
@@ -283,7 +284,7 @@ def check_edges_doc() -> int:
         statuses = re.findall(r"\bstatus:\s*([A-Z_]+)", text)
         if len(names) != len(statuses):
             return fail("could not pair edge names with status")
-        for name, status in zip(names, statuses):
+        for name, status in zip(names, statuses, strict=True):
             if status not in VALID_EDGE_STATUSES:
                 return fail(f"edge {name}: unknown status {status}")
         return 0

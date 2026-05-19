@@ -1,6 +1,10 @@
 `timescale 1ns/1ps
 
 module e1_chip_top (
+`ifdef USE_POWER_PINS
+    inout  wire        VPWR,
+    inout  wire        VGND,
+`endif
     input  logic       CLK_IN,
     input  logic       RST_N,
 
@@ -67,6 +71,10 @@ module e1_chip_top (
     );
 
     e1_soc_top u_soc (
+`ifdef USE_POWER_PINS
+        .VPWR(VPWR),
+        .VGND(VGND),
+`endif
         .clk(CLK_IN),
         .rst_n(rst_n_sync),
         .mmio_valid(mmio_valid),
