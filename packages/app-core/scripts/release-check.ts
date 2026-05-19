@@ -122,7 +122,7 @@ const requiredWorkflowSnippets = [
   "name: Ensure avatar assets",
   "node packages/app-core/scripts/ensure-avatars.mjs",
   "name: Prepare Whisper model artifact",
-  "bash packages/app-core/platforms/electrobun/scripts/ensure-whisper-model.sh base.en",
+  "bash packages/app-core/platforms/electrobun/scripts/ensure-whisper-gguf.sh base.en",
   "name: Upload Whisper model artifact",
   "name: whisper-model-base-en",
   "Install quiet macOS packaging wrappers",
