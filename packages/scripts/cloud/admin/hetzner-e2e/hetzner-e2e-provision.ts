@@ -64,6 +64,43 @@ function isRetryableCombo(err: unknown): boolean {
   );
 }
 
+// Pre-provision reap: delete any prior CI servers older than this. Stops a
+// chain of failed runs (which leak servers because teardown only fires when
+// provision succeeds) from blocking new runs with "server limit reached".
+// 20min is well above the ~10min healthy E2E budget; anything older is
+// guaranteed dead. The half-hourly reaper workflow handles the >60min case;
+// this is the fast lane.
+const PRE_REAP_AGE_MS = 20 * 60 * 1000;
+
+async function preReapOldServers(
+  client: InstanceType<typeof HetznerCloudClient>,
+): Promise<void> {
+  const servers = await client
+    .listServers({ ci: "true", workflow: "hetzner-e2e" })
+    .catch((err: unknown) => {
+      console.warn(
+        `[hetzner-e2e-provision] pre-reap listServers failed: ${err instanceof Error ? err.message : String(err)}`,
+      );
+      return [] as Awaited<ReturnType<typeof client.listServers>>;
+    });
+  const now = Date.now();
+  for (const server of servers) {
+    const created = Date.parse(server.created);
+    if (!Number.isFinite(created)) continue;
+    if (now - created < PRE_REAP_AGE_MS) continue;
+    console.error(
+      `[hetzner-e2e-provision] pre-reap deleting ${server.id} (${server.name}) age=${Math.round((now - created) / 60000)}min`,
+    );
+    try {
+      await client.deleteServer(server.id);
+    } catch (err) {
+      console.warn(
+        `[hetzner-e2e-provision] pre-reap delete ${server.id} failed: ${err instanceof Error ? err.message : String(err)}`,
+      );
+    }
+  }
+}
+
 async function main(): Promise<void> {
   const token = requireEnv("HCLOUD_TOKEN_CI");
   const sshKeyId = Number.parseInt(requireEnv("CI_SSH_PUBLIC_KEY_ID"), 10);
@@ -94,6 +131,7 @@ async function main(): Promise<void> {
   ].join("\n");
 
   const client = HetznerCloudClient.withToken(token);
+  await preReapOldServers(client);
   const attempts: Array<{ serverType: string; location: string }> = [
     { serverType: requestedServerType, location: requestedLocation },
     ...SERVER_TYPE_FALLBACKS.filter(
