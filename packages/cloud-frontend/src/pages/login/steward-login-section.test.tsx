@@ -83,15 +83,18 @@ vi.mock("./wallet-buttons", () => ({
   ),
 }));
 
+import { I18nProvider } from "@/providers/I18nProvider";
 import StewardLoginSection from "./steward-login-section";
 
 function renderLogin() {
   return render(
-    <MemoryRouter initialEntries={["/login"]}>
-      <Routes>
-        <Route path="/login" element={<StewardLoginSection />} />
-      </Routes>
-    </MemoryRouter>,
+    <I18nProvider initialLang="en">
+      <MemoryRouter initialEntries={["/login"]}>
+        <Routes>
+          <Route path="/login" element={<StewardLoginSection />} />
+        </Routes>
+      </MemoryRouter>
+    </I18nProvider>,
   );
 }
 
