@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import importlib.util
 import os
 import json
 import re
@@ -90,26 +91,12 @@ IGNORED_BENCHMARK_DIRS = {
 # tri-harness by default so `--all-harnesses` remains a full Eliza/Hermes/
 # OpenClaw comparison unless a future adapter adds a hard exclusion here.
 ALL_HARNESSES: tuple[str, ...] = ("eliza", "openclaw", "hermes")
-AGENT_COMPATIBILITY_OVERRIDES: dict[str, tuple[str, ...]] = {
-    # VoiceBench currently instantiates the local TypeScript runtime directly
-    # for real profiles, with an explicit mock artifact path for no-key smoke
-    # validation. Hermes/OpenClaw labels would still run the same voicebench
-    # runtime/profile rather than distinct agent harnesses.
-    "voicebench": ("eliza",),
-    # These tracks are native hermes-agent environments invoked through
-    # hermes_adapter/run_env_cli.py. Eliza/OpenClaw labels would still run the
-    # Hermes loop, so keep them Hermes-only until separate env drivers exist.
-    "hermes_tblite": ("hermes",),
-    "hermes_terminalbench_2": ("hermes",),
-    "hermes_yc_bench": ("hermes",),
-    "hermes_swe_env": ("hermes",),
-    # Current registry support is a local eliza-1 vision runner with a stub
-    # fallback, not a real Eliza/Hermes/OpenClaw agent-harness route.
-    "vision_language": (),
-}
+AGENT_COMPATIBILITY_OVERRIDES: dict[str, tuple[str, ...]] = {}
 
 
 def _agent_compatibility_for(benchmark_id: str) -> tuple[str, ...]:
+    if benchmark_id in {"gaia", "gaia_orchestrated"}:
+        return ALL_HARNESSES if _has_gaia_official_dataset() else ()
     if benchmark_id == "gauntlet":
         return ALL_HARNESSES if _has_gauntlet_real_surfpool_backend() else ()
     if benchmark_id in {
@@ -118,28 +105,51 @@ def _agent_compatibility_for(benchmark_id: str) -> tuple[str, ...]:
         "hermes_yc_bench",
         "hermes_swe_env",
     }:
-        return ("hermes",) if _has_hermes_sandbox_backend() else ()
+        return ALL_HARNESSES if _has_hermes_sandbox_backend() else ()
     if benchmark_id == "voicebench":
-        return ("eliza",) if _has_voicebench_real_audio_assets() else ()
-    if benchmark_id == "voicebench_quality" and not os.environ.get("GROQ_API_KEY"):
-        return ()
+        return ALL_HARNESSES if _has_voicebench_real_audio_assets() else ()
+    if benchmark_id == "voicebench_quality":
+        return ALL_HARNESSES if _has_voicebench_quality_real_inputs() else ()
     if benchmark_id == "voiceagentbench":
         return ALL_HARNESSES if _has_voiceagentbench_real_audio_dataset() else ()
+    if benchmark_id == "vision_language":
+        return ALL_HARNESSES if _has_vision_language_real_inputs() else ()
     return AGENT_COMPATIBILITY_OVERRIDES.get(benchmark_id, ALL_HARNESSES)
 
 
 _GAUNTLET_REAL_SURFPOOL_AVAILABLE: bool | None = None
 
 
-def _has_gauntlet_real_surfpool_backend() -> bool:
-    """Return true only when Surfpool can run Gauntlet's real clone path."""
-    global _GAUNTLET_REAL_SURFPOOL_AVAILABLE
-    if _GAUNTLET_REAL_SURFPOOL_AVAILABLE is not None:
-        return _GAUNTLET_REAL_SURFPOOL_AVAILABLE
-    binary = shutil.which("surfpool")
-    if not binary:
-        _GAUNTLET_REAL_SURFPOOL_AVAILABLE = False
-        return False
+_GAIA_OFFICIAL_DATASET_AVAILABLE: bool | None = None
+
+
+def _has_gaia_official_dataset() -> bool:
+    """Return true when official GAIA can run without sample fallback."""
+    global _GAIA_OFFICIAL_DATASET_AVAILABLE
+    if _GAIA_OFFICIAL_DATASET_AVAILABLE is not None:
+        return _GAIA_OFFICIAL_DATASET_AVAILABLE
+    if os.environ.get("HF_TOKEN"):
+        _GAIA_OFFICIAL_DATASET_AVAILABLE = True
+        return True
+    dataset_path = os.environ.get("GAIA_DATASET_PATH")
+    if dataset_path and Path(dataset_path).expanduser().exists():
+        _GAIA_OFFICIAL_DATASET_AVAILABLE = True
+        return True
+    metadata_roots = (
+        Path.home() / ".cache" / "huggingface" / "hub" / "datasets--gaia-benchmark--GAIA" / "snapshots",
+        Path("packages/benchmarks/gaia/.cache/gaia")
+        / "datasets--gaia-benchmark--GAIA"
+        / "snapshots",
+    )
+    _GAIA_OFFICIAL_DATASET_AVAILABLE = any(
+        any(path.is_file() for path in root.glob("*/2023/validation/metadata.*"))
+        for root in metadata_roots
+        if root.exists()
+    )
+    return _GAIA_OFFICIAL_DATASET_AVAILABLE
+
+
+def _surfpool_start_help(binary: str) -> str:
     try:
         completed = subprocess.run(
             [binary, "start", "--help"],
@@ -149,10 +159,23 @@ def _has_gauntlet_real_surfpool_backend() -> bool:
             check=False,
         )
     except (OSError, subprocess.TimeoutExpired):
+        return ""
+    return f"{completed.stdout}\n{completed.stderr}"
+
+
+def _has_gauntlet_real_surfpool_backend() -> bool:
+    """Return true only when Surfpool can run Gauntlet's real mainnet-backed path."""
+    global _GAUNTLET_REAL_SURFPOOL_AVAILABLE
+    if _GAUNTLET_REAL_SURFPOOL_AVAILABLE is not None:
+        return _GAUNTLET_REAL_SURFPOOL_AVAILABLE
+    binary = shutil.which("surfpool")
+    if not binary:
         _GAUNTLET_REAL_SURFPOOL_AVAILABLE = False
         return False
-    help_text = f"{completed.stdout}\n{completed.stderr}"
-    _GAUNTLET_REAL_SURFPOOL_AVAILABLE = "--clone" in help_text and "--rpc-url" in help_text
+    help_text = _surfpool_start_help(binary)
+    has_remote_datasource = "--rpc-url" in help_text or "--network" in help_text
+    has_noninteractive_mode = "--no-tui" in help_text
+    _GAUNTLET_REAL_SURFPOOL_AVAILABLE = has_remote_datasource and has_noninteractive_mode
     return _GAUNTLET_REAL_SURFPOOL_AVAILABLE
 
 
@@ -192,13 +215,22 @@ def _has_voiceagentbench_real_audio_dataset() -> bool:
     if _VOICEAGENTBENCH_REAL_AUDIO_AVAILABLE is not None:
         return _VOICEAGENTBENCH_REAL_AUDIO_AVAILABLE
 
-    stt_provider = os.environ.get("VOICEAGENTBENCH_STT_PROVIDER", "groq").strip().lower()
+    stt_provider = os.environ.get("VOICEAGENTBENCH_STT_PROVIDER", "").strip().lower()
+    if not stt_provider:
+        if os.environ.get("GROQ_API_KEY"):
+            stt_provider = "groq"
+        elif importlib.util.find_spec("faster_whisper") is not None:
+            stt_provider = "faster-whisper"
+        else:
+            stt_provider = "groq"
     if stt_provider == "groq":
         stt_ready = bool(os.environ.get("GROQ_API_KEY"))
     elif stt_provider == "eliza-runtime":
         stt_ready = bool(
             (os.environ.get("ELIZA_API_BASE") or os.environ.get("ELIZA_BENCH_URL") or "").strip()
         )
+    elif stt_provider in {"faster-whisper", "local-whisper"}:
+        stt_ready = importlib.util.find_spec("faster_whisper") is not None
     else:
         stt_ready = False
 
@@ -207,9 +239,13 @@ def _has_voiceagentbench_real_audio_dataset() -> bool:
         or os.environ.get("VOICEAGENTBENCH_REAL_DATA_PATH")
         or ""
     ).strip()
-    if not data_path_raw or not stt_ready:
+    if not stt_ready:
         _VOICEAGENTBENCH_REAL_AUDIO_AVAILABLE = False
         return False
+
+    if not data_path_raw:
+        _VOICEAGENTBENCH_REAL_AUDIO_AVAILABLE = importlib.util.find_spec("huggingface_hub") is not None
+        return _VOICEAGENTBENCH_REAL_AUDIO_AVAILABLE
 
     path = Path(data_path_raw).expanduser()
     if not path.is_file():
@@ -241,10 +277,85 @@ def _has_voiceagentbench_real_audio_dataset() -> bool:
 
 
 _VOICEBENCH_REAL_AUDIO_AVAILABLE: bool | None = None
+_VOICEBENCH_QUALITY_REAL_INPUTS_AVAILABLE: bool | None = None
+
+
+def _voicebench_quality_stt_provider() -> str:
+    explicit = (
+        os.environ.get("VOICEBENCH_QUALITY_STT_PROVIDER")
+        or os.environ.get("VOICEBENCH_STT_PROVIDER")
+        or ""
+    ).strip().lower()
+    if explicit:
+        return explicit
+    if os.environ.get("GROQ_API_KEY"):
+        return "groq"
+    if importlib.util.find_spec("faster_whisper") is not None:
+        return "faster-whisper"
+    return "groq"
+
+
+def _has_voicebench_quality_real_inputs() -> bool:
+    """Return true only when VoiceBench-quality can run real audio + STT."""
+    global _VOICEBENCH_QUALITY_REAL_INPUTS_AVAILABLE
+    if _VOICEBENCH_QUALITY_REAL_INPUTS_AVAILABLE is not None:
+        return _VOICEBENCH_QUALITY_REAL_INPUTS_AVAILABLE
+    if importlib.util.find_spec("datasets") is None:
+        _VOICEBENCH_QUALITY_REAL_INPUTS_AVAILABLE = False
+        return False
+    stt_provider = _voicebench_quality_stt_provider()
+    if stt_provider == "groq":
+        ready = bool(os.environ.get("GROQ_API_KEY"))
+    elif stt_provider == "eliza-runtime":
+        ready = bool(
+            (os.environ.get("ELIZA_API_BASE") or os.environ.get("ELIZA_BENCH_URL") or "").strip()
+        )
+    elif stt_provider in {"faster-whisper", "local-whisper"}:
+        ready = importlib.util.find_spec("faster_whisper") is not None
+    else:
+        ready = False
+    _VOICEBENCH_QUALITY_REAL_INPUTS_AVAILABLE = ready
+    return ready
 
 
 def _voicebench_dir() -> Path:
     return Path(__file__).resolve().parents[1] / "voicebench"
+
+
+def _eliza_state_dir() -> Path:
+    explicit = os.environ.get("ELIZA_STATE_DIR") or os.environ.get("MILADY_STATE_DIR")
+    if explicit:
+        return Path(explicit).expanduser()
+    namespace = os.environ.get("ELIZA_NAMESPACE") or "eliza"
+    return Path.home() / f".{namespace}"
+
+
+def _has_vision_language_bundle(tier: str = "eliza-1-9b") -> bool:
+    bundle = _eliza_state_dir() / "local-inference" / "models" / f"{tier}.bundle"
+    manifest = bundle / "eliza-1.manifest.json"
+    if not manifest.is_file():
+        return False
+    slug = tier.removeprefix("eliza-1-")
+    text_candidates = [
+        bundle / "text" / f"eliza-1-{slug}-64k.gguf",
+        bundle / "text" / f"eliza-1-{slug}-32k.gguf",
+        bundle / "text" / f"eliza-1-{slug}.gguf",
+    ]
+    vision = bundle / "vision" / f"mmproj-{slug}.gguf"
+    return vision.is_file() and any(path.is_file() for path in text_candidates)
+
+
+def _has_textvqa_real_inputs() -> bool:
+    data_dir = os.environ.get("TEXTVQA_DATA_DIR")
+    if not data_dir:
+        return True
+    root = Path(data_dir).expanduser()
+    return (root / "TextVQA_0.5.1_val.json").is_file() and (root / "train_images").is_dir()
+
+
+def _has_vision_language_real_inputs() -> bool:
+    tier = os.environ.get("VISION_LANGUAGE_TIER") or "eliza-1-9b"
+    return _has_vision_language_bundle(tier) and _has_textvqa_real_inputs()
 
 
 def _voicebench_resolve_audio_path(raw_path: str, manifest_path: Path) -> Path:
@@ -282,16 +393,38 @@ def _voicebench_manifest_has_audio(manifest_path: Path) -> bool:
 
 
 def _has_voicebench_real_audio_assets() -> bool:
-    """Return true only when VoiceBench can run a real Eliza voice profile."""
+    """Return true only when VoiceBench can run a publishable real voice profile."""
     global _VOICEBENCH_REAL_AUDIO_AVAILABLE
     if _VOICEBENCH_REAL_AUDIO_AVAILABLE is not None:
         return _VOICEBENCH_REAL_AUDIO_AVAILABLE
-    if not os.environ.get("GROQ_API_KEY"):
-        _VOICEBENCH_REAL_AUDIO_AVAILABLE = False
-        return False
 
-    profile = os.environ.get("VOICEBENCH_PROFILE", "groq").strip().lower() or "groq"
-    if profile == "elevenlabs" and not os.environ.get("ELEVENLABS_API_KEY"):
+    profile = os.environ.get("VOICEBENCH_PROFILE", "").strip().lower()
+    if not profile:
+        profile = "local-cerebras" if os.environ.get("CEREBRAS_API_KEY") else "groq"
+
+    if profile == "local-cerebras":
+        if not os.environ.get("CEREBRAS_API_KEY"):
+            _VOICEBENCH_REAL_AUDIO_AVAILABLE = False
+            return False
+        if importlib.util.find_spec("faster_whisper") is None:
+            _VOICEBENCH_REAL_AUDIO_AVAILABLE = False
+            return False
+        say_bin = os.environ.get("VOICEBENCH_SAY_BIN", "").strip()
+        if say_bin:
+            if not Path(say_bin).expanduser().is_file():
+                _VOICEBENCH_REAL_AUDIO_AVAILABLE = False
+                return False
+        elif shutil.which("say") is None and not Path("/usr/bin/say").is_file():
+            _VOICEBENCH_REAL_AUDIO_AVAILABLE = False
+            return False
+    elif profile in {"groq", "elevenlabs"}:
+        if not os.environ.get("GROQ_API_KEY"):
+            _VOICEBENCH_REAL_AUDIO_AVAILABLE = False
+            return False
+        if profile == "elevenlabs" and not os.environ.get("ELEVENLABS_API_KEY"):
+            _VOICEBENCH_REAL_AUDIO_AVAILABLE = False
+            return False
+    else:
         _VOICEBENCH_REAL_AUDIO_AVAILABLE = False
         return False
 
@@ -307,6 +440,9 @@ def _has_voicebench_real_audio_assets() -> bool:
     ).strip()
     if dataset_raw:
         manifest_path = Path(dataset_raw).expanduser()
+    elif profile == "local-cerebras":
+        _VOICEBENCH_REAL_AUDIO_AVAILABLE = importlib.util.find_spec("huggingface_hub") is not None
+        return _VOICEBENCH_REAL_AUDIO_AVAILABLE
     else:
         manifest_name = "manifest-elevenlabs.json" if profile == "elevenlabs" else "manifest-groq.json"
         manifest_path = _voicebench_dir() / "fixtures" / manifest_name
@@ -846,8 +982,16 @@ def _command_webshop(ctx: ExecutionContext, adapter: BenchmarkAdapter) -> list[s
         split = ctx.request.extra_config.get("split")
         if isinstance(split, str) and split.strip():
             args.extend(["--split", split.strip()])
-    elif bool(ctx.request.extra_config.get("sample", True)):
+    elif (
+        ctx.request.extra_config.get("sample") is True
+        or ctx.request.extra_config.get("use_sample_tasks") is True
+        or ctx.request.extra_config.get("mock") is True
+        or provider_lower == "mock"
+    ):
         args.append("--sample")
+    profile = ctx.request.extra_config.get("profile")
+    if isinstance(profile, str) and profile.strip() in {"small", "full"}:
+        args.extend(["--profile", profile.strip()])
 
     if bool(ctx.request.extra_config.get("trajectories", False)):
         args.append("--trajectories")
@@ -2213,8 +2357,8 @@ def discover_adapters(workspace_root: Path) -> AdapterDiscovery:
             "max_new_tokens": 512,
         },
         "bfcl": {
-            "sample": 2,
-            "seed": 0,
+            "categories": ["multiple", "parallel"],
+            "max_per_category": 1,
         },
         "context_bench": {
             "quick": True,
@@ -2283,25 +2427,24 @@ def discover_adapters(workspace_root: Path) -> AdapterDiscovery:
         },
         "mt_bench": {
             "limit": 1,
-            "max_tokens": 256,
-            "judge_max_tokens": 256,
+            "max_tokens": 1024,
+            "temperature": 0.0,
+            "judge_max_tokens": 512,
             "judge_provider": "cerebras",
             "judge_model": "gpt-oss-120b",
             "judge_api_key_env": "CEREBRAS_API_KEY",
         },
         "tau_bench": {
-            "agent_max_turns": 10,
+            "agent_max_turns": 14,
             "domain": "retail",
             "max_tasks": 1,
             "num_trials": 1,
             "pass_k_values": [1],
-            "sample": True,
+            "user_strategy": "grounded",
         },
         "terminal_bench": {
             "max_tasks": 1,
-            "sample": True,
             "timeout": 180,
-            "no_docker": True,
             "no_markdown": True,
             "no_sessions": True,
             "no_leaderboard": True,
@@ -2312,6 +2455,7 @@ def discover_adapters(workspace_root: Path) -> AdapterDiscovery:
         "visualwebbench": {
             "max_tasks": 1,
             "task_types": "web_caption",
+            "hf": True,
         },
         "vision_language": {
             "sub_benchmark": "textvqa",
@@ -2327,17 +2471,15 @@ def discover_adapters(workspace_root: Path) -> AdapterDiscovery:
         },
         "swe_bench": {
             "max_instances": 1,
-            "no_docker": True,
         },
         "swe_bench_orchestrated": {
             "max_instances": 1,
-            "no_docker": True,
             "execution_mode": "orchestrated",
             "providers": ["claude-code", "swe-agent", "codex"],
             "strict_capabilities": True,
         },
         "gaia_orchestrated": {
-            "dataset": "sample",
+            "dataset": "gaia",
             "max_questions": 5,
             "execution_mode": "orchestrated",
             "providers": ["claude-code", "swe-agent", "codex"],
@@ -2366,11 +2508,12 @@ def discover_adapters(workspace_root: Path) -> AdapterDiscovery:
         "mmau": {
             "limit": 2,
             "no_traces": True,
+            "hf": True,
         },
         "voicebench_quality": {
             "suite": "openbookqa",
             "limit": 2,
-            "stt_provider": "groq",
+            "stt_provider": _voicebench_quality_stt_provider(),
         },
         "voiceagentbench": {
             "suite": "single",
@@ -2675,7 +2818,7 @@ def discover_adapters(workspace_root: Path) -> AdapterDiscovery:
             default_extra_config={
                 "max_tasks": 1,
                 "max_turns": 6,
-                "sample": True,
+                "profile": "small",
             },
         ),
         _make_extra_adapter(

@@ -13,7 +13,10 @@ A native voice-in model can plug in here directly by implementing
 from __future__ import annotations
 
 import logging
+import os
+import tempfile
 from dataclasses import dataclass
+from pathlib import Path
 from typing import Awaitable, Callable, Protocol
 
 from .types import Sample
@@ -67,7 +70,6 @@ class CascadedAdapter:
         self.name = name
 
     async def __call__(self, request: AdapterRequest) -> AdapterResponse:
-        transcript = request.prompt_text
         audio = request.sample.audio_bytes
         if audio is None:
             raise RuntimeError(
@@ -76,7 +78,12 @@ class CascadedAdapter:
             )
         if self._stt is None:
             raise RuntimeError("VoiceBench requires a real STT provider")
-        transcript = (await self._stt(audio)).strip() or transcript
+        transcript = (await self._stt(audio)).strip()
+        if not transcript:
+            raise RuntimeError(
+                f"sample {request.sample.sample_id} produced an empty STT transcript; "
+                "refusing to fall back to reference text"
+            )
         reply = await self._text(transcript)
         return AdapterResponse(text=reply)
 
@@ -118,6 +125,15 @@ def build_adapter(
 
 def _build_text_adapter(agent: str) -> TextFn:
     if agent == "eliza":
+        server_mgr = None
+        if not os.environ.get("ELIZA_API_BASE") and not os.environ.get("ELIZA_BENCH_URL"):
+            from eliza_adapter.server_manager import ElizaServerManager  # noqa: WPS433
+
+            server_mgr = ElizaServerManager()
+            server_mgr.start()
+            os.environ["ELIZA_BENCH_TOKEN"] = server_mgr.token
+            os.environ["ELIZA_BENCH_URL"] = server_mgr.client.base_url
+
         from eliza_adapter.client import ElizaClient  # noqa: WPS433
 
         client = ElizaClient(
@@ -125,8 +141,10 @@ def _build_text_adapter(agent: str) -> TextFn:
                 __import__("os").environ.get("ELIZA_API_BASE")
                 or __import__("os").environ.get("ELIZA_BENCH_URL")
                 or "http://localhost:31337"
-            )
+            ),
+            token=__import__("os").environ.get("ELIZA_BENCH_TOKEN") or None,
         )
+        _ = server_mgr
         client.wait_until_ready(timeout=120)
 
         async def _call(prompt: str) -> str:
@@ -175,8 +193,6 @@ def _build_stt(provider: str) -> SttFn:
         # POST audio bytes to the local Eliza runtime's STT endpoint.
         # The runtime must expose a compatible /v1/audio/transcriptions route
         # (wired by plugin-groq, plugin-local-inference, or any other STT plugin).
-        import os
-
         import httpx
 
         base_url = (
@@ -196,13 +212,43 @@ def _build_stt(provider: str) -> SttFn:
             resp.raise_for_status()
             payload = resp.json()
             text = payload.get("text") if isinstance(payload, dict) else None
-            if not isinstance(text, str):
+            if not isinstance(text, str) or not text.strip():
                 raise RuntimeError(f"Eliza STT returned no text: {payload!r}")
             return text
 
         return _transcribe_eliza
 
+    if provider in {"faster-whisper", "local-whisper"}:
+        model_name = (
+            os.environ.get("VOICEBENCH_FASTER_WHISPER_MODEL")
+            or os.environ.get("FASTER_WHISPER_MODEL")
+            or "base.en"
+        )
+        from faster_whisper import WhisperModel  # type: ignore[import-not-found]
+
+        model = WhisperModel(model_name, device="auto", compute_type="auto")
+
+        async def _transcribe_faster_whisper(audio: bytes) -> str:
+            with tempfile.NamedTemporaryFile(suffix=".wav", delete=False) as fh:
+                fh.write(audio)
+                audio_path = Path(fh.name)
+            try:
+                segments, _info = model.transcribe(
+                    str(audio_path),
+                    beam_size=1,
+                    vad_filter=False,
+                )
+                text = " ".join(segment.text.strip() for segment in segments).strip()
+            finally:
+                audio_path.unlink(missing_ok=True)
+            if not text:
+                raise RuntimeError("faster-whisper returned no text")
+            return text
+
+        return _transcribe_faster_whisper
+
     raise ValueError(
         f"unsupported STT provider {provider!r}; "
-        "supported: 'groq' (Groq Whisper API) or 'eliza-runtime' (local Eliza /v1/audio/transcriptions)"
+        "supported: 'groq' (Groq Whisper API), 'eliza-runtime' "
+        "(local Eliza /v1/audio/transcriptions), or 'faster-whisper'"
     )

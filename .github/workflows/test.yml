@@ -81,7 +81,7 @@ jobs:
         uses: ./.github/actions/setup-bun-workspace
         with:
           bun-version: ${{ env.BUN_VERSION }}
-          install-command: bun install --ignore-scripts
+          install-command: bun install
           install-native-deps: "false"
           skip-avatar-clone: "true"
           no-vision-deps: "true"
@@ -98,11 +98,26 @@ jobs:
       - name: Remote capability plugin surface audit
         run: bun run test:remote-capabilities:surface-audit
 
+      - name: Remote capability live CI audit
+        run: bun run test:remote-capabilities:live-ci-audit
+
+      - name: Remote capability live CI audit self-test
+        run: bun run test:remote-capabilities:live-ci-audit:self-test
+
+      - name: Remote capability naming audit
+        run: bun run test:remote-capabilities:naming-audit
+
+      - name: Remote capability naming audit self-test
+        run: bun run test:remote-capabilities:naming-audit:self-test
+
       - name: Remote capability source-build smoke
         run: bun run test:remote-capabilities:source-build
 
       - name: Remote capability fixture server smoke
         run: bun run test:remote-capabilities:fixture-server
+
+      - name: Remote capability live report validator self-test
+        run: bun run test:remote-capabilities:validate-live-reports:self-test
 
       - name: Remote capability Docker smoke
         run: bun run test:remote-capabilities:docker
@@ -141,7 +156,7 @@ jobs:
         uses: ./.github/actions/setup-bun-workspace
         with:
           bun-version: ${{ env.BUN_VERSION }}
-          install-command: bun install --ignore-scripts
+          install-command: bun install
           install-native-deps: "false"
           skip-avatar-clone: "true"
           no-vision-deps: "true"
@@ -185,7 +200,7 @@ jobs:
         uses: ./.github/actions/setup-bun-workspace
         with:
           bun-version: ${{ env.BUN_VERSION }}
-          install-command: bun install --ignore-scripts
+          install-command: bun install
           install-native-deps: "false"
           skip-avatar-clone: "true"
           no-vision-deps: "true"
@@ -226,7 +241,7 @@ jobs:
         uses: ./.github/actions/setup-bun-workspace
         with:
           bun-version: ${{ env.BUN_VERSION }}
-          install-command: bun install --ignore-scripts
+          install-command: bun install
           install-native-deps: "false"
 
       - name: Build workspace packages for Vitest resolution
@@ -248,10 +263,15 @@ jobs:
       - name: Check cloud secrets
         id: cloud
         env:
+          EVENT_NAME: ${{ github.event_name }}
           ELIZAOS_CLOUD_API_KEY: ${{ secrets.ELIZAOS_CLOUD_API_KEY != '' && secrets.ELIZAOS_CLOUD_API_KEY || secrets.ELIZACLOUD_API_KEY }}
         run: |
           if [ -z "${ELIZAOS_CLOUD_API_KEY}" ]; then
-            echo "::warning::No Eliza Cloud API key configured - skipping optional cloud live E2E."
+            if [ "${EVENT_NAME}" = "workflow_dispatch" ] || [ "${EVENT_NAME}" = "schedule" ]; then
+              echo "::error::No Eliza Cloud API key configured for observed cloud live E2E."
+              exit 1
+            fi
+            echo "::warning::No Eliza Cloud API key configured - skipping optional cloud live E2E for ${EVENT_NAME}."
             echo "skip=true" >> "$GITHUB_OUTPUT"
           else
             echo "skip=false" >> "$GITHUB_OUTPUT"
@@ -274,7 +294,7 @@ jobs:
         uses: ./.github/actions/setup-bun-workspace
         with:
           bun-version: ${{ env.BUN_VERSION }}
-          install-command: bun install --ignore-scripts
+          install-command: bun install
           install-native-deps: "false"
           skip-avatar-clone: "true"
           no-vision-deps: "true"
@@ -303,14 +323,44 @@ jobs:
           ELIZAOS_CLOUD_BASE_URL: ${{ secrets.ELIZAOS_CLOUD_BASE_URL }}
           ELIZA_CLOUD_BASE_URL: ${{ secrets.ELIZAOS_CLOUD_BASE_URL }}
 
+      - name: Prepare remote capability cloud live report directory
+        if: steps.cloud.outputs.skip != 'true' && (github.event_name == 'workflow_dispatch' || github.event_name == 'schedule')
+        run: |
+          rm -rf reports/remote-capabilities/cloud
+          mkdir -p reports/remote-capabilities/cloud
+
       - name: Remote capability cloud sandbox live smoke
         if: steps.cloud.outputs.skip != 'true' && (github.event_name == 'workflow_dispatch' || github.event_name == 'schedule')
         run: bun run --cwd packages/agent test:remote-capabilities:cloud-live
         env:
           ELIZA_LIVE_TEST: "1"
+          ELIZA_REMOTE_CAPABILITY_LIVE_REPORT_DIR: reports/remote-capabilities/cloud
           ELIZAOS_CLOUD_API_KEY: ${{ secrets.ELIZAOS_CLOUD_API_KEY != '' && secrets.ELIZAOS_CLOUD_API_KEY || secrets.ELIZACLOUD_API_KEY }}
           ELIZAOS_CLOUD_BASE_URL: ${{ secrets.ELIZAOS_CLOUD_BASE_URL }}
           ELIZA_CLOUD_BASE_URL: ${{ secrets.ELIZAOS_CLOUD_BASE_URL }}
+
+      - name: Validate remote capability cloud live report
+        if: steps.cloud.outputs.skip != 'true' && (github.event_name == 'workflow_dispatch' || github.event_name == 'schedule')
+        run: bun run test:remote-capabilities:validate-live-reports --kind cloud --expect-count 1 --max-age-minutes 90 --max-future-minutes 5 --require-ci --require-file-identity --match-github-env reports/remote-capabilities/cloud
+
+      - name: Upload remote capability cloud live report
+        if: steps.cloud.outputs.skip != 'true' && (github.event_name == 'workflow_dispatch' || github.event_name == 'schedule')
+        uses: actions/upload-artifact@v6
+        with:
+          name: remote-capability-cloud-live-report
+          path: reports/remote-capabilities/cloud/*.json
+          if-no-files-found: error
+          retention-days: 30
+
+      - name: Note remote capability cloud live smoke not observed
+        if: steps.cloud.outputs.skip != 'true' && github.event_name != 'workflow_dispatch' && github.event_name != 'schedule'
+        run: |
+          echo "::notice::Remote capability cloud sandbox live smoke is only observed on workflow_dispatch or schedule events."
+          {
+            echo "### Remote capability cloud live smoke"
+            echo ""
+            echo "Not observed for event \`${{ github.event_name }}\`. The full-surface cloud sandbox smoke runs only on \`workflow_dispatch\` and \`schedule\`."
+          } >> "$GITHUB_STEP_SUMMARY"
 
   provider-live-e2e:
     name: Remote Capability Provider Live E2E
@@ -324,14 +374,41 @@ jobs:
       - name: Check provider endpoint secrets
         id: providers
         env:
+          EVENT_NAME: ${{ github.event_name }}
           E2B_URL: ${{ secrets.ELIZA_REMOTE_CAPABILITY_E2B_URL }}
           HOME_URL: ${{ secrets.ELIZA_REMOTE_CAPABILITY_HOME_MACHINE_URL }}
           MOBILE_URL: ${{ secrets.ELIZA_REMOTE_CAPABILITY_MOBILE_COMPANION_URL }}
           DESKTOP_URL: ${{ secrets.ELIZA_REMOTE_CAPABILITY_DESKTOP_COMPANION_URL }}
         run: |
           if [ -z "${E2B_URL}${HOME_URL}${MOBILE_URL}${DESKTOP_URL}" ]; then
+            if [ "${EVENT_NAME}" = "workflow_dispatch" ] || [ "${EVENT_NAME}" = "schedule" ]; then
+              echo "::error::No remote capability provider endpoints configured for observed provider live E2E."
+              exit 1
+            fi
             echo "::warning::No remote capability provider endpoints configured - skipping optional provider live E2E."
             echo "skip=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          missing_required=()
+          if [ -z "${E2B_URL}" ]; then
+            missing_required+=("ELIZA_REMOTE_CAPABILITY_E2B_URL")
+          fi
+          if [ -z "${HOME_URL}" ]; then
+            missing_required+=("ELIZA_REMOTE_CAPABILITY_HOME_MACHINE_URL")
+          fi
+          if [ -z "${MOBILE_URL}" ]; then
+            missing_required+=("ELIZA_REMOTE_CAPABILITY_MOBILE_COMPANION_URL")
+          fi
+
+          if [ "${#missing_required[@]}" -gt 0 ]; then
+            message="Missing required remote capability provider endpoint secrets: ${missing_required[*]}"
+            if [ "${EVENT_NAME}" = "workflow_dispatch" ] || [ "${EVENT_NAME}" = "schedule" ]; then
+              echo "::error::${message}"
+              exit 1
+            fi
+            echo "::notice::${message}. Provider live smoke is only observed on workflow_dispatch or schedule events."
+            echo "skip=false" >> "$GITHUB_OUTPUT"
           else
             echo "skip=false" >> "$GITHUB_OUTPUT"
           fi
@@ -353,16 +430,23 @@ jobs:
         uses: ./.github/actions/setup-bun-workspace
         with:
           bun-version: ${{ env.BUN_VERSION }}
-          install-command: bun install --ignore-scripts
+          install-command: bun install
           install-native-deps: "false"
           skip-avatar-clone: "true"
           no-vision-deps: "true"
+
+      - name: Prepare remote capability provider live report directory
+        if: steps.providers.outputs.skip != 'true' && (github.event_name == 'workflow_dispatch' || github.event_name == 'schedule')
+        run: |
+          rm -rf reports/remote-capabilities/providers
+          mkdir -p reports/remote-capabilities/providers
 
       - name: Remote capability URL-backed provider live smoke
         if: steps.providers.outputs.skip != 'true' && (github.event_name == 'workflow_dispatch' || github.event_name == 'schedule')
         run: bun run --cwd packages/agent test:remote-capabilities:provider-live
         env:
           ELIZA_LIVE_TEST: "1"
+          ELIZA_REMOTE_CAPABILITY_LIVE_REPORT_DIR: reports/remote-capabilities/providers
           ELIZA_REMOTE_CAPABILITY_E2B_URL: ${{ secrets.ELIZA_REMOTE_CAPABILITY_E2B_URL }}
           ELIZA_REMOTE_CAPABILITY_E2B_TOKEN: ${{ secrets.ELIZA_REMOTE_CAPABILITY_E2B_TOKEN }}
           ELIZA_REMOTE_CAPABILITY_E2B_ENDPOINT_ID: ${{ secrets.ELIZA_REMOTE_CAPABILITY_E2B_ENDPOINT_ID }}
@@ -379,6 +463,29 @@ jobs:
           ELIZA_REMOTE_CAPABILITY_DESKTOP_COMPANION_TOKEN: ${{ secrets.ELIZA_REMOTE_CAPABILITY_DESKTOP_COMPANION_TOKEN }}
           ELIZA_REMOTE_CAPABILITY_DESKTOP_COMPANION_ENDPOINT_ID: ${{ secrets.ELIZA_REMOTE_CAPABILITY_DESKTOP_COMPANION_ENDPOINT_ID }}
           ELIZA_REMOTE_CAPABILITY_DESKTOP_COMPANION_MODULES: ${{ secrets.ELIZA_REMOTE_CAPABILITY_DESKTOP_COMPANION_MODULES }}
+
+      - name: Validate remote capability provider live reports
+        if: steps.providers.outputs.skip != 'true' && (github.event_name == 'workflow_dispatch' || github.event_name == 'schedule')
+        run: bun run test:remote-capabilities:validate-live-reports --kind provider --expect-count 3..4 --max-age-minutes 90 --max-future-minutes 5 --allowed-providers e2b,home-machine,mobile-companion,desktop-companion --require-providers e2b,home-machine,mobile-companion --require-ci --require-file-identity --match-github-env reports/remote-capabilities/providers
+
+      - name: Upload remote capability provider live report
+        if: steps.providers.outputs.skip != 'true' && (github.event_name == 'workflow_dispatch' || github.event_name == 'schedule')
+        uses: actions/upload-artifact@v6
+        with:
+          name: remote-capability-provider-live-report
+          path: reports/remote-capabilities/providers/*.json
+          if-no-files-found: error
+          retention-days: 30
+
+      - name: Note provider live smoke not observed
+        if: steps.providers.outputs.skip != 'true' && github.event_name != 'workflow_dispatch' && github.event_name != 'schedule'
+        run: |
+          echo "::notice::Remote capability provider live smoke is only observed on workflow_dispatch or schedule events."
+          {
+            echo "### Remote capability provider live smoke"
+            echo ""
+            echo "Endpoint secrets are configured, but the full-surface provider live smoke was not observed for event \`${{ github.event_name }}\`. It runs only on \`workflow_dispatch\` and \`schedule\`."
+          } >> "$GITHUB_STEP_SUMMARY"
 
   test-status:
     name: All Tests Passed

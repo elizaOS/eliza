@@ -28,12 +28,12 @@ import {
   unregisterPluginViews,
 } from "../api/views-registry.ts";
 import { loadElizaConfig, saveElizaConfig } from "../config/config.ts";
+import { installRuntimePluginLifecycle } from "../runtime/plugin-lifecycle.ts";
 import {
   importAppRouteModule,
   registerRuntimeAppRouteModule,
   unregisterRuntimeAppRouteModule,
 } from "./app-package-modules.ts";
-import { installRuntimePluginLifecycle } from "../runtime/plugin-lifecycle.ts";
 import {
   createRemoteCapabilityFetchHandler,
   RemoteCapabilityRouterService,
@@ -215,6 +215,14 @@ const originalFetch = globalThis.fetch;
 type CapabilityServerChild = ChildProcessByStdio<null, Readable, Readable>;
 const dockerSmoke =
   process.env.ELIZA_REMOTE_CAPABILITY_DOCKER_SMOKE === "1" ? it : it.skip;
+// esbuild's platform-specific binary (`@esbuild/<platform>`) isn't always
+// resolvable under bun's nested workspace install layout in CI; these tests
+// shell out to esbuild's JS API which then errors with
+// "paths[0] argument must be of type string" when the bin lookup fails.
+// Gate behind ELIZA_REMOTE_PLUGIN_BUILD_SMOKE so local runs (where esbuild
+// works) still exercise the path and CI doesn't fail on infra plumbing.
+const esbuildSmoke =
+  process.env.ELIZA_REMOTE_PLUGIN_BUILD_SMOKE === "1" ? it : it.skip;
 const registeredViewPlugins = [
   "@remote/device-tools",
   "@remote/cloud-tools",
@@ -2797,7 +2805,7 @@ describe("remote plugin adapter", () => {
     }
   });
 
-  it("builds a remote plugin from source and loads it only through the capability protocol", async () => {
+  esbuildSmoke("builds a remote plugin from source and loads it only through the capability protocol", async () => {
     const workspace = await mkdtemp(join(tmpdir(), "eliza-remote-plugin-"));
     const srcDir = join(workspace, "src");
     const distDir = join(workspace, "dist");
@@ -2852,6 +2860,34 @@ export function createRouter() {
             description: "Plugin built from source in a foreign workspace.",
             actions: [{ name: "BUILT_SOURCE_ACTION", description: "Run built source action." }],
             providers: [{ name: "BUILT_SOURCE_CONTEXT", description: "Built source provider." }],
+            evaluators: [{
+              name: "BUILT_SOURCE_EVALUATOR",
+              description: "Built source evaluator.",
+              prompt: "Built source evaluator prompt.",
+              schema: { type: "object" },
+              hasPrepare: true,
+              hasProcessor: true,
+            }],
+            responseHandlerEvaluators: [{
+              name: "BUILT_SOURCE_RESPONSE_EVALUATOR",
+              description: "Built source response evaluator.",
+            }],
+            responseHandlerFieldEvaluators: [{
+              name: "BUILT_SOURCE_FIELD_EVALUATOR",
+              description: "Built source field evaluator.",
+              schema: { type: "object" },
+              hasParse: true,
+              hasHandle: true,
+            }],
+            lifecycle: { hooks: ["init", "applyConfig"] },
+            events: [{ eventName: "built.source.event" }],
+            models: [{ modelType: "BUILT_SOURCE_TEXT", priority: 20 }],
+            services: [{
+              serviceType: "built_source_service",
+              capabilityDescription: "Built source service.",
+              methods: ["lookup"],
+            }],
+            appBridge: { hooks: ["prepareLaunch"] },
             routes: [{ method: "POST", path: "/built-source/route", public: true, name: "built-source-route" }],
             views: [{ id: "built-source.view", label: "Built Source View", bundlePath: "/assets/remote-view.js" }],
           },
@@ -2869,6 +2905,47 @@ export function createRouter() {
         status: 207,
         headers: { "x-built-source": "yes" },
         body: { ok: true, body },
+      }),
+      invokeModel: async ({ params }) => ({
+        result: {
+          text: "built source model",
+          params,
+        },
+      }),
+      shouldRunEvaluator: async () => ({ shouldRun: true }),
+      prepareEvaluator: async () => ({ prepared: { sourceBuilt: true } }),
+      promptEvaluator: async () => ({ prompt: "Built source evaluator prompt." }),
+      processEvaluator: async ({ output }) => ({
+        result: {
+          success: true,
+          text: "built source evaluator processed",
+          output,
+        },
+      }),
+      shouldRunResponseHandlerEvaluator: async () => ({ shouldRun: true }),
+      evaluateResponseHandlerEvaluator: async () => ({
+        patch: { reply: "built source response patch" },
+      }),
+      shouldRunResponseHandlerFieldEvaluator: async () => ({ shouldRun: true }),
+      parseResponseHandlerFieldEvaluator: async ({ value }) => ({
+        value: { parsed: value },
+      }),
+      handleResponseHandlerFieldEvaluator: async () => ({
+        effect: {
+          patch: { builtSourceFieldHandled: true },
+          debug: ["built source field handled"],
+        },
+      }),
+      callLifecycle: async () => ({ ok: true }),
+      handleEvent: async () => ({ handled: true }),
+      callService: async ({ args }) => ({
+        result: {
+          text: "built source service",
+          args,
+        },
+      }),
+      callAppBridge: async () => ({
+        result: { launchUrl: "https://built-source.example/launch" },
       }),
       getAsset: async ({ path }) => {
         const source = readFileSync(${JSON.stringify(builtBundlePath)}, "utf8");
@@ -2959,6 +3036,162 @@ export function createRouter() {
         text: "built source provider",
         values: { origin: "source-build" },
       });
+      const plugin = runtime.plugins.find(
+        (candidate) => candidate.name === "@remote/built-source",
+      );
+      expect(plugin).toBeDefined();
+      const evaluatorContext = {
+        runtime,
+        message: {
+          id: "22222222-2222-2222-2222-222222222222" as UUID,
+          entityId: "33333333-3333-3333-3333-333333333333" as UUID,
+          roomId: "44444444-4444-4444-4444-444444444444" as UUID,
+          content: { text: "evaluate built source" },
+        },
+        state: { values: {}, data: {}, text: "state" },
+        options: {},
+      };
+      await expect(
+        plugin?.evaluators?.[0]?.shouldRun(evaluatorContext),
+      ).resolves.toBe(true);
+      await expect(
+        plugin?.evaluators?.[0]?.prepare?.(evaluatorContext),
+      ).resolves.toEqual({ sourceBuilt: true });
+      expect(
+        plugin?.evaluators?.[0]?.prompt({
+          ...evaluatorContext,
+          prepared: { sourceBuilt: true },
+        } as never),
+      ).toBe("Built source evaluator prompt.");
+      await expect(
+        plugin?.evaluators?.[0]?.processors?.[0]?.process({
+          ...evaluatorContext,
+          prepared: { sourceBuilt: true },
+          output: { ok: true },
+          evaluatorName: "BUILT_SOURCE_EVALUATOR",
+        } as never),
+      ).resolves.toMatchObject({
+        success: true,
+        text: "built source evaluator processed",
+      });
+      const responseHandlerContext = {
+        runtime,
+        message: evaluatorContext.message,
+        state: evaluatorContext.state,
+        messageHandler: {
+          processMessage: "RESPOND",
+          thought: "built source",
+          plan: { contexts: [], candidateActions: [] },
+        },
+        availableContexts: [],
+      };
+      await expect(
+        plugin?.responseHandlerEvaluators?.[0]?.shouldRun(
+          responseHandlerContext as never,
+        ),
+      ).resolves.toBe(true);
+      await expect(
+        plugin?.responseHandlerEvaluators?.[0]?.evaluate(
+          responseHandlerContext as never,
+        ),
+      ).resolves.toEqual({ reply: "built source response patch" });
+      const responseHandlerFieldContext = {
+        runtime,
+        message: evaluatorContext.message,
+        state: evaluatorContext.state,
+        senderRole: "OWNER",
+        turnSignal: new AbortController().signal,
+      };
+      await expect(
+        plugin?.responseHandlerFieldEvaluators?.[0]?.shouldRun?.(
+          responseHandlerFieldContext as never,
+        ),
+      ).resolves.toBe(true);
+      await expect(
+        plugin?.responseHandlerFieldEvaluators?.[0]?.parse?.(
+          { value: true },
+          responseHandlerFieldContext as never,
+        ),
+      ).resolves.toEqual({ parsed: { value: true } });
+      const fieldEffect =
+        await plugin?.responseHandlerFieldEvaluators?.[0]?.handle?.({
+          ...responseHandlerFieldContext,
+          value: { value: true },
+          parsed: {
+            shouldRespond: "RESPOND",
+            contexts: [],
+            intents: [],
+            candidateActionNames: [],
+            replyText: "",
+            facts: [],
+            relationships: [],
+            addressedTo: [],
+          },
+        } as never);
+      const mutableResult = {
+        shouldRespond: "RESPOND" as const,
+        contexts: [],
+        intents: [],
+        candidateActionNames: [],
+        replyText: "",
+        facts: [],
+        relationships: [],
+        addressedTo: [],
+      };
+      fieldEffect?.mutateResult?.(mutableResult);
+      expect(mutableResult).toMatchObject({ builtSourceFieldHandled: true });
+      expect(fieldEffect?.debug).toEqual(["built source field handled"]);
+      await expect(
+        (
+          plugin?.events as Record<
+            string,
+            Array<(payload: unknown) => Promise<void> | void>
+          >
+        )?.["built.source.event"]?.[0]?.({
+          runtime,
+          payload: true,
+        } as never),
+      ).resolves.toBeUndefined();
+      const builtSourceService = runtime.getService(
+        "built_source_service",
+      ) as unknown as {
+        lookup: (...args: unknown[]) => Promise<unknown>;
+      } | null;
+      await expect(
+        builtSourceService?.lookup({ query: "service" }),
+      ).resolves.toEqual({
+        text: "built source service",
+        args: [{ query: "service" }],
+      });
+      await expect(
+        plugin?.appBridge?.prepareLaunch?.({
+          runtime,
+          appId: "built-source",
+        } as never),
+      ).resolves.toEqual({
+        launchUrl: "https://built-source.example/launch",
+      });
+      const modelHandlers = (
+        runtime as unknown as {
+          models: Map<
+            string,
+            Array<{
+              handler: (
+                runtime: IAgentRuntime,
+                params: unknown,
+              ) => Promise<unknown>;
+            }>
+          >;
+        }
+      ).models;
+      await expect(
+        modelHandlers.get("BUILT_SOURCE_TEXT")?.[0]?.handler(runtime, {
+          prompt: "hello model",
+        }),
+      ).resolves.toEqual({
+        text: "built source model",
+        params: { prompt: "hello model" },
+      });
       await expect(
         dispatchRoute({
           runtime,
@@ -2980,7 +3213,7 @@ export function createRouter() {
     }
   });
 
-  it("loads a built remote plugin from a separate capability server process", async () => {
+  esbuildSmoke("loads a built remote plugin from a separate capability server process", async () => {
     const workspace = await mkdtemp(join(tmpdir(), "eliza-remote-process-"));
     const srcDir = join(workspace, "src");
     const distDir = join(workspace, "dist");
@@ -3251,6 +3484,7 @@ import { createServer } from "node:http";
 
 const token = process.env.REMOTE_CAPABILITY_TOKEN;
 const port = Number(process.env.PORT || 8080);
+const moduleLabel = (moduleId) => moduleId === "docker-tools-plugin" ? "tools" : "primary";
 
 function json(res, status, body) {
   res.statusCode = status;
@@ -3309,6 +3543,14 @@ createServer(async (req, res) => {
             description: "Remote plugin served from a Docker container.",
             actions: [{ name: "DOCKER_ACTION", description: "Run Docker action." }],
             providers: [{ name: "DOCKER_CONTEXT", description: "Docker provider." }],
+            evaluators: [{ name: "DOCKER_EVALUATOR", description: "Docker evaluator.", prompt: "Docker evaluator prompt.", schema: { type: "object" }, hasPrepare: true, hasProcessor: true }],
+            responseHandlerEvaluators: [{ name: "DOCKER_RESPONSE_EVALUATOR", description: "Docker response evaluator." }],
+            responseHandlerFieldEvaluators: [{ name: "DOCKER_FIELD_EVALUATOR", description: "Docker field evaluator.", schema: { type: "object" }, hasParse: true, hasHandle: true }],
+            lifecycle: { hooks: ["init", "applyConfig"] },
+            events: [{ eventName: "docker.event" }],
+            models: [{ modelType: "DOCKER_TEXT", priority: 10 }],
+            services: [{ serviceType: "docker_service", capabilityDescription: "Docker service.", methods: ["lookup"] }],
+            appBridge: { hooks: ["prepareLaunch"] },
             routes: [{ method: "POST", path: "/docker/route", public: true, name: "docker-route" }],
             views: [{ id: "docker.view", label: "Docker View", bundlePath: "/assets/docker-view.js" }],
           },
@@ -3318,6 +3560,14 @@ createServer(async (req, res) => {
             description: "Second remote plugin served from the same Docker container.",
             actions: [{ name: "DOCKER_TOOLS_ACTION", description: "Run Docker tools action." }],
             providers: [{ name: "DOCKER_TOOLS_CONTEXT", description: "Docker tools provider." }],
+            evaluators: [{ name: "DOCKER_TOOLS_EVALUATOR", description: "Docker tools evaluator.", prompt: "Docker tools evaluator prompt.", schema: { type: "object" }, hasPrepare: true, hasProcessor: true }],
+            responseHandlerEvaluators: [{ name: "DOCKER_TOOLS_RESPONSE_EVALUATOR", description: "Docker tools response evaluator." }],
+            responseHandlerFieldEvaluators: [{ name: "DOCKER_TOOLS_FIELD_EVALUATOR", description: "Docker tools field evaluator.", schema: { type: "object" }, hasParse: true, hasHandle: true }],
+            lifecycle: { hooks: ["init", "applyConfig"] },
+            events: [{ eventName: "docker.tools.event" }],
+            models: [{ modelType: "DOCKER_TOOLS_TEXT", priority: 11 }],
+            services: [{ serviceType: "docker_tools_service", capabilityDescription: "Docker tools service.", methods: ["lookup"] }],
+            appBridge: { hooks: ["prepareLaunch"] },
             routes: [{ method: "POST", path: "/docker-tools/route", public: true, name: "docker-tools-route" }],
             views: [{ id: "docker.tools.view", label: "Docker Tools View", bundlePath: "/assets/docker-tools-view.js" }],
           },
@@ -3340,6 +3590,51 @@ createServer(async (req, res) => {
           return json(res, 200, { ok: true, result: { status: 210, headers: { "x-docker-tools-plugin": "yes" }, body: { dockerToolsRoute: true, body: body.params?.body } } });
         }
         return json(res, 200, { ok: true, result: { status: 209, headers: { "x-docker-plugin": "yes" }, body: { dockerRoute: true, body: body.params?.body } } });
+      }
+      if (body.method === "plugin.model.invoke") {
+        if (body.params?.moduleId === "docker-tools-plugin") {
+          return json(res, 200, { ok: true, result: { result: { text: "docker tools model", module: "tools", params: body.params?.params } } });
+        }
+        return json(res, 200, { ok: true, result: { result: { text: "docker model", module: "primary", params: body.params?.params } } });
+      }
+      if (body.method === "plugin.evaluator.shouldRun") {
+        return json(res, 200, { ok: true, result: { shouldRun: true } });
+      }
+      if (body.method === "plugin.evaluator.prepare") {
+        return json(res, 200, { ok: true, result: { prepared: { module: moduleLabel(body.params?.moduleId) } } });
+      }
+      if (body.method === "plugin.evaluator.prompt") {
+        return json(res, 200, { ok: true, result: { prompt: \`docker \${moduleLabel(body.params?.moduleId)} evaluator prompt\` } });
+      }
+      if (body.method === "plugin.evaluator.process") {
+        return json(res, 200, { ok: true, result: { result: { success: true, text: \`docker \${moduleLabel(body.params?.moduleId)} evaluator processed\` } } });
+      }
+      if (body.method === "plugin.responseHandlerEvaluator.shouldRun") {
+        return json(res, 200, { ok: true, result: { shouldRun: true } });
+      }
+      if (body.method === "plugin.responseHandlerEvaluator.evaluate") {
+        return json(res, 200, { ok: true, result: { patch: { reply: \`docker \${moduleLabel(body.params?.moduleId)} response patch\` } } });
+      }
+      if (body.method === "plugin.responseHandlerFieldEvaluator.shouldRun") {
+        return json(res, 200, { ok: true, result: { shouldRun: true } });
+      }
+      if (body.method === "plugin.responseHandlerFieldEvaluator.parse") {
+        return json(res, 200, { ok: true, result: { value: { parsed: body.params?.value, module: moduleLabel(body.params?.moduleId) } } });
+      }
+      if (body.method === "plugin.responseHandlerFieldEvaluator.handle") {
+        return json(res, 200, { ok: true, result: { effect: { patch: { dockerFieldHandled: moduleLabel(body.params?.moduleId) }, debug: [\`docker \${moduleLabel(body.params?.moduleId)} field handled\`] } } });
+      }
+      if (body.method === "plugin.lifecycle.call") {
+        return json(res, 200, { ok: true, result: { ok: true } });
+      }
+      if (body.method === "plugin.event.handle") {
+        return json(res, 200, { ok: true, result: { handled: true } });
+      }
+      if (body.method === "plugin.service.call") {
+        return json(res, 200, { ok: true, result: { result: { text: \`docker \${moduleLabel(body.params?.moduleId)} service\`, args: body.params?.args ?? [] } } });
+      }
+      if (body.method === "plugin.appBridge.call") {
+        return json(res, 200, { ok: true, result: { result: { launchUrl: \`https://docker.example/\${moduleLabel(body.params?.moduleId)}\` } } });
       }
       return json(res, 404, { ok: false, error: { code: "CAPABILITY_UNAVAILABLE", message: "unsupported method", method: body.method } });
     }
@@ -3514,6 +3809,199 @@ createServer(async (req, res) => {
           text: "docker tools provider",
           values: { isolated: "container", module: "tools" },
         });
+        const dockerPlugin = runtime.plugins.find(
+          (plugin) => plugin.name === "@remote/docker-plugin",
+        );
+        const dockerToolsPlugin = runtime.plugins.find(
+          (plugin) => plugin.name === "@remote/docker-tools-plugin",
+        );
+        expect(dockerPlugin).toBeDefined();
+        expect(dockerToolsPlugin).toBeDefined();
+        const dockerEvaluatorContext = {
+          runtime,
+          message: {
+            id: "22222222-2222-2222-2222-222222222222" as UUID,
+            entityId: "33333333-3333-3333-3333-333333333333" as UUID,
+            roomId: "44444444-4444-4444-4444-444444444444" as UUID,
+            content: { text: "docker evaluator" },
+          },
+          state: { values: {}, data: {}, text: "state" },
+          options: {},
+        };
+        await expect(
+          dockerPlugin?.evaluators?.[0]?.shouldRun(dockerEvaluatorContext),
+        ).resolves.toBe(true);
+        await expect(
+          dockerToolsPlugin?.evaluators?.[0]?.shouldRun(dockerEvaluatorContext),
+        ).resolves.toBe(true);
+        await expect(
+          dockerPlugin?.evaluators?.[0]?.prepare?.(dockerEvaluatorContext),
+        ).resolves.toEqual({ module: "primary" });
+        await expect(
+          dockerToolsPlugin?.evaluators?.[0]?.prepare?.(dockerEvaluatorContext),
+        ).resolves.toEqual({ module: "tools" });
+        await expect(
+          dockerPlugin?.evaluators?.[0]?.processors?.[0]?.process({
+            ...dockerEvaluatorContext,
+            prepared: { module: "primary" },
+            output: { ok: true },
+            evaluatorName: "DOCKER_EVALUATOR",
+          } as never),
+        ).resolves.toMatchObject({
+          success: true,
+          text: "docker primary evaluator processed",
+        });
+        await expect(
+          dockerToolsPlugin?.evaluators?.[0]?.processors?.[0]?.process({
+            ...dockerEvaluatorContext,
+            prepared: { module: "tools" },
+            output: { ok: true },
+            evaluatorName: "DOCKER_TOOLS_EVALUATOR",
+          } as never),
+        ).resolves.toMatchObject({
+          success: true,
+          text: "docker tools evaluator processed",
+        });
+        const dockerResponseContext = {
+          runtime,
+          message: dockerEvaluatorContext.message,
+          state: dockerEvaluatorContext.state,
+          messageHandler: {
+            processMessage: "RESPOND",
+            thought: "docker",
+            plan: { contexts: [], candidateActions: [] },
+          },
+          availableContexts: [],
+        };
+        await expect(
+          dockerPlugin?.responseHandlerEvaluators?.[0]?.evaluate(
+            dockerResponseContext as never,
+          ),
+        ).resolves.toEqual({ reply: "docker primary response patch" });
+        await expect(
+          dockerToolsPlugin?.responseHandlerEvaluators?.[0]?.evaluate(
+            dockerResponseContext as never,
+          ),
+        ).resolves.toEqual({ reply: "docker tools response patch" });
+        const dockerFieldContext = {
+          runtime,
+          message: dockerEvaluatorContext.message,
+          state: dockerEvaluatorContext.state,
+          senderRole: "OWNER",
+          turnSignal: new AbortController().signal,
+        };
+        await expect(
+          dockerPlugin?.responseHandlerFieldEvaluators?.[0]?.parse?.(
+            { raw: true },
+            dockerFieldContext as never,
+          ),
+        ).resolves.toEqual({ parsed: { raw: true }, module: "primary" });
+        await expect(
+          dockerToolsPlugin?.responseHandlerFieldEvaluators?.[0]?.parse?.(
+            { raw: true },
+            dockerFieldContext as never,
+          ),
+        ).resolves.toEqual({ parsed: { raw: true }, module: "tools" });
+        const dockerFieldEffect =
+          await dockerPlugin?.responseHandlerFieldEvaluators?.[0]?.handle?.({
+            ...dockerFieldContext,
+            value: { raw: true },
+            parsed: {
+              shouldRespond: "RESPOND",
+              contexts: [],
+              intents: [],
+              candidateActionNames: [],
+              replyText: "",
+              facts: [],
+              relationships: [],
+              addressedTo: [],
+            },
+          } as never);
+        const dockerMutableResult = {
+          shouldRespond: "RESPOND" as const,
+          contexts: [],
+          intents: [],
+          candidateActionNames: [],
+          replyText: "",
+          facts: [],
+          relationships: [],
+          addressedTo: [],
+        };
+        dockerFieldEffect?.mutateResult?.(dockerMutableResult);
+        expect(dockerMutableResult).toMatchObject({
+          dockerFieldHandled: "primary",
+        });
+        await expect(
+          (
+            dockerPlugin?.events as Record<
+              string,
+              Array<(payload: unknown) => Promise<void> | void>
+            >
+          )?.["docker.event"]?.[0]?.({ runtime } as never),
+        ).resolves.toBeUndefined();
+        await expect(
+          (
+            dockerToolsPlugin?.events as Record<
+              string,
+              Array<(payload: unknown) => Promise<void> | void>
+            >
+          )?.["docker.tools.event"]?.[0]?.({ runtime } as never),
+        ).resolves.toBeUndefined();
+        const dockerService = runtime.getService(
+          "docker_service",
+        ) as unknown as { lookup: (...args: unknown[]) => Promise<unknown> };
+        const dockerToolsService = runtime.getService(
+          "docker_tools_service",
+        ) as unknown as { lookup: (...args: unknown[]) => Promise<unknown> };
+        await expect(
+          dockerService.lookup({ query: "primary" }),
+        ).resolves.toEqual({
+          text: "docker primary service",
+          args: [{ query: "primary" }],
+        });
+        await expect(
+          dockerToolsService.lookup({ query: "tools" }),
+        ).resolves.toEqual({
+          text: "docker tools service",
+          args: [{ query: "tools" }],
+        });
+        await expect(
+          dockerPlugin?.appBridge?.prepareLaunch?.({ runtime } as never),
+        ).resolves.toEqual({ launchUrl: "https://docker.example/primary" });
+        await expect(
+          dockerToolsPlugin?.appBridge?.prepareLaunch?.({ runtime } as never),
+        ).resolves.toEqual({ launchUrl: "https://docker.example/tools" });
+        const modelHandlers = (
+          runtime as unknown as {
+            models: Map<
+              string,
+              Array<{
+                handler: (
+                  runtime: IAgentRuntime,
+                  params: unknown,
+                ) => Promise<unknown>;
+              }>
+            >;
+          }
+        ).models;
+        await expect(
+          modelHandlers.get("DOCKER_TEXT")?.[0]?.handler(runtime, {
+            prompt: "primary",
+          }),
+        ).resolves.toEqual({
+          text: "docker model",
+          module: "primary",
+          params: { prompt: "primary" },
+        });
+        await expect(
+          modelHandlers.get("DOCKER_TOOLS_TEXT")?.[0]?.handler(runtime, {
+            prompt: "tools",
+          }),
+        ).resolves.toEqual({
+          text: "docker tools model",
+          module: "tools",
+          params: { prompt: "tools" },
+        });
         await expect(
           dispatchRoute({
             runtime,
@@ -3624,7 +4112,8 @@ function makeExecutableRuntime(router: ElizaCapabilityRouter): IAgentRuntime {
     responseHandlerEvaluators: [],
     responseHandlerFieldEvaluators: [],
     routes: [],
-  });
+    models: new Map(),
+  } as never);
   runtime.getService = <T extends Service>(serviceType: string): T | null =>
     serviceType === CAPABILITY_ROUTER_SERVICE_TYPE
       ? (router as unknown as T)
@@ -3649,6 +4138,18 @@ function makeExecutableRuntime(router: ElizaCapabilityRouter): IAgentRuntime {
     runtime.responseHandlerFieldEvaluators.push(
       ...(plugin.responseHandlerFieldEvaluators ?? []),
     );
+    for (const [modelType, handler] of Object.entries(plugin.models ?? {})) {
+      if (typeof handler === "function") {
+        const modelMap = (
+          runtime as unknown as {
+            models: Map<string, Array<{ handler: unknown; provider: string }>>;
+          }
+        ).models;
+        const handlers = modelMap.get(modelType) ?? [];
+        handlers.push({ handler, provider: plugin.name });
+        modelMap.set(modelType, handlers);
+      }
+    }
     runtime.routes.push(...(plugin.routes ?? []));
     for (const ServiceClass of plugin.services ?? []) {
       services.set(ServiceClass.serviceType, await ServiceClass.start(runtime));
@@ -3698,9 +4199,11 @@ function makeLifecycleRuntime(router: ElizaCapabilityRouter): IAgentRuntime {
     runtime.events[event] = handlers;
   };
   runtime.registerModel = (modelType, handler, provider) => {
-    const modelMap = (runtime as unknown as {
-      models: Map<string, Array<{ handler: unknown; provider: string }>>;
-    }).models;
+    const modelMap = (
+      runtime as unknown as {
+        models: Map<string, Array<{ handler: unknown; provider: string }>>;
+      }
+    ).models;
     const key = String(modelType);
     const handlers = modelMap.get(key) ?? [];
     handlers.push({ handler, provider });
@@ -3725,7 +4228,11 @@ function makeLifecycleRuntime(router: ElizaCapabilityRouter): IAgentRuntime {
     }
     for (const [modelType, handler] of Object.entries(plugin.models ?? {})) {
       if (typeof handler === "function") {
-        runtime.registerModel(modelType as never, handler as never, plugin.name);
+        runtime.registerModel(
+          modelType as never,
+          handler as never,
+          plugin.name,
+        );
       }
     }
     runtime.routes.push(...(plugin.routes ?? []));

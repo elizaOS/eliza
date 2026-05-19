@@ -51,6 +51,7 @@ try:
         _score_from_trust_json,
         _score_from_vendingbench_json,
         _score_from_visualwebbench_json,
+        _score_from_vision_language_json,
         _score_from_voiceagentbench_json,
         _score_from_voicebench_json,
         _score_from_voicebench_quality_json,
@@ -103,6 +104,7 @@ except ImportError:
         _score_from_trust_json,
         _score_from_vendingbench_json,
         _score_from_visualwebbench_json,
+        _score_from_vision_language_json,
         _score_from_voiceagentbench_json,
         _score_from_voicebench_json,
         _score_from_voicebench_quality_json,
@@ -535,9 +537,8 @@ def get_benchmark_registry(repo_root: Path) -> list[BenchmarkDefinition]:
         dataset = extra.get("dataset")
         if isinstance(dataset, str) and dataset in {"gaia", "sample", "jsonl"}:
             args.extend(["--dataset", dataset])
-        elif not os.getenv("HF_TOKEN"):
-            # Default to sample dataset when HF gated GAIA access is unavailable.
-            args.extend(["--dataset", "sample"])
+        else:
+            args.extend(["--dataset", "gaia"])
         dataset_path = extra.get("dataset_path")
         if isinstance(dataset_path, str) and dataset_path.strip():
             args.extend(["--dataset-path", dataset_path])
@@ -547,7 +548,7 @@ def get_benchmark_registry(repo_root: Path) -> list[BenchmarkDefinition]:
         else:
             args.extend(["--max-questions", "3"])
         quick = extra.get("quick_test")
-        if quick is None or quick is True:
+        if quick is True:
             args.append("--quick-test")
         return args
 
@@ -574,6 +575,8 @@ def get_benchmark_registry(repo_root: Path) -> list[BenchmarkDefinition]:
         dataset = extra.get("dataset")
         if isinstance(dataset, str) and dataset in {"gaia", "sample", "jsonl"}:
             args.extend(["--dataset", dataset])
+        else:
+            args.extend(["--dataset", "gaia"])
         max_q = extra.get("max_questions")
         if isinstance(max_q, int) and max_q > 0:
             args.extend(["--max-questions", str(max_q)])
@@ -779,10 +782,19 @@ def get_benchmark_registry(repo_root: Path) -> list[BenchmarkDefinition]:
             args.extend(["--execution-mode", execution_mode])
 
         providers = extra.get("providers")
-        if isinstance(providers, list):
+        legacy_defaults = ["claude-code", "swe-agent", "codex"]
+        if (
+            agent in {"eliza", "hermes", "openclaw"}
+            and isinstance(providers, list)
+            and [str(p) for p in providers] == legacy_defaults
+        ):
+            args.extend(["--providers", agent])
+        elif isinstance(providers, list):
             provider_values = [str(p) for p in providers if str(p).strip()]
             if provider_values:
                 args.extend(["--providers", *provider_values])
+        elif agent in {"eliza", "hermes", "openclaw"}:
+            args.extend(["--providers", agent])
         if extra.get("matrix") is True:
             args.append("--matrix")
         if extra.get("no_baseline") is True:
@@ -944,9 +956,12 @@ def get_benchmark_registry(repo_root: Path) -> list[BenchmarkDefinition]:
         fixture_path = extra.get("fixture_path")
         if isinstance(fixture_path, str) and fixture_path.strip():
             args.extend(["--fixture-path", fixture_path.strip()])
-        elif extra.get("hf") is True:
-            pass
-        else:
+        if (
+            extra.get("sample") is True
+            or extra.get("use_sample_tasks") is True
+            or extra.get("mock") is True
+            or provider_name == "mock"
+        ):
             args.append("--use-sample-tasks")
         hf_repo = extra.get("hf_repo")
         if isinstance(hf_repo, str) and hf_repo.strip():
@@ -1191,10 +1206,14 @@ def get_benchmark_registry(repo_root: Path) -> list[BenchmarkDefinition]:
         return find_latest_file(output_dir, glob_pattern="hyperliquid_bench-*.json")
 
     def _gauntlet_cmd(output_dir: Path, model: ModelSpec, extra: Mapping[str, JSONValue]) -> list[str]:
-        """Build command for Solana Gauntlet benchmark with Eliza bridge agent."""
-        agent = extra.get("agent")
+        """Build command for Solana Gauntlet benchmark with harness bridge agents."""
+        agent = str(extra.get("agent") or extra.get("harness") or "eliza").strip().lower()
         if agent == "python":
             agent_path = repo("benchmarks/gauntlet/agents/eliza_agent.py")
+        elif agent == "hermes":
+            agent_path = repo("benchmarks/gauntlet/agents/hermes_bridge_agent.py")
+        elif agent == "openclaw":
+            agent_path = repo("benchmarks/gauntlet/agents/openclaw_bridge_agent.py")
         else:
             agent_path = repo("benchmarks/gauntlet/agents/eliza_bridge_agent.py")
 
@@ -1361,21 +1380,25 @@ def get_benchmark_registry(repo_root: Path) -> list[BenchmarkDefinition]:
         directory (``cwd_rel`` resolves there).
         """
         args = ["bash", "./run.sh", f"--output-dir={output_dir}"]
-        agent = extra.get("agent")
-        if isinstance(agent, str) and agent.strip().lower() in {"hermes", "openclaw"}:
-            raise ValueError("VoiceBench only supports the Eliza TypeScript runtime today")
         profile_raw = extra.get("profile")
         provider_name = (model.provider or "").strip().lower()
         if isinstance(profile_raw, str) and profile_raw.strip():
             profile = profile_raw.strip().lower()
+        elif os.environ.get("VOICEBENCH_PROFILE", "").strip().lower():
+            profile = os.environ["VOICEBENCH_PROFILE"].strip().lower()
         elif extra.get("mock") is True or provider_name == "mock":
             profile = "mock"
+        elif provider_name == "cerebras" and os.environ.get("CEREBRAS_API_KEY"):
+            profile = "local-cerebras"
         elif provider_name == "elevenlabs":
             profile = "elevenlabs"
         else:
             profile = "groq"
-        if profile not in {"groq", "elevenlabs", "mock"}:
-            raise ValueError(f"voicebench: unsupported profile '{profile}' (expected groq, elevenlabs, or mock)")
+        if profile not in {"groq", "elevenlabs", "mock", "local-cerebras"}:
+            raise ValueError(
+                f"voicebench: unsupported profile '{profile}' "
+                "(expected groq, elevenlabs, local-cerebras, or mock)"
+            )
         args.append(f"--profile={profile}")
         iterations = extra.get("iterations")
         if isinstance(iterations, int) and iterations > 0:
@@ -1403,8 +1426,8 @@ def get_benchmark_registry(repo_root: Path) -> list[BenchmarkDefinition]:
         """Build the elizaos-mmau-audio CLI invocation.
 
         Routes through the Python-native Audio MMAU package. Pure MCQ -- no
-        LLM-judge dispatch. Defaults to the bundled fixture and oracle
-        agent when no provider is configured so smoke runs work offline.
+        LLM-judge dispatch. Real harness rows stream upstream HF audio by
+        default; mock/fixture mode remains explicit for smoke runs.
         """
         args = [
             python,
@@ -1436,7 +1459,7 @@ def get_benchmark_registry(repo_root: Path) -> list[BenchmarkDefinition]:
         limit_raw = extra.get("limit")
         if isinstance(limit_raw, int) and limit_raw > 0:
             args.extend(["--limit", str(limit_raw)])
-        if extra.get("hf") is True:
+        if extra.get("hf") is True or (agent != "mock" and extra.get("fixture") is not True):
             args.append("--hf")
         if model.model:
             args.extend(["--model", model.model])
@@ -1488,6 +1511,14 @@ def get_benchmark_registry(repo_root: Path) -> list[BenchmarkDefinition]:
         stt_provider = extra.get("stt_provider")
         if isinstance(stt_provider, str) and stt_provider.strip():
             args.extend(["--stt-provider", stt_provider.strip()])
+        else:
+            env_stt_provider = (
+                os.environ.get("VOICEBENCH_QUALITY_STT_PROVIDER")
+                or os.environ.get("VOICEBENCH_STT_PROVIDER")
+                or ""
+            ).strip()
+            if env_stt_provider:
+                args.extend(["--stt-provider", env_stt_provider])
         if extra.get("fixtures") is True:
             args.append("--fixtures")
         if mock_flag:
@@ -1600,9 +1631,9 @@ def get_benchmark_registry(repo_root: Path) -> list[BenchmarkDefinition]:
     def _webshop_cmd(output_dir: Path, model: ModelSpec, extra: Mapping[str, JSONValue]) -> list[str]:
         """Build command for WebShop benchmark.
 
-        Defaults to the bundled sample task set and disables trajectory logging
-        unless the caller opts in. Non-mock runs route through the Eliza
-        TypeScript benchmark bridge; ``--mock`` bypasses it for smoke tests.
+        Real harness rows use the upstream WebShop data loader (small profile
+        by default, auto-fetched when absent). The bundled sample catalog is
+        smoke-only and must be requested explicitly or via mock mode.
         """
         args = [
             python,
@@ -1633,12 +1664,20 @@ def get_benchmark_registry(repo_root: Path) -> list[BenchmarkDefinition]:
         trials = extra.get("trials")
         if isinstance(trials, int) and trials > 0:
             args.extend(["--trials", str(trials)])
+        profile = extra.get("profile")
+        if isinstance(profile, str) and profile.strip() in {"small", "full"}:
+            args.extend(["--profile", profile.strip()])
         if extra.get("hf") is True:
             args.append("--hf")
             split = extra.get("split")
             if isinstance(split, str) and split.strip():
                 args.extend(["--split", split.strip()])
-        else:
+        elif (
+            extra.get("sample") is True
+            or extra.get("use_sample_tasks") is True
+            or extra.get("mock") is True
+            or provider_name == "mock"
+        ):
             args.append("--sample")
         if extra.get("trajectories") is True:
             args.append("--trajectories")
@@ -1930,6 +1969,13 @@ def get_benchmark_registry(repo_root: Path) -> list[BenchmarkDefinition]:
         max_tokens = extra.get("max_tokens")
         if isinstance(max_tokens, int) and max_tokens > 0:
             args.extend(["--max-tokens", str(max_tokens)])
+        temperature = extra.get("temperature")
+        if (
+            isinstance(temperature, (int, float))
+            and not isinstance(temperature, bool)
+            and temperature >= 0
+        ):
+            args.extend(["--temperature", str(float(temperature))])
         judge_max_tokens = extra.get("judge_max_tokens")
         if isinstance(judge_max_tokens, int) and judge_max_tokens > 0:
             args.extend(["--judge-max-tokens", str(judge_max_tokens)])
@@ -2158,6 +2204,9 @@ def get_benchmark_registry(repo_root: Path) -> list[BenchmarkDefinition]:
             "--model",
             (model.model or "gpt-oss-120b"),
         ]
+        harness = str(extra.get("agent") or extra.get("harness") or "hermes").strip().lower()
+        if harness in {"eliza", "hermes", "openclaw"}:
+            args.extend(["--harness", harness])
         if model.provider:
             args.extend(["--provider", model.provider])
         base_url = extra.get("base_url")
@@ -2468,8 +2517,8 @@ def get_benchmark_registry(repo_root: Path) -> list[BenchmarkDefinition]:
         BenchmarkDefinition(
             id="vision_language",
             display_name="Vision-Language Bench",
-            description="TextVQA, DocVQA, ChartQA, ScreenSpot, and OSWorld vision-language smoke harness",
-            cwd_rel="benchmarks/vision-language",
+            description="TextVQA, DocVQA, ChartQA, ScreenSpot, and OSWorld vision-language harness",
+            cwd_rel="packages/benchmarks/vision-language",
             requirements=BenchmarkRequirements(
                 env_vars=(),
                 paths=(),
@@ -2481,7 +2530,7 @@ def get_benchmark_registry(repo_root: Path) -> list[BenchmarkDefinition]:
             ),
             build_command=_vision_language_cmd,
             locate_result=_vision_language_result,
-            extract_score=_score_from_eliza_format_json,
+            extract_score=_score_from_vision_language_json,
         ),
         BenchmarkDefinition(
             id="rlm_bench",
@@ -2668,12 +2717,16 @@ def get_benchmark_registry(repo_root: Path) -> list[BenchmarkDefinition]:
             ),
             cwd_rel="packages/benchmarks/voicebench-quality",
             requirements=BenchmarkRequirements(
-                env_vars=("CEREBRAS_API_KEY", "GROQ_API_KEY"),
+                env_vars=("CEREBRAS_API_KEY",),
                 paths=("packages/benchmarks/voicebench-quality/elizaos_voicebench",),
                 notes=(
-                    "Cascaded STT (Groq Whisper) → text adapter (eliza/hermes/openclaw). "
+                    "Cascaded STT (Groq Whisper or local Eliza runtime) → text adapter "
+                    "(eliza/hermes/openclaw). "
                     "Judged suites scored by gpt-oss-120b on Cerebras. "
                     "Score is the unweighted mean of per-suite scores in [0, 1]; "
+                    "real runs require a real STT provider: GROQ_API_KEY for groq, "
+                    "VOICEBENCH_QUALITY_STT_PROVIDER=eliza-runtime with ELIZA_API_BASE/"
+                    "ELIZA_BENCH_URL, or VOICEBENCH_QUALITY_STT_PROVIDER=faster-whisper. "
                     "higher is better. extra.mock=true/provider=mock is smoke-only "
                     "and rejected by the real scorer."
                 ),
@@ -2850,8 +2903,9 @@ def get_benchmark_registry(repo_root: Path) -> list[BenchmarkDefinition]:
                 notes=(
                     "model.model selects the agent backend: 'mock' for smoke-only fixture runs; "
                     "'eliza'/'hermes'/'openclaw' for real cascaded-STT adapter runs. "
-                    "Real runs require audio_b64 records plus either GROQ_API_KEY for Whisper "
-                    "or VOICEAGENTBENCH_STT_PROVIDER=eliza-runtime with ELIZA_API_BASE/ELIZA_BENCH_URL. "
+                    "Real runs require upstream Hugging Face audio (or audio_b64 records) plus "
+                    "GROQ_API_KEY for Whisper, VOICEAGENTBENCH_STT_PROVIDER=eliza-runtime with "
+                    "ELIZA_API_BASE/ELIZA_BENCH_URL, or VOICEAGENTBENCH_STT_PROVIDER=faster-whisper. "
                     "CEREBRAS_API_KEY is required for the multi-turn coherence judge (gpt-oss-120b). "
                     "Set extra.mock=true and extra.suite=single|parallel|sequential|multi-turn|safety|multilingual|all. "
                     "Score: pass@1 across all (task, seed) pairs. Higher is better."

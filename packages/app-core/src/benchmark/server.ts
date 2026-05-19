@@ -127,10 +127,7 @@ function openAiCompatibleRetryDelayMs(
   if (retryAfter) {
     const seconds = Number.parseFloat(retryAfter);
     if (Number.isFinite(seconds) && seconds > 0) {
-      return Math.min(
-        Math.ceil(seconds * 1000),
-        OPENAI_COMPAT_RETRY_MAX_MS,
-      );
+      return Math.min(Math.ceil(seconds * 1000), OPENAI_COMPAT_RETRY_MAX_MS);
     }
     const timestamp = Date.parse(retryAfter);
     if (Number.isFinite(timestamp)) {

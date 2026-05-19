@@ -38,8 +38,8 @@ done
 
 mkdir -p "${OUT_DIR}"
 
-if [[ "${PROFILE}" != "mock" && "${PROFILE}" != "groq" && "${PROFILE}" != "elevenlabs" ]]; then
-  echo "[voicebench] Unsupported profile: ${PROFILE}. Expected mock, groq, or elevenlabs." >&2
+if [[ "${PROFILE}" != "mock" && "${PROFILE}" != "groq" && "${PROFILE}" != "elevenlabs" && "${PROFILE}" != "local-cerebras" ]]; then
+  echo "[voicebench] Unsupported profile: ${PROFILE}. Expected mock, groq, elevenlabs, or local-cerebras." >&2
   exit 1
 fi
 
@@ -158,6 +158,50 @@ if [[ -z "${VOICEBENCH_AUDIO_PATH:-}" && -z "${DATASET}" ]]; then
   done
 fi
 
+if [[ "${PROFILE}" == "local-cerebras" && -z "${VOICEBENCH_AUDIO_PATH:-}" && -z "${DATASET}" ]]; then
+  GENERATED_DIR="${SCRIPT_DIR}/shared/generated"
+  GENERATED_DATASET="${GENERATED_DIR}/voiceagentbench-single.json"
+  mkdir -p "${GENERATED_DIR}"
+  PYTHONPATH="${ROOT_DIR}/packages/benchmarks/voiceagentbench:${PYTHONPATH:-}" python3 - "${GENERATED_DIR}" "${GENERATED_DATASET}" <<'PY'
+import json
+import sys
+from pathlib import Path
+
+from elizaos_voiceagentbench.dataset import Suite, load_tasks
+
+out_dir = Path(sys.argv[1])
+manifest = Path(sys.argv[2])
+tasks = load_tasks(suite_filter=Suite.SINGLE, limit=1)
+if not tasks:
+    raise SystemExit("VoiceAgentBench did not return any real audio samples")
+task = tasks[0]
+query = task.queries[0]
+if query.audio_bytes is None:
+    raise SystemExit(f"VoiceAgentBench task {task.task_id} has no audio bytes")
+audio_path = out_dir / f"{task.task_id}.wav"
+audio_path.write_bytes(query.audio_bytes)
+manifest.write_text(
+    json.dumps(
+        {
+            "datasetName": "voiceagentbench-single-real",
+            "samples": [
+                {
+                    "id": task.task_id,
+                    "audioPath": str(audio_path),
+                    "expectedText": query.transcript,
+                }
+            ],
+        },
+        indent=2,
+    )
+    + "\n",
+    encoding="utf-8",
+)
+print(manifest)
+PY
+  DATASET="${GENERATED_DATASET}"
+fi
+
 if [[ -z "${VOICEBENCH_AUDIO_PATH:-}" && -z "${DATASET}" ]]; then
   echo "No audio file found. Set VOICEBENCH_AUDIO_PATH to a short audio clip or pass --dataset=manifest.json."
   echo "Mock audio is not accepted by the real benchmark runner."
@@ -187,7 +231,24 @@ if [[ -n "${DATASET}" ]]; then
   COMMON_ARGS+=("--dataset=${DATASET}")
 fi
 
-if [[ -z "${GROQ_API_KEY:-}" ]]; then
+if [[ "${PROFILE}" == "local-cerebras" ]]; then
+  if [[ -z "${CEREBRAS_API_KEY:-}" ]]; then
+    echo "[voicebench] CEREBRAS_API_KEY is required for --profile=local-cerebras." >&2
+    exit 1
+  fi
+  if ! python3 - <<'PY'
+import importlib.util
+raise SystemExit(0 if importlib.util.find_spec("faster_whisper") else 1)
+PY
+  then
+    echo "[voicebench] faster-whisper is required for --profile=local-cerebras." >&2
+    exit 1
+  fi
+  if [[ ! -x "${VOICEBENCH_SAY_BIN:-/usr/bin/say}" ]]; then
+    echo "[voicebench] macOS say is required for --profile=local-cerebras." >&2
+    exit 1
+  fi
+elif [[ -z "${GROQ_API_KEY:-}" ]]; then
   echo "[voicebench] GROQ_API_KEY is required for real response/STT profile ${PROFILE}." >&2
   exit 1
 fi
@@ -207,6 +268,11 @@ echo "[voicebench] groq-large-model=${GROQ_LARGE_MODEL}"
 echo "[voicebench] groq-transcription-model=${GROQ_TRANSCRIPTION_MODEL}"
 echo "[voicebench] groq-tts-model=${GROQ_TTS_MODEL} voice=${GROQ_TTS_VOICE} format=${GROQ_TTS_RESPONSE_FORMAT}"
 echo "[voicebench] elevenlabs-model=${ELEVENLABS_MODEL_ID} voice=${ELEVENLABS_VOICE_ID} latency=${ELEVENLABS_OPTIMIZE_STREAMING_LATENCY} format=${ELEVENLABS_OUTPUT_FORMAT}"
+if [[ "${PROFILE}" == "local-cerebras" ]]; then
+  echo "[voicebench] local-cerebras-model=${CEREBRAS_MODEL:-gpt-oss-120b}"
+  echo "[voicebench] local-stt=faster-whisper model=${VOICEBENCH_FASTER_WHISPER_MODEL:-tiny.en}"
+  echo "[voicebench] local-tts=${VOICEBENCH_SAY_BIN:-/usr/bin/say}"
+fi
 
 if $RUN_TS; then
   echo "[voicebench] TypeScript"

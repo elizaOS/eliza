@@ -20,6 +20,7 @@ from dataclasses import asdict
 from pathlib import Path
 
 from hermes_adapter.env_runner import run_hermes_env
+from hermes_adapter.swe_env_smoke import run_humanevalpack_swe_smoke
 
 
 # Public env_id -> the canonical ENV_MODULES key used by env_runner.
@@ -44,6 +45,12 @@ def _build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--output", required=True, help="Output directory for artifacts + JSON result")
     parser.add_argument("--model", required=True, help="Model name to evaluate")
     parser.add_argument("--provider", default="cerebras", help="OpenAI-compatible provider label")
+    parser.add_argument(
+        "--harness",
+        default="hermes",
+        choices=("eliza", "hermes", "openclaw"),
+        help="Benchmark harness label to record in the normalized result",
+    )
     parser.add_argument("--base-url", default=None, help="Optional explicit OpenAI-compatible base URL")
     parser.add_argument("--max-tasks", type=int, default=None, help="Cap on number of eval samples")
     parser.add_argument("--task-filter", default=None, help="Optional --env.task_filter forwarded to the env")
@@ -75,18 +82,28 @@ def main(argv: list[str] | None = None) -> int:
 
     repo_path = Path(args.repo_path).expanduser().resolve() if args.repo_path else None
 
-    result = run_hermes_env(
-        env_id,
-        output_dir=output_dir,
-        provider=args.provider,
-        model=args.model,
-        base_url=args.base_url,
-        repo_path=repo_path,
-        max_tasks=args.max_tasks,
-        task_filter=args.task_filter,
-        timeout_s=args.timeout_seconds,
-        force=args.force,
-    )
+    if env_id == "hermes_swe_env":
+        result = run_humanevalpack_swe_smoke(
+            output_dir=output_dir,
+            harness=args.harness,
+            provider=args.provider,
+            model=args.model,
+            max_tasks=args.max_tasks,
+            timeout_s=args.timeout_seconds,
+        )
+    else:
+        result = run_hermes_env(
+            env_id,
+            output_dir=output_dir,
+            provider=args.provider,
+            model=args.model,
+            base_url=args.base_url,
+            repo_path=repo_path,
+            max_tasks=args.max_tasks,
+            task_filter=args.task_filter,
+            timeout_s=args.timeout_seconds,
+            force=args.force,
+        )
 
     ts = time.strftime("%Y%m%dT%H%M%SZ", time.gmtime())
     result_path = output_dir / f"hermes_{env_id}_{ts}.json"
@@ -96,6 +113,8 @@ def main(argv: list[str] | None = None) -> int:
         if key in payload and payload[key] is not None:
             payload[key] = str(payload[key])
     payload["env_id_public"] = args.env.strip()
+    payload["harness"] = args.harness
+    payload["agent"] = args.harness
     result_path.write_text(json.dumps(payload, indent=2), encoding="utf-8")
     print(str(result_path))
     return 0

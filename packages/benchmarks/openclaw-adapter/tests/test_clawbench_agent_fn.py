@@ -161,3 +161,41 @@ def test_lifeops_bench_factory_accepts_snapshot(client: OpenClawClient, tmp_path
         world_snapshot_path=str(snapshot),
     )
     assert callable(agent_fn)
+
+
+def test_lifeops_bench_factory_promotes_calendar_availability_call(
+    client: OpenClawClient,
+) -> None:
+    pytest.importorskip(
+        "eliza_lifeops_bench.types",
+        reason="LifeOpsBench types package not on sys.path",
+    )
+    import asyncio
+
+    agent_fn = build_lifeops_bench_agent_fn(client=client)
+    payload = json.dumps(
+        {
+            "text": "",
+            "tool_calls": [
+                {
+                    "id": "tc1",
+                    "name": "CALENDAR",
+                    "arguments": {
+                        "action": "search_events",
+                        "startAt": "2026-05-14T09:00:00Z",
+                        "endAt": "2026-05-14T10:00:00Z",
+                        "intent": "Check availability",
+                    },
+                }
+            ],
+        }
+    )
+
+    with patch("openclaw_adapter.client.subprocess.run") as mock_run:
+        mock_run.return_value = _fake_completed(payload)
+        turn = asyncio.run(agent_fn([{"role": "user", "content": "am I free?"}], []))
+
+    assert turn.tool_calls is not None
+    tc = turn.tool_calls[0]
+    assert tc["function"]["name"] == "CALENDAR_CHECK_AVAILABILITY"
+    assert tc["function"]["arguments"]["subaction"] == "check_availability"

@@ -104,9 +104,23 @@ class SurfpoolManager:
             "Surfpool binary not found. Install with: brew install txtx/taps/surfpool"
         )
 
+    def _start_help(self) -> str:
+        try:
+            completed = subprocess.run(
+                [self._find_surfpool_binary(), "start", "--help"],
+                capture_output=True,
+                text=True,
+                timeout=3,
+                check=False,
+            )
+        except (OSError, subprocess.TimeoutExpired):
+            return ""
+        return f"{completed.stdout}\n{completed.stderr}"
+
     def _build_command(self) -> list[str]:
         """Build the surfpool start command."""
         cmd = [self._find_surfpool_binary(), "start"]
+        help_text = self._start_help()
         
         # Port configuration (use -p/--port, not --rpc-port)
         cmd.extend(["--port", str(self.config.rpc_port)])
@@ -121,9 +135,18 @@ class SurfpoolManager:
         if self.config.clone_from and self.config.programs_to_clone:
             # Remove --offline if we need to clone from remote
             cmd.remove("--offline")
-            for program in self.config.programs_to_clone:
-                cmd.extend(["--clone", program])
-            cmd.extend(["--rpc-url", self.config.clone_from])
+            if "--clone" in help_text:
+                for program in self.config.programs_to_clone:
+                    cmd.extend(["--clone", program])
+            if "--network" in help_text and "mainnet" in self.config.clone_from:
+                cmd.extend(["--network", "mainnet"])
+            elif "--rpc-url" in help_text:
+                cmd.extend(["--rpc-url", self.config.clone_from])
+            else:
+                raise RuntimeError(
+                    "Installed Surfpool cannot attach a remote datasource; "
+                    "upgrade Surfpool or run Gauntlet in non-publishable mock mode."
+                )
         
         # Add extra args
         cmd.extend(self.config.extra_args)

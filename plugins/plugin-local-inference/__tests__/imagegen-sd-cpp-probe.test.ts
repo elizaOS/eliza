@@ -23,7 +23,7 @@
  */
 
 import { spawnSync } from "node:child_process";
-import { chmodSync, mkdtempSync, writeFileSync } from "node:fs";
+import { chmodSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -32,7 +32,10 @@ import {
 	ImageGenBackendUnavailableError,
 	isImageGenUnavailable,
 } from "../src/services/imagegen/errors";
-import { loadSdCppImageGenBackend } from "../src/services/imagegen/sd-cpp";
+import {
+	buildArgs,
+	loadSdCppImageGenBackend,
+} from "../src/services/imagegen/sd-cpp";
 
 const PROBE_SCRIPT = fileURLToPath(
 	new URL("../scripts/probe-sd-cpp.mjs", import.meta.url),
@@ -50,19 +53,40 @@ interface ProbeResult {
 }
 
 function runProbe(env: Record<string, string | undefined>): ProbeResult {
-	const result = spawnSync("node", [PROBE_SCRIPT], {
-		env: { ...process.env, ...env },
-		encoding: "utf8",
-	});
-	if (result.status !== 0) {
+	const nodeBin = process.env.NODE_BIN ?? process.env.NODE ?? "node";
+	const mergedEnv = { ...process.env, ...env };
+	const dir = mkdtempSync(join(tmpdir(), "sd-cpp-probe-out-"));
+	const outPath = join(dir, "probe.json");
+	const result =
+		typeof Bun !== "undefined"
+			? Bun.spawnSync({
+					cmd: [nodeBin, PROBE_SCRIPT, "--json"],
+					env: mergedEnv as Record<string, string>,
+					stdout: Bun.file(outPath),
+					stderr: "pipe",
+				})
+			: spawnSync(nodeBin, [PROBE_SCRIPT, "--json"], {
+					env: mergedEnv,
+					encoding: "utf8",
+					stdio: ["ignore", "pipe", "pipe"],
+				});
+	const status = "exitCode" in result ? result.exitCode : result.status;
+	const stdout = readFileSync(outPath, "utf8");
+	const stderr =
+		typeof result.stderr === "string"
+			? result.stderr
+			: new TextDecoder().decode(result.stderr ?? new Uint8Array());
+	if (status !== 0) {
 		throw new Error(
-			`probe-sd-cpp exited with ${result.status}: ${result.stderr}`,
+			`probe-sd-cpp exited with ${status}: ${stderr}`,
 		);
 	}
-	const stdout = result.stdout.trim();
-	const firstLine = stdout.split("\n").find((line) => line.trim().length > 0);
+	const trimmed = stdout.trim();
+	const firstLine = trimmed.split("\n").find((line) => line.trim().length > 0);
 	if (!firstLine) {
-		throw new Error("probe-sd-cpp produced no output");
+		throw new Error(
+			`probe-sd-cpp produced no output (status=${status}, stderr=${JSON.stringify(stderr)}, stdout=${JSON.stringify(stdout)})`,
+		);
 	}
 	return JSON.parse(firstLine) as ProbeResult;
 }
@@ -101,6 +125,26 @@ describe("WS3 sd-cpp probe — onboarding script", () => {
 		expect(Array.isArray(probe.accelerators)).toBe(true);
 		expect(probe.accelerators).not.toContain("cuda");
 		expect(probe.accelerators).toContain("cpu");
+	});
+
+	it("does not treat generic --rng cuda help text as CUDA build proof", () => {
+		const dir = mkdtempSync(join(tmpdir(), "sd-cpp-probe-"));
+		const fakeBin = join(dir, "fake-sd-metal");
+		writeFileSync(
+			fakeBin,
+			[
+				"#!/usr/bin/env bash",
+				"if [ \"$1\" = \"--version\" ]; then echo 'stable-diffusion.cpp test-build-metal'; exit 0; fi",
+				"if [ \"$1\" = \"--help\" ]; then echo '--rng cuda, default, consistent with webui GPU RNG'; echo 'backend: Metal'; exit 0; fi",
+				"exit 2",
+				"",
+			].join("\n"),
+		);
+		chmodSync(fakeBin, 0o755);
+		const probe = runProbe({ SD_CPP_BIN: fakeBin });
+		expect(probe.available).toBe(true);
+		expect(probe.accelerators).toContain("metal");
+		expect(probe.accelerators).not.toContain("cuda");
 	});
 
 	it("reports CUDA when help/version proves a CUDA-capable binary", () => {
@@ -197,11 +241,15 @@ describe("WS3 sd-cpp backend — binary missing yields structured error", () => 
 		}
 	});
 
-	it("accepts CUDA load when help/version proves CUDA support", async () => {
+	it("accepts CUDA load when sidecar manifest proves CUDA support", async () => {
 		const dir = mkdtempSync(join(tmpdir(), "sd-cpp-probe-"));
 		const fakeBin = join(dir, "fake-sd-cuda");
 		const fakeModel = join(dir, "model.gguf");
 		writeFileSync(fakeModel, "fake model");
+		writeFileSync(
+			join(dir, "sd-cpp.manifest.json"),
+			JSON.stringify({ accelerators: ["cuda"] }),
+		);
 		writeFileSync(
 			fakeBin,
 			[
@@ -259,5 +307,62 @@ describe("WS3 sd-cpp backend — binary missing yields structured error", () => 
 		expect(result.image[0]).toBe(0x89);
 		expect(result.image[1]).toBe(0x50);
 		await backend.dispose();
+	});
+});
+
+describe("WS3 sd-cpp backend — CLI argument contract", () => {
+	const baseArgs = {
+		modelPath: "/models/imagegen/sd-1.5-Q5_0.gguf",
+		prompt: "a small workspace",
+		width: 64,
+		height: 64,
+		steps: 1,
+		guidanceScale: 7.5,
+		seed: 42,
+		output: "/tmp/out.png",
+	};
+
+	it("uses --model for monolithic SD-family checkpoints", () => {
+		const args = buildArgs(baseArgs);
+		expect(args.slice(0, 2)).toEqual([
+			"--model",
+			"/models/imagegen/sd-1.5-Q5_0.gguf",
+		]);
+		expect(args).not.toContain("--diffusion-model");
+	});
+
+	it("uses --diffusion-model with split Z-Image companion assets", () => {
+		const args = buildArgs({
+			...baseArgs,
+			modelPath: "/models/imagegen/z-image-turbo-Q4_K_M.gguf",
+			splitDiffusionModel: true,
+			vae: "/models/imagegen/vae/ae.safetensors",
+			llm: "/models/imagegen/text-encoders/Qwen3-4B-Instruct-2507-Q4_K_M.gguf",
+		});
+		expect(args.slice(0, 2)).toEqual([
+			"--diffusion-model",
+			"/models/imagegen/z-image-turbo-Q4_K_M.gguf",
+		]);
+		expect(args).toContain("--vae");
+		expect(args).toContain("/models/imagegen/vae/ae.safetensors");
+		expect(args).toContain("--llm");
+		expect(args).toContain(
+			"/models/imagegen/text-encoders/Qwen3-4B-Instruct-2507-Q4_K_M.gguf",
+		);
+		expect(args).not.toContain("--model");
+	});
+
+	it("uses current upstream backend flags for CPU and Vulkan", () => {
+		expect(buildArgs({ ...baseArgs, accelerator: "cpu" })).toEqual(
+			expect.arrayContaining([
+				"--backend",
+				"cpu",
+				"--params-backend",
+				"cpu",
+			]),
+		);
+		expect(buildArgs({ ...baseArgs, accelerator: "vulkan" })).toEqual(
+			expect.arrayContaining(["--backend", "vulkan0"]),
+		);
 	});
 });

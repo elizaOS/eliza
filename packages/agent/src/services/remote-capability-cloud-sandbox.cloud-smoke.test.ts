@@ -9,11 +9,17 @@ import {
   registerPluginViews,
   unregisterPluginViews,
 } from "../api/views-registry.ts";
-import { assertRemoteCapabilityEndpointConformance } from "./remote-capability-endpoint-conformance.ts";
 import {
   installRemoteCapabilityEndpoint,
   provisionCloudCapabilitySandbox,
 } from "./remote-capability-cloud-sandbox.ts";
+import { assertRemoteCapabilityEndpointConformance } from "./remote-capability-endpoint-conformance.ts";
+import {
+  summarizeRemoteCapabilityLiveCi,
+  summarizeRemoteCapabilityLiveRuntime,
+  summarizeRemoteCapabilityLiveSync,
+  writeRemoteCapabilityLiveReport,
+} from "./remote-capability-live-report.ts";
 import { syncRemoteCapabilityPlugins } from "./remote-plugin-adapter.ts";
 
 const cloudLive =
@@ -52,7 +58,7 @@ describe("cloud capability sandbox live smoke", () => {
           name: `Remote Capability Live ${Date.now()}`,
           bio: [
             "Live CI smoke for capability-router remote plugin modules.",
-            "Expose at least one action, provider, route, and compiled view.",
+            "Expose at least one action, provider, route, JSON model handler, lifecycle hook, event handler, service method, app bridge hook, evaluator, response-handler evaluator, response-handler field evaluator, and compiled view.",
           ],
           endpointId,
           timeoutMs: 180_000,
@@ -70,14 +76,13 @@ describe("cloud capability sandbox live smoke", () => {
           requestTimeoutMs: 60_000,
         });
 
-        await expect(
-          assertRemoteCapabilityEndpointConformance({
-            endpoint: provisioned.endpoint,
-            requestTimeoutMs: 60_000,
-            actionContent: { text: "remote capability cloud live conformance" },
-            routeBody: { live: true, provider: "cloud" },
-          }),
-        ).resolves.toMatchObject({
+        const conformance = await assertRemoteCapabilityEndpointConformance({
+          endpoint: provisioned.endpoint,
+          requestTimeoutMs: 60_000,
+          actionContent: { text: "remote capability cloud live conformance" },
+          routeBody: { live: true, provider: "cloud" },
+        });
+        expect(conformance).toMatchObject({
           endpointId,
           moduleCount: expect.any(Number),
           exercised: {
@@ -85,9 +90,16 @@ describe("cloud capability sandbox live smoke", () => {
             provider: expect.any(String),
             route: expect.any(String),
             viewAsset: expect.any(String),
+            model: expect.any(String),
+            lifecycle: expect.any(String),
+            event: expect.any(String),
+            service: expect.any(String),
+            appBridge: expect.any(String),
+            evaluator: expect.any(String),
+            responseHandlerEvaluator: expect.any(String),
+            responseHandlerFieldEvaluator: expect.any(String),
           },
         });
-
         const sync = await syncRemoteCapabilityPlugins(runtime, {
           trustPolicy: {
             allowedEndpointIds: [endpointId],
@@ -108,6 +120,18 @@ describe("cloud capability sandbox live smoke", () => {
         expect(runtime.actions.length).toBeGreaterThan(0);
         expect(runtime.providers.length).toBeGreaterThan(0);
         expect(runtime.routes.length).toBeGreaterThan(0);
+        await writeRemoteCapabilityLiveReport("cloud", {
+          schemaVersion: 1,
+          kind: "cloud",
+          cloudApiBase,
+          endpointId,
+          agentId,
+          observedAt: new Date().toISOString(),
+          conformance,
+          sync: summarizeRemoteCapabilityLiveSync(sync),
+          runtime: summarizeRemoteCapabilityLiveRuntime(runtime),
+          ci: summarizeRemoteCapabilityLiveCi(),
+        });
       } finally {
         if (agentId) {
           await deleteCloudAgent(cloudApiBase, authToken, agentId).catch(

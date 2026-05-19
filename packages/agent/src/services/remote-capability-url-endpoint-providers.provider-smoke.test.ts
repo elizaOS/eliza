@@ -5,11 +5,18 @@ import {
   type UUID,
 } from "@elizaos/core";
 import { afterEach, describe, expect, it } from "vitest";
+import { assertRemoteCapabilityEndpointConformance } from "./remote-capability-endpoint-conformance.ts";
 import {
   connectRemoteCapabilityEndpointProvider,
   type RemoteCapabilityEndpointProvider,
 } from "./remote-capability-endpoint-provider.ts";
-import { assertRemoteCapabilityEndpointConformance } from "./remote-capability-endpoint-conformance.ts";
+import {
+  summarizeRemoteCapabilityLiveCi,
+  summarizeRemoteCapabilityEndpointUrlFingerprint,
+  summarizeRemoteCapabilityLiveRuntime,
+  summarizeRemoteCapabilityLiveSync,
+  writeRemoteCapabilityLiveReport,
+} from "./remote-capability-live-report.ts";
 import {
   desktopCompanionCapabilityEndpointProvider,
   e2bCapabilityEndpointProvider,
@@ -100,16 +107,15 @@ describe("URL-backed remote capability endpoint providers live smoke", () => {
         );
         expect(moduleWithView?.views?.length ?? 0).toBeGreaterThan(0);
 
-        await expect(
-          assertRemoteCapabilityEndpointConformance({
-            endpoint: result.endpoint,
-            requestTimeoutMs: 60_000,
-            actionContent: {
-              text: `${target.label} live capability conformance`,
-            },
-            routeBody: { live: true, provider: target.label },
-          }),
-        ).resolves.toMatchObject({
+        const conformance = await assertRemoteCapabilityEndpointConformance({
+          endpoint: result.endpoint,
+          requestTimeoutMs: 60_000,
+          actionContent: {
+            text: `${target.label} live capability conformance`,
+          },
+          routeBody: { live: true, provider: target.label },
+        });
+        expect(conformance).toMatchObject({
           endpointId: options.endpointId,
           moduleCount: expect.any(Number),
           exercised: {
@@ -127,6 +133,20 @@ describe("URL-backed remote capability endpoint providers live smoke", () => {
             responseHandlerFieldEvaluator: expect.any(String),
           },
         });
+        await writeRemoteCapabilityLiveReport(target.label, {
+          schemaVersion: 1,
+          kind: "provider",
+          provider: target.label,
+          endpointUrlSha256: summarizeRemoteCapabilityEndpointUrlFingerprint(
+            options.baseUrl,
+          ),
+          endpointId: options.endpointId,
+          observedAt: new Date().toISOString(),
+          conformance,
+          sync: summarizeRemoteCapabilityLiveSync(result.sync),
+          runtime: summarizeRemoteCapabilityLiveRuntime(runtime),
+          ci: summarizeRemoteCapabilityLiveCi(),
+        });
       },
       120_000,
     );
@@ -141,8 +161,9 @@ function readProviderOptions(
     .replace(/\/+$/, "");
   if (!baseUrl) return null;
   const endpointId =
-    process.env[`ELIZA_REMOTE_CAPABILITY_${target.envPrefix}_ENDPOINT_ID`]
-      ?.trim() || target.defaultEndpointId;
+    process.env[
+      `ELIZA_REMOTE_CAPABILITY_${target.envPrefix}_ENDPOINT_ID`
+    ]?.trim() || target.defaultEndpointId;
   const token =
     process.env[`ELIZA_REMOTE_CAPABILITY_${target.envPrefix}_TOKEN`]?.trim();
   const allowedModuleIds = parseCsv(

@@ -265,6 +265,53 @@ describe("capability router", () => {
 				if (method === "plugin.asset.get") {
 					return CAPABILITY_ROUTER_PROTOCOL_FIXTURE.results.asset;
 				}
+				if (method === "plugin.model.invoke") {
+					return CAPABILITY_ROUTER_PROTOCOL_FIXTURE.results.model;
+				}
+				if (method === "plugin.lifecycle.call") {
+					return CAPABILITY_ROUTER_PROTOCOL_FIXTURE.results.lifecycle;
+				}
+				if (method === "plugin.event.handle") {
+					return CAPABILITY_ROUTER_PROTOCOL_FIXTURE.results.event;
+				}
+				if (method === "plugin.service.call") {
+					return CAPABILITY_ROUTER_PROTOCOL_FIXTURE.results.service;
+				}
+				if (method === "plugin.appBridge.call") {
+					return CAPABILITY_ROUTER_PROTOCOL_FIXTURE.results.appBridge;
+				}
+				if (method === "plugin.evaluator.shouldRun") {
+					return CAPABILITY_ROUTER_PROTOCOL_FIXTURE.results.evaluatorShouldRun;
+				}
+				if (method === "plugin.evaluator.prepare") {
+					return CAPABILITY_ROUTER_PROTOCOL_FIXTURE.results.evaluatorPrepare;
+				}
+				if (method === "plugin.evaluator.prompt") {
+					return CAPABILITY_ROUTER_PROTOCOL_FIXTURE.results.evaluatorPrompt;
+				}
+				if (method === "plugin.evaluator.process") {
+					return CAPABILITY_ROUTER_PROTOCOL_FIXTURE.results.evaluatorProcess;
+				}
+				if (method === "plugin.responseHandlerEvaluator.shouldRun") {
+					return CAPABILITY_ROUTER_PROTOCOL_FIXTURE.results
+						.responseHandlerEvaluatorShouldRun;
+				}
+				if (method === "plugin.responseHandlerEvaluator.evaluate") {
+					return CAPABILITY_ROUTER_PROTOCOL_FIXTURE.results
+						.responseHandlerEvaluatorEvaluate;
+				}
+				if (method === "plugin.responseHandlerFieldEvaluator.shouldRun") {
+					return CAPABILITY_ROUTER_PROTOCOL_FIXTURE.results
+						.responseHandlerFieldEvaluatorShouldRun;
+				}
+				if (method === "plugin.responseHandlerFieldEvaluator.parse") {
+					return CAPABILITY_ROUTER_PROTOCOL_FIXTURE.results
+						.responseHandlerFieldEvaluatorParse;
+				}
+				if (method === "plugin.responseHandlerFieldEvaluator.handle") {
+					return CAPABILITY_ROUTER_PROTOCOL_FIXTURE.results
+						.responseHandlerFieldEvaluatorHandle;
+				}
 				throw new Error(`unexpected method ${method}`);
 			},
 		});
@@ -302,12 +349,180 @@ describe("capability router", () => {
 					CAPABILITY_ROUTER_PROTOCOL_FIXTURE.module.views[0].bundlePath ?? "",
 			}),
 		).resolves.toEqual(CAPABILITY_ROUTER_PROTOCOL_FIXTURE.results.asset);
+		await expect(
+			router.plugin.invokeModel({
+				moduleId: CAPABILITY_ROUTER_PROTOCOL_FIXTURE.module.id,
+				modelType:
+					CAPABILITY_ROUTER_PROTOCOL_FIXTURE.module.models[0].modelType,
+				params: { prompt: "fixture" },
+			}),
+		).resolves.toEqual(CAPABILITY_ROUTER_PROTOCOL_FIXTURE.results.model);
+		await expect(
+			router.plugin.callLifecycle({
+				moduleId: CAPABILITY_ROUTER_PROTOCOL_FIXTURE.module.id,
+				hook: CAPABILITY_ROUTER_PROTOCOL_FIXTURE.module.lifecycle.hooks[0],
+				context: { fixture: true },
+			}),
+		).resolves.toEqual(CAPABILITY_ROUTER_PROTOCOL_FIXTURE.results.lifecycle);
+		await expect(
+			router.plugin.handleEvent({
+				moduleId: CAPABILITY_ROUTER_PROTOCOL_FIXTURE.module.id,
+				eventName:
+					CAPABILITY_ROUTER_PROTOCOL_FIXTURE.module.events[0].eventName,
+				payload: { fixture: true },
+			}),
+		).resolves.toEqual(CAPABILITY_ROUTER_PROTOCOL_FIXTURE.results.event);
+		await expect(
+			router.plugin.callService({
+				moduleId: CAPABILITY_ROUTER_PROTOCOL_FIXTURE.module.id,
+				serviceType:
+					CAPABILITY_ROUTER_PROTOCOL_FIXTURE.module.services[0].serviceType,
+				method:
+					CAPABILITY_ROUTER_PROTOCOL_FIXTURE.module.services[0].methods[0],
+				args: [{ fixture: true }],
+			}),
+		).resolves.toEqual(CAPABILITY_ROUTER_PROTOCOL_FIXTURE.results.service);
+		await expect(
+			router.plugin.callAppBridge({
+				moduleId: CAPABILITY_ROUTER_PROTOCOL_FIXTURE.module.id,
+				hook: CAPABILITY_ROUTER_PROTOCOL_FIXTURE.module.appBridge.hooks[0],
+				context: { fixture: true },
+			}),
+		).resolves.toEqual(CAPABILITY_ROUTER_PROTOCOL_FIXTURE.results.appBridge);
+		await expect(
+			router.plugin.shouldRunEvaluator({
+				moduleId: CAPABILITY_ROUTER_PROTOCOL_FIXTURE.module.id,
+				evaluator: CAPABILITY_ROUTER_PROTOCOL_FIXTURE.module.evaluators[0].name,
+				message: { text: "fixture" },
+				state: {},
+				options: {},
+			}),
+		).resolves.toEqual(
+			CAPABILITY_ROUTER_PROTOCOL_FIXTURE.results.evaluatorShouldRun,
+		);
+		await expect(
+			router.plugin.prepareEvaluator({
+				moduleId: CAPABILITY_ROUTER_PROTOCOL_FIXTURE.module.id,
+				evaluator: CAPABILITY_ROUTER_PROTOCOL_FIXTURE.module.evaluators[0].name,
+				message: { text: "fixture" },
+				state: {},
+				options: {},
+			}),
+		).resolves.toEqual(
+			CAPABILITY_ROUTER_PROTOCOL_FIXTURE.results.evaluatorPrepare,
+		);
+		await expect(
+			router.plugin.promptEvaluator({
+				moduleId: CAPABILITY_ROUTER_PROTOCOL_FIXTURE.module.id,
+				evaluator: CAPABILITY_ROUTER_PROTOCOL_FIXTURE.module.evaluators[0].name,
+				message: { text: "fixture" },
+				state: {},
+				options: {},
+				prepared:
+					CAPABILITY_ROUTER_PROTOCOL_FIXTURE.results.evaluatorPrepare.prepared,
+			}),
+		).resolves.toEqual(
+			CAPABILITY_ROUTER_PROTOCOL_FIXTURE.results.evaluatorPrompt,
+		);
+		await expect(
+			router.plugin.processEvaluator({
+				moduleId: CAPABILITY_ROUTER_PROTOCOL_FIXTURE.module.id,
+				evaluator: CAPABILITY_ROUTER_PROTOCOL_FIXTURE.module.evaluators[0].name,
+				message: { text: "fixture" },
+				state: {},
+				options: {},
+				prepared:
+					CAPABILITY_ROUTER_PROTOCOL_FIXTURE.results.evaluatorPrepare.prepared,
+				output: { text: "fixture output" },
+			}),
+		).resolves.toEqual(
+			CAPABILITY_ROUTER_PROTOCOL_FIXTURE.results.evaluatorProcess,
+		);
+		await expect(
+			router.plugin.shouldRunResponseHandlerEvaluator({
+				moduleId: CAPABILITY_ROUTER_PROTOCOL_FIXTURE.module.id,
+				evaluator:
+					CAPABILITY_ROUTER_PROTOCOL_FIXTURE.module.responseHandlerEvaluators[0]
+						.name,
+				context: { fixture: true },
+			}),
+		).resolves.toEqual(
+			CAPABILITY_ROUTER_PROTOCOL_FIXTURE.results
+				.responseHandlerEvaluatorShouldRun,
+		);
+		await expect(
+			router.plugin.evaluateResponseHandlerEvaluator({
+				moduleId: CAPABILITY_ROUTER_PROTOCOL_FIXTURE.module.id,
+				evaluator:
+					CAPABILITY_ROUTER_PROTOCOL_FIXTURE.module.responseHandlerEvaluators[0]
+						.name,
+				context: { fixture: true },
+			}),
+		).resolves.toEqual(
+			CAPABILITY_ROUTER_PROTOCOL_FIXTURE.results
+				.responseHandlerEvaluatorEvaluate,
+		);
+		await expect(
+			router.plugin.shouldRunResponseHandlerFieldEvaluator({
+				moduleId: CAPABILITY_ROUTER_PROTOCOL_FIXTURE.module.id,
+				field:
+					CAPABILITY_ROUTER_PROTOCOL_FIXTURE.module
+						.responseHandlerFieldEvaluators[0].name,
+				context: { fixture: true },
+			}),
+		).resolves.toEqual(
+			CAPABILITY_ROUTER_PROTOCOL_FIXTURE.results
+				.responseHandlerFieldEvaluatorShouldRun,
+		);
+		await expect(
+			router.plugin.parseResponseHandlerFieldEvaluator({
+				moduleId: CAPABILITY_ROUTER_PROTOCOL_FIXTURE.module.id,
+				field:
+					CAPABILITY_ROUTER_PROTOCOL_FIXTURE.module
+						.responseHandlerFieldEvaluators[0].name,
+				context: { fixture: true },
+				value: { raw: true },
+			}),
+		).resolves.toEqual(
+			CAPABILITY_ROUTER_PROTOCOL_FIXTURE.results
+				.responseHandlerFieldEvaluatorParse,
+		);
+		await expect(
+			router.plugin.handleResponseHandlerFieldEvaluator({
+				moduleId: CAPABILITY_ROUTER_PROTOCOL_FIXTURE.module.id,
+				field:
+					CAPABILITY_ROUTER_PROTOCOL_FIXTURE.module
+						.responseHandlerFieldEvaluators[0].name,
+				context: { fixture: true },
+				value: { raw: true },
+				parsed:
+					CAPABILITY_ROUTER_PROTOCOL_FIXTURE.results
+						.responseHandlerFieldEvaluatorParse.value,
+			}),
+		).resolves.toEqual(
+			CAPABILITY_ROUTER_PROTOCOL_FIXTURE.results
+				.responseHandlerFieldEvaluatorHandle,
+		);
 		expect(calls).toEqual([
 			"plugin.modules.list",
 			"plugin.action.invoke",
 			"plugin.provider.get",
 			"plugin.route.call",
 			"plugin.asset.get",
+			"plugin.model.invoke",
+			"plugin.lifecycle.call",
+			"plugin.event.handle",
+			"plugin.service.call",
+			"plugin.appBridge.call",
+			"plugin.evaluator.shouldRun",
+			"plugin.evaluator.prepare",
+			"plugin.evaluator.prompt",
+			"plugin.evaluator.process",
+			"plugin.responseHandlerEvaluator.shouldRun",
+			"plugin.responseHandlerEvaluator.evaluate",
+			"plugin.responseHandlerFieldEvaluator.shouldRun",
+			"plugin.responseHandlerFieldEvaluator.parse",
+			"plugin.responseHandlerFieldEvaluator.handle",
 		]);
 	});
 

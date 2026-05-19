@@ -258,6 +258,209 @@ describe("remote capability endpoint providers", () => {
     ]);
   });
 
+  it("materializes only allowed modules from a shared endpoint and records the rest as skipped", async () => {
+    const runtime = makeRuntime();
+    globalThis.fetch = vi.fn(async (url: string | URL, init?: RequestInit) => {
+      const body = init?.body
+        ? (JSON.parse(String(init.body)) as {
+            method?: string;
+            params?: { moduleId?: string };
+          })
+        : undefined;
+      if (
+        String(url) === "https://shared.example.test/v1/capabilities/invoke" &&
+        body?.method === "plugin.modules.list"
+      ) {
+        return jsonResponse({
+          ok: true,
+          result: {
+            modules: [
+              {
+                id: "allowed-plugin",
+                name: "@remote/allowed",
+                actions: [
+                  {
+                    name: "ALLOWED_ACTION",
+                    description: "Run the allowed module.",
+                  },
+                ],
+              },
+              {
+                id: "foreign-plugin",
+                name: "@remote/foreign",
+                actions: [
+                  {
+                    name: "FOREIGN_ACTION",
+                    description: "Run the foreign module.",
+                  },
+                ],
+              },
+            ],
+          },
+        });
+      }
+      if (
+        String(url) === "https://shared.example.test/v1/capabilities/invoke" &&
+        body?.method === "plugin.action.invoke"
+      ) {
+        return jsonResponse({
+          ok: true,
+          result: { text: `${body.params?.moduleId} action` },
+        });
+      }
+      return jsonResponse({ ok: false, error: { message: "unexpected" } }, 404);
+    }) as unknown as typeof fetch;
+
+    const result = await connectRemoteCapabilityEndpointProvider(runtime, {
+      provider: {
+        id: "home-machine",
+        provision: async () => ({
+          providerId: "home-machine",
+          endpoint: {
+            id: "shared-home",
+            baseUrl: "https://shared.example.test",
+          },
+          allowedModuleIds: ["allowed-plugin"],
+        }),
+      },
+      provisionOptions: {},
+      unloadMissing: true,
+    });
+
+    expect(result.sync.registered.map((plugin) => plugin.name)).toEqual([
+      "@remote/allowed",
+    ]);
+    expect(result.sync.skipped).toEqual(["@remote/foreign"]);
+    expect(result.sync.trustDecisions).toEqual([
+      expect.objectContaining({
+        endpointId: "shared-home",
+        moduleId: "allowed-plugin",
+        trusted: true,
+        reason: "allowed",
+      }),
+      expect.objectContaining({
+        endpointId: "shared-home",
+        moduleId: "foreign-plugin",
+        pluginName: "@remote/foreign",
+        trusted: false,
+        reason: "module-not-allowed",
+      }),
+    ]);
+    expect(runtime.plugins.map((plugin) => plugin.name)).toEqual([
+      "@remote/allowed",
+    ]);
+    expect(runtime.actions.map((action) => action.name)).toEqual([
+      "ALLOWED_ACTION",
+    ]);
+    await expect(
+      runtime.actions[0]?.handler(runtime, {} as never),
+    ).resolves.toMatchObject({ text: "allowed-plugin action" });
+  });
+
+  it("unloads a previously trusted shared-endpoint module when the allowlist shrinks", async () => {
+    const runtime = makeRuntime();
+    globalThis.fetch = vi.fn(async (url: string | URL, init?: RequestInit) => {
+      const body = init?.body
+        ? (JSON.parse(String(init.body)) as {
+            method?: string;
+            params?: { moduleId?: string };
+          })
+        : undefined;
+      if (
+        String(url) === "https://shared.example.test/v1/capabilities/invoke" &&
+        body?.method === "plugin.modules.list"
+      ) {
+        return jsonResponse({
+          ok: true,
+          result: {
+            modules: [
+              {
+                id: "allowed-plugin",
+                name: "@remote/allowed",
+                actions: [
+                  {
+                    name: "ALLOWED_ACTION",
+                    description: "Run the allowed module.",
+                  },
+                ],
+              },
+              {
+                id: "retired-plugin",
+                name: "@remote/retired",
+                actions: [
+                  {
+                    name: "RETIRED_ACTION",
+                    description: "Run the retired module.",
+                  },
+                ],
+              },
+            ],
+          },
+        });
+      }
+      if (
+        String(url) === "https://shared.example.test/v1/capabilities/invoke" &&
+        body?.method === "plugin.action.invoke"
+      ) {
+        return jsonResponse({
+          ok: true,
+          result: { text: `${body.params?.moduleId} action` },
+        });
+      }
+      return jsonResponse({ ok: false, error: { message: "unexpected" } }, 404);
+    }) as unknown as typeof fetch;
+
+    await connectRemoteCapabilityEndpointProvider(runtime, {
+      provider: sharedEndpointProvider([
+        "allowed-plugin",
+        "retired-plugin",
+      ]),
+      provisionOptions: {},
+      unloadMissing: true,
+    });
+    expect(runtime.plugins.map((plugin) => plugin.name)).toEqual([
+      "@remote/allowed",
+      "@remote/retired",
+    ]);
+    expect(runtime.actions.map((action) => action.name)).toEqual([
+      "ALLOWED_ACTION",
+      "RETIRED_ACTION",
+    ]);
+
+    const result = await connectRemoteCapabilityEndpointProvider(runtime, {
+      provider: sharedEndpointProvider(["allowed-plugin"]),
+      provisionOptions: {},
+      unloadMissing: true,
+    });
+
+    expect(result.sync.registered).toEqual([]);
+    expect(result.sync.skipped).toEqual(["@remote/allowed"]);
+    expect(result.sync.unloaded).toEqual(["@remote/retired"]);
+    expect(result.sync.trustDecisions).toEqual([
+      expect.objectContaining({
+        endpointId: "shared-home",
+        moduleId: "allowed-plugin",
+        pluginName: "@remote/allowed",
+        trusted: true,
+        reason: "allowed",
+      }),
+      expect.objectContaining({
+        endpointId: "shared-home",
+        moduleId: "retired-plugin",
+        pluginName: "@remote/retired",
+        trusted: false,
+        reason: "module-not-allowed",
+      }),
+    ]);
+    expect(runtime.unloaded).toEqual(["@remote/retired"]);
+    expect(runtime.plugins.map((plugin) => plugin.name)).toEqual([
+      "@remote/allowed",
+    ]);
+    expect(runtime.actions.map((action) => action.name)).toEqual([
+      "ALLOWED_ACTION",
+    ]);
+  });
+
   it("treats E2B, home-machine, and mobile companion providers as the same plugin endpoint contract", async () => {
     const runtime = makeRuntime();
     const families = [
@@ -519,8 +722,33 @@ function makeRuntime(): IAgentRuntime & {
       await runtime.registerPlugin(plugin);
     },
     unloadPlugin: async (pluginName: string) => {
+      const pluginIndex = runtime.plugins.findIndex(
+        (plugin) => plugin.name === pluginName,
+      );
+      if (pluginIndex < 0) return null;
+      const [plugin] = runtime.plugins.splice(pluginIndex, 1);
+      runtime.actions = runtime.actions.filter(
+        (action) => !(plugin.actions ?? []).includes(action),
+      );
+      runtime.providers = runtime.providers.filter(
+        (provider) => !(plugin.providers ?? []).includes(provider),
+      );
+      runtime.evaluators = runtime.evaluators.filter(
+        (evaluator) => !(plugin.evaluators ?? []).includes(evaluator),
+      );
+      runtime.routes = runtime.routes.filter(
+        (route) => !(plugin.routes ?? []).includes(route),
+      );
       runtime.unloaded.push(pluginName);
-      return null;
+      return {
+        pluginName,
+        plugin,
+        actions: plugin.actions ?? [],
+        providers: plugin.providers ?? [],
+        evaluators: plugin.evaluators ?? [],
+        services: [],
+        routes: plugin.routes ?? [],
+      };
     },
     getAllPluginOwnership: () =>
       runtime.plugins.map((plugin) => ({
@@ -558,6 +786,22 @@ function endpointProvider(
         baseUrl,
         token: `${id}-token`,
       },
+    }),
+  };
+}
+
+function sharedEndpointProvider(
+  allowedModuleIds: string[],
+): RemoteCapabilityEndpointProvider<Record<string, never>> {
+  return {
+    id: "home-machine",
+    provision: async () => ({
+      providerId: "home-machine",
+      endpoint: {
+        id: "shared-home",
+        baseUrl: "https://shared.example.test",
+      },
+      allowedModuleIds,
     }),
   };
 }

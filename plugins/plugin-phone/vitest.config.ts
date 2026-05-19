@@ -7,12 +7,6 @@ const rootDir = dirname(fileURLToPath(import.meta.url));
 export default defineConfig({
   resolve: {
     alias: {
-      react: resolve(rootDir, "../../node_modules/react"),
-      "react/jsx-runtime": resolve(
-        rootDir,
-        "../../node_modules/react/jsx-runtime.js",
-      ),
-      "react-dom": resolve(rootDir, "../../node_modules/react-dom"),
       "@elizaos/capacitor-phone": resolve(
         rootDir,
         "../../plugins/plugin-native-phone/src/index.ts",

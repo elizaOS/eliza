@@ -1,27 +1,14 @@
 import assert from "node:assert/strict";
-import { spawnSync } from "node:child_process";
-import path from "node:path";
-import { fileURLToPath } from "node:url";
 import { it as test } from "vitest";
 
-const scriptPath = path.join(
-  path.dirname(fileURLToPath(import.meta.url)),
-  "build-llama-cpp-dflash.mjs",
-);
-
-function runDflashBuild(args) {
-  return spawnSync(process.execPath, [scriptPath, ...args], {
-    encoding: "utf8",
-  });
-}
+import { formatHelpText, parseArgs } from "./build-llama-cpp-dflash.mjs";
 
 test("help advertises linux aarch64 CUDA fused but not mobile fused targets", () => {
-  const result = runDflashBuild(["--help"]);
-  assert.equal(result.status, 0, result.stderr);
-  assert.match(result.stdout, /linux-aarch64-cuda-fused/);
-  assert.doesNotMatch(result.stdout, /android-arm64-cpu-fused/);
-  assert.doesNotMatch(result.stdout, /android-x86_64-cpu-fused/);
-  assert.doesNotMatch(result.stdout, /ios-arm64-metal-fused/);
+  const helpText = formatHelpText();
+  assert.match(helpText, /linux-aarch64-cuda-fused/);
+  assert.doesNotMatch(helpText, /android-arm64-cpu-fused/);
+  assert.doesNotMatch(helpText, /android-x86_64-cpu-fused/);
+  assert.doesNotMatch(helpText, /ios-arm64-metal-fused/);
 });
 
 test("mobile fused targets fail closed with explicit diagnostics", () => {
@@ -40,9 +27,11 @@ test("mobile fused targets fail closed with explicit diagnostics", () => {
   ];
 
   for (const [target, pattern] of cases) {
-    const result = runDflashBuild(["--target", target, "--dry-run"]);
-    assert.notEqual(result.status, 0, `expected ${target} to fail`);
-    assert.match(result.stderr, pattern, result.stderr);
-    assert.match(result.stderr, new RegExp(target), result.stderr);
+    assert.throws(() => parseArgs(["--target", target, "--dry-run"]), (err) => {
+      const message = err instanceof Error ? err.message : String(err);
+      assert.match(message, pattern, message);
+      assert.match(message, new RegExp(target), message);
+      return true;
+    });
   }
 });

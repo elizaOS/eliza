@@ -43,6 +43,17 @@ from gauntlet.sdk.types import (
 )
 
 
+def _pubkey(value: str):
+    try:
+        from solders.pubkey import Pubkey
+
+        return Pubkey.from_string(value)
+    except Exception:
+        from gauntlet.sdk.types import Pubkey
+
+        return Pubkey(value)
+
+
 @dataclass
 class ScenarioDefinition:
     """Parsed scenario definition from YAML."""
@@ -336,7 +347,8 @@ class TestOrchestrator:
 
             # Record transaction metrics if executed
             tx_metrics = None
-            if response.action == "execute" and response.transaction:
+            read_only_task = task.type in {TaskType.QUERY, TaskType.ANALYZE}
+            if response.action == "execute" and response.transaction and not read_only_task:
                 # Validate transaction content
                 from gauntlet.harness.validators import validate_transaction
                 is_valid, error_msg = validate_transaction(
@@ -453,9 +465,21 @@ class TestOrchestrator:
     def _build_program_configs(self) -> list[ProgramConfig]:
         """Build program configurations for Jupiter, Orca, and Drift."""
         return [
-            ProgramConfig("jupiter", self.programs_dir / "jupiter.so"),
-            ProgramConfig("orca", self.programs_dir / "orca.so"),
-            ProgramConfig("drift", self.programs_dir / "drift.so"),
+            ProgramConfig(
+                "jupiter",
+                self.programs_dir / "jupiter.so",
+                _pubkey("JUP6LkbZbjS1jKKwapdHNy74zcZ3tLUZoi5QNyVTaV4"),
+            ),
+            ProgramConfig(
+                "orca",
+                self.programs_dir / "orca.so",
+                _pubkey("whirLbMiicVdio4qvUfM5KAg6Ct8VwpYzGff3uctyCc"),
+            ),
+            ProgramConfig(
+                "drift",
+                self.programs_dir / "drift.so",
+                _pubkey("dRiftyHA39MWEi3m9aunc5MzRF1JYuBsbn6VPcn33UH"),
+            ),
         ]
 
     def _build_account_configs(self, state: dict) -> list[AccountConfig]:

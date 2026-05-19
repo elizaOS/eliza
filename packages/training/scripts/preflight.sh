@@ -443,121 +443,12 @@ fi
 log "[5/8] local smoke fresh (<${SMOKE_MAX_AGE_HOURS}h, applicable_passed_pct ≥ ${MIN_CONTENT_PCT})"
 SMOKE_DETAIL_FILE="$(mktemp)"
 trap 'rm -f "$SUMMARY_TMP" "$SCHEMA_DETAIL_FILE" "$MEM_DETAIL_FILE" "$SMOKE_DETAIL_FILE"' EXIT
-if uv run --extra train python - "$REGISTRY_KEY" "$SMOKE_MAX_AGE_HOURS" "$MIN_CONTENT_PCT" "$SMOKE_DETAIL_FILE" <<'PY'
-"""Stat checkpoints/<key>-smoke-fullstack/smoke_summary.json (the
-architecture-aware summary written at the end of smoke_full_stack.sh).
-
-The summary is keyed by the dotted registry key with dots replaced by
-hyphens (e.g. qwen3.5-0.8b → qwen3-5-0-8b-smoke-fullstack).
-"""
-from __future__ import annotations
-
-import json
-import sys
-import time
-from pathlib import Path
-
-REGISTRY_KEY = sys.argv[1]
-MAX_AGE_HOURS = float(sys.argv[2])
-MIN_CONTENT_PCT = float(sys.argv[3])
-DETAIL_OUT = Path(sys.argv[4])
-
-hyphen_key = REGISTRY_KEY.replace(".", "-")
-candidate_files = [
-    Path("checkpoints") / f"{hyphen_key}-smoke-fullstack" / "smoke_summary.json",
-    Path("checkpoints") / f"{REGISTRY_KEY}-smoke-fullstack" / "smoke_summary.json",
-]
-summary_path: Path | None = next((p for p in candidate_files if p.exists()), None)
-
-detail: dict = {"candidates": [str(c) for c in candidate_files]}
-
-if summary_path is None:
-    detail["status"] = "fail"
-    detail["reason"] = "no smoke_summary.json under checkpoints/<key>-smoke-fullstack/"
-    DETAIL_OUT.write_text(json.dumps(detail))
-    print(f"FAIL: no smoke summary at {detail['candidates']}", file=sys.stderr)
-    sys.exit(1)
-
-mtime = summary_path.stat().st_mtime
-age_hours = (time.time() - mtime) / 3600.0
-detail.update({
-    "summary_path": str(summary_path),
-    "age_hours": round(age_hours, 2),
-    "max_age_hours": MAX_AGE_HOURS,
-})
-
-if age_hours > MAX_AGE_HOURS:
-    detail["status"] = "fail"
-    detail["reason"] = f"smoke summary {age_hours:.1f}h old > {MAX_AGE_HOURS}h cutoff"
-    DETAIL_OUT.write_text(json.dumps(detail))
-    print(f"FAIL: smoke too old ({age_hours:.1f}h)", file=sys.stderr)
-    sys.exit(1)
-
-blob = json.loads(summary_path.read_text())
-schema = int(blob.get("schemaVersion", 0))
-detail["schemaVersion"] = schema
-if schema < 2:
-    # Older summary files predate the architecture-aware step bookkeeping.
-    # Force a re-run rather than guessing.
-    detail["status"] = "fail"
-    detail["reason"] = (
-        f"smoke summary schemaVersion={schema} predates architecture-aware "
-        f"step tracking (expected >=2). Re-run scripts/smoke_full_stack.sh."
-    )
-    DETAIL_OUT.write_text(json.dumps(detail))
-    print(detail["reason"], file=sys.stderr)
-    sys.exit(1)
-
-status = blob.get("status", "")
-applicable_pct = float(blob.get("applicable_passed_pct", 0.0))
-applicable = blob.get("applicable_steps", []) or []
-passed = blob.get("passed_steps", []) or []
-failed = blob.get("failed_steps", []) or []
-skipped_incompat = blob.get("skipped_incompatible_steps", []) or []
-skipped_tooling = blob.get("skipped_tooling_steps", []) or []
-detail.update({
-    "status_in_summary": status,
-    "applicable_passed_pct": applicable_pct,
-    "min_content_pct": MIN_CONTENT_PCT,
-    "applicable_steps": applicable,
-    "passed_steps": passed,
-    "failed_steps": failed,
-    "skipped_incompatible_steps": skipped_incompat,
-    "skipped_tooling_steps": skipped_tooling,
-})
-
-if status != "pass":
-    detail["status"] = "fail"
-    detail["reason"] = (
-        f"smoke summary status={status!r} (failed_steps={failed})"
-    )
-    DETAIL_OUT.write_text(json.dumps(detail))
-    print(f"FAIL: smoke status={status} failed_steps={failed}", file=sys.stderr)
-    sys.exit(1)
-
-if applicable_pct < MIN_CONTENT_PCT:
-    detail["status"] = "fail"
-    detail["reason"] = (
-        f"applicable_passed_pct {applicable_pct:.1f} < {MIN_CONTENT_PCT}"
-    )
-    DETAIL_OUT.write_text(json.dumps(detail))
-    print(
-        f"FAIL: smoke applicable_passed_pct {applicable_pct:.1f}% < {MIN_CONTENT_PCT}%",
-        file=sys.stderr,
-    )
-    sys.exit(1)
-
-detail["status"] = "pass"
-DETAIL_OUT.write_text(json.dumps(detail))
-print(
-    f"  smoke {summary_path} age={age_hours:.1f}h "
-    f"applicable_passed_pct={applicable_pct:.1f}% "
-    f"(applicable={len(applicable)}, passed={len(passed)}, "
-    f"skipped_incompat={len(skipped_incompat)}, skipped_tooling={len(skipped_tooling)})",
-    file=sys.stderr,
-)
-sys.exit(0)
-PY
+if uv run --extra train python "$ROOT/scripts/check_smoke_summary.py" \
+      --registry-key "$REGISTRY_KEY" \
+      --max-age-hours "$SMOKE_MAX_AGE_HOURS" \
+      --min-applicable-pct "$MIN_CONTENT_PCT" \
+      --detail-out "$SMOKE_DETAIL_FILE" \
+      --root "$ROOT"
 then
   log_ok "local smoke fresh and green"
   record smoke pass "$(cat "$SMOKE_DETAIL_FILE")"

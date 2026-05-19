@@ -9,8 +9,11 @@ Provides commands for:
 
 import argparse
 import asyncio
+import hashlib
 import importlib.util
+import json
 import sys
+from dataclasses import asdict
 from pathlib import Path
 
 from gauntlet.harness.orchestrator import TestOrchestrator
@@ -19,6 +22,39 @@ from gauntlet.scoring.engine import ScoringEngine
 from gauntlet.storage.sqlite import SQLiteStorage
 from gauntlet.storage.export import Exporter
 from gauntlet.sdk.interface import GauntletAgent
+
+
+def _stable_json_hash(payload: object) -> str:
+    encoded = json.dumps(payload, sort_keys=True, separators=(",", ":"), default=str).encode(
+        "utf-8"
+    )
+    return hashlib.sha256(encoded).hexdigest()
+
+
+def _scenario_set_hash(orchestrator: TestOrchestrator) -> str:
+    scenarios = []
+    for level in sorted(orchestrator._scenarios):
+        for scenario in orchestrator._scenarios[level]:
+            scenarios.append(asdict(scenario))
+    return _stable_json_hash(scenarios)
+
+
+def _scoring_config_hash() -> str:
+    from gauntlet.scoring import thresholds
+
+    return _stable_json_hash(
+        {
+            "level_thresholds": {
+                str(level): asdict(value)
+                for level, value in sorted(thresholds.LEVEL_THRESHOLDS.items())
+            },
+            "overall_thresholds": {
+                key: asdict(value)
+                for key, value in sorted(thresholds.OVERALL_THRESHOLDS.items())
+            },
+            "stability_std_dev_threshold": thresholds.STABILITY_STD_DEV_THRESHOLD,
+        }
+    )
 
 
 def load_agent_from_file(agent_path: Path) -> GauntletAgent:
@@ -157,8 +193,14 @@ async def run_benchmark(args: argparse.Namespace) -> int:
         json_path = exporter.export_json(
             metrics.run_metrics,
             overall_score,
-            scenarios_hash="placeholder",
-            scoring_hash="placeholder",
+            scenarios_hash=_scenario_set_hash(orchestrator),
+            scoring_hash=_scoring_config_hash(),
+            execution={
+                "mock_mode": orchestrator.mock_mode,
+                "offline_mode": surfpool_config.offline_mode,
+                "clone_mainnet": args.clone_mainnet,
+                "rpc_url": surfpool.rpc_url,
+            },
         )
         md_path = exporter.export_markdown(
             metrics.run_metrics,

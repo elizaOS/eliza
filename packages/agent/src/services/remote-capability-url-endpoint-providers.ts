@@ -1,9 +1,9 @@
-import type { RemoteCapabilityEndpointConfig } from "./remote-capability-router.ts";
 import type {
   ProvisionedRemoteCapabilityEndpoint,
   RemoteCapabilityEndpointProvider,
   RemoteCapabilityEndpointProviderId,
 } from "./remote-capability-endpoint-provider.ts";
+import type { RemoteCapabilityEndpointConfig } from "./remote-capability-router.ts";
 
 export type UrlRemoteCapabilityEndpointProviderOptions = {
   baseUrl: string;
@@ -71,9 +71,15 @@ function provisionUrlRemoteCapabilityEndpoint(
 function normalizeEndpointId(value: string): string {
   const trimmed = value.trim();
   if (!trimmed) {
-    throw new Error("Remote capability endpoint id must be a non-empty string.");
+    throw new Error(
+      "Remote capability endpoint id must be a non-empty string.",
+    );
   }
-  if (trimmed.includes("/") || trimmed.includes("\\") || trimmed.includes("?")) {
+  if (
+    trimmed.includes("/") ||
+    trimmed.includes("\\") ||
+    trimmed.includes("?")
+  ) {
     throw new Error(
       `Remote capability endpoint id "${value}" must not contain path or query separators.`,
     );

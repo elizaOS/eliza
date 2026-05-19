@@ -23,8 +23,8 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 
 import {
-	KokoroModelMissingError,
 	type KokoroModelLayout,
+	KokoroModelMissingError,
 	type KokoroPhonemeSequence,
 	type KokoroVoicePack,
 } from "./types";

@@ -40,10 +40,26 @@ from benchmarks.orchestrator.random_baseline_runner import (
 )
 from benchmarks.orchestrator.types import ExecutionContext, RunRequest
 from benchmarks.registry import (
+    _score_from_agentbench_json,
     _score_from_bfcl_json,
+    _score_from_clawbench_json,
+    _score_from_contextbench_json,
+    _score_from_gauntlet_json,
+    _score_from_gsm8k_json,
+    _score_from_mind2web_json,
+    _score_from_mmau_json,
     _score_from_mint_json,
+    _score_from_mt_bench_json,
+    _score_from_osworld_json,
     _score_from_realm_json,
+    _score_from_rlmbench_json,
+    _score_from_scambench_json,
+    _score_from_swebench_json,
     _score_from_taubench_json,
+    _score_from_terminalbench_json,
+    _score_from_trajectory_replay_json,
+    _score_from_vision_language_json,
+    _score_from_visualwebbench_json,
     _score_from_voiceagentbench_json,
     _score_from_voicebench_json,
     _score_from_voicebench_quality_json,
@@ -82,13 +98,19 @@ def test_discovery_includes_directory_name_mismatches_and_special_tracks() -> No
     assert "elizaos_mmau" not in discover_adapters(_workspace_root()).all_directories
 
 
-def test_voice_audio_defaults_do_not_publish_mock_fixture_runs() -> None:
+def test_voice_audio_defaults_do_not_publish_mock_fixture_runs(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.delenv("GROQ_API_KEY", raising=False)
+    monkeypatch.setattr(orchestrator_adapters.importlib.util, "find_spec", lambda _name: object())
+    orchestrator_adapters._VOICEBENCH_QUALITY_REAL_INPUTS_AVAILABLE = None
+    orchestrator_adapters._VOICEAGENTBENCH_REAL_AUDIO_AVAILABLE = None
     adapters = discover_adapters(_workspace_root()).adapters
 
     voicebench_quality_extra = adapters["voicebench_quality"].default_extra_config
     assert voicebench_quality_extra.get("fixtures") is not True
     assert voicebench_quality_extra.get("mock") is not True
-    assert voicebench_quality_extra.get("stt_provider") == "groq"
+    assert voicebench_quality_extra.get("stt_provider") == "faster-whisper"
 
     voiceagentbench_extra = adapters["voiceagentbench"].default_extra_config
     assert voiceagentbench_extra.get("mock") is not True
@@ -121,6 +143,96 @@ def test_gauntlet_requires_clone_capable_surfpool_for_real_harness_rows(
     assert _is_harness_compatible(adapter, "openclaw") is True
 
 
+def test_gauntlet_accepts_current_surfpool_remote_datasource_help(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    orchestrator_adapters._GAUNTLET_REAL_SURFPOOL_AVAILABLE = None
+    monkeypatch.setattr(orchestrator_adapters.shutil, "which", lambda _name: "/bin/surfpool")
+    monkeypatch.setattr(
+        orchestrator_adapters,
+        "_surfpool_start_help",
+        lambda _binary: "Usage: surfpool start --network <NETWORK> --rpc-url <RPC_URL> --no-tui",
+    )
+    try:
+        assert orchestrator_adapters._has_gauntlet_real_surfpool_backend() is True
+    finally:
+        orchestrator_adapters._GAUNTLET_REAL_SURFPOOL_AVAILABLE = None
+
+
+def test_gauntlet_surfpool_manager_uses_current_mainnet_datasource_cli(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from gauntlet.harness.surfpool import SurfpoolConfig, SurfpoolManager
+
+    manager = SurfpoolManager(
+        SurfpoolConfig(
+            offline_mode=False,
+            clone_from="https://api.mainnet-beta.solana.com",
+            programs_to_clone=["JUP6LkbZbjS1jKKwapdHNy74zcZ3tLUZoi5QNyVTaV4"],
+        )
+    )
+    monkeypatch.setattr(manager, "_find_surfpool_binary", lambda: "/bin/surfpool")
+    monkeypatch.setattr(
+        manager,
+        "_start_help",
+        lambda: "Usage: surfpool start --network <NETWORK> --rpc-url <RPC_URL> --no-tui",
+    )
+
+    command = manager._build_command()
+    assert "--offline" not in command
+    assert "--clone" not in command
+    assert "--network" in command
+    assert command[command.index("--network") + 1] == "mainnet"
+
+
+def test_gauntlet_registry_selects_distinct_harness_agents(tmp_path: Path) -> None:
+    entry = {item.id: item for item in get_benchmark_registry(_workspace_root())}[
+        "gauntlet"
+    ]
+
+    for harness, shim in (
+        ("eliza", "eliza_bridge_agent.py"),
+        ("hermes", "hermes_bridge_agent.py"),
+        ("openclaw", "openclaw_bridge_agent.py"),
+    ):
+        command = entry.build_command(
+            tmp_path / harness,
+            ModelSpec(provider="cerebras", model="gpt-oss-120b"),
+            {"agent": harness, "clone_mainnet": True, "max_scenarios": 1},
+        )
+        assert "--agent" in command
+        assert command[command.index("--agent") + 1].endswith(shim)
+        assert "--clone-mainnet" in command
+        assert "--mock" not in command
+
+
+def test_gauntlet_rejects_mock_or_offline_execution_artifacts() -> None:
+    payload = {
+        "metadata": {
+            "execution": {
+                "mock_mode": False,
+                "offline_mode": True,
+                "clone_mainnet": False,
+            }
+        },
+        "results": {
+            "overall_score": 75.0,
+            "passed": True,
+            "components": {
+                "task_completion": 70.0,
+                "safety": 90.0,
+                "efficiency": 60.0,
+                "capital": 100.0,
+            },
+        },
+    }
+    with pytest.raises(ValueError, match="mock/offline execution"):
+        _score_from_gauntlet_json(payload)
+
+    payload["metadata"]["execution"]["offline_mode"] = False  # type: ignore[index]
+    assert _score_from_gauntlet_json(payload).score == 0.75
+
+
 def test_voiceagentbench_requires_real_audio_dataset_for_harness_rows(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
@@ -131,6 +243,7 @@ def test_voiceagentbench_requires_real_audio_dataset_for_harness_rows(
     monkeypatch.delenv("ELIZA_BENCH_URL", raising=False)
     monkeypatch.delenv("VOICEAGENTBENCH_DATA_PATH", raising=False)
     monkeypatch.delenv("VOICEAGENTBENCH_REAL_DATA_PATH", raising=False)
+    monkeypatch.setattr(orchestrator_adapters.importlib.util, "find_spec", lambda _name: None)
     orchestrator_adapters._VOICEAGENTBENCH_REAL_AUDIO_AVAILABLE = None
     adapter = discover_adapters(_workspace_root()).adapters["voiceagentbench"]
     assert adapter.agent_compatibility == ()
@@ -194,9 +307,11 @@ def test_voicebench_requires_real_audio_assets_for_eliza_row(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     monkeypatch.delenv("GROQ_API_KEY", raising=False)
+    monkeypatch.delenv("CEREBRAS_API_KEY", raising=False)
     monkeypatch.delenv("VOICEBENCH_DATASET", raising=False)
     monkeypatch.delenv("VOICEBENCH_DATASET_PATH", raising=False)
     monkeypatch.delenv("VOICEBENCH_AUDIO_PATH", raising=False)
+    monkeypatch.delenv("VOICEBENCH_PROFILE", raising=False)
     orchestrator_adapters._VOICEBENCH_REAL_AUDIO_AVAILABLE = None
     adapter = discover_adapters(_workspace_root()).adapters["voicebench"]
     assert adapter.agent_compatibility == ()
@@ -223,10 +338,10 @@ def test_voicebench_requires_real_audio_assets_for_eliza_row(
     monkeypatch.setenv("VOICEBENCH_DATASET_PATH", str(manifest_path))
     orchestrator_adapters._VOICEBENCH_REAL_AUDIO_AVAILABLE = None
     adapter = discover_adapters(_workspace_root()).adapters["voicebench"]
-    assert adapter.agent_compatibility == ("eliza",)
+    assert adapter.agent_compatibility == ("eliza", "openclaw", "hermes")
     assert _is_harness_compatible(adapter, "eliza") is True
-    assert _is_harness_compatible(adapter, "hermes") is False
-    assert _is_harness_compatible(adapter, "openclaw") is False
+    assert _is_harness_compatible(adapter, "hermes") is True
+    assert _is_harness_compatible(adapter, "openclaw") is True
 
     entry = {item.id: item for item in get_benchmark_registry(_workspace_root())}[
         "voicebench"
@@ -234,7 +349,7 @@ def test_voicebench_requires_real_audio_assets_for_eliza_row(
     command = entry.build_command(
         tmp_path / "out",
         ModelSpec(provider="cerebras", model="gpt-oss-120b"),
-        {"iterations": 1},
+        {"iterations": 1, "agent": "openclaw"},
     )
     assert "--profile=groq" in command
     assert f"--dataset={manifest_path}" in command
@@ -242,6 +357,90 @@ def test_voicebench_requires_real_audio_assets_for_eliza_row(
         _score_from_voicebench_json(
             {"profile": "mock", "summary": {"simple": {"avgEndToEndMs": 0.0}}}
         )
+    with pytest.raises(ValueError, match="result records"):
+        _score_from_voicebench_json(
+            {
+                "profile": "local-cerebras",
+                "runtime": "typescript",
+                "sampleCount": 1,
+                "datasetName": "real-audio",
+                "results": [],
+                "summary": {
+                    "simple": {
+                        "runs": 1,
+                        "avgEndToEndMs": 10.0,
+                        "transcriptionNormalizedAccuracy": 1.0,
+                    }
+                },
+            }
+        )
+    assert (
+        _score_from_voicebench_json(
+            {
+                "profile": "groq",
+                "runtime": "typescript",
+                "sampleCount": 1,
+                "datasetName": "real-audio",
+                "results": [{"mode": "simple"}],
+                "summary": {
+                    "simple": {
+                        "runs": 1,
+                        "avgEndToEndMs": 10.0,
+                        "transcriptionNormalizedAccuracy": 0.5,
+                    }
+                },
+            }
+        ).score
+        == 0.5
+    )
+
+
+def test_voicebench_quality_supports_eliza_runtime_stt_gate(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.delenv("GROQ_API_KEY", raising=False)
+    monkeypatch.delenv("VOICEBENCH_QUALITY_STT_PROVIDER", raising=False)
+    monkeypatch.delenv("VOICEBENCH_STT_PROVIDER", raising=False)
+    monkeypatch.delenv("ELIZA_API_BASE", raising=False)
+    monkeypatch.delenv("ELIZA_BENCH_URL", raising=False)
+    monkeypatch.setattr(orchestrator_adapters.importlib.util, "find_spec", lambda _name: None)
+    orchestrator_adapters._VOICEBENCH_QUALITY_REAL_INPUTS_AVAILABLE = None
+    adapter = discover_adapters(_workspace_root()).adapters["voicebench_quality"]
+    assert adapter.agent_compatibility == ()
+
+    monkeypatch.setattr(orchestrator_adapters.importlib.util, "find_spec", lambda _name: object())
+    orchestrator_adapters._VOICEBENCH_QUALITY_REAL_INPUTS_AVAILABLE = None
+    adapter = discover_adapters(_workspace_root()).adapters["voicebench_quality"]
+    assert adapter.agent_compatibility == ("eliza", "openclaw", "hermes")
+    assert adapter.default_extra_config["stt_provider"] == "faster-whisper"
+
+    monkeypatch.setenv("VOICEBENCH_QUALITY_STT_PROVIDER", "eliza-runtime")
+    monkeypatch.setenv("ELIZA_API_BASE", "http://127.0.0.1:31337")
+    orchestrator_adapters._VOICEBENCH_QUALITY_REAL_INPUTS_AVAILABLE = None
+    adapter = discover_adapters(_workspace_root()).adapters["voicebench_quality"]
+    assert adapter.agent_compatibility == ("eliza", "openclaw", "hermes")
+    assert adapter.default_extra_config["stt_provider"] == "eliza-runtime"
+
+    request = RunRequest(
+        benchmarks=("voicebench_quality",),
+        agent="hermes",
+        provider="cerebras",
+        model="gpt-oss-120b",
+        extra_config={"stt_provider": "eliza-runtime"},
+    )
+    assert _required_env_for_request(adapter, request) == ("CEREBRAS_API_KEY", "ELIZA_API_BASE")
+
+    entry = {item.id: item for item in get_benchmark_registry(_workspace_root())}[
+        "voicebench_quality"
+    ]
+    command = entry.build_command(
+        tmp_path / "out-vbq",
+        ModelSpec(provider="cerebras", model="hermes"),
+        {"agent": "hermes", "suite": "openbookqa", "limit": 1},
+    )
+    assert "--stt-provider" in command
+    assert command[command.index("--stt-provider") + 1] == "eliza-runtime"
 
 
 def test_synthetic_calibration_payloads_exercise_all_score_extractors(tmp_path: Path) -> None:
@@ -360,7 +559,10 @@ def test_default_env_maps_profile_reasoning_effort_to_provider_env() -> None:
     assert env["CEREBRAS_REASONING_EFFORT"] == "low"
 
 
-def test_cross_matrix_validation_constructs_all_compatible_cells() -> None:
+def test_cross_matrix_validation_constructs_all_compatible_cells(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(orchestrator_adapters, "_has_gaia_official_dataset", lambda: True)
     report = build_cross_matrix_report(
         _workspace_root().parent,
         provider="cerebras",
@@ -369,7 +571,7 @@ def test_cross_matrix_validation_constructs_all_compatible_cells() -> None:
 
     assert report.adapter_count == len(discover_adapters(_workspace_root()).adapters)
     assert report.compatible_cell_count > 0
-    assert report.incompatible_cell_count > 0
+    assert report.incompatible_cell_count == 0
     assert report.error_count == 0
 
     compatible = [cell for cell in report.cells if cell.compatible]
@@ -392,6 +594,27 @@ def test_cross_matrix_validation_constructs_all_compatible_cells() -> None:
 
     incompatible = [cell for cell in report.cells if not cell.compatible]
     assert all(cell.reason for cell in incompatible)
+
+
+def test_gaia_matrix_rows_require_official_dataset_access(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(orchestrator_adapters, "_has_gaia_official_dataset", lambda: False)
+
+    report = build_cross_matrix_report(
+        _workspace_root().parent,
+        provider="cerebras",
+        model="gpt-oss-120b",
+    )
+    gaia_cells = [
+        cell
+        for cell in report.cells
+        if cell.benchmark_id in {"gaia", "gaia_orchestrated"}
+    ]
+
+    assert len(gaia_cells) == 6
+    assert all(cell.compatible is False for cell in gaia_cells)
+    assert all("not in adapter compatibility" in str(cell.reason) for cell in gaia_cells)
 
 
 def test_cross_matrix_validation_redacts_secret_config_values() -> None:
@@ -417,6 +640,7 @@ def test_cross_matrix_validation_redacts_secret_config_values() -> None:
 def test_direct_and_native_rows_keep_truthful_matrix_compatibility(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
+    monkeypatch.setattr(orchestrator_adapters, "_has_gaia_official_dataset", lambda: True)
     monkeypatch.setattr(
         orchestrator_adapters,
         "_has_hermes_sandbox_backend",
@@ -452,6 +676,7 @@ def test_direct_and_native_rows_keep_truthful_matrix_compatibility(
     for benchmark_id in (
         "gaia",
         "gaia_orchestrated",
+        "swe_bench_orchestrated",
         "configbench",
         "hyperliquid_bench",
         "interrupt_bench",
@@ -472,6 +697,9 @@ def test_direct_and_native_rows_keep_truthful_matrix_compatibility(
                 assert "--harness" in cell.command
                 assert cell.command[cell.command.index("--harness") + 1] == harness
             if benchmark_id == "gaia_orchestrated":
+                assert "--providers" in cell.command
+                assert cell.command[cell.command.index("--providers") + 1] == harness
+            if benchmark_id == "swe_bench_orchestrated":
                 assert "--providers" in cell.command
                 assert cell.command[cell.command.index("--providers") + 1] == harness
             if benchmark_id == "configbench":
@@ -506,18 +734,13 @@ def test_direct_and_native_rows_keep_truthful_matrix_compatibility(
         "hermes_yc_bench",
         "hermes_swe_env",
     ):
-        hermes_cell = cells[(benchmark_id, "hermes")]
-        assert hermes_cell.compatible is True
-        assert hermes_cell.command
-        assert "hermes-adapter/run_env_cli.py" in hermes_cell.command_display
-
-        for harness in ("eliza", "openclaw"):
+        for harness in ("eliza", "hermes", "openclaw"):
             cell = cells[(benchmark_id, harness)]
-            assert cell.compatible is False
-            assert cell.command is None
-            assert cell.reason == (
-                f"harness '{harness}' not in adapter compatibility (hermes)"
-            )
+            assert cell.compatible is True
+            assert cell.command
+            assert "hermes-adapter/run_env_cli.py" in cell.command_display
+            assert "--harness" in cell.command
+            assert cell.command[cell.command.index("--harness") + 1] == harness
 
     for harness in ("eliza", "hermes", "openclaw"):
         cell = cells[("gauntlet", harness)]
@@ -529,11 +752,9 @@ def test_direct_and_native_rows_keep_truthful_matrix_compatibility(
 
     for harness in ("eliza", "hermes", "openclaw"):
         cell = cells[("vision_language", harness)]
-        assert cell.compatible is False
-        assert cell.command is None
-        assert cell.reason == (
-            f"harness '{harness}' not in adapter compatibility (none)"
-        )
+        assert cell.compatible is True
+        assert cell.command
+        assert "src/runner.ts" in cell.command_display
 
     compactbench_hermes = cells[("compactbench", "hermes")]
     assert compactbench_hermes.compatible is True
@@ -620,6 +841,7 @@ def test_audio_benchmark_registry_commands_and_scores(tmp_path: Path) -> None:
                 "n": 1,
                 "agent": "openclaw",
                 "judge_model": "fixture",
+                "stt_provider": "fixture",
                 "mock": True,
                 "per_suite": {"openbookqa": 1.0},
             }
@@ -694,6 +916,7 @@ def test_live_gated_domain_benchmarks_have_no_key_smoke_routes(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     monkeypatch.delenv("GROQ_API_KEY", raising=False)
+    monkeypatch.delenv("CEREBRAS_API_KEY", raising=False)
     registry = {entry.id: entry for entry in get_benchmark_registry(_workspace_root())}
     mock_model = ModelSpec(provider="mock", model="mock")
 
@@ -797,7 +1020,9 @@ def test_mmau_legacy_module_shims_find_renamed_audio_package(tmp_path: Path) -> 
     assert (tmp_path / "mmau-legacy" / "mmau-results.json").exists()
 
 
-def test_hermes_native_envs_are_hermes_only(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_hermes_native_envs_publish_real_harness_rows(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     monkeypatch.setattr(
         orchestrator_adapters,
         "_has_hermes_sandbox_backend",
@@ -814,10 +1039,10 @@ def test_hermes_native_envs_are_hermes_only(monkeypatch: pytest.MonkeyPatch) -> 
     ):
         adapter = adapters[benchmark_id]
         assert adapter.directory == "hermes-adapter"
-        assert adapter.agent_compatibility == ("hermes",)
+        assert adapter.agent_compatibility == ("eliza", "openclaw", "hermes")
         assert _is_harness_compatible(adapter, "hermes") is True
-        assert _is_harness_compatible(adapter, "eliza") is False
-        assert _is_harness_compatible(adapter, "openclaw") is False
+        assert _is_harness_compatible(adapter, "eliza") is True
+        assert _is_harness_compatible(adapter, "openclaw") is True
 
 
 def test_hermes_native_envs_require_sandbox_backend(
@@ -903,6 +1128,152 @@ def test_agentbench_routes_cross_harness_adapter_clients(
     )
     assert "--runtime" in command
     assert command[command.index("--runtime") + 1] == "hermes"
+
+
+def test_agentbench_score_rejects_zero_task_results() -> None:
+    with pytest.raises(ValueError, match="zero-task score"):
+        _score_from_agentbench_json(
+            {"overall_success_rate": 1.0, "total_tasks": 0, "passed_tasks": 0}
+        )
+    assert (
+        _score_from_agentbench_json(
+            {"overall_success_rate": 0.5, "total_tasks": 2, "passed_tasks": 1}
+        ).score
+        == 0.5
+    )
+
+
+def test_context_and_terminal_scores_reject_zero_task_results() -> None:
+    with pytest.raises(ValueError, match="zero-task score"):
+        _score_from_contextbench_json(
+            {"metrics": {"overall_accuracy": 1.0, "total_tasks": 0}}
+        )
+    assert (
+        _score_from_contextbench_json(
+            {"metrics": {"overall_accuracy": 0.5, "total_tasks": 2}}
+        ).score
+        == 0.5
+    )
+
+    with pytest.raises(ValueError, match="zero-task score"):
+        _score_from_terminalbench_json(
+            {"summary": {"accuracy": 1.0, "total_tasks": 0, "passed_tasks": 0}}
+        )
+    assert (
+        _score_from_terminalbench_json(
+            {"summary": {"accuracy": 0.5, "total_tasks": 2, "passed_tasks": 1}}
+        ).score
+        == 0.5
+    )
+
+
+def test_mind2web_and_visualwebbench_scores_reject_zero_task_results() -> None:
+    with pytest.raises(ValueError, match="zero-task score"):
+        _score_from_mind2web_json(
+            {"overall_step_accuracy": 1.0, "total_tasks": 0}
+        )
+    assert (
+        _score_from_mind2web_json(
+            {"overall_step_accuracy": 0.5, "total_tasks": 2}
+        ).score
+        == 0.5
+    )
+
+    with pytest.raises(ValueError, match="zero-task score"):
+        _score_from_visualwebbench_json(
+            {"overall_accuracy": 1.0, "total_tasks": 0}
+        )
+    assert (
+        _score_from_visualwebbench_json(
+            {"overall_accuracy": 0.5, "total_tasks": 2}
+        ).score
+        == 0.5
+    )
+
+
+def test_rlm_gsm8k_mt_and_scambench_scores_reject_empty_workloads() -> None:
+    with pytest.raises(ValueError, match="zero-task score"):
+        _score_from_rlmbench_json(
+            {"metrics": {"overall_accuracy": 1.0, "total_tasks": 0}, "results": []}
+        )
+    assert (
+        _score_from_rlmbench_json(
+            {"metrics": {"overall_accuracy": 0.5, "total_tasks": 2}, "results": [{"id": "t"}]}
+        ).score
+        == 0.5
+    )
+
+    with pytest.raises(ValueError, match="gsm8k:n must be positive"):
+        _score_from_gsm8k_json({"metrics": {"score": 1.0, "n": 0}})
+    assert _score_from_gsm8k_json({"metrics": {"score": 0.5, "n": 2}}).score == 0.5
+
+    with pytest.raises(ValueError, match="mt_bench:n must be positive"):
+        _score_from_mt_bench_json({"metrics": {"score": 1.0, "n": 0}})
+    assert _score_from_mt_bench_json({"metrics": {"score": 0.5, "n": 2}}).score == 0.5
+
+    with pytest.raises(ValueError, match="zero-example score"):
+        _score_from_scambench_json(
+            {"metrics": {"score": 1.0, "n_scam": 0, "n_legit": 0}}
+        )
+    assert (
+        _score_from_scambench_json(
+            {"metrics": {"score": 0.5, "n_scam": 1, "n_legit": 1}}
+        ).score
+        == 0.5
+    )
+
+
+def test_task_sample_and_check_scores_reject_empty_workloads() -> None:
+    with pytest.raises(ValueError, match="tau_bench: zero-task score"):
+        _score_from_taubench_json({"overall_success_rate": 1.0, "num_tasks": 0})
+    assert _score_from_taubench_json({"overall_success_rate": 0.5, "num_tasks": 2}).score == 0.5
+
+    with pytest.raises(ValueError, match="swe_bench: zero-instance score"):
+        _score_from_swebench_json(
+            {"summary": {"resolve_rate": 1.0, "total_instances": 0}}
+        )
+    assert (
+        _score_from_swebench_json(
+            {"summary": {"resolve_rate": 0.5, "total_instances": 2}}
+        ).score
+        == 0.5
+    )
+
+    with pytest.raises(ValueError, match="osworld: zero-task score"):
+        _score_from_osworld_json({"overall_success_rate": 1.0, "total_tasks": 0})
+    assert (
+        _score_from_osworld_json({"overall_success_rate": 0.5, "total_tasks": 2}).score
+        == 0.5
+    )
+
+    with pytest.raises(ValueError, match="mmau: zero-sample score"):
+        _score_from_mmau_json({"overall_accuracy": 1.0, "total_samples": 0})
+    with pytest.raises(ValueError, match="all samples errored"):
+        _score_from_mmau_json(
+            {"overall_accuracy": 0.0, "total_samples": 2, "error_count": 2}
+        )
+    assert (
+        _score_from_mmau_json(
+            {"overall_accuracy": 0.5, "total_samples": 2, "error_count": 0}
+        ).score
+        == 0.5
+    )
+
+    with pytest.raises(ValueError, match="trajectory_replay:n must be positive"):
+        _score_from_trajectory_replay_json({"metrics": {"score": 1.0, "n": 0}})
+    assert (
+        _score_from_trajectory_replay_json({"metrics": {"score": 0.5, "n": 2}}).score
+        == 0.5
+    )
+
+    with pytest.raises(ValueError, match="clawbench: zero-check score"):
+        _score_from_clawbench_json({"score": {"score": 1.0, "total_checks": 0}})
+    assert (
+        _score_from_clawbench_json(
+            {"score": {"score": 0.5, "passed": 1, "total_checks": 2}}
+        ).score
+        == 0.5
+    )
 
 
 def test_mint_routes_all_three_harnesses() -> None:
@@ -1147,7 +1518,7 @@ def test_standard_academic_adapters_default_to_bounded_smoke(tmp_path: Path) -> 
     assert mt_command[mt_command.index("--judge-max-tokens") + 1] == "256"
 
 
-def test_taubench_adapter_defaults_to_single_sample_task(tmp_path: Path) -> None:
+def test_taubench_adapter_defaults_to_single_real_task(tmp_path: Path) -> None:
     adapter = discover_adapters(_workspace_root()).adapters["tau_bench"]
     effective = _effective_request(
         adapter,
@@ -1173,7 +1544,7 @@ def test_taubench_adapter_defaults_to_single_sample_task(tmp_path: Path) -> None
     command = adapter.command_builder(ctx, adapter)
 
     assert command[command.index("--max-tasks-per-domain") + 1] == "1"
-    assert "--use-sample-tasks" in command
+    assert "--use-sample-tasks" not in command
     assert command[command.index("--agent-harness") + 1] == "eliza"
     assert command[command.index("--agent-provider") + 1] == "cerebras"
     assert command[command.index("--agent-model") + 1] == "gpt-oss-120b"
@@ -1193,7 +1564,7 @@ def test_remaining_smoke_defaults_bound_expensive_adapters(tmp_path: Path) -> No
         "lifeops_bench": ("--limit", "2"),
         "mint": ("--max-tasks", "1"),
         "realm": ("--max-tasks", "1"),
-        "bfcl": ("--sample", "2"),
+        "bfcl": ("--max-per-category", "1"),
         "hyperliquid_bench": ("--max-steps", "1"),
         "experience": ("--queries", "2"),
         "loca_bench": ("--max-tool-uses", "40"),
@@ -2453,6 +2824,7 @@ def test_swe_orchestrated_registry_forwards_harness_and_bare_cerebras_model(
     assert command[command.index("--harness") + 1] == "hermes"
     assert command[command.index("--provider") + 1] == "cerebras"
     assert command[command.index("--model") + 1] == "gpt-oss-120b"
+    assert command[command.index("--providers") + 1] == "hermes"
 
 
 def test_visualwebbench_registry_forwards_mock_mode(tmp_path: Path) -> None:
@@ -2503,6 +2875,34 @@ def test_vision_language_registry_uses_real_runtime_unless_smoke_stub_is_explici
     )
     assert "--smoke" in smoke_command
     assert "--stub" in smoke_command
+
+
+def test_vision_language_score_rejects_smoke_and_stub_reports() -> None:
+    real_payload = {
+        "schemaVersion": "vision-language-bench-v1",
+        "tier": "eliza-1-9b",
+        "runtime_id": "eliza-1-9b",
+        "smoke": False,
+        "benchmark": "screenspot",
+        "sample_count": 2,
+        "score": 0.5,
+        "baseline_score": 0.876,
+        "delta": -0.376,
+        "runtime_seconds": 1.0,
+        "error_count": 0,
+        "samples": [],
+    }
+    assert _score_from_vision_language_json(real_payload).score == 0.5
+
+    smoke_payload = dict(real_payload)
+    smoke_payload["smoke"] = True
+    with pytest.raises(ValueError, match="smoke report"):
+        _score_from_vision_language_json(smoke_payload)
+
+    stub_payload = dict(real_payload)
+    stub_payload["runtime_id"] = "eliza-1-9b-stub"
+    with pytest.raises(ValueError, match="stub runtime"):
+        _score_from_vision_language_json(stub_payload)
 
 
 def test_rlm_registry_forwards_model_to_root_and_subcall(tmp_path: Path) -> None:

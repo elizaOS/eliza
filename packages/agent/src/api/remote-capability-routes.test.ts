@@ -1007,10 +1007,10 @@ describe("handleRemoteCapabilityRoutes", () => {
     const connectEndpointProvider = vi.fn();
     const { ctx, error, json } = makeCtx(
       {
-        provider: "satellite",
+        provider: "unknown-provider",
         endpoint: {
-          id: "satellite",
-          baseUrl: "https://satellite.example.test",
+          id: "unknown-provider",
+          baseUrl: "https://unknown-provider.example.test",
         },
       },
       { connectEndpointProvider },
@@ -1092,6 +1092,97 @@ describe("handleRemoteCapabilityRoutes", () => {
       "endpoint.baseUrl must use http or https.",
       400,
     );
+    expect(json).not.toHaveBeenCalled();
+  });
+
+  it("rejects endpoint URLs with embedded credentials", async () => {
+    const connectEndpointProvider = vi.fn();
+    const { ctx, error, json } = makeCtx(
+      {
+        endpoint: { baseUrl: "https://user:pass@capability.example.test" },
+      },
+      { connectEndpointProvider },
+    );
+
+    await expect(handleRemoteCapabilityRoutes(ctx)).resolves.toBe(true);
+
+    expect(error).toHaveBeenCalledWith(
+      ctx.res,
+      "endpoint.baseUrl must not include embedded credentials.",
+      400,
+    );
+    expect(connectEndpointProvider).not.toHaveBeenCalled();
+    expect(json).not.toHaveBeenCalled();
+  });
+
+  it("normalizes endpoint URL query and fragment out of persisted identity", async () => {
+    const connectEndpointProvider = vi.fn().mockResolvedValue({
+      providerId: "direct",
+      endpoint: {
+        id: "tools",
+        baseUrl: "https://capability.example.test/root",
+        token: "explicit-token",
+      },
+      sync: syncResult,
+    });
+    const { ctx, error, json } = makeCtx(
+      {
+        endpoint: {
+          id: "tools",
+          baseUrl: "https://capability.example.test/root?token=leak#debug",
+          token: "explicit-token",
+        },
+        persist: false,
+      },
+      { connectEndpointProvider },
+    );
+
+    await expect(handleRemoteCapabilityRoutes(ctx)).resolves.toBe(true);
+
+    expect(error).not.toHaveBeenCalled();
+    expect(connectEndpointProvider).toHaveBeenCalledWith(
+      ctx.runtime,
+      expect.objectContaining({
+        provisionOptions: {
+          endpoint: {
+            id: "tools",
+            baseUrl: "https://capability.example.test/root",
+            token: "explicit-token",
+          },
+        },
+      }),
+    );
+    expect(json.mock.calls[0]?.[1]).toMatchObject({
+      endpoint: {
+        id: "tools",
+        baseUrl: "https://capability.example.test/root",
+        hasToken: true,
+      },
+      persisted: false,
+    });
+  });
+
+  it("rejects cloud API URLs with embedded credentials", async () => {
+    const connectCloudSandbox = vi.fn();
+    const { ctx, error, json } = makeCtx(
+      {
+        cloud: {
+          cloudApiBase: "https://user:pass@api.elizacloud.ai",
+          authToken: "cloud-auth",
+          name: "Cloud Tools",
+        },
+      },
+      { connectCloudSandbox },
+    );
+
+    await expect(handleRemoteCapabilityRoutes(ctx)).resolves.toBe(true);
+
+    expect(error).toHaveBeenCalledWith(
+      ctx.res,
+      "cloud.cloudApiBase must not include embedded credentials.",
+      400,
+    );
+    expect(connectCloudSandbox).not.toHaveBeenCalled();
     expect(json).not.toHaveBeenCalled();
   });
 

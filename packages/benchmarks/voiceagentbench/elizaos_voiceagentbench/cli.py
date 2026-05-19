@@ -17,6 +17,7 @@ import json
 import logging
 import os
 import re
+import importlib.util
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
@@ -38,8 +39,19 @@ logger = logging.getLogger("elizaos_voiceagentbench")
 
 SUITE_CHOICES = [s.value for s in Suite] + ["all"]
 AGENT_CHOICES = ["eliza", "hermes", "openclaw", "mock"]
-STT_CHOICES = ["groq", "eliza-runtime"]
+STT_CHOICES = ["groq", "eliza-runtime", "faster-whisper", "local-whisper"]
 _TOOL_ANNOTATION_RE = re.compile(r"\[tool:\s*([A-Za-z0-9_.-]+)\s+(\{.*?\})\]")
+
+
+def _default_stt_provider() -> str:
+    explicit = os.environ.get("VOICEAGENTBENCH_STT_PROVIDER", "").strip()
+    if explicit:
+        return explicit
+    if os.environ.get("GROQ_API_KEY"):
+        return "groq"
+    if importlib.util.find_spec("faster_whisper") is not None:
+        return "faster-whisper"
+    return "groq"
 
 
 async def _mock_agent(history: list[Any], _tools: list[dict[str, Any]]) -> Any:
@@ -138,7 +150,7 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument(
         "--stt-provider",
         choices=STT_CHOICES,
-        default=os.environ.get("VOICEAGENTBENCH_STT_PROVIDER", "groq"),
+        default=_default_stt_provider(),
         help="Real STT backend for non-mock runs.",
     )
     parser.add_argument(

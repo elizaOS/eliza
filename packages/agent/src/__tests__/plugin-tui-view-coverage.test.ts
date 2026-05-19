@@ -1,7 +1,8 @@
 import { EventEmitter } from "node:events";
 import { readFileSync } from "node:fs";
 import type http from "node:http";
-import { resolve } from "node:path";
+import { dirname, resolve } from "node:path";
+import { fileURLToPath } from "node:url";
 import type { Plugin, ViewDeclaration } from "@elizaos/core";
 import { describe, expect, it } from "vitest";
 import {
@@ -15,7 +16,10 @@ import {
   type ViewsRouteContext,
 } from "../api/views-routes.js";
 
-const repoRoot = resolve(import.meta.dir, "../../../..");
+const repoRoot = resolve(
+  dirname(fileURLToPath(import.meta.url)),
+  "../../../..",
+);
 
 const VIEW_MANIFESTS = [
   "plugins/plugin-companion/src/plugin.ts",

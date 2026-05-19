@@ -55,14 +55,19 @@ export function registerCapabilityRouterCommand(program: Command) {
 
   capabilityRouter
     .command("connect [baseUrl]")
-    .description("Connect a remote plugin endpoint or provision a Cloud endpoint")
+    .description(
+      "Connect a remote plugin endpoint or provision a Cloud endpoint",
+    )
     .option(
       "--provider <provider>",
       "Endpoint provider: direct, e2b, home-machine, mobile-companion, desktop-companion",
       "direct",
     )
     .option("--id <id>", "Endpoint id for direct/provider connects")
-    .option("--token <token>", "Bearer token for direct/provider endpoint calls")
+    .option(
+      "--token <token>",
+      "Bearer token for direct/provider endpoint calls",
+    )
     .option(
       "--allowed-module <moduleId>",
       "Restrict sync to a remote module id; repeatable",
@@ -177,7 +182,9 @@ export async function runCapabilityRouterConformance(
     throw new Error("Capability availability response is not valid.");
   }
   if (!availability.available || availability.capabilities.plugin !== true) {
-    throw new Error("Capability endpoint must report available plugin capability.");
+    throw new Error(
+      "Capability endpoint must report available plugin capability.",
+    );
   }
 
   const moduleResult = await invokeCapability(
@@ -432,9 +439,13 @@ export async function runCapabilityRouterConformance(
   }
 
   if (requiredSurfaces.includes("response-handler-evaluator")) {
-    const target = modules.find((module) => module.responseHandlerEvaluators[0]);
+    const target = modules.find(
+      (module) => module.responseHandlerEvaluators[0],
+    );
     if (!target) {
-      throw new Error("Endpoint did not expose a remote response-handler evaluator.");
+      throw new Error(
+        "Endpoint did not expose a remote response-handler evaluator.",
+      );
     }
     const evaluator = target.responseHandlerEvaluators[0];
     const common = {
@@ -526,20 +537,14 @@ export function buildCapabilityRouterConnectPayload(
     return {
       ...common,
       cloud: {
-        cloudApiBase: requireNonEmpty(
-          opts.cloudApiBase,
-          "cloudApiBase",
-        ),
+        cloudApiBase: requireNonEmpty(opts.cloudApiBase, "cloudApiBase"),
         authToken: requireNonEmpty(opts.cloudAuthToken, "cloudAuthToken"),
         name: requireNonEmpty(opts.cloudName, "cloudName"),
         ...optionalStringList(opts.cloudBio, "bio"),
         ...optionalString(opts.cloudEndpointId, "endpointId"),
         ...optionalString(opts.cloudToken, "token"),
         ...optionalPositiveInteger(opts.cloudTimeoutMs, "timeoutMs"),
-        ...optionalPositiveInteger(
-          opts.cloudPollIntervalMs,
-          "pollIntervalMs",
-        ),
+        ...optionalPositiveInteger(opts.cloudPollIntervalMs, "pollIntervalMs"),
       },
     };
   }
@@ -727,7 +732,9 @@ async function invokeCapability(
     throw new Error(`Capability invoke ${method} did not return an object.`);
   }
   if (response.ok === false) {
-    throw new Error(`Capability invoke ${method} failed: ${JSON.stringify(response.error)}`);
+    throw new Error(
+      `Capability invoke ${method} failed: ${JSON.stringify(response.error)}`,
+    );
   }
   return "result" in response ? response.result : response;
 }
@@ -797,7 +804,9 @@ function readNamedList(value: unknown): Array<{ name: string }> {
     .map((item) => ({ name: item.name as string }));
 }
 
-function readRouteList(value: unknown): Array<{ method: string; path: string }> {
+function readRouteList(
+  value: unknown,
+): Array<{ method: string; path: string }> {
   if (!Array.isArray(value)) return [];
   return value
     .filter((item): item is Record<string, unknown> => isRecord(item))
@@ -808,7 +817,10 @@ function readRouteList(value: unknown): Array<{ method: string; path: string }> 
         typeof item.path === "string" &&
         item.path.trim(),
     )
-    .map((item) => ({ method: item.method as string, path: item.path as string }));
+    .map((item) => ({
+      method: item.method as string,
+      path: item.path as string,
+    }));
 }
 
 function readViewList(value: unknown): Array<{ bundlePath?: string }> {
@@ -835,7 +847,8 @@ function readModelList(value: unknown): Array<{ modelType: string }> {
 function readLifecycleHooks(value: unknown): string[] {
   if (!isRecord(value) || !Array.isArray(value.hooks)) return [];
   return value.hooks.filter(
-    (item): item is string => typeof item === "string" && item.trim().length > 0,
+    (item): item is string =>
+      typeof item === "string" && item.trim().length > 0,
   );
 }
 
@@ -843,7 +856,9 @@ function readEventList(value: unknown): Array<{ eventName: string }> {
   if (!Array.isArray(value)) return [];
   return value
     .filter((item): item is Record<string, unknown> => isRecord(item))
-    .filter((item) => typeof item.eventName === "string" && item.eventName.trim())
+    .filter(
+      (item) => typeof item.eventName === "string" && item.eventName.trim(),
+    )
     .map((item) => ({ eventName: item.eventName as string }));
 }
 
@@ -854,8 +869,7 @@ function readServiceList(
   return value
     .filter((item): item is Record<string, unknown> => isRecord(item))
     .filter(
-      (item) =>
-        typeof item.serviceType === "string" && item.serviceType.trim(),
+      (item) => typeof item.serviceType === "string" && item.serviceType.trim(),
     )
     .map((item) => ({
       serviceType: item.serviceType as string,
@@ -871,7 +885,8 @@ function readServiceList(
 function readAppBridgeHooks(value: unknown): string[] {
   if (!isRecord(value) || !Array.isArray(value.hooks)) return [];
   return value.hooks.filter(
-    (item): item is string => typeof item === "string" && item.trim().length > 0,
+    (item): item is string =>
+      typeof item === "string" && item.trim().length > 0,
   );
 }
 

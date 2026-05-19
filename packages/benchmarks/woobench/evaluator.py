@@ -327,6 +327,15 @@ Respond ONLY with the rephrased response, nothing else."""
             requested_payment = (
                 None if payment_check else detect_payment_demand(agent_turn)
             )
+            if (
+                requested_payment is not None
+                and revenue_payment_received
+                and requested_payment.source == "text"
+            ):
+                # After a payment has converted, long-form readings often discuss
+                # ordinary dollar amounts (salary, rent, runway). Treat only
+                # explicit structured payment actions as repeat charge attempts.
+                requested_payment = None
 
             if payment_check and active_payment:
                 payment_result = await self._check_collected_payment(active_payment)
