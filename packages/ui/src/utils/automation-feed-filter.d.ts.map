@@ -1,1 +1,0 @@
-{"version":3,"file":"automation-feed-filter.d.ts","sourceRoot":"","sources":["automation-feed-filter.ts"],"names":[],"mappings":"AAAA;;;;GAIG;AAEH,MAAM,MAAM,UAAU,GAAG,KAAK,GAAG,OAAO,GAAG,WAAW,GAAG,QAAQ,GAAG,UAAU,CAAC;AAE/E,MAAM,WAAW,cAAc;IAC7B,IAAI,EAAE,MAAM,GAAG,UAAU,CAAC;IAC1B,MAAM,EAAE,OAAO,CAAC;CACjB;AAED,wBAAgB,YAAY,CAAC,GAAG,EAAE,cAAc,EAAE,MAAM,EAAE,UAAU,GAAG,OAAO,CAe7E"}

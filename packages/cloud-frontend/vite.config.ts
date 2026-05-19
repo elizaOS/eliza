@@ -433,17 +433,31 @@ export default defineConfig(({ mode }) => {
                 priority: 50,
               },
               {
-                // Wallet stack. Generic crypto/encoding primitives (@noble,
-                // @scure, bs58, base-x) and the Node Buffer polyfill are
-                // intentionally *not* grouped here so they fall into
-                // vendor-core — keeping them in vendor-wallet would force
-                // rolldown to label many shared modules as "wallet" and
-                // confuse the modulepreload hints emitted from index.html
-                // for non-wallet routes.
+                // Wallet stack — modal UI + connector code. Loaded on demand
+                // when the user opens a wallet flow. Generic crypto/encoding
+                // primitives (@noble, @scure, bs58, base-x) and the Node
+                // Buffer polyfill are intentionally *not* grouped here so they
+                // fall into vendor-core — keeping them in vendor-wallet would
+                // force rolldown to label many shared modules as "wallet" and
+                // confuse the modulepreload hints emitted from index.html for
+                // non-wallet routes.
                 name: "vendor-wallet",
-                test: /node_modules[\\/](@rainbow-me|@solana|@walletconnect|@wagmi|wagmi|viem|ethers|ox|abitype)[\\/]/,
+                test: /node_modules[\\/](@rainbow-me|@solana|@walletconnect|@wagmi|wagmi)[\\/]/,
                 priority: 40,
                 maxSize: 450 * 1024,
+              },
+              {
+                // Chain hex/ABI codecs. These are imported by many non-wallet
+                // routes (anything that reads on-chain data or decodes ABI
+                // payloads), so they must NOT be tagged "vendor-wallet" — that
+                // would let the modulePreload filter strip them from the entry
+                // preload set even though hot paths depend on them. One stable
+                // shared chunk maximises HTTP-cache reuse across navigations,
+                // so we lift the maxSize ceiling here.
+                name: "vendor-chain-codec",
+                test: /node_modules[\\/](viem|ethers|ox|abitype)[\\/]/,
+                priority: 38,
+                maxSize: 900 * 1024,
               },
               {
                 name: "vendor-charts",

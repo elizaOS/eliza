@@ -35,9 +35,9 @@ and mobile (390×844 — iPhone 14 Pro).
 
 ## Dynamic content
 
-Animated elements are masked (`video`, `[data-testid="cloud-video"]`,
-`.animate-pulse`, `.animate-spin`, `[data-marquee]`). Extend the
-`dynamicMask` helper in `visual.spec.ts` for new animations.
+Animated elements are masked (`video`, `.animate-pulse`, `.animate-spin`,
+`[data-marquee]`). Extend the `dynamicMask` helper in `visual.spec.ts` for new
+animations.
 
 ## Config notes
 

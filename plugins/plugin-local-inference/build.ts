@@ -7,6 +7,8 @@ const external = [
 	"@elizaos/agent",
 	"@elizaos/shared",
 	"@elizaos/plugin-capacitor-bridge",
+	"@elizaos/plugin-aosp-local-inference",
+	"@elizaos/plugin-omnivoice",
 	"node-llama-cpp",
 	"@node-llama-cpp",
 	/^@node-llama-cpp\//,

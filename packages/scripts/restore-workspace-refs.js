@@ -17,7 +17,9 @@ const DRY_RUN = process.argv.includes("--dry-run");
 const VERBOSE = process.argv.includes("--verbose") || DRY_RUN;
 
 // Get the workspace root
-const workspaceRoot = dirname(dirname(new URL(import.meta.url).pathname));
+const workspaceRoot = dirname(
+  dirname(dirname(new URL(import.meta.url).pathname)),
+);
 
 // Read version from lerna.json
 function getVersion() {

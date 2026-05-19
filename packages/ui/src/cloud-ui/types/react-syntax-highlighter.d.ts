@@ -37,6 +37,16 @@ declare module "refractor/lang/*" {
   export default lang;
 }
 
+declare module "react-syntax-highlighter/dist/esm/languages/prism/*" {
+  const language: unknown;
+  export default language;
+}
+
+declare module "react-syntax-highlighter/dist/esm/languages/hljs/*" {
+  const language: unknown;
+  export default language;
+}
+
 declare module "react-syntax-highlighter/dist/esm/styles/prism/index.js" {
   import type { SyntaxHighlighterStyle } from "react-syntax-highlighter";
 

@@ -1,1 +1,0 @@
-{"version":3,"file":"slot-metadata.d.ts","sourceRoot":"","sources":["slot-metadata.ts"],"names":[],"mappings":"AAAA,OAAO,KAAK,EAAE,cAAc,EAAE,MAAM,kCAAkC,CAAC;AAEvE,MAAM,MAAM,4BAA4B,GAAG;IACzC,IAAI,EAAE,cAAc,CAAC;IACrB,SAAS,EAAE,MAAM,CAAC;IAClB,KAAK,EAAE,MAAM,CAAC;IACd,WAAW,EAAE,MAAM,CAAC;CACrB,CAAC;AAEF,eAAO,MAAM,gCAAgC,EAAE,4BAA4B,EAkCxE,CAAC"}

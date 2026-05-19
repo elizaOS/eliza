@@ -6316,36 +6316,6 @@ export const allActionsSpec = {
 			],
 		},
 		{
-			name: "OWNER_SCREENTIME",
-			description:
-				"Owner screen-time/activity analytics: local activity, app usage, browser.",
-			parameters: [
-				{
-					name: "action",
-					description: "Owner screentime op.",
-					required: false,
-					schema: {
-						type: "string",
-					},
-					descriptionCompressed: "Owner screentime op.",
-				},
-			],
-			descriptionCompressed:
-				"owner screentime summary|today|weekly|by_app|by_website|activity|time_on_app|time_on_site",
-			similes: ["SCREENTIME", "ACTIVITY_REPORT"],
-			exampleCalls: [
-				{
-					user: "Use OWNER_SCREENTIME with the provided parameters.",
-					actions: ["OWNER_SCREENTIME"],
-					params: {
-						OWNER_SCREENTIME: {
-							action: "example",
-						},
-					},
-				},
-			],
-		},
-		{
 			name: "OWNER_TODOS",
 			description:
 				"Owner todos: create/update/delete/complete/skip/snooze/review personal.",
@@ -7780,6 +7750,17 @@ export const allActionsSpec = {
 						"Working directory for action=create/action=spawn_agent.",
 				},
 				{
+					name: "lockWorkdir",
+					description:
+						"When true, the supplied `workdir` is used verbatim and operator ",
+					required: false,
+					schema: {
+						type: "boolean",
+					},
+					descriptionCompressed:
+						"When true, the supplied `workdir` is used verbatim and operator",
+				},
+				{
 					name: "memoryContent",
 					description:
 						"Additional memory/context for action=create / action=spawn_agent.",
@@ -8194,36 +8175,12 @@ export const allActionsSpec = {
 				},
 				{
 					name: "metadata",
-					description:
-						"Additional metadata for action=create / action=spawn_agent.",
+					description: "Additional metadata for action=create.",
 					required: false,
 					schema: {
 						type: "object",
 					},
-					descriptionCompressed:
-						"Additional metadata for action=create/action=spawn_agent.",
-				},
-				{
-					name: "taskRoomId",
-					description:
-						"Optional task-owner swarm room id for action=create / action=spawn_agent.",
-					required: false,
-					schema: {
-						type: "string",
-					},
-					descriptionCompressed:
-						"Optional task-owner swarm room id for action=create/action=spawn_agent.",
-				},
-				{
-					name: "worktreeRoomId",
-					description:
-						"Optional worktree coordination swarm room id for action=create / action=spawn_agent.",
-					required: false,
-					schema: {
-						type: "string",
-					},
-					descriptionCompressed:
-						"Optional worktree coordination swarm room id for action=create/action=spawn_agent.",
+					descriptionCompressed: "Additional metadata for action=create.",
 				},
 			],
 			descriptionCompressed:
@@ -8335,6 +8292,7 @@ export const allActionsSpec = {
 							agents: "example",
 							repo: "example",
 							workdir: "example",
+							lockWorkdir: false,
 							memoryContent: "example",
 							label: "example",
 							approvalPreset: "readonly",
@@ -8375,8 +8333,6 @@ export const allActionsSpec = {
 							maxRetries: "example",
 							onVerificationFail: "retry",
 							metadata: "example",
-							taskRoomId: "example",
-							worktreeRoomId: "example",
 						},
 					},
 				},
