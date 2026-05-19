@@ -453,6 +453,12 @@ const optionalPluginStubs = {
   // @elizaos/plugin-streaming destinations: ResolveMessage: Cannot
   // find module '@elizaos/plugin-streaming'` on every chat turn.
   "@elizaos/plugin-streaming": path.join(stubsDir, "null-plugin.cjs"),
+  // Workflow/automation routes are desktop/cloud surface area. Mobile's
+  // runtime plugin filter does not load workflow, and latest workflow source
+  // keeps large generated node catalogs in dist rather than src/data. Stub the
+  // package so a local-source mobile bundle does not depend on those desktop
+  // catalogs or pull the full workflow graph into the phone agent.
+  "@elizaos/plugin-workflow": path.join(stubsDir, "null-plugin.cjs"),
   // plugin-device-filesystem uses native fs APIs and is not available
   // in the mobile bundle — stub it so the runtime skips it gracefully.
   "@elizaos/plugin-device-filesystem": path.join(stubsDir, "null-plugin.cjs"),
@@ -559,6 +565,7 @@ const corePackages = [
   "@elizaos/core",
   "@elizaos/shared",
   "@elizaos/plugin-sql",
+  "@elizaos/plugin-omnivoice",
   "@elizaos/plugin-ollama",
   "@elizaos/plugin-wallet",
 ];
@@ -605,6 +612,17 @@ const dedupeTargets = {
     "plugin-sql",
     "src",
     "index.node.ts",
+  ),
+  // The current @elizaos/plugin-omnivoice dist build can emit an
+  // undeclared default-export alias under Bun 1.3.x. The source entry is
+  // small and already mobile-safe (`bun:ffi` remains a dynamic import), so
+  // bundle it from source to keep Android local TTS on the checked-out tree.
+  "@elizaos/plugin-omnivoice": path.resolve(
+    repoRoot,
+    "plugins",
+    "plugin-omnivoice",
+    "src",
+    "index.ts",
   ),
   "@elizaos/plugin-ollama": path.resolve(
     repoRoot,

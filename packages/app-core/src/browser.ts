@@ -9,6 +9,7 @@ export {
   client,
 } from "@elizaos/ui/api";
 export * from "@elizaos/ui/browser";
+export { ErrorBoundary } from "@elizaos/ui/browser";
 export { registerDetailExtension } from "@elizaos/ui/components/apps/extensions/registry";
 export {
   formatDetailTimestamp,
