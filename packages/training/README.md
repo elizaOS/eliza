@@ -303,6 +303,62 @@ For cloud-tier runs see `scripts/train_vast.sh` and `scripts/CLOUD_VAST.md`.
 For inference see `scripts/inference/serve_vllm.py` (vLLM serve launcher) and
 `scripts/inference/serve_local.py`.
 
+## Running on a 12 GB consumer GPU (RTX 3060 / 4070 class)
+
+The registry's `qwen3.5-2b` default targets a 16 GB local GPU (seq_len=8192,
+budget=15.5 GB). On a 12 GB card that OOMs at the fp32 logits transient
+(B·S·V·4 bytes; Qwen vocab=248k makes this dominant). The `--low-vram-smoke`
+flag is a preset bundle that brings the 2B SFT path inside a 12 GB envelope
+so the train→quant→bench plumbing can be validated end-to-end on commodity
+hardware before reaching for a rented H100/H200.
+
+```bash
+uv run --extra train python scripts/train_local.py \
+    --registry-key qwen3.5-2b --low-vram-smoke
+```
+
+What the preset overrides (CLI flags the caller passes still win):
+
+- `seq_len = 2048`        (registry default 8192)
+- `per_device_batch_size = 1`
+- `gradient_accumulation_steps = 16`  (effective batch stays at 16)
+- `max_samples = 1000`
+- `epochs = 1`
+- `memory_budget_gb = 11.5`           (1.5 GB headroom under 12 GB)
+- Liger fused chunked-CE stays on (registry default; required for budget)
+- Activation checkpointing stays on (default in `train_local.py`)
+- APOLLO-Mini (registry default for 2B) remains the optimizer; rank=1
+  keeps optimizer state effectively free.
+
+**Measured on RTX 3060 (12 GB, WSL2 Ubuntu, torch 2.12.0+cu130, 314 smoke
+records in `data/final-eliza1-smoke/`):**
+
+| metric        | value           |
+|---------------|-----------------|
+| peak VRAM     | see PR body     |
+| wall-time     | see PR body     |
+| final loss    | see PR body     |
+
+**Trade-offs:**
+
+- Training context window drops from 8k to 2k. Records longer than ~2k
+  rendered chars are right-truncated by the tokenizer. The smoke
+  trajectory dataset already fits inside 2k; for the real native
+  trajectory corpus pass `--max-chars 6000` (≈3× seq_len) so the
+  char-filter rejects oversized rows up front rather than wasting them.
+- Long-context behaviors (multi-turn agent traces, long tool outputs)
+  are NOT exercised at seq_len=2048. The resulting checkpoint is for
+  smoke / path-validation only, NOT for publishing.
+- Loss numbers from the smoke are not comparable to the registry-default
+  run — the effective sequence diet is different.
+
+**If it still OOMs**: the preset's headroom is conservative but real-world
+allocator fragmentation can still tip a 12 GB card over. Drop seq_len with
+`--low-vram-smoke --max-seq-len 1536` (or 1024) and retry. The instrumentation
+callback (enabled because `--memory-budget-gb` is set) fails the run loud the
+moment `torch.cuda.max_memory_reserved()` exceeds the budget by more than
+10 %.
+
 ## Memory budgets
 
 The full quantization stack at inference is:

@@ -328,7 +328,35 @@ def main() -> int:
         help="Override registry memory budget. Run dies if reserved memory "
              "exceeds budget*1.10. Default: registry value or no enforcement."
     )
+    ap.add_argument(
+        "--low-vram-smoke", action="store_true",
+        help="Preset bundle for full-parameter SFT smoke runs on a 12 GB "
+             "consumer GPU (RTX 3060 / 4070 class). Overrides the registry "
+             "defaults to seq_len=2048, batch=1, grad_accum=16, "
+             "memory_budget_gb=11.5, and defaults --max-samples to 1000 "
+             "and --epochs to 1 when the caller did not pass them. Liger "
+             "fused chunked-CE stays on. Trades training context window "
+             "for VRAM headroom; do NOT use the resulting checkpoint as a "
+             "publishable artifact — this is for path-validation only."
+    )
     args = ap.parse_args()
+
+    # Track which dest names came in at argparse defaults (i.e. the caller
+    # didn't pass them on the CLI). Both the registry merge and the
+    # --low-vram-smoke preset only fill in values the caller did not
+    # supply, so explicit CLI flags always win over both. We have to
+    # snapshot this BEFORE the registry merge mutates the namespace —
+    # otherwise the preset block can no longer tell the difference
+    # between "filled in by registry" (override OK) and "passed on CLI"
+    # (do not override).
+    _defaults_at_parse: dict[str, object] = {
+        dest: getattr(args, dest) == ap.get_default(dest)
+        for dest in (
+            "model", "batch_size", "grad_accum", "max_seq_len", "optimizer",
+            "apollo_rank", "max_samples", "epochs",
+        )
+    }
+    _memory_budget_unset = args.memory_budget_gb is None
 
     from training.model_registry import get as _registry_get  # noqa: E402
     if args.registry_key:
@@ -363,6 +391,42 @@ def main() -> int:
         log.info("registry %s → model=%s batch=%d accum=%d seq=%d optimizer=%s budget=%.0fGB",
                  entry.short_name, args.model, args.batch_size, args.grad_accum,
                  args.max_seq_len, args.optimizer, args.memory_budget_gb or 0)
+
+    # --low-vram-smoke overrides applied AFTER the registry merge so the
+    # preset wins regardless of which registry key was passed. The numbers
+    # target a 12 GB RTX 3060 / 4070-class GPU: seq_len=2048 keeps the fp32
+    # logits transient + activations inside ~7 GB at the 2B size with Liger
+    # fused chunked-CE on; grad_accum=16 holds the effective batch at 16 so
+    # the loss signal is comparable to the registry default; memory budget
+    # is 11.5 GB (1.5 GB headroom under the card's 12 GB). The preset is
+    # explicitly NOT for publishable runs — it is a path-validation smoke
+    # for the SFT entrypoint on commodity hardware. CLI flags the user passed
+    # explicitly (--max-seq-len, --batch-size, --grad-accum, --memory-budget-gb,
+    # --max-samples, --epochs) still win over the preset; we only override
+    # values that are still at their argparse default.
+    if args.low_vram_smoke:
+        # Override values that came in at the argparse default (i.e. the
+        # caller did not pass them on the CLI). Values the registry filled
+        # in count as "not passed" — the preset wins over registry defaults
+        # but loses to anything the operator typed by hand.
+        if _defaults_at_parse["max_seq_len"]:
+            args.max_seq_len = 2048
+        if _defaults_at_parse["batch_size"]:
+            args.batch_size = 1
+        if _defaults_at_parse["grad_accum"]:
+            args.grad_accum = 16
+        if _defaults_at_parse["max_samples"]:
+            args.max_samples = 1000
+        if _defaults_at_parse["epochs"]:
+            args.epochs = 1.0
+        if _memory_budget_unset:
+            args.memory_budget_gb = 11.5
+        log.info(
+            "low-vram-smoke preset → seq=%d batch=%d accum=%d max_samples=%d "
+            "epochs=%.1f budget=%.1fGB (effective_batch=%d)",
+            args.max_seq_len, args.batch_size, args.grad_accum, args.max_samples,
+            args.epochs, args.memory_budget_gb, args.batch_size * args.grad_accum,
+        )
 
     train_recs = load_jsonl(
         Path(args.train_file),
