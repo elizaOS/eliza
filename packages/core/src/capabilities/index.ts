@@ -240,6 +240,21 @@ export type RemotePluginEvaluatorManifest = {
 	hasProcessor?: boolean;
 };
 
+export type RemotePluginResponseHandlerEvaluatorManifest = {
+	name: string;
+	description?: string;
+	priority?: number;
+};
+
+export type RemotePluginResponseHandlerFieldEvaluatorManifest = {
+	name: string;
+	description: string;
+	priority?: number;
+	schema: JsonObject;
+	hasParse?: boolean;
+	hasHandle?: boolean;
+};
+
 export type RemotePluginEventManifest = {
 	eventName: string;
 };
@@ -247,6 +262,13 @@ export type RemotePluginEventManifest = {
 export type RemotePluginModelManifest = {
 	modelType: string;
 	priority?: number;
+};
+
+export type RemotePluginServiceManifest = {
+	serviceType: string;
+	capabilityDescription?: string;
+	methods?: string[];
+	config?: JsonObject;
 };
 
 export type RemotePluginWidgetManifest = {
@@ -331,19 +353,36 @@ export type RemotePluginAppBridgeManifest = {
 	hooks: RemotePluginAppBridgeHook[];
 };
 
+export type RemotePluginLifecycleHook = "init" | "dispose" | "applyConfig";
+
+export type RemotePluginLifecycleManifest = {
+	hooks: RemotePluginLifecycleHook[];
+};
+
+export type RemotePluginConfigValue = string | number | boolean | null;
+export type RemotePluginConfig = Record<string, RemotePluginConfigValue>;
+
 export type RemotePluginModuleManifest = {
 	id: string;
 	name: string;
+	/** Assigned by an aggregating capability router so RPC calls stay bound to the endpoint that supplied this module. */
+	capabilityEndpointId?: string;
 	version?: string;
 	description?: string;
+	config?: RemotePluginConfig;
+	schema?: JsonObject;
 	actions?: RemotePluginActionManifest[];
 	providers?: RemotePluginProviderManifest[];
 	evaluators?: RemotePluginEvaluatorManifest[];
+	responseHandlerEvaluators?: RemotePluginResponseHandlerEvaluatorManifest[];
+	responseHandlerFieldEvaluators?: RemotePluginResponseHandlerFieldEvaluatorManifest[];
 	events?: RemotePluginEventManifest[];
 	models?: RemotePluginModelManifest[];
+	services?: RemotePluginServiceManifest[];
 	widgets?: RemotePluginWidgetManifest[];
 	app?: RemotePluginAppManifest;
 	appBridge?: RemotePluginAppBridgeManifest;
+	lifecycle?: RemotePluginLifecycleManifest;
 	routes?: RemotePluginRouteManifest[];
 	views?: RemotePluginViewManifest[];
 	metadata?: JsonObject;
@@ -357,7 +396,7 @@ export type PluginListModulesResult = {
 	modules: RemotePluginModuleManifest[];
 };
 
-export type PluginInvokeActionParams = {
+export type PluginInvokeActionParams = CapabilityEndpointSelection & {
 	moduleId: string;
 	action: string;
 	content?: JsonObject;
@@ -372,7 +411,7 @@ export type PluginInvokeActionResult = {
 	data?: JsonObject;
 };
 
-export type PluginGetProviderParams = {
+export type PluginGetProviderParams = CapabilityEndpointSelection & {
 	moduleId: string;
 	provider: string;
 	state?: JsonObject;
@@ -385,7 +424,7 @@ export type PluginGetProviderResult = {
 	data?: JsonObject;
 };
 
-export type PluginCallRouteParams = {
+export type PluginCallRouteParams = CapabilityEndpointSelection & {
 	moduleId: string;
 	method: string;
 	path: string;
@@ -401,7 +440,7 @@ export type PluginCallRouteResult = {
 	body?: JsonValue;
 };
 
-export type PluginGetAssetParams = {
+export type PluginGetAssetParams = CapabilityEndpointSelection & {
 	moduleId: string;
 	path: string;
 	traceSessionId?: string;
@@ -414,7 +453,7 @@ export type PluginGetAssetResult = {
 	integrity?: string;
 };
 
-export type PluginEvaluatorShouldRunParams = {
+export type PluginEvaluatorShouldRunParams = CapabilityEndpointSelection & {
 	moduleId: string;
 	evaluator: string;
 	message?: JsonObject;
@@ -449,7 +488,76 @@ export type PluginEvaluatorProcessResult = {
 	result?: JsonObject;
 };
 
-export type PluginHandleEventParams = {
+export type PluginResponseHandlerEvaluatorShouldRunParams =
+	CapabilityEndpointSelection & {
+		moduleId: string;
+		evaluator: string;
+		context?: JsonObject;
+		traceSessionId?: string;
+	};
+
+export type PluginResponseHandlerEvaluatorShouldRunResult = {
+	shouldRun: boolean;
+};
+
+export type PluginResponseHandlerEvaluatorEvaluateParams =
+	PluginResponseHandlerEvaluatorShouldRunParams;
+
+export type PluginResponseHandlerEvaluatorEvaluateResult = {
+	patch?: JsonObject;
+};
+
+export type PluginResponseHandlerFieldEvaluatorShouldRunParams =
+	CapabilityEndpointSelection & {
+		moduleId: string;
+		field: string;
+		context?: JsonObject;
+		traceSessionId?: string;
+	};
+
+export type PluginResponseHandlerFieldEvaluatorShouldRunResult = {
+	shouldRun: boolean;
+};
+
+export type PluginResponseHandlerFieldEvaluatorParseParams =
+	PluginResponseHandlerFieldEvaluatorShouldRunParams & {
+		value?: JsonValue;
+	};
+
+export type PluginResponseHandlerFieldEvaluatorParseResult = {
+	value?: JsonValue;
+	softFail?: boolean;
+};
+
+export type PluginResponseHandlerFieldEvaluatorHandleParams =
+	PluginResponseHandlerFieldEvaluatorParseParams & {
+		parsed?: JsonObject;
+	};
+
+export type PluginResponseHandlerFieldEvaluatorHandleResult = {
+	effect?: {
+		patch?: JsonObject;
+		preempt?: {
+			mode: "ack-and-stop" | "ignore" | "direct-reply";
+			reason: string;
+		};
+		debug?: string[];
+	};
+};
+
+export type PluginLifecycleCallParams = CapabilityEndpointSelection & {
+	moduleId: string;
+	hook: RemotePluginLifecycleHook;
+	config?: Record<string, string>;
+	context?: JsonObject;
+	traceSessionId?: string;
+};
+
+export type PluginLifecycleCallResult = {
+	ok: boolean;
+};
+
+export type PluginHandleEventParams = CapabilityEndpointSelection & {
 	moduleId: string;
 	eventName: string;
 	payload?: JsonObject;
@@ -460,7 +568,7 @@ export type PluginHandleEventResult = {
 	handled: boolean;
 };
 
-export type PluginInvokeModelParams = {
+export type PluginInvokeModelParams = CapabilityEndpointSelection & {
 	moduleId: string;
 	modelType: string;
 	params?: JsonValue;
@@ -471,7 +579,19 @@ export type PluginInvokeModelResult = {
 	result: JsonValue;
 };
 
-export type PluginCallAppBridgeParams = {
+export type PluginCallServiceParams = CapabilityEndpointSelection & {
+	moduleId: string;
+	serviceType: string;
+	method: string;
+	args?: JsonValue[];
+	traceSessionId?: string;
+};
+
+export type PluginCallServiceResult = {
+	result?: JsonValue;
+};
+
+export type PluginCallAppBridgeParams = CapabilityEndpointSelection & {
 	moduleId: string;
 	hook: RemotePluginAppBridgeHook;
 	context?: JsonObject;
@@ -526,12 +646,33 @@ export interface RemotePluginCapability {
 	processEvaluator(
 		params: PluginEvaluatorProcessParams,
 	): Promise<PluginEvaluatorProcessResult>;
+	shouldRunResponseHandlerEvaluator(
+		params: PluginResponseHandlerEvaluatorShouldRunParams,
+	): Promise<PluginResponseHandlerEvaluatorShouldRunResult>;
+	evaluateResponseHandlerEvaluator(
+		params: PluginResponseHandlerEvaluatorEvaluateParams,
+	): Promise<PluginResponseHandlerEvaluatorEvaluateResult>;
+	shouldRunResponseHandlerFieldEvaluator(
+		params: PluginResponseHandlerFieldEvaluatorShouldRunParams,
+	): Promise<PluginResponseHandlerFieldEvaluatorShouldRunResult>;
+	parseResponseHandlerFieldEvaluator(
+		params: PluginResponseHandlerFieldEvaluatorParseParams,
+	): Promise<PluginResponseHandlerFieldEvaluatorParseResult>;
+	handleResponseHandlerFieldEvaluator(
+		params: PluginResponseHandlerFieldEvaluatorHandleParams,
+	): Promise<PluginResponseHandlerFieldEvaluatorHandleResult>;
+	callLifecycle(
+		params: PluginLifecycleCallParams,
+	): Promise<PluginLifecycleCallResult>;
 	handleEvent(
 		params: PluginHandleEventParams,
 	): Promise<PluginHandleEventResult>;
 	invokeModel(
 		params: PluginInvokeModelParams,
 	): Promise<PluginInvokeModelResult>;
+	callService(
+		params: PluginCallServiceParams,
+	): Promise<PluginCallServiceResult>;
 	callAppBridge(
 		params: PluginCallAppBridgeParams,
 	): Promise<PluginCallAppBridgeResult>;
@@ -565,8 +706,15 @@ export type RuntimeBrokerCapabilityMethod =
 	| "plugin.evaluator.prepare"
 	| "plugin.evaluator.prompt"
 	| "plugin.evaluator.process"
+	| "plugin.responseHandlerEvaluator.shouldRun"
+	| "plugin.responseHandlerEvaluator.evaluate"
+	| "plugin.responseHandlerFieldEvaluator.shouldRun"
+	| "plugin.responseHandlerFieldEvaluator.parse"
+	| "plugin.responseHandlerFieldEvaluator.handle"
+	| "plugin.lifecycle.call"
 	| "plugin.event.handle"
 	| "plugin.model.invoke"
+	| "plugin.service.call"
 	| "plugin.appBridge.call";
 
 export type RuntimeBrokerInvoke = (
@@ -666,6 +814,52 @@ export class UnavailableCapabilityRouter implements ElizaCapabilityRouter {
 					moduleId: params.moduleId,
 					evaluator: params.evaluator,
 				}),
+			shouldRunResponseHandlerEvaluator: (params) =>
+				this.unavailable(
+					"plugin",
+					"plugin.responseHandlerEvaluator.shouldRun",
+					{
+						moduleId: params.moduleId,
+						evaluator: params.evaluator,
+					},
+				),
+			evaluateResponseHandlerEvaluator: (params) =>
+				this.unavailable("plugin", "plugin.responseHandlerEvaluator.evaluate", {
+					moduleId: params.moduleId,
+					evaluator: params.evaluator,
+				}),
+			shouldRunResponseHandlerFieldEvaluator: (params) =>
+				this.unavailable(
+					"plugin",
+					"plugin.responseHandlerFieldEvaluator.shouldRun",
+					{
+						moduleId: params.moduleId,
+						field: params.field,
+					},
+				),
+			parseResponseHandlerFieldEvaluator: (params) =>
+				this.unavailable(
+					"plugin",
+					"plugin.responseHandlerFieldEvaluator.parse",
+					{
+						moduleId: params.moduleId,
+						field: params.field,
+					},
+				),
+			handleResponseHandlerFieldEvaluator: (params) =>
+				this.unavailable(
+					"plugin",
+					"plugin.responseHandlerFieldEvaluator.handle",
+					{
+						moduleId: params.moduleId,
+						field: params.field,
+					},
+				),
+			callLifecycle: (params) =>
+				this.unavailable("plugin", "plugin.lifecycle.call", {
+					moduleId: params.moduleId,
+					hook: params.hook,
+				}),
 			handleEvent: (params) =>
 				this.unavailable("plugin", "plugin.event.handle", {
 					moduleId: params.moduleId,
@@ -675,6 +869,12 @@ export class UnavailableCapabilityRouter implements ElizaCapabilityRouter {
 				this.unavailable("plugin", "plugin.model.invoke", {
 					moduleId: params.moduleId,
 					modelType: params.modelType,
+				}),
+			callService: (params) =>
+				this.unavailable("plugin", "plugin.service.call", {
+					moduleId: params.moduleId,
+					serviceType: params.serviceType,
+					method: params.method,
 				}),
 			callAppBridge: (params) =>
 				this.unavailable("plugin", "plugin.appBridge.call", {
@@ -754,8 +954,20 @@ export class RuntimeBrokerCapabilityRouter implements ElizaCapabilityRouter {
 			prepareEvaluator: (params) => this.preparePluginEvaluator(params),
 			promptEvaluator: (params) => this.promptPluginEvaluator(params),
 			processEvaluator: (params) => this.processPluginEvaluator(params),
+			shouldRunResponseHandlerEvaluator: (params) =>
+				this.shouldRunResponseHandlerEvaluator(params),
+			evaluateResponseHandlerEvaluator: (params) =>
+				this.evaluateResponseHandlerEvaluator(params),
+			shouldRunResponseHandlerFieldEvaluator: (params) =>
+				this.shouldRunResponseHandlerFieldEvaluator(params),
+			parseResponseHandlerFieldEvaluator: (params) =>
+				this.parseResponseHandlerFieldEvaluator(params),
+			handleResponseHandlerFieldEvaluator: (params) =>
+				this.handleResponseHandlerFieldEvaluator(params),
+			callLifecycle: (params) => this.callPluginLifecycle(params),
 			handleEvent: (params) => this.handlePluginEvent(params),
 			invokeModel: (params) => this.invokePluginModel(params),
+			callService: (params) => this.callPluginService(params),
 			callAppBridge: (params) => this.callPluginAppBridge(params),
 		};
 	}
@@ -980,6 +1192,7 @@ export class RuntimeBrokerCapabilityRouter implements ElizaCapabilityRouter {
 		params: PluginInvokeActionParams,
 	): Promise<PluginInvokeActionResult> {
 		const result = await this.request("plugin", "plugin.action.invoke", {
+			...endpointSelection(params),
 			moduleId: params.moduleId,
 			action: params.action,
 			...(params.content === undefined ? {} : { content: params.content }),
@@ -995,6 +1208,7 @@ export class RuntimeBrokerCapabilityRouter implements ElizaCapabilityRouter {
 		params: PluginGetProviderParams,
 	): Promise<PluginGetProviderResult> {
 		const result = await this.request("plugin", "plugin.provider.get", {
+			...endpointSelection(params),
 			moduleId: params.moduleId,
 			provider: params.provider,
 			...(params.state === undefined ? {} : { state: params.state }),
@@ -1009,6 +1223,7 @@ export class RuntimeBrokerCapabilityRouter implements ElizaCapabilityRouter {
 		params: PluginCallRouteParams,
 	): Promise<PluginCallRouteResult> {
 		const result = await this.request("plugin", "plugin.route.call", {
+			...endpointSelection(params),
 			moduleId: params.moduleId,
 			method: params.method,
 			path: params.path,
@@ -1036,6 +1251,7 @@ export class RuntimeBrokerCapabilityRouter implements ElizaCapabilityRouter {
 		params: PluginGetAssetParams,
 	): Promise<PluginGetAssetResult> {
 		const result = await this.request("plugin", "plugin.asset.get", {
+			...endpointSelection(params),
 			moduleId: params.moduleId,
 			path: params.path,
 			...(params.traceSessionId === undefined
@@ -1056,6 +1272,7 @@ export class RuntimeBrokerCapabilityRouter implements ElizaCapabilityRouter {
 		params: PluginEvaluatorShouldRunParams,
 	): Promise<PluginEvaluatorShouldRunResult> {
 		const result = await this.request("plugin", "plugin.evaluator.shouldRun", {
+			...endpointSelection(params),
 			moduleId: params.moduleId,
 			evaluator: params.evaluator,
 			...(params.message === undefined ? {} : { message: params.message }),
@@ -1079,6 +1296,7 @@ export class RuntimeBrokerCapabilityRouter implements ElizaCapabilityRouter {
 		params: PluginEvaluatorPrepareParams,
 	): Promise<PluginEvaluatorPrepareResult> {
 		const result = await this.request("plugin", "plugin.evaluator.prepare", {
+			...endpointSelection(params),
 			moduleId: params.moduleId,
 			evaluator: params.evaluator,
 			...(params.message === undefined ? {} : { message: params.message }),
@@ -1096,6 +1314,7 @@ export class RuntimeBrokerCapabilityRouter implements ElizaCapabilityRouter {
 		params: PluginEvaluatorPromptParams,
 	): Promise<PluginEvaluatorPromptResult> {
 		const result = await this.request("plugin", "plugin.evaluator.prompt", {
+			...endpointSelection(params),
 			moduleId: params.moduleId,
 			evaluator: params.evaluator,
 			...(params.message === undefined ? {} : { message: params.message }),
@@ -1116,6 +1335,7 @@ export class RuntimeBrokerCapabilityRouter implements ElizaCapabilityRouter {
 		params: PluginEvaluatorProcessParams,
 	): Promise<PluginEvaluatorProcessResult> {
 		const result = await this.request("plugin", "plugin.evaluator.process", {
+			...endpointSelection(params),
 			moduleId: params.moduleId,
 			evaluator: params.evaluator,
 			...(params.message === undefined ? {} : { message: params.message }),
@@ -1136,10 +1356,182 @@ export class RuntimeBrokerCapabilityRouter implements ElizaCapabilityRouter {
 		return processorResult === undefined ? {} : { result: processorResult };
 	}
 
+	private async shouldRunResponseHandlerEvaluator(
+		params: PluginResponseHandlerEvaluatorShouldRunParams,
+	): Promise<PluginResponseHandlerEvaluatorShouldRunResult> {
+		const result = await this.request(
+			"plugin",
+			"plugin.responseHandlerEvaluator.shouldRun",
+			{
+				...endpointSelection(params),
+				moduleId: params.moduleId,
+				evaluator: params.evaluator,
+				...(params.context === undefined ? {} : { context: params.context }),
+				...(params.traceSessionId === undefined
+					? {}
+					: { traceSessionId: params.traceSessionId }),
+			},
+		);
+		const object = requireObject(
+			result,
+			"plugin.responseHandlerEvaluator.shouldRun",
+		);
+		return {
+			shouldRun: requireBoolean(
+				object,
+				"shouldRun",
+				"plugin.responseHandlerEvaluator.shouldRun",
+			),
+		};
+	}
+
+	private async evaluateResponseHandlerEvaluator(
+		params: PluginResponseHandlerEvaluatorEvaluateParams,
+	): Promise<PluginResponseHandlerEvaluatorEvaluateResult> {
+		const result = await this.request(
+			"plugin",
+			"plugin.responseHandlerEvaluator.evaluate",
+			{
+				...endpointSelection(params),
+				moduleId: params.moduleId,
+				evaluator: params.evaluator,
+				...(params.context === undefined ? {} : { context: params.context }),
+				...(params.traceSessionId === undefined
+					? {}
+					: { traceSessionId: params.traceSessionId }),
+			},
+		);
+		const object = requireObject(
+			result,
+			"plugin.responseHandlerEvaluator.evaluate",
+		);
+		const patch = optionalJsonObject(
+			object,
+			"patch",
+			"plugin.responseHandlerEvaluator.evaluate",
+		);
+		return patch === undefined ? {} : { patch };
+	}
+
+	private async shouldRunResponseHandlerFieldEvaluator(
+		params: PluginResponseHandlerFieldEvaluatorShouldRunParams,
+	): Promise<PluginResponseHandlerFieldEvaluatorShouldRunResult> {
+		const result = await this.request(
+			"plugin",
+			"plugin.responseHandlerFieldEvaluator.shouldRun",
+			{
+				...endpointSelection(params),
+				moduleId: params.moduleId,
+				field: params.field,
+				...(params.context === undefined ? {} : { context: params.context }),
+				...(params.traceSessionId === undefined
+					? {}
+					: { traceSessionId: params.traceSessionId }),
+			},
+		);
+		const object = requireObject(
+			result,
+			"plugin.responseHandlerFieldEvaluator.shouldRun",
+		);
+		return {
+			shouldRun: requireBoolean(
+				object,
+				"shouldRun",
+				"plugin.responseHandlerFieldEvaluator.shouldRun",
+			),
+		};
+	}
+
+	private async parseResponseHandlerFieldEvaluator(
+		params: PluginResponseHandlerFieldEvaluatorParseParams,
+	): Promise<PluginResponseHandlerFieldEvaluatorParseResult> {
+		const result = await this.request(
+			"plugin",
+			"plugin.responseHandlerFieldEvaluator.parse",
+			{
+				...endpointSelection(params),
+				moduleId: params.moduleId,
+				field: params.field,
+				...(params.context === undefined ? {} : { context: params.context }),
+				...(params.value === undefined ? {} : { value: params.value }),
+				...(params.traceSessionId === undefined
+					? {}
+					: { traceSessionId: params.traceSessionId }),
+			},
+		);
+		const object = requireObject(
+			result,
+			"plugin.responseHandlerFieldEvaluator.parse",
+		);
+		const softFail = optionalBoolean(
+			object,
+			"softFail",
+			"plugin.responseHandlerFieldEvaluator.parse",
+		);
+		return {
+			...(object.value === undefined ? {} : { value: object.value }),
+			...(softFail === undefined ? {} : { softFail }),
+		};
+	}
+
+	private async handleResponseHandlerFieldEvaluator(
+		params: PluginResponseHandlerFieldEvaluatorHandleParams,
+	): Promise<PluginResponseHandlerFieldEvaluatorHandleResult> {
+		const result = await this.request(
+			"plugin",
+			"plugin.responseHandlerFieldEvaluator.handle",
+			{
+				...endpointSelection(params),
+				moduleId: params.moduleId,
+				field: params.field,
+				...(params.context === undefined ? {} : { context: params.context }),
+				...(params.value === undefined ? {} : { value: params.value }),
+				...(params.parsed === undefined ? {} : { parsed: params.parsed }),
+				...(params.traceSessionId === undefined
+					? {}
+					: { traceSessionId: params.traceSessionId }),
+			},
+		);
+		const object = requireObject(
+			result,
+			"plugin.responseHandlerFieldEvaluator.handle",
+		);
+		return {
+			...(object.effect === undefined
+				? {}
+				: {
+						effect: requireResponseHandlerFieldEffect(
+							object.effect,
+							"plugin.responseHandlerFieldEvaluator.handle.effect",
+						),
+					}),
+		};
+	}
+
+	private async callPluginLifecycle(
+		params: PluginLifecycleCallParams,
+	): Promise<PluginLifecycleCallResult> {
+		const result = await this.request("plugin", "plugin.lifecycle.call", {
+			...endpointSelection(params),
+			moduleId: params.moduleId,
+			hook: params.hook,
+			...(params.config === undefined ? {} : { config: params.config }),
+			...(params.context === undefined ? {} : { context: params.context }),
+			...(params.traceSessionId === undefined
+				? {}
+				: { traceSessionId: params.traceSessionId }),
+		});
+		const object = requireObject(result, "plugin.lifecycle.call");
+		return {
+			ok: requireBoolean(object, "ok", "plugin.lifecycle.call"),
+		};
+	}
+
 	private async handlePluginEvent(
 		params: PluginHandleEventParams,
 	): Promise<PluginHandleEventResult> {
 		const result = await this.request("plugin", "plugin.event.handle", {
+			...endpointSelection(params),
 			moduleId: params.moduleId,
 			eventName: params.eventName,
 			...(params.payload === undefined ? {} : { payload: params.payload }),
@@ -1157,6 +1549,7 @@ export class RuntimeBrokerCapabilityRouter implements ElizaCapabilityRouter {
 		params: PluginInvokeModelParams,
 	): Promise<PluginInvokeModelResult> {
 		const result = await this.request("plugin", "plugin.model.invoke", {
+			...endpointSelection(params),
 			moduleId: params.moduleId,
 			modelType: params.modelType,
 			...(params.params === undefined ? {} : { params: params.params }),
@@ -1173,10 +1566,28 @@ export class RuntimeBrokerCapabilityRouter implements ElizaCapabilityRouter {
 		};
 	}
 
+	private async callPluginService(
+		params: PluginCallServiceParams,
+	): Promise<PluginCallServiceResult> {
+		const result = await this.request("plugin", "plugin.service.call", {
+			...endpointSelection(params),
+			moduleId: params.moduleId,
+			serviceType: params.serviceType,
+			method: params.method,
+			...(params.args === undefined ? {} : { args: params.args }),
+			...(params.traceSessionId === undefined
+				? {}
+				: { traceSessionId: params.traceSessionId }),
+		});
+		const object = requireObject(result, "plugin.service.call");
+		return Object.hasOwn(object, "result") ? { result: object.result } : {};
+	}
+
 	private async callPluginAppBridge(
 		params: PluginCallAppBridgeParams,
 	): Promise<PluginCallAppBridgeResult> {
 		const result = await this.request("plugin", "plugin.appBridge.call", {
+			...endpointSelection(params),
 			moduleId: params.moduleId,
 			hook: params.hook,
 			...(params.context === undefined ? {} : { context: params.context }),
@@ -1284,10 +1695,23 @@ function isRemotePluginCapability(
 		typeof candidate.prepareEvaluator === "function" &&
 		typeof candidate.promptEvaluator === "function" &&
 		typeof candidate.processEvaluator === "function" &&
+		typeof candidate.shouldRunResponseHandlerEvaluator === "function" &&
+		typeof candidate.evaluateResponseHandlerEvaluator === "function" &&
+		typeof candidate.shouldRunResponseHandlerFieldEvaluator === "function" &&
+		typeof candidate.parseResponseHandlerFieldEvaluator === "function" &&
+		typeof candidate.handleResponseHandlerFieldEvaluator === "function" &&
+		typeof candidate.callLifecycle === "function" &&
 		typeof candidate.handleEvent === "function" &&
 		typeof candidate.invokeModel === "function" &&
+		typeof candidate.callService === "function" &&
 		typeof candidate.callAppBridge === "function"
 	);
+}
+
+function endpointSelection(params: CapabilityEndpointSelection): JsonObject {
+	return params.endpointId === undefined
+		? {}
+		: { endpointId: params.endpointId };
 }
 
 function requireObject(
@@ -1353,6 +1777,35 @@ function optionalJsonObject(
 	if (value === undefined) return undefined;
 	if (isJsonObject(value)) return value;
 	throw decodeError(method, `${key} must be an object when present.`);
+}
+
+function optionalRemotePluginConfig(
+	object: JsonObject,
+	key: string,
+	method: string,
+): RemotePluginConfig | undefined {
+	const value = object[key];
+	if (value === undefined) return undefined;
+	if (!isJsonObject(value)) {
+		throw decodeError(method, `${key} must be an object when present.`);
+	}
+	const config: RemotePluginConfig = {};
+	for (const [configKey, configValue] of Object.entries(value)) {
+		if (
+			typeof configValue === "string" ||
+			(typeof configValue === "number" && Number.isFinite(configValue)) ||
+			typeof configValue === "boolean" ||
+			configValue === null
+		) {
+			config[configKey] = configValue;
+			continue;
+		}
+		throw decodeError(
+			method,
+			`${key}.${configKey} must be a string, number, boolean, or null.`,
+		);
+	}
+	return config;
 }
 
 function requireJsonObject(
@@ -1542,6 +1995,43 @@ function optionalBoolean(
 	throw decodeError(method, `${key} must be a boolean when present.`);
 }
 
+function requireResponseHandlerFieldEffect(
+	value: JsonValue,
+	method: string,
+): NonNullable<PluginResponseHandlerFieldEvaluatorHandleResult["effect"]> {
+	const object = requireObject(value, method);
+	const patch = optionalJsonObject(object, "patch", method);
+	const preempt =
+		object.preempt === undefined
+			? undefined
+			: requireResponseHandlerFieldPreempt(object.preempt, `${method}.preempt`);
+	const debug = optionalStringArray(object, "debug", method);
+	return {
+		...(patch === undefined ? {} : { patch }),
+		...(preempt === undefined ? {} : { preempt }),
+		...(debug === undefined ? {} : { debug }),
+	};
+}
+
+function requireResponseHandlerFieldPreempt(
+	value: JsonValue,
+	method: string,
+): NonNullable<
+	NonNullable<
+		PluginResponseHandlerFieldEvaluatorHandleResult["effect"]
+	>["preempt"]
+> {
+	const object = requireObject(value, method);
+	const mode = requireString(object, "mode", method);
+	if (mode !== "ack-and-stop" && mode !== "ignore" && mode !== "direct-reply") {
+		throw decodeError(method, "preempt.mode is not supported.");
+	}
+	return {
+		mode,
+		reason: requireString(object, "reason", method),
+	};
+}
+
 function requireGitOperation(
 	value: JsonValue | undefined,
 	method: string,
@@ -1589,8 +2079,15 @@ function requireRemotePluginModule(
 	method: string,
 ): RemotePluginModuleManifest {
 	const object = requireObject(value, method);
+	const capabilityEndpointId = optionalString(
+		object,
+		"capabilityEndpointId",
+		method,
+	);
 	const version = optionalString(object, "version", method);
 	const description = optionalString(object, "description", method);
+	const config = optionalRemotePluginConfig(object, "config", method);
+	const schema = optionalJsonObject(object, "schema", method);
 	const actions = optionalArray(
 		object,
 		"actions",
@@ -1609,6 +2106,18 @@ function requireRemotePluginModule(
 		method,
 		requireRemotePluginEvaluator,
 	);
+	const responseHandlerEvaluators = optionalArray(
+		object,
+		"responseHandlerEvaluators",
+		method,
+		requireRemotePluginResponseHandlerEvaluator,
+	);
+	const responseHandlerFieldEvaluators = optionalArray(
+		object,
+		"responseHandlerFieldEvaluators",
+		method,
+		requireRemotePluginResponseHandlerFieldEvaluator,
+	);
 	const events = optionalArray(
 		object,
 		"events",
@@ -1620,6 +2129,12 @@ function requireRemotePluginModule(
 		"models",
 		method,
 		requireRemotePluginModel,
+	);
+	const services = optionalArray(
+		object,
+		"services",
+		method,
+		requireRemotePluginService,
 	);
 	const widgets = optionalArray(
 		object,
@@ -1635,6 +2150,10 @@ function requireRemotePluginModule(
 		object.appBridge === undefined
 			? undefined
 			: requireRemotePluginAppBridge(object.appBridge, `${method}.appBridge`);
+	const lifecycle =
+		object.lifecycle === undefined
+			? undefined
+			: requireRemotePluginLifecycle(object.lifecycle, `${method}.lifecycle`);
 	const routes = optionalArray(
 		object,
 		"routes",
@@ -1646,16 +2165,27 @@ function requireRemotePluginModule(
 	return {
 		id: requireNonEmptyString(object, "id", method),
 		name: requireNonEmptyString(object, "name", method),
+		...(capabilityEndpointId === undefined ? {} : { capabilityEndpointId }),
 		...(version === undefined ? {} : { version }),
 		...(description === undefined ? {} : { description }),
+		...(config === undefined ? {} : { config }),
+		...(schema === undefined ? {} : { schema }),
 		...(actions === undefined ? {} : { actions }),
 		...(providers === undefined ? {} : { providers }),
 		...(evaluators === undefined ? {} : { evaluators }),
+		...(responseHandlerEvaluators === undefined
+			? {}
+			: { responseHandlerEvaluators }),
+		...(responseHandlerFieldEvaluators === undefined
+			? {}
+			: { responseHandlerFieldEvaluators }),
 		...(events === undefined ? {} : { events }),
 		...(models === undefined ? {} : { models }),
+		...(services === undefined ? {} : { services }),
 		...(widgets === undefined ? {} : { widgets }),
 		...(app === undefined ? {} : { app }),
 		...(appBridge === undefined ? {} : { appBridge }),
+		...(lifecycle === undefined ? {} : { lifecycle }),
 		...(routes === undefined ? {} : { routes }),
 		...(views === undefined ? {} : { views }),
 		...(metadata === undefined ? {} : { metadata }),
@@ -1745,6 +2275,38 @@ function requireRemotePluginEvaluator(
 	};
 }
 
+function requireRemotePluginResponseHandlerEvaluator(
+	value: JsonValue,
+	method: string,
+): RemotePluginResponseHandlerEvaluatorManifest {
+	const object = requireObject(value, method);
+	const description = optionalString(object, "description", method);
+	const priority = optionalNumber(object, "priority", method);
+	return {
+		name: requireNonEmptyString(object, "name", method),
+		...(description === undefined ? {} : { description }),
+		...(priority === undefined ? {} : { priority }),
+	};
+}
+
+function requireRemotePluginResponseHandlerFieldEvaluator(
+	value: JsonValue,
+	method: string,
+): RemotePluginResponseHandlerFieldEvaluatorManifest {
+	const object = requireObject(value, method);
+	const priority = optionalNumber(object, "priority", method);
+	const hasParse = optionalBoolean(object, "hasParse", method);
+	const hasHandle = optionalBoolean(object, "hasHandle", method);
+	return {
+		name: requireNonEmptyString(object, "name", method),
+		description: requireNonEmptyString(object, "description", method),
+		schema: requireObject(object.schema, `${method}.schema`),
+		...(priority === undefined ? {} : { priority }),
+		...(hasParse === undefined ? {} : { hasParse }),
+		...(hasHandle === undefined ? {} : { hasHandle }),
+	};
+}
+
 function requireRemotePluginEvent(
 	value: JsonValue,
 	method: string,
@@ -1764,6 +2326,26 @@ function requireRemotePluginModel(
 	return {
 		modelType: requireNonEmptyString(object, "modelType", method),
 		...(priority === undefined ? {} : { priority }),
+	};
+}
+
+function requireRemotePluginService(
+	value: JsonValue,
+	method: string,
+): RemotePluginServiceManifest {
+	const object = requireObject(value, method);
+	const capabilityDescription = optionalString(
+		object,
+		"capabilityDescription",
+		method,
+	);
+	const methods = optionalStringArray(object, "methods", method);
+	const config = optionalJsonObject(object, "config", method);
+	return {
+		serviceType: requireNonEmptyString(object, "serviceType", method),
+		...(capabilityDescription === undefined ? {} : { capabilityDescription }),
+		...(methods === undefined ? {} : { methods }),
+		...(config === undefined ? {} : { config }),
 	};
 }
 
@@ -1987,6 +2569,29 @@ function isRemotePluginAppBridgeHook(
 		value === "stopRun" ||
 		value === "handleAppRoutes"
 	);
+}
+
+function requireRemotePluginLifecycle(
+	value: JsonValue,
+	method: string,
+): RemotePluginLifecycleManifest {
+	const object = requireObject(value, method);
+	const hooks = requireStringArray(object, "hooks", method);
+	if (hooks.length === 0) {
+		throw decodeError(method, "hooks must not be empty.");
+	}
+	if (hooks.some((hook) => !isRemotePluginLifecycleHook(hook))) {
+		throw decodeError(method, "hooks must be valid plugin lifecycle hooks.");
+	}
+	return {
+		hooks: hooks as RemotePluginLifecycleHook[],
+	};
+}
+
+function isRemotePluginLifecycleHook(
+	value: string,
+): value is RemotePluginLifecycleHook {
+	return value === "init" || value === "dispose" || value === "applyConfig";
 }
 
 function requireRemotePluginRoute(

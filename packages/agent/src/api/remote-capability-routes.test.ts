@@ -1,5 +1,6 @@
 import type http from "node:http";
 import type {
+  ElizaCapabilityRouter,
   IAgentRuntime,
   Plugin,
   RouteHelpers,
@@ -11,6 +12,8 @@ import { handleRemoteCapabilityRoutes } from "./remote-capability-routes";
 
 const originalEnabled = process.env.ELIZA_CAPABILITY_ROUTER_ENABLED;
 const originalUrls = process.env.ELIZA_CAPABILITY_ROUTER_URLS;
+const originalAllowedModules =
+  process.env.ELIZA_CAPABILITY_ROUTER_ALLOWED_MODULES;
 
 afterEach(() => {
   if (originalEnabled === undefined) {
@@ -22,6 +25,12 @@ afterEach(() => {
     delete process.env.ELIZA_CAPABILITY_ROUTER_URLS;
   } else {
     process.env.ELIZA_CAPABILITY_ROUTER_URLS = originalUrls;
+  }
+  if (originalAllowedModules === undefined) {
+    delete process.env.ELIZA_CAPABILITY_ROUTER_ALLOWED_MODULES;
+  } else {
+    process.env.ELIZA_CAPABILITY_ROUTER_ALLOWED_MODULES =
+      originalAllowedModules;
   }
 });
 
@@ -66,9 +75,105 @@ const syncResult: RemotePluginSyncResult = {
   registered: [{ name: "remote-plugin" } as Plugin],
   unloaded: ["old-remote-plugin"],
   skipped: ["local-plugin"],
+  trustDecisions: [
+    {
+      moduleId: "remote-plugin",
+      pluginName: "remote-plugin",
+      endpointId: "tools",
+      trusted: true,
+      reason: "allowed",
+    },
+  ],
 };
 
 describe("handleRemoteCapabilityRoutes", () => {
+  it("proxies authenticated remote assets through the agent runtime", async () => {
+    const getAsset = vi.fn().mockResolvedValue({
+      path: "/assets/remote-view.js",
+      contentType: "text/javascript",
+      bodyBase64: Buffer.from("export const marker = 'proxied';").toString(
+        "base64",
+      ),
+      integrity: "sha256-demo",
+    });
+    const router = {
+      plugin: { getAsset },
+    } as unknown as ElizaCapabilityRouter;
+    const runtime = {
+      getService: () => router,
+    } as Partial<IAgentRuntime> as IAgentRuntime;
+    const writeHead = vi.fn();
+    const end = vi.fn();
+    const { ctx, json, error } = makeCtx(
+      {},
+      {
+        method: "GET",
+        pathname:
+          "/api/capability-router/assets/device/remote-demo/assets/remote-view.js",
+        runtime,
+        res: { writeHead, end } as unknown as http.ServerResponse,
+      },
+    );
+
+    await expect(handleRemoteCapabilityRoutes(ctx)).resolves.toBe(true);
+
+    expect(getAsset).toHaveBeenCalledWith({
+      endpointId: "device",
+      moduleId: "remote-demo",
+      path: "/assets/remote-view.js",
+    });
+    expect(writeHead).toHaveBeenCalledWith(200, {
+      "Content-Type": "text/javascript",
+      "Content-Length": Buffer.byteLength("export const marker = 'proxied';"),
+      "Cache-Control": "no-cache",
+      "X-Eliza-Asset-Integrity": "sha256-demo",
+    });
+    expect(end).toHaveBeenCalledWith(
+      Buffer.from("export const marker = 'proxied';"),
+    );
+    expect(json).not.toHaveBeenCalled();
+    expect(error).not.toHaveBeenCalled();
+  });
+
+  it("serves remote asset HEAD requests with the decoded content length", async () => {
+    const getAsset = vi.fn().mockResolvedValue({
+      path: "/assets/remote-view.js",
+      contentType: "text/javascript",
+      bodyBase64: Buffer.from("export const marker = 'head';").toString(
+        "base64",
+      ),
+    });
+    const router = {
+      plugin: { getAsset },
+    } as unknown as ElizaCapabilityRouter;
+    const runtime = {
+      getService: () => router,
+    } as Partial<IAgentRuntime> as IAgentRuntime;
+    const writeHead = vi.fn();
+    const end = vi.fn();
+    const { ctx, json, error } = makeCtx(
+      {},
+      {
+        method: "HEAD",
+        pathname:
+          "/api/capability-router/assets/device/remote-demo/assets/remote-view.js",
+        runtime,
+        res: { writeHead, end } as unknown as http.ServerResponse,
+      },
+    );
+
+    await expect(handleRemoteCapabilityRoutes(ctx)).resolves.toBe(true);
+
+    expect(writeHead).toHaveBeenCalledWith(200, {
+      "Content-Type": "text/javascript",
+      "Content-Length": Buffer.byteLength("export const marker = 'head';"),
+      "Cache-Control": "no-cache",
+    });
+    expect(end).toHaveBeenCalledWith(undefined);
+    expect(json).not.toHaveBeenCalled();
+    expect(error).not.toHaveBeenCalled();
+  });
+
   it("installs a direct endpoint, syncs plugins, and redacts tokens", async () => {
     const installEndpoint = vi.fn();
     const syncPlugins = vi.fn().mockResolvedValue(syncResult);
@@ -80,6 +185,7 @@ describe("handleRemoteCapabilityRoutes", () => {
           token: "secret-token",
         },
         requestTimeoutMs: 15_000,
+        allowedModuleIds: ["remote-plugin"],
       },
       { installEndpoint, syncPlugins },
     );
@@ -100,6 +206,11 @@ describe("handleRemoteCapabilityRoutes", () => {
     });
     expect(syncPlugins).toHaveBeenCalledWith(ctx.runtime, {
       unloadMissing: true,
+      trustPolicy: {
+        allowedEndpointIds: ["tools"],
+        allowedModuleIds: ["remote-plugin"],
+        requireEndpointId: true,
+      },
     });
     expect(error).not.toHaveBeenCalled();
     expect(json).toHaveBeenCalledWith(ctx.res, {
@@ -115,6 +226,15 @@ describe("handleRemoteCapabilityRoutes", () => {
         registered: ["remote-plugin"],
         unloaded: ["old-remote-plugin"],
         skipped: ["local-plugin"],
+        trustDecisions: [
+          {
+            moduleId: "remote-plugin",
+            pluginName: "remote-plugin",
+            endpointId: "tools",
+            trusted: true,
+            reason: "allowed",
+          },
+        ],
       },
     });
     expect(JSON.stringify(json.mock.calls[0]?.[1])).not.toContain(
@@ -147,6 +267,9 @@ describe("handleRemoteCapabilityRoutes", () => {
     expect(ctx.config?.env?.vars?.ELIZA_CAPABILITY_ROUTER_URLS).not.toContain(
       "secret-token",
     );
+    expect(ctx.config?.env?.vars?.ELIZA_CAPABILITY_ROUTER_ALLOWED_MODULES).toBe(
+      JSON.stringify({ tools: ["remote-plugin"] }),
+    );
   });
 
   it("provisions cloud sandbox and returns redacted endpoint metadata", async () => {
@@ -171,6 +294,7 @@ describe("handleRemoteCapabilityRoutes", () => {
           token: "endpoint-token",
           timeoutMs: 5_000,
           pollIntervalMs: 100,
+          allowedModuleIds: ["remote-plugin"],
         },
         unloadMissing: false,
       },
@@ -188,6 +312,7 @@ describe("handleRemoteCapabilityRoutes", () => {
       token: "endpoint-token",
       timeoutMs: 5_000,
       pollIntervalMs: 100,
+      allowedModuleIds: ["remote-plugin"],
       unloadMissing: false,
       requestTimeoutMs: 60_000,
     });
@@ -207,6 +332,15 @@ describe("handleRemoteCapabilityRoutes", () => {
         registered: ["remote-plugin"],
         unloaded: ["old-remote-plugin"],
         skipped: ["local-plugin"],
+        trustDecisions: [
+          {
+            moduleId: "remote-plugin",
+            pluginName: "remote-plugin",
+            endpointId: "tools",
+            trusted: true,
+            reason: "allowed",
+          },
+        ],
       },
     });
     expect(JSON.stringify(json.mock.calls[0]?.[1])).not.toContain(
@@ -233,6 +367,9 @@ describe("handleRemoteCapabilityRoutes", () => {
     );
     expect(ctx.config?.env?.vars?.ELIZA_CAPABILITY_ROUTER_URLS).not.toContain(
       "cloud-secret",
+    );
+    expect(ctx.config?.env?.vars?.ELIZA_CAPABILITY_ROUTER_ALLOWED_MODULES).toBe(
+      JSON.stringify({ cloud: ["remote-plugin"] }),
     );
   });
 
@@ -309,6 +446,33 @@ describe("handleRemoteCapabilityRoutes", () => {
         },
         { id: "other", baseUrl: "https://other.example.test" },
       ]),
+    );
+  });
+
+  it("preserves persisted module allowlists from live config env", async () => {
+    process.env.ELIZA_CAPABILITY_ROUTER_ALLOWED_MODULES = JSON.stringify({
+      other: ["other-plugin"],
+    });
+    const installEndpoint = vi.fn();
+    const syncPlugins = vi.fn().mockResolvedValue(syncResult);
+    const { ctx } = makeCtx(
+      {
+        endpoint: {
+          id: "tools",
+          baseUrl: "https://new.example.test",
+        },
+        allowedModuleIds: ["remote-plugin", "remote-plugin", " "],
+      },
+      { installEndpoint, syncPlugins },
+    );
+
+    await expect(handleRemoteCapabilityRoutes(ctx)).resolves.toBe(true);
+
+    expect(ctx.config?.env?.vars?.ELIZA_CAPABILITY_ROUTER_ALLOWED_MODULES).toBe(
+      JSON.stringify({
+        other: ["other-plugin"],
+        tools: ["remote-plugin"],
+      }),
     );
   });
 

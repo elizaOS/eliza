@@ -1,9 +1,12 @@
 import type http from "node:http";
-import type {
-  IAgentRuntime,
-  JsonObject,
-  RouteHelpers,
-  RouteRequestMeta,
+import {
+  CAPABILITY_ROUTER_SERVICE_TYPE,
+  CapabilityError,
+  type ElizaCapabilityRouter,
+  type IAgentRuntime,
+  type JsonObject,
+  type RouteHelpers,
+  type RouteRequestMeta,
 } from "@elizaos/core";
 import {
   type ConnectCloudCapabilitySandboxOptions,
@@ -16,6 +19,7 @@ import type {
   RemoteCapabilityRouterConfig,
 } from "../services/remote-capability-router.ts";
 import {
+  type RemotePluginAdapterOptions,
   type RemotePluginSyncResult,
   syncRemoteCapabilityPlugins,
 } from "../services/remote-plugin-adapter.ts";
@@ -40,7 +44,7 @@ export interface RemoteCapabilityRouteContext
   ) => unknown;
   syncPlugins?: (
     runtime: IAgentRuntime,
-    options: { unloadMissing?: boolean },
+    options: RemotePluginAdapterOptions & { unloadMissing?: boolean },
   ) => Promise<RemotePluginSyncResult>;
   connectCloudSandbox?: (
     runtime: IAgentRuntime,
@@ -54,6 +58,7 @@ type ConnectBody = {
   unloadMissing?: unknown;
   persist?: unknown;
   requestTimeoutMs?: unknown;
+  allowedModuleIds?: unknown;
 };
 
 type DirectEndpointBody = {
@@ -71,6 +76,7 @@ type CloudBody = {
   token?: unknown;
   timeoutMs?: unknown;
   pollIntervalMs?: unknown;
+  allowedModuleIds?: unknown;
 };
 
 export async function handleRemoteCapabilityRoutes(
@@ -78,6 +84,27 @@ export async function handleRemoteCapabilityRoutes(
 ): Promise<boolean> {
   const { req, res, method, pathname, runtime, readJsonBody, json, error } =
     ctx;
+
+  if (pathname.startsWith("/api/capability-router/assets/")) {
+    if (!runtime) {
+      error(res, "Agent runtime unavailable", 503);
+      return true;
+    }
+    if (method !== "GET" && method !== "HEAD") {
+      error(res, "Method not allowed", 405);
+      return true;
+    }
+    try {
+      await serveCapabilityRouterAssetProxy(ctx, runtime);
+    } catch (err) {
+      error(
+        res,
+        err instanceof Error ? err.message : "Failed to load remote asset.",
+        err instanceof CapabilityError ? 502 : 400,
+      );
+    }
+    return true;
+  }
 
   if (pathname !== "/api/capability-router/connect") {
     return false;
@@ -103,6 +130,10 @@ export async function handleRemoteCapabilityRoutes(
   const unloadMissing =
     typeof body.unloadMissing === "boolean" ? body.unloadMissing : true;
   const persist = typeof body.persist === "boolean" ? body.persist : true;
+  const allowedModuleIds = parseOptionalStringArray(
+    body.allowedModuleIds,
+    "allowedModuleIds",
+  );
   const requestTimeoutMs = optionalPositiveInteger(
     body.requestTimeoutMs,
     "requestTimeoutMs",
@@ -125,10 +156,17 @@ export async function handleRemoteCapabilityRoutes(
       });
       const sync = await (ctx.syncPlugins ?? syncRemoteCapabilityPlugins)(
         runtime,
-        { unloadMissing },
+        {
+          unloadMissing,
+          trustPolicy: {
+            allowedEndpointIds: [endpoint.id],
+            ...(allowedModuleIds === undefined ? {} : { allowedModuleIds }),
+            requireEndpointId: true,
+          },
+        },
       );
       if (persist) {
-        await persistEndpoint(ctx, endpoint);
+        await persistEndpoint(ctx, endpoint, allowedModuleIds);
       }
       json(res, {
         success: true,
@@ -142,15 +180,19 @@ export async function handleRemoteCapabilityRoutes(
 
     if (body.cloud !== undefined) {
       const cloud = parseCloudOptions(body.cloud);
+      const cloudAllowedModuleIds = allowedModuleIds ?? cloud.allowedModuleIds;
       const connectCloudSandbox =
         ctx.connectCloudSandbox ?? connectCloudCapabilitySandbox;
       const result = await connectCloudSandbox(runtime, {
         ...cloud,
         unloadMissing,
+        ...(cloudAllowedModuleIds === undefined
+          ? {}
+          : { allowedModuleIds: cloudAllowedModuleIds }),
         requestTimeoutMs: requestTimeoutMs ?? 60_000,
       });
       if (persist) {
-        await persistEndpoint(ctx, result.endpoint);
+        await persistEndpoint(ctx, result.endpoint, cloudAllowedModuleIds);
       }
       json(res, {
         success: true,
@@ -178,6 +220,82 @@ export async function handleRemoteCapabilityRoutes(
   }
 }
 
+async function serveCapabilityRouterAssetProxy(
+  ctx: RemoteCapabilityRouteContext,
+  runtime: IAgentRuntime,
+): Promise<void> {
+  const { req, res, pathname, method } = ctx;
+  const parsed = parseAssetProxyPath(pathname);
+  const router = getRuntimeCapabilityRouter(runtime);
+  const asset = await router.plugin.getAsset({
+    endpointId: parsed.endpointId,
+    moduleId: parsed.moduleId,
+    path: parsed.assetPath,
+  });
+  const body = Buffer.from(asset.bodyBase64, "base64");
+  const headers: Record<string, string | number> = {
+    "Content-Type": asset.contentType,
+    "Content-Length": body.byteLength,
+    "Cache-Control": "no-cache",
+    ...(asset.integrity === undefined
+      ? {}
+      : { "X-Eliza-Asset-Integrity": asset.integrity }),
+  };
+  const response = res as {
+    writeHead?: (
+      status: number,
+      headers: Record<string, string | number>,
+    ) => void;
+    setHeader?: (name: string, value: string | number) => void;
+    end?: (chunk?: unknown) => void;
+  };
+  if (typeof response.writeHead === "function") {
+    response.writeHead(200, headers);
+  } else if (typeof response.setHeader === "function") {
+    for (const [key, value] of Object.entries(headers)) {
+      response.setHeader(key, value);
+    }
+  }
+  response.end?.(method === "HEAD" ? undefined : body);
+}
+
+function parseAssetProxyPath(pathname: string): {
+  endpointId: string;
+  moduleId: string;
+  assetPath: string;
+} {
+  const prefix = "/api/capability-router/assets/";
+  const remainder = pathname.slice(prefix.length);
+  const [encodedEndpointId, encodedModuleId, ...assetParts] =
+    remainder.split("/");
+  if (!encodedEndpointId || !encodedModuleId || assetParts.length === 0) {
+    throw new Error(
+      "Capability asset URL must include endpoint id, module id, and path.",
+    );
+  }
+  const endpointId = decodeURIComponent(encodedEndpointId);
+  const moduleId = decodeURIComponent(encodedModuleId);
+  const assetPath = `/${assetParts.join("/")}`;
+  if (!endpointId.trim() || !moduleId.trim() || assetPath === "/") {
+    throw new Error(
+      "Capability asset URL must include endpoint id, module id, and path.",
+    );
+  }
+  return { endpointId, moduleId, assetPath };
+}
+
+function getRuntimeCapabilityRouter(
+  runtime: IAgentRuntime,
+): ElizaCapabilityRouter {
+  const router = runtime.getService?.(
+    CAPABILITY_ROUTER_SERVICE_TYPE,
+  ) as unknown as ElizaCapabilityRouter | null;
+  if (!router) {
+    throw new Error("Capability router service is not available.");
+  }
+  return router;
+}
+
 type CapabilityRouterPersistConfig = {
   env?: {
     vars?: Record<string, string>;
@@ -192,6 +310,7 @@ function persistEndpoint(
     "config" | "saveConfig" | "persistConfigEnv"
   >,
   endpoint: RemoteCapabilityEndpointConfig,
+  allowedModuleIds?: string[],
 ): Promise<void> {
   const config = ctx.config;
   const saveConfig = ctx.saveConfig;
@@ -204,6 +323,7 @@ function persistEndpoint(
   return persistEndpointInner(
     { config, saveConfig, persistConfigEnv },
     endpoint,
+    allowedModuleIds,
   );
 }
 
@@ -214,6 +334,7 @@ async function persistEndpointInner(
     persistConfigEnv: (key: string, value: string) => Promise<void>;
   },
   endpoint: RemoteCapabilityEndpointConfig,
+  allowedModuleIds?: string[],
 ): Promise<void> {
   const env = ctx.config.env ?? {};
   const vars = { ...(env.vars ?? {}) };
@@ -223,6 +344,14 @@ async function persistEndpointInner(
         vars.ELIZA_CAPABILITY_ROUTER_URLS,
     ),
     endpoint,
+  );
+  const moduleAllowlists = mergePersistedModuleAllowlists(
+    readPersistedModuleAllowlists(
+      process.env.ELIZA_CAPABILITY_ROUTER_ALLOWED_MODULES ??
+        vars.ELIZA_CAPABILITY_ROUTER_ALLOWED_MODULES,
+    ),
+    endpoint.id,
+    allowedModuleIds,
   );
   const sanitizedEndpoints = endpoints.map(
     ({ token: _token, ...item }) => item,
@@ -234,11 +363,59 @@ async function persistEndpointInner(
   );
   vars.ELIZA_CAPABILITY_ROUTER_ENABLED = "true";
   vars.ELIZA_CAPABILITY_ROUTER_URLS = JSON.stringify(sanitizedEndpoints);
+  if (Object.keys(moduleAllowlists).length > 0) {
+    vars.ELIZA_CAPABILITY_ROUTER_ALLOWED_MODULES =
+      JSON.stringify(moduleAllowlists);
+  } else {
+    delete vars.ELIZA_CAPABILITY_ROUTER_ALLOWED_MODULES;
+  }
   ctx.config.env = {
     ...env,
     vars,
   };
   ctx.saveConfig(ctx.config);
+}
+
+function readPersistedModuleAllowlists(
+  value: string | undefined,
+): Record<string, string[]> {
+  if (!value?.trim()) return {};
+  try {
+    const parsed = JSON.parse(value) as unknown;
+    if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
+      return {};
+    }
+    const result: Record<string, string[]> = {};
+    for (const [endpointId, moduleIds] of Object.entries(parsed)) {
+      if (!endpointId.trim() || !Array.isArray(moduleIds)) continue;
+      const normalized = normalizeStringList(moduleIds);
+      if (normalized.length > 0) {
+        result[endpointId.trim()] = normalized;
+      }
+    }
+    return result;
+  } catch {
+    return {};
+  }
+}
+
+function mergePersistedModuleAllowlists(
+  existing: Record<string, string[]>,
+  endpointId: string,
+  allowedModuleIds: string[] | undefined,
+): Record<string, string[]> {
+  const next = { ...existing };
+  if (allowedModuleIds === undefined) {
+    delete next[endpointId];
+    return next;
+  }
+  const normalized = normalizeStringList(allowedModuleIds);
+  if (normalized.length === 0) {
+    delete next[endpointId];
+  } else {
+    next[endpointId] = normalized;
+  }
+  return next;
 }
 
 function readPersistedEndpoints(
@@ -314,6 +491,10 @@ function parseCloudOptions(
 > {
   const body = requireObject(value, "cloud") as CloudBody;
   const bio = parseOptionalStringArray(body.bio, "cloud.bio");
+  const allowedModuleIds = parseOptionalStringArray(
+    body.allowedModuleIds,
+    "cloud.allowedModuleIds",
+  );
   const endpointId = optionalNonEmptyString(
     body.endpointId,
     "cloud.endpointId",
@@ -333,6 +514,7 @@ function parseCloudOptions(
     ...(bio === undefined ? {} : { bio }),
     ...(endpointId === undefined ? {} : { endpointId }),
     ...optionalToken(body.token, "cloud.token"),
+    ...(allowedModuleIds === undefined ? {} : { allowedModuleIds }),
     ...(timeoutMs === undefined ? {} : { timeoutMs }),
     ...(pollIntervalMs === undefined ? {} : { pollIntervalMs }),
   };
@@ -343,6 +525,7 @@ function serializeSyncResult(sync: RemotePluginSyncResult): JsonObject {
     registered: sync.registered.map((plugin) => plugin.name),
     unloaded: sync.unloaded,
     skipped: sync.skipped,
+    trustDecisions: sync.trustDecisions,
   };
 }
 
@@ -414,5 +597,9 @@ function parseOptionalStringArray(
   if (!Array.isArray(value) || value.some((item) => typeof item !== "string")) {
     throw new Error(`${field} must be an array of strings.`);
   }
-  return value;
+  return normalizeStringList(value);
+}
+
+function normalizeStringList(values: string[]): string[] {
+  return [...new Set(values.map((value) => value.trim()).filter(Boolean))];
 }

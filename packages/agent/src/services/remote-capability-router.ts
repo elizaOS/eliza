@@ -20,6 +20,7 @@ import {
   type LocalModelStatusParams,
   type PluginCallAppBridgeParams,
   type PluginCallRouteParams,
+  type PluginCallServiceParams,
   type PluginEvaluatorPrepareParams,
   type PluginEvaluatorProcessParams,
   type PluginEvaluatorPromptParams,
@@ -29,6 +30,12 @@ import {
   type PluginHandleEventParams,
   type PluginInvokeActionParams,
   type PluginInvokeModelParams,
+  type PluginLifecycleCallParams,
+  type PluginResponseHandlerEvaluatorEvaluateParams,
+  type PluginResponseHandlerEvaluatorShouldRunParams,
+  type PluginResponseHandlerFieldEvaluatorHandleParams,
+  type PluginResponseHandlerFieldEvaluatorParseParams,
+  type PluginResponseHandlerFieldEvaluatorShouldRunParams,
   type RemotePluginCapability,
   type RuntimeBrokerCapabilityMethod,
   RuntimeBrokerCapabilityRouter,
@@ -297,10 +304,16 @@ export class RemoteCapabilityRouterService
     method: RuntimeBrokerCapabilityMethod,
     params?: JsonObject,
   ): Promise<JsonValue | undefined> {
+    const endpointId =
+      typeof params?.endpointId === "string" ? params.endpointId : "";
     const moduleId =
       typeof params?.moduleId === "string" ? params.moduleId : "";
     const endpoint =
-      this.moduleEndpointById.get(moduleId) ?? this.requirePrimaryEndpoint();
+      (endpointId
+        ? this.requireEndpointForParams(method, params)
+        : undefined) ??
+      this.moduleEndpointById.get(moduleId) ??
+      this.requirePrimaryEndpoint();
     const result = await this.requestJson(
       endpoint,
       "POST",
@@ -540,6 +553,30 @@ async function invokeLocalRouter(
       return (await router.plugin.processEvaluator(
         params as PluginEvaluatorProcessParams,
       )) as JsonValue;
+    case "plugin.responseHandlerEvaluator.shouldRun":
+      return (await router.plugin.shouldRunResponseHandlerEvaluator(
+        params as PluginResponseHandlerEvaluatorShouldRunParams,
+      )) as JsonValue;
+    case "plugin.responseHandlerEvaluator.evaluate":
+      return (await router.plugin.evaluateResponseHandlerEvaluator(
+        params as PluginResponseHandlerEvaluatorEvaluateParams,
+      )) as JsonValue;
+    case "plugin.responseHandlerFieldEvaluator.shouldRun":
+      return (await router.plugin.shouldRunResponseHandlerFieldEvaluator(
+        params as PluginResponseHandlerFieldEvaluatorShouldRunParams,
+      )) as JsonValue;
+    case "plugin.responseHandlerFieldEvaluator.parse":
+      return (await router.plugin.parseResponseHandlerFieldEvaluator(
+        params as PluginResponseHandlerFieldEvaluatorParseParams,
+      )) as JsonValue;
+    case "plugin.responseHandlerFieldEvaluator.handle":
+      return (await router.plugin.handleResponseHandlerFieldEvaluator(
+        params as PluginResponseHandlerFieldEvaluatorHandleParams,
+      )) as JsonValue;
+    case "plugin.lifecycle.call":
+      return (await router.plugin.callLifecycle(
+        params as PluginLifecycleCallParams,
+      )) as JsonValue;
     case "plugin.event.handle":
       return (await router.plugin.handleEvent(
         params as PluginHandleEventParams,
@@ -547,6 +584,10 @@ async function invokeLocalRouter(
     case "plugin.model.invoke":
       return (await router.plugin.invokeModel(
         params as PluginInvokeModelParams,
+      )) as JsonValue;
+    case "plugin.service.call":
+      return (await router.plugin.callService(
+        params as PluginCallServiceParams,
       )) as JsonValue;
     case "plugin.appBridge.call":
       return (await router.plugin.callAppBridge(
@@ -661,26 +702,70 @@ function normalizeEndpoints(
       ...(config.token === undefined ? {} : { token: config.token }),
     });
   }
-  const byUrl = new Map<string, RemoteCapabilityEndpointConfig>();
-  for (const endpoint of endpoints) {
-    byUrl.set(stripTrailingSlash(endpoint.baseUrl), {
-      ...endpoint,
-      baseUrl: stripTrailingSlash(endpoint.baseUrl),
-    });
-  }
-  const normalized = [...byUrl.values()];
+  const normalized: RemoteCapabilityEndpointConfig[] = [];
   const ids = new Set<string>();
-  for (const endpoint of normalized) {
-    if (ids.has(endpoint.id)) {
+  const urls = new Set<string>();
+  for (const endpoint of endpoints) {
+    const next = normalizeEndpointConfig(endpoint);
+    if (ids.has(next.id)) {
       throw new CapabilityError({
         code: "CAPABILITY_DECODE_FAILED",
-        message: `Remote capability endpoint id "${endpoint.id}" is configured more than once.`,
+        message: `Remote capability endpoint id "${next.id}" is configured more than once.`,
         method: "capability-router.configure",
       });
     }
-    ids.add(endpoint.id);
+    if (urls.has(next.baseUrl)) {
+      throw new CapabilityError({
+        code: "CAPABILITY_DECODE_FAILED",
+        message: `Remote capability endpoint URL "${next.baseUrl}" is configured more than once.`,
+        method: "capability-router.configure",
+      });
+    }
+    ids.add(next.id);
+    urls.add(next.baseUrl);
+    normalized.push(next);
   }
   return normalized;
+}
+
+function normalizeEndpointConfig(
+  endpoint: RemoteCapabilityEndpointConfig,
+): RemoteCapabilityEndpointConfig {
+  const id = endpoint.id.trim();
+  if (!id) {
+    throw new CapabilityError({
+      code: "CAPABILITY_DECODE_FAILED",
+      message: "Remote capability endpoint id must be a non-empty string.",
+      method: "capability-router.configure",
+    });
+  }
+  const baseUrl = normalizeEndpointBaseUrl(endpoint.baseUrl);
+  return {
+    id,
+    baseUrl,
+    ...(endpoint.token === undefined || !endpoint.token.trim()
+      ? {}
+      : { token: endpoint.token.trim() }),
+  };
+}
+
+function normalizeEndpointBaseUrl(baseUrl: string): string {
+  try {
+    const url = new URL(baseUrl);
+    if (url.protocol !== "http:" && url.protocol !== "https:") {
+      throw new Error("unsupported protocol");
+    }
+    url.hash = "";
+    url.search = "";
+    return stripTrailingSlash(url.toString());
+  } catch {
+    throw new CapabilityError({
+      code: "CAPABILITY_DECODE_FAILED",
+      message:
+        "Remote capability endpoint baseUrl must be an absolute http(s) URL.",
+      method: "capability-router.configure",
+    });
+  }
 }
 
 function parseEndpointList(
@@ -750,8 +835,15 @@ function isPluginModuleMethod(method: RuntimeBrokerCapabilityMethod): boolean {
     method === "plugin.evaluator.prepare" ||
     method === "plugin.evaluator.prompt" ||
     method === "plugin.evaluator.process" ||
+    method === "plugin.responseHandlerEvaluator.shouldRun" ||
+    method === "plugin.responseHandlerEvaluator.evaluate" ||
+    method === "plugin.responseHandlerFieldEvaluator.shouldRun" ||
+    method === "plugin.responseHandlerFieldEvaluator.parse" ||
+    method === "plugin.responseHandlerFieldEvaluator.handle" ||
+    method === "plugin.lifecycle.call" ||
     method === "plugin.event.handle" ||
     method === "plugin.model.invoke" ||
+    method === "plugin.service.call" ||
     method === "plugin.appBridge.call"
   );
 }
@@ -792,9 +884,13 @@ function normalizeRemoteModuleManifest(
 ): JsonObject {
   const views = module.views;
   const moduleId = typeof module.id === "string" ? module.id : "";
-  if (!Array.isArray(views)) return module;
-  return {
+  const withEndpoint = {
     ...module,
+    capabilityEndpointId: endpoint.id,
+  };
+  if (!Array.isArray(views)) return withEndpoint;
+  return {
+    ...withEndpoint,
     views: views.map((view) => {
       if (!isRecord(view) || !isJsonValue(view)) return view;
       if (typeof view.bundleUrl === "string" && view.bundleUrl) return view;
@@ -815,10 +911,13 @@ function remoteAssetUrl(
   const normalizedAssetPath = assetPath.startsWith("/")
     ? assetPath.slice(1)
     : assetPath;
-  return new URL(
-    `/v1/capabilities/assets/${encodeURIComponent(moduleId)}/${normalizedAssetPath}`,
-    endpoint.baseUrl,
-  ).toString();
+  if (!endpoint.token) {
+    return new URL(
+      `/v1/capabilities/assets/${encodeURIComponent(moduleId)}/${normalizedAssetPath}`,
+      endpoint.baseUrl,
+    ).toString();
+  }
+  return `/api/capability-router/assets/${encodeURIComponent(endpoint.id)}/${encodeURIComponent(moduleId)}/${normalizedAssetPath}`;
 }
 
 function parseJson(text: string, method: string): JsonValue {

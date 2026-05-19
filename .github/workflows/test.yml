@@ -96,7 +96,6 @@ jobs:
         run: bun run test:remote-capabilities
 
       - name: Remote capability Docker smoke
-        if: github.event_name == 'workflow_dispatch' || github.event_name == 'schedule'
         run: bun run test:remote-capabilities:docker
 
       - name: Run server tests
@@ -289,6 +288,15 @@ jobs:
           ELIZA_LIVE_TEST: "1"
           ELIZAOS_CLOUD_API_KEY: ${{ secrets.ELIZAOS_CLOUD_API_KEY != '' && secrets.ELIZAOS_CLOUD_API_KEY || secrets.ELIZACLOUD_API_KEY }}
           ELIZA_CLOUD_API_KEY: ${{ secrets.ELIZAOS_CLOUD_API_KEY != '' && secrets.ELIZAOS_CLOUD_API_KEY || secrets.ELIZACLOUD_API_KEY }}
+          ELIZAOS_CLOUD_BASE_URL: ${{ secrets.ELIZAOS_CLOUD_BASE_URL }}
+          ELIZA_CLOUD_BASE_URL: ${{ secrets.ELIZAOS_CLOUD_BASE_URL }}
+
+      - name: Remote capability cloud sandbox live smoke
+        if: steps.cloud.outputs.skip != 'true' && (github.event_name == 'workflow_dispatch' || github.event_name == 'schedule')
+        run: bun run --cwd packages/agent test:remote-capabilities:cloud-live
+        env:
+          ELIZA_LIVE_TEST: "1"
+          ELIZAOS_CLOUD_API_KEY: ${{ secrets.ELIZAOS_CLOUD_API_KEY != '' && secrets.ELIZAOS_CLOUD_API_KEY || secrets.ELIZACLOUD_API_KEY }}
           ELIZAOS_CLOUD_BASE_URL: ${{ secrets.ELIZAOS_CLOUD_BASE_URL }}
           ELIZA_CLOUD_BASE_URL: ${{ secrets.ELIZAOS_CLOUD_BASE_URL }}
 

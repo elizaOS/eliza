@@ -44,14 +44,8 @@ async function build() {
   }
   {
     const { rename } = await import("node:fs/promises");
-    await rename(
-      join(distDir, "node", "index.js"),
-      join(distDir, "node", "index.node.js"),
-    );
-    await rename(
-      join(distDir, "node", "index.js.map"),
-      join(distDir, "node", "index.node.js.map"),
-    );
+    await rename(join(distDir, "node", "index.js"), join(distDir, "node", "index.node.js"));
+    await rename(join(distDir, "node", "index.js.map"), join(distDir, "node", "index.node.js.map"));
   }
   console.log(`✅ Node build complete in ${((Date.now() - nodeStart) / 1000).toFixed(2)}s`);
 

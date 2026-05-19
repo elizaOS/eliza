@@ -142,11 +142,49 @@ def test_discover_engine_honors_missing_preferred_backend(tmp_path: Path, monkey
     assert suite.discover_engine("cpu") is None
 
 
+def test_discover_engine_prefers_fused_voice_capable_dir(tmp_path: Path, monkeypatch) -> None:
+    root = tmp_path / "state" / "local-inference" / "bin" / "dflash"
+    plain_fused = root / f"{suite._platform_tag()}-metal-fused"
+    voice_fused = root / f"{suite._platform_tag()}-metal-fused-with-voice"
+    for engine_dir in (plain_fused, voice_fused):
+        engine_dir.mkdir(parents=True)
+        for name in ("llama-server", "llama-speculative-simple"):
+            p = engine_dir / name
+            p.write_text("#!/bin/sh\n")
+            os.chmod(p, 0o755)
+        (engine_dir / suite._eliza_lib_name()).write_text("x")
+    voice_server = voice_fused / "llama-omnivoice-server"
+    voice_server.write_text("#!/bin/sh\n")
+    os.chmod(voice_server, 0o755)
+    monkeypatch.setenv("ELIZA_STATE_DIR", str(tmp_path / "state"))
+
+    engine = suite.discover_engine("metal")
+
+    assert engine is not None
+    assert engine.bin_dir == voice_fused
+    assert engine.omnivoice_server == voice_server
+
+
 def test_find_verify_dir_prefers_native_plugin_verify() -> None:
     verify_dir = suite._find_verify_dir()
 
     assert verify_dir is not None
     assert verify_dir.as_posix().endswith("plugins/plugin-local-inference/native/verify")
+
+
+def test_e2e_harness_selection_routes_small_tiers_to_kokoro() -> None:
+    assert suite._uses_kokoro_e2e_harness("0_8b") is True
+    assert suite._uses_kokoro_e2e_harness("2b") is True
+    assert suite._uses_kokoro_e2e_harness("4b") is True
+    assert suite._uses_kokoro_e2e_harness("9b") is False
+    assert suite._uses_kokoro_e2e_harness("27b-256k") is False
+
+
+def test_normalize_backend_for_harness_strips_fused_build_suffix() -> None:
+    assert suite._normalize_backend_for_harness("metal-fused.pre-encode-ref-20260515-025231") == "metal"
+    assert suite._normalize_backend_for_harness("vulkan-fused") == "vulkan"
+    assert suite._normalize_backend_for_harness("cuda.release") == "cuda"
+    assert suite._normalize_backend_for_harness(None) == "cpu"
 
 
 def test_dispatch_targets_for_metal_include_runtime_smoke() -> None:

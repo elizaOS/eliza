@@ -14,18 +14,20 @@ import {
   type Plugin,
   type PluginCallAppBridgeResult,
   type RemotePluginModuleManifest,
+  type Service,
   type UUID,
 } from "@elizaos/core";
 import { build as esbuild } from "esbuild";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { persistConfigEnv } from "../api/config-env.ts";
 import { dispatchRoute } from "../api/dispatch-route.ts";
+import { handleRemoteCapabilityRoutes } from "../api/remote-capability-routes.ts";
 import {
   getView,
   registerPluginViews,
   unregisterPluginViews,
 } from "../api/views-registry.ts";
-import { loadElizaConfig } from "../config/config.ts";
+import { loadElizaConfig, saveElizaConfig } from "../config/config.ts";
 import { importAppRouteModule } from "./app-package-modules.ts";
 import {
   createRemoteCapabilityFetchHandler,
@@ -43,6 +45,19 @@ const remoteModule: RemotePluginModuleManifest = {
   name: "@remote/demo",
   version: "1.2.3",
   description: "Remote demo plugin.",
+  config: {
+    REMOTE_MODE: "demo",
+    retryCount: 2,
+    enabled: true,
+    nullable: null,
+    remoteCapabilityModuleId: "remote-owned-value",
+  },
+  schema: {
+    remote_demo_records: {
+      id: "uuid",
+      message: "text",
+    },
+  },
   actions: [
     {
       name: "REMOTE_DEMO",
@@ -77,8 +92,36 @@ const remoteModule: RemotePluginModuleManifest = {
       hasProcessor: true,
     },
   ],
+  responseHandlerEvaluators: [
+    {
+      name: "REMOTE_RESPONSE_HANDLER",
+      description: "Patch response handler output remotely.",
+      priority: 35,
+    },
+  ],
+  responseHandlerFieldEvaluators: [
+    {
+      name: "remoteHints",
+      description: "Remote field evaluator hints for the response handler.",
+      priority: 45,
+      schema: {
+        type: "array",
+        items: { type: "string" },
+      },
+      hasParse: true,
+      hasHandle: true,
+    },
+  ],
   events: [{ eventName: "REMOTE_EVENT" }],
   models: [{ modelType: "REMOTE_TEXT", priority: 75 }],
+  services: [
+    {
+      serviceType: "remote_demo_service",
+      capabilityDescription: "Remote demo service.",
+      methods: ["lookup", "stop"],
+      config: { region: "remote" },
+    },
+  ],
   widgets: [
     {
       id: "remote.widget",
@@ -125,6 +168,9 @@ const remoteModule: RemotePluginModuleManifest = {
       "stopRun",
       "handleAppRoutes",
     ],
+  },
+  lifecycle: {
+    hooks: ["init", "dispose", "applyConfig"],
   },
   routes: [
     {
@@ -212,6 +258,48 @@ describe("remote plugin adapter", () => {
           },
         };
       },
+      shouldRunResponseHandlerEvaluator: async (params) => {
+        calls.push({ method: "responseHandler.shouldRun", params });
+        return { shouldRun: true };
+      },
+      evaluateResponseHandlerEvaluator: async (params) => {
+        calls.push({ method: "responseHandler.evaluate", params });
+        return {
+          patch: {
+            reply: "remote response patch",
+            addCandidateActions: ["REMOTE_DEMO"],
+            debug: ["remote response handler"],
+          },
+        };
+      },
+      shouldRunResponseHandlerFieldEvaluator: async (params) => {
+        calls.push({ method: "responseHandlerField.shouldRun", params });
+        return { shouldRun: true };
+      },
+      parseResponseHandlerFieldEvaluator: async (params) => {
+        calls.push({ method: "responseHandlerField.parse", params });
+        return {
+          value: Array.isArray(params.value)
+            ? params.value.map((item) => String(item).toUpperCase())
+            : [],
+        };
+      },
+      handleResponseHandlerFieldEvaluator: async (params) => {
+        calls.push({ method: "responseHandlerField.handle", params });
+        return {
+          effect: {
+            patch: {
+              candidateActionNames: ["REMOTE_DEMO"],
+              remoteHintsHandled: true,
+            },
+            debug: ["remote field handled"],
+          },
+        };
+      },
+      callLifecycle: async (params) => {
+        calls.push({ method: "lifecycle", params });
+        return { ok: true };
+      },
       handleEvent: async (params) => {
         calls.push({ method: "event", params });
         return { handled: true };
@@ -219,6 +307,10 @@ describe("remote plugin adapter", () => {
       invokeModel: async (params) => {
         calls.push({ method: "model", params });
         return { result: "remote model result" };
+      },
+      callService: async (params) => {
+        calls.push({ method: "service", params });
+        return { result: { ok: true, args: params.args ?? [] } };
       },
       callAppBridge: async (params): Promise<PluginCallAppBridgeResult> => {
         calls.push({ method: "appBridge", params });
@@ -281,7 +373,17 @@ describe("remote plugin adapter", () => {
     expect(plugin).toMatchObject({
       name: "@remote/demo",
       description: "Remote demo plugin.",
+      schema: {
+        remote_demo_records: {
+          id: "uuid",
+          message: "text",
+        },
+      },
       config: {
+        REMOTE_MODE: "demo",
+        retryCount: 2,
+        enabled: true,
+        nullable: null,
         remoteCapabilityModuleId: "remote-demo",
         remoteCapabilityVersion: "1.2.3",
       },
@@ -310,7 +412,21 @@ describe("remote plugin adapter", () => {
       },
       navTabs: [{ id: "remote.demo", path: "/remote-demo" }],
     });
-    await plugin.init?.({}, runtime);
+    expect(plugin.services?.[0]?.serviceType).toBe("remote_demo_service");
+    const remoteService = await plugin.services?.[0]?.start(runtime);
+    expect(remoteService).toMatchObject({
+      capabilityDescription: "Remote demo service.",
+      config: { region: "remote" },
+    });
+    await expect(
+      (
+        remoteService as typeof remoteService & {
+          lookup(input: unknown): Promise<unknown>;
+        }
+      ).lookup({ query: "demo" }),
+    ).resolves.toEqual({ ok: true, args: [{ query: "demo" }] });
+    await plugin.init?.(stringifyPluginConfig(plugin.config ?? {}), runtime);
+    await plugin.applyConfig?.({ mode: "updated" }, runtime);
     const routeModule = await importAppRouteModule("@remote/demo");
     await expect(
       routeModule?.prepareLaunch?.({
@@ -411,6 +527,58 @@ describe("remote plugin adapter", () => {
       body: { command: "ping" },
     });
     await plugin.dispose?.(runtime);
+    await remoteService?.stop();
+    expect(calls).toEqual(
+      expect.arrayContaining([
+        {
+          method: "lifecycle",
+          params: {
+            moduleId: "remote-demo",
+            hook: "init",
+            config: {
+              REMOTE_MODE: "demo",
+              retryCount: "2",
+              enabled: "true",
+              remoteCapabilityModuleId: "remote-demo",
+              remoteCapabilityVersion: "1.2.3",
+            },
+          },
+        },
+        {
+          method: "lifecycle",
+          params: {
+            moduleId: "remote-demo",
+            hook: "applyConfig",
+            config: { mode: "updated" },
+          },
+        },
+        {
+          method: "lifecycle",
+          params: {
+            moduleId: "remote-demo",
+            hook: "dispose",
+          },
+        },
+        {
+          method: "service",
+          params: {
+            moduleId: "remote-demo",
+            serviceType: "remote_demo_service",
+            method: "lookup",
+            args: [{ query: "demo" }],
+          },
+        },
+        {
+          method: "service",
+          params: {
+            moduleId: "remote-demo",
+            serviceType: "remote_demo_service",
+            method: "stop",
+            args: [],
+          },
+        },
+      ]),
+    );
 
     const callback = vi.fn();
     await expect(
@@ -472,6 +640,20 @@ describe("remote plugin adapter", () => {
       providers: ["REMOTE_CONTEXT"],
       priority: 50,
     });
+    expect(plugin.responseHandlerEvaluators?.[0]).toMatchObject({
+      name: "REMOTE_RESPONSE_HANDLER",
+      description: "Patch response handler output remotely.",
+      priority: 35,
+    });
+    expect(plugin.responseHandlerFieldEvaluators?.[0]).toMatchObject({
+      name: "remoteHints",
+      description: "Remote field evaluator hints for the response handler.",
+      priority: 45,
+      schema: {
+        type: "array",
+        items: { type: "string" },
+      },
+    });
 
     const evaluatorContext = {
       runtime,
@@ -507,13 +689,91 @@ describe("remote plugin adapter", () => {
       success: true,
       text: "remote evaluator processed",
     });
+    const responseHandlerContext = {
+      runtime,
+      message: evaluatorContext.message,
+      state: evaluatorContext.state,
+      messageHandler: {
+        processMessage: "RESPOND",
+        thought: "base thought",
+        plan: {
+          contexts: ["general"],
+          candidateActions: [],
+        },
+      },
+      availableContexts: [{ id: "general", description: "General context" }],
+    };
+    await expect(
+      plugin.responseHandlerEvaluators?.[0]?.shouldRun(
+        responseHandlerContext as never,
+      ),
+    ).resolves.toBe(true);
+    await expect(
+      plugin.responseHandlerEvaluators?.[0]?.evaluate(
+        responseHandlerContext as never,
+      ),
+    ).resolves.toEqual({
+      reply: "remote response patch",
+      addCandidateActions: ["REMOTE_DEMO"],
+      debug: ["remote response handler"],
+    });
+    const responseHandlerFieldContext = {
+      runtime,
+      message: evaluatorContext.message,
+      state: evaluatorContext.state,
+      senderRole: "OWNER",
+      turnSignal: new AbortController().signal,
+    };
+    await expect(
+      plugin.responseHandlerFieldEvaluators?.[0]?.shouldRun?.(
+        responseHandlerFieldContext as never,
+      ),
+    ).resolves.toBe(true);
+    await expect(
+      plugin.responseHandlerFieldEvaluators?.[0]?.parse?.(
+        ["alpha", "beta"],
+        responseHandlerFieldContext as never,
+      ),
+    ).resolves.toEqual(["ALPHA", "BETA"]);
+    const fieldEffect =
+      await plugin.responseHandlerFieldEvaluators?.[0]?.handle?.({
+        ...responseHandlerFieldContext,
+        value: ["ALPHA"],
+        parsed: {
+          shouldRespond: "RESPOND",
+          contexts: ["general"],
+          intents: [],
+          candidateActionNames: [],
+          replyText: "",
+          facts: [],
+          relationships: [],
+          addressedTo: [],
+          remoteHints: ["ALPHA"],
+        },
+      } as never);
+    const mutableResult = {
+      shouldRespond: "RESPOND" as const,
+      contexts: ["general"],
+      intents: [],
+      candidateActionNames: [],
+      replyText: "",
+      facts: [],
+      relationships: [],
+      addressedTo: [],
+    };
+    fieldEffect?.mutateResult?.(mutableResult);
+    expect(mutableResult).toMatchObject({
+      candidateActionNames: ["REMOTE_DEMO"],
+      remoteHintsHandled: true,
+    });
+    expect(fieldEffect?.debug).toEqual(["remote field handled"]);
     await expect(
       (
         plugin.events as Record<
           string,
           Array<(payload: unknown) => Promise<void> | void>
         >
-      )?.["REMOTE_EVENT"]?.[0]?.({
+      )?.REMOTE_EVENT?.[0]?.({
         runtime,
         message: "event payload",
       } as never),
@@ -593,6 +853,60 @@ describe("remote plugin adapter", () => {
           }),
         },
         {
+          method: "responseHandler.shouldRun",
+          params: expect.objectContaining({
+            moduleId: "remote-demo",
+            evaluator: "REMOTE_RESPONSE_HANDLER",
+            context: expect.objectContaining({
+              message: expect.objectContaining({
+                id: "22222222-2222-2222-2222-222222222222",
+              }),
+              messageHandler: expect.objectContaining({
+                processMessage: "RESPOND",
+              }),
+              availableContexts: [
+                { id: "general", description: "General context" },
+              ],
+            }),
+          }),
+        },
+        {
+          method: "responseHandler.evaluate",
+          params: expect.objectContaining({
+            moduleId: "remote-demo",
+            evaluator: "REMOTE_RESPONSE_HANDLER",
+          }),
+        },
+        {
+          method: "responseHandlerField.shouldRun",
+          params: expect.objectContaining({
+            moduleId: "remote-demo",
+            field: "remoteHints",
+            context: expect.objectContaining({
+              senderRole: "OWNER",
+            }),
+          }),
+        },
+        {
+          method: "responseHandlerField.parse",
+          params: expect.objectContaining({
+            moduleId: "remote-demo",
+            field: "remoteHints",
+            value: ["alpha", "beta"],
+          }),
+        },
+        {
+          method: "responseHandlerField.handle",
+          params: expect.objectContaining({
+            moduleId: "remote-demo",
+            field: "remoteHints",
+            value: ["ALPHA"],
+            parsed: expect.objectContaining({
+              remoteHints: ["ALPHA"],
+            }),
+          }),
+        },
+        {
           method: "event",
           params: {
             moduleId: "remote-demo",
@@ -649,21 +963,35 @@ describe("remote plugin adapter", () => {
   });
 
   it("registers remote modules through runtime.registerPlugin", async () => {
-    const registered: Plugin[] = [];
     const router = makeRouter({
       listModules: async () => ({ modules: [remoteModule] }),
+      callService: async (params) => ({
+        result: { ok: true, serviceType: params.serviceType },
+      }),
     });
-    const runtime = makeRuntime(router, {
-      registerPlugin: async (plugin) => {
-        registered.push(plugin);
-      },
-    });
+    const runtime = makeExecutableRuntime(router);
 
-    await expect(registerRemoteCapabilityPlugins(runtime)).resolves.toEqual(
-      registered,
-    );
-    expect(registered).toHaveLength(1);
-    expect(registered[0]?.name).toBe("@remote/demo");
+    await expect(registerRemoteCapabilityPlugins(runtime)).resolves.toEqual([
+      expect.objectContaining({ name: "@remote/demo" }),
+    ]);
+    expect(runtime.plugins).toHaveLength(1);
+    await expect(
+      runtime.getServiceLoadPromise("remote_demo_service"),
+    ).resolves.toMatchObject({
+      capabilityDescription: "Remote demo service.",
+      config: { region: "remote" },
+    });
+    const service = await runtime.getServiceLoadPromise("remote_demo_service");
+    await expect(
+      (
+        service as typeof service & {
+          lookup(input: unknown): Promise<unknown>;
+        }
+      ).lookup({ query: "registered" }),
+    ).resolves.toEqual({
+      ok: true,
+      serviceType: "remote_demo_service",
+    });
   });
 
   it("skips already registered plugins unless reload is requested", async () => {
@@ -741,6 +1069,114 @@ describe("remote plugin adapter", () => {
     });
   });
 
+  it("enforces remote plugin trust policy before registration", async () => {
+    const runtime = makeRuntime(makeRouter());
+    const trustedModule = {
+      ...remoteModule,
+      capabilityEndpointId: "trusted-cloud",
+    };
+
+    await expect(
+      syncRemoteCapabilityPlugins(runtime, {
+        modules: [trustedModule],
+        trustPolicy: {
+          allowedEndpointIds: ["trusted-cloud"],
+          allowedModuleIds: ["remote-demo"],
+          requireEndpointId: true,
+        },
+      }),
+    ).resolves.toMatchObject({
+      registered: [{ name: "@remote/demo" }],
+      skipped: [],
+      unloaded: [],
+      trustDecisions: [
+        {
+          moduleId: "remote-demo",
+          pluginName: "@remote/demo",
+          endpointId: "trusted-cloud",
+          trusted: true,
+          reason: "allowed",
+        },
+      ],
+    });
+
+    await expect(
+      syncRemoteCapabilityPlugins(runtime, {
+        modules: [
+          {
+            ...remoteModule,
+            capabilityEndpointId: "unknown-cloud",
+          },
+        ],
+        trustPolicy: {
+          allowedEndpointIds: ["trusted-cloud"],
+        },
+      }),
+    ).rejects.toMatchObject({
+      code: "CAPABILITY_UNAVAILABLE",
+      capability: "plugin",
+      method: "plugin.modules.list",
+      message:
+        'Remote plugin "remote-demo" comes from untrusted capability endpoint "unknown-cloud".',
+      details: {
+        trustDecision: {
+          moduleId: "remote-demo",
+          pluginName: "@remote/demo",
+          endpointId: "unknown-cloud",
+          trusted: false,
+          reason: "endpoint-not-allowed",
+        },
+      },
+    });
+
+    await expect(
+      syncRemoteCapabilityPlugins(runtime, {
+        modules: [remoteModule],
+        trustPolicy: {
+          requireEndpointId: true,
+        },
+      }),
+    ).rejects.toMatchObject({
+      code: "CAPABILITY_UNAVAILABLE",
+      capability: "plugin",
+      method: "plugin.modules.list",
+      message:
+        'Remote plugin "remote-demo" does not declare a trusted capability endpoint id.',
+      details: {
+        trustDecision: {
+          moduleId: "remote-demo",
+          pluginName: "@remote/demo",
+          trusted: false,
+          reason: "missing-endpoint-id",
+        },
+      },
+    });
+
+    await expect(
+      syncRemoteCapabilityPlugins(runtime, {
+        modules: [trustedModule],
+        trustPolicy: {
+          allowedModuleIds: ["other-module"],
+        },
+      }),
+    ).rejects.toMatchObject({
+      code: "CAPABILITY_UNAVAILABLE",
+      capability: "plugin",
+      method: "plugin.modules.list",
+      message:
+        'Remote plugin module "remote-demo" is not trusted for registration.',
+      details: {
+        trustDecision: {
+          moduleId: "remote-demo",
+          pluginName: "@remote/demo",
+          endpointId: "trusted-cloud",
+          trusted: false,
+          reason: "module-not-allowed",
+        },
+      },
+    });
+  });
+
   it("rejects duplicate remote action and provider names in the same sync batch", async () => {
     const runtime = makeRuntime(makeRouter());
 
@@ -786,6 +1222,98 @@ describe("remote plugin adapter", () => {
       method: "plugin.modules.list",
       message:
         'Remote provider name collision for "REMOTE_CONTEXT" between modules "remote-demo" and "remote-provider-copy".',
+    });
+  });
+
+  it("rejects duplicate remote service types in the same sync batch", async () => {
+    const runtime = makeRuntime(makeRouter());
+
+    await expect(
+      syncRemoteCapabilityPlugins(runtime, {
+        modules: [
+          remoteModule,
+          {
+            ...remoteModule,
+            id: "remote-service-copy",
+            name: "@remote/service-copy",
+            actions: [],
+            providers: [],
+            evaluators: [],
+            responseHandlerEvaluators: [],
+            responseHandlerFieldEvaluators: [],
+            routes: [],
+            models: [],
+          },
+        ],
+      }),
+    ).rejects.toMatchObject({
+      code: "CAPABILITY_DECODE_FAILED",
+      capability: "plugin",
+      method: "plugin.modules.list",
+      message:
+        'Remote service type collision for "remote_demo_service" between modules "remote-demo" and "remote-service-copy".',
+    });
+  });
+
+  it("rejects remote services that collide with local runtime services", async () => {
+    const runtime = makeRuntime(makeRouter(), {
+      hasService: (serviceType: string) =>
+        serviceType === CAPABILITY_ROUTER_SERVICE_TYPE ||
+        serviceType === "remote_demo_service",
+    });
+
+    await expect(
+      syncRemoteCapabilityPlugins(runtime, {
+        modules: [
+          {
+            ...remoteModule,
+            actions: [],
+            providers: [],
+            evaluators: [],
+            responseHandlerEvaluators: [],
+            responseHandlerFieldEvaluators: [],
+            routes: [],
+            models: [],
+          },
+        ],
+      }),
+    ).rejects.toMatchObject({
+      code: "CAPABILITY_DECODE_FAILED",
+      capability: "plugin",
+      method: "plugin.modules.list",
+      message:
+        'Remote plugin "remote-demo" service "remote_demo_service" would collide with an existing runtime service.',
+    });
+  });
+
+  it("rejects duplicate model declarations inside one remote module", async () => {
+    const runtime = makeRuntime(makeRouter());
+
+    await expect(
+      syncRemoteCapabilityPlugins(runtime, {
+        modules: [
+          {
+            ...remoteModule,
+            actions: [],
+            providers: [],
+            evaluators: [],
+            responseHandlerEvaluators: [],
+            responseHandlerFieldEvaluators: [],
+            routes: [],
+            services: [],
+            models: [
+              { modelType: "REMOTE_TEXT", priority: 10 },
+              { modelType: "REMOTE_TEXT", priority: 20 },
+            ],
+          },
+        ],
+      }),
+    ).rejects.toMatchObject({
+      code: "CAPABILITY_DECODE_FAILED",
+      capability: "plugin",
+      method: "plugin.modules.list",
+      message:
+        'Remote plugin "remote-demo" declares model "REMOTE_TEXT" more than once.',
     });
   });
 
@@ -860,6 +1388,9 @@ describe("remote plugin adapter", () => {
             actions: [],
             providers: [],
             evaluators: [],
+            responseHandlerEvaluators: [],
+            responseHandlerFieldEvaluators: [],
+            services: [],
           },
         ],
       }),
@@ -936,6 +1467,7 @@ describe("remote plugin adapter", () => {
       registered: [],
       unloaded: ["@remote/demo"],
       skipped: [],
+      trustDecisions: [],
     });
     expect(unloaded).toEqual(["@remote/demo"]);
   });
@@ -950,6 +1482,7 @@ describe("remote plugin adapter", () => {
       registered: [],
       unloaded: [],
       skipped: [],
+      trustDecisions: [],
     });
   });
 
@@ -1007,10 +1540,19 @@ describe("remote plugin adapter", () => {
       },
     });
 
-    await expect(bootstrapRemoteCapabilityPlugins(runtime)).resolves.toEqual({
+    await expect(
+      bootstrapRemoteCapabilityPlugins(runtime),
+    ).resolves.toMatchObject({
       registered: [expect.objectContaining({ name: "@remote/demo" })],
       unloaded: [],
       skipped: [],
+      trustDecisions: [
+        expect.objectContaining({
+          moduleId: "remote-demo",
+          endpointId: "remote-1",
+          trusted: true,
+        }),
+      ],
     });
     expect(runtime.plugins.map((plugin) => plugin.name)).toEqual([
       "@remote/demo",
@@ -1021,6 +1563,8 @@ describe("remote plugin adapter", () => {
     const previousStateDir = process.env.ELIZA_STATE_DIR;
     const previousEnabled = process.env.ELIZA_CAPABILITY_ROUTER_ENABLED;
     const previousUrls = process.env.ELIZA_CAPABILITY_ROUTER_URLS;
+    const previousAllowedModules =
+      process.env.ELIZA_CAPABILITY_ROUTER_ALLOWED_MODULES;
     const stateDir = await mkdtemp(
       join(tmpdir(), "remote-capability-restart-"),
     );
@@ -1042,14 +1586,22 @@ describe("remote plugin adapter", () => {
           },
         ]),
       );
+      await persistConfigEnv(
+        "ELIZA_CAPABILITY_ROUTER_ALLOWED_MODULES",
+        JSON.stringify({ "persisted-device": ["remote-demo"] }),
+      );
 
       delete process.env.ELIZA_CAPABILITY_ROUTER_ENABLED;
       delete process.env.ELIZA_CAPABILITY_ROUTER_URLS;
+      delete process.env.ELIZA_CAPABILITY_ROUTER_ALLOWED_MODULES;
       loadElizaConfig();
 
       expect(process.env.ELIZA_CAPABILITY_ROUTER_ENABLED).toBe("true");
       expect(process.env.ELIZA_CAPABILITY_ROUTER_URLS).toContain(
         "persisted-token",
+      );
+      expect(process.env.ELIZA_CAPABILITY_ROUTER_ALLOWED_MODULES).toContain(
+        "remote-demo",
       );
 
       globalThis.fetch = vi.fn(
@@ -1106,10 +1658,19 @@ describe("remote plugin adapter", () => {
         },
       });
 
-      await expect(bootstrapRemoteCapabilityPlugins(runtime)).resolves.toEqual({
+      await expect(
+        bootstrapRemoteCapabilityPlugins(runtime),
+      ).resolves.toMatchObject({
         registered: [expect.objectContaining({ name: "@remote/demo" })],
         unloaded: [],
         skipped: [],
+        trustDecisions: [
+          expect.objectContaining({
+            moduleId: "remote-demo",
+            endpointId: "persisted-device",
+            trusted: true,
+          }),
+        ],
       });
       expect(runtime.plugins.map((plugin) => plugin.name)).toEqual([
         "@remote/demo",
@@ -1133,6 +1694,155 @@ describe("remote plugin adapter", () => {
         delete process.env.ELIZA_CAPABILITY_ROUTER_URLS;
       } else {
         process.env.ELIZA_CAPABILITY_ROUTER_URLS = previousUrls;
+      }
+      if (previousAllowedModules === undefined) {
+        delete process.env.ELIZA_CAPABILITY_ROUTER_ALLOWED_MODULES;
+      } else {
+        process.env.ELIZA_CAPABILITY_ROUTER_ALLOWED_MODULES =
+          previousAllowedModules;
+      }
+      await rm(stateDir, { force: true, recursive: true });
+    }
+  });
+
+  it("bootstraps after a product connect route persists endpoint config", async () => {
+    const previousStateDir = process.env.ELIZA_STATE_DIR;
+    const previousEnabled = process.env.ELIZA_CAPABILITY_ROUTER_ENABLED;
+    const previousUrls = process.env.ELIZA_CAPABILITY_ROUTER_URLS;
+    const previousAllowedModules =
+      process.env.ELIZA_CAPABILITY_ROUTER_ALLOWED_MODULES;
+    const stateDir = await mkdtemp(
+      join(tmpdir(), "remote-capability-product-restart-"),
+    );
+    const httpCalls: Array<{ url: string; authorization: string | null }> = [];
+
+    try {
+      process.env.ELIZA_STATE_DIR = stateDir;
+      delete process.env.ELIZA_CAPABILITY_ROUTER_ENABLED;
+      delete process.env.ELIZA_CAPABILITY_ROUTER_URLS;
+      delete process.env.ELIZA_CAPABILITY_ROUTER_ALLOWED_MODULES;
+
+      globalThis.fetch = vi.fn(
+        async (input: RequestInfo | URL, init?: RequestInit) => {
+          const request = new Request(input, init);
+          const body =
+            request.method === "POST" ? await request.json() : undefined;
+          httpCalls.push({
+            url: request.url,
+            authorization: request.headers.get("authorization"),
+          });
+          if (isInvokeBody(body, "plugin.modules.list")) {
+            return jsonResponse({
+              ok: true,
+              result: { modules: [remoteModule] },
+            });
+          }
+          return jsonResponse({
+            ok: false,
+            error: { message: `unexpected request ${request.url}` },
+          });
+        },
+      ) as unknown as typeof fetch;
+
+      const routeRuntime = makeProductConnectRuntime();
+      const savedConfig: Record<string, unknown> = {};
+      const json = vi.fn();
+      const error = vi.fn();
+      await expect(
+        handleRemoteCapabilityRoutes({
+          req: {} as never,
+          res: {} as never,
+          method: "POST",
+          pathname: "/api/capability-router/connect",
+          runtime: routeRuntime,
+          config: savedConfig,
+          saveConfig: (config) => Object.assign(savedConfig, config),
+          persistConfigEnv,
+          readJsonBody: vi.fn().mockResolvedValue({
+            endpoint: {
+              id: "product-device",
+              baseUrl: "https://product-device.example",
+              token: "product-token",
+            },
+            allowedModuleIds: ["remote-demo"],
+            persist: true,
+            unloadMissing: false,
+          }),
+          json,
+          error,
+        }),
+      ).resolves.toBe(true);
+
+      expect(error).not.toHaveBeenCalled();
+      expect(json.mock.calls[0]?.[1]).toMatchObject({
+        success: true,
+        mode: "endpoint",
+        persisted: true,
+        endpoint: {
+          id: "product-device",
+          baseUrl: "https://product-device.example",
+          hasToken: true,
+        },
+      });
+      expect(JSON.stringify(savedConfig)).not.toContain("product-token");
+
+      saveElizaConfig(savedConfig as never);
+      delete process.env.ELIZA_CAPABILITY_ROUTER_ENABLED;
+      delete process.env.ELIZA_CAPABILITY_ROUTER_URLS;
+      delete process.env.ELIZA_CAPABILITY_ROUTER_ALLOWED_MODULES;
+      loadElizaConfig();
+
+      expect(process.env.ELIZA_CAPABILITY_ROUTER_URLS).toContain(
+        "product-token",
+      );
+      expect(process.env.ELIZA_CAPABILITY_ROUTER_ALLOWED_MODULES).toBe(
+        JSON.stringify({ "product-device": ["remote-demo"] }),
+      );
+
+      const restartRuntime = makeProductConnectRuntime();
+      await expect(
+        bootstrapRemoteCapabilityPlugins(restartRuntime),
+      ).resolves.toMatchObject({
+        registered: [expect.objectContaining({ name: "@remote/demo" })],
+        unloaded: [],
+        skipped: [],
+        trustDecisions: [
+          expect.objectContaining({
+            moduleId: "remote-demo",
+            endpointId: "product-device",
+            trusted: true,
+            reason: "allowed",
+          }),
+        ],
+      });
+      expect(restartRuntime.plugins.map((plugin) => plugin.name)).toEqual([
+        "@remote/demo",
+      ]);
+      expect(httpCalls).toContainEqual({
+        url: "https://product-device.example/v1/capabilities/invoke",
+        authorization: "Bearer product-token",
+      });
+    } finally {
+      if (previousStateDir === undefined) {
+        delete process.env.ELIZA_STATE_DIR;
+      } else {
+        process.env.ELIZA_STATE_DIR = previousStateDir;
+      }
+      if (previousEnabled === undefined) {
+        delete process.env.ELIZA_CAPABILITY_ROUTER_ENABLED;
+      } else {
+        process.env.ELIZA_CAPABILITY_ROUTER_ENABLED = previousEnabled;
+      }
+      if (previousUrls === undefined) {
+        delete process.env.ELIZA_CAPABILITY_ROUTER_URLS;
+      } else {
+        process.env.ELIZA_CAPABILITY_ROUTER_URLS = previousUrls;
+      }
+      if (previousAllowedModules === undefined) {
+        delete process.env.ELIZA_CAPABILITY_ROUTER_ALLOWED_MODULES;
+      } else {
+        process.env.ELIZA_CAPABILITY_ROUTER_ALLOWED_MODULES =
+          previousAllowedModules;
       }
       await rm(stateDir, { force: true, recursive: true });
     }
@@ -1267,13 +1977,27 @@ describe("remote plugin adapter", () => {
       }),
     );
 
-    await expect(bootstrapRemoteCapabilityPlugins(runtime)).resolves.toEqual({
+    await expect(
+      bootstrapRemoteCapabilityPlugins(runtime),
+    ).resolves.toMatchObject({
       registered: expect.arrayContaining([
         expect.objectContaining({ name: "@remote/device-tools" }),
         expect.objectContaining({ name: "@remote/cloud-tools" }),
       ]),
       unloaded: [],
       skipped: [],
+      trustDecisions: expect.arrayContaining([
+        expect.objectContaining({
+          moduleId: "device-tools",
+          endpointId: "device",
+          trusted: true,
+        }),
+        expect.objectContaining({
+          moduleId: "cloud-tools",
+          endpointId: "cloud",
+          trusted: true,
+        }),
+      ]),
     });
 
     expect(runtime.plugins.map((plugin) => plugin.name)).toEqual([
@@ -1292,6 +2016,14 @@ describe("remote plugin adapter", () => {
       id: "device.panel",
       bundleUrl:
         "https://device.example/v1/capabilities/assets/device-tools/assets/device-panel.js",
+    });
+    expect(runtime.plugins[0]?.config).toMatchObject({
+      remoteCapabilityModuleId: "device-tools",
+      remoteCapabilityEndpointId: "device",
+    });
+    expect(runtime.plugins[1]?.config).toMatchObject({
+      remoteCapabilityModuleId: "cloud-tools",
+      remoteCapabilityEndpointId: "cloud",
     });
 
     await expect(
@@ -1324,12 +2056,52 @@ describe("remote plugin adapter", () => {
       body: { ping: "pong" },
     });
 
-    expect(httpCalls).toMatchObject([
-      { url: "https://device.example/v1/capabilities/invoke" },
-      { url: "https://cloud.example/v1/capabilities/invoke" },
-      { url: "https://cloud.example/v1/capabilities/invoke" },
-      { url: "https://device.example/v1/capabilities/invoke" },
-      { url: "https://device.example/v1/capabilities/invoke" },
+    expect(httpCalls).toEqual([
+      expect.objectContaining({
+        url: "https://device.example/v1/capabilities/invoke",
+        body: expect.objectContaining({
+          method: "plugin.modules.list",
+        }),
+      }),
+      expect.objectContaining({
+        url: "https://cloud.example/v1/capabilities/invoke",
+        body: expect.objectContaining({
+          method: "plugin.modules.list",
+        }),
+      }),
+      expect.objectContaining({
+        url: "https://cloud.example/v1/capabilities/invoke",
+        body: expect.objectContaining({
+          method: "plugin.action.invoke",
+          params: expect.objectContaining({
+            endpointId: "cloud",
+            moduleId: "cloud-tools",
+            action: "CLOUD_SUMMARIZE",
+          }),
+        }),
+      }),
+      expect.objectContaining({
+        url: "https://device.example/v1/capabilities/invoke",
+        body: expect.objectContaining({
+          method: "plugin.provider.get",
+          params: expect.objectContaining({
+            endpointId: "device",
+            moduleId: "device-tools",
+            provider: "DEVICE_CONTEXT",
+          }),
+        }),
+      }),
+      expect.objectContaining({
+        url: "https://device.example/v1/capabilities/invoke",
+        body: expect.objectContaining({
+          method: "plugin.route.call",
+          params: expect.objectContaining({
+            endpointId: "device",
+            moduleId: "device-tools",
+            path: "/device/ping",
+          }),
+        }),
+      }),
     ]);
   });
 
@@ -1403,14 +2175,24 @@ describe("remote plugin adapter", () => {
         }),
       );
 
-      await expect(bootstrapRemoteCapabilityPlugins(runtime)).resolves.toEqual({
+      await expect(
+        bootstrapRemoteCapabilityPlugins(runtime),
+      ).resolves.toMatchObject({
         registered: [
           expect.objectContaining({ name: "@remote/localhost-tools" }),
         ],
         unloaded: [],
         skipped: [],
+        trustDecisions: [
+          expect.objectContaining({
+            moduleId: "localhost-tools",
+            endpointId: "primary",
+            trusted: true,
+          }),
+        ],
       });
-      const expectedBundleUrl = `${server.baseUrl}/v1/capabilities/assets/localhost-tools/assets/localhost-panel.js`;
+      const expectedBundleUrl =
+        "/api/capability-router/assets/primary/localhost-tools/assets/localhost-panel.js";
       expect(runtime.plugins[0]?.views?.[0]).toMatchObject({
         id: "localhost.panel",
         bundleUrl: expectedBundleUrl,
@@ -1422,7 +2204,8 @@ describe("remote plugin adapter", () => {
         bundleUrlVersioned: expectedBundleUrl,
         available: true,
       });
-      const bundleResponse = await fetch(expectedBundleUrl, {
+      const remoteBundleUrl = `${server.baseUrl}/v1/capabilities/assets/localhost-tools/assets/localhost-panel.js`;
+      const bundleResponse = await fetch(remoteBundleUrl, {
         headers: { authorization: "Bearer local-server-token" },
       });
       expect(bundleResponse.status).toBe(200);
@@ -1594,13 +2377,23 @@ export function createRouter() {
         }),
       );
 
-      await expect(bootstrapRemoteCapabilityPlugins(runtime)).resolves.toEqual({
+      await expect(
+        bootstrapRemoteCapabilityPlugins(runtime),
+      ).resolves.toMatchObject({
         registered: [expect.objectContaining({ name: "@remote/built-source" })],
         unloaded: [],
         skipped: [],
+        trustDecisions: [
+          expect.objectContaining({
+            moduleId: "built-source-plugin",
+            endpointId: "primary",
+            trusted: true,
+          }),
+        ],
       });
 
-      const expectedBundleUrl = `${server.baseUrl}/v1/capabilities/assets/built-source-plugin/assets/remote-view.js`;
+      const expectedBundleUrl =
+        "/api/capability-router/assets/primary/built-source-plugin/assets/remote-view.js";
       expect(getView("built-source.view")).toMatchObject({
         id: "built-source.view",
         pluginName: "@remote/built-source",
@@ -1608,7 +2401,8 @@ export function createRouter() {
         available: true,
       });
 
-      const bundleResponse = await fetch(expectedBundleUrl, {
+      const remoteBundleUrl = `${server.baseUrl}/v1/capabilities/assets/built-source-plugin/assets/remote-view.js`;
+      const bundleResponse = await fetch(remoteBundleUrl, {
         headers: { authorization: "Bearer built-source-token" },
       });
       expect(bundleResponse.status).toBe(200);
@@ -1800,22 +2594,33 @@ process.on("SIGTERM", () => server.close(() => process.exit(0)));
         }),
       );
 
-      await expect(bootstrapRemoteCapabilityPlugins(runtime)).resolves.toEqual({
+      await expect(
+        bootstrapRemoteCapabilityPlugins(runtime),
+      ).resolves.toMatchObject({
         registered: [
           expect.objectContaining({ name: "@remote/process-plugin" }),
         ],
         unloaded: [],
         skipped: [],
+        trustDecisions: [
+          expect.objectContaining({
+            moduleId: "process-plugin",
+            endpointId: "primary",
+            trusted: true,
+          }),
+        ],
       });
 
-      const bundleUrl = `${baseUrl}/v1/capabilities/assets/process-plugin/assets/process-view.js`;
+      const bundleUrl =
+        "/api/capability-router/assets/primary/process-plugin/assets/process-view.js";
       expect(getView("process.view")).toMatchObject({
         id: "process.view",
         pluginName: "@remote/process-plugin",
         bundleUrl,
         available: true,
       });
-      const bundleResponse = await fetch(bundleUrl, {
+      const remoteBundleUrl = `${baseUrl}/v1/capabilities/assets/process-plugin/assets/process-view.js`;
+      const bundleResponse = await fetch(remoteBundleUrl, {
         headers: { authorization: "Bearer process-token" },
       });
       expect(bundleResponse.status).toBe(200);
@@ -2034,23 +2839,40 @@ createServer(async (req, res) => {
         );
 
         await expect(
-          bootstrapRemoteCapabilityPlugins(runtime),
+          bootstrapRemoteCapabilityPlugins(runtime, {
+            trustPolicy: {
+              allowedEndpointIds: ["primary"],
+              allowedModuleIds: ["docker-plugin"],
+              requireEndpointId: true,
+            },
+          }),
         ).resolves.toEqual({
           registered: [
             expect.objectContaining({ name: "@remote/docker-plugin" }),
           ],
           unloaded: [],
           skipped: [],
+          trustDecisions: [
+            {
+              moduleId: "docker-plugin",
+              pluginName: "@remote/docker-plugin",
+              endpointId: "primary",
+              trusted: true,
+              reason: "allowed",
+            },
+          ],
         });
 
-        const bundleUrl = `${baseUrl}/v1/capabilities/assets/docker-plugin/assets/docker-view.js`;
+        const bundleUrl =
+          "/api/capability-router/assets/primary/docker-plugin/assets/docker-view.js";
         expect(getView("docker.view")).toMatchObject({
           id: "docker.view",
           pluginName: "@remote/docker-plugin",
           bundleUrl,
           available: true,
         });
-        const bundleResponse = await fetch(bundleUrl, {
+        const remoteBundleUrl = `${baseUrl}/v1/capabilities/assets/docker-plugin/assets/docker-view.js`;
+        const bundleResponse = await fetch(remoteBundleUrl, {
           headers: { authorization: "Bearer docker-token" },
         });
         expect(bundleResponse.status).toBe(200);
@@ -2126,6 +2948,18 @@ createServer(async (req, res) => {
   });
 });
 
+function stringifyPluginConfig(
+  config: NonNullable<Plugin["config"]>,
+): Record<string, string> {
+  const result: Record<string, string> = {};
+  for (const [key, value] of Object.entries(config)) {
+    if (value !== null && value !== undefined) {
+      result[key] = String(value);
+    }
+  }
+  return result;
+}
+
 function makeRuntime(
   router: ElizaCapabilityRouter | null,
   overrides: Partial<IAgentRuntime> = {},
@@ -2152,21 +2986,82 @@ function makeRuntime(
 }
 
 function makeExecutableRuntime(router: ElizaCapabilityRouter): IAgentRuntime {
+  const services = new Map<string, Service>();
   const runtime = makeRuntime(router, {
     plugins: [],
     actions: [],
     providers: [],
     evaluators: [],
+    responseHandlerEvaluators: [],
+    responseHandlerFieldEvaluators: [],
     routes: [],
   });
+  runtime.getService = <T extends Service>(serviceType: string): T | null =>
+    serviceType === CAPABILITY_ROUTER_SERVICE_TYPE
+      ? (router as unknown as T)
+      : ((services.get(serviceType) as T | undefined) ?? null);
+  runtime.hasService = (serviceType: string) =>
+    serviceType === CAPABILITY_ROUTER_SERVICE_TYPE || services.has(serviceType);
+  runtime.getServiceLoadPromise = async <T extends Service>(
+    serviceType: string,
+  ): Promise<T> => {
+    const service = runtime.getService<T>(serviceType);
+    if (!service) throw new Error(`Service ${serviceType} not found`);
+    return service;
+  };
   runtime.registerPlugin = async (plugin: Plugin) => {
     runtime.plugins.push(plugin);
     runtime.actions.push(...(plugin.actions ?? []));
     runtime.providers.push(...(plugin.providers ?? []));
     runtime.evaluators.push(...(plugin.evaluators ?? []));
+    runtime.responseHandlerEvaluators.push(
+      ...(plugin.responseHandlerEvaluators ?? []),
+    );
+    runtime.responseHandlerFieldEvaluators.push(
+      ...(plugin.responseHandlerFieldEvaluators ?? []),
+    );
     runtime.routes.push(...(plugin.routes ?? []));
+    for (const ServiceClass of plugin.services ?? []) {
+      services.set(ServiceClass.serviceType, await ServiceClass.start(runtime));
+    }
     await registerPluginViews(plugin);
   };
+  return runtime;
+}
+
+function makeProductConnectRuntime(): IAgentRuntime {
+  const services = new Map<string, RemoteCapabilityRouterService[]>();
+  const runtime = makeRuntime(null, {
+    plugins: [],
+    actions: [],
+    providers: [],
+    evaluators: [],
+    routes: [],
+    services: services as unknown as IAgentRuntime["services"],
+    getSetting: () => null,
+    getService: (<T>(serviceType: string): T | null =>
+      (services.get(serviceType)?.[0] as T | undefined) ??
+      null) as IAgentRuntime["getService"],
+    hasService: (serviceType) => services.has(serviceType),
+    registerService: async (ServiceClass) => {
+      const service = new (
+        ServiceClass as typeof RemoteCapabilityRouterService
+      )(runtime);
+      services.set(ServiceClass.serviceType, [service]);
+    },
+    getServiceLoadPromise: async (serviceType) => {
+      const service = services.get(serviceType)?.[0];
+      if (!service) throw new Error("service not registered");
+      return service as never;
+    },
+    registerPlugin: async (plugin: Plugin) => {
+      runtime.plugins.push(plugin);
+      runtime.actions.push(...(plugin.actions ?? []));
+      runtime.providers.push(...(plugin.providers ?? []));
+      runtime.evaluators.push(...(plugin.evaluators ?? []));
+      runtime.routes.push(...(plugin.routes ?? []));
+    },
+  });
   return runtime;
 }
 
@@ -2215,8 +3110,15 @@ function makeRouter(
       prepareEvaluator: unavailable,
       promptEvaluator: unavailable,
       processEvaluator: unavailable,
+      shouldRunResponseHandlerEvaluator: unavailable,
+      evaluateResponseHandlerEvaluator: unavailable,
+      shouldRunResponseHandlerFieldEvaluator: unavailable,
+      parseResponseHandlerFieldEvaluator: unavailable,
+      handleResponseHandlerFieldEvaluator: unavailable,
+      callLifecycle: unavailable,
       handleEvent: unavailable,
       invokeModel: unavailable,
+      callService: unavailable,
       callAppBridge: unavailable,
       ...overrides,
     },

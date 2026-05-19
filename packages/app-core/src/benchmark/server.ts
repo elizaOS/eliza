@@ -433,6 +433,52 @@ async function callOpenAiCompatibleActionCalling(params: {
   };
 }
 
+async function callOpenAiCompatibleText(params: {
+  prompt: string;
+  maxTokens: number;
+  temperature: number;
+}): Promise<{
+  text: string;
+  usage: BenchmarkLlmCallUsage | null;
+} | null> {
+  const config = resolveOpenAiCompatibleActionCallingConfig();
+  if (!config) return null;
+  const response = await fetch(chatCompletionsUrl(config.baseUrl), {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${config.apiKey}`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({
+      model: config.model,
+      messages: [{ role: "user", content: params.prompt }],
+      max_tokens: params.maxTokens,
+      temperature: params.temperature,
+      ...(config.provider === "cerebras" ? { reasoning_effort: "low" } : {}),
+    }),
+  });
+  if (!response.ok) {
+    const body = await response.text().catch(() => "");
+    throw new Error(
+      `OpenAI-compatible text request failed (${response.status}): ${body.slice(0, 500)}`,
+    );
+  }
+  const payload = (await response.json()) as Record<string, unknown>;
+  const choice = Array.isArray(payload.choices)
+    ? (payload.choices[0] as Record<string, unknown> | undefined)
+    : undefined;
+  const message =
+    choice?.message &&
+    typeof choice.message === "object" &&
+    !Array.isArray(choice.message)
+      ? (choice.message as Record<string, unknown>)
+      : {};
+  return {
+    text: typeof message.content === "string" ? message.content : "",
+    usage: normalizeOpenAiCompatibleUsage(payload.usage, config.provider),
+  };
+}
+
 function normalizeBfclNativeMessages(
   text: string,
   context: Record<string, unknown>,
@@ -2637,21 +2683,35 @@ export async function startBenchmarkServer() {
             isVisualWebBenchmarkName(session.benchmark) ||
             isOsworldBenchmarkName(session.benchmark)
           ) {
+            const maxTokens =
+              typeof benchmarkContext.max_tokens === "number"
+                ? benchmarkContext.max_tokens
+                : 4096;
+            const temperature =
+              typeof benchmarkContext.temperature === "number"
+                ? benchmarkContext.temperature
+                : 0;
             const turnUsageBuffer: BenchmarkLlmCallUsage[] = [];
             activeUsageBuffer = turnUsageBuffer;
             let nativeResult: unknown;
             try {
-              nativeResult = await runtime.useModel(ModelType.TEXT_LARGE, {
+              const directResult = await callOpenAiCompatibleText({
                 prompt: composedPrompt,
-                maxTokens:
-                  typeof benchmarkContext.max_tokens === "number"
-                    ? benchmarkContext.max_tokens
-                    : 4096,
-                temperature:
-                  typeof benchmarkContext.temperature === "number"
-                    ? benchmarkContext.temperature
-                    : 0,
+                maxTokens,
+                temperature,
               });
+              if (directResult) {
+                if (directResult.usage) {
+                  turnUsageBuffer.push(directResult.usage);
+                }
+                nativeResult = directResult.text;
+              } else {
+                nativeResult = await runtime.useModel(ModelType.TEXT_LARGE, {
+                  prompt: composedPrompt,
+                  maxTokens,
+                  temperature,
+                });
+              }
             } finally {
               activeUsageBuffer = null;
             }

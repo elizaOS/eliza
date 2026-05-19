@@ -41,7 +41,7 @@ function isReactComponentExport(
 ): value is ComponentType<Record<string, unknown>> {
   return (
     typeof value === "function" ||
-    (Boolean(value) && typeof value === "object" && "$$typeof" in value)
+    (typeof value === "object" && value !== null && "$$typeof" in value)
   );
 }
 

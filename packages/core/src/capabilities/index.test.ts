@@ -256,6 +256,12 @@ describe("capability router", () => {
 								id: "remote-weather",
 								name: "@remote/weather",
 								version: "1.0.0",
+								schema: {
+									weather_records: {
+										id: "uuid",
+										city: "text",
+									},
+								},
 								actions: [
 									{
 										name: "WEATHER_LOOKUP",
@@ -276,6 +282,14 @@ describe("capability router", () => {
 								],
 								events: [{ eventName: "WEATHER_EVENT" }],
 								models: [{ modelType: "WEATHER_TEXT", priority: 10 }],
+								services: [
+									{
+										serviceType: "weather_service",
+										capabilityDescription: "Remote weather service.",
+										methods: ["lookup"],
+										config: { unit: "fahrenheit" },
+									},
+								],
 								widgets: [
 									{
 										id: "weather.widget",
@@ -334,6 +348,9 @@ describe("capability router", () => {
 				if (method === "plugin.model.invoke") {
 					return { result: "remote model text" };
 				}
+				if (method === "plugin.service.call") {
+					return { result: { ok: true, service: "weather" } };
+				}
 				if (method === "plugin.appBridge.call") {
 					return { result: { launchUrl: "https://weather.example/prepared" } };
 				}
@@ -351,6 +368,12 @@ describe("capability router", () => {
 					id: "remote-weather",
 					name: "@remote/weather",
 					version: "1.0.0",
+					schema: {
+						weather_records: {
+							id: "uuid",
+							city: "text",
+						},
+					},
 					actions: [
 						{
 							name: "WEATHER_LOOKUP",
@@ -371,6 +394,14 @@ describe("capability router", () => {
 					],
 					events: [{ eventName: "WEATHER_EVENT" }],
 					models: [{ modelType: "WEATHER_TEXT", priority: 10 }],
+					services: [
+						{
+							serviceType: "weather_service",
+							capabilityDescription: "Remote weather service.",
+							methods: ["lookup"],
+							config: { unit: "fahrenheit" },
+						},
+					],
 					widgets: [
 						{
 							id: "weather.widget",
@@ -446,6 +477,14 @@ describe("capability router", () => {
 			}),
 		).resolves.toEqual({ result: "remote model text" });
 		await expect(
+			router.plugin.callService({
+				moduleId: "remote-weather",
+				serviceType: "weather_service",
+				method: "lookup",
+				args: [{ city: "sf" }],
+			}),
+		).resolves.toEqual({ result: { ok: true, service: "weather" } });
+		await expect(
 			router.plugin.callAppBridge({
 				moduleId: "remote-weather",
 				hook: "prepareLaunch",
@@ -486,6 +525,15 @@ describe("capability router", () => {
 					moduleId: "remote-weather",
 					modelType: "WEATHER_TEXT",
 					params: { prompt: "forecast" },
+				},
+			},
+			{
+				method: "plugin.service.call",
+				params: {
+					moduleId: "remote-weather",
+					serviceType: "weather_service",
+					method: "lookup",
+					args: [{ city: "sf" }],
 				},
 			},
 			{

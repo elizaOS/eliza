@@ -40,6 +40,7 @@ describe("runCapabilityRouterConnect", () => {
       endpointId: "tools",
       endpointToken: "endpoint-secret",
       requestTimeoutMs: "15000",
+      allowedModule: ["remote-plugin", "remote-plugin", " other-plugin "],
     });
 
     expect(code).toBe(0);
@@ -55,6 +56,7 @@ describe("runCapabilityRouterConnect", () => {
         body: JSON.stringify({
           unloadMissing: true,
           persist: true,
+          allowedModuleIds: ["remote-plugin", "other-plugin"],
           requestTimeoutMs: 15000,
           endpoint: {
             baseUrl: "https://capability.example.test",
@@ -89,6 +91,7 @@ describe("runCapabilityRouterConnect", () => {
       cloudEndpointToken: "endpoint-token",
       provisionTimeoutMs: "5000",
       pollIntervalMs: "100",
+      allowedModule: ["cloud-plugin"],
       keepMissing: true,
       json: true,
     });
@@ -100,6 +103,7 @@ describe("runCapabilityRouterConnect", () => {
         body: JSON.stringify({
           unloadMissing: false,
           persist: true,
+          allowedModuleIds: ["cloud-plugin"],
           cloud: {
             cloudApiBase: "https://cloud.example.test",
             authToken: "cloud-auth",
@@ -109,6 +113,7 @@ describe("runCapabilityRouterConnect", () => {
             token: "endpoint-token",
             timeoutMs: 5000,
             pollIntervalMs: 100,
+            allowedModuleIds: ["cloud-plugin"],
           },
         }),
       }),

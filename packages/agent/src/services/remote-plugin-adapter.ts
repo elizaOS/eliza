@@ -11,15 +11,20 @@ import {
   type Plugin,
   type PluginAppBridge,
   type PluginCallRouteParams,
-  type PluginEvents,
+  type PluginCallServiceParams,
   type PluginInvokeActionParams,
   type PluginWidgetDeclaration,
   type ProviderResult,
   type RegisteredEvaluator,
   type RemotePluginModuleManifest,
+  type ResponseHandlerEvaluator,
+  type ResponseHandlerFieldEffect,
+  type ResponseHandlerFieldEvaluator,
   type Route,
   type RouteHandlerContext,
   type RuntimeEventStorage,
+  Service,
+  type ServiceClass,
   type ViewDeclaration,
 } from "@elizaos/core";
 import {
@@ -35,6 +40,7 @@ import {
 export type RemotePluginAdapterOptions = {
   modules?: RemotePluginModuleManifest[];
   reloadExisting?: boolean;
+  trustPolicy?: RemotePluginTrustPolicy;
 };
 
 export type RemotePluginBootstrapOptions = RemotePluginAdapterOptions & {
@@ -42,10 +48,30 @@ export type RemotePluginBootstrapOptions = RemotePluginAdapterOptions & {
   unloadMissing?: boolean;
 };
 
+export type RemotePluginTrustPolicy = {
+  allowedEndpointIds?: string[];
+  allowedModuleIds?: string[];
+  requireEndpointId?: boolean;
+};
+
+export type RemotePluginTrustDecision = {
+  moduleId: string;
+  pluginName: string;
+  endpointId?: string;
+  trusted: boolean;
+  reason:
+    | "no-policy"
+    | "allowed"
+    | "missing-endpoint-id"
+    | "endpoint-not-allowed"
+    | "module-not-allowed";
+};
+
 export type RemotePluginSyncResult = {
   registered: Plugin[];
   unloaded: string[];
   skipped: string[];
+  trustDecisions: RemotePluginTrustDecision[];
 };
 
 export async function registerRemoteCapabilityPlugins(
@@ -55,8 +81,11 @@ export async function registerRemoteCapabilityPlugins(
   const router = requireCapabilityRouter(runtime);
   const modules =
     options.modules ?? (await router.plugin.listModules()).modules;
+  evaluateRemotePluginTrustPolicy(modules, options.trustPolicy);
   validateRemotePluginNameCollisions(runtime, modules, options);
   validateRemotePluginComponentCollisions(runtime, modules, options);
+  validateRemotePluginServiceCollisions(runtime, modules, options);
+  validateRemotePluginModelDeclarations(modules);
   validateRemotePluginRouteCollisions(runtime, modules, options);
   const plugins = modules
     .map((module) => createRemoteCapabilityPlugin(module))
@@ -77,10 +106,12 @@ export async function bootstrapRemoteCapabilityPlugins(
 ): Promise<RemotePluginSyncResult> {
   const router = await ensureConfiguredCapabilityRouter(runtime, options);
   if (!router) {
-    return { registered: [], unloaded: [], skipped: [] };
+    return { registered: [], unloaded: [], skipped: [], trustDecisions: [] };
   }
   return await syncRemoteCapabilityPlugins(runtime, {
     ...options,
+    trustPolicy:
+      options.trustPolicy ?? resolveConfiguredRemotePluginTrustPolicy(runtime),
     modules: options.modules ?? (await router.plugin.listModules()).modules,
   });
 }
@@ -92,8 +123,14 @@ export async function syncRemoteCapabilityPlugins(
   const router = requireCapabilityRouter(runtime);
   const modules =
     options.modules ?? (await router.plugin.listModules()).modules;
+  const trustDecisions = evaluateRemotePluginTrustPolicy(
+    modules,
+    options.trustPolicy,
+  );
   validateRemotePluginNameCollisions(runtime, modules, options);
   validateRemotePluginComponentCollisions(runtime, modules, options);
+  validateRemotePluginServiceCollisions(runtime, modules, options);
+  validateRemotePluginModelDeclarations(modules);
   validateRemotePluginRouteCollisions(runtime, modules, options);
   const nextPlugins = modules.map((module) =>
     createRemoteCapabilityPlugin(module),
@@ -128,12 +165,16 @@ export async function syncRemoteCapabilityPlugins(
     }
   }
 
-  return { registered, unloaded, skipped };
+  return { registered, unloaded, skipped, trustDecisions };
 }
 
 export function createRemoteCapabilityPlugin(
   module: RemotePluginModuleManifest,
 ): Plugin {
+  const endpointId = remoteModuleEndpointId(module);
+  const services = (module.services ?? []).map((service) =>
+    createRemoteServiceClass(module.id, endpointId, service),
+  );
   const routes = (module.routes ?? []).map((route): Route => {
     const baseRoute = {
       type: route.method,
@@ -146,6 +187,7 @@ export function createRemoteCapabilityPlugin(
         const result = await requireCapabilityRouter(
           ctx.runtime,
         ).plugin.callRoute({
+          ...endpointSelection(endpointId),
           moduleId: module.id,
           method: ctx.method,
           path: ctx.path,
@@ -196,6 +238,7 @@ export function createRemoteCapabilityPlugin(
       shouldRun: async ({ runtime, message, state, options }) =>
         (
           await requireCapabilityRouter(runtime).plugin.shouldRunEvaluator({
+            ...endpointSelection(endpointId),
             moduleId: module.id,
             evaluator: evaluator.name,
             message: toJsonObject(message),
@@ -208,6 +251,7 @@ export function createRemoteCapabilityPlugin(
             prepare: async ({ runtime, message, state, options }) =>
               (
                 await requireCapabilityRouter(runtime).plugin.prepareEvaluator({
+                  ...endpointSelection(endpointId),
                   moduleId: module.id,
                   evaluator: evaluator.name,
                   message: toJsonObject(message),
@@ -235,6 +279,7 @@ export function createRemoteCapabilityPlugin(
                     await requireCapabilityRouter(
                       runtime,
                     ).plugin.processEvaluator({
+                      ...endpointSelection(endpointId),
                       moduleId: module.id,
                       evaluator: evaluator.name,
                       message: toJsonObject(message),
@@ -250,11 +295,98 @@ export function createRemoteCapabilityPlugin(
         : {}),
     }),
   );
+  const responseHandlerEvaluators = (
+    module.responseHandlerEvaluators ?? []
+  ).map(
+    (evaluator): ResponseHandlerEvaluator => ({
+      name: evaluator.name,
+      description: evaluator.description,
+      priority: evaluator.priority,
+      shouldRun: async (context) =>
+        (
+          await requireCapabilityRouter(
+            context.runtime,
+          ).plugin.shouldRunResponseHandlerEvaluator({
+            ...endpointSelection(endpointId),
+            moduleId: module.id,
+            evaluator: evaluator.name,
+            context: responseHandlerContextToJsonObject(context),
+          })
+        ).shouldRun,
+      evaluate: async (context) =>
+        (
+          await requireCapabilityRouter(
+            context.runtime,
+          ).plugin.evaluateResponseHandlerEvaluator({
+            ...endpointSelection(endpointId),
+            moduleId: module.id,
+            evaluator: evaluator.name,
+            context: responseHandlerContextToJsonObject(context),
+          })
+        ).patch as never,
+    }),
+  );
+  const responseHandlerFieldEvaluators = (
+    module.responseHandlerFieldEvaluators ?? []
+  ).map(
+    (field): ResponseHandlerFieldEvaluator => ({
+      name: field.name,
+      description: field.description,
+      priority: field.priority,
+      schema: field.schema,
+      shouldRun: async (context) =>
+        (
+          await requireCapabilityRouter(
+            context.runtime,
+          ).plugin.shouldRunResponseHandlerFieldEvaluator({
+            ...endpointSelection(endpointId),
+            moduleId: module.id,
+            field: field.name,
+            context: responseHandlerFieldContextToJsonObject(context),
+          })
+        ).shouldRun,
+      ...(field.hasParse
+        ? {
+            parse: async (value, context) => {
+              const result = await requireCapabilityRouter(
+                context.runtime,
+              ).plugin.parseResponseHandlerFieldEvaluator({
+                ...endpointSelection(endpointId),
+                moduleId: module.id,
+                field: field.name,
+                value: toJsonValue(value),
+                context: responseHandlerFieldContextToJsonObject(context),
+              });
+              if (result.softFail) return null;
+              return result.value;
+            },
+          }
+        : {}),
+      ...(field.hasHandle
+        ? {
+            handle: async (context) => {
+              const result = await requireCapabilityRouter(
+                context.runtime,
+              ).plugin.handleResponseHandlerFieldEvaluator({
+                ...endpointSelection(endpointId),
+                moduleId: module.id,
+                field: field.name,
+                value: toJsonValue(context.value),
+                parsed: toJsonObject(context.parsed),
+                context: responseHandlerFieldContextToJsonObject(context),
+              });
+              return responseHandlerFieldEffectFromJson(result.effect);
+            },
+          }
+        : {}),
+    }),
+  );
   const events = (module.events ?? []).reduce<RuntimeEventStorage>(
     (accumulator, event) => {
       const handlers = accumulator[event.eventName] ?? [];
       handlers.push(async (payload) => {
         await requireCapabilityRouter(payload.runtime).plugin.handleEvent({
+          ...endpointSelection(endpointId),
           moduleId: module.id,
           eventName: event.eventName,
           payload: eventPayloadToJsonObject(payload),
@@ -275,6 +407,7 @@ export function createRemoteCapabilityPlugin(
     accumulator[model.modelType as ModelTypeName] = async (_runtime, params) =>
       (
         await requireCapabilityRouter(_runtime).plugin.invokeModel({
+          ...endpointSelection(endpointId),
           moduleId: module.id,
           modelType: model.modelType,
           params: toJsonValue(params),
@@ -305,12 +438,14 @@ export function createRemoteCapabilityPlugin(
   const appBridge =
     module.appBridge === undefined
       ? undefined
-      : createRemoteAppBridge(module.id, module.appBridge.hooks);
+      : createRemoteAppBridge(module.id, endpointId, module.appBridge.hooks);
+  const lifecycleHooks = new Set(module.lifecycle?.hooks ?? []);
 
   return {
     name: module.name,
     description:
       module.description ?? `Remote capability plugin module ${module.name}`,
+    ...(module.schema === undefined ? {} : { schema: module.schema }),
     actions: (module.actions ?? []).map((action) => ({
       name: action.name,
       description: action.description,
@@ -321,6 +456,7 @@ export function createRemoteCapabilityPlugin(
         const result = await requireCapabilityRouter(
           runtime,
         ).plugin.invokeAction({
+          ...endpointSelection(endpointId),
           moduleId: module.id,
           action: action.name,
           content: toJsonObject(message.content),
@@ -353,12 +489,19 @@ export function createRemoteCapabilityPlugin(
       private: provider.private,
       get: async (runtime, _message, state): Promise<ProviderResult> =>
         await requireCapabilityRouter(runtime).plugin.getProvider({
+          ...endpointSelection(endpointId),
           moduleId: module.id,
           provider: provider.name,
           state: toJsonObject(state),
         }),
     })),
     evaluators,
+    ...(responseHandlerEvaluators.length === 0
+      ? {}
+      : { responseHandlerEvaluators }),
+    ...(responseHandlerFieldEvaluators.length === 0
+      ? {}
+      : { responseHandlerFieldEvaluators }),
     ...(module.events?.length ? { events } : {}),
     ...(module.models?.length
       ? { models, priority: maxModelPriority(module) }
@@ -369,21 +512,79 @@ export function createRemoteCapabilityPlugin(
       ? {}
       : {
           appBridge,
-          init: async () => {
-            for (const identifier of remoteAppBridgeIdentifiers(module)) {
-              registerRuntimeAppRouteModule(identifier, appBridge);
-            }
-          },
-          dispose: async () => {
-            for (const identifier of remoteAppBridgeIdentifiers(module)) {
-              unregisterRuntimeAppRouteModule(identifier);
-            }
-          },
         }),
+    ...(appBridge !== undefined || lifecycleHooks.has("init")
+      ? {
+          init: async (
+            config: Record<string, string>,
+            runtime: IAgentRuntime,
+          ) => {
+            if (appBridge !== undefined) {
+              for (const identifier of remoteAppBridgeIdentifiers(module)) {
+                registerRuntimeAppRouteModule(identifier, appBridge);
+              }
+            }
+            if (lifecycleHooks.has("init")) {
+              await callRemoteLifecycle(
+                runtime,
+                module.id,
+                endpointId,
+                "init",
+                {
+                  config,
+                },
+              );
+            }
+          },
+        }
+      : {}),
+    ...(appBridge !== undefined || lifecycleHooks.has("dispose")
+      ? {
+          dispose: async (runtime: IAgentRuntime) => {
+            try {
+              if (lifecycleHooks.has("dispose")) {
+                await callRemoteLifecycle(
+                  runtime,
+                  module.id,
+                  endpointId,
+                  "dispose",
+                );
+              }
+            } finally {
+              if (appBridge !== undefined) {
+                for (const identifier of remoteAppBridgeIdentifiers(module)) {
+                  unregisterRuntimeAppRouteModule(identifier);
+                }
+              }
+            }
+          },
+        }
+      : {}),
+    ...(lifecycleHooks.has("applyConfig")
+      ? {
+          applyConfig: async (
+            config: Record<string, string>,
+            runtime: IAgentRuntime,
+          ) => {
+            await callRemoteLifecycle(
+              runtime,
+              module.id,
+              endpointId,
+              "applyConfig",
+              { config },
+            );
+          },
+        }
+      : {}),
     routes,
+    ...(services.length === 0 ? {} : { services }),
     views,
     config: {
+      ...(module.config ?? {}),
       remoteCapabilityModuleId: module.id,
+      ...(endpointId === undefined
+        ? {}
+        : { remoteCapabilityEndpointId: endpointId }),
       remoteCapabilityVersion: module.version ?? null,
     },
   };
@@ -391,6 +592,7 @@ export function createRemoteCapabilityPlugin(
 
 function createRemoteAppBridge(
   moduleId: string,
+  endpointId: string | undefined,
   hooks: string[],
 ): PluginAppBridge & AppRouteModule {
   const bridge: PluginAppBridge & AppRouteModule = {};
@@ -401,6 +603,7 @@ function createRemoteAppBridge(
     ctx: unknown,
   ) =>
     await requireCapabilityRouterFromNullable(runtime).plugin.callAppBridge({
+      ...endpointSelection(endpointId),
       moduleId,
       hook: hook as never,
       context: appBridgeContextToJsonObject(ctx),
@@ -444,13 +647,86 @@ function createRemoteAppBridge(
   }
   if (hookSet.has("handleAppRoutes")) {
     bridge.handleAppRoutes = async (ctx) =>
-      await callRemoteAppRoutes(moduleId, ctx);
+      await callRemoteAppRoutes(moduleId, endpointId, ctx);
   }
   return bridge;
 }
 
+function createRemoteServiceClass(
+  moduleId: string,
+  endpointId: string | undefined,
+  service: NonNullable<RemotePluginModuleManifest["services"]>[number],
+): ServiceClass {
+  const methodNames = new Set(service.methods ?? []);
+
+  class RemoteCapabilityService extends Service {
+    static serviceType = service.serviceType;
+    capabilityDescription =
+      service.capabilityDescription ??
+      `Remote capability service ${service.serviceType}`;
+    config = service.config;
+
+    static async start(runtime: IAgentRuntime): Promise<Service> {
+      return new RemoteCapabilityService(runtime);
+    }
+
+    async stop(): Promise<void> {
+      if (!methodNames.has("stop")) return;
+      await this.callRemote("stop", []);
+    }
+
+    async callRemote(
+      method: string,
+      args: unknown[],
+    ): Promise<JsonValue | undefined> {
+      const jsonArgs = args.map((arg) => toJsonValue(arg) ?? null);
+      const result = await requireCapabilityRouter(
+        this.runtime,
+      ).plugin.callService({
+        ...endpointSelection(endpointId),
+        moduleId,
+        serviceType: service.serviceType,
+        method,
+        args: jsonArgs,
+      } satisfies PluginCallServiceParams);
+      return result.result;
+    }
+  }
+
+  for (const method of methodNames) {
+    if (method === "stop" || method === "constructor") continue;
+    Object.defineProperty(RemoteCapabilityService.prototype, method, {
+      configurable: true,
+      value: async function remoteServiceMethod(
+        this: RemoteCapabilityService,
+        ...args: unknown[]
+      ) {
+        return await this.callRemote(method, args);
+      },
+    });
+  }
+
+  return RemoteCapabilityService;
+}
+
+async function callRemoteLifecycle(
+  runtime: IAgentRuntime,
+  moduleId: string,
+  endpointId: string | undefined,
+  hook: "init" | "dispose" | "applyConfig",
+  options: { config?: Record<string, string> } = {},
+): Promise<void> {
+  await requireCapabilityRouter(runtime).plugin.callLifecycle({
+    ...endpointSelection(endpointId),
+    moduleId,
+    hook,
+    ...(options.config === undefined ? {} : { config: options.config }),
+  });
+}
+
 async function callRemoteAppRoutes(
   moduleId: string,
+  endpointId: string | undefined,
   ctx: AppPackageRouteContext,
 ): Promise<boolean> {
   const body = shouldReadRouteBody(ctx.method)
@@ -460,6 +736,7 @@ async function callRemoteAppRoutes(
     await requireCapabilityRouterFromNullable(
       ctx.runtime as IAgentRuntime | null | undefined,
     ).plugin.callAppBridge({
+      ...endpointSelection(endpointId),
       moduleId,
       hook: "handleAppRoutes",
       context: {
@@ -527,6 +804,21 @@ function maxModelPriority(
   return Math.max(...priorities);
 }
 
+function remoteModuleEndpointId(
+  module: RemotePluginModuleManifest,
+): string | undefined {
+  return typeof module.capabilityEndpointId === "string" &&
+    module.capabilityEndpointId.trim().length > 0
+    ? module.capabilityEndpointId
+    : undefined;
+}
+
+function endpointSelection(endpointId: string | undefined): {
+  endpointId?: string;
+} {
+  return endpointId === undefined ? {} : { endpointId };
+}
+
 function shouldRegisterPlugin(
   runtime: IAgentRuntime,
   plugin: Plugin,
@@ -575,6 +867,173 @@ function validateRemotePluginNameCollisions(
   }
 }
 
+function evaluateRemotePluginTrustPolicy(
+  modules: RemotePluginModuleManifest[],
+  policy: RemotePluginTrustPolicy | undefined,
+): RemotePluginTrustDecision[] {
+  if (!policy) {
+    return modules.map((module) => ({
+      moduleId: module.id,
+      pluginName: module.name,
+      ...(remoteModuleEndpointId(module) === undefined
+        ? {}
+        : { endpointId: remoteModuleEndpointId(module) }),
+      trusted: true,
+      reason: "no-policy",
+    }));
+  }
+  const allowedEndpointIds =
+    policy.allowedEndpointIds === undefined
+      ? null
+      : new Set(policy.allowedEndpointIds);
+  const allowedModuleIds =
+    policy.allowedModuleIds === undefined
+      ? null
+      : new Set(policy.allowedModuleIds);
+
+  const decisions: RemotePluginTrustDecision[] = [];
+  for (const module of modules) {
+    const endpointId = remoteModuleEndpointId(module);
+    if (policy.requireEndpointId && endpointId === undefined) {
+      const decision = trustDecision(
+        module,
+        endpointId,
+        false,
+        "missing-endpoint-id",
+      );
+      decisions.push(decision);
+      throw new CapabilityError({
+        code: "CAPABILITY_UNAVAILABLE",
+        message: `Remote plugin "${module.id}" does not declare a trusted capability endpoint id.`,
+        capability: "plugin",
+        method: "plugin.modules.list",
+        details: { trustDecision: decision },
+      });
+    }
+    if (
+      allowedEndpointIds &&
+      (endpointId === undefined || !allowedEndpointIds.has(endpointId))
+    ) {
+      const decision = trustDecision(
+        module,
+        endpointId,
+        false,
+        "endpoint-not-allowed",
+      );
+      decisions.push(decision);
+      throw new CapabilityError({
+        code: "CAPABILITY_UNAVAILABLE",
+        message: `Remote plugin "${module.id}" comes from untrusted capability endpoint "${endpointId ?? "unknown"}".`,
+        capability: "plugin",
+        method: "plugin.modules.list",
+        details: { trustDecision: decision },
+      });
+    }
+    if (allowedModuleIds && !allowedModuleIds.has(module.id)) {
+      const decision = trustDecision(
+        module,
+        endpointId,
+        false,
+        "module-not-allowed",
+      );
+      decisions.push(decision);
+      throw new CapabilityError({
+        code: "CAPABILITY_UNAVAILABLE",
+        message: `Remote plugin module "${module.id}" is not trusted for registration.`,
+        capability: "plugin",
+        method: "plugin.modules.list",
+        details: { trustDecision: decision },
+      });
+    }
+    decisions.push(trustDecision(module, endpointId, true, "allowed"));
+  }
+  return decisions;
+}
+
+function trustDecision(
+  module: RemotePluginModuleManifest,
+  endpointId: string | undefined,
+  trusted: boolean,
+  reason: RemotePluginTrustDecision["reason"],
+): RemotePluginTrustDecision {
+  return {
+    moduleId: module.id,
+    pluginName: module.name,
+    ...(endpointId === undefined ? {} : { endpointId }),
+    trusted,
+    reason,
+  };
+}
+
+function resolveConfiguredRemotePluginTrustPolicy(
+  runtime: IAgentRuntime,
+): RemotePluginTrustPolicy | undefined {
+  const routerConfig = resolveRemoteCapabilityRouterConfig(runtime);
+  const endpointIds = configuredEndpointIds(routerConfig);
+  if (endpointIds.length === 0) return undefined;
+  const allowedModuleIds = configuredAllowedModuleIds(runtime, endpointIds);
+  return {
+    allowedEndpointIds: endpointIds,
+    ...(allowedModuleIds.length === 0 ? {} : { allowedModuleIds }),
+    requireEndpointId: true,
+  };
+}
+
+function configuredEndpointIds(config: {
+  baseUrl?: string;
+  endpoints?: Array<{ id: string }>;
+}): string[] {
+  const ids = new Set<string>();
+  if (config.baseUrl) ids.add("primary");
+  for (const endpoint of config.endpoints ?? []) {
+    if (endpoint.id.trim()) ids.add(endpoint.id.trim());
+  }
+  return [...ids];
+}
+
+function configuredAllowedModuleIds(
+  runtime: IAgentRuntime,
+  endpointIds: string[],
+): string[] {
+  const configured = runtime.getSetting?.(
+    "ELIZA_CAPABILITY_ROUTER_ALLOWED_MODULES",
+  );
+  const raw =
+    typeof configured === "string" && configured.trim()
+      ? configured
+      : process.env.ELIZA_CAPABILITY_ROUTER_ALLOWED_MODULES;
+  if (typeof raw !== "string" || !raw.trim()) return [];
+  try {
+    const parsed = JSON.parse(raw) as unknown;
+    if (Array.isArray(parsed)) {
+      return uniqueStrings(parsed);
+    }
+    if (!parsed || typeof parsed !== "object") return [];
+    const modules = new Set<string>();
+    for (const endpointId of endpointIds) {
+      const value = (parsed as Record<string, unknown>)[endpointId];
+      for (const moduleId of uniqueStrings(value)) {
+        modules.add(moduleId);
+      }
+    }
+    return [...modules];
+  } catch {
+    return [];
+  }
+}
+
+function uniqueStrings(value: unknown): string[] {
+  if (!Array.isArray(value)) return [];
+  return [
+    ...new Set(
+      value
+        .filter((item): item is string => typeof item === "string")
+        .map((item) => item.trim())
+        .filter(Boolean),
+    ),
+  ];
+}
+
 function validateRemotePluginComponentCollisions(
   runtime: IAgentRuntime,
   modules: RemotePluginModuleManifest[],
@@ -616,13 +1075,52 @@ function validateRemotePluginComponentCollisions(
     namesForModule: (module) =>
       (module.evaluators ?? []).map((evaluator) => evaluator.name),
   });
+  validateNamedRemoteComponents({
+    runtime,
+    modules,
+    options,
+    kind: "response-handler evaluator",
+    existingNames:
+      runtime.responseHandlerEvaluators?.map((evaluator) => evaluator.name) ??
+      [],
+    existingRemoteNames: getRegisteredRemoteCapabilityResponseHandlerEvaluators(
+      runtime,
+    ).map((evaluator) => evaluator.name),
+    namesForModule: (module) =>
+      (module.responseHandlerEvaluators ?? []).map(
+        (evaluator) => evaluator.name,
+      ),
+  });
+  validateNamedRemoteComponents({
+    runtime,
+    modules,
+    options,
+    kind: "response-handler field evaluator",
+    existingNames:
+      runtime.responseHandlerFieldEvaluators?.map(
+        (evaluator) => evaluator.name,
+      ) ?? [],
+    existingRemoteNames:
+      getRegisteredRemoteCapabilityResponseHandlerFieldEvaluators(runtime).map(
+        (evaluator) => evaluator.name,
+      ),
+    namesForModule: (module) =>
+      (module.responseHandlerFieldEvaluators ?? []).map(
+        (evaluator) => evaluator.name,
+      ),
+  });
 }
 
 function validateNamedRemoteComponents(args: {
   runtime: IAgentRuntime;
   modules: RemotePluginModuleManifest[];
   options: Pick<RemotePluginAdapterOptions, "reloadExisting">;
-  kind: "action" | "provider" | "evaluator";
+  kind:
+    | "action"
+    | "provider"
+    | "evaluator"
+    | "response-handler evaluator"
+    | "response-handler field evaluator";
   existingNames: string[];
   existingRemoteNames: string[];
   namesForModule: (module: RemotePluginModuleManifest) => string[];
@@ -655,6 +1153,65 @@ function validateNamedRemoteComponents(args: {
         capability: "plugin",
         method: "plugin.modules.list",
       });
+    }
+  }
+}
+
+function validateRemotePluginServiceCollisions(
+  runtime: IAgentRuntime,
+  modules: RemotePluginModuleManifest[],
+  options: Pick<RemotePluginAdapterOptions, "reloadExisting">,
+): void {
+  const seen = new Map<string, string>();
+  for (const module of modules) {
+    for (const service of module.services ?? []) {
+      const existingModuleId = seen.get(service.serviceType);
+      if (existingModuleId) {
+        throw new CapabilityError({
+          code: "CAPABILITY_DECODE_FAILED",
+          message: `Remote service type collision for "${service.serviceType}" between modules "${existingModuleId}" and "${module.id}".`,
+          capability: "plugin",
+          method: "plugin.modules.list",
+        });
+      }
+      seen.set(service.serviceType, module.id);
+    }
+  }
+
+  if (options.reloadExisting) return;
+
+  const registeredRemoteServiceTypes = new Set(
+    getRegisteredRemoteCapabilityServiceTypes(runtime),
+  );
+  for (const module of modules) {
+    for (const service of module.services ?? []) {
+      if (!runtime.hasService?.(service.serviceType)) continue;
+      if (registeredRemoteServiceTypes.has(service.serviceType)) continue;
+      throw new CapabilityError({
+        code: "CAPABILITY_DECODE_FAILED",
+        message: `Remote plugin "${module.id}" service "${service.serviceType}" would collide with an existing runtime service.`,
+        capability: "plugin",
+        method: "plugin.modules.list",
+      });
+    }
+  }
+}
+
+function validateRemotePluginModelDeclarations(
+  modules: RemotePluginModuleManifest[],
+): void {
+  for (const module of modules) {
+    const seen = new Set<string>();
+    for (const model of module.models ?? []) {
+      if (seen.has(model.modelType)) {
+        throw new CapabilityError({
+          code: "CAPABILITY_DECODE_FAILED",
+          message: `Remote plugin "${module.id}" declares model "${model.modelType}" more than once.`,
+          capability: "plugin",
+          method: "plugin.modules.list",
+        });
+      }
+      seen.add(model.modelType);
     }
   }
 }
@@ -785,6 +1342,39 @@ function getRegisteredRemoteCapabilityEvaluators(
     .flatMap((item) => item.evaluators);
 }
 
+function getRegisteredRemoteCapabilityResponseHandlerEvaluators(
+  runtime: IAgentRuntime,
+): NonNullable<Plugin["responseHandlerEvaluators"]> {
+  return (runtime.getAllPluginOwnership?.() ?? [])
+    .filter((item) => {
+      const config = item.plugin.config as Record<string, unknown> | undefined;
+      return typeof config?.remoteCapabilityModuleId === "string";
+    })
+    .flatMap((item) => item.plugin.responseHandlerEvaluators ?? []);
+}
+
+function getRegisteredRemoteCapabilityResponseHandlerFieldEvaluators(
+  runtime: IAgentRuntime,
+): NonNullable<Plugin["responseHandlerFieldEvaluators"]> {
+  return (runtime.getAllPluginOwnership?.() ?? [])
+    .filter((item) => {
+      const config = item.plugin.config as Record<string, unknown> | undefined;
+      return typeof config?.remoteCapabilityModuleId === "string";
+    })
+    .flatMap((item) => item.plugin.responseHandlerFieldEvaluators ?? []);
+}
+
+function getRegisteredRemoteCapabilityServiceTypes(
+  runtime: IAgentRuntime,
+): string[] {
+  return (runtime.getAllPluginOwnership?.() ?? [])
+    .filter((item) => {
+      const config = item.plugin.config as Record<string, unknown> | undefined;
+      return typeof config?.remoteCapabilityModuleId === "string";
+    })
+    .flatMap((item) => item.services.map((service) => service.serviceType));
+}
+
 function getRegisteredRemoteCapabilityPluginNames(
   runtime: IAgentRuntime,
 ): string[] {
@@ -860,6 +1450,61 @@ function appBridgeContextToJsonObject(value: unknown): JsonObject | undefined {
     unknown
   >;
   return toJsonObject(serializable);
+}
+
+function responseHandlerContextToJsonObject(value: unknown): JsonObject {
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    return {};
+  }
+  const context = value as Record<string, unknown>;
+  return (
+    toJsonObject({
+      message: context.message,
+      state: context.state,
+      messageHandler: context.messageHandler,
+      availableContexts: context.availableContexts,
+    }) ?? {}
+  );
+}
+
+function responseHandlerFieldContextToJsonObject(value: unknown): JsonObject {
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    return {};
+  }
+  const context = value as Record<string, unknown>;
+  return (
+    toJsonObject({
+      message: context.message,
+      state: context.state,
+      senderRole: context.senderRole,
+    }) ?? {}
+  );
+}
+
+function responseHandlerFieldEffectFromJson(
+  effect:
+    | {
+        patch?: JsonObject;
+        preempt?: {
+          mode: "ack-and-stop" | "ignore" | "direct-reply";
+          reason: string;
+        };
+        debug?: string[];
+      }
+    | undefined,
+): ResponseHandlerFieldEffect | undefined {
+  if (!effect) return undefined;
+  return {
+    ...(effect.patch === undefined
+      ? {}
+      : {
+          mutateResult: (result) => {
+            Object.assign(result, effect.patch);
+          },
+        }),
+    ...(effect.preempt === undefined ? {} : { preempt: effect.preempt }),
+    ...(effect.debug === undefined ? {} : { debug: effect.debug }),
+  };
 }
 
 function shouldReadRouteBody(method: string): boolean {

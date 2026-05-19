@@ -235,6 +235,7 @@ describe("cloud capability sandbox provisioner", () => {
       cloudApiBase: "https://api.elizacloud.ai",
       authToken: "cloud-token",
       name: "Cloud Capability",
+      allowedModuleIds: ["cloud-capability-plugin"],
       fetch: fetchMock as unknown as typeof fetch,
     });
 
@@ -251,6 +252,15 @@ describe("cloud capability sandbox provisioner", () => {
         ],
         unloaded: [],
         skipped: [],
+        trustDecisions: [
+          {
+            moduleId: "cloud-capability-plugin",
+            pluginName: "@remote/cloud-capability",
+            endpointId: "cloud-capability",
+            trusted: true,
+            reason: "allowed",
+          },
+        ],
       },
     });
     expect(runtime.plugins.map((plugin) => plugin.name)).toEqual([

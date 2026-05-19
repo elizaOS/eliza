@@ -9,6 +9,7 @@ import {
 } from "./remote-capability-router.ts";
 import {
   type RemotePluginSyncResult,
+  type RemotePluginTrustPolicy,
   syncRemoteCapabilityPlugins,
 } from "./remote-plugin-adapter.ts";
 
@@ -26,6 +27,7 @@ export type CloudCapabilitySandboxProvisionOptions = {
   pollIntervalMs?: number;
   fetch?: typeof fetch;
   onProgress?: (status: string, detail?: string) => void;
+  allowedModuleIds?: string[];
 };
 
 export type CloudCapabilitySandboxProvisionResult = {
@@ -207,8 +209,23 @@ export async function connectCloudCapabilitySandbox(
   });
   const sync = await syncRemoteCapabilityPlugins(runtime, {
     unloadMissing: options.unloadMissing,
+    trustPolicy: buildEndpointTrustPolicy(
+      provisioned.endpoint.id,
+      options.allowedModuleIds,
+    ),
   });
   return { ...provisioned, sync };
+}
+
+function buildEndpointTrustPolicy(
+  endpointId: string,
+  allowedModuleIds?: string[],
+): RemotePluginTrustPolicy {
+  return {
+    allowedEndpointIds: [endpointId],
+    ...(allowedModuleIds === undefined ? {} : { allowedModuleIds }),
+    requireEndpointId: true,
+  };
 }
 
 export function installRemoteCapabilityEndpoint(

@@ -131,13 +131,16 @@ export const MovingBorder = ({
         />
       </svg>
       <motion.div
-        style={{
-          position: "absolute",
-          top: 0,
-          left: 0,
-          display: "inline-block",
-          transform,
-        }}
+        style={
+          {
+            position: "absolute",
+            top: 0,
+            left: 0,
+            display: "inline-block",
+            transform,
+            // biome-ignore lint/suspicious/noExplicitAny: framer-motion MotionStyle differs across resolutions
+          } as any
+        }
       >
         {children}
       </motion.div>

@@ -25,6 +25,8 @@ type ViewAudit = {
     text: string;
     ariaLabel: string | null;
     disabled: boolean;
+    inTuiRoot: boolean;
+    terminalCommand: string | null;
   }>;
   focusedAfterTabs: string[];
 };
@@ -40,6 +42,8 @@ const VIEW_CASES: ViewCase[] = [
   ["lifeops", "tui", "/lifeops/tui"],
   ["messages", "gui", "/messages"],
   ["messages", "tui", "/messages/tui"],
+  ["model-tester", "gui", "/model-tester"],
+  ["model-tester", "tui", "/model-tester/tui"],
   ["phone", "gui", "/phone"],
   ["phone", "tui", "/phone/tui"],
   ["polymarket", "gui", "/polymarket"],
@@ -54,6 +58,8 @@ const VIEW_CASES: ViewCase[] = [
   ["wallet", "tui", "/wallet/tui"],
   ["2004scape", "gui", "/2004scape"],
   ["2004scape", "tui", "/2004scape/tui"],
+  ["babylon", "gui", "/babylon"],
+  ["babylon", "tui", "/babylon/tui"],
   ["views-manager", "gui", "/views"],
   ["views-manager", "tui", "/views/tui"],
   ["clawville", "gui", "/clawville"],
@@ -66,6 +72,10 @@ const VIEW_CASES: ViewCase[] = [
   ["scape", "tui", "/scape/tui"],
   ["screenshare", "gui", "/screenshare"],
   ["screenshare", "tui", "/screenshare/tui"],
+  ["task-coordinator", "gui", "/task-coordinator"],
+  ["task-coordinator", "tui", "/task-coordinator/tui"],
+  ["trajectory-logger", "gui", "/trajectory-logger"],
+  ["trajectory-logger", "tui", "/trajectory-logger/tui"],
   ["training", "gui", "/training"],
   ["training", "tui", "/training/tui"],
 ].map(([id, viewType, viewPath]) => ({
@@ -103,11 +113,32 @@ test.describe("registered plugin views visual coverage", () => {
       await expect(
         page.locator('[data-testid="chat-composer-textarea"]').first(),
       ).toBeVisible();
+      for (const menuLabel of [
+        "Chat",
+        "Views",
+        "Character",
+        "Wallet",
+        "Browser",
+        "Automations",
+      ]) {
+        await expect(
+          page.getByRole("button", { name: menuLabel }).first(),
+          `${view.id} ${view.viewType} shell menu item "${menuLabel}" should be keyboard/click reachable`,
+        ).toBeEnabled();
+      }
       if (view.viewType === "tui") {
         await expect(page.locator("[data-view-state]").first()).toBeVisible();
         await expect(
           page.locator("main").getByText("elizaos://").first(),
         ).toBeVisible();
+        const terminalCommand = page.locator("[data-terminal-command]").first();
+        if ((await terminalCommand.count()) > 0) {
+          await terminalCommand.press("Enter");
+          await expect(
+            page.locator("[data-terminal-output]").first(),
+            `${view.id} ${view.viewType} should render command output after keyboard execution`,
+          ).toBeVisible();
+        }
       }
 
       await page.screenshot({
@@ -175,6 +206,8 @@ test.describe("registered plugin views visual coverage", () => {
               disabled:
                 element.hasAttribute("disabled") ||
                 element.getAttribute("aria-disabled") === "true",
+              inTuiRoot: Boolean(element.closest("[data-view-state]")),
+              terminalCommand: element.getAttribute("data-terminal-command"),
             }));
           return {
             id,
@@ -206,6 +239,10 @@ test.describe("registered plugin views visual coverage", () => {
         `${view.id} ${view.viewType} keyboard tab order should reach chat composer`,
       ).toBe(true);
       if (view.viewType === "tui") {
+        expect(
+          audit.controls.some((control) => control.inTuiRoot),
+          `${view.id} ${view.viewType} should expose terminal-local controls`,
+        ).toBe(true);
         expect(
           focusedAfterTabs.some(
             (entry) =>

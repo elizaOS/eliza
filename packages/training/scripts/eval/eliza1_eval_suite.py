@@ -300,12 +300,19 @@ def discover_engine(prefer_backend: str | None = None) -> Engine | None:
     if prefer_backend and not any(prefer_backend in d.name for d in candidates):
         return None
 
-    def rank(d: Path) -> tuple[int, int, int]:
+    def _has_exec(directory: Path, name: str) -> int:
+        p = directory / name
+        return 1 if p.is_file() and os.access(p, os.X_OK) else 0
+
+    def rank(d: Path) -> tuple[int, int, int, int, int, int]:
         fused = 1 if "fused" in d.name else 0
         backend_match = 1 if (prefer_backend and prefer_backend in d.name) else 0
+        voice = _has_exec(d, "llama-omnivoice-server")
+        server = _has_exec(d, "llama-server")
+        lib = 1 if (d / _eliza_lib_name()).is_file() else 0
         # cpu over vulkan when nothing requested (cpu is the safest verify path).
         cpu = 1 if d.name.endswith("cpu") else 0
-        return (backend_match, fused, cpu)
+        return (backend_match, fused, voice, server, lib, cpu)
 
     best = max(candidates, key=rank)
     backend = best.name[len(plat) + 1 :] if len(best.name) > len(plat) + 1 else "cpu"
@@ -505,6 +512,36 @@ def _e2e_loop_bench_path() -> Path | None:
     return None
 
 
+def _kokoro_e2e_loop_bench_path() -> Path | None:
+    env_override = os.environ.get("ELIZA_EVAL_KOKORO_E2E_BENCH_PATH")
+    if env_override:
+        p = Path(env_override).expanduser().resolve()
+        if p.is_file():
+            return p
+    for c in (
+        _TRAINING_ROOT.parent / "inference" / "verify" / "kokoro_e2e_loop_bench.mjs",
+        _TRAINING_ROOT.parent.parent / "packages" / "inference" / "verify" / "kokoro_e2e_loop_bench.mjs",
+        _TRAINING_ROOT.parent.parent / "plugins" / "plugin-local-inference" / "native" / "verify" / "kokoro_e2e_loop_bench.mjs",
+        _TRAINING_ROOT.parent.parent.parent / "plugins" / "plugin-local-inference" / "native" / "verify" / "kokoro_e2e_loop_bench.mjs",
+    ):
+        if c.is_file():
+            return c
+    return None
+
+
+def _uses_kokoro_e2e_harness(tier: str) -> bool:
+    return normalize_tier(tier) in {"0_8b", "2b", "4b"}
+
+
+def _normalize_backend_for_harness(backend: str | None) -> str:
+    raw = (backend or "cpu").strip() or "cpu"
+    raw = raw.replace("-fused", "")
+    for known in ("metal", "vulkan", "cuda", "rocm", "cpu"):
+        if raw == known or raw.startswith(f"{known}-") or raw.startswith(f"{known}."):
+            return known
+    return raw
+
+
 def _run_e2e_loop_bench(
     ctx: EvalContext,
     turns: int,
@@ -531,15 +568,18 @@ def _run_e2e_loop_bench(
         result: dict[str, Any] = {"status": "not-run", "reason": "bun not on PATH; cannot run e2e_loop_bench.mjs"}
         cache[cache_key] = result
         return result
-    bench = _e2e_loop_bench_path()
+    use_kokoro = _uses_kokoro_e2e_harness(ctx.tier)
+    bench = _kokoro_e2e_loop_bench_path() if use_kokoro else _e2e_loop_bench_path()
     if bench is None:
-        result = {"status": "not-run", "reason": "packages/inference/verify/e2e_loop_bench.mjs not found"}
+        bench_name = "kokoro_e2e_loop_bench.mjs" if use_kokoro else "e2e_loop_bench.mjs"
+        result = {"status": "not-run", "reason": f"{bench_name} not found"}
         cache[cache_key] = result
         return result
     backend = (ctx.engine.backend if ctx.engine else "cpu") or "cpu"
-    # strip the "-fused" suffix the CAPABILITIES backend never carries, but the
-    # discovered dir name might; e2e_loop_bench resolves the fused dir itself.
-    backend = backend.replace("-fused", "")
+    # The discovered dir name may carry build qualifiers
+    # (e.g. metal-fused.pre-encode-ref-...). The JS harnesses only accept the
+    # backend family.
+    backend = _normalize_backend_for_harness(backend)
     report_stem = f"e2e-loop-bench-{turns}turn" + (f"-{cache_tag}" if cache_tag else "")
     out_json = ctx.bundle_dir / "evals" / f"{report_stem}.json"
     args = [
@@ -548,10 +588,11 @@ def _run_e2e_loop_bench(
         "--tier", ctx.tier,
         "--backend", backend,
         "--turns", str(turns),
-        "--max-tts-phrases", os.environ.get("ELIZA_EVAL_MAX_TTS_PHRASES", "3"),
         "--report", str(out_json),
         "--quiet",
     ]
+    if not use_kokoro:
+        args += ["--max-tts-phrases", os.environ.get("ELIZA_EVAL_MAX_TTS_PHRASES", "3")]
     if wav_refs:
         args += ["--wav", ",".join(str(w) for w, _ in wav_refs)]
         args += ["--ref", "|".join(r for _, r in wav_refs)]
@@ -571,18 +612,26 @@ def _run_e2e_loop_bench(
         args += ["--ref", refs]
     if n_predict:
         args += ["--n-predict", n_predict]
-    if endurance_n_predict:
+    if endurance_n_predict and not use_kokoro:
         args += ["--endurance-n-predict", endurance_n_predict]
-    if tts_steps:
+    if tts_steps and not use_kokoro:
         args += ["--tts-steps", tts_steps]
-    if mic_tts_steps:
+    if mic_tts_steps and not use_kokoro:
         args += ["--mic-tts-steps", mic_tts_steps]
     if ctx_tokens:
         args += ["--ctx", ctx_tokens]
     if ngl:
         args += ["--ngl", ngl]
+    if use_kokoro:
+        args += ["--threads", str(ctx.threads)]
+        if os.environ.get("ELIZA_EVAL_E2E_SKIP_EMBEDDING") == "1":
+            args += ["--skip-embedding"]
+        if os.environ.get("ELIZA_EVAL_E2E_NO_SAVE_AUDIO") == "1":
+            args += ["--no-save-audio"]
     if ctx.engine is not None:
         args += ["--bin-dir", str(ctx.engine.bin_dir)]
+        if use_kokoro and ctx.engine.eliza_lib is not None:
+            args += ["--dylib", str(ctx.engine.eliza_lib)]
     # An endurance run on CPU is many minutes; give it room (the harness has
     # its own per-turn timeout, this is just the outer wall-clock cap).
     timeout_s = max(ctx.timeout_s, 90 * max(1, turns))

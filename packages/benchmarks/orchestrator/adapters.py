@@ -1002,7 +1002,7 @@ def _command_osworld(ctx: ExecutionContext, adapter: BenchmarkAdapter) -> list[s
     provider_name = str(ctx.request.extra_config.get("provider_name", "docker")).strip()
     args.extend(["--provider_name", provider_name])
     observation_type = str(
-        ctx.request.extra_config.get("observation_type", "screenshot_a11y_tree")
+        ctx.request.extra_config.get("observation_type", "screenshot")
     ).strip()
     args.extend(["--observation_type", observation_type])
 
@@ -2541,8 +2541,9 @@ def discover_adapters(workspace_root: Path) -> AdapterDiscovery:
             default_extra_config={
                 "docker_cpu_cores": 2,
                 "headless": True,
-                "max_steps": 3,
+                "max_steps": 1,
                 "max_tasks": 1,
+                "observation_type": "screenshot",
                 "vm_ready_timeout_seconds": 21600,
             },
         ),
