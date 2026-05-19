@@ -133,6 +133,7 @@ def main() -> int:
             "lsoracle",
             "abc-rl",
             "boils",
+            "open-llm-eco",
         ],
         "policy": {
             "changes_rtl": False,

@@ -118,6 +118,9 @@ def main() -> int:
             "chipcraftx-rtlgen-7b",
             "chipseek",
             "rtlseek",
+            "qimeng-codev-r1",
+            "evolve-verilog",
+            "veriagent",
             "codev-sva",
             "radai-wm811k-wafer-defect-model",
         ],
@@ -149,7 +152,7 @@ def main() -> int:
             {
                 "id": "hf-rtl-model-candidate-watch",
                 "status": "CAPTURED_NOT_DOWNLOADED",
-                "target": "future SiliconMind, ChipCraftX, ChipSeek, RTLSeek, VeriForge, CodeV, or similar model tests must pin exact revisions, model-card terms, prompts, outputs, and evaluator logs",
+                "target": "future SiliconMind, ChipCraftX, ChipSeek, RTLSeek, CodeV-R1, EvolVE, VeriAgent, VeriForge, CodeV, or similar model tests must pin exact revisions, model-card terms, prompts, outputs, and evaluator logs",
                 "acceptance_gates": [
                     "python3 scripts/check_ai_eda_source_inventory.py",
                     "python3 scripts/ai_eda/probe_external_ai_eda_sources.py --run-id validation",

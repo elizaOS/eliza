@@ -184,6 +184,7 @@ def main() -> int:
             "fusionsizer",
             "iccad-2024-gate-sizing-benchmark",
             "ir-aware-eco-rl",
+            "open-llm-eco",
         ],
         "policy": {
             "changes_constraints": False,
