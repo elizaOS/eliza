@@ -1,0 +1,127 @@
+{
+  "corners": [
+    {
+      "corner": {
+        "name": "SS_min",
+        "process": "ss",
+        "rc": "min"
+      },
+      "inputs": {
+        "liberty": "/work/external/pdks/volare/sky130/versions/0fe599b2afb6708d281543108caf8310912f54af/sky130A/libs.ref/sky130_fd_sc_hd/lib/sky130_fd_sc_hd__ss_n40C_1v28.lib",
+        "netlist": "/work/pd/openlane/runs/RUN_2026-05-19_05-08-54/final/nl/e1_chip_top.nl.v",
+        "sdc": "/work/pd/openlane/runs/RUN_2026-05-19_05-08-54/final/sdc/e1_chip_top.sdc",
+        "spef": "/work/pd/openlane/runs/RUN_2026-05-19_05-08-54/final/spef/min/e1_chip_top.min.spef"
+      },
+      "metrics": {
+        "hold_tns": -442.826445824057,
+        "hold_wns": -4.252156080930376,
+        "setup_tns": -647.8862998363865,
+        "setup_wns": -7.8537143456028895
+      },
+      "returncode": 0
+    },
+    {
+      "corner": {
+        "name": "SS_max",
+        "process": "ss",
+        "rc": "max"
+      },
+      "inputs": {
+        "liberty": "/work/external/pdks/volare/sky130/versions/0fe599b2afb6708d281543108caf8310912f54af/sky130A/libs.ref/sky130_fd_sc_hd/lib/sky130_fd_sc_hd__ss_n40C_1v28.lib",
+        "netlist": "/work/pd/openlane/runs/RUN_2026-05-19_05-08-54/final/nl/e1_chip_top.nl.v",
+        "sdc": "/work/pd/openlane/runs/RUN_2026-05-19_05-08-54/final/sdc/e1_chip_top.sdc",
+        "spef": "/work/pd/openlane/runs/RUN_2026-05-19_05-08-54/final/spef/max/e1_chip_top.max.spef"
+      },
+      "metrics": {
+        "hold_tns": -742.7155634065596,
+        "hold_wns": -5.312069157126428,
+        "setup_tns": -1512.4342526461335,
+        "setup_wns": -12.260401041433635
+      },
+      "returncode": 0
+    },
+    {
+      "corner": {
+        "name": "TT_min",
+        "process": "tt",
+        "rc": "min"
+      },
+      "inputs": {
+        "liberty": "/work/external/pdks/volare/sky130/versions/0fe599b2afb6708d281543108caf8310912f54af/sky130A/libs.ref/sky130_fd_sc_hd/lib/sky130_fd_sc_hd__tt_025C_1v80.lib",
+        "netlist": "/work/pd/openlane/runs/RUN_2026-05-19_05-08-54/final/nl/e1_chip_top.nl.v",
+        "sdc": "/work/pd/openlane/runs/RUN_2026-05-19_05-08-54/final/sdc/e1_chip_top.sdc",
+        "spef": "/work/pd/openlane/runs/RUN_2026-05-19_05-08-54/final/spef/min/e1_chip_top.min.spef"
+      },
+      "metrics": {
+        "hold_tns": 0.0,
+        "hold_wns": 0.4531606329559278,
+        "setup_tns": 0.0,
+        "setup_wns": 85.7519377555664
+      },
+      "returncode": 0
+    },
+    {
+      "corner": {
+        "name": "TT_max",
+        "process": "tt",
+        "rc": "max"
+      },
+      "inputs": {
+        "liberty": "/work/external/pdks/volare/sky130/versions/0fe599b2afb6708d281543108caf8310912f54af/sky130A/libs.ref/sky130_fd_sc_hd/lib/sky130_fd_sc_hd__tt_025C_1v80.lib",
+        "netlist": "/work/pd/openlane/runs/RUN_2026-05-19_05-08-54/final/nl/e1_chip_top.nl.v",
+        "sdc": "/work/pd/openlane/runs/RUN_2026-05-19_05-08-54/final/sdc/e1_chip_top.sdc",
+        "spef": "/work/pd/openlane/runs/RUN_2026-05-19_05-08-54/final/spef/max/e1_chip_top.max.spef"
+      },
+      "metrics": {
+        "hold_tns": 0.0,
+        "hold_wns": 0.39854121131330617,
+        "setup_tns": 0.0,
+        "setup_wns": 85.07380285480536
+      },
+      "returncode": 0
+    },
+    {
+      "corner": {
+        "name": "FF_min",
+        "process": "ff",
+        "rc": "min"
+      },
+      "inputs": {
+        "liberty": "/work/external/pdks/volare/sky130/versions/0fe599b2afb6708d281543108caf8310912f54af/sky130A/libs.ref/sky130_fd_sc_hd/lib/sky130_fd_sc_hd__ff_n40C_1v95.lib",
+        "netlist": "/work/pd/openlane/runs/RUN_2026-05-19_05-08-54/final/nl/e1_chip_top.nl.v",
+        "sdc": "/work/pd/openlane/runs/RUN_2026-05-19_05-08-54/final/sdc/e1_chip_top.sdc",
+        "spef": "/work/pd/openlane/runs/RUN_2026-05-19_05-08-54/final/spef/min/e1_chip_top.min.spef"
+      },
+      "metrics": {
+        "hold_tns": 0.0,
+        "hold_wns": 0.11221679458841756,
+        "setup_tns": 0.0,
+        "setup_wns": 90.9150256367157
+      },
+      "returncode": 0
+    },
+    {
+      "corner": {
+        "name": "FF_max",
+        "process": "ff",
+        "rc": "max"
+      },
+      "inputs": {
+        "liberty": "/work/external/pdks/volare/sky130/versions/0fe599b2afb6708d281543108caf8310912f54af/sky130A/libs.ref/sky130_fd_sc_hd/lib/sky130_fd_sc_hd__ff_n40C_1v95.lib",
+        "netlist": "/work/pd/openlane/runs/RUN_2026-05-19_05-08-54/final/nl/e1_chip_top.nl.v",
+        "sdc": "/work/pd/openlane/runs/RUN_2026-05-19_05-08-54/final/sdc/e1_chip_top.sdc",
+        "spef": "/work/pd/openlane/runs/RUN_2026-05-19_05-08-54/final/spef/max/e1_chip_top.max.spef"
+      },
+      "metrics": {
+        "hold_tns": 0.0,
+        "hold_wns": 0.06509637457771278,
+        "setup_tns": 0.0,
+        "setup_wns": 90.40361959361617
+      },
+      "returncode": 0
+    }
+  ],
+  "pdk_root": "/work/external/pdks/volare/sky130/versions/0fe599b2afb6708d281543108caf8310912f54af",
+  "run_dir": "/work/pd/openlane/runs/RUN_2026-05-19_05-08-54",
+  "schema": "eliza.pd_multi_corner_sta.v1"
+}
