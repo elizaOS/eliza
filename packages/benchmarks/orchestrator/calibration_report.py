@@ -10,6 +10,8 @@ from typing import Any
 from .adapters import (
     GAIA_OFFICIAL_DATASET_UNAVAILABLE_REASON,
     HYPERLIQUID_LIVE_UNAVAILABLE_REASON,
+    VISION_LANGUAGE_FIXED_RUNTIME_REASON,
+    VISION_LANGUAGE_REAL_INPUTS_UNAVAILABLE_REASON,
     discover_adapters,
 )
 from .db import (
@@ -201,6 +203,16 @@ def _unsupported_real_reasons(
     ):
         return {
             agent: HYPERLIQUID_LIVE_UNAVAILABLE_REASON
+            for agent in unsupported_real_harnesses
+        }
+    if benchmark_id == "vision_language" and unsupported_real_harnesses:
+        reason = (
+            VISION_LANGUAGE_REAL_INPUTS_UNAVAILABLE_REASON
+            if not supported_real_harnesses
+            else VISION_LANGUAGE_FIXED_RUNTIME_REASON
+        )
+        return {
+            agent: reason
             for agent in unsupported_real_harnesses
         }
     return {}

@@ -605,8 +605,16 @@ def test_cross_matrix_validation_constructs_all_compatible_cells(
 
     assert report.adapter_count == len(discover_adapters(_workspace_root()).adapters)
     assert report.compatible_cell_count > 0
-    assert report.incompatible_cell_count == 0
+    assert report.incompatible_cell_count == 2
     assert report.error_count == 0
+    incompatible = [cell for cell in report.cells if not cell.compatible]
+    assert {
+        (cell.benchmark_id, cell.harness, cell.reason)
+        for cell in incompatible
+    } == {
+        ("vision_language", "hermes", orchestrator_adapters.VISION_LANGUAGE_FIXED_RUNTIME_REASON),
+        ("vision_language", "openclaw", orchestrator_adapters.VISION_LANGUAGE_FIXED_RUNTIME_REASON),
+    }
 
     compatible = [cell for cell in report.cells if cell.compatible]
     assert compatible
@@ -837,9 +845,14 @@ def test_direct_and_native_rows_keep_truthful_matrix_compatibility(
 
     for harness in ("eliza", "hermes", "openclaw"):
         cell = cells[("vision_language", harness)]
-        assert cell.compatible is True
-        assert cell.command
-        assert "src/runner.ts" in cell.command_display
+        if harness == "eliza":
+            assert cell.compatible is True
+            assert cell.command
+            assert "src/runner.ts" in cell.command_display
+        else:
+            assert cell.compatible is False
+            assert cell.command is None
+            assert cell.reason == orchestrator_adapters.VISION_LANGUAGE_FIXED_RUNTIME_REASON
 
     compactbench_hermes = cells[("compactbench", "hermes")]
     assert compactbench_hermes.compatible is True
@@ -1479,11 +1492,18 @@ def test_realm_registry_smoke_bounds_and_routes_selected_harness(
     command = entry.build_command(
         tmp_path,
         ModelSpec(provider="cerebras", model="gpt-oss-120b"),
-        {"agent": "eliza", "max_tasks": 1, "max_steps": 3, "timeout": 60000},
+        {
+            "agent": "eliza",
+            "categories": ["P11"],
+            "max_tasks": 1,
+            "max_steps": 3,
+            "timeout": 60000,
+        },
     )
 
-    assert "--categories" not in command
-    assert "--use-sample-tasks" in command
+    assert "--categories" in command
+    assert command[command.index("--categories") + 1] == "P11"
+    assert "--use-sample-tasks" not in command
     assert command[command.index("--max-tasks") + 1] == "1"
     assert command[command.index("--max-steps") + 1] == "3"
     assert command[command.index("--timeout") + 1] == "60000"
@@ -1494,6 +1514,13 @@ def test_realm_registry_smoke_bounds_and_routes_selected_harness(
         {"agent": "openclaw", "max_tasks": 1},
     )
     assert openclaw_command[openclaw_command.index("--provider") + 1] == "openclaw"
+
+    sample_command = entry.build_command(
+        tmp_path,
+        ModelSpec(provider="cerebras", model="gpt-oss-120b"),
+        {"agent": "eliza", "max_tasks": 1, "use_sample_tasks": True},
+    )
+    assert "--use-sample-tasks" in sample_command
 
 
 def test_registry_adapter_forwards_selected_harness_to_build_command(tmp_path: Path) -> None:
@@ -1922,6 +1949,23 @@ def test_realm_and_mint_scores_reject_zero_task_results() -> None:
                 }
             }
         )
+
+
+def test_realm_score_rejects_sample_task_runs() -> None:
+    with pytest.raises(ValueError, match="sample-task run"):
+        _score_from_realm_json(
+            {
+                "metrics": {"overall_success_rate": 1.0, "total_tasks": 2},
+                "metadata": {"config": {"use_sample_tasks": True}},
+            }
+        )
+
+    assert _score_from_realm_json(
+        {
+            "metrics": {"overall_success_rate": 0.5, "total_tasks": 2},
+            "metadata": {"config": {"use_sample_tasks": False}},
+        }
+    ).score == 0.5
 
 
 def test_mint_score_uses_best_non_empty_configuration() -> None:
@@ -2831,6 +2875,32 @@ def test_terminalbench_no_docker_uses_local_sandbox_not_dry_run(tmp_path: Path) 
     assert "--dry-run" not in command
     assert "--model-provider" not in command
     assert command[command.index("--model") + 1] == "gpt-oss-120b"
+
+
+def test_terminalbench_default_allows_real_corpus_test_bootstrap(tmp_path: Path) -> None:
+    entry = {item.id: item for item in get_benchmark_registry(_workspace_root())}[
+        "terminal_bench"
+    ]
+    adapter = discover_adapters(_workspace_root()).adapters["terminal_bench"]
+
+    request = _effective_request(
+        adapter,
+        RunRequest(
+            benchmarks=["terminal_bench"],
+            agent="eliza",
+            provider="cerebras",
+            model="gpt-oss-120b",
+            extra_config={},
+        ),
+    )
+    command = entry.build_command(
+        tmp_path,
+        ModelSpec(provider="cerebras", model="gpt-oss-120b"),
+        request.extra_config,
+    )
+
+    assert request.extra_config["network_mode"] == "bridge"
+    assert command[command.index("--network-mode") + 1] == "bridge"
 
 
 def test_terminalbench_forwards_task_ids_and_single(tmp_path: Path) -> None:

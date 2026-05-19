@@ -26,6 +26,7 @@ except ImportError:  # pragma: no cover - script execution path
 
 TIER_ORDER: tuple[str, ...] = ELIZA_1_TIERS
 BACKEND_ORDER: tuple[str, ...] = ("cpu", "metal", "vulkan", "cuda", "rocm")
+IMAGEGEN_ACCELERATOR_ORDER: tuple[str, ...] = ("cpu", "metal", "vulkan", "cuda")
 _TIER_CHECK_RE = re.compile(r"^(?P<tier>\S+) (?P<kind>.+)$")
 
 
@@ -85,6 +86,14 @@ def _backend_names(detail: str) -> list[str]:
     for backend in BACKEND_ORDER:
         if re.search(rf"\b{backend}:\s*", detail):
             out.append(backend)
+    return out
+
+
+def _imagegen_accelerators(detail: str) -> list[str]:
+    out: list[str] = []
+    for accelerator in IMAGEGEN_ACCELERATOR_ORDER:
+        if re.search(rf"\b{accelerator}\b", detail):
+            out.append(accelerator)
     return out
 
 
@@ -149,6 +158,18 @@ def _backend_command(bundle_root: str, verify_dir: str, tier: str, backend: str,
             f"{_eval_suite_command(eval_python, bundle, tier, '--backend', 'rocm')}"
         )
     raise ValueError(f"unsupported backend {backend!r}")
+
+
+def _imagegen_command(accelerator: str) -> str:
+    return (
+        f"ELIZA_IMAGEGEN_ACCELERATOR={accelerator} "
+        "node plugins/plugin-local-inference/scripts/probe-sd-cpp.mjs --json && "
+        "bun test plugins/plugin-local-inference/__tests__/imagegen-routing.test.ts "
+        "plugins/plugin-local-inference/__tests__/imagegen-publishing.test.ts "
+        "plugins/plugin-local-inference/__tests__/imagegen-sd-cpp-probe.test.ts && "
+        f"publish evidence/imagegen/{accelerator}.json and refresh "
+        "evidence/imagegen/sd-cpp-runtime.json only after real image smoke reports pass"
+    )
 
 
 def build_queue(
@@ -250,6 +271,33 @@ def build_queue(
             )
         )
 
+    for check in _failed_checks(summary, "imagegenEvidence"):
+        name = str(check.get("name", ""))
+        detail = str(check.get("detail", ""))
+        for accelerator in _imagegen_accelerators(detail):
+            if accelerator == "cpu":
+                priority = 300
+                requires_hardware = False
+            else:
+                priority = 300 + IMAGEGEN_ACCELERATOR_ORDER.index(accelerator)
+                requires_hardware = accelerator in {"metal", "vulkan", "cuda"}
+            items.append(
+                QueueItem(
+                    id=f"imagegen:{accelerator}",
+                    tier="imagegen",
+                    category="imagegenEvidence",
+                    priority=priority,
+                    requires_hardware=requires_hardware,
+                    command=_imagegen_command(accelerator),
+                    evidence=(
+                        "evidence/imagegen/sd-cpp-runtime.json",
+                        f"evidence/imagegen/{accelerator}.json",
+                    ),
+                    source=name,
+                    detail=detail,
+                )
+            )
+
     return sorted(items, key=lambda item: (item.priority, item.id))
 
 
@@ -330,7 +378,12 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--tier", choices=TIER_ORDER, help="Only emit items for one tier.")
     ap.add_argument(
         "--category",
-        choices=("missingReleaseFiles", "backendVerification", "manifestEvalGates"),
+        choices=(
+            "missingReleaseFiles",
+            "backendVerification",
+            "manifestEvalGates",
+            "imagegenEvidence",
+        ),
         help="Only emit one category of work.",
     )
     ap.add_argument("--local-only", action="store_true", help="Only emit work that can run on this host class.")

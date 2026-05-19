@@ -20,6 +20,7 @@ def _args(tmp_path: Path) -> argparse.Namespace:
         max_tasks=1,
         max_iterations=1,
         timeout=30,
+        network_mode="bridge",
         model="unit-test-model",
         model_provider=None,
         temperature=0.0,
@@ -153,5 +154,6 @@ async def test_openclaw_cerebras_model_provider_configures_runner(
     assert config.model_name == "gpt-oss-120b"
     assert config.task_agent == "elizaos"
     assert config.execution_backend == "tmux"
+    assert config.network_mode == "bridge"
     assert cli.os.environ["BENCHMARK_MODEL_PROVIDER"] == "cerebras"
     assert cli.os.environ["BENCHMARK_MODEL_NAME"] == "gpt-oss-120b"
