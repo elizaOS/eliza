@@ -2500,6 +2500,22 @@ function makeCompletePartialModuleReport() {
           pluginName: "@remote/partial",
           moduleId: "partial-module",
           endpointId: report.endpointId,
+          ...makeRegisteredModuleCounts({
+            providerCount: 0,
+            evaluatorCount: 0,
+            responseHandlerEvaluatorCount: 0,
+            responseHandlerFieldEvaluatorCount: 0,
+            routeCount: 0,
+            modelCount: 0,
+            eventCount: 0,
+            serviceCount: 0,
+            appCount: 0,
+            appBridgeCount: 0,
+            lifecycleCount: 0,
+            widgetCount: 0,
+            componentTypeCount: 0,
+            viewCount: 0,
+          }),
         },
       ],
       pluginCount: 2,
@@ -3631,6 +3647,9 @@ function makeRuntimeUndercountReport() {
     },
     runtime: {
       ...report.runtime,
+      remotePlugins: report.runtime.remotePlugins.map((plugin, index) =>
+        index === 0 ? { ...plugin, actionCount: 2 } : plugin,
+      ),
       actionCount: 1,
     },
   };

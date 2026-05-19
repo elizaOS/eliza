@@ -1232,14 +1232,18 @@ packages/agent/src/services/remote-capability-cloud-sandbox.cloud-smoke.test.ts
   also audits the package-level `test:remote-capabilities` script so live report
   writer safety remains in the canonical remote-capability suite, audits the
   provider live smoke source so provider reports keep recording `providerId`,
+  audits the live report writer so runtime remote plugin entries keep
+  per-module surface counts, audits the live report validator so those runtime
+  counts keep matching `sync.registeredModules`,
   requires the live report validator self-test to stay in CI, and audits the
   root package scripts that invoke the live report validator, the validator
   self-test, the live CI audit, and the live CI audit self-test.
 - `bun run test:remote-capabilities:live-ci-audit:self-test` mutates those
   report-directory env vars, artifact upload paths, provider live report
-  `providerId` evidence, live report validator self-test coverage, root package
-  live validator and live CI audit script wiring, package-level remote
-  capability suite membership, final `test-status` live job gating,
+  `providerId` evidence, runtime remote plugin per-module count evidence, live
+  report validator self-test coverage, root package live validator and live CI
+  audit script wiring, package-level remote capability suite membership, final
+  `test-status` live job gating,
   scheduled/manual live observation gates, Cloud
   freshness/identity validation flags, provider primary endpoint secret
   enforcement, provider allowed/required lists, and provider GitHub-env
@@ -1283,10 +1287,12 @@ packages/agent/src/services/remote-capability-cloud-sandbox.cloud-smoke.test.ts
   recorded SHA-256 digest, or whose fetched JavaScript bundle digest is the empty
   SHA-256 digest.
 - Runtime live summaries include `runtime.remotePlugins`, keyed by plugin name,
-  endpoint id, and module id. The validator requires this runtime identity list
-  to match `sync.registeredModules` exactly, so count totals cannot stand in for
-  proof that the synced remote modules actually reached the runtime and stale
-  remote modules did not remain loaded.
+  endpoint id, module id, and per-module surface counts. The validator requires
+  this runtime identity list and each module's runtime surface counts to match
+  `sync.registeredModules` exactly, so aggregate count totals cannot stand in
+  for proof that the synced remote modules actually reached the runtime with the
+  expected actions, providers, routes, views, app bridges, lifecycle hooks, and
+  other plugin surfaces, and stale remote modules did not remain loaded.
 - Provider allowlist skips now emit rejected trust decisions (`trusted: false`,
   `reason: "module-not-allowed"`) with endpoint, module, and plugin identity.
   The live report validator requires every `sync.skipped` entry to have a

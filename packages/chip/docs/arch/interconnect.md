@@ -51,3 +51,33 @@ Phone-class 2028 memory claims remain blocked until `docs/evidence/memory/uma-dr
 The contract wrapper uses CPU-wins arbitration when CPU and DMA requests target the same AXI-Lite path. DMA and CPU accesses must stay inside a bounded physical-address allowlist, and unsupported access paths fail closed.
 
 No release, Android, AI-throughput, display-smoothness, or memory-bandwidth claim may rely on this scaffold until a real interconnect, memory controller, cache coherency, IOMMU, and QoS implementation has checked evidence.
+
+## AXI4 production fabric (in repo)
+
+The production-path AXI4 burst-capable fabric is `rtl/interconnect/axi4/e1_axi4_interconnect.sv` with package `e1_axi4_pkg.sv`. It supersedes the AXI-Lite scaffold on the south side once the cache agent's `rtl/cache/coherence/tl_c_to_chi_bridge.sv` lands on top of the CHI bridge.
+
+Parameters that the SoC top must wire correctly:
+
+| Parameter | Default | Cluster (`e1_cluster_top`) needs | Notes |
+| --- | --- | --- | --- |
+| `NUM_MASTERS` | 4 | 8 (`NUM_CORES`) | OoO + mid + little cluster has 1+3+4 cores; each core is one AXI4 master. NPU / display / GPU / DMA add additional masters at the cache-agent's coherent bus or the south AXI4 ring. |
+| `ID_WIDTH` | 4 | 8 (`AXI_ID_W`) | Cluster outputs 8-bit `axi_aw_id_o[NUM_CORES-1:0][7:0]`. Interconnect prefixes a `MASTER_IDX_W = $clog2(NUM_MASTERS+1) = 4` master tag on the slave side, so a downstream slave sees a 12-bit AxID `{master_idx[3:0], original_axid[7:0]}`. |
+| `DATA_WIDTH` | 128 | 128 (`L1D_DATA_W`) | L1D cache line width; matches LPDDR5X 8n-prefetch beat. |
+| `BURST_LEN_W` | 8 | 8 (full AXI4) | INCR up to 256 beats; WRAP/FIXED capped at 16. |
+| `MAX_OUTST` | 16 | ≥16 | Per-master outstanding-transaction limit driving AW/AR ready deassertion. |
+
+The cluster's `axi_aw_*_o[NUM_CORES-1:0]` aggregates connect 1:1 to the interconnect's `m_aw*` ports.
+
+## CHI bridge boundary (cache agent contract)
+
+`rtl/interconnect/chi_bridge/e1_chi_to_axi4_bridge.sv` is the bridge between the cache agent's CHI-class fabric (L3 ↔ SLC, snoop-aware) and the south AXI4. Contract:
+
+- North port: CHI requests with `chi_req_is_exclusive`, `chi_req_stash`, and cache attributes mapped from CHI MemAttr to AXI4 `AxCACHE` per `CACHE_WRITE_BACK_RW` and friends in `e1_axi4_pkg.sv`.
+- South port: AXI4 master that the interconnect treats as another upstream master. The bridge is the ONLY producer of coherent traffic on the south fabric; all other masters (NPU, GPU, display, DMA) attach directly to the AXI4 interconnect as non-coherent.
+- The cache agent's `rtl/cache/slc/e1_slc.sv` SLC sits between the L3 and the bridge. DRAM accesses fan out from the bridge through `e1_axi4_interconnect → e1_dram_ctrl → DFI 5.0` north of the LPDDR PHY (PHY itself remains BLOCKED, see `docs/evidence/memory/lpddr-phy-procurement.yaml`).
+
+## IOMMU isolation policy
+
+`rtl/iommu/e1_riscv_iommu.sv` is the upstream-AXI4-filtered IOMMU for every non-CHI master. The dma-buf v2 contract in `docs/arch/dma-buf-v2.md` describes how NPU, GPU, display, ISP, and camera buffers carry an exporter-stamped (devid, pasid) tuple that becomes the AXI4 `aw_devid` / `aw_pasid` USER bits at the IOMMU's upstream port. Coherent traffic from the CHI bridge does NOT pass through this IOMMU — coherent masters are inside the trusted domain.
+
+The IOMMU's evidence gate is `docs/evidence/memory/iommu-evidence-gate.yaml`; the RTL is verified by `verify/cocotb/iommu/test_riscv_iommu.py` (10 tests, including two-stage translation, PASID context switch, page-request interface, ATS capability, and TR_REQ debug interface).

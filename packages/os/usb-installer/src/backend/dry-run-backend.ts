@@ -18,6 +18,7 @@ const validChannels = new Set<ElizaOsImage["channel"]>([
 const validArchitectures = new Set<ElizaOsImage["architecture"]>([
   "x86_64",
   "arm64",
+  "riscv64",
 ]);
 
 interface ImageManifestValidationIssue {
@@ -62,6 +63,22 @@ export const DEFAULT_ELIZAOS_IMAGES: ElizaOsImage[] = [
     releaseNotesUrl: "https://docs.eliza.ai/os/linux",
     signatureUrl:
       "https://download.elizaos.ai/os/linux/elizaos-linux-live-nightly.iso.sig",
+  },
+  {
+    id: "elizaos-linux-live-riscv64-planned",
+    label: "elizaOS Linux Live (RISC-V 64, planned)",
+    version: "nightly",
+    channel: "nightly",
+    architecture: "riscv64",
+    buildId: "linux-live-riscv64-planned-2026.05.15",
+    publishedAt: "2026-05-15T00:00:00.000Z",
+    url: "https://download.elizaos.ai/os/linux/elizaos-linux-live-riscv64-planned.iso",
+    checksumSha256:
+      "0000000000000000000000000000000000000000000000000000000000000000",
+    sizeBytes: 4.9 * gib,
+    minUsbSizeBytes: 8 * gib,
+    manifestVersion: 1,
+    releaseNotesUrl: "https://docs.eliza.ai/os/linux",
   },
 ];
 

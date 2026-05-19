@@ -6,7 +6,11 @@ from dataclasses import asdict, dataclass
 from pathlib import Path
 from typing import Any
 
-from .adapters import GAIA_OFFICIAL_DATASET_UNAVAILABLE_REASON, discover_adapters
+from .adapters import (
+    GAIA_OFFICIAL_DATASET_UNAVAILABLE_REASON,
+    HYPERLIQUID_LIVE_UNAVAILABLE_REASON,
+    discover_adapters,
+)
 from .runner import (
     _default_env,
     _effective_request,
@@ -111,6 +115,8 @@ def _trajectory_expectations(adapter_id: str) -> list[str]:
 def _incompatibility_reason(adapter_id: str, harness: str, allowed_harnesses: tuple[str, ...]) -> str:
     if adapter_id in {"gaia", "gaia_orchestrated"} and not allowed_harnesses:
         return GAIA_OFFICIAL_DATASET_UNAVAILABLE_REASON
+    if adapter_id == "hyperliquid_bench" and not allowed_harnesses:
+        return HYPERLIQUID_LIVE_UNAVAILABLE_REASON
     allowed = ", ".join(allowed_harnesses) or "none"
     return f"harness '{harness}' not in adapter compatibility ({allowed})"
 

@@ -23,6 +23,7 @@ import {
 } from "@elizaos/ui";
 import { CheckCircle2, FileText, Loader2, Upload } from "lucide-react";
 import { useState } from "react";
+import { useT } from "@/providers/I18nProvider";
 
 interface DocumentUploadProps {
   onUploadSuccess: () => void;
@@ -71,6 +72,7 @@ export function DocumentUpload({
   onUploadSuccess,
   characterId,
 }: DocumentUploadProps) {
+  const t = useT();
   const [uploading, setUploading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
@@ -100,7 +102,11 @@ export function DocumentUpload({
 
   const handleFileUpload = async (files: File[]) => {
     if (files.length === 0) {
-      setError("Please select at least one file");
+      setError(
+        t("cloud.documents.upload.selectFile", {
+          defaultValue: "Please select at least one file",
+        }),
+      );
       return;
     }
 
@@ -131,11 +137,22 @@ export function DocumentUpload({
     if (!response.ok) {
       const data = await response.json();
       setUploading(false);
-      throw new Error(data.error || "Failed to upload files");
+      throw new Error(
+        data.error ||
+          t("cloud.documents.upload.uploadFailed", {
+            defaultValue: "Failed to upload files",
+          }),
+      );
     }
 
     const data = await response.json();
-    setSuccess(data.message || `Successfully uploaded ${files.length} file(s)`);
+    setSuccess(
+      data.message ||
+        t("cloud.documents.upload.successfullyUploaded", {
+          defaultValue: "Successfully uploaded {{n}} file(s)",
+          n: files.length,
+        }),
+    );
     setSelectedFiles([]);
 
     // Reset file input
@@ -153,7 +170,11 @@ export function DocumentUpload({
     e.preventDefault();
 
     if (!textContent.trim()) {
-      setError("Please enter some text content");
+      setError(
+        t("cloud.documents.upload.enterContent", {
+          defaultValue: "Please enter some text content",
+        }),
+      );
       return;
     }
 
@@ -177,7 +198,12 @@ export function DocumentUpload({
     if (!response.ok) {
       const data = await response.json();
       setUploading(false);
-      throw new Error(data.error || "Failed to upload text");
+      throw new Error(
+        data.error ||
+          t("cloud.documents.upload.uploadTextFailed", {
+            defaultValue: "Failed to upload text",
+          }),
+      );
     }
 
     const data = await response.json();
@@ -209,8 +235,16 @@ export function DocumentUpload({
 
       <Tabs id="document-upload-tabs" defaultValue="file" className="w-full">
         <TabsList className="grid w-full grid-cols-2">
-          <TabsTrigger value="file">Upload File</TabsTrigger>
-          <TabsTrigger value="text">Paste Text</TabsTrigger>
+          <TabsTrigger value="file">
+            {t("cloud.documents.upload.tabFile", {
+              defaultValue: "Upload File",
+            })}
+          </TabsTrigger>
+          <TabsTrigger value="text">
+            {t("cloud.documents.upload.tabText", {
+              defaultValue: "Paste Text",
+            })}
+          </TabsTrigger>
         </TabsList>
 
         <TabsContent value="file" className="space-y-4">
@@ -218,7 +252,9 @@ export function DocumentUpload({
             <section
               onDragOver={handleDragOver}
               onDrop={handleDrop}
-              aria-label="File upload drop zone"
+              aria-label={t("cloud.documents.upload.dropZoneAria", {
+                defaultValue: "File upload drop zone",
+              })}
               className="relative border-2 border-dashed border-border rounded-sm hover:border-primary/50 transition-colors"
             >
               <Input
@@ -245,7 +281,9 @@ export function DocumentUpload({
                   <div className="flex flex-col items-center gap-3">
                     <Loader2 className="h-8 w-8 animate-spin text-primary" />
                     <p className="text-sm text-foreground font-medium">
-                      Uploading files...
+                      {t("cloud.documents.upload.uploadingFiles", {
+                        defaultValue: "Uploading files...",
+                      })}
                     </p>
                   </div>
                 ) : (
@@ -255,11 +293,20 @@ export function DocumentUpload({
                     </div>
                     <div>
                       <p className="text-sm text-foreground font-medium mb-1">
-                        Drop files here or{" "}
-                        <span className="text-primary">browse</span>
+                        {t("cloud.documents.upload.dropOr", {
+                          defaultValue: "Drop files here or",
+                        })}{" "}
+                        <span className="text-primary">
+                          {t("cloud.documents.upload.browse", {
+                            defaultValue: "browse",
+                          })}
+                        </span>
                       </p>
                       <p className="text-xs text-muted-foreground">
-                        PDF, TXT, MD, DOC, DOCX, JSON, and code files
+                        {t("cloud.documents.upload.fileTypes", {
+                          defaultValue:
+                            "PDF, TXT, MD, DOC, DOCX, JSON, and code files",
+                        })}
                       </p>
                     </div>
                   </div>
@@ -270,7 +317,10 @@ export function DocumentUpload({
             {selectedFiles.length > 0 && (
               <div className="space-y-2">
                 <p className="text-sm font-medium">
-                  Uploading {selectedFiles.length} file(s)...
+                  {t("cloud.documents.upload.uploadingNFiles", {
+                    defaultValue: "Uploading {{n}} file(s)...",
+                    n: selectedFiles.length,
+                  })}
                 </p>
                 {selectedFiles.map((file) => (
                   <div
@@ -295,7 +345,11 @@ export function DocumentUpload({
         <TabsContent value="text" className="space-y-4">
           <form onSubmit={handleTextUpload} className="space-y-4">
             <div>
-              <Label htmlFor="filename">Document Name (Optional)</Label>
+              <Label htmlFor="filename">
+                {t("cloud.documents.upload.docNameLabel", {
+                  defaultValue: "Document Name (Optional)",
+                })}
+              </Label>
               <Input
                 id="filename"
                 type="text"
@@ -307,10 +361,16 @@ export function DocumentUpload({
             </div>
 
             <div>
-              <Label htmlFor="text-content">Content</Label>
+              <Label htmlFor="text-content">
+                {t("cloud.documents.upload.contentLabel", {
+                  defaultValue: "Content",
+                })}
+              </Label>
               <Textarea
                 id="text-content"
-                placeholder="Paste your text content here..."
+                placeholder={t("cloud.documents.upload.contentPlaceholder", {
+                  defaultValue: "Paste your text content here...",
+                })}
                 value={textContent}
                 onChange={(e) => setTextContent(e.target.value)}
                 disabled={uploading}
@@ -323,12 +383,16 @@ export function DocumentUpload({
               {uploading ? (
                 <>
                   <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                  Processing...
+                  {t("cloud.documents.upload.processing", {
+                    defaultValue: "Processing...",
+                  })}
                 </>
               ) : (
                 <>
                   <Upload className="mr-2 h-4 w-4" />
-                  Upload Text
+                  {t("cloud.documents.upload.uploadText", {
+                    defaultValue: "Upload Text",
+                  })}
                 </>
               )}
             </Button>

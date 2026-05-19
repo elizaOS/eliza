@@ -1,0 +1,35 @@
+{
+  "id": "elizaos-debian-riscv64-live",
+  "kind": "raw-image",
+  "target": {
+    "platform": "linux",
+    "architecture": "riscv64",
+    "device": null,
+    "hypervisor": null,
+    "firmware": null
+  },
+  "filename": "@@FILENAME@@",
+  "downloadUrl": "https://download.elizaos.ai/os/linux/@@FILENAME@@",
+  "status": "planned",
+  "sizeBytes": 0,
+  "sha256": "@@SHA256@@",
+  "signature": {
+    "status": "pending",
+    "url": null
+  },
+  "validation": {
+    "requiredEvidence": [
+      "qemu-virt-boot",
+      "u-boot-extlinux-boot",
+      "grub-efi-riscv64-boot",
+      "hardware-board-boot"
+    ],
+    "evidence": [
+      { "id": "qemu-virt-boot", "status": "missing", "path": null },
+      { "id": "u-boot-extlinux-boot", "status": "missing", "path": null },
+      { "id": "grub-efi-riscv64-boot", "status": "missing", "path": null },
+      { "id": "hardware-board-boot", "status": "missing", "path": null }
+    ]
+  },
+  "notes": "Wave 2B-B1 skeleton; real ISO build = Wave 4. Build timestamp: @@BUILD_TIMESTAMP@@."
+}

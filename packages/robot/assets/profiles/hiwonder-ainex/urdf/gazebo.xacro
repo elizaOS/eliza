@@ -1,0 +1,259 @@
+<?xml version="1.0"?>
+<robot xmlns:xacro="http://ros.org/wiki/xacro">
+  <xacro:property name="M_PI"   value="3.1415926535897931"/>
+
+  <gazebo>
+    <plugin name="gazebo_ros_control" filename="libgazebo_ros_control.so">
+      <robotNamespace>/</robotNamespace>
+    </plugin>
+
+    <plugin name="imu_plugin" filename="libgazebo_ros_imu.so">
+      <alwaysOn>true</alwaysOn>
+      <bodyName>imu_link</bodyName>
+      <frameName>imu_link</frameName>
+      <topicName>imu_data</topicName>
+      <serviceName>imu_service</serviceName>
+      <gaussianNoise>0.0</gaussianNoise>
+      <updateRate>0</updateRate>
+      <imu>
+        <noise>
+          <type>gaussian</type>
+          <rate>
+            <mean>0.0</mean>
+            <stddev>2e-4</stddev>
+            <bias_mean>0.0000075</bias_mean>
+            <bias_stddev>0.0000008</bias_stddev>
+          </rate>
+          <accel>
+            <mean>0.0</mean>
+            <stddev>1.7e-2</stddev>
+            <bias_mean>0.1</bias_mean>
+            <bias_stddev>0.001</bias_stddev>
+          </accel>
+        </noise>
+      </imu>
+    </plugin>
+  </gazebo>
+
+  <gazebo reference="camera_link">
+      <sensor type="camera" name="camera">
+          <update_rate>30.0</update_rate>
+          <camera name="head">
+              <pose>0 0 0 ${M_PI} -${M_PI/2} -${M_PI/2}</pose>
+              <horizontal_fov>1.085595</horizontal_fov>
+              <image>
+                  <width>640</width>
+                  <height>480</height>
+                  <format>R8G8B8</format>
+              </image>
+              <clip>
+                  <near>0.03</near>
+                  <far>100</far>
+              </clip>
+              <noise>
+                  <type>gaussian</type>
+                  <mean>0.0</mean>
+                  <stddev>0.007</stddev>
+              </noise>
+          </camera>
+          <plugin name="gazebo_camera" filename="libgazebo_ros_camera.so">
+              <alwaysOn>true</alwaysOn>
+              <updateRate>0.0</updateRate>
+              <cameraName>/camera</cameraName>
+              <imageTopicName>image_raw</imageTopicName>
+              <cameraInfoTopicName>camera_info</cameraInfoTopicName>
+              <frameName>camera_link</frameName>
+              <hackBaseline>0.07</hackBaseline>
+              <distortionK1>0.0</distortionK1>
+              <distortionK2>0.0</distortionK2>
+              <distortionK3>0.0</distortionK3>
+              <distortionT1>0.0</distortionT1>
+              <distortionT2>0.0</distortionT2>
+          </plugin>
+      </sensor>
+  </gazebo>
+
+  <gazebo reference="body_link">
+    <mu1>0.2</mu1>
+    <mu2>0.2</mu2>
+    <material>Gazebo/Black</material>
+    <selfCollide>false</selfCollide>
+  </gazebo>
+
+  <gazebo reference="l_hip_yaw_link">
+    <mu1>0.2</mu1>
+    <mu2>0.2</mu2>
+    <material>Gazebo/Black</material>
+    <selfCollide>false</selfCollide>
+  </gazebo>
+
+  <gazebo reference="l_hip_roll_link">
+    <mu1>0.2</mu1>
+    <mu2>0.2</mu2>
+    <material>Gazebo/Black</material>
+    <selfCollide>false</selfCollide>
+  </gazebo>
+
+  <gazebo reference="l_hip_pitch_link">
+    <mu1>0.2</mu1>
+    <mu2>0.2</mu2>
+    <material>Gazebo/Black</material>
+    <selfCollide>false</selfCollide>
+  </gazebo>
+
+  <gazebo reference="l_knee_link">
+    <mu1>0.2</mu1>
+    <mu2>0.2</mu2>
+    <material>Gazebo/Black</material>
+    <selfCollide>false</selfCollide>
+  </gazebo>
+
+  <gazebo reference="l_ank_pitch_link">
+    <mu1>0.2</mu1>
+    <mu2>0.2</mu2>
+    <material>Gazebo/Black</material>
+    <selfCollide>false</selfCollide>
+  </gazebo>
+
+  <gazebo reference="l_ank_roll_link">
+    <kp>100000.0</kp>
+    <kd>100.0</kd>
+    <mu1>1.5</mu1>
+    <mu2>1.5</mu2>
+    <fdir1>1 0 0</fdir1>
+    <maxVel>1.0</maxVel>
+    <minDepth>0.001</minDepth>
+    <material>Gazebo/Black</material>
+  </gazebo>
+
+  <gazebo reference="r_hip_yaw_link">
+    <mu1>0.2</mu1>
+    <mu2>0.2</mu2>
+    <material>Gazebo/Black</material>
+    <selfCollide>false</selfCollide>
+  </gazebo>
+
+  <gazebo reference="r_hip_roll_link">
+    <mu1>0.2</mu1>
+    <mu2>0.2</mu2>
+    <material>Gazebo/Black</material>
+    <selfCollide>false</selfCollide>
+  </gazebo>
+
+  <gazebo reference="r_hip_pitch_link">
+    <mu1>0.2</mu1>
+    <mu2>0.2</mu2>
+    <material>Gazebo/Black</material>
+    <selfCollide>false</selfCollide>
+  </gazebo>
+
+  <gazebo reference="r_knee_link">
+    <mu1>0.2</mu1>
+    <mu2>0.2</mu2>
+    <material>Gazebo/Black</material>
+    <selfCollide>false</selfCollide>
+  </gazebo>
+
+  <gazebo reference="r_ank_pitch_link">
+    <mu1>0.2</mu1>
+    <mu2>0.2</mu2>
+    <material>Gazebo/Black</material>
+    <selfCollide>false</selfCollide>
+  </gazebo>
+
+  <gazebo reference="r_ank_roll_link">
+    <kp>100000.0</kp>
+    <kd>100.0</kd>
+    <mu1>1.5</mu1>
+    <mu2>1.5</mu2>
+    <fdir1>1 0 0</fdir1>
+    <maxVel>1.0</maxVel>
+    <minDepth>0.001</minDepth>
+    <material>Gazebo/Black</material>
+  </gazebo>
+
+  <gazebo reference="r_sho_pitch_link">
+    <mu1>0.2</mu1>
+    <mu2>0.2</mu2>
+    <material>Gazebo/Black</material>
+    <selfCollide>false</selfCollide>
+  </gazebo>
+
+  <gazebo reference="r_sho_roll_link">
+    <mu1>0.2</mu1>
+    <mu2>0.2</mu2>
+    <material>Gazebo/Black</material>
+    <selfCollide>false</selfCollide>
+  </gazebo>
+
+  <gazebo reference="r_el_pitch_link">
+    <mu1>0.2</mu1>
+    <mu2>0.2</mu2>
+    <material>Gazebo/Black</material>
+    <selfCollide>false</selfCollide>
+  </gazebo>
+
+  <gazebo reference="r_el_yaw_link">
+    <mu1>0.2</mu1>
+    <mu2>0.2</mu2>
+    <material>Gazebo/Black</material>
+    <selfCollide>false</selfCollide>
+  </gazebo>
+
+  <gazebo reference="r_gripper_link">
+    <mu1>0.2</mu1>
+    <mu2>0.2</mu2>
+    <material>Gazebo/Black</material>
+    <selfCollide>false</selfCollide>
+  </gazebo>
+
+  <gazebo reference="l_sho_pitch_link">
+    <mu1>0.2</mu1>
+    <mu2>0.2</mu2>
+    <material>Gazebo/Black</material>
+    <selfCollide>false</selfCollide>
+  </gazebo>
+
+  <gazebo reference="l_sho_roll_link">
+    <mu1>0.2</mu1>
+    <mu2>0.2</mu2>
+    <material>Gazebo/Black</material>
+    <selfCollide>false</selfCollide>
+  </gazebo>
+
+  <gazebo reference="l_el_pitch_link">
+    <mu1>0.2</mu1>
+    <mu2>0.2</mu2>
+    <material>Gazebo/Black</material>
+    <selfCollide>false</selfCollide>
+  </gazebo>
+
+  <gazebo reference="l_el_yaw_link">
+    <mu1>0.2</mu1>
+    <mu2>0.2</mu2>
+    <material>Gazebo/Black</material>
+    <selfCollide>false</selfCollide>
+  </gazebo>
+
+  <gazebo reference="l_gripper_link">
+    <mu1>0.2</mu1>
+    <mu2>0.2</mu2>
+    <material>Gazebo/Black</material>
+    <selfCollide>false</selfCollide>
+  </gazebo>
+
+  <gazebo reference="head_pan_link">
+    <mu1>0.2</mu1>
+    <mu2>0.2</mu2>
+    <material>Gazebo/Black</material>
+    <selfCollide>false</selfCollide>
+  </gazebo>
+
+  <gazebo reference="head_tilt_link">
+    <mu1>0.2</mu1>
+    <mu2>0.2</mu2>
+    <material>Gazebo/Black</material>
+    <selfCollide>false</selfCollide>
+  </gazebo>
+
+</robot>

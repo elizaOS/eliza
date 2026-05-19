@@ -18,8 +18,11 @@ BOUNDARY = (
     "unless a generated e1-chip hardware model and transcript are archived. OS "
     "on our chip may be claimed only when on_chip_os_boot_claim is true from "
     "generated AP/Linux evidence; qemu-virt, Renode, and Android simulator evidence "
-    "do not satisfy that claim. It is not a fabrication or phone-class performance "
-    "claim."
+    "do not satisfy that claim. The minimum Linux+NPU target may be claimed only "
+    "when minimum_linux_npu_target_claim is true from one generated-AP Linux "
+    "transcript that also contains the e1 NPU ML smoke PASS markers; local NPU "
+    "runtime smoke alone does not satisfy the integrated target. It is not a "
+    "fabrication or phone-class performance claim."
 )
 
 
@@ -68,7 +71,9 @@ def required_results() -> list[dict]:
         base_result("chipyard_verilator_preflight", "blocked", "our_chip_prereq", "os_prereq"),
         base_result("chipyard_generated_ap", "blocked", "our_chip_prereq", "os_prereq"),
         base_result("chipyard_payload_path", "blocked", "our_chip_prereq", "os_prereq"),
+        base_result("chipyard_verilator_linux_attempt", "blocked", "our_chip_os_boot", "os_boot"),
         base_result("chipyard_verilator_linux_smoke", "blocked", "our_chip_os_boot", "os_boot"),
+        base_result("npu_ml_smoke", "pass", "our_chip_npu_ml_local", "npu_ml"),
     ]
 
 
@@ -100,6 +105,16 @@ def report_payload(*, status: str = "blocked", on_chip: bool = False) -> dict:
                 item["status"] = "pass"
                 item["returncode"] = 0
         blockers = []
+    minimum_blockers = list(blockers)
+    if not on_chip:
+        minimum_blockers.append(
+            {
+                "name": "integrated_linux_npu_ml_transcript",
+                "tier": "npu_ml",
+                "detail": "missing generated-AP Linux/NPU transcript",
+                "next_command": "python3 scripts/run_mvp_simulator.py",
+            }
+        )
     return {
         "schema": "eliza.mvp_simulator.v1",
         "status": status,
@@ -114,9 +129,13 @@ def report_payload(*, status: str = "blocked", on_chip: bool = False) -> dict:
         "on_chip_os_boot_claim": on_chip,
         "reference_qemu_virt_os_boot_claim": False,
         "reference_android_os_boot_claim": False,
+        "npu_ml_smoke_claim": True,
+        "integrated_linux_npu_ml_claim": on_chip,
+        "minimum_linux_npu_target_claim": on_chip,
         "qemu_virt_reference_only": True,
         "renode_reference_only": True,
         "blockers_to_on_chip_os_boot": blockers,
+        "blockers_to_minimum_linux_npu_target": minimum_blockers,
         "remaining_blockers": blockers,
         "failures": [],
         "claim_boundary": BOUNDARY,

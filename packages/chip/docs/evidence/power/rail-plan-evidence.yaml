@@ -1,0 +1,27 @@
+schema: eliza.rail_plan_evidence.v1
+status: planning_authoritative
+release_use: prohibited_until_external_review
+claim_boundary: >
+  Hash-pinned reference to the authoritative 16-rail plan
+  (docs/pd/rail-plan-2028.yaml). Used by scripts/check_rail_plan.py and the
+  operating-point optimizer to detect drift: if the rail plan changes, the
+  hash here must be regenerated in the same commit, and dependent claims
+  (soc-optimized-operating-point.yaml.rail_plan_hash) must follow.
+source_artifacts:
+  - docs/pd/rail-plan-2028.yaml
+  - pd/upf/power-domains.yaml
+  - pd/upf/e1_soc_top.upf
+rail_plan_path: docs/pd/rail-plan-2028.yaml
+rail_plan_sha256: 5941b79f61fee2304e14d197393cf049c02938badd063d9bdec94d3fcb5c8848
+required_consumers:
+  - path: docs/architecture-optimization/soc-optimized-operating-point.yaml
+    field: rail_plan_hash
+    status: complete
+  - path: pd/upf/e1_soc_top.upf
+    field: ALL 16 rails appear as create_supply_net entries
+    status: complete
+  - path: pd/upf/power-domains.yaml
+    field: ALL 16 rails referenced under power_domains[*].rail
+    status: complete
+release_blockers:
+  - Rail count locked at 16; any change requires rotating this hash AND updating UPF + signoff gate AND every binding consumer above.

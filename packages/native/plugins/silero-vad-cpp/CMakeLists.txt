@@ -18,6 +18,11 @@ include_directories(include src)
 # Phase 2: the model entry points are real. The stub is gone. We keep
 # the resampler + state-management TUs as they were — both are still
 # pure-C utilities the runtime uses.
+#
+# Architecture portability: every TU below is plain scalar C with no
+# x86/ARM/RVV intrinsics, so the same source list builds on x86_64,
+# aarch64, and riscv64 without any CMAKE_SYSTEM_PROCESSOR branching.
+# Cross-build verified via cmake/toolchain-riscv64-linux-musl.cmake.
 set(SILERO_VAD_SRCS
     src/silero_vad_runtime.c
     src/silero_vad_state.c

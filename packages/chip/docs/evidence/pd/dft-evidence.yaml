@@ -1,0 +1,58 @@
+schema: eliza.pd_dft_evidence.v1
+status: draft_local_evidence
+release_use: prohibited_until_external_review
+scope: scan_insertion_plus_mbist_plus_jtag_boundary_scan
+description: |
+  DFT evidence gate. Requires scan-flop mapping (Yosys dfflibmap onto
+  sky130_fd_sc_hd scan-capable cells), Fault-driven scan chain stitching,
+  per-SRAM MBIST controllers (tied to pd/macros/manifest.yaml), and JTAG
+  boundary scan for all pads. Fault or commercial ATPG must produce
+  coverage.json >= 95 % stuck-at before this gate unblocks.
+source_artifacts:
+  - pd/dft/scan_insertion.tcl
+  - pd/dft/mbist.yaml
+  - pd/dft/fault_atpg.config.yaml
+  - pd/dft/README.md
+  - docs/pd/dft-strategy.md
+  - pd/macros/manifest.yaml
+local_findings:
+  scan_insertion:
+    status: validated_on_leaf_module
+    evidence_boundary: |
+      pd/dft/scan_insertion.tcl runs cleanly on rtl/bootrom/e1_bootrom.sv
+      through Yosys 0.64 with the Sky130 sky130_fd_sc_hd typical Liberty,
+      producing build/dft/e1_bootrom.scan_ready.v. dfflibmap was the active
+      pass (not the non-existent `scanchain`). Full-design scan stitching
+      still requires Fault (https://github.com/AUCOHL/Fault), which is not
+      vendored under external/. Not yet hooked into the OpenLane release
+      config via SYNTH_EXTRA_SCRIPT.
+    validation_command: |
+      LIB_TYPICAL_FAST_LIBERTY=$PWD/external/pdks/volare/sky130/versions/0fe599b2afb6708d281543108caf8310912f54af/sky130A/libs.ref/sky130_fd_sc_hd/lib/sky130_fd_sc_hd__tt_025C_1v80.lib
+      yosys -c pd/dft/run_e1_bootrom_scan_prep.tcl
+  mbist:
+    status: blocked
+    evidence_boundary: |
+      MBIST controllers cannot be generated until OpenRAM SRAM macros land
+      in pd/macros/sky130/. pd/dft/mbist.yaml enumerates the required
+      controllers.
+  jtag_boundary_scan:
+    status: blocked
+    evidence_boundary: |
+      Boundary scan chain length depends on the final pad inventory.
+      Pad cell selection criteria exist (docs/pd/pad-cell-selection-criteria.md)
+      but the pad list is not finalized.
+  atpg_coverage:
+    status: blocked
+    evidence_boundary: |
+      Fault is not vendored under external/. Commercial ATPG is BLOCKED on
+      docs/evidence/pd/commercial-eda-gate.yaml.
+acceptance_criteria:
+  - build/dft/e1_chip_top.scan.v exists after a release run.
+  - Every macro in pd/macros/manifest.yaml has rtl_status=complete_local_evidence in pd/dft/mbist.yaml.
+  - JTAG boundary scan chain length == finalized pad count.
+  - build/dft/atpg/coverage.json reports stuck_at_percent >= 95.0.
+release_blockers:
+  - Scan insertion pass not yet invoked from OpenLane synth flow.
+  - OpenRAM SRAM macros unbuilt; MBIST controllers cannot be generated.
+  - Pad inventory not finalized; JTAG boundary register width unknown.
+  - Fault ATPG not vendored; commercial alternative blocked on commercial-eda-gate.

@@ -245,10 +245,12 @@ async function fetchGitHubIsoImages(): Promise<ElizaOsImage[]> {
               for (const asset of release.assets) {
                 if (!asset.name.endsWith(".iso")) continue;
                 const arch: ElizaOsImage["architecture"] = asset.name.includes(
-                  "arm64",
+                  "riscv64",
                 )
-                  ? "arm64"
-                  : "x86_64";
+                  ? "riscv64"
+                  : asset.name.includes("arm64")
+                    ? "arm64"
+                    : "x86_64";
                 const channel: ElizaOsImage["channel"] = release.prerelease
                   ? "nightly"
                   : "stable";

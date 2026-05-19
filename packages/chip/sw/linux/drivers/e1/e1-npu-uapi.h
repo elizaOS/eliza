@@ -95,7 +95,14 @@ struct e1_npu_perf {
 #define E1_NPU_CTRL_ERROR 0x4u
 #define E1_NPU_DEFAULT_POLL_LIMIT 100000u
 #define E1_NPU_OP_DOT4_S8 4u
+#define E1_NPU_OP_DOT8_S4 7u
 #define E1_NPU_OP_GEMM_S8 8u
+#define E1_NPU_OP_GEMM_S4 9u
+#define E1_NPU_OP_RELU4_S8 10u
+#define E1_NPU_OP_VRELU_S8 11u
+#define E1_NPU_OP_SDOT4_S4_2_4 12u
+#define E1_NPU_OP_DOT16_S2 13u
+#define E1_NPU_OP_DOT4_FP8_E4M3 14u
 #define E1_NPU_DESCRIPTOR_MODE 1u
 #define E1_NPU_DESC_RING_ENTRIES 8u
 #define E1_NPU_SCRATCH_BYTES 64u

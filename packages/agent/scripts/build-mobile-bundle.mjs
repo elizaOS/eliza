@@ -292,12 +292,10 @@ const nativeStubs = {
   "@types/react": path.join(stubsDir, "null-plugin.cjs"),
   "@types/react/jsx-runtime": path.join(stubsDir, "null-plugin.cjs"),
   "@types/react/jsx-dev-runtime": path.join(stubsDir, "null-plugin.cjs"),
-  "node-llama-cpp": path.join(stubsDir, "node-llama-cpp.cjs"),
-  "@node-llama-cpp/linux-x64": path.join(stubsDir, "node-llama-cpp.cjs"),
-  "@node-llama-cpp/linux-arm64": path.join(stubsDir, "node-llama-cpp.cjs"),
-  "@node-llama-cpp/mac-arm64": path.join(stubsDir, "node-llama-cpp.cjs"),
-  "@node-llama-cpp/mac-x64": path.join(stubsDir, "node-llama-cpp.cjs"),
-  "@node-llama-cpp/win-x64": path.join(stubsDir, "node-llama-cpp.cjs"),
+  // node-llama-cpp and its @node-llama-cpp/<platform> prebuilds were
+  // removed when plugin-local-inference migrated to llama-cpp-capacitor +
+  // bun:ffi (the desktop FFI shim path). The mobile bundle no longer
+  // needs the stubs because no source file imports them.
   // llama-cpp-capacitor is the WebView-side JNI binding for the Capacitor
   // mobile build. The bun-side AOSP agent uses bun:ffi against libllama.so
   // directly via aosp-llama-adapter.ts, never this package — but Bun.build

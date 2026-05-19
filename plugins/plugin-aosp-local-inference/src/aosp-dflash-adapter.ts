@@ -153,7 +153,13 @@ export function resolveLlamaServerPath(
   cwd: string = process.cwd(),
 ): string {
   const abiDir =
-    arch === "arm64" ? "arm64-v8a" : arch === "x64" ? "x86_64" : null;
+    arch === "arm64"
+      ? "arm64-v8a"
+      : arch === "x64"
+        ? "x86_64"
+        : arch === "riscv64"
+          ? "riscv64"
+          : null;
   if (abiDir === null) {
     throw new Error(
       `[aosp-dflash] Unsupported process.arch for AOSP build: ${arch}`,

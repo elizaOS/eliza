@@ -1,5 +1,6 @@
 import { DashboardErrorState, DashboardLoadingState } from "@elizaos/ui";
 import { Helmet } from "react-helmet-async";
+import { useT } from "@/providers/I18nProvider";
 import { useRequireAuth } from "../../lib/auth-hooks";
 import { useApiKeys } from "../../lib/data/api-keys";
 import { ApiKeysPage as ApiKeysPageView } from "./_components/api-keys-page";
@@ -19,26 +20,33 @@ function getApiKeyStatus(
 }
 
 export default function ApiKeysPage() {
+  const t = useT();
   const { ready, authenticated } = useRequireAuth();
   const { data: keys, isLoading, isError, error } = useApiKeys();
 
-  // Helmet must render even during the auth-loading short-circuit, otherwise
-  // the homepage <title> leaks through while we wait for auth to resolve.
   const head = (
     <Helmet>
-      <title>API Keys</title>
+      <title>
+        {t("cloud.apiKeys.metaTitle", { defaultValue: "API Keys" })}
+      </title>
       <meta
         name="description"
-        content="Manage your API keys and authentication credentials for elizaOS platform"
+        content={t("cloud.apiKeys.metaDescription", {
+          defaultValue:
+            "Manage your API keys and authentication credentials for elizaOS platform",
+        })}
       />
     </Helmet>
   );
+  const loadingLabel = t("cloud.apiKeys.loading", {
+    defaultValue: "Loading API keys",
+  });
 
   if (!ready || !authenticated)
     return (
       <>
         {head}
-        <DashboardLoadingState label="Loading API keys" />
+        <DashboardLoadingState label={loadingLabel} />
       </>
     );
 
@@ -46,10 +54,15 @@ export default function ApiKeysPage() {
     <>
       {head}
       {isLoading ? (
-        <DashboardLoadingState label="Loading API keys" />
+        <DashboardLoadingState label={loadingLabel} />
       ) : isError ? (
         <DashboardErrorState
-          message={(error as Error)?.message ?? "Failed to load API keys"}
+          message={
+            (error as Error)?.message ??
+            t("cloud.apiKeys.loadError", {
+              defaultValue: "Failed to load API keys",
+            })
+          }
         />
       ) : (
         <ApiKeysPageContent keys={keys} />

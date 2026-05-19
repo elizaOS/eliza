@@ -16,9 +16,10 @@
  *        - `fused`           — `eliza_inference_asr_*` ABI (Qwen3-ASR
  *          inside the fused libelizainference). Linux / macOS / Windows
  *          desktop, AOSP system app via the same fused build.
- *        - `openvino-whisper` — Intel NPU/CPU autoprobe via a Python
- *          worker subprocess (`scripts/openvino-whisper-asr-worker.py`).
- *          Off by default; opt-in tier for Intel Core Ultra hardware.
+ *        - `whisper-cpp`     — whisper.cpp via the libwhisper_eliza_adapter
+ *          flat C ABI, loaded through bun:ffi. Available on every arch we
+ *          ship to (x86_64, arm64, riscv64); replaces the previous
+ *          OpenVINO Python-worker path.
  *        - `coreml`          — Capacitor bridge to a Core ML Whisper
  *          model on iOS (stub here until the bridge ships).
  *        - `aosp-ffi`        — bun:ffi shim around the AOSP NDK Whisper /
@@ -79,7 +80,7 @@ export interface AsrLoadArgs {
 
 /** Backend contract. Every per-platform ASR runtime implements this. */
 export interface AsrBackend {
-	/** Stable identifier for telemetry / errors (`"fused"`, `"openvino-whisper"`, `"coreml"`, ...). */
+	/** Stable identifier for telemetry / errors (`"fused"`, `"whisper-cpp"`, `"coreml"`, ...). */
 	readonly id: string;
 	/**
 	 * Whether this backend supports the request as-is. False → the arbiter

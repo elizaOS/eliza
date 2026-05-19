@@ -1057,6 +1057,13 @@ def _score_from_hyperliquid_bench_json(data: JSONValue) -> ScoreExtraction:
     base/bonus/penalty totals from ``hl-evaluator``. Higher is better.
     """
     root = expect_dict(data, ctx="hyperliquid_bench:root")
+    demo_mode = get_optional(root, "demo_mode")
+    if demo_mode is None:
+        demo_mode = True
+    if demo_mode is True:
+        raise ValueError(
+            "hyperliquid_bench: demo-mode result is not publishable as a real harness score"
+        )
     overall = expect_float(
         get_required(root, "final_score", ctx="hyperliquid_bench:root"),
         ctx="hyperliquid_bench:final_score",
@@ -1076,7 +1083,7 @@ def _score_from_hyperliquid_bench_json(data: JSONValue) -> ScoreExtraction:
             "mode": get_optional(root, "mode") or "",
             "model": get_optional(root, "model") or "",
             "network": get_optional(root, "network") or "",
-            "demo_mode": get_optional(root, "demo_mode") if get_optional(root, "demo_mode") is not None else True,
+            "demo_mode": demo_mode,
         },
     )
 

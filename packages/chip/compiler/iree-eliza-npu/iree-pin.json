@@ -1,0 +1,48 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "schema": "eliza.iree_backend_pin.v1",
+  "as_of": "2026-05-19",
+  "claim_boundary": "pinned_recipe_only_not_executable_evidence_of_a_built_backend",
+  "blocked_until_built": true,
+  "blocked_reason": "IREE in-tree build requires LLVM-stage2 from scripts/build_llvm_riscv.sh; both run only inside the canonical Linux container",
+  "upstream": {
+    "project": "iree-org/iree",
+    "url": "https://github.com/iree-org/iree.git",
+    "branch": "main",
+    "commit_sha": "d9a3dd15a552cdded3bda4fcfa65f1341d2b5f92",
+    "commit_resolved_via": "git ls-remote https://github.com/iree-org/iree.git HEAD on 2026-05-19",
+    "commit_resolved_at_utc": "2026-05-19T10:15:30Z",
+    "refresh_policy": "quarterly, paired with the LLVM trunk pin"
+  },
+  "submodules_policy": "init+update recursive; the IREE repository pulls in StableHLO, mlir-hlo, vulkan-headers, and tracy",
+  "external_dialect_mount": "compiler/plugins/target/elizanpu",
+  "external_dialect_source": "packages/chip/compiler/iree-eliza-npu",
+  "cmake_args": [
+    "-DCMAKE_BUILD_TYPE=Release",
+    "-DIREE_ENABLE_LLD=ON",
+    "-DIREE_ENABLE_ASSERTIONS=OFF",
+    "-DIREE_BUILD_PYTHON_BINDINGS=ON",
+    "-DIREE_BUILD_TESTS=ON",
+    "-DIREE_TARGET_BACKEND_DEFAULTS=OFF",
+    "-DIREE_TARGET_BACKEND_LLVM_CPU=ON",
+    "-DIREE_TARGET_BACKEND_ELIZANPU=ON",
+    "-DIREE_INPUT_STABLEHLO=ON",
+    "-DIREE_INPUT_TOSA=ON",
+    "-DIREE_INPUT_TORCH=ON"
+  ],
+  "produced_artifacts": [
+    "bin/iree-compile",
+    "bin/iree-opt",
+    "bin/iree-run-module",
+    "lib/libIREECompilerElizaNpu.a",
+    "lib/libiree_compiler_API_SharedImpl.so",
+    "python_packages/iree-compiler",
+    "python_packages/iree-runtime"
+  ],
+  "evidence_outputs": {
+    "manifest": "docs/evidence/compiler/iree-backend-evidence.yaml",
+    "version_record": "build/reports/compiler/iree-version.txt",
+    "dialect_smoke": "build/reports/compiler/elizanpu-opt-roundtrip.log",
+    "matmul_lowering_dump": "build/reports/compiler/elizanpu-linalg-matmul.mlir"
+  }
+}

@@ -17,6 +17,7 @@ import check_software_bsp  # noqa: E402
 
 VALID_STATUSES = {"pass", "blocked", "failed"}
 VIRTUAL_SMOKE_EVIDENCE = {
+    "docs/evidence/android/eliza_ai_soc_cvd_hal_smoke.log",
     "docs/evidence/android/cuttlefish_riscv64_smoke.log",
     "docs/evidence/android/qemu_riscv64_smoke.log",
     "docs/evidence/android/renode_e1_soc_smoke.log",
@@ -62,6 +63,7 @@ def main() -> int:
         if path
         not in {
             "docs/evidence/android/eliza_ai_soc_cts_vts_plan.log",
+            "docs/evidence/android/eliza_ai_soc_cvd_hal_smoke.log",
             "docs/evidence/android/cuttlefish_riscv64_smoke.log",
             "docs/evidence/android/qemu_riscv64_smoke.log",
             "docs/evidence/android/renode_e1_soc_smoke.log",

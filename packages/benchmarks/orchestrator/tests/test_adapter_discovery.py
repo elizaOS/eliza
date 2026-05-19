@@ -47,6 +47,7 @@ from benchmarks.registry import (
     _score_from_contextbench_json,
     _score_from_gauntlet_json,
     _score_from_gsm8k_json,
+    _score_from_hyperliquid_bench_json,
     _score_from_mind2web_json,
     _score_from_mmau_json,
     _score_from_mint_json,
@@ -125,6 +126,11 @@ def test_gauntlet_requires_clone_capable_surfpool_for_real_harness_rows(
         orchestrator_adapters,
         "_has_gauntlet_real_surfpool_backend",
         lambda: False,
+    )
+    monkeypatch.setattr(
+        orchestrator_adapters,
+        "_has_hyperliquid_live_backend",
+        lambda: True,
     )
     adapter = discover_adapters(_workspace_root()).adapters["gauntlet"]
     assert adapter.agent_compatibility == ()
@@ -237,6 +243,27 @@ def test_gauntlet_rejects_mock_or_offline_execution_artifacts() -> None:
 
     payload["metadata"]["execution"]["offline_mode"] = False  # type: ignore[index]
     assert _score_from_gauntlet_json(payload).score == 0.75
+
+
+def test_hyperliquid_rejects_demo_mode_execution_artifacts() -> None:
+    payload = {
+        "final_score": 3.5,
+        "total_score": 3.5,
+        "base": 3.0,
+        "bonus": 0.5,
+        "penalty": 0.0,
+        "total_scenarios": 1,
+        "passed_scenarios": 1,
+        "mode": "eliza",
+        "model": "gpt-oss-120b",
+        "network": "testnet",
+        "demo_mode": True,
+    }
+    with pytest.raises(ValueError, match="demo-mode result"):
+        _score_from_hyperliquid_bench_json(payload)
+
+    payload["demo_mode"] = False
+    assert _score_from_hyperliquid_bench_json(payload).score == 3.5
 
 
 def test_voiceagentbench_requires_real_audio_dataset_for_harness_rows(
@@ -569,6 +596,7 @@ def test_cross_matrix_validation_constructs_all_compatible_cells(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     monkeypatch.setattr(orchestrator_adapters, "_has_gaia_official_dataset", lambda: True)
+    monkeypatch.setattr(orchestrator_adapters, "_has_hyperliquid_live_backend", lambda: True)
     report = build_cross_matrix_report(
         _workspace_root().parent,
         provider="cerebras",
@@ -644,6 +672,31 @@ def test_gaia_official_dataset_gate_accepts_hf_token_aliases(
         orchestrator_adapters._GAIA_OFFICIAL_DATASET_AVAILABLE = None
 
 
+def test_hyperliquid_matrix_rows_require_live_credentials(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(orchestrator_adapters, "_has_gaia_official_dataset", lambda: True)
+    monkeypatch.setattr(orchestrator_adapters, "_has_hyperliquid_live_backend", lambda: False)
+
+    report = build_cross_matrix_report(
+        _workspace_root().parent,
+        provider="cerebras",
+        model="gpt-oss-120b",
+    )
+    cells = [
+        cell
+        for cell in report.cells
+        if cell.benchmark_id == "hyperliquid_bench"
+    ]
+
+    assert len(cells) == 3
+    assert all(cell.compatible is False for cell in cells)
+    assert all(
+        cell.reason == orchestrator_adapters.HYPERLIQUID_LIVE_UNAVAILABLE_REASON
+        for cell in cells
+    )
+
+
 def test_cross_matrix_validation_redacts_secret_config_values() -> None:
     report = build_cross_matrix_report(
         _workspace_root().parent,
@@ -677,6 +730,11 @@ def test_direct_and_native_rows_keep_truthful_matrix_compatibility(
         orchestrator_adapters,
         "_has_gauntlet_real_surfpool_backend",
         lambda: False,
+    )
+    monkeypatch.setattr(
+        orchestrator_adapters,
+        "_has_hyperliquid_live_backend",
+        lambda: True,
     )
 
     report = build_cross_matrix_report(
@@ -1584,7 +1642,11 @@ def test_taubench_adapter_defaults_to_single_real_task(tmp_path: Path) -> None:
     assert command.count("--agent-max-turns") == 1
 
 
-def test_remaining_smoke_defaults_bound_expensive_adapters(tmp_path: Path) -> None:
+def test_remaining_smoke_defaults_bound_expensive_adapters(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(orchestrator_adapters, "_has_hyperliquid_live_backend", lambda: True)
     adapters = discover_adapters(_workspace_root()).adapters
     expected_flags = {
         "configbench": ("--limit", "1"),
@@ -1703,6 +1765,7 @@ def test_remaining_smoke_defaults_bound_expensive_adapters(tmp_path: Path) -> No
     )
     command = adapter.command_builder(ctx, adapter)
     env = adapter.env_builder(ctx, adapter) if adapter.env_builder else {}
+    assert "--no-demo" in command
     assert command[command.index("--max-steps") + 1] == "1"
     assert command[command.index("--max-iterations") + 1] == "2"
     assert env["ELIZA_BENCH_HTTP_TIMEOUT"] == "90.0"

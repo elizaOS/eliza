@@ -1754,6 +1754,21 @@
       "name": "@elizaos/prompts",
       "version": "2.0.0-beta.4",
     },
+    "packages/robot": {
+      "name": "@elizaos/robot",
+      "version": "2.0.0-beta.0",
+      "dependencies": {
+        "@elizaos/core": "workspace:*",
+      },
+      "devDependencies": {
+        "@biomejs/biome": "^2.4.14",
+        "@types/bun": "^1.3.5",
+        "@types/node": "^25.0.3",
+        "tsdown": "^0.22.0",
+        "typescript": "^6.0.3",
+        "vitest": "^4.1.4",
+      },
+    },
     "packages/scenario-runner": {
       "name": "@elizaos/scenario-runner",
       "version": "2.0.0-beta.4",
@@ -2042,6 +2057,26 @@
         "vitest": "^4.0.0",
       },
     },
+    "plugins/plugin-ainex": {
+      "name": "@elizaos/plugin-ainex",
+      "version": "2.0.0",
+      "dependencies": {
+        "@elizaos/core": "workspace:*",
+        "sharp": "^0.34.3",
+        "ws": "^8.18.0",
+      },
+      "devDependencies": {
+        "@types/bun": "^1.3.5",
+        "@types/node": "^25.0.3",
+        "@types/ws": "^8.5.12",
+        "tsdown": "^0.22.0",
+        "typescript": "^6.0.3",
+        "vitest": "^4.1.4",
+      },
+      "peerDependencies": {
+        "zod": "^3.23.8",
+      },
+    },
     "plugins/plugin-anthropic": {
       "name": "@elizaos/plugin-anthropic",
       "version": "2.0.0-beta.4",
@@ -2082,7 +2117,6 @@
         "@elizaos/core": "workspace:*",
         "@elizaos/plugin-omnivoice": "workspace:*",
         "@elizaos/shared": "workspace:*",
-        "onnxruntime-web": "1.26.0-dev.20260416-b7804b056c",
       },
       "devDependencies": {
         "@types/node": "^25.0.3",
@@ -5110,6 +5144,8 @@
 
     "@elizaos/plugin-agent-skills": ["@elizaos/plugin-agent-skills@workspace:plugins/plugin-agent-skills"],
 
+    "@elizaos/plugin-ainex": ["@elizaos/plugin-ainex@workspace:plugins/plugin-ainex"],
+
     "@elizaos/plugin-anthropic": ["@elizaos/plugin-anthropic@workspace:plugins/plugin-anthropic"],
 
     "@elizaos/plugin-anthropic-proxy": ["@elizaos/plugin-anthropic-proxy@workspace:plugins/plugin-anthropic-proxy"],
@@ -5331,6 +5367,8 @@
     "@elizaos/plugin-zai": ["@elizaos/plugin-zai@workspace:plugins/plugin-zai"],
 
     "@elizaos/prompts": ["@elizaos/prompts@workspace:packages/prompts"],
+
+    "@elizaos/robot": ["@elizaos/robot@workspace:packages/robot"],
 
     "@elizaos/scenario-runner": ["@elizaos/scenario-runner@workspace:packages/scenario-runner"],
 
@@ -8996,8 +9034,6 @@
 
     "flat-cache": ["flat-cache@4.0.1", "", { "dependencies": { "flatted": "^3.2.9", "keyv": "^4.5.4" } }, "sha512-f7ccFPK3SXFHpx15UIGyRJ/FJQctuKZ0zVuN3frBo4HnK3cay9VEW0R6yPYFHC0AgqhukPzKjq22t5DmAyqGyw=="],
 
-    "flatbuffers": ["flatbuffers@25.9.23", "", {}, "sha512-MI1qs7Lo4Syw0EOzUl0xjs2lsoeqFku44KpngfIduHBYvzm8h2+7K8YMQh1JtVVVrUvhLpNwqVi4DERegUJhPQ=="],
-
     "flatted": ["flatted@3.4.2", "", {}, "sha512-PjDse7RzhcPkIJwy5t7KPWQSZ9cAbzQXcafsetQoD7sOJRQlGikNbx7yZp2OotDnJyrDcbyRq3Ttb18iYOqkxA=="],
 
     "flow-enums-runtime": ["flow-enums-runtime@0.0.6", "", {}, "sha512-3PYnM29RFXwvAN6Pc/scUfkI7RwhQ/xqyLUyPNlXUp9S40zI8nup9tUSrTLSVnWGBN38FNiGWbwZOB6uR4OGdw=="],
@@ -9139,8 +9175,6 @@
     "graphql-request": ["graphql-request@6.1.0", "", { "dependencies": { "@graphql-typed-document-node/core": "^3.2.0", "cross-fetch": "^3.1.5" }, "peerDependencies": { "graphql": "14 - 16" } }, "sha512-p+XPfS4q7aIpKVcgmnZKhMNqhltk20hfXtkaIkTfjjmiKMJ5xrt5c743cL03y/K7y1rg3WrIC49xGiEQ4mxdNw=="],
 
     "gray-matter": ["gray-matter@4.0.3", "", { "dependencies": { "js-yaml": "^3.13.1", "kind-of": "^6.0.2", "section-matter": "^1.0.0", "strip-bom-string": "^1.0.0" } }, "sha512-5v6yZd4JK3eMI3FqqCouswVqwugaA9r4dNZB1wwcmrD02QkV5H0y7XBQW8QwQqEaZY1pM9aqORSORhJRdNK44Q=="],
-
-    "guid-typescript": ["guid-typescript@1.0.9", "", {}, "sha512-Y8T4vYhEfwJOTbouREvG+3XDsjr8E3kIr7uf+JZ0BYloFsttiHU0WfvANVsR7TxNUJa/WpCnw/Ino/p+DeBhBQ=="],
 
     "h3": ["h3@1.15.11", "", { "dependencies": { "cookie-es": "^1.2.3", "crossws": "^0.3.5", "defu": "^6.1.6", "destr": "^2.0.5", "iron-webcrypto": "^1.2.1", "node-mock-http": "^1.0.4", "radix3": "^1.1.2", "ufo": "^1.6.3", "uncrypto": "^0.1.3" } }, "sha512-L3THSe2MPeBwgIZVSH5zLdBBU90TOxarvhK9d04IDY2AmVS8j2Jz2LIWtwsGOU3lu2I5jCN7FNvVfY2+XyF+mg=="],
 
@@ -10184,10 +10218,6 @@
 
     "onetime": ["onetime@5.1.2", "", { "dependencies": { "mimic-fn": "^2.1.0" } }, "sha512-kbpaSSGJTWdAY5KPVeMOKXSrPtr8C8C7wodJbcsd51jRnmD+GZu8Y0VoU6Dm5Z4vWr0Ig/1NKuWRKf7j5aaYSg=="],
 
-    "onnxruntime-common": ["onnxruntime-common@1.24.0-dev.20251116-b39e144322", "", {}, "sha512-BOoomdHYmNRL5r4iQ4bMvsl2t0/hzVQ3OM3PHD0gxeXu1PmggqBv3puZicEUVOA3AtHHYmqZtjMj9FOfGrATTw=="],
-
-    "onnxruntime-web": ["onnxruntime-web@1.26.0-dev.20260416-b7804b056c", "", { "dependencies": { "flatbuffers": "^25.1.24", "guid-typescript": "^1.0.9", "long": "^5.2.3", "onnxruntime-common": "1.24.0-dev.20251116-b39e144322", "platform": "^1.3.6", "protobufjs": "^7.2.4" } }, "sha512-MD6Ss4GSpQBo6zqoJzyT9LRbKYs7x/JVN23FT24EcEvlqF4VuzPOeH6X38orZPKHQDbprn7K+SBpu0/mj2CQiw=="],
-
     "open": ["open@8.4.2", "", { "dependencies": { "define-lazy-prop": "^2.0.0", "is-docker": "^2.1.1", "is-wsl": "^2.2.0" } }, "sha512-7x81NCL719oNbsq/3mh+hVrAWmFuEYUqrq/Iw3kUzH8ReypT9QQ0BLoJS7/G9k6N81XjW4qHWtjWwe/9eLy1EQ=="],
 
     "openapi-types": ["openapi-types@12.1.3", "", {}, "sha512-N4YtSYJqghVu4iek2ZUvcN/0aqH1kRDuNqzcycDxhOUpg7GdvLa2F3DgS6yBNhInhv2r/6I0Flkn7CqL8+nIcw=="],
@@ -10363,8 +10393,6 @@
     "pkg-dir": ["pkg-dir@4.2.0", "", { "dependencies": { "find-up": "^4.0.0" } }, "sha512-HRDzbaKjC+AOWVXxAU/x54COGeIv9eb+6CkDSQoNTt4XyWoIJvuPsXizxu/Fr23EiekbtZwmh1IcIG/l/a10GQ=="],
 
     "pkg-types": ["pkg-types@1.3.1", "", { "dependencies": { "confbox": "^0.1.8", "mlly": "^1.7.4", "pathe": "^2.0.1" } }, "sha512-/Jm5M4RvtBFVkKWRu2BLUTNP8/M2a+UwuAX+ae4770q1qVGtfjG+WTCupoZixokjmHiry8uI+dlY8KXYV5HVVQ=="],
-
-    "platform": ["platform@1.3.6", "", {}, "sha512-fnWVljUchTro6RiCFvCXBbNhJc2NijN7oIQxbwsyL0buWJPG85v81ehlHI9fXrJsMNgTofEoWIQeClKpgxFLrg=="],
 
     "play-audio": ["play-audio@0.5.2", "", {}, "sha512-ZAqHUKkQLix2Iga7pPbsf1LpUoBjcpwU93F1l3qBIfxYddQLhxS6GKmS0d3jV8kSVaUbr6NnOEcEMFvuX93SWQ=="],
 

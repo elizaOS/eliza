@@ -18,8 +18,11 @@ import {
   buildSpeculativeShimForAbi,
   describeAndroidTargetDryRun,
   FUSED_ANDROID_TARGETS,
+  MIN_ZIG_RVV_VERSION,
   parseAndroidTarget,
   parseArgs,
+  resolveRiscv64BuildPlan,
+  riscv64CmakeFlagsForPlan,
 } from "./compile-libllama.mjs";
 
 test("parseAndroidTarget accepts the wired fused android targets", () => {
@@ -27,17 +30,32 @@ test("parseAndroidTarget accepts the wired fused android targets", () => {
     const parsed = parseAndroidTarget(target);
     assert.equal(parsed.fused, true);
     assert.equal(parsed.target, target);
-    assert.ok(["arm64-v8a", "x86_64"].includes(parsed.androidAbi));
+    assert.ok(
+      ["arm64-v8a", "x86_64", "riscv64"].includes(parsed.androidAbi),
+      `unexpected androidAbi ${parsed.androidAbi} for ${target}`,
+    );
     assert.equal(parsed.backend, "cpu");
   }
 });
 
 test("parseAndroidTarget accepts the wired non-fused android targets", () => {
-  for (const target of ["android-arm64-cpu", "android-x86_64-cpu"]) {
+  for (const target of [
+    "android-arm64-cpu",
+    "android-x86_64-cpu",
+    "android-riscv64-cpu",
+  ]) {
     const parsed = parseAndroidTarget(target);
     assert.equal(parsed.fused, false);
     assert.equal(parsed.target, target);
   }
+});
+
+test("parseAndroidTarget maps the riscv64 android target to androidAbi=riscv64", () => {
+  const parsed = parseAndroidTarget("android-riscv64-cpu-fused");
+  assert.equal(parsed.arch, "riscv64");
+  assert.equal(parsed.androidAbi, "riscv64");
+  assert.equal(parsed.backend, "cpu");
+  assert.equal(parsed.fused, true);
 });
 
 test("parseAndroidTarget rejects desktop/server fused targets", () => {
@@ -62,6 +80,8 @@ test("parseAndroidTarget rejects Android Vulkan instead of silently producing CP
     "android-arm64-vulkan-fused",
     "android-x86_64-vulkan",
     "android-x86_64-vulkan-fused",
+    "android-riscv64-vulkan",
+    "android-riscv64-vulkan-fused",
   ]) {
     assert.throws(
       () => parseAndroidTarget(target),
@@ -224,10 +244,11 @@ test("describeAndroidTargetDryRun does NOT emit fused/omnivoice lines for non-fu
   );
 });
 
-test("ABI_TARGETS still carries the two canonical ABIs", () => {
-  assert.equal(ABI_TARGETS.length, 2);
+test("ABI_TARGETS carries every wired Android ABI", () => {
+  assert.equal(ABI_TARGETS.length, 3);
   assert.deepEqual(ABI_TARGETS.map((t) => t.androidAbi).sort(), [
     "arm64-v8a",
+    "riscv64",
     "x86_64",
   ]);
 });
@@ -258,4 +279,173 @@ test("CLI --target rejects desktop targets with a hard error", () => {
     () => parseArgs(["--target", "linux-x64-cpu-fused", "--dry-run"]),
     /unsupported --target linux-x64-cpu-fused/,
   );
+});
+
+test("MIN_ZIG_RVV_VERSION is the documented 0.14 floor", () => {
+  assert.equal(MIN_ZIG_RVV_VERSION, "0.14.0");
+});
+
+test("resolveRiscv64BuildPlan keeps scalar parity on Zig 0.13", () => {
+  const plan = resolveRiscv64BuildPlan({ zigVersion: "0.13.0", env: {} });
+  assert.equal(plan.rvv, false);
+  assert.equal(plan.allVariants, false);
+  assert.equal(plan.zigVersion, "0.13.0");
+  assert.equal(plan.reason, "zig-too-old");
+});
+
+test("resolveRiscv64BuildPlan flips RVV ON at the Zig 0.14 floor", () => {
+  const plan = resolveRiscv64BuildPlan({ zigVersion: "0.14.0", env: {} });
+  assert.equal(plan.rvv, true);
+  assert.equal(plan.allVariants, false);
+  assert.equal(plan.reason, "zig-supports-rvv");
+});
+
+test("resolveRiscv64BuildPlan keeps RVV ON for Zig 0.15-dev pre-release strings", () => {
+  const plan = resolveRiscv64BuildPlan({
+    zigVersion: "0.15.0-dev.123+abcdef",
+    env: {},
+  });
+  assert.equal(plan.rvv, true);
+  assert.equal(plan.reason, "zig-supports-rvv");
+});
+
+test("resolveRiscv64BuildPlan flips GGML_CPU_ALL_VARIANTS on opt-in env", () => {
+  const plan = resolveRiscv64BuildPlan({
+    zigVersion: "0.14.0",
+    env: { MILADY_GGML_CPU_ALL_VARIANTS: "1" },
+  });
+  assert.equal(plan.rvv, true);
+  assert.equal(plan.allVariants, true);
+  assert.equal(plan.reason, "all-variants-opt-in");
+});
+
+test("resolveRiscv64BuildPlan ignores MILADY_GGML_CPU_ALL_VARIANTS=1 on Zig 0.13 (scalar wins)", () => {
+  const plan = resolveRiscv64BuildPlan({
+    zigVersion: "0.13.0",
+    env: { MILADY_GGML_CPU_ALL_VARIANTS: "1" },
+  });
+  assert.equal(plan.rvv, false);
+  assert.equal(plan.allVariants, false);
+});
+
+test("resolveRiscv64BuildPlan falls back to scalar when probe fails in dry-run", () => {
+  const plan = resolveRiscv64BuildPlan({
+    isDryRun: true,
+    probe: () => {
+      throw new Error("zig not on PATH");
+    },
+    env: {},
+  });
+  assert.equal(plan.rvv, false);
+  assert.equal(plan.allVariants, false);
+  assert.equal(plan.zigVersion, null);
+  assert.equal(plan.reason, "zig-not-detected");
+});
+
+test("riscv64CmakeFlagsForPlan: scalar plan turns every GGML_RV* OFF", () => {
+  const flags = riscv64CmakeFlagsForPlan({
+    abi: "riscv64",
+    plan: { rvv: false, allVariants: false },
+  });
+  assert.ok(flags.includes("-DGGML_RVV=OFF"));
+  assert.ok(flags.includes("-DGGML_RV_ZFH=OFF"));
+  assert.ok(flags.includes("-DGGML_RV_ZVFH=OFF"));
+  assert.ok(flags.includes("-DGGML_RV_ZICBOP=OFF"));
+  assert.ok(flags.includes("-DGGML_RV_ZIHINTPAUSE=OFF"));
+  assert.ok(flags.includes("-DGGML_XTHEADVECTOR=OFF"));
+  assert.ok(!flags.some((f) => f.endsWith("=ON")));
+});
+
+test("riscv64CmakeFlagsForPlan: RVV plan turns the upstream defaults ON", () => {
+  const flags = riscv64CmakeFlagsForPlan({
+    abi: "riscv64",
+    plan: { rvv: true, allVariants: false },
+  });
+  assert.ok(flags.includes("-DGGML_RVV=ON"));
+  assert.ok(flags.includes("-DGGML_RV_ZFH=ON"));
+  assert.ok(flags.includes("-DGGML_RV_ZVFH=ON"));
+  assert.ok(flags.includes("-DGGML_RV_ZICBOP=ON"));
+  assert.ok(flags.includes("-DGGML_RV_ZIHINTPAUSE=ON"));
+  // Keep hardware-specific extensions off by default.
+  assert.ok(flags.includes("-DGGML_RV_ZVFBFWMA=OFF"));
+  assert.ok(flags.includes("-DGGML_XTHEADVECTOR=OFF"));
+  assert.ok(flags.includes("-DGGML_RV_ZBA=OFF"));
+  assert.ok(flags.includes("-DGGML_CPU_RISCV64_SPACEMIT=OFF"));
+  // Not building per-variant libs in the default RVV plan.
+  assert.ok(!flags.includes("-DGGML_BACKEND_DL=ON"));
+  assert.ok(!flags.includes("-DGGML_CPU_ALL_VARIANTS=ON"));
+});
+
+test("riscv64CmakeFlagsForPlan: allVariants plan adds GGML_BACKEND_DL + GGML_CPU_ALL_VARIANTS", () => {
+  const flags = riscv64CmakeFlagsForPlan({
+    abi: "riscv64",
+    plan: { rvv: true, allVariants: true },
+  });
+  assert.ok(flags.includes("-DGGML_RVV=ON"));
+  assert.ok(flags.includes("-DGGML_BACKEND_DL=ON"));
+  assert.ok(flags.includes("-DGGML_CPU_ALL_VARIANTS=ON"));
+});
+
+test("riscv64CmakeFlagsForPlan: non-riscv64 ABIs get empty flag list (no x86/arm leak)", () => {
+  for (const abi of ["arm64-v8a", "x86_64"]) {
+    const flags = riscv64CmakeFlagsForPlan({
+      abi,
+      plan: { rvv: true, allVariants: true },
+    });
+    assert.deepEqual(flags, [], `${abi} should not get riscv64 cmake flags`);
+  }
+});
+
+test("describeAndroidTargetDryRun (riscv64) shows the resolver-reported plan + matching cmake flags", () => {
+  // Force a deterministic resolver by clearing MILADY_GGML_CPU_ALL_VARIANTS
+  // for this test so behavior doesn't drift with the developer's local env.
+  const prev = process.env.MILADY_GGML_CPU_ALL_VARIANTS;
+  delete process.env.MILADY_GGML_CPU_ALL_VARIANTS;
+  try {
+    const lines = [];
+    describeAndroidTargetDryRun({
+      target: "android-riscv64-cpu",
+      srcDir: "/tmp/llama.cpp",
+      cacheDir: "/tmp/cache",
+      abiAssetDir: "/tmp/assets/riscv64",
+      jobs: 2,
+      log: (line) => lines.push(line),
+    });
+    const text = lines.join("\n");
+    // Plan line emitted.
+    assert.match(text, /riscv64 plan: zig=.* rvv=(ON|OFF) all-variants=(ON|OFF) reason=/);
+    // Either the scalar OR the RVV flag set must appear — both are valid
+    // depending on the build host's Zig version. (The resolver is what
+    // chooses; the test just asserts the flag-list matches the plan.)
+    if (text.includes("rvv=ON")) {
+      assert.ok(text.includes("-DGGML_RVV=ON"));
+      assert.ok(text.includes("-DGGML_RV_ZFH=ON"));
+    } else {
+      assert.ok(text.includes("-DGGML_RVV=OFF"));
+      assert.ok(text.includes("-DGGML_RV_ZFH=OFF"));
+    }
+  } finally {
+    if (prev === undefined) {
+      delete process.env.MILADY_GGML_CPU_ALL_VARIANTS;
+    } else {
+      process.env.MILADY_GGML_CPU_ALL_VARIANTS = prev;
+    }
+  }
+});
+
+test("describeAndroidTargetDryRun (non-riscv64) does NOT leak GGML_RV* flags", () => {
+  for (const target of ["android-arm64-cpu", "android-x86_64-cpu"]) {
+    const lines = [];
+    describeAndroidTargetDryRun({
+      target,
+      srcDir: "/tmp/llama.cpp",
+      cacheDir: "/tmp/cache",
+      abiAssetDir: "/tmp/assets/" + target,
+      jobs: 2,
+      log: (line) => lines.push(line),
+    });
+    const text = lines.join("\n");
+    assert.ok(!text.includes("GGML_RVV="), `${target} leaked GGML_RVV flag`);
+    assert.ok(!text.includes("riscv64 plan:"), `${target} leaked riscv plan log`);
+  }
 });

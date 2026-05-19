@@ -2,14 +2,21 @@
 /**
  * patch-llama-cpp-capacitor.mjs
  *
- * Bun v1.3.x has been unreliable for this nested package patch in CI.
- * In particular, partially-applied patches can leave CMake updated without
- * the matching Gradle arguments that pass ELIZA_REPO_ROOT and DFlash paths.
+ * Bun v1.3.x has been observed to mis-apply patches that touch deeply-nested
+ * directories inside cached packages (related bugs:
+ *  - https://github.com/oven-sh/bun/issues/13330
+ *  - https://github.com/oven-sh/bun/issues/13770).
  *
- * This script applies the patch using the system `patch` utility instead,
- * targeting all installed llama-cpp-capacitor copies in node_modules/.bun.
- * It is idempotent and repairs the Gradle/CMake contract after patching so a
- * half-patched install cannot silently reach Android CI.
+ * This script applies patches/llama-cpp-capacitor@0.1.5.patch using the
+ * system `patch` utility instead, targeting all installed
+ * llama-cpp-capacitor copies in node_modules.
+ *
+ * The patch rewrites android/build.gradle (per-ABI DFlash lib dirs, riscv64
+ * added to abiFilters), android/src/main/CMakeLists.txt (drop vendored
+ * llama.cpp sources, link against DFlash .so via the Eliza JNI bridge) and
+ * android/src/main/java/.../LlamaCpp.java (riscv64 library mapping and
+ * DFlash dependency preload). It also repairs partially-applied installs so a
+ * half-patched package cannot silently reach Android CI.
  */
 
 import { spawnSync } from "node:child_process";
@@ -18,10 +25,11 @@ import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
 const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), "..", "..");
-const bunCacheDir = join(repoRoot, "node_modules", ".bun");
+const nodeModulesDir = join(repoRoot, "node_modules");
+const bunCacheDir = join(nodeModulesDir, ".bun");
 const patchFile = join(repoRoot, "patches", "llama-cpp-capacitor@0.1.5.patch");
 
-if (!existsSync(bunCacheDir)) {
+if (!existsSync(nodeModulesDir)) {
   process.exit(0);
 }
 
@@ -39,9 +47,34 @@ if (patchCheck.status !== 0 && patchCheck.error) {
   process.exit(0);
 }
 
+// Discover every installed llama-cpp-capacitor copy: the top-level
+// node_modules entry (used at build time by the Android app) and every
+// per-hash bun cache copy. Bun's installer does not always hardlink the
+// top-level copy back to the cache, so we must patch both.
+const candidates = [];
+const topLevel = join(nodeModulesDir, "llama-cpp-capacitor");
+if (existsSync(topLevel)) {
+  candidates.push({ label: "node_modules/llama-cpp-capacitor", dir: topLevel });
+}
+if (existsSync(bunCacheDir)) {
+  for (const entry of readdirSync(bunCacheDir)) {
+    if (!entry.startsWith("llama-cpp-capacitor@0.1.5")) continue;
+    const pkgDir = join(
+      bunCacheDir,
+      entry,
+      "node_modules",
+      "llama-cpp-capacitor",
+    );
+    if (existsSync(pkgDir)) {
+      candidates.push({ label: `node_modules/.bun/${entry}`, dir: pkgDir });
+    }
+  }
+}
+
 let patched = 0;
 let skipped = 0;
 let repaired = 0;
+let failed = 0;
 
 function writeIfChanged(filePath, current, next) {
   if (next === current) return false;
@@ -60,14 +93,31 @@ function ensureGradleDflashContract(pkgDir) {
     `    return rootProject.projectDir.toPath().resolve('../../..').normalize().toFile().absolutePath\n` +
     `}\n` +
     `\n` +
-    `def resolveElizaDflashAndroidLibDir = { ->\n` +
-    `    def fromProp = project.findProperty('eliza.dflash.android.libdir')\n` +
+    `// Per-ABI resolver for the DFlash cross-compile output produced by\n` +
+    `// \`packages/app-core/scripts/build-llama-cpp-dflash.mjs\` and\n` +
+    `// \`packages/app-core/scripts/aosp/compile-libllama.mjs\`. Each ABI has\n` +
+    `// its own gradle property (\`eliza.dflash.android.libdir.<abi>\`) and env\n` +
+    `// var (\`ELIZA_DFLASH_ANDROID_LIBDIR_<ABI>\`). For arm64-v8a the legacy\n` +
+    `// unsuffixed names are still honored for backwards compatibility.\n` +
+    `// riscv64 has no Vulkan path yet (Wave 2 ships CPU-only), so only the\n` +
+    `// \`cpu\` backend is searched on that ABI.\n` +
+    `def resolveElizaDflashAndroidLibDir = { String abi ->\n` +
+    `    def propSuffix = abi == 'arm64-v8a' ? '' : ".\${abi}"\n` +
+    `    def envSuffix = abi == 'arm64-v8a' ? '' : "_\${abi.replace('-', '_').toUpperCase()}"\n` +
+    `    def fromProp = project.findProperty("eliza.dflash.android.libdir\${propSuffix}")\n` +
     `    if (fromProp) return fromProp.toString()\n` +
-    `    def fromEnv = System.getenv('ELIZA_DFLASH_ANDROID_LIBDIR')\n` +
+    `    def fromEnv = System.getenv("ELIZA_DFLASH_ANDROID_LIBDIR\${envSuffix}")\n` +
     `    if (fromEnv) return fromEnv\n` +
     `    def stateDir = System.getenv('ELIZA_STATE_DIR') ?: "\${System.getProperty('user.home')}/.eliza"\n` +
-    `    def candidates = ['vulkan', 'cpu'].collect { backend ->\n` +
-    `        "\${stateDir}/local-inference/bin/dflash/android-arm64-\${backend}"\n` +
+    `    def abiToken = [\n` +
+    `        'arm64-v8a': 'android-arm64',\n` +
+    `        'x86_64'   : 'android-x86_64',\n` +
+    `        'riscv64'  : 'android-riscv64',\n` +
+    `    ][abi]\n` +
+    `    if (abiToken == null) return ''\n` +
+    `    def backends = abi == 'riscv64' ? ['cpu'] : ['vulkan', 'cpu']\n` +
+    `    def candidates = backends.collect { backend ->\n` +
+    `        "\${stateDir}/local-inference/bin/dflash/\${abiToken}-\${backend}"\n` +
     `    }\n` +
     `    return candidates.find { new File(it).isDirectory() } ?: ''\n` +
     `}\n` +
@@ -79,14 +129,13 @@ function ensureGradleDflashContract(pkgDir) {
 
   if (!next.includes("def resolveElizaRepoRoot")) {
     next = next.replace(/(ext\s*\{[\s\S]*?\n\}\n)/, `$1\n${dflashHelpers}\n`);
-  } else if (!next.includes("def resolveElizaSkipDflashAndroidLib")) {
+  } else if (
+    !next.includes("def resolveElizaDflashAndroidLibDir = { String abi ->") ||
+    !next.includes("def resolveElizaSkipDflashAndroidLib")
+  ) {
     next = next.replace(
-      /(def resolveElizaDflashAndroidLibDir = \{ ->[\s\S]*?\n\}\n)/,
-      `$1\n` +
-        `def resolveElizaSkipDflashAndroidLib = { ->\n` +
-        `    return project.findProperty('elizaSkipForkLlamaLib') == 'true' ||\n` +
-        `        System.getenv('ELIZA_ANDROID_SKIP_FORK_LLAMA_LIB') == '1'\n` +
-        `}\n`,
+      /def resolveElizaRepoRoot = \{ ->[\s\S]*?\n\}\n\nbuildscript \{/,
+      `${dflashHelpers}\nbuildscript {`,
     );
   }
 
@@ -101,25 +150,35 @@ function ensureGradleDflashContract(pkgDir) {
     )
     .replace(/\bversion "3\.22\.1"/g, 'version = "3.22.1"')
     .replace(/\bndkVersion "29\.0\.13113456"/g, 'ndkVersion = "29.0.13113456"')
-    .replace(/\babortOnError false/g, "abortOnError = false");
+    .replace(/\babortOnError false/g, "abortOnError = false")
+    .replace(
+      /abiFilters 'arm64-v8a'(?!,)/g,
+      "abiFilters 'arm64-v8a', 'riscv64'",
+    );
 
   const cmakeArgsBlock =
     `\n\n        externalNativeBuild {\n` +
     `            cmake {\n` +
     `                arguments "-DELIZA_REPO_ROOT=\${resolveElizaRepoRoot()}",\n` +
-    `                    "-DELIZA_DFLASH_ANDROID_LIBDIR=\${resolveElizaDflashAndroidLibDir()}",\n` +
+    `                    "-DELIZA_DFLASH_ANDROID_LIBDIR_ARM64_V8A=\${resolveElizaDflashAndroidLibDir('arm64-v8a')}",\n` +
+    `                    "-DELIZA_DFLASH_ANDROID_LIBDIR_RISCV64=\${resolveElizaDflashAndroidLibDir('riscv64')}",\n` +
     `                    "-DELIZA_SKIP_DFLASH_ANDROID_LIB=\${resolveElizaSkipDflashAndroidLib() ? 'ON' : 'OFF'}"\n` +
     `            }\n` +
     `        }`;
 
   if (!next.includes("-DELIZA_REPO_ROOT=")) {
     next = next.replace(
-      /(\n\s*ndk\s*\{\s*\n\s*abiFilters 'arm64-v8a'\s*\n\s*\})/,
+      /(\n\s*ndk\s*\{\s*\n\s*abiFilters 'arm64-v8a'(?:,\s*'riscv64')?\s*\n\s*\})/,
       `$1${cmakeArgsBlock}`,
+    );
+  } else if (!next.includes("-DELIZA_DFLASH_ANDROID_LIBDIR_ARM64_V8A=")) {
+    next = next.replace(
+      /"-DELIZA_DFLASH_ANDROID_LIBDIR=\$\{resolveElizaDflashAndroidLibDir\(\)\}",?\n\s*(?:"-DELIZA_SKIP_DFLASH_ANDROID_LIB=\$\{resolveElizaSkipDflashAndroidLib\(\) \? 'ON' : 'OFF'\}")?/,
+      `"-DELIZA_DFLASH_ANDROID_LIBDIR_ARM64_V8A=\${resolveElizaDflashAndroidLibDir('arm64-v8a')}",\n                    "-DELIZA_DFLASH_ANDROID_LIBDIR_RISCV64=\${resolveElizaDflashAndroidLibDir('riscv64')}",\n                    "-DELIZA_SKIP_DFLASH_ANDROID_LIB=\${resolveElizaSkipDflashAndroidLib() ? 'ON' : 'OFF'}"`,
     );
   } else if (!next.includes("-DELIZA_SKIP_DFLASH_ANDROID_LIB=")) {
     next = next.replace(
-      /("-DELIZA_DFLASH_ANDROID_LIBDIR=\$\{resolveElizaDflashAndroidLibDir\(\)\}")/,
+      /("-DELIZA_DFLASH_ANDROID_LIBDIR_RISCV64=\$\{resolveElizaDflashAndroidLibDir\('riscv64'\)\}")/,
       `$1,\n                    "-DELIZA_SKIP_DFLASH_ANDROID_LIB=\${resolveElizaSkipDflashAndroidLib() ? 'ON' : 'OFF'}"`,
     );
   }
@@ -148,16 +207,21 @@ function ensureCmakeDflashContract(pkgDir) {
       `find_library(ANDROID_LIB android)\n` +
       `\n` +
       `if(ELIZA_SKIP_DFLASH_ANDROID_LIB)\n` +
+      `    if(ANDROID_ABI STREQUAL "riscv64")\n` +
+      `        set(ELIZA_STUB_OUTPUT_NAME "llama-cpp-riscv64")\n` +
+      `    else()\n` +
+      `        set(ELIZA_STUB_OUTPUT_NAME "llama-cpp-arm64")\n` +
+      `    endif()\n` +
       `    file(WRITE "\${CMAKE_CURRENT_BINARY_DIR}/eliza-dflash-stub.cpp" "extern \\"C\\" int eliza_dflash_stub() { return 0; }\\n")\n` +
-      `    add_library(llama-cpp-arm64 SHARED "\${CMAKE_CURRENT_BINARY_DIR}/eliza-dflash-stub.cpp")\n` +
-      `    target_link_libraries(llama-cpp-arm64 PRIVATE \${LOG_LIB} \${ANDROID_LIB})\n` +
+      `    add_library(\${ELIZA_STUB_OUTPUT_NAME} SHARED "\${CMAKE_CURRENT_BINARY_DIR}/eliza-dflash-stub.cpp")\n` +
+      `    target_link_libraries(\${ELIZA_STUB_OUTPUT_NAME} PRIVATE \${LOG_LIB} \${ANDROID_LIB})\n` +
       `    set_target_properties(\n` +
-      `        llama-cpp-arm64\n` +
+      `        \${ELIZA_STUB_OUTPUT_NAME}\n` +
       `        PROPERTIES\n` +
-      `        OUTPUT_NAME "llama-cpp-arm64"\n` +
-      `        LIBRARY_OUTPUT_DIRECTORY "\${CMAKE_CURRENT_SOURCE_DIR}/jniLibs/arm64-v8a"\n` +
+      `        OUTPUT_NAME "\${ELIZA_STUB_OUTPUT_NAME}"\n` +
+      `        LIBRARY_OUTPUT_DIRECTORY "\${CMAKE_CURRENT_SOURCE_DIR}/jniLibs/\${ANDROID_ABI}"\n` +
       `    )\n` +
-      `    message(STATUS "Building Eliza DFlash JNI smoke stub for Android ARM64")\n` +
+      `    message(STATUS "Building Eliza DFlash JNI smoke stub for Android \${ANDROID_ABI}")\n` +
       `    return()\n` +
       `endif()\n`;
     next = next.replace(
@@ -187,24 +251,20 @@ function repairPatchedPackage(pkgDir) {
 
 function isPatchAlreadyApplied(pkgDir) {
   const cmakePath = join(pkgDir, "android", "src", "main", "CMakeLists.txt");
-  if (!existsSync(cmakePath)) return false;
-  return readFileSync(cmakePath, "utf8").includes(
-    "llama-cpp-capacitor-eliza-dflash",
+  const gradlePath = join(pkgDir, "android", "build.gradle");
+  if (
+    existsSync(cmakePath) &&
+    readFileSync(cmakePath, "utf8").includes("llama-cpp-capacitor-eliza-dflash")
+  ) {
+    return true;
+  }
+  return (
+    existsSync(gradlePath) &&
+    readFileSync(gradlePath, "utf8").includes("'arm64-v8a', 'riscv64'")
   );
 }
 
-for (const entry of readdirSync(bunCacheDir)) {
-  if (!entry.startsWith("llama-cpp-capacitor@0.1.5")) continue;
-
-  const pkgDir = join(
-    bunCacheDir,
-    entry,
-    "node_modules",
-    "llama-cpp-capacitor",
-  );
-
-  if (!existsSync(pkgDir)) continue;
-
+for (const { label, dir: pkgDir } of candidates) {
   if (isPatchAlreadyApplied(pkgDir)) {
     skipped++;
   } else {
@@ -213,15 +273,16 @@ for (const entry of readdirSync(bunCacheDir)) {
     // already applied (acceptable), exit 2+ = real error.
     const result = spawnSync(
       "patch",
-      ["-p1", "--batch", "--forward", `-i`, patchFile],
+      ["-p1", "--batch", "--forward", "-i", patchFile],
       { cwd: pkgDir, encoding: "utf8" },
     );
 
     if (result.status === 0 || result.status === 1) {
       patched++;
     } else {
+      failed++;
       console.error(
-        `[patch-llama-cpp-capacitor] Failed to patch ${entry}:\n${result.stderr}`,
+        `[patch-llama-cpp-capacitor] Failed to patch ${label}:\n${result.stderr}`,
       );
     }
   }
@@ -229,13 +290,17 @@ for (const entry of readdirSync(bunCacheDir)) {
   try {
     if (repairPatchedPackage(pkgDir)) repaired++;
   } catch (error) {
+    failed++;
     console.error(error instanceof Error ? error.message : String(error));
-    process.exitCode = 1;
   }
 }
 
-if (patched > 0 || skipped > 0 || repaired > 0) {
+if (failed > 0) {
+  process.exitCode = 1;
+}
+
+if (patched > 0 || skipped > 0 || repaired > 0 || failed > 0) {
   console.log(
-    `[patch-llama-cpp-capacitor] patched=${patched} already-applied=${skipped} repaired=${repaired}`,
+    `[patch-llama-cpp-capacitor] patched=${patched} already-applied=${skipped} repaired=${repaired} failed=${failed}`,
   );
 }

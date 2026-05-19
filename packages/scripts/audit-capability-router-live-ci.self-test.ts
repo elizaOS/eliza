@@ -8,6 +8,18 @@ const workflowPath = ".github/workflows/test.yml";
 const workflow = readFileSync(workflowPath, "utf8");
 const rootPackageJson = readFileSync("package.json", "utf8");
 const agentPackageJson = readFileSync("packages/agent/package.json", "utf8");
+const endpointConformanceSource = readFileSync(
+  "packages/agent/src/services/remote-capability-endpoint-conformance.ts",
+  "utf8",
+);
+const liveReportValidatorSource = readFileSync(
+  "packages/scripts/validate-capability-router-live-reports.ts",
+  "utf8",
+);
+const liveReportWriterSource = readFileSync(
+  "packages/agent/src/services/remote-capability-live-report.ts",
+  "utf8",
+);
 const providerSmokeSource = readFileSync(
   "packages/agent/src/services/remote-capability-url-endpoint-providers.provider-smoke.test.ts",
   "utf8",
@@ -93,6 +105,48 @@ assertFails(
     "",
   ),
 );
+
+const writerFailure = assertFails(
+  "live report writer records runtime module surface counts",
+  workflow,
+  rootPackageJson,
+  agentPackageJson,
+  providerSmokeSource,
+  liveReportValidatorSource,
+  liveReportWriterSource.replace(
+    "        ...summarizeRemoteCapabilityPluginSurfaces(plugin),\n",
+    "",
+  ),
+);
+if (
+  writerFailure.sourcePath !==
+  "packages/agent/src/services/remote-capability-live-report.ts"
+) {
+  throw new Error(
+    `live report writer failure reported wrong source path: ${writerFailure.sourcePath}`,
+  );
+}
+
+const validatorFailure = assertFails(
+  "live report validator compares runtime module surface counts",
+  workflow,
+  rootPackageJson,
+  agentPackageJson,
+  providerSmokeSource,
+  liveReportValidatorSource.replace(
+    "          `runtime.remotePlugins[${index}].${field} must match sync.registeredModules.`,\n",
+    "",
+  ),
+  liveReportWriterSource,
+);
+if (
+  validatorFailure.sourcePath !==
+  "packages/scripts/validate-capability-router-live-reports.ts"
+) {
+  throw new Error(
+    `live report validator failure reported wrong source path: ${validatorFailure.sourcePath}`,
+  );
+}
 
 assertFails(
   "cloud live job is required by test-status",
@@ -245,9 +299,13 @@ function assertPasses(
   candidateRootPackageJson = rootPackageJson,
   candidateAgentPackageJson = agentPackageJson,
   candidateProviderSmokeSource = providerSmokeSource,
+  candidateLiveReportValidatorSource = liveReportValidatorSource,
+  candidateLiveReportWriterSource = liveReportWriterSource,
 ): void {
   const failures = validateCapabilityRouterLiveCi(candidate, {
     agentPackageJson: candidateAgentPackageJson,
+    liveReportValidatorSource: candidateLiveReportValidatorSource,
+    liveReportWriterSource: candidateLiveReportWriterSource,
     providerSmokeSource: candidateProviderSmokeSource,
     rootPackageJson: candidateRootPackageJson,
     workflowPath: `${name}.yml`,
@@ -267,9 +325,13 @@ function assertFails(
   candidateRootPackageJson = rootPackageJson,
   candidateAgentPackageJson = agentPackageJson,
   candidateProviderSmokeSource = providerSmokeSource,
+  candidateLiveReportValidatorSource = liveReportValidatorSource,
+  candidateLiveReportWriterSource = liveReportWriterSource,
 ): ReturnType<typeof validateCapabilityRouterLiveCi>[number] {
   const failures = validateCapabilityRouterLiveCi(candidate, {
     agentPackageJson: candidateAgentPackageJson,
+    liveReportValidatorSource: candidateLiveReportValidatorSource,
+    liveReportWriterSource: candidateLiveReportWriterSource,
     providerSmokeSource: candidateProviderSmokeSource,
     rootPackageJson: candidateRootPackageJson,
     workflowPath: "mutated-workflow.yml",

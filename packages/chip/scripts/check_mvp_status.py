@@ -115,10 +115,19 @@ def files_status(subsystem: str, paths: list[str], pass_evidence: str, next_step
 
 
 def tool_path(*names: str) -> str | None:
+    local_bins = [
+        ROOT / "tools/bin",
+        ROOT / "external/oss-cad-suite/bin",
+        ROOT / ".venv/bin",
+    ]
     for name in names:
         found = shutil.which(name)
         if found:
             return found
+        for directory in local_bins:
+            candidate = directory / name
+            if candidate.is_file() and candidate.stat().st_mode & 0o111:
+                return str(candidate)
     return None
 
 

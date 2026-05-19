@@ -13,6 +13,11 @@ include_directories(include src)
 
 # Phase 2: real runtime (`wakeword_runtime.c`) replaces the ENOSYS stub.
 # The melspec + window TUs are pure-C utilities the runtime uses.
+#
+# Architecture portability: every TU below is plain scalar C with no
+# x86/ARM/RVV intrinsics, so the same source list builds on x86_64,
+# aarch64, and riscv64 without any CMAKE_SYSTEM_PROCESSOR branching.
+# Cross-build verified via cmake/toolchain-riscv64-linux-musl.cmake.
 set(WAKEWORD_SRCS
     src/wakeword_runtime.c
     src/wakeword_melspec.c

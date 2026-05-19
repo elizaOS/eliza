@@ -37,6 +37,16 @@ elseif(CMAKE_SYSTEM_PROCESSOR MATCHES "(aarch64|arm64)")
         src/polar_dot_neon.c
         src/polar_dot_preht_neon.c)
     set(POLARQUANT_ARM ON)
+elseif(CMAKE_SYSTEM_PROCESSOR MATCHES "(riscv64|riscv|rv64)")
+    # Wave 3: RVV 1.0 kernels.  The TUs themselves are gated on
+    # __riscv_v_intrinsic so a host-CPU build without -march=rv64gcv
+    # still produces empty objects; per-source COMPILE_OPTIONS below
+    # add the RVV march/abi for these TUs only.
+    list(APPEND POLARQUANT_SRCS
+        src/polar_dequant_rvv.c
+        src/polar_dot_rvv.c
+        src/polar_dot_preht_rvv.c)
+    set(POLARQUANT_RISCV ON)
 endif()
 
 add_library(polarquant STATIC ${POLARQUANT_SRCS})
@@ -58,6 +68,44 @@ if(POLARQUANT_X86)
         PROPERTIES COMPILE_OPTIONS "-mavx2;-mfma"
     )
     target_compile_definitions(polarquant PUBLIC POLARQUANT_HAVE_AVX2=1)
+endif()
+
+# riscv64 path with RVV 1.0 kernels.
+#
+# We pin per-source compile options to a portable rv64gcv string so the
+# RVV TUs always see the V extension regardless of whatever -march the
+# rest of the library was built with (the scalar TUs intentionally stay
+# at rv64gc so they run on hosts without RVV; the dispatcher reads
+# has_rvv via riscv_hwprobe(2) to decide which path to call).
+#
+# Zig 0.14+: gcc-style `-march=rv64gcv1p0` is accepted.  Zig 0.13 only
+# takes CPU names via `-mcpu`; we use `-mcpu=generic_rv64+v` there.
+# MILADY_RISCV_RVV_FLAG lets the caller override (e.g. `-march=rv64gcv`
+# for native GCC/Clang).
+if(POLARQUANT_RISCV)
+    target_compile_definitions(polarquant PUBLIC POLARQUANT_HAVE_RVV=1)
+    target_compile_definitions(polarquant PRIVATE POLARQUANT_ARCH_RISCV=1)
+
+    if(NOT DEFINED MILADY_RISCV_RVV_FLAGS)
+        # Detect whether the active compiler accepts -march=rv64gcv1p0;
+        # if not, fall back to Zig 0.13's `-mcpu=generic_rv64+v`.
+        include(CheckCSourceCompiles)
+        set(CMAKE_REQUIRED_FLAGS "-march=rv64gcv1p0 -mabi=lp64d")
+        check_c_source_compiles("int main(void){return 0;}" POLARQUANT_RVV_MARCH_OK)
+        unset(CMAKE_REQUIRED_FLAGS)
+        if(POLARQUANT_RVV_MARCH_OK)
+            set(MILADY_RISCV_RVV_FLAGS "-march=rv64gcv1p0;-mabi=lp64d")
+        else()
+            set(MILADY_RISCV_RVV_FLAGS "-mcpu=generic_rv64+v")
+        endif()
+    endif()
+
+    set_source_files_properties(
+        src/polar_dequant_rvv.c
+        src/polar_dot_rvv.c
+        src/polar_dot_preht_rvv.c
+        PROPERTIES COMPILE_OPTIONS "${MILADY_RISCV_RVV_FLAGS}"
+    )
 endif()
 
 # AArch64 gcc/clang has NEON on by default; -mfpu=neon would be wrong

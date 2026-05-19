@@ -1,0 +1,79 @@
+schema: eliza.pmic_binding.v1
+as_of: 2026-05-19
+part: DA9063L
+vendor: Renesas (formerly Dialog Semiconductor)
+status: planning_binding_no_bonded_pins_no_fabricated_board
+claim_boundary: >
+  Planning binding only. No PMIC is mounted on a board. No I2C controller is
+  bonded out. No rails are wired. Promotion of any PMIC claim requires
+  bonded I2C and PMIC_IRQ pins, board layout, and a power-on transcript.
+datasheet_url: https://www.renesas.com/en/products/power-power-management/multi-channel-power-management-ics-pmics/da9063l-12-channel-pmic-rtc-watchdog
+mainline_driver: drivers/mfd/da9063-i2c.c
+linux_support:
+  mfd_driver: drivers/mfd/da9063-core.c
+  regulator_driver: drivers/regulator/da9063-regulator.c
+  rtc_driver: drivers/rtc/rtc-da9063.c
+  onkey_driver: drivers/input/misc/da9063_onkey.c
+  watchdog_driver: drivers/watchdog/da9063_wdt.c
+  device_tree_binding: Documentation/devicetree/bindings/mfd/dlg,da9063.yaml
+selected_for:
+  - Mainline-driver-supported phone-class PMIC; mirrors PinePhone Pro and
+    Librem 5 PMIC selection.
+  - 11 regulator rails (4 bucks + 6 LDOs + 1 LDO sleep) covering the typical
+    AP + LPDDR + Wi-Fi + sensors + audio rail budget.
+  - I2C control via standard regmap interface.
+rails:
+  - {name: BUCKCORE, type: buck, voltage_v: 0.85_to_1.40, current_a_max: 2.5, role: cpu_core_or_ap_core}
+  - {name: BUCKPRO, type: buck, voltage_v: 1.10_to_1.30, current_a_max: 2.5, role: npu_or_gpu_core}
+  - {name: BUCKMEM, type: buck, voltage_v: 1.10_to_1.40, current_a_max: 2.5, role: lpddr5x_vdd2}
+  - {name: BUCKPERI, type: buck, voltage_v: 1.80, current_a_max: 1.5, role: peripheral_1V8}
+  - {name: LDO1, type: ldo, voltage_v: 0.60_to_1.80, current_a_max: 0.10, role: rtc_backup}
+  - {name: LDO2, type: ldo, voltage_v: 0.60_to_1.80, current_a_max: 0.30, role: ap_core_sram_or_pll}
+  - {name: LDO3, type: ldo, voltage_v: 0.90_to_3.45, current_a_max: 0.30, role: lpddr5x_vddq_or_pll_1V1}
+  - {name: LDO4, type: ldo, voltage_v: 0.90_to_3.45, current_a_max: 0.30, role: dsi_avdd_1V8}
+  - {name: LDO5, type: ldo, voltage_v: 0.90_to_3.60, current_a_max: 0.30, role: sensors_3V0}
+  - {name: LDO6, type: ldo, voltage_v: 0.90_to_3.60, current_a_max: 0.20, role: wifi_btv_3V3}
+  - {name: LDO7, type: ldo, voltage_v: 0.90_to_3.60, current_a_max: 0.20, role: audio_codec_3V3}
+  - {name: LDO8, type: ldo, voltage_v: 0.90_to_3.60, current_a_max: 0.20, role: display_panel_3V0}
+  - {name: LDO9, type: ldo, voltage_v: 0.90_to_3.60, current_a_max: 0.20, role: emmc_3V3}
+  - {name: LDO10, type: ldo, voltage_v: 1.20_to_3.60, current_a_max: 0.30, role: usb_phy_3V3}
+  - {name: LDO11, type: ldo, voltage_v: 1.20_to_3.60, current_a_max: 0.30, role: gps_or_aux_3V3}
+host_interfaces:
+  i2c:
+    bus_address_7bit: 0x58
+    speed_khz_max: 3400
+    signals:
+      - {contract: PMIC_I2C_SCL, module_role: i2c_clock, direction_at_soc: output}
+      - {contract: PMIC_I2C_SDA, module_role: i2c_data, direction_at_soc: bidirectional}
+  control:
+    signals:
+      - {contract: PMIC_IRQ_N, module_role: pmic_irq, direction_at_soc: input, default_pull: up}
+      - {contract: PMIC_RESETB, module_role: pmic_reset_button, direction_at_soc: output}
+      - {contract: PMIC_PWR_EN, module_role: pmic_main_enable, direction_at_soc: output, default: low}
+power_sequence:
+  status: required_not_implemented
+  rails_required_at_boot:
+    - VDD_IN (battery or fixed 3.3V)
+    - VSYS
+  poweron_order:
+    - Apply VDD_IN.
+    - PMIC enters OFF state; firmware writes ON sequence over I2C.
+    - PMIC executes pre-programmed rail sequencing (see DA9063 sequencer).
+    - PMIC asserts PMIC_IRQ_N high to indicate ready.
+    - SoC clock and reset come up only after sequencer completes.
+android_hal:
+  framework: Android Power HAL 4.x (AIDL)
+  vintf_entry_planned: android.hardware.power@4-service.eliza_ai_soc
+  evidence_required:
+    - PMIC probe transcript (dmesg + regulator_summary)
+    - Rail voltage capture per docs/board/power-tree.md
+forbidden_claims:
+  - rails_active
+  - PMIC_probed
+  - Power_HAL_VINTF_compatible
+  - I2C_communicating
+cross_references:
+  - docs/architecture-optimization/phone-platform.md
+  - docs/architecture-optimization/soc-optimized-operating-point.yaml
+  - research/mobile_platform_2026/02_analysis/pmic_and_charging.md
+  - research/mobile_platform_2026/03_implementation/platform_path_for_e1.md

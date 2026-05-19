@@ -3,7 +3,7 @@
  * runtime. Eliza runs one inference model at a time; switching models
  * unloads the previous one first so we don't double-allocate VRAM.
  *
- * This module *does not* talk to `node-llama-cpp` directly. The plugin
+ * This module *does not* talk to `capacitor-llama` directly. The plugin
  * owns the native binding; we ask it to swap via a small runtime service
  * registered under the name "localInferenceLoader". When the plugin is not
  * enabled, we still track the user's preferred active model so the
@@ -60,7 +60,7 @@ import type { KvOffloadMode, LocalInferenceLoadArgs } from "./load-args.js";
  * (v3.18.1-eliza.3+) extends `GgmlType` with TBQ3_0 (43), TBQ4_0 (44),
  * QJL1_256 (46), Q4_POLAR (47) so the binding accepts the lowercase
  * aliases below. Whether the C++ kernel actually runs depends on the
- * loaded `@node-llama-cpp/<platform>` binary — the elizaOS/llama.cpp
+ * loaded the legacy node-llama-cpp NAPI prebuild (no longer used) binary — the elizaOS/llama.cpp
  * prebuild ships the kernels; upstream's prebuild does not.
  *
  * `validateLocalInferenceLoadArgs({ allowFork: false })` (the route-layer
@@ -135,7 +135,7 @@ export function validateLocalInferenceLoadArgs(
 		}
 		if (!allowFork && isForkOnlyKvCacheType(value)) {
 			throw new Error(
-				`${field}="${value}" requires the elizaOS/llama.cpp kernel from the elizaOS fork. The elizaOS/node-llama-cpp binding accepts the string at the TS layer, but the upstream @node-llama-cpp/<platform> prebuild does not implement the underlying ggml type. Pass through the AOSP path or load the elizaOS/llama.cpp prebuilt binary. Stock-only types accepted here: ${[...STOCK_KV_CACHE_TYPES].join(", ")}.`,
+				`${field}="${value}" requires the elizaOS/llama.cpp kernel from the elizaOS fork. The elizaOS/capacitor-llama binding accepts the string at the TS layer, but the upstream @node-llama-cpp/<platform> prebuild does not implement the underlying ggml type. Pass through the AOSP path or load the elizaOS/llama.cpp prebuilt binary. Stock-only types accepted here: ${[...STOCK_KV_CACHE_TYPES].join(", ")}.`,
 			);
 		}
 		if (!allowFork && !isStockKvCacheType(value)) {

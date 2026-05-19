@@ -57,7 +57,7 @@ export interface StructuredGenerateParams {
 	 * Assistant-turn prefill — a partial assistant message the model should
 	 * *continue* rather than start fresh. On llama-server this is sent as a
 	 * trailing assistant message with `continue_final_message` / the
-	 * `assistant` chat-template prefix; the node-llama-cpp path seeds the
+	 * `assistant` chat-template prefix; the capacitor-llama path seeds the
 	 * prompt text and re-prepends the prefill to the result.
 	 */
 	prefill?: string;

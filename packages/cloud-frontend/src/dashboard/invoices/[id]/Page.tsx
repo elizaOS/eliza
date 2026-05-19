@@ -1,6 +1,7 @@
 import { DashboardErrorState, DashboardLoadingState } from "@elizaos/ui";
 import { Helmet } from "react-helmet-async";
 import { Navigate, useParams } from "react-router-dom";
+import { useT } from "@/providers/I18nProvider";
 import { ApiError } from "../../../lib/api-client";
 import { useInvoice } from "../../../lib/data/invoices";
 import { useUserProfile } from "../../../lib/data/user";
@@ -8,6 +9,7 @@ import { InvoiceDetailClient } from "../_components/invoice-detail-client";
 
 /** /dashboard/invoices/:id */
 export default function InvoiceDetailPage() {
+  const t = useT();
   const { id } = useParams<{ id: string }>();
   const {
     user,
@@ -17,9 +19,12 @@ export default function InvoiceDetailPage() {
   } = useUserProfile();
   const orgId = user?.organization_id ?? null;
   const invoice = useInvoice(id, orgId);
+  const loadingLabel = t("cloud.invoices.loading", {
+    defaultValue: "Loading invoice",
+  });
 
   if (!isReady) {
-    return <DashboardLoadingState label="Loading invoice" />;
+    return <DashboardLoadingState label={loadingLabel} />;
   }
 
   if (!isAuthenticated) {
@@ -27,11 +32,11 @@ export default function InvoiceDetailPage() {
   }
 
   if (userLoading || invoice.isLoading) {
-    return <DashboardLoadingState label="Loading invoice" />;
+    return <DashboardLoadingState label={loadingLabel} />;
   }
 
   if (!user) {
-    return <DashboardLoadingState label="Loading invoice" />;
+    return <DashboardLoadingState label={loadingLabel} />;
   }
 
   if (invoice.error) {
@@ -51,10 +56,14 @@ export default function InvoiceDetailPage() {
   return (
     <>
       <Helmet>
-        <title>Invoice Details</title>
+        <title>
+          {t("cloud.invoices.metaTitle", { defaultValue: "Invoice Details" })}
+        </title>
         <meta
           name="description"
-          content="View invoice details and transaction information"
+          content={t("cloud.invoices.metaDescription", {
+            defaultValue: "View invoice details and transaction information",
+          })}
         />
       </Helmet>
       <InvoiceDetailClient invoice={invoice.data} />

@@ -48,6 +48,7 @@ import {
 import { useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 import { toast } from "sonner";
+import { useT } from "@/providers/I18nProvider";
 
 // Simplified container type for table display
 interface TableContainer {
@@ -107,6 +108,7 @@ const DEFAULT_FILTERS: TableFilters = {
 };
 
 export function ContainersTable({ containers }: ContainersTableProps) {
+  const t = useT();
   const [deleteId, setDeleteId] = useState<string | null>(null);
   const [isDeleting, setIsDeleting] = useState(false);
 
@@ -192,25 +194,42 @@ export function ContainersTable({ containers }: ContainersTableProps) {
     });
 
     if (!response.ok) {
-      throw new Error("Failed to delete container");
+      throw new Error(
+        t("cloud.containers.table.deleteFailed", {
+          defaultValue: "Failed to delete container",
+        }),
+      );
     }
 
-    toast.success("Container deleted successfully");
+    toast.success(
+      t("cloud.containers.table.deleteSuccess", {
+        defaultValue: "Container deleted successfully",
+      }),
+    );
     window.location.reload();
     setIsDeleting(false);
     setDeleteId(null);
   };
 
   const formatDate = (date: Date | null): string => {
-    if (!date) return "Never";
+    if (!date)
+      return t("cloud.containers.table.never", { defaultValue: "Never" });
     const now = new Date();
     const deployDate = new Date(date);
     const diffMs = now.getTime() - deployDate.getTime();
     const diffDays = Math.floor(diffMs / (1000 * 60 * 60 * 24));
 
-    if (diffDays === 0) return "Today";
-    if (diffDays === 1) return "Yesterday";
-    if (diffDays < 7) return `${diffDays} days ago`;
+    if (diffDays === 0)
+      return t("cloud.containers.table.today", { defaultValue: "Today" });
+    if (diffDays === 1)
+      return t("cloud.containers.table.yesterday", {
+        defaultValue: "Yesterday",
+      });
+    if (diffDays < 7)
+      return t("cloud.containers.table.daysAgo", {
+        defaultValue: "{{n}} days ago",
+        n: diffDays,
+      });
     return deployDate.toLocaleDateString();
   };
 
@@ -230,7 +249,9 @@ export function ContainersTable({ containers }: ContainersTableProps) {
           <div className="relative flex-1">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-neutral-500" />
             <Input
-              placeholder="Search containers..."
+              placeholder={t("cloud.containers.table.searchPlaceholder", {
+                defaultValue: "Search containers...",
+              })}
               value={filters.searchQuery}
               onChange={(e) =>
                 setFilters((prev) => ({
@@ -248,16 +269,48 @@ export function ContainersTable({ containers }: ContainersTableProps) {
             }
           >
             <SelectTrigger className="w-full sm:w-[160px] h-10 rounded-sm border-white/10 bg-black/40">
-              <SelectValue placeholder="All statuses" />
+              <SelectValue
+                placeholder={t("cloud.containers.table.allStatuses", {
+                  defaultValue: "All statuses",
+                })}
+              />
             </SelectTrigger>
             <SelectContent className="rounded-sm border-white/10 bg-neutral-900">
-              <SelectItem value="all">All Statuses</SelectItem>
-              <SelectItem value="running">Running</SelectItem>
-              <SelectItem value="pending">Pending</SelectItem>
-              <SelectItem value="building">Building</SelectItem>
-              <SelectItem value="deploying">Deploying</SelectItem>
-              <SelectItem value="stopped">Stopped</SelectItem>
-              <SelectItem value="failed">Failed</SelectItem>
+              <SelectItem value="all">
+                {t("cloud.containers.table.allStatusesItem", {
+                  defaultValue: "All Statuses",
+                })}
+              </SelectItem>
+              <SelectItem value="running">
+                {t("cloud.containers.table.statusRunning", {
+                  defaultValue: "Running",
+                })}
+              </SelectItem>
+              <SelectItem value="pending">
+                {t("cloud.containers.table.statusPending", {
+                  defaultValue: "Pending",
+                })}
+              </SelectItem>
+              <SelectItem value="building">
+                {t("cloud.containers.table.statusBuilding", {
+                  defaultValue: "Building",
+                })}
+              </SelectItem>
+              <SelectItem value="deploying">
+                {t("cloud.containers.table.statusDeploying", {
+                  defaultValue: "Deploying",
+                })}
+              </SelectItem>
+              <SelectItem value="stopped">
+                {t("cloud.containers.table.statusStopped", {
+                  defaultValue: "Stopped",
+                })}
+              </SelectItem>
+              <SelectItem value="failed">
+                {t("cloud.containers.table.statusFailed", {
+                  defaultValue: "Failed",
+                })}
+              </SelectItem>
             </SelectContent>
           </Select>
         </div>
@@ -267,7 +320,9 @@ export function ContainersTable({ containers }: ContainersTableProps) {
           <DashboardDataListFilteredCount
             filtered={filteredAndSortedContainers.length}
             total={containers.length}
-            label="containers"
+            label={t("cloud.containers.table.containersLabel", {
+              defaultValue: "containers",
+            })}
             className="text-sm normal-case tracking-normal text-neutral-500"
           />
         )}
@@ -283,7 +338,9 @@ export function ContainersTable({ containers }: ContainersTableProps) {
                     onClick={() => handleSort("name")}
                     className="flex items-center gap-1 text-xs font-medium text-neutral-400 hover:text-white transition-colors"
                   >
-                    Container
+                    {t("cloud.containers.table.col.container", {
+                      defaultValue: "Container",
+                    })}
                     <ArrowUpDown className="h-3 w-3" />
                   </button>
                 </TableHead>
@@ -293,7 +350,9 @@ export function ContainersTable({ containers }: ContainersTableProps) {
                     onClick={() => handleSort("status")}
                     className="flex items-center gap-1 text-xs font-medium text-neutral-400 hover:text-white transition-colors"
                   >
-                    Status
+                    {t("cloud.containers.table.col.status", {
+                      defaultValue: "Status",
+                    })}
                     <ArrowUpDown className="h-3 w-3" />
                   </button>
                 </TableHead>
@@ -303,12 +362,16 @@ export function ContainersTable({ containers }: ContainersTableProps) {
                     onClick={() => handleSort("cpu")}
                     className="flex items-center gap-1 text-xs font-medium text-neutral-400 hover:text-white transition-colors"
                   >
-                    Resources
+                    {t("cloud.containers.table.col.resources", {
+                      defaultValue: "Resources",
+                    })}
                     <ArrowUpDown className="h-3 w-3" />
                   </button>
                 </TableHead>
                 <TableHead className="text-xs font-medium text-neutral-400">
-                  Instances
+                  {t("cloud.containers.table.col.instances", {
+                    defaultValue: "Instances",
+                  })}
                 </TableHead>
                 <TableHead>
                   <button
@@ -316,12 +379,16 @@ export function ContainersTable({ containers }: ContainersTableProps) {
                     onClick={() => handleSort("deployed")}
                     className="flex items-center gap-1 text-xs font-medium text-neutral-400 hover:text-white transition-colors"
                   >
-                    Deployed
+                    {t("cloud.containers.table.col.deployed", {
+                      defaultValue: "Deployed",
+                    })}
                     <ArrowUpDown className="h-3 w-3" />
                   </button>
                 </TableHead>
                 <TableHead className="text-right text-xs font-medium text-neutral-400">
-                  Actions
+                  {t("cloud.containers.table.col.actions", {
+                    defaultValue: "Actions",
+                  })}
                 </TableHead>
               </TableRow>
             </TableHeader>
@@ -331,7 +398,11 @@ export function ContainersTable({ containers }: ContainersTableProps) {
                   <TableCell colSpan={6} className="h-32 text-center">
                     <div className="flex flex-col items-center justify-center text-neutral-500">
                       <Boxes className="h-8 w-8 mb-2" />
-                      <p>No containers match your filters</p>
+                      <p>
+                        {t("cloud.containers.table.noResults", {
+                          defaultValue: "No containers match your filters",
+                        })}
+                      </p>
                     </div>
                   </TableCell>
                 </TableRow>
@@ -355,7 +426,10 @@ export function ContainersTable({ containers }: ContainersTableProps) {
                           </p>
                         )}
                         <div className="text-xs text-neutral-600">
-                          Port: {container.port}
+                          {t("cloud.containers.table.portLabel", {
+                            defaultValue: "Port",
+                          })}
+                          : {container.port}
                         </div>
                       </div>
                     </TableCell>
@@ -383,8 +457,18 @@ export function ContainersTable({ containers }: ContainersTableProps) {
                     </TableCell>
                     <TableCell>
                       <div className="text-sm text-neutral-400">
-                        <div>{container.cpu} CPU</div>
-                        <div>{container.memory}MB RAM</div>
+                        <div>
+                          {container.cpu}{" "}
+                          {t("cloud.containers.table.cpuShort", {
+                            defaultValue: "CPU",
+                          })}
+                        </div>
+                        <div>
+                          {container.memory}
+                          {t("cloud.containers.table.mbRam", {
+                            defaultValue: "MB RAM",
+                          })}
+                        </div>
                       </div>
                     </TableCell>
                     <TableCell>
@@ -424,7 +508,9 @@ export function ContainersTable({ containers }: ContainersTableProps) {
                             </Link>
                           </TooltipTrigger>
                           <TooltipContent className="bg-neutral-900 border-white/10">
-                            View details & logs
+                            {t("cloud.containers.table.viewDetailsLogs", {
+                              defaultValue: "View details & logs",
+                            })}
                           </TooltipContent>
                         </Tooltip>
 
@@ -446,7 +532,9 @@ export function ContainersTable({ containers }: ContainersTableProps) {
                               </button>
                             </TooltipTrigger>
                             <TooltipContent className="bg-neutral-900 border-white/10">
-                              Open container URL
+                              {t("cloud.containers.table.openContainerUrl", {
+                                defaultValue: "Open container URL",
+                              })}
                             </TooltipContent>
                           </Tooltip>
                         )}
@@ -463,7 +551,9 @@ export function ContainersTable({ containers }: ContainersTableProps) {
                             </button>
                           </TooltipTrigger>
                           <TooltipContent className="bg-neutral-900 border-white/10">
-                            Delete container
+                            {t("cloud.containers.table.deleteContainer", {
+                              defaultValue: "Delete container",
+                            })}
                           </TooltipContent>
                         </Tooltip>
                       </div>
@@ -521,20 +611,36 @@ export function ContainersTable({ containers }: ContainersTableProps) {
 
                 <div className="grid grid-cols-3 gap-2 border-t border-white/5 pt-3 text-xs">
                   <div>
-                    <p className="text-neutral-600">Resources</p>
+                    <p className="text-neutral-600">
+                      {t("cloud.containers.table.col.resources", {
+                        defaultValue: "Resources",
+                      })}
+                    </p>
                     <p className="mt-1 text-neutral-300">
-                      {container.cpu} CPU / {container.memory}MB
+                      {container.cpu}{" "}
+                      {t("cloud.containers.table.cpuShort", {
+                        defaultValue: "CPU",
+                      })}{" "}
+                      / {container.memory}MB
                     </p>
                   </div>
                   <div>
-                    <p className="text-neutral-600">Instances</p>
+                    <p className="text-neutral-600">
+                      {t("cloud.containers.table.col.instances", {
+                        defaultValue: "Instances",
+                      })}
+                    </p>
                     <p className="mt-1 flex items-center gap-1 text-neutral-300">
                       <Server className="h-3.5 w-3.5" />
                       {container.desired_count}
                     </p>
                   </div>
                   <div>
-                    <p className="text-neutral-600">Deployed</p>
+                    <p className="text-neutral-600">
+                      {t("cloud.containers.table.col.deployed", {
+                        defaultValue: "Deployed",
+                      })}
+                    </p>
                     <p className="mt-1 text-neutral-300">
                       {formatDate(container.last_deployed_at)}
                     </p>
@@ -547,7 +653,9 @@ export function ContainersTable({ containers }: ContainersTableProps) {
                     className="flex flex-1 items-center justify-center gap-1.5 rounded-sm border border-white/10 py-2 text-xs text-neutral-300 transition-colors hover:bg-white/5 hover:text-white"
                   >
                     <FileText className="h-3.5 w-3.5" />
-                    Details
+                    {t("cloud.containers.table.details", {
+                      defaultValue: "Details",
+                    })}
                   </Link>
 
                   {container.load_balancer_url && (
@@ -561,7 +669,9 @@ export function ContainersTable({ containers }: ContainersTableProps) {
                       className="flex flex-1 items-center justify-center gap-1.5 rounded-sm border border-white/10 py-2 text-xs text-neutral-300 transition-colors hover:bg-white/5 hover:text-white"
                     >
                       <ExternalLink className="h-3.5 w-3.5" />
-                      Open
+                      {t("cloud.containers.table.open", {
+                        defaultValue: "Open",
+                      })}
                     </button>
                   )}
 
@@ -570,7 +680,10 @@ export function ContainersTable({ containers }: ContainersTableProps) {
                     onClick={() => setDeleteId(container.id)}
                     disabled={isDeleting}
                     className="rounded-sm border border-white/10 px-3 py-2 text-neutral-400 transition-colors hover:bg-red-500/10 hover:text-red-500 disabled:opacity-50"
-                    aria-label={`Delete ${container.name}`}
+                    aria-label={t("cloud.containers.table.deleteAria", {
+                      defaultValue: "Delete {{name}}",
+                      name: container.name,
+                    })}
                   >
                     <Trash2 className="h-3.5 w-3.5" />
                   </button>
@@ -588,22 +701,26 @@ export function ContainersTable({ containers }: ContainersTableProps) {
         <AlertDialogContent className="bg-neutral-900 border-white/10">
           <AlertDialogHeader>
             <AlertDialogTitle className="text-white">
-              Delete Container
+              {t("cloud.containers.table.deleteDialogTitle", {
+                defaultValue: "Delete Container",
+              })}
             </AlertDialogTitle>
             <AlertDialogDescription className="text-neutral-400">
-              Are you sure you want to delete this container? This action cannot
-              be undone and will remove the container from AWS ECS.
+              {t("cloud.containers.table.deleteDialogBody", {
+                defaultValue:
+                  "Are you sure you want to delete this container? This action cannot be undone and will remove the container from AWS ECS.",
+              })}
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
             <AlertDialogCancel className="border-white/10 bg-transparent text-white hover:bg-white/5">
-              Cancel
+              {t("cloud.containers.table.cancel", { defaultValue: "Cancel" })}
             </AlertDialogCancel>
             <AlertDialogAction
               onClick={() => deleteId && handleDelete(deleteId)}
               className="bg-red-500 hover:bg-red-600 text-white"
             >
-              Delete
+              {t("cloud.containers.table.delete", { defaultValue: "Delete" })}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>

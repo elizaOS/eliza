@@ -312,6 +312,7 @@ def _hyperliquid_payload(score: float) -> dict[str, Any]:
         "total_scenarios": 2,
         "passed_scenarios": _passed_count(score),
         "mode": "synthetic-calibration",
+        "demo_mode": False,
     }
 
 

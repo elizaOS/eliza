@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import shutil
 import subprocess
 from datetime import UTC, datetime
@@ -14,6 +15,7 @@ ROOT = Path(__file__).resolve().parents[1]
 MANIFEST = ROOT / "docs/generators/chipyard/eliza-rocket-manifest.json"
 DEFAULT_CHECKOUT = ROOT / "external/chipyard"
 DEFAULT_REPORT = ROOT / "build/chipyard/eliza_rocket/bootstrap-preflight.json"
+FALLBACK_REPORT = ROOT / "benchmarks/results/chipyard/bootstrap-preflight.json"
 
 
 def run(command: list[str], cwd: Path | None = None) -> subprocess.CompletedProcess[str]:
@@ -36,6 +38,23 @@ def rel(path: Path) -> str:
         return str(path.relative_to(ROOT))
     except ValueError:
         return str(path)
+
+
+def write_report(path: Path, evidence: dict) -> Path:
+    try:
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(json.dumps(evidence, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+        return path
+    except PermissionError:
+        fallback = FALLBACK_REPORT
+        evidence["report_write_fallback"] = {
+            "requested": rel(path),
+            "actual": rel(fallback),
+            "reason": "requested_report_path_not_writable",
+        }
+        fallback.parent.mkdir(parents=True, exist_ok=True)
+        fallback.write_text(json.dumps(evidence, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+        return fallback
 
 
 def submodule_problem_details(lines: list[str]) -> dict[str, list[str]]:
@@ -119,7 +138,9 @@ def main() -> int:
         "--checkout", default=str(DEFAULT_CHECKOUT), help="Path to a Chipyard checkout"
     )
     parser.add_argument(
-        "--write-report", default=str(DEFAULT_REPORT), help="Write JSON preflight report"
+        "--write-report",
+        default=os.environ.get("CHIPYARD_PREFLIGHT_REPORT", str(DEFAULT_REPORT)),
+        help="Write JSON preflight report",
     )
     parser.add_argument(
         "--require-checkout", action="store_true", help="Return non-zero if checkout is absent"
@@ -231,8 +252,7 @@ def main() -> int:
     evidence["status"] = "fail" if errors else "blocked" if blockers else "pass"
     evidence["errors"] = errors
     evidence["blockers"] = blockers
-    report_path.parent.mkdir(parents=True, exist_ok=True)
-    report_path.write_text(json.dumps(evidence, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+    report_path = write_report(report_path, evidence)
 
     if errors:
         print("STATUS: FAIL chipyard.import_preflight - pinned checkout validation failed")

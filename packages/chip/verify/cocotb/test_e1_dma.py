@@ -1,5 +1,6 @@
 import json
 import random
+import sys
 from pathlib import Path
 
 import cocotb
@@ -7,6 +8,15 @@ from cocotb.clock import Clock
 from cocotb.triggers import RisingEdge, Timer
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+from coverage_helpers import CoverPointSet, axi_resp_name  # noqa: E402
+
+AXI_RESP_BINS = ("OKAY", "SLVERR", "DECERR")
+DMA_IRQ_BINS = ("done", "error", "idle")
+_DMA_COVER = CoverPointSet("dma")
+_DMA_COVER.declare("axi_resp", "bresp", AXI_RESP_BINS)
+_DMA_COVER.declare("axi_resp", "rresp", AXI_RESP_BINS)
+_DMA_COVER.declare("irq_vector", "dma_irq", DMA_IRQ_BINS)
 
 
 def word_read(mem, addr):
@@ -88,6 +98,7 @@ async def randomized_axil_memory(dut, mem, rng, error_addresses=frozenset()):
             addr = int(dut.m_axil_araddr.value)
             resp = 2 if addr in error_addresses else 0
             pending_read = (word_read(mem, addr), resp)
+            _DMA_COVER.sample("axi_resp", "rresp", axi_resp_name(resp))
 
         if aw_fire:
             pending_aw = int(dut.m_axil_awaddr.value)
@@ -101,6 +112,7 @@ async def randomized_axil_memory(dut, mem, rng, error_addresses=frozenset()):
             if resp == 0:
                 word_write(mem, addr, data, strobe)
             pending_write_resp = resp
+            _DMA_COVER.sample("axi_resp", "bresp", axi_resp_name(resp))
             pending_aw = None
             pending_w = None
 
@@ -158,6 +170,7 @@ def write_coverage_artifact(extra):
     out = REPO_ROOT / "build/reports/dma_cocotb_coverage.json"
     out.parent.mkdir(parents=True, exist_ok=True)
     out.write_text(json.dumps(coverage, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+    _DMA_COVER.write_json(extra={"covered_contracts": sorted(covered)})
 
 
 @cocotb.test()
@@ -182,6 +195,7 @@ async def dma_randomized_backpressure_copies_bytes(dut):
 
         assert status == 0x2
         assert int(dut.irq.value) == 1
+        _DMA_COVER.sample("irq_vector", "dma_irq", "done")
         assert await read_reg(dut, 0x05) == length
         assert await read_reg(dut, 0x0C) == (length + 3) // 4
         assert await read_reg(dut, 0x0D) == (length + 3) // 4
@@ -189,6 +203,7 @@ async def dma_randomized_backpressure_copies_bytes(dut):
         assert observed == expected
         await write_reg(dut, 0x03, 2)
         assert int(dut.irq.value) == 0
+        _DMA_COVER.sample("irq_vector", "dma_irq", "idle")
 
     write_coverage_artifact({"randomized_backpressure", "byte_exact_copy", "done_irq_clear"})
 
@@ -246,6 +261,7 @@ async def dma_bus_response_errors_are_fail_closed(dut):
     mem_task.kill()
 
     assert status & 0x6 == 0x6
+    _DMA_COVER.sample("irq_vector", "dma_irq", "error")
     assert await read_reg(dut, 0x0E) == 1
     assert await read_reg(dut, 0x05) == 0
     write_coverage_artifact({"bus_response_error"})

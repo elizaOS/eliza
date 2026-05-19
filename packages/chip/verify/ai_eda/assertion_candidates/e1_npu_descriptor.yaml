@@ -1,0 +1,45 @@
+schema: eliza.ai_eda.assertion_candidate_manifest.v1
+updated: 2026-05-19
+source_ids:
+  - assertllm
+  - assertionforge
+  - codev-sva
+dut: e1_npu
+claim_boundary: assertion_candidates_only_not_bound_to_rtl
+review_policy:
+  generated_assertions_committed_to_rtl: false
+  requires_signal_mapping_review: true
+  requires_formal_or_simulation_pass: true
+  requires_human_review: true
+candidates:
+  - id: npu_descriptor_tail_advances_on_accepted_owned_descriptor
+    status: HUMAN_AUTHORED_PLACEHOLDER
+    source_spec:
+      - docs/spec-db/e1-npu-runtime-contract.json
+      - verify/cocotb/test_e1_npu.py
+    target_signal_group:
+      - desc_tail
+      - desc_head
+      - desc_busy
+      - desc_status
+    property_intent: >
+      A valid owned descriptor that is fetched and accepted eventually advances
+      the descriptor tail exactly once.
+    promotion_gate:
+      - make formal
+      - make cocotb-npu
+  - id: npu_descriptor_timeout_sets_error_status
+    status: HUMAN_AUTHORED_PLACEHOLDER
+    source_spec:
+      - docs/spec-db/e1-npu-runtime-contract.json
+      - verify/cocotb/test_e1_npu.py
+    target_signal_group:
+      - desc_timeout_count
+      - desc_status
+      - perf_errors
+    property_intent: >
+      A stalled descriptor fetch reaches timeout status and increments error
+      accounting without reporting a successful completion.
+    promotion_gate:
+      - make formal
+      - make cocotb-npu

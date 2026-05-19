@@ -819,22 +819,45 @@ function registerDeviceBridgeLoader(runtime: AgentRuntime): void {
 }
 
 /**
- * AOSP-only path: load `libllama.so` directly into the bun process via
- * `bun:ffi`. The adapter no-ops at runtime when `ELIZA_LOCAL_LLAMA !== "1"`,
- * so the dynamic import below is safe on every platform; we only attempt
- * registration when the user explicitly opted in.
+ * AOSP / generic-FFI path: load `libllama.so` directly into the bun process
+ * via `bun:ffi`. The adapter no-ops at runtime when neither
+ * `ELIZA_LOCAL_LLAMA === "1"` nor `process.arch === "riscv64"` is true (see
+ * `isAospEnabled` in `aosp-llama-adapter.ts`), so the dynamic import below
+ * is safe on every platform; we only attempt registration when one of the
+ * triggers fires.
+ *
+ * riscv64 rationale: `capacitor-llama` ships prebuilts only for
+ * linux-{x64,arm64}, darwin-arm64, win-x64. Riscv64 hosts have no native
+ * NAPI binding option; the vendored `libllama.so` cross-built by Wave 2 is
+ * the only in-process llama.cpp path. The FFI loader satisfies the same
+ * `localInferenceLoader` service contract, so the rest of the engine —
+ * model handlers, embedding routing, response handler — works unchanged.
  *
  * The `try`/`catch` is justified because the AOSP build can ship the .so on
  * one ABI but be invoked on another (e.g. cuttlefish_x86_64 reporting both
  * x86_64 and arm64-v8a). When `ELIZA_LOCAL_LLAMA=1` is set but registration
  * fails, the adapter logs at `error` level — we must NOT silently fall
  * through to the device-bridge or stock engine: the operator opted in and
- * deserves the failure surfaced clearly.
+ * deserves the failure surfaced clearly. The riscv64 auto-trigger uses the
+ * same path; if the bundled libllama.so is missing the failure is logged
+ * but inference falls through to Cloud routing (per CLAUDE.md deployment
+ * topologies — local-only is supported but Cloud is an acceptable fallback
+ * when the on-device backend is unavailable).
  */
+export function shouldAttemptAospLlamaLoader(
+	env: NodeJS.ProcessEnv = process.env,
+	arch: NodeJS.Architecture = process.arch,
+): boolean {
+	if (env.ELIZA_DISABLE_FFI_LLAMA?.trim() === "1") return false;
+	if (env.ELIZA_LOCAL_LLAMA?.trim() === "1") return true;
+	if (arch === "riscv64") return true;
+	return false;
+}
+
 async function tryRegisterAospLlamaLoader(
 	runtime: AgentRuntime,
 ): Promise<boolean> {
-	if (process.env.ELIZA_LOCAL_LLAMA?.trim() !== "1") return false;
+	if (!shouldAttemptAospLlamaLoader()) return false;
 	try {
 		const dynamicImport = new Function("id", "return import(id)") as (
 			id: string,

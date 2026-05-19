@@ -1,9 +1,15 @@
-FROM oven/bun:1.3.13-alpine AS deps
+# BUN_BASE selects the Bun base image. Default targets linux/amd64 + linux/arm64
+# via upstream oven/bun. For linux/riscv64 (no upstream image — oven-sh/bun#6266,
+# #21923), build a local Bun image via packages/app-core/scripts/bun-riscv64/build.sh
+# and pass --build-arg BUN_BASE=<local-tag>.
+ARG BUN_BASE=oven/bun:1.3.13-alpine
+
+FROM ${BUN_BASE} AS deps
 WORKDIR /app
 COPY package.json ./
 RUN bun install
 
-FROM oven/bun:1.3.13-alpine AS runner
+FROM ${BUN_BASE} AS runner
 WORKDIR /app
 RUN adduser -D -u 1001 appuser && mkdir -p /app/cache && chown appuser /app/cache
 COPY --from=deps /app/node_modules ./node_modules

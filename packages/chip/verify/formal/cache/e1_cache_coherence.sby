@@ -1,0 +1,14 @@
+[options]
+mode bmc
+depth 24
+multiclock off
+
+[engines]
+smtbmc
+
+[script]
+read -sv e1_cache_coherence_formal.sv
+prep -top e1_cache_coherence_formal -flatten
+
+[files]
+e1_cache_coherence_formal.sv

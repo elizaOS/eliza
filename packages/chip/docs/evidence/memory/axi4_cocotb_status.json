@@ -1,0 +1,148 @@
+{
+  "schema": "eliza.memory.axi4_cocotb_status.v1",
+  "generated_at": "2026-05-19T20:54:00.553209Z",
+  "simulator": "verilator",
+  "harnesses": [
+    {
+      "toplevel": "e1_axi4_tb",
+      "module": "test_axi4_burst",
+      "required_tests": [
+        "incr_burst_length_sweep",
+        "decode_error_returns_decerr",
+        "write_strobe_partial_beat_preserves_unwritten_bytes",
+        "id_ordering_per_axid",
+        "exclusive_read_then_write_returns_exokay_or_okay"
+      ],
+      "status": "present",
+      "result_xml": "build/reports/cocotb/e1_axi4_tb_test_axi4_burst.raw.xml",
+      "results": {
+        "incr_burst_length_sweep": {
+          "status": "pass",
+          "sim_time_ns": 18560.001,
+          "wall_time_s": 0.08687424659729004
+        },
+        "decode_error_returns_decerr": {
+          "status": "pass",
+          "sim_time_ns": 130.0010000000002,
+          "wall_time_s": 0.0007672309875488281
+        },
+        "write_strobe_partial_beat_preserves_unwritten_bytes": {
+          "status": "pass",
+          "sim_time_ns": 370.0010000000002,
+          "wall_time_s": 0.0017049312591552734
+        },
+        "id_ordering_per_axid": {
+          "status": "pass",
+          "sim_time_ns": 620.0010000000002,
+          "wall_time_s": 0.0029006004333496094
+        },
+        "exclusive_read_then_write_returns_exokay_or_okay": {
+          "status": "pass",
+          "sim_time_ns": 440.0010000000002,
+          "wall_time_s": 0.002493619918823242
+        }
+      },
+      "pass_count": 5,
+      "fail_count": 0,
+      "missing_required_tests": []
+    },
+    {
+      "toplevel": "e1_axi4_irq_w1c_tb",
+      "module": "test_irq_w1c",
+      "required_tests": [
+        "decode_err_irq_w1c_clears_status",
+        "excl_fail_irq_w1c_clears_status",
+        "w1c_clears_only_masked_bits"
+      ],
+      "status": "present",
+      "result_xml": "build/reports/cocotb/e1_axi4_irq_w1c_tb_test_irq_w1c.raw.xml",
+      "results": {
+        "decode_err_irq_w1c_clears_status": {
+          "status": "pass",
+          "sim_time_ns": 330.001,
+          "wall_time_s": 0.0035789012908935547
+        },
+        "excl_fail_irq_w1c_clears_status": {
+          "status": "pass",
+          "sim_time_ns": 620.001,
+          "wall_time_s": 0.005324125289916992
+        },
+        "w1c_clears_only_masked_bits": {
+          "status": "pass",
+          "sim_time_ns": 180.00099999999998,
+          "wall_time_s": 0.0014493465423583984
+        }
+      },
+      "pass_count": 3,
+      "fail_count": 0,
+      "missing_required_tests": []
+    },
+    {
+      "toplevel": "e1_axi4_multimaster_tb",
+      "module": "test_multi_master_fairness",
+      "required_tests": [
+        "equal_qos_round_robin_no_starvation",
+        "qos_weighted_high_master_wins_no_starvation"
+      ],
+      "status": "present",
+      "result_xml": "build/reports/cocotb/e1_axi4_multimaster_tb_test_multi_master_fairness.raw.xml",
+      "results": {
+        "equal_qos_round_robin_no_starvation": {
+          "status": "pass",
+          "sim_time_ns": 6510.001,
+          "wall_time_s": 0.05669355392456055
+        },
+        "qos_weighted_high_master_wins_no_starvation": {
+          "status": "pass",
+          "sim_time_ns": 3320.001,
+          "wall_time_s": 0.02259087562561035
+        }
+      },
+      "pass_count": 2,
+      "fail_count": 0,
+      "missing_required_tests": []
+    },
+    {
+      "toplevel": "e1_dram_ctrl_tb",
+      "module": "test_dfi_traffic",
+      "required_tests": [
+        "dfi_init_brings_cke_high",
+        "dfi_write_emits_activate_then_write_col",
+        "dfi_read_emits_activate_then_read_col",
+        "dfi_refresh_fires_within_window"
+      ],
+      "status": "present",
+      "result_xml": "build/reports/cocotb/e1_dram_ctrl_tb_test_dfi_traffic.raw.xml",
+      "results": {
+        "dfi_init_brings_cke_high": {
+          "status": "pass",
+          "sim_time_ns": 170.001,
+          "wall_time_s": 0.0014438629150390625
+        },
+        "dfi_write_emits_activate_then_write_col": {
+          "status": "pass",
+          "sim_time_ns": 710.001,
+          "wall_time_s": 0.005789518356323242
+        },
+        "dfi_read_emits_activate_then_read_col": {
+          "status": "pass",
+          "sim_time_ns": 660.001,
+          "wall_time_s": 0.015741825103759766
+        },
+        "dfi_refresh_fires_within_window": {
+          "status": "pass",
+          "sim_time_ns": 2650.001,
+          "wall_time_s": 0.012331962585449219
+        }
+      },
+      "pass_count": 4,
+      "fail_count": 0,
+      "missing_required_tests": []
+    }
+  ],
+  "summary": {
+    "pass_count": 14,
+    "fail_count": 0,
+    "all_passed": true
+  }
+}

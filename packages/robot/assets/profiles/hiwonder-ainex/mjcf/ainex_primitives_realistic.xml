@@ -1,0 +1,326 @@
+<mujoco model="ainex_primitives">
+  <!-- Pure primitive geometry version for fast MJX training (no meshes) -->
+  <compiler angle="radian" autolimits="true"/>
+
+  <option timestep="0.004" gravity="0 0 -9.81" iterations="1" ls_iterations="5">
+    <flag eulerdamp="disable"/>
+  </option>
+
+  <default>
+    <joint limited="true" damping="5.0" armature="0.04" frictionloss="0.1"
+           range="-1.57 1.57"/>
+    <geom contype="0" conaffinity="0" friction="0.6" rgba="0.85 0.1 0.1 1"/>
+    <site group="5" type="sphere"/>
+    <position kp="200" ctrlrange="-3.14159 3.14159" forcerange="-2 2"/>
+    <default class="foot">
+      <geom mass="0" type="box" friction="1.0 0.02 0.01" contype="1" conaffinity="1"
+            solimp="0.95 0.99 0.001" solref="0.004 1"/>
+    </default>
+  </default>
+
+  <asset>
+    <texture type="skybox" builtin="gradient" rgb1="0.3 0.5 0.7" rgb2="0 0 0" width="512" height="512"/>
+    <texture type="2d" name="ground" builtin="checker" rgb1="0.2 0.3 0.4" rgb2="0.25 0.35 0.45"
+             width="512" height="512" mark="edge" markrgb="0.3 0.4 0.5"/>
+    <material name="ground" texture="ground" texrepeat="8 8" texuniform="true" reflectance="0.2"/>
+  </asset>
+
+  <worldbody>
+    <light name="top" pos="0 0 3" dir="0 0 -1" diffuse="0.6 0.6 0.6" specular="0.3 0.3 0.3"/>
+    <light name="spot" mode="targetbodycom" target="body_link" pos="3 -1 2" diffuse="0.8 0.8 0.8"/>
+    <geom name="floor" type="plane" size="0 0 0.01" material="ground" contype="1" conaffinity="0"/>
+
+    <body name="base_link" pos="0 0 0.28">
+      <freejoint name="root"/>
+
+      <body name="body_link">
+        <inertial pos="0.004 0 0.035" mass="1.043"
+                  fullinertia="0.00122 0.00104 0.00109 0 -5.3e-05 0"/>
+        <geom name="torso" type="box" size="0.04 0.05 0.055" pos="0 0 0.05" rgba="0.85 0.1 0.1 1"
+              contype="1" conaffinity="1" friction="0.7 0.1 0.001"
+              solimp="0.9 0.95 0.001" solref="0.005 1"/>
+        <site name="imu" pos="0 0 0.05" size="0.005"/>
+
+        <!-- RIGHT LEG -->
+        <body name="r_hip_yaw_link" pos="0 -0.029 0">
+          <joint name="r_hip_yaw" axis="0 0 -1"/>
+          <inertial pos="0 0.001 -0.001" mass="0.032"
+                    fullinertia="1.76e-05 2.27e-05 9.05e-06 0 0 0"/>
+          <geom type="sphere" size="0.015" contype="1" conaffinity="1" rgba="0.9 0.15 0.15 1"/>
+
+          <body name="r_hip_roll_link" pos="-0.01955 0 -0.0255">
+            <joint name="r_hip_roll" axis="-1 0 0"/>
+            <inertial pos="0.001 -0.001 -0.013" mass="0.120"
+                      fullinertia="2.9e-05 7.3e-05 6.1e-05 0 0 0"/>
+            <geom type="box" size="0.02 0.025 0.015" contype="1" conaffinity="1" rgba="0.9 0.15 0.15 1"/>
+
+            <body name="r_hip_pitch_link" pos="0.01904 -0.02 0">
+              <joint name="r_hip_pitch" axis="0 -1 0"/>
+              <inertial pos="0.014 0.019 -0.073" mass="0.1065"
+                        fullinertia="0.00011 0.00011 4.2e-05 0 -8e-06 0"/>
+              <geom type="capsule" size="0.018" fromto="0 0.02 -0.01 0 0.02 -0.09" contype="1" conaffinity="1" rgba="0.9 0.15 0.15 1"/>
+
+              <body name="r_knee_link" pos="-0.000372 0.00005 -0.09689">
+                <joint name="r_knee" axis="0 -1 0"/>
+                <inertial pos="0.003 0.020 -0.043" mass="0.045"
+                          fullinertia="6.7e-05 5.5e-05 2.1e-05 0 0 0"/>
+                <geom type="capsule" size="0.016" fromto="0 0.02 -0.005 0 0.02 -0.085" contype="1" conaffinity="1" rgba="0.9 0.15 0.15 1"/>
+
+                <body name="r_ank_pitch_link" pos="0.001037 0 -0.08908">
+                  <joint name="r_ank_pitch" axis="0 1 0" range="-1.0 1.0"/>
+                  <inertial pos="-0.018 0.020 0.013" mass="0.120"
+                            fullinertia="2.9e-05 7.4e-05 6.1e-05 0 0 0"/>
+                  <geom type="box" size="0.015 0.02 0.012" pos="-0.01 0.02 0" contype="1" conaffinity="1" rgba="0.9 0.15 0.15 1"/>
+
+                  <body name="r_ank_roll_link" pos="-0.01904 0.02 0">
+                    <joint name="r_ank_roll" axis="1 0 0" range="-0.4 0.4"/>
+                    <inertial pos="0.029 -0.013 -0.018" mass="0.0675"
+                              fullinertia="4.2e-05 9.2e-05 1.3e-04 0 0 0"/>
+                    <site name="right_foot" pos="0.02 0 -0.02" size="0.005"/>
+                    <!-- Foot: STL bounds 135x76x34mm -->
+                    <geom name="r_foot1" class="foot" size="0.068 0.038 0.017" pos="0.030 -0.014 -0.006" rgba="0.9 0.15 0.15 1"/>
+                    <geom name="r_foot2" class="foot" size="0.068 0.038 0.003" pos="0.030 -0.014 -0.020" rgba="0.9 0.15 0.15 1"/>
+                  </body>
+                </body>
+              </body>
+            </body>
+          </body>
+        </body>
+
+        <!-- LEFT LEG -->
+        <body name="l_hip_yaw_link" pos="0 0.029 0">
+          <joint name="l_hip_yaw" axis="0 0 -1"/>
+          <inertial pos="0 -0.001 -0.001" mass="0.032"
+                    fullinertia="1.76e-05 2.27e-05 9.05e-06 0 0 0"/>
+          <geom type="sphere" size="0.015" contype="1" conaffinity="1" rgba="0.9 0.15 0.15 1"/>
+
+          <body name="l_hip_roll_link" pos="-0.01955 0 -0.0255">
+            <joint name="l_hip_roll" axis="-1 0 0"/>
+            <inertial pos="0.001 0.001 -0.013" mass="0.120"
+                      fullinertia="2.9e-05 7.3e-05 6.1e-05 0 0 0"/>
+            <geom type="box" size="0.02 0.025 0.015" contype="1" conaffinity="1" rgba="0.9 0.15 0.15 1"/>
+
+            <body name="l_hip_pitch_link" pos="0.019037 0.02 0">
+              <joint name="l_hip_pitch" axis="0 1 0"/>
+              <inertial pos="0.014 -0.019 -0.073" mass="0.1065"
+                        fullinertia="0.00011 0.00011 4.2e-05 0 -8e-06 0"/>
+              <geom type="capsule" size="0.018" fromto="0 -0.02 -0.01 0 -0.02 -0.09" contype="1" conaffinity="1" rgba="0.9 0.15 0.15 1"/>
+
+              <body name="l_knee_link" pos="-0.00037204 -0.00005 -0.096886">
+                <joint name="l_knee" axis="0 1 0"/>
+                <inertial pos="0.003 -0.020 -0.043" mass="0.045"
+                          fullinertia="6.7e-05 5.5e-05 2.1e-05 0 0 0"/>
+                <geom type="capsule" size="0.016" fromto="0 -0.02 -0.005 0 -0.02 -0.085" contype="1" conaffinity="1" rgba="0.9 0.15 0.15 1"/>
+
+                <body name="l_ank_pitch_link" pos="0.001037 0 -0.089077">
+                  <joint name="l_ank_pitch" axis="0 -1 0" range="-1.0 1.0"/>
+                  <inertial pos="-0.018 -0.020 0.013" mass="0.120"
+                            fullinertia="2.9e-05 7.4e-05 6.1e-05 0 0 0"/>
+                  <geom type="box" size="0.015 0.02 0.012" pos="-0.01 -0.02 0" contype="1" conaffinity="1" rgba="0.9 0.15 0.15 1"/>
+
+                  <body name="l_ank_roll_link" pos="-0.019037 -0.02 0">
+                    <joint name="l_ank_roll" axis="1 0 0" range="-0.4 0.4"/>
+                    <inertial pos="0.029 0.013 -0.018" mass="0.0675"
+                              fullinertia="4.2e-05 9.2e-05 1.3e-04 0 0 0"/>
+                    <site name="left_foot" pos="0.02 0 -0.02" size="0.005"/>
+                    <!-- Foot: STL bounds 135x76x34mm (mirrored Y) -->
+                    <geom name="l_foot1" class="foot" size="0.068 0.038 0.017" pos="0.030 0.014 -0.006" rgba="0.9 0.15 0.15 1"/>
+                    <geom name="l_foot2" class="foot" size="0.068 0.038 0.003" pos="0.030 0.014 -0.020" rgba="0.9 0.15 0.15 1"/>
+                  </body>
+                </body>
+              </body>
+            </body>
+          </body>
+        </body>
+
+        <!-- HEAD -->
+        <body name="head_pan_link" pos="-0.0041 0 0.1078">
+          <joint name="head_pan" axis="0 0 -1"/>
+          <inertial pos="0.005 0 0.014" mass="0.00767"
+                    fullinertia="2.1e-06 9.9e-07 1.8e-06 0 0 0"/>
+          <geom type="box" size="0.015 0.02 0.015" pos="0.005 0 0.01" contype="1" conaffinity="1" rgba="0.3 0.3 0.6 1"/>
+          <body name="head_tilt_link" pos="0.00905 -0.01857 0.02816">
+            <joint name="head_tilt" axis="0 -1 0"/>
+            <inertial pos="0.011 0.019 0.022" mass="0.02622"
+                      fullinertia="6.2e-06 6.3e-06 6.9e-06 0 0 0"/>
+            <geom type="box" size="0.03 0.03 0.02" pos="0.01 0.01 0.02" contype="1" conaffinity="1" rgba="0.3 0.3 0.6 1"/>
+            <site name="camera_eye" pos="0.03 0 0.01" size="0.005"/>
+            <camera name="head_cam" pos="0.03 0 0.01" fovy="49.1" mode="fixed"/>
+          </body>
+        </body>
+
+        <!-- RIGHT ARM -->
+        <body name="r_sho_pitch_link" pos="0 -0.05249 0.08745">
+          <joint name="r_sho_pitch" axis="0 -1 0" damping="3.0" armature="0.08" frictionloss="0.2"/>
+          <inertial pos="0 -0.011 0" mass="0.0128"
+                    fullinertia="2.1e-06 3.9e-06 5e-06 0 0 0"/>
+          <geom type="sphere" size="0.013" pos="0 -0.011 0" contype="1" conaffinity="1" rgba="0.9 0.15 0.15 1"/>
+          <body name="r_sho_roll_link" pos="0.020003 -0.02151 0">
+            <joint name="r_sho_roll" axis="1 0 0" damping="3.0" armature="0.08" frictionloss="0.2"/>
+            <inertial pos="-0.021 -0.028 0" mass="0.121"
+                      fullinertia="7.3e-05 2.5e-05 7.5e-05 9e-06 0 0"/>
+            <geom type="capsule" size="0.013" fromto="0 0 0 -0.02 -0.07 0" contype="1" conaffinity="1" rgba="0.9 0.15 0.15 1"/>
+            <body name="r_el_pitch_link" pos="-0.020003 -0.07411 0">
+              <joint name="r_el_pitch" axis="0 -1 0" damping="3.0" armature="0.08" frictionloss="0.2"/>
+              <inertial pos="-0.007 -0.013 0" mass="0.045"
+                        fullinertia="8e-06 8.3e-06 1.1e-05 0 0 0"/>
+              <geom type="sphere" size="0.012" pos="-0.007 -0.013 0" contype="1" conaffinity="1" rgba="0.9 0.15 0.15 1"/>
+              <body name="r_el_yaw_link" pos="0.000398 -0.01702 0.01907">
+                <joint name="r_el_yaw" axis="0 0 1" damping="3.0" armature="0.08" frictionloss="0.2"/>
+                <inertial pos="0 -0.057 -0.014" mass="0.102"
+                          fullinertia="1.4e-04 3.1e-05 1.4e-04 0 0 -1.3e-05"/>
+                <geom type="capsule" size="0.011" fromto="0 -0.01 0 0 -0.08 -0.02" contype="1" conaffinity="1" rgba="0.9 0.15 0.15 1"/>
+                <body name="r_gripper_link" pos="0.01989 -0.08924 -0.01907">
+                  <joint name="r_gripper" axis="1 0 0" damping="3.0" armature="0.08" frictionloss="0.2"/>
+                  <inertial pos="-0.019 -0.009 -0.005" mass="0.0135"
+                            fullinertia="3.3e-06 4.5e-06 6e-06 0 0 0"/>
+                  <geom type="sphere" size="0.012" pos="-0.019 -0.009 -0.005" contype="1" conaffinity="1" rgba="0.9 0.15 0.15 1"/>
+                </body>
+              </body>
+            </body>
+          </body>
+        </body>
+
+        <!-- LEFT ARM -->
+        <body name="l_sho_pitch_link" pos="0 0.052491 0.087448">
+          <joint name="l_sho_pitch" axis="0 -1 0" damping="3.0" armature="0.08" frictionloss="0.2"/>
+          <inertial pos="0 0.011 0" mass="0.0128"
+                    fullinertia="2.1e-06 3.9e-06 5e-06 0 0 0"/>
+          <geom type="sphere" size="0.013" pos="0 0.011 0" contype="1" conaffinity="1" rgba="0.9 0.15 0.15 1"/>
+          <body name="l_sho_roll_link" pos="0.020003 0.021507 0">
+            <joint name="l_sho_roll" axis="1 0 0" damping="3.0" armature="0.08" frictionloss="0.2"/>
+            <inertial pos="-0.021 0.028 0" mass="0.121"
+                      fullinertia="7.3e-05 2.5e-05 7.5e-05 -9e-06 0 0"/>
+            <geom type="capsule" size="0.013" fromto="0 0 0 -0.02 0.07 0" contype="1" conaffinity="1" rgba="0.9 0.15 0.15 1"/>
+            <body name="l_el_pitch_link" pos="-0.020003 0.074109 0">
+              <joint name="l_el_pitch" axis="0 -1 0" damping="3.0" armature="0.08" frictionloss="0.2"/>
+              <inertial pos="-0.007 0.013 0" mass="0.045"
+                        fullinertia="8e-06 8.3e-06 1.1e-05 0 0 0"/>
+              <geom type="sphere" size="0.012" pos="-0.007 0.013 0" contype="1" conaffinity="1" rgba="0.9 0.15 0.15 1"/>
+              <body name="l_el_yaw_link" pos="0.000395 0.017019 0.019072">
+                <joint name="l_el_yaw" axis="0 0 1" damping="3.0" armature="0.08" frictionloss="0.2"/>
+                <inertial pos="0 0.057 -0.014" mass="0.102"
+                          fullinertia="1.4e-04 3.1e-05 1.4e-04 0 0 1.3e-05"/>
+                <geom type="capsule" size="0.011" fromto="0 0.01 0 0 0.08 -0.02" contype="1" conaffinity="1" rgba="0.9 0.15 0.15 1"/>
+                <body name="l_gripper_link" pos="0.019893 0.089232 -0.019072">
+                  <joint name="l_gripper" axis="1 0 0" damping="3.0" armature="0.08" frictionloss="0.2"/>
+                  <inertial pos="-0.019 0.009 -0.005" mass="0.0135"
+                            fullinertia="3.3e-06 4.5e-06 6e-06 0 0 0"/>
+                  <geom type="sphere" size="0.012" pos="-0.019 0.009 -0.005" contype="1" conaffinity="1" rgba="0.9 0.15 0.15 1"/>
+                </body>
+              </body>
+            </body>
+          </body>
+        </body>
+
+      </body><!-- /body_link -->
+    </body><!-- /base_link -->
+  </worldbody>
+
+  <!-- Exclude adjacent-link self-collision -->
+  <contact>
+    <exclude body1="body_link" body2="r_hip_yaw_link"/>
+    <exclude body1="body_link" body2="l_hip_yaw_link"/>
+    <exclude body1="body_link" body2="head_pan_link"/>
+    <exclude body1="body_link" body2="r_sho_pitch_link"/>
+    <exclude body1="body_link" body2="l_sho_pitch_link"/>
+    <exclude body1="r_hip_yaw_link" body2="r_hip_roll_link"/>
+    <exclude body1="r_hip_roll_link" body2="r_hip_pitch_link"/>
+    <exclude body1="r_hip_pitch_link" body2="r_knee_link"/>
+    <exclude body1="r_knee_link" body2="r_ank_pitch_link"/>
+    <exclude body1="r_ank_pitch_link" body2="r_ank_roll_link"/>
+    <exclude body1="l_hip_yaw_link" body2="l_hip_roll_link"/>
+    <exclude body1="l_hip_roll_link" body2="l_hip_pitch_link"/>
+    <exclude body1="l_hip_pitch_link" body2="l_knee_link"/>
+    <exclude body1="l_knee_link" body2="l_ank_pitch_link"/>
+    <exclude body1="l_ank_pitch_link" body2="l_ank_roll_link"/>
+    <exclude body1="head_pan_link" body2="head_tilt_link"/>
+    <exclude body1="r_sho_pitch_link" body2="r_sho_roll_link"/>
+    <exclude body1="r_sho_roll_link" body2="r_el_pitch_link"/>
+    <exclude body1="r_el_pitch_link" body2="r_el_yaw_link"/>
+    <exclude body1="r_el_yaw_link" body2="r_gripper_link"/>
+    <exclude body1="l_sho_pitch_link" body2="l_sho_roll_link"/>
+    <exclude body1="l_sho_roll_link" body2="l_el_pitch_link"/>
+    <exclude body1="l_el_pitch_link" body2="l_el_yaw_link"/>
+    <exclude body1="l_el_yaw_link" body2="l_gripper_link"/>
+  </contact>
+
+  <actuator>
+    <position name="r_hip_yaw_act"   joint="r_hip_yaw"   kp="200"/>
+    <position name="r_hip_roll_act"  joint="r_hip_roll"  kp="200"/>
+    <position name="r_hip_pitch_act" joint="r_hip_pitch" kp="200"/>
+    <position name="r_knee_act"      joint="r_knee"      kp="200"/>
+    <position name="r_ank_pitch_act" joint="r_ank_pitch" kp="200"/>
+    <position name="r_ank_roll_act"  joint="r_ank_roll"  kp="200"/>
+    <position name="l_hip_yaw_act"   joint="l_hip_yaw"   kp="200"/>
+    <position name="l_hip_roll_act"  joint="l_hip_roll"  kp="200"/>
+    <position name="l_hip_pitch_act" joint="l_hip_pitch" kp="200"/>
+    <position name="l_knee_act"      joint="l_knee"      kp="200"/>
+    <position name="l_ank_pitch_act" joint="l_ank_pitch" kp="200"/>
+    <position name="l_ank_roll_act"  joint="l_ank_roll"  kp="200"/>
+    <position name="head_pan_act"  joint="head_pan"  kp="50"/>
+    <position name="head_tilt_act" joint="head_tilt" kp="50"/>
+    <position name="r_sho_pitch_act" joint="r_sho_pitch" kp="50"/>
+    <position name="r_sho_roll_act"  joint="r_sho_roll"  kp="50"/>
+    <position name="r_el_pitch_act"  joint="r_el_pitch"  kp="50"/>
+    <position name="r_el_yaw_act"    joint="r_el_yaw"    kp="50"/>
+    <position name="r_gripper_act"   joint="r_gripper"   kp="50"/>
+    <position name="l_sho_pitch_act" joint="l_sho_pitch" kp="50"/>
+    <position name="l_sho_roll_act"  joint="l_sho_roll"  kp="50"/>
+    <position name="l_el_pitch_act"  joint="l_el_pitch"  kp="50"/>
+    <position name="l_el_yaw_act"    joint="l_el_yaw"    kp="50"/>
+    <position name="l_gripper_act"   joint="l_gripper"   kp="50"/>
+  </actuator>
+
+  <sensor>
+    <accelerometer name="accelerometer" site="imu"/>
+    <gyro name="gyro" site="imu"/>
+    <framezaxis name="upvector" objtype="site" objname="imu"/>
+    <framelinvel name="global_linvel" objtype="site" objname="imu"/>
+    <frameangvel name="global_angvel" objtype="site" objname="imu"/>
+    <velocimeter name="local_linvel" site="imu"/>
+    <framequat name="body_quat" objtype="body" objname="body_link"/>
+    <subtreecom name="com" body="base_link"/>
+    <framelinvel name="left_foot_global_linvel" objtype="site" objname="left_foot"/>
+    <framelinvel name="right_foot_global_linvel" objtype="site" objname="right_foot"/>
+    <contact name="l_foot1_floor_found" geom1="l_foot1" geom2="floor" reduce="mindist" num="1" data="found"/>
+    <contact name="l_foot2_floor_found" geom1="l_foot2" geom2="floor" reduce="mindist" num="1" data="found"/>
+    <contact name="r_foot1_floor_found" geom1="r_foot1" geom2="floor" reduce="mindist" num="1" data="found"/>
+    <contact name="r_foot2_floor_found" geom1="r_foot2" geom2="floor" reduce="mindist" num="1" data="found"/>
+  </sensor>
+
+  <keyframe>
+    <key name="stand"
+         qpos="0 0 0.28 1 0 0 0
+               0 0 0 0 0 0
+               0 0 0 0 0 0
+               0 0
+               0 1.403 0 1.226 0
+               0 -1.403 0 -1.226 0"/>
+    <key name="stand_bent_knees"
+         qpos="0 0 0.196 1 0 0 0
+               0 -0.016 0.828 -1.192 -0.625 -0.016
+               0  0.016 -0.828 1.192 0.625 0.016
+               0 0
+               0 -1.293 0.10 1.926 0
+               0 1.293 -0.10 -1.926 0"/>
+    <!-- Fallen poses for getup training -->
+    <key name="face_down"
+         qpos="0 0 0.08 0 0 1 0
+               0 0 0 0 0 0  0 0 0 0 0 0  0 0
+               0 -1.293 0.10 1.926 0  0 1.293 -0.10 -1.926 0"/>
+    <key name="face_up"
+         qpos="0 0 0.08 0 1 0 0
+               0 0 0 0 0 0  0 0 0 0 0 0  0 0
+               0 -1.293 0.10 1.926 0  0 1.293 -0.10 -1.926 0"/>
+    <key name="side_right"
+         qpos="0 0 0.07 0.707 0.707 0 0
+               0 0 0 0 0 0  0 0 0 0 0 0  0 0
+               0 -1.293 0.10 1.926 0  0 1.293 -0.10 -1.926 0"/>
+    <key name="side_left"
+         qpos="0 0 0.07 0.707 -0.707 0 0
+               0 0 0 0 0 0  0 0 0 0 0 0  0 0
+               0 -1.293 0.10 1.926 0  0 1.293 -0.10 -1.926 0"/>
+  </keyframe>
+
+</mujoco>

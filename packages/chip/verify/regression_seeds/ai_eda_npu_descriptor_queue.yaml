@@ -1,0 +1,23 @@
+schema: eliza.ai_eda.regression_seed_manifest.v1
+updated: 2026-05-19
+scope: >
+  Deterministic seed scenarios for dry-run AI/EDA coverage triage. These are
+  references to existing regression intent, not generated tests.
+seeds:
+  - id: seed_existing_npu_basic
+    source: verify/cocotb/test_e1_npu.py
+    status: EXISTING_TEST_REFERENCE
+    covers:
+      - descriptor_queue_back_to_back_submit
+      - npu_error_status_persistence
+  - id: seed_existing_npu_queue_stress
+    source: verify/cocotb/npu/test_npu_queue_stress.py
+    status: EXISTING_TEST_REFERENCE
+    covers:
+      - descriptor_queue_empty_pop
+      - descriptor_queue_back_to_back_submit
+  - id: seed_existing_reset_cleanup
+    source: verify/cocotb/test_reset_domain_cleanup.py
+    status: EXISTING_TEST_REFERENCE
+    covers:
+      - descriptor_queue_reset_midflight

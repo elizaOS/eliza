@@ -6,6 +6,7 @@ cd "$REPO_DIR"
 
 MANIFEST="${CHIPYARD_MANIFEST:-docs/generators/chipyard/eliza-rocket-manifest.json}"
 CHECKOUT="${CHIPYARD_CHECKOUT:-external/chipyard}"
+PREFLIGHT_REPORT="${CHIPYARD_PREFLIGHT_REPORT:-build/chipyard/eliza_rocket/bootstrap-preflight.json}"
 SUBMODULE_JOBS="${CHIPYARD_SUBMODULE_JOBS:-1}"
 SUBMODULE_RETRIES="${CHIPYARD_SUBMODULE_RETRIES:-3}"
 RUN_SETUP="${CHIPYARD_RUN_SETUP:-0}"
@@ -79,16 +80,41 @@ submodule_update_retry() {
     git submodule update --init --recursive --jobs "$SUBMODULE_JOBS" "$@"
 }
 
+submodule_update_top_retry() {
+    attempt=1
+    while [ "$attempt" -le "$SUBMODULE_RETRIES" ]; do
+        git submodule sync -- "$@"
+        if git submodule update --init --jobs "$SUBMODULE_JOBS" "$@"; then
+            return 0
+        fi
+        echo "bootstrap_chipyard: top-level submodule update failed; retry $attempt/$SUBMODULE_RETRIES" >&2
+        attempt=$((attempt + 1))
+        sleep "$attempt"
+    done
+    git submodule update --init --jobs "$SUBMODULE_JOBS" "$@"
+}
+
 submodule_update_retry generators/rocket-chip
-submodule_update_retry \
+submodule_update_top_retry \
     tools/cde \
+    tools/DRAMSim2 \
+    tools/dsptools \
+    tools/fixedpoint \
     tools/firrtl2 \
     tools/install-circt \
     tools/rocket-dsp-utils \
+    generators \
     generators/bar-fetchers \
+    generators/ara \
+    generators/cva6 \
+    generators/ibex \
+    generators/nvdla \
     generators/rocc-acc-utils \
+    sims/firesim \
     sims/verilator \
-    software/firemarshal
+    software/firemarshal \
+    toolchains/riscv-tools/riscv-isa-sim \
+    tools/torture
 
 resolved="$(git rev-parse HEAD)"
 if [ "$resolved" != "$CHIPYARD_SHA" ]; then
@@ -120,7 +146,10 @@ for entry in manifest["selected_path"].get("config_sources", []):
     print(f"Installed Chipyard config overlay: {source} -> {destination}")
 PY
 
-python3 scripts/check_chipyard_import_preflight.py --checkout "$CHECKOUT" --require-checkout
+python3 scripts/check_chipyard_import_preflight.py \
+    --checkout "$CHECKOUT" \
+    --write-report "$PREFLIGHT_REPORT" \
+    --require-checkout
 
 if [ "$RUN_SETUP" = "1" ]; then
     if [ ! -x "$CHECKOUT/build-setup.sh" ]; then

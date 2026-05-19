@@ -31,6 +31,7 @@ import {
   ShieldCheck,
   TrendingUp,
 } from "lucide-react";
+import { useT } from "@/providers/I18nProvider";
 import type {
   EnhancedAnalyticsDataDto,
   ProjectionsDataDto,
@@ -50,15 +51,21 @@ export function AnalyticsPageClient({
   data,
   projectionsData,
 }: AnalyticsPageClientProps) {
+  const t = useT();
   useSetPageHeader({
-    title: "Analytics",
+    title: t("cloud.analytics.pageTitle", { defaultValue: "Analytics" }),
   });
 
   const analyticsTabs: TabItem[] = [
-    { value: "breakdown", label: "Breakdown" },
+    {
+      value: "breakdown",
+      label: t("cloud.analytics.tab.breakdown", { defaultValue: "Breakdown" }),
+    },
     {
       value: "projections",
-      label: "Projections",
+      label: t("cloud.analytics.tab.projections", {
+        defaultValue: "Projections",
+      }),
       icon: <TrendingUp className="h-4 w-4" />,
     },
   ];
@@ -66,11 +73,12 @@ export function AnalyticsPageClient({
   const rangeLabel = `${format(new Date(data.filters.startDate), "MMM d, yyyy")} → ${format(new Date(data.filters.endDate), "MMM d, yyyy")}`;
   const granularityLabel =
     {
-      hour: "Hourly",
-      day: "Daily",
-      week: "Weekly",
-      month: "Monthly",
-    }[data.filters.granularity] || "Custom";
+      hour: t("cloud.analytics.filters.hourly", { defaultValue: "Hourly" }),
+      day: t("cloud.analytics.filters.daily", { defaultValue: "Daily" }),
+      week: t("cloud.analytics.filters.weekly", { defaultValue: "Weekly" }),
+      month: t("cloud.analytics.filters.monthly", { defaultValue: "Monthly" }),
+    }[data.filters.granularity] ||
+    t("cloud.analytics.custom", { defaultValue: "Custom" });
 
   const totalTokens =
     data.overallStats.totalInputTokens + data.overallStats.totalOutputTokens;
@@ -106,62 +114,87 @@ export function AnalyticsPageClient({
     tokens: data.trends.tokensChange,
   };
 
+  const vsPrev = t("cloud.analytics.vsPreviousPeriod", {
+    defaultValue: "vs previous period",
+  });
   const metrics = [
     {
-      label: "Total requests",
+      label: t("cloud.analytics.metric.totalRequests", {
+        defaultValue: "Total requests",
+      }),
       value: data.overallStats.totalRequests.toLocaleString(),
-      helper: `${granularityLabel} cadence • ${rangeLabel}`,
+      helper: t("cloud.analytics.metric.cadenceHelper", {
+        defaultValue: "{{cadence}} cadence • {{range}}",
+        cadence: granularityLabel,
+        range: rangeLabel,
+      }),
       delta:
         trendDelta.requests !== 0
           ? {
               value: formatDelta(trendDelta.requests) ?? "0%",
               trend: resolveTrend(trendDelta.requests),
-              label: `vs previous period`,
+              label: vsPrev,
             }
           : undefined,
       icon: Activity,
       accent: "violet" as const,
     },
     {
-      label: "Total cost",
+      label: t("cloud.analytics.metric.totalCost", {
+        defaultValue: "Total cost",
+      }),
       value: `$${data.overallStats.totalCost.toFixed(2)}`,
-      helper: `≈ $${averageCostPerRequest.toFixed(2)} per request`,
+      helper: t("cloud.analytics.metric.perRequest", {
+        defaultValue: "≈ $" + "{{c}} per request",
+        c: averageCostPerRequest.toFixed(2),
+      }),
       delta:
         trendDelta.cost !== 0
           ? {
               value: formatDelta(trendDelta.cost) ?? "0%",
               trend: resolveTrend(trendDelta.cost),
-              label: `vs previous period`,
+              label: vsPrev,
             }
           : undefined,
       icon: Coins,
       accent: "amber" as const,
     },
     {
-      label: "Success rate",
+      label: t("cloud.analytics.metric.successRate", {
+        defaultValue: "Success rate",
+      }),
       value: `${toSuccessRatePercent(data.overallStats.successRate).toFixed(1)}%`,
-      helper: `Ratio of successful completions across ${data.timeSeriesData.length.toLocaleString()} data points`,
+      helper: t("cloud.analytics.metric.successRateHelper", {
+        defaultValue:
+          "Ratio of successful completions across {{n}} data points",
+        n: data.timeSeriesData.length.toLocaleString(),
+      }),
       delta:
         trendDelta.successRate !== 0
           ? {
               value: formatDelta(trendDelta.successRate, 2) ?? "0%",
               trend: resolveTrend(trendDelta.successRate),
-              label: `vs previous period`,
+              label: vsPrev,
             }
           : undefined,
       icon: ShieldCheck,
       accent: "emerald" as const,
     },
     {
-      label: "Token volume",
+      label: t("cloud.analytics.metric.tokenVolume", {
+        defaultValue: "Token volume",
+      }),
       value: totalTokens.toLocaleString(),
-      helper: `≈ ${averageTokensPerRequest.toFixed(1)} tokens per request`,
+      helper: t("cloud.analytics.metric.tokensPerRequest", {
+        defaultValue: "≈ {{n}} tokens per request",
+        n: averageTokensPerRequest.toFixed(1),
+      }),
       delta:
         trendDelta.tokens !== 0
           ? {
               value: formatDelta(trendDelta.tokens) ?? "0%",
               trend: resolveTrend(trendDelta.tokens),
-              label: `vs previous period`,
+              label: vsPrev,
             }
           : undefined,
       icon: BarChart3,
@@ -179,10 +212,16 @@ export function AnalyticsPageClient({
               {rangeLabel}
             </span>
             <span className="rounded-sm border border-white/20 bg-white/10 px-3 py-1">
-              Granularity: {granularityLabel}
+              {t("cloud.analytics.granularityLabel", {
+                defaultValue: "Granularity",
+              })}
+              : {granularityLabel}
             </span>
             <span className="rounded-sm border border-white/20 bg-white/10 px-3 py-1">
-              {data.timeSeriesData.length.toLocaleString()} data points
+              {t("cloud.analytics.dataPointsCount", {
+                defaultValue: "{{n}} data points",
+                n: data.timeSeriesData.length.toLocaleString(),
+              })}
             </span>
           </div>
         </div>
@@ -198,7 +237,9 @@ export function AnalyticsPageClient({
           <BrandCard className="relative">
             <CornerBrackets size="sm" className="opacity-50" />
             <div className="relative z-10 space-y-4">
-              <h3 className="text-base font-semibold text-white">Filters</h3>
+              <h3 className="text-base font-semibold text-white">
+                {t("cloud.analytics.filtersTitle", { defaultValue: "Filters" })}
+              </h3>
               <AnalyticsFilters />
             </div>
           </BrandCard>
@@ -210,7 +251,9 @@ export function AnalyticsPageClient({
           <BrandCard className="relative">
             <CornerBrackets size="sm" className="opacity-50" />
             <div className="relative z-10 space-y-4">
-              <h3 className="text-base font-semibold text-white">Usage</h3>
+              <h3 className="text-base font-semibold text-white">
+                {t("cloud.analytics.usageTitle", { defaultValue: "Usage" })}
+              </h3>
               <UsageChart
                 data={data.timeSeriesData}
                 granularity={data.filters.granularity}

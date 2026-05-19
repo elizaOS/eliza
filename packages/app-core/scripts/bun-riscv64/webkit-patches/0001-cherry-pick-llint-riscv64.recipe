@@ -1,0 +1,155 @@
+# WebKit cherry-pick recipe: LLInt riscv64 support
+#
+# Source: WebKit/WebKit upstream.
+# Target: oven-sh/WebKit @ ${WEBKIT_COMMIT} (see ../bun-version.json).
+#
+# This file is a RECIPE — not a patch. `build.sh` skips `*.recipe` files
+# in webkit-patches/ and only consumes `*.patch`. To realize this recipe,
+# a human (or CI runner with disk + network for two WebKit clones) must:
+#
+#   1. Clone the Bun fork at the pinned commit.
+#   2. Add WebKit/WebKit as a second remote.
+#   3. Cherry-pick the listed SHAs in order.
+#   4. Resolve conflicts (notes below).
+#   5. `git format-patch` the result back into webkit-patches/0001-llint-*.patch
+#      and `git rm` this recipe.
+#
+# Until that is done, build.sh falls back to BUN_RISCV64_FORCE_CLOOP=1
+# (no JIT, slow but works).
+
+# ──────────────────────────────────────────────────────────────────────────
+# Setup
+# ──────────────────────────────────────────────────────────────────────────
+
+# WEBKIT_COMMIT is the oven-sh/WebKit pin from bun-version.json. Verify:
+#   bun --print 'JSON.parse(await Bun.file("../bun-version.json").text()).webkit.fork_commit'
+
+cd /work/src/WebKit
+git remote add upstream https://github.com/WebKit/WebKit.git
+# Tag-fetch is too slow for the WebKit history; partial blobless clone:
+git fetch --filter=blob:none upstream main
+
+# Topic branch off the pin:
+git checkout -b riscv64-llint "$WEBKIT_COMMIT"
+
+# ──────────────────────────────────────────────────────────────────────────
+# Cherry-pick order (chronological — earliest first, dependencies forward)
+# ──────────────────────────────────────────────────────────────────────────
+
+# SHA                                       | Date       | Subject
+# ──────────────────────────────────────────┼────────────┼─────────────────────────────
+# d9b48eb602eb0269030f018afddd16c560d0b501  | 2021-08-30 | RISCV64 support in LLInt
+# 2c412363fafadd9abffed7005161328c7bf9c3c7  | 2021-10-14 | [RISCV64] logical ops with immediates on BaseIndex (LLInt)
+# 7cab5669005402fd12ecc6e0a91cd719dc02fbe7  | 2021-10-17 | Make LLIntAssembly.h more readable
+# 30fad9e8caecd83fe21ccb2c45b032a2a9778ff2  | 2021-11-09 | [RISCV64] assembly, disassembly infrastructure
+# 66db9c06aa9ba7b91b40502a4ab445f3aac5a5f0  | 2021-11-29 | [RISCV64] Populate RISCV64Assembler instruction generation
+# 849df0d905984b936cbbb533a6d2d534b1abdccd  | 2021-12-02 | [RISCV64] Fix effective address loading for LabelReferences
+# b4c1b13340294aed66dd3639235ccdde3c1c7fed  | 2021-12-07 | [RISCV64] MacroAssemblerRISCV64 helper infrastructure
+# 3d6fa6f5a0e663f499dd86758b4bcfaa84d10fb8  | 2021-12-13 | [RISCV64] MacroAssemblerRISCV64 GPR trivial ops
+# 37bf754466077c84d458752f5b98730b47aff666  | 2021-12-13 | [RISCV64] MacroAssemblerRISCV64 FPR trivial ops
+# 7b1df19a331e6a52afeabbf4bb4af2f01543e1b8  | 2021-12-17 | [RISCV64] linking + patching in RISCV64Assembler
+# d11ef53dbbe469c2a465e822e902c1821f42d8fd  | 2021-12-21 | [RISCV64] MacroAssemblerRISCV64 branching methods
+# eabcb75e33505b2cf3e11688514ad514c48a3264  | 2021-12-21 | [RISCV64] MacroAssemblerRISCV64 FP rounding/comparison
+# d2f4296a70a58434f1279dbe4aa343cca02ea22b  | 2021-12-21 | [RISCV64] Missing CPU(RISCV64) baseline-JIT codepaths
+# a276bc157febc6fc079c7afd612e1d9b54f6e354  | 2022-01-02 | [RISCV64] LLInt WebAssembly via riscv64 offlineasm
+# fb371ea8b95d88d706fe41535ac90d122cde337d  | 2022-01-02 | [RISCV64] DFG/FTL/B3/WASM buildable on CPU(RISCV64) (build-fix only — no JIT)
+# 3aefcc5154094f1c58c7a58d793aa5f1f079b28c  | 2022-01-14 | [RISCV64] offlineasm instruction lowering
+# 1c0ff93e7cecc36b254b17d28498b6d2728fd640  | 2022-01-31 | [RISCV64] Fix offlineasm arithmetic-branch with address dst
+# (… and follow-ups through 2022-04-25)
+
+# The bug-tracker mapping:
+#   WebKit #229035 ("RISC-V 64 LLInt via C_LOOP backend") = first three SHAs
+#   WebKit #239708 ("RISC-V 64 LLInt and baseline JIT")   = next ~15 SHAs
+
+# Run as a single cherry-pick chain:
+git cherry-pick \
+    d9b48eb602eb0269030f018afddd16c560d0b501 \
+    2c412363fafadd9abffed7005161328c7bf9c3c7 \
+    7cab5669005402fd12ecc6e0a91cd719dc02fbe7 \
+    30fad9e8caecd83fe21ccb2c45b032a2a9778ff2 \
+    66db9c06aa9ba7b91b40502a4ab445f3aac5a5f0 \
+    849df0d905984b936cbbb533a6d2d534b1abdccd \
+    b4c1b13340294aed66dd3639235ccdde3c1c7fed \
+    3d6fa6f5a0e663f499dd86758b4bcfaa84d10fb8 \
+    37bf754466077c84d458752f5b98730b47aff666 \
+    7b1df19a331e6a52afeabbf4bb4af2f01543e1b8 \
+    d11ef53dbbe469c2a465e822e902c1821f42d8fd \
+    eabcb75e33505b2cf3e11688514ad514c48a3264 \
+    a276bc157febc6fc079c7afd612e1d9b54f6e354 \
+    3aefcc5154094f1c58c7a58d793aa5f1f079b28c \
+    1c0ff93e7cecc36b254b17d28498b6d2728fd640
+
+# Expected conflict areas (Bun's WebKit fork has aggressive deltas in these
+# files; resolve by accepting upstream's RISCV64 additions while preserving
+# Bun's existing changes):
+#
+#   Source/WTF/wtf/PlatformCPU.h
+#     - Add CPU(RISCV64) macro alongside CPU(ARM64) / CPU(X86_64).
+#     - Conflict marker likely around the #elif chain. Take both: Bun's
+#       SAVED_STACK_OFFSET tweaks + upstream's RISCV64 block.
+#
+#   Source/WTF/wtf/PlatformEnable.h
+#     - ENABLE_JIT default: keep upstream's `#if CPU(RISCV64)` enables.
+#
+#   Source/JavaScriptCore/CMakeLists.txt
+#     - JavaScriptCore_SOURCES guarded blocks. Add RISCV64* sources behind
+#       `if (WTF_CPU_RISCV64)`. Patch 0003 also touches this file — apply
+#       this one first, then 0003.
+#
+#   Source/JavaScriptCore/offlineasm/instructions.rb
+#     - The Bun fork has refactored INSTRUCTION_SET; merge by appending
+#       riscv64 instructions to the existing set definitions (not replacing).
+#
+#   Source/JavaScriptCore/offlineasm/riscv64.rb
+#     - New file, no conflict expected.
+#
+#   Source/JavaScriptCore/assembler/RISCV64Assembler.h, .cpp
+#     - New files, no conflict expected.
+#
+#   Source/JavaScriptCore/assembler/MacroAssemblerRISCV64.h, .cpp
+#     - New files, no conflict expected.
+
+# ──────────────────────────────────────────────────────────────────────────
+# Verify
+# ──────────────────────────────────────────────────────────────────────────
+
+# After cherry-picks complete:
+git log --oneline "$WEBKIT_COMMIT..HEAD"
+# Should show ~15 commits with [RISCV64] in the subject.
+
+# Smoke-build to validate the picks before generating patches:
+mkdir -p WebKitBuild/riscv64-Release
+cd WebKitBuild/riscv64-Release
+cmake -G Ninja -DCMAKE_BUILD_TYPE=Release -DPORT=JSCOnly \
+    -DCMAKE_C_COMPILER=/opt/cross/bin/riscv64-linux-musl-clang \
+    -DCMAKE_CXX_COMPILER=/opt/cross/bin/riscv64-linux-musl-clang++ \
+    -DCMAKE_SYSTEM_PROCESSOR=riscv64 \
+    -DCMAKE_C_FLAGS='-march=rv64gc -mabi=lp64d' \
+    -DCMAKE_CXX_FLAGS='-march=rv64gc -mabi=lp64d' \
+    -DENABLE_JIT=ON -DENABLE_DFG_JIT=OFF -DENABLE_FTL_JIT=OFF \
+    ../..
+ninja -j$(nproc) jsc
+
+# Once that succeeds, format-patch the series:
+cd /work/src/WebKit
+git format-patch -o /opt/webkit-patches \
+    --start-number=1 \
+    "$WEBKIT_COMMIT..HEAD"
+# Then `git rm` THIS recipe so build.sh stops looking for it.
+
+# ──────────────────────────────────────────────────────────────────────────
+# Why this is a recipe, not a patch
+# ──────────────────────────────────────────────────────────────────────────
+#
+# Each of the cherry-picked commits is between 100 and 50_000 lines of
+# diff. The full series totals ~80k lines and writing them inline would
+# bloat this repo by ~3 MB. The recipe approach:
+#
+#   - Keeps the SHAs as authoritative (they're traceable in WebKit's bugzilla).
+#   - Lets a build operator with a real WebKit clone produce the patches
+#     mechanically (no decision-making except conflict resolution).
+#   - Keeps this repo small.
+#
+# If/when the recipe is realized into `*.patch` files, delete this file
+# in the same commit. build.sh applies `*.patch` files in lexical order
+# and ignores everything else.

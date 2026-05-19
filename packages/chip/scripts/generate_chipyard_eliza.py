@@ -13,7 +13,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
-CHECKOUT = ROOT / "external/chipyard"
+CHECKOUT = Path(os.environ.get("CHIPYARD_CHECKOUT", ROOT / "external/chipyard"))
 CHIPYARD_GEN = (
     CHECKOUT / "sims/verilator/generated-src/chipyard.harness.TestHarness.ElizaRocketConfig"
 )
@@ -75,10 +75,16 @@ def env_with_tools() -> dict[str, str]:
     if java_home.exists():
         env["JAVA_HOME"] = str(java_home)
         env["PATH"] = f"/opt/homebrew/opt/openjdk@17/bin:{env.get('PATH', '')}"
-    circt_bin = ROOT / "external/circt/bin"
-    if circt_bin.exists():
-        env["PATH"] = f"{circt_bin}:{env.get('PATH', '')}"
-    env.setdefault("RISCV", "/opt/homebrew")
+    for tool_dir in (
+        ROOT / "external/oss-cad-suite/bin",
+        ROOT / "external/circt/bin",
+        ROOT / "tools/bin",
+        ROOT / ".venv/bin",
+    ):
+        if tool_dir.exists():
+            env["PATH"] = f"{tool_dir}:{env.get('PATH', '')}"
+    env.setdefault("RISCV", str(ROOT / "tools"))
+    env.setdefault("CHIPYARD_CHECKOUT", str(CHECKOUT))
     return env
 
 
@@ -230,6 +236,7 @@ def main() -> int:
         ],
         env=env,
     )
+    run([sys.executable, "scripts/prepare_chipyard_spike_libraries.py"], env=env)
     run([sys.executable, "scripts/check_chipyard_verilator_preflight.py"], env=env)
     stage_bootroms()
     run_generator(env)

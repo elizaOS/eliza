@@ -15,6 +15,7 @@ BUILD = ROOT / "build/chipyard/eliza_rocket"
 GEN = BUILD / "generated-src"
 DTS = BUILD / "eliza-e1.dts"
 GEN_DTS = GEN / "chipyard.harness.TestHarness.ElizaRocketConfig.dts"
+GEN_FIR = GEN / "chipyard.harness.TestHarness.ElizaRocketConfig.fir"
 MEMMAP = GEN / "chipyard.harness.TestHarness.ElizaRocketConfig.memmap.json"
 IMPORT_MANIFEST = BUILD / "ElizaRocketConfig.manifest.json"
 VERILOG = BUILD / "eliza_rocket_ap.v"
@@ -26,6 +27,9 @@ REGMAPS = {
     "plic": GEN / "chipyard.harness.TestHarness.ElizaRocketConfig.0xc000000.0.regmap.json",
     "uart": GEN / "chipyard.harness.TestHarness.ElizaRocketConfig.0x10020000.0.regmap.json",
 }
+
+ROM_CONNECT_RE = re.compile(r"connect rom\[(\d+)\], UInt<64>\(0h([0-9a-fA-F]+)\)")
+DTB_MAGIC = b"\xd0\x0d\xfe\xed"
 
 
 def rel(path: Path) -> str:
@@ -143,6 +147,60 @@ def check_regmaps(failures: list[str]) -> None:
             require(token in text, f"{rel(path)} missing register marker: {token}", failures)
 
 
+def bootrom_bytes_from_fir(path: Path) -> bytes:
+    words: dict[int, int] = {}
+    for match in ROM_CONNECT_RE.finditer(read(path)):
+        words[int(match.group(1))] = int(match.group(2), 16)
+    if not words:
+        return b""
+    image = bytearray()
+    for index in range(max(words) + 1):
+        image.extend(words.get(index, 0).to_bytes(8, byteorder="little", signed=False))
+    return bytes(image)
+
+
+def check_embedded_bootrom_dtb(failures: list[str]) -> None:
+    require(GEN_FIR.is_file(), f"missing generated FIR: {rel(GEN_FIR)}", failures)
+    if not GEN_FIR.is_file():
+        return
+
+    image = bootrom_bytes_from_fir(GEN_FIR)
+    require(len(image) > 0, f"{rel(GEN_FIR)} has no BootROM ROM contents", failures)
+    offset = image.find(DTB_MAGIC)
+    require(offset >= 0, f"{rel(GEN_FIR)} BootROM contents do not embed a DTB", failures)
+    if offset < 0:
+        return
+
+    if offset + 8 > len(image):
+        failures.append(f"{rel(GEN_FIR)} embedded DTB header is truncated")
+        return
+    total_size = int.from_bytes(image[offset + 4 : offset + 8], byteorder="big")
+    require(
+        total_size >= 512,
+        f"{rel(GEN_FIR)} embedded DTB total size is implausibly small: {total_size}",
+        failures,
+    )
+    require(
+        offset + total_size <= len(image),
+        f"{rel(GEN_FIR)} embedded DTB total size exceeds reconstructed BootROM contents",
+        failures,
+    )
+    dtb = image[offset : offset + total_size]
+    for token in (
+        b"ucb-bar,chipyard-dev",
+        b"/soc/serial@10020000",
+        b"stdout-path",
+        b"sifive,uart0",
+        b"riscv,clint0",
+        b"riscv,plic0",
+    ):
+        require(
+            token in dtb,
+            f"{rel(GEN_FIR)} embedded BootROM DTB missing token: {token.decode()}",
+            failures,
+        )
+
+
 def check_import_state(failures: list[str], blockers: list[str]) -> None:
     require(VERILOG.is_file(), f"missing generated Verilog: {rel(VERILOG)}", failures)
     if VERILOG.is_file():
@@ -185,6 +243,7 @@ def main() -> int:
     check_dts(failures)
     check_memmap(failures)
     check_regmaps(failures)
+    check_embedded_bootrom_dtb(failures)
     check_import_state(failures, blockers)
 
     if failures:

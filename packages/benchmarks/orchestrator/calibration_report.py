@@ -7,7 +7,11 @@ from collections import defaultdict
 from pathlib import Path
 from typing import Any
 
-from .adapters import GAIA_OFFICIAL_DATASET_UNAVAILABLE_REASON, discover_adapters
+from .adapters import (
+    GAIA_OFFICIAL_DATASET_UNAVAILABLE_REASON,
+    HYPERLIQUID_LIVE_UNAVAILABLE_REASON,
+    discover_adapters,
+)
 from .db import (
     connect_database,
     initialize_database,
@@ -188,6 +192,15 @@ def _unsupported_real_reasons(
     ):
         return {
             agent: GAIA_OFFICIAL_DATASET_UNAVAILABLE_REASON
+            for agent in unsupported_real_harnesses
+        }
+    if (
+        benchmark_id == "hyperliquid_bench"
+        and unsupported_real_harnesses
+        and not supported_real_harnesses
+    ):
+        return {
+            agent: HYPERLIQUID_LIVE_UNAVAILABLE_REASON
             for agent in unsupported_real_harnesses
         }
     return {}

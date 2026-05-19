@@ -1,0 +1,152 @@
+schema: eliza.process_multi_pdk_closure.v1
+status: open_pdk_lanes_evidence_partial_advanced_lanes_blocked
+scope:
+  - Sky130A end-to-end OpenLane closure
+  - GF180MCU end-to-end OpenLane closure
+  - IHP SG13G2 end-to-end OpenLane closure
+  - ASAP7 predictive shape characterization
+
+claim_boundary:
+  allowed:
+    - Real open-PDK methodology evidence for DRC, LVS, timing-shape, antenna.
+    - Predictive FinFET shape outputs from ASAP7, marked projection_only.
+  blocked:
+    - Any signoff claim from open-PDK closure for the 2028 production target.
+    - Any signoff claim from ASAP7 (predictive PDK, not manufacturable).
+
+open_pdk_lanes:
+  - id: sky130A
+    pdk: sky130A
+    config: pd/openlane/config.sky130.json
+    library_manifest: pd/library-manifests/sky130.yaml
+    corner_manifest: pd/corner-manifests/sky130.yaml
+    evidence_class: real_open_pdk_methodology_evidence
+    status: drc_lvs_route_clean_timing_violations_open
+    last_run_artifact: pd/openlane/runs/RUN_2026-05-19_05-08-54/final/metrics.json
+    last_run_summary:
+      die_area_um2: 3240000
+      core_area_um2: 2616850
+      instances: 142274
+      macros: 0
+      drc_clean: true
+      lvs_clean: true
+      setup_wns_ns: 70.65
+      hold_wns_ns: -0.109
+      max_slew_violations: 23099
+      max_cap_violations: 442
+    flagship_class: false
+    notes: >
+      Latest full release run is clean DRC + LVS but has hold + slew + cap
+      violations that block pd-signoff release. Methodology evidence is real;
+      flagship-frequency claims are not.
+
+  - id: gf180mcuC
+    pdk: gf180mcuC
+    config: pd/openlane/config.gf180.json
+    library_manifest: pd/library-manifests/gf180.yaml
+    corner_manifest: pd/corner-manifests/gf180.yaml
+    evidence_class: real_open_pdk_methodology_evidence
+    status: configured_run_pending
+    last_run_artifact: null
+    flagship_class: false
+
+  - id: ihp-sg13g2
+    pdk: ihp-sg13g2
+    config: pd/openlane/config.ihp-sg13g2.json
+    library_manifest: pd/library-manifests/ihp-sg13g2.yaml
+    corner_manifest: pd/corner-manifests/ihp-sg13g2.yaml
+    evidence_class: real_open_pdk_methodology_evidence
+    status: configured_run_pending
+    last_run_artifact: null
+    flagship_class: false
+    notes: >
+      Basilisk demonstrated Linux-capable RISC-V SoC closure at SG13G2 ~77 MHz.
+      Tiny Tapeout migrated to SG13G2 via SwissChips after Efabless shutdown.
+
+predictive_lanes:
+  - id: asap7
+    pdk: ASAP7
+    config: pd/asap7/config.asap7.yaml
+    library_manifest: pd/library-manifests/asap7.yaml
+    corner_manifest: pd/corner-manifests/asap7.yaml
+    evidence_class: predictive_finfet_shape_only_not_signoff
+    status: leaf_block_shape_captured
+    asap7_predictive_status: leaf_block_shape_captured
+    last_run_artifact: docs/evidence/process/asap7/tage_table_shape.json
+    flagship_class: false
+    forbidden_uses:
+      - cite_asap7_as_n2p_signoff
+      - cite_asap7_as_a14_signoff
+      - cite_asap7_as_14a_signoff
+    captured_leaf_blocks:
+      - block_id: tage_table
+        flow_mode: yosys_abc_synth_only
+        scope: >
+          One BPU TAGE tagged-table primitive (128-entry leaf-shape proxy of
+          the production 4096-entry geometry; 14-bit valid+tag+ctr+useful
+          struct) synthesized standalone with yosys 0.64 + ABC -fast, mapped
+          to asap7sc7p5t_27 RVT TT (0.70 V, 25 C) stdcells with the ORFS
+          DONT_USE_CELLS exclusion list applied.
+        shape_report: docs/evidence/process/asap7/tage_table_shape.json
+        projection_report: docs/evidence/process/asap7/tage_table_projection_n2p.json
+        evidence_class: predictive_finfet_shape_only_not_signoff
+    pending_leaf_blocks:
+      - id: npu_tile_rf_leaf
+        status: orfs_post_route_required
+      - id: big_core_shell
+        status: orfs_post_route_required
+      - id: npu_tile
+        status: orfs_post_route_required
+      - id: slc_slice
+        status: orfs_post_route_required
+
+advanced_lanes_blocked:
+  - id: tsmc_n2p
+    status: blocked_until_foundry_agreement
+    evidence_class: procurement_blocked_no_artifacts
+    access_gate_file: pd/n2p-stub/access-gate.yaml
+  - id: tsmc_a14
+    status: blocked_until_foundry_agreement
+    evidence_class: procurement_blocked_no_artifacts
+    access_gate_file: pd/a14-stub/access-gate.yaml
+  - id: intel_14a
+    status: blocked_until_foundry_agreement
+    evidence_class: procurement_blocked_no_artifacts
+    access_gate_file: pd/intel-14a-stub/access-gate.yaml
+  - id: samsung_sf2p
+    status: blocked_until_foundry_agreement
+    evidence_class: procurement_blocked_no_artifacts
+    access_gate_file: pd/sf2p-stub/access-gate.yaml
+
+portability_gate_coverage:
+  schema_check: scripts/check_pdk_portability.py
+  unit_tests: scripts/test_pdk_portability.py
+  unit_tests_count: 8
+  enforced_invariants:
+    - every_config_has_matching_library_and_corner_manifest
+    - every_advanced_node_lane_is_blocked_until_foundry_agreement
+    - every_open_pdk_lane_has_open_no_gate
+    - open_pdk_library_manifests_mirror_pd_macros_manifest
+    - advanced_node_corner_manifests_have_bspdn_planning_notes
+    - pdk_access_gate_has_per_foundry_next_action_checklist
+
+ppa_projection_coverage:
+  script: scripts/project_ppa_to_n2p.py
+  output: docs/evidence/process/ppa-projection.json
+  targets:
+    - tsmc_n2p
+    - tsmc_a14
+    - intel_14a
+    - samsung_sf2p
+  monte_carlo_samples: 4096
+  monte_carlo_seed: 20260519
+  output_marker: projection_only_never_signoff
+
+next_commands:
+  open_pdk_run_sky130: scripts/run_openlane.sh --release
+  open_pdk_run_gf180: OPENLANE_CONFIG=pd/openlane/config.gf180.json scripts/run_openlane.sh --release
+  open_pdk_run_ihp_sg13g2: OPENLANE_CONFIG=pd/openlane/config.ihp-sg13g2.json scripts/run_openlane.sh --release
+  asap7_shape: cd pd/asap7 && make all
+  portability_gate: make pdk-portability-check
+  portability_tests: make pdk-portability-test
+  ppa_projection: make ppa-projection

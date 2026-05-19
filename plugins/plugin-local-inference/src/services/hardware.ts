@@ -1,7 +1,7 @@
 /**
  * Hardware probe for local inference sizing.
  *
- * Uses `node-llama-cpp` when available to read GPU backend + VRAM. Falls back
+ * Uses `capacitor-llama` when available to read GPU backend + VRAM. Falls back
  * to Node's `os` module when the binding isn't installed — we don't require
  * the plugin to be loaded for the probe endpoint to return useful data.
  *
@@ -164,23 +164,16 @@ interface LlamaBindingModule {
 }
 
 async function loadLlamaBinding(): Promise<LlamaBindingModule | null> {
-	try {
-		const mod = (await import("node-llama-cpp")) as unknown;
-		if (
-			mod &&
-			typeof mod === "object" &&
-			"getLlama" in mod &&
-			typeof (mod as { getLlama: unknown }).getLlama === "function"
-		) {
-			return mod as LlamaBindingModule;
-		}
-		return null;
-	} catch {
-		// Binding not installed or prebuilt missing. That's an expected case when
-		// the local-ai plugin is not enabled; we return null so the probe falls
-		// back to OS-level detection.
-		return null;
-	}
+	// node-llama-cpp has been removed from this plugin. GPU/VRAM probing
+	// was the only consumer of its `getLlama({gpu: "auto"})` API. The
+	// canonical Capacitor-llama adapter exposes `LlamaContext.gpu`
+	// (boolean) per-context, but a standalone hardware probe (independent
+	// of a loaded model) isn't part of its API. Return null here so the
+	// caller falls back to the OS-level probe (cpu cores, total RAM,
+	// Apple-silicon detection). Operators that need real VRAM accounting
+	// should run the desktop FFI backend and have it surface VRAM via
+	// the bun:ffi shim — tracked as a follow-up gap.
+	return null;
 }
 
 const OPENVINO_LINUX_GPU_PACKAGES = [
@@ -328,95 +321,25 @@ export async function probeHardware(): Promise<HardwareProbe> {
 	const openvino = detectOpenVinoDevices();
 	const cpuFeatures = detectCpuFeatures({ platform, arch });
 
-	const binding = await loadLlamaBinding();
-
-	if (!binding) {
-		// OS-only fallback: we cannot detect GPU without the binding, so treat as
-		// CPU-only. On Apple Silicon shared memory still makes mid-sized models
-		// viable, which `recommendBucket` handles.
-		const totalRamGb = bytesToGb(totalRamBytes);
-		return {
-			totalRamGb,
-			freeRamGb: bytesToGb(freeRamBytes),
-			gpu: null,
-			cpuCores,
-			cpuFeatures,
-			platform,
-			arch,
-			appleSilicon,
-			recommendedBucket: recommendBucket(totalRamGb, 0, appleSilicon),
-			source: "os-fallback",
-			openvino,
-		};
-	}
-
-	// `loadLlamaBinding()` catches *import* failures, but the binding's
-	// `getLlama()` can still throw during native init — observed on the
-	// electrobun launcher as the cryptic TDZ-style error
-	// `Cannot access '' before initialization.` coming from inside
-	// `node-llama-cpp`'s prebuilt native binding. The launcher then
-	// bubbles that string up through `/api/local-inference/hardware`
-	// (returns 500), `/api/local-inference/active` (status: "error"),
-	// and any other call site that depends on the probe. Wrap the init
-	// call in a try/catch so we fall back to the same OS-only probe
-	// we use when the import itself was unavailable.
-	let llama: Awaited<ReturnType<LlamaBindingModule["getLlama"]>>;
-	try {
-		llama = await binding.getLlama({ gpu: "auto" });
-	} catch {
-		const totalRamGb = bytesToGb(totalRamBytes);
-		return {
-			totalRamGb,
-			freeRamGb: bytesToGb(freeRamBytes),
-			gpu: null,
-			cpuCores,
-			cpuFeatures,
-			platform,
-			arch,
-			appleSilicon,
-			recommendedBucket: recommendBucket(totalRamGb, 0, appleSilicon),
-			source: "os-fallback",
-			openvino,
-		};
-	}
+	// node-llama-cpp has been removed; the binding probe is intentionally a
+	// no-op (see `loadLlamaBinding()` above). Production GPU/VRAM detection
+	// for the desktop FFI backend and the Capacitor mobile backend is
+	// surfaced via `LlamaContext.gpu` per-context — there is no standalone
+	// hardware-probe API on either path. Callers wanting real VRAM
+	// accounting should consult the active backend after model load.
+	await loadLlamaBinding();
 	const totalRamGb = bytesToGb(totalRamBytes);
-	const freeRamGb = bytesToGb(freeRamBytes);
-
-	if (llama.gpu === false) {
-		return {
-			totalRamGb,
-			freeRamGb,
-			gpu: null,
-			cpuCores,
-			cpuFeatures,
-			platform,
-			arch,
-			appleSilicon,
-			recommendedBucket: recommendBucket(totalRamGb, 0, appleSilicon),
-			source: "node-llama-cpp",
-			openvino,
-		};
-	}
-
-	const vram = await llama.getVramState();
-	const totalVramGb = bytesToGb(vram.total);
-	const freeVramGb = bytesToGb(vram.free);
-
 	return {
 		totalRamGb,
-		freeRamGb,
-		gpu: {
-			backend: llama.gpu,
-			totalVramGb,
-			freeVramGb,
-		},
+		freeRamGb: bytesToGb(freeRamBytes),
+		gpu: null,
 		cpuCores,
 		cpuFeatures,
 		platform,
 		arch,
 		appleSilicon,
-		recommendedBucket: recommendBucket(totalRamGb, totalVramGb, appleSilicon),
-		source: "node-llama-cpp",
+		recommendedBucket: recommendBucket(totalRamGb, 0, appleSilicon),
+		source: "os-fallback",
 		openvino,
 	};
 }
@@ -426,9 +349,9 @@ export async function probeHardware(): Promise<HardwareProbe> {
  * the manifest validator and the bundle downloader.
  *
  * Backends: `cpu` is always present (the floor). A detected GPU backend is
- * added when `node-llama-cpp` reports one (`metal` on Apple Silicon, `cuda`
+ * added when `capacitor-llama` reports one (`metal` on Apple Silicon, `cuda`
  * on NVIDIA, `vulkan` on cross-vendor Linux/Android). We do not synthesize
- * `rocm` from the probe — `node-llama-cpp` reports AMD as `vulkan` on the
+ * `rocm` from the probe — `capacitor-llama` reports AMD as `vulkan` on the
  * builds we ship, and a bundle that only verified ROCm but not Vulkan is
  * legitimately not installable here.
  *

@@ -691,6 +691,8 @@ def _publication_quarantine_reason(
         isinstance(dataset_source, str) and dataset_source.strip().lower() == "sample"
     ):
         return "sample_task_set"
+    if metrics.get("demo_mode") is True or metrics.get("demoMode") is True:
+        return "demo_mode"
     return None
 
 
@@ -749,6 +751,8 @@ def _publication_warnings(
         isinstance(dataset_source, str) and dataset_source.strip().lower() == "sample"
     ):
         warnings.append("sample_task_set")
+    if metrics.get("demo_mode") is True or metrics.get("demoMode") is True:
+        warnings.append("demo_mode")
     if metrics.get("interrupted") is True:
         warnings.append("interrupted_run")
     return warnings

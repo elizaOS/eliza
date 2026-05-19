@@ -470,6 +470,47 @@ def test_rebuild_latest_quarantines_sample_dataset_sources(tmp_path: Path) -> No
     assert "sample_task_set" in payload["publication_warnings"]
 
 
+def test_rebuild_latest_quarantines_demo_mode_results(tmp_path: Path) -> None:
+    conn = connect_database(tmp_path / "orchestrator.sqlite")
+    initialize_database(conn)
+    create_run_group(
+        conn,
+        run_group_id="rg_test",
+        created_at="2026-05-12T00:00:00+00:00",
+        request={},
+        benchmarks=["hyperliquid_bench"],
+        repo_meta={},
+    )
+    _seed_run(
+        conn,
+        benchmark_id="hyperliquid_bench",
+        agent="eliza",
+        run_id="run_hl_demo",
+        started_at="2026-05-12T00:00:00+00:00",
+        metrics={
+            "final_score": 3.5,
+            "total_scenarios": 1,
+            "demo_mode": True,
+        },
+        token_metrics={"total_tokens": 200, "llm_call_count": 3},
+    )
+
+    _rebuild_latest_result_snapshots(
+        conn,
+        tmp_path,
+        {"hyperliquid_bench": _adapter("hyperliquid_bench")},
+    )
+
+    assert not (tmp_path / "latest" / "hyperliquid_bench__eliza.json").exists()
+    payload = json.loads(
+        (tmp_path / "quarantine" / "hyperliquid_bench__eliza.json").read_text(
+            encoding="utf-8"
+        )
+    )
+    assert payload["quarantine_reason"] == "demo_mode"
+    assert "demo_mode" in payload["publication_warnings"]
+
+
 def test_rebuild_latest_allows_tokenless_deterministic_benchmark_rows(
     tmp_path: Path,
 ) -> None:

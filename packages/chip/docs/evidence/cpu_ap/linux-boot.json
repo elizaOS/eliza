@@ -1,0 +1,23 @@
+{
+  "schema": "eliza.cpu_linux_boot_evidence.v1",
+  "status": "blocked",
+  "transcript": "build/evidence/cpu_ap/eliza_e1_linux_boot.log",
+  "transcript_sha256": "c865450673fcbf85e24c9108365e084aac7b5da7b9df4a9732c636d8dd25dfed",
+  "required_markers": [
+    "OpenSBI v",
+    "Booting Linux on physical CPU",
+    "Linux version",
+    "Run /init",
+    "Welcome to",
+    "console-uart"
+  ],
+  "missing_markers": [
+    "OpenSBI v",
+    "Booting Linux on physical CPU",
+    "Linux version",
+    "Run /init",
+    "Welcome to",
+    "console-uart"
+  ],
+  "checked_at": "2026-05-19T20:33:28Z"
+}
