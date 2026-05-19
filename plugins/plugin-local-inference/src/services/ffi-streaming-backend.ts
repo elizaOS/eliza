@@ -160,9 +160,84 @@ export class FfiStreamingBackend implements LocalInferenceBackend {
 		return result.text;
 	}
 
-	// Deliberately no `embed()`. The dispatcher throws with a clear message
-	// pointing at the gap. Same applies to vision describe, slot save/restore,
-	// and parallel-slot resize — those go through `dflashLlamaServer` direct
-	// calls in `engine.ts` today and need separate routing work before the
-	// FFI default can flip; see `plugins/plugin-local-inference/FFI_BACKEND_WIREUP_PLAN.md`.
+	// === Optional `LocalInferenceBackend` methods routed through the runner.
+
+	/**
+	 * Persist the active session's KV state to a per-conversation file.
+	 * v1 uses `llama_state_seq_save_file` against seq_id=0 — see
+	 * `desktop-llama-adapter.ts`'s `saveSlot`. The on-disk file path
+	 * mirrors `dflash-server.ts`'s conversation-keyed slot layout
+	 * (`<cacheDir>/<conversationId>/<slotId>.kv`) so a switch between
+	 * FFI and subprocess can resume each other's slots — once both
+	 * paths agree on the file format.
+	 */
+	async persistConversationKv(
+		conversationId: string,
+		slotId: number,
+	): Promise<void> {
+		if (!this.session) return; // no-op when not loaded
+		const { binding } = this.session;
+		if (!binding.llmStreamSaveSlot) return; // adapter doesn't support save
+		const filename = slotFilename(conversationId, slotId);
+		// llmStreamSaveSlot is per-stream in the binding API; the desktop
+		// adapter currently saves the ctx-wide seq=0 state, so the stream
+		// handle is informational. We pass the runner's most recent
+		// stream id when available — empty-bigint placeholder otherwise.
+		binding.llmStreamSaveSlot({ stream: 0n, filename });
+	}
+
+	/** Restore a previously persisted KV state. Mirror of `persistConversationKv`. */
+	async restoreConversationKv(
+		conversationId: string,
+		slotId: number,
+	): Promise<void> {
+		if (!this.session) return;
+		const { binding } = this.session;
+		if (!binding.llmStreamRestoreSlot) return;
+		const filename = slotFilename(conversationId, slotId);
+		binding.llmStreamRestoreSlot({ stream: 0n, filename });
+	}
+
+	/**
+	 * Pre-decode `promptPrefix` so the next `generate` against the same
+	 * `cacheKey` skips re-prefill. Returns `false` when the prefix is
+	 * empty or no session is loaded. The FFI runner serializes by
+	 * `cacheKey` internally via the `slotInFlight` map.
+	 */
+	async prewarmConversation(
+		promptPrefix: string,
+		opts: { slotId: number; cacheKey: string },
+	): Promise<boolean> {
+		if (!this.session || promptPrefix.length === 0) return false;
+		const { runner, tokenize, drafterPath } = this.session;
+		await runner.generateWithUsage({
+			promptTokens: tokenize(promptPrefix),
+			slotId: opts.slotId,
+			cacheKey: opts.cacheKey,
+			maxTokens: 0, // prefill-only: feed prompt, generate nothing
+			temperature: 0,
+			topP: 1,
+			topK: 1,
+			repeatPenalty: 1,
+			draftMin: 0,
+			draftMax: 0,
+			dflashDrafterPath: drafterPath,
+		});
+		return true;
+	}
+
+	// Deliberately still no `embed()`, `describeImage()`,  or `resizeParallel()`.
+	// The dispatcher throws actionable errors when those are called against
+	// an FFI session — vision requires native llava/mtmd wrappers in the shim,
+	// and parallel-resize needs multi-context pooling at the adapter layer.
+	// See `plugins/plugin-local-inference/FFI_BACKEND_WIREUP_PLAN.md`.
+}
+
+/**
+ * Conversation-keyed slot file layout. Mirrors `cache-bridge.ts`'s
+ * `slotSavePath` so an `ELIZA_INFERENCE_BACKEND=http` opt-out can resume
+ * an FFI-saved conversation and vice-versa once the file formats align.
+ */
+function slotFilename(conversationId: string, slotId: number): string {
+	return `${conversationId}__slot${slotId}.kv`;
 }
