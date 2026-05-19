@@ -37,6 +37,12 @@ elseif(CMAKE_SYSTEM_PROCESSOR MATCHES "(aarch64|arm64)")
         src/polar_dot_neon.c
         src/polar_dot_preht_neon.c)
     set(POLARQUANT_ARM ON)
+elseif(CMAKE_SYSTEM_PROCESSOR MATCHES "(riscv64|riscv|rv64)")
+    # Wave 1 scalar parity for riscv64. RVV intrinsic TUs land later;
+    # the dispatcher reads POLARQUANT_HAVE_RVV to decide whether those
+    # symbols are linked in. For now the build is pure scalar reference
+    # (no extra SIMD TUs listed in POLARQUANT_SRCS).
+    set(POLARQUANT_RISCV ON)
 endif()
 
 add_library(polarquant STATIC ${POLARQUANT_SRCS})
@@ -58,6 +64,14 @@ if(POLARQUANT_X86)
         PROPERTIES COMPILE_OPTIONS "-mavx2;-mfma"
     )
     target_compile_definitions(polarquant PUBLIC POLARQUANT_HAVE_AVX2=1)
+endif()
+
+# riscv64 scalar-only path. RVV kernels arrive in a follow-up wave; the
+# dispatcher gates them on POLARQUANT_HAVE_RVV which we explicitly set
+# to 0 here so Wave 3 can flip it to 1 once the new TUs land.
+if(POLARQUANT_RISCV)
+    target_compile_definitions(polarquant PUBLIC POLARQUANT_HAVE_RVV=0)
+    target_compile_definitions(polarquant PRIVATE POLARQUANT_ARCH_RISCV=1)
 endif()
 
 # AArch64 gcc/clang has NEON on by default; -mfpu=neon would be wrong

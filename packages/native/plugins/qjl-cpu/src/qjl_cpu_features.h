@@ -30,6 +30,25 @@
 #  endif
 #endif
 
+#if defined(__riscv) && (__riscv_xlen == 64)
+#  ifndef QJL_ARCH_RISCV
+#    define QJL_ARCH_RISCV 1
+#  endif
+#  if defined(__has_include)
+#    if __has_include(<sys/hwprobe.h>)
+#      include <sys/hwprobe.h>
+#      define QJL_HAS_HWPROBE 1
+#    endif
+#    if __has_include(<sys/auxv.h>)
+#      include <sys/auxv.h>
+#      define QJL_HAS_AUXV 1
+#    endif
+#    if __has_include(<asm/hwcap.h>)
+#      include <asm/hwcap.h>
+#    endif
+#  endif
+#endif
+
 typedef struct {
     int has_avx2;
     int has_fma;
@@ -37,11 +56,18 @@ typedef struct {
     int has_neon;       /* always 1 on AArch64 */
     int has_dotprod;    /* ARMv8.4 SDOT/UDOT */
     int has_i8mm;       /* ARMv8.6 int8 matrix multiply */
+    /* RISC-V V extension probes. Detection plumbing only for Wave 1;
+     * Wave 3 wires the RVV kernels and flips the consumer-side checks
+     * in the dispatcher. */
+    unsigned int has_rvv : 1;
+    unsigned int has_rvv_zvfh : 1;
 } qjl_cpu_features_t;
 
 static inline void qjl_detect_cpu(qjl_cpu_features_t *f) {
     f->has_avx2 = f->has_fma = f->has_avx_vnni = 0;
     f->has_neon = f->has_dotprod = f->has_i8mm = 0;
+    f->has_rvv = 0;
+    f->has_rvv_zvfh = 0;
 
 #if defined(QJL_ARCH_X86)
     {
@@ -94,6 +120,44 @@ static inline void qjl_detect_cpu(qjl_cpu_features_t *f) {
 #    if defined(__ARM_FEATURE_MATMUL_INT8)
     f->has_i8mm = 1;
 #    endif
+#  endif
+#endif
+
+#if defined(QJL_ARCH_RISCV) && defined(__linux__)
+    /* Prefer the modern riscv_hwprobe(2) syscall: it returns granular
+     * ISA-extension bits (V, Zvfh, Zba, ...) and is the only reliable
+     * way to detect RVV 1.0. Fall back to AT_HWCAP's coarse 'V' bit on
+     * kernels that predate hwprobe(2) (< 6.4). Both stay best-effort:
+     * if neither header / runtime is present we leave the probe bits 0
+     * and the dispatcher uses the scalar reference path. Wave 1 only
+     * wires detection; the dispatcher branches arrive with Wave 3. */
+#  if defined(QJL_HAS_HWPROBE) && defined(RISCV_HWPROBE_KEY_IMA_EXT_0)
+    {
+        struct riscv_hwprobe pairs[1] = {
+            { .key = RISCV_HWPROBE_KEY_IMA_EXT_0, .value = 0 },
+        };
+        if (__riscv_hwprobe(pairs, 1, 0, NULL, 0) == 0) {
+#    if defined(RISCV_HWPROBE_IMA_V)
+            if (pairs[0].value & RISCV_HWPROBE_IMA_V) f->has_rvv = 1;
+#    endif
+#    if defined(RISCV_HWPROBE_EXT_ZVFH)
+            if (pairs[0].value & RISCV_HWPROBE_EXT_ZVFH) f->has_rvv_zvfh = 1;
+#    endif
+        }
+    }
+#  endif
+#  if defined(QJL_HAS_AUXV)
+    if (!f->has_rvv) {
+        unsigned long rvhw = getauxval(AT_HWCAP);
+#    if defined(COMPAT_HWCAP_ISA_V)
+        if (rvhw & COMPAT_HWCAP_ISA_V) f->has_rvv = 1;
+#    elif defined(HWCAP_ISA_V)
+        if (rvhw & HWCAP_ISA_V) f->has_rvv = 1;
+#    elif defined(HWCAP_V)
+        if (rvhw & HWCAP_V) f->has_rvv = 1;
+#    endif
+        (void)rvhw;
+    }
 #  endif
 #endif
 }

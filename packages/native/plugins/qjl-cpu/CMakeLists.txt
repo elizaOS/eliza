@@ -33,6 +33,12 @@ elseif(CMAKE_SYSTEM_PROCESSOR MATCHES "(aarch64|arm64)")
     list(APPEND QJL_SRCS
         src/qjl_quantize_neon.c src/qjl_score_neon.c src/qjl_score_dotprod.c)
     set(QJL_ARM ON)
+elseif(CMAKE_SYSTEM_PROCESSOR MATCHES "(riscv64|riscv|rv64)")
+    # Wave 1 scalar parity for riscv64. The RVV intrinsic kernels land
+    # in a follow-up wave; the dispatcher reads QJL_HAVE_RVV to decide
+    # whether those symbols are linked in. For now the build is pure
+    # scalar reference (no extra SIMD TUs listed in QJL_SRCS).
+    set(QJL_RISCV ON)
 endif()
 
 add_library(qjl STATIC ${QJL_SRCS})
@@ -60,6 +66,16 @@ if(QJL_X86)
         set_source_files_properties(
             src/qjl_score_avxvnni.c PROPERTIES COMPILE_OPTIONS "-mavx2;-mfma")
     endif()
+endif()
+
+# riscv64 scalar-only path. RVV kernels arrive in a follow-up wave; the
+# dispatcher gates them on QJL_HAVE_RVV which we explicitly set to 0
+# here so Wave 3 can flip it to 1 once the new TUs land. QJL_ARCH_RISCV
+# marks the build target for the (future) RVV TUs and any source-level
+# arch branching that pairs with QJL_ARCH_X86 / QJL_ARCH_ARM64.
+if(QJL_RISCV)
+    target_compile_definitions(qjl PUBLIC QJL_HAVE_RVV=0)
+    target_compile_definitions(qjl PRIVATE QJL_ARCH_RISCV=1)
 endif()
 
 # arm64 gcc/clang has NEON on by default; -mfpu=neon would be wrong on
