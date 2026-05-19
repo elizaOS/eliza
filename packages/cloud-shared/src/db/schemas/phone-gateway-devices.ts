@@ -59,4 +59,3 @@ export const phoneGatewayDevices = pgTable(
 
 export type PhoneGatewayDevice = InferSelectModel<typeof phoneGatewayDevices>;
 export type NewPhoneGatewayDevice = InferInsertModel<typeof phoneGatewayDevices>;
-

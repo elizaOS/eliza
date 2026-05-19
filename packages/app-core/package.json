@@ -48,7 +48,6 @@
     "test:apple-entitlements": "node ../scripts/run-vitest.mjs run --config vitest.config.ts scripts/lib/apple-entitlement-audit.test.mjs",
     "codesign:mas": "node ./scripts/codesign-mas.mjs",
     "codesign:mas:dry-run": "node ./scripts/codesign-mas.mjs --dry-run",
-    "sms-gateway:homepage": "node ./scripts/check-homepage-public-readiness.mjs",
     "sms-gateway:doctor": "node ./scripts/install-android-sms-gateway.mjs --doctor",
     "sms-gateway:homepage": "node ./scripts/check-homepage-public-readiness.mjs",
     "sms-gateway:install": "node ./scripts/install-android-sms-gateway.mjs --wait-device 300 --grant-role --clear-logcat --watch-logs 60",
