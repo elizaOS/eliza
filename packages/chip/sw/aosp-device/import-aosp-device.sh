@@ -56,11 +56,13 @@ $device_src/device.mk
 $device_src/init.eliza.rc
 $device_src/fstab.eliza
 $device_src/manifest.xml
+$device_src/eliza_e1.xml
 $device_src/kernel/eliza_ai_soc.fragment
 $device_src/dts/eliza-e1-android.dts
 $device_src/sepolicy/file_contexts
 $device_src/sepolicy/e1_npu.te
-$repo_root/docs/sw/aosp-device/device/eliza/eliza_ai_soc/hal/README.md
+$device_src/hal/e1_npu/Android.bp
+$device_src/hal/hwcomposer/Android.bp
 $manifest_src
 "
 
@@ -83,13 +85,11 @@ fi
 if [ "$check_only" -eq 0 ] && [ "$dry_run" -eq 0 ]; then
 	mkdir -p "$aosp/device/eliza"
 	rsync -a --delete "$device_src/" "$device_dst/"
-	mkdir -p "$device_dst/hal"
-	cp "$repo_root/docs/sw/aosp-device/device/eliza/eliza_ai_soc/hal/README.md" "$device_dst/hal/README.md"
 fi
 
 if [ "$check_only" -eq 1 ]; then
 	if [ -d "$device_dst" ]; then
-		for rel in AndroidProducts.mk eliza_ai_soc.mk BoardConfig.mk device.mk init.eliza.rc fstab.eliza manifest.xml kernel/eliza_ai_soc.fragment dts/eliza-e1-android.dts sepolicy/file_contexts sepolicy/e1_npu.te hal/README.md; do
+		for rel in AndroidProducts.mk eliza_ai_soc.mk BoardConfig.mk device.mk init.eliza.rc fstab.eliza manifest.xml eliza_e1.xml kernel/eliza_ai_soc.fragment dts/eliza-e1-android.dts sepolicy/file_contexts sepolicy/e1_npu.te hal/e1_npu/Android.bp hal/hwcomposer/Android.bp; do
 			if [ ! -f "$device_dst/$rel" ]; then
 				echo "FAIL: imported AOSP tree missing device/eliza/eliza_ai_soc/$rel" >&2
 				missing=1
@@ -118,6 +118,6 @@ printf 'Capture real evidence back in this repository:\n'
 # shellcheck disable=SC2016
 printf '  { printf "EXTERNAL_TREE=%s\\nCOMMAND=source build/envsetup.sh && lunch eliza_ai_soc-trunk_staging-userdebug\\nSTART_UTC=$(date -u +%%Y-%%m-%%dT%%H:%%M:%%SZ)\\n"; . build/envsetup.sh && lunch eliza_ai_soc-trunk_staging-userdebug; rc=$?; printf "END_UTC=$(date -u +%%Y-%%m-%%dT%%H:%%M:%%SZ)\\nRESULT=$rc\\n"; exit $rc; } 2>&1 | tee %s/docs/evidence/android/eliza_ai_soc_lunch.log\n' "$aosp" "$repo_root"
 # shellcheck disable=SC2016
-printf '  { printf "EXTERNAL_TREE=%s\\nCOMMAND=m vendorimage\\nSTART_UTC=$(date -u +%%Y-%%m-%%dT%%H:%%M:%%SZ)\\n"; m vendorimage; rc=$?; find out/target/product/eliza_ai_soc -path "*e1_npu.default" -o -path "*hwcomposer.eliza_ai_soc"; printf "END_UTC=$(date -u +%%Y-%%m-%%dT%%H:%%M:%%SZ)\\nRESULT=$rc\\n"; exit $rc; } 2>&1 | tee %s/docs/evidence/android/eliza_ai_soc_vendorimage.log\n' "$aosp" "$repo_root"
+printf '  { printf "EXTERNAL_TREE=%s\\nCOMMAND=m vendorimage\\nSTART_UTC=$(date -u +%%Y-%%m-%%dT%%H:%%M:%%SZ)\\n"; m vendorimage; rc=$?; find out/target/product/eliza_ai_soc -path "*vendor.eliza.e1_npu@1.0-service" -o -path "*hwcomposer.eliza_ai_soc"; printf "END_UTC=$(date -u +%%Y-%%m-%%dT%%H:%%M:%%SZ)\\nRESULT=$rc\\n"; exit $rc; } 2>&1 | tee %s/docs/evidence/android/eliza_ai_soc_vendorimage.log\n' "$aosp" "$repo_root"
 printf '  Use docs/android/boot-transcript.schema.json sidecars for Cuttlefish, QEMU, and Renode boot transcripts.\n'
 printf 'This helper does not build Android, launch Cuttlefish, or prove boot.\n'

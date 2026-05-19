@@ -94,13 +94,22 @@ def check_spec_floor(data: dict[str, Any], errors: list[str]) -> None:
         numeric_gt(target, baseline, key, errors, allow_equal=True)
 
 
-def require_text_markers(path: Path, markers: list[str], blockers: list[str]) -> None:
+def require_text_markers(
+    path: Path,
+    markers: list[str],
+    blockers: list[str],
+    *,
+    status_prefixes: tuple[str, ...] = ("eliza-evidence",),
+) -> None:
     if not path.is_file():
         blockers.append(f"missing evidence: {rel(path)}")
         return
     text = path.read_text(encoding="utf-8", errors="replace")
-    common_markers = ("RESULT=0", "eliza-evidence: status=PASS")
-    for marker in (*common_markers, *markers):
+    if "RESULT=0" not in text:
+        blockers.append(f"{rel(path)} missing marker: RESULT=0")
+    if not any(f"{prefix}: status=PASS" in text for prefix in status_prefixes):
+        blockers.append(f"{rel(path)} missing PASS status marker")
+    for marker in markers:
         if marker not in text:
             blockers.append(f"{rel(path)} missing marker: {marker}")
 
@@ -205,7 +214,12 @@ def check_npu_tasks(data: dict[str, Any], blockers: list[str]) -> None:
             ):
                 blockers.append(f"{name}: markers must be a string list")
             else:
-                require_text_markers(ROOT / transcript, markers, blockers)
+                require_text_markers(
+                    ROOT / transcript,
+                    markers,
+                    blockers,
+                    status_prefixes=("eliza-evidence",),
+                )
         if isinstance(report, str):
             report_path = ROOT / report
             payload = load_json(report_path, blockers)

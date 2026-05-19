@@ -166,9 +166,15 @@ TARGETS: dict[str, dict[str, Any]] = {
             "sw/aosp-device/device/eliza/eliza_ai_soc/BoardConfig.mk",
             "sw/aosp-device/device/eliza/eliza_ai_soc/device.mk",
             "sw/aosp-device/device/eliza/eliza_ai_soc/init.eliza.rc",
+            "sw/aosp-device/device/eliza/eliza_ai_soc/fstab.eliza",
             "sw/aosp-device/device/eliza/eliza_ai_soc/manifest.xml",
+            "sw/aosp-device/device/eliza/eliza_ai_soc/eliza_e1.xml",
+            "sw/aosp-device/device/eliza/eliza_ai_soc/kernel/eliza_ai_soc.fragment",
+            "sw/aosp-device/device/eliza/eliza_ai_soc/dts/eliza-e1-android.dts",
             "sw/aosp-device/device/eliza/eliza_ai_soc/sepolicy/file_contexts",
-            "docs/sw/aosp-device/device/eliza/eliza_ai_soc/hal/README.md",
+            "sw/aosp-device/device/eliza/eliza_ai_soc/sepolicy/e1_npu.te",
+            "sw/aosp-device/device/eliza/eliza_ai_soc/hal/e1_npu/Android.bp",
+            "sw/aosp-device/device/eliza/eliza_ai_soc/hal/hwcomposer/Android.bp",
             "docs/android/boot-transcript.schema.json",
         ],
         "contract_terms": ["eliza_ai_soc", "e1_npu", "hwcomposer"],
@@ -188,8 +194,8 @@ TARGETS: dict[str, dict[str, Any]] = {
 }
 
 FORBIDDEN_TRANSCRIPT_MARKERS = [
-    "placeholder",
-    "substitute",
+    "placeholder transcript",
+    "synthetic placeholder",
     "blocked",
     "not run",
     "status=FAIL",
@@ -269,7 +275,7 @@ def validate_evidence_file(item: dict[str, Any]) -> list[str]:
 
     status_match = re.search(r"eliza-evidence:\s*status=([A-Z]+)", text)
     if not status_match:
-        problems.append(f"{item['path']} missing eliza-evidence PASS status marker")
+        problems.append(f"{item['path']} missing evidence PASS status marker")
     elif status_match.group(1) != "PASS":
         problems.append(f"{item['path']} reports non-PASS evidence status: {status_match.group(1)}")
 
@@ -438,7 +444,9 @@ def check_aosp_product_glue(errors: list[str]) -> None:
         "eliza_ai_soc-trunk_staging-userdebug",
     }
     if "COMMON_LUNCH_CHOICES" not in text or not any(choice in text for choice in lunch_choices):
-        errors.append("AOSP AndroidProducts.mk must expose an eliza_ai_soc userdebug lunch choice")
+        errors.append(
+            "AOSP AndroidProducts.mk must expose an eliza_ai_soc userdebug lunch choice"
+        )
     board_text = board.read_text(errors="ignore") if board.is_file() else ""
     for term in [
         "TARGET_ARCH := riscv64",

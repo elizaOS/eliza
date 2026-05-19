@@ -135,12 +135,15 @@ case "$mode" in
 			env AOSP_PRODUCT="$aosp_product" AOSP_TARGET_PRODUCT="$aosp_target_product" AOSP_MAKE_ARGS="$aosp_make_args" "$aosp_shell" -lc '
 				source build/envsetup.sh &&
 				lunch "$AOSP_PRODUCT" >/dev/null &&
+				m ${AOSP_MAKE_ARGS:-} checkvintf >/dev/null &&
 				product_out="out/target/product/$AOSP_TARGET_PRODUCT" &&
 				manifest=$(find "$product_out/vendor/etc/vintf" \( -name eliza_e1.xml -o -name manifest.xml \) -print -quit 2>/dev/null) &&
 				echo "TARGET_PRODUCT=$AOSP_TARGET_PRODUCT" &&
 				echo "eliza_e1.xml=$manifest" &&
 				[ -n "$manifest" ] &&
-				checkvintf --check-one --dirmap /vendor:"$product_out/vendor"
+				checkvintf_bin=out/host/linux-x86/bin/checkvintf &&
+				[ -x "$checkvintf_bin" ] &&
+				"$checkvintf_bin" --check-one --dirmap /vendor:"$product_out/vendor"
 			'
 		;;
 	sepolicy-build)
