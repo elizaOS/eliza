@@ -199,7 +199,9 @@ interface OrtTensor {
 
 interface OrtSession {
 	inputNames?: string[];
-	inputMetadata?: Array<{ name?: string; type?: string }> | Record<string, { type?: string }>;
+	inputMetadata?:
+		| Array<{ name?: string; type?: string }>
+		| Record<string, { type?: string }>;
 	run(feeds: Record<string, unknown>): Promise<Record<string, OrtTensor>>;
 	release?: () => void;
 }
@@ -207,7 +209,10 @@ interface OrtSession {
 interface OrtModule {
 	Tensor: new (type: string, data: unknown, dims: number[]) => unknown;
 	InferenceSession: {
-		create(modelPath: string, opts: Record<string, unknown>): Promise<OrtSession>;
+		create(
+			modelPath: string,
+			opts: Record<string, unknown>,
+		): Promise<OrtSession>;
 	};
 }
 
@@ -235,9 +240,16 @@ export class KokoroOnnxRuntime implements KokoroRuntime {
 		this.sampleRate = opts.layout.sampleRate;
 	}
 
-	private async ensureSession(): Promise<{ ort: OrtModule; session: OrtSession }> {
-		if (this.ort && this.session) return { ort: this.ort, session: this.session };
-		const modelPath = path.join(this.opts.layout.root, this.opts.layout.modelFile);
+	private async ensureSession(): Promise<{
+		ort: OrtModule;
+		session: OrtSession;
+	}> {
+		if (this.ort && this.session)
+			return { ort: this.ort, session: this.session };
+		const modelPath = path.join(
+			this.opts.layout.root,
+			this.opts.layout.modelFile,
+		);
 		if (!existsSync(modelPath)) {
 			throw new KokoroModelMissingError(
 				`[kokoro] ONNX model not found at ${modelPath}`,
@@ -265,7 +277,9 @@ export class KokoroOnnxRuntime implements KokoroRuntime {
 			process.env.ELIZA_KOKORO_ONNX_MEM_PATTERN !== "0";
 		const graphOptimizationLevel =
 			this.opts.graphOptimizationLevel ??
-			normalizeGraphOptimizationLevel(process.env.ELIZA_KOKORO_ONNX_GRAPH_OPT) ??
+			normalizeGraphOptimizationLevel(
+				process.env.ELIZA_KOKORO_ONNX_GRAPH_OPT,
+			) ??
 			"all";
 		const executionMode =
 			this.opts.executionMode ??
@@ -303,18 +317,27 @@ export class KokoroOnnxRuntime implements KokoroRuntime {
 			inputIds[i] = BigInt(args.phonemes.ids[i] ?? 0);
 		}
 		const positions = fullStyle.length / args.voice.dim;
-		const offset = Math.min(inputIds.length, Math.max(0, positions - 1)) * args.voice.dim;
+		const offset =
+			Math.min(inputIds.length, Math.max(0, positions - 1)) * args.voice.dim;
 		const style =
-			positions > 1 ? fullStyle.subarray(offset, offset + args.voice.dim) : fullStyle;
+			positions > 1
+				? fullStyle.subarray(offset, offset + args.voice.dim)
+				: fullStyle;
 		const inputNames = session.inputNames ?? ["input_ids", "style", "speed"];
-		const tokensInputName = inputNames.includes("input_ids") ? "input_ids" : "tokens";
-		const speedDtype = getInputMetadataType(session, "speed") === "int32" ? "int32" : "float32";
+		const tokensInputName = inputNames.includes("input_ids")
+			? "input_ids"
+			: "tokens";
+		const speedDtype =
+			getInputMetadataType(session, "speed") === "int32" ? "int32" : "float32";
 		const speedTensor =
 			speedDtype === "int32"
 				? new ort.Tensor("int32", new Int32Array([1]), [1])
 				: new ort.Tensor("float32", new Float32Array([1]), [1]);
 		const out = await session.run({
-			[tokensInputName]: new ort.Tensor("int64", inputIds, [1, inputIds.length]),
+			[tokensInputName]: new ort.Tensor("int64", inputIds, [
+				1,
+				inputIds.length,
+			]),
 			style: new ort.Tensor("float32", style, [1, style.length]),
 			speed: speedTensor,
 		});
@@ -345,7 +368,9 @@ export class KokoroOnnxRuntime implements KokoroRuntime {
 		if (cached) return cached;
 		const file = path.join(this.opts.layout.voicesDir, voice.file);
 		if (!existsSync(file)) {
-			throw new KokoroModelMissingError(`[kokoro] voice pack file missing at ${file}`);
+			throw new KokoroModelMissingError(
+				`[kokoro] voice pack file missing at ${file}`,
+			);
 		}
 		const buf = await readFile(file);
 		const arr = new Float32Array(
@@ -383,7 +408,10 @@ function normalizeGraphOptimizationLevel(
 	return undefined;
 }
 
-function getInputMetadataType(session: OrtSession, name: string): string | undefined {
+function getInputMetadataType(
+	session: OrtSession,
+	name: string,
+): string | undefined {
 	const meta = session.inputMetadata;
 	if (Array.isArray(meta)) {
 		return meta.find((m) => m.name === name)?.type;
@@ -393,8 +421,15 @@ function getInputMetadataType(session: OrtSession, name: string): string | undef
 
 async function defaultOrtLoader(): Promise<OrtModule> {
 	const spec = ["onnxruntime", "node"].join("-");
-	const bun = (globalThis as { Bun?: { resolveSync?: (specifier: string, from: string) => string } }).Bun;
-	for (const from of [process.cwd(), path.resolve(process.cwd(), "package.json")]) {
+	const bun = (
+		globalThis as {
+			Bun?: { resolveSync?: (specifier: string, from: string) => string };
+		}
+	).Bun;
+	for (const from of [
+		process.cwd(),
+		path.resolve(process.cwd(), "package.json"),
+	]) {
 		const resolved = bun?.resolveSync?.(spec, from);
 		if (resolved && existsSync(resolved)) {
 			return (await import(pathToFileUrlString(resolved))) as OrtModule;
@@ -425,7 +460,9 @@ function pathToFileUrlString(filePath: string): string {
 async function verifySha256(filePath: string, expected: string): Promise<void> {
 	const expectedNorm = expected.trim().toLowerCase();
 	if (!/^[0-9a-f]{64}$/.test(expectedNorm)) {
-		throw new KokoroModelMissingError(`[kokoro] invalid expected SHA-256 (${expected})`);
+		throw new KokoroModelMissingError(
+			`[kokoro] invalid expected SHA-256 (${expected})`,
+		);
 	}
 	const hash = createHash("sha256");
 	await new Promise<void>((resolve, reject) => {
