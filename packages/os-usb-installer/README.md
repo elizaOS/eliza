@@ -77,8 +77,9 @@ Windows:
 
 ## Electrobun integration notes
 
-This package is structured so Electrobun can host the Vite renderer and bind an
-implementation of `UsbInstallerBackend` from the main process. The first real
-backend should keep the same interface and replace only the dry-run backend,
-with a narrow privileged helper responsible for raw device writes and verify
-reads.
+This package is structured so Electrobun can host the Vite renderer while the
+renderer only talks to a local `UsbInstallerBackend` HTTP/IPC contract. Platform
+enumeration and any future raw writes stay in `server.ts` or a signed privileged
+helper, never in browser-rendered code. The first real write helper should keep
+the same interface and replace only the dry-run execution path, with a narrow
+audited helper responsible for raw device writes and verify reads.
