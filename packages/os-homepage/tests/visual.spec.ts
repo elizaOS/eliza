@@ -30,7 +30,6 @@ async function prepare(page: Page) {
 function dynamicMask(page: Page) {
   return [
     page.locator("video"),
-    page.locator('[data-testid="cloud-video"]'),
     page.locator(".animate-pulse"),
     page.locator(".animate-spin"),
     page.locator("[data-marquee]"),

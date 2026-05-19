@@ -2,11 +2,7 @@ import {
   HARDWARE_PRODUCTS as hardwareProducts,
   type Product,
 } from "@elizaos/hardware-catalog";
-import {
-  BRAND_PATHS,
-  EXTERNAL_URLS,
-  LOGO_FILES,
-} from "@elizaos/shared-brand";
+import { BRAND_PATHS, EXTERNAL_URLS, LOGO_FILES } from "@elizaos/shared-brand";
 import { CloudVideoBackground } from "@elizaos/ui";
 import { ArrowRight, Download, ShoppingBag } from "lucide-react";
 import { lazy, type ReactNode, Suspense, useEffect, useState } from "react";
@@ -332,6 +328,7 @@ function RouteFallback() {
     >
       <div
         aria-label="Loading"
+        role="status"
         style={{
           width: 32,
           height: 32,
