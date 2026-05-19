@@ -82,8 +82,7 @@
 		"phonemizer": "^1.2.1"
 	},
 	"optionalDependencies": {
-		"node-llama-cpp": "3.18.1",
-		"onnxruntime-node": "1.24.3"
+		"node-llama-cpp": "3.18.1"
 	},
 	"peerDependencies": {
 		"@elizaos/core": "workspace:*",
@@ -92,14 +91,10 @@
 	"peerDependenciesMeta": {
 		"node-llama-cpp": {
 			"optional": true
-		},
-		"onnxruntime-node": {
-			"optional": true
 		}
 	},
 	"trustedDependencies": [
-		"node-llama-cpp",
-		"onnxruntime-node"
+		"node-llama-cpp"
 	],
 	"devDependencies": {
 		"@biomejs/biome": "^2.4.14",

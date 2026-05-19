@@ -674,15 +674,11 @@ export function createKokoroTtsBackend(
 	const forkModelId =
 		process.env.ELIZA_KOKORO_FORK_MODEL_ID?.trim() || "kokoro-v1.0";
 	const decision = pickKokoroRuntimeBackend({
-		defaultBackend: kokoro.runtimeKind === "onnx" ? "onnx" : "fork",
+		defaultBackend: "fork",
 		fork: {
 			serverUrl: forkUrl,
 			modelId: forkModelId,
 			sampleRate: kokoro.layout.sampleRate,
-		},
-		onnx: {
-			layout: kokoro.layout,
-			expectedSha256: null,
 		},
 	});
 	logger.info(
@@ -1037,31 +1033,31 @@ export class EngineVoiceBridge {
 
 		// Wire speaker-attribution when a profile store is provided.
 		// The attribution pipeline wraps the encoder + diarizer + profile-store;
-		// encoder errors (SpeakerEncoderUnavailableError) are caught at the
+		// encoder errors (SpeakerEncoderGgmlUnavailableError) are caught at the
 		// runVoiceTurn level and treated as attribution-miss rather than turn
 		// failure (AGENTS.md §3: attribution is best-effort, voice turn is not).
-		// The real WespeakerEncoder is loaded lazily on first encode() call.
+		// The GGML encoder is loaded lazily on first encode() call.
 		let attributionPipeline: VoiceAttributionPipeline | null = null;
 		if (opts.profileStore) {
 			const bundleRootForEncoder = opts.bundleRoot;
-			// Lazy encoder: resolves on first encode() call so the sync start()
-			// path doesn't block on ORT initialization.
-			let resolvedEncoder: import("./speaker/encoder").SpeakerEncoder | null =
+			// Lazy encoder: resolves on first encode() call.
+			let resolvedEncoder: import("./speaker/encoder-ggml").SpeakerEncoderGgml | null =
 				null;
 			let encoderLoadError: Error | null = null;
 			const lazyEncoder: import("./speaker/encoder").SpeakerEncoder = {
-				// Constants matching WespeakerEncoder static values.
-				modelId:
-					"wespeaker/resnet34-lm-int8" as import("./speaker/encoder").WespeakerModelId,
 				embeddingDim: 256,
 				sampleRate: 16_000,
 				async encode(pcm: Float32Array): Promise<Float32Array> {
 					if (encoderLoadError) throw encoderLoadError;
 					if (!resolvedEncoder) {
-						const { WespeakerEncoder } = await import("./speaker/encoder");
-						const modelPath = `${bundleRootForEncoder}/speaker/encoder.onnx`;
+						const { SpeakerEncoderGgmlImpl } = await import(
+							"./speaker/encoder-ggml"
+						);
+						const ggufPath = `${bundleRootForEncoder}/voice/speaker-encoder/wespeaker-resnet34-lm.gguf`;
 						try {
-							resolvedEncoder = await WespeakerEncoder.load(modelPath);
+							const impl = new SpeakerEncoderGgmlImpl({ ggufPath });
+							// Warm the FFI handle on first call.
+							resolvedEncoder = impl;
 						} catch (err) {
 							encoderLoadError =
 								err instanceof Error ? err : new Error(String(err));

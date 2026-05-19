@@ -1799,13 +1799,8 @@ export class LocalInferenceEngine {
 				"[voice] useEliza1Eot:true requested but the in-process text model is not loaded — load a node-llama-cpp model before starting the voice session, or set useEliza1Eot:false.",
 			);
 		}
-		// Resolver order (J1.d single-runtime policy): prefer the
-		// fork-served GGUF over the legacy ONNX path. The GGUF binding
-		// loads the Qwen2-style decoder through `node-llama-cpp` (the
-		// canonical fork wrapper), so the resolved path drops ONNX +
-		// `@huggingface/transformers` entirely. The ONNX fallback exists
-		// as a one-release deprecation runway and is retired in the
-		// follow-up J3 wave.
+		// Resolver order: prefer Eliza-1 in-process scorer, then GGUF (node-llama-cpp),
+		// then heuristic fallback. The ONNX path was removed.
 		const ggmlTurnDetector =
 			opts.turnDetector === false
 				? undefined
@@ -1823,17 +1818,11 @@ export class LocalInferenceEngine {
 				: (opts.turnDetector ??
 					eliza1EotClassifier ??
 					ggmlTurnDetector ??
-					(await eotMod.createBundledLiveKitTurnDetector({
-						...(opts.turnDetectorModelDir
-							? { modelDir: opts.turnDetectorModelDir }
-							: {}),
-						...(tierRevision ? { revision: tierRevision } : {}),
-					})) ??
 					new eotMod.HeuristicEotClassifier());
 		if (turnDetector) {
 			try {
-				// Load tokenizer/ONNX and warm one short pass while the session is
-				// arming, so the first real user pause does not pay model-load latency.
+				// Warm one short pass while the session is arming, so the first
+				// real user pause does not pay model-load latency.
 				await turnDetector.score("yes");
 			} catch (err) {
 				throw new VoiceStartupError(

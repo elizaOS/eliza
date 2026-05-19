@@ -721,7 +721,9 @@ export class DesktopLlamaAdapter {
 		);
 		const projectorMs = performance.now() - projectorStart;
 		if (!embedPtr) {
-			throw new Error("[desktop-llama] llava_image_embed_make_with_bytes failed");
+			throw new Error(
+				"[desktop-llama] llava_image_embed_make_with_bytes failed",
+			);
 		}
 
 		try {
