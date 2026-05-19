@@ -89,12 +89,12 @@ fi
 
 mkdir -p "$OUT_DIR"
 
+TMP_MOUNT=()
 case "$OUT_DIR" in
     /tmp/e1-alphachip/*|/tmp/e1-alphachip)
-        TMP_MOUNT="-v /tmp/e1-alphachip:/tmp/e1-alphachip"
+        TMP_MOUNT=(-v /tmp/e1-alphachip:/tmp/e1-alphachip)
         ;;
     "$REPO_DIR"/*)
-        TMP_MOUNT=""
         ;;
     *)
         echo "Output path must be under the repo or /tmp/e1-alphachip for Docker mounting: $OUT_DIR" >&2
@@ -137,7 +137,7 @@ EOF
 
 docker run --rm \
     -v "$REPO_DIR:/work" \
-    $TMP_MOUNT \
+    "${TMP_MOUNT[@]}" \
     -w /work \
     "$IMAGE" \
     openroad "$(to_container_path "$OUT_DIR/convert_lefdef_to_pb.tcl")"

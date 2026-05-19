@@ -92,7 +92,22 @@ def main() -> int:
 
     ok &= run("yaml yamllint", ["yamllint", "."], optional=True)
     ok &= validate_json()
-    ok &= run("git whitespace", ["git", "-c", f"safe.directory={ROOT}", "diff", "--check"])
+    # `git diff --check` requires a real working tree; the docker-regression
+    # CI mounts only `packages/chip` so the .git tree isn't visible. Skip
+    # cleanly when git can't see a repo here — the host-side `git` hooks
+    # and the repo-wide lint job catch the same whitespace defects.
+    rev_parse = subprocess.run(
+        ["git", "-c", f"safe.directory={ROOT}", "rev-parse", "--git-dir"],
+        cwd=ROOT,
+        capture_output=True,
+    )
+    if rev_parse.returncode == 0:
+        ok &= run(
+            "git whitespace",
+            ["git", "-c", f"safe.directory={ROOT}", "diff", "--check"],
+        )
+    else:
+        print("SKIP: git whitespace: not in a git checkout (no .git visible)")
 
     return 0 if ok else 1
 
