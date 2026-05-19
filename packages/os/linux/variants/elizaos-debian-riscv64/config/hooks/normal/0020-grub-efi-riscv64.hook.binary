@@ -13,22 +13,18 @@
 # the hook aborts rather than producing an ISO without an EFI loader.
 set -eu
 
-CHROOT="chroot"
-EFI_OUT_DIR="binary/EFI/BOOT"
-GRUB_CFG_OUT="binary/boot/grub/grub.cfg"
+if [ -d "live" ]; then
+    BINARY_DIR="."
+    CHROOT="../chroot"
+else
+    BINARY_DIR="binary"
+    CHROOT="chroot"
+fi
+
+EFI_OUT_DIR="${BINARY_DIR}/EFI/BOOT"
+GRUB_CFG_OUT="${BINARY_DIR}/boot/grub/grub.cfg"
 GRUB_TARGET="riscv64-efi"
 GRUB_PREFIX="/boot/grub"
-
-if [ ! -d "${CHROOT}/usr/lib/grub/${GRUB_TARGET}" ]; then
-    echo "[0020-grub-efi-riscv64] ERROR: missing ${CHROOT}/usr/lib/grub/${GRUB_TARGET}" >&2
-    echo "  grub-efi-riscv64-bin must be installed in the chroot." >&2
-    exit 1
-fi
-
-if [ ! -x "${CHROOT}/usr/bin/grub-mkimage" ]; then
-    echo "[0020-grub-efi-riscv64] ERROR: missing ${CHROOT}/usr/bin/grub-mkimage" >&2
-    exit 1
-fi
 
 mkdir -p "${EFI_OUT_DIR}" "$(dirname "${GRUB_CFG_OUT}")"
 
@@ -36,26 +32,43 @@ mkdir -p "${EFI_OUT_DIR}" "$(dirname "${GRUB_CFG_OUT}")"
 # real grub.cfg via the `--prefix` baked in. We point it at /boot/grub
 # on the ISO; the runtime grub.cfg below loads the live kernel/initrd
 # from there.
-chroot "${CHROOT}" grub-mkimage \
-    --format="${GRUB_TARGET}" \
-    --output="/tmp/BOOTRISCV64.EFI" \
-    --prefix="${GRUB_PREFIX}" \
-    part_gpt part_msdos iso9660 fat ext2 \
-    normal linux linux16 echo configfile \
-    search search_label search_fs_uuid search_fs_file \
-    boot reboot halt help ls cat test \
-    efi_gop efi_uga gfxterm gfxterm_background \
-    minicmd
-
-mv "${CHROOT}/tmp/BOOTRISCV64.EFI" "${EFI_OUT_DIR}/BOOTRISCV64.EFI"
+if [ -d "${CHROOT}/usr/lib/grub/${GRUB_TARGET}" ] && [ -x "${CHROOT}/usr/bin/grub-mkimage" ]; then
+    chroot "${CHROOT}" grub-mkimage \
+        --format="${GRUB_TARGET}" \
+        --output="/tmp/BOOTRISCV64.EFI" \
+        --prefix="${GRUB_PREFIX}" \
+        part_gpt part_msdos iso9660 fat ext2 \
+        normal linux echo configfile \
+        search search_label search_fs_uuid search_fs_file \
+        boot reboot halt ls cat test \
+        efi_gop \
+        minicmd
+    mv "${CHROOT}/tmp/BOOTRISCV64.EFI" "${EFI_OUT_DIR}/BOOTRISCV64.EFI"
+elif [ -d "/usr/lib/grub/${GRUB_TARGET}" ] && command -v grub-mkimage >/dev/null 2>&1; then
+    grub-mkimage \
+        --directory="/usr/lib/grub/${GRUB_TARGET}" \
+        --format="${GRUB_TARGET}" \
+        --output="${EFI_OUT_DIR}/BOOTRISCV64.EFI" \
+        --prefix="${GRUB_PREFIX}" \
+        part_gpt part_msdos iso9660 fat ext2 \
+        normal linux echo configfile \
+        search search_label search_fs_uuid search_fs_file \
+        boot reboot halt ls cat test \
+        efi_gop \
+        minicmd
+else
+    echo "[0020-grub-efi-riscv64] ERROR: missing grub-mkimage or /usr/lib/grub/${GRUB_TARGET}" >&2
+    echo "  Install grub-common and grub-efi-riscv64-bin in the builder image." >&2
+    exit 1
+fi
 chmod 0644 "${EFI_OUT_DIR}/BOOTRISCV64.EFI"
 
 # Resolve the kernel/initrd basenames live-build staged under
-# `binary/live/`. The names are stable (`vmlinuz`, `initrd.img`) for
-# debian-live but resolve them dynamically so a future live-build
-# version with a date-stamped name still produces a working grub.cfg.
-KERNEL_REL="$(cd binary && ls live/vmlinuz* 2>/dev/null | head -n1 || true)"
-INITRD_REL="$(cd binary && ls live/initrd.img* 2>/dev/null | head -n1 || true)"
+# `binary/live/`. Debian riscv64 currently stages an uncompressed
+# `vmlinux-*`; accept the compressed `vmlinuz-*` form as well so a future
+# kernel packaging change still produces a working grub.cfg.
+KERNEL_REL="$(cd "${BINARY_DIR}" && { ls live/vmlinuz* live/vmlinux* 2>/dev/null || true; } | head -n1)"
+INITRD_REL="$(cd "${BINARY_DIR}" && ls live/initrd.img* 2>/dev/null | head -n1 || true)"
 
 if [ -z "${KERNEL_REL}" ] || [ -z "${INITRD_REL}" ]; then
     echo "[0020-grub-efi-riscv64] ERROR: live kernel/initrd not staged under binary/live/" >&2

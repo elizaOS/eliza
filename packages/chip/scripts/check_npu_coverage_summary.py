@@ -109,9 +109,18 @@ def validate_summary(summary: dict[str, Any]) -> list[str]:
     for mode in ("INT8", "INT4", "FP16", "BF16", "FP8"):
         if mode not in precision:
             errors.append(f"precision matrix missing {mode}")
-    for mode in ("FP16", "BF16", "FP8"):
-        if precision.get(mode) != "blocked":
-            errors.append(f"precision {mode} must remain blocked")
+    prototype_modes = ("FP16", "BF16", "FP8")
+    for mode in prototype_modes:
+        if precision.get(mode) not in {"supported", "supported_prototype"}:
+            errors.append(f"precision {mode} must remain scalar/prototype-supported")
+    for entry in summary.get("precision_modes", []):
+        if not isinstance(entry, dict) or entry.get("precision") not in prototype_modes:
+            continue
+        path = str(entry.get("path", "")).lower()
+        if "no tensor" not in path or "compiler path" not in path:
+            errors.append(
+                f"precision {entry.get('precision')} must retain no-tensor/compiler boundary"
+            )
 
     descriptor = summary.get("descriptor_fail_closed_paths", {})
     for flag in ("empty_queue_rejects", "unaligned_base_rejects"):

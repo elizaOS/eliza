@@ -762,24 +762,36 @@ work_items:
       - hls-eval
       - llm-dse
       - idse-hls
+      - mpm-llm4dse
+      - timelyhls
+      - flexllm-hls
+      - tapa-rapidstream
       - secda-dse
     target_area:
       - high_level_synthesis
       - accelerator_dse
+      - hls_qor_model
+      - timing_aware_hls
+      - fpga_hls_backend
+      - model_dataset_intake
       - simulator
       - runtime
     owner_scope: dry-run target capture only; no generated HLS or RTL
     objective: >
       Identify E1 runtime and NPU behaviors that could become HLS/accelerator
       DSE tasks, while keeping generated directives, generated HLS, generated
-      RTL, and benchmark claims blocked until deterministic gates exist.
+      RTL, imported QoR models, benchmark datasets, FPGA backends, and benchmark
+      claims blocked until deterministic gates exist.
     deliverables:
       - scripts/ai_eda/capture_hls_accelerator_targets.py
       - build/ai_eda/hls_accelerator_targets/<run-id>/targets_report.json
     evidence_gate: >
       HLS automation reports may only hash local specs/tests and backend
-      availability; generated code needs C-simulation, HLS synthesis, RTL
-      simulation, synthesis, equivalence where applicable, and human review.
+      availability; external models, datasets, libraries, and backends need
+      exact revisions, license review, manifests, replay gates, and reviewer
+      disposition before generated code is considered. Generated code needs
+      C-simulation, HLS synthesis, RTL simulation, synthesis, equivalence where
+      applicable, and human review.
     validation_commands:
       - python3 scripts/check_ai_eda_source_inventory.py
       - python3 scripts/ai_eda/capture_hls_accelerator_targets.py --run-id validation
@@ -788,12 +800,14 @@ work_items:
       - No HLS backend selected or version-pinned
       - No generated HLS artifact isolation policy beyond build/ai_eda
       - No pinned LLM-DSE environment, HLSyn input subset, prompt log, or directive-search replay manifest
+      - No approved MPM-LLM4DSE model/dataset intake, TimelyHLS benchmark replay, FlexLLM artifact review, or TAPA/RapidStream FPGA backend evidence
       - External benchmark/framework license review not complete
       - No E1 HLS C-simulation or generated-RTL equivalence harness
     acceptance_criteria:
       - Report records local runtime/spec input hashes.
       - Report states no HLS code or RTL is generated.
       - Candidate tasks list deterministic E1 follow-up gates.
+      - Model, dataset, library, and backend candidates remain metadata-only.
   - id: p1-timing-closure-target-capture
     title: Timing Closure And ECO Target Capture
     priority: P1
@@ -1081,6 +1095,8 @@ work_items:
       - openpdn
       - aieda
       - rtlmul
+      - archpower
+      - autopower
     target_area:
       - dtco
       - device_modeling
@@ -1089,19 +1105,23 @@ work_items:
       - ir_drop_prediction
       - pdn_synthesis
       - ppa_prediction
+      - architecture_power_modeling
+      - simulator_power_modeling
     owner_scope: dry-run target capture only; no power maps, thermal maps, PDN edits, or signoff claims
     objective: >
       Track AI-assisted TCAD-derived device assumptions, power, thermal,
-      IR-drop, and PDN sources while tying any future E1 use to authorized
-      process collateral, sustained measurement, package, PD signoff, and
-      deterministic benchmark gates.
+      IR-drop, PDN, and architecture-level CPU/AP power-model sources while
+      tying any future E1 use to authorized process collateral, sustained
+      measurement, package, PD signoff, simulator calibration, and deterministic
+      benchmark gates.
     deliverables:
       - scripts/ai_eda/capture_power_thermal_targets.py
       - build/ai_eda/power_thermal_targets/<run-id>/targets_report.json
     evidence_gate: >
       Power/thermal automation reports may only hash local evidence contracts
       and model inputs; predictions, generated PDNs, TOPS/W, IR-drop, thermal,
-      or product claims require measured or deterministic signoff evidence.
+      architecture-level power estimates, or product claims require measured or
+      deterministic signoff evidence.
     validation_commands:
       - python3 scripts/check_ai_eda_source_inventory.py
       - python3 scripts/ai_eda/capture_power_thermal_targets.py --run-id validation
@@ -1113,11 +1133,12 @@ work_items:
       - No local OpenROAD/PDNSim IR-drop label corpus across repeated runs
       - No activity-aligned power map or vector-based post-route power evidence
       - No approved TCAD/DTCO deck, model, simulator, calibration corpus, or process authority
+      - No approved ArchPower dataset intake, AutoPower revision, E1 CPU/AP feature mapping, or local held-out calibration labels
       - No approved flow for AI-generated PDN, power map, thermal map, or signoff waiver
     acceptance_criteria:
       - Report hashes sustained power, thermal, benchmark, PD, package, and checker inputs.
       - Report states no power, thermal, IR-drop, TOPS/W, or generated-PDN claim is made.
-      - Candidate tasks list deterministic power, thermal, PD signoff, board/package, and synthesis gates.
+      - Candidate tasks list deterministic power, thermal, architecture-power, PD signoff, board/package, and synthesis gates.
   - id: p1-floorplan-io-pdn-target-capture
     title: Floorplan, IO Placement, Tapcell, And PDN Target Capture
     priority: P1
@@ -1574,7 +1595,9 @@ work_items:
       - ieee-1801-upf
       - ieee-upf-open-source
       - yosys-clockgate
+      - lighter-clock-gating
       - codmas-rtlopt
+      - rtl-opt-benchmark
       - prompting-for-power
       - poet-rtl-ppa
       - rtl-ppa-sog
@@ -1583,15 +1606,17 @@ work_items:
       - power_intent
       - upf
       - clock_gating
+      - low_power_rtl_benchmark
       - dvfs
       - low_power_verification
       - ppa
     owner_scope: dry-run target capture only; no RTL, SDC, UPF, clock-gating, DVFS, retention, isolation, or power-domain edits
     objective: >
       Track low-power RTL optimization, clock-gating, IEEE 1801 UPF, DVFS,
-      idle-state, retention, isolation, and power-aware verification sources
-      while tying any future E1 use to deterministic RTL, formal, synthesis,
-      DFT, CDC/RDC, power/thermal, and physical-design gates.
+      idle-state, retention, isolation, power-aware verification, open
+      clock-gating backends, and PPA benchmark sources while tying any future E1
+      use to deterministic RTL, formal, synthesis, DFT, CDC/RDC, power/thermal,
+      and physical-design gates.
     deliverables:
       - scripts/ai_eda/capture_low_power_intent_targets.py
       - build/ai_eda/low_power_intent_targets/<run-id>/targets_report.json
@@ -1599,7 +1624,9 @@ work_items:
       Low-power automation reports may only hash local RTL, SDC, power,
       thermal, CPU/AP, NPU, and PD inputs; generated UPF, clock-gating, DVFS,
       retention, isolation, level-shifter, or power-domain changes require
-      deterministic verification and review.
+      deterministic verification and review. External benchmark tasks and
+      plugin/library maps require pinned revisions, license review, non-overlap
+      checks, and reviewer disposition.
     validation_commands:
       - python3 scripts/check_ai_eda_source_inventory.py
       - python3 scripts/ai_eda/capture_low_power_intent_targets.py --run-id validation
@@ -1612,12 +1639,14 @@ work_items:
       - No E1 power-state table, always-on partition, supply-set map, or UPF source
       - No local power-aware simulation or formal low-power verification backend
       - No approved clock-gating, power-gating, DVFS, retention, isolation, or level-shifter insertion workflow
+      - No approved Lighter plugin revision, library-map review, or RTL-OPT benchmark asset/non-overlap review
       - No scan/DFT, CDC/RDC, reset, and timing policy for generated gated clocks or power domains
       - No workload-aligned voltage, frequency, power, and thermal traces for DVFS or idle-state validation
     acceptance_criteria:
       - Report hashes local RTL, SDC, power/thermal, CPU/AP, NPU, and PD inputs.
       - Report states no UPF, RTL, constraint, clock-gating, DVFS, retention, isolation, power-domain, or release claim is enabled.
       - Candidate tasks list deterministic platform, PD, RTL, formal, synthesis, CDC/RDC, DFT, software/BSP, and power/thermal gates.
+      - Benchmark and plugin candidates remain metadata-only until revision, license, non-overlap, and reviewer gates pass.
   - id: p1-post-silicon-validation-target-capture
     title: Post-Silicon, Bring-Up, And Lab-Debug Target Capture
     priority: P1

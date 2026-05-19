@@ -266,7 +266,8 @@ tail -n 80 "$log"
 
 if [ "$status" -ne 0 ]; then
 	if [ "${CHIPYARD_LINUX_SMOKE_RETRY_GENERATED:-1}" = "1" ] && [ "$attempt" = "1" ] && \
-		grep -Eq 'No rule to make target .*(mm|VTestDriver)[^[:space:]]*\.(d|mk|cpp|h)|fatal error: .*(mm|VTestDriver)[^[:space:]]*\.(d|mk|cpp|h): No such file or directory|No such file or directory.*(mm|VTestDriver)[^[:space:]]*\.(d|mk|cpp|h)' "$log"; then
+		python3 "$repo_dir/scripts/check_chipyard_verilator_linux_smoke.py" \
+			--classify-generated-artifact-failure "$log"; then
 		printf 'STATUS: REPAIR chipyard.verilator_linux_smoke\n'
 		printf '  reason: generated Verilator model artifact failure in %s\n' "${log#"$repo_dir"/}"
 		printf '  action: remove stale/partial generated simulator outputs and retry once\n'
