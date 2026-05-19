@@ -20,15 +20,68 @@ import {
 import { findOwnPackageRoot } from "./server-helpers.ts";
 
 const require = createRequire(import.meta.url);
-const { applySignalQrOverride } = await import("@elizaos/plugin-signal");
-const { applyWhatsAppQrOverride } = (await import(
-  "@elizaos/plugin-whatsapp"
-)) as unknown as {
-  applyWhatsAppQrOverride: (
-    entries: PluginEntry[],
-    workspaceDir: string,
-  ) => void;
+
+// Pure-disk override helpers — inlined here to avoid module-scope dynamic
+// imports of @elizaos/plugin-signal and @elizaos/plugin-whatsapp. The plugin
+// versions still exist for external callers; these copies are scoped to the
+// agent's plugin-discovery surface and only walk the workspace directory.
+type QrOverrideEntry = {
+  id: string;
+  validationErrors: unknown[];
+  configured: boolean;
+  qrConnected?: boolean;
 };
+
+function signalAuthExists(workspaceDir: string, accountId = "default"): boolean {
+  const authDir = path.join(workspaceDir, "signal-auth", accountId);
+  if (!fs.existsSync(authDir)) return false;
+
+  const accountsPath = path.join(authDir, "data", "accounts.json");
+  if (!fs.existsSync(accountsPath)) return false;
+
+  try {
+    const parsed = JSON.parse(fs.readFileSync(accountsPath, "utf8")) as {
+      accounts?: unknown;
+    };
+    return Array.isArray(parsed.accounts) && parsed.accounts.length > 0;
+  } catch {
+    return false;
+  }
+}
+
+function applySignalQrOverride(
+  entries: QrOverrideEntry[],
+  workspaceDir: string,
+): void {
+  if (!signalAuthExists(workspaceDir, "default")) return;
+  const sigPlugin = entries.find((plugin) => plugin.id === "signal");
+  if (!sigPlugin) return;
+  sigPlugin.validationErrors = [];
+  sigPlugin.configured = true;
+  sigPlugin.qrConnected = true;
+}
+
+function applyWhatsAppQrOverride(
+  entries: QrOverrideEntry[],
+  workspaceDir: string,
+): void {
+  try {
+    const credsPath = path.join(
+      workspaceDir,
+      "whatsapp-auth",
+      "default",
+      "creds.json",
+    );
+    if (!fs.existsSync(credsPath)) return;
+    const waPlugin = entries.find((plugin) => plugin.id === "whatsapp");
+    if (!waPlugin) return;
+    waPlugin.validationErrors = [];
+    waPlugin.configured = true;
+    waPlugin.qrConnected = true;
+  } catch {
+    /* workspace dir may not exist */
+  }
+}
 
 function findPluginsManifestRoot(startDir: string): string {
   // Mobile bundles are single-file — no workspace tree to walk.
