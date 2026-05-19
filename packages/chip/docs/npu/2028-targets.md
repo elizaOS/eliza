@@ -86,15 +86,16 @@ submit plus a `stage_host_runtime_sequence` helper that replays prepared-batch
 MMIO and descriptor-memory writes and returns
 `eliza.e1_npu_host_runtime_sequence_stage_result.v1` only when
 GEMM preamble, descriptor submission, and `completion_poll` register metadata
-labels/addresses match the runtime MMIO contract, and `completion_poll` requires
-the done bit, requires the done bit, and rejects the error bit. The
+labels/addresses match the runtime MMIO contract, and `completion_poll`
+requires the done bit and rejects the error bit. The
 `stage_prepared_descriptor_batch` helper validates
 `eliza.e1_npu_prepared_descriptor_batch.v1` packages and returns
 `eliza.e1_npu_prepared_descriptor_batch_stage_result.v1` after checking
 `batch_index`, `arena_base`, `arena_total_bytes`, `arena_alignment_bytes`,
 `required_runtime_steps`, `descriptor_base`, `descriptor_memory_writes`, and
-`mmio_preamble_writes` against the packaged `descriptor_image` and
-`op_mmio_preamble`. The
+`mmio_preamble_writes` against the packaged `descriptor_words`,
+`descriptor_image`, and `op_mmio_preamble`, including descriptor image
+`op_names`. The
 `stage_prepared_descriptor_execution_batches` helper validates ordered
 `eliza.e1_npu_prepared_descriptor_execution_batches.v1` packages and returns
 `eliza.e1_npu_prepared_descriptor_execution_batches_stage_result.v1` after
@@ -102,9 +103,9 @@ checking each descriptor image and `DESC_BASE` submission against
 `descriptor_base + execution_batch_index * descriptor_stride_bytes`, and
 checking `batch_index`/`execution_batch_index` identity, `arena_base consistency`,
 arena sizing, `required_runtime_steps`, and
-`descriptor_memory_writes` exactly match the packaged
-`descriptor_image`. It also checks `mmio_preamble_writes` match
-`op_mmio_preamble` before staging. The
+`descriptor_words` and `descriptor_memory_writes` exactly match the packaged
+`descriptor_image`. It also checks descriptor image `op_names` and
+`mmio_preamble_writes` match `op_mmio_preamble` before staging. The
 simulator gate feeds the
 partitioner-produced prepared batch through these helpers and observes
 descriptor completion/counters in `E1NpuMmioSim`, including memory-backed

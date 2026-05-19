@@ -135,13 +135,18 @@ predictive_lanes:
         flow_mode: yosys_abc_synth_only
         rtl_top: e1_slc
         scope: >
-          Shrunk e1_slc geometry (16 KiB, 4-way, 2 banks, 64 B line) covering
-          the lookup/install FSM, BDI compression form classifier, QoS-aware
-          victim selection, and display-RT reservation counter. Synthesized
-          standalone with yosys 0.64 + ABC -fast, mapped to asap7sc7p5t_27
-          RVT TT (0.70 V, 25 C). Production geometry is 16 MiB/16-way/4-bank
-          and replaces the flat-flop data/tag/RRPV arrays with SRAM macros
-          at vendor density (38.1 Mb/mm^2 HD at N2).
+          Shrunk e1_slc geometry (2 KiB, 2-way, 2 banks, 64 B line, 8 sets
+          per bank) covering the lookup/install FSM, BDI compression form
+          classifier, QoS-aware victim selection, and display-RT reservation
+          counter. Synthesized standalone with yosys 0.64 + ABC -fast,
+          mapped to asap7sc7p5t_27 RVT TT (0.70 V, 25 C). Production
+          geometry is 16 MiB/16-way/4-bank and replaces the flat-flop
+          data/tag/RRPV arrays with SRAM macros at vendor density
+          (38.1 Mb/mm^2 HD at N2). BANKS=2 is the minimum geometry that
+          keeps $clog2(BANKS) > 0 so cache_pkg bank-index bit slices
+          compile cleanly; smaller SIZE_BYTES/WAYS keep the per-bit flop
+          reset analysis tractable within a single workstation-minute
+          synth budget.
         shape_report: docs/evidence/process/asap7/slc_slice_shape.json
         projection_report: docs/evidence/process/asap7/slc_slice_projection_n2p.json
         evidence_class: predictive_finfet_shape_only_not_signoff

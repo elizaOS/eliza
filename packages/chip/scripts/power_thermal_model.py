@@ -24,6 +24,7 @@ import sys
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
+from typing import cast
 
 import yaml
 
@@ -150,6 +151,8 @@ def main() -> int:
     args = parser.parse_args()
 
     report = project()
+    totals = cast(dict[str, object], report["totals"])
+    envelope = cast(dict[str, object], report["envelope"])
 
     if args.report or not args.check:
         args.report_path.parent.mkdir(parents=True, exist_ok=True)
@@ -161,24 +164,24 @@ def main() -> int:
         except ValueError:
             rel = args.report_path
         print(
-            f"power_thermal_projection: burst={report['totals']['burst_w']} W "
-            f"sustained={report['totals']['sustained_w']} W -> {rel}"
+            f"power_thermal_projection: burst={totals['burst_w']} W "
+            f"sustained={totals['sustained_w']} W -> {rel}"
         )
 
     if args.check:
         if report["release_blocker"]:
             print(
                 f"FAIL: power_thermal_projection release_blocker=True "
-                f"(burst={report['totals']['burst_w']} W "
-                f"sustained={report['totals']['sustained_w']} W "
-                f"envelope_transient_max={report['envelope']['transient_w_high']} "
-                f"envelope_steady_max={report['envelope']['steady_state_w_high']})",
+                f"(burst={totals['burst_w']} W "
+                f"sustained={totals['sustained_w']} W "
+                f"envelope_transient_max={envelope['transient_w_high']} "
+                f"envelope_steady_max={envelope['steady_state_w_high']})",
                 file=sys.stderr,
             )
             return 1
         print(
-            f"power_thermal_projection ok: burst={report['totals']['burst_w']} W "
-            f"sustained={report['totals']['sustained_w']} W within envelope"
+            f"power_thermal_projection ok: burst={totals['burst_w']} W "
+            f"sustained={totals['sustained_w']} W within envelope"
         )
     return 0
 

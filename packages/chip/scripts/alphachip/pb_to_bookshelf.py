@@ -206,7 +206,9 @@ def write_bookshelf(
         fh.write(f"NumNodes : {num_cells}\n")
         fh.write(f"NumTerminals : {num_terminals}\n\n")
         for n in cells:
-            fh.write(f"\t{n.name}\t{int(round(n.width))}\t{int(round(n.height))}\n")
+            w = max(1, int(round(n.width)))
+            h = max(1, int(round(n.height)))
+            fh.write(f"\t{n.name}\t{w}\t{h}\n")
         for n in ports:
             fh.write(f"\t{n.name}\t1\t1\tterminal\n")
 
@@ -220,7 +222,8 @@ def write_bookshelf(
         for n in ports:
             idx = name_to_index[n.name]
             x, y, orient, _fixed = coords.get(idx, (n.x, n.y, n.orientation, 1))
-            fh.write(f"{n.name}\t{x:.4f}\t{y:.4f}\t:\t{orient or 'N'}\t/FIXED\n")
+            o = orient if orient and orient != "-" else "N"
+            fh.write(f"{n.name}\t{x:.4f}\t{y:.4f}\t:\t{o}\t/FIXED\n")
 
     # Build nets: a "driver" is a macro_pin's owner; each input on that pin is
     # a sink. CT models per-port adjacencies, so we coalesce edges per net by
@@ -279,11 +282,15 @@ def write_bookshelf(
     with wts_path.open("w") as fh:
         fh.write("UCLA wts 1.0\n\n")
 
-    # Single full-canvas row spanning the design.
+    # Bookshelf requires row_height == every movable cell's height. The
+    # esonghori CT-bridge sidesteps this by feeding PlaceDB in-process, but
+    # stock DREAMPlace's Bookshelf legalizer asserts uniform row height. We
+    # set row_height = 1 site_h unit and rewrite cell heights to integer
+    # multiples; the proxy of interest here is HPWL after global placement,
+    # which is invariant under uniform y-scaling.
     canvas_w = header.get("width", max((n.x + n.width for n in cells + ports), default=0.0))
     canvas_h = header.get("height", max((n.y + n.height for n in cells + ports), default=0.0))
-    # Approximate row count: use ~256 1-unit-high rows.
-    site_h = max(1, int(round(canvas_h / 256)))
+    site_h = 1
     num_rows = max(1, int(round(canvas_h / site_h)))
     site_width = 1
     with scl_path.open("w") as fh:

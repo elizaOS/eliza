@@ -249,7 +249,7 @@ export {
 } from "./components/ui/tabs";
 export { Textarea } from "./components/ui/textarea";
 export { IconTooltip } from "./components/ui/tooltip-extended";
-export * from "./components/views/TerminalPluginView";
+export { TerminalPluginView } from "./components/views/TerminalPluginView";
 export type {
   VoicePillMessage,
   VoicePillProps,

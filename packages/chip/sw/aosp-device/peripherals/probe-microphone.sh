@@ -45,7 +45,9 @@ emit "$capture_log"
 emit "EOF"
 
 remote_bytes=$(adb_cmd shell "stat -c %s $device_path 2>/dev/null || wc -c < $device_path" | tr -d '\r ' || true)
-[ -n "$remote_bytes" ] && [ "$remote_bytes" -gt 44 ] || die "capture file missing or smaller than WAV header"
+if [ -z "$remote_bytes" ] || [ "$remote_bytes" -le 44 ]; then
+	die "capture file missing or smaller than WAV header"
+fi
 
 tmpdir=${ELIZA_PERIPHERAL_TMPDIR:-$(mktemp -d)}
 mkdir -p "$tmpdir"
