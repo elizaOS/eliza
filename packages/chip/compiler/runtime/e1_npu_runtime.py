@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from collections.abc import Callable
+from collections.abc import Callable, Iterable
 from dataclasses import dataclass
 from enum import StrEnum
 
@@ -21,6 +21,20 @@ def _s4(value: int) -> int:
 def _s2(value: int) -> int:
     value &= 0x3
     return value - 0x4 if value & 0x2 else value
+
+
+def _ternary_encode(value: int) -> int:
+    """Encode a host ternary lane value into the RTL ternary 2-bit encoding.
+
+    0b00=0, 0b01=+1, 0b10=-1; 0b11 is reserved and never produced by host code.
+    """
+    if value == 0:
+        return 0b00
+    if value == 1:
+        return 0b01
+    if value == -1:
+        return 0b10
+    raise ValueError("ternary lane must be -1, 0, or +1")
 
 
 def _s32(value: int) -> int:
@@ -117,6 +131,94 @@ class NpuStreamDescriptor:
         )
 
 
+class CommandBuffer:
+    """Batched descriptor ring entry queue with a single completion wait.
+
+    A CommandBuffer collects NpuStreamDescriptor entries that the host writes
+    contiguously into the descriptor ring at ``base``, then dispatches with one
+    ``submit`` call that arms head/tail once and waits for a single descriptor
+    completion bit from the RTL. The buffer is the runtime-side analogue of the
+    IREE Stream dialect command buffer and the prerequisite for the partitioner
+    (B-5) to schedule multi-op subgraphs without per-op MMIO sync.
+
+    The single-op MMIO path remains available through ``E1NpuRuntime.run`` and
+    is internally treated as a one-entry buffer when callers prefer the batched
+    API.
+    """
+
+    DESCRIPTOR_WORDS = 4
+    DESCRIPTOR_BYTES = DESCRIPTOR_WORDS * 4
+    MAX_ENTRIES = 7
+
+    def __init__(self, base: int, *, timeout_polls: int = 1024) -> None:
+        if base < 0 or base & 0x3:
+            raise ValueError("command buffer base must be non-negative and 32-bit aligned")
+        if timeout_polls <= 0:
+            raise ValueError("timeout_polls must be positive")
+        self._base = base
+        self._timeout_polls = timeout_polls
+        self._descriptors: list[NpuStreamDescriptor] = []
+
+    @property
+    def base(self) -> int:
+        return self._base
+
+    @property
+    def timeout_polls(self) -> int:
+        return self._timeout_polls
+
+    @property
+    def descriptors(self) -> tuple[NpuStreamDescriptor, ...]:
+        return tuple(self._descriptors)
+
+    def __len__(self) -> int:
+        return len(self._descriptors)
+
+    def append(self, descriptor: NpuStreamDescriptor) -> None:
+        if not isinstance(descriptor, NpuStreamDescriptor):
+            raise TypeError("command buffer entries must be NpuStreamDescriptor instances")
+        if len(self._descriptors) >= self.MAX_ENTRIES:
+            raise ValueError(
+                f"command buffer exceeds RTL ring window of {self.MAX_ENTRIES} entries"
+            )
+        self._descriptors.append(descriptor)
+
+    def extend(self, descriptors: Iterable[NpuStreamDescriptor]) -> None:
+        for descriptor in descriptors:
+            self.append(descriptor)
+
+    def submission(self) -> NpuDescriptorSubmission:
+        if not self._descriptors:
+            raise ValueError("command buffer submission requires at least one descriptor")
+        return NpuDescriptorSubmission(
+            base=self._base,
+            head=0,
+            tail=len(self._descriptors),
+            timeout_polls=self._timeout_polls,
+        )
+
+    def words(self) -> tuple[tuple[int, int, int, int], ...]:
+        return tuple(descriptor.words() for descriptor in self._descriptors)
+
+    def descriptor_image(self) -> dict[int, int]:
+        """Return the word-addressed descriptor image to stage at ``base``."""
+        image: dict[int, int] = {}
+        for descriptor_index, descriptor_words in enumerate(self.words()):
+            descriptor_base = self._base + descriptor_index * self.DESCRIPTOR_BYTES
+            for word_index, word in enumerate(descriptor_words):
+                image[descriptor_base + word_index * 4] = word & 0xFFFF_FFFF
+        return image
+
+    def stage(self, write_word32: Write32) -> None:
+        """Stage descriptor words through a caller-provided 32-bit memory writer."""
+        if not callable(write_word32):
+            raise TypeError("command buffer stage requires a callable word writer")
+        if not self._descriptors:
+            raise ValueError("command buffer staging requires at least one descriptor")
+        for address, word in self.descriptor_image().items():
+            write_word32(address, word)
+
+
 class NpuRuntimeError(RuntimeError):
     def __init__(self, message: str, status: NpuRuntimeStatus):
         super().__init__(message)
@@ -158,6 +260,9 @@ class E1NpuRuntime:
     DESC_BYTES_WRITTEN = 0x1002_0068
     DESC_READ_BEATS = 0x1002_006C
     DESC_WRITE_BEATS = 0x1002_0070
+    PERF_STALL_CYCLES = 0x1002_0074
+    PERF_SCRATCH_BYTES = 0x1002_0078
+    PERF_THERMAL_THROTTLE = 0x1002_007C
     SCRATCH = 0x1002_0080
     SCRATCH_BYTES = 64
 
@@ -189,6 +294,8 @@ class E1NpuRuntime:
     DESC_FLAG_STREAM_TO_SCRATCH = 1 << 8
     DESC_FLAG_WRITEBACK_REQUEST = 1 << 30
     DESC_FLAG_VALID_OWNER = 1 << 31
+    CMD_PARAM_DESC_SUBMIT = 1 << 0
+    CMD_PARAM_DOT16_TERNARY = 1 << 1
 
     PRECISION_MATRIX = (
         NpuPrecisionSupport(
@@ -200,8 +307,14 @@ class E1NpuRuntime:
         NpuPrecisionSupport(
             "INT4",
             NpuPrecisionState.SUPPORTED,
-            "DOT8_S4 packed dot, SDOT4_S4_2_4 sparse dot, bounded sparse INT4 matmul lowering smoke, and bounded GEMM_S4 through 64-byte MMIO scratchpad",
-            "runtime opcode, sparse metadata, bounded sparse INT4 matmul, and bounded GEMM_S4 tests only; no compiler path",
+            "DOT8_S4 packed dot, SDOT4_S4_2_4 sparse dot, bounded sparse/group-scaled INT4 matmul lowering smoke, and bounded GEMM_S4 through 64-byte MMIO scratchpad",
+            "runtime opcode, sparse metadata, bounded sparse and group-scaled INT4 matmul, and bounded GEMM_S4 tests only; no compiler path",
+        ),
+        NpuPrecisionSupport(
+            "INT4_GROUP_SCALED",
+            NpuPrecisionState.SUPPORTED,
+            "bounded W4A8 group-scaled INT4 matmul smoke with signed Q8.8 scales applied through scalar MUL_LO/ADD; no GEMM_S4_GS RTL opcode/compiler path",
+            "group_scaled_int4_matmul lowering smoke and runtime simulator tests only",
         ),
         NpuPrecisionSupport(
             "INT2",
@@ -211,15 +324,15 @@ class E1NpuRuntime:
         ),
         NpuPrecisionSupport(
             "FP16",
-            NpuPrecisionState.BLOCKED,
-            "no opcode, RTL datapath, compiler lowering, or measured benchmark path",
-            "blocked until hardware/runtime tests identify execution path",
+            NpuPrecisionState.SUPPORTED,
+            "raw FP16 finite normal/zero inputs converted by host to signed Q8.8, then bounded scalar MUL_LO/ADD matmul smoke; no tensor FP16 GEMM/compiler path",
+            "runtime scalar arithmetic tests and fp16_matmul lowering smoke only",
         ),
         NpuPrecisionSupport(
             "BF16",
-            NpuPrecisionState.BLOCKED,
-            "no opcode, RTL datapath, compiler lowering, or measured benchmark path",
-            "blocked until hardware/runtime tests identify execution path",
+            NpuPrecisionState.SUPPORTED,
+            "raw BF16 finite normal/zero inputs converted by host to signed Q8.8, then bounded scalar MUL_LO/ADD matmul smoke; no tensor BF16 GEMM/compiler path",
+            "runtime scalar arithmetic tests and bf16_matmul lowering smoke only",
         ),
         NpuPrecisionSupport(
             "FP8",
@@ -267,8 +380,16 @@ class E1NpuRuntime:
             runtime_status,
         )
 
-    def run(self, opcode: int, a: int, b: int, acc: int = 0, timeout_polls: int = 1024) -> int:
-        self.write32(self.CMD_PARAM, 0)
+    def run(
+        self,
+        opcode: int,
+        a: int,
+        b: int,
+        acc: int = 0,
+        timeout_polls: int = 1024,
+        cmd_param: int = 0,
+    ) -> int:
+        self.write32(self.CMD_PARAM, cmd_param & 0xFFFF_FFFF)
         self.write32(self.OP_A, a & 0xFFFF_FFFF)
         self.write32(self.OP_B, b & 0xFFFF_FFFF)
         self.write32(self.ACC, acc & 0xFFFF_FFFF)
@@ -335,6 +456,33 @@ class E1NpuRuntime:
         b_packed = sum((value & 0x3) << (2 * index) for index, value in enumerate(b_values))
         return _s32(self.run(self.OP_DOT16_S2, a_packed, b_packed, acc))
 
+    def dot16_ternary(self, a_values: list[int], b_values: list[int], acc: int = 0) -> int:
+        """BitNet ternary mode of DOT16_S2: lanes carry {-1, 0, +1}.
+
+        Lane encoding for the RTL: 0b00=0, 0b01=+1, 0b10=-1, 0b11 reserved.
+        The RTL rejects any 0b11 encoding via PERF_ERRORS and CTRL_STATUS.error,
+        so the host helper guarantees only the three legal values reach MMIO.
+        """
+        if len(a_values) != 16 or len(b_values) != 16:
+            raise ValueError("DOT16 ternary requires exactly sixteen values per operand")
+        if any(value not in (-1, 0, 1) for value in a_values + b_values):
+            raise ValueError("DOT16 ternary input outside {-1, 0, +1}")
+        a_packed = sum(
+            _ternary_encode(value) << (2 * index) for index, value in enumerate(a_values)
+        )
+        b_packed = sum(
+            _ternary_encode(value) << (2 * index) for index, value in enumerate(b_values)
+        )
+        return _s32(
+            self.run(
+                self.OP_DOT16_S2,
+                a_packed,
+                b_packed,
+                acc,
+                cmd_param=self.CMD_PARAM_DOT16_TERNARY,
+            )
+        )
+
     def dot4_fp8_e4m3(self, a_fp8: list[int], b_fp8: list[int], acc_q8_8: int = 0) -> int:
         if len(a_fp8) != 4 or len(b_fp8) != 4:
             raise ValueError("DOT4_FP8_E4M3 requires exactly four FP8 values per operand")
@@ -388,6 +536,28 @@ class E1NpuRuntime:
             "unsupported_ops": self.read32(self.PERF_UNSUPPORTED_OPS),
         }
 
+    def extended_perf(self) -> dict[str, int]:
+        """Power-per-counter telemetry beyond the legacy perf() set.
+
+        `thermal_throttle` is a simulation-only host-writable shadow latch
+        until a real thermal HAL drives it; see docs/arch/npu.md.
+        """
+        return {
+            "stall_cycles": self.read32(self.PERF_STALL_CYCLES),
+            "scratch_bytes": self.read32(self.PERF_SCRATCH_BYTES),
+            "thermal_throttle": self.read32(self.PERF_THERMAL_THROTTLE),
+        }
+
+    def increment_thermal_throttle(self) -> int:
+        """Simulation-only host helper that bumps PERF_THERMAL_THROTTLE.
+
+        Any 32-bit write to PERF_THERMAL_THROTTLE increments the counter
+        by one. This stays in place until the thermal HAL drives the
+        latch from real platform telemetry.
+        """
+        self.write32(self.PERF_THERMAL_THROTTLE, 0)
+        return self.read32(self.PERF_THERMAL_THROTTLE)
+
     def precision_matrix(self) -> list[dict[str, str]]:
         return [entry.as_dict() for entry in self.PRECISION_MATRIX]
 
@@ -402,6 +572,18 @@ class E1NpuRuntime:
             "read_beats": self.read32(self.DESC_READ_BEATS),
             "write_beats": self.read32(self.DESC_WRITE_BEATS),
         }
+
+    def submit(self, command_buffer: CommandBuffer) -> NpuRuntimeStatus:
+        """Submit a batched CommandBuffer and wait for a single completion.
+
+        The descriptor payloads themselves must already be staged in DRAM at
+        ``command_buffer.base``; this entry point arms the ring head/tail and
+        completion wait. A one-element CommandBuffer is equivalent to the
+        existing single-op MMIO path that ``submit_descriptors`` already covers.
+        """
+        if not isinstance(command_buffer, CommandBuffer):
+            raise TypeError("submit requires a CommandBuffer instance")
+        return self.submit_descriptors(command_buffer.submission())
 
     def submit_descriptors(self, submission: NpuDescriptorSubmission) -> NpuRuntimeStatus:
         """Program the RTL descriptor ring and wait for hardware completion proof."""
@@ -645,6 +827,14 @@ def golden_dot16_s2(a_values: list[int], b_values: list[int], acc: int = 0) -> i
         raise ValueError("DOT16_S2 requires exactly sixteen values per operand")
     if any(not -2 <= value <= 1 for value in a_values + b_values):
         raise ValueError("DOT16_S2 input outside signed INT2 range")
+    return acc + sum(a * b for a, b in zip(a_values, b_values, strict=True))
+
+
+def golden_dot16_ternary(a_values: list[int], b_values: list[int], acc: int = 0) -> int:
+    if len(a_values) != 16 or len(b_values) != 16:
+        raise ValueError("DOT16 ternary requires exactly sixteen values per operand")
+    if any(value not in (-1, 0, 1) for value in a_values + b_values):
+        raise ValueError("DOT16 ternary input outside {-1, 0, +1}")
     return acc + sum(a * b for a, b in zip(a_values, b_values, strict=True))
 
 
