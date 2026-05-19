@@ -673,7 +673,11 @@ async function runSpawnAgent(
     }
     return {
       success: true,
-      text: ackText,
+      // Action emits no text in ActionResult: the callback already shipped
+      // ackText to the user-visible channel, and the orchestrator's
+      // progress hook owns the 🚀 / ✅ / ❌ flow. Returning ackText here
+      // would surface a duplicate via the bootstrap REPLY path.
+      text: "",
       // Terminate the planner loop after the first spawn fires.
       //
       // TASKS_SPAWN_AGENT is fire-and-forget: the action returns the
