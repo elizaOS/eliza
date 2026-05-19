@@ -3,7 +3,7 @@
  * breakfast and dinner windows.
  */
 
-import { scenario } from "@elizaos/scenario-schema";
+import { scenario } from "@elizaos/scenario-runner/schema";
 
 export default scenario({
   id: "hygiene.medication-am-pm-with-meals",

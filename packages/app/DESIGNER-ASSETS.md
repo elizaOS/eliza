@@ -9,7 +9,7 @@ All native PNG assets in this directory need to be regenerated for the new **Eli
 - White: `#FFFFFF`
 - Gray: `#D1D0D4`
 
-**Canonical logos** live in `packages/shared-brand/assets/logos/`. The ones referenced here:
+**Canonical logos** live in `packages/shared/assets/logos/`. The ones referenced here:
 - `logo_white_nobg.svg` — white mark on transparent (use on orange bg)
 - `logo_white_orangebg.svg` — white mark already composited onto orange (single-layer alternative)
 - `eliza_logotext.svg` — white wordmark (used in OG embeds)
@@ -28,7 +28,7 @@ The designer can script all assets with one of two toolchains. Both are determin
 ```bash
 # $SIZE = output edge px, $FG_PCT = foreground % of canvas (e.g. 60)
 rsvg-convert -w $((SIZE * FG_PCT / 100)) -h $((SIZE * FG_PCT / 100)) \
-  packages/shared-brand/assets/logos/logo_white_nobg.svg -o /tmp/fg.png
+  packages/shared/assets/logos/logo_white_nobg.svg -o /tmp/fg.png
 magick -size ${SIZE}x${SIZE} xc:'#FF5800' /tmp/fg.png \
   -gravity center -composite -strip PNG24:OUT.png
 ```
@@ -37,7 +37,7 @@ magick -size ${SIZE}x${SIZE} xc:'#FF5800' /tmp/fg.png \
 ```bash
 # $W $H = output px, foreground = 28% of min(W,H)
 FG=$(( (W < H ? W : H) * 28 / 100 ))
-rsvg-convert -w $FG -h $FG packages/shared-brand/assets/logos/logo_white_nobg.svg -o /tmp/fg.png
+rsvg-convert -w $FG -h $FG packages/shared/assets/logos/logo_white_nobg.svg -o /tmp/fg.png
 magick -size ${W}x${H} xc:'#FF5800' /tmp/fg.png \
   -gravity center -composite -strip PNG24:OUT.png
 ```
@@ -45,7 +45,7 @@ magick -size ${W}x${H} xc:'#FF5800' /tmp/fg.png \
 **C. Adaptive-icon foreground (RGBA, 66% mark, transparent bg):**
 ```bash
 FG=$(( SIZE * 66 / 100 ))
-rsvg-convert -w $FG -h $FG packages/shared-brand/assets/logos/logo_white_nobg.svg -o /tmp/fg.png
+rsvg-convert -w $FG -h $FG packages/shared/assets/logos/logo_white_nobg.svg -o /tmp/fg.png
 magick -size ${SIZE}x${SIZE} xc:none /tmp/fg.png \
   -gravity center -composite PNG32:OUT.png
 ```
@@ -60,7 +60,7 @@ magick OUT_square.png \
 **E. OG embed (1200×630 wordmark):**
 ```bash
 H=189   # 30% of 630
-rsvg-convert -h $H packages/shared-brand/assets/logos/eliza_logotext.svg -o /tmp/wm.png
+rsvg-convert -h $H packages/shared/assets/logos/eliza_logotext.svg -o /tmp/wm.png
 magick -size 1200x630 xc:'#FF5800' /tmp/wm.png -gravity center -composite -strip PNG24:OUT.png
 ```
 
@@ -177,7 +177,7 @@ Total: **15 PNGs.**
 
 - `packages/app/public/og-image.png` — **1200×630** — bg `#FF5800` — fg `eliza_logotext.svg` (white wordmark), centered, **30% of height** (~189 px tall) — landscape — PNG24, no alpha. *(Current file is 1000×1000 — needs full regen to 1200×630.)*
 
-**Per-surface OG embeds** in `packages/shared-brand/assets/ogembeds/`. These already exist at 1200×630 RGB and are paired with same-named SVGs that should match the orange brand. Regenerate by exporting the SVG at 1200×630 (use `rsvg-convert -w 1200 -h 630 SRC.svg -o OUT.png`, then `magick OUT.png -strip PNG24:OUT.png` to drop alpha). Content per file follows its corresponding SVG.
+**Per-surface OG embeds** in `packages/shared/assets/ogembeds/`. These already exist at 1200×630 RGB and are paired with same-named SVGs that should match the orange brand. Regenerate by exporting the SVG at 1200×630 (use `rsvg-convert -w 1200 -h 630 SRC.svg -o OUT.png`, then `magick OUT.png -strip PNG24:OUT.png` to drop alpha). Content per file follows its corresponding SVG.
 
 | Filename | px | source SVG |
 |---|---|---|
@@ -191,7 +191,7 @@ Total: **4 PNGs** (`og-image.png` + 3 ogembeds).
 
 ## Favicons
 
-Path prefix: `packages/shared-brand/assets/favicons/`
+Path prefix: `packages/shared/assets/favicons/`
 
 These PNGs already exist. **They must be visually inspected and confirmed against the new orange brand.** If any still use the legacy blue (`#0B35F1`) or any non-`#FF5800` background, regenerate. The canonical `favicon.svg` in the same directory is the source of truth — re-export it at each size.
 

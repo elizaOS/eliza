@@ -5,7 +5,7 @@
  * platform.
  */
 
-import { scenario } from "@elizaos/scenario-schema";
+import { scenario } from "@elizaos/scenario-runner/schema";
 
 export default scenario({
   id: "relationships.import-from-platform",

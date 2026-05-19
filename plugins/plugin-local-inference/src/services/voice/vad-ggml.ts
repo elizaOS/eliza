@@ -2,12 +2,12 @@
  * ggml-backed Silero VAD binding.
  *
  * This module is the JS-side proxy for the C ABI declared in
- * `packages/native-plugins/silero-vad-cpp/include/silero_vad/silero_vad.h`.
+ * `packages/native/plugins/silero-vad-cpp/include/silero_vad/silero_vad.h`.
  * As of Phase 2 the underlying C library is a real, GGUF-backed
  * scalar-C runtime that loads the Silero v5 (16 kHz) graph and
  * runs it per 32 ms / 512-sample window with parity vs the upstream
  * `silero-vad` Python `OnnxWrapper` (verified at ±0.02 by
- * `packages/native-plugins/silero-vad-cpp/test/silero_vad_parity_test.py`).
+ * `packages/native/plugins/silero-vad-cpp/test/silero_vad_parity_test.py`).
  *
  * The binding is wired into `./vad.ts`'s `vadProviderOrder` ahead of the
  * legacy fused libelizainference VAD ABI.
@@ -109,7 +109,7 @@ async function loadBunFfi(): Promise<BunFfiModule> {
  *   1. `opts.libraryPath` if explicitly set (no fallback if missing).
  *   2. `$ELIZA_SILERO_VAD_LIB` if set (no fallback if missing).
  *   3. The repo-local CMake build output for the standalone library
- *      (`packages/native-plugins/silero-vad-cpp/build/libsilero_vad.*`).
+ *      (`packages/native/plugins/silero-vad-cpp/build/libsilero_vad.*`).
  * Returns `null` when none exist.
  */
 export function resolveSileroVadGgmlLibrary(opts: {
@@ -219,7 +219,7 @@ export class SileroVadGgml implements VadLike {
 		if (!libraryPath) {
 			throw new VadGgmlUnavailableError(
 				"library-missing",
-				"[vad-ggml] libsilero_vad not found. Build it via `cmake -B packages/native-plugins/silero-vad-cpp/build -S packages/native-plugins/silero-vad-cpp && cmake --build packages/native-plugins/silero-vad-cpp/build`, or set $ELIZA_SILERO_VAD_LIB.",
+				"[vad-ggml] libsilero_vad not found. Build it via `cmake -B packages/native/plugins/silero-vad-cpp/build -S packages/native/plugins/silero-vad-cpp && cmake --build packages/native/plugins/silero-vad-cpp/build`, or set $ELIZA_SILERO_VAD_LIB.",
 			);
 		}
 
@@ -256,7 +256,7 @@ export class SileroVadGgml implements VadLike {
 					"silero_vad_v5 / 16 kHz / 512-sample / 128-dim contract. " +
 					"Re-run scripts/silero_vad_to_gguf.py from the pinned commit " +
 					"and confirm `silero_vad.variant` reads `silero_vad_v5`. " +
-					"See packages/native-plugins/silero-vad-cpp/AGENTS.md.",
+					"See packages/native/plugins/silero-vad-cpp/AGENTS.md.",
 			);
 		}
 

@@ -31,7 +31,7 @@ Now landed on `elizaOS/llama.cpp` branch `eliza/qjl` and merged into
 - Fork CPU implementation:
   `plugins/plugin-local-inference/native/llama.cpp/ggml/src/ggml-cpu/qjl/quants-qjl.c`.
 - Standalone user-space library:
-  `packages/native-plugins/qjl-cpu/` (this is what GGUF tools and
+  `packages/native/plugins/qjl-cpu/` (this is what GGUF tools and
   off-llama.cpp parity tests link).
 - Tier coverage matrix:
   `packages/training/reports/eliza1-quant-matrix-2026-05-14.md`.

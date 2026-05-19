@@ -1,7 +1,7 @@
 // face-recognition-ggml.ts — EXPERIMENTAL.
 //
 // bun:ffi binding for the face-embed head exposed by the standalone
-// `packages/native-plugins/face-cpp/` library. This is the ggml-backed
+// `packages/native/plugins/face-cpp/` library. This is the ggml-backed
 // replacement for the face-api.js descriptor path inside
 // `face-recognition.ts`.
 //
@@ -314,7 +314,7 @@ export class FaceEmbedGgmlRecognizer {
     this.bindings = await loadBindings();
     if (!this.bindings) {
       throw new Error(
-        `${MODULE_TAG} face-cpp library unavailable; build packages/native-plugins/face-cpp first.`,
+        `${MODULE_TAG} face-cpp library unavailable; build packages/native/plugins/face-cpp first.`,
       );
     }
     const ggufPath = this.cfg.modelPath ?? defaultEmbedWeightsPath();

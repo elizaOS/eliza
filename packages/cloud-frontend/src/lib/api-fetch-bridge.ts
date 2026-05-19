@@ -1,4 +1,4 @@
-import { STEWARD_TOKEN_KEY } from "@elizaos/steward-session-client";
+import { STEWARD_TOKEN_KEY } from "@elizaos/shared/steward-session-client";
 
 const ELIZA_API_HOSTS: Record<string, string> = {
   "elizacloud.ai": "https://api.elizacloud.ai",

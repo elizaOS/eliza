@@ -10,6 +10,7 @@
     "typecheck": "tsc --noEmit -p tsconfig.typecheck.json",
     "test": "vitest run --config vitest.config.ts",
     "test:e2e": "node scripts/run-ui-playwright.mjs --config playwright.ui-smoke.config.ts",
+    "test:remote-capabilities:ui": "node scripts/run-ui-playwright.mjs --config playwright.ui-smoke.config.ts test/ui-smoke/remote-capability-view.spec.ts",
     "test:e2e:cloud-wallet": "node scripts/run-ui-playwright.mjs --config playwright.ui-smoke.config.ts test/ui-smoke/cloud-wallet-import.spec.ts",
     "test:sim:local-chat": "node scripts/mobile-local-chat-smoke.mjs --platform ios",
     "test:sim:local-chat:android": "node scripts/mobile-local-chat-smoke.mjs --platform android",
@@ -51,8 +52,8 @@
     "cap:open:ios": "node scripts/ensure-capacitor-platform.mjs ios && capacitor open ios",
     "cap:open:android": "node scripts/ensure-capacitor-platform.mjs android && capacitor open android",
     "build:web": "node ../../node_modules/@elizaos/vitest-vite/bin/vite.js build",
-    "predev": "node ../shared-brand/scripts/sync-to-public.mjs ./public --logos --favicons --concepts --banners --background --clouds",
-    "prebuild": "node ../shared-brand/scripts/sync-to-public.mjs ./public --logos --favicons --concepts --banners --background --clouds"
+    "predev": "node ../shared/scripts/sync-to-public.mjs ./public --logos --favicons --concepts --banners --background --clouds",
+    "prebuild": "node ../shared/scripts/sync-to-public.mjs ./public --logos --favicons --concepts --banners --background --clouds"
   },
   "dependencies": {
     "@capacitor/android": "8.3.4",
@@ -117,7 +118,6 @@
     "@elizaos/plugin-wifi": "workspace:*",
     "@elizaos/plugin-workflow": "workspace:*",
     "@elizaos/shared": "workspace:*",
-    "@elizaos/shared-brand": "workspace:*",
     "@elizaos/ui": "workspace:*",
     "@fontsource/poppins": "^5.2.7",
     "@pixiv/three-vrm": "^3.4.5",

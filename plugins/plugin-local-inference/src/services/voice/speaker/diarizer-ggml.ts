@@ -3,7 +3,7 @@
  *
  * Replaces `diarizer.ts` (onnxruntime-node pyannote-3 ONNX path) with
  * a `bun:ffi` binding to the `voice-classifier-cpp` SHARED library at
- * `packages/native-plugins/voice-classifier-cpp/`.
+ * `packages/native/plugins/voice-classifier-cpp/`.
  *
  * K3 lands the forward pass: `voice_diarizer_segment` runs the full
  * SincNet + 4× BiLSTM + 3-layer linear head + 7-class powerset argmax
@@ -220,7 +220,7 @@ export class DiarizerGgml {
 		if (!libraryPath) {
 			throw new DiarizerGgmlUnavailableError(
 				"library-missing",
-				"[diarizer-ggml] libvoice_classifier not found. Build via cmake in packages/native-plugins/voice-classifier-cpp/.",
+				"[diarizer-ggml] libvoice_classifier not found. Build via cmake in packages/native/plugins/voice-classifier-cpp/.",
 			);
 		}
 

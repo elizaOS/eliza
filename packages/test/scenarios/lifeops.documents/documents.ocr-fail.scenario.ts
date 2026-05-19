@@ -25,7 +25,7 @@
 
 import type { AgentRuntime, Memory, UUID } from "@elizaos/core";
 import { stringToUuid } from "@elizaos/core";
-import { type ScenarioContext, scenario } from "@elizaos/scenario-schema";
+import { type ScenarioContext, scenario } from "@elizaos/scenario-runner/schema";
 import { judgeRubric } from "../_helpers/action-assertions.ts";
 
 const SCENARIO_ID = "documents.ocr-fail";

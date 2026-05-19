@@ -4,7 +4,7 @@
  * should be in Spanish or at minimum preserve the Spanish title.
  */
 
-import { scenario } from "@elizaos/scenario-schema";
+import { scenario } from "@elizaos/scenario-runner/schema";
 
 const TODO_CREATE_ACTIONS = ["CREATE_TASK", "LIFE"];
 

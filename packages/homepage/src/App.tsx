@@ -1,4 +1,4 @@
-import { BRAND_COLORS } from "@elizaos/shared-brand";
+import { BRAND_COLORS } from "@elizaos/shared/brand";
 import { Loader2 } from "lucide-react";
 import { lazy, Suspense } from "react";
 import { BrowserRouter, Route, Routes } from "react-router-dom";

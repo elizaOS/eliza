@@ -4,7 +4,7 @@
  * exception surfacing to the user, no raw stack traces in the response.
  */
 
-import { scenario } from "@elizaos/scenario-schema";
+import { scenario } from "@elizaos/scenario-runner/schema";
 
 export default scenario({
   id: "cross.failure-recovery.action-fails-agent-retries",

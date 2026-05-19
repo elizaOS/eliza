@@ -1,7 +1,7 @@
 /**
  * Wake-word detection — native runtime binding.
  *
- * Loads the standalone `packages/native-plugins/wakeword-cpp/`
+ * Loads the standalone `packages/native/plugins/wakeword-cpp/`
  * library directly via `bun:ffi` and exposes the same `WakeWordModel`
  * interface as the previous `onnxruntime-node`-backed implementation
  * in `./wake-word.ts`, so the voice lifecycle can swap the two without
@@ -14,7 +14,7 @@
  * → embedding CNN → classifier head) — no ggml link, no SIMD; a
  * laptop CPU runs it under 1 % of real time. ABI parity with the
  * upstream openWakeWord ONNX graphs is gated by
- * `packages/native-plugins/wakeword-cpp/test/wakeword_parity_test.py`.
+ * `packages/native/plugins/wakeword-cpp/test/wakeword_parity_test.py`.
  *
  * The ONNX path in `./wake-word.ts` stays as the fallback while the
  * native binding shakes out. Once the migration is complete the ONNX
@@ -22,7 +22,7 @@
  *
  * Three GGUFs back one session, mirroring openWakeWord's three ONNX
  * graphs (the C library is the single source of truth on shapes —
- * see `packages/native-plugins/wakeword-cpp/include/wakeword/wakeword.h`):
+ * see `packages/native/plugins/wakeword-cpp/include/wakeword/wakeword.h`):
  *
  *   1. melspec    — 16 kHz PCM → 32-bin log-mel frames.
  *   2. embedding  — 20-Conv2D CNN over a 76-mel-frame sliding window

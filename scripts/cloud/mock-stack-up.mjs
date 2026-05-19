@@ -236,7 +236,7 @@ async function main() {
     if (!flags.noHetzner) {
       const proc = spawn(
         "bun",
-        ["run", "packages/cloud-test-mocks/bin/hetzner-mock.ts", "--port", String(hetznerPort)],
+        ["run", "packages/test/cloud-mocks/bin/hetzner-mock.ts", "--port", String(hetznerPort)],
         { cwd: REPO_ROOT, env: baseEnv },
       );
       streamProcess("hetzner", "cyan", proc);
@@ -247,7 +247,7 @@ async function main() {
     if (!flags.noCp) {
       const proc = spawn(
         "bun",
-        ["run", "packages/cloud-test-mocks/bin/control-plane-mock.ts"],
+        ["run", "packages/test/cloud-mocks/bin/control-plane-mock.ts"],
         { cwd: REPO_ROOT, env: { ...baseEnv, PORT: String(cpPort), HCLOUD_API_BASE_URL: `${tHetzner}/v1` } },
       );
       streamProcess("cp", "magenta", proc);

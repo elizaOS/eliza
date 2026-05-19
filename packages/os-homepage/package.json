@@ -16,14 +16,10 @@
     "lint:check": "bunx @biomejs/biome check .",
     "format": "bunx @biomejs/biome format --write .",
     "format:check": "bunx @biomejs/biome format .",
-    "predev": "node ../shared-brand/scripts/sync-to-public.mjs ./public --logos --favicons --ogembeds --concepts --clouds=4x",
-    "prebuild": "node ../shared-brand/scripts/sync-to-public.mjs ./public --logos --favicons --ogembeds --concepts --clouds=4x"
+    "predev": "node ../shared/scripts/sync-to-public.mjs ./public --logos --favicons --ogembeds --concepts --clouds=4x",
+    "prebuild": "node ../shared/scripts/sync-to-public.mjs ./public --logos --favicons --ogembeds --concepts --clouds=4x"
   },
   "dependencies": {
-    "@elizaos/checkout-shared": "workspace:*",
-    "@elizaos/hardware-catalog": "workspace:*",
-    "@elizaos/shared-brand": "workspace:*",
-    "@elizaos/steward-session-client": "workspace:*",
     "@elizaos/ui": "workspace:*",
     "@fontsource/poppins": "^5.2.7",
     "@stwd/sdk": "^0.8.1",
@@ -34,7 +30,8 @@
     "react-dom": "19.2.5",
     "tailwindcss": "^4",
     "tw-animate-css": "^1.4.0",
-    "vite": "^8.0.0"
+    "vite": "^8.0.0",
+    "@elizaos/shared": "workspace:*"
   },
   "devDependencies": {
     "@biomejs/biome": "^2.4.14",

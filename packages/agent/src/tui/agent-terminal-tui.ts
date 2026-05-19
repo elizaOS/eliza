@@ -78,7 +78,8 @@ class AgentTerminalView implements Component {
   private views: ViewEntry[] = [];
   private selectedView: ViewEntry | null = null;
   private status = "starting terminal tui";
-  private mode: "views" | "chat" = "views";
+  private mode: "views" | "search" | "chat" = "views";
+  private searchQuery = "";
   private readonly viewList = new SelectList([], 12, selectTheme);
   private readonly chatInput = new Input();
   private conversationId: string | null = null;
@@ -154,7 +155,7 @@ class AgentTerminalView implements Component {
       `status: ${this.status}`,
       `selected: ${selected}`,
       "",
-      "shortcuts: ↑/↓ select  enter open  1-9 quick-open  r refresh  c chat  / search  q quit",
+      "shortcuts: ↑/↓ select  enter open  1-9 quick-open  r refresh  / search  c chat  q quit",
       "chat: type after pressing c, enter sends, esc returns to views",
       "",
     ];
@@ -165,12 +166,25 @@ class AgentTerminalView implements Component {
       return lines;
     }
 
+    if (this.mode === "search") {
+      lines.push(
+        ansi.cyan("search views"),
+        `filter: ${this.searchQuery || ansi.dim("(type to filter)")}`,
+        ansi.dim("enter opens highlighted view; esc clears search"),
+        "",
+      );
+    }
+
     lines.push(ansi.cyan("registered tui views"));
     lines.push(...this.viewList.render(width));
     return lines;
   }
 
   handleInput(data: string): void {
+    if (this.mode === "search") {
+      this.handleSearchInput(data);
+      return;
+    }
     if (data === "\u0003" || data === "q") {
       this.onExit?.();
       return;
@@ -186,7 +200,8 @@ class AgentTerminalView implements Component {
       return;
     }
     if (data === "/") {
-      this.status = "type a number or use arrows to select; search coming next";
+      this.mode = "search";
+      this.status = "filtering tui views";
       this.tui.requestRender();
       return;
     }
@@ -221,6 +236,43 @@ class AgentTerminalView implements Component {
     } finally {
       this.tui.requestRender();
     }
+  }
+
+  private handleSearchInput(data: string): void {
+    if (data === "\u001b") {
+      this.mode = "views";
+      this.searchQuery = "";
+      this.viewList.setFilter("");
+      this.status = `${this.views.length} tui views ready`;
+      this.tui.requestRender();
+      return;
+    }
+    if (data === "\r" || data === "\n") {
+      const selected = this.viewList.getSelectedItem();
+      const view = selected
+        ? this.views.find((candidate) => candidate.id === selected.value)
+        : null;
+      this.mode = "views";
+      if (view) void this.openView(view);
+      return;
+    }
+    if (data === "\u007f" || data === "\b") {
+      this.searchQuery = this.searchQuery.slice(0, -1);
+      this.viewList.setFilter(this.searchQuery);
+      this.tui.requestRender();
+      return;
+    }
+    if (data === "\u0003") {
+      this.onExit?.();
+      return;
+    }
+    if (/^[ -~]+$/u.test(data)) {
+      this.searchQuery += data;
+      this.viewList.setFilter(this.searchQuery);
+      this.tui.requestRender();
+      return;
+    }
+    this.viewList.handleInput(data);
   }
 
   private async ensureConversation(): Promise<string> {

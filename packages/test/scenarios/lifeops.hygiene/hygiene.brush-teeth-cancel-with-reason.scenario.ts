@@ -4,7 +4,7 @@
  * proposed definition without creating a duplicate.
  */
 
-import { scenario } from "@elizaos/scenario-schema";
+import { scenario } from "@elizaos/scenario-runner/schema";
 
 export default scenario({
   id: "hygiene.brush-teeth-cancel-with-reason",

@@ -1,4 +1,4 @@
-import { BRAND_PATHS, LOGO_FILES } from "@elizaos/shared-brand";
+import { BRAND_PATHS, LOGO_FILES } from "@elizaos/shared/brand";
 import { useT } from "@/providers/I18nProvider";
 
 interface ElizaLogoProps {

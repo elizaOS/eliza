@@ -3,7 +3,7 @@ import {
   BRAND_FAVICONS,
   BRAND_PATHS,
   OG_EMBED_FILES,
-} from "@elizaos/shared-brand";
+} from "@elizaos/shared/brand";
 import { NavigationProgress, ThemeProvider } from "@elizaos/ui";
 import { Helmet } from "react-helmet-async";
 import { Outlet } from "react-router-dom";

@@ -13,7 +13,7 @@ can run in two modes:
   development/sideload-only.
 
 The full Bun engine artifact is produced outside this package by the
-`packages/bun-ios-runtime` build harness and an `elizaos/bun` fork.
+`packages/native/bun-runtime` build harness and an `elizaos/bun` fork.
 
 The Android implementation delegates lifecycle and RPC calls to the host app's
 `ElizaAgentService` over its loopback API.
@@ -80,7 +80,7 @@ await ElizaBunRuntime.stop();
 ## Bridge contract
 
 The full-engine ABI lives in
-`packages/bun-ios-runtime/BRIDGE_CONTRACT.md`. The compatibility host still
+`packages/native/bun-runtime/BRIDGE_CONTRACT.md`. The compatibility host still
 implements the Swift `__ELIZA_BRIDGE__` v1 surface; breaking changes bump the
 version string emitted in `globalThis.__ELIZA_BRIDGE_VERSION__`.
 

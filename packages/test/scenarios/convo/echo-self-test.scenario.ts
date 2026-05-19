@@ -12,7 +12,7 @@
  */
 
 import type { AgentRuntime, Plugin } from "@elizaos/core";
-import { scenario } from "@elizaos/scenario-schema";
+import { scenario } from "@elizaos/scenario-runner/schema";
 import { echoTestPlugin } from "./_fixtures/echo-test-plugin.ts";
 
 function asRuntime(value: unknown): AgentRuntime {

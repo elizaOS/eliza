@@ -26,9 +26,9 @@ target is the iOS simulator; use `bun run build:ios:local:device` or set
 when you want a sideload/device build.
 That target still does not imply a host shell or downloaded native code. The
 full Bun engine path is gated by `ELIZA_IOS_FULL_BUN_ENGINE=1` and requires
-`packages/bun-ios-runtime/artifacts/ElizaBunEngine.xcframework` (or
+`packages/native/bun-runtime/artifacts/ElizaBunEngine.xcframework` (or
 `ELIZA_IOS_BUN_ENGINE_XCFRAMEWORK`; external override paths are validated and
-staged into `packages/bun-ios-runtime/artifacts/` before CocoaPods runs. If that
+staged into `packages/native/bun-runtime/artifacts/` before CocoaPods runs. If that
 artifact is missing, the build fails instead of falling back to the JSContext
 compatibility host. When the framework is present, the React app routes
 local-agent requests through

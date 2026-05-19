@@ -1,5 +1,5 @@
 import type { AgentRuntime, Plugin } from "@elizaos/core";
-import { type ScenarioContext, scenario } from "@elizaos/scenario-schema";
+import { type ScenarioContext, scenario } from "@elizaos/scenario-runner/schema";
 import { expectTurnToCallAction } from "../_helpers/action-assertions.ts";
 import { expectScenarioActionResultData } from "../_helpers/action-result-assertions.ts";
 import { appChargeTestPlugin } from "./_fixtures/app-charge-test-plugin.ts";

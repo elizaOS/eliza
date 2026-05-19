@@ -1,8 +1,8 @@
 import {
   HARDWARE_PRODUCTS as hardwareProducts,
   type Product,
-} from "@elizaos/hardware-catalog";
-import { BRAND_PATHS, EXTERNAL_URLS, LOGO_FILES } from "@elizaos/shared-brand";
+} from "@elizaos/shared/hardware-catalog";
+import { BRAND_PATHS, EXTERNAL_URLS, LOGO_FILES } from "@elizaos/shared/brand";
 import { CloudVideoBackground } from "@elizaos/ui";
 import { ArrowRight, Download, ShoppingBag } from "lucide-react";
 import { lazy, type ReactNode, Suspense, useEffect, useState } from "react";

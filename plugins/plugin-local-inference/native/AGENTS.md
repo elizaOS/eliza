@@ -336,10 +336,10 @@ the recommended-models endpoint.
    `verify/vulkan_verify` MUST report 8/8 PASS on the target backend
    for the bundle's `dtype` before publish.
 2. **QJL** on the K-cache when context > 8k. See `vulkan/qjl*.comp` and
-   `metal/qjl.metal`. The reference is `packages/native-plugins/qjl-cpu`.
+   `metal/qjl.metal`. The reference is `packages/native/plugins/qjl-cpu`.
 3. **PolarQuant** on the V-cache when context > 8k. See `vulkan/polar*.comp`
    and `metal/polar.metal`. The reference is
-   `packages/native-plugins/polarquant-cpu`.
+   `packages/native/plugins/polarquant-cpu`.
 4. **DFlash speculative decoding** with the bundle's drafter. Always wired,
    always running in voice mode. The DFlash drafter participates in voice
    generation — proposed text tokens that survive verification are
@@ -630,7 +630,7 @@ backend nightly.
   produce numerically identical output (within published tolerance) to
   the C reference in `packages/inference/reference/` and to the
   upstream CUDA implementation in
-  `packages/native-plugins/{qjl-cpu,polarquant-cpu}` and the `elizaOS/llama.cpp`
+  `packages/native/plugins/{qjl-cpu,polarquant-cpu}` and the `elizaOS/llama.cpp`
   fork. New kernels follow the same pattern: ship the C reference and
   a JSON fixture before shipping the Vulkan/Metal port.
 - **Hardware verification is non-optional.** A "compiles cleanly"

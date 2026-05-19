@@ -1,4 +1,4 @@
-import { BRAND_COLORS } from "@elizaos/shared-brand";
+import { BRAND_COLORS } from "@elizaos/shared/brand";
 
 type Msg = { from: "bot" | "user"; text: string };
 type ChatPlatform = "imessage" | "telegram";

@@ -16,8 +16,8 @@
 		"dist"
 	],
 	"scripts": {
-		"predev": "node ../../packages/shared-brand/scripts/sync-to-public.mjs ./public",
-		"prebuild": "node ../../packages/shared-brand/scripts/sync-to-public.mjs ./public",
+		"predev": "node ../../packages/shared/scripts/sync-to-public.mjs ./public",
+		"prebuild": "node ../../packages/shared/scripts/sync-to-public.mjs ./public",
 		"build": "bunx vite build",
 		"dev": "vite",
 		"test": "vitest run --passWithNoTests",

@@ -4,7 +4,7 @@
  * rather than telling the user to sleep at 11pm Tokyo time immediately.
  */
 
-import { scenario } from "@elizaos/scenario-schema";
+import { scenario } from "@elizaos/scenario-runner/schema";
 import { seedMeetingPreferences } from "../_helpers/lifeops-seeds.ts";
 
 export default scenario({

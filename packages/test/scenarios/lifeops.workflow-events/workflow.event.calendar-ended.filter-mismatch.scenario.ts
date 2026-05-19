@@ -1,4 +1,4 @@
-import { scenario } from "@elizaos/scenario-schema";
+import { scenario } from "@elizaos/scenario-runner/schema";
 
 interface RepositoryLike {
   upsertCalendarEvent: (event: Record<string, unknown>) => Promise<void>;

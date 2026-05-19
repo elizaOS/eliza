@@ -2,7 +2,7 @@ import type { IAgentRuntime } from "@elizaos/core";
 import type {
   ScenarioCheckResult,
   ScenarioContext,
-} from "@elizaos/scenario-schema";
+} from "@elizaos/scenario-runner/schema";
 import { insertActivityEvent } from "../../../plugins/plugin-lifeops/src/activity-profile/activity-tracker-repo.ts";
 import {
   recordBrowserFocusWindow,

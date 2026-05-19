@@ -4,7 +4,7 @@
  * inventing a 4am alarm.
  */
 
-import { scenario } from "@elizaos/scenario-schema";
+import { scenario } from "@elizaos/scenario-runner/schema";
 
 export default scenario({
   id: "hygiene.brush-teeth-night-owl-schedule",

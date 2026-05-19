@@ -4,7 +4,7 @@
 
 "use client";
 
-import { BRAND_PATHS, LOGO_FILES } from "@elizaos/shared-brand";
+import { BRAND_PATHS, LOGO_FILES } from "@elizaos/shared/brand";
 import { motion } from "framer-motion";
 import { Link, useNavigate } from "react-router-dom";
 import { useSessionAuth } from "@/lib/hooks/use-session-auth";

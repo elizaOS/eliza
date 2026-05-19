@@ -1,5 +1,5 @@
-import type { Product } from "@elizaos/hardware-catalog";
-import { BRAND_PATHS, EXTERNAL_URLS, LOGO_FILES } from "@elizaos/shared-brand";
+import type { Product } from "@elizaos/shared/hardware-catalog";
+import { BRAND_PATHS, EXTERNAL_URLS, LOGO_FILES } from "@elizaos/shared/brand";
 import { ArrowRight, Download } from "lucide-react";
 
 const appUrl = EXTERNAL_URLS.app;

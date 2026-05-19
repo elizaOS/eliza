@@ -1,4 +1,4 @@
-import { BRAND_COLORS } from "@elizaos/shared-brand";
+import { BRAND_COLORS } from "@elizaos/shared/brand";
 import {
   DashboardLoadingState,
   DashboardPageContainer,

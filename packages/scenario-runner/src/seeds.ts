@@ -3,7 +3,7 @@ import { stringToUuid } from "@elizaos/core";
 import type {
   ScenarioContext,
   ScenarioSeedStep,
-} from "@elizaos/scenario-schema";
+} from "@elizaos/scenario-runner/schema";
 import { isLoopbackUrl } from "./utils.js";
 
 type LifeOpsOccurrenceState =

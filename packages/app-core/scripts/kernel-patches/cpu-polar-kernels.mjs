@@ -5,7 +5,7 @@
 // fork checkout, every build):
 //
 //   1. Mirrors the verified standalone PolarQuant `_preht` translation
-//      units from packages/native-plugins/polarquant-cpu/src/ over a new
+//      units from packages/native/plugins/polarquant-cpu/src/ over a new
 //      fork subdir ggml/src/ggml-cpu/polarquant/:
 //        - polar_dot_preht_ref.c   (scalar baseline, bit-exact)
 //        - polar_dot_preht_avx2.c  (AVX2 / AVX-VNNI body, __AVX2__ guard)
@@ -57,7 +57,7 @@ import { fileURLToPath } from "node:url";
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
-// packages/app-core/scripts/kernel-patches -> packages/native-plugins/polarquant-cpu
+// packages/app-core/scripts/kernel-patches -> packages/native/plugins/polarquant-cpu
 const POLAR_CPU_SRC_DIR = path.resolve(
   __dirname,
   "..",
@@ -88,7 +88,7 @@ const POLARQUANT_PREHT_H =
  * Do not edit in the fork checkout — the checkout is git-reset --hard'd
  * on every build and this file is rewritten from the patcher.
  *
- * The standalone packages/native-plugins/polarquant-cpu kernel library
+ * The standalone packages/native/plugins/polarquant-cpu kernel library
  * ships its own polarquant.h that (re)defines block_q4_polar, QK_POLAR,
  * POLAR_Q4_CENTROIDS, POLAR_QJL_CORRECTION_MAGNITUDE, polar_qjl_signs,
  * polar_fp16_to_fp32 and the dispatchers. The fork ALREADY owns all of
@@ -336,7 +336,7 @@ function patchGgmlCpuCMakeLists(cacheDir, { dryRun }) {
   // source line (ggml-cpu/fused-hadamard-polar-dot.c). The fresh checkout
   // has that line; if we've already patched (sentinel present), re-normalise.
   const prehtBlock = `        # ${SENTINEL} — PolarQuant pre-Hadamard-transposed dot TUs
-        # (mirrored from packages/native-plugins/polarquant-cpu + two
+        # (mirrored from packages/native/plugins/polarquant-cpu + two
         # generated fork-shim files). Each per-ISA body self-guards on
         # __AVX2__ / __ARM_NEON; the dispatcher picks at runtime.
 ${polarPrehtSourceListBlock()}

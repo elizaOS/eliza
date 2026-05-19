@@ -3,7 +3,7 @@
  * should create a habit/scheduled task tied to bedtime - 90min.
  */
 
-import { scenario } from "@elizaos/scenario-schema";
+import { scenario } from "@elizaos/scenario-runner/schema";
 
 export default scenario({
   id: "sleep.bedtime-reminder-90min-before",

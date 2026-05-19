@@ -4,7 +4,7 @@
  * a once-a-week reminder.
  */
 
-import { scenario } from "@elizaos/scenario-schema";
+import { scenario } from "@elizaos/scenario-runner/schema";
 
 export default scenario({
   id: "hygiene.medication-single-daily-am",

@@ -3,7 +3,7 @@
  * stretch, and a wind-down step. Mirror of the morning routine scenario.
  */
 
-import { scenario } from "@elizaos/scenario-schema";
+import { scenario } from "@elizaos/scenario-runner/schema";
 
 export default scenario({
   id: "habit.night-routine.full-stack",

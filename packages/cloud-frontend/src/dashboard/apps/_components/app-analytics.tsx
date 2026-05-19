@@ -1,7 +1,7 @@
 "use client";
 
 import { toRatePercent } from "@elizaos/cloud-shared/lib/services/analytics-derived";
-import { BRAND_COLORS } from "@elizaos/shared-brand";
+import { BRAND_COLORS } from "@elizaos/shared/brand";
 import {
   Button,
   DashboardStatCard,

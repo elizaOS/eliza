@@ -37,7 +37,9 @@
     "format": "bunx @biomejs/biome format src",
     "format:fix": "bunx @biomejs/biome format --write src",
     "build:dist": "bun run clean && bun run generate:css-strings && tsc --noCheck -p tsconfig.build.json && node ../scripts/flatten-tsc-package-output.mjs packages/ui && node ../scripts/copy-package-assets.mjs packages/ui src/styles src/cloud-ui/index.css src/cloud-ui/styles src/components/onboarding/states/onboarding.css src/components/voice-pill/voice-pill.css && node ../scripts/prepare-package-dist.mjs packages/ui && node ../scripts/rewrite-dist-relative-imports-node-esm.mjs packages/ui",
-    "pack:dry-run": "cd dist && npm pack --dry-run"
+    "pack:dry-run": "cd dist && npm pack --dry-run",
+    "stories:dev": "vite --config stories/vite.config.ts",
+    "stories:build": "vite build --config stories/vite.config.ts"
   },
   "exports": {
     ".": {
@@ -225,7 +227,6 @@
     "@elizaos/app-core": "workspace:*",
     "@elizaos/core": "workspace:*",
     "@elizaos/shared": "workspace:*",
-    "@elizaos/shared-brand": "workspace:*",
     "@fontsource/poppins": "^5.2.7",
     "@radix-ui/react-accordion": "^1.2.12",
     "@radix-ui/react-alert-dialog": "^1.1.15",

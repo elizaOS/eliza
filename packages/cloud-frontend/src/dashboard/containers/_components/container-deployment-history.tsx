@@ -9,7 +9,7 @@
 
 "use client";
 
-import { BRAND_COLORS } from "@elizaos/shared-brand";
+import { BRAND_COLORS } from "@elizaos/shared/brand";
 import { Badge, BrandCard, Skeleton } from "@elizaos/ui";
 import {
   CheckCircle2,

@@ -44,7 +44,14 @@ export class SelectList implements Component {
 	}
 
 	setFilter(filter: string): void {
-		this.filteredItems = this.items.filter((item) => item.value.toLowerCase().startsWith(filter.toLowerCase()));
+		const normalizedFilter = filter.trim().toLowerCase();
+		this.filteredItems = normalizedFilter
+			? this.items.filter((item) =>
+					[item.value, item.label, item.description ?? ""].some((text) =>
+						text.toLowerCase().includes(normalizedFilter),
+					),
+				)
+			: this.items;
 		// Reset selection when filter changes
 		this.selectedIndex = 0;
 		this.notifySelectionChange();

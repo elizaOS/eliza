@@ -3,7 +3,7 @@
  * something 20 feet away for 20 seconds. Interval habit at 20 minutes.
  */
 
-import { scenario } from "@elizaos/scenario-schema";
+import { scenario } from "@elizaos/scenario-runner/schema";
 
 export default scenario({
   id: "hygiene.eye-break-20-20-20",

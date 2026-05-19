@@ -1,12 +1,12 @@
 import {
   StripeCheckoutError,
   startStripeCheckout,
-} from "@elizaos/checkout-shared";
+} from "@elizaos/shared/checkout";
 import {
   HARDWARE_PRODUCTS as hardwareProducts,
   type Product,
-} from "@elizaos/hardware-catalog";
-import { BRAND_COLORS, BRAND_PATHS, LOGO_FILES } from "@elizaos/shared-brand";
+} from "@elizaos/shared/hardware-catalog";
+import { BRAND_COLORS, BRAND_PATHS, LOGO_FILES } from "@elizaos/shared/brand";
 import {
   exchangeStewardCode,
   hasStewardAuthedCookie,
@@ -16,7 +16,7 @@ import {
   STEWARD_TENANT_ID,
   syncStewardSession,
   writeStoredStewardToken,
-} from "@elizaos/steward-session-client";
+} from "@elizaos/shared/steward-session-client";
 import { StewardAuth } from "@stwd/sdk";
 import { CreditCard } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";

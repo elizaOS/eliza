@@ -13,8 +13,8 @@ on:
       - "packages/cloud-shared/**"
       - "packages/cloud-services/**"
       - "packages/cloud-sdk/**"
-      - "packages/cloud-test-mocks/**"
-      - "packages/cloud-e2e/**"
+      - "packages/test/cloud-mocks/**"
+      - "packages/test/cloud-e2e/**"
       - ".github/workflows/cloud-e2e.yml"
   workflow_dispatch:
 
@@ -65,8 +65,8 @@ jobs:
         with:
           name: cloud-e2e-playwright-${{ github.run_attempt }}
           path: |
-            packages/cloud-e2e/playwright-report
-            packages/cloud-e2e/test-results
+            packages/test/cloud-e2e/playwright-report
+            packages/test/cloud-e2e/test-results
           retention-days: 7
           if-no-files-found: ignore
 
@@ -76,6 +76,6 @@ jobs:
         with:
           name: cloud-e2e-process-logs-${{ github.run_attempt }}
           path: |
-            packages/cloud-e2e/.logs
+            packages/test/cloud-e2e/.logs
           retention-days: 7
           if-no-files-found: ignore

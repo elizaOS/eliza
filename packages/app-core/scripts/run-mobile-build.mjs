@@ -4063,7 +4063,7 @@ function ensureIosFullBunEngineArtifact({ buildTarget = null } = {}) {
       [
         "ELIZA_IOS_FULL_BUN_ENGINE is set, but ElizaBunEngine.xcframework was not found.",
         "Build the Bun fork first:",
-        `  ELIZA_BUN_IOS_SOURCE_DIR=/path/to/elizaos-bun bun run --cwd packages/bun-ios-runtime build:${target === "simulator" ? "sim" : "device"}`,
+        `  ELIZA_BUN_IOS_SOURCE_DIR=/path/to/elizaos-bun bun run --cwd packages/native/bun-runtime build:${target === "simulator" ? "sim" : "device"}`,
         "Or set ELIZA_IOS_BUN_ENGINE_XCFRAMEWORK=/absolute/path/ElizaBunEngine.xcframework.",
         "Refusing to fall back to the JSContext compatibility host for a full-engine build.",
       ].join("\n"),

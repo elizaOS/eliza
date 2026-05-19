@@ -4,7 +4,7 @@
  * rather than splitting into morning and evening habits.
  */
 
-import { scenario } from "@elizaos/scenario-schema";
+import { scenario } from "@elizaos/scenario-runner/schema";
 
 export default scenario({
   id: "hygiene.skincare-am-pm-routine",

@@ -112,7 +112,13 @@ describe("agent terminal tui", () => {
     expect(terminal.text()).toContain("1. Messages TUI");
     expect(terminal.text()).toContain("2. Wallet TUI");
 
-    terminal.send("\x1b[B");
+    terminal.send("/");
+    terminal.send("wal");
+    await flushTicks();
+    expect(terminal.text()).toContain("filter: wal");
+    expect(terminal.text()).toContain("2. Wallet TUI");
+    expect(terminal.text()).not.toContain("1. Messages TUI");
+
     terminal.send("\r");
     await flushTicks();
     expect(calls.some((call) => call.url.endsWith("/api/views/wallet/navigate?viewType=tui"))).toBe(

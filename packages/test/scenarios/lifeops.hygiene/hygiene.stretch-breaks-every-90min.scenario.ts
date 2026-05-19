@@ -3,7 +3,7 @@
  * with explicit minute count, not the generic "during the day" default.
  */
 
-import { scenario } from "@elizaos/scenario-schema";
+import { scenario } from "@elizaos/scenario-runner/schema";
 
 export default scenario({
   id: "hygiene.stretch-breaks-every-90min",

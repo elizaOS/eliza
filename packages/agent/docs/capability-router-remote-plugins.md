@@ -453,7 +453,10 @@ Current focused tests cover:
   bundle URLs,
 - app-shell `DynamicViewLoader` behavior for absolute remote bundle URLs,
   including direct bundle import and remote view `interact` handler
-  registration.
+  registration,
+- focused Playwright app-shell smoke that starts a real remote
+  capability-style HTTP endpoint, derives `/api/views` metadata from
+  `plugin.modules.list`, and imports the view bundle from that endpoint.
 
 Run the no-credential CI slice with:
 
@@ -465,6 +468,12 @@ Run the container-backed live smoke with Docker available:
 
 ```text
 bun run test:remote-capabilities:docker
+```
+
+Run the browser app-shell remote view smoke:
+
+```text
+bun run test:remote-capabilities:ui
 ```
 
 ## Remaining Work Before This Is "Done"
@@ -485,9 +494,11 @@ This is not complete until the following are true:
 - Endpoint identity, module identity, and route namespace collision rules are
   final.
 - Remote view loading is covered through the browser-facing view registry
-  metadata path, real compiled bundle fetch/evaluation smokes, and app-shell
-  loader unit coverage; a Playwright/browser E2E against a running app shell
-  and remote capability server is still needed.
+  metadata path, real compiled bundle fetch/evaluation smokes, app-shell loader
+  unit coverage, and a focused Playwright app-shell smoke against a running
+  remote capability-style server. A fuller product-flow E2E that provisions the
+  endpoint through the connect UI, persists it, restarts, and reopens the remote
+  view is still needed.
 - CI runs focused remote-capability tests and at least one process-level smoke
   without external credentials.
 - Credentialed CI or nightly smoke covers at least one real cloud sandbox

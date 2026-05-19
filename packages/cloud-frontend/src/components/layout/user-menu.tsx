@@ -8,7 +8,7 @@
 
 "use client";
 
-import { STEWARD_SESSION_ENDPOINT } from "@elizaos/steward-session-client";
+import { STEWARD_SESSION_ENDPOINT } from "@elizaos/shared/steward-session-client";
 import {
   Avatar,
   AvatarFallback,

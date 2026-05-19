@@ -1,4 +1,4 @@
-import { BRAND_PATHS, LOGO_FILES } from "@elizaos/shared-brand";
+import { BRAND_PATHS, LOGO_FILES } from "@elizaos/shared/brand";
 import { useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import { useAuth } from "@/lib/context/auth-context";

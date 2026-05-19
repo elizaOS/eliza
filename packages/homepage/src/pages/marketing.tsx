@@ -1,4 +1,4 @@
-import { BRAND_PATHS, EXTERNAL_URLS, LOGO_FILES } from "@elizaos/shared-brand";
+import { BRAND_PATHS, EXTERNAL_URLS, LOGO_FILES } from "@elizaos/shared/brand";
 import { CloudVideoBackground } from "@elizaos/ui";
 import {
   ArrowRight,

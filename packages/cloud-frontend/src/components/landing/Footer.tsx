@@ -5,7 +5,7 @@
 
 "use client";
 
-import { BRAND_PATHS, EXTERNAL_URLS, LOGO_FILES } from "@elizaos/shared-brand";
+import { BRAND_PATHS, EXTERNAL_URLS, LOGO_FILES } from "@elizaos/shared/brand";
 import { Link } from "react-router-dom";
 import { useT } from "@/providers/I18nProvider";
 

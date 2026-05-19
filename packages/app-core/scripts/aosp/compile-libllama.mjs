@@ -566,7 +566,7 @@ export function ensureLlamaCppCheckout({
  * and across partial-failure re-runs.
  *
  * Patches under `llama-cpp-patches/qjl/` add `GGML_TYPE_QJL1_256` (=46),
- * the QJL kernel sources vendored from `packages/native-plugins/qjl-cpu/`,
+ * the QJL kernel sources vendored from `packages/native/plugins/qjl-cpu/`,
  * the type-traits + op-dispatch wiring, and the `tests/test-qjl-cache.cpp`
  * synthetic-graph test.
  *

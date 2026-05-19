@@ -1,4 +1,4 @@
-import { type ScenarioContext, scenario } from "@elizaos/scenario-schema";
+import { type ScenarioContext, scenario } from "@elizaos/scenario-runner/schema";
 import { expectTurnToCallAction } from "../_helpers/action-assertions.ts";
 
 function assertTwilioBillingResult(ctx: ScenarioContext): string | undefined {

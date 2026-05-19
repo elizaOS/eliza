@@ -5,7 +5,7 @@
  * to an afternoon slot the same day, (c) not invent a different event.
  */
 
-import { type ScenarioContext, scenario } from "@elizaos/scenario-schema";
+import { type ScenarioContext, scenario } from "@elizaos/scenario-runner/schema";
 import { judgeRubric } from "../_helpers/action-assertions.ts";
 import { seedCalendarCache } from "../_helpers/lifeops-seeds.ts";
 

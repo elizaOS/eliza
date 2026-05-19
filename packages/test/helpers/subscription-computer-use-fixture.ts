@@ -184,7 +184,7 @@ export class FakeSubscriptionComputerUseService {
 /**
  * Test fixture: replaces `runtime.getService("computeruse")` with a fake so
  * scenarios can exercise the browser-executor pathway. Scenario `ctx.runtime`
- * is typed as `unknown` (see `@elizaos/scenario-schema`), so we accept any
+ * is typed as `unknown` (see `@elizaos/scenario-runner/schema`), so we accept any
  * object carrying an optional `getService` slot and patch it in place.
  */
 export function attachFakeSubscriptionComputerUse(

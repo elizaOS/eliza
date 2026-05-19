@@ -22,7 +22,7 @@
  * client during the first paint.
  */
 
-import { BRAND_COLORS } from "@elizaos/shared-brand";
+import { BRAND_COLORS } from "@elizaos/shared/brand";
 import { Buffer } from "buffer";
 
 if (typeof globalThis !== "undefined" && !("Buffer" in globalThis)) {

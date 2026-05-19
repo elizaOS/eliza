@@ -10,7 +10,7 @@
  * Cited: 03-coverage-gap-matrix.md — Discord token expiry path.
  */
 
-import { type ScenarioContext, scenario } from "@elizaos/scenario-schema";
+import { type ScenarioContext, scenario } from "@elizaos/scenario-runner/schema";
 import { judgeRubric } from "../_helpers/action-assertions.ts";
 
 function checkDiscordExpirySurfaced(ctx: ScenarioContext): string | undefined {

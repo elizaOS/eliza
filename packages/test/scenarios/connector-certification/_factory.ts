@@ -1,8 +1,8 @@
 import type {
   ScenarioFinalCheck,
   ScenarioSeedStep,
-} from "@elizaos/scenario-schema";
-import { scenario } from "@elizaos/scenario-schema";
+} from "@elizaos/scenario-runner/schema";
+import { scenario } from "@elizaos/scenario-runner/schema";
 import {
   expectScenarioToCallAction,
   expectTurnToCallAction,

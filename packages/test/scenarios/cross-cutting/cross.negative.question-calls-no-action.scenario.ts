@@ -4,7 +4,7 @@
  * no follow-up scheduling, no contact add, no outbound message).
  */
 
-import { scenario } from "@elizaos/scenario-schema";
+import { scenario } from "@elizaos/scenario-runner/schema";
 
 export default scenario({
   id: "cross.negative.question-calls-no-action",

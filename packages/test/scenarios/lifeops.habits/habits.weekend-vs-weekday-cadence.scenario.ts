@@ -3,7 +3,7 @@
  * (Mon-Fri). The agent must NOT include Sat/Sun.
  */
 
-import { scenario } from "@elizaos/scenario-schema";
+import { scenario } from "@elizaos/scenario-runner/schema";
 
 export default scenario({
   id: "habits.weekend-vs-weekday-cadence",

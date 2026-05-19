@@ -141,6 +141,9 @@ jobs:
       - name: Run client tests
         run: bun run test:client
 
+      - name: Remote capability UI smoke
+        run: bun run test:remote-capabilities:ui
+
   plugin-tests:
     name: Plugin Tests
     runs-on: ubuntu-24.04

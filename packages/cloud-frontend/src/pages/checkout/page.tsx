@@ -1,9 +1,9 @@
-import { startStripeCheckout } from "@elizaos/checkout-shared";
+import { startStripeCheckout } from "@elizaos/shared/checkout";
 import {
   HARDWARE_PRODUCTS,
   type Product as HardwareProduct,
-} from "@elizaos/hardware-catalog";
-import { BRAND_COLORS, BRAND_PATHS, LOGO_FILES } from "@elizaos/shared-brand";
+} from "@elizaos/shared/hardware-catalog";
+import { BRAND_COLORS, BRAND_PATHS, LOGO_FILES } from "@elizaos/shared/brand";
 import { CloudVideoBackground } from "@elizaos/ui";
 import {
   ArrowRight,

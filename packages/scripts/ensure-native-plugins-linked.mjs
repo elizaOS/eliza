@@ -2,7 +2,7 @@
 /**
  * Workaround for a Bun workspace bug: packages declared via the
  * `plugins/plugin-native-*` workspace glob (formerly
- * `packages/native-plugins/*`) are recognised by `bun pm ls` but
+ * `packages/native/plugins/*`) are recognised by `bun pm ls` but
  * never symlinked into `node_modules/@elizaos/...`, even on a fresh
  * `bun install --ignore-scripts` against a deleted node_modules tree.
  *
