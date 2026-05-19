@@ -445,6 +445,13 @@ const optionalPluginStubs = {
   // bindings into the mobile bundle, which is wrong on every axis.
   "@elizaos/plugin-whatsapp": path.join(stubsDir, "null-plugin.cjs"),
   "@elizaos/plugin-signal": path.join(stubsDir, "null-plugin.cjs"),
+  // Desktop/server-only optional integrations. The mobile agent does not host
+  // macOS Messages.app or x402 payment-protected HTTP routes, but api/server.ts
+  // imports both optional modules lazily. Resolve them to the shared no-op
+  // plugin stub so a clean mobile checkout does not depend on those packages
+  // being linked into packages/agent/node_modules.
+  "@elizaos/plugin-imessage": path.join(stubsDir, "null-plugin.cjs"),
+  "@elizaos/plugin-x402": path.join(stubsDir, "null-plugin.cjs"),
   // `plugin-streaming` carries the TTS / SSE plumbing for desktop +
   // server. Mobile never runs the streaming worker pool — the agent
   // statically imports `streamManager` and `handleTtsRoutes`, so we

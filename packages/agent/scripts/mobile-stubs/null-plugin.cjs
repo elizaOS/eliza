@@ -66,6 +66,9 @@ function makeStubProxy() {
     // runtime, but api/server.ts still awaits this optional route hook before
     // falling through to normal conversation routes.
     "handleTriggerRoutes",
+    // plugin-x402 route helpers
+    "createPaymentAwareHandler",
+    "isRoutePaymentWrapped",
     // plugin-mcp / plugin-streaming used elsewhere; safer to populate
     // since some are stubbed via `optionalPluginStubs`.
     "handleMcpRoutes",
