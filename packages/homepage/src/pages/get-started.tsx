@@ -8,7 +8,14 @@ import {
 } from "@elizaos/ui/cloud-ui/components/icons";
 import { animated, useSpring, useTrail } from "@react-spring/web";
 import { ArrowLeft, Check, Copy, ExternalLink, Info, Send } from "lucide-react";
-import { lazy, Suspense, useCallback, useEffect, useRef, useState } from "react";
+import {
+  lazy,
+  Suspense,
+  useCallback,
+  useEffect,
+  useRef,
+  useState,
+} from "react";
 import { Link, useNavigate, useSearchParams } from "react-router-dom";
 import { ElizaLogo } from "@/components/brand/eliza-logo";
 import {

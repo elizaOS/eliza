@@ -42,4 +42,3 @@ export function App() {
     </BrowserRouter>
   );
 }
-
