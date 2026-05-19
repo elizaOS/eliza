@@ -218,10 +218,16 @@ export interface LocalInferenceBackend {
 	}>;
 
 	/** Persist a slot's KV cache to disk under the conversation directory. */
-	persistConversationKv?(conversationId: string, slotId: number): Promise<boolean>;
+	persistConversationKv?(
+		conversationId: string,
+		slotId: number,
+	): Promise<boolean>;
 
 	/** Restore a slot's KV cache from disk into the running backend. */
-	restoreConversationKv?(conversationId: string, slotId: number): Promise<boolean>;
+	restoreConversationKv?(
+		conversationId: string,
+		slotId: number,
+	): Promise<boolean>;
 
 	/**
 	 * Pre-decode `promptPrefix` into the named slot/cache key so the next
