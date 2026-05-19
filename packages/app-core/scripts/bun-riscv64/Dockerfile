@@ -199,22 +199,36 @@ RUN set -eux; \
         tar -xzf "APKINDEX-${repo}.tar.gz" -O APKINDEX > "APKINDEX-${repo}"; \
     done; \
     # Helper: resolve latest apk filename for a package name from the
-    # combined APKINDEX. Format is colon-delimited fields, P:<pkg> V:<ver>.
+    # combined APKINDEX. APKINDEX format: blank-line-separated records,
+    # each record has `P:<pkg>` and `V:<ver>` lines (among others).
+    # We use a record-mode awk reader.
     resolve() { \
-        local pkg="$1"; \
-        # Parse the APKINDEX line-record format. Each record is separated
-        # by a blank line. We grab P:/V: for the requested name and emit
-        # `<pkg>-<ver>.apk`.
-        awk -v pkg="$pkg" 'BEGIN{RS="\n\n"} { p=""; v=""; for (i=1;i<=NF;i++) { } } /(^|\n)P:'"$pkg"'$/ { for (j=1; j<=split($0,L,"\n"); j++) { if (L[j] ~ /^P:/) p=substr(L[j],3); if (L[j] ~ /^V:/) v=substr(L[j],3); } if (p==pkg) print p"-"v".apk" }' "$2" | head -1; \
+        awk -v pkg="$1" '\
+            BEGIN { RS=""; FS="\n" } \
+            { p=""; v=""; \
+              for (i=1; i<=NF; i++) { \
+                if ($i ~ /^P:/) p = substr($i, 3); \
+                if ($i ~ /^V:/) v = substr($i, 3); \
+              } \
+              if (p == pkg && v != "") print p "-" v ".apk"; \
+            }' "$2" | head -1; \
     }; \
     for pkg in musl musl-dev musl-utils libgcc libstdc++ libstdc++-dev libucontext libucontext-dev icu icu-data-full icu-dev icu-libs zlib zlib-dev libssl3 libcrypto3 openssl-dev linux-headers libffi libffi-dev libuv libuv-dev libxml2 libxml2-dev; do \
+        fetched=""; \
         for repo in main community; do \
             fname=$(resolve "$pkg" "APKINDEX-${repo}"); \
             if [ -n "$fname" ]; then \
                 echo "Fetching ${repo}/${fname}"; \
-                curl -fsSL -o "$fname" "${base}/${repo}/${ALPINE_ARCH}/${fname}" && break; \
+                if curl -fsSL -o "$fname" "${base}/${repo}/${ALPINE_ARCH}/${fname}"; then \
+                    fetched="$fname"; \
+                    break; \
+                fi; \
             fi; \
         done; \
+        if [ -z "$fetched" ]; then \
+            echo "FATAL: package '$pkg' not found in any repo"; \
+            exit 1; \
+        fi; \
     done; \
     ls -la
 
