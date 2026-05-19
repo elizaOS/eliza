@@ -63,7 +63,55 @@ lb config \
     --architecture "${ARCH}" \
     --linux-flavours "${KERNEL_FLAVOUR}" \
     --archive-areas "main" \
-    --bootloaders "${BOOTLOADER}"
+    --bootloaders "${BOOTLOADER}" \
+    --uefi-secure-boot disable
+
+patch_live_build_riscv64_grub_efi() {
+    helper="/usr/lib/live/build/binary_grub-efi"
+    if [ "${ARCH}" != "riscv64" ] || [ ! -w "${helper}" ]; then
+        return
+    fi
+    if grep -Fq 'riscv64-efi' "${helper}"; then
+        return
+    fi
+    python3 - "${helper}" <<'PY'
+from pathlib import Path
+import sys
+
+path = Path(sys.argv[1])
+text = path.read_text()
+text = text.replace(
+    "\tarmhf)\n\t\tCheck_package chroot /usr/lib/grub/arm-efi/configfile.mod grub-efi-arm-bin\n\t\t;;\n",
+    "\tarmhf)\n\t\tCheck_package chroot /usr/lib/grub/arm-efi/configfile.mod grub-efi-arm-bin\n\t\t;;\n"
+    "\triscv64)\n\t\tCheck_package chroot /usr/lib/grub/riscv64-efi/configfile.mod grub-efi-riscv64-bin\n\t\t;;\n",
+)
+text = text.replace(
+    "\tarmhf)\n\t\t_SB_EFI_PLATFORM=\"arm\"\n\t\t_SB_EFI_NAME=\"arm\"\n\t\t_SB_EFI_DEB=\"arm\"\n\t\t;;\n",
+    "\tarmhf)\n\t\t_SB_EFI_PLATFORM=\"arm\"\n\t\t_SB_EFI_NAME=\"arm\"\n\t\t_SB_EFI_DEB=\"arm\"\n\t\t;;\n"
+    "\triscv64)\n\t\t_SB_EFI_PLATFORM=\"riscv64\"\n\t\t_SB_EFI_NAME=\"riscv64\"\n\t\t_SB_EFI_DEB=\"riscv64\"\n\t\t;;\n",
+)
+text = text.replace(
+    "\tarmhf)\n\t\tgen_efi_boot_img \"arm-efi\" \"arm\" \"debian-live/arm\"\n\t\tPATH=\"\\${PRE_EFI_IMAGE_PATH}\"\n\t\t;;\n",
+    "\tarmhf)\n\t\tgen_efi_boot_img \"arm-efi\" \"arm\" \"debian-live/arm\"\n\t\tPATH=\"\\${PRE_EFI_IMAGE_PATH}\"\n\t\t;;\n"
+    "\triscv64)\n\t\tgen_efi_boot_img \"riscv64-efi\" \"riscv64\" \"debian-live/riscv64\"\n\t\tPATH=\"\\${PRE_EFI_IMAGE_PATH}\"\n\t\t;;\n",
+)
+text = text.replace(
+    "rm -rf binary/boot/efi.img binary/boot/grub/i386-efi/ binary/boot/grub/x86_64-efi binary/boot/grub/arm64-efi binary/boot/grub/arm-efi",
+    "rm -rf binary/boot/efi.img binary/boot/grub/i386-efi/ binary/boot/grub/x86_64-efi binary/boot/grub/arm64-efi binary/boot/grub/arm-efi binary/boot/grub/riscv64-efi",
+)
+text = text.replace(
+    "rm -rf chroot/grub-efi-temp-arm-efi\nrm -rf chroot/grub-efi-temp-cfg",
+    "rm -rf chroot/grub-efi-temp-arm-efi\nrm -rf chroot/grub-efi-temp-riscv64-efi\nrm -rf chroot/grub-efi-temp-cfg",
+)
+text = text.replace(
+    "\t\tRemove_packages\n\t\tAPT_OPTIONS=\"${PRE_APT_OPTIONS}\"",
+    "\t\tRemove_packages || true\n\t\tAPT_OPTIONS=\"${PRE_APT_OPTIONS}\"",
+)
+path.write_text(text)
+PY
+}
+
+patch_live_build_riscv64_grub_efi
 
 # ── Step 2: lb build ─────────────────────────────────────────────────
 echo

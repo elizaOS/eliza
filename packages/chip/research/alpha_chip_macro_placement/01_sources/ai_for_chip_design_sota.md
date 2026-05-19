@@ -139,11 +139,20 @@ power, and manufacturing preparation.
 - HLS-Eval: https://github.com/sharc-lab/hls-eval
 - LLM-DSE: https://github.com/Nozidoali/LLM-DSE
 - iDSE: https://arxiv.org/abs/2505.22086
-- Use: HLS design-space datasets, HLS code-generation evaluation, and
-  LLM/agent-guided directive search.
+- MPM-LLM4DSE: https://arxiv.org/abs/2601.04801 and
+  https://github.com/wslcccc/MPM-LLM4DSE
+- TimelyHLS: https://arxiv.org/abs/2507.17962, with related benchmark/code at
+  https://github.com/zfsadik/Bench4HLS
+- FlexLLM HLS Library: https://arxiv.org/abs/2601.15710
+- TAPA/RapidStream TAPA: https://arxiv.org/abs/2209.02663 and
+  https://github.com/rapidstream-org/rapidstream-tapa
+- Use: HLS design-space datasets, HLS code-generation evaluation,
+  timing-aware HLS, multimodal HLS QoR modeling, HLS LLM libraries, FPGA HLS
+  backends, and LLM/agent-guided directive search.
 - E1 fit: useful for bounded NPU kernels only after a local HLS backend,
-  generated-artifact quarantine, C-sim, HLS synthesis, generated-RTL checks,
-  and runtime/driver gates exist.
+  generated-artifact quarantine, model/dataset/library/backend license review,
+  C-sim, HLS synthesis, generated-RTL checks, replay manifests, and
+  runtime/driver gates exist.
 
 ## RTL generation and EDA assistance
 
@@ -501,6 +510,21 @@ power, and manufacturing preparation.
 - E1 fit: train/evaluate risk predictors from DEF/netlist features once E1 has
   enough generated PD runs.
 
+### Architecture-level power models
+
+- ArchPower: https://arxiv.org/abs/2512.06854,
+  https://github.com/hkust-zhiyao/ArchPower, and
+  https://huggingface.co/datasets/zqj23333/ArchPower
+- AutoPower: https://arxiv.org/abs/2508.12294 and
+  https://github.com/hkust-zhiyao/AutoPower
+- Use: early CPU/AP power estimation from architecture and event features,
+  fine-grained component/power-group labels, and few-shot calibration methods
+  before a full implementation loop is affordable.
+- E1 fit: target capture only. These can inform future simulator power models
+  after E1 has feature-schema mapping, workload manifests, local calibration
+  labels, train/test split manifests, and error analysis. External datasets or
+  trained models must not become E1 power evidence by themselves.
+
 ### Timing Closure and ECO
 
 - TimingPredict: https://github.com/PKU-IDEA/TimingPredict
@@ -607,6 +631,19 @@ power, and manufacturing preparation.
   equivalence, RTL checks, formal, synthesis, DFT, CDC/RDC, STA, and measured or
   signoff power evidence before promotion.
 
+### Lighter
+
+- Repo: https://github.com/AUCOHL/Lighter
+- Paper:
+  https://woset-workshop.github.io/PDFs/2024/15_Lighter_An_Open_Source_Auto.pdf
+- Use: Yosys-plugin and library-map flow for automatic register clock gating
+  against open Sky130 and GF180 standard-cell libraries.
+- E1 fit: backend watchlist only. Lighter is attractive because E1 already has
+  open-flow ambitions, but plugin outputs need pinned revisions, library-map
+  hashes, ICG-cell policy, scan enable, CDC/RDC, equivalence, STA, synthesis,
+  and before/after power evidence before any generated gated-clock netlist is
+  promoted.
+
 ### CODMAS / RTLOPT
 
 - Paper: https://arxiv.org/abs/2603.17204
@@ -616,6 +653,16 @@ power, and manufacturing preparation.
 - E1 fit: useful benchmark pattern for future low-power RTL edits, but
   generated clock-gating remains outside source until local equivalence,
   timing, scan, and power gates exist.
+
+### RTL-OPT
+
+- Paper: https://arxiv.org/abs/2601.01765
+- Use: benchmark RTL optimization quality with functional correctness and PPA
+  metrics instead of syntax-only Verilog generation.
+- E1 fit: evaluation-method context only. Any benchmark task or result needs
+  exact assets, license review, non-overlap checks, synthesis setup hashes,
+  functional/equivalence logs, and before/after PPA evidence before it can
+  inform E1 low-power RTL changes.
 
 ### Prompting for Power
 
@@ -722,7 +769,9 @@ power, and manufacturing preparation.
 6. Low-power target capture with
    `scripts/ai_eda/capture_low_power_intent_targets.py --run-id validation`.
    Do not generate UPF, gated clocks, DVFS policy, retention/isolation logic, or
-   power-domain artifacts until deterministic low-power evidence gates exist.
+   power-domain artifacts, and do not import clock-gating plugin outputs or
+   low-power RTL benchmark tasks, until deterministic low-power evidence gates
+   exist.
 7. Verification-debug target capture with
    `scripts/ai_eda/capture_verification_debug_targets.py --run-id validation`.
    Do not generate or promote verification plans, testbenches, UVM collateral,

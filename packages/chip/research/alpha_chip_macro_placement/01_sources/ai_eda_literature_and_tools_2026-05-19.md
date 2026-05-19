@@ -189,6 +189,48 @@ candidate inputs to reproducible gates, not as standalone evidence.
   DRC engine reference. E1 status: backend watchlist only until revision,
   license, build, rule mapping, layout hashes, report correlation, and review
   are complete.
+- MPM-LLM4DSE: <https://arxiv.org/abs/2601.04801> and
+  <https://github.com/wslcccc/MPM-LLM4DSE>. Multimodal model and LLM-guided
+  HLS DSE candidate with code/model/data assets. E1 status: metadata-only
+  until exact revisions, licenses, model manifests, dataset provenance,
+  benchmark overlap, replay logs, and reviewer disposition are pinned.
+- TimelyHLS: <https://arxiv.org/abs/2507.17962> with related Bench4HLS assets
+  at <https://github.com/zfsadik/Bench4HLS>. Timing-aware HLS reference and
+  benchmark candidate. E1 status: blocked until benchmark snapshots, licenses,
+  timing-label provenance, local replay, and generated-artifact quarantine are
+  reviewed.
+- FlexLLM HLS Library: <https://arxiv.org/abs/2601.15710>. HLS LLM accelerator
+  library method reference. E1 status: paper-only until any implementation,
+  library revision, synthesis logs, generated artifacts, and review evidence
+  are available.
+- TAPA/RapidStream TAPA: <https://arxiv.org/abs/2209.02663> and
+  <https://github.com/rapidstream-org/rapidstream-tapa>. Task-parallel HLS
+  framework and FPGA backend candidate. E1 status: backend watchlist only until
+  revisions, licenses, supported devices, build logs, HLS synthesis, RTL
+  simulation, and review are complete.
+- ArchPower: <https://arxiv.org/abs/2512.06854>,
+  <https://github.com/hkust-zhiyao/ArchPower>, and
+  <https://huggingface.co/datasets/zqj23333/ArchPower>. Architecture-level
+  CPU power dataset and code candidate with feature and fine-grained simulated
+  power labels. E1 status: metadata-only until revisions, licenses, feature
+  mapping, workload overlap, local calibration labels, train/test splits, and
+  reviewer disposition are captured.
+- AutoPower: <https://arxiv.org/abs/2508.12294> and
+  <https://github.com/hkust-zhiyao/AutoPower>. Few-shot architecture-level
+  power-model method using power-group decoupling. E1 status: target-capture
+  context only until code revision, license, E1 CPU/AP feature extraction,
+  calibration samples, error analysis, and review evidence exist.
+- Lighter: <https://github.com/AUCOHL/Lighter> and
+  <https://woset-workshop.github.io/PDFs/2024/15_Lighter_An_Open_Source_Auto.pdf>.
+  Open-source Yosys-plugin clock-gating backend for dynamic-power reduction.
+  E1 status: backend watchlist only until plugin revision, library-map hashes,
+  ICG/scan policy, equivalence, STA, CDC/RDC, synthesis, power reports, and
+  review are complete.
+- RTL-OPT: <https://arxiv.org/abs/2601.01765>. Benchmark for evaluating RTL
+  optimization quality with functional correctness and PPA metrics. E1 status:
+  evaluation-method reference only until exact assets, license, benchmark
+  non-overlap, synthesis setup hashes, before/after PPA logs, and reviewer
+  disposition are pinned.
 
 ## E1 integration ranking
 
@@ -221,3 +263,16 @@ candidate inputs to reproducible gates, not as standalone evidence.
    claim signoff without pinned rule/layout/netlist hashes, command schemas,
    generated-output quarantine, before/after tool logs, tool correlation, and
    review.
+10. Use HLS/accelerator target capture for MPM-LLM4DSE, TimelyHLS,
+    FlexLLM, TAPA/RapidStream, HLSFactory, HLS-Eval, LLM-DSE, iDSE, and
+    SECDA-DSE. Do not import models, datasets, HLS libraries, FPGA backends,
+    generated directives, generated HLS, or generated RTL without pinned
+    revisions, license review, manifests, C-simulation, HLS synthesis, RTL
+    simulation, equivalence where applicable, replay, and review.
+11. Use power/thermal and low-power target capture for ArchPower, AutoPower,
+    Lighter, RTL-OPT, Yosys clock gating, CODMAS/RTLOPT, Prompting for Power,
+    POET, RTL PPA SOG, and UPF references. Do not import power datasets,
+    train models, run clock-gating plugins, import benchmark tasks, generate
+    UPF, or claim power savings without pinned revisions, license review,
+    feature maps, calibration labels, equivalence/formal evidence, synthesis,
+    STA, CDC/RDC, DFT, power reports, and review.

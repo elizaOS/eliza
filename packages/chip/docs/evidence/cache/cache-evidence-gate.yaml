@@ -206,8 +206,15 @@ measured_real_claims:
       replacements (lru, drrip, ship, srrip). The artifact records
       the LRU-baseline IPC + per-replacement deltas so future
       Mockingjay drop-in evidence can be referenced against the same
-      baseline. The Mockingjay-prod RTL is independently exercised by
-      the cocotb harness; see mockingjay_cocotb_synthetic_report.json.
+      baseline. At the captured 2 M warmup + 2 M simulation window
+      the LLC sees too few accesses to pressure replacement (~600
+      LLC LOAD misses across a 2048-set x 16-way LLC); all bundled
+      replacements collapse to the same IPC/MPKI. Longer workloads or
+      pressure-bearing traces are required to see drrip/ship/srrip
+      diverge — this is itself the BLOCKER for the +15 % HPCA'22
+      productized Mockingjay claim. The Mockingjay-prod RTL is
+      independently exercised by the cocotb harness; see
+      mockingjay_cocotb_synthetic_report.json.
     evidence_artifacts:
       - docs/evidence/cache/mockingjay_vs_lru_report.json
   - id: mockingjay_cocotb_synthetic

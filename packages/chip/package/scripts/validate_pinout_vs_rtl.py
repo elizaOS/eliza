@@ -4,6 +4,7 @@ import sys
 from pathlib import Path
 
 VECTOR_PIN_RE = re.compile(r"^(DBG_ADDR|DBG_WDATA|DBG_RDATA|GPIO)(\d+)$")
+_POWER_PIN_GUARDS = {"USE_POWER_PINS"}
 
 
 def parse_pinout(path: Path) -> set[str]:
@@ -29,11 +30,23 @@ def parse_ports(path: Path) -> set[str]:
     if not module:
         raise SystemExit("e1_chip_top module header not found")
     ports: set[str] = set()
+    skipping: list[str] = []
     for raw in module.group(1).splitlines():
-        raw = raw.split("//", 1)[0].strip().rstrip(",")
-        if not raw:
+        line = raw.split("//", 1)[0].strip().rstrip(",")
+        if not line:
             continue
-        name = raw.split()[-1]
+        if line.startswith("`"):
+            tokens = line.split()
+            directive = tokens[0]
+            if directive in {"`ifdef", "`ifndef"}:
+                macro = tokens[1] if len(tokens) > 1 else ""
+                skipping.append(macro)
+            elif directive == "`endif" and skipping:
+                skipping.pop()
+            continue
+        if any(guard in _POWER_PIN_GUARDS for guard in skipping):
+            continue
+        name = line.split()[-1]
         name = name.split("[", 1)[0]
         ports.add(name)
     return ports

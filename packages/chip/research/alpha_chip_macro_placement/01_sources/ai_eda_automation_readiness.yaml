@@ -628,6 +628,10 @@ stages:
       - hls-eval
       - llm-dse
       - idse-hls
+      - mpm-llm4dse
+      - timelyhls
+      - flexllm-hls
+      - tapa-rapidstream
       - secda-dse
     local_lane: p1-hls-accelerator-target-capture
     current_artifacts:
@@ -636,9 +640,10 @@ stages:
     next_gate: make npu-runtime-contract-check
     critical_review: >
       HLS and LLM-guided HLS DSE can speed accelerator experiments, but E1 must
-      first capture bounded runtime/spec tasks and keep generated directives,
-      HLS, and RTL out of source until C-sim, HLS synthesis, RTL simulation,
-      synthesis, equivalence, and review evidence exist.
+      first capture bounded runtime/spec tasks, review any external QoR models,
+      benchmark datasets, HLS libraries, or FPGA backends, and keep generated
+      directives, HLS, and RTL out of source until C-sim, HLS synthesis, RTL
+      simulation, synthesis, equivalence, and review evidence exist.
   - id: timing_closure_automation
     rating: READY_DRY_RUN
     source_ids:
@@ -780,6 +785,8 @@ stages:
       - openpdn
       - aieda
       - rtlmul
+      - archpower
+      - autopower
     local_lane: p1-power-thermal-target-capture
     current_artifacts:
       - scripts/ai_eda/capture_power_thermal_targets.py
@@ -787,12 +794,13 @@ stages:
     next_gate: make power-thermal-evidence-check
     critical_review: >
       TCAD/DTCO device assumptions plus ML thermal, IR-drop, PDN, and RTL power
-      predictors can screen hotspots, power-integrity risk, and PDN template
-      choices, but E1 still lacks approved TCAD decks, device calibration,
-      calibrated rail power traces, thermal traces, package/board thermal
-      models, activity-aligned power maps, and repeated PDNSim/signoff labels.
-      Keep this lane as target capture until authorized process data and
-      measured or deterministic labels exist.
+      predictors plus architecture-level CPU/AP power models can screen
+      hotspots, power-integrity risk, PDN template choices, and early simulator
+      power estimates, but E1 still lacks approved TCAD decks, device
+      calibration, calibrated rail power traces, thermal traces, package/board
+      thermal models, activity-aligned power maps, CPU/AP feature mappings, and
+      repeated PDNSim/signoff labels. Keep this lane as target capture until
+      authorized process data and measured or deterministic labels exist.
   - id: floorplan_io_pdn_automation
     rating: READY_DRY_RUN
     source_ids:
@@ -978,7 +986,9 @@ stages:
       - ieee-1801-upf
       - ieee-upf-open-source
       - yosys-clockgate
+      - lighter-clock-gating
       - codmas-rtlopt
+      - rtl-opt-benchmark
       - prompting-for-power
       - poet-rtl-ppa
       - rtl-ppa-sog
@@ -995,8 +1005,9 @@ stages:
       a power-state table, always-on partition, supply-set map, UPF source,
       power-aware verification backend, and before/after low-power PPA corpus.
       Keep this lane as target capture until generated power intent and
-      clock-gating edits can be checked by RTL, formal, synthesis, DFT, CDC/RDC,
-      power/thermal, and physical-design gates.
+      clock-gating edits, benchmark imports, and backend plugin outputs can be
+      checked by RTL, formal, synthesis, DFT, CDC/RDC, power/thermal, and
+      physical-design gates.
   - id: clock_tree_automation
     rating: READY_DRY_RUN
     source_ids:

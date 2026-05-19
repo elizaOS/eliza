@@ -89,6 +89,14 @@ SYMBOL_LINE_RE = re.compile(
     r"^(?P<addr>[0-9a-fA-F]{8,16})\s+\S+\s+\S+\s+(?P<section>\S+)\s+"
     r"(?P<size>[0-9a-fA-F]{8,16})\s+(?P<name>\S+)$"
 )
+GENERATED_MODEL_FAILURE_PATTERNS = (
+    re.compile(r"No rule to make target .*(?:mm|VTestDriver)[^\s]*\.(?:d|mk|cpp|h)"),
+    re.compile(
+        r"fatal error: .*(?:mm|VTestDriver)[^\s]*\.(?:d|mk|cpp|h): "
+        r"No such file or directory"
+    ),
+    re.compile(r"No such file or directory.*(?:mm|VTestDriver)[^\s]*\.(?:d|mk|cpp|h)"),
+)
 
 
 def rel(path: Path) -> str:
@@ -123,6 +131,10 @@ def detect_stale_absolute_roots(
             if token in text and not host_root_text.startswith(token.rstrip("/"))
         }
     )
+
+
+def is_generated_model_artifact_failure(log_text: str) -> bool:
+    return any(pattern.search(log_text) is not None for pattern in GENERATED_MODEL_FAILURE_PATTERNS)
 
 
 def sha256_file(path: Path) -> str:
@@ -973,7 +985,20 @@ def main() -> int:
         action="store_true",
         help="archive an interrupted smoke log only when no smoke runner owns the lock",
     )
+    parser.add_argument(
+        "--classify-generated-artifact-failure",
+        metavar="LOG",
+        help=(
+            "exit 0 only when LOG shows a stale/partial generated Verilator model "
+            "artifact failure that is safe to repair and retry once"
+        ),
+    )
     args = parser.parse_args()
+    if args.classify_generated_artifact_failure:
+        log_text = Path(args.classify_generated_artifact_failure).read_text(
+            encoding="utf-8", errors="replace"
+        )
+        return 0 if is_generated_model_artifact_failure(log_text) else 1
     if args.repair_incomplete_attempt:
         return repair_incomplete_attempt()
     if args.repair_stale_generated:

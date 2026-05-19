@@ -859,11 +859,11 @@ formal-cache:
 	@scripts/run_formal_cache.sh
 
 champsim-prefetch-sweep:
-	@$(PYTHON) scripts/champsim_sweep.py --mode prefetch || \
+	@$(PYTHON) scripts/champsim_sweep.py --mode prefetch --commit-evidence || \
 	  ($(PYTHON) scripts/champsim_sweep.py --mode prefetch --blocked-evidence)
 
 mockingjay-vs-lru-sweep:
-	@$(PYTHON) scripts/champsim_sweep.py --mode mockingjay-vs-lru || \
+	@$(PYTHON) scripts/champsim_sweep.py --mode mockingjay-vs-lru --commit-evidence || \
 	  ($(PYTHON) scripts/champsim_sweep.py --mode mockingjay-vs-lru --blocked-evidence)
 
 lmbench-cache-curve:

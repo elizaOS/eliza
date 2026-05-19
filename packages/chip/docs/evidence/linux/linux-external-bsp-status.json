@@ -5,6 +5,10 @@
       "id": "external_linux_tree_missing"
     },
     {
+      "detail": "set CROSS_COMPILE=... or install a riscv64 Linux compiler",
+      "id": "riscv_cross_compiler_missing"
+    },
+    {
       "detail": "docs/evidence/linux/eliza_e1_kernel_build.log",
       "id": "linux_kernel_build_evidence_blocked"
     },
@@ -55,10 +59,10 @@
   "status": "blocked",
   "tools": {
     "cross_compile": "",
-    "dtc": "tools/bin/dtc",
+    "dtc": "",
     "make": "/usr/bin/make",
     "make_version": "GNU Make 4.3",
     "make_version_ok": true,
-    "riscv_compiler": "riscv64-linux-gnu-gcc"
+    "riscv_compiler": ""
   }
 }
