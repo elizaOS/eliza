@@ -1,0 +1,32 @@
+schema: eliza.cpu_ap_linux_boot_evidence_gate.v1
+status: blocked_until_real_chipyard_rocket_linux_transcript
+claim_boundary: >
+  Linux boot evidence gate for the e1 CPU AP. The current local DUT cannot
+  satisfy this gate; the gate ingests a transcript captured by
+  scripts/run_linux_smoke.sh against the Chipyard-generated Rocket
+  Verilator binary (or, when later DUTs exist, against the Kunminghu /
+  Ascalon wrappers).
+target_dut_path: generators/chipyard/eliza-rocket-manifest.json
+target_dut_fallback: |
+  When the big-core or mid-core wrappers exist, the same gate validates
+  their transcripts. The marker set is uarch-independent.
+transcript_path: build/evidence/cpu_ap/eliza_e1_linux_boot.log
+evidence_summary_path: docs/evidence/cpu_ap/linux-boot.json
+required_markers:
+  - "OpenSBI v"
+  - "Booting Linux on physical CPU"
+  - "Linux version"
+  - "Run /init"
+  - "Welcome to"
+  - "console-uart"
+gate_command: make linux-boot-check
+gate_command_strict: python3 scripts/check_linux_boot.py --require
+harness_command: scripts/run_linux_smoke.sh
+prerequisites:
+  - scripts/bootstrap_chipyard.sh
+  - scripts/run_chipyard_eliza_verilator.sh
+  - E1_LINUX_PAYLOAD env var pointing at fw_payload.elf (OpenSBI + Linux + initramfs)
+fail_closed_until:
+  - build/chipyard/eliza_rocket/simulator exists
+  - scripts/run_linux_smoke.sh produced a transcript
+  - All required_markers above appear in the transcript

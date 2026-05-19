@@ -1,0 +1,23 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "schema": "eliza.autovec_kernels.v1",
+  "description": "16 short RVV autovec health kernels; covers bandwidth, predication, strided, reduction, quantization, shuffle.",
+  "kernels": [
+    {"name": "saxpy",                 "group": "trivial",      "elem_type": "f32",  "n": 8192,  "expected_vectorized": true},
+    {"name": "daxpy",                 "group": "trivial",      "elem_type": "f64",  "n": 4096,  "expected_vectorized": true},
+    {"name": "dot_product",           "group": "trivial",      "elem_type": "f32",  "n": 8192,  "expected_vectorized": true},
+    {"name": "l2_norm",               "group": "trivial",      "elem_type": "f32",  "n": 8192,  "expected_vectorized": true},
+    {"name": "cond_mask_add",         "group": "conditional",  "elem_type": "f32",  "n": 8192,  "expected_vectorized": true},
+    {"name": "cond_mask_mul",         "group": "conditional",  "elem_type": "f32",  "n": 8192,  "expected_vectorized": true},
+    {"name": "strided_load_2",        "group": "stride",       "elem_type": "f32",  "n": 8192,  "expected_vectorized": true, "notes": "LLVM weakness vs GCC"},
+    {"name": "strided_load_4",        "group": "stride",       "elem_type": "f32",  "n": 8192,  "expected_vectorized": true, "notes": "LLVM weakness vs GCC"},
+    {"name": "sum_reduction",         "group": "reduction",    "elem_type": "f32",  "n": 8192,  "expected_vectorized": true},
+    {"name": "max_reduction",         "group": "reduction",    "elem_type": "f32",  "n": 8192,  "expected_vectorized": true},
+    {"name": "argmax",                "group": "reduction",    "elem_type": "f32",  "n": 8192,  "expected_vectorized": true},
+    {"name": "int8_quantize",         "group": "quantization", "elem_type": "i8",   "n": 16384, "expected_vectorized": true},
+    {"name": "int8_dequantize",       "group": "quantization", "elem_type": "i8",   "n": 16384, "expected_vectorized": true},
+    {"name": "bit_reverse_byte",      "group": "shuffle",      "elem_type": "i8",   "n": 16384, "expected_vectorized": true},
+    {"name": "packed_uint8_to_uint16","group": "shuffle",      "elem_type": "i8",   "n": 16384, "expected_vectorized": true},
+    {"name": "softmax_inplace",       "group": "reduction",    "elem_type": "f32",  "n": 1024,  "expected_vectorized": true, "notes": "exp + reciprocal sum loop"}
+  ]
+}

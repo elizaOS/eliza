@@ -7,6 +7,14 @@ IMAGE="${ALPHACHIP_IMAGE:-circuit_training:e1-r0.0.4}"
 BENCH_DIR="${ALPHACHIP_BENCH_DIR:-/tmp/e1-alphachip/e1_softmacro}"
 OUT_DIR="${ALPHACHIP_COMPARE_DIR:-$BENCH_DIR/compare}"
 
+# Optional post-route PPA truth knobs.
+# When OPENROAD_RUN_DIR + OPENLANE_CONFIG are both set, the script calls
+# scripts/run_post_route_ppa.py after the proxy step so the output directory
+# carries both proxy AND PPA truth deltas.
+OPENROAD_RUN_DIR="${OPENROAD_RUN_DIR:-}"
+OPENLANE_CONFIG="${OPENLANE_CONFIG:-pd/openlane/config.sky130.json}"
+SKIP_POST_ROUTE="${SKIP_POST_ROUTE:-0}"
+
 if [ "$#" -gt 0 ]; then
     BENCH_DIR="$1"
 fi
@@ -57,3 +65,42 @@ fi
 
 echo "Proxy comparison artifacts:"
 find "$OUT_DIR" -maxdepth 1 -type f -name '*_proxy.json' -print | sort
+
+# Post-route PPA truth (run_post_route_ppa.py). When OPENROAD_RUN_DIR is
+# set, re-run OpenROAD detailed route on each .plc and capture routed
+# wirelength, DRC, TNS, antenna, and power. The "False Dawn" critique
+# (arXiv 2302.11014) makes this the only honest evaluation of AlphaChip
+# vs OpenROAD vs DREAMPlace.
+if [ "$SKIP_POST_ROUTE" = "1" ] || [ -z "$OPENROAD_RUN_DIR" ]; then
+    cat <<EOF >&2
+
+NOTE: post-route PPA truth NOT captured. proxy delta is informational only.
+      To capture PPA truth: export OPENROAD_RUN_DIR=<openlane run dir> and re-run.
+EOF
+    exit 0
+fi
+
+PPA_OUT_DIR="$REPO_DIR/research/alpha_chip_macro_placement/07_post_route_ppa"
+mkdir -p "$PPA_OUT_DIR"
+
+echo "Capturing OpenROAD baseline post-route PPA..."
+python3 "$REPO_DIR/scripts/run_post_route_ppa.py" \
+    --plc "$OPENROAD_PLC" \
+    --netlist "$NETLIST" \
+    --openroad-run-dir "$OPENROAD_RUN_DIR" \
+    --openlane-config "$OPENLANE_CONFIG" \
+    --out-json "$PPA_OUT_DIR/openroad.json" \
+    --skip-route
+
+if [ -f "$ALPHACHIP_PLC" ]; then
+    echo "Capturing AlphaChip candidate post-route PPA..."
+    python3 "$REPO_DIR/scripts/run_post_route_ppa.py" \
+        --plc "$ALPHACHIP_PLC" \
+        --netlist "$NETLIST" \
+        --openroad-run-dir "$OPENROAD_RUN_DIR" \
+        --openlane-config "$OPENLANE_CONFIG" \
+        --out-json "$PPA_OUT_DIR/alphachip.json"
+fi
+
+echo "Post-route PPA artifacts:"
+find "$PPA_OUT_DIR" -maxdepth 1 -type f -name '*.json' -print | sort

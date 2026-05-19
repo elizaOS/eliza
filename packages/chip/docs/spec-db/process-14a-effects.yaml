@@ -7,9 +7,26 @@ claim_boundary: >
   workload vectors, power/thermal correlation, and signoff reports for the
   exact selected process option.
 node_target:
-  marketing_name: 14A / 1.4 nm class
+  marketing_name: N2P / A14 / Intel 14A class (2 nm to 1.4 nm node range)
   production_assumption: 2028 mobile-class planning target
-  selected_process_option: blocked_until_foundry_pdk_and_library_selection
+  selected_process_option: blocked_until_foundry_pdk_and_library_selection_from_shortlist
+  selected_process_option_shortlist:
+    primary:
+      pdk: TSMC_N2P
+      access_gate: pd/n2p-stub/access-gate.yaml
+      rationale: HVM 2H 2026, mobile-mature 2028, HD 313 MTr/mm², 38.1 Mb/mm² SRAM, frontside PDN, wafer ~$30-33k, broadest mobile customer surface
+    stretch:
+      pdk: TSMC_A14
+      access_gate: pd/a14-stub/access-gate.yaml
+      rationale: HVM 2028, +15% perf @ iso-power or -30% power @ iso-perf vs N2, +20% logic density, frontside baseline (A14P SPR-BSPDN slips to 2029)
+    second_source:
+      pdk: Intel_14A
+      access_gate: pd/intel-14a-stub/access-gate.yaml
+      rationale: 2nd-gen PowerVia BSPDN + industry-first commercial High-NA EUV, strategic non-Apple foundry diversification, possible DARPA/RAMP-C alignment
+    backup:
+      pdk: Samsung_SF2P
+      access_gate: pd/sf2p-stub/access-gate.yaml
+      rationale: Frontside MBCFET GAA backup if both TSMC and Intel paths blocked; competitive wafer pricing; SF1.4 slipped 2028-2029
   transistor_architecture: nanosheet_or_successor_gate_all_around_required
   power_delivery_variant: frontside_power_delivery_until_specific_bspdn_option_is_selected
   minimum_supported_variants:

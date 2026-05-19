@@ -6,8 +6,6 @@
 // -----------------------------------------------------------------------------
 `timescale 1ns/1ps
 
-`include "rtl/power/power_pkg.sv"
-
 module droop_stretch_tb
     import power_pkg::*;
 (

@@ -11,8 +11,6 @@
 
 `timescale 1ns/1ps
 
-`include "rtl/cpu/bpu/bpu_pkg.sv"
-
 module sc
     import bpu_pkg::*;
 (

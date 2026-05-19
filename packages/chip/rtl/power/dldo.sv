@@ -21,8 +21,6 @@
 // -----------------------------------------------------------------------------
 `timescale 1ns/1ps
 
-`include "rtl/power/power_pkg.sv"
-
 module dldo
     import power_pkg::*;
 #(

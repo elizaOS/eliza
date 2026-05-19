@@ -1,0 +1,42 @@
+schema: eliza.compiler.rva23_compliance.v1
+as_of: 2026-05-19
+claim_boundary: |
+  RVA23 baseline extension list checked-in and gate fails closed unless the
+  built clang prints every mandatory extension via
+  `--print-supported-extensions`.
+
+mandatory_extensions:
+  - I
+  - M
+  - A
+  - F
+  - D
+  - C
+  - V
+  - Zicboz
+  - Zicbom
+  - Zicfilp
+  - Zicfiss
+  - Zihintntl
+  - Zfh
+  - Zvfh
+  - Zvbb
+  - Zvkt
+  - Zacas
+  - Ztso
+  - Zba
+  - Zbb
+  - Zbs
+
+required_artifacts:
+  - path: compiler/llvm-build/llvm-pin.json
+    purpose: extensions_baseline list
+  - path: scripts/check_rva23_compliance.py
+    purpose: gate
+
+verification_commands:
+  - scripts/check_rva23_compliance.py --strict --toolchain build/llvm-stage2
+
+forbidden_claims_without_required_evidence:
+  - "RVA23U64 compliant toolchain"
+  - "Android RISC-V Tier 1 build"

@@ -373,11 +373,52 @@ export class KokoroOnnxRuntime implements KokoroRuntime {
 	}
 }
 
-async function defaultOrtLoader(): Promise<OrtModule> {
+/**
+ * Resolve the ORT module spec to load for the current platform.
+ *
+ * `onnxruntime-node` is the desktop / server path — it ships prebuilt
+ * native binaries for `linux/{x64,arm64}`, `darwin/arm64`, and
+ * `win32/{x64,arm64}` only (see node_modules/onnxruntime-node/bin/napi-v6/).
+ * It does NOT ship a riscv64 binary, so on linux-riscv64 (the on-device
+ * Eliza-1 phone target) a hard `import("onnxruntime-node")` would fail with
+ * `prebuild-install` saying no prebuilt for linux/riscv64. Fall back to
+ * `onnxruntime-web/wasm` — the same path the AOSP plugin uses
+ * (plugins/plugin-aosp-local-inference/src/aosp-local-inference-bootstrap.ts
+ * `loadAospKokoroOrt`), which is WASM-based and therefore arch-agnostic.
+ *
+ * Selection order (override via `KOKORO_ORT_MODULE` env):
+ *   1. process.env.KOKORO_ORT_MODULE — operator override (any importable spec).
+ *   2. process.arch === "riscv64" → "onnxruntime-web/wasm".
+ *   3. default → "onnxruntime-node".
+ */
+function resolveOrtModuleSpec(): string {
+	const override = process.env.KOKORO_ORT_MODULE?.trim();
+	if (override) return override;
+	if (process.arch === "riscv64") return "onnxruntime-web/wasm";
 	// String-spread the spec so bundlers don't try to resolve at build time
 	// (ORT is an optional peer — voice can run without it via GGUF / mock).
-	const spec = ["onnxruntime", "node"].join("-");
-	return (await import(spec)) as OrtModule;
+	return ["onnxruntime", "node"].join("-");
+}
+
+async function defaultOrtLoader(): Promise<OrtModule> {
+	const spec = resolveOrtModuleSpec();
+	const mod = (await import(spec)) as
+		| OrtModule
+		| { default?: OrtModule } & Partial<OrtModule>;
+	// `onnxruntime-web/wasm` is a CJS-shaped ESM re-export — sometimes the
+	// `InferenceSession` / `Tensor` exports come off the default-namespace
+	// shape instead of the module shape. Unwrap to whichever surface actually
+	// carries them.
+	const candidate = mod as { default?: OrtModule } & Partial<OrtModule>;
+	const resolved = (
+		candidate.InferenceSession ? candidate : (candidate.default ?? candidate)
+	) as OrtModule;
+	if (!resolved.InferenceSession || !resolved.Tensor) {
+		throw new Error(
+			`[kokoro] ORT module '${spec}' did not export InferenceSession/Tensor`,
+		);
+	}
+	return resolved;
 }
 
 async function verifySha256(filePath: string, expected: string): Promise<void> {

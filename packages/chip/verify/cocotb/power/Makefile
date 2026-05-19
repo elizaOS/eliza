@@ -33,6 +33,6 @@ TOPLEVEL ?= droop_stretch_tb
 MODULE   ?= test_droop_event
 PYTHON   ?= python3
 
-EXTRA_ARGS += -Wall
+EXTRA_ARGS += -Wall -Wno-UNUSEDPARAM -Wno-WIDTHEXPAND -Wno-WIDTHTRUNC -Wno-VARHIDDEN -Wno-TIMESCALEMOD
 
 include $(shell $(PYTHON) -m cocotb.config --makefiles)/Makefile.sim

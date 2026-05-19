@@ -1,0 +1,44 @@
+schema: eliza.droop_sensor_evidence.v1
+status: planning_draft
+release_use: prohibited_until_external_review
+claim_boundary: >
+  Tracks the droop-sensor + clock-stretcher contract evidence: RTL files,
+  cocotb tests, and the silicon characterization placeholder. Calibration data
+  is required before any release claim.
+source_artifacts:
+  - rtl/power/power_pkg.sv
+  - rtl/power/droop_sensor.sv
+  - rtl/power/clock_stretcher.sv
+  - verify/cocotb/power/droop_stretch_tb.sv
+  - verify/cocotb/power/test_droop_event.py
+  - docs/pd/droop-detection.md
+required_evidence:
+  - id: rtl_present
+    status: complete
+    artifact: rtl/power/droop_sensor.sv
+  - id: cocotb_tests_pass
+    status: complete
+    artifact: verify/cocotb/power/test_droop_event.py
+    last_known_result:
+      tests: 3
+      passes: 3
+      command: COCOTB_DIR=verify/cocotb/power COCOTB_TOPLEVEL=droop_stretch_tb COCOTB_MODULE=test_droop_event scripts/run_cocotb.sh
+  - id: silicon_characterization
+    status: blocked
+    blockers:
+      - 14A PDK not selected
+      - Ring-oscillator cell library not selected
+      - threshold_i values are placeholder (DROOP_DEFAULT_THRESHOLD = 2048)
+  - id: phase_blender_implementation
+    status: blocked
+    blockers:
+      - Behavioral RTL only; analog mux + interpolator post-route required
+  - id: floorplan_placement_plan
+    status: blocked
+    blockers:
+      - Sensor placement not committed to pd/openroad/ floorplan
+release_blockers:
+  - Silicon characterization data not available; threshold values are placeholder.
+  - RO cell library not selected (foundry-dependent).
+  - Phase-blender mux behavioral model only; real implementation requires analog mux + interpolator post route.
+  - Sensor placement plan not committed to pd/openroad/ floorplan.

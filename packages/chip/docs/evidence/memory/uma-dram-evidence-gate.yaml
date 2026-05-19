@@ -492,3 +492,58 @@ next_commands:
   inspect_generated_ap_memory_map: make chipyard-generated-linux-contract-check
   capture_payload_preflight: make chipyard-linux-payload-check
   future_lpddr_evidence_placeholder: make memory-uma-claim-gate
+
+sku_split_decision:
+  status: SKU_SPLIT_REQUIRED
+  reconciles:
+    optimized_point: docs/architecture-optimization/soc-optimized-operating-point.yaml
+    sub_report: docs/architecture-optimization/sota-2028/memory-subsystem.md
+    phy_procurement: docs/spec-db/lpddr-phy-procurement-shortlist.yaml
+    phy_evidence_gate: docs/evidence/memory/lpddr-phy-procurement.yaml
+  reason: >
+    The 240 GB/s sustained number in
+    docs/architecture-optimization/soc-optimized-operating-point.yaml
+    cannot be delivered by any 64-bit LPDDR5X-10667 SKU (max 85.3 GB/s
+    peak). The phone_2028_target_profile bandwidth gates (180 GB/s peak,
+    120 GB/s sustained) only map to the LPDDR6-14400 AI SKU on a 96-bit
+    bus. The repository keeps two SKUs in parallel rather than silently
+    lowering or raising either number.
+  baseline_sku:
+    standard: LPDDR5X-10667
+    bus_width_bits: 64
+    channels: 4
+    bits_per_channel: 16
+    peak_bandwidth_gbps: 85.3
+    sustained_target_gbps_min: 70
+    capacity_gib_skus: [12, 16]
+    note: >
+      Matches Snapdragon 8 Elite Gen 5 (~84.8 GB/s peak) and Dimensity
+      9500 (~85.3 GB/s peak). Does NOT satisfy the
+      phone_2028_target_profile's 180 GB/s peak / 120 GB/s sustained
+      requirement; baseline SKUs are below those thresholds by design.
+  ai_sku:
+    standard: LPDDR6-14400
+    bus_width_bits: 96
+    channels: 4
+    bits_per_channel: 24
+    peak_bandwidth_gbps: 172.8
+    sustained_target_gbps_min: 140
+    capacity_gib_skus: [24]
+    note: >
+      This is the SKU that the existing phone_2028_target_profile
+      thresholds (180 GB/s peak, 120 GB/s sustained) apply to. The
+      optimizer's 240 GB/s figure remains as a guardband headroom
+      number, not as a per-SKU sustained gate.
+  closed_ip_blocker:
+    description: >
+      LPDDR5X-10667 and LPDDR6-14400 PHYs are closed third-party IP.
+      Vendor shortlist and procurement decision are tracked in
+      docs/spec-db/lpddr-phy-procurement-shortlist.yaml and the
+      fail-closed gate in
+      docs/evidence/memory/lpddr-phy-procurement.yaml. No phone-class
+      bandwidth claim may be promoted while that gate is BLOCKED.
+  policy_implications:
+    - The phone_2028_target_profile thresholds in this gate apply to the AI SKU only.
+    - The baseline SKU has its own bandwidth expectations (~70 GB/s sustained) and shares the same RTL but a different LPDDR PHY data rate and bus width.
+    - Reports filed against this gate must declare which SKU they pertain to.
+    - The 240 GB/s optimizer guardband is not a per-SKU sustained gate and must not be quoted as one.

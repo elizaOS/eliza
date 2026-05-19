@@ -143,6 +143,25 @@ stages:
     critical_review: >
       Assertion-generation SOTA is improving quickly, but generated SVAs can
       check the wrong property; keep them as reviewed candidates first.
+  - id: verification_debug_and_planning
+    rating: READY_DRY_RUN
+    source_ids:
+      - pro-v
+      - saarthi-formal-verification
+      - sangam-sva
+      - fvdebug
+      - siliconmind-v1
+    local_lane: p1-verification-debug-target-capture
+    current_artifacts:
+      - scripts/ai_eda/capture_verification_debug_targets.py
+      - build/ai_eda/verification_debug_targets/validation/targets_report.json
+    next_gate: make formal
+    critical_review: >
+      Agentic verification planners and formal-debug assistants are useful for
+      triage, but root-cause narratives, generated testbenches, generated SVAs,
+      and proposed RTL fixes are all unsafe until tied to local traces, RTL
+      hashes, deterministic regressions, equivalence/synthesis where needed,
+      and human review.
   - id: physical_design_prediction
     rating: READY_ADVISORY
     source_ids:
@@ -157,6 +176,27 @@ stages:
     critical_review: >
       Predictors can prioritize runs after local label capture, but are not
       signoff and currently lack held-out E1 validation.
+  - id: circuit_foundation_models
+    rating: READY_DRY_RUN
+    source_ids:
+      - circuit-foundation-model-survey
+      - chipnemo
+      - geneda
+      - nettag
+      - deepgate4
+      - chiplingo
+    local_lane: p1-circuit-foundation-model-target-capture
+    current_artifacts:
+      - scripts/ai_eda/capture_circuit_foundation_model_targets.py
+      - build/ai_eda/circuit_foundation_model_targets/validation/targets_report.json
+    next_gate: python3 scripts/check_ai_eda_source_inventory.py
+    critical_review: >
+      Circuit foundation models and domain-adapted EDA LLMs are useful as
+      representation and assistant infrastructure, but embeddings, aligned
+      latent spaces, and benchmark scores are not chip evidence. E1 needs
+      corpus governance, license review, paired RTL/netlist/layout/log hashes,
+      held-out local tasks, and deterministic verification/PD gates before any
+      model output can influence design decisions.
   - id: placement_optimization
     rating: BLOCKED_NEEDS_EVIDENCE
     source_ids:
@@ -458,3 +498,28 @@ stages:
       Keep this lane as target capture until generated power intent and
       clock-gating edits can be checked by RTL, formal, synthesis, DFT, CDC/RDC,
       power/thermal, and physical-design gates.
+  - id: post_silicon_validation_automation
+    rating: READY_DRY_RUN
+    source_ids:
+      - symbolic-qed
+      - soc-trace-protocol-debug
+      - riscv-dv
+      - riscof
+      - riscv-arch-test
+      - opentitan-chip-tests
+      - ml-boot-failure-debug
+      - llm4sechw-debug
+    local_lane: p1-post-silicon-validation-target-capture
+    current_artifacts:
+      - scripts/ai_eda/capture_post_silicon_validation_targets.py
+      - build/ai_eda/post_silicon_validation_targets/validation/targets_report.json
+    next_gate: make real-world-gates-check
+    critical_review: >
+      Post-silicon and lab automation is essential but cannot be simulated into
+      existence. RISC-V compliance tests, riscv-dv, QED-style tests,
+      trace-debug methods, cross-target on-device tests, and ML boot-failure
+      triage can guide future bring-up, but E1 currently has no silicon, no lab
+      trace corpus, no executed compliance suite, and no approved hardware
+      action workflow. Keep this lane as target capture until QEMU/Renode,
+      FPGA, board/package, manufacturing, real-world, benchmark, and lab
+      evidence exists.

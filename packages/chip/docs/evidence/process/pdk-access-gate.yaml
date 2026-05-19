@@ -1,0 +1,89 @@
+schema: eliza.process_pdk_access_gate.v1
+status: blocked_until_foundry_agreement
+scope:
+  - TSMC N2P (primary 2028 production target)
+  - TSMC A14 (stretch 2028 production target)
+  - Intel 14A (strategic 2nd source 2028)
+  - Samsung SF2P (backup 2028)
+claim_boundary:
+  allowed:
+    - Document the selected 2028 process shortlist.
+    - Document procurement preconditions for each option.
+    - Run open-PDK methodology lanes (Sky130 + GF180 + IHP SG13G2).
+    - Produce ASAP7 predictive PPA shapes (projection_only).
+  blocked:
+    - Any advanced-node signoff artifact.
+    - Any advanced-node PPA number marked as measured / signoff / release.
+    - Any commercial-NDA library / Liberty / SRAM / PHY / GDS / LEF file.
+
+advanced_node_targets:
+  primary:
+    pdk: TSMC_N2P
+    access_gate_file: pd/n2p-stub/access-gate.yaml
+    library_manifest: pd/library-manifests/tsmc-n2p.yaml
+    corner_manifest: pd/corner-manifests/tsmc-n2p.yaml
+    status: blocked_until_foundry_agreement
+    nre_usd_low: 250000000
+    nre_usd_high: 400000000
+    wafer_usd_low: 30000
+    wafer_usd_high: 33000
+  stretch:
+    pdk: TSMC_A14
+    access_gate_file: pd/a14-stub/access-gate.yaml
+    library_manifest: pd/library-manifests/tsmc-a14.yaml
+    corner_manifest: pd/corner-manifests/tsmc-a14.yaml
+    status: blocked_until_foundry_agreement
+    nre_usd_low: 300000000
+    nre_usd_high: 500000000
+    wafer_usd_low: 40000
+    wafer_usd_high: 45000
+  second_source:
+    pdk: Intel_14A
+    access_gate_file: pd/intel-14a-stub/access-gate.yaml
+    library_manifest: pd/library-manifests/intel-14a.yaml
+    corner_manifest: pd/corner-manifests/intel-14a.yaml
+    status: blocked_until_foundry_agreement
+    nre_usd_estimate: premium_over_tsmc_n2p_due_to_high_na
+  backup:
+    pdk: Samsung_SF2P
+    access_gate_file: pd/sf2p-stub/access-gate.yaml
+    library_manifest: pd/library-manifests/samsung-sf2p.yaml
+    corner_manifest: pd/corner-manifests/samsung-sf2p.yaml
+    status: blocked_until_foundry_agreement
+
+open_lanes_active:
+  - sky130A
+  - gf180mcuC
+  - ihp-sg13g2
+predictive_lanes_active:
+  - ASAP7
+
+unblock_requires_global:
+  - At_least_one_executed_foundry_agreement
+  - Commercial_signoff_EDA_seat_held
+  - Hard_IP_licenses_for_LPDDR_PHY_USB_MIPI_PLL_SRAM_compiler_at_selected_node
+  - Mask_set_NRE_budget_committed
+  - Tapeout_NRE_budget_committed
+  - Wafer_allocation_window_secured
+
+forbidden_claims:
+  - tsmc_n2p_tapeout_ready
+  - tsmc_a14_tapeout_ready
+  - intel_14a_tapeout_ready
+  - samsung_sf2p_tapeout_ready
+  - any_2028_phone_class_signoff_evidence
+
+next_commands:
+  preflight: make pdk-portability-check
+  procurement_gate: make pdk-access-gate
+  ppa_projection: make ppa-projection
+  die_area_envelope: make die-area-budget-check
+
+related_evidence:
+  - docs/spec-db/process-14a-effects.yaml
+  - docs/pd/process-node-selection.md
+  - docs/pd/multi-pdk-portability.md
+  - pd/openlane/portability-index.yaml
+  - docs/evidence/process/multi-pdk-closure.yaml
+  - docs/evidence/process/ppa-projection.yaml
+  - docs/evidence/process/die-area-budget.yaml

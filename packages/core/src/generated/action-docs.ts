@@ -2866,121 +2866,134 @@ export const allActionsSpec = {
 		},
 		{
 			name: "AINEX_BOW",
-			description: "Play the bow action group on the AiNex robot.",
+			description: "Play the `bow` action group on the AiNex robot.",
 			parameters: [],
-			similes: ["BOW"],
-			descriptionCompressed: "Play the bow action group on the AiNex robot.",
+			similes: ["BOW", "TAKE_A_BOW"],
+			descriptionCompressed: "Play the `bow` action group on the AiNex robot.",
 		},
 		{
 			name: "AINEX_PICK_UP",
-			description: "Run the pick-up sequence on the AiNex robot.",
+			description:
+				"Run the learned `pick_up` policy. Starts a policy.start with task='pick_up'; options: target_label (default 'red ball'), max_steps.",
 			parameters: [],
-			similes: ["PICK_UP", "GRAB"],
-			descriptionCompressed: "Run the pick-up sequence on the AiNex robot.",
+			similes: ["PICK_UP", "GRAB", "GRASP_OBJECT"],
+			descriptionCompressed:
+				"Run the learned `pick_up` policy. Starts a policy. start with task='pick_up'. options: target_label (default 'red ball'), max_steps.",
 		},
 		{
 			name: "AINEX_PLACE_DOWN",
-			description: "Run the place-down sequence on the AiNex robot.",
+			description:
+				"Run the learned `place_down` policy. Starts a policy.start with task='place_down'.",
 			parameters: [],
-			similes: ["PLACE_DOWN", "PUT_DOWN", "RELEASE"],
-			descriptionCompressed: "Run the place-down sequence on the AiNex robot.",
+			similes: ["PLACE_DOWN", "PUT_DOWN", "RELEASE", "DROP"],
+			descriptionCompressed:
+				"Run the learned `place_down` policy. Starts a policy. start with task='place_down'.",
 		},
 		{
 			name: "AINEX_RUN_ACTION_GROUP",
 			description:
-				"Play a named Hiwonder action group (pre-recorded multi-servo motion) by id.",
+				"Play a named Hiwonder action group (pre-recorded multi-servo motion). Options: name (required, must match a key in the profile's actions.groups).",
 			parameters: [],
 			similes: ["RUN_ACTION_GROUP", "PLAY_ACTION", "PLAY_ACTION_GROUP"],
 			descriptionCompressed:
-				"Play a named Hiwonder action group (pre-recorded multi-servo motion) by id.",
+				"Play a named Hiwonder action group (pre-recorded multi-servo motion). Options: name (required, must match a key in the profile's actions. groups).",
 		},
 		{
 			name: "AINEX_SET_SERVO",
 			description:
-				"Drive a single AiNex servo / joint to a target angle over a given duration.",
+				"Drive one or more AiNex servos to target pulse positions over a duration. Options: positions=[{id, position}], duration (seconds, default 0.5).",
 			parameters: [],
-			similes: ["SET_SERVO", "MOVE_SERVO", "MOVE_JOINT"],
+			similes: ["SET_SERVO", "MOVE_SERVO", "MOVE_JOINT", "SET_JOINT"],
 			descriptionCompressed:
-				"Drive a single AiNex servo/joint to a target angle over a given duration.",
+				"Drive one or more AiNex servos to target pulse positions over a duration. Options: positions=[{id, position}], duration (seconds, default 0. 5).",
 		},
 		{
 			name: "AINEX_SIDE_STEP_LEFT",
-			description: "Side-step the AiNex robot to the left.",
+			description:
+				"Strafe the AiNex robot to its left. Fire-and-forget — robot walks until AINEX_STOP.",
 			parameters: [],
-			similes: ["SIDE_STEP_LEFT", "STRAFE_LEFT"],
-			descriptionCompressed: "Side-step the AiNex robot to the left.",
+			similes: ["SIDE_STEP_LEFT", "STRAFE_LEFT", "SHUFFLE_LEFT"],
+			descriptionCompressed:
+				"Strafe the AiNex robot to its left. Fire-and-forget - robot walks until AINEX_STOP.",
 		},
 		{
 			name: "AINEX_SIDE_STEP_RIGHT",
-			description: "Side-step the AiNex robot to the right.",
+			description:
+				"Strafe the AiNex robot to its right. Fire-and-forget — robot walks until AINEX_STOP.",
 			parameters: [],
-			similes: ["SIDE_STEP_RIGHT", "STRAFE_RIGHT"],
-			descriptionCompressed: "Side-step the AiNex robot to the right.",
+			similes: ["SIDE_STEP_RIGHT", "STRAFE_RIGHT", "SHUFFLE_RIGHT"],
+			descriptionCompressed:
+				"Strafe the AiNex robot to its right. Fire-and-forget - robot walks until AINEX_STOP.",
 		},
 		{
 			name: "AINEX_SIT",
-			description: "Move the AiNex robot into a seated/crouched pose.",
+			description:
+				"Play the `sit` action group — moves the AiNex into a seated pose.",
 			parameters: [],
-			similes: ["SIT", "SIT_DOWN"],
+			similes: ["SIT", "SIT_DOWN", "CROUCH"],
 			descriptionCompressed:
-				"Move the AiNex robot into a seated/crouched pose.",
+				"Play the `sit` action group - moves the AiNex into a seated pose.",
 		},
 		{
 			name: "AINEX_STAND",
-			description: "Move the AiNex robot to its calibrated standing pose.",
+			description:
+				"Play the `stand` action group — moves the AiNex into its calibrated home pose.",
 			parameters: [],
-			similes: ["STAND", "STAND_UP"],
+			similes: ["STAND", "STAND_UP", "GET_UP"],
 			descriptionCompressed:
-				"Move the AiNex robot to its calibrated standing pose.",
+				"Play the `stand` action group - moves the AiNex into its calibrated home pose.",
 		},
 		{
 			name: "AINEX_STOP",
 			description:
-				"Stop the AiNex robot immediately, preempting any in-flight walk or action group.",
+				"Stop the AiNex robot immediately. Sends walk.command:stop with preempt=true so any in-flight commands or active policy are cleared.",
 			parameters: [],
-			similes: ["STOP", "HALT", "FREEZE"],
+			similes: ["STOP", "HALT", "FREEZE", "EMERGENCY_STOP"],
 			descriptionCompressed:
-				"Stop the AiNex robot immediately, preempting any in-flight walk or action group.",
+				"Stop the AiNex robot immediately. Sends walk. command:stop with preempt=true so any in-flight commands or active policy are cleared.",
 		},
 		{
 			name: "AINEX_TURN_LEFT",
-			description: "Turn the AiNex robot to the left in place.",
+			description:
+				"Turn the AiNex robot in place to its left (positive yaw). Fire-and-forget — robot keeps turning until AINEX_STOP.",
 			parameters: [],
-			similes: ["TURN_LEFT", "ROTATE_LEFT"],
-			descriptionCompressed: "Turn the AiNex robot to the left in place.",
+			similes: ["TURN_LEFT", "ROTATE_LEFT", "SPIN_LEFT"],
+			descriptionCompressed:
+				"Turn the AiNex robot in place to its left (positive yaw). Fire-and-forget - robot keeps turning until AINEX_STOP.",
 		},
 		{
 			name: "AINEX_TURN_RIGHT",
-			description: "Turn the AiNex robot to the right in place.",
+			description:
+				"Turn the AiNex robot in place to its right (negative yaw). Fire-and-forget — robot keeps turning until AINEX_STOP.",
 			parameters: [],
-			similes: ["TURN_RIGHT", "ROTATE_RIGHT"],
-			descriptionCompressed: "Turn the AiNex robot to the right in place.",
+			similes: ["TURN_RIGHT", "ROTATE_RIGHT", "SPIN_RIGHT"],
+			descriptionCompressed:
+				"Turn the AiNex robot in place to its right (negative yaw). Fire-and-forget - robot keeps turning until AINEX_STOP.",
 		},
 		{
 			name: "AINEX_WALK_BACKWARD",
 			description:
-				"Make the AiNex robot walk backward at the configured gait speed.",
+				"Start walking the AiNex robot backward. Sends walk.set+walk.command:start to the bridge; robot keeps walking until AINEX_STOP. Options: speed (1-4).",
 			parameters: [],
-			similes: ["WALK_BACKWARD", "MOVE_BACKWARD", "GO_BACK"],
+			similes: ["WALK_BACKWARD", "MOVE_BACKWARD", "GO_BACK", "BACK_UP"],
 			descriptionCompressed:
-				"Make the AiNex robot walk backward at the configured gait speed.",
+				"Start walking the AiNex robot backward. Sends walk. set+walk. command:start to the bridge. robot keeps walking until AINEX_STOP. Options: speed (1-4).",
 		},
 		{
 			name: "AINEX_WALK_FORWARD",
 			description:
-				"Make the AiNex robot walk forward at the configured gait speed.",
+				"Start walking the AiNex robot forward. Sends walk.set+walk.command:start to the bridge; the robot keeps walking until AINEX_STOP is issued. Options: speed (1-4), x (0-0.05).",
 			parameters: [],
 			similes: ["WALK_FORWARD", "MOVE_FORWARD", "GO_FORWARD"],
 			descriptionCompressed:
-				"Make the AiNex robot walk forward at the configured gait speed.",
+				"Start walking the AiNex robot forward. Sends walk. set+walk. command:start to the bridge. the robot keeps walking until AINEX_STOP is issued. Options: speed...",
 		},
 		{
 			name: "AINEX_WAVE",
-			description: "Play the wave gesture action group on the AiNex robot.",
+			description: "Play the `wave` action group on the AiNex robot.",
 			parameters: [],
-			similes: ["WAVE", "WAVE_HAND", "GREET"],
-			descriptionCompressed:
-				"Play the wave gesture action group on the AiNex robot.",
+			similes: ["WAVE", "WAVE_HAND", "GREET", "SAY_HI"],
+			descriptionCompressed: "Play the `wave` action group on the AiNex robot.",
 		},
 		{
 			name: "ALARM",

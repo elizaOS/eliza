@@ -79,16 +79,23 @@ package bpu_pkg;
     // Geometric history lengths used to compute the per-table indices.
     // Each entry is the global history length used when folding into the
     // TAGE index and tag. The bottom table is the shortest history.
-    // Exposed both as a `const`-style parameter array (elaboration friendly)
-    // and as a constant function (runtime/simulation friendly).
-    localparam int unsigned TAGE_HIST_LEN [TAGE_TABLES] = '{8, 13, 32, 64, 119};
+    //
+    // Both an individual `TAGE_HIST_LEN_*` localparam and a constant
+    // function are exposed; downstream RTL uses the localparams from
+    // generate-time elaboration so yosys (no constant-function support for
+    // module port widths) can also parse the package.
+    localparam int unsigned TAGE_HIST_LEN_0 = 8;
+    localparam int unsigned TAGE_HIST_LEN_1 = 13;
+    localparam int unsigned TAGE_HIST_LEN_2 = 32;
+    localparam int unsigned TAGE_HIST_LEN_3 = 64;
+    localparam int unsigned TAGE_HIST_LEN_4 = 119;
     function automatic int unsigned tage_hist_len(input int unsigned table_id);
         case (table_id)
-            32'd0:   tage_hist_len = 32'd8;
-            32'd1:   tage_hist_len = 32'd13;
-            32'd2:   tage_hist_len = 32'd32;
-            32'd3:   tage_hist_len = 32'd64;
-            32'd4:   tage_hist_len = 32'd119;
+            32'd0:   tage_hist_len = TAGE_HIST_LEN_0;
+            32'd1:   tage_hist_len = TAGE_HIST_LEN_1;
+            32'd2:   tage_hist_len = TAGE_HIST_LEN_2;
+            32'd3:   tage_hist_len = TAGE_HIST_LEN_3;
+            32'd4:   tage_hist_len = TAGE_HIST_LEN_4;
             default: tage_hist_len = 32'd0;
         endcase
     endfunction
@@ -109,7 +116,10 @@ package bpu_pkg;
     localparam int unsigned SC_ENTRIES_TABLE = 512;
     localparam int unsigned SC_IDX_W         = $clog2(SC_ENTRIES_TABLE);
     localparam int unsigned SC_CTR_W         = 6;
-    localparam int unsigned SC_HIST_LEN [SC_TABLES] = '{0, 4, 10, 16};
+    localparam int unsigned SC_HIST_LEN_0 = 0;
+    localparam int unsigned SC_HIST_LEN_1 = 4;
+    localparam int unsigned SC_HIST_LEN_2 = 10;
+    localparam int unsigned SC_HIST_LEN_3 = 16;
     function automatic int unsigned sc_hist_len(input int unsigned table_id);
         case (table_id)
             32'd0:   sc_hist_len = 32'd0;
@@ -144,8 +154,16 @@ package bpu_pkg;
     // ITTAGE indirect predictor
     // ------------------------------------------------------------------
     localparam int unsigned ITTAGE_TABLES = 5;
-    localparam int unsigned ITTAGE_ENTRIES [ITTAGE_TABLES] = '{256, 256, 512, 512, 512};
-    localparam int unsigned ITTAGE_HIST_LEN [ITTAGE_TABLES] = '{4, 8, 13, 16, 32};
+    localparam int unsigned ITTAGE_ENTRIES_0 = 256;
+    localparam int unsigned ITTAGE_ENTRIES_1 = 256;
+    localparam int unsigned ITTAGE_ENTRIES_2 = 512;
+    localparam int unsigned ITTAGE_ENTRIES_3 = 512;
+    localparam int unsigned ITTAGE_ENTRIES_4 = 512;
+    localparam int unsigned ITTAGE_HIST_LEN_0 = 4;
+    localparam int unsigned ITTAGE_HIST_LEN_1 = 8;
+    localparam int unsigned ITTAGE_HIST_LEN_2 = 13;
+    localparam int unsigned ITTAGE_HIST_LEN_3 = 16;
+    localparam int unsigned ITTAGE_HIST_LEN_4 = 32;
     // Per-table entry counts mirror Kunminghu v2.
     function automatic int unsigned ittage_entries(input int unsigned table_id);
         case (table_id)

@@ -434,10 +434,11 @@ module e1_l1i_cache
                     miss_is_prefetch <= 1'b0;
                 end
                 MS_REQ: begin
-                    miss_valid       <= 1'b1;
-                    miss_paddr_line  <= miss_paddr_q;
-                    miss_is_prefetch <= miss_is_pf_q;
-                    if (miss_ready) begin
+                    if (!miss_valid) begin
+                        miss_valid       <= 1'b1;
+                        miss_paddr_line  <= miss_paddr_q;
+                        miss_is_prefetch <= miss_is_pf_q;
+                    end else if (miss_ready) begin
                         miss_valid       <= 1'b0;
                         miss_state_q     <= MS_FILL;
                         miss_beat_seen_q <= '0;

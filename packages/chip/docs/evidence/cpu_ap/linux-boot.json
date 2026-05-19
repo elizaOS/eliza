@@ -1,0 +1,7 @@
+{
+  "schema": "eliza.cpu_linux_boot_evidence.v1",
+  "status": "blocked",
+  "reason": "transcript missing: run scripts/run_linux_smoke.sh first",
+  "transcript": "build/evidence/cpu_ap/eliza_e1_linux_boot.log",
+  "checked_at": "2026-05-19T09:29:05Z"
+}

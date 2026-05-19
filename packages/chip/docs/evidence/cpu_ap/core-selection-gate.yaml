@@ -1,0 +1,34 @@
+schema: eliza.cpu_ap_core_selection_gate.v1
+status: pinned_pending_big_core_license
+claim_boundary: >
+  Core-selection gate for the e1 cluster (1+3+4 topology). Mirrors
+  generators/chipyard/eliza-*-manifest.json files into a single evidence
+  artifact so docs/evidence/cpu_ap/core-selection.json is the audit
+  record. The big-core slot stays BLOCKED until Tenstorrent Ascalon-D8
+  license + procurement closes.
+target_topology: 1_ultra_3_premium_4_pro
+cluster_roles:
+  big_core_e1_ultra:
+    target_manifest: generators/chipyard/eliza-ascalon-manifest.json
+    target_status: BLOCKED_license_required
+    fallback_manifest: generators/chipyard/eliza-kunminghu-manifest.json
+    fallback_status: selected_pending_external_xiangshan_checkout
+  mid_core_e1_premium:
+    target_manifest: generators/chipyard/eliza-kunminghu-manifest.json
+    target_status: selected_pending_external_xiangshan_checkout
+    fallback_manifest: generators/chipyard/eliza-boom-manifest.json
+    fallback_status: selected_via_chipyard_boom_generator
+  little_core_e1_pro:
+    target_manifest: generators/chipyard/eliza-cva6-manifest.json
+    target_status: selected_via_chipyard_cva6_wrapper
+  linux_bringup_application_hart:
+    target_manifest: generators/chipyard/eliza-rocket-manifest.json
+    canonical_manifest: docs/generators/chipyard/eliza-rocket-manifest.json
+    target_status: selected_not_generated
+gate_command: make core-selection-check
+gate_command_strict: make core-selection-check-strict
+gate_evidence_file: docs/evidence/cpu_ap/core-selection.json
+fail_closed_until:
+  - All four cluster roles have at least one manifest with a real pinned commit.
+  - Big-core slot has a real pinned commit (license + procurement closed).
+  - Linux bring-up Rocket transcript exists at build/evidence/cpu_ap/eliza_e1_linux_boot.log.

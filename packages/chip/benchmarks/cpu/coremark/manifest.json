@@ -1,0 +1,57 @@
+{
+  "schema": "eliza.cpu_benchmark_manifest.v1",
+  "benchmark": "coremark",
+  "status": "pinned_not_run",
+  "claim_boundary": "build_only_until_real_core_runs_coremark_on_verilator_or_silicon",
+  "upstream": {
+    "name": "CoreMark",
+    "vendor": "EEMBC",
+    "repo": "https://github.com/eembc/coremark.git",
+    "license": "Apache-2.0",
+    "pinned_tag": "v1.0.2",
+    "pinned_commit": "BLOCKED_until_first_clone_resolves_tag"
+  },
+  "build_target": {
+    "isa": "rv64gc",
+    "abi": "lp64d",
+    "march": "rv64gc",
+    "mabi": "lp64d",
+    "optimization": "-O3",
+    "compiler_pinned": "riscv-none-elf-gcc 15.2.0 (xpack)",
+    "compiler_host_path": "external/xpack-riscv-none-elf-gcc-15.2.0-1/bin/riscv-none-elf-gcc"
+  },
+  "iterations_target_seconds": 12,
+  "iterations_minimum": 1000,
+  "thread_count": 1,
+  "expected_results": {
+    "rocket_rv64gc_1.5_ghz": {
+      "coremark": 4500,
+      "coremark_per_mhz": 3.0,
+      "claim_status": "modeled_open_reference"
+    },
+    "cva6_rv64gc_2.0_ghz": {
+      "coremark": 6000,
+      "coremark_per_mhz": 3.0,
+      "claim_status": "modeled_open_reference"
+    },
+    "kunminghu_v2_rv64gcv_3.0_ghz": {
+      "coremark": 30000,
+      "coremark_per_mhz": 10.0,
+      "claim_status": "modeled_per_upstream_kunminghu_publication"
+    },
+    "e1_ultra_target_4.0_ghz": {
+      "coremark": 40000,
+      "coremark_per_mhz": 10.0,
+      "claim_status": "blocked_until_silicon_evidence"
+    }
+  },
+  "result_artifact": "benchmarks/results/cpu/coremark/result.json",
+  "result_schema": "eliza.cpu_benchmark_result.v1",
+  "run_command": "scripts/run_coremark.sh",
+  "fail_closed_until": [
+    "external/coremark/ checkout at pinned tag",
+    "xpack riscv-none-elf-gcc available on host",
+    "DUT verilator simulator or silicon",
+    "benchmarks/results/cpu/coremark/result.json exists and matches schema"
+  ]
+}

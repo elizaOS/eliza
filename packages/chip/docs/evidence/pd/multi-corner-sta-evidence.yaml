@@ -1,0 +1,52 @@
+schema: eliza.pd_multi_corner_sta_evidence.v1
+status: draft_local_evidence
+release_use: prohibited_until_external_review
+scope: sky130_six_corner_mvp_plus_n3_pocv_socv_blocked
+description: |
+  Multi-corner STA evidence gate. Six-corner SS/TT/FF x min/max RC is the
+  open-PDK MVP. 100+ corner POCV/SOCV with LVF Liberty + ML corner-pruning
+  is required at the 2028 advanced-node target and is BLOCKED on the
+  commercial-EDA gate.
+source_artifacts:
+  - scripts/run_multi_corner_sta.py
+  - docs/pd/multi-corner-sta.md
+required_corners_stage1:
+  - SS_min
+  - SS_max
+  - TT_min
+  - TT_max
+  - FF_min
+  - FF_max
+local_findings:
+  six_corner_mvp:
+    status: ready_but_not_yet_captured
+    evidence_boundary: |
+      scripts/run_multi_corner_sta.py is ready. It requires PDK_ROOT to be
+      set to the sky130A install path and an OpenLane release run with a
+      complete final/spef/*.spef and final/nl/*.v. The release run has
+      produced these in past sessions but the multi-corner STA driver has
+      not yet been invoked against them.
+  pocv_socv_lvf:
+    status: blocked
+    evidence_boundary: |
+      POCV/SOCV+LVF requires LVF Liberty libraries. The Sky130 open
+      libraries do not ship LVF. Open PDKs at N3/N2 do not exist.
+  ml_corner_pruning:
+    status: blocked
+    evidence_boundary: |
+      Pruning depends on a baseline of N3/N2 PrimeTime SI runs. BLOCKED on
+      commercial-eda-gate.
+acceptance_criteria_stage1:
+  - All 6 corner reports exist under build/pd/multi_corner_sta/<run_id>/.
+  - TT_max setup_wns >= 0.
+  - FF_min hold_wns >= 0.
+  - SS_max setup_wns >= 0 OR violators land in documented exception list.
+acceptance_criteria_stage3:
+  - PrimeTime SI runs path-based STA on >= 32 N3/N2 corners.
+  - POCV/SOCV LVF Liberty in use.
+  - ML corner-pruning regression validated against the full Cartesian
+    subset for at least one block.
+release_blockers:
+  - Multi-corner STA driver has not yet been invoked against the release run.
+  - POCV/SOCV+LVF Liberty libraries unavailable at open PDKs.
+  - PrimeTime SI / Tempus BLOCKED on commercial-eda-gate.

@@ -276,7 +276,6 @@ module e1_l2_cache
                     // neither starves. PTW gets a single-cycle bypass when
                     // both miss queues are empty.
                     arb_pick_l1i_q <= ~arb_pick_l1i_q;
-                    l1i_acq_ready_int(); // placeholder for tooling note
                     if (arb_pick_l1i_q && l1i_acq_valid) begin
                         l2_handle_l1i(l1i_acq_paddr_line, l1i_acq_is_prefetch);
                     end else if (l1d_acq_valid) begin
@@ -310,8 +309,9 @@ module e1_l2_cache
                     end
                 end
                 S_REQ_L3: begin
-                    l3_acq_valid <= 1'b1;
-                    if (l3_acq_ready) begin
+                    if (!l3_acq_valid) begin
+                        l3_acq_valid <= 1'b1;
+                    end else if (l3_acq_ready) begin
                         l3_acq_valid <= 1'b0;
                         state_q      <= S_WAIT_L3;
                     end
@@ -324,8 +324,9 @@ module e1_l2_cache
                     end
                 end
                 S_PROBE_L1D: begin
-                    l1d_probe_valid       <= 1'b1;
-                    if (l1d_probe_ready) begin
+                    if (!l1d_probe_valid) begin
+                        l1d_probe_valid <= 1'b1;
+                    end else if (l1d_probe_ready) begin
                         l1d_probe_valid <= 1'b0;
                         state_q         <= S_WAIT_PROBE;
                     end
@@ -443,12 +444,6 @@ module e1_l2_cache
         l3_probe_ack         <= 1'b1;
         l3_probe_final_state <= l3_probe_target_state;
     endtask
-
-    // The placeholder helper below is required only because the always_ff
-    // block calls a tooling note in S_IDLE; we model ready combinatorially.
-    function automatic logic l1i_acq_ready_int();
-        return 1'b1;
-    endfunction
 
     // Ready signals: accept only when idle
     assign l1i_acq_ready = (state_q == S_IDLE) && !l1i_grant_valid;

@@ -153,7 +153,7 @@ def generated_path_blockers() -> list[str]:
             "`CHIPYARD_LINUX_SMOKE_USE_DOCKER=1 scripts/run_chipyard_eliza_linux_smoke.sh` "
             "inside the /work-mounted container path"
         )
-    elif GENERATED_CONFIG_DIR.exists() or GENERATED_SIMULATOR.exists():
+    elif partial_generated:
         blockers.append(
             "partial generated Verilator output is missing the driver makefile after generation: "
             f"{rel(GENERATED_DRIVER_MAKEFILE)}; remove the generated config directory and rerun "

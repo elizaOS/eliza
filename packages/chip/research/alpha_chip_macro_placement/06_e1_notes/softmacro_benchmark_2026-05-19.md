@@ -234,6 +234,83 @@ evidence. It is a verified local AlphaChip PPO placement win on a coarse
 current-chip benchmark, proving the local training/compare loop works end to
 end.
 
+## AlphaChip PPO scale-up attempt - 64 soft macros
+
+The 64-soft-macro benchmark uses the same full E1 detailed-routing DEF with
+8 x 8 soft-macro grouping:
+
+- `/tmp/e1-alphachip/e1_softmacro_8x8/e1_softmacro.pb.txt`
+- `/tmp/e1-alphachip/e1_softmacro_8x8/e1_softmacro.openroad.plc`
+
+OpenROAD-derived proxy baseline:
+
+```json
+{
+  "proxy_cost": 0.25596493356586325,
+  "wirelength_cost": 0.1318461144248014,
+  "congestion_cost": 0.2266805332318832,
+  "density_cost": 0.02155710505024051,
+  "wirelength": 217549.1739999999
+}
+```
+
+The verified 16-soft-macro policy checkpoint can be mounted as a warm start for
+larger benchmarks:
+
+```sh
+ALPHACHIP_POLICY_DIR=/home/shaw/e1-alphachip-runs/e1_4x4_ppo_100it/run_00/601/policies \
+POLICY_SAVED_MODEL_DIR=/e1-policy/policy \
+POLICY_CHECKPOINT_DIR=/e1-policy/checkpoints/policy_checkpoint_0000027200
+```
+
+A short warm-start probe loaded that checkpoint successfully and produced a
+64-soft-macro PPO placement with proxy cost `0.38245119029810115`, better than
+the earlier cold PPO probe (`0.4406208139121543`) but still worse than
+OpenROAD.
+
+A longer CPU warm-start run used:
+
+```sh
+ALPHACHIP_BENCH_DIR=/tmp/e1-alphachip/e1_softmacro_8x8 \
+ALPHACHIP_RUN_DIR=/home/shaw/e1-alphachip-runs/e1_8x8_warm_100it \
+ALPHACHIP_POLICY_DIR=/home/shaw/e1-alphachip-runs/e1_4x4_ppo_100it/run_00/601/policies \
+POLICY_SAVED_MODEL_DIR=/e1-policy/policy \
+POLICY_CHECKPOINT_DIR=/e1-policy/checkpoints/policy_checkpoint_0000027200 \
+REVERB_PORT=8037 \
+GLOBAL_SEED=703 \
+NUM_COLLECT_JOBS=4 \
+SEQUENCE_LENGTH=65 \
+OBS_MAX_NUM_NODES=192 \
+OBS_MAX_NUM_EDGES=4096 \
+OBS_MAX_GRID_SIZE=16 \
+TRAIN_ITERATIONS=100 \
+EPISODES_PER_ITERATION=8 \
+PER_REPLICA_BATCH_SIZE=4 \
+RUN_EVAL=True \
+  scripts/alphachip/run_e1_softmacro_training.sh
+```
+
+It was stopped at model id 28 after plateauing well above the baseline. The
+best independent score from the exported evaluator placement was:
+
+```json
+{
+  "proxy_cost": 0.36027450729090343,
+  "wirelength_cost": 0.2375191151834578,
+  "congestion_cost": 0.2236096755560079,
+  "density_cost": 0.02190110865888343,
+  "wirelength": 391912.0980000007
+}
+```
+
+Running CT coordinate descent on that AlphaChip placement improved it only to
+`0.3567482057653176`, still worse than OpenROAD. This means the local CPU
+64-soft-macro policy is not yet close enough for the local finisher to recover.
+
+Conclusion: the 16-soft-macro AlphaChip loop is proven and outperforming; the
+64-soft-macro and 256-soft-macro targets should move to H200/GPU training or a
+stronger curriculum/pretrained checkpoint.
+
 Local GPU status:
 
 - `nvidia-smi` sees an RTX 5080 Laptop GPU with 16 GB VRAM.

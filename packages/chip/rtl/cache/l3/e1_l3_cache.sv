@@ -43,14 +43,14 @@ module e1_l3_cache
     input  logic                       l2_acq_is_write,
     input  mesi_e                      l2_acq_req_state,
     input  logic [8*LINE_BYTES-1:0]    l2_acq_wb_data,
-    input  logic [$clog2(NUM_L2>0?NUM_L2:1)-1:0] l2_acq_source_id,
+    input  logic [(NUM_L2 > 1 ? $clog2(NUM_L2) : 1)-1:0] l2_acq_source_id,
 
     output logic                       l2_grant_valid,
     input  logic                       l2_grant_ready,
     output logic [PADDR_W-1:0]         l2_grant_paddr_line,
     output logic [8*LINE_BYTES-1:0]    l2_grant_data,
     output mesi_e                      l2_grant_state,
-    output logic [$clog2(NUM_L2>0?NUM_L2:1)-1:0] l2_grant_source_id,
+    output logic [(NUM_L2 > 1 ? $clog2(NUM_L2) : 1)-1:0] l2_grant_source_id,
 
     // Probe issued to L2(s)
     output logic                       l2_probe_valid,
@@ -92,7 +92,7 @@ module e1_l3_cache
     /* verilator lint_off UNUSEDPARAM */
     localparam int unsigned BANK_SHIFT    = OFFSET_W;
     /* verilator lint_on UNUSEDPARAM */
-    localparam int unsigned SRC_W         = $clog2(NUM_L2 > 0 ? NUM_L2 : 1);
+    localparam int unsigned SRC_W         = (NUM_L2 > 1) ? $clog2(NUM_L2) : 1;
 
     function automatic logic [BANK_W-1:0] addr_bank(input logic [PADDR_W-1:0] a);
         return a[OFFSET_W +: BANK_W];

@@ -1,0 +1,39 @@
+schema: eliza.dvfs_table_evidence.v1
+status: blocked
+release_use: prohibited_until_external_review
+claim_boundary: >
+  Fail-closed gate for per-corner DVFS tables. Requires SS / TT / FF YAMLs
+  in docs/pd/dvfs-tables/ generated from silicon STA corner sweep at
+  pd/signoff/sta/<corner>/. Today only a TT placeholder exists; release
+  claims are forbidden.
+source_artifacts:
+  - docs/pd/dvfs-tables/README.md
+  - docs/pd/dvfs-tables/dvfs-table-tt-placeholder.yaml
+  - docs/pd/rail-plan-2028.yaml
+  - fw/pmc/src/dvfs_arbiter.c
+required_files:
+  - id: ss_table
+    path: docs/pd/dvfs-tables/dvfs-table-ss.yaml
+    status: missing
+  - id: tt_table
+    path: docs/pd/dvfs-tables/dvfs-table-tt.yaml
+    status: missing_placeholder_only_present
+  - id: ff_table
+    path: docs/pd/dvfs-tables/dvfs-table-ff.yaml
+    status: missing
+required_per_table_rails:
+  - VDD_CPU_BIG
+  - VDD_CPU_LITTLE
+  - VDD_NPU
+  - VDD_GPU
+  - VDD_SOC_FABRIC
+  - VDD_SRAM
+acceptance_thresholds:
+  guardband_mv_min: 6.25
+  per_rail_operating_points_min: 2
+  per_rail_operating_points_max: 16
+release_blockers:
+  - Silicon characterization data not available.
+  - PDK selection not finalized; STA corner sweep not run.
+  - SS / FF tables not authored.
+  - Voltage guardband policy not formally adopted.

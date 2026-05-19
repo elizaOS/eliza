@@ -17,6 +17,13 @@ export interface ListRenderContext {
   ) => string;
 }
 
+function hasNestedTokens(token: Token): token is Token & { tokens: Token[] } {
+  return (
+    "tokens" in token &&
+    Array.isArray((token as { tokens?: unknown }).tokens)
+  );
+}
+
 /**
  * Render a list with proper nesting support.
  *
@@ -106,9 +113,11 @@ export function renderListItem(
     } else if (token.type === "text") {
       // Text content (may have inline tokens)
       const text =
-        token.tokens && token.tokens.length > 0
+        hasNestedTokens(token) && token.tokens.length > 0
           ? context.renderInlineTokens(token.tokens)
-          : token.text || "";
+          : "text" in token && typeof token.text === "string"
+            ? token.text
+            : "";
       lines.push(text);
     } else if (token.type === "paragraph") {
       // Paragraph in list item

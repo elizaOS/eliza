@@ -206,8 +206,8 @@ class E1NpuRuntime:
         NpuPrecisionSupport(
             "INT2",
             NpuPrecisionState.SUPPORTED,
-            "DOT16_S2 packed scalar dot prototype only; no tensor GEMM/compiler path",
-            "runtime opcode and packed INT2 reference tests only",
+            "DOT16_S2 packed scalar dot prototype with bounded INT2 matmul lowering smoke; no tensor INT2 GEMM/compiler path",
+            "runtime opcode, packed INT2 reference tests, and int2_matmul lowering smoke only",
         ),
         NpuPrecisionSupport(
             "FP16",
@@ -224,8 +224,8 @@ class E1NpuRuntime:
         NpuPrecisionSupport(
             "FP8",
             NpuPrecisionState.SUPPORTED,
-            "DOT4_FP8_E4M3 scalar E4M3 dot prototype with signed Q8.8 output only; no tensor GEMM/compiler path",
-            "runtime opcode and E4M3 fixed-point reference tests only",
+            "DOT4_FP8_E4M3 scalar E4M3 dot prototype with bounded FP8 matmul lowering smoke and signed Q8.8 output; no tensor FP8 GEMM/compiler path",
+            "runtime opcode, E4M3 fixed-point reference tests, and fp8_matmul lowering smoke only",
         ),
     )
 

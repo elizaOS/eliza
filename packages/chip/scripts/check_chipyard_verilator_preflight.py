@@ -29,6 +29,7 @@ REQUIRED_TOP_LEVEL_SUBMODULE_ROOTS = (
     "generators/ibex",
     "generators/nvdla",
     "sims/firesim",
+    "toolchains/riscv-tools/riscv-isa-sim",
     "tools/DRAMSim2",
     "tools/cde",
     "tools/dsptools",
@@ -345,6 +346,34 @@ def main() -> int:
             blockers.append(
                 "missing RISC-V toolchain under RISCV; expected one of: "
                 + ", ".join(str(candidate) for candidate in toolchain_candidates)
+            )
+        fesvr_header = Path(riscv) / "include/fesvr/memif.h"
+        spike_cfg_header = Path(riscv) / "include/riscv/cfg.h"
+        fesvr_library = Path(riscv) / "lib/libfesvr.a"
+        spike_library = Path(riscv) / "lib/libriscv.a"
+        checks["exists:RISCV/include/fesvr/memif.h"] = fesvr_header.is_file()
+        checks["exists:RISCV/include/riscv/cfg.h"] = spike_cfg_header.is_file()
+        checks["exists:RISCV/lib/libfesvr.a"] = fesvr_library.is_file()
+        checks["exists:RISCV/lib/libriscv.a"] = spike_library.is_file()
+        if not fesvr_header.is_file():
+            blockers.append(
+                "missing FESVR header under RISCV: "
+                f"{fesvr_header}; build/install Chipyard riscv-isa-sim collateral"
+            )
+        if not spike_cfg_header.is_file():
+            blockers.append(
+                "missing Spike transitive header under RISCV: "
+                f"{spike_cfg_header}; build/install Chipyard riscv-isa-sim collateral"
+            )
+        if not fesvr_library.is_file():
+            blockers.append(
+                "missing FESVR static library under RISCV: "
+                f"{fesvr_library}; build/install Chipyard riscv-isa-sim collateral"
+            )
+        if not spike_library.is_file():
+            blockers.append(
+                "missing Spike static library under RISCV: "
+                f"{spike_library}; build/install Chipyard riscv-isa-sim collateral"
             )
 
     env_sh = CHECKOUT / "env.sh"

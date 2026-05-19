@@ -1,0 +1,44 @@
+schema: eliza.compiler.llvm_build_evidence.v1
+as_of: 2026-05-19
+claim_boundary: |
+  pinned_recipe_only; no executable evidence of a built LLVM toolchain is
+  accepted as release evidence until the canonical Linux container build
+  produces all artifacts in this manifest.
+
+blocked_until:
+  - llvm_pin.upstream.commit_sha differs from TODO_PIN_LLVM_SHA_FROM_CONTAINER_BUILD
+  - build/llvm-stage2/bin/clang exists
+  - build/reports/compiler/llvm-version.txt records a clang major >= 21
+  - build/reports/compiler/llvm-build-sha.txt records a 40-character SHA matching the pin
+  - build/reports/compiler/llvm-hello-rva23.dump shows RVV vector instructions
+
+required_artifacts:
+  - path: compiler/llvm-build/llvm-pin.json
+    purpose: source of truth for LLVM SHA, build flags, and RVA23 patch list
+  - path: docs/toolchain/llvm-trunk-pin.md
+    purpose: human-readable pin policy and refresh procedure
+  - path: scripts/build_llvm_riscv.sh
+    purpose: two-stage build recipe executed inside the canonical Linux container
+  - path: build/llvm-stage2/bin/clang
+    purpose: produced stage-2 cross-targeted clang
+  - path: build/llvm-stage2/bin/ld.lld
+    purpose: produced stage-2 linker
+  - path: build/llvm-stage2/bin/llvm-bolt
+    purpose: produced post-link optimizer
+  - path: build/reports/compiler/llvm-version.txt
+    purpose: pinned `clang --version` text
+  - path: build/reports/compiler/llvm-build-sha.txt
+    purpose: resolved LLVM commit SHA from the canonical build
+  - path: build/reports/compiler/llvm-hello-rva23.dump
+    purpose: cross-compile smoke that exercises -march=rva23u64
+
+verification_commands:
+  - scripts/build_llvm_riscv.sh
+  - scripts/build_llvm_riscv.sh --verify
+  - scripts/check_compiler_versions.py --strict
+  - scripts/check_rva23_compliance.py --strict --toolchain build/llvm-stage2
+
+forbidden_claims_without_required_evidence:
+  - "LLVM toolchain reproducible"
+  - "RVA23 release-grade compile"
+  - "ThinLTO + sample-PGO + Propeller + BOLT end-to-end"

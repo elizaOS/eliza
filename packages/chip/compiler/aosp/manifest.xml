@@ -1,0 +1,34 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  Pinned AOSP RISC-V branch manifest for the e1 chip toolchain.
+
+  STATUS: BLOCKED.
+
+  Google removed RISC-V from the Android Common Kernel as primary branch in
+  April 2024 and reinstated RVA23 RISC-V as Tier 1 late 2025. As of
+  2026-05-19 there is no single AOSP RISC-V branch with stable Tier 1 CTS
+  that is safe to pin for an open dev-board project. This manifest is a
+  fail-closed placeholder: the `revision` and `<sha1>` attributes hold the
+  string `TODO_PIN_AOSP_RISCV_BRANCH_SHA` and are rejected by
+  scripts/check_rva23_compliance.py with `BLOCKED aosp.branch_pin`.
+
+  Refresh procedure once a stable branch exists:
+
+    1. Identify the branch (e.g. android-15.0.0_r4-riscv64).
+    2. Run `repo init -u https://android.googlesource.com/platform/manifest \
+         -b <branch>` and capture every project's SHA into <project sha1=...>.
+    3. Commit the populated manifest plus the pinning evidence in
+       docs/evidence/compiler/aosp-branch-pin.yaml.
+
+  Until that pin lands, no AOSP RISC-V build evidence may be cited as
+  release-grade.
+-->
+<manifest>
+  <remote name="aosp" fetch="https://android.googlesource.com/" />
+  <default remote="aosp"
+           revision="TODO_PIN_AOSP_RISCV_BRANCH_SHA"
+           sync-j="8" />
+
+  <!-- The full project list is intentionally empty: any non-placeholder
+       entry implies a tested branch SHA that does not yet exist. -->
+</manifest>

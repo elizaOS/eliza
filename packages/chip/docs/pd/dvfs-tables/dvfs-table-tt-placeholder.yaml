@@ -1,0 +1,95 @@
+schema: eliza.dvfs_table.v1
+status: placeholder_release_blocked
+corner: tt
+process_temperature_c: 25
+release_use: prohibited_until_external_review
+claim_boundary: >
+  This file is a format placeholder for the typical-typical (TT) corner DVFS
+  table. Values are planning estimates derived from
+  docs/architecture-optimization/soc-optimized-operating-point.yaml and
+  docs/pd/rail-plan-2028.yaml. They are not silicon characterization data and
+  are not release-grade. Replace with STA-corner-bin output before signoff.
+source_artifacts:
+  - docs/pd/rail-plan-2028.yaml
+  - docs/architecture-optimization/soc-optimized-operating-point.yaml
+rails:
+  VDD_CPU_BIG:
+    operating_points:
+      - frequency_hz: 800000000
+        nominal_code: 0x60
+        min_code: 0x58
+        max_code: 0x68
+      - frequency_hz: 1600000000
+        nominal_code: 0x78
+        min_code: 0x70
+        max_code: 0x80
+      - frequency_hz: 2400000000
+        nominal_code: 0x90
+        min_code: 0x88
+        max_code: 0x98
+      - frequency_hz: 3200000000
+        nominal_code: 0xB0
+        min_code: 0xA8
+        max_code: 0xC0
+  VDD_CPU_LITTLE:
+    operating_points:
+      - frequency_hz: 600000000
+        nominal_code: 0x50
+        min_code: 0x48
+        max_code: 0x58
+      - frequency_hz: 1200000000
+        nominal_code: 0x68
+        min_code: 0x60
+        max_code: 0x70
+      - frequency_hz: 1800000000
+        nominal_code: 0x80
+        min_code: 0x78
+        max_code: 0x88
+  VDD_NPU:
+    operating_points:
+      - frequency_hz: 800000000
+        nominal_code: 0x60
+        min_code: 0x58
+        max_code: 0x68
+      - frequency_hz: 1200000000
+        nominal_code: 0x80
+        min_code: 0x78
+        max_code: 0x88
+      - frequency_hz: 1600000000
+        nominal_code: 0x98
+        min_code: 0x90
+        max_code: 0xA0
+  VDD_GPU:
+    operating_points:
+      - frequency_hz: 600000000
+        nominal_code: 0x60
+        min_code: 0x58
+        max_code: 0x68
+      - frequency_hz: 1000000000
+        nominal_code: 0x80
+        min_code: 0x78
+        max_code: 0x88
+  VDD_SOC_FABRIC:
+    operating_points:
+      - frequency_hz: 1000000000
+        nominal_code: 0x78
+        min_code: 0x70
+        max_code: 0x80
+      - frequency_hz: 1500000000
+        nominal_code: 0x88
+        min_code: 0x80
+        max_code: 0x90
+  VDD_SRAM:
+    operating_points:
+      - frequency_hz: 1600000000
+        nominal_code: 0x90
+        min_code: 0x80
+        max_code: 0x98
+      - frequency_hz: 2400000000
+        nominal_code: 0xA0
+        min_code: 0x98
+        max_code: 0xA8
+release_blockers:
+  - Silicon characterization data not available; values are planning only.
+  - PDK selection not finalized; STA corner sweep not run.
+  - SS / FF tables not authored.

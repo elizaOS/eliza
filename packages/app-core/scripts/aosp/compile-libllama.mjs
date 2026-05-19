@@ -209,6 +209,18 @@ export const LLAMA_CPP_TAG = "v1.2.0-eliza";
 export const LLAMA_CPP_COMMIT = "33c888a7be0b0b8ffb54cd3f0e05b4bed20cc52e";
 export const LLAMA_CPP_REMOTE = "https://github.com/elizaOS/llama.cpp.git";
 export const MIN_ZIG_VERSION = "0.13.0";
+// Floor for the RVV-on riscv64 build. Zig 0.13's bundled LLVM rejects the
+// GCC-style `-march=rv64gcv*` ISA string the vendored llama.cpp's
+// ggml-cpu/CMakeLists hard-codes when GGML_RVV / GGML_RV_ZFH / etc. are ON;
+// zig 0.14+ accepts it. Below this floor we hard-disable RVV + Zfh + Zvfh +
+// Zicbop + Zihintpause + Zvfbfwma + XTheadVector + Zba + SpaceMit so the
+// MARCH_STR collapses to plain `rv64gc` (which Zig 0.13's argv filter then
+// strips, since the `riscv64-linux-musl` triple already implies rv64gc/lp64d).
+// At or above this floor we leave the upstream defaults ON, the filter
+// becomes a no-op, and the vendored RVV intrinsic kernels (q4_0/q4_1/q5_0/
+// q5_1/q8_0/q8_1/q4_K/q5_K/q6_K/q8_K/iq*/tq1_0/tq2_0/mxfp4 in
+// ggml/src/ggml-cpu/arch/riscv/quants.c) light up.
+export const MIN_ZIG_RVV_VERSION = "0.14.0";
 
 // The in-repo submodule checkout of the fork.
 // `repoRoot` resolves to the repo root that contains a top-level package.json.
@@ -496,6 +508,126 @@ export function probeZig({
   return version;
 }
 
+/**
+ * Decide the riscv64 build plan based on the detected Zig version + env knobs.
+ * Pure: takes the version string + env, returns a structured plan. No side
+ * effects.
+ *
+ * Returns one of:
+ *   { rvv: false, allVariants: false, zigVersion, reason: "zig-too-old" }
+ *     — Zig < MIN_ZIG_RVV_VERSION. Scalar parity; the riscv64ArgFilter in
+ *     ensureZigDrivers strips `-march=rv64gc*` and the resulting binary is
+ *     a plain rv64gc/lp64d build.
+ *
+ *   { rvv: true, allVariants: false, zigVersion, reason: "zig-supports-rvv" }
+ *     — Zig >= MIN_ZIG_RVV_VERSION. RVV + Zfh + Zvfh + Zicbop + Zihintpause
+ *     ON (the upstream llama.cpp defaults). Resulting libggml-cpu.so requires
+ *     RVV-capable hardware at runtime; SIGILLs on a scalar core.
+ *
+ *   { rvv: true, allVariants: true, zigVersion, reason: "all-variants-opt-in" }
+ *     — Zig >= MIN_ZIG_RVV_VERSION AND env MILADY_GGML_CPU_ALL_VARIANTS=1.
+ *     Builds GGML_BACKEND_DL + GGML_CPU_ALL_VARIANTS so two
+ *     libggml-cpu-riscv64_{0,v}.so variants ship; runtime picks via
+ *     riscv_hwprobe (`ggml-cpu/arch/riscv/cpu-feats.cpp`). Opt-in until the
+ *     Android loader story for the DL-backend dispatch is verified end-to-end
+ *     across arm64/x86_64 — flipping that on by default would change the
+ *     artifact list for non-riscv64 ABIs too.
+ *
+ *   { rvv: false, allVariants: false, zigVersion: null, reason: "zig-not-detected" }
+ *     — Probe failed (used in dry-run mode where zig may legitimately not be
+ *     on PATH). Falls back to scalar so the dry-run plan reflects the
+ *     conservative default.
+ *
+ * Exported for tests.
+ */
+export function resolveRiscv64BuildPlan({
+  zigVersion = null,
+  probe = probeZig,
+  env = process.env,
+  isDryRun = false,
+} = {}) {
+  let version = zigVersion;
+  if (version === null) {
+    if (isDryRun) {
+      try {
+        version = probe();
+      } catch {
+        return {
+          rvv: false,
+          allVariants: false,
+          zigVersion: null,
+          reason: "zig-not-detected",
+        };
+      }
+    } else {
+      version = probe();
+    }
+  }
+  if (compareSemver(version, MIN_ZIG_RVV_VERSION) < 0) {
+    return {
+      rvv: false,
+      allVariants: false,
+      zigVersion: version,
+      reason: "zig-too-old",
+    };
+  }
+  const allVariantsOptIn = env.MILADY_GGML_CPU_ALL_VARIANTS === "1";
+  return {
+    rvv: true,
+    allVariants: allVariantsOptIn,
+    zigVersion: version,
+    reason: allVariantsOptIn ? "all-variants-opt-in" : "zig-supports-rvv",
+  };
+}
+
+/**
+ * Map a riscv64 build plan to the cmake -D flags that select the right
+ * GGML_RVV / GGML_RV_ZFH / etc. combination. Returns an empty array for
+ * non-riscv64 ABIs.
+ *
+ * Exported for tests.
+ */
+export function riscv64CmakeFlagsForPlan({ abi, plan }) {
+  if (abi !== "riscv64") return [];
+  if (plan.rvv === false) {
+    return [
+      "-DGGML_RVV=OFF",
+      "-DGGML_RV_ZFH=OFF",
+      "-DGGML_RV_ZVFH=OFF",
+      "-DGGML_RV_ZICBOP=OFF",
+      "-DGGML_RV_ZIHINTPAUSE=OFF",
+      "-DGGML_RV_ZVFBFWMA=OFF",
+      "-DGGML_XTHEADVECTOR=OFF",
+      "-DGGML_RV_ZBA=OFF",
+      "-DGGML_CPU_RISCV64_SPACEMIT=OFF",
+    ];
+  }
+  // RVV-on. Leave the vendored llama.cpp defaults (ON) for RVV / Zfh / Zvfh /
+  // Zicbop / Zihintpause. Keep Zvfbfwma / XTheadVector / Zba / SpaceMit off
+  // unless explicitly opted in — they're hardware-specific extensions that
+  // SIGILL on generic RVV cores.
+  const flags = [
+    "-DGGML_RVV=ON",
+    "-DGGML_RV_ZFH=ON",
+    "-DGGML_RV_ZVFH=ON",
+    "-DGGML_RV_ZICBOP=ON",
+    "-DGGML_RV_ZIHINTPAUSE=ON",
+    "-DGGML_RV_ZVFBFWMA=OFF",
+    "-DGGML_XTHEADVECTOR=OFF",
+    "-DGGML_RV_ZBA=OFF",
+    "-DGGML_CPU_RISCV64_SPACEMIT=OFF",
+  ];
+  if (plan.allVariants) {
+    // GGML_CPU_ALL_VARIANTS implies GGML_BACKEND_DL and builds per-variant
+    // libggml-cpu-riscv64_{0,v}.so; the loader picks via riscv_hwprobe.
+    // GGML_NATIVE is incompatible with GGML_BACKEND_DL in this mode (see
+    // ggml/src/ggml-cpu/CMakeLists.txt:491-494), so the existing
+    // `-DGGML_NATIVE=OFF` we pass must stay OFF (it does).
+    flags.push("-DGGML_BACKEND_DL=ON", "-DGGML_CPU_ALL_VARIANTS=ON");
+  }
+  return flags;
+}
+
 function run(command, args, { cwd, env = process.env } = {}) {
   const result = spawnSync(command, args, {
     cwd,
@@ -765,7 +897,12 @@ export function patchLlamaCppSourceForMusl({ srcDir, log = console.log }) {
  *
  * Exported for unit testing.
  */
-export function ensureZigDrivers({ cacheDir, abi, zigBin = "zig" }) {
+export function ensureZigDrivers({
+  cacheDir,
+  abi,
+  zigBin = "zig",
+  riscv64MarchPassthrough = false,
+}) {
   const target = ABI_TARGETS.find((t) => t.androidAbi === abi);
   if (!target) {
     throw new Error(`[compile-libllama] Unknown ABI: ${abi}`);
@@ -775,18 +912,21 @@ export function ensureZigDrivers({ cacheDir, abi, zigBin = "zig" }) {
   const ccPath = path.join(driverDir, "zig-cc");
   const cxxPath = path.join(driverDir, "zig-cxx");
 
-  // riscv64 needs an extra arg-filtering step. The vendored llama.cpp's
-  // ggml-cpu CMakeLists hardcodes `-march=rv64gc -mabi=lp64d` (and adds
-  // extension suffixes when GGML_RVV / GGML_RV_ZFH / etc. are ON). Zig
-  // 0.13's bundled LLVM doesn't accept `-march=rv64gc` as a GCC-style ISA
-  // string — it tries to translate it to `-mcpu=` and bails with
+  // riscv64 needs an extra arg-filtering step on Zig 0.13. The vendored
+  // llama.cpp's ggml-cpu CMakeLists hardcodes `-march=rv64gc -mabi=lp64d`
+  // (and adds extension suffixes when GGML_RVV / GGML_RV_ZFH / etc. are ON).
+  // Zig 0.13's bundled LLVM doesn't accept `-march=rv64gc` as a GCC-style
+  // ISA string — it tries to translate it to `-mcpu=` and bails with
   // "unknown CPU: 'rv64gc'". The triple `riscv64-linux-musl` already
   // selects the rv64gc/lp64d baseline as Zig's triple-derived CPU, so
   // stripping these flags is byte-for-byte equivalent to the intended
-  // build for our Wave 2 scalar-parity target. Zig 0.14+ accepts
-  // `-march=rv64gc` natively (the filter becomes a no-op there); the
-  // generated driver is shell-portable so the same script works on both
-  // Zig versions.
+  // build when RVV is OFF.
+  //
+  // On Zig 0.14+ (`riscv64MarchPassthrough=true`) we leave every
+  // `-march=` / `-mabi=` flag alone: Zig 0.14's LLVM accepts the
+  // GCC-style ISA string with the full `_zfh_zvfh_zicbop_zihintpause`
+  // extension suffix, which is exactly what flips the RVV intrinsic
+  // codepaths on in ggml/src/ggml-cpu/arch/riscv/quants.c.
   //
   // Filter logic: walk the argv via the POSIX `set --` idiom (no eval —
   // CMake escapes embedded quotes in -DGGML_VERSION=\"0.12.0\", and a
@@ -794,12 +934,8 @@ export function ensureZigDrivers({ cacheDir, abi, zigBin = "zig" }) {
   // `0.12.0` as a malformed numeric literal). Each non-stripped arg is
   // re-pushed onto $@ in place; the final `exec "$zig" cc ... "$@"`
   // forwards the whole array with every quote and space preserved.
-  //
-  // We deliberately do NOT filter `-march=rv64gcv*` or anything broader
-  // — Wave 3 (Task 5) will use Zig 0.14+ and pass the RVV march string
-  // through directly.
   const riscv64ArgFilter =
-    abi === "riscv64"
+    abi === "riscv64" && !riscv64MarchPassthrough
       ? '_n=$#\n' +
         'i=0\n' +
         'while [ $i -lt $_n ]; do\n' +
@@ -882,41 +1018,56 @@ export function buildLibllamaForAbi({
   const buildDir = path.join(srcDir, `build-${abi}`);
   fs.mkdirSync(buildDir, { recursive: true });
 
+  // riscv64: gate the RVV-on path on the detected Zig version. The vendored
+  // llama.cpp defaults GGML_RVV / GGML_RV_ZFH / GGML_RV_ZVFH / GGML_RV_ZICBOP
+  // / GGML_RV_ZIHINTPAUSE to ON, which builds the `-march=rv64gcv_zfh_zvfh_
+  // zicbop_zihintpause` ISA string. Zig 0.13's bundled LLVM doesn't accept
+  // that as a -march value (it tries to translate it to -mcpu= and fails
+  // with "unknown CPU"); Zig 0.14+ does. resolveRiscv64BuildPlan() reads the
+  // probed version and tells us which lane to take:
+  //   - rvv=false (Zig < 0.14)  -> scalar parity. Force every RVV / Zfh /
+  //     Zvfh / Zicbop / Zihintpause / Zvfbfwma / XTheadVector option OFF so
+  //     MARCH_STR collapses to plain `rv64gc`. The driver-script argv
+  //     filter then strips `-march=rv64gc -mabi=lp64d` (Zig already implies
+  //     them via the triple).
+  //   - rvv=true  (Zig >= 0.14) -> upstream defaults. The full
+  //     `-march=rv64gcv_zfh_zvfh_zicbop_zihintpause -mabi=lp64d` string
+  //     passes straight through to Zig 0.14's LLVM; quants.c's intrinsic
+  //     codepaths light up.
+  //   - allVariants (env MILADY_GGML_CPU_ALL_VARIANTS=1) -> additionally
+  //     enable GGML_BACKEND_DL + GGML_CPU_ALL_VARIANTS so the build emits
+  //     libggml-cpu-riscv64_{0,v}.so siblings and the loader picks via
+  //     riscv_hwprobe at runtime. Opt-in until the Android DL-loader
+  //     plumbing for arm64/x86_64 is also verified.
+  const riscv64Plan =
+    abi === "riscv64"
+      ? resolveRiscv64BuildPlan({ env: process.env })
+      : { rvv: false, allVariants: false, zigVersion: null, reason: "n/a" };
+  if (abi === "riscv64") {
+    log(
+      `[compile-libllama] riscv64 plan: zig=${riscv64Plan.zigVersion ?? "unknown"} ` +
+        `rvv=${riscv64Plan.rvv ? "ON" : "OFF"} ` +
+        `all-variants=${riscv64Plan.allVariants ? "ON" : "OFF"} ` +
+        `reason=${riscv64Plan.reason}`,
+    );
+  }
+  const riscv64BuildFlags = riscv64CmakeFlagsForPlan({ abi, plan: riscv64Plan });
+
   // Per-ABI driver scripts that wrap `zig cc --target=<triple>` so cmake's
   // single-binary compiler probe works. See ensureZigDrivers() for why
-  // passing `--target=` via CMAKE_C_FLAGS doesn't work on its own.
-  const { ccPath, cxxPath } = ensureZigDrivers({ cacheDir, abi, zigBin });
+  // passing `--target=` via CMAKE_C_FLAGS doesn't work on its own. When
+  // RVV is on, the riscv64 driver passes `-march=rv64gc*` through to Zig
+  // 0.14+ instead of filtering it out.
+  const { ccPath, cxxPath } = ensureZigDrivers({
+    cacheDir,
+    abi,
+    zigBin,
+    riscv64MarchPassthrough: riscv64Plan.rvv,
+  });
 
   log(
     `[compile-libllama] Configuring llama.cpp for ${abi} (${target.zigTarget}) in ${buildDir}`,
   );
-  // riscv64 scalar-parity defaults. The vendored llama.cpp defaults
-  // GGML_RVV / GGML_RV_ZFH / GGML_RV_ZVFH / GGML_RV_ZICBOP /
-  // GGML_RV_ZIHINTPAUSE to ON, which builds a `-march=rv64gcv_zfh_zvfh_
-  // zicbop_zihintpause` string. Zig 0.13's LLVM doesn't accept that as a
-  // -march value (it tries to translate it to -mcpu= and fails with
-  // "unknown CPU"). Wave 1 of riscv64 support is scalar-parity only:
-  // we force every RVV / Zfh / Zvfh / Zicbop / Zihintpause / Zvfbfwma /
-  // XTheadVector option OFF so the resulting MARCH_STR is the plain
-  // baseline `rv64gc` which Zig (and any other clang-13+) accepts.
-  // Wave 3 (Task #5) will flip these back ON behind a Zig 0.14+ floor
-  // when the RVV kernel suite is verified on real hardware. Callers can
-  // override on the command line via extraCmakeFlags / ELIZA_DFLASH_CMAKE_FLAGS
-  // once the toolchain story improves.
-  const riscv64ScalarDefaults =
-    abi === "riscv64"
-      ? [
-          "-DGGML_RVV=OFF",
-          "-DGGML_RV_ZFH=OFF",
-          "-DGGML_RV_ZVFH=OFF",
-          "-DGGML_RV_ZICBOP=OFF",
-          "-DGGML_RV_ZIHINTPAUSE=OFF",
-          "-DGGML_RV_ZVFBFWMA=OFF",
-          "-DGGML_XTHEADVECTOR=OFF",
-          "-DGGML_RV_ZBA=OFF",
-          "-DGGML_CPU_RISCV64_SPACEMIT=OFF",
-        ]
-      : [];
   spawn(
     "cmake",
     [
@@ -947,7 +1098,7 @@ export function buildLibllamaForAbi({
       // device of the target ABI. The default tunes for the build host's
       // native cpu, which is wrong for a cross-build.
       "-DGGML_NATIVE=OFF",
-      ...riscv64ScalarDefaults,
+      ...riscv64BuildFlags,
       // Don't bake in an absolute RUNPATH to the build tree. The default
       // CMAKE_BUILD_RPATH points at the per-ABI build dir, which is a
       // path-leak in shipped APKs and adds dead lookup entries at runtime.
@@ -1826,11 +1977,32 @@ export function describeAndroidTargetDryRun({
     "-DCMAKE_SYSTEM_NAME=Linux",
     `-DCMAKE_SYSTEM_PROCESSOR=${abiTarget.cmakeProcessor}`,
     "-DGGML_NATIVE=OFF",
+  ];
+  // riscv64 build flags must show up in dry-run output too — the real
+  // buildLibllamaForAbi() resolves these from the detected Zig version and
+  // operators reading the dry-run plan should see the byte-exact list that
+  // will be passed. resolveRiscv64BuildPlan() falls back to scalar when zig
+  // is not installed (dry-run is allowed on toolchain-less boxes), so the
+  // plan reported here mirrors what a build invocation would actually emit
+  // on the same host.
+  if (parsed.androidAbi === "riscv64") {
+    const plan = resolveRiscv64BuildPlan({ env: process.env, isDryRun: true });
+    log(
+      `  riscv64 plan: zig=${plan.zigVersion ?? "unknown"} ` +
+        `rvv=${plan.rvv ? "ON" : "OFF"} ` +
+        `all-variants=${plan.allVariants ? "ON" : "OFF"} ` +
+        `reason=${plan.reason}`,
+    );
+    cmakeFlags.push(
+      ...riscv64CmakeFlagsForPlan({ abi: parsed.androidAbi, plan }),
+    );
+  }
+  cmakeFlags.push(
     "-DCMAKE_SKIP_BUILD_RPATH=TRUE",
     "-DCMAKE_SKIP_INSTALL_RPATH=TRUE",
     "-DCMAKE_BUILD_WITH_INSTALL_RPATH=TRUE",
     "-DCMAKE_INSTALL_RPATH=",
-  ];
+  );
   if (parsed.fused) {
     cmakeFlags.push(...fusedExtraCmakeFlags());
   }

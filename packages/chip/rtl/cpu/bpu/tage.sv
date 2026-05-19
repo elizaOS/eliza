@@ -15,8 +15,6 @@
 
 `timescale 1ns/1ps
 
-`include "rtl/cpu/bpu/bpu_pkg.sv"
-
 module tage
     import bpu_pkg::*;
 (
@@ -72,12 +70,17 @@ module tage
     );
 
     // Generate the tagged tables. Each table uses its own history length.
+    // History lengths come from individual localparams in bpu_pkg so the
+    // package can be parsed by yosys (which does not yet accept array
+    // localparams in port/declaration contexts).
     genvar gi;
     generate
         for (gi = 0; gi < TAGE_TABLES; gi++) begin : g_tab
-            // Slice the per-table history slice from the global history.
-            // Use the upper-most HIST_LEN bits of the shared register.
-            localparam int unsigned HL = bpu_pkg::TAGE_HIST_LEN[gi];
+            localparam int unsigned HL =
+                (gi == 0) ? TAGE_HIST_LEN_0 :
+                (gi == 1) ? TAGE_HIST_LEN_1 :
+                (gi == 2) ? TAGE_HIST_LEN_2 :
+                (gi == 3) ? TAGE_HIST_LEN_3 : TAGE_HIST_LEN_4;
             logic [HL-1:0] lkp_h_slice;
             logic [HL-1:0] upd_h_slice;
             assign lkp_h_slice = lkp_hist[TAGE_HIST_LEN_MAX-1 -: HL];
@@ -165,19 +168,23 @@ module tage
     // useful values are read again here on the upd cycle).
     // -----------------------------------------------------------------------
     integer ta;
+    integer tb;
+    logic [TAGE_TABLES-1:0] alloc_candidates;
     always_comb begin
-        tab_alloc_req = '0;
+        alloc_candidates = '0;
+        tab_alloc_req    = '0;
         if (upd_valid && upd_misp) begin
             for (ta = 0; ta < TAGE_TABLES; ta++) begin
                 if (ta + 1 > upd_provider && tab_useful[ta] == '0)
-                    tab_alloc_req[ta] = 1'b1;
+                    alloc_candidates[ta] = 1'b1;
             end
-            // Allow only the longest available victim to allocate; the
-            // priority encoder below picks the lowest-index match.
-            for (ta = TAGE_TABLES-1; ta > 0; ta--) begin
-                if (tab_alloc_req[ta]) begin
-                    tab_alloc_req[ta-1:0] = '0;
-                end
+            // Pick the lowest-index candidate. This matches the Seznec CBP-5
+            // policy of allocating the shortest available table beyond the
+            // provider so longer-history tables remain available for later
+            // mispredictions.
+            for (tb = 0; tb < TAGE_TABLES; tb++) begin
+                if (alloc_candidates[tb] && tab_alloc_req == '0)
+                    tab_alloc_req[tb] = 1'b1;
             end
         end
     end

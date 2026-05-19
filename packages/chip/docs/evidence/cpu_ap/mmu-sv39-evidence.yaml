@@ -1,0 +1,22 @@
+schema: eliza.cpu_ap_mmu_sv39_evidence_gate.v1
+status: blocked_no_mmu_in_stub
+claim_boundary: >
+  Sv39 MMU evidence gate. The tiny stub CPU has no MMU. verify/cocotb/cpu/
+  test_mmu_sv39.py provides a host-side page-table builder that is unit-
+  tested in isolation, and a cocotb test that reports BLOCKED on the stub.
+  Real Sv39 evidence requires the CVA6 wrapper (or higher) with a populated
+  satp and a connected page-table walker.
+required_for_pass:
+  - satp CSR write + read (Mode=Sv39, ASID, PPN)
+  - 3-level page-table walk for a virtual address with U=0 R=1 W=1 X=0
+  - write-protect violation generates store-page-fault with correct mcause
+  - U-mode access to a supervisor-only page generates instruction-page-fault
+  - fence.vma after PTE update invalidates the TLB entry
+  - PMP / Smepmp interactions documented (or explicitly out-of-scope)
+fail_closed_until:
+  - DUT is the production CVA6 / Kunminghu / Ascalon wrapper
+  - cocotb test_mmu_sv39.py runs the positive path and writes
+    docs/evidence/cpu_ap/mmu-sv39.json with status=pass
+test_files:
+  - verify/cocotb/cpu/test_mmu_sv39.py
+test_command: make cocotb-cpu-extended

@@ -12,8 +12,6 @@
 
 `timescale 1ns/1ps
 
-`include "rtl/cpu/bpu/bpu_pkg.sv"
-
 module tage_table
     import bpu_pkg::*;
 #(

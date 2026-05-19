@@ -1,0 +1,100 @@
+schema: eliza.axi4_burst_evidence_gate.v1
+status: blocked_until_evidence
+scope:
+  - rtl/interconnect/axi4/e1_axi4_interconnect.sv
+  - rtl/interconnect/axi4/e1_axi4_pkg.sv
+  - rtl/memory/dram_ctrl/e1_axi4_dram_model.sv
+  - rtl/memory/dram_ctrl/e1_dram_ctrl.sv
+  - rtl/interconnect/chi_bridge/e1_chi_to_axi4_bridge.sv
+
+required_capabilities:
+  axi4_full_bursts:
+    incr_burst_max_len: 256
+    wrap_burst_max_len: 16
+    fixed_burst_max_len: 16
+    description: >
+      The production AXI4 fabric must support INCR, WRAP, and FIXED burst
+      types with AWLEN/ARLEN widths up to 8 bits (256 beats). Single-beat
+      AXI-Lite-compatible bursts must continue to work for backward
+      compatibility with the e1_axi_lite_interconnect scaffold tests.
+  axid_ordering:
+    description: >
+      Per-AxID ordering must be preserved: two interleaved bursts with
+      different AxIDs return responses in their own arrival order, and
+      bursts with the same AxID return in submission order.
+  cacheability_attributes:
+    description: >
+      ARCACHE/AWCACHE bits must be propagated unchanged from the master
+      to the downstream slave so the SLC and DRAM controller can honor
+      bufferability and write-allocate hints. Five named attribute
+      classes are encoded in e1_axi4_pkg.sv.
+  exclusive_access:
+    description: >
+      ARLOCK + AWLOCK on the same address from the same master must
+      return RESP_EXOKAY when uncontended. An intervening AW from any
+      other master must clear the reservation and the subsequent
+      AWLOCK must return RESP_OKAY with the exclusive_fail_irq set.
+  multi_master_arbitration:
+    description: >
+      Round-robin arbitration biased by AxQOS must guarantee bounded
+      starvation; the same master cannot block forever when other
+      masters present higher-QoS requests.
+  backpressure:
+    description: >
+      Per-master MAX_OUTST limits drive AW/AR ready deassertion before
+      the per-master FIFO overflows. Slaves never see more than
+      MAX_OUTST in-flight bursts per master.
+  ordering_domains:
+    description: >
+      Each (master, AxID) pair forms an ordering domain. The
+      interconnect must not reorder responses within a single domain.
+  decode_error:
+    description: >
+      An access to an unmapped address must return RESP_DECERR within
+      a single beat (read) or a single write response, with
+      decode_err_irq pulsed for the offending master.
+
+required_tests:
+  - id: incr_burst_length_sweep
+    location: verify/cocotb/axi4/test_axi4_burst.py
+    pass_criteria: INCR bursts of length 1, 4, 16, and 64 read-back match writes.
+  - id: write_strobe_partial_beat_preserves_unwritten_bytes
+    location: verify/cocotb/axi4/test_axi4_burst.py
+    pass_criteria: Byte strobes leave unwritten bytes unchanged.
+  - id: id_ordering_per_axid
+    location: verify/cocotb/axi4/test_axi4_burst.py
+    pass_criteria: Two AxIDs return data in their own arrival order.
+  - id: decode_error_returns_decerr
+    location: verify/cocotb/axi4/test_axi4_burst.py
+    pass_criteria: Reads to unmapped addresses return RESP_DECERR with RLAST.
+  - id: exclusive_read_then_write_returns_exokay_or_okay
+    location: verify/cocotb/axi4/test_axi4_burst.py
+    pass_criteria: Exclusive monitor invalidates on foreign AW.
+
+required_artifacts:
+  - docs/evidence/memory/axi4_burst_correctness_report.json
+  - docs/evidence/memory/axi4_id_ordering_report.json
+  - docs/evidence/memory/axi4_exclusive_monitor_report.json
+  - docs/evidence/memory/axi4_qos_fairness_report.json
+
+required_artifact_schemas:
+  docs/evidence/memory/axi4_burst_correctness_report.json: eliza.memory.axi4_burst_correctness.v1
+  docs/evidence/memory/axi4_id_ordering_report.json: eliza.memory.axi4_id_ordering.v1
+  docs/evidence/memory/axi4_exclusive_monitor_report.json: eliza.memory.axi4_exclusive_monitor.v1
+  docs/evidence/memory/axi4_qos_fairness_report.json: eliza.memory.axi4_qos_fairness.v1
+
+unblock_requires:
+  - All required cocotb tests pass under verilator or icarus locally.
+  - All required artifact paths exist and validate against their schema.
+  - No closed-IP PHY substitution: the AXI4 controller stops at the DFI 5.0 north interface.
+  - The e1_axi_lite_interconnect scaffold continues to elaborate for backward compatibility.
+
+claim_rules:
+  - The production data path is the AXI4 fabric. The AXI-Lite scaffold remains for boot-bringup testing only.
+  - Bandwidth claims based on this AXI4 fabric remain blocked until a real DRAM controller + PHY is attached and STREAM/lmbench evidence exists.
+  - The AXI4 interconnect is not cache-coherent. Coherence lives in the cache agent's CHI-class fabric; this AXI4 layer is the south side.
+
+next_commands:
+  rtl_elaboration: make rtl-check
+  burst_tests: make cocotb-axi4
+  gate_check: make memory-axi4-check

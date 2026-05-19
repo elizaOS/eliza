@@ -273,6 +273,47 @@ work_items:
       - Candidate manifest records source specs and target signal groups.
       - No candidate is bound into RTL automatically.
       - Promotion gates include formal or cocotb evidence.
+  - id: p1-verification-debug-target-capture
+    title: Verification Planning And Formal Debug Target Capture
+    priority: P1
+    status: IN_PROGRESS
+    source_ids:
+      - pro-v
+      - saarthi-formal-verification
+      - sangam-sva
+      - fvdebug
+      - siliconmind-v1
+    target_area:
+      - verification
+      - formal_verification
+      - counterexample_debug
+      - testbench_generation
+      - assertion_generation
+    owner_scope: dry-run verification-debug target reports only; no generated patches, testbenches, or assertion bindings
+    objective: >
+      Capture AI-assisted verification planning, PRO-V-style testbench/oracle
+      generation, SANGAM-style assertion refinement, and FVDebug-style
+      counterexample triage as target tasks behind deterministic E1 gates.
+    deliverables:
+      - scripts/ai_eda/capture_verification_debug_targets.py
+      - build/ai_eda/verification_debug_targets/validation/targets_report.json
+    evidence_gate: >
+      Any generated verification artifact remains non-evidence until it cites
+      local RTL/spec/formal hashes and passes cocotb, formal, synthesis or
+      equivalence gates plus human review as applicable.
+    validation_commands:
+      - python3 scripts/check_ai_eda_source_inventory.py
+      - python3 scripts/ai_eda/capture_verification_debug_targets.py --run-id validation
+      - make formal
+    blocked_by:
+      - No archived failing E1 formal counterexample corpus
+      - No waveform or trace causal-graph parser pinned for local reports
+      - No reviewer disposition schema for AI-generated root-cause reports
+      - No license-reviewed PRO-V or SiliconMind model integration path
+    acceptance_criteria:
+      - Dry-run report forbids patch, testbench, assertion, and release claims.
+      - Candidate tasks name deterministic follow-up gates.
+      - Report hashes local RTL, formal, cocotb, and spec artifacts.
   - id: p1-zigzag-npu-dse
     title: ZigZag-Style NPU Architecture DSE
     priority: P1
@@ -1141,3 +1182,105 @@ work_items:
       - Report hashes local RTL, SDC, power/thermal, CPU/AP, NPU, and PD inputs.
       - Report states no UPF, RTL, constraint, clock-gating, DVFS, retention, isolation, power-domain, or release claim is enabled.
       - Candidate tasks list deterministic platform, PD, RTL, formal, synthesis, CDC/RDC, DFT, software/BSP, and power/thermal gates.
+  - id: p1-post-silicon-validation-target-capture
+    title: Post-Silicon, Bring-Up, And Lab-Debug Target Capture
+    priority: P1
+    status: IN_PROGRESS
+    source_ids:
+      - symbolic-qed
+      - soc-trace-protocol-debug
+      - riscv-dv
+      - riscof
+      - riscv-arch-test
+      - opentitan-chip-tests
+      - ml-boot-failure-debug
+      - llm4sechw-debug
+    target_area:
+      - post_silicon_validation
+      - silicon_bringup
+      - fpga_bringup
+      - riscv_compliance
+      - lab_debug
+      - boot_failure_triage
+    owner_scope: dry-run target capture only; no hardware actions, generated lab scripts, test binaries, FPGA bitstreams, or compliance claims
+    objective: >
+      Track post-silicon debug methods, QED/trace-analysis approaches, RISC-V
+      compatibility tests, random-instruction validation, cross-target
+      on-device tests, and ML/XAI boot-failure triage while tying any future E1
+      use to QEMU/Renode, FPGA, manufacturing, real-world, and lab evidence.
+    deliverables:
+      - scripts/ai_eda/capture_post_silicon_validation_targets.py
+      - build/ai_eda/post_silicon_validation_targets/<run-id>/targets_report.json
+    evidence_gate: >
+      Post-silicon automation reports may only hash local manifests, simulator
+      logs, FPGA/package/board inputs, and release gates; generated lab scripts,
+      test binaries, trace classifications, compliance claims, hardware runs,
+      and silicon bring-up claims require deterministic logs and review.
+    validation_commands:
+      - python3 scripts/check_ai_eda_source_inventory.py
+      - python3 scripts/ai_eda/capture_post_silicon_validation_targets.py --run-id validation
+      - make qemu-check
+      - make renode-check
+      - make fpga-check
+      - make real-world-gates-check
+    blocked_by:
+      - No E1 silicon, FPGA hardware transcript, JTAG log, or lab measurement corpus
+      - No pinned external RISCOF, riscv-arch-test, or riscv-dv checkout executed against a buildable E1-compatible DUT
+      - No RISC-V ISA compliance, random-instruction, or ISS co-simulation evidence tied to E1 CPU wrappers
+      - No trace schema for reset, boot, UART, JTAG, power, thermal, FPGA, or board observations
+      - No labeled boot-failure, post-silicon debug, or lab anomaly corpus for ML/XAI triage
+      - No approved workflow for AI-generated lab scripts, test binaries, FPGA bitstreams, or hardware actions
+    acceptance_criteria:
+      - Report hashes local RISC-V compliance, QEMU/Renode, FPGA, package, board, benchmark, and release-gate inputs.
+      - Report states no hardware run, FPGA flow, lab script, test binary, compliance, debug, lab measurement, or release claim is enabled.
+      - Candidate tasks list deterministic platform, QEMU, Renode, FPGA, formal, cocotb, software/BSP, power/thermal, manufacturing, real-world, and product gates.
+  - id: p1-circuit-foundation-model-target-capture
+    title: Circuit Foundation Model And Embedding Target Capture
+    priority: P1
+    status: IN_PROGRESS
+    source_ids:
+      - circuit-foundation-model-survey
+      - chipnemo
+      - geneda
+      - nettag
+      - deepgate4
+      - chiplingo
+    target_area:
+      - foundation_models
+      - circuit_embeddings
+      - graph_learning
+      - domain_adapted_llm
+      - netlist_reasoning
+      - corpus_governance
+    owner_scope: dry-run target capture only; no corpus export, embedding generation, model training, inference, or design-decision claims
+    objective: >
+      Track circuit foundation models, graph/text/layout alignment,
+      domain-adapted EDA LLMs, and netlist-function reasoning while tying any
+      future E1 use to corpus governance, provenance, local held-out tasks, and
+      deterministic verification/PD gates.
+    deliverables:
+      - scripts/ai_eda/capture_circuit_foundation_model_targets.py
+      - build/ai_eda/circuit_foundation_model_targets/<run-id>/targets_report.json
+    evidence_gate: >
+      Foundation-model automation reports may only hash local research, RAG,
+      RTL, spec, PD snapshot, and probe artifacts; training data exports,
+      embeddings, model quality claims, netlist reasoning, and design-decision
+      claims require source provenance, license review, held-out E1 tasks,
+      deterministic gates, and human review.
+    validation_commands:
+      - python3 scripts/check_ai_eda_source_inventory.py
+      - python3 scripts/ai_eda/capture_circuit_foundation_model_targets.py --run-id validation
+      - python3 scripts/ai_eda/build_local_eda_rag_index.py --run-id validation
+      - make formal
+      - make synth
+    blocked_by:
+      - No license-reviewed E1 training corpus spanning RTL, netlists, layouts, logs, specs, and reports
+      - No approved data-governance policy for exporting chip-design artifacts to a model-training pipeline
+      - No pinned circuit foundation model code or model weights selected for local evaluation
+      - No local graph/text/layout embedding schema with deterministic downstream tasks and held-out splits
+      - No E1 netlist-function reasoning benchmark with formal, synthesis, and human-review labels
+      - No model-quality or design-decision promotion policy that can turn embeddings into release evidence
+    acceptance_criteria:
+      - Report hashes local source inventory, RAG, external probe, PD snapshot, RTL, and verification-debug inputs.
+      - Report states no training, fine-tuning, inference, embedding generation, corpus export, model-quality claim, design-decision claim, or release use is enabled.
+      - Candidate tasks list deterministic RAG, source inventory, RTL model eval, formal, synthesis, PD, RTL rewrite/equivalence, verification-debug, cocotb, and no-hardware-action gates.

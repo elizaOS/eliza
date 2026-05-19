@@ -17,6 +17,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import re
 import shutil
 import subprocess
@@ -46,27 +47,6 @@ class CornerInputs:
     netlist: Path
 
 
-def parse_args() -> argparse.Namespace:
-    parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--run-dir", required=True, help="OpenLane run dir to draw inputs from")
-    parser.add_argument("--out-dir", required=True, help="Where to write per-corner reports")
-    parser.add_argument(
-        "--corners-json",
-        help=(
-            "Optional JSON file overriding the corner list. Must be a list of "
-            '{name, process, rc} entries. Defaults to SS/TT/FF x min/max.'
-        ),
-    )
-    parser.add_argument(
-        "--pdk-root",
-        default=os.environ_get("PDK_ROOT", "/usr/local/share/pdk") if False else "PDK_ROOT_env_or_arg",
-    )
-    return parser.parse_args()
-
-
-import os  # local import after argparse to keep parser readable
-
-
 def fail(message: str, **context: Any) -> int:
     payload = {"error": message, **context}
     print(f"FAIL: {message}", file=sys.stderr)
@@ -85,19 +65,29 @@ def resolve(value: str) -> Path:
 def discover_inputs(run_dir: Path, corner: dict[str, str], pdk_root: Path) -> CornerInputs | str:
     """Return CornerInputs if all required files exist, otherwise an error string."""
     final = run_dir / "final"
-    netlist = next((final / "nl").glob("*.v"), None) or next((final / "pnl").glob("*.v"), None)
+    netlist_dirs = [final / "nl", final / "pnl"]
+    netlist: Path | None = None
+    for cand in netlist_dirs:
+        if cand.is_dir():
+            for v in cand.glob("*.v"):
+                netlist = v
+                break
+        if netlist is not None:
+            break
     if netlist is None:
         netlist = next(final.glob("**/*.v"), None)
     if netlist is None:
         return f"corner={corner['name']}: gate netlist missing under {final}"
-    spef_glob = list((final / "spef").glob(f"*{corner['rc']}*.spef")) if (final / "spef").is_dir() else []
+    spef_glob = (
+        list((final / "spef").glob(f"*{corner['rc']}*.spef")) if (final / "spef").is_dir() else []
+    )
     if not spef_glob:
         spef_glob = list(final.glob(f"**/*{corner['rc']}*.spef"))
     if not spef_glob:
-        return f"corner={corner['name']}: no spef matching '{corner['rc']}' under {final}"
+        return f"corner={corner['name']}: no SPEF matching '{corner['rc']}' under {final}"
     sdc = next(final.glob("**/*.sdc"), None)
     if sdc is None:
-        sdc = (run_dir / "../../../constraints/e1_soc.sdc").resolve()
+        sdc = (ROOT / "pd/constraints/e1_soc.sdc").resolve()
         if not sdc.is_file():
             return f"corner={corner['name']}: signoff SDC missing"
     lib_glob = list(
@@ -120,7 +110,6 @@ def discover_inputs(run_dir: Path, corner: dict[str, str], pdk_root: Path) -> Co
 
 
 def render_opensta_script(inp: CornerInputs, out_dir: Path) -> Path:
-    """Write an OpenSTA Tcl script for one corner. report_checks captures TNS/WNS."""
     out_dir.mkdir(parents=True, exist_ok=True)
     script = out_dir / f"{inp.name}.tcl"
     rpt = out_dir / f"{inp.name}.rpt"
@@ -141,10 +130,10 @@ def render_opensta_script(inp: CornerInputs, out_dir: Path) -> Path:
                 "report_worst_slack -min",
                 "report_check_types -max_slew -max_capacitance -max_fanout -violators",
                 f"set fp [open {rpt} w]",
-                "puts $fp \"setup_wns [expr {[sta::worst_slack -max] * 1.0}]\"",
-                "puts $fp \"hold_wns  [expr {[sta::worst_slack -min] * 1.0}]\"",
-                "puts $fp \"setup_tns [expr {[sta::total_negative_slack -max] * 1.0}]\"",
-                "puts $fp \"hold_tns  [expr {[sta::total_negative_slack -min] * 1.0}]\"",
+                'puts $fp "setup_wns [sta::worst_slack -max]"',
+                'puts $fp "hold_wns [sta::worst_slack -min]"',
+                'puts $fp "setup_tns [sta::total_negative_slack -max]"',
+                'puts $fp "hold_tns [sta::total_negative_slack -min]"',
                 "close $fp",
                 "exit 0",
             ]
@@ -209,7 +198,8 @@ def main() -> int:
         print(f"PASS: dry-run STA plan written: {out_path}")
         return 0
 
-    if shutil.which("sta") is None and shutil.which("openroad") is None:
+    sta_bin = shutil.which("sta") or shutil.which("openroad")
+    if sta_bin is None:
         return fail("neither sta nor openroad on PATH; cannot run STA")
 
     for corner in corners:
@@ -219,8 +209,10 @@ def main() -> int:
             summary["corners"].append({"corner": corner, "error": inp})
             continue
         script = render_opensta_script(inp, out_dir)
-        sta_bin = shutil.which("sta") or shutil.which("openroad")
-        cmd = [sta_bin, "-no_init", "-exit", str(script)] if sta_bin == shutil.which("sta") else [sta_bin, "-exit", str(script)]
+        if Path(sta_bin).name == "sta":
+            cmd = [sta_bin, "-no_init", "-exit", str(script)]
+        else:
+            cmd = [sta_bin, "-exit", str(script)]
         proc = subprocess.run(cmd, cwd=ROOT, capture_output=True, text=True, check=False)
         (out_dir / f"{inp.name}.stdout.log").write_text(proc.stdout)
         (out_dir / f"{inp.name}.stderr.log").write_text(proc.stderr)

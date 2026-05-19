@@ -1,16 +1,36 @@
+"""TEST ORACLE — NOT PRODUCTION CODEGEN.
+
+This module is the Python reference for descriptor / scratchpad / opcode
+behavior used by the elizanpu IREE dialect verifiers and the C runtime.
+Production codegen lives in `compiler/iree-eliza-npu/` and lowers
+StableHLO / linalg / ExecuTorch graphs through MLIR. Do NOT extend the
+single-op smoke API in this file for real compilation work; extend the
+elizanpu dialect instead. See `docs/toolchain/iree-eliza-npu.md` for the
+production lowering contract.
+"""
+
 from __future__ import annotations
 
 from dataclasses import dataclass
 from math import isqrt
 from typing import Any
 
-from e1_npu_runtime import E1NpuRuntime, golden_gemm_s4, golden_gemm_s8
+from e1_npu_runtime import (
+    E1NpuRuntime,
+    golden_dot4_fp8_e4m3,
+    golden_dot16_s2,
+    golden_gemm_s4,
+    golden_gemm_s8,
+)
 
 SUPPORTED_SCHEMA = "eliza.e1_npu_matmul_smoke.v1"
+SUPPORTED_INT2_MATMUL_SCHEMA = "eliza.e1_npu_int2_matmul_smoke.v1"
+SUPPORTED_FP8_MATMUL_SCHEMA = "eliza.e1_npu_fp8_matmul_smoke.v1"
 SUPPORTED_CONV2D_SCHEMA = "eliza.e1_npu_conv2d_smoke.v1"
 SUPPORTED_ATTENTION_QK_SCHEMA = "eliza.e1_npu_attention_qk_smoke.v1"
 SUPPORTED_ATTENTION_SOFTMAX_SCHEMA = "eliza.e1_npu_attention_softmax_smoke.v1"
 SUPPORTED_ATTENTION_AV_SCHEMA = "eliza.e1_npu_attention_av_smoke.v1"
+SUPPORTED_KV_CACHE_UPDATE_SCHEMA = "eliza.e1_npu_kv_cache_update_smoke.v1"
 SUPPORTED_MLP_SCHEMA = "eliza.e1_npu_mlp_smoke.v1"
 SUPPORTED_SWIGLU_SCHEMA = "eliza.e1_npu_swiglu_smoke.v1"
 SUPPORTED_RESIDUAL_ADD_SCHEMA = "eliza.e1_npu_residual_add_smoke.v1"
@@ -26,6 +46,8 @@ SUPPORTED_MATMUL_OPS = {
     "tflite.batch_matmul",
     "tflite.matmul",
 }
+SUPPORTED_INT2_MATMUL_OPS = SUPPORTED_MATMUL_OPS | {"eliza.int2_matmul", "eliza.bitnet_matmul"}
+SUPPORTED_FP8_MATMUL_OPS = SUPPORTED_MATMUL_OPS | {"eliza.fp8_matmul"}
 SUPPORTED_CONV2D_OPS = {
     "stablehlo.convolution",
     "tflite.conv_2d",
@@ -44,6 +66,11 @@ SUPPORTED_ATTENTION_AV_OPS = {
     "stablehlo.dot_general",
     "tflite.batch_matmul",
     "eliza.attention_av",
+}
+SUPPORTED_KV_CACHE_UPDATE_OPS = {
+    "eliza.kv_cache_update",
+    "stablehlo.kv_cache_update",
+    "tflite.kv_cache_update",
 }
 SUPPORTED_MLP_OPS = {
     "stablehlo.mlp",
@@ -90,7 +117,7 @@ MAX_TILE_M = 3
 MAX_TILE_N = 3
 MAX_TILE_K = 7
 TRANSFORMER_BLOCK_CLAIM_BOUNDARY = "single_head_transformer_block_smoke_only_not_softmax_norm_multihead_or_production_compiler_backend"
-MODERN_DECODER_BLOCK_CLAIM_BOUNDARY = "modern_decoder_block_single_head_smoke_only_not_softmax_multihead_kv_cache_or_production_compiler_backend"
+MODERN_DECODER_BLOCK_CLAIM_BOUNDARY = "modern_decoder_block_single_head_exp2_softmax_smoke_only_not_multihead_kv_cache_or_production_compiler_backend"
 
 
 class NpuLoweringError(ValueError):
@@ -129,6 +156,78 @@ class LoweredMatmulResult:
             "tiled_dispatch": self.tiled_dispatch,
             "split_k": self.split_k,
             "host_accumulates_partials": self.host_accumulates_partials,
+            "claim_boundary": self.claim_boundary,
+        }
+
+
+@dataclass(frozen=True)
+class LoweredInt2MatmulResult:
+    schema: str
+    source_dialect: str
+    source_op: str
+    precision: str
+    abi_opcode: int
+    result: list[list[int]]
+    golden: list[list[int]]
+    input_shape: list[int]
+    output_shape: list[int]
+    dot16_count: int
+    padded_k: int
+    cpu_fallback: bool
+    host_pads_k_to_dot16: bool
+    claim_boundary: str
+
+    def as_dict(self) -> dict[str, Any]:
+        return {
+            "schema": self.schema,
+            "source_dialect": self.source_dialect,
+            "source_op": self.source_op,
+            "precision": self.precision,
+            "abi_opcode": self.abi_opcode,
+            "result": self.result,
+            "golden": self.golden,
+            "input_shape": self.input_shape,
+            "output_shape": self.output_shape,
+            "dot16_count": self.dot16_count,
+            "padded_k": self.padded_k,
+            "cpu_fallback": self.cpu_fallback,
+            "host_pads_k_to_dot16": self.host_pads_k_to_dot16,
+            "claim_boundary": self.claim_boundary,
+        }
+
+
+@dataclass(frozen=True)
+class LoweredFp8MatmulResult:
+    schema: str
+    source_dialect: str
+    source_op: str
+    precision: str
+    abi_opcode: int
+    result_q8_8: list[list[int]]
+    golden_q8_8: list[list[int]]
+    input_shape: list[int]
+    output_shape: list[int]
+    dot4_count: int
+    padded_k: int
+    cpu_fallback: bool
+    host_pads_k_to_dot4: bool
+    claim_boundary: str
+
+    def as_dict(self) -> dict[str, Any]:
+        return {
+            "schema": self.schema,
+            "source_dialect": self.source_dialect,
+            "source_op": self.source_op,
+            "precision": self.precision,
+            "abi_opcode": self.abi_opcode,
+            "result_q8_8": self.result_q8_8,
+            "golden_q8_8": self.golden_q8_8,
+            "input_shape": self.input_shape,
+            "output_shape": self.output_shape,
+            "dot4_count": self.dot4_count,
+            "padded_k": self.padded_k,
+            "cpu_fallback": self.cpu_fallback,
+            "host_pads_k_to_dot4": self.host_pads_k_to_dot4,
             "claim_boundary": self.claim_boundary,
         }
 
@@ -283,6 +382,46 @@ class LoweredAttentionAvResult:
             "cpu_fallback": self.cpu_fallback,
             "host_iterates_heads": self.host_iterates_heads,
             "requires_prequantized_attention": self.requires_prequantized_attention,
+            "claim_boundary": self.claim_boundary,
+        }
+
+
+@dataclass(frozen=True)
+class LoweredKvCacheUpdateResult:
+    schema: str
+    source_dialect: str
+    source_op: str
+    precision: str
+    updated_key_cache: list[list[list[list[int]]]]
+    updated_value_cache: list[list[list[list[int]]]]
+    cache_lengths: list[list[int]]
+    appended_tokens: int
+    head_count: int
+    head_dim: int
+    value_dim: int
+    scalar_copy_count: int
+    cpu_fallback: bool
+    host_preserves_existing_cache: bool
+    host_tracks_cache_lengths: bool
+    claim_boundary: str
+
+    def as_dict(self) -> dict[str, Any]:
+        return {
+            "schema": self.schema,
+            "source_dialect": self.source_dialect,
+            "source_op": self.source_op,
+            "precision": self.precision,
+            "updated_key_cache": self.updated_key_cache,
+            "updated_value_cache": self.updated_value_cache,
+            "cache_lengths": self.cache_lengths,
+            "appended_tokens": self.appended_tokens,
+            "head_count": self.head_count,
+            "head_dim": self.head_dim,
+            "value_dim": self.value_dim,
+            "scalar_copy_count": self.scalar_copy_count,
+            "cpu_fallback": self.cpu_fallback,
+            "host_preserves_existing_cache": self.host_preserves_existing_cache,
+            "host_tracks_cache_lengths": self.host_tracks_cache_lengths,
             "claim_boundary": self.claim_boundary,
         }
 
@@ -602,6 +741,7 @@ class LoweredModernDecoderBlockResult:
     attention_softmax: LoweredAttentionSoftmaxResult
     attention_weights_s8: list[list[list[list[int]]]]
     attention_av: LoweredAttentionAvResult
+    attention_context_requantized: list[list[int]]
     attention_bias: LoweredBiasAddResult
     attention_residual: LoweredResidualAddResult
     norm2: LoweredRmsNormResult
@@ -640,6 +780,7 @@ class LoweredModernDecoderBlockResult:
             "attention_softmax": self.attention_softmax.as_dict(),
             "attention_weights_s8": self.attention_weights_s8,
             "attention_av": self.attention_av.as_dict(),
+            "attention_context_requantized": self.attention_context_requantized,
             "attention_bias": self.attention_bias.as_dict(),
             "attention_residual": self.attention_residual.as_dict(),
             "norm2": self.norm2.as_dict(),
@@ -711,6 +852,133 @@ def lower_matmul_smoke(runtime: E1NpuRuntime, graph: dict[str, Any]) -> LoweredM
         split_k=len(lhs[0]) > MAX_TILE_K,
         host_accumulates_partials=len(lhs[0]) > MAX_TILE_K,
         claim_boundary="single_matmul_tiled_smoke_only_not_production_compiler_backend",
+    )
+
+
+def lower_int2_matmul_smoke(
+    runtime: E1NpuRuntime, graph: dict[str, Any]
+) -> LoweredInt2MatmulResult:
+    """Lower a tiny INT2 matmul through scalar DOT16_S2 commands."""
+
+    if graph.get("schema") != SUPPORTED_INT2_MATMUL_SCHEMA:
+        raise NpuLoweringError(f"unsupported graph schema {graph.get('schema')!r}")
+    source_op = str(graph.get("op", ""))
+    if source_op not in SUPPORTED_INT2_MATMUL_OPS:
+        raise NpuLoweringError(f"unsupported int2_matmul source op {source_op!r}")
+    precision = str(graph.get("precision", "")).lower()
+    if precision not in {"int2", "s2", "bitnet_int2"}:
+        raise NpuLoweringError(f"unsupported int2_matmul precision {precision!r}")
+
+    lhs = _matrix(graph.get("lhs"), "lhs")
+    rhs = _matrix(graph.get("rhs"), "rhs")
+    _validate_matmul_shape(lhs, rhs)
+    _validate_range(lhs, -2, 1, "lhs")
+    _validate_range(rhs, -2, 1, "rhs")
+
+    result: list[list[int]] = []
+    golden: list[list[int]] = []
+    dot16_count = 0
+    for lhs_row in lhs:
+        result_row: list[int] = []
+        golden_row: list[int] = []
+        for col_index in range(len(rhs[0])):
+            acc = 0
+            golden_acc = 0
+            for k_base in range(0, len(rhs), 16):
+                a_chunk = lhs_row[k_base : k_base + 16]
+                b_chunk = [
+                    rhs[k_index][col_index]
+                    for k_index in range(k_base, min(k_base + 16, len(rhs)))
+                ]
+                if len(a_chunk) < 16:
+                    a_chunk = a_chunk + [0] * (16 - len(a_chunk))
+                    b_chunk = b_chunk + [0] * (16 - len(b_chunk))
+                acc = _s32(runtime.dot16_s2(a_chunk, b_chunk, acc))
+                golden_acc = _s32(golden_dot16_s2(a_chunk, b_chunk, golden_acc))
+                dot16_count += 1
+            result_row.append(acc)
+            golden_row.append(golden_acc)
+        result.append(result_row)
+        golden.append(golden_row)
+
+    padded_k = ((len(rhs) + 15) // 16) * 16
+    return LoweredInt2MatmulResult(
+        schema="eliza.e1_npu_lowered_int2_matmul_result.v1",
+        source_dialect=str(graph.get("dialect", "unknown")),
+        source_op=source_op,
+        precision="int2",
+        abi_opcode=runtime.OP_DOT16_S2,
+        result=result,
+        golden=golden,
+        input_shape=[len(lhs), len(lhs[0]), len(rhs[0])],
+        output_shape=[len(lhs), len(rhs[0])],
+        dot16_count=dot16_count,
+        padded_k=padded_k,
+        cpu_fallback=False,
+        host_pads_k_to_dot16=padded_k != len(rhs),
+        claim_boundary="int2_matmul_dot16_smoke_only_not_tensor_int2_gemm_or_production_compiler_backend",
+    )
+
+
+def lower_fp8_matmul_smoke(runtime: E1NpuRuntime, graph: dict[str, Any]) -> LoweredFp8MatmulResult:
+    """Lower a tiny FP8 E4M3 matmul through scalar DOT4_FP8_E4M3 commands."""
+
+    if graph.get("schema") != SUPPORTED_FP8_MATMUL_SCHEMA:
+        raise NpuLoweringError(f"unsupported graph schema {graph.get('schema')!r}")
+    source_op = str(graph.get("op", ""))
+    if source_op not in SUPPORTED_FP8_MATMUL_OPS:
+        raise NpuLoweringError(f"unsupported fp8_matmul source op {source_op!r}")
+    precision = str(graph.get("precision", "")).lower()
+    if precision not in {"fp8", "fp8_e4m3"}:
+        raise NpuLoweringError(f"unsupported fp8_matmul precision {precision!r}")
+
+    lhs = _matrix(graph.get("lhs"), "lhs")
+    rhs = _matrix(graph.get("rhs"), "rhs")
+    _validate_matmul_shape(lhs, rhs)
+    _validate_range(lhs, 0, 0xFF, "lhs")
+    _validate_range(rhs, 0, 0xFF, "rhs")
+
+    result: list[list[int]] = []
+    golden: list[list[int]] = []
+    dot4_count = 0
+    for lhs_row in lhs:
+        result_row: list[int] = []
+        golden_row: list[int] = []
+        for col_index in range(len(rhs[0])):
+            acc = 0
+            golden_acc = 0
+            for k_base in range(0, len(rhs), 4):
+                a_chunk = lhs_row[k_base : k_base + 4]
+                b_chunk = [
+                    rhs[k_index][col_index] for k_index in range(k_base, min(k_base + 4, len(rhs)))
+                ]
+                if len(a_chunk) < 4:
+                    a_chunk = a_chunk + [0] * (4 - len(a_chunk))
+                    b_chunk = b_chunk + [0] * (4 - len(b_chunk))
+                acc = _s32(runtime.dot4_fp8_e4m3(a_chunk, b_chunk, acc))
+                golden_acc = _s32(golden_dot4_fp8_e4m3(a_chunk, b_chunk, golden_acc))
+                dot4_count += 1
+            result_row.append(acc)
+            golden_row.append(golden_acc)
+        result.append(result_row)
+        golden.append(golden_row)
+
+    padded_k = ((len(rhs) + 3) // 4) * 4
+    return LoweredFp8MatmulResult(
+        schema="eliza.e1_npu_lowered_fp8_matmul_result.v1",
+        source_dialect=str(graph.get("dialect", "unknown")),
+        source_op=source_op,
+        precision="fp8_e4m3",
+        abi_opcode=runtime.OP_DOT4_FP8_E4M3,
+        result_q8_8=result,
+        golden_q8_8=golden,
+        input_shape=[len(lhs), len(lhs[0]), len(rhs[0])],
+        output_shape=[len(lhs), len(rhs[0])],
+        dot4_count=dot4_count,
+        padded_k=padded_k,
+        cpu_fallback=False,
+        host_pads_k_to_dot4=padded_k != len(rhs),
+        claim_boundary="fp8_e4m3_matmul_dot4_smoke_only_not_tensor_fp8_gemm_or_production_compiler_backend",
     )
 
 
@@ -877,6 +1145,9 @@ def lower_modern_decoder_block_smoke(
     attention_weight_shift = _nonnegative_int(
         graph.get("attention_weight_shift", 1), "attention_weight_shift"
     )
+    attention_context_shift = _nonnegative_int(
+        graph.get("attention_context_shift", 7), "attention_context_shift"
+    )
     rms_inv_shift = _nonnegative_int(graph.get("rms_inv_shift", 8), "rms_inv_shift")
     rms_output_shift = _nonnegative_int(graph.get("rms_output_shift", 8), "rms_output_shift")
     rms_epsilon = _nonnegative_int(graph.get("rms_epsilon", 1), "rms_epsilon")
@@ -905,6 +1176,7 @@ def lower_modern_decoder_block_smoke(
         projection_shift > 31
         or qk_score_shift > 31
         or attention_weight_shift > 31
+        or attention_context_shift > 31
         or rms_inv_shift > 31
         or rms_output_shift > 31
         or rope_scale_shift > 31
@@ -1016,11 +1288,7 @@ def lower_modern_decoder_block_smoke(
     qk_logits_s8 = _requantize_s8_tensor4(qk_scores.scores, qk_score_shift)
     if attention_mask is None:
         attention_mask = [
-            [
-                [[True for _ in row] for row in head]
-                for head in batch
-            ]
-            for batch in qk_logits_s8
+            [[[True for _ in row] for row in head] for head in batch] for batch in qk_logits_s8
         ]
     _validate_attention_softmax_shape(qk_logits_s8, attention_mask)
     attention_softmax = lower_attention_softmax_smoke(
@@ -1048,6 +1316,9 @@ def lower_modern_decoder_block_smoke(
             "value": [[v_requantized]],
         },
     )
+    attention_context_requantized = _requantize_s8_matrix(
+        attention_av.context[0][0], attention_context_shift
+    )
     attention_bias_result = lower_bias_add_smoke(
         runtime,
         {
@@ -1055,7 +1326,7 @@ def lower_modern_decoder_block_smoke(
             "dialect": dialect,
             "op": "eliza.bias_add",
             "precision": "int8",
-            "input": attention_av.context[0][0],
+            "input": attention_context_requantized,
             "bias": attention_bias,
         },
     )
@@ -1147,6 +1418,7 @@ def lower_modern_decoder_block_smoke(
         attention_softmax=attention_softmax,
         attention_weights_s8=attention_weights_s8,
         attention_av=attention_av,
+        attention_context_requantized=attention_context_requantized,
         attention_bias=attention_bias_result,
         attention_residual=attention_residual,
         norm2=norm2,
@@ -1768,6 +2040,72 @@ def lower_attention_av_smoke(
     )
 
 
+def lower_kv_cache_update_smoke(
+    runtime: E1NpuRuntime, graph: dict[str, Any]
+) -> LoweredKvCacheUpdateResult:
+    """Append tiny K/V decode tensors into fixed-capacity cache tensors."""
+
+    if graph.get("schema") != SUPPORTED_KV_CACHE_UPDATE_SCHEMA:
+        raise NpuLoweringError(f"unsupported graph schema {graph.get('schema')!r}")
+    source_op = str(graph.get("op", ""))
+    if source_op not in SUPPORTED_KV_CACHE_UPDATE_OPS:
+        raise NpuLoweringError(f"unsupported kv_cache_update source op {source_op!r}")
+    precision = str(graph.get("precision", "")).lower()
+    if precision != "int8":
+        raise NpuLoweringError(f"unsupported kv_cache_update precision {precision!r}")
+
+    key_cache = _tensor4(graph.get("key_cache"), "key_cache")
+    value_cache = _tensor4(graph.get("value_cache"), "value_cache")
+    new_key = _tensor4(graph.get("new_key"), "new_key")
+    new_value = _tensor4(graph.get("new_value"), "new_value")
+    cache_lengths = _matrix(graph.get("cache_lengths"), "cache_lengths")
+    _validate_kv_cache_update_shape(key_cache, value_cache, new_key, new_value, cache_lengths)
+    _validate_tensor_range(key_cache, -128, 127, "key_cache")
+    _validate_tensor_range(value_cache, -128, 127, "value_cache")
+    _validate_tensor_range(new_key, -128, 127, "new_key")
+    _validate_tensor_range(new_value, -128, 127, "new_value")
+
+    updated_key_cache = _clone_tensor4(key_cache)
+    updated_value_cache = _clone_tensor4(value_cache)
+    updated_lengths = [list(row) for row in cache_lengths]
+    appended_tokens = len(new_key[0][0])
+    scalar_copy_count = 0
+    for batch_index, batch_lengths in enumerate(cache_lengths):
+        for head_index, start in enumerate(batch_lengths):
+            for token_index in range(appended_tokens):
+                dst_token = start + token_index
+                for dim_index, value in enumerate(new_key[batch_index][head_index][token_index]):
+                    updated_key_cache[batch_index][head_index][dst_token][dim_index] = _s32(
+                        runtime.add(value, 0)
+                    )
+                    scalar_copy_count += 1
+                for dim_index, value in enumerate(new_value[batch_index][head_index][token_index]):
+                    updated_value_cache[batch_index][head_index][dst_token][dim_index] = _s32(
+                        runtime.add(value, 0)
+                    )
+                    scalar_copy_count += 1
+            updated_lengths[batch_index][head_index] = start + appended_tokens
+
+    return LoweredKvCacheUpdateResult(
+        schema="eliza.e1_npu_lowered_kv_cache_update_result.v1",
+        source_dialect=str(graph.get("dialect", "unknown")),
+        source_op=source_op,
+        precision=precision,
+        updated_key_cache=updated_key_cache,
+        updated_value_cache=updated_value_cache,
+        cache_lengths=updated_lengths,
+        appended_tokens=appended_tokens,
+        head_count=len(key_cache[0]),
+        head_dim=len(key_cache[0][0][0]),
+        value_dim=len(value_cache[0][0][0]),
+        scalar_copy_count=scalar_copy_count,
+        cpu_fallback=False,
+        host_preserves_existing_cache=True,
+        host_tracks_cache_lengths=True,
+        claim_boundary="kv_cache_update_s8_scalar_append_smoke_only_not_paged_or_dma_cache",
+    )
+
+
 def lower_attention_qk_smoke(
     runtime: E1NpuRuntime, graph: dict[str, Any]
 ) -> LoweredAttentionQkResult:
@@ -2196,6 +2534,54 @@ def _validate_attention_av_shape(
         )
 
 
+def _validate_kv_cache_update_shape(
+    key_cache: list[list[list[list[int]]]],
+    value_cache: list[list[list[list[int]]]],
+    new_key: list[list[list[list[int]]]],
+    new_value: list[list[list[list[int]]]],
+    cache_lengths: list[list[int]],
+) -> None:
+    batch = len(key_cache)
+    heads = len(key_cache[0])
+    capacity = len(key_cache[0][0])
+    head_dim = len(key_cache[0][0][0])
+    value_dim = len(value_cache[0][0][0])
+    if len(value_cache) != batch or len(new_key) != batch or len(new_value) != batch:
+        raise NpuLoweringError("kv_cache_update batch mismatch")
+    if len(cache_lengths) != batch:
+        raise NpuLoweringError("kv_cache_update cache_lengths batch mismatch")
+    for batch_index in range(batch):
+        if (
+            len(key_cache[batch_index]) != heads
+            or len(value_cache[batch_index]) != heads
+            or len(new_key[batch_index]) != heads
+            or len(new_value[batch_index]) != heads
+            or len(cache_lengths[batch_index]) != heads
+        ):
+            raise NpuLoweringError("kv_cache_update head mismatch")
+        for head_index in range(heads):
+            if len(key_cache[batch_index][head_index]) != capacity:
+                raise NpuLoweringError("kv_cache_update key cache capacity mismatch")
+            if len(value_cache[batch_index][head_index]) != capacity:
+                raise NpuLoweringError("kv_cache_update value cache capacity mismatch")
+            if len(new_key[batch_index][head_index]) != len(new_value[batch_index][head_index]):
+                raise NpuLoweringError("kv_cache_update new key/value token mismatch")
+            if not new_key[batch_index][head_index]:
+                raise NpuLoweringError("kv_cache_update requires at least one appended token")
+            if any(len(row) != head_dim for row in key_cache[batch_index][head_index]):
+                raise NpuLoweringError("kv_cache_update key cache dim mismatch")
+            if any(len(row) != value_dim for row in value_cache[batch_index][head_index]):
+                raise NpuLoweringError("kv_cache_update value cache dim mismatch")
+            if any(len(row) != head_dim for row in new_key[batch_index][head_index]):
+                raise NpuLoweringError("kv_cache_update new key dim mismatch")
+            if any(len(row) != value_dim for row in new_value[batch_index][head_index]):
+                raise NpuLoweringError("kv_cache_update new value dim mismatch")
+            start = cache_lengths[batch_index][head_index]
+            appended = len(new_key[batch_index][head_index])
+            if start < 0 or start + appended > capacity:
+                raise NpuLoweringError("kv_cache_update append exceeds cache capacity")
+
+
 def _validate_transformer_block_shape(
     inputs: list[list[int]],
     attention: list[list[list[list[int]]]],
@@ -2236,7 +2622,7 @@ def _validate_modern_decoder_block_shape(
     q_weight: list[list[int]],
     k_weight: list[list[int]],
     v_weight: list[list[int]],
-    attention: list[list[list[list[int]]]],
+    attention_mask: list[list[list[list[bool]]]] | None,
     attention_bias: list[int],
     cos: list[int],
     sin: list[int],
@@ -2262,11 +2648,15 @@ def _validate_modern_decoder_block_shape(
             raise NpuLoweringError(
                 f"modern_decoder_block {name} output mismatch: input D={model_dim}, output D={len(weight[0])}"
             )
-    if len(attention) != 1 or len(attention[0]) != 1:
-        raise NpuLoweringError("modern_decoder_block smoke path supports batch=1 and heads=1 only")
-    if len(attention[0][0]) != tokens or len(attention[0][0][0]) != tokens:
-        raise NpuLoweringError("modern_decoder_block attention must be [1][1][tokens][tokens]")
-    _validate_attention_av_shape(attention, [[inputs]])
+    if attention_mask is not None:
+        if len(attention_mask) != 1 or len(attention_mask[0]) != 1:
+            raise NpuLoweringError(
+                "modern_decoder_block smoke path supports batch=1 and heads=1 only"
+            )
+        if len(attention_mask[0][0]) != tokens or len(attention_mask[0][0][0]) != tokens:
+            raise NpuLoweringError(
+                "modern_decoder_block attention_mask must be [1][1][tokens][tokens]"
+            )
     if len(attention_bias) != model_dim:
         raise NpuLoweringError(
             f"modern_decoder_block attention_bias mismatch: input D={model_dim}, bias D={len(attention_bias)}"
@@ -2285,6 +2675,32 @@ def _transpose_matrix(matrix: list[list[int]]) -> list[list[int]]:
 
 def _requantize_s8_matrix(matrix: list[list[int]], shift: int) -> list[list[int]]:
     return [[_clamp_s8(value >> shift) for value in row] for row in matrix]
+
+
+def _clone_tensor4(tensor: list[list[list[list[int]]]]) -> list[list[list[list[int]]]]:
+    return [[[list(row) for row in head] for head in batch] for batch in tensor]
+
+
+def _requantize_s8_tensor4(
+    tensor: list[list[list[list[int]]]], shift: int
+) -> list[list[list[list[int]]]]:
+    return [
+        [[[_clamp_s8(value >> shift) for value in row] for row in head] for head in batch]
+        for batch in tensor
+    ]
+
+
+def _requantize_attention_weights_s8(
+    weights_q0_8: list[list[list[list[int]]]], shift: int
+) -> list[list[list[list[int]]]]:
+    rounding = 0 if shift == 0 else 1 << (shift - 1)
+    return [
+        [
+            [[_clamp_s8((value + rounding) >> shift) for value in row] for row in head]
+            for head in batch
+        ]
+        for batch in weights_q0_8
+    ]
 
 
 def _clamp_s8(value: int) -> int:

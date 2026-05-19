@@ -1,0 +1,55 @@
+schema: eliza.pdn_signoff_gate.v1
+status: blocked
+release_use: prohibited_until_external_review
+claim_boundary: >
+  Fail-closed gate for power-delivery-network signoff. Requires vector-driven
+  dynamic IR-drop, multi-corner, signed by a commercial tool (Voltus or
+  RedHawk-SC) OR an explicit open-flow waiver with 2x extra margin documented
+  in this manifest. OpenROAD `psm` static-only is triage, not signoff.
+source_artifacts:
+  - docs/architecture-optimization/sota-2028/power-delivery.md
+  - docs/pd/rail-plan-2028.yaml
+  - pd/signoff/pdn-current/local-budget.yaml
+  - docs/pd/signoff/pdn-current/local-budget.md
+required_commercial_signoff:
+  any_of:
+    - tool: Ansys_Voltus
+      report_globs:
+        - "pd/signoff/voltus/<run_id>/static_ir.rpt"
+        - "pd/signoff/voltus/<run_id>/dynamic_ir.rpt"
+        - "pd/signoff/voltus/<run_id>/em.rpt"
+        - "pd/signoff/voltus/<run_id>/signoff-manifest.yaml"
+    - tool: Ansys_RedHawk_SC
+      report_globs:
+        - "pd/signoff/redhawk/<run_id>/static_ir.rpt"
+        - "pd/signoff/redhawk/<run_id>/dynamic_ir.rpt"
+        - "pd/signoff/redhawk/<run_id>/em.rpt"
+        - "pd/signoff/redhawk/<run_id>/signoff-manifest.yaml"
+open_flow_waiver_path:
+  description: >
+    If no commercial seat is available, the open-flow OpenROAD `psm` static
+    IR-drop is accepted ONLY with 2x extra margin in the per-rail budget AND
+    explicit waiver of dynamic IR / EM closure documented per rail.
+  required_artifacts:
+    - "pd/openlane/runs/<run_id>/reports/pdn/ir_drop.rpt"
+    - "pd/openlane/runs/<run_id>/reports/pdn/em.rpt"
+    - "pd/signoff/waivers/pdn-open-flow-waiver.yaml"
+  required_margin_factor: 2.0
+multi_corner_requirements:
+  process_corners: [SS, TT, FF]
+  thermal_corners_c: [0, 25, 85, 105]
+  voltage_corners_per_rail_count_minimum: 3
+acceptance_thresholds:
+  static_ir_drop_pct_max: 5.0
+  dynamic_ir_drop_pct_max: 10.0
+  pdn_impedance_dc_mohm_max: 5.0
+  pdn_impedance_1khz_to_1ghz_mohm_max: 15.0
+release_blockers:
+  - No commercial Voltus / RedHawk-SC seat procured. Triage gate is OpenROAD psm-only.
+  - Workload vectors (CPU INT burst, NPU GEMM saturation, LLM tok loop, idle, display refresh) not generated as VCDs at rail granularity.
+  - Multi-corner extracted parasitics (SPEF) per signoff corner not produced.
+  - Package model with bond-wire / BGA inductance not folded into IR-drop loop.
+  - PDN impedance Z(f) profile not generated.
+  - EM signoff (foundry-mandated current density per PG layer) not produced.
+release_use_until_unblocked: prohibited
+check_command: python3 scripts/check_pdn_workload_signoff.py

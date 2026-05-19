@@ -63,15 +63,49 @@ export class OnnxRuntimeUnavailableError extends Error {
 
 let ortModulePromise: Promise<OrtModule> | null = null;
 
-/** Load `onnxruntime-node` once. Throws `OnnxRuntimeUnavailableError` if
- *  the optional dependency is not installed or did not export the runtime. */
+/**
+ * Resolve which ORT module spec to load for this platform.
+ *
+ * `onnxruntime-node` (the desktop / server native path) only ships prebuilt
+ * binaries for `linux/{x64,arm64}`, `darwin/arm64`, and `win32/{x64,arm64}`
+ * (see `node_modules/onnxruntime-node/bin/napi-v6/`). There is no riscv64
+ * prebuild, so a hard `import("onnxruntime-node")` fails at module-init on
+ * the riscv64 on-device path. Fall back to `onnxruntime-web/wasm` — the same
+ * WASM runtime the AOSP plugin uses
+ * (plugin-aosp-local-inference/src/aosp-local-inference-bootstrap.ts
+ * `loadAospKokoroOrt`), which is arch-agnostic.
+ *
+ * Selection order (override via `ELIZA_ONNX_RUNTIME_MODULE` env):
+ *   1. process.env.ELIZA_ONNX_RUNTIME_MODULE — operator override.
+ *   2. process.arch === "riscv64" → "onnxruntime-web/wasm".
+ *   3. default → "onnxruntime-node".
+ */
+function resolveOnnxRuntimeModuleSpec(): string {
+	const override = process.env.ELIZA_ONNX_RUNTIME_MODULE?.trim();
+	if (override) return override;
+	if (process.arch === "riscv64") return "onnxruntime-web/wasm";
+	return "onnxruntime-node";
+}
+
+/** Load `onnxruntime-node` (or `onnxruntime-web/wasm` on riscv64) once.
+ *  Throws `OnnxRuntimeUnavailableError` if the resolved module is not
+ *  installed or did not export the runtime. */
 export async function loadOnnxRuntime(): Promise<OrtModule> {
 	if (!ortModulePromise) {
 		ortModulePromise = (async () => {
+			const spec = resolveOnnxRuntimeModuleSpec();
 			try {
-				const spec = "onnxruntime-node";
-				const mod = (await import(spec)) as { default?: OrtModule } & OrtModule;
-				const resolved = (mod.default ?? mod) as OrtModule;
+				const mod = (await import(spec)) as {
+					default?: OrtModule;
+				} & Partial<OrtModule>;
+				// `onnxruntime-web/wasm` sometimes exports the runtime off the
+				// default-namespace shape; unwrap to whichever surface carries it.
+				const candidate = mod as { default?: OrtModule } & Partial<OrtModule>;
+				const resolved = (
+					candidate.InferenceSession
+						? candidate
+						: (candidate.default ?? candidate)
+				) as OrtModule;
 				if (!resolved.InferenceSession || !resolved.Tensor) {
 					throw new Error("module did not export InferenceSession/Tensor");
 				}
@@ -79,7 +113,7 @@ export async function loadOnnxRuntime(): Promise<OrtModule> {
 			} catch (err) {
 				ortModulePromise = null;
 				throw new OnnxRuntimeUnavailableError(
-					`[voice] on-device ONNX models require the optional 'onnxruntime-node' dependency, which is not installed or failed to load (${
+					`[voice] on-device ONNX models require the optional '${spec}' dependency, which is not installed or failed to load (${
 						err instanceof Error ? err.message : String(err)
 					}).`,
 				);

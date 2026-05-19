@@ -478,6 +478,177 @@ entries:
     risk:
       - Data distribution and process technology mismatch can invalidate labels.
       - Multi-modal datasets can invite broad claims before local validation.
+  - id: circuit-foundation-model-survey
+    name: Survey of Circuit Foundation Models
+    kind: survey
+    stage:
+      - foundation_models
+      - representation_learning
+      - circuit_graphs
+      - eda_multimodal_learning
+    priority: P1
+    source_url: https://arxiv.org/abs/2504.03711
+    code_url: null
+    model_url: null
+    dataset_url: null
+    license_status: paper_only
+    code_status: no_reference_implementation
+    model_status: no_model
+    e1_fit: >
+      Useful taxonomy for separating circuit encoders, EDA LLMs, multimodal
+      netlist/layout models, and task-specific predictors in the E1 roadmap.
+    integration_action: >
+      Use as review context for a dry-run foundation-model target lane; do not
+      treat model embeddings or paper benchmarks as E1 evidence.
+    evidence_gate: >
+      Any foundation-model use needs source corpus hashes, license review,
+      model revision, held-out E1 tasks, and deterministic downstream gates.
+    risk:
+      - Survey coverage can become stale quickly.
+      - Broad foundation-model language can obscure missing local evidence.
+  - id: chipnemo
+    name: ChipNeMo
+    kind: domain_adapted_eda_llm
+    stage:
+      - foundation_models
+      - eda_assistant
+      - script_generation
+      - bug_triage
+    priority: P1
+    source_url: https://research.nvidia.com/publication/2023-10_chipnemo-domain-adapted-llms-chip-design
+    code_url: https://github.com/NVIDIA/NeMo
+    model_url: null
+    dataset_url: null
+    license_status: review_required
+    code_status: framework_available_to_review
+    model_status: no_public_chipnemo_weights
+    e1_fit: >
+      Strong reference for domain-adapted chip-design assistants, EDA script
+      generation, and bug summarization, but E1 lacks an approved corpus and
+      public ChipNeMo weights.
+    integration_action: >
+      Track as a future corpus-governance and held-out evaluation pattern; keep
+      local RAG read-only until training data and model provenance are reviewed.
+    evidence_gate: >
+      Domain adaptation requires curated E1 corpus manifests, privacy/license
+      review, exact base/model revisions, held-out tasks, and deterministic
+      acceptance gates.
+    risk:
+      - Industrial results may rely on proprietary data unavailable to E1.
+      - Domain-adapted assistants can still hallucinate scripts or bug causes.
+  - id: geneda
+    name: GenEDA
+    kind: multimodal_netlist_foundation_model
+    stage:
+      - foundation_models
+      - netlist_reasoning
+      - multimodal_alignment
+      - function_recovery
+    priority: P2
+    source_url: https://arxiv.org/abs/2504.09485
+    code_url: null
+    model_url: null
+    dataset_url: null
+    license_status: paper_assets_review_required
+    code_status: paper_or_assets_to_review
+    model_status: reported_models_to_review
+    e1_fit: >
+      Relevant to future E1 netlist-to-function reasoning and cross-modal graph
+      to text alignment after synthesis and formal labels exist.
+    integration_action: >
+      Track as target capture only; do not reason over local netlists without
+      pinned model/code, license review, and deterministic verification tasks.
+    evidence_gate: >
+      Netlist reasoning needs netlist hashes, RTL/spec references, model
+      revision, held-out labels, formal/synthesis checks, and reviewer review.
+    risk:
+      - Generated functionality summaries can be plausible and wrong.
+      - External model tasks may not match E1 hierarchy or naming.
+  - id: nettag
+    name: NetTAG
+    kind: rtl_layout_aligned_netlist_foundation_model
+    stage:
+      - foundation_models
+      - netlist_embeddings
+      - rtl_layout_alignment
+      - graph_learning
+    priority: P2
+    source_url: https://arxiv.org/abs/2504.09260
+    code_url: null
+    model_url: null
+    dataset_url: null
+    license_status: paper_assets_review_required
+    code_status: paper_or_assets_to_review
+    model_status: reported_models_to_review
+    e1_fit: >
+      Relevant to future alignment of E1 RTL, synthesized netlists, and layout
+      artifacts once repeated OpenLane/OpenROAD runs exist.
+    integration_action: >
+      Keep as a schema and representation-learning reference until E1 has
+      matched RTL/netlist/layout snapshots and deterministic downstream labels.
+    evidence_gate: >
+      Alignment claims require paired artifact hashes, layout provenance,
+      model/code revision, held-out split, and downstream task validation.
+    risk:
+      - Alignment quality can degrade across technology nodes and naming styles.
+      - Layout artifacts are currently too sparse for local training.
+  - id: deepgate4
+    name: DeepGate4
+    kind: scalable_circuit_graph_representation_model
+    stage:
+      - foundation_models
+      - aig_representation
+      - graph_transformers
+      - synthesis_analysis
+    priority: P2
+    source_url: https://www.emergentmind.com/papers/2502.01681
+    code_url: null
+    model_url: null
+    dataset_url: null
+    license_status: paper_assets_review_required
+    code_status: paper_or_assets_to_review
+    model_status: reported_models_to_review
+    e1_fit: >
+      Relevant to scalable AIG/circuit graph embeddings for future synthesis and
+      equivalence-adjacent analysis, but not directly usable without a local
+      graph extraction and validation flow.
+    integration_action: >
+      Track as representation-model context behind dry-run target capture.
+    evidence_gate: >
+      Graph embeddings require extraction script hashes, input netlist/AIG
+      hashes, model revision, held-out tasks, and deterministic checker results.
+    risk:
+      - Representation learning does not prove functional correctness.
+      - CUDA/kernel-specific acceleration may be hard to reproduce locally.
+  - id: chiplingo
+    name: ChipLingo
+    kind: domain_adapted_eda_llm_training_pipeline
+    stage:
+      - foundation_models
+      - eda_llm_training
+      - rag
+      - benchmark
+    priority: P2
+    source_url: https://arxiv.org/abs/2604.27415
+    code_url: null
+    model_url: null
+    dataset_url: null
+    license_status: paper_assets_review_required
+    code_status: paper_or_assets_to_review
+    model_status: reported_models_to_review
+    e1_fit: >
+      Relevant to future EDA-domain LLM training and evaluation, especially for
+      cross-tool knowledge and RAG quality, but not an immediate source change
+      path.
+    integration_action: >
+      Track as a model-training/evaluation reference after local corpus
+      governance and held-out E1 benchmark tasks exist.
+    evidence_gate: >
+      Any model-quality claim requires exact data provenance, model revision,
+      benchmark task hashes, held-out results, and release-use review.
+    risk:
+      - Paper benchmark accuracy is not evidence for E1 design decisions.
+      - Training pipelines can leak restricted chip-design artifacts.
   - id: google-circuit-training
     name: AlphaChip / Circuit Training
     kind: reinforcement_learning_framework
@@ -878,6 +1049,390 @@ entries:
     risk:
       - Dataset synthesis may not match E1 contract style.
       - Model availability and license terms may change.
+  - id: pro-v
+    name: PRO-V / PRO-V-R1
+    kind: rtl_verification_agent_framework
+    stage:
+      - verification
+      - testbench_generation
+      - agentic_orchestration
+      - functional_debug
+    priority: P1
+    source_url: https://arxiv.org/abs/2506.12200
+    code_url: https://github.com/stable-lab/Pro-V
+    model_url: null
+    dataset_url: null
+    license_status: review_required
+    code_status: available_to_review
+    model_status: reported_models_to_review
+    e1_fit: >
+      Directly relevant to E1 cocotb and RTL verification automation because it
+      frames testbench/oracle generation as an agentic loop grounded by
+      simulation feedback.
+    integration_action: >
+      Track as a verification-debug target source only; any generated oracle,
+      testbench, or failure diagnosis must remain in build artifacts until local
+      cocotb/formal gates and review pass.
+    evidence_gate: >
+      Verification outputs need model/code provenance, prompt and artifact
+      hashes, failing/passing logs, and deterministic cocotb or formal evidence
+      before source promotion.
+    risk:
+      - Agent-generated testbenches can agree with a buggy RTL implementation.
+      - Reported benchmark gains may not transfer to E1 protocols and runtime
+        contracts.
+  - id: saarthi-formal-verification
+    name: Saarthi
+    kind: agentic_formal_verification_framework
+    stage:
+      - formal_verification
+      - agentic_orchestration
+      - property_generation
+      - debug_triage
+    priority: P2
+    source_url: https://arxiv.org/abs/2502.16662
+    code_url: null
+    model_url: null
+    dataset_url: null
+    license_status: paper_only
+    code_status: no_reference_implementation
+    model_status: no_model
+    e1_fit: >
+      Useful architecture reference for end-to-end formal-verification agents,
+      but not directly runnable for E1 without a released implementation and
+      local proof/task harnesses.
+    integration_action: >
+      Use as a workflow reference for reviewer-gated formal task planning and
+      counterexample triage, not as evidence.
+    evidence_gate: >
+      Any formal result must come from local SymbiYosys/Yosys logs or another
+      pinned verifier, with property hashes and reviewer disposition.
+    risk:
+      - Agentic formal flows can overstate proof coverage.
+      - Missing source code prevents reproducible E1 evaluation.
+  - id: sangam-sva
+    name: SANGAM
+    kind: assertion_generation_framework
+    stage:
+      - formal_verification
+      - assertion_generation
+      - specification_mining
+      - waveform_analysis
+    priority: P2
+    source_url: https://arxiv.org/abs/2506.13983
+    code_url: null
+    model_url: null
+    dataset_url: null
+    license_status: paper_only
+    code_status: no_reference_implementation
+    model_status: no_model
+    e1_fit: >
+      Relevant to future E1 SVA self-refinement because it combines signal
+      mapping, spec analysis, waveform analysis, and Monte Carlo tree
+      self-refinement.
+    integration_action: >
+      Keep as a candidate-generation method behind the existing assertion
+      manifest and formal gates.
+    evidence_gate: >
+      Generated SVAs require spec citations, signal mapping, syntax checks,
+      formal or simulation logs, and human review before binding.
+    risk:
+      - Self-refined assertions can still encode the wrong intent.
+      - Waveform-derived reasoning is only useful after local failing traces are
+        archived.
+  - id: fvdebug
+    name: FVDebug
+    kind: formal_failure_debug_framework
+    stage:
+      - formal_verification
+      - counterexample_debug
+      - root_cause_analysis
+      - rtl_patch_suggestion
+    priority: P2
+    source_url: https://arxiv.org/abs/2510.15906
+    code_url: null
+    model_url: null
+    dataset_url: null
+    license_status: paper_only
+    code_status: no_reference_implementation
+    model_status: no_model
+    e1_fit: >
+      Strong conceptual match for formal counterexample triage on E1 NPU, DMA,
+      and top-level properties, but patch generation is too risky without
+      quarantine and equivalence gates.
+    integration_action: >
+      Track causal-graph and root-cause report ideas only; block generated RTL
+      fixes until review, simulation, formal, synthesis, and equivalence pass.
+    evidence_gate: >
+      Debug reports must cite exact failing traces, RTL hashes, property hashes,
+      and reviewer disposition; fixes need the RTL rewrite/equivalence lane.
+    risk:
+      - Plausible root-cause narratives can be wrong.
+      - Generated patches may satisfy one counterexample while breaking
+        uncovered behavior.
+  - id: siliconmind-v1
+    name: SiliconMind-V1
+    kind: verilog_generation_debug_model
+    stage:
+      - rtl_generation
+      - verification
+      - debug_reasoning
+      - model_registry
+    priority: P2
+    source_url: https://arxiv.org/abs/2603.08719
+    code_url: null
+    model_url: https://huggingface.co/AS-SiliconMind/SiliconMind-V1-Qwen3-8B
+    dataset_url: null
+    license_status: review_required
+    code_status: model_card_to_review
+    model_status: available_to_review
+    e1_fit: >
+      Relevant open model family for Verilog generation, testing, and debugging
+      experiments after model license, base-model terms, and local artifact
+      isolation are reviewed.
+    integration_action: >
+      Track as a future model candidate for dry-run RTL/debug evaluation only;
+      do not download weights or use generated fixes in source by default.
+    evidence_gate: >
+      Model use requires exact revision pinning, license review, prompt and
+      output hashes, and local RTL, simulation, formal, synthesis, and review
+      gates.
+    risk:
+      - Model-card license hints do not replace full dependency license review.
+      - Benchmark SOTA can hide failures on SoC-specific protocols and reset
+        behavior.
+  - id: symbolic-qed
+    name: Symbolic Quick Error Detection
+    kind: post_silicon_debug_method
+    stage:
+      - post_silicon_validation
+      - debug
+      - formal_methods
+      - test_generation
+    priority: P2
+    source_url: https://theory.stanford.edu/~barrett/pubs/LSB+15-abstract.html
+    code_url: null
+    model_url: null
+    dataset_url: null
+    license_status: paper_only
+    code_status: no_reference_implementation
+    model_status: no_model
+    e1_fit: >
+      Useful methodology for shortening bug-detection latency in future E1
+      post-silicon or FPGA validation, but not directly runnable without a
+      trace and test-generation harness.
+    integration_action: >
+      Track as a future debug-method reference behind post-silicon target
+      capture and deterministic formal/cocotb gates.
+    evidence_gate: >
+      Any QED-inspired test needs exact binary/source provenance, DUT target,
+      trace hashes, observed failure logs, and reviewer disposition.
+    risk:
+      - QED-style tests may not expose SoC integration bugs without careful
+        observability planning.
+      - Paper results do not transfer to E1 without local trace evidence.
+  - id: soc-trace-protocol-debug
+    name: SoC Protocol Trace Debug
+    kind: post_silicon_trace_analysis
+    stage:
+      - post_silicon_validation
+      - trace_analysis
+      - protocol_debug
+      - lab_debug
+    priority: P2
+    source_url: https://arxiv.org/abs/2005.02550
+    code_url: null
+    model_url: null
+    dataset_url: null
+    license_status: paper_only
+    code_status: no_reference_implementation
+    model_status: no_model
+    e1_fit: >
+      Relevant to future reconstruction of E1 boot, interconnect, DMA, NPU, and
+      peripheral behavior from partial traces.
+    integration_action: >
+      Track trace-schema requirements now; block trace-based conclusions until
+      local FPGA/silicon traces and protocol models exist.
+    evidence_gate: >
+      Trace-debug claims require captured trace hashes, protocol model version,
+      ambiguity handling, reproduced failing scenario, and reviewer review.
+    risk:
+      - Partial traces can create plausible but wrong reconstructions.
+      - E1 currently lacks hardware trace capture and protocol-observation
+        points.
+  - id: riscv-dv
+    name: RISC-V DV
+    kind: riscv_random_instruction_generator
+    stage:
+      - cpu_validation
+      - pre_silicon_verification
+      - post_silicon_validation
+      - compliance
+    priority: P1
+    source_url: https://github.com/chipsalliance/riscv-dv
+    code_url: https://github.com/chipsalliance/riscv-dv
+    model_url: null
+    dataset_url: null
+    license_status: review_required
+    code_status: available_to_review
+    model_status: no_model
+    e1_fit: >
+      Directly relevant once E1 has a buildable RISC-V CPU DUT and ISS
+      co-simulation path; useful for random instruction and privileged-state
+      stress.
+    integration_action: >
+      Keep pinned in the RISC-V compliance manifest; do not execute or import
+      generated tests until version, license, simulator, and DUT paths are
+      reviewed.
+    evidence_gate: >
+      Random-instruction validation needs generator revision, seed, ISS version,
+      RTL/simulator logs, pass/fail summary, and failing binary retention.
+    risk:
+      - Commercial UVM simulator assumptions may not match local open tooling.
+      - Generated tests can overclaim CPU compliance without architectural test
+        and ISS correlation.
+  - id: riscof
+    name: RISCOF
+    kind: riscv_compatibility_framework
+    stage:
+      - cpu_validation
+      - compliance
+      - post_silicon_validation
+      - software_validation
+    priority: P1
+    source_url: https://riscof.readthedocs.io/en/doc-dependency-fix/intro.html
+    code_url: https://github.com/riscv-software-src/riscof
+    model_url: null
+    dataset_url: null
+    license_status: review_required
+    code_status: available_to_review
+    model_status: no_model
+    e1_fit: >
+      Best-fit open framework for architecture compatibility checks once the E1
+      CPU target and golden reference are runnable.
+    integration_action: >
+      Track as blocked until E1 CPU wrapper, test selection, reference model,
+      and signature extraction exist.
+    evidence_gate: >
+      Compatibility claims require selected profile/config, test suite revision,
+      reference model revision, DUT logs, signatures, and approved reports.
+    risk:
+      - Passing architectural tests is not full architectural compliance.
+      - E1 CPU scaffolding is not yet a complete compliance target.
+  - id: riscv-arch-test
+    name: RISC-V Architectural Tests
+    kind: riscv_architectural_test_suite
+    stage:
+      - cpu_validation
+      - compliance
+      - post_silicon_validation
+      - software_validation
+    priority: P1
+    source_url: https://github.com/riscv/riscv-arch-test
+    code_url: https://github.com/riscv/riscv-arch-test
+    model_url: null
+    dataset_url: null
+    license_status: review_required
+    code_status: available_to_review
+    model_status: no_model
+    e1_fit: >
+      Required baseline for future RISC-V architecture compatibility evidence
+      across simulator, FPGA, and silicon targets.
+    integration_action: >
+      Keep as a pinned external suite target; block compliance claims until
+      executed logs and signatures exist.
+    evidence_gate: >
+      Test evidence requires test revision, selected ISA/profile scope, DUT
+      binary logs, reference signatures, and reviewed pass/fail summary.
+    risk:
+      - The suite is a minimal compatibility filter, not full CPU validation.
+      - Unpinned or locally modified tests can invalidate comparisons.
+  - id: opentitan-chip-tests
+    name: OpenTitan Chip-Level Tests
+    kind: on_device_test_framework_reference
+    stage:
+      - firmware_validation
+      - bringup
+      - post_silicon_validation
+      - fpga_validation
+    priority: P2
+    source_url: https://opentitan.org/book/sw/device/tests/index.html
+    code_url: https://github.com/lowRISC/opentitan
+    model_url: null
+    dataset_url: null
+    license_status: review_required
+    code_status: available_to_review
+    model_status: no_model
+    e1_fit: >
+      Useful reference for structuring software tests that run across simulation,
+      FPGA, and silicon bring-up targets.
+    integration_action: >
+      Borrow the cross-target evidence pattern only; do not import OpenTitan
+      code into E1 without license and scope review.
+    evidence_gate: >
+      E1 on-device tests need target identity, binary hash, console transcript,
+      board/silicon revision, pass/fail result, and release gate mapping.
+    risk:
+      - OpenTitan-specific infrastructure does not directly map to E1.
+      - Cross-target tests can hide target-specific hardware differences.
+  - id: ml-boot-failure-debug
+    name: ML/XAI Boot Failure Debug
+    kind: post_silicon_boot_failure_classifier
+    stage:
+      - post_silicon_validation
+      - boot_debug
+      - machine_learning
+      - explainability
+    priority: P3
+    source_url: https://rei.iteso.mx/items/d449d907-2591-4969-b402-1f32bee002ab
+    code_url: null
+    model_url: null
+    dataset_url: null
+    license_status: paper_only
+    code_status: no_reference_implementation
+    model_status: no_model
+    e1_fit: >
+      Relevant as a future pattern for classifying E1 boot/power/reset failures
+      after QEMU, FPGA, board, and lab traces exist.
+    integration_action: >
+      Track as research-only until E1 has labeled boot-failure traces and an
+      explainability/reviewer workflow.
+    evidence_gate: >
+      ML boot-debug claims require trace schema, labeled corpus, train/test
+      split, model version, explanation output, and human debug disposition.
+    risk:
+      - Boot failures are environment-sensitive and can be mislabeled.
+      - No local labeled corpus exists for E1.
+  - id: llm4sechw-debug
+    name: LLM4SecHW
+    kind: hardware_debug_llm_framework
+    stage:
+      - hardware_debug
+      - rtl_security
+      - defect_repair
+      - model_dataset
+    priority: P2
+    source_url: https://arxiv.org/abs/2401.16448
+    code_url: null
+    model_url: null
+    dataset_url: null
+    license_status: paper_assets_review_required
+    code_status: paper_or_assets_to_review
+    model_status: reported_models_to_review
+    e1_fit: >
+      Relevant to future hardware defect triage and repair suggestions, but E1
+      already requires generated fixes to pass verification-debug and RTL
+      rewrite/equivalence gates before source promotion.
+    integration_action: >
+      Use only as research context for defect taxonomy and repair-data
+      provenance; do not trust generated patches.
+    evidence_gate: >
+      Debug or repair outputs need defect provenance, RTL hashes, generated
+      patch quarantine, deterministic regressions, equivalence where relevant,
+      and human review.
+    risk:
+      - Security/defect datasets may not represent E1 bugs.
+      - Repair suggestions can remove symptoms without fixing root cause.
   - id: fault-dft
     name: Fault DFT Toolchain
     kind: dft_atpg_toolchain

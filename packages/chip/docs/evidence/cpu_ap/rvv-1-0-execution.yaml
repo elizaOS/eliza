@@ -1,0 +1,36 @@
+schema: eliza.cpu_ap_rvv_1_0_execution_gate.v1
+status: blocked_only_csr_and_stub_present
+claim_boundary: >
+  RVV 1.0 execution gate. CSR file (rtl/cpu/rvv/rvv_csr.sv) and a
+  behavioral dispatch stub (rtl/cpu/rvv/rvv_unit_stub.sv) are in place;
+  full vector arithmetic, gather/scatter, mask handling, narrowing,
+  widening, reductions, and LSU interaction are NOT implemented. No RVV
+  perf or conformance claim is allowed until a real vector backend
+  (forked from Saturn, Ara, Vicuna, or XiangShan vector unit) lands.
+present:
+  - rtl/cpu/rvv/rvv_csr.sv         # vstart/vxsat/vxrm/vcsr/vl/vtype/vlenb
+  - rtl/cpu/rvv/rvv_unit_stub.sv   # behavioral dispatch ready + zero result
+missing:
+  - real vector ALU pipeline
+  - vector load/store interaction with LSU/cache
+  - tail/mask agnostic semantics
+  - Zvbb / Zvfh / Zvkt extension subroutines
+  - reductions, permutations, masking
+  - exception precise reporting
+candidate_upstreams:
+  - name: Saturn
+    repo: https://github.com/ucb-bar/saturn-vectors
+    license: BSD-3-Clause
+  - name: Ara
+    repo: https://github.com/pulp-platform/ara
+    license: Solderpad-Hardware-License-2.1
+  - name: Vicuna
+    repo: https://github.com/vproc/vicuna
+    license: ISC
+  - name: XiangShan vector backend
+    repo: https://github.com/OpenXiangShan/XiangShan (subset)
+    license: Mulan-PSL-v2
+fail_closed_until:
+  - one candidate upstream forked under external/, OR
+  - a from-scratch RVV 1.0 backend in rtl/cpu/rvv/ passes the
+    riscv-arch-test RVV 1.0 subset and the riscv-dv vector smoke

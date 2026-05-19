@@ -162,6 +162,7 @@ current_repo_classification:
     - SDOT4_S4_2_4
     - DOT16_S2
     - DOT4_FP8_E4M3
+    - FP8_E4M3_scalar_dot_matmul_lowering_smoke
     - RELU4_S8
     - bounded_MMIO_scratchpad_VRELU_S8
     - bounded_MMIO_scratchpad_GEMM_S8
@@ -173,6 +174,7 @@ current_repo_classification:
     - attention_QK_score_lowering_smoke
     - attention_softmax_exp2_q0_8_lowering_smoke
     - attention_AV_context_lowering_smoke
+    - KV_cache_s8_scalar_append_lowering_smoke
     - transformer_MLP_relu_lowering_smoke
     - SwiGLU_s8_scalar_gate_lowering_smoke
     - bias_add_s8_scalar_broadcast_lowering_smoke

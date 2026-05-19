@@ -1,0 +1,109 @@
+schema: eliza.benchmarks_die_shot_calibration.v1
+status: published_die_shot_calibration_used_as_envelope_input
+scope:
+  - Maps projected per-block area (open-PDK / ASAP7 / N2-projection) against
+    independent third-party die-shot analyses of 2025-2026 flagships.
+  - Sanity-checks the 100-130 mm² envelope and per-block sub-budgets in
+    docs/evidence/process/die-area-budget.yaml.
+
+claim_boundary:
+  allowed:
+    - Use as die-area envelope cross-check.
+    - Use as input to scripts/check_die_area_budget.py.
+  blocked:
+    - Use as measured silicon evidence for our own design.
+    - Use to claim flagship parity without commercial-foundry signoff.
+
+reference_die_shots:
+  - chip: Apple A19 Pro
+    process: TSMC N3P
+    die_area_mm2: 98.68
+    sources:
+      - id: techpowerup_a19_pro
+        url: https://www.techpowerup.com/344025/apple-a19-pro-a19-die-size-analysis-indicates-9-10-smaller-than-a18-models
+      - id: cardyak_die_shot
+        url: https://x.com/Cardyak  # die-shot annotation thread
+    annotated_blocks:
+      p_core_n3p_mm2: 2.97
+      p_core_with_l2_n3p_mm2: 5.49
+      e_core_n3p_mm2: 0.78
+      e_core_with_l2_n3p_mm2: 2.22
+      slc_n3p_mm2: 11.03
+
+  - chip: Apple A19
+    process: TSMC N3P
+    die_area_mm2: 81.9
+    sources:
+      - id: techpowerup_a19
+        url: https://www.techpowerup.com/344025/apple-a19-pro-a19-die-size-analysis-indicates-9-10-smaller-than-a18-models
+
+  - chip: Snapdragon 8 Elite Gen 5
+    process: TSMC N3P
+    die_area_mm2: 126.2
+    sources:
+      - id: notebookcheck_s8e5
+        url: https://www.notebookcheck.net/Snapdragon-8-Elite-Gen-5-die-shot-highlights-minor-upgrades-and-GPU-improvements.1124373.0.html
+
+  - chip: Dimensity 9500
+    process: TSMC N3P
+    die_area_mm2: unpublished_specific_value
+    sources:
+      - id: anandtech_archive
+        url: https://www.anandtech.com/
+      - id: chipsandcheese_die_shots
+        url: https://chipsandcheese.com/
+
+  - chip: Exynos 2600
+    process: Samsung SF2
+    die_area_mm2: unpublished_specific_value
+    sources:
+      - id: samsung_foundry_sf2
+        url: https://www.tomshardware.com/tech-industry/samsungs-new-roadmap-unveils-its-2nm-process-nodes-and-outlines-backside-power-delivery-plans
+
+  - chip: Tensor G5
+    process: TSMC N3
+    die_area_mm2: unpublished_specific_value
+    sources:
+      - id: anandtech_archive
+        url: https://www.anandtech.com/
+
+density_scaling_factors:
+  n3p_to_n2_logic_density_ratio: 1.45
+  n2_to_a14_logic_density_ratio: 1.20
+  n3_sram_macro_mb_per_mm2: 28.5
+  n2_sram_macro_mb_per_mm2: 38.1
+  basis:
+    - TSMC Tech Symposium 2025
+    - WikiChip N3 / N3E variant breakdown
+    - TSMC Research 2 nm 38.1 Mb/mm² SRAM macro paper
+
+derived_block_envelope_at_n2:
+  apple_p_core_class_at_n2_mm2:
+    low: 2.0
+    high: 2.5
+    basis: A19_Pro_P_core_2_97_mm2_at_N3P_divided_by_density_ratio_1_45
+  apple_p_core_with_l2_at_n2_mm2:
+    low: 3.5
+    high: 4.5
+    basis: A19_Pro_P_core_with_L2_5_49_mm2_at_N3P_scaled
+  rv64gc_ooo_8wide_with_l2_at_n2_mm2:
+    low: 2.5
+    high: 3.5
+    basis: Ascalon_or_Kunminghu_class_RV64GC_OoO_8wide
+  apple_slc_class_at_n2_mm2:
+    low: 8.0
+    high: 12.0
+    basis: A19_Pro_SLC_11_03_mm2_at_N3P_uses_macro_density_not_bitcell_shrink
+
+usage:
+  consumer: scripts/check_die_area_budget.py
+  evidence_file: docs/evidence/process/die-area-budget.yaml
+
+forbidden_uses:
+  - cite_a19_pro_die_shot_as_our_design_area
+  - cite_competitor_die_shots_as_signoff_evidence
+
+calibration_notes:
+  - "P-core 2.97 mm² at N3P -> 2.04 mm² at N2 (313/215 ≈ 1.45×). RV64GC OoO with vector should land 2.5-3.5 mm² depending on issue width and L2 — TAGE-SC-L + ITTAGE BPU, 8-wide decode, larger ROB/PRF widen vs A19 P-core."
+  - "SLC at N2 uses macro-level density (38.1 Mb/mm²), not bitcell shrink (0.021 µm² ≈ N5). Cache/NPU-SRAM area at N2/A14 must use macro density or will under-budget area by 10-20%."
+  - "LPDDR5X / LPDDR6 PHY at 4×16-bit ≈ 6-10 mm² and does not scale with logic node; PHY is layout-locked by analog content."

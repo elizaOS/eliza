@@ -108,6 +108,23 @@ LOW_POWER_INTENT_TARGETS_BUILD = ROOT / "build/ai_eda/low_power_intent_targets"
 LOW_POWER_INTENT_TARGETS_CLAIM_BOUNDARY = (
     "low_power_intent_target_capture_only_no_power_intent_or_rtl_change"
 )
+VERIFICATION_DEBUG_TARGETS_SCRIPT = ROOT / "scripts/ai_eda/capture_verification_debug_targets.py"
+VERIFICATION_DEBUG_TARGETS_BUILD = ROOT / "build/ai_eda/verification_debug_targets"
+VERIFICATION_DEBUG_TARGETS_CLAIM_BOUNDARY = (
+    "verification_debug_target_capture_only_no_patch_testbench_or_assertion_binding"
+)
+POST_SILICON_TARGETS_SCRIPT = ROOT / "scripts/ai_eda/capture_post_silicon_validation_targets.py"
+POST_SILICON_TARGETS_BUILD = ROOT / "build/ai_eda/post_silicon_validation_targets"
+POST_SILICON_TARGETS_CLAIM_BOUNDARY = (
+    "post_silicon_validation_target_capture_only_no_silicon_or_lab_claim"
+)
+CIRCUIT_FOUNDATION_TARGETS_SCRIPT = (
+    ROOT / "scripts/ai_eda/capture_circuit_foundation_model_targets.py"
+)
+CIRCUIT_FOUNDATION_TARGETS_BUILD = ROOT / "build/ai_eda/circuit_foundation_model_targets"
+CIRCUIT_FOUNDATION_TARGETS_CLAIM_BOUNDARY = (
+    "circuit_foundation_model_target_capture_only_no_training_embedding_or_claim"
+)
 
 REQUIRED_SOURCES = {
     "agentic-eda-survey-2512-23189v2",
@@ -117,6 +134,12 @@ REQUIRED_SOURCES = {
     "cvdp",
     "circuitnet",
     "circuitnet-2",
+    "circuit-foundation-model-survey",
+    "chipnemo",
+    "geneda",
+    "nettag",
+    "deepgate4",
+    "chiplingo",
     "google-circuit-training",
     "autodmp",
     "orassistant",
@@ -168,6 +191,19 @@ REQUIRED_SOURCES = {
     "poet-rtl-ppa",
     "rtl-ppa-sog",
     "openroad-two-phase-clock",
+    "pro-v",
+    "saarthi-formal-verification",
+    "sangam-sva",
+    "fvdebug",
+    "siliconmind-v1",
+    "symbolic-qed",
+    "soc-trace-protocol-debug",
+    "riscv-dv",
+    "riscof",
+    "riscv-arch-test",
+    "opentitan-chip-tests",
+    "ml-boot-failure-debug",
+    "llm4sechw-debug",
     "rtlmul",
     "deeptpi",
     "deft-atpg",
@@ -233,6 +269,9 @@ REQUIRED_WORK_ITEMS = {
     "p1-rtl-rewrite-equivalence-target-capture",
     "p1-board-package-fpga-target-capture",
     "p1-low-power-intent-target-capture",
+    "p1-verification-debug-target-capture",
+    "p1-post-silicon-validation-target-capture",
+    "p1-circuit-foundation-model-target-capture",
     "p2-rtl-model-evaluation-harness",
     "p2-e1-pd-predictor-dataset",
     "p2-dft-atpg-watch",
@@ -395,6 +434,7 @@ def check_readiness(source_ids: set[str], errors: list[str]) -> None:
         "verification_stimulus",
         "assertion_generation",
         "physical_design_prediction",
+        "circuit_foundation_models",
         "placement_optimization",
         "npu_architecture_dse",
         "software_bsp_and_firmware",
@@ -410,6 +450,8 @@ def check_readiness(source_ids: set[str], errors: list[str]) -> None:
         "cdc_rdc_automation",
         "board_package_fpga_automation",
         "low_power_intent_automation",
+        "verification_debug_and_planning",
+        "post_silicon_validation_automation",
     ):
         if required not in seen:
             fail(errors, f"readiness missing stage {required}")
@@ -1635,6 +1677,226 @@ def check_low_power_intent_targets(source_ids: set[str], errors: list[str]) -> N
                 fail(errors, f"{label}: missing follow-up gate {required_gate}")
 
 
+def check_verification_debug_targets(source_ids: set[str], errors: list[str]) -> None:
+    if not VERIFICATION_DEBUG_TARGETS_SCRIPT.is_file():
+        fail(errors, f"missing {VERIFICATION_DEBUG_TARGETS_SCRIPT.relative_to(ROOT)}")
+    if not VERIFICATION_DEBUG_TARGETS_BUILD.is_dir():
+        return
+    for run_dir in sorted(
+        path for path in VERIFICATION_DEBUG_TARGETS_BUILD.iterdir() if path.is_dir()
+    ):
+        report = load_json(run_dir / "targets_report.json", errors)
+        label = str(run_dir.relative_to(ROOT))
+        if not isinstance(report, dict):
+            continue
+        if report.get("schema") != "eliza.ai_eda.verification_debug_targets.v1":
+            fail(errors, f"{label}: unexpected verification debug targets schema")
+        if report.get("claim_boundary") != VERIFICATION_DEBUG_TARGETS_CLAIM_BOUNDARY:
+            fail(errors, f"{label}: unsafe verification debug claim boundary")
+        if report.get("status") != "TARGET_CAPTURE_ONLY_NO_VERIFICATION_PATCH_OR_CLAIM":
+            fail(errors, f"{label}: verification debug target capture must not claim evidence")
+        for source_id in report.get("source_ids") or []:
+            if source_id not in source_ids:
+                fail(errors, f"{label}: unknown source_id {source_id}")
+        policy = report.get("policy")
+        if not isinstance(policy, dict):
+            fail(errors, f"{label}: missing verification debug target policy")
+        elif (
+            policy.get("changes_rtl") is not False
+            or policy.get("changes_testbench") is not False
+            or policy.get("changes_assertions") is not False
+            or policy.get("generates_patch") is not False
+            or policy.get("generates_testbench") is not False
+            or policy.get("generates_assertion") is not False
+            or policy.get("binds_assertion") is not False
+            or policy.get("runs_llm") is not False
+            or policy.get("runs_formal") is not False
+            or policy.get("runs_simulation") is not False
+            or policy.get("parses_waveforms") is not False
+            or policy.get("downloads_external_assets") is not False
+            or policy.get("imports_external_benchmarks") is not False
+            or policy.get("prediction_generated") is not False
+            or policy.get("debug_claim_allowed") is not False
+            or policy.get("verification_closure_claim_allowed") is not False
+            or policy.get("release_use_allowed") is not False
+        ):
+            fail(errors, f"{label}: verification debug target policy allows unsafe use")
+        tasks = report.get("candidate_tasks")
+        if not isinstance(tasks, list) or not tasks:
+            fail(errors, f"{label}: verification debug target report must contain tasks")
+        for artifact in report.get("input_artifacts") or []:
+            path_value = artifact.get("path")
+            if artifact.get("status") == "PRESENT" and isinstance(path_value, str):
+                path = ROOT / path_value
+                if not path.is_file() or artifact.get("sha256") != sha256_file(path):
+                    fail(errors, f"{label}/{path_value}: stale verification debug hash")
+        gates = {
+            gate
+            for task in tasks or []
+            if isinstance(task, dict)
+            for gate in task.get("acceptance_gates", [])
+        }
+        for required_gate in (
+            "python3 scripts/check_ai_eda_source_inventory.py",
+            "make formal",
+            "make rtl-check",
+            "make cocotb-contract",
+            "make synth",
+            "make no-hardware-action-check",
+        ):
+            if required_gate not in gates:
+                fail(errors, f"{label}: missing follow-up gate {required_gate}")
+
+
+def check_post_silicon_validation_targets(source_ids: set[str], errors: list[str]) -> None:
+    if not POST_SILICON_TARGETS_SCRIPT.is_file():
+        fail(errors, f"missing {POST_SILICON_TARGETS_SCRIPT.relative_to(ROOT)}")
+    if not POST_SILICON_TARGETS_BUILD.is_dir():
+        return
+    for run_dir in sorted(path for path in POST_SILICON_TARGETS_BUILD.iterdir() if path.is_dir()):
+        report = load_json(run_dir / "targets_report.json", errors)
+        label = str(run_dir.relative_to(ROOT))
+        if not isinstance(report, dict):
+            continue
+        if report.get("schema") != "eliza.ai_eda.post_silicon_validation_targets.v1":
+            fail(errors, f"{label}: unexpected post-silicon validation targets schema")
+        if report.get("claim_boundary") != POST_SILICON_TARGETS_CLAIM_BOUNDARY:
+            fail(errors, f"{label}: unsafe post-silicon validation claim boundary")
+        if report.get("status") != "TARGET_CAPTURE_ONLY_NO_POST_SILICON_OR_LAB_CLAIM":
+            fail(errors, f"{label}: post-silicon validation target capture must not claim evidence")
+        for source_id in report.get("source_ids") or []:
+            if source_id not in source_ids:
+                fail(errors, f"{label}: unknown source_id {source_id}")
+        policy = report.get("policy")
+        if not isinstance(policy, dict):
+            fail(errors, f"{label}: missing post-silicon validation target policy")
+        elif (
+            policy.get("changes_rtl") is not False
+            or policy.get("changes_firmware") is not False
+            or policy.get("changes_board") is not False
+            or policy.get("changes_fpga") is not False
+            or policy.get("generates_lab_script") is not False
+            or policy.get("generates_test_binary") is not False
+            or policy.get("runs_on_hardware") is not False
+            or policy.get("runs_fpga_flow") is not False
+            or policy.get("runs_qemu") is not False
+            or policy.get("runs_renode") is not False
+            or policy.get("runs_llm") is not False
+            or policy.get("downloads_external_assets") is not False
+            or policy.get("imports_external_tests") is not False
+            or policy.get("prediction_generated") is not False
+            or policy.get("silicon_bringup_claim_allowed") is not False
+            or policy.get("post_silicon_debug_claim_allowed") is not False
+            or policy.get("riscv_compliance_claim_allowed") is not False
+            or policy.get("lab_measurement_claim_allowed") is not False
+            or policy.get("release_use_allowed") is not False
+        ):
+            fail(errors, f"{label}: post-silicon validation target policy allows unsafe use")
+        tasks = report.get("candidate_tasks")
+        if not isinstance(tasks, list) or not tasks:
+            fail(errors, f"{label}: post-silicon validation target report must contain tasks")
+        for artifact in report.get("input_artifacts") or []:
+            path_value = artifact.get("path")
+            if artifact.get("status") == "PRESENT" and isinstance(path_value, str):
+                path = ROOT / path_value
+                if not path.is_file() or artifact.get("sha256") != sha256_file(path):
+                    fail(errors, f"{label}/{path_value}: stale post-silicon validation hash")
+        gates = {
+            gate
+            for task in tasks or []
+            if isinstance(task, dict)
+            for gate in task.get("acceptance_gates", [])
+        }
+        for required_gate in (
+            "make platform-contract-check",
+            "make qemu-check",
+            "make renode-check",
+            "make fpga-check",
+            "make real-world-gates-check",
+            "make manufacturing-artifacts-check",
+            "make product-check",
+            "make no-hardware-action-check",
+            "python3 scripts/check_ai_eda_source_inventory.py",
+        ):
+            if required_gate not in gates:
+                fail(errors, f"{label}: missing follow-up gate {required_gate}")
+
+
+def check_circuit_foundation_model_targets(source_ids: set[str], errors: list[str]) -> None:
+    if not CIRCUIT_FOUNDATION_TARGETS_SCRIPT.is_file():
+        fail(errors, f"missing {CIRCUIT_FOUNDATION_TARGETS_SCRIPT.relative_to(ROOT)}")
+    if not CIRCUIT_FOUNDATION_TARGETS_BUILD.is_dir():
+        return
+    for run_dir in sorted(path for path in CIRCUIT_FOUNDATION_TARGETS_BUILD.iterdir() if path.is_dir()):
+        report = load_json(run_dir / "targets_report.json", errors)
+        label = str(run_dir.relative_to(ROOT))
+        if not isinstance(report, dict):
+            continue
+        if report.get("schema") != "eliza.ai_eda.circuit_foundation_model_targets.v1":
+            fail(errors, f"{label}: unexpected circuit foundation model targets schema")
+        if report.get("claim_boundary") != CIRCUIT_FOUNDATION_TARGETS_CLAIM_BOUNDARY:
+            fail(errors, f"{label}: unsafe circuit foundation model claim boundary")
+        if report.get("status") != "TARGET_CAPTURE_ONLY_NO_FOUNDATION_MODEL_EXECUTION":
+            fail(errors, f"{label}: circuit foundation model capture must not execute models")
+        for source_id in report.get("source_ids") or []:
+            if source_id not in source_ids:
+                fail(errors, f"{label}: unknown source_id {source_id}")
+        policy = report.get("policy")
+        if not isinstance(policy, dict):
+            fail(errors, f"{label}: missing circuit foundation model target policy")
+        elif (
+            policy.get("changes_rtl") is not False
+            or policy.get("changes_constraints") is not False
+            or policy.get("changes_training_data") is not False
+            or policy.get("generates_embeddings") is not False
+            or policy.get("trains_model") is not False
+            or policy.get("finetunes_model") is not False
+            or policy.get("runs_inference") is not False
+            or policy.get("runs_llm") is not False
+            or policy.get("exports_dataset") is not False
+            or policy.get("imports_external_corpus") is not False
+            or policy.get("downloads_external_assets") is not False
+            or policy.get("downloads_model_weights") is not False
+            or policy.get("prediction_generated") is not False
+            or policy.get("embedding_claim_allowed") is not False
+            or policy.get("model_quality_claim_allowed") is not False
+            or policy.get("design_decision_claim_allowed") is not False
+            or policy.get("release_use_allowed") is not False
+        ):
+            fail(errors, f"{label}: circuit foundation model target policy allows unsafe use")
+        tasks = report.get("candidate_tasks")
+        if not isinstance(tasks, list) or not tasks:
+            fail(errors, f"{label}: circuit foundation model target report must contain tasks")
+        for artifact in report.get("input_artifacts") or []:
+            path_value = artifact.get("path")
+            if artifact.get("status") == "PRESENT" and isinstance(path_value, str):
+                path = ROOT / path_value
+                if not path.is_file() or artifact.get("sha256") != sha256_file(path):
+                    fail(errors, f"{label}/{path_value}: stale circuit foundation model hash")
+        gates = {
+            gate
+            for task in tasks or []
+            if isinstance(task, dict)
+            for gate in task.get("acceptance_gates", [])
+        }
+        for required_gate in (
+            "python3 scripts/check_ai_eda_source_inventory.py",
+            "python3 scripts/ai_eda/build_local_eda_rag_index.py --run-id validation",
+            "python3 scripts/ai_eda/capture_openroad_ml_snapshot.py --run-id validation",
+            "python3 scripts/ai_eda/evaluate_rtl_model.py --dry-run --run-id validation",
+            "python3 scripts/ai_eda/probe_external_ai_eda_sources.py --run-id validation",
+            "python3 scripts/ai_eda/capture_rtl_rewrite_equivalence_targets.py --run-id validation",
+            "python3 scripts/ai_eda/capture_verification_debug_targets.py --run-id validation",
+            "make formal",
+            "make synth",
+            "make cocotb-contract",
+            "make no-hardware-action-check",
+            "make pd-contract-check",
+        ):
+            if required_gate not in gates:
+                fail(errors, f"{label}: missing follow-up gate {required_gate}")
+
+
 def main() -> int:
     errors: list[str] = []
     source_ids = check_inventory(errors)
@@ -1663,6 +1925,9 @@ def main() -> int:
     check_rtl_rewrite_equivalence_targets(source_ids, errors)
     check_board_package_fpga_targets(source_ids, errors)
     check_low_power_intent_targets(source_ids, errors)
+    check_verification_debug_targets(source_ids, errors)
+    check_post_silicon_validation_targets(source_ids, errors)
+    check_circuit_foundation_model_targets(source_ids, errors)
     check_openroad_autotune(errors)
     check_rtl_eval(errors)
     check_pd_predictor(errors)

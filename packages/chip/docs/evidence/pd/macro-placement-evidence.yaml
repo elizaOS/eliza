@@ -1,0 +1,57 @@
+schema: eliza.pd_macro_placement_evidence.v1
+status: draft_local_evidence
+release_use: prohibited_until_external_review
+scope: alphachip_dreamplace_openroad_macro_placement_head_to_head
+description: |
+  Macro-placement evidence gate. Fail-closed until AlphaChip and DREAMPlace
+  candidate placements are head-to-head compared against the OpenROAD
+  baseline on both proxy AND routed PPA truth (run_post_route_ppa.py).
+source_artifacts:
+  - pd/macros/manifest.yaml
+  - scripts/alphachip/compare_proxy_costs.sh
+  - scripts/run_post_route_ppa.py
+  - scripts/dreamplace_eval.py
+  - docs/pd/macro-placement.md
+  - research/alpha_chip_macro_placement/06_e1_notes/openlane_full_release_2026-05-19.md
+  - research/alpha_chip_macro_placement/06_e1_notes/openlane_smoke_baseline_2026-05-19.md
+local_findings:
+  hard_macros_in_release:
+    status: missing
+    count: 0
+    evidence_boundary: |
+      The current OpenLane Sky130 release reports Macros: 0, MacroArea: 0.
+      AlphaChip and DREAMPlace cannot demonstrate macro-placement value
+      without hard macros. OpenRAM SRAM macros listed in
+      pd/macros/manifest.yaml are not yet built.
+  alphachip_proxy_smoke_16_macros:
+    status: ran_locally
+    openroad_proxy: 0.499
+    alphachip_proxy: 0.761
+    interpretation: AlphaChip worse than OpenROAD on toy training run.
+  alphachip_proxy_full_256_macros:
+    status: ran_locally
+    openroad_proxy: 0.2379
+    alphachip_proxy: 0.2308
+    delta_pct: -3.01
+    interpretation: AlphaChip 3 % better on proxy; PPA truth not yet captured.
+  dreamplace_head_to_head:
+    status: not_executed
+    evidence_boundary: |
+      DREAMPlace 4.0 evaluation harness exists (scripts/dreamplace_eval.py)
+      but has not been run on the e1 benchmark.
+  post_route_ppa_truth:
+    status: blocked
+    evidence_boundary: |
+      run_post_route_ppa.py exists and is ready. It is BLOCKED on hard
+      macros being present so the post-route routing has a non-trivial
+      macro placement to validate.
+required_validators:
+  - scripts/run_post_route_ppa.py --plc <alphachip.plc> --netlist <bench>.pb.txt --openroad-run-dir <run> --openlane-config pd/openlane/config.sky130.json --out-json research/alpha_chip_macro_placement/07_post_route_ppa/alphachip.json
+  - scripts/run_post_route_ppa.py --plc <openroad.plc> --netlist <bench>.pb.txt --openroad-run-dir <run> --openlane-config pd/openlane/config.sky130.json --out-json research/alpha_chip_macro_placement/07_post_route_ppa/openroad.json
+  - scripts/dreamplace_eval.py --bench-dir /tmp/e1-alphachip/e1_softmacro --out-dir build/pd/dreamplace/e1 --use-gpu
+release_blockers:
+  - OpenRAM Sky130 SRAM macros (4 KB, 16 KB, 64 KB) are not built.
+  - DREAMPlace 4.0 evaluation has not been run on the e1 benchmark.
+  - AlphaChip post-route PPA truth (run_post_route_ppa.py output) is not archived.
+  - False Dawn controversy (arXiv 2302.11014) requires post-route PPA, not proxy.
+  - PPO RL training pending H200 GPU access (Nebius runbook ready).

@@ -125,6 +125,11 @@ SOURCE_SET = (
         "ai_eda_runner",
     ),
     (
+        "circuit_foundation_model_targets_runner",
+        "scripts/ai_eda/capture_circuit_foundation_model_targets.py",
+        "ai_eda_runner",
+    ),
+    (
         "external_source_probe_runner",
         "scripts/ai_eda/probe_external_ai_eda_sources.py",
         "ai_eda_runner",

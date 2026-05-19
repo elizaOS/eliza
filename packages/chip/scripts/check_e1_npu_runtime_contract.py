@@ -267,6 +267,32 @@ def main() -> int:
         if token not in lowering_text:
             errors.append(f"matmul lowering smoke missing token {token!r}")
 
+    fp8_matmul_lowering = contract.get("fp8_matmul_lowering_smoke", {})
+    if fp8_matmul_lowering.get("runtime_api") != "lower_fp8_matmul_smoke":
+        errors.append("FP8 matmul lowering smoke must identify lower_fp8_matmul_smoke")
+    if (
+        fp8_matmul_lowering.get("claim_boundary")
+        != "fp8_e4m3_matmul_dot4_smoke_only_not_tensor_fp8_gemm_or_production_compiler_backend"
+    ):
+        errors.append("FP8 matmul lowering smoke claim boundary must remain scalar-dot-only")
+    if set(fp8_matmul_lowering.get("supported_precisions", [])) != {"fp8_e4m3"}:
+        errors.append("FP8 matmul lowering smoke must be limited to fp8_e4m3")
+    for required in ("DOT4_FP8_E4M3", "pads K to DOT4 width", "signed Q8.8 accumulation"):
+        if required not in str(fp8_matmul_lowering.get("lowering", "")):
+            errors.append(f"FP8 matmul contract missing {required!r}")
+    for token in (
+        "SUPPORTED_FP8_MATMUL_SCHEMA",
+        "lower_fp8_matmul_smoke",
+        "golden_dot4_fp8_e4m3",
+        "runtime.dot4_fp8_e4m3",
+        "host_pads_k_to_dot4",
+        "dot4_count",
+        "eliza.fp8_matmul",
+        "fp8_e4m3_matmul_dot4_smoke_only_not_tensor_fp8_gemm_or_production_compiler_backend",
+    ):
+        if token not in lowering_text:
+            errors.append(f"FP8 matmul lowering smoke missing token {token!r}")
+
     conv2d_lowering = contract.get("conv2d_lowering_smoke", {})
     if conv2d_lowering.get("runtime_api") != "lower_conv2d_smoke":
         errors.append("conv2d lowering smoke must identify lower_conv2d_smoke runtime API")
@@ -388,6 +414,34 @@ def main() -> int:
     ):
         if token not in lowering_text:
             errors.append(f"attention_av lowering smoke missing token {token!r}")
+
+    kv_cache_lowering = contract.get("kv_cache_update_lowering_smoke", {})
+    if kv_cache_lowering.get("runtime_api") != "lower_kv_cache_update_smoke":
+        errors.append("kv_cache_update lowering smoke must identify lower_kv_cache_update_smoke")
+    if (
+        kv_cache_lowering.get("claim_boundary")
+        != "kv_cache_update_s8_scalar_append_smoke_only_not_paged_or_dma_cache"
+    ):
+        errors.append("kv_cache_update claim boundary must remain append-smoke-only")
+    if set(kv_cache_lowering.get("supported_precisions", [])) != {"int8"}:
+        errors.append("kv_cache_update lowering smoke must be limited to int8")
+    for required in ("OP_ADD(value, 0)", "preserves existing cache", "advances cache_lengths"):
+        if required not in str(kv_cache_lowering.get("lowering", "")):
+            errors.append(f"kv_cache_update contract missing {required!r}")
+    for token in (
+        "lower_kv_cache_update_smoke",
+        "_validate_kv_cache_update_shape",
+        "_clone_tensor4",
+        "host_preserves_existing_cache",
+        "host_tracks_cache_lengths",
+        "scalar_copy_count",
+        "eliza.kv_cache_update",
+        "stablehlo.kv_cache_update",
+        "tflite.kv_cache_update",
+        "kv_cache_update_s8_scalar_append_smoke_only_not_paged_or_dma_cache",
+    ):
+        if token not in lowering_text:
+            errors.append(f"kv_cache_update lowering smoke missing token {token!r}")
 
     mlp_lowering = contract.get("mlp_lowering_smoke", {})
     if mlp_lowering.get("runtime_api") != "lower_mlp_smoke":
@@ -531,7 +585,7 @@ def main() -> int:
         )
     if (
         modern_decoder_block_lowering.get("claim_boundary")
-        != "modern_decoder_block_single_head_smoke_only_not_softmax_multihead_kv_cache_or_production_compiler_backend"
+        != "modern_decoder_block_single_head_exp2_softmax_smoke_only_not_multihead_kv_cache_or_production_compiler_backend"
     ):
         errors.append(
             "modern_decoder_block lowering smoke claim boundary must remain decoder-smoke-only"
@@ -542,9 +596,11 @@ def main() -> int:
     for required in (
         "lower_rmsnorm_smoke",
         "lower_attention_qk_smoke",
+        "lower_attention_softmax_smoke",
         "lower_attention_av_smoke",
         "lower_swiglu_smoke",
-        "prequantized attention weights",
+        "host QK-score requantization",
+        "host Q0.8 attention-weight requantization",
     ):
         if required not in modern_decoder_lowering_text:
             errors.append(f"modern_decoder_block contract missing {required!r}")
@@ -553,12 +609,15 @@ def main() -> int:
         "_validate_modern_decoder_block_shape",
         "SUPPORTED_MODERN_DECODER_BLOCK_SCHEMA",
         "computes_qk_scores",
+        "computes_attention_softmax",
         "requires_prequantized_attention",
         "host_requantizes_qkv",
+        "host_requantizes_qk_scores",
+        "host_requantizes_attention_weights",
         "eliza.decoder_block",
         "stablehlo.decoder_block",
         "tflite.decoder_block",
-        "modern_decoder_block_single_head_smoke_only_not_softmax_multihead_kv_cache_or_production_compiler_backend",
+        "modern_decoder_block_single_head_exp2_softmax_smoke_only_not_multihead_kv_cache_or_production_compiler_backend",
     ):
         if token not in lowering_text:
             errors.append(f"modern_decoder_block lowering smoke missing token {token!r}")
@@ -690,9 +749,11 @@ def main() -> int:
         "golden_gemm_s4",
         "golden_vrelu_s8",
         "lower_matmul_smoke",
+        "lower_fp8_matmul_smoke",
         "lower_conv2d_smoke",
         "lower_attention_qk_smoke",
         "lower_attention_av_smoke",
+        "lower_kv_cache_update_smoke",
         "lower_mlp_smoke",
         "lower_swiglu_smoke",
         "lower_bias_add_smoke",
@@ -703,10 +764,12 @@ def main() -> int:
         "lower_rmsnorm_smoke",
         "test_runtime_matmul_smoke_lowering_dispatches_multiple_tiles",
         "test_runtime_matmul_smoke_lowering_split_k_accumulates_npu_partials",
+        "test_runtime_fp8_matmul_smoke_dispatches_dot4_chunks",
         "test_runtime_conv2d_smoke_lowering_dispatches_im2col_tiles",
         "test_runtime_attention_qk_smoke_lowering_dispatches_per_head_gemm",
         "test_runtime_attention_softmax_smoke_dispatches_scalar_exp2_path",
         "test_runtime_attention_av_smoke_lowering_dispatches_per_head_gemm",
+        "test_runtime_kv_cache_update_smoke_dispatches_scalar_copies",
         "test_runtime_transformer_mlp_smoke_dispatches_gemm_vrelu_gemm",
         "test_runtime_swiglu_smoke_dispatches_gemm_scalar_gate_gemm",
         "test_runtime_bias_add_smoke_dispatches_broadcast_scalar_adds",

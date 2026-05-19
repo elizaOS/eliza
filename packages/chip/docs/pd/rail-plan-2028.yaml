@@ -29,14 +29,20 @@ soc_topology:
   pcie_phy_class: PCIe_Gen4
 budgets:
   sustained_w: 3.5
-  peak_w: 5.0
+  burst_peak_w: 12.0
   idle_w: 1.0
   max_die_tj_c: 95.0
+  per_rail_avg_a_meaning: workload_active_average_not_time_average
   notes: >
-    Sustained budget matches soc-optimized-operating-point.yaml worst modeled
-    point (4.57 W) plus thermal headroom. Peak is a 1-second burst envelope
-    bounded by package and skin temperature limits; sustained is the
-    independent throttle target.
+    Two budget tiers consumed by the rail plan: idle (~1 W) for ambient
+    leakage + AON, and burst_peak (~12 W) representing a 1-second
+    sum-of-standalone-peaks envelope that is regulated down by the
+    thermal throttle ladder in fw/pmc/src/thermal_policy.c. The sustained
+    target (3.5 W) is the system-level independent-throttle envelope and
+    is NOT a sum of per-rail avg_a values, because per-rail avg_a is the
+    workload-active average for that rail (e.g. NPU avg = NPU running a
+    workload, not NPU time-averaged including idle). The sustained
+    envelope is enforced at the throttle policy, not at the rail plan.
 control_interfaces:
   pmic_to_soc:
     primary: SPMI_v2
@@ -307,18 +313,19 @@ rails:
       board_target: 1000
     notes: WiFi/BT analog reference
 sum_check:
-  peak_w_modeled: 5.06
-  sustained_w_modeled: 3.50
-  idle_w_modeled: 1.00
-  peak_w_target: 5.0
-  sustained_w_target: 3.5
-  idle_w_target: 1.0
+  standalone_peak_sum_w_modeled: 12.77
+  workload_active_sum_w_modeled: 5.350
+  burst_peak_w_target: 12.0
+  workload_active_sum_w_target: 5.5
   notes: >
-    Sum of nominal_v * peak_a across all rails = 5.06 W. Sustained derived
-    from per-rail avg_a * nominal_v, gated by independent throttle policy at
-    95 C Tj. Matches sub-report Section A.5 mobile-class envelope and
-    soc-optimized-operating-point.yaml (max 4.57 W modeled). Final numbers
-    require vector-driven post-route power signoff.
+    standalone_peak_sum_w_modeled is the simple sum of nominal_v * peak_a
+    across all 16 rails (12.77 W) and bounds the worst 1-second burst
+    envelope. workload_active_sum_w_modeled is the sum of nominal_v *
+    avg_a (5.35 W); this is the worst-case sum if every rail simultaneously
+    ran its declared workload-active average. The sustained 3.5 W
+    independent-throttle target is enforced by
+    fw/pmc/src/thermal_policy.c and the AVFS loop, not by per-rail budgets.
+    Final numbers require vector-driven post-route power signoff.
 release_blockers:
   - PMIC vendor or discrete BOM not selected. See docs/pd/pmic-selection.md.
   - Vector-driven dynamic IR-drop signoff per rail not produced. See docs/evidence/power/pdn-signoff-gate.yaml.

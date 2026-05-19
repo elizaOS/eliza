@@ -90,9 +90,20 @@ GEMM, quantized transformer lowering, or sustained TOPS/W behavior.
 pack four raw FP8 E4M3 values, low byte first. The RTL decodes each lane to
 signed Q8.8 fixed point, multiplies lane pairs, shifts each product back to
 Q8.8, adds signed Q8.8 `ACC`, and returns the signed Q8.8 result in `RESULT`.
-This is scalar FP8 datapath evidence only; it does not establish FP8 GEMM,
-mixed-precision tensor accumulation, compiler lowering, or sustained TOPS/W
-behavior.
+`lower_fp8_matmul_smoke` lifts this primitive into a bounded FP8 E4M3 matmul
+evidence path for raw FP8 byte matrices from `stablehlo.dot_general`,
+`stablehlo.dot`, `tflite.fully_connected`, `tflite.batch_matmul`,
+`tflite.matmul`, and `eliza.fp8_matmul` records. Host code validates byte
+ranges, pads K to the four-lane dot width with FP8 zero bytes when needed, and
+dispatches every FP8 MAC chunk through `DOT4_FP8_E4M3` with signed Q8.8
+accumulation. The returned evidence records the Q8.8 output matrix, golden
+Q8.8 matrix, dot4 dispatch count, padded K, `host_pads_k_to_dot4`,
+`cpu_fallback=false`, and the claim boundary
+`fp8_e4m3_matmul_dot4_smoke_only_not_tensor_fp8_gemm_or_production_compiler_backend`.
+
+This proves scalar-dot FP8 matmul orchestration only. It is not a tensor FP8
+GEMM, FP8 systolic path, FP16/BF16 accumulation path, graph partitioning,
+Android delegation, production compiler backend, or sustained TOPS/W claim.
 
 ## Matmul Lowering Smoke Path
 
@@ -186,6 +197,24 @@ complete attention kernel: softmax, scaling, masking, score normalization,
 KV-cache paging, fusion, graph partitioning, Android delegation, and hardware
 scheduling remain future work.
 
+`lower_kv_cache_update_smoke` adds a bounded decode-state evidence path for
+`eliza.kv_cache_update`, `stablehlo.kv_cache_update`, and
+`tflite.kv_cache_update` records. It accepts rank-4
+`[batch][heads][capacity][dim]` int8 key/value cache tensors, rank-4 new
+key/value tensors, and per-head cache lengths. Host code validates capacity and
+append lengths, preserves existing cache entries, dispatches every appended
+K/V scalar copy through `OP_ADD(value, 0)`, writes appended tokens into fixed
+cache positions, and advances cache lengths. The returned evidence records the
+updated key/value caches, new lengths, appended token count, head/value
+dimensions, scalar copy count, `host_preserves_existing_cache=true`,
+`host_tracks_cache_lengths=true`, `cpu_fallback=false`, and the claim boundary
+`kv_cache_update_s8_scalar_append_smoke_only_not_paged_or_dma_cache`.
+
+This proves append-only KV-cache runtime orchestration only. It is not a paged
+KV cache, cache eviction policy, circular buffer, DMA-backed cache update,
+multi-batch decode cache manager, Android delegation, graph compilation, or a
+production transformer decode cache path.
+
 `lower_mlp_smoke` adds a tiny transformer feed-forward evidence path. It
 accepts `stablehlo.mlp`, `tflite.mlp`, and `eliza.transformer_mlp` records
 using `int8` operands and ReLU activation. Host code validates both projection
@@ -272,25 +301,29 @@ hardware scheduling remain future work.
 evidence into a tiny batch-1, single-head decoder block. It accepts
 `eliza.decoder_block`, `stablehlo.decoder_block`, and `tflite.decoder_block`
 records using int8 operands, RMSNorm weights, Q/K/V projection weights,
-prequantized attention weights, rotary cosine/sine tables, row-wise attention
-bias, and SwiGLU weights. The path calls `lower_rmsnorm_smoke`, three
-`lower_matmul_smoke` Q/K/V projections, host Q/K/V requantization,
-`lower_rope_smoke` for Q and K, `lower_attention_qk_smoke`,
-`lower_attention_av_smoke`, `lower_bias_add_smoke`,
+an optional boolean attention mask, rotary cosine/sine tables, row-wise
+attention bias, and SwiGLU weights. The path calls `lower_rmsnorm_smoke`,
+three `lower_matmul_smoke` Q/K/V projections, host Q/K/V requantization,
+`lower_rope_smoke` for Q and K, `lower_attention_qk_smoke`, host QK-score
+requantization, `lower_attention_softmax_smoke`, host Q0.8 attention-weight
+requantization, `lower_attention_av_smoke`, `lower_bias_add_smoke`,
 `lower_residual_add_smoke`, a second `lower_rmsnorm_smoke`,
 `lower_swiglu_smoke`, and a final `lower_residual_add_smoke`. The returned
 evidence records normalized tensors, Q/K/V projections, RoPE outputs, QK
-scores, attention context, residuals, SwiGLU output, final output, total GEMM
-tile count, scalar arithmetic counts, `computes_qk_scores=true`,
-`requires_prequantized_attention=true`, `host_requantizes_qkv=true`,
-`cpu_fallback=false`, and the claim boundary
-`modern_decoder_block_single_head_smoke_only_not_softmax_multihead_kv_cache_or_production_compiler_backend`.
+scores, requantized QK logits, approximate softmax weights, requantized
+attention weights, attention context, residuals, SwiGLU output, final output,
+total GEMM tile count, scalar arithmetic counts, `computes_qk_scores=true`,
+`computes_attention_softmax=true`, `requires_prequantized_attention=false`,
+`host_requantizes_qkv=true`, `host_requantizes_qk_scores=true`,
+`host_requantizes_attention_weights=true`, `cpu_fallback=false`, and the claim
+boundary
+`modern_decoder_block_single_head_exp2_softmax_smoke_only_not_multihead_kv_cache_or_production_compiler_backend`.
 
 This proves modern decoder-block runtime orchestration over current NPU-backed
 smoke primitives. It is still not a production transformer decode kernel:
-softmax, scaling, masking, multi-head merge, KV-cache paging/update, vector
-norm/RoPE/gate datapaths, fused kernels, Android delegation, graph compilation,
-and hardware scheduling remain future work.
+exact exp/e softmax, scaling fusion, multi-head merge, KV-cache paging/update,
+vector norm/RoPE/gate/softmax datapaths, fused kernels, Android delegation,
+graph compilation, and hardware scheduling remain future work.
 
 `lower_rope_smoke` adds a tiny rotary-position embedding evidence path for
 `eliza.rope`, `stablehlo.rope`, and `tflite.rope` records. It accepts int8

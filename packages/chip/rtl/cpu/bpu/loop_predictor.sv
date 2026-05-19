@@ -12,8 +12,6 @@
 
 `timescale 1ns/1ps
 
-`include "rtl/cpu/bpu/bpu_pkg.sv"
-
 module loop_predictor
     import bpu_pkg::*;
 (

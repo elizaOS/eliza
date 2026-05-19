@@ -6,7 +6,7 @@
     "classification": "L0_RTL_UNIT",
     "rtl": "rtl/npu/e1_npu.sv",
     "runtime": "compiler/runtime/e1_npu_runtime.py",
-    "software_claim": "MMIO scalar, packed-dot, packed ReLU, bounded scratchpad VRELU/GEMM, single-matmul/Conv2D/attention-QK/attention-AV/MLP/SwiGLU/residual-add/bias-add/single-head-transformer-block/modern-decoder-block lowering smoke, and local descriptor-driven DRAM-to-scratchpad tensor prefetch prototype only",
+    "software_claim": "MMIO scalar, packed-dot, packed ReLU, bounded scratchpad VRELU/GEMM, single-matmul/FP8-matmul/Conv2D/attention-QK/attention-AV/MLP/SwiGLU/residual-add/bias-add/single-head-transformer-block/modern-decoder-block lowering smoke, and local descriptor-driven DRAM-to-scratchpad tensor prefetch prototype only",
     "not_claimed": [
       "Android NNAPI acceleration",
       "AIDL HAL acceleration",
@@ -105,6 +105,29 @@
     "claim_boundary": "single_matmul_tiled_smoke_only_not_production_compiler_backend",
     "not_claimed": "No graph partitioning, StableHLO/FlatBuffer parser, quantization calibration, hardware scheduler, CPU fallback planner, Android delegate, or production compiler backend is implemented"
   },
+  "fp8_matmul_lowering_smoke": {
+    "runtime_api": "lower_fp8_matmul_smoke",
+    "module": "compiler/runtime/e1_npu_lowering.py",
+    "schema": "eliza.e1_npu_fp8_matmul_smoke.v1",
+    "supported_source_ops": [
+      "stablehlo.dot_general",
+      "stablehlo.dot",
+      "tflite.fully_connected",
+      "tflite.batch_matmul",
+      "tflite.matmul",
+      "eliza.fp8_matmul"
+    ],
+    "supported_precisions": [
+      "fp8_e4m3"
+    ],
+    "mapped_opcodes": [
+      "DOT4_FP8_E4M3"
+    ],
+    "layout": "raw FP8 E4M3 byte matrices with signed Q8.8 accumulator output",
+    "lowering": "Host validates raw FP8 byte matrices, pads K to DOT4 width with FP8 zero bytes when needed, and dispatches every four-lane FP8 MAC chunk through DOT4_FP8_E4M3 with signed Q8.8 accumulation",
+    "claim_boundary": "fp8_e4m3_matmul_dot4_smoke_only_not_tensor_fp8_gemm_or_production_compiler_backend",
+    "not_claimed": "No tensor FP8 GEMM, FP8 systolic path, FP16/BF16 accumulation, graph partitioning, quantization calibration, Android delegate, or production compiler backend is implemented"
+  },
   "conv2d_lowering_smoke": {
     "runtime_api": "lower_conv2d_smoke",
     "module": "compiler/runtime/e1_npu_lowering.py",
@@ -181,6 +204,23 @@
     "lowering": "Host iterates batch/head dimensions and requires prequantized attention weights, then reuses lower_matmul_smoke so current GEMM_S8/GEMM_S4 commands perform every AV context MAC",
     "claim_boundary": "attention_av_context_smoke_only_not_softmax_or_production_compiler_backend",
     "not_claimed": "No softmax, scaling, masking, score normalization, KV-cache paging, fused attention kernel, graph partitioning, Android delegate, or production compiler backend is implemented"
+  },
+  "kv_cache_update_lowering_smoke": {
+    "runtime_api": "lower_kv_cache_update_smoke",
+    "module": "compiler/runtime/e1_npu_lowering.py",
+    "schema": "eliza.e1_npu_kv_cache_update_smoke.v1",
+    "supported_source_ops": [
+      "eliza.kv_cache_update",
+      "stablehlo.kv_cache_update",
+      "tflite.kv_cache_update"
+    ],
+    "supported_precisions": [
+      "int8"
+    ],
+    "layout": "rank-4 [batch][heads][capacity][dim] key/value caches plus rank-4 new key/value tensors and per-head cache lengths",
+    "lowering": "Host validates cache capacity and append lengths, preserves existing cache entries, dispatches each appended K/V scalar copy through OP_ADD(value, 0), writes appended tokens into fixed cache positions, and advances cache_lengths",
+    "claim_boundary": "kv_cache_update_s8_scalar_append_smoke_only_not_paged_or_dma_cache",
+    "not_claimed": "No paged KV cache, cache eviction, circular buffer, DMA-backed cache update, multi-batch decode cache manager, Android delegate, graph compiler, or production compiler backend is implemented"
   },
   "mlp_lowering_smoke": {
     "runtime_api": "lower_mlp_smoke",
@@ -276,9 +316,9 @@
     "supported_precisions": [
       "int8"
     ],
-    "lowering": "Composes lower_rmsnorm_smoke, Q/K/V lower_matmul_smoke projections, host Q/K/V requantization, lower_rope_smoke, lower_attention_qk_smoke, lower_attention_av_smoke with prequantized attention weights, lower_bias_add_smoke, lower_residual_add_smoke, a second lower_rmsnorm_smoke, lower_swiglu_smoke, and a final lower_residual_add_smoke for a batch-1 single-head decoder block",
-    "claim_boundary": "modern_decoder_block_single_head_smoke_only_not_softmax_multihead_kv_cache_or_production_compiler_backend",
-    "not_claimed": "No softmax, scaling, masking, multi-head merge, KV-cache paging/update, vector norm/RoPE/gate datapaths, fused kernels, Android delegate, graph compiler, or production compiler backend is implemented"
+    "lowering": "Composes lower_rmsnorm_smoke, Q/K/V lower_matmul_smoke projections, host Q/K/V requantization, lower_rope_smoke, lower_attention_qk_smoke, host QK-score requantization, lower_attention_softmax_smoke, host Q0.8 attention-weight requantization, lower_attention_av_smoke, lower_bias_add_smoke, lower_residual_add_smoke, a second lower_rmsnorm_smoke, lower_swiglu_smoke, and a final lower_residual_add_smoke for a batch-1 single-head decoder block",
+    "claim_boundary": "modern_decoder_block_single_head_exp2_softmax_smoke_only_not_multihead_kv_cache_or_production_compiler_backend",
+    "not_claimed": "No exact exp/e softmax, scaling fusion, multi-head merge, KV-cache paging/update, vector norm/RoPE/gate/softmax datapaths, fused kernels, Android delegate, graph compiler, or production compiler backend is implemented"
   },
   "rope_lowering_smoke": {
     "runtime_api": "lower_rope_smoke",
@@ -380,7 +420,7 @@
     {
       "precision": "FP8",
       "state": "supported_prototype",
-      "path": "DOT4_FP8_E4M3 scalar E4M3 dot prototype with signed Q8.8 output only; no tensor GEMM/compiler path"
+      "path": "DOT4_FP8_E4M3 scalar E4M3 dot prototype plus bounded scalar-dot FP8 matmul lowering smoke with signed Q8.8 output only; no tensor FP8 GEMM/compiler path"
     }
   ],
   "runtime_evidence_requirements": [

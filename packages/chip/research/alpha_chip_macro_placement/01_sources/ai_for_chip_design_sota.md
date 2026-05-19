@@ -35,6 +35,24 @@ power, and manufacturing preparation.
   DMA/NPU completion, interrupt liveness, and no-stall properties. Feed only
   reviewed properties into the existing Yosys/SymbiYosys formal lane.
 
+### PRO-V / Saarthi / SANGAM / FVDebug / SiliconMind-V1
+
+- PRO-V paper: https://arxiv.org/abs/2506.12200
+- PRO-V repo: https://github.com/stable-lab/Pro-V
+- Saarthi paper: https://arxiv.org/abs/2502.16662
+- SANGAM paper: https://arxiv.org/abs/2506.13983
+- FVDebug paper: https://arxiv.org/abs/2510.15906
+- SiliconMind-V1 paper: https://arxiv.org/abs/2603.08719
+- SiliconMind-V1 model:
+  https://huggingface.co/AS-SiliconMind/SiliconMind-V1-Qwen3-8B
+- Use: agentic verification planning, testbench/oracle generation,
+  formal-counterexample triage, assertion self-refinement, and Verilog
+  debug-reasoning experiments.
+- E1 fit: add only target capture for now. Generated verification plans,
+  testbenches, assertions, root-cause reports, and patches need local RTL/spec
+  hashes, cocotb/formal logs, synthesis/equivalence where applicable, and human
+  review before promotion.
+
 ### ZigZag
 
 - Repo: https://github.com/KULeuven-MICAS/zigzag
@@ -117,6 +135,33 @@ power, and manufacturing preparation.
   command/script assistance.
 - E1 fit: reference data for an internal assistant that explains OpenROAD logs
   and suggests reproducible Tcl/config sweeps.
+
+## Circuit foundation models and embeddings
+
+### ChipNeMo and ChipLingo
+
+- ChipNeMo:
+  https://research.nvidia.com/publication/2023-10_chipnemo-domain-adapted-llms-chip-design
+- NeMo framework: https://github.com/NVIDIA/NeMo
+- ChipLingo: https://arxiv.org/abs/2604.27415
+- Use: domain-adapted EDA LLMs for assistant Q&A, EDA script generation, bug
+  summarization, RAG, and chip-design benchmark tasks.
+- E1 fit: corpus-governance pattern only. E1 does not yet have a reviewed
+  training corpus, release-safe data export policy, public ChipNeMo weights, or
+  held-out local EDA tasks that can justify a model-quality claim.
+
+### GenEDA, NetTAG, and DeepGate4
+
+- GenEDA: https://arxiv.org/abs/2504.09485
+- NetTAG: https://arxiv.org/abs/2504.09260
+- DeepGate4: https://www.emergentmind.com/papers/2502.01681
+- Circuit foundation model survey: https://arxiv.org/abs/2504.03711
+- Use: align graph, text, RTL, netlist, layout, and AIG representations so
+  models can reason about circuit function, retrieve related artifacts, or feed
+  downstream predictors.
+- E1 fit: target capture only. Embeddings and generated netlist-function
+  summaries are not evidence until tied to local artifact hashes, held-out
+  tasks, formal/synthesis checks, and human review.
 
 ## Synthesis, timing, power, and routability predictors
 
@@ -223,6 +268,42 @@ power, and manufacturing preparation.
 - Use: RL/ML approaches for ATPG search.
 - E1 fit: roadmap item after conventional DFT artifacts exist.
 
+## Post-silicon validation, bring-up, and lab debug
+
+### Symbolic QED and SoC trace debug
+
+- Symbolic QED: https://theory.stanford.edu/~barrett/pubs/LSB+15-abstract.html
+- SoC protocol trace debug: https://arxiv.org/abs/2005.02550
+- Use: shorten post-silicon bug-detection latency and reconstruct protocol
+  behavior from partial traces.
+- E1 fit: future FPGA/silicon debug methodology only. Current E1 lacks hardware
+  traces, JTAG/UART/power logs, protocol-observation points, and a lab trace
+  schema.
+
+### RISC-V DV, RISCOF, and architectural tests
+
+- RISC-V DV: https://github.com/chipsalliance/riscv-dv
+- RISCOF docs: https://riscof.readthedocs.io/en/doc-dependency-fix/intro.html
+- RISC-V architectural tests: https://github.com/riscv/riscv-arch-test
+- Use: random instruction generation, RISC-V compatibility testing, ISS
+  comparison, and compliance-oriented evidence.
+- E1 fit: required for future CPU/AP validation, but blocked until E1 has a
+  buildable RISC-V DUT wrapper, pinned external suite revisions, ISS setup, and
+  executed logs/signatures.
+
+### Cross-target chip tests and ML boot debug
+
+- OpenTitan chip tests:
+  https://opentitan.org/book/sw/device/tests/index.html
+- ML/XAI boot-failure debug:
+  https://rei.iteso.mx/items/d449d907-2591-4969-b402-1f32bee002ab
+- LLM4SecHW: https://arxiv.org/abs/2401.16448
+- Use: structure tests that can run across simulation, FPGA, and silicon; learn
+  from labeled boot-failure telemetry; triage hardware defects with LLMs.
+- E1 fit: target capture only. Generated lab scripts, test binaries, root-cause
+  reports, or fixes require local target IDs, logs, traces, deterministic gates,
+  and human review.
+
 ## Recommended order for E1
 
 1. OpenROAD AutoTuner around the existing PD scripts.
@@ -234,3 +315,18 @@ power, and manufacturing preparation.
    `scripts/ai_eda/capture_low_power_intent_targets.py --run-id validation`.
    Do not generate UPF, gated clocks, DVFS policy, retention/isolation logic, or
    power-domain artifacts until deterministic low-power evidence gates exist.
+7. Verification-debug target capture with
+   `scripts/ai_eda/capture_verification_debug_targets.py --run-id validation`.
+   Do not generate or promote verification plans, testbenches, SVAs, root-cause
+   reports, or RTL fixes without local deterministic gates and review.
+8. Post-silicon validation target capture with
+   `scripts/ai_eda/capture_post_silicon_validation_targets.py --run-id validation`.
+   Do not generate or promote lab scripts, test binaries, hardware actions,
+   compliance claims, silicon bring-up claims, or lab-debug reports without
+   local QEMU/Renode, FPGA, board/package, manufacturing, real-world, and review
+   evidence.
+9. Circuit foundation model target capture with
+   `scripts/ai_eda/capture_circuit_foundation_model_targets.py --run-id validation`.
+   Do not export training corpora, generate embeddings, train/fine-tune models,
+   run inference, or make model-quality/design-decision claims without local
+   provenance, held-out tasks, deterministic gates, and review.

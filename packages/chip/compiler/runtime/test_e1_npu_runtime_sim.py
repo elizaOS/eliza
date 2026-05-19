@@ -11,6 +11,8 @@ from e1_npu_lowering import (
     lower_attention_softmax_smoke,
     lower_bias_add_smoke,
     lower_conv2d_smoke,
+    lower_fp8_matmul_smoke,
+    lower_kv_cache_update_smoke,
     lower_matmul_smoke,
     lower_mlp_smoke,
     lower_modern_decoder_block_smoke,
@@ -178,6 +180,13 @@ class E1NpuMmioSim:
                 self.regs.get(self.runtime.OP_A, 0),
                 self.regs.get(self.runtime.OP_B, 0),
             )
+            self.regs[self.runtime.RESULT_HI] = 0
+            self.regs[self.runtime.CTRL_STATUS] = 0x2
+            return
+        if opcode == self.runtime.OP_EXP2_NEG_Q0_8:
+            delta = self.regs.get(self.runtime.OP_A, 0) & 0xFF
+            delta = delta - 0x100 if delta & 0x80 else delta
+            self.regs[self.runtime.RESULT] = golden_exp2_neg_q0_8(min(0, delta))
             self.regs[self.runtime.RESULT_HI] = 0
             self.regs[self.runtime.CTRL_STATUS] = 0x2
             return
@@ -477,6 +486,31 @@ class E1NpuRuntimeSimTest(unittest.TestCase):
         self.assertEqual(lowered.scalar_exp_count, 5)
         self.assertEqual(sim.runtime.perf()["unsupported_ops"], 0)
 
+    def test_runtime_kv_cache_update_smoke_dispatches_scalar_copies(self):
+        sim = E1NpuMmioSim()
+        graph = {
+            "schema": "eliza.e1_npu_kv_cache_update_smoke.v1",
+            "dialect": "stablehlo",
+            "op": "eliza.kv_cache_update",
+            "precision": "int8",
+            "key_cache": [[[[1, 2], [3, 4], [0, 0], [0, 0]]]],
+            "value_cache": [[[[5, 6], [7, 8], [0, 0], [0, 0]]]],
+            "new_key": [[[[9, -10], [11, -12]]]],
+            "new_value": [[[[-13, 14], [15, -16]]]],
+            "cache_lengths": [[2]],
+        }
+
+        lowered = lower_kv_cache_update_smoke(sim.runtime, graph)
+
+        self.assertEqual(lowered.updated_key_cache, [[[[1, 2], [3, 4], [9, -10], [11, -12]]]])
+        self.assertEqual(lowered.updated_value_cache, [[[[5, 6], [7, 8], [-13, 14], [15, -16]]]])
+        self.assertEqual(lowered.cache_lengths, [[4]])
+        self.assertEqual(lowered.scalar_copy_count, 8)
+        self.assertFalse(lowered.cpu_fallback)
+        self.assertTrue(lowered.host_preserves_existing_cache)
+        self.assertTrue(lowered.host_tracks_cache_lengths)
+        self.assertEqual(sim.runtime.perf()["unsupported_ops"], 0)
+
     def test_runtime_transformer_mlp_smoke_dispatches_gemm_vrelu_gemm(self):
         sim = E1NpuMmioSim()
         graph = {
@@ -622,13 +656,18 @@ class E1NpuRuntimeSimTest(unittest.TestCase):
 
         lowered = lower_modern_decoder_block_smoke(sim.runtime, graph)
 
-        self.assertEqual(lowered.output, [[103, 127], [54, 127]])
+        self.assertEqual(lowered.output, [[101, 127], [106, 127]])
         self.assertEqual(lowered.qk_scores.scores, [[[[10900, 9080], [9080, 8045]]]])
-        self.assertEqual(lowered.swiglu.gated_hidden, [[37, 68], [14, 81]])
+        self.assertEqual(lowered.attention_softmax.weights_q0_8, [[[[255, 1], [255, 1]]]])
+        self.assertEqual(lowered.attention_context_requantized, [[62, 84], [62, 84]])
+        self.assertEqual(lowered.swiglu.gated_hidden, [[36, 68], [39, 81]])
         self.assertFalse(lowered.cpu_fallback)
         self.assertTrue(lowered.computes_qk_scores)
-        self.assertTrue(lowered.requires_prequantized_attention)
+        self.assertTrue(lowered.computes_attention_softmax)
+        self.assertFalse(lowered.requires_prequantized_attention)
         self.assertTrue(lowered.host_requantizes_qkv)
+        self.assertTrue(lowered.host_requantizes_qk_scores)
+        self.assertTrue(lowered.host_requantizes_attention_weights)
         self.assertEqual(lowered.total_tile_count, 8)
         self.assertEqual(lowered.scalar_mul_count, 44)
         self.assertEqual(sim.runtime.perf()["unsupported_ops"], 0)
@@ -710,6 +749,35 @@ class E1NpuRuntimeSimTest(unittest.TestCase):
             sim.runtime.dot4_fp8_e4m3(a, b, acc_q8_8=64),
             golden_dot4_fp8_e4m3(a, b, acc_q8_8=64),
         )
+        self.assertEqual(sim.runtime.perf()["unsupported_ops"], 0)
+
+    def test_runtime_fp8_matmul_smoke_dispatches_dot4_chunks(self):
+        sim = E1NpuMmioSim()
+        graph = {
+            "schema": "eliza.e1_npu_fp8_matmul_smoke.v1",
+            "dialect": "stablehlo",
+            "op": "stablehlo.dot_general",
+            "precision": "fp8_e4m3",
+            "lhs": [
+                [0x38, 0x40, 0xB8, 0x30, 0x00],
+                [0xBC, 0x28, 0x38, 0x00, 0x40],
+            ],
+            "rhs": [
+                [0x40, 0x38],
+                [0xB8, 0x40],
+                [0x30, 0xB8],
+                [0x38, 0x00],
+                [0x40, 0x28],
+            ],
+        }
+
+        lowered = lower_fp8_matmul_smoke(sim.runtime, graph)
+
+        self.assertEqual(lowered.result_q8_8, [[0, 1536], [320, -384]])
+        self.assertEqual(lowered.golden_q8_8, lowered.result_q8_8)
+        self.assertEqual(lowered.dot4_count, 8)
+        self.assertTrue(lowered.host_pads_k_to_dot4)
+        self.assertFalse(lowered.cpu_fallback)
         self.assertEqual(sim.runtime.perf()["unsupported_ops"], 0)
 
     def test_runtime_rejects_tiles_outside_local_prototype_limits(self):

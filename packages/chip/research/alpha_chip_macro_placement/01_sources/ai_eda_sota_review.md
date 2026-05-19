@@ -19,6 +19,12 @@ affect source, release claims, or tapeout-facing artifacts.
   RouteGNN/RoutePlacer, AlphaChip/Circuit Training, TILOS MacroPlacement,
   DREAMPlace, and AutoDMP are relevant, but E1 needs local labels from completed
   OpenLane/OpenROAD runs before predictor output can guide engineering.
+- Circuit foundation models are the infrastructure layer beneath many future
+  agents and predictors. ChipNeMo and ChipLingo show domain-adapted EDA LLM
+  patterns, while GenEDA, NetTAG, and DeepGate4 represent netlist, graph, text,
+  RTL, and layout alignment. For E1, this is corpus-governance and target
+  capture only until local artifacts, licenses, held-out tasks, and downstream
+  deterministic gates exist.
 - Verification is the safest near-term automation lane: agents can propose
   cocotb stimulus for named coverage bins, while acceptance remains entirely
   deterministic through existing regressions.
@@ -26,6 +32,14 @@ affect source, release claims, or tapeout-facing artifacts.
   AssertLLM, AssertionForge, and CodeV-SVA can propose SVAs, but E1 should keep
   them in candidate manifests until signal mapping, formal/simulation, and human
   review pass.
+- Verification planning and formal-debug agents are a separate loop from
+  ordinary stimulus generation. PRO-V shows open agentic RTL verification code,
+  Saarthi frames end-to-end formal-verification agents, SANGAM uses
+  self-refining assertion search, FVDebug targets formal counterexample
+  root-cause analysis, and SiliconMind-V1 provides open Verilog debug models.
+  E1 should use them only as dry-run target capture until local traces,
+  deterministic regressions, equivalence/synthesis when needed, and reviewer
+  disposition exist.
 - Simulator and NPU architecture search should start with manifest-backed
   design-space exploration. ZigZag, Timeloop/Accelergy, DOSA, and newer
   generative DSE work such as DiffAxE can prioritize experiments, but product
@@ -47,6 +61,12 @@ affect source, release claims, or tapeout-facing artifacts.
   autorouters, FPGA placers, and inspection datasets are target-capture sources
   only until E1 has release-clean package, KiCad, SI/PI, RF, manufacturing, and
   FPGA evidence.
+- Post-silicon validation and lab-debug automation must stay explicit rather
+  than being folded into simulator success. RISC-V architectural tests, RISCOF,
+  riscv-dv, QED-style methods, SoC trace-debug reconstruction, cross-target
+  on-device tests, and ML/XAI boot-failure classification are useful only after
+  E1 has pinned suites, target identities, logs, signatures, traces, board/FPGA
+  revisions, and real-world evidence.
 - Low-power intent automation needs its own evidence boundary. Clock-gating and
   low-power RTL optimization can save power, but UPF/power domains, retention,
   isolation, level shifting, DVFS, and idle states change the legal behavior of
@@ -61,10 +81,12 @@ affect source, release claims, or tapeout-facing artifacts.
 | RTL generation | RTL-Coder, ChipCraftX RTLGen 7B, OpenLLM-RTL, VerilogEval, CVDP | Evaluate against small E1-style tasks; generated RTL stays in `build/ai_eda/`. |
 | Repo-aware RTL assistance | RTLRepoCoder, ORAssistant-style retrieval | Build citation-required local RAG over E1 sources before any completion workflow. |
 | RTL optimization and equivalence | SymRTLO, RTLRewriter-Bench, FormalRTL, timing logic metamorphosis, OpenABC-D, RocketPPA | Capture equivalence and before/after PPA target tasks only; block generated rewrites, equivalence claims, and PPA claims until local lint, simulation, formal/SAT equivalence, synthesis, OpenLane, and review evidence exist. |
+| Circuit foundation models and embeddings | Circuit foundation model survey, ChipNeMo, GenEDA, NetTAG, DeepGate4, ChipLingo | Capture corpus governance, multimodal embedding, netlist-function reasoning, and domain-adapted EDA LLM targets only; block training, embeddings, inference, corpus export, model-quality claims, and design decisions until local provenance, held-out tasks, deterministic gates, and review exist. |
 | Physical design prediction | CircuitNet, CircuitNet 2.0, RoutePlacer | Capture local E1 PD feature/label manifests; predictors remain advisory. |
 | Placement optimization | AlphaChip/Circuit Training, TILOS MacroPlacement, AutoDMP, DREAMPlace | Use as experiment references; compare only after routed OpenLane evidence. |
 | Verification stimulus | LLM4DV, CVDP-style agent tasks, local cocotb coverage bins | Generate candidate ideas only; accept by `make cocotb-npu` and `make cocotb-contract`. |
 | Assertion generation | AssertLLM, AssertionForge, CodeV-SVA | Keep proposed SVAs as reviewed candidates; require formal/simulation evidence before binding. |
+| Verification planning and formal debug | PRO-V, Saarthi, SANGAM, FVDebug, SiliconMind-V1 | Capture spec-to-plan, formal counterexample triage, testbench/oracle candidates, assertion self-refinement, and patch quarantine targets; no generated patch, testbench, assertion, root-cause claim, or closure claim without local gates and review. |
 | Simulator/NPU DSE | ZigZag, Timeloop/Accelergy, DOSA, DiffAxE | Use hashed architecture manifests; block claims until calibrated measurements exist. |
 | Simulator/benchmark targets | ZigZag, Timeloop/Accelergy, DOSA, RTLMUL | Capture local benchmark/runtime targets; block performance claims until logs exist. |
 | Software BSP, firmware, and boot simulation | LLM firmware validation, EoK RISC-V kernel optimization, IntrinTrans RVV, OpenSBI, U-Boot, MCP4EDA | Capture boot/BSP/firmware target tasks only; block generated patches, device-tree edits, boot claims, BSP claims, and kernel-performance claims until build logs, QEMU/Renode transcripts, static analysis, and review exist. |
@@ -78,6 +100,7 @@ affect source, release claims, or tapeout-facing artifacts.
 | Power, thermal, IR drop, and PDN | DeepOHeat, 2D-ThermAl, ThermEDGe/IREDGe, WACA-UNet, IR-Drop-Predictor, EDA IR-Drop Prediction, OpeNPDN, AiEDA, RTLMUL | Capture power/thermal/PDN target tasks only; block generated power maps, thermal maps, PDNs, IR-drop predictions, TOPS/W, and thermal claims until measured traces, package models, PDNSim/OpenROAD labels, and signoff evidence exist. |
 | Hardware security | Hardware Trojan ML, PEARL, TrojanSAINT, GNN-MFF, SecureRAG-RTL, TrojanWhisper, TrojanGYM, GHOST Benchmarks | Capture local RTL/security target tasks only; block scanner execution, Trojan insertion, vulnerability claims, generated-RTL trust claims, and release use until labels, deterministic regressions, provenance, and human security review exist. |
 | Board, package, manufacturing, and FPGA | PCBSchemaGen, PCB-Bench, PCBAgent, NeurPCB, PCB-Migrator, PCB-PR-App, Freerouting, DREAMPlaceFPGA, RapidWright FPGA interchange, DeepPCB defect dataset | Capture local package, KiCad, FPGA, Wi-Fi/RF, and manufacturing target tasks only; block generated schematics, board placement/routing, Gerbers, package/pinout edits, FPGA output, fabrication claims, inspection claims, and release use until deterministic gates and review evidence exist. |
+| Post-silicon validation and bring-up | Symbolic QED, SoC trace protocol debug, RISC-V DV, RISCOF, RISC-V architectural tests, OpenTitan chip tests, ML/XAI boot-failure debug, LLM4SecHW | Capture post-silicon, FPGA, RISC-V compliance, trace-debug, and lab-evidence targets only; block generated lab scripts, test binaries, hardware runs, compliance claims, silicon bring-up claims, and release use until local logs, traces, signatures, board/silicon IDs, and review exist. |
 | Low-power intent, DVFS, and clock gating | IEEE 1801 UPF, IEEE UPF examples, Yosys `clockgate`, CODMAS/RTLOPT, Prompting for Power, POET, RTL PPA SOG estimation, OpenROAD two-phase clocking conversion | Capture power-state, UPF, clock-gating, DVFS, retention, isolation, and low-power verification targets only; block generated UPF, RTL edits, gated clocks, DVFS policy, retention/isolation insertion, power-saving claims, and release use until platform, RTL, formal, synthesis, DFT, CDC/RDC, power/thermal, and PD gates exist. |
 
 ## Recommended Integration Order
@@ -172,6 +195,24 @@ affect source, release claims, or tapeout-facing artifacts.
     CDC/RDC, software/BSP, power/thermal, and PD blockers before any generated
     UPF, gated clock, DVFS policy, power-domain artifact, or power-saving claim
     is allowed.
+23. Use `scripts/ai_eda/capture_verification_debug_targets.py --run-id validation`
+    to keep PRO-V, Saarthi, SANGAM, FVDebug, and SiliconMind-V1 tied to local
+    RTL, formal, cocotb, assertion, and spec hashes before any AI-generated
+    verification plan, testbench, assertion, root-cause report, RTL patch, or
+    verification-closure claim is allowed.
+24. Use `scripts/ai_eda/capture_post_silicon_validation_targets.py --run-id validation`
+    to keep RISC-V compliance, random-instruction validation, QED/trace-debug
+    methods, cross-target on-device tests, boot-failure triage, FPGA bring-up,
+    and lab automation tied to local QEMU/Renode, FPGA, package/board,
+    manufacturing, real-world, benchmark, and release gates before any
+    generated lab script, test binary, hardware action, compliance claim, or
+    silicon bring-up claim is allowed.
+25. Use `scripts/ai_eda/capture_circuit_foundation_model_targets.py --run-id validation`
+    to keep circuit foundation models, graph/text/layout embeddings,
+    domain-adapted EDA LLMs, and netlist-function reasoning tied to local
+    source provenance, RAG, RTL, spec, PD, formal, synthesis, and verification
+    gates before any corpus export, training, embedding generation, inference,
+    model-quality claim, or design-decision claim is allowed.
 
 ## Current Blockers
 

@@ -6,8 +6,6 @@
 
 `timescale 1ns/1ps
 
-`include "rtl/cpu/bpu/bpu_pkg.sv"
-
 module ftq_tb
     import bpu_pkg::*;
 (

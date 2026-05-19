@@ -1,0 +1,42 @@
+schema: eliza.pd_cts_evidence.v1
+status: draft_local_evidence
+release_use: prohibited_until_external_review
+scope: tritoncts_mvp_plus_ccopt_blocked_at_advanced_node
+description: |
+  CTS evidence gate. TritonCTS H-tree is acceptable as the open-PDK MVP.
+  CCOpt or Fusion Compiler concurrent clock-data optimization is required
+  at the 2028 advanced-node target and is BLOCKED until the commercial-EDA
+  gate unblocks.
+source_artifacts:
+  - pd/cts/cts_strategy.tcl
+  - pd/cts/README.md
+  - docs/pd/cts-strategy.md
+local_findings:
+  triton_cts_mvp:
+    status: ready_but_not_yet_captured
+    evidence_boundary: |
+      pd/cts/cts_strategy.tcl drives OpenROAD TritonCTS with a single root
+      buffer and 100 ps tolerance. The release run must produce
+      final/reports/cts_summary.rpt before this gate unblocks.
+  ccopt_advanced_node:
+    status: blocked
+    evidence_boundary: |
+      CCOpt / Innovus / Fusion Compiler are commercial. BLOCKED on
+      docs/evidence/pd/commercial-eda-gate.yaml.
+  useful_skew_scheduling:
+    status: blocked
+    evidence_boundary: |
+      Open tooling has no placer-coupled useful-skew scheduling today.
+acceptance_criteria_stage1:
+  - cts_summary.rpt exists under final/reports/ of every release run.
+  - Skew reported within CTS_TOLERANCE (100 ps).
+  - Multi-corner STA picks up non-zero insertion delay on CLK_IN.
+  - Zero max-slew violations on clock net at SS_max.
+acceptance_criteria_stage3:
+  - CCOpt or Fusion Compiler concurrent CT-data optimization runs cleanly.
+  - Mesh + leaf H-tree topology produces bounded OCV under POCV/SOCV+LVF.
+  - Useful-skew scheduling integrated with placer.
+release_blockers:
+  - cts_summary.rpt not yet archived from a release run.
+  - CCOpt / commercial CTS BLOCKED on commercial-eda-gate.
+  - Useful-skew scheduling not supported by open tooling.

@@ -1,0 +1,44 @@
+schema: eliza.pmic_procurement.v1
+status: path_selected_blocked
+release_use: prohibited_until_external_review
+claim_boundary: >
+  Records the PMIC procurement decision and outstanding work to convert the
+  decision into a buildable BOM. The 2028 v0 path is catalog daughtercard
+  (Path A in docs/pd/pmic-selection.md). Closed-IP and custom-analog paths
+  are deferred to v1/v2.
+source_artifacts:
+  - docs/pd/pmic-selection.md
+  - docs/pd/rail-plan-2028.yaml
+  - docs/pd/power-management-firmware.md
+selected_path: catalog_daughtercard_v0
+candidate_vendors:
+  - Renesas_mobile_buck_family
+  - Texas_Instruments_TPS6594x_family
+  - Maxim_MAX77xxx_family
+  - MPS_MP8869_family
+  - MIPI_SPMI_v2_master_specification
+opensbi_release_pin:
+  status: not_pinned
+  candidate_release: openSBI_v1.5_or_newer_with_mpxy_rpmi_support
+required_artifacts:
+  - id: catalog_bom
+    status: missing
+    artifact_glob: "board/kicad/e1-pmic-daughtercard/bom.csv"
+  - id: spmi_master_implementation
+    status: skeleton_only
+    artifact: fw/pmc/src/spmi.c
+  - id: i2c_fallback_implementation
+    status: skeleton_only
+    artifact: fw/pmc/src/i2c.c
+  - id: pmic_per_rail_register_map
+    status: planning_only
+    artifact: fw/pmc/src/pmic_sequencer.c
+  - id: qualification_package_imports
+    status: missing
+    artifact_glob: "pd/signoff/si-pi/package-models/pmic/**/*"
+release_blockers:
+  - Specific catalog part numbers not selected.
+  - Daughtercard schematic not in board/kicad/.
+  - SPMI v2.0 master firmware skeleton only.
+  - Qualification package import (IBIS/SPICE/thermal) not landed.
+  - OpenSBI release tag not pinned.

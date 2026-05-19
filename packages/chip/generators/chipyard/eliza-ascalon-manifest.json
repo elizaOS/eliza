@@ -39,7 +39,7 @@
   "decode_width": 8,
   "decode_width_with_fusion": 10,
   "issue_width": 8,
-  "rob_entries_estimate": 480,
+  "rob_entries": 480,
   "rob_entries_effective_with_fusion": 700,
   "prf_int": 400,
   "prf_fp_vector": 400,

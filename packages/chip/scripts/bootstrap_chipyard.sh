@@ -113,6 +113,7 @@ submodule_update_top_retry \
     sims/firesim \
     sims/verilator \
     software/firemarshal \
+    toolchains/riscv-tools/riscv-isa-sim \
     tools/torture
 
 resolved="$(git rev-parse HEAD)"

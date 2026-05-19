@@ -1,0 +1,104 @@
+schema: eliza.process_multi_pdk_closure.v1
+status: open_pdk_lanes_evidence_partial_advanced_lanes_blocked
+scope:
+  - Sky130A end-to-end OpenLane closure
+  - GF180MCU end-to-end OpenLane closure
+  - IHP SG13G2 end-to-end OpenLane closure
+  - ASAP7 predictive shape characterization
+
+claim_boundary:
+  allowed:
+    - Real open-PDK methodology evidence for DRC, LVS, timing-shape, antenna.
+    - Predictive FinFET shape outputs from ASAP7, marked projection_only.
+  blocked:
+    - Any signoff claim from open-PDK closure for the 2028 production target.
+    - Any signoff claim from ASAP7 (predictive PDK, not manufacturable).
+
+open_pdk_lanes:
+  - id: sky130A
+    pdk: sky130A
+    config: pd/openlane/config.sky130.json
+    library_manifest: pd/library-manifests/sky130.yaml
+    corner_manifest: pd/corner-manifests/sky130.yaml
+    evidence_class: real_open_pdk_methodology_evidence
+    status: drc_lvs_route_clean_timing_violations_open
+    last_run_artifact: pd/openlane/runs/RUN_2026-05-19_05-08-54/final/metrics.json
+    last_run_summary:
+      die_area_um2: 3240000
+      core_area_um2: 2616850
+      instances: 142274
+      macros: 0
+      drc_clean: true
+      lvs_clean: true
+      setup_wns_ns: 70.65
+      hold_wns_ns: -0.109
+      max_slew_violations: 23099
+      max_cap_violations: 442
+    flagship_class: false
+    notes: >
+      Latest full release run is clean DRC + LVS but has hold + slew + cap
+      violations that block pd-signoff release. Methodology evidence is real;
+      flagship-frequency claims are not.
+
+  - id: gf180mcuC
+    pdk: gf180mcuC
+    config: pd/openlane/config.gf180.json
+    library_manifest: pd/library-manifests/gf180.yaml
+    corner_manifest: pd/corner-manifests/gf180.yaml
+    evidence_class: real_open_pdk_methodology_evidence
+    status: configured_run_pending
+    last_run_artifact: null
+    flagship_class: false
+
+  - id: ihp-sg13g2
+    pdk: ihp-sg13g2
+    config: pd/openlane/config.ihp-sg13g2.json
+    library_manifest: pd/library-manifests/ihp-sg13g2.yaml
+    corner_manifest: pd/corner-manifests/ihp-sg13g2.yaml
+    evidence_class: real_open_pdk_methodology_evidence
+    status: configured_run_pending
+    last_run_artifact: null
+    flagship_class: false
+    notes: >
+      Basilisk demonstrated Linux-capable RISC-V SoC closure at SG13G2 ~77 MHz.
+      Tiny Tapeout migrated to SG13G2 via SwissChips after Efabless shutdown.
+
+predictive_lanes:
+  - id: asap7
+    pdk: ASAP7
+    config: pd/asap7/config.asap7.yaml
+    library_manifest: pd/library-manifests/asap7.yaml
+    corner_manifest: pd/corner-manifests/asap7.yaml
+    evidence_class: predictive_finfet_shape_only_not_signoff
+    status: orfs_flow_not_yet_executed
+    last_run_artifact: null
+    flagship_class: false
+    forbidden_uses:
+      - cite_asap7_as_n2p_signoff
+      - cite_asap7_as_a14_signoff
+      - cite_asap7_as_14a_signoff
+
+advanced_lanes_blocked:
+  - id: tsmc_n2p
+    status: blocked_until_foundry_agreement
+    evidence_class: procurement_blocked_no_artifacts
+    access_gate_file: pd/n2p-stub/access-gate.yaml
+  - id: tsmc_a14
+    status: blocked_until_foundry_agreement
+    evidence_class: procurement_blocked_no_artifacts
+    access_gate_file: pd/a14-stub/access-gate.yaml
+  - id: intel_14a
+    status: blocked_until_foundry_agreement
+    evidence_class: procurement_blocked_no_artifacts
+    access_gate_file: pd/intel-14a-stub/access-gate.yaml
+  - id: samsung_sf2p
+    status: blocked_until_foundry_agreement
+    evidence_class: procurement_blocked_no_artifacts
+    access_gate_file: pd/sf2p-stub/access-gate.yaml
+
+next_commands:
+  open_pdk_run_sky130: scripts/run_openlane.sh --release
+  open_pdk_run_gf180: OPENLANE_CONFIG=pd/openlane/config.gf180.json scripts/run_openlane.sh --release
+  open_pdk_run_ihp_sg13g2: OPENLANE_CONFIG=pd/openlane/config.ihp-sg13g2.json scripts/run_openlane.sh --release
+  asap7_shape: cd pd/asap7 && make all
+  portability_gate: make pdk-portability-check

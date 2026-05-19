@@ -92,7 +92,7 @@ package zihpm_pkg;
         EVT_AMO_OP              = 8'd73
     } hpm_event_e;
 
-    localparam int unsigned MAX_HPM_EVENT_ID = 8'd255;
+    localparam int unsigned MAX_HPM_EVENT_ID = 32'd255;
 
 endpackage : zihpm_pkg
 `endif
@@ -192,6 +192,22 @@ module zihpm #(
         end
     end
 
+    // Width-matched per-counter index for array access. NUM_COUNTERS=13
+    // needs 4 bits; we always slice the low IDX_W bits of the subtracted
+    // CSR address so verilator stays happy under strict widths.
+    localparam int unsigned IDX_W = (NUM_COUNTERS <= 1) ? 1 : $clog2(NUM_COUNTERS);
+
+    // Subtracted indices, sized to the width of the CSR addr (12 bits) so
+    // the [IDX_W-1:0] slice is a clean part-select on a variable.
+    logic [11:0] wr_hpmevent_off;
+    logic [11:0] wr_hpmcnt_off;
+    logic [11:0] rd_hpmcnt_off;
+    logic [11:0] rd_hpmevent_off;
+    assign wr_hpmevent_off = csr_addr_i  - 12'h323;
+    assign wr_hpmcnt_off   = csr_addr_i  - 12'hB03;
+    assign rd_hpmcnt_off   = csr_raddr_i - 12'hB03;
+    assign rd_hpmevent_off = csr_raddr_i - 12'h323;
+
     // -------------------------------------------------------------------
     // CSR write path
     // -------------------------------------------------------------------
@@ -202,16 +218,18 @@ module zihpm #(
             end
         end else if (csr_we_i) begin
             // mhpmevent3..15 → 0x323..0x32F
-            if (csr_addr_i >= 12'h323 && csr_addr_i < 12'h323 + NUM_COUNTERS) begin
-                mhpmevent[csr_addr_i - 12'h323] <= csr_wdata_i[EVT_W-1:0];
+            if (csr_addr_i >= 12'h323 &&
+                csr_addr_i < 12'h323 + 12'(NUM_COUNTERS)) begin
+                mhpmevent[wr_hpmevent_off[IDX_W-1:0]] <= csr_wdata_i[EVT_W-1:0];
             end
             // mhpmcounter writes are allowed in M-mode per spec; CSR writes
             // to mhpmcounter clobber the value. Real impls usually disable
             // this; here we keep it for software bring-up.
             if (csr_addr_i == 12'hB00) mcycle   <= csr_wdata_i;
             if (csr_addr_i == 12'hB02) minstret <= csr_wdata_i;
-            if (csr_addr_i >= 12'hB03 && csr_addr_i < 12'hB03 + NUM_COUNTERS) begin
-                mhpmcounter[csr_addr_i - 12'hB03] <= csr_wdata_i;
+            if (csr_addr_i >= 12'hB03 &&
+                csr_addr_i < 12'hB03 + 12'(NUM_COUNTERS)) begin
+                mhpmcounter[wr_hpmcnt_off[IDX_W-1:0]] <= csr_wdata_i;
             end
         end
     end
@@ -226,10 +244,14 @@ module zihpm #(
             csr_rdata_o  = mcycle; csr_rvalid_o = 1'b1;
         end else if (csr_raddr_i == 12'hB02) begin
             csr_rdata_o  = minstret; csr_rvalid_o = 1'b1;
-        end else if (csr_raddr_i >= 12'hB03 && csr_raddr_i < 12'hB03 + NUM_COUNTERS) begin
-            csr_rdata_o  = mhpmcounter[csr_raddr_i - 12'hB03]; csr_rvalid_o = 1'b1;
-        end else if (csr_raddr_i >= 12'h323 && csr_raddr_i < 12'h323 + NUM_COUNTERS) begin
-            csr_rdata_o  = {{(64-EVT_W){1'b0}}, mhpmevent[csr_raddr_i - 12'h323]};
+        end else if (csr_raddr_i >= 12'hB03 &&
+                     csr_raddr_i < 12'hB03 + 12'(NUM_COUNTERS)) begin
+            csr_rdata_o  = mhpmcounter[rd_hpmcnt_off[IDX_W-1:0]];
+            csr_rvalid_o = 1'b1;
+        end else if (csr_raddr_i >= 12'h323 &&
+                     csr_raddr_i < 12'h323 + 12'(NUM_COUNTERS)) begin
+            csr_rdata_o  = {{(64-EVT_W){1'b0}},
+                            mhpmevent[rd_hpmevent_off[IDX_W-1:0]]};
             csr_rvalid_o = 1'b1;
         end
     end

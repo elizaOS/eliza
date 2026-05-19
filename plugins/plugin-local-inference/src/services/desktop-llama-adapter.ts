@@ -686,6 +686,39 @@ export class DesktopLlamaAdapter {
 		this.hasDecoded = true;
 	}
 
+	loadedDrafterPath(): string | null {
+		return null;
+	}
+
+	parallelSlots(): number {
+		return 1;
+	}
+
+	async resizeParallel(_target: number): Promise<boolean> {
+		return false;
+	}
+
+	visionSupported(): boolean {
+		return false;
+	}
+
+	currentMmprojPath(): string | null {
+		return null;
+	}
+
+	async describeImage(_args: {
+		imageBytes: Uint8Array;
+		mmprojPath: string;
+		prompt?: string;
+		maxTokens?: number;
+		temperature?: number;
+		signal?: AbortSignal;
+	}): Promise<{ text: string; projectorMs?: number; decodeMs?: number }> {
+		throw new Error(
+			"[desktop-llama] vision describe is not available in the desktop FFI adapter; use the dflash subprocess backend for mmproj image description",
+		);
+	}
+
 	getCtxHandle(): LlmCtxHandle {
 		if (!this.ctxPtr) {
 			throw new Error("[desktop-llama] no context loaded");

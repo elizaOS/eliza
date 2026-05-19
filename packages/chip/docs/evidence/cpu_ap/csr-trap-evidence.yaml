@@ -1,0 +1,24 @@
+schema: eliza.cpu_ap_csr_trap_evidence_gate.v1
+status: blocked_only_stub_negative_evidence_present
+claim_boundary: >
+  CSR / trap / privilege evidence gate. The current local DUT is the tiny
+  stub CPU at rtl/cpu/e1_cpu_subsystem_stub.sv. It has no CSR file, no
+  privilege mode, no trap entry; it halts fail-closed on every CSR access
+  and on MRET/SRET. The cocotb file
+  verify/cocotb/cpu/test_csr_trap.py pins that negative behavior. Real
+  positive evidence is BLOCKED until CVA6 (E1_HAVE_CVA6) or a higher-
+  uarch wrapper is the DUT.
+required_for_pass:
+  - mstatus, misa, mtvec, mepc, mcause, mtval, mscratch, medeleg, mideleg
+  - sstatus, sie, sip, stvec, sepc, scause, stval
+  - MRET, SRET return to expected privilege and PC
+  - ECALL traps to S-mode (mederr.S=1) and M-mode (mederr.M=1)
+  - illegal-instruction trap records mcause=2, mepc=faulting PC, mtval=opcode
+  - load/store/fetch access-fault traps with correct mcause/mtval
+fail_closed_until:
+  - DUT is the production CVA6 / Kunminghu / Ascalon wrapper
+  - cocotb test_csr_trap.py runs the positive path and writes
+    docs/evidence/cpu_ap/csr-trap.json with status=pass
+test_files:
+  - verify/cocotb/cpu/test_csr_trap.py
+test_command: make cocotb-cpu-extended

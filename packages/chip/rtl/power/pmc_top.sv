@@ -15,8 +15,6 @@
 // -----------------------------------------------------------------------------
 `timescale 1ns/1ps
 
-`include "rtl/power/power_pkg.sv"
-
 module pmc_top
     import power_pkg::*;
 (

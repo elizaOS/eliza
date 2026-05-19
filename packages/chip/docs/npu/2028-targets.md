@@ -75,10 +75,11 @@ The NPU is only real when the software stack can use it:
 `rtl/npu/e1_npu.sv` is currently a scalar datapath plus a 64-byte scratchpad
 GEMM prototype. It now includes packed INT4, INT2, scalar FP8, descriptor read
 streaming into scratchpad, and a streamed `GEMM_S8` descriptor writeback smoke
-path. The runtime lowering evidence now includes bounded matmul, Conv2D,
-attention QK/AV, RoPE, RMSNorm, SwiGLU, and a single-head modern decoder-block
-smoke path with explicit prequantized-attention and non-production compiler
-boundaries. The design is still missing the actual tensor NPU structure:
+path. The runtime lowering evidence now includes bounded INT8/INT4 matmul,
+scalar-dot FP8 E4M3 matmul, Conv2D, attention QK/softmax/AV, append-only
+KV-cache update, RoPE, RMSNorm, SwiGLU, and a single-head modern decoder-block
+smoke path with explicit non-production compiler boundaries. The design is
+still missing the actual tensor NPU structure:
 
 - no tensor command queue,
 - no production DMA-fed scratchpad or coherent tensor memory system,

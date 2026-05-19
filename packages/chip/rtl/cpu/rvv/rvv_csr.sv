@@ -123,8 +123,6 @@ module rvv_csr #(
     logic [XLEN-1:0]   vl_q;
     rvv_pkg::vtype_t   vtype_q;
 
-    localparam int unsigned VLENB_VAL = VLEN_BITS / 8;
-
     // -----------------------------------------------------------------
     // vsetvl* algorithm (V 1.0 §6 informative):
     //
@@ -138,23 +136,27 @@ module rvv_csr #(
     // We support integer LMUL (1,2,4,8) and the standard fractional
     // values. Reserved combinations set vill=1 and force vl=0.
     // -----------------------------------------------------------------
+    // VLEN_BITS / 8 (bytes per vector register). Pre-widened to XLEN so
+    // the division-by-sew_bytes stays at XLEN width.
+    localparam logic [XLEN-1:0] VLEN_BYTES = XLEN'(VLEN_BITS / 8);
+
     function automatic logic [XLEN-1:0] compute_vlmax(
         input rvv_pkg::vtype_t vt
     );
-        int unsigned sew_bytes;
-        int unsigned vlmax_e;
-        sew_bytes = 1 << vt.vsew;
+        logic [XLEN-1:0] sew_bytes;
+        logic [XLEN-1:0] vlmax_e;
+        sew_bytes = {{(XLEN-32){1'b0}}, 32'd1} << vt.vsew;
         unique case (vt.vlmul)
-            rvv_pkg::VLMUL_1:  vlmax_e = (VLEN_BITS / 8) / sew_bytes;
-            rvv_pkg::VLMUL_2:  vlmax_e = ((VLEN_BITS / 8) / sew_bytes) * 2;
-            rvv_pkg::VLMUL_4:  vlmax_e = ((VLEN_BITS / 8) / sew_bytes) * 4;
-            rvv_pkg::VLMUL_8:  vlmax_e = ((VLEN_BITS / 8) / sew_bytes) * 8;
-            rvv_pkg::VLMUL_F2: vlmax_e = ((VLEN_BITS / 8) / sew_bytes) / 2;
-            rvv_pkg::VLMUL_F4: vlmax_e = ((VLEN_BITS / 8) / sew_bytes) / 4;
-            rvv_pkg::VLMUL_F8: vlmax_e = ((VLEN_BITS / 8) / sew_bytes) / 8;
-            default:           vlmax_e = 0;
+            rvv_pkg::VLMUL_1:  vlmax_e = VLEN_BYTES / sew_bytes;
+            rvv_pkg::VLMUL_2:  vlmax_e = (VLEN_BYTES / sew_bytes) * XLEN'(2);
+            rvv_pkg::VLMUL_4:  vlmax_e = (VLEN_BYTES / sew_bytes) * XLEN'(4);
+            rvv_pkg::VLMUL_8:  vlmax_e = (VLEN_BYTES / sew_bytes) * XLEN'(8);
+            rvv_pkg::VLMUL_F2: vlmax_e = (VLEN_BYTES / sew_bytes) / XLEN'(2);
+            rvv_pkg::VLMUL_F4: vlmax_e = (VLEN_BYTES / sew_bytes) / XLEN'(4);
+            rvv_pkg::VLMUL_F8: vlmax_e = (VLEN_BYTES / sew_bytes) / XLEN'(8);
+            default:           vlmax_e = '0;
         endcase
-        return vlmax_e[XLEN-1:0];
+        return vlmax_e;
     endfunction
 
     function automatic logic vsew_lmul_legal(input rvv_pkg::vtype_t vt);
@@ -231,7 +233,7 @@ module rvv_csr #(
                                           7'b0, vtype_q.vma, vtype_q.vta,
                                           vtype_q.vsew, vtype_q.vlmul};
                                                                           csr_rvalid_o = 1'b1; end
-            12'hC22: begin csr_rdata_o = VLENB_VAL;                      csr_rvalid_o = 1'b1; end
+            12'hC22: begin csr_rdata_o = VLEN_BYTES;                     csr_rvalid_o = 1'b1; end
             default: ;
         endcase
     end
