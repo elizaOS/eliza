@@ -1,12 +1,14 @@
 // Signal pairing helpers live in @elizaos/plugin-signal. Re-exported here
 // for backward compatibility with code that imports them from @elizaos/agent.
-
-const codingToolsModule = await import("@elizaos/plugin-coding-tools");
-const signalModule = await import("@elizaos/plugin-signal");
-const whatsAppModule = await import("@elizaos/plugin-whatsapp");
-
-export const { CodingTaskExecutor } = codingToolsModule;
-export const {
+//
+// Previously these were top-level awaits (await import(...)) which caused
+// the agent barrel load to deadlock in cloud Docker containers — see the
+// matching refactor in ./api/index.ts. Converting to static re-exports
+// keeps the runtime behavior identical (plugins don't have side-effectful
+// top-level code that depends on import order) but lets Node ESM evaluate
+// the barrel without waiting on a 4-way plugin module graph.
+export { CodingTaskExecutor } from "@elizaos/plugin-coding-tools";
+export {
   classifySignalPairingErrorStatus,
   extractSignalCliProvisioningUrl,
   parseSignalCliAccountsOutput,
@@ -14,13 +16,13 @@ export const {
   sanitizeSignalAccountId,
   signalAuthExists,
   signalLogout,
-} = signalModule;
-export const {
+} from "@elizaos/plugin-signal";
+export {
   sanitizeWhatsAppAccountId,
   WhatsAppPairingSession,
   whatsappAuthExists,
   whatsappLogout,
-} = whatsAppModule;
+} from "@elizaos/plugin-whatsapp";
 
 export type CodingTaskExecutor = InstanceType<typeof CodingTaskExecutor>;
 export type SignalPairingEvent = Record<string, unknown>;

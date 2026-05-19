@@ -8,7 +8,7 @@ export interface BrowserWorkspaceCommand {
   [key: string]: unknown;
 }
 
-const { resolveCloudApiBaseUrl } = await import("@elizaos/plugin-elizacloud");
+import { resolveCloudApiBaseUrl } from "@elizaos/plugin-elizacloud";
 
 export interface HostedSearchResponse {
   answer: string;
