@@ -2,29 +2,47 @@
 //
 // This module is the drop-in replacement for e1_cpu_subsystem_stub.  It
 // presents the same external port list as the stub (AXI-Lite manager +
-// interrupt inputs + observability outputs) but internally instantiates a
-// proper 64-bit RV64GC CVA6 core when `E1_HAVE_CVA6 is defined at compile
-// time.
+// interrupt inputs + observability outputs) and is intended to instantiate
+// the OpenHW Group CVA6 RV64GC core under `+define+E1_HAVE_CVA6.
 //
-// Build with the real core:
-//   RTL simulator:
-//     <simulator> +define+E1_HAVE_CVA6 \
-//       -I external/cva6/include -I external/cva6/core \
-//       rtl/**/*.sv external/cva6/core/cva6.sv ...
-//   Yosys (FPGA):
-//     yosys -D E1_HAVE_CVA6 \
-//       -p 'read_verilog -sv -I external/cva6/include \
-//              external/cva6/core/cva6.sv rtl/**/*.sv'
+// API DRIFT (BLOCKED, tracked by external/cva6/pin-manifest.json
+// `wrapper_api_drift`):
 //
-// Without the define the wrapper stubs all outputs to safe idle values so that
-// the rest of the SoC compiles and simulates without the CVA6 source tree.
+//   The `ifdef E1_HAVE_CVA6 block below targets the legacy CVA6 API
+//     - module           `ariane`
+//     - config struct    `ariane_pkg::ariane_cfg_t`
+//     - default config   `ariane_pkg::ArianeDefaultConfig`
+//     - AXI structs      `ariane_axi::req_t` / `ariane_axi::resp_t`
+//   None of these symbols exist in the current `external/cva6/cva6` checkout
+//   (commit cfb85e7 at the time of writing) or in any tagged release from
+//   v4.0.0 forward.  Current CVA6 HEAD exposes
+//     - module           `cva6`
+//     - config struct    `config_pkg::cva6_cfg_t` (built from
+//                        `cva6_config_pkg::cva6_cfg` via
+//                        `build_config_pkg::build_config`)
+//     - AXI structs      configurable NoC types (`noc_req_t` / `noc_resp_t`
+//                        for `NOC_TYPE_AXI4_ATOP`)
 //
-// CVA6 AXI struct types (ariane_axi::req_t / ariane_axi::resp_t) are defined
-// in external/cva6/include/ariane_axi_pkg.sv.  The struct-to-flat wiring is
-// shown in the `ifdef block below.
+//   Until the `ifdef block is re-targeted, defining `E1_HAVE_CVA6 will fail
+//   elaboration; the integration top therefore keeps the cluster in lite
+//   tie-off mode (`docs/evidence/integration/cross-domain-interfaces.yaml` →
+//   `cluster_to_fabric.status = TIED_OFF`).  Recovery steps:
 //
-// To use real CVA6: compile with +define+E1_HAVE_CVA6 and include
-//   external/cva6/
+//     1. Pin `external/cva6/cva6` to v5.3.0 (commit 2ef1c1b) — the most
+//        recent tag with a stable `config_pkg::cva6_cfg_t` API.
+//     2. Initialise the cvfpu + hpdcache + cvfpu/src/common_cells +
+//        cvfpu/src/fpu_div_sqrt_mvp submodules.
+//     3. Rewrite the `ifdef E1_HAVE_CVA6 block to instantiate
+//          cva6 #(.CVA6Cfg(build_config_pkg::build_config(
+//                              cva6_config_pkg::cva6_cfg)))
+//        and bridge its NoC/AXI structs to the flat ports below via a new
+//        `rtl/top/adapters/e1_cva6_to_e1axi4.sv` adapter.
+//     4. Re-run `make cva6-generator-check` (scripts/check_cva6_pin.py
+//        verifies both the checkout and the wrapper-symbol drift).
+//
+// Without the define the wrapper stubs all outputs to safe idle values so
+// that the rest of the SoC compiles and simulates without the CVA6 source
+// tree, preserving the v0 integration smoke path.
 
 `timescale 1ns/1ps
 
