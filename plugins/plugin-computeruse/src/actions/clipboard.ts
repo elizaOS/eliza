@@ -58,7 +58,9 @@ function getComputerUseService(
   return (runtime.getService("computeruse") as ComputerUseService) ?? null;
 }
 
-function normalizeClipboardToken(value: unknown): ClipboardActionType | undefined {
+function normalizeClipboardToken(
+  value: unknown,
+): ClipboardActionType | undefined {
   if (typeof value !== "string") return undefined;
   const normalized = value.trim().toLowerCase();
   if ((CLIPBOARD_ACTIONS as readonly string[]).includes(normalized)) {
@@ -172,7 +174,10 @@ export const clipboardAction: Action = {
 
     let result: ClipboardActionResult;
     try {
-      result = await runClipboardAction({ ...params, action } satisfies ClipboardActionParams);
+      result = await runClipboardAction({
+        ...params,
+        action,
+      } satisfies ClipboardActionParams);
     } catch (error) {
       const message =
         error instanceof ClipboardUnavailableError

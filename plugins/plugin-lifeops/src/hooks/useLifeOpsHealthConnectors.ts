@@ -1,5 +1,3 @@
-import { client, openExternalUrl } from "@elizaos/ui";
-import { useCallback, useEffect, useMemo, useState } from "react";
 import type {
   LifeOpsConnectorMode,
   LifeOpsConnectorSide,
@@ -8,6 +6,8 @@ import type {
   LifeOpsHealthSummaryResponse,
 } from "@elizaos/shared";
 import { LIFEOPS_HEALTH_CONNECTOR_PROVIDERS } from "@elizaos/shared";
+import { client, openExternalUrl } from "@elizaos/ui";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { formatConnectorError } from "./connector-error.js";
 
 type ProviderMap<T> = Partial<Record<LifeOpsHealthConnectorProvider, T>>;

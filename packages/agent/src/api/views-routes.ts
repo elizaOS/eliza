@@ -10,6 +10,7 @@
  *   GET  /api/views/search?q=&limit=   — hybrid keyword+semantic ranked search (JSON)
  *   GET  /api/views/:id                — single view metadata (JSON)
  *   GET  /api/views/:id/bundle.js      — compiled view bundle (JS)
+ *   GET  /api/views/:id/<asset>        — compiled bundle chunk/asset
  *   GET  /api/views/:id/hero           — hero image (image/*)
  *   POST /api/views/:id/navigate       — broadcast shell navigation event (JSON)
  *   POST /api/views/:id/interact       — agent-view interaction (capability dispatch)
@@ -19,6 +20,7 @@
 import { createHash, randomUUID } from "node:crypto";
 import { promises as fs } from "node:fs";
 import type http from "node:http";
+import path from "node:path";
 
 import {
   type IAgentRuntime,
@@ -43,6 +45,131 @@ import {
 } from "./views-registry.ts";
 import { viewSearchIndex } from "./views-search-index.ts";
 
+function parseViewTypeParam(value: string | null): "gui" | "tui" | undefined {
+  return value === "gui" || value === "tui" ? value : undefined;
+}
+
+function parseViewTypeValue(value: unknown): "gui" | "tui" | undefined {
+  return value === "gui" || value === "tui" ? value : undefined;
+}
+
+function contentTypeForViewAsset(assetPath: string): string {
+  const ext = path.extname(assetPath).toLowerCase();
+  switch (ext) {
+    case ".js":
+    case ".mjs":
+      return "application/javascript; charset=utf-8";
+    case ".css":
+      return "text/css; charset=utf-8";
+    case ".json":
+    case ".map":
+      return "application/json; charset=utf-8";
+    case ".svg":
+      return "image/svg+xml";
+    case ".png":
+      return "image/png";
+    case ".jpg":
+    case ".jpeg":
+      return "image/jpeg";
+    case ".webp":
+      return "image/webp";
+    case ".gif":
+      return "image/gif";
+    case ".wasm":
+      return "application/wasm";
+    default:
+      return "application/octet-stream";
+  }
+}
+
+function convertNamedImportsToDestructuring(namedImports: string): string {
+  return namedImports
+    .split(",")
+    .map((part) => part.trim())
+    .filter(Boolean)
+    .map((part) => part.replace(/\s+as\s+/u, ": "))
+    .join(", ");
+}
+
+function buildHostExternalImportReplacement(
+  importClause: string,
+  specifier: string,
+  index: number,
+): string {
+  const moduleVar = `__eliza_dynamic_view_host_external_${index}`;
+  const lines = [
+    `const ${moduleVar} = await globalThis.__ELIZA_DYNAMIC_VIEW_IMPORT__(${JSON.stringify(specifier)});`,
+  ];
+  const trimmed = importClause.trim();
+  if (trimmed.startsWith("* as ")) {
+    lines.push(`const ${trimmed.slice("* as ".length).trim()} = ${moduleVar};`);
+    return lines.join("\n");
+  }
+
+  const namedMatch = trimmed.match(/^\{([\s\S]*)\}$/u);
+  if (namedMatch) {
+    lines.push(
+      `const { ${convertNamedImportsToDestructuring(namedMatch[1])} } = ${moduleVar};`,
+    );
+    return lines.join("\n");
+  }
+
+  const defaultAndNamedMatch = trimmed.match(/^([^,]+),\s*\{([\s\S]*)\}$/u);
+  if (defaultAndNamedMatch) {
+    lines.push(
+      `const ${defaultAndNamedMatch[1].trim()} = ${moduleVar}.default ?? ${moduleVar};`,
+    );
+    lines.push(
+      `const { ${convertNamedImportsToDestructuring(defaultAndNamedMatch[2])} } = ${moduleVar};`,
+    );
+    return lines.join("\n");
+  }
+
+  lines.push(`const ${trimmed} = ${moduleVar}.default ?? ${moduleVar};`);
+  return lines.join("\n");
+}
+
+function rewriteHostExternalImports(
+  source: string,
+  specifiers: readonly string[],
+): string {
+  if (specifiers.length === 0) return source;
+  const specifierPattern = specifiers
+    .map((item) => item.replace(/[.*+?^${}()|[\]\\]/gu, "\\$&"))
+    .join("|");
+  const fromImportPattern = new RegExp(
+    `import\\s+([^;]*?)\\s+from\\s+["'](${specifierPattern})["'];?`,
+    "gu",
+  );
+  const sideEffectPattern = new RegExp(
+    `import\\s+["'](${specifierPattern})["'];?`,
+    "gu",
+  );
+  let replacementIndex = 0;
+
+  return source
+    .replace(fromImportPattern, (_match, importClause, specifier) =>
+      buildHostExternalImportReplacement(
+        String(importClause),
+        String(specifier),
+        replacementIndex++,
+      ),
+    )
+    .replace(
+      sideEffectPattern,
+      (_match, specifier) =>
+        `await globalThis.__ELIZA_DYNAMIC_VIEW_IMPORT__(${JSON.stringify(String(specifier))});`,
+    );
+}
+
+function parseHostExternalSpecifiers(url: URL): string[] {
+  if (url.searchParams.get("hostExternalRuntime") !== "1") return [];
+  return (url.searchParams.get("hostExternalSpecifiers") ?? "")
+    .split(",")
+    .map((item) => item.trim())
+    .filter(Boolean);
+}
+
 /** Standard capabilities every view supports even without an `interact` export. */
 const STANDARD_CAPABILITY_IDS = new Set([
   "get-state",
@@ -53,6 +180,25 @@ const STANDARD_CAPABILITY_IDS = new Set([
 
 /** Module-level map of pending interact requests awaiting a frontend result. */
 const pendingInteractRequests = new PendingRequestMap();
+
+export interface CurrentViewState {
+  viewId: string;
+  viewPath: string | null;
+  viewLabel: string;
+  viewType: "gui" | "tui";
+  action?: string;
+  updatedAt: string;
+}
+
+let currentViewState: CurrentViewState | null = null;
+
+export function getCurrentViewState(): CurrentViewState | null {
+  return currentViewState;
+}
+
+export function clearCurrentViewState(): void {
+  currentViewState = null;
+}
 
 /**
  * Resolve a pending interact request from a WS `view:interact:result` message.
@@ -108,10 +254,16 @@ export async function handleViewsRoutes(
       return true;
     }
 
-    const allViews = listViews({ developerMode: ctx.developerMode ?? false });
+    const viewType = parseViewTypeParam(url.searchParams.get("viewType"));
+    const allViews = listViews({
+      developerMode: ctx.developerMode ?? false,
+      viewType,
+    });
     const q = query.trim().toLowerCase();
 
     // Keyword scoring (40% weight).
+    const viewScoreKey = (entry: { id: string; viewType?: string }) =>
+      `${entry.viewType ?? "gui"}:${entry.id}`;
     const keywordMap = new Map<string, number>();
     for (const v of allViews) {
       let score = 0;
@@ -120,7 +272,7 @@ export async function handleViewsRoutes(
       else if (label.includes(q)) score = 80;
       else if ((v.tags ?? []).some((t) => t.toLowerCase() === q)) score = 60;
       else if ((v.description ?? "").toLowerCase().includes(q)) score = 40;
-      keywordMap.set(v.id, score);
+      keywordMap.set(viewScoreKey(v), score);
     }
 
     // Semantic scoring (60% weight) — falls back gracefully when unavailable.
@@ -132,9 +284,12 @@ export async function handleViewsRoutes(
           ctx.runtime,
           topK * 2,
         );
-        for (const { viewId, score } of semResults) {
+        for (const { viewId, viewType, score } of semResults) {
           // Cosine similarity in [−1, 1]; normalise to [0, 100].
-          semanticMap.set(viewId, ((score + 1) / 2) * 100);
+          semanticMap.set(
+            `${viewType ?? "gui"}:${viewId}`,
+            ((score + 1) / 2) * 100,
+          );
         }
       } catch (err) {
         logger.debug(
@@ -145,8 +300,9 @@ export async function handleViewsRoutes(
     }
 
     const combined = allViews.map((v) => {
-      const kw = keywordMap.get(v.id) ?? 0;
-      const sem = semanticMap.get(v.id) ?? 0;
+      const key = viewScoreKey(v);
+      const kw = keywordMap.get(key) ?? 0;
+      const sem = semanticMap.get(key) ?? 0;
       return { view: v, score: kw * 0.4 + sem * 0.6 };
     });
 
@@ -166,7 +322,8 @@ export async function handleViewsRoutes(
       ctx.developerMode ?? url.searchParams.get("developerMode") === "true";
     const platform = detectClientPlatform(req);
     const dynamicAllowed = isDynamicLoadingAllowed(platform);
-    const allViews = listViews({ developerMode });
+    const viewType = parseViewTypeParam(url.searchParams.get("viewType"));
+    const allViews = listViews({ developerMode, viewType });
     // On restricted platforms (iOS/Android store builds), only surface views
     // without a dynamic bundle URL (already in-process).
     const filtered = dynamicAllowed
@@ -178,6 +335,12 @@ export async function handleViewsRoutes(
       builtin: v.pluginName === "@elizaos/builtin",
     }));
     json(res, { views });
+    return true;
+  }
+
+  // ── GET /api/views/current ───────────────────────────────────────────────
+  if (method === "GET" && pathname === `${PREFIX}/current`) {
+    json(res, { currentView: currentViewState });
     return true;
   }
 
@@ -235,7 +398,8 @@ export async function handleViewsRoutes(
   if (!id) return false;
 
   if (method === "GET" && subResource === "") {
-    const entry = getView(id);
+    const viewType = parseViewTypeParam(url.searchParams.get("viewType"));
+    const entry = getView(id, { viewType });
     if (!entry) {
       error(res, `View "${id}" not found`, 404);
       return true;
@@ -244,8 +408,8 @@ export async function handleViewsRoutes(
     return true;
   }
 
-  // ── GET /api/views/:id/bundle.js ──────────────────────────────────────────
-  if (method === "GET" && subResource === "bundle.js") {
+  // ── GET/HEAD /api/views/:id/bundle.js ─────────────────────────────────────
+  if ((method === "GET" || method === "HEAD") && subResource === "bundle.js") {
     // Block dynamic bundle delivery on restricted platforms (iOS/Android store).
     const clientPlatform = detectClientPlatform(req);
     if (!isDynamicLoadingAllowed(clientPlatform)) {
@@ -257,7 +421,8 @@ export async function handleViewsRoutes(
       return true;
     }
 
-    const entry = getView(id);
+    const viewType = parseViewTypeParam(url.searchParams.get("viewType"));
+    const entry = getView(id, { viewType });
     if (!entry) {
       error(res, `View "${id}" not found`, 404);
       return true;
@@ -311,9 +476,11 @@ export async function handleViewsRoutes(
       return true;
     }
 
+    const hostExternalSpecifiers = parseHostExternalSpecifiers(url);
     let data: Buffer;
     try {
-      data = await fs.readFile(bundlePath);
+      data =
+        method === "HEAD" ? Buffer.alloc(0) : await fs.readFile(bundlePath);
     } catch (err) {
       logger.error(
         { src: "ViewsRoutes", viewId: id, bundlePath, err },
@@ -333,7 +500,20 @@ export async function handleViewsRoutes(
       : "no-cache";
 
     // SRI informational header — sha256 of the raw bundle bytes.
-    const contentHash = createHash("sha256").update(data).digest("base64");
+    const contentHash =
+      method === "HEAD"
+        ? null
+        : createHash("sha256").update(data).digest("base64");
+
+    if (hostExternalSpecifiers.length > 0 && method !== "HEAD") {
+      data = Buffer.from(
+        rewriteHostExternalImports(
+          data.toString("utf8"),
+          hostExternalSpecifiers,
+        ),
+        "utf8",
+      );
+    }
 
     const raw = res as {
       writeHead?: (
@@ -348,24 +528,142 @@ export async function handleViewsRoutes(
       raw.writeHead(200, {
         "Content-Type": "application/javascript; charset=utf-8",
         "Content-Length": data.byteLength,
-        "Cache-Control": cacheControl,
+        "Cache-Control":
+          hostExternalSpecifiers.length > 0 ? "no-store" : cacheControl,
         ETag: etag,
-        "X-Content-Hash": `sha256-${contentHash}`,
+        ...(contentHash ? { "X-Content-Hash": `sha256-${contentHash}` } : {}),
       });
     } else if (typeof raw.setHeader === "function") {
       raw.setHeader("Content-Type", "application/javascript; charset=utf-8");
       raw.setHeader("Content-Length", data.byteLength);
-      raw.setHeader("Cache-Control", cacheControl);
+      raw.setHeader(
+        "Cache-Control",
+        hostExternalSpecifiers.length > 0 ? "no-store" : cacheControl,
+      );
       raw.setHeader("ETag", etag);
-      raw.setHeader("X-Content-Hash", `sha256-${contentHash}`);
+      if (contentHash) {
+        raw.setHeader("X-Content-Hash", `sha256-${contentHash}`);
+      }
     }
-    raw.end?.(data);
+    raw.end?.(method === "HEAD" ? undefined : data);
+    return true;
+  }
+
+  // ── GET /api/views/:id/<asset> ───────────────────────────────────────────
+  // Vite/Rollup view bundles can emit relative chunk imports such as
+  // `./chunk-abc.js`. Browser module resolution turns those into
+  // `/api/views/:id/chunk-abc.js`, so serve files beside the root bundle.
+  if (
+    (method === "GET" || method === "HEAD") &&
+    subResource !== "" &&
+    !["hero", "navigate", "interact"].includes(subResource)
+  ) {
+    const clientPlatform = detectClientPlatform(req);
+    if (!isDynamicLoadingAllowed(clientPlatform)) {
+      error(
+        res,
+        "Dynamic view asset loading is not permitted on this platform.",
+        403,
+      );
+      return true;
+    }
+
+    const viewType = parseViewTypeParam(url.searchParams.get("viewType"));
+    const entry = getView(id, { viewType });
+    if (!entry) {
+      error(res, `View "${id}" not found`, 404);
+      return true;
+    }
+
+    const bundlePath = getBundleDiskPath(entry);
+    if (!bundlePath) {
+      error(
+        res,
+        `View "${id}" has no bundle path configured. Build the plugin bundle first.`,
+        404,
+      );
+      return true;
+    }
+
+    const bundleDir = path.dirname(bundlePath);
+    const decodedSubResource = decodeURIComponent(subResource);
+    const assetPath = path.resolve(bundleDir, decodedSubResource);
+    const relative = path.relative(bundleDir, assetPath);
+    if (
+      relative.startsWith("..") ||
+      path.isAbsolute(relative) ||
+      relative === ""
+    ) {
+      error(res, "Malformed view asset path", 400);
+      return true;
+    }
+
+    let stat: import("node:fs").Stats;
+    try {
+      stat = await fs.stat(assetPath);
+    } catch (err) {
+      if ((err as NodeJS.ErrnoException).code === "ENOENT") {
+        error(res, `View asset "${decodedSubResource}" not found`, 404);
+      } else {
+        logger.error(
+          { src: "ViewsRoutes", viewId: id, assetPath, err },
+          `[ViewsRoutes] Failed to stat asset "${decodedSubResource}" for view "${id}"`,
+        );
+        error(res, `Failed to read asset for view "${id}"`, 500);
+      }
+      return true;
+    }
+
+    if (!stat.isFile()) {
+      error(res, `View asset "${decodedSubResource}" not found`, 404);
+      return true;
+    }
+
+    const etagRaw = `${stat.mtimeMs}-${stat.size}`;
+    const etag = `"${createHash("sha256").update(etagRaw).digest("hex").slice(0, 16)}"`;
+    if (req.headers["if-none-match"] === etag) {
+      const raw304 = res as {
+        writeHead?: (status: number, headers: Record<string, string>) => void;
+        end?: () => void;
+      };
+      raw304.writeHead?.(304, {});
+      raw304.end?.();
+      return true;
+    }
+
+    let data: Buffer;
+    try {
+      data = method === "HEAD" ? Buffer.alloc(0) : await fs.readFile(assetPath);
+    } catch (err) {
+      logger.error(
+        { src: "ViewsRoutes", viewId: id, assetPath, err },
+        `[ViewsRoutes] Failed to read asset "${decodedSubResource}" for view "${id}"`,
+      );
+      error(res, `Failed to read asset for view "${id}"`, 500);
+      return true;
+    }
+
+    const raw = res as {
+      writeHead?: (
+        status: number,
+        headers: Record<string, string | number>,
+      ) => void;
+      end?: (chunk?: unknown) => void;
+    };
+    raw.writeHead?.(200, {
+      "Content-Type": contentTypeForViewAsset(assetPath),
+      "Content-Length": stat.size,
+      "Cache-Control": "no-cache",
+      ETag: etag,
+    });
+    raw.end?.(method === "HEAD" ? undefined : data);
     return true;
   }
 
   // ── GET /api/views/:id/hero ───────────────────────────────────────────────
   if (method === "GET" && subResource === "hero") {
-    const entry = getView(id);
+    const viewType = parseViewTypeParam(url.searchParams.get("viewType"));
+    const entry = getView(id, { viewType });
     if (!entry) {
       error(res, `View "${id}" not found`, 404);
       return true;
@@ -404,7 +702,10 @@ export async function handleViewsRoutes(
     const body = await readJsonBody<Record<string, unknown>>(req, res).catch(
       () => null,
     );
-    const entry = getView(id);
+    const viewType =
+      parseViewTypeValue(body?.viewType) ??
+      parseViewTypeParam(url.searchParams.get("viewType"));
+    const entry = getView(id, { viewType });
     // Allow navigating to synthetic IDs (like __view-manager__) even when not
     // in the registry — they route to built-in shell tabs.
     const viewPath =
@@ -419,11 +720,22 @@ export async function handleViewsRoutes(
       `[ViewsRoutes] Navigate to view "${id}"${action ? ` (action=${action})` : ""}`,
     );
 
+    const resolvedViewType = entry?.viewType ?? viewType ?? "gui";
+    currentViewState = {
+      viewId: id,
+      viewPath,
+      viewLabel,
+      viewType: resolvedViewType,
+      ...(action ? { action } : {}),
+      updatedAt: new Date().toISOString(),
+    };
+
     ctx.broadcastWs?.({
       type: "shell:navigate:view",
       viewId: id,
       viewPath,
       viewLabel,
+      viewType: resolvedViewType,
       ...(action ? { action } : {}),
     });
 
@@ -431,6 +743,7 @@ export async function handleViewsRoutes(
       ok: true,
       viewId: id,
       viewPath,
+      viewType: resolvedViewType,
       ...(action ? { action } : {}),
     });
     return true;
@@ -465,12 +778,6 @@ export async function handleViewsRoutes(
 
   // ── POST /api/views/:id/interact ──────────────────────────────────────────
   if (method === "POST" && subResource === "interact") {
-    const entry = getView(id);
-    if (!entry) {
-      error(res, `View "${id}" not found`, 404);
-      return true;
-    }
-
     if (typeof (req as { on?: unknown }).on !== "function") {
       error(res, "Missing JSON body for view interaction", 400);
       return true;
@@ -478,6 +785,15 @@ export async function handleViewsRoutes(
 
     const body = await readJsonBody<Record<string, unknown>>(req, res);
     if (!body) return true;
+
+    const viewType =
+      parseViewTypeValue(body.viewType) ??
+      parseViewTypeParam(url.searchParams.get("viewType"));
+    const entry = getView(id, { viewType });
+    if (!entry) {
+      error(res, `View "${id}" not found`, 404);
+      return true;
+    }
 
     const capability =
       typeof body.capability === "string" ? body.capability : null;
@@ -530,6 +846,7 @@ export async function handleViewsRoutes(
     ctx.broadcastWs?.({
       type: "view:interact",
       viewId: id,
+      viewType: entry.viewType,
       capability,
       params,
       requestId,

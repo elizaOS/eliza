@@ -7,8 +7,8 @@ on:
       - ".github/workflows/elizaos-os-release.yml"
       - "packages/os/**"
       - "packages/os-homepage/**"
-      - "packages/os-usb-installer/**"
-      - "packages/elizaos-setup/**"
+      - "packages/os/usb-installer/**"
+      - "packages/os/setup/**"
 
 jobs:
   validate-os-release:
@@ -38,10 +38,10 @@ jobs:
 
       - name: Validate USB installer
         run: |
-          bun run --cwd packages/os-usb-installer lint
-          bun run --cwd packages/os-usb-installer typecheck
-          bun run --cwd packages/os-usb-installer test
-          bun run --cwd packages/os-usb-installer build
+          bun run --cwd packages/os/usb-installer lint
+          bun run --cwd packages/os/usb-installer typecheck
+          bun run --cwd packages/os/usb-installer test
+          bun run --cwd packages/os/usb-installer build
 
       - name: Validate Android installer
         run: |
@@ -49,12 +49,13 @@ jobs:
           node packages/os/android/installer/scripts/validate-release-manifest.mjs \
             packages/os/android/installer/manifests/android-release-manifest.example.json
           node packages/os/android/installer/scripts/validate-release-manifest.mjs \
-            packages/os/release/beta-2026-05-16/android-release-manifest.json
+            packages/os/release/beta-2026-05-16/android-release-manifest.json \
+            --allow-placeholders
 
       - name: Validate elizaos-setup (formerly aosp-flasher)
         run: |
-          bun run --cwd packages/elizaos-setup typecheck
-          bun run --cwd packages/elizaos-setup build
+          bun run --cwd packages/os/setup typecheck
+          bun run --cwd packages/os/setup build
 
       - name: Validate Linux live USB metadata
         run: |

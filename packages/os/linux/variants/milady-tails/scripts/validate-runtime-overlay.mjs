@@ -6,7 +6,10 @@ import process from "node:process";
 import { fileURLToPath } from "node:url";
 
 const args = process.argv.slice(2);
-const variantRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
+const variantRoot = path.resolve(
+  path.dirname(fileURLToPath(import.meta.url)),
+  "..",
+);
 const defaultStage = path.join(
   variantRoot,
   "tails/config/chroot_local-includes/usr/share/elizaos/milady-app",
@@ -214,7 +217,9 @@ function validateGeneratedStubs(manifest) {
       (stub) => stub.packageName === packageName,
     );
     if (!manifestEntry && !generatedEntry) {
-      fail(`${filePath}: live stub package is not declared in the runtime manifest`);
+      fail(
+        `${filePath}: live stub package is not declared in the runtime manifest`,
+      );
     }
   });
 }
@@ -236,8 +241,10 @@ function validatePackageInventory(manifest) {
       liveStub: packageJson.version === "0.0.0-elizaos-live-stub",
     });
   });
-  inventory.sort((left, right) =>
-    left.name.localeCompare(right.name) || left.path.localeCompare(right.path),
+  inventory.sort(
+    (left, right) =>
+      left.name.localeCompare(right.name) ||
+      left.path.localeCompare(right.path),
   );
 
   const manifestCount = manifest.packages?.packageJsonCount;
@@ -262,9 +269,10 @@ function validatePackageInventory(manifest) {
       private: pkg.private === true,
       liveStub: pkg.liveStub === true,
     }))
-    .sort((left, right) =>
-      String(left.name).localeCompare(String(right.name)) ||
-      String(left.path).localeCompare(String(right.path)),
+    .sort(
+      (left, right) =>
+        String(left.name).localeCompare(String(right.name)) ||
+        String(left.path).localeCompare(String(right.path)),
     );
   if (
     JSON.stringify(normalizedManifestInventory) !== JSON.stringify(inventory)
@@ -274,7 +282,8 @@ function validatePackageInventory(manifest) {
 }
 
 function validateRepositoryResolution(manifest) {
-  const forbidden = manifest.repositoryResolution?.forbiddenHardCodedNeedles ?? [
+  const forbidden = manifest.repositoryResolution
+    ?.forbiddenHardCodedNeedles ?? [
     "github.com/milady-ai/milady",
     'orgName:"milady-ai"',
     'repoName:"milady"',
@@ -295,7 +304,9 @@ function validateRepositoryResolution(manifest) {
       const text = readText(filePath);
       for (const needle of forbidden) {
         if (text.includes(needle)) {
-          fail(`${filePath}: hard-coded Milady repo/app resolution remains: ${needle}`);
+          fail(
+            `${filePath}: hard-coded Milady repo/app resolution remains: ${needle}`,
+          );
         }
       }
     };
@@ -341,7 +352,12 @@ function validatePorts(manifest) {
     "usr/local/lib/elizaos/elizaos-webkit-shell",
   );
 
-  for (const filePath of [liveLauncher, agentLauncher, rendererLauncher, browserLauncher]) {
+  for (const filePath of [
+    liveLauncher,
+    agentLauncher,
+    rendererLauncher,
+    browserLauncher,
+  ]) {
     assertContains(filePath, `ELIZA_API_PORT:-${apiPort}`, "API port default");
   }
   for (const filePath of [rendererLauncher, browserLauncher]) {
@@ -351,9 +367,21 @@ function validatePorts(manifest) {
       "renderer port default",
     );
   }
-  assertContains(rendererServer, `|| "${rendererPort}"`, "renderer server port default");
-  assertContains(rendererServer, `|| "${apiPort}"`, "renderer server API default");
-  assertContains(webkitShell, `127.0.0.1:${rendererPort}`, "WebKit renderer URL");
+  assertContains(
+    rendererServer,
+    `|| "${rendererPort}"`,
+    "renderer server port default",
+  );
+  assertContains(
+    rendererServer,
+    `|| "${apiPort}"`,
+    "renderer server API default",
+  );
+  assertContains(
+    webkitShell,
+    `127.0.0.1:${rendererPort}`,
+    "WebKit renderer URL",
+  );
   assertContains(webkitShell, `127.0.0.1%3A${apiPort}`, "WebKit API URL");
 }
 
@@ -410,7 +438,10 @@ function validateRequiredRuntimePackages() {
     "@elizaos/plugin-calendly",
     "@elizaos/plugin-health",
   ]) {
-    assertFile(packageManifestPath(packageName), `${packageName} package manifest`);
+    assertFile(
+      packageManifestPath(packageName),
+      `${packageName} package manifest`,
+    );
   }
 
   for (const [packageName, relativeFile] of [
@@ -419,7 +450,10 @@ function validateRequiredRuntimePackages() {
     ["@elizaos/plugin-calendly", "dist/index.js"],
     ["@elizaos/plugin-health", "dist/index.js"],
   ]) {
-    assertFile(path.join(packageDirectory(packageName), relativeFile), `${packageName} runtime file`);
+    assertFile(
+      path.join(packageDirectory(packageName), relativeFile),
+      `${packageName} runtime file`,
+    );
   }
 }
 

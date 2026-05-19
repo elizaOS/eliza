@@ -17,6 +17,19 @@ export const appMessagesPlugin: Plugin = {
       visibleInManager: true,
       desktopTabEnabled: true,
     },
+    {
+      id: "messages",
+      label: "Messages TUI",
+      description: "Terminal SMS conversation surface and bridge status",
+      icon: "MessageSquare",
+      path: "/messages/tui",
+      viewType: "tui",
+      bundlePath: "dist/views/bundle.js",
+      componentExport: "MessagesTuiView",
+      tags: ["messaging", "sms", "android", "terminal"],
+      visibleInManager: true,
+      desktopTabEnabled: true,
+    },
   ],
 };
 

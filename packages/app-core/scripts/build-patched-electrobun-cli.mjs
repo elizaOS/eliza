@@ -177,7 +177,8 @@ export function patchCliSourceText(original) {
     );
   }
 
-  const dynamicImportReplacements = patched.match(oldDynamicImportPattern) ?? [];
+  const dynamicImportReplacements =
+    patched.match(oldDynamicImportPattern) ?? [];
   const packageJsonResolveReplacements =
     patched.match(currentPackageJsonResolvePattern) ?? [];
   if (

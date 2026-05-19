@@ -119,9 +119,7 @@ export const worktreeAction: Action = {
       options as HandlerOptions | undefined,
       callback,
     );
-    return (
-      result
-    );
+    return result;
   },
   examples: [
     [

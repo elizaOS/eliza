@@ -200,6 +200,7 @@ import {
 } from "../hooks/index.ts";
 import { ensureAgentWorkspace } from "../providers/workspace.ts";
 import { SandboxAuditLog } from "../security/audit-log.ts";
+import { bootstrapRemoteCapabilityPlugins } from "../services/remote-plugin-adapter.ts";
 import {
   SandboxManager,
   type SandboxMode,
@@ -404,6 +405,54 @@ export async function ensureCoreStaticPluginsRegistered(): Promise<void> {
     return;
   }
   _coreStaticPluginsRegistrationPromise = (async () => {
+    // Per-plugin timing + timeout. Converts a silent boot hang into a named,
+    // attributable failure: the log line tells you which plugin is stuck,
+    // and the timeout prevents one bad module (e.g. plugin-sql opening
+    // PGlite on a locked data dir) from holding the container forever.
+    //
+    // plugin-sql is required — if it times out we throw. Optional plugins
+    // resolve to `null` on timeout so the boot continues without them.
+    const bootTimeoutMs = Number(
+      process.env.ELIZA_PLUGIN_BOOT_TIMEOUT_MS ?? 30_000,
+    );
+    logger.info(`[boot] resolving plugins (timeout=${bootTimeoutMs}ms)`);
+
+    const trackImport = async <T>(
+      name: string,
+      loader: () => Promise<T>,
+      { required }: { required: boolean },
+    ): Promise<T | null> => {
+      const startedAt = Date.now();
+      let timer: ReturnType<typeof setTimeout> | null = null;
+      const timeout = new Promise<never>((_, reject) => {
+        timer = setTimeout(() => {
+          reject(
+            new Error(`plugin ${name} timed out after ${bootTimeoutMs}ms`),
+          );
+        }, bootTimeoutMs);
+        if (typeof timer.unref === "function") timer.unref();
+      });
+      try {
+        const result = await Promise.race([loader(), timeout]);
+        logger.info(`[boot] ${name} loaded in ${Date.now() - startedAt}ms`);
+        return result;
+      } catch (err) {
+        const elapsed = Date.now() - startedAt;
+        if (required) {
+          logger.error(
+            `[boot] ${name} FAILED after ${elapsed}ms: ${formatError(err)}`,
+          );
+          throw err;
+        }
+        logger.warn(
+          `[boot] ${name} skipped after ${elapsed}ms: ${formatError(err)}`,
+        );
+        return null;
+      } finally {
+        if (timer) clearTimeout(timer);
+      }
+    };
+
     const [
       pluginSql,
       pluginLocalEmbedding,
@@ -420,21 +469,79 @@ export async function ensureCoreStaticPluginsRegistered(): Promise<void> {
       pluginOpenai,
       pluginGoogle,
     ] = await Promise.all([
-      getPluginSql(),
-      getPluginLocalEmbedding(),
-      getOptionalPlugin("@elizaos/plugin-agent-orchestrator"),
-      getOptionalPlugin("@elizaos/plugin-shell"),
-      getOptionalPlugin("@elizaos/plugin-coding-tools"),
-      getOptionalPlugin("@elizaos/plugin-commands"),
-      getOptionalPlugin("@elizaos/plugin-video"),
-      getOptionalPlugin("@elizaos/plugin-background-runner"),
-      getOptionalPlugin("@elizaos/plugin-elizacloud"),
-      getOptionalPlugin("@elizaos/plugin-ollama"),
-      getOptionalPlugin("@elizaos/plugin-mlx"),
-      getOptionalPlugin("@elizaos/plugin-anthropic"),
-      getOptionalPlugin("@elizaos/plugin-openai"),
-      getOptionalPlugin("@elizaos/plugin-google"),
+      trackImport("@elizaos/plugin-sql", () => getPluginSql(), {
+        required: true,
+      }),
+      trackImport(
+        "@elizaos/plugin-local-inference",
+        () => getPluginLocalEmbedding(),
+        { required: false },
+      ),
+      trackImport(
+        "@elizaos/plugin-agent-orchestrator",
+        () => getOptionalPlugin("@elizaos/plugin-agent-orchestrator"),
+        { required: false },
+      ),
+      trackImport(
+        "@elizaos/plugin-shell",
+        () => getOptionalPlugin("@elizaos/plugin-shell"),
+        { required: false },
+      ),
+      trackImport(
+        "@elizaos/plugin-coding-tools",
+        () => getOptionalPlugin("@elizaos/plugin-coding-tools"),
+        { required: false },
+      ),
+      trackImport(
+        "@elizaos/plugin-commands",
+        () => getOptionalPlugin("@elizaos/plugin-commands"),
+        { required: false },
+      ),
+      trackImport(
+        "@elizaos/plugin-video",
+        () => getOptionalPlugin("@elizaos/plugin-video"),
+        { required: false },
+      ),
+      trackImport(
+        "@elizaos/plugin-background-runner",
+        () => getOptionalPlugin("@elizaos/plugin-background-runner"),
+        { required: false },
+      ),
+      trackImport(
+        "@elizaos/plugin-elizacloud",
+        () => getOptionalPlugin("@elizaos/plugin-elizacloud"),
+        { required: false },
+      ),
+      trackImport(
+        "@elizaos/plugin-ollama",
+        () => getOptionalPlugin("@elizaos/plugin-ollama"),
+        { required: false },
+      ),
+      trackImport(
+        "@elizaos/plugin-mlx",
+        () => getOptionalPlugin("@elizaos/plugin-mlx"),
+        { required: false },
+      ),
+      trackImport(
+        "@elizaos/plugin-anthropic",
+        () => getOptionalPlugin("@elizaos/plugin-anthropic"),
+        { required: false },
+      ),
+      trackImport(
+        "@elizaos/plugin-openai",
+        () => getOptionalPlugin("@elizaos/plugin-openai"),
+        { required: false },
+      ),
+      trackImport(
+        "@elizaos/plugin-google",
+        () => getOptionalPlugin("@elizaos/plugin-google"),
+        { required: false },
+      ),
     ]);
+
+    if (!pluginSql) {
+      throw new Error("[boot] @elizaos/plugin-sql failed to load");
+    }
 
     Object.assign(STATIC_ELIZA_PLUGINS, {
       "@elizaos/plugin-sql": pluginSql,
@@ -656,7 +763,6 @@ export function configureLocalEmbeddingPlugin(
       return String(value);
     }
     if (value === "auto" || value === "max") {
-      // plugin-local-embedding understands "auto" and treats it as runtime max
       return "auto";
     }
     return undefined;
@@ -671,9 +777,9 @@ export function configureLocalEmbeddingPlugin(
     process.env[key] = value;
   };
 
-  // Keep plugin-local-embedding aligned with Eliza's hardware-adaptive preset
-  // selection. Hard-coding the standard preset here forces slower first-run
-  // downloads on Windows and low-spec machines.
+  // Apply Eliza's hardware-adaptive preset selection. Hard-coding the standard
+  // preset here forces slower first-run downloads on Windows and low-spec
+  // machines.
   setEnvIfMissing(
     "LOCAL_EMBEDDING_MODEL",
     configuredModel || detectedPreset.model,
@@ -3068,26 +3174,29 @@ export async function startEliza(
   // module evaluation in the cloud Docker boot path. Manifests as a silent
   // hang at this await call after the node:sqlite experimental warning; PID 1
   // sits in `ep_poll`, no listen, 180s health timeout.
-  if (process.env.ELIZA_CLOUD_PROVISIONED !== "1") try {
-    const accountPool = await importAppCoreRuntime();
-    accountPool.getDefaultAccountPool();
-    await accountPool.applyAccountPoolApiCredentials({
-      activeBackend: resolveServiceRoutingInConfig(
-        config as Record<string, unknown>,
-      )?.llmText?.backend,
-      accountStrategies: (
-        config as Record<string, unknown> & {
-          accountStrategies?: Record<string, unknown>;
-        }
-      ).accountStrategies,
-      serviceRouting: resolveServiceRoutingInConfig(
-        config as Record<string, unknown>,
-      ),
-    });
-    accountPool.startAccountPoolKeepAlive();
-  } catch (err) {
-    logger.debug(`[eliza] Account pool bootstrap skipped: ${formatError(err)}`);
-  }
+  if (process.env.ELIZA_CLOUD_PROVISIONED !== "1")
+    try {
+      const accountPool = await importAppCoreRuntime();
+      accountPool.getDefaultAccountPool();
+      await accountPool.applyAccountPoolApiCredentials({
+        activeBackend: resolveServiceRoutingInConfig(
+          config as Record<string, unknown>,
+        )?.llmText?.backend,
+        accountStrategies: (
+          config as Record<string, unknown> & {
+            accountStrategies?: Record<string, unknown>;
+          }
+        ).accountStrategies,
+        serviceRouting: resolveServiceRoutingInConfig(
+          config as Record<string, unknown>,
+        ),
+      });
+      accountPool.startAccountPoolKeepAlive();
+    } catch (err) {
+      logger.debug(
+        `[eliza] Account pool bootstrap skipped: ${formatError(err)}`,
+      );
+    }
 
   // 2g. Apply subscription-based credentials (Claude Max, Codex Max).
   //     Failure is non-fatal — the agent can still start with other providers.
@@ -3824,7 +3933,28 @@ export async function startEliza(
       config,
     );
 
-    // 8a. Apply legacy role redaction to protected plugin providers.
+    // 8a. Register remote capability modules as runtime-owned plugins.
+    try {
+      const result = await bootstrapRemoteCapabilityPlugins(runtime, {
+        unloadMissing: true,
+      });
+      if (
+        result.registered.length > 0 ||
+        result.unloaded.length > 0 ||
+        result.skipped.length > 0
+      ) {
+        logger.info(
+          `[eliza] Remote capability plugins synced — registered=${result.registered.length}, ` +
+            `unloaded=${result.unloaded.length}, skipped=${result.skipped.length}`,
+        );
+      }
+    } catch (err) {
+      logger.warn(
+        `[eliza] Remote capability plugin sync failed: ${formatError(err)}`,
+      );
+    }
+
+    // 8b. Apply legacy role redaction to protected plugin providers.
     try {
       const { applyPluginRoleGating } = await import("./plugin-role-gating.ts");
       applyPluginRoleGating(runtime.plugins ?? []);
@@ -3834,7 +3964,7 @@ export async function startEliza(
       );
     }
 
-    // 8b. Register conversation-proximity provider for post-turn evaluators.
+    // 8c. Register conversation-proximity provider for post-turn evaluators.
     // This is read-only context; relationship writes are handled by the
     // evaluator service from model-extracted relationship updates.
     try {

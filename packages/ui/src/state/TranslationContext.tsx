@@ -21,7 +21,12 @@ import {
   type BrandingConfig,
   DEFAULT_BRANDING,
 } from "../config/branding";
-import { createTranslator, normalizeLanguage, type UiLanguage } from "../i18n";
+import {
+  createTranslator,
+  ensureLanguageLoaded,
+  normalizeLanguage,
+  type UiLanguage,
+} from "../i18n";
 import { loadUiLanguage, saveUiLanguage } from "./persistence";
 
 // ── Types ──────────────────────────────────────────────────────────────
@@ -57,11 +62,32 @@ export function TranslationProvider({
   branding?: Partial<BrandingConfig>;
 }) {
   const [uiLanguage, setUiLanguageRaw] = useState<UiLanguage>(loadUiLanguage);
+  // Bumped after async locale loads complete so consumers re-render with the
+  // freshly populated MESSAGES dictionary.
+  const [, setLocaleRevision] = useState(0);
+
+  // Eagerly load the persisted locale (other than `en`) on mount.
+  // biome-ignore lint/correctness/useExhaustiveDependencies: mount-only effect; language changes flow through setUiLanguage
+  useEffect(() => {
+    if (uiLanguage === "en") return;
+    let cancelled = false;
+    void ensureLanguageLoaded(uiLanguage).then(() => {
+      if (!cancelled) setLocaleRevision((n) => n + 1);
+    });
+    return () => {
+      cancelled = true;
+    };
+    // Only on mount — language changes go through setUiLanguage below.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const setUiLanguage = useCallback(
     (language: UiLanguage) => {
       const next = normalizeLanguage(language);
       setUiLanguageRaw(next);
+      void ensureLanguageLoaded(next).then(() => {
+        setLocaleRevision((n) => n + 1);
+      });
       if (
         "setUiLanguage" in client &&
         typeof client.setUiLanguage === "function"

@@ -5,11 +5,11 @@
  * without booting the heavy services (cloud-api, frontend, migrations).
  */
 
+import { describe, expect, test } from "bun:test";
 import { spawn } from "node:child_process";
 import { mkdtempSync, readFileSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import { describe, expect, test } from "bun:test";
 
 const REPO_ROOT = path.resolve(import.meta.dirname, "../../..");
 const SCRIPT = path.join(REPO_ROOT, "scripts/cloud/mock-stack-up.mjs");
@@ -32,8 +32,12 @@ function redirectedRun(args, { collectMs = 0, env = {} } = {}) {
     proc.on("exit", (code, signal) => {
       let stdout = "";
       let stderr = "";
-      try { stdout = readFileSync(outFile, "utf8"); } catch {}
-      try { stderr = readFileSync(errFile, "utf8"); } catch {}
+      try {
+        stdout = readFileSync(outFile, "utf8");
+      } catch {}
+      try {
+        stderr = readFileSync(errFile, "utf8");
+      } catch {}
       resolve({ code, signal, stdout, stderr });
     });
   });
@@ -56,28 +60,24 @@ describe("mock-stack-up orchestrator", () => {
     expect(combined).toContain("Usage:");
   });
 
-  test(
-    "skip-everything boot reaches ready banner and SIGINT shuts down cleanly",
-    async () => {
-      const started = Date.now();
-      const r = await redirectedRun(
-        ["--no-frontend", "--no-cp", "--no-hetzner", "--no-migrations"],
-        { collectMs: 4_000 },
-      );
-      const elapsed = Date.now() - started;
-      expect(elapsed).toBeLessThan(15_000);
-      const combined = r.stdout + r.stderr;
-      // Any of: banner printed (success), shutdown logged (signal handled),
-      // or fast non-zero exit (failure handled) prove the orchestrator's
-      // wiring, signal, and failure paths are intact and it didn't hang.
-      const handled =
-        combined.includes("Milady cloud mock stack") ||
-        combined.includes("shutting down") ||
-        combined.includes("stopped") ||
-        combined.includes("failed to start") ||
-        r.code === 1;
-      expect(handled).toBe(true);
-    },
-    20_000,
-  );
+  test("skip-everything boot reaches ready banner and SIGINT shuts down cleanly", async () => {
+    const started = Date.now();
+    const r = await redirectedRun(
+      ["--no-frontend", "--no-cp", "--no-hetzner", "--no-migrations"],
+      { collectMs: 4_000 },
+    );
+    const elapsed = Date.now() - started;
+    expect(elapsed).toBeLessThan(15_000);
+    const combined = r.stdout + r.stderr;
+    // Any of: banner printed (success), shutdown logged (signal handled),
+    // or fast non-zero exit (failure handled) prove the orchestrator's
+    // wiring, signal, and failure paths are intact and it didn't hang.
+    const handled =
+      combined.includes("Milady cloud mock stack") ||
+      combined.includes("shutting down") ||
+      combined.includes("stopped") ||
+      combined.includes("failed to start") ||
+      r.code === 1;
+    expect(handled).toBe(true);
+  }, 20_000);
 });

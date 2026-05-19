@@ -1,0 +1,71 @@
+// SPDX-License-Identifier: GPL-2.0-only OR BSD-2-Clause
+/*
+ * Eliza e1 SoC device-tree include file.
+ *
+ * Consumes the addresses defined in sw/platform/e1_platform_contract.json
+ * via the matching offsets in
+ * sw/linux/drivers/eliza/e1_platform_contract.h. Drop this file into
+ * an external Linux tree at arch/<arch>/boot/dts/eliza/ and include it
+ * from a board .dts that adds CPU(s), memory, an interrupt controller, and
+ * the framebuffer reservation in /reserved-memory.
+ *
+ * This file deliberately uses /bits/ 64 raw cell counts (#address-cells = 2,
+ * #size-cells = 2) so it can be reused on both 32-bit and 64-bit ports.
+ */
+
+/ {
+	#address-cells = <2>;
+	#size-cells = <2>;
+
+	soc: soc {
+		compatible = "eliza,e1-soc", "simple-bus";
+		#address-cells = <2>;
+		#size-cells = <2>;
+		ranges;
+
+		e1_gpio: gpio@10000000 {
+			compatible = "eliza,e1-gpio";
+			reg = <0x0 0x10000000 0x0 0x00001000>;
+			gpio-controller;
+			#gpio-cells = <2>;
+			/* E1_PERIPHERAL_CONTROL_BASE; GPIO_OUT at +0x08 */
+		};
+
+		e1_dma: dma@10010000 {
+			compatible = "eliza,e1-dma";
+			reg = <0x0 0x10010000 0x0 0x00001000>;
+			interrupt-names = "IRQ_DMA";
+			/* E1_DMA_BASE */
+		};
+
+		e1_npu: npu@10020000 {
+			compatible = "eliza,e1-npu";
+			reg = <0x0 0x10020000 0x0 0x00001000>;
+			interrupt-names = "IRQ_NPU";
+			/* E1_NPU_BASE */
+		};
+
+		e1_display: display@10030000 {
+			compatible = "eliza,e1-display";
+			reg = <0x0 0x10030000 0x0 0x00001000>;
+			interrupt-names = "IRQ_VSYNC";
+			eliza,mode   = <0x01E00280>; /* 640x480 */
+			eliza,format = <0x34325258>; /* XR24 */
+			eliza,fb-base = <0x80000000>;
+			/* E1_DISPLAY_BASE */
+		};
+
+		e1_framebuffer: framebuffer@80000000 {
+			compatible = "simple-framebuffer";
+			reg = <0x0 0x80000000 0x0 0x00177000>;
+			width = <640>;
+			height = <480>;
+			stride = <2560>;
+			format = "x8r8g8b8";
+			status = "disabled";
+			/* Enable from the board .dts once /reserved-memory
+			 * carves the framebuffer out of DRAM.
+			 */
+		};
+	};
+};

@@ -40,6 +40,7 @@
     "**/__tests__/**",
     "**/*.test.ts",
     "**/*.e2e.test.ts",
-    "**/*.test.tsx"
+    "**/*.test.tsx",
+    "build.ts"
   ]
 }

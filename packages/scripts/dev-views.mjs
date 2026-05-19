@@ -5,7 +5,10 @@ import path from "node:path";
 const repoRoot = path.resolve(import.meta.dirname, "../..");
 const result = spawnSync(
   process.execPath,
-  [path.join(repoRoot, "packages/scripts/build-views.mjs"), ...process.argv.slice(2)],
+  [
+    path.join(repoRoot, "packages/scripts/build-views.mjs"),
+    ...process.argv.slice(2),
+  ],
   {
     cwd: repoRoot,
     stdio: "inherit",

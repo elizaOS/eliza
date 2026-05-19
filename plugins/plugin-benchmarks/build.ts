@@ -2,14 +2,11 @@
 import { existsSync, rmSync } from "node:fs";
 import { mkdir, writeFile } from "node:fs/promises";
 import { join } from "node:path";
+import { externalsFromPackageJson } from "../plugin-build-externals.ts";
 
 async function build() {
   const totalStart = Date.now();
-  const pkg = await Bun.file("package.json").json();
-  const externalDeps = [
-    ...Object.keys(pkg.dependencies ?? {}),
-    ...Object.keys(pkg.peerDependencies ?? {}),
-  ];
+  const externalDeps = await externalsFromPackageJson("./package.json");
 
   console.log("Cleaning...");
   if (existsSync("dist")) rmSync("dist", { recursive: true, force: true });

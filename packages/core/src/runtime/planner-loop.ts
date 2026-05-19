@@ -109,6 +109,11 @@ interface RawPlannerOutput {
 	toolCalls?: unknown;
 	messageToUser?: unknown;
 	text?: unknown;
+	// Optional explicit completion signal. When emitted as a boolean,
+	// `tryGateEvaluator` honors `completed=false` to fall through to the
+	// full evaluator instead of synthesizing a FINISH. See gate
+	// preconditions in `tryGateEvaluator`.
+	completed?: unknown;
 }
 
 export async function runPlannerLoop(
@@ -163,6 +168,13 @@ export async function runPlannerLoop(
 	// rather than a final answer). The gate refuses ambiguous signals to avoid
 	// surfacing a thought as the user-facing reply.
 	let lastPlannerExplicitMessageToUser: string | undefined;
+	// Tracks the most recent planner output's explicit `completed` flag, when
+	// emitted as a boolean. The gate (`tryGateEvaluator`) treats
+	// `completed === false` as a hard veto on synthesizing a FINISH — the
+	// planner is explicitly signaling that this turn's tool calls do not yet
+	// achieve the goal (e.g. read-then-act, multi-step deploy). When the
+	// field is absent the gate's other preconditions are honored as before.
+	let lastPlannerExplicitCompleted: boolean | undefined;
 
 	for (let iteration = 1; ; iteration++) {
 		if (trajectory.plannedQueue.length === 0) {
@@ -193,6 +205,14 @@ export async function runPlannerLoop(
 				typeof explicit === "string" && explicit.trim().length > 0
 					? explicit
 					: undefined;
+			// Capture the planner's explicit `completed` boolean when present.
+			// Any non-boolean (string "false", number, null, missing) is treated
+			// as "unspecified" and does not influence the gate — only an actual
+			// `false` boolean blocks. This keeps backward compat with planner
+			// outputs that don't carry the field.
+			const completedRaw = plannerOutput.raw.completed;
+			lastPlannerExplicitCompleted =
+				typeof completedRaw === "boolean" ? completedRaw : undefined;
 
 			if (plannerOutput.toolCalls.length === 0) {
 				if (
@@ -325,6 +345,11 @@ export async function runPlannerLoop(
 					terminalOnly: true,
 				});
 				const terminalEvaluator = terminalToolCallFinish(finalMessage);
+				// Only record an evaluation stage when the trajectory already has
+				// prior evaluator outputs. A terminal-only iteration on the very
+				// first planner turn (e.g. REPLY) is purely terminal and should
+				// not surface an `evaluation` stage in the recorded trajectory
+				// — the happy path tests assert this.
 				const shouldRecordTerminalEvaluation =
 					trajectory.evaluatorOutputs.length > 0;
 				trajectory.evaluatorOutputs.push(terminalEvaluator);
@@ -436,10 +461,16 @@ export async function runPlannerLoop(
 
 		const latestResult = trajectory.steps[trajectory.steps.length - 1]?.result;
 		if (latestResult?.continueChain === false) {
+			// `suppressPlannerReply` from terminal actions blanks finalMessage so a
+			// same-turn hallucinated `messageToUser` cannot leak past the transient
+			// filter (which only masks it on the *next* turn).
+			const suppressReply =
+				(latestResult.data as { suppressPlannerReply?: unknown } | undefined)
+					?.suppressPlannerReply === true;
 			return {
 				status: "finished",
 				trajectory,
-				finalMessage: latestResult.text,
+				finalMessage: suppressReply ? "" : latestResult.text,
 			};
 		}
 
@@ -463,6 +494,7 @@ export async function runPlannerLoop(
 			trajectory,
 			failures,
 			lastPlannerExplicitMessageToUser,
+			lastPlannerExplicitCompleted,
 		});
 		if (gated) {
 			trajectory.evaluatorOutputs.push(gated);
@@ -739,9 +771,6 @@ export function parsePlannerOutput(raw: string | GenerateTextResult): {
 
 	const nativeToolCalls = normalizeToolCalls(raw.toolCalls);
 	const text = getNonEmptyString(raw.text);
-	const explicitMessageToUser = getNonEmptyString(
-		(raw as unknown as Record<string, unknown>).messageToUser,
-	);
 
 	// gpt-oss-class models narrate planner calls in the text channel. There
 	// are two observed shapes:
@@ -785,13 +814,10 @@ export function parsePlannerOutput(raw: string | GenerateTextResult): {
 		messageToUser:
 			textRecoveredCalls.length > 0
 				? terminalMessageFromToolCalls(toolCalls)
-				: (explicitMessageToUser ?? text),
+				: text,
 		raw: {
 			text: raw.text,
 			toolCalls: raw.toolCalls,
-			...(explicitMessageToUser
-				? { messageToUser: explicitMessageToUser }
-				: {}),
 			...(recoverySource ? { textRecoverySource: recoverySource } : {}),
 		} as Record<string, unknown>,
 	};
@@ -1772,10 +1798,6 @@ async function executeQueuedToolCall(params: {
 	});
 }
 
-function toolFailureRepeatKey(toolCall: PlannerToolCall): string {
-	return `${toolCall.name}:${stringifyForModel(toolCall.params ?? {})}`;
-}
-
 async function recordToolStage(args: {
 	recorder?: TrajectoryRecorder;
 	trajectoryId?: string;
@@ -2064,35 +2086,6 @@ function hasExposedNonTerminalTool(
 	);
 }
 
-function exposedToolNameSet(
-	tools: ToolDefinition[] | undefined,
-): Set<string> | null {
-	if (!Array.isArray(tools) || tools.length === 0) return null;
-	const names = tools
-		.map(getToolDefinitionName)
-		.filter((name): name is string => Boolean(name))
-		.map((name) => name.toUpperCase());
-	return names.length > 0 ? new Set(names) : null;
-}
-
-function splitUnavailableToolCalls(
-	toolCalls: PlannerToolCall[],
-	tools: ToolDefinition[] | undefined,
-): { valid: PlannerToolCall[]; invalid: PlannerToolCall[] } {
-	const exposed = exposedToolNameSet(tools);
-	if (!exposed) return { valid: toolCalls, invalid: [] };
-	const valid: PlannerToolCall[] = [];
-	const invalid: PlannerToolCall[] = [];
-	for (const toolCall of toolCalls) {
-		if (exposed.has(toolCall.name.toUpperCase())) {
-			valid.push(toolCall);
-		} else {
-			invalid.push(toolCall);
-		}
-	}
-	return { valid, invalid };
-}
-
 function hasExecutedNonTerminalTool(trajectory: PlannerTrajectory): boolean {
 	return trajectory.steps.some(
 		(step) => step.toolCall && !isTerminalToolCall(step.toolCall),
@@ -2208,6 +2201,39 @@ function failedToolFallbackMessage(
 	return "I tried to complete that, but the available runtime step failed before it produced a usable result.";
 }
 
+function exposedToolNameSet(
+	tools: ToolDefinition[] | undefined,
+): Set<string> | null {
+	if (!Array.isArray(tools) || tools.length === 0) return null;
+	const names = tools
+		.map(getToolDefinitionName)
+		.filter((name): name is string => Boolean(name))
+		.map((name) => name.toUpperCase());
+	return names.length > 0 ? new Set(names) : null;
+}
+
+function splitUnavailableToolCalls(
+	toolCalls: PlannerToolCall[],
+	tools: ToolDefinition[] | undefined,
+): { valid: PlannerToolCall[]; invalid: PlannerToolCall[] } {
+	const exposed = exposedToolNameSet(tools);
+	if (!exposed) return { valid: toolCalls, invalid: [] };
+	const valid: PlannerToolCall[] = [];
+	const invalid: PlannerToolCall[] = [];
+	for (const toolCall of toolCalls) {
+		if (exposed.has(toolCall.name.toUpperCase())) {
+			valid.push(toolCall);
+		} else {
+			invalid.push(toolCall);
+		}
+	}
+	return { valid, invalid };
+}
+
+function toolFailureRepeatKey(toolCall: PlannerToolCall): string {
+	return `${toolCall.name}:${stringifyForModel(toolCall.params ?? {})}`;
+}
+
 /**
  * Decide whether the planner-loop can synthesize a FINISH evaluator output and
  * skip ONLY the in-loop LLM trajectory-decision call (`runEvaluator`) for the
@@ -2241,6 +2267,15 @@ function failedToolFallbackMessage(
  *   5. That `messageToUser` is not a tool/function-syntax leak (the evaluator's
  *      own prompt rules say leaked syntax should force CONTINUE; we honor the
  *      same constraint by reusing `isUnsafeUserVisibleText`).
+ *   6. The planner did NOT explicitly set `completed: false` on this output.
+ *      When that flag is present and false, the planner is signaling that
+ *      this turn's tool calls do not yet achieve the goal (read-then-act,
+ *      multi-step deploy, verification pending) — and `messageToUser` is
+ *      a pre-tool intent rather than a final answer. We fall through to
+ *      the full evaluator so it can decide CONTINUE vs FINISH from the
+ *      actual tool result rather than synthesizing a FINISH the planner
+ *      explicitly disclaimed. Absent or `true` preserves the gate's
+ *      original behavior (backward compat).
  *
  * On any single ambiguity the function returns `null` and the caller falls
  * through to the full evaluator path. Returning a synthesized `EvaluatorOutput`
@@ -2261,6 +2296,7 @@ function tryGateEvaluator(args: {
 	trajectory: PlannerTrajectory;
 	failures: readonly FailureLike[];
 	lastPlannerExplicitMessageToUser: string | undefined;
+	lastPlannerExplicitCompleted: boolean | undefined;
 }): EvaluatorOutput | null {
 	const latestStep = args.trajectory.steps[args.trajectory.steps.length - 1];
 	const latestResult = latestStep?.result;
@@ -2270,6 +2306,8 @@ function tryGateEvaluator(args: {
 	const message = args.lastPlannerExplicitMessageToUser?.trim();
 	if (!message) return null;
 	if (isUnsafeUserVisibleText(message)) return null;
+	// Precondition 6: respect the planner's own completion disclaimer.
+	if (args.lastPlannerExplicitCompleted === false) return null;
 
 	return {
 		success: true,

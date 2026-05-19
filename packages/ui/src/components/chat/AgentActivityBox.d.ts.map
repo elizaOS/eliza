@@ -1,1 +1,0 @@
-{"version":3,"file":"AgentActivityBox.d.ts","sourceRoot":"","sources":["AgentActivityBox.tsx"],"names":[],"mappings":"AAAA,OAAO,KAAK,EAAE,kBAAkB,EAAE,MAAM,8BAA8B,CAAC;AA6BvE,UAAU,qBAAqB;IAC7B,QAAQ,EAAE,kBAAkB,EAAE,CAAC;IAC/B,cAAc,CAAC,EAAE,CAAC,SAAS,EAAE,MAAM,KAAK,IAAI,CAAC;CAC9C;AAED,wBAAgB,gBAAgB,CAAC,EAC/B,QAAQ,EACR,cAAc,GACf,EAAE,qBAAqB,kDAsDvB"}

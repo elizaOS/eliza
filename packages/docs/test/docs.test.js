@@ -158,7 +158,9 @@ describe("docs.json configuration", () => {
 
     for (const tab of tabs) {
       const groups = tab.groups ?? [];
-      const duplicateGroups = findDuplicates(groups.map((group) => group.group));
+      const duplicateGroups = findDuplicates(
+        groups.map((group) => group.group),
+      );
 
       assert.deepStrictEqual(
         duplicateGroups,
@@ -244,7 +246,8 @@ describe("documentation files", () => {
   it("internal documentation links resolve", () => {
     const markdownFiles = collectMarkdownFiles();
     const missingLinks = [];
-    const linkPattern = /\[[^\]]+\]\(([^)\s]+)(?:\s+"[^"]*")?\)|href=["']([^"']+)["']/g;
+    const linkPattern =
+      /\[[^\]]+\]\(([^)\s]+)(?:\s+"[^"]*")?\)|href=["']([^"']+)["']/g;
 
     for (const file of markdownFiles) {
       const content = readFileSync(file, "utf-8");

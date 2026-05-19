@@ -1,13 +1,16 @@
 #!/usr/bin/env node
 
-import fs from "node:fs";
+import { execFileSync } from "node:child_process";
 import crypto from "node:crypto";
+import fs from "node:fs";
 import path from "node:path";
 import process from "node:process";
-import { execFileSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
 
-const variantRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
+const variantRoot = path.resolve(
+  path.dirname(fileURLToPath(import.meta.url)),
+  "..",
+);
 let outDir = path.join(variantRoot, "out/release-evidence");
 let artifact = "";
 
@@ -64,7 +67,8 @@ function listPackageInventory() {
           path: path.relative(variantRoot, appManifestPath),
           sha256: sha256(appManifestPath),
           packageJsonCount: appManifest.packages?.packageJsonCount ?? null,
-          generatedPackageCount: appManifest.generated?.packages?.length ?? null,
+          generatedPackageCount:
+            appManifest.generated?.packages?.length ?? null,
         }
       : null,
   };

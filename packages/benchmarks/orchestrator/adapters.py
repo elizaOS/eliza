@@ -94,21 +94,10 @@ AGENT_COMPATIBILITY_OVERRIDES: dict[str, tuple[str, ...]] = {
     # current CLI path intentionally fails closed because it has no
     # transcript-in/artifact-out native compactor API.
     "compactbench": ("eliza", "hermes"),
-    # Vending-Bench currently has heuristic/direct providers and an Eliza TS
-    # bridge path. Hermes/OpenClaw labels would still exercise the Eliza bridge
-    # or a non-agent provider, so publish only the concrete Eliza harness row.
-    "vending_bench": ("eliza",),
-    # HyperliquidBench plan generation is wired to the Eliza TS bridge plus a
-    # deterministic Python smoke path. Hermes/OpenClaw labels do not yet select
-    # distinct harness implementations.
-    "hyperliquid_bench": ("eliza",),
     # LOCA has real Eliza and Hermes proxy paths. OpenClaw's current LOCA path
     # is an explicit provider-level smoke mode, not native OpenClaw agent
     # parity, so keep it out of cross-agent result matrices.
     "loca_bench": ("eliza", "hermes"),
-    # The lifecycle benchmark's real bridge mode starts the Eliza benchmark
-    # server; simulate mode is deterministic and not a harness comparison.
-    "orchestrator_lifecycle": ("eliza",),
     # ConfigBench currently has an in-process Eliza handler plus oracle/mock
     # handlers. Hermes/OpenClaw rows were previously scored against the
     # Perfect oracle fallback, which is not a real harness comparison.
@@ -142,11 +131,6 @@ AGENT_COMPATIBILITY_OVERRIDES: dict[str, tuple[str, ...]] = {
     "openclaw_bench": (),
     "interrupt_bench": (),
     "scambench": (),
-    # GAIA and WebShop are bridge-backed Eliza integrations in this checkout;
-    # Hermes/OpenClaw labels would still exercise the Eliza path.
-    "gaia": ("eliza",),
-    "gaia_orchestrated": ("eliza",),
-    "webshop": ("eliza",),
 }
 
 
@@ -983,8 +967,16 @@ def _env_solana(ctx: ExecutionContext, adapter: BenchmarkAdapter) -> dict[str, s
 
 
 def _command_osworld(ctx: ExecutionContext, adapter: BenchmarkAdapter) -> list[str]:
+    osworld_python = str(
+        ctx.request.extra_config.get("osworld_python")
+        or os.environ.get("OSWORLD_PYTHON")
+        or ""
+    ).strip()
+    if not osworld_python:
+        conda_python = Path("/opt/miniconda3/bin/python3")
+        osworld_python = str(conda_python) if conda_python.exists() else sys.executable
     args = [
-        sys.executable,
+        osworld_python,
         "scripts/python/run_multienv_eliza.py",
         "--result_dir",
         str(ctx.output_root),
@@ -994,7 +986,7 @@ def _command_osworld(ctx: ExecutionContext, adapter: BenchmarkAdapter) -> list[s
     provider_name = str(ctx.request.extra_config.get("provider_name", "docker")).strip()
     args.extend(["--provider_name", provider_name])
     observation_type = str(
-        ctx.request.extra_config.get("observation_type", "screenshot_a11y_tree")
+        ctx.request.extra_config.get("observation_type", "screenshot")
     ).strip()
     args.extend(["--observation_type", observation_type])
 
@@ -2089,7 +2081,11 @@ def discover_adapters(workspace_root: Path) -> AdapterDiscovery:
             "judge_api_key_env": "CEREBRAS_API_KEY",
         },
         "tau_bench": {
+            "agent_max_turns": 6,
+            "domain": "retail",
             "max_tasks": 1,
+            "num_trials": 1,
+            "pass_k_values": [1],
             "sample": True,
         },
         "terminal_bench": {
@@ -2100,6 +2096,9 @@ def discover_adapters(workspace_root: Path) -> AdapterDiscovery:
             "no_markdown": True,
             "no_sessions": True,
             "no_leaderboard": True,
+        },
+        "vending_bench": {
+            "max_tasks": 1,
         },
         "visualwebbench": {
             "max_tasks": 1,
@@ -2527,8 +2526,9 @@ def discover_adapters(workspace_root: Path) -> AdapterDiscovery:
             default_extra_config={
                 "docker_cpu_cores": 2,
                 "headless": True,
-                "max_steps": 3,
+                "max_steps": 1,
                 "max_tasks": 1,
+                "observation_type": "screenshot",
                 "vm_ready_timeout_seconds": 21600,
             },
         ),

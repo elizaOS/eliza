@@ -24,7 +24,11 @@ const TASKS = [
     tier: 2,
     optionalScript: "packages/scripts/launch-qa/check-docs.mjs",
     command: "node",
-    args: ["packages/scripts/launch-qa/check-docs.mjs", "--scope=launchdocs", "--json"],
+    args: [
+      "packages/scripts/launch-qa/check-docs.mjs",
+      "--scope=launchdocs",
+      "--json",
+    ],
     description: "Launchdocs links and documented command references",
   },
   {
@@ -161,10 +165,7 @@ const TASKS = [
     id: "cloud-api-key-client",
     tier: 0,
     command: "bun",
-    args: [
-      "test",
-      "packages/cloud-shared/src/lib/client/api-keys.test.ts",
-    ],
+    args: ["test", "packages/cloud-shared/src/lib/client/api-keys.test.ts"],
     env: {
       SKIP_DB_DEPENDENT: "1",
       SKIP_SERVER_CHECK: "true",

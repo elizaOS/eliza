@@ -980,8 +980,19 @@ export async function handleChatCompletionsPOST(
     }
   } catch (error) {
     await settleReservation?.(0);
-    const errorMessage = error instanceof Error ? error.message : String(error);
-    logger.error("[Chat Completions] Error", { error: errorMessage });
+    const rawMessage = error instanceof Error ? error.message : String(error);
+    logger.error("[Chat Completions] Error", {
+      error: rawMessage,
+      cause:
+        error instanceof Error && error.cause
+          ? String((error.cause as Error).message ?? error.cause)
+          : undefined,
+    });
+    const isDbError =
+      rawMessage.startsWith("Failed query:") ||
+      rawMessage.includes("insert into") ||
+      rawMessage.includes("select from");
+    const errorMessage = isDbError ? "Internal server error" : rawMessage;
 
     const isInsufficientCredits =
       error instanceof InsufficientCreditsError ||
@@ -1124,13 +1135,28 @@ async function handleStreamingRequest(
           },
         );
         if (usageRecord) {
-          await aiBillingRecordsService.record({
-            context: billingContext,
-            billing,
-            usageRecord,
-            idempotencyKey,
-            reconciliation,
-          });
+          try {
+            await aiBillingRecordsService.record({
+              context: billingContext,
+              billing,
+              usageRecord,
+              idempotencyKey,
+              reconciliation,
+            });
+          } catch (auditError) {
+            logger.error("[Chat Completions] audit record failed (non-fatal)", {
+              error:
+                auditError instanceof Error
+                  ? auditError.message
+                  : String(auditError),
+              cause:
+                auditError instanceof Error && auditError.cause
+                  ? String(
+                      (auditError.cause as Error).message ?? auditError.cause,
+                    )
+                  : undefined,
+            });
+          }
         }
 
         logger.info("[Chat Completions] Streaming complete", {
@@ -1440,13 +1466,26 @@ async function handleNonStreamingRequest(
       latencyMs: Date.now() - startTime,
     });
     if (usageRecord) {
-      await aiBillingRecordsService.record({
-        context: billingContext,
-        billing,
-        usageRecord,
-        idempotencyKey,
-        reconciliation,
-      });
+      try {
+        await aiBillingRecordsService.record({
+          context: billingContext,
+          billing,
+          usageRecord,
+          idempotencyKey,
+          reconciliation,
+        });
+      } catch (auditError) {
+        logger.error("[Chat Completions] audit record failed (non-fatal)", {
+          error:
+            auditError instanceof Error
+              ? auditError.message
+              : String(auditError),
+          cause:
+            auditError instanceof Error && auditError.cause
+              ? String((auditError.cause as Error).message ?? auditError.cause)
+              : undefined,
+        });
+      }
     }
 
     logger.info("[Chat Completions] Non-streaming complete", {

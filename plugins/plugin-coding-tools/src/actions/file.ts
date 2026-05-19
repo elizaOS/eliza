@@ -431,9 +431,7 @@ export const fileAction: Action = {
       options as HandlerOptions | undefined,
       callback,
     );
-    return (
-      result
-    );
+    return result;
   },
   examples: [
     [

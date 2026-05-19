@@ -750,9 +750,9 @@ export function analyzeMessages(
     currentActivityCycleStartedAt,
     currentActivityCycleLocalDate,
     effectiveDayKey: hasOpenActivityCycle
-      ? (currentActivityCycleLocalDate)
+      ? currentActivityCycleLocalDate
       : isCurrentlySleeping
-        ? (currentActivityCycleLocalDate)
+        ? currentActivityCycleLocalDate
         : localDateKeyForTimestamp(currentTime.getTime(), timezone),
     screenContextFocus: null,
     screenContextSource: null,

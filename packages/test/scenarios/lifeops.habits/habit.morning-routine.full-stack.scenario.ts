@@ -4,7 +4,7 @@
  * create multiple habit definitions from one natural-language request.
  */
 
-import { scenario } from "@elizaos/scenario-schema";
+import { scenario } from "@elizaos/scenario-runner/schema";
 
 export default scenario({
   id: "habit.morning-routine.full-stack",

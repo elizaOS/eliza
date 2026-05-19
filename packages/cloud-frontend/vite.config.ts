@@ -410,6 +410,18 @@ export default defineConfig(({ mode }) => {
       // Keep the build warning budget explicit so import and resolver warnings
       // still stand out in CI output.
       chunkSizeWarningLimit: 3000,
+      // Strip route-specific vendor chunks (wallet, docs, charts) from the
+      // entry's <link rel="modulepreload"> set. Rolldown otherwise lists every
+      // transitive dep of every lazy route in the entry's preload manifest,
+      // which on the landing page was 58 preloads (22 of them wallet chunks)
+      // before the user navigated anywhere. Those chunks still load on demand
+      // via Vite's __vitePreload helper at the dynamic-import callsite, so
+      // dropping them from the entry only saves the initial connection budget.
+      modulePreload: {
+        polyfill: false,
+        resolveDependencies: (_filename, deps) =>
+          deps.filter((dep) => !/vendor-(wallet|docs|charts)-/.test(dep)),
+      },
       rolldownOptions: {
         output: {
           codeSplitting: {
@@ -421,17 +433,31 @@ export default defineConfig(({ mode }) => {
                 priority: 50,
               },
               {
-                // Wallet stack. Generic crypto/encoding primitives (@noble,
-                // @scure, bs58, base-x) and the Node Buffer polyfill are
-                // intentionally *not* grouped here so they fall into
-                // vendor-core — keeping them in vendor-wallet would force
-                // rolldown to label many shared modules as "wallet" and
-                // confuse the modulepreload hints emitted from index.html
-                // for non-wallet routes.
+                // Wallet stack — modal UI + connector code. Loaded on demand
+                // when the user opens a wallet flow. Generic crypto/encoding
+                // primitives (@noble, @scure, bs58, base-x) and the Node
+                // Buffer polyfill are intentionally *not* grouped here so they
+                // fall into vendor-core — keeping them in vendor-wallet would
+                // force rolldown to label many shared modules as "wallet" and
+                // confuse the modulepreload hints emitted from index.html for
+                // non-wallet routes.
                 name: "vendor-wallet",
-                test: /node_modules[\\/](@rainbow-me|@solana|@walletconnect|@wagmi|wagmi|viem|ethers|ox|abitype)[\\/]/,
+                test: /node_modules[\\/](@rainbow-me|@solana|@walletconnect|@wagmi|wagmi)[\\/]/,
                 priority: 40,
                 maxSize: 450 * 1024,
+              },
+              {
+                // Chain hex/ABI codecs. These are imported by many non-wallet
+                // routes (anything that reads on-chain data or decodes ABI
+                // payloads), so they must NOT be tagged "vendor-wallet" — that
+                // would let the modulePreload filter strip them from the entry
+                // preload set even though hot paths depend on them. One stable
+                // shared chunk maximises HTTP-cache reuse across navigations,
+                // so we lift the maxSize ceiling here.
+                name: "vendor-chain-codec",
+                test: /node_modules[\\/](viem|ethers|ox|abitype)[\\/]/,
+                priority: 38,
+                maxSize: 900 * 1024,
               },
               {
                 name: "vendor-charts",

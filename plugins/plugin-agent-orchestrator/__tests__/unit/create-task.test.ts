@@ -11,7 +11,11 @@ import {
 } from "../../src/test-utils/action-test-utils.js";
 
 describe("TASKS:create", () => {
-  it("validates explicit payload and declines LifeOps", async () => {
+  it("surfaces TASKS whenever the ACP service is ready", async () => {
+    // Validation surfaces TASKS as soon as the ACP service is registered;
+    // routing personal-LifeOps phrasings off this action is the Stage-1
+    // router's job (regex on message text is fragile across plurals,
+    // languages, and paraphrases).
     expect(
       await createTaskAction.validate(
         runtimeWith(serviceMock()),
@@ -21,8 +25,8 @@ describe("TASKS:create", () => {
     ).toBe(true);
     expect(
       await createTaskAction.validate(
-        runtimeWith(serviceMock()),
-        memory({ text: "add a todo to fix that PR" }),
+        runtimeWith(undefined),
+        memory({ task: "implement feature" }),
         state,
       ),
     ).toBe(false);

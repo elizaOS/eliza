@@ -121,24 +121,14 @@ make -C packages/inference/verify vulkan-dispatch-smoke   # built-fork Vulkan gr
 
 ## Not in `SUPPORTED_TARGETS` — runtime-side / explicitly-out-of-scope notes
 
-### MLX (`mlx_lm.server`) — Apple-Silicon convenience path, NOT publishable
+### MLX (`mlx_lm.server`) — REMOVED
 
-`packages/app-core/src/services/local-inference/mlx-server.ts` is a
-spawn-and-route adapter for `mlx_lm.server` (the OpenAI-compatible HTTP server
-shipped with the `mlx-lm` Python package), mirroring the `DflashLlamaServer`
-shape (health-check `/v1/models`, route `/v1/chat/completions` with SSE
-streaming through `onTextChunk`). The engine forwards text generation to it
-when `mlxLocalServer.hasLoadedModel()`. **Opt-in only** (`ELIZA_LOCAL_MLX=1`
-or `ELIZA_LOCAL_BACKEND=mlx-server`); never auto-selected even on Apple
-Silicon. **Apple-Silicon only.** **NOT a kernel-aware path** — MLX has no
-TurboQuant/QJL/PolarQuant, so it can never satisfy the §3 required-kernel
-contract and never flips `verifiedBackends.mlx`; it is the same class as the
-reduced-optimization local mode. **NOT the voice path** — MLX doesn't carry
-OmniVoice/Qwen3-ASR; text completion only. A "works-on-Apple-Silicon-without-
-the-fork-build" convenience path, **not** a publish path. 8 unit tests (opt-in
-/ eligibility gating, model-dir heuristic, non-streaming + SSE-streaming route
-against a mock HTTP server) — green. Live smoke against a real `mlx-lm`
-install is host-gated (no Apple hardware on the authoring box).
+The Apple-Silicon `mlx_lm.server` spawn-and-route path was removed in commit
+`20d50d7553` (P1 consolidation). It violated the local-inference invariant
+of no subprocesses + no TCP loopback. No production callsite ever invoked
+it, and `MLX_IN_PROCESS_PLAN.md` documents the in-process unblock plan if
+MLX becomes a real requirement. The stub `mlx-server.ts` itself has been
+deleted; see `services/index.ts` for the cleaned export surface.
 
 ### TPU / NPU — not a target this wave (verdict, documented)
 

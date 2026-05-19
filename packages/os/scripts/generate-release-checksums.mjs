@@ -14,7 +14,9 @@ import {
 
 const args = parseArgs(process.argv.slice(2));
 const manifestPath = args.manifest || defaultManifestPath;
-const artifactRoot = path.resolve(args["artifact-root"] || path.dirname(manifestPath));
+const artifactRoot = path.resolve(
+  args["artifact-root"] || path.dirname(manifestPath),
+);
 const outputPath = path.resolve(
   args.output || path.join(path.dirname(manifestPath), "SHA256SUMS"),
 );
@@ -31,7 +33,10 @@ if (!validation.ok) {
 
 const records = [];
 for (const artifact of manifest.artifacts) {
-  if (artifact.kind === "checksum-manifest" || artifact.status === "withdrawn") {
+  if (
+    artifact.kind === "checksum-manifest" ||
+    artifact.status === "withdrawn"
+  ) {
     continue;
   }
   records.push(await artifactFileRecord(artifactRoot, artifact));

@@ -39,6 +39,7 @@ import {
 	type ConversationHandle,
 	conversationRegistry,
 } from "./conversation-registry";
+import { desktopFfiBackendRuntime } from "./desktop-ffi-backend-runtime";
 import {
 	type DflashGenerateResult,
 	type DflashRuntimeLoadConfig,
@@ -48,6 +49,7 @@ import {
 	getDflashRuntimeStatus,
 	logDflashDevDisabledWarning,
 } from "./dflash-server";
+import { FfiStreamingBackend } from "./ffi-streaming-backend";
 import type { LocalUsageBlock } from "./llama-server-metrics";
 import { MemoryMonitor } from "./memory-monitor";
 import { listInstalledModels } from "./registry";
@@ -641,21 +643,6 @@ export class NodeLlamaCppBackend implements LocalInferenceBackend {
 	 * reset every turn to preserve the historical stateless behaviour.
 	 */
 	async generate(args: GenerateArgs): Promise<string> {
-		// Backwards-compat shim: if a previous version of the code activated
-		// the DFlash llama-server directly (bypassing the dispatcher), and a
-		// caller still routes generation through the node-llama-cpp engine
-		// singleton, forward to the running server instead of throwing.
-		// New callsites should use the BackendDispatcher, which picks the
-		// right backend at load time and skips this path entirely.
-		if (dflashLlamaServer.hasLoadedModel()) {
-			return dflashLlamaServer.generate(args);
-		}
-		// MLX routing was previously gated on `mlxLocalServer.hasLoadedModel()`,
-		// which is permanently `false` now that the spawn+HTTP transport has
-		// been removed (local inference must stay in-process — see
-		// `services/mlx-server.ts` and `plugins/plugin-local-inference/MLX_IN_PROCESS_PLAN.md`).
-		// No production callsite ever invoked `mlxLocalServer.load()`, so this
-		// fallthrough is dead and the branch is intentionally absent.
 		const pool = this.sessionPool;
 		if (!pool) {
 			throw new Error(
@@ -812,12 +799,36 @@ export class NodeLlamaCppBackend implements LocalInferenceBackend {
  */
 export class LocalInferenceEngine {
 	private readonly nodeBackend = new NodeLlamaCppBackend();
+	/**
+	 * In-process FFI backend (libllama + eliza-llama-shim via bun:ffi).
+	 * Production wiring of the desktop adapter — see
+	 * `services/desktop-llama-adapter.ts` +
+	 * `services/desktop-ffi-backend-runtime.ts`. When the desktop dylib
+	 * pair is present on disk AND bun:ffi resolves, this is the active
+	 * path for `decideBackend() === "llama-server"`. Otherwise the
+	 * dispatcher falls through to the subprocess `dflashLlamaServer`.
+	 */
+	private readonly ffiBackend = new FfiStreamingBackend(
+		desktopFfiBackendRuntime,
+	);
 	private readonly dispatcher = new BackendDispatcher(
 		this.nodeBackend,
 		dflashLlamaServer,
 		() => getDflashRuntimeStatus().enabled,
 		() => dflashRequired(),
 		() => getDflashRuntimeStatus().capabilities?.kernels ?? null,
+		this.ffiBackend,
+		// FFI is the default desktop path when the dylibs are present and
+		// the user hasn't explicitly opted out via `ELIZA_INFERENCE_BACKEND=http`.
+		// `desktopFfiBackendRuntime.supported()` does a cheap disk probe;
+		// the actual dlopen happens lazily in `acquire()` and falls
+		// through cleanly on failure.
+		() => {
+			const override =
+				process.env.ELIZA_INFERENCE_BACKEND?.trim().toLowerCase();
+			if (override === "http") return false;
+			return desktopFfiBackendRuntime.supported();
+		},
 	);
 	/**
 	 * Active voice-streaming bridge (`EngineVoiceBridge`). Only set when an
@@ -943,9 +954,9 @@ export class LocalInferenceEngine {
 				role: "drafter",
 				isResident: () =>
 					this.activeBackendId() === "llama-server" &&
-					dflashLlamaServer.drafterEnabled(),
+					this.dispatcher.drafterEnabled(),
 				evict: async () => {
-					await dflashLlamaServer.restartWithoutDrafter();
+					await this.dispatcher.restartWithoutDrafter();
 				},
 			});
 			this.sharedResources.acquire(role);
@@ -1009,8 +1020,8 @@ export class LocalInferenceEngine {
 	 */
 	async maybeAutoResizeParallel(): Promise<boolean> {
 		if (this.activeBackendId() !== "llama-server") return false;
-		if (!dflashLlamaServer.hasLoadedModel()) return false;
-		const running = dflashLlamaServer.parallelSlots();
+		if (!this.dispatcher.hasLoadedModel()) return false;
+		const running = this.dispatcher.parallelSlots();
 		const recommended = conversationRegistry.recommendedParallel(running);
 		if (recommended <= running) return false;
 		// Only grow when free RAM is comfortably above the low-water line —
@@ -1023,7 +1034,7 @@ export class LocalInferenceEngine {
 			return false;
 		}
 		try {
-			const resized = await dflashLlamaServer.resizeParallel(recommended);
+			const resized = await this.dispatcher.resizeParallel(recommended);
 			if (resized) {
 				console.info(
 					`[local-inference] Resized llama-server --parallel ${running} → ${recommended} (conversation high-water mark grew).`,
@@ -1056,7 +1067,7 @@ export class LocalInferenceEngine {
 
 	currentRuntimeLoadConfig(): DflashRuntimeLoadConfig | null {
 		if (this.activeBackendId() !== "llama-server") return null;
-		return dflashLlamaServer.currentRuntimeLoadConfig();
+		return this.dispatcher.currentRuntimeLoadConfig();
 	}
 
 	async unload(): Promise<void> {
@@ -1185,22 +1196,17 @@ export class LocalInferenceEngine {
 		decodeMs?: number;
 	}> {
 		this.markActivity();
-		if (this.activeBackendId() !== "llama-server") {
-			throw new Error(
-				"[local-inference] vision describe requires the llama-server backend; " +
-					"the in-process node-llama-cpp adapter does not yet expose mmproj. " +
-					"Load an Eliza-1 bundle (which routes through llama-server with --mmproj) " +
-					"or wait for the unified FFI to land.",
-			);
-		}
-		return dflashLlamaServer.describeImage(args);
+		// The dispatcher throws an actionable error if the active backend
+		// doesn't implement describeImage (e.g. node-llama-cpp or a future
+		// FFI backend without mmproj parity). No need for a pre-check.
+		return this.dispatcher.describeImage(args);
 	}
 
 	/** True when the active server can serve vision describe (mmproj loaded). */
 	canDescribeImages(): boolean {
 		if (this.activeBackendId() !== "llama-server") return false;
-		if (!dflashLlamaServer.hasLoadedModel()) return false;
-		return dflashLlamaServer.currentMmprojPath() !== null;
+		if (!this.dispatcher.hasLoadedModel()) return false;
+		return this.dispatcher.currentMmprojPath() !== null;
 	}
 
 	/**
@@ -1245,7 +1251,7 @@ export class LocalInferenceEngine {
 		// pre-restore default. Only meaningful for the llama-server backend;
 		// node-llama-cpp owns its own session pool.
 		if (this.activeBackendId() === "llama-server") {
-			void dflashLlamaServer
+			void this.dispatcher
 				.restoreConversationKv(args.conversationId, handle.slotId)
 				.catch(() => {
 					// KV restore failures must never break the open call — the
@@ -1281,7 +1287,7 @@ export class LocalInferenceEngine {
 		const streaming = this.voiceStreamingArgs(args);
 		if (this.activeBackendId() === "llama-server") {
 			const result: DflashGenerateResult =
-				await dflashLlamaServer.generateWithUsage({
+				await this.dispatcher.generateWithUsage({
 					...streaming.args,
 					cacheKey,
 					slotId: handle.slotId,
@@ -1349,7 +1355,7 @@ export class LocalInferenceEngine {
 			slotId = conversationOrId.slotId;
 			cacheKey = `conv:${conversationOrId.conversationId}`;
 		}
-		return dflashLlamaServer.prewarmConversation(promptPrefix, {
+		return this.dispatcher.prewarmConversation(promptPrefix, {
 			slotId,
 			cacheKey,
 		});
@@ -1364,7 +1370,7 @@ export class LocalInferenceEngine {
 		if (handle.closed) return;
 		if (this.activeBackendId() === "llama-server") {
 			// Snapshot KV before deregistering so the slot id is still valid.
-			await dflashLlamaServer
+			await this.dispatcher
 				.persistConversationKv(handle.conversationId, handle.slotId)
 				.catch(() => {
 					// A failed save must not block close — the slot will fall back
@@ -1418,7 +1424,7 @@ export class LocalInferenceEngine {
 	 */
 	warnIfParallelTooLow(logger?: { warn: (msg: string) => void }): boolean {
 		if (this.activeBackendId() !== "llama-server") return false;
-		const actual = dflashLlamaServer.parallelSlots();
+		const actual = this.dispatcher.parallelSlots();
 		const recommended = conversationRegistry.recommendedParallel(actual);
 		if (recommended <= actual) return false;
 		const message = `[local-inference] Conversation high-water mark (${conversationRegistry.highWater()}) exceeds running --parallel ${actual}. Recommended: ${recommended}. Restart llama-server with ELIZA_LOCAL_PARALLEL=${recommended} or higher (or set ELIZA_LOCAL_AUTO_RESIZE_PARALLEL=1) to avoid slot thrashing.`;
@@ -1793,13 +1799,8 @@ export class LocalInferenceEngine {
 				"[voice] useEliza1Eot:true requested but the in-process text model is not loaded — load a node-llama-cpp model before starting the voice session, or set useEliza1Eot:false.",
 			);
 		}
-		// Resolver order (J1.d single-runtime policy): prefer the
-		// fork-served GGUF over the legacy ONNX path. The GGUF binding
-		// loads the Qwen2-style decoder through `node-llama-cpp` (the
-		// canonical fork wrapper), so the resolved path drops ONNX +
-		// `@huggingface/transformers` entirely. The ONNX fallback exists
-		// as a one-release deprecation runway and is retired in the
-		// follow-up J3 wave.
+		// Resolver order: prefer Eliza-1 in-process scorer, then GGUF (node-llama-cpp),
+		// then heuristic fallback. The ONNX path was removed.
 		const ggmlTurnDetector =
 			opts.turnDetector === false
 				? undefined
@@ -1817,17 +1818,11 @@ export class LocalInferenceEngine {
 				: (opts.turnDetector ??
 					eliza1EotClassifier ??
 					ggmlTurnDetector ??
-					(await eotMod.createBundledLiveKitTurnDetector({
-						...(opts.turnDetectorModelDir
-							? { modelDir: opts.turnDetectorModelDir }
-							: {}),
-						...(tierRevision ? { revision: tierRevision } : {}),
-					})) ??
 					new eotMod.HeuristicEotClassifier());
 		if (turnDetector) {
 			try {
-				// Load tokenizer/ONNX and warm one short pass while the session is
-				// arming, so the first real user pause does not pay model-load latency.
+				// Warm one short pass while the session is arming, so the first
+				// real user pause does not pay model-load latency.
 				await turnDetector.score("yes");
 			} catch (err) {
 				throw new VoiceStartupError(
@@ -2481,7 +2476,7 @@ export class LocalInferenceEngine {
 		import("./voice/shared-resources").DflashDrafterHandle | null
 	> {
 		if (this.activeBackendId() !== "llama-server") return null;
-		const drafterPath = dflashLlamaServer.loadedDrafterModelPath();
+		const drafterPath = this.dispatcher.loadedDrafterModelPath();
 		if (!drafterPath) return null;
 		const installed = await listInstalledModels();
 		const drafter = installed.find((m) => m.path === drafterPath);
@@ -2500,7 +2495,7 @@ export class LocalInferenceEngine {
 	 */
 	private activeParallel(): number {
 		if (this.activeBackendId() === "llama-server") {
-			return dflashLlamaServer.parallelSlots();
+			return this.dispatcher.parallelSlots();
 		}
 		// node-llama-cpp: each session pool slot is effectively a "parallel"
 		// for slot allocation purposes.

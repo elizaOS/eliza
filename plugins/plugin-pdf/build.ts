@@ -1,6 +1,12 @@
 #!/usr/bin/env bun
 
-const externalDeps = ["@elizaos/core", "pdfjs-dist"];
+import { externalsFromPackageJson } from "../plugin-build-externals.ts";
+
+const externalDeps = await externalsFromPackageJson("./package.json", {
+  // pdfjs-dist is a transitive dep (via unpdf); keep externalized so the
+  // worker entry inside pdfjs-dist isn't inlined.
+  extra: ["pdfjs-dist"],
+});
 
 async function build(): Promise<void> {
   const totalStart = Date.now();

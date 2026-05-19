@@ -6,14 +6,15 @@ import {
   type DashboardSidebarLinkRenderProps,
   ElizaCloudLockup,
 } from "@elizaos/ui";
-import { memo, useCallback } from "react";
+import { memo, useCallback, useMemo } from "react";
 import { Link, useLocation } from "react-router-dom";
 import type { FeatureFlag } from "@/lib/config/feature-flags";
 import { isFeatureEnabled } from "@/lib/config/feature-flags";
 import { useAdmin } from "@/lib/hooks/use-admin";
 import { useSessionAuth } from "@/lib/hooks/use-session-auth";
+import { useT } from "@/providers/I18nProvider";
 import { SidebarBottomPanel } from "./sidebar-bottom-panel";
-import { sidebarSections } from "./sidebar-data";
+import { getSidebarSections } from "./sidebar-data";
 
 interface SidebarProps {
   className?: string;
@@ -29,6 +30,8 @@ function SidebarComponent({
   const activePath = useLocation().pathname;
   const { authenticated } = useSessionAuth();
   const { isAdmin, adminRole } = useAdmin();
+  const t = useT();
+  const sections = useMemo(() => getSidebarSections(t), [t]);
 
   const renderLink = useCallback(
     ({
@@ -57,7 +60,7 @@ function SidebarComponent({
 
   return (
     <DashboardSidebar
-      sections={sidebarSections}
+      sections={sections}
       activePath={activePath}
       authenticated={authenticated}
       className={className}

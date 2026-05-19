@@ -4,12 +4,7 @@
   "title": "elizaOS Live model catalog",
   "type": "object",
   "additionalProperties": false,
-  "required": [
-    "schemaVersion",
-    "kind",
-    "catalogVersion",
-    "models"
-  ],
+  "required": ["schemaVersion", "kind", "catalogVersion", "models"],
   "properties": {
     "schemaVersion": {
       "const": 1
@@ -66,14 +61,7 @@
             "minItems": 1,
             "uniqueItems": true,
             "items": {
-              "enum": [
-                "text",
-                "embedding",
-                "image",
-                "audio",
-                "vision",
-                "tool"
-              ]
+              "enum": ["text", "embedding", "image", "audio", "vision", "tool"]
             }
           },
           "capabilities": {
@@ -100,12 +88,7 @@
                 "type": "array",
                 "uniqueItems": true,
                 "items": {
-                  "enum": [
-                    "cpu",
-                    "cuda",
-                    "metal",
-                    "vulkan"
-                  ]
+                  "enum": ["cpu", "cuda", "metal", "vulkan"]
                 }
               }
             }
@@ -116,10 +99,7 @@
             "items": {
               "type": "object",
               "additionalProperties": false,
-              "required": [
-                "path",
-                "sha256"
-              ],
+              "required": ["path", "sha256"],
               "properties": {
                 "path": {
                   "$ref": "#/$defs/relativePath"
@@ -141,12 +121,7 @@
           "metadata": {
             "type": "object",
             "additionalProperties": {
-              "type": [
-                "string",
-                "number",
-                "boolean",
-                "null"
-              ]
+              "type": ["string", "number", "boolean", "null"]
             }
           }
         }

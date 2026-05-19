@@ -50,10 +50,10 @@
  * See `.env.test.example` and `packages/scripts/test-env.mjs` for live env setup.
  */
 
+import { spawn, spawnSync } from "node:child_process";
 import crypto from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
-import { spawn, spawnSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
 
 const here = path.dirname(fileURLToPath(import.meta.url));
@@ -137,10 +137,18 @@ if (TEST_SHARD) {
   if (parts.length === 2) {
     const index = parseInt(parts[0], 10);
     const total = parseInt(parts[1], 10);
-    if (!isNaN(index) && !isNaN(total) && total > 0 && index >= 1 && index <= total) {
+    if (
+      !isNaN(index) &&
+      !isNaN(total) &&
+      total > 0 &&
+      index >= 1 &&
+      index <= total
+    ) {
       shardConfig = { index, total };
     } else {
-      console.warn(`[eliza-test] WARN invalid TEST_SHARD "${TEST_SHARD}" — expected N/M (1-indexed). Ignoring.`);
+      console.warn(
+        `[eliza-test] WARN invalid TEST_SHARD "${TEST_SHARD}" — expected N/M (1-indexed). Ignoring.`,
+      );
     }
   }
 }
@@ -204,9 +212,7 @@ const MAX_CAPTURED_OUTPUT_CHARS = 16_000;
 const ADDITIONAL_PACKAGE_DIRS = [
   path.join(repoRoot, "packages", "app-core", "platforms", "electrobun"),
 ];
-const NO_CLOUD_PACKAGE_DIRS = new Set([
-  path.join("packages", "cloud-e2e"),
-]);
+const NO_CLOUD_PACKAGE_DIRS = new Set([path.join("packages", "cloud-e2e")]);
 
 // Combine --filter, --pattern, and TEST_PACKAGE_FILTER. All three (when set)
 // must match a task's label for it to run — they intersect rather than
@@ -715,11 +721,17 @@ function runCloudTests() {
     let capturedOutput = "";
     child.stdout?.on("data", (chunk) => {
       process.stdout.write(chunk);
-      capturedOutput = appendCapturedOutput(capturedOutput, chunk.toString("utf8"));
+      capturedOutput = appendCapturedOutput(
+        capturedOutput,
+        chunk.toString("utf8"),
+      );
     });
     child.stderr?.on("data", (chunk) => {
       process.stderr.write(chunk);
-      capturedOutput = appendCapturedOutput(capturedOutput, chunk.toString("utf8"));
+      capturedOutput = appendCapturedOutput(
+        capturedOutput,
+        chunk.toString("utf8"),
+      );
     });
 
     child.on("error", reject);
@@ -731,7 +743,9 @@ function runCloudTests() {
         return;
       }
       if (outputIndicatesNoTests(capturedOutput)) {
-        console.log(`[eliza-test] SKIP cloud#test (${durationMs}ms, no test files found)`);
+        console.log(
+          `[eliza-test] SKIP cloud#test (${durationMs}ms, no test files found)`,
+        );
         resolve({ skipped: true });
         return;
       }

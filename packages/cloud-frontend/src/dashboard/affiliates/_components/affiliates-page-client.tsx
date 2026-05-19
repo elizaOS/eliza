@@ -144,7 +144,7 @@ export function AffiliatesPageClient() {
       {/* Introduction Banner */}
       <BrandCard className="relative" corners={false}>
         <div className="flex items-start gap-3">
-          <UserCog className="h-5 w-5 text-[#FF5800] mt-0.5 shrink-0" />
+          <UserCog className="h-5 w-5 text-[var(--brand-orange)] mt-0.5 shrink-0" />
           <div>
             <h3 className="text-xl font-semibold text-white mb-2">
               Affiliate Program
@@ -159,7 +159,7 @@ export function AffiliatesPageClient() {
               revenue in your
               <Link
                 to="/dashboard/earnings"
-                className="text-[#FF5800] hover:underline mx-1"
+                className="text-[var(--brand-orange)] hover:underline mx-1"
               >
                 Earnings
               </Link>
@@ -175,10 +175,10 @@ export function AffiliatesPageClient() {
           WHY cyan accent: Visually distinct from orange affiliate branding so users don’t merge the two mentally. */}
       <BrandCard
         corners={false}
-        className="border-l-4 border-l-[#0B35F1] border border-white/10"
+        className="border-l-4 border-l-[var(--brand-blue)] border border-white/10"
       >
         <div className="flex items-start gap-3 mb-4">
-          <Users className="h-5 w-5 text-[#0B35F1] mt-0.5 shrink-0" />
+          <Users className="h-5 w-5 text-[var(--brand-blue)] mt-0.5 shrink-0" />
           <div className="min-w-0 flex-1">
             <h3 className="text-lg font-semibold text-white mb-1">
               Invite friends
@@ -200,7 +200,7 @@ export function AffiliatesPageClient() {
             <Button
               variant="secondary"
               size="sm"
-              className="shrink-0 bg-[#0B35F1]/15 hover:bg-[#0B35F1]/25 text-white border-[#0B35F1]/30"
+              className="shrink-0 bg-[var(--brand-blue)]/15 hover:bg-[var(--brand-blue)]/25 text-white border-[var(--brand-blue)]/30"
               onClick={() => refetchReferral()}
             >
               Retry
@@ -234,14 +234,14 @@ export function AffiliatesPageClient() {
                   ? "1 friend has joined with your link."
                   : `${referralMe.total_referrals} friends have joined with your link.`}
             </p>
-            <div className="flex items-center gap-3 bg-white/5 border border-[#0B35F1]/20 rounded-sm p-3">
-              <LinkIcon className="h-5 w-5 text-[#0B35F1]/60 shrink-0" />
+            <div className="flex items-center gap-3 bg-white/5 border border-[var(--brand-blue)]/20 rounded-sm p-3">
+              <LinkIcon className="h-5 w-5 text-[var(--brand-blue)]/60 shrink-0" />
               <div className="flex-1 font-mono text-white/80 overflow-hidden text-ellipsis whitespace-nowrap text-sm">
                 {buildReferralInviteLoginUrl(pageOrigin, referralMe.code)}
               </div>
               <Button
                 variant="secondary"
-                className="shrink-0 bg-[#0B35F1]/15 hover:bg-[#0B35F1]/25 text-white border-[#0B35F1]/30"
+                className="shrink-0 bg-[var(--brand-blue)]/15 hover:bg-[var(--brand-blue)]/25 text-white border-[var(--brand-blue)]/30"
                 onClick={() => {
                   void (async () => {
                     if (!pageOrigin) {
@@ -325,7 +325,7 @@ export function AffiliatesPageClient() {
             <span className="block text-xs text-white/40 mb-1">
               Current Markup
             </span>
-            <span className="block text-xl font-bold text-[#FF5800]">
+            <span className="block text-xl font-bold text-[var(--brand-orange)]">
               {affiliateData?.markup_percent}%
             </span>
           </div>
@@ -355,7 +355,7 @@ export function AffiliatesPageClient() {
             disabled={
               isSaving || markupPercent === affiliateData?.markup_percent
             }
-            className="bg-[#FF5800] hover:bg-[#FF5800]/90 text-white min-w-[100px]"
+            className="bg-[var(--brand-orange)] hover:bg-[var(--brand-orange)]/90 text-white min-w-[100px]"
           >
             {isSaving ? "Saving..." : "Save Config"}
           </Button>
@@ -425,7 +425,7 @@ export function AffiliatesPageClient() {
             {"  "}-H{" "}
             <span className="text-yellow-300">
               "X-Affiliate-Code:{" "}
-              <span className="text-[#FF5800] break-all">
+              <span className="text-[var(--brand-orange)] break-all">
                 {affiliateData?.code || "YOUR_CODE_HERE"}
               </span>
               "

@@ -37,8 +37,8 @@ const PANEL_TONE_CLASSES: Record<
   { container: string; icon: string }
 > = {
   accent: {
-    container: "bg-[#FF5800]/10",
-    icon: "text-[#FF5800]",
+    container: "bg-[var(--brand-orange)]/10",
+    icon: "text-[var(--brand-orange)]",
   },
   danger: {
     container: "bg-red-500/10",
@@ -254,7 +254,7 @@ function CliLoginContent() {
           <>
             {sessionId ? (
               <a href={signInHref} className="w-full">
-                <Button className="w-full h-11  bg-[#FF5800] hover:bg-[#FF5800]/80 text-white">
+                <Button className="w-full h-11  bg-[var(--brand-orange)] hover:bg-[var(--brand-orange)]/80 text-white">
                   Sign In Again
                 </Button>
               </a>
@@ -282,7 +282,7 @@ function CliLoginContent() {
         actions={
           <a href={signInHref} className="w-full">
             <Button
-              className="w-full h-11  bg-[#FF5800] hover:bg-[#FF5800]/80 text-white"
+              className="w-full h-11  bg-[var(--brand-orange)] hover:bg-[var(--brand-orange)]/80 text-white"
               disabled={!ready}
             >
               {!ready ? (
@@ -314,9 +314,9 @@ function CliLoginContent() {
         tone="accent"
       >
         <div className="flex gap-1.5 mt-2">
-          <div className="h-2 w-2 animate-bounce rounded-full bg-[#FF5800] [animation-delay:-0.3s]" />
-          <div className="h-2 w-2 animate-bounce rounded-full bg-[#FF5800] [animation-delay:-0.15s]" />
-          <div className="h-2 w-2 animate-bounce rounded-full bg-[#FF5800]" />
+          <div className="h-2 w-2 animate-bounce rounded-full bg-[var(--brand-orange)] [animation-delay:-0.3s]" />
+          <div className="h-2 w-2 animate-bounce rounded-full bg-[var(--brand-orange)] [animation-delay:-0.15s]" />
+          <div className="h-2 w-2 animate-bounce rounded-full bg-[var(--brand-orange)]" />
         </div>
       </CliLoginPanel>
     );

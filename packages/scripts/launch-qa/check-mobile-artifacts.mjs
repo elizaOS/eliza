@@ -348,7 +348,8 @@ function androidPermissions(manifest) {
 }
 
 function checkAndroidManifest(repoRoot, appId, errors, checks) {
-  const relativePath = "packages/app-core/platforms/android/app/src/main/AndroidManifest.xml";
+  const relativePath =
+    "packages/app-core/platforms/android/app/src/main/AndroidManifest.xml";
   const filePath = path.join(repoRoot, relativePath);
   const content = readText(filePath);
   if (!content) {
@@ -667,14 +668,14 @@ export function checkMobileArtifacts(options = {}) {
       checkAndroidPluginAssets(
         repoRoot,
         appConfig,
-      capacitorConfig,
-      errors,
-      checks,
-    );
-    checkRequiredFiles(
-      repoRoot,
-      REQUIRED_ANDROID_ASSETS,
-      errors,
+        capacitorConfig,
+        errors,
+        checks,
+      );
+      checkRequiredFiles(
+        repoRoot,
+        REQUIRED_ANDROID_ASSETS,
+        errors,
         checks,
         "android-asset",
       );

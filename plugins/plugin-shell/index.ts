@@ -182,7 +182,7 @@ export {
   resolveExecutable,
   resolveTerminalShell,
   type ShellResolution,
-  type TerminalToolName,
   TERMINAL_TOOL_NAMES,
+  type TerminalToolName,
   type ToolCapability,
 } from "./utils/terminalCapabilities";

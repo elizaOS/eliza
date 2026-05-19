@@ -26,7 +26,10 @@ const STATUS_COLORS: Record<string, { text: string; dot: string }> = {
   confirmed: { text: "text-green-400", dot: "bg-green-500" },
   approved: { text: "text-green-400", dot: "bg-green-500" },
   broadcast: { text: "text-blue-400", dot: "bg-blue-500" },
-  pending: { text: "text-[#FF5800]", dot: "bg-[#FF5800]" },
+  pending: {
+    text: "text-[var(--brand-orange)]",
+    dot: "bg-[var(--brand-orange)]",
+  },
   failed: { text: "text-red-400", dot: "bg-red-500" },
   rejected: { text: "text-red-400", dot: "bg-red-500" },
 };
@@ -178,7 +181,7 @@ export function ElizaTransactionsSection({
             onClick={() => setStatusFilter(f.value)}
             className={`shrink-0 px-3 py-1.5 font-mono text-[10px] tracking-wide border transition-colors ${
               statusFilter === f.value
-                ? "text-[#FF5800] border-[#FF5800]/30 bg-[#FF5800]/5"
+                ? "text-[var(--brand-orange)] border-[var(--brand-orange)]/30 bg-[var(--brand-orange)]/5"
                 : "text-white/40 border-white/10 hover:text-white/70 hover:border-white/20"
             }`}
           >
@@ -203,7 +206,7 @@ export function ElizaTransactionsSection({
 
         {loading && (
           <div className="flex items-center justify-center py-12 gap-3">
-            <div className="w-4 h-4 rounded-full border-2 border-[#FF5800]/30 border-t-[#FF5800] animate-spin" />
+            <div className="w-4 h-4 rounded-full border-2 border-[var(--brand-orange)]/30 border-t-[var(--brand-orange)] animate-spin" />
             <span className="font-mono text-xs text-white/30">
               Loading transactions…
             </span>
@@ -216,7 +219,7 @@ export function ElizaTransactionsSection({
             <button
               type="button"
               onClick={() => fetchRecords(0, false)}
-              className="font-mono text-[11px] text-[#FF5800] hover:text-[#FF5800]/70 transition-colors"
+              className="font-mono text-[11px] text-[var(--brand-orange)] hover:text-[var(--brand-orange)]/70 transition-colors"
             >
               RETRY
             </button>
@@ -289,7 +292,7 @@ export function ElizaTransactionsSection({
                       href={explorerUrl(tx.txHash, tx.request?.chainId)}
                       target="_blank"
                       rel="noopener noreferrer"
-                      className="font-mono text-[11px] text-[#FF5800] hover:text-[#FF5800]/70 transition-colors inline-flex items-center gap-1"
+                      className="font-mono text-[11px] text-[var(--brand-orange)] hover:text-[var(--brand-orange)]/70 transition-colors inline-flex items-center gap-1"
                     >
                       {truncate(tx.txHash)}
                       <svg
@@ -324,12 +327,12 @@ export function ElizaTransactionsSection({
               onClick={handleLoadMore}
               disabled={loadingMore}
               className="inline-flex items-center gap-2 px-4 py-2 font-mono text-[11px] tracking-wide
-                text-[#FF5800] hover:text-[#FF5800]/70 border border-[#FF5800]/20 hover:border-[#FF5800]/40
+                text-[var(--brand-orange)] hover:text-[var(--brand-orange)]/70 border border-[var(--brand-orange)]/20 hover:border-[var(--brand-orange)]/40
                 transition-colors disabled:opacity-40"
             >
               {loadingMore ? (
                 <>
-                  <div className="w-3 h-3 rounded-full border border-[#FF5800]/30 border-t-[#FF5800] animate-spin" />
+                  <div className="w-3 h-3 rounded-full border border-[var(--brand-orange)]/30 border-t-[var(--brand-orange)] animate-spin" />
                   LOADING…
                 </>
               ) : (

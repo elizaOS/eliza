@@ -100,7 +100,7 @@ function normalizeCreateTaskRequest(
         : (requireRecord(
             input.websiteAccess,
             `${field}.websiteAccess`,
-          // requireRecord validates structure at the boundary.
+            // requireRecord validates structure at the boundary.
           ) as LifeOpsWebsiteAccessPolicy);
   }
   if (input.reminderPlan !== undefined) {

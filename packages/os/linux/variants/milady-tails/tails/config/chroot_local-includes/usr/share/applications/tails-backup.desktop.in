@@ -1,10 +1,10 @@
 [Desktop Entry]
 Type=Application
-_Name=Back Up Persistent Storage
-_Comment=Make a backup of the elizaOS Persistent Storage to another elizaOS USB stick
-_Keywords=backup
+_Name=Back Up elizaOS Storage
+_Comment=Back up elizaOS Persistent Storage to another elizaOS USB stick
+_Keywords=elizaos;backup;persistent;storage
 Icon=elizaos
-Exec=/usr/bin/kgx --title 'Log of Persistent Storage Backup' -- /usr/local/bin/tails-backup
+Exec=/usr/bin/kgx --title 'elizaOS Storage Backup' -- /usr/local/bin/tails-backup
 Terminal=false
 Categories=System;Utility;
 StartupNotify=false

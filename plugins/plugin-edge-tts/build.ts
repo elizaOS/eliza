@@ -3,7 +3,9 @@
  * Dual build script for @elizaos/plugin-edge-tts (Node + Browser)
  */
 
-const externalDeps = ["@elizaos/core"];
+import { externalsFromPackageJson } from "../plugin-build-externals.ts";
+
+const externalDeps = await externalsFromPackageJson("./package.json");
 
 async function build() {
   const totalStart = Date.now();
@@ -18,7 +20,7 @@ async function build() {
     format: "esm",
     sourcemap: "external",
     minify: false,
-    external: [...externalDeps, "node-edge-tts"],
+    external: externalDeps,
     naming: {
       entry: "index.node.js",
     },
@@ -39,7 +41,7 @@ async function build() {
     format: "esm",
     sourcemap: "external",
     minify: true,
-    external: [...externalDeps],
+    external: externalDeps,
   });
   if (!browserResult.success) {
     console.error(browserResult.logs);
@@ -57,7 +59,7 @@ async function build() {
     format: "cjs",
     sourcemap: "external",
     minify: false,
-    external: [...externalDeps, "node-edge-tts"],
+    external: externalDeps,
     naming: {
       entry: "index.node.js",
     },

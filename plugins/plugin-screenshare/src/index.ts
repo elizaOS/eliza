@@ -29,6 +29,19 @@ const rawScreensharePlugin: Plugin = {
       visibleInManager: true,
       desktopTabEnabled: true,
     },
+    {
+      id: "screenshare",
+      label: "Screen Share TUI",
+      description: "Terminal remote desktop session surface",
+      icon: "Monitor",
+      path: "/screenshare/tui",
+      viewType: "tui",
+      bundlePath: "dist/views/bundle.js",
+      componentExport: "ScreenshareTuiView",
+      tags: ["screenshare", "remote", "desktop", "terminal"],
+      visibleInManager: true,
+      desktopTabEnabled: true,
+    },
   ],
 };
 

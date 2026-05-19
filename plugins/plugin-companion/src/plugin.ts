@@ -26,6 +26,19 @@ const rawCompanionPlugin: Plugin = {
       visibleInManager: true,
       desktopTabEnabled: false,
     },
+    {
+      id: "companion",
+      label: "Companion TUI",
+      description: "Terminal VRM avatar companion and emote surface",
+      icon: "Bot",
+      path: "/companion/tui",
+      viewType: "tui",
+      bundlePath: "dist/views/bundle.js",
+      componentExport: "CompanionTuiView",
+      tags: ["companion", "avatar", "vrm", "terminal"],
+      visibleInManager: true,
+      desktopTabEnabled: false,
+    },
   ],
 };
 

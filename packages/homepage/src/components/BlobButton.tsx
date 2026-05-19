@@ -3,6 +3,7 @@ import type { ComponentType, HTMLAttributes } from "react";
 import { type ReactNode, useEffect, useRef, useState } from "react";
 import QRCode from "@/components/QRCode";
 import type { SpringAnimatedStyle } from "@/lib/spring-types";
+import { useT } from "@/providers/I18nProvider";
 
 type AnimatedDivProps = Omit<HTMLAttributes<HTMLDivElement>, "style"> & {
   style?: SpringAnimatedStyle;
@@ -23,6 +24,7 @@ export default function BlobButton({
   show = true,
   onClick,
 }: BlobButtonProps) {
+  const translate = useT();
   const [hovered, setHovered] = useState(false);
   const btnRef = useRef<HTMLAnchorElement>(null);
   const [btnW, setBtnW] = useState(130);
@@ -81,7 +83,9 @@ export default function BlobButton({
           style={{ top: btnH + GAP, width: PANEL_W }}
         >
           <p className="text-black/70 text-xs font-medium text-center mb-1 leading-tight">
-            Open on your phone
+            {translate("homepage_eliza.blob.openOnPhone", {
+              defaultValue: "Open on your phone",
+            })}
           </p>
 
           <QRCode className="size-36" />

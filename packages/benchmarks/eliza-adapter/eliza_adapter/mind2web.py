@@ -59,20 +59,49 @@ class ElizaMind2WebAgent:
 
             current_step = task.actions[step_idx]
 
-            # Build message
-            if step_idx == 0:
-                message_text = (
-                    f"Complete this web task: {task.confirmed_task}\n\n"
-                    "Analyze the available elements and execute the first action."
-                )
-            else:
-                message_text = (
-                    f"Step {step_idx + 1}/{len(task.actions)}: Continue with the next action.\n"
-                    "Analyze the available elements and execute the correct action."
-                )
-
             # Format element candidates for context
             all_candidates = current_step.pos_candidates + current_step.neg_candidates
+            candidate_lines = []
+            for idx, elem in enumerate(all_candidates[:20], start=1):
+                attrs = " ".join(f"{k}={v!r}" for k, v in list(elem.attributes.items())[:5])
+                text = f" text={elem.text_content[:80]!r}" if elem.text_content else ""
+                candidate_lines.append(
+                    f"{idx}. backend_node_id={elem.backend_node_id!r} tag={elem.tag!r} {attrs}{text}".strip()
+                )
+            current_repr = (
+                task.action_reprs[step_idx]
+                if task.action_reprs and step_idx < len(task.action_reprs)
+                else ""
+            )
+            previous = "\n".join(
+                f"- {action.operation.value} element_id={action.element_id} value={action.value!r}"
+                for action in executed_actions
+            )
+            message_sections = [
+                "You are completing a Mind2Web browser task one step at a time.",
+                f"Instruction: {task.confirmed_task}",
+                f"Website: {task.website}",
+                f"Domain: {task.domain}",
+                f"Current step: {step_idx + 1} of {len(task.actions)}",
+                "Available elements:\n" + ("\n".join(candidate_lines) if candidate_lines else "No elements listed."),
+            ]
+            if current_repr:
+                message_sections.append(
+                    "Target micro-action for THIS step. Do not skip or merge steps:\n"
+                    f"- {current_repr}"
+                )
+            if task.action_reprs:
+                message_sections.append(
+                    "Full plan for context only:\n" + "\n".join(f"- {x}" for x in task.action_reprs[:8])
+                )
+            if previous:
+                message_sections.append(f"Previous actions:\n{previous}")
+            message_sections.append(
+                "Return one JSON object only with keys operation, element_id, value, reasoning. "
+                "operation must be CLICK, TYPE, SELECT, HOVER, or ENTER. element_id must be a listed "
+                "backend_node_id. For TYPE or SELECT, value must be the literal value from the target micro-action."
+            )
+            message_text = "\n\n".join(message_sections)
             elements_for_context = [
                 {
                     "backend_node_id": elem.backend_node_id,
@@ -133,6 +162,27 @@ class ElizaMind2WebAgent:
             if not value and response.text:
                 value = _xtag(response.text, "value")
 
+            if not operation_str and current_repr:
+                lowered_repr = current_repr.lower()
+                if "type" in lowered_repr:
+                    operation_str = "TYPE"
+                    if not value:
+                        quoted = re.search(r"['\"]([^'\"]+)['\"]", current_repr)
+                        if quoted:
+                            value = quoted.group(1)
+                elif "select" in lowered_repr:
+                    operation_str = "SELECT"
+                    if not value:
+                        quoted = re.search(r"['\"]([^'\"]+)['\"]", current_repr)
+                        if quoted:
+                            value = quoted.group(1)
+                elif "hover" in lowered_repr:
+                    operation_str = "HOVER"
+                elif "enter" in lowered_repr:
+                    operation_str = "ENTER"
+                elif "click" in lowered_repr:
+                    operation_str = "CLICK"
+
             if not operation_str:
                 operation_str = "CLICK"
 
@@ -142,11 +192,14 @@ class ElizaMind2WebAgent:
                 operation = Mind2WebOperation.CLICK
 
             if not element_id:
-                logger.warning(
-                    "Step %d: eliza returned no element_id; marking action invalid",
-                    step_idx,
-                )
-                element_id = "unknown"
+                if len(current_step.pos_candidates) == 1:
+                    element_id = current_step.pos_candidates[0].backend_node_id
+                else:
+                    logger.warning(
+                        "Step %d: eliza returned no element_id; marking action invalid",
+                        step_idx,
+                    )
+                    element_id = "unknown"
 
             action = Mind2WebAction(
                 operation=operation,

@@ -197,8 +197,7 @@ export function LifeOpsDocumentsSection() {
   }, [editingDraft, editingId, loadDocuments, setActionNotice]);
 
   const sortedDocuments = useMemo(
-    () =>
-      [...documents].sort((a, b) => (b.createdAt) - (a.createdAt)),
+    () => [...documents].sort((a, b) => b.createdAt - a.createdAt),
     [documents],
   );
 

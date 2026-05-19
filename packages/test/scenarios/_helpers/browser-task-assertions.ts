@@ -3,7 +3,7 @@ import type {
   ScenarioCheckResult,
   ScenarioContext,
   ScenarioTurnExecution,
-} from "@elizaos/scenario-schema";
+} from "@elizaos/scenario-runner/schema";
 
 type BrowserTaskExpectation = {
   description: string;

@@ -9,7 +9,7 @@ import {
   FINAL_CHECK_KEYS,
   type ScenarioContext,
   type ScenarioFinalCheck,
-} from "@elizaos/scenario-schema";
+} from "@elizaos/scenario-runner/schema";
 import type { FinalCheckReport, FinalCheckStatus } from "../types.ts";
 import { isLoopbackUrl, toRecord } from "../utils.js";
 

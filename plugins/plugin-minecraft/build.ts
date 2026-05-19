@@ -1,12 +1,38 @@
 #!/usr/bin/env bun
 
 import { $ } from "bun";
-import { buildConfig } from "./build.config";
+import { externalsFromPackageJson } from "../plugin-build-externals.ts";
+
+const NODE_BUILTINS = [
+  "node:fs",
+  "node:path",
+  "node:http",
+  "node:https",
+  "node:crypto",
+  "node:stream",
+  "node:buffer",
+  "node:util",
+  "node:events",
+  "node:url",
+] as const;
 
 async function build(): Promise<void> {
   await $`rm -rf dist`;
 
-  const result = await Bun.build(buildConfig);
+  const external = await externalsFromPackageJson("./package.json", {
+    extra: NODE_BUILTINS,
+  });
+
+  const result = await Bun.build({
+    entrypoints: ["./src/index.ts"],
+    outdir: "./dist",
+    target: "node",
+    format: "esm",
+    splitting: false,
+    sourcemap: "external",
+    external,
+    naming: "[dir]/[name].[ext]",
+  });
   if (!result.success) {
     for (const message of result.logs) {
       console.error(message);

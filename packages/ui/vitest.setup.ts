@@ -1,17 +1,26 @@
 import { Buffer } from "node:buffer";
+import {
+  ReadableStream,
+  TransformStream,
+  WritableStream,
+} from "node:stream/web";
 import { TextDecoder } from "node:util";
-import { TransformStream, ReadableStream, WritableStream } from "node:stream/web";
 
 // Polyfill Web Streams API for jsdom (eventsource-parser, AI SDK, etc. use
 // TransformStream at module-load time; jsdom does not include it).
 if (typeof globalThis.TransformStream === "undefined") {
-  Object.assign(globalThis, { TransformStream, ReadableStream, WritableStream });
+  Object.assign(globalThis, {
+    TransformStream,
+    ReadableStream,
+    WritableStream,
+  });
 }
 
 // @testing-library/react's act() checks this flag to decide whether to use
 // synchronous flushing. It must be set before any test code runs so that
 // React renders triggered inside act() complete synchronously in jsdom.
-(globalThis as unknown as Record<string, unknown>).IS_REACT_ACT_ENVIRONMENT = true;
+(globalThis as unknown as Record<string, unknown>).IS_REACT_ACT_ENVIRONMENT =
+  true;
 
 class VitestTextEncoder {
   encode(input = ""): Uint8Array {

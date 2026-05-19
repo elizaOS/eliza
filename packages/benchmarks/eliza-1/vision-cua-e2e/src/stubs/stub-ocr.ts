@@ -4,7 +4,7 @@
  * before treating any results as real benchmarks.
  *
  * Once the docTR-style OCR-with-coords landing under
- * `packages/native-plugins/doctr-cpp/` ships, the harness should call
+ * `packages/native/plugins/doctr-cpp/` ships, the harness should call
  * `getOcrWithCoordsService()` from plugin-vision instead of constructing this
  * stub. The stub returns a tiny canned word grid so downstream stages
  * (grounding, click) have something to read.

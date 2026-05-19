@@ -6,9 +6,9 @@ the Tails-based elizaOS Live variant.
 
 Paths: `TAILS = packages/os/linux/variants/milady-tails/tails`.
 
-Status as of 2026-05-17: Phase 5's OS-side launcher/supervisor overlay
-exists in source and passed the normal QEMU app-service path on a prior
-artifact. Phase 6 has the OS-side capability runner and launch env in
+Status as of 2026-05-19: Phase 5's OS-side launcher/supervisor overlay
+exists in source and passed the normal QEMU app-service path on a recent
+validated artifact. Phase 6 has the OS-side capability runner and launch env in
 place, but approval-gated package/network actions and production package
 boundaries are not release-complete.
 
@@ -143,5 +143,5 @@ with its own Vulkan/CUDA profiles. Runtime package support should include
   mode" is a first-class milady deployment shape).
 
 ## Ordered implementation checklist
-**Phase 5:** confirm Phase 4's binary path → add root-owned `milady.path`/`milady.service` supervisor → add `etc/xdg/autostart/milady.desktop` backup → add `/usr/local/bin/milady` wrapper → add/extend dconf defaults and hook → `just boot`: greeter → Start → GNOME → Milady window, dark-themed, normal desktop still usable, close/crash relaunches. The file overlay steps are done locally; the `just boot` validation is still pending.
+**Phase 5:** confirm Phase 4's binary path → add root-owned `milady.path`/`milady.service` supervisor → add `etc/xdg/autostart/milady.desktop` backup → add `/usr/local/bin/milady` wrapper → add/extend dconf defaults and hook → `just boot`: greeter → Start → GNOME → elizaOS app window, normal desktop still usable, close/crash relaunches. The file overlay steps are done locally and the normal QEMU app-service path has passed on a validated artifact; exact release commits still need rebuild/revalidation if the branch moves.
 **Phase 6:** apply the portability audit's must-fix categories → confirm the in-process agent host model → resolve the `open-app.ts` de-sway → bake the GGUF + GPU-enabled node-llama-cpp → QEMU verification matrix above.

@@ -67,6 +67,9 @@ export function serviceMock(overrides: Record<string, unknown> = {}) {
 export function runtimeWith(service?: unknown): IAgentRuntime {
   return {
     getService: vi.fn(() => service ?? null),
+    // tasks.ts validate() requires hasService — mirror getService's truthiness
+    // so tests built with `runtimeWith(serviceMock())` see ACP as available.
+    hasService: vi.fn(() => Boolean(service)),
     logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() },
   } as never;
 }

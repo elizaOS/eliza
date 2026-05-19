@@ -21,7 +21,7 @@
 import {
   STEWARD_AUTHED_COOKIE,
   type StewardSessionErrorCode,
-} from "@elizaos/steward-session-client";
+} from "@elizaos/shared/steward-session-client";
 import { Hono } from "hono";
 import { setCookie } from "hono/cookie";
 import { cookieDomainForHost } from "@/lib/auth/cookie-domain";

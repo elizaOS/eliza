@@ -10,14 +10,18 @@ import {
 	type Memory,
 	MemoryType,
 	type MessageConnectorChatContext,
+	type MessageConnectorCreateThreadParams,
+	type MessageConnectorPostToThreadParams,
 	type MessageConnectorQueryContext,
 	type MessageConnectorTarget,
+	type MessageConnectorTypingParams,
 	type MessageConnectorUserContext,
 	type Room,
 	Service,
 	setConnectorAdminWhitelist,
 	stringToUuid,
 	type TargetInfo,
+	type ThreadHandle,
 	type UUID,
 	type World,
 } from "@elizaos/core";
@@ -72,7 +76,10 @@ import {
 	type PartialUser,
 	PermissionsBitField,
 	type TextChannel,
+	ThreadAutoArchiveDuration,
+	type ThreadChannel,
 	type User,
+	type Webhook,
 } from "discord.js";
 import {
 	DiscordAccountClientPool,
@@ -138,46 +145,9 @@ import {
 import { VoiceManager } from "./voice";
 
 const DISCORD_SNOWFLAKE_PATTERN = /^\d{15,20}$/;
-const DISCORD_MESSAGE_URL_RE = /\/channels\/\d+\/\d+\/(\d{15,20})/;
 type MessageConnectorRegistration = Parameters<
 	IAgentRuntime["registerMessageConnector"]
 >[0];
-
-function discordMessageIdFromMemory(memory: Memory | null): string | undefined {
-	if (!memory) return undefined;
-	const metadata = memory.metadata as Record<string, unknown> | undefined;
-	const metadataId = metadata?.discordMessageId;
-	if (
-		typeof metadataId === "string" &&
-		DISCORD_SNOWFLAKE_PATTERN.test(metadataId)
-	) {
-		return metadataId;
-	}
-	const url = (memory.content as Record<string, unknown> | undefined)?.url;
-	if (typeof url === "string") {
-		const match = url.match(DISCORD_MESSAGE_URL_RE);
-		if (match?.[1]) return match[1];
-	}
-	return undefined;
-}
-
-async function resolveDiscordReplyToMessageId(
-	runtime: IAgentRuntime,
-	content: Content,
-): Promise<string | undefined> {
-	const inReplyTo =
-		typeof content.inReplyTo === "string" ? content.inReplyTo.trim() : "";
-	if (!inReplyTo) return undefined;
-	if (DISCORD_SNOWFLAKE_PATTERN.test(inReplyTo)) return inReplyTo;
-	if (typeof runtime.getMemoryById !== "function") return undefined;
-	try {
-		return discordMessageIdFromMemory(
-			await runtime.getMemoryById(inReplyTo as UUID),
-		);
-	} catch {
-		return undefined;
-	}
-}
 
 type DiscordSettingsForEvents = DiscordSettings & {
 	shouldIgnoreBotMessages: boolean;
@@ -195,6 +165,16 @@ type DiscordAccountServiceFacade = IDiscordService &
 		removeAllowedChannel(channelId: string): boolean;
 		getAllowedChannels(): string[];
 	};
+
+// Forward Content.metadata onto the persisted Memory (e.g. `transient: true`
+// for orchestrator status posts). Plain-object guard so arrays/instances don't leak through.
+function extractContentMetadata(
+	content: Content | undefined,
+): Record<string, unknown> {
+	const meta = content?.metadata;
+	if (!meta || typeof meta !== "object" || Array.isArray(meta)) return {};
+	return meta as Record<string, unknown>;
+}
 
 function isGuildTextBasedChannel(
 	channel: Channel | null,
@@ -254,6 +234,22 @@ type ConnectorUserLookupParams = {
 	query?: string;
 };
 
+type ConnectorTypingParams = MessageConnectorTypingParams & {
+	accountId?: string;
+	channelId?: string;
+	roomId?: UUID;
+};
+
+type ConnectorCreateThreadParams = MessageConnectorCreateThreadParams & {
+	accountId?: string;
+	channelId?: string;
+	roomId?: UUID;
+};
+
+type ConnectorPostToThreadParams = MessageConnectorPostToThreadParams & {
+	accountId?: string;
+};
+
 type ExtendedMessageConnectorRegistration = MessageConnectorRegistration & {
 	listServers?: (context: MessageConnectorQueryContext) => Promise<World[]>;
 	fetchMessages?: (
@@ -311,6 +307,12 @@ const DISCORD_CONNECTOR_CAPABILITIES = [
 	"join_channel",
 	"leave_channel",
 	"get_user",
+	"typing_indicator",
+	"create_thread",
+	"post_to_thread",
+	"webhook_identity",
+	"rich_components",
+	"rich_embed",
 ];
 
 function normalizeDiscordConnectorQuery(value: string): string {
@@ -358,7 +360,7 @@ function isDiscordTextTarget(channel: unknown): boolean {
 		isVoiceBased?: () => boolean;
 	};
 	return Boolean(
-		maybeChannel?.isTextBased?.() && !maybeChannel?.isVoiceBased?.(),
+		maybeChannel.isTextBased?.() && !maybeChannel.isVoiceBased?.(),
 	);
 }
 
@@ -492,7 +494,7 @@ export class DiscordService extends Service implements IDiscordService {
 	public async refreshOwnerDiscordUserIds(
 		client: DiscordJsClient,
 	): Promise<void> {
-		const explicitSetting = this.runtime.getSetting?.(
+		const explicitSetting = this.runtime.getSetting(
 			"ELIZA_DISCORD_OWNER_USER_IDS_JSON",
 		);
 		const hasExplicitSetting =
@@ -660,7 +662,7 @@ export class DiscordService extends Service implements IDiscordService {
 					...transformedGuildOnlyCommands,
 				];
 
-				const clientApp = client?.application;
+				const clientApp = client.application;
 				if (!clientApp) {
 					throw new Error("Discord client application is not available");
 				}
@@ -679,7 +681,7 @@ export class DiscordService extends Service implements IDiscordService {
 					);
 				}
 
-				const guilds = client?.guilds.cache;
+				const guilds = client.guilds.cache;
 				if (guilds && transformedAllGeneralCommands.length > 0) {
 					await Promise.all(
 						[...guilds].map(async ([guildId, guild]) => {
@@ -930,11 +932,11 @@ export class DiscordService extends Service implements IDiscordService {
 		const requested = accountId
 			? normalizeAccountId(accountId)
 			: this.defaultAccountId;
-		return this.accountPool?.get?.(requested) ?? null;
+		return this.accountPool.get(requested) ?? null;
 	}
 
 	private getDefaultAccountState(): DiscordAccountClientState | null {
-		return this.accountPool?.getDefault?.() ?? null;
+		return this.accountPool.getDefault() ?? null;
 	}
 
 	private requireAccountState(
@@ -962,11 +964,11 @@ export class DiscordService extends Service implements IDiscordService {
 	}
 
 	public getDefaultAccountId(): string {
-		return this.defaultAccountId ?? DEFAULT_ACCOUNT_ID;
+		return this.defaultAccountId;
 	}
 
 	public getAccountIds(): string[] {
-		return this.accountPool?.listAccountIds?.() ?? [];
+		return this.accountPool.listAccountIds();
 	}
 
 	public getClient(accountId?: string | null): DiscordJsClient | null {
@@ -976,8 +978,8 @@ export class DiscordService extends Service implements IDiscordService {
 		}
 		const requested = accountId
 			? normalizeAccountId(accountId)
-			: (this.defaultAccountId ?? DEFAULT_ACCOUNT_ID);
-		const defaultAccountId = this.defaultAccountId ?? DEFAULT_ACCOUNT_ID;
+			: this.defaultAccountId;
+		const defaultAccountId = this.defaultAccountId;
 		return requested === defaultAccountId ? (this.client ?? null) : null;
 	}
 
@@ -1331,7 +1333,7 @@ export class DiscordService extends Service implements IDiscordService {
 		runtime: IAgentRuntime,
 		target: TargetInfo,
 		content: Content,
-	): Promise<void> {
+	): Promise<Memory | undefined> {
 		// Resolve the connector account this outbound message must use.
 		// Priority: explicit target.accountId > this service instance's default.
 		// `Content.metadata` is intentionally NOT consulted because it may be
@@ -1447,16 +1449,6 @@ export class DiscordService extends Service implements IDiscordService {
 					const channelType = await this.getChannelType(
 						targetChannel as Channel,
 					);
-					const replyToMessageId = await resolveDiscordReplyToMessageId(
-						runtime,
-						content,
-					);
-					let shouldAttachReply = Boolean(replyToMessageId);
-					const takeReplyOptions = () => {
-						if (!replyToMessageId || !shouldAttachReply) return {};
-						shouldAttachReply = false;
-						return { reply: { messageReference: replyToMessageId } };
-					};
 
 					const textContent = normalizeDiscordMessageText(content.text);
 					if (textContent || files.length > 0) {
@@ -1464,30 +1456,24 @@ export class DiscordService extends Service implements IDiscordService {
 							const chunks = splitMessage(textContent, MAX_MESSAGE_LENGTH);
 							if (chunks.length > 1) {
 								for (let i = 0; i < chunks.length - 1; i++) {
-									const sent = await targetChannel.send({
-										content: chunks[i],
-										...takeReplyOptions(),
-									});
+									const sent = await targetChannel.send(chunks[i]);
 									sentMessages.push(sent);
 								}
 								const sent = await targetChannel.send({
 									content: chunks[chunks.length - 1],
 									files: files.length > 0 ? files : undefined,
-									...takeReplyOptions(),
 								});
 								sentMessages.push(sent);
 							} else {
 								const sent = await targetChannel.send({
 									content: chunks[0],
 									files: files.length > 0 ? files : undefined,
-									...takeReplyOptions(),
 								});
 								sentMessages.push(sent);
 							}
 						} else {
 							const sent = await targetChannel.send({
 								files,
-								...takeReplyOptions(),
 							});
 							sentMessages.push(sent);
 						}
@@ -1512,9 +1498,9 @@ export class DiscordService extends Service implements IDiscordService {
 						roomName:
 							"name" in targetChannel && typeof targetChannel.name === "string"
 								? targetChannel.name
-								: clientUser?.displayName || clientUser?.username || undefined,
-						userName: clientUser?.username ? clientUser.username : undefined,
-						name: clientUser?.displayName || clientUser?.username || undefined,
+								: clientUser.displayName || clientUser.username || undefined,
+						userName: clientUser.username ? clientUser.username : undefined,
+						name: clientUser.displayName || clientUser.username || undefined,
 						source: "discord",
 						channelId: targetChannel.id,
 						messageServerId: stringToUuid(serverId),
@@ -1526,6 +1512,7 @@ export class DiscordService extends Service implements IDiscordService {
 						},
 					});
 
+					let lastPersistedMemory: Memory | undefined;
 					for (const sentMsg of sentMessages) {
 						try {
 							const hasAttachments = sentMsg.attachments.size > 0;
@@ -1547,11 +1534,14 @@ export class DiscordService extends Service implements IDiscordService {
 								metadata: {
 									type: MemoryType.MESSAGE,
 									accountId,
+									platformMessageId: sentMsg.id,
+									...extractContentMetadata(content),
 								},
 								createdAt: sentMsg.createdTimestamp || Date.now(),
 							};
 
 							await runtime.createMemory(memory, "messages");
+							lastPersistedMemory = memory;
 							runtime.logger.debug(
 								{
 									src: "plugin:discord",
@@ -1566,6 +1556,7 @@ export class DiscordService extends Service implements IDiscordService {
 							);
 						}
 					}
+					return lastPersistedMemory;
 				} else {
 					throw new Error(
 						`Target channel ${targetChannel.id} does not have a send method.`,
@@ -1604,7 +1595,7 @@ export class DiscordService extends Service implements IDiscordService {
 			typeof channelRecord.parentId === "string"
 				? channelRecord.parentId
 				: undefined;
-		const isThread = Boolean(channelRecord.isThread?.());
+		const isThread = Boolean(channelRecord.isThread());
 		const state = this.getAccountState(accountId);
 		if (
 			state?.allowedChannelIds &&
@@ -1961,7 +1952,7 @@ export class DiscordService extends Service implements IDiscordService {
 			try {
 				const fetched = await channelRecord.messages.fetch({ limit: 10 });
 				for (const message of Array.from(fetched.values()).reverse()) {
-					if (!message.content?.trim()) {
+					if (!message.content.trim()) {
 						continue;
 					}
 					recentMessages.push({
@@ -2219,8 +2210,8 @@ export class DiscordService extends Service implements IDiscordService {
 		});
 		return memories
 			.filter((memory) => {
-				const text = String(memory.content?.text ?? "").toLowerCase();
-				const name = String(memory.content?.name ?? "").toLowerCase();
+				const text = String(memory.content.text ?? "").toLowerCase();
+				const name = String(memory.content.name ?? "").toLowerCase();
 				const metadata = memory.metadata as Record<string, unknown> | undefined;
 				const sender = metadata?.sender as Record<string, unknown> | undefined;
 				const username = String(sender?.username ?? "").toLowerCase();
@@ -2277,6 +2268,7 @@ export class DiscordService extends Service implements IDiscordService {
 		const edited = await targetMessage.edit(text);
 		const memory = await this.buildMemoryFromMessage(edited as Message, {
 			accountId,
+			extraMetadata: extractContentMetadata(params.content),
 		});
 		if (!memory) {
 			throw new Error(
@@ -2304,6 +2296,157 @@ export class DiscordService extends Service implements IDiscordService {
 			return;
 		}
 		await targetMessage.pin();
+	}
+
+	public async sendConnectorTyping(
+		_runtime: IAgentRuntime,
+		params: ConnectorTypingParams,
+	): Promise<void> {
+		const channel = await this.resolveConnectorTextChannel(
+			params.target,
+			params,
+		);
+		await (channel as TextChannel).sendTyping();
+	}
+
+	public async createConnectorThread(
+		_runtime: IAgentRuntime,
+		params: ConnectorCreateThreadParams,
+	): Promise<ThreadHandle> {
+		const channel = (await this.resolveConnectorTextChannel(
+			params.target,
+			params,
+		)) as TextChannel;
+		if (!channel.threads) {
+			throw new Error(
+				`Discord channel ${channel.id} does not support thread creation.`,
+			);
+		}
+		const name = (params.name ?? "thread").slice(0, 100);
+		let startMessage: Message | undefined;
+		if (params.parentMessageId) {
+			try {
+				startMessage = (await channel.messages.fetch(
+					params.parentMessageId,
+				)) as Message;
+			} catch (err) {
+				this.runtime.logger?.warn?.(
+					{
+						src: "plugin:discord",
+						channelId: channel.id,
+						parentMessageId: params.parentMessageId,
+						err: err instanceof Error ? err.message : String(err),
+					},
+					"createConnectorThread: parent message lookup failed; creating channel-level thread",
+				);
+			}
+		}
+		const thread = await channel.threads.create({
+			name,
+			autoArchiveDuration: ThreadAutoArchiveDuration.OneDay,
+			...(startMessage ? { startMessage } : {}),
+		});
+		return { threadId: thread.id, parentChannelId: channel.id };
+	}
+
+	public async postToConnectorThread(
+		runtime: IAgentRuntime,
+		params: ConnectorPostToThreadParams,
+	): Promise<Memory | undefined> {
+		const accountId = this.resolveAccountIdFromTarget(params.target, params);
+		const state = this.requireAccountState(accountId);
+		const client = state.client;
+		if (!client?.isReady()) {
+			throw new Error(`Discord client is not ready for account ${accountId}.`);
+		}
+		const text = params.content.text ?? "";
+		if (!text.trim()) {
+			throw new Error("postToConnectorThread requires non-empty content.text.");
+		}
+		const threadChannel = (await client.channels.fetch(
+			params.thread.threadId,
+		)) as ThreadChannel | null;
+		if (!threadChannel) {
+			throw new Error(`Discord thread ${params.thread.threadId} not found.`);
+		}
+
+		if (params.identity?.name && params.thread.parentChannelId) {
+			const parent = (await client.channels.fetch(
+				params.thread.parentChannelId,
+			)) as TextChannel | null;
+			if (parent) {
+				const webhook = await this.findOrCreateWebhook(
+					parent,
+					params.identity.name,
+				);
+				if (webhook) {
+					const sent = await webhook.send({
+						content: text,
+						threadId: params.thread.threadId,
+						username: params.identity.name,
+						...(params.identity.avatarUrl
+							? { avatarURL: params.identity.avatarUrl }
+							: {}),
+					});
+					const memory = await this.buildMemoryFromMessage(sent as Message, {
+						accountId,
+						extraMetadata: extractContentMetadata(params.content),
+					});
+					return memory ?? undefined;
+				}
+				runtime.logger?.warn?.(
+					{
+						src: "plugin:discord",
+						channelId: parent.id,
+						requestedIdentity: params.identity.name,
+					},
+					"postToConnectorThread: webhook unavailable (likely missing MANAGE_WEBHOOKS or 10-per-channel limit); falling back to bot identity",
+				);
+			}
+		}
+
+		const sent = await threadChannel.send(text);
+		const memory = await this.buildMemoryFromMessage(sent as Message, {
+			accountId,
+			extraMetadata: extractContentMetadata(params.content),
+		});
+		return memory ?? undefined;
+	}
+
+	private async findOrCreateWebhook(
+		channel: TextChannel,
+		name: string,
+	): Promise<Webhook | null> {
+		let existing: Collection<string, Webhook> | undefined;
+		try {
+			existing = await channel.fetchWebhooks();
+		} catch (err) {
+			this.runtime.logger?.warn?.(
+				{
+					src: "plugin:discord",
+					channelId: channel.id,
+					err: err instanceof Error ? err.message : String(err),
+				},
+				"findOrCreateWebhook: fetchWebhooks failed",
+			);
+			return null;
+		}
+		const found = existing.find((w) => w.name === name);
+		if (found) return found;
+		try {
+			return await channel.createWebhook({ name });
+		} catch (err) {
+			this.runtime.logger?.warn?.(
+				{
+					src: "plugin:discord",
+					channelId: channel.id,
+					name,
+					err: err instanceof Error ? err.message : String(err),
+				},
+				"findOrCreateWebhook: createWebhook failed (likely 10-webhook channel limit or permissions)",
+			);
+			return null;
+		}
 	}
 
 	public async joinConnectorChannel(
@@ -2511,7 +2654,10 @@ export class DiscordService extends Service implements IDiscordService {
 							| ConnectorSearchMessagesParams
 							| ConnectorMessageMutationParams
 							| ConnectorChannelMutationParams
-							| ConnectorUserLookupParams,
+							| ConnectorUserLookupParams
+							| ConnectorTypingParams
+							| ConnectorCreateThreadParams
+							| ConnectorPostToThreadParams,
 					>(
 						params: T,
 					): T => ({
@@ -2622,6 +2768,21 @@ export class DiscordService extends Service implements IDiscordService {
 								runtime,
 								scopedTarget(target),
 								content,
+							),
+						typingHandler: (runtime, params) =>
+							serviceInstance.sendConnectorTyping(
+								runtime,
+								scopedFetchParams(params),
+							),
+						createThreadHandler: (runtime, params) =>
+							serviceInstance.createConnectorThread(
+								runtime,
+								scopedFetchParams(params),
+							),
+						postToThreadHandler: (runtime, params) =>
+							serviceInstance.postToConnectorThread(
+								runtime,
+								scopedFetchParams(params),
 							),
 					};
 					runtime.registerMessageConnector(registration);
@@ -2781,7 +2942,7 @@ export class DiscordService extends Service implements IDiscordService {
 					return (
 						channel
 							.permissionsFor(member)
-							?.has(PermissionsBitField.Flags.ViewChannel) || false
+							.has(PermissionsBitField.Flags.ViewChannel) || false
 					);
 				})
 				.map((member: GuildMember) => ({

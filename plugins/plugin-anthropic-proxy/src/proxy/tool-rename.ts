@@ -11,14 +11,14 @@
 import type { Pair } from "./sanitize.js";
 
 export function applyQuotedRenames(
-	input: string,
-	pairs: ReadonlyArray<Pair>,
+  input: string,
+  pairs: ReadonlyArray<Pair>,
 ): string {
-	let m = input;
-	for (const [orig, renamed] of pairs) {
-		m = m.split(`"${orig}"`).join(`"${renamed}"`);
-	}
-	return m;
+  let m = input;
+  for (const [orig, renamed] of pairs) {
+    m = m.split(`"${orig}"`).join(`"${renamed}"`);
+  }
+  return m;
 }
 
 /**
@@ -26,13 +26,13 @@ export function applyQuotedRenames(
  * pairs is the forward map; we reverse it (rename -> orig) on the wire.
  */
 export function applyQuotedRenamesReverse(
-	input: string,
-	pairs: ReadonlyArray<Pair>,
+  input: string,
+  pairs: ReadonlyArray<Pair>,
 ): string {
-	let r = input;
-	for (const [orig, renamed] of pairs) {
-		r = r.split(`"${renamed}"`).join(`"${orig}"`);
-		r = r.split(`\\"${renamed}\\"`).join(`\\"${orig}\\"`);
-	}
-	return r;
+  let r = input;
+  for (const [orig, renamed] of pairs) {
+    r = r.split(`"${renamed}"`).join(`"${orig}"`);
+    r = r.split(`\\"${renamed}\\"`).join(`\\"${orig}\\"`);
+  }
+  return r;
 }

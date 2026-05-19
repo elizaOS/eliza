@@ -26,7 +26,9 @@ export function parseEnvFile(filePath: string): Record<string, string> {
     const line = rawLine.trim();
     if (!line || line.startsWith("#")) continue;
 
-    const withoutExport = line.startsWith("export ") ? line.slice("export ".length).trim() : line;
+    const withoutExport = line.startsWith("export ")
+      ? line.slice("export ".length).trim()
+      : line;
     const separator = withoutExport.indexOf("=");
     if (separator <= 0) continue;
 
@@ -40,7 +42,11 @@ export function parseEnvFile(filePath: string): Record<string, string> {
   return env;
 }
 
-export function updateEnvFile(filePath: string, key: string, value: string): void {
+export function updateEnvFile(
+  filePath: string,
+  key: string,
+  value: string,
+): void {
   const existing = existsSync(filePath) ? readFileSync(filePath, "utf8") : "";
   const replacement = `${key}=${value}`;
   const regex = new RegExp(`^${key}=.*$`, "m");

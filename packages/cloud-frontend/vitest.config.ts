@@ -1,5 +1,5 @@
-import { createRequire } from "node:module";
 import { existsSync, statSync } from "node:fs";
+import { createRequire } from "node:module";
 import { dirname, resolve as resolvePath } from "node:path";
 import { fileURLToPath, URL } from "node:url";
 import { defineConfig } from "vitest/config";

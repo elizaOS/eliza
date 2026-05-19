@@ -1,1 +1,0 @@
-{"version":3,"file":"app-registry.d.ts","sourceRoot":"","sources":["app-registry.ts"],"names":[],"mappings":"AAAA,MAAM,WAAW,yBAAyB;IACxC,IAAI,EAAE,MAAM,CAAC;IACb,aAAa,EAAE,MAAM,CAAC;IACtB,OAAO,EAAE,MAAM,EAAE,CAAC;CACnB;AAuBD;;;;;GAKG;AACH,wBAAgB,kBAAkB,CAAC,GAAG,EAAE,yBAAyB,GAAG,IAAI,CAQvE;AAED,wBAAgB,wBAAwB,IAAI,yBAAyB,EAAE,CAEtE"}

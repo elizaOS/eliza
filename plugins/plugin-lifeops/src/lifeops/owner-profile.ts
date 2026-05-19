@@ -359,7 +359,7 @@ export async function ensureLifeOpsCalendarFeedIncludes(
   };
   await runtime.updateTask(taskId, {
     metadata: {
-      ...(metadata),
+      ...metadata,
       calendarFeedPreferences: next,
     },
   });
@@ -400,7 +400,7 @@ export async function setLifeOpsCalendarFeedIncluded(
   };
   await runtime.updateTask(taskId, {
     metadata: {
-      ...(metadata),
+      ...metadata,
       calendarFeedPreferences: next,
     },
   });
@@ -554,7 +554,7 @@ export async function updateLifeOpsMeetingPreferences(
     updatedAt: new Date().toISOString(),
   };
   await runtime.updateTask(taskId, {
-    metadata: { ...(metadata), meetingPreferences: next },
+    metadata: { ...metadata, meetingPreferences: next },
   });
   return next;
 }
@@ -586,7 +586,7 @@ export async function updateLifeOpsOwnerProfile(
 
   await runtime.updateTask(taskId, {
     metadata: {
-      ...(metadata),
+      ...metadata,
       ownerProfile: nextProfile,
     },
   });

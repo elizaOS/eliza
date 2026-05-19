@@ -1,1 +1,0 @@
-{"version":3,"file":"useShellState.d.ts","sourceRoot":"","sources":["useShellState.ts"],"names":[],"mappings":"AAMA,OAAO,EAEL,KAAK,WAAW,EAChB,KAAK,UAAU,EAEhB,MAAM,eAAe,CAAC;AAEvB,MAAM,WAAW,mBAAmB;IAClC,KAAK,EAAE,UAAU,CAAC;IAClB,IAAI,EAAE,CAAC,MAAM,EAAE,WAAW,KAAK,IAAI,CAAC;CACrC;AAED;;;;;;;;GAQG;AACH,wBAAgB,aAAa,IAAI,mBAAmB,CAwBnD"}

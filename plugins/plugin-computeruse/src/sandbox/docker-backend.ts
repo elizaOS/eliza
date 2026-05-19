@@ -22,17 +22,14 @@
  * convention only; operators bring their own.
  */
 
-import {
-  type ChildProcessWithoutNullStreams,
-  spawn,
-} from "node:child_process";
+import { type ChildProcessWithoutNullStreams, spawn } from "node:child_process";
 import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import {
+  type SandboxBackend,
   SandboxBackendUnavailableError,
   SandboxInvocationError,
-  type SandboxBackend,
   type SandboxOp,
 } from "./types.js";
 
@@ -372,10 +369,7 @@ export class DockerBackend implements SandboxBackend {
 
   async invoke<TResult>(op: SandboxOp): Promise<TResult> {
     if (!this.helper || !this.containerId) {
-      throw new SandboxInvocationError(
-        "Docker backend not started.",
-        op.kind,
-      );
+      throw new SandboxInvocationError("Docker backend not started.", op.kind);
     }
     return new Promise<TResult>((resolve, reject) => {
       this.pending.push({

@@ -63,7 +63,7 @@ describe("resolveKokoroEngineConfig", () => {
 		expect(resolveKokoroEngineConfig()).toBeNull();
 	});
 
-	it("returns null when the model dir exists but no ONNX is staged", () => {
+	it("returns null when the model dir exists but no GGUF is staged", () => {
 		const fx = makeStaged({ voices: ["af_bella.bin"] });
 		cleanups.push(fx.cleanup);
 		process.env.ELIZA_KOKORO_MODEL_DIR = fx.root;
@@ -71,7 +71,7 @@ describe("resolveKokoroEngineConfig", () => {
 	});
 
 	it("returns null when no voice .bin is staged", () => {
-		const fx = makeStaged({ modelFile: "kokoro-v1.0.onnx" });
+		const fx = makeStaged({ modelFile: "kokoro-82m-v1_0.gguf" });
 		cleanups.push(fx.cleanup);
 		process.env.ELIZA_KOKORO_MODEL_DIR = fx.root;
 		expect(resolveKokoroEngineConfig()).toBeNull();
@@ -79,7 +79,7 @@ describe("resolveKokoroEngineConfig", () => {
 
 	it("returns the canonical Samantha default when staged", () => {
 		const fx = makeStaged({
-			modelFile: "kokoro-v1.0.onnx",
+			modelFile: "kokoro-82m-v1_0.gguf",
 			voices: ["af_same.bin", "af_bella.bin"],
 		});
 		cleanups.push(fx.cleanup);
@@ -87,7 +87,7 @@ describe("resolveKokoroEngineConfig", () => {
 		const cfg = resolveKokoroEngineConfig();
 		expect(cfg).not.toBeNull();
 		expect(cfg?.defaultVoiceId).toBe(KOKORO_DEFAULT_VOICE_ID);
-		expect(cfg?.layout.modelFile).toBe("kokoro-v1.0.onnx");
+		expect(cfg?.layout.modelFile).toBe("kokoro-82m-v1_0.gguf");
 		expect(cfg?.layout.sampleRate).toBe(24_000);
 		expect(cfg?.layout.root).toBe(fx.root);
 		expect(cfg?.layout.voicesDir).toBe(path.join(fx.root, "voices"));
@@ -95,7 +95,7 @@ describe("resolveKokoroEngineConfig", () => {
 
 	it("falls back to af_bella with a console warning when Samantha preset is missing", () => {
 		const fx = makeStaged({
-			modelFile: "kokoro-v1.0.onnx",
+			modelFile: "kokoro-82m-v1_0.gguf",
 			voices: ["af_bella.bin"], // Samantha (af_same) absent
 		});
 		cleanups.push(fx.cleanup);
@@ -124,7 +124,7 @@ describe("resolveKokoroEngineConfig", () => {
 
 	it("can probe an explicit bundle-local Kokoro root before the global install root", () => {
 		const bundleFx = makeStaged({
-			modelFile: "model_q4.onnx",
+			modelFile: "kokoro-82m-v1_0-Q4_K_M.gguf",
 			voices: ["af_bella.bin"],
 		});
 		cleanups.push(bundleFx.cleanup);
@@ -136,26 +136,14 @@ describe("resolveKokoroEngineConfig", () => {
 		const cfg = resolveKokoroEngineConfig(bundleFx.root);
 		expect(cfg).not.toBeNull();
 		expect(cfg?.layout.root).toBe(bundleFx.root);
-		expect(cfg?.layout.modelFile).toBe("model_q4.onnx");
+		expect(cfg?.layout.modelFile).toBe("kokoro-82m-v1_0-Q4_K_M.gguf");
 		expect(cfg?.defaultVoiceId).toBe("af_bella");
 		expect(kokoroEngineModelDir(bundleFx.root)).toBe(bundleFx.root);
 	});
 
-	it("auto-prefers the INT8 ONNX when it is the only one staged", () => {
-		const fx = makeStaged({
-			modelFile: "kokoro-v1.0.int8.onnx",
-			voices: ["af_bella.bin"],
-		});
-		cleanups.push(fx.cleanup);
-		process.env.ELIZA_KOKORO_MODEL_DIR = fx.root;
-		const cfg = resolveKokoroEngineConfig();
-		expect(cfg).not.toBeNull();
-		expect(cfg?.layout.modelFile).toBe("kokoro-v1.0.int8.onnx");
-	});
-
 	it("picks any staged voice when the catalog default is missing", () => {
 		const fx = makeStaged({
-			modelFile: "model.onnx",
+			modelFile: "kokoro-82m-v1_0.gguf",
 			voices: ["af_sarah.bin"], // not the default `af_bella`
 		});
 		cleanups.push(fx.cleanup);
@@ -167,7 +155,7 @@ describe("resolveKokoroEngineConfig", () => {
 
 	it("honours ELIZA_KOKORO_DEFAULT_VOICE_ID when set + staged", () => {
 		const fx = makeStaged({
-			modelFile: "model.onnx",
+			modelFile: "kokoro-82m-v1_0.gguf",
 			voices: ["af_bella.bin", "af_nicole.bin"],
 		});
 		cleanups.push(fx.cleanup);
@@ -180,7 +168,7 @@ describe("resolveKokoroEngineConfig", () => {
 
 	it("returns null when ELIZA_KOKORO_DEFAULT_VOICE_ID is set but the .bin is missing", () => {
 		const fx = makeStaged({
-			modelFile: "model.onnx",
+			modelFile: "kokoro-82m-v1_0.gguf",
 			voices: ["af_bella.bin"],
 		});
 		cleanups.push(fx.cleanup);
@@ -191,30 +179,30 @@ describe("resolveKokoroEngineConfig", () => {
 
 	it("honours ELIZA_KOKORO_MODEL_FILE override when present", () => {
 		const fx = makeStaged({
-			modelFile: "custom-export.onnx",
+			modelFile: "custom-export.gguf",
 			voices: ["af_bella.bin"],
 		});
 		cleanups.push(fx.cleanup);
 		process.env.ELIZA_KOKORO_MODEL_DIR = fx.root;
-		process.env.ELIZA_KOKORO_MODEL_FILE = "custom-export.onnx";
+		process.env.ELIZA_KOKORO_MODEL_FILE = "custom-export.gguf";
 		const cfg = resolveKokoroEngineConfig();
 		expect(cfg).not.toBeNull();
-		expect(cfg?.layout.modelFile).toBe("custom-export.onnx");
+		expect(cfg?.layout.modelFile).toBe("custom-export.gguf");
 	});
 
-	it("reports runtimeKind=onnx for ONNX model files", () => {
+	it("reports runtimeKind=gguf for GGUF model files", () => {
 		const fx = makeStaged({
-			modelFile: "kokoro-v1.0.onnx",
+			modelFile: "kokoro-82m-v1_0.gguf",
 			voices: ["af_bella.bin"],
 		});
 		cleanups.push(fx.cleanup);
 		process.env.ELIZA_KOKORO_MODEL_DIR = fx.root;
 		const cfg = resolveKokoroEngineConfig();
 		expect(cfg).not.toBeNull();
-		expect(cfg?.runtimeKind).toBe("onnx");
+		expect(cfg?.runtimeKind).toBe("gguf");
 	});
 
-	it("reports runtimeKind=gguf for fused-GGUF model files", () => {
+	it("reports runtimeKind=gguf for Q4_K_M GGUF model files", () => {
 		const fx = makeStaged({
 			modelFile: "kokoro-82m-v1_0-Q4_K_M.gguf",
 			voices: ["af_bella.bin"],
@@ -227,12 +215,9 @@ describe("resolveKokoroEngineConfig", () => {
 		expect(cfg?.layout.modelFile).toBe("kokoro-82m-v1_0-Q4_K_M.gguf");
 	});
 
-	it("prefers the GGUF over an ONNX when both are staged", () => {
-		// Stage both files; the discovery should pick the GGUF since the
-		// fused path beats the ORT path on TTFB (see
-		// kokoro-llama-cpp-feasibility.md §5).
+	it("prefers the Q4_K_M GGUF over the unquantized GGUF when both are staged", () => {
 		const root = mkdtempSync(path.join(os.tmpdir(), "kokoro-engine-test-"));
-		writeFileSync(path.join(root, "kokoro-v1.0.onnx"), Buffer.alloc(4));
+		writeFileSync(path.join(root, "kokoro-82m-v1_0.gguf"), Buffer.alloc(4));
 		writeFileSync(
 			path.join(root, "kokoro-82m-v1_0-Q4_K_M.gguf"),
 			Buffer.alloc(4),
@@ -259,11 +244,11 @@ describe("isKokoroGgufFile", () => {
 		expect(isKokoroGgufFile("KOKORO.GGUF")).toBe(true);
 	});
 
-	it("identifies ONNX model files as not GGUF", () => {
-		expect(isKokoroGgufFile("kokoro-v1.0.onnx")).toBe(false);
-		expect(isKokoroGgufFile("model.onnx")).toBe(false);
-		expect(isKokoroGgufFile("model_quantized.onnx")).toBe(false);
-		expect(isKokoroGgufFile("model_q4.onnx")).toBe(false);
+	it("identifies non-GGUF model files as not GGUF", () => {
+		expect(isKokoroGgufFile("kokoro-v1.0.pt")).toBe(false);
+		expect(isKokoroGgufFile("model.bin")).toBe(false);
+		expect(isKokoroGgufFile("model.safetensors")).toBe(false);
+		expect(isKokoroGgufFile("model.pth")).toBe(false);
 	});
 });
 

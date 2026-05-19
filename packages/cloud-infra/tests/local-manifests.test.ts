@@ -6,9 +6,9 @@
  * resource requires. A typo here breaks `bun run dev:cloud:local`.
  */
 
+import { describe, expect, test } from "bun:test";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
-import { describe, expect, test } from "bun:test";
 import { parseAllDocuments } from "yaml";
 
 const MANIFESTS_DIR = join(

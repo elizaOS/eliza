@@ -148,8 +148,7 @@ async function readDevicectlPairedIphones(
         return {
           deviceId: identifier,
           displayName:
-            normalizeString(device.deviceProperties?.name) ??
-            deviceType,
+            normalizeString(device.deviceProperties?.name) ?? deviceType,
           connected,
           source: "xcrun_devicectl",
           observedAt: nowIso,

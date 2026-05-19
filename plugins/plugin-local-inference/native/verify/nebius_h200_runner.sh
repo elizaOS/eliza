@@ -173,10 +173,10 @@ sync_repo() {
     "$target:$NEBIUS_REMOTE_DIR/"
 
   ssh -o StrictHostKeyChecking=no "$target" \
-    "mkdir -p '$NEBIUS_REMOTE_DIR/packages/app-core' '$NEBIUS_REMOTE_DIR/packages/native-plugins' '$NEBIUS_REMOTE_DIR/plugins/plugin-local-inference/native'"
+    "mkdir -p '$NEBIUS_REMOTE_DIR/packages/app-core' '$NEBIUS_REMOTE_DIR/packages/native/plugins' '$NEBIUS_REMOTE_DIR/plugins/plugin-local-inference/native'"
   rsync -az --delete "$REPO_ROOT/packages/app-core/scripts/" "$target:$NEBIUS_REMOTE_DIR/packages/app-core/scripts/"
-  rsync -az --delete "$REPO_ROOT/packages/native-plugins/qjl-cpu/" "$target:$NEBIUS_REMOTE_DIR/packages/native-plugins/qjl-cpu/"
-  rsync -az --delete "$REPO_ROOT/packages/native-plugins/polarquant-cpu/" "$target:$NEBIUS_REMOTE_DIR/packages/native-plugins/polarquant-cpu/"
+  rsync -az --delete "$REPO_ROOT/packages/native/plugins/qjl-cpu/" "$target:$NEBIUS_REMOTE_DIR/packages/native/plugins/qjl-cpu/"
+  rsync -az --delete "$REPO_ROOT/packages/native/plugins/polarquant-cpu/" "$target:$NEBIUS_REMOTE_DIR/packages/native/plugins/polarquant-cpu/"
   rsync -az --delete "$REPO_ROOT/plugins/plugin-local-inference/native/cuda/" "$target:$NEBIUS_REMOTE_DIR/plugins/plugin-local-inference/native/cuda/"
   rsync -az --delete "$REPO_ROOT/plugins/plugin-local-inference/native/dflash/" "$target:$NEBIUS_REMOTE_DIR/plugins/plugin-local-inference/native/dflash/"
   rsync -az --delete "$REPO_ROOT/plugins/plugin-local-inference/native/include/" "$target:$NEBIUS_REMOTE_DIR/plugins/plugin-local-inference/native/include/"

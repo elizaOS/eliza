@@ -1,6 +1,6 @@
 {
   "name": "@elizaos/plugin-elizacloud",
-  "version": "2.0.0-beta.5",
+  "version": "2.0.0-beta.4",
   "type": "module",
   "main": "dist/node/index.node.js",
   "module": "dist/node/index.node.js",
@@ -74,7 +74,7 @@
     "ox": "0.14.20",
     "undici": "8.2.0",
     "viem": "^2.48.8",
-    "ws": "8.18.3"
+    "ws": "8.20.1"
   },
   "devDependencies": {
     "@biomejs/biome": "^2.4.14",

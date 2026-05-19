@@ -1,5 +1,5 @@
 :root {
-  --font-sans: "Open Sans", Arial, system-ui, sans-serif;
+  --font-sans: "Poppins", Arial, system-ui, sans-serif;
   --font-mono: var(--font-sans);
 
   --jet-black: #050506;

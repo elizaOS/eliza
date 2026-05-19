@@ -36,7 +36,8 @@ test("lander renders elizaOS hero and primary copy", async ({ page }) => {
 
   const hero = page.locator(".hero-cloud");
   await expect(hero).toBeVisible();
-  await expect(hero.getByTestId("cloud-video")).toHaveCount(1);
+  await expect(hero.locator(".cloud-background img")).toHaveCount(1);
+  await expect(hero.locator(".cloud-background video")).toHaveCount(1);
   await expect(hero.getByRole("link", { name: /^Download/i })).toHaveAttribute(
     "href",
     "#download",
@@ -139,7 +140,7 @@ test("checkout lives on elizaOS and starts with Eliza Cloud auth", async ({
   ).toBeVisible();
   await expect(page.locator(".checkout-product-shot img")).toHaveAttribute(
     "src",
-    "/brand/concepts/concept_usbdrive.jpg",
+    "/brand/concepts/concept_usbdrive_900.jpg",
   );
 
   const googleLink = page.getByRole("link", { name: "Google" });

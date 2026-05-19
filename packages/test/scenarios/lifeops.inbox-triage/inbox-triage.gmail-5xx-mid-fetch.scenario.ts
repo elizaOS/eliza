@@ -14,7 +14,10 @@
  * Cited: 03-coverage-gap-matrix.md — "connector flake mid-triage".
  */
 
-import { type ScenarioContext, scenario } from "@elizaos/scenario-schema";
+import {
+  type ScenarioContext,
+  scenario,
+} from "@elizaos/scenario-runner/schema";
 import { judgeRubric } from "../_helpers/action-assertions.ts";
 
 function checkAgentSurfacesFailure(ctx: ScenarioContext): string | undefined {

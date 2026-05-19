@@ -72,9 +72,9 @@ const agentSourceJsToTsPlugin = {
 };
 function resolveNodePackageRoot(packageName: string): string {
   const directCandidates = [
-    path.join(here, "node_modules", packageName),
     path.join(elizaRoot, "node_modules", packageName),
     path.join(repoRoot, "node_modules", packageName),
+    path.join(here, "node_modules", packageName),
   ];
   for (const candidate of directCandidates) {
     if (fs.existsSync(path.join(candidate, "package.json"))) {

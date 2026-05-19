@@ -1,21 +1,23 @@
 #!/usr/bin/env bun
 import { rmSync } from "node:fs";
 import { $ } from "bun";
+import { externalsFromPackageJson } from "../plugin-build-externals.ts";
 
-const external = [
-	"@elizaos/core",
-	"@elizaos/agent",
-	"@elizaos/shared",
-	"@elizaos/plugin-capacitor-bridge",
-	"node-llama-cpp",
-	"@node-llama-cpp",
-	/^@node-llama-cpp\//,
-	"@reflink/reflink",
-	"onnxruntime-node",
-	"ws",
-	"node:*",
-	"bun:*",
-];
+const external = await externalsFromPackageJson("./package.json", {
+	// Transitive workspace deps + native sub-packages + wildcards the prior
+	// hand-list relied on. The `@node-llama-cpp/*` glob covers per-platform
+	// subpackages that aren't direct deps.
+	extra: [
+		"@elizaos/agent",
+		"@elizaos/plugin-omnivoice",
+		"@node-llama-cpp",
+		"@node-llama-cpp/*",
+		"@reflink/reflink",
+		"ws",
+		"node:*",
+		"bun:*",
+	],
+});
 
 console.log("🔨 Building @elizaos/plugin-local-inference...");
 const start = Date.now();

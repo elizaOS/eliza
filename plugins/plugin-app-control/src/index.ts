@@ -98,6 +98,36 @@ export const appControlPlugin: Plugin = {
 			visibleInManager: true,
 			desktopTabEnabled: true,
 		},
+		{
+			id: "views-manager",
+			label: "Views TUI",
+			description:
+				"Terminal view for browsing and opening available plugin views",
+			icon: "Terminal",
+			path: "/views/tui",
+			viewType: "tui",
+			bundlePath: "dist/views/bundle.js",
+			componentExport: "ViewManagerTuiView",
+			visibleInManager: true,
+			desktopTabEnabled: true,
+			capabilities: [
+				{
+					id: "terminal-open-view",
+					description: "Open a listed view from the terminal view manager",
+					params: {
+						viewId: {
+							type: "string",
+							description: "Stable id of the view to open",
+							required: true,
+						},
+					},
+				},
+				{
+					id: "terminal-list-views",
+					description: "Return the TUI-mode view list as structured data",
+				},
+			],
+		},
 	],
 };
 

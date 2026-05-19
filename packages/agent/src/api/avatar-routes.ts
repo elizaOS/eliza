@@ -4,12 +4,21 @@ import path from "node:path";
 import { readRequestBodyBuffer } from "@elizaos/core";
 import { resolveStateDir } from "../config/paths.ts";
 
-const { getDiscordAvatarCacheDir, getDiscordAvatarCachePath } = (await import(
-  "@elizaos/plugin-discord"
-)) as {
+// Lazy memoized loader — previously module-scope `await import`, which forced
+// @elizaos/plugin-discord to load on every agent boot just for two pure path
+// helpers. Now only loads on the first /api/avatar/discord/* request.
+type DiscordAvatarModule = {
   getDiscordAvatarCacheDir: () => string;
   getDiscordAvatarCachePath: (fileName: string) => string;
 };
+
+let discordAvatarPromise: Promise<DiscordAvatarModule> | null = null;
+function getDiscordAvatarApi(): Promise<DiscordAvatarModule> {
+  discordAvatarPromise ??= import(
+    "@elizaos/plugin-discord"
+  ) as Promise<unknown> as Promise<DiscordAvatarModule>;
+  return discordAvatarPromise;
+}
 
 // ---------------------------------------------------------------------------
 // Types
@@ -48,11 +57,10 @@ export async function handleAvatarRoutes(
       return true;
     }
 
-    const filePath = getDiscordAvatarCachePath(fileName);
-    if (
-      path.dirname(filePath) !== getDiscordAvatarCacheDir() ||
-      !filePath.startsWith(getDiscordAvatarCacheDir())
-    ) {
+    const discordAvatar = await getDiscordAvatarApi();
+    const filePath = discordAvatar.getDiscordAvatarCachePath(fileName);
+    const cacheDir = discordAvatar.getDiscordAvatarCacheDir();
+    if (path.dirname(filePath) !== cacheDir || !filePath.startsWith(cacheDir)) {
       error(res, "Invalid Discord avatar path", 400);
       return true;
     }

@@ -1,4 +1,4 @@
-import { scenario } from "@elizaos/scenario-schema";
+import { scenario } from "@elizaos/scenario-runner/schema";
 
 // 10 days * 24 hours * 60 minutes = 14,400 minutes
 const EVERY_10_DAYS_MINUTES = 14_400;

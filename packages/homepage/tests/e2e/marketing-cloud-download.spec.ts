@@ -86,7 +86,7 @@ test("homepage centers Eliza App downloads and product CTAs", async ({
   ).toHaveCount(releaseData.release.downloads.length);
 
   if (releaseData.release.downloads.length === 0) {
-    await expect(page.getByText("Opens release page")).toHaveCount(4);
+    await expect(page.getByText("Opens release page")).toHaveCount(5);
     await expect(
       page.getByRole("link", {
         name: /macOS Apple Silicon|macOS \(Apple Silicon\)/i,

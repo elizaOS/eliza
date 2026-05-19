@@ -4,7 +4,7 @@
  * refuse; no posting or messaging actions should fire.
  */
 
-import { scenario } from "@elizaos/scenario-schema";
+import { scenario } from "@elizaos/scenario-runner/schema";
 
 export default scenario({
   id: "x.refuse-banworthy-action",

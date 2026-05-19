@@ -36,6 +36,31 @@
   outline: none;
 }
 
+/* The pill itself — tiny glass sliver, always visible.
+ * Matches the prototype's `.scene-pill` (56x8 sliver).
+ * Defined here (before higher-specificity selectors) so biome's
+ * `noDescendingSpecificity` rule stays happy. */
+.elizaos-voice-pill__pill {
+  width: 56px;
+  height: 8px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.34);
+  backdrop-filter: blur(24px) saturate(200%);
+  -webkit-backdrop-filter: blur(24px) saturate(200%);
+  box-shadow:
+    0 3px 14px rgba(0, 0, 0, 0.22),
+    inset 0 1px 0 rgba(255, 255, 255, 0.62),
+    inset 0 0 0 0.5px rgba(255, 255, 255, 0.42);
+  border: 0;
+  padding: 0;
+  display: inline-block;
+  transition:
+    box-shadow 0.32s ease,
+    background 0.22s ease,
+    transform 0.22s cubic-bezier(0.34, 1.4, 0.64, 1),
+    filter 0.22s ease;
+}
+
 .elizaos-voice-pill__hit:focus-visible .elizaos-voice-pill__pill {
   box-shadow:
     0 0 0 2px rgba(255, 255, 255, 0.85),
@@ -191,29 +216,6 @@
   stroke-width: 2;
   stroke-linecap: round;
   stroke-linejoin: round;
-}
-
-/* The pill itself — tiny glass sliver, always visible.
- * Matches the prototype's `.scene-pill` (56x8 sliver). */
-.elizaos-voice-pill__pill {
-  width: 56px;
-  height: 8px;
-  border-radius: 999px;
-  background: rgba(255, 255, 255, 0.34);
-  backdrop-filter: blur(24px) saturate(200%);
-  -webkit-backdrop-filter: blur(24px) saturate(200%);
-  box-shadow:
-    0 3px 14px rgba(0, 0, 0, 0.22),
-    inset 0 1px 0 rgba(255, 255, 255, 0.62),
-    inset 0 0 0 0.5px rgba(255, 255, 255, 0.42);
-  border: 0;
-  padding: 0;
-  display: inline-block;
-  transition:
-    box-shadow 0.32s ease,
-    background 0.22s ease,
-    transform 0.22s cubic-bezier(0.34, 1.4, 0.64, 1),
-    filter 0.22s ease;
 }
 
 .elizaos-voice-pill__hit:hover .elizaos-voice-pill__pill {

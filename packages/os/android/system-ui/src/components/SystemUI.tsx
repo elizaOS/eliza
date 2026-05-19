@@ -1,5 +1,8 @@
 import type { ReactNode } from "react";
-import { NavigationButtons, type NavigationButtonsProps } from "./NavigationButtons";
+import {
+  NavigationButtons,
+  type NavigationButtonsProps,
+} from "./NavigationButtons";
 import { StatusBar } from "./StatusBar";
 
 export interface SystemUIProps {
@@ -25,7 +28,10 @@ export function SystemUI({
       }}
     >
       <StatusBar />
-      <main className="elizaos-mobile-content" style={{ flex: 1, position: "relative" }}>
+      <main
+        className="elizaos-mobile-content"
+        style={{ flex: 1, position: "relative" }}
+      >
         {children}
       </main>
       {showNavigation ? <NavigationButtons {...(navigation ?? {})} /> : null}

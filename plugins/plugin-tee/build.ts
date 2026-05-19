@@ -2,27 +2,30 @@
 
 import { existsSync } from "node:fs";
 import { rm } from "node:fs/promises";
+import { externalsFromPackageJson } from "../plugin-build-externals.ts";
 
-const externalDeps = [
-  "dotenv",
-  "fs",
-  "path",
-  "@reflink/reflink",
-  "@node-llama-cpp",
-  "https",
-  "http",
-  "agentkeepalive",
-  "safe-buffer",
-  "base-x",
-  "bs58",
-  "borsh",
-  "stream",
-  "buffer",
-  "@phala/dstack-sdk",
-  "undici",
-  "@elizaos/core",
-  "zod",
-];
+const externalDeps = await externalsFromPackageJson("./package.json", {
+  // Preserve transitive packages + bare-string node builtins the hand-list
+  // relied on. Most of these are pulled in via @solana/web3.js and viem.
+  extra: [
+    "dotenv",
+    "fs",
+    "path",
+    "@reflink/reflink",
+    "@node-llama-cpp",
+    "https",
+    "http",
+    "agentkeepalive",
+    "safe-buffer",
+    "base-x",
+    "bs58",
+    "borsh",
+    "stream",
+    "buffer",
+    "undici",
+    "zod",
+  ],
+});
 
 async function buildPlugin() {
   console.log("Building @elizaos/plugin-tee...\n");

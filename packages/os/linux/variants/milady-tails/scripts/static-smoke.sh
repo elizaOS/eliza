@@ -9,10 +9,28 @@ SOURCE_ONLY="${ELIZAOS_STATIC_SOURCE_ONLY:-0}"
 cd "${ROOT}"
 
 stat_mode() {
-    stat -c %a "$1" 2>/dev/null || stat -f %Lp "$1"
+    local path="$1"
+    local index_mode
+    index_mode="$(
+        git -C "${ROOT}" ls-files -s -- "${path}" 2>/dev/null | awk 'NR == 1 { print $1 }'
+    )"
+    case "${index_mode}" in
+        100755)
+            printf '755\n'
+            return 0
+            ;;
+        100644)
+            printf '644\n'
+            return 0
+            ;;
+    esac
+    stat -c %a "${path}" 2>/dev/null || stat -f %Lp "${path}"
 }
 
 echo "==> shell syntax"
+test -f tails/data/debootstrap/scripts/debian-common.patch
+test -f tails/data/splash.png
+test -x tails/data/wrappers/apt-get
 bash -n build.sh build-iso.sh tails/auto/build \
     scripts/dev-sign-update-manifest.sh \
     scripts/usb-write.sh \
@@ -52,6 +70,9 @@ node --check scripts/generate-release-evidence.mjs
 node --check scripts/validate-model-catalog.mjs
 node --check scripts/validate-runtime-overlay.mjs
 node --check tails/config/chroot_local-includes/usr/local/lib/elizaos/renderer-server.mjs
+grep -q 'ELIZAOS_MILADY_APP_ARTIFACT' Justfile
+grep -q 'ensure_plugin_runtime_dist "plugins/plugin-health" package-js' Justfile
+grep -q 'ensure_plugin_runtime_dist "plugins/plugin-calendly" tsup-index' Justfile
 python3 -m json.tool schemas/update-manifest.schema.json >/dev/null
 python3 -m json.tool schemas/model-catalog.schema.json >/dev/null
 python3 - \
@@ -259,6 +280,17 @@ if rg -n \
     tails/config/binary_local-includes/isolinux/sorry32.txt
 then
     echo "High-visibility inherited Tails strings still need elizaOS branding." >&2
+    exit 1
+fi
+if rg -n \
+    'Preparing Tails for first use|Checking the Tails system partition|Configuring Tails|Tails specific tools|Tails live user' \
+    tails/config/chroot_local-includes/usr/share/initramfs-tools/scripts/init-premount/partitioning \
+    tails/config/chroot_local-includes/usr/share/initramfs-tools/scripts/init-top/read-and-update-random-seed-sector \
+    tails/config/chroot_local-includes/usr/lib/live/config/2000-aesthetics \
+    tails/config/chroot_local-includes/usr/local/bin/milady \
+    tails/config/chroot_local-includes/usr/share/desktop-directories/Tails.directory.in
+then
+    echo "First-boot and launcher polish still exposes inherited Tails wording." >&2
     exit 1
 fi
 launcher_paths=(
@@ -882,8 +914,10 @@ for (const root of [
     throw new Error(`${appControlPackagePath}: app-control must be source-staged`);
   }
   for (const packageName of [
+    "@elizaos/plugin-app-manager",
     "@elizaos/plugin-calendly",
     "@elizaos/plugin-health",
+    "@elizaos/plugin-registry",
   ]) {
     const distIndex = `${nodeModules}/${packageName}/dist/index.js`;
     if (!fs.existsSync(distIndex)) {

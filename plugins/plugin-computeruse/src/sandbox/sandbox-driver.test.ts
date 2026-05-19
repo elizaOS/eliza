@@ -17,17 +17,17 @@
 
 import { EventEmitter } from "node:events";
 import { describe, expect, it } from "vitest";
+import { DockerBackend } from "./docker-backend.js";
 import {
   createSandboxDriver,
   getCurrentDriver,
   resolveModeFromEnv,
 } from "./index.js";
-import { DockerBackend } from "./docker-backend.js";
 import { QemuBackend } from "./qemu-backend.js";
 import { SandboxDriver } from "./sandbox-driver.js";
 import {
-  SandboxBackendUnavailableError,
   type SandboxBackend,
+  SandboxBackendUnavailableError,
   type SandboxOp,
 } from "./types.js";
 
@@ -255,7 +255,9 @@ describe("DockerBackend", () => {
       image: "cua/linux:latest",
       runShell,
       spawnExec: () =>
-        new FakeChildProcess() as unknown as ReturnType<typeof spawnExecSentinel>,
+        new FakeChildProcess() as unknown as ReturnType<
+          typeof spawnExecSentinel
+        >,
     });
     await expect(backend.start()).rejects.toBeInstanceOf(
       SandboxBackendUnavailableError,
@@ -267,7 +269,9 @@ describe("DockerBackend", () => {
       image: "cua/linux:latest",
       runShell: async () => ({ stdout: "", stderr: "", code: 0 }),
       spawnExec: () =>
-        new FakeChildProcess() as unknown as ReturnType<typeof spawnExecSentinel>,
+        new FakeChildProcess() as unknown as ReturnType<
+          typeof spawnExecSentinel
+        >,
     });
     await expect(
       backend.invoke({ kind: "mouse_move", x: 0, y: 0 }),
@@ -306,7 +310,9 @@ describe("createSandboxDriver", () => {
       dockerOverrides: {
         runShell: async () => ({ stdout: "", stderr: "", code: 0 }),
         spawnExec: () =>
-          new FakeChildProcess() as unknown as ReturnType<typeof spawnExecSentinel>,
+          new FakeChildProcess() as unknown as ReturnType<
+            typeof spawnExecSentinel
+          >,
       },
     });
     expect(driver).toBeInstanceOf(SandboxDriver);
@@ -365,9 +371,7 @@ describe("getCurrentDriver", () => {
   it("returns null when no ComputerUseService is registered", () => {
     expect(
       getCurrentDriver(
-        fakeRuntime(null) as unknown as Parameters<
-          typeof getCurrentDriver
-        >[0],
+        fakeRuntime(null) as unknown as Parameters<typeof getCurrentDriver>[0],
       ),
     ).toBeNull();
   });

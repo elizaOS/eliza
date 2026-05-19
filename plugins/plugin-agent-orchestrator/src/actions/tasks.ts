@@ -33,9 +33,9 @@ import type {
   IAgentRuntime,
   Memory,
   State,
-  StateValue,
 } from "@elizaos/core";
 import { logger as coreLogger } from "@elizaos/core";
+import { emitTaskAudit } from "../services/audit.js";
 import {
   type ResolvedWorkdirRoute,
   resolvePinnedAdapter,
@@ -58,12 +58,10 @@ import {
   getAcpService,
   getTimeoutMs,
   type HandlerOptionsLike,
-  hasExplicitPayload,
   isAuthError,
   labelFor,
   listSessionsWithin,
   logger,
-  looksLikeTaskAgentRequest,
   messageText,
   newestSession,
   paramsRecord,
@@ -74,7 +72,6 @@ import {
   setCurrentSession,
   setCurrentSessions,
   shortId,
-  stateSessionId,
   waitForSpawnSlot,
 } from "./common.js";
 
@@ -126,31 +123,6 @@ type ControlAction =
   | "reopen";
 
 type HistoryMetric = "list" | "count" | "detail";
-type HistoryWindow =
-  | "active"
-  | "today"
-  | "yesterday"
-  | "last_7_days"
-  | "last_30_days";
-
-function startOfDay(date: Date): Date {
-  const start = new Date(date);
-  start.setHours(0, 0, 0, 0);
-  return start;
-}
-
-function endOfDay(date: Date): Date {
-  const end = new Date(date);
-  end.setHours(23, 59, 59, 999);
-  return end;
-}
-
-function formatDate(date: Date): string {
-  const year = date.getFullYear();
-  const month = String(date.getMonth() + 1).padStart(2, "0");
-  const day = String(date.getDate()).padStart(2, "0");
-  return `${year}-${month}-${day}`;
-}
 
 function requestsDeferredUserReply(text: string): boolean {
   const normalized = text.toLowerCase();
@@ -200,100 +172,6 @@ function labelFrom(task: string, index: number): string {
   return cleaned ? cleaned.slice(0, 80) : `task-${index + 1}`;
 }
 
-function objectValue(value: unknown): Record<string, unknown> | undefined {
-  return value && typeof value === "object"
-    ? (value as Record<string, unknown>)
-    : undefined;
-}
-
-function additionalSessionMetadata(
-  params: Record<string, unknown>,
-  content: Record<string, unknown>,
-): Record<string, unknown> {
-  return {
-    ...(objectValue(content.metadata) ?? {}),
-    ...(objectValue(params.metadata) ?? {}),
-  };
-}
-
-function pickRecordString(
-  record: Record<string, unknown> | undefined,
-  key: string,
-): string | undefined {
-  const value = record?.[key];
-  return typeof value === "string" ? value.trim() || undefined : undefined;
-}
-
-function originConnectorMessageId(
-  message: Memory,
-  content: Record<string, unknown>,
-): string | undefined {
-  const messageMetadata = objectValue(message.metadata);
-  const contentMetadata = objectValue(content.metadata);
-  return (
-    pickRecordString(contentMetadata, "originConnectorMessageId") ??
-    pickRecordString(contentMetadata, "connectorMessageId") ??
-    pickRecordString(contentMetadata, "platformMessageId") ??
-    pickRecordString(contentMetadata, "discordMessageId") ??
-    pickRecordString(messageMetadata, "originConnectorMessageId") ??
-    pickRecordString(messageMetadata, "connectorMessageId") ??
-    pickRecordString(messageMetadata, "platformMessageId") ??
-    pickRecordString(messageMetadata, "discordMessageId") ??
-    pickRecordString(messageMetadata, "messageId")
-  );
-}
-
-function pickRoutingString(
-  params: Record<string, unknown>,
-  content: Record<string, unknown>,
-  metadata: Record<string, unknown>,
-  key: string,
-): string | undefined {
-  return (
-    pickString(params, content, key) ??
-    (typeof metadata[key] === "string"
-      ? (metadata[key] as string).trim() || undefined
-      : undefined)
-  );
-}
-
-function buildSwarmRoomMetadata(
-  message: Memory,
-  params: Record<string, unknown>,
-  content: Record<string, unknown>,
-  metadata: Record<string, unknown>,
-): {
-  originRoomId: string;
-  taskRoomId: string | undefined;
-  worktreeRoomId?: string;
-  swarmRooms: Array<{ roomId: string; roles: string[] }>;
-} {
-  const taskRoomId =
-    pickRoutingString(params, content, metadata, "taskRoomId") ??
-    pickRoutingString(params, content, metadata, "originRoomId") ??
-    (typeof metadata.roomId === "string" ? metadata.roomId : undefined) ??
-    message.roomId;
-  const worktreeRoomId =
-    pickRoutingString(params, content, metadata, "worktreeRoomId") ??
-    pickRoutingString(params, content, metadata, "coordinationRoomId");
-  const roomMap = new Map<string, { roomId: string; roles: string[] }>();
-  const add = (roomId: string | undefined, role: string) => {
-    if (!roomId?.trim()) return;
-    const key = roomId.trim();
-    const current = roomMap.get(key) ?? { roomId: key, roles: [] };
-    if (!current.roles.includes(role)) current.roles.push(role);
-    roomMap.set(key, current);
-  };
-  add(taskRoomId, "task");
-  add(worktreeRoomId, "worktree");
-  return {
-    originRoomId: message.roomId,
-    taskRoomId,
-    ...(worktreeRoomId ? { worktreeRoomId } : {}),
-    swarmRooms: [...roomMap.values()],
-  };
-}
-
 function taskWithResolvedRoute(
   task: string,
   route: ResolvedWorkdirRoute | undefined,
@@ -312,7 +190,7 @@ function taskWithResolvedRoute(
   ].join("\n");
 }
 
-function looksLikePersonalLifeOpsTask(text: string): boolean {
+function _looksLikePersonalLifeOpsTask(text: string): boolean {
   return /\b(?:add|create|make|open|save|set)\s+(?:an?\s+)?(?:to-?do|task|reminder|note)\b/i.test(
     text,
   );
@@ -404,14 +282,6 @@ async function runCreate(
   );
   const timeoutMs = getTimeoutMs(params, content);
   const baseLabel = pickString(params, content, "label");
-  const extraMetadata = additionalSessionMetadata(params, content);
-  const connectorMessageId = originConnectorMessageId(message, content);
-  const swarmRoomMetadata = buildSwarmRoomMetadata(
-    message,
-    params,
-    content,
-    extraMetadata,
-  );
   const settled = await Promise.allSettled(
     tasks.map(async (part, index) => {
       const parsed = parseAgentPrefix(part, baseAgentType);
@@ -440,14 +310,9 @@ async function runCreate(
         model,
         timeoutMs,
         metadata: {
-          ...extraMetadata,
           requestedType: baseAgentType,
           messageId: message.id,
-          ...(connectorMessageId
-            ? { originConnectorMessageId: connectorMessageId }
-            : {}),
-          roomId: swarmRoomMetadata.taskRoomId,
-          ...swarmRoomMetadata,
+          roomId: message.roomId,
           worldId: message.worldId,
           userId: message.entityId,
           label,
@@ -536,6 +401,19 @@ async function runSpawnAgent(
   content: Record<string, unknown>,
   callback: HandlerCallback | undefined,
 ): Promise<ActionResult> {
+  const access = await requireTaskAgentAccess(runtime, message, "create");
+  if (!access.allowed) {
+    const reason = access.reason;
+    await emitTaskAudit(runtime, {
+      action: "spawn_agent",
+      outcome: "forbidden",
+      entityId: message.entityId,
+      reason,
+    });
+    if (callback) await callback({ text: reason });
+    return { success: false, error: "FORBIDDEN", text: reason };
+  }
+
   const service = getAcpService(runtime);
   if (!service) {
     const text = "ACP service is not available. Cannot spawn a task agent.";
@@ -589,13 +467,6 @@ async function runSpawnAgent(
       pickBoolean(params, content, "deferUserReply") === true ||
       requestsDeferredUserReply(task);
     const label = pickString(params, content, "label") ?? task.slice(0, 80);
-    const extraMetadata = additionalSessionMetadata(params, content);
-    const swarmRoomMetadata = buildSwarmRoomMetadata(
-      message,
-      params,
-      content,
-      extraMetadata,
-    );
 
     // Resolve the connector source for routing the sub-agent's eventual
     // reply back to the user. For messages that originated on a platform
@@ -607,7 +478,6 @@ async function runSpawnAgent(
     // level by reading the upstream `originSource` the router stamps onto
     // its synthetic inbound's metadata, so nested spawns inherit the
     // real user-facing platform.
-    const connectorMessageId = originConnectorMessageId(message, content);
     const inboundOriginSource =
       typeof content.metadata === "object" &&
       content.metadata !== null &&
@@ -620,10 +490,110 @@ async function runSpawnAgent(
         ? inboundOriginSource
         : content.source;
 
+    // Resume an existing (label, workdir) session with intact acpx state
+    // instead of spawning fresh — acpx's `prompt -s <name>` reloads the
+    // persisted stream so the sub-agent keeps full conversation context.
+    const resumable = service.findResumableSessionByLabel
+      ? await service
+          .findResumableSessionByLabel(label, workdir)
+          .catch((err: unknown) => {
+            logger(runtime).warn?.(
+              {
+                src: "@elizaos/plugin-agent-orchestrator",
+                label,
+                workdir,
+                err: err instanceof Error ? err.message : String(err),
+              },
+              "findResumableSessionByLabel failed; spawning fresh",
+            );
+            return undefined;
+          })
+      : undefined;
+    const resumeSendPrompt = service.sendPrompt?.bind(service);
+    if (resumable && resumeSendPrompt) {
+      setCurrentSession(state, resumable);
+      logger(runtime).info?.(
+        `Resuming acpx task agent: ${JSON.stringify({
+          sessionId: resumable.id,
+          label,
+          workdir: resumable.workdir,
+        })}`,
+      );
+      void resumeSendPrompt(resumable.id, taskWithRouteHints).catch(
+        (err: unknown) => {
+          logger(runtime).warn?.(
+            {
+              src: "@elizaos/plugin-agent-orchestrator",
+              sessionId: resumable.id,
+              err: err instanceof Error ? err.message : String(err),
+            },
+            "resume sendPrompt failed",
+          );
+        },
+      );
+      await emitTaskAudit(runtime, {
+        action: "spawn_agent",
+        outcome: "allowed",
+        reason: "resumed",
+        entityId: message.entityId,
+        sessionId: resumable.id,
+        agentType: resumable.agentType,
+        workdir: resumable.workdir,
+        source:
+          typeof resolvedSpawnSource === "string"
+            ? resolvedSpawnSource
+            : undefined,
+      });
+      return {
+        success: true,
+        text: "",
+        continueChain: false,
+        data: {
+          sessionId: resumable.id,
+          agentType: resumable.agentType,
+          workdir: resumable.workdir,
+          status: resumable.status,
+          label,
+          resumed: true,
+          deferredUserReply: deferUserReply,
+          suppressActionResultClipboard: true,
+          suppressPlannerReply: true,
+        },
+      };
+    }
+
     // Concurrency gate: serialise spawns past a small ceiling so parallel
     // coding sub-agents don't stampede the model provider into rate-limited,
     // tool-call-skipping degradation. See waitForSpawnSlot.
     await waitForSpawnSlot(runtime, service);
+
+    // Swarm-room routing: explicit task / worktree room ids from the
+    // caller (planner content, scaffold caller metadata) become the
+    // session's anchor rooms so SubAgentRouter can fan completions and
+    // narration back into them. Same task+worktree room collapses to a
+    // single deduped swarmRooms entry holding both roles.
+    const explicitTaskRoomId =
+      pickString(params, content, "taskRoomId") ??
+      pickString(params, content, "originRoomId");
+    const explicitWorktreeRoomId = pickString(
+      params,
+      content,
+      "worktreeRoomId",
+    );
+    const taskRoomId = explicitTaskRoomId ?? message.roomId;
+    const worktreeRoomId = explicitWorktreeRoomId;
+    const swarmRooms: Array<{ roomId: string; roles: string[] }> = [];
+    if (taskRoomId) {
+      const sameRoom =
+        worktreeRoomId !== undefined && worktreeRoomId === taskRoomId;
+      swarmRooms.push({
+        roomId: taskRoomId,
+        roles: sameRoom ? ["task", "worktree"] : ["task"],
+      });
+      if (worktreeRoomId !== undefined && !sameRoom) {
+        swarmRooms.push({ roomId: worktreeRoomId, roles: ["worktree"] });
+      }
+    }
 
     const session = await service.spawnSession({
       agentType,
@@ -632,14 +602,13 @@ async function runSpawnAgent(
       memoryContent,
       approvalPreset,
       metadata: {
-        ...extraMetadata,
         requestedType: explicitAgentType ?? agentType,
         messageId: message.id,
-        ...(connectorMessageId
-          ? { originConnectorMessageId: connectorMessageId }
-          : {}),
-        roomId: swarmRoomMetadata.taskRoomId,
-        ...swarmRoomMetadata,
+        roomId: taskRoomId ?? message.roomId,
+        originRoomId: message.roomId,
+        ...(taskRoomId ? { taskRoomId } : {}),
+        ...(worktreeRoomId ? { worktreeRoomId } : {}),
+        ...(swarmRooms.length > 0 ? { swarmRooms } : {}),
         worldId: message.worldId,
         userId: message.entityId,
         label,
@@ -662,43 +631,33 @@ async function runSpawnAgent(
         workdir: session.workdir,
       })}`,
     );
+    await emitTaskAudit(runtime, {
+      action: "spawn_agent",
+      outcome: "allowed",
+      entityId: message.entityId,
+      sessionId: session.sessionId,
+      agentType: session.agentType,
+      workdir: session.workdir,
+      source:
+        typeof resolvedSpawnSource === "string"
+          ? resolvedSpawnSource
+          : undefined,
+    });
 
-    // Brief acknowledgement reply. `continueChain: false` terminates
-    // the planner loop immediately, so without a non-empty `text` the
-    // bot ships NOTHING to Discord on a successful spawn — the user
-    // sees silence while the sub-agent quietly works for the next
-    // 5-60 seconds. A short "on it" ack lets the user know the
-    // request was dispatched without us claiming completion (the
-    // sub-agent runs async; its actual result is reported separately
-    // via the task-event channel).
-    const ackText = deferUserReply
-      ? ""
-      : `On it — spawning ${agentType} sub-agent to handle your request.`;
-    if (callback && ackText) {
-      await callbackText(callback, ackText);
-    }
+    // No text ack here. The orchestrator's progress hook posts a single
+    // "🚀 [label] running" message (the spawn ack), creates the thread
+    // when supported, and edits the same message to ✅/❌ at task_complete /
+    // error. That single main-channel message IS the user-visible ack —
+    // emitting "On it." here would duplicate it and (worse) bring the
+    // planner's hallucinated messageToUser onto the main channel via the
+    // bootstrap REPLY path. The orchestrator owns user-facing comm for
+    // sub-agent turns; the planner does not.
     return {
       success: true,
-      text: ackText,
-      // Terminate the planner loop after the first spawn fires.
-      //
-      // TASKS_SPAWN_AGENT is fire-and-forget: the action returns the
-      // instant the PTY starts, while the sub-agent's actual work runs
-      // asynchronously over the next 5-60+ seconds. The planner loop,
-      // not seeing a "completed" signal in the immediate result, calls
-      // the planner again and the planner re-emits another
-      // TASKS_SPAWN_AGENT for the same task. We've observed up to 5
-      // duplicate spawns per Discord message, which (a) burns through
-      // the 8-slot concurrent-session pool inside a single turn, (b)
-      // costs 5x more Cerebras tokens, and (c) wastes opencode CPU
-      // running the same task in parallel.
-      //
-      // `continueChain: false` is the planner-loop's terminal flag —
-      // setting it here makes the spawn act as a "the request has
-      // been dispatched, end the turn" signal. The orchestrator's
-      // separate task-event channel reports completion later when the
-      // sub-agent actually finishes (or fails). This matches how
-      // sendDraft / respondToMessage already mark themselves terminal.
+      text: "",
+      // Spawn is fire-and-forget: without a terminal flag the planner re-emits
+      // TASKS_SPAWN_AGENT (we've seen 5x duplicate spawns per Discord turn).
+      // Completion arrives later via the task-event channel.
       continueChain: false,
       data: {
         sessionId: session.sessionId,
@@ -708,6 +667,8 @@ async function runSpawnAgent(
         label,
         deferredUserReply: deferUserReply,
         suppressActionResultClipboard: true,
+        // Blank any same-turn hallucinated planner reply; the 🚀/✅/❌ flow owns user comm.
+        suppressPlannerReply: true,
       },
     };
   } catch (error) {
@@ -727,12 +688,25 @@ async function runSpawnAgent(
 
 async function runSend(
   runtime: IAgentRuntime,
-  _message: Memory,
+  message: Memory,
   state: State | undefined,
   params: Record<string, unknown>,
   content: Record<string, unknown>,
   callback: HandlerCallback | undefined,
 ): Promise<ActionResult> {
+  const access = await requireTaskAgentAccess(runtime, message, "interact");
+  if (!access.allowed) {
+    const reason = access.reason;
+    await emitTaskAudit(runtime, {
+      action: "send_agent",
+      outcome: "forbidden",
+      entityId: message.entityId,
+      reason,
+    });
+    if (callback) await callback({ text: reason });
+    return { success: false, error: "FORBIDDEN", text: reason };
+  }
+
   const service = getAcpService(runtime);
   if (!service) {
     await callbackText(callback, "ACP service is not available.");
@@ -760,6 +734,13 @@ async function runSend(
       );
       return errorResult("NO_SESSION");
     }
+
+    await emitTaskAudit(runtime, {
+      action: "send_agent",
+      outcome: "allowed",
+      entityId: message.entityId,
+      sessionId: target.session.id,
+    });
 
     if (keys) {
       await service.sendKeysToSession(target.session.id, keys);
@@ -848,12 +829,25 @@ function buildSubAgentCompletionFollowUp(
 
 async function runStopAgent(
   runtime: IAgentRuntime,
-  _message: Memory,
+  message: Memory,
   state: State | undefined,
   params: Record<string, unknown>,
   content: Record<string, unknown>,
   callback: HandlerCallback | undefined,
 ): Promise<ActionResult> {
+  const access = await requireTaskAgentAccess(runtime, message, "interact");
+  if (!access.allowed) {
+    const reason = access.reason;
+    await emitTaskAudit(runtime, {
+      action: "stop_agent",
+      outcome: "forbidden",
+      entityId: message.entityId,
+      reason,
+    });
+    if (callback) await callback({ text: reason });
+    return { success: false, error: "FORBIDDEN", text: reason };
+  }
+
   const service = getAcpService(runtime);
   if (!service) {
     await callbackText(callback, "ACP service is not available.");
@@ -865,18 +859,32 @@ async function runStopAgent(
     const sessions = await Promise.resolve(service.listSessions());
 
     if (all) {
+      await emitTaskAudit(runtime, {
+        action: "stop_agent",
+        outcome: "allowed",
+        entityId: message.entityId,
+        reason: `all=true (${sessions.length} sessions)`,
+      });
       await Promise.all(
         sessions.map((session) => service.stopSession(session.id)),
       );
-      if (state) state.codingSession = undefined;
-      if (state) state.codingSessions = [] as StateValue;
+      if (state)
+        (
+          state as {
+            codingSession?: unknown;
+            codingSessions?: unknown;
+          }
+        ).codingSession = undefined;
+      if (state) (state as { codingSessions?: unknown }).codingSessions = [];
       const text = `Stopped ${sessions.length} sessions`;
       await callbackText(callback, text);
       return { success: true, text, data: { stoppedCount: sessions.length } };
     }
 
     const requestedId =
-      pickString(params, content, "sessionId") ?? stateSessionId(state);
+      pickString(params, content, "sessionId") ??
+      (state as { codingSession?: { id?: string } } | undefined)?.codingSession
+        ?.id;
     const target = requestedId
       ? await Promise.resolve(service.getSession(requestedId))
       : newestSession(sessions);
@@ -891,9 +899,18 @@ async function runStopAgent(
       return { success: true, text: "No sessions to stop" };
     }
 
+    await emitTaskAudit(runtime, {
+      action: "stop_agent",
+      outcome: "allowed",
+      entityId: message.entityId,
+      sessionId: target.id,
+    });
     await service.stopSession(target.id);
-    if (stateSessionId(state) === target.id) {
-      if (state) state.codingSession = undefined;
+    if (
+      (state as { codingSession?: { id?: string } } | undefined)?.codingSession
+        ?.id === target.id
+    ) {
+      (state as { codingSession?: unknown }).codingSession = undefined;
     }
     await callbackText(callback, `Stopped task-agent session ${target.id}.`);
     return {
@@ -980,12 +997,25 @@ async function runListAgents(
 
 async function runCancel(
   runtime: IAgentRuntime,
-  _message: Memory,
+  message: Memory,
   state: State | undefined,
   params: Record<string, unknown>,
   content: Record<string, unknown>,
   callback: HandlerCallback | undefined,
 ): Promise<ActionResult> {
+  const access = await requireTaskAgentAccess(runtime, message, "interact");
+  if (!access.allowed) {
+    const reason = access.reason;
+    await emitTaskAudit(runtime, {
+      action: "cancel_agent",
+      outcome: "forbidden",
+      entityId: message.entityId,
+      reason,
+    });
+    if (callback) await callback({ text: reason });
+    return { success: false, error: "FORBIDDEN", text: reason };
+  }
+
   const service = getAcpService(runtime);
   if (!service) {
     await callbackText(callback, "ACP service is not available.");
@@ -996,11 +1026,19 @@ async function runCancel(
     const all = pickBoolean(params, content, "all") ?? false;
     const threadId = pickString(params, content, "threadId");
     const sessionId =
-      pickString(params, content, "sessionId") ?? stateSessionId(state);
+      pickString(params, content, "sessionId") ??
+      (state as { codingSession?: { id?: string } } | undefined)?.codingSession
+        ?.id;
     const search = pickString(params, content, "search")?.toLowerCase();
     const sessions = await Promise.resolve(service.listSessions());
 
     if (all) {
+      await emitTaskAudit(runtime, {
+        action: "cancel_agent",
+        outcome: "allowed",
+        entityId: message.entityId,
+        reason: `all=true (${sessions.length} sessions)`,
+      });
       const stoppedSessions: string[] = [];
       for (const session of sessions) {
         await (service.cancelSession?.(session.id) ??
@@ -1035,6 +1073,12 @@ async function runCancel(
       return errorResult(code);
     }
 
+    await emitTaskAudit(runtime, {
+      action: "cancel_agent",
+      outcome: "allowed",
+      entityId: message.entityId,
+      sessionId: target.id,
+    });
     await (service.cancelSession?.(target.id) ??
       service.stopSession(target.id));
     const id = threadId ?? target.id;
@@ -1080,127 +1124,6 @@ function inferMetric(text: string, value?: string): HistoryMetric {
   return "detail";
 }
 
-function _inferStatuses(
-  text: string,
-  rawStatuses?: string[],
-): string[] | undefined {
-  if (rawStatuses && rawStatuses.length > 0) {
-    return rawStatuses;
-  }
-  const statuses = new Set<string>();
-  if (/\bactive\b|\bright now\b|\bworking on right now\b/i.test(text)) {
-    statuses.add("active");
-  }
-  if (/\bblocked\b/i.test(text)) {
-    statuses.add("blocked");
-  }
-  if (/\binterrupted\b|\bpaused\b/i.test(text)) {
-    statuses.add("interrupted");
-  }
-  if (/\bdone\b|\bcompleted\b|\bfinished\b/i.test(text)) {
-    statuses.add("done");
-  }
-  if (/\bfailed\b|\berror\b/i.test(text)) {
-    statuses.add("failed");
-  }
-  return statuses.size > 0 ? Array.from(statuses) : undefined;
-}
-
-function _inferWindow(text: string, raw?: string): HistoryWindow | undefined {
-  const normalized = raw?.trim().toLowerCase();
-  if (
-    normalized === "active" ||
-    normalized === "today" ||
-    normalized === "yesterday" ||
-    normalized === "last_7_days" ||
-    normalized === "last_30_days"
-  ) {
-    return normalized;
-  }
-  if (/\bright now\b|\bcurrently\b|\bactive\b/i.test(text)) return "active";
-  if (/\byesterday\b/i.test(text)) return "yesterday";
-  if (/\blast week\b|\blast 7 days\b|\bin the last week\b/i.test(text)) {
-    return "last_7_days";
-  }
-  if (/\blast month\b|\blast 30 days\b/i.test(text)) return "last_30_days";
-  if (/\btoday\b/i.test(text)) return "today";
-  return undefined;
-}
-
-function _inferSearch(text: string, raw?: string): string | undefined {
-  if (raw?.trim()) return raw.trim();
-  const quoted =
-    text.match(/"([^"]{3,120})"/)?.[1] ?? text.match(/'([^']{3,120})'/)?.[1];
-  if (quoted) return quoted.trim();
-  const topical =
-    text.match(/\bworking on\s+(.+?)(?:[?.!,]|$)/i)?.[1] ??
-    text.match(
-      /\ball tasks where we were working on\s+(.+?)(?:[?.!,]|$)/i,
-    )?.[1];
-  return topical?.trim();
-}
-
-function _buildWindowFilters(window: HistoryWindow | undefined): {
-  latestActivityAfter?: number;
-  latestActivityBefore?: number;
-  label?: string;
-} {
-  const now = new Date();
-  if (window === "active") {
-    return { label: "active tasks right now" };
-  }
-  if (window === "today") {
-    const start = startOfDay(now);
-    const end = endOfDay(now);
-    return {
-      latestActivityAfter: start.getTime(),
-      latestActivityBefore: end.getTime(),
-      label: `${formatDate(start)} through ${formatDate(end)}`,
-    };
-  }
-  if (window === "yesterday") {
-    const start = startOfDay(new Date(now.getTime() - 24 * 60 * 60 * 1000));
-    const end = endOfDay(start);
-    return {
-      latestActivityAfter: start.getTime(),
-      latestActivityBefore: end.getTime(),
-      label: `${formatDate(start)} through ${formatDate(end)}`,
-    };
-  }
-  if (window === "last_7_days") {
-    const start = startOfDay(new Date(now.getTime() - 6 * 24 * 60 * 60 * 1000));
-    return {
-      latestActivityAfter: start.getTime(),
-      latestActivityBefore: now.getTime(),
-      label: `${formatDate(start)} through ${formatDate(now)}`,
-    };
-  }
-  if (window === "last_30_days") {
-    const start = startOfDay(
-      new Date(now.getTime() - 29 * 24 * 60 * 60 * 1000),
-    );
-    return {
-      latestActivityAfter: start.getTime(),
-      latestActivityBefore: now.getTime(),
-      label: `${formatDate(start)} through ${formatDate(now)}`,
-    };
-  }
-  return {};
-}
-
-function _renderThreadLine(entry: {
-  title: string;
-  status: string;
-  latestActivityAt?: number | null;
-  summary?: string;
-}): string {
-  const activity =
-    typeof entry.latestActivityAt === "number"
-      ? new Date(entry.latestActivityAt).toLocaleString("en-US")
-      : "unknown time";
-  return `- ${entry.title} [${entry.status}] (${activity})${entry.summary ? `: ${entry.summary}` : ""}`;
-}
-
 function failureResult(
   actionName: string,
   error: string,
@@ -1228,7 +1151,7 @@ async function runHistory(
 ): Promise<ActionResult> {
   const access = await requireTaskAgentAccess(runtime, message, "interact");
   if (!access.allowed) {
-    const reason = (access as { reason: string }).reason;
+    const reason = access.reason;
     if (callback) await callback({ text: reason });
     return failureResult("TASKS:history", "FORBIDDEN", reason, {
       reason: "access_denied",
@@ -1268,9 +1191,7 @@ async function runHistory(
       `Agent: ${session.agentType}`,
       `Workspace: ${session.workdir}`,
       `Latest activity: ${dateString(session.lastActivityAt)}`,
-    ]
-      .filter(Boolean)
-      .join("\n");
+    ].join("\n");
   } else {
     responseText = [
       `I found ${count} active ACP session${count === 1 ? "" : "s"}.`,
@@ -1331,7 +1252,7 @@ async function runControl(
 ): Promise<ActionResult> {
   const access = await requireTaskAgentAccess(runtime, message, "interact");
   if (!access.allowed) {
-    const reason = (access as { reason: string }).reason;
+    const reason = access.reason;
     if (callback) await callback({ text: reason });
     return failureResult("TASKS:control", "FORBIDDEN", reason, {
       reason: "access_denied",
@@ -1442,7 +1363,7 @@ async function runShare(
 ): Promise<ActionResult> {
   const access = await requireTaskAgentAccess(runtime, message, "interact");
   if (!access.allowed) {
-    const reason = (access as { reason: string }).reason;
+    const reason = access.reason;
     if (callback) await callback({ text: reason });
     return { success: false, error: "FORBIDDEN", text: reason };
   }
@@ -1494,7 +1415,7 @@ async function runProvisionWorkspace(
 ): Promise<ActionResult> {
   const access = await requireTaskAgentAccess(runtime, message, "create");
   if (!access.allowed) {
-    const reason = (access as { reason: string }).reason;
+    const reason = access.reason;
     if (callback) await callback({ text: reason });
     return { success: false, error: "FORBIDDEN", text: reason };
   }
@@ -1622,7 +1543,7 @@ async function runSubmitWorkspace(
 ): Promise<ActionResult> {
   const access = await requireTaskAgentAccess(runtime, message, "interact");
   if (!access.allowed) {
-    const reason = (access as { reason: string }).reason;
+    const reason = access.reason;
     if (callback) await callback({ text: reason });
     return { success: false, error: "FORBIDDEN", text: reason };
   }
@@ -2031,7 +1952,7 @@ async function runManageIssues(
 ): Promise<ActionResult> {
   const access = await requireTaskAgentAccess(runtime, message, "interact");
   if (!access.allowed) {
-    const reason = (access as { reason: string }).reason;
+    const reason = access.reason;
     if (callback) await callback({ text: reason });
     return { success: false, error: "FORBIDDEN", text: reason };
   }
@@ -2127,17 +2048,9 @@ async function runArchive(
     };
   }
 
-  try {
-    const msg = "Task thread archives are unavailable in ACP-only mode.";
-    await callbackText(callback, msg);
-    return { success: false, text: msg, error: "UNSUPPORTED_OPERATION" };
-  } catch (err) {
-    const errMsg = err instanceof Error ? err.message : String(err);
-    coreLogger.warn(`[TASKS:archive] failed: ${errMsg}`);
-    const out = `Failed to archive coding task ${taskId}: ${errMsg}`;
-    await callbackText(callback, out);
-    return { success: false, text: out, error: errMsg };
-  }
+  const msg = "Task thread archives are unavailable in ACP-only mode.";
+  await callbackText(callback, msg);
+  return { success: false, text: msg, error: "UNSUPPORTED_OPERATION" };
 }
 
 async function runReopen(
@@ -2161,24 +2074,16 @@ async function runReopen(
     };
   }
 
-  try {
-    const msg = "Task thread reopen is unavailable in ACP-only mode.";
-    await callbackText(callback, msg);
-    return { success: false, text: msg, error: "UNSUPPORTED_OPERATION" };
-  } catch (err) {
-    const errMsg = err instanceof Error ? err.message : String(err);
-    coreLogger.warn(`[TASKS:reopen] failed: ${errMsg}`);
-    const out = `Failed to reopen coding task ${taskId}: ${errMsg}`;
-    await callbackText(callback, out);
-    return { success: false, text: out, error: errMsg };
-  }
+  const msg = "Task thread reopen is unavailable in ACP-only mode.";
+  await callbackText(callback, msg);
+  return { success: false, text: msg, error: "UNSUPPORTED_OPERATION" };
 }
 
 // ── parent action ──────────────────────────────────────────────────────
 
 export const tasksAction: Action & {
   suppressPostActionContinuation: true;
-  suppressEarlyReply: true;
+  suppressEarlyReply: false;
 } = {
   name: "TASKS",
   contexts: ["tasks", "code", "automation", "agent_internal", "connectors"],
@@ -2299,12 +2204,12 @@ export const tasksAction: Action & {
   descriptionCompressed:
     "ACP coding sub-agent claude|codex|opencode: spawn|send|control|list|history",
   suppressPostActionContinuation: true,
-  // When the planner picks any TASKS_* subaction (spawn_agent, send, etc.),
-  // suppress the response-handler's draft reply: the action's own callback
-  // emits the canonical ack ("On it — spawning…") and the sub-agent's real
-  // answer comes back asynchronously via the router. Shipping the draft
-  // alongside the ack duplicates the bot's voice and confuses the user.
-  suppressEarlyReply: true,
+  // Let Stage-1's response-handler reply ship for TASKS_* turns. The action's
+  // own callback emits only a short ack ("On it."); Stage-1's localized
+  // `replyText` provides the user-visible acknowledgement. Suppressing the
+  // early reply here would leave the user with silence between request and
+  // the sub-agent's async result.
+  suppressEarlyReply: false,
   parameters: [
     {
       name: "action",
@@ -2619,40 +2524,38 @@ export const tasksAction: Action & {
     },
     {
       name: "metadata",
-      description:
-        "Additional metadata for action=create / action=spawn_agent.",
+      description: "Additional metadata for action=create.",
       required: false,
       schema: { type: "object" as const },
     },
-    {
-      name: "taskRoomId",
-      description:
-        "Optional task-owner swarm room id for action=create / action=spawn_agent.",
-      required: false,
-      schema: { type: "string" as const },
-    },
-    {
-      name: "worktreeRoomId",
-      description:
-        "Optional worktree coordination swarm room id for action=create / action=spawn_agent.",
-      required: false,
-      schema: { type: "string" as const },
-    },
   ],
   validate: async (runtime, message) => {
-    // Always allow when ACP service is available — action switch handles dispatch.
-    if (!getAcpService(runtime)) return false;
+    // Gate on ACP availability only. `hasService` is synchronous-safe so it
+    // doesn't depend on the lazy `getService` having warmed up yet. The
+    // LLM router (Stage-1 `candidateActionNames`) already infers intent
+    // from full conversational context, so we surface TASKS unconditionally
+    // and let per-subaction validation handle appropriateness — regex
+    // matching on message text is fragile across plurals, languages, and
+    // paraphrases.
+    // `hasService` is a required method on `IAgentRuntime` (see
+    // packages/core/src/types/runtime.ts) — no need to type-guard it.
+    const hasAcpReady =
+      runtime.hasService("ACP_SUBPROCESS_SERVICE") ||
+      runtime.hasService("ACP_SERVICE");
+    if (!hasAcpReady) return false;
     // Sub-agent task_complete events are routed back through the runtime as
-    // synthetic inbound messages. Most verified completions are handled by
-    // the response evaluator, but incomplete completions still need the TASKS
-    // surface so the parent can send a follow-up to the same session instead
-    // of asking the user to paste command output.
-    const content = message.content;
+    // synthetic inbound messages. The response evaluator handles most cases,
+    // but incomplete completions need the TASKS surface so the parent can
+    // send a follow-up to the same session instead of asking the user to
+    // paste command output.
+    const content = message.content as {
+      metadata?: unknown;
+      source?: unknown;
+    };
     if (content.source === "sub_agent") {
-      const rawMetadata = content.metadata;
       const metadata =
-        rawMetadata !== null && typeof rawMetadata === "object"
-          ? (rawMetadata as Record<string, unknown>)
+        content.metadata !== null && typeof content.metadata === "object"
+          ? (content.metadata as Record<string, unknown>)
           : undefined;
       return (
         metadata?.subAgent === true &&
@@ -2660,23 +2563,7 @@ export const tasksAction: Action & {
         typeof metadata.subAgentEvent === "string"
       );
     }
-    if (
-      hasExplicitPayload(message, [
-        "action",
-        "task",
-        "repo",
-        "workdir",
-        "agents",
-        "agentType",
-        "sessionId",
-        "threadId",
-        "taskId",
-      ])
-    )
-      return true;
-    const text = messageText(message);
-    if (looksLikePersonalLifeOpsTask(text)) return false;
-    return looksLikeTaskAgentRequest(text);
+    return true;
   },
   handler: async (
     runtime: IAgentRuntime,
@@ -2848,78 +2735,6 @@ export const tasksAction: Action & {
       {
         name: "{{name1}}",
         content: {
-          text: "Spawn a coding sub-agent to refactor the auth module.",
-          source: "chat",
-        },
-      },
-      {
-        name: "{{agentName}}",
-        content: {
-          text: "Spinning up a coding sub-agent for the auth refactor.",
-          actions: ["TASKS"],
-          thought:
-            "User asked to delegate to a sub-agent; TASKS action=spawn_agent routes through the ACP service with the configured adapter (claude / codex / opencode).",
-        },
-      },
-    ],
-    [
-      {
-        name: "{{name1}}",
-        content: {
-          text: "Delegate this to a sub-agent: build a small python CLI at /tmp/oc-todo with main.py + tests.py.",
-          source: "chat",
-        },
-      },
-      {
-        name: "{{agentName}}",
-        content: {
-          text: "Delegating the multi-file CLI build to a coding sub-agent.",
-          actions: ["TASKS"],
-          thought:
-            "Explicit delegation request → TASKS action=spawn_agent. Multi-file project work is exactly what sub-agent isolation is for; do NOT use inline FILE.write for delegated work.",
-        },
-      },
-    ],
-    [
-      {
-        name: "{{name1}}",
-        content: {
-          text: "fire up a coding agent to investigate why the migration is hanging",
-          source: "chat",
-        },
-      },
-      {
-        name: "{{agentName}}",
-        content: {
-          text: "Spawning a coding sub-agent to investigate the migration.",
-          actions: ["TASKS"],
-          thought:
-            "Investigation / debugging tasks benefit from sub-agent process isolation (own workspace, own tool loop). TASKS action=spawn_agent.",
-        },
-      },
-    ],
-    [
-      {
-        name: "{{name1}}",
-        content: {
-          text: "Spawn a coding agent to refactor the auth module.",
-          source: "chat",
-        },
-      },
-      {
-        name: "{{agentName}}",
-        content: {
-          text: "Creating the task and dispatching a coding sub-agent.",
-          actions: ["TASKS"],
-          thought:
-            "User asked to delegate a coding job; TASKS action=create with kind=coding routes to the orchestrator's spawn path.",
-        },
-      },
-    ],
-    [
-      {
-        name: "{{name1}}",
-        content: {
           text: "What's the status of my running tasks?",
           source: "chat",
         },
@@ -2967,6 +2782,56 @@ export const tasksAction: Action & {
           actions: ["TASKS"],
           thought:
             "Worktree inspection maps to TASKS action=share with the explicit task id.",
+        },
+      },
+    ],
+    // ── status questions about a running sub-agent ────────────────────
+    // Casual progress checks ("tu en es où ?", "ça avance ?", "you done
+    // yet?") MUST route to TASKS so the planner reads the live
+    // ACTIVE_SUB_AGENTS provider. Answering from chat memory is a
+    // hallucination — the truth lives in the provider.
+    [
+      {
+        name: "{{name1}}",
+        content: { text: "tu en es où ?", source: "chat" },
+      },
+      {
+        name: "{{agentName}}",
+        content: {
+          text: "Checking sub-agent status.",
+          actions: ["TASKS"],
+          thought:
+            "Status question about an in-flight sub-agent → TASKS so the planner sees ACTIVE_SUB_AGENTS (live narration + recent terminations). Do NOT reply from chat memory.",
+        },
+      },
+    ],
+    [
+      {
+        name: "{{name1}}",
+        content: { text: "tu as fini ?", source: "chat" },
+      },
+      {
+        name: "{{agentName}}",
+        content: {
+          text: "Looking up the sub-agent's status.",
+          actions: ["TASKS"],
+          thought:
+            "Completion check — only the provider knows whether the session is still running, succeeded, or errored. Escalate to the planner.",
+        },
+      },
+    ],
+    [
+      {
+        name: "{{name1}}",
+        content: { text: "ça avance ?", source: "chat" },
+      },
+      {
+        name: "{{agentName}}",
+        content: {
+          text: "Pulling progress from the sub-agent.",
+          actions: ["TASKS"],
+          thought:
+            "Progress question → planner reads the provider tail to surface the last narration line and any tool just called.",
         },
       },
     ],

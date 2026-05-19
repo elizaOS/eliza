@@ -1,0 +1,7 @@
+{
+  "kernels": {
+    "verifiedBackends": {
+      "cpu": { "status": "fail", "atCommit": "old", "report": "evals/old.json" }
+    }
+  }
+}

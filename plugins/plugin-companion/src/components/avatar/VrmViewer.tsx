@@ -267,7 +267,7 @@ export function VrmViewer(props: VrmViewerProps) {
 
   const syncDebugRegistry = useEffectEvent(() => {
     const meta = import.meta as ImportMeta & { env?: { DEV?: boolean } };
-    if (!meta.env.DEV) return;
+    if (meta.env?.DEV !== true) return;
     if (typeof window === "undefined") return;
     const engine = engineRef.current;
     const registry = window.__ELIZA_VRM_ENGINES__ ?? [];

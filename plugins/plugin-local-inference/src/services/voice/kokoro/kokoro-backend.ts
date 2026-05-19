@@ -36,7 +36,7 @@ import type {
 import { resolveKokoroVoiceOrDefault } from "./voices";
 
 export interface KokoroTtsBackendDeps extends KokoroBackendOptions {
-	/** The concrete model runner. Wire `KokoroOnnxRuntime` in production
+	/** The concrete model runner. Wire `KokoroGgufRuntime` in production
 	 *  and `KokoroMockRuntime` in tests. */
 	runtime: KokoroRuntime;
 }

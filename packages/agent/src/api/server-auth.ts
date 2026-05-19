@@ -9,6 +9,7 @@ import path from "node:path";
 import type { AgentRuntime } from "@elizaos/core";
 import { logger, sendJsonError } from "@elizaos/core";
 import {
+  isCloudProvisionedContainer,
   resolveApiSecurityConfig,
   resolveApiToken,
   setApiToken,
@@ -17,10 +18,6 @@ import {
 } from "@elizaos/shared";
 import { BLOCKED_ENV_KEYS } from "./plugin-discovery-helpers.ts";
 import type { ConversationMeta } from "./server-helpers.ts";
-
-const { isCloudProvisionedContainer } = await import(
-  "@elizaos/plugin-elizacloud"
-);
 
 // ---------------------------------------------------------------------------
 // Auth token extraction

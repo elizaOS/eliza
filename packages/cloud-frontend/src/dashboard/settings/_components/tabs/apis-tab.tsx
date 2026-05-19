@@ -202,7 +202,7 @@ export function ApisTab({ user: _user }: ApisTabProps) {
           <div className="flex flex-col md:flex-row items-start md:justify-between gap-4 w-full">
             <div className="flex flex-col gap-2 max-w-[850px]">
               <div className="flex items-center gap-2">
-                <div className="w-2 h-2 rounded-full bg-[#FF5800]" />
+                <div className="w-2 h-2 rounded-full bg-[var(--brand-orange)]" />
                 <h3 className="text-base font-mono text-[#e1e1e1] uppercase">
                   API keys
                 </h3>
@@ -252,7 +252,7 @@ export function ApisTab({ user: _user }: ApisTabProps) {
           <div className="w-full">
             {operationState.loading ? (
               <div className="flex items-center justify-center p-8 border border-brand-surface">
-                <Loader2 className="h-6 w-6 animate-spin text-[#FF5800]" />
+                <Loader2 className="h-6 w-6 animate-spin text-[var(--brand-orange)]" />
               </div>
             ) : apiKeys.length === 0 ? (
               <div className="flex flex-col items-center justify-center p-8 border border-brand-surface gap-2">
@@ -275,7 +275,7 @@ export function ApisTab({ user: _user }: ApisTabProps) {
                           <h4 className="text-base font-mono font-semibold text-white">
                             {apiKey.name}
                           </h4>
-                          <span className="px-2 py-0.5 bg-[rgba(255,88,0,0.25)] border border-[#FF5800]/40 text-[#FF5800] text-xs font-mono uppercase flex-shrink-0">
+                          <span className="px-2 py-0.5 bg-[rgba(255,88,0,0.25)] border border-[var(--brand-orange)]/40 text-[var(--brand-orange)] text-xs font-mono uppercase flex-shrink-0">
                             {apiKey.permissions.length > 0
                               ? apiKey.permissions.join(", ")
                               : "All"}
@@ -408,7 +408,7 @@ export function ApisTab({ user: _user }: ApisTabProps) {
                               <h4 className="text-base font-mono font-semibold text-white">
                                 {apiKey.name}
                               </h4>
-                              <span className="px-2 py-0.5 bg-[rgba(255,88,0,0.25)] border border-[#FF5800]/40 text-[#FF5800] text-xs font-mono uppercase">
+                              <span className="px-2 py-0.5 bg-[rgba(255,88,0,0.25)] border border-[var(--brand-orange)]/40 text-[var(--brand-orange)] text-xs font-mono uppercase">
                                 {apiKey.permissions.length > 0
                                   ? apiKey.permissions.join(", ")
                                   : "All"}
@@ -595,8 +595,8 @@ export function ApisTab({ user: _user }: ApisTabProps) {
             </DialogTitle>
           </DialogHeader>
           <div className="space-y-4">
-            <div className="bg-[rgba(255,88,0,0.1)] border border-[#FF5800] p-4">
-              <p className="text-sm text-[#FF5800] font-mono">
+            <div className="bg-[rgba(255,88,0,0.1)] border border-[var(--brand-orange)] p-4">
+              <p className="text-sm text-[var(--brand-orange)] font-mono">
                 ⚠️ This is the only time you will see this key. Save it securely.
               </p>
             </div>

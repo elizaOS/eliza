@@ -1409,8 +1409,7 @@ async function maybeBackfillTrajectoryFromUseModelLogs(
         return {
           callId: `${traj.trajectoryId}-log-${index + 1}`,
           timestamp:
-            toFiniteNumber(body.timestamp) ??
-            Date.parse(row.createdAt ?? ""),
+            toFiniteNumber(body.timestamp) ?? Date.parse(row.createdAt ?? ""),
           model,
           systemPrompt,
           userPrompt,
@@ -1419,8 +1418,10 @@ async function maybeBackfillTrajectoryFromUseModelLogs(
           maxTokens: toFiniteNumber(body.maxTokens) ?? 0,
           purpose: "chat",
           actionType: "runtime.useModel",
-          latencyMs:
-            Math.max(0, Math.round(toFiniteNumber(body.executionTime) ?? 0)),
+          latencyMs: Math.max(
+            0,
+            Math.round(toFiniteNumber(body.executionTime) ?? 0),
+          ),
           promptTokens: estimateTokenCount(systemPrompt + userPrompt),
           completionTokens: estimateTokenCount(response),
         };

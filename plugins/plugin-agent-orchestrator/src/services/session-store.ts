@@ -1,12 +1,13 @@
 import { mkdir, open, readFile, rename, rm, writeFile } from "node:fs/promises";
 import { homedir } from "node:os";
 import { dirname, join } from "node:path";
-import type {
-  SessionFilter,
-  SessionInfo,
-  SessionStatus,
-  SessionStore,
-  SessionStoreRuntime,
+import {
+  type SessionFilter,
+  type SessionInfo,
+  type SessionStatus,
+  type SessionStore,
+  type SessionStoreRuntime,
+  TERMINAL_SESSION_STATUSES,
 } from "./types.js";
 
 export type SessionStoreBackend = "runtime-db" | "file" | "memory";
@@ -291,6 +292,14 @@ export class InMemorySessionStore implements SessionStore {
     status: SessionStatus,
     error?: string,
   ): Promise<void> {
+    const current = this.sessions.get(id);
+    if (
+      current &&
+      TERMINAL_SESSION_STATUSES.has(current.status) &&
+      !TERMINAL_SESSION_STATUSES.has(status)
+    ) {
+      return;
+    }
     const patch: Partial<SessionInfo> = { status };
     if (status === "errored") patch.lastError = error;
     await this.update(id, patch);
@@ -536,6 +545,14 @@ export class RuntimeDbSessionStore implements SessionStore {
     status: SessionStatus,
     error?: string,
   ): Promise<void> {
+    const current = await this.get(id);
+    if (
+      current &&
+      TERMINAL_SESSION_STATUSES.has(current.status) &&
+      !TERMINAL_SESSION_STATUSES.has(status)
+    ) {
+      return;
+    }
     const patch: Partial<SessionInfo> = { status };
     if (status === "errored") patch.lastError = error;
     await this.update(id, patch);

@@ -1,0 +1,25 @@
+:name: openphone-hello-tier2
+:description: Boot Tier 2 Linux+busybox on the hello_chip_cpu_variant Renode model.
+
+# Paths (overridable via -e on the command line)
+$bin?=@external/opensbi/build/platform/openphone/firmware/fw_payload.elf
+$kernel?=@external/linux/arch/riscv/boot/Image
+$initrd?=@build/initramfs/openphone_tier2.cpio.gz
+$dtb?=@build/dts/openphone_hello_cpu.dtb
+
+mach create "openphone-hello"
+machine LoadPlatformDescription @sim/renode/eliza_e1.repl
+
+showAnalyzer sysbus.uart0
+
+# Preferred path: OpenSBI fw_payload (SBI + kernel embedded), entry @ 0x80000000.
+# Falls back to raw Image + initrd if fw_payload is missing — wire the addresses
+# documented in docs/sim/renode-tier2-recipe.md.
+sysbus LoadELF $bin
+
+# DTB pointed at by a1 per RISC-V boot protocol; kernel/initrd handled by SBI payload.
+# If your fw_payload does not embed a DTB, uncomment:
+#  sysbus LoadFdt $dtb 0x82200000 "console=ttyS0,115200 root=/dev/ram0 rdinit=/sbin/init earlycon=ns16550a,mmio,0x10001000"
+#  cpu SetRegister 11 0x82200000
+
+start

@@ -39,6 +39,19 @@ export const appPhonePlugin: Plugin = {
       visibleInManager: true,
       desktopTabEnabled: true,
     },
+    {
+      id: "phone",
+      label: "Phone TUI",
+      description: "Terminal Android dialer and recent-calls log",
+      icon: "Phone",
+      path: "/phone/tui",
+      viewType: "tui",
+      bundlePath: "dist/views/bundle.js",
+      componentExport: "PhoneTuiView",
+      tags: ["phone", "calls", "android", "terminal"],
+      visibleInManager: true,
+      desktopTabEnabled: true,
+    },
   ],
   app: {
     navTabs: [

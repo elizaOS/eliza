@@ -46,11 +46,7 @@
       }
     ],
     "membership": "gold",
-    "reservations": [
-      "NO6JO3",
-      "AIXC49",
-      "HKEG34"
-    ]
+    "reservations": ["NO6JO3", "AIXC49", "HKEG34"]
   },
   "olivia_gonzalez_2305": {
     "name": {
@@ -93,10 +89,6 @@
       }
     ],
     "membership": "regular",
-    "reservations": [
-      "Z7GOZK",
-      "K67C4W",
-      "THY2DG"
-    ]
+    "reservations": ["Z7GOZK", "K67C4W", "THY2DG"]
   }
 }

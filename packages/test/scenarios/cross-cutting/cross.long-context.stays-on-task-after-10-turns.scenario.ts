@@ -5,7 +5,7 @@
  * docs/action-catalog.md — it is a simile on LIFE — so we accept LIFE.
  */
 
-import { scenario } from "@elizaos/scenario-schema";
+import { scenario } from "@elizaos/scenario-runner/schema";
 
 const LIST_TASK_ACTIONS = ["LIFE", "LIST_TASKS"];
 

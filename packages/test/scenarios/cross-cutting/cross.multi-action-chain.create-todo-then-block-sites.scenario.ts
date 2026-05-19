@@ -7,7 +7,7 @@
  * Turn 2: WEBSITE_BLOCK fires for the requested hostnames.
  */
 
-import { scenario } from "@elizaos/scenario-schema";
+import { scenario } from "@elizaos/scenario-runner/schema";
 
 const TODO_CREATE_ACTIONS = ["CREATE_TASK", "LIFE"];
 

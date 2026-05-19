@@ -1,0 +1,67 @@
+manifest: e1_demo_fpga_bitstream_evidence
+schema: docs/manufacturing/schemas/artifact-manifest.schema.yaml
+status: draft
+release_gate: board_fabrication_release
+policy:
+  preflight: Validate the FPGA release contract and expected evidence paths without requiring a bitstream.
+  release: Require board revision, concrete LPF assignments, bitstream outputs, timing, route, pack logs, and tool versions.
+assumptions:
+  demo_board: Radiona/FER ULX3S 85F
+  fpga_part: LFE5U-85F-6BG381C
+  nextpnr_device: 85k
+  package: CABGA381
+  clock: 25 MHz ULX3S onboard oscillator
+artifact_groups:
+  target_contract:
+    owner: fpga_closure
+    status: draft
+    artifacts:
+      - name: fpga_target_contract
+        status: draft
+        globs:
+          - board/fpga/e1_demo_fpga.yaml
+      - name: pin_constraints
+        status: draft
+        globs:
+          - board/fpga/constraints/e1_demo_ulx3s.lpf
+  bitstream_release:
+    owner: fpga_closure
+    status: draft
+    cli_commands:
+      synth: TOP=e1_fpga_smoke_top make -C board/fpga synth
+      place_route: TOP=e1_fpga_smoke_top make -C board/fpga pnr
+      pack: TOP=e1_fpga_smoke_top make -C board/fpga pack
+      tool_versions: yosys -V && nextpnr-ecp5 --version && ecppack --version && openFPGALoader --version
+      program_sram: openFPGALoader -b ulx3s board/fpga/build/e1_demo_fpga.bit
+    artifacts:
+      - name: bitstream
+        status: draft
+        globs:
+          - board/fpga/build/e1_demo_smoke/**/*.bit
+      - name: nextpnr_timing_report
+        status: draft
+        clean_regex: "(?i)(timing\\s+(pass(?:ed)?|met)|max\\s+frequency|critical\\s+path)"
+        fail_regex: "(?i)(timing\\s+(fail(?:ed)?|not\\s+met)|negative\\s+slack|error)"
+        globs:
+          - board/fpga/reports/e1_demo_smoke/**/*timing*.txt
+      - name: nextpnr_route_report
+        status: draft
+        clean_regex: "(?i)(routing\\s+(pass(?:ed)?|complete)|checksum|device\\s+utilization)"
+        fail_regex: "(?i)(routing\\s+failed|unrouted|error)"
+        globs:
+          - board/fpga/reports/e1_demo_smoke/**/*nextpnr*.log
+      - name: ecppack_transcript
+        status: draft
+        clean_regex: "(?i)(ecppack|bitstream|checksum)"
+        fail_regex: "(?i)(error|fail(?:ed)?)"
+        globs:
+          - board/fpga/reports/e1_demo_smoke/**/*ecppack*.log
+      - name: fpga_tool_versions
+        status: draft
+        globs:
+          - board/fpga/reports/tool_versions.txt
+      - name: full_chip_fpga_closure_blocker
+        status: draft
+        reason: "e1_chip_top synthesis expanded past 100k LUT-equivalent logic and was stopped after local ABC9/Yosys exceeded a useful MacBook closure loop; partitioning or a smaller FPGA/emulation target is required before bitstream release."
+        globs:
+          - board/fpga/reports/full_chip_blocker/e1_chip_top_synthesis_blocker.txt

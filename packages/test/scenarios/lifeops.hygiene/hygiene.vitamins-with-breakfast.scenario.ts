@@ -2,7 +2,7 @@
  * Hygiene: vitamins with breakfast — daily morning window habit.
  */
 
-import { scenario } from "@elizaos/scenario-schema";
+import { scenario } from "@elizaos/scenario-runner/schema";
 
 export default scenario({
   id: "hygiene.vitamins-with-breakfast",

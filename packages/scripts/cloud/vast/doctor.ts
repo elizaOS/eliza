@@ -31,18 +31,31 @@ function validateManifest(file: string): void {
   const manifest = readVastManifest(file).manifest;
   const prefix = `${file}:`;
   const runtime =
-    manifest.runtime ?? (manifest.onstart_script === "onstart-vllm.sh" ? "vllm" : "llama");
+    manifest.runtime ??
+    (manifest.onstart_script === "onstart-vllm.sh" ? "vllm" : "llama");
 
   assert(manifest.label, `${prefix} missing label`);
-  assert(manifest.model || manifest.model_repo, `${prefix} missing model/model_repo`);
-  assert(manifest.model_alias?.startsWith("vast/"), `${prefix} model_alias must be a vast/* id`);
+  assert(
+    manifest.model || manifest.model_repo,
+    `${prefix} missing model/model_repo`,
+  );
+  assert(
+    manifest.model_alias?.startsWith("vast/"),
+    `${prefix} model_alias must be a vast/* id`,
+  );
   assert(manifest.image, `${prefix} missing image`);
-  assert(Number.isInteger(manifest.port) && manifest.port > 0, `${prefix} invalid port`);
+  assert(
+    Number.isInteger(manifest.port) && manifest.port > 0,
+    `${prefix} invalid port`,
+  );
   assert(
     Number.isInteger(manifest.max_model_len) && manifest.max_model_len > 0,
     `${prefix} invalid max_model_len`,
   );
-  assert(manifest.vast_template_env?.MODEL_REPO, `${prefix} missing vast_template_env.MODEL_REPO`);
+  assert(
+    manifest.vast_template_env?.MODEL_REPO,
+    `${prefix} missing vast_template_env.MODEL_REPO`,
+  );
   assert(
     manifest.vast_template_env?.MODEL_ALIAS,
     `${prefix} missing vast_template_env.MODEL_ALIAS`,
@@ -50,14 +63,24 @@ function validateManifest(file: string): void {
 
   if (runtime === "vllm") {
     assert(manifest.served_model_name, `${prefix} missing served_model_name`);
-    assert(manifest.image?.startsWith("vllm/"), `${prefix} vLLM manifest should use a vllm image`);
-    assert(manifest.onstart_script === "onstart-vllm.sh", `${prefix} must use onstart-vllm.sh`);
     assert(
-      Number.isInteger(manifest.tensor_parallel_size) && manifest.tensor_parallel_size > 0,
+      manifest.image?.startsWith("vllm/"),
+      `${prefix} vLLM manifest should use a vllm image`,
+    );
+    assert(
+      manifest.onstart_script === "onstart-vllm.sh",
+      `${prefix} must use onstart-vllm.sh`,
+    );
+    assert(
+      Number.isInteger(manifest.tensor_parallel_size) &&
+        manifest.tensor_parallel_size > 0,
       `${prefix} invalid tensor_parallel_size`,
     );
   } else {
-    assert(manifest.runtime === "llama", `${prefix} llama manifest must set runtime=llama`);
+    assert(
+      manifest.runtime === "llama",
+      `${prefix} llama manifest must set runtime=llama`,
+    );
     assert(
       manifest.onstart_script === "onstart.sh",
       `${prefix} llama manifest must use onstart.sh`,
@@ -68,7 +91,8 @@ function validateManifest(file: string): void {
       `${prefix} llama manifest missing vast_template_env.MODEL_FILE`,
     );
     assert(
-      manifest.vast_template_env?.LLAMA_CONTEXT === String(manifest.max_model_len),
+      manifest.vast_template_env?.LLAMA_CONTEXT ===
+        String(manifest.max_model_len),
       `${prefix} LLAMA_CONTEXT must match max_model_len`,
     );
     assert(
@@ -88,7 +112,8 @@ function validateManifest(file: string): void {
       `${prefix} enable_turboquant requires a known TurboQuant kv_cache_dtype`,
     );
     assert(
-      manifest.turboquant_preset === "quality" || manifest.turboquant_preset === "4bit",
+      manifest.turboquant_preset === "quality" ||
+        manifest.turboquant_preset === "4bit",
       `${prefix} turboquant_preset should be quality or 4bit`,
     );
     if (manifest.turboquant_preset === "quality") {
@@ -106,34 +131,57 @@ function validateManifest(file: string): void {
   validateManifestSearch(file, manifest);
 }
 
-function validateManifestSearch(file: string, manifest: VastServeManifest): void {
+function validateManifestSearch(
+  file: string,
+  manifest: VastServeManifest,
+): void {
   const prefix = `${file}:`;
   assert(manifest.search_params, `${prefix} missing search_params`);
-  assert(manifest.search_params?.gpu_name, `${prefix} missing search_params.gpu_name`);
-  assert(manifest.search_params?.gpu_ram, `${prefix} missing search_params.gpu_ram`);
-  assert(manifest.search_params?.disk_space, `${prefix} missing search_params.disk_space`);
-  assert(manifestGpuRamGb(manifest) > 0, `${prefix} invalid workergroup gpu_ram`);
+  assert(
+    manifest.search_params?.gpu_name,
+    `${prefix} missing search_params.gpu_name`,
+  );
+  assert(
+    manifest.search_params?.gpu_ram,
+    `${prefix} missing search_params.gpu_ram`,
+  );
+  assert(
+    manifest.search_params?.disk_space,
+    `${prefix} missing search_params.disk_space`,
+  );
+  assert(
+    manifestGpuRamGb(manifest) > 0,
+    `${prefix} invalid workergroup gpu_ram`,
+  );
   assert(
     manifestSearchParamsToQuery(manifest).includes("gpu_ram"),
     `${prefix} search_params did not render gpu_ram query`,
   );
   if ((manifest.tensor_parallel_size ?? 1) > 1) {
-    assert(manifest.search_params?.num_gpus, `${prefix} multi-GPU manifest must set num_gpus`);
+    assert(
+      manifest.search_params?.num_gpus,
+      `${prefix} multi-GPU manifest must set num_gpus`,
+    );
   }
 }
 
 function validateRuntimeScripts(): void {
-  const vllmOnstart = readFileSync(join(VAST_PYWORKER_DIR, "onstart-vllm.sh"), "utf8");
+  const vllmOnstart = readFileSync(
+    join(VAST_PYWORKER_DIR, "onstart-vllm.sh"),
+    "utf8",
+  );
   assert(
     vllmOnstart.includes("VLLM_QJL_BENCHMARK_GATE=passed"),
     "onstart-vllm.sh must benchmark-gate experimental QJL",
   );
   assert(
-    vllmOnstart.includes("turboquant_k8v4") && vllmOnstart.includes("turboquant_4bit_nc"),
+    vllmOnstart.includes("turboquant_k8v4") &&
+      vllmOnstart.includes("turboquant_4bit_nc"),
     "onstart-vllm.sh must expose quality and 4bit TurboQuant presets",
   );
   assert(
-    vllmOnstart.includes("--speculative-config") && vllmOnstart.includes('"method": "dflash"'),
+    vllmOnstart.includes("--speculative-config") &&
+      vllmOnstart.includes('"method": "dflash"'),
     "onstart-vllm.sh must expose vLLM speculative/DFlash config",
   );
   assert(
@@ -159,7 +207,10 @@ function validateRuntimeScripts(): void {
     "upsert-template.ts must allow manifest-selected runtime scripts",
   );
 
-  const llamaOnstart = readFileSync(join(VAST_PYWORKER_DIR, "onstart.sh"), "utf8");
+  const llamaOnstart = readFileSync(
+    join(VAST_PYWORKER_DIR, "onstart.sh"),
+    "utf8",
+  );
   assert(
     llamaOnstart.includes("LLAMA_FLASH_ATTN") &&
       llamaOnstart.includes("LLAMA_JINJA") &&
@@ -167,13 +218,18 @@ function validateRuntimeScripts(): void {
     "onstart.sh must expose explicit llama.cpp long-context flags",
   );
 
-  const provision = readFileSync(join(__dirname, "provision-endpoint.ts"), "utf8");
+  const provision = readFileSync(
+    join(__dirname, "provision-endpoint.ts"),
+    "utf8",
+  );
   assert(
-    provision.includes("/api/v0/endptjobs/") && provision.includes("/api/v0/workergroups/"),
+    provision.includes("/api/v0/endptjobs/") &&
+      provision.includes("/api/v0/workergroups/"),
     "provision-endpoint.ts must use Vast endpoint jobs + workergroups APIs",
   );
   assert(
-    provision.includes("manifestSearchParamsToQuery") && provision.includes("manifestGpuRamGb"),
+    provision.includes("manifestSearchParamsToQuery") &&
+      provision.includes("manifestGpuRamGb"),
     "provision-endpoint.ts must build hardware requirements from manifests",
   );
 }

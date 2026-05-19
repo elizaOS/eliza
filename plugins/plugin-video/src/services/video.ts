@@ -622,8 +622,7 @@ export class VideoService extends IVideoService {
     outputFile: string,
   ): Promise<string> {
     elizaLogger.log("Downloading audio");
-    outputFile =
-      outputFile;
+    outputFile = outputFile;
 
     try {
       if (url.endsWith(".mp4") || url.includes(".mp4?")) {

@@ -28,7 +28,12 @@ import { fileURLToPath } from "node:url";
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const TRAINING_ROOT = resolve(HERE, "..", "..");
-const DEFAULT_BUNDLES_ROOT = join(homedir(), ".eliza", "local-inference", "models");
+const DEFAULT_BUNDLES_ROOT = join(
+  homedir(),
+  ".eliza",
+  "local-inference",
+  "models",
+);
 
 function parseArgs(argv) {
   const out = {

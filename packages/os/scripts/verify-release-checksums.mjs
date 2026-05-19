@@ -14,7 +14,9 @@ import {
 
 const args = parseArgs(process.argv.slice(2));
 const manifestPath = args.manifest || defaultManifestPath;
-const artifactRoot = path.resolve(args["artifact-root"] || path.dirname(manifestPath));
+const artifactRoot = path.resolve(
+  args["artifact-root"] || path.dirname(manifestPath),
+);
 const checksumsPath = path.resolve(
   args.checksums || path.join(path.dirname(manifestPath), "SHA256SUMS"),
 );
@@ -28,7 +30,9 @@ if (!validation.ok) {
   process.exit(1);
 }
 
-const checksumRecords = parseChecksumFile(await readFile(checksumsPath, "utf8"));
+const checksumRecords = parseChecksumFile(
+  await readFile(checksumsPath, "utf8"),
+);
 const checksumByFilename = new Map(
   checksumRecords.map((record) => [record.filename, record.sha256]),
 );
@@ -36,7 +40,10 @@ const checksumByFilename = new Map(
 const failures = [];
 let verified = 0;
 for (const artifact of manifest.artifacts) {
-  if (artifact.kind === "checksum-manifest" || artifact.status === "withdrawn") {
+  if (
+    artifact.kind === "checksum-manifest" ||
+    artifact.status === "withdrawn"
+  ) {
     continue;
   }
 
@@ -54,7 +61,9 @@ for (const artifact of manifest.artifacts) {
 
   const actual = await sha256File(filePath);
   if (actual !== expected) {
-    failures.push(`${artifact.filename}: checksum mismatch expected=${expected} actual=${actual}`);
+    failures.push(
+      `${artifact.filename}: checksum mismatch expected=${expected} actual=${actual}`,
+    );
     continue;
   }
   verified += 1;

@@ -7,7 +7,6 @@
 
 import type { OverlayApp } from "@elizaos/ui";
 import { registerOverlayApp } from "@elizaos/ui";
-import { VincentAppView } from "./VincentAppView";
 
 export const VINCENT_APP_NAME = "@elizaos/plugin-vincent";
 
@@ -17,7 +16,8 @@ export const vincentApp: OverlayApp = {
   description: "Connect Vincent to trade on Hyperliquid and Polymarket",
   category: "trading",
   icon: null,
-  Component: VincentAppView,
+  loader: () =>
+    import("./VincentAppView").then((m) => ({ default: m.VincentAppView })),
 };
 
 // Self-register at import time

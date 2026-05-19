@@ -33,10 +33,7 @@ test("parseAndroidTarget accepts the wired fused android targets", () => {
 });
 
 test("parseAndroidTarget accepts the wired non-fused android targets", () => {
-  for (const target of [
-    "android-arm64-cpu",
-    "android-x86_64-cpu",
-  ]) {
+  for (const target of ["android-arm64-cpu", "android-x86_64-cpu"]) {
     const parsed = parseAndroidTarget(target);
     assert.equal(parsed.fused, false);
     assert.equal(parsed.target, target);
@@ -151,19 +148,25 @@ test("buildSpeculativeShimForAbi emits the Android DFlash shim artifact", () => 
   const root = fs.mkdtempSync(path.join(os.tmpdir(), "eliza-spec-shim-"));
   const cacheDir = path.join(root, "cache");
   const abiAssetDir = path.join(root, "assets", "arm64-v8a");
+  const llamaSourceDir = path.join(root, "llama.cpp");
   fs.mkdirSync(abiAssetDir, { recursive: true });
+  for (const dir of ["include", "common", "ggml/include", "src"]) {
+    fs.mkdirSync(path.join(llamaSourceDir, dir), { recursive: true });
+  }
   const source = path.join(root, "speculative.cpp");
   fs.writeFileSync(
     source,
     'extern "C" int eliza_speculative_supported(){return 0;}\n',
   );
   fs.writeFileSync(path.join(abiAssetDir, "libllama.so"), "fake");
+  fs.writeFileSync(path.join(abiAssetDir, "libllama-common.so"), "fake");
 
   const calls = [];
   const out = buildSpeculativeShimForAbi({
     cacheDir,
     abi: "arm64-v8a",
     abiAssetDir,
+    llamaSourceDir,
     shimSourcePath: source,
     zigBin: "definitely-missing-zig-for-test",
     log: () => {},
@@ -177,8 +180,17 @@ test("buildSpeculativeShimForAbi emits the Android DFlash shim artifact", () => 
   assert.equal(path.basename(out), "libeliza-llama-speculative-shim.so");
   assert.ok(fs.existsSync(out), "speculative shim artifact was not created");
   assert.ok(
+    calls[0].includes(`-I${path.join(llamaSourceDir, "include")}`),
+    "llama include dir missing from compile args",
+  );
+  assert.ok(
+    calls[0].includes("-lllama-common"),
+    "speculative shim should link libllama-common when staged",
+  );
+  assert.equal(
     calls[0].includes("-DELIZA_SHIM_HEADERLESS=1"),
-    "headerless support gate missing from compile args",
+    false,
+    "speculative shim should compile against llama.cpp headers",
   );
 });
 

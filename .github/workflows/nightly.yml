@@ -217,7 +217,10 @@ jobs:
           git config user.email "github-actions[bot]@users.noreply.github.com"
 
       - name: Publish @elizaos/* packages with nightly dist-tag
-        run: bunx lerna publish from-package --dist-tag nightly --force-publish --yes --no-verify-access
+        # --no-sort bypasses a lerna 9.0.7 topological queue bug triggered by
+        # the @elizaos/agent <-> @elizaos/plugin-capacitor-bridge cycle, which
+        # otherwise fails with "Not all tasks were run". See release.yaml.
+        run: bunx lerna publish from-package --dist-tag nightly --force-publish --yes --no-verify-access --no-sort
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
 

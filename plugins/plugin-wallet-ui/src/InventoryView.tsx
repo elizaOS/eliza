@@ -180,6 +180,117 @@ function formatUsd(value: number): string {
   return usdFormatter.format(value);
 }
 
+function parseUsd(value: string | number | null | undefined): number {
+  if (typeof value === "number") return Number.isFinite(value) ? value : 0;
+  if (typeof value !== "string") return 0;
+  const parsed = Number.parseFloat(value);
+  return Number.isFinite(parsed) ? parsed : 0;
+}
+
+function summarizeWalletBalances(
+  walletBalances: WalletBalancesResponse | null,
+): {
+  totalUsd: number;
+  tokens: Array<{
+    chain: string;
+    symbol: string;
+    name: string;
+    balance: string;
+    valueUsd: number;
+    isNative: boolean;
+  }>;
+  chainErrors: Array<{ chain: string; error: string }>;
+} {
+  const tokens: Array<{
+    chain: string;
+    symbol: string;
+    name: string;
+    balance: string;
+    valueUsd: number;
+    isNative: boolean;
+  }> = [];
+  const chainErrors: Array<{ chain: string; error: string }> = [];
+
+  for (const chain of walletBalances?.evm?.chains ?? []) {
+    const nativeValueUsd = parseUsd(chain.nativeValueUsd);
+    tokens.push({
+      chain: chain.chain,
+      symbol: chain.nativeSymbol,
+      name: `${chain.chain} native`,
+      balance: chain.nativeBalance,
+      valueUsd: nativeValueUsd,
+      isNative: true,
+    });
+    if (chain.error) {
+      chainErrors.push({ chain: chain.chain, error: chain.error });
+      continue;
+    }
+    for (const token of chain.tokens) {
+      tokens.push({
+        chain: chain.chain,
+        symbol: token.symbol,
+        name: token.name,
+        balance: token.balance,
+        valueUsd: parseUsd(token.valueUsd),
+        isNative: false,
+      });
+    }
+  }
+
+  if (walletBalances?.solana) {
+    tokens.push({
+      chain: "Solana",
+      symbol: "SOL",
+      name: "Solana native",
+      balance: walletBalances.solana.solBalance,
+      valueUsd: parseUsd(walletBalances.solana.solValueUsd),
+      isNative: true,
+    });
+    for (const token of walletBalances.solana.tokens) {
+      tokens.push({
+        chain: "Solana",
+        symbol: token.symbol,
+        name: token.name,
+        balance: token.balance,
+        valueUsd: parseUsd(token.valueUsd),
+        isNative: false,
+      });
+    }
+  }
+
+  tokens.sort((a, b) => b.valueUsd - a.valueUsd);
+  return {
+    totalUsd: tokens.reduce((sum, token) => sum + token.valueUsd, 0),
+    tokens,
+    chainErrors,
+  };
+}
+
+async function loadWalletTuiState() {
+  const [
+    walletAddresses,
+    walletConfig,
+    walletBalances,
+    walletNfts,
+    marketOverview,
+  ] = await Promise.all([
+    client.getWalletAddresses().catch(() => null),
+    client.getWalletConfig().catch(() => null),
+    client.getWalletBalances().catch(() => null),
+    client.getWalletNfts().catch(() => null),
+    client.getWalletMarketOverview().catch(() => null),
+  ]);
+  const summary = summarizeWalletBalances(walletBalances);
+  return {
+    walletAddresses,
+    walletConfig,
+    walletBalances,
+    walletNfts,
+    marketOverview,
+    summary,
+  };
+}
+
 function formatCompactUsd(value: number): string {
   if (!Number.isFinite(value)) return compactDollarFormatter.format(0);
   return compactDollarFormatter.format(value);
@@ -2414,4 +2525,272 @@ export function InventoryView() {
       </div>
     </PageLayout>
   );
+}
+
+export function InventoryTuiView() {
+  const [walletState, setWalletState] = useState<Awaited<
+    ReturnType<typeof loadWalletTuiState>
+  > | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [lastAction, setLastAction] = useState("boot");
+  const [error, setError] = useState<string | null>(null);
+
+  const refresh = useCallback(async () => {
+    setLoading(true);
+    setError(null);
+    try {
+      const next = await loadWalletTuiState();
+      setWalletState(next);
+      setLastAction("refresh");
+    } catch (cause) {
+      setWalletState(null);
+      setError(cause instanceof Error ? cause.message : String(cause));
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    void refresh();
+  }, [refresh]);
+
+  const addresses = resolveWalletAddresses({
+    walletAddresses: walletState?.walletAddresses ?? null,
+    walletConfig: walletState?.walletConfig ?? null,
+  });
+  const tokens = walletState?.summary.tokens ?? [];
+  const nfts = [
+    ...(walletState?.walletNfts?.evm ?? []).flatMap((collection) =>
+      collection.nfts.map((nft) => ({
+        chain: collection.chain,
+        name: nft.name,
+        collectionName: nft.collectionName,
+      })),
+    ),
+    ...(walletState?.walletNfts?.solana?.nfts ?? []).map((nft) => ({
+      chain: "Solana",
+      name: nft.name,
+      collectionName: nft.collectionName,
+    })),
+  ];
+  const state = {
+    viewType: "tui",
+    viewId: "wallet",
+    totalUsd: walletState?.summary.totalUsd ?? 0,
+    tokenCount: tokens.length,
+    nftCount: nfts.length,
+    evmAddress: addresses.evmAddress,
+    solanaAddress: addresses.solanaAddress,
+    chainErrorCount: walletState?.summary.chainErrors.length ?? 0,
+    marketMoverCount: walletState?.marketOverview?.movers.length ?? 0,
+    loading,
+    lastAction,
+    error,
+  };
+
+  return (
+    <div
+      data-view-state={JSON.stringify(state)}
+      style={{
+        minHeight: "100vh",
+        background: "#020617",
+        color: "#cbd5e1",
+        fontFamily:
+          'ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace',
+        padding: 20,
+      }}
+    >
+      <div style={{ color: "#7dd3fc", marginBottom: 4 }}>
+        elizaos://wallet --type=tui
+      </div>
+      <div style={{ color: "#475569", marginBottom: 16 }}>
+        {loading ? "loading" : formatUsd(walletState?.summary.totalUsd ?? 0)} |{" "}
+        {tokens.length} tokens | {nfts.length} nfts | {lastAction}
+      </div>
+
+      <div
+        style={{
+          display: "grid",
+          gridTemplateColumns: "minmax(280px, 1fr) minmax(280px, 1fr)",
+          gap: 16,
+        }}
+      >
+        <section
+          aria-label="Wallet inventory"
+          style={{
+            border: "1px solid rgba(125,211,252,0.3)",
+            borderRadius: 6,
+            padding: 16,
+            minHeight: 420,
+          }}
+        >
+          <div
+            style={{
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "space-between",
+              marginBottom: 10,
+            }}
+          >
+            <strong style={{ color: "#e2e8f0" }}>inventory</strong>
+            <button
+              type="button"
+              onClick={() => void refresh()}
+              disabled={loading}
+              style={{
+                background: "transparent",
+                color: "#a7f3d0",
+                border: "1px solid rgba(167,243,208,0.45)",
+                borderRadius: 4,
+                padding: "4px 8px",
+                cursor: loading ? "not-allowed" : "pointer",
+                fontFamily: "inherit",
+              }}
+            >
+              refresh
+            </button>
+          </div>
+          {error && <div style={{ color: "#fca5a5" }}>{error}</div>}
+          <div style={{ marginBottom: 12 }}>
+            <div>
+              <span style={{ color: "#64748b" }}>evm</span>{" "}
+              {addresses.evmAddress ?? "not configured"}
+            </div>
+            <div>
+              <span style={{ color: "#64748b" }}>sol</span>{" "}
+              {addresses.solanaAddress ?? "not configured"}
+            </div>
+          </div>
+          {tokens.slice(0, 16).map((token, index) => (
+            <div
+              key={`${token.chain}:${token.symbol}:${index}`}
+              style={{
+                display: "grid",
+                gridTemplateColumns: "4ch minmax(8ch, 1fr) 10ch",
+                gap: 10,
+                borderTop:
+                  index === 0 ? "none" : "1px solid rgba(125,211,252,0.18)",
+                padding: "8px 0",
+              }}
+            >
+              <span style={{ color: "#64748b" }}>
+                {String(index + 1).padStart(2, "0")}
+              </span>
+              <span style={{ color: "#e2e8f0" }}>
+                {token.symbol}{" "}
+                <span style={{ color: "#64748b" }}>{token.chain}</span>
+              </span>
+              <span style={{ color: "#a7f3d0", textAlign: "right" }}>
+                {formatUsd(token.valueUsd)}
+              </span>
+              <span style={{ gridColumn: "2 / 4", color: "#94a3b8" }}>
+                {formatBalance(token.balance)} {token.name}
+              </span>
+            </div>
+          ))}
+        </section>
+
+        <section
+          aria-label="Wallet market and NFTs"
+          style={{
+            border: "1px solid rgba(125,211,252,0.3)",
+            borderRadius: 6,
+            padding: 16,
+            minHeight: 420,
+          }}
+        >
+          <strong style={{ color: "#e2e8f0" }}>market</strong>
+          <div style={{ color: "#64748b", margin: "6px 0 14px" }}>
+            commands: state | trading-profile | market-overview
+          </div>
+          {(walletState?.marketOverview?.movers ?? [])
+            .slice(0, 8)
+            .map((mover) => (
+              <div key={mover.id} style={{ padding: "4px 0" }}>
+                <span style={{ color: "#a7f3d0" }}>{mover.symbol}</span>{" "}
+                <span style={{ color: "#94a3b8" }}>
+                  {formatUsd(mover.priceUsd)}
+                </span>{" "}
+                {mover.change24hPct}%
+              </div>
+            ))}
+
+          <div style={{ color: "#a7f3d0", margin: "18px 0 8px" }}>nfts</div>
+          {nfts.slice(0, 10).map((nft, index) => (
+            <div
+              key={`${nft.chain}:${nft.name}:${index}`}
+              style={{ padding: "4px 0" }}
+            >
+              <span style={{ color: "#64748b" }}>{nft.chain}</span> {nft.name}
+              {nft.collectionName ? (
+                <span style={{ color: "#94a3b8" }}>
+                  {" "}
+                  / {nft.collectionName}
+                </span>
+              ) : null}
+            </div>
+          ))}
+          {walletState?.summary.chainErrors.map((chainError) => (
+            <div
+              key={chainError.chain}
+              style={{ color: "#fca5a5", padding: "4px 0" }}
+            >
+              {chainError.chain}: {chainError.error}
+            </div>
+          ))}
+        </section>
+      </div>
+    </div>
+  );
+}
+
+export async function interact(
+  capability: string,
+  params?: Record<string, unknown>,
+): Promise<unknown> {
+  if (capability === "terminal-wallet-state") {
+    const state = await loadWalletTuiState();
+    const addresses = resolveWalletAddresses({
+      walletAddresses: state.walletAddresses,
+      walletConfig: state.walletConfig,
+    });
+    return {
+      viewType: "tui",
+      addresses,
+      totalUsd: state.summary.totalUsd,
+      tokenCount: state.summary.tokens.length,
+      nftCount:
+        (state.walletNfts?.evm?.reduce(
+          (sum, collection) => sum + collection.nfts.length,
+          0,
+        ) ?? 0) + (state.walletNfts?.solana?.nfts.length ?? 0),
+      chainErrors: state.summary.chainErrors,
+      tokens: state.summary.tokens.slice(
+        0,
+        typeof params?.limit === "number" ? params.limit : 20,
+      ),
+    };
+  }
+
+  if (capability === "terminal-wallet-market-overview") {
+    return {
+      viewType: "tui",
+      overview: await client.getWalletMarketOverview(),
+    };
+  }
+
+  if (capability === "terminal-wallet-trading-profile") {
+    const window =
+      params?.window === "24h" ||
+      params?.window === "7d" ||
+      params?.window === "30d"
+        ? params.window
+        : "30d";
+    return {
+      viewType: "tui",
+      profile: await client.getWalletTradingProfile(window),
+    };
+  }
+
+  throw new Error(`Unsupported capability "${capability}"`);
 }

@@ -86,7 +86,7 @@ describe("assertRequiredBundledPackagesLanded", () => {
 
   it("lists ALL missing packages, not just the first one", () => {
     writePackageJson("@elizaos/core");
-    // plugin-sql, plugin-local-embedding, app-companion all missing
+    // plugin-sql, plugin-local-inference, app-companion all missing
 
     try {
       assertRequiredBundledPackagesLanded(

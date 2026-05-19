@@ -1,7 +1,7 @@
 // face-detector-ggml.ts — EXPERIMENTAL.
 //
 // bun:ffi binding for the BlazeFace head exposed by the standalone
-// `packages/native-plugins/face-cpp/` library. This is the ggml-backed
+// `packages/native/plugins/face-cpp/` library. This is the ggml-backed
 // replacement for `face-detector-mediapipe.ts` (ONNX, deprecated). It
 // exposes the same surface (`MediaPipeFaceConfig`, `MediaPipeFaceDetection`,
 // `BlazeFaceGgmlDetector` modeled on `MediaPipeFaceDetector`) so existing
@@ -15,7 +15,7 @@
 // Until those land, every public method falls through to a clear error —
 // there is no silent fallback to a different backend.
 //
-// See `packages/native-plugins/face-cpp/AGENTS.md` for the port plan.
+// See `packages/native/plugins/face-cpp/AGENTS.md` for the port plan.
 
 import { promises as fs } from "node:fs";
 import * as path from "node:path";
@@ -319,7 +319,7 @@ export class BlazeFaceGgmlDetector {
     this.bindings = await loadBindings();
     if (!this.bindings) {
       throw new Error(
-        `${MODULE_TAG} face-cpp library unavailable; build packages/native-plugins/face-cpp first.`,
+        `${MODULE_TAG} face-cpp library unavailable; build packages/native/plugins/face-cpp first.`,
       );
     }
     const ggufPath = defaultDetWeightsPath();

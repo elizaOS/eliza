@@ -652,5 +652,23 @@ export const todoAction: Action = {
         },
       },
     ],
+    [
+      {
+        name: "{{name1}}",
+        content: {
+          text: "rappelle-moi de relire l'audit demain",
+          source: "chat",
+        },
+      },
+      {
+        name: "{{agentName}}",
+        content: {
+          text: "Saved. I'll remind you tomorrow about the audit re-read.",
+          actions: ["TODO"],
+          thought:
+            "Casual French reminder phrasing maps to TODO action=create. Plugin examples must cover non-English idiom so the few-shot extends past the literal 'Add X to my todo list' pattern.",
+        },
+      },
+    ],
   ],
 };

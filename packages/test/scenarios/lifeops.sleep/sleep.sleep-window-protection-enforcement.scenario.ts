@@ -4,7 +4,10 @@
  * the scheduling action until after wake-up.
  */
 
-import { type ScenarioContext, scenario } from "@elizaos/scenario-schema";
+import {
+  type ScenarioContext,
+  scenario,
+} from "@elizaos/scenario-runner/schema";
 import { seedMeetingPreferences } from "../_helpers/lifeops-seeds.ts";
 
 export default scenario({

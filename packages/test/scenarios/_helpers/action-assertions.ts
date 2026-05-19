@@ -8,7 +8,7 @@ import type {
   ScenarioCheckResult,
   ScenarioContext,
   ScenarioTurnExecution,
-} from "@elizaos/scenario-schema";
+} from "@elizaos/scenario-runner/schema";
 import {
   actionMatchesScenarioExpectation,
   actionsAreScenarioEquivalent,

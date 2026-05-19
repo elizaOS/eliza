@@ -606,3 +606,65 @@ void* eliza_llama_sampler_init_prefill_plan(const uint8_t* plan_bytes, size_t pl
     memcpy(s->raw_bytes, plan_bytes, plan_size);
     return llama_sampler_init(&prefill_plan_sampler_i, s);
 }
+
+// ── vision: mmproj-driven image describe (OPT-IN, mtmd ABI) ──────────────────
+//
+// Gated by `-DELIZA_ENABLE_VISION=1` at shim compile time. The build script
+// flips this when `ELIZA_ENABLE_VISION=1` is set in the build env, AND
+// adds `-I${srcDir}/tools/mtmd` + `-lmtmd` so the symbols below resolve.
+//
+// llama.cpp HEAD consolidated the historical `examples/llava/{llava.h,clip.h}`
+// path into a single `tools/mtmd/mtmd.h` surface. The wrappers below target
+// that ABI and assume `libmtmd.<ext>` is staged next to libllama so the
+// runtime loader can resolve it via the shim's rpath.
+
+#ifdef ELIZA_ENABLE_VISION
+#include "mtmd.h"
+
+void* eliza_mtmd_init(const char* mmproj_path, void* text_model, bool use_gpu, int n_threads) {
+    if (!mmproj_path || !text_model) return NULL;
+    struct mtmd_context_params p = mtmd_context_params_default();
+    p.use_gpu = use_gpu;
+    p.n_threads = n_threads;
+    p.print_timings = false;
+    return (void*)mtmd_init_from_file(mmproj_path, (const struct llama_model*)text_model, p);
+}
+void eliza_mtmd_free(void* ctx) { if (ctx) mtmd_free((mtmd_context*)ctx); }
+
+void* eliza_mtmd_bitmap_init_rgb(uint32_t nx, uint32_t ny, const uint8_t* rgb) {
+    return (!rgb) ? NULL : (void*)mtmd_bitmap_init(nx, ny, rgb);
+}
+void eliza_mtmd_bitmap_free(void* bm) { if (bm) mtmd_bitmap_free((mtmd_bitmap*)bm); }
+
+void* eliza_mtmd_input_chunks_init(void) { return (void*)mtmd_input_chunks_init(); }
+void  eliza_mtmd_input_chunks_free(void* c) { if (c) mtmd_input_chunks_free((mtmd_input_chunks*)c); }
+
+int32_t eliza_mtmd_tokenize(void* ctx, void* out_chunks,
+                            const char* text, bool add_special, bool parse_special,
+                            void* const* bitmaps, size_t n_bitmaps) {
+    if (!ctx || !out_chunks || !text) return -1;
+    struct mtmd_input_text t = { text, add_special, parse_special };
+    return mtmd_tokenize((mtmd_context*)ctx, (mtmd_input_chunks*)out_chunks,
+                         &t, (const mtmd_bitmap**)bitmaps, n_bitmaps);
+}
+
+size_t eliza_mtmd_input_chunks_size(void* c) { return mtmd_input_chunks_size((const mtmd_input_chunks*)c); }
+void*  eliza_mtmd_input_chunks_get(void* c, size_t i) {
+    return (void*)mtmd_input_chunks_get((const mtmd_input_chunks*)c, i);
+}
+int32_t eliza_mtmd_input_chunk_type(void* ch) {
+    return (int32_t)mtmd_input_chunk_get_type((const mtmd_input_chunk*)ch);
+}
+size_t eliza_mtmd_input_chunk_n_tokens(void* ch) {
+    return mtmd_input_chunk_get_n_tokens((const mtmd_input_chunk*)ch);
+}
+
+int32_t eliza_mtmd_encode_chunk(void* ctx, void* chunk) {
+    if (!ctx || !chunk) return -1;
+    return mtmd_encode_chunk((mtmd_context*)ctx, (const mtmd_input_chunk*)chunk);
+}
+
+const float* eliza_mtmd_output_embd(void* ctx) {
+    return ctx ? mtmd_get_output_embd((mtmd_context*)ctx) : NULL;
+}
+#endif  // ELIZA_ENABLE_VISION

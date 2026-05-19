@@ -33,6 +33,14 @@
  */
 
 import { findCatalogModel } from "./catalog";
+// NOTE: `import type` is erased at runtime — backend.ts and dflash-server.ts
+// can reference each other's *types* without creating a runtime circular.
+// dflash-server.ts already imports types from here (`LocalInferenceBackend`,
+// `BackendPlan`, etc); this is the symmetric type-only edge.
+import type {
+	DflashGenerateResult,
+	DflashRuntimeLoadConfig,
+} from "./dflash-server";
 import type { StructuredGenerateParams } from "./structured-output";
 import type { CatalogModel, LocalRuntimeKernel } from "./types";
 import type { VerifierStreamEvent } from "./voice/types";
@@ -172,6 +180,96 @@ export interface LocalInferenceBackend {
 	embed?(args: EmbedArgs): Promise<EmbedResult>;
 	hasLoadedModel(): boolean;
 	currentModelPath(): string | null;
+
+	// === Optional methods — backends that don't implement them are surfaced
+	// === via `dispatcher.X?.()` calls in `engine.ts`, with safe fallback
+	// === values for query methods and actionable throws for required ops.
+	// ===
+	// === These exist so engine.ts can drive every llama-server-specific
+	// === feature through the dispatcher instead of importing the
+	// === `dflashLlamaServer` singleton directly. Eventual deletion of
+	// === `dflash-server.ts` (the file) requires (a) every engine call site
+	// === to use these dispatcher methods and (b) a replacement
+	// === implementation of each method on the FFI backend. See
+	// === `plugins/plugin-local-inference/FFI_BACKEND_WIREUP_PLAN.md`.
+
+	/**
+	 * Usage-instrumented variant of `generate`. Returns Anthropic-shape
+	 * usage block + per-turn DFlash speculative stats. Required on the
+	 * llama-server backend; FFI backends will need parity before any
+	 * caller switches to FFI for slot-aware generation.
+	 */
+	generateWithUsage?(
+		args: GenerateArgs & { slotId?: number },
+	): Promise<DflashGenerateResult>;
+
+	/** Vision describe via mmproj. Requires an mmproj-loaded backend. */
+	describeImage?(args: {
+		bytes: Uint8Array;
+		mimeType?: string;
+		prompt?: string;
+		maxTokens?: number;
+		temperature?: number;
+		signal?: AbortSignal;
+	}): Promise<{
+		text: string;
+		projectorMs?: number;
+		decodeMs?: number;
+	}>;
+
+	/** Persist a slot's KV cache to disk under the conversation directory. */
+	persistConversationKv?(
+		conversationId: string,
+		slotId: number,
+	): Promise<boolean>;
+
+	/** Restore a slot's KV cache from disk into the running backend. */
+	restoreConversationKv?(
+		conversationId: string,
+		slotId: number,
+	): Promise<boolean>;
+
+	/**
+	 * Pre-decode `promptPrefix` into the named slot/cache key so the next
+	 * `generate` against the same key skips re-prefill. Returns false when
+	 * no warmup happened (already cached, no model loaded, etc).
+	 */
+	prewarmConversation?(
+		promptPrefix: string,
+		opts: { slotId: number; cacheKey: string },
+	): Promise<boolean>;
+
+	/**
+	 * Resize the backend's parallel slot pool. llama-server-specific —
+	 * the FFI runner has a single-slot lifecycle today. Returns true on
+	 * a real restart, false on no-op (target ≤ current, etc).
+	 */
+	resizeParallel?(target: number): Promise<boolean>;
+
+	/**
+	 * Eviction-style restart that drops the DFlash drafter (`-md`) and
+	 * frees its memory. Returns true when a restart happened.
+	 */
+	restartWithoutDrafter?(): Promise<boolean>;
+
+	/** Active parallel slot count. Default `1` on backends without pooling. */
+	parallelSlots?(): number;
+
+	/** True when speculative decoding is wired against a loaded drafter. */
+	drafterEnabled?(): boolean;
+
+	/** Absolute path to the loaded drafter GGUF, or null. */
+	loadedDrafterModelPath?(): string | null;
+
+	/** Absolute path to the loaded mmproj (vision) GGUF, or null. */
+	currentMmprojPath?(): string | null;
+
+	/**
+	 * Snapshot of the backend's current load configuration (ctx, cache
+	 * types, parallel, binary path). Used by engine introspection +
+	 * /api/local-inference/active.
+	 */
+	currentRuntimeLoadConfig?(): DflashRuntimeLoadConfig | null;
 }
 
 export type BackendOverride = "auto" | "node-llama-cpp" | "llama-server";
@@ -419,23 +517,21 @@ export class BackendDispatcher implements LocalInferenceBackend {
 			Record<string, boolean>
 		> | null,
 		/**
-		 * Optional in-process FFI streaming backend that replaces the
-		 * subprocess `llamaServer` when `probeFfiActive` returns `true`.
-		 * Both must be supplied to enable the FFI route; when either is
-		 * omitted the dispatcher's behavior is identical to before.
-		 *
-		 * Production wiring is staged — `engine.ts` does NOT pass these
-		 * yet. The class scaffolding lives in `ffi-streaming-backend.ts`
-		 * and the architectural prerequisites are documented in
-		 * `plugins/plugin-local-inference/FFI_BACKEND_WIREUP_PLAN.md`.
+		 * In-process FFI streaming backend (production: the desktop
+		 * libllama+shim adapter via bun:ffi — see
+		 * `services/desktop-ffi-backend-runtime.ts`). Replaces the
+		 * subprocess `llamaServer` whenever `probeFfiActive()` returns
+		 * `true`. Both must be supplied; when either is omitted the
+		 * dispatcher routes every `decideBackend() === "llama-server"`
+		 * load through the subprocess fallback unchanged.
 		 */
 		private readonly ffiStreaming?: LocalInferenceBackend,
 		/**
 		 * Companion probe to `ffiStreaming`. Called inside `load()` when
 		 * `decideBackend()` returns `"llama-server"` — `true` routes the
 		 * load through the FFI backend, `false` keeps the subprocess path.
-		 * Honors the `ELIZA_INFERENCE_BACKEND` env var via
-		 * `readBackendEnvOverride()` at the caller level.
+		 * The engine's probe checks dylib disk presence and honors
+		 * `ELIZA_INFERENCE_BACKEND=http` as the explicit opt-out.
 		 */
 		private readonly probeFfiActive?: () => boolean,
 	) {}
@@ -499,31 +595,11 @@ export class BackendDispatcher implements LocalInferenceBackend {
 		}
 		const ffiStreaming = this.ffiStreaming;
 
-		// Fail loudly when the user opted into FFI via env var but no FFI
-		// backend was wired in (engine.ts hasn't passed `ffiStreaming` +
-		// `probeFfiActive` yet). Silent fallthrough to the subprocess
-		// would make the env var look like a no-op; an explicit throw
-		// surfaces the unfinished wiring and points at the deprecation /
-		// plan docs.
-		if (
-			decision.backend === "llama-server" &&
-			readBackendOverride() === "auto" &&
-			process.env.ELIZA_INFERENCE_BACKEND?.trim().toLowerCase() === "ffi" &&
-			(this.ffiStreaming === undefined || this.probeFfiActive === undefined)
-		) {
-			throw new Error(
-				"[local-inference] ELIZA_INFERENCE_BACKEND=ffi was requested, " +
-					"but the in-process FFI streaming backend is not yet wired into " +
-					"BackendDispatcher (engine.ts does not pass `ffiStreaming` / " +
-					"`probeFfiActive` to the constructor). The FfiStreamingBackend " +
-					"class scaffolding exists in services/ffi-streaming-backend.ts — " +
-					"see plugins/plugin-local-inference/FFI_BACKEND_WIREUP_PLAN.md " +
-					"Step B for the desktop adapter that needs to be built. " +
-					"Unset ELIZA_INFERENCE_BACKEND or set it to 'http' to use the " +
-					"subprocess llama-server path.",
-			);
-		}
-
+		// FFI is the default desktop path. When the dispatcher routes to
+		// `llama-server` AND a wired FFI backend's probe says go, we
+		// route through it; otherwise the subprocess fallback runs.
+		// `ELIZA_INFERENCE_BACKEND=http` is the explicit opt-out (probe
+		// returns false). No "ffi" opt-in flag — it's the default.
 		const wantsFfi =
 			decision.backend === "llama-server" &&
 			ffiStreaming !== undefined &&
@@ -568,5 +644,107 @@ export class BackendDispatcher implements LocalInferenceBackend {
 			);
 		}
 		return this.active.embed(args);
+	}
+
+	// === Forwarders for the optional methods on LocalInferenceBackend.
+	// === Required ops (generate / describe / persist / restore / prewarm /
+	// === resize / restart) throw an actionable error when the active
+	// === backend doesn't implement them, pointing at the FFI parity gap.
+	// === Query getters return safe defaults that match the engine's
+	// === existing guard expectations.
+
+	async generateWithUsage(
+		args: GenerateArgs & { slotId?: number },
+	): Promise<DflashGenerateResult> {
+		this.ensureLoaded();
+		if (!this.active?.generateWithUsage) {
+			throw this.notSupported("generateWithUsage");
+		}
+		return this.active?.generateWithUsage(args);
+	}
+
+	async describeImage(
+		args: Parameters<NonNullable<LocalInferenceBackend["describeImage"]>>[0],
+	): ReturnType<NonNullable<LocalInferenceBackend["describeImage"]>> {
+		this.ensureLoaded();
+		if (!this.active?.describeImage) {
+			throw this.notSupported(
+				"describeImage",
+				"vision describe requires an mmproj-loaded llama-server. Load an Eliza-1 bundle, or wait for FFI mmproj parity.",
+			);
+		}
+		return this.active?.describeImage(args);
+	}
+
+	async persistConversationKv(
+		conversationId: string,
+		slotId: number,
+	): Promise<boolean> {
+		this.ensureLoaded();
+		if (!this.active?.persistConversationKv) return false;
+		return this.active?.persistConversationKv(conversationId, slotId);
+	}
+
+	async restoreConversationKv(
+		conversationId: string,
+		slotId: number,
+	): Promise<boolean> {
+		this.ensureLoaded();
+		if (!this.active?.restoreConversationKv) return false;
+		return this.active?.restoreConversationKv(conversationId, slotId);
+	}
+
+	async prewarmConversation(
+		promptPrefix: string,
+		opts: { slotId: number; cacheKey: string },
+	): Promise<boolean> {
+		this.ensureLoaded();
+		if (!this.active?.prewarmConversation) return false;
+		return this.active?.prewarmConversation(promptPrefix, opts);
+	}
+
+	async resizeParallel(target: number): Promise<boolean> {
+		this.ensureLoaded();
+		if (!this.active?.resizeParallel) return false;
+		return this.active?.resizeParallel(target);
+	}
+
+	async restartWithoutDrafter(): Promise<boolean> {
+		this.ensureLoaded();
+		if (!this.active?.restartWithoutDrafter) return false;
+		return this.active?.restartWithoutDrafter();
+	}
+
+	parallelSlots(): number {
+		return this.active?.parallelSlots?.() ?? 1;
+	}
+
+	drafterEnabled(): boolean {
+		return this.active?.drafterEnabled?.() ?? false;
+	}
+
+	loadedDrafterModelPath(): string | null {
+		return this.active?.loadedDrafterModelPath?.() ?? null;
+	}
+
+	currentMmprojPath(): string | null {
+		return this.active?.currentMmprojPath?.() ?? null;
+	}
+
+	currentRuntimeLoadConfig(): DflashRuntimeLoadConfig | null {
+		return this.active?.currentRuntimeLoadConfig?.() ?? null;
+	}
+
+	private ensureLoaded(): void {
+		if (!this.active) {
+			throw new Error(
+				"[local-inference] No backend loaded. Call load() first.",
+			);
+		}
+	}
+
+	private notSupported(method: string, detail?: string): Error {
+		const base = `[local-inference] Active backend (${this.active?.id ?? "<none>"}) does not implement ${method}.`;
+		return new Error(detail ? `${base} ${detail}` : base);
 	}
 }

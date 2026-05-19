@@ -24,6 +24,11 @@ export const COMMON_SHORTCUTS: ShortcutDescriptor[] = [
     description: "Show keyboard shortcuts",
     scope: "global",
   },
+  {
+    key: "/",
+    description: "Focus chat composer",
+    scope: "global",
+  },
   { key: "r", ctrl: true, description: "Restart agent", scope: "global" },
   { key: " ", description: "Pause/Resume agent", scope: "global" },
   {

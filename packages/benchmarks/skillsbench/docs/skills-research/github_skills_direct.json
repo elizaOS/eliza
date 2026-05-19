@@ -20,9 +20,7 @@
       "description": "very good whiteboard infinite canvas SDK",
       "language": "TypeScript",
       "skill_count": 1,
-      "skill_paths": [
-        ".claude/skills/write-issue/SKILL.md"
-      ],
+      "skill_paths": [".claude/skills/write-issue/SKILL.md"],
       "url": "https://github.com/tldraw/tldraw"
     },
     {
@@ -31,9 +29,7 @@
       "description": "Payload is the open-source, fullstack Next.js framework, giving you instant backend superpowers. Get a full TypeScript backend and admin panel instantly. Use Payload as a headless CMS or for building powerful applications.",
       "language": "TypeScript",
       "skill_count": 1,
-      "skill_paths": [
-        "tools/claude-plugin/skills/payload/SKILL.md"
-      ],
+      "skill_paths": ["tools/claude-plugin/skills/payload/SKILL.md"],
       "url": "https://github.com/payloadcms/payload"
     },
     {
@@ -42,9 +38,7 @@
       "description": "Public repository for Agent Skills",
       "language": "Python",
       "skill_count": 1,
-      "skill_paths": [
-        "skills/skill-creator/SKILL.md"
-      ],
+      "skill_paths": ["skills/skill-creator/SKILL.md"],
       "url": "https://github.com/anthropics/skills"
     },
     {
@@ -66,9 +60,7 @@
       "description": "\ud83d\udce6 Repomix is a powerful tool that packs your entire repository into a single, AI-friendly file. Perfect for when you need to feed your codebase to Large Language Models (LLMs) or other AI tools like Claude, ChatGPT, DeepSeek, Perplexity, Gemini, Gemma, Llama, Grok, and more.",
       "language": "TypeScript",
       "skill_count": 1,
-      "skill_paths": [
-        ".claude/skills/lint-fixer/SKILL.md"
-      ],
+      "skill_paths": [".claude/skills/lint-fixer/SKILL.md"],
       "url": "https://github.com/yamadashy/repomix"
     },
     {
@@ -105,9 +97,7 @@
       "description": "A single API for all your integrations.",
       "language": "TypeScript",
       "skill_count": 1,
-      "skill_paths": [
-        ".claude/skills/creating-skills-skill/SKILL.md"
-      ],
+      "skill_paths": [".claude/skills/creating-skills-skill/SKILL.md"],
       "url": "https://github.com/NangoHQ/nango"
     },
     {
@@ -134,9 +124,7 @@
       "description": "ZenML \ud83d\ude4f: One AI Platform from Pipelines to Agents. https://zenml.io.",
       "language": "Python",
       "skill_count": 1,
-      "skill_paths": [
-        ".claude/skills/zenml-backport/skill.md"
-      ],
+      "skill_paths": [".claude/skills/zenml-backport/skill.md"],
       "url": "https://github.com/zenml-io/zenml"
     },
     {
@@ -171,9 +159,7 @@
       "description": "Press shortcut \u2192 speak \u2192 get text. Free and open source. More local-first apps soon \u2764\ufe0f",
       "language": "TypeScript",
       "skill_count": 1,
-      "skill_paths": [
-        "skills/typescript/SKILL.md"
-      ],
+      "skill_paths": ["skills/typescript/SKILL.md"],
       "url": "https://github.com/EpicenterHQ/epicenter"
     },
     {
@@ -182,9 +168,7 @@
       "description": "Kimi CLI is your next CLI agent.",
       "language": "Python",
       "skill_count": 1,
-      "skill_paths": [
-        "src/kimi_cli/skills/skill-creator/SKILL.md"
-      ],
+      "skill_paths": ["src/kimi_cli/skills/skill-creator/SKILL.md"],
       "url": "https://github.com/MoonshotAI/kimi-cli"
     },
     {
@@ -193,9 +177,7 @@
       "description": "Personal AI Infrastructure for upgrading humans.",
       "language": "TypeScript",
       "skill_count": 1,
-      "skill_paths": [
-        "Packs/kai-agents-skill.md"
-      ],
+      "skill_paths": ["Packs/kai-agents-skill.md"],
       "url": "https://github.com/danielmiessler/Personal_AI_Infrastructure"
     },
     {
@@ -204,9 +186,7 @@
       "description": "Full guide on claude tips and tricks and how you can optimise your claude code the best & strive to find every command possible even hidden ones!",
       "language": null,
       "skill_count": 1,
-      "skill_paths": [
-        "skills/aws-penetration-testing/SKILL.md"
-      ],
+      "skill_paths": ["skills/aws-penetration-testing/SKILL.md"],
       "url": "https://github.com/zebbern/claude-code-guide"
     },
     {
@@ -227,9 +207,7 @@
       "description": "Secure, open source and community driven crypto wallet runs on all platforms and trusted by millions.",
       "language": "TypeScript",
       "skill_count": 1,
-      "skill_paths": [
-        ".claude/skills/pr-review/reference/cross-platform.md"
-      ],
+      "skill_paths": [".claude/skills/pr-review/reference/cross-platform.md"],
       "url": "https://github.com/OneKeyHQ/app-monorepo"
     },
     {
@@ -238,9 +216,7 @@
       "description": "Context management for Claude Code. Hooks maintain state via ledgers and handoffs. MCP execution without context pollution. Agent orchestration with isolated context windows.",
       "language": "Python",
       "skill_count": 1,
-      "skill_paths": [
-        ".claude/skills/skill-developer/SKILL.md"
-      ],
+      "skill_paths": [".claude/skills/skill-developer/SKILL.md"],
       "url": "https://github.com/parcadei/Continuous-Claude-v2"
     },
     {
@@ -249,9 +225,7 @@
       "description": "ToolHive makes deploying MCP servers easy, secure and fun",
       "language": "Go",
       "skill_count": 1,
-      "skill_paths": [
-        ".claude/skills/doc-review/EXAMPLES.md"
-      ],
+      "skill_paths": [".claude/skills/doc-review/EXAMPLES.md"],
       "url": "https://github.com/stacklok/toolhive"
     },
     {
@@ -260,9 +234,7 @@
       "description": "Aggregate results from bioinformatics analyses across many samples into a single report.",
       "language": "JavaScript",
       "skill_count": 1,
-      "skill_paths": [
-        ".claude/skills/triaging-module-requests/SKILL.md"
-      ],
+      "skill_paths": [".claude/skills/triaging-module-requests/SKILL.md"],
       "url": "https://github.com/MultiQC/MultiQC"
     },
     {
@@ -284,9 +256,7 @@
       "description": "No description, website, or topics provided",
       "language": "Java",
       "skill_count": 1,
-      "skill_paths": [
-        "jcommon/skills/skill-creator/SKILL.md"
-      ],
+      "skill_paths": ["jcommon/skills/skill-creator/SKILL.md"],
       "url": "https://github.com/XiaoMi/mone"
     },
     {
@@ -295,9 +265,7 @@
       "description": "Create multiple isolated Claude Code variants with custom providers (Z.ai, MiniMax, OpenRouter, LiteLLM)",
       "language": "TypeScript",
       "skill_count": 1,
-      "skill_paths": [
-        "src/skills/task-manager/SKILL.md"
-      ],
+      "skill_paths": ["src/skills/task-manager/SKILL.md"],
       "url": "https://github.com/numman-ali/cc-mirror"
     },
     {
@@ -306,9 +274,7 @@
       "description": "A Python package for causal inference in quasi-experimental settings",
       "language": "Python",
       "skill_count": 1,
-      "skill_paths": [
-        ".claude/skills/loading-datasets/SKILL.md"
-      ],
+      "skill_paths": [".claude/skills/loading-datasets/SKILL.md"],
       "url": "https://github.com/pymc-labs/CausalPy"
     },
     {
@@ -317,9 +283,7 @@
       "description": "Raptor turns Claude Code into a general-purpose AI offensive/defensive security agent. By using Claude.md and creating rules, sub-agents, and skills, and orchestrating security tool usage, we configure the agent for adversarial thinking, and perform research or attack/defense operations.",
       "language": "Python",
       "skill_count": 1,
-      "skill_paths": [
-        ".claude/skills/oss-forensics/github-archive/SKILL.md"
-      ],
+      "skill_paths": [".claude/skills/oss-forensics/github-archive/SKILL.md"],
       "url": "https://github.com/gadievron/raptor"
     },
     {
@@ -328,9 +292,7 @@
       "description": "   CloudBase MCP - Connect CloudBase to your AI Agent.     Go from AI prompt to live app. ",
       "language": "TypeScript",
       "skill_count": 1,
-      "skill_paths": [
-        "config/.claude/skills/cloud-functions/SKILL.md"
-      ],
+      "skill_paths": ["config/.claude/skills/cloud-functions/SKILL.md"],
       "url": "https://github.com/TencentCloudBase/CloudBase-MCP"
     },
     {
@@ -350,9 +312,7 @@
       "description": " JSON-driven multi-agent development framework with   intelligent CLI orchestration (Gemini/Qwen/Codex),   context-first architecture, and automated workflow   execution",
       "language": "Python",
       "skill_count": 1,
-      "skill_paths": [
-        ".claude/skills/ccw-help/SKILL.md"
-      ],
+      "skill_paths": [".claude/skills/ccw-help/SKILL.md"],
       "url": "https://github.com/catlog22/Claude-Code-Workflow"
     },
     {
@@ -372,9 +332,7 @@
       "description": "A python library for multi omics included bulk, single cell and spatial RNA-seq analysis.",
       "language": "Jupyter Notebook",
       "skill_count": 1,
-      "skill_paths": [
-        ".claude/skills/single-annotation/reference.md"
-      ],
+      "skill_paths": [".claude/skills/single-annotation/reference.md"],
       "url": "https://github.com/Starlitnightly/omicverse"
     },
     {
@@ -383,9 +341,7 @@
       "description": "A Claude Code skill for crafted, enterprise-grade UI design",
       "language": "Shell",
       "skill_count": 1,
-      "skill_paths": [
-        "skill/skill.md"
-      ],
+      "skill_paths": ["skill/skill.md"],
       "url": "https://github.com/Dammyjay93/claude-design-skill"
     },
     {
@@ -394,9 +350,7 @@
       "description": "Comprehensive open-source library of AI research and engineering skills for any AI model. Package the skills and your claude code/codex/gemini agent will be an AI research agent with full horsepower. Maintained by Orchestra Research.",
       "language": "Python",
       "skill_count": 1,
-      "skill_paths": [
-        "14-agents/autogpt/SKILL.md"
-      ],
+      "skill_paths": ["14-agents/autogpt/SKILL.md"],
       "url": "https://github.com/zechenzhangAGI/AI-research-SKILLs"
     },
     {
@@ -405,9 +359,7 @@
       "description": "MCP Monitoring with eBPF",
       "language": "C",
       "skill_count": 1,
-      "skill_paths": [
-        ".claude/skills/github-issue-creator/SKILL.md"
-      ],
+      "skill_paths": [".claude/skills/github-issue-creator/SKILL.md"],
       "url": "https://github.com/alex-ilgayev/MCPSpy"
     },
     {
@@ -416,9 +368,7 @@
       "description": "A package for using GTD with org-mode ",
       "language": "Emacs Lisp",
       "skill_count": 1,
-      "skill_paths": [
-        ".claude/skills/writing-skills/SKILL.md"
-      ],
+      "skill_paths": [".claude/skills/writing-skills/SKILL.md"],
       "url": "https://github.com/Trevoke/org-gtd.el"
     },
     {
@@ -469,9 +419,7 @@
       "description": "\ud83d\udc68\u200d\ud83d\udd2c In Russian: \u041e\u0431\u043d\u043e\u0432\u043b\u044f\u0435\u043c\u0430\u044f \u0441\u0442\u0440\u0443\u043a\u0442\u0443\u0440\u0438\u0440\u043e\u0432\u0430\u043d\u043d\u0430\u044f \u043f\u043e\u0434\u0431\u043e\u0440\u043a\u0430 \u0431\u0435\u0441\u043f\u043b\u0430\u0442\u043d\u044b\u0445 \u0440\u0435\u0441\u0443\u0440\u0441\u043e\u0432 \u043f\u043e \u0442\u0435\u043c\u0430\u0442\u0438\u043a\u0430\u043c Data Science: \u043a\u0443\u0440\u0441\u044b, \u043a\u043d\u0438\u0433\u0438, \u043e\u0442\u043a\u0440\u044b\u0442\u044b\u0435 \u0434\u0430\u043d\u043d\u044b\u0435, \u0431\u043b\u043e\u0433\u0438 \u0438 \u0433\u043e\u0442\u043e\u0432\u044b\u0435 \u0440\u0435\u0448\u0435\u043d\u0438\u044f.",
       "language": "Jupyter Notebook",
       "skill_count": 1,
-      "skill_paths": [
-        ".claude/skills/add-book.md"
-      ],
+      "skill_paths": [".claude/skills/add-book.md"],
       "url": "https://github.com/matyushkin/ds"
     },
     {
@@ -480,9 +428,7 @@
       "description": "An open source ColdFusion framework inspired by Ruby on Rails.",
       "language": "ColdFusion",
       "skill_count": 1,
-      "skill_paths": [
-        ".claude/skills/wheels-anti-pattern-detector/SKILL.md"
-      ],
+      "skill_paths": [".claude/skills/wheels-anti-pattern-detector/SKILL.md"],
       "url": "https://github.com/wheels-dev/wheels"
     },
     {
@@ -502,9 +448,7 @@
       "description": "Session browser + Agents Analytics + Limits tracker for Codex CLI,  Claude Code, OpenCode, Gemini CLI, Factory Droid  & GitHub Copilot CLI. Search ALL past sessions, filter by folder\u00b7repo, resume instantly, see rate limits in real-time. Native macOS app.",
       "language": "Swift",
       "skill_count": 1,
-      "skill_paths": [
-        ".claude/skills/deploy.md"
-      ],
+      "skill_paths": [".claude/skills/deploy.md"],
       "url": "https://github.com/jazzyalex/agent-sessions"
     },
     {
@@ -513,9 +457,7 @@
       "description": "Sanmill is an open-source, UCI-like Mill/Morris/Merrills/M\u00fchle/Malom (and its variants) program with CUI, Flutter GUI and Qt GUI, sharing and freely distributing the code, tools and data needed to deliver this mill game. We do this because we are convinced that open software and open data are key ingredients to make rapid progress. ",
       "language": "Dart",
       "skill_count": 1,
-      "skill_paths": [
-        ".claude/skills/README.md"
-      ],
+      "skill_paths": [".claude/skills/README.md"],
       "url": "https://github.com/calcitem/Sanmill"
     },
     {
@@ -547,9 +489,7 @@
       "description": "Agentic QE Fleet is an open-source AI-powered quality engineering platform designed for use with Claude Code, featuring specialized agents and skills to support testing activities for a product at any stage of the SDLC. Free to use, fork, build, and contribute. Based on the Agentic QE Framework created by Dragan Spiridonov.",
       "language": "TypeScript",
       "skill_count": 1,
-      "skill_paths": [
-        ".claude/skills/quality-metrics/SKILL.md"
-      ],
+      "skill_paths": [".claude/skills/quality-metrics/SKILL.md"],
       "url": "https://github.com/proffesor-for-testing/agentic-qe"
     },
     {
@@ -558,9 +498,7 @@
       "description": "Edit Video with Claude Code",
       "language": "Ruby",
       "skill_count": 1,
-      "skill_paths": [
-        ".claude/skills/roughcut/agent_instructions.md"
-      ],
+      "skill_paths": [".claude/skills/roughcut/agent_instructions.md"],
       "url": "https://github.com/barefootford/buttercut"
     },
     {
@@ -581,9 +519,7 @@
       "description": "Marketplace repo for Claude Code Plugins developed from personal projects and workflow",
       "language": "Python",
       "skill_count": 1,
-      "skill_paths": [
-        "plugins/attune/skills/architecture-aware-init/SKILL.md"
-      ],
+      "skill_paths": ["plugins/attune/skills/architecture-aware-init/SKILL.md"],
       "url": "https://github.com/athola/claude-night-market"
     },
     {
@@ -618,9 +554,7 @@
       "description": "\u4e00\u4e2a\u5f00\u6e90\u7684\uff0c\u4e13\u6ce8\u4e8e\u63d0\u793a\u8bcd\u7ba1\u7406\u7684\u5e73\u53f0 / An open-source platform focused on prompt management",
       "language": "JavaScript",
       "skill_count": 1,
-      "skill_paths": [
-        ".claude/skills/agent-sdk/SKILL.md"
-      ],
+      "skill_paths": [".claude/skills/agent-sdk/SKILL.md"],
       "url": "https://github.com/aircrushin/promptMinder"
     },
     {
@@ -629,9 +563,7 @@
       "description": "Fil-C as a Nix C/C++ toolchain and cross platform",
       "language": "Nix",
       "skill_count": 1,
-      "skill_paths": [
-        ".claude/skills/gem-port/REFERENCE.md"
-      ],
+      "skill_paths": [".claude/skills/gem-port/REFERENCE.md"],
       "url": "https://github.com/mbrock/filnix"
     },
     {
@@ -640,9 +572,7 @@
       "description": "FTE+AI: Vendor Replacement Program Framework",
       "language": "HTML",
       "skill_count": 1,
-      "skill_paths": [
-        "skills/hardware-sizing.skill.md"
-      ],
+      "skill_paths": ["skills/hardware-sizing.skill.md"],
       "url": "https://github.com/mitkox/fteplusai"
     },
     {
@@ -664,9 +594,7 @@
       "description": null,
       "language": "Java",
       "skill_count": 1,
-      "skill_paths": [
-        ".claude/skills/create-benchmark.md"
-      ],
+      "skill_paths": [".claude/skills/create-benchmark.md"],
       "url": "https://github.com/petrbouda/jeffrey"
     },
     {
@@ -675,9 +603,7 @@
       "description": "A Query Mapper for Python",
       "language": "Python",
       "skill_count": 1,
-      "skill_paths": [
-        ".claude/skills/sqlspec_adapters/duckdb.md"
-      ],
+      "skill_paths": [".claude/skills/sqlspec_adapters/duckdb.md"],
       "url": "https://github.com/litestar-org/sqlspec"
     },
     {
@@ -686,9 +612,7 @@
       "description": "astro-koharu \u662f\u4e00\u4e2a\u840c\u7cfb/\u4e8c\u6b21\u5143/\u7c89\u84dd\u914d\u8272\u7684 astro \u4e3b\u9898\u535a\u5ba2\uff0c\u7075\u611f\u6765\u81ea Hexo \u7684 Shoka \u4e3b\u9898\uff0c\u52a0\u4e86\u5f88\u591a\u81ea\u5df1\u7684\u5c0f\u5de7\u601d\uff0c\u6027\u80fd\u4f18\u8d8a",
       "language": "TypeScript",
       "skill_count": 1,
-      "skill_paths": [
-        ".claude/skills/infographic-template-updater/SKILL.md"
-      ],
+      "skill_paths": [".claude/skills/infographic-template-updater/SKILL.md"],
       "url": "https://github.com/cosZone/astro-koharu"
     },
     {
@@ -697,9 +621,7 @@
       "description": "\ud83c\udfaf \"Type Once, Have it all!\"  AI-Orchestration Driven Development framework for Solo Developers & Solopreneurs. Build production-ready SaaS with natural language commands. Supports Claude Code, Cursor, Gemini CLI, Codex CLI. No questions asked, just results.",
       "language": "JavaScript",
       "skill_count": 1,
-      "skill_paths": [
-        "src/skills/debug-protocol/SKILL.md"
-      ],
+      "skill_paths": ["src/skills/debug-protocol/SKILL.md"],
       "url": "https://github.com/wasintoh/toh-framework"
     },
     {
@@ -732,9 +654,7 @@
       "description": "Learn practical techniques to enhance your AI-assisted development workflow with Claude Code.",
       "language": "MDX",
       "skill_count": 1,
-      "skill_paths": [
-        ".claude/skills/version-bump/SKILL.md"
-      ],
+      "skill_paths": [".claude/skills/version-bump/SKILL.md"],
       "url": "https://github.com/NikiforovAll/claude-code-rules"
     },
     {
@@ -743,9 +663,7 @@
       "description": "Context stack for autonomous agentic coding. 94 specialized agents, 65+ workflow commands, multi-agent coordination. Less babysitting, longer runtime. Claude Code / Warp / Factory AI.",
       "language": "TypeScript",
       "skill_count": 1,
-      "skill_paths": [
-        ".factory/skills/approval-workflow/SKILL.md"
-      ],
+      "skill_paths": [".factory/skills/approval-workflow/SKILL.md"],
       "url": "https://github.com/jmagly/ai-writing-guide"
     },
     {
@@ -754,9 +672,7 @@
       "description": "Professional AI assistant configurations for Claude Code, Codex CLI, OpenCode and Gemini CLI with enterprise-grade defaults for Solidity and TypeScript development.",
       "language": "Shell",
       "skill_count": 1,
-      "skill_paths": [
-        ".claude/skills/rr-system/workflow-audit.md"
-      ],
+      "skill_paths": [".claude/skills/rr-system/workflow-audit.md"],
       "url": "https://github.com/roderik/ai-rules"
     },
     {
@@ -788,9 +704,7 @@
       "description": "Ballroom Dance Showcase Scheduler",
       "language": "Ruby",
       "skill_count": 1,
-      "skill_paths": [
-        ".claude/skills/compare-erb-js/skill.md"
-      ],
+      "skill_paths": [".claude/skills/compare-erb-js/skill.md"],
       "url": "https://github.com/rubys/showcase"
     },
     {
@@ -799,9 +713,7 @@
       "description": "AI-powered personal knowledge management system with natural language interface and spaced repetition learning",
       "language": null,
       "skill_count": 1,
-      "skill_paths": [
-        ".claude/skills/knowledge-manager/skill.md"
-      ],
+      "skill_paths": [".claude/skills/knowledge-manager/skill.md"],
       "url": "https://github.com/huifer/Claude-Code-KnowCraft"
     },
     {
@@ -821,9 +733,7 @@
       "description": "AI Assistant Delegation Framework - Keep your context clean by delegating API queries to specialized sub-agents \ud83d\udc0a",
       "language": "Shell",
       "skill_count": 1,
-      "skill_paths": [
-        "templates/SKILL.md.template"
-      ],
+      "skill_paths": ["templates/SKILL.md.template"],
       "url": "https://github.com/ryancnelson/deli-gator"
     },
     {
@@ -832,9 +742,7 @@
       "description": "Agent Skills - folders of instructions, scripts, and resources - for WordPress",
       "language": "JavaScript",
       "skill_count": 1,
-      "skill_paths": [
-        "skills/wp-interactivity-api/SKILL.md"
-      ],
+      "skill_paths": ["skills/wp-interactivity-api/SKILL.md"],
       "url": "https://github.com/Automattic/agent-skills"
     },
     {
@@ -843,9 +751,7 @@
       "description": "AI Agentic API Testing Platform - Automated testing with specialized ephemeral agents",
       "language": "Python",
       "skill_count": 1,
-      "skill_paths": [
-        ".claude/skills/quality-metrics/SKILL.md"
-      ],
+      "skill_paths": [".claude/skills/quality-metrics/SKILL.md"],
       "url": "https://github.com/proffesor-for-testing/sentinel-api-testing"
     },
     {
@@ -876,9 +782,7 @@
       "description": "Et projekt for at formidle data om dansk landbrug",
       "language": "Python",
       "skill_count": 1,
-      "skill_paths": [
-        ".claude/skills/code-review/SKILL.md"
-      ],
+      "skill_paths": [".claude/skills/code-review/SKILL.md"],
       "url": "https://github.com/Klimabevaegelsen/landbruget.dk"
     },
     {
@@ -933,9 +837,7 @@
       "description": "Atomic, Repeatable Path to Mastery",
       "language": null,
       "skill_count": 1,
-      "skill_paths": [
-        "level-4-skills/02-first-simple-skill.md"
-      ],
+      "skill_paths": ["level-4-skills/02-first-simple-skill.md"],
       "url": "https://github.com/jgerton/ai-mastery-roadmap"
     },
     {
@@ -944,9 +846,7 @@
       "description": "64 Specialized Skills for Full-Stack Developers - Transform Claude Code into your expert pair programmer",
       "language": "HTML",
       "skill_count": 1,
-      "skill_paths": [
-        "skills/secure-code-guardian/SKILL.md"
-      ],
+      "skill_paths": ["skills/secure-code-guardian/SKILL.md"],
       "url": "https://github.com/Jeffallan/claude-skills"
     },
     {
@@ -955,9 +855,7 @@
       "description": "A collection of Claude commands and utilities",
       "language": "Python",
       "skill_count": 1,
-      "skill_paths": [
-        ".claude/skills/mcp-gmail-agent.md"
-      ],
+      "skill_paths": [".claude/skills/mcp-gmail-agent.md"],
       "url": "https://github.com/jleechanorg/claude-commands"
     },
     {
@@ -966,9 +864,7 @@
       "description": "Production-validated SAFe multi-agent development methodology with Claude Code. Treat AI agents as specialized team members (11 roles: BSA, Architect, QAS, etc). Complete whitepaper + working template. ",
       "language": "Shell",
       "skill_count": 1,
-      "skill_paths": [
-        ".claude/skills/security-audit/SKILL.md"
-      ],
+      "skill_paths": [".claude/skills/security-audit/SKILL.md"],
       "url": "https://github.com/bybren-llc/wtfb-safe-agentic-workflow"
     },
     {
@@ -977,9 +873,7 @@
       "description": null,
       "language": "HTML",
       "skill_count": 1,
-      "skill_paths": [
-        ".claude/skills/ai-ml-engineer/mlops-guide.md"
-      ],
+      "skill_paths": [".claude/skills/ai-ml-engineer/mlops-guide.md"],
       "url": "https://github.com/nahisaho/MUSUBI"
     },
     {
@@ -988,9 +882,7 @@
       "description": "Autonomous AI Development Framework. Build production software with specs, tests, and docs that write themselves. Works with Claude, Cursor, Copilot.",
       "language": "TypeScript",
       "skill_count": 1,
-      "skill_paths": [
-        "plugins/specweave/skills/plugin-validator/SKILL.md"
-      ],
+      "skill_paths": ["plugins/specweave/skills/plugin-validator/SKILL.md"],
       "url": "https://github.com/anton-abyzov/specweave"
     },
     {
@@ -999,9 +891,7 @@
       "description": "\u2726 An optimized tech stack for efficiency.",
       "language": "MDX",
       "skill_count": 1,
-      "skill_paths": [
-        ".claude/skills/convex/docs/database/pagination.mdx"
-      ],
+      "skill_paths": [".claude/skills/convex/docs/database/pagination.mdx"],
       "url": "https://github.com/ThijmenGThN/next-leaflet"
     },
     {
@@ -1010,9 +900,7 @@
       "description": "Pipeline EDR Observer - A lightweight, open source EDR for Linux",
       "language": "C++",
       "skill_count": 1,
-      "skill_paths": [
-        ".claude/skills/review/reference/comments-checklist.md"
-      ],
+      "skill_paths": [".claude/skills/review/reference/comments-checklist.md"],
       "url": "https://github.com/wowsignal-io/pedro"
     },
     {
@@ -1021,9 +909,7 @@
       "description": "GO GO EXPERIMENTAL LAB",
       "language": "C",
       "skill_count": 1,
-      "skill_paths": [
-        "ttmp/_templates/skill.md"
-      ],
+      "skill_paths": ["ttmp/_templates/skill.md"],
       "url": "https://github.com/go-go-golems/go-go-labs"
     },
     {
@@ -1032,9 +918,7 @@
       "description": "Claude Code superpowers with beads task tracking and refinement",
       "language": "Shell",
       "skill_count": 1,
-      "skill_paths": [
-        "skills/root-cause-tracing/SKILL.md"
-      ],
+      "skill_paths": ["skills/root-cause-tracing/SKILL.md"],
       "url": "https://github.com/withzombies/hyperpowers"
     },
     {
@@ -1100,9 +984,7 @@
       "description": "A Reminders-native Getting Things Done (GTD) workflow powered by Claude Code. This project implements a streamlined GTD system using Apple Reminders with an intelligent AI skill to orchestrate workflow management",
       "language": "Shell",
       "skill_count": 1,
-      "skill_paths": [
-        ".claude/skills/gtd/modes/health.md"
-      ],
+      "skill_paths": [".claude/skills/gtd/modes/health.md"],
       "url": "https://github.com/realYushi/my-gtd-buddy"
     },
     {
@@ -1111,9 +993,7 @@
       "description": null,
       "language": "HTML",
       "skill_count": 1,
-      "skill_paths": [
-        "build-your-first-skill-with-oda/testskill/testskill.md"
-      ],
+      "skill_paths": ["build-your-first-skill-with-oda/testskill/testskill.md"],
       "url": "https://github.com/oracle-livelabs/developer"
     },
     {
@@ -1122,9 +1002,7 @@
       "description": "For humans, a language is a tool for expression. For AIs, it's a substrate for reasoning.",
       "language": "Go",
       "skill_count": 1,
-      "skill_paths": [
-        ".claude/skills/SKILLS_GUIDE.md"
-      ],
+      "skill_paths": [".claude/skills/SKILLS_GUIDE.md"],
       "url": "https://github.com/sunholo-data/ailang"
     },
     {
@@ -1172,9 +1050,7 @@
       "description": "How to use AU and mkdocs material with education theory to create intelligent textbooks",
       "language": "Python",
       "skill_count": 1,
-      "skill_paths": [
-        "docs/prompts/generate-quiz-skill.md"
-      ],
+      "skill_paths": ["docs/prompts/generate-quiz-skill.md"],
       "url": "https://github.com/dmccreary/intelligent-textbooks"
     },
     {
@@ -1183,9 +1059,7 @@
       "description": "Agent building tools via block diagram UI",
       "language": "Python",
       "skill_count": 1,
-      "skill_paths": [
-        "docs/architecture/detailed/what_is_doclookup_skill.md"
-      ],
+      "skill_paths": ["docs/architecture/detailed/what_is_doclookup_skill.md"],
       "url": "https://github.com/sorryhyun/DiPeO"
     },
     {
@@ -1214,9 +1088,7 @@
       "description": "AI \u534f\u4f5c\u5f00\u53d1\u6846\u67b6\u6a21\u677f - Claude Code \u5de5\u5177\u5e93 + 8 \u9636\u6bb5\u5de5\u4f5c\u6d41 + \u6807\u51c6\u5316\u6587\u6863\u6a21\u677f",
       "language": "Vue",
       "skill_count": 1,
-      "skill_paths": [
-        ".claude/skills/context_writer.md"
-      ],
+      "skill_paths": [".claude/skills/context_writer.md"],
       "url": "https://github.com/oowanghuan/ai-coding-template"
     },
     {
@@ -1225,9 +1097,7 @@
       "description": "Practical workflows for using and training vision and language models.",
       "language": "Python",
       "skill_count": 1,
-      "skill_paths": [
-        ".claude/skills/remote-run-ssh/SKILL.md"
-      ],
+      "skill_paths": [".claude/skills/remote-run-ssh/SKILL.md"],
       "url": "https://github.com/kungfuai/CVlization"
     },
     {
@@ -1248,9 +1118,7 @@
       "description": "My private nixos_config",
       "language": "Nix",
       "skill_count": 1,
-      "skill_paths": [
-        ".claude/skills/cargo2nix.md"
-      ],
+      "skill_paths": [".claude/skills/cargo2nix.md"],
       "url": "https://github.com/olafkfreund/nixos_config"
     },
     {
@@ -1293,9 +1161,7 @@
       "description": "Anil's OCaml Claude plugin collection",
       "language": "OCaml",
       "skill_count": 1,
-      "skill_paths": [
-        "plugins/ocaml-dev/skills/ocaml-dune-migration/SKILL.md"
-      ],
+      "skill_paths": ["plugins/ocaml-dev/skills/ocaml-dune-migration/SKILL.md"],
       "url": "https://github.com/avsm/ocaml-claude-marketplace"
     },
     {
@@ -1315,9 +1181,7 @@
       "description": "Independent agent to agent communication",
       "language": "TypeScript",
       "skill_count": 1,
-      "skill_paths": [
-        ".claude/skills/creating-skills-skill/SKILL.md"
-      ],
+      "skill_paths": [".claude/skills/creating-skills-skill/SKILL.md"],
       "url": "https://github.com/AgentWorkforce/relay"
     },
     {
@@ -1326,9 +1190,7 @@
       "description": null,
       "language": "Python",
       "skill_count": 1,
-      "skill_paths": [
-        ".claude/skills/writing-substack/references/hooks.md"
-      ],
+      "skill_paths": [".claude/skills/writing-substack/references/hooks.md"],
       "url": "https://github.com/jamesgray007/hoai-course"
     },
     {
@@ -1337,9 +1199,7 @@
       "description": "\ub9c8\uc778\ud06c\ub798\ud504\ud2b8 \ubaa8\uc791 \uc624\ud508\uc18c\uc2a4 \ud504\ub85c\uc81d\ud2b8 \uc785\ub2c8\ub2e4.",
       "language": "C#",
       "skill_count": 1,
-      "skill_paths": [
-        ".claude/skills/world-generation.md"
-      ],
+      "skill_paths": [".claude/skills/world-generation.md"],
       "url": "https://github.com/kojeomstudio/HELLO_MY_WORLD"
     },
     {
@@ -1348,9 +1208,7 @@
       "description": null,
       "language": "Python",
       "skill_count": 1,
-      "skill_paths": [
-        ".claude/skills/IDEATION.md"
-      ],
+      "skill_paths": [".claude/skills/IDEATION.md"],
       "url": "https://github.com/2acrestudios/autogen-brainstorm"
     },
     {
@@ -1381,9 +1239,7 @@
       "description": "writing = thinking",
       "language": "TypeScript",
       "skill_count": 1,
-      "skill_paths": [
-        "posts/taste-skill.md"
-      ],
+      "skill_paths": ["posts/taste-skill.md"],
       "url": "https://github.com/benthecoder/blog"
     },
     {
@@ -1392,9 +1248,7 @@
       "description": "A structured methodology for AI-assisted development using specialized personas, reusable tasks, etc.",
       "language": "Python",
       "skill_count": 1,
-      "skill_paths": [
-        "skills/skill-creator/SKILL.md"
-      ],
+      "skill_paths": ["skills/skill-creator/SKILL.md"],
       "url": "https://github.com/emanuelcasco/.ai"
     },
     {
@@ -1403,9 +1257,7 @@
       "description": "System wide dictation for windows",
       "language": "F#",
       "skill_count": 1,
-      "skill_paths": [
-        ".claude/skills/update-changelog.md"
-      ],
+      "skill_paths": [".claude/skills/update-changelog.md"],
       "url": "https://github.com/heimeshoff/VocalFold"
     },
     {
@@ -1414,9 +1266,7 @@
       "description": null,
       "language": "TypeScript",
       "skill_count": 1,
-      "skill_paths": [
-        ".claude/skills/design-to-code.md"
-      ],
+      "skill_paths": [".claude/skills/design-to-code.md"],
       "url": "https://github.com/rohittcodes/luno"
     },
     {
@@ -1425,9 +1275,7 @@
       "description": "personal collection of Claude Code plugins",
       "language": "Python",
       "skill_count": 1,
-      "skill_paths": [
-        "plugins/claude/commands/review-skill.md"
-      ],
+      "skill_paths": ["plugins/claude/commands/review-skill.md"],
       "url": "https://github.com/sjungling/claude-plugins"
     },
     {
@@ -1436,9 +1284,7 @@
       "description": null,
       "language": "Python",
       "skill_count": 1,
-      "skill_paths": [
-        "dot_claude/skills/design-principles/skill.md"
-      ],
+      "skill_paths": ["dot_claude/skills/design-principles/skill.md"],
       "url": "https://github.com/samhvw8/dotfiles"
     },
     {
@@ -1458,9 +1304,7 @@
       "description": "Beautiful visual workspace manager for Claude Code. Access 136+ professional templates, automate workflows with hooks, and manage your AI development environment through an elegant web interface",
       "language": "JavaScript",
       "skill_count": 1,
-      "skill_paths": [
-        ".claude/skills/Node.js-copy.md"
-      ],
+      "skill_paths": [".claude/skills/Node.js-copy.md"],
       "url": "https://github.com/tct68/claudex"
     },
     {
@@ -1503,9 +1347,7 @@
       "description": "Multi-tenant SaaS platform for token-gated onchain communities - wallet scoring, Discord/Telegram integration, and human-in-the-loop approval workflows",
       "language": "TypeScript",
       "skill_count": 1,
-      "skill_paths": [
-        ".claude/skills/reviewing-code/impact-analysis.md"
-      ],
+      "skill_paths": [".claude/skills/reviewing-code/impact-analysis.md"],
       "url": "https://github.com/0xHoneyJar/arrakis"
     },
     {
@@ -1525,9 +1367,7 @@
       "description": "Claude Code plugin for code review skills and verification workflows. Python, Go, React, FastAPI, BubbleTea, and AI frameworks (Pydantic AI, LangGraph, Vercel AI SDK).",
       "language": "Python",
       "skill_count": 1,
-      "skill_paths": [
-        "skills/zustand-state/SKILL.md"
-      ],
+      "skill_paths": ["skills/zustand-state/SKILL.md"],
       "url": "https://github.com/existential-birds/beagle"
     },
     {
@@ -1536,9 +1376,7 @@
       "description": null,
       "language": "Go",
       "skill_count": 1,
-      "skill_paths": [
-        "internal/templates/embedded/_templates/skill.md"
-      ],
+      "skill_paths": ["internal/templates/embedded/_templates/skill.md"],
       "url": "https://github.com/go-go-golems/docmgr"
     },
     {
@@ -1547,9 +1385,7 @@
       "description": "Universal Claude Code configuration: agents, skills, workflows, and SessionStart hooks for consistent development across projects",
       "language": "Shell",
       "skill_count": 1,
-      "skill_paths": [
-        ".claude/skills/ANALYSIS.md"
-      ],
+      "skill_paths": [".claude/skills/ANALYSIS.md"],
       "url": "https://github.com/BerryKuipers/claude-code-toolkit"
     },
     {
@@ -1628,9 +1464,7 @@
       "description": null,
       "language": "TypeScript",
       "skill_count": 1,
-      "skill_paths": [
-        "docs/data/xml/table/conditionSkill.md"
-      ],
+      "skill_paths": ["docs/data/xml/table/conditionSkill.md"],
       "url": "https://github.com/AlanMorel/mapleserver2-docs"
     },
     {
@@ -1639,9 +1473,7 @@
       "description": "Monorepository of @pumped-fn",
       "language": "TypeScript",
       "skill_count": 1,
-      "skill_paths": [
-        "docs/plans/2025-10-27-unified-pumped-fn-skill.md"
-      ],
+      "skill_paths": ["docs/plans/2025-10-27-unified-pumped-fn-skill.md"],
       "url": "https://github.com/pumped-fn/pumped-fn"
     },
     {
@@ -1678,9 +1510,7 @@
       "description": null,
       "language": "Shell",
       "skill_count": 1,
-      "skill_paths": [
-        "skills/commit-assistant/SKILL.md"
-      ],
+      "skill_paths": ["skills/commit-assistant/SKILL.md"],
       "url": "https://github.com/duongdev/ccpm"
     },
     {
@@ -1689,9 +1519,7 @@
       "description": "Six layers of encryption because tinfoil-hat-level paranoia isn't easily placated. Quantum-resistant security that piggybacks on Git. GitFoil vanishes into your workflow.",
       "language": "Elixir",
       "skill_count": 1,
-      "skill_paths": [
-        ".claude/skills/release.md"
-      ],
+      "skill_paths": [".claude/skills/release.md"],
       "url": "https://github.com/code-of-kai/git-foil"
     },
     {
@@ -1700,9 +1528,7 @@
       "description": "Foundups for the 99% eats the Startups of the 1% transforming failed capitalism. The Foundups Era\u2014described in 2009\u2014is finally arriving. Powered by quantum entangled pArtifacts called 0102. We don\u2019t build with pitch decks. We launch with our 0102. Our recursive pArtifact Red Dogs eat the 1%. ",
       "language": "Python",
       "skill_count": 1,
-      "skill_paths": [
-        ".claude/skills/MIGRATION_PLAN.md"
-      ],
+      "skill_paths": [".claude/skills/MIGRATION_PLAN.md"],
       "url": "https://github.com/Foundup/Foundups-Agent"
     },
     {
@@ -1711,9 +1537,7 @@
       "description": null,
       "language": "Python",
       "skill_count": 1,
-      "skill_paths": [
-        ".claude/skills/greet_user/reference.md"
-      ],
+      "skill_paths": [".claude/skills/greet_user/reference.md"],
       "url": "https://github.com/pjt3591oo/claude-code-advanced-guide"
     },
     {
@@ -1735,9 +1559,7 @@
       "description": "Peng Tan's AI Blog",
       "language": "Jupyter Notebook",
       "skill_count": 1,
-      "skill_paths": [
-        ".claude/skills/hugo/references/issues.md"
-      ],
+      "skill_paths": [".claude/skills/hugo/references/issues.md"],
       "url": "https://github.com/hobbytp/hobbytp.github.io"
     },
     {
@@ -1783,9 +1605,7 @@
       "description": "Purely client-side/static hosted personal site with growing collection of tools and experiments",
       "language": "HTML",
       "skill_count": 1,
-      "skill_paths": [
-        ".claude/skills/mapping-codebases/SKILL.md"
-      ],
+      "skill_paths": [".claude/skills/mapping-codebases/SKILL.md"],
       "url": "https://github.com/oaustegard/oaustegard.github.io"
     },
     {
@@ -1794,9 +1614,7 @@
       "description": "\uba54\uc774\ud50c\uc2a4\ud1a0\ub9ac \uc6d4\ub4dc\ub85c \uc81c\uc791\ud558\ub294 2D \ub514\ud39c\uc2a4 \uac8c\uc784",
       "language": null,
       "skill_count": 1,
-      "skill_paths": [
-        ".claude/skills/maplestory-dataset.md"
-      ],
+      "skill_paths": [".claude/skills/maplestory-dataset.md"],
       "url": "https://github.com/browniesss/MapleWorlds"
     },
     {
@@ -1805,9 +1623,7 @@
       "description": "Hono + Edge one + RDS Supabase + KV  + x-dev-tool + Claude Code +  Function Compute 3 + Cloudflare R2 + Alipay",
       "language": "TypeScript",
       "skill_count": 1,
-      "skill_paths": [
-        ".claude/skills/api/db_schema.md"
-      ],
+      "skill_paths": [".claude/skills/api/db_schema.md"],
       "url": "https://github.com/sukbearai/x-paper-rewriting-app"
     },
     {
@@ -1816,9 +1632,7 @@
       "description": "Generate customized PRPROMPTS for Flutter projects from PRD - HIPAA, PCI-DSS, GDPR compliant with Clean Architecture and BLoC patterns",
       "language": "JavaScript",
       "skill_count": 1,
-      "skill_paths": [
-        ".claude/skills/index.md"
-      ],
+      "skill_paths": [".claude/skills/index.md"],
       "url": "https://github.com/Kandil7/prprompts-flutter-generator"
     },
     {
@@ -1827,9 +1641,7 @@
       "description": "A simple, lightweight starting Rails app for LlamaBot.",
       "language": "Ruby",
       "skill_count": 1,
-      "skill_paths": [
-        ".claude/skills/release_notes.md"
-      ],
+      "skill_paths": [".claude/skills/release_notes.md"],
       "url": "https://github.com/KodyKendall/LlamaPress-Simple"
     },
     {
@@ -1838,9 +1650,7 @@
       "description": null,
       "language": "Shell",
       "skill_count": 1,
-      "skill_paths": [
-        ".claude/skills/baml-codegen/lib/utils.md"
-      ],
+      "skill_paths": [".claude/skills/baml-codegen/lib/utils.md"],
       "url": "https://github.com/FryrAI/BAML-Claude-Skill"
     },
     {
@@ -1910,9 +1720,7 @@
       "description": "Claude Code \ud50c\ub7ec\uadf8\uc778 \ubc0f \uc2a4\ud0ac \ubaa8\uc74c",
       "language": "Python",
       "skill_count": 1,
-      "skill_paths": [
-        ".claude/skills/creating-plugins/references/commands.md"
-      ],
+      "skill_paths": [".claude/skills/creating-plugins/references/commands.md"],
       "url": "https://github.com/jeongsk/claude-skills"
     },
     {
@@ -1921,9 +1729,7 @@
       "description": "AI powered conditional automation for monitoring the web",
       "language": "Python",
       "skill_count": 1,
-      "skill_paths": [
-        ".claude/skills/torale-design-system.md"
-      ],
+      "skill_paths": [".claude/skills/torale-design-system.md"],
       "url": "https://github.com/prassanna-ravishankar/torale"
     },
     {
@@ -1932,9 +1738,7 @@
       "description": "A cool MySQL library for cool people",
       "language": "Go",
       "skill_count": 1,
-      "skill_paths": [
-        ".claude/skills/cool-mysql/references/query-patterns.md"
-      ],
+      "skill_paths": [".claude/skills/cool-mysql/references/query-patterns.md"],
       "url": "https://github.com/StirlingMarketingGroup/cool-mysql"
     },
     {
@@ -1978,10 +1782,7 @@
       "description": "Alexa Service",
       "language": "CoffeeScript",
       "skill_count": 2,
-      "skill_paths": [
-        "citrix-skill.md",
-        "docs/custom-skill.md"
-      ],
+      "skill_paths": ["citrix-skill.md", "docs/custom-skill.md"],
       "url": "https://github.com/octoblu/alexa-service"
     },
     {
@@ -2002,9 +1803,7 @@
       "description": "structured vibe coding tool driven by custom agents - highly recommend using only with claude code max subscription",
       "language": "HTML",
       "skill_count": 1,
-      "skill_paths": [
-        "skills/deployment-rollback/SKILL.md"
-      ],
+      "skill_paths": ["skills/deployment-rollback/SKILL.md"],
       "url": "https://github.com/turbobeest/dev-system"
     },
     {
@@ -2013,9 +1812,7 @@
       "description": "Claude command & AI agent creation best practices and templates",
       "language": "Python",
       "skill_count": 1,
-      "skill_paths": [
-        "skills/skill-creator/SKILL.md"
-      ],
+      "skill_paths": ["skills/skill-creator/SKILL.md"],
       "url": "https://github.com/enuno/claude-command-and-control"
     },
     {
@@ -2024,9 +1821,7 @@
       "description": null,
       "language": "Shell",
       "skill_count": 1,
-      "skill_paths": [
-        "cc-plugins/base/skills/github-workflow-fixer/SKILL.md"
-      ],
+      "skill_paths": ["cc-plugins/base/skills/github-workflow-fixer/SKILL.md"],
       "url": "https://github.com/yaakaito/env"
     },
     {
@@ -2035,9 +1830,7 @@
       "description": "UCPL - Ultra Compact Prompt Language",
       "language": "JavaScript",
       "skill_count": 1,
-      "skill_paths": [
-        ".claude/skills/ucpl-parser.md"
-      ],
+      "skill_paths": [".claude/skills/ucpl-parser.md"],
       "url": "https://github.com/dimitritholen/ultra-compact-prompt-language"
     },
     {
@@ -2046,9 +1839,7 @@
       "description": "Claude Slash Commands to update issue status",
       "language": null,
       "skill_count": 1,
-      "skill_paths": [
-        ".claude/skills/gh-commands.md"
-      ],
+      "skill_paths": [".claude/skills/gh-commands.md"],
       "url": "https://github.com/Tasup/Tasup"
     },
     {
@@ -2071,9 +1862,7 @@
       "description": "Claude Code Plugins is an open-source add-on suite that turns Claude Code into a programmable workspace. It gives you composable workflows, automatic project memory, skill packs, lifecycle hooks, sub-agents, and typed commands\u2014all wired with minimal config.",
       "language": "Python",
       "skill_count": 1,
-      "skill_paths": [
-        ".claude/skills/memory-graph/examples.md"
-      ],
+      "skill_paths": [".claude/skills/memory-graph/examples.md"],
       "url": "https://github.com/MacroMan5/claude-code-workflow-plugins"
     },
     {
@@ -2113,9 +1902,7 @@
       "description": "TUI for VCR Cassettes",
       "language": null,
       "skill_count": 1,
-      "skill_paths": [
-        ".claude/skills/textual/README.md"
-      ],
+      "skill_paths": [".claude/skills/textual/README.md"],
       "url": "https://github.com/KyleKing/vcr-tui"
     },
     {
@@ -2158,9 +1945,7 @@
       "description": "this is my proposal for a little ISMS helper powered by Claude Code",
       "language": "PHP",
       "skill_count": 1,
-      "skill_paths": [
-        ".claude/skills/dpo-specialist/gdpr-reference.md"
-      ],
+      "skill_paths": [".claude/skills/dpo-specialist/gdpr-reference.md"],
       "url": "https://github.com/moag1000/Little-ISMS-Helper"
     },
     {
@@ -2202,9 +1987,7 @@
       "description": "Rust/Nannou based live music analyser that works with any input devices",
       "language": "Rust",
       "skill_count": 1,
-      "skill_paths": [
-        ".claude/skills/new-visualization.md"
-      ],
+      "skill_paths": [".claude/skills/new-visualization.md"],
       "url": "https://github.com/zeachco/dj-viz"
     },
     {
@@ -2224,9 +2007,7 @@
       "description": "Aggregated documentations across multiple repos, including OpenHands, agent-sdk, etc.",
       "language": "MDX",
       "skill_count": 1,
-      "skill_paths": [
-        "sdk/arch/skill.mdx"
-      ],
+      "skill_paths": ["sdk/arch/skill.mdx"],
       "url": "https://github.com/OpenHands/docs"
     },
     {
@@ -2235,9 +2016,7 @@
       "description": "Give Claude Code .NET superpowers.  A C#-native skill and agent library that brings structured reasoning, automation, and collaborative workflows to Claude Code \u2014 the Zen way.",
       "language": "C#",
       "skill_count": 1,
-      "skill_paths": [
-        "skills/meta/create-new-skill.md"
-      ],
+      "skill_paths": ["skills/meta/create-new-skill.md"],
       "url": "https://github.com/alexsandrocruz/ZenPowers"
     },
     {
@@ -2281,9 +2060,7 @@
       "description": null,
       "language": "Shell",
       "skill_count": 1,
-      "skill_paths": [
-        "agents/skills/design-principles/SKILL.md"
-      ],
+      "skill_paths": ["agents/skills/design-principles/SKILL.md"],
       "url": "https://github.com/LarsEckart/dotfiles"
     },
     {
@@ -2292,9 +2069,7 @@
       "description": "Comprehensive library of +100 production-ready development skills covering every aspect of modern software engineering. From project setup to production deployment, from security hardening to performance optimization.",
       "language": null,
       "skill_count": 1,
-      "skill_paths": [
-        "backend/caching-strategist/ SKILL.md"
-      ],
+      "skill_paths": ["backend/caching-strategist/ SKILL.md"],
       "url": "https://github.com/patricio0312rev/skills"
     },
     {
@@ -2303,9 +2078,7 @@
       "description": null,
       "language": null,
       "skill_count": 1,
-      "skill_paths": [
-        "framework/fullstory-stable-selectors/SKILL.md"
-      ],
+      "skill_paths": ["framework/fullstory-stable-selectors/SKILL.md"],
       "url": "https://github.com/fullstorydev/fs-skills"
     },
     {
@@ -2314,9 +2087,7 @@
       "description": "just dotfiles",
       "language": "Python",
       "skill_count": 1,
-      "skill_paths": [
-        "claude/skills/osay/SKILL.md"
-      ],
+      "skill_paths": ["claude/skills/osay/SKILL.md"],
       "url": "https://github.com/tizee/dotfiles"
     },
     {
@@ -2325,9 +2096,7 @@
       "description": "CLI tool to import production-ready development skills for Claude Code, Cursor, GitHub Copilot, and other AI coding assistants",
       "language": "JavaScript",
       "skill_count": 1,
-      "skill_paths": [
-        "templates/backend/caching-strategist/SKILL.md"
-      ],
+      "skill_paths": ["templates/backend/caching-strategist/SKILL.md"],
       "url": "https://github.com/patricio0312rev/skillset"
     },
     {
@@ -2336,9 +2105,7 @@
       "description": "Arizona Indymedia Hugo theme",
       "language": "HTML",
       "skill_count": 1,
-      "skill_paths": [
-        ".claude/skills/hugo.md"
-      ],
+      "skill_paths": [".claude/skills/hugo.md"],
       "url": "https://github.com/pgsimpso/az-indymedia-theme"
     },
     {
@@ -2347,9 +2114,7 @@
       "description": null,
       "language": "Jupyter Notebook",
       "skill_count": 1,
-      "skill_paths": [
-        ".claude/skills/safe-refactoring/skill.md"
-      ],
+      "skill_paths": [".claude/skills/safe-refactoring/skill.md"],
       "url": "https://github.com/LorenFrankLab/non_local_detector"
     },
     {
@@ -2358,9 +2123,7 @@
       "description": null,
       "language": "TypeScript",
       "skill_count": 1,
-      "skill_paths": [
-        ".claude/skills/deploy/skill.md"
-      ],
+      "skill_paths": [".claude/skills/deploy/skill.md"],
       "url": "https://github.com/WellFitCommunity/WellFit-Community-Daily-Complete"
     },
     {
@@ -2381,9 +2144,7 @@
       "description": null,
       "language": "Python",
       "skill_count": 1,
-      "skill_paths": [
-        ".claude/skills/INDEX.md"
-      ],
+      "skill_paths": [".claude/skills/INDEX.md"],
       "url": "https://github.com/synqing/K1.hardware"
     },
     {
@@ -2392,10 +2153,7 @@
       "description": "\"@rippy open 10x ETH long.\"",
       "language": "TypeScript",
       "skill_count": 2,
-      "skill_paths": [
-        ".claude/skills/neynar.md",
-        ".claude/skills/avantis.md"
-      ],
+      "skill_paths": [".claude/skills/neynar.md", ".claude/skills/avantis.md"],
       "url": "https://github.com/igoryuzo/rippy"
     },
     {
@@ -2416,9 +2174,7 @@
       "description": "Python algorithmic trading bot for Robinhood with backtesting, risk management, and paper trading. Built with safety-first principles.",
       "language": "Python",
       "skill_count": 1,
-      "skill_paths": [
-        ".claude/skills/SKILL_DEPENDENCIES.md"
-      ],
+      "skill_paths": [".claude/skills/SKILL_DEPENDENCIES.md"],
       "url": "https://github.com/marcusgoll/robinhood-algo-trading-bot"
     },
     {
@@ -2427,9 +2183,7 @@
       "description": "Browser automation that learns from every interaction. Uses AI memory and reinforcement learning to get 27-122% better over time automatically. \ud83e\udde0",
       "language": "TypeScript",
       "skill_count": 1,
-      "skill_paths": [
-        ".claude/skills/linkedin-job-hunter.md"
-      ],
+      "skill_paths": [".claude/skills/linkedin-job-hunter.md"],
       "url": "https://github.com/maree217/self-learning-browser-automation"
     },
     {
@@ -2438,9 +2192,7 @@
       "description": null,
       "language": "HTML",
       "skill_count": 1,
-      "skill_paths": [
-        ".claude/skills/espn-sync.md"
-      ],
+      "skill_paths": [".claude/skills/espn-sync.md"],
       "url": "https://github.com/tonyweeg/NerdfootballAI"
     },
     {
@@ -2449,9 +2201,7 @@
       "description": null,
       "language": "TypeScript",
       "skill_count": 1,
-      "skill_paths": [
-        ".claude/skills/README.md"
-      ],
+      "skill_paths": [".claude/skills/README.md"],
       "url": "https://github.com/lizTheDeveloper/ai_village"
     },
     {
@@ -2460,9 +2210,7 @@
       "description": null,
       "language": "HTML",
       "skill_count": 1,
-      "skill_paths": [
-        ".claude/skills/frontend-design.md"
-      ],
+      "skill_paths": [".claude/skills/frontend-design.md"],
       "url": "https://github.com/mrporterphysics/mrporterphysics.github.io"
     },
     {
@@ -2471,9 +2219,7 @@
       "description": null,
       "language": "Python",
       "skill_count": 1,
-      "skill_paths": [
-        ".claude/skills/doc-bdd_quickref.md"
-      ],
+      "skill_paths": [".claude/skills/doc-bdd_quickref.md"],
       "url": "https://github.com/vladm3105/aidoc-flow-framework"
     },
     {
@@ -2482,9 +2228,7 @@
       "description": null,
       "language": "TypeScript",
       "skill_count": 1,
-      "skill_paths": [
-        ".claude/skills/validate-nivel-3.md"
-      ],
+      "skill_paths": [".claude/skills/validate-nivel-3.md"],
       "url": "https://github.com/adrianolucasdepaula/invest"
     },
     {
@@ -2493,9 +2237,7 @@
       "description": null,
       "language": null,
       "skill_count": 1,
-      "skill_paths": [
-        ".claude/skills/seo-mastery/core-web-vitals.md"
-      ],
+      "skill_paths": [".claude/skills/seo-mastery/core-web-vitals.md"],
       "url": "https://github.com/kpab/seo-mastery-agent-skills"
     },
     {
@@ -2504,9 +2246,7 @@
       "description": "Website for Talmo Pereira's lab (https://talmolab.org)",
       "language": "Python",
       "skill_count": 1,
-      "skill_paths": [
-        ".claude/skills/add-member/templates/bio-student.md"
-      ],
+      "skill_paths": [".claude/skills/add-member/templates/bio-student.md"],
       "url": "https://github.com/talmolab/lab-website"
     },
     {
@@ -2539,9 +2279,7 @@
       "description": null,
       "language": "JavaScript",
       "skill_count": 1,
-      "skill_paths": [
-        ".claude/skills/specification-refiner/scripts/README.md"
-      ],
+      "skill_paths": [".claude/skills/specification-refiner/scripts/README.md"],
       "url": "https://github.com/adaptiveX-gh/coursekit-mcp"
     },
     {
@@ -2702,9 +2440,7 @@
       "description": "krzy ",
       "language": "TypeScript",
       "skill_count": 1,
-      "skill_paths": [
-        ".claude/skills/critique/framework.md"
-      ],
+      "skill_paths": [".claude/skills/critique/framework.md"],
       "url": "https://github.com/ardeshir/krzy"
     },
     {
@@ -2713,9 +2449,7 @@
       "description": null,
       "language": "TypeScript",
       "skill_count": 1,
-      "skill_paths": [
-        ".claude/skills/repeatable-regions.md"
-      ],
+      "skill_paths": [".claude/skills/repeatable-regions.md"],
       "url": "https://github.com/martijnbokma/couchcms-ai-toolkit"
     },
     {
@@ -2724,9 +2458,7 @@
       "description": null,
       "language": null,
       "skill_count": 1,
-      "skill_paths": [
-        ".claude/skills/detecting-arbitrary-read/patterns.md"
-      ],
+      "skill_paths": [".claude/skills/detecting-arbitrary-read/patterns.md"],
       "url": "https://github.com/waiwai24/BinaryX-Agent"
     },
     {
@@ -2825,9 +2557,7 @@
       "description": "A collection of custom rules for markdownlint that enforce consistent Markdown styling and formatting standards.",
       "language": "JavaScript",
       "skill_count": 1,
-      "skill_paths": [
-        ".claude/skills/gh-project-setup/REFERENCE.md"
-      ],
+      "skill_paths": [".claude/skills/gh-project-setup/REFERENCE.md"],
       "url": "https://github.com/kynoptic/markdownlint-trap"
     },
     {
@@ -2836,9 +2566,7 @@
       "description": "PR management dashboard and MCP server with support for Github, Gitlab, and Bitbucket",
       "language": "Rust",
       "skill_count": 1,
-      "skill_paths": [
-        ".claude/skills/brutal-honesty-review/README.md"
-      ],
+      "skill_paths": [".claude/skills/brutal-honesty-review/README.md"],
       "url": "https://github.com/pacphi/ampel"
     },
     {
@@ -2847,9 +2575,7 @@
       "description": "Ready to deploy template repo with Next16, Better-Auth, Drizzle, Neon, Shadcn, Claude, Bun, Biome, Pino, Stripe, Velite, Vitest, SEO, etc",
       "language": "TypeScript",
       "skill_count": 1,
-      "skill_paths": [
-        ".claude/skills/next/next-api-architect/README.md"
-      ],
+      "skill_paths": [".claude/skills/next/next-api-architect/README.md"],
       "url": "https://github.com/zacharyr0th/next-starter"
     },
     {
@@ -2891,9 +2617,7 @@
       "description": null,
       "language": "Python",
       "skill_count": 1,
-      "skill_paths": [
-        "automation/templates/skill.md.template"
-      ],
+      "skill_paths": ["automation/templates/skill.md.template"],
       "url": "https://github.com/tryinhard1080/ClaudeClodeCommander"
     },
     {
@@ -2902,9 +2626,7 @@
       "description": "Smart Ai written in Python",
       "language": "Python",
       "skill_count": 1,
-      "skill_paths": [
-        "docs/kenzy.skills.HomeAssistantSkill.md"
-      ],
+      "skill_paths": ["docs/kenzy.skills.HomeAssistantSkill.md"],
       "url": "https://github.com/lnxusr1/kenzy"
     },
     {
@@ -2913,9 +2635,7 @@
       "description": null,
       "language": "Python",
       "skill_count": 1,
-      "skill_paths": [
-        ".claude/commands/add-skill.md"
-      ],
+      "skill_paths": [".claude/commands/add-skill.md"],
       "url": "https://github.com/gizix/cc_projects"
     },
     {
@@ -2924,9 +2644,7 @@
       "description": "Local network party games - Because we can do better than Jackbox",
       "language": "TypeScript",
       "skill_count": 1,
-      "skill_paths": [
-        ".claude/skills/health-check.skill.md"
-      ],
+      "skill_paths": [".claude/skills/health-check.skill.md"],
       "url": "https://github.com/jkraybill/jkbox"
     },
     {
@@ -2935,9 +2653,7 @@
       "description": "A personal analysis library for storing Arknights code structure",
       "language": "C#",
       "skill_count": 1,
-      "skill_paths": [
-        "source/dump/TriggerSkill.md"
-      ],
+      "skill_paths": ["source/dump/TriggerSkill.md"],
       "url": "https://github.com/AdoreJc/ArknightsDB"
     },
     {
@@ -2977,9 +2693,7 @@
       "description": null,
       "language": "TypeScript",
       "skill_count": 1,
-      "skill_paths": [
-        "src/content/posts/en/the-journey-of-mind-and-skill.md"
-      ],
+      "skill_paths": ["src/content/posts/en/the-journey-of-mind-and-skill.md"],
       "url": "https://github.com/CassiopeiaCode/blog"
     },
     {
@@ -3044,9 +2758,7 @@
       "description": "Start a new project with NodeJS Starter V1",
       "language": "Python",
       "skill_count": 1,
-      "skill_paths": [
-        "skills/backend/advanced-tool-use.skill.md"
-      ],
+      "skill_paths": ["skills/backend/advanced-tool-use.skill.md"],
       "url": "https://github.com/CleanExpo/NodeJS-Starter-V1"
     },
     {
@@ -3055,9 +2767,7 @@
       "description": "Proyecto r-exams para Saber ICFES en Matem\u00e1ticas, con un nuevo enfoque",
       "language": "HTML",
       "skill_count": 1,
-      "skill_paths": [
-        ".claude/skills/analizar-icfes/skill.md"
-      ],
+      "skill_paths": [".claude/skills/analizar-icfes/skill.md"],
       "url": "https://github.com/alvaretto/proyecto-r-exams-icfes-matematicas-optimizado"
     },
     {
@@ -3066,9 +2776,7 @@
       "description": "Cloudflare plugin for CDN, DNS, security, and edge computing",
       "language": "Python",
       "skill_count": 1,
-      "skill_paths": [
-        "skills/languages/SKILL.md"
-      ],
+      "skill_paths": ["skills/languages/SKILL.md"],
       "url": "https://github.com/pluginagentmarketplace/custom-plugin-cloudflare"
     },
     {
@@ -3077,9 +2785,7 @@
       "description": "Vision View Effect",
       "language": "TypeScript",
       "skill_count": 1,
-      "skill_paths": [
-        "plugins/devac/skills/define-effects/SKILL.md"
-      ],
+      "skill_paths": ["plugins/devac/skills/define-effects/SKILL.md"],
       "url": "https://github.com/pietgk/vivief"
     },
     {
@@ -3099,9 +2805,7 @@
       "description": null,
       "language": "HTML",
       "skill_count": 1,
-      "skill_paths": [
-        ".claude/skills/well-production-dashboard/SKILL.md"
-      ],
+      "skill_paths": [".claude/skills/well-production-dashboard/SKILL.md"],
       "url": "https://github.com/vamseeachanta/worldenergydata"
     },
     {
@@ -3110,9 +2814,7 @@
       "description": null,
       "language": "Python",
       "skill_count": 1,
-      "skill_paths": [
-        "skills/ops/validate-cma/SKILL.md"
-      ],
+      "skill_paths": ["skills/ops/validate-cma/SKILL.md"],
       "url": "https://github.com/OrionArchitekton/cosmocrat-core"
     },
     {
@@ -3121,9 +2823,7 @@
       "description": "Kisune is my personal Claude plugins, a refined suite of abilities elevating Claude into a powerful multi-tool for coding, research, and automation.",
       "language": null,
       "skill_count": 1,
-      "skill_paths": [
-        "trading/skills/pattern-recognition/SKILL.md"
-      ],
+      "skill_paths": ["trading/skills/pattern-recognition/SKILL.md"],
       "url": "https://github.com/xbklairith/kisune"
     },
     {
@@ -3143,9 +2843,7 @@
       "description": "TMI is a threat modeling API server.  It uses OIDC & OAuth for login & access, stores threat models in a PostgreSQL database, and supports both a REST API and real-time collaborative editing over websockets.",
       "language": "Go",
       "skill_count": 1,
-      "skill_paths": [
-        ".claude/skills/db.md"
-      ],
+      "skill_paths": [".claude/skills/db.md"],
       "url": "https://github.com/ericfitz/tmi"
     },
     {
@@ -3195,9 +2893,7 @@
       "description": null,
       "language": "JavaScript",
       "skill_count": 1,
-      "skill_paths": [
-        ".claude/skills/css-layouts.md"
-      ],
+      "skill_paths": [".claude/skills/css-layouts.md"],
       "url": "https://github.com/wernerglinka/metalsmith-components"
     },
     {
@@ -3206,9 +2902,7 @@
       "description": null,
       "language": "TypeScript",
       "skill_count": 1,
-      "skill_paths": [
-        ".claude/skills/INSTALLATION.md"
-      ],
+      "skill_paths": [".claude/skills/INSTALLATION.md"],
       "url": "https://github.com/doorscomputers/nextjspos"
     },
     {
@@ -3217,9 +2911,7 @@
       "description": null,
       "language": "Python",
       "skill_count": 1,
-      "skill_paths": [
-        ".claude/skills/buslog/SKILL.MD"
-      ],
+      "skill_paths": [".claude/skills/buslog/SKILL.MD"],
       "url": "https://github.com/PoulpYBifle/BusLog"
     },
     {
@@ -3260,9 +2952,7 @@
       "description": "Digital Life Cycle Assessment for Statik.be projects & beyond",
       "language": "PHP",
       "skill_count": 1,
-      "skill_paths": [
-        ".claude/skills/ddev.md"
-      ],
+      "skill_paths": [".claude/skills/ddev.md"],
       "url": "https://github.com/statikbe/laravel-karbon"
     },
     {
@@ -3283,9 +2973,7 @@
       "description": null,
       "language": "Python",
       "skill_count": 1,
-      "skill_paths": [
-        ".claude/skills/vue3-ux-design.md"
-      ],
+      "skill_paths": [".claude/skills/vue3-ux-design.md"],
       "url": "https://github.com/tachyon-beep/hamlet"
     },
     {
@@ -3294,9 +2982,7 @@
       "description": null,
       "language": "Shell",
       "skill_count": 1,
-      "skill_paths": [
-        ".claude/skills/QUICK_REFERENCE.md"
-      ],
+      "skill_paths": [".claude/skills/QUICK_REFERENCE.md"],
       "url": "https://github.com/LenoreWoW/ChameleonVpn"
     },
     {
@@ -3305,9 +2991,7 @@
       "description": "Fire Emblem Roguelike",
       "language": "GDScript",
       "skill_count": 1,
-      "skill_paths": [
-        ".claude/skills/godot-quick-ref.md"
-      ],
+      "skill_paths": [".claude/skills/godot-quick-ref.md"],
       "url": "https://github.com/Sunnigen/ferl"
     },
     {
@@ -3316,9 +3000,7 @@
       "description": null,
       "language": "JavaScript",
       "skill_count": 1,
-      "skill_paths": [
-        ".claude/skills/abcjs.md"
-      ],
+      "skill_paths": [".claude/skills/abcjs.md"],
       "url": "https://github.com/retex73/music-app"
     },
     {
@@ -3327,9 +3009,7 @@
       "description": null,
       "language": "Python",
       "skill_count": 1,
-      "skill_paths": [
-        ".claude/skills/codex.md"
-      ],
+      "skill_paths": [".claude/skills/codex.md"],
       "url": "https://github.com/HAMA-team/HAMA-backend"
     },
     {
@@ -3351,9 +3031,7 @@
       "description": null,
       "language": "Python",
       "skill_count": 1,
-      "skill_paths": [
-        ".claude/skills/MIGRATION_SUMMARY.md"
-      ],
+      "skill_paths": [".claude/skills/MIGRATION_SUMMARY.md"],
       "url": "https://github.com/linus-mcmanamey/multi-agent-user-story-development"
     },
     {
@@ -3362,9 +3040,7 @@
       "description": "AI ranking system frontend app - forked from outrun-app",
       "language": "JavaScript",
       "skill_count": 1,
-      "skill_paths": [
-        ".claude/skills/frontend-designer.md"
-      ],
+      "skill_paths": [".claude/skills/frontend-designer.md"],
       "url": "https://github.com/loonshoot/airank-app"
     },
     {
@@ -3409,9 +3085,7 @@
       "description": "\uc5b8\ub9ac\uc5bc \uc5d4\uc9c4 5.6\uc5d0\uc11c \uad6c\ub3d9\ub418\ub294 \uc5ed\uc0ac \uccb4\ud5d8\ud615 \uac8c\uc784 \ud504\ub85c\uc81d\ud2b8 YiSan. \ucee4\uc2a4\ud140 Coffee/Latte \ub77c\uc774\ube0c\ub7ec\ub9ac\ub85c \uce90\ub9ad\ud130\u00b7\ub124\ud2b8\uc6cc\ud06c\u00b7\ud234\ub9c1\uc744 \ud655\uc7a5\ud558\uba70, \uc790\ub3d9 DevLog\u00b7PowerShell \ud14c\uc2a4\ud2b8\ub85c \ube4c\ub4dc \uc548\uc815\uc131\uc744 \uac15\ud654\ud569\ub2c8\ub2e4. ",
       "language": "C++",
       "skill_count": 1,
-      "skill_paths": [
-        ".claude/skills/agent-log.md"
-      ],
+      "skill_paths": [".claude/skills/agent-log.md"],
       "url": "https://github.com/doppleddiggong/YiSan"
     },
     {
@@ -3420,9 +3094,7 @@
       "description": null,
       "language": "MDX",
       "skill_count": 1,
-      "skill_paths": [
-        ".claude/skills/pre-commit.md"
-      ],
+      "skill_paths": [".claude/skills/pre-commit.md"],
       "url": "https://github.com/jreed91/jacobreed.dev"
     },
     {
@@ -3431,9 +3103,7 @@
       "description": "Modelo atuarial para c\u00e1lculo de pens\u00e3o por morte de servidores p\u00fablicos (PNADC 2023 + AT-2012 IAM)",
       "language": "Julia",
       "skill_count": 1,
-      "skill_paths": [
-        ".claude/skills/pnad2011/00_overview.md"
-      ],
+      "skill_paths": [".claude/skills/pnad2011/00_overview.md"],
       "url": "https://github.com/andrecamatta/pq_heritor"
     },
     {
@@ -3442,9 +3112,7 @@
       "description": "Adaptive Security Defence System v2: Self-learning security using adversarial self-play and reinforcement learning",
       "language": "Python",
       "skill_count": 1,
-      "skill_paths": [
-        ".claude/skills/game-theory-analysis.md"
-      ],
+      "skill_paths": [".claude/skills/game-theory-analysis.md"],
       "url": "https://github.com/Benjamin-KY/asds-selfplay"
     },
     {
@@ -3453,9 +3121,7 @@
       "description": "A tool to organize, manage, and streamline 3D printing workflows\u2014track print jobs, queue tasks, and monitor printers with ease.",
       "language": "Python",
       "skill_count": 1,
-      "skill_paths": [
-        ".claude/skills/printernizer-features.md"
-      ],
+      "skill_paths": [".claude/skills/printernizer-features.md"],
       "url": "https://github.com/schmacka/printernizer"
     },
     {
@@ -3464,9 +3130,7 @@
       "description": null,
       "language": "Python",
       "skill_count": 1,
-      "skill_paths": [
-        ".claude/skills/api-testing.md"
-      ],
+      "skill_paths": [".claude/skills/api-testing.md"],
       "url": "https://github.com/lct1407/rental-api"
     },
     {
@@ -3475,9 +3139,7 @@
       "description": null,
       "language": "Python",
       "skill_count": 1,
-      "skill_paths": [
-        ".claude/skills/INSTALLATION.md"
-      ],
+      "skill_paths": [".claude/skills/INSTALLATION.md"],
       "url": "https://github.com/MRenAIAgent/mini_agent"
     },
     {
@@ -3486,9 +3148,7 @@
       "description": null,
       "language": "C",
       "skill_count": 1,
-      "skill_paths": [
-        ".claude/skills/INDEX.md"
-      ],
+      "skill_paths": [".claude/skills/INDEX.md"],
       "url": "https://github.com/synqing/PRISM.unified"
     },
     {
@@ -3522,9 +3182,7 @@
       "description": null,
       "language": "TypeScript",
       "skill_count": 1,
-      "skill_paths": [
-        ".claude/skills/react-web.md"
-      ],
+      "skill_paths": [".claude/skills/react-web.md"],
       "url": "https://github.com/RcKeller/tabletop-scheduler"
     },
     {
@@ -3533,9 +3191,7 @@
       "description": "Pesu's homelab",
       "language": "Python",
       "skill_count": 1,
-      "skill_paths": [
-        ".claude/skills/homelab/architecture.md"
-      ],
+      "skill_paths": [".claude/skills/homelab/architecture.md"],
       "url": "https://github.com/pesuga/homelab"
     },
     {
@@ -3544,9 +3200,7 @@
       "description": null,
       "language": null,
       "skill_count": 1,
-      "skill_paths": [
-        ".claude/skills/pptx/ooxml.md"
-      ],
+      "skill_paths": [".claude/skills/pptx/ooxml.md"],
       "url": "https://github.com/Ameyanagi/claudeslide_example"
     },
     {
@@ -3567,9 +3221,7 @@
       "description": "The Launchpad for Chicago Founders",
       "language": "JavaScript",
       "skill_count": 1,
-      "skill_paths": [
-        ".claude/skills/color-systems.md"
-      ],
+      "skill_paths": [".claude/skills/color-systems.md"],
       "url": "https://github.com/bjtheartist/chistartuphub"
     },
     {
@@ -3590,9 +3242,7 @@
       "description": null,
       "language": "Kotlin",
       "skill_count": 1,
-      "skill_paths": [
-        ".claude/skills/adb-device-testing/ADVANCED.md"
-      ],
+      "skill_paths": [".claude/skills/adb-device-testing/ADVANCED.md"],
       "url": "https://github.com/hanibalsk/phone-manager"
     },
     {
@@ -3618,9 +3268,7 @@
       "description": null,
       "language": "HTML",
       "skill_count": 1,
-      "skill_paths": [
-        ".claude/skills/create-backend-native-adapter.md"
-      ],
+      "skill_paths": [".claude/skills/create-backend-native-adapter.md"],
       "url": "https://github.com/johnhenry/ai.matey"
     },
     {
@@ -3629,9 +3277,7 @@
       "description": null,
       "language": "TypeScript",
       "skill_count": 1,
-      "skill_paths": [
-        ".claude/skills/documentation/diataxis-summary.md"
-      ],
+      "skill_paths": [".claude/skills/documentation/diataxis-summary.md"],
       "url": "https://github.com/wodsmith/thewodapp"
     },
     {
@@ -3640,9 +3286,7 @@
       "description": null,
       "language": "TypeScript",
       "skill_count": 1,
-      "skill_paths": [
-        ".claude/skills/expo-docs/brightness.md"
-      ],
+      "skill_paths": [".claude/skills/expo-docs/brightness.md"],
       "url": "https://github.com/stevewinfieldtx/CompatibilityTalk"
     },
     {
@@ -3651,9 +3295,7 @@
       "description": null,
       "language": "TypeScript",
       "skill_count": 1,
-      "skill_paths": [
-        ".claude/skills/nanobanana-pro/README.md"
-      ],
+      "skill_paths": [".claude/skills/nanobanana-pro/README.md"],
       "url": "https://github.com/taiyousan15/taisun_agent"
     },
     {
@@ -3662,9 +3304,7 @@
       "description": null,
       "language": "Python",
       "skill_count": 1,
-      "skill_paths": [
-        ".claude/skills/frontend-design/README.md"
-      ],
+      "skill_paths": [".claude/skills/frontend-design/README.md"],
       "url": "https://github.com/JulianDiazEc/Agente-ocupacional"
     },
     {
@@ -3673,9 +3313,7 @@
       "description": null,
       "language": "Python",
       "skill_count": 1,
-      "skill_paths": [
-        ".claude/skills/aws-eks/references/index.md"
-      ],
+      "skill_paths": [".claude/skills/aws-eks/references/index.md"],
       "url": "https://github.com/rish2jain/paperresearchagent"
     },
     {
@@ -3696,9 +3334,7 @@
       "description": "\u94f6\u6cb3\u62bd\u5956\u7cfb\u7edf \u4e00\u4e2a\u57fa\u4e8e React + Three.js + \u817e\u8baf\u4e91\u5f00\u53d1\u7684 3D \u94f6\u6cb3\u4e3b\u9898\u62bd\u5956\u5e94\u7528\uff0c\u652f\u6301\u9636\u68af\u5956\u54c1\u914d\u7f6e\u3001\u6279\u91cf\u62bd\u5956\u548c\u4e91\u7aef\u6570\u636e\u540c\u6b65\u3002",
       "language": "TypeScript",
       "skill_count": 1,
-      "skill_paths": [
-        ".claude/skills/no-sql-web-sdk/pagination.md"
-      ],
+      "skill_paths": [".claude/skills/no-sql-web-sdk/pagination.md"],
       "url": "https://github.com/binggg/GALAXY-VORTEX"
     },
     {
@@ -3773,9 +3409,7 @@
       "description": null,
       "language": "TypeScript",
       "skill_count": 1,
-      "skill_paths": [
-        ".claude/skills/developing-backend/VALIDATION.md"
-      ],
+      "skill_paths": [".claude/skills/developing-backend/VALIDATION.md"],
       "url": "https://github.com/sorfeb/personal_web"
     },
     {
@@ -3784,9 +3418,7 @@
       "description": "Learning Claude Code extensibility: skills, agents, and task workflows",
       "language": "Python",
       "skill_count": 1,
-      "skill_paths": [
-        ".claude/skills/task-workflow/cookbook/define.md"
-      ],
+      "skill_paths": [".claude/skills/task-workflow/cookbook/define.md"],
       "url": "https://github.com/orakitine/claude-code-lab"
     },
     {
@@ -3808,9 +3440,7 @@
       "description": null,
       "language": "Python",
       "skill_count": 1,
-      "skill_paths": [
-        ".claude/skills/boq/README.md"
-      ],
+      "skill_paths": [".claude/skills/boq/README.md"],
       "url": "https://github.com/POBIM/Claude-Skill-Teach"
     },
     {
@@ -3833,9 +3463,7 @@
       "description": "Test repository for validating the Claude Code project management workflow with interactive sprint execution",
       "language": "JavaScript",
       "skill_count": 1,
-      "skill_paths": [
-        ".claude/skills/universal/plan-to-issues/PARSER.md"
-      ],
+      "skill_paths": [".claude/skills/universal/plan-to-issues/PARSER.md"],
       "url": "https://github.com/Mythologi-XR/Project-Management-Interactive-copilot-test"
     },
     {
@@ -3857,9 +3485,7 @@
       "description": null,
       "language": "Python",
       "skill_count": 1,
-      "skill_paths": [
-        ".claude/skills/internal-comms/examples/3p-updates.md"
-      ],
+      "skill_paths": [".claude/skills/internal-comms/examples/3p-updates.md"],
       "url": "https://github.com/Asmayaseen/hackathon-2"
     },
     {
@@ -3880,9 +3506,7 @@
       "description": "Phase II Todo Full-Stack Web Application - 115 tasks completed with FastAPI + Next.js + PostgreSQL",
       "language": "Python",
       "skill_count": 1,
-      "skill_paths": [
-        ".claude/skills/fastapi-expert/references/DATABASE.md"
-      ],
+      "skill_paths": [".claude/skills/fastapi-expert/references/DATABASE.md"],
       "url": "https://github.com/SHAJAR5110/Hackathon-II-phase2"
     },
     {
@@ -3891,9 +3515,7 @@
       "description": "Professional portfolio website with blog featuring AI and development insights",
       "language": "TypeScript",
       "skill_count": 1,
-      "skill_paths": [
-        ".claude/skills/service-website-generator/TEMPLATES.md"
-      ],
+      "skill_paths": [".claude/skills/service-website-generator/TEMPLATES.md"],
       "url": "https://github.com/Holajack/jacken-holland-portfolio"
     },
     {
@@ -3902,9 +3524,7 @@
       "description": null,
       "language": "Java",
       "skill_count": 1,
-      "skill_paths": [
-        ".claude/skills/skill-validator.md"
-      ],
+      "skill_paths": [".claude/skills/skill-validator.md"],
       "url": "https://github.com/wilson323/IOE-DREAMfornew"
     },
     {
@@ -3926,9 +3546,7 @@
       "description": "Development Spike to evaluate WhisperKit",
       "language": "Swift",
       "skill_count": 1,
-      "skill_paths": [
-        ".claude/skills/spike-driven-dev/references/examples.md"
-      ],
+      "skill_paths": [".claude/skills/spike-driven-dev/references/examples.md"],
       "url": "https://github.com/mpazaryna/WhisperKit"
     },
     {
@@ -3937,9 +3555,7 @@
       "description": null,
       "language": "Shell",
       "skill_count": 1,
-      "skill_paths": [
-        ".claude/skills/react-chat-logic.md"
-      ],
+      "skill_paths": [".claude/skills/react-chat-logic.md"],
       "url": "https://github.com/syedakhadija1/my-genz-book"
     },
     {
@@ -3959,9 +3575,7 @@
       "description": null,
       "language": "Shell",
       "skill_count": 1,
-      "skill_paths": [
-        ".claude/skills/email/USER_MANUAL.md"
-      ],
+      "skill_paths": [".claude/skills/email/USER_MANUAL.md"],
       "url": "https://github.com/7Sageer/cc-assistant"
     },
     {
@@ -4055,9 +3669,7 @@
       "description": null,
       "language": "C#",
       "skill_count": 1,
-      "skill_paths": [
-        ".claude/skills/unity/references/3d.md"
-      ],
+      "skill_paths": [".claude/skills/unity/references/3d.md"],
       "url": "https://github.com/yuemori/UnityMCPTest"
     },
     {
@@ -4077,9 +3689,7 @@
       "description": null,
       "language": "Python",
       "skill_count": 1,
-      "skill_paths": [
-        ".claude/skills/error-handling-skill.md"
-      ],
+      "skill_paths": [".claude/skills/error-handling-skill.md"],
       "url": "https://github.com/Osama-Raza/todo-cli-phase-1"
     },
     {
@@ -4110,9 +3720,7 @@
       "description": null,
       "language": "MDX",
       "skill_count": 1,
-      "skill_paths": [
-        ".claude/skills/scaffold-lab-exercise.md"
-      ],
+      "skill_paths": [".claude/skills/scaffold-lab-exercise.md"],
       "url": "https://github.com/HafizFasih/AIDD-Hackathon"
     },
     {
@@ -4167,9 +3775,7 @@
       "description": null,
       "language": "PowerShell",
       "skill_count": 1,
-      "skill_paths": [
-        ".claude/skills/qa.requirements-compliance.md"
-      ],
+      "skill_paths": [".claude/skills/qa.requirements-compliance.md"],
       "url": "https://github.com/ahmadsarfraz18/hackathon2_todo_app_phasew"
     },
     {
@@ -4216,9 +3822,7 @@
       "description": null,
       "language": "TypeScript",
       "skill_count": 1,
-      "skill_paths": [
-        ".claude/skills/automation-engagement-master.md"
-      ],
+      "skill_paths": [".claude/skills/automation-engagement-master.md"],
       "url": "https://github.com/aundre1/Video-Pool"
     },
     {
@@ -4441,9 +4045,7 @@
       "description": "An autonomous agentic system that monitors X (Twitter) for relevant news, generates engaging LinkedIn content with images, posts automatically, responds to comments, and continuously improves its strategy based on engagement metrics.",
       "language": "Python",
       "skill_count": 1,
-      "skill_paths": [
-        ".claude/skills/quality-metrics/SKILL.md"
-      ],
+      "skill_paths": [".claude/skills/quality-metrics/SKILL.md"],
       "url": "https://github.com/natea/ai-news-influencer"
     },
     {
@@ -4496,9 +4098,7 @@
       "description": null,
       "language": "TypeScript",
       "skill_count": 1,
-      "skill_paths": [
-        ".claude/skills/expo-docs/brightness.md"
-      ],
+      "skill_paths": [".claude/skills/expo-docs/brightness.md"],
       "url": "https://github.com/Malachi436/trustless_grainery_frontend"
     },
     {
@@ -4507,9 +4107,7 @@
       "description": "Organize your home smarter with AI. Scan, tag, and instantly find anything you store.",
       "language": "TypeScript",
       "skill_count": 1,
-      "skill_paths": [
-        ".claude/skills/expo-docs/brightness.md"
-      ],
+      "skill_paths": [".claude/skills/expo-docs/brightness.md"],
       "url": "https://github.com/mann2409/TidyNest"
     },
     {
@@ -4518,9 +4116,7 @@
       "description": "Coaching app",
       "language": "TypeScript",
       "skill_count": 1,
-      "skill_paths": [
-        ".claude/skills/expo-docs/brightness.md"
-      ],
+      "skill_paths": [".claude/skills/expo-docs/brightness.md"],
       "url": "https://github.com/mann2409/CoachPocket"
     },
     {
@@ -4529,9 +4125,7 @@
       "description": "Nestoria Mobile app",
       "language": "TypeScript",
       "skill_count": 1,
-      "skill_paths": [
-        ".claude/skills/expo-docs/brightness.md"
-      ],
+      "skill_paths": [".claude/skills/expo-docs/brightness.md"],
       "url": "https://github.com/ahmadshouly/Nestoria"
     },
     {
@@ -4683,9 +4277,7 @@
       "description": null,
       "language": "Python",
       "skill_count": 1,
-      "skill_paths": [
-        ".claude/skills/moai-workflow-testing/optimization.md"
-      ],
+      "skill_paths": [".claude/skills/moai-workflow-testing/optimization.md"],
       "url": "https://github.com/junseokandylee/ClaudeAutomate"
     },
     {
@@ -4783,9 +4375,7 @@
       "description": null,
       "language": "Python",
       "skill_count": 1,
-      "skill_paths": [
-        ".claude/skills/README.md"
-      ],
+      "skill_paths": [".claude/skills/README.md"],
       "url": "https://github.com/taipm/dev-team"
     },
     {
@@ -4794,9 +4384,7 @@
       "description": "(Alpha software) Build liveview apps in Go",
       "language": "Go",
       "skill_count": 1,
-      "skill_paths": [
-        ".claude/skills/pr-comments.md"
-      ],
+      "skill_paths": [".claude/skills/pr-comments.md"],
       "url": "https://github.com/livetemplate/livetemplate"
     },
     {
@@ -4805,9 +4393,7 @@
       "description": "Intelligent Task Prioritization System - Never lose track of commitments, automatically surface the right tasks at the right time",
       "language": "Go",
       "skill_count": 1,
-      "skill_paths": [
-        ".claude/skills/kickstart.md"
-      ],
+      "skill_paths": [".claude/skills/kickstart.md"],
       "url": "https://github.com/notkevinvu/TaskFlow"
     },
     {
@@ -4816,9 +4402,7 @@
       "description": "Experiment: Claude Code autonomously designs and orders PCBs from start to finish",
       "language": "Python",
       "skill_count": 1,
-      "skill_paths": [
-        ".claude/skills/pcb-master.md"
-      ],
+      "skill_paths": [".claude/skills/pcb-master.md"],
       "url": "https://github.com/zeulewan/singingcard"
     },
     {
@@ -4827,9 +4411,7 @@
       "description": null,
       "language": "TypeScript",
       "skill_count": 1,
-      "skill_paths": [
-        ".claude/skills/implement-plan.md"
-      ],
+      "skill_paths": [".claude/skills/implement-plan.md"],
       "url": "https://github.com/seanperkins/horse-racer"
     },
     {
@@ -4838,9 +4420,7 @@
       "description": null,
       "language": "Shell",
       "skill_count": 1,
-      "skill_paths": [
-        ".claude/skills/create-dev-plan.md"
-      ],
+      "skill_paths": [".claude/skills/create-dev-plan.md"],
       "url": "https://github.com/mmorris35/ClaudeGo"
     },
     {
@@ -4849,9 +4429,7 @@
       "description": null,
       "language": null,
       "skill_count": 1,
-      "skill_paths": [
-        ".claude/skills/mecanico-system.md"
-      ],
+      "skill_paths": [".claude/skills/mecanico-system.md"],
       "url": "https://github.com/ulrichtesteapi3-lab/Misc"
     },
     {
@@ -4860,9 +4438,7 @@
       "description": null,
       "language": "Python",
       "skill_count": 1,
-      "skill_paths": [
-        ".claude/skills/x-trend-architecture/TRAINING.md"
-      ],
+      "skill_paths": [".claude/skills/x-trend-architecture/TRAINING.md"],
       "url": "https://github.com/Donaldshen27/xtrend-vanilla"
     },
     {
@@ -4883,9 +4459,7 @@
       "description": null,
       "language": null,
       "skill_count": 1,
-      "skill_paths": [
-        ".claude/skills/document-summarizer.md"
-      ],
+      "skill_paths": [".claude/skills/document-summarizer.md"],
       "url": "https://github.com/maynard242/claude-code-web-tests"
     },
     {
@@ -4894,9 +4468,7 @@
       "description": null,
       "language": "Astro",
       "skill_count": 1,
-      "skill_paths": [
-        ".claude/skills/writing/examples/setlist.md"
-      ],
+      "skill_paths": [".claude/skills/writing/examples/setlist.md"],
       "url": "https://github.com/mpazaryna/pazland-astro"
     },
     {
@@ -4905,9 +4477,7 @@
       "description": null,
       "language": "Python",
       "skill_count": 1,
-      "skill_paths": [
-        ".claude/skills/clerk-auth/references/common-errors.md"
-      ],
+      "skill_paths": [".claude/skills/clerk-auth/references/common-errors.md"],
       "url": "https://github.com/miethe/deal-brain"
     },
     {
@@ -4916,9 +4486,7 @@
       "description": "A project to copy paste the entire settings",
       "language": "Python",
       "skill_count": 1,
-      "skill_paths": [
-        ".claude/skills/deployment-expert/references/railway.md"
-      ],
+      "skill_paths": [".claude/skills/deployment-expert/references/railway.md"],
       "url": "https://github.com/ak-eyther/model-project"
     },
     {
@@ -4927,9 +4495,7 @@
       "description": null,
       "language": "HTML",
       "skill_count": 1,
-      "skill_paths": [
-        ".claude/skills/prompt-writing/templates/review-task.md"
-      ],
+      "skill_paths": [".claude/skills/prompt-writing/templates/review-task.md"],
       "url": "https://github.com/Danik911/thesis_project"
     },
     {
@@ -4938,9 +4504,7 @@
       "description": null,
       "language": "TypeScript",
       "skill_count": 1,
-      "skill_paths": [
-        ".claude/skills/metronic-module/components.md"
-      ],
+      "skill_paths": [".claude/skills/metronic-module/components.md"],
       "url": "https://github.com/harishafeez1/providr-react"
     },
     {
@@ -4949,9 +4513,7 @@
       "description": "\uc138\uc0c1\uc5d0\uc11c \uac00\uc7a5 \ub9db\uc788\ub294 \uc0ac\uc774\ub4dc \ud504\ub85c\uc81d\ud2b8 \ub808\uc2a4\ud1a0\ub791",
       "language": "TypeScript",
       "skill_count": 1,
-      "skill_paths": [
-        ".claude/skills/api-architecture/reference.md"
-      ],
+      "skill_paths": [".claude/skills/api-architecture/reference.md"],
       "url": "https://github.com/jhlee0409/sidedish"
     },
     {
@@ -4960,9 +4522,7 @@
       "description": null,
       "language": "TypeScript",
       "skill_count": 1,
-      "skill_paths": [
-        ".claude/skills/seo-optimization/CHECKLIST.md"
-      ],
+      "skill_paths": [".claude/skills/seo-optimization/CHECKLIST.md"],
       "url": "https://github.com/Tuminha/periospot_new"
     },
     {
@@ -4971,9 +4531,7 @@
       "description": null,
       "language": "TypeScript",
       "skill_count": 1,
-      "skill_paths": [
-        ".claude/skills/i18n-completeness/reference.md"
-      ],
+      "skill_paths": [".claude/skills/i18n-completeness/reference.md"],
       "url": "https://github.com/sakataka/tetris-game2"
     },
     {
@@ -4982,9 +4540,7 @@
       "description": "A claude code hooks library where it's very easy to create and test hooks of any kind",
       "language": "Python",
       "skill_count": 1,
-      "skill_paths": [
-        ".claude/skills/moai-alfred-rules/reference.md"
-      ],
+      "skill_paths": [".claude/skills/moai-alfred-rules/reference.md"],
       "url": "https://github.com/kivo360/quickhooks"
     },
     {
@@ -4993,9 +4549,7 @@
       "description": null,
       "language": "Python",
       "skill_count": 1,
-      "skill_paths": [
-        ".claude/skills/do-library-nextra/reference.md"
-      ],
+      "skill_paths": [".claude/skills/do-library-nextra/reference.md"],
       "url": "https://github.com/yejune/do"
     },
     {
@@ -5015,9 +4569,7 @@
       "description": null,
       "language": "Emacs Lisp",
       "skill_count": 1,
-      "skill_paths": [
-        ".claude/skills/pr-review.md"
-      ],
+      "skill_paths": [".claude/skills/pr-review.md"],
       "url": "https://github.com/ngdangdat/dotfiles"
     },
     {
@@ -5048,9 +4600,7 @@
       "description": null,
       "language": "GDScript",
       "skill_count": 1,
-      "skill_paths": [
-        ".claude/skills/brainstorming.md"
-      ],
+      "skill_paths": [".claude/skills/brainstorming.md"],
       "url": "https://github.com/noahval/GoA"
     },
     {
@@ -5059,9 +4609,7 @@
       "description": null,
       "language": "Python",
       "skill_count": 1,
-      "skill_paths": [
-        ".claude/skills/library-expert/assets/rag-template.md"
-      ],
+      "skill_paths": [".claude/skills/library-expert/assets/rag-template.md"],
       "url": "https://github.com/SHAJAR5110/Hackathon-I"
     },
     {
@@ -5081,9 +4629,7 @@
       "description": "The lending library app",
       "language": "Python",
       "skill_count": 1,
-      "skill_paths": [
-        ".claude/skills/backend-python/workflows/r2-storage.md"
-      ],
+      "skill_paths": [".claude/skills/backend-python/workflows/r2-storage.md"],
       "url": "https://github.com/urjitbhatia/bubbles"
     },
     {
@@ -5092,9 +4638,7 @@
       "description": null,
       "language": "TypeScript",
       "skill_count": 1,
-      "skill_paths": [
-        ".claude/skills/fpkit-developer/references/storybook.md"
-      ],
+      "skill_paths": [".claude/skills/fpkit-developer/references/storybook.md"],
       "url": "https://github.com/shawn-sandy/acss"
     },
     {
@@ -5103,9 +4647,7 @@
       "description": "Beta testing of repo for Noncitizen",
       "language": "Python",
       "skill_count": 1,
-      "skill_paths": [
-        ".claude/skills/research/category-landscape/WORKFLOW.md"
-      ],
+      "skill_paths": [".claude/skills/research/category-landscape/WORKFLOW.md"],
       "url": "https://github.com/alavida-ai/noncitizen"
     },
     {
@@ -5316,9 +4858,7 @@
       "description": null,
       "language": "Python",
       "skill_count": 1,
-      "skill_paths": [
-        ".claude/skills/ai-news/references/ARCHITECTURE.md"
-      ],
+      "skill_paths": [".claude/skills/ai-news/references/ARCHITECTURE.md"],
       "url": "https://github.com/JewelsHovan/AI-News-Reports"
     },
     {
@@ -5327,9 +4867,7 @@
       "description": null,
       "language": "Python",
       "skill_count": 1,
-      "skill_paths": [
-        ".claude/skills/python-project-setup/FILE_GUIDE.md"
-      ],
+      "skill_paths": [".claude/skills/python-project-setup/FILE_GUIDE.md"],
       "url": "https://github.com/Jrakru/python_project_structure"
     },
     {
@@ -5431,9 +4969,7 @@
       "description": null,
       "language": "Python",
       "skill_count": 1,
-      "skill_paths": [
-        ".claude/skills/skillcreator/README.md"
-      ],
+      "skill_paths": [".claude/skills/skillcreator/README.md"],
       "url": "https://github.com/therealityreport/screenalytics"
     },
     {
@@ -5442,9 +4978,7 @@
       "description": null,
       "language": "Python",
       "skill_count": 1,
-      "skill_paths": [
-        ".claude/skills/python-cleanup/examples.md"
-      ],
+      "skill_paths": [".claude/skills/python-cleanup/examples.md"],
       "url": "https://github.com/franklinbaldo/egregora"
     },
     {
@@ -5467,9 +5001,7 @@
       "description": null,
       "language": "TypeScript",
       "skill_count": 1,
-      "skill_paths": [
-        ".claude/skills/design-improvement/skill.md"
-      ],
+      "skill_paths": [".claude/skills/design-improvement/skill.md"],
       "url": "https://github.com/Youngger9765/young-personal-site"
     },
     {
@@ -5478,9 +5010,7 @@
       "description": null,
       "language": "TypeScript",
       "skill_count": 1,
-      "skill_paths": [
-        ".claude/skills/dartboard-rendering/skill.md"
-      ],
+      "skill_paths": [".claude/skills/dartboard-rendering/skill.md"],
       "url": "https://github.com/shiroinock/Darts-Score-Trainer"
     },
     {
@@ -5546,9 +5076,7 @@
       "description": null,
       "language": "Python",
       "skill_count": 1,
-      "skill_paths": [
-        ".claude/skills/do-library-nextra/reference.md"
-      ],
+      "skill_paths": [".claude/skills/do-library-nextra/reference.md"],
       "url": "https://github.com/yejune/git-subclone"
     },
     {
@@ -5579,9 +5107,7 @@
       "description": null,
       "language": "HTML",
       "skill_count": 1,
-      "skill_paths": [
-        ".claude/skills/ai-ml-engineer/mlops-guide.md"
-      ],
+      "skill_paths": [".claude/skills/ai-ml-engineer/mlops-guide.md"],
       "url": "https://github.com/ref-docs/sdd-stl"
     },
     {
@@ -5612,9 +5138,7 @@
       "description": "my1st",
       "language": "HTML",
       "skill_count": 1,
-      "skill_paths": [
-        "docs/MXD-MDA-PRODUCTION-SKILL.md"
-      ],
+      "skill_paths": ["docs/MXD-MDA-PRODUCTION-SKILL.md"],
       "url": "https://github.com/mxdmda6-cmyk/mxd-mda"
     },
     {
@@ -5635,9 +5159,7 @@
       "description": null,
       "language": "TypeScript",
       "skill_count": 1,
-      "skill_paths": [
-        ".claude/skills/supabase-skill/SKILL.MD"
-      ],
+      "skill_paths": [".claude/skills/supabase-skill/SKILL.MD"],
       "url": "https://github.com/boutchaz/agritech"
     },
     {
@@ -5646,9 +5168,7 @@
       "description": "Token-efficient task management for AI-assisted development with Claude Code",
       "language": "TypeScript",
       "skill_count": 1,
-      "skill_paths": [
-        ".claude/commands/evolve-remove-skill.md"
-      ],
+      "skill_paths": [".claude/commands/evolve-remove-skill.md"],
       "url": "https://github.com/nathanvale/vtm-cli"
     },
     {
@@ -5657,9 +5177,7 @@
       "description": "A system that allows a calude session to monitor another claude session and force to continue working",
       "language": "Shell",
       "skill_count": 1,
-      "skill_paths": [
-        "AGENT_SYSTEM_SKILL.md"
-      ],
+      "skill_paths": ["AGENT_SYSTEM_SKILL.md"],
       "url": "https://github.com/mehdic/auto-review-agent"
     },
     {
@@ -5680,9 +5198,7 @@
       "description": "Claude Code plugin containing the skill-creator skill for building custom Skills",
       "language": "JavaScript",
       "skill_count": 1,
-      "skill_paths": [
-        "skills/weaver-create/Skill.md"
-      ],
+      "skill_paths": ["skills/weaver-create/Skill.md"],
       "url": "https://github.com/flashingcursor/skill-creator-plugin"
     },
     {
@@ -5691,9 +5207,7 @@
       "description": null,
       "language": "Python",
       "skill_count": 1,
-      "skill_paths": [
-        "docs/select_skill.md"
-      ],
+      "skill_paths": ["docs/select_skill.md"],
       "url": "https://github.com/SufyaanMahomed/WitsFCCodebase"
     },
     {
@@ -5702,9 +5216,7 @@
       "description": null,
       "language": "Lua",
       "skill_count": 1,
-      "skill_paths": [
-        "claude/.claude/commands/create-skill.md"
-      ],
+      "skill_paths": ["claude/.claude/commands/create-skill.md"],
       "url": "https://github.com/biwsantang/dotfiles"
     },
     {
@@ -5713,9 +5225,7 @@
       "description": null,
       "language": "Astro",
       "skill_count": 1,
-      "skill_paths": [
-        "src/content/blog/bootleg-buskill.md"
-      ],
+      "skill_paths": ["src/content/blog/bootleg-buskill.md"],
       "url": "https://github.com/ax-i-om/ax-i-om.github.io"
     },
     {
@@ -5724,9 +5234,7 @@
       "description": null,
       "language": null,
       "skill_count": 1,
-      "skill_paths": [
-        "SoftSkill.md"
-      ],
+      "skill_paths": ["SoftSkill.md"],
       "url": "https://github.com/willyougooutwithme/Notes"
     },
     {
@@ -5735,9 +5243,7 @@
       "description": null,
       "language": "Shell",
       "skill_count": 1,
-      "skill_paths": [
-        ".claude/skills/website-builder/Skill.md"
-      ],
+      "skill_paths": [".claude/skills/website-builder/Skill.md"],
       "url": "https://github.com/Manuelvillarvieites/local-studios-website"
     },
     {
@@ -5757,9 +5263,7 @@
       "description": "A shared repository of skills for Claude Code usage",
       "language": "Python",
       "skill_count": 1,
-      "skill_paths": [
-        "skills/design-principles/SKILL.md"
-      ],
+      "skill_paths": ["skills/design-principles/SKILL.md"],
       "url": "https://github.com/boundlessdigital/claude-code-skills"
     },
     {
@@ -5768,9 +5272,7 @@
       "description": null,
       "language": "TypeScript",
       "skill_count": 1,
-      "skill_paths": [
-        "skills/skill-creator/SKILL.md"
-      ],
+      "skill_paths": ["skills/skill-creator/SKILL.md"],
       "url": "https://github.com/shadow173/ravesnyc"
     },
     {
@@ -5779,9 +5281,7 @@
       "description": "Golang prompts for Claude Code and Cursor",
       "language": "Python",
       "skill_count": 1,
-      "skill_paths": [
-        "skills/skill-creator/SKILL.md"
-      ],
+      "skill_paths": ["skills/skill-creator/SKILL.md"],
       "url": "https://github.com/jurabek/rules-prompts"
     },
     {
@@ -5790,9 +5290,7 @@
       "description": null,
       "language": "TypeScript",
       "skill_count": 1,
-      "skill_paths": [
-        ".github/skills/skill-creator/skill.md"
-      ],
+      "skill_paths": [".github/skills/skill-creator/skill.md"],
       "url": "https://github.com/kocya-dev-org/zenn-ranking"
     },
     {
@@ -5801,9 +5299,7 @@
       "description": "just to test CMS",
       "language": "TypeScript",
       "skill_count": 1,
-      "skill_paths": [
-        "tools/claude-plugin/skills/payload/SKILL.md"
-      ],
+      "skill_paths": ["tools/claude-plugin/skills/payload/SKILL.md"],
       "url": "https://github.com/Cristography/PayloadCMS-test"
     },
     {
@@ -5812,9 +5308,7 @@
       "description": null,
       "language": "JavaScript",
       "skill_count": 1,
-      "skill_paths": [
-        "docs/agent-skills/template/SKILL.md"
-      ],
+      "skill_paths": ["docs/agent-skills/template/SKILL.md"],
       "url": "https://github.com/mhintz1980/ptl-lova"
     },
     {
@@ -5885,9 +5379,7 @@
       "description": "Collection of prompts to aid when using and AI powered IDE to help write integrations",
       "language": null,
       "skill_count": 1,
-      "skill_paths": [
-        ".claude/skills/creating-skills-skill/SKILL.md"
-      ],
+      "skill_paths": [".claude/skills/creating-skills-skill/SKILL.md"],
       "url": "https://github.com/NangoHQ/ai-ide-prompts"
     },
     {
@@ -5896,9 +5388,7 @@
       "description": "Got a skill issue? madskills fixes it -- the toolchain for madskilling: lint, fmt, and wrangle AgentSkills like you mean it.",
       "language": "Rust",
       "skill_count": 1,
-      "skill_paths": [
-        ".claude/skills/debugging-workflow/SKILL.md"
-      ],
+      "skill_paths": [".claude/skills/debugging-workflow/SKILL.md"],
       "url": "https://github.com/madskilling/madskills"
     },
     {
@@ -5918,9 +5408,7 @@
       "description": null,
       "language": "Python",
       "skill_count": 1,
-      "skill_paths": [
-        "skills/andrew-kane-gem-writer/SKILL.md"
-      ],
+      "skill_paths": ["skills/andrew-kane-gem-writer/SKILL.md"],
       "url": "https://github.com/nbbaier/compound-engineering-amp"
     },
     {
@@ -5940,9 +5428,7 @@
       "description": "Control iOS Simulator & Android Emulator from your browser. Enables AI agents with Chrome access to see and interact with your mobile device.",
       "language": "Shell",
       "skill_count": 1,
-      "skill_paths": [
-        ".claude/templates/skill.md.template"
-      ],
+      "skill_paths": [".claude/templates/skill.md.template"],
       "url": "https://github.com/nbarthelemy/simdeck"
     },
     {
@@ -5951,9 +5437,7 @@
       "description": null,
       "language": "Python",
       "skill_count": 1,
-      "skill_paths": [
-        "docs/legal/BLOCKCHAIN_LAWYER_SKILL.md"
-      ],
+      "skill_paths": ["docs/legal/BLOCKCHAIN_LAWYER_SKILL.md"],
       "url": "https://github.com/Aurigraph-DLT-Corp/Aurigraph-Developer-Toolkit-and-SDK"
     },
     {
@@ -5962,9 +5446,7 @@
       "description": null,
       "language": "TypeScript",
       "skill_count": 1,
-      "skill_paths": [
-        "skills/systematic-debugging.SKILL.md"
-      ],
+      "skill_paths": ["skills/systematic-debugging.SKILL.md"],
       "url": "https://github.com/majiayu000/claude-arsenal"
     },
     {
@@ -5973,9 +5455,7 @@
       "description": "My Personal AI System",
       "language": "Shell",
       "skill_count": 1,
-      "skill_paths": [
-        "skills/fabric/rate/content/SKILL.md"
-      ],
+      "skill_paths": ["skills/fabric/rate/content/SKILL.md"],
       "url": "https://github.com/tolgaio/neo"
     },
     {
@@ -5984,9 +5464,7 @@
       "description": null,
       "language": "TypeScript",
       "skill_count": 1,
-      "skill_paths": [
-        "skills/foundation/greeting/skill.md"
-      ],
+      "skill_paths": ["skills/foundation/greeting/skill.md"],
       "url": "https://github.com/jvalenzano/ranger-twin"
     },
     {
@@ -5995,9 +5473,7 @@
       "description": "My Claude orchestration configuration and tools",
       "language": "Shell",
       "skill_count": 1,
-      "skill_paths": [
-        "skills/sqlite-best-practices/SKILL.md"
-      ],
+      "skill_paths": ["skills/sqlite-best-practices/SKILL.md"],
       "url": "https://github.com/randalmurphal/claude-config"
     },
     {
@@ -6006,9 +5482,7 @@
       "description": "AI-powered PM automation system: Idea validation \u2192 PRD \u2192 User Stories. Built with Claude Code Sub-Agents and Skills.",
       "language": null,
       "skill_count": 1,
-      "skill_paths": [
-        ".claude/skills/idea-generation/SKILL.md"
-      ],
+      "skill_paths": [".claude/skills/idea-generation/SKILL.md"],
       "url": "https://github.com/foolpoet44/ai-pm-agent"
     },
     {
@@ -6017,9 +5491,7 @@
       "description": null,
       "language": "Shell",
       "skill_count": 1,
-      "skill_paths": [
-        "skills/brand-identity-builder/SKILL.md"
-      ],
+      "skill_paths": ["skills/brand-identity-builder/SKILL.md"],
       "url": "https://github.com/eddiebe147/claude-settings"
     },
     {
@@ -6041,9 +5513,7 @@
       "description": null,
       "language": "TypeScript",
       "skill_count": 1,
-      "skill_paths": [
-        ".claude/skills/latency-tracker/SKILL.md"
-      ],
+      "skill_paths": [".claude/skills/latency-tracker/SKILL.md"],
       "url": "https://github.com/BarisSozen/claude"
     },
     {
@@ -6052,9 +5522,7 @@
       "description": null,
       "language": "Shell",
       "skill_count": 1,
-      "skill_paths": [
-        "plugins/harness/skills/writing-skills/SKILL.md"
-      ],
+      "skill_paths": ["plugins/harness/skills/writing-skills/SKILL.md"],
       "url": "https://github.com/astrosteveo/harness-mp"
     },
     {
@@ -6063,9 +5531,7 @@
       "description": null,
       "language": "Python",
       "skill_count": 1,
-      "skill_paths": [
-        ".claude/skills/chatkit-widget/SKILL.md"
-      ],
+      "skill_paths": [".claude/skills/chatkit-widget/SKILL.md"],
       "url": "https://github.com/Awais68/hackathon-2-phase-ii-full-stack-web-app"
     },
     {
@@ -6074,9 +5540,7 @@
       "description": "lejoe's claude skills",
       "language": "Python",
       "skill_count": 1,
-      "skill_paths": [
-        "skills/deep-research-prompt-builder/SKILL.md"
-      ],
+      "skill_paths": ["skills/deep-research-prompt-builder/SKILL.md"],
       "url": "https://github.com/lejoe/claude-plugins"
     },
     {
@@ -6085,9 +5549,7 @@
       "description": null,
       "language": "Python",
       "skill_count": 1,
-      "skill_paths": [
-        ".claude/skills/nextura-content-ingestion/SKILL.md"
-      ],
+      "skill_paths": [".claude/skills/nextura-content-ingestion/SKILL.md"],
       "url": "https://github.com/alicoding/nextura"
     },
     {
@@ -6096,9 +5558,7 @@
       "description": "Morgus Autonomous Agent System - AI-powered agent that can research, plan, build, test, and deploy complete software projects",
       "language": "TypeScript",
       "skill_count": 1,
-      "skill_paths": [
-        "skills/code-translator-v2/SKILL.md"
-      ],
+      "skill_paths": ["skills/code-translator-v2/SKILL.md"],
       "url": "https://github.com/GO4ME1/morgus-agent"
     },
     {
@@ -6107,9 +5567,7 @@
       "description": "\ud83e\udd16 A Slackbot that can help enhance your channel responses",
       "language": "Python",
       "skill_count": 1,
-      "skill_paths": [
-        ".claude/skills/github-actions-troubleshooting/SKILL.md"
-      ],
+      "skill_paths": [".claude/skills/github-actions-troubleshooting/SKILL.md"],
       "url": "https://github.com/echohello-dev/wingman"
     },
     {
@@ -6118,9 +5576,7 @@
       "description": null,
       "language": "TypeScript",
       "skill_count": 1,
-      "skill_paths": [
-        ".claude/skills/book-scaffolding/SKILL.md"
-      ],
+      "skill_paths": [".claude/skills/book-scaffolding/SKILL.md"],
       "url": "https://github.com/Hamza123545/physical-ai-book"
     },
     {
@@ -6140,9 +5596,7 @@
       "description": "a web app designed to help you learn English",
       "language": "TypeScript",
       "skill_count": 1,
-      "skill_paths": [
-        ".claude/skills/prompt-engineering/SKILL.md"
-      ],
+      "skill_paths": [".claude/skills/prompt-engineering/SKILL.md"],
       "url": "https://github.com/allohamora/learn-helper"
     },
     {
@@ -6162,9 +5616,7 @@
       "description": "Claude Code Cloud - Your cloud dev machine with Claude Code, accessible anywhere",
       "language": "TypeScript",
       "skill_count": 1,
-      "skill_paths": [
-        ".claude/skills/qa-audit/SKILL.md"
-      ],
+      "skill_paths": [".claude/skills/qa-audit/SKILL.md"],
       "url": "https://github.com/seconds-0/claude-code-web-cli"
     },
     {
@@ -6185,9 +5637,7 @@
       "description": "Helper scripts to be run by agentic coding tools",
       "language": "Shell",
       "skill_count": 1,
-      "skill_paths": [
-        "skills/execplans/SKILL.md"
-      ],
+      "skill_paths": ["skills/execplans/SKILL.md"],
       "url": "https://github.com/leynos/agent-helper-scripts"
     },
     {
@@ -6196,9 +5646,7 @@
       "description": "SaaS Builder Guide - Build production-ready SaaS from design to deployment. Claude Code Plugin.",
       "language": null,
       "skill_count": 1,
-      "skill_paths": [
-        "skills/docs-admin/SKILL.md"
-      ],
+      "skill_paths": ["skills/docs-admin/SKILL.md"],
       "url": "https://github.com/johunsang/kreatsaas"
     },
     {
@@ -6229,9 +5677,7 @@
       "description": null,
       "language": "TypeScript",
       "skill_count": 1,
-      "skill_paths": [
-        ".cursor/skills/backend-infrastructure/SKILL.md"
-      ],
+      "skill_paths": [".cursor/skills/backend-infrastructure/SKILL.md"],
       "url": "https://github.com/zile0207/enigma-engine"
     },
     {
@@ -6251,9 +5697,7 @@
       "description": null,
       "language": "Python",
       "skill_count": 1,
-      "skill_paths": [
-        ".claude/skills/skill-creator/SKILL.md"
-      ],
+      "skill_paths": [".claude/skills/skill-creator/SKILL.md"],
       "url": "https://github.com/rajvermacas/development-setup"
     },
     {
@@ -6262,9 +5706,7 @@
       "description": "Global Claude Code configuration and standards for all development projects",
       "language": "Shell",
       "skill_count": 1,
-      "skill_paths": [
-        "skills/git/SKILL.md"
-      ],
+      "skill_paths": ["skills/git/SKILL.md"],
       "url": "https://github.com/williaby/.claude"
     },
     {
@@ -6273,9 +5715,7 @@
       "description": "Tactics planner",
       "language": "Go",
       "skill_count": 1,
-      "skill_paths": [
-        "ttmp/_templates/skill.md"
-      ],
+      "skill_paths": ["ttmp/_templates/skill.md"],
       "url": "https://github.com/go-go-golems/tactician"
     },
     {
@@ -6284,9 +5724,7 @@
       "description": "Saleae CLI client",
       "language": "Go",
       "skill_count": 1,
-      "skill_paths": [
-        "ttmp/_templates/skill.md"
-      ],
+      "skill_paths": ["ttmp/_templates/skill.md"],
       "url": "https://github.com/go-go-golems/salad"
     },
     {
@@ -6295,9 +5733,7 @@
       "description": "Dev ctl helper",
       "language": "Go",
       "skill_count": 1,
-      "skill_paths": [
-        "ttmp/_templates/skill.md"
-      ],
+      "skill_paths": ["ttmp/_templates/skill.md"],
       "url": "https://github.com/wesen/devctl"
     },
     {
@@ -6306,9 +5742,7 @@
       "description": "Building Bazel from source for RISC-V architecture with automated CI/CD",
       "language": "Zig",
       "skill_count": 1,
-      "skill_paths": [
-        ".claude/commands/install-skill.md"
-      ],
+      "skill_paths": [".claude/commands/install-skill.md"],
       "url": "https://github.com/gounthar/bazel-riscv"
     }
   ]

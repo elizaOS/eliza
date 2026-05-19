@@ -1,5 +1,4 @@
 import { type OverlayApp, registerOverlayApp } from "@elizaos/ui";
-import { DeviceSettingsAppView } from "./DeviceSettingsAppView";
 
 export const DEVICE_SETTINGS_APP_NAME = "@elizaos/plugin-device-settings";
 
@@ -10,7 +9,10 @@ export const deviceSettingsApp: OverlayApp = {
   category: "system",
   icon: null,
   androidOnly: true,
-  Component: DeviceSettingsAppView,
+  loader: () =>
+    import("./DeviceSettingsAppView").then((m) => ({
+      default: m.DeviceSettingsAppView,
+    })),
 };
 
 export function registerDeviceSettingsApp(): void {

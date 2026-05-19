@@ -39,7 +39,12 @@
       "training_data_size": "850K time-series windows (30-day history)",
       "inference_latency_ms": 12,
       "deployment": "edge",
-      "supported_parameters": ["downhole_pressure", "temperature", "flow_rate", "gas_oil_ratio"],
+      "supported_parameters": [
+        "downhole_pressure",
+        "temperature",
+        "flow_rate",
+        "gas_oil_ratio"
+      ],
       "last_retrained": "2024-10-20",
       "owner": "Reservoir Engineering"
     },
@@ -57,7 +62,13 @@
       "training_data_size": "120K QA pairs + 45K knowledge graph triples",
       "inference_latency_ms": 180,
       "deployment": "cloud",
-      "knowledge_domains": ["drilling", "completion", "production", "maintenance", "HSE"],
+      "knowledge_domains": [
+        "drilling",
+        "completion",
+        "production",
+        "maintenance",
+        "HSE"
+      ],
       "last_retrained": "2024-12-01",
       "owner": "AI/ML Team"
     },
@@ -113,7 +124,15 @@
       "training_data_size": "180K inspection records spanning 15 years",
       "inference_latency_ms": 3,
       "deployment": "cloud",
-      "input_features": ["temperature", "pressure", "CO2_concentration", "H2S_concentration", "flow_velocity", "material_grade", "age_years"],
+      "input_features": [
+        "temperature",
+        "pressure",
+        "CO2_concentration",
+        "H2S_concentration",
+        "flow_velocity",
+        "material_grade",
+        "age_years"
+      ],
       "last_retrained": "2024-08-15",
       "owner": "Integrity Management"
     },
@@ -131,7 +150,11 @@
       "training_data_size": "Simulated environment with 50K episodes + 2 years production history",
       "inference_latency_ms": 350,
       "deployment": "cloud",
-      "optimization_targets": ["oil_production_rate", "gas_production_rate", "water_cut_minimization"],
+      "optimization_targets": [
+        "oil_production_rate",
+        "gas_production_rate",
+        "water_cut_minimization"
+      ],
       "last_retrained": "2024-11-30",
       "owner": "Production Engineering"
     },
@@ -149,7 +172,14 @@
       "training_data_size": "32K annotated incident reports",
       "inference_latency_ms": 25,
       "deployment": "cloud",
-      "entity_types": ["equipment", "location", "personnel", "hazard_type", "injury_type", "root_cause"],
+      "entity_types": [
+        "equipment",
+        "location",
+        "personnel",
+        "hazard_type",
+        "injury_type",
+        "root_cause"
+      ],
       "last_retrained": "2024-10-10",
       "owner": "HSE Department"
     },
@@ -167,7 +197,15 @@
       "training_data_size": "45K historical incident-expert assignment pairs",
       "inference_latency_ms": 15,
       "deployment": "cloud",
-      "features_used": ["incident_category", "equipment_type", "severity", "expert_specialty", "expert_availability", "expert_location", "historical_resolution_rate"],
+      "features_used": [
+        "incident_category",
+        "equipment_type",
+        "severity",
+        "expert_specialty",
+        "expert_availability",
+        "expert_location",
+        "historical_resolution_rate"
+      ],
       "last_retrained": "2024-12-20",
       "owner": "AI/ML Team"
     },
@@ -203,7 +241,14 @@
       "training_data_size": "15K labeled drill bit images across 8 wear grades",
       "inference_latency_ms": 85,
       "deployment": "cloud",
-      "wear_grades": ["new", "light", "moderate", "heavy", "critical", "failed"],
+      "wear_grades": [
+        "new",
+        "light",
+        "moderate",
+        "heavy",
+        "critical",
+        "failed"
+      ],
       "last_retrained": "2024-11-05",
       "owner": "Drilling Engineering"
     },

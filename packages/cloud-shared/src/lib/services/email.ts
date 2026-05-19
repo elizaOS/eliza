@@ -6,6 +6,7 @@ import sgMail from "@sendgrid/mail";
 import type { Transporter } from "nodemailer";
 import nodemailer from "nodemailer";
 import type SMTPTransport from "nodemailer/lib/smtp-transport";
+import { getEmailMessages, interpolateMessage } from "../email/messages";
 import type {
   AutoTopUpDisabledEmailData,
   AutoTopUpSuccessEmailData,
@@ -129,10 +130,11 @@ class EmailService {
   async sendWelcomeEmail(data: WelcomeEmailData): Promise<boolean> {
     const { renderWelcomeTemplate } = await import("../email/utils/template-renderer");
     const { html, text } = renderWelcomeTemplate(data);
+    const messages = getEmailMessages(data.locale);
 
     return this.send({
       to: data.email,
-      subject: "🎉 Welcome to Eliza Cloud - Let's Get Started!",
+      subject: messages.welcome.subject,
       html,
       text,
     });
@@ -147,10 +149,11 @@ class EmailService {
   async sendLowCreditsEmail(data: LowCreditsEmailData): Promise<boolean> {
     const { renderLowCreditsTemplate } = await import("../email/utils/template-renderer");
     const { html, text } = renderLowCreditsTemplate(data);
+    const messages = getEmailMessages(data.locale);
 
     return this.send({
       to: data.email,
-      subject: "⚠️ Low Credits Alert - Action Required",
+      subject: messages.lowCredits.subject,
       html,
       text,
     });
@@ -165,10 +168,13 @@ class EmailService {
   async sendInviteEmail(data: InviteEmailData): Promise<boolean> {
     const { renderInviteTemplate } = await import("../email/utils/template-renderer");
     const { html, text } = renderInviteTemplate(data);
+    const messages = getEmailMessages(data.locale);
 
     return this.send({
       to: data.email,
-      subject: `🎉 You've been invited to join ${data.organizationName} on Eliza Cloud`,
+      subject: interpolateMessage(messages.invite.subject, {
+        organizationName: data.organizationName,
+      }),
       html,
       text,
     });
@@ -183,10 +189,11 @@ class EmailService {
   async sendAutoTopUpSuccessEmail(data: AutoTopUpSuccessEmailData): Promise<boolean> {
     const { renderAutoTopUpSuccessTemplate } = await import("../email/utils/template-renderer");
     const { html, text } = renderAutoTopUpSuccessTemplate(data);
+    const messages = getEmailMessages(data.locale);
 
     return this.send({
       to: data.email,
-      subject: "✓ Auto Top-Up Successful - Balance Recharged",
+      subject: messages.autoTopUpSuccess.subject,
       html,
       text,
     });
@@ -201,10 +208,11 @@ class EmailService {
   async sendAutoTopUpDisabledEmail(data: AutoTopUpDisabledEmailData): Promise<boolean> {
     const { renderAutoTopUpDisabledTemplate } = await import("../email/utils/template-renderer");
     const { html, text } = renderAutoTopUpDisabledTemplate(data);
+    const messages = getEmailMessages(data.locale);
 
     return this.send({
       to: data.email,
-      subject: "⚠ Auto Top-Up Disabled - Action Required",
+      subject: messages.autoTopUpDisabled.subject,
       html,
       text,
     });
@@ -219,10 +227,11 @@ class EmailService {
   async sendPurchaseConfirmationEmail(data: PurchaseConfirmationEmailData): Promise<boolean> {
     const { renderPurchaseConfirmationTemplate } = await import("../email/utils/template-renderer");
     const { html, text } = renderPurchaseConfirmationTemplate(data);
+    const messages = getEmailMessages(data.locale);
 
     return this.send({
       to: data.email,
-      subject: "✓ Purchase Confirmed - Credits Added to Your Account",
+      subject: messages.purchaseConfirmation.subject,
       html,
       text,
     });
@@ -241,10 +250,13 @@ class EmailService {
       "../email/utils/template-renderer"
     );
     const { html, text } = renderContainerShutdownWarningTemplate(data);
+    const messages = getEmailMessages(data.locale);
 
     return this.send({
       to: data.email,
-      subject: `🚨 URGENT: Container "${data.containerName}" will be shut down in 48 hours`,
+      subject: interpolateMessage(messages.containerShutdownWarning.subject, {
+        containerName: data.containerName,
+      }),
       html,
       text,
     });

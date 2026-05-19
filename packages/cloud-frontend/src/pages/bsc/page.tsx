@@ -1,6 +1,6 @@
 "use client";
 
-import { BRAND_PATHS, LOGO_FILES } from "@elizaos/shared-brand";
+import { BRAND_PATHS, LOGO_FILES } from "@elizaos/shared/brand";
 import {
   Button,
   Card,

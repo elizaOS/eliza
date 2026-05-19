@@ -1,0 +1,8 @@
+build/
+external/
+verify/cocotb/sim_build/
+verify/cocotb/results.xml
+*.vcd
+*.fst
+*.log
+.git/

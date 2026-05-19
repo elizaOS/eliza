@@ -1,0 +1,48 @@
+{
+  "blocked_release_metrics": {
+    "average_watts": "blocked_until_calibrated_power_trace",
+    "max_die_c": "blocked_until_calibrated_thermal_trace",
+    "sustained_int8_tops": "blocked_until_measured_workload_trace",
+    "sustained_tops_per_w": "blocked_until_tops_and_watts_share_same_measured_run",
+    "thermal_rise_c": "blocked_until_package_board_thermal_model_or_measurement"
+  },
+  "claim_boundary": "not_measured_silicon_not_sustained_power_not_thermal_evidence",
+  "cross_substrate_arithmetic": {
+    "invalid_max_tops_per_w_using_openlane_power": 8849.729759324306,
+    "invalid_min_tops_per_w_using_openlane_power": 8581.556130253872,
+    "why_invalid": [
+      "OpenLane power is for the current local RTL implementation and nominal analysis, not the 2028 architecture scale model.",
+      "The NPU architecture benchmark is a deterministic model, not measured silicon or workload-calibrated post-route activity.",
+      "No rail power trace, die temperature trace, frequency trace, throttle state, package model, or chamber data is present."
+    ]
+  },
+  "npu_architecture_model": {
+    "benchmark": "npu_arch_sim_open_2028",
+    "claim_level": "L2_ARCH_SIM",
+    "config": "open_2028_first_50tops",
+    "max_observed_tops": 49.152,
+    "min_observed_tops": 47.66254545454546,
+    "provenance": "measured",
+    "report_id": "npu-arch-sim-open-2028"
+  },
+  "openlane_post_route": {
+    "internal_power_w": 0.0036992093082517385,
+    "leakage_power_w": 7.258969958456873e-7,
+    "nominal_core_current_a": 0.0030855932790372106,
+    "selected_run": "pd/openlane/runs/RUN_2026-05-18_05-41-42",
+    "switching_power_w": 0.001854132511653006,
+    "total_power_w": 0.005554067902266979,
+    "two_x_current_budget_a": 0.006171186558074421,
+    "vddcore_voltage_v": 1.8,
+    "vgnd_worst_bounce_v": 0.00010598,
+    "vpwr_worst_ir_drop_v": 8.76137e-5
+  },
+  "release_use": "prohibited",
+  "schema": "eliza.local_power_estimates.v1",
+  "source_artifacts": {
+    "npu_architecture_benchmark_report": "benchmarks/results/npu-arch-sim-open-2028/report.json",
+    "openlane_metrics": "pd/openlane/runs/RUN_2026-05-18_05-41-42/final/metrics.json",
+    "openlane_resolved_config": "pd/openlane/runs/RUN_2026-05-18_05-41-42/resolved.json"
+  },
+  "status": "local_estimate_only"
+}

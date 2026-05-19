@@ -24,7 +24,9 @@ import { CloudApiError, ElizaCloudClient } from "@elizaos/cloud-sdk";
 const PORT = Number(process.env.PORT ?? 3000);
 const PUBLIC_DIR = join(import.meta.dir, "public");
 
-const CLOUD_URL = (process.env.ELIZA_CLOUD_URL ?? "https://www.elizacloud.ai").replace(/\/+$/, "");
+const CLOUD_URL = (
+  process.env.ELIZA_CLOUD_URL ?? "https://www.elizacloud.ai"
+).replace(/\/+$/, "");
 const AFFILIATE_CODE = process.env.ELIZA_AFFILIATE_CODE ?? "";
 const APP_ID = process.env.ELIZA_APP_ID ?? "";
 
@@ -44,7 +46,10 @@ function jsonError(status: number, code: string, message: string): Response {
   });
 }
 
-async function forwardMessages(req: Request, userToken: string): Promise<Response> {
+async function forwardMessages(
+  req: Request,
+  userToken: string,
+): Promise<Response> {
   const cloud = new ElizaCloudClient({
     baseUrl: CLOUD_URL,
     bearerToken: userToken,
@@ -59,7 +64,10 @@ async function forwardMessages(req: Request, userToken: string): Promise<Respons
     if (err instanceof CloudApiError) {
       return new Response(JSON.stringify(err.errorBody), {
         status: err.statusCode,
-        headers: { "content-type": "application/json", "cache-control": "no-store" },
+        headers: {
+          "content-type": "application/json",
+          "cache-control": "no-store",
+        },
       });
     }
     return jsonError(
@@ -75,7 +83,11 @@ async function handleApi(req: Request, segments: string[]): Promise<Response> {
   // config it needs to start the "Sign in with Eliza Cloud" flow.
   if (segments.length === 1 && segments[0] === "config") {
     return Response.json(
-      { app_id: APP_ID || null, cloud_url: CLOUD_URL, affiliate_code: AFFILIATE_CODE },
+      {
+        app_id: APP_ID || null,
+        cloud_url: CLOUD_URL,
+        affiliate_code: AFFILIATE_CODE,
+      },
       { headers: { "cache-control": "no-store" } },
     );
   }
@@ -89,7 +101,11 @@ async function handleApi(req: Request, segments: string[]): Promise<Response> {
     );
   }
 
-  if (segments.length === 1 && segments[0] === "messages" && req.method === "POST") {
+  if (
+    segments.length === 1 &&
+    segments[0] === "messages" &&
+    req.method === "POST"
+  ) {
     return forwardMessages(req, userToken);
   }
 
@@ -132,7 +148,9 @@ const server = Bun.serve({
   },
 });
 
-console.log(`[edad-chat] listening on http://${server.hostname}:${server.port}`);
+console.log(
+  `[edad-chat] listening on http://${server.hostname}:${server.port}`,
+);
 console.log(`[edad-chat] cloud:      ${CLOUD_URL}`);
 console.log(`[edad-chat] app_id:     ${APP_ID || "(unset)"}`);
 console.log(`[edad-chat] affiliate:  ${AFFILIATE_CODE || "(unset)"}`);

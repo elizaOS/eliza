@@ -3,7 +3,7 @@
 import {
   STEWARD_AUTHED_COOKIE,
   STEWARD_TOKEN_KEY,
-} from "@elizaos/steward-session-client";
+} from "@elizaos/shared/steward-session-client";
 import { useContext, useEffect, useState } from "react";
 import { LocalStewardAuthContext } from "@/providers/StewardProvider";
 

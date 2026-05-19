@@ -77,7 +77,10 @@ export function MockSystemProvider({
       suspend: () => {},
       openSettings: () => {},
       setAudioLevel: (level: number) =>
-        setAudio((prev) => ({ ...prev, level: Math.max(0, Math.min(1, level)) })),
+        setAudio((prev) => ({
+          ...prev,
+          level: Math.max(0, Math.min(1, level)),
+        })),
       setAudioMuted: (muted: boolean) =>
         setAudio((prev) => ({ ...prev, muted })),
       toggleAirplaneMode: () =>

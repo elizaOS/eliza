@@ -7,10 +7,11 @@ engineering docs, not as the primary user-facing brand.
 
 **Same greeter window every boot** — the only thing that changes is
 whether an encrypted persistence partition has been created on the USB.
-Status as of 2026-05-17: this is the intended v1 behavior. A prior ISO
-proved the normal QEMU greeter/desktop/app-service path. Current HEAD needs
-rebuild/retest, and real-USB persistence/privacy validation is still required
-before every storage and privacy row below is marked proven.
+Status as of 2026-05-19: this is the intended v1 behavior. A recent ISO
+artifact proved the normal QEMU greeter/desktop/app-service path. Rebuild and
+retest the exact release commit if the branch moves, and complete real-USB
+persistence/privacy validation before every storage and privacy row below is
+marked proven.
 
 ---
 

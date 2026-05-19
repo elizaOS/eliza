@@ -11,7 +11,7 @@
  */
 
 import type { AgentRuntime } from "@elizaos/core";
-import { scenario } from "@elizaos/scenario-schema";
+import { scenario } from "@elizaos/scenario-runner/schema";
 import { LifeOpsRepository } from "../../../plugins/plugin-lifeops/src/lifeops/repository.ts";
 import {
   executeRawSql,

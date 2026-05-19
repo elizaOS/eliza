@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 
-import fs from "node:fs";
 import crypto from "node:crypto";
+import fs from "node:fs";
 import path from "node:path";
 import process from "node:process";
 
@@ -35,9 +35,7 @@ for (let index = 0; index < args.length; index += 1) {
 if (!catalogPath) usage();
 
 catalogPath = path.resolve(catalogPath);
-artifactRoot = path.resolve(
-  artifactRoot || path.dirname(catalogPath),
-);
+artifactRoot = path.resolve(artifactRoot || path.dirname(catalogPath));
 
 const errors = [];
 const sha256Re = /^[a-fA-F0-9]{64}$/;
@@ -54,7 +52,9 @@ function safeRelative(value, field) {
   if (
     value.startsWith("/") ||
     value.includes("\0") ||
-    value.split("/").some((part) => part === "" || part === "." || part === "..")
+    value
+      .split("/")
+      .some((part) => part === "" || part === "." || part === "..")
   ) {
     fail(`${field} is unsafe: ${value}`);
     return null;
@@ -98,7 +98,10 @@ if (catalog) {
     const modelIds = new Set();
     for (const [modelIndex, model] of catalog.models.entries()) {
       const modelPrefix = `models[${modelIndex}]`;
-      if (typeof model.id !== "string" || !/^[A-Za-z0-9._:-]+$/.test(model.id)) {
+      if (
+        typeof model.id !== "string" ||
+        !/^[A-Za-z0-9._:-]+$/.test(model.id)
+      ) {
         fail(`${modelPrefix}.id is required and must be path-safe`);
       } else if (modelIds.has(model.id)) {
         fail(`${modelPrefix}.id is duplicated: ${model.id}`);
@@ -119,7 +122,11 @@ if (catalog) {
           fail(`${artifactPrefix}.sha256 must be a SHA-256 hex digest`);
         }
         if (!relative) continue;
-        const artifactPath = resolveUnder(artifactRoot, relative, `${artifactPrefix}.path`);
+        const artifactPath = resolveUnder(
+          artifactRoot,
+          relative,
+          `${artifactPrefix}.path`,
+        );
         if (!artifactPath) continue;
         if (!fs.existsSync(artifactPath)) {
           fail(`${artifactPrefix}.path missing: ${artifactPath}`);

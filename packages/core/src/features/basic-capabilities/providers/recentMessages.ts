@@ -66,6 +66,37 @@ function hasSyntheticFailureMetadata(record: Record<string, unknown> | null) {
 	return SYNTHETIC_ASSISTANT_FAILURE_KINDS.has(failureKind);
 }
 
+function hasTransientMetadata(record: Record<string, unknown> | null): boolean {
+	if (!record) return false;
+	return record.transient === true;
+}
+
+/**
+ * Filter out the agent's own *transient* status messages — sub-agent
+ * spawn acks, narration chunks, heartbeats, completion summaries — from
+ * the conversation memory served to the planner. Without this, the
+ * planner LLM reads its own past status text and paraphrases it as
+ * "facts" on later turns (e.g. a past "Can't spawn..." hallucination
+ * resurfaces as a new hallucination on the next request). Mirrors
+ * `isSyntheticAssistantFailureMessage` semantically; the difference is
+ * scope: synthetic-failure is provider/infra noise, transient is
+ * orchestrator status. Cross-platform: connector-agnostic, the flag is
+ * on the persisted Memory regardless of whether the post landed in a
+ * thread, an edit-in-place, or a fresh send.
+ */
+function isTransientStatusMessage(
+	memory: Memory,
+	agentId: UUID | undefined,
+): boolean {
+	if (!agentId || memory.entityId !== agentId) return false;
+	const content = asObjectRecord(memory.content);
+	return (
+		hasTransientMetadata(content) ||
+		hasTransientMetadata(asObjectRecord(content?.metadata)) ||
+		hasTransientMetadata(asObjectRecord(memory.metadata))
+	);
+}
+
 function isSyntheticAssistantFailureMessage(
 	memory: Memory,
 	agentId: UUID | undefined,
@@ -402,6 +433,7 @@ export const recentMessagesProvider: Provider = {
 						!(msg.content && msg.content.type === "action_result") &&
 						!isInternalBridgeMessage(msg) &&
 						!isSyntheticAssistantFailureMessage(msg, runtime.agentId) &&
+						!isTransientStatusMessage(msg, runtime.agentId) &&
 						!isLeakedAssistantToolTranscript(msg, runtime.agentId) &&
 						!isLeakedAssistantPathDump(msg, runtime.agentId),
 				)

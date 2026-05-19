@@ -6,14 +6,13 @@
  */
 
 import { execSync } from "node:child_process";
+import { externalsFromPackageJson } from "../plugin-build-externals.ts";
 
-const result = await Bun.build({
-  entrypoints: ["src/index.ts"],
-  outdir: "dist",
-  target: "node",
-  format: "esm",
-  external: [
-    // Node builtins
+const external = await externalsFromPackageJson("./package.json", {
+  // Preserve the bare-string node builtins the prior hand-list included so
+  // any source that imports them without the `node:` prefix still resolves
+  // externally under Bun.build.
+  extra: [
     "fs",
     "path",
     "os",
@@ -30,9 +29,15 @@ const result = await Bun.build({
     "buffer",
     "child_process",
     "readline",
-    // Core / agent dependencies
-    "@elizaos/core",
   ],
+});
+
+const result = await Bun.build({
+  entrypoints: ["src/index.ts"],
+  outdir: "dist",
+  target: "node",
+  format: "esm",
+  external,
   sourcemap: "linked",
   minify: false,
 });

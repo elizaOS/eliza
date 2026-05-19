@@ -85,7 +85,9 @@ function optionalEnv(env: Record<string, string>, names: string[]): void {
   }
 }
 
-function readSelectedManifest(defaultName = "eliza-1-2b.json"): LoadedVastManifest {
+function readSelectedManifest(
+  defaultName = "eliza-1-2b.json",
+): LoadedVastManifest {
   const name = readEnv("ELIZA_VAST_MANIFEST", defaultName);
   return readVastManifest(name || defaultName);
 }
@@ -111,12 +113,22 @@ async function vastFetch<T>(
   return text.length > 0 ? (JSON.parse(text) as T) : ({} as T);
 }
 
-async function findTemplateByName(apiKey: string, name: string): Promise<VastTemplate | null> {
-  const list = await vastFetch<{ templates?: VastTemplate[] }>(apiKey, "GET", "/api/v0/templates/");
+async function findTemplateByName(
+  apiKey: string,
+  name: string,
+): Promise<VastTemplate | null> {
+  const list = await vastFetch<{ templates?: VastTemplate[] }>(
+    apiKey,
+    "GET",
+    "/api/v0/templates/",
+  );
   return list.templates?.find((t) => t.name === name) ?? null;
 }
 
-async function upsertTemplate(apiKey: string, config: TemplateConfig): Promise<VastTemplate> {
+async function upsertTemplate(
+  apiKey: string,
+  config: TemplateConfig,
+): Promise<VastTemplate> {
   const existing = await findTemplateByName(apiKey, config.name);
   if (existing) {
     console.log(`[vast] Updating template #${existing.id} (${config.name})`);
@@ -124,7 +136,12 @@ async function upsertTemplate(apiKey: string, config: TemplateConfig): Promise<V
     return existing;
   }
   console.log(`[vast] Creating template ${config.name}`);
-  return await vastFetch<VastTemplate>(apiKey, "POST", "/api/v0/templates/", config);
+  return await vastFetch<VastTemplate>(
+    apiKey,
+    "POST",
+    "/api/v0/templates/",
+    config,
+  );
 }
 
 async function main(): Promise<void> {
@@ -134,10 +151,14 @@ async function main(): Promise<void> {
     throw new Error(`VAST_RUNTIME must be "llama" or "vllm", got ${runtime}`);
   }
   const manifest =
-    runtime === "vllm" || process.env.ELIZA_VAST_MANIFEST ? readSelectedManifest() : null;
+    runtime === "vllm" || process.env.ELIZA_VAST_MANIFEST
+      ? readSelectedManifest()
+      : null;
   const manifestRuntime =
     manifest?.manifest.runtime ??
-    (manifest?.manifest.onstart_script === "onstart-vllm.sh" ? "vllm" : undefined);
+    (manifest?.manifest.onstart_script === "onstart-vllm.sh"
+      ? "vllm"
+      : undefined);
   if (manifestRuntime && manifestRuntime !== runtime) {
     throw new Error(
       `VAST_RUNTIME=${runtime} does not match ${manifest.name} runtime=${manifestRuntime}`,
@@ -145,12 +166,16 @@ async function main(): Promise<void> {
   }
   const onstartPath = join(
     VAST_PYWORKER_DIR,
-    manifest?.manifest.onstart_script ?? (runtime === "vllm" ? "onstart-vllm.sh" : "onstart.sh"),
+    manifest?.manifest.onstart_script ??
+      (runtime === "vllm" ? "onstart-vllm.sh" : "onstart.sh"),
   );
   const onstart = readFileSync(onstartPath, "utf8");
 
   const env: Record<string, string> = {
-    PYWORKER_REPO: readEnv("PYWORKER_REPO", "https://github.com/elizaOS/cloud.git"),
+    PYWORKER_REPO: readEnv(
+      "PYWORKER_REPO",
+      "https://github.com/elizaOS/cloud.git",
+    ),
     PYWORKER_REF: readEnv("PYWORKER_REF", "develop"),
   };
   if (env.PYWORKER_REF === "develop") {
@@ -163,21 +188,32 @@ async function main(): Promise<void> {
     env.ELIZA_VAST_MANIFEST = manifest?.name ?? "eliza-1-2b.json";
     if (manifest) {
       env.ELIZA_VAST_MANIFEST_JSON = manifest.json;
-      for (const [key, value] of Object.entries(manifest.manifest.vast_template_env ?? {})) {
+      for (const [key, value] of Object.entries(
+        manifest.manifest.vast_template_env ?? {},
+      )) {
         if (value) env[key] = value;
       }
     }
     // vLLM cannot load GGUF files from subpaths in the canonical eliza-1 repo.
     // Require an explicit vLLM-compatible checkpoint instead of falling back to
     // retired split repos or the GGUF bundle repo.
-    const manifestModel = manifest?.manifest.model ?? manifest?.manifest.model_repo;
+    const manifestModel =
+      manifest?.manifest.model ?? manifest?.manifest.model_repo;
     if (!manifestModel && !process.env.MODEL_REPO?.trim()) {
-      throw new Error("VAST_RUNTIME=vllm requires ELIZA_VAST_MANIFEST or MODEL_REPO");
+      throw new Error(
+        "VAST_RUNTIME=vllm requires ELIZA_VAST_MANIFEST or MODEL_REPO",
+      );
     }
     env.MODEL_REPO = readEnv("MODEL_REPO", manifestModel);
-    env.MODEL_ALIAS = readEnv("MODEL_ALIAS", manifest?.manifest.model_alias ?? "vast/eliza-1-2b");
+    env.MODEL_ALIAS = readEnv(
+      "MODEL_ALIAS",
+      manifest?.manifest.model_alias ?? "vast/eliza-1-2b",
+    );
     if (manifest?.manifest.served_model_name) {
-      env.SERVED_MODEL_NAME = readEnv("SERVED_MODEL_NAME", manifest.manifest.served_model_name);
+      env.SERVED_MODEL_NAME = readEnv(
+        "SERVED_MODEL_NAME",
+        manifest.manifest.served_model_name,
+      );
     }
     env.PORT = readEnv("PORT", String(manifest?.manifest.port ?? 8000));
     optionalEnv(env, [
@@ -209,7 +245,9 @@ async function main(): Promise<void> {
     if (manifest) {
       env.ELIZA_VAST_MANIFEST = manifest.name;
       env.ELIZA_VAST_MANIFEST_JSON = manifest.json;
-      for (const [key, value] of Object.entries(manifest.manifest.vast_template_env ?? {})) {
+      for (const [key, value] of Object.entries(
+        manifest.manifest.vast_template_env ?? {},
+      )) {
         if (value) env[key] = value;
       }
     }
@@ -217,20 +255,31 @@ async function main(): Promise<void> {
     // is the consolidated elizaos/eliza-1 + bundles/<tier>/... layout.
     env.MODEL_REPO = readEnv(
       "MODEL_REPO",
-      manifest?.manifest.model_repo ?? manifest?.manifest.model ?? "elizaos/eliza-1",
+      manifest?.manifest.model_repo ??
+        manifest?.manifest.model ??
+        "elizaos/eliza-1",
     );
     env.MODEL_FILE = readEnv(
       "MODEL_FILE",
       manifest?.manifest.model_file ?? "bundles/27b/text/eliza-1-27b-128k.gguf",
     );
-    env.MODEL_ALIAS = readEnv("MODEL_ALIAS", manifest?.manifest.model_alias ?? "vast/eliza-1-27b");
-    env.LLAMA_CONTEXT = readEnv("LLAMA_CONTEXT", String(manifest?.manifest.max_model_len ?? 32768));
+    env.MODEL_ALIAS = readEnv(
+      "MODEL_ALIAS",
+      manifest?.manifest.model_alias ?? "vast/eliza-1-27b",
+    );
+    env.LLAMA_CONTEXT = readEnv(
+      "LLAMA_CONTEXT",
+      String(manifest?.manifest.max_model_len ?? 32768),
+    );
     env.LLAMA_PARALLEL = readEnv(
       "LLAMA_PARALLEL",
       String(manifest?.manifest.vast_template_env?.LLAMA_PARALLEL ?? 2),
     );
     env.LLAMA_NGL = readEnv("LLAMA_NGL", "99");
-    env.LLAMA_SERVER_PORT = readEnv("LLAMA_SERVER_PORT", String(manifest?.manifest.port ?? 8080));
+    env.LLAMA_SERVER_PORT = readEnv(
+      "LLAMA_SERVER_PORT",
+      String(manifest?.manifest.port ?? 8080),
+    );
     env.LLAMA_SERVER_BIN = readEnv("LLAMA_SERVER_BIN", "llama-server");
     env.MODEL_DIR = readEnv("MODEL_DIR", "/workspace/models");
     optionalEnv(env, [
@@ -283,7 +332,10 @@ async function main(): Promise<void> {
         : "ghcr.io/ggml-org/llama.cpp:server-cuda",
     ),
     disk: Number(
-      readEnv("VAST_DISK_GB", String(manifest ? manifestDiskGb(manifest.manifest) : 60)),
+      readEnv(
+        "VAST_DISK_GB",
+        String(manifest ? manifestDiskGb(manifest.manifest) : 60),
+      ),
     ),
     onstart,
     env,

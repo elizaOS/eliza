@@ -20,6 +20,7 @@ in CI and by the live run recorded in ``packages/inference/reports/``.
 from __future__ import annotations
 
 import json
+import os
 from pathlib import Path
 
 import pytest
@@ -83,6 +84,8 @@ def test_writes_all_eval_blobs(tmp_path: Path, monkeypatch) -> None:
         "endurance.json",
         "dflash-accept.json",
         "dispatch.json",
+        "cpu_dispatch.json",
+        "cpu_reference.json",
         "aggregate.json",
     ):
         assert (evals / name).is_file(), f"missing {name}"
@@ -90,6 +93,102 @@ def test_writes_all_eval_blobs(tmp_path: Path, monkeypatch) -> None:
     assert agg["mode"] == "full"
     assert "results" in agg
     assert agg["bundleIsLocalStandin"] is True
+
+
+def test_run_suite_writes_backend_verify_alias_for_metal(tmp_path: Path, monkeypatch) -> None:
+    bundle = _make_standin_bundle(tmp_path)
+    monkeypatch.setattr(suite, "discover_engine", lambda *a, **k: None)
+    monkeypatch.setattr(
+        suite,
+        "eval_dispatch",
+        lambda ctx: {
+            "schemaVersion": suite.SCHEMA_VERSION,
+            "backend": "metal",
+            "status": "pass",
+            "runtimeReady": True,
+            "targets": ["metal-verify", "dispatch-smoke"],
+            "passed": None,
+        },
+    )
+    args = suite.argparse.Namespace(
+        bundle_dir=bundle,
+        tier="0_8b",
+        backend="metal",
+        text_eval_model=None,
+        text_corpus=None,
+        threads=2,
+        timeout=30,
+    )
+    ctx = suite.build_context(args)
+    suite.run_suite(ctx)
+
+    evals = bundle / "evals"
+    dispatch = json.loads((evals / "metal_dispatch.json").read_text())
+    verify = json.loads((evals / "metal_verify.json").read_text())
+    assert dispatch["backend"] == "metal"
+    assert dispatch["runtimeReady"] is True
+    assert verify["targets"] == ["metal-verify"]
+    assert "metal-verify" in verify["report"]
+
+
+def test_discover_engine_honors_missing_preferred_backend(tmp_path: Path, monkeypatch) -> None:
+    root = tmp_path / "state" / "local-inference" / "bin" / "dflash"
+    engine_dir = root / f"{suite._platform_tag()}-metal-fused"
+    engine_dir.mkdir(parents=True)
+    (engine_dir / "llama-cli").write_text("#!/bin/sh\n")
+    os.chmod(engine_dir / "llama-cli", 0o755)
+    monkeypatch.setenv("ELIZA_STATE_DIR", str(tmp_path / "state"))
+
+    assert suite.discover_engine("cpu") is None
+
+
+def test_discover_engine_prefers_fused_voice_capable_dir(tmp_path: Path, monkeypatch) -> None:
+    root = tmp_path / "state" / "local-inference" / "bin" / "dflash"
+    plain_fused = root / f"{suite._platform_tag()}-metal-fused"
+    voice_fused = root / f"{suite._platform_tag()}-metal-fused-with-voice"
+    for engine_dir in (plain_fused, voice_fused):
+        engine_dir.mkdir(parents=True)
+        for name in ("llama-server", "llama-speculative-simple"):
+            p = engine_dir / name
+            p.write_text("#!/bin/sh\n")
+            os.chmod(p, 0o755)
+        (engine_dir / suite._eliza_lib_name()).write_text("x")
+    voice_server = voice_fused / "llama-omnivoice-server"
+    voice_server.write_text("#!/bin/sh\n")
+    os.chmod(voice_server, 0o755)
+    monkeypatch.setenv("ELIZA_STATE_DIR", str(tmp_path / "state"))
+
+    engine = suite.discover_engine("metal")
+
+    assert engine is not None
+    assert engine.bin_dir == voice_fused
+    assert engine.omnivoice_server == voice_server
+
+
+def test_find_verify_dir_prefers_native_plugin_verify() -> None:
+    verify_dir = suite._find_verify_dir()
+
+    assert verify_dir is not None
+    assert verify_dir.as_posix().endswith("plugins/plugin-local-inference/native/verify")
+
+
+def test_e2e_harness_selection_routes_small_tiers_to_kokoro() -> None:
+    assert suite._uses_kokoro_e2e_harness("0_8b") is True
+    assert suite._uses_kokoro_e2e_harness("2b") is True
+    assert suite._uses_kokoro_e2e_harness("4b") is True
+    assert suite._uses_kokoro_e2e_harness("9b") is False
+    assert suite._uses_kokoro_e2e_harness("27b-256k") is False
+
+
+def test_normalize_backend_for_harness_strips_fused_build_suffix() -> None:
+    assert suite._normalize_backend_for_harness("metal-fused.pre-encode-ref-20260515-025231") == "metal"
+    assert suite._normalize_backend_for_harness("vulkan-fused") == "vulkan"
+    assert suite._normalize_backend_for_harness("cuda.release") == "cuda"
+    assert suite._normalize_backend_for_harness(None) == "cpu"
+
+
+def test_dispatch_targets_for_metal_include_runtime_smoke() -> None:
+    assert suite._dispatch_targets_for_backend("metal") == ["metal-verify", "dispatch-smoke"]
 
 
 def test_standin_bundle_records_not_run_not_fake_pass(tmp_path: Path, monkeypatch) -> None:
@@ -244,6 +343,7 @@ def test_bench_bridge_runners_record_real_numbers_when_bench_ok(tmp_path: Path, 
     assert agg["results"]["voice_rtf"] == 6.2
     assert agg["results"]["asr_wer"] == 1.0
     assert agg["results"]["e2e_loop_ok"] is True
+    assert agg["results"]["barge_in_cancel_ms"] == 5.0
     assert agg["results"]["thirty_turn_ok"] is False
 
 

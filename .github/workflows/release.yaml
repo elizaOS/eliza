@@ -437,7 +437,18 @@ jobs:
           retry_rebase_release_commit() {
             git fetch origin "${TARGET_BRANCH}"
 
-            if ! git rebase "origin/${TARGET_BRANCH}"; then
+            # `-X theirs` resolves package.json / lerna.json version conflicts
+            # in favor of our release commit (the "theirs" in rebase semantics
+            # is the patch being applied). Concurrent unrelated commits to
+            # develop that also touched version files would otherwise abort the
+            # rebase with a conflict (see run 26082989616 — packages/tui
+            # conflict on a concurrent push during a 28-min queued release).
+            # Non-version edits in the same file still merge cleanly via the
+            # 3-way recursive strategy.
+            if ! git rebase -X theirs "origin/${TARGET_BRANCH}"; then
+              # Abort any half-applied rebase before returning so the next
+              # retry starts from a clean working tree.
+              git rebase --abort 2>/dev/null || true
               echo "❌ Error: Failed to rebase release commit onto origin/${TARGET_BRANCH}"
               return 1
             fi
@@ -572,12 +583,27 @@ jobs:
           git add -A
           git diff --staged --quiet || git commit -m "chore: replace workspace references for publishing [skip ci]"
 
+          # --no-sort: the workspace contains a known dependency cycle
+          # (@elizaos/agent <-> @elizaos/plugin-capacitor-bridge) which trips a
+          # bug in lerna 9.0.7's topological queue. The cycle is reported as a
+          # warning ("ECYCLE Dependency cycles detected"), and lerna then
+          # aborts the pack/publish step partway through with the generic
+          # "Not all tasks were run. This is likely a bug in Lerna." error.
+          # Disabling the topological sort makes lerna iterate via p-map over
+          # the full publish set, bypassing the broken queue. Combined with
+          # --concurrency 1 this still produces a serial, deterministic order.
+          #
+          # --concurrency 1 + --loglevel verbose: serialize publishes so a
+          # single failure is not masked by parallel output.
           if ! bunx lerna publish from-package \
             --dist-tag ${DIST_TAG} \
             --force-publish \
             --yes \
             --no-verify-access \
-            --no-git-reset; then
+            --no-git-reset \
+            --no-sort \
+            --concurrency 1 \
+            --loglevel verbose; then
             
             echo "❌ Error: Failed to publish to NPM"
             echo ""

@@ -149,6 +149,7 @@ import pathlib
 import re
 import shutil
 import shlex
+import stat
 import sys
 import tempfile
 
@@ -242,11 +243,44 @@ def ensure_safe_dir(path, field):
             fail(f"{field} must not be group/world writable")
     return path
 
-def copy_verified_file(src, dst):
+def copy_verified_file(src, dst, expected_sha256):
     dst.parent.mkdir(mode=0o755, parents=True, exist_ok=True)
-    shutil.copyfile(src, dst, follow_symlinks=False)
-    mode = src.stat().st_mode
-    os.chmod(dst, 0o755 if mode & 0o111 else 0o644)
+    if dst.parent.is_symlink():
+        fail(f"destination parent must not be a symlink: {dst.parent}")
+    flags = os.O_RDONLY
+    if hasattr(os, "O_NOFOLLOW"):
+        flags |= os.O_NOFOLLOW
+    try:
+        src_fd = os.open(src, flags)
+    except OSError as exc:
+        fail(f"unable to open verified runtime file without following symlinks: {src}: {exc}")
+    tmp_name = None
+    try:
+        src_stat = os.fstat(src_fd)
+        if not stat.S_ISREG(src_stat.st_mode):
+            fail(f"verified runtime path is not a regular file: {src}")
+        tmp_fd, tmp_name = tempfile.mkstemp(prefix=f"{dst.name}.", dir=str(dst.parent))
+        digest = hashlib.sha256()
+        with os.fdopen(src_fd, "rb", closefd=True) as src_handle, os.fdopen(
+            tmp_fd,
+            "wb",
+            closefd=True,
+        ) as dst_handle:
+            src_fd = -1
+            for chunk in iter(lambda: src_handle.read(1024 * 1024), b""):
+                digest.update(chunk)
+                dst_handle.write(chunk)
+        actual = digest.hexdigest()
+        if actual.lower() != expected_sha256.lower():
+            fail(f"verified runtime file changed while copying: {src}")
+        os.chmod(tmp_name, 0o755 if src_stat.st_mode & 0o111 else 0o644)
+        os.replace(tmp_name, dst)
+        tmp_name = None
+    finally:
+        if src_fd >= 0:
+            os.close(src_fd)
+        if tmp_name and os.path.exists(tmp_name):
+            os.unlink(tmp_name)
 
 def chown_tree_root(path):
     if os.geteuid() != 0:
@@ -350,6 +384,7 @@ if runtime.get("filesComplete") is not True:
     fail("runtime.filesComplete must be true")
 hashed_entrypoint_paths = set()
 declared_files = {}
+declared_hashes = {}
 for item in files:
     if not isinstance(item, dict):
         fail("runtime.files entries must be objects")
@@ -368,6 +403,7 @@ for item in files:
     if rel_text in declared_files:
         fail(f"runtime.files contains duplicate path: {rel_text}")
     declared_files[rel_text] = path
+    declared_hashes[rel_text] = expected.lower()
 
 for candidate in bundle_dir.rglob("*"):
     if candidate.is_symlink():
@@ -403,6 +439,7 @@ if floor_path.exists():
         fail("manifest sequence is below the stored channel floor")
 
 model_catalog_path = ""
+model_catalog_digest = ""
 model_catalog = manifest.get("modelCatalog")
 if model_catalog is not None:
     if not isinstance(model_catalog, dict):
@@ -417,6 +454,7 @@ if model_catalog is not None:
     actual = file_sha256(catalog_path)
     if actual.lower() != expected.lower():
         fail("model catalog hash mismatch")
+    model_catalog_digest = expected.lower()
     catalog = read_json(catalog_path, "modelCatalog")
     if catalog.get("schemaVersion") != 1 or catalog.get("kind") != "elizaos.modelCatalog":
         fail("model catalog kind/schemaVersion mismatch")
@@ -432,14 +470,22 @@ else:
     tmp_runtime = tmp_store / "runtime"
     try:
         for rel_text, src in declared_files.items():
-            copy_verified_file(src, tmp_runtime / pathlib.PurePosixPath(rel_text))
+            copy_verified_file(
+                src,
+                tmp_runtime / pathlib.PurePosixPath(rel_text),
+                declared_hashes[rel_text],
+            )
         node_modules_rel = pathlib.Path(
             os.path.relpath(resolved_entrypoints["nodeModules"], bundle_dir)
         )
         (tmp_runtime / node_modules_rel).mkdir(mode=0o755, parents=True, exist_ok=True)
-        copy_verified_file(manifest_path, tmp_store / "manifest.json")
+        copy_verified_file(manifest_path, tmp_store / "manifest.json", manifest_digest)
         if model_catalog_path:
-            copy_verified_file(pathlib.Path(model_catalog_path), tmp_store / "model-catalog.json")
+            copy_verified_file(
+                pathlib.Path(model_catalog_path),
+                tmp_store / "model-catalog.json",
+                model_catalog_digest,
+            )
             model_catalog_path = str(tmp_store / "model-catalog.json")
         chown_tree_root(tmp_store)
         for root, dirs, files in os.walk(tmp_store):
@@ -463,7 +509,7 @@ if not materialized_manifest_path.is_file():
 if file_sha256(materialized_manifest_path) != manifest_digest:
     fail("materialized update manifest hash mismatch")
 for rel_text, src in declared_files.items():
-    expected = file_sha256(src)
+    expected = declared_hashes[rel_text]
     materialized_file = materialized_runtime / pathlib.PurePosixPath(rel_text)
     if materialized_file.is_symlink():
         fail(f"materialized runtime contains unsupported symlink: {rel_text}")

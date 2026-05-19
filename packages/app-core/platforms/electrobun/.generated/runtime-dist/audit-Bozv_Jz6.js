@@ -11,9 +11,9 @@ const DEFAULT_JWKS_TTL_MS = 360 * 60 * 1e3;
  * Order: `ELIZA_STATE_DIR` → `ELIZA_STATE_DIR` → `~/.eliza`.
  */
 function resolveElizaStateDir(env = process.env) {
-	const explicit = env.ELIZA_STATE_DIR?.trim();
-	if (explicit) return path.resolve(explicit);
-	return path.join(os.homedir(), ".eliza");
+  const explicit = env.ELIZA_STATE_DIR?.trim();
+  if (explicit) return path.resolve(explicit);
+  return path.join(os.homedir(), ".eliza");
 }
 
 //#endregion
@@ -38,8 +38,8 @@ const AUDIT_LOG_FILENAME = "audit.log";
 const AUDIT_LOG_MAX_BYTES = 10 * 1024 * 1024;
 const AUDIT_REDACTION_RE = /[A-Za-z0-9_-]{20,}/;
 function truncateUserAgent(value) {
-	if (!value) return null;
-	return value.length > 200 ? value.slice(0, 200) : value;
+  if (!value) return null;
+  return value.length > 200 ? value.slice(0, 200) : value;
 }
 /**
  * Replace token-shaped runs in `metadata` with the literal `<redacted>` string.
@@ -47,43 +47,43 @@ function truncateUserAgent(value) {
  * Only string values are scanned; numbers and booleans pass through unchanged.
  */
 function redactMetadata(metadata) {
-	const out = {};
-	for (const [key, raw] of Object.entries(metadata)) {
-		if (typeof raw !== "string") {
-			out[key] = raw;
-			continue;
-		}
-		out[key] = AUDIT_REDACTION_RE.test(raw) ? "<redacted>" : raw;
-	}
-	return out;
+  const out = {};
+  for (const [key, raw] of Object.entries(metadata)) {
+    if (typeof raw !== "string") {
+      out[key] = raw;
+      continue;
+    }
+    out[key] = AUDIT_REDACTION_RE.test(raw) ? "<redacted>" : raw;
+  }
+  return out;
 }
 function resolveAuditLogPath(env = process.env) {
-	return path.join(resolveElizaStateDir(env), "auth", AUDIT_LOG_FILENAME);
+  return path.join(resolveElizaStateDir(env), "auth", AUDIT_LOG_FILENAME);
 }
 async function rotateIfNeeded(filePath) {
-	let size;
-	try {
-		size = (await fs.stat(filePath)).size;
-	} catch (err) {
-		if (err.code === "ENOENT") return;
-		throw err;
-	}
-	if (size < AUDIT_LOG_MAX_BYTES) return;
-	const rotated = `${filePath}.1`;
-	await fs.rename(filePath, rotated).catch(async (err) => {
-		if (err.code !== "ENOENT") throw err;
-	});
+  let size;
+  try {
+    size = (await fs.stat(filePath)).size;
+  } catch (err) {
+    if (err.code === "ENOENT") return;
+    throw err;
+  }
+  if (size < AUDIT_LOG_MAX_BYTES) return;
+  const rotated = `${filePath}.1`;
+  await fs.rename(filePath, rotated).catch(async (err) => {
+    if (err.code !== "ENOENT") throw err;
+  });
 }
 async function appendJsonLine(filePath, line) {
-	await fs.mkdir(path.dirname(filePath), {
-		recursive: true,
-		mode: 448,
-	});
-	await rotateIfNeeded(filePath);
-	await fs.appendFile(filePath, `${JSON.stringify(line)}\n`, {
-		encoding: "utf8",
-		mode: 384,
-	});
+  await fs.mkdir(path.dirname(filePath), {
+    recursive: true,
+    mode: 448,
+  });
+  await rotateIfNeeded(filePath);
+  await fs.appendFile(filePath, `${JSON.stringify(line)}\n`, {
+    encoding: "utf8",
+    mode: 384,
+  });
 }
 /**
  * Append an audit event to the database AND the JSONL log.
@@ -93,42 +93,42 @@ async function appendJsonLine(filePath, line) {
  * swallowed.
  */
 async function appendAuditEvent(input, options) {
-	const env = options.env ?? process.env;
-	const now = options.now?.() ?? Date.now();
-	const id = crypto.randomUUID();
-	const safeMetadata = redactMetadata(input.metadata ?? {});
-	const userAgent = truncateUserAgent(input.userAgent);
-	const filePath = resolveAuditLogPath(env);
-	const line = {
-		id,
-		ts: now,
-		actorIdentityId: input.actorIdentityId,
-		ip: input.ip,
-		userAgent,
-		action: input.action,
-		outcome: input.outcome,
-		metadata: safeMetadata,
-	};
-	let firstError = null;
-	const fileWrite = appendJsonLine(filePath, line).catch((err) => {
-		if (firstError === null) firstError = err;
-	});
-	const dbWrite = options.store
-		.appendAuditEvent({
-			id,
-			ts: now,
-			actorIdentityId: input.actorIdentityId,
-			ip: input.ip,
-			userAgent,
-			action: input.action,
-			outcome: input.outcome,
-			metadata: safeMetadata,
-		})
-		.catch((err) => {
-			if (firstError === null) firstError = err;
-		});
-	await Promise.all([fileWrite, dbWrite]);
-	if (firstError !== null) throw firstError;
+  const env = options.env ?? process.env;
+  const now = options.now?.() ?? Date.now();
+  const id = crypto.randomUUID();
+  const safeMetadata = redactMetadata(input.metadata ?? {});
+  const userAgent = truncateUserAgent(input.userAgent);
+  const filePath = resolveAuditLogPath(env);
+  const line = {
+    id,
+    ts: now,
+    actorIdentityId: input.actorIdentityId,
+    ip: input.ip,
+    userAgent,
+    action: input.action,
+    outcome: input.outcome,
+    metadata: safeMetadata,
+  };
+  let firstError = null;
+  const fileWrite = appendJsonLine(filePath, line).catch((err) => {
+    if (firstError === null) firstError = err;
+  });
+  const dbWrite = options.store
+    .appendAuditEvent({
+      id,
+      ts: now,
+      actorIdentityId: input.actorIdentityId,
+      ip: input.ip,
+      userAgent,
+      action: input.action,
+      outcome: input.outcome,
+      metadata: safeMetadata,
+    })
+    .catch((err) => {
+      if (firstError === null) firstError = err;
+    });
+  await Promise.all([fileWrite, dbWrite]);
+  if (firstError !== null) throw firstError;
 }
 
 //#endregion

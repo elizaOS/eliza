@@ -116,6 +116,7 @@ import {
   registerActivitySignalBus,
 } from "./lifeops/signals/bus.js";
 import { threadOpsFieldEvaluator } from "./lifeops/work-threads/field-evaluator-thread-ops.js";
+import { isDarwin } from "./platform/host.js";
 import { browserBridgeProvider } from "./provider.js";
 // Activity-profile (proactive agent: GM/GN/nudges)
 import { activityProfileProvider } from "./providers/activity-profile.js";
@@ -344,9 +345,7 @@ async function handleLifeOpsMessageAction(
     }) ?? unresolved[0];
 
   const recipient =
-    match?.sourceRoomId ??
-    match?.sourceEntityId ??
-    match?.channelName;
+    match?.sourceRoomId ?? match?.sourceEntityId ?? match?.channelName;
   const body =
     match?.suggestedResponse ??
     (hint
@@ -574,6 +573,12 @@ async function recordTaskInitFailure(
  * runtime cache at LIFEOPS_TASK_INIT_FAILURE_CACHE_KEY for observability and
  * via logger.error so ops tooling can alert on it.
  */
+// Darwin-only action surface: the native activity tracker, the only
+// SCREEN_TIME data source the planner can reason about end-to-end, is
+// macOS-only — hide the owner-screentime umbrella on other hosts so the
+// planner never picks it.
+const platformGatedActionUmbrellas = isDarwin() ? [ownerScreenTimeAction] : [];
+
 function scheduleTaskEnsureAfterRuntimeInit(args: {
   runtime: IAgentRuntime;
   prefix: string;
@@ -627,7 +632,9 @@ const rawAppLifeOpsPlugin: Plugin = {
     ...promoteSubactionsToActions(ownerTodosAction),
     ...promoteSubactionsToActions(ownerRoutinesAction),
     ...promoteSubactionsToActions(ownerHealthAction),
-    ...promoteSubactionsToActions(ownerScreenTimeAction),
+    ...platformGatedActionUmbrellas.flatMap((action) =>
+      promoteSubactionsToActions(action),
+    ),
     ...promoteSubactionsToActions(personalAssistantAction),
     entityAction,
     ...promoteSubactionsToActions(ownerDocumentsAction),
@@ -931,12 +938,27 @@ const rawAppLifeOpsPlugin: Plugin = {
     {
       id: "lifeops",
       label: "LifeOps",
-      description: "Owner operations dashboard — routines, goals, inbox, calendar, and health",
+      description:
+        "Owner operations dashboard — routines, goals, inbox, calendar, and health",
       icon: "LayoutDashboard",
       path: "/lifeops",
       bundlePath: "dist/views/bundle.js",
       componentExport: "LifeOpsPageView",
       tags: ["lifeops", "productivity", "health", "calendar"],
+      visibleInManager: true,
+      desktopTabEnabled: true,
+    },
+    {
+      id: "lifeops",
+      label: "LifeOps TUI",
+      description:
+        "Terminal LifeOps routines, goals, inbox, calendar, and health",
+      icon: "LayoutDashboard",
+      path: "/lifeops/tui",
+      viewType: "tui",
+      bundlePath: "dist/views/bundle.js",
+      componentExport: "LifeOpsTuiView",
+      tags: ["lifeops", "productivity", "health", "calendar", "terminal"],
       visibleInManager: true,
       desktopTabEnabled: true,
     },

@@ -23,7 +23,7 @@ import type {
   CapturedConnectorDispatch,
   CapturedMemoryWrite,
   CapturedStateTransition,
-} from "@elizaos/scenario-schema";
+} from "@elizaos/scenario-runner/schema";
 import { toRecord } from "./utils.js";
 
 const INTERCEPTOR_MARKER = Symbol.for("scenario-runner.interceptor-wrapped");

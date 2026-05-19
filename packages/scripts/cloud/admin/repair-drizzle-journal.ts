@@ -31,7 +31,10 @@ interface Journal {
   entries: JournalEntry[];
 }
 
-const JOURNAL_PATH = path.join(process.cwd(), "packages/db/migrations/meta/_journal.json");
+const JOURNAL_PATH = path.join(
+  process.cwd(),
+  "packages/db/migrations/meta/_journal.json",
+);
 const MIGRATIONS_DIR = path.dirname(path.dirname(JOURNAL_PATH));
 
 // idx 43 intentionally maps back to 0043. The duplicate 0043 was introduced
@@ -57,8 +60,12 @@ async function main() {
   for (const entry of journal.entries) {
     const nextTag =
       TAG_RENAMES.get(entry.idx) ??
-      (entry.idx === 51 ? resolveTagByPrefix(migrationFiles, "0052_") : undefined) ??
-      (entry.idx === 52 ? resolveTagByPrefix(migrationFiles, "0053_") : undefined);
+      (entry.idx === 51
+        ? resolveTagByPrefix(migrationFiles, "0052_")
+        : undefined) ??
+      (entry.idx === 52
+        ? resolveTagByPrefix(migrationFiles, "0053_")
+        : undefined);
     if (!nextTag || entry.tag === nextTag) continue;
 
     console.log(`idx ${entry.idx}: ${entry.tag} -> ${nextTag}`);
@@ -67,7 +74,9 @@ async function main() {
   }
 
   if (changed === 0) {
-    console.log("Drizzle journal already matches the current migration filenames.");
+    console.log(
+      "Drizzle journal already matches the current migration filenames.",
+    );
     return;
   }
 
@@ -75,8 +84,13 @@ async function main() {
   console.log(`Updated ${JOURNAL_PATH} (${changed} entries repaired).`);
 }
 
-function resolveTagByPrefix(files: string[], prefix: string): string | undefined {
-  const match = files.find((file) => file.startsWith(prefix) && file.endsWith(".sql"));
+function resolveTagByPrefix(
+  files: string[],
+  prefix: string,
+): string | undefined {
+  const match = files.find(
+    (file) => file.startsWith(prefix) && file.endsWith(".sql"),
+  );
   return match?.replace(/\.sql$/, "");
 }
 

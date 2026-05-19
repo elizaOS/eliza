@@ -8,6 +8,8 @@ import { generateJwtSigningKeys } from "./local-dev-helpers";
 
 const keys = generateJwtSigningKeys();
 
-console.log("# Add these to your .env (ES256 PKCS#8 / SPKI, base64-encoded PEM)\n");
+console.log(
+  "# Add these to your .env (ES256 PKCS#8 / SPKI, base64-encoded PEM)\n",
+);
 console.log(`JWT_SIGNING_PRIVATE_KEY=${keys.JWT_SIGNING_PRIVATE_KEY}`);
 console.log(`JWT_SIGNING_PUBLIC_KEY=${keys.JWT_SIGNING_PUBLIC_KEY}`);

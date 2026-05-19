@@ -12,6 +12,31 @@
 import crypto from "node:crypto";
 import * as fs from "node:fs";
 import * as path from "node:path";
+import { loadElizaConfig, saveElizaConfig } from "@elizaos/agent/config/config";
+import { shouldRestoreAgentsListAfterAppLaunch } from "@elizaos/agent/services/app-manager-agents-list-guard";
+import {
+  importAppPlugin,
+  importAppRouteModule,
+} from "@elizaos/agent/services/app-package-modules";
+import type {
+  InstallProgressLike,
+  PluginManagerLike,
+  RegistryPluginInfo,
+  RegistrySearchResult,
+} from "@elizaos/agent/services/plugin-manager-types";
+import {
+  getPluginInfo,
+  getRegistryPlugins,
+} from "@elizaos/agent/services/registry-client";
+import {
+  mergeAppMeta as mergeRegistryAppMeta,
+  resolveAppOverride,
+} from "@elizaos/agent/services/registry-client-app-meta";
+import {
+  resolveAppHeroImage,
+  scoreEntries,
+  toSearchResults,
+} from "@elizaos/agent/services/registry-client-queries";
 import type { IAgentRuntime, Plugin } from "@elizaos/core";
 import { logger } from "@elizaos/core";
 import {
@@ -35,29 +60,7 @@ import {
   packageNameToAppDisplayName,
   packageNameToAppRouteSlug,
 } from "@elizaos/shared";
-import { loadElizaConfig, saveElizaConfig } from "@elizaos/agent/config/config";
-import { shouldRestoreAgentsListAfterAppLaunch } from "@elizaos/agent/services/app-manager-agents-list-guard";
-import {
-  importAppPlugin,
-  importAppRouteModule,
-} from "@elizaos/agent/services/app-package-modules";
 import { readAppRunStore, writeAppRunStore } from "./app-run-store.ts";
-import type {
-  InstallProgressLike,
-  PluginManagerLike,
-  RegistryPluginInfo,
-  RegistrySearchResult,
-} from "@elizaos/agent/services/plugin-manager-types";
-import { getPluginInfo, getRegistryPlugins } from "@elizaos/agent/services/registry-client";
-import {
-  mergeAppMeta as mergeRegistryAppMeta,
-  resolveAppOverride,
-} from "@elizaos/agent/services/registry-client-app-meta";
-import {
-  resolveAppHeroImage,
-  scoreEntries,
-  toSearchResults,
-} from "@elizaos/agent/services/registry-client-queries";
 
 const LOCAL_PLUGINS_DIR = "plugins";
 
@@ -1019,8 +1022,7 @@ function isRuntimePluginActive(
     appInfo.runtimePlugin ?? resolvePluginPackageName(appInfo),
   ]);
   return runtime.plugins.some(
-    (plugin) =>
-      typeof plugin.name === "string" && pluginNames.has(plugin.name),
+    (plugin) => typeof plugin.name === "string" && pluginNames.has(plugin.name),
   );
 }
 

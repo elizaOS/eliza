@@ -6,7 +6,7 @@ import {
   STEWARD_REFRESH_ENDPOINT,
   STEWARD_SESSION_ENDPOINT,
   STEWARD_TOKEN_KEY,
-} from "@elizaos/steward-session-client";
+} from "@elizaos/shared/steward-session-client";
 import { StewardProvider, useAuth as useStewardAuth } from "@stwd/react";
 import { StewardClient } from "@stwd/sdk";
 import { createContext, useEffect, useMemo, useRef } from "react";

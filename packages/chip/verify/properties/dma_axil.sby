@@ -1,0 +1,26 @@
+[tasks]
+bmc
+prove
+
+[options]
+bmc: mode bmc
+bmc: depth 32
+prove: mode prove
+prove: depth 16
+multiclock off
+
+[engines]
+bmc: smtbmc
+prove: smtbmc
+
+[script]
+read -define AXIL_PROPS_ASSUME_LIVENESS
+read -sv ../../rtl/dma/hello_dma.sv
+read -sv axi_lite.sv
+read -sv dma_axil_bind.sv
+prep -top dma_axil_props_top
+
+[files]
+axi_lite.sv
+dma_axil_bind.sv
+../../rtl/dma/hello_dma.sv

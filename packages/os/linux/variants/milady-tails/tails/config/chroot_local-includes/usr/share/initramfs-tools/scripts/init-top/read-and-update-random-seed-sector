@@ -74,13 +74,13 @@ log "Restoring random seed from LBA 34"
 dd bs=512 skip=34 count=1 status=none if="${PARENT_DEVICE}" of=/dev/urandom
 log "Random seed restored from LBA 34"
 
-# We try to obfuscate the number of times Tails has been booted by
+# We try to obfuscate the number of times elizaOS has been booted by
 # writing a random number of times (1-500) to the seed during the first
 # boot.
 if [ -n "${FIRST_BOOT:-}" ]; then
   ITERATIONS=$((1 + $(od -An -N2 -t uI /dev/urandom) % 500))
   log "First boot, writing random seed $ITERATIONS times..."
-  PLYMOUTH_INIT_MSG="Preparing Tails for first use..."
+  PLYMOUTH_INIT_MSG="Preparing elizaOS for first use..."
   plymouth display-message --text="${PLYMOUTH_INIT_MSG}"
 
   # Debug output for the following loop would be too verbose

@@ -120,5 +120,19 @@ export const vincentPlugin: Plugin = {
       visibleInManager: true,
       desktopTabEnabled: true,
     },
+    {
+      id: "vincent",
+      label: "Vincent TUI",
+      description:
+        "Terminal Vincent trading dashboard, strategy, and wallet overview",
+      icon: "Zap",
+      path: "/vincent/tui",
+      viewType: "tui",
+      bundlePath: "dist/views/bundle.js",
+      componentExport: "VincentTuiView",
+      tags: ["trading", "vincent", "strategy", "terminal"],
+      visibleInManager: true,
+      desktopTabEnabled: true,
+    },
   ],
 };

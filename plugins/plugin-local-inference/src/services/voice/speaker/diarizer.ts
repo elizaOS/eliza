@@ -1,32 +1,13 @@
 /**
- * pyannote-segmentation-3.0 ONNX local diarizer wrapper.
+ * pyannote-segmentation-3.0 shared types and pure segmentation logic.
  *
- * `pyannote/segmentation-3.0` is a 3-second-window local segmenter that
- * outputs a `[batch=1, frames=293, classes=7]` logit tensor: three
- * single-speaker activity classes, three two-speaker-overlap classes,
- * and silence. The upstream model card maps the seven classes to
- * powerset activity over the local 3-speaker codebook. We translate the
- * classwise activity into a sequence of `LocalSpeakerSegment` rows with
- * `startMs / endMs / localSpeakerId` and let the
- * `VoiceProfileStore` cluster *across* segments (the model only assigns
- * **local** speaker indices, not stable identities).
+ * The ONNX-backed `PyannoteDiarizer` was removed when `onnxruntime-node`
+ * was dropped. The GGML implementation lives in `diarizer-ggml.ts`.
  *
- * The diarizer runs *after* Silero VAD opens a speech window — it
- * subdivides the window into per-speaker spans. It is NOT a VAD
- * replacement (Silero is faster and cheaper for the low-latency mic
- * gate); pyannote's silence class is only used to refine the boundaries
- * Silero already produced.
- *
- * License: MIT (onnx-community/pyannote-segmentation-3.0). Attribution
- * still recorded in `models/voice/manifest.json` per the policy.
+ * This file retains shared types (`Diarizer`, `LocalSpeakerSegment`,
+ * `DiarizerOutput`) and the pure `classifyFramesToSegments` function so
+ * callers don't need simultaneous updates.
  */
-
-import {
-	loadOnnxRuntime,
-	OnnxRuntimeUnavailableError,
-	type OrtInferenceSession,
-	type OrtTensorCtor,
-} from "../onnx-runtime";
 
 export const PYANNOTE_SEGMENTATION_3_INT8_MODEL_ID =
 	"pyannote-segmentation-3.0-int8" as const;
@@ -105,20 +86,6 @@ export interface Diarizer {
 	/** Process one ~5 s window of PCM. */
 	diarizeWindow(pcm: Float32Array): Promise<DiarizerOutput>;
 	dispose(): Promise<void>;
-}
-
-async function loadOrt() {
-	try {
-		return await loadOnnxRuntime();
-	} catch (err) {
-		if (err instanceof OnnxRuntimeUnavailableError) {
-			throw new DiarizerUnavailableError(
-				"ort-missing",
-				`${err.message} Install it to enable on-device diarization; the pipeline treats every speech window as a single speaker without it.`,
-			);
-		}
-		throw err;
-	}
 }
 
 /** Numerically-stable softmax over the last axis. */
@@ -236,120 +203,4 @@ export function classifyFramesToSegments(
 		localSpeakerCount: localSpeakers.size,
 		speechMs: Math.round(speechFrames * frameStrideMs),
 	};
-}
-
-/**
- * pyannote-segmentation-3.0 ONNX diarizer. Expects mono 16 kHz PCM and
- * processes one window at a time. Multi-window inputs (longer than 5 s)
- * are the caller's responsibility — the `VoicePipeline` slides 5 s
- * windows with 0.5 s overlap and merges adjacent same-speaker segments.
- */
-export class PyannoteDiarizer implements Diarizer {
-	readonly modelId: PyannoteDiarizerModelId;
-	readonly sampleRate = PYANNOTE_SAMPLE_RATE;
-	private disposed = false;
-
-	private constructor(
-		private readonly session: OrtInferenceSession,
-		private readonly Tensor: OrtTensorCtor,
-		private readonly inputName: string,
-		private readonly outputName: string,
-		modelId: PyannoteDiarizerModelId,
-	) {
-		this.modelId = modelId;
-	}
-
-	static async load(
-		modelPath: string,
-		modelId: PyannoteDiarizerModelId = PYANNOTE_SEGMENTATION_3_INT8_MODEL_ID,
-	): Promise<PyannoteDiarizer> {
-		const ort = await loadOrt();
-		let session: OrtInferenceSession;
-		try {
-			session = await ort.InferenceSession.create(modelPath);
-		} catch (err) {
-			throw new DiarizerUnavailableError(
-				"model-load-failed",
-				`[pyannote] failed to load diarizer from ${modelPath}: ${
-					err instanceof Error ? err.message : String(err)
-				}`,
-			);
-		}
-		const inputName = session.inputNames[0];
-		const outputName = session.outputNames[0];
-		if (!inputName || !outputName) {
-			throw new DiarizerUnavailableError(
-				"model-load-failed",
-				"[pyannote] ONNX session is missing input/output bindings",
-			);
-		}
-		return new PyannoteDiarizer(
-			session,
-			ort.Tensor,
-			inputName,
-			outputName,
-			modelId,
-		);
-	}
-
-	async diarizeWindow(pcm: Float32Array): Promise<DiarizerOutput> {
-		if (this.disposed) {
-			throw new DiarizerUnavailableError(
-				"model-load-failed",
-				"[pyannote] diarizer has been disposed",
-			);
-		}
-		const expected = PYANNOTE_SAMPLE_RATE * PYANNOTE_WINDOW_SECONDS;
-		if (pcm.length === 0) {
-			return { segments: [], localSpeakerCount: 0, speechMs: 0 };
-		}
-		// Pad / truncate to one 5 s window. The pyannote ONNX graph
-		// expects a fixed-shape input; the caller has to slide windows
-		// itself for anything longer than 5 s.
-		const window =
-			pcm.length === expected
-				? pcm
-				: (() => {
-						const out = new Float32Array(expected);
-						out.set(pcm.subarray(0, Math.min(pcm.length, expected)));
-						return out;
-					})();
-		const input = new this.Tensor("float32", window, [1, 1, window.length]);
-		const out = await this.session.run({ [this.inputName]: input });
-		const tensor = out[this.outputName];
-		if (!tensor || !(tensor.data instanceof Float32Array)) {
-			throw new DiarizerUnavailableError(
-				"model-load-failed",
-				"[pyannote] diarizer did not return a Float32Array output",
-			);
-		}
-		const total = tensor.data.length;
-		// The graph emits `[1, frames, classes]`; we don't trust the dims
-		// from the manifest because some exports squeeze the batch.
-		const frames = total / PYANNOTE_CLASS_COUNT;
-		if (!Number.isInteger(frames) || frames < 1) {
-			throw new DiarizerUnavailableError(
-				"model-load-failed",
-				`[pyannote] expected total a multiple of ${PYANNOTE_CLASS_COUNT}, got ${total}`,
-			);
-		}
-		const frameStrideMs = (1_000 * PYANNOTE_WINDOW_SECONDS) / frames;
-		return classifyFramesToSegments(
-			tensor.data as Float32Array,
-			frames,
-			PYANNOTE_CLASS_COUNT,
-			0,
-			frameStrideMs,
-		);
-	}
-
-	async dispose(): Promise<void> {
-		this.disposed = true;
-		const maybe = this.session as unknown as {
-			release?: () => Promise<void> | void;
-		};
-		if (typeof maybe.release === "function") {
-			await maybe.release();
-		}
-	}
 }

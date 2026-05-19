@@ -9,16 +9,12 @@
  * - Types: dist/index.d.ts + dist/node/index.d.ts + dist/cjs/index.d.ts
  */
 
-const externalDeps = [
-  "@elizaos/core",
-  "@elizaos/shared",
-  "@elizaos/agent",
-  "@modelcontextprotocol/sdk",
-  "@node-llama-cpp",
-  "ajv",
-  "json5",
-  "node-llama-cpp",
-];
+import { externalsFromPackageJson } from "../plugin-build-externals.ts";
+
+const externalDeps = await externalsFromPackageJson("./package.json", {
+  // Transitive workspace + native deps the hand-list relied on.
+  extra: ["@elizaos/shared", "@elizaos/agent", "@node-llama-cpp", "node-llama-cpp"],
+});
 
 async function build(): Promise<void> {
   const totalStart = Date.now();

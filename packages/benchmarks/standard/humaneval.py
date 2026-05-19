@@ -117,19 +117,17 @@ def _defines_entry_point(code: str, entry_point: str) -> bool:
 def _reindent_function_body(body: str, indent: str = "    ") -> str:
     """Normalize a function body so every non-blank line has at least ``indent``.
 
-    Models (especially eliza's REPLY action emitting code via gpt-oss-120b)
-    sometimes drop the leading 4-space indent on the first line of a function
-    body while indenting subsequent lines correctly, producing source like::
+    Models sometimes drop the leading 4-space indent on one or more lines of
+    a function body, producing source like::
 
         numbers = sorted(numbers)
             if len(numbers) < 2:
                 return False
 
     Concatenated after a ``def foo():\\n`` prompt this raises
-    ``IndentationError: unexpected indent`` on the second line. We detect that
-    pattern — body has at least one non-blank line with no leading indent AND
-    at least one non-blank line that does start with ``indent`` — and prepend
-    ``indent`` to the under-indented lines so the body is uniformly nested.
+    ``IndentationError: unexpected indent`` on the second line. We prepend
+    ``indent`` to any non-blank line that has no leading whitespace
+    so the body is uniformly nested under the prompt's function signature.
 
     Blank lines and lines that are already at >= ``indent`` columns of leading
     whitespace are left alone.
@@ -139,15 +137,14 @@ def _reindent_function_body(body: str, indent: str = "    ") -> str:
     if not lines:
         return body
     has_unindented = False
-    has_indented = False
     for line in lines:
         if not line.strip():
             continue
         if line.startswith(indent):
-            has_indented = True
+            continue
         elif not line.startswith((" ", "\t")):
             has_unindented = True
-    if not (has_unindented and has_indented):
+    if not has_unindented:
         return body
     fixed: list[str] = []
     for line in lines:

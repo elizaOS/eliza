@@ -1,13 +1,43 @@
 #!/usr/bin/env node
 
-import { existsSync, mkdirSync, readFileSync, symlinkSync, writeFileSync } from "node:fs";
+import {
+  existsSync,
+  mkdirSync,
+  readFileSync,
+  symlinkSync,
+  writeFileSync,
+} from "node:fs";
 import path from "node:path";
 
 const repoRoot = process.cwd();
 const coreDistFiles = [
-  path.join(repoRoot, "node_modules", "@elizaos", "core", "dist", "browser", "index.browser.js"),
-  path.join(repoRoot, "node_modules", "@elizaos", "core", "dist", "edge", "index.edge.js"),
-  path.join(repoRoot, "node_modules", "@elizaos", "core", "dist", "node", "index.node.js"),
+  path.join(
+    repoRoot,
+    "node_modules",
+    "@elizaos",
+    "core",
+    "dist",
+    "browser",
+    "index.browser.js",
+  ),
+  path.join(
+    repoRoot,
+    "node_modules",
+    "@elizaos",
+    "core",
+    "dist",
+    "edge",
+    "index.edge.js",
+  ),
+  path.join(
+    repoRoot,
+    "node_modules",
+    "@elizaos",
+    "core",
+    "dist",
+    "node",
+    "index.node.js",
+  ),
 ];
 
 let patchedFiles = 0;
@@ -46,7 +76,9 @@ if (existsSync(apiHono) && !existsSync(cloudHono)) {
   mkdirSync(path.dirname(cloudHono), { recursive: true });
   try {
     symlinkSync(apiHono, cloudHono);
-    console.log("[postinstall] linked cloud/node_modules/hono -> apps/api/node_modules/hono");
+    console.log(
+      "[postinstall] linked cloud/node_modules/hono -> apps/api/node_modules/hono",
+    );
   } catch (err) {
     console.warn("[postinstall] hono hoist symlink skipped:", err);
   }

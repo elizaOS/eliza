@@ -22,6 +22,7 @@
  * client during the first paint.
  */
 
+import { BRAND_COLORS } from "@elizaos/shared/brand";
 import { Buffer } from "buffer";
 
 if (typeof globalThis !== "undefined" && !("Buffer" in globalThis)) {
@@ -33,6 +34,7 @@ import { HelmetProvider, type HelmetServerState } from "react-helmet-async";
 import { StaticRouter } from "react-router";
 import { Toaster } from "sonner";
 import LandingPageRoute from "./pages/page";
+import { I18nProvider } from "./providers/I18nProvider";
 import "./globals.css";
 
 export interface RenderResult {
@@ -51,9 +53,9 @@ const TOASTER_PROPS = {
   position: "top-right" as const,
   toastOptions: {
     style: {
-      background: "#000000",
+      background: BRAND_COLORS.black,
       border: "1px solid rgba(255, 255, 255, 0.14)",
-      color: "#FFFFFF",
+      color: BRAND_COLORS.white,
       borderRadius: "2px",
     },
     className: "font-poppins",
@@ -66,8 +68,10 @@ export function render(url: string): RenderResult {
   const html = renderToString(
     <HelmetProvider context={helmetContext}>
       <StaticRouter location={url}>
-        <LandingPageRoute />
-        <Toaster {...TOASTER_PROPS} />
+        <I18nProvider initialLang="en">
+          <LandingPageRoute />
+          <Toaster {...TOASTER_PROPS} />
+        </I18nProvider>
       </StaticRouter>
     </HelmetProvider>,
   );

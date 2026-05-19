@@ -3,6 +3,7 @@ import { X } from "lucide-react";
 import type { ComponentType, HTMLAttributes } from "react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { SpringAnimatedStyle } from "@/lib/spring-types";
+import { useT } from "@/providers/I18nProvider";
 
 type AnimatedDivProps = Omit<HTMLAttributes<HTMLDivElement>, "style"> & {
   style?: SpringAnimatedStyle;
@@ -16,6 +17,7 @@ interface VideoCallProps {
 }
 
 export default function VideoCall({ visible, onClose }: VideoCallProps) {
+  const t = useT();
   const videoRef = useRef<HTMLVideoElement>(null);
   const streamRef = useRef<MediaStream | null>(null);
   const [maxW, setMaxW] = useState(440);
@@ -107,12 +109,16 @@ export default function VideoCall({ visible, onClose }: VideoCallProps) {
             <button
               type="button"
               onClick={onClose}
-              aria-label="End call"
+              aria-label={t("homepage_eliza.video.endCallAria", {
+                defaultValue: "End call",
+              })}
               className="size-14 flex items-center justify-center rounded-full bg-red-500 hover:bg-red-600 text-white transition-colors cursor-pointer"
             >
               <X className="size-8" strokeWidth={1.5} />
             </button>
-            <span className="text-white text-xs font-medium">end</span>
+            <span className="text-white text-xs font-medium">
+              {t("homepage_eliza.video.endLabel", { defaultValue: "end" })}
+            </span>
           </div>
         </div>
       </AnimatedDiv>

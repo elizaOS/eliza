@@ -3,7 +3,7 @@
  * Exercises the LIFE definition pipeline for a count-based daily habit.
  */
 
-import { scenario } from "@elizaos/scenario-schema";
+import { scenario } from "@elizaos/scenario-runner/schema";
 
 export default scenario({
   id: "habit.sit-ups-push-ups.daily-counts",

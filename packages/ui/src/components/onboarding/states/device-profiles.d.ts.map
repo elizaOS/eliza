@@ -1,1 +1,0 @@
-{"version":3,"file":"device-profiles.d.ts","sourceRoot":"","sources":["device-profiles.ts"],"names":[],"mappings":"AAAA,MAAM,MAAM,aAAa,GACrB,KAAK,GACL,SAAS,GACT,MAAM,GACN,QAAQ,GACR,QAAQ,GACR,OAAO,GACP,OAAO,GACP,KAAK,CAAC;AAEV,MAAM,WAAW,iBAAiB;IAChC,cAAc,EAAE,MAAM,CAAC;IACvB,WAAW,EAAE,OAAO,CAAC;CACtB;AA6CD,wBAAgB,iBAAiB,CAAC,OAAO,EAAE,aAAa,GAAG,iBAAiB,CAE3E"}

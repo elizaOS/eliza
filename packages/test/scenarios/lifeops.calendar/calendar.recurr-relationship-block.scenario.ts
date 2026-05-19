@@ -4,7 +4,10 @@
  * Relationship cadences" features.
  */
 
-import { type ScenarioContext, scenario } from "@elizaos/scenario-schema";
+import {
+  type ScenarioContext,
+  scenario,
+} from "@elizaos/scenario-runner/schema";
 import { judgeRubric } from "../_helpers/action-assertions.ts";
 import { seedCalendarCache } from "../_helpers/lifeops-seeds.ts";
 

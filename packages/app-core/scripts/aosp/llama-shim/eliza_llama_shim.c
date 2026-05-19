@@ -176,6 +176,20 @@ void eliza_llama_context_params_set_pooling_type(struct llama_context_params * p
     if (p != NULL) p->pooling_type = (enum llama_pooling_type) v;
 }
 
+/*
+ * MTP landed upstream after older Eliza fork pins. Keep this export stable for
+ * the Android adapter: on MTP-aware llama.cpp builds it sets the draft context
+ * type, and on older pins it is a no-op so the same shim source still compiles.
+ */
+void eliza_llama_context_params_set_ctx_type(struct llama_context_params * p, int32_t v) {
+#if defined(LLAMA_CONTEXT_TYPE_MTP)
+    if (p != NULL) p->ctx_type = (enum llama_context_type) v;
+#else
+    (void) p;
+    (void) v;
+#endif
+}
+
 /* type_k / type_v are enum ggml_type, ABI-wise an int. We accept i32 so the
  * adapter can pass the GGML_TYPE_TBQ3_0 (43) / GGML_TYPE_TBQ4_0 (44)
  * constants from llama.cpp-1bit-turboquant. Stock ggml types

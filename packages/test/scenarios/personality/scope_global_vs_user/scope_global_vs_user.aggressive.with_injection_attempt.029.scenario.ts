@@ -9,7 +9,7 @@
  * scenario definition and applies the appropriate rubric.
  */
 
-import { scenario } from "@elizaos/scenario-schema";
+import { scenario } from "@elizaos/scenario-runner/schema";
 
 export default scenario({
   id: "scope_global_vs_user.aggressive.with_injection_attempt.029",

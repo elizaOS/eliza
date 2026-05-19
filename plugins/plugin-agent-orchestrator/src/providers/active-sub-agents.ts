@@ -1,14 +1,9 @@
 import type { IAgentRuntime, Memory, Provider, State } from "@elizaos/core";
 import { getAcpService } from "../actions/common.js";
-import type { SessionInfo } from "../services/types.js";
-
-const TERMINAL_STATUSES = new Set([
-  "stopped",
-  "completed",
-  "error",
-  "errored",
-  "cancelled",
-]);
+import {
+  type SessionInfo,
+  TERMINAL_SESSION_STATUSES,
+} from "../services/types.js";
 
 // Transient statuses that bucket together as "active" for the planner-visible
 // view. We do NOT distinguish ready vs busy vs tool_running vs running vs
@@ -65,19 +60,47 @@ export const activeSubAgentsProvider: Provider = {
     const all = await Promise.resolve(service.listSessions()).catch(
       () => [] as SessionInfo[],
     );
+    // Provider surfaces ONLY active sessions — the sub-agent currently
+    // running is the ground truth. Past sessions (any terminal status,
+    // including errored) are intentionally excluded: surfacing them mixes
+    // historical noise with current state and lets the planner LLM
+    // generalize past failures as predictors for new spawns. If the user
+    // asks about history, the planner must call TASKS_HISTORY explicitly.
     const routed = (Array.isArray(all) ? all : [])
       .filter(hasOrigin)
-      .filter((s) => !TERMINAL_STATUSES.has(s.status));
+      .filter((s) => !TERMINAL_SESSION_STATUSES.has(s.status));
     if (routed.length === 0) return emptyResult();
 
     routed.sort((a, b) => a.id.localeCompare(b.id));
 
+    // Pull live activity (tail of session output) for each session so the
+    // planner can answer "where are you" with concrete detail instead of
+    // just `status=busy`. The buffer mixes message chunks and captured
+    // tool output — we take the last ~200 chars, strip noise, and surface
+    // it as a one-line `live: …` suffix.
+    const liveByName = new Map<string, string>();
+    if (typeof service.getSessionOutput === "function") {
+      await Promise.all(
+        routed.map(async (session) => {
+          try {
+            const raw = await service.getSessionOutput?.(session.id, 20);
+            if (typeof raw !== "string") return;
+            const tail = summarizeOutputTail(raw);
+            if (tail) liveByName.set(session.id, tail);
+          } catch {
+            // ignore — fall back to structural status only
+          }
+        }),
+      );
+    }
+
     const lines = [
       "## Active sub-agent sessions",
       "Each line is a live sub-agent. Reply to one with SEND_TO_AGENT { sessionId, text }; terminate with STOP_AGENT { sessionId }. Replying to the user uses the standard REPLY action; you may do both in one turn.",
+      "The sub-agent's task_complete event is the ground truth for outcomes. For history about past sub-agents, call TASKS_HISTORY explicitly.",
     ];
     for (const session of routed) {
-      lines.push(formatLine(session));
+      lines.push(formatLine(session, liveByName.get(session.id)));
     }
     const text = lines.join("\n");
 
@@ -116,11 +139,34 @@ function hasOrigin(session: SessionInfo): boolean {
   return typeof roomId === "string" && roomId.length > 0;
 }
 
-function formatLine(session: SessionInfo): string {
+function formatLine(session: SessionInfo, live?: string): string {
   const label = labelOf(session);
   const tail = workdirTail(session.workdir);
   const bucket = bucketStatus(session.status);
-  return `- [${label}] sessionId=${session.id} agentType=${session.agentType} status=${bucket} workdir=…${tail}`;
+  const base = `- [${label}] sessionId=${session.id} agentType=${session.agentType} status=${bucket} workdir=…${tail}`;
+  return live ? `${base} live="${live}"` : base;
+}
+
+function summarizeOutputTail(raw: string): string {
+  if (!raw) return "";
+  // Strip "[tool output: ...]" envelope markers so the live indicator
+  // never leaks captured-transcript framing. Keep the inner text since
+  // it's typically a Read/Edit/Bash invocation summary.
+  const lines = raw
+    .replace(/\r\n/g, "\n")
+    .split("\n")
+    .map((l) => l.trim())
+    .filter(
+      (l) =>
+        l.length > 0 &&
+        !l.startsWith("[tool output:") &&
+        !l.startsWith("[/tool output]") &&
+        !l.startsWith("[sub-agent:"),
+    );
+  const last = lines.slice(-3).join(" / ");
+  if (!last) return "";
+  // Truncate to keep the provider compact in the planner context.
+  return last.length > 120 ? `${last.slice(0, 117)}...` : last;
 }
 
 function labelOf(session: SessionInfo): string {

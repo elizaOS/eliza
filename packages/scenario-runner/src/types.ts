@@ -1,6 +1,6 @@
 /**
  * Internal types for the scenario runner. Scenario definitions themselves are
- * imported from `@elizaos/scenario-schema`; this file only models the runner's
+ * imported from `@elizaos/scenario-runner/schema`; this file only models the runner's
  * execution & report state.
  */
 
@@ -13,7 +13,7 @@ import type {
   CapturedStateTransition,
   ScenarioContext,
   ScenarioTurnExecution,
-} from "@elizaos/scenario-schema";
+} from "@elizaos/scenario-runner/schema";
 
 export type FinalCheckStatus =
   | "passed"

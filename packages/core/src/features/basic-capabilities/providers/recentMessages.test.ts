@@ -324,6 +324,50 @@ describe("recentMessagesProvider", () => {
 		expect(result.text).toContain("# Posts in Thread");
 	});
 
+	it("omits agent-emitted transient status messages from dialogue history", async () => {
+		// Orchestrator marks every status/narration/heartbeat post with
+		// `metadata.transient: true` so the planner cannot resurface its own
+		// 🚀/💬/⏳/✅ chatter as facts on later turns. The flag can sit on
+		// `content.metadata` (Content.metadata path) OR on the top-level
+		// `Memory.metadata` (when a connector forwards it through). Both
+		// shapes MUST be filtered out.
+		const memories = [
+			makeMemory(
+				"msg-1",
+				USER_ID,
+				"spawn the codex sub-agent",
+				"discord",
+				1000,
+			),
+			makeMemory("msg-2", AGENT_ID, "🚀 [codex] running", "discord", 2000, {
+				transient: true,
+			}),
+			// Top-level Memory.metadata.transient shape — connectors that
+			// forward `content.metadata` into `extraMetadata` land here.
+			{
+				id: "msg-3",
+				agentId: AGENT_ID,
+				roomId: ROOM_ID,
+				entityId: AGENT_ID,
+				createdAt: 3000,
+				content: { text: "💬 [codex] reading file", source: "discord" },
+				metadata: { transient: true },
+			} as Memory,
+			makeMemory("msg-4", AGENT_ID, "all set — deployed", "discord", 4000),
+		];
+
+		const result = await recentMessagesProvider.get(
+			makeRuntime(memories),
+			makeMemory("current", USER_ID, "next task", "discord", 5000),
+			{ values: {}, data: {}, text: "" },
+		);
+
+		expect(result.text).toContain("User: spawn the codex sub-agent");
+		expect(result.text).toContain("Agent: all set");
+		expect(result.text).not.toContain("🚀 [codex]");
+		expect(result.text).not.toContain("💬 [codex]");
+	});
+
 	it("sorts memories by timestamp before applying the conversation window", async () => {
 		const memories = Array.from({ length: 12 }, (_, index) => {
 			const n = 12 - index;

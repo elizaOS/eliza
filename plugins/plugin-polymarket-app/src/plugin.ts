@@ -1,6 +1,16 @@
 import type http from "node:http";
-import type { IAgentRuntime, Plugin, Route, RouteRequest, RouteResponse } from "@elizaos/core";
-import { PREDICTION_MARKET_SERVICE_TYPE, PredictionMarketService, polymarketActions } from "./actions";
+import type {
+  IAgentRuntime,
+  Plugin,
+  Route,
+  RouteRequest,
+  RouteResponse,
+} from "@elizaos/core";
+import {
+  PREDICTION_MARKET_SERVICE_TYPE,
+  PredictionMarketService,
+  polymarketActions,
+} from "./actions";
 import { polymarketStatusProvider } from "./provider";
 import { handlePolymarketRoute } from "./routes";
 
@@ -96,7 +106,8 @@ export const polymarketPlugin: Plugin = {
     {
       id: "polymarket",
       label: "Polymarket",
-      description: "Polymarket prediction markets — market discovery, orderbook, and positions",
+      description:
+        "Polymarket prediction markets — market discovery, orderbook, and positions",
       icon: "BarChart2",
       path: "/polymarket",
       bundlePath: "dist/views/bundle.js",
@@ -105,9 +116,24 @@ export const polymarketPlugin: Plugin = {
       visibleInManager: true,
       desktopTabEnabled: true,
     },
+    {
+      id: "polymarket",
+      label: "Polymarket TUI",
+      description: "Terminal Polymarket markets, orderbook, and positions",
+      icon: "BarChart2",
+      path: "/polymarket/tui",
+      viewType: "tui",
+      bundlePath: "dist/views/bundle.js",
+      componentExport: "PolymarketTuiView",
+      tags: ["prediction-markets", "polymarket", "trading", "terminal"],
+      visibleInManager: true,
+      desktopTabEnabled: true,
+    },
   ],
   async dispose(runtime: IAgentRuntime) {
-    const svc = runtime.getService<PredictionMarketService>(PREDICTION_MARKET_SERVICE_TYPE);
+    const svc = runtime.getService<PredictionMarketService>(
+      PREDICTION_MARKET_SERVICE_TYPE,
+    );
     await svc?.stop();
   },
 };

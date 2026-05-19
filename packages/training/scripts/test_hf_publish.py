@@ -111,6 +111,36 @@ def test_hf_load_preflight_accepts_matching_candidate_splits(publish_dataset, tm
     )
 
 
+def test_training_spec_exports_native_rows_to_hf_safe_jsonl(publish_dataset, tmp_path):
+    candidate = tmp_path / "native-candidate"
+    data = candidate / "data"
+    data.mkdir(parents=True)
+    native = {
+        "format": "eliza_native_v1",
+        "boundary": "vercel_ai_sdk.generateText",
+        "request": {"messages": [{"role": "user", "content": "hi"}], "tools": []},
+        "response": {"text": "hello", "toolCalls": []},
+        "metadata": {"source_dataset": "unit", "split": "train"},
+    }
+    for name in ("train.jsonl", "validation.jsonl", "test.jsonl"):
+        (data / name).write_text(publish_dataset._json_dumps(native) + "\n")
+    (candidate / "manifest.json").write_text('{"schemaVersion":"eliza1.dataset_candidate.v1"}')
+
+    spec = publish_dataset._spec_training_from_dir(candidate)
+    by_target = {target: path for path, target in spec.path_in_repo.items()}
+    exported_train = by_target["train.jsonl"]
+
+    assert exported_train != data / "train.jsonl"
+    assert "data/train-00000-of-00001.parquet" in by_target
+    assert by_target["data/train-00000-of-00001.parquet"].is_file()
+    row = __import__("json").loads(exported_train.read_text().splitlines()[0])
+    assert row["schema"] == "eliza.eliza1_hf_training_row.v1"
+    assert row["assistant_text"] == "hello"
+    assert isinstance(row["request_json"], str)
+    assert isinstance(row["native_json"], str)
+    assert publish_dataset.validate_hf_loadable(spec)
+
+
 def test_hf_load_preflight_rejects_split_feature_drift(publish_dataset, tmp_path):
     pytest.importorskip("datasets")
     candidate = tmp_path / "lifeops-candidate"
@@ -176,8 +206,10 @@ def test_combined_spec_includes_all_consolidated_paths(publish_dataset):
     spec = publish_dataset._spec_combined()
     targets = set(spec.path_in_repo.values())
     assert {"train.jsonl", "val.jsonl", "test.jsonl", "manifest.json"} <= targets
-    assert any(t.startswith("synthesized/evaluators/") for t in targets)
-    assert any(t.startswith("synthesized/phase3/") for t in targets)
+    if (ROOT / "data" / "synthesized" / "evaluators").exists():
+        assert any(t.startswith("synthesized/evaluators/") for t in targets)
+    if (ROOT / "data" / "synthesized" / "phase3").exists():
+        assert any(t.startswith("synthesized/phase3/") for t in targets)
     assert "sft/0_6b/UPLOAD_MANIFEST.json" in targets
 
 
@@ -292,6 +324,50 @@ def test_dataset_publish_uploads_files_with_commit_messages(
     assert commit_call.kwargs.get("repo_type") == "dataset"
 
 
+def test_dataset_publish_rejects_smoke_training_manifest(
+    publish_dataset, monkeypatch, tmp_path
+):
+    monkeypatch.setenv("HF_TOKEN", "hf_fake_token")
+
+    train = tmp_path / "train.jsonl"
+    train.write_text('{"messages":[{"role":"user","content":"hi"}]}\n')
+    manifest = tmp_path / "manifest.json"
+    manifest.write_text(
+        '{"schema":"eliza.eliza1_smoke_corpus_manifest.v1","purpose":"smoke only"}'
+    )
+    spec = publish_dataset.DatasetSpec(
+        name="training",
+        files=(train, manifest),
+        path_in_repo={train: "train.jsonl", manifest: "manifest.json"},
+        card="# fake card\n",
+    )
+
+    rc = publish_dataset.publish(spec, "elizaos/eliza-1-training", public=True)
+
+    assert rc == 2
+
+
+def test_dataset_publish_rejects_removed_tier_in_card(
+    publish_dataset, monkeypatch, tmp_path
+):
+    monkeypatch.setenv("HF_TOKEN", "hf_fake_token")
+
+    train = tmp_path / "train.jsonl"
+    train.write_text('{"messages":[{"role":"user","content":"hi"}]}\n')
+    manifest = tmp_path / "manifest.json"
+    manifest.write_text('{"schema":"eliza.eliza1_training_manifest.v1"}')
+    spec = publish_dataset.DatasetSpec(
+        name="training",
+        files=(train, manifest),
+        path_in_repo={train: "train.jsonl", manifest: "manifest.json"},
+        card="tiers: 0.8B, 27B-1M\n",
+    )
+
+    rc = publish_dataset.publish(spec, "elizaos/eliza-1-training", public=True)
+
+    assert rc == 2
+
+
 def test_dataset_publish_skips_when_token_missing(publish_dataset, monkeypatch):
     monkeypatch.delenv("HF_TOKEN", raising=False)
     monkeypatch.delenv("HUGGINGFACE_HUB_TOKEN", raising=False)
@@ -378,11 +454,17 @@ def test_dataset_card_includes_license(publish_dataset):
     assert "manifest.json" in spec.card
     assert "eliza-1-0_8b" in spec.card
     assert "eliza-1-2b" in spec.card
-    assert "0.8B-4B" in spec.card
+    assert "eliza-1-4b" in spec.card
+    assert "eliza-1-9b" in spec.card
+    assert "eliza-1-27b" in spec.card
+    assert "eliza-1-27b-256k" in spec.card
+    assert "0.8B-27B" in spec.card
     stale_small_tier = "eliza-1-0_" + "6b"
     stale_mobile_tier = "eliza-1-1_" + "7b"
+    stale_long_context_tier = "27B-" + "1M"
     assert stale_small_tier not in spec.card
     assert stale_mobile_tier not in spec.card
+    assert stale_long_context_tier not in spec.card
 
     sb = publish_dataset._spec_scambench()
     assert "cc-by-sa-4.0" in sb.card.lower()

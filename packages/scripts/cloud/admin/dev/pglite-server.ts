@@ -22,11 +22,17 @@ import { PGLiteSocketServer } from "@electric-sql/pglite-socket";
 
 const PORT = Number.parseInt(process.env.PGLITE_PORT ?? "5432", 10);
 const HOST = process.env.PGLITE_HOST ?? "127.0.0.1";
-const MAX_CONNECTIONS = Number.parseInt(process.env.PGLITE_MAX_CONNECTIONS ?? "16", 10);
+const MAX_CONNECTIONS = Number.parseInt(
+  process.env.PGLITE_MAX_CONNECTIONS ?? "16",
+  10,
+);
 const DATA_DIR =
   process.env.PGLITE_IN_MEMORY === "1"
     ? undefined
-    : path.resolve(process.cwd(), process.env.PGLITE_DATA_DIR ?? ".eliza/.pgdata");
+    : path.resolve(
+        process.cwd(),
+        process.env.PGLITE_DATA_DIR ?? ".eliza/.pgdata",
+      );
 
 const tag = "[pglite]";
 
@@ -54,7 +60,9 @@ console.log(
   `${tag} listening on ${HOST}:${PORT} (${DATA_DIR ? `data: ${DATA_DIR}` : "in-memory"})`,
 );
 console.log(`${tag} max connections: ${MAX_CONNECTIONS}`);
-console.log(`${tag} DATABASE_URL=postgresql://postgres@${HOST}:${PORT}/postgres`);
+console.log(
+  `${tag} DATABASE_URL=postgresql://postgres@${HOST}:${PORT}/postgres`,
+);
 
 async function shutdown(signal: string) {
   console.log(`${tag} ${signal} — closing server`);

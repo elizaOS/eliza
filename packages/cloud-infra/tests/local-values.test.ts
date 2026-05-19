@@ -6,9 +6,9 @@
  * with the keys those charts require.
  */
 
+import { describe, expect, test } from "bun:test";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
-import { describe, expect, test } from "bun:test";
 import { parse as parseYaml } from "yaml";
 
 const LOCAL_DIR = join(import.meta.dir, "..", "cloud", "local");

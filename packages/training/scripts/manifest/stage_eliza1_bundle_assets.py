@@ -12,8 +12,8 @@ Default sources:
   - ASR: ggml-org/Qwen3-ASR-0.6B-GGUF / Qwen3-ASR-1.7B-GGUF, GGUF artifacts.
   - VAD: the Eliza-1 release repo's voice/vad/silero-vad-v5.gguf, native
     silero-vad-cpp Silero VAD v5 model.
-    The legacy onnx-community/silero-vad int8 ONNX model can be staged as
-    an explicit fallback with --include-vad-onnx-fallback.
+    The legacy onnx-community/silero-vad int8 ONNX fallback can still be
+    staged explicitly with --include-vad-onnx-fallback (deprecated).
   - Wake word (optional): github.com/dscripka/openWakeWord release ONNX
     graphs (melspectrogram + embedding feature models, "hey jarvis" head
     staged as the Eliza-1 default `wake/hey-eliza.onnx`). Skip with
@@ -233,10 +233,10 @@ def _slot_for_bundle_path(rel: str) -> str | None:
     if rel.startswith("wake/"):
         return "wakeword"
     if rel.startswith("turn/"):
-        # Voice Wave 2: only the ONNX gates the manifest `files.turn` slot;
-        # tokenizer.json + languages.json are co-located on disk but are
-        # tokenizer/threshold sidecars, not a manifest-file entry.
-        if rel.endswith(".onnx"):
+        # Voice Wave 2: only the model file gates the manifest `files.turn`
+        # slot; tokenizer.json + languages.json are co-located on disk but
+        # are tokenizer/threshold sidecars, not manifest-file entries.
+        if rel.endswith(".onnx") or rel.endswith(".gguf"):
             return "turn"
         return None
     if rel == "cache/voice-preset-default.bin":
@@ -738,8 +738,6 @@ def write_license_notes(
         "LICENSE.vad": (
             "VAD assets staged from the Eliza-1 release repo as native silero-vad-cpp "
             "Silero VAD v5 GGUF at vad/silero-vad-v5.gguf.\n"
-            "Optional legacy ONNX fallback may be staged from "
-            "onnx-community/silero-vad at vad/silero-vad-int8.onnx.\n"
             "Declared upstream license: MIT.\n"
         ),
         "LICENSE.wakeword": (

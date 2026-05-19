@@ -16,6 +16,7 @@ import type {
 	IAgentRuntime,
 	Memory,
 	State,
+	ViewType,
 } from "@elizaos/core";
 import { hasOwnerAccess as defaultOwnerAccessFn, logger } from "@elizaos/core";
 import { readStringOption } from "../params.js";
@@ -38,6 +39,7 @@ import { runViewsShow } from "./views-show.js";
 
 export type ViewsMode =
 	| "list"
+	| "current"
 	| "show"
 	| "open"
 	| "search"
@@ -53,6 +55,7 @@ export type ViewsMode =
 
 const MODES: readonly ViewsMode[] = [
 	"list",
+	"current",
 	"show",
 	"open",
 	"search",
@@ -70,6 +73,8 @@ const MODES: readonly ViewsMode[] = [
 // Intent regexes — order matters: more specific first.
 const LIST_VERBS =
 	/\b(list|show all|what views|all views|available views|which views)\b/i;
+const CURRENT_VIEW_VERBS =
+	/\b(current|active|selected|open)\b.{0,30}\bview\b|\bwhat(?:'s| is)?\b.{0,20}\bview\b/i;
 const WHAT_VIEWS_VERB = /what.{0,20}views?\b/i;
 const SEARCH_VERBS = /\b(search|find|look for|filter)\b.*\bview/i;
 const MANAGER_VERBS =
@@ -97,6 +102,23 @@ const PIN_VERBS =
 	/\b(pin|pin as tab|add.*tab|pin.*desktop|keep.*tab|dock)\b.{0,40}\bview\b/i;
 const WINDOW_VERBS =
 	/\b(open in.*window|new window|separate window|pop.?out|detach)\b.{0,40}\bview\b|\bview\b.{0,40}\b(new window|separate window|pop.?out|detach)\b/i;
+
+function readViewTypeOption(
+	text: string,
+	options?: Record<string, unknown>,
+): ViewType | undefined {
+	const explicit =
+		readStringOption(options, "viewType") ??
+		readStringOption(options, "type") ??
+		readStringOption(options, "surface");
+	const normalized = explicit?.trim().toLowerCase();
+	if (normalized === "gui" || normalized === "graphical") return "gui";
+	if (normalized === "tui" || normalized === "terminal") return "tui";
+
+	if (/\b(tui|terminal)\b/i.test(text)) return "tui";
+	if (/\b(gui|graphical)\b/i.test(text)) return "gui";
+	return undefined;
+}
 
 type OwnerAccessFn = (
 	runtime: IAgentRuntime,
@@ -142,6 +164,7 @@ function inferMode(
 	if (SHOW_APPS_VERBS.test(trimmed)) return "manager";
 	if (CLOSE_VERBS.test(trimmed)) return "manager";
 	if (SEARCH_VERBS.test(trimmed)) return "search";
+	if (CURRENT_VIEW_VERBS.test(trimmed)) return "current";
 	if (WHAT_VIEWS_VERB.test(trimmed)) return "list";
 	if (LIST_VERBS.test(trimmed) && VIEW_NOUN.test(trimmed)) return "list";
 	if (SHOW_VERBS.test(trimmed) && VIEW_NOUN.test(trimmed)) return "show";
@@ -217,7 +240,7 @@ export function createViewsAction(deps: ViewsActionDeps = {}): Action {
 			{
 				name: "action",
 				description:
-					"Operation: list | show | open | search | manager | broadcast | interact | create | edit | delete | remove.",
+					"Operation: list | current | show | open | search | manager | broadcast | interact | create | edit | delete | remove.",
 				required: true,
 				schema: {
 					type: "string",
@@ -256,6 +279,13 @@ export function createViewsAction(deps: ViewsActionDeps = {}): Action {
 				description: "Search keyword (search mode).",
 				required: false,
 				schema: { type: "string" },
+			},
+			{
+				name: "viewType",
+				description:
+					'Presentation type to use for view discovery and switching. Defaults to "gui"; use "tui" for terminal views.',
+				required: false,
+				schema: { type: "string", enum: ["gui", "tui"] },
 			},
 			{
 				name: "search",
@@ -402,6 +432,7 @@ export function createViewsAction(deps: ViewsActionDeps = {}): Action {
 			}
 
 			const mode = inferMode(text, options);
+			const viewType = readViewTypeOption(text, options);
 			if (!mode) {
 				const reply =
 					'Tell me what to do with views. Try: "list views", "open wallet view", "create a new view", or "delete the LifeOps plugin".';
@@ -413,15 +444,33 @@ export function createViewsAction(deps: ViewsActionDeps = {}): Action {
 
 			switch (mode) {
 				case "list":
-					return runViewsList({ client, callback });
+					return runViewsList({ client, viewType, callback });
+
+				case "current": {
+					const currentView = await client.getCurrentView();
+					const resultText = currentView
+						? `Current view: ${currentView.viewLabel} (${currentView.viewType}) — ${currentView.viewId}${currentView.viewPath ? ` at ${currentView.viewPath}` : ""}.`
+						: "No current view has been reported yet.";
+					await callback?.({ text: resultText });
+					return {
+						success: true,
+						text: resultText,
+						values: {
+							mode: "current",
+							viewId: currentView?.viewId,
+							viewType: currentView?.viewType,
+						},
+						data: { currentView },
+					};
+				}
 
 				case "show":
 				case "open":
-					return runViewsShow({ client, message, options, callback });
+					return runViewsShow({ client, message, options, viewType, callback });
 
 				case "search": {
 					const query = extractSearchQuery(text, options);
-					return runViewsSearch({ client, query, callback });
+					return runViewsSearch({ client, query, viewType, callback });
 				}
 
 				case "manager": {
@@ -473,14 +522,20 @@ export function createViewsAction(deps: ViewsActionDeps = {}): Action {
 				}
 
 				case "interact": {
-					const viewId =
+					let viewId =
 						readStringOption(options, "view") ??
 						readStringOption(options, "id") ??
 						readStringOption(options, "name");
 					const capability = readStringOption(options, "capability");
+					let resolvedViewType = viewType;
+					if (!viewId && /\bcurrent\b/i.test(text)) {
+						const currentView = await client.getCurrentView();
+						viewId = currentView?.viewId ?? null;
+						resolvedViewType = viewType ?? currentView?.viewType;
+					}
 					if (!viewId || !capability) {
 						const reply =
-							"Specify view and capability, e.g. action=interact view=wallet capability=get-state.";
+							"Specify view and capability, e.g. action=interact view=wallet capability=get-state, or ask for the current view after navigating.";
 						await callback?.({ text: reply });
 						return { success: false, text: reply };
 					}
@@ -499,13 +554,24 @@ export function createViewsAction(deps: ViewsActionDeps = {}): Action {
 						capability,
 						params,
 						timeoutMs,
+						resolvedViewType,
 					);
 					await callback?.({ text: resultText });
 					return {
 						success: true,
 						text: resultText,
-						values: { mode: "interact", viewId, capability },
-						data: { viewId, capability, params },
+						values: {
+							mode: "interact",
+							viewId,
+							viewType: resolvedViewType ?? "gui",
+							capability,
+						},
+						data: {
+							viewId,
+							viewType: resolvedViewType ?? "gui",
+							capability,
+							params,
+						},
 					};
 				}
 
@@ -557,13 +623,17 @@ export function createViewsAction(deps: ViewsActionDeps = {}): Action {
 						await callback?.({ text: reply });
 						return { success: false, text: reply };
 					}
-					const pinResultText = await pinViewAsTab(pinViewId);
+					const pinResultText = await pinViewAsTab(pinViewId, viewType);
 					await callback?.({ text: pinResultText });
 					return {
 						success: true,
 						text: pinResultText,
-						values: { mode: "pin", viewId: pinViewId },
-						data: { viewId: pinViewId },
+						values: {
+							mode: "pin",
+							viewId: pinViewId,
+							viewType: viewType ?? "gui",
+						},
+						data: { viewId: pinViewId, viewType: viewType ?? "gui" },
 					};
 				}
 
@@ -578,13 +648,20 @@ export function createViewsAction(deps: ViewsActionDeps = {}): Action {
 						await callback?.({ text: reply });
 						return { success: false, text: reply };
 					}
-					const windowResultText = await openViewInWindow(windowViewId);
+					const windowResultText = await openViewInWindow(
+						windowViewId,
+						viewType,
+					);
 					await callback?.({ text: windowResultText });
 					return {
 						success: true,
 						text: windowResultText,
-						values: { mode: "window", viewId: windowViewId },
-						data: { viewId: windowViewId },
+						values: {
+							mode: "window",
+							viewId: windowViewId,
+							viewType: viewType ?? "gui",
+						},
+						data: { viewId: windowViewId, viewType: viewType ?? "gui" },
 					};
 				}
 			}
@@ -757,6 +834,7 @@ async function navigateViewWithShellAction(
 	action: "pin-tab" | "open-window",
 	successText: string,
 	fallbackText: string,
+	viewType?: ViewType,
 ): Promise<string> {
 	const { resolveServerOnlyPort } = await import("@elizaos/core");
 	const port = resolveServerOnlyPort(process.env);
@@ -764,11 +842,11 @@ async function navigateViewWithShellAction(
 
 	try {
 		const resp = await fetch(
-			`${base}/api/views/${encodeURIComponent(viewId)}/navigate`,
+			`${base}/api/views/${encodeURIComponent(viewId)}/navigate${viewType ? `?viewType=${viewType}` : ""}`,
 			{
 				method: "POST",
 				headers: { "Content-Type": "application/json" },
-				body: JSON.stringify({ action }),
+				body: JSON.stringify({ action, viewType }),
 				signal: AbortSignal.timeout(5_000),
 			},
 		);
@@ -785,21 +863,26 @@ async function navigateViewWithShellAction(
 	return fallbackText;
 }
 
-function pinViewAsTab(viewId: string): Promise<string> {
+function pinViewAsTab(viewId: string, viewType?: ViewType): Promise<string> {
 	return navigateViewWithShellAction(
 		viewId,
 		"pin-tab",
-		`Pinned view "${viewId}" as a desktop tab.`,
-		`Requested desktop tab pin for view "${viewId}".`,
+		`Pinned ${viewType ?? "gui"} view "${viewId}" as a desktop tab.`,
+		`Requested desktop tab pin for ${viewType ?? "gui"} view "${viewId}".`,
+		viewType,
 	);
 }
 
-function openViewInWindow(viewId: string): Promise<string> {
+function openViewInWindow(
+	viewId: string,
+	viewType?: ViewType,
+): Promise<string> {
 	return navigateViewWithShellAction(
 		viewId,
 		"open-window",
-		`Opened view "${viewId}" in a separate window.`,
-		`Requested separate window for view "${viewId}".`,
+		`Opened ${viewType ?? "gui"} view "${viewId}" in a separate window.`,
+		`Requested separate window for ${viewType ?? "gui"} view "${viewId}".`,
+		viewType,
 	);
 }
 
@@ -812,6 +895,7 @@ async function interactWithView(
 	capability: string,
 	params: Record<string, unknown> | undefined,
 	timeoutMs: number,
+	viewType?: ViewType,
 ): Promise<string> {
 	const { resolveServerOnlyPort } = await import("@elizaos/core");
 	const port = resolveServerOnlyPort(process.env);
@@ -820,11 +904,11 @@ async function interactWithView(
 	let resp: Response;
 	try {
 		resp = await fetch(
-			`${base}/api/views/${encodeURIComponent(viewId)}/interact`,
+			`${base}/api/views/${encodeURIComponent(viewId)}/interact${viewType ? `?viewType=${viewType}` : ""}`,
 			{
 				method: "POST",
 				headers: { "Content-Type": "application/json" },
-				body: JSON.stringify({ capability, params, timeoutMs }),
+				body: JSON.stringify({ capability, params, timeoutMs, viewType }),
 				signal: AbortSignal.timeout(timeoutMs + 1_000),
 			},
 		);

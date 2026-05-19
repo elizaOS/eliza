@@ -9,7 +9,7 @@ All five artifacts in `manifest.json` are in `status: candidate` with `sha256: n
 This is **not** a broken state. The pipeline gates publication on real values:
 
 - `scripts/validate-release-manifest.mjs --require-publishable-checksums` fails on `null` AND on the all-zero placeholder. It is run by the `populate-and-validate-manifest` job in `.github/workflows/elizaos-os-full-release.yml` after artifacts are downloaded.
-- `android/installer/scripts/validate-release-manifest.mjs` rejects the all-zero hash and the `sizeBytes: 1` sentinel — it cannot be tricked into passing the placeholder values that ship in this file.
+- `android/installer/scripts/validate-release-manifest.mjs` rejects the all-zero hash and the `sizeBytes: 1` sentinel by default. The pull-request validation workflow uses `--allow-placeholders` for this checked-in draft manifest only, while the publish path must validate real Android artifacts without that flag.
 - `release.status` is only promoted to `available` after the strict gate passes.
 
 See `packages/os/RELEASE.md` for the full runbook.

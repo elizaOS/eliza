@@ -8,7 +8,7 @@ await build({
   splitting: false,
   sourcemap: "external",
   minify: false,
-  external: ["@elizaos/core", "viem", "drizzle-orm"],
+  external: ["@elizaos/core", "viem", "drizzle-orm", "@solana/web3.js"],
 });
 
 const proc = Bun.spawn(

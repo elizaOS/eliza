@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import fs from "node:fs";
+import os from "node:os";
 import path from "node:path";
 import test from "node:test";
 
@@ -13,7 +14,9 @@ import {
   configureIosAppStoreBuildDefaults,
   IOS_AGENT_RUNTIME_ASSETS,
   IOS_OFFICIAL_PODS,
+  injectCopyForkLlamaLibTask,
   isIosAppStoreBuild,
+  resolveCapacitorCli,
   resolveIosAgentRuntimeAssetPlan,
   resolveIosBuildTarget,
   resolveIosCustomPods,
@@ -235,6 +238,145 @@ test("resolveIosBuildTarget defaults App Store iOS to a device build", () => {
       reason: "App Store device build",
     },
   );
+});
+
+test("resolveCapacitorCli supports hoisted workspace installs", () => {
+  const tempRoot = fs.mkdtempSync(path.join(os.tmpdir(), "eliza-capacitor-"));
+  try {
+    const tempAppDir = path.join(tempRoot, "packages", "app");
+    const capacitorPackage = path.join(
+      fs.realpathSync(tempRoot),
+      "node_modules",
+      "@capacitor",
+      "cli",
+    );
+    const capacitorCli = path.join(capacitorPackage, "bin", "capacitor");
+    fs.mkdirSync(path.dirname(capacitorCli), { recursive: true });
+    fs.mkdirSync(tempAppDir, { recursive: true });
+    fs.writeFileSync(capacitorCli, "#!/usr/bin/env node\n", "utf8");
+
+    assert.equal(
+      resolveCapacitorCli({
+        appDirValue: tempAppDir,
+        repoRootValue: tempRoot,
+      }),
+      capacitorCli,
+    );
+  } finally {
+    fs.rmSync(tempRoot, { recursive: true, force: true });
+  }
+});
+
+test("resolveCapacitorCli supports Bun store workspace installs", () => {
+  const tempRoot = fs.mkdtempSync(path.join(os.tmpdir(), "eliza-capacitor-"));
+  try {
+    const tempAppDir = path.join(tempRoot, "packages", "app");
+    const capacitorPackage = path.join(
+      tempRoot,
+      "node_modules",
+      ".bun",
+      "@capacitor+cli@8.3.4",
+      "node_modules",
+      "@capacitor",
+      "cli",
+    );
+    const capacitorCli = path.join(capacitorPackage, "bin", "capacitor");
+    fs.mkdirSync(path.dirname(capacitorCli), { recursive: true });
+    fs.mkdirSync(tempAppDir, { recursive: true });
+    fs.writeFileSync(capacitorCli, "#!/usr/bin/env node\n", "utf8");
+
+    assert.equal(
+      resolveCapacitorCli({
+        appDirValue: tempAppDir,
+        repoRootValue: tempRoot,
+      }),
+      path.join(fs.realpathSync(capacitorPackage), "bin", "capacitor"),
+    );
+  } finally {
+    fs.rmSync(tempRoot, { recursive: true, force: true });
+  }
+});
+
+test("Android DFlash Gradle hook keeps local builds honest by default", () => {
+  const patched = injectCopyForkLlamaLibTask(`android {
+    namespace "app.eliza"
+}
+`);
+
+  assert.match(patched, /task copyForkLlamaLib/);
+  assert.match(patched, /no DFlash Android lib dir configured/);
+  assert.match(patched, /elizaSkipForkLlamaLib/);
+  assert.match(patched, /ELIZA_ANDROID_SKIP_FORK_LLAMA_LIB/);
+  assert.match(patched, /skipped by explicit native-lib opt-out/);
+});
+
+test("Android DFlash Gradle hook upgrades existing generated tasks with explicit smoke opt-out", () => {
+  const existing = `
+android {
+}
+task copyForkLlamaLib {
+    doLast {
+        if (project.findProperty('elizaCloudBuild') == 'true') {
+            println "[copyForkLlamaLib] skipped for cloud build"
+            return
+        }
+        throw new GradleException("[copyForkLlamaLib] no DFlash Android lib dir configured.")
+    }
+}
+`;
+  const patched = injectCopyForkLlamaLibTask(existing);
+
+  assert.equal(
+    patched.match(/skipped for cloud build/g)?.length,
+    1,
+    "cloud guard should stay idempotent",
+  );
+  assert.match(patched, /elizaSkipForkLlamaLib/);
+  assert.match(patched, /ELIZA_ANDROID_SKIP_FORK_LLAMA_LIB/);
+});
+
+test("Android app template resolves BackgroundRunner AARs from hoisted workspace installs", () => {
+  const template = fs.readFileSync(
+    path.join(
+      import.meta.dirname,
+      "..",
+      "platforms",
+      "android",
+      "app",
+      "build.gradle",
+    ),
+    "utf8",
+  );
+
+  assert.match(
+    template,
+    /\.\.\/\.\.\/\.\.\/\.\.\/node_modules\/@capacitor\/background-runner\/android\/src\/main\/libs/,
+  );
+  assert.match(
+    template,
+    /\.\.\/\.\.\/\.\.\/\.\.\/node_modules\/@capacitor-community\/background-runner\/android\/src\/main\/libs/,
+  );
+});
+
+test("Android app styles use framework status bar attrs only", () => {
+  const styles = fs.readFileSync(
+    path.join(
+      import.meta.dirname,
+      "..",
+      "platforms",
+      "android",
+      "app",
+      "src",
+      "main",
+      "res",
+      "values",
+      "styles.xml",
+    ),
+    "utf8",
+  );
+
+  assert.match(styles, /name="android:statusBarColor"/);
+  assert.doesNotMatch(styles, /name="statusBarColor"/);
 });
 
 test("iOS background runner pod resolves through the official package", () => {

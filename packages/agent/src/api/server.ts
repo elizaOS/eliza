@@ -55,24 +55,46 @@ import {
 } from "@elizaos/shared";
 import { type WebSocket, WebSocketServer } from "ws";
 
-const {
-  BROWSER_BRIDGE_KINDS,
-  BROWSER_BRIDGE_PACKAGE_PATH_TARGETS,
-  buildBrowserBridgeCompanionPackage,
-  closeBrowserWorkspaceTab,
-  evaluateBrowserWorkspaceTab,
-  executeBrowserWorkspaceCommand,
-  getBrowserBridgeCompanionPackageStatus,
-  getBrowserWorkspaceSnapshot,
-  hideBrowserWorkspaceTab,
-  listBrowserWorkspaceTabs,
-  navigateBrowserWorkspaceTab,
-  openBrowserBridgeCompanionManager,
-  openBrowserBridgeCompanionPackagePath,
-  openBrowserWorkspaceTab,
-  showBrowserWorkspaceTab,
-  snapshotBrowserWorkspaceTab,
-} = await import("@elizaos/plugin-browser");
+// `@elizaos/plugin-browser` and `@elizaos/plugin-x402` were previously
+// imported via module-scope top-level await, which forced both plugins to
+// load (and pulled their transitive native deps) whenever anything imported
+// `@elizaos/agent`. That blocked container boot in cloud sandboxes. They are
+// now lazily loaded inside `startApiServer` via `initializeServerOptionalPlugins`,
+// which runs once before any handler that uses them can fire.
+type BrowserPluginModule = typeof import("@elizaos/plugin-browser");
+type X402PluginModule = typeof import("@elizaos/plugin-x402");
+
+let browserPluginModule: BrowserPluginModule | null = null;
+let x402PluginModule: X402PluginModule | null = null;
+
+function getBrowserPlugin(): BrowserPluginModule {
+  if (!browserPluginModule) {
+    throw new Error(
+      "[server] @elizaos/plugin-browser accessed before initializeServerOptionalPlugins()",
+    );
+  }
+  return browserPluginModule;
+}
+
+function getX402Plugin(): X402PluginModule {
+  if (!x402PluginModule) {
+    throw new Error(
+      "[server] @elizaos/plugin-x402 accessed before initializeServerOptionalPlugins()",
+    );
+  }
+  return x402PluginModule;
+}
+
+async function initializeServerOptionalPlugins(): Promise<void> {
+  if (browserPluginModule && x402PluginModule) return;
+  const [browser, x402] = await Promise.all([
+    import("@elizaos/plugin-browser"),
+    import("@elizaos/plugin-x402"),
+  ]);
+  browserPluginModule = browser;
+  x402PluginModule = x402;
+}
+
 const optionalPluginImports = {
   capacitor: () => import("@elizaos/plugin-capacitor-bridge"),
   computerUse: () => import("@elizaos/plugin-computeruse"),
@@ -113,16 +135,14 @@ async function getOptionalPluginApi<T>(
 ): Promise<T> {
   return (await optionalPluginImports[key]()) as T;
 }
-const { validateX402Startup } = await import("@elizaos/plugin-x402");
-
-type BrowserBridgeKind = (typeof BROWSER_BRIDGE_KINDS)[number];
+type BrowserBridgeKind = BrowserPluginModule["BROWSER_BRIDGE_KINDS"][number];
 type BrowserBridgePackagePathTarget =
-  (typeof BROWSER_BRIDGE_PACKAGE_PATH_TARGETS)[number];
+  BrowserPluginModule["BROWSER_BRIDGE_PACKAGE_PATH_TARGETS"][number];
 type BrowserWorkspaceCommand = Parameters<
-  typeof executeBrowserWorkspaceCommand
+  BrowserPluginModule["executeBrowserWorkspaceCommand"]
 >[0];
 type BrowserWorkspaceTabKind = NonNullable<
-  Parameters<typeof openBrowserWorkspaceTab>[0]["kind"]
+  Parameters<BrowserPluginModule["openBrowserWorkspaceTab"]>[0]["kind"]
 >;
 
 let agentSkillsApiPromise: Promise<any> | undefined;
@@ -262,6 +282,7 @@ import { handleProviderSwitchRoutes } from "./provider-switch-routes.ts";
 import { handleRegistryRoutes } from "./registry-routes.ts";
 import { RegistryService } from "./registry-service.ts";
 import { handleRelationshipsRoutes } from "./relationships-routes.ts";
+import { handleRemoteCapabilityRoutes } from "./remote-capability-routes.ts";
 import {
   isPublicRuntimePluginRoute,
   tryHandleRuntimePluginRoute,
@@ -714,7 +735,9 @@ function parseBrowserBridgeKind(
 ): BrowserBridgeKind | null {
   if (!value) return null;
   const decoded = decodeURIComponent(value);
-  return (BROWSER_BRIDGE_KINDS as readonly string[]).includes(decoded)
+  return (
+    getBrowserPlugin().BROWSER_BRIDGE_KINDS as readonly string[]
+  ).includes(decoded)
     ? (decoded as BrowserBridgeKind)
     : null;
 }
@@ -723,7 +746,10 @@ function parseBrowserBridgePackageTarget(
   value: unknown,
 ): BrowserBridgePackagePathTarget | null {
   return typeof value === "string" &&
-    (BROWSER_BRIDGE_PACKAGE_PATH_TARGETS as readonly string[]).includes(value)
+    (
+      getBrowserPlugin()
+        .BROWSER_BRIDGE_PACKAGE_PATH_TARGETS as readonly string[]
+    ).includes(value)
     ? (value as BrowserBridgePackagePathTarget)
     : null;
 }
@@ -815,7 +841,9 @@ async function handleBuiltinOptionalRoutes(
   }
 
   if (method === "GET" && pathname === "/api/browser-bridge/packages") {
-    json(res, { status: getBrowserBridgeCompanionPackageStatus() });
+    json(res, {
+      status: getBrowserPlugin().getBrowserBridgeCompanionPackageStatus(),
+    });
     return true;
   }
 
@@ -836,7 +864,7 @@ async function handleBuiltinOptionalRoutes(
     }
     json(
       res,
-      await openBrowserBridgeCompanionPackagePath(target, {
+      await getBrowserPlugin().openBrowserBridgeCompanionPackagePath(target, {
         revealOnly: body.revealOnly === true,
       }),
     );
@@ -852,7 +880,10 @@ async function handleBuiltinOptionalRoutes(
       error(res, "Invalid browser bridge package browser", 400);
       return true;
     }
-    json(res, { status: await buildBrowserBridgeCompanionPackage(browser) });
+    json(res, {
+      status:
+        await getBrowserPlugin().buildBrowserBridgeCompanionPackage(browser),
+    });
     return true;
   }
 
@@ -865,12 +896,15 @@ async function handleBuiltinOptionalRoutes(
       error(res, "Invalid browser bridge package browser", 400);
       return true;
     }
-    json(res, await openBrowserBridgeCompanionManager(browser));
+    json(
+      res,
+      await getBrowserPlugin().openBrowserBridgeCompanionManager(browser),
+    );
     return true;
   }
 
   if (pathname === "/api/browser-workspace" && method === "GET") {
-    json(res, await getBrowserWorkspaceSnapshot());
+    json(res, await getBrowserPlugin().getBrowserWorkspaceSnapshot());
     return true;
   }
 
@@ -881,12 +915,12 @@ async function handleBuiltinOptionalRoutes(
       error(res, "subaction is required", 400);
       return true;
     }
-    json(res, await executeBrowserWorkspaceCommand(body));
+    json(res, await getBrowserPlugin().executeBrowserWorkspaceCommand(body));
     return true;
   }
 
   if (pathname === "/api/browser-workspace/tabs" && method === "GET") {
-    json(res, { tabs: await listBrowserWorkspaceTabs() });
+    json(res, { tabs: await getBrowserPlugin().listBrowserWorkspaceTabs() });
     return true;
   }
 
@@ -899,7 +933,7 @@ async function handleBuiltinOptionalRoutes(
         partition?: string;
         kind?: BrowserWorkspaceTabKind;
       }>(req, res)) ?? {};
-    json(res, { tab: await openBrowserWorkspaceTab(body) });
+    json(res, { tab: await getBrowserPlugin().openBrowserWorkspaceTab(body) });
     return true;
   }
 
@@ -914,23 +948,23 @@ async function handleBuiltinOptionalRoutes(
   const action = tabMatch[2] ?? null;
 
   if (!action && method === "DELETE") {
-    const closed = await closeBrowserWorkspaceTab(tabId);
+    const closed = await getBrowserPlugin().closeBrowserWorkspaceTab(tabId);
     json(res, { closed }, closed ? 200 : 404);
     return true;
   }
 
   if (action === "show" && method === "POST") {
-    json(res, { tab: await showBrowserWorkspaceTab(tabId) });
+    json(res, { tab: await getBrowserPlugin().showBrowserWorkspaceTab(tabId) });
     return true;
   }
 
   if (action === "hide" && method === "POST") {
-    json(res, { tab: await hideBrowserWorkspaceTab(tabId) });
+    json(res, { tab: await getBrowserPlugin().hideBrowserWorkspaceTab(tabId) });
     return true;
   }
 
   if (action === "snapshot" && method === "GET") {
-    json(res, await snapshotBrowserWorkspaceTab(tabId));
+    json(res, await getBrowserPlugin().snapshotBrowserWorkspaceTab(tabId));
     return true;
   }
 
@@ -943,7 +977,7 @@ async function handleBuiltinOptionalRoutes(
       return true;
     }
     json(res, {
-      tab: await navigateBrowserWorkspaceTab({
+      tab: await getBrowserPlugin().navigateBrowserWorkspaceTab({
         id: tabId,
         url: body.url,
       }),
@@ -960,7 +994,7 @@ async function handleBuiltinOptionalRoutes(
       return true;
     }
     json(res, {
-      value: await evaluateBrowserWorkspaceTab({
+      value: await getBrowserPlugin().evaluateBrowserWorkspaceTab({
         id: tabId,
         script: body.script,
       }),
@@ -1656,9 +1690,7 @@ async function handleRequest(
   }
 
   const localInferenceServerApi = await getLocalInferenceServerApi();
-  if (
-    await localInferenceServerApi.handleLocalInferenceRoutes(req, res)
-  )
+  if (await localInferenceServerApi.handleLocalInferenceRoutes(req, res))
     return;
   if (
     localInferenceServerApi.handleLocalInferenceTtsRoute &&
@@ -2064,6 +2096,24 @@ async function handleRequest(
         state.runtime?.plugins.map((plugin) => plugin.name) ?? [],
       getBundledPluginIds: () => getReleaseBundledPluginIds(),
       classifyRegistryPluginRelease,
+    })
+  ) {
+    return;
+  }
+
+  if (
+    await handleRemoteCapabilityRoutes({
+      req,
+      res,
+      method,
+      pathname,
+      runtime: state.runtime,
+      config: state.config,
+      readJsonBody,
+      saveConfig: (config) => saveElizaConfig(config as ElizaConfig),
+      persistConfigEnv,
+      json,
+      error,
     })
   ) {
     return;
@@ -2981,6 +3031,10 @@ export async function startApiServer(opts?: {
 }> {
   const apiStartTime = Date.now();
   logger.debug(`[eliza-api] startApiServer called`);
+  await initializeServerOptionalPlugins();
+  logger.debug(
+    `[eliza-api] Optional plugins initialized (${Date.now() - apiStartTime}ms)`,
+  );
 
   // Honor ELIZA_API_PORT first (set by the desktop launcher → 31337) so
   // the renderer's hardcoded API base reaches this server. CLI-mode
@@ -4350,9 +4404,13 @@ export async function startApiServer(opts?: {
       rt.agentId != null && String(rt.agentId).length > 0
         ? String(rt.agentId)
         : undefined;
-    const result = validateX402Startup(rt.routes as Route[], rt.character, {
-      agentId,
-    });
+    const result = getX402Plugin().validateX402Startup(
+      rt.routes as Route[],
+      rt.character,
+      {
+        agentId,
+      },
+    );
     if (!result.valid) {
       throw new Error(
         `x402 configuration invalid:\n${result.errors.map((e) => `  • ${e}`).join("\n")}`,

@@ -28,7 +28,10 @@ export function StatusBar() {
   return (
     <header className="elizaos-mobile-statusbar" role="banner">
       <div className="elizaos-mobile-statusbar-left">
-        <span className="elizaos-mobile-clock" aria-label={`Time ${formatted.time}`}>
+        <span
+          className="elizaos-mobile-clock"
+          aria-label={`Time ${formatted.time}`}
+        >
           {formatted.time}
         </span>
         <span className="elizaos-mobile-date" aria-label={formatted.date}>

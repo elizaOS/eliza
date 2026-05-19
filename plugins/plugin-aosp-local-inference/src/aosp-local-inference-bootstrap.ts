@@ -174,6 +174,11 @@ export interface AospLoadModelArgs {
   draftContextSize?: number;
   draftMin?: number;
   draftMax?: number;
+  speculativeSamples?: number;
+  mobileSpeculative?: boolean;
+  cacheTypeK?: "f16" | "tbq3_0" | "tbq4_0" | "qjl1_256" | "q4_polar";
+  cacheTypeV?: "f16" | "tbq3_0" | "tbq4_0" | "qjl1_256" | "q4_polar";
+  disableThinking?: boolean;
   kvCacheType?: {
     k?: "f16" | "tbq3_0" | "tbq4_0" | "qjl1_256" | "q4_polar";
     v?: "f16" | "tbq3_0" | "tbq4_0" | "qjl1_256" | "q4_polar";
@@ -201,8 +206,8 @@ function activeSnapshotFromLoadArgs(
     loadedAt,
     status: "ready",
     loadedContextSize: loadArgs.contextSize ?? null,
-    loadedCacheTypeK: loadArgs.kvCacheType?.k ?? null,
-    loadedCacheTypeV: loadArgs.kvCacheType?.v ?? null,
+    loadedCacheTypeK: loadArgs.cacheTypeK ?? loadArgs.kvCacheType?.k ?? null,
+    loadedCacheTypeV: loadArgs.cacheTypeV ?? loadArgs.kvCacheType?.v ?? null,
     loadedGpuLayers:
       typeof loadArgs.gpuLayers === "number" ? loadArgs.gpuLayers : null,
   };
@@ -268,6 +273,31 @@ type TextToSpeechHandler = (
 
 interface KokoroPrewarmOptions {
   shouldSkip?: () => boolean;
+}
+
+interface AospOmnivoiceConfig {
+  libPath: string;
+  modelPath: string;
+  codecPath: string;
+}
+
+interface AospFusedOmnivoiceConfig {
+  libPath: string;
+  bundleRoot: string;
+}
+
+type OmnivoicePluginModule = {
+  omnivoicePlugin?: {
+    models?: Record<string, unknown>;
+  };
+  default?: {
+    models?: Record<string, unknown>;
+  };
+};
+
+interface AospOmnivoiceTtsHandlerOptions {
+  resolveConfig?: () => AospOmnivoiceConfig | null;
+  loadPlugin?: () => Promise<OmnivoicePluginModule>;
 }
 
 type TranscriptionHandler = (
@@ -501,13 +531,82 @@ function inProcessDflashRequested(): boolean {
   return readBooleanEnv("ELIZA_DFLASH_REQUIRED") === true;
 }
 
+function dflashDrafterIsTargetCopy(bundleDir: string): boolean {
+  const raw = readDflashTargetMeta(bundleDir);
+  if (!raw) return false;
+  const draftSha =
+    typeof raw.drafter?.sha256 === "string"
+      ? raw.drafter.sha256.trim().toLowerCase()
+      : "";
+  const targetSha =
+    typeof raw.targetText?.sha256 === "string"
+      ? raw.targetText.sha256.trim().toLowerCase()
+      : "";
+  return Boolean(draftSha && targetSha && draftSha === targetSha);
+}
+
+function readDflashTargetMeta(bundleDir: string): {
+  publishEligible?: unknown;
+  drafter?: {
+    sha256?: unknown;
+    sizeBytes?: unknown;
+    finalElizaWeights?: unknown;
+  };
+  targetText?: {
+    sha256?: unknown;
+    sizeBytes?: unknown;
+    finalElizaWeights?: unknown;
+  };
+  validation?: {
+    checks?: Record<string, { pass?: unknown } | undefined>;
+  };
+} | null {
+  const metaPath = path.join(bundleDir, "dflash", "target-meta.json");
+  if (!existsSync(metaPath)) return null;
+  try {
+    return JSON.parse(readFileSync(metaPath, "utf8"));
+  } catch (err) {
+    writeAospLlamaDebugLog("bootstrap:dflash:targetMetaReadFailed", {
+      metaPath,
+      error: err instanceof Error ? err.message : String(err),
+    });
+    return null;
+  }
+}
+
+function dflashMetadataAllowsStockAutoPair(bundleDir: string): boolean {
+  const meta = readDflashTargetMeta(bundleDir);
+  if (!meta || meta.publishEligible !== true) return false;
+  if (dflashDrafterIsTargetCopy(bundleDir)) return false;
+  if (
+    meta.drafter?.finalElizaWeights === false ||
+    meta.targetText?.finalElizaWeights === false
+  ) {
+    return false;
+  }
+  const draftSize =
+    typeof meta.drafter?.sizeBytes === "number" ? meta.drafter.sizeBytes : 0;
+  const targetSize =
+    typeof meta.targetText?.sizeBytes === "number"
+      ? meta.targetText.sizeBytes
+      : 0;
+  if (draftSize > 0 && targetSize > 0 && draftSize >= targetSize) return false;
+  const checks = meta.validation?.checks ?? {};
+  for (const name of [
+    "architectureLoadable",
+    "vocabMatch",
+    "tokenizerMetadataMatch",
+    "drafterSmaller",
+  ]) {
+    if (checks[name]?.pass === false) return false;
+  }
+  return true;
+}
+
 function resolveDflashDrafterPath(modelPath: string): string | null {
   const explicit = process.env.ELIZA_DFLASH_DRAFTER_PATH?.trim();
   if (explicit) {
     return existsSync(explicit) ? explicit : null;
-  }
-  if (!inProcessDflashRequested() && !dflashServerSpawnAllowed()) {
-    return null;
   }
   const textDir = path.dirname(modelPath);
   const bundleDir =
@@ -516,6 +615,22 @@ function resolveDflashDrafterPath(modelPath: string): string | null {
       : path.dirname(modelPath);
   const dflashDir = path.join(bundleDir, "dflash");
   if (!existsSync(dflashDir)) return null;
+  const explicitlyRequested =
+    inProcessDflashRequested() || dflashServerSpawnAllowed();
+  const explicitlyDisabled = readBooleanEnv("ELIZA_DFLASH") === false;
+  if (
+    !explicitlyRequested &&
+    (explicitlyDisabled || !dflashMetadataAllowsStockAutoPair(bundleDir))
+  ) {
+    return null;
+  }
+  if (dflashDrafterIsTargetCopy(bundleDir)) {
+    writeAospLlamaDebugLog("bootstrap:dflash:skip", {
+      reason: "drafter_sha_matches_target",
+      bundleDir,
+    });
+    return null;
+  }
   try {
     const candidates = readdirSync(dflashDir)
       .filter((name) => {
@@ -1439,7 +1554,6 @@ function wrapKokoroWebOrtModule(
 export async function loadAospKokoroOrt(): ReturnType<AospKokoroOrtLoader> {
   const spec = process.env.ELIZA_AOSP_KOKORO_ORT_MODULE?.trim();
   if (!spec || spec === DEFAULT_AOSP_KOKORO_ORT_MODULE) {
-    // @ts-ignore onnxruntime-web exposes this runtime subpath without bundled declarations in some workspace tsconfigs.
     const mod = await import("onnxruntime-web/wasm");
     return wrapKokoroWebOrtModule(mod);
   }
@@ -1683,6 +1797,390 @@ export function prewarmKokoroTextToSpeechHandler(
   }, delayMs);
 }
 
+function firstExistingPath(
+  paths: Array<string | undefined | null>,
+): string | null {
+  for (const p of paths) {
+    if (p && existsSync(p)) return p;
+  }
+  return null;
+}
+
+function findOmnivoiceTtsFile(
+  ttsDir: string,
+  kind: "model" | "codec",
+): string | null {
+  if (!existsSync(ttsDir)) return null;
+  const entries = readdirSync(ttsDir, { withFileTypes: true });
+  const match = entries.find((entry) => {
+    if (!entry.isFile()) return false;
+    const name = entry.name.toLowerCase();
+    if (!name.endsWith(".gguf")) return false;
+    if (kind === "model") {
+      return (
+        name.includes("omnivoice") &&
+        name.includes("base") &&
+        !name.includes("tokenizer") &&
+        !name.includes("codec")
+      );
+    }
+    return (
+      name.includes("omnivoice") &&
+      (name.includes("tokenizer") || name.includes("codec"))
+    );
+  });
+  return match ? path.join(ttsDir, match.name) : null;
+}
+
+function resolveAssignedChatBundleRoot(): string {
+  const modelsDir = resolveBundledModelsDir();
+  const assigned = readAssignedBundledModels(modelsDir);
+  const manifest = readBundledModelManifest(modelsDir);
+  const fallback = fallbackFindBundledModels(modelsDir);
+  const chatModel = assigned.chat ?? manifest.chat ?? fallback.chat;
+  if (!chatModel) {
+    throw new Error(
+      `[aosp-local-inference] voice requires an installed Eliza-1 chat bundle under ${modelsDir}`,
+    );
+  }
+  return resolveBundleRootFromModelPath(chatModel);
+}
+
+export function resolveAospOmnivoiceConfig(
+  env: NodeJS.ProcessEnv = process.env,
+): AospOmnivoiceConfig | null {
+  const libPath = firstExistingPath([
+    env.OMNIVOICE_LIB_PATH?.trim(),
+    (() => {
+      try {
+        return path.join(
+          path.dirname(resolveLibllamaPath()),
+          "libomnivoice.so",
+        );
+      } catch {
+        return null;
+      }
+    })(),
+  ]);
+
+  let bundleRoot: string | null = null;
+  try {
+    bundleRoot = resolveAssignedChatBundleRoot();
+  } catch {
+    bundleRoot = null;
+  }
+
+  const ttsDir = bundleRoot ? path.join(bundleRoot, "tts") : null;
+  const modelPath = firstExistingPath([
+    env.OMNIVOICE_MODEL_PATH?.trim(),
+    ttsDir ? findOmnivoiceTtsFile(ttsDir, "model") : null,
+  ]);
+  const codecPath = firstExistingPath([
+    env.OMNIVOICE_CODEC_PATH?.trim(),
+    ttsDir ? findOmnivoiceTtsFile(ttsDir, "codec") : null,
+  ]);
+
+  if (!libPath || !modelPath || !codecPath) return null;
+  return { libPath, modelPath, codecPath };
+}
+
+function resolveAospTtsBackend(env: NodeJS.ProcessEnv = process.env): string {
+  const explicit =
+    env.ELIZA_AOSP_TTS_BACKEND?.trim() || env.ELIZA_LOCAL_TTS_BACKEND?.trim();
+  if (explicit) return explicit.toLowerCase();
+  // Stock APKs should prefer the release-safe Kokoro path unless the user
+  // explicitly asks for fused OmniVoice. Branded AOSP builds keep auto mode
+  // so product images can opt into the full local voice stack by default.
+  return env.ELIZA_AOSP_BUILD === "1" ? "auto" : "kokoro";
+}
+
+async function loadOmnivoicePluginModule(): Promise<OmnivoicePluginModule> {
+  return (await import("@elizaos/plugin-omnivoice")) as OmnivoicePluginModule;
+}
+
+export function makeAospOmnivoiceTextToSpeechHandler(
+  opts: AospOmnivoiceTtsHandlerOptions = {},
+): TextToSpeechHandler {
+  let handlerPromise: Promise<{
+    handler: TextToSpeechHandler;
+    config: AospOmnivoiceConfig;
+  }> | null = null;
+
+  async function ensureHandler(): Promise<{
+    handler: TextToSpeechHandler;
+    config: AospOmnivoiceConfig;
+  }> {
+    if (handlerPromise) return handlerPromise;
+    handlerPromise = Promise.resolve()
+      .then(async () => {
+        const config = (opts.resolveConfig ?? resolveAospOmnivoiceConfig)();
+        if (!config) {
+          throw new Error(
+            "[aosp-local-inference] OmniVoice TEXT_TO_SPEECH is not available: expected libomnivoice.so plus omnivoice base/tokenizer GGUFs in the active Eliza-1 bundle.",
+          );
+        }
+        process.env.OMNIVOICE_LIB_PATH = config.libPath;
+        process.env.OMNIVOICE_MODEL_PATH = config.modelPath;
+        process.env.OMNIVOICE_CODEC_PATH = config.codecPath;
+
+        const mod = await (opts.loadPlugin ?? loadOmnivoicePluginModule)();
+        const plugin = mod.omnivoicePlugin ?? mod.default;
+        const rawHandler = plugin?.models?.[ModelType.TEXT_TO_SPEECH];
+        if (typeof rawHandler !== "function") {
+          throw new Error(
+            "[aosp-local-inference] @elizaos/plugin-omnivoice did not expose a TEXT_TO_SPEECH handler",
+          );
+        }
+        logger.info(
+          `[aosp-local-inference] OmniVoice TEXT_TO_SPEECH backend ready (lib=${config.libPath}, model=${path.basename(config.modelPath)}, codec=${path.basename(config.codecPath)})`,
+        );
+        return {
+          handler: rawHandler as TextToSpeechHandler,
+          config,
+        };
+      })
+      .catch((err) => {
+        handlerPromise = null;
+        throw err;
+      });
+    return handlerPromise;
+  }
+
+  return async (runtime, params) => {
+    const started = Date.now();
+    const { handler, config } = await ensureHandler();
+    const audio = await handler(runtime, params);
+    const bytes =
+      audio instanceof Uint8Array
+        ? audio
+        : new Uint8Array(
+            (audio as Buffer).buffer,
+            (audio as Buffer).byteOffset,
+            (audio as Buffer).byteLength,
+          );
+    logger.info(
+      `[aosp-local-inference] OmniVoice TEXT_TO_SPEECH completed in ${Date.now() - started}ms (model=${path.basename(config.modelPath)}, bytes=${bytes.byteLength})`,
+    );
+    return bytes;
+  };
+}
+
+function isFfiNullPointer(value: unknown): boolean {
+  return value === null || value === undefined || value === 0 || value === 0n;
+}
+
+function resolveAospOmnivoiceTtsStepOverride(
+  env: NodeJS.ProcessEnv = process.env,
+): string | null {
+  const raw =
+    env.ELIZA_AOSP_OMNIVOICE_MASKGIT_STEPS?.trim() ||
+    env.ELIZA_TTS_MASKGIT_STEPS?.trim();
+  if (!raw) return null;
+  const parsed = Number.parseInt(raw, 10);
+  if (!Number.isFinite(parsed) || parsed < 1 || parsed > 64) return null;
+  return String(parsed);
+}
+
+export function makeAospFusedOmnivoiceTextToSpeechHandler(): TextToSpeechHandler {
+  let contextPromise: Promise<{
+    ffi: BunFfiModule;
+    symbols: Record<string, (...args: unknown[]) => unknown>;
+    close: () => void;
+    ctx: unknown;
+    config: AospFusedOmnivoiceConfig;
+    streamSupported: boolean;
+  }> | null = null;
+
+  async function ensureContext(): Promise<{
+    ffi: BunFfiModule;
+    symbols: Record<string, (...args: unknown[]) => unknown>;
+    close: () => void;
+    ctx: unknown;
+    config: AospFusedOmnivoiceConfig;
+    streamSupported: boolean;
+  }> {
+    if (contextPromise) return contextPromise;
+    contextPromise = Promise.resolve()
+      .then(async () => {
+        const config = resolveAospFusedOmnivoiceConfig();
+        if (!config) {
+          throw new Error(
+            "[aosp-local-inference] fused OmniVoice TEXT_TO_SPEECH is not available: expected libelizainference.so plus an active Eliza-1 bundle with tts assets.",
+          );
+        }
+        const ffi = await loadAospVoiceFfi();
+        const T = ffi.FFIType;
+        const usize = T.usize ?? T.ptr;
+        const lib = ffi.dlopen(config.libPath, {
+          eliza_inference_create: { args: [T.ptr, T.ptr], returns: T.ptr },
+          eliza_inference_destroy: { args: [T.ptr], returns: T.void },
+          eliza_inference_mmap_acquire: {
+            args: [T.ptr, T.ptr, T.ptr],
+            returns: T.i32,
+          },
+          eliza_inference_tts_stream_supported: {
+            args: [],
+            returns: T.i32,
+          },
+          eliza_inference_tts_synthesize: {
+            args: [T.ptr, T.ptr, usize, T.ptr, T.ptr, usize, T.ptr],
+            returns: T.i32,
+          },
+          eliza_inference_free_string: { args: [usize], returns: T.void },
+        });
+        const symbols = lib.symbols;
+        const errCreate = Buffer.alloc(8);
+        const bundleArg = cString(config.bundleRoot);
+        const ctx = symbols.eliza_inference_create(
+          ffi.ptr(bundleArg),
+          ffi.ptr(errCreate),
+        );
+        if (isFfiNullPointer(ctx)) {
+          const message = readFfiStringAndFree(ffi, symbols, errCreate);
+          try {
+            lib.close();
+          } catch {}
+          throw new Error(
+            `[aosp-local-inference] fused OmniVoice create failed: ${message}`,
+          );
+        }
+
+        const errAcquire = Buffer.alloc(8);
+        const acquireStarted = Date.now();
+        const rc = symbols.eliza_inference_mmap_acquire(
+          ctx,
+          ffi.ptr(cString("tts")),
+          ffi.ptr(errAcquire),
+        ) as number;
+        if (rc < 0) {
+          const message = readFfiStringAndFree(ffi, symbols, errAcquire);
+          try {
+            symbols.eliza_inference_destroy(ctx);
+          } catch {}
+          try {
+            lib.close();
+          } catch {}
+          throw new Error(
+            `[aosp-local-inference] fused OmniVoice TTS mmap_acquire rc=${rc}: ${message}`,
+          );
+        }
+
+        const streamSupported =
+          (symbols.eliza_inference_tts_stream_supported?.() as number) === 1;
+        logger.info(
+          `[aosp-local-inference] fused OmniVoice TEXT_TO_SPEECH backend ready in ${Date.now() - acquireStarted}ms (lib=${config.libPath}, bundle=${path.basename(config.bundleRoot)}, stream=${streamSupported})`,
+        );
+        return {
+          ffi,
+          symbols,
+          close: lib.close,
+          ctx,
+          config,
+          streamSupported,
+        };
+      })
+      .catch((err) => {
+        contextPromise = null;
+        throw err;
+      });
+    return contextPromise;
+  }
+
+  return async (_runtime, params) => {
+    const text = extractSpeechText(params).trim();
+    if (!text) {
+      throw new Error(
+        "[aosp-local-inference] TEXT_TO_SPEECH requires non-empty text",
+      );
+    }
+    const signal = extractSpeechSignal(params);
+    if (signal?.aborted) {
+      throw new Error("[aosp-local-inference] TEXT_TO_SPEECH aborted");
+    }
+
+    const stepOverride = resolveAospOmnivoiceTtsStepOverride();
+    const previousSteps = process.env.ELIZA_TTS_MASKGIT_STEPS;
+    if (stepOverride) process.env.ELIZA_TTS_MASKGIT_STEPS = stepOverride;
+
+    try {
+      const started = Date.now();
+      const { ffi, symbols, ctx, config, streamSupported } =
+        await ensureContext();
+      const readyMs = Date.now() - started;
+      const maxSeconds = readPositiveIntEnv("ELIZA_AOSP_TTS_MAX_SECONDS", 30);
+      const maxSamples = Math.max(24_000, maxSeconds * 24_000);
+      const out = Buffer.alloc(maxSamples * 4);
+      const errTts = Buffer.alloc(8);
+      const textArg = cString(text);
+      const synthStarted = Date.now();
+      const rc = symbols.eliza_inference_tts_synthesize(
+        ctx,
+        ffi.ptr(textArg),
+        BigInt(text.length),
+        0,
+        ffi.ptr(out),
+        BigInt(maxSamples),
+        ffi.ptr(errTts),
+      ) as number;
+      const synthMs = Date.now() - synthStarted;
+      if (rc < 0) {
+        throw new Error(
+          `[aosp-local-inference] fused OmniVoice TEXT_TO_SPEECH rc=${rc}: ${readFfiStringAndFree(ffi, symbols, errTts)}`,
+        );
+      }
+      if (signal?.aborted) {
+        throw new Error("[aosp-local-inference] TEXT_TO_SPEECH aborted");
+      }
+      const pcmBytes = out.subarray(0, rc * 4);
+      const pcm = new Float32Array(pcmBytes.buffer, pcmBytes.byteOffset, rc);
+      const encodeStarted = Date.now();
+      const wav = encodeWavPcm16(pcm, 24_000);
+      const encodeMs = Date.now() - encodeStarted;
+      logger.info(
+        `[aosp-local-inference] fused OmniVoice TEXT_TO_SPEECH completed chars=${text.length} bundle=${path.basename(config.bundleRoot)} backendReadyMs=${readyMs} synthMs=${synthMs} encodeMs=${encodeMs} pcmSamples=${rc} wavBytes=${wav.byteLength} streamSupported=${streamSupported} maskgitSteps=${process.env.ELIZA_TTS_MASKGIT_STEPS ?? "default"}`,
+      );
+      return wav;
+    } finally {
+      if (stepOverride) {
+        if (previousSteps === undefined) {
+          delete process.env.ELIZA_TTS_MASKGIT_STEPS;
+        } else {
+          process.env.ELIZA_TTS_MASKGIT_STEPS = previousSteps;
+        }
+      }
+    }
+  };
+}
+
+export function makeAospTextToSpeechHandler(
+  opts: {
+    kokoro?: TextToSpeechHandler;
+    omnivoice?: TextToSpeechHandler;
+    env?: NodeJS.ProcessEnv;
+    onForegroundUse?: () => void;
+  } = {},
+): TextToSpeechHandler {
+  const kokoro = opts.kokoro ?? makeKokoroTextToSpeechHandler();
+  const omnivoice =
+    opts.omnivoice ?? makeAospFusedOmnivoiceTextToSpeechHandler();
+  return async (runtime, params) => {
+    opts.onForegroundUse?.();
+    const backend = resolveAospTtsBackend(opts.env ?? process.env);
+    if (backend !== "kokoro") {
+      try {
+        return await omnivoice(runtime, params);
+      } catch (err) {
+        if (backend === "omnivoice") throw err;
+        logger.warn(
+          "[aosp-local-inference] OmniVoice TEXT_TO_SPEECH unavailable; falling back to Kokoro: " +
+            (err instanceof Error ? err.message : String(err)),
+        );
+      }
+    }
+    return kokoro(runtime, params);
+  };
+}
+
 type BunFfiModule = {
   dlopen: (
     file: string,
@@ -1692,9 +2190,13 @@ type BunFfiModule = {
     close: () => void;
   };
   FFIType: Record<string, number>;
-  ptr: (value: ArrayBufferView) => bigint;
-  read?: { ptr?: (value: ArrayBufferView, offset?: number) => bigint };
-  CString?: (ptr: bigint) => string;
+  ptr: (value: ArrayBufferView) => bigint | number;
+  read?: { ptr?: (value: ArrayBufferView, offset?: number) => bigint | number };
+  CString?: new (ptr: bigint | number) => { toString(): string };
+  JSCallback?: new (
+    fn: (...args: never[]) => unknown,
+    def: { args: readonly number[]; returns: number },
+  ) => { readonly ptr: bigint | number; close: () => void };
 };
 
 async function loadAospVoiceFfi(): Promise<BunFfiModule> {
@@ -1718,6 +2220,19 @@ function resolveElizaInferenceLibPath(): string {
   return path.join(path.dirname(resolveLibllamaPath()), "libelizainference.so");
 }
 
+function resolveAospFusedOmnivoiceConfig(): AospFusedOmnivoiceConfig | null {
+  const libPath = resolveElizaInferenceLibPath();
+  if (!existsSync(libPath)) return null;
+  let bundleRoot: string;
+  try {
+    bundleRoot = resolveAssignedChatBundleRoot();
+  } catch {
+    return null;
+  }
+  if (!existsSync(path.join(bundleRoot, "tts"))) return null;
+  return { libPath, bundleRoot };
+}
+
 function resolveBundleRootFromModelPath(modelPath: string): string {
   const parts = modelPath.replaceAll("\\", "/").split("/");
   const bundleIndex = parts.findIndex((part) => part.endsWith(".bundle"));
@@ -1732,17 +2247,7 @@ function resolveBundleRootFromModelPath(modelPath: string): string {
 }
 
 function resolveAssignedVoiceBundleRoot(): string {
-  const modelsDir = resolveBundledModelsDir();
-  const assigned = readAssignedBundledModels(modelsDir);
-  const manifest = readBundledModelManifest(modelsDir);
-  const fallback = fallbackFindBundledModels(modelsDir);
-  const chatModel = assigned.chat ?? manifest.chat ?? fallback.chat;
-  if (!chatModel) {
-    throw new Error(
-      `[aosp-local-inference] TRANSCRIPTION requires an installed Eliza-1 chat bundle under ${modelsDir}`,
-    );
-  }
-  const bundleRoot = resolveBundleRootFromModelPath(chatModel);
+  const bundleRoot = resolveAssignedChatBundleRoot();
   if (!existsSync(path.join(bundleRoot, "asr"))) {
     throw new Error(
       `[aosp-local-inference] TRANSCRIPTION requires ASR assets under ${bundleRoot}/asr`,
@@ -1756,17 +2261,32 @@ function readFfiStringAndFree(
   symbols: Record<string, (...args: unknown[]) => unknown>,
   ptrBuffer: Buffer,
 ): string {
-  const raw = ffi.read?.ptr?.(ptrBuffer, 0) ?? 0n;
+  const raw = readFfiPointer(ffi, ptrBuffer, 0);
   if (!raw || raw === 0n) return "(no diagnostic)";
   let text = "(unreadable diagnostic)";
   try {
-    text =
-      typeof ffi.CString === "function" ? ffi.CString(raw) : "(no CString)";
+    text = ffi.CString ? new ffi.CString(raw).toString() : "(no CString)";
   } catch {}
   try {
     symbols.eliza_inference_free_string?.(raw);
   } catch {}
   return text;
+}
+
+function readFfiPointer(
+  ffi: BunFfiModule,
+  ptrBuffer: Buffer,
+  offset = 0,
+): bigint {
+  const viaFfi = ffi.read?.ptr?.(ptrBuffer, offset);
+  if (typeof viaFfi === "bigint") return viaFfi;
+  if (typeof viaFfi === "number") return BigInt(viaFfi);
+  const view = new DataView(
+    ptrBuffer.buffer,
+    ptrBuffer.byteOffset,
+    ptrBuffer.byteLength,
+  );
+  return view.getBigUint64(offset, true);
 }
 
 function decodeMonoPcm16WavBytes(bytes: Uint8Array): {
@@ -2085,19 +2605,18 @@ export async function ensureAospLocalInferenceHandlers(
   ];
   const baseKokoroTextToSpeechHandler = makeKokoroTextToSpeechHandler();
   let foregroundKokoroTextToSpeechUsed = false;
-  const kokoroTextToSpeechHandler: TextToSpeechHandler = async (
-    runtime,
-    params,
-  ) => {
-    foregroundKokoroTextToSpeechUsed = true;
-    return baseKokoroTextToSpeechHandler(runtime, params);
-  };
+  const textToSpeechHandler = makeAospTextToSpeechHandler({
+    kokoro: baseKokoroTextToSpeechHandler,
+    onForegroundUse: () => {
+      foregroundKokoroTextToSpeechUsed = true;
+    },
+  });
   for (const modelType of slots) {
     const handler =
       modelType === ModelType.TEXT_EMBEDDING
         ? makeEmbeddingHandler(loader, lifecycle)
         : modelType === ModelType.TEXT_TO_SPEECH
-          ? kokoroTextToSpeechHandler
+          ? textToSpeechHandler
           : modelType === ModelType.TRANSCRIPTION
             ? makeAospTranscriptionHandler()
             : makeGenerateHandler(loader, lifecycle);
@@ -2141,9 +2660,14 @@ export async function ensureAospLocalInferenceHandlers(
         (err instanceof Error ? err.message : String(err)),
     );
   });
-  prewarmKokoroTextToSpeechHandler(kokoroTextToSpeechHandler, {
-    shouldSkip: () => foregroundKokoroTextToSpeechUsed,
-  });
+  if (
+    resolveAospTtsBackend() === "kokoro" ||
+    resolveAospOmnivoiceConfig() === null
+  ) {
+    prewarmKokoroTextToSpeechHandler(baseKokoroTextToSpeechHandler, {
+      shouldSkip: () => foregroundKokoroTextToSpeechUsed,
+    });
+  }
 
   console.log(
     `[aosp-local-inference] registered ${PROVIDER} handlers for TEXT_SMALL / TEXT_LARGE / TEXT_EMBEDDING / TEXT_TO_SPEECH / TRANSCRIPTION (priority ${LOCAL_INFERENCE_PRIORITY})`,

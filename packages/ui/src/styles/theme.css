@@ -37,7 +37,7 @@
   --status-warning-bg: rgba(255, 88, 0, 0.14);
   --status-info: var(--brand-blue);
   --status-info-bg: rgba(11, 53, 241, 0.12);
-  --font-sans: "Open Sans", Arial, system-ui, sans-serif;
+  --font-sans: "Poppins", Arial, system-ui, sans-serif;
   --font-body: var(--font-sans);
   --font-display: var(--font-body);
   --font-chat: var(--font-body);

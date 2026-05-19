@@ -2,19 +2,14 @@
 
 import { existsSync } from "node:fs";
 import { rm } from "node:fs/promises";
+import { externalsFromPackageJson } from "../plugin-build-externals.ts";
 
-const externalDeps = [
-  "dotenv",
-  "fs",
-  "path",
-  "@reflink/reflink",
-  "https",
-  "http",
-  "agentkeepalive",
-  "zod",
-  "@elizaos/core",
-  "@linear/sdk",
-];
+const externalDeps = await externalsFromPackageJson("./package.json", {
+  // Preserve transitive externals the hand-maintained list relied on.
+  // These show up via @linear/sdk + agentkeepalive's transitive graph;
+  // keep them externalized to avoid inlining Node-builtin API users.
+  extra: ["dotenv", "fs", "path", "@reflink/reflink", "https", "http", "agentkeepalive", "zod"],
+});
 
 async function buildPlugin() {
   console.log("🔨 Building @elizaos/plugin-linear...\n");

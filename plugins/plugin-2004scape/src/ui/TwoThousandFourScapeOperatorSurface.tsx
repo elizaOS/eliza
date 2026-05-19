@@ -15,6 +15,7 @@ import {
 } from "@elizaos/app-core";
 import {
   type ButtonHTMLAttributes,
+  type CSSProperties,
   type InputHTMLAttributes,
   useCallback,
   useMemo,
@@ -51,6 +52,226 @@ function Button({
       {...props}
     />
   );
+}
+
+export function TwoThousandFourScapeTuiView() {
+  const { appRuns, setActionNotice } = useApp();
+  const { run, matchingRuns } = useMemo(
+    () => selectLatestRunForApp("@elizaos/plugin-2004scape", appRuns),
+    [appRuns],
+  );
+  const [draft, setDraft] = useState("");
+  const [sending, setSending] = useState(false);
+  const session = run?.session ?? null;
+  const telemetry =
+    session?.telemetry && typeof session.telemetry === "object"
+      ? session.telemetry
+      : null;
+  const player = asRecord(telemetry?.player);
+  const tutorial = asRecord(telemetry?.tutorial);
+  const nearbyTargets = extractNearbyTargets(telemetry);
+  const recentActivity = extractRecentActivity(telemetry);
+  const suggestedPrompts = Array.isArray(session?.suggestedPrompts)
+    ? session.suggestedPrompts.filter(
+        (prompt: unknown): prompt is string =>
+          typeof prompt === "string" && prompt.trim().length > 0,
+      )
+    : [];
+  const autoPlayEnabled =
+    readBooleanValue(telemetry, "autoPlay") ??
+    (!session || session.status !== "paused");
+  const viewState = {
+    viewType: "tui",
+    viewId: "2004scape",
+    appName: "@elizaos/plugin-2004scape",
+    runId: run?.runId ?? null,
+    status: run?.status ?? "idle",
+    sessionStatus: session?.status ?? null,
+    canSend: Boolean(session?.canSendCommands),
+    activeRunCount: matchingRuns.length,
+    autoPlayEnabled,
+    player: {
+      name: readStringValue(player, "name"),
+      worldX: readNumberValue(player, "worldX"),
+      worldZ: readNumberValue(player, "worldZ"),
+      hp: readNumberValue(player, "hp"),
+      maxHp: readNumberValue(player, "maxHp"),
+    },
+    tutorialActive: readBooleanValue(tutorial, "active") ?? false,
+    nearbyTargetCount: nearbyTargets.length,
+    recentActivityCount: recentActivity.length,
+    suggestedPromptCount: suggestedPrompts.length,
+  };
+
+  const sendDraft = async (content: string) => {
+    const trimmed = content.trim();
+    if (!run?.runId || !trimmed || sending) return;
+    setSending(true);
+    try {
+      const response = await postAppRunCommand(run.runId, "message", {
+        content: trimmed,
+      });
+      setActionNotice(
+        response.message,
+        response.success ? "success" : "error",
+        2600,
+      );
+      setDraft("");
+    } catch (error) {
+      setActionNotice(
+        error instanceof Error
+          ? error.message
+          : "Failed to send the 2004scape operator message.",
+        "error",
+        3200,
+      );
+    } finally {
+      setSending(false);
+    }
+  };
+
+  return (
+    <div data-view-state={JSON.stringify(viewState)} style={tuiRootStyle}>
+      <div style={tuiRouteStyle}>elizaos://2004scape --type=tui</div>
+      <div style={tuiMetaStyle}>
+        {run?.status ?? "idle"} | {formatPlayerState(player)} | autoplay{" "}
+        {autoPlayEnabled ? "on" : "off"}
+      </div>
+      <section style={tuiPanelStyle} aria-label="2004scape state">
+        <strong style={tuiTitleStyle}>2004scape</strong>
+        <div>run {run?.runId ?? "none"}</div>
+        <div>session {session?.sessionId ?? "none"}</div>
+        <div>
+          commands {session?.canSendCommands ? "available" : "unavailable"}
+        </div>
+        <div>nearby targets {nearbyTargets.length}</div>
+        <div style={tuiSubtleStyle}>suggested prompts</div>
+        {(suggestedPrompts.length
+          ? suggestedPrompts
+          : ["check status", "continue tutorial", "pause"]
+        )
+          .slice(0, 6)
+          .map((prompt) => (
+            <button
+              key={prompt}
+              type="button"
+              disabled={!session?.canSendCommands || sending}
+              onClick={() => void sendDraft(prompt)}
+              style={tuiButtonStyle}
+            >
+              {prompt}
+            </button>
+          ))}
+        <input
+          aria-label="2004scape command"
+          value={draft}
+          onChange={(event) => setDraft(event.currentTarget.value)}
+          onKeyDown={(event) => {
+            if (event.key === "Enter") void sendDraft(draft);
+          }}
+          placeholder="Send an operator instruction..."
+          style={tuiInputStyle}
+        />
+        <button
+          type="button"
+          disabled={!session?.canSendCommands || sending || !draft.trim()}
+          onClick={() => void sendDraft(draft)}
+          style={tuiButtonStyle}
+        >
+          send command
+        </button>
+      </section>
+    </div>
+  );
+}
+
+const tuiRootStyle: CSSProperties = {
+  minHeight: "100vh",
+  background: "#020617",
+  color: "#cbd5e1",
+  fontFamily:
+    'ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace',
+  padding: 20,
+};
+const tuiRouteStyle: CSSProperties = { color: "#7dd3fc", marginBottom: 4 };
+const tuiMetaStyle: CSSProperties = { color: "#475569", marginBottom: 16 };
+const tuiPanelStyle: CSSProperties = {
+  border: "1px solid rgba(125,211,252,0.3)",
+  borderRadius: 6,
+  padding: 16,
+  maxWidth: 760,
+};
+const tuiTitleStyle: CSSProperties = {
+  display: "block",
+  color: "#e2e8f0",
+  marginBottom: 10,
+};
+const tuiSubtleStyle: CSSProperties = { color: "#64748b", marginTop: 14 };
+const tuiButtonStyle: CSSProperties = {
+  display: "block",
+  width: "100%",
+  margin: "8px 0",
+  background: "transparent",
+  color: "#a7f3d0",
+  border: "1px solid rgba(167,243,208,0.45)",
+  borderRadius: 4,
+  padding: "6px 8px",
+  cursor: "pointer",
+  fontFamily: "inherit",
+};
+const tuiInputStyle: CSSProperties = {
+  width: "100%",
+  marginTop: 14,
+  background: "#020617",
+  color: "#e2e8f0",
+  border: "1px solid rgba(125,211,252,0.35)",
+  borderRadius: 4,
+  padding: "8px",
+  fontFamily: "inherit",
+};
+
+export async function interact(
+  capability: string,
+  params?: Record<string, unknown>,
+): Promise<unknown> {
+  if (capability === "terminal-2004scape-state") {
+    return {
+      viewType: "tui",
+      appName: "@elizaos/plugin-2004scape",
+      commands: [
+        "check status",
+        "continue tutorial",
+        "pause",
+        "resume",
+        "terminal-2004scape-command",
+      ],
+    };
+  }
+  if (capability === "terminal-2004scape-command") {
+    const runId = typeof params?.runId === "string" ? params.runId.trim() : "";
+    const content =
+      typeof params?.content === "string" ? params.content.trim() : "";
+    if (!runId) throw new Error("runId is required");
+    if (!content) throw new Error("content is required");
+    return {
+      viewType: "tui",
+      command: await postAppRunCommand(runId, "message", { content }),
+    };
+  }
+  if (
+    capability === "terminal-2004scape-pause" ||
+    capability === "terminal-2004scape-resume"
+  ) {
+    const runId = typeof params?.runId === "string" ? params.runId.trim() : "";
+    if (!runId) throw new Error("runId is required");
+    const action =
+      capability === "terminal-2004scape-pause" ? "pause" : "resume";
+    return {
+      viewType: "tui",
+      control: await postAppRunCommand(runId, "control", { action }),
+    };
+  }
+  throw new Error(`Unsupported 2004scape TUI capability: ${capability}`);
 }
 
 function Input({ className, ...props }: InputHTMLAttributes<HTMLInputElement>) {

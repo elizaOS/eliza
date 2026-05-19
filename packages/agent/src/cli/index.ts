@@ -89,6 +89,10 @@ export async function runAutonomousCli(
       );
       await ensureMobileDeviceBridgeInferenceHandlers(runtime);
     }
+    const { startAgentTerminalTui } = await import(
+      "../tui/agent-terminal-tui.ts"
+    );
+    startAgentTerminalTui();
     return;
   }
 

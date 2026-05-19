@@ -493,7 +493,7 @@ export function ElizaAgentsTable({
               placeholder="Search agents…"
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
-              className="pl-9 h-9 border-white/10 bg-black/40 text-white placeholder:text-white/30 focus-visible:ring-[#FF5800]/50"
+              className="pl-9 h-9 border-white/10 bg-black/40 text-white placeholder:text-white/30 focus-visible:ring-[var(--brand-orange)]/50"
             />
           </div>
           <Select value={statusFilter} onValueChange={setStatusFilter}>
@@ -607,7 +607,7 @@ export function ElizaAgentsTable({
                           <div className="flex flex-wrap items-center gap-2">
                             <a
                               href={`/dashboard/agents/${sb.id}`}
-                              className="font-medium text-white hover:text-[#FF5800] transition-colors"
+                              className="font-medium text-white hover:text-[var(--brand-orange)] transition-colors"
                             >
                               {sb.agent_name ?? "Unnamed Agent"}
                             </a>
@@ -656,7 +656,7 @@ export function ElizaAgentsTable({
                           <button
                             type="button"
                             onClick={() => openWebUIWithPairing(sb.id)}
-                            className="inline-flex items-center gap-1 text-xs text-[#FF5800] hover:text-[#FF5800]/70 transition-colors bg-transparent border-0 p-0"
+                            className="inline-flex items-center gap-1 text-xs text-[var(--brand-orange)] hover:text-[var(--brand-orange)]/70 transition-colors bg-transparent border-0 p-0"
                           >
                             <ExternalLink className="h-3 w-3" />
                             Open
@@ -705,7 +705,7 @@ export function ElizaAgentsTable({
                                 <button
                                   type="button"
                                   onClick={() => openWebUIWithPairing(sb.id)}
-                                  className="p-2 text-white/30 hover:text-[#FF5800] hover:bg-[#FF5800]/10 transition-colors"
+                                  className="p-2 text-white/30 hover:text-[var(--brand-orange)] hover:bg-[var(--brand-orange)]/10 transition-colors"
                                 >
                                   <ExternalLink className="h-4 w-4" />
                                 </button>
@@ -811,7 +811,7 @@ export function ElizaAgentsTable({
                     <div className="min-w-0 space-y-1">
                       <a
                         href={`/dashboard/agents/${sb.id}`}
-                        className="font-medium text-white hover:text-[#FF5800] transition-colors block truncate"
+                        className="font-medium text-white hover:text-[var(--brand-orange)] transition-colors block truncate"
                       >
                         {sb.agent_name ?? "Unnamed Agent"}
                       </a>
@@ -864,7 +864,7 @@ export function ElizaAgentsTable({
                       <button
                         type="button"
                         onClick={() => openWebUIWithPairing(sb.id)}
-                        className="flex-1 flex items-center justify-center gap-1.5 py-2 text-xs text-[#FF5800] hover:bg-[#FF5800]/10 transition-colors border border-[#FF5800]/30"
+                        className="flex-1 flex items-center justify-center gap-1.5 py-2 text-xs text-[var(--brand-orange)] hover:bg-[var(--brand-orange)]/10 transition-colors border border-[var(--brand-orange)]/30"
                       >
                         <ExternalLink className="h-3.5 w-3.5" />
                         Web UI

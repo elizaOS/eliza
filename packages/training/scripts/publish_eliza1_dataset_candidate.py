@@ -6,9 +6,9 @@ HuggingFace push additionally requires ``--push --allow-hf-push``.
 
 The script only stages candidate-scoped files:
 
-  data/candidates/eliza1/<candidate-id>/README.md
-  data/candidates/eliza1/<candidate-id>/manifest.json
-  data/candidates/eliza1/<candidate-id>/data/{train,validation,test}.jsonl
+  candidates/<candidate-id>/README.md
+  candidates/<candidate-id>/manifest.json
+  candidates/<candidate-id>/data/{train,validation,test}.jsonl
 
 It refuses mixed JSONL schemas across split files, refuses auxiliary repair
 records in trainable split files, and refuses user-export writes/pushes unless

@@ -59,7 +59,11 @@ export const socialAlphaPlugin: Plugin = {
 	events: events as unknown as Plugin["events"],
 	tests: [],
 	async dispose(runtime) {
-		await runtime.getService<CommunityInvestorService>(CommunityInvestorService.serviceType)?.stop();
+		await runtime
+			.getService<CommunityInvestorService>(
+				CommunityInvestorService.serviceType,
+			)
+			?.stop();
 	},
 };
 

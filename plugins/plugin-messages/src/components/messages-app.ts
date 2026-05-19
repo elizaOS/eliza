@@ -1,5 +1,4 @@
 import { type OverlayApp, registerOverlayApp } from "@elizaos/ui";
-import { MessagesAppView } from "./MessagesAppView";
 
 export const MESSAGES_APP_NAME = "@elizaos/plugin-messages";
 
@@ -10,7 +9,8 @@ export const messagesApp: OverlayApp = {
   category: "system",
   icon: null,
   androidOnly: true,
-  Component: MessagesAppView,
+  loader: () =>
+    import("./MessagesAppView").then((m) => ({ default: m.MessagesAppView })),
 };
 
 export function registerMessagesApp(): void {

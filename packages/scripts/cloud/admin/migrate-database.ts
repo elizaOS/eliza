@@ -36,8 +36,12 @@ loadEnvFiles([".env.local", ".env"]);
 // Imports below depend on env being loaded first because they read process.env at module init.
 const { putObjectText } = await import("../lib/storage/object-store");
 const { ObjectNamespaces } = await import("../lib/storage/object-namespace");
-const { putTrajectoryPayload } = await import("../lib/services/trajectory-object-storage");
-const { objectStorageConfigured } = await import("../lib/storage/s3-compatible-client");
+const { putTrajectoryPayload } = await import(
+  "../lib/services/trajectory-object-storage"
+);
+const { objectStorageConfigured } = await import(
+  "../lib/storage/s3-compatible-client"
+);
 
 const { Client } = pg;
 type PgClient = pg.Client;
@@ -69,7 +73,9 @@ function parseArgs(argv: string[]): CliArgs {
     skip: new Set(),
   };
   for (const raw of argv) {
-    const [key, val] = raw.startsWith("--") ? raw.slice(2).split("=", 2) : [raw, undefined];
+    const [key, val] = raw.startsWith("--")
+      ? raw.slice(2).split("=", 2)
+      : [raw, undefined];
     switch (key) {
       case "dry-run":
         out.dryRun = true;
@@ -438,7 +444,10 @@ async function listTables(client: PgClient): Promise<string[]> {
   return r.rows.map((row) => row.table_name);
 }
 
-async function describeTable(client: PgClient, table: string): Promise<TableInfo | null> {
+async function describeTable(
+  client: PgClient,
+  table: string,
+): Promise<TableInfo | null> {
   const cols = await client.query<{
     column_name: string;
     data_type: string;
@@ -540,7 +549,13 @@ async function loadProgress(
     [table],
   );
   if (r.rowCount === 0) {
-    return { cursor: null, copied: 0, r2Uploads: 0, r2Bytes: 0, completed: false };
+    return {
+      cursor: null,
+      copied: 0,
+      r2Uploads: 0,
+      r2Bytes: 0,
+      completed: false,
+    };
   }
   const row = r.rows[0];
   return {
@@ -588,7 +603,10 @@ function byteLength(value: string): number {
   return new TextEncoder().encode(value).byteLength;
 }
 
-function stringRecordField(value: unknown, field: "agentId" | "characterId"): string | null {
+function stringRecordField(
+  value: unknown,
+  field: "agentId" | "characterId",
+): string | null {
   if (!value || typeof value !== "object") return null;
   const raw = (value as Record<string, unknown>)[field];
   return typeof raw === "string" && raw.length > 0 ? raw : null;
@@ -630,9 +648,11 @@ async function offloadText(
   createdAt: Date,
   minBytes: number,
 ): Promise<OffloadResult> {
-  if (value == null) return { inlineValue: null, storage: "inline", key: null, bytes: 0 };
+  if (value == null)
+    return { inlineValue: null, storage: "inline", key: null, bytes: 0 };
   const bytes = byteLength(value);
-  if (bytes < minBytes) return { inlineValue: value, storage: "inline", key: null, bytes: 0 };
+  if (bytes < minBytes)
+    return { inlineValue: value, storage: "inline", key: null, bytes: 0 };
   const key = await putObjectText({
     namespace: field.namespace as never,
     organizationId,
@@ -642,7 +662,12 @@ async function offloadText(
     body: value,
     contentType: "text/plain; charset=utf-8",
   });
-  return { inlineValue: field.inlineValueWhenOffloaded ?? "", storage: "r2", key, bytes };
+  return {
+    inlineValue: field.inlineValueWhenOffloaded ?? "",
+    storage: "r2",
+    key,
+    bytes,
+  };
 }
 
 async function offloadJson(
@@ -653,10 +678,12 @@ async function offloadJson(
   createdAt: Date,
   minBytes: number,
 ): Promise<OffloadResult> {
-  if (value == null) return { inlineValue: null, storage: "inline", key: null, bytes: 0 };
+  if (value == null)
+    return { inlineValue: null, storage: "inline", key: null, bytes: 0 };
   const body = JSON.stringify(value);
   const bytes = byteLength(body);
-  if (bytes < minBytes) return { inlineValue: value, storage: "inline", key: null, bytes: 0 };
+  if (bytes < minBytes)
+    return { inlineValue: value, storage: "inline", key: null, bytes: 0 };
   const key = await putObjectText({
     namespace: field.namespace as never,
     organizationId,
@@ -667,7 +694,9 @@ async function offloadJson(
     contentType: "application/json; charset=utf-8",
   });
   return {
-    inlineValue: field.inlineValueWhenOffloaded ? field.inlineValueWhenOffloaded(value) : null,
+    inlineValue: field.inlineValueWhenOffloaded
+      ? field.inlineValueWhenOffloaded(value)
+      : null,
     storage: "r2",
     key,
     bytes,
@@ -689,7 +718,8 @@ async function offloadTrajectoryBundle(
   if (sys == null && usr == null && resp == null) {
     return { storage: "inline", key: null, blankPrompts: false, bytes: 0 };
   }
-  const totalBytes = byteLength(sys ?? "") + byteLength(usr ?? "") + byteLength(resp ?? "");
+  const totalBytes =
+    byteLength(sys ?? "") + byteLength(usr ?? "") + byteLength(resp ?? "");
   if (totalBytes < minBytes) {
     return { storage: "inline", key: null, blankPrompts: false, bytes: 0 };
   }
@@ -742,18 +772,38 @@ async function copyTable(
   const srcInfo = await describeTable(source, tableName);
   if (!srcInfo) {
     console.log(`  - table missing on source, skipping`);
-    return { source: 0, copied: 0, skipped: 0, r2Uploads: 0, r2BytesOffloaded: 0 };
+    return {
+      source: 0,
+      copied: 0,
+      skipped: 0,
+      r2Uploads: 0,
+      r2BytesOffloaded: 0,
+    };
   }
   const dstInfo = await describeTable(dest, tableName);
   if (!dstInfo) {
-    console.log(`  - table missing on destination (run migrations first), skipping`);
-    return { source: 0, copied: 0, skipped: 0, r2Uploads: 0, r2BytesOffloaded: 0 };
+    console.log(
+      `  - table missing on destination (run migrations first), skipping`,
+    );
+    return {
+      source: 0,
+      copied: 0,
+      skipped: 0,
+      r2Uploads: 0,
+      r2BytesOffloaded: 0,
+    };
   }
 
   const sharedCols = intersectColumns(srcInfo, dstInfo);
   if (sharedCols.length === 0) {
     console.log(`  - no shared columns, skipping`);
-    return { source: 0, copied: 0, skipped: 0, r2Uploads: 0, r2BytesOffloaded: 0 };
+    return {
+      source: 0,
+      copied: 0,
+      skipped: 0,
+      r2Uploads: 0,
+      r2BytesOffloaded: 0,
+    };
   }
 
   const srcCount = await source.query<{ c: string }>(
@@ -763,7 +813,9 @@ async function copyTable(
 
   const prog = await loadProgress(dest, tableName);
   if (prog.completed) {
-    console.log(`  - already completed (${prog.copied} rows). Use --reset to redo.`);
+    console.log(
+      `  - already completed (${prog.copied} rows). Use --reset to redo.`,
+    );
     return {
       source: sourceTotal,
       copied: prog.copied,
@@ -773,9 +825,12 @@ async function copyTable(
     };
   }
 
-  const r2Cfg = !args.noR2 && objectStorageConfigured() ? R2_TABLES[tableName] : undefined;
+  const r2Cfg =
+    !args.noR2 && objectStorageConfigured() ? R2_TABLES[tableName] : undefined;
   if (r2Cfg) {
-    console.log(`  - R2 offload enabled for this table (min ${args.r2MinBytes} bytes)`);
+    console.log(
+      `  - R2 offload enabled for this table (min ${args.r2MinBytes} bytes)`,
+    );
   } else if (R2_TABLES[tableName] && args.noR2) {
     console.log(`  - R2 offload skipped (--no-r2)`);
   } else if (R2_TABLES[tableName]) {
@@ -826,7 +881,9 @@ async function copyTable(
 
     // Pre-flight: each row may add storage/key columns the destination has but the source
     // didn't include. We always include them when the destination has them.
-    const dstColSet = new Set(dstInfo.columns.filter((c) => !c.isGenerated).map((c) => c.name));
+    const dstColSet = new Set(
+      dstInfo.columns.filter((c) => !c.isGenerated).map((c) => c.name),
+    );
 
     await dest.query("BEGIN");
     try {
@@ -835,7 +892,9 @@ async function copyTable(
 
         if (r2Cfg) {
           const orgId = String(rowOut.organization_id ?? "no-org");
-          const rowId = String(rowOut.id ?? rowOut[srcInfo.primaryKey[0] ?? "id"]);
+          const rowId = String(
+            rowOut.id ?? rowOut[srcInfo.primaryKey[0] ?? "id"],
+          );
           const createdAt = (rowOut.created_at as Date | null) ?? new Date();
 
           if (r2Cfg.trajectoryBundle) {
@@ -943,7 +1002,9 @@ async function copyTable(
         // schema migrations themselves seed before we ever copy.
         const sql = `INSERT INTO public."${tableName}" (${orderedCols
           .map((c) => `"${c}"`)
-          .join(", ")}) VALUES (${placeholders.join(", ")}) ON CONFLICT DO NOTHING`;
+          .join(
+            ", ",
+          )}) VALUES (${placeholders.join(", ")}) ON CONFLICT DO NOTHING`;
 
         const ins = await dest.query(sql, values);
         if (ins.rowCount === 0) totalSkippedConflicts += 1;
@@ -952,7 +1013,15 @@ async function copyTable(
 
       const last = result.rows[result.rowCount - 1];
       cursor = String(last[srcInfo.cursorColumn]);
-      await saveProgress(dest, tableName, cursor, copied, r2Uploads, r2Bytes, false);
+      await saveProgress(
+        dest,
+        tableName,
+        cursor,
+        copied,
+        r2Uploads,
+        r2Bytes,
+        false,
+      );
       await dest.query("COMMIT");
     } catch (err) {
       await dest.query("ROLLBACK");
@@ -966,7 +1035,15 @@ async function copyTable(
   }
 
   if (!args.dryRun) {
-    await saveProgress(dest, tableName, cursor, copied, r2Uploads, r2Bytes, true);
+    await saveProgress(
+      dest,
+      tableName,
+      cursor,
+      copied,
+      r2Uploads,
+      r2Bytes,
+      true,
+    );
   }
   process.stdout.write("\n");
   return {
@@ -994,14 +1071,18 @@ function runDestMigrations(newUrl: string): void {
     },
   );
   if (child.status !== 0) {
-    throw new Error(`Destination migrations failed (exit code ${child.status})`);
+    throw new Error(
+      `Destination migrations failed (exit code ${child.status})`,
+    );
   }
 }
 
 // ───────────────────────────────────────────────────────────── Redis check ──
 
 async function checkRedis(newRedisUrl: string): Promise<void> {
-  console.log(`→ Verifying new Redis at ${newRedisUrl.replace(/\/\/[^@]+@/, "//***@")}`);
+  console.log(
+    `→ Verifying new Redis at ${newRedisUrl.replace(/\/\/[^@]+@/, "//***@")}`,
+  );
   const { createClient } = await import("redis");
   const client = createClient({ url: newRedisUrl });
   client.on("error", () => {
@@ -1023,9 +1104,15 @@ async function checkRedis(newRedisUrl: string): Promise<void> {
  * needed. Most managed Postgres providers permit `SET session_replication_role`
  * for the table owner; if so, we skip the topo sort entirely.
  */
-async function topologicalOrder(client: PgClient, tables: string[]): Promise<string[]> {
+async function topologicalOrder(
+  client: PgClient,
+  tables: string[],
+): Promise<string[]> {
   const setT = new Set(tables);
-  const fks = await client.query<{ table_name: string; foreign_table_name: string }>(`
+  const fks = await client.query<{
+    table_name: string;
+    foreign_table_name: string;
+  }>(`
     SELECT
       tc.table_name AS table_name,
       ccu.table_name AS foreign_table_name
@@ -1060,10 +1147,14 @@ async function topologicalOrder(client: PgClient, tables: string[]): Promise<str
   return ordered;
 }
 
-async function trySessionReplicationReplica(client: PgClient): Promise<boolean> {
+async function trySessionReplicationReplica(
+  client: PgClient,
+): Promise<boolean> {
   try {
     await client.query("SET session_replication_role = 'replica'");
-    const r = await client.query<{ s: string }>("SHOW session_replication_role");
+    const r = await client.query<{ s: string }>(
+      "SHOW session_replication_role",
+    );
     return r.rows[0]?.s === "replica";
   } catch {
     return false;
@@ -1084,7 +1175,9 @@ async function main(): Promise<void> {
     );
   }
   if (sourceUrl === destUrl) {
-    throw new Error("Source and destination DATABASE_URL are identical — refusing to run.");
+    throw new Error(
+      "Source and destination DATABASE_URL are identical — refusing to run.",
+    );
   }
 
   console.log(`source:      ${sourceUrl.replace(/\/\/[^@]+@/, "//***@")}`);
@@ -1092,17 +1185,24 @@ async function main(): Promise<void> {
   console.log(`mode:        ${args.dryRun ? "DRY-RUN" : "WRITE"}`);
   console.log(
     `r2:          ${
-      args.noR2 ? "disabled (--no-r2)" : objectStorageConfigured() ? "enabled" : "not configured"
+      args.noR2
+        ? "disabled (--no-r2)"
+        : objectStorageConfigured()
+          ? "enabled"
+          : "not configured"
     }`,
   );
   if (args.only) console.log(`--only:      ${[...args.only].join(", ")}`);
-  if (args.skip.size > 0) console.log(`--skip:      ${[...args.skip].join(", ")}`);
+  if (args.skip.size > 0)
+    console.log(`--skip:      ${[...args.skip].join(", ")}`);
 
   // 1. Apply destination schema unless skipped.
   if (!args.skipMigrate && !args.dryRun) {
     runDestMigrations(destUrl);
   } else {
-    console.log("→ Skipping destination schema migrations (--skip-migrate or --dry-run)");
+    console.log(
+      "→ Skipping destination schema migrations (--skip-migrate or --dry-run)",
+    );
   }
 
   // 2. Connect.
@@ -1125,22 +1225,30 @@ async function main(): Promise<void> {
       const ok = await trySessionReplicationReplica(dest);
       if (ok) {
         useTopoOrder = false;
-        console.log("→ Disabled triggers on destination (session_replication_role=replica)");
+        console.log(
+          "→ Disabled triggers on destination (session_replication_role=replica)",
+        );
       } else {
-        console.log("→ Could not disable destination triggers; falling back to topological order");
+        console.log(
+          "→ Could not disable destination triggers; falling back to topological order",
+        );
       }
     }
 
     // 5. Pick tables.
     const allTables = await listTables(source);
-    let tables = allTables.filter((t) => !ALWAYS_SKIP.has(t) && !args.skip.has(t));
+    let tables = allTables.filter(
+      (t) => !ALWAYS_SKIP.has(t) && !args.skip.has(t),
+    );
     if (args.only) tables = tables.filter((t) => args.only!.has(t));
 
     if (useTopoOrder) {
       tables = await topologicalOrder(source, tables);
     }
 
-    console.log(`\n→ Will process ${tables.length} tables:\n  ${tables.join(", ")}\n`);
+    console.log(
+      `\n→ Will process ${tables.length} tables:\n  ${tables.join(", ")}\n`,
+    );
     const skipped = allTables.filter((t) => !tables.includes(t));
     if (skipped.length > 0) {
       console.log(`  (skipping: ${skipped.join(", ")})\n`);
@@ -1170,7 +1278,9 @@ async function main(): Promise<void> {
     }
 
     // 8. Print summary.
-    console.log("\n─── Summary ────────────────────────────────────────────────");
+    console.log(
+      "\n─── Summary ────────────────────────────────────────────────",
+    );
     let totalSrc = 0;
     let totalCopied = 0;
     let totalR2Uploads = 0;

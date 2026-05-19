@@ -2,14 +2,19 @@ import { mkdirSync, mkdtempSync, writeFileSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { describe, expect, it } from "vitest";
-import { resolveAospGenerateTokenBudget } from "../src/aosp-llama-adapter";
+import {
+  firstSentenceEndIndex,
+  resolveAospGenerateTokenBudget,
+} from "../src/aosp-llama-adapter";
 import {
   buildAospLoadModelArgs,
   buildGenerateArgsFromParams,
   disabledAospEmbeddingVector,
   flattenGenerateTextParamsForAospPrompt,
   isAospLocalEmbeddingEnabled,
+  makeAospTextToSpeechHandler,
   readAssignedBundledModels,
+  resolveAospOmnivoiceConfig,
 } from "../src/aosp-local-inference-bootstrap";
 
 function withEnv<T>(
@@ -183,6 +188,97 @@ describe("buildAospLoadModelArgs", () => {
     );
   });
 
+  it("auto-pairs a publish-eligible bundled DFlash drafter on stock Android", () => {
+    const root = mkdtempSync(path.join(os.tmpdir(), "aosp-dflash-auto-"));
+    const textDir = path.join(root, "eliza-1-0_8b.bundle", "text");
+    const dflashDir = path.join(root, "eliza-1-0_8b.bundle", "dflash");
+    mkdirSync(textDir, { recursive: true });
+    mkdirSync(dflashDir, { recursive: true });
+    const chat = path.join(textDir, "eliza-1-0_8b-32k.gguf");
+    const drafter = path.join(dflashDir, "drafter-0_8b.gguf");
+    writeFileSync(chat, "chat");
+    writeFileSync(drafter, "draft");
+    writeFileSync(
+      path.join(dflashDir, "target-meta.json"),
+      JSON.stringify({
+        publishEligible: true,
+        targetText: {
+          sha256: "a".repeat(64),
+          sizeBytes: 556_982_432,
+          finalElizaWeights: true,
+        },
+        drafter: {
+          sha256: "b".repeat(64),
+          sizeBytes: 237_637_024,
+          finalElizaWeights: true,
+        },
+        validation: {
+          checks: {
+            architectureLoadable: { pass: true },
+            vocabMatch: { pass: true },
+            tokenizerMetadataMatch: { pass: true },
+            drafterSmaller: { pass: true },
+          },
+        },
+      }),
+    );
+
+    withEnv(
+      {
+        ELIZA_MOBILE_PLATFORM: "android",
+        ELIZA_DFLASH: undefined,
+        ELIZA_DFLASH_SERVER_SPAWN: undefined,
+      },
+      () => {
+        expect(buildAospLoadModelArgs("chat", chat)).toEqual(
+          expect.objectContaining({
+            modelPath: chat,
+            draftModelPath: drafter,
+            draftContextSize: 2048,
+            draftMin: 1,
+            draftMax: 16,
+          }),
+        );
+      },
+    );
+  });
+
+  it("does not auto-pair candidate DFlash metadata on stock Android", () => {
+    const root = mkdtempSync(path.join(os.tmpdir(), "aosp-dflash-candidate-"));
+    const textDir = path.join(root, "eliza-1-2b.bundle", "text");
+    const dflashDir = path.join(root, "eliza-1-2b.bundle", "dflash");
+    mkdirSync(textDir, { recursive: true });
+    mkdirSync(dflashDir, { recursive: true });
+    const chat = path.join(textDir, "eliza-1-2b-32k.gguf");
+    const drafter = path.join(dflashDir, "drafter-2b.gguf");
+    writeFileSync(chat, "chat");
+    writeFileSync(drafter, "draft");
+    writeFileSync(
+      path.join(dflashDir, "target-meta.json"),
+      JSON.stringify({
+        publishEligible: false,
+        targetText: { sha256: "a".repeat(64), sizeBytes: 1_270_808_512 },
+        drafter: { sha256: "b".repeat(64), sizeBytes: 811_843_840 },
+      }),
+    );
+
+    withEnv(
+      {
+        ELIZA_MOBILE_PLATFORM: "android",
+        ELIZA_DFLASH: undefined,
+        ELIZA_DFLASH_SERVER_SPAWN: undefined,
+      },
+      () => {
+        expect(buildAospLoadModelArgs("chat", chat)).toEqual(
+          expect.objectContaining({
+            modelPath: chat,
+            draftModelPath: undefined,
+          }),
+        );
+      },
+    );
+  });
+
   it("auto-pairs a bundled chat GGUF with its DFlash drafter when explicitly enabled", () => {
     const root = mkdtempSync(path.join(os.tmpdir(), "aosp-dflash-model-"));
     const textDir = path.join(root, "eliza-1-0_8b.bundle", "text");
@@ -212,6 +308,41 @@ describe("buildAospLoadModelArgs", () => {
               k: "qjl1_256",
               v: "q4_polar",
             },
+          }),
+        );
+      },
+    );
+  });
+
+  it("does not enable DFlash when target-meta says the drafter is the target bytes", () => {
+    const root = mkdtempSync(path.join(os.tmpdir(), "aosp-dflash-copy-"));
+    const textDir = path.join(root, "eliza-1-0_8b.bundle", "text");
+    const dflashDir = path.join(root, "eliza-1-0_8b.bundle", "dflash");
+    mkdirSync(textDir, { recursive: true });
+    mkdirSync(dflashDir, { recursive: true });
+    const chat = path.join(textDir, "eliza-1-0_8b-32k.gguf");
+    const drafter = path.join(dflashDir, "drafter-0_8b.gguf");
+    writeFileSync(chat, "same-model");
+    writeFileSync(drafter, "same-model");
+    writeFileSync(
+      path.join(dflashDir, "target-meta.json"),
+      JSON.stringify({
+        targetText: { sha256: "a".repeat(64) },
+        drafter: { sha256: "a".repeat(64) },
+      }),
+    );
+
+    withEnv(
+      {
+        ELIZA_MOBILE_PLATFORM: "android",
+        ELIZA_DFLASH: "1",
+        ELIZA_DFLASH_SERVER_SPAWN: undefined,
+      },
+      () => {
+        expect(buildAospLoadModelArgs("chat", chat)).toEqual(
+          expect.objectContaining({
+            modelPath: chat,
+            draftModelPath: undefined,
           }),
         );
       },
@@ -328,7 +459,7 @@ describe("resolveAospGenerateTokenBudget", () => {
     });
   });
 
-  it("leaves at least half the context for prompt tokens without an env cap", () => {
+  it("uses a stock-Android-safe output cap by default", () => {
     expect(
       resolveAospGenerateTokenBudget({
         requestedMaxTokens: 8192,
@@ -338,12 +469,37 @@ describe("resolveAospGenerateTokenBudget", () => {
       }),
     ).toMatchObject({
       requestedMaxTokens: 8192,
+      maxTokens: 256,
+      maxOutputReserve: 256,
+      contextCap: 2016,
+      envCap: 256,
+      capped: true,
+    });
+  });
+
+  it("can explicitly disable the default output cap for diagnostics", () => {
+    expect(
+      resolveAospGenerateTokenBudget({
+        requestedMaxTokens: 8192,
+        nCtx: 4096,
+        nBatch: 64,
+        env: { ELIZA_LLAMA_MAX_OUTPUT_TOKENS: "0" },
+      }),
+    ).toMatchObject({
+      requestedMaxTokens: 8192,
       maxTokens: 2016,
       maxOutputReserve: 2016,
       contextCap: 2016,
       envCap: null,
       capped: true,
     });
+  });
+});
+
+describe("firstSentenceEndIndex", () => {
+  it("does not stop on an incomplete streaming decimal", () => {
+    expect(firstSentenceEndIndex("local Pixel 0.", 1)).toBe(-1);
+    expect(firstSentenceEndIndex("local Pixel 0.8B is active.", 1)).toBe(27);
   });
 });
 
@@ -360,6 +516,118 @@ describe("AOSP embedding gate", () => {
     expect(
       disabledAospEmbeddingVector({ LOCAL_EMBEDDING_DIMENSIONS: "1024" }),
     ).toHaveLength(1024);
+  });
+});
+
+describe("AOSP TEXT_TO_SPEECH backend selection", () => {
+  it("keeps stock Android on Kokoro unless a backend is explicitly selected", async () => {
+    const calls: string[] = [];
+    const handler = makeAospTextToSpeechHandler({
+      env: {},
+      omnivoice: async () => {
+        calls.push("omnivoice");
+        return new Uint8Array([1, 2, 3]);
+      },
+      kokoro: async () => {
+        calls.push("kokoro");
+        return new Uint8Array([9]);
+      },
+    });
+
+    await expect(handler({} as never, "hello")).resolves.toEqual(
+      new Uint8Array([9]),
+    );
+    expect(calls).toEqual(["kokoro"]);
+  });
+
+  it("prefers OmniVoice in auto mode when it is available", async () => {
+    const calls: string[] = [];
+    const handler = makeAospTextToSpeechHandler({
+      env: { ELIZA_AOSP_TTS_BACKEND: "auto" },
+      omnivoice: async () => {
+        calls.push("omnivoice");
+        return new Uint8Array([1, 2, 3]);
+      },
+      kokoro: async () => {
+        calls.push("kokoro");
+        return new Uint8Array([9]);
+      },
+    });
+
+    await expect(handler({} as never, "hello")).resolves.toEqual(
+      new Uint8Array([1, 2, 3]),
+    );
+    expect(calls).toEqual(["omnivoice"]);
+  });
+
+  it("keeps a forced Kokoro backend available for diagnostics", async () => {
+    const calls: string[] = [];
+    const handler = makeAospTextToSpeechHandler({
+      env: { ELIZA_AOSP_TTS_BACKEND: "kokoro" },
+      omnivoice: async () => {
+        calls.push("omnivoice");
+        return new Uint8Array([1]);
+      },
+      kokoro: async () => {
+        calls.push("kokoro");
+        return new Uint8Array([4, 5]);
+      },
+    });
+
+    await expect(handler({} as never, "hello")).resolves.toEqual(
+      new Uint8Array([4, 5]),
+    );
+    expect(calls).toEqual(["kokoro"]);
+  });
+
+  it("falls back from auto OmniVoice failure to Kokoro", async () => {
+    const calls: string[] = [];
+    const handler = makeAospTextToSpeechHandler({
+      env: { ELIZA_AOSP_TTS_BACKEND: "auto" },
+      omnivoice: async () => {
+        calls.push("omnivoice");
+        throw new Error("missing lib");
+      },
+      kokoro: async () => {
+        calls.push("kokoro");
+        return new Uint8Array([7]);
+      },
+    });
+
+    await expect(handler({} as never, "hello")).resolves.toEqual(
+      new Uint8Array([7]),
+    );
+    expect(calls).toEqual(["omnivoice", "kokoro"]);
+  });
+
+  it("does not hide a forced OmniVoice failure", async () => {
+    const handler = makeAospTextToSpeechHandler({
+      env: { ELIZA_AOSP_TTS_BACKEND: "omnivoice" },
+      omnivoice: async () => {
+        throw new Error("missing lib");
+      },
+      kokoro: async () => new Uint8Array([7]),
+    });
+
+    await expect(handler({} as never, "hello")).rejects.toThrow("missing lib");
+  });
+
+  it("resolves explicitly configured OmniVoice artifacts", () => {
+    const root = mkdtempSync(path.join(os.tmpdir(), "aosp-omnivoice-"));
+    const libPath = path.join(root, "libomnivoice.so");
+    const modelPath = path.join(root, "omnivoice-base-Q4_K_M.gguf");
+    const codecPath = path.join(root, "omnivoice-tokenizer-Q4_K_M.gguf");
+    writeFileSync(libPath, "lib");
+    writeFileSync(modelPath, "model");
+    writeFileSync(codecPath, "codec");
+
+    expect(
+      resolveAospOmnivoiceConfig({
+        OMNIVOICE_LIB_PATH: libPath,
+        OMNIVOICE_MODEL_PATH: modelPath,
+        OMNIVOICE_CODEC_PATH: codecPath,
+      } as NodeJS.ProcessEnv),
+    ).toEqual({ libPath, modelPath, codecPath });
   });
 });
 

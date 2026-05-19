@@ -233,12 +233,7 @@ a,
 span,
 div {
   font-family:
-    "Poppins",
-    ui-sans-serif,
-    system-ui,
-    -apple-system,
-    "Segoe UI",
-    Roboto,
+    "Poppins", ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto,
     sans-serif !important;
 }
 
@@ -249,11 +244,7 @@ samp,
 .font-mono,
 [class*="font-mono"] {
   font-family:
-    "Poppins",
-    ui-monospace,
-    SFMono-Regular,
-    Menlo,
-    monospace !important;
+    "Poppins", ui-monospace, SFMono-Regular, Menlo, monospace !important;
 }
 
 /* Sharp corners across cards, buttons, callouts, code blocks */

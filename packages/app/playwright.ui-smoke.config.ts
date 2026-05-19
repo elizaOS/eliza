@@ -53,6 +53,6 @@ export default defineConfig({
     cwd: repoRoot,
     port: uiSmokePort,
     reuseExistingServer,
-    timeout: 240_000,
+    timeout: 420_000,
   },
 });

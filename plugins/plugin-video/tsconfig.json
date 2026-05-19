@@ -2,8 +2,14 @@
   "compilerOptions": {
     "outDir": "dist",
     "rootDir": "src",
-    "lib": ["ESNext", "DOM", "DOM.Iterable"],
-    "types": ["node"],
+    "lib": [
+      "ESNext",
+      "DOM",
+      "DOM.Iterable"
+    ],
+    "types": [
+      "node"
+    ],
     "module": "Preserve",
     "moduleResolution": "Bundler",
     "strict": false,
@@ -23,11 +29,14 @@
     "moduleDetection": "force",
     "allowArbitraryExtensions": true
   },
-  "include": ["src/**/*.ts"],
+  "include": [
+    "src/**/*.ts"
+  ],
   "exclude": [
     "**/__tests__/**",
     "**/*.test.ts",
     "**/*.test.tsx",
-    "**/*.e2e.test.ts"
+    "**/*.e2e.test.ts",
+    "build.ts"
   ]
 }

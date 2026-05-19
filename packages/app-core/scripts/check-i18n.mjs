@@ -13,10 +13,11 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 // __dirname → eliza/packages/app-core/scripts; up 3 → eliza repo root
 const repoRoot = path.resolve(__dirname, "..", "..", "..");
 
-const LOCALE_DIR = path.join(repoRoot, "packages/app-core/src/i18n/locales");
+const LOCALE_DIR = path.join(repoRoot, "packages/ui/src/i18n/locales");
 const SCAN_DIRS = [
   path.join(repoRoot, "packages/app-core/src"),
   path.join(repoRoot, "packages/ui/src"),
+  path.join(repoRoot, "packages/cloud-frontend/src"),
 ];
 const ALLOWLIST_PATH = path.join(__dirname, "i18n-dynamic-keys.json");
 const SOURCE_LOCALE = "en";

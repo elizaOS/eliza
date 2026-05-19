@@ -18,8 +18,11 @@ import App from "./App";
 import "./globals.css";
 import { installApiFetchBridge } from "./lib/api-fetch-bridge";
 import { queryClient } from "./lib/query-client";
+import { I18nProvider, resolveInitialLang } from "./providers/I18nProvider";
 
 installApiFetchBridge();
+
+const initialLang = resolveInitialLang();
 
 const rootEl = document.getElementById("root");
 if (!rootEl) throw new Error("Root element #root not found in index.html");
@@ -29,9 +32,11 @@ const tree = (
     <QueryClientProvider client={queryClient}>
       <HelmetProvider>
         <BrowserRouter>
-          <RenderTelemetryProfiler id="CloudFrontendRoot">
-            <App />
-          </RenderTelemetryProfiler>
+          <I18nProvider initialLang={initialLang}>
+            <RenderTelemetryProfiler id="CloudFrontendRoot">
+              <App />
+            </RenderTelemetryProfiler>
+          </I18nProvider>
         </BrowserRouter>
       </HelmetProvider>
     </QueryClientProvider>

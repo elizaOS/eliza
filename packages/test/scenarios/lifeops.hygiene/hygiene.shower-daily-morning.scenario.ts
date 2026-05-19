@@ -2,7 +2,7 @@
  * Hygiene: shower every morning — daily cadence anchored to the morning slot.
  */
 
-import { scenario } from "@elizaos/scenario-schema";
+import { scenario } from "@elizaos/scenario-runner/schema";
 
 export default scenario({
   id: "hygiene.shower-daily-morning",

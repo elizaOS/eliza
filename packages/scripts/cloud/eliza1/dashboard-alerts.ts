@@ -81,9 +81,14 @@ function timestampForFile(): string {
 
 function writeEvidence(evidenceDir: string, evidence: Record<string, unknown>) {
   mkdirSync(evidenceDir, { recursive: true });
-  const file = resolve(evidenceDir, `dashboard_alerts-${timestampForFile()}.json`);
+  const file = resolve(
+    evidenceDir,
+    `dashboard_alerts-${timestampForFile()}.json`,
+  );
   writeFileSync(file, `${JSON.stringify(evidence, null, 2)}\n`);
-  console.log(`[eliza1:dashboard-alerts] wrote ${relative(REPO_ROOT, file)} (${evidence.status})`);
+  console.log(
+    `[eliza1:dashboard-alerts] wrote ${relative(REPO_ROOT, file)} (${evidence.status})`,
+  );
 }
 
 function databaseUrl(): string {
@@ -145,7 +150,9 @@ async function loadDashboardInputs(
         successRate: Number(row.success_rate),
       })),
       creditBalance:
-        org.rows[0]?.credit_balance === undefined ? null : Number(org.rows[0].credit_balance),
+        org.rows[0]?.credit_balance === undefined
+          ? null
+          : Number(org.rows[0].credit_balance),
     };
   } finally {
     await pool.end();
@@ -159,7 +166,9 @@ function alertPolicyId(title: string): string {
     .replace(/^_+|_+$/g, "");
 }
 
-function alertSeverity(type: "warning" | "danger" | "info"): "warning" | "critical" | "info" {
+function alertSeverity(
+  type: "warning" | "danger" | "info",
+): "warning" | "critical" | "info" {
   return type === "danger" ? "critical" : type;
 }
 
@@ -244,9 +253,14 @@ async function verifyDashboardRender(dashboardUrl?: string) {
       await context.addCookies(authCookies);
     }
     const page = await context.newPage();
-    await page.goto(dashboardUrl, { waitUntil: "networkidle", timeout: 60_000 });
+    await page.goto(dashboardUrl, {
+      waitUntil: "networkidle",
+      timeout: 60_000,
+    });
     await page
-      .locator('button[value="projections"], [role="tab"]:has-text("Projections")')
+      .locator(
+        'button[value="projections"], [role="tab"]:has-text("Projections")',
+      )
       .first()
       .click({ timeout: 30_000 })
       .catch(() => {});
@@ -260,13 +274,18 @@ async function verifyDashboardRender(dashboardUrl?: string) {
       .first()
       .waitFor({ timeout: 30_000 })
       .catch(() => {});
-    const redStateRendered = (await page.locator('[data-alert-severity="critical"]').count()) > 0;
-    const yellowStateRendered = (await page.locator('[data-alert-severity="warning"]').count()) > 0;
+    const redStateRendered =
+      (await page.locator('[data-alert-severity="critical"]').count()) > 0;
+    const yellowStateRendered =
+      (await page.locator('[data-alert-severity="warning"]').count()) > 0;
     return {
       attempted: true,
       redStateRendered,
       yellowStateRendered,
-      reason: redStateRendered && yellowStateRendered ? null : "alert severity selectors not found",
+      reason:
+        redStateRendered && yellowStateRendered
+          ? null
+          : "alert severity selectors not found",
     };
   } finally {
     await browser.close();
@@ -276,7 +295,8 @@ async function verifyDashboardRender(dashboardUrl?: string) {
 function createDashboardTestAuthCookies(dashboardUrl: string) {
   if (process.env.ELIZA1_DASHBOARD_TEST_AUTH !== "true") return [];
   const userId = process.env.ELIZA1_DASHBOARD_TEST_USER_ID?.trim();
-  const organizationId = process.env.ELIZA1_DASHBOARD_TEST_ORGANIZATION_ID?.trim();
+  const organizationId =
+    process.env.ELIZA1_DASHBOARD_TEST_ORGANIZATION_ID?.trim();
   const secret = process.env.PLAYWRIGHT_TEST_AUTH_SECRET?.trim();
   if (!userId || !organizationId || !secret || secret.length < 16) return [];
 
@@ -286,7 +306,10 @@ function createDashboardTestAuthCookies(dashboardUrl: string) {
     exp: Math.floor(Date.now() / 1000) + 60 * 60,
   };
   const payload = Buffer.from(JSON.stringify(claims)).toString("base64url");
-  const signature = crypto.createHmac("sha256", secret).update(payload).digest("base64url");
+  const signature = crypto
+    .createHmac("sha256", secret)
+    .update(payload)
+    .digest("base64url");
   const url = new URL(dashboardUrl);
   const secure = url.protocol === "https:";
   const domain = url.hostname;
@@ -329,7 +352,11 @@ async function main() {
   let historicalData: TimeSeriesRow[];
   let creditBalance: number | null;
   try {
-    const inputs = await loadDashboardInputs(args.organizationId, startDate, now);
+    const inputs = await loadDashboardInputs(
+      args.organizationId,
+      startDate,
+      now,
+    );
     historicalData = inputs.historicalData;
     creditBalance = inputs.creditBalance;
   } catch (error) {
@@ -368,7 +395,11 @@ async function main() {
   }
 
   const projections = generateProjections(historicalData, args.periods);
-  const alerts = generateProjectionAlerts(historicalData, projections, creditBalance);
+  const alerts = generateProjectionAlerts(
+    historicalData,
+    projections,
+    creditBalance,
+  );
   let events: AlertEventRow[];
   try {
     events = await persistAlertEvents({
@@ -398,7 +429,9 @@ async function main() {
     return;
   }
   const render = await verifyDashboardRender(args.dashboardUrl);
-  const criticalPersisted = events.some((event) => event.severity === "critical");
+  const criticalPersisted = events.some(
+    (event) => event.severity === "critical",
+  );
   const warningPersisted = events.some((event) => event.severity === "warning");
   const status =
     alerts.length > 0 &&

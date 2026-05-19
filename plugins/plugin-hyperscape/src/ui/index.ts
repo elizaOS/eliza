@@ -5,7 +5,10 @@ import {
 import { HyperscapeDetailExtension } from "./HyperscapeDetailExtension.js";
 import { HyperscapeOperatorSurface } from "./HyperscapeOperatorSurface.js";
 
-registerOperatorSurface("@elizaos/plugin-hyperscape", HyperscapeOperatorSurface);
+registerOperatorSurface(
+  "@elizaos/plugin-hyperscape",
+  HyperscapeOperatorSurface,
+);
 registerOperatorSurface(
   "@hyperscape/plugin-hyperscape",
   HyperscapeOperatorSurface,

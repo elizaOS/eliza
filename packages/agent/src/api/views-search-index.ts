@@ -16,6 +16,7 @@ import type { ViewRegistryEntry } from "./view-registry-types.ts";
 
 export interface ViewSearchEntry {
   viewId: string;
+  viewType: ViewRegistryEntry["viewType"];
   embedding: number[];
   /** The text that was embedded: label + description + tags joined. */
   text: string;
@@ -52,6 +53,10 @@ export function buildViewEmbeddingText(view: ViewRegistryEntry): string {
 class ViewSearchIndex {
   private readonly entries = new Map<string, ViewSearchEntry>();
 
+  private key(viewId: string, viewType: ViewRegistryEntry["viewType"]): string {
+    return `${viewType}:${viewId}`;
+  }
+
   /**
    * Compute and store an embedding for `view`.
    * No-ops gracefully when the runtime has no embedding model configured.
@@ -71,7 +76,12 @@ class ViewSearchIndex {
         );
         return;
       }
-      this.entries.set(view.id, { viewId: view.id, embedding, text });
+      this.entries.set(this.key(view.id, view.viewType), {
+        viewId: view.id,
+        viewType: view.viewType,
+        embedding,
+        text,
+      });
     } catch (err) {
       logger.debug(
         { src: "ViewSearchIndex", viewId: view.id, err },
@@ -81,8 +91,14 @@ class ViewSearchIndex {
   }
 
   /** Remove the index entry for `viewId`. */
-  removeView(viewId: string): void {
-    this.entries.delete(viewId);
+  removeView(viewId: string, viewType?: ViewRegistryEntry["viewType"]): void {
+    if (viewType) {
+      this.entries.delete(this.key(viewId, viewType));
+      return;
+    }
+    for (const [key, entry] of this.entries) {
+      if (entry.viewId === viewId) this.entries.delete(key);
+    }
   }
 
   /**
@@ -99,7 +115,13 @@ class ViewSearchIndex {
     query: string,
     runtime: IAgentRuntime,
     topK = 10,
-  ): Promise<Array<{ viewId: string; score: number }>> {
+  ): Promise<
+    Array<{
+      viewId: string;
+      viewType: ViewRegistryEntry["viewType"];
+      score: number;
+    }>
+  > {
     if (this.entries.size === 0) return [];
 
     let queryEmbedding: number[];
@@ -118,10 +140,18 @@ class ViewSearchIndex {
 
     if (queryEmbedding.length === 0) return [];
 
-    const scored: Array<{ viewId: string; score: number }> = [];
+    const scored: Array<{
+      viewId: string;
+      viewType: ViewRegistryEntry["viewType"];
+      score: number;
+    }> = [];
     for (const entry of this.entries.values()) {
       const score = cosineSimilarity(queryEmbedding, entry.embedding);
-      scored.push({ viewId: entry.viewId, score });
+      scored.push({
+        viewId: entry.viewId,
+        viewType: entry.viewType,
+        score,
+      });
     }
 
     scored.sort((a, b) => b.score - a.score);

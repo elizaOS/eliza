@@ -2,7 +2,7 @@
  * Hygiene: shower three times a week — weekly cadence with specific weekdays.
  */
 
-import { scenario } from "@elizaos/scenario-schema";
+import { scenario } from "@elizaos/scenario-runner/schema";
 
 export default scenario({
   id: "hygiene.shower-weekly",

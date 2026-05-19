@@ -7,7 +7,6 @@
  */
 
 import { type OverlayApp, registerOverlayApp } from "@elizaos/ui";
-import { PhoneAppView } from "./PhoneAppView";
 
 export const PHONE_APP_NAME = "@elizaos/plugin-phone";
 
@@ -18,7 +17,8 @@ export const phoneApp: OverlayApp = {
   category: "system",
   icon: null,
   androidOnly: true,
-  Component: PhoneAppView,
+  loader: () =>
+    import("./PhoneAppView").then((m) => ({ default: m.PhoneAppView })),
 };
 
 /** Register the Phone app with the overlay app registry. */

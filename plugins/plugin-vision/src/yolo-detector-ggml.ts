@@ -1,6 +1,6 @@
 // YOLO object detector — yolo-cpp ggml/ref backend.
 //
-// Phase 2 — backed by `packages/native-plugins/yolo-cpp` (the standalone C
+// Phase 2 — backed by `packages/native/plugins/yolo-cpp` (the standalone C
 // library that ports Ultralytics YOLOv8n / YOLOv11n away from
 // onnxruntime). Falls through to the onnxruntime path
 // (`yolo-detector.ts`) when:
@@ -8,7 +8,7 @@
 //   - the native shared library hasn't been built yet,
 //   - the native library returns -ENOSYS for `yolo_detect` (the
 //     forward pass is staged — see
-//     `packages/native-plugins/yolo-cpp/src/yolo_runtime.c` TU header).
+//     `packages/native/plugins/yolo-cpp/src/yolo_runtime.c` TU header).
 //
 // Public surface mirrors `YOLODetector` from `yolo-detector.ts` byte-
 // for-byte so `person-detector.ts` (and any other consumer) can swap
@@ -448,7 +448,7 @@ export class YOLODetector {
       await fs.access(this.cfg.ggufPath);
     } catch {
       throw new Error(
-        `${MODULE_TAG} GGUF missing at ${this.cfg.ggufPath} — run packages/native-plugins/yolo-cpp/scripts/yolo_to_gguf.py first.`,
+        `${MODULE_TAG} GGUF missing at ${this.cfg.ggufPath} — run packages/native/plugins/yolo-cpp/scripts/yolo_to_gguf.py first.`,
       );
     }
     this.handle = this.bindings.open(this.cfg.ggufPath);

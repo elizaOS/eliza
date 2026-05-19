@@ -1,10 +1,10 @@
 import { promises as fs } from "node:fs";
 import { ServerResponse } from "node:http";
 import path from "node:path";
-import { createGeneratedAppHeroSvg, hasAppInterface, PostCreateAppRequestSchema, PostInstallAppRequestSchema, PostLaunchAppRequestSchema, PostLoadFromDirectoryRequestSchema, PostOverlayPresenceRequestSchema, PostRelaunchAppRequestSchema, PostReplaceFavoritesRequestSchema, PostRunControlRequestSchema, PostRunMessageRequestSchema, PostStopAppRequestSchema, PutAppPermissionsRequestSchema, PutFavoriteAppRequestSchema, packageNameToAppDisplayName, packageNameToAppRouteSlug, parseAppIsolation, parseAppPermissions, } from "@elizaos/shared";
 import { importAppRouteModule, resolveWorkspacePackageDir, } from "@elizaos/agent/services/app-package-modules";
 import { setOverlayAppPresence } from "@elizaos/agent/services/overlay-app-presence";
 import { scoreEntries, toSearchResults, } from "@elizaos/agent/services/registry-client-queries";
+import { createGeneratedAppHeroSvg, hasAppInterface, PostCreateAppRequestSchema, PostInstallAppRequestSchema, PostLaunchAppRequestSchema, PostLoadFromDirectoryRequestSchema, PostOverlayPresenceRequestSchema, PostRelaunchAppRequestSchema, PostReplaceFavoritesRequestSchema, PostRunControlRequestSchema, PostRunMessageRequestSchema, PostStopAppRequestSchema, PutAppPermissionsRequestSchema, PutFavoriteAppRequestSchema, packageNameToAppDisplayName, packageNameToAppRouteSlug, parseAppIsolation, parseAppPermissions, } from "@elizaos/shared";
 const HERO_IMAGE_CONTENT_TYPES = {
     ".webp": "image/webp",
     ".png": "image/png",

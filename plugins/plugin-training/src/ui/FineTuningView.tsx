@@ -757,3 +757,327 @@ export function FineTuningView({
     </ContentLayout>
   );
 }
+
+export function FineTuningTuiView() {
+  const [state, setState] = useState<Awaited<
+    ReturnType<typeof loadTrainingTuiState>
+  > | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [lastAction, setLastAction] = useState("boot");
+  const [error, setError] = useState<string | null>(null);
+
+  const refresh = useCallback(async () => {
+    setLoading(true);
+    setError(null);
+    try {
+      const next = await loadTrainingTuiState();
+      setState(next);
+      setLastAction("refresh");
+    } catch (caught) {
+      setState(null);
+      setError(
+        caught instanceof Error ? caught.message : "Training refresh failed",
+      );
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    void refresh();
+  }, [refresh]);
+
+  const activeJobs =
+    state?.jobs.jobs.filter(
+      (job) => job.status === "running" || job.status === "queued",
+    ) ?? [];
+  const viewState = {
+    viewType: "tui",
+    viewId: "training",
+    runtimeAvailable: state?.status.runtimeAvailable ?? false,
+    runningJobs: state?.status.runningJobs ?? 0,
+    queuedJobs: state?.status.queuedJobs ?? 0,
+    datasetCount: state?.datasets.datasets.length ?? 0,
+    jobCount: state?.jobs.jobs.length ?? 0,
+    modelCount: state?.models.models.length ?? 0,
+    trajectoryCount: state?.trajectories.total ?? 0,
+    loading,
+    lastAction,
+    error,
+  };
+
+  return (
+    <div
+      data-view-state={JSON.stringify(viewState)}
+      style={{
+        minHeight: "100vh",
+        background: "#020617",
+        color: "#cbd5e1",
+        fontFamily:
+          'ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace',
+        padding: 20,
+      }}
+    >
+      <div style={{ color: "#7dd3fc", marginBottom: 4 }}>
+        elizaos://training --type=tui
+      </div>
+      <div style={{ color: "#475569", marginBottom: 16 }}>
+        {loading
+          ? "loading"
+          : state?.status.runtimeAvailable
+            ? "runtime-ready"
+            : "runtime-offline"}{" "}
+        | {activeJobs.length} active jobs |{" "}
+        {state?.datasets.datasets.length ?? 0} datasets |{" "}
+        {state?.models.models.length ?? 0} models | {lastAction}
+      </div>
+
+      <div
+        style={{
+          display: "grid",
+          gridTemplateColumns: "minmax(320px, 1fr) minmax(320px, 1fr)",
+          gap: 16,
+        }}
+      >
+        <section
+          aria-label="Training status"
+          style={{
+            border: "1px solid rgba(125,211,252,0.3)",
+            borderRadius: 6,
+            padding: 16,
+            minHeight: 420,
+          }}
+        >
+          <div
+            style={{
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "space-between",
+              marginBottom: 10,
+            }}
+          >
+            <strong style={{ color: "#e2e8f0" }}>status</strong>
+            <button
+              type="button"
+              onClick={() => void refresh()}
+              disabled={loading}
+              style={{
+                background: "transparent",
+                color: "#a7f3d0",
+                border: "1px solid rgba(167,243,208,0.45)",
+                borderRadius: 4,
+                padding: "4px 8px",
+                cursor: loading ? "not-allowed" : "pointer",
+                fontFamily: "inherit",
+              }}
+            >
+              refresh
+            </button>
+          </div>
+          {error && <div style={{ color: "#fca5a5" }}>{error}</div>}
+          <div>
+            runtime {state?.status.runtimeAvailable ? "ready" : "offline"}
+          </div>
+          <div>running {state?.status.runningJobs ?? 0}</div>
+          <div>queued {state?.status.queuedJobs ?? 0}</div>
+          <div>completed {state?.status.completedJobs ?? 0}</div>
+          <div>failed {state?.status.failedJobs ?? 0}</div>
+
+          <div style={{ color: "#a7f3d0", margin: "18px 0 8px" }}>
+            trajectories
+          </div>
+          <div>
+            {state?.trajectories.available ? "available" : "unavailable"} total{" "}
+            {state?.trajectories.total ?? 0}
+          </div>
+          {(state?.trajectories.trajectories ?? [])
+            .slice(0, 8)
+            .map((trajectory) => (
+              <div key={trajectory.id} style={{ padding: "5px 0" }}>
+                {trajectory.trajectoryId} calls {trajectory.llmCallCount}
+                {typeof trajectory.totalReward === "number"
+                  ? ` reward ${trajectory.totalReward}`
+                  : ""}
+              </div>
+            ))}
+        </section>
+
+        <section
+          aria-label="Training work"
+          style={{
+            border: "1px solid rgba(125,211,252,0.3)",
+            borderRadius: 6,
+            padding: 16,
+            minHeight: 420,
+          }}
+        >
+          <strong style={{ color: "#e2e8f0" }}>jobs and models</strong>
+          <div style={{ color: "#64748b", margin: "6px 0 14px" }}>
+            commands: state | build-dataset | start-job | cancel-job |
+            import-model | activate-model | benchmark-model
+          </div>
+          <div style={{ color: "#a7f3d0", marginBottom: 8 }}>jobs</div>
+          {(state?.jobs.jobs ?? []).slice(0, 10).map((job) => (
+            <div
+              key={job.id}
+              style={{
+                display: "grid",
+                gridTemplateColumns: "minmax(0,1fr) 10ch",
+                gap: 10,
+                borderTop: "1px solid rgba(125,211,252,0.14)",
+                padding: "7px 0",
+              }}
+            >
+              <span style={{ color: "#e2e8f0" }}>{job.id}</span>
+              <span style={{ color: "#a7f3d0" }}>{job.status}</span>
+              <span style={{ gridColumn: "1 / 3", color: "#94a3b8" }}>
+                {job.phase} {Math.round(job.progress * 100)}% dataset{" "}
+                {job.datasetId}
+              </span>
+            </div>
+          ))}
+          <div style={{ color: "#a7f3d0", margin: "18px 0 8px" }}>models</div>
+          {(state?.models.models ?? []).slice(0, 10).map((model) => (
+            <div key={model.id} style={{ padding: "5px 0" }}>
+              {model.id} {model.backend}
+              {model.active ? " active" : ""}
+              {model.ollamaModel ? ` ollama ${model.ollamaModel}` : ""}
+            </div>
+          ))}
+        </section>
+      </div>
+    </div>
+  );
+}
+
+async function loadTrainingTuiState(): Promise<{
+  status: TrainingStatus;
+  trajectories: TrainingTrajectoryList;
+  datasets: { datasets: TrainingDatasetRecord[] };
+  jobs: { jobs: TrainingJobRecord[] };
+  models: { models: TrainingModelRecord[] };
+}> {
+  const [status, trajectories, datasets, jobs, models] = await Promise.all([
+    client.getTrainingStatus(),
+    client.listTrainingTrajectories({ limit: 25, offset: 0 }),
+    client.listTrainingDatasets(),
+    client.listTrainingJobs(),
+    client.listTrainingModels(),
+  ]);
+  return {
+    status,
+    trajectories,
+    datasets: { datasets: asArray(datasets.datasets) },
+    jobs: { jobs: asArray(jobs.jobs) },
+    models: { models: asArray(models.models) },
+  };
+}
+
+export async function interact(
+  capability: string,
+  params?: Record<string, unknown>,
+): Promise<unknown> {
+  if (capability === "terminal-training-state") {
+    return { viewType: "tui", ...(await loadTrainingTuiState()) };
+  }
+
+  if (capability === "terminal-training-trajectory") {
+    const trajectoryId =
+      typeof params?.trajectoryId === "string"
+        ? params.trajectoryId.trim()
+        : "";
+    if (!trajectoryId) throw new Error("trajectoryId is required");
+    return {
+      viewType: "tui",
+      ...(await client.getTrainingTrajectory(trajectoryId)),
+    };
+  }
+
+  if (capability === "terminal-training-build-dataset") {
+    return {
+      viewType: "tui",
+      ...(await client.buildTrainingDataset({
+        limit: typeof params?.limit === "number" ? params.limit : undefined,
+        minLlmCallsPerTrajectory:
+          typeof params?.minLlmCallsPerTrajectory === "number"
+            ? params.minLlmCallsPerTrajectory
+            : undefined,
+      })),
+    };
+  }
+
+  if (capability === "terminal-training-start-job") {
+    const options: StartTrainingOptions = {};
+    if (typeof params?.datasetId === "string")
+      options.datasetId = params.datasetId;
+    if (
+      params?.backend === "mlx" ||
+      params?.backend === "cuda" ||
+      params?.backend === "cpu"
+    ) {
+      options.backend = params.backend;
+    }
+    if (typeof params?.model === "string") options.model = params.model;
+    if (typeof params?.iterations === "number")
+      options.iterations = params.iterations;
+    if (typeof params?.batchSize === "number")
+      options.batchSize = params.batchSize;
+    if (typeof params?.learningRate === "number") {
+      options.learningRate = params.learningRate;
+    }
+    return {
+      viewType: "tui",
+      ...(await client.startTrainingJob(options)),
+    };
+  }
+
+  if (capability === "terminal-training-cancel-job") {
+    const jobId = typeof params?.jobId === "string" ? params.jobId.trim() : "";
+    if (!jobId) throw new Error("jobId is required");
+    return { viewType: "tui", ...(await client.cancelTrainingJob(jobId)) };
+  }
+
+  if (capability === "terminal-training-import-model") {
+    const modelId =
+      typeof params?.modelId === "string" ? params.modelId.trim() : "";
+    if (!modelId) throw new Error("modelId is required");
+    return {
+      viewType: "tui",
+      ...(await client.importTrainingModelToOllama(modelId, {
+        modelName:
+          typeof params?.modelName === "string" ? params.modelName : undefined,
+        baseModel:
+          typeof params?.baseModel === "string" ? params.baseModel : undefined,
+        ollamaUrl:
+          typeof params?.ollamaUrl === "string" ? params.ollamaUrl : undefined,
+      })),
+    };
+  }
+
+  if (capability === "terminal-training-activate-model") {
+    const modelId =
+      typeof params?.modelId === "string" ? params.modelId.trim() : "";
+    if (!modelId) throw new Error("modelId is required");
+    return {
+      viewType: "tui",
+      ...(await client.activateTrainingModel(
+        modelId,
+        typeof params?.providerModel === "string"
+          ? params.providerModel
+          : undefined,
+      )),
+    };
+  }
+
+  if (capability === "terminal-training-benchmark-model") {
+    const modelId =
+      typeof params?.modelId === "string" ? params.modelId.trim() : "";
+    if (!modelId) throw new Error("modelId is required");
+    return {
+      viewType: "tui",
+      ...(await client.benchmarkTrainingModel(modelId)),
+    };
+  }
+
+  throw new Error(`Unsupported capability "${capability}"`);
+}

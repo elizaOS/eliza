@@ -4,7 +4,7 @@
  * Hosts a JavaScriptCore JSContext on a dedicated worker thread. The native
  * plugin either starts a bundled full Bun engine framework or installs the
  * `__ELIZA_BRIDGE__` host functions for the compatibility JSContext path.
- * The full-engine ABI lives in packages/bun-ios-runtime/BRIDGE_CONTRACT.md.
+ * The full-engine ABI lives in packages/native/bun-runtime/BRIDGE_CONTRACT.md.
  *
  * The plugin exposes a tiny surface to the React UI: start the runtime,
  * send messages, check status, and stop it. Everything else flows over the

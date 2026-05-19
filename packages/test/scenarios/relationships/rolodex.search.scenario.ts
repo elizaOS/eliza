@@ -3,7 +3,7 @@
  * ask the agent to find everyone from Acme. Expected action: SEARCH_CONTACTS.
  */
 
-import { scenario } from "@elizaos/scenario-schema";
+import { scenario } from "@elizaos/scenario-runner/schema";
 
 export default scenario({
   id: "rolodex.search",

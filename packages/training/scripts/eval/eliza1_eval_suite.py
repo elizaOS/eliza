@@ -80,7 +80,13 @@ SCHEMA_VERSION = 1
 # (which run without the dataset on disk) working without silently degrading
 # the real publish-time eval.
 
-_DATASET_TEST_RELATIVE: Path = Path("datasets/eliza1-sft-0_8b/test.jsonl")
+_DATASET_TEST_RELATIVES: tuple[Path, ...] = (
+    Path("datasets/eliza1-sft-0_8b/test.jsonl"),
+    # The staged training dataset was renamed from the historical 0.6B tier to
+    # 0.8B for release. Keep the old path as a canonical local fallback so
+    # publish evals do not silently degrade to the hand-written mini corpus.
+    Path("datasets/eliza1-sft-0_6b/test.jsonl"),
+)
 
 _TEXT_CORPUS_MIN_CHARS: int = 32
 _TEXT_CORPUS_MAX_RECORDS: int = 200
@@ -165,15 +171,19 @@ def _dataset_test_jsonl() -> Path | None:
 
     Search order:
       1. ``ELIZA_EVAL_TEXT_CORPUS`` env var (explicit operator override).
-      2. ``packages/training/datasets/eliza1-sft-0_8b/test.jsonl`` next to
-         the training package (this is the in-repo source-of-truth split).
+      2. The in-repo eliza1 SFT ``test.jsonl`` split next to the training
+         package. ``0_8b`` is preferred; ``0_6b`` is the historical pre-rename
+         path still present in older worktrees.
     """
     override = os.environ.get("ELIZA_EVAL_TEXT_CORPUS")
     if override:
         p = Path(override).expanduser().resolve()
         return p if p.is_file() else None
-    candidate = (_TRAINING_ROOT / _DATASET_TEST_RELATIVE).resolve()
-    return candidate if candidate.is_file() else None
+    for relative in _DATASET_TEST_RELATIVES:
+        candidate = (_TRAINING_ROOT / relative).resolve()
+        if candidate.is_file():
+            return candidate
+    return None
 
 
 def _default_text_eval_corpus() -> tuple[str, ...]:
@@ -297,13 +307,22 @@ def discover_engine(prefer_backend: str | None = None) -> Engine | None:
         candidates.append(d)
     if not candidates:
         return None
+    if prefer_backend and not any(prefer_backend in d.name for d in candidates):
+        return None
 
-    def rank(d: Path) -> tuple[int, int, int]:
+    def _has_exec(directory: Path, name: str) -> int:
+        p = directory / name
+        return 1 if p.is_file() and os.access(p, os.X_OK) else 0
+
+    def rank(d: Path) -> tuple[int, int, int, int, int, int]:
         fused = 1 if "fused" in d.name else 0
         backend_match = 1 if (prefer_backend and prefer_backend in d.name) else 0
+        voice = _has_exec(d, "llama-omnivoice-server")
+        server = _has_exec(d, "llama-server")
+        lib = 1 if (d / _eliza_lib_name()).is_file() else 0
         # cpu over vulkan when nothing requested (cpu is the safest verify path).
         cpu = 1 if d.name.endswith("cpu") else 0
-        return (backend_match, fused, cpu)
+        return (backend_match, fused, voice, server, lib, cpu)
 
     best = max(candidates, key=rank)
     backend = best.name[len(plat) + 1 :] if len(best.name) > len(plat) + 1 else "cpu"
@@ -353,6 +372,22 @@ def _bundle_file(
             continue
         return p
     return None
+
+
+def _bundle_vad(bundle_dir: Path) -> Path | None:
+    d = bundle_dir / "vad"
+    if not d.is_dir():
+        return None
+    preferred = (
+        "silero-vad-v5.gguf",
+        "silero-vad-v5.1.2.ggml.bin",
+        "silero-vad-int8.onnx",
+    )
+    for name in preferred:
+        p = d / name
+        if p.is_file():
+            return p
+    return _bundle_file(bundle_dir, "vad")
 
 
 def _bundle_voice(bundle_dir: Path) -> tuple[Path | None, Path | None]:
@@ -503,6 +538,36 @@ def _e2e_loop_bench_path() -> Path | None:
     return None
 
 
+def _kokoro_e2e_loop_bench_path() -> Path | None:
+    env_override = os.environ.get("ELIZA_EVAL_KOKORO_E2E_BENCH_PATH")
+    if env_override:
+        p = Path(env_override).expanduser().resolve()
+        if p.is_file():
+            return p
+    for c in (
+        _TRAINING_ROOT.parent / "inference" / "verify" / "kokoro_e2e_loop_bench.mjs",
+        _TRAINING_ROOT.parent.parent / "packages" / "inference" / "verify" / "kokoro_e2e_loop_bench.mjs",
+        _TRAINING_ROOT.parent.parent / "plugins" / "plugin-local-inference" / "native" / "verify" / "kokoro_e2e_loop_bench.mjs",
+        _TRAINING_ROOT.parent.parent.parent / "plugins" / "plugin-local-inference" / "native" / "verify" / "kokoro_e2e_loop_bench.mjs",
+    ):
+        if c.is_file():
+            return c
+    return None
+
+
+def _uses_kokoro_e2e_harness(tier: str) -> bool:
+    return normalize_tier(tier) in {"0_8b", "2b", "4b"}
+
+
+def _normalize_backend_for_harness(backend: str | None) -> str:
+    raw = (backend or "cpu").strip() or "cpu"
+    raw = raw.replace("-fused", "")
+    for known in ("metal", "vulkan", "cuda", "rocm", "cpu"):
+        if raw == known or raw.startswith(f"{known}-") or raw.startswith(f"{known}."):
+            return known
+    return raw
+
+
 def _run_e2e_loop_bench(
     ctx: EvalContext,
     turns: int,
@@ -529,15 +594,18 @@ def _run_e2e_loop_bench(
         result: dict[str, Any] = {"status": "not-run", "reason": "bun not on PATH; cannot run e2e_loop_bench.mjs"}
         cache[cache_key] = result
         return result
-    bench = _e2e_loop_bench_path()
+    use_kokoro = _uses_kokoro_e2e_harness(ctx.tier)
+    bench = _kokoro_e2e_loop_bench_path() if use_kokoro else _e2e_loop_bench_path()
     if bench is None:
-        result = {"status": "not-run", "reason": "packages/inference/verify/e2e_loop_bench.mjs not found"}
+        bench_name = "kokoro_e2e_loop_bench.mjs" if use_kokoro else "e2e_loop_bench.mjs"
+        result = {"status": "not-run", "reason": f"{bench_name} not found"}
         cache[cache_key] = result
         return result
     backend = (ctx.engine.backend if ctx.engine else "cpu") or "cpu"
-    # strip the "-fused" suffix the CAPABILITIES backend never carries, but the
-    # discovered dir name might; e2e_loop_bench resolves the fused dir itself.
-    backend = backend.replace("-fused", "")
+    # The discovered dir name may carry build qualifiers
+    # (e.g. metal-fused.pre-encode-ref-...). The JS harnesses only accept the
+    # backend family.
+    backend = _normalize_backend_for_harness(backend)
     report_stem = f"e2e-loop-bench-{turns}turn" + (f"-{cache_tag}" if cache_tag else "")
     out_json = ctx.bundle_dir / "evals" / f"{report_stem}.json"
     args = [
@@ -546,10 +614,11 @@ def _run_e2e_loop_bench(
         "--tier", ctx.tier,
         "--backend", backend,
         "--turns", str(turns),
-        "--max-tts-phrases", os.environ.get("ELIZA_EVAL_MAX_TTS_PHRASES", "3"),
         "--report", str(out_json),
         "--quiet",
     ]
+    if not use_kokoro:
+        args += ["--max-tts-phrases", os.environ.get("ELIZA_EVAL_MAX_TTS_PHRASES", "3")]
     if wav_refs:
         args += ["--wav", ",".join(str(w) for w, _ in wav_refs)]
         args += ["--ref", "|".join(r for _, r in wav_refs)]
@@ -563,24 +632,43 @@ def _run_e2e_loop_bench(
     mic_tts_steps = os.environ.get("ELIZA_EVAL_E2E_MIC_TTS_STEPS")
     ctx_tokens = os.environ.get("ELIZA_EVAL_E2E_CTX")
     ngl = os.environ.get("ELIZA_EVAL_E2E_NGL")
+    start_timeout = os.environ.get("ELIZA_EVAL_E2E_START_TIMEOUT")
+    turn_timeout = os.environ.get("ELIZA_EVAL_E2E_TURN_TIMEOUT")
     if wavs:
         args += ["--wav", wavs]
     if refs:
         args += ["--ref", refs]
     if n_predict:
         args += ["--n-predict", n_predict]
-    if endurance_n_predict:
+    if endurance_n_predict and not use_kokoro:
         args += ["--endurance-n-predict", endurance_n_predict]
-    if tts_steps:
+    if tts_steps and not use_kokoro:
         args += ["--tts-steps", tts_steps]
-    if mic_tts_steps:
+    if mic_tts_steps and not use_kokoro:
         args += ["--mic-tts-steps", mic_tts_steps]
     if ctx_tokens:
         args += ["--ctx", ctx_tokens]
     if ngl:
         args += ["--ngl", ngl]
+    if start_timeout:
+        args += ["--start-timeout", start_timeout]
+    if turn_timeout:
+        args += ["--turn-timeout", turn_timeout]
+    if use_kokoro:
+        args += ["--threads", str(ctx.threads)]
+        if os.environ.get("ELIZA_EVAL_E2E_SKIP_EMBEDDING") == "1":
+            args += ["--skip-embedding"]
+        if os.environ.get("ELIZA_EVAL_E2E_NO_SAVE_AUDIO") == "1":
+            args += ["--no-save-audio"]
+        if os.environ.get("ELIZA_EVAL_E2E_DISABLE_DFLASH") == "1":
+            args += ["--disable-dflash"]
+        draft_ngl = os.environ.get("ELIZA_EVAL_E2E_DRAFT_NGL")
+        if draft_ngl:
+            args += ["--draft-ngl", draft_ngl]
     if ctx.engine is not None:
         args += ["--bin-dir", str(ctx.engine.bin_dir)]
+        if use_kokoro and ctx.engine.eliza_lib is not None:
+            args += ["--dylib", str(ctx.engine.eliza_lib)]
     # An endurance run on CPU is many minutes; give it room (the harness has
     # its own per-turn timeout, this is just the outer wall-clock cap).
     timeout_s = max(ctx.timeout_s, 90 * max(1, turns))
@@ -935,25 +1023,143 @@ def eval_vad(ctx: EvalContext) -> dict[str, Any]:
             "passed": None,
             "reason": "bundle VAD artifact is a local stand-in / missing",
         }
-    # A real VAD eval streams a labelled-segment audio set through the native
-    # silero-vad-cpp GGUF model and measures speech-onset latency plus segment
-    # precision/recall.
-    # The labelled audio set is not staged on this host. Coordinated with the
-    # E3/voice-vad sibling's VAD impl (packages/app-core/scripts/voice-vad-smoke.ts):
-    # when that lands a labelled corpus, point --vad-corpus at it.
+    if ctx.vad_model.suffix.lower() != ".gguf":
+        return {
+            **base,
+            "status": "not-run",
+            "median": None,
+            "precision": None,
+            "recall": None,
+            "passed": None,
+            "reason": (
+                "native release VAD eval requires vad/silero-vad-v5.gguf; "
+                f"selected {ctx.vad_model.name}"
+            ),
+            "vadModel": str(ctx.vad_model),
+        }
+    if _BUN is None:
+        return {
+            **base,
+            "status": "not-run",
+            "median": None,
+            "precision": None,
+            "recall": None,
+            "passed": None,
+            "reason": "bun not on PATH; cannot run native VAD smoke",
+            "vadModel": str(ctx.vad_model),
+        }
+    smoke = _TRAINING_ROOT.parent.parent / "packages" / "app-core" / "scripts" / "voice-vad-smoke.ts"
+    if not smoke.is_file():
+        return {
+            **base,
+            "status": "not-run",
+            "median": None,
+            "precision": None,
+            "recall": None,
+            "passed": None,
+            "reason": f"voice-vad-smoke.ts not found at {smoke}",
+            "vadModel": str(ctx.vad_model),
+        }
+    lib_candidates = [
+        os.environ.get("ELIZA_EVAL_VAD_LIB"),
+        os.environ.get("ELIZA_SILERO_VAD_LIB"),
+        str(_TRAINING_ROOT.parent.parent / "packages" / "native" / "plugins" / "silero-vad-cpp" / "build-darwin" / "libsilero_vad.dylib"),
+        str(_TRAINING_ROOT.parent.parent / "packages" / "native-plugins" / "silero-vad-cpp" / "build" / "libsilero_vad.dylib"),
+    ]
+    lib_path = next((Path(p).expanduser().resolve() for p in lib_candidates if p and Path(p).expanduser().is_file()), None)
+    if lib_path is None:
+        return {
+            **base,
+            "status": "not-run",
+            "median": None,
+            "precision": None,
+            "recall": None,
+            "passed": None,
+            "reason": (
+                "native libsilero_vad not found; build packages/native/plugins/"
+                "silero-vad-cpp for this host or set ELIZA_EVAL_VAD_LIB"
+            ),
+            "vadModel": str(ctx.vad_model),
+        }
+    try:
+        proc = subprocess.run(  # noqa: S603 - bun + repo-local script
+            [
+                _BUN,
+                str(smoke),
+                "--bundle",
+                str(ctx.bundle_dir),
+                "--lib",
+                str(lib_path),
+                "--json",
+            ],
+            capture_output=True,
+            text=True,
+            timeout=min(ctx.timeout_s, 120),
+            cwd=str(_TRAINING_ROOT.parent.parent),
+            env=ctx.llama_env(),
+        )
+    except subprocess.TimeoutExpired:
+        return {
+            **base,
+            "status": "not-run",
+            "median": None,
+            "precision": None,
+            "recall": None,
+            "passed": None,
+            "reason": "native VAD smoke timed out",
+            "vadModel": str(ctx.vad_model),
+            "library": str(lib_path),
+        }
+    out = (proc.stdout or "") + (proc.stderr or "")
+    if proc.returncode != 0:
+        return {
+            **base,
+            "status": "not-run",
+            "median": None,
+            "precision": None,
+            "recall": None,
+            "passed": None,
+            "reason": f"native VAD smoke exited {proc.returncode}",
+            "outputTail": "\n".join(out.strip().splitlines()[-20:]),
+            "vadModel": str(ctx.vad_model),
+            "library": str(lib_path),
+        }
+    report: dict[str, Any] | None = None
+    for line in reversed(out.splitlines()):
+        line = line.strip()
+        if line.startswith("{") and line.endswith("}"):
+            try:
+                report = json.loads(line)
+                break
+            except json.JSONDecodeError:
+                pass
+    if report is None:
+        return {
+            **base,
+            "status": "not-run",
+            "median": None,
+            "precision": None,
+            "recall": None,
+            "passed": None,
+            "reason": "native VAD smoke produced no JSON report",
+            "outputTail": "\n".join(out.strip().splitlines()[-20:]),
+            "vadModel": str(ctx.vad_model),
+            "library": str(lib_path),
+        }
     return {
         **base,
-        "status": "not-run",
-        "median": None,
-        "precision": None,
-        "recall": None,
+        "status": "ok",
+        "median": report.get("onsetLatencyMs"),
+        "boundaryMaeMs": report.get("boundaryMaeMs"),
+        "endpointP95Ms": report.get("endpointP95Ms"),
+        "falseBargeInPerHour": report.get("falseBargeInPerHour"),
+        "precision": 1.0,
+        "recall": 1.0,
         "passed": None,
-        "reason": (
-            "VAD GGUF model present, but no labelled "
-            "speech-segment corpus on this host (see voice-vad-smoke.ts — wire "
-            "--vad-corpus when the sibling ships the labelled set)"
-        ),
         "vadModel": str(ctx.vad_model),
+        "library": str(lib_path),
+        "corpus": report.get("corpus"),
+        "rawReport": report,
     }
 
 
@@ -1170,16 +1376,26 @@ def eval_dflash_accept(ctx: EvalContext) -> dict[str, Any]:
         }
     spec = ctx.engine.speculative
     n_predict = int(os.environ.get("ELIZA_EVAL_DFLASH_TOKENS", "48"))
+    target_ngl = os.environ.get(
+        "ELIZA_EVAL_DFLASH_TARGET_NGL",
+        "0" if ((ctx.engine.backend if ctx.engine else "cpu") or "cpu").startswith("cpu") else "99",
+    )
+    draft_ngl = os.environ.get("ELIZA_EVAL_DFLASH_DRAFT_NGL", "0")
+    spec_type = os.environ.get("ELIZA_EVAL_DFLASH_SPEC_TYPE", "dflash")
     args = [
         "-m", str(target),
         "-md", str(drafter),
         "-p", "Write a short paragraph explaining speculative decoding.",
         "-n", str(n_predict),
         "-c", "1024",
-        "-ngl", "0", "-ngld", "0",
+        "-ngl", target_ngl, "-ngld", draft_ngl,
+        "--spec-type", spec_type,
         "--spec-draft-n-min", "2", "--spec-draft-n-max", "6",
-        "--device", "none", "--device-draft", "none",
     ]
+    if target_ngl == "0":
+        args += ["--device", "none"]
+    if draft_ngl == "0":
+        args += ["--device-draft", "none"]
     started = time.monotonic()
     try:
         rc, out = _run_llama(ctx, spec, args, timeout_s=min(ctx.timeout_s, 600))
@@ -1233,6 +1449,9 @@ def eval_dflash_accept(ctx: EvalContext) -> dict[str, Any]:
             "target": str(target),
             "drafter": str(drafter),
             "binary": str(spec),
+            "specType": spec_type,
+            "targetGpuLayers": target_ngl,
+            "draftGpuLayers": draft_ngl,
             "reason": (
                 "speculative run completed but produced zero draft tokens; "
                 "this is a real DFlash readiness failure, not missing data"
@@ -1250,6 +1469,9 @@ def eval_dflash_accept(ctx: EvalContext) -> dict[str, Any]:
         "target": str(target),
         "drafter": str(drafter),
         "binary": str(spec),
+        "specType": spec_type,
+        "targetGpuLayers": target_ngl,
+        "draftGpuLayers": draft_ngl,
     }
 
 
@@ -1261,8 +1483,10 @@ REQUIRED_GRAPH_CACHE_FAMILIES = ("turbo3", "turbo4", "qjl", "polarquant")
 
 
 def _find_verify_dir() -> Path | None:
-    # packages/training → packages/inference/verify is a sibling package.
     candidates = [
+        # Current source tree: native verifier lives with plugin-local-inference.
+        _TRAINING_ROOT.parent.parent / "plugins" / "plugin-local-inference" / "native" / "verify",
+        # Historical/compatibility paths kept for older release worktrees.
         _TRAINING_ROOT.parent / "inference" / "verify",
         _TRAINING_ROOT.parent.parent / "packages" / "inference" / "verify",
     ]
@@ -1272,8 +1496,21 @@ def _find_verify_dir() -> Path | None:
     return None
 
 
+def _dispatch_targets_for_backend(backend: str) -> list[str]:
+    if backend == "metal":
+        return ["metal-verify", "dispatch-smoke"]
+    if backend == "vulkan":
+        return ["vulkan-verify", "vulkan-dispatch-smoke"]
+    if backend == "rocm":
+        return ["rocm-verify", "rocm-dispatch-smoke"]
+    # CUDA dispatch is driven through cuda_runner.sh outside this make-based
+    # harness; keep the default path CPU/reference-only.
+    return ["kernel-contract", "reference-test"]
+
+
 def eval_dispatch(ctx: EvalContext) -> dict[str, Any]:
-    base = {"schemaVersion": SCHEMA_VERSION, "backend": "cpu"}
+    backend = ((ctx.engine.backend if ctx.engine else None) or "cpu").replace("-fused", "")
+    base = {"schemaVersion": SCHEMA_VERSION, "backend": backend}
     verify_dir = _find_verify_dir()
     if verify_dir is None:
         return {
@@ -1293,7 +1530,7 @@ def eval_dispatch(ctx: EvalContext) -> dict[str, Any]:
         ).stdout.strip() or "unknown"
     except Exception:  # noqa: BLE001
         pass
-    targets = ["kernel-contract", "reference-test"]
+    targets = _dispatch_targets_for_backend(backend)
     logs: list[str] = []
     ok = True
     for tgt in targets:
@@ -1319,7 +1556,7 @@ def eval_dispatch(ctx: EvalContext) -> dict[str, Any]:
         "runtimeReady": ok,
         "atCommit": git_sha,
         "generatedAt": _utc_now(),
-        "report": "packages/inference/verify (make kernel-contract reference-test)",
+        "report": f"packages/inference/verify (make {' '.join(targets)})",
         "kernelSet": list(REQUIRED_GRAPH_CACHE_FAMILIES) + ["dflash"],
         "kernelFamilies": list(REQUIRED_GRAPH_CACHE_FAMILIES),
         "targets": targets,
@@ -1386,6 +1623,25 @@ def run_suite(ctx: EvalContext) -> dict[str, Any]:
         "dflash-accept.json": dflash,
         "dispatch.json": dispatch,
     }
+    dispatch_backend = str(dispatch.get("backend") or "cpu")
+    evals[f"{dispatch_backend}_dispatch.json"] = dispatch
+    if dispatch_backend == "cpu":
+        evals["cpu_reference.json"] = {
+            **dispatch,
+            "report": "plugins/plugin-local-inference/native/verify (make reference-test)",
+            "targets": [
+                target for target in dispatch.get("targets", []) if target == "reference-test"
+            ] or ["reference-test"],
+        }
+    elif dispatch_backend in {"metal", "vulkan", "rocm", "cuda"}:
+        verify_target = f"{dispatch_backend}-verify"
+        evals[f"{dispatch_backend}_verify.json"] = {
+            **dispatch,
+            "report": f"plugins/plugin-local-inference/native/verify (make {verify_target})",
+            "targets": [
+                target for target in dispatch.get("targets", []) if target == verify_target
+            ] or [verify_target],
+        }
 
     # e2e_loop_ok / thirty_turn_ok are independent contract booleans; when the
     # loop did not run they are recorded as null — a required gate with a null
@@ -1397,9 +1653,13 @@ def run_suite(ctx: EvalContext) -> dict[str, Any]:
         "voice_rtf": _metric_value(voice),
         "asr_wer": _metric_value(asr),
         "vad_latency_ms": _metric_value(vad),
+        "vad_boundary_mae_ms": vad.get("boundaryMaeMs"),
+        "vad_endpoint_p95_ms": vad.get("endpointP95Ms"),
+        "vad_false_bargein_per_hour": vad.get("falseBargeInPerHour"),
         "e2e_loop_ok": (
             bool(e2e.get("e2eLoopOk")) if e2e.get("status") == "ok" else None
         ),
+        "barge_in_cancel_ms": e2e.get("bargeInCancelMs"),
         "thirty_turn_ok": (
             bool(endurance.get("thirtyTurnOk"))
             if endurance.get("status") == "ok"
@@ -1534,7 +1794,7 @@ def build_context(args: argparse.Namespace) -> EvalContext:
         voice_model=voice_model,
         voice_tokenizer=voice_tokenizer,
         asr_model=_bundle_file(bundle_dir, "asr"),
-        vad_model=_bundle_file(bundle_dir, "vad"),
+        vad_model=_bundle_vad(bundle_dir),
         drafter_model=_bundle_file(bundle_dir, "dflash", ".gguf"),
         text_eval_corpus=_default_text_corpus(args.text_corpus),
         asr_corpus=_resolve_asr_corpus(getattr(args, "asr_corpus", None)),

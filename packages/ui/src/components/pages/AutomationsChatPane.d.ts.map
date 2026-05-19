@@ -1,1 +1,0 @@
-{"version":3,"file":"AutomationsChatPane.d.ts","sourceRoot":"","sources":["AutomationsChatPane.tsx"],"names":[],"mappings":"AAAA;;;;;;;;;GASG;AAIH,MAAM,WAAW,wBAAwB;IACvC,SAAS,CAAC,EAAE,MAAM,CAAC;IACnB,4DAA4D;IAC5D,KAAK,CAAC,EAAE,MAAM,CAAC;IACf,qCAAqC;IACrC,WAAW,CAAC,EAAE,MAAM,CAAC;CACtB;AAED,wBAAgB,mBAAmB,CAAC,EAClC,SAAS,EACT,KAAK,EACL,WAAW,GACZ,EAAE,wBAAwB,2CAS1B"}

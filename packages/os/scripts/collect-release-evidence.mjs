@@ -20,13 +20,16 @@ const manifestValidation = validateManifest(manifest, {
 });
 
 const evidenceDir = path.resolve(
-  args["evidence-dir"] || path.join(repoRoot, manifest.validation.evidenceDirectory),
+  args["evidence-dir"] ||
+    path.join(repoRoot, manifest.validation.evidenceDirectory),
 );
 await mkdir(evidenceDir, { recursive: true });
 
 async function gitValue(commandArgs) {
   try {
-    const { stdout } = await execFileAsync("git", commandArgs, { cwd: repoRoot });
+    const { stdout } = await execFileAsync("git", commandArgs, {
+      cwd: repoRoot,
+    });
     return stdout.trim() || null;
   } catch {
     return null;
@@ -62,7 +65,14 @@ const report = {
   git: {
     branch: await gitValue(["rev-parse", "--abbrev-ref", "HEAD"]),
     commit: await gitValue(["rev-parse", "HEAD"]),
-    statusShort: await gitValue(["status", "--short", "--", "packages/os/release", "packages/os/scripts", "packages/os/docs"]),
+    statusShort: await gitValue([
+      "status",
+      "--short",
+      "--",
+      "packages/os/release",
+      "packages/os/scripts",
+      "packages/os/docs",
+    ]),
   },
   manifestValidation,
   artifacts: manifest.artifacts.map((artifact) => ({
@@ -78,7 +88,9 @@ const report = {
   evidenceFiles: await readEvidenceFiles(),
 };
 
-const outputPath = path.resolve(args.output || path.join(evidenceDir, "release-evidence.json"));
+const outputPath = path.resolve(
+  args.output || path.join(evidenceDir, "release-evidence.json"),
+);
 await writeFile(outputPath, `${JSON.stringify(report, null, 2)}\n`);
 
 if (!manifestValidation.ok) {

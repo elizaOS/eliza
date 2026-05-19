@@ -28,10 +28,9 @@ export { AppsPageView } from "./components/pages/AppsPageView";
 export { ChatView } from "./components/pages/ChatView";
 export { DatabasePageView } from "./components/pages/DatabasePageView";
 export { DocumentsView } from "./components/pages/DocumentsView";
-export {
-  HeartbeatsDesktopShell,
-  HeartbeatsView,
-} from "./components/pages/HeartbeatsView";
+// HeartbeatsView / HeartbeatsDesktopShell removed: App.tsx renders the
+// heartbeats route via the lazy-loaded AutomationsFeed, and re-exporting
+// HeartbeatsView from this barrel pulls cron-parser (~25 KB gzip) into main.
 export { LogsView } from "./components/pages/LogsView";
 export { MemoryViewerView } from "./components/pages/MemoryViewerView";
 export { PluginsPageView } from "./components/pages/PluginsPageView";

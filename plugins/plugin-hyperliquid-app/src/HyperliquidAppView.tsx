@@ -1,5 +1,5 @@
 import type { OverlayAppContext } from "@elizaos/app-core";
-import { Button, PagePanel, Spinner } from "@elizaos/app-core";
+import { Button, client, PagePanel, Spinner } from "@elizaos/app-core";
 import {
   ArrowLeft,
   BarChart3,
@@ -10,6 +10,15 @@ import {
   ShieldCheck,
   ShieldX,
 } from "lucide-react";
+import { useCallback, useEffect, useState } from "react";
+import "./client";
+import type { HyperliquidClient } from "./client";
+import type {
+  HyperliquidMarketsResponse,
+  HyperliquidOrdersResponse,
+  HyperliquidPositionsResponse,
+  HyperliquidStatusResponse,
+} from "./hyperliquid-contracts";
 import { useHyperliquidState } from "./useHyperliquidState";
 
 function ReadinessPill({ ready, label }: { ready: boolean; label: string }) {
@@ -42,6 +51,48 @@ function credentialModeLabel(
     default:
       return "Read-only";
   }
+}
+
+async function loadHyperliquidTuiState(): Promise<{
+  status: HyperliquidStatusResponse;
+  markets: HyperliquidMarketsResponse | null;
+  positions: HyperliquidPositionsResponse | null;
+  orders: HyperliquidOrdersResponse | null;
+}> {
+  const hyperliquidClient = client as HyperliquidClient;
+  const status = await hyperliquidClient.hyperliquidStatus();
+  if (!status.publicReadReady) {
+    return { status, markets: null, positions: null, orders: null };
+  }
+  const [markets, positions, orders] = await Promise.all([
+    hyperliquidClient.hyperliquidMarkets(),
+    hyperliquidClient.hyperliquidPositions(),
+    hyperliquidClient.hyperliquidOrders(),
+  ]);
+  return { status, markets, positions, orders };
+}
+
+async function postHyperliquidCommand(
+  path: string,
+  body: Record<string, unknown>,
+): Promise<unknown> {
+  const response = await fetch(path, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+  });
+  const data = await response.json().catch(() => ({}));
+  if (!response.ok) {
+    const message =
+      typeof data === "object" &&
+      data !== null &&
+      "error" in data &&
+      typeof data.error === "string"
+        ? data.error
+        : `Hyperliquid request failed with ${response.status}`;
+    throw new Error(message);
+  }
+  return data;
 }
 
 export function HyperliquidAppView({ exitToApps }: OverlayAppContext) {
@@ -217,4 +268,257 @@ export function HyperliquidAppView({ exitToApps }: OverlayAppContext) {
       </div>
     </div>
   );
+}
+
+export function HyperliquidTuiView() {
+  const [state, setState] = useState<Awaited<
+    ReturnType<typeof loadHyperliquidTuiState>
+  > | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [lastAction, setLastAction] = useState("boot");
+  const [error, setError] = useState<string | null>(null);
+
+  const refresh = useCallback(async () => {
+    setLoading(true);
+    setError(null);
+    try {
+      const next = await loadHyperliquidTuiState();
+      setState(next);
+      setLastAction("refresh");
+    } catch (caught) {
+      setState(null);
+      setError(
+        caught instanceof Error ? caught.message : "Hyperliquid refresh failed",
+      );
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    void refresh();
+  }, [refresh]);
+
+  const viewState = {
+    viewType: "tui",
+    viewId: "hyperliquid",
+    publicReadReady: state?.status.publicReadReady ?? false,
+    signerReady: state?.status.signerReady ?? false,
+    executionReady: state?.status.executionReady ?? false,
+    credentialMode: state?.status.credentialMode ?? "none",
+    accountAddress: state?.status.account.address ?? null,
+    marketCount: state?.markets?.markets.length ?? 0,
+    positionCount: state?.positions?.positions.length ?? 0,
+    orderCount: state?.orders?.orders.length ?? 0,
+    loading,
+    lastAction,
+    error,
+  };
+
+  return (
+    <div
+      data-view-state={JSON.stringify(viewState)}
+      style={{
+        minHeight: "100vh",
+        background: "#020617",
+        color: "#cbd5e1",
+        fontFamily:
+          'ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace',
+        padding: 20,
+      }}
+    >
+      <div style={{ color: "#7dd3fc", marginBottom: 4 }}>
+        elizaos://hyperliquid --type=tui
+      </div>
+      <div style={{ color: "#475569", marginBottom: 16 }}>
+        {loading
+          ? "loading"
+          : state?.status.publicReadReady
+            ? "read-ready"
+            : "read-blocked"}{" "}
+        | {state?.markets?.markets.length ?? 0} markets |{" "}
+        {state?.positions?.positions.length ?? 0} positions |{" "}
+        {state?.orders?.orders.length ?? 0} orders | {lastAction}
+      </div>
+
+      <div
+        style={{
+          display: "grid",
+          gridTemplateColumns: "minmax(300px, 1.2fr) minmax(280px, 0.8fr)",
+          gap: 16,
+        }}
+      >
+        <section
+          aria-label="Hyperliquid markets"
+          style={{
+            border: "1px solid rgba(125,211,252,0.3)",
+            borderRadius: 6,
+            padding: 16,
+            minHeight: 420,
+          }}
+        >
+          <div
+            style={{
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "space-between",
+              marginBottom: 10,
+            }}
+          >
+            <strong style={{ color: "#e2e8f0" }}>markets</strong>
+            <button
+              type="button"
+              onClick={() => void refresh()}
+              disabled={loading}
+              style={{
+                background: "transparent",
+                color: "#a7f3d0",
+                border: "1px solid rgba(167,243,208,0.45)",
+                borderRadius: 4,
+                padding: "4px 8px",
+                cursor: loading ? "not-allowed" : "pointer",
+                fontFamily: "inherit",
+              }}
+            >
+              refresh
+            </button>
+          </div>
+          {error && <div style={{ color: "#fca5a5" }}>{error}</div>}
+          {(state?.markets?.markets ?? []).slice(0, 24).map((market, index) => (
+            <div
+              key={market.name}
+              style={{
+                display: "grid",
+                gridTemplateColumns: "4ch minmax(8ch, 1fr) 8ch",
+                gap: 10,
+                borderTop:
+                  index === 0 ? "none" : "1px solid rgba(125,211,252,0.18)",
+                padding: "8px 0",
+              }}
+            >
+              <span style={{ color: "#64748b" }}>
+                {String(index + 1).padStart(2, "0")}
+              </span>
+              <span
+                style={{ color: market.isDelisted ? "#64748b" : "#e2e8f0" }}
+              >
+                {market.name}
+              </span>
+              <span style={{ color: "#a7f3d0" }}>
+                {market.maxLeverage ? `${market.maxLeverage}x` : "n/a"}
+              </span>
+              <span style={{ gridColumn: "2 / 4", color: "#94a3b8" }}>
+                sz {market.szDecimals}
+                {market.onlyIsolated ? " / isolated-only" : ""}
+                {market.isDelisted ? " / delisted" : ""}
+              </span>
+            </div>
+          ))}
+        </section>
+
+        <section
+          aria-label="Hyperliquid account"
+          style={{
+            border: "1px solid rgba(125,211,252,0.3)",
+            borderRadius: 6,
+            padding: 16,
+            minHeight: 420,
+          }}
+        >
+          <strong style={{ color: "#e2e8f0" }}>account</strong>
+          <div style={{ color: "#64748b", margin: "6px 0 14px" }}>
+            commands: state | market | execution-check
+          </div>
+          <div style={{ marginBottom: 12 }}>
+            <div>
+              <span style={{ color: "#64748b" }}>address</span>{" "}
+              {state?.status.account.address ?? "not configured"}
+            </div>
+            <div>
+              <span style={{ color: "#64748b" }}>credentials</span>{" "}
+              {credentialModeLabel(state?.status.credentialMode)}
+            </div>
+            <div>
+              <span style={{ color: "#64748b" }}>execution</span>{" "}
+              {state?.status.executionReady ? "ready" : "disabled"}
+            </div>
+          </div>
+          {state?.status.executionBlockedReason && (
+            <div style={{ color: "#fca5a5", marginBottom: 12 }}>
+              {state.status.executionBlockedReason}
+            </div>
+          )}
+          {state?.positions?.readBlockedReason && (
+            <div style={{ color: "#fca5a5", marginBottom: 12 }}>
+              {state.positions.readBlockedReason}
+            </div>
+          )}
+          <div style={{ color: "#a7f3d0", margin: "18px 0 8px" }}>
+            positions
+          </div>
+          {(state?.positions?.positions ?? []).slice(0, 10).map((position) => (
+            <div key={position.coin} style={{ padding: "4px 0" }}>
+              {position.coin} size {position.size}
+              {position.entryPx ? ` entry ${position.entryPx}` : ""}
+              {position.unrealizedPnl ? ` uPnL ${position.unrealizedPnl}` : ""}
+            </div>
+          ))}
+          <div style={{ color: "#a7f3d0", margin: "18px 0 8px" }}>orders</div>
+          {(state?.orders?.orders ?? []).slice(0, 10).map((order) => (
+            <div key={order.oid} style={{ padding: "4px 0" }}>
+              {order.coin} {order.side} {order.size} @ {order.limitPx}
+              {order.reduceOnly ? " reduce-only" : ""}
+            </div>
+          ))}
+        </section>
+      </div>
+    </div>
+  );
+}
+
+export async function interact(
+  capability: string,
+  params?: Record<string, unknown>,
+): Promise<unknown> {
+  if (capability === "terminal-hyperliquid-state") {
+    const state = await loadHyperliquidTuiState();
+    return {
+      viewType: "tui",
+      status: state.status,
+      markets:
+        state.markets?.markets.slice(
+          0,
+          typeof params?.limit === "number" ? params.limit : 25,
+        ) ?? [],
+      positions: state.positions,
+      orders: state.orders,
+    };
+  }
+
+  if (capability === "terminal-hyperliquid-market") {
+    const coin =
+      typeof params?.coin === "string" ? params.coin.trim().toUpperCase() : "";
+    if (!coin) throw new Error("coin is required");
+    const state = await loadHyperliquidTuiState();
+    return {
+      viewType: "tui",
+      market:
+        state.markets?.markets.find(
+          (market) => market.name.toUpperCase() === coin,
+        ) ?? null,
+    };
+  }
+
+  if (capability === "terminal-hyperliquid-execution-check") {
+    return {
+      viewType: "tui",
+      result: await postHyperliquidCommand("/api/hyperliquid/orders/open", {
+        coin: typeof params?.coin === "string" ? params.coin : "BTC",
+        side: typeof params?.side === "string" ? params.side : "buy",
+        size: typeof params?.size === "string" ? params.size : "0",
+      }),
+    };
+  }
+
+  throw new Error(`Unsupported capability "${capability}"`);
 }

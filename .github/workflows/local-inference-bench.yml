@@ -374,7 +374,7 @@ jobs:
           set -euo pipefail
           node packages/app-core/scripts/build-llama-cpp-dflash.mjs \
             --target windows-x64-cpu \
-            --ref bfab6689d7640db682b73f05a6af64b244a69dbd \
+            --ref 6f3b5042594ea63b78bf7e594a958d2f4a43bc4a \
             --cache-dir "$RUNNER_TEMP/llama-cpp-cross-cache" \
             --out-dir "$GITHUB_WORKSPACE/build-output/windows-x64-cpu"
 

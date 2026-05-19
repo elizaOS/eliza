@@ -6,7 +6,9 @@ import path from "node:path";
 
 const scriptName = process.argv[2];
 if (!scriptName) {
-  console.error("Usage: node packages/scripts/run-examples-benchmarks.mjs <script>");
+  console.error(
+    "Usage: node packages/scripts/run-examples-benchmarks.mjs <script>",
+  );
   process.exit(1);
 }
 

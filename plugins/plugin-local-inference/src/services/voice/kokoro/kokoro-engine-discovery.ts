@@ -46,11 +46,6 @@ export const KOKORO_DEFAULT_SAMPLE_RATE = 24_000;
 const CANDIDATE_MODEL_FILES: ReadonlyArray<string> = [
 	"kokoro-82m-v1_0-Q4_K_M.gguf",
 	"kokoro-82m-v1_0.gguf",
-	"kokoro-v1.0.int8.onnx",
-	"kokoro-v1.0.onnx",
-	"model_quantized.onnx",
-	"model_q4.onnx",
-	"model.onnx",
 ];
 
 /** True iff the candidate filename routes to the fused GGUF path. */
@@ -69,15 +64,10 @@ export interface KokoroEngineDiscoveryResult {
 	 */
 	defaultVoiceId: string;
 	/**
-	 * Resolved runtime kind, derived from the model filename. The engine
-	 * layer uses this to pick between `KokoroGgufRuntime` (fused FFI /
-	 * `/v1/audio/speech`) and `KokoroOnnxRuntime` (onnxruntime-node).
-	 *
-	 * `gguf` = fused-llama.cpp Kokoro engine (preferred when staged).
-	 * `onnx` = legacy onnxruntime-node path (kept for bundles published
-	 *          before the port landed).
+	 * Resolved runtime kind. Always `"gguf"` — only GGUF model files are
+	 * accepted by the discovery (ONNX paths have been retired).
 	 */
-	runtimeKind: "gguf" | "onnx";
+	runtimeKind: "gguf";
 }
 
 /** Returns the on-disk directory the discovery probes. */
@@ -123,7 +113,7 @@ export function resolveKokoroEngineConfig(
 			sampleRate: KOKORO_DEFAULT_SAMPLE_RATE,
 		},
 		defaultVoiceId,
-		runtimeKind: isKokoroGgufFile(modelFile) ? "gguf" : "onnx",
+		runtimeKind: "gguf",
 	};
 }
 

@@ -79,11 +79,7 @@
         "entrypoints": {
           "type": "object",
           "additionalProperties": false,
-          "required": [
-            "bun",
-            "launcher",
-            "agent"
-          ],
+          "required": ["bun", "launcher", "agent"],
           "properties": {
             "bun": {
               "$ref": "#/$defs/relativePath"
@@ -108,10 +104,7 @@
           "items": {
             "type": "object",
             "additionalProperties": false,
-            "required": [
-              "path",
-              "sha256"
-            ],
+            "required": ["path", "sha256"],
             "properties": {
               "path": {
                 "$ref": "#/$defs/relativePath"
@@ -131,10 +124,7 @@
     "modelCatalog": {
       "type": "object",
       "additionalProperties": false,
-      "required": [
-        "path",
-        "sha256"
-      ],
+      "required": ["path", "sha256"],
       "properties": {
         "path": {
           "$ref": "#/$defs/relativePath"

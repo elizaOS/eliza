@@ -1,41 +1,3 @@
-// Signal pairing helpers live in @elizaos/plugin-signal. Re-exported here
-// for backward compatibility with code that imports them from @elizaos/agent.
-//
-// Previously these were top-level awaits (await import(...)) which caused
-// the agent barrel load to deadlock in cloud Docker containers — see the
-// matching refactor in ./api/index.ts. Converting to static re-exports
-// keeps the runtime behavior identical (plugins don't have side-effectful
-// top-level code that depends on import order) but lets Node ESM evaluate
-// the barrel without waiting on a 4-way plugin module graph.
-export { CodingTaskExecutor } from "@elizaos/plugin-coding-tools";
-export {
-  classifySignalPairingErrorStatus,
-  extractSignalCliProvisioningUrl,
-  parseSignalCliAccountsOutput,
-  SignalPairingSession,
-  sanitizeSignalAccountId,
-  signalAuthExists,
-  signalLogout,
-} from "@elizaos/plugin-signal";
-export {
-  sanitizeWhatsAppAccountId,
-  WhatsAppPairingSession,
-  whatsappAuthExists,
-  whatsappLogout,
-} from "@elizaos/plugin-whatsapp";
-
-export type CodingTaskExecutor = InstanceType<typeof CodingTaskExecutor>;
-export type SignalPairingEvent = Record<string, unknown>;
-export type SignalPairingOptions = Record<string, unknown>;
-export type SignalPairingSession = InstanceType<typeof SignalPairingSession>;
-export type SignalPairingSnapshot = Record<string, unknown>;
-export type SignalPairingStatus = string;
-export type WhatsAppPairingEvent = Record<string, unknown>;
-export type WhatsAppPairingOptions = Record<string, unknown>;
-export type WhatsAppPairingSession = InstanceType<
-  typeof WhatsAppPairingSession
->;
-export type WhatsAppPairingStatus = string;
 // === Phase 4G: app-manager extracted to @elizaos/plugin-app-manager ===
 // Re-export the public surface (including app-run-store helpers) so
 // downstream callers that imported from `@elizaos/agent` keep working
@@ -106,6 +68,9 @@ export {
 } from "./plugin-manager-types.ts";
 export * from "./registry-client.ts";
 export { resolveAppHeroImage } from "./registry-client-queries.ts";
+export * from "./remote-capability-cloud-sandbox.ts";
+export * from "./remote-capability-router.ts";
+export * from "./remote-plugin-adapter.ts";
 export * from "./remote-signing-service.ts";
 export { ResearchTaskExecutor } from "./research-task-executor.ts";
 export * from "./sandbox-engine.ts";
