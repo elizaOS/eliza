@@ -2340,6 +2340,7 @@ function requireRemotePluginService(
 		method,
 	);
 	const methods = optionalStringArray(object, "methods", method);
+	validateRemotePluginServiceMethods(methods, method);
 	const config = optionalJsonObject(object, "config", method);
 	return {
 		serviceType: requireNonEmptyString(object, "serviceType", method),
@@ -2347,6 +2348,51 @@ function requireRemotePluginService(
 		...(methods === undefined ? {} : { methods }),
 		...(config === undefined ? {} : { config }),
 	};
+}
+
+const REMOTE_SERVICE_RESERVED_METHODS = new Set([
+	"callRemote",
+	"constructor",
+	"hasOwnProperty",
+	"isPrototypeOf",
+	"propertyIsEnumerable",
+	"toLocaleString",
+	"toString",
+	"valueOf",
+	"__defineGetter__",
+	"__defineSetter__",
+	"__lookupGetter__",
+	"__lookupSetter__",
+	"__proto__",
+]);
+
+function validateRemotePluginServiceMethods(
+	methods: string[] | undefined,
+	method: string,
+): void {
+	if (methods === undefined) return;
+	const seen = new Set<string>();
+	for (const serviceMethod of methods) {
+		if (!/^[A-Za-z_$][A-Za-z0-9_$]*$/.test(serviceMethod)) {
+			throw decodeError(
+				method,
+				"methods must contain valid JavaScript method identifiers.",
+			);
+		}
+		if (seen.has(serviceMethod)) {
+			throw decodeError(
+				method,
+				"methods must not contain duplicate method names.",
+			);
+		}
+		seen.add(serviceMethod);
+		if (REMOTE_SERVICE_RESERVED_METHODS.has(serviceMethod)) {
+			throw decodeError(
+				method,
+				"methods must not include reserved local service method names.",
+			);
+		}
+	}
 }
 
 function requireRemotePluginWidget(
@@ -2398,6 +2444,9 @@ function requireRemotePluginApp(
 	const category = optionalString(object, "category", method);
 	const launchType = optionalString(object, "launchType", method);
 	const launchUrl = optionalNullableString(object, "launchUrl", method);
+	if (typeof launchUrl === "string") {
+		validateRemotePluginBrowserUrl(launchUrl, "launchUrl", method);
+	}
 	const icon = optionalNullableString(object, "icon", method);
 	const capabilities = optionalStringArray(object, "capabilities", method);
 	const minPlayers = optionalNullableNumber(object, "minPlayers", method);
@@ -2459,12 +2508,35 @@ function requireRemotePluginAppViewer(
 	const embedParams = optionalStringRecord(object, "embedParams", method);
 	const postMessageAuth = optionalBoolean(object, "postMessageAuth", method);
 	const sandbox = optionalString(object, "sandbox", method);
+	const url = requireNonEmptyString(object, "url", method);
+	validateRemotePluginBrowserUrl(url, "url", method);
 	return {
-		url: requireNonEmptyString(object, "url", method),
+		url,
 		...(embedParams === undefined ? {} : { embedParams }),
 		...(postMessageAuth === undefined ? {} : { postMessageAuth }),
 		...(sandbox === undefined ? {} : { sandbox }),
 	};
+}
+
+function validateRemotePluginBrowserUrl(
+	value: string,
+	key: string,
+	method: string,
+): void {
+	try {
+		const parsed = new URL(value);
+		if (parsed.protocol !== "http:" && parsed.protocol !== "https:") {
+			throw new Error("invalid protocol");
+		}
+		if (parsed.username || parsed.password) {
+			throw new Error("credentials are not allowed");
+		}
+	} catch {
+		throw decodeError(
+			method,
+			`${key} must be an absolute http(s) URL without embedded credentials.`,
+		);
+	}
 }
 
 function requireRemotePluginAppSession(
@@ -2527,11 +2599,13 @@ function requireRemotePluginAppNavTab(
 	const developerOnly = optionalBoolean(object, "developerOnly", method);
 	const group = optionalString(object, "group", method);
 	const componentExport = optionalString(object, "componentExport", method);
+	const path = requireNonEmptyString(object, "path", method);
+	validateRemotePluginPath(path, "path", method);
 	return {
 		id: requireNonEmptyString(object, "id", method),
 		label: requireNonEmptyString(object, "label", method),
 		...(icon === undefined ? {} : { icon }),
-		path: requireNonEmptyString(object, "path", method),
+		path,
 		...(order === undefined ? {} : { order }),
 		...(developerOnly === undefined ? {} : { developerOnly }),
 		...(group === undefined ? {} : { group }),
@@ -2613,13 +2687,46 @@ function requireRemotePluginRoute(
 	const name = optionalString(object, "name", method);
 	const isPublic = optionalBoolean(object, "public", method);
 	const description = optionalString(object, "description", method);
+	const path = requireNonEmptyString(object, "path", method);
+	validateRemotePluginPath(path, "path", method);
 	return {
 		method: routeMethod,
-		path: requireNonEmptyString(object, "path", method),
+		path,
 		...(name === undefined ? {} : { name }),
 		...(isPublic === undefined ? {} : { public: isPublic }),
 		...(description === undefined ? {} : { description }),
 	};
+}
+
+function validateRemotePluginPath(
+	value: string,
+	key: string,
+	method: string,
+): void {
+	if (
+		!value.startsWith("/") ||
+		value.startsWith("//") ||
+		value.includes("?") ||
+		value.includes("#") ||
+		value.includes("\\") ||
+		/^[a-zA-Z][a-zA-Z\d+.-]*:/.test(value)
+	) {
+		throw decodeError(
+			method,
+			`${key} must be an absolute app path without URL scheme, query, hash, or backslash.`,
+		);
+	}
+	const segments = value === "/" ? [] : value.split("/").slice(1);
+	if (
+		segments.some(
+			(segment) => segment === "." || segment === ".." || !segment,
+		)
+	) {
+		throw decodeError(
+			method,
+			`${key} must not contain empty, current-directory, or parent-directory segments.`,
+		);
+	}
 }
 
 function requireRemotePluginView(
@@ -2633,6 +2740,12 @@ function requireRemotePluginView(
 	}
 	const bundlePath = optionalNonEmptyString(object, "bundlePath", method);
 	const bundleUrl = optionalNonEmptyString(object, "bundleUrl", method);
+	if (bundlePath !== undefined) {
+		validateRemotePluginAssetPath(bundlePath, "bundlePath", method);
+	}
+	if (bundleUrl !== undefined) {
+		validateRemotePluginBundleUrl(bundleUrl, "bundleUrl", method);
+	}
 	const contentType = optionalString(object, "contentType", method);
 	const integrity = optionalString(object, "integrity", method);
 	return {
@@ -2644,6 +2757,49 @@ function requireRemotePluginView(
 		...(contentType === undefined ? {} : { contentType }),
 		...(integrity === undefined ? {} : { integrity }),
 	};
+}
+
+function validateRemotePluginBundleUrl(
+	value: string,
+	key: string,
+	method: string,
+): void {
+	if (value.startsWith("/")) {
+		validateRemotePluginPath(value, key, method);
+		return;
+	}
+	validateRemotePluginBrowserUrl(value, key, method);
+}
+
+function validateRemotePluginAssetPath(
+	value: string,
+	key: string,
+	method: string,
+): void {
+	const path = value.trim();
+	if (
+		!path ||
+		path.includes("?") ||
+		path.includes("#") ||
+		path.includes("\\") ||
+		path.startsWith("//") ||
+		/^[a-zA-Z][a-zA-Z\d+.-]*:/.test(path)
+	) {
+		throw decodeError(
+			method,
+			`${key} must be an asset path without query, hash, URL scheme, or backslash.`,
+		);
+	}
+	const segments = path.replace(/^\/+/, "").split("/");
+	if (
+		segments.length === 0 ||
+		segments.some((segment) => !segment || segment === "." || segment === "..")
+	) {
+		throw decodeError(
+			method,
+			`${key} must not contain empty, current-directory, or parent-directory segments.`,
+		);
+	}
 }
 
 function requirePluginActionResult(

@@ -84,12 +84,11 @@ def test_reindent_function_body_leaves_well_indented_body_alone() -> None:
     assert _reindent_function_body(body) == body
 
 
-def test_reindent_function_body_leaves_fully_unindented_body_alone() -> None:
-    """If every line is at column 0 (the model returned only a one-liner body
-    that the dedent path will handle elsewhere, or pure dedented prose),
-    leave it alone — we only fix the mixed-indent regression."""
+def test_reindent_function_body_indents_fully_unindented_body() -> None:
+    """A valid body returned at column 0 still needs to nest under the prompt's
+    function signature before execution."""
     body = "return a + b\n"
-    assert _reindent_function_body(body) == body
+    assert _reindent_function_body(body) == "    return a + b\n"
 
 
 def test_build_program_recovers_from_dropped_first_line_indent() -> None:

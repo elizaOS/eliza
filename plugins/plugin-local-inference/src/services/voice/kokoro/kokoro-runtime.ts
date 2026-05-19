@@ -228,6 +228,9 @@ export interface KokoroOnnxRuntimeOptions {
 	layout: KokoroModelLayout;
 	expectedSha256?: string | null;
 	executionProvider?: string;
+	intraOpNumThreads?: number;
+	enableCpuMemArena?: boolean;
+	enableMemPattern?: boolean;
 	loadOrt?: () => Promise<OrtModule>;
 }
 
@@ -255,13 +258,28 @@ export class KokoroOnnxRuntime implements KokoroRuntime {
 		}
 		const loadOrt = this.opts.loadOrt ?? defaultOrtLoader;
 		this.ort = await loadOrt();
+		const envThreads = Number.parseInt(
+			process.env.ELIZA_KOKORO_ONNX_THREADS ?? "",
+			10,
+		);
+		const intraOpNumThreads =
+			this.opts.intraOpNumThreads ??
+			(Number.isFinite(envThreads) && envThreads > 0
+				? envThreads
+				: Math.max(1, os.cpus().length));
+		const enableCpuMemArena =
+			this.opts.enableCpuMemArena ??
+			process.env.ELIZA_KOKORO_ONNX_CPU_ARENA !== "0";
+		const enableMemPattern =
+			this.opts.enableMemPattern ??
+			process.env.ELIZA_KOKORO_ONNX_MEM_PATTERN !== "0";
 		this.session = await this.ort.InferenceSession.create(modelPath, {
 			executionProviders: [this.opts.executionProvider ?? "cpu"],
 			graphOptimizationLevel: "all",
-			intraOpNumThreads: Math.max(1, os.cpus().length),
+			intraOpNumThreads,
 			interOpNumThreads: 1,
-			enableCpuMemArena: true,
-			enableMemPattern: true,
+			enableCpuMemArena,
+			enableMemPattern,
 		});
 		return { ort: this.ort, session: this.session };
 	}

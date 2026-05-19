@@ -343,6 +343,7 @@ def test_bench_bridge_runners_record_real_numbers_when_bench_ok(tmp_path: Path, 
     assert agg["results"]["voice_rtf"] == 6.2
     assert agg["results"]["asr_wer"] == 1.0
     assert agg["results"]["e2e_loop_ok"] is True
+    assert agg["results"]["barge_in_cancel_ms"] == 5.0
     assert agg["results"]["thirty_turn_ok"] is False
 
 

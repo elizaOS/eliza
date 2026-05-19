@@ -636,6 +636,9 @@ def _run_e2e_loop_bench(
             args += ["--no-save-audio"]
         if os.environ.get("ELIZA_EVAL_E2E_DISABLE_DFLASH") == "1":
             args += ["--disable-dflash"]
+        draft_ngl = os.environ.get("ELIZA_EVAL_E2E_DRAFT_NGL")
+        if draft_ngl:
+            args += ["--draft-ngl", draft_ngl]
     if ctx.engine is not None:
         args += ["--bin-dir", str(ctx.engine.bin_dir)]
         if use_kokoro and ctx.engine.eliza_lib is not None:
@@ -1229,16 +1232,26 @@ def eval_dflash_accept(ctx: EvalContext) -> dict[str, Any]:
         }
     spec = ctx.engine.speculative
     n_predict = int(os.environ.get("ELIZA_EVAL_DFLASH_TOKENS", "48"))
+    target_ngl = os.environ.get(
+        "ELIZA_EVAL_DFLASH_TARGET_NGL",
+        "0" if ((ctx.engine.backend if ctx.engine else "cpu") or "cpu").startswith("cpu") else "99",
+    )
+    draft_ngl = os.environ.get("ELIZA_EVAL_DFLASH_DRAFT_NGL", "0")
+    spec_type = os.environ.get("ELIZA_EVAL_DFLASH_SPEC_TYPE", "dflash")
     args = [
         "-m", str(target),
         "-md", str(drafter),
         "-p", "Write a short paragraph explaining speculative decoding.",
         "-n", str(n_predict),
         "-c", "1024",
-        "-ngl", "0", "-ngld", "0",
+        "-ngl", target_ngl, "-ngld", draft_ngl,
+        "--spec-type", spec_type,
         "--spec-draft-n-min", "2", "--spec-draft-n-max", "6",
-        "--device", "none", "--device-draft", "none",
     ]
+    if target_ngl == "0":
+        args += ["--device", "none"]
+    if draft_ngl == "0":
+        args += ["--device-draft", "none"]
     started = time.monotonic()
     try:
         rc, out = _run_llama(ctx, spec, args, timeout_s=min(ctx.timeout_s, 600))
@@ -1292,6 +1305,9 @@ def eval_dflash_accept(ctx: EvalContext) -> dict[str, Any]:
             "target": str(target),
             "drafter": str(drafter),
             "binary": str(spec),
+            "specType": spec_type,
+            "targetGpuLayers": target_ngl,
+            "draftGpuLayers": draft_ngl,
             "reason": (
                 "speculative run completed but produced zero draft tokens; "
                 "this is a real DFlash readiness failure, not missing data"
@@ -1309,6 +1325,9 @@ def eval_dflash_accept(ctx: EvalContext) -> dict[str, Any]:
         "target": str(target),
         "drafter": str(drafter),
         "binary": str(spec),
+        "specType": spec_type,
+        "targetGpuLayers": target_ngl,
+        "draftGpuLayers": draft_ngl,
     }
 
 
@@ -1490,9 +1509,13 @@ def run_suite(ctx: EvalContext) -> dict[str, Any]:
         "voice_rtf": _metric_value(voice),
         "asr_wer": _metric_value(asr),
         "vad_latency_ms": _metric_value(vad),
+        "vad_boundary_mae_ms": vad.get("boundaryMaeMs"),
+        "vad_endpoint_p95_ms": vad.get("endpointP95Ms"),
+        "vad_false_bargein_per_hour": vad.get("falseBargeInPerHour"),
         "e2e_loop_ok": (
             bool(e2e.get("e2eLoopOk")) if e2e.get("status") == "ok" else None
         ),
+        "barge_in_cancel_ms": e2e.get("bargeInCancelMs"),
         "thirty_turn_ok": (
             bool(endurance.get("thirtyTurnOk"))
             if endurance.get("status") == "ok"

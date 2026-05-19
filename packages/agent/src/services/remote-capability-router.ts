@@ -893,7 +893,10 @@ function normalizeRemoteModuleManifest(
     ...withEndpoint,
     views: views.map((view) => {
       if (!isRecord(view) || !isJsonValue(view)) return view;
-      if (typeof view.bundleUrl === "string" && view.bundleUrl) return view;
+      if (typeof view.bundleUrl === "string" && view.bundleUrl) {
+        validateRemoteBundleUrl(view.bundleUrl);
+        return view;
+      }
       if (typeof view.bundlePath !== "string" || !view.bundlePath) return view;
       return {
         ...view,
@@ -903,14 +906,31 @@ function normalizeRemoteModuleManifest(
   };
 }
 
+function validateRemoteBundleUrl(bundleUrl: string): void {
+  try {
+    const parsed = new URL(bundleUrl);
+    if (parsed.protocol !== "http:" && parsed.protocol !== "https:") {
+      throw new Error("invalid protocol");
+    }
+    if (parsed.username || parsed.password) {
+      throw new Error("credentials are not allowed");
+    }
+  } catch {
+    throw new CapabilityError({
+      code: "CAPABILITY_DECODE_FAILED",
+      message: `Remote plugin bundleUrl "${bundleUrl}" must be an absolute http(s) URL without embedded credentials.`,
+      capability: "plugin",
+      method: "plugin.modules.list",
+    });
+  }
+}
+
 function remoteAssetUrl(
   endpoint: RemoteCapabilityEndpointConfig,
   moduleId: string,
   assetPath: string,
 ): string {
-  const normalizedAssetPath = assetPath.startsWith("/")
-    ? assetPath.slice(1)
-    : assetPath;
+  const normalizedAssetPath = normalizeRemoteAssetPath(assetPath);
   if (!endpoint.token) {
     return new URL(
       `/v1/capabilities/assets/${encodeURIComponent(moduleId)}/${normalizedAssetPath}`,
@@ -918,6 +938,38 @@ function remoteAssetUrl(
     ).toString();
   }
   return `/api/capability-router/assets/${encodeURIComponent(endpoint.id)}/${encodeURIComponent(moduleId)}/${normalizedAssetPath}`;
+}
+
+function normalizeRemoteAssetPath(assetPath: string): string {
+  const path = assetPath.trim();
+  if (
+    !path ||
+    path.includes("?") ||
+    path.includes("#") ||
+    path.includes("\\") ||
+    path.startsWith("//") ||
+    /^[a-zA-Z][a-zA-Z\d+.-]*:/.test(path)
+  ) {
+    throw new CapabilityError({
+      code: "CAPABILITY_DECODE_FAILED",
+      message: `Remote plugin asset path "${assetPath}" must be a relative path without query, hash, or URL scheme.`,
+      capability: "plugin",
+      method: "plugin.modules.list",
+    });
+  }
+  const segments = path.replace(/^\/+/, "").split("/");
+  if (
+    segments.length === 0 ||
+    segments.some((segment) => !segment || segment === "." || segment === "..")
+  ) {
+    throw new CapabilityError({
+      code: "CAPABILITY_DECODE_FAILED",
+      message: `Remote plugin asset path "${assetPath}" must not contain empty, current-directory, or parent-directory segments.`,
+      capability: "plugin",
+      method: "plugin.modules.list",
+    });
+  }
+  return segments.map((segment) => encodeURIComponent(segment)).join("/");
 }
 
 function parseJson(text: string, method: string): JsonValue {

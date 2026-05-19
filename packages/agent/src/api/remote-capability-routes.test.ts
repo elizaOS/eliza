@@ -174,6 +174,35 @@ describe("handleRemoteCapabilityRoutes", () => {
     expect(error).not.toHaveBeenCalled();
   });
 
+  it("rejects remote asset proxy paths with traversal segments", async () => {
+    const getAsset = vi.fn();
+    const router = {
+      plugin: { getAsset },
+    } as unknown as ElizaCapabilityRouter;
+    const runtime = {
+      getService: () => router,
+    } as Partial<IAgentRuntime> as IAgentRuntime;
+    const { ctx, json, error } = makeCtx(
+      {},
+      {
+        method: "GET",
+        pathname:
+          "/api/capability-router/assets/device/remote-demo/assets/%2E%2E/secret.js",
+        runtime,
+      },
+    );
+
+    await expect(handleRemoteCapabilityRoutes(ctx)).resolves.toBe(true);
+
+    expect(error).toHaveBeenCalledWith(
+      ctx.res,
+      "Capability asset URL path is not valid.",
+      400,
+    );
+    expect(getAsset).not.toHaveBeenCalled();
+    expect(json).not.toHaveBeenCalled();
+  });
+
   it("installs a direct endpoint, syncs plugins, and redacts tokens", async () => {
     const installEndpoint = vi.fn();
     const syncPlugins = vi.fn().mockResolvedValue(syncResult);

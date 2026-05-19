@@ -294,11 +294,18 @@ function parseAssetProxyPath(pathname: string): {
   }
   const endpointId = decodeURIComponent(encodedEndpointId);
   const moduleId = decodeURIComponent(encodedModuleId);
-  const assetPath = `/${assetParts.join("/")}`;
+  const assetSegments = assetParts.map((part) => decodeURIComponent(part));
+  const hasUnsafeSegment = assetSegments.some(
+    (part) => !part || part === "." || part === ".." || part.includes("\\"),
+  );
+  const assetPath = `/${assetSegments.join("/")}`;
   if (!endpointId.trim() || !moduleId.trim() || assetPath === "/") {
     throw new Error(
       "Capability asset URL must include endpoint id, module id, and path.",
     );
+  }
+  if (hasUnsafeSegment) {
+    throw new Error("Capability asset URL path is not valid.");
   }
   return { endpointId, moduleId, assetPath };
 }

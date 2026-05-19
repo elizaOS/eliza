@@ -746,6 +746,82 @@ describe("remote capability router", () => {
     ]);
   });
 
+  it("rejects unsafe remote view bundle paths before exposing browser import URLs", async () => {
+    globalThis.fetch = vi.fn(async () =>
+      jsonResponse({
+        ok: true,
+        result: {
+          modules: [
+            {
+              id: "device-plugin",
+              name: "@remote/device",
+              views: [
+                {
+                  id: "device-view",
+                  label: "Device View",
+                  bundlePath: "../secrets.js",
+                },
+              ],
+            },
+          ],
+        },
+      }),
+    ) as unknown as typeof fetch;
+
+    const service = new RemoteCapabilityRouterService(makeRuntime(), {
+      enabled: true,
+      endpoints: [{ id: "device", baseUrl: "https://device.example" }],
+      environment: "server",
+      requestTimeoutMs: 1000,
+    });
+
+    await expect(service.plugin.listModules()).rejects.toMatchObject({
+      code: "CAPABILITY_DECODE_FAILED",
+      capability: "plugin",
+      method: "plugin.modules.list",
+      message:
+        'Remote plugin asset path "../secrets.js" must not contain empty, current-directory, or parent-directory segments.',
+    });
+  });
+
+  it("rejects unsafe remote view bundle URLs before exposing browser import URLs", async () => {
+    globalThis.fetch = vi.fn(async () =>
+      jsonResponse({
+        ok: true,
+        result: {
+          modules: [
+            {
+              id: "device-plugin",
+              name: "@remote/device",
+              views: [
+                {
+                  id: "device-view",
+                  label: "Device View",
+                  bundleUrl: "javascript:alert(1)",
+                },
+              ],
+            },
+          ],
+        },
+      }),
+    ) as unknown as typeof fetch;
+
+    const service = new RemoteCapabilityRouterService(makeRuntime(), {
+      enabled: true,
+      endpoints: [{ id: "device", baseUrl: "https://device.example" }],
+      environment: "server",
+      requestTimeoutMs: 1000,
+    });
+
+    await expect(service.plugin.listModules()).rejects.toMatchObject({
+      code: "CAPABILITY_DECODE_FAILED",
+      capability: "plugin",
+      method: "plugin.modules.list",
+      message:
+        'Remote plugin bundleUrl "javascript:alert(1)" must be an absolute http(s) URL without embedded credentials.',
+    });
+  });
+
   it("routes low-level capabilities to explicit endpoint ids", async () => {
     const calls: Array<{ url: string; body: unknown }> = [];
     globalThis.fetch = vi.fn(

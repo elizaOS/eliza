@@ -269,6 +269,9 @@ Manifest decoding is strict at the capability-router boundary:
   because local route dispatch skips static routes and there is no remote static
   mount contract yet; compiled frontend bundles and other remote files should
   use `views` plus `plugin.asset.get`.
+- Route `path` and app nav tab `path` must be local absolute app paths. They
+  must not include a URL scheme, query, hash, backslash, empty segment, `.`
+  segment, or `..` segment.
 - View `viewType`, when present, must be `gui` or `tui`.
 - `actions`, `providers`, `evaluators`, `events`, `models`, `widgets`,
   `routes`, and `views`, when present, must be arrays.
@@ -284,8 +287,10 @@ Manifest decoding is strict at the capability-router boundary:
 - Event `eventName` must be a non-empty string.
 - Widget `slot` must be one of the core `PluginWidgetDeclaration` slots.
 - App `viewer.url` and nav tab `id`, `label`, and `path` must be non-empty
-  strings when present. App session `mode` and `features` are validated against
-  the core plugin app unions.
+  strings when present. Remote app `viewer.url` and string `launchUrl` values
+  must be absolute `http` or `https` URLs without embedded credentials. App
+  session `mode` and `features` are validated against the core plugin app
+  unions.
 - App bridge `hooks` must be a non-empty list of JSON-safe bridge hooks:
   `prepareLaunch`, `resolveViewerAuthMessage`, `ensureRuntimeReady`,
   `collectLaunchDiagnostics`, `resolveLaunchSession`, `refreshRunSession`, and
@@ -309,7 +314,9 @@ Manifest decoding is strict at the capability-router boundary:
   are global runtime lookup keys, so remote manifests are rejected when two
   remote modules declare the same service type or when a remote service would
   collide with an existing local runtime service outside a reload of an
-  adapter-owned remote plugin.
+  adapter-owned remote plugin. Service `methods`, when present, must be valid,
+  unique JavaScript method identifiers and cannot use reserved local service
+  method names such as `callRemote`, `constructor`, or prototype built-ins.
 - Evaluator `schema` is required and must be a JSON object. Evaluator `prompt`
   is manifest data because the current core evaluator interface expects
   synchronous prompt generation; async remote work belongs in `shouldRun`,
@@ -332,6 +339,14 @@ Manifest decoding is strict at the capability-router boundary:
   plugin config conversion path used by local plugin initialization.
 - `metadata`, when present, must be a JSON object.
 - `bundlePath` and `bundleUrl`, when present, must be non-empty strings.
+  `bundlePath` must be an asset path, optionally prefixed with `/`, without a
+  URL scheme, query, hash, backslash, empty segment, `.` segment, or `..`
+  segment.
+  `bundleUrl` must be either an absolute `http` or `https` URL without
+  embedded credentials or a same-origin absolute app/proxy path. Remote
+  endpoints that provide `bundleUrl` directly are additionally constrained by
+  the agent router to absolute `http` or `https` URLs without embedded
+  credentials before any browser-facing manifest is exposed.
 
 Relative remote `bundlePath` values are normalized by the agent-side router.
 For unauthenticated development endpoints, the resulting `bundleUrl` can point
@@ -584,6 +599,12 @@ Current focused tests cover:
 - remote static config on the normal `plugin.config` field,
 - remote database schema declarations on the normal `plugin.schema` field,
 - remote app metadata and nav tabs on the normal `plugin.app` field,
+- remote route path and app nav path validation before runtime route/nav
+  metadata is exposed,
+- remote app viewer and launch URL validation before browser-facing app
+  metadata is exposed,
+- remote service method validation before unique methods are synthesized on a
+  local service prototype,
 - remote JSON-safe app bridge hooks through a runtime route-module registry,
 - skip/reload/unload sync behavior,
 - multiple remote endpoints,
@@ -625,6 +646,9 @@ Current focused tests cover:
 - remote `STATIC` route rejection until a dedicated remote static mount
   contract exists,
 - remote frontend bundle URL normalization,
+- remote frontend asset path validation before browser import URL creation and
+  before same-origin asset proxy dispatch,
+- remote frontend bundle URL validation before browser import URL exposure,
 - browser-facing view registry and `/api/views` metadata for remote absolute
   bundle URLs,
 - app-shell `DynamicViewLoader` behavior for absolute remote bundle URLs,

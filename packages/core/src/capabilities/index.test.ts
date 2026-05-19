@@ -667,6 +667,81 @@ describe("capability router", () => {
 		});
 	});
 
+	it("rejects remote plugin service methods that would overwrite local service internals", async () => {
+		const router = new RuntimeBrokerCapabilityRouter({
+			invokeRuntime: async () => ({
+				modules: [
+					{
+						id: "remote-weather",
+						name: "@remote/weather",
+						services: [
+							{
+								serviceType: "weather_service",
+								methods: ["lookup", "callRemote"],
+							},
+						],
+					},
+				],
+			}),
+		});
+
+		await expect(router.plugin.listModules()).rejects.toMatchObject({
+			code: "CAPABILITY_DECODE_FAILED",
+			method: "plugin.modules.list.modules.services",
+			message: "methods must not include reserved local service method names.",
+		});
+	});
+
+	it("rejects remote plugin service methods that are not JavaScript identifiers", async () => {
+		const router = new RuntimeBrokerCapabilityRouter({
+			invokeRuntime: async () => ({
+				modules: [
+					{
+						id: "remote-weather",
+						name: "@remote/weather",
+						services: [
+							{
+								serviceType: "weather_service",
+								methods: ["lookup-user"],
+							},
+						],
+					},
+				],
+			}),
+		});
+
+		await expect(router.plugin.listModules()).rejects.toMatchObject({
+			code: "CAPABILITY_DECODE_FAILED",
+			method: "plugin.modules.list.modules.services",
+			message: "methods must contain valid JavaScript method identifiers.",
+		});
+	});
+
+	it("rejects remote plugin service methods with duplicate names", async () => {
+		const router = new RuntimeBrokerCapabilityRouter({
+			invokeRuntime: async () => ({
+				modules: [
+					{
+						id: "remote-weather",
+						name: "@remote/weather",
+						services: [
+							{
+								serviceType: "weather_service",
+								methods: ["lookup", "lookup"],
+							},
+						],
+					},
+				],
+			}),
+		});
+
+		await expect(router.plugin.listModules()).rejects.toMatchObject({
+			code: "CAPABILITY_DECODE_FAILED",
+			method: "plugin.modules.list.modules.services",
+			message: "methods must not contain duplicate method names.",
+		});
+	});
+
 	it("rejects remote plugin manifests with invalid widget entries", async () => {
 		const router = new RuntimeBrokerCapabilityRouter({
 			invokeRuntime: async () => ({
@@ -708,6 +783,81 @@ describe("capability router", () => {
 			code: "CAPABILITY_DECODE_FAILED",
 			method: "plugin.modules.list.modules.app.viewer",
 			message: "url must be a non-empty string.",
+		});
+	});
+
+	it("rejects remote plugin app viewer URLs that are unsafe for browser embedding", async () => {
+		const router = new RuntimeBrokerCapabilityRouter({
+			invokeRuntime: async () => ({
+				modules: [
+					{
+						id: "remote-weather",
+						name: "@remote/weather",
+						app: {
+							viewer: { url: "javascript:alert(1)" },
+						},
+					},
+				],
+			}),
+		});
+
+		await expect(router.plugin.listModules()).rejects.toMatchObject({
+			code: "CAPABILITY_DECODE_FAILED",
+			method: "plugin.modules.list.modules.app.viewer",
+			message:
+				"url must be an absolute http(s) URL without embedded credentials.",
+		});
+	});
+
+	it("rejects remote plugin app launch URLs that are unsafe for browser launch", async () => {
+		const router = new RuntimeBrokerCapabilityRouter({
+			invokeRuntime: async () => ({
+				modules: [
+					{
+						id: "remote-weather",
+						name: "@remote/weather",
+						app: {
+							launchUrl: "https://user:pass@weather.example",
+						},
+					},
+				],
+			}),
+		});
+
+		await expect(router.plugin.listModules()).rejects.toMatchObject({
+			code: "CAPABILITY_DECODE_FAILED",
+			method: "plugin.modules.list.modules.app",
+			message:
+				"launchUrl must be an absolute http(s) URL without embedded credentials.",
+		});
+	});
+
+	it("rejects remote plugin app nav paths that are unsafe for app navigation", async () => {
+		const router = new RuntimeBrokerCapabilityRouter({
+			invokeRuntime: async () => ({
+				modules: [
+					{
+						id: "remote-weather",
+						name: "@remote/weather",
+						app: {
+							navTabs: [
+								{
+									id: "weather",
+									label: "Weather",
+									path: "https://weather.example/app",
+								},
+							],
+						},
+					},
+				],
+			}),
+		});
+
+		await expect(router.plugin.listModules()).rejects.toMatchObject({
+			code: "CAPABILITY_DECODE_FAILED",
+			method: "plugin.modules.list.modules.app.navTabs",
+			message:
+				"path must be an absolute app path without URL scheme, query, hash, or backslash.",
 		});
 	});
 
@@ -753,6 +903,27 @@ describe("capability router", () => {
 		});
 	});
 
+	it("rejects remote plugin routes with unsafe route paths", async () => {
+		const router = new RuntimeBrokerCapabilityRouter({
+			invokeRuntime: async () => ({
+				modules: [
+					{
+						id: "remote-weather",
+						name: "@remote/weather",
+						routes: [{ method: "GET", path: "/weather/../secret" }],
+					},
+				],
+			}),
+		});
+
+		await expect(router.plugin.listModules()).rejects.toMatchObject({
+			code: "CAPABILITY_DECODE_FAILED",
+			method: "plugin.modules.list.modules.routes",
+			message:
+				"path must not contain empty, current-directory, or parent-directory segments.",
+		});
+	});
+
 	it("rejects remote plugin manifests with invalid view entries", async () => {
 		const router = new RuntimeBrokerCapabilityRouter({
 			invokeRuntime: async () => ({
@@ -776,6 +947,60 @@ describe("capability router", () => {
 			code: "CAPABILITY_DECODE_FAILED",
 			method: "plugin.modules.list.modules.views",
 			message: "viewType must be gui or tui when present.",
+		});
+	});
+
+	it("rejects remote plugin views with unsafe bundle paths", async () => {
+		const router = new RuntimeBrokerCapabilityRouter({
+			invokeRuntime: async () => ({
+				modules: [
+					{
+						id: "remote-weather",
+						name: "@remote/weather",
+						views: [
+							{
+								id: "weather-panel",
+								label: "Weather",
+								bundlePath: "../secrets.js",
+							},
+						],
+					},
+				],
+			}),
+		});
+
+		await expect(router.plugin.listModules()).rejects.toMatchObject({
+			code: "CAPABILITY_DECODE_FAILED",
+			method: "plugin.modules.list.modules.views",
+			message:
+				"bundlePath must not contain empty, current-directory, or parent-directory segments.",
+		});
+	});
+
+	it("rejects remote plugin views with unsafe bundle URLs", async () => {
+		const router = new RuntimeBrokerCapabilityRouter({
+			invokeRuntime: async () => ({
+				modules: [
+					{
+						id: "remote-weather",
+						name: "@remote/weather",
+						views: [
+							{
+								id: "weather-panel",
+								label: "Weather",
+								bundleUrl: "javascript:alert(1)",
+							},
+						],
+					},
+				],
+			}),
+		});
+
+		await expect(router.plugin.listModules()).rejects.toMatchObject({
+			code: "CAPABILITY_DECODE_FAILED",
+			method: "plugin.modules.list.modules.views",
+			message:
+				"bundleUrl must be an absolute http(s) URL without embedded credentials.",
 		});
 	});
 });

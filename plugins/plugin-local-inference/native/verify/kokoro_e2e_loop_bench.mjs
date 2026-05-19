@@ -74,6 +74,7 @@ function parseArgs(argv) {
     saveAudio: process.env.ELIZA_KOKORO_E2E_SAVE_AUDIO !== "0",
     skipEmbedding: process.env.ELIZA_KOKORO_E2E_SKIP_EMBEDDING === "1",
     disableDflash: process.env.ELIZA_KOKORO_E2E_DISABLE_DFLASH === "1",
+    draftNgl: process.env.ELIZA_KOKORO_E2E_DRAFT_NGL || "",
     kokoroRuntime: process.env.ELIZA_KOKORO_E2E_RUNTIME || "onnx",
     preflightOnly: false,
     json: false,
@@ -105,6 +106,7 @@ function parseArgs(argv) {
     else if (a === "--audio-dir") args.audioDir = next();
     else if (a === "--skip-embedding") args.skipEmbedding = true;
     else if (a === "--disable-dflash") args.disableDflash = true;
+    else if (a === "--draft-ngl") args.draftNgl = next();
     else if (a === "--kokoro-runtime") args.kokoroRuntime = next();
     else if (a === "--no-save-audio") args.saveAudio = false;
     else if (a === "--preflight-only") args.preflightOnly = true;
@@ -130,6 +132,7 @@ Options:
   --ref "text|text"       References for WER. Without --wav, used as Kokoro mic seed text.
   --skip-embedding        Do not run the optional embedding probe.
   --disable-dflash        Do not attach the DFlash drafter; records optimization as inactive.
+  --draft-ngl N           Override draft model GPU layers (e.g. 0 to keep BF16 draft on CPU).
   --kokoro-runtime onnx|fork
                            Kokoro TTS runtime. Default: onnx.
   --audio-dir DIR         Directory for generated mic/response WAV evidence.
@@ -1003,6 +1006,9 @@ async function startTextServer(engine, files, args, log) {
       "--spec-draft-n-max",
       "6",
     );
+    if (args.draftNgl) {
+      serverArgs.push("--spec-draft-ngl", String(args.draftNgl));
+    }
   }
   log(`starting text server port=${port} text=${path.basename(files.text)} dflash=${drafterReady}`);
   const child = spawn(engine.server, serverArgs, {

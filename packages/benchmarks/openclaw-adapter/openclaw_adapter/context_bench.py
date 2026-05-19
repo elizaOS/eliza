@@ -23,7 +23,7 @@ def make_openclaw_llm_query(
     client: OpenClawClient | None = None,
 ):
     """Return an async LLM query function compatible with context-bench."""
-    _client = client or OpenClawClient()
+    _client = client or OpenClawClient(direct_openai_compatible=True)
     try:
         _client.wait_until_ready(timeout=120)
     except Exception as exc:  # pragma: no cover — surface but don't block import
