@@ -10,6 +10,10 @@ source_artifacts:
   - docs/pd/pmic-selection.md
   - docs/pd/rail-plan-2028.yaml
   - docs/pd/power-management-firmware.md
+  - board/kicad/e1-pmic-daughtercard/README.md
+  - board/kicad/e1-pmic-daughtercard/bom-planning.csv
+  - external/ibex/pin-manifest.json
+  - external/opensbi/pin-manifest.json
 selected_path: catalog_daughtercard_v0
 candidate_vendors:
   - Renesas_mobile_buck_family
@@ -18,12 +22,28 @@ candidate_vendors:
   - MPS_MP8869_family
   - MIPI_SPMI_v2_master_specification
 opensbi_release_pin:
-  status: not_pinned
-  candidate_release: openSBI_v1.5_or_newer_with_mpxy_rpmi_support
+  status: candidate_pinned_blocked_until_clone
+  candidate_tag: v1.5
+  pin_manifest: external/opensbi/pin-manifest.json
+  rationale: >
+    OpenSBI v1.5 (Oct 2024) is the first release with merged SBI MPxy +
+    RPMI proxy support. v1.6 is acceptable; older releases do not expose
+    the required mailbox transport.
+ibex_pmc_pin:
+  status: candidate_pinned_blocked_until_clone
+  candidate_tag: ibex-2024-12-stable
+  pin_manifest: external/ibex/pin-manifest.json
+  rationale: >
+    lowRISC Ibex (Apache-2.0) is the AON PMC core. Pin the 2024-12 stable
+    drop until silicon characterization indicates a newer release. The
+    config target is RV32IMC with no I$ / no branch predictor / no
+    writeback stage (declared in the pin manifest config_target field).
 required_artifacts:
   - id: catalog_bom
-    status: missing
-    artifact_glob: "board/kicad/e1-pmic-daughtercard/bom.csv"
+    status: planning_only_csv_present
+    artifact: board/kicad/e1-pmic-daughtercard/bom-planning.csv
+    checker: scripts/check_pmic_daughtercard_bom.py
+    note: 16 rails covered by 16 catalog rows; KiCad schematic still missing.
   - id: spmi_master_implementation
     status: skeleton_only
     artifact: fw/pmc/src/spmi.c
@@ -37,8 +57,9 @@ required_artifacts:
     status: missing
     artifact_glob: "pd/signoff/si-pi/package-models/pmic/**/*"
 release_blockers:
-  - Specific catalog part numbers not selected.
-  - Daughtercard schematic not in board/kicad/.
+  - KiCad schematic for daughtercard not authored (board/kicad/e1-pmic-daughtercard/ has README + BOM only).
+  - Specific catalog part numbers not selected; BOM is planning-only.
   - SPMI v2.0 master firmware skeleton only.
   - Qualification package import (IBIS/SPICE/thermal) not landed.
-  - OpenSBI release tag not pinned.
+  - OpenSBI release tag candidate pinned; clone + commit hash not yet recorded.
+  - Ibex release tag candidate pinned; clone + commit hash not yet recorded.

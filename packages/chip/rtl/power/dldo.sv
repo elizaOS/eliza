@@ -67,7 +67,11 @@ module dldo
             if (load_step_i) begin
                 // 5% droop at full step: subtract DLDO_DROP_PCT_X100/10000 * target.
                 // Approximated as target_code_i * 5 / 100, clamped.
+                // The high bits of droop_lsb are clipped intentionally; only
+                // the bottom DVFS_CODE_WIDTH bits feed the v_est subtraction.
+                /* verilator lint_off UNUSEDSIGNAL */
                 logic [DVFS_CODE_WIDTH+3:0] droop_lsb;
+                /* verilator lint_on UNUSEDSIGNAL */
                 droop_lsb = (target_code_i * DLDO_DROP_PCT_X100) / 16'd10000;
                 if (v_est_q > droop_lsb[DVFS_CODE_WIDTH-1:0]) begin
                     v_est_q <= v_est_q - droop_lsb[DVFS_CODE_WIDTH-1:0];

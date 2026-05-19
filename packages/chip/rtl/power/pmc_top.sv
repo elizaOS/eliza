@@ -66,6 +66,16 @@ module pmc_top
     logic [PMC_MBOX_DW-1:0] reg_ctrl_q;
     logic [PMC_MBOX_DW-1:0] reg_dvfs_q [DVFS_RAIL_COUNT];
 
+    // RPMI v1.0 mailbox TX/RX scratch. Until the AON Ibex firmware is bound,
+    // the wrapper exposes a simple TX_HEAD/TX_DATA/RX_HEAD/RX_DATA register
+    // bank. The Ibex firmware drains TX side and posts to RX side. For
+    // pre-firmware bring-up cocotb tests, TX_DATA loopbacks to RX_DATA on
+    // the next clk_aon so a host-side RPMI envelope writes can be observed.
+    logic [PMC_MBOX_DW-1:0] reg_tx_head_q;
+    logic [PMC_MBOX_DW-1:0] reg_tx_data_q;
+    logic [PMC_MBOX_DW-1:0] reg_rx_head_q;
+    logic [PMC_MBOX_DW-1:0] reg_rx_data_q;
+
     // Aggregate droop telemetry
     logic [31:0] droop_total_q;
     always_ff @(posedge clk_sample or negedge rst_n) begin
@@ -102,15 +112,31 @@ module pmc_top
     logic [PMC_MBOX_DW-1:0] rdata_q;
     always_ff @(posedge clk_aon or negedge rst_n) begin
         if (!rst_n) begin
-            rdata_q     <= '0;
-            reg_ctrl_q  <= '0;
+            rdata_q       <= '0;
+            reg_ctrl_q    <= '0;
+            reg_tx_head_q <= '0;
+            reg_tx_data_q <= '0;
+            reg_rx_head_q <= '0;
+            reg_rx_data_q <= '0;
             for (int i = 0; i < DVFS_RAIL_COUNT; i++) begin
                 reg_dvfs_q[i] <= '0;
             end
         end else if (mbox_valid_i) begin
             if (mbox_write_i) begin
                 case (mbox_addr_i)
-                    PMC_REG_CTRL: reg_ctrl_q <= mbox_wdata_i;
+                    PMC_REG_CTRL:         reg_ctrl_q    <= mbox_wdata_i;
+                    PMC_REG_MBOX_TX_HEAD: reg_tx_head_q <= mbox_wdata_i;
+                    PMC_REG_MBOX_TX_DATA: begin
+                        // Host posts a 32b word into TX; Ibex (or the
+                        // loopback path below) consumes it and produces an
+                        // RX_DATA word. Until the Ibex is bound, TX_DATA
+                        // loops back into RX_DATA on the same cycle so a
+                        // cocotb harness can verify the mailbox surface.
+                        reg_tx_data_q <= mbox_wdata_i;
+                        reg_rx_data_q <= mbox_wdata_i;
+                        reg_rx_head_q <= reg_tx_head_q;
+                    end
+                    PMC_REG_MBOX_RX_HEAD: reg_rx_head_q <= mbox_wdata_i;
                     default: begin
                         for (int i = 0; i < DVFS_RAIL_COUNT; i++) begin
                             if (mbox_addr_i == (PMC_REG_DVFS_BASE +
@@ -122,10 +148,14 @@ module pmc_top
                 endcase
             end else begin
                 case (mbox_addr_i)
-                    PMC_REG_STATUS:      rdata_q <= reg_status_q;
-                    PMC_REG_CTRL:        rdata_q <= reg_ctrl_q;
-                    PMC_REG_DROOP_COUNT: rdata_q <= droop_total_q;
-                    PMC_REG_AVFS_STATUS: rdata_q <= {28'h0, avfs_fault_i};
+                    PMC_REG_STATUS:       rdata_q <= reg_status_q;
+                    PMC_REG_CTRL:         rdata_q <= reg_ctrl_q;
+                    PMC_REG_DROOP_COUNT:  rdata_q <= droop_total_q;
+                    PMC_REG_AVFS_STATUS:  rdata_q <= {28'h0, avfs_fault_i};
+                    PMC_REG_MBOX_TX_HEAD: rdata_q <= reg_tx_head_q;
+                    PMC_REG_MBOX_TX_DATA: rdata_q <= reg_tx_data_q;
+                    PMC_REG_MBOX_RX_HEAD: rdata_q <= reg_rx_head_q;
+                    PMC_REG_MBOX_RX_DATA: rdata_q <= reg_rx_data_q;
                     default: begin
                         rdata_q <= '0;
                         for (int i = 0; i < DVFS_RAIL_COUNT; i++) begin
@@ -166,24 +196,119 @@ module pmc_top
     assign thermal_irq_o = any_avfs_fault;
 
     // -------------------------------------------------------------------------
-    // Ibex management core — black-box reference; resolved at integration.
+    // Ibex management core (lowRISC ibex_top, Apache-2.0). Pinned via
+    // external/ibex/pin-manifest.json. Resolved only when the integrator has
+    // pulled the source and defined PMC_INSTANTIATE_IBEX. Until then the
+    // mailbox + telemetry surface above is the testable contract.
+    //
+    // The minimum config (RV32IMC, no I$, no branch predictor, no writeback
+    // stage) is declared in external/ibex/pin-manifest.json::config_target.
+    // Wrapper pin-out follows lowRISC ibex_top from
+    // external/ibex/ibex/rtl/ibex_top.sv at the pinned commit.
     // -------------------------------------------------------------------------
 `ifdef PMC_INSTANTIATE_IBEX
-    ibex_top u_ibex_pmc (
-        .clk_i        (clk_aon),
-        .rst_ni       (rst_n)
-        // remaining pins bound at integration
+    // PMC firmware fetch + load paths route through a small SRAM bank (8 KiB
+    // boot ROM + 32 KiB SRAM). The actual SRAM blocks live in rtl/top/, so the
+    // unbound nets here are tied at the top-level integration in rtl/top/.
+    logic        ibex_instr_req;
+    logic        ibex_instr_gnt;
+    logic        ibex_instr_rvalid;
+    logic [31:0] ibex_instr_addr;
+    logic [31:0] ibex_instr_rdata;
+    logic        ibex_instr_err;
+    logic        ibex_data_req;
+    logic        ibex_data_gnt;
+    logic        ibex_data_rvalid;
+    logic        ibex_data_we;
+    logic [3:0]  ibex_data_be;
+    logic [31:0] ibex_data_addr;
+    logic [31:0] ibex_data_wdata;
+    logic [31:0] ibex_data_rdata;
+    logic        ibex_data_err;
+    logic        ibex_core_sleep;
+
+    ibex_top #(
+        .RV32M               (2'b01),  // ibex_pkg::RV32MSlow
+        .RV32E               (1'b0),
+        .BranchTargetALU     (1'b0),
+        .WritebackStage      (1'b0),
+        .ICache              (1'b0),
+        .ICacheECC           (1'b0),
+        .BranchPredictor     (1'b0),
+        .DbgTriggerEn        (1'b1),
+        .DbgHwBreakNum       (4),
+        .SecureIbex          (1'b0)
+    ) u_ibex_pmc (
+        .clk_i               (clk_aon),
+        .rst_ni              (rst_n),
+        .test_en_i           (1'b0),
+        .ram_cfg_i           ('0),
+        .hart_id_i           (32'h0),
+        .boot_addr_i         (32'h0000_0000),
+
+        .instr_req_o         (ibex_instr_req),
+        .instr_gnt_i         (ibex_instr_gnt),
+        .instr_rvalid_i      (ibex_instr_rvalid),
+        .instr_addr_o        (ibex_instr_addr),
+        .instr_rdata_i       (ibex_instr_rdata),
+        .instr_rdata_intg_i  (7'h0),
+        .instr_err_i         (ibex_instr_err),
+
+        .data_req_o          (ibex_data_req),
+        .data_gnt_i          (ibex_data_gnt),
+        .data_rvalid_i       (ibex_data_rvalid),
+        .data_we_o           (ibex_data_we),
+        .data_be_o           (ibex_data_be),
+        .data_addr_o         (ibex_data_addr),
+        .data_wdata_o        (ibex_data_wdata),
+        .data_wdata_intg_o   (),
+        .data_rdata_i        (ibex_data_rdata),
+        .data_rdata_intg_i   (7'h0),
+        .data_err_i          (ibex_data_err),
+
+        .irq_software_i      (1'b0),
+        .irq_timer_i         (1'b0),
+        .irq_external_i      (any_avfs_fault),
+        .irq_fast_i          (15'h0),
+        .irq_nm_i            (1'b0),
+
+        .debug_req_i         (1'b0),
+        .crash_dump_o        (),
+        .double_fault_seen_o (),
+
+        .fetch_enable_i      (4'b1001),  // ibex_pkg::IbexMuBiOn
+        .alert_minor_o       (),
+        .alert_major_internal_o (),
+        .alert_major_bus_o   (),
+        .core_sleep_o        (ibex_core_sleep),
+        .scan_rst_ni         (rst_n)
     );
+
+    /* verilator lint_off UNUSED */
+    wire _unused_ibex = ibex_instr_req | ibex_data_req | ibex_data_we |
+                        (|ibex_data_be) | (|ibex_data_addr) | (|ibex_data_wdata) |
+                        (|ibex_instr_addr) | ibex_core_sleep;
+    /* verilator lint_on UNUSED */
+    assign ibex_instr_gnt    = 1'b0;
+    assign ibex_instr_rvalid = 1'b0;
+    assign ibex_instr_rdata  = 32'h0;
+    assign ibex_instr_err    = 1'b0;
+    assign ibex_data_gnt     = 1'b0;
+    assign ibex_data_rvalid  = 1'b0;
+    assign ibex_data_rdata   = 32'h0;
+    assign ibex_data_err     = 1'b0;
 `endif
 
     // Suppress unused on clk_sample / avfs_target_code_i / counters — exposed
     // via additional mailbox offsets in fw/pmc telemetry aggregator.
     /* verilator lint_off UNUSED */
+    /* verilator lint_off UNUSEDSIGNAL */
     wire _unused_sample = clk_sample;
-    wire _unused_avfs_t = |avfs_target_code_i[0];
-    wire _unused_avfs_r = |avfs_raise_count_i[0];
-    wire _unused_avfs_l = |avfs_lower_count_i[0];
+    wire _unused_avfs_t = |avfs_target_code_i;
+    wire _unused_avfs_r = |avfs_raise_count_i;
+    wire _unused_avfs_l = |avfs_lower_count_i;
     wire _unused_droop  = |droop_alarm_i;
+    /* verilator lint_on UNUSEDSIGNAL */
     /* verilator lint_on UNUSED */
 
 endmodule : pmc_top

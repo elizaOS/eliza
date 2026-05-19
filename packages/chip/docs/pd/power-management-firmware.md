@@ -98,6 +98,117 @@ On Linux S0i2 / S3 / S4 entry:
 
 Wake events: AON wake controller IRQ -> PMC -> reverse sequence.
 
+## PMIC sequencer state machine
+
+The Ibex PMC runs a single sequencer (`fw/pmc/src/pmic_sequencer.c`) that
+serialises rail enable/disable across S-state transitions. The transitions
+are atomic at the PMC scheduler level — Linux S-state RPC blocks on the
+sequencer return.
+
+### S0 -> S3 entry (suspend)
+
+```
+                +----------------+
+                |  S0_ACTIVE     |
+                +-------+--------+
+                        | RPMI:SYSTEM:SUSPEND
+                        v
+   +--------+    +--------------+    +--------+    +--------+
+   | QUIESCE|--->| GATE_GPU     |--->| GATE_  |--->| GATE_  |
+   | CPU AP |    | NPU FABRIC   |    | SRAM   |    | CPU_*  |
+   +--------+    +--------------+    +--------+    +--------+
+   block I/O                                          |
+   completion                                         v
+                                            +-------------------+
+                                            | LPDDR SELF-REFRESH|
+                                            +---------+---------+
+                                                      | SPMI LPDDR cmd
+                                                      v
+                                            +-------------------+
+                                            | DISABLE BUCKS:    |
+                                            | CPU_BIG, LITTLE,  |
+                                            | NPU, GPU, FABRIC, |
+                                            | SRAM              |
+                                            +---------+---------+
+                                                      | SPMI per-rail off
+                                                      v
+                                            +-------------------+
+                                            |  S3_DEEP_IDLE     |
+                                            +-------------------+
+                                            AON + PMC + LPDDR
+                                            array supplies only
+```
+
+### S3 -> S0 wake (resume)
+
+```
+       wake IRQ (AON wake controller)
+                 |
+                 v
+        +-----------------+
+        | PMIC POR        |  bring up SOC_FABRIC and SRAM bucks first;
+        | (reverse order) |  RPMI POR table -> SPMI commands
+        +--------+--------+
+                 |
+                 v
+        +-----------------+
+        | LPDDR EXIT      |  command exit from self-refresh
+        | SELF-REFRESH    |
+        +--------+--------+
+                 |
+                 v
+        +-----------------+
+        | RAISE CPU_BIG / |  per-rail SPMI enables; PLLs relock; AVFS arms
+        | LITTLE BUCKS    |
+        +--------+--------+
+                 |
+                 v
+        +-----------------+
+        | RAISE NPU + GPU |  background; SoC can resume Linux before NPU
+        | BUCKS           |  is fully online
+        +--------+--------+
+                 |
+                 v
+        +-----------------+
+        | DEASSERT CPU    |  cpu hart 0 resumes from OpenSBI fw_dynamic
+        | RESET           |
+        +--------+--------+
+                 |
+                 v
+        +-----------------+
+        | S0_ACTIVE       |  RPMI:SYSTEM:RESUME returns to Linux
+        +-----------------+
+```
+
+### S0 -> S0i2 (lightweight idle)
+
+```
+   S0_ACTIVE --(idle hint)--> GATE_NPU --> GATE_GPU --> SRAM_RETENTION
+                                                                |
+                                                                v
+                                                            S0I2_LIGHT
+                                                       CPU_BIG retains
+                                                       SOC_FABRIC at low
+                                                       LPDDR active
+```
+
+Reverse on wake: SRAM exit retention -> raise GPU -> raise NPU. No PMIC
+power-off transitions; only DVFS code lowering on the SRAM rail.
+
+### S0 -> S4 hibernate
+
+Linux persists state to nvm; PMC then runs the full S3 sequence AND
+additionally disables LPDDR array supply after the controller flushes.
+PMC remains alive but in deep sleep, polled by RTC. Wake path is BOOT_ROM
+reset because DRAM contents are lost.
+
+### Error path
+
+If any SPMI transaction returns NACK during a sequence, the PMC aborts the
+transition, marks `PMC_STATUS_FAULT` via `rtl/power/pmc_top.sv`, and
+returns RPMI_FAIL_HW_FAULT to S-mode. Linux must replay the suspend; the
+PMC restores the rails it had already commanded before the failure.
+
 ## Release blockers
 
 - OpenSBI release tag not pinned. See `docs/evidence/power/pmic-procurement.yaml`.

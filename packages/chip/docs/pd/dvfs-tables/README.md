@@ -5,15 +5,23 @@ Status: `placeholder_format_release_blocked`
 ## Scope
 
 The PMC firmware (`fw/pmc/src/dvfs_arbiter.c`) loads one DVFS table per
-silicon corner at boot. Three production tables are required:
+silicon corner at boot. The release matrix is **12 tables** = `{ss, tt, ff}`
+× `{0 C, 25 C, 85 C, 105 C}`:
 
-- `dvfs-table-ss.yaml`
-- `dvfs-table-tt.yaml`
-- `dvfs-table-ff.yaml`
+```
+dvfs-table-ss-0c.yaml   dvfs-table-tt-0c.yaml   dvfs-table-ff-0c.yaml
+dvfs-table-ss-25c.yaml  dvfs-table-tt-25c.yaml  dvfs-table-ff-25c.yaml   <- TT/25 anchor
+dvfs-table-ss-85c.yaml  dvfs-table-tt-85c.yaml  dvfs-table-ff-85c.yaml
+dvfs-table-ss-105c.yaml dvfs-table-tt-105c.yaml dvfs-table-ff-105c.yaml
+```
 
 Each table is generated at silicon characterization from the
-corner sweep at `pd/signoff/sta/<corner>/`. Today only the format skeleton
-exists; the values are **placeholders** and not release-grade.
+corner sweep at `pd/signoff/sta/<corner>/<temp>c/`. Today the 12 placeholders
+exist (TT/25 C is hand-curated; the other 11 are derated from the anchor by
+`scripts/gen_dvfs_table_placeholders.py`). Every cell that the derate rule
+would push outside the rail plan's `[dvfs_min_v, dvfs_max_v]` window is
+marked `pending_silicon_corner_sta`. Values are **planning only** and not
+release-grade.
 
 ## Schema
 
@@ -65,13 +73,29 @@ rails:
 
 ## Verification
 
-`scripts/check_dvfs_tables.py` (TBD) enforces:
+`scripts/check_dvfs_tables.py` enforces:
 
-- All three corner files present and schema-valid.
+- All twelve corner files present and schema-valid.
 - All six DVFS-managed rails covered in each file.
-- `min_code <= nominal_code <= max_code` for every operating point.
+- `min_code <= nominal_code <= max_code` for every operating point with
+  numeric codes.
 - `min_code` and `max_code` within the [`dvfs_min_v`, `dvfs_max_v`] window
   declared in `docs/pd/rail-plan-2028.yaml`.
+- `pending_silicon_corner_sta` sentinel is allowed only when ALL three of
+  nominal/min/max are sentinels at a given operating point. The release
+  gate stays blocked until the sentinel count reaches zero.
 
-Today the production gate
-(`docs/evidence/power/dvfs-table-evidence.yaml`) fails closed.
+To regenerate the 11 derated tables from the TT/25 C anchor, run:
+
+```sh
+python3 scripts/gen_dvfs_table_placeholders.py
+```
+
+Then re-check:
+
+```sh
+python3 scripts/check_dvfs_tables.py
+```
+
+The production gate (`docs/evidence/power/dvfs-table-evidence.yaml`)
+fails closed until silicon STA replaces every sentinel.
