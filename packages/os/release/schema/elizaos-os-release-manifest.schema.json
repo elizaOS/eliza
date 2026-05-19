@@ -116,7 +116,7 @@
                 "enum": ["linux", "macos", "windows", "android", "cuttlefish"]
               },
               "architecture": {
-                "enum": ["x86_64", "arm64", "universal", "aarch64"]
+                "enum": ["x86_64", "arm64", "aarch64", "riscv64", "universal"]
               },
               "device": { "type": ["string", "null"] },
               "hypervisor": { "type": ["string", "null"] },

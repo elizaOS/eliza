@@ -21,7 +21,15 @@ test("help advertises linux aarch64 CUDA fused but not mobile fused targets", ()
   assert.match(result.stdout, /linux-aarch64-cuda-fused/);
   assert.doesNotMatch(result.stdout, /android-arm64-cpu-fused/);
   assert.doesNotMatch(result.stdout, /android-x86_64-cpu-fused/);
+  assert.doesNotMatch(result.stdout, /android-riscv64-cpu-fused/);
   assert.doesNotMatch(result.stdout, /ios-arm64-metal-fused/);
+});
+
+test("help advertises android-riscv64-cpu + linux-riscv64-cpu CPU targets", () => {
+  const result = runDflashBuild(["--help"]);
+  assert.equal(result.status, 0, result.stderr);
+  assert.match(result.stdout, /android-riscv64-cpu/);
+  assert.match(result.stdout, /linux-riscv64-cpu/);
 });
 
 test("mobile fused targets fail closed with explicit diagnostics", () => {
@@ -35,6 +43,14 @@ test("mobile fused targets fail closed with explicit diagnostics", () => {
     [
       "android-x86_64-vulkan-fused",
       /Android x86_64 fused FFI is not a dflash target/,
+    ],
+    [
+      "android-riscv64-cpu-fused",
+      /Android riscv64 fused FFI is not a dflash target/,
+    ],
+    [
+      "android-riscv64-vulkan-fused",
+      /Android riscv64 fused FFI is not a dflash target/,
     ],
     ["ios-arm64-metal-fused", /iOS fused FFI is not wired or verifier-covered/],
   ];

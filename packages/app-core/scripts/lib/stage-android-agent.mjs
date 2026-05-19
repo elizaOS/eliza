@@ -76,6 +76,19 @@ const ABI_TARGETS = [
     alpineArch: "aarch64",
     ldName: "ld-musl-aarch64.so.1",
   },
+  {
+    // Upstream Bun has no riscv64-linux-musl release as of this writing,
+    // so this ABI only succeeds when `MILADY_BUN_RISCV64_URL` is set
+    // (pointing at a self-built canary zip produced by
+    // `packages/app-core/scripts/bun-riscv64/build.sh`). Without that
+    // env var, ensureBunBinary() throws with explicit guidance; the
+    // staging step still wires the rest of the matrix so libllama /
+    // shim cross-compiles can land artifacts incrementally.
+    androidAbi: "riscv64",
+    bunArch: "riscv64",
+    alpineArch: "riscv64",
+    ldName: "ld-musl-riscv64.so.1",
+  },
 ];
 
 const NATIVE_LLAMA_ASSET_ENV_KEYS = [
@@ -93,6 +106,7 @@ const APK_PACKAGES = [
 function jniLoaderName(ldName) {
   if (ldName.includes("aarch64")) return "libeliza_ld_musl_aarch64.so";
   if (ldName.includes("x86_64")) return "libeliza_ld_musl_x86_64.so";
+  if (ldName.includes("riscv64")) return "libeliza_ld_musl_riscv64.so";
   return `libeliza_${ldName.replace(/[^a-zA-Z0-9]+/g, "_")}.so`;
 }
 
@@ -256,10 +270,28 @@ async function ensureBunBinary({ cacheDir, bunArch, bunChannel, log }) {
   if (isFresh) return bunPath;
   fs.mkdirSync(archCache, { recursive: true });
   const zipPath = path.join(archCache, "bun.zip");
-  const url =
-    bunChannel === "canary"
-      ? `https://github.com/oven-sh/bun/releases/download/canary/bun-linux-${bunArch}-musl.zip`
-      : `https://github.com/oven-sh/bun/releases/download/${channelTag}/bun-linux-${bunArch}-musl.zip`;
+  // riscv64 has no upstream Bun release. Allow operators to point at a
+  // self-built canary artifact via `MILADY_BUN_RISCV64_URL`; otherwise
+  // refuse to download from a guessed URL and surface a clear pointer at
+  // the cross-build pipeline. We never invent a default URL.
+  let url;
+  if (bunArch === "riscv64") {
+    const riscvUrl = process.env.MILADY_BUN_RISCV64_URL?.trim();
+    if (!riscvUrl) {
+      throw new Error(
+        "Bun riscv64 artifact not available: upstream Bun has no riscv64-linux-musl release. " +
+          "Set MILADY_BUN_RISCV64_URL to a self-built canary zip URL " +
+          "(produced by packages/app-core/scripts/bun-riscv64/build.sh), " +
+          "or skip the riscv64 ABI for this build.",
+      );
+    }
+    url = riscvUrl;
+  } else {
+    url =
+      bunChannel === "canary"
+        ? `https://github.com/oven-sh/bun/releases/download/canary/bun-linux-${bunArch}-musl.zip`
+        : `https://github.com/oven-sh/bun/releases/download/${channelTag}/bun-linux-${bunArch}-musl.zip`;
+  }
   const channelLabel = bunChannelLabel(bunChannel);
   log(`Downloading ${channelLabel} (${bunArch}-musl) from ${url}`);
   await downloadFile(url, zipPath);

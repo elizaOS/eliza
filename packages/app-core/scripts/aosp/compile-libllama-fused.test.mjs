@@ -27,17 +27,32 @@ test("parseAndroidTarget accepts the wired fused android targets", () => {
     const parsed = parseAndroidTarget(target);
     assert.equal(parsed.fused, true);
     assert.equal(parsed.target, target);
-    assert.ok(["arm64-v8a", "x86_64"].includes(parsed.androidAbi));
+    assert.ok(
+      ["arm64-v8a", "x86_64", "riscv64"].includes(parsed.androidAbi),
+      `unexpected androidAbi ${parsed.androidAbi} for ${target}`,
+    );
     assert.equal(parsed.backend, "cpu");
   }
 });
 
 test("parseAndroidTarget accepts the wired non-fused android targets", () => {
-  for (const target of ["android-arm64-cpu", "android-x86_64-cpu"]) {
+  for (const target of [
+    "android-arm64-cpu",
+    "android-x86_64-cpu",
+    "android-riscv64-cpu",
+  ]) {
     const parsed = parseAndroidTarget(target);
     assert.equal(parsed.fused, false);
     assert.equal(parsed.target, target);
   }
+});
+
+test("parseAndroidTarget maps the riscv64 android target to androidAbi=riscv64", () => {
+  const parsed = parseAndroidTarget("android-riscv64-cpu-fused");
+  assert.equal(parsed.arch, "riscv64");
+  assert.equal(parsed.androidAbi, "riscv64");
+  assert.equal(parsed.backend, "cpu");
+  assert.equal(parsed.fused, true);
 });
 
 test("parseAndroidTarget rejects desktop/server fused targets", () => {
@@ -62,6 +77,8 @@ test("parseAndroidTarget rejects Android Vulkan instead of silently producing CP
     "android-arm64-vulkan-fused",
     "android-x86_64-vulkan",
     "android-x86_64-vulkan-fused",
+    "android-riscv64-vulkan",
+    "android-riscv64-vulkan-fused",
   ]) {
     assert.throws(
       () => parseAndroidTarget(target),
@@ -224,10 +241,11 @@ test("describeAndroidTargetDryRun does NOT emit fused/omnivoice lines for non-fu
   );
 });
 
-test("ABI_TARGETS still carries the two canonical ABIs", () => {
-  assert.equal(ABI_TARGETS.length, 2);
+test("ABI_TARGETS carries every wired Android ABI", () => {
+  assert.equal(ABI_TARGETS.length, 3);
   assert.deepEqual(ABI_TARGETS.map((t) => t.androidAbi).sort(), [
     "arm64-v8a",
+    "riscv64",
     "x86_64",
   ]);
 });

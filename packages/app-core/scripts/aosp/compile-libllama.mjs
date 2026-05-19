@@ -242,6 +242,11 @@ export const ABI_TARGETS = [
     zigTarget: "x86_64-linux-musl",
     cmakeProcessor: "x86_64",
   },
+  {
+    androidAbi: "riscv64",
+    zigTarget: "riscv64-linux-musl",
+    cmakeProcessor: "riscv64",
+  },
 ];
 
 // `*-fused` android targets that are wired to real AOSP artifacts.
@@ -251,6 +256,7 @@ export const ABI_TARGETS = [
 export const FUSED_ANDROID_TARGETS = Object.freeze([
   "android-arm64-cpu-fused",
   "android-x86_64-cpu-fused",
+  "android-riscv64-cpu-fused",
 ]);
 
 /**
@@ -268,7 +274,7 @@ export function parseAndroidTarget(target) {
   }
   const fused = target.endsWith("-fused");
   const base = fused ? target.slice(0, -"-fused".length) : target;
-  const match = /^android-(arm64|x86_64)-(cpu|vulkan)$/.exec(base);
+  const match = /^android-(arm64|x86_64|riscv64)-(cpu|vulkan)$/.exec(base);
   if (!match) {
     throw new Error(
       `[compile-libllama] unsupported --target ${target}. ` +
@@ -277,6 +283,8 @@ export function parseAndroidTarget(target) {
           "android-arm64-cpu-fused",
           "android-x86_64-cpu",
           "android-x86_64-cpu-fused",
+          "android-riscv64-cpu",
+          "android-riscv64-cpu-fused",
         ].join(", ")}`,
     );
   }
@@ -290,7 +298,13 @@ export function parseAndroidTarget(target) {
         `CMake flags plus Vulkan backend shared-object staging first.`,
     );
   }
-  const androidAbi = arch === "x86_64" ? "x86_64" : "arm64-v8a";
+  // Map the parsed arch token to the Android ABI directory name. arm64 →
+  // arm64-v8a (only Android ABI for aarch64); x86_64 and riscv64 share
+  // their name with the parsed token.
+  let androidAbi;
+  if (arch === "x86_64") androidAbi = "x86_64";
+  else if (arch === "riscv64") androidAbi = "riscv64";
+  else androidAbi = "arm64-v8a";
   return { target, arch, backend, fused, androidAbi };
 }
 

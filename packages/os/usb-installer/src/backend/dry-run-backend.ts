@@ -17,6 +17,7 @@ const validChannels = new Set<ElizaOsImage["channel"]>([
 const validArchitectures = new Set<ElizaOsImage["architecture"]>([
   "x86_64",
   "arm64",
+  "riscv64",
 ]);
 
 interface ImageManifestValidationIssue {

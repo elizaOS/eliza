@@ -1148,23 +1148,45 @@ export function injectCopyForkLlamaLibTask(content) {
     return ensureCopyForkLlamaLibGuards(content);
   }
   const block =
-    `\n// Bundle the DFlash Android ARM64 llama.cpp stack into the APK so\n` +
-    `// mobile gets Eliza-1/Qwen3.5 support. Local builds fail if these\n` +
-    `// libraries are absent; cloud builds and explicitly opted-out CI smoke\n` +
+    `\n// Bundle the DFlash Android llama.cpp stack into the APK so mobile\n` +
+    `// gets Eliza-1/Qwen3.5 support across every supported Android ABI\n` +
+    `// (arm64-v8a, x86_64, riscv64). The arm64-v8a slice is mandatory for\n` +
+    `// local-agent capable builds; x86_64 and riscv64 ship when their\n` +
+    `// per-ABI artifacts exist (Wave 2 cross-compiles land them\n` +
+    `// incrementally). Cloud builds and explicitly opted-out CI smoke\n` +
     `// builds skip this task.\n` +
-    `def resolveForkLlamaLibDir = { ->\n` +
-    `    def fromProp = project.findProperty('eliza.dflash.android.libdir')\n` +
+    `ext.elizaForkLlamaAbis = ['arm64-v8a', 'x86_64', 'riscv64']\n` +
+    `\n` +
+    `ext.forkLlamaAbiTokens = [\n` +
+    `    'arm64-v8a': 'android-arm64',\n` +
+    `    'x86_64': 'android-x86_64',\n` +
+    `    'riscv64': 'android-riscv64'\n` +
+    `]\n` +
+    `\n` +
+    `ext.forkLlamaLibompAbiTokens = [\n` +
+    `    'arm64-v8a': 'aarch64',\n` +
+    `    'x86_64': 'x86_64',\n` +
+    `    'riscv64': 'riscv64'\n` +
+    `]\n` +
+    `\n` +
+    `def resolveForkLlamaLibDir = { String abi ->\n` +
+    `    // arm64-v8a keeps the legacy un-suffixed property/env names for\n` +
+    `    // backwards compatibility; other ABIs use the suffixed forms.\n` +
+    `    def propSuffix = abi == 'arm64-v8a' ? '' : ".\${abi}"\n` +
+    `    def envSuffix = abi == 'arm64-v8a' ? '' : "_\${abi.replace('-', '_').toUpperCase()}"\n` +
+    `    def fromProp = project.findProperty("eliza.dflash.android.libdir\${propSuffix}")\n` +
     `    if (fromProp) return fromProp.toString()\n` +
-    `    def fromEnv = System.getenv('ELIZA_DFLASH_ANDROID_LIBDIR')\n` +
+    `    def fromEnv = System.getenv("ELIZA_DFLASH_ANDROID_LIBDIR\${envSuffix}")\n` +
     `    if (fromEnv) return fromEnv\n` +
     `    def stateDir = System.getenv('ELIZA_STATE_DIR') ?: "\${System.getProperty('user.home')}/.eliza"\n` +
+    `    def abiToken = project.ext.forkLlamaAbiTokens[abi]\n` +
     `    def candidates = ['vulkan', 'cpu'].collect { backend ->\n` +
-    `        "\${stateDir}/local-inference/bin/dflash/android-arm64-\${backend}"\n` +
+    `        "\${stateDir}/local-inference/bin/dflash/\${abiToken}-\${backend}"\n` +
     `    }\n` +
     `    return candidates.find { new File(it).isDirectory() }\n` +
     `}\n` +
     `\n` +
-    `def resolveAndroidArm64Libomp = { ->\n` +
+    `def resolveAndroidLibompForAbi = { String abi ->\n` +
     `    def localProperties = new Properties()\n` +
     `    def localPropertiesFile = rootProject.file('local.properties')\n` +
     `    if (localPropertiesFile.isFile()) {\n` +
@@ -1183,6 +1205,7 @@ export function injectCopyForkLlamaLibTask(content) {
     `    if (ndkParent.isDirectory()) {\n` +
     `        (ndkParent.listFiles() ?: [] as File[]).each { ndkRoots << it }\n` +
     `    }\n` +
+    `    def libompAbiToken = project.ext.forkLlamaLibompAbiTokens[abi]\n` +
     `    for (def ndkDir : ndkRoots.unique { it.absolutePath }) {\n` +
     `        def prebuiltDir = new File(ndkDir, 'toolchains/llvm/prebuilt')\n` +
     `        if (!prebuiltDir.isDirectory()) continue\n` +
@@ -1191,7 +1214,7 @@ export function injectCopyForkLlamaLibTask(content) {
     `            def clangDir = new File(hostDir, 'lib/clang')\n` +
     `            def versions = clangDir.listFiles() ?: [] as File[]\n` +
     `            for (def versionDir : versions) {\n` +
-    `                def libomp = new File(versionDir, 'lib/linux/aarch64/libomp.so')\n` +
+    `                def libomp = new File(versionDir, "lib/linux/\${libompAbiToken}/libomp.so")\n` +
     `                if (libomp.isFile()) return libomp\n` +
     `            }\n` +
     `        }\n` +
@@ -1209,41 +1232,64 @@ export function injectCopyForkLlamaLibTask(content) {
     `            println "[copyForkLlamaLib] skipped by explicit native-lib opt-out"\n` +
     `            return\n` +
     `        }\n` +
-    `        def libDir = resolveForkLlamaLibDir()\n` +
-    `        if (!libDir) {\n` +
-    `            throw new GradleException("[copyForkLlamaLib] no DFlash Android lib dir configured. Run packages/app-core/scripts/build-llama-cpp-dflash.mjs --target android-arm64-vulkan or set -Peliza.dflash.android.libdir / ELIZA_DFLASH_ANDROID_LIBDIR.")\n` +
-    `        }\n` +
-    `        def srcDir = new File(libDir.toString())\n` +
-    `        if (!srcDir.isDirectory()) {\n` +
-    `            throw new GradleException("[copyForkLlamaLib] DFlash Android lib dir does not exist: \${libDir}")\n` +
-    `        }\n` +
-    `        def jniDir = file('src/main/jniLibs/arm64-v8a')\n` +
-    `        jniDir.mkdirs()\n` +
-    `        def assetsDir = file('src/main/assets')\n` +
-    `        assetsDir.mkdirs()\n` +
-    `        int copied = 0\n` +
-    `        srcDir.eachFile { src ->\n` +
-    `            if (src.name.endsWith('.so')) {\n` +
-    `                def dst = new File(jniDir, src.name)\n` +
-    `                dst.bytes = src.bytes\n` +
+    `        boolean stagedArm64 = false\n` +
+    `        int totalCopied = 0\n` +
+    `        boolean stagedKernels = false\n` +
+    `        project.ext.elizaForkLlamaAbis.each { abi ->\n` +
+    `            def libDir = resolveForkLlamaLibDir(abi)\n` +
+    `            if (!libDir) {\n` +
+    `                if (abi == 'arm64-v8a') {\n` +
+    `                    // arm64-v8a is the mandatory baseline ABI; missing it is a hard error.\n` +
+    `                    throw new GradleException("[copyForkLlamaLib] no DFlash Android lib dir configured for arm64-v8a. Run packages/app-core/scripts/build-llama-cpp-dflash.mjs --target android-arm64-vulkan or set -Peliza.dflash.android.libdir / ELIZA_DFLASH_ANDROID_LIBDIR.")\n` +
+    `                }\n` +
+    `                logger.lifecycle("[copyForkLlamaLib] no fork lib dir for ABI \${abi}; skipping")\n` +
+    `                return\n` +
+    `            }\n` +
+    `            def srcDir = new File(libDir.toString())\n` +
+    `            if (!srcDir.isDirectory()) {\n` +
+    `                if (abi == 'arm64-v8a') {\n` +
+    `                    throw new GradleException("[copyForkLlamaLib] DFlash Android lib dir does not exist for arm64-v8a: \${libDir}")\n` +
+    `                }\n` +
+    `                logger.lifecycle("[copyForkLlamaLib] fork lib dir \${libDir} does not exist for ABI \${abi}; skipping")\n` +
+    `                return\n` +
+    `            }\n` +
+    `            def jniDir = file("src/main/jniLibs/\${abi}")\n` +
+    `            jniDir.mkdirs()\n` +
+    `            def assetsDir = file('src/main/assets')\n` +
+    `            assetsDir.mkdirs()\n` +
+    `            int copied = 0\n` +
+    `            srcDir.eachFile { src ->\n` +
+    `                if (src.name.endsWith('.so')) {\n` +
+    `                    def dst = new File(jniDir, src.name)\n` +
+    `                    dst.bytes = src.bytes\n` +
+    `                    copied++\n` +
+    `                }\n` +
+    `                // kernels.json is ABI-independent; stage once from the first ABI we see.\n` +
+    `                if (src.name == 'kernels.json' && !stagedKernels) {\n` +
+    `                    def dst = new File(assetsDir, 'llama-cpp-kernels.json')\n` +
+    `                    dst.bytes = src.bytes\n` +
+    `                    println "[copyForkLlamaLib] staged kernels.json as assets/llama-cpp-kernels.json (from \${abi})"\n` +
+    `                    stagedKernels = true\n` +
+    `                }\n` +
+    `            }\n` +
+    `            def libomp = resolveAndroidLibompForAbi(abi)\n` +
+    `            if (libomp != null) {\n` +
+    `                def dst = new File(jniDir, 'libomp.so')\n` +
+    `                dst.bytes = libomp.bytes\n` +
     `                copied++\n` +
+    `                println "[copyForkLlamaLib] staged Android OpenMP runtime for \${abi} from \${libomp}"\n` +
+    `            } else if (abi == 'arm64-v8a') {\n` +
+    `                throw new GradleException("[copyForkLlamaLib] Android arm64 libomp.so not found in the configured NDK; DFlash CPU backend cannot load without it.")\n` +
+    `            } else {\n` +
+    `                logger.lifecycle("[copyForkLlamaLib] no libomp.so found for \${abi}; the .so set may not link on-device")\n` +
     `            }\n` +
-    `            if (src.name == 'kernels.json') {\n` +
-    `                def dst = new File(assetsDir, 'llama-cpp-kernels.json')\n` +
-    `                dst.bytes = src.bytes\n` +
-    `                println "[copyForkLlamaLib] staged kernels.json as assets/llama-cpp-kernels.json"\n` +
-    `            }\n` +
+    `            println "[copyForkLlamaLib] copied \${copied} .so file(s) from \${libDir} to \${jniDir}"\n` +
+    `            totalCopied += copied\n` +
+    `            if (abi == 'arm64-v8a') stagedArm64 = true\n` +
     `        }\n` +
-    `        def libomp = resolveAndroidArm64Libomp()\n` +
-    `        if (libomp != null) {\n` +
-    `            def dst = new File(jniDir, 'libomp.so')\n` +
-    `            dst.bytes = libomp.bytes\n` +
-    `            copied++\n` +
-    `            println "[copyForkLlamaLib] staged Android OpenMP runtime from \${libomp}"\n` +
-    `        } else {\n` +
-    `            throw new GradleException("[copyForkLlamaLib] Android arm64 libomp.so not found in the configured NDK; DFlash CPU backend cannot load without it.")\n` +
+    `        if (!stagedArm64) {\n` +
+    `            throw new GradleException("[copyForkLlamaLib] arm64-v8a slice was not staged; aborting (this is the baseline ABI).")\n` +
     `        }\n` +
-    `        println "[copyForkLlamaLib] copied \${copied} .so file(s) from \${libDir} to \${jniDir}"\n` +
     `    }\n` +
     `}\n` +
     `\n` +

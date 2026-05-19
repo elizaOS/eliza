@@ -235,8 +235,22 @@ const SUPPORTED_TARGETS = [
   // wiring on x64 hosts in this script.
   "linux-aarch64-cpu",
   "linux-aarch64-cuda",
+  // Linux riscv64 (CPU-only). Mirrors linux-aarch64-cpu: requires a
+  // real riscv64 host or a riscv64 sysroot + cross-toolchain. There is
+  // no GPU-class hardware in this matrix yet; SiFive HiFive Premier /
+  // Milk-V Megrez / equivalents stay CPU-only until upstream
+  // ggml-vulkan riscv64 + RVV 1.0 paths land. Same zig-cc cross-driver
+  // story as linux-aarch64-cpu.
+  "linux-riscv64-cpu",
   "android-arm64-cpu",
   "android-arm64-vulkan",
+  // Android riscv64 (CPU-only; Vulkan path is not wired here — operators
+  // wanting GPU on a riscv64 device should add real GGML_VULKAN flags
+  // and Vulkan backend staging first, mirroring the arm64-vulkan path).
+  // riscv64-linux-musl cross-build via the same zig driver compile-shim
+  // and compile-libllama scripts use; QEMU-user-mode is the smoke
+  // target until Cuttlefish-riscv64 lands.
+  "android-riscv64-cpu",
   "darwin-arm64-metal",
   // iOS targets (require macOS host with Xcode). Output is a static .a +
   // headers that the LlamaCpp.xcframework patch in
@@ -301,6 +315,14 @@ const UNSUPPORTED_FUSED_TARGET_REASONS = new Map([
   [
     "android-x86_64-vulkan-fused",
     "Android x86_64 fused FFI is not a dflash target in this script; packages/app-core/scripts/aosp/compile-libllama.mjs owns emulator/system-agent fused artifacts.",
+  ],
+  [
+    "android-riscv64-cpu-fused",
+    "Android riscv64 fused FFI is not a dflash target in this script; packages/app-core/scripts/aosp/compile-libllama.mjs owns the riscv64 system-agent fused artifacts.",
+  ],
+  [
+    "android-riscv64-vulkan-fused",
+    "Android riscv64 fused FFI is not a dflash target in this script; packages/app-core/scripts/aosp/compile-libllama.mjs owns the riscv64 system-agent fused artifacts (and Vulkan on riscv64 is not yet wired anywhere).",
   ],
   [
     "ios-arm64-metal-fused",
@@ -1642,10 +1664,25 @@ function cmakeFlagsForTarget(target, ctx) {
         "Android target requested but ANDROID_NDK_HOME is not set and no NDK was found under ANDROID_HOME, ANDROID_SDK_ROOT, ~/Library/Android/sdk, or ~/Android/Sdk",
       );
     }
+    // Map our internal arch token to the NDK's ANDROID_ABI value.
+    // arm64 → arm64-v8a (NDK's spelling for aarch64). x86_64 and
+    // riscv64 share their names. NDK r27+ supports ANDROID_ABI=riscv64
+    // (https://developer.android.com/ndk/guides/abis#riscv64); older
+    // NDKs will fail the toolchain probe — operators wanting the
+    // riscv64 Android ABI must run on NDK r27 or newer.
+    let androidAbi;
+    if (arch === "arm64") androidAbi = "arm64-v8a";
+    else if (arch === "x86_64") androidAbi = "x86_64";
+    else if (arch === "riscv64") androidAbi = "riscv64";
+    else {
+      throw new Error(
+        `Android target arch ${arch} is not mapped to an ANDROID_ABI value`,
+      );
+    }
     flags.push(
       `-DCMAKE_TOOLCHAIN_FILE=${path.join(ctx.androidNdk, "build", "cmake", "android.toolchain.cmake")}`,
       `-DANDROID_NDK=${ctx.androidNdk}`,
-      "-DANDROID_ABI=arm64-v8a",
+      `-DANDROID_ABI=${androidAbi}`,
       "-DANDROID_PLATFORM=android-28",
       // CURL is optional for llama-server and not part of the NDK sysroot.
       "-DLLAMA_CURL=OFF",
@@ -1796,6 +1833,22 @@ function targetCompatibility(target, ctx) {
       ok: false,
       reason:
         "linux-aarch64 target requires an arm64 Linux host (no aarch64 cross-toolchain wired here; run on a real arm64 build runner)",
+    };
+  }
+  // linux-riscv64-* mirrors the aarch64 story: no cross-toolchain is
+  // wired in this script, so non-riscv64 hosts can't produce riscv64
+  // binaries directly. Operators wanting riscv64 should run on a
+  // SiFive HiFive Premier / Milk-V Megrez build host or use the
+  // compile-libllama.mjs zig-cc cross path under packages/app-core/scripts/aosp/.
+  if (
+    platform === "linux" &&
+    arch === "riscv64" &&
+    process.arch !== "riscv64"
+  ) {
+    return {
+      ok: false,
+      reason:
+        "linux-riscv64 target requires a riscv64 Linux host (no riscv64 cross-toolchain wired in build-llama-cpp-dflash.mjs; run on a real riscv64 build runner or use packages/app-core/scripts/aosp/compile-libllama.mjs with --target android-riscv64-cpu for the musl cross path)",
     };
   }
   if (platform === "windows") {
@@ -3122,11 +3175,13 @@ function canRunTargetOnHost(target) {
   if (platform === "darwin" && process.platform !== "darwin") return false;
   if (platform === "linux" && process.platform !== "linux") return false;
   // arm64 (Apple, Windows, Android) and aarch64 (Linux) both map to
-  // process.arch === "arm64" on Node. x64 maps to "x64".
+  // process.arch === "arm64" on Node. x64 maps to "x64". Node exposes
+  // riscv64 as "riscv64" since 21.x.
   if ((arch === "arm64" || arch === "aarch64") && process.arch !== "arm64") {
     return false;
   }
   if (arch === "x64" && process.arch !== "x64") return false;
+  if (arch === "riscv64" && process.arch !== "riscv64") return false;
   return true;
 }
 

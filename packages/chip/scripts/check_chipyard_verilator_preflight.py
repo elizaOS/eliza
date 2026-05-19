@@ -23,6 +23,19 @@ CONFIG = "ElizaRocketConfig"
 CONFIG_PACKAGE = "eliza"
 SIM_DIR = CHECKOUT / "sims/verilator"
 REQUIRED_RECURSIVE_SUBMODULE_ROOTS = ("generators/rocket-chip",)
+REQUIRED_TOP_LEVEL_SUBMODULE_ROOTS = (
+    "generators/ara",
+    "generators/cva6",
+    "generators/ibex",
+    "generators/nvdla",
+    "sims/firesim",
+    "tools/cde",
+    "tools/dsptools",
+    "tools/fixedpoint",
+    "tools/firrtl2",
+    "tools/rocket-dsp-utils",
+    "tools/torture",
+)
 
 BUILD_COMMAND = [
     f"cd {CHECKOUT.relative_to(ROOT) if CHECKOUT.is_relative_to(ROOT) else CHECKOUT}/sims/verilator",
@@ -87,15 +100,45 @@ def submodule_problems() -> dict[str, list[str]]:
     return problems
 
 
+def selected_submodule_problems(paths: tuple[str, ...], *, recursive: bool) -> dict[str, list[str]]:
+    command = ["git", "submodule", "status"]
+    if recursive:
+        command.append("--recursive")
+    command.extend(paths)
+    status = run(command, cwd=CHECKOUT)
+    problems: dict[str, list[str]] = {"missing": [], "drifted": [], "conflicts": []}
+    if status.returncode != 0:
+        problems["conflicts"].append("could not read selected submodule status")
+        return problems
+    for line in status.stdout.splitlines():
+        if not line:
+            continue
+        fields = line[1:].strip().split()
+        path = fields[1] if len(fields) >= 2 else line
+        if line.startswith("-"):
+            problems["missing"].append(path)
+        elif line.startswith("+"):
+            problems["drifted"].append(path)
+        elif line.startswith("U"):
+            problems["conflicts"].append(path)
+    return problems
+
+
 def tool_path(name: str) -> str | None:
+    repo_tool_candidates = [
+        ROOT / "tools/bin" / name,
+        ROOT / "external/oss-cad-suite/bin" / name,
+        ROOT / ".venv/bin" / name,
+    ]
     if name == "firtool":
-        local_firtool = ROOT / "external/circt/bin/firtool"
-        if local_firtool.is_file():
-            return str(local_firtool)
+        repo_tool_candidates.append(ROOT / "external/circt/bin/firtool")
     if name == "java":
         jdk17_java = Path("/opt/homebrew/opt/openjdk@17/bin/java")
         if jdk17_java.is_file():
             return str(jdk17_java)
+    for candidate in repo_tool_candidates:
+        if candidate.is_file():
+            return str(candidate)
     return shutil.which(name)
 
 
@@ -123,6 +166,7 @@ def main() -> int:
         "verilog_only": " && ".join(VERILOG_COMMAND),
     }
     checks["required_recursive_submodule_roots"] = list(REQUIRED_RECURSIVE_SUBMODULE_ROOTS)
+    checks["required_top_level_submodule_roots"] = list(REQUIRED_TOP_LEVEL_SUBMODULE_ROOTS)
 
     if selected.get("config_name") != CONFIG:
         errors.append(f"selected config must be {CONFIG}")
@@ -150,12 +194,44 @@ def main() -> int:
         for path in problems["conflicts"]:
             errors.append(f"Chipyard recursive submodule has conflict or status error: {path}")
 
+        top_level_problems = selected_submodule_problems(
+            REQUIRED_TOP_LEVEL_SUBMODULE_ROOTS,
+            recursive=False,
+        )
+        checks["top_level_submodule_problems"] = top_level_problems
+        for path in top_level_problems["missing"]:
+            errors.append(f"Chipyard top-level submodule is not initialized: {path}")
+        for path in top_level_problems["drifted"]:
+            errors.append(f"Chipyard top-level submodule is not at recorded SHA: {path}")
+        for path in top_level_problems["conflicts"]:
+            errors.append(f"Chipyard top-level submodule has conflict or status error: {path}")
+
+        generator_problems = selected_submodule_problems(("generators",), recursive=False)
+        checks["direct_generator_submodule_problems"] = generator_problems
+        for path in generator_problems["missing"]:
+            errors.append(f"Chipyard generator submodule is not initialized: {path}")
+        for path in generator_problems["drifted"]:
+            errors.append(f"Chipyard generator submodule is not at recorded SHA: {path}")
+        for path in generator_problems["conflicts"]:
+            errors.append(f"Chipyard generator submodule has conflict or status error: {path}")
+
     for relative in (
         "sims/verilator/Makefile",
         "common.mk",
         "variables.mk",
+        "generators/ara/ara.mk",
+        "generators/cva6/cva6.mk",
+        "generators/ibex/ibex.mk",
+        "generators/nvdla/nvdla.mk",
+        "generators/tracegen/tracegen.mk",
         "generators/chipyard/src/main/scala",
         "generators/rocket-chip/src/main/resources/vsrc/TestDriver.v",
+        "sims/firesim/sim/midas/targetutils/src/main/scala",
+        "tools/cde/cde/src/chipsalliance/rocketchip/config.scala",
+        "tools/dsptools/src/main/scala",
+        "tools/fixedpoint/src/main/scala",
+        "tools/rocket-dsp-utils/src/main/scala",
+        "tools/torture.mk",
     ):
         checkout_path = CHECKOUT / relative
         checks[f"exists:{relative}"] = checkout_path.exists()
@@ -224,6 +300,10 @@ def main() -> int:
             )
         ):
             riscv = str(default_riscv)
+        elif (ROOT / "tools/bin/riscv64-unknown-elf-gcc").is_file():
+            riscv = str(ROOT / "tools")
+        elif (ROOT / "external/riscv64-linux-gnu/usr/bin/riscv64-linux-gnu-gcc").is_file():
+            riscv = str(ROOT / "external/riscv64-linux-gnu/usr")
     checks["env:RISCV"] = riscv
     if not riscv:
         blockers.append(

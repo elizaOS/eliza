@@ -78,7 +78,7 @@ function parseArgs(argv) {
     else if (a === "--help" || a === "-h") {
       console.log(
         "Usage: node packages/app-core/scripts/aosp/deploy-pixel.mjs " +
-          "[--aosp-root <DIR>] [--abi arm64-v8a|x86_64] [--device <serial>] " +
+          "[--aosp-root <DIR>] [--abi arm64-v8a|x86_64|riscv64] [--device <serial>] " +
           "[--skip-libllama] [--skip-aosp-build] [--voice] [--jobs N] [--dry-run]",
       );
       process.exit(0);
@@ -86,8 +86,14 @@ function parseArgs(argv) {
       throw new Error(`Unknown argument: ${a} (see --help)`);
     }
   }
-  if (args.abi !== "arm64-v8a" && args.abi !== "x86_64") {
-    throw new Error(`--abi must be arm64-v8a or x86_64 (got "${args.abi}")`);
+  if (
+    args.abi !== "arm64-v8a" &&
+    args.abi !== "x86_64" &&
+    args.abi !== "riscv64"
+  ) {
+    throw new Error(
+      `--abi must be arm64-v8a, x86_64, or riscv64 (got "${args.abi}")`,
+    );
   }
   return args;
 }
@@ -131,10 +137,14 @@ function listAdbDevices() {
 
 async function main(argv = process.argv.slice(2)) {
   const args = parseArgs(argv);
-  const target =
-    args.abi === "x86_64"
-      ? "android-x86_64-cpu-fused"
-      : "android-arm64-vulkan-fused";
+  // arm64 keeps its Vulkan-fused default (real-phone deploy path). x86_64
+  // and riscv64 stay on CPU-fused — neither has Android Vulkan wired in
+  // compile-libllama.mjs yet (parseAndroidTarget refuses
+  // android-*-vulkan there).
+  let target;
+  if (args.abi === "x86_64") target = "android-x86_64-cpu-fused";
+  else if (args.abi === "riscv64") target = "android-riscv64-cpu-fused";
+  else target = "android-arm64-vulkan-fused";
 
   console.log(
     `[deploy-pixel] target=${target} device=${args.device ?? "(auto)"} ` +

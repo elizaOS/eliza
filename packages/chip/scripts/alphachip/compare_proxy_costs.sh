@@ -13,6 +13,7 @@ fi
 
 NETLIST="$BENCH_DIR/e1_softmacro.pb.txt"
 OPENROAD_PLC="$BENCH_DIR/e1_softmacro.openroad.plc"
+ALPHACHIP_PLC="${ALPHACHIP_PLC:-$BENCH_DIR/e1_softmacro.alphachip.plc}"
 
 if [ ! -f "$NETLIST" ] || [ ! -f "$OPENROAD_PLC" ]; then
     echo "Missing benchmark files in $BENCH_DIR. Run prepare_e1_softmacro_benchmark.sh first." >&2
@@ -26,6 +27,7 @@ fi
 mkdir -p "$OUT_DIR"
 
 docker run --rm \
+    --user "$(id -u):$(id -g)" \
     -v "$CT_DIR:/workspace" \
     -v "$REPO_DIR/scripts/alphachip:/e1-scripts:ro" \
     -v "$BENCH_DIR:/bench" \
@@ -37,17 +39,19 @@ docker run --rm \
         --plc /bench/e1_softmacro.openroad.plc \
         --out-json /compare/openroad_proxy.json
 
-if [ -f "$BENCH_DIR/e1_softmacro.alphachip.plc" ]; then
+if [ -f "$ALPHACHIP_PLC" ]; then
     docker run --rm \
+        --user "$(id -u):$(id -g)" \
         -v "$CT_DIR:/workspace" \
         -v "$REPO_DIR/scripts/alphachip:/e1-scripts:ro" \
         -v "$BENCH_DIR:/bench" \
+        -v "$(dirname "$ALPHACHIP_PLC"):/alphachip-plc:ro" \
         -v "$OUT_DIR:/compare" \
         -w /workspace \
         "$IMAGE" \
         python3.9 /e1-scripts/evaluate_plc.py \
             --netlist /bench/e1_softmacro.pb.txt \
-            --plc /bench/e1_softmacro.alphachip.plc \
+            --plc "/alphachip-plc/$(basename "$ALPHACHIP_PLC")" \
             --out-json /compare/alphachip_proxy.json
 fi
 
