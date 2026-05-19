@@ -45,7 +45,7 @@ describe("sanitizePlannerText", () => {
     );
     expect(out).toContain("Working on the locale fix.");
     expect(out).toContain("Continuing.");
-    expect(out).toEndWith(SELF_HEAL);
+    expect(out.endsWith(SELF_HEAL)).toBe(true);
   });
 
   it("collapses double spaces left by replacement", () => {

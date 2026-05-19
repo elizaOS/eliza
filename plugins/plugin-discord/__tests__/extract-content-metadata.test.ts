@@ -1,5 +1,5 @@
-import { describe, expect, it } from "vitest";
 import type { Content } from "@elizaos/core";
+import { describe, expect, it } from "vitest";
 
 // Re-implementation under test. The production version lives in
 // `plugins/plugin-discord/service.ts` but isn't exported; this test

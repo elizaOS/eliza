@@ -419,7 +419,7 @@ export interface MessageConnector {
 	postToThreadHandler?: (
 		runtime: IAgentRuntime,
 		params: MessageConnectorPostToThreadParams,
-	) => Promise<Memory> | Promise<void>;
+	) => Promise<Memory | void>;
 	contentShaping?: ConnectorContentShaping;
 }
 
