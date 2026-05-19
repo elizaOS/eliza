@@ -1616,7 +1616,16 @@ def main() -> int:
         "RuntimeDescriptorInput",
         "descriptor_staging_plan",
         "eliza.e1_npu_descriptor_staging_plan.v1",
-        "descriptor_staging_metadata_only_not_binary_codegen_or_dma_runtime",
+        "descriptor_staging_relocatable_template_only_not_arena_base_assignment_or_dma_runtime",
+        "descriptor_word_template",
+        "descriptor_words",
+        "RuntimeDescriptorCommandBufferImage",
+        "RuntimeDescriptorBatch",
+        "RuntimeDescriptorBatchBlocker",
+        "descriptor_batches",
+        "command_buffer_image",
+        "eliza.e1_npu_descriptor_command_buffer_image.v1",
+        "descriptor_command_buffer_image_only_not_dma_submission_or_tensor_population",
         "descriptor_codegen_ready",
         "input_stream_ready",
         "writeback_ready",
@@ -1633,6 +1642,10 @@ def main() -> int:
         "test_partition_report_emits_runtime_binding_plan_from_arena_offsets",
         "test_partition_report_runtime_binding_plan_records_unresolved_metadata_fields",
         "test_partition_report_emits_descriptor_staging_plan_for_ready_input_streams",
+        "test_partition_report_descriptor_word_materialization_is_fail_closed",
+        "test_descriptor_staging_plan_materializes_ready_command_buffer_image",
+        "test_descriptor_staging_plan_command_buffer_image_is_fail_closed",
+        "test_descriptor_staging_plan_reports_batch_level_blockers",
         "test_partition_report_descriptor_staging_plan_blocks_unresolved_inputs",
         "PartitionCommandBufferBatch",
     ):
@@ -1742,6 +1755,11 @@ def main() -> int:
         "descriptor_codegen_ready",
         "stream_byte_count",
         "GEMM",
+        "descriptor_word_template",
+        "descriptor_words",
+        "command_buffer_image",
+        "eliza.e1_npu_descriptor_command_buffer_image.v1",
+        "descriptor_batches",
         "ready_ops",
         "blocked_ops",
         "blocking_reasons",
@@ -1750,7 +1768,7 @@ def main() -> int:
             errors.append(f"delegate descriptor staging contract missing {token}")
     if (
         descriptor_staging.get("claim_boundary")
-        != "descriptor_staging_metadata_only_not_binary_codegen_or_dma_runtime"
+        != "descriptor_staging_relocatable_template_only_not_arena_base_assignment_or_dma_runtime"
     ):
         errors.append("delegate descriptor staging claim boundary must remain runtime-blocked")
 

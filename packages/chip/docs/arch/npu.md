@@ -868,10 +868,21 @@ MMIO preamble (`GEMM_CFG`, `GEMM_BASE`, `GEMM_STRIDE`). It also keeps
 `blocking_reasons` when full descriptor codegen is not valid. With
 `int32_accumulator` result storage, bounded INT8/INT4 matmul inputs can form a
 descriptor input stream and the output can be represented as a current-RTL GEMM
-writeback target in metadata; non-matmul ops and unresolved sparse/group-scale
-metadata remain blocked. This is a staging template only, not binary descriptor
-emission, arena base address assignment, DMA runtime ownership, output dtype
-conversion, Android delegate integration, or a production compiler backend.
+writeback target. Ready entries now include a relocatable
+`descriptor_word_template`: word0 is the concrete packed RTL descriptor control
+word, word1 is `arena_base + source_arena_offset`, word2 is `arena_base +
+output_arena_offset`, and word3 is zero; the Python object can materialize
+`descriptor_words(arena_base)` fail-closed for aligned arena bases. At the plan
+level, `command_buffer_image(arena_base, descriptor_base, batch_index)` builds
+the same word-addressed descriptor image and submission tuple that
+`CommandBuffer.descriptor_image()` expects, but only when every op in the batch
+is descriptor-codegen ready. The same blob includes `descriptor_batches`, a
+batch-level readiness summary with blocked op names and reasons, so delegates
+can reject a mixed command-buffer batch before trying to emit descriptors.
+Non-matmul ops and unresolved sparse/group-scale metadata remain blocked. This
+does not assign an arena base, populate tensor data, own DMA submission, perform
+output dtype conversion, integrate an Android delegate, or replace the
+production compiler backend.
 
 ## Evidence gates
 
